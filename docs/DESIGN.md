@@ -124,10 +124,11 @@ using the attack panel's composition (all types proportionally by default, or cu
   `retreat` returns them early (10% lost).
 - Two attacks of the same pair facing each other cancel troops first (counter-attack).
 - Capturing a tile with a building captures the building (missile silos, SAMs, airfields are destroyed instead).
-- Taking a player's capital: -30% of their gold, their capital moves to their biggest city (or a random tile).
+- Taking a player's capital: -30% of their gold, their capital moves to their biggest city (or the nearest own tile).
+  The gold penalty applies at most once per 30 s, so a capital falling back tile by tile is not drained.
 
 **Supply.** Supply sources: capital, cities, supply depots (radius from config). A distance field is recomputed each
-`SUPPLY_RECALC_TICKS`. Fronts beyond `SUPPLY_RANGE` tiles (Logistics +50%) from a source fight at reduced efficiency,
+`SUPPLY_RECALC_TICKS` (staggered by player id, so not every field is rebuilt on the same tick). Fronts beyond `SUPPLY_RANGE` tiles (Logistics +50%) from a source fight at reduced efficiency,
 falling linearly to `MIN_SUPPLY_EFF` at 3x range. Defenders far from supply also defend at x0.85.
 
 **Elimination.** A player with no tiles is eliminated; their units and attacks vanish.
@@ -135,7 +136,8 @@ falling linearly to `MIN_SUPPLY_EFF` at 3x range. Defenders far from supply also
 ## 5. Buildings
 
 Built on an owned land tile (one per tile, `BUILDING_MIN_SPACING` apart except cities may cluster). Cost grows by
-`COST_GROWTH` per copy the player already owns. Construction takes `buildTime` seconds; an unfinished building
+the building's `costGrowth` per copy the player already owns; for cities every city level counts as a copy, and an
+upgrade costs the same as a new city. Construction takes `buildTime` seconds; an unfinished building
 does nothing. Some need a tech.
 
 | Building | Effect | Needs |

@@ -49,7 +49,7 @@ export const RESOURCE_COLORS: Record<number, [number, number, number]> = {
 export const RESOURCE_NAMES = ['None', 'Iron', 'Oil', 'Fertile'] as const;
 
 // ---------- economy ----------
-export const CITY_POP = 25000; // per city level
+export const CITY_POP = 6000; // per city level
 export const CAPITAL_POP = 20000;
 export const POP_GROWTH = 0.05; // logistic rate
 export const MIN_GROWTH = 15; // people/s while below max
@@ -59,11 +59,11 @@ export const GOLD_PER_WORKER = 0.004;
 export const CITY_GOLD = 4; // per city level
 export const MARKET_GOLD_BONUS = 0.12; // +12% gold per market
 export const MARKET_MAX_BONUS = 1.2;
-export const IRON_PER_MINE = 2.0;
+export const IRON_PER_MINE = 3.0;
 export const OIL_PER_WELL = 1.6;
 export const BASE_SCIENCE = 0.5;
-export const SCIENCE_PER_LAB = 1.5;
-export const ARMOR_OIL_UPKEEP = 0.0015; // oil per armor unit per second
+export const SCIENCE_PER_LAB = 1.0;
+export const ARMOR_OIL_UPKEEP = 0.0003; // oil per armor unit per second
 export const AIRCRAFT_OIL_UPKEEP = 0.02; // oil per stored aircraft per second
 export const NO_OIL_ARMOR_FACTOR = 0.5;
 export const BARRACKS_GROWTH_BONUS = 0.15; // +15% growth to infantry per barracks
@@ -131,7 +131,7 @@ export const BUILDING_MIN_SPACING = 3;
 export const COST_GROWTH = 0.35;
 
 export const BUILDINGS: Record<BuildingType, BuildingInfo> = {
-  city: { name: 'City', hotkey: '1', cost: 800, iron: 0, costGrowth: 0.5, buildTime: 8, tech: null, coastal: false, radius: 0, capturable: true, description: '+25k max population per level, gold, supply source. Build again on a city to upgrade (max level 5).' },
+  city: { name: 'City', hotkey: '1', cost: 800, iron: 0, costGrowth: 0.5, buildTime: 8, tech: null, coastal: false, radius: 0, capturable: true, description: '+6k max population per level, gold, supply source. Build again on a city to upgrade (max level 5). Each level owned raises the price of the next.' },
   farm: { name: 'Farm', hotkey: '2', cost: 300, iron: 0, costGrowth: 0.3, buildTime: 4, tech: null, coastal: false, radius: 0, capturable: true, description: '+population growth, double on Fertile land.' },
   market: { name: 'Market', hotkey: '3', cost: 500, iron: 0, costGrowth: 0.4, buildTime: 5, tech: null, coastal: false, radius: 0, capturable: true, description: '+12% gold income each (max +120%).' },
   mine: { name: 'Mine', hotkey: '4', cost: 400, iron: 0, costGrowth: 0.3, buildTime: 5, tech: null, coastal: false, radius: 2, capturable: true, description: '+iron. Must be within 2 tiles of an Iron deposit you own.' },
@@ -143,7 +143,7 @@ export const BUILDINGS: Record<BuildingType, BuildingInfo> = {
   supplyDepot: { name: 'Supply Depot', hotkey: '0', cost: 500, iron: 10, costGrowth: 0.35, buildTime: 6, tech: null, coastal: false, radius: 30, capturable: true, description: 'Supply source; +10% attack for fronts within 30 tiles.' },
   watchtower: { name: 'Watchtower', hotkey: 'Q', cost: 350, iron: 0, costGrowth: 0.3, buildTime: 4, tech: null, coastal: false, radius: 40, capturable: true, description: 'Reveals enemy army size and mix within 40 tiles, +20% defence within 6 tiles, warns of bombers and landings.' },
   port: { name: 'Port', hotkey: 'E', cost: 700, iron: 0, costGrowth: 0.4, buildTime: 8, tech: null, coastal: true, radius: 0, capturable: true, description: 'Coastal. Trade ships (gold), faster free transports, warships (Navigation).' },
-  lab: { name: 'Research Lab', hotkey: 'R', cost: 750, iron: 0, costGrowth: 0.5, buildTime: 8, tech: null, coastal: false, radius: 0, capturable: true, description: '+1.5 science/s.' },
+  lab: { name: 'Research Lab', hotkey: 'R', cost: 750, iron: 0, costGrowth: 0.7, buildTime: 8, tech: null, coastal: false, radius: 0, capturable: true, description: '+1 science/s.' },
   hospital: { name: 'Hospital', hotkey: 'H', cost: 600, iron: 0, costGrowth: 0.6, buildTime: 6, tech: 'medicine', coastal: false, radius: 0, capturable: true, description: '25% of your attack losses come back as workers (counts up to 2).' },
   airfield: { name: 'Airfield', hotkey: 'F', cost: 1200, iron: 80, costGrowth: 0.5, buildTime: 12, tech: 'flight', coastal: false, radius: 40, capturable: false, description: 'Builds bombers and fighters. Fighters intercept bombers within 40 tiles.' },
   sam: { name: 'SAM Site', hotkey: 'G', cost: 900, iron: 60, costGrowth: 0.4, buildTime: 8, tech: 'radar', coastal: false, radius: 30, capturable: false, description: 'Shoots at missiles and aircraft within 30 tiles.' },
@@ -171,21 +171,21 @@ export interface TechInfo {
   description: string;
 }
 export const TECHS: Record<TechId, TechInfo> = {
-  agriculture: { name: 'Agriculture', tier: 1, science: 60, gold: 300, requires: [], description: 'Farms +50% growth.' },
-  metallurgy: { name: 'Metallurgy', tier: 1, science: 60, gold: 300, requires: [], description: 'Iron +50%; armor and artillery cost 25% less iron.' },
-  logistics: { name: 'Logistics', tier: 1, science: 60, gold: 300, requires: [], description: 'Supply range +50%, attack speed +15%.' },
-  fortification: { name: 'Fortification', tier: 1, science: 60, gold: 300, requires: [], description: 'Forts x2.5 defence and radius 14.' },
-  navigation: { name: 'Navigation', tier: 1, science: 60, gold: 300, requires: [], description: 'Warships; transports +50% speed and +1 at sea.' },
-  banking: { name: 'Banking', tier: 2, science: 140, gold: 600, requires: ['agriculture'], description: 'Gold +30%, markets x1.5.' },
-  medicine: { name: 'Medicine', tier: 2, science: 140, gold: 600, requires: ['agriculture'], description: 'Hospitals; population growth +20%.' },
-  mechanization: { name: 'Mechanization', tier: 2, science: 140, gold: 600, requires: ['metallurgy'], description: 'Armor +25% attack and defence.' },
-  ballistics: { name: 'Ballistics', tier: 2, science: 140, gold: 600, requires: ['metallurgy'], description: 'Artillery +30% attack; unescorted penalty starts at 55%.' },
-  flight: { name: 'Flight', tier: 2, science: 140, gold: 600, requires: ['logistics'], description: 'Airfields, bombers and fighters.' },
-  industrialization: { name: 'Industrialization', tier: 3, science: 260, gold: 1000, requires: ['mechanization'], description: 'Factories and arsenals convert twice as fast; mines and wells +25%.' },
-  combinedArms: { name: 'Combined Arms', tier: 3, science: 260, gold: 1000, requires: ['mechanization', 'ballistics'], description: '+20% attack when every troop type is at least 15% of the force.' },
-  radar: { name: 'Radar', tier: 3, science: 260, gold: 1000, requires: ['flight'], description: 'SAM sites; watchtower radius x2.' },
-  rocketry: { name: 'Rocketry', tier: 3, science: 260, gold: 1000, requires: ['ballistics'], description: 'Missile silos and rockets.' },
-  nuclearFission: { name: 'Nuclear Fission', tier: 4, science: 450, gold: 2000, requires: ['rocketry', 'industrialization'], description: 'Atom bombs.' },
+  agriculture: { name: 'Agriculture', tier: 1, science: 150, gold: 300, requires: [], description: 'Farms +50% growth.' },
+  metallurgy: { name: 'Metallurgy', tier: 1, science: 150, gold: 300, requires: [], description: 'Iron +50%; armor and artillery cost 25% less iron.' },
+  logistics: { name: 'Logistics', tier: 1, science: 150, gold: 300, requires: [], description: 'Supply range +50%, attack speed +15%.' },
+  fortification: { name: 'Fortification', tier: 1, science: 150, gold: 300, requires: [], description: 'Forts x2.5 defence and radius 14.' },
+  navigation: { name: 'Navigation', tier: 1, science: 150, gold: 300, requires: [], description: 'Warships; transports +50% speed and +1 at sea.' },
+  banking: { name: 'Banking', tier: 2, science: 400, gold: 600, requires: ['agriculture'], description: 'Gold +30%, markets x1.5.' },
+  medicine: { name: 'Medicine', tier: 2, science: 400, gold: 600, requires: ['agriculture'], description: 'Hospitals; population growth +20%.' },
+  mechanization: { name: 'Mechanization', tier: 2, science: 400, gold: 600, requires: ['metallurgy'], description: 'Armor +25% attack and defence.' },
+  ballistics: { name: 'Ballistics', tier: 2, science: 400, gold: 600, requires: ['metallurgy'], description: 'Artillery +30% attack; unescorted penalty starts at 55%.' },
+  flight: { name: 'Flight', tier: 2, science: 400, gold: 600, requires: ['logistics'], description: 'Airfields, bombers and fighters.' },
+  industrialization: { name: 'Industrialization', tier: 3, science: 1100, gold: 1000, requires: ['mechanization'], description: 'Factories and arsenals convert twice as fast; mines and wells +25%.' },
+  combinedArms: { name: 'Combined Arms', tier: 3, science: 1100, gold: 1000, requires: ['mechanization', 'ballistics'], description: '+20% attack when every troop type is at least 15% of the force.' },
+  radar: { name: 'Radar', tier: 3, science: 1100, gold: 1000, requires: ['flight'], description: 'SAM sites; watchtower radius x2.' },
+  rocketry: { name: 'Rocketry', tier: 3, science: 1100, gold: 1000, requires: ['ballistics'], description: 'Missile silos and rockets.' },
+  nuclearFission: { name: 'Nuclear Fission', tier: 4, science: 2000, gold: 2000, requires: ['rocketry', 'industrialization'], description: 'Atom bombs.' },
 };
 export const TECH_ORDER: TechId[] = [
   'agriculture', 'metallurgy', 'logistics', 'fortification', 'navigation',

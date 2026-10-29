@@ -8,7 +8,8 @@
     "preview": "vite preview",
     "typecheck": "tsc",
     "test": "vitest run",
-    "headless": "vite-node scripts/headless.ts"
+    "headless": "vite-node scripts/headless.ts",
+    "profile": "vite-node scripts/profile.ts"
   },
   "keywords": [],
   "author": "Doom956",
