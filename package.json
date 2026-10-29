@@ -1,0 +1,24 @@
+{
+  "name": "borderfall",
+  "version": "1.0.0",
+  "description": "Borderfall: territory-control strategy game in the browser",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc",
+    "test": "vitest run",
+    "headless": "vite-node scripts/headless.ts"
+  },
+  "keywords": [],
+  "author": "Doom956",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vite": "^7.0.2",
+    "vite-plugin-singlefile": "^2.3.0",
+    "vitest": "^3.2.4"
+  },
+  "private": true,
+  "type": "module"
+}
