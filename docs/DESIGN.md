@@ -1,8 +1,7 @@
 # Borderfall: game design and code contract
 
-Borderfall is a single-player (vs AI nations) territory-control strategy game in the browser, in the spirit of
-OpenFront: a pixel map, nations that grow by pushing their borders, troops that regrow from population. It adds
-more decisions that matter: three land troop types with counters, terrain that favours some troops over others,
+Borderfall is a territory-control strategy game in the browser: a pixel map, nations that grow by pushing their
+borders, troops that regrow from population. Strategy comes from many decisions that matter: three land troop types with counters, terrain that favours some troops over others,
 supply lines, 17 buildings, a research tree, navy, air power, missiles and diplomacy.
 
 All balance numbers live in `src/sim/config.ts`. This document explains them; if the two disagree, config wins.
