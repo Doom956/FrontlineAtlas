@@ -281,9 +281,10 @@ perfect square; at 0.25 with the wider jitter a free expansion grows a round, sl
   `LAST_STAND_START` (2)) / (`LAST_STAND_FULL` (8) - 2), 0, 1); attacker losses x (1 + b), front pace / (1 +
   `LAST_STAND_SLOW` x b). `lastStandFactor(state, defender, attacker)` = 1 + b for the UI. Tribes neither get nor
   trigger it. Heartland x last stand is capped at `DEFENSE_BONUS_CAP` (3.5) for losses and slowdown.
-- Measured (`scripts/fight.ts`: a passive 1600-tile nation against an AI with 5x its land and army): before, half its
-  land fell in about 2 s and the capital in about 2 minutes; now the outer land still goes fast but the heartland
-  holds for minutes, and it still falls without help. There is deliberately no overextension or war-weariness rule.
+- Measured (`scripts/fight.ts`, a 1600-tile nation against an AI warlord with 5x its land and army, 2026-10):
+  passive, it lost half its land after 121 s (before: 2 s), its capital after 365 s (137 s) and died after 385 s
+  (161 s): it holds its core for minutes but still falls without help. Hitting back blindly with 60% of its army every
+  5 s: dead after 137 s (before: 3 s). There is deliberately no overextension or war-weariness rule.
 
 **Army sizes are public.** Everyone sees every nation's army total (`armyTotalOf(state, id)`, buildings.ts: home +
 attacks + transports + cargo planes), like name labels show it. Intel (`hasIntel(viewer, target)`) only gates the
