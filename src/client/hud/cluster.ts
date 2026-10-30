@@ -136,7 +136,7 @@ export class Cluster {
         let tip = `Doctrine  (${DOCTRINE_KEY})\nChoose one: a bonus for your style of play`;
         if (ds.phase === 'adapting') tip = `Doctrine: adapting to ${name}  (${DOCTRINE_KEY})\nNo doctrine bonus for ${fmtDuration(ds.adaptLeft)}`;
         else if (ds.id) {
-          tip = `Doctrine: ${name}, level ${ds.level}  (${DOCTRINE_KEY})\n${DOCTRINES[ds.id].short}`;
+          tip = `Doctrine: ${name}, level ${ds.level}  (${DOCTRINE_KEY})\n${DOCTRINES[ds.id].levels[Math.max(0, ds.level - 1)]}`;
           if (ds.level < 3) tip += `\nLevel ${ds.level + 1} in ${fmtDuration(ds.nextLevelIn)}`;
         }
         setTip(docB, tip);

@@ -17,6 +17,7 @@ import {
 } from '../../sim/config';
 import { areAllied, isTraitor } from '../../sim/diplomacy';
 import { armyTotal, convertCost, hasOilShortage } from '../../sim/economy';
+import { unitCost } from '../../sim/units';
 import { gameSecondsAt } from '../../sim/state';
 import { canResearch, hasTech } from '../../sim/tech';
 import { LAND_TERRAINS, Resource } from '../../sim/types';
@@ -190,7 +191,7 @@ export class ArmyPage implements DrawerPage {
           cls = 'warn';
           continue;
         }
-        const c = convertCost(me, kind);
+        const c = convertCost(me, kind, s);
         if (me.gold < c.gold || me.iron < c.iron) {
           msgs.push(`Making ${kind} needs ${me.iron < c.iron ? 'iron' : 'gold'}.`);
           cls = 'warn';
@@ -712,10 +713,13 @@ export class BuildingPage implements DrawerPage {
       actions.before(counts);
       this.upd.push((_s, _m, bb) => setText(counts, `${bb.bombers} bombers, ${bb.fighters} fighters (room for ${aircraftCap(bb)})`));
       for (const kind of ['bomber', 'fighter'] as const) {
-        const u = UNITS[kind];
-        add(`${u.name} (${formatCount(u.gold)} gold)`, '', 'plus', () => ctx.act({ type: 'buildAircraft', airfield: tile, kind }), (_ss, m, bb) =>
-          bb.buildLeft > 0 ? 'Still being built' : bb.bombers + bb.fighters >= aircraftCap(bb) ? 'Airfield is full' : m.gold < u.gold ? 'Not enough gold' : m.iron < u.iron ? 'Not enough iron' : m.oil < u.oil ? 'Not enough oil' : '',
-        );
+        const name = UNITS[kind].name;
+        const g = ctx.state();
+        const first = g ? unitCost(g, b.owner, kind) : UNITS[kind];
+        add(`${name} (${formatCount(first.gold)} gold)`, '', 'plus', () => ctx.act({ type: 'buildAircraft', airfield: tile, kind }), (ss, m, bb) => {
+          const u = unitCost(ss, m.id, kind);
+          return bb.buildLeft > 0 ? 'Still being built' : bb.bombers + bb.fighters >= aircraftCap(bb) ? 'Airfield is full' : m.gold < u.gold ? 'Not enough gold' : m.iron < u.iron ? 'Not enough iron' : m.oil < u.oil ? 'Not enough oil' : '';
+        });
       }
       add('Bomb a target', 'danger', 'bomb', () => (ctx.ui.mode = { kind: 'bomb', airfield: tile }), (_ss, _m, bb) => (bb.bombers > 0 ? '' : 'No bombers here'));
       add('Paratroopers', 'danger', 'paradrop', () => (ctx.ui.mode = { kind: 'paradrop', airfield: tile }), (_ss, m, bb) =>
@@ -735,10 +739,12 @@ export class BuildingPage implements DrawerPage {
       }
     }
     if (b.type === 'port') {
-      const u = UNITS.warship;
-      if (allowedNow('warship')) add(`Warship (${formatCount(u.gold)} gold)`, '', 'warship', () => ctx.act({ type: 'buildWarship', port: tile }), (_ss, m, bb) =>
-        !hasTech(m, 'navigation') ? 'Research Navigation first' : bb.buildLeft > 0 ? 'Still being built' : m.gold < u.gold ? 'Not enough gold' : m.iron < u.iron ? 'Not enough iron' : '',
-      );
+      const g = ctx.state();
+      const first = g ? unitCost(g, b.owner, 'warship') : UNITS.warship;
+      if (allowedNow('warship')) add(`Warship (${formatCount(first.gold)} gold)`, '', 'warship', () => ctx.act({ type: 'buildWarship', port: tile }), (ss, m, bb) => {
+        const u = unitCost(ss, m.id, 'warship');
+        return !hasTech(m, 'navigation') ? 'Research Navigation first' : bb.buildLeft > 0 ? 'Still being built' : m.gold < u.gold ? 'Not enough gold' : m.iron < u.iron ? 'Not enough iron' : '';
+      });
       add('Send a transport', '', 'transport', () => (ctx.ui.mode = { kind: 'transport', from: tile }), (_ss, _m, bb) => (bb.buildLeft > 0 ? 'Still being built' : ''));
       if (warships.length) {
         r.append(sectionTitle('Warships'));

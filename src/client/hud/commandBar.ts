@@ -361,7 +361,7 @@ export class CommandBar {
         setClass(b, 'locked', st.locked);
         setClass(b, 'disabled', !st.ok);
         const t = UNIT_TEXT[kind];
-        setTip(b, `${t.name}  ${priceText(kind)}\n${t.what}\nCounter: ${t.counter}\n${st.ok ? st.line : (st.locked ? 'Locked: ' : '') + st.line}`);
+        setTip(b, `${t.name}  ${priceText(kind, s, me.id)}\n${t.what}\nCounter: ${t.counter}\n${st.ok ? st.line : (st.locked ? 'Locked: ' : '') + st.line}`);
       });
     }
     box.append(tabs, row, this.strikes.el);

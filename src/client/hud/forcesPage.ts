@@ -10,6 +10,7 @@ import { aircraftCap, buildingsOf, chargesReady, countBuildings, nextChargeIn } 
 import { BARRAGE_MIN_ARTILLERY, UNITS } from '../../sim/config';
 import { buildingAllowed, unitAllowed } from '../../sim/rules';
 import { hasTech } from '../../sim/tech';
+import { unitCost } from '../../sim/units';
 import type { Building, GameState, Player, Unit } from '../../sim/types';
 import { aircraftAt, buildUnit, hpText, priceText, UNIT_TEXT, unitBuildStatus, unitDoing, unitName, type BuyableUnit } from '../forces';
 import { iconDataUrl, type IconId } from '../icons';
@@ -204,7 +205,7 @@ export class ForcesPage implements DrawerPage {
   }
   private buyAct(s: GameState, me: Player, kind: BuyableUnit, label: string): Act {
     const st = unitBuildStatus(s, me, kind, this.near());
-    return { label, icon: 'plus', off: st.ok ? '' : st.line, tip: `${UNITS[kind].name}: ${priceText(kind)}. ${UNIT_TEXT[kind].what}`, run: () => this.buy(kind) };
+    return { label, icon: 'plus', off: st.ok ? '' : st.line, tip: `${UNITS[kind].name}: ${priceText(kind, s, me.id)}. ${UNIT_TEXT[kind].what}`, run: () => this.buy(kind) };
   }
 
   update(s: GameState, me: Player): void {
@@ -268,9 +269,9 @@ export class ForcesPage implements DrawerPage {
         if (built) {
           for (const kind of ['bomber', 'fighter'] as const) {
             if (!unitAllowed(s, kind)) continue;
-            const u = UNITS[kind];
+            const u = unitCost(s, me.id, kind);
             const off = room <= 0 ? 'This airfield is full: upgrade it for more room' : me.gold < u.gold ? `Needs ${formatCount(u.gold)} gold` : me.iron < u.iron ? `Needs ${u.iron} iron` : me.oil < u.oil ? `Needs ${u.oil} oil` : '';
-            acts.push({ label: kind === 'bomber' ? 'Bomber' : 'Fighter', icon: 'plus', off, tip: `${u.name}: ${priceText(kind)}. ${UNIT_TEXT[kind].what}`, run: () => ctx.act({ type: 'buildAircraft', airfield: b.tile, kind }) });
+            acts.push({ label: kind === 'bomber' ? 'Bomber' : 'Fighter', icon: 'plus', off, tip: `${UNITS[kind].name}: ${priceText(kind, s, me.id)}. ${UNIT_TEXT[kind].what}`, run: () => ctx.act({ type: 'buildAircraft', airfield: b.tile, kind }) });
           }
           if (unitAllowed(s, 'bomber')) acts.push({ label: 'Bomb', icon: 'bomb', cls: 'danger', off: b.bombers > 0 ? '' : 'No bombers here: build one first', tip: STRIKES.bomb.what, run: () => this.aim('bomb', () => (ctx.ui.mode = { kind: 'bomb', airfield: b.tile })) });
           if (unitAllowed(s, 'paradrop')) acts.push({ label: 'Paradrop', icon: 'paradrop', cls: 'danger', off: b.dropCooldown > 0 ? `Next drop in ${Math.ceil(b.dropCooldown)} s` : '', tip: STRIKES.paradrop.what, run: () => this.aim('paradrop', () => (ctx.ui.mode = { kind: 'paradrop', airfield: b.tile })) });

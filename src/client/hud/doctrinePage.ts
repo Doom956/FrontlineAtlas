@@ -32,6 +32,8 @@ export class DoctrinePage implements DrawerPage {
   private footD: HTMLElement;
   private footN: HTMLElement;
   private go: HTMLButtonElement;
+  /** a switch asks for a second click within a few seconds (it drops the current level and costs gold) */
+  private armed: { id: DoctrineId; until: number } | null = null;
   private last: { s: GameState; me: Player } | null = null;
   private howL: HTMLElement[] = [];
 
@@ -115,6 +117,7 @@ export class DoctrinePage implements DrawerPage {
 
   private select(id: DoctrineId, refresh: boolean): void {
     this.sel = id;
+    this.armed = null;
     for (const c of this.cards.values()) {
       setClass(c.btn, 'sel', c.id === id);
       c.btn.setAttribute('aria-checked', String(c.id === id));
@@ -132,6 +135,15 @@ export class DoctrinePage implements DrawerPage {
     if (!c.ok) {
       this.ctx.sound('uiError');
       return;
+    }
+    if (c.switching) {
+      const now = performance.now();
+      if (!this.armed || this.armed.id !== id || now > this.armed.until) {
+        this.armed = { id, until: now + 8000 };
+        if (this.last) this.update(this.last.s, this.last.me);
+        return;
+      }
+      this.armed = null;
     }
     this.ctx.act({ type: 'chooseDoctrine', doctrine: id });
   }
@@ -217,11 +229,14 @@ export class DoctrinePage implements DrawerPage {
     const c = choiceInfo(s, me, id);
     const mine = st.id === id && st.phase !== 'locked';
     setText(this.footT, d.name);
-    setText(this.footD, mine ? (st.phase === 'adapting' ? `Adapting: the bonus starts in ${fmtDuration(st.adaptLeft)}.` : st.level < 3 ? `Your doctrine. Level ${st.level + 1} in ${fmtDuration(st.nextLevelIn)}.` : 'Your doctrine, at full strength.') : c.line);
+    const armed = !!this.armed && this.armed.id === id && performance.now() <= this.armed.until && c.ok && c.switching;
+    if (!armed) this.armed = null;
+    const curName = st.id ? DOCTRINES[st.id].name : '';
+    setText(this.footD, armed ? `Click again to leave ${curName} (level ${st.level}) and start ${d.name} at level 1. ${c.line}` : mine ? (st.phase === 'adapting' ? `Adapting: the bonus starts in ${fmtDuration(st.adaptLeft)}.` : st.level < 3 ? `Your doctrine. Level ${st.level + 1} in ${fmtDuration(st.nextLevelIn)}.` : 'Your doctrine, at full strength.') : c.line);
     // locked: the header already says when; the button says it again where the eye goes
     setText(this.footN, mine || st.phase === 'locked' ? '' : c.reason);
     setClass(this.footN, 'bad', !c.ok);
-    const lbl = st.phase === 'locked' ? `Unlocks at ${fmtClock(st.unlockAt)}` : c.label;
+    const lbl = st.phase === 'locked' ? `Unlocks at ${fmtClock(st.unlockAt)}` : armed ? `Confirm: ${c.label}` : c.label;
     if (this.go.textContent !== lbl) this.go.textContent = lbl;
     setDisabled(this.go, !c.ok);
     setClass(this.go, 'hidden', mine);

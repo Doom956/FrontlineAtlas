@@ -7,14 +7,13 @@
 //   - barrageReach(): which tiles a barrage can reach (the shaded zone while aiming)
 // The rules stay in the sim (canBarrage, canParadrop, launchBomber, launchMissile); this file only phrases them and
 // checks a click before it is sent, so a wasted strike shows its reason at the cursor instead.
-import { artilleryOf, barrageCooldown, barrageRange, barrageReadyIn } from '../sim/barrage';
+import { artilleryOf, barrageCooldown, barrageRadius, barrageRange, barrageReadyIn } from '../sim/barrage';
 import { airfieldRadius, buildingAt, buildingsOf, chargesReady, isDisabled, nextChargeIn, samRadius } from '../sim/buildings';
 import {
   ATOM_RADIUS,
   BARRAGE_DELAY,
   BARRAGE_GOLD,
   BARRAGE_MIN_ARTILLERY,
-  BARRAGE_RADIUS,
   BARRAGE_RANGE,
   BOMBER_RADIUS,
   PARADROP_COOLDOWN,
@@ -26,6 +25,7 @@ import { areAllied } from '../sim/diplomacy';
 import { forEachInRadius } from '../sim/grid';
 import { buildingAllowed, peaceReason, unitAllowed } from '../sim/rules';
 import { gameSeconds } from '../sim/state';
+import { unitCost } from '../sim/units';
 import { hasTech } from '../sim/tech';
 import type { Action, Building, GameEvent, GameState, Player, UnitType } from '../sim/types';
 import type { IconId } from './icons';
@@ -137,8 +137,8 @@ function finished(state: GameState, me: Player, type: 'airfield' | 'silo' | 'ars
 function building(state: GameState, me: Player, type: 'airfield' | 'silo' | 'arsenal'): boolean {
   return buildingsOf(state, me.id, type).length > 0;
 }
-function payLine(me: Player, type: UnitType): string {
-  const u = UNITS[type];
+function payLine(me: Player, type: UnitType, state?: GameState): string {
+  const u = state ? unitCost(state, me.id, type) : UNITS[type];
   const miss: string[] = [];
   if (me.gold < u.gold) miss.push(`${formatCount(u.gold)} gold`);
   if (me.iron < u.iron) miss.push(`${formatCount(u.iron)} iron`);
@@ -183,7 +183,7 @@ export function strikeStatus(state: GameState, me: Player, id: StrikeId): Strike
         return lock(`Needs ${formatCount(BARRAGE_MIN_ARTILLERY)} artillery, you have ${formatCount(art)}: raise Artillery in the Army drawer (U)`);
       }
       const left = barrageReadyIn(state, me.id);
-      if (left > 0) return cool(left, barrageCooldown(me), `Guns reloading: ready in ${Math.ceil(left)} s`);
+      if (left > 0) return cool(left, barrageCooldown(me, state), `Guns reloading: ready in ${Math.ceil(left)} s`);
       if (me.gold < BARRAGE_GOLD) return block(`Needs ${BARRAGE_GOLD} gold`);
       return { ...st, line: `Click enemy land within ${barrageRange(me)} tiles of your border. ${BARRAGE_GOLD} gold.` };
     }
@@ -211,9 +211,9 @@ export function strikeStatus(state: GameState, me: Player, id: StrikeId): Strike
       const left = Math.min(...fields.map((b) => b.dropCooldown));
       if (left > 0) return cool(left, PARADROP_COOLDOWN, `Next cargo plane ready in ${Math.ceil(left)} s`);
       if (me.troops.infantry < PARADROP_MIN_TROOPS) return block(`Needs ${formatCount(PARADROP_MIN_TROOPS)} infantry at home`);
-      const pay = payLine(me, 'transportPlane');
+      const pay = payLine(me, 'transportPlane', state);
       if (pay) return block(pay);
-      const range = Math.max(...fields.map((b) => paradropRange(b)));
+      const range = Math.max(...fields.map((b) => paradropRange(b, state)));
       return { ...st, line: `Click enemy or empty land up to ${range} tiles from an Airfield. Sends your attack share of infantry.` };
     }
     case 'rocket':
@@ -417,7 +417,7 @@ export function strikeTarget(state: GameState, me: Player, ui: UiState, m: Targe
   if (!id) return t;
   if (m.kind === 'barrage') {
     const why = barrageCheck(state, me.id, tile);
-    blast(state, me.id, tile, BARRAGE_RADIUS, t, false);
+    blast(state, me.id, tile, barrageRadius(state, me.id), t, false);
     return { ...t, ok: why === '', reason: why };
   }
   if (m.kind === 'paradrop') {

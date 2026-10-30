@@ -376,7 +376,11 @@ export function doctrineAdvice(state: GameState, pid: number): DoctrineAdvice[] 
     0.5 + 1.1 * openShare * Math.min(1, nations) + (s.oil > 0 ? 0.25 : 0),
     nations === 0
       ? 'No rival nation on your borders yet: blitz pays off once you have a front'
-      : `${pct(openShare)} of the land around you is plains or desert${s.oil > 0 ? ', and you have oil for armor' : ''}`,
+      : openShare >= 0.15
+        ? `${pct(openShare)} of the land around you is plains or desert${s.oil > 0 ? ', and you have oil for armor' : ''}`
+        : s.oil > 0
+          ? 'You have oil for armor, though open ground is scarce around you'
+          : 'Armored pushes, though open ground is scarce around you',
   );
   add(
     'fortress',

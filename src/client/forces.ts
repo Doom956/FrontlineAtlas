@@ -9,6 +9,7 @@
 import { aircraftCap, buildingsOf } from '../sim/buildings';
 import { BOMBER_RADIUS, TECHS, UNITS, WARSHIP_RANGE } from '../sim/config';
 import { areAllied } from '../sim/diplomacy';
+import { unitCost } from '../sim/units';
 import { armyTotal } from '../sim/economy';
 import { forEachInRadius } from '../sim/grid';
 import { buildingAllowed, unitAllowed } from '../sim/rules';
@@ -110,13 +111,13 @@ export interface UnitBuildStatus {
   site: number;
 }
 
-export function priceText(type: UnitType): string {
-  const u = UNITS[type];
+export function priceText(type: UnitType, state?: GameState, pid?: number): string {
+  const u = state && pid !== undefined ? unitCost(state, pid, type) : UNITS[type];
   return [`${formatCount(u.gold)} gold`, u.iron ? `${formatCount(u.iron)} iron` : '', u.oil ? `${formatCount(u.oil)} oil` : ''].filter(Boolean).join(', ');
 }
 
-function payLine(me: Player, type: UnitType): string {
-  const u = UNITS[type];
+function payLine(me: Player, type: UnitType, state?: GameState): string {
+  const u = state ? unitCost(state, me.id, type) : UNITS[type];
   const miss: string[] = [];
   if (me.gold < u.gold) miss.push(`${formatCount(u.gold)} gold`);
   if (me.iron < u.iron) miss.push(`${formatCount(u.iron)} iron`);
@@ -193,10 +194,10 @@ export function unitBuildStatus(state: GameState, me: Player, kind: BuyableUnit,
   st.locked = false;
   const b = nearest(state, usable, near)!;
   st.site = b.tile;
-  const pay = payLine(me, kind);
+  const pay = payLine(me, kind, state);
   if (pay) return { ...st, line: pay };
   const where = kind === 'warship' ? 'Port' : 'Airfield';
-  return { ...st, ok: true, line: `Builds one at your ${where} nearest the view: ${priceText(kind)}` };
+  return { ...st, ok: true, line: `Builds one at your ${where} nearest the view: ${priceText(kind, state, me.id)}` };
 }
 
 /** Buys one at the best site; returns '' when it worked, else the reason. */

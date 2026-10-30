@@ -1,6 +1,7 @@
 // Screen-space overlays: effect radius rings, capital stars, missile / bomber target reticles, explosions,
 // floating texts, the hovered tile, the selection and target-mode previews (build ghost, strike circles, routes).
 import { buildingAt } from '../../sim/buildings';
+import { barrageRadius } from '../../sim/barrage';
 import { ATOM_CORE_RADIUS, ATOM_RADIUS, BARRAGE_DELAY, BARRAGE_RADIUS, BOMBER_RADIUS, BUILDINGS, FORT_RADIUS_TECH, ROCKET_RADIUS, TICKS_PER_SECOND, UNITS } from '../../sim/config';
 import { barrageRange } from '../../sim/barrage';
 import { airfieldRadius, isDisabled, samRadius } from '../../sim/buildings';
@@ -315,7 +316,8 @@ export class Overlays {
     const pulse = 0.5 + 0.5 * Math.sin(nowMs / 160);
     for (const b of list) {
       const s = cam.tileToScreen((b.tile % this.w) + 0.5, ((b.tile / this.w) | 0) + 0.5);
-      const R = BARRAGE_RADIUS * z;
+      const radius = b.radius ?? BARRAGE_RADIUS;
+      const R = radius * z;
       if (s.x < -R - 40 || s.y < -R - 40 || s.x > cam.viewW + R + 40 || s.y > cam.viewH + R + 40) continue;
       const atMe = me > 0 && b.owner !== me && b.target === me;
       const mine = b.owner === me;
@@ -323,7 +325,7 @@ export class Overlays {
       const rgb = atMe ? '236,74,58' : this.mutedRgb(colors, state, b.owner, me);
       const k = atMe ? 1 : mine ? 0.75 : 0.55;
       const left = clamp((b.hitTick - now) / (BARRAGE_DELAY * TICKS_PER_SECOND), 0, 1);
-      this.blastDisc(ctx, s.x, s.y, BARRAGE_RADIUS, z, rgb, atMe ? 0.1 + 0.06 * pulse : 0.07 * k, atMe ? 0.7 + 0.25 * pulse : 0.7 * k);
+      this.blastDisc(ctx, s.x, s.y, radius, z, rgb, atMe ? 0.1 + 0.06 * pulse : 0.07 * k, atMe ? 0.7 + 0.25 * pulse : 0.7 * k);
       this.centreMark(ctx, s.x, s.y, rgb, Math.min(1, 0.7 * k + 0.2));
       this.countdownArc(ctx, s.x, s.y, Math.max(R, 5), left, rgb, atMe ? 0.95 : 0.7 * k + 0.15, atMe ? 1.75 : 1.25);
       if (!atMe && !mine) continue;
@@ -684,7 +686,7 @@ export class Overlays {
         for (const b of state.buildings.values()) {
           if (b.owner !== state.humanId || b.type !== 'airfield' || b.buildLeft > 0) continue;
           if (mode.airfield >= 0 && b.tile !== mode.airfield) continue;
-          const range = paradropRange(b);
+          const range = paradropRange(b, state);
           const c = cam.tileToScreen((b.tile % this.w) + 0.5, ((b.tile / this.w) | 0) + 0.5);
           ctx.beginPath();
           ctx.arc(c.x, c.y, range * z, 0, Math.PI * 2);
@@ -707,7 +709,7 @@ export class Overlays {
       }
       case 'barrage': {
         const ok = !!this.check(state, ui, hover)?.ok;
-        this.aimDisc(ctx, cam, hs.x, hs.y, ok, [{ radius: BARRAGE_RADIUS }], `Artillery barrage · radius ${BARRAGE_RADIUS} tiles`);
+        this.aimDisc(ctx, cam, hs.x, hs.y, ok, [{ radius: barrageRadius(state, state.humanId) }], `Artillery barrage · radius ${barrageRadius(state, state.humanId)} tiles`);
         break;
       }
       case 'transport':
