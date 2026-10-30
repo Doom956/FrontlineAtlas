@@ -86,6 +86,26 @@ export type MapSize = 'small' | 'medium' | 'large' | 'huge';
 export type Difficulty = 'easy' | 'normal' | 'hard' | 'brutal';
 export type Personality = 'warlord' | 'turtle' | 'merchant' | 'admiral' | 'balanced' | 'tribe';
 
+/**
+ * Doctrines (src/sim/doctrines.ts, config DOCTRINES): a mid-game, switchable, bonus-only specialisation. Every unit,
+ * building and strike stays open to everyone; a doctrine makes one style moderately better and grows over time.
+ */
+export type DoctrineId = 'blitz' | 'fortress' | 'siege' | 'merchant' | 'naval' | 'air' | 'expansion';
+export const DOCTRINE_IDS: readonly DoctrineId[] = ['blitz', 'fortress', 'siege', 'merchant', 'naval', 'air', 'expansion'];
+/** A player's doctrine (Player.doctrine). Ticks are sim ticks; -1 = never. */
+export interface PlayerDoctrine {
+  /** null until the first choice */
+  id: DoctrineId | null;
+  /** 0 = none; 1..3 grow with the time the same doctrine is held (config DOCTRINE_LEVEL_SECONDS) */
+  level: 0 | 1 | 2 | 3;
+  /** tick of the last choice (first choice or switch): the level clock starts here */
+  chosenTick: number;
+  /** no doctrine bonus before this tick (a switch takes DOCTRINE_ADAPT_SECONDS; the first choice none) */
+  adaptUntilTick: number;
+  /** tick of the last choice, for the switch cooldown (DOCTRINE_SWITCH_COOLDOWN) */
+  lastSwitchTick: number;
+}
+
 export type GameMode = 'ffa' | 'teams';
 /** Which map a game is played on: a procedural one, or a real-world map from src/sim/worldmaps.ts (by id). */
 export type MapChoice = { kind: 'generated'; type: MapType; size: MapSize } | { kind: 'world'; id: string };
@@ -235,6 +255,8 @@ export interface Barrage {
   artillery: number;
   /** tick at which the shells land */
   hitTick: number;
+  /** disc radius in tiles, fixed when fired (doctrines.barrageRadius; absent = config BARRAGE_RADIUS) */
+  radius?: number;
 }
 
 export interface Attack {
@@ -317,6 +339,8 @@ export interface Player {
   /** tick from which the next artillery barrage may be fired (Action 'barrage'; global per player) */
   barrageReadyTick: number;
   embargoes: number[]; // player ids this player refuses to trade with
+  /** mid-game doctrine (doctrines.ts); tribes never get one */
+  doctrine: PlayerDoctrine;
   stats: PlayerStats;
   eliminatedTick: number; // -1 while alive
 }
@@ -358,6 +382,12 @@ export type GameEventKind =
   | 'paradrop'
   /** an artillery barrage is coming / hit */
   | 'barrage'
+  /** doctrines can now be chosen (to the player) */
+  | 'doctrineUnlocked'
+  /** a doctrine was chosen or switched (to the player; as news to humans who border it or have intel on it) */
+  | 'doctrineChosen'
+  /** the held doctrine reached a new level (to the player) */
+  | 'doctrineLevelUp'
   | 'victory'
   | 'defeat';
 
@@ -467,6 +497,8 @@ export type Action =
   | { type: 'gift'; to: number; gold: number; troops: number }
   | { type: 'toggleEmbargo'; with: number }
   | { type: 'setAuto'; mix?: boolean; research?: boolean }
+  /** pick a doctrine (first choice) or switch to another one (costs gold, adapt time, cooldown: doctrines.ts) */
+  | { type: 'chooseDoctrine'; doctrine: DoctrineId }
   /** end the spawn phase now (only when every human has spawned; online only the private lobby's host may) */
   | { type: 'startNow' };
 

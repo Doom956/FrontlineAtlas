@@ -99,6 +99,10 @@ export function alliancesAllowed(state: GameState): boolean {
 // ------------------------------------------------------------------------------------------------ rates
 
 const fast = (state: GameState): number => (mods(state).fastGame ? FAST_GAME_FACTOR : 1);
+/** How fast game-progress timers run (fast game x2): construction, research and doctrine timers divide by it. */
+export function progressRate(state: GameState): number {
+  return fast(state);
+}
 /** Gold income multiplier (gold modifier x fast game). */
 export function goldRate(state: GameState): number {
   return (mods(state).goldMultiplier || 1) * fast(state);

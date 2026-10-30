@@ -78,7 +78,7 @@ export function pct(v: number): string {
   return `${Math.round(v * 100)}%`;
 }
 
-export type DrawerId = 'army' | 'forces' | 'research' | 'diplomacy' | 'events' | 'legend' | 'building' | 'settings';
+export type DrawerId = 'army' | 'forces' | 'research' | 'doctrine' | 'diplomacy' | 'events' | 'legend' | 'building' | 'settings';
 
 /** The renderer's unit hit test (canvas CSS px), so cards can tell which unit is under the pointer. */
 export interface UnitProbe {

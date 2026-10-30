@@ -8,6 +8,7 @@ import { isTribe } from '../compat';
 import { swatchCss } from './swatch';
 import { formatCount } from '../render/common';
 import { armyOf } from '../simx';
+import { doctrineLabel, knownDoctrine } from '../doctrineView';
 import { el, setClass, setText, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon } from './glyph';
 
@@ -127,7 +128,9 @@ export class Leaderboard {
       setClass(r.root, 'traitor', isTraitor(s, p.id));
       setClass(r.root, 'gap', !this.all && isMe && rank > top);
       const team = myTeam ? `\n${teamName(teamOf(s, p.id))}${teamOf(s, p.id) === myTeam ? ' (your team)' : ''}` : '';
-      r.root.dataset.tip = (isMe ? 'Your nation: click to centre on your capital' : `Click: centre on ${p.name} and show their card`) + team;
+      const kd = knownDoctrine(s, me.id, p.id);
+      const doc = kd ? `\nDoctrine: ${doctrineLabel(kd.id, kd.level, kd.adapting)}` : '';
+      r.root.dataset.tip = (isMe ? 'Your nation: click to centre on your capital' : `Click: centre on ${p.name} and show their card`) + team + doc;
     }
     const order = shown.map((p) => p.id).join(',');
     if (order !== this.order) {

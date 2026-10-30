@@ -6,6 +6,7 @@ import { updateBarrages } from './barrage';
 import { updateAttacks, updateSupply } from './combat';
 import { MAX_EVENTS, TICKS_PER_SECOND, TICK_SECONDS } from './config';
 import { updateDiplomacy } from './diplomacy';
+import { updateDoctrines } from './doctrines';
 import { updateEconomy } from './economy';
 import { updateEndgame } from './endgame';
 import { mods, updateRules } from './rules';
@@ -33,6 +34,7 @@ export function tick(state: GameState): void {
       addEvent(state, 'info', 'The war begins!', [], -1);
     }
   } else {
+    updateDoctrines(state);
     updateEconomy(state);
     updateResearch(state);
     updateBuildings(state);

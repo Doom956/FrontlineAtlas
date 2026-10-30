@@ -22,17 +22,19 @@
 // invasions, air raids, eliminations over time, how often nations sit idle with a full troop bar, the biggest
 // army, and ms/tick (p50 / p95 / p99; use --jobs 1 for clean timings). Also: building sites and levels at the end,
 // paradrops (shot down / landed), artillery barrages (forts and SAMs silenced), air and missile interceptions, and
-// whether the winners used the special abilities more than the average nation.
+// whether the winners used the special abilities more than the average nation. Doctrines: which doctrine each nation
+// held longest (by personality), switches, and the win rate per doctrine against its pick share (the winner, or the
+// land leader among nations when the game hits the minute cap; ratios over 1.5 are flagged).
 import { BUILDING_ORDER, DEFAULT_AI_COUNT, TICKS_PER_SECOND, VICTORY_LAND_SHARE, WATCHTOWER_DEF_RADIUS } from '../src/sim/config';
 import { armyTotal, population } from '../src/sim/economy';
 import { fortMultiplierAt, fortRadius } from '../src/sim/buildings';
 import { forEachInRadius } from '../src/sim/grid';
 import { tick } from '../src/sim/sim';
 import { createGame, gameSeconds } from '../src/sim/state';
-import { isTribe } from '../src/sim/types';
+import { DOCTRINE_IDS, isTribe } from '../src/sim/types';
 import { cloneSetup, DEFAULT_MODIFIERS, DEFAULT_SETUP, SINGLE_PLAYER_NATIONS } from '../src/sim/setup';
 import { loadWorldMap } from '../src/sim/worldmaps';
-import type { BuildingType, Difficulty, GameSettings, GameState, MapSize, MapType, Modifiers, Troops } from '../src/sim/types';
+import type { BuildingType, Difficulty, DoctrineId, GameSettings, GameState, MapSize, MapType, Modifiers, Troops } from '../src/sim/types';
 
 // No @types/node in this project: declare the few Node globals used here.
 declare const process: { argv: string[]; exit(code?: number): never; stdout: { write(s: string): boolean } };
@@ -215,6 +217,10 @@ interface GameResult {
   winnerBarrages: number;
   meanParadrops: number;
   meanBarrages: number;
+  /** per nation: the doctrine it held longest (10 s samples; null = never chose), its personality and switches */
+  doctrines: { id: number; personality: string; doctrine: DoctrineId | null; switches: number }[];
+  /** the winner, or the land leader among nations at the cap (0 = none) */
+  topNation: number;
 }
 
 function wholeArmies(state: GameState): Float64Array {
@@ -320,7 +326,12 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     winnerBarrages: 0,
     meanParadrops: 0,
     meanBarrages: 0,
+    doctrines: [],
+    topNation: 0,
   };
+  const doctrineSamples = new Map<number, Map<DoctrineId, number>>();
+  const lastDoctrine = new Map<number, DoctrineId>();
+  const switches = new Map<number, number>();
   const dropsBy = new Map<number, number>();
   const barragesBy = new Map<number, number>();
   const barrageArmy = new Map<string, number[]>(); // 'owner:tile' -> target home armies at launch (fire order)
@@ -443,6 +454,16 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
       }
     }
     mixSamples.push({ minute, mix: perNation });
+    for (const p of state.players) {
+      const d = p.doctrine?.id;
+      if (!d || !p.alive) continue;
+      const held = doctrineSamples.get(p.id) ?? new Map<DoctrineId, number>();
+      held.set(d, (held.get(d) ?? 0) + 1);
+      doctrineSamples.set(p.id, held);
+      const was = lastDoctrine.get(p.id);
+      if (was && was !== d) switches.set(p.id, (switches.get(p.id) ?? 0) + 1);
+      lastDoctrine.set(p.id, d);
+    }
     for (const [slot, at] of [[0, 600], [1, 1200], [2, 1800]] as const) {
       if (sec !== at) continue;
       const m: MixSample = { infantry: 0, armor: 0, artillery: 0 };
@@ -468,6 +489,19 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
   }
   r.minutes = gameSeconds(state) / 60;
   r.winner = state.winner;
+  r.topNation = state.winner || tileLeader(state);
+  for (const p of state.players) {
+    if (p.id === 0 || isTribe(p) || (p.eliminatedTick === -1 && !p.spawned)) continue;
+    let best: DoctrineId | null = null;
+    let most = 0;
+    for (const [d, n] of doctrineSamples.get(p.id) ?? []) {
+      if (n > most) {
+        most = n;
+        best = d;
+      }
+    }
+    r.doctrines.push({ id: p.id, personality: p.personality ?? 'human', doctrine: best, switches: switches.get(p.id) ?? 0 });
+  }
   for (const b of state.buildings.values()) {
     if (b.owner <= 0 || !state.players[b.owner]?.alive) continue;
     const e = (r.endBuildings[b.type] ??= [0, 0, 0]);
@@ -722,11 +756,53 @@ function report(rs: GameResult[], o: Options): void {
   console.log(`Atom bombs: ${rs.reduce((s, r) => s + r.atomBombs, 0)} in ${atomMins.length} games, first at minute ${atomMins.join(', ') || '-'}.`);
   const p99s = rs.map((r) => r.tickP99);
   console.log(`Tick time: median p50 ${f1(median(rs.map((r) => r.tickP50)))} ms, median p95 ${f1(median(rs.map((r) => r.tickP95)))} ms, median p99 ${f1(median(p99s))} ms, worst p99 ${f1(Math.max(...p99s))} ms, worst tick ${f1(Math.max(...rs.map((r) => r.tickMax)))} ms.`);
+  doctrineReport(rs);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
 // Main: in-process or sharded over worker processes
 // ---------------------------------------------------------------------------------------------------------------
+
+/** Doctrine picks by personality, switches, and win rate per doctrine vs its pick share (flag > 1.5x). */
+function doctrineReport(rs: GameResult[]): void {
+  const picks = new Map<string, number>();
+  const wins = new Map<string, number>();
+  const byPers = new Map<string, Map<string, number>>();
+  let nations = 0;
+  let switched = 0;
+  let switchCount = 0;
+  let decided = 0;
+  for (const r of rs) {
+    if (r.topNation) decided++;
+    for (const d of r.doctrines) {
+      const k = d.doctrine ?? 'none';
+      nations++;
+      picks.set(k, (picks.get(k) ?? 0) + 1);
+      if (d.id === r.topNation) wins.set(k, (wins.get(k) ?? 0) + 1);
+      const m = byPers.get(d.personality) ?? new Map<string, number>();
+      m.set(k, (m.get(k) ?? 0) + 1);
+      byPers.set(d.personality, m);
+      if (d.switches > 0) switched++;
+      switchCount += d.switches;
+    }
+  }
+  console.log(`\nDoctrines (held longest; ${nations} nations in ${rs.length} games, ${decided} with a winner or land leader):`);
+  console.log(`  doctrine    picks  pick%   wins  win%   win%/pick%`);
+  for (const k of [...DOCTRINE_IDS, 'none']) {
+    const n = picks.get(k) ?? 0;
+    if (!n) continue;
+    const w = wins.get(k) ?? 0;
+    const pickShare = n / Math.max(1, nations);
+    const winShare = w / Math.max(1, decided);
+    const ratio = pickShare > 0 ? winShare / pickShare : NaN;
+    const flag = ratio > 1.5 && w >= 3 ? '  <-- high' : '';
+    console.log(`  ${k.padEnd(10)} ${String(n).padStart(6)} ${pct(n, nations).padStart(6)} ${String(w).padStart(6)} ${pct(w, decided).padStart(5)}   ${f1(ratio).padStart(5)}${flag}`);
+  }
+  console.log(`  ${switched} nations switched (${switchCount} switches, ${f1(switchCount / Math.max(1, nations))} per nation)`);
+  for (const [pers, m] of byPers) {
+    console.log(`  ${pers.padEnd(9)} ${[...m].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ')}`);
+  }
+}
 
 async function runShards(o: Options, argv: string[]): Promise<GameResult[]> {
   // Dynamic import keeps the module graph free of Node types (the sim and client never load this file).

@@ -1832,6 +1832,306 @@ canvas.minimap {
   display: none;
 }
 
+/* doctrine picker: seven cards in a grid (picture, name, one line, three levels), the chosen one in its accent
+   colour; "Suits you" in brass with the reason; the footer holds the selected card's price and its button */
+.drawer[data-page='doctrine'] {
+  width: min(1000px, calc((100vw - 24px) / var(--ui, 1)));
+}
+.doc-head {
+  padding: 2px 2px 10px;
+}
+.doc-head-t {
+  font: 600 17px/1.15 var(--f-label);
+  letter-spacing: 0.03em;
+  color: var(--text);
+}
+.doc-head-l {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--dim);
+}
+.doc-head.locked .doc-head-t {
+  color: var(--brass-hi);
+}
+.doc-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+@media (max-width: 860px) {
+  .doc-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.doc-how {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 10px;
+  border: 1px dashed var(--rule);
+  border-radius: var(--r);
+}
+.doc-how .wr-sec {
+  margin: 0 0 2px;
+}
+.doc-how-l {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--dim);
+}
+.doc-card {
+  --dc: var(--dim);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  min-width: 0;
+  padding: 8px 9px 9px;
+  border: 1px solid var(--rule);
+  border-top: 2px solid color-mix(in srgb, var(--dc) 55%, var(--rule));
+  border-radius: var(--r);
+  background: var(--metal-2);
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--fast), border-color var(--fast), box-shadow var(--fast);
+}
+.doc-card:hover {
+  background: var(--metal-3);
+}
+.doc-card:focus-visible {
+  outline: 2px solid var(--brass-hi);
+  outline-offset: 1px;
+}
+.doc-card.sel {
+  border-color: var(--brass);
+  border-top-color: var(--dc);
+  box-shadow: 0 0 0 1px var(--brass);
+  background: var(--metal-3);
+}
+.doc-card.cur {
+  border-color: var(--dc);
+  background: color-mix(in srgb, var(--dc) 13%, var(--metal-2));
+}
+.doc-card.cur.sel {
+  box-shadow: 0 0 0 1px var(--dc);
+}
+.doc-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.doc-ic {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--dc);
+  line-height: 0;
+}
+/* adapting after a switch: a ring fills around the picture */
+.doc-card.adapting .doc-ic::after,
+.sq-ring {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: conic-gradient(var(--dc, var(--steel)) calc(var(--p, 0) * 1turn), rgba(255, 255, 255, 0.14) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+}
+.doc-n {
+  flex: 1;
+  min-width: 0;
+  font: 600 15px/1.1 var(--f-label);
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.doc-s {
+  flex: none;
+  font: 600 11px/1 var(--f-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dc);
+}
+.doc-tag {
+  align-self: flex-start;
+  padding: 2px 6px;
+  border-radius: 1px;
+  background: rgba(201, 162, 39, 0.16);
+  color: var(--brass-hi);
+  font: 600 10.5px/1.2 var(--f-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.doc-short {
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--text);
+}
+.doc-lv {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 5px;
+  border-top: 1px solid var(--rule);
+}
+.doc-lvr {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11.5px;
+  line-height: 1.25;
+  color: var(--dim);
+}
+.doc-lvn {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--rule-hi);
+  border-radius: 1px;
+  font: 600 10px/12px var(--f-ui);
+  font-style: normal;
+  text-align: center;
+  color: var(--dim);
+}
+/* the current doctrine: levels reached bright, the one you are on outlined in its colour, the next ones dim */
+.doc-card.cur .doc-lvr {
+  color: var(--faint);
+}
+.doc-card.cur .doc-lvr.got {
+  color: var(--text);
+}
+.doc-card.cur .doc-lvr.got .doc-lvn {
+  border-color: var(--dc);
+  background: var(--dc);
+  color: var(--ink);
+}
+.doc-card.cur .doc-lvr.now .doc-lvt {
+  font-weight: 600;
+}
+.doc-why {
+  font-size: 11.5px;
+  line-height: 1.25;
+  color: var(--brass-hi);
+}
+.doc-why:empty {
+  display: none;
+}
+.doc-card.rec {
+  border-color: var(--brass-lo);
+}
+.doc-card.rec.sel {
+  border-color: var(--brass);
+}
+.doc-foot {
+  position: sticky;
+  bottom: -16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--brass-lo);
+  background: var(--metal-2);
+  font-size: 12px;
+}
+.doc-foot-txt {
+  flex: 1;
+  min-width: 0;
+}
+.doc-foot-t {
+  font: 600 14px/1.2 var(--f-label);
+  letter-spacing: 0.04em;
+}
+.doc-foot-d {
+  margin-top: 2px;
+  color: var(--dim);
+}
+.doc-foot-n {
+  margin-top: 2px;
+  color: var(--brass-hi);
+}
+.doc-foot-n.bad {
+  color: #e59a7a;
+}
+.doc-foot-n:empty {
+  display: none;
+}
+.doc-go {
+  flex: none;
+}
+
+/* top-right doctrine button: its picture in the doctrine colour, three level pips under it */
+.sq-doc.chosen .ico {
+  color: var(--dc);
+}
+.sq-doc .sq-ring {
+  inset: 5px;
+  display: none;
+}
+.sq-doc.adapting .sq-ring {
+  display: block;
+}
+.sq-pips {
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  display: none;
+  gap: 2px;
+  transform: translateX(-50%);
+}
+.sq-doc.chosen .sq-pips {
+  display: flex;
+}
+.sq-doc.adapting .sq-pips {
+  display: none;
+}
+.sq-pips i {
+  width: 4px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.18);
+}
+.sq-pips i.on {
+  background: var(--dc);
+}
+.sq-dot.brass {
+  background: var(--brass-hi);
+}
+
+/* nation card: their doctrine, when known, beside the relation */
+.nc-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.nc-doc {
+  --dc: var(--dim);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font: 600 11px/1.2 var(--f-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dc);
+  white-space: nowrap;
+  cursor: help;
+}
+.nc-doc-ic {
+  line-height: 0;
+}
+
 /* forces drawer: groups of rows, each a picture, a name (finds it), one status line and its orders */
 .fgroup + .fgroup {
   margin-top: 4px;

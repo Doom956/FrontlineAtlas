@@ -51,16 +51,17 @@ import {
   UNITS,
 } from './config';
 import { areAllied, isTraitor } from './diplomacy';
+import { doctrineActive, doctrineAdvice, doctrineCooldownLeft, doctrineSwitchCost, doctrineTicks, doctrineUnlocked, doctrineUnlockTick } from './doctrines';
 import { troopCap } from './economy';
 import { forEachInRadius } from './grid';
 import { alliancesAllowed as rulesAllowAlliances, atPeace, buildingAllowed, researchRule, unitAllowed } from './rules';
 import { canSpawnAt, gameSeconds, ownerBox, spawnAtFixedPoint } from './state';
 import { borderTiles, coastCount, depositCount, landComponents, sampleOwnedTiles } from './territory';
-import { canParadrop, paradropMaxTroops, paradropRange } from './units';
+import { canParadrop, paradropMaxTroops, paradropRange, unitCost } from './units';
 import { inOvertime, victoryShareNow } from './victory';
 import { hasTech } from './tech';
-import { TROOP_TYPES, Resource, isTribe, isWater } from './types';
-import type { Attack, BuildingType, Difficulty, GameState, Personality, Player, TechId, TerrainId, TroopType, Troops } from './types';
+import { DOCTRINE_IDS, TROOP_TYPES, Resource, isTribe, isWater } from './types';
+import type { Attack, BuildingType, Difficulty, DoctrineId, GameState, Personality, Player, TechId, TerrainId, TroopType, Troops } from './types';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Tuning
@@ -222,6 +223,9 @@ export interface DifficultyProfile {
   humanPause: number;
   /** counter-attacks a human's attack on us (false: the human's fronts only meet our defence) */
   counterHumans: boolean;
+  /** doctrine choice: relative noise on each doctrine's score, and the chance of a pick at random */
+  doctrineNoise: number;
+  doctrineRandom: number;
 }
 /** Game seconds counted as 'early' for DifficultyProfile.humanWarsEarly. */
 const HUMAN_EARLY_SECONDS = 600;
@@ -250,6 +254,8 @@ export const DIFFICULTY: Readonly<Record<Difficulty, Readonly<DifficultyProfile>
     humanForceCap: 0.75,
     humanPause: 5,
     counterHumans: false,
+    doctrineNoise: 0.6,
+    doctrineRandom: 0.35,
   },
   normal: {
     noise: 0.15,
@@ -267,6 +273,8 @@ export const DIFFICULTY: Readonly<Record<Difficulty, Readonly<DifficultyProfile>
     humanForceCap: 0.8,
     humanPause: 4,
     counterHumans: true,
+    doctrineNoise: 0.2,
+    doctrineRandom: 0,
   },
   hard: {
     noise: 0.04,
@@ -284,6 +292,8 @@ export const DIFFICULTY: Readonly<Record<Difficulty, Readonly<DifficultyProfile>
     humanForceCap: Infinity,
     humanPause: 1,
     counterHumans: true,
+    doctrineNoise: 0.08,
+    doctrineRandom: 0,
   },
   brutal: {
     noise: 0.02,
@@ -301,6 +311,8 @@ export const DIFFICULTY: Readonly<Record<Difficulty, Readonly<DifficultyProfile>
     humanForceCap: Infinity,
     humanPause: 1,
     counterHumans: true,
+    doctrineNoise: 0.05,
+    doctrineRandom: 0,
   },
 };
 
@@ -454,6 +466,8 @@ interface AIState {
   badLandings: Map<number, number>;
   /** player id -> tick of our last new alliance proposal to them (no nagging) */
   proposedTick: Map<number, number>;
+  /** next tick the doctrine is reviewed (a switch is considered) */
+  nextDoctrineTick: number;
 }
 
 interface Memory {
@@ -516,7 +530,7 @@ function borderLen(state: GameState, a: number, b: number): number {
 function aiState(m: Memory, id: number): AIState {
   let s = m.ais.get(id);
   if (!s) {
-    s = { decisions: 0, nextWarTick: 0, nextNavalTick: 0, nextDiploTick: 0, nextAirTick: 0, peakTiles: 0, busyTick: 0, nextNukeTick: 0, attacks: new Map(), badLandings: new Map(), proposedTick: new Map() };
+    s = { decisions: 0, nextWarTick: 0, nextNavalTick: 0, nextDiploTick: 0, nextAirTick: 0, peakTiles: 0, busyTick: 0, nextNukeTick: 0, attacks: new Map(), badLandings: new Map(), proposedTick: new Map(), nextDoctrineTick: 0 };
     m.ais.set(id, s);
   }
   return s;
@@ -836,12 +850,92 @@ function decide(ctx: Ctx): void {
   expand(ctx);
   barrage(ctx);
   war(ctx);
+  doctrine(ctx);
   economy(ctx);
   if (ai.decisions % 3 === p.id % 3) armyMix(ctx);
   if (state.tick >= ai.nextNavalTick) naval(ctx);
   if (state.tick >= ai.nextAirTick) airAndMissiles(ctx);
   if (state.tick >= ai.nextDiploTick) diplomacy(ctx);
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Doctrines
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Personality taste on top of doctrineAdvice (missing = 1). */
+const DOCTRINE_TASTE: Record<Personality, Partial<Record<DoctrineId, number>>> = {
+  warlord: { blitz: 1.35, siege: 1.15, expansion: 1.1, fortress: 0.65, merchant: 0.65, naval: 0.75 },
+  turtle: { fortress: 1.5, siege: 1.15, merchant: 1.05, blitz: 0.65, expansion: 0.8, naval: 0.75 },
+  merchant: { merchant: 1.5, naval: 1.1, blitz: 0.65, siege: 0.75, air: 0.85 },
+  admiral: { naval: 1.5, merchant: 1.1, fortress: 0.8, siege: 0.85 },
+  balanced: {},
+  tribe: {},
+};
+/** Seconds between doctrine reviews, the least time a doctrine is held, and how much better a new one must look. */
+const DOCTRINE_REVIEW_SECONDS = 60;
+const DOCTRINE_MIN_HOLD_SECONDS = 360;
+const DOCTRINE_SWITCH_MARGIN = 1.6;
+/** First picks are spread over this many seconds after the unlock (by id). */
+const DOCTRINE_FIRST_SPREAD_SECONDS = 40;
+
+/** Doctrine scores for this AI: situation (doctrineAdvice) x personality taste x difficulty noise. Best first. */
+function doctrineScores(ctx: Ctx): { id: DoctrineId; score: number }[] {
+  const { state, p, diff } = ctx;
+  const taste = DOCTRINE_TASTE[p.personality ?? 'balanced'];
+  const out = doctrineAdvice(state, ctx.id).map((a) => ({
+    id: a.id,
+    score: a.score * (taste[a.id] ?? 1) * (1 + (state.rng() * 2 - 1) * diff.doctrineNoise),
+  }));
+  out.sort((a, b) => b.score - a.score || DOCTRINE_IDS.indexOf(a.id) - DOCTRINE_IDS.indexOf(b.id));
+  return out;
+}
+
+/**
+ * Picks a doctrine once they unlock (situation x personality; Easy is much more random), then reviews it every
+ * DOCTRINE_REVIEW_SECONDS: a switch only when another doctrine looks DOCTRINE_SWITCH_MARGIN better (more at higher
+ * levels, which a switch loses), it has been held a while, and the gold is there twice over.
+ */
+function doctrine(ctx: Ctx): void {
+  const { state, p, id, ai, diff } = ctx;
+  if (!doctrineUnlocked(state, id)) return;
+  const d = p.doctrine;
+  if (d.id === null) {
+    if (state.tick < doctrineUnlockTick(state) + (hash32(id * 31 + 7) % (DOCTRINE_FIRST_SPREAD_SECONDS * TICKS_PER_SECOND))) return;
+    const scores = doctrineScores(ctx);
+    if (!scores.length) return;
+    const choice = state.rng() < diff.doctrineRandom ? pick(state, DOCTRINE_IDS) : scores[0].id;
+    applyAction(state, id, { type: 'chooseDoctrine', doctrine: choice });
+    ai.nextDoctrineTick = state.tick + DOCTRINE_REVIEW_SECONDS * TICKS_PER_SECOND;
+    return;
+  }
+  if (state.tick < ai.nextDoctrineTick) return;
+  ai.nextDoctrineTick = state.tick + Math.round(DOCTRINE_REVIEW_SECONDS * (0.8 + 0.4 * hashUnit(id + state.tick)) * TICKS_PER_SECOND);
+  if (state.tick - d.chosenTick < doctrineTicks(state, DOCTRINE_MIN_HOLD_SECONDS) || doctrineCooldownLeft(state, id) > 0) return;
+  const cost = doctrineSwitchCost(state, id);
+  if (p.gold < cost * 2) return;
+  const scores = doctrineScores(ctx);
+  const best = scores[0];
+  const now = scores.find((x) => x.id === d.id);
+  if (!best || !now || best.id === d.id) return;
+  if (best.score < now.score * (DOCTRINE_SWITCH_MARGIN + 0.25 * (d.level - 1))) return;
+  applyAction(state, id, { type: 'chooseDoctrine', doctrine: best.id });
+}
+
+/** Build priority multipliers that lean into the held doctrine (missing = 1). */
+const DOCTRINE_BUILD: Record<DoctrineId, Partial<Record<BuildingType, number>>> = {
+  blitz: { factory: 1.4, oilWell: 1.3, supplyDepot: 1.2 },
+  fortress: { fort: 1.6, watchtower: 1.3 },
+  siege: { arsenal: 1.5 },
+  merchant: { market: 1.5, port: 1.3, city: 1.1 },
+  naval: { port: 1.6 },
+  air: { airfield: 1.8, sam: 1.2 },
+  expansion: { city: 1.15, farm: 1.2, barracks: 1.15 },
+};
+/** Extra armor / artillery share the AI wants under a doctrine. */
+const DOCTRINE_MIX: Partial<Record<DoctrineId, { armor: number; artillery: number }>> = {
+  blitz: { armor: 0.1, artillery: 0 },
+  siege: { armor: 0, artillery: 0.1 },
+};
 
 // ---------------------------------------------------------------------------------------------------------------
 // Army mix and force composition
@@ -854,7 +948,9 @@ function armyMix(ctx: Ctx): void {
   const { state, p, prof, diff, id } = ctx;
   const foe = mainWarTarget(ctx) || ctx.threatId;
   const frontTiles = foe > 0 ? (ctx.hood.front.get(foe) ?? EMPTY) : (ctx.hood.front.get(0) ?? EMPTY);
-  const { armor, artillery } = recommendMix(state, id, { base: prof.mix, foe, frontTiles, careful: diff.careful, army: ctx.army });
+  const lean = DOCTRINE_MIX[doctrineActive(state, id) ?? 'expansion'];
+  const base = lean ? { armor: prof.mix.armor + lean.armor, artillery: prof.mix.artillery + lean.artillery } : prof.mix;
+  const { armor, artillery } = recommendMix(state, id, { base, foe, frontTiles, careful: diff.careful, army: ctx.army });
   if (Math.abs(armor - p.armyMix.armor) > 0.03 || Math.abs(artillery - p.armyMix.artillery) > 0.03) {
     applyAction(state, id, { type: 'setArmyMix', armor, artillery });
   }
@@ -1362,12 +1458,14 @@ function economy(ctx: Ctx): void {
   // Economy first: military buildings wait a few minutes unless a neighbour is threatening.
   const militaryScale = ctx.threat > 1 ? 1 : clamp(minutes / 5, 0.4, 1);
   const opts: BuildOption[] = [];
+  const held = doctrineActive(state, id);
+  const lean = held ? DOCTRINE_BUILD[held] : {};
   const noResearch = researchRule(state) !== null;
   const add = (type: BuildingType | 'research', prio: number): void => {
     if (prio <= 0) return;
     if (type === 'research' ? noResearch : !buildingAllowed(state, type)) return;
     if (type === 'research') opts.push({ type, prio });
-    else opts.push({ type, prio: prio * (prof.build[type] ?? 1) * (MILITARY.has(type) ? militaryScale : 1) });
+    else opts.push({ type, prio: prio * (prof.build[type] ?? 1) * (lean[type] ?? 1) * (MILITARY.has(type) ? militaryScale : 1) });
   };
 
   // Cities are the backbone (troop cap, gold, supply), more urgent as the troops near their cap. Their number
@@ -1406,7 +1504,7 @@ function economy(ctx: Ctx): void {
     add('port', count('port') < portCap ? 2 + prof.naval * 4 : 0);
   }
   if (hasTech(p, 'medicine')) add('hospital', count('hospital') < 2 ? 2.5 : 0);
-  if (hasTech(p, 'flight')) add('airfield', count('airfield') < (prof.aggression > 0.5 ? 2 : 1) ? 3.5 : 0);
+  if (hasTech(p, 'flight')) add('airfield', count('airfield') < (prof.aggression > 0.5 ? 2 : 1) + (held === 'air' ? 1 : 0) ? 3.5 : 0);
   if (hasTech(p, 'radar') && enemyAirThreat(ctx)) add('sam', count('sam') < 3 ? 4.5 : 0);
   if (hasTech(p, 'rocketry')) add('silo', count('silo') < 1 ? 3 : 0);
 
@@ -1699,8 +1797,8 @@ function naval(ctx: Ctx): void {
     const ports = buildingsOf(state, id, 'port').filter((b) => b.buildLeft <= 0);
     let ships = 0;
     for (const u of state.units) if (u.owner === id && u.type === 'warship') ships++;
-    const cap = Math.round(prof.naval * 4 + (ctx.enemies.length ? 1 : 0));
-    const c = UNITS.warship;
+    const cap = Math.round(prof.naval * 4 + (ctx.enemies.length ? 1 : 0) + (doctrineActive(state, id) === 'naval' ? 2 : 0));
+    const c = unitCost(state, id, 'warship');
     if (ports.length && ships < cap && p.gold > c.gold * 2 && p.iron >= c.iron && p.oil >= c.oil) {
       applyAction(state, id, { type: 'buildWarship', port: pick(state, ports).tile });
     }
@@ -1865,7 +1963,7 @@ function airAndMissiles(ctx: Ctx): void {
     if (af.buildLeft > 0) continue;
     // Fighters if the enemy has bombers, else bombers.
     const kind = airThreat && af.fighters < 2 ? 'fighter' : 'bomber';
-    const c = UNITS[kind];
+    const c = unitCost(state, id, kind);
     if (af.bombers + af.fighters < aircraftCap(af) - 1 && p.gold > c.gold + 1000 && p.oil >= c.oil && p.iron >= c.iron) {
       applyAction(state, id, { type: 'buildAircraft', airfield: af.tile, kind });
     }
@@ -1898,11 +1996,11 @@ function paradrop(ctx: Ctx, airfield: number, fighting: number[]): void {
   const af = state.buildings.get(state.map.building[airfield] - 1);
   if (!af || af.buildLeft > 0 || af.dropCooldown > 0 || !hasTech(p, 'flight')) return;
   if (state.rng() > 0.4) return;
-  const c = UNITS.transportPlane;
+  const c = unitCost(state, id, 'transportPlane');
   if (p.gold < c.gold + 800 || p.oil < c.oil) return;
   const w = state.map.width;
   const owner = state.map.owner;
-  const range = paradropRange(af);
+  const range = paradropRange(af, state);
   let best = -1;
   let bestScore = -Infinity;
   for (const q of fighting) {

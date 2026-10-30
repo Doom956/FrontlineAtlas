@@ -27,10 +27,12 @@ import {
   BARRAGE_MIN_ARTILLERY,
   BARRAGE_RADIUS,
   BARRAGE_RANGE,
+  DOCTRINE_PERKS,
   BUILDINGS,
   TICKS_PER_SECOND,
 } from './config';
 import { areAllied } from './diplomacy';
+import { doctrineLess, doctrinePerk } from './doctrines';
 import { atPeace, peaceReason } from './rules';
 import { forEachInRadius } from './grid';
 import { addEvent, newId } from './state';
@@ -58,9 +60,21 @@ export function barrageRange(p: Player): number {
   return BARRAGE_RANGE * (hasTech(p, 'ballistics') ? BARRAGE_BALLISTICS_RANGE : 1);
 }
 
-/** Seconds between two barrages of a player (Ballistics: BARRAGE_COOLDOWN_BALLISTICS). */
-export function barrageCooldown(p: Player): number {
-  return hasTech(p, 'ballistics') ? BARRAGE_COOLDOWN_BALLISTICS : BARRAGE_COOLDOWN;
+/**
+ * Seconds between two barrages of a player (Ballistics: BARRAGE_COOLDOWN_BALLISTICS); with the game state also the
+ * Siege doctrine's shorter reload.
+ */
+export function barrageCooldown(p: Player, state?: GameState): number {
+  const base = hasTech(p, 'ballistics') ? BARRAGE_COOLDOWN_BALLISTICS : BARRAGE_COOLDOWN;
+  return state ? base * doctrineLess(state, p.id, 'barrageCooldown') : base;
+}
+/** Radius of the disc a barrage of playerId fired now covers (Siege level 3: wider). */
+export function barrageRadius(state: GameState, playerId: number): number {
+  return BARRAGE_RADIUS + (doctrinePerk(state, playerId, 'siege') ? DOCTRINE_PERKS.siege.barrageRadius : 0);
+}
+/** Seconds a barrage of playerId silences forts and SAM sites (Siege level 3: longer). */
+export function barrageDisableSeconds(state: GameState, playerId: number): number {
+  return BARRAGE_DISABLE_SECONDS * (doctrinePerk(state, playerId, 'siege') ? DOCTRINE_PERKS.siege.disableMult : 1);
 }
 
 /** Seconds until playerId may fire the next barrage (0 = now). */
@@ -128,7 +142,7 @@ export function launchBarrage(state: GameState, playerId: number, tile: number):
   if (!ok.ok) return ok;
   const p = state.players[playerId];
   p.gold -= BARRAGE_GOLD;
-  p.barrageReadyTick = state.tick + Math.round(barrageCooldown(p) * TICKS_PER_SECOND);
+  p.barrageReadyTick = state.tick + Math.round(barrageCooldown(p, state) * TICKS_PER_SECOND);
   const target = state.map.owner[tile];
   const b: Barrage = {
     id: newId(state),
@@ -137,6 +151,7 @@ export function launchBarrage(state: GameState, playerId: number, tile: number):
     target,
     artillery: artilleryOf(state, playerId),
     hitTick: state.tick + Math.round(BARRAGE_DELAY * TICKS_PER_SECOND),
+    radius: barrageRadius(state, playerId),
   };
   state.barrages.push(b);
   addEvent(state, 'barrage', `${p.name}'s artillery is shelling ${state.players[target].name}`, [target, playerId], tile);
@@ -162,13 +177,15 @@ function impact(state: GameState, b: Barrage): void {
   const map = state.map;
   const w = map.width;
   const shooter = state.players[b.owner];
-  state.effects.push({ kind: 'barrage', x: (b.tile % w) + 0.5, y: ((b.tile / w) | 0) + 0.5, radius: BARRAGE_RADIUS, tick: state.tick });
+  const radius = b.radius ?? BARRAGE_RADIUS;
+  const disable = barrageDisableSeconds(state, b.owner);
+  state.effects.push({ kind: 'barrage', x: (b.tile % w) + 0.5, y: ((b.tile / w) | 0) + 0.5, radius, tick: state.tick });
   const hit = new Map<number, number>(); // hostile owner -> tiles on the disc
   let hitTiles = 0;
   let silenced = 0;
   let destroyed = 0;
-  const until = state.tick + Math.round(BARRAGE_DISABLE_SECONDS * TICKS_PER_SECOND);
-  forEachInRadius(map, b.tile, BARRAGE_RADIUS, (i) => {
+  const until = state.tick + Math.round(disable * TICKS_PER_SECOND);
+  forEachInRadius(map, b.tile, radius, (i) => {
     const o = map.owner[i];
     if (hostile(state, b.owner, o)) {
       hit.set(o, (hit.get(o) ?? 0) + 1);
@@ -198,7 +215,7 @@ function impact(state: GameState, b: Barrage): void {
   }
   const victim = state.players[b.target];
   const parts = [`${Math.round(killed)} troops lost`];
-  if (silenced) parts.push(silenced === 1 ? `a fort or SAM site silenced for ${BARRAGE_DISABLE_SECONDS} s` : `${silenced} forts or SAM sites silenced for ${BARRAGE_DISABLE_SECONDS} s`);
+  if (silenced) parts.push(silenced === 1 ? `a fort or SAM site silenced for ${disable} s` : `${silenced} forts or SAM sites silenced for ${disable} s`);
   if (destroyed) parts.push(`${destroyed} building${destroyed === 1 ? '' : 's'} destroyed`);
   addEvent(state, 'barrage', `${shooter.name} shelled ${victim?.name ?? 'the enemy'}: ${parts.join(', ')}`, [b.owner, ...hit.keys()], b.tile);
 }

@@ -65,6 +65,7 @@ import {
   TRANSPORT_PER_PORT,
   UNITS,
   WARSHIP_BOMBARD_KILL,
+  DOCTRINE_PERKS,
   WARSHIP_DAMAGE_PER_S,
   WARSHIP_RANGE,
   TECHS,
@@ -76,6 +77,7 @@ import { recordTileChange } from './changes';
 import { addEvent, newId, setOwner } from './state';
 import { onFalloutChange, ownedTilesOf } from './territory';
 import { hasTech } from './tech';
+import { doctrineLess, doctrineLever, doctrineMore, doctrinePerk } from './doctrines';
 import { TROOP_TYPES, isWater } from './types';
 import type { ActionResult, Building, BuildingType, GameState, Troops, Unit, UnitType } from './types';
 
@@ -130,9 +132,19 @@ function isTile(state: GameState, t: number): boolean {
 function isFinished(b: Building | undefined, owner: number, type: BuildingType): b is Building {
   return !!b && b.owner === owner && b.type === type && b.buildLeft <= 0;
 }
+/**
+ * Price of a unit for playerId (UNITS, rounded): the Naval doctrine makes warships cheaper, the Air doctrine bombers,
+ * fighters and paradrop cargo planes.
+ */
+export function unitCost(state: GameState, playerId: number, type: UnitType): { gold: number; iron: number; oil: number } {
+  const c = UNITS[type];
+  const lever = type === 'warship' ? 'warshipCost' : type === 'bomber' || type === 'fighter' || type === 'transportPlane' ? 'aircraftCost' : null;
+  const k = lever ? doctrineLess(state, playerId, lever) : 1;
+  return { gold: Math.round(c.gold * k), iron: Math.round(c.iron * k), oil: Math.round(c.oil * k) };
+}
 function canPay(state: GameState, playerId: number, type: UnitType): string | null {
   const p = state.players[playerId];
-  const c = UNITS[type];
+  const c = unitCost(state, playerId, type);
   if (p.gold < c.gold) return `Not enough gold (${c.gold})`;
   if (p.iron < c.iron) return `Not enough iron (${c.iron})`;
   if (p.oil < c.oil) return `Not enough oil (${c.oil})`;
@@ -140,7 +152,7 @@ function canPay(state: GameState, playerId: number, type: UnitType): string | nu
 }
 function pay(state: GameState, playerId: number, type: UnitType): void {
   const p = state.players[playerId];
-  const c = UNITS[type];
+  const c = unitCost(state, playerId, type);
   p.gold -= c.gold;
   p.iron -= c.iron;
   p.oil -= c.oil;
@@ -388,7 +400,12 @@ export function launchTransport(state: GameState, playerId: number, from: number
   const u = makeUnit(state, 'transport', playerId, route.from, to);
   u.path = route.path;
   u.troops = sent;
-  u.cargo = UNITS.transport.speed * (fromPort ? PORT_TRANSPORT_SPEED : 1) * (hasTech(p, 'navigation') ? NAVIGATION_TRANSPORT_SPEED : 1);
+  u.cargo =
+    UNITS.transport.speed *
+    (fromPort ? PORT_TRANSPORT_SPEED : 1) *
+    (hasTech(p, 'navigation') ? NAVIGATION_TRANSPORT_SPEED : 1) *
+    doctrineMore(state, playerId, 'transportSpeed');
+  u.hp += doctrineLever(state, playerId, 'transportHp'); // Naval: harder to sink
   u.targetOwner = target;
   state.units.push(u);
   return { ok: true };
@@ -520,7 +537,7 @@ function warPairs(state: GameState): Set<number> {
 
 function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<number>): void {
   // Movement: sail to the commanded point, then patrol around it.
-  if (followPath(state, u, UNITS.warship.speed)) {
+  if (followPath(state, u, UNITS.warship.speed * doctrineMore(state, u.owner, 'warshipSpeed'))) {
     if (u.state === 1) {
       u.state = 0;
       u.cargo = shipTile(state, u);
@@ -533,6 +550,9 @@ function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<numbe
   // the same totals, a fraction of the cost with hundreds of ships at sea.
   if ((state.tick + u.id) % WARSHIP_FIGHT_TICKS !== 0) return;
   const dt = TICK_SECONDS * WARSHIP_FIGHT_TICKS;
+  const navalPerk = doctrinePerk(state, u.owner, 'naval');
+  // Naval level 3: warships repair at sea.
+  if (navalPerk && u.hp < UNITS.warship.hp) u.hp = Math.min(UNITS.warship.hp, u.hp + DOCTRINE_PERKS.naval.warshipRepair * dt);
   // Shoot the nearest hostile ship in range. Trade ships bound for us or an ally are left alone.
   let target: Unit | null = null;
   let bestD = WARSHIP_RANGE * WARSHIP_RANGE;
@@ -569,7 +589,7 @@ function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<numbe
     bestTile = i;
   });
   if (bestTile < 0) return;
-  killTroops(state, map.owner[bestTile], WARSHIP_BOMBARD_KILL * dt, u.owner, true);
+  killTroops(state, map.owner[bestTile], WARSHIP_BOMBARD_KILL * (navalPerk ? DOCTRINE_PERKS.naval.shelling : 1) * dt, u.owner, true);
   if (showShot) {
     state.effects.push({ kind: 'shot', x: u.x + 0.5, y: u.y + 0.5, x2: (bestTile % w) + 0.5, y2: ((bestTile / w) | 0) + 0.5, radius: 0.5, tick: state.tick });
   }
@@ -633,10 +653,12 @@ function sendTradeShip(state: GameState, port: Building, ports: Building[], busy
   return true;
 }
 
-/** Gold to both owners (stats.goldEarned); a 'tradeDelivered' event for humans at most once a minute. */
+/**
+ * Gold to both owners (stats.goldEarned; the Merchant doctrine's tradeGold on top for its holder); a
+ * 'tradeDelivered' event for humans at most once a minute.
+ */
 function deliverTrade(state: GameState, u: Unit): void {
   u.hp = 0;
-  const gold = u.cargo;
   let last = tradeEventTick.get(state);
   if (!last) {
     last = new Map();
@@ -645,6 +667,7 @@ function deliverTrade(state: GameState, u: Unit): void {
   for (const id of u.targetOwner === u.owner ? [u.owner] : [u.owner, u.targetOwner]) {
     const p = state.players[id];
     if (!p || id === 0 || !p.alive) continue;
+    const gold = u.cargo * doctrineMore(state, id, 'tradeGold');
     p.gold += gold;
     p.stats.goldEarned += gold;
     if (!p.isHuman) continue;
@@ -705,6 +728,7 @@ export function launchBomber(state: GameState, playerId: number, airfieldTile: n
   if (peace) return FAIL(peace);
   b.bombers--;
   const u = makeUnit(state, 'bomber', playerId, airfieldTile, tile);
+  if (doctrinePerk(state, playerId, 'air')) u.hp += DOCTRINE_PERKS.air.bomberExtraHp; // Air level 3: takes an extra hit
   u.targetOwner = target;
   state.units.push(u);
   return { ok: true };
@@ -760,9 +784,10 @@ function bomberHome(state: GameState, u: Unit): void {
 // Paratroopers
 // ---------------------------------------------------------------------------------------------------------------
 
-/** How far an airfield can drop paratroopers (straight line, tiles). */
-export function paradropRange(b: Building): number {
-  return PARADROP_RANGE + PARADROP_RANGE_PER_LEVEL * (b.level - 1);
+/** How far an airfield can drop paratroopers (straight line, tiles); with the game state also the Air doctrine's reach. */
+export function paradropRange(b: Building, state?: GameState): number {
+  const base = PARADROP_RANGE + PARADROP_RANGE_PER_LEVEL * (b.level - 1);
+  return state ? Math.round(base * doctrineMore(state, b.owner, 'paradropRange')) : base;
 }
 
 /** Most troops one drop from this airfield may carry: level x max(PARADROP_TROOPS_PER_LEVEL, share of the army). */
@@ -794,7 +819,7 @@ export function canParadrop(state: GameState, playerId: number, airfieldTile: nu
   if (target !== 0 && areAllied(state, playerId, target)) return FAIL('You cannot attack an ally');
   const peace = peaceReason(state, playerId, target);
   if (peace) return FAIL(peace);
-  const range = paradropRange(b);
+  const range = paradropRange(b, state);
   if (d2Tiles(state, airfieldTile, tile) > range * range) return FAIL(`Too far: this airfield reaches ${range} tiles`);
   if (typeof troops !== 'number' || !Number.isFinite(troops) || troops < PARADROP_MIN_TROOPS) {
     return FAIL(`Drop at least ${PARADROP_MIN_TROOPS} troops`);
@@ -828,7 +853,7 @@ export function launchParadrop(state: GameState, playerId: number, airfieldTile:
   const n = Math.min(troops, p.troops.infantry);
   pay(state, playerId, 'transportPlane');
   p.troops.infantry = Math.max(0, p.troops.infantry - n);
-  b.dropCooldown = PARADROP_COOLDOWN;
+  b.dropCooldown = PARADROP_COOLDOWN * doctrineLess(state, playerId, 'airfieldReload');
   const u = makeUnit(state, 'transportPlane', playerId, airfieldTile, tile);
   u.troops = { infantry: n, armor: 0, artillery: 0 };
   const target = state.map.owner[tile];
@@ -1056,8 +1081,10 @@ function interceptThreats(state: GameState, threats: Unit[], sams: Building[], a
       if (a.fighters <= 0 || a.cooldown > 0 || !hostile(state, u.owner, a.owner)) continue;
       const r = airfieldRadius(a);
       if (d2To(state, u, a.tile) > r * r) continue;
-      a.cooldown = FIGHTER_COOLDOWN / a.fighters;
-      shotDown(state, u, a.owner, 'fighters');
+      a.cooldown = (FIGHTER_COOLDOWN / a.fighters) * doctrineLess(state, a.owner, 'airfieldReload');
+      // One hit (a bomber of the Air doctrine at level 3 survives the first).
+      u.hp -= 1;
+      if (u.hp <= 0) shotDown(state, u, a.owner, 'fighters');
       break;
     }
   }

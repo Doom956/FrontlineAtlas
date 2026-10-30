@@ -4,6 +4,7 @@
 
 import { BUILDINGS, TECHS } from '../src/sim/config';
 import { DEFAULT_MODIFIERS, validateSetup } from '../src/sim/setup';
+import { DOCTRINE_IDS } from '../src/sim/types';
 import type { Action, GameSetup, Modifiers } from '../src/sim/types';
 import {
   BUILD_MAX_LENGTH,
@@ -84,6 +85,7 @@ const ACTION_SPECS: ActionSpecs = {
   toggleEmbargo: { with: PLAYER },
   setAuto: { mix: { k: 'bool', optional: true }, research: { k: 'bool', optional: true } },
   startNow: {},
+  chooseDoctrine: { doctrine: { k: 'enum', values: DOCTRINE_IDS } },
 };
 
 function checkField(spec: FieldSpec, v: unknown): Result<unknown> {

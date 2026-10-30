@@ -1,11 +1,12 @@
 // Top-right cluster: drawer buttons (army, forces, research, diplomacy, events, legend), the clock, pause and one
 // speed button (click cycles x1 / x2 / x4), sound, help and the menu. One slim row of icon buttons in a single panel;
 // each names itself and its hotkey in the tooltip.
-import { TECHS } from '../../sim/config';
+import { DOCTRINES, TECHS } from '../../sim/config';
 import { gameSeconds } from '../../sim/state';
 import type { GameState, Player } from '../../sim/types';
 import { inOvertime, victoryShareNow } from '../../sim/victory';
 import { SPEEDS } from '../input';
+import { DOCTRINE_KEY, doctrineIcon, doctrineStatus, fmtDuration } from '../doctrineView';
 import { el, fmtTime, setClass, setText, setTip, type DrawerId, type HudCtx } from './dom';
 import { iconSpan, lineIcon } from './glyph';
 
@@ -53,6 +54,16 @@ export class Cluster {
     const rb = dbtn('research', 'science', 'Research  (T)\nPick technologies');
     const prog = el('span', 'sq-prog');
     rb.append(prog);
+    // doctrine: hidden until doctrines unlock; then a brass dot until one is chosen, afterwards its picture with
+    // three level pips (a ring fills around it while the nation adapts after a switch)
+    const docB = dbtn('doctrine', 'doctrine', `Doctrine  (${DOCTRINE_KEY})`);
+    docB.classList.add('sq-doc', 'hidden');
+    const docRing = el('span', 'sq-ring');
+    const docPips = el('span', 'sq-pips');
+    for (let k = 0; k < 3; k++) docPips.append(el('i'));
+    const docDot = el('span', 'sq-dot brass hidden');
+    docB.append(docRing, docPips, docDot);
+    let docIcon = 'doctrine';
     const db = dbtn('diplomacy', 'diplomacy', 'Diplomacy  (P)\nAlliances and requests');
     const badge = el('span', 'sq-badge hidden');
     db.append(badge);
@@ -105,6 +116,32 @@ export class Cluster {
         setTip(rb, me.auto.research ? 'Research  (T)\nAuto research is on' : 'Research  (T)\nNothing is being researched');
       }
       setClass(rb, 'idle', s.phase === 'playing' && !me.researching && !me.auto.research && gameSeconds(s) > 60);
+      // doctrine button
+      const ds = doctrineStatus(s, me);
+      setClass(docB, 'hidden', ds.phase === 'locked');
+      if (ds.phase !== 'locked') {
+        const ic = ds.id ? doctrineIcon(ds.id) : 'doctrine';
+        if (ic !== docIcon) {
+          docIcon = ic;
+          docB.querySelector('.ico')?.replaceWith(iconSpan(lineIcon(ic, 17)));
+        }
+        setClass(docDot, 'hidden', ds.phase !== 'none');
+        setClass(docB, 'chosen', !!ds.id);
+        setClass(docB, 'adapting', ds.phase === 'adapting');
+        docB.style.setProperty('--dc', ds.id ? DOCTRINES[ds.id].color : '');
+        docRing.style.setProperty('--p', ds.adaptDone.toFixed(3));
+        const lit = ds.phase === 'active' ? ds.level : 0;
+        [...docPips.children].forEach((p, k) => setClass(p as HTMLElement, 'on', k < lit));
+        const name = ds.id ? DOCTRINES[ds.id].name : '';
+        let tip = `Doctrine  (${DOCTRINE_KEY})\nChoose one: a bonus for your style of play`;
+        if (ds.phase === 'adapting') tip = `Doctrine: adapting to ${name}  (${DOCTRINE_KEY})\nNo doctrine bonus for ${fmtDuration(ds.adaptLeft)}`;
+        else if (ds.id) {
+          tip = `Doctrine: ${name}, level ${ds.level}  (${DOCTRINE_KEY})\n${DOCTRINES[ds.id].short}`;
+          if (ds.level < 3) tip += `\nLevel ${ds.level + 1} in ${fmtDuration(ds.nextLevelIn)}`;
+        }
+        setTip(docB, tip);
+        docB.setAttribute('aria-label', tip.split('\n')[0].replace(/\s+\(.*\)$/, ''));
+      }
       const req = s.allianceRequests.filter((r) => r.to === me.id).length;
       setText(badge, String(req));
       setClass(badge, 'hidden', req === 0);

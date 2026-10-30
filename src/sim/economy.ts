@@ -21,6 +21,7 @@ import {
   CONVERT_ARMY_SHARE,
   CONVERT_COST,
   CONVERT_RATE,
+  DOCTRINE_PERKS,
   FARM_GROWTH_BONUS,
   FARM_MAX,
   FARM_TROOP_CAP,
@@ -42,6 +43,7 @@ import {
   TROOP_GROWTH_EXP,
   TROOP_GROWTH_K,
 } from './config';
+import { doctrineLess, doctrineLever, doctrineMore, doctrinePerk, smallNationFactor } from './doctrines';
 import { powDet } from './fmath';
 import { hasTech } from './tech';
 import { landWeight } from './territory';
@@ -147,10 +149,14 @@ export function aiEconomy(state: GameState, p: Player): { growth: number; income
 }
 const NO_SCALE = { growth: 1, income: 1, cap: 1 } as const;
 
-/** Iron cost per converted unit (Metallurgy -25%). */
-export function convertCost(p: Player, kind: 'armor' | 'artillery'): { gold: number; iron: number } {
+/**
+ * Cost per converted unit (Metallurgy: -25% iron). With the game state, the Blitz doctrine makes armor cheaper
+ * (without it, e.g. an old caller, the base price).
+ */
+export function convertCost(p: Player, kind: 'armor' | 'artillery', state?: GameState): { gold: number; iron: number } {
   const c = CONVERT_COST[kind];
-  return { gold: c.gold, iron: c.iron * (hasTech(p, 'metallurgy') ? METALLURGY_CONVERT_IRON : 1) };
+  const doctrine = state && kind === 'armor' ? doctrineLess(state, p.id, 'armorConvertCost') : 1;
+  return { gold: c.gold * doctrine, iron: c.iron * (hasTech(p, 'metallurgy') ? METALLURGY_CONVERT_IRON : 1) * doctrine };
 }
 
 /** Growth multiplier from farms, barracks, Medicine, tribes, the AI difficulty and the game's modifiers (positive growth only). */
@@ -159,6 +165,8 @@ export function growthBonus(state: GameState, p: Player): number {
   const barracks = Math.min(BARRACKS_MAX, countBuildings(state, p.id, 'barracks'));
   let m = 1 + farms * FARM_GROWTH_BONUS + barracks * BARRACKS_GROWTH_BONUS;
   if (hasTech(p, 'medicine')) m *= MEDICINE_GROWTH_MULT;
+  const small = doctrineLever(state, p.id, 'smallGrowth');
+  if (small > 0) m *= 1 + small * smallNationFactor(state, p.id);
   if (isTribe(p)) m *= TRIBE_GROWTH_FACTOR;
   m *= aiEconomy(state, p).growth;
   return m * growthRate(state);
@@ -196,8 +204,8 @@ function convertArmy(state: GameState, p: Player, dt: number): void {
   const arsenals = countBuildings(state, p.id, 'arsenal');
   if (factories === 0 && arsenals === 0) return;
   const speed = hasTech(p, 'industrialization') ? INDUSTRIAL_CONVERT_MULT : 1;
-  const costA = convertCost(p, 'armor');
-  const costR = convertCost(p, 'artillery');
+  const costA = convertCost(p, 'armor', state);
+  const costR = convertCost(p, 'artillery', state);
   // Wanted conversions this tick per kind, before resource limits.
   let infantryLeft = p.troops.infantry;
   let wantA = 0;
@@ -234,16 +242,27 @@ function convertArmy(state: GameState, p: Player, dt: number): void {
   p.troops.artillery += r;
 }
 
-/** Gold per second: base + land + cities, x markets, Banking; tribes x0.5; AI nations x the difficulty's income. */
+/**
+ * Gold per second: base + land + cities, x markets, Banking, the Merchant doctrine (gold, markets, level 3: more per
+ * trade ship at sea); tribes x0.5; AI nations x the difficulty's income.
+ */
 export function goldIncome(state: GameState, p: Player): number {
   const banking = hasTech(p, 'banking');
-  const marketScale = banking ? BANKING_MARKET_MULT : 1;
+  const marketScale = (banking ? BANKING_MARKET_MULT : 1) * doctrineMore(state, p.id, 'marketBonus');
   const marketBonus = Math.min(countBuildings(state, p.id, 'market') * MARKET_GOLD_BONUS, MARKET_MAX_BONUS) * marketScale;
   let gold = (GOLD_BASE + GOLD_LAND * landValue(landWeight(state, p.id)) + CITY_GOLD * cityLevels(state, p.id)) * (1 + marketBonus);
   if (banking) gold *= BANKING_GOLD_MULT;
+  gold *= doctrineMore(state, p.id, 'gold');
+  if (doctrinePerk(state, p.id, 'merchant')) gold *= 1 + DOCTRINE_PERKS.merchant.routeBonus * tradeRoutes(state, p.id);
   if (isTribe(p)) gold *= TRIBE_GOLD_FACTOR;
   gold *= aiEconomy(state, p).income;
   return gold * goldRate(state);
+}
+/** Own trade ships at sea (Merchant level 3: a bonus per route), at most DOCTRINE_PERKS.merchant.maxRoutes. */
+function tradeRoutes(state: GameState, playerId: number): number {
+  let n = 0;
+  for (const u of state.units) if (u.type === 'tradeShip' && u.owner === playerId && u.hp > 0) n++;
+  return Math.min(n, DOCTRINE_PERKS.merchant.maxRoutes);
 }
 
 /** Runs one tick of economy for every alive, spawned player; fills Player.maxPop (the troop cap) and Player.income. */

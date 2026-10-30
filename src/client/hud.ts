@@ -13,7 +13,7 @@
 // The DOM is built once. update() runs every frame but only does cheap work there; texts and lists refresh at
 // ~5 Hz through each part's update().
 import { buildingAt } from '../sim/buildings';
-import { BUILDINGS } from '../sim/config';
+import { BUILDINGS, DOCTRINES, TICKS_PER_SECOND } from '../sim/config';
 import { mods } from '../sim/rules';
 import { gameSeconds } from '../sim/state';
 import type { GameEvent, GameState, Player } from '../sim/types';
@@ -26,6 +26,8 @@ import { ModChips } from './hud/modChips';
 import { CommandBar, techNear } from './hud/commandBar';
 import { el, setText, setVisible, type DrawerId, type HudCtx, type UnitProbe } from './hud/dom';
 import { ForcesPage } from './hud/forcesPage';
+import { DoctrinePage } from './hud/doctrinePage';
+import { DOCTRINE_KEY, doctrineIcon, fmtDuration, levelUpText } from './doctrineView';
 import { UnitCard } from './hud/unitCard';
 import {
   ArmyPage,
@@ -197,6 +199,7 @@ export class Hud {
     this.drawer.add(new ArmyPage(this.ctx));
     this.drawer.add(new ForcesPage(this.ctx));
     this.drawer.add(new ResearchPage(this.ctx));
+    this.drawer.add(new DoctrinePage(this.ctx));
     this.drawer.add(new DiplomacyPage(this.ctx));
     this.events = new EventsPage(this.ctx);
     this.drawer.add(this.events);
@@ -403,6 +406,8 @@ export class Hud {
       return;
     }
     if (id === 'research') this.advisor.researchOpened = true;
+    // the picker answers "Choose a doctrine" and shows a choice itself: its toast would cover the picker's title
+    if (id === 'doctrine') this.toasts.dismiss('doctrine');
     if (id === 'events') {
       this.cluster.setUnread(false);
     }
@@ -554,8 +559,8 @@ export class Hud {
       else if (ui.paused) chip = 'Paused';
     }
     setText(this.modeText, chip);
-    // the wide research tree covers the chip's spot at the top
-    setVisible(this.modeChip, chip !== '' && this.drawer.open !== 'research');
+    // the wide research tree and doctrine picker cover the chip's spot at the top
+    setVisible(this.modeChip, chip !== '' && this.drawer.open !== 'research' && this.drawer.open !== 'doctrine');
     this.modeChip.classList.toggle('paused', chip === 'Paused');
 
     this.bar.fast();
@@ -615,6 +620,7 @@ export class Hud {
 
   private eventToast(state: GameState, me: Player, e: GameEvent, focus: number): void {
     const go = focus >= 0 ? () => this.focusTile(focus, true) : undefined;
+    if (this.doctrineToast(me, e)) return;
     if (e.kind === 'info' && e.players[0] === me.id) {
       // our gift arrived / our alliance request was turned down: say so (other info events stay in the drawer)
       if (/ sent .+ to /.test(e.message)) {
@@ -664,6 +670,35 @@ export class Hud {
     // "<you> is under attack by X" reads better as "You are under attack by X"
     const text = e.message.startsWith(`${me.name} is under attack`) ? `You are${e.message.slice(me.name.length + 3)}` : e.message;
     if (show) this.toasts.show({ text, kind, onClick: go, ms: kind === 'bad' ? 5000 : 4000, key: e.kind === 'underAttack' ? `ua${e.message}` : undefined });
+  }
+
+  /**
+   * Doctrine news: unlocked (one calm toast), our own choice or switch, a new level. Another nation's choice (sent to
+   * nations that border or watch it) stays in the events drawer. True when handled.
+   */
+  private doctrineToast(me: Player, e: GameEvent): boolean {
+    if (e.kind !== 'doctrineUnlocked' && e.kind !== 'doctrineChosen' && e.kind !== 'doctrineLevelUp') return false;
+    const open = () => this.openDrawer('doctrine');
+    const d = me.doctrine;
+    if (e.kind === 'doctrineUnlocked') {
+      if (!d?.id) this.toasts.show({ text: `Choose a doctrine  (${DOCTRINE_KEY})`, kind: 'info', icon: 'doctrine', ms: 7000, key: 'doctrine', onClick: open });
+    } else if (e.kind === 'doctrineChosen') {
+      // ours: made this tick, at our capital (the news about others carries their capital)
+      if (d?.id && e.tick === d.chosenTick && e.tile === me.capital && this.drawer.open !== 'doctrine') {
+        const name = DOCTRINES[d.id].name;
+        const wait = (d.adaptUntilTick - e.tick) / TICKS_PER_SECOND;
+        this.toasts.show({
+          text: wait > 0.5 ? `Switching to ${name}: no doctrine bonus for ${fmtDuration(wait)}` : `${name} chosen. It grows stronger the longer you keep it.`,
+          kind: 'good',
+          icon: doctrineIcon(d.id),
+          key: 'doctrine',
+          onClick: open,
+        });
+      }
+    } else if (d?.id && d.level > 1) {
+      this.toasts.show({ text: levelUpText(d.id, d.level), kind: 'good', icon: doctrineIcon(d.id), ms: 5000, key: 'doctrine', onClick: open });
+    }
+    return true;
   }
 
   /** A bombing run has no launch event: say that the bomber took off (the report follows when the bombs fall). */

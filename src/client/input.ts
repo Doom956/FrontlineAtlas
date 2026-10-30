@@ -23,8 +23,8 @@ export interface InputDeps {
   toggleHelp: () => void;
   /** Closes the topmost HUD overlay (modal); returns true if something was closed. */
   closeOverlay?: () => boolean;
-  /** Opens or closes a HUD drawer (U army, Y forces, P diplomacy, J events, L map key). */
-  toggleDrawer?: (id: 'army' | 'forces' | 'diplomacy' | 'events' | 'legend') => void;
+  /** Opens or closes a HUD drawer (U army, Y forces, P diplomacy, J events, L map key, Shift+D doctrine). */
+  toggleDrawer?: (id: 'army' | 'forces' | 'diplomacy' | 'events' | 'legend' | 'doctrine') => void;
   /** A strike hotkey (Z barrage, X bombing run, K paratroopers, I rocket, O atom bomb): aim it or say why not. */
   strike?: (id: StrikeId) => void;
 }
@@ -334,6 +334,12 @@ export function setupInput(deps: InputDeps): () => void {
       if (!s || !s.humanId) return;
       const k = e.key;
       const code = e.code;
+      // Shift+D: the doctrine picker (every single letter is taken; plain D pans)
+      if (e.shiftKey && code === 'KeyD') {
+        e.preventDefault();
+        if (!e.repeat) deps.toggleDrawer?.('doctrine');
+        return;
+      }
       // Panning keys are tracked by physical position so they work on any keyboard layout.
       if (PAN_CODES.has(code)) {
         held.add(code);

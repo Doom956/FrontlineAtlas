@@ -1,5 +1,5 @@
 // All balance numbers. Rates are per second of game time unless the name says otherwise.
-import type { BuildingType, Difficulty, MapSize, Personality, TechId, TerrainId, TroopType, UnitType } from './types';
+import type { BuildingType, Difficulty, DoctrineId, MapSize, Personality, TechId, TerrainId, TroopType, UnitType } from './types';
 
 export const TICK_SECONDS = 0.1;
 export const TICKS_PER_SECOND = 10;
@@ -415,6 +415,198 @@ export const SAM_COOLDOWN = 4; // seconds to reload one shot (each shot is a sur
 export const FIGHTER_COOLDOWN = 12;
 /** Aircraft an airfield holds per level. */
 export const AIRCRAFT_MAX_PER_AIRFIELD = 6;
+
+// ---------- doctrines ----------
+// A doctrine (src/sim/doctrines.ts) is chosen mid-game, can be switched and only ever adds bonuses: every unit,
+// building and strike stays open to everyone. Each doctrine has a few levers (DOCTRINE_LEVERS: the full bonus as a
+// fraction, reached at level 2; level 1 gives DOCTRINE_LEVEL_STRENGTH[1] of it) and one small signature perk at
+// level 3 (DOCTRINE_PERKS). All timers count game time and run twice as fast in a fast game (rules.progressRate).
+
+/** Seconds after the start of play (0:00) before anyone can pick a doctrine. */
+export const DOCTRINE_UNLOCK_SECONDS = 300;
+/** Seconds of holding the same doctrine at which levels 1, 2 and 3 are reached (a switch starts again at level 1). */
+export const DOCTRINE_LEVEL_SECONDS: readonly number[] = [0, 360, 840];
+/** Share of each lever's full bonus by level (index = level; 0 = no doctrine). */
+export const DOCTRINE_LEVEL_STRENGTH: readonly [number, number, number, number] = [0, 0.6, 1, 1];
+/** Seconds without any doctrine bonus after a switch (the first choice works at once). */
+export const DOCTRINE_ADAPT_SECONDS = 45;
+/** Seconds between two doctrine choices. */
+export const DOCTRINE_SWITCH_COOLDOWN = 120;
+/**
+ * Least gold a switch costs (the first choice is free) ... or DOCTRINE_SWITCH_INCOME_SECONDS of the player's gold
+ * income when that is more (doctrines.doctrineSwitchCost): about a quarter of a typical gold stock at 10 minutes.
+ */
+export const DOCTRINE_SWITCH_GOLD = 1000;
+export const DOCTRINE_SWITCH_INCOME_SECONDS = 5;
+
+/** Every bonus a doctrine can give, as a fraction (0.25 = +25% or -25%, see each lever's note). */
+export interface DoctrineLevers {
+  /** blitz: attack fronts cross plains and desert tiles this much faster */
+  openFrontSpeed?: number;
+  /** blitz: converting troops to armor costs this much less gold and iron */
+  armorConvertCost?: number;
+  /** fortress: the defence a fort adds (its multiplier above 1) is this much stronger */
+  fortDefense?: number;
+  /** fortress: forts cost this much less gold and iron */
+  fortCost?: number;
+  /** fortress: troops lost by this player's home army when a tile of it falls are this much fewer */
+  defenderLoss?: number;
+  /** siege: artillery attack this much higher */
+  artilleryAttack?: number;
+  /** siege: artillery's extra bonus against forts and towers this much higher */
+  siegeBonus?: number;
+  /** siege: barrage reload this much shorter */
+  barrageCooldown?: number;
+  /** merchant: gold income this much higher */
+  gold?: number;
+  /** merchant: gold carried by own trade ships this much higher */
+  tradeGold?: number;
+  /** merchant: market bonus (and its cap) this much higher */
+  marketBonus?: number;
+  /** naval: warships cost this much less (gold, iron, oil) */
+  warshipCost?: number;
+  /** naval: warships sail this much faster */
+  warshipSpeed?: number;
+  /** naval: transports sail this much faster */
+  transportSpeed?: number;
+  /** naval: transports get this much more hp (harder to sink) */
+  transportHp?: number;
+  /** air: bombers, fighters and cargo-plane drops cost this much less */
+  aircraftCost?: number;
+  /** air: fighter interception and paradrop cooldowns this much shorter */
+  airfieldReload?: number;
+  /** air: paradrop range this much longer */
+  paradropRange?: number;
+  /** expansion: losses attacking tribes and the wilderness this much lower */
+  expansionLoss?: number;
+  /** expansion: troop growth this much higher while small (DOCTRINE_PERKS.expansion.smallShare) */
+  smallGrowth?: number;
+}
+export type DoctrineLever = keyof DoctrineLevers;
+
+export const DOCTRINE_LEVERS: Record<DoctrineId, DoctrineLevers> = {
+  blitz: { openFrontSpeed: 0.25, armorConvertCost: 0.25 },
+  fortress: { fortDefense: 0.25, fortCost: 0.25, defenderLoss: 0.2 },
+  siege: { artilleryAttack: 0.2, siegeBonus: 0.25, barrageCooldown: 0.25 },
+  merchant: { gold: 0.15, tradeGold: 0.25, marketBonus: 0.25 },
+  naval: { warshipCost: 0.25, warshipSpeed: 0.2, transportSpeed: 0.25, transportHp: 1 },
+  air: { aircraftCost: 0.25, airfieldReload: 0.25, paradropRange: 0.25 },
+  expansion: { expansionLoss: 0.25, smallGrowth: 0.25 },
+};
+
+/** Level-3 signature perks (and the expansion doctrine's 'small' range, used from level 1). */
+export const DOCTRINE_PERKS = {
+  /** armor ignores this share of the terrain's attack penalty (forest, hills, mountains, swamp ...) */
+  blitz: { armorTerrainIgnore: 0.5 },
+  /** forts build and upgrade in this share of the time and repair barrage damage this many times faster */
+  fortress: { fortBuildTime: 0.25, fortRepair: 3 },
+  /** barrage disc + this many tiles; forts and SAM sites stay silenced this many times longer */
+  siege: { barrageRadius: 1, disableMult: 1.5 },
+  /** gold income + routeBonus per own trade ship at sea, counting up to maxRoutes */
+  merchant: { routeBonus: 0.015, maxRoutes: 10 },
+  /** warships repair this many hp per second at sea; coastal shelling kills this many times more */
+  naval: { warshipRepair: 0.05, shelling: 1.5 },
+  /** bombers take this many extra hits before they go down (SAM shots and fighters each take one) */
+  air: { bomberExtraHp: 1 },
+  /** smallGrowth is full below smallShare[0] of the map's land and fades out at smallShare[1]; a tribe you
+   *  eliminate pays tribeIncomeSeconds of your gold income + tribeGoldPerTile x its tiles at its peak (level 3) */
+  expansion: { smallShare: [0.04, 0.1] as const, tribeIncomeSeconds: 15, tribeGoldPerTile: 0.2 },
+} as const;
+
+export interface DoctrineInfo {
+  name: string;
+  /** one line: what the doctrine is for */
+  short: string;
+  /** one plain line per level (what level 1, 2 and 3 give) */
+  levels: [string, string, string];
+  /** muted accent colour (CSS) */
+  color: string;
+  /** client icon id */
+  icon: `doctrine-${DoctrineId}`;
+}
+
+const pct = (v: number | undefined, level: 1 | 2): string => `${Math.round((v ?? 0) * DOCTRINE_LEVEL_STRENGTH[level] * 100)}%`;
+const L = DOCTRINE_LEVERS;
+const P = DOCTRINE_PERKS;
+export const DOCTRINES: Record<DoctrineId, DoctrineInfo> = {
+  blitz: {
+    name: 'Blitz',
+    short: 'Fast armored pushes across open ground.',
+    levels: [
+      `Fronts cross plains and desert ${pct(L.blitz.openFrontSpeed, 1)} faster; armor costs ${pct(L.blitz.armorConvertCost, 1)} less to convert.`,
+      `Open-ground fronts ${pct(L.blitz.openFrontSpeed, 2)} faster; armor ${pct(L.blitz.armorConvertCost, 2)} cheaper.`,
+      `Armor ignores ${Math.round(P.blitz.armorTerrainIgnore * 100)}% of the terrain penalty in forests, hills and swamps.`,
+    ],
+    color: '#b8794a',
+    icon: 'doctrine-blitz',
+  },
+  fortress: {
+    name: 'Fortress',
+    short: 'Hold the line: stronger, cheaper forts and fewer losses at home.',
+    levels: [
+      `Forts ${pct(L.fortress.fortDefense, 1)} stronger and ${pct(L.fortress.fortCost, 1)} cheaper; ${pct(L.fortress.defenderLoss, 1)} fewer losses when land falls.`,
+      `Forts ${pct(L.fortress.fortDefense, 2)} stronger and ${pct(L.fortress.fortCost, 2)} cheaper; ${pct(L.fortress.defenderLoss, 2)} fewer losses when land falls.`,
+      `Forts build ${Math.round(1 / P.fortress.fortBuildTime)}x faster and repair shell damage ${P.fortress.fortRepair}x faster.`,
+    ],
+    color: '#5f7fa8',
+    icon: 'doctrine-fortress',
+  },
+  siege: {
+    name: 'Siege',
+    short: 'Guns first: artillery breaks forts and barrages come more often.',
+    levels: [
+      `Artillery attack +${pct(L.siege.artilleryAttack, 1)}, siege bonus +${pct(L.siege.siegeBonus, 1)}, barrages reload ${pct(L.siege.barrageCooldown, 1)} faster.`,
+      `Artillery attack +${pct(L.siege.artilleryAttack, 2)}, siege bonus +${pct(L.siege.siegeBonus, 2)}, barrages reload ${pct(L.siege.barrageCooldown, 2)} faster.`,
+      `Barrages hit ${P.siege.barrageRadius} tile wider and silence forts and SAM sites ${P.siege.disableMult}x longer.`,
+    ],
+    color: '#9a6a5c',
+    icon: 'doctrine-siege',
+  },
+  merchant: {
+    name: 'Merchant',
+    short: 'Gold wins wars: more income, richer trade and markets.',
+    levels: [
+      `Gold +${pct(L.merchant.gold, 1)}, trade ships carry +${pct(L.merchant.tradeGold, 1)}, markets +${pct(L.merchant.marketBonus, 1)}.`,
+      `Gold +${pct(L.merchant.gold, 2)}, trade ships carry +${pct(L.merchant.tradeGold, 2)}, markets +${pct(L.merchant.marketBonus, 2)}.`,
+      `+${Math.round(P.merchant.routeBonus * 1000) / 10}% gold for every trade ship of yours at sea (up to ${P.merchant.maxRoutes}).`,
+    ],
+    color: '#b39a4e',
+    icon: 'doctrine-merchant',
+  },
+  naval: {
+    name: 'Naval',
+    short: 'Rule the sea: cheaper, faster warships and tougher transports.',
+    levels: [
+      `Warships ${pct(L.naval.warshipCost, 1)} cheaper and ${pct(L.naval.warshipSpeed, 1)} faster; transports ${pct(L.naval.transportSpeed, 1)} faster and tougher.`,
+      `Warships ${pct(L.naval.warshipCost, 2)} cheaper and ${pct(L.naval.warshipSpeed, 2)} faster; transports ${pct(L.naval.transportSpeed, 2)} faster, twice as hard to sink.`,
+      `Warships repair at sea and shell coasts ${P.naval.shelling}x harder.`,
+    ],
+    color: '#4f8a94',
+    icon: 'doctrine-naval',
+  },
+  air: {
+    name: 'Air',
+    short: 'Own the sky: cheaper aircraft, quicker airfields, longer drops.',
+    levels: [
+      `Aircraft and drops ${pct(L.air.aircraftCost, 1)} cheaper; airfields ready ${pct(L.air.airfieldReload, 1)} sooner; drop range +${pct(L.air.paradropRange, 1)}.`,
+      `Aircraft and drops ${pct(L.air.aircraftCost, 2)} cheaper; airfields ready ${pct(L.air.airfieldReload, 2)} sooner; drop range +${pct(L.air.paradropRange, 2)}.`,
+      `Bombers survive one extra hit from SAM sites or fighters.`,
+    ],
+    color: '#7a83a8',
+    icon: 'doctrine-air',
+  },
+  expansion: {
+    name: 'Expansion',
+    short: 'Grow wide: cheap land grabs and fast growth while small.',
+    levels: [
+      `${pct(L.expansion.expansionLoss, 1)} fewer losses against tribes and wilderness; troops grow ${pct(L.expansion.smallGrowth, 1)} faster while small.`,
+      `${pct(L.expansion.expansionLoss, 2)} fewer losses against tribes and wilderness; troops grow ${pct(L.expansion.smallGrowth, 2)} faster while small.`,
+      `Every tribe you finish off pays gold: ${P.expansion.tribeIncomeSeconds} s of your income, more for big tribes.`,
+    ],
+    color: '#6f9a5a',
+    icon: 'doctrine-expansion',
+  },
+};
 
 // ---------- diplomacy ----------
 export const ALLIANCE_DURATION = 300; // seconds

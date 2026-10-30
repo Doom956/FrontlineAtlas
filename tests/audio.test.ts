@@ -41,6 +41,9 @@ const KIND_MAP: Record<GameEventKind, true> = {
   tradeDelivered: true,
   paradrop: true,
   barrage: true,
+  doctrineUnlocked: true,
+  doctrineChosen: true,
+  doctrineLevelUp: true,
   victory: true,
   defeat: true,
 };

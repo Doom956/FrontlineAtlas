@@ -513,7 +513,7 @@ export function suggestions(state: GameState, playerId: number): Suggestion[] {
     const w = state.map.width;
     for (const af of buildingsOf(state, playerId, 'airfield')) {
       if (af.buildLeft > 0 || af.dropCooldown > 0) continue;
-      const r = paradropRange(af);
+      const r = paradropRange(af, state);
       const dx = (af.tile % w) - (fp.capital % w);
       const dy = ((af.tile / w) | 0) - ((fp.capital / w) | 0);
       if (dx * dx + dy * dy > r * r) continue;

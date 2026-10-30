@@ -20,6 +20,8 @@
 // - When the sim's phase becomes 'over', send `gameOver {turn: n, winner: state.winner}` once.
 // - No pause and no game speed in online games: the server's clock drives the game (one turn per TURN_MS).
 // - `startNow` (end the spawn phase early) is relayed only from the host of a private lobby; others get an error.
+// - `chooseDoctrine {doctrine}` (protocol 5): the server checks only that `doctrine` is a DoctrineId; unlock time,
+//   cooldown and gold are the sim's rules (src/sim/doctrines.ts), applied identically on every client.
 // - Send `ping` every PING_INTERVAL_MS; the server closes connections silent for longer than IDLE_TIMEOUT_MS.
 // - Keep `clientId` (random, from makeClientId()) in localStorage: it is your seat. Reconnecting with the same
 //   clientId (a new socket + `hello`) puts you back in your lobby or game: the server answers `welcome {resumed}`
@@ -58,7 +60,7 @@ export type { GameMode };
 // ------------------------------------------------------------------------------------------------ constants
 
 /** Bumped on any incompatible change to the messages below. `hello.protocol` must equal it. */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 /** WebSocket path on the server (same host that serves the client, or the one given by ?server=). */
 export const WS_PATH = '/ws';
 /** One turn = one sim tick = 100 ms (config TICK_SECONDS). */

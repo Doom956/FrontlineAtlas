@@ -14,6 +14,10 @@ import {
   TECH_ORDER,
   TERRAIN,
   VICTORY_LAND_SHARE,
+  DOCTRINE_ADAPT_SECONDS,
+  DOCTRINE_LEVEL_SECONDS,
+  DOCTRINE_SWITCH_COOLDOWN,
+  DOCTRINE_UNLOCK_SECONDS,
 } from '../sim/config';
 import type { GameSettings, TerrainId } from '../sim/types';
 import { rulesTextEntries } from './compat';
@@ -93,7 +97,7 @@ export function howToPlayContent(): HTMLElement {
   bullets(screen, [
     'Bottom: troops, attack share, gold (hover the small chip for iron, oil and science), the build bar (four category icons; hover a button for its name and price; Military also sells warships, bombers and fighters) and, when one is ready, the strike icons.',
     'Top left: the standings. Click a nation to see its card: army, land, Ally, Gift, Embargo, Attack.',
-    'Top right: Army (U), Forces (Y: warships, aircraft, missiles, artillery), Research (T), Diplomacy (P), Events (J), Map key (L), pause, speed (click to change), the clock, sound, help and the menu.',
+    'Top right: Army (U), Forces (Y: warships, aircraft, missiles, artillery), Research (T), Doctrine (Shift+D, from 5:00), Diplomacy (P), Events (J), Map key (L), pause, speed (click to change), the clock, sound, help and the menu.',
     'The advisor line above the bottom bar suggests a useful next step and folds into a small tab after a few seconds (hover it to read it again); switch it off in the menu.',
   ]);
 
@@ -106,6 +110,17 @@ export function howToPlayContent(): HTMLElement {
       rs.append(p);
     }
   }
+
+  const doc = section('Doctrines');
+  para(
+    doc,
+    `At ${Math.round(DOCTRINE_UNLOCK_SECONDS / 60)}:00 (half that in a fast game) you can choose a doctrine (Shift+D or the book icon at the top right): a bonus for one style of play, such as Blitz, Fortress, Siege or Merchant. It only adds: every unit, building and strike stays open to everyone. The picker marks the three that suit your land and neighbours.`,
+  );
+  bullets(doc, [
+    `Levels grow while you keep the same doctrine: level 2 after ${Math.round(DOCTRINE_LEVEL_SECONDS[1] / 60)} min, level 3 (a small extra perk) after ${Math.round(DOCTRINE_LEVEL_SECONDS[2] / 60)} min.`,
+    `The first choice is free. Switching costs gold, leaves you ${DOCTRINE_ADAPT_SECONDS} s without any doctrine while your nation adapts, starts again at level 1, and then has a ${Math.round(DOCTRINE_SWITCH_COOLDOWN / 60)} min cooldown.`,
+    'A neighbour\'s doctrine shows on its card and in the standings tip once you share a border, have a Watchtower near it or are allied: counter it.',
+  ]);
 
   const tribes = section('Tribes');
   para(tribes, 'Tribes are small, weak peoples spread over the map: their land is a grey wash with an army number (the name shows when you zoom in). They are cheap to conquer and accept any alliance (but not from a traitor): easy land in the first minutes.');

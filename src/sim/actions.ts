@@ -7,6 +7,7 @@ import { canSpawnAt, spawnPlayer } from './state';
 import { startResearch } from './tech';
 import { TECHS } from './config';
 import { launchBarrage } from './barrage';
+import { chooseDoctrine } from './doctrines';
 import { buildAircraft, buildWarship, launchBomber, launchMissile, launchParadrop, launchTransport, moveWarship } from './units';
 import { TROOP_TYPES } from './types';
 import type { Action, ActionResult, GameState, Player, Troops } from './types';
@@ -159,6 +160,9 @@ export function applyAction(state: GameState, playerId: number, action: Action):
       if (troops > p.troops.infantry) return FAIL('Not enough infantry');
       return gift(state, playerId, action.to, gold, troops);
     }
+    case 'chooseDoctrine':
+      if (typeof action.doctrine !== 'string') return FAIL('Unknown doctrine');
+      return chooseDoctrine(state, playerId, action.doctrine);
     case 'toggleEmbargo':
       if (!isPlayerId(state, action.with)) return FAIL('No such nation');
       return toggleEmbargo(state, playerId, action.with);

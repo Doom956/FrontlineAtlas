@@ -114,6 +114,11 @@ export class Toasts {
     }
   }
 
+  /** Removes the toast with this key (or text), if it is on screen. */
+  dismiss(key: string): void {
+    for (const l of [...this.live]) if ((l.spec.key ?? l.spec.text) === key) this.drop(l);
+  }
+
   clear(): void {
     for (const l of [...this.live]) this.drop(l);
   }

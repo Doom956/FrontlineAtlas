@@ -4,7 +4,8 @@ import { alliancesAllowed, sameTeam } from '../../sim/rules';
 import { hasIntel } from '../../sim/buildings';
 import { borders } from '../../sim/combat';
 import { areAllied } from '../../sim/diplomacy';
-import { TRAITOR_DURATION } from '../../sim/config';
+import { DOCTRINES, TRAITOR_DURATION } from '../../sim/config';
+import { doctrineIcon, knownDoctrine } from '../doctrineView';
 import type { GameState, Player } from '../../sim/types';
 import { isTribe } from '../compat';
 import { troopsToSend, troopSum } from '../input';
@@ -22,6 +23,11 @@ export class NationCard {
   id = 0;
   private name = el('span', 'nc-name');
   private rel = el('span', 'nc-rel');
+  /** their doctrine when you know it (they border you, a Watchtower sees them, or an alliance) */
+  private doc = el('span', 'nc-doc hidden');
+  private docIc = el('span', 'nc-doc-ic');
+  private docT = el('span', 'nc-doc-t');
+  private docShown = '';
   private army = el('span', 'nc-v');
   private land = el('span', 'nc-v');
   private mix = el('div', 'mixbar');
@@ -45,7 +51,11 @@ export class NationCard {
     close.append(iconSpan(lineIcon('close', 14)));
     close.addEventListener('click', () => this.close());
     const titles = el('div', 'nc-titles');
-    titles.append(this.name, this.rel);
+    const sub = el('div', 'nc-sub');
+    this.doc.dataset.test = 'nc-doctrine';
+    this.doc.append(this.docIc, this.docT);
+    sub.append(this.rel, this.doc);
+    titles.append(this.name, sub);
     head.append(titles, close);
     const stats = el('div', 'nc-stats');
     const a = el('div', 'nc-stat');
@@ -109,6 +119,21 @@ export class NationCard {
     const rel = relationOf(s, me, p.id);
     setText(this.rel, rel.text);
     this.rel.className = 'nc-rel ' + rel.cls;
+    const kd = isMe ? null : knownDoctrine(s, me.id, p.id);
+    setVisible(this.doc, !!kd);
+    if (kd) {
+      const key = `${kd.id}:${kd.level}:${kd.adapting}`;
+      if (key !== this.docShown) {
+        this.docShown = key;
+        const d = DOCTRINES[kd.id];
+        this.doc.style.setProperty('--dc', d.color);
+        this.docIc.replaceChildren(iconSpan(lineIcon(doctrineIcon(kd.id), 13)));
+        setText(this.docT, kd.adapting ? `${d.name}, adapting` : `${d.name} L${kd.level}`);
+        // what applies now: level 2 replaces level 1's numbers, level 3 adds its perk
+        const now = kd.adapting ? ['Adapting after a switch: no bonus yet.'] : [d.levels[kd.level >= 2 ? 1 : 0], ...(kd.level >= 3 ? [d.levels[2]] : [])];
+        setTip(this.doc, [`Doctrine: ${d.name}${kd.adapting ? '' : `, level ${kd.level}`}`, d.short, ...now].join('\n'));
+      }
+    }
     setText(this.army, formatCount(armyOf(s, p.id)));
     setText(this.land, `${((p.tiles / Math.max(1, s.map.landTileCount)) * 100).toFixed(1)}%`);
     const intel = isMe || hasIntel(s, me.id, p.id);

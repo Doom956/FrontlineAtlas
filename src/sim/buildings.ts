@@ -16,6 +16,7 @@ import {
   BUILDING_MIN_SPACING_BY_SIZE,
   BUILDING_ORDER,
   BUILDING_REPAIR_PER_S,
+  DOCTRINE_PERKS,
   BUILDING_SNAP_RADIUS,
   BUILDING_UPGRADE_RADIUS,
   BUILDINGS,
@@ -40,6 +41,7 @@ import {
 import { areAllied } from './diplomacy';
 import { buildingRule, buildSeconds } from './rules';
 import { addEvent, newId } from './state';
+import { doctrineLess, doctrineMore, doctrinePerk } from './doctrines';
 import { ownsNear } from './territory';
 import { hasTech } from './tech';
 import { isWater, Resource } from './types';
@@ -231,7 +233,8 @@ export function fortRadius(state: GameState, b: Building): number {
 export function fortDefense(state: GameState, b: Building): number {
   const p = state.players[b.owner];
   const base = p && hasTech(p, 'fortification') ? FORT_DEFENSE_TECH : FORT_DEFENSE;
-  return base + FORT_LEVEL_DEFENSE * (b.level - 1);
+  // The Fortress doctrine strengthens what the fort adds (its multiplier above 1).
+  return 1 + (base + FORT_LEVEL_DEFENSE * (b.level - 1) - 1) * doctrineMore(state, b.owner, 'fortDefense');
 }
 /** Interception radius of a SAM site. */
 export function samRadius(b: Building): number {
@@ -296,8 +299,13 @@ export function reloadTick(b: Building): void {
 export function buildingCost(state: GameState, playerId: number, type: BuildingType): { gold: number; iron: number } {
   const info = BUILDINGS[type];
   const owned = summaryOf(state, playerId).all[type];
-  const k = 1 + info.costGrowth * owned;
+  const k = (1 + info.costGrowth * owned) * (type === 'fort' ? doctrineLess(state, playerId, 'fortCost') : 1);
   return { gold: Math.round(info.cost * k), iron: Math.round(info.iron * k) };
+}
+/** Seconds a construction or upgrade of `type` takes for playerId (Fortress level 3: forts much faster). */
+function buildTimeFor(state: GameState, playerId: number, type: BuildingType): number {
+  const base = BUILDINGS[type].buildTime * (type === 'fort' && doctrinePerk(state, playerId, 'fortress') ? DOCTRINE_PERKS.fortress.fortBuildTime : 1);
+  return buildSeconds(state, base);
 }
 
 /** Cost of a build order of `type` at `tile` (upgrade or new: the same price, see buildingCost). */
@@ -519,7 +527,7 @@ export function build(state: GameState, playerId: number, type: BuildingType, ti
   const info = BUILDINGS[type];
   if (r.upgrade) {
     const existing = state.buildings.get(r.buildingId)!;
-    existing.upgradeLeft = buildSeconds(state, info.buildTime);
+    existing.upgradeLeft = buildTimeFor(state, playerId, type);
     touch(state, indexes.get(state), playerId);
   } else {
     const id = newId(state);
@@ -529,7 +537,7 @@ export function build(state: GameState, playerId: number, type: BuildingType, ti
       owner: playerId,
       tile: r.tile,
       level: 1,
-      buildLeft: buildSeconds(state, info.buildTime),
+      buildLeft: buildTimeFor(state, playerId, type),
       upgradeLeft: 0,
       fighters: 0,
       bombers: 0,
@@ -628,7 +636,10 @@ export function updateBuildings(state: GameState): void {
         if (state.players[b.owner]) addEvent(state, 'buildingDone', `${BUILDINGS[b.type].name} upgraded to level ${b.level}`, [b.owner], b.tile);
       }
     }
-    if (b.hp < 1) b.hp = Math.min(1, b.hp + BUILDING_REPAIR_PER_S * TICK_SECONDS);
+    if (b.hp < 1) {
+      const fast = b.type === 'fort' && doctrinePerk(state, b.owner, 'fortress') ? DOCTRINE_PERKS.fortress.fortRepair : 1;
+      b.hp = Math.min(1, b.hp + BUILDING_REPAIR_PER_S * fast * TICK_SECONDS);
+    }
   }
 }
 

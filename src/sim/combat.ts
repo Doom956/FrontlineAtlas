@@ -37,6 +37,7 @@ import {
   COMBINED_ARMS_BONUS,
   COMBINED_ARMS_MIN_SHARE,
   DEFENDER_LOSS_PER_TILE,
+  DOCTRINE_PERKS,
   DEFENDER_NO_SUPPLY,
   DEPOT_ATTACK_BONUS,
   ENDGAME_SMALL_TILES,
@@ -81,11 +82,12 @@ import {
 import { areAllied, isTraitor, onAttackStarted } from './diplomacy';
 import { atPeace, frontRate as frontRateMul, peaceReason, sameTeam } from './rules';
 import { hasOilShortage } from './economy';
+import { doctrineLess, doctrineLever, doctrineMore, doctrinePerk } from './doctrines';
 import { nearestTile } from './grid';
 import { addEvent, gameSeconds, newId, setOwner } from './state';
 import { hasTech } from './tech';
 import { borderTiles, landComponents } from './territory';
-import { TROOP_TYPES, isTribe, isWater } from './types';
+import { TROOP_TYPES, Terrain, isTribe, isWater } from './types';
 import type { ActionResult, Attack, GameState, Player, TerrainId, TroopType, Troops } from './types';
 
 // ---------- tuning that config.ts leaves to this module ----------
@@ -133,8 +135,9 @@ function typeAttack(state: GameState, p: Player, k: TroopType): number {
   if (k === 'armor') {
     if (hasTech(p, 'mechanization')) v *= MECHANIZATION_ARMOR;
     if (hasOilShortage(state, p.id)) v *= NO_OIL_ARMOR_FACTOR;
-  } else if (k === 'artillery' && hasTech(p, 'ballistics')) {
-    v *= BALLISTICS_ARTILLERY;
+  } else if (k === 'artillery') {
+    if (hasTech(p, 'ballistics')) v *= BALLISTICS_ARTILLERY;
+    v *= doctrineMore(state, p.id, 'artilleryAttack');
   }
   return v;
 }
@@ -148,11 +151,23 @@ function typeDefense(state: GameState, p: Player, k: TroopType): number {
 }
 /**
  * Artillery's siege bonus against a tile with defence multiplier `fort` (fortMultiplierAt): ARTILLERY_FORT_BONUS
- * under a fort (multiplier >= FORT_DEFENSE), part of it under lighter cover (a watchtower), 1 in the open.
+ * under a fort (multiplier >= FORT_DEFENSE), part of it under lighter cover (a watchtower), 1 in the open. `boost`
+ * raises the extra part (the Siege doctrine's siegeBonus lever).
  */
-export function artillerySiegeBonus(fort: number): number {
+export function artillerySiegeBonus(fort: number, boost = 0): number {
   if (fort <= 1.0001) return 1;
-  return 1 + (ARTILLERY_FORT_BONUS - 1) * Math.min(1, (fort - 1) / (FORT_DEFENSE - 1));
+  return 1 + (ARTILLERY_FORT_BONUS - 1) * (1 + boost) * Math.min(1, (fort - 1) / (FORT_DEFENSE - 1));
+}
+/**
+ * Terrain attack multiplier of armor with `ignore` of its penalty lifted (Blitz level 3): a factor under 1 moves
+ * that share of the way back to 1; bonuses stay as they are.
+ */
+function armorTerrain(att: number, ignore: number): number {
+  return att < 1 && ignore > 0 ? 1 - (1 - att) * (1 - ignore) : att;
+}
+/** Share of armor's terrain penalty a player's armor ignores (Blitz level 3; 0 otherwise). */
+function armorTerrainIgnore(state: GameState, playerId: number): number {
+  return doctrinePerk(state, playerId, 'blitz') ? DOCTRINE_PERKS.blitz.armorTerrainIgnore : 0;
 }
 /** MATCHUP of type k against a force, weighted by that force's composition (infantry if it has none). */
 function matchupVs(k: TroopType, against: Troops | null): number {
@@ -333,8 +348,9 @@ function powerPerUnit(state: GameState, attackerId: number, troops: Troops, tile
   let sum = 0;
   for (const k of TROOP_TYPES) {
     if (troops[k] <= 0) continue;
-    let m = typeAttack(state, p, k) * ter.attack[k] * matchupVs(k, against);
-    if (k === 'artillery') m *= artillerySiegeBonus(fort);
+    const terAtt = k === 'armor' ? armorTerrain(ter.attack.armor, armorTerrainIgnore(state, attackerId)) : ter.attack[k];
+    let m = typeAttack(state, p, k) * terAtt * matchupVs(k, against);
+    if (k === 'artillery') m *= artillerySiegeBonus(fort, doctrineLever(state, attackerId, 'siegeBonus'));
     sum += (troops[k] / tot) * m;
   }
   sum *= supplyEfficiency(state, attackerId, tile);
@@ -363,6 +379,17 @@ interface FightCtx {
   combined: number;
   /** what is left of a fort's extra slowdown after the guns (1 - artillery share x ARTILLERY_FORT_BREACH, >= 0) */
   breach: number;
+  // Doctrine levers (doctrines.ts), looked up once per tick:
+  /** attacker's siegeBonus lever (Siege) */
+  siege: number;
+  /** share of armor's terrain penalty the attacker ignores (Blitz level 3) */
+  armorIgnore: number;
+  /** budget factor on plains and desert tiles (Blitz: < 1 = faster) */
+  openBudget: number;
+  /** attacker loss factor against tribes and the wilderness (Expansion: < 1) */
+  wildLoss: number;
+  /** defender's home losses per tile taken (Fortress: < 1) */
+  defenderLossMult: number;
 }
 function fightCtx(state: GameState, attackerId: number, troops: Troops, defender: number): FightCtx {
   const odds = attackOdds(state, attackerId, troops, defender);
@@ -386,6 +413,11 @@ function fightCtx(state: GameState, attackerId: number, troops: Troops, defender
     w2: troops.artillery > 0 ? troops.artillery * inv * typeAttack(state, p, 'artillery') * matchupVs('artillery', against) : 0,
     combined: combinedArms(p, troops, tot),
     breach: tot > 0 ? Math.max(0, 1 - (troops.artillery / tot) * ARTILLERY_FORT_BREACH) : 1,
+    siege: doctrineLever(state, attackerId, 'siegeBonus'),
+    armorIgnore: armorTerrainIgnore(state, attackerId),
+    openBudget: 1 / doctrineMore(state, attackerId, 'openFrontSpeed'),
+    wildLoss: !dp || isTribe(dp) ? doctrineLess(state, attackerId, 'expansionLoss') : 1,
+    defenderLossMult: dp ? doctrineLess(state, defender, 'defenderLoss') : 1,
   };
 }
 
@@ -414,7 +446,8 @@ function tileCost(state: GameState, c: FightCtx, tile: number): TileCost {
   const sup = supplyEfficiency(state, c.attacker, tile);
   const fort = c.defender === 0 ? 1 : fortMultiplierAt(state, tile, c.defender);
   const att = ter.attack;
-  let power = c.w0 * att.infantry + c.w1 * att.armor + (c.w2 > 0 ? c.w2 * att.artillery * artillerySiegeBonus(fort) : 0);
+  const armorAtt = c.w1 > 0 ? armorTerrain(att.armor, c.armorIgnore) : 0;
+  let power = c.w0 * att.infantry + c.w1 * armorAtt + (c.w2 > 0 ? c.w2 * att.artillery * artillerySiegeBonus(fort, c.siege) : 0);
   power *= sup * c.combined;
   const depot = depotBonus(state, c.attacker, tile);
   if (depot > 0) power *= 1 + depot;
@@ -427,14 +460,16 @@ function tileCost(state: GameState, c: FightCtx, tile: number): TileCost {
     if (c.traitor) defense *= TRAITOR_DEFENSE;
     if (c.tribeTarget) defense *= TRIBE_TARGET_LOSS;
     if (supplyEfficiency(state, c.defender, tile) < 1) defense *= DEFENDER_NO_SUPPLY;
-    out.defenderLoss = DEFENDER_LOSS_PER_TILE * c.density;
+    out.defenderLoss = DEFENDER_LOSS_PER_TILE * c.density * c.defenderLossMult;
   }
+  defense *= c.wildLoss;
   out.loss = power > 0 ? defense / power : Infinity;
   out.defense = defense;
   out.power = power;
   out.fort = fort;
   const fortSlow = fort > 1.01 ? 1 + Math.max(0, FORT_SLOW * (fort / FORT_DEFENSE) - 1) * c.breach : 1;
   out.budget = (TER_SPEED_COST[tid] * fortSlow) / (0.5 + 0.5 * sup);
+  if (tid === Terrain.Plains || tid === Terrain.Desert) out.budget *= c.openBudget;
   return out;
 }
 

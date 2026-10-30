@@ -1,7 +1,7 @@
 // State hash for desync detection (lockstep multiplayer): two clients that ran the same actions must get the same
 // number. FNV-1a (32 bit) over the parts of the state that every system feeds into: tick, RNG state, tile owners,
 // players' stocks and troops (exact float bits), research (current tech, progress, techs), auto flags, traitor and
-// embargoes, phase and spawn time, alliances and alliance requests, attacks and units (positions rounded to 1/100
+// embargoes, doctrines, phase and spawn time, alliances and alliance requests, attacks and units (positions rounded to 1/100
 // tile), barrages and buildings (level, timers, hp).
 
 import type { GameState, Troops } from './types';
@@ -74,6 +74,14 @@ export function hashState(state: GameState): number {
     h = mixInt(h, p.traitorUntil);
     h = mixInt(h, p.embargoes.length);
     for (const e of p.embargoes) h = mixInt(h, e);
+    const d = p.doctrine;
+    if (d) {
+      h = mixStr(h, d.id);
+      h = mixInt(h, d.level);
+      h = mixInt(h, d.chosenTick);
+      h = mixInt(h, d.adaptUntilTick);
+      h = mixInt(h, d.lastSwitchTick);
+    }
   }
   h = mixInt(h, state.alliances.length);
   for (const al of state.alliances) {
@@ -104,6 +112,7 @@ export function hashState(state: GameState): number {
     h = mixInt(h, b.tile);
     h = mixInt(h, b.hitTick);
     h = mixFloat(h, b.artillery);
+    h = mixFloat(h, b.radius ?? 0);
   }
   h = mixInt(h, state.buildings.size);
   for (const b of state.buildings.values()) {

@@ -1,10 +1,12 @@
 // Game creation, spawning, ownership changes, events, ids.
 import { destroyBuilding, markBuildingsChanged, onBuildingCaptured } from './buildings';
+import { doctrinePerk } from './doctrines';
 import { createTileChanges, recordTileChange } from './changes';
 import {
   AI_COLORS,
   AI_NAMES,
   BUILDINGS,
+  DOCTRINE_PERKS,
   MAX_AI_COUNT,
   MAX_EVENTS,
   PERSONALITIES,
@@ -85,6 +87,7 @@ export function makePlayer(
     traitorUntil: 0,
     barrageReadyTick: 0,
     embargoes: [],
+    doctrine: { id: null, level: 0, chosenTick: -1, adaptUntilTick: 0, lastSwitchTick: -1 },
     stats: { tilesMax: 0, troopsLost: 0, troopsKilled: 0, tilesCaptured: 0, buildingsBuilt: 0, goldEarned: 0 },
     eliminatedTick: -1,
   };
@@ -703,7 +706,16 @@ function eliminatePlayer(state: GameState, playerId: number, by: number): void {
     state.players[by].gold += loot;
     p.gold -= loot;
   }
-  const byText = by !== 0 ? ` by ${state.players[by].name}` : '';
+  // Expansion doctrine, level 3: a tribe finished off pays gold (seconds of the taker's income + its peak land).
+  let bounty = '';
+  if (isTribe(p) && by > 0 && state.players[by]?.alive && doctrinePerk(state, by, 'expansion')) {
+    const e = DOCTRINE_PERKS.expansion;
+    const g = Math.round(e.tribeIncomeSeconds * Math.max(0, state.players[by].income.gold) + e.tribeGoldPerTile * Math.max(p.stats.tilesMax, p.tiles));
+    state.players[by].gold += g;
+    state.players[by].stats.goldEarned += g;
+    bounty = ` (+${g} gold)`;
+  }
+  const byText = by !== 0 ? ` by ${state.players[by].name}${bounty}` : '';
   // Tribes falling is routine: only the nations involved hear about it.
   const who = isTribe(p) ? [playerId, by].filter((x) => x > 0) : [];
   addEvent(state, 'eliminated', `${p.name} has been eliminated${byText}`, who, -1);

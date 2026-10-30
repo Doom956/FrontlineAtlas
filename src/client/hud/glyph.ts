@@ -197,6 +197,15 @@ const LINE: Record<string, string> = {
   star: '<path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z"/>',
   plane: '<path d="M12 3c1 0 1.5 1 1.5 2.5V10l7 4v2l-7-2v4l2 1.5V21L12 20l-3.5 1v-1.5l2-1.5v-4l-7 2v-2l7-4V5.5C10.5 4 11 3 12 3z"/>',
   forces: '<path d="M12 3l7.5 3v5.5c0 4.5-3.2 8-7.5 9.5-4.3-1.5-7.5-5-7.5-9.5V6z"/><path d="M8 12.5h8M12 8.5v8"/>',
+  // doctrines: a field manual (the picker), then one literal picture per doctrine
+  doctrine: '<path d="M5.5 4h10a2.5 2.5 0 0 1 2.5 2.5V20H8a2.5 2.5 0 0 1-2.5-2.5z"/><path d="M5.5 17.5A2.5 2.5 0 0 1 8 15h10M9.5 4v6l2-1.5 2 1.5V4"/>',
+  'doctrine-blitz': '<path d="M9.5 15h10a2 2 0 0 1 0 4h-10a2 2 0 0 1 0-4zM11.5 15v-3h5.5l1.5 3M17 12.5h5M2 11h5M3 14.5h4M2 18h4"/>',
+  'doctrine-fortress': '<path d="M3.5 20V8h3v2.5h3V8h5v2.5h3V8h3v12z"/><path d="M10 20v-3.5a2 2 0 0 1 4 0V20"/>',
+  'doctrine-siege': '<circle cx="8.5" cy="16.5" r="3"/><path d="M10.5 14l9-7.5 1.5 2-9 7.5M6.5 19L3 21.5"/>',
+  'doctrine-merchant': '<path d="M12 4v16M8 20h8M5 7h14"/><path d="M2.5 13L5 7l2.5 6a2.5 2.5 0 0 1-5 0zM16.5 13L19 7l2.5 6a2.5 2.5 0 0 1-5 0z"/>',
+  'doctrine-naval': '<circle cx="12" cy="5" r="2"/><path d="M12 7v13M8.5 10h7M4.5 13.5A7.5 7 0 0 0 12 20a7.5 7 0 0 0 7.5-6.5M3 15l1.5-1.5L6 15M18 15l1.5-1.5L21 15"/>',
+  'doctrine-air': '<path d="M12 3c1 0 1.5 1 1.5 2.5V10l7 4v2l-7-2v4l2 1.5V21L12 20l-3.5 1v-1.5l2-1.5v-4l-7 2v-2l7-4V5.5C10.5 4 11 3 12 3z"/>',
+  'doctrine-expansion': '<path d="M8.5 17V3.5M8.5 4h9l-2.5 3.25 2.5 3.25h-9"/><path d="M2.5 20.5c3-2.5 6-2.5 9.5-1s6.5 1.5 9.5-1"/>',
 };
 export type LineIconId = keyof typeof LINE;
 
