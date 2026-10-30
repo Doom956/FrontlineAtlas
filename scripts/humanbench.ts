@@ -20,8 +20,8 @@
 //
 // Prints per map x difficulty: share of runs the bot is alive (and the game not lost to an AI win) at 10 / 20 min,
 // its median land share at 10 / 20 min, its median rank among the nations by land at 20 min, the median minute of
-// the first AI nation attack on it, the most AI wars on it at once in the first 10 min, its wins, and the AI winner
-// share / median win minute when an AI won instead.
+// the first AI nation attack on it, the most AI wars on it at once in the first 10 min, how often and when it died,
+// its wins, and how often / when an AI reached the victory share while it was still alive.
 import { buildingCost } from '../src/sim/buildings';
 import { MIN_ATTACK_TROOPS, TICKS_PER_SECOND, VICTORY_LAND_SHARE } from '../src/sim/config';
 import { tick } from '../src/sim/sim';
@@ -433,14 +433,16 @@ const pct = (x: number): string => `${Math.round(x * 100)}%`;
 const f1 = (x: number): string => (Number.isFinite(x) ? x.toFixed(1) : '-');
 
 function report(rs: Result[], o: Options): void {
-  const head = ['map', 'diff', 'runs', 'alive10', 'alive20', 'land10', 'land20', 'rank20', '1st atk', 'wars10', 'atkrs10', 'wins', 'AI won', 'AI win min'];
+  const head = ['map', 'diff', 'runs', 'alive10', 'alive20', 'land10', 'land20', 'rank20', '1st atk', 'wars10', 'atkrs10', 'died', 'death min', 'wins', 'AI won', 'AI win min'];
   const rows: string[][] = [head];
   for (const map of o.maps) {
     for (const d of o.difficulties) {
       const g = rs.filter((r) => r.job.map === map && r.job.difficulty === d);
       if (!g.length) continue;
       const firsts = g.filter((r) => r.firstAttack >= 0).map((r) => r.firstAttack / 60);
-      const aiWins = g.filter((r) => r.winner && r.winner !== ME);
+      // An AI reaching the victory share while the bot is alive (a game ended by the bot's death is not counted here).
+      const aiWins = g.filter((r) => r.winner && r.winner !== ME && r.deathMinute < 0);
+      const deaths = g.filter((r) => r.deathMinute >= 0);
       rows.push([
         map,
         d,
@@ -453,6 +455,8 @@ function report(rs: Result[], o: Options): void {
         firsts.length ? `${f1(median(firsts))}m` : 'never',
         String(Math.max(...g.map((r) => r.maxWars10))),
         f1(median(g.map((r) => r.attackers10))),
+        `${deaths.length}/${g.length}`,
+        f1(median(deaths.map((r) => r.deathMinute))),
         `${g.filter((r) => r.winner === ME).length}/${g.length}`,
         `${aiWins.length}/${g.length}`,
         f1(median(aiWins.map((r) => r.winMinute))),
@@ -461,7 +465,7 @@ function report(rs: Result[], o: Options): void {
   }
   const widths = head.map((_, c) => Math.max(...rows.map((r) => r[c].length)));
   for (const r of rows) console.log(r.map((v, c) => (c < 2 ? v.padEnd(widths[c]) : v.padStart(widths[c]))).join('  '));
-  console.log(`(alive = alive with no AI win yet; land = median share of all land; rank among ${SINGLE_PLAYER_NATIONS + 1} nations by land, dead = last; 1st atk = median minute of the first AI nation attack; wars10 = most AI nations attacking at once in the first 10 min (worst run); atkrs10 = median distinct AI attackers in the first 10 min; cap ${o.minutes} min)`);
+  console.log(`(alive = alive with no AI win yet; land = median share of all land; rank among ${SINGLE_PLAYER_NATIONS + 1} nations by land, dead = last; 1st atk = median minute of the first AI nation attack; wars10 = most AI nations attacking at once in the first 10 min (worst run); atkrs10 = median distinct AI attackers in the first 10 min; died = bot eliminated before the cap, death min = median minute; AI won = an AI reached the victory share while the bot lived; cap ${o.minutes} min)`);
 }
 
 async function runShards(o: Options, argv: string[]): Promise<Result[]> {

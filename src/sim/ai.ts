@@ -264,8 +264,8 @@ export const DIFFICULTY: Readonly<Record<Difficulty, Readonly<DifficultyProfile>
     humanNeed: 1.4,
     humanWarsEarly: 1,
     humanWarsLate: 2,
-    humanForceCap: 1,
-    humanPause: 3,
+    humanForceCap: 0.8,
+    humanPause: 4,
     counterHumans: true,
   },
   hard: {

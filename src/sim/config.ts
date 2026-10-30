@@ -570,7 +570,7 @@ export const AI_HARD_INCOME_BONUS = 0.15;
  */
 export const AI_ECONOMY: Record<Difficulty, { growth: number; income: number; cap: number }> = {
   easy: { growth: 0.7, income: 0.7, cap: 0.7 },
-  normal: { growth: 0.88, income: 0.88, cap: 0.9 },
+  normal: { growth: 0.88, income: 0.88, cap: 1 },
   hard: { growth: 1 + AI_HARD_INCOME_BONUS * 0.5, income: 1 + AI_HARD_INCOME_BONUS, cap: 1 },
   brutal: { growth: 1.15, income: 1.3, cap: 1.1 },
 };

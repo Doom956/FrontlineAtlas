@@ -476,8 +476,8 @@ troops/100 + buildings*50. AI-only games end with a winner in about 20-35 game m
 
 Personalities change weights: Warlord (attack early, armor heavy), Turtle (forts, artillery, counter-attacks),
 Merchant (cities, markets, ports, trade, alliances), Admiral (ports, warships, invasions), Balanced.
-Difficulty Easy/Normal/Hard sets the decision interval (`AI_DECISION_SECONDS` 4 / 3 / 2 s, staggered by id), how
-well they read the matchups and a small Hard income bonus. AIs act via `applyAction` only. Nothing scans the map:
+Difficulty (Easy / Normal / Hard / Brutal, see **Difficulty** below) sets the AI nations' economy, decision speed,
+how well they read the matchups and how they treat a human. AIs act via `applyAction` only. Nothing scans the map:
 each AI reads its **neighbourhood** (border lengths per neighbour, samples of the tiles on both sides of each
 border) built from its border set and cached for a few ticks; owned tiles are sampled in its bounding box, coasts
 and deposits come from territory's lists.
@@ -488,9 +488,8 @@ home reach a personal trigger share of the cap (`trigger`, 45-65%), sending ever
 25-42%), so a nation hovers near the growth peak; careful AIs top a war up toward odds 1.2 (send more, lose less).
 Targets: neighbours we outnumber enough (`strengthNeeded` by personality, much more while wilderness is left, less
 against traitors, grudges, runaway leaders and when attacked); no pile-on (a nation already attacked by two others is
-left alone unless it attacks us); tribes whenever we outnumber them 2:1 (they are food). A human nation that is not
-attacking us gets a head start: for the difficulty's `humanGrace` (Easy 8 min, Normal 6, Hard none) an AI wants
-x1.8 the strength before attacking it and never picks it as the "weakest neighbour" of a full bar. A boxed-in nation grows
+left alone unless it attacks us); tribes whenever we outnumber them 2:1 (they are food). How hard the AI nations go
+after a human depends on the difficulty (below). A boxed-in nation grows
 impatient (need falls 10% per idle minute) and one with a nearly full bar attacks its weakest neighbour rather than
 sit idle; boxed-in nations also land by sea. They build economy first, then military buildings by personality, keep
 an army mix that counters the main foe, research, ally with strong neighbours they fear, use bombers and missiles,
