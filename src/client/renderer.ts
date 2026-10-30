@@ -269,6 +269,16 @@ export class Renderer {
     return this.units.ownWarshipAt(sx, sy);
   }
 
+  /** Id of any unit drawn under a canvas point (CSS px), or -1 (hover cards). */
+  unitAt(sx: number, sy: number): number {
+    return this.units.unitAt(sx, sy);
+  }
+
+  /** Where a unit was drawn last frame (canvas CSS px), or null when off screen. */
+  unitScreen(id: number): { x: number; y: number } | null {
+    return this.units.screenOf(id);
+  }
+
   // ------------------------------------------------------------------ setup
 
   private currentSnap(state: GameState, ui: UiState): Snap | null {

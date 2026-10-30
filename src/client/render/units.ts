@@ -10,6 +10,7 @@ import type { GameState, Unit } from '../../sim/types';
 import type { Camera } from '../camera';
 import { clamp, css, formatCount, MAP_NUM_FAMILY, type RGB } from './common';
 import { drawTrails, GLYPHS, type Inst, strokeGlyphs } from './unitGlyphs';
+import { isIncoming } from '../forces';
 
 const HIST = 3;
 /** Paratroopers drifting down where a cargo plane arrived (client-only effect). */
@@ -43,6 +44,8 @@ export class UnitLayer {
   private w = 0;
   /** own warships drawn last frame: id, screen x, y, radius */
   private hits: number[] = [];
+  /** every unit drawn last frame: id, screen x, y, radius (hover cards for any unit) */
+  private allHits: number[] = [];
   /** cargo planes that reached their drop tile: where and when, for the parachutes */
   private drops: { x: number; y: number; owner: number; born: number }[] = [];
   private planes = new Map<number, { tx: number; ty: number; owner: number }>();
@@ -138,9 +141,34 @@ export class UnitLayer {
     return best;
   }
 
+  /** Id of any unit drawn under the screen point (the closest), or -1. */
+  unitAt(sx: number, sy: number): number {
+    let best = -1;
+    let bd = Infinity;
+    const h = this.allHits;
+    for (let k = 0; k < h.length; k += 4) {
+      const dx = h[k + 1] - sx;
+      const dy = h[k + 2] - sy;
+      const d = dx * dx + dy * dy;
+      if (d <= h[k + 3] * h[k + 3] && d < bd) {
+        bd = d;
+        best = h[k];
+      }
+    }
+    return best;
+  }
+
+  /** Where a unit was drawn last frame (screen px), or null when it was off screen. */
+  screenOf(id: number): { x: number; y: number } | null {
+    const h = this.allHits;
+    for (let k = 0; k < h.length; k += 4) if (h[k] === id) return { x: h[k + 1], y: h[k + 2] };
+    return null;
+  }
+
   draw(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, frac: number, colors: readonly RGB[], humanId: number, dpr: number, nowMs: number): void {
     this.drawn = 0;
     this.hits.length = 0;
+    this.allHits.length = 0;
     if (this.drops.length) this.drawDrops(ctx, cam, colors, nowMs);
     if (state.units.length === 0) return;
     const z = cam.zoom;
@@ -177,6 +205,7 @@ export class UnitLayer {
         moving = t.hn >= 2 && Math.abs(t.hx[0] - t.hx[1]) + Math.abs(t.hy[0] - t.hy[1]) > 1e-4;
       }
       visible.push({ u, type: u.type, x, y, S, angle, moving });
+      this.allHits.push(u.id, x, y, Math.max(10, S + 5));
     }
     drawTrails(ctx, visible, z >= 0.45);
     // glyphs: one dark under-stroke, one faint fill, one colour stroke (and solid cargo blocks) per owner
@@ -216,6 +245,23 @@ export class UnitLayer {
       ctx.lineWidth = ring ? 1.25 : 1.5;
       ctx.strokeStyle = 'rgba(255,255,255,0.75)';
       ctx.stroke();
+    }
+    // hostile transports, bombers, cargo planes and missiles coming at you: a thin red ring that breathes a little
+    if (me > 0) {
+      ctx.beginPath();
+      let any = false;
+      for (const e of visible) {
+        if (!isIncoming(state, me, e.u)) continue;
+        const r = e.S + 4;
+        ctx.moveTo(e.x + r, e.y);
+        ctx.arc(e.x, e.y, r, 0, Math.PI * 2);
+        any = true;
+      }
+      if (any) {
+        ctx.lineWidth = 1.25;
+        ctx.strokeStyle = `rgba(255,107,94,${(0.45 + 0.25 * Math.sin(nowMs / 260)).toFixed(3)})`;
+        ctx.stroke();
+      }
     }
     // transports: a small troop pill and, on cargo planes, a tiny parachute mark (mid and close zoom)
     if (z >= 2) {

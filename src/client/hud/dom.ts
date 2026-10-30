@@ -78,10 +78,18 @@ export function pct(v: number): string {
   return `${Math.round(v * 100)}%`;
 }
 
-export type DrawerId = 'army' | 'research' | 'diplomacy' | 'events' | 'legend' | 'building' | 'settings';
+export type DrawerId = 'army' | 'forces' | 'research' | 'diplomacy' | 'events' | 'legend' | 'building' | 'settings';
+
+/** The renderer's unit hit test (canvas CSS px), so cards can tell which unit is under the pointer. */
+export interface UnitProbe {
+  unitAt(sx: number, sy: number): number;
+  unitScreen(id: number): { x: number; y: number } | null;
+}
 
 /** What every HUD part can reach. */
 export interface HudCtx {
+  /** the renderer's unit hit test (null until main wires it in) */
+  probe(): UnitProbe | null;
   ui: UiState;
   dispatch: Dispatch;
   camera: Camera;

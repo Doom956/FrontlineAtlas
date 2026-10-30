@@ -5,10 +5,11 @@ import { buildSeconds, unitAllowed } from '../../sim/rules';
 import { buildingAt, fortMultiplierAt } from '../../sim/buildings';
 import { borders, estimateAttack, supplyEfficiency } from '../../sim/combat';
 import type { AttackEstimate } from '../../sim/combat';
-import { BUILDINGS, TERRAIN } from '../../sim/config';
+import { BUILDINGS, TERRAIN, UNITS } from '../../sim/config';
 import { armyTotal } from '../../sim/economy';
 import { isWater } from '../../sim/types';
-import type { GameState, Player, TerrainId } from '../../sim/types';
+import type { GameState, Player, TerrainId, Unit } from '../../sim/types';
+import { hpText, isIncoming, UNIT_TEXT, unitDoing, unitIcon, unitName, type SpecialId } from '../forces';
 import { isTribe, outnumberRatio } from '../compat';
 import { isAttackable, troopsToSend, troopSum } from '../input';
 import { swatchCss } from './swatch';
@@ -51,10 +52,15 @@ export class MapTooltip {
       this.key = '';
       return;
     }
-    const key = `${tile}|${ui.attackShare}|${ui.attackMixMode}|${ui.mode.kind}|${ui.mode.kind === 'build' ? ui.mode.building : ''}`;
+    // any unit under the pointer (yours or not) gets its own card while no order is being aimed
+    const probe = this.ctx.probe();
+    const uid = ui.mode.kind === 'none' && probe && ui.hoverPx ? probe.unitAt(ui.hoverPx.x, ui.hoverPx.y) : -1;
+    const unit = uid >= 0 ? state.units.find((u) => u.id === uid && u.hp > 0) : undefined;
+    const key = `${tile}|${unit ? unit.id : -1}|${ui.attackShare}|${ui.attackMixMode}|${ui.mode.kind}|${ui.mode.kind === 'build' ? ui.mode.building : ''}`;
     if (force || key !== this.key) {
       this.key = key;
-      if (ui.mode.kind === 'build' && state.phase === 'playing') this.buildPreview(state, me, ui.mode.building, tile);
+      if (unit) this.unitCard(state, me, unit);
+      else if (ui.mode.kind === 'build' && state.phase === 'playing') this.buildPreview(state, me, ui.mode.building, tile);
       else if (strikeOfMode(ui.mode) && state.phase === 'playing') this.strikePreview(state, me, tile);
       else this.tileCard(state, me, tile);
     }
@@ -142,6 +148,35 @@ export class MapTooltip {
       this.odds.textContent = odds.text;
     }
     setVisible(this.odds, !!odds);
+  }
+
+  /** A unit under the pointer: what it is, whose, its hull, what it carries and what it is doing. */
+  private unitCard(state: GameState, me: Player, u: Unit): void {
+    const own = u.owner === me.id;
+    const op = state.players[u.owner];
+    let pic = '';
+    try {
+      pic = `<img src="${iconDataUrl(unitIcon(u.type), 22)}" width="22" height="22" alt="">`;
+    } catch {
+      /* no canvas */
+    }
+    const rows: HTMLElement[] = [];
+    const who = own ? 'Yours' : op ? `${op.name}, ${relationOf(state, me, u.owner).text.toLowerCase()}` : 'Unknown';
+    const head = this.line(pic, unitName(u), who, 'head');
+    if (op && !own) {
+      const sw = el('span', 'sw');
+      sw.style.background = swatchCss(op, me.id);
+      head.querySelector('.mt-main')?.prepend(sw);
+    }
+    rows.push(head);
+    if (UNITS[u.type].hp > 1) rows.push(this.line('', `Hull ${hpText(u)}`, u.type === 'warship' ? 'Hit by enemy warships only' : '', 'own'));
+    const incoming = isIncoming(state, me.id, u);
+    rows.push(el('div', incoming ? 'mt-warn' : 'mt-doing', (incoming ? 'Coming at you: ' : '') + unitDoing(state, me, u)));
+    const t = u.type === 'transportPlane' ? 'transportPlane' : u.type;
+    if (t in UNIT_TEXT) rows.push(el('div', 'mt-hint', own && u.type === 'warship' ? 'Click to select it, then click water to move it.' : UNIT_TEXT[t as SpecialId].counter));
+    this.card.className = 'mtip unit' + (incoming ? ' incoming' : '');
+    this.card.replaceChildren(...rows);
+    setVisible(this.odds, false);
   }
 
   /** Odds badge: outnumbering against a nation (exact with intel), how far troops reach in the wilderness. */

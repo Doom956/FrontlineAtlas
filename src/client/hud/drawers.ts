@@ -61,7 +61,7 @@ export interface DrawerPage {
 }
 
 /** Segmented two-choice control. */
-function seg2(a: string, b: string, onA: () => void, onB: () => void): { el: HTMLElement; set: (first: boolean) => void } {
+export function seg2(a: string, b: string, onA: () => void, onB: () => void): { el: HTMLElement; set: (first: boolean) => void } {
   const g = el('div', 'segc');
   const ba = el('button', 'segc-b', a);
   const bb = el('button', 'segc-b', b);
@@ -101,7 +101,7 @@ function mixBar(): { el: HTMLElement; set: (t: Troops) => void } {
 
 export class ArmyPage implements DrawerPage {
   id: DrawerId = 'army';
-  title = 'Forces';
+  title = 'Army';
   root = el('div', 'page');
   private upd: ((s: GameState, me: Player) => void)[] = [];
   private attackRows = new Map<number, { root: HTMLElement; target: HTMLElement; troops: HTMLElement; prog: HTMLElement }>();
@@ -335,75 +335,10 @@ export class ArmyPage implements DrawerPage {
       );
     });
 
-    // strikes: the same five as the command bar, each with its state in plain words
-    const air = el('div', 'air');
-    air.append(sectionTitle('Strikes'));
-    const rows = STRIKE_ORDER.map((id) => {
-      const info = STRIKES[id];
-      const b = btn(info.name, 'wide strike-row', () => {
-        const st = ctx.state();
-        const me = ctx.me();
-        if (!st || !me) return;
-        const why = aimStrike(st, me, ui, id);
-        if (why) ctx.toast(`${info.name}: ${why}`, 'info');
-        else ctx.closeDrawer();
-      });
-      b.dataset.test = `ability-${id}`;
-      try {
-        const img = el('img', 'sr-ic');
-        img.alt = '';
-        img.width = 18;
-        img.height = 18;
-        img.src = iconDataUrl(info.icon, 18);
-        b.prepend(img);
-      } catch {
-        /* no canvas */
-      }
-      b.append(keycap(info.key));
-      const note = el('p', 'note');
-      air.append(b, note);
-      return { id, b, note };
-    });
-    const fields = el('div', 'rows');
-    air.append(fields);
-    this.root.append(air);
-    let fieldKey = '';
-    this.upd.push((s, me) => {
-      const myFields = [...s.buildings.values()].filter((b) => b.owner === me.id && b.type === 'airfield');
-      for (const r of rows) {
-        const st = strikeStatus(s, me, r.id);
-        setVisible(r.b, st.allowed);
-        setVisible(r.note, st.allowed);
-        setClass(r.b, 'dim', st.state !== 'ready');
-        setText(r.note, `${st.line}.`.replace(/\.\.$/, '.'));
-        setTip(r.b, `${STRIKES[r.id].what}\n${STRIKES[r.id].counter}`);
-      }
-      const key = myFields.map((b) => `${b.id}:${b.bombers}:${b.fighters}:${b.buildLeft > 0}`).join(',');
-      if (key !== fieldKey) {
-        fieldKey = key;
-        fields.replaceChildren();
-        myFields.slice(0, 6).forEach((b, k) => fields.append(this.airfieldRow(b, k)));
-      }
-    });
-  }
-
-  private airfieldRow(b: Building, k: number): HTMLElement {
-    const ctx = this.ctx;
-    const r = el('div', 'frow');
-    const name = el('button', 'frow-t', `Airfield ${k + 1}`);
-    name.type = 'button';
-    name.addEventListener('click', () => ctx.focusTile(b.tile, true));
-    const counts = el('span', 'frow-n', b.buildLeft > 0 ? 'Being built' : `${b.bombers} bombers, ${b.fighters} fighters`);
-    r.append(iconSpan(worldGlyph('airfield', 18), 'ico'), name, counts);
-    if (b.buildLeft <= 0) {
-      for (const kind of ['bomber', 'fighter'] as const) {
-        const u = UNITS[kind];
-        const add = btn(`+${kind === 'bomber' ? 'B' : 'F'}`, 'mini', () => ctx.act({ type: 'buildAircraft', airfield: b.tile, kind }));
-        add.dataset.tip = `Build a ${u.name}: ${formatCount(u.gold)} gold, ${u.iron} iron, ${u.oil} oil (room for ${aircraftCap(b)} aircraft)`;
-        r.append(add);
-      }
-    }
-    return r;
+    // special units (warships, aircraft, missiles) and their strikes are in the Forces drawer (Y)
+    const fwd = btn('Warships, aircraft, missiles: Forces (Y)', 'wide ghost', () => ctx.openDrawer('forces'), 'forces');
+    fwd.dataset.test = 'army-to-forces';
+    this.root.append(fwd);
   }
 
   update(s: GameState, me: Player): void {
@@ -411,117 +346,7 @@ export class ArmyPage implements DrawerPage {
   }
 }
 
-// ================================================================================================ Research
-
-/** Buildings each tech unlocks. */
-const UNLOCKS: Partial<Record<TechId, BuildingType[]>> = {};
-for (const b of Object.keys(BUILDINGS) as BuildingType[]) {
-  const t = BUILDINGS[b].tech;
-  if (t) (UNLOCKS[t] ??= []).push(b);
-}
-
-export class ResearchPage implements DrawerPage {
-  id: DrawerId = 'research';
-  title = 'Research';
-  root = el('div', 'page');
-  private upd: ((s: GameState, me: Player) => void)[] = [];
-
-  constructor(private ctx: HudCtx) {
-    const big = el('div', 'big-read');
-    const bv = el('span', 'big-v');
-    const bl = el('span', 'big-l');
-    big.append(bv, bl);
-    const bar = el('div', 'pbar');
-    const fill = el('span');
-    bar.append(fill);
-    const autoSeg = seg2(
-      'Auto',
-      'Manual',
-      () => ctx.act({ type: 'setAuto', research: true }),
-      () => ctx.act({ type: 'setAuto', research: false }),
-    );
-    autoSeg.el.dataset.test = 'auto-research';
-    const note = el('p', 'note');
-    this.root.append(big, bar, autoSeg.el, note);
-    this.upd.push((s, me) => {
-      const rule = researchRule(s);
-      for (const x of [big, bar, autoSeg.el]) setVisible(x, !rule);
-      const cur = me.researching ? TECHS[me.researching] : null;
-      if (cur) {
-        setText(bv, cur.name);
-        setText(bl, `${pct(me.researchProgress / cur.science)}  +${me.income.science.toFixed(1)} science/s`);
-        fill.style.width = pct(Math.min(1, me.researchProgress / cur.science));
-      } else {
-        setText(bv, formatCount(me.science));
-        setText(bl, `science stored  +${me.income.science.toFixed(1)}/s`);
-        fill.style.width = '0%';
-      }
-      autoSeg.set(!!me.auto.research);
-      setText(note, rule ? `${rule}.` : me.auto.research ? 'The next useful tech starts by itself. Picking one switches this to Manual.' : 'Pick a tech: it costs gold to start and science to finish.');
-    });
-    const maxTier = Math.max(...TECH_ORDER.map((t) => TECHS[t].tier));
-    for (let tier = 1; tier <= maxTier; tier++) {
-      this.root.append(sectionTitle(`Tier ${tier}`));
-      for (const t of TECH_ORDER.filter((x) => TECHS[x].tier === tier)) this.root.append(this.techRow(t));
-    }
-  }
-
-  private techRow(t: TechId): HTMLElement {
-    const info = TECHS[t];
-    const card = el('button', 'tech');
-    card.type = 'button';
-    card.dataset.test = `tech-${t}`;
-    const top = el('div', 'tech-top');
-    const name = el('span', 'tech-n', info.name);
-    const st = el('span', 'tech-s');
-    top.append(name, st);
-    const desc = el('div', 'tech-d', info.description);
-    card.append(top, desc);
-    const unlocks = UNLOCKS[t];
-    if (unlocks) {
-      const u = el('div', 'tech-u');
-      for (const b of unlocks) u.append(iconSpan(worldGlyph(b, 14), 'ico'), el('span', '', BUILDINGS[b].name));
-      card.append(u);
-    }
-    const bar = el('div', 'pbar thin');
-    const fill = el('span');
-    bar.append(fill);
-    card.append(bar);
-    card.addEventListener('click', () => this.ctx.act({ type: 'research', tech: t }));
-    this.upd.push((s, me) => {
-      const done = hasTech(me, t);
-      const active = me.researching === t;
-      const missing = info.requires.filter((r) => !hasTech(me, r));
-      let cls = 'avail';
-      let text = `${formatCount(info.gold)} gold  ${formatCount(info.science)} sci`;
-      if (done) {
-        cls = 'done';
-        text = 'Done';
-      } else if (active) {
-        cls = 'active';
-        text = pct(me.researchProgress / info.science);
-      } else if (researchRule(s)) {
-        cls = 'locked';
-        text = 'Off';
-      } else if (missing.length) {
-        cls = 'locked';
-        text = `After ${missing.map((r) => TECHS[r].name).join(' + ')}`;
-      }
-      card.className = 'tech ' + cls;
-      setText(st, text);
-      setVisible(bar, active);
-      if (active) fill.style.width = pct(me.researchProgress / info.science);
-      const r = canResearch(s, me.id, t);
-      card.disabled = done || active || !r.ok;
-      setTip(card, r.ok ? (me.researching ? `Start ${info.name} (replaces ${TECHS[me.researching].name}; its progress is lost)` : `Start ${info.name}`) : r.reason ?? '');
-    });
-    return card;
-  }
-
-  update(s: GameState, me: Player): void {
-    for (const f of this.upd) f(s, me);
-  }
-}
+export { ResearchPage } from './researchTree';
 
 // ================================================================================================ Diplomacy
 
