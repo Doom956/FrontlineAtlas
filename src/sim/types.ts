@@ -83,7 +83,7 @@ export type UnitType =
 
 export type MapType = 'continents' | 'pangaea' | 'archipelago' | 'highlands';
 export type MapSize = 'small' | 'medium' | 'large' | 'huge';
-export type Difficulty = 'easy' | 'normal' | 'hard';
+export type Difficulty = 'easy' | 'normal' | 'hard' | 'brutal';
 export type Personality = 'warlord' | 'turtle' | 'merchant' | 'admiral' | 'balanced' | 'tribe';
 
 export type GameMode = 'ffa' | 'teams';

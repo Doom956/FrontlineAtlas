@@ -26,7 +26,7 @@ import type {
 
 export const MAP_TYPE_LIST: readonly MapType[] = ['continents', 'pangaea', 'archipelago', 'highlands'];
 export const MAP_SIZE_LIST: readonly MapSize[] = ['small', 'medium', 'large', 'huge'];
-export const DIFFICULTY_LIST: readonly Difficulty[] = ['easy', 'normal', 'hard'];
+export const DIFFICULTY_LIST: readonly Difficulty[] = ['easy', 'normal', 'hard', 'brutal'];
 export const MODE_LIST: readonly GameMode[] = ['ffa', 'teams'];
 export const MIN_TEAMS = 2;
 export const MAX_TEAMS = 6;

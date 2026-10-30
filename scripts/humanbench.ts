@@ -10,7 +10,7 @@
 // Usage: npx vite-node scripts/humanbench.ts -- [options]
 //   --maps medium,world:world    generated sizes (continents type) and/or world:<id>   (default: medium,world:world)
 //   --types continents           generated map types, game k uses type k mod the list   (default: continents)
-//   --difficulty easy,normal,hard                                                         (default: all)
+//   --difficulty easy,normal,hard,brutal                                                  (default: all)
 //   --seeds 6 --start 1          seeds per map x difficulty                               (default: 6 from 1)
 //   --minutes 30                 game-minute cap                                          (default: 30)
 //   --jobs 4                     worker processes                                         (default: 4)
@@ -374,7 +374,7 @@ function parseOptions(argv: string[]): Options {
   const o: Options = {
     maps: ['medium', 'world:world'],
     types: ['continents'],
-    difficulties: ['easy', 'normal', 'hard'],
+    difficulties: ['easy', 'normal', 'hard', 'brutal'],
     seeds: 6,
     start: 1,
     minutes: 30,

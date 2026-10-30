@@ -560,16 +560,17 @@ export const RULES_TEXT = {
 } as const;
 
 /** Seconds between two decisions of an AI nation, by difficulty. */
-export const AI_DECISION_SECONDS: Record<Difficulty, number> = { easy: 5, normal: 3, hard: 2 };
-/** Hard AI nations (and tribes) earn this much more gold, iron and oil, and grow troops half as much more. */
+export const AI_DECISION_SECONDS: Record<Difficulty, number> = { easy: 5, normal: 3, hard: 2, brutal: 1.5 };
+/** Hard AI players (nations and tribes) earn this much more gold, iron and oil, and grow troops half as much more. */
 export const AI_HARD_INCOME_BONUS = 0.15;
 /**
  * Economy of the AI by difficulty: troop growth, income (gold, iron, oil) and troop cap of AI nations x these. Easy
- * and Normal slow the AI nations only (tribes stay as they are: they are food); Hard keeps its bonus for every AI
- * player. The human's economy never changes.
+ * and Normal slow the AI nations only (tribes stay as they are: they are food); Hard and Brutal boost every AI player
+ * (tribes too). The human's economy never changes.
  */
 export const AI_ECONOMY: Record<Difficulty, { growth: number; income: number; cap: number }> = {
-  easy: { growth: 0.7, income: 0.7, cap: 0.6 },
+  easy: { growth: 0.7, income: 0.7, cap: 0.7 },
   normal: { growth: 0.88, income: 0.88, cap: 0.9 },
   hard: { growth: 1 + AI_HARD_INCOME_BONUS * 0.5, income: 1 + AI_HARD_INCOME_BONUS, cap: 1 },
+  brutal: { growth: 1.15, income: 1.3, cap: 1.1 },
 };

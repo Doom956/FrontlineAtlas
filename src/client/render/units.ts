@@ -1,32 +1,28 @@
-// Mobile units on the map (ships, planes, missiles): literal pictures from icons.ts, tinted in the owner's colour
-// with a white halo and a dark drop shadow, rotated to their heading and interpolated between ticks. At least
-// MIN_PX on screen at any zoom (bigger when zoomed in), a wake behind ships and a contrail behind planes and missiles,
-// a troop pill on transports, a ring around your own warships (they can be clicked to give orders).
+// Mobile units on the map (ships, planes, missiles) as minimal line glyphs (unitGlyphs.ts): a thin stroke in the
+// owner's colour over a dark under-stroke, rotated to the heading and interpolated between ticks. Small and uniform
+// (about 9-14 px) so many units in one area stay readable; short fading wakes and contrails, a small troop pill on
+// transports, a thin ring around your own warships (they can be clicked to give orders, the hit area is larger than
+// the drawing). At far zoom units on the same pixel are drawn once and trails are dropped.
 import { TICKS_PER_SECOND } from '../../sim/config';
 import { armyTotal } from '../../sim/economy';
-import type { GameState, Unit, UnitType } from '../../sim/types';
+import type { GameState, Unit } from '../../sim/types';
 import type { Camera } from '../camera';
-import { iconCanvas, iconSilhouette } from '../icons';
-import { clamp, css, formatCount, pill, type RGB } from './common';
+import { clamp, css, formatCount, MAP_NUM_FAMILY, type RGB } from './common';
+import { addGlyph, GLYPHS } from './unitGlyphs';
 
 const HIST = 8;
-/** Length on the map in tiles, and the smallest size on screen (CSS px). */
-const LEN: Record<UnitType, { tiles: number; min: number }> = {
-  transport: { tiles: 3.4, min: 32 },
-  warship: { tiles: 4.2, min: 36 },
-  tradeShip: { tiles: 3.6, min: 30 },
-  bomber: { tiles: 4, min: 36 },
-  fighter: { tiles: 2.8, min: 28 },
-  rocket: { tiles: 2.6, min: 26 },
-  atomBomb: { tiles: 3.2, min: 32 },
-  transportPlane: { tiles: 4, min: 36 },
-};
+/** Trail segments drawn (of the HIST recorded positions). */
+const TRAIL_STEPS = 4;
 /** Paratroopers drifting down where a cargo plane arrived (client-only effect). */
 const DROP_MS = 1800;
 const CHUTES = 6;
-const MAX_PX = 96;
-/** Sprite resolutions (CSS px); a unit uses the smallest one at least as big as it is drawn. */
-const BUCKETS = [24, 40, 64, 96];
+const UNDER = 'rgba(6,9,15,0.6)';
+
+/** Base glyph length on screen (CSS px) at a zoom level; each glyph scales it a little (unitGlyphs.ts). */
+const glyphPx = (z: number): number => clamp(8 + z * 2.2, 9, 14);
+const strokePx = (z: number): number => clamp(1.3 + z * 0.3, 1.5, 2.5);
+
+type Vis = { u: Unit; t: Track | undefined; x: number; y: number; S: number; angle: number };
 
 interface Track {
   px: number;
@@ -150,18 +146,24 @@ export class UnitLayer {
     const ox = cam.viewW / 2 - cam.x * z;
     const oy = cam.viewH / 2 - cam.y * z;
     const me = humanId;
-    // Pass 1: trails (batched per age step), pass 2: shadows + sprites, pass 3: pills.
-    const visible: { u: Unit; t: Track | undefined; x: number; y: number; size: number; angle: number }[] = [];
+    const base = glyphPx(z);
+    const visible: Vis[] = [];
+    const taken = new Set<number>();
     for (const u of state.units) {
       const t = this.tracks.get(u.id);
       const ux = t ? t.px + (t.cx - t.px) * frac : u.x;
       const uy = t ? t.py + (t.cy - t.py) * frac : u.y;
       const x = ox + (ux + 0.5) * z;
       const y = oy + (uy + 0.5) * z;
-      const L = LEN[u.type];
-      // at least ~16 px on the whole-map view, the full minimum from mid zoom on
-      const size = clamp(L.tiles * z, z < 1.5 ? Math.max(18, L.min * 0.66) : L.min, MAX_PX);
-      if (x < -size * 3 || y < -size * 3 || x > cam.viewW + size * 3 || y > cam.viewH + size * 3) continue;
+      const S = (base * GLYPHS[u.type].len) / 2;
+      if (x < -40 || y < -40 || x > cam.viewW + 40 || y > cam.viewH + 40) continue;
+      const own = me > 0 && u.owner === me;
+      // far out, units less than a pixel apart are drawn once (your own and the cargo carriers always)
+      if (z < 1 && !own && u.type !== 'transport' && u.type !== 'transportPlane') {
+        const key = (Math.floor(x) + 64) * 16384 + Math.floor(y) + 64;
+        if (taken.has(key)) continue;
+        taken.add(key);
+      }
       let angle = 0;
       if (t) {
         // ease the drawn heading toward the real one (no snapping on path corners)
@@ -171,40 +173,55 @@ export class UnitLayer {
         t.shown += d * 0.25;
         angle = t.shown;
       }
-      visible.push({ u, t, x, y, size, angle });
+      visible.push({ u, t, x, y, S, angle });
     }
-    this.drawTrails(ctx, visible, ox, oy, z, frac);
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'medium';
+    if (z >= 0.45) this.drawTrails(ctx, visible, ox, oy, z, frac);
+    // glyphs: one dark under-stroke, one faint fill and one colour stroke per owner
+    const lw = strokePx(z);
+    const byOwner = new Map<number, Vis[]>();
     for (const e of visible) {
-      const { u, x, y, size, angle } = e;
-      const c = colors[u.owner] ?? [200, 200, 200];
-      const bucket = BUCKETS.find((b) => b >= size) ?? BUCKETS[BUCKETS.length - 1];
-      const cos = Math.cos(angle);
-      const sin = Math.sin(angle);
-      const half = size / 2;
-      const off = Math.max(1.5, size * 0.07);
-      // own warships: a subtle ring, and they are clickable
-      if (me > 0 && u.owner === me && u.type === 'warship') {
-        ctx.beginPath();
-        ctx.arc(x, y, half * 0.82, 0, Math.PI * 2);
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-        ctx.setLineDash([4, 3]);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        this.hits.push(u.id, x, y, Math.max(14, half));
-      }
-      ctx.setTransform(dpr * cos, dpr * sin, -dpr * sin, dpr * cos, dpr * (x + off * 0.6), dpr * (y + off));
-      ctx.globalAlpha = 0.42;
-      ctx.drawImage(iconSilhouette(u.type, bucket, '#05070b', { dpr }), -half, -half, size, size);
-      ctx.globalAlpha = 1;
-      ctx.setTransform(dpr * cos, dpr * sin, -dpr * sin, dpr * cos, dpr * x, dpr * y);
-      ctx.drawImage(iconCanvas(u.type, bucket, { tint: c, outline: true, dpr }), -half, -half, size, size);
-      this.drawn++;
+      const l = byOwner.get(e.u.owner);
+      if (l) l.push(e);
+      else byOwner.set(e.u.owner, [e]);
     }
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // troop pills on transports
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    for (const [owner, list] of byOwner) {
+      const c = colors[owner] ?? [200, 200, 200];
+      for (let pass = 0; pass < 3; pass++) {
+        ctx.beginPath();
+        for (const e of list) addGlyph(ctx, GLYPHS[e.u.type], e.x, e.y, Math.cos(e.angle), Math.sin(e.angle), e.S, pass === 1);
+        if (pass === 0) {
+          ctx.lineWidth = lw + 1.6;
+          ctx.strokeStyle = UNDER;
+          ctx.stroke();
+        } else if (pass === 1) {
+          ctx.fillStyle = css(c, 0.22);
+          ctx.fill();
+        } else {
+          ctx.lineWidth = lw;
+          ctx.strokeStyle = css(c);
+          ctx.stroke();
+        }
+      }
+      this.drawn += list.length;
+    }
+    // own warships: a thin ring, and they are clickable (hit area larger than the drawing)
+    if (me > 0) {
+      ctx.beginPath();
+      for (const e of visible) {
+        if (e.u.owner !== me || e.u.type !== 'warship') continue;
+        ctx.moveTo(e.x + e.S + 3, e.y);
+        ctx.arc(e.x, e.y, e.S + 3, 0, Math.PI * 2);
+        this.hits.push(e.u.id, e.x, e.y, Math.max(14, e.S + 6));
+      }
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+      ctx.stroke();
+    }
+    // small troop pills on transports
     if (z >= 0.9) {
       for (const e of visible) {
         const u = e.u;
@@ -213,16 +230,18 @@ export class UnitLayer {
         const n = formatCount(armyTotal(u.troops));
         const toMe = me > 0 && u.owner !== me && state.map.owner[u.target] === me;
         const edge = u.owner === me ? '#ffe98a' : toMe ? '#ff6b5e' : css(colors[u.owner] ?? [200, 200, 200]);
-        pill(ctx, e.x, e.y - e.size * 0.62 - 9, n, edge, u.owner === me ? 'up' : toMe ? 'down' : 'none');
+        miniPill(ctx, e.x, e.y - e.S - 8, n, edge, u.owner === me ? 'up' : toMe ? 'down' : 'none');
       }
     }
-    void nowMs;
+    void dpr;
   }
 
-  /** Parachutes drifting down around a drop point, in the owner's colour. */
+  /** Parachutes drifting down around a drop point: line canopies in the owner's colour. */
   private drawDrops(ctx: CanvasRenderingContext2D, cam: Camera, colors: readonly RGB[], nowMs: number): void {
     const z = cam.zoom;
     let keep = 0;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     for (const d of this.drops) {
       const t = (nowMs - d.born) / DROP_MS;
       if (t >= 1) continue;
@@ -231,50 +250,38 @@ export class UnitLayer {
       const spread = Math.max(10, z * 2.4);
       if (c.x < -spread * 3 || c.y < -spread * 3 || c.x > cam.viewW + spread * 3 || c.y > cam.viewH + spread * 3) continue;
       const col = colors[d.owner] ?? [220, 220, 220];
-      const size = clamp(z * 1.1, 7, 15);
+      const size = clamp(z * 0.6, 5, 9);
       ctx.globalAlpha = t < 0.75 ? 1 : 1 - (t - 0.75) / 0.25;
-      for (let k = 0; k < CHUTES; k++) {
-        const a = (k / CHUTES) * Math.PI * 2 + d.born * 0.001;
-        const r = spread * (0.35 + 0.65 * ((k * 37) % 10) / 10);
-        // fall from above onto the ground, swaying a little
-        const x = c.x + Math.cos(a) * r + Math.sin(t * 6 + k) * size * 0.25;
-        const y = c.y + Math.sin(a) * r * 0.6 - (1 - t) * spread * 1.6;
-        const s = size * (1 - 0.35 * t);
+      for (const pass of [0, 1]) {
         ctx.beginPath();
-        ctx.arc(x, y - s * 0.55, s * 0.6, Math.PI, 0);
-        ctx.closePath();
-        ctx.fillStyle = '#f1ede2';
-        ctx.fill();
-        ctx.lineWidth = 1.2;
-        ctx.strokeStyle = css(col);
+        for (let k = 0; k < CHUTES; k++) {
+          const a = (k / CHUTES) * Math.PI * 2 + d.born * 0.001;
+          const r = spread * (0.35 + 0.65 * ((k * 37) % 10) / 10);
+          // fall from above onto the ground, swaying a little
+          const x = c.x + Math.cos(a) * r + Math.sin(t * 6 + k) * size * 0.25;
+          const y = c.y + Math.sin(a) * r * 0.6 - (1 - t) * spread * 1.6;
+          const s = size * (1 - 0.3 * t);
+          ctx.moveTo(x + s * 0.6, y - s * 0.5);
+          ctx.arc(x, y - s * 0.5, s * 0.6, 0, Math.PI, true);
+          ctx.moveTo(x - s * 0.6, y - s * 0.5);
+          ctx.lineTo(x, y + s * 0.4);
+          ctx.lineTo(x + s * 0.6, y - s * 0.5);
+        }
+        ctx.lineWidth = pass === 0 ? 3 : 1.4;
+        ctx.strokeStyle = pass === 0 ? UNDER : css(col);
         ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(x - s * 0.58, y - s * 0.55);
-        ctx.lineTo(x, y + s * 0.25);
-        ctx.lineTo(x + s * 0.58, y - s * 0.55);
-        ctx.lineWidth = 0.8;
-        ctx.strokeStyle = 'rgba(20,22,26,0.8)';
-        ctx.stroke();
-        ctx.fillStyle = css(col);
-        ctx.fillRect(x - s * 0.13, y + s * 0.15, s * 0.26, s * 0.34);
       }
     }
     this.drops.length = keep;
     ctx.globalAlpha = 1;
   }
 
-  /** Wakes behind ships and contrails behind aircraft and missiles: one stroke per age step for all units. */
-  private drawTrails(
-    ctx: CanvasRenderingContext2D,
-    visible: { u: Unit; t: Track | undefined; x: number; y: number; size: number; angle: number }[],
-    ox: number,
-    oy: number,
-    z: number,
-    frac: number,
-  ): void {
-    const steps = HIST - 1;
+  /** Short thin fading wakes behind ships and contrails behind aircraft and missiles: one stroke per age step. */
+  private drawTrails(ctx: CanvasRenderingContext2D, visible: Vis[], ox: number, oy: number, z: number, frac: number): void {
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 1;
     for (const ship of [true, false]) {
-      for (let k = 0; k < steps; k++) {
+      for (let k = 0; k < TRAIL_STEPS; k++) {
         ctx.beginPath();
         let any = false;
         for (const e of visible) {
@@ -293,37 +300,40 @@ export class UnitLayer {
           any = true;
         }
         if (!any) continue;
-        const fade = 1 - (k + frac * 0.5) / steps;
-        ctx.lineCap = 'round';
-        if (ship) {
-          ctx.lineWidth = clamp(z * 0.9, 3, 9) * (0.6 + 0.4 * fade);
-          ctx.strokeStyle = `rgba(225,240,255,${0.32 * fade})`;
-        } else {
-          ctx.lineWidth = clamp(z * 0.35, 1.5, 3.5);
-          ctx.strokeStyle = `rgba(255,255,255,${0.5 * fade})`;
-        }
+        const fade = 1 - (k + frac * 0.5) / TRAIL_STEPS;
+        ctx.strokeStyle = ship ? `rgba(235,245,255,${0.4 * fade})` : `rgba(255,255,255,${0.5 * fade})`;
         ctx.stroke();
       }
     }
-    // ship bow waves: a V opening behind each moving ship
+  }
+}
+
+/** Small rounded label with a coloured edge for troop counts; `arrow` marks your own push (up) / an incoming one (down). */
+function miniPill(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, edge: string, arrow: 'up' | 'down' | 'none'): void {
+  ctx.font = `500 9px ${MAP_NUM_FAMILY}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const ax = arrow === 'none' ? 0 : 7;
+  const bw = ctx.measureText(text).width + 8 + ax;
+  const bh = 12;
+  const x0 = x - bw / 2;
+  ctx.beginPath();
+  ctx.roundRect(x0, y - bh / 2, bw, bh, 6);
+  ctx.fillStyle = 'rgba(10,13,21,0.8)';
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = edge;
+  ctx.stroke();
+  if (arrow !== 'none') {
+    const cx = x0 + 7;
+    const d = arrow === 'up' ? -1 : 1;
     ctx.beginPath();
-    for (const e of visible) {
-      const u = e.u;
-      if (u.type !== 'transport' && u.type !== 'warship' && u.type !== 'tradeShip') continue;
-      const t = e.t;
-      if (!t || (t.cx === t.px && t.cy === t.py)) continue;
-      const c = Math.cos(e.angle);
-      const s = Math.sin(e.angle);
-      const L = e.size * 0.5;
-      const bx = e.x + c * L * 0.7;
-      const by = e.y + s * L * 0.7;
-      for (const side of [-1, 1]) {
-        ctx.moveTo(bx, by);
-        ctx.lineTo(e.x - c * L * 1.5 - s * side * L * 0.55, e.y - s * L * 1.5 + c * side * L * 0.55);
-      }
-    }
-    ctx.lineWidth = 1.3;
-    ctx.strokeStyle = 'rgba(235,245,255,0.38)';
+    ctx.moveTo(cx - 2.5, y - d * 1.5);
+    ctx.lineTo(cx, y + d * 1.5);
+    ctx.lineTo(cx + 2.5, y - d * 1.5);
+    ctx.lineWidth = 1.4;
     ctx.stroke();
   }
+  ctx.fillStyle = '#fff';
+  ctx.fillText(text, x + ax / 2, y + 0.5);
 }

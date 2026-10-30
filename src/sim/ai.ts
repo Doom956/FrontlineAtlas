@@ -226,7 +226,7 @@ export interface DifficultyProfile {
 /** Game seconds counted as 'early' for DifficultyProfile.humanWarsEarly. */
 const HUMAN_EARLY_SECONDS = 600;
 /** A nation that attacked a human within this many seconds still counts as at war with it (attacks stop and restart). */
-const HUMAN_WAR_MEMORY_SECONDS = 60;
+const HUMAN_WAR_MEMORY_SECONDS = 90;
 /** Game seconds during which AIs accept a human's alliance only out of opinion (no fear or timid alliances). */
 const EARLY_ALLY_SECONDS = 180;
 /**
@@ -279,6 +279,23 @@ export const DIFFICULTY: Readonly<Record<Difficulty, Readonly<DifficultyProfile>
     humanGrace: 0,
     humanRestraint: 1,
     humanNeed: 1,
+    humanWarsEarly: Infinity,
+    humanWarsLate: Infinity,
+    humanForceCap: Infinity,
+    humanPause: 1,
+    counterHumans: true,
+  },
+  brutal: {
+    noise: 0.02,
+    shareScale: 1.2,
+    samples: 10,
+    careful: true,
+    nukes: true,
+    coordinate: true,
+    spawnTries: 150,
+    humanGrace: 0,
+    humanRestraint: 1,
+    humanNeed: 0.9,
     humanWarsEarly: Infinity,
     humanWarsLate: Infinity,
     humanForceCap: Infinity,
@@ -689,7 +706,7 @@ function landShare(state: GameState, q: number): number {
 /** Called every tick; nations decide every AI_DECISION_SECONDS, tribes every 4-8 s, all staggered by id. */
 export function updateAI(state: GameState): void {
   if (state.phase !== 'playing') return;
-  const interval = Math.max(1, Math.round((AI_DECISION_SECONDS[state.settings.difficulty] ?? 3) * TICKS_PER_SECOND));
+  const interval = Math.max(1, Math.round((AI_DECISION_SECONDS[state.settings.difficulty] ?? AI_DECISION_SECONDS.normal) * TICKS_PER_SECOND));
   const tribeLo = Math.round(TRIBE_DECISION_SECONDS[0] * TICKS_PER_SECOND);
   const tribeSpan = Math.round((TRIBE_DECISION_SECONDS[1] - TRIBE_DECISION_SECONDS[0]) * TICKS_PER_SECOND);
   let m: Memory | null = null;
@@ -903,8 +920,10 @@ function chooseForce(ctx: Ctx, amount: number, tile: number, target: number): Tr
 
 function launch(ctx: Ctx, tile: number, troops: Troops): boolean {
   if (total(troops) < MIN_ATTACK_TROOPS) return false;
+  const target = ctx.state.map.owner[tile];
   const r = applyAction(ctx.state, ctx.id, { type: 'attack', tile, troops });
   if (r.ok) {
+    noteHumanFoe(ctx, target);
     ctx.home = total(ctx.p.troops);
     const a = ctx.state.attacks.find((x) => x.attacker === ctx.id && x.target === ctx.state.map.owner[tile]);
     if (a && !ctx.myAttacks.includes(a)) ctx.myAttacks.push(a);
@@ -1116,6 +1135,11 @@ function humanLimit(ctx: Ctx, q: number, amount: number, wars: Set<number>): num
 /** Nations we attack right now (not tribes or the wilderness). */
 function warTargets(ctx: Ctx): Set<number> {
   return new Set(ctx.myAttacks.filter((a) => a.target !== 0 && !isTribe(ctx.state.players[a.target])).map((a) => a.target));
+}
+
+/** Remembers that we just attacked q if q is a human (a short attack may end before refreshArmies sees it). */
+function noteHumanFoe(ctx: Ctx, q: number): void {
+  if (q > 0 && ctx.state.players[q]?.isHuman && !isTribe(ctx.p)) ctx.m.humanFoes.set(q * 4096 + ctx.id, ctx.state.tick);
 }
 
 /** AI nations other than us that attacked human q within the last HUMAN_WAR_MEMORY_SECONDS (a war in progress). */
@@ -1707,6 +1731,7 @@ function naval(ctx: Ctx): void {
     ctx.ai.badLandings.set(target.tile, state.tick + 120 * TICKS_PER_SECOND);
     return;
   }
+  noteHumanFoe(ctx, target.owner);
   ctx.home = total(p.troops);
   // An invasion gets an escort: a patrolling warship sails to the landing site (it fights ships and bombards).
   if (target.owner > 0) {

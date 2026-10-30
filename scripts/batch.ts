@@ -12,7 +12,7 @@
 //   --tribes -1                  tribes per game, < 0 = the default for the map's land (setup.defaultTribeCount)
 //   --mods fastGame,peaceMinutes=4,goldMultiplier=2
 //                                game modifiers (types.Modifiers; a bare name = true)
-//   --difficulty normal          easy | normal | hard
+//   --difficulty normal          easy | normal | hard | brutal
 //   --jobs 4                     parallel worker processes (1 = in this process; use 1 for tick timings)
 //   --json                       also print one JSON line per game
 //
