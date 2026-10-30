@@ -46,8 +46,8 @@ describe('unit glyphs', () => {
     expect(count(GLYPHS.fighter, 'line')).toBe(3); // centre line + two prongs
     // cargo plane: fuselage + two boxy wings, T-tail
     expect(count(GLYPHS.transportPlane, 'poly')).toBe(3);
-    // warship: two round turrets; landing craft: square bow, ramp line, cargo block; trade ship: three containers
-    expect(count(GLYPHS.warship, 'ring')).toBe(2);
+    // warship: two dark turrets; landing craft: square bow, ramp line, cargo block; trade ship: three containers
+    expect(count(GLYPHS.warship, 'pit')).toBe(2);
     expect(count(GLYPHS.transport, 'block')).toBe(1);
     expect(count(GLYPHS.tradeShip, 'block')).toBe(3);
     expect(GLYPHS.warship.len).toBeGreaterThan(GLYPHS.transport.len);

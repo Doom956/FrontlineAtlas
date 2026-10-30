@@ -10,10 +10,11 @@ import type { UnitType } from '../../sim/types';
 
 /**
  * poly: closed outline (also gets a faint fill), line: open polyline, dot: a point (round cap), ring: x, y, radius,
- * block: small box, only filled solid (cargo, turrets); no outline so neighbours keep a gap. Coordinates are [x0, y0, x1, y1, ...] in half-lengths.
+ * block: small box filled solid in the owner colour (cargo), pit: small box filled dark (a turret on a hull too narrow
+ * to show a gap); neither is outlined, so neighbours keep a gap. Coordinates are [x0, y0, x1, y1, ...] in half-lengths.
  */
 export interface Shape {
-  k: 'poly' | 'line' | 'dot' | 'ring' | 'block';
+  k: 'poly' | 'line' | 'dot' | 'ring' | 'block' | 'pit';
   p: number[];
 }
 export type TrailKind = 'wake' | 'air' | 'missile';
@@ -25,12 +26,13 @@ export interface Glyph {
   trail: TrailKind;
   /** Trail length in glyph lengths (longer for fast units). */
   trailLen: number;
-  /** Has solid blocks (an extra fill pass). Set below. */
+  /** Has blocks / pits (extra fill passes). Set below. */
   solid?: boolean;
+  pits?: boolean;
 }
 
 /** x, y, w, h (half sizes) of an axis-aligned block. */
-const box = (cx: number, cy: number, hw: number, hh: number): Shape => ({ k: 'block', p: [cx - hw, cy - hh, cx - hw, cy + hh, cx + hw, cy + hh, cx + hw, cy - hh] });
+const box = (cx: number, cy: number, hw: number, hh: number, k: 'block' | 'pit' = 'block'): Shape => ({ k, p: [cx - hw, cy - hh, cx - hw, cy + hh, cx + hw, cy + hh, cx + hw, cy - hh] });
 /** The same shape on both sides of the centre line. */
 const mirror = (p: number[]): number[][] => [p, p.map((v, i) => (i % 2 ? -v : v))];
 
@@ -61,17 +63,17 @@ export const GLYPHS: Record<UnitType, Glyph> = {
       box(-0.3, 0, 0.22, 0.22),
     ],
   },
-  // long narrow hull with two round gun turrets that bulge out of it, bow barrel forward, aft barrel back
+  // long narrow hull, a dark gun turret at the bow (barrel forward past the bow line) and one aft (barrel back)
   warship: {
     len: 1.2,
     trail: 'wake',
     trailLen: 0.6,
     shapes: [
-      { k: 'poly', p: [-1, -0.2, -1, 0.2, 0.2, 0.2, 1, 0, 0.2, -0.2] },
-      { k: 'ring', p: [0.05, 0, 0.34] },
-      { k: 'line', p: [0.3, 0, 0.72, 0] },
-      { k: 'ring', p: [-0.55, 0, 0.34] },
-      { k: 'line', p: [-0.8, 0, -1, 0] },
+      { k: 'poly', p: [-1, -0.3, -1, 0.3, 0.3, 0.3, 1, 0, 0.3, -0.3] },
+      box(0.12, 0, 0.2, 0.2, 'pit'),
+      { k: 'line', p: [0.12, 0, 0.8, 0] },
+      box(-0.5, 0, 0.2, 0.2, 'pit'),
+      { k: 'line', p: [-0.5, 0, -1, 0] },
     ],
   },
   // small swept delta, notched stern with two tail prongs
@@ -115,21 +117,27 @@ export const GLYPHS: Record<UnitType, Glyph> = {
   // the same, a bit bigger, with a ring (the atom mark) on the body
   atomBomb: { len: 1.05, trail: 'missile', trailLen: 2.6, shapes: [...MISSILE, { k: 'ring', p: [-0.08, 0, 0.32] }] },
 };
-for (const g of Object.values(GLYPHS)) g.solid = g.shapes.some((s) => s.k === 'block');
+for (const g of Object.values(GLYPHS)) {
+  g.solid = g.shapes.some((s) => s.k === 'block');
+  g.pits = g.shapes.some((s) => s.k === 'pit');
+}
 
 /**
  * Appends a glyph to the current path of ctx, centred at (x, y), rotated by (cos, sin), scaled by s px per half-length.
- * pass 'stroke': every shape, 'fill': closed outlines only (faint fill), 'solid': blocks only (solid fill).
+ * pass 'stroke': outlines, lines and rings, 'fill': closed outlines only (faint fill), 'solid': blocks only, 'pit': pits only.
  */
-export function addGlyph(ctx: CanvasRenderingContext2D, g: Glyph, x: number, y: number, cos: number, sin: number, s: number, pass: 'stroke' | 'fill' | 'solid'): void {
+export function addGlyph(ctx: CanvasRenderingContext2D, g: Glyph, x: number, y: number, cos: number, sin: number, s: number, pass: 'stroke' | 'fill' | 'solid' | 'pit'): void {
   for (const sh of g.shapes) {
     const p = sh.p;
     if (pass === 'fill' && sh.k !== 'poly') continue;
     if (pass === 'solid' && sh.k !== 'block') continue;
-    if (pass !== 'solid' && sh.k === 'block') continue;
+    if (pass === 'pit' && sh.k !== 'pit') continue;
+    if (sh.k === 'block' && pass !== 'solid') continue;
+    if (sh.k === 'pit' && pass !== 'pit') continue;
     switch (sh.k) {
       case 'poly':
       case 'block':
+      case 'pit':
       case 'line': {
         for (let i = 0; i < p.length; i += 2) {
           const px = x + (p[i] * cos - p[i + 1] * sin) * s;
@@ -171,32 +179,44 @@ export interface Inst {
   moving?: boolean;
 }
 
-/** All of one owner's glyphs: dark under-stroke, faint fill, solid blocks, colour stroke (4 draw calls at most). */
+/** All of one owner's glyphs: dark under-stroke, faint fill, solid blocks, dark pits, colour stroke (5 draw calls at most). */
 export function strokeGlyphs(ctx: CanvasRenderingContext2D, list: readonly Inst[], color: string, fill: string, under: string, lw: number): void {
   let solid = false;
-  for (let pass = 0; pass < 3; pass++) {
-    ctx.beginPath();
-    for (const e of list) addGlyph(ctx, GLYPHS[e.type], e.x, e.y, Math.cos(e.angle), Math.sin(e.angle), e.S, pass === 1 ? 'fill' : 'stroke');
-    if (pass === 0) {
-      ctx.lineWidth = lw + 1.2;
-      ctx.strokeStyle = under;
-      ctx.stroke();
-    } else if (pass === 1) {
-      ctx.fillStyle = fill;
-      ctx.fill();
-    } else {
-      ctx.lineWidth = lw;
-      ctx.strokeStyle = color;
-      ctx.stroke();
-    }
+  let pits = false;
+  for (const e of list) {
+    const g = GLYPHS[e.type];
+    if (g.solid) solid = true;
+    if (g.pits) pits = true;
   }
-  for (const e of list) if (GLYPHS[e.type].solid) solid = true;
-  if (solid) {
+  const path = (pass: 'stroke' | 'fill' | 'solid' | 'pit'): void => {
     ctx.beginPath();
-    for (const e of list) if (GLYPHS[e.type].solid) addGlyph(ctx, GLYPHS[e.type], e.x, e.y, Math.cos(e.angle), Math.sin(e.angle), e.S, 'solid');
+    for (const e of list) {
+      const g = GLYPHS[e.type];
+      if ((pass === 'solid' && !g.solid) || (pass === 'pit' && !g.pits)) continue;
+      addGlyph(ctx, g, e.x, e.y, Math.cos(e.angle), Math.sin(e.angle), e.S, pass);
+    }
+  };
+  path('stroke');
+  ctx.lineWidth = lw + 1.2;
+  ctx.strokeStyle = under;
+  ctx.stroke();
+  path('fill');
+  ctx.fillStyle = fill;
+  ctx.fill();
+  if (solid) {
+    path('solid');
     ctx.fillStyle = color;
     ctx.fill();
   }
+  if (pits) {
+    path('pit');
+    ctx.fillStyle = 'rgba(6,9,15,0.9)';
+    ctx.fill();
+  }
+  path('stroke');
+  ctx.lineWidth = lw;
+  ctx.strokeStyle = color;
+  ctx.stroke();
 }
 
 const TIERS = 3;
