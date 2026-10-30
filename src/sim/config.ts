@@ -111,9 +111,9 @@ export const CONVERT_COST: Record<'armor' | 'artillery', { gold: number; iron: n
 };
 
 // ---------- troops ----------
-export const TROOP_ATTACK: Record<TroopType, number> = { infantry: 1.0, armor: 2.2, artillery: 1.9 };
-/** Artillery at home shells attackers: 0.9 (it used to be 0.6, a liability on defence). */
-export const TROOP_DEFENSE: Record<TroopType, number> = { infantry: 1.0, armor: 1.5, artillery: 0.9 };
+export const TROOP_ATTACK: Record<TroopType, number> = { infantry: 1.0, armor: 2.2, artillery: 1.8 };
+/** Artillery at home shells attackers: it defends like infantry (it used to be 0.6, a liability on defence). */
+export const TROOP_DEFENSE: Record<TroopType, number> = { infantry: 1.0, armor: 1.5, artillery: 1.0 };
 /** MATCHUP[attacker][defender] */
 export const MATCHUP: Record<TroopType, Record<TroopType, number>> = {
   infantry: { infantry: 1.0, armor: 0.8, artillery: 1.3 },

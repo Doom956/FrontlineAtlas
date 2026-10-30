@@ -190,7 +190,7 @@ Three troop types, all drawn from the one pool.
 |------|-------:|--------:|------------:|-------|
 | Infantry | 1.0 | 1.0 | 0 | the pool grows as infantry; best in forest/hills/mountains |
 | Armor | 2.2 | 1.5 | +60% x share | converted by factories, burns oil; strong on plains/desert, poor in rough terrain |
-| Artillery | 1.9 | 0.9 | -15% x share | converted by arsenals; siege: x3 vs fort-covered tiles (part of it under a watchtower) and breaches the fort slowdown; fragile if unescorted |
+| Artillery | 1.8 | 1.0 | -15% x share | converted by arsenals; siege: x3 vs fort-covered tiles (part of it under a watchtower) and breaches the fort slowdown; fragile if unescorted |
 
 Matchups (attacker type vs defender type multiplier):
 
