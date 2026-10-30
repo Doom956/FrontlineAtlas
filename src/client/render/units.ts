@@ -1,28 +1,27 @@
 // Mobile units on the map (ships, planes, missiles) as minimal line glyphs (unitGlyphs.ts): a thin stroke in the
-// owner's colour over a dark under-stroke, rotated to the heading and interpolated between ticks. Small and uniform
-// (about 9-14 px) so many units in one area stay readable; short fading wakes and contrails, a small troop pill on
-// transports, a thin ring around your own warships (they can be clicked to give orders, the hit area is larger than
-// the drawing). At far zoom units on the same pixel are drawn once and trails are dropped.
+// owner's colour over a dark under-stroke, rotated to the heading and interpolated between ticks. Small (7-11 px) so
+// many units in one area stay readable; missiles trail a long fading contrail, planes a faint short one and ships a
+// short V wake. A small troop pill on transports at mid/close zoom; your own warships carry a tiny tick (a ring only
+// while one is hovered or picked, UnitLayer.focusId); they can be clicked to give orders, the hit area is larger than
+// the drawing. At far zoom units on the same pixel are drawn once and only missiles keep their trails.
 import { TICKS_PER_SECOND } from '../../sim/config';
 import { armyTotal } from '../../sim/economy';
 import type { GameState, Unit } from '../../sim/types';
 import type { Camera } from '../camera';
 import { clamp, css, formatCount, MAP_NUM_FAMILY, type RGB } from './common';
-import { addGlyph, GLYPHS } from './unitGlyphs';
+import { drawTrails, GLYPHS, type Inst, strokeGlyphs } from './unitGlyphs';
 
-const HIST = 8;
-/** Trail segments drawn (of the HIST recorded positions). */
-const TRAIL_STEPS = 4;
+const HIST = 3;
 /** Paratroopers drifting down where a cargo plane arrived (client-only effect). */
 const DROP_MS = 1800;
 const CHUTES = 6;
 const UNDER = 'rgba(6,9,15,0.6)';
 
 /** Base glyph length on screen (CSS px) at a zoom level; each glyph scales it a little (unitGlyphs.ts). */
-const glyphPx = (z: number): number => clamp(8 + z * 2.2, 9, 14);
-const strokePx = (z: number): number => clamp(1.3 + z * 0.3, 1.5, 2.5);
+const glyphPx = (z: number): number => clamp(7 + z * 1.2, 8, 10);
+const strokePx = (z: number): number => clamp(1.2 + z * 0.15, 1.25, 1.7);
 
-type Vis = { u: Unit; t: Track | undefined; x: number; y: number; S: number; angle: number };
+type Vis = Inst & { u: Unit };
 
 interface Track {
   px: number;
@@ -48,6 +47,8 @@ export class UnitLayer {
   private drops: { x: number; y: number; owner: number; born: number }[] = [];
   private planes = new Map<number, { tx: number; ty: number; owner: number }>();
   drawn = 0;
+  /** Own warship to ring (hovered or picked); set by the renderer, -1 for none. */
+  focusId = -1;
 
   reset(w: number): void {
     this.tracks.clear();
@@ -165,6 +166,7 @@ export class UnitLayer {
         taken.add(key);
       }
       let angle = 0;
+      let moving = false;
       if (t) {
         // ease the drawn heading toward the real one (no snapping on path corners)
         let d = t.angle - t.shown;
@@ -172,11 +174,12 @@ export class UnitLayer {
         while (d < -Math.PI) d += 2 * Math.PI;
         t.shown += d * 0.25;
         angle = t.shown;
+        moving = t.hn >= 2 && Math.abs(t.hx[0] - t.hx[1]) + Math.abs(t.hy[0] - t.hy[1]) > 1e-4;
       }
-      visible.push({ u, t, x, y, S, angle });
+      visible.push({ u, type: u.type, x, y, S, angle, moving });
     }
-    if (z >= 0.45) this.drawTrails(ctx, visible, ox, oy, z, frac);
-    // glyphs: one dark under-stroke, one faint fill and one colour stroke per owner
+    drawTrails(ctx, visible, z >= 0.45);
+    // glyphs: one dark under-stroke, one faint fill, one colour stroke (and solid cargo blocks) per owner
     const lw = strokePx(z);
     const byOwner = new Map<number, Vis[]>();
     for (const e of visible) {
@@ -190,47 +193,41 @@ export class UnitLayer {
     ctx.globalAlpha = 1;
     for (const [owner, list] of byOwner) {
       const c = colors[owner] ?? [200, 200, 200];
-      for (let pass = 0; pass < 3; pass++) {
-        ctx.beginPath();
-        for (const e of list) addGlyph(ctx, GLYPHS[e.u.type], e.x, e.y, Math.cos(e.angle), Math.sin(e.angle), e.S, pass === 1);
-        if (pass === 0) {
-          ctx.lineWidth = lw + 1.6;
-          ctx.strokeStyle = UNDER;
-          ctx.stroke();
-        } else if (pass === 1) {
-          ctx.fillStyle = css(c, 0.22);
-          ctx.fill();
-        } else {
-          ctx.lineWidth = lw;
-          ctx.strokeStyle = css(c);
-          ctx.stroke();
-        }
-      }
+      strokeGlyphs(ctx, list, css(c), css(c, 0.22), UNDER, lw);
       this.drawn += list.length;
     }
-    // own warships: a thin ring, and they are clickable (hit area larger than the drawing)
+    // own warships: a tiny white tick under the hull, a ring while hovered or picked; clickable (hit area larger than the drawing)
     if (me > 0) {
       ctx.beginPath();
+      let ring = false;
       for (const e of visible) {
-        if (e.u.owner !== me || e.u.type !== 'warship') continue;
-        ctx.moveTo(e.x + e.S + 3, e.y);
-        ctx.arc(e.x, e.y, e.S + 3, 0, Math.PI * 2);
+        if (e.u.owner !== me || e.type !== 'warship') continue;
+        const r = e.S + 3;
+        if (e.u.id === this.focusId) {
+          ctx.moveTo(e.x + r, e.y);
+          ctx.arc(e.x, e.y, r, 0, Math.PI * 2);
+          ring = true;
+        } else {
+          ctx.moveTo(e.x - 2, e.y + e.S * 0.5 + 3);
+          ctx.lineTo(e.x + 2, e.y + e.S * 0.5 + 3);
+        }
         this.hits.push(e.u.id, e.x, e.y, Math.max(14, e.S + 6));
       }
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+      ctx.lineWidth = ring ? 1.25 : 1.5;
+      ctx.strokeStyle = 'rgba(255,255,255,0.75)';
       ctx.stroke();
     }
-    // small troop pills on transports
-    if (z >= 0.9) {
+    // transports: a small troop pill and, on cargo planes, a tiny parachute mark (mid and close zoom)
+    if (z >= 2) {
       for (const e of visible) {
         const u = e.u;
-        if (u.type !== 'transport' && u.type !== 'transportPlane') continue;
+        if (e.type !== 'transport' && e.type !== 'transportPlane') continue;
         // army sizes are public (only the troop mix needs intel)
         const n = formatCount(armyTotal(u.troops));
         const toMe = me > 0 && u.owner !== me && state.map.owner[u.target] === me;
         const edge = u.owner === me ? '#ffe98a' : toMe ? '#ff6b5e' : css(colors[u.owner] ?? [200, 200, 200]);
-        miniPill(ctx, e.x, e.y - e.S - 8, n, edge, u.owner === me ? 'up' : toMe ? 'down' : 'none');
+        miniPill(ctx, e.x, e.y - e.S - 7, n, edge, u.owner === me ? 'up' : toMe ? 'down' : 'none');
+        if (e.type === 'transportPlane') chute(ctx, e.x + e.S + 4, e.y + e.S * 0.6 + 4, css(colors[u.owner] ?? [200, 200, 200]));
       }
     }
     void dpr;
@@ -275,36 +272,20 @@ export class UnitLayer {
     this.drops.length = keep;
     ctx.globalAlpha = 1;
   }
+}
 
-  /** Short thin fading wakes behind ships and contrails behind aircraft and missiles: one stroke per age step. */
-  private drawTrails(ctx: CanvasRenderingContext2D, visible: Vis[], ox: number, oy: number, z: number, frac: number): void {
-    ctx.lineCap = 'round';
-    ctx.lineWidth = 1;
-    for (const ship of [true, false]) {
-      for (let k = 0; k < TRAIL_STEPS; k++) {
-        ctx.beginPath();
-        let any = false;
-        for (const e of visible) {
-          const t = e.t;
-          if (!t || t.hn < 2 + k) continue;
-          const isShip = e.u.type === 'transport' || e.u.type === 'warship' || e.u.type === 'tradeShip';
-          if (isShip !== ship) continue;
-          // segment k: from history point k (k = 0: the drawn position) to k + 1
-          const ax = k === 0 ? e.x : ox + (t.hx[k] + 0.5) * z;
-          const ay = k === 0 ? e.y : oy + (t.hy[k] + 0.5) * z;
-          const bx = ox + (t.hx[k + 1] + 0.5) * z;
-          const by = oy + (t.hy[k + 1] + 0.5) * z;
-          if ((ax - bx) * (ax - bx) + (ay - by) * (ay - by) < 0.25) continue;
-          ctx.moveTo(ax, ay);
-          ctx.lineTo(bx, by);
-          any = true;
-        }
-        if (!any) continue;
-        const fade = 1 - (k + frac * 0.5) / TRAIL_STEPS;
-        ctx.strokeStyle = ship ? `rgba(235,245,255,${0.4 * fade})` : `rgba(255,255,255,${0.5 * fade})`;
-        ctx.stroke();
-      }
-    }
+/** Tiny parachute (canopy arc + two strings) marking a cargo plane. */
+function chute(ctx: CanvasRenderingContext2D, x: number, y: number, color: string): void {
+  for (const pass of [0, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(x - 3, y);
+    ctx.arc(x, y, 3, Math.PI, 0);
+    ctx.moveTo(x - 3, y);
+    ctx.lineTo(x, y + 4.5);
+    ctx.lineTo(x + 3, y);
+    ctx.lineWidth = pass === 0 ? 2.8 : 1.2;
+    ctx.strokeStyle = pass === 0 ? UNDER : color;
+    ctx.stroke();
   }
 }
 
@@ -313,25 +294,25 @@ function miniPill(ctx: CanvasRenderingContext2D, x: number, y: number, text: str
   ctx.font = `500 9px ${MAP_NUM_FAMILY}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const ax = arrow === 'none' ? 0 : 7;
-  const bw = ctx.measureText(text).width + 8 + ax;
-  const bh = 12;
+  const ax = arrow === 'none' ? 0 : 6;
+  const bw = ctx.measureText(text).width + 6 + ax;
+  const bh = 11;
   const x0 = x - bw / 2;
   ctx.beginPath();
-  ctx.roundRect(x0, y - bh / 2, bw, bh, 6);
+  ctx.roundRect(x0, y - bh / 2, bw, bh, 5.5);
   ctx.fillStyle = 'rgba(10,13,21,0.8)';
   ctx.fill();
   ctx.lineWidth = 1;
   ctx.strokeStyle = edge;
   ctx.stroke();
   if (arrow !== 'none') {
-    const cx = x0 + 7;
+    const cx = x0 + 6;
     const d = arrow === 'up' ? -1 : 1;
     ctx.beginPath();
-    ctx.moveTo(cx - 2.5, y - d * 1.5);
-    ctx.lineTo(cx, y + d * 1.5);
-    ctx.lineTo(cx + 2.5, y - d * 1.5);
-    ctx.lineWidth = 1.4;
+    ctx.moveTo(cx - 2, y - d * 1.2);
+    ctx.lineTo(cx, y + d * 1.2);
+    ctx.lineTo(cx + 2, y - d * 1.2);
+    ctx.lineWidth = 1.3;
     ctx.stroke();
   }
   ctx.fillStyle = '#fff';
