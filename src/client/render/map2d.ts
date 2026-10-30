@@ -1,12 +1,14 @@
 // Canvas2D fallback for the map layer (no WebGL2): 1 px per tile canvases drawn scaled through the camera with
 // smoothing off. Flat terrain colours, nation fill with darker borders (your border white), fallout tint, and the
-// supply / spawn / resource overlays. No terrain patterns or capture flashes.
+// supply / spawn / resource overlays. No terrain patterns or capture flashes. Same palette as the WebGL layer
+// (palette.ts): calmer colours, fill opacity and the calmed terrain underneath baked into one opaque pixel.
 import type { MapData } from '../../sim/types';
-import { ctx2d, makeCanvas, type View } from './common';
+import { ctx2d, makeCanvas, mix, type View } from './common';
+import { borderColor, displayColor, NATION_ALPHA, paintOver } from './palette';
 import { RESOURCE_RGB, type TerrainData } from './terrain';
 import { dirtyRects, FALLOUT_BIT, OWNER_MASK, type TileFeed } from './tiles';
 
-const FILL_ALPHA = 225;
+const FILL_ALPHA = Math.round(NATION_ALPHA * 255);
 
 export class Map2D {
   private w = 0;
@@ -16,6 +18,7 @@ export class Map2D {
   private terrCv: HTMLCanvasElement | null = null;
   private terrCtx: CanvasRenderingContext2D | null = null;
   private img: ImageData | null = null;
+  private terrRgba: Uint8ClampedArray | null = null;
   private auxCv: HTMLCanvasElement | null = null;
   /** RGBA per owner: fill and border */
   fill = new Uint8Array(4096 * 4);
@@ -26,6 +29,7 @@ export class Map2D {
     const h = map.height;
     this.w = w;
     this.h = h;
+    this.terrRgba = terr.rgba;
     this.terrainCv = makeCanvas(w, h);
     ctx2d(this.terrainCv).putImageData(new ImageData(terr.rgba.slice(), w, h), 0, 0);
     this.resCv = makeCanvas(w, h);
@@ -51,10 +55,19 @@ export class Map2D {
     this.auxCv = makeCanvas(w, h);
   }
 
+  /**
+   * Fill and border of one owner. `c` is the colour the game uses; `borderRgb` carries the relation the renderer chose
+   * (near-white = you, lighter than the colour = ally), the border itself is derived from the display colour.
+   */
   setColor(id: number, c: readonly number[], borderRgb: readonly number[]): void {
     if (id < 0 || id >= 4096) return;
-    this.fill.set([c[0], c[1], c[2], FILL_ALPHA], id * 4);
-    this.border.set([borderRgb[0], borderRgb[1], borderRgb[2], 255], id * 4);
+    const you = borderRgb[0] >= 235 && borderRgb[1] >= 235 && borderRgb[2] >= 235;
+    const fill = displayColor(c, { role: you ? 'own' : 'nation' });
+    const lum = (v: readonly number[]): number => 0.299 * v[0] + 0.587 * v[1] + 0.114 * v[2];
+    const ally = !you && lum(borderRgb) > lum(c);
+    const b = you ? borderRgb : ally ? mix(fill, [255, 255, 255], 0.45) : borderColor(fill);
+    this.fill.set([fill[0], fill[1], fill[2], FILL_ALPHA], id * 4);
+    this.border.set([b[0], b[1], b[2], 255], id * 4);
   }
 
   /** Recomputes the dirty blocks (and their 1-tile rim, whose borders may change) of the territory image. */
@@ -132,6 +145,15 @@ export class Map2D {
       g = p[o4 + 1];
       b = p[o4 + 2];
       a = p[o4 + 3];
+      if (!edge && this.terrRgba) {
+        // translucent fill over the calmed terrain, baked into an opaque pixel
+        const t = this.terrRgba;
+        const m = paintOver([t[k], t[k + 1], t[k + 2]], [r, g, b], a / 255);
+        r = m[0];
+        g = m[1];
+        b = m[2];
+        a = 255;
+      }
     }
     if (raw & FALLOUT_BIT) {
       const t = a === 0 ? 1 : 0.6;
