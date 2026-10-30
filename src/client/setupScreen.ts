@@ -116,6 +116,12 @@ const DIFFICULTY_OPTS: { id: Difficulty; label: string }[] = [
   { id: 'hard', label: 'Hard' },
   { id: 'brutal', label: 'Brutal' },
 ];
+const DIFFICULTY_HINT: Record<Difficulty, string> = {
+  easy: 'Gentle: the AIs grow slowly, leave you alone for the first 15 minutes and never use atom bombs. A good first game.',
+  normal: 'Fair: the AIs leave you alone for 9 minutes, then expect a fight. Good once you know the basics.',
+  hard: 'Tough: strong AIs that attack any time and gang up. For experienced players.',
+  brutal: 'Ruthless: the strongest, fastest AIs. They will come for you early.',
+};
 const MODE_OPTS: { id: GameMode; label: string }[] = [
   { id: 'ffa', label: 'Free for all' },
   { id: 'teams', label: 'Teams' },
@@ -546,6 +552,8 @@ export class SetupScreen {
     const modeRow = el('div', 'mode-row');
     modeRow.append(this.seg<GameMode>('Mode', MODE_OPTS, () => this.s.mode, (v) => (this.s.mode = v)), teamsSeg);
 
+    const diffNote = el('div', 'setup-note diff-note');
+    this.syncs.push(() => setText(diffNote, DIFFICULTY_HINT[this.s.difficulty] ?? ''));
     col.append(
       head,
       grid,
@@ -555,6 +563,7 @@ export class SetupScreen {
       this.field('AI nations', aiRow),
       this.field('Tribes', trRow),
       this.field('Difficulty', this.seg<Difficulty>('Difficulty', DIFFICULTY_OPTS, () => this.s.difficulty, (v) => (this.s.difficulty = v))),
+      diffNote,
       this.field('Mode', modeRow),
     );
     return col;

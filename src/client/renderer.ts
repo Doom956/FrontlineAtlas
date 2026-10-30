@@ -130,6 +130,7 @@ export class Renderer {
     if (this.gl && !this.gl.lost) {
       this.gl.setGame(map, this.terr, this.feed.mirror);
     } else {
+      this.map2d = null; // a new game may have another map size (the 2D layers are sized per map)
       this.ensure2d();
     }
     this.buildings.reset();

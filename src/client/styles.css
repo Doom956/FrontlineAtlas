@@ -2808,6 +2808,9 @@ button.toast-t:hover {
   color: var(--dim);
   font-size: 12.5px;
 }
+.setup-note.diff-note {
+  margin: -4px 0 0 104px;
+}
 .mode-row {
   display: flex;
   gap: 8px;
