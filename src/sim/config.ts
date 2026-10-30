@@ -111,8 +111,9 @@ export const CONVERT_COST: Record<'armor' | 'artillery', { gold: number; iron: n
 };
 
 // ---------- troops ----------
-export const TROOP_ATTACK: Record<TroopType, number> = { infantry: 1.0, armor: 2.2, artillery: 1.6 };
-export const TROOP_DEFENSE: Record<TroopType, number> = { infantry: 1.0, armor: 1.5, artillery: 0.6 };
+export const TROOP_ATTACK: Record<TroopType, number> = { infantry: 1.0, armor: 2.2, artillery: 1.9 };
+/** Artillery at home shells attackers: 0.9 (it used to be 0.6, a liability on defence). */
+export const TROOP_DEFENSE: Record<TroopType, number> = { infantry: 1.0, armor: 1.5, artillery: 0.9 };
 /** MATCHUP[attacker][defender] */
 export const MATCHUP: Record<TroopType, Record<TroopType, number>> = {
   infantry: { infantry: 1.0, armor: 0.8, artillery: 1.3 },
@@ -122,7 +123,12 @@ export const MATCHUP: Record<TroopType, Record<TroopType, number>> = {
 export const VULNERABILITY: Record<TroopType, number> = { infantry: 1.0, armor: 0.6, artillery: 1.0 };
 export const ARTILLERY_UNESCORTED_SHARE = 0.4;
 export const ARTILLERY_UNESCORTED_VULN = 1.8;
-export const ARTILLERY_FORT_BONUS = 2.5;
+/**
+ * Siege bonus: artillery attack x this against a tile a fort covers (fort multiplier >= FORT_DEFENSE). Lighter cover
+ * (a watchtower, x1.2) gives part of it: x 1 + (this - 1) x (multiplier - 1) / (FORT_DEFENSE - 1). See
+ * combat.artillerySiegeBonus.
+ */
+export const ARTILLERY_FORT_BONUS = 3;
 
 // ---------- attacks ----------
 // A click picks the TARGET OWNER (a nation, a tribe or wilderness), never a point: the whole shared border advances.
@@ -164,9 +170,11 @@ export const FRONT_MIN_TILES = 4;
 /** Performance guard: at most this many tiles per attack per tick (never reached by normal fronts). */
 export const MAX_TILES_PER_TICK = 1500;
 export const ARMOR_SPEED_BONUS = 0.6; // speed x (1 + armorShare * this)
-export const ARTILLERY_SLOW = 0.3; // speed x (1 - artilleryShare * this)
+export const ARTILLERY_SLOW = 0.15; // speed x (1 - artilleryShare * this)
 /** Fronts move x this slower through a fort's cover. */
 export const FORT_SLOW = 2;
+/** Guns breach forts: the extra fort slowdown x (1 - artillery share x this), gone at 50% artillery. */
+export const ARTILLERY_FORT_BREACH = 2;
 /** Front priority (lower first): tick + (FRONT_JITTER_MIN .. +SPAN) x (1 - NEIGHBOUR x owned 4-neighbours + TERRAIN x (1/speed - 1)). */
 export const FRONT_JITTER_MIN = 8;
 export const FRONT_JITTER_SPAN = 10;
@@ -314,14 +322,15 @@ export const PARADROP_MIN_TROOPS = 500;
 export const BARRAGE_MIN_ARTILLERY = 2000;
 export const BARRAGE_RANGE = 20;
 export const BARRAGE_BALLISTICS_RANGE = 1.5;
-export const BARRAGE_RADIUS = 4;
+export const BARRAGE_RADIUS = 6;
 export const BARRAGE_DELAY = 2;
-export const BARRAGE_COOLDOWN = 20;
-export const BARRAGE_COOLDOWN_BALLISTICS = 14;
+export const BARRAGE_COOLDOWN = 15;
+export const BARRAGE_COOLDOWN_BALLISTICS = 10;
 export const BARRAGE_GOLD = 100;
-export const BARRAGE_KILL_MAX = 15000;
-export const BARRAGE_KILL_HALF = 25000;
-export const BARRAGE_KILL_ARMY_SHARE = 0.04;
+/** Kills scale with the guns: about a quarter of your artillery count for small batteries, a sixth at 1M, at most 500k. */
+export const BARRAGE_KILL_MAX = 500000;
+export const BARRAGE_KILL_HALF = 2000000;
+export const BARRAGE_KILL_ARMY_SHARE = 0.08;
 export const BARRAGE_BUILDING_DAMAGE = 0.25;
 export const BARRAGE_DISABLE_SECONDS = 20;
 export const BARRAGE_DESTROY_CHANCE = 0.1;
@@ -344,7 +353,7 @@ export const TECHS: Record<TechId, TechInfo> = {
   banking: { name: 'Banking', tier: 2, science: 600, gold: 600, requires: ['agriculture'], description: 'Gold +30%, markets x1.5.' },
   medicine: { name: 'Medicine', tier: 2, science: 600, gold: 600, requires: ['agriculture'], description: 'Hospitals; troop growth +20%.' },
   mechanization: { name: 'Mechanization', tier: 2, science: 600, gold: 600, requires: ['metallurgy'], description: 'Armor +25% attack and defence.' },
-  ballistics: { name: 'Ballistics', tier: 2, science: 600, gold: 600, requires: ['metallurgy'], description: 'Artillery +30% attack; unescorted penalty starts at 55%.' },
+  ballistics: { name: 'Ballistics', tier: 2, science: 600, gold: 600, requires: ['metallurgy'], description: 'Artillery +30% attack; unescorted penalty starts at 55%; barrages reach x1.5 farther and reload faster.' },
   flight: { name: 'Flight', tier: 2, science: 600, gold: 600, requires: ['logistics'], description: 'Airfields, bombers and fighters.' },
   industrialization: { name: 'Industrialization', tier: 3, science: 2200, gold: 1000, requires: ['mechanization'], description: 'Factories and arsenals convert twice as fast; mines and wells +25%.' },
   combinedArms: { name: 'Combined Arms', tier: 3, science: 2200, gold: 1000, requires: ['mechanization', 'ballistics'], description: '+20% attack when every troop type is at least 15% of the force.' },

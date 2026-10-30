@@ -16,11 +16,11 @@ import {
   countSites,
   hasIntel,
   isDisabled,
-  isFortified,
+  fortMultiplierAt,
   resolveBuildTarget,
   samRadius,
 } from './buildings';
-import { supplyDistance } from './combat';
+import { artillerySiegeBonus, supplyDistance } from './combat';
 import {
   ARMOR_OIL_UPKEEP,
   AUTO_MANAGE_SECONDS,
@@ -68,12 +68,16 @@ export function openness(state: GameState, tiles: readonly number[]): number {
   return open / tiles.length;
 }
 
-/** Share of the sampled front tiles that `enemy`'s forts cover. */
+/**
+ * How fortified the sampled front tiles of `enemy` are, for artillery: 1 = all under a fort (the full siege bonus),
+ * a watchtower's cover counts in part (combat.artillerySiegeBonus), 0 = open.
+ */
 export function fortifiedShare(state: GameState, enemy: number, tiles: readonly number[]): number {
-  if (!tiles.length || countBuildings(state, enemy, 'fort') === 0) return 0;
+  if (!tiles.length || countBuildings(state, enemy, 'fort') + countBuildings(state, enemy, 'watchtower') === 0) return 0;
   let f = 0;
   const k = Math.min(tiles.length, 8);
-  for (let i = 0; i < k; i++) if (isFortified(state, tiles[i], enemy)) f++;
+  const full = artillerySiegeBonus(1e9) - 1;
+  for (let i = 0; i < k; i++) f += (artillerySiegeBonus(fortMultiplierAt(state, tiles[i], enemy)) - 1) / full;
   return f / k;
 }
 
@@ -119,7 +123,7 @@ export function recommendMix(state: GameState, playerId: number, advice: MixAdvi
     artillery += (theirs.infantry - 0.6) * 0.15 - Math.max(0, theirs.armor - 0.3) * 0.4;
     // Against an armor-heavy foe our own armor (1.0) beats infantry (0.8) and artillery (0.7).
     if (theirs.armor > 0.35) armor += 0.1;
-    // Forts on their side of the front: artillery x2.5.
+    // Forts (and, less, watchtowers) on their side of the front: artillery's siege bonus.
     artillery += fortifiedShare(state, foe, front) * 0.3;
   }
   // Armor burns oil: no more than the wells (plus a little stock) can feed. No factory / arsenal, no conversion.

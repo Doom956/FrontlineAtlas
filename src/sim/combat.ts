@@ -25,6 +25,7 @@ import { buildingStamp, buildingsOf, countBuildings, depotRadius, fortMultiplier
 import {
   ARMOR_SPEED_BONUS,
   ARTILLERY_FORT_BONUS,
+  ARTILLERY_FORT_BREACH,
   ARTILLERY_SLOW,
   ARTILLERY_UNESCORTED_SHARE,
   ARTILLERY_UNESCORTED_VULN,
@@ -144,6 +145,14 @@ function typeDefense(state: GameState, p: Player, k: TroopType): number {
     if (hasOilShortage(state, p.id)) v *= NO_OIL_ARMOR_FACTOR;
   }
   return v;
+}
+/**
+ * Artillery's siege bonus against a tile with defence multiplier `fort` (fortMultiplierAt): ARTILLERY_FORT_BONUS
+ * under a fort (multiplier >= FORT_DEFENSE), part of it under lighter cover (a watchtower), 1 in the open.
+ */
+export function artillerySiegeBonus(fort: number): number {
+  if (fort <= 1.0001) return 1;
+  return 1 + (ARTILLERY_FORT_BONUS - 1) * Math.min(1, (fort - 1) / (FORT_DEFENSE - 1));
 }
 /** MATCHUP of type k against a force, weighted by that force's composition (infantry if it has none). */
 function matchupVs(k: TroopType, against: Troops | null): number {
@@ -325,7 +334,7 @@ function powerPerUnit(state: GameState, attackerId: number, troops: Troops, tile
   for (const k of TROOP_TYPES) {
     if (troops[k] <= 0) continue;
     let m = typeAttack(state, p, k) * ter.attack[k] * matchupVs(k, against);
-    if (k === 'artillery' && fort >= FORT_DEFENSE) m *= ARTILLERY_FORT_BONUS;
+    if (k === 'artillery') m *= artillerySiegeBonus(fort);
     sum += (troops[k] / tot) * m;
   }
   sum *= supplyEfficiency(state, attackerId, tile);
@@ -352,6 +361,8 @@ interface FightCtx {
   w2: number;
   /** combined arms factor */
   combined: number;
+  /** what is left of a fort's extra slowdown after the guns (1 - artillery share x ARTILLERY_FORT_BREACH, >= 0) */
+  breach: number;
 }
 function fightCtx(state: GameState, attackerId: number, troops: Troops, defender: number): FightCtx {
   const odds = attackOdds(state, attackerId, troops, defender);
@@ -374,6 +385,7 @@ function fightCtx(state: GameState, attackerId: number, troops: Troops, defender
     w1: troops.armor > 0 ? troops.armor * inv * typeAttack(state, p, 'armor') * matchupVs('armor', against) : 0,
     w2: troops.artillery > 0 ? troops.artillery * inv * typeAttack(state, p, 'artillery') * matchupVs('artillery', against) : 0,
     combined: combinedArms(p, troops, tot),
+    breach: tot > 0 ? Math.max(0, 1 - (troops.artillery / tot) * ARTILLERY_FORT_BREACH) : 1,
   };
 }
 
@@ -402,7 +414,7 @@ function tileCost(state: GameState, c: FightCtx, tile: number): TileCost {
   const sup = supplyEfficiency(state, c.attacker, tile);
   const fort = c.defender === 0 ? 1 : fortMultiplierAt(state, tile, c.defender);
   const att = ter.attack;
-  let power = c.w0 * att.infantry + c.w1 * att.armor + c.w2 * att.artillery * (fort >= FORT_DEFENSE ? ARTILLERY_FORT_BONUS : 1);
+  let power = c.w0 * att.infantry + c.w1 * att.armor + (c.w2 > 0 ? c.w2 * att.artillery * artillerySiegeBonus(fort) : 0);
   power *= sup * c.combined;
   const depot = depotBonus(state, c.attacker, tile);
   if (depot > 0) power *= 1 + depot;
@@ -421,7 +433,7 @@ function tileCost(state: GameState, c: FightCtx, tile: number): TileCost {
   out.defense = defense;
   out.power = power;
   out.fort = fort;
-  const fortSlow = fort > 1.01 ? Math.max(1, FORT_SLOW * (fort / FORT_DEFENSE)) : 1;
+  const fortSlow = fort > 1.01 ? 1 + Math.max(0, FORT_SLOW * (fort / FORT_DEFENSE) - 1) * c.breach : 1;
   out.budget = (TER_SPEED_COST[tid] * fortSlow) / (0.5 + 0.5 * sup);
   return out;
 }

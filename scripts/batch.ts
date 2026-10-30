@@ -323,7 +323,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
   };
   const dropsBy = new Map<number, number>();
   const barragesBy = new Map<number, number>();
-  const barrageArmy = new Map<number, number>(); // barrage id -> target home army at launch
+  const barrageArmy = new Map<string, number[]>(); // 'owner:tile' -> target home armies at launch (fire order)
   const fortOwner = new Int32Array(state.map.owner.length); // owner of a fortified tile at the last sample
   let fortTiles: number[] = [];
   const seenUnits = new Set<number>();
@@ -342,7 +342,11 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
       else if (e.kind === 'barrage' && / shelled /.test(e.message)) {
         if (/silenced/.test(e.message)) r.barragesSilencing++;
         const m = /: (\d+) troops lost/.exec(e.message);
-        if (m) r.barrageKills.push(Number(m[1]));
+        const army = barrageArmy.get(`${e.players[0]}:${e.tile}`)?.shift();
+        if (m) {
+          r.barrageKills.push(Number(m[1]));
+          if (army && army > 0) r.barrageShares.push(Number(m[1]) / army);
+        }
       }
       else if (e.kind === 'unitLost' && /shot down a cargo plane/.test(e.message)) r.paradropsShot++;
       else if (e.kind === 'unitLost' && /shot down a bomber/.test(e.message)) r.bombersShot++;
@@ -353,8 +357,10 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
       seenUnits.add(-b.id);
       r.barrages++;
       const tp = state.players[b.target];
-      barrageArmy.set(b.id, tp ? armyTotal(tp.troops) : 0);
-      r.barrageShares.push(-b.id); // placeholder: resolved below when the shells land
+      const key = `${b.owner}:${b.tile}`;
+      const q = barrageArmy.get(key) ?? [];
+      q.push(tp ? armyTotal(tp.troops) : 0);
+      barrageArmy.set(key, q);
       barragesBy.set(b.owner, (barragesBy.get(b.owner) ?? 0) + 1);
     }
     state.events.length = 0;
@@ -379,6 +385,36 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
       }
     }
     if ((state.tick - state.playStartTick) % sampleEvery !== 0) continue;
+    {
+      const owner = state.map.owner;
+      for (const i of fortTiles) {
+        const was = fortOwner[i];
+        const now = owner[i];
+        fortOwner[i] = 0;
+        if (now === was || now <= 0 || isTribe(state.players[now])) continue;
+        r.fortTaken++;
+        const t: Troops = { infantry: 0, armor: 0, artillery: 0 };
+        for (const a of state.attacks) {
+          if (a.attacker !== now || a.target !== was) continue;
+          t.infantry += a.troops.infantry;
+          t.armor += a.troops.armor;
+          t.artillery += a.troops.artillery;
+        }
+        const tot = t.infantry + t.armor + t.artillery;
+        if (tot > 0 && t.artillery / tot >= 0.15) r.fortTakenArt++;
+      }
+      fortTiles = [];
+      for (const b of state.buildings.values()) {
+        if ((b.type !== 'fort' && b.type !== 'watchtower') || b.owner <= 0 || isTribe(state.players[b.owner])) continue;
+        const rad = b.type === 'fort' ? fortRadius(state, b) : WATCHTOWER_DEF_RADIUS;
+        forEachInRadius(state.map, b.tile, rad, (i) => {
+          if (owner[i] !== b.owner || fortOwner[i]) return;
+          if (fortMultiplierAt(state, i, b.owner) <= 1.01) return;
+          fortOwner[i] = b.owner;
+          fortTiles.push(i);
+        });
+      }
+    }
     for (const b of state.buildings.values()) {
       if (seenBuildings.has(b.id)) continue;
       seenBuildings.add(b.id);
@@ -655,6 +691,13 @@ function report(rs: GameResult[], o: Options): void {
   const tot = (f: (r: GameResult) => number): number => rs.reduce((s, r) => s + (f(r) || 0), 0);
   console.log(`\nParadrops: ${tot((r) => r.paradrops)} (${tot((r) => r.paradropsShot)} shot down, ${tot((r) => r.paradropsLanded)} landed on nations) in ${rs.filter((r) => r.paradrops > 0).length} games.`);
   console.log(`Barrages: ${tot((r) => r.barrages)} (${tot((r) => r.barragesSilencing)} silenced forts / SAMs) in ${rs.filter((r) => r.barrages > 0).length} games.`);
+  const kills = rs.flatMap((r) => r.barrageKills ?? []);
+  const shares = rs.flatMap((r) => r.barrageShares ?? []);
+  console.log(`  per barrage: median ${Math.round(median(kills))} killed (mean ${Math.round(kills.reduce((a, b) => a + b, 0) / Math.max(1, kills.length))}), median ${(100 * median(shares)).toFixed(2)}% of the target's home army (p90 ${(100 * (shares.length ? [...shares].sort((a, b) => a - b)[Math.floor(shares.length * 0.9)] : NaN)).toFixed(2)}%)`);
+  const ft = tot((r) => r.fortTaken);
+  console.log(`Fortified tiles taken by nations: ${ft} (${f1(ft / Math.max(1, rs.length))} per game), ${pct(tot((r) => r.fortTakenArt), ft)} by attacks with >= 15% artillery.`);
+  const artW = won.filter((r) => (share(r.winnerMix)?.artillery ?? 0) >= 0.15).length;
+  console.log(`Winners with >= 15% artillery: ${artW} of ${won.length} (${pct(artW, won.length)}).`);
   console.log(`Shot down: ${tot((r) => r.bombersShot)} of ${tot((r) => r.bombers)} bombers, ${tot((r) => r.missilesShot)} of ${tot((r) => r.rockets + r.atomBombs)} missiles.`);
   const wonGames = rs.filter((r) => r.winner > 0);
   if (wonGames.length) {

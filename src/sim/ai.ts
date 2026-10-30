@@ -26,12 +26,12 @@ import {
   countSites,
   fortRadius,
   isDisabled,
-  isFortified,
+  fortMultiplierAt,
   resolveBuildTarget,
   samRadius,
   watchtowerRadiusOf,
 } from './buildings';
-import { estimateAttack, supplyDistance } from './combat';
+import { artillerySiegeBonus, estimateAttack, supplyDistance } from './combat';
 import {
   AI_DECISION_SECONDS,
   ATOM_RADIUS,
@@ -782,7 +782,7 @@ function mainWarTarget(ctx: Ctx): number {
 
 /**
  * Which troops to send: proportional to what is at home by default; careful AIs weight each type by its strength
- * on the target tile (terrain, matchup against the defender's mix, artillery vs forts). Artillery is kept under
+ * on the target tile (terrain, matchup against the defender's mix, artillery's siege bonus). Artillery is kept under
  * 40% of the force (unescorted artillery dies fast). Never more of a type than is at home.
  */
 function chooseForce(ctx: Ctx, amount: number, tile: number, target: number): Troops {
@@ -795,11 +795,11 @@ function chooseForce(ctx: Ctx, amount: number, tile: number, target: number): Tr
   if (ctx.diff.careful && tile >= 0) {
     const ter = TERRAIN[state.map.terrain[tile] as TerrainId];
     const against = target > 0 ? shares(state.players[target].troops) : null;
-    const fort = target > 0 && isFortified(state, tile, target);
+    const siege = target > 0 ? artillerySiegeBonus(fortMultiplierAt(state, tile, target)) : 1;
     for (const k of TROOP_TYPES) {
       let eff = TROOP_ATTACK[k] * ter.attack[k];
       if (against) eff *= against.infantry * MATCHUP[k].infantry + against.armor * MATCHUP[k].armor + against.artillery * MATCHUP[k].artillery;
-      if (k === 'artillery' && fort) eff *= 2.5;
+      if (k === 'artillery') eff *= siege;
       w[k] *= eff * eff;
     }
   }

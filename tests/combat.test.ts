@@ -1,7 +1,7 @@
 // Land combat and supply (WP-C).
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { estimateAttack, launchAttack, retreat, supplyEfficiency, updateAttacks, updateSupply, borders, defensePower } from '../src/sim/combat';
-import { MIN_ATTACK_TROOPS, MIN_SUPPLY_EFF, NEUTRAL_LOSS_PER_TILE, RETREAT_LOSS, START_TROOPS, SUPPLY_RANGE } from '../src/sim/config';
+import { MIN_ATTACK_TROOPS, MIN_SUPPLY_EFF, NEUTRAL_LOSS_PER_TILE, RETREAT_LOSS, START_TROOPS, SUPPLY_RANGE, TROOP_DEFENSE } from '../src/sim/config';
 import { formAlliance, requestAlliance } from '../src/sim/diplomacy';
 import { Terrain } from '../src/sim/types';
 import type { GameState, Troops } from '../src/sim/types';
@@ -268,9 +268,9 @@ describe('player vs player', () => {
     claimRect(s, 1, 0, 0, 9, 9);
     claimRect(s, 2, 10, 0, 19, 9);
     s.players[2].troops = { infantry: 1000, armor: 200, artillery: 100 };
-    expect(defensePower(s, 2)).toBeCloseTo(1000 + 200 * 1.5 + 100 * 0.6, 6);
+    expect(defensePower(s, 2)).toBeCloseTo(1000 + 200 * 1.5 + 100 * TROOP_DEFENSE.artillery, 6);
     oilOverride.short = new Set([2]);
-    expect(defensePower(s, 2)).toBeCloseTo(1000 + 200 * 1.5 * 0.5 + 100 * 0.6, 6);
+    expect(defensePower(s, 2)).toBeCloseTo(1000 + 200 * 1.5 * 0.5 + 100 * TROOP_DEFENSE.artillery, 6);
     expect(borders(s, 1, 2)).toBe(true);
     expect(borders(s, 1, 0)).toBe(false);
   });

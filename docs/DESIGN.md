@@ -190,7 +190,7 @@ Three troop types, all drawn from the one pool.
 |------|-------:|--------:|------------:|-------|
 | Infantry | 1.0 | 1.0 | 0 | the pool grows as infantry; best in forest/hills/mountains |
 | Armor | 2.2 | 1.5 | +60% x share | converted by factories, burns oil; strong on plains/desert, poor in rough terrain |
-| Artillery | 1.6 | 0.6 | -30% x share | converted by arsenals; x2.5 vs fortified tiles, fragile if unescorted |
+| Artillery | 1.9 | 0.9 | -15% x share | converted by arsenals; siege: x3 vs fort-covered tiles (part of it under a watchtower) and breaches the fort slowdown; fragile if unescorted |
 
 Matchups (attacker type vs defender type multiplier):
 
@@ -218,9 +218,11 @@ scans). Each tick the attack gets a budget of `(front tiles) x rate x 0.1 s` til
   0.3 x the front per tick with 5 000 troops, at most 0.4 (a flood fill), more troops faster;
 - nations: rate = `NATION_FRONT_RATE` (5.2) / clamp(1 / odds, 0.82, 7.5): an even fight on plains takes about
   half the front per tick, outnumbering the defender speeds it up modestly (x1.2 at most), hopeless odds crawl;
-- x (1 + armor share x `ARMOR_SPEED_BONUS`) x (1 - artillery share x `ARTILLERY_SLOW`) x Logistics x1.15,
+- x (1 + armor share x `ARMOR_SPEED_BONUS`) x (1 - artillery share x `ARTILLERY_SLOW` (0.15)) x Logistics x1.15,
   traitor targets x1.25.
-A tile uses `(1 / terrain speed) x fort slow (FORT_SLOW) / (0.5 + 0.5 x supply)` of the budget. Tiles are taken in
+A tile uses `(1 / terrain speed) x fort slow / (0.5 + 0.5 x supply)` of the budget; fort slow = 1 + (`FORT_SLOW` x
+fort multiplier / `FORT_DEFENSE` - 1) x max(0, 1 - artillery share x `ARTILLERY_FORT_BREACH` (2)): guns breach the
+fort's slowdown, all of it at 50% artillery. Tiles are taken in
 priority order: `tick queued + jitter(8..18) x (1 - 0.25 x attacker 4-neighbours + 0.5 x (1 / terrain speed - 1))`,
 so tiles the attacker already half surrounds go first (smooth, blobby fronts, notches fill), easy ground goes
 first, and otherwise it is roughly first in, first out (rings). The neighbour weight is kept low on purpose: at 0.5 a
@@ -236,8 +238,10 @@ perfect square; at 0.25 with the wider jitter a free expansion grows a round, sl
   defender density) / attack power per unit, where density = the defender's home troops per tile; x0.6 against a
   traitor, x0.7 against a tribe, x0.85 where the defender is out of supply. The defender loses its density per
   tile (`DEFENDER_LOSS_PER_TILE`), split by composition.
-- Attack power per unit = composition-weighted (type attack x terrain attack x matchup x artillery fort bonus)
-  x supply efficiency x depot bonus x combined arms (1 for plain infantry on supplied plains). Losses are split by
+- Attack power per unit = composition-weighted (type attack x terrain attack x matchup x artillery siege bonus)
+  x supply efficiency x depot bonus x combined arms (1 for plain infantry on supplied plains). Siege bonus
+  (`artillerySiegeBonus`) = 1 + (`ARTILLERY_FORT_BONUS` (3) - 1) x min(1, (fort multiplier - 1) / (`FORT_DEFENSE` - 1)):
+  x3 under a fort, x1.4 under a lone watchtower, x1 in the open. Losses are split by
   vulnerability (infantry 1.0, armor 0.6, artillery 1.0 or 1.8 when over 40% of the force), barracks cut infantry
   losses.
 - `estimateAttack(state, id, tile, troops, frontTiles?)` returns `odds`, `lossFactor`, `lossPerTile`,
@@ -282,18 +286,18 @@ Events: `'paradrop'` to the target at launch ("X is dropping N paratroopers on Y
 (2000) artillery (`artilleryOf`: home + attacks). The tile must be land of a living, non-allied nation or tribe
 within `barrageRange` = `BARRAGE_RANGE` (20; Ballistics x1.5) of your own land, and it costs `BARRAGE_GOLD`. The
 order is telegraphed: a `Barrage { id, owner, tile, target, artillery, hitTick }` waits in `state.barrages` for
-`BARRAGE_DELAY` (2 s; the client draws the warning circle and countdown). Then, on a disc of `BARRAGE_RADIUS` (4):
-- hostile owners lose home troops: `barrageKill(artillery)` = `BARRAGE_KILL_MAX` (15k) x a / (a +
-  `BARRAGE_KILL_HALF` 25k) in all (diminishing), split by their share of the disc, each capped at
-  `BARRAGE_KILL_ARMY_SHARE` (4%) of its home army;
+`BARRAGE_DELAY` (2 s; the client draws the warning circle and countdown). Then, on a disc of `BARRAGE_RADIUS` (6):
+- hostile owners lose home troops: `barrageKill(artillery)` = `BARRAGE_KILL_MAX` (500k) x a / (a +
+  `BARRAGE_KILL_HALF` 2M) in all (about a quarter of the guns for a small battery, 167k for 1M guns, diminishing),
+  split by their share of the disc, each capped at `BARRAGE_KILL_ARMY_SHARE` (8%) of its home army;
 - hostile **forts and SAM sites** lose `BARRAGE_BUILDING_DAMAGE` (0.25) hp (0 = destroyed; buildings repair
   `BUILDING_REPAIR_PER_S`) and are knocked out until `Building.disabledUntil` (`BARRAGE_DISABLE_SECONDS`, 20 s): a
   disabled fort gives no bonus (fortMultiplierAt / isFortified skip it), a disabled SAM can't fire. Shells are not
   aircraft: SAMs never intercept them. This is the counter to SAM cover near a front. Repair (0.01 hp/s) undoes
-  about 0.2 hp between two barrages of one shooter, so one shooter mostly silences a fort; focused fire (several
-  shooters, Ballistics) destroys it;
+  about 0.15 hp between two barrages of one shooter, so one shooter wears a fort down slowly (about 10 barrages,
+  2.5 min); focused fire (several shooters, Ballistics) destroys it much sooner;
 - other hostile buildings are destroyed with `BARRAGE_DESTROY_CHANCE` (10%, state.rng in tile order).
-The front does not move. One barrage per player every `BARRAGE_COOLDOWN` (20 s; Ballistics 14 s;
+The front does not move. One barrage per player every `BARRAGE_COOLDOWN` (15 s; Ballistics 10 s;
 `Player.barrageReadyTick`). Effect `'barrage'` (radius `BARRAGE_RADIUS`) when the shells land; events `'barrage'` to
 the target at launch and to everyone hit on impact. `canBarrage(state, id, tile)` is the preview check.
 

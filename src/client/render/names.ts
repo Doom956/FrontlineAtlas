@@ -353,8 +353,8 @@ export class NameLayer {
       let tw = name ? ctx.measureText(name).width : 0;
       if (!tribe && name.length > 1 && size > px) {
         // spare width the region offers at its fitted size (fitSize keeps this inside the territory)
-        const budget = size * (name.length * LABEL_CHAR_W + 0.6) * 0.8;
-        const extra = clamp((budget - tw) / (name.length - 1), 0, px * 0.45);
+        const budget = size * (name.length * LABEL_CHAR_W + 0.6) * 0.7;
+        const extra = clamp((budget - tw) / (name.length - 1), 0, px * 0.22);
         if (extra > 0.5) {
           track += extra;
           setTracking(ctx, track);

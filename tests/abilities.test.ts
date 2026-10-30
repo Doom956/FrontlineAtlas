@@ -24,6 +24,7 @@ import {
   BARRAGE_DISABLE_SECONDS,
   BARRAGE_GOLD,
   BARRAGE_KILL_ARMY_SHARE,
+  BARRAGE_KILL_MAX,
   BARRAGE_MIN_ARTILLERY,
   BARRAGE_RANGE,
   BUILDINGS,
@@ -347,7 +348,7 @@ describe('artillery barrage', () => {
     expect(barrageKill(0)).toBe(0);
     expect(barrageKill(20000)).toBeGreaterThan(barrageKill(10000));
     expect(barrageKill(20000) / barrageKill(10000)).toBeLessThan(2);
-    expect(barrageKill(1e9)).toBeLessThan(15000 + 1e-6);
+    expect(barrageKill(1e9)).toBeLessThan(BARRAGE_KILL_MAX + 1e-6);
   });
 });
 
