@@ -873,8 +873,8 @@ const DOCTRINE_TASTE: Record<Personality, Partial<Record<DoctrineId, number>>> =
 };
 /** Seconds between doctrine reviews, the least time a doctrine is held, and how much better a new one must look. */
 const DOCTRINE_REVIEW_SECONDS = 60;
-const DOCTRINE_MIN_HOLD_SECONDS = 360;
-const DOCTRINE_SWITCH_MARGIN = 1.6;
+const DOCTRINE_MIN_HOLD_SECONDS = 480;
+const DOCTRINE_SWITCH_MARGIN = 1.8;
 /** First picks are spread over this many seconds after the unlock (by id). */
 const DOCTRINE_FIRST_SPREAD_SECONDS = 40;
 

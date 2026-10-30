@@ -398,7 +398,7 @@ export function doctrineAdvice(state: GameState, pid: number): DoctrineAdvice[] 
   );
   add(
     'merchant',
-    0.6 + Math.min(0.6, s.ports * 0.2) + Math.min(0.4, s.markets * 0.08) + (nations === 0 ? 0.25 : 0),
+    0.55 + Math.min(0.45, s.ports * 0.15) + Math.min(0.3, s.markets * 0.06) + (nations === 0 ? 0.25 : 0),
     s.ports + s.markets > 0
       ? `${s.ports} port${s.ports === 1 ? '' : 's'} and ${s.markets} market${s.markets === 1 ? '' : 's'} to make the most of`
       : 'Gold pays for everything: a safe choice for a growing economy',
@@ -406,7 +406,7 @@ export function doctrineAdvice(state: GameState, pid: number): DoctrineAdvice[] 
   const navalOff = m.noNavy ? 0.5 : 1;
   add(
     'naval',
-    s.coastShare <= 0 ? 0.05 : (0.3 + Math.min(1, s.coastShare * 6) + Math.min(0.9, s.seaWar * 0.3)) * navalOff,
+    s.coastShare <= 0 ? 0.05 : (0.3 + Math.min(0.6, s.coastShare * 6) + Math.min(0.45, s.ports * 0.15) + Math.min(0.9, s.seaWar * 0.3)) * navalOff,
     s.coastShare <= 0
       ? 'You have no coast'
       : s.seaWar > 0

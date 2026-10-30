@@ -226,7 +226,7 @@ interface GameResult {
   meanParadrops: number;
   meanBarrages: number;
   /** per nation: the doctrine it held longest (10 s samples; null = never chose), its personality and switches */
-  doctrines: { id: number; personality: string; doctrine: DoctrineId | null; switches: number }[];
+  doctrines: { id: number; personality: string; doctrine: DoctrineId | null; switches: number; landShare: number; alive: boolean }[];
   /** the winner, or the land leader among nations at the cap (0 = none) */
   topNation: number;
 }
@@ -366,6 +366,8 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     tickMs.push(performance.now() - t0);
     // --doctrines off: every doctrine stays 'adapting' (no bonus), so the AIs play as before doctrines existed.
     if (o.doctrines === 'off') for (const p of state.players) if (p.doctrine?.id) p.doctrine.adaptUntilTick = 0x7fffffff;
+    // --doctrines random: the switch cooldown never ends, so each nation keeps its random doctrine (levels still grow).
+    if (o.doctrines === 'random') for (const p of state.players) if (p.doctrine?.id) p.doctrine.lastSwitchTick = state.tick;
     for (const e of state.events) {
       if (e.kind === 'victory') r.winReason = e.message.replace(/^.* wins: /, '');
       else if (e.kind === 'paradrop' && / landed in /.test(e.message)) r.paradropsLanded++;
@@ -519,7 +521,14 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
         best = d;
       }
     }
-    r.doctrines.push({ id: p.id, personality: p.personality ?? 'human', doctrine: best, switches: switches.get(p.id) ?? 0 });
+    r.doctrines.push({
+      id: p.id,
+      personality: p.personality ?? 'human',
+      doctrine: best,
+      switches: switches.get(p.id) ?? 0,
+      landShare: p.alive ? p.tiles / Math.max(1, state.map.landTileCount) : 0,
+      alive: p.alive,
+    });
   }
   for (const b of state.buildings.values()) {
     if (b.owner <= 0 || !state.players[b.owner]?.alive) continue;
@@ -786,6 +795,8 @@ function report(rs: GameResult[], o: Options): void {
 function doctrineReport(rs: GameResult[]): void {
   const picks = new Map<string, number>();
   const wins = new Map<string, number>();
+  const land = new Map<string, number>();
+  const alive = new Map<string, number>();
   const byPers = new Map<string, Map<string, number>>();
   let nations = 0;
   let switched = 0;
@@ -797,6 +808,8 @@ function doctrineReport(rs: GameResult[]): void {
       const k = d.doctrine ?? 'none';
       nations++;
       picks.set(k, (picks.get(k) ?? 0) + 1);
+      land.set(k, (land.get(k) ?? 0) + (d.landShare ?? 0));
+      if (d.alive) alive.set(k, (alive.get(k) ?? 0) + 1);
       if (d.id === r.topNation) wins.set(k, (wins.get(k) ?? 0) + 1);
       const m = byPers.get(d.personality) ?? new Map<string, number>();
       m.set(k, (m.get(k) ?? 0) + 1);
@@ -806,7 +819,7 @@ function doctrineReport(rs: GameResult[]): void {
     }
   }
   console.log(`\nDoctrines (held longest; ${nations} nations in ${rs.length} games, ${decided} with a winner or land leader):`);
-  console.log(`  doctrine    picks  pick%   wins  win%   win%/pick%`);
+  console.log(`  doctrine    picks  pick%   wins  win%   win%/pick%   land at end  alive at end`);
   for (const k of [...DOCTRINE_IDS, 'none']) {
     const n = picks.get(k) ?? 0;
     if (!n) continue;
@@ -815,7 +828,11 @@ function doctrineReport(rs: GameResult[]): void {
     const winShare = w / Math.max(1, decided);
     const ratio = pickShare > 0 ? winShare / pickShare : NaN;
     const flag = ratio > 1.5 && w >= 3 ? '  <-- high' : '';
-    console.log(`  ${k.padEnd(10)} ${String(n).padStart(6)} ${pct(n, nations).padStart(6)} ${String(w).padStart(6)} ${pct(w, decided).padStart(5)}   ${f1(ratio).padStart(5)}${flag}`);
+    const landMean = (100 * (land.get(k) ?? 0)) / n;
+    console.log(
+      `  ${k.padEnd(10)} ${String(n).padStart(6)} ${pct(n, nations).padStart(6)} ${String(w).padStart(6)} ${pct(w, decided).padStart(5)}   ${f1(ratio).padStart(5)}` +
+        `        ${f1(landMean).padStart(5)}%      ${pct(alive.get(k) ?? 0, n).padStart(5)}${flag}`,
+    );
   }
   console.log(`  ${switched} nations switched (${switchCount} switches, ${f1(switchCount / Math.max(1, nations))} per nation)`);
   const persWins = new Map<string, number>();
