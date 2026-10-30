@@ -2,17 +2,18 @@
 // fullscreen fragment pass (shaders.ts). Textures are uploaded once per game except:
 //   owner   dirty 64 x 64 blocks from the tile feed, merged into row runs (texSubImage2D with UNPACK_ROW_LENGTH,
 //           straight from the mirror array: no copies); a full upload on overflow or a new game
-//   palette 1024 x 8 RGBA, re-sent when relations, hover or players change (a few KB)
+//   palette 1024 x 12 RGBA (display colour + opacity, flags, border colour), re-sent when relations, hover or players change (a few KB)
 //   fort    rectangles around forts that were added or removed
 //   aux     supply classes (own territory box, about once a second) or the spawn mask (spawn phase)
 import type { MapData } from '../../sim/types';
 import type { RGB } from './common';
+import { borderColor, displayColor, NATION_ALPHA, TRIBE_ALPHA, type DisplayRole, type Rgb } from './palette';
 import { MAP_FS, MAP_VS } from './shaders';
 import { TERRAIN_RGB, RESOURCE_RGB, type TerrainData } from './terrain';
 import { dirtyRects, type TileFeed } from './tiles';
 
 export const PALETTE_W = 1024;
-export const PALETTE_H = 8;
+export const PALETTE_H = 12;
 const MAX_OWNERS = PALETTE_W * 4;
 const BG: RGB = [10, 17, 28];
 
@@ -35,9 +36,11 @@ export class MapGL {
   private loc: Record<string, WebGLUniformLocation | null> = {};
   private tex: Record<'owner' | 'terrId' | 'depth' | 'terrCol' | 'pal' | 'fort' | 'aux', WebGLTexture>;
   private vao: WebGLVertexArrayObject;
+  /** display + border colours by (rgb, role): the same few colours come back on every palette re-send */
+  private shown = new Map<number, { fill: Rgb; border: Rgb }>();
   private w = 0;
   private h = 0;
-  /** palette data: rows 0-3 colours, rows 4-7 flags */
+  /** palette data: rows 0-3 display colours (alpha = fill opacity), rows 4-7 flags, rows 8-11 border colours */
   readonly palette = new Uint8Array(PALETTE_W * PALETTE_H * 4);
   /** uploads this frame (stats) */
   uploads = 0;
@@ -197,22 +200,39 @@ export class MapGL {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
-  /** Writes one owner's palette entry: colour and flags (relation 0 other / 1 you / 2 ally / 3 tribe, traitor, hover). */
+  /**
+   * Writes one owner's palette entry: relation 0 other / 1 you / 2 ally / 3 tribe, traitor, hover. `c` is the
+   * nation's colour as the rest of the game uses it; the map paints the calmer palette.ts version of it.
+   */
   setPalette(id: number, c: readonly number[], relation: number, traitor: boolean, hover: number): void {
     if (id < 0 || id >= MAX_OWNERS) return;
+    const role: DisplayRole = relation === 1 ? 'own' : relation === 3 ? 'tribe' : 'nation';
+    const key = ((c[0] << 16) | (c[1] << 8) | c[2]) * 4 + (relation === 1 ? 1 : relation === 3 ? 2 : 0);
+    let d = this.shown.get(key);
+    if (!d) {
+      const fill = displayColor(c, { role });
+      d = { fill, border: borderColor(fill) };
+      if (this.shown.size > 4096) this.shown.clear();
+      this.shown.set(key, d);
+    }
     const p = this.palette;
     const x = id & 1023;
     const row = id >> 10;
     const ci = (row * PALETTE_W + x) * 4;
-    p[ci] = c[0];
-    p[ci + 1] = c[1];
-    p[ci + 2] = c[2];
-    p[ci + 3] = 255;
+    p[ci] = d.fill[0];
+    p[ci + 1] = d.fill[1];
+    p[ci + 2] = d.fill[2];
+    p[ci + 3] = Math.round((relation === 3 ? TRIBE_ALPHA : NATION_ALPHA) * 255);
     const fi = ((row + 4) * PALETTE_W + x) * 4;
     p[fi] = relation;
     p[fi + 1] = traitor ? 255 : 0;
     p[fi + 2] = hover;
     p[fi + 3] = 0;
+    const bi = ((row + 8) * PALETTE_W + x) * 4;
+    p[bi] = d.border[0];
+    p[bi + 1] = d.border[1];
+    p[bi + 2] = d.border[2];
+    p[bi + 3] = 255;
   }
 
   private bind(unit: number, t: WebGLTexture, min: number, mag: number): void {

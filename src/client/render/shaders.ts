@@ -1,4 +1,5 @@
 // GLSL for the map layer (WebGL2). One fullscreen pass: terrain, nations, borders, overlays.
+import { UNDER_CHROMA, UNDER_DETAIL } from './palette';
 
 export const MAP_VS = /* glsl */ `#version 300 es
 void main() {
@@ -15,7 +16,8 @@ void main() {
  *   uTerrId  RG8    terrain id, resource id
  *   uDepth   R8     water distance to land (x10), linear: smooth shores and depth
  *   uTerrCol RGBA8  flat terrain colours, mipmapped: calm whole-map view
- *   uPal     RGBA8  1024 x 8: rows 0-3 owner colour, rows 4-7 flags (relation, traitor, hover)
+ *   uPal     RGBA8  1024 x 12: rows 0-3 owner display colour + fill opacity (alpha), rows 4-7 flags (relation, traitor,
+ *            hover), rows 8-11 border colour (palette.ts does the colour work, once per palette change)
  *   uFort    R16UI  owner of the fort covering the tile (0 = none)
  *   uAux     R8     supply class (overlay) or spawn mask (spawn phase)
  */
@@ -227,27 +229,26 @@ void main() {
     if (o == 0u) col = mix(col, dep.rgb, dep.a * detail);
   }
 
-  // ---- nations: one solid colour, the terrain only as soft luminance shading
+  // ---- nations: a calm, translucent colour over a quiet copy of the terrain
   vec4 flags = vec4(0.0);
   if (o != 0u) {
-    vec3 oc = pal(o, 0).rgb;
+    vec4 pc = pal(o, 0);
+    vec3 oc = pc.rgb;
     flags = pal(o, 1);
-    // Underneath: the terrain blurred over ~8 tiles (mip level 3), so terrain changes shade the nation softly
-    // instead of cutting it into bands; up close the per-tile pattern shows faintly (lum).
+    // Under the fill: the terrain with its pattern softened (blend with the terrain blurred over ~8 tiles, mip level 3,
+    // so changes between terrains shade the nation gently instead of cutting it into bands) and pulled towards grey,
+    // so forest / hills / desert still show as light and dark without competing with the nation's hue.
     vec3 under = textureLod(uTerrCol, uv, 3.0).rgb;
-    float ul = dot(under, vec3(0.299, 0.587, 0.114));
-    float sh = 1.0 + 0.05 * lum + 0.1 * (ul - 0.5);
-    vec3 fill = oc * sh;
+    vec3 calm = mix(under, col, ${UNDER_DETAIL.toFixed(3)});
+    calm = mix(vec3(dot(calm, vec3(0.299, 0.587, 0.114))), calm, ${UNDER_CHROMA.toFixed(3)});
+    vec3 fill = mix(calm, oc, pc.a);
     if (res > 0 && detail > 0.0) {
       // under a nation deposits only shade the colour faintly (no foreign hues, no dotted clusters), and only very
       // close: the deposit markers already say where the fields are
       vec4 dep = depositAt(res, ti, f, px);
       fill *= 1.0 + dep.a * smoothstep(10.0, 16.0, uZoom) * (res == 3 ? 0.03 : -0.08);
     }
-    // tribes: one solid dusty colour (renderer.tribeDisplayColor) with a little less shading than nations, so
-    // each tribe is a calm parcel of land instead of a see-through patch over the terrain
-    if (int(flags.r * 255.0 + 0.5) == 3) col = oc * (1.0 + 0.5 * (sh - 1.0));
-    else col = mix(under, fill, 0.94);
+    col = fill;
     // fort coverage: light diagonal hatch on the protected tiles
     if (uFortOn == 1 && uZoom >= 2.0) {
       uint fo = texelFetch(uFort, ti, 0).r;
@@ -300,14 +301,14 @@ void main() {
     if (edge) {
       vec3 oc = pal(o, 0).rgb;
       int rel = int(flags.r * 255.0 + 0.5);
-      vec3 bc = oc * 0.52;
+      vec3 bc = pal(o, 2).rgb; // darker, slightly more saturated shade of the nation colour (palette.ts)
       float ba = 1.0;
       if (rel == 1) bc = vec3(0.97);
       else if (rel == 2) {
         bc = mix(oc, vec3(1.0), 0.6);
         float period = max(1.5, 12.0 * px);
         if (fract((t.x + t.y) / period) > 0.6) bc = oc * 0.6;
-      } else if (rel == 3) bc = oc * 0.68;
+      }
       if (flags.g > 0.5) bc = mix(bc, vec3(0.95, 0.2, 0.15), 0.7);
       int hv = int(flags.b * 255.0 + 0.5);
       if (hv == 1) bc = mix(bc, vec3(1.0), 0.65);

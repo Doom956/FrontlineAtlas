@@ -1,15 +1,15 @@
 // Minimap: one pixel per minimap pixel sampled from the map (terrain colour, nation colour on top), kept up to date
 // from the tile change feed (only tiles that are a pixel's sample point matter), pushed to the canvas at most every
 // MINIMAP_MS. Each frame draws it with the viewport rectangle and your capital.
-import type { GameState } from '../../sim/types';
+import { isTribe, type GameState } from '../../sim/types';
 import type { Camera } from '../camera';
 import { clamp, ctx2d, makeCanvas, type RGB } from './common';
+import { displayColor, NATION_ALPHA, paintOver, TRIBE_ALPHA, type DisplayRole } from './palette';
 import type { TerrainData } from './terrain';
 import { OWNER_MASK, type TileFeed } from './tiles';
 
 const MINIMAP_CSS_W = 220;
 const MINIMAP_MS = 250;
-const NATION_ALPHA = 0.85;
 
 export class Minimap {
   private ctx: CanvasRenderingContext2D;
@@ -26,6 +26,11 @@ export class Minimap {
   private sample = new Int32Array(0);
   private terr: TerrainData | null = null;
   private colors: readonly RGB[] = [];
+  /** palette.ts display colour and fill opacity per owner (rebuilt when the colours, the player count or you change) */
+  private shown: RGB[] = [];
+  private shownAlpha: number[] = [];
+  private shownKey = '';
+  private colorsStale = true;
   private dirty = false;
   private pushedMs = -Infinity;
   private gen = -1;
@@ -69,6 +74,22 @@ export class Minimap {
 
   setColors(colors: readonly RGB[]): void {
     this.colors = colors;
+    this.colorsStale = true;
+  }
+
+  /** Same palette as the map (palette.ts): your nation keeps a little more chroma, tribes are the calmest. */
+  private syncShown(state: GameState, humanId: number): void {
+    const key = `${state.players.length}:${humanId}`;
+    if (!this.colorsStale && key === this.shownKey) return;
+    this.colorsStale = false;
+    this.shownKey = key;
+    for (let id = 0; id < this.colors.length; id++) {
+      const p = state.players[id];
+      const role: DisplayRole = id === humanId ? 'own' : p && isTribe(p) ? 'tribe' : 'nation';
+      this.shown[id] = displayColor(this.colors[id], { role });
+      this.shownAlpha[id] = role === 'tribe' ? TRIBE_ALPHA : NATION_ALPHA;
+    }
+    this.gen = -1; // repaint every pixel with the new colours
   }
 
   /** Tile feed listener. */
@@ -83,6 +104,7 @@ export class Minimap {
 
   draw(state: GameState, cam: Camera, feed: TileFeed, humanId: number, nowMs: number): void {
     if (!this.base || !this.img) return;
+    this.syncShown(state, humanId);
     if (feed.fullGen !== this.gen) {
       this.gen = feed.fullGen;
       this.pending.length = 0;
@@ -143,11 +165,12 @@ export class Minimap {
     let b = terr.rgba[tk + 2];
     const o = feed.mirror[t] & OWNER_MASK;
     if (o !== 0) {
-      const c = this.colors[o];
+      const c = this.shown[o];
       if (c) {
-        r += (c[0] - r) * NATION_ALPHA;
-        g += (c[1] - g) * NATION_ALPHA;
-        b += (c[2] - b) * NATION_ALPHA;
+        const m = paintOver([r, g, b], c, this.shownAlpha[o]);
+        r = m[0];
+        g = m[1];
+        b = m[2];
       }
     }
     d[k] = r;
