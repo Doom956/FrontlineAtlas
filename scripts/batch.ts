@@ -23,8 +23,10 @@
 // army, and ms/tick (p50 / p95 / p99; use --jobs 1 for clean timings). Also: building sites and levels at the end,
 // paradrops (shot down / landed), artillery barrages (forts and SAMs silenced), air and missile interceptions, and
 // whether the winners used the special abilities more than the average nation.
-import { BUILDING_ORDER, DEFAULT_AI_COUNT, TICKS_PER_SECOND, VICTORY_LAND_SHARE } from '../src/sim/config';
+import { BUILDING_ORDER, DEFAULT_AI_COUNT, TICKS_PER_SECOND, VICTORY_LAND_SHARE, WATCHTOWER_DEF_RADIUS } from '../src/sim/config';
 import { armyTotal, population } from '../src/sim/economy';
+import { fortMultiplierAt, fortRadius } from '../src/sim/buildings';
+import { forEachInRadius } from '../src/sim/grid';
 import { tick } from '../src/sim/sim';
 import { createGame, gameSeconds } from '../src/sim/state';
 import { isTribe } from '../src/sim/types';
@@ -199,6 +201,13 @@ interface GameResult {
   paradropsLanded: number;
   barrages: number;
   barragesSilencing: number;
+  /** per barrage that landed: troops killed, and that / the target's home army when it was fired */
+  barrageKills: number[];
+  barrageShares: number[];
+  /** fortified tiles (fort or watchtower cover) taken by another nation between two samples; by attackers whose
+   *  attacks on that owner carried >= 15% artillery */
+  fortTaken: number;
+  fortTakenArt: number;
   bombersShot: number;
   missilesShot: number;
   /** abilities used by the winner and the mean per nation */
@@ -301,6 +310,10 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     paradropsLanded: 0,
     barrages: 0,
     barragesSilencing: 0,
+    barrageKills: [],
+    barrageShares: [],
+    fortTaken: 0,
+    fortTakenArt: 0,
     bombersShot: 0,
     missilesShot: 0,
     winnerParadrops: 0,
@@ -310,6 +323,9 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
   };
   const dropsBy = new Map<number, number>();
   const barragesBy = new Map<number, number>();
+  const barrageArmy = new Map<number, number>(); // barrage id -> target home army at launch
+  const fortOwner = new Int32Array(state.map.owner.length); // owner of a fortified tile at the last sample
+  let fortTiles: number[] = [];
   const seenUnits = new Set<number>();
   const seenBuildings = new Set<number>();
   const mixSamples: { minute: number; mix: Troops[] }[] = [];
@@ -323,7 +339,11 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     for (const e of state.events) {
       if (e.kind === 'victory') r.winReason = e.message.replace(/^.* wins: /, '');
       else if (e.kind === 'paradrop' && / landed in /.test(e.message)) r.paradropsLanded++;
-      else if (e.kind === 'barrage' && / hit /.test(e.message) && /silenced/.test(e.message)) r.barragesSilencing++;
+      else if (e.kind === 'barrage' && / shelled /.test(e.message)) {
+        if (/silenced/.test(e.message)) r.barragesSilencing++;
+        const m = /: (\d+) troops lost/.exec(e.message);
+        if (m) r.barrageKills.push(Number(m[1]));
+      }
       else if (e.kind === 'unitLost' && /shot down a cargo plane/.test(e.message)) r.paradropsShot++;
       else if (e.kind === 'unitLost' && /shot down a bomber/.test(e.message)) r.bombersShot++;
       else if (e.kind === 'unitLost' && /shot down a (rocket|atom bomb)/.test(e.message)) r.missilesShot++;
@@ -332,6 +352,9 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
       if (seenUnits.has(-b.id)) continue;
       seenUnits.add(-b.id);
       r.barrages++;
+      const tp = state.players[b.target];
+      barrageArmy.set(b.id, tp ? armyTotal(tp.troops) : 0);
+      r.barrageShares.push(-b.id); // placeholder: resolved below when the shells land
       barragesBy.set(b.owner, (barragesBy.get(b.owner) ?? 0) + 1);
     }
     state.events.length = 0;
