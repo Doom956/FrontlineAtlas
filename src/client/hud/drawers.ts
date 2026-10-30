@@ -25,6 +25,7 @@ import { isTribe } from '../compat';
 import { CATEGORY_COLORS, ICON_INFO, iconDataUrl, markerDataUrl } from '../icons';
 import { CATEGORY_PLATES } from '../render/buildings';
 import { rgbCss } from '../menu';
+import { swatchCss } from './swatch';
 import { formatCount } from '../render/common';
 import { fieldArmy, maxLevel } from '../simx';
 import { aimStrike, STRIKE_ORDER, STRIKES, strikeStatus } from '../strikes';
@@ -282,7 +283,7 @@ export class ArmyPage implements DrawerPage {
         }
         const tp = s.players[a.target];
         setText(r.target, a.target === 0 ? 'Wilderness' : tp?.name ?? 'Unknown');
-        r.target.style.setProperty('--c', a.target === 0 ? '#8d918a' : rgbCss(tp.color));
+        r.target.style.setProperty('--c', a.target === 0 ? '#8d918a' : swatchCss(tp, me.id));
         setText(r.troops, `${formatCount(armyTotal(a.troops))} troops`);
         setText(r.prog, `+${formatCount(a.tilesTaken)} tiles, lost ${formatCount(a.losses)}`);
       }
@@ -560,7 +561,7 @@ export class DiplomacyPage implements DrawerPage {
       const n = el('button', 'pname');
       n.type = 'button';
       const sw = el('i', 'sw');
-      sw.style.background = rgbCss(p.color);
+      sw.style.background = swatchCss(p, me.id);
       n.append(sw, p.name);
       n.addEventListener('click', () => this.ctx.openNation(id));
       return n;

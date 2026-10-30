@@ -17,13 +17,9 @@ import { barrageReach, strikeOfMode, strikeTarget, type StrikeTarget } from '../
 import { clamp, css, dashedLine, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, mix, pill, setTracking, type RGB } from './common';
 import type { UnitLayer } from './units';
 import { markerSize } from './buildings';
+import { displayColor, type DisplayRole } from './palette';
 
 const RING_TYPES: readonly BuildingType[] = ['fort', 'sam', 'airfield', 'watchtower'];
-/** strike previews: a valid target (brass) or not (red) */
-const OK_LINE = 'rgba(214,170,60,0.95)';
-const OK_FILL = 'rgba(214,170,60,0.16)';
-const BAD_LINE = 'rgba(226,72,52,0.95)';
-const BAD_FILL = 'rgba(226,72,52,0.12)';
 const EFFECT_SECONDS = 1.5;
 
 export function ringRadius(state: GameState, type: BuildingType, owner: number): number {
@@ -47,6 +43,8 @@ export class Overlays {
   private reachKey = '';
   private reachCanvas: HTMLCanvasElement | null = null;
   private reachCell = 1;
+  /** muted map shade per colour and role, as 'r,g,b' (see mutedRgb) */
+  private muted = new Map<string, string>();
 
   reset(w: number): void {
     this.etas.clear();
@@ -59,9 +57,9 @@ export class Overlays {
     ctx.arc(s.x, s.y, radius * cam.zoom, 0, Math.PI * 2);
     ctx.fillStyle = css(color, strong ? 0.1 : 0.05);
     ctx.fill();
-    ctx.setLineDash([6, 4]);
-    ctx.lineWidth = strong ? 2 : 1;
-    ctx.strokeStyle = css(color, strong ? 0.9 : 0.45);
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = strong ? 1.5 : 1;
+    ctx.strokeStyle = css(color, strong ? 0.85 : 0.4);
     ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -132,7 +130,7 @@ export class Overlays {
         const rr = Math.max(R * 1.8, (own ? 5 : 3.5) * cam.zoom) * (own ? 1 + 0.25 * pulse : 1);
         ctx.beginPath();
         ctx.arc(s.x, s.y, rr, 0, Math.PI * 2);
-        ctx.lineWidth = own ? 2.5 : 1.5;
+        ctx.lineWidth = own ? 1.75 : 1.25;
         ctx.strokeStyle = own ? `rgba(255,255,255,${0.55 + 0.4 * pulse})` : css(p.color, tribe ? 0.45 : 0.5 + 0.4 * pulse);
         ctx.stroke();
       }
@@ -140,7 +138,7 @@ export class Overlays {
         // your own capital: a white ring around the star, so it stands out from the others
         ctx.beginPath();
         ctx.arc(sx, sy, R * 1.45, 0, Math.PI * 2);
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1.5;
         ctx.strokeStyle = 'rgba(255,255,255,0.9)';
         ctx.stroke();
       }
@@ -168,42 +166,107 @@ export class Overlays {
     if (size >= LOCATOR_PX) return;
     const s = cam.tileToScreen((p.capital % this.w) + 0.5, ((p.capital / this.w) | 0) + 0.5);
     if (s.x < -40 || s.y < -40 || s.x > cam.viewW + 40 || s.y > cam.viewH + 40) return;
-    const r = Math.max(size * 0.75, 14) + 6 * pulse;
+    const r = Math.max(size * 0.55, 9) + 2.5 * pulse;
     ctx.beginPath();
     ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
     ctx.stroke();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = `rgba(255,255,255,${0.6 + 0.4 * pulse})`;
+    ctx.lineWidth = 1.25;
+    ctx.strokeStyle = `rgba(255,255,255,${0.55 + 0.35 * pulse})`;
     ctx.stroke();
-    ctx.font = `600 12px ${MAP_LABEL_FAMILY}`;
+    ctx.font = `600 11px ${MAP_LABEL_FAMILY}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    setTracking(ctx, 1.4);
-    haloText(ctx, 'YOU', s.x + 0.7, s.y - r - 3, '#ffffff', 12);
+    setTracking(ctx, 1.2);
+    haloText(ctx, 'YOU', s.x + 0.6, s.y - r - 2, 'rgba(255,255,255,0.92)', 11);
     setTracking(ctx, 0);
   }
 
-  /** Target reticles: red with a countdown for missiles / bombers flying at you, a quieter white one for yours. */
-  telegraphs(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, units: UnitLayer, frac: number, me: number, nowMs: number): void {
+  /** Muted map shade of a nation (the same calm colour the territory is painted with), lightened so a thin line reads over land. */
+  private mutedRgb(colors: readonly RGB[], state: GameState, owner: number, me: number): string {
+    const p = state.players[owner];
+    const base = colors[owner] ?? p?.color ?? [200, 200, 200];
+    const role: DisplayRole = owner === me ? 'own' : p && isTribe(p) ? 'tribe' : 'nation';
+    const key = `${base[0]},${base[1]},${base[2]}|${role}`;
+    let v = this.muted.get(key);
+    if (v === undefined) {
+      const m = mix(displayColor(base, { role }), [255, 255, 255], 0.3);
+      v = `${m[0]},${m[1]},${m[2]}`;
+      if (this.muted.size > 256) this.muted.clear();
+      this.muted.set(key, v);
+    }
+    return v;
+  }
+
+  /**
+   * A strike's blast disc at its exact map radius (`radius` tiles x zoom): a translucent fill and a crisp thin edge,
+   * plus a small centre mark so the target is found even when the disc is only a few pixels wide.
+   */
+  private blastDisc(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, z: number, rgb: string, fillA: number, lineA: number, lineW = 1.25): number {
+    const R = radius * z;
+    if (R >= 1.5) {
+      ctx.beginPath();
+      ctx.arc(x, y, R, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${rgb},${fillA})`;
+      ctx.fill();
+      // a faint dark under-stroke keeps the thin edge crisp over light and dark land
+      ctx.lineWidth = lineW + 1.5;
+      ctx.strokeStyle = `rgba(8,10,16,${(0.3 * lineA).toFixed(3)})`;
+      ctx.stroke();
+      ctx.lineWidth = lineW;
+      ctx.strokeStyle = `rgba(${rgb},${lineA})`;
+      ctx.stroke();
+    }
+    return R;
+  }
+
+  private centreMark(ctx: CanvasRenderingContext2D, x: number, y: number, rgb: string, a: number): void {
+    ctx.beginPath();
+    ctx.moveTo(x - 4, y);
+    ctx.lineTo(x + 4, y);
+    ctx.moveTo(x, y - 4);
+    ctx.lineTo(x, y + 4);
+    ctx.lineWidth = 1.25;
+    ctx.strokeStyle = `rgba(${rgb},${a})`;
+    ctx.stroke();
+  }
+
+  /** Thin countdown arc just outside the disc: full at launch, empty at impact. */
+  private countdownArc(ctx: CanvasRenderingContext2D, x: number, y: number, R: number, left: number, rgb: string, a: number, w: number): void {
+    if (left <= 0.001) return;
+    ctx.beginPath();
+    ctx.arc(x, y, R + 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left);
+    ctx.lineWidth = w;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = `rgba(${rgb},${a})`;
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+  }
+
+  /**
+   * Missiles, atom bombs and bombing runs in flight: the blast disc at the target (exact radius) with a thin
+   * countdown arc. Red when it is your land, your own colour (muted) for your strikes, the attacker's muted colour
+   * for strikes between other nations (lighter, so the map stays calm). Cargo planes keep a small drop mark.
+   */
+  telegraphs(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, units: UnitLayer, frac: number, me: number, nowMs: number, colors: readonly RGB[] = []): void {
     if (me <= 0 || state.units.length === 0) return;
     const z = cam.zoom;
-    const pulse = 0.5 + 0.5 * Math.sin(nowMs / 120);
+    const pulse = 0.5 + 0.5 * Math.sin(nowMs / 160);
     const live = new Set<number>();
     for (const u of state.units) {
       const kind = u.type;
-      if (kind !== 'rocket' && kind !== 'atomBomb' && !((kind === 'bomber' || kind === 'transportPlane') && u.state === 0)) continue;
+      const strike = kind === 'rocket' || kind === 'atomBomb' || (kind === 'bomber' && u.state === 0);
+      const drop = kind === 'transportPlane' && u.state === 0;
+      if (!strike && !drop) continue;
       const own = u.owner === me;
       const atMe = !own && state.map.owner[u.target] === me;
-      if (!own && !atMe) continue;
+      if (drop && !own && !atMe) continue;
       live.add(u.id);
       const tx = (u.target % this.w) + 0.5;
       const ty = ((u.target / this.w) | 0) + 0.5;
       const p = units.pos(u, frac);
-      const ux = p.x + 0.5;
-      const uy = p.y + 0.5;
-      const dist = Math.sqrt((tx - ux) * (tx - ux) + (ty - uy) * (ty - uy));
+      const dist = Math.hypot(tx - (p.x + 0.5), ty - (p.y + 0.5));
       const eta = dist / Math.max(0.1, UNITS[kind].speed);
       let eta0 = this.etas.get(u.id);
       if (eta0 === undefined || eta0 < eta) {
@@ -211,94 +274,76 @@ export class Overlays {
         this.etas.set(u.id, eta0);
       }
       const s = cam.tileToScreen(tx, ty);
-      const blast = kind === 'atomBomb' ? ATOM_RADIUS : kind === 'rocket' ? ROCKET_RADIUS : kind === 'transportPlane' ? 2.5 : BOMBER_RADIUS;
-      const R = Math.max(14, blast * z);
+      const outer = kind === 'atomBomb' ? ATOM_RADIUS : kind === 'rocket' ? ROCKET_RADIUS : kind === 'transportPlane' ? 2.5 : BOMBER_RADIUS;
+      const R = outer * z;
       if (s.x < -R - 20 || s.y < -R - 20 || s.x > cam.viewW + R + 20 || s.y > cam.viewH + R + 20) continue;
-      const col = atMe ? '255,70,55' : '255,255,255';
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, R, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${col},${atMe ? 0.1 + 0.08 * pulse : 0.06})`;
-      ctx.fill();
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([5, 4]);
-      ctx.strokeStyle = `rgba(${col},${atMe ? 0.55 + 0.4 * pulse : 0.55})`;
-      ctx.stroke();
-      ctx.setLineDash([]);
-      const c = Math.min(R * 0.45, 12);
-      ctx.beginPath();
-      ctx.moveTo(s.x - c, s.y);
-      ctx.lineTo(s.x + c, s.y);
-      ctx.moveTo(s.x, s.y - c);
-      ctx.lineTo(s.x, s.y + c);
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      // strikes between others stay faint and vanish when they would only be specks
+      if (!own && !atMe && R < 4) continue;
+      const rgb = atMe ? '236,74,58' : this.mutedRgb(colors, state, u.owner, me);
+      const k = atMe ? 1 : own ? 0.75 : 0.55;
+      const calm = atMe ? 0.1 + 0.06 * pulse : 0.07 * k;
+      const edge = atMe ? 0.7 + 0.25 * pulse : 0.7 * k;
+      if (kind === 'atomBomb') {
+        this.blastDisc(ctx, s.x, s.y, ATOM_RADIUS, z, rgb, calm * 0.7, edge * 0.8);
+        this.blastDisc(ctx, s.x, s.y, ATOM_CORE_RADIUS, z, rgb, calm * 1.3, edge);
+      } else {
+        this.blastDisc(ctx, s.x, s.y, outer, z, rgb, calm, edge);
+      }
+      this.centreMark(ctx, s.x, s.y, rgb, Math.min(1, edge + 0.2));
       const left = clamp(eta / eta0, 0, 1);
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, Math.min(R, 22) * 0.75 + 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left);
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = `rgba(${col},0.95)`;
-      ctx.stroke();
-      if (atMe || z >= 2) {
+      this.countdownArc(ctx, s.x, s.y, Math.max(R, 5), left, rgb, atMe ? 0.95 : 0.7 * k + 0.15, atMe ? 1.75 : 1.25);
+      if (atMe || (own && z >= 1.5)) {
         const label = `${eta < 9.95 ? eta.toFixed(1) : Math.round(eta)}s`;
-        ctx.font = `500 12px ${MAP_NUM_FAMILY}`;
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        const lx = s.x + Math.min(R, 22) * 0.75 + 11;
-        haloText(ctx, label, lx, s.y, atMe ? '#ffb3aa' : '#ffffff', 12);
+        ctx.font = `500 11px ${MAP_NUM_FAMILY}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        haloText(ctx, label, s.x, s.y - Math.max(R, 5) - 6, atMe ? '#ffb3aa' : '#ffffff', 11);
       }
     }
     for (const id of this.etas.keys()) if (!live.has(id)) this.etas.delete(id);
   }
 
   /**
-   * Artillery barrages in flight: a warning disc with a countdown where the shells will land (red when it is your
-   * land, amber when they are your guns, grey for others) and shells arcing in over the last second.
+   * Artillery barrages in flight: the BARRAGE_RADIUS disc where the shells will land with a thin countdown arc (red
+   * when it is your land, else the shooter's muted colour) and shells arcing in over the last second.
    */
-  barrages(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, frac: number, me: number, nowMs: number): void {
+  barrages(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, frac: number, me: number, nowMs: number, colors: readonly RGB[] = []): void {
     const list = state.barrages;
     if (!list || list.length === 0) return;
     const z = cam.zoom;
     const now = state.tick + frac;
-    const pulse = 0.5 + 0.5 * Math.sin(nowMs / 110);
+    const pulse = 0.5 + 0.5 * Math.sin(nowMs / 160);
     for (const b of list) {
       const s = cam.tileToScreen((b.tile % this.w) + 0.5, ((b.tile / this.w) | 0) + 0.5);
-      const R = Math.max(18, BARRAGE_RADIUS * z);
+      const R = BARRAGE_RADIUS * z;
       if (s.x < -R - 40 || s.y < -R - 40 || s.x > cam.viewW + R + 40 || s.y > cam.viewH + R + 40) continue;
       const atMe = me > 0 && b.owner !== me && b.target === me;
       const mine = b.owner === me;
-      const col = atMe ? '226,72,52' : mine ? '214,170,60' : '200,200,200';
+      if (!atMe && !mine && R < 4) continue;
+      const rgb = atMe ? '236,74,58' : this.mutedRgb(colors, state, b.owner, me);
+      const k = atMe ? 1 : mine ? 0.75 : 0.55;
       const left = clamp((b.hitTick - now) / (BARRAGE_DELAY * TICKS_PER_SECOND), 0, 1);
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, R, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${col},${atMe ? 0.12 + 0.1 * pulse : 0.08})`;
-      ctx.fill();
-      ctx.setLineDash([4, 3]);
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = `rgba(${col},${atMe ? 0.6 + 0.35 * pulse : 0.7})`;
-      ctx.stroke();
-      ctx.setLineDash([]);
-      // countdown arc
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, R + 4, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left);
-      ctx.lineWidth = 2.5;
-      ctx.strokeStyle = `rgba(${col},0.95)`;
-      ctx.stroke();
-      // shells: streaks coming down from the upper left onto points of the disc
+      this.blastDisc(ctx, s.x, s.y, BARRAGE_RADIUS, z, rgb, atMe ? 0.1 + 0.06 * pulse : 0.07 * k, atMe ? 0.7 + 0.25 * pulse : 0.7 * k);
+      this.centreMark(ctx, s.x, s.y, rgb, Math.min(1, 0.7 * k + 0.2));
+      this.countdownArc(ctx, s.x, s.y, Math.max(R, 5), left, rgb, atMe ? 0.95 : 0.7 * k + 0.15, atMe ? 1.75 : 1.25);
+      if (!atMe && !mine) continue;
+      // shells: thin streaks coming down from the upper left onto points of the disc
       const p = 1 - left;
-      for (let k = 0; k < 5; k++) {
-        const a = (k * 2.4 + b.id) % (Math.PI * 2);
-        const rr = R * (0.2 + 0.7 * (((k * 53 + b.id) % 10) / 10));
+      const span = Math.max(R, 12);
+      for (let n = 0; n < 5; n++) {
+        const a = (n * 2.4 + b.id) % (Math.PI * 2);
+        const rr = span * (0.2 + 0.7 * (((n * 53 + b.id) % 10) / 10));
         const tx = s.x + Math.cos(a) * rr;
         const ty = s.y + Math.sin(a) * rr;
-        const q = clamp(p * 1.25 - k * 0.06, 0, 1);
+        const q = clamp(p * 1.25 - n * 0.06, 0, 1);
         if (q <= 0) continue;
-        const sx = tx - (1 - q) * (60 + R);
-        const sy = ty - (1 - q) * (90 + R) + (1 - q) * (1 - q) * 30;
+        const sx = tx - (1 - q) * (60 + span);
+        const sy = ty - (1 - q) * (90 + span) + (1 - q) * (1 - q) * 30;
         ctx.beginPath();
-        ctx.moveTo(sx - 7, sy - 10);
+        ctx.moveTo(sx - 6, sy - 9);
         ctx.lineTo(sx, sy);
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = 'rgba(255,236,190,0.9)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = 'rgba(255,236,190,0.8)';
         ctx.stroke();
       }
     }
@@ -321,13 +366,20 @@ export class Overlays {
   private effect(ctx: CanvasRenderingContext2D, e: Effect, x: number, y: number, t: number, cam: Camera): void {
     const z = cam.zoom;
     const R = Math.max(e.radius, 0.5) * z;
+    // the blast disc flashes at its exact radius, then fades (rocket, bombs, atom bomb, barrage; not the small blasts)
+    if (e.radius >= 4 && e.kind !== 'shot' && e.kind !== 'capture') {
+      const f = t < 0.12 ? 1 : Math.max(0, 1 - (t - 0.12) / 0.88);
+      const rgb = e.kind === 'nuke' ? '255,214,140' : '255,196,110';
+      this.blastDisc(ctx, x, y, e.radius, z, rgb, 0.3 * f * f, 0.95 * f, 1.5);
+      if (e.kind === 'nuke') this.blastDisc(ctx, x, y, ATOM_CORE_RADIUS, z, '255,150,80', 0.3 * f * f, 0.95 * f, 1.5);
+    }
     switch (e.kind) {
       case 'explosion': {
         const r = Math.max(6, R) * (0.3 + 0.7 * t);
         ctx.globalAlpha = 1 - t;
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255,150,50,0.55)';
+        ctx.fillStyle = 'rgba(255,150,50,0.4)';
         ctx.fill();
         ctx.lineWidth = 2;
         ctx.strokeStyle = 'rgba(255,230,160,0.9)';
@@ -521,6 +573,37 @@ export class Overlays {
     ctx.restore();
   }
 
+  /**
+   * The aiming disc of a strike at the pointer: translucent fill and a crisp thin edge at the exact blast radius in
+   * map scale (so it grows and shrinks with the zoom), a small label with the radius, red when the strike is not
+   * valid here. An atom bomb passes two rings: the outer blast and the core that turns neutral (a deeper fill).
+   */
+  private aimDisc(ctx: CanvasRenderingContext2D, cam: Camera, x: number, y: number, ok: boolean, rings: { radius: number; core?: boolean }[], label: string): void {
+    const z = cam.zoom;
+    let top = 0;
+    for (const r of rings) {
+      const rgb = !ok ? '226,72,52' : r.core ? '240,110,60' : '214,170,60';
+      const fill = !ok ? (r.core ? 0.2 : 0.11) : r.core ? 0.2 : rings.length > 1 ? 0.1 : 0.2;
+      this.blastDisc(ctx, x, y, r.radius, z, rgb, fill, ok ? 0.95 : 0.9, 1.5);
+      top = Math.max(top, r.radius * z);
+    }
+    this.centreMark(ctx, x, y, ok ? '255,236,190' : '255,170,160', 0.9);
+    ctx.font = `600 12px ${MAP_LABEL_FAMILY}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    setTracking(ctx, 0.6);
+    const tw = ctx.measureText(label).width;
+    const half = tw / 2 + 8;
+    const lx = clamp(x, half, Math.max(half, cam.viewW - half));
+    const ly = clamp(y - Math.max(top, 8) - 7, 20, Math.max(20, cam.viewH - 8));
+    ctx.beginPath();
+    ctx.roundRect(lx - tw / 2 - 6, ly - 16, tw + 12, 19, 6);
+    ctx.fillStyle = 'rgba(10,13,21,0.62)';
+    ctx.fill();
+    haloText(ctx, label, lx, ly, ok ? '#f6e7b8' : '#ffb8ae', 12, 1.2);
+    setTracking(ctx, 0);
+  }
+
   /** Selection, hovered tile and the preview of the current target mode. */
   hoverAndPreview(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, ui: UiState, snap: Snap | null, units: UnitLayer, frac: number, dpr: number): void {
     const n = state.map.width * state.map.height;
@@ -540,7 +623,7 @@ export class Overlays {
       ctx.arc(hs.x, hs.y, Math.max(radius * z, 4), 0, Math.PI * 2);
       ctx.fillStyle = fill;
       ctx.fill();
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1.5;
       ctx.strokeStyle = color;
       ctx.stroke();
     };
@@ -579,20 +662,18 @@ export class Overlays {
       }
       case 'bomb': {
         const t = this.check(state, ui, hover);
-        if (t?.from !== undefined) lineFrom(t.from, 'rgba(255,255,255,0.7)');
-        const ok = !!t?.ok;
-        circle(BOMBER_RADIUS, ok ? OK_LINE : BAD_LINE, ok ? OK_FILL : BAD_FILL);
+        if (t?.from !== undefined) lineFrom(t.from, 'rgba(255,255,255,0.6)');
+        this.aimDisc(ctx, cam, hs.x, hs.y, !!t?.ok, [{ radius: BOMBER_RADIUS }], `Bombing run · radius ${BOMBER_RADIUS} tiles`);
         break;
       }
       case 'missile': {
         const t = this.check(state, ui, hover);
-        if (t?.from !== undefined) lineFrom(t.from, 'rgba(255,255,255,0.7)');
+        if (t?.from !== undefined) lineFrom(t.from, 'rgba(255,255,255,0.6)');
         const ok = !!t?.ok;
         if (mode.missile === 'atomBomb') {
-          circle(ATOM_RADIUS, ok ? 'rgba(255,200,60,0.95)' : BAD_LINE, ok ? 'rgba(255,200,60,0.12)' : BAD_FILL);
-          circle(ATOM_CORE_RADIUS, ok ? 'rgba(255,90,40,0.95)' : BAD_LINE, ok ? 'rgba(255,90,40,0.18)' : BAD_FILL);
+          this.aimDisc(ctx, cam, hs.x, hs.y, ok, [{ radius: ATOM_RADIUS }, { radius: ATOM_CORE_RADIUS, core: true }], `Atom bomb · core ${ATOM_CORE_RADIUS} · blast ${ATOM_RADIUS} tiles`);
         } else {
-          circle(ROCKET_RADIUS, ok ? OK_LINE : BAD_LINE, ok ? OK_FILL : BAD_FILL);
+          this.aimDisc(ctx, cam, hs.x, hs.y, ok, [{ radius: ROCKET_RADIUS }], `Rocket · radius ${ROCKET_RADIUS} tiles`);
         }
         break;
       }
@@ -626,7 +707,7 @@ export class Overlays {
       }
       case 'barrage': {
         const ok = !!this.check(state, ui, hover)?.ok;
-        circle(BARRAGE_RADIUS, ok ? OK_LINE : BAD_LINE, ok ? OK_FILL : BAD_FILL);
+        this.aimDisc(ctx, cam, hs.x, hs.y, ok, [{ radius: BARRAGE_RADIUS }], `Artillery barrage · radius ${BARRAGE_RADIUS} tiles`);
         break;
       }
       case 'transport':

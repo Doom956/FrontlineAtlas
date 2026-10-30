@@ -4,7 +4,7 @@ import type { GameState, Player } from '../../sim/types';
 import { teamOf } from '../../sim/rules';
 import { allScores, teamName } from '../../sim/victory';
 import { isTribe } from '../compat';
-import { rgbCss } from '../menu';
+import { swatchCss } from './swatch';
 import { formatCount } from '../render/common';
 import { btn, el, fmtTime } from './dom';
 
@@ -27,7 +27,7 @@ export function gameOverCard(state: GameState, me: Player, onAgain: () => void, 
     sub.append(watcher ? `Every player was eliminated.${lead}` : `You were eliminated: your nation is gone.${lead}`);
   } else if (winner && state.winner) {
     const dot = el('i', 'sw');
-    dot.style.background = rgbCss(winner.color);
+    dot.style.background = swatchCss(winner, state.humanId);
     const team = state.winnerTeam > 0 ? `${teamName(state.winnerTeam)} (led by ${winner.name})` : '';
     sub.append(dot, won ? (team ? `Your team rules the map: ${team}.` : 'Your nation rules the map.') : team ? `${team} wins.` : `${winner.name} wins.`);
   } else sub.append('Nobody wins.');

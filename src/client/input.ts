@@ -190,6 +190,7 @@ export function setupInput(deps: InputDeps): () => void {
     (e) => {
       const p = local(e);
       ui.hoverTile = tileAt(p.x, p.y);
+      ui.hoverPx = { x: p.x, y: p.y };
       if (!press || press.id !== e.pointerId) return;
       if (!press.dragging && Math.hypot(p.x - press.x0, p.y - press.y0) > DRAG_THRESHOLD) press.dragging = true;
       if (press.dragging) {
@@ -223,7 +224,10 @@ export function setupInput(deps: InputDeps): () => void {
   canvas.addEventListener(
     'pointerleave',
     () => {
-      if (!press) ui.hoverTile = -1;
+      if (!press) {
+        ui.hoverTile = -1;
+        ui.hoverPx = null;
+      }
     },
     opts,
   );

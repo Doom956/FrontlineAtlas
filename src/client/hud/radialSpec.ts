@@ -7,7 +7,7 @@ import { hasTech } from '../../sim/tech';
 import { isWater, Resource } from '../../sim/types';
 import type { BuildingType, GameState, Player, TerrainId } from '../../sim/types';
 import { isAttackable, sendTransport, troopsToSend, troopSum } from '../input';
-import { rgbCss } from '../menu';
+import { swatchCss } from './swatch';
 import type { RadialItem, RadialSpec } from '../radial';
 import { formatCount } from '../render/common';
 import { maxLevel } from '../simx';
@@ -209,5 +209,5 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
     const mine = state.attacks.filter((a) => a.attacker === h && a.target === 0);
     if (mine.length) slices.push({ label: 'Stop', icon: 'stop', danger: true, hint: 'Stop expanding into the wilderness', run: () => mine.forEach((a) => ctx.dispatch({ type: 'retreat', attackId: a.id })) });
   }
-  return { title, subtitle, color: op ? rgbCss(op.color) : undefined, centre, slices };
+  return { title, subtitle, color: op ? swatchCss(op, h) : undefined, centre, slices };
 }

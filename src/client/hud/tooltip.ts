@@ -11,7 +11,7 @@ import { isWater } from '../../sim/types';
 import type { GameState, Player, TerrainId } from '../../sim/types';
 import { isTribe, outnumberRatio } from '../compat';
 import { isAttackable, troopsToSend, troopSum } from '../input';
-import { rgbCss } from '../menu';
+import { swatchCss } from './swatch';
 import { formatCount } from '../render/common';
 import { armyOf, barrageRange, BuildTargetCache, maxLevel } from '../simx';
 import { blastSummary, ownHitWarning, STRIKES, strikeOfMode, strikeTarget } from '../strikes';
@@ -107,7 +107,7 @@ export class MapTooltip {
         const r = this.line('', op.name, [rel, army].filter(Boolean).join(', '), 'own');
         const sw = r.querySelector('.mt-ic') as HTMLElement;
         sw.classList.add('sw');
-        sw.style.background = rgbCss(op.color);
+        sw.style.background = swatchCss(op, me.id);
         rows.push(r);
       } else rows.push(this.line('', 'Wilderness', 'Nobody owns it: cheap to take', 'own wild'));
       const b = buildingAt(state, tile);

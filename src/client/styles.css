@@ -3606,10 +3606,11 @@ button.toast-t:hover {
   .lb-list {
     max-height: 48px;
   }
+  /* below the standings box (which ends about 160 px down), so toasts and the aiming line never cover it */
   .hud-top {
     width: calc(100vw - 24px);
     min-width: 0;
-    top: 104px;
+    top: 164px;
   }
   /* the build bar scrolls sideways, with faded edges hinting at more */
   .bbar {

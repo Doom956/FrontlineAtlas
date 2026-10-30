@@ -216,6 +216,7 @@ export class Renderer {
     const me = this.humanId;
     const snap = this.currentSnap(state, ui);
     this.units.track(state, nowMs);
+    this.units.focusId = this.focusShip(ui);
     const frac = this.units.subTick(nowMs, ui.paused, ui.speed);
     const b = ui.mode.kind === 'build' ? ui.mode.building : null;
     const depFocus = b === 'mine' ? 1 : b === 'oilWell' ? 2 : b === 'farm' ? 3 : 0;
@@ -231,8 +232,8 @@ export class Renderer {
     const hs = ui.hoverTile >= 0 ? camera.tileToScreen((ui.hoverTile % this.w) + 0.5, ((ui.hoverTile / this.w) | 0) + 0.5) : null;
     const hoverOwner = ui.hoverTile >= 0 && ui.hoverTile < state.map.owner.length ? state.map.owner[ui.hoverTile] : 0;
     this.names.draw(ctx, state, camera, me, { hoverOwner, targeting: ui.mode.kind !== 'none', hover: hs }, nowMs, d);
-    this.overlays.telegraphs(ctx, state, camera, this.units, frac, me, nowMs);
-    this.overlays.barrages(ctx, state, camera, frac, me, nowMs);
+    this.overlays.telegraphs(ctx, state, camera, this.units, frac, me, nowMs, this.colors);
+    this.overlays.barrages(ctx, state, camera, frac, me, nowMs, this.colors);
     this.fronts.draw(ctx, state, camera, me, this.colors);
     this.overlays.floaters(ctx, ui, camera, nowMs);
     this.overlays.strikeZones(ctx, state, camera, ui);
@@ -254,6 +255,13 @@ export class Renderer {
   minimapToTile(mx: number, my: number): { x: number; y: number } | null {
     if (!this.state) return null;
     return this.mini.toTile(mx, my);
+  }
+
+  /** The own warship to ring: the one picked for a move order, else the one under the pointer (idle mode only). */
+  private focusShip(ui: UiState): number {
+    if (ui.mode.kind === 'moveWarship') return ui.mode.unitId;
+    if (ui.mode.kind === 'none' && ui.hoverPx) return this.units.ownWarshipAt(ui.hoverPx.x, ui.hoverPx.y);
+    return -1;
   }
 
   /** Id of your own warship drawn under a canvas point (CSS px), or -1. */

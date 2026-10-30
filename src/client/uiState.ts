@@ -21,6 +21,8 @@ export interface UiState {
   attackMixMode: 'all' | 'custom';
   customMix: { infantry: number; armor: number; artillery: number }; // weights 0..1
   hoverTile: number; // -1 none
+  /** pointer position over the map in CSS px (null when it is off the map): picks the hovered warship */
+  hoverPx: { x: number; y: number } | null;
   selectedTile: number; // -1 none
   paused: boolean;
   speed: 1 | 2 | 4;
@@ -59,6 +61,7 @@ export function defaultUiState(): UiState {
     attackMixMode: 'all',
     customMix: { infantry: 1, armor: 1, artillery: 1 },
     hoverTile: -1,
+    hoverPx: null,
     selectedTile: -1,
     paused: false,
     speed: 1,

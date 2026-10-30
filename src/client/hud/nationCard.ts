@@ -8,7 +8,7 @@ import { TRAITOR_DURATION } from '../../sim/config';
 import type { GameState, Player } from '../../sim/types';
 import { isTribe } from '../compat';
 import { troopsToSend, troopSum } from '../input';
-import { rgbCss } from '../menu';
+import { swatchCss } from './swatch';
 import { formatCount } from '../render/common';
 import { armyOf } from '../simx';
 import { btn, el, setClass, setDisabled, setText, setTip, setVisible, type HudCtx } from './dom';
@@ -104,7 +104,7 @@ export class NationCard {
       return;
     }
     const isMe = p.id === me.id;
-    this.el.style.setProperty('--c', rgbCss(p.color));
+    this.el.style.setProperty('--c', swatchCss(p, me.id));
     setText(this.name, p.name);
     const rel = relationOf(s, me, p.id);
     setText(this.rel, rel.text);

@@ -5,7 +5,7 @@ import { teamName } from '../../sim/victory';
 import { areAllied, isTraitor } from '../../sim/diplomacy';
 import type { GameState, Player } from '../../sim/types';
 import { isTribe } from '../compat';
-import { rgbCss } from '../menu';
+import { swatchCss } from './swatch';
 import { formatCount } from '../render/common';
 import { armyOf } from '../simx';
 import { el, setClass, setText, setVisible, type HudCtx } from './dom';
@@ -114,7 +114,7 @@ export class Leaderboard {
       }
       const rank = ranked.indexOf(p) + 1;
       setText(r.rank, String(rank));
-      r.sw.style.background = rgbCss(p.color);
+      r.sw.style.background = swatchCss(p, me.id);
       const isMe = p.id === me.id;
       setText(r.name, isMe ? `${p.name} (you)` : p.name);
       setText(r.land, `${((p.tiles / land) * 100).toFixed(1)}%`);
