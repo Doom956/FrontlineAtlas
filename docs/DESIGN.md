@@ -699,7 +699,7 @@ A doctrine is a mid-game specialisation (`src/sim/doctrines.ts`, numbers in conf
 with the owner, so doctrines never make play linear:
 
 - **Bonus only.** Every unit, building and strike stays open to everyone. A doctrine raises a few levers of one style
-  (`DOCTRINE_LEVERS`, the full bonus as a fraction: about +25% / -25%) and forbids nothing.
+  (`DOCTRINE_LEVERS`, the full bonus as a fraction: +12% to +30%, mostly 25%) and forbids nothing.
 - **Chosen mid-game.** Doctrines unlock `DOCTRINE_UNLOCK_SECONDS` (5:00) of game time after the start of play, so the
   choice answers the map, the neighbours and the economy (`recommendDoctrines` names the 3 that fit, with a plain
   reason). Tribes never get one.
@@ -716,13 +716,13 @@ and research): the unlock is at 2:30 there.
 
 | Doctrine | Levers (full bonus) | Level 3 perk |
 | --- | --- | --- |
-| Blitz | fronts cross plains and desert tiles +25% faster; armor conversion -25% gold and iron | armor ignores half of its terrain attack penalty |
+| Blitz | fronts cross plains and desert tiles +30% faster; armor conversion -25% gold and iron | armor ignores half of its terrain attack penalty |
 | Fortress | the defence a fort adds +25%; forts -25% gold and iron; home troops lost when a tile falls -20% | forts build and upgrade 4x faster, repair shell damage 3x faster |
 | Siege | artillery attack +20%; artillery's extra siege bonus +25%; barrage reload -25% | barrage disc +1 tile; forts and SAMs silenced 1.5x longer |
-| Merchant | gold income +15%; trade gold received +25%; market bonus (and its cap) +25% | +1.5% gold per own trade ship at sea (up to 10) |
+| Merchant | gold income +12%; trade gold received +25%; market bonus (and its cap) +25% | +1.5% gold per own trade ship at sea (up to 10) |
 | Naval | warships -25% price, +20% speed; transports +25% speed and +1 hp (twice as hard to sink) | warships repair at sea (0.05 hp/s); coastal shelling x1.5 |
 | Air | bombers, fighters and paradrop planes -25% price; fighter and paradrop cooldowns -25%; paradrop range +25% | bombers survive one extra hit (SAM shot or fighters) |
-| Expansion | losses attacking tribes and wilderness -25%; troop growth +25% while small (full under 4% of the land, none from 10%) | a tribe you eliminate pays 15 s of your gold income + 0.2 gold per tile it held at its peak |
+| Expansion | losses attacking tribes and wilderness -30%; troop growth +30% while small (full under 6% of the land, none from 15%) | a tribe you eliminate pays 15 s of your gold income + 0.2 gold per tile it held at its peak |
 
 Code contract:
 
@@ -745,11 +745,13 @@ Code contract:
   chooser; as news to humans who border it, are allied or have watchtower intel), `doctrineLevelUp` (to the holder).
 - AI (`ai.ts` `doctrine`): picks within 40 s of the unlock by `doctrineAdvice` (the same situation scores the UI
   shows) x a personality taste (`DOCTRINE_TASTE`) x difficulty noise (`doctrineNoise`; Easy also picks at random
-  `doctrineRandom` of the time). It reviews once a minute and switches only after holding a doctrine 6 minutes, when
-  another one scores `DOCTRINE_SWITCH_MARGIN` (+0.25 per level it would lose) times better and it has twice the
+  `doctrineRandom` of the time). It reviews once a minute and switches only after holding a doctrine 8 minutes, when
+  another one scores `DOCTRINE_SWITCH_MARGIN` (1.8, +0.25 per level it would lose) times better and it has twice the
   price in gold (a new sea war raises Naval, enemy forts raise Siege, a bigger neighbour raises Fortress). It leans
   into the held doctrine: build priorities (`DOCTRINE_BUILD`), army mix (`DOCTRINE_MIX`), a few more warships
   (Naval) and an extra airfield (Air).
 - Balance: `scripts/batch.ts --doctrines ai|random|off` reports the doctrine each nation held longest, switches,
   and win share against pick share per doctrine. `random` gives every nation a random doctrine at the unlock (a fair
-  strength test without personality bias), `off` keeps every bonus off (baseline).
+  strength test without personality bias: the batch also keeps them from switching), `off` keeps every bonus off
+  (baseline). Besides wins it prints each doctrine's mean land share and survival at the end (more signal than
+  wins in a few dozen games).

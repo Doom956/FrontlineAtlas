@@ -485,13 +485,13 @@ export interface DoctrineLevers {
 export type DoctrineLever = keyof DoctrineLevers;
 
 export const DOCTRINE_LEVERS: Record<DoctrineId, DoctrineLevers> = {
-  blitz: { openFrontSpeed: 0.25, armorConvertCost: 0.25 },
+  blitz: { openFrontSpeed: 0.3, armorConvertCost: 0.25 },
   fortress: { fortDefense: 0.25, fortCost: 0.25, defenderLoss: 0.2 },
   siege: { artilleryAttack: 0.2, siegeBonus: 0.25, barrageCooldown: 0.25 },
-  merchant: { gold: 0.15, tradeGold: 0.25, marketBonus: 0.25 },
+  merchant: { gold: 0.12, tradeGold: 0.25, marketBonus: 0.25 },
   naval: { warshipCost: 0.25, warshipSpeed: 0.2, transportSpeed: 0.25, transportHp: 1 },
   air: { aircraftCost: 0.25, airfieldReload: 0.25, paradropRange: 0.25 },
-  expansion: { expansionLoss: 0.25, smallGrowth: 0.25 },
+  expansion: { expansionLoss: 0.3, smallGrowth: 0.3 },
 };
 
 /** Level-3 signature perks (and the expansion doctrine's 'small' range, used from level 1). */
@@ -510,7 +510,7 @@ export const DOCTRINE_PERKS = {
   air: { bomberExtraHp: 1 },
   /** smallGrowth is full below smallShare[0] of the map's land and fades out at smallShare[1]; a tribe you
    *  eliminate pays tribeIncomeSeconds of your gold income + tribeGoldPerTile x its tiles at its peak (level 3) */
-  expansion: { smallShare: [0.04, 0.1] as const, tribeIncomeSeconds: 15, tribeGoldPerTile: 0.2 },
+  expansion: { smallShare: [0.06, 0.15] as const, tribeIncomeSeconds: 15, tribeGoldPerTile: 0.2 },
 } as const;
 
 export interface DoctrineInfo {
