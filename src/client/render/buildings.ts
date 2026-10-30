@@ -221,12 +221,12 @@ export class BuildingLayer {
     }
     if (size >= NAME_MARKER_PX) {
       // close up (zoom 8+): the building's name under its marker
-      ctx.font = `500 12px ${MAP_LABEL_FAMILY}`;
+      ctx.font = `600 12px ${MAP_LABEL_FAMILY}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       const ny = y + r + (b.hp > 0 && b.hp < 1 ? 7 : 4);
       setTracking(ctx, 0.4);
-      haloText(ctx, BUILDINGS[b.type].name, x + 0.2, ny, 'rgba(244,245,247,0.92)', 12, 0.9);
+      haloText(ctx, BUILDINGS[b.type].name, x + 0.2, ny, 'rgba(244,245,247,0.95)', 12, 1.1);
       setTracking(ctx, 0);
     }
   }

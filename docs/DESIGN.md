@@ -287,8 +287,8 @@ Events: `'paradrop'` to the target at launch ("X is dropping N paratroopers on Y
 within `barrageRange` = `BARRAGE_RANGE` (20; Ballistics x1.5) of your own land, and it costs `BARRAGE_GOLD`. The
 order is telegraphed: a `Barrage { id, owner, tile, target, artillery, hitTick }` waits in `state.barrages` for
 `BARRAGE_DELAY` (2 s; the client draws the warning circle and countdown). Then, on a disc of `BARRAGE_RADIUS` (6):
-- hostile owners lose home troops: `barrageKill(artillery)` = `BARRAGE_KILL_MAX` (500k) x a / (a +
-  `BARRAGE_KILL_HALF` 2M) in all (about a quarter of the guns for a small battery, 167k for 1M guns, diminishing),
+- hostile owners lose home troops: `barrageKill(artillery)` = `BARRAGE_KILL_MAX` (300k) x a / (a +
+  `BARRAGE_KILL_HALF` 2M) in all (about 15% of the guns for a small battery, 100k for 1M guns, diminishing),
   split by their share of the disc, each capped at `BARRAGE_KILL_ARMY_SHARE` (8%) of its home army;
 - hostile **forts and SAM sites** lose `BARRAGE_BUILDING_DAMAGE` (0.25) hp (0 = destroyed; buildings repair
   `BUILDING_REPAIR_PER_S`) and are knocked out until `Building.disabledUntil` (`BARRAGE_DISABLE_SECONDS`, 20 s): a

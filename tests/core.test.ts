@@ -194,10 +194,12 @@ describe('mapgen', () => {
     const a = generateMap(testSettings({ seed: 5 }), makeRng(5).rng);
     const b = generateMap(testSettings({ seed: 5 }), makeRng(5).rng);
     const c = generateMap(testSettings({ seed: 6 }), makeRng(6).rng);
-    expect(a.terrain).toEqual(b.terrain);
-    expect(a.resource).toEqual(b.resource);
-    expect(a.terrain).not.toEqual(c.terrain);
-  });
+    // Byte comparison: toEqual on half a million typed-array entries is slow enough to time out under load.
+    const same = (x: Uint8Array, y: Uint8Array) => Buffer.from(x).equals(Buffer.from(y));
+    expect(same(a.terrain, b.terrain)).toBe(true);
+    expect(same(a.resource, b.resource)).toBe(true);
+    expect(same(a.terrain, c.terrain)).toBe(false);
+  }, 20000);
 });
 
 describe('createGame and spawning', () => {

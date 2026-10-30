@@ -119,18 +119,19 @@ export function setTracking(ctx: CanvasRenderingContext2D, px: number): void {
 /**
  * Map label text with a thin, soft halo instead of a thick outline: a faint 1-1.5 px dark stroke carrying a small
  * blurred shadow, then the fill on top, so the letters stay crisp and readable over light and dark nation colours.
- * `strength` 0..1 scales the halo (1 = the default for labels over territory).
+ * `strength` scales the halo (1 = the default over nation colours, more over pale land such as tribes).
  */
 export function haloText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, fill: string, size = 12, strength = 1): void {
   const m = ctx.getTransform();
   const scale = Math.hypot(m.a, m.b) || 1;
   ctx.lineJoin = 'round';
-  ctx.shadowColor = `rgba(4,6,12,${(0.7 * strength).toFixed(2)})`;
-  ctx.shadowBlur = Math.max(2.5, size * 0.22) * scale;
+  const a = clamp(strength, 0, 1.4);
+  ctx.shadowColor = `rgba(4,6,12,${Math.min(0.95, 0.75 * a).toFixed(2)})`;
+  ctx.shadowBlur = clamp(size * 0.2, 2, 6) * scale;
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 0;
-  ctx.lineWidth = clamp(size * 0.09, 1, 1.6);
-  ctx.strokeStyle = `rgba(4,6,12,${(0.5 * strength).toFixed(2)})`;
+  ctx.lineWidth = clamp(size * 0.1, 1.2, 1.6);
+  ctx.strokeStyle = `rgba(4,6,12,${Math.min(0.85, 0.55 * a).toFixed(2)})`;
   ctx.strokeText(text, x, y);
   ctx.shadowColor = 'transparent';
   ctx.shadowBlur = 0;

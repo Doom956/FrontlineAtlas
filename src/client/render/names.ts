@@ -354,7 +354,7 @@ export class NameLayer {
       if (!tribe && name.length > 1 && size > px) {
         // spare width the region offers at its fitted size (fitSize keeps this inside the territory)
         const budget = size * (name.length * LABEL_CHAR_W + 0.6) * 0.7;
-        const extra = clamp((budget - tw) / (name.length - 1), 0, px * 0.22);
+        const extra = clamp((budget - tw) / (name.length - 1), 0, px * 0.12);
         if (extra > 0.5) {
           track += extra;
           setTracking(ctx, track);
@@ -363,7 +363,7 @@ export class NameLayer {
       }
       const iconsW = icons.length ? icons.length * (iconPx + 2) + 2 : 0;
       const totalW = tw + iconsW;
-      const small = clamp(px * 0.6, 8, 14);
+      const small = clamp(px * (name ? 0.62 : 0.8), tribe ? 10.5 : 10, 14);
       // Army sizes are public (sim armyTotalOf); only the troop mix needs intel, and only your own mix is drawn.
       const showArmy = !tribe || px >= 13.5 || !name;
       const mixBar = p.id === me && showArmy;
@@ -385,7 +385,7 @@ export class NameLayer {
       const hs = style.hover;
       const under = !!hs && hs.x > x0 - 6 && hs.x < x1 + 6 && hs.y > y0 - 6 && hs.y < y1 + 6;
       const overIcons = z >= ICON_ZOOM && coversBuilding(state, cam, x0, y0, x1, y1);
-      ctx.globalAlpha = style.targeting ? (under ? 0.15 : 0.45) : under && px > 14 ? 0.35 : overIcons ? 0.5 : tribe ? 0.85 : 1;
+      ctx.globalAlpha = style.targeting ? (under ? 0.15 : 0.45) : under && px > 14 ? 0.35 : overIcons ? 0.65 : 1;
       const nameY = showArmy ? s.y - small * 0.45 : s.y;
       const left = s.x - totalW / 2;
       for (let k = 0; k < icons.length; k++) {
@@ -396,16 +396,16 @@ export class NameLayer {
       if (name) {
         ctx.font = nameFont;
         setTracking(ctx, track);
-        const fill = traitor ? '#ff9d92' : tribe ? 'rgba(232,234,238,0.86)' : p.id === me ? 'rgba(255,240,196,0.96)' : 'rgba(255,255,255,0.93)';
-        haloText(ctx, name, nameX, nameY, fill, px, tribe ? 0.85 : 1);
+        const fill = traitor ? '#ff9d92' : tribe ? 'rgba(240,241,244,0.94)' : p.id === me ? 'rgba(255,240,196,0.96)' : 'rgba(255,255,255,0.93)';
+        haloText(ctx, name, nameX, nameY, fill, px, tribe ? 1.25 : 1);
       }
       if (showArmy) {
         const army = formatCount(armyTotal(p.troops));
         ctx.font = `500 ${Math.round(small)}px ${MAP_NUM_FAMILY}`;
         setTracking(ctx, small * 0.02);
         const ay = nameY + px * 0.55 + small * 0.55;
-        const fill = tribe ? 'rgba(222,224,228,0.78)' : traitor ? 'rgba(255,196,189,0.85)' : 'rgba(238,241,246,0.8)';
-        haloText(ctx, army, s.x, ay, fill, small, 0.9);
+        const fill = tribe ? 'rgba(232,234,238,0.9)' : traitor ? 'rgba(255,196,189,0.9)' : 'rgba(238,241,246,0.86)';
+        haloText(ctx, army, s.x, ay, fill, small, tribe ? 1.25 : 1.05);
         if (mixBar) this.mixBar(ctx, p, s.x, ay + small * 0.6 + 3, Math.max(28, Math.min(tw, 90)));
       }
     }

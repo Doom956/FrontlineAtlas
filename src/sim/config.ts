@@ -327,8 +327,8 @@ export const BARRAGE_DELAY = 2;
 export const BARRAGE_COOLDOWN = 15;
 export const BARRAGE_COOLDOWN_BALLISTICS = 10;
 export const BARRAGE_GOLD = 100;
-/** Kills scale with the guns: about a quarter of your artillery count for small batteries, a sixth at 1M, at most 500k. */
-export const BARRAGE_KILL_MAX = 500000;
+/** Kills scale with the guns: about 15% of your artillery count for small batteries, 10% at 1M, at most 300k. */
+export const BARRAGE_KILL_MAX = 300000;
 export const BARRAGE_KILL_HALF = 2000000;
 export const BARRAGE_KILL_ARMY_SHARE = 0.08;
 export const BARRAGE_BUILDING_DAMAGE = 0.25;
