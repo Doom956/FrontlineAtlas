@@ -655,7 +655,9 @@ function moveCapital(state: GameState, playerId: number, lostTile: number, taker
   }
   p.capital = best;
   // The heartland follows the capital after a delay (combat.coreDefenseAt; sim.updateHeartlands).
-  if (p.heartTile >= 0 || p.heartMoveTick > 0) p.heartMoveTick = state.tick + HEARTLAND_MOVE_SECONDS * TICKS_PER_SECOND;
+  // A pending move keeps its time: a capital that falls back tile by tile must not push the move back every step, or
+  // the heartland would stay behind on land the nation has already lost.
+  if (p.heartTile >= 0 && p.heartMoveTick <= 0) p.heartMoveTick = state.tick + HEARTLAND_MOVE_SECONDS * TICKS_PER_SECOND;
   // A capital that falls back tile by tile under a running attack would otherwise lose 30% gold (and send an
   // event) every few ticks: the penalty and the event only apply once per CAPITAL_LOSS_COOLDOWN.
   const last = lastCapitalLoss.get(state)?.get(playerId);

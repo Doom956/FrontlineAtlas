@@ -74,7 +74,7 @@ relays the players' actions; every browser runs the same deterministic simulatio
   it. The host changes the settings, kicks and presses Start; in a teams game everyone picks a team.
 - **Watch** joins a game as a spectator: the whole map, no actions. A player whose nation falls keeps watching while
   the others play on; teammates are allied for the whole game and win together.
-- There is no pause and no game speed online (the server's clock). If your connection drops the game reconnects by
+- Online there is no game speed (the server's clock); only the host of a private game can pause. If your connection drops the game reconnects by
   itself and catches up; reloading the page brings you back into your game.
 
 To host your own server: `npm run build && npm start` serves the game and the multiplayer server on

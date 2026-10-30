@@ -8,6 +8,12 @@ import { allyAidAction, allyAttackAction, allyStatusOf, attackTargets, warsOf } 
 import { btn, el, setClass, setDisabled, setText, setTip, setVisible, type HudCtx } from './dom';
 import { swatchCss } from './swatch';
 
+/** "it has no border with Azuria" under the row "Azuria" -> "No border with them". */
+function reasonFor(why: string, name: string): string {
+  const t = why.replace(/^it (is |has )?/, '').split(name).join('them');
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 export class AllyHelp {
   readonly el: HTMLElement;
   private status = el('div', 'ally-st');
@@ -108,7 +114,7 @@ export class AllyHelp {
         b.disabled = true;
         b.title = `Won't: ${why[k]}`;
         b.classList.add('no');
-        b.append(el('span', 'ally-why', why[k]!.replace(/^it /, '')));
+        b.append(el('span', 'ally-why', reasonFor(why[k]!, p.name)));
       } else b.addEventListener('click', () => this.askAttack(id));
       this.pickList.append(b);
     }

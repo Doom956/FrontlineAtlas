@@ -122,6 +122,21 @@ describe('heartland', () => {
     expect(s.players[1].heartTile).toBe(cap);
     expect(coreDefenseAt(s, 1, cap)).toBeCloseTo(1 + HEARTLAND_DEFENSE, 9);
   });
+
+  it('a capital that keeps falling back does not push the heartland move back', () => {
+    const s = twoNations();
+    const old = s.players[1].capital;
+    setOwner(s, old, 2);
+    const first = s.players[1].heartMoveTick;
+    expect(first).toBeGreaterThan(0);
+    const cap = s.players[1].capital;
+    s.tick += 10 * TICKS_PER_SECOND;
+    setOwner(s, cap, 2); // the new capital falls too, 10 s later
+    expect(s.players[1].heartMoveTick).toBe(first);
+    s.tick = first;
+    updateHeartlands(s);
+    expect(s.players[1].heartTile).toBe(s.players[1].capital);
+  });
 });
 
 describe('last stand', () => {

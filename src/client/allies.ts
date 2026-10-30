@@ -57,6 +57,11 @@ export function allyStatusOf(state: GameState, me: number, ally: number): AllySt
   if (state.allyRequests.some((r) => r.from === me && r.ally === ally)) return { text: 'Asked: waiting for the answer', willing: null, askIn };
   const mine = warsOf(state, me);
   const shared = st.atWarWith.find((id) => mine.has(id));
+  if (st.willHelp && shared) {
+    // already fighting your enemy: say so, unless it could not take them on (then it still sends troops)
+    const no = allyRefusal(state, ally, me, 'attack', shared);
+    if (no) return { text: `Can send troops, but ${no.replace(/^it (is |has )?/, '')}`, willing: true, askIn };
+  }
   if (st.willHelp) return { text: shared ? `Will help: at war with ${name(shared)} too` : 'Will help: ready when you ask', willing: true, askIn };
   // the sim's reason reads "<ally>: why"; drop the name
   const why = a && st.reason.startsWith(`${a.name}: `) ? st.reason.slice(a.name.length + 2) : st.reason;
