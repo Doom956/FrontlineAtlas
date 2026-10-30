@@ -7,7 +7,11 @@ export type TargetMode =
   | { kind: 'transport'; from: number } // next click = landing tile (from = chosen own coast tile, -1 = auto)
   | { kind: 'bomb'; airfield: number }
   | { kind: 'missile'; silo: number; missile: 'rocket' | 'atomBomb' }
-  | { kind: 'moveWarship'; unitId: number };
+  | { kind: 'moveWarship'; unitId: number }
+  /** next click = drop zone for paratroopers (airfield: a chosen one, -1 = the nearest ready one) */
+  | { kind: 'paradrop'; airfield: number }
+  /** next click = centre of an artillery barrage */
+  | { kind: 'barrage' };
 
 export interface UiState {
   mode: TargetMode;
@@ -22,9 +26,30 @@ export interface UiState {
   speed: 1 | 2 | 4;
   showResources: boolean; // overlay toggle (V)
   showSupply: boolean; // overlay toggle (B)
+  showMinimap: boolean; // minimap toggle (M), off by default: the map itself is the overview
   contextMenu: { x: number; y: number; tile: number } | null;
   /** last action failure to show as a toast */
   toast: { text: string; until: number } | null;
+  /** floating texts on the map ("+120 gold"), added by the HUD, drawn and expired by the renderer */
+  floaters: Floater[];
+}
+
+/** A short-lived text rising from a map position. */
+export interface Floater {
+  x: number; // tile coords (float)
+  y: number;
+  text: string;
+  color: string;
+  /** performance.now() when added */
+  born: number;
+}
+export const FLOATER_MS = 1600;
+export const MAX_FLOATERS = 40;
+
+/** Adds a floater, dropping the oldest when there are too many. */
+export function addFloater(ui: UiState, f: Floater): void {
+  ui.floaters.push(f);
+  if (ui.floaters.length > MAX_FLOATERS) ui.floaters.splice(0, ui.floaters.length - MAX_FLOATERS);
 }
 
 export function defaultUiState(): UiState {
@@ -39,8 +64,10 @@ export function defaultUiState(): UiState {
     speed: 1,
     showResources: false,
     showSupply: false,
+    showMinimap: false,
     contextMenu: null,
     toast: null,
+    floaters: [],
   };
 }
 

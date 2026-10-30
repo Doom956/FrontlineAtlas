@@ -1,11 +1,12 @@
 // AI nations (WP-E): spawning, a whole AI-only game, alliance answers, determinism, hands off the human.
 import { describe, expect, it } from 'vitest';
+import { applyAction } from '../src/sim/actions';
 import { aiSpawn, aiWantsAlliance, updateAI } from '../src/sim/ai';
 import { SPAWN_SECONDS, TICKS_PER_SECOND, VICTORY_LAND_SHARE } from '../src/sim/config';
 import { launchAttack } from '../src/sim/combat';
 import { breakAlliance, formAlliance } from '../src/sim/diplomacy';
 import { tick } from '../src/sim/sim';
-import { SPAWN_MIN_DISTANCE, createGame } from '../src/sim/state';
+import { createGame, spawnMinDistance } from '../src/sim/state';
 import type { BuildingType, GameSettings, GameState } from '../src/sim/types';
 import { claimRect, makeFlatGame } from './helpers';
 
@@ -21,6 +22,7 @@ function aiSettings(seed: number, overrides: Partial<GameSettings> = {}): GameSe
     humanPlayer: false,
     timeLimit: 0,
     victoryLandShare: VICTORY_LAND_SHARE,
+    tribeCount: 0,
     ...overrides,
   };
 }
@@ -48,7 +50,7 @@ describe('aiSpawn', () => {
         if (a.id >= b.id) continue;
         const dx = (a.capital % w) - (b.capital % w);
         const dy = ((a.capital / w) | 0) - ((b.capital / w) | 0);
-        expect(Math.sqrt(dx * dx + dy * dy)).toBeGreaterThanOrEqual(SPAWN_MIN_DISTANCE);
+        expect(Math.sqrt(dx * dx + dy * dy)).toBeGreaterThanOrEqual(spawnMinDistance(state));
       }
     }
   });
@@ -88,13 +90,12 @@ describe('AI-only game', () => {
       state.events.length = 0;
     }
 
+    // Wars are decisive now (a weak nation can fall to a gang-up), but most survive the first 6 minutes.
+    expect(ais.filter((p) => p.alive).length).toBeGreaterThanOrEqual(ais.length - 1);
     ais.forEach((p, k) => {
-      expect(p.alive).toBe(true);
-      expect(p.tiles).toBeGreaterThan(startTiles[k] * 5); // expanded
+      expect(p.stats.tilesMax).toBeGreaterThan(startTiles[k] * 5); // expanded
       expect(kinds.get(p.id)?.size ?? 0).toBeGreaterThanOrEqual(3); // several building types
-      expect(p.techs.length + (p.researching ? 1 : 0)).toBeGreaterThanOrEqual(1); // research
-      expect(p.armyRatio).toBeGreaterThanOrEqual(0.25);
-      expect(p.armyRatio).toBeLessThanOrEqual(0.75);
+      expect(p.techs.length + (p.researching ? 1 : 0) + (p.alive ? 0 : 1)).toBeGreaterThanOrEqual(1); // research
     });
     // At least two nations built cities.
     expect(ais.filter((p) => kinds.get(p.id)?.has('city')).length).toBeGreaterThanOrEqual(2);
@@ -112,19 +113,21 @@ describe('AI-only game', () => {
     const a = run();
     const b = run();
     expect(Array.from(a.map.owner)).toEqual(Array.from(b.map.owner));
-    expect(a.players.map((p) => [p.tiles, Math.round(p.gold), p.armyRatio, p.techs.join()])).toEqual(
-      b.players.map((p) => [p.tiles, Math.round(p.gold), p.armyRatio, p.techs.join()]),
+    expect(a.players.map((p) => [p.tiles, Math.round(p.gold), Math.round(p.troops.infantry), p.techs.join()])).toEqual(
+      b.players.map((p) => [p.tiles, Math.round(p.gold), Math.round(p.troops.infantry), p.techs.join()]),
     );
     expect(a.buildings.size).toBe(b.buildings.size);
   }, 60_000);
 
-  it('never acts for the human player', () => {
+  it('never acts for the human player (with the advisor switched off)', () => {
     const state = createGame(aiSettings(4, { humanPlayer: true, aiCount: 3 }));
     runSpawnPhase(state);
     const human = state.players[1];
     expect(human.isHuman).toBe(true);
+    expect(human.auto).toEqual({ mix: true, research: true }); // the default for humans
+    expect(applyAction(state, human.id, { type: 'setAuto', mix: false, research: false }).ok).toBe(true);
     for (let k = 0; k < 60 * TICKS_PER_SECOND; k++) tick(state);
-    expect(human.armyRatio).toBe(0.4);
+    expect(human.armyMix).toEqual({ armor: 0, artillery: 0 });
     expect(human.researching).toBeNull();
     expect(state.attacks.some((a) => a.attacker === human.id)).toBe(false);
     expect([...state.buildings.values()].some((b) => b.owner === human.id)).toBe(false);
@@ -165,6 +168,8 @@ describe('aiWantsAlliance', () => {
 
   it('answers pending requests on its next decision', () => {
     const s = strip();
+    // A careful nation (equal neighbours are no prey for it), fond of player 1.
+    s.players[2].personality = 'turtle';
     s.opinion[2][1] = 90;
     s.allianceRequests.push({ from: 1, to: 2, expiresTick: s.tick + 300 });
     for (let k = 0; k < 3 * TICKS_PER_SECOND; k++) {

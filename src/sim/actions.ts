@@ -1,11 +1,12 @@
 // Single entry point for player and AI actions.
 import { build, demolish } from './buildings';
-import { launchAttack, retreat } from './combat';
+import { boatLandingTile, launchAttack, needsBoat, retreat } from './combat';
 import { answerAlliance, breakAlliance, gift, requestAlliance, toggleEmbargo } from './diplomacy';
 import { canSpawnAt, spawnPlayer } from './state';
 import { startResearch } from './tech';
 import { TECHS } from './config';
-import { buildAircraft, buildWarship, launchBomber, launchMissile, launchTransport, moveWarship } from './units';
+import { launchBarrage } from './barrage';
+import { buildAircraft, buildWarship, launchBomber, launchMissile, launchParadrop, launchTransport, moveWarship } from './units';
 import { TROOP_TYPES } from './types';
 import type { Action, ActionResult, GameState, Player, Troops } from './types';
 
@@ -43,6 +44,21 @@ export function applyAction(state: GameState, playerId: number, action: Action):
   if (!p.alive) return FAIL('You have been eliminated');
   if (!action || typeof action !== 'object') return FAIL('Invalid action');
 
+  if (action.type === 'setAuto') {
+    // Allowed in any phase (the menu can set it before the first tick).
+    if (action.mix !== undefined && typeof action.mix !== 'boolean') return FAIL('Invalid value');
+    if (action.research !== undefined && typeof action.research !== 'boolean') return FAIL('Invalid value');
+    p.auto = { mix: action.mix ?? p.auto.mix, research: action.research ?? p.auto.research };
+    return { ok: true };
+  }
+  if (action.type === 'startNow') {
+    if (state.phase !== 'spawn') return FAIL('The game has already started');
+    if (!p.isHuman) return FAIL('Only a player can start the game');
+    if (state.players.some((q) => q.isHuman && q.alive && !q.spawned)) return FAIL('Every player must pick a start first');
+    // The next tick ends the spawn phase: AIs take their spots, tribes fill the leftover space.
+    state.spawnLeft = Math.min(state.spawnLeft, 1e-6);
+    return { ok: true };
+  }
   if (action.type === 'spawn') {
     if (state.phase !== 'spawn') return FAIL('The spawn phase is over');
     if (!isTile(state, action.tile)) return FAIL('Invalid tile');
@@ -57,7 +73,14 @@ export function applyAction(state: GameState, playerId: number, action: Action):
       if (!isTile(state, action.tile)) return FAIL('Invalid tile');
       const bad = checkTroops(p, action.troops);
       if (bad) return FAIL(bad);
-      return launchAttack(state, playerId, action.tile, clampTroops(p, action.troops));
+      const troops = clampTroops(p, action.troops);
+      // Land you can't reach on foot (another landmass): the same click sends a transport from your nearest coast.
+      if (needsBoat(state, playerId, action.tile)) {
+        const landing = boatLandingTile(state, action.tile);
+        if (landing < 0) return FAIL('No coast to land on near there');
+        return launchTransport(state, playerId, -1, landing, troops);
+      }
+      return launchAttack(state, playerId, action.tile, troops);
     }
     case 'retreat':
       return retreat(state, playerId, action.attackId);
@@ -67,11 +90,6 @@ export function applyAction(state: GameState, playerId: number, action: Action):
     case 'demolish':
       if (!isTile(state, action.tile)) return FAIL('Invalid tile');
       return demolish(state, playerId, action.tile);
-    case 'setArmyRatio': {
-      if (typeof action.value !== 'number' || !Number.isFinite(action.value)) return FAIL('Invalid value');
-      p.armyRatio = clamp(action.value, 0.1, 0.9);
-      return { ok: true };
-    }
     case 'setArmyMix': {
       if (!Number.isFinite(action.armor) || !Number.isFinite(action.artillery)) return FAIL('Invalid value');
       let armor = clamp(action.armor, 0, 0.8);
@@ -82,11 +100,15 @@ export function applyAction(state: GameState, playerId: number, action: Action):
         artillery *= 0.9 / sum;
       }
       p.armyMix = { armor, artillery };
+      p.auto.mix = false; // a hand-set mix turns the advisor off for it
       return { ok: true };
     }
-    case 'research':
+    case 'research': {
       if (!(action.tech in TECHS)) return FAIL('Unknown tech');
-      return startResearch(state, playerId, action.tech);
+      const r = startResearch(state, playerId, action.tech);
+      if (r.ok) p.auto.research = false; // picked by hand: the advisor stops choosing
+      return r;
+    }
     case 'transport': {
       if (!isTile(state, action.from) || !isTile(state, action.to)) return FAIL('Invalid tile');
       const bad = checkTroops(p, action.troops);
@@ -110,6 +132,13 @@ export function applyAction(state: GameState, playerId: number, action: Action):
       if (!isTile(state, action.silo) || !isTile(state, action.tile)) return FAIL('Invalid tile');
       if (action.kind !== 'rocket' && action.kind !== 'atomBomb') return FAIL('Invalid missile');
       return launchMissile(state, playerId, action.silo, action.kind, action.tile);
+    case 'paradrop':
+      if (!isTile(state, action.airfield) || !isTile(state, action.tile)) return FAIL('Invalid tile');
+      if (typeof action.troops !== 'number' || !Number.isFinite(action.troops) || action.troops < 0) return FAIL('Invalid troop count');
+      return launchParadrop(state, playerId, action.airfield, action.tile, action.troops);
+    case 'barrage':
+      if (!isTile(state, action.tile)) return FAIL('Invalid tile');
+      return launchBarrage(state, playerId, action.tile);
     case 'requestAlliance':
       if (!isPlayerId(state, action.to)) return FAIL('No such nation');
       return requestAlliance(state, playerId, action.to);

@@ -1,4 +1,5 @@
-// Mobile units: transports, warships, trade ships, bombers, fighters, rockets, atom bombs (DESIGN section 7).
+// Mobile units: transports, warships, trade ships, bombers, fighters, rockets, atom bombs, cargo planes with
+// paratroopers (DESIGN section 7).
 //
 // Positions are float tile coordinates (x, y of the tile; the renderer adds 0.5 for the tile centre). Effects use
 // tile-centre coordinates (+0.5). Ships follow `path` (water tiles); aircraft and missiles fly straight.
@@ -12,11 +13,27 @@
 //              cargo = gold paid to each owner on arrival
 //   bomber     home = airfield tile, target = where it is flying now, state 0 = outbound, 1 = returning
 //   rocket / atomBomb  home = silo tile, target = impact tile, targetOwner = owner of that tile at launch
+//   transportPlane     home = airfield tile, target = drop tile, troops = paratroopers (infantry),
+//                      targetOwner = owner of the drop tile at launch
 // Fighters are never units: they stay stored on their airfield (Building.fighters) and intercept from there.
-import { buildingAt, buildingsOf, countBuildings, destroyBuilding, watchtowerRadius } from './buildings';
+import {
+  aircraftCap,
+  airfieldRadius,
+  armyTotalOf,
+  buildingAt,
+  buildingsOf,
+  chargesReady,
+  countBuildings,
+  destroyBuilding,
+  isDisabled,
+  nextChargeIn,
+  reloadTick,
+  samRadius,
+  useCharge,
+  watchtowerRadiusOf,
+} from './buildings';
 import { launchAttack } from './combat';
 import {
-  AIRCRAFT_MAX_PER_AIRFIELD,
   ATOM_CORE_RADIUS,
   ATOM_KILL_SHARE,
   ATOM_RADIUS,
@@ -26,16 +43,20 @@ import {
   BOMBER_TROOP_KILL,
   BUILDINGS,
   FALLOUT_SECONDS,
-  FIGHTER_INTERCEPT,
+  FIGHTER_COOLDOWN,
   MIN_ATTACK_TROOPS,
   NAVIGATION_TRANSPORT_SPEED,
   NUKE_OPINION_PENALTY,
+  PARADROP_ARMY_SHARE_PER_LEVEL,
+  PARADROP_COOLDOWN,
+  PARADROP_MIN_TROOPS,
+  PARADROP_RANGE,
+  PARADROP_RANGE_PER_LEVEL,
+  PARADROP_TROOPS_PER_LEVEL,
+  PORT_LEVEL_TRADE,
   PORT_TRANSPORT_SPEED,
   ROCKET_KILL_MIN,
   ROCKET_RADIUS,
-  SAM_COOLDOWN,
-  SAM_HIT,
-  SILO_COOLDOWN,
   TICK_SECONDS,
   TICKS_PER_SECOND,
   TRADE_GOLD_PER_TILE,
@@ -48,8 +69,10 @@ import {
   WARSHIP_RANGE,
 } from './config';
 import { areAllied, canTrade, changeOpinion } from './diplomacy';
-import { distanceField, forEachInRadius, neighbors4, waterPath } from './grid';
+import { forEachInRadius, neighbors4, sameWater, waterPath, waterSearchSpent } from './grid';
+import { recordTileChange } from './changes';
 import { addEvent, newId, setOwner } from './state';
+import { onFalloutChange, ownedTilesOf } from './territory';
 import { hasTech } from './tech';
 import { TROOP_TYPES, isWater } from './types';
 import type { ActionResult, Building, BuildingType, GameState, Troops, Unit, UnitType } from './types';
@@ -59,6 +82,8 @@ const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
 // ---------- tuning that config.ts leaves to this module ----------
 /** Warships on patrol wander to water tiles within this many tiles of their patrol centre. */
 export const WARSHIP_PATROL_RADIUS = 15;
+/** Warships look for targets and shoot every this many ticks (staggered by id), with that many ticks of damage. */
+const WARSHIP_FIGHT_TICKS = 5;
 /** Chance per tick that an idle patrolling warship picks a new wander point (about 1 s pause on average). */
 const WARSHIP_WANDER_CHANCE = 0.1;
 /** Rocket troop kill: this share of the army living in the blast area (at least ROCKET_KILL_MIN, at most the army). */
@@ -67,13 +92,18 @@ export const ROCKET_TROOP_KILL = 0.25;
 const TRADE_EVENT_SECONDS = 60;
 /** Cached water paths between ports (terrain never changes); the cache is cleared when it grows past this. */
 const PATH_CACHE_MAX = 4096;
-/** New (uncached) trade route searches per tick; ports over the budget retry next tick (spreads BFS cost). */
+/** New (uncached) trade route searches per tick; ports over the budget retry next tick (spreads the cost). */
 const TRADE_SEARCHES_PER_TICK = 1;
+/** Partner ports a port trades with (a stable subset of the reachable foreign ports). */
+const TRADE_PARTNERS = 6;
+/** Search effort (tiles expanded) allowed per trade route; routes that need more are treated as unreachable. */
+const TRADE_SEARCH_BUDGET = 15000;
+/** Search effort allowed for a transport's route (all attempts together): AIs, and humans (a click may go far). */
+const TRANSPORT_SEARCH_BUDGET_AI = 25000;
+const TRANSPORT_SEARCH_BUDGET_HUMAN = 300000;
 
 // ---------- per-unit bookkeeping that does not need to live in GameState ----------
 interface UnitMemo {
-  /** building ids (SAMs, airfields) that already rolled an intercept against this unit on its current pass */
-  rolled: Set<number>;
   /** human player ids already warned about this unit by a watchtower */
   warned: Set<number>;
 }
@@ -81,7 +111,7 @@ const memos = new WeakMap<Unit, UnitMemo>();
 function memo(u: Unit): UnitMemo {
   let m = memos.get(u);
   if (!m) {
-    m = { rolled: new Set(), warned: new Set() };
+    m = { warned: new Set() };
     memos.set(u, m);
   }
   return m;
@@ -238,7 +268,7 @@ function cachedWaterPath(state: GameState, from: number, to: number, budget: { s
     if (budget.searches <= 0) return undefined;
     budget.searches--;
     if (cache.size >= PATH_CACHE_MAX) cache.clear();
-    p = waterPath(state.map, from, to);
+    p = waterPath(state.map, from, to, undefined, TRADE_SEARCH_BUDGET);
     cache.set(key, p);
   }
   return p ? p.slice() : null;
@@ -265,37 +295,49 @@ function isOwnPort(state: GameState, playerId: number, tile: number): boolean {
 }
 
 /**
- * Own coastal tile with the fastest water route to `to` (water distance, divided by the port speed bonus for
- * finished own ports), with its path. One water BFS from the landing site plus one pass over the map.
+ * Own coastal tile with the fastest water route to `to`, with its path: the nearest own coasts on the same sea by
+ * straight line (a finished own port counts as PORT_TRANSPORT_SPEED times closer) are tried with grid.waterPath.
+ * Never scans the map.
  */
-function findLaunchTile(state: GameState, playerId: number, to: number): { from: number; path: number[] } | null {
+function findLaunchTile(state: GameState, playerId: number, to: number, budget: { left: number }): { from: number; path: number[] } | null {
   const map = state.map;
-  const { terrain, owner, coastal } = map;
-  const nb: number[] = [];
-  const goals: number[] = [];
-  const k = neighbors4(map, to, nb);
-  for (let q = 0; q < k; q++) if (isWater(terrain[nb[q]])) goals.push(nb[q]);
-  if (!goals.length) return null;
-  // 4-neighbour water BFS. waterPath forbids diagonal corner-cutting, so both see the same connectivity.
-  const dist = distanceField(map, goals, (j) => isWater(terrain[j]), 2 * (map.width + map.height));
-  const n = map.width * map.height;
-  let best = -1;
-  let bestCost = Infinity;
-  for (let i = 0; i < n; i++) {
-    if (owner[i] !== playerId || !coastal[i]) continue;
-    const m = neighbors4(map, i, nb);
-    let d = 65535;
-    for (let q = 0; q < m; q++) if (isWater(terrain[nb[q]]) && dist[nb[q]] < d) d = dist[nb[q]];
-    if (d === 65535) continue;
-    const cost = isOwnPort(state, playerId, i) ? d / PORT_TRANSPORT_SPEED : d;
-    if (cost < bestCost) {
-      bestCost = cost;
-      best = i;
+  const coast = ownedTilesOf(state, playerId, 'coast');
+  if (!coast.length) return null;
+  const w = map.width;
+  const tx = to % w;
+  const ty = (to / w) | 0;
+  // The three best candidates by straight-line cost.
+  const best = [-1, -1, -1];
+  const cost = [Infinity, Infinity, Infinity];
+  for (const c of coast) {
+    if (map.owner[c] !== playerId || !sameWater(map, c, to)) continue;
+    const dx = (c % w) - tx;
+    const dy = ((c / w) | 0) - ty;
+    const d = Math.sqrt(dx * dx + dy * dy) / (isOwnPort(state, playerId, c) ? PORT_TRANSPORT_SPEED : 1);
+    if (d >= cost[2]) continue;
+    let k = 2;
+    while (k > 0 && d < cost[k - 1]) {
+      cost[k] = cost[k - 1];
+      best[k] = best[k - 1];
+      k--;
     }
+    cost[k] = d;
+    best[k] = c;
   }
-  if (best < 0) return null;
-  const path = waterPath(map, best, to);
-  return path ? { from: best, path } : null;
+  for (const c of best) {
+    if (c < 0 || budget.left <= 0) continue;
+    const path = budgetedPath(map, c, to, budget);
+    if (path) return { from: c, path };
+  }
+  return null;
+}
+
+/** waterPath with a shared search budget (tiles expanded) that it uses up. */
+function budgetedPath(map: GameState['map'], from: number, to: number, budget: { left: number }): number[] | null {
+  const before = waterSearchSpent();
+  const path = waterPath(map, from, to, undefined, budget.left);
+  budget.left -= waterSearchSpent() - before;
+  return path;
 }
 
 /** from: an own coastal tile (a Port tile gives the port bonus), to: a coastal land tile of anyone but you/allies (or neutral). */
@@ -322,11 +364,14 @@ export function launchTransport(state: GameState, playerId: number, from: number
 
   // Launch site: the given own coastal tile if it reaches the target, else the best own coastal tile.
   let route: { from: number; path: number[] } | null = null;
+  // No port and no gold: no route search at all.
+  if (p.gold < UNITS.transport.gold && countBuildings(state, playerId, 'port') === 0) return FAIL(`Not enough gold (${UNITS.transport.gold})`);
+  const budget = { left: p.isHuman ? TRANSPORT_SEARCH_BUDGET_HUMAN : TRANSPORT_SEARCH_BUDGET_AI };
   if (isTile(state, from) && map.owner[from] === playerId && map.coastal[from]) {
-    const path = waterPath(map, from, to);
+    const path = budgetedPath(map, from, to, budget);
     if (path) route = { from, path };
   }
-  route ??= findLaunchTile(state, playerId, to);
+  route ??= findLaunchTile(state, playerId, to, budget);
   if (!route) return FAIL('No sea route from your coast to there');
 
   const fromPort = isOwnPort(state, playerId, route.from);
@@ -402,7 +447,8 @@ export function moveWarship(state: GameState, playerId: number, unitId: number, 
   if (!isTile(state, tile)) return FAIL('Invalid tile');
   const map = state.map;
   if (!isWater(map.terrain[tile]) && !map.coastal[tile]) return FAIL('Warships sail on water');
-  const path = waterPath(map, shipTile(state, u), tile);
+  const budget = state.players[playerId].isHuman ? TRANSPORT_SEARCH_BUDGET_HUMAN : TRANSPORT_SEARCH_BUDGET_AI;
+  const path = waterPath(map, shipTile(state, u), tile, undefined, budget);
   if (!path) return FAIL('Your warship cannot reach there');
   u.path = path;
   u.pathPos = 0;
@@ -424,7 +470,7 @@ function wander(state: GameState, u: Unit): void {
     if (x < 0 || y < 0 || x >= w || y >= map.height) continue;
     const t = y * w + x;
     if (!isWater(map.terrain[t]) || (x - cx) * (x - cx) + (y - cy) * (y - cy) > r * r) continue;
-    const path = waterPath(map, shipTile(state, u), t, 3 * r);
+    const path = waterPath(map, shipTile(state, u), t, 3 * r, 4000);
     if (!path) continue;
     u.path = path;
     u.pathPos = 0;
@@ -477,6 +523,10 @@ function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<numbe
     }
   }
 
+  // Fighting is resolved every WARSHIP_FIGHT_TICKS ticks per ship (staggered by id) with that many ticks of damage:
+  // the same totals, a fraction of the cost with hundreds of ships at sea.
+  if ((state.tick + u.id) % WARSHIP_FIGHT_TICKS !== 0) return;
+  const dt = TICK_SECONDS * WARSHIP_FIGHT_TICKS;
   // Shoot the nearest hostile ship in range. Trade ships bound for us or an ally are left alone.
   let target: Unit | null = null;
   let bestD = WARSHIP_RANGE * WARSHIP_RANGE;
@@ -491,9 +541,9 @@ function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<numbe
       target = s;
     }
   }
-  const showShot = (state.tick + u.id) % TICKS_PER_SECOND === 0;
+  const showShot = (state.tick + u.id) % (WARSHIP_FIGHT_TICKS * 2) === 0;
   if (target) {
-    target.hp -= WARSHIP_DAMAGE_PER_S * TICK_SECONDS;
+    target.hp -= WARSHIP_DAMAGE_PER_S * dt;
     if (showShot) state.effects.push({ kind: 'shot', x: u.x + 0.5, y: u.y + 0.5, x2: target.x + 0.5, y2: target.y + 0.5, radius: 0.5, tick: state.tick });
     if (target.hp <= 1e-9) sinkUnit(state, target, u.owner);
     return;
@@ -513,7 +563,7 @@ function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<numbe
     bestTile = i;
   });
   if (bestTile < 0) return;
-  killTroops(state, map.owner[bestTile], WARSHIP_BOMBARD_KILL * TICK_SECONDS, u.owner, true);
+  killTroops(state, map.owner[bestTile], WARSHIP_BOMBARD_KILL * dt, u.owner, true);
   if (showShot) {
     state.effects.push({ kind: 'shot', x: u.x + 0.5, y: u.y + 0.5, x2: (bestTile % w) + 0.5, y2: ((bestTile / w) | 0) + 0.5, radius: 0.5, tick: state.tick });
   }
@@ -531,11 +581,22 @@ const tradeEventTick = new WeakMap<GameState, Map<number, number>>();
  */
 function sendTradeShip(state: GameState, port: Building, ports: Building[], busy: Set<number>, budget: { searches: number }): boolean {
   if (busy.has(port.id)) return true; // one trade ship at sea per port
+  // Each port trades with a stable handful of partner ports on its sea (the lowest hash of the pair), so the
+  // number of distinct routes stays small and their paths stay cached, whatever the number of ports.
+  const picks: { b: Building; h: number }[] = [];
+  for (const other of ports) {
+    if (other.owner === port.owner || !canTrade(state, port.owner, other.owner)) continue;
+    if (!sameWater(state.map, port.tile, other.tile)) continue;
+    let h = Math.imul(port.id * 73856093 ^ other.id * 19349663, 0x9e3779b1);
+    h = (h ^ (h >>> 15)) >>> 0;
+    picks.push({ b: other, h });
+  }
+  picks.sort((x, y) => x.h - y.h || x.b.id - y.b.id);
+  if (picks.length > TRADE_PARTNERS) picks.length = TRADE_PARTNERS;
   const cands: Building[] = [];
   const weights: number[] = [];
   let sum = 0;
-  for (const other of ports) {
-    if (other.owner === port.owner || !canTrade(state, port.owner, other.owner)) continue;
+  for (const { b: other } of picks) {
     const wgt = areAllied(state, port.owner, other.owner) ? 2 : 1;
     cands.push(other);
     weights.push(wgt);
@@ -558,7 +619,7 @@ function sendTradeShip(state: GameState, port: Building, ports: Building[], busy
     const u = makeUnit(state, 'tradeShip', port.owner, port.tile, dest.tile);
     u.path = path;
     u.targetOwner = dest.owner;
-    u.cargo = path.length * TRADE_GOLD_PER_TILE;
+    u.cargo = path.length * TRADE_GOLD_PER_TILE * (1 + PORT_LEVEL_TRADE * (port.level - 1));
     state.units.push(u);
     busy.add(port.id);
     return true;
@@ -600,7 +661,7 @@ function aircraftAt(state: GameState, b: Building): number {
   return n;
 }
 
-/** Adds a stored bomber/fighter to an airfield (pay gold/iron/oil, max AIRCRAFT_MAX_PER_AIRFIELD). */
+/** Adds a stored bomber/fighter to an airfield (pay gold/iron/oil, at most aircraftCap: 6 per airfield level). */
 export function buildAircraft(state: GameState, playerId: number, airfieldTile: number, kind: 'bomber' | 'fighter'): ActionResult {
   const p = state.players[playerId];
   if (!p || playerId === 0 || !p.alive) return FAIL('No such player');
@@ -610,7 +671,7 @@ export function buildAircraft(state: GameState, playerId: number, airfieldTile: 
   if (!isFinished(b, playerId, 'airfield')) return FAIL('Aircraft are built at a finished Airfield of yours');
   const tech = UNITS[kind].tech;
   if (tech && !hasTech(p, tech)) return FAIL(`Needs research: ${tech}`);
-  if (aircraftAt(state, b) >= AIRCRAFT_MAX_PER_AIRFIELD) return FAIL(`An airfield holds at most ${AIRCRAFT_MAX_PER_AIRFIELD} aircraft`);
+  if (aircraftAt(state, b) >= aircraftCap(b)) return FAIL(`This airfield holds at most ${aircraftCap(b)} aircraft (upgrade it for more)`);
   const bad = canPay(state, playerId, kind);
   if (bad) return FAIL(bad);
   pay(state, playerId, kind);
@@ -686,6 +747,114 @@ function bomberHome(state: GameState, u: Unit): void {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// Paratroopers
+// ---------------------------------------------------------------------------------------------------------------
+
+/** How far an airfield can drop paratroopers (straight line, tiles). */
+export function paradropRange(b: Building): number {
+  return PARADROP_RANGE + PARADROP_RANGE_PER_LEVEL * (b.level - 1);
+}
+
+/** Most troops one drop from this airfield may carry: level x max(PARADROP_TROOPS_PER_LEVEL, share of the army). */
+export function paradropMaxTroops(state: GameState, playerId: number, b: Building): number {
+  const army = armyTotalOf(state, playerId);
+  return Math.floor(Math.max(1, b.level) * Math.max(PARADROP_TROOPS_PER_LEVEL, PARADROP_ARMY_SHARE_PER_LEVEL * army));
+}
+
+/**
+ * Checks a paradrop order (for the client's preview too): Flight, a finished own airfield that is ready
+ * (Building.dropCooldown), an enemy or neutral land tile (not allied) within paradropRange, PARADROP_MIN_TROOPS ..
+ * paradropMaxTroops infantry at home, and the cargo plane's price (UNITS.transportPlane).
+ */
+export function canParadrop(state: GameState, playerId: number, airfieldTile: number, tile: number, troops: number): ActionResult {
+  const p = state.players[playerId];
+  if (!p || playerId === 0 || !p.alive) return FAIL('No such player');
+  if (!isTile(state, airfieldTile) || !isTile(state, tile)) return FAIL('Invalid tile');
+  if (!hasTech(p, 'flight')) return FAIL('Needs research: Flight');
+  const b = buildingAt(state, airfieldTile);
+  if (!isFinished(b, playerId, 'airfield')) return FAIL('Paratroopers fly from a finished Airfield of yours');
+  if (b.dropCooldown > 0) return FAIL(`This airfield is getting the next drop ready (${Math.ceil(b.dropCooldown)} s)`);
+  const map = state.map;
+  if (isWater(map.terrain[tile])) return FAIL('Paratroopers must land on land');
+  const target = map.owner[tile];
+  if (target === playerId) return FAIL('That is your own land');
+  if (target !== 0 && !state.players[target]?.alive) return FAIL('That nation is gone');
+  if (target !== 0 && areAllied(state, playerId, target)) return FAIL('You cannot attack an ally');
+  const range = paradropRange(b);
+  if (d2Tiles(state, airfieldTile, tile) > range * range) return FAIL(`Too far: this airfield reaches ${range} tiles`);
+  if (typeof troops !== 'number' || !Number.isFinite(troops) || troops < PARADROP_MIN_TROOPS) {
+    return FAIL(`Drop at least ${PARADROP_MIN_TROOPS} troops`);
+  }
+  const max = paradropMaxTroops(state, playerId, b);
+  if (troops > max + 1e-6) return FAIL(`At most ${max} troops per drop from this airfield`);
+  if (troops > p.troops.infantry + 1e-6) return FAIL('Not enough infantry at home');
+  const bad = canPay(state, playerId, 'transportPlane');
+  if (bad) return FAIL(bad);
+  return { ok: true };
+}
+
+/** Squared straight-line distance between two tiles. */
+function d2Tiles(state: GameState, a: number, b: number): number {
+  const w = state.map.width;
+  const dx = (a % w) - (b % w);
+  const dy = ((a / w) | 0) - ((b / w) | 0);
+  return dx * dx + dy * dy;
+}
+
+/**
+ * Paradrop (Action 'paradrop'): pays, takes the infantry from the pool now and sends a cargo plane from the airfield
+ * straight to the tile (interceptable like a bomber). The airfield waits PARADROP_COOLDOWN seconds for the next drop.
+ * The target is warned ('paradrop' event).
+ */
+export function launchParadrop(state: GameState, playerId: number, airfieldTile: number, tile: number, troops: number): ActionResult {
+  const ok = canParadrop(state, playerId, airfieldTile, tile, troops);
+  if (!ok.ok) return ok;
+  const p = state.players[playerId];
+  const b = buildingAt(state, airfieldTile)!;
+  const n = Math.min(troops, p.troops.infantry);
+  pay(state, playerId, 'transportPlane');
+  p.troops.infantry = Math.max(0, p.troops.infantry - n);
+  b.dropCooldown = PARADROP_COOLDOWN;
+  const u = makeUnit(state, 'transportPlane', playerId, airfieldTile, tile);
+  u.troops = { infantry: n, armor: 0, artillery: 0 };
+  const target = state.map.owner[tile];
+  u.targetOwner = target;
+  state.units.push(u);
+  if (target !== 0) {
+    addEvent(state, 'paradrop', `${p.name} is dropping ${Math.round(n)} paratroopers on ${state.players[target].name}`, [target, playerId], tile);
+  }
+  return { ok: true };
+}
+
+/**
+ * Cargo plane over its drop tile: the paratroopers jump. Own or allied land (taken meanwhile): they just come home.
+ * Otherwise an attack starts from that tile against its owner (combat.launchAttack amphibious: the tile is taken
+ * first, paid like any tile, then the front grows from inside; it merges into a running attack on that owner).
+ */
+function landParadrop(state: GameState, u: Unit): void {
+  u.hp = 0;
+  const map = state.map;
+  const p = state.players[u.owner];
+  const tile = u.target;
+  const owner = map.owner[tile];
+  const troops = u.troops;
+  u.troops = zeroTroops();
+  if (owner === u.owner || (owner !== 0 && areAllied(state, u.owner, owner))) {
+    for (const k of TROOP_TYPES) p.troops[k] += troops[k];
+    return;
+  }
+  const res = launchAttack(state, u.owner, tile, troops, true);
+  const involved = owner ? [u.owner, owner] : [u.owner];
+  if (res.ok) {
+    if (owner !== 0) addEvent(state, 'paradrop', `${p.name}'s paratroopers landed in ${state.players[owner].name}`, involved, tile);
+  } else if (!state.players[owner]?.alive && owner !== 0) {
+    for (const k of TROOP_TYPES) p.troops[k] += troops[k];
+  } else {
+    addEvent(state, 'unitLost', `${p.name}'s paratroopers were wiped out on landing`, involved, tile);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // Missiles
 // ---------------------------------------------------------------------------------------------------------------
 
@@ -698,14 +867,14 @@ export function launchMissile(state: GameState, playerId: number, siloTile: numb
   if (!isFinished(silo, playerId, 'silo')) return FAIL('Missiles fly from a finished Missile Silo of yours');
   const tech = UNITS[kind].tech;
   if (tech && !hasTech(p, tech)) return FAIL(`Needs research: ${tech}`);
-  if (silo.cooldown > 0) return FAIL(`The silo is reloading (${Math.ceil(silo.cooldown)} s)`);
+  if (chargesReady(silo) < 1) return FAIL(`The silo is reloading (${Math.ceil(nextChargeIn(silo))} s)`);
   const target = state.map.owner[tile];
   if (target === playerId) return FAIL('That is your own land');
   if (target !== 0 && areAllied(state, playerId, target)) return FAIL('You cannot fire at an ally');
   const bad = canPay(state, playerId, kind);
   if (bad) return FAIL(bad);
   pay(state, playerId, kind);
-  silo.cooldown = SILO_COOLDOWN;
+  useCharge(silo);
   const u = makeUnit(state, kind, playerId, siloTile, tile);
   u.targetOwner = target;
   state.units.push(u);
@@ -776,7 +945,11 @@ function updateFallout(state: GameState): void {
   for (const i of list) {
     f[i] = Math.max(0, f[i] - TICK_SECONDS);
     if (f[i] > 1e-6) list[k++] = i;
-    else f[i] = 0;
+    else {
+      f[i] = 0;
+      onFalloutChange(state, i, false);
+      recordTileChange(state, i);
+    }
   }
   list.length = k;
 }
@@ -812,8 +985,13 @@ function atomImpact(state: GameState, u: Unit): void {
   const list = falloutList(state);
   forEachInRadius(map, tile, ATOM_CORE_RADIUS, (i) => {
     if (isWater(map.terrain[i])) return;
-    if (map.fallout[i] <= 0) list.push(i);
+    const fresh = map.fallout[i] <= 0;
     map.fallout[i] = FALLOUT_SECONDS;
+    if (fresh) {
+      list.push(i);
+      onFalloutChange(state, i, true);
+      recordTileChange(state, i);
+    }
     if (map.owner[i] !== 0) setOwner(state, i, 0);
   });
   for (const q of state.players) {
@@ -827,65 +1005,81 @@ function atomImpact(state: GameState, u: Unit): void {
 // Interception and early warning
 // ---------------------------------------------------------------------------------------------------------------
 
+/** Interception order: the most dangerous threat is shot at first. */
+const THREAT_ORDER: Record<string, number> = { atomBomb: 0, rocket: 1, bomber: 2, transportPlane: 3 };
+
 /**
- * SAMs (and, against bombers, airfields with fighters) of players hostile to the unit's owner get one roll per
- * unit per pass while it is in range. A SAM that fires reloads for SAM_COOLDOWN; one that is reloading may still
- * fire later in the pass. Fighters roll 1 - (1 - FIGHTER_INTERCEPT)^fighters and are not used up.
- * Returns true if the unit was shot down.
+ * Deterministic interception (config RULES_TEXT.interception). Threats (bombers, rockets, atom bombs, cargo planes)
+ * are handled atom bombs first, then rockets, bombers, cargo planes (then by id). Every SAM of a player hostile to
+ * the threat's owner that has a shot loaded (chargesReady; a level-L SAM holds L), is not knocked out by a barrage
+ * and has the threat inside its samRadius fires once: a sure hit that takes 1 hp (planes and rockets have 1, atom
+ * bombs 2). A bomber or cargo plane still flying then meets the first ready airfield with fighters in range
+ * (airfieldRadius): shot down, and that airfield needs FIGHTER_COOLDOWN / fighters seconds to be ready again.
  */
-function intercept(state: GameState, u: Unit, sams: Building[], airfields: Building[]): boolean {
-  const m = memo(u);
-  const kind = u.type as 'rocket' | 'atomBomb' | 'bomber';
+function interceptThreats(state: GameState, threats: Unit[], sams: Building[], airfields: Building[]): void {
+  if (!threats.length || (!sams.length && !airfields.length)) return;
+  threats.sort((a, b) => THREAT_ORDER[a.type] - THREAT_ORDER[b.type] || a.id - b.id);
   const w = state.map.width;
-  const samR2 = BUILDINGS.sam.radius * BUILDINGS.sam.radius;
-  for (const s of sams) {
-    if (s.cooldown > 0 || m.rolled.has(s.id) || !hostile(state, u.owner, s.owner)) continue;
-    if (d2To(state, u, s.tile) > samR2) continue;
-    m.rolled.add(s.id);
-    s.cooldown = SAM_COOLDOWN;
-    state.effects.push({ kind: 'shot', x: (s.tile % w) + 0.5, y: ((s.tile / w) | 0) + 0.5, x2: u.x + 0.5, y2: u.y + 0.5, radius: 0.5, tick: state.tick });
-    if (state.rng() < SAM_HIT[kind]) {
-      shotDown(state, u, s.owner, 'SAM site');
-      return true;
+  for (const u of threats) {
+    for (const s of sams) {
+      if (u.hp <= 0) break;
+      if (chargesReady(s) < 1 || isDisabled(state, s) || !hostile(state, u.owner, s.owner)) continue;
+      const r = samRadius(s);
+      if (d2To(state, u, s.tile) > r * r) continue;
+      useCharge(s);
+      state.effects.push({ kind: 'shot', x: (s.tile % w) + 0.5, y: ((s.tile / w) | 0) + 0.5, x2: u.x + 0.5, y2: u.y + 0.5, radius: 0.5, tick: state.tick });
+      u.hp -= 1;
+      if (u.hp <= 0) shotDown(state, u, s.owner, 'SAM site');
     }
-  }
-  if (u.type !== 'bomber') return false;
-  const afR2 = BUILDINGS.airfield.radius * BUILDINGS.airfield.radius;
-  for (const a of airfields) {
-    if (a.fighters <= 0 || m.rolled.has(a.id) || !hostile(state, u.owner, a.owner)) continue;
-    if (d2To(state, u, a.tile) > afR2) continue;
-    m.rolled.add(a.id);
-    if (state.rng() < 1 - Math.pow(1 - FIGHTER_INTERCEPT, a.fighters)) {
+    if (u.hp <= 0 || (u.type !== 'bomber' && u.type !== 'transportPlane')) continue;
+    for (const a of airfields) {
+      if (a.fighters <= 0 || a.cooldown > 0 || !hostile(state, u.owner, a.owner)) continue;
+      const r = airfieldRadius(a);
+      if (d2To(state, u, a.tile) > r * r) continue;
+      a.cooldown = FIGHTER_COOLDOWN / a.fighters;
       shotDown(state, u, a.owner, 'fighters');
-      return true;
+      break;
     }
   }
-  return false;
 }
 
 function shotDown(state: GameState, u: Unit, by: number, what: string): void {
   u.hp = 0;
   state.effects.push({ kind: 'explosion', x: u.x + 0.5, y: u.y + 0.5, radius: 1.5, tick: state.tick });
-  const msg = `${state.players[by].name}'s ${what} shot down a ${UNITS[u.type].name.toLowerCase()} of ${state.players[u.owner].name}`;
+  const aboard = troopTotal(u.troops);
+  if (aboard > 0) {
+    // Paratroopers go down with their plane.
+    state.players[u.owner].stats.troopsLost += aboard;
+    state.players[by].stats.troopsKilled += aboard;
+    u.troops = zeroTroops();
+  }
+  const cargo = aboard > 0 ? ` with ${Math.round(aboard)} paratroopers` : '';
+  const msg = `${state.players[by].name}'s ${what} shot down a ${UNITS[u.type].name.toLowerCase()}${cargo} of ${state.players[u.owner].name}`;
   addEvent(state, 'unitLost', msg, [u.owner, by], unitTile(state, u));
 }
 
-/** One warning per unit and human player when a hostile bomber or transport enters one of their watchtowers' radius. */
+/**
+ * One warning per unit and human player when a hostile bomber, transport or cargo plane enters one of their
+ * watchtowers' radius.
+ */
 function watchtowerWarnings(state: GameState, units: Unit[]): void {
   for (const h of state.players) {
     if (!h.isHuman || !h.alive || h.id === 0) continue;
     let towers: Building[] | null = null;
     for (const u of units) {
-      if ((u.type !== 'bomber' && u.type !== 'transport') || u.hp <= 0 || !hostile(state, h.id, u.owner)) continue;
+      if ((u.type !== 'bomber' && u.type !== 'transport' && u.type !== 'transportPlane') || u.hp <= 0 || !hostile(state, h.id, u.owner)) continue;
       const m = memo(u);
       if (m.warned.has(h.id)) continue;
       towers ??= buildingsOf(state, h.id, 'watchtower').filter((b) => b.buildLeft <= 0);
       if (!towers.length) break;
-      const r = watchtowerRadius(state, h.id);
-      if (!towers.some((t) => d2To(state, u, t.tile) <= r * r)) continue;
+      if (!towers.some((t) => {
+        const r = watchtowerRadiusOf(state, t);
+        return d2To(state, u, t.tile) <= r * r;
+      })) continue;
       m.warned.add(h.id);
       const toUs = state.map.owner[u.target] === h.id;
-      const what = u.type === 'bomber' ? 'bomber' : `transport (${Math.round(troopTotal(u.troops))} troops)`;
+      const n = Math.round(troopTotal(u.troops));
+      const what = u.type === 'bomber' ? 'bomber' : u.type === 'transport' ? `transport (${n} troops)` : `cargo plane (${n} paratroopers)`;
       const msg = `Watchtower: an enemy ${what} of ${state.players[u.owner].name} is approaching${toUs ? ' your land' : ''}`;
       addEvent(state, toUs ? 'underAttack' : 'info', msg, [h.id], u.target);
     }
@@ -908,11 +1102,13 @@ export function updateUnits(state: GameState): void {
   for (const b of state.buildings.values()) {
     if (b.buildLeft > 0) continue;
     if (b.type === 'sam') {
-      if (b.cooldown > 0) b.cooldown = Math.max(0, b.cooldown - TICK_SECONDS);
+      reloadTick(b);
       sams.push(b);
     } else if (b.type === 'silo') {
-      if (b.cooldown > 0) b.cooldown = Math.max(0, b.cooldown - TICK_SECONDS);
+      reloadTick(b);
     } else if (b.type === 'airfield') {
+      if (b.cooldown > 0) b.cooldown = Math.max(0, b.cooldown - TICK_SECONDS);
+      if (b.dropCooldown > 0) b.dropCooldown = Math.max(0, b.dropCooldown - TICK_SECONDS);
       if (b.fighters > 0) airfields.push(b);
     } else if (b.type === 'port') {
       ports.push(b);
@@ -939,6 +1135,10 @@ export function updateUnits(state: GameState): void {
   const units = state.units;
   const ships = units.filter(isShip);
   const wars = units.some((u) => u.type === 'warship') ? warPairs(state) : new Set<number>();
+  // Aircraft and missiles move first; interception is resolved for all of them together (in threat order), then
+  // the survivors that arrived drop their bombs or hit.
+  const threats: Unit[] = [];
+  const arrived = new Set<Unit>();
   for (const u of units) {
     if (u.hp <= 0 || !players[u.owner]?.alive) continue;
     switch (u.type) {
@@ -951,32 +1151,40 @@ export function updateUnits(state: GameState): void {
       case 'warship':
         updateWarship(state, u, ships, wars);
         break;
-      case 'bomber': {
-        const arrived = moveStraight(state, u, u.state === 0 ? u.target : u.home, UNITS.bomber.speed);
-        if (intercept(state, u, sams, airfields) || !arrived) break;
-        if (u.state === 0) {
-          dropBombs(state, u);
-          u.state = 1;
-          u.target = u.home;
-          memo(u).rolled.clear(); // the way home is a new pass
-        } else {
-          bomberHome(state, u);
-        }
+      case 'bomber':
+        if (moveStraight(state, u, u.state === 0 ? u.target : u.home, UNITS.bomber.speed)) arrived.add(u);
+        threats.push(u);
         break;
-      }
       case 'rocket':
-      case 'atomBomb': {
-        const arrived = moveStraight(state, u, u.target, UNITS[u.type].speed);
-        if (intercept(state, u, sams, airfields) || !arrived) break;
-        u.hp = 0;
-        if (u.type === 'rocket') rocketImpact(state, u);
-        else atomImpact(state, u);
+      case 'atomBomb':
+      case 'transportPlane':
+        if (moveStraight(state, u, u.target, UNITS[u.type].speed)) arrived.add(u);
+        threats.push(u);
         break;
-      }
       case 'fighter':
         // Fighters stay stored on airfields; a fighter unit should never exist.
         u.hp = 0;
         break;
+    }
+  }
+
+  interceptThreats(state, threats, sams, airfields);
+  for (const u of threats) {
+    if (u.hp <= 0 || !arrived.has(u) || !players[u.owner]?.alive) continue;
+    if (u.type === 'bomber') {
+      if (u.state === 0) {
+        dropBombs(state, u);
+        u.state = 1;
+        u.target = u.home;
+      } else {
+        bomberHome(state, u);
+      }
+    } else if (u.type === 'transportPlane') {
+      landParadrop(state, u);
+    } else {
+      u.hp = 0;
+      if (u.type === 'rocket') rocketImpact(state, u);
+      else atomImpact(state, u);
     }
   }
 

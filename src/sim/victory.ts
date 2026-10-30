@@ -1,8 +1,25 @@
 // Win/lose detection and scores.
-import { TICKS_PER_SECOND, VICTORY_LAND_SHARE } from './config';
+import { OVERTIME_DROP_PER_MINUTE, OVERTIME_MIN_SHARE, OVERTIME_MINUTES, TICKS_PER_SECOND, VICTORY_LAND_SHARE } from './config';
 import { population } from './economy';
-import { addEvent } from './state';
+import { addEvent, gameSeconds } from './state';
+import { isTribe } from './types';
 import type { GameState } from './types';
+
+/**
+ * Land share needed to win right now: the game's setting (VICTORY_LAND_SHARE by default); in overtime (after
+ * OVERTIME_MINUTES) it drops by OVERTIME_DROP_PER_MINUTE per full minute, down to OVERTIME_MIN_SHARE (never up).
+ */
+export function victoryShareNow(state: GameState): number {
+  const base = state.settings.victoryLandShare > 0 ? state.settings.victoryLandShare : VICTORY_LAND_SHARE;
+  const minutes = gameSeconds(state) / 60;
+  if (minutes < OVERTIME_MINUTES + 1) return base;
+  const floor = Math.min(base, OVERTIME_MIN_SHARE);
+  return Math.max(floor, base - OVERTIME_DROP_PER_MINUTE * Math.floor(minutes - OVERTIME_MINUTES));
+}
+/** True once overtime has started (the needed land share is falling). */
+export function inOvertime(state: GameState): boolean {
+  return state.phase !== 'spawn' && gameSeconds(state) / 60 >= OVERTIME_MINUTES;
+}
 
 /** Finished buildings owned by playerId (one pass over all buildings). */
 function finishedBuildings(state: GameState, playerId: number): number {
@@ -25,12 +42,12 @@ export function allScores(state: GameState): number[] {
   return state.players.map((p) => (p.id === 0 ? 0 : Math.floor(p.tiles + population(p) / 100 + counts[p.id] * 50)));
 }
 
-/** Alive player with the highest score (ties: lower id), or 0. */
+/** Alive nation (not a tribe) with the highest score (ties: lower id), or 0. */
 function leader(state: GameState): number {
   const s = allScores(state);
   let best = 0;
   for (const p of state.players) {
-    if (p.id === 0 || !p.alive) continue;
+    if (p.id === 0 || !p.alive || isTribe(p)) continue;
     if (best === 0 || s[p.id] > s[best]) best = p.id;
   }
   return best;
@@ -45,14 +62,20 @@ function endGame(state: GameState, winner: number, why: string): void {
   if (h && winner !== h) addEvent(state, 'defeat', `Defeat: ${name} wins (${why})`, [h], -1);
 }
 
-/** Sets phase 'over' and winner; 'victory'/'defeat' events. Also stats.tilesMax. Runs once per second. */
+/**
+ * Sets phase 'over' and winner; 'victory'/'defeat' events. Also stats.tilesMax. Runs once per second.
+ * Tribes never win and don't count for 'last nation standing'.
+ */
 export function updateVictory(state: GameState): void {
   if (state.phase !== 'playing' || state.tick % TICKS_PER_SECOND !== 0) return;
   let alive = 0;
   let last = 0;
+  let nations = 0;
   for (const p of state.players) {
     if (p.id === 0) continue;
     if (p.tiles > p.stats.tilesMax) p.stats.tilesMax = p.tiles;
+    if (isTribe(p)) continue;
+    nations++;
     if (p.alive) {
       alive++;
       last = p.id;
@@ -66,15 +89,15 @@ export function updateVictory(state: GameState): void {
     return;
   }
 
-  const share = state.settings.victoryLandShare > 0 ? state.settings.victoryLandShare : VICTORY_LAND_SHARE;
+  const share = victoryShareNow(state);
   const need = share * state.map.landTileCount;
   for (const p of state.players) {
-    if (p.id !== 0 && p.alive && p.tiles >= need) {
+    if (p.id !== 0 && p.alive && !isTribe(p) && p.tiles >= need) {
       endGame(state, p.id, `controls ${Math.round(share * 100)}% of the land`);
       return;
     }
   }
-  if (alive === 1 && state.players.length > 2) {
+  if (alive === 1 && nations > 1) {
     endGame(state, last, 'last nation standing');
     return;
   }
@@ -83,7 +106,7 @@ export function updateVictory(state: GameState): void {
     return;
   }
   const limit = state.settings.timeLimit;
-  if (limit > 0 && state.tick / TICKS_PER_SECOND >= limit) {
+  if (limit > 0 && gameSeconds(state) >= limit) {
     endGame(state, leader(state), 'highest score when time ran out');
   }
 }

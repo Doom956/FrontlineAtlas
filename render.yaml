@@ -1,0 +1,19 @@
+# Render Blueprint: one free web service running the client + multiplayer server.
+# Render dashboard -> New -> Blueprint -> pick this repository. Details: docs/MULTIPLAYER.md.
+services:
+  - type: web
+    name: borderfall
+    runtime: node
+    plan: free
+    # Exactly one instance: lobbies and games live in this process's memory.
+    numInstances: 1
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm run start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Seconds a public lobby waits after its first player joins.
+      - key: PUBLIC_START_SECONDS
+        value: "60"

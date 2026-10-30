@@ -1,0 +1,144 @@
+// Nation card (left edge under the standings): who they are, their army and land, your relation, and the
+// diplomacy buttons (Ally / Accept / Break, Gift, Embargo, Attack). Opened from the standings or the radial menu.
+import { hasIntel } from '../../sim/buildings';
+import { borders } from '../../sim/combat';
+import { areAllied } from '../../sim/diplomacy';
+import type { GameState, Player } from '../../sim/types';
+import { isTribe } from '../compat';
+import { troopsToSend, troopSum } from '../input';
+import { rgbCss } from '../menu';
+import { formatCount } from '../render/common';
+import { armyOf } from '../simx';
+import { btn, el, setClass, setDisabled, setText, setTip, setVisible, type HudCtx } from './dom';
+import { relationOf, TROOP_COLORS } from './drawers';
+import { iconSpan, lineIcon } from './glyph';
+
+export const GIFT_GOLD = 200;
+
+export class NationCard {
+  readonly el: HTMLElement;
+  id = 0;
+  private name = el('span', 'nc-name');
+  private rel = el('span', 'nc-rel');
+  private army = el('span', 'nc-v');
+  private land = el('span', 'nc-v');
+  private mix = el('div', 'mixbar');
+  private mixNote = el('span', 'nc-note');
+  private parts: HTMLElement[] = [];
+  private ally: HTMLButtonElement;
+  private accept: HTMLButtonElement;
+  private decline: HTMLButtonElement;
+  private brk: HTMLButtonElement;
+  private gift: HTMLButtonElement;
+  private embargo: HTMLButtonElement;
+  private attack: HTMLButtonElement;
+
+  constructor(private ctx: HudCtx) {
+    this.el = el('section', 'ncard hidden');
+    this.el.dataset.test = 'nation-card';
+    const head = el('header', 'nc-head');
+    const close = el('button', 'sq small');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Close');
+    close.append(iconSpan(lineIcon('close', 14)));
+    close.addEventListener('click', () => this.close());
+    const titles = el('div', 'nc-titles');
+    titles.append(this.name, this.rel);
+    head.append(titles, close);
+    const stats = el('div', 'nc-stats');
+    const a = el('div', 'nc-stat');
+    a.append(el('span', 'nc-k', 'Army'), this.army);
+    const l = el('div', 'nc-stat');
+    l.append(el('span', 'nc-k', 'Land'), this.land);
+    stats.append(a, l);
+    for (const k of ['infantry', 'armor', 'artillery'] as const) {
+      const p = el('span');
+      p.style.background = TROOP_COLORS[k];
+      this.mix.append(p);
+      this.parts.push(p);
+    }
+    const acts = el('div', 'nc-acts');
+    const act = (a: Parameters<HudCtx['act']>[0]) => this.ctx.act(a);
+    this.ally = btn('Ally', '', () => act({ type: 'requestAlliance', to: this.id }), 'ally');
+    this.accept = btn('Accept', 'primary', () => act({ type: 'answerAlliance', from: this.id, accept: true }), 'accept');
+    this.decline = btn('Decline', '', () => act({ type: 'answerAlliance', from: this.id, accept: false }), 'decline');
+    this.brk = btn('Break', 'danger', () => act({ type: 'breakAlliance', with: this.id }), 'breakAlly');
+    this.brk.dataset.tip = 'Break the alliance: you become a traitor for a while (weaker defence, everyone trusts you less)';
+    this.gift = btn(`Gift ${GIFT_GOLD}`, '', () => act({ type: 'gift', to: this.id, gold: GIFT_GOLD, troops: 0 }), 'gift');
+    this.gift.dataset.tip = `Give ${GIFT_GOLD} gold: they like you more`;
+    this.embargo = btn('Embargo', '', () => act({ type: 'toggleEmbargo', with: this.id }), 'embargo');
+    this.attack = btn('Attack', 'danger', () => this.doAttack(), 'attack');
+    this.attack.dataset.test = 'nc-attack';
+    acts.append(this.accept, this.decline, this.ally, this.brk, this.attack, this.gift, this.embargo);
+    this.el.append(head, stats, this.mix, this.mixNote, acts);
+  }
+
+  open(id: number): void {
+    this.id = id;
+    setVisible(this.el, true);
+    this.ctx.refreshSoon();
+  }
+  close(): void {
+    this.id = 0;
+    setVisible(this.el, false);
+  }
+  get isOpen(): boolean {
+    return this.id > 0;
+  }
+
+  private doAttack(): void {
+    const s = this.ctx.state();
+    const me = this.ctx.me();
+    const p = s?.players[this.id];
+    if (!s || !me || !p || p.capital < 0) return;
+    this.ctx.act({ type: 'attack', tile: p.capital, troops: troopsToSend(me, this.ctx.ui) });
+  }
+
+  update(s: GameState, me: Player): void {
+    if (!this.id) return;
+    const p = s.players[this.id];
+    if (!p || !p.alive) {
+      this.close();
+      return;
+    }
+    const isMe = p.id === me.id;
+    this.el.style.setProperty('--c', rgbCss(p.color));
+    setText(this.name, p.name);
+    const rel = relationOf(s, me, p.id);
+    setText(this.rel, rel.text);
+    this.rel.className = 'nc-rel ' + rel.cls;
+    setText(this.army, formatCount(armyOf(s, p.id)));
+    setText(this.land, `${((p.tiles / Math.max(1, s.map.landTileCount)) * 100).toFixed(1)}%`);
+    const intel = isMe || hasIntel(s, me.id, p.id);
+    setVisible(this.mix, intel);
+    if (intel) {
+      const t = p.troops;
+      const sum = t.infantry + t.armor + t.artillery || 1;
+      this.parts[0].style.width = `${(t.infantry / sum) * 100}%`;
+      this.parts[1].style.width = `${(t.armor / sum) * 100}%`;
+      this.parts[2].style.width = `${(t.artillery / sum) * 100}%`;
+      setText(this.mixNote, `Infantry ${formatCount(t.infantry)}, armor ${formatCount(t.armor)}, artillery ${formatCount(t.artillery)}`);
+    } else setText(this.mixNote, 'Troop mix unknown: build a Watchtower near them or ally with them.');
+    const allied = areAllied(s, me.id, p.id);
+    const inReq = s.allianceRequests.some((r) => r.from === p.id && r.to === me.id);
+    const outReq = s.allianceRequests.some((r) => r.from === me.id && r.to === p.id);
+    setVisible(this.accept, !isMe && inReq);
+    setVisible(this.decline, !isMe && inReq);
+    setVisible(this.ally, !isMe && !allied && !inReq);
+    setDisabled(this.ally, outReq);
+    setTip(this.ally, outReq ? 'Request sent: waiting for their answer' : isTribe(p) ? 'Tribes accept every alliance' : 'Ask for an alliance');
+    setVisible(this.brk, !isMe && allied);
+    setVisible(this.gift, !isMe);
+    setDisabled(this.gift, me.gold < GIFT_GOLD);
+    setVisible(this.embargo, !isMe && !isTribe(p));
+    const emb = me.embargoes.includes(p.id);
+    setClass(this.embargo, 'on', emb);
+    const lbl = this.embargo.querySelector('.wr-btn-l');
+    if (lbl) setText(lbl as HTMLElement, emb ? 'Lift embargo' : 'Embargo');
+    setTip(this.embargo, emb ? 'Allow trade ships with them again' : 'Stop trade ships between you');
+    setVisible(this.attack, !isMe && !allied);
+    const send = troopSum(troopsToSend(me, this.ctx.ui));
+    const near = borders(s, me.id, p.id);
+    setTip(this.attack, `Send ${formatCount(send)} troops (${Math.round(this.ctx.ui.attackShare * 100)}%) ${near ? 'across your shared border' : 'by sea: you share no border'}`);
+  }
+}

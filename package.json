@@ -3,10 +3,15 @@
   "version": "1.0.0",
   "description": "Borderfall: territory-control strategy game in the browser",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "dev": "node scripts/dev.mjs",
+    "dev:client": "vite",
+    "dev:server": "vite-node --watch server/index.ts",
+    "build": "tsc && tsc -p server && vite build && npm run build:server",
+    "build:client": "tsc && vite build",
+    "build:server": "vite build --config server/vite.config.ts",
+    "start": "node server-dist/index.js",
     "preview": "vite preview",
-    "typecheck": "tsc",
+    "typecheck": "tsc && tsc -p server",
     "test": "vitest run",
     "headless": "vite-node scripts/headless.ts",
     "profile": "vite-node scripts/profile.ts"
@@ -15,11 +20,23 @@
   "author": "Doom956",
   "license": "MIT",
   "devDependencies": {
+    "@types/node": "22.20.2",
+    "@types/ws": "8.18.1",
     "typescript": "^5.8.3",
     "vite": "^7.0.2",
+    "vite-node": "3.2.4",
     "vite-plugin-singlefile": "^2.3.0",
     "vitest": "^3.2.4"
   },
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@fontsource/barlow-condensed": "5.3.0",
+    "@fontsource/ibm-plex-sans": "5.3.0",
+    "@fontsource/saira-stencil-one": "5.3.0",
+    "ws": "8.18.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
 }

@@ -1,21 +1,21 @@
 // Core simulation tests: rng, grid, mapgen, spawning, ownership, diplomacy, actions, victory, tick.
 import { describe, expect, it } from 'vitest';
 import { applyAction } from '../src/sim/actions';
-import { ALLIANCE_DURATION, ALLIANCE_REQUEST_TIMEOUT, MAX_EVENTS, SPAWN_SECONDS, START_GOLD, START_INFANTRY, TICKS_PER_SECOND } from '../src/sim/config';
+import { ALLIANCE_DURATION, ALLIANCE_REQUEST_TIMEOUT, MAX_EVENTS, SPAWN_SECONDS, START_GOLD, START_TROOPS, TICKS_PER_SECOND } from '../src/sim/config';
 import { areAllied, breakAlliance, canTrade, changeOpinion, gift, isTraitor, requestAlliance, answerAlliance, toggleEmbargo, updateDiplomacy } from '../src/sim/diplomacy';
 import { distanceField, forEachInRadius, nearestTile, neighbors4, waterPath } from '../src/sim/grid';
 import { computeCoastAndLand, createMapData, generateMap } from '../src/sim/mapgen';
 import { makeRng } from '../src/sim/rng';
 import { tick } from '../src/sim/sim';
-import { addEvent, canSpawnAt, createGame, setOwner, spawnPlayer } from '../src/sim/state';
+import { addEvent, canSpawnAt, createGame, setOwner, spawnMinDistance, spawnPlayer, spawnRadius } from '../src/sim/state';
 import { score, updateVictory } from '../src/sim/victory';
 import { Resource, Terrain, isWater } from '../src/sim/types';
-import type { Attack, Building, BuildingType, GameState, MapType } from '../src/sim/types';
+import type { Action, Attack, Building, BuildingType, GameState, MapType } from '../src/sim/types';
 import { claimRect, makeFlatGame, makeTestGame, testSettings, troopSum } from './helpers';
 
 function addBuilding(state: GameState, owner: number, tile: number, type: BuildingType, level = 1): Building {
   const id = state.nextId++;
-  const b: Building = { id, type, owner, tile, level, buildLeft: 0, fighters: 0, bombers: 0, cooldown: 0, hp: 1 };
+  const b: Building = { id, type, owner, tile, level, buildLeft: 0, upgradeLeft: 0, fighters: 0, bombers: 0, cooldown: 0, dropCooldown: 0, disabledUntil: 0, hp: 1 };
   state.buildings.set(id, b);
   state.map.building[tile] = id + 1;
   return b;
@@ -138,8 +138,8 @@ describe('mapgen', () => {
       const settings = testSettings({ mapType, seed: 99 });
       const map = generateMap(settings, makeRng(99).rng);
       const n = map.width * map.height;
-      expect(map.width).toBe(300);
-      expect(map.height).toBe(200);
+      expect(map.width).toBe(900);
+      expect(map.height).toBe(560);
       let land = 0;
       let hillsMountains = 0;
       let errors = 0; // counted instead of expect() per tile, which is slow on 60k tiles
@@ -213,7 +213,7 @@ describe('createGame and spawning', () => {
       expect(s.players[id].isHuman).toBe(false);
       expect(s.players[id].personality).not.toBeNull();
       expect(s.players[id].gold).toBe(START_GOLD);
-      expect(s.players[id].armyRatio).toBe(0.4);
+      expect(s.players[id].troops).toEqual({ infantry: 0, armor: 0, artillery: 0 }); // troops come with the spawn
     }
     expect(s.opinion.length).toBe(7);
     expect(s.opinion[3].length).toBe(7);
@@ -243,20 +243,23 @@ describe('createGame and spawning', () => {
     const p1 = s.players[1];
     expect(p1.capital).toBe(t1);
     expect(p1.spawned).toBe(true);
-    expect(p1.tiles).toBe(49); // radius-4 disc on open land
-    expect(p1.troops.infantry).toBe(START_INFANTRY);
+    expect(spawnRadius(s)).toBe(5); // small map
+    expect(p1.tiles).toBe(81); // radius-5 disc on open land
+    expect(p1.troops.infantry).toBe(START_TROOPS);
     // too close to player 1's capital, or on its land
+    expect(spawnMinDistance(s)).toBe(17);
     expect(canSpawnAt(s, 2, t1 + 5)).toBe(false);
-    expect(canSpawnAt(s, 2, t1 + 12)).toBe(true);
+    expect(canSpawnAt(s, 2, t1 + 16)).toBe(false);
+    expect(canSpawnAt(s, 2, t1 + 17)).toBe(true);
     // re-spawn moves the start
     const t2 = 20 * 60 + 45;
     expect(applyAction(s, 1, { type: 'spawn', tile: t2 }).ok).toBe(true);
     expect(s.map.owner[t1]).toBe(0);
     expect(s.map.owner[t2]).toBe(1);
-    expect(p1.tiles).toBe(49);
+    expect(p1.tiles).toBe(81);
     let owned = 0;
     for (let i = 0; i < s.map.owner.length; i++) if (s.map.owner[i] === 1) owned++;
-    expect(owned).toBe(49);
+    expect(owned).toBe(81);
     // water and fallout are invalid
     s.map.terrain[5] = Terrain.DeepWater;
     expect(canSpawnAt(s, 2, 5)).toBe(false);
@@ -442,7 +445,7 @@ describe('diplomacy', () => {
     const g1 = s.players[1].gold;
     expect(gift(s, 1, 2, 200, 100).ok).toBe(true);
     expect(s.players[1].gold).toBe(g1 - 200);
-    expect(s.players[2].troops.infantry).toBe(START_INFANTRY + 100);
+    expect(s.players[2].troops.infantry).toBe(START_TROOPS + 100);
     expect(s.opinion[2][1]).toBeGreaterThan(0);
     expect(gift(s, 1, 2, 1e9, 0).ok).toBe(false);
     expect(canTrade(s, 1, 2)).toBe(true);
@@ -460,13 +463,13 @@ describe('applyAction validation', () => {
   it('checks player, phase and troops', () => {
     const s = makeFlatGame(20, 20, 2);
     claimRect(s, 1, 0, 0, 4, 4);
-    expect(applyAction(s, 0, { type: 'setArmyRatio', value: 0.5 }).ok).toBe(false);
-    expect(applyAction(s, 9, { type: 'setArmyRatio', value: 0.5 }).ok).toBe(false);
+    expect(applyAction(s, 0, { type: 'setArmyMix', armor: 0.2, artillery: 0.1 }).ok).toBe(false);
+    expect(applyAction(s, 9, { type: 'setArmyMix', armor: 0.2, artillery: 0.1 }).ok).toBe(false);
     const bad = [
       { infantry: -1, armor: 0, artillery: 0 },
       { infantry: NaN, armor: 0, artillery: 0 },
       { infantry: Infinity, armor: 0, artillery: 0 },
-      { infantry: START_INFANTRY + 1, armor: 0, artillery: 0 },
+      { infantry: START_TROOPS + 1, armor: 0, artillery: 0 },
       { infantry: 10, armor: 1, artillery: 0 },
     ];
     for (const troops of bad) {
@@ -477,21 +480,19 @@ describe('applyAction validation', () => {
     expect(applyAction(s, 1, { type: 'gift', to: 2, gold: -5, troops: 0 }).ok).toBe(false);
     expect(applyAction(s, 1, { type: 'requestAlliance', to: 0 }).ok).toBe(false);
     s.phase = 'spawn';
-    expect(applyAction(s, 1, { type: 'setArmyRatio', value: 0.5 }).ok).toBe(false);
+    expect(applyAction(s, 1, { type: 'setArmyMix', armor: 0.2, artillery: 0.1 }).ok).toBe(false);
     s.phase = 'over';
-    expect(applyAction(s, 1, { type: 'setArmyRatio', value: 0.5 }).ok).toBe(false);
+    expect(applyAction(s, 1, { type: 'setArmyMix', armor: 0.2, artillery: 0.1 }).ok).toBe(false);
     s.phase = 'playing';
     s.players[2].alive = false;
-    expect(applyAction(s, 2, { type: 'setArmyRatio', value: 0.5 }).ok).toBe(false);
+    expect(applyAction(s, 2, { type: 'setArmyMix', armor: 0.2, artillery: 0.1 }).ok).toBe(false);
+    // There is one troop pool: no army ratio to set.
+    expect(applyAction(s, 1, { type: 'setArmyRatio', value: 0.5 } as unknown as Action).ok).toBe(false);
   });
-  it('clamps army ratio and mix', () => {
+  it('clamps the army mix', () => {
     const s = makeFlatGame(20, 20, 1);
     const p = s.players[1];
-    expect(applyAction(s, 1, { type: 'setArmyRatio', value: 2 }).ok).toBe(true);
-    expect(p.armyRatio).toBe(0.9);
-    applyAction(s, 1, { type: 'setArmyRatio', value: -1 });
-    expect(p.armyRatio).toBe(0.1);
-    expect(applyAction(s, 1, { type: 'setArmyRatio', value: NaN }).ok).toBe(false);
+    expect(applyAction(s, 1, { type: 'setArmyMix', armor: NaN, artillery: 0 }).ok).toBe(false);
     applyAction(s, 1, { type: 'setArmyMix', armor: 1, artillery: -0.2 });
     expect(p.armyMix).toEqual({ armor: 0.8, artillery: 0 });
     applyAction(s, 1, { type: 'setArmyMix', armor: 0.8, artillery: 0.8 });
@@ -515,8 +516,7 @@ describe('victory and scores', () => {
     const s = makeFlatGame(20, 20, 1);
     claimRect(s, 1, 0, 0, 9, 9);
     const p = s.players[1];
-    p.workers = 1000;
-    p.troops = { infantry: 1000, armor: 0, artillery: 0 };
+    p.troops = { infantry: 2000, armor: 0, artillery: 0 };
     expect(score(s, 1)).toBe(100 + 20);
     const b = addBuilding(s, 1, 5, 'farm');
     expect(score(s, 1)).toBe(170);

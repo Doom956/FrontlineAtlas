@@ -1,5 +1,5 @@
 // Shared test fixtures for the sim tests.
-import { START_INFANTRY, START_WORKERS, VICTORY_LAND_SHARE } from '../src/sim/config';
+import { START_TROOPS, VICTORY_LAND_SHARE } from '../src/sim/config';
 import { computeCoastAndLand, createMapData } from '../src/sim/mapgen';
 import { makeRng } from '../src/sim/rng';
 import { autoSpawnRemaining, createGame, makeGameState, makePlayer, setOwner } from '../src/sim/state';
@@ -18,6 +18,7 @@ export function testSettings(overrides: Partial<GameSettings> = {}): GameSetting
     humanPlayer: true,
     timeLimit: 0,
     victoryLandShare: VICTORY_LAND_SHARE,
+    tribeCount: 0,
     ...overrides,
   };
 }
@@ -37,7 +38,7 @@ export function makeTestGame(overrides: Partial<GameSettings> = {}): GameState {
 /**
  * All-plains map (no water, no resources) with `playerCount` players (ids 1..playerCount), all AIs unless
  * opts.human (then id 1 is human). Players are alive and marked spawned but own nothing: give them land with
- * setOwner / claimRect. Phase 'playing'. Starting workers/troops/gold come from config.
+ * setOwner / claimRect. Phase 'playing'. Starting troops and gold come from config.
  */
 export function makeFlatGame(
   width: number,
@@ -54,8 +55,7 @@ export function makeFlatGame(
     const human = !!opts.human && id === 1;
     const p = makePlayer(id, human ? 'Tester' : `AI ${id}`, [(40 * id) % 256, 100, Math.max(0, 200 - 10 * id)], human, human ? null : 'balanced');
     p.spawned = true;
-    p.workers = START_WORKERS;
-    p.troops = { infantry: START_INFANTRY, armor: 0, artillery: 0 };
+    p.troops = { infantry: START_TROOPS, armor: 0, artillery: 0 };
     players.push(p);
   }
   const settings = testSettings({ seed: opts.seed ?? 1, aiCount: opts.human ? playerCount - 1 : playerCount, humanPlayer: !!opts.human });

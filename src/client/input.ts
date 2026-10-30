@@ -5,6 +5,7 @@ import { areAllied } from '../sim/diplomacy';
 import { isWater, TROOP_TYPES } from '../sim/types';
 import type { BuildingType, GameState, Player, Troops } from '../sim/types';
 import type { Camera } from './camera';
+import { barrageAction, paradropAction, planParadrop, resolveBuild } from './simx';
 import type { Renderer } from './renderer';
 import type { Dispatch, GetState, UiState } from './uiState';
 
@@ -21,9 +22,12 @@ export interface InputDeps {
   toggleHelp: () => void;
   /** Closes the topmost HUD overlay (modal); returns true if something was closed. */
   closeOverlay?: () => boolean;
+  /** Opens or closes a HUD drawer (U army, P diplomacy, J events, L map key). */
+  toggleDrawer?: (id: 'army' | 'diplomacy' | 'events' | 'legend') => void;
 }
 
 const DRAG_THRESHOLD = 5; // px before a press becomes a pan
+const LONG_PRESS_MS = 500; // touch: hold this long without moving = radial menu
 const KEY_PAN_SPEED = 700; // screen px per second
 const TOAST_MS = 3000;
 export const SPEEDS: readonly (1 | 2 | 4)[] = [1, 2, 4];
@@ -127,7 +131,12 @@ export function setupInput(deps: InputDeps): () => void {
   const opts = { signal: ac.signal };
 
   // ---- pointer on the map ----
-  let press: { id: number; button: number; x0: number; y0: number; x: number; y: number; dragging: boolean } | null = null;
+  let press: { id: number; button: number; x0: number; y0: number; x: number; y: number; dragging: boolean; done: boolean } | null = null;
+  let longTimer = 0;
+  const openMenuAt = (clientX: number, clientY: number, tile: number) => {
+    const s = getState();
+    if (s && s.humanId && s.phase === 'playing' && tile >= 0) ui.contextMenu = { x: clientX, y: clientY, tile };
+  };
 
   const local = (e: { clientX: number; clientY: number }) => {
     const r = canvas.getBoundingClientRect();
@@ -147,10 +156,23 @@ export function setupInput(deps: InputDeps): () => void {
     'pointerdown',
     (e) => {
       if (press) return;
+      // A left click that closes the radial menu only closes it (no attack on release).
+      const closing = ui.contextMenu !== null && e.button === 0;
       ui.contextMenu = null;
       const p = local(e);
       // Middle button pans right away; left and right become a pan only after moving DRAG_THRESHOLD px.
-      press = { id: e.pointerId, button: e.button, x0: p.x, y0: p.y, x: p.x, y: p.y, dragging: e.button === 1 };
+      press = { id: e.pointerId, button: e.button, x0: p.x, y0: p.y, x: p.x, y: p.y, dragging: e.button === 1, done: closing };
+      if (e.pointerType === 'touch' && e.button === 0) {
+        clearTimeout(longTimer);
+        const cx = e.clientX;
+        const cy = e.clientY;
+        const id = e.pointerId;
+        longTimer = window.setTimeout(() => {
+          if (!press || press.id !== id || press.dragging) return;
+          press.done = true;
+          openMenuAt(cx, cy, tileAt(press.x0, press.y0));
+        }, LONG_PRESS_MS);
+      }
       try {
         canvas.setPointerCapture(e.pointerId);
       } catch {
@@ -180,15 +202,16 @@ export function setupInput(deps: InputDeps): () => void {
     if (!press || press.id !== e.pointerId) return;
     const pr = press;
     press = null;
+    clearTimeout(longTimer);
     canvas.classList.remove('dragging');
-    if (cancelled || pr.dragging) return;
+    if (cancelled || pr.dragging || pr.done) return;
     const p = local(e);
     const tile = tileAt(p.x, p.y);
-    if (pr.button === 0) leftClick(tile, e.shiftKey);
-    else if (pr.button === 2 && tile >= 0) {
-      const s = getState();
-      if (s && s.humanId && s.phase === 'playing') ui.contextMenu = { x: e.clientX, y: e.clientY, tile };
-    }
+    // Clicking one of your warships picks it: the next click sets where it patrols.
+    const ship = pr.button === 0 && ui.mode.kind === 'none' ? renderer.ownWarshipAt(p.x, p.y) : -1;
+    if (ship >= 0) ui.mode = { kind: 'moveWarship', unitId: ship };
+    else if (pr.button === 0) leftClick(tile, e.shiftKey);
+    else if (pr.button === 2) openMenuAt(e.clientX, e.clientY, tile);
   };
   canvas.addEventListener('pointerup', (e) => endPress(e, false), opts);
   canvas.addEventListener('pointercancel', (e) => endPress(e, true), opts);
@@ -225,8 +248,19 @@ export function setupInput(deps: InputDeps): () => void {
     // Target modes: the click is the target; stay in the mode while Shift is held.
     let ok: boolean | null = null;
     switch (mode.kind) {
-      case 'build':
-        ok = dispatch({ type: 'build', building: mode.building, tile }).ok;
+      case 'build': {
+        // Forgiving placement: the nearest valid own tile near the click, or a nearby building of that type to upgrade.
+        const t = resolveBuild(s, h, mode.building, tile);
+        ok = dispatch({ type: 'build', building: mode.building, tile: t.tile >= 0 ? t.tile : tile }).ok;
+        break;
+      }
+      case 'paradrop': {
+        const plan = planParadrop(s, me, ui, tile, mode.airfield);
+        ok = dispatch(paradropAction(plan, tile)).ok;
+        break;
+      }
+      case 'barrage':
+        ok = dispatch(barrageAction(tile)).ok;
         break;
       case 'transport':
         ok = sendTransport(s, ui, dispatch, mode.from, tile);
@@ -331,6 +365,14 @@ export function setupInput(deps: InputDeps): () => void {
       }
       const up = k.length === 1 ? k.toUpperCase() : '';
       if (up === 'T') return deps.openResearch();
+      if (up === 'U' || up === 'P' || up === 'J' || up === 'L') {
+        deps.toggleDrawer?.(up === 'U' ? 'army' : up === 'P' ? 'diplomacy' : up === 'J' ? 'events' : 'legend');
+        return;
+      }
+      if (up === 'M') {
+        ui.showMinimap = !ui.showMinimap;
+        return;
+      }
       if (up === 'V') {
         ui.showResources = !ui.showResources;
         return;
@@ -388,6 +430,7 @@ export function setupInput(deps: InputDeps): () => void {
 
   return () => {
     ac.abort();
+    clearTimeout(longTimer);
     cancelAnimationFrame(raf);
     held.clear();
   };

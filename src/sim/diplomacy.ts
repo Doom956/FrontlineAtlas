@@ -1,5 +1,6 @@
 // Alliances, requests, betrayal, opinion, gifts, embargoes.
 import {
+  AUTO_EMBARGO_SECONDS,
   ALLIANCE_DURATION,
   ALLIANCE_REQUEST_TIMEOUT,
   BETRAYAL_OPINION_PENALTY,
@@ -7,6 +8,8 @@ import {
   TRAITOR_DURATION,
 } from './config';
 import { addEvent } from './state';
+import { borderTiles } from './territory';
+import { isTribe } from './types';
 import type { ActionResult, GameState } from './types';
 
 /** Alliances may be renewed (request again) during their last this-many seconds. */
@@ -15,7 +18,7 @@ const OPINION_DRIFT = 0.3; // per second toward 0
 const OPINION_UNDER_ATTACK = 1.5; // per second while being attacked by that player
 const OPINION_ALLY_BONUS = 0.4; // per second while allied
 const BORDER_CHECK_SECONDS = 10;
-const BORDER_FRICTION_TILES = 40; // shared border tiles before friction starts
+const BORDER_FRICTION_TILES = 120; // shared border edges before friction starts
 const BORDER_FRICTION = 2; // opinion drop per check for a long shared border
 
 export function areAllied(state: GameState, a: number, b: number): boolean {
@@ -154,9 +157,55 @@ export function gift(state: GameState, from: number, to: number, gold: number, t
   return { ok: true };
 }
 
+// Automatic embargoes (from being attacked) and when they lift: key victim * 4096 + attacker -> tick. Kept per game.
+const autoEmbargoes = new WeakMap<GameState, Map<number, number>>();
+
+/**
+ * A nation attacked another: pending alliance requests between them are rejected, and the victim stops trading
+ * with the attacker for AUTO_EMBARGO_SECONDS (lifted automatically unless the victim toggled it by hand).
+ */
+export function onAttackStarted(state: GameState, attacker: number, victim: number): void {
+  if (attacker <= 0 || victim <= 0 || attacker === victim) return;
+  const before = state.allianceRequests.length;
+  state.allianceRequests = state.allianceRequests.filter(
+    (r) => !((r.from === attacker && r.to === victim) || (r.from === victim && r.to === attacker)),
+  );
+  if (state.allianceRequests.length !== before) {
+    addEvent(state, 'info', `The alliance request between ${state.players[attacker].name} and ${state.players[victim].name} was cancelled by the attack`, [attacker, victim], -1);
+  }
+  const vp = state.players[victim];
+  let m = autoEmbargoes.get(state);
+  if (!m) autoEmbargoes.set(state, (m = new Map()));
+  const key = victim * 4096 + attacker;
+  if (!vp.embargoes.includes(attacker)) {
+    vp.embargoes.push(attacker);
+    m.set(key, state.tick + AUTO_EMBARGO_SECONDS * TICKS_PER_SECOND);
+  } else if (m.has(key)) {
+    m.set(key, state.tick + AUTO_EMBARGO_SECONDS * TICKS_PER_SECOND);
+  }
+}
+
+/** Lifts automatic embargoes whose time ran out (while the two are not fighting). Once per second. */
+function liftAutoEmbargoes(state: GameState): void {
+  const m = autoEmbargoes.get(state);
+  if (!m || m.size === 0) return;
+  for (const [key, until] of m) {
+    if (until > state.tick) continue;
+    const victim = Math.floor(key / 4096);
+    const attacker = key % 4096;
+    if (attacking(state, victim, attacker)) continue;
+    m.delete(key);
+    const vp = state.players[victim];
+    const k = vp ? vp.embargoes.indexOf(attacker) : -1;
+    if (k >= 0) vp.embargoes.splice(k, 1);
+  }
+}
+
 export function toggleEmbargo(state: GameState, playerId: number, other: number): ActionResult {
   const p = state.players[playerId];
   if (!state.players[other] || other === 0 || other === playerId) return { ok: false, reason: 'Invalid nation' };
+  // A hand toggle makes the choice permanent.
+  autoEmbargoes.get(state)?.delete(playerId * 4096 + other);
   const k = p.embargoes.indexOf(other);
   if (k >= 0) p.embargoes.splice(k, 1);
   else {
@@ -192,6 +241,7 @@ export function updateDiplomacy(state: GameState): void {
   }
 
   if (t % TICKS_PER_SECOND !== 0) return;
+  liftAutoEmbargoes(state);
   // Once per second: opinion drift, war and alliance effects.
   const op = state.opinion;
   const n = state.players.length;
@@ -211,36 +261,50 @@ export function updateDiplomacy(state: GameState): void {
     changeOpinion(state, al.a, al.b, OPINION_ALLY_BONUS);
     changeOpinion(state, al.b, al.a, OPINION_ALLY_BONUS);
   }
-  if ((t / TICKS_PER_SECOND) % BORDER_CHECK_SECONDS === 0) borderFriction(state);
+  borderFriction(state, (t / TICKS_PER_SECOND) % BORDER_CHECK_SECONDS);
 }
 
-/** Long shared borders breed distrust (full map scan, every BORDER_CHECK_SECONDS). */
-function borderFriction(state: GameState): void {
-  const { width: w, height: h, owner } = state.map;
+/**
+ * Long shared borders breed distrust (from the players' border sets). Each player is looked at every
+ * BORDER_CHECK_SECONDS: one slice of the players per second (id % BORDER_CHECK_SECONDS === slot), so the work is
+ * spread out. A pair is counted from its lower id's side.
+ */
+function borderFriction(state: GameState, slot: number): void {
+  const { width: w, owner, terrain } = state.map;
   const n = state.players.length;
-  const shared = new Uint32Array(n * n);
-  for (let y = 0; y < h; y++) {
-    const row = y * w;
-    for (let x = 0; x < w; x++) {
-      const i = row + x;
-      const o = owner[i];
-      if (o === 0) continue;
+  const size = owner.length;
+  const shared = new Map<number, number>();
+  for (let a = 1; a < n; a++) {
+    const pa = state.players[a];
+    if (a % BORDER_CHECK_SECONDS !== slot || !pa.alive || isTribe(pa)) continue;
+    const { list, len } = borderTiles(state, a);
+    for (let k = 0; k < len; k++) {
+      const i = list[k];
+      const x = i % w;
+      // Count each shared edge once, from the lower id's side.
       if (x < w - 1) {
-        const r = owner[i + 1];
-        if (r !== 0 && r !== o) shared[o * n + r]++;
+        const b = owner[i + 1];
+        if (b > a && terrain[i + 1] > 1) shared.set(a * n + b, (shared.get(a * n + b) ?? 0) + 1);
       }
-      if (y < h - 1) {
-        const d = owner[i + w];
-        if (d !== 0 && d !== o) shared[o * n + d]++;
+      if (x > 0) {
+        const b = owner[i - 1];
+        if (b > a && terrain[i - 1] > 1) shared.set(a * n + b, (shared.get(a * n + b) ?? 0) + 1);
+      }
+      if (i + w < size) {
+        const b = owner[i + w];
+        if (b > a && terrain[i + w] > 1) shared.set(a * n + b, (shared.get(a * n + b) ?? 0) + 1);
+      }
+      if (i >= w) {
+        const b = owner[i - w];
+        if (b > a && terrain[i - w] > 1) shared.set(a * n + b, (shared.get(a * n + b) ?? 0) + 1);
       }
     }
   }
-  for (let a = 1; a < n; a++) {
-    for (let b = a + 1; b < n; b++) {
-      const len = shared[a * n + b] + shared[b * n + a];
-      if (len < BORDER_FRICTION_TILES || areAllied(state, a, b)) continue;
-      changeOpinion(state, a, b, -BORDER_FRICTION);
-      changeOpinion(state, b, a, -BORDER_FRICTION);
-    }
+  for (const [key, len] of shared) {
+    const a = Math.floor(key / n);
+    const b = key % n;
+    if (len < BORDER_FRICTION_TILES || isTribe(state.players[b]) || areAllied(state, a, b)) continue;
+    changeOpinion(state, a, b, -BORDER_FRICTION);
+    changeOpinion(state, b, a, -BORDER_FRICTION);
   }
 }

@@ -7,40 +7,57 @@ import {
   build,
   buildingAt,
   buildingsOf,
+  buildingSpacing,
   canBuild,
   countBuildings,
+  countSites,
   demolish,
   destroyBuilding,
   fortMultiplierAt,
   hasIntel,
+  resolveBuildTarget,
   supplySources,
   updateBuildings,
 } from '../src/sim/buildings';
+import type { BuildPlan } from '../src/sim/buildings';
 import {
   AI_HARD_INCOME_BONUS,
   ARMOR_OIL_UPKEEP,
+  BARRACKS_GROWTH_BONUS,
   BASE_SCIENCE,
+  BUILDING_MIN_SPACING_BY_SIZE,
   BUILDINGS,
-  CAPITAL_POP,
+  CAPITAL_TROOP_CAP,
   CITY_GOLD,
-  CITY_POP,
+  CITY_TROOP_CAP,
+  CONVERT_COST,
   CONVERT_RATE,
+  FARM_GROWTH_BONUS,
+  FARM_TROOP_CAP,
   FORT_DEFENSE,
   FORT_DEFENSE_TECH,
-  GOLD_PER_WORKER,
+  GOLD_BASE,
+  GOLD_LAND,
   IRON_PER_MINE,
   MARKET_GOLD_BONUS,
   MARKET_MAX_BONUS,
-  MIN_GROWTH,
   OIL_PER_WELL,
   SCIENCE_PER_LAB,
   TECHS,
   TICK_SECONDS,
   TICKS_PER_SECOND,
+  TRIBE_CAP_FACTOR,
+  TROOP_CAP_BASE,
+  TROOP_CAP_LAND,
+  TROOP_CAP_LAND_EXP,
+  TROOP_GROWTH_BASE,
+  TROOP_GROWTH_EXP,
+  TROOP_GROWTH_K,
   WATCHTOWER_DEF,
 } from '../src/sim/config';
 import { formAlliance } from '../src/sim/diplomacy';
-import { armyTotal, computeMaxPop, getTerritoryScan, hasOilShortage, population, updateEconomy } from '../src/sim/economy';
+import { armyTotal, baseGrowth, computeMaxPop, goldIncome, growthPeak, hasOilShortage, landPopValue, landValue, population, troopCap, updateEconomy } from '../src/sim/economy';
+import { onFalloutChange } from '../src/sim/territory';
 import { computeCoastAndLand } from '../src/sim/mapgen';
 import { tick } from '../src/sim/sim';
 import { setOwner } from '../src/sim/state';
@@ -56,7 +73,7 @@ const idx = (x: number, y: number): number => y * W + x;
 /** Places a finished building directly (no cost, no validation). */
 function addBuilding(state: GameState, owner: number, tile: number, type: BuildingType, level = 1): Building {
   const id = state.nextId++;
-  const b: Building = { id, type, owner, tile, level, buildLeft: 0, fighters: 0, bombers: 0, cooldown: 0, hp: 1 };
+  const b: Building = { id, type, owner, tile, level, buildLeft: 0, upgradeLeft: 0, fighters: 0, bombers: 0, cooldown: 0, dropCooldown: 0, disabledUntil: 0, hp: 1 };
   state.buildings.set(id, b);
   state.map.building[tile] = id + 1;
   return b;
@@ -68,6 +85,10 @@ function twoPlayers(): GameState {
   claimRect(s, 2, 40, 0, W - 1, H - 1);
   return s;
 }
+/** Player 1's gold income per second (economy.goldIncome). */
+function updateEconomyGold(state: GameState): number {
+  return goldIncome(state, state.players[1]);
+}
 function runTicks(state: GameState, n: number, fn: (s: GameState) => void = updateEconomy): void {
   for (let i = 0; i < n; i++) {
     fn(state);
@@ -75,161 +96,165 @@ function runTicks(state: GameState, n: number, fn: (s: GameState) => void = upda
   }
 }
 
-describe('population', () => {
-  it('max pop = land pop + capital + city levels, fallout excluded', () => {
+describe('troop cap and growth (one pool)', () => {
+  it('cap = base + land (sublinear) + capital + city levels + farms; mountains and fallout count less', () => {
     const s = twoPlayers();
-    const land = 20 * H * 30;
-    expect(computeMaxPop(s, 1)).toBeCloseTo(land + CAPITAL_POP);
+    const land = 20 * H; // plains: weight 1 per tile
+    const base = TROOP_CAP_BASE + landPopValue(land) + CAPITAL_TROOP_CAP;
+    expect(troopCap(s, 1)).toBeCloseTo(base, 6);
+    expect(computeMaxPop(s, 1)).toBe(troopCap(s, 1));
     addBuilding(s, 1, idx(3, 3), 'city', 3);
-    expect(computeMaxPop(s, 1)).toBeCloseTo(land + CAPITAL_POP + 3 * CITY_POP);
+    expect(troopCap(s, 1)).toBeCloseTo(base + 3 * CITY_TROOP_CAP, 6);
+    addBuilding(s, 1, idx(9, 3), 'farm');
+    expect(troopCap(s, 1)).toBeCloseTo(base + 3 * CITY_TROOP_CAP + FARM_TROOP_CAP, 6);
+    // Fallout on an owned tile: it stops counting.
     s.map.fallout[idx(5, 5)] = 60;
-    s.map.terrain[idx(6, 6)] = Terrain.Mountains;
-    s.tick += 10; // next scan
-    expect(computeMaxPop(s, 1)).toBeCloseTo(land - 30 - 25 + CAPITAL_POP + 3 * CITY_POP);
+    onFalloutChange(s, idx(5, 5), true);
+    expect(troopCap(s, 1)).toBeCloseTo(base - landPopValue(land) + landPopValue(land - 1) + 3 * CITY_TROOP_CAP + FARM_TROOP_CAP, 6);
+    // A mountain tile is worth 5/30 of a plains tile.
+    const m = makeFlatGame(W, H, 1);
+    m.map.terrain[idx(6, 6)] = Terrain.Mountains;
+    claimRect(m, 1, 0, 0, 19, H - 1);
+    expect(troopCap(m, 1)).toBeCloseTo(TROOP_CAP_BASE + landPopValue(land - 1 + 5 / 30) + CAPITAL_TROOP_CAP, 6);
   });
 
-  it('grows toward max pop and never past it', () => {
+  it('land value: TROOP_CAP_LAND x weight^TROOP_CAP_LAND_EXP, diminishing returns', () => {
+    expect(landPopValue(0)).toBe(0);
+    for (const v of [1, 50, 1000, 30000, 720000]) {
+      expect(landPopValue(v) / (TROOP_CAP_LAND * Math.pow(v, TROOP_CAP_LAND_EXP))).toBeCloseTo(1, 9);
+      expect(landValue(v)).toBeCloseTo(Math.pow(v, TROOP_CAP_LAND_EXP), 6);
+    }
+    // Each extra tile adds less: early land is worth a lot, a huge empire's last tiles little.
+    expect(landPopValue(2000) - landPopValue(1000)).toBeGreaterThan(landPopValue(101000) - landPopValue(100000));
+    // Grand-scale numbers: hundreds of thousands to millions.
+    expect(TROOP_CAP_BASE + landPopValue(20000)).toBeGreaterThan(500000);
+  });
+
+  it('growth = (base + K x troops^0.73) x (1 - troops / cap), peaking near 42% of the cap', () => {
+    const cap = 1e6;
+    expect(baseGrowth(0, cap)).toBeCloseTo(TROOP_GROWTH_BASE, 9);
+    expect(baseGrowth(200000, cap)).toBeCloseTo((TROOP_GROWTH_BASE + TROOP_GROWTH_K * Math.pow(200000, TROOP_GROWTH_EXP)) * 0.8, 3);
+    expect(baseGrowth(cap, cap)).toBe(0);
+    expect(baseGrowth(cap * 1.2, cap)).toBeLessThan(0);
+    // The peak: holding a full bar wastes growth.
+    const peak = growthPeak(cap);
+    expect(peak / cap).toBeGreaterThan(0.4);
+    expect(peak / cap).toBeLessThan(0.45);
+    expect(baseGrowth(peak, cap)).toBeGreaterThan(baseGrowth(peak * 0.8, cap));
+    expect(baseGrowth(peak, cap)).toBeGreaterThan(baseGrowth(peak * 1.2, cap));
+    expect(baseGrowth(cap * 0.95, cap)).toBeLessThan(baseGrowth(peak, cap) * 0.25);
+  });
+
+  it('one tick of growth adds infantry by the formula, toward the cap and never past it', () => {
     const s = twoPlayers();
     const p = s.players[1];
+    p.troops = { infantry: 30000, armor: 0, artillery: 0 };
+    updateEconomy(s);
+    const cap = p.maxPop;
+    expect(cap).toBeCloseTo(troopCap(s, 1), 6);
+    expect(p.troops.infantry - 30000).toBeCloseTo(baseGrowth(30000, cap) * TICK_SECONDS, 6);
+    expect(p.income.pop).toBeCloseTo(baseGrowth(30000, cap), 6);
     let last = population(p);
-    for (let i = 0; i < 4000; i++) {
+    for (let i = 0; i < 3000; i++) {
       updateEconomy(s);
       s.tick++;
-      const pop = population(p);
-      expect(pop).toBeGreaterThanOrEqual(last - 1e-6);
-      expect(pop).toBeLessThanOrEqual(p.maxPop + 1e-6);
-      last = pop;
+      expect(population(p)).toBeGreaterThanOrEqual(last - 1e-6);
+      expect(population(p)).toBeLessThanOrEqual(p.maxPop + 1e-6);
+      last = population(p);
     }
-    expect(population(p)).toBeGreaterThan(p.maxPop * 0.99);
-    // At max: no more growth.
-    updateEconomy(s);
-    expect(population(p)).toBeCloseTo(last, 3);
+    expect(population(p)).toBeGreaterThan(p.maxPop * 0.9);
   });
 
-  it('grows at least MIN_GROWTH while below max, logistic otherwise', () => {
+  it('troops above the cap (land lost) shrink back to it, every type alike', () => {
     const s = twoPlayers();
     const p = s.players[1];
-    p.workers = 0;
-    p.troops.infantry = 0;
-    updateEconomy(s); // pop 0: logistic is 0, min growth applies
-    expect(population(p)).toBeCloseTo(MIN_GROWTH * TICK_SECONDS, 6);
-    p.workers = 9000;
-    p.troops.infantry = 1000;
-    const before = population(p);
+    const cap = troopCap(s, 1);
+    p.troops = { infantry: cap, armor: cap * 0.5, artillery: 0 };
     updateEconomy(s);
-    const expected = 0.05 * before * (1 - before / p.maxPop) * TICK_SECONDS;
-    expect(population(p) - before).toBeCloseTo(expected, 4);
+    expect(armyTotal(p.troops)).toBeLessThan(cap * 1.5);
+    expect(armyTotal(p.troops)).toBeGreaterThanOrEqual(cap - 1e-6);
+    expect(p.troops.armor / p.troops.infantry).toBeCloseTo(0.5, 9);
+    expect(p.income.pop).toBeLessThan(0);
   });
 
-  it('farms add growth, double on Fertile, Agriculture x1.5, Medicine +20%', () => {
+  it('tribes have a third of the cap and grow at half speed', () => {
+    const s = twoPlayers();
+    const full = troopCap(s, 1);
+    s.players[1].personality = 'tribe';
+    expect(troopCap(s, 1)).toBeCloseTo(full * TRIBE_CAP_FACTOR, 6);
+    const t = twoPlayers();
+    const a = t.players[1];
+    const b = t.players[2];
+    b.personality = 'tribe';
+    a.troops = { infantry: 10000, armor: 0, artillery: 0 };
+    b.troops = { infantry: 10000, armor: 0, artillery: 0 };
+    updateEconomy(t);
+    expect(b.income.pop).toBeLessThan(a.income.pop * 0.6);
+  });
+
+  it('farms (+4%, x2 on Fertile, Agriculture x1.5), barracks (+10%, up to 3) and Medicine speed growth', () => {
     const rate = (setup: (s: GameState) => void): number => {
       const s = twoPlayers();
       setup(s);
       const p = s.players[1];
-      p.workers = 0;
-      p.troops.infantry = 0;
+      p.troops = { infantry: 20000, armor: 0, artillery: 0 };
       updateEconomy(s);
-      // pop 0: logistic part 0, so growth = max(farms, MIN_GROWTH)
-      return population(p) / TICK_SECONDS;
+      return p.income.pop;
     };
-    expect(rate(() => {})).toBeCloseTo(MIN_GROWTH);
-    expect(rate((s) => addBuilding(s, 1, idx(5, 5), 'farm'))).toBeCloseTo(60);
-    expect(rate((s) => { s.map.resource[idx(5, 5)] = Resource.Fertile; addBuilding(s, 1, idx(5, 5), 'farm'); })).toBeCloseTo(120);
-    expect(rate((s) => { s.players[1].techs.push('agriculture'); addBuilding(s, 1, idx(5, 5), 'farm'); })).toBeCloseTo(90);
-    expect(rate((s) => { s.players[1].techs.push('medicine'); addBuilding(s, 1, idx(5, 5), 'farm'); })).toBeCloseTo(72);
-    expect(rate((s) => { addBuilding(s, 1, idx(5, 5), 'farm').buildLeft = 2; })).toBeCloseTo(MIN_GROWTH); // unfinished
-  });
-
-  it('extra population above max (land lost) drifts away from the workers', () => {
-    const s = twoPlayers();
-    const p = s.players[1];
-    p.workers = 100000;
-    const before = p.workers;
-    const inf = p.troops.infantry;
-    updateEconomy(s);
-    expect(p.workers).toBeLessThan(before);
-    expect(p.troops.infantry).toBeLessThanOrEqual(inf); // no growth while over max
-  });
-});
-
-describe('army ratio', () => {
-  it('new population goes to infantry until the target share, then to workers', () => {
-    const s = twoPlayers();
-    const p = s.players[1];
-    p.workers = 9000;
-    p.troops.infantry = 1000; // 10% army, target 40%
-    p.armyRatio = 0.4;
-    updateEconomy(s);
-    expect(p.workers).toBeCloseTo(9000, 6);
-    expect(p.troops.infantry).toBeGreaterThan(1000);
-    // Above the ratio: growth goes to workers, infantry only shrinks (demobilisation)
-    p.armyRatio = 0.1;
-    p.workers = 5000;
-    p.troops.infantry = 5000;
-    updateEconomy(s);
-    expect(p.workers).toBeGreaterThan(5000);
-    expect(p.troops.infantry).toBeLessThan(5000);
-  });
-
-  it('demobilises slowly, keeping the population', () => {
-    const s = twoPlayers();
-    const p = s.players[1];
-    const max = computeMaxPop(s, 1);
-    p.workers = max / 2;
-    p.troops.infantry = max / 2; // at max pop, army 50%
-    p.armyRatio = 0.1;
-    updateEconomy(s);
-    const moved = max / 2 - p.troops.infantry;
-    expect(moved).toBeGreaterThan(0);
-    expect(moved).toBeLessThan(max * 0.01); // slow
-    expect(population(p)).toBeCloseTo(max, 3);
-    runTicks(s, 3000);
-    expect(armyTotal(p.troops) / population(p)).toBeLessThan(0.2);
-  });
-
-  it('barracks boost infantry growth (up to 3 count)', () => {
-    const grown = (barracks: number): number => {
+    const base = rate(() => {});
+    expect(rate((s) => addBuilding(s, 1, idx(5, 5), 'farm'))).toBeGreaterThan(base * (1 + FARM_GROWTH_BONUS) * 0.999);
+    // A farm also raises the cap, which raises growth a little more: compare growth multipliers on the same cap.
+    const withCap = (setup: (s: GameState) => void): number => {
       const s = twoPlayers();
-      for (let k = 0; k < barracks; k++) addBuilding(s, 1, idx(3 + 4 * k, 3), 'barracks');
+      setup(s);
       const p = s.players[1];
-      p.workers = 9000;
-      p.troops.infantry = 0;
+      p.troops = { infantry: 20000, armor: 0, artillery: 0 };
       updateEconomy(s);
-      return p.troops.infantry;
+      return p.income.pop / baseGrowth(20000, p.maxPop);
     };
-    const base = grown(0);
-    expect(grown(1)).toBeCloseTo(base * 1.15, 4);
-    expect(grown(4)).toBeCloseTo(base * 1.45, 4);
+    expect(withCap((s) => addBuilding(s, 1, idx(5, 5), 'farm'))).toBeCloseTo(1 + FARM_GROWTH_BONUS, 9);
+    expect(withCap((s) => { s.map.resource[idx(5, 5)] = Resource.Fertile; addBuilding(s, 1, idx(5, 5), 'farm'); })).toBeCloseTo(1 + 2 * FARM_GROWTH_BONUS, 9);
+    expect(withCap((s) => { s.players[1].techs.push('agriculture'); addBuilding(s, 1, idx(5, 5), 'farm'); })).toBeCloseTo(1 + 1.5 * FARM_GROWTH_BONUS, 9);
+    expect(withCap((s) => s.players[1].techs.push('medicine'))).toBeCloseTo(1.2, 9);
+    expect(withCap((s) => { addBuilding(s, 1, idx(5, 5), 'farm').buildLeft = 2; })).toBeCloseTo(1, 9); // unfinished
+    expect(withCap((s) => addBuilding(s, 1, idx(3, 3), 'barracks'))).toBeCloseTo(1 + BARRACKS_GROWTH_BONUS, 9);
+    expect(withCap((s) => { for (let k = 0; k < 4; k++) addBuilding(s, 1, idx(3 + 6 * k, 3), 'barracks'); })).toBeCloseTo(1 + 3 * BARRACKS_GROWTH_BONUS, 9);
+  });
+
+  it('there are no workers and no army ratio: the whole pool is the army', () => {
+    const s = twoPlayers();
+    const p = s.players[1] as unknown as Record<string, unknown>;
+    expect('workers' in p).toBe(false);
+    expect('armyRatio' in p).toBe(false);
+    expect(population(s.players[1])).toBe(armyTotal(s.players[1].troops));
   });
 });
 
 describe('income', () => {
-  it('gold from workers, markets (capped), cities and Banking', () => {
+  it('gold: base + land + cities, x markets (capped), Banking', () => {
     const s = twoPlayers();
     const p = s.players[1];
-    p.workers = 10000;
-    p.troops.infantry = 0;
-    p.armyRatio = 0.1;
+    const land = landValue(20 * H);
     const gold0 = p.gold;
     updateEconomy(s);
-    const workers = p.workers; // income uses workers after growth
-    expect(p.income.gold).toBeCloseTo(workers * GOLD_PER_WORKER, 6);
+    expect(p.income.gold).toBeCloseTo(GOLD_BASE + GOLD_LAND * land, 6);
     expect(p.gold - gold0).toBeCloseTo(p.income.gold * TICK_SECONDS, 6);
     expect(p.stats.goldEarned).toBeCloseTo(p.income.gold * TICK_SECONDS, 6);
 
     addBuilding(s, 1, idx(2, 2), 'market');
-    addBuilding(s, 1, idx(6, 2), 'market');
-    addBuilding(s, 1, idx(10, 2), 'city', 2);
+    addBuilding(s, 1, idx(8, 2), 'market');
+    addBuilding(s, 1, idx(14, 2), 'city', 2);
     updateEconomy(s);
-    expect(p.income.gold).toBeCloseTo(p.workers * GOLD_PER_WORKER * (1 + 2 * MARKET_GOLD_BONUS) + 2 * CITY_GOLD, 6);
+    const raw = GOLD_BASE + GOLD_LAND * land + 2 * CITY_GOLD;
+    expect(p.income.gold).toBeCloseTo(raw * (1 + 2 * MARKET_GOLD_BONUS), 6);
 
-    for (let k = 0; k < 12; k++) addBuilding(s, 1, idx(2 + 4 * (k % 4), 10 + 4 * Math.floor(k / 4)), 'market');
+    for (let k = 0; k < 12; k++) addBuilding(s, 1, idx(2 + 6 * (k % 3), 10 + 6 * Math.floor(k / 3)), 'market');
     updateEconomy(s);
-    expect(p.income.gold).toBeCloseTo(p.workers * GOLD_PER_WORKER * (1 + MARKET_MAX_BONUS) + 2 * CITY_GOLD, 6);
+    expect(p.income.gold).toBeCloseTo(raw * (1 + MARKET_MAX_BONUS), 6);
 
     p.techs.push('banking');
     updateEconomy(s);
-    expect(p.income.gold).toBeCloseTo((p.workers * GOLD_PER_WORKER * (1 + MARKET_MAX_BONUS * 1.5) + 2 * CITY_GOLD) * 1.3, 6);
+    expect(p.income.gold).toBeCloseTo(raw * (1 + MARKET_MAX_BONUS * 1.5) * 1.3, 6);
   });
 
   it('iron, oil, science; Metallurgy and Industrialization', () => {
@@ -252,8 +277,6 @@ describe('income', () => {
   it('hard AIs get an income bonus, humans do not', () => {
     const s = twoPlayers();
     s.settings.difficulty = 'hard';
-    s.players[1].workers = s.players[2].workers = 10000;
-    s.players[1].troops.infantry = s.players[2].troops.infantry = 0;
     updateEconomy(s);
     expect(s.players[2].income.gold / s.players[1].income.gold).toBeCloseTo(1 + AI_HARD_INCOME_BONUS, 4);
   });
@@ -270,7 +293,7 @@ describe('income', () => {
     expect(p.income.oil).toBeCloseTo(-upkeep);
     expect(p.oil).toBeCloseTo(10 - upkeep * TICK_SECONDS);
     expect(hasOilShortage(s, 1)).toBe(false);
-    p.oil = 0.01;
+    p.oil = 0.001;
     updateEconomy(s);
     expect(p.oil).toBe(0);
     expect(hasOilShortage(s, 1)).toBe(true);
@@ -286,9 +309,7 @@ describe('army mix conversion', () => {
     const s = twoPlayers();
     const p = s.players[1];
     addBuilding(s, 1, idx(5, 5), 'factory');
-    p.workers = 1e9; // way over max: no growth noise on the army
     p.troops = { infantry: 10000, armor: 0, artillery: 0 };
-    p.armyRatio = 0.9;
     p.gold = 1e6;
     p.iron = 1e6;
     p.oil = 1e6;
@@ -304,10 +325,10 @@ describe('army mix conversion', () => {
     updateEconomy(s);
     const n = CONVERT_RATE.armor * TICK_SECONDS;
     expect(p.troops.armor).toBeCloseTo(n);
-    expect(p.troops.infantry).toBeCloseTo(10000 - n);
-    expect(p.iron).toBeCloseTo(iron - n * 0.5);
-    // gold: paid 4/unit, earned income
-    expect(gold + p.income.gold * TICK_SECONDS - p.gold).toBeCloseTo(n * 4);
+    expect(p.troops.infantry).toBeCloseTo(10000 + p.income.pop * TICK_SECONDS - n); // growth joins as infantry
+    expect(p.iron).toBeCloseTo(iron - n * CONVERT_COST.armor.iron);
+    // gold: paid per unit, earned income
+    expect(gold + p.income.gold * TICK_SECONDS - p.gold).toBeCloseTo(n * CONVERT_COST.armor.gold);
   });
 
   it('Industrialization doubles the rate, Metallurgy cuts iron by 25%', () => {
@@ -318,7 +339,7 @@ describe('army mix conversion', () => {
     updateEconomy(s);
     const n = CONVERT_RATE.armor * 2 * TICK_SECONDS;
     expect(p.troops.armor).toBeCloseTo(n);
-    expect(iron + p.income.iron * TICK_SECONDS - p.iron).toBeCloseTo(n * 0.375);
+    expect(iron + p.income.iron * TICK_SECONDS - p.iron).toBeCloseTo(n * CONVERT_COST.armor.iron * 0.75);
   });
 
   it('stops at the target share and is limited by resources', () => {
@@ -330,11 +351,11 @@ describe('army mix conversion', () => {
 
     const t = withFactory();
     const q = t.players[1];
-    q.iron = 1; // 2 armor worth of iron, no mines
+    q.iron = CONVERT_COST.armor.iron * 2; // 2 armor worth of iron, no mines
     runTicks(t, 50);
     expect(q.troops.armor).toBeCloseTo(2, 5);
     expect(q.iron).toBeCloseTo(0, 6);
-    expect(q.troops.infantry + q.troops.armor).toBeGreaterThan(9990);
+    expect(q.troops.infantry + q.troops.armor).toBeGreaterThan(10000);
   });
 
   it('never converts below 0 infantry; unfinished factories and arsenals do nothing', () => {
@@ -353,51 +374,92 @@ describe('army mix conversion', () => {
 });
 
 describe('build rules', () => {
-  it('validates owner, water, terrain, fallout, tech and money', () => {
+  /** resolveBuildTarget that must succeed. */
+  const plan = (s: GameState, type: BuildingType, tile: number): BuildPlan => {
+    const r = resolveBuildTarget(s, 1, type, tile);
+    if ('error' in r) throw new Error(r.error);
+    return r;
+  };
+  const d2 = (a: number, b: number): number => ((a % W) - (b % W)) ** 2 + (Math.floor(a / W) - Math.floor(b / W)) ** 2;
+
+  it('validates owner, water, terrain, fallout, tech and money (snapping to the nearest valid own tile)', () => {
     const s = twoPlayers();
     const p = s.players[1];
     p.gold = 1e6;
     p.iron = 1e6;
     expect(canBuild(s, 1, 'market', idx(5, 5)).ok).toBe(true);
-    expect(canBuild(s, 1, 'market', idx(45, 5)).ok).toBe(false); // enemy land
-    expect(canBuild(s, 1, 'market', idx(30, 5)).ok).toBe(false); // neutral
+    expect(plan(s, 'market', idx(5, 5))).toMatchObject({ tile: idx(5, 5), upgrade: false, level: 1, buildingId: -1, affordable: true });
+    expect(canBuild(s, 1, 'market', idx(45, 5)).reason).toMatch(/own territory/); // enemy land, no own land near
+    expect(canBuild(s, 1, 'market', idx(30, 5)).ok).toBe(false); // neutral, 11 tiles from our land (snap radius 10)
+    expect(plan(s, 'market', idx(28, 5)).tile).toBe(idx(19, 5)); // 9 tiles out: snaps onto our border
     s.map.terrain[idx(6, 6)] = Terrain.Mountains;
-    expect(canBuild(s, 1, 'farm', idx(6, 6)).ok).toBe(false);
-    expect(canBuild(s, 1, 'market', idx(6, 6)).ok).toBe(true);
-    s.map.fallout[idx(10, 10)] = 30;
-    expect(canBuild(s, 1, 'market', idx(10, 10)).reason).toMatch(/irradiated/);
-    expect(canBuild(s, 1, 'hospital', idx(15, 15)).reason).toMatch(/research/);
+    const farm = plan(s, 'farm', idx(6, 6)); // no farms on mountains: the next tile
+    expect(farm.tile).not.toBe(idx(6, 6));
+    expect(d2(farm.tile, idx(6, 6))).toBe(1);
+    expect(plan(s, 'market', idx(6, 6)).tile).toBe(idx(6, 6));
+    for (let y = 0; y < H; y++) for (let x = 0; x < 20; x++) if (d2(idx(x, y), idx(10, 20)) <= 100) s.map.fallout[idx(x, y)] = 30;
+    expect(canBuild(s, 1, 'market', idx(10, 20)).reason).toMatch(/irradiated/);
+    expect(canBuild(s, 1, 'hospital', idx(15, 15)).reason).toMatch(/research: Medicine/);
     p.techs.push('medicine');
-    expect(canBuild(s, 1, 'hospital', idx(15, 15)).ok).toBe(true);
+    expect(canBuild(s, 1, 'hospital', idx(15, 5)).ok).toBe(true);
     p.gold = 10;
     expect(canBuild(s, 1, 'market', idx(5, 5)).reason).toMatch(/gold/);
+    const poor = plan(s, 'market', idx(5, 5));
+    expect(poor.affordable).toBe(false);
+    expect(poor.tile).toBe(idx(5, 5)); // the preview still shows where it would go
     p.gold = 1e6;
     p.iron = 0;
     expect(canBuild(s, 1, 'factory', idx(5, 5)).reason).toMatch(/iron/);
   });
 
-  it('enforces spacing; cities may cluster', () => {
+  it('keeps buildings the map size spacing apart (small map: 10), cities too', () => {
     const s = twoPlayers();
     s.players[1].gold = 1e6;
     s.players[1].iron = 1e6;
+    expect(buildingSpacing(s)).toBe(BUILDING_MIN_SPACING_BY_SIZE.small);
     addBuilding(s, 1, idx(10, 10), 'market');
-    expect(canBuild(s, 1, 'farm', idx(10, 10)).ok).toBe(false); // occupied
-    expect(canBuild(s, 1, 'farm', idx(12, 12)).ok).toBe(false); // 2 away
-    expect(canBuild(s, 1, 'farm', idx(13, 10)).ok).toBe(true); // 3 away
-    expect(canBuild(s, 1, 'city', idx(11, 10)).ok).toBe(false); // city next to a market
+    // Occupied / too close: the farm goes to the nearest tile 10 away (straight line; first by distance, then row).
+    expect(plan(s, 'farm', idx(10, 10)).tile).toBe(idx(10, 0));
+    expect(plan(s, 'farm', idx(13, 13)).tile).toBe(idx(18, 16)); // nearest tile >= 10 from the market (8, 6 away)
+    expect(plan(s, 'farm', idx(10, 25)).tile).toBe(idx(10, 25)); // 15 away: fine
     addBuilding(s, 1, idx(5, 30), 'city');
-    expect(canBuild(s, 1, 'city', idx(6, 30)).ok).toBe(true); // city next to a city
-    expect(canBuild(s, 1, 'market', idx(6, 31)).ok).toBe(false);
+    // A market can't squeeze next to the city either.
+    expect(d2(plan(s, 'market', idx(6, 31)).tile, idx(5, 30))).toBeGreaterThanOrEqual(100);
+    // No room at all within reach.
+    const c = makeFlatGame(20, 20, 1, { human: true });
+    claimRect(c, 1, 0, 0, 8, 8);
+    c.players[1].gold = 1e6;
+    addBuilding(c, 1, 4 * 20 + 4, 'market');
+    const r = resolveBuildTarget(c, 1, 'farm', 2 * 20 + 2);
+    expect('error' in r && r.error).toMatch(/No room here: buildings keep \d+ tiles apart/);
   });
 
-  it('mines and oil wells need an owned deposit within 2 tiles', () => {
+  it('a build order near an own building of the same type upgrades it', () => {
+    const s = twoPlayers();
+    s.players[1].gold = 1e6;
+    const city = addBuilding(s, 1, idx(5, 30), 'city');
+    const up = plan(s, 'city', idx(6, 31));
+    expect(up).toMatchObject({ tile: city.tile, upgrade: true, level: 2, buildingId: city.id });
+    expect(plan(s, 'city', idx(5, 19)).upgrade).toBe(true); // 11 away: still within the upgrade radius (12)
+    expect(plan(s, 'city', idx(5, 17))).toMatchObject({ tile: idx(5, 17), upgrade: false }); // 13 away: a new city
+    const farm = addBuilding(s, 1, idx(10, 5), 'farm');
+    farm.buildLeft = 2;
+    expect(canBuild(s, 1, 'farm', idx(12, 6)).reason).toMatch(/under construction/);
+    farm.buildLeft = 0;
+    expect(plan(s, 'farm', idx(12, 6))).toMatchObject({ tile: farm.tile, upgrade: true });
+    // Another type next to it is not an upgrade: it keeps its distance.
+    expect(d2(plan(s, 'market', idx(12, 6)).tile, farm.tile)).toBeGreaterThanOrEqual(100);
+  });
+
+  it('mines and oil wells need an owned deposit within 2 tiles (the order snaps next to it)', () => {
     const s = twoPlayers();
     s.players[1].gold = 1e6;
     s.players[1].iron = 1e6;
-    expect(canBuild(s, 1, 'mine', idx(5, 5)).ok).toBe(false);
+    expect(canBuild(s, 1, 'mine', idx(5, 5)).reason).toMatch(/Iron deposit/);
     s.map.resource[idx(7, 7)] = Resource.Iron;
-    expect(canBuild(s, 1, 'mine', idx(5, 5)).ok).toBe(true);
-    expect(canBuild(s, 1, 'mine', idx(4, 5)).ok).toBe(false); // 3 away
+    expect(plan(s, 'mine', idx(5, 5)).tile).toBe(idx(5, 5));
+    const m = plan(s, 'mine', idx(2, 5)); // 5 away: snaps to the nearest tile within 2 of the deposit
+    expect(Math.max(Math.abs((m.tile % W) - 7), Math.abs(Math.floor(m.tile / W) - 7))).toBeLessThanOrEqual(2);
     expect(canBuild(s, 1, 'oilWell', idx(5, 5)).ok).toBe(false); // iron is not oil
     s.map.resource[idx(21, 5)] = Resource.Oil; // neutral deposit
     expect(canBuild(s, 1, 'oilWell', idx(19, 5)).ok).toBe(false);
@@ -410,9 +472,10 @@ describe('build rules', () => {
     s.players[1].gold = 1e6;
     for (let y = 0; y < H; y++) s.map.terrain[idx(0, y)] = Terrain.ShallowWater;
     computeCoastAndLand(s.map);
-    expect(canBuild(s, 1, 'port', idx(1, 5)).ok).toBe(true);
-    expect(canBuild(s, 1, 'port', idx(5, 5)).ok).toBe(false);
-    expect(canBuild(s, 1, 'port', idx(0, 5)).ok).toBe(false); // water
+    expect(plan(s, 'port', idx(1, 5)).tile).toBe(idx(1, 5));
+    expect(plan(s, 'port', idx(5, 5)).tile).toBe(idx(1, 5)); // snaps to the shore
+    expect(plan(s, 'port', idx(0, 5)).tile).toBe(idx(1, 5)); // water: the nearest coastal tile
+    expect(canBuild(s, 1, 'port', idx(15, 5)).reason).toMatch(/coast/); // 14 from the shore
   });
 
   it('build pays, costs grow per copy, finishes after buildTime with an event', () => {
@@ -444,7 +507,7 @@ describe('build rules', () => {
     expect(buildingAt(s, idx(1, 5))!.cooldown).toBeGreaterThan(0);
   });
 
-  it('building on an own city upgrades it (priced like a new city, keeps working, max level)', () => {
+  it('upgrades are priced like a new level, keep working, count as levels, and stop at the top level', () => {
     const s = twoPlayers();
     const p = s.players[1];
     p.gold = 1e6;
@@ -456,18 +519,53 @@ describe('build rules', () => {
     const gold = p.gold;
     expect(build(s, 1, 'city', city.tile).ok).toBe(true);
     expect(p.gold).toBe(gold - upCost);
+    expect(city.upgradeLeft).toBe(BUILDINGS.city.buildTime);
     expect(countBuildings(s, 1, 'city')).toBe(1);
+    expect(countBuildings(s, 1, 'city', true)).toBe(2); // the running upgrade counts for the price
+    expect(buildingCost(s, 1, 'city').gold).toBe(Math.round(BUILDINGS.city.cost * (1 + 2 * BUILDINGS.city.costGrowth)));
     expect(city.level).toBe(1);
-    expect(computeMaxPop(s, 1)).toBeCloseTo(20 * H * 30 + CAPITAL_POP + CITY_POP); // still working
-    expect(canBuild(s, 1, 'city', city.tile).ok).toBe(false); // upgrade running
+    expect(computeMaxPop(s, 1)).toBeCloseTo(TROOP_CAP_BASE + landPopValue(20 * H) + CAPITAL_TROOP_CAP + CITY_TROOP_CAP, 6); // still working
+    expect(canBuild(s, 1, 'city', city.tile).reason).toMatch(/being upgraded/);
     runTicks(s, BUILDINGS.city.buildTime * TICKS_PER_SECOND, updateBuildings);
     expect(city.level).toBe(2);
-    expect(countBuildings(s, 1, 'city', true)).toBe(1);
-    city.level = 5;
-    expect(canBuild(s, 1, 'city', city.tile).reason).toMatch(/highest/);
+    expect(countBuildings(s, 1, 'city')).toBe(2);
+    expect(countSites(s, 1, 'city', true)).toBe(1);
+    expect(computeMaxPop(s, 1)).toBeCloseTo(TROOP_CAP_BASE + landPopValue(20 * H) + CAPITAL_TROOP_CAP + 2 * CITY_TROOP_CAP, 6);
+    expect(s.events.some((e) => e.kind === 'buildingDone' && /level 2/.test(e.message))).toBe(true);
+    // At the top level a new city goes elsewhere (spacing away), or nowhere when there is no room.
+    city.level = BUILDINGS.city.maxLevel;
+    const next = resolveBuildTarget(s, 1, 'city', city.tile) as BuildPlan;
+    expect(next.upgrade).toBe(false);
+    expect(d2(next.tile, city.tile)).toBeGreaterThanOrEqual(100);
+    const c = makeFlatGame(20, 20, 1, { human: true });
+    claimRect(c, 1, 0, 0, 8, 8);
+    c.players[1].gold = 1e6;
+    addBuilding(c, 1, 4 * 20 + 4, 'city', BUILDINGS.city.maxLevel);
+    expect(canBuild(c, 1, 'city', 4 * 20 + 4).reason).toMatch(/highest level/);
     // Not on an enemy city
     const enemy = addBuilding(s, 2, idx(45, 10), 'city');
     expect(canBuild(s, 1, 'city', enemy.tile).ok).toBe(false);
+  });
+
+  it('every building type upgrades up to its own max level; effects scale with levels', () => {
+    const s = twoPlayers();
+    const p = s.players[1];
+    p.gold = 1e9;
+    p.iron = 1e9;
+    const market = addBuilding(s, 1, idx(10, 10), 'market');
+    const before = updateEconomyGold(s);
+    for (let l = 2; l <= BUILDINGS.market.maxLevel; l++) {
+      expect(build(s, 1, 'market', idx(11, 11)).ok).toBe(true);
+      runTicks(s, BUILDINGS.market.buildTime * TICKS_PER_SECOND, updateBuildings);
+      expect(market.level).toBe(l);
+    }
+    expect(countBuildings(s, 1, 'market')).toBe(BUILDINGS.market.maxLevel);
+    expect(updateEconomyGold(s)).toBeCloseTo(before * (1 + MARKET_GOLD_BONUS * BUILDINGS.market.maxLevel) / (1 + MARKET_GOLD_BONUS), 6);
+    // At the top: the next market goes to a new spot.
+    expect(plan(s, 'market', idx(11, 11)).upgrade).toBe(false);
+    expect(BUILDINGS.sam.maxLevel).toBe(3);
+    expect(BUILDINGS.silo.maxLevel).toBe(3);
+    expect(BUILDINGS.city.maxLevel).toBe(6);
   });
 
   it('demolish refunds part of the cost', () => {
@@ -488,18 +586,18 @@ describe('build rules', () => {
 describe('building lookups', () => {
   it('fort multiplier: radius, unfinished, Fortification, watchtower', () => {
     const s = twoPlayers();
-    const fort = addBuilding(s, 1, idx(10, 20), 'fort');
-    expect(fortMultiplierAt(s, idx(10, 30), 1)).toBe(FORT_DEFENSE); // 10 away
-    expect(fortMultiplierAt(s, idx(10, 31), 1)).toBe(1);
-    expect(fortMultiplierAt(s, idx(10, 30), 2)).toBe(1); // not theirs
+    const fort = addBuilding(s, 1, idx(2, 5), 'fort');
+    expect(fortMultiplierAt(s, idx(2, 25), 1)).toBe(FORT_DEFENSE); // 20 away
+    expect(fortMultiplierAt(s, idx(2, 26), 1)).toBe(1);
+    expect(fortMultiplierAt(s, idx(2, 25), 2)).toBe(1); // not theirs
     s.players[1].techs.push('fortification');
-    expect(fortMultiplierAt(s, idx(10, 33), 1)).toBe(FORT_DEFENSE_TECH);
+    expect(fortMultiplierAt(s, idx(2, 33), 1)).toBe(FORT_DEFENSE_TECH); // radius 28
     fort.buildLeft = 1;
-    expect(fortMultiplierAt(s, idx(10, 20), 1)).toBe(1);
+    expect(fortMultiplierAt(s, idx(2, 5), 1)).toBe(1);
     fort.buildLeft = 0;
-    addBuilding(s, 1, idx(10, 25), 'watchtower');
-    expect(fortMultiplierAt(s, idx(10, 30), 1)).toBeCloseTo(FORT_DEFENSE_TECH * WATCHTOWER_DEF);
-    expect(fortMultiplierAt(s, idx(17, 2), 1)).toBe(1);
+    addBuilding(s, 1, idx(2, 20), 'watchtower');
+    expect(fortMultiplierAt(s, idx(2, 30), 1)).toBeCloseTo(FORT_DEFENSE_TECH * WATCHTOWER_DEF); // 10 from the tower
+    expect(fortMultiplierAt(s, idx(17, 39), 1)).toBe(1);
   });
 
   it('counts follow captures (next tick) and destruction (at once)', () => {
@@ -528,14 +626,16 @@ describe('building lookups', () => {
     s.buildings.delete(tower.id);
     s.tick++;
     expect(hasIntel(s, 1, 2)).toBe(false);
-    const far = makeFlatGame(200, 40, 2);
+    const far = makeFlatGame(300, 40, 2);
     claimRect(far, 1, 0, 0, 9, 39);
-    claimRect(far, 2, 150, 0, 199, 39);
-    addBuilding(far, 1, 5 + 20 * 200, 'watchtower');
-    getTerritoryScan(far, true);
+    claimRect(far, 2, 250, 0, 299, 39);
+    addBuilding(far, 1, 5 + 20 * 300, 'watchtower');
+    expect(hasIntel(far, 1, 2)).toBe(false); // 245 away, radius 80
+    far.players[1].techs.push('radar'); // radius 160
     expect(hasIntel(far, 1, 2)).toBe(false);
-    far.players[1].techs.push('radar'); // radius 80
-    expect(hasIntel(far, 1, 2)).toBe(false); // 145 away
+    for (let x = 160; x < 250; x++) setOwner(far, 20 * 300 + x, 2); // player 2 reaches out to 155 away
+    expect(hasIntel(far, 1, 2)).toBe(true);
+    for (let x = 160; x < 250; x++) setOwner(far, 20 * 300 + x, 0);
     formAlliance(far, 1, 2);
     expect(hasIntel(far, 1, 2)).toBe(true);
   });

@@ -1,0 +1,1007 @@
+// Side drawers (right edge, one at a time, closed by default): Army, Research, Diplomacy, Events, Map key,
+// the selected building and the menu (settings). Each has one big primary readout and plain-word rows.
+import { aircraftCap, buildCostAt, buildingAt, chargesReady, canBuild, countBuildings, nextChargeIn } from '../../sim/buildings';
+import { attacksOf } from '../../sim/combat';
+import {
+  BUILDINGS,
+  MATCHUP,
+  RESOURCE_NAMES,
+  TECHS,
+  TECH_ORDER,
+  TERRAIN,
+  TICKS_PER_SECOND,
+  UNITS,
+} from '../../sim/config';
+import { areAllied, isTraitor } from '../../sim/diplomacy';
+import { armyTotal, convertCost, hasOilShortage } from '../../sim/economy';
+import { gameSecondsAt } from '../../sim/state';
+import { canResearch, hasTech } from '../../sim/tech';
+import { LAND_TERRAINS, Resource } from '../../sim/types';
+import type { Building, BuildingType, GameEvent, GameState, Player, TechId, TerrainId, Troops } from '../../sim/types';
+import { isTribe } from '../compat';
+import { markerDataUrl } from '../icons';
+import { rgbCss } from '../menu';
+import { formatCount } from '../render/common';
+import { barrageRange, barrageStatus, fieldArmy, maxLevel, paradropReadyIn } from '../simx';
+import {
+  btn,
+  el,
+  fmtTime,
+  pct,
+  sectionTitle,
+  setClass,
+  setDisabled,
+  setText,
+  setTip,
+  setVisible,
+  slider,
+  syncSlider,
+  type DrawerId,
+  type HudCtx,
+} from './dom';
+import { iconSpan, lineIcon, worldGlyph } from './glyph';
+import { ABILITY_TEXT, article, BUILDING_SHORT, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect, terrainNote } from './text';
+
+export const TROOP_COLORS = { infantry: '#9aa86a', armor: '#c9a227', artillery: '#c0564a' } as const;
+
+export interface DrawerPage {
+  id: DrawerId;
+  title: string;
+  root: HTMLElement;
+  update(s: GameState, me: Player): void;
+  onOpen?(): void;
+}
+
+/** Segmented two-choice control. */
+function seg2(a: string, b: string, onA: () => void, onB: () => void): { el: HTMLElement; set: (first: boolean) => void } {
+  const g = el('div', 'segc');
+  const ba = el('button', 'segc-b', a);
+  const bb = el('button', 'segc-b', b);
+  ba.type = bb.type = 'button';
+  ba.addEventListener('click', onA);
+  bb.addEventListener('click', onB);
+  g.append(ba, bb);
+  return {
+    el: g,
+    set: (first) => {
+      setClass(ba, 'on', first);
+      setClass(bb, 'on', !first);
+    },
+  };
+}
+
+function mixBar(): { el: HTMLElement; set: (t: Troops) => void } {
+  const bar = el('div', 'mixbar');
+  const parts = (['infantry', 'armor', 'artillery'] as const).map((k) => {
+    const p = el('span');
+    p.style.background = TROOP_COLORS[k];
+    bar.append(p);
+    return p;
+  });
+  return {
+    el: bar,
+    set: (t) => {
+      const sum = t.infantry + t.armor + t.artillery || 1;
+      parts[0].style.width = pct(t.infantry / sum);
+      parts[1].style.width = pct(t.armor / sum);
+      parts[2].style.width = pct(t.artillery / sum);
+    },
+  };
+}
+
+// ================================================================================================ Army
+
+export class ArmyPage implements DrawerPage {
+  id: DrawerId = 'army';
+  title = 'Forces';
+  root = el('div', 'page');
+  private upd: ((s: GameState, me: Player) => void)[] = [];
+  private attackRows = new Map<number, { root: HTMLElement; target: HTMLElement; troops: HTMLElement; prog: HTMLElement }>();
+
+  constructor(private ctx: HudCtx) {
+    const ui = ctx.ui;
+    // primary readout: the whole army and its mix
+    const big = el('div', 'big-read');
+    const bv = el('span', 'big-v');
+    const bl = el('span', 'big-l', 'troops in total');
+    big.append(bv, bl);
+    const mb = mixBar();
+    const legend = el('div', 'mix-legend');
+    const lt = (['infantry', 'armor', 'artillery'] as const).map((k) => {
+      const s = el('span', 'ml');
+      const dot = el('i');
+      dot.style.background = TROOP_COLORS[k];
+      const v = el('b');
+      s.append(dot, k[0].toUpperCase() + k.slice(1) + ' ', v);
+      legend.append(s);
+      return v;
+    });
+    this.root.append(big, mb.el, legend);
+    this.upd.push((s, me) => {
+      setText(bv, formatCount(fieldArmy(s, me.id)));
+      mb.set(me.troops);
+      const t = me.troops;
+      setText(lt[0], formatCount(t.infantry));
+      setText(lt[1], formatCount(t.armor));
+      setText(lt[2], formatCount(t.artillery));
+    });
+
+    // army mix target
+    this.root.append(sectionTitle('Troop mix'));
+    const autoSeg = seg2(
+      'Auto',
+      'Manual',
+      () => ctx.act({ type: 'setAuto', mix: true }),
+      () => ctx.act({ type: 'setAuto', mix: false }),
+    );
+    autoSeg.el.dataset.test = 'auto-mix';
+    const note = el('p', 'note');
+    this.root.append(autoSeg.el, note);
+    const mk = (kind: 'armor' | 'artillery') => {
+      const r = el('div', 'slider-row has-dot');
+      const dot = el('i', 'dot');
+      dot.style.background = TROOP_COLORS[kind];
+      const s = slider(0, 80, 5);
+      s.dataset.test = `mix-${kind}`;
+      const v = el('span', 'sv');
+      r.append(dot, el('span', 'sl', kind === 'armor' ? 'Armor' : 'Artillery'), s, v);
+      r.dataset.tip =
+        kind === 'armor'
+          ? 'Target share of armor. Factories convert infantry into armor (gold and iron each). Armor is strong on open ground and burns oil.'
+          : 'Target share of artillery. Arsenals convert infantry into artillery. Artillery breaks forts but is fragile alone.';
+      this.root.append(r);
+      return { s, v };
+    };
+    const armor = mk('armor');
+    const art = mk('artillery');
+    const send = () => ctx.act({ type: 'setArmyMix', armor: Number(armor.s.value) / 100, artillery: Number(art.s.value) / 100 });
+    armor.s.addEventListener('input', send);
+    art.s.addEventListener('input', send);
+    const status = el('p', 'status');
+    this.root.append(status);
+    this.upd.push((s, me) => {
+      const auto = !!me.auto.mix;
+      autoSeg.set(auto);
+      setText(note, auto ? 'Your factories and arsenals aim for a mix that beats your neighbours. Move a slider to take over.' : 'You set the mix. Factories make armor, Arsenals make artillery.');
+      syncSlider(armor.s, Math.round(me.armyMix.armor * 100));
+      syncSlider(art.s, Math.round(me.armyMix.artillery * 100));
+      const army = armyTotal(me.troops) || 1;
+      setText(armor.v, `${pct(me.troops.armor / army)} / ${pct(me.armyMix.armor)}`);
+      setText(art.v, `${pct(me.troops.artillery / army)} / ${pct(me.armyMix.artillery)}`);
+      const fac = countBuildings(s, me.id, 'factory');
+      const ars = countBuildings(s, me.id, 'arsenal');
+      const msgs: string[] = [];
+      let cls = 'ok';
+      for (const [need, n, kind, bname] of [
+        [me.armyMix.armor * army - me.troops.armor > 1, fac, 'armor', 'Factory'],
+        [me.armyMix.artillery * army - me.troops.artillery > 1, ars, 'artillery', 'Arsenal'],
+      ] as const) {
+        if (!need) continue;
+        if (n === 0) {
+          msgs.push(`Build ${article(bname)} ${bname} to make ${kind}.`);
+          cls = 'warn';
+          continue;
+        }
+        const c = convertCost(me, kind);
+        if (me.gold < c.gold || me.iron < c.iron) {
+          msgs.push(`Making ${kind} needs ${me.iron < c.iron ? 'iron' : 'gold'}.`);
+          cls = 'warn';
+        } else msgs.push(`Making ${kind}.`);
+      }
+      if (hasOilShortage(s, me.id)) {
+        msgs.push('Out of oil: armor fights at half strength.');
+        cls = 'bad';
+      }
+      setText(status, msgs.length ? msgs.join(' ') : `Mix reached. Factories ${fac}, Arsenals ${ars}.`);
+      status.className = 'status ' + cls;
+    });
+
+    // what an attack sends
+    this.root.append(sectionTitle('Attacks send'));
+    const sendSeg = seg2(
+      'All types',
+      'Custom',
+      () => {
+        ui.attackMixMode = 'all';
+        ctx.refreshSoon();
+      },
+      () => {
+        ui.attackMixMode = 'custom';
+        ctx.refreshSoon();
+      },
+    );
+    this.root.append(sendSeg.el);
+    const custom = el('div', 'custom');
+    const cs = (['infantry', 'armor', 'artillery'] as const).map((k) => {
+      const r = el('div', 'slider-row has-dot');
+      const dot = el('i', 'dot');
+      dot.style.background = TROOP_COLORS[k];
+      const s = slider(0, 100, 5);
+      s.addEventListener('input', () => {
+        ui.customMix[k] = Number(s.value) / 100;
+        ctx.refreshSoon();
+      });
+      const v = el('span', 'sv');
+      r.append(dot, el('span', 'sl', k[0].toUpperCase() + k.slice(1)), s, v);
+      custom.append(r);
+      return { k, s, v };
+    });
+    this.root.append(custom);
+    this.upd.push(() => {
+      sendSeg.set(ui.attackMixMode === 'all');
+      setVisible(custom, ui.attackMixMode === 'custom');
+      const w = ui.customMix.infantry + ui.customMix.armor + ui.customMix.artillery || 1;
+      for (const c of cs) {
+        syncSlider(c.s, Math.round(ui.customMix[c.k] * 100));
+        setText(c.v, pct(ui.customMix[c.k] / w));
+      }
+    });
+
+    // active attacks
+    this.root.append(sectionTitle('Active attacks'));
+    const list = el('div', 'rows');
+    const empty = el('p', 'note', 'No attacks. Click land next to yours to attack it.');
+    this.root.append(list, empty);
+    this.upd.push((s, me) => {
+      const attacks = attacksOf(s, me.id);
+      const ids = new Set(attacks.map((a) => a.id));
+      for (const [id, r] of this.attackRows) {
+        if (!ids.has(id)) {
+          r.root.remove();
+          this.attackRows.delete(id);
+        }
+      }
+      for (const a of attacks) {
+        let r = this.attackRows.get(a.id);
+        if (!r) {
+          const root = el('div', 'arow');
+          const target = el('button', 'arow-t');
+          target.type = 'button';
+          const troops = el('span', 'arow-n');
+          const prog = el('span', 'arow-p');
+          const id = a.id;
+          target.addEventListener('click', () => {
+            const cur = ctx.state()?.attacks.find((x) => x.id === id);
+            if (cur) ctx.focusTile(cur.focusTile, false);
+          });
+          const ret = btn('', 'icon danger', () => ctx.act({ type: 'retreat', attackId: id }), 'retreat');
+          ret.dataset.tip = 'Retreat: troops come home (a quarter is lost against a nation)';
+          const info = el('div', 'arow-i');
+          info.append(troops, prog);
+          root.append(target, info, ret);
+          r = { root, target, troops, prog };
+          this.attackRows.set(a.id, r);
+          list.append(root);
+        }
+        const tp = s.players[a.target];
+        setText(r.target, a.target === 0 ? 'Wilderness' : tp?.name ?? '?');
+        r.target.style.setProperty('--c', a.target === 0 ? '#8d918a' : rgbCss(tp.color));
+        setText(r.troops, `${formatCount(armyTotal(a.troops))} troops`);
+        setText(r.prog, `+${formatCount(a.tilesTaken)} tiles, lost ${formatCount(a.losses)}`);
+      }
+      setVisible(empty, attacks.length === 0);
+    });
+
+    // air and strikes
+    const air = el('div', 'air');
+    const airTitle = sectionTitle('Air and strikes');
+    const para = btn('Paratroopers', 'wide', () => {
+      ui.mode = { kind: 'paradrop', airfield: -1 };
+      ctx.closeDrawer();
+    }, 'paradrop');
+    para.dataset.test = 'ability-paradrop';
+    const paraNote = el('p', 'note');
+    const barr = btn('Artillery barrage', 'wide', () => {
+      ui.mode = { kind: 'barrage' };
+      ctx.closeDrawer();
+    }, 'barrage');
+    barr.dataset.test = 'ability-barrage';
+    const barrNote = el('p', 'note');
+    const fields = el('div', 'rows');
+    air.append(airTitle, para, paraNote, barr, barrNote, fields);
+    this.root.append(air);
+    let fieldKey = '';
+    this.upd.push((s, me) => {
+      const myFields = [...s.buildings.values()].filter((b) => b.owner === me.id && b.type === 'airfield');
+      const flight = hasTech(me, 'flight');
+      setVisible(air, true);
+      setVisible(para, true);
+      setVisible(paraNote, true);
+      const ready = paradropReadyIn(s, me.id);
+      const why = !flight ? 'Research Flight, then build an Airfield.' : ready < 0 ? 'Build an Airfield first.' : ready > 0 ? `Next plane ready in ${Math.ceil(ready)} s.` : '';
+      setDisabled(para, why !== '');
+      setText(paraNote, why || 'Click, then pick a drop zone in an airfield\'s range. Sends your attack share of infantry.');
+      setTip(para, ABILITY_TEXT.paradrop);
+      const bwhy = barrageStatus(s, me.id);
+      setDisabled(barr, bwhy !== '');
+      setText(barrNote, bwhy ? bwhy + '.' : `Click, then pick enemy land within ${barrageRange(me)} tiles of yours.`);
+      setTip(barr, ABILITY_TEXT.barrage);
+      const key = myFields.map((b) => `${b.id}:${b.bombers}:${b.fighters}:${b.buildLeft > 0}`).join(',');
+      if (key !== fieldKey) {
+        fieldKey = key;
+        fields.replaceChildren();
+        myFields.slice(0, 6).forEach((b, k) => fields.append(this.airfieldRow(b, k)));
+      }
+    });
+  }
+
+  private airfieldRow(b: Building, k: number): HTMLElement {
+    const ctx = this.ctx;
+    const r = el('div', 'frow');
+    const name = el('button', 'frow-t', `Airfield ${k + 1}`);
+    name.type = 'button';
+    name.addEventListener('click', () => ctx.focusTile(b.tile, true));
+    const counts = el('span', 'frow-n', b.buildLeft > 0 ? 'Being built' : `${b.bombers} bombers, ${b.fighters} fighters`);
+    r.append(iconSpan(worldGlyph('airfield', 18), 'ico'), name, counts);
+    if (b.buildLeft <= 0) {
+      for (const kind of ['bomber', 'fighter'] as const) {
+        const u = UNITS[kind];
+        const add = btn(`+${kind === 'bomber' ? 'B' : 'F'}`, 'mini', () => ctx.act({ type: 'buildAircraft', airfield: b.tile, kind }));
+        add.dataset.tip = `Build a ${u.name}: ${formatCount(u.gold)} gold, ${u.iron} iron, ${u.oil} oil (room for ${aircraftCap(b)} aircraft)`;
+        r.append(add);
+      }
+    }
+    return r;
+  }
+
+  update(s: GameState, me: Player): void {
+    for (const f of this.upd) f(s, me);
+  }
+}
+
+// ================================================================================================ Research
+
+/** Buildings each tech unlocks. */
+const UNLOCKS: Partial<Record<TechId, BuildingType[]>> = {};
+for (const b of Object.keys(BUILDINGS) as BuildingType[]) {
+  const t = BUILDINGS[b].tech;
+  if (t) (UNLOCKS[t] ??= []).push(b);
+}
+
+export class ResearchPage implements DrawerPage {
+  id: DrawerId = 'research';
+  title = 'Research';
+  root = el('div', 'page');
+  private upd: ((s: GameState, me: Player) => void)[] = [];
+
+  constructor(private ctx: HudCtx) {
+    const big = el('div', 'big-read');
+    const bv = el('span', 'big-v');
+    const bl = el('span', 'big-l');
+    big.append(bv, bl);
+    const bar = el('div', 'pbar');
+    const fill = el('span');
+    bar.append(fill);
+    const autoSeg = seg2(
+      'Auto',
+      'Manual',
+      () => ctx.act({ type: 'setAuto', research: true }),
+      () => ctx.act({ type: 'setAuto', research: false }),
+    );
+    autoSeg.el.dataset.test = 'auto-research';
+    const note = el('p', 'note');
+    this.root.append(big, bar, autoSeg.el, note);
+    this.upd.push((_s, me) => {
+      const cur = me.researching ? TECHS[me.researching] : null;
+      if (cur) {
+        setText(bv, cur.name);
+        setText(bl, `${pct(me.researchProgress / cur.science)}  +${me.income.science.toFixed(1)} science/s`);
+        fill.style.width = pct(Math.min(1, me.researchProgress / cur.science));
+      } else {
+        setText(bv, formatCount(me.science));
+        setText(bl, `science stored  +${me.income.science.toFixed(1)}/s`);
+        fill.style.width = '0%';
+      }
+      autoSeg.set(!!me.auto.research);
+      setText(note, me.auto.research ? 'The next useful tech starts by itself. Picking one switches this to Manual.' : 'Pick a tech: it costs gold to start and science to finish.');
+    });
+    const maxTier = Math.max(...TECH_ORDER.map((t) => TECHS[t].tier));
+    for (let tier = 1; tier <= maxTier; tier++) {
+      this.root.append(sectionTitle(`Tier ${tier}`));
+      for (const t of TECH_ORDER.filter((x) => TECHS[x].tier === tier)) this.root.append(this.techRow(t));
+    }
+  }
+
+  private techRow(t: TechId): HTMLElement {
+    const info = TECHS[t];
+    const card = el('button', 'tech');
+    card.type = 'button';
+    card.dataset.test = `tech-${t}`;
+    const top = el('div', 'tech-top');
+    const name = el('span', 'tech-n', info.name);
+    const st = el('span', 'tech-s');
+    top.append(name, st);
+    const desc = el('div', 'tech-d', info.description);
+    card.append(top, desc);
+    const unlocks = UNLOCKS[t];
+    if (unlocks) {
+      const u = el('div', 'tech-u');
+      for (const b of unlocks) u.append(iconSpan(worldGlyph(b, 14), 'ico'), el('span', '', BUILDINGS[b].name));
+      card.append(u);
+    }
+    const bar = el('div', 'pbar thin');
+    const fill = el('span');
+    bar.append(fill);
+    card.append(bar);
+    card.addEventListener('click', () => this.ctx.act({ type: 'research', tech: t }));
+    this.upd.push((s, me) => {
+      const done = hasTech(me, t);
+      const active = me.researching === t;
+      const missing = info.requires.filter((r) => !hasTech(me, r));
+      let cls = 'avail';
+      let text = `${formatCount(info.gold)} gold  ${formatCount(info.science)} sci`;
+      if (done) {
+        cls = 'done';
+        text = 'Done';
+      } else if (active) {
+        cls = 'active';
+        text = pct(me.researchProgress / info.science);
+      } else if (missing.length) {
+        cls = 'locked';
+        text = `After ${missing.map((r) => TECHS[r].name).join(' + ')}`;
+      }
+      card.className = 'tech ' + cls;
+      setText(st, text);
+      setVisible(bar, active);
+      if (active) fill.style.width = pct(me.researchProgress / info.science);
+      const r = canResearch(s, me.id, t);
+      card.disabled = done || active || !r.ok;
+      setTip(card, r.ok ? (me.researching ? `Start ${info.name} (replaces ${TECHS[me.researching].name}; its progress is lost)` : `Start ${info.name}`) : r.reason ?? '');
+    });
+    return card;
+  }
+
+  update(s: GameState, me: Player): void {
+    for (const f of this.upd) f(s, me);
+  }
+}
+
+// ================================================================================================ Diplomacy
+
+export class DiplomacyPage implements DrawerPage {
+  id: DrawerId = 'diplomacy';
+  title = 'Diplomacy';
+  root = el('div', 'page');
+  private body = el('div', 'dip');
+  private key = '';
+
+  constructor(private ctx: HudCtx) {
+    this.root.append(this.body);
+  }
+
+  update(s: GameState, me: Player): void {
+    const inReq = s.allianceRequests.filter((r) => r.to === me.id);
+    const outReq = s.allianceRequests.filter((r) => r.from === me.id);
+    const allies = s.alliances.filter((a) => a.a === me.id || a.b === me.id);
+    const traitors = s.players.filter((p) => p && p.alive && p.id !== me.id && isTraitor(s, p.id));
+    const key = [
+      inReq.map((r) => r.from).join(','),
+      outReq.map((r) => r.to).join(','),
+      allies.map((a) => `${a.a}-${a.b}-${Math.floor((a.expiresTick - s.tick) / (TICKS_PER_SECOND * 5))}`).join(','),
+      me.embargoes.join(','),
+      traitors.map((p) => p.id).join(','),
+      Math.floor(me.gold / 200),
+    ].join('|');
+    if (key === this.key) return;
+    this.key = key;
+    const b = this.body;
+    b.replaceChildren();
+    const big = el('div', 'big-read');
+    big.append(el('span', 'big-v', String(allies.length)), el('span', 'big-l', allies.length === 1 ? 'alliance' : 'alliances'));
+    b.append(big);
+    const nameBtn = (id: number): HTMLElement => {
+      const p = s.players[id];
+      const n = el('button', 'pname');
+      n.type = 'button';
+      const sw = el('i', 'sw');
+      sw.style.background = rgbCss(p.color);
+      n.append(sw, p.name);
+      n.addEventListener('click', () => this.ctx.openNation(id));
+      return n;
+    };
+    if (inReq.length) {
+      b.append(sectionTitle('Asking you'));
+      for (const r of inReq) {
+        const row = el('div', 'drow');
+        row.append(
+          nameBtn(r.from),
+          btn('Accept', 'primary mini', () => this.ctx.act({ type: 'answerAlliance', from: r.from, accept: true })),
+          btn('Decline', 'mini', () => this.ctx.act({ type: 'answerAlliance', from: r.from, accept: false })),
+        );
+        b.append(row);
+      }
+    }
+    b.append(sectionTitle('Allies'));
+    if (!allies.length) b.append(el('p', 'note', 'No allies. Right-click a nation or open its card from the standings to ask. Allies cannot attack each other and share what they see.'));
+    for (const a of allies) {
+      const other = a.a === me.id ? a.b : a.a;
+      const row = el('div', 'drow');
+      const left = (a.expiresTick - s.tick) / TICKS_PER_SECOND;
+      const brk = btn('Break', 'mini danger', () => this.ctx.act({ type: 'breakAlliance', with: other }));
+      brk.dataset.tip = 'Break the alliance: you become a traitor for a while (weaker defence, everyone trusts you less)';
+      row.append(nameBtn(other), el('span', 'dmeta', `${fmtTime(left)} left`), brk);
+      b.append(row);
+    }
+    if (outReq.length) {
+      b.append(sectionTitle('Waiting for an answer'));
+      for (const r of outReq) {
+        const row = el('div', 'drow');
+        row.append(nameBtn(r.to), el('span', 'dmeta', `${fmtTime((r.expiresTick - s.tick) / TICKS_PER_SECOND)}`));
+        b.append(row);
+      }
+    }
+    if (me.embargoes.length) {
+      b.append(sectionTitle('Embargoes'));
+      for (const id of me.embargoes) {
+        if (!s.players[id]?.alive) continue;
+        const row = el('div', 'drow');
+        row.append(nameBtn(id), btn('Lift', 'mini', () => this.ctx.act({ type: 'toggleEmbargo', with: id })));
+        b.append(row);
+      }
+    }
+    if (traitors.length) {
+      b.append(sectionTitle('Traitors right now'));
+      b.append(el('p', 'note', 'They broke an alliance: their defence is weaker for a short while.'));
+      for (const p of traitors.slice(0, 8)) {
+        const row = el('div', 'drow');
+        row.append(nameBtn(p.id));
+        b.append(row);
+      }
+    }
+  }
+}
+
+// ================================================================================================ Events
+
+export class EventsPage implements DrawerPage {
+  id: DrawerId = 'events';
+  title = 'Events';
+  root = el('div', 'page');
+  private list = el('div', 'ev-list');
+  private count = 0;
+
+  constructor(private ctx: HudCtx) {
+    this.root.append(this.list);
+    this.list.append(el('p', 'note ev-empty', 'Nothing yet.'));
+  }
+
+  add(state: GameState, e: GameEvent, focus: number): void {
+    if (this.count === 0) this.list.replaceChildren();
+    this.count++;
+    const row = el(focus >= 0 ? 'button' : 'div', `ev k-${e.kind}`);
+    if (row instanceof HTMLButtonElement) {
+      row.type = 'button';
+      row.addEventListener('click', () => this.ctx.focusTile(focus, true));
+      row.dataset.tip = 'Show on the map';
+    }
+    row.append(el('span', 'ev-t', fmtTime(gameSecondsAt(state, e.tick))), el('span', 'ev-m', e.message));
+    this.list.prepend(row);
+    while (this.list.childElementCount > 80) this.list.lastElementChild?.remove();
+  }
+
+  update(): void {}
+}
+
+// ================================================================================================ Map key
+
+export class LegendPage implements DrawerPage {
+  id: DrawerId = 'legend';
+  title = 'Map key';
+  root = el('div', 'page legend');
+
+  constructor() {
+    const r = this.root;
+    r.append(el('p', 'note', 'What you see on the map and what it does. Hover any tile for the same in short.'));
+    r.append(sectionTitle('Terrain'));
+    for (const id of LAND_TERRAINS as TerrainId[]) {
+      const t = TERRAIN[id];
+      const row = el('div', 'lg');
+      const sw = el('span', 'lg-sw');
+      sw.style.background = rgbCss(t.color);
+      sw.innerHTML = worldGlyph(TERRAIN_GLYPH[id], 20);
+      const txt = el('div', 'lg-t');
+      txt.append(el('b', '', t.name), el('span', '', terrainEffect(id)));
+      const note = terrainNote(id);
+      if (note) txt.append(el('span', 'dim', note));
+      row.append(sw, txt);
+      r.append(row);
+    }
+    const water = el('div', 'lg');
+    const wsw = el('span', 'lg-sw');
+    wsw.style.background = rgbCss(TERRAIN[1].color);
+    wsw.innerHTML = worldGlyph('water', 20);
+    const wt = el('div', 'lg-t');
+    wt.append(el('b', '', 'Water'), el('span', '', 'Only transports cross it: click land across the sea to send one.'));
+    water.append(wsw, wt);
+    r.append(water);
+
+    r.append(sectionTitle('Resources'));
+    for (const res of [Resource.Iron, Resource.Oil, Resource.Fertile]) {
+      const info = RESOURCE_TEXT[res];
+      const row = el('div', 'lg');
+      const sw = el('span', 'lg-sw plain');
+      const img = el('img');
+      img.alt = '';
+      img.width = img.height = 26;
+      try {
+        img.src = markerDataUrl(res === Resource.Iron ? 'iron' : res === Resource.Oil ? 'oil' : 'fertile', 26);
+      } catch {
+        /* no canvas */
+      }
+      sw.append(img);
+      const txt = el('div', 'lg-t');
+      txt.append(el('b', '', RESOURCE_NAMES[res] === 'Fertile' ? 'Fertile land' : RESOURCE_NAMES[res]), el('span', '', info.use));
+      row.append(sw, txt);
+      r.append(row);
+    }
+
+    r.append(sectionTitle('Borders and marks'));
+    const mark = (cls: string, title: string, text: string, inner = '') => {
+      const row = el('div', 'lg');
+      const sw = el('span', 'lg-sw mark ' + cls);
+      sw.innerHTML = inner;
+      const txt = el('div', 'lg-t');
+      txt.append(el('b', '', title), el('span', '', text));
+      row.append(sw, txt);
+      r.append(row);
+    };
+    mark('m-you', 'Your border', 'A white line around your land.');
+    mark('m-ally', 'Ally border', 'Light dashed line: allies cannot attack each other.');
+    mark('m-traitor', 'Traitor', 'Red border: they broke an alliance and defend worse for a while.');
+    mark('m-tribe', 'Tribes', 'Pale wash with small names: weak peoples, easy early land.');
+    mark('m-fort', 'Fort cover', 'Hatched land: attackers there lose double and slow down.');
+    mark('m-capital', 'Capital', 'Star: the heart of a nation. Taking it costs them gold.', worldGlyph('capital', 16));
+    mark('m-front', 'Front', 'Yellow flashes are your gains, red flashes your losses.');
+
+    r.append(sectionTitle('Units'));
+    const unit = (icon: string, title: string, text: string) => {
+      const row = el('div', 'lg');
+      const sw = el('span', 'lg-sw plain');
+      sw.innerHTML = icon;
+      const txt = el('div', 'lg-t');
+      txt.append(el('b', '', title), el('span', '', text));
+      row.append(sw, txt);
+      r.append(row);
+    };
+    unit(lineIcon('transport', 22), 'Transport', 'Carries troops across water; the number shows how many.');
+    unit(lineIcon('warship', 22), 'Warship', 'Sinks enemy ships and shells coasts near its port.');
+    unit(lineIcon('bomb', 22), 'Bomber', 'Flies from an airfield and bombs buildings and troops.');
+    unit(worldGlyph('transportPlane', 22), 'Cargo plane', 'Carries paratroopers to a drop zone.');
+    unit(lineIcon('rocket', 22), 'Rocket and atom bomb', 'Launched from silos; a red ring with a countdown marks one flying at you.');
+
+    r.append(sectionTitle('Strikes'));
+    unit(worldGlyph('paradrop', 22), 'Paratroopers', ABILITY_TEXT.paradrop);
+    unit(worldGlyph('barrage', 22), 'Artillery barrage', ABILITY_TEXT.barrage);
+
+    r.append(sectionTitle('Troop counters'));
+    const t = el('table', 'tbl');
+    const head = el('tr');
+    head.append(el('th', '', 'Attacker'));
+    for (const d of ['infantry', 'armor', 'artillery'] as const) head.append(el('th', '', `vs ${d}`));
+    t.append(head);
+    for (const a of ['infantry', 'armor', 'artillery'] as const) {
+      const row = el('tr');
+      row.append(el('td', 'b', a[0].toUpperCase() + a.slice(1)));
+      for (const d of ['infantry', 'armor', 'artillery'] as const) {
+        const v = MATCHUP[a][d];
+        row.append(el('td', v > 1.05 ? 'good' : v < 0.95 ? 'bad' : '', `x${v.toFixed(1)}`));
+      }
+      t.append(row);
+    }
+    r.append(t);
+  }
+
+  update(): void {}
+}
+
+// ================================================================================================ selected building
+
+export class BuildingPage implements DrawerPage {
+  id: DrawerId = 'building';
+  title = 'Building';
+  root = el('div', 'page');
+  private key = '';
+  private upd: ((s: GameState, me: Player, b: Building) => void)[] = [];
+  tile = -1;
+
+  constructor(private ctx: HudCtx) {}
+
+  /** The building shown, or null when it is gone or no longer yours. */
+  current(s: GameState, me: Player): Building | null {
+    if (this.tile < 0 || this.tile >= s.map.owner.length) return null;
+    const b = buildingAt(s, this.tile);
+    return b && b.owner === me.id ? b : null;
+  }
+
+  update(s: GameState, me: Player): void {
+    const b = this.current(s, me);
+    if (!b) return;
+    const warships = s.units.filter((u) => u.owner === me.id && u.type === 'warship').map((u) => u.id);
+    const key = `${b.id}|${b.type}|${b.level}|${b.buildLeft > 0}|${me.techs.length}|${b.type === 'port' ? warships.join(',') : ''}`;
+    if (key !== this.key) {
+      this.key = key;
+      this.build(s, me, b, warships);
+    }
+    for (const f of this.upd) f(s, me, b);
+  }
+
+  private build(s: GameState, me: Player, b: Building, warships: number[]): void {
+    const ctx = this.ctx;
+    const r = this.root;
+    r.replaceChildren();
+    this.upd = [];
+    const info = BUILDINGS[b.type];
+    const tile = b.tile;
+    const lv = maxLevel(b.type);
+    this.title = info.name;
+    const head = el('div', 'bhead');
+    const ic = iconSpan(worldGlyph(b.type, 40), 'bhead-ic');
+    const ht = el('div', 'bhead-t');
+    ht.append(el('span', 'big-v', info.name), el('span', 'big-l', lv > 1 ? `Level ${b.level} of ${lv}` : BUILDING_SHORT[b.type]));
+    head.append(ic, ht);
+    r.append(head, el('p', 'desc', info.description));
+    const prog = el('div', 'pbar');
+    const fill = el('span');
+    prog.append(fill);
+    const progText = el('p', 'note');
+    r.append(prog, progText);
+    this.upd.push((_s, _me, bb) => {
+      const building = bb.buildLeft > 0;
+      const upgrading = bb.buildLeft <= 0 && bb.upgradeLeft > 0;
+      setVisible(prog, building || upgrading);
+      if (building) {
+        fill.style.width = pct(1 - bb.buildLeft / info.buildTime);
+        setText(progText, `Being built: ${Math.ceil(bb.buildLeft)} s`);
+      } else if (upgrading) {
+        fill.style.width = pct(1 - bb.upgradeLeft / info.buildTime);
+        setText(progText, `Upgrading to level ${bb.level + 1}: ${Math.ceil(bb.upgradeLeft)} s`);
+      } else setText(progText, bb.hp < 1 ? `Damaged: ${pct(bb.hp)}` : '');
+    });
+    const actions = el('div', 'bacts');
+    r.append(actions);
+    const add = (label: string, cls: string, icon: string, run: () => void, check: (s: GameState, me: Player, bb: Building) => string) => {
+      const x = btn(label, cls, run, icon);
+      actions.append(x);
+      this.upd.push((ss, m, bb) => {
+        const why = check(ss, m, bb);
+        setDisabled(x, why !== '');
+        setTip(x, why);
+      });
+      return x;
+    };
+    if (b.level < lv) {
+      const c = buildCostAt(s, me.id, b.type, tile);
+      add(`Upgrade to level ${b.level + 1} (${formatCount(c.gold)} gold${c.iron ? `, ${formatCount(c.iron)} iron` : ''})`, 'primary wide', 'upgrade', () => ctx.act({ type: 'build', building: b.type, tile }), (ss, m) => {
+        const res = canBuild(ss, m.id, b.type, tile);
+        return res.ok ? '' : res.reason ?? '';
+      });
+    }
+    if (b.type === 'airfield') {
+      const counts = el('p', 'note');
+      actions.before(counts);
+      this.upd.push((_s, _m, bb) => setText(counts, `${bb.bombers} bombers, ${bb.fighters} fighters (room for ${aircraftCap(bb)})`));
+      for (const kind of ['bomber', 'fighter'] as const) {
+        const u = UNITS[kind];
+        add(`${u.name} (${formatCount(u.gold)} gold)`, '', 'plus', () => ctx.act({ type: 'buildAircraft', airfield: tile, kind }), (_ss, m, bb) =>
+          bb.buildLeft > 0 ? 'Still being built' : bb.bombers + bb.fighters >= aircraftCap(bb) ? 'Airfield is full' : m.gold < u.gold ? 'Not enough gold' : m.iron < u.iron ? 'Not enough iron' : m.oil < u.oil ? 'Not enough oil' : '',
+        );
+      }
+      add('Bomb a target', 'danger', 'bomb', () => (ctx.ui.mode = { kind: 'bomb', airfield: tile }), (_ss, _m, bb) => (bb.bombers > 0 ? '' : 'No bombers here'));
+      add('Paratroopers', 'danger', 'paradrop', () => (ctx.ui.mode = { kind: 'paradrop', airfield: tile }), (_ss, m, bb) =>
+        !hasTech(m, 'flight') ? 'Research Flight first' : bb.buildLeft > 0 ? 'Still being built' : bb.dropCooldown > 0 ? `Next drop ready in ${Math.ceil(bb.dropCooldown)} s` : '',
+      );
+    }
+    if (b.type === 'silo') {
+      const cd = el('p', 'note');
+      actions.before(cd);
+      this.upd.push((_s, _m, bb) => setText(cd, bb.buildLeft > 0 ? '' : chargesReady(bb) > 0 ? `${chargesReady(bb)} of ${Math.max(1, bb.level)} launches ready` : `Reloading: ${Math.ceil(nextChargeIn(bb))} s`));
+      for (const kind of ['rocket', 'atomBomb'] as const) {
+        const u = UNITS[kind];
+        add(`${u.name} (${formatCount(u.gold)} gold)`, 'danger', kind === 'rocket' ? 'rocket' : 'atom', () => (ctx.ui.mode = { kind: 'missile', silo: tile, missile: kind }), (_ss, m, bb) =>
+          u.tech && !hasTech(m, u.tech) ? `Research ${TECHS[u.tech].name} first` : bb.buildLeft > 0 ? 'Still being built' : chargesReady(bb) <= 0 ? 'Reloading' : m.gold < u.gold ? 'Not enough gold' : m.iron < u.iron ? 'Not enough iron' : m.oil < u.oil ? 'Not enough oil' : '',
+        );
+      }
+    }
+    if (b.type === 'port') {
+      const u = UNITS.warship;
+      add(`Warship (${formatCount(u.gold)} gold)`, '', 'warship', () => ctx.act({ type: 'buildWarship', port: tile }), (_ss, m, bb) =>
+        !hasTech(m, 'navigation') ? 'Research Navigation first' : bb.buildLeft > 0 ? 'Still being built' : m.gold < u.gold ? 'Not enough gold' : m.iron < u.iron ? 'Not enough iron' : '',
+      );
+      add('Send a transport', '', 'transport', () => (ctx.ui.mode = { kind: 'transport', from: tile }), (_ss, _m, bb) => (bb.buildLeft > 0 ? 'Still being built' : ''));
+      if (warships.length) {
+        r.append(sectionTitle('Warships'));
+        warships.slice(0, 8).forEach((id, k) => {
+          const row = el('div', 'drow');
+          row.append(el('span', 'pname', `Warship ${k + 1}`), btn('Move', 'mini', () => (ctx.ui.mode = { kind: 'moveWarship', unitId: id })));
+          r.append(row);
+        });
+      }
+    }
+    let confirmUntil = 0;
+    const demo = btn('Demolish', 'ghost danger', () => {
+      const now = performance.now();
+      if (now > confirmUntil) {
+        confirmUntil = now + 2500;
+        const l = demo.querySelector('.wr-btn-l');
+        if (l) l.textContent = 'Click again to demolish';
+        setTimeout(() => {
+          if (l) l.textContent = 'Demolish';
+        }, 2500);
+        return;
+      }
+      if (ctx.act({ type: 'demolish', tile })) {
+        ctx.ui.selectedTile = -1;
+        ctx.closeDrawer();
+      }
+    }, 'demolish');
+    demo.dataset.tip = 'Remove this building (a quarter of the price back)';
+    r.append(demo);
+  }
+}
+
+// ================================================================================================ settings
+
+export interface SettingsHooks {
+  audio(): { master: number; sfx: number; music: number; muted: boolean } | null;
+  setVolume(master?: number, sfx?: number, music?: number): void;
+  setMuted(m: boolean): void;
+  advisorOn(): boolean;
+  setAdvisor(on: boolean): void;
+  restartTutorial(): void;
+  leave(): void;
+}
+
+export class SettingsPage implements DrawerPage {
+  id: DrawerId = 'settings';
+  title = 'Menu';
+  root = el('div', 'page');
+  private sync: (() => void)[] = [];
+
+  constructor(ctx: HudCtx, hooks: SettingsHooks) {
+    const r = this.root;
+    const a = hooks.audio();
+    if (a) {
+      r.append(sectionTitle('Sound'));
+      const vol = (label: string, get: () => number, set: (v: number) => void) => {
+        const row = el('div', 'slider-row');
+        const s = slider(0, 100, 5);
+        const v = el('span', 'sv');
+        s.addEventListener('input', () => {
+          set(Number(s.value) / 100);
+          setText(v, `${s.value}%`);
+        });
+        row.append(el('span', 'sl', label), s, v);
+        r.append(row);
+        this.sync.push(() => {
+          syncSlider(s, Math.round(get() * 100));
+          setText(v, `${Math.round(get() * 100)}%`);
+        });
+      };
+      vol('Master', () => hooks.audio()?.master ?? 0, (v) => hooks.setVolume(v));
+      vol('Effects', () => hooks.audio()?.sfx ?? 0, (v) => hooks.setVolume(undefined, v));
+      vol('Music', () => hooks.audio()?.music ?? 0, (v) => hooks.setVolume(undefined, undefined, v));
+      const mute = seg2('Sound on', 'Muted', () => hooks.setMuted(false), () => hooks.setMuted(true));
+      r.append(mute.el);
+      this.sync.push(() => mute.set(!(hooks.audio()?.muted ?? false)));
+    }
+    r.append(sectionTitle('Help'));
+    const adv = seg2('Advisor on', 'Advisor off', () => hooks.setAdvisor(true), () => hooks.setAdvisor(false));
+    adv.el.dataset.test = 'advisor-toggle';
+    r.append(adv.el, el('p', 'note', 'The advisor line above the command bar suggests a useful next step.'));
+    this.sync.push(() => adv.set(hooks.advisorOn()));
+    r.append(btn('Show the tutorial again', 'wide', () => hooks.restartTutorial(), 'help'));
+    r.append(sectionTitle('Map'));
+    const mm = seg2('Minimap shown', 'Minimap hidden', () => (ctx.ui.showMinimap = true), () => (ctx.ui.showMinimap = false));
+    r.append(mm.el, el('p', 'note', 'Key M. Overlays: B shows supply, V shows resources.'));
+    this.sync.push(() => mm.set(ctx.ui.showMinimap));
+    r.append(sectionTitle('Game'));
+    let confirmUntil = 0;
+    const leave = btn('Leave to the main menu', 'danger wide', () => {
+      const now = performance.now();
+      if (now < confirmUntil || ctx.state()?.phase === 'over') {
+        hooks.leave();
+        return;
+      }
+      confirmUntil = now + 2500;
+      ctx.toast('Click again to leave this game');
+    }, 'exit');
+    leave.dataset.test = 'leave';
+    r.append(leave);
+  }
+
+  update(): void {
+    for (const f of this.sync) f();
+  }
+  onOpen(): void {
+    this.update();
+  }
+}
+
+// ================================================================================================ the drawer
+
+export class Drawer {
+  readonly el: HTMLElement;
+  private title: HTMLElement;
+  private body: HTMLElement;
+  private pages = new Map<DrawerId, DrawerPage>();
+  open: DrawerId | null = null;
+
+  constructor(ctx: HudCtx) {
+    this.el = el('aside', 'drawer hidden');
+    this.el.dataset.test = 'drawer';
+    const head = el('header', 'dr-head');
+    this.title = el('h2', 'dr-title');
+    const close = el('button', 'sq dr-close');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Close (Esc)');
+    close.dataset.tip = 'Close  (Esc)';
+    close.append(iconSpan(lineIcon('close', 16)));
+    close.addEventListener('click', () => ctx.closeDrawer());
+    head.append(this.title, close);
+    this.body = el('div', 'dr-body');
+    this.el.append(head, this.body);
+  }
+
+  add(p: DrawerPage): void {
+    this.pages.set(p.id, p);
+  }
+  page<T extends DrawerPage>(id: DrawerId): T {
+    return this.pages.get(id) as T;
+  }
+
+  show(id: DrawerId): void {
+    const p = this.pages.get(id);
+    if (!p) return;
+    const was = this.open;
+    this.open = id;
+    this.title.textContent = p.title;
+    this.el.dataset.page = id;
+    this.body.replaceChildren(p.root);
+    this.body.scrollTop = 0;
+    if (!was) {
+      this.el.classList.remove('hidden');
+      this.el.classList.remove('slide');
+      void this.el.offsetWidth;
+      this.el.classList.add('slide');
+    }
+    p.onOpen?.();
+  }
+  hide(): void {
+    this.open = null;
+    this.el.classList.add('hidden');
+  }
+  update(s: GameState, me: Player): void {
+    if (!this.open) return;
+    const p = this.pages.get(this.open)!;
+    p.update(s, me);
+    if (this.title.textContent !== p.title) this.title.textContent = p.title;
+  }
+}
+
+/** Relation text for a nation (shared by the card and tooltips). */
+export function relationOf(s: GameState, me: Player, id: number): { text: string; cls: string } {
+  const p = s.players[id];
+  if (!p) return { text: '', cls: '' };
+  if (id === me.id) return { text: 'You', cls: 'me' };
+  const parts: string[] = [];
+  let cls = 'neutral';
+  if (areAllied(s, me.id, id)) {
+    parts.push('Ally');
+    cls = 'ally';
+  } else if (s.allianceRequests.some((r) => r.from === id && r.to === me.id)) {
+    parts.push('Wants an alliance');
+    cls = 'req';
+  } else if (s.allianceRequests.some((r) => r.from === me.id && r.to === id)) {
+    parts.push('Request sent');
+  } else if (s.attacks.some((a) => (a.attacker === me.id && a.target === id) || (a.attacker === id && a.target === me.id))) {
+    parts.push('At war');
+    cls = 'war';
+  } else parts.push(isTribe(p) ? 'Tribe' : 'Neutral');
+  if (isTraitor(s, id)) {
+    parts.push('traitor');
+    cls += ' traitor';
+  }
+  if (me.embargoes.includes(id)) parts.push('embargoed');
+  return { text: parts.join(', '), cls };
+}
+

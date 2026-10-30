@@ -1,0 +1,249 @@
+// Advisor strip and first-game tutorial: one short line above the command bar.
+// - Tutorial (first game only, remembered in localStorage): six steps that advance when done; can be skipped.
+// - Advisor: the sim's suggestions() (advisor.ts), one at a time, cycling every 8 s.
+//   Click the button to act (enter build mode, open a drawer, centre the map); X dismisses that hint for a while;
+//   it can be switched off in the menu.
+import { countBuildings } from '../../sim/buildings';
+import { BUILDINGS } from '../../sim/config';
+import { gameSeconds } from '../../sim/state';
+import type { GameState, Player } from '../../sim/types';
+import { isTribe } from '../compat';
+import { adviceFor, type Suggestion } from '../simx';
+import { el, setClass, setText, setVisible, type HudCtx } from './dom';
+import { iconSpan, lineIcon, worldGlyph } from './glyph';
+
+const TUTORIAL_KEY = 'borderfall.tutorial.v1';
+const ADVISOR_KEY = 'borderfall.advisor.v1';
+const CYCLE_MS = 8000;
+const DISMISS_MS = 120000;
+
+function load(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function save(key: string, v: string): void {
+  try {
+    localStorage.setItem(key, v);
+  } catch {
+    /* storage blocked */
+  }
+}
+
+interface Step {
+  text: (s: GameState, me: Player) => string;
+  done: (s: GameState, me: Player, start: StepStart) => boolean;
+  key?: string;
+  /** seconds after which the step skips itself */
+  timeout?: number;
+}
+interface StepStart {
+  tiles: number;
+  share: number;
+  cities: number;
+  at: number;
+  researchOpened: boolean;
+}
+
+export class AdvisorStrip {
+  readonly el: HTMLElement;
+  private tag = el('span', 'adv-tag');
+  private icon = el('span', 'adv-ic');
+  private text = el('span', 'adv-text');
+  private doBtn: HTMLButtonElement;
+  private skipBtn: HTMLButtonElement;
+  private closeBtn: HTMLButtonElement;
+  private on = load(ADVISOR_KEY) !== 'off';
+  private tutorial = load(TUTORIAL_KEY) !== 'done';
+  private step = 0;
+  private stepStart: StepStart | null = null;
+  private current: Suggestion | null = null;
+  private idx = 0;
+  private shownAt = 0;
+  private dismissed = new Map<string, number>();
+  researchOpened = false;
+
+  constructor(private ctx: HudCtx) {
+    this.el = el('div', 'advisor hidden');
+    this.el.dataset.test = 'advisor';
+    this.doBtn = el('button', 'wr-btn mini primary adv-do', 'Do it');
+    this.doBtn.type = 'button';
+    this.doBtn.addEventListener('click', () => this.act());
+    this.skipBtn = el('button', 'wr-btn mini ghost', 'Skip tutorial');
+    this.skipBtn.type = 'button';
+    this.skipBtn.dataset.test = 'skip-tutorial';
+    this.skipBtn.addEventListener('click', () => this.endTutorial(false));
+    this.closeBtn = el('button', 'adv-x');
+    this.closeBtn.type = 'button';
+    this.closeBtn.setAttribute('aria-label', 'Dismiss this hint');
+    this.closeBtn.append(iconSpan(lineIcon('close', 12, 2)));
+    this.closeBtn.addEventListener('click', () => {
+      if (this.current) this.dismissed.set(this.current.key, performance.now() + DISMISS_MS);
+      this.current = null;
+      this.shownAt = 0;
+      setVisible(this.el, false);
+    });
+    this.text.addEventListener('click', () => this.act());
+    this.el.append(this.tag, this.icon, this.text, this.doBtn, this.skipBtn, this.closeBtn);
+  }
+
+  get advisorOn(): boolean {
+    return this.on;
+  }
+  setAdvisor(on: boolean): void {
+    this.on = on;
+    save(ADVISOR_KEY, on ? 'on' : 'off');
+    if (!on && !this.tutorial) setVisible(this.el, false);
+  }
+  restartTutorial(): void {
+    this.tutorial = true;
+    this.step = 0;
+    this.stepStart = null;
+    save(TUTORIAL_KEY, 'todo');
+  }
+  get tutorialActive(): boolean {
+    return this.tutorial;
+  }
+
+  private endTutorial(finished: boolean): void {
+    this.tutorial = false;
+    save(TUTORIAL_KEY, 'done');
+    setVisible(this.el, false);
+    if (finished) this.ctx.toast('Tutorial complete. Hover anything for help, press L for the map key.', 'good');
+  }
+
+  // ------------------------------------------------------------------------------------------ tutorial
+
+  private steps: Step[] = [
+    {
+      text: (s, me) => (me.spawned ? 'Good spot. Press Start now (or wait for the countdown) to begin.' : 'Click a land tile to place your capital. Pick a place with room around it.'),
+      done: (s) => s.phase === 'playing',
+    },
+    {
+      text: () => 'Click the empty land next to your border to expand. Your whole border moves; every tile costs a few troops.',
+      done: (s, me, st) => me.tiles > st.tiles * 1.6 || s.attacks.some((a) => a.attacker === me.id),
+    },
+    {
+      text: () => 'ATTACK is how many of your troops each click sends. Change it with [ and ] or the slider.',
+      done: (_s, _me, st) => Math.abs(this.ctx.ui.attackShare - st.share) > 0.01,
+      timeout: 40,
+    },
+    {
+      text: () => 'Build a City: press 1 (or the City button below), then click your land. Cities raise your troop cap and gold.',
+      done: (s, me, st) => countBuildings(s, me.id, 'city', true) > st.cities,
+      timeout: 120,
+    },
+    {
+      text: () => 'Tribes are the pale lands with small names: weak and easy to take. Click one next to you.',
+      done: (s, me) => s.attacks.some((a) => a.attacker === me.id && a.target > 0 && isTribe(s.players[a.target])),
+      timeout: 60,
+    },
+    {
+      text: () => 'Press T to open Research and pick a tech. Techs unlock buildings and make your troops stronger.',
+      done: (_s, me) => this.researchOpened || (!!me.researching && !me.auto.research),
+      timeout: 60,
+    },
+  ];
+
+  private tutorialUpdate(s: GameState, me: Player): boolean {
+    if (!this.tutorial) return false;
+    const now = performance.now();
+    let st = this.stepStart;
+    if (!st) {
+      st = { tiles: me.tiles, share: this.ctx.ui.attackShare, cities: countBuildings(s, me.id, 'city', true), at: now, researchOpened: this.researchOpened };
+      this.stepStart = st;
+    }
+    const step = this.steps[this.step];
+    if (!step) {
+      this.endTutorial(true);
+      return false;
+    }
+    const timedOut = step.timeout !== undefined && s.phase === 'playing' && now - st.at > step.timeout * 1000;
+    if (step.done(s, me, st) || timedOut) {
+      this.step++;
+      this.stepStart = null;
+      if (this.step >= this.steps.length) {
+        this.endTutorial(true);
+        return false;
+      }
+      return this.tutorialUpdate(s, me);
+    }
+    setText(this.tag, `Step ${this.step + 1} of ${this.steps.length}`);
+    this.icon.innerHTML = lineIcon('info', 16);
+    setText(this.text, step.text(s, me));
+    setVisible(this.doBtn, false);
+    setVisible(this.skipBtn, true);
+    setVisible(this.closeBtn, false);
+    setClass(this.el, 'tut', true);
+    setVisible(this.el, true);
+    return true;
+  }
+
+  // ------------------------------------------------------------------------------------------ advisor
+
+  update(s: GameState, me: Player): void {
+    if (!me.alive || s.phase === 'over') {
+      setVisible(this.el, false);
+      return;
+    }
+    if (this.tutorialUpdate(s, me)) return;
+    setClass(this.el, 'tut', false);
+    setVisible(this.skipBtn, false);
+    setVisible(this.closeBtn, true);
+    if (!this.on || s.phase !== 'playing' || gameSeconds(s) < 8) {
+      setVisible(this.el, false);
+      return;
+    }
+    const now = performance.now();
+    const list = adviceFor(s, me.id).filter((x) => (this.dismissed.get(x.key) ?? 0) < now);
+    if (!list.length) {
+      this.current = null;
+      setVisible(this.el, false);
+      return;
+    }
+    // keep the shown one while it is still suggested and its time is not up, else move on
+    const stillThere = this.current && list.find((x) => x.key === this.current!.key);
+    if (!stillThere || now - this.shownAt > CYCLE_MS) {
+      this.idx = stillThere ? (this.idx + 1) % Math.min(3, list.length) : 0;
+      this.current = list[Math.min(this.idx, list.length - 1)];
+      this.shownAt = now;
+    } else this.current = stillThere;
+    const c = this.current;
+    setText(this.tag, 'Advisor');
+    this.icon.innerHTML = c.building ? worldGlyph(c.building, 16) : c.mode ? worldGlyph(c.mode, 16) : lineIcon(c.drawer === 'research' ? 'science' : c.drawer === 'diplomacy' ? 'diplomacy' : c.tile !== undefined ? 'target' : 'info', 16);
+    setText(this.text, c.text);
+    const label = c.building
+      ? `Build ${BUILDINGS[c.building].name}`
+      : c.mode === 'barrage'
+        ? 'Aim barrage'
+        : c.mode === 'paradrop'
+          ? 'Aim drop'
+          : c.drawer === 'research'
+            ? 'Research'
+            : c.drawer === 'army'
+              ? 'Army'
+              : c.drawer === 'diplomacy'
+                ? 'Diplomacy'
+                : c.tile !== undefined
+                  ? 'Show'
+                  : '';
+    setText(this.doBtn, label);
+    setVisible(this.doBtn, label !== '');
+    setVisible(this.el, true);
+  }
+
+  private act(): void {
+    const c = this.current;
+    if (!c || this.el.classList.contains('tut')) return;
+    if (c.building) {
+      this.ctx.ui.mode = { kind: 'build', building: c.building };
+      if (c.tile !== undefined) this.ctx.focusTile(c.tile, false);
+    } else if (c.mode) {
+      this.ctx.ui.mode = c.mode === 'barrage' ? { kind: 'barrage' } : { kind: 'paradrop', airfield: -1 };
+      if (c.tile !== undefined) this.ctx.focusTile(c.tile, false);
+    } else if (c.drawer) this.ctx.openDrawer(c.drawer);
+    else if (c.tile !== undefined) this.ctx.focusTile(c.tile, true);
+  }
+}

@@ -1,5 +1,7 @@
 // Boot: main menu -> new game -> loop (fixed-step sim at 10 ticks/s x speed, render every frame).
 import './styles.css';
+import { loadFonts } from './fonts';
+import { AudioManager } from './audio';
 import { applyAction } from '../sim/actions';
 import { TICKS_PER_SECOND, VICTORY_LAND_SHARE } from '../sim/config';
 import { tick } from '../sim/sim';
@@ -20,6 +22,8 @@ const MAX_FRAME_MS = 250;
 const TOAST_MS = 3000;
 /** Menu background: a small AI-only game, restarted after this many game seconds or when it ends. */
 const BG_MAX_SECONDS = 600;
+/** The background stays cheap: the small map with a few nations and tribes. */
+const BG_TRIBES = 20;
 
 interface Session {
   state: GameState;
@@ -42,6 +46,17 @@ const minimap = el('canvas', 'minimap');
 mmWrap.append(minimap);
 app.append(canvas, mmWrap);
 const renderer = new Renderer(canvas, minimap);
+void loadFonts();
+
+// Sound: procedural, quiet by default, unlocked by the first click or key (autoplay policy). See docs/AUDIO.md.
+let audio: AudioManager | null = null;
+try {
+  audio = new AudioManager();
+  audio.unlockOnGesture(window);
+} catch (err) {
+  console.warn('Audio unavailable', err);
+  audio = null;
+}
 
 let session: Session | null = null;
 
@@ -55,7 +70,13 @@ const dispatch: Dispatch = (action: Action): ActionResult => {
     console.error('Action failed', action, err);
     r = { ok: false, reason: 'Something went wrong (see console)' };
   }
-  if (!r.ok) s.ui.toast = { text: r.reason ?? 'Not possible', until: performance.now() + TOAST_MS };
+  if (r.ok) {
+    if (action.type === 'build') audio?.play('buildPlaced');
+    else if (action.type === 'launchMissile') audio?.play('missileLaunch');
+  } else {
+    s.ui.toast = { text: r.reason ?? 'Not possible', until: performance.now() + TOAST_MS };
+    audio?.play('uiError', { volume: 0.7 });
+  }
   return r;
 };
 
@@ -90,7 +111,7 @@ function startGame(settings: GameSettings): void {
     endSession();
     const camera = newCamera(state);
     const ui = defaultUiState();
-    const hud = new Hud(app, ui, dispatch, camera);
+    const hud = new Hud(app, ui, dispatch, camera, audio);
     hud.onMenu = () => toMenu();
     hud.onPlayAgain = () => startGame({ ...settings, seed: menu.replaySettings().seed });
     const cleanupInput = setupInput({
@@ -104,6 +125,7 @@ function startGame(settings: GameSettings): void {
       openResearch: () => hud.openResearch(),
       toggleHelp: () => hud.toggleHelp(),
       closeOverlay: () => hud.closeOverlay(),
+      toggleDrawer: (id) => hud.toggleDrawer(id),
     });
     session = { state, camera, ui, hud, cleanupInput, human: true, settings };
     acc = 0;
@@ -125,6 +147,7 @@ function startBackground(): void {
     humanPlayer: false,
     timeLimit: 0,
     victoryLandShare: VICTORY_LAND_SHARE,
+    tribeCount: BG_TRIBES,
   };
   try {
     const state = createGame(settings);
@@ -169,12 +192,25 @@ function runTicks(s: Session, dt: number): void {
   if (n >= max) acc = Math.min(acc, STEP_MS); // fell behind: drop the backlog
 }
 
+/** Rolling frame cost (ms) for the test hook: sim ticks, renderer, HUD. */
+const perf = { sim: 0, render: 0, hud: 0, frames: 0 };
+
 function frame(now: number): void {
   const dt = Math.min(MAX_FRAME_MS, Math.max(0, now - last));
   last = now;
   const s = session;
   if (s) {
+    const t0 = performance.now();
     runTicks(s, dt);
+    if (s.human && audio) {
+      try {
+        audio.update(s.state, s.camera);
+      } catch (err) {
+        console.error('Audio error', err);
+      }
+    }
+    const t1 = performance.now();
+    perf.sim += t1 - t0;
     // A background game that hit a sim error stays paused (static) instead of being regenerated every frame.
     if (!s.human && (s.state.phase === 'over' || s.state.tick > BG_MAX_SECONDS * TICKS_PER_SECOND)) {
       startBackground();
@@ -182,8 +218,13 @@ function frame(now: number): void {
     const cur = session;
     if (cur) {
       try {
+        const t2 = performance.now();
         renderer.render(cur.state, cur.camera, cur.ui, now);
+        const t3 = performance.now();
         cur.hud?.update(cur.state);
+        perf.render += t3 - t2;
+        perf.hud += performance.now() - t3;
+        perf.frames++;
       } catch (err) {
         console.error('Render error', err);
       }
@@ -205,6 +246,10 @@ declare global {
       /** Runs n ticks synchronously (tests). */
       advance: (n: number) => void;
       toMenu: () => void;
+      /** Average ms per frame spent in the sim, renderer and HUD since the last call (resets the counters). */
+      perf: () => { sim: number; render: number; hud: number; frames: number };
+      /** The renderer's per-frame counters (ms per layer, tiles applied, things drawn). */
+      renderStats: () => Renderer['stats'];
     };
   }
 }
@@ -221,6 +266,13 @@ window.__borderfall = {
     for (let k = 0; k < n && s.state.phase !== 'over'; k++) tick(s.state);
   },
   toMenu,
+  perf: () => {
+    const n = Math.max(1, perf.frames);
+    const out = { sim: perf.sim / n, render: perf.render / n, hud: perf.hud / n, frames: perf.frames };
+    perf.sim = perf.render = perf.hud = perf.frames = 0;
+    return out;
+  },
+  renderStats: () => ({ ...renderer.stats }),
 };
 
 startBackground();

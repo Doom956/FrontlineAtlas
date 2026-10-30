@@ -1,0 +1,711 @@
+// Balance batch runner: many AI-only games per configuration, aggregated into balance and performance tables.
+//
+// Usage: npx vite-node scripts/batch.ts -- [options]     (spawns workers with node_modules/.bin/vite-node)
+//   --sizes small,medium,large   map sizes (small, medium, large, huge)   (default: small,medium,large)
+//   --ais default                AI nation counts, or 'default' = config DEFAULT_AI_COUNT per size (default)
+//   --maps continents,archipelago,pangaea,highlands
+//                                map types; game k of a configuration uses map k mod the list (default: all four)
+//   --seeds 4                    games per size x AI count      (default: 4)
+//   --start 1                    first seed                     (default: 1)
+//   --minutes 55                 game-minute cap per game       (default: 55)
+//   --tribes -1                  tribes per game, < 0 = config default for the map size
+//   --difficulty normal          easy | normal | hard
+//   --jobs 4                     parallel worker processes (1 = in this process; use 1 for tick timings)
+//   --json                       also print one JSON line per game
+//
+// What it prints, per configuration and over all games: share of games with a winner and the median minute of the
+// win, army mix (armor / artillery share of all nations' armies) at 10/20/30 min, the troop mixes winners used,
+// building counts per type, techs at 20 min, how often the leader at 8 / 15 min wins (snowball), atom bombs, naval
+// invasions, air raids, eliminations over time, how often nations sit idle with a full troop bar, the biggest
+// army, and ms/tick (p50 / p95 / p99; use --jobs 1 for clean timings). Also: building sites and levels at the end,
+// paradrops (shot down / landed), artillery barrages (forts and SAMs silenced), air and missile interceptions, and
+// whether the winners used the special abilities more than the average nation.
+import { BUILDING_ORDER, DEFAULT_AI_COUNT, TICKS_PER_SECOND, VICTORY_LAND_SHARE } from '../src/sim/config';
+import { armyTotal, population } from '../src/sim/economy';
+import { tick } from '../src/sim/sim';
+import { createGame, gameSeconds } from '../src/sim/state';
+import { isTribe } from '../src/sim/types';
+import type { BuildingType, Difficulty, GameSettings, GameState, MapSize, MapType, Troops } from '../src/sim/types';
+
+// No @types/node in this project: declare the few Node globals used here.
+declare const process: { argv: string[]; exit(code?: number): never; stdout: { write(s: string): boolean } };
+
+// ---------------------------------------------------------------------------------------------------------------
+// Options
+// ---------------------------------------------------------------------------------------------------------------
+
+interface Options {
+  sizes: MapSize[];
+  ais: number[];
+  maps: MapType[];
+  seeds: number;
+  start: number;
+  minutes: number;
+  tribes: number;
+  difficulty: Difficulty;
+  jobs: number;
+  json: boolean;
+  /** worker mode: run only jobs with index % of === shard and print JSON lines */
+  shard: number;
+  of: number;
+}
+
+function parseOptions(argv: string[]): Options {
+  const args = argv.filter((a) => a !== '--');
+  const o: Options = {
+    sizes: ['small', 'medium', 'large'],
+    ais: [],
+    maps: ['continents', 'archipelago', 'pangaea', 'highlands'],
+    seeds: 4,
+    start: 1,
+    minutes: 55,
+    tribes: -1,
+    difficulty: 'normal',
+    jobs: 4,
+    json: false,
+    shard: -1,
+    of: 1,
+  };
+  for (let k = 0; k < args.length; k++) {
+    const a = args[k];
+    const v = args[k + 1];
+    const list = (): string[] => (v ?? '').split(',').filter(Boolean);
+    switch (a) {
+      case '--sizes': o.sizes = list() as MapSize[]; k++; break;
+      case '--ais': o.ais = v === 'default' ? [] : list().map(Number); k++; break;
+      case '--maps': o.maps = list() as MapType[]; k++; break;
+      case '--seeds': o.seeds = Number(v); k++; break;
+      case '--start': o.start = Number(v); k++; break;
+      case '--minutes': o.minutes = Number(v); k++; break;
+      case '--tribes': o.tribes = Number(v); k++; break;
+      case '--difficulty': o.difficulty = v as Difficulty; k++; break;
+      case '--jobs': o.jobs = Math.max(1, Number(v) || 1); k++; break;
+      case '--json': o.json = true; break;
+      case '--shard': {
+        const [s, of] = (v ?? '0/1').split('/').map(Number);
+        o.shard = s;
+        o.of = of;
+        k++;
+        break;
+      }
+      default:
+        console.error(`Unknown option ${a}`);
+        process.exit(1);
+    }
+  }
+  return o;
+}
+
+interface Job {
+  index: number;
+  size: MapSize;
+  ais: number;
+  map: MapType;
+  seed: number;
+}
+
+/** AI counts to run for a size: --ais, or the size's default. */
+function aisFor(o: Options, size: MapSize): number[] {
+  return o.ais.length ? o.ais : [DEFAULT_AI_COUNT[size]];
+}
+
+function jobList(o: Options): Job[] {
+  const jobs: Job[] = [];
+  for (const size of o.sizes) {
+    for (const ais of aisFor(o, size)) {
+      for (let k = 0; k < o.seeds; k++) {
+        jobs.push({ index: jobs.length, size, ais, map: o.maps[k % o.maps.length], seed: o.start + k });
+      }
+    }
+  }
+  return jobs;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// One game
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Army mix sample: troops of all alive nations (home + attacks + transports). */
+interface MixSample {
+  infantry: number;
+  armor: number;
+  artillery: number;
+}
+
+interface GameResult {
+  job: Job;
+  winner: number;
+  winMinute: number; // -1 without a winner
+  winReason: string;
+  minutes: number; // game minutes played
+  /** army totals of all nations at 10 / 20 / 30 min (null if the game ended before) */
+  mixAt: (MixSample | null)[];
+  /** winner's army summed over samples in the second half of the game (its usual mix) */
+  winnerMix: MixSample | null;
+  /** buildings ever started, per type */
+  buildings: Partial<Record<BuildingType, number>>;
+  /** mean techs per alive nation at 20 min (-1 if over) */
+  techs20: number;
+  /** tiles leader among nations at 8 min, 15 min (0 if over) */
+  leader8: number;
+  leader15: number;
+  atomBombs: number;
+  firstAtomMinute: number; // -1 none
+  /** minute the first nation finished Nuclear Fission (-1 never) */
+  fissionMinute: number;
+  rockets: number;
+  bombers: number;
+  warships: number;
+  invasions: number; // transports sent at another nation's coast
+  landings: number; // transports sent at neutral coast
+  /** minute of each nation's / tribe's elimination */
+  nationElims: number[];
+  tribeElims: number[];
+  nations: number;
+  tribes: number;
+  /** nation samples (every 10 s after minute 3) with a nearly full population and no attack of their own, not attacked */
+  idleFull: number;
+  /** same, but under attack (holding at home: their troops are the defence density) */
+  holdFull: number;
+  samples: number;
+  /** biggest army of a nation (home + attacks + transports) seen at any sample */
+  maxArmy: number;
+  tickP50: number;
+  tickP95: number;
+  tickP99: number;
+  tickMax: number;
+  /** buildings standing at the end, per type: [sites, sum of levels, highest level] */
+  endBuildings: Partial<Record<BuildingType, [number, number, number]>>;
+  paradrops: number;
+  paradropsShot: number;
+  paradropsLanded: number;
+  barrages: number;
+  barragesSilencing: number;
+  bombersShot: number;
+  missilesShot: number;
+  /** abilities used by the winner and the mean per nation */
+  winnerParadrops: number;
+  winnerBarrages: number;
+  meanParadrops: number;
+  meanBarrages: number;
+}
+
+function wholeArmies(state: GameState): Float64Array {
+  const army = new Float64Array(state.players.length);
+  for (const a of state.attacks) army[a.attacker] += armyTotal(a.troops);
+  for (const u of state.units) if (u.type === 'transport' || u.type === 'transportPlane') army[u.owner] += armyTotal(u.troops);
+  for (const p of state.players) army[p.id] += armyTotal(p.troops);
+  return army;
+}
+
+function nationTroops(state: GameState, id: number): Troops {
+  const t: Troops = { ...state.players[id].troops };
+  for (const a of state.attacks) {
+    if (a.attacker !== id) continue;
+    t.infantry += a.troops.infantry;
+    t.armor += a.troops.armor;
+    t.artillery += a.troops.artillery;
+  }
+  for (const u of state.units) {
+    if (u.type !== 'transport' || u.owner !== id) continue;
+    t.infantry += u.troops.infantry;
+    t.armor += u.troops.armor;
+    t.artillery += u.troops.artillery;
+  }
+  return t;
+}
+
+function tileLeader(state: GameState): number {
+  let best = 0;
+  for (const p of state.players) {
+    if (p.id === 0 || !p.alive || isTribe(p)) continue;
+    if (!best || p.tiles > state.players[best].tiles) best = p.id;
+  }
+  return best;
+}
+
+function runGame(job: Job, o: Options): GameResult {
+  const settings: GameSettings = {
+    seed: job.seed,
+    mapType: job.map,
+    mapSize: job.size,
+    aiCount: job.ais,
+    difficulty: o.difficulty,
+    playerName: 'Nobody',
+    playerColor: [255, 255, 255],
+    humanPlayer: false,
+    timeLimit: 0,
+    victoryLandShare: VICTORY_LAND_SHARE,
+    tribeCount: o.tribes,
+  };
+  const state = createGame(settings);
+  while (state.phase === 'spawn') {
+    tick(state);
+    state.events.length = 0;
+  }
+  const r: GameResult = {
+    job,
+    winner: 0,
+    winMinute: -1,
+    winReason: '',
+    minutes: 0,
+    mixAt: [null, null, null],
+    winnerMix: null,
+    buildings: {},
+    techs20: -1,
+    leader8: 0,
+    leader15: 0,
+    atomBombs: 0,
+    firstAtomMinute: -1,
+    fissionMinute: -1,
+    rockets: 0,
+    bombers: 0,
+    warships: 0,
+    invasions: 0,
+    landings: 0,
+    nationElims: [],
+    tribeElims: [],
+    nations: state.players.filter((p) => p.id !== 0 && !isTribe(p)).length,
+    tribes: state.players.filter((p) => isTribe(p)).length,
+    idleFull: 0,
+    holdFull: 0,
+    samples: 0,
+    maxArmy: 0,
+    tickP50: 0,
+    tickP95: 0,
+    tickP99: 0,
+    tickMax: 0,
+    endBuildings: {},
+    paradrops: 0,
+    paradropsShot: 0,
+    paradropsLanded: 0,
+    barrages: 0,
+    barragesSilencing: 0,
+    bombersShot: 0,
+    missilesShot: 0,
+    winnerParadrops: 0,
+    winnerBarrages: 0,
+    meanParadrops: 0,
+    meanBarrages: 0,
+  };
+  const dropsBy = new Map<number, number>();
+  const barragesBy = new Map<number, number>();
+  const seenUnits = new Set<number>();
+  const seenBuildings = new Set<number>();
+  const mixSamples: { minute: number; mix: Troops[] }[] = [];
+  const tickMs: number[] = [];
+  const cap = Math.round(o.minutes * 60 * TICKS_PER_SECOND);
+  const sampleEvery = 10 * TICKS_PER_SECOND;
+  for (let k = 0; k < cap && state.phase === 'playing'; k++) {
+    const t0 = performance.now();
+    tick(state);
+    tickMs.push(performance.now() - t0);
+    for (const e of state.events) {
+      if (e.kind === 'victory') r.winReason = e.message.replace(/^.* wins: /, '');
+      else if (e.kind === 'paradrop' && / landed in /.test(e.message)) r.paradropsLanded++;
+      else if (e.kind === 'barrage' && / hit /.test(e.message) && /silenced/.test(e.message)) r.barragesSilencing++;
+      else if (e.kind === 'unitLost' && /shot down a cargo plane/.test(e.message)) r.paradropsShot++;
+      else if (e.kind === 'unitLost' && /shot down a bomber/.test(e.message)) r.bombersShot++;
+      else if (e.kind === 'unitLost' && /shot down a (rocket|atom bomb)/.test(e.message)) r.missilesShot++;
+    }
+    for (const b of state.barrages) {
+      if (seenUnits.has(-b.id)) continue;
+      seenUnits.add(-b.id);
+      r.barrages++;
+      barragesBy.set(b.owner, (barragesBy.get(b.owner) ?? 0) + 1);
+    }
+    state.events.length = 0;
+    state.effects.length = 0;
+    const minute = gameSeconds(state) / 60;
+    for (const u of state.units) {
+      if (seenUnits.has(u.id)) continue;
+      seenUnits.add(u.id);
+      if (u.type === 'atomBomb') {
+        r.atomBombs++;
+        if (r.firstAtomMinute < 0) r.firstAtomMinute = minute;
+      } else if (u.type === 'rocket') r.rockets++;
+      else if (u.type === 'bomber') r.bombers++;
+      else if (u.type === 'warship') r.warships++;
+      else if (u.type === 'transportPlane') {
+        r.paradrops++;
+        dropsBy.set(u.owner, (dropsBy.get(u.owner) ?? 0) + 1);
+      }
+      else if (u.type === 'transport') {
+        if (u.targetOwner > 0) r.invasions++;
+        else r.landings++;
+      }
+    }
+    if ((state.tick - state.playStartTick) % sampleEvery !== 0) continue;
+    for (const b of state.buildings.values()) {
+      if (seenBuildings.has(b.id)) continue;
+      seenBuildings.add(b.id);
+      r.buildings[b.type] = (r.buildings[b.type] ?? 0) + 1;
+    }
+    const sec = Math.round(gameSeconds(state));
+    if (r.fissionMinute < 0 && state.players.some((p) => p.alive && p.techs.includes('nuclearFission'))) r.fissionMinute = minute;
+    const armies = wholeArmies(state);
+    for (const p of state.players) if (p.id !== 0 && !isTribe(p) && armies[p.id] > r.maxArmy) r.maxArmy = armies[p.id];
+    const perNation: Troops[] = [];
+    for (const p of state.players) {
+      if (p.id === 0 || isTribe(p) || !p.alive) {
+        perNation.push({ infantry: 0, armor: 0, artillery: 0 });
+        continue;
+      }
+      perNation.push(nationTroops(state, p.id));
+      if (sec >= 180) {
+        r.samples++;
+        const own = state.attacks.some((a) => a.attacker === p.id);
+        const units = state.units.some((u) => u.owner === p.id && u.type === 'transport');
+        const hit = state.attacks.some((a) => a.target === p.id);
+        if (!own && !units && p.maxPop > 0 && population(p) >= p.maxPop * 0.9 && armies[p.id] > 1000) {
+          if (hit) r.holdFull++;
+          else r.idleFull++;
+        }
+      }
+    }
+    mixSamples.push({ minute, mix: perNation });
+    for (const [slot, at] of [[0, 600], [1, 1200], [2, 1800]] as const) {
+      if (sec !== at) continue;
+      const m: MixSample = { infantry: 0, armor: 0, artillery: 0 };
+      for (const t of perNation) {
+        m.infantry += t.infantry;
+        m.armor += t.armor;
+        m.artillery += t.artillery;
+      }
+      r.mixAt[slot] = m;
+      if (slot === 1) {
+        let n = 0;
+        let techs = 0;
+        for (const p of state.players) {
+          if (p.id === 0 || isTribe(p) || !p.alive) continue;
+          n++;
+          techs += p.techs.length;
+        }
+        r.techs20 = n ? techs / n : -1;
+      }
+    }
+    if (sec === 480) r.leader8 = tileLeader(state);
+    if (sec === 900) r.leader15 = tileLeader(state);
+  }
+  r.minutes = gameSeconds(state) / 60;
+  r.winner = state.winner;
+  for (const b of state.buildings.values()) {
+    if (b.owner <= 0 || !state.players[b.owner]?.alive) continue;
+    const e = (r.endBuildings[b.type] ??= [0, 0, 0]);
+    e[0]++;
+    e[1] += b.level;
+    e[2] = Math.max(e[2], b.level);
+  }
+  r.winnerParadrops = r.winner ? (dropsBy.get(r.winner) ?? 0) : 0;
+  r.winnerBarrages = r.winner ? (barragesBy.get(r.winner) ?? 0) : 0;
+  r.meanParadrops = r.paradrops / Math.max(1, r.nations);
+  r.meanBarrages = r.barrages / Math.max(1, r.nations);
+  r.winMinute = state.winner ? r.minutes : -1;
+  for (const p of state.players) {
+    if (p.id === 0 || p.alive || p.eliminatedTick < 0) continue;
+    const m = (p.eliminatedTick - state.playStartTick) / TICKS_PER_SECOND / 60;
+    if (m < 0) continue; // never spawned
+    (isTribe(p) ? r.tribeElims : r.nationElims).push(m);
+  }
+  if (r.winner) {
+    const from = r.minutes / 2;
+    const m: MixSample = { infantry: 0, armor: 0, artillery: 0 };
+    for (const s of mixSamples) {
+      if (s.minute < from) continue;
+      const t = s.mix[r.winner];
+      m.infantry += t.infantry;
+      m.armor += t.armor;
+      m.artillery += t.artillery;
+    }
+    r.winnerMix = m;
+  }
+  tickMs.sort((a, b) => a - b);
+  const q = (x: number): number => (tickMs.length ? tickMs[Math.min(tickMs.length - 1, Math.floor(tickMs.length * x))] : 0);
+  r.tickP50 = q(0.5);
+  r.tickP95 = q(0.95);
+  r.tickP99 = q(0.99);
+  r.tickMax = tickMs.length ? tickMs[tickMs.length - 1] : 0;
+  return r;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Aggregation
+// ---------------------------------------------------------------------------------------------------------------
+
+function median(v: number[]): number {
+  if (!v.length) return NaN;
+  const s = [...v].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+const pct = (a: number, b: number): string => (b > 0 ? `${Math.round((100 * a) / b)}%` : '-');
+const f1 = (v: number): string => (Number.isFinite(v) ? v.toFixed(1) : '-');
+function fmtArmy(v: number): string {
+  if (!Number.isFinite(v)) return '-';
+  if (v >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+  if (v >= 1e3) return (v / 1e3).toFixed(0) + 'k';
+  return Math.round(v).toString();
+}
+
+function share(m: MixSample | null): { armor: number; artillery: number } | null {
+  if (!m) return null;
+  const t = m.infantry + m.armor + m.artillery;
+  if (t <= 0) return null;
+  return { armor: m.armor / t, artillery: m.artillery / t };
+}
+
+/** Troop mix label: the types that make up at least 15% of the army, e.g. "inf+arm". */
+function mixLabel(m: MixSample | null): string {
+  const s = share(m);
+  if (!s) return '?';
+  const inf = 1 - s.armor - s.artillery;
+  const parts: string[] = [];
+  if (inf >= 0.15) parts.push('inf');
+  if (s.armor >= 0.15) parts.push('arm');
+  if (s.artillery >= 0.15) parts.push('art');
+  return parts.join('+') || 'inf';
+}
+
+function summary(title: string, rs: GameResult[]): void {
+  const n = rs.length;
+  if (!n) return;
+  const won = rs.filter((r) => r.winner > 0);
+  const winMins = won.map((r) => r.winMinute);
+  const inWindow = won.filter((r) => r.winMinute >= 25 && r.winMinute <= 50).length;
+  const mixCols = [0, 1, 2].map((slot) => {
+    const ss = rs.map((r) => share(r.mixAt[slot])).filter((x): x is { armor: number; artillery: number } => !!x);
+    if (!ss.length) return '   -/-  ';
+    const a = ss.reduce((s, x) => s + x.armor, 0) / ss.length;
+    const b = ss.reduce((s, x) => s + x.artillery, 0) / ss.length;
+    return `${Math.round(a * 100)}/${Math.round(b * 100)}`.padStart(7);
+  });
+  const t20 = rs.filter((r) => r.techs20 >= 0).map((r) => r.techs20);
+  const l8 = rs.filter((r) => r.winner > 0 && r.leader8 > 0);
+  const l15 = rs.filter((r) => r.winner > 0 && r.leader15 > 0);
+  const mixedWinners = won.filter((r) => {
+    const s = share(r.winnerMix);
+    return !!s && (s.armor >= 0.15 || s.artillery >= 0.15);
+  }).length;
+  const labels = new Set(won.map((r) => mixLabel(r.winnerMix)));
+  const sum = (f: (r: GameResult) => number): number => rs.reduce((s, r) => s + f(r), 0);
+  const games = (f: (r: GameResult) => boolean): number => rs.filter(f).length;
+  const idle = sum((r) => r.idleFull) / Math.max(1, sum((r) => r.samples));
+  const hold = sum((r) => r.holdFull) / Math.max(1, sum((r) => r.samples));
+  console.log(
+    [
+      title.padEnd(22),
+      String(n).padStart(3),
+      pct(won.length, n).padStart(5),
+      f1(median(winMins)).padStart(5),
+      pct(inWindow, n).padStart(5),
+      ...mixCols,
+      `${pct(mixedWinners, won.length)} ${labels.size}`.padStart(8),
+      f1(median(t20)).padStart(5),
+      pct(l8.filter((r) => r.leader8 === r.winner).length, l8.length).padStart(5),
+      pct(l15.filter((r) => r.leader15 === r.winner).length, l15.length).padStart(5),
+      `${sum((r) => r.atomBombs)}/${games((r) => r.atomBombs > 0)}`.padStart(6),
+      f1(median(rs.filter((r) => r.firstAtomMinute >= 0).map((r) => r.firstAtomMinute))).padStart(5),
+      f1(median(rs.filter((r) => r.fissionMinute >= 0).map((r) => r.fissionMinute))).padStart(5),
+      `${sum((r) => r.invasions)}/${games((r) => r.invasions > 0)}`.padStart(7),
+      `${sum((r) => r.bombers)}/${games((r) => r.bombers > 0)}`.padStart(7),
+      `${sum((r) => r.rockets)}`.padStart(5),
+      `${sum((r) => r.warships)}`.padStart(5),
+      `${Math.round(idle * 100)}/${Math.round(hold * 100)}%`.padStart(7),
+      fmtArmy(median(rs.map((r) => r.maxArmy))).padStart(6),
+      f1(median(rs.map((r) => r.tickP50))).padStart(5),
+      f1(median(rs.map((r) => r.tickP95))).padStart(5),
+      f1(Math.max(...rs.map((r) => r.tickP99))).padStart(5),
+    ].join(' '),
+  );
+}
+
+function header(): void {
+  console.log(
+    [
+      'config'.padEnd(22),
+      '  n',
+      ' won%',
+      ' tWin',
+      '25-50',
+      '10m a/r',
+      '20m a/r',
+      '30m a/r',
+      ' mixW #',
+      'tch20',
+      ' ld8W',
+      'ld15W',
+      ' atom',
+      't1atm',
+      'tFiss',
+      ' invade',
+      ' bomber',
+      ' rckt',
+      ' wshp',
+      'idl/hld',
+      ' maxArmy'.slice(1).padStart(6),
+      '  p50',
+      '  p95',
+      '  p99',
+    ].join(' '),
+  );
+}
+
+function report(rs: GameResult[], o: Options): void {
+  console.log('\nPer configuration (a/r = armor/artillery % of all armies; mixW = winners with >= 15% armor or');
+  console.log('artillery, # = distinct mixes; ld8W / ld15W = leader at 8 / 15 min won; atom and invade: count/games;');
+  console.log('t1atm = median minute of the first atom bomb; tFiss = median minute the first nation had Nuclear Fission;');
+  console.log('idl/hld = nation samples with troops >= 90% of the cap and no attack of their own, not attacked / attacked;');
+  console.log('maxArmy = median over games of the biggest nation army; p50 / p95 / p99 ms per tick)\n');
+  header();
+  for (const size of o.sizes) {
+    for (const ais of aisFor(o, size)) {
+      summary(`${size} ${ais} AIs`, rs.filter((r) => r.job.size === size && r.job.ais === ais));
+    }
+  }
+  console.log('');
+  for (const map of o.maps) summary(`map ${map}`, rs.filter((r) => r.job.map === map));
+  console.log('');
+  summary('all', rs);
+
+  // Winners' mixes.
+  const won = rs.filter((r) => r.winner > 0);
+  const labels = new Map<string, number>();
+  for (const r of won) labels.set(mixLabel(r.winnerMix), (labels.get(mixLabel(r.winnerMix)) ?? 0) + 1);
+  console.log(`\nWinner troop mixes (types >= 15% of the army, second half of the game): ${[...labels].map(([k, v]) => `${k} ${v}`).join(', ') || '-'}`);
+  const reasons = new Map<string, number>();
+  for (const r of won) {
+    const k = r.winReason.includes('land') ? 'land share' : r.winReason || '?';
+    reasons.set(k, (reasons.get(k) ?? 0) + 1);
+  }
+  console.log(`Win reasons: ${[...reasons].map(([k, v]) => `${k} ${v}`).join(', ') || '-'}`);
+
+  // Buildings.
+  console.log('\nBuildings started (total over all games / games with at least one):');
+  const line: string[] = [];
+  for (const t of BUILDING_ORDER) {
+    const total = rs.reduce((s, r) => s + (r.buildings[t] ?? 0), 0);
+    const g = rs.filter((r) => (r.buildings[t] ?? 0) > 0).length;
+    line.push(`${t} ${total}/${g}`);
+  }
+  console.log('  ' + line.join(', '));
+  console.log('Standing at the end (sites / mean level / highest level), summed over games:');
+  const end: string[] = [];
+  for (const t of BUILDING_ORDER) {
+    let sites = 0;
+    let levels = 0;
+    let top = 0;
+    for (const r of rs) {
+      const e = r.endBuildings?.[t];
+      if (!e) continue;
+      sites += e[0];
+      levels += e[1];
+      top = Math.max(top, e[2]);
+    }
+    end.push(`${t} ${sites}/${sites ? (levels / sites).toFixed(1) : '-'}/${top}`);
+  }
+  console.log('  ' + end.join(', '));
+  const nationGames = rs.reduce((s, r) => s + r.nations, 0);
+  const allSites = rs.reduce((s, r) => s + Object.values(r.endBuildings ?? {}).reduce((q, e) => q + (e ? e[0] : 0), 0), 0);
+  console.log(`  ${f1(allSites / Math.max(1, rs.length))} buildings per game at the end, ${f1(allSites / Math.max(1, nationGames))} per nation (incl. dead ones)`);
+
+  // Special abilities and interceptions.
+  const tot = (f: (r: GameResult) => number): number => rs.reduce((s, r) => s + (f(r) || 0), 0);
+  console.log(`\nParadrops: ${tot((r) => r.paradrops)} (${tot((r) => r.paradropsShot)} shot down, ${tot((r) => r.paradropsLanded)} landed on nations) in ${rs.filter((r) => r.paradrops > 0).length} games.`);
+  console.log(`Barrages: ${tot((r) => r.barrages)} (${tot((r) => r.barragesSilencing)} silenced forts / SAMs) in ${rs.filter((r) => r.barrages > 0).length} games.`);
+  console.log(`Shot down: ${tot((r) => r.bombersShot)} of ${tot((r) => r.bombers)} bombers, ${tot((r) => r.missilesShot)} of ${tot((r) => r.rockets + r.atomBombs)} missiles.`);
+  const wonGames = rs.filter((r) => r.winner > 0);
+  if (wonGames.length) {
+    const wd = wonGames.reduce((s, r) => s + r.winnerParadrops, 0) / wonGames.length;
+    const md = wonGames.reduce((s, r) => s + r.meanParadrops, 0) / wonGames.length;
+    const wb = wonGames.reduce((s, r) => s + r.winnerBarrages, 0) / wonGames.length;
+    const mb = wonGames.reduce((s, r) => s + r.meanBarrages, 0) / wonGames.length;
+    console.log(`Winners used ${f1(wd)} paradrops (nation mean ${f1(md)}) and ${f1(wb)} barrages (nation mean ${f1(mb)}) per game.`);
+  }
+
+  // Eliminations over time.
+  const bins = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+  const hist = (vals: number[]): string =>
+    bins.map((b, k) => vals.filter((v) => v >= (k ? bins[k - 1] : 0) && v < b).length).join(' / ');
+  const nationTotal = rs.reduce((s, r) => s + r.nations, 0);
+  const tribeTotal = rs.reduce((s, r) => s + r.tribes, 0);
+  console.log(`\nEliminations per 5-minute bin (0-5 / 5-10 / ... / 50-55 min):`);
+  console.log(`  nations (${nationTotal} total): ${hist(rs.flatMap((r) => r.nationElims))}`);
+  console.log(`  tribes  (${tribeTotal} total): ${hist(rs.flatMap((r) => r.tribeElims))}`);
+  console.log(`\nNaval: ${rs.reduce((s, r) => s + r.invasions, 0)} invasions, ${rs.reduce((s, r) => s + r.landings, 0)} landings on neutral coasts, ${rs.reduce((s, r) => s + r.warships, 0)} warships.`);
+  const atomMins = rs.filter((r) => r.firstAtomMinute >= 0).map((r) => r.firstAtomMinute.toFixed(1));
+  console.log(`Atom bombs: ${rs.reduce((s, r) => s + r.atomBombs, 0)} in ${atomMins.length} games, first at minute ${atomMins.join(', ') || '-'}.`);
+  const p99s = rs.map((r) => r.tickP99);
+  console.log(`Tick time: median p50 ${f1(median(rs.map((r) => r.tickP50)))} ms, median p95 ${f1(median(rs.map((r) => r.tickP95)))} ms, median p99 ${f1(median(p99s))} ms, worst p99 ${f1(Math.max(...p99s))} ms, worst tick ${f1(Math.max(...rs.map((r) => r.tickMax)))} ms.`);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Main: in-process or sharded over worker processes
+// ---------------------------------------------------------------------------------------------------------------
+
+async function runShards(o: Options, argv: string[]): Promise<GameResult[]> {
+  // Dynamic import keeps the module graph free of Node types (the sim and client never load this file).
+  const cp = (await import('node:child_process')) as unknown as {
+    spawn(cmd: string, args: string[], opts: object): {
+      stdout: { on(ev: 'data', f: (b: unknown) => void): void };
+      stderr: { on(ev: 'data', f: (b: unknown) => void): void };
+      on(ev: 'close', f: (code: number) => void): void;
+    };
+  };
+  const rest = argv.filter((a) => a !== '--');
+  const out: GameResult[] = [];
+  await Promise.all(
+    Array.from({ length: o.jobs }, (_, s) =>
+      new Promise<void>((resolve, reject) => {
+        const child = cp.spawn('node_modules/.bin/vite-node', ['scripts/batch.ts', '--', ...rest, '--shard', `${s}/${o.jobs}`], { stdio: ['ignore', 'pipe', 'pipe'] });
+        let buf = '';
+        child.stdout.on('data', (b) => {
+          buf += String(b);
+          let nl: number;
+          while ((nl = buf.indexOf('\n')) >= 0) {
+            const lineText = buf.slice(0, nl);
+            buf = buf.slice(nl + 1);
+            if (!lineText.startsWith('{')) continue;
+            const r = JSON.parse(lineText) as GameResult;
+            out.push(r);
+            progress(r, o);
+          }
+        });
+        child.stderr.on('data', (b) => process.stdout.write(String(b)));
+        child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`shard ${s} exited with ${code}`))));
+      }),
+    ),
+  );
+  return out.sort((a, b) => a.job.index - b.job.index);
+}
+
+function progress(r: GameResult, o: Options): void {
+  const j = r.job;
+  const w = r.winner ? `winner ${r.winner} at ${r.winMinute.toFixed(1)} (${r.winReason})` : `no winner after ${r.minutes.toFixed(1)}`;
+  console.log(`#${j.index} ${j.size} ${j.ais} AIs ${j.map} seed ${j.seed}: ${w}, biggest army ${fmtArmy(r.maxArmy)}, p50/p95/p99 ${r.tickP50.toFixed(1)}/${r.tickP95.toFixed(1)}/${r.tickP99.toFixed(1)} ms`);
+  if (o.json) console.log('JSON ' + JSON.stringify(r));
+}
+
+async function main(): Promise<void> {
+  const argv = process.argv.slice(2);
+  const o = parseOptions(argv);
+  const jobs = jobList(o);
+  if (o.shard >= 0) {
+    for (const j of jobs) if (j.index % o.of === o.shard) process.stdout.write(JSON.stringify(runGame(j, o)) + '\n');
+    return;
+  }
+  console.log(`Borderfall batch: ${jobs.length} games (${o.sizes.join(',')} x ${o.ais.length ? o.ais.join(',') : 'default'} AIs x ${o.seeds} seeds from ${o.start}, maps ${o.maps.join(',')}), cap ${o.minutes} min, ${o.difficulty}, ${o.jobs} job(s).`);
+  const t0 = performance.now();
+  let results: GameResult[];
+  if (o.jobs <= 1) {
+    results = [];
+    for (const j of jobs) {
+      const r = runGame(j, o);
+      results.push(r);
+      progress(r, o);
+    }
+  } else results = await runShards(o, argv);
+  report(results, o);
+  console.log(`\nDone in ${((performance.now() - t0) / 1000).toFixed(0)} s.`);
+}
+
+void main();

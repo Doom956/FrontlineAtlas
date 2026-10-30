@@ -1,10 +1,13 @@
 // One simulation tick (100 ms of game time). Fixed system order for determinism.
+import { updateAdvisor } from './advisor';
 import { aiSpawn, updateAI } from './ai';
 import { updateBuildings } from './buildings';
+import { updateBarrages } from './barrage';
 import { updateAttacks, updateSupply } from './combat';
 import { MAX_EVENTS, TICKS_PER_SECOND, TICK_SECONDS } from './config';
 import { updateDiplomacy } from './diplomacy';
 import { updateEconomy } from './economy';
+import { updateEndgame } from './endgame';
 import { addEvent, autoSpawnRemaining, pruneEliminated } from './state';
 import { updateResearch } from './tech';
 import { updateUnits } from './units';
@@ -24,6 +27,7 @@ export function tick(state: GameState): void {
       state.spawnLeft = 0;
       autoSpawnRemaining(state);
       state.phase = 'playing';
+      state.playStartTick = state.tick;
       addEvent(state, 'info', 'The war begins!', [], -1);
     }
   } else {
@@ -32,11 +36,14 @@ export function tick(state: GameState): void {
     updateBuildings(state);
     updateSupply(state);
     updateAttacks(state);
+    updateEndgame(state);
     pruneEliminated(state);
     updateUnits(state);
+    updateBarrages(state);
     pruneEliminated(state);
     updateDiplomacy(state);
     updateAI(state);
+    updateAdvisor(state);
     updateVictory(state);
   }
 

@@ -5,9 +5,12 @@ import {
   AIRCRAFT_MAX_PER_AIRFIELD,
   BOMBER_MIN_KILL,
   FALLOUT_SECONDS,
+  FIGHTER_COOLDOWN,
   NUKE_OPINION_PENALTY,
   PORT_TRANSPORT_SPEED,
+  START_TROOPS,
   ROCKET_KILL_MIN,
+  SAM_COOLDOWN,
   SILO_COOLDOWN,
   TRADE_GOLD_PER_TILE,
   TRANSPORT_MAX_AT_SEA,
@@ -58,7 +61,7 @@ function seaGame(players = 2, opts: { human?: boolean; seed?: number } = {}): Ga
 /** Places a finished building directly (no cost, spacing or tech checks). */
 function addBuilding(s: GameState, type: BuildingType, owner: number, tile: number): Building {
   const id = newId(s);
-  const b: Building = { id, type, owner, tile, level: 1, buildLeft: 0, fighters: 0, bombers: 0, cooldown: 0, hp: 1 };
+  const b: Building = { id, type, owner, tile, level: 1, buildLeft: 0, upgradeLeft: 0, fighters: 0, bombers: 0, cooldown: 0, dropCooldown: 0, disabledUntil: 0, hp: 1 };
   s.buildings.set(id, b);
   s.map.building[tile] = id + 1;
   markBuildingsChanged(s);
@@ -83,11 +86,12 @@ const unitsOf = (s: GameState, type: Unit['type']): Unit[] => s.units.filter((u)
 describe('transports', () => {
   it('sails a water path and lands as an amphibious attack', () => {
     const s = seaGame();
+    s.players[2].troops = inf(1000); // a thin coast guard
     const p1 = s.players[1];
     const landing = at(s, 50, 15);
     const res = launchTransport(s, 1, -1, landing, inf(1000));
     expect(res.ok).toBe(true);
-    expect(p1.troops.infantry).toBe(3000 - 1000);
+    expect(p1.troops.infantry).toBe(START_TROOPS - 1000);
     expect(p1.gold).toBe(100000 - UNITS.transport.gold);
     const [u] = unitsOf(s, 'transport');
     // Picked the own coast tile closest by water: straight across on row 15.
@@ -145,7 +149,7 @@ describe('transports', () => {
     launchTransport(s, 1, -1, landing, inf(1000));
     s.map.owner[landing] = 1; // pretend another attack took it (direct write keeps the test small)
     runUntil(s, () => s.units.length === 0);
-    expect(s.players[1].troops.infantry).toBe(3000);
+    expect(s.players[1].troops.infantry).toBe(START_TROOPS);
     expect(s.attacks.length).toBe(0);
   });
 });
@@ -334,42 +338,47 @@ describe('aircraft', () => {
     expect(s.events.some((e) => e.kind === 'bombing' && e.players.includes(2))).toBe(true);
   });
 
-  it('a SAM can shoot a bomber down (and reloads)', () => {
+  it('a SAM shoots a bomber down without any luck involved (and reloads)', () => {
     const { s, airfield } = airGame();
     giveTech(s, 2, 'flight', 'radar');
     const sam = addBuilding(s, 'sam', 2, at(s, 52, 15));
     const farm = addBuilding(s, 'farm', 2, at(s, 55, 15));
-    s.rng = () => 0; // the SAM hits
+    s.rng = () => 0.999; // would have been a miss with hit chances
     launchBomber(s, 1, airfield.tile, farm.tile);
     runUntil(s, () => s.units.length === 0);
     expect(s.buildings.has(farm.id)).toBe(true);
     expect(airfield.bombers).toBe(0);
     expect(sam.cooldown).toBeGreaterThan(0);
+    expect(sam.cooldown).toBeLessThanOrEqual(SAM_COOLDOWN);
     expect(s.events.some((e) => e.kind === 'unitLost' && e.players.includes(1) && e.players.includes(2))).toBe(true);
   });
 
-  it('a bomber that is not hit survives a SAM and comes home', () => {
+  it('a reloading SAM lets a bomber through; it comes home', () => {
     const { s, airfield } = airGame();
-    addBuilding(s, 'sam', 2, at(s, 52, 15));
+    const sam = addBuilding(s, 'sam', 2, at(s, 52, 15));
+    sam.cooldown = 1000; // busy for the whole flight
     const farm = addBuilding(s, 'farm', 2, at(s, 55, 15));
-    s.rng = () => 0.99; // SAM misses, bombs miss
+    s.rng = () => 0.99; // bombs miss
     launchBomber(s, 1, airfield.tile, farm.tile);
     runUntil(s, () => s.units.length === 0);
     expect(s.buildings.has(farm.id)).toBe(true);
     expect(airfield.bombers).toBe(1);
   });
 
-  it('fighters intercept: more fighters, better odds', () => {
-    for (const [fighters, shot] of [[1, false], [2, true]] as const) {
+  it('fighters intercept for sure, then need FIGHTER_COOLDOWN / fighters to be ready again', () => {
+    for (const fighters of [1, 3]) {
       const { s, airfield } = airGame();
       const enemyField = addBuilding(s, 'airfield', 2, at(s, 55, 5));
       enemyField.fighters = fighters;
       const farm = addBuilding(s, 'farm', 2, at(s, 55, 15));
-      s.rng = () => 0.7; // 1 fighter: 50% (miss); 2 fighters: 75% (hit); bombs miss either way
+      s.rng = () => 0.999;
       launchBomber(s, 1, airfield.tile, farm.tile);
       runUntil(s, () => s.units.length === 0);
-      expect(airfield.bombers).toBe(shot ? 0 : 1);
+      expect(airfield.bombers).toBe(0);
+      expect(s.buildings.has(farm.id)).toBe(true);
       expect(enemyField.fighters).toBe(fighters); // fighters are not used up
+      expect(enemyField.cooldown).toBeGreaterThan(0);
+      expect(enemyField.cooldown).toBeLessThanOrEqual(FIGHTER_COOLDOWN / fighters);
     }
   });
 
@@ -425,15 +434,29 @@ describe('missiles', () => {
     expect(launchMissile(s, 1, silo.tile, 'rocket', at(s, 55, 15)).ok).toBe(true);
   });
 
-  it('a SAM can intercept a rocket', () => {
+  it('a SAM always intercepts a rocket', () => {
     const { s, silo } = siloGame();
     giveTech(s, 1, 'rocketry');
     addBuilding(s, 'sam', 2, at(s, 52, 15));
     const farm = addBuilding(s, 'farm', 2, at(s, 55, 15));
-    s.rng = () => 0;
+    s.rng = () => 0.999;
     launchMissile(s, 1, silo.tile, 'rocket', farm.tile);
     runUntil(s, () => s.units.length === 0);
     expect(s.buildings.has(farm.id)).toBe(true);
+  });
+
+  it('an atom bomb needs two SAM hits: one SAM is not enough, two are', () => {
+    for (const sams of [1, 2]) {
+      const { s, silo } = siloGame();
+      giveTech(s, 1, 'rocketry', 'nuclearFission');
+      addBuilding(s, 'sam', 2, at(s, 52, 10));
+      if (sams === 2) addBuilding(s, 'sam', 2, at(s, 52, 22));
+      const farm = addBuilding(s, 'farm', 2, at(s, 55, 15));
+      expect(launchMissile(s, 1, silo.tile, 'atomBomb', farm.tile).ok).toBe(true);
+      runUntil(s, () => s.units.length === 0);
+      expect(s.buildings.has(farm.id)).toBe(sams === 2);
+      expect(s.events.some((e) => e.kind === 'nuke')).toBe(sams === 1);
+    }
   });
 
   it('atom bomb: wipes buildings, kills most of the army there, neutral core with fallout, opinions drop', () => {
