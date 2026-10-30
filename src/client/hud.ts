@@ -50,7 +50,7 @@ import { button, howToPlayContent } from './menu';
 import { RadialMenu } from './radial';
 import type { RadialSpec } from './radial';
 import { addFloater } from './uiState';
-import { allyEventKind, isCoalitionEvent } from './allies';
+import { allyEventKind, coalitionLeader } from './allies';
 import { swatchCss } from './hud/swatch';
 import { instruction, strikeToastText, type StrikeId } from './strikes';
 import type { Dispatch, UiState } from './uiState';
@@ -146,6 +146,7 @@ export class Hud {
   private lastToast: UiState['toast'] = null;
   /** own bombers already announced ("Bomber on its way"); null until the first look (no toasts for old ones) */
   private seenBombers: Set<number> | null = null;
+  private coalitionSeen = 0;
 
   constructor(
     public root: HTMLElement,
@@ -371,6 +372,7 @@ export class Hud {
       this.advisor.toastUp = this.toasts.count > 0;
       if (!watching) this.advisor.update(state, me, this.bar.strikes);
       if (!watching) this.announceBombers(state, me);
+      if (!watching) this.announceCoalition(state, me);
       this.toasts.update();
       if (!watching) this.tooltip.update(state, me, true);
       this.updateSpawn(state, me);
@@ -732,8 +734,7 @@ export class Hud {
   }
 
   /**
-   * Ally news (joined your war, sent troops, said no) with the ally's colour, and coalitions against the leader (a
-   * warning when the leader is you). True when handled.
+   * Ally news (joined your war, sent troops, said no) with the ally's colour. True when handled.
    */
   private allyToast(state: GameState, me: Player, e: GameEvent, go: (() => void) | undefined): boolean {
     const ak = allyEventKind(e);
@@ -758,22 +759,27 @@ export class Hud {
       this.toasts.show({ text: e.message, kind: 'info', icon: 'diplomacy', swatch: from ? swatchCss(from, me.id) : undefined, ms: 7000, key: `allyask:${from?.id ?? 0}`, onClick: go });
       return true;
     }
-    if (!isCoalitionEvent(e)) return false;
-    // the leader: named after "against", else the first player of the event
-    let leader: Player | undefined;
-    for (const p of state.players) if (p && p.id > 0 && e.message.includes(`against ${p.name}`) && (!leader || p.name.length > leader.name.length)) leader = p;
-    leader ??= state.players[e.players[0]];
-    const mine = leader?.id === me.id;
+    return false;
+  }
+
+  /** The sim has no coalition event: say so when a runaway leader appears (a warning when it is you). */
+  private announceCoalition(state: GameState, me: Player): void {
+    const leaderId = coalitionLeader(state);
+    const prev = this.coalitionSeen;
+    this.coalitionSeen = leaderId;
+    if (!leaderId || leaderId === prev) return;
+    const leader = state.players[leaderId];
+    if (!leader) return;
+    const mine = leaderId === me.id;
     this.toasts.show({
-      text: mine ? e.message.replace(`against ${me.name}`, 'against you') : e.message,
+      text: mine ? 'Nations are forming a coalition against you. Expect attacks from several sides.' : `Nations are forming a coalition against ${leader.name}.`,
       kind: mine ? 'bad' : 'info',
       icon: 'shield',
-      swatch: leader ? swatchCss(leader, me.id) : undefined,
+      swatch: swatchCss(leader, me.id),
       ms: mine ? 9000 : 5000,
-      key: `coalition:${leader?.id ?? 0}`,
-      onClick: go,
+      key: `coalition:${leaderId}`,
+      onClick: leader.capital >= 0 ? () => this.focusTile(leader.capital, true) : undefined,
     });
-    return true;
   }
 
   /** A bombing run has no launch event: say that the bomber took off (the report follows when the bombs fall). */

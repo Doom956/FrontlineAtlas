@@ -1,7 +1,7 @@
 // Client view of heartland defence, last stand, the force limit, coalitions and asking allies for help.
 // Everything the HUD needs from those sim rules goes through this file, so the rest of the client has one place to
 // read them from (and to send the two ally requests).
-import { allyRefusal, allyStatus } from '../sim/allies';
+import { allyRefusal, allyStatus, runawayLeader } from '../sim/allies';
 import { coreDefenseAt, lastStandFactor } from '../sim/combat';
 import { FORCE_LIMIT_ODDS, TICKS_PER_SECOND } from '../sim/config';
 import { areAllied } from '../sim/diplomacy';
@@ -9,11 +9,9 @@ import { isTribe } from '../sim/types';
 import type { Action, GameEvent, GameState } from '../sim/types';
 
 
-/** A multiplier (1.35) or a fraction (0.35) as a bonus fraction (0.35); 0 when there is none. */
-function asBonus(v: unknown): number {
-  if (typeof v !== 'number' || !Number.isFinite(v)) return 0;
-  const b = v >= 1 ? v - 1 : v;
-  return b > 0.005 ? b : 0;
+/** A defence multiplier (1.35, never below 1) as a bonus fraction (0.35); 0 when there is none. */
+function asBonus(v: number): number {
+  return v > 1.005 ? v - 1 : 0;
 }
 
 /** Heartland defence bonus of a land tile for its owner, as a fraction (0.35 = +35%). combat.coreDefenseAt */
@@ -128,8 +126,7 @@ export function allyEventKind(e: GameEvent): AllyEventKind | null {
   const k = e.kind;
   return k === 'allyJoined' || k === 'allyAid' || k === 'allyRefused' ? k : null;
 }
-/** A coalition forming (or growing) against the leading nation: a coalition* event, or news that says so. */
-export function isCoalitionEvent(e: GameEvent): boolean {
-  const k: string = e.kind;
-  return /^coalition/i.test(k) || (k === 'info' && /^coalition\b/i.test(e.message));
+/** The runaway leader the coalition forms against (sim allies.runawayLeader); 0 = none. */
+export function coalitionLeader(state: GameState): number {
+  return runawayLeader(state);
 }
