@@ -15,6 +15,9 @@
 //   --difficulty normal          easy | normal | hard | brutal
 //   --jobs 4                     parallel worker processes (1 = in this process; use 1 for tick timings)
 //   --json                       also print one JSON line per game
+//   --doctrines ai               ai = the AIs choose (default); random = every nation gets a random doctrine at the
+//                                unlock (a fair test of each doctrine's strength: no personality bias); off = no
+//                                doctrine bonus ever applies (baseline)
 //
 // What it prints, per configuration and over all games: share of games with a winner and the median minute of the
 // win, army mix (armor / artillery share of all nations' armies) at 10/20/30 min, the troop mixes winners used,
@@ -30,6 +33,8 @@ import { armyTotal, population } from '../src/sim/economy';
 import { fortMultiplierAt, fortRadius } from '../src/sim/buildings';
 import { forEachInRadius } from '../src/sim/grid';
 import { tick } from '../src/sim/sim';
+import { applyAction } from '../src/sim/actions';
+import { doctrineUnlockTick } from '../src/sim/doctrines';
 import { createGame, gameSeconds } from '../src/sim/state';
 import { DOCTRINE_IDS, isTribe } from '../src/sim/types';
 import { cloneSetup, DEFAULT_MODIFIERS, DEFAULT_SETUP, SINGLE_PLAYER_NATIONS } from '../src/sim/setup';
@@ -56,6 +61,7 @@ interface Options {
   difficulty: Difficulty;
   jobs: number;
   json: boolean;
+  doctrines: 'ai' | 'random' | 'off';
   /** worker mode: run only jobs with index % of === shard and print JSON lines */
   shard: number;
   of: number;
@@ -75,6 +81,7 @@ function parseOptions(argv: string[]): Options {
     difficulty: 'normal',
     jobs: 4,
     json: false,
+    doctrines: 'ai',
     shard: -1,
     of: 1,
   };
@@ -102,6 +109,7 @@ function parseOptions(argv: string[]): Options {
       case '--difficulty': o.difficulty = v as Difficulty; k++; break;
       case '--jobs': o.jobs = Math.max(1, Number(v) || 1); k++; break;
       case '--json': o.json = true; break;
+      case '--doctrines': o.doctrines = v as Options['doctrines']; k++; break;
       case '--shard': {
         const [s, of] = (v ?? '0/1').split('/').map(Number);
         o.shard = s;
@@ -343,10 +351,21 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
   const tickMs: number[] = [];
   const cap = Math.round(o.minutes * 60 * TICKS_PER_SECOND);
   const sampleEvery = 10 * TICKS_PER_SECOND;
+  // --doctrines random: a seeded pick per nation (script-side RNG, not the game's), applied at the unlock.
+  let pickSeed = (job.seed * 2654435761) >>> 0;
+  const nextPick = (): DoctrineId => {
+    pickSeed = (Math.imul(pickSeed ^ (pickSeed >>> 15), 2246822519) + 0x9e3779b9) >>> 0;
+    return DOCTRINE_IDS[pickSeed % DOCTRINE_IDS.length];
+  };
   for (let k = 0; k < cap && state.phase === 'playing'; k++) {
+    if (o.doctrines === 'random' && state.tick === doctrineUnlockTick(state)) {
+      for (const p of state.players) if (p.id && p.alive && !isTribe(p)) applyAction(state, p.id, { type: 'chooseDoctrine', doctrine: nextPick() });
+    }
     const t0 = performance.now();
     tick(state);
     tickMs.push(performance.now() - t0);
+    // --doctrines off: every doctrine stays 'adapting' (no bonus), so the AIs play as before doctrines existed.
+    if (o.doctrines === 'off') for (const p of state.players) if (p.doctrine?.id) p.doctrine.adaptUntilTick = 0x7fffffff;
     for (const e of state.events) {
       if (e.kind === 'victory') r.winReason = e.message.replace(/^.* wins: /, '');
       else if (e.kind === 'paradrop' && / landed in /.test(e.message)) r.paradropsLanded++;
@@ -799,8 +818,14 @@ function doctrineReport(rs: GameResult[]): void {
     console.log(`  ${k.padEnd(10)} ${String(n).padStart(6)} ${pct(n, nations).padStart(6)} ${String(w).padStart(6)} ${pct(w, decided).padStart(5)}   ${f1(ratio).padStart(5)}${flag}`);
   }
   console.log(`  ${switched} nations switched (${switchCount} switches, ${f1(switchCount / Math.max(1, nations))} per nation)`);
+  const persWins = new Map<string, number>();
+  for (const r of rs) {
+    const d = r.doctrines.find((x) => x.id === r.topNation);
+    if (d) persWins.set(d.personality, (persWins.get(d.personality) ?? 0) + 1);
+  }
   for (const [pers, m] of byPers) {
-    console.log(`  ${pers.padEnd(9)} ${[...m].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ')}`);
+    const n = [...m.values()].reduce((a, b) => a + b, 0);
+    console.log(`  ${pers.padEnd(9)} won ${persWins.get(pers) ?? 0} of ${n} nations; held: ${[...m].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ')}`);
   }
 }
 

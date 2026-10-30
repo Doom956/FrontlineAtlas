@@ -34,6 +34,9 @@ Strategy comes from many decisions that matter:
   inside (capitals, pockets, a second front). SAMs and fighters can shoot the cargo plane down.
 - **Artillery barrages.** With enough artillery you shell enemy land near your border: troops die, forts and SAM
   sites there are silenced for 20 seconds, and the front stays where it is.
+- **Doctrines.** From 5:00 you pick one of seven doctrines (Blitz, Fortress, Siege, Merchant, Naval, Air,
+  Expansion) that makes one style moderately better and grows over 14 minutes; nothing is ever forbidden, and you
+  can switch later for gold and a short adaptation. The game suggests three that fit your borders and economy.
 - **Army sizes are public**; a watchtower nearby (or an alliance) also shows an enemy's troop mix.
 - **Diplomacy.** Alliances, gifts, embargoes, and a traitor penalty for breaking an alliance.
 - **AI nations** with personalities (Warlord, Turtle, Merchant, Admiral, Balanced) on three difficulty levels (8 by
@@ -192,6 +195,8 @@ npm run profile -- --size huge --ai 50 --tribes 300 --minutes 20
 # Many AI-only games in parallel: winners and game length, army mixes, buildings, snowball, navy and air, ms/tick.
 # --sizes also takes real-world maps (world:europe), --mods sets modifiers (fastGame,peaceMinutes=4,noNukes)
 npx vite-node scripts/batch.ts -- --sizes medium,large,world:world --seeds 8 --jobs 4
+# Doctrine balance: picks, switches and win share per doctrine (--doctrines random = a random doctrine per nation)
+npx vite-node scripts/batch.ts -- --sizes medium,world:world --seeds 16 --minutes 45 --doctrines random
 ```
 
 ## Project structure
@@ -217,6 +222,7 @@ src/sim/              deterministic simulation: no DOM, no Math.random (seeded R
   endgame.ts          enclave annexation
   advisor.ts          army mix and research advice (AI and players on auto), plain-language hints (suggestions)
   barrage.ts          artillery barrages (telegraphed shelling, silences forts and SAMs)
+  doctrines.ts        mid-game doctrines: unlock, choose / switch, levels, bonus lookups, advice
   fmath.ts            deterministic exp / log / pow (bit-identical in every browser)
   hash.ts             state hash for desync detection
   units.ts            transports, warships, trade ships, bombers, fighters, rockets, atom bombs, paratroopers

@@ -692,3 +692,64 @@ shades of their team's colour). `sameTeam` makes
 `areAllied` true, so every "not an ally" rule applies; `breakAlliance` and `requestAlliance` between teammates are
 refused. Victory: section 9.
 
+
+## 13. Doctrines
+
+A doctrine is a mid-game specialisation (`src/sim/doctrines.ts`, numbers in config `DOCTRINE_*`). Principles agreed
+with the owner, so doctrines never make play linear:
+
+- **Bonus only.** Every unit, building and strike stays open to everyone. A doctrine raises a few levers of one style
+  (`DOCTRINE_LEVERS`, the full bonus as a fraction: about +25% / -25%) and forbids nothing.
+- **Chosen mid-game.** Doctrines unlock `DOCTRINE_UNLOCK_SECONDS` (5:00) of game time after the start of play, so the
+  choice answers the map, the neighbours and the economy (`recommendDoctrines` names the 3 that fit, with a plain
+  reason). Tribes never get one.
+- **Switchable.** The first choice is free and works at once. A switch costs `doctrineSwitchCost` gold (at least
+  `DOCTRINE_SWITCH_GOLD`, or `DOCTRINE_SWITCH_INCOME_SECONDS` of gold income when that is more: about a quarter of a
+  typical 10-minute gold stock), gives no doctrine bonus for `DOCTRINE_ADAPT_SECONDS` (45 s), and two choices are at
+  least `DOCTRINE_SWITCH_COOLDOWN` (120 s) apart.
+- **Grows.** Levels 1 / 2 / 3 at 0 / 6 / 14 minutes of holding the same doctrine (`DOCTRINE_LEVEL_SECONDS`; a switch
+  starts again at level 1). Level 1 gives `DOCTRINE_LEVEL_STRENGTH[1]` (60%) of each lever, level 2 all of it, level 3
+  adds one small signature perk (`DOCTRINE_PERKS`).
+
+Every doctrine timer counts game time and runs twice as fast in a fast game (`rules.progressRate`, like construction
+and research): the unlock is at 2:30 there.
+
+| Doctrine | Levers (full bonus) | Level 3 perk |
+| --- | --- | --- |
+| Blitz | fronts cross plains and desert tiles +25% faster; armor conversion -25% gold and iron | armor ignores half of its terrain attack penalty |
+| Fortress | the defence a fort adds +25%; forts -25% gold and iron; home troops lost when a tile falls -20% | forts build and upgrade 4x faster, repair shell damage 3x faster |
+| Siege | artillery attack +20%; artillery's extra siege bonus +25%; barrage reload -25% | barrage disc +1 tile; forts and SAMs silenced 1.5x longer |
+| Merchant | gold income +15%; trade gold received +25%; market bonus (and its cap) +25% | +1.5% gold per own trade ship at sea (up to 10) |
+| Naval | warships -25% price, +20% speed; transports +25% speed and +1 hp (twice as hard to sink) | warships repair at sea (0.05 hp/s); coastal shelling x1.5 |
+| Air | bombers, fighters and paradrop planes -25% price; fighter and paradrop cooldowns -25%; paradrop range +25% | bombers survive one extra hit (SAM shot or fighters) |
+| Expansion | losses attacking tribes and wilderness -25%; troop growth +25% while small (full under 4% of the land, none from 10%) | a tribe you eliminate pays 15 s of your gold income + 0.2 gold per tile it held at its peak |
+
+Code contract:
+
+- State: `Player.doctrine` `{ id, level, chosenTick, adaptUntilTick, lastSwitchTick }` (hashed). Changed only by the
+  action `{ type: 'chooseDoctrine', doctrine }` (refusals: "Doctrines unlock at 5:00", "You can change doctrine
+  again in 1:23", "Not enough gold (N)", "X is already your doctrine", "Tribes have no doctrines") and by
+  `updateDoctrines` (levels), which runs first in each playing tick.
+- Lookups the systems use: `doctrineLever(state, pid, lever)` (the bonus fraction now: 0 without that doctrine or
+  while adapting), `doctrineMore` / `doctrineLess` (1 + / 1 - it), `doctrinePerk(state, pid, id)` (level 3 active).
+  Hooks: `combat.ts` (artillery attack, siege bonus, open-ground front speed, wilderness / tribe losses, defender
+  losses, armor terrain), `buildings.ts` (fort strength, price, build time, repair), `economy.ts` (gold, markets,
+  trade routes, armor conversion price, small-nation growth), `barrage.ts` (`barrageCooldown(p, state)`,
+  `barrageRadius`, `barrageDisableSeconds`; `Barrage.radius` is fixed when fired), `units.ts` (`unitCost`, warship
+  and transport speed, transport hp, warship repair, shelling, trade gold, `paradropRange(b, state)`, airfield
+  cooldowns, bomber hp), `state.ts` (the tribe bounty). Helpers that predate doctrines take `state` as an optional
+  last argument (`convertCost`, `barrageCooldown`, `paradropRange`): without it they give the base value.
+- Status for the UI: `doctrineUnlocked`, `doctrineActive`, `doctrineLevel`, `doctrineSwitchCost`,
+  `doctrineCooldownLeft`, `doctrineAdaptLeft`, `doctrineNextLevelIn`, `doctrineUnlockSeconds`, `recommendDoctrines`
+  (no RNG: safe to call from the client). Events: `doctrineUnlocked` (to the humans), `doctrineChosen` (to the
+  chooser; as news to humans who border it, are allied or have watchtower intel), `doctrineLevelUp` (to the holder).
+- AI (`ai.ts` `doctrine`): picks within 40 s of the unlock by `doctrineAdvice` (the same situation scores the UI
+  shows) x a personality taste (`DOCTRINE_TASTE`) x difficulty noise (`doctrineNoise`; Easy also picks at random
+  `doctrineRandom` of the time). It reviews once a minute and switches only after holding a doctrine 6 minutes, when
+  another one scores `DOCTRINE_SWITCH_MARGIN` (+0.25 per level it would lose) times better and it has twice the
+  price in gold (a new sea war raises Naval, enemy forts raise Siege, a bigger neighbour raises Fortress). It leans
+  into the held doctrine: build priorities (`DOCTRINE_BUILD`), army mix (`DOCTRINE_MIX`), a few more warships
+  (Naval) and an extra airfield (Air).
+- Balance: `scripts/batch.ts --doctrines ai|random|off` reports the doctrine each nation held longest, switches,
+  and win share against pick share per doctrine. `random` gives every nation a random doctrine at the unlock (a fair
+  strength test without personality bias), `off` keeps every bonus off (baseline).
