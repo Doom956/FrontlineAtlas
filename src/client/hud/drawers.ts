@@ -1,9 +1,11 @@
 // Side drawers (right edge, one at a time, closed by default): Army, Research, Diplomacy, Events, Map key,
 // the selected building and the menu (settings). Each has one big primary readout and plain-word rows.
+import { buildSeconds, researchRule, unitAllowed } from '../../sim/rules';
 import { aircraftCap, buildCostAt, buildingAt, chargesReady, canBuild, countBuildings, nextChargeIn } from '../../sim/buildings';
 import { attacksOf } from '../../sim/combat';
 import {
   BUILDINGS,
+  BUILDING_ORDER,
   MATCHUP,
   RESOURCE_NAMES,
   TECHS,
@@ -19,7 +21,8 @@ import { canResearch, hasTech } from '../../sim/tech';
 import { LAND_TERRAINS, Resource } from '../../sim/types';
 import type { Building, BuildingType, GameEvent, GameState, Player, TechId, TerrainId, Troops } from '../../sim/types';
 import { isTribe } from '../compat';
-import { markerDataUrl } from '../icons';
+import { CATEGORY_COLORS, ICON_INFO, markerDataUrl } from '../icons';
+import { CATEGORY_PLATES } from '../render/buildings';
 import { rgbCss } from '../menu';
 import { formatCount } from '../render/common';
 import { barrageRange, barrageStatus, fieldArmy, maxLevel, paradropReadyIn } from '../simx';
@@ -40,7 +43,7 @@ import {
   type HudCtx,
 } from './dom';
 import { iconSpan, lineIcon, worldGlyph } from './glyph';
-import { ABILITY_TEXT, article, BUILDING_SHORT, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect, terrainNote } from './text';
+import { ABILITY_TEXT, article, buildingTexts, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect, terrainNote } from './text';
 
 export const TROOP_COLORS = { infantry: '#9aa86a', armor: '#c9a227', artillery: '#c0564a' } as const;
 
@@ -274,7 +277,7 @@ export class ArmyPage implements DrawerPage {
           list.append(root);
         }
         const tp = s.players[a.target];
-        setText(r.target, a.target === 0 ? 'Wilderness' : tp?.name ?? '?');
+        setText(r.target, a.target === 0 ? 'Wilderness' : tp?.name ?? 'Unknown');
         r.target.style.setProperty('--c', a.target === 0 ? '#8d918a' : rgbCss(tp.color));
         setText(r.troops, `${formatCount(armyTotal(a.troops))} troops`);
         setText(r.prog, `+${formatCount(a.tilesTaken)} tiles, lost ${formatCount(a.losses)}`);
@@ -381,7 +384,9 @@ export class ResearchPage implements DrawerPage {
     autoSeg.el.dataset.test = 'auto-research';
     const note = el('p', 'note');
     this.root.append(big, bar, autoSeg.el, note);
-    this.upd.push((_s, me) => {
+    this.upd.push((s, me) => {
+      const rule = researchRule(s);
+      for (const x of [big, bar, autoSeg.el]) setVisible(x, !rule);
       const cur = me.researching ? TECHS[me.researching] : null;
       if (cur) {
         setText(bv, cur.name);
@@ -393,7 +398,7 @@ export class ResearchPage implements DrawerPage {
         fill.style.width = '0%';
       }
       autoSeg.set(!!me.auto.research);
-      setText(note, me.auto.research ? 'The next useful tech starts by itself. Picking one switches this to Manual.' : 'Pick a tech: it costs gold to start and science to finish.');
+      setText(note, rule ? `${rule}.` : me.auto.research ? 'The next useful tech starts by itself. Picking one switches this to Manual.' : 'Pick a tech: it costs gold to start and science to finish.');
     });
     const maxTier = Math.max(...TECH_ORDER.map((t) => TECHS[t].tier));
     for (let tier = 1; tier <= maxTier; tier++) {
@@ -436,6 +441,9 @@ export class ResearchPage implements DrawerPage {
       } else if (active) {
         cls = 'active';
         text = pct(me.researchProgress / info.science);
+      } else if (researchRule(s)) {
+        cls = 'locked';
+        text = 'Off';
       } else if (missing.length) {
         cls = 'locked';
         text = `After ${missing.map((r) => TECHS[r].name).join(' + ')}`;
@@ -648,10 +656,47 @@ export class LegendPage implements DrawerPage {
     mark('m-you', 'Your border', 'A white line around your land.');
     mark('m-ally', 'Ally border', 'Light dashed line: allies cannot attack each other.');
     mark('m-traitor', 'Traitor', 'Red border: they broke an alliance and defend worse for a while.');
-    mark('m-tribe', 'Tribes', 'Pale wash with small names: weak peoples, easy early land.');
+    mark('m-tribe', 'Tribes', 'Grey wash with an army number (the name when zoomed in): weak peoples, easy early land.');
     mark('m-fort', 'Fort cover', 'Hatched land: attackers there lose double and slow down.');
     mark('m-capital', 'Capital', 'Star: the heart of a nation. Taking it costs them gold.', worldGlyph('capital', 16));
     mark('m-front', 'Front', 'Yellow flashes are your gains, red flashes your losses.');
+
+    r.append(sectionTitle('Buildings'));
+    const cats = el('p', 'note');
+    cats.append('The plate colour says what a building does: ');
+    const catNames: [keyof typeof CATEGORY_COLORS, string][] = [
+      ['economy', 'economy'],
+      ['production', 'troops'],
+      ['defence', 'defence'],
+      ['logistics', 'logistics'],
+      ['advanced', 'air and missiles'],
+    ];
+    catNames.forEach(([c, label], k) => {
+      const dot = el('i', 'sw');
+      dot.style.background = CATEGORY_PLATES[c];
+      cats.append(dot, label + (k < catNames.length - 1 ? ', ' : '.'));
+    });
+    cats.append(' The frame is the owner\'s colour; zoom in close to see the names.');
+    r.append(cats);
+    for (const type of BUILDING_ORDER) {
+      const info = BUILDINGS[type];
+      const row = el('div', 'lg');
+      const sw = el('span', 'lg-sw plain');
+      const img = el('img');
+      img.alt = '';
+      img.width = img.height = 26;
+      try {
+        const cat = ICON_INFO[type].category;
+        img.src = markerDataUrl(type, 26, { plate: cat ? CATEGORY_PLATES[cat] : '#5d6573' });
+      } catch {
+        /* no canvas */
+      }
+      sw.append(img);
+      const txt = el('div', 'lg-t');
+      txt.append(el('b', '', `${info.name} (${info.hotkey})`), el('span', '', info.description));
+      row.append(sw, txt);
+      r.append(row);
+    }
 
     r.append(sectionTitle('Units'));
     const unit = (icon: string, title: string, text: string) => {
@@ -727,19 +772,21 @@ export class BuildingPage implements DrawerPage {
 
   private build(s: GameState, me: Player, b: Building, warships: number[]): void {
     const ctx = this.ctx;
+    const allowedNow = (kind: 'atomBomb' | 'warship'): boolean => unitAllowed(s, kind);
     const r = this.root;
     r.replaceChildren();
     this.upd = [];
     const info = BUILDINGS[b.type];
     const tile = b.tile;
     const lv = maxLevel(b.type);
+    const tx = buildingTexts(!unitAllowed(s, 'atomBomb'), b.type, info.description);
     this.title = info.name;
     const head = el('div', 'bhead');
     const ic = iconSpan(worldGlyph(b.type, 40), 'bhead-ic');
     const ht = el('div', 'bhead-t');
-    ht.append(el('span', 'big-v', info.name), el('span', 'big-l', lv > 1 ? `Level ${b.level} of ${lv}` : BUILDING_SHORT[b.type]));
+    ht.append(el('span', 'big-v', info.name), el('span', 'big-l', lv > 1 ? `Level ${b.level} of ${lv}` : tx.short));
     head.append(ic, ht);
-    r.append(head, el('p', 'desc', info.description));
+    r.append(head, el('p', 'desc', tx.description));
     const prog = el('div', 'pbar');
     const fill = el('span');
     prog.append(fill);
@@ -750,10 +797,10 @@ export class BuildingPage implements DrawerPage {
       const upgrading = bb.buildLeft <= 0 && bb.upgradeLeft > 0;
       setVisible(prog, building || upgrading);
       if (building) {
-        fill.style.width = pct(1 - bb.buildLeft / info.buildTime);
+        fill.style.width = pct(1 - bb.buildLeft / buildSeconds(_s, info.buildTime));
         setText(progText, `Being built: ${Math.ceil(bb.buildLeft)} s`);
       } else if (upgrading) {
-        fill.style.width = pct(1 - bb.upgradeLeft / info.buildTime);
+        fill.style.width = pct(1 - bb.upgradeLeft / buildSeconds(_s, info.buildTime));
         setText(progText, `Upgrading to level ${bb.level + 1}: ${Math.ceil(bb.upgradeLeft)} s`);
       } else setText(progText, bb.hp < 1 ? `Damaged: ${pct(bb.hp)}` : '');
     });
@@ -796,6 +843,7 @@ export class BuildingPage implements DrawerPage {
       actions.before(cd);
       this.upd.push((_s, _m, bb) => setText(cd, bb.buildLeft > 0 ? '' : chargesReady(bb) > 0 ? `${chargesReady(bb)} of ${Math.max(1, bb.level)} launches ready` : `Reloading: ${Math.ceil(nextChargeIn(bb))} s`));
       for (const kind of ['rocket', 'atomBomb'] as const) {
+        if (kind === 'atomBomb' && !allowedNow('atomBomb')) continue;
         const u = UNITS[kind];
         add(`${u.name} (${formatCount(u.gold)} gold)`, 'danger', kind === 'rocket' ? 'rocket' : 'atom', () => (ctx.ui.mode = { kind: 'missile', silo: tile, missile: kind }), (_ss, m, bb) =>
           u.tech && !hasTech(m, u.tech) ? `Research ${TECHS[u.tech].name} first` : bb.buildLeft > 0 ? 'Still being built' : chargesReady(bb) <= 0 ? 'Reloading' : m.gold < u.gold ? 'Not enough gold' : m.iron < u.iron ? 'Not enough iron' : m.oil < u.oil ? 'Not enough oil' : '',
@@ -804,7 +852,7 @@ export class BuildingPage implements DrawerPage {
     }
     if (b.type === 'port') {
       const u = UNITS.warship;
-      add(`Warship (${formatCount(u.gold)} gold)`, '', 'warship', () => ctx.act({ type: 'buildWarship', port: tile }), (_ss, m, bb) =>
+      if (allowedNow('warship')) add(`Warship (${formatCount(u.gold)} gold)`, '', 'warship', () => ctx.act({ type: 'buildWarship', port: tile }), (_ss, m, bb) =>
         !hasTech(m, 'navigation') ? 'Research Navigation first' : bb.buildLeft > 0 ? 'Still being built' : m.gold < u.gold ? 'Not enough gold' : m.iron < u.iron ? 'Not enough iron' : '',
       );
       add('Send a transport', '', 'transport', () => (ctx.ui.mode = { kind: 'transport', from: tile }), (_ss, _m, bb) => (bb.buildLeft > 0 ? 'Still being built' : ''));
@@ -996,7 +1044,7 @@ export function relationOf(s: GameState, me: Player, id: number): { text: string
   } else if (s.attacks.some((a) => (a.attacker === me.id && a.target === id) || (a.attacker === id && a.target === me.id))) {
     parts.push('At war');
     cls = 'war';
-  } else parts.push(isTribe(p) ? 'Tribe' : 'Neutral');
+  } else parts.push(isTribe(p) ? 'Tribe' : 'No treaty');
   if (isTraitor(s, id)) {
     parts.push('traitor');
     cls += ' traitor';

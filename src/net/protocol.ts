@@ -23,10 +23,15 @@
 // - Send `ping` every PING_INTERVAL_MS; the server closes connections silent for longer than IDLE_TIMEOUT_MS.
 // - Keep `clientId` (random, from makeClientId()) in localStorage: it is your seat. Reconnecting with the same
 //   clientId (a new socket + `hello`) puts you back in your lobby or game: the server answers `welcome {resumed}`
-//   and then `lobbyState`, or `gameStart` + `catchUp` (all turns since turn 0) for a running game.
+//   and then `lobbyState`, or `gameStart` + `catchUp` for a running game. Put the game you still hold in
+//   `hello.resume {code, haveTurns}` (haveTurns = the next turn number you need): the catch-up then starts there
+//   instead of at turn 0. A catch-up may come as several `catchUp` messages in a row (each starts where the previous
+//   ended); live `turn`s follow the last one. A game you left with `leaveLobby` is not resumed (rejoin by code).
 // - Game construction from `gameStart`: createGame-like, with every `playerSlots` entry a human, ids 1..H in that
 //   order (playerSlots[i].playerId === i + 1), then `settings.aiCount` AI nations (ids H+1 .. H+aiCount), then the
-//   tribes. `settings` is the full GameSettings (seed included); its playerName/playerColor equal playerSlots[0].
+//   tribes. `settings` is the full GameSettings (seed included): `settings.humans` lists the seats (name, colour,
+//   team) in player id order, so createGame(settings, map, { teams: teams.byPlayer }) builds the game; its
+//   playerName/playerColor equal playerSlots[0].
 //   `teams` (teams mode only) gives the team of every human and AI nation: teammates are permanently allied, cannot
 //   break the alliance or attack each other, and win together. Tribes have no team.
 //
@@ -34,13 +39,26 @@
 //
 // This file is shared by the server (server/) and the browser client: keep it free of DOM and Node APIs.
 
-import { MAX_AI_COUNT, MAX_TRIBE_COUNT, VICTORY_LAND_SHARE } from '../sim/config';
-import type { Action, Difficulty, GameSettings, MapSize, MapType } from '../sim/types';
+import { MAX_AI_COUNT, MAX_TRIBE_COUNT } from '../sim/config';
+import {
+  cloneSetup,
+  DEFAULT_SETUP,
+  DIFFICULTY_LIST,
+  MAP_SIZE_LIST,
+  MAP_TYPE_LIST,
+  MAX_TEAMS as SETUP_MAX_TEAMS,
+  MIN_TEAMS as SETUP_MIN_TEAMS,
+  MODE_LIST,
+  MULTIPLAYER_NATIONS,
+} from '../sim/setup';
+import type { Action, Difficulty, GameMode, GameSettings, GameSetup, MapChoice, MapSize, MapType, Modifiers } from '../sim/types';
+
+export type { GameMode };
 
 // ------------------------------------------------------------------------------------------------ constants
 
 /** Bumped on any incompatible change to the messages below. `hello.protocol` must equal it. */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 4;
 /** WebSocket path on the server (same host that serves the client, or the one given by ?server=). */
 export const WS_PATH = '/ws';
 /** One turn = one sim tick = 100 ms (config TICK_SECONDS). */
@@ -53,8 +71,8 @@ export const MAX_INTENTS_PER_TURN = 10;
 export const MAX_MESSAGE_BYTES = 16 * 1024;
 /** Most humans in one lobby (spectators don't count). */
 export const MAX_LOBBY_PLAYERS = 16;
-export const MIN_TEAMS = 2;
-export const MAX_TEAMS = 8;
+export const MIN_TEAMS = SETUP_MIN_TEAMS;
+export const MAX_TEAMS = SETUP_MAX_TEAMS;
 export const NAME_MAX_LENGTH = 24;
 export const BUILD_MAX_LENGTH = 64;
 /** Private lobby codes: 6 characters without look-alikes (no I, O, 0, 1). */
@@ -91,57 +109,42 @@ export const PLAYER_COLORS: readonly RGB[] = [
   [243, 114, 32], [236, 72, 153], [132, 204, 22], [99, 102, 241], [161, 98, 7], [20, 184, 166],
   [244, 63, 94], [250, 204, 21], [124, 58, 237], [14, 165, 233],
 ];
-export const TEAM_NAMES: readonly string[] = ['Red', 'Blue', 'Green', 'Gold', 'Purple', 'Teal', 'Orange', 'Pink'];
+/** Team display names, in the order of the sim's team colours (state.ts TEAM_COLORS: online, team 1 is blue ...). */
+export const TEAM_NAMES: readonly string[] = ['Blue', 'Red', 'Green', 'Gold', 'Purple', 'Teal', 'Orange', 'Pink'];
 
 // ------------------------------------------------------------------------------------------------ shared shapes
 
 export type RGB = [number, number, number];
-export type GameMode = 'ffa' | 'teams';
 
-/** What a lobby decides before the start (GameSettings minus seed and player identity, plus lobby fields). */
-export interface LobbySettings {
-  mode: GameMode;
-  /** teams mode: number of teams, MIN_TEAMS..MAX_TEAMS (ignored in ffa) */
-  teamCount: number;
-  mapType: MapType;
-  mapSize: MapSize;
-  /** AI nations, 0..15. Public lobbies: filled by the server at the start (shown as the expected value). */
-  aiCount: number;
-  difficulty: Difficulty;
-  /** 0 = no limit, else 60..14400 seconds of game time */
-  timeLimit: number;
-  /** land share that wins, 0.3..1 */
-  victoryLandShare: number;
-  /** tribes: -1 = the map size's default, else 0..60 */
-  tribeCount: number;
+/**
+ * What a lobby decides before the start: the shared game setup (src/sim/setup.ts: map, nations, tribes, difficulty,
+ * mode and teams, time limit, victory share, modifiers, preset; the same model as single player) plus the lobby's
+ * human seat count. The server checks it with setup.validateSetup; `gameStart.settings` is it plus seed and identity.
+ * In multiplayer `aiCount` is the AI nations on top of the humans (MULTIPLAYER_NATIONS in all by default).
+ */
+export interface LobbySettings extends GameSetup {
   /** humans allowed, 1..MAX_LOBBY_PLAYERS */
   maxPlayers: number;
 }
 
+/** A change to the lobby settings: any fields; `modifiers` may name only the modifiers that change. */
+export type LobbySettingsPatch = Partial<Omit<LobbySettings, 'modifiers'>> & { modifiers?: Partial<Modifiers> };
+
 export const DEFAULT_LOBBY_SETTINGS: LobbySettings = {
-  mode: 'ffa',
-  teamCount: 2,
-  mapType: 'continents',
-  mapSize: 'medium',
-  aiCount: 6,
-  difficulty: 'normal',
-  timeLimit: 0,
-  victoryLandShare: VICTORY_LAND_SHARE,
-  tribeCount: -1,
+  ...cloneSetup(DEFAULT_SETUP),
+  aiCount: MULTIPLAYER_NATIONS - 2,
   maxPlayers: 8,
 };
 
-export const MAP_TYPES: readonly MapType[] = ['continents', 'pangaea', 'archipelago', 'highlands'];
-export const MAP_SIZES_LIST: readonly MapSize[] = ['small', 'medium', 'large', 'huge'];
-export const DIFFICULTIES: readonly Difficulty[] = ['easy', 'normal', 'hard'];
-export const GAME_MODES: readonly GameMode[] = ['ffa', 'teams'];
+export const MAP_TYPES: readonly MapType[] = MAP_TYPE_LIST;
+export const MAP_SIZES_LIST: readonly MapSize[] = MAP_SIZE_LIST;
+export const DIFFICULTIES: readonly Difficulty[] = DIFFICULTY_LIST;
+export const GAME_MODES: readonly GameMode[] = MODE_LIST;
 
 /** Bounds the server enforces on LobbySettings (inclusive). */
 export const LOBBY_LIMITS = {
   aiCount: [0, MAX_AI_COUNT],
   teamCount: [MIN_TEAMS, MAX_TEAMS],
-  timeLimit: [60, 14400], // or exactly 0
-  victoryLandShare: [0.3, 1],
   tribeCount: [-1, MAX_TRIBE_COUNT],
   maxPlayers: [1, MAX_LOBBY_PLAYERS],
 } as const;
@@ -189,11 +192,25 @@ export interface TeamsInfo {
   byPlayer: number[];
 }
 
+/** Public lobby kinds: plain free-for-all, teams, and 'special' (FFA with 1-3 random modifiers). */
+export type LobbyKind = 'ffa' | 'teams' | 'special';
+
+/** A modifier as a chip: setup.activeModifiers' id, short label and one-line explanation. */
+export interface LobbyChip {
+  id: string;
+  label: string;
+  detail: string;
+}
+
 export interface LobbySummary {
   code: string;
+  kind: LobbyKind;
   mode: GameMode;
-  mapType: MapType;
-  mapSize: MapSize;
+  map: MapChoice;
+  /** setup.modifierSummary: "Standard rules" or the active modifiers, e.g. "Fast game, Peace 4 min" */
+  rules: string;
+  /** the active modifiers (setup.activeModifiers without the teams entry), for chips */
+  chips: LobbyChip[];
   teamCount: number;
   players: number;
   maxPlayers: number;
@@ -226,16 +243,25 @@ export interface HelloMsg {
   clientId: string;
   /** client build id (e.g. git commit). Everyone in a lobby must run the same build (determinism). '' = unknown */
   build?: string;
+  /** the online game this client still holds after a dropped connection: the catch-up starts at haveTurns */
+  resume?: ResumeInfo;
+}
+/** A game the client already has turns of: `haveTurns` = the next turn number it needs (turns 0..haveTurns-1 held). */
+export interface ResumeInfo {
+  code: string;
+  haveTurns: number;
 }
 export interface CreateLobbyMsg {
   type: 'createLobby';
-  settings?: Partial<LobbySettings>;
+  settings?: LobbySettingsPatch;
 }
 export interface JoinLobbyMsg {
   type: 'joinLobby';
   code: string;
   /** join as a spectator (always the case for a running game you have no seat in) */
   spectate?: boolean;
+  /** turns of this game the client already holds (rejoining spectators): the catch-up starts there */
+  haveTurns?: number;
 }
 export interface LeaveLobbyMsg {
   type: 'leaveLobby';
@@ -243,7 +269,7 @@ export interface LeaveLobbyMsg {
 /** Host only, private lobbies, before the start. */
 export interface UpdateLobbySettingsMsg {
   type: 'updateLobbySettings';
-  settings: Partial<LobbySettings>;
+  settings: LobbySettingsPatch;
 }
 /** Teams mode, before the start: 0 = auto, 1..teamCount. */
 export interface SetTeamMsg {
@@ -318,6 +344,8 @@ export interface LobbyStateMsg {
   isPublic: boolean;
   mode: GameMode;
   hostMemberId: number; // -1 for public lobbies (no host)
+  /** public lobbies: which kind; null for private ones */
+  kind: LobbyKind | null;
   /** your memberId */
   you: number;
   youAreSpectator: boolean;
@@ -342,7 +370,7 @@ export interface GameStartMsg {
   yourPlayerId: number;
   /** the game's first turn number (always 0) */
   startTurn: number;
-  /** turns already played; > 0 means a `catchUp` follows */
+  /** turns already played; a `catchUp` follows when this is more than the turns you said you have (haveTurns, else 0) */
   turnsPlayed: number;
   turnMs: number;
   hashInterval: number;
@@ -352,7 +380,10 @@ export interface TurnMsg {
   n: number;
   intents: StampedIntent[];
 }
-/** All turns in [fromTurn, toTurn); only non-empty turns are listed. */
+/**
+ * All turns in [fromTurn, toTurn); only non-empty turns are listed. A long history comes in several catchUp messages
+ * in a row (each fromTurn = the previous toTurn); the live turns follow the last one.
+ */
 export interface CatchUpMsg {
   type: 'catchUp';
   fromTurn: number;
@@ -365,7 +396,7 @@ export interface PresenceMsg {
   players: { playerId: number; connected: boolean }[];
   spectators: number;
 }
-/** Your state hash differs from the majority's at `turn` (sent once per game). */
+/** Your state hash differs from the majority's at `turn` (once until it rejoins). */
 export interface DesyncMsg {
   type: 'desync';
   turn: number;

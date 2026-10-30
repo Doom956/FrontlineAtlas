@@ -536,8 +536,10 @@ export function tribeDisplayColor(c: readonly number[]): RGB {
   const d = mx - mn;
   let h = 0;
   if (d > 0) h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
-  const s = Math.max(0.2, Math.min(0.3, (mx > 0 ? d / mx : 0) * 1.25));
-  const v = 0.72 + (mx - 0.53) * 0.35;
+  // One neutral, nearly grey wash for every tribe (a hint of their hue and a small value step so neighbouring tribes
+  // still differ; their borders separate them): saturated solid colours are for the nations only.
+  const s = Math.max(0.05, Math.min(0.09, (mx > 0 ? d / mx : 0) * 0.15));
+  const v = 0.6 + (mx - 0.53) * 0.12;
   const f = h - Math.floor(h);
   const p = v * (1 - s);
   const q = v * (1 - s * f);

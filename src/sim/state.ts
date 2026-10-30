@@ -5,10 +5,8 @@ import {
   AI_COLORS,
   AI_NAMES,
   BUILDINGS,
-  DEFAULT_TRIBE_COUNT,
   MAX_AI_COUNT,
   MAX_EVENTS,
-  MAX_TRIBE_COUNT,
   PERSONALITIES,
   SPAWN_RADIUS_BY_SIZE,
   SPAWN_SECONDS,
@@ -16,6 +14,7 @@ import {
   START_IRON,
   START_OIL,
   START_TROOPS,
+  TECH_ORDER,
   TICKS_PER_SECOND,
   TRIBE_COLORS,
   TRIBE_NAMES,
@@ -25,15 +24,26 @@ import {
 import { forEachInRadius, nearestTile, prepareWater } from './grid';
 import { generateMap } from './mapgen';
 import { makeRng, randInt, shuffle } from './rng';
+import { assignTeams, DEFAULT_MODIFIERS, humanSeats, STARTING_GOLD, sizeClassForLand, tribesFor } from './setup';
 import { borderTiles, initTerritory, landComponents, onOwnerChange } from './territory';
 import { isTribe, isWater } from './types';
 import type { GameEventKind, GameSettings, GameState, MapData, MapSize, Personality, Player } from './types';
+import { compactWorldMap, compactWorldTile, worldMapSpawns } from './worldmaps';
 
 export { isTribe };
 
-/** Starting territory radius of a nation on this game's map size. */
+/**
+ * Size class of the map a game is played on: a generated map's size, else (world or compact maps) by its land
+ * (setup.sizeClassForLand). Sets the start radius, building spacing and default tribes.
+ */
+export function mapClassOf(settings: GameSettings, map: MapData): MapSize {
+  if (settings.map?.kind === 'generated' && !settings.modifiers?.compactMap) return settings.map.size;
+  return sizeClassForLand(map.landTileCount);
+}
+
+/** Starting territory radius of a nation on this game's map size class. */
 export function spawnRadius(state: GameState): number {
-  return SPAWN_RADIUS_BY_SIZE[state.settings.mapSize as MapSize] ?? SPAWN_RADIUS_BY_SIZE.medium;
+  return SPAWN_RADIUS_BY_SIZE[state.mapClass] ?? SPAWN_RADIUS_BY_SIZE.medium;
 }
 /** Minimum distance between spawned capitals (scales with the start radius, so starts never overlap). */
 export function spawnMinDistance(state: GameState): number {
@@ -86,6 +96,7 @@ export function makeGameState(
   map: MapData,
   players: Player[],
   rngPair: { rng: () => number; state: { s: number } },
+  extra: { teams?: readonly number[]; spawnPoints?: readonly number[] } = {},
 ): GameState {
   const human = players.find((p) => p.isHuman);
   const state: GameState = {
@@ -112,6 +123,10 @@ export function makeGameState(
     effects: [],
     changes: createTileChanges(),
     buildingsVersion: 0,
+    teams: players.map((p) => (extra.teams?.[p.id] ?? 0) | 0),
+    winnerTeam: 0,
+    spawnPoints: players.map((p) => extra.spawnPoints?.[p.id] ?? -1),
+    mapClass: mapClassOf(settings, map),
   };
   initTerritory(state);
   return state;
@@ -121,47 +136,193 @@ function colorDist(a: [number, number, number], b: [number, number, number]): nu
   return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
 }
 
-/** Tribes for a game: settings.tribeCount when it is a number >= 0 (at most MAX_TRIBE_COUNT), else DEFAULT_TRIBE_COUNT. */
-export function tribeCountFor(settings: Pick<GameSettings, 'tribeCount' | 'mapSize'>): number {
-  const n = settings.tribeCount;
-  if (typeof n === 'number' && Number.isFinite(n) && n >= 0) return Math.min(MAX_TRIBE_COUNT, Math.floor(n));
-  return DEFAULT_TRIBE_COUNT[settings.mapSize as MapSize] ?? DEFAULT_TRIBE_COUNT.medium;
+/** Tribes for a game: settings.tribeCount when it is >= 0 (at most MAX_TRIBE_COUNT), else the default for the land. */
+export function tribeCountFor(settings: Pick<GameSettings, 'tribeCount' | 'map' | 'modifiers'>, landTiles?: number): number {
+  return tribesFor(settings, landTiles);
 }
 
-export function createGame(settings: GameSettings): GameState {
+/**
+ * Team base colours, team 1 first (single player: team 1 takes the human's colour instead). The lobby's team names
+ * (protocol TEAM_NAMES) follow this order.
+ */
+export const TEAM_COLORS: readonly [number, number, number][] = [
+  [64, 140, 235],
+  [225, 70, 60],
+  [70, 185, 90],
+  [235, 180, 40],
+  [160, 95, 215],
+  [40, 190, 185],
+  [240, 120, 40],
+  [230, 100, 180],
+];
+/** A lighter or darker shade of a team colour for its j-th member (0 = the base). */
+function teamShade(c: [number, number, number], j: number): [number, number, number] {
+  if (j === 0) return c;
+  const step = Math.ceil(j / 2);
+  if (j % 2 === 1) {
+    const f = Math.min(0.6, 0.2 * step);
+    return [Math.round(c[0] + (255 - c[0]) * f), Math.round(c[1] + (255 - c[1]) * f), Math.round(c[2] + (255 - c[2]) * f)];
+  }
+  const f = Math.max(0.45, 1 - 0.17 * step);
+  return [Math.round(c[0] * f), Math.round(c[1] * f), Math.round(c[2] * f)];
+}
+
+/** Extra inputs for createGame. */
+export interface CreateGameOptions {
+  /**
+   * Team per player id (multiplayer: gameStart.teams.byPlayer). Without it a teams game keeps the seats' chosen
+   * teams and deals everyone else to the smallest team (setup.assignTeams; single player: round-robin by id, the
+   * human on team 1).
+   */
+  teams?: readonly number[];
+}
+
+/**
+ * Creates a game. Synchronous and deterministic: a world map (settings.map.kind 'world') must be loaded first
+ * (`await loadWorldMap(id)`) and passed as `map`; a generated map is made from the seed unless `map` is given. The
+ * map is used as is (the game owns it from then on). On a world map the AI nations take the real countries' names
+ * and start at their capitals (unless random spawn is on).
+ */
+export function createGame(settings: GameSettings, preloaded?: MapData | null, opts: CreateGameOptions = {}): GameState {
   const rngPair = makeRng(settings.seed);
   const rng = rngPair.rng;
-  const map = generateMap(settings, rng);
+  const m = settings.modifiers ?? DEFAULT_MODIFIERS;
+  const world = settings.map?.kind === 'world' ? settings.map.id : null;
+  let map: MapData;
+  if (world !== null) {
+    if (!preloaded) throw new Error('createGame: load the world map first (loadWorldMap) and pass it in');
+    map = m.compactMap ? compactWorldMap(preloaded) : preloaded;
+  } else {
+    map = preloaded ?? generateMap(settings, rng);
+  }
   // Static landmass and water-body labels, computed now so play never pays for them.
   landComponents(map);
   prepareWater(map);
 
   const players: Player[] = [makePlayer(0, 'Neutral', [128, 128, 128], false, null)];
   players[0].gold = 0;
-  if (settings.humanPlayer) {
-    players.push(makePlayer(1, settings.playerName || 'You', settings.playerColor, true, null));
-  }
+  // Humans first (ids 1..H, multiplayer seats in order), then the AI nations, then the tribes.
+  const seats = humanSeats(settings);
+  for (const seat of seats) players.push(makePlayer(players.length, seat.name || 'Player', seat.color, true, null));
+  const humanCount = seats.length;
   const names = shuffle(rng, AI_NAMES.slice());
-  // AI colours in order, skipping ones too close to the human's colour.
-  const colors = settings.humanPlayer ? AI_COLORS.filter((c) => colorDist(c, settings.playerColor) > 90) : AI_COLORS.slice();
-  if (colors.length === 0) colors.push(...AI_COLORS);
+  // AI colours in order, skipping ones too close to a human's colour.
+  let colors = AI_COLORS.filter((c) => seats.every((h) => colorDist(c, h.color) > 90));
+  if (colors.length === 0) colors = AI_COLORS.slice();
   const aiCount = Math.max(0, Math.min(MAX_AI_COUNT, Math.floor(settings.aiCount)));
+  // World maps: AI nations are the real countries (in the map's spread-out order) at their capitals.
+  const spawns = world !== null ? worldMapSpawns(world) : [];
+  const spawnPoints: number[] = [-1];
+  for (let k = 0; k < humanCount; k++) spawnPoints.push(-1);
   for (let k = 0; k < aiCount; k++) {
     const id = players.length;
     const personality = PERSONALITIES[randInt(rng, PERSONALITIES.length)];
-    const name = names[k % names.length] + (k >= names.length ? ` ${Math.floor(k / names.length) + 1}` : '');
+    const real = spawns[k];
+    const name = real ? real.name : names[k % names.length] + (k >= names.length ? ` ${Math.floor(k / names.length) + 1}` : '');
     players.push(makePlayer(id, name, colors[k % colors.length], false, personality));
+    let at = -1;
+    if (real && !m.randomSpawn) at = m.compactMap ? compactWorldTile(preloaded!, map, real.tile) : real.tile;
+    spawnPoints.push(at);
+  }
+  const nations = players.length - 1;
+  // Teams: given by the lobby (opts.teams), else the seats' chosen teams with everyone else dealt to the smallest
+  // team (setup.assignTeams: round-robin by id when nobody chose). Teams share a colour family.
+  const teams: number[] = players.map(() => 0);
+  if (settings.mode === 'teams') {
+    const count = Math.max(2, Math.min(8, Math.floor(settings.teamCount) || 2));
+    const dealt = assignTeams(seats.map((h) => h.team), nations - humanCount, count);
+    for (let id = 1; id <= nations; id++) {
+      const given = opts.teams?.[id];
+      teams[id] = typeof given === 'number' && given > 0 && given <= count ? given : dealt[id];
+    }
+    const base = TEAM_COLORS.map((c) => [...c] as [number, number, number]);
+    // single player (no `humans` list): team 1 keeps the human's colour; online every team has its base colour
+    const single = humanCount === 1 && !settings.humans?.length;
+    if (single) {
+      // single player: team 1 keeps the human's colour; the other teams take the base colours least like it
+      const own = seats[0].color;
+      base.sort((a, b) => colorDist(b, own) - colorDist(a, own));
+      base.unshift(own);
+    }
+    // Shades per team: humans take the first shades (the single player's human keeps its colour).
+    const seen = new Map<number, number>();
+    const order = [...players.slice(1, nations + 1)].sort((a, b) => Number(b.isHuman) - Number(a.isHuman) || a.id - b.id);
+    for (const p of order) {
+      const t = teams[p.id];
+      const j = seen.get(t) ?? 0;
+      seen.set(t, j + 1);
+      if (single && p.isHuman) continue;
+      p.color = teamShade(base[(t - 1) % base.length], j);
+    }
   }
   // Tribes come last (ids after the nations); they spawn in the leftover space when the spawn phase ends.
-  const tribes = tribeCountFor(settings);
+  const tribes = tribesFor(settings, map.landTileCount);
   const tribeNames = shuffle(rng, TRIBE_NAMES.slice());
   for (let k = 0; k < tribes; k++) {
     const id = players.length;
     const base = tribeNames[k % tribeNames.length];
     const name = `Tribe of ${base}` + (k >= tribeNames.length ? ` ${Math.floor(k / tribeNames.length) + 1}` : '');
     players.push(makePlayer(id, name, TRIBE_COLORS[k % TRIBE_COLORS.length], false, 'tribe'));
+    spawnPoints.push(-1);
+    teams.push(0);
   }
-  return makeGameState(settings, map, players, rngPair);
+  // Modifiers that change the start.
+  const gold = STARTING_GOLD[m.startingGold] ?? START_GOLD;
+  for (const p of players) {
+    if (p.id === 0) continue;
+    p.gold = gold;
+    if (m.research === 'allUnlocked' && !isTribe(p)) p.techs = TECH_ORDER.slice();
+  }
+  return makeGameState(settings, map, players, rngPair, { teams, spawnPoints });
+}
+
+/**
+ * Nearest valid start (canSpawnAt) to `tile` within `maxR` tiles, searching outward ring by ring (deterministic); -1
+ * if none.
+ */
+export function nearestSpawnTile(state: GameState, playerId: number, tile: number, maxR = 40): number {
+  if (canSpawnAt(state, playerId, tile)) return tile;
+  const w = state.map.width;
+  const h = state.map.height;
+  const cx = tile % w;
+  const cy = (tile / w) | 0;
+  for (let r = 1; r <= maxR; r++) {
+    let best = -1;
+    let bestD = Infinity;
+    for (let dy = -r; dy <= r; dy++) {
+      const y = cy + dy;
+      if (y < 0 || y >= h) continue;
+      const step = dy === -r || dy === r ? 1 : 2 * r;
+      for (let dx = -r; dx <= r; dx += step) {
+        const x = cx + dx;
+        if (x < 0 || x >= w) continue;
+        const t = y * w + x;
+        const d = dx * dx + dy * dy;
+        if (d < bestD && canSpawnAt(state, playerId, t)) {
+          bestD = d;
+          best = t;
+        }
+      }
+    }
+    if (best >= 0) return best;
+  }
+  return -1;
+}
+
+/** Puts a nation on its fixed start (world-map capital) or the nearest valid tile; false if it has none or no room. */
+export function spawnAtFixedPoint(state: GameState, playerId: number): boolean {
+  const at = state.spawnPoints?.[playerId] ?? -1;
+  if (at < 0) return false;
+  const t = nearestSpawnTile(state, playerId, at);
+  return t >= 0 && spawnPlayer(state, playerId, t);
+}
+
+/** Random spawn: places every human who has no start yet, like an AI start (called on the first spawn-phase tick). */
+export function randomSpawnHumans(state: GameState): void {
+  for (const p of state.players) {
+    if (p.id === 0 || !p.isHuman || !p.alive || p.spawned) continue;
+    autoSpawnNation(state, p);
+  }
 }
 
 /** Valid spawn: land, unowned, no fallout, at least spawnMinDistance tiles from other spawned capitals. */
@@ -318,6 +479,7 @@ function autoSpawnTribe(state: GameState, p: Player): void {
 }
 
 function autoSpawnNation(state: GameState, p: Player): void {
+  if (spawnAtFixedPoint(state, p.id)) return;
   const map = state.map;
   const n = map.width * map.height;
   const rng = state.rng;

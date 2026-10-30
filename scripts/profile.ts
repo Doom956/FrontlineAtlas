@@ -2,6 +2,7 @@
 // Usage: npx vite-node scripts/profile.ts -- [seed] [minutes] [mapSize] [aiCount] [tribes]
 //    or: npx vite-node scripts/profile.ts -- --size huge --ai 50 --tribes 300 --minutes 20 --seed 4 --map continents
 // Defaults: seed 4, 10 minutes, large map, the menu defaults for AIs and tribes of that size.
+import { cloneSetup, DEFAULT_SETUP } from '../src/sim/setup';
 import { updateAdvisor } from '../src/sim/advisor';
 import { updateAI } from '../src/sim/ai';
 import { updateBarrages } from '../src/sim/barrage';
@@ -41,9 +42,9 @@ const mapType = (flags.map ?? 'continents') as MapType;
 
 const t0 = performance.now();
 const state = createGame({
+  ...cloneSetup(DEFAULT_SETUP),
   seed,
-  mapType,
-  mapSize,
+  map: { kind: 'generated', type: mapType, size: mapSize },
   aiCount,
   difficulty: 'normal',
   playerName: 'Nobody',

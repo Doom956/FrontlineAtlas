@@ -1,8 +1,10 @@
 // Nation card (left edge under the standings): who they are, their army and land, your relation, and the
 // diplomacy buttons (Ally / Accept / Break, Gift, Embargo, Attack). Opened from the standings or the radial menu.
+import { alliancesAllowed, sameTeam } from '../../sim/rules';
 import { hasIntel } from '../../sim/buildings';
 import { borders } from '../../sim/combat';
 import { areAllied } from '../../sim/diplomacy';
+import { TRAITOR_DURATION } from '../../sim/config';
 import type { GameState, Player } from '../../sim/types';
 import { isTribe } from '../compat';
 import { troopsToSend, troopSum } from '../input';
@@ -62,7 +64,7 @@ export class NationCard {
     this.ally = btn('Ally', '', () => act({ type: 'requestAlliance', to: this.id }), 'ally');
     this.accept = btn('Accept', 'primary', () => act({ type: 'answerAlliance', from: this.id, accept: true }), 'accept');
     this.decline = btn('Decline', '', () => act({ type: 'answerAlliance', from: this.id, accept: false }), 'decline');
-    this.brk = btn('Break', 'danger', () => act({ type: 'breakAlliance', with: this.id }), 'breakAlly');
+    this.brk = btn('Break', 'danger', () => confirmBreak(this.ctx, this.ctx.state()?.players[this.id]?.name ?? 'them', this.id), 'breakAlly');
     this.brk.dataset.tip = 'Break the alliance: you become a traitor for a while (weaker defence, everyone trusts you less)';
     this.gift = btn(`Gift ${GIFT_GOLD}`, '', () => act({ type: 'gift', to: this.id, gold: GIFT_GOLD, troops: 0 }), 'gift');
     this.gift.dataset.tip = `Give ${GIFT_GOLD} gold: they like you more`;
@@ -124,10 +126,14 @@ export class NationCard {
     const outReq = s.allianceRequests.some((r) => r.from === me.id && r.to === p.id);
     setVisible(this.accept, !isMe && inReq);
     setVisible(this.decline, !isMe && inReq);
+    const teammate = sameTeam(s, me.id, p.id);
+    const noAlliances = !alliancesAllowed(s);
     setVisible(this.ally, !isMe && !allied && !inReq);
-    setDisabled(this.ally, outReq);
-    setTip(this.ally, outReq ? 'Request sent: waiting for their answer' : isTribe(p) ? 'Tribes accept every alliance' : 'Ask for an alliance');
-    setVisible(this.brk, !isMe && allied);
+    setDisabled(this.ally, outReq || noAlliances);
+    setTip(this.ally, noAlliances ? 'Alliances are off in this game' : outReq ? 'Request sent: waiting for their answer' : isTribe(p) ? 'Tribes accept every alliance' : 'Ask for an alliance');
+    const allyLbl = this.ally.querySelector('.wr-btn-l');
+    if (allyLbl) setText(allyLbl as HTMLElement, outReq ? 'Requested…' : 'Ally');
+    setVisible(this.brk, !isMe && allied && !teammate);
     setVisible(this.gift, !isMe);
     setDisabled(this.gift, me.gold < GIFT_GOLD);
     setVisible(this.embargo, !isMe && !isTribe(p));
@@ -141,4 +147,13 @@ export class NationCard {
     const near = borders(s, me.id, p.id);
     setTip(this.attack, `Send ${formatCount(send)} troops (${Math.round(this.ctx.ui.attackShare * 100)}%) ${near ? 'across your shared border' : 'by sea: you share no border'}`);
   }
+}
+
+/** Breaking an alliance makes you a traitor: ask first (shared by the radial menu and the nation card). */
+export function confirmBreak(ctx: HudCtx, name: string, id: number): void {
+  ctx.confirm(
+    `Break the alliance with ${name}? You become a traitor for ${TRAITOR_DURATION} s: weaker defence, and everyone trusts you less.`,
+    'Break',
+    () => ctx.act({ type: 'breakAlliance', with: id }),
+  );
 }

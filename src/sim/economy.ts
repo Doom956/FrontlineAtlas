@@ -6,6 +6,7 @@
 // which peaks at about 42% of the cap: a full bar barely grows, so troops are meant to be spent. Factories and
 // arsenals convert part of the pool into armor and artillery. Land weights come from territory.ts (kept up to date
 // by setOwner), so nothing here scans the map.
+import { goldRate, growthRate, resourceRate } from './rules';
 import { cityLevels, countBuildings, buildingsOf, farmUnitsOf } from './buildings';
 import {
   AI_HARD_INCOME_BONUS,
@@ -144,7 +145,7 @@ export function convertCost(p: Player, kind: 'armor' | 'artillery'): { gold: num
   return { gold: c.gold, iron: c.iron * (hasTech(p, 'metallurgy') ? METALLURGY_CONVERT_IRON : 1) };
 }
 
-/** Growth multiplier from farms, barracks, Medicine, tribes and Hard AIs (positive growth only). */
+/** Growth multiplier from farms, barracks, Medicine, tribes, Hard AIs and the game's modifiers (positive growth only). */
 export function growthBonus(state: GameState, p: Player): number {
   const farms = farmUnits(state, p.id) * (hasTech(p, 'agriculture') ? AGRICULTURE_FARM_MULT : 1);
   const barracks = Math.min(BARRACKS_MAX, countBuildings(state, p.id, 'barracks'));
@@ -152,7 +153,7 @@ export function growthBonus(state: GameState, p: Player): number {
   if (hasTech(p, 'medicine')) m *= MEDICINE_GROWTH_MULT;
   if (isTribe(p)) m *= TRIBE_GROWTH_FACTOR;
   if (isHardAI(state, p)) m *= 1 + AI_HARD_INCOME_BONUS * 0.5;
-  return m;
+  return m * growthRate(state);
 }
 
 /**
@@ -234,7 +235,7 @@ export function goldIncome(state: GameState, p: Player): number {
   if (banking) gold *= BANKING_GOLD_MULT;
   if (isTribe(p)) gold *= TRIBE_GOLD_FACTOR;
   if (isHardAI(state, p)) gold *= 1 + AI_HARD_INCOME_BONUS;
-  return gold;
+  return gold * goldRate(state);
 }
 
 /** Runs one tick of economy for every alive, spawned player; fills Player.maxPop (the troop cap) and Player.income. */
@@ -262,13 +263,13 @@ export function updateEconomy(state: GameState): void {
     let iron = countBuildings(state, p.id, 'mine') * IRON_PER_MINE;
     if (hasTech(p, 'metallurgy')) iron *= METALLURGY_IRON_MULT;
     if (industrial) iron *= INDUSTRIAL_RESOURCE_MULT;
-    iron *= hard;
+    iron *= hard * resourceRate(state);
 
     let oil = countBuildings(state, p.id, 'oilWell') * OIL_PER_WELL;
     if (industrial) oil *= INDUSTRIAL_RESOURCE_MULT;
-    oil *= hard;
+    oil *= hard * resourceRate(state);
 
-    const science = BASE_SCIENCE + countBuildings(state, p.id, 'lab') * SCIENCE_PER_LAB;
+    const science = (BASE_SCIENCE + countBuildings(state, p.id, 'lab') * SCIENCE_PER_LAB) * resourceRate(state);
 
     // Oil upkeep: armor (home + deployed) and aircraft stored at own airfields.
     let aircraft = 0;

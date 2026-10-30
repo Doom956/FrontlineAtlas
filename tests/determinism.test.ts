@@ -8,9 +8,9 @@ import { hashState } from '../src/sim/hash';
 import { tick } from '../src/sim/sim';
 import { canSpawnAt, createGame } from '../src/sim/state';
 import type { Action, GameSettings, GameState } from '../src/sim/types';
-import { testSettings } from './helpers';
+import { testSettings, type TestOverrides } from './helpers';
 
-function settings(overrides: Partial<GameSettings> = {}): GameSettings {
+function settings(overrides: TestOverrides = {}): GameSettings {
   return testSettings({ seed: 4242, aiCount: 4, tribeCount: 6, humanPlayer: true, ...overrides });
 }
 
@@ -73,6 +73,22 @@ describe('determinism', () => {
     const before = hashState(a);
     a.players[2].gold += 1;
     expect(hashState(a)).not.toBe(before);
+    // ... also in diplomacy, research, auto flags, embargoes and the spawn clock
+    const changes: ((g: typeof a) => void)[] = [
+      (g) => g.alliances.push({ a: 2, b: 3, expiresTick: 9999 }),
+      (g) => g.allianceRequests.push({ from: 3, to: 2, expiresTick: 9999 }),
+      (g) => (g.players[2].researchProgress += 0.5),
+      (g) => (g.players[2].researching = g.players[2].researching ? null : 'agriculture'),
+      (g) => (g.players[2].auto.mix = !g.players[2].auto.mix),
+      (g) => g.players[2].embargoes.push(3),
+      (g) => (g.players[2].traitorUntil += 10),
+      (g) => (g.spawnLeft += 1),
+    ];
+    for (const change of changes) {
+      const h0 = hashState(a);
+      change(a);
+      expect(hashState(a), change.toString()).not.toBe(h0);
+    }
   }, 60_000);
 
   it('a second game ticking in between does not change the first one', () => {

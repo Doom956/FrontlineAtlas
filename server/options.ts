@@ -36,8 +36,26 @@ export interface ServerOptions {
   /** housekeeping timer (lobby countdowns, timeouts, lobby list) */
   sweepMs: number;
   maxRooms: number;
-  /** use the last X-Forwarded-For address as the client IP (behind Render/Fly/nginx) */
+  /** private lobbies and games one address may have open at once (a solo game counts until it ends) */
+  maxRoomsPerIp: number;
+  /** pause between two createLobby from one address */
+  createLobbyCooldownMs: number;
+  /** steady intent budget per player (token bucket: intentsPerSecond refill, intentBurst capacity) */
+  intentsPerSecond: number;
+  intentBurst: number;
+  /** stored turn history per game (serialized bytes); past it intents are refused (rateLimit) */
+  maxGameLogBytes: number;
+  /** a disconnected player still counts in the game-over vote for this long */
+  voteAbsentMs: number;
+  /** take the client IP from the proxy headers (behind Render/Fly/nginx) */
   trustProxy: boolean;
+  /**
+   * Proxies in front of the server that append to X-Forwarded-For: the client address is the entry this many places
+   * from the end (1 = the last one). Earlier entries are whatever the client sent and are never trusted.
+   */
+  proxyHops: number;
+  /** a header set by the platform's own proxy that holds the client address (e.g. fly-client-ip); '' = none */
+  clientIpHeader: string;
   /** allowed Origin headers for WebSockets; empty = any */
   allowedOrigins: string[];
   log: (msg: string) => void;
@@ -65,7 +83,15 @@ export const DEFAULT_OPTIONS: ServerOptions = {
   keepaliveMs: 15_000,
   sweepMs: 250,
   maxRooms: 500,
+  maxRoomsPerIp: 3,
+  createLobbyCooldownMs: 1000,
+  intentsPerSecond: 4,
+  intentBurst: 40,
+  maxGameLogBytes: 48 * 1024 * 1024,
+  voteAbsentMs: 180_000,
   trustProxy: false,
+  proxyHops: 1,
+  clientIpHeader: '',
   allowedOrigins: [],
   log: (msg) => console.log(`[${new Date().toISOString()}] ${msg}`),
 };
@@ -89,6 +115,12 @@ export function optionsFromEnv(env: Record<string, string | undefined>): Partial
   if (perIp !== undefined && perIp > 0) o.maxConnectionsPerIp = perIp;
   const maxRooms = int('MAX_ROOMS');
   if (maxRooms !== undefined && maxRooms > 0) o.maxRooms = maxRooms;
+  const perIpRooms = int('MAX_ROOMS_PER_IP');
+  if (perIpRooms !== undefined && perIpRooms > 0) o.maxRoomsPerIp = perIpRooms;
+  const hops = int('PROXY_HOPS');
+  if (hops !== undefined && hops > 0) o.proxyHops = hops;
+  if (env.CLIENT_IP_HEADER) o.clientIpHeader = env.CLIENT_IP_HEADER.trim().toLowerCase();
+  else if (env.FLY_APP_NAME) o.clientIpHeader = 'fly-client-ip';
   // Render and Fly put a proxy in front of the app: the socket address is the proxy's.
   if (env.TRUST_PROXY === '1' || (env.TRUST_PROXY !== '0' && (env.RENDER || env.FLY_APP_NAME))) o.trustProxy = true;
   if (env.ALLOWED_ORIGINS) o.allowedOrigins = env.ALLOWED_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean);

@@ -12,6 +12,8 @@ export class Camera {
   zoom = 3;
   viewW = 800; // canvas css pixels
   viewH = 600;
+  /** a running flyTo; any pan / zoom / centerOn by the player cancels it */
+  private anim: { x0: number; y0: number; z0: number; x1: number; y1: number; z1: number; t0: number; ms: number } | null = null;
   constructor(public mapW: number, public mapH: number) {
     this.fit();
   }
@@ -45,7 +47,42 @@ export class Camera {
       y: (ty - this.y) * this.zoom + this.viewH / 2,
     };
   }
+  /**
+   * Glides to (tx, ty) at `zoom` (clamped) over `ms`: zoom changes geometrically, eased in and out. Runs while step()
+   * is called every frame; ms <= 0 jumps.
+   */
+  flyTo(tx: number, ty: number, zoom: number, ms = 800, now = performance.now()): void {
+    const z1 = clampNum(zoom, this.minZoom, MAX_ZOOM);
+    if (ms <= 0) {
+      this.anim = null;
+      this.zoom = z1;
+      this.x = tx;
+      this.y = ty;
+      this.clamp();
+      return;
+    }
+    this.anim = { x0: this.x, y0: this.y, z0: this.zoom, x1: tx, y1: ty, z1, t0: now, ms };
+  }
+  get flying(): boolean {
+    return this.anim !== null;
+  }
+  /** Advances a flyTo; call once per frame. */
+  step(now = performance.now()): void {
+    const a = this.anim;
+    if (!a) return;
+    const t = clampNum((now - a.t0) / a.ms, 0, 1);
+    const e = t < 0.5 ? 2 * t * t : 1 - 2 * (1 - t) * (1 - t);
+    const z = a.z0 * Math.pow(a.z1 / a.z0, e);
+    // move the centre in screen-space terms so the target doesn't race past while zooming in
+    const k = a.z1 === a.z0 ? e : (1 / z - 1 / a.z0) / (1 / a.z1 - 1 / a.z0);
+    this.zoom = z;
+    this.x = a.x0 + (a.x1 - a.x0) * k;
+    this.y = a.y0 + (a.y1 - a.y0) * k;
+    this.clamp();
+    if (t >= 1) this.anim = null;
+  }
   pan(dxScreen: number, dyScreen: number): void {
+    this.anim = null;
     this.x -= dxScreen / this.zoom;
     this.y -= dyScreen / this.zoom;
     this.clamp();
@@ -53,6 +90,7 @@ export class Camera {
   /** Zooms keeping the tile under (sx, sy) fixed. factor > 1 zooms in. Clamped to [minZoom, 40]. */
   zoomAt(sx: number, sy: number, factor: number): void {
     if (!(factor > 0)) return;
+    this.anim = null;
     const before = this.screenToTile(sx, sy);
     this.zoom = clampNum(this.zoom * factor, this.minZoom, MAX_ZOOM);
     this.x = before.x - (sx - this.viewW / 2) / this.zoom;
@@ -60,12 +98,14 @@ export class Camera {
     this.clamp();
   }
   centerOn(tx: number, ty: number): void {
+    this.anim = null;
     this.x = tx;
     this.y = ty;
     this.clamp();
   }
   /** Zoom that fits the whole map. */
   fit(): void {
+    this.anim = null;
     this.zoom = clampNum(this.fitZoom, this.minZoom, MAX_ZOOM);
     this.x = this.mapW / 2;
     this.y = this.mapH / 2;

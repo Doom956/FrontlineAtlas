@@ -14,6 +14,7 @@
 // ~5 Hz through each part's update().
 import { buildingAt } from '../sim/buildings';
 import { BUILDINGS } from '../sim/config';
+import { mods } from '../sim/rules';
 import { gameSeconds } from '../sim/state';
 import type { GameEvent, GameState, Player } from '../sim/types';
 import type { AudioManager } from './audio';
@@ -21,6 +22,7 @@ import type { Camera } from './camera';
 import { isTribe } from './compat';
 import { AdvisorStrip } from './hud/advisor';
 import { Cluster } from './hud/cluster';
+import { ModChips } from './hud/modChips';
 import { CommandBar, techNear } from './hud/commandBar';
 import { el, setText, setVisible, type DrawerId, type HudCtx } from './hud/dom';
 import {
@@ -49,8 +51,11 @@ import type { Dispatch, UiState } from './uiState';
 export { techNear };
 
 const SLOW_MS = 200; // ~5 Hz refresh of texts and lists
+/** Zoom the camera glides to when your start is placed and when the game starts (your 9x9 start ~40 px wide). */
+const START_ZOOM = 4.5;
 const TOAST_KINDS: Partial<Record<GameEvent['kind'], 'info' | 'good' | 'bad' | 'warn'>> = {
   underAttack: 'bad',
+  surrounded: 'bad',
   capitalLost: 'bad',
   buildingLost: 'bad',
   nuke: 'bad',
@@ -65,10 +70,22 @@ const TOAST_KINDS: Partial<Record<GameEvent['kind'], 'info' | 'good' | 'bad' | '
   defeat: 'bad',
 };
 
+/** How the HUD runs: single player (default) or an online game. */
+export interface HudOptions {
+  /** online game: no pause or speed (the server's clock), an eliminated player keeps watching */
+  online?: boolean;
+  /** whether the Start now button shows (online: only the private lobby's host) */
+  canStartNow?: () => boolean;
+  /** game-over card: text of the first button (default "Play again") */
+  againLabel?: string;
+}
+
 export class Hud {
   /** Set by main: leave to the menu / start a new game with the same settings. */
   onMenu: () => void = () => {};
   onPlayAgain: () => void = () => {};
+  /** true while this client only watches: a spectator (humanId 0) or, online, after its nation was eliminated */
+  watching = false;
 
   private el: HTMLElement;
   private state: GameState | null = null;
@@ -80,6 +97,7 @@ export class Hud {
   private bar: CommandBar;
   private board: Leaderboard;
   private cluster: Cluster;
+  private modChips = new ModChips();
   private drawer: Drawer;
   private card: NationCard;
   private advisor: AdvisorStrip;
@@ -100,6 +118,10 @@ export class Hud {
   private modeChip: HTMLElement;
   private modeText: HTMLElement;
   private seenEvents = new WeakSet<GameEvent>();
+  /** last start position / phase the camera followed (followStart); "" = none yet */
+  private startKey = '';
+  /** the help page paused the game (and resumes it when it closes) */
+  private helpPaused = false;
   private lastSelected = -1;
   private lastToast: UiState['toast'] = null;
 
@@ -109,8 +131,10 @@ export class Hud {
     public dispatch: Dispatch,
     public camera: Camera,
     private audio: AudioManager | null = null,
+    private hudOpts: HudOptions = {},
   ) {
     this.el = el('div', 'hud');
+    this.el.classList.toggle('online', !!hudOpts.online);
     root.append(this.el);
     const self = this;
     this.ctx = {
@@ -118,12 +142,19 @@ export class Hud {
       dispatch,
       camera,
       state: () => self.state,
-      me: () => (self.state ? self.state.players[self.state.humanId] ?? null : null),
+      me: () => (self.state && !self.watching ? self.state.players[self.state.humanId] ?? null : null),
       act: (a) => {
         const r = dispatch(a);
         self.refreshSoon();
+        // acknowledge what has no visible result yet (the answer comes later as an event)
+        if (r.ok && a.type === 'requestAlliance') {
+          const to = self.state?.players[a.to];
+          if (to) self.toasts.show({ text: `Alliance request sent to ${to.name}`, kind: 'info', icon: 'diplomacy', key: `sent${a.to}` });
+        }
         return r.ok;
       },
+      confirm: (text, label, run) =>
+        self.toasts.show({ text, kind: 'warn', ms: 8000, key: 'confirm', actions: [{ label, primary: true, run }, { label: 'Cancel', run: () => {} }] }),
       refreshSoon: () => self.refreshSoon(),
       openDrawer: (id, toggle) => self.openDrawer(id, toggle),
       closeDrawer: () => self.drawer.hide(),
@@ -220,20 +251,27 @@ export class Hud {
     hClose.type = 'button';
     hClose.setAttribute('aria-label', 'Close');
     hClose.append(iconSpan(lineIcon('close', 16)));
-    hClose.addEventListener('click', () => this.help.classList.add('hidden'));
+    hClose.addEventListener('click', () => this.setHelp(false));
     hHead.append(el('h2', '', 'How to play'), hClose);
     const hBody = el('div', 'modal-scroll');
     hBody.append(howToPlayContent());
     hCard.append(hHead, hBody);
     this.help.append(hCard);
     this.help.addEventListener('pointerdown', (e) => {
-      if (e.target === this.help) this.help.classList.add('hidden');
+      if (e.target === this.help) this.setHelp(false);
     });
     this.gameOver = el('div', 'modal gameover hidden');
 
-    this.el.append(left, this.cluster.el, this.drawer.el, bottom, top, this.tooltip.card, this.tooltip.odds, this.radial.el, this.help, this.gameOver, this.tip);
+    this.el.append(left, this.cluster.el, this.modChips.el, this.drawer.el, bottom, top, this.tooltip.card, this.tooltip.odds, this.radial.el, this.help, this.gameOver, this.tip);
 
     const opts = { signal: this.ac.signal };
+    // HUD size: 1 up to ~1500 px wide, then grows with the window (up to 1.35) so it doesn't look tiny on big screens
+    const scaleUi = (): void => {
+      const k = Math.min(window.innerWidth / 1500, window.innerHeight / 860);
+      this.el.style.setProperty('--ui', Math.max(1, Math.min(1.35, k)).toFixed(3));
+    };
+    scaleUi();
+    window.addEventListener('resize', scaleUi, opts);
     window.addEventListener(
       'pointermove',
       (e) => {
@@ -276,21 +314,54 @@ export class Hud {
       this.state = state;
       this.lastSlow = -Infinity;
     }
-    const me = state.players[state.humanId];
+    const own = state.humanId > 0 ? state.players[state.humanId] : undefined;
+    // Watching: a spectator, or an online player whose nation fell while the others play on. The neutral entry
+    // (id 0) stands in for "me" then: nothing is ours, every action UI is hidden.
+    const watching = !own || (!!this.hudOpts.online && !own.alive && state.phase !== 'over');
+    if (watching !== this.watching) this.setWatching(watching);
+    const me = own && !watching ? own : own ?? state.players[0];
     if (!me) return;
     this.drainEvents(state, me);
+    if (!watching) this.followStart(state, me);
     this.updateFast(state, me);
+    this.modChips.update(state);
     if (now - this.lastSlow >= SLOW_MS) {
       this.lastSlow = now;
-      this.bar.update(state, me);
+      if (!watching) this.bar.update(state, me);
       this.board.update(state, me);
       this.cluster.update(state, me);
-      this.card.update(state, me);
+      if (!watching) this.card.update(state, me);
       this.drawer.update(state, me);
-      this.advisor.update(state, me);
+      if (!watching) this.advisor.update(state, me);
       this.toasts.update();
-      this.tooltip.update(state, me, true);
+      if (!watching) this.tooltip.update(state, me, true);
       this.updateSpawn(state, me);
+    }
+  }
+
+  /**
+   * Marks every event the state holds now as seen (no toasts or history entries for them): an online client replaying
+   * a catch-up calls it each frame, so minutes of replayed events don't flood the screen.
+   */
+  skipEvents(state: GameState): void {
+    for (const e of state.events) this.seenEvents.add(e);
+  }
+
+  /** Extra HUD parts (the online status line) live inside the HUD so they go away with it. */
+  addOverlay(node: HTMLElement): void {
+    this.el.append(node);
+  }
+
+  private setWatching(on: boolean): void {
+    this.watching = on;
+    this.el.classList.toggle('watching', on);
+    if (on) {
+      this.ui.mode = { kind: 'none' };
+      this.ui.contextMenu = null;
+      this.ui.selectedTile = -1;
+      this.card.close();
+      if (this.drawer.open && this.drawer.open !== 'events' && this.drawer.open !== 'legend' && this.drawer.open !== 'settings') this.drawer.hide();
+      this.radial.close();
     }
   }
 
@@ -299,6 +370,8 @@ export class Hud {
   }
   /** Opens a drawer (closing another); with toggle, a second press closes it. */
   openDrawer(id: DrawerId, toggle = false): void {
+    // a watcher has no army, research, diplomacy or buildings of its own
+    if (this.watching && id !== 'events' && id !== 'legend' && id !== 'settings') return;
     if (toggle && this.drawer.open === id) {
       this.drawer.hide();
       return;
@@ -307,7 +380,7 @@ export class Hud {
     if (id === 'events') {
       this.cluster.setUnread(false);
     }
-    this.help.classList.add('hidden');
+    this.setHelp(false);
     this.drawer.show(id);
     this.refreshSoon();
   }
@@ -315,13 +388,24 @@ export class Hud {
     this.openDrawer(id, true);
   }
   toggleHelp(): void {
-    const open = this.help.classList.contains('hidden');
+    this.setHelp(this.help.classList.contains('hidden'));
+  }
+  /** Shows or hides the How to play page; single player pauses while it is open (and resumes if it paused it). */
+  private setHelp(open: boolean): void {
     setVisible(this.help, open);
+    if (this.hudOpts.online) return;
+    if (open && !this.ui.paused) {
+      this.ui.paused = true;
+      this.helpPaused = true;
+    } else if (!open && this.helpPaused) {
+      this.helpPaused = false;
+      this.ui.paused = false;
+    }
   }
   /** Closes the topmost overlay (help, drawer, nation card); true if one was open. */
   closeOverlay(): boolean {
     if (!this.help.classList.contains('hidden')) {
-      this.help.classList.add('hidden');
+      this.setHelp(false);
       return true;
     }
     if (this.drawer.open) {
@@ -358,8 +442,31 @@ export class Hud {
     const p = s?.players[id];
     if (!s || !p) return;
     if (p.capital >= 0) this.camera.centerOn((p.capital % s.map.width) + 0.5, ((p.capital / s.map.width) | 0) + 0.5);
+    if (this.watching) return;
     if (id !== s.humanId) this.card.open(id);
     else this.card.close();
+  }
+
+  /**
+   * Brings a new player to their land: when they place their start and again when the game starts, the camera glides
+   * to the capital at START_ZOOM unless they are already looking at it from close up.
+   */
+  private followStart(state: GameState, me: Player): void {
+    const key = `${me.spawned ? me.capital : -1}:${state.phase === 'spawn' ? 's' : 'p'}`;
+    if (key === this.startKey) return;
+    const first = this.startKey === '';
+    this.startKey = key;
+    if (!me.spawned || me.capital < 0 || state.phase === 'over') return;
+    // a reload / rejoin into a running game: once, at the start of this view
+    if (first && state.phase === 'playing' && gameSeconds(state) > 20) return;
+    const w = state.map.width;
+    const cx = (me.capital % w) + 0.5;
+    const cy = ((me.capital / w) | 0) + 0.5;
+    const cam = this.camera;
+    const sp = cam.tileToScreen(cx, cy);
+    const onScreen = sp.x > cam.viewW * 0.15 && sp.x < cam.viewW * 0.85 && sp.y > cam.viewH * 0.15 && sp.y < cam.viewH * 0.85;
+    if (cam.zoom >= START_ZOOM && onScreen) return;
+    cam.flyTo(cx, cy, Math.max(cam.zoom, START_ZOOM), 900);
   }
 
   private focusTile(tile: number, zoomIn = true): void {
@@ -367,7 +474,7 @@ export class Hud {
     if (!s || tile < 0) return;
     const w = s.map.width;
     this.camera.centerOn((tile % w) + 0.5, ((tile / w) | 0) + 0.5);
-    if (zoomIn && this.camera.zoom < 3) this.camera.zoomAt(this.camera.viewW / 2, this.camera.viewH / 2, 3 / this.camera.zoom);
+    if (zoomIn && this.camera.zoom < START_ZOOM) this.camera.zoomAt(this.camera.viewW / 2, this.camera.viewH / 2, START_ZOOM / this.camera.zoom);
   }
 
   private updateSpawn(state: GameState, me: Player): void {
@@ -382,8 +489,19 @@ export class Hud {
       total++;
       if (p.spawned) placed++;
     }
-    setText(this.spawnText, me.spawned ? `Start chosen. Click again to move it. ${placed} of ${total} nations placed, war in ${t} s.` : `Click a land tile to place your capital. ${t} s.`);
-    setVisible(this.startNowBtn, me.spawned);
+    const random = mods(state).randomSpawn;
+    if (this.watching) {
+      setText(this.spawnText, `Players are choosing their starts: ${placed} of ${total} nations placed, war in ${t} s.`);
+      setVisible(this.startNowBtn, false);
+      return;
+    }
+    setText(
+      this.spawnText,
+      me.spawned
+        ? `${random ? 'Your start was picked at random.' : 'Start chosen. Click again to move it.'} ${placed} of ${total} nations placed, war in ${t} s.`
+        : `Click a land tile to place your capital. ${t} s.`,
+    );
+    setVisible(this.startNowBtn, me.spawned && (this.hudOpts.canStartNow?.() ?? true));
   }
 
   private updateFast(state: GameState, me: Player): void {
@@ -418,7 +536,7 @@ export class Hud {
     if (ui.selectedTile !== this.lastSelected) {
       this.lastSelected = ui.selectedTile;
       const b = ui.selectedTile >= 0 && ui.selectedTile < state.map.owner.length ? buildingAt(state, ui.selectedTile) : undefined;
-      if (b && b.owner === me.id) {
+      if (b && b.owner === me.id && !this.watching) {
         this.building.tile = ui.selectedTile;
         this.openDrawer('building');
       } else if (this.drawer.open === 'building') this.drawer.hide();
@@ -432,7 +550,7 @@ export class Hud {
     if (ui.contextMenu !== this.ctxOpen) {
       this.ctxOpen = ui.contextMenu;
       const cm = ui.contextMenu;
-      const spec = cm && state.phase === 'playing' ? this.radialSpec(state, me, cm.tile) : null;
+      const spec = cm && state.phase === 'playing' && !this.watching ? this.radialSpec(state, me, cm.tile) : null;
       if (cm && spec && (spec.centre || spec.slices.length)) this.radial.open(cm.x, cm.y, spec);
       else {
         this.radial.close();
@@ -441,7 +559,7 @@ export class Hud {
       }
     }
 
-    this.tooltip.update(state, me, false);
+    if (!this.watching) this.tooltip.update(state, me, false);
     if (state.phase === 'over' && !this.gameOverShown) this.showGameOver(state, me);
   }
 
@@ -467,6 +585,17 @@ export class Hud {
 
   private eventToast(state: GameState, me: Player, e: GameEvent, focus: number): void {
     const go = focus >= 0 ? () => this.focusTile(focus, true) : undefined;
+    if (e.kind === 'info' && e.players[0] === me.id) {
+      // our gift arrived / our alliance request was turned down: say so (other info events stay in the drawer)
+      if (/ sent .+ to /.test(e.message)) {
+        this.toasts.show({ text: e.message.startsWith(me.name) ? `You${e.message.slice(me.name.length)}` : e.message, kind: 'good', icon: 'gift', onClick: go });
+        return;
+      }
+      if (/ rejected the alliance with /.test(e.message)) {
+        this.toasts.show({ text: e.message, kind: 'warn', icon: 'diplomacy', onClick: go, key: `sent${e.players[1]}` });
+        return;
+      }
+    }
     if (e.kind === 'allianceRequest') {
       const req = state.allianceRequests.find((r) => r.to === me.id && e.players.includes(r.from));
       if (req) {
@@ -499,7 +628,8 @@ export class Hud {
       kind !== undefined &&
       (e.kind !== 'eliminated' || !e.players.length || e.players[0] === me.id) &&
       (e.kind !== 'buildingLost' || e.players[0] === me.id) &&
-      (e.kind !== 'capitalLost' || e.players[0] === me.id);
+      (e.kind !== 'capitalLost' || e.players[0] === me.id) &&
+      (e.kind !== 'surrounded' || e.players[0] === me.id);
     if (e.kind === 'underAttack' && gameSeconds(state) < 5) return;
     // "<you> is under attack by X" reads better as "You are under attack by X"
     const text = e.message.startsWith(`${me.name} is under attack`) ? `You are${e.message.slice(me.name.length + 3)}` : e.message;
@@ -589,6 +719,7 @@ export class Hud {
         () => this.onPlayAgain(),
         () => this.onMenu(),
         () => this.gameOver.classList.add('hidden'),
+        this.hudOpts.againLabel,
       ),
     );
     this.gameOver.classList.remove('hidden');

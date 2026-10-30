@@ -189,6 +189,9 @@ const LINE: Record<string, string> = {
   settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>',
   shuffle: '<path d="M3 7h4l10 10h4M3 17h4L17 7h4M18 4l3 3-3 3M18 14l3 3-3 3"/>',
   dot: '<circle cx="12" cy="12" r="3" fill="currentColor"/>',
+  copy: '<path d="M9 9h11v11H9z"/><path d="M15 9V4H4v11h5"/>',
+  signal: '<path d="M4 20v-3M9 20v-7M14 20V9M19 20V5"/>',
+  eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
 };
 export type LineIconId = keyof typeof LINE;
 

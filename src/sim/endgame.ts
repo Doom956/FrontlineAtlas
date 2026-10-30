@@ -1,6 +1,6 @@
 // Endgame cleanup: pockets (enclaves) fully surrounded by one hostile nation are annexed by it, and a small nation
-// whose whole territory is surrounded by one hostile nation is absorbed. (Small nations that get hit collapse in
-// combat.ts; this catches the ones nobody is attacking any more.)
+// (or a tribe of any size) whose whole territory is surrounded by one hostile nation is absorbed. (Small nations
+// that get hit collapse in combat.ts; this catches the ones nobody is attacking any more.)
 //
 // Per player, staggered: each player is checked every ENCLAVE_CHECK_SECONDS at its own tick (hash of its id), and
 // only if tiles changed on or next to its land since the last check (territory.takeRecentChanges). Pockets form right
@@ -9,10 +9,12 @@
 // than POCKET_MAX_TILES (a big piece is a front, not a pocket), so the cost stays small on huge maps. A player below
 // its collapse threshold is checked whole (its main body too).
 import { annexTiles, collapseThreshold } from './combat';
-import { ENCLAVE_CHECK_SECONDS, TICKS_PER_SECOND } from './config';
+import { ENCLAVE_CHECK_SECONDS, ENDGAME_SMALL_TILES, TICKS_PER_SECOND } from './config';
 import { areAllied } from './diplomacy';
+import { atPeace } from './rules';
 import { addEvent } from './state';
 import { borderTiles, isDirty, takeRecentChanges } from './territory';
+import { isTribe } from './types';
 import type { GameState } from './types';
 
 /** Pockets smaller than this are annexed without an event (specks a front left behind). */
@@ -68,8 +70,12 @@ export function checkEnclaves(state: GameState, playerId: number, near?: number[
   const stamp = sc.stamp;
   const gen = sc.gen;
   const tag = gen << 16;
-  const threshold = collapseThreshold(p);
-  const small = p.tiles < threshold;
+  const threshold = collapseThreshold(state, p);
+  // A tribe walled in by one nation is absorbed whatever its size (tribes are food: encircling them is the reward,
+  // and it keeps the map from filling with tribe "dots" inside the nations).
+  const tribe = isTribe(p);
+  // (a small human in its grace time is flooded whole too, to warn it when it is walled in)
+  const small = p.tiles < threshold || tribe || (p.isHuman && p.tiles < ENDGAME_SMALL_TILES);
   const cap = small ? p.tiles + 1 : Math.min(POCKET_MAX_TILES, Math.ceil(p.tiles / 2));
   let starts: number[];
   if (near && !small) {
@@ -147,10 +153,14 @@ export function checkEnclaves(state: GameState, playerId: number, near?: number[
     const by = piece.surrounder;
     if (by <= 0) continue;
     const taker = state.players[by];
-    if (!taker || !taker.alive || !p.alive || areAllied(state, playerId, by)) continue;
+    if (!taker || !taker.alive || !p.alive || areAllied(state, playerId, by) || atPeace(state, playerId, by)) continue;
     const size = piece.end - piece.start;
     const isMain = size * 2 >= tilesBefore;
-    if (isMain && tilesBefore >= threshold) continue;
+    if (isMain && tilesBefore >= threshold && !tribe) {
+      // A small human in its grace time: not absorbed yet, but warned (once per SURROUND_WARN_SECONDS).
+      if (p.isHuman && tilesBefore < ENDGAME_SMALL_TILES) warnSurrounded(state, playerId, by);
+      continue;
+    }
     const tiles = Array.from(sc.queue.subarray(piece.start, piece.end));
     const name = p.name;
     const moved = annexTiles(state, playerId, by, tiles);
@@ -162,6 +172,23 @@ export function checkEnclaves(state: GameState, playerId: number, near?: number[
     addEvent(state, 'info', msg, [playerId, by], tiles[0]);
   }
   return annexed;
+}
+
+/** Tick of the last 'surrounded' warning per player, per game (WeakMap: no state shared between games). */
+const lastWarn = new WeakMap<GameState, Map<number, number>>();
+const SURROUND_WARN_SECONDS = 20;
+
+function warnSurrounded(state: GameState, playerId: number, by: number): void {
+  let m = lastWarn.get(state);
+  if (!m) {
+    m = new Map();
+    lastWarn.set(state, m);
+  }
+  const last = m.get(playerId);
+  if (last !== undefined && state.tick - last < SURROUND_WARN_SECONDS * TICKS_PER_SECOND) return;
+  m.set(playerId, state.tick);
+  const name = state.players[by].name;
+  addEvent(state, 'surrounded', `Surrounded by ${name}: expand into free land or attack out, or ${name} will absorb you`, [playerId, by], state.players[playerId].capital);
 }
 
 function grow(sc: Scratch, n: number): void {

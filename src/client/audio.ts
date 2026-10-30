@@ -187,6 +187,8 @@ export function soundForEvent(e: GameEvent, humanId: number): SoundChoice | null
       // Watchtower warning about an enemy transport heading for our land: a ship horn instead of the alarm.
       if (/transport/.test(e.message)) return pick('shipHorn');
       return pick('underAttack');
+    case 'surrounded':
+      return first ? pick('underAttack') : null;
     case 'buildingDone':
       return first ? pick('buildingDone', /upgraded/.test(e.message) ? 1 : 0.85) : null;
     case 'buildingLost':
@@ -879,8 +881,25 @@ export class AudioManager {
    * One call per frame does everything: drains new events and effects of `state` (each once), spawn countdown
    * ticks, auto tension. `view` (the Camera) gives stereo pan and the on-screen test; without it nothing is panned.
    */
-  update(state: GameState, view?: ScreenView): void {
+  /**
+   * Treats everything `state` holds now as history (no sounds for it): an online client replaying a catch-up calls
+   * this instead of update(), so minutes of replayed events don't all sound at once.
+   */
+  skipTo(state: GameState): void {
+    this.lastState = null;
+    this.update(state, undefined, true);
+  }
+
+  update(state: GameState, view?: ScreenView, silent = false): void {
     if (this.disposed) return;
+    if (silent) {
+      this.lastState = state;
+      this.seenEvents = new WeakSet();
+      this.seenEffects = new WeakSet();
+      for (const e of state.events) this.seenEvents.add(e);
+      for (const e of state.effects) this.seenEffects.add(e);
+      return;
+    }
     try {
       const h = state.humanId;
       if (state !== this.lastState) {

@@ -22,8 +22,11 @@ src/sim/      deterministic simulation, no DOM, no Math.random (use state.rng), 
   fmath.ts      deterministic exp / log / pow (no Math.exp etc. in the sim)
   hash.ts       hashState(state): FNV-1a hash of the state for desync detection
   grid.ts       tile index helpers, neighbours, distance fields, water bodies and ship routes (A*)
+  setup.ts      the options chosen before a game (GameSetup): defaults, presets, validation, modifier labels
+  rules.ts      modifiers and teams in play: refusals with reasons, rate multipliers, peace time (section 12)
   mapgen.ts     procedural maps (terrain + resources)
-  state.ts      createGame(settings), spawning, setOwner (the single way to change a tile's owner)
+  worldmaps.ts  real-world maps (docs/MAPS.md): list, load (async), compact version
+  state.ts      createGame(settings, map?, opts?), spawning, setOwner (the single way to change a tile's owner)
   territory.ts  per-player data kept by setOwner: border sets, land weights, coast/deposit lists, block counts
   changes.ts    tile change feed for the renderer (recordTileChange / drainTileChanges)
   economy.ts    the troop pool (cap, growth), gold, iron, oil, science, upkeep, army mix conversion
@@ -43,7 +46,11 @@ src/sim/      deterministic simulation, no DOM, no Math.random (use state.rng), 
   victory.ts    win / lose detection, scores
   sim.ts        tick(state): runs every system in a fixed order
 src/client/   browser only
-  main.ts       boot, main menu, game loop (fixed 10 ticks/s sim, render every animation frame)
+  main.ts       boot, main menu, game loop (fixed 10 ticks/s sim, render every animation frame); loads a world map
+                before createGame; online sessions (lockstep runner instead of the fixed-step loop)
+  mpgame.ts     online lockstep runner: turns from the server, intents out, hashes, catch-up (docs/MULTIPLAYER.md)
+  lobby.ts      Multiplayer pages: public lobby list, join by code, private lobby (the setup screen in lobby mode)
+  menu.ts       title screen, how to play; setupScreen.ts the New game screen; mapThumbs.ts map previews
   renderer.ts   map renderer (WebGL2 map layer + Canvas2D overlay), see "Map rendering" in section 11
   render/       renderer parts: tiles.ts (change feed mirror), glmap.ts + shaders.ts (WebGL2 map), map2d.ts
                 (Canvas2D fallback), terrain.ts, buildings.ts, deposits.ts, units.ts, fronts.ts, names.ts,
@@ -57,6 +64,7 @@ src/client/   browser only
   input.ts      mouse + keyboard -> Actions / UI state
   hud.ts        DOM HUD: wires the parts in hud/ (command bar, standings, cluster, drawers, toasts, advisor)
   styles.css
+src/net/      protocol.ts (wire protocol, shared with server/), client.ts (WebSocket connection, reconnects, ping)
 tests/        vitest unit tests for the sim
 scripts/headless.ts   run an AI-only game without a browser and print stats (balance checks)
 scripts/batch.ts      many AI-only games in parallel: winners, game length, mixes, buildings, snowball, ms/tick
@@ -72,13 +80,17 @@ Rules for the sim:
 - No module-level caches that outlive a game or are shared between two `GameState`s (the menu runs a background
   game next to the real one): derived data lives in a `WeakMap` keyed by the `GameState` (or by an object that
   belongs to one game, like an `Attack`). Pure scratch buffers that carry nothing between calls are allowed.
-- `hashState(state)` (hash.ts) covers tick, RNG state, tile owners, players' stocks, troops and barrage reload,
-  attacks, units (incl. troops aboard), pending barrages and buildings (level, timers, hp); tests check that two games fed the same actions hash the same, also with another game ticking in
+- `hashState(state)` (hash.ts) covers tick, RNG state, phase and spawn time, tile owners, players' stocks, troops and
+  barrage reload, research (current tech, progress, techs), auto flags, traitor time and embargoes, alliances and
+  alliance requests, attacks, units (incl. troops aboard), pending barrages and buildings (level, timers, hp); tests check that two games fed the same actions hash the same, also with another game ticking in
   between.
 - No TypeScript `enum`s or namespaces (keep syntax erasable). Use `as const` objects and string unions.
 - Tick = 100 ms of game time (`TICK_SECONDS = 0.1`). All rates in config are per second; multiply by `TICK_SECONDS`.
 - Map: `width * height` tiles, index `i = y * width + x`. Typed arrays in `GameState.map`.
 - Owner 0 = nobody. Players have ids 1..N. `state.players[id]` (index 0 is a placeholder neutral entry).
+- Several humans (online): ids 1..H, then the AI nations, then the tribes. Every human is treated alike;
+  `state.humanId` is a client-side notion (which nation this client shows and controls, 0 = spectator) that the sim
+  never reads, so clients controlling different players stay in lockstep.
 - Systems communicate only through `GameState`. The client reads `GameState` and sends `Action`s through
   `applyAction(state, playerId, action)`. Same path for AI.
 - Events for the UI (captures, buildings destroyed, alliance requests, research done, eliminated ...) are pushed to
@@ -241,6 +253,9 @@ perfect square; at 0.25 with the wider jitter a free expansion grows a round, sl
   the check floods its pieces next to those changes (an open piece or one over `POCKET_MAX_TILES` stops early). A
   piece fully surrounded by one hostile nation (no water, no neutral land; the map edge doesn't count) that is under
   half of the player's land is annexed by it; a small nation's main body too. Allies keep their pockets.
+  **Human grace**: a human nation neither collapses nor has its main body absorbed in its first
+  `HUMAN_GRACE_SECONDS` (180) of game time (its 81-tile start is under the threshold); while walled in it gets a
+  `surrounded` event (a red toast, at most every 20 s) telling it to expand or attack out.
 
 **Army sizes are public.** Everyone sees every nation's army total (`armyTotalOf(state, id)`, buildings.ts: home +
 attacks + transports + cargo planes), like name labels show it. Intel (`hasIntel(viewer, target)`) only gates the
@@ -424,7 +439,9 @@ Effects in config (`TECHS`).
 
 ## 8. Diplomacy
 
-- Alliances: request -> other side accepts/rejects (AI decides from opinion and threat; tribes accept everything).
+- Alliances: request -> other side accepts/rejects (AI decides from opinion and threat; tribes accept everything but a
+  traitor). In the first 3 game minutes an AI accepts a human only out of opinion (no fear or timid alliances), so
+  allying with every nation at once is no free shield.
   Allies cannot attack each other, share intel, may trade. Alliances last `ALLIANCE_DURATION` s. **Renewal**: in
   the last `ALLIANCE_RENEW_WINDOW` (60) s either side may request again; the alliance is extended only when the
   other side accepts (both agree), else it expires.
@@ -441,8 +458,11 @@ Effects in config (`TECHS`).
 
 ## 9. Victory
 
-Win by owning `VICTORY_LAND_SHARE` (default 75%) of all land tiles, or by being the last nation (tribes don't
-count and never win). Lose when your territory is gone. **Overtime**: after `OVERTIME_MINUTES` (25) the needed land
+Win by owning `settings.victoryLandShare` (default `VICTORY_LAND_SHARE` 75%; the setup offers 60-90%) of all land
+tiles, or by being the last nation (tribes don't count and never win). In a teams game a team wins together: its
+members' land added up, or as the last team standing (`state.winner` = its best-scoring member, `state.winnerTeam`
+= the team; `victory.humanWon`). Lose when your territory is gone. The game ends when every human is out (single
+player: the one human); online, an eliminated player watches while the others play on. **Overtime**: after `OVERTIME_MINUTES` (25) the needed land
 share drops by `OVERTIME_DROP_PER_MINUTE` (1%) per full minute, down to `OVERTIME_MIN_SHARE` (50%), so games end
 on the map (`victoryShareNow(state)` for the UI). Optional time limit: highest score wins. Score = tiles +
 troops/100 + buildings*50. AI-only games end with a winner in about 20-35 game minutes on medium to huge maps (median 24.5 / 26.5 / 31 min, 4 seeds each, 2026-10)
@@ -464,7 +484,9 @@ home reach a personal trigger share of the cap (`trigger`, 45-65%), sending ever
 25-42%), so a nation hovers near the growth peak; careful AIs top a war up toward odds 1.2 (send more, lose less).
 Targets: neighbours we outnumber enough (`strengthNeeded` by personality, much more while wilderness is left, less
 against traitors, grudges, runaway leaders and when attacked); no pile-on (a nation already attacked by two others is
-left alone unless it attacks us); tribes whenever we outnumber them 2:1 (they are food). A boxed-in nation grows
+left alone unless it attacks us); tribes whenever we outnumber them 2:1 (they are food). A human nation that is not
+attacking us gets a head start: for the difficulty's `humanGrace` (Easy 8 min, Normal 6, Hard none) an AI wants
+x1.8 the strength before attacking it and never picks it as the "weakest neighbour" of a full bar. A boxed-in nation grows
 impatient (need falls 10% per idle minute) and one with a nearly full bar attacks its weakest neighbour rather than
 sit idle; boxed-in nations also land by sea. They build economy first, then military buildings by personality, keep
 an army mix that counters the main foe, research, ally with strong neighbours they fear, use bombers and missiles,
@@ -476,16 +498,23 @@ are about to attack (SAMs first; with lots of artillery and nothing to silence, 
 sometimes (40% of the air turns with a ready airfield) **drop paratroopers** on a capital or city of a nation they
 clearly outnumber (careful AIs avoid SAM cover), else about 30 tiles behind the main front toward its capital.
 
-**Tribes** (`Personality 'tribe'`, `isTribe(p)`): `settings.tribeCount` small AI players (negative =
-`DEFAULT_TRIBE_COUNT` per map size: small 40, medium 100, large 200, huge 300; at most `MAX_TRIBE_COUNT` 500) named
+**Tribes** (`Personality 'tribe'`, `isTribe(p)`): `settings.tribeCount` small AI players (negative = the default for
+the land actually played, `setup.defaultTribeCount`: by size class small 120, medium 200, large and huge 300,
+real-world maps 300, compact maps by their quarter of the land; at most `MAX_TRIBE_COUNT` 600). They are the main
+thing to conquer: games have few nations and many tribes. Named
 "Tribe of ...", with muted colours. They spawn in the leftover space when the spawn phase ends (radius 4, 40% of
 the starting troops), have a third of the cap and half the growth and gold, take neutral land with their spare
-troops up to `TRIBE_MAX_TILES` (900), never attack anyone, build and research nothing, and accept every alliance.
+troops up to `TRIBE_MAX_TILES` (900), never attack anyone, build and research nothing, and accept every alliance
+(except from a traitor).
 They decide every 4-8 s (`TRIBE_DECISION_SECONDS`, staggered). They are early food: nations eat them in the first
-minutes, and one collapses when hit below `TRIBE_ANNEX_TILES`.
+minutes, and one collapses when hit below `TRIBE_ANNEX_TILES`. A tribe of any size that one nation has walled in
+completely (no water or free land around it) is absorbed by that nation (endgame.ts), so encircling tribes pays and
+the nations don't fill up with tribe parcels.
 
-**Player counts** (menu defaults, changeable): AI nations `DEFAULT_AI_COUNT` small 10 / medium 20 / large 35 /
-huge 50 (at most `MAX_AI_COUNT` 80). Nations spawn spread out (spawn score weighs distance to others as much as land
+**Player counts** (setup defaults, changeable): AI nations 8 in single player (`DEFAULT_SETUP.aiCount`,
+`DEFAULT_AI_COUNT`), about 10 nations in all in multiplayer (`MULTIPLAYER_NATIONS`, humans included), at most
+`MAX_AI_COUNT` 40. Default setup, AI only (`scripts/batch.ts`, 4 seeds each, 2026-10-30): small 25 min, medium 27,
+large 25, the World map 35 (median winner minute); Quick Conquest 20. Nations spawn spread out (spawn score weighs distance to others as much as land
 quality) with a start radius by map size (`SPAWN_RADIUS_BY_SIZE` 5 / 6 / 7 / 8) and at least `spawnMinDistance`
 (3 x radius + 2) between capitals.
 
@@ -495,8 +524,16 @@ full-map scans after `createGame`.
 
 ## 11. Client
 
-- Main menu: map type, size (small to huge), number of AI nations (defaults by size, 2-80), tribes, difficulty,
-  seed, your name & colour; How to play.
+- Main menu: New game (the setup screen, setupScreen.ts) and How to play. The setup screen edits one `GameSetup`:
+  presets as chips in the header (Classic, Quick Conquest, Grand War, Island Hopping, Chaos; "Custom" appears when
+  the settings match none); left column: the map (Generated / Real world tabs, preview thumbnails drawn from the map
+  data by mapThumbs.ts in the background, size for generated maps), AI nations and tribes sliders (tribes Auto = by
+  land), difficulty, free for all or teams (2-6); right column: the modifiers in groups Economy, Combat and Rules,
+  each with a one-line plain explanation (two columns on wide screens, scrolling with a faded edge on small ones);
+  a summary line (map, nations, tribes, active modifiers); name, colour, seed and Start. Remembered in localStorage
+  (`borderfall.setup.v2`, read through setup.sanitizeSetup). In the game the active modifiers show as chips under
+  the top-right cluster (hud/modChips.ts, tooltips; peace time counts down); disabled buildings, warships, atom
+  bombs and the Ally button disappear or say why.
 - Spawn phase (`SPAWN_SECONDS`): click a land tile to place your capital (else random); click again to move it.
   The `startNow` action ends the phase on the next tick once every human has picked (single player: you).
   `state.playStartTick` records the tick the phase ended; `gameSeconds(state)` (state.ts) counts from it and is the
@@ -506,18 +543,22 @@ full-map scans after `createGame`.
   an R32UI owner texture (owner | fallout | capture flash kind and time) kept current from the sim's tile change
   feed (`drainTileChanges`, tiles.ts): changed tiles drip in over the frames of one tick, mark 64 x 64 blocks dirty,
   and only dirty row runs are re-uploaded (a full upload on `overflow` or a new game). Nations are one solid colour
-  with the terrain only as soft luminance shading (tribes are solid too, in a light dusty tint of their own hue,
-  `tribeDisplayColor` in renderer.ts, so they read as small calm parcels, not holes or terrain; no capital stars and
-  no labels until they are readable), crisp borders where a neighbour has another owner (darker shade;
+  with the terrain only as soft luminance shading (tribes share one nearly grey wash, `tribeDisplayColor` in
+  renderer.ts: a hint of their own hue and a small value step, so saturated colours mean nations; no capital stars;
+  labels only from zoom 3.2 on (names.ts `TRIBE_LABEL_ZOOM`), just the army number below zoom 6
+  (`TRIBE_NAME_ZOOM`), the full name when hovered), crisp borders where a neighbour has another owner (darker shade;
   yours white; allies light and dashed; traitors red; the hovered nation brighter, pulsing red when it looks easy),
   capture flashes along fronts (your gains yellow, your losses red), fort coverage hatch, fallout, supply / spawn /
   resource overlays. Terrain: one calm colour per type far out, a procedural pattern per type closer in (tree
   dots, hill domes, mountain peaks, sand stipple, swamp flecks, snow dots), soft shores. Without WebGL2 a Canvas2D
   path (map2d.ts) draws flat colours and borders. On top, a Canvas2D overlay: building markers (minimal at every zoom:
-  a deep shade of the owner's colour with a white silhouette, icons.ts marker mode, at least 16 px from FAR_ZOOM 1.7
-  on; farther out only cities and forts as small squares), deposit
+  a plate in the building's category colour (economy gold, production orange, defence blue, logistics green,
+  advanced purple) with a white silhouette in a frame of the owner's colour, icons.ts marker mode, at least 16 px from
+  FAR_ZOOM 1.7 on, the name underneath from zoom 8; farther out only cities and forts as small squares), deposit
   markers (fields, then clusters), units as tinted icon sprites with halo, shadow, wakes and contrails (at least
-  16 px), name labels (largest inscribed rectangle on a coarse owner grid, a few players per frame), front troop
+  16 px), name labels (largest inscribed rectangle on a coarse owner grid, a few players per frame; a label over
+  building markers fades to half), your capital ringed in white and, while your land is under about 40 px on screen,
+  a pulsing "YOU" locator around it, front troop
   pills (anchored on the latest captures from the change feed), reticles, effects. Minimap from the same feed.
   Spatial grids keyed by `buildingsVersion` cull buildings and deposits. Your own warships can be clicked to move
   them (`Renderer.ownWarshipAt`).
@@ -539,16 +580,69 @@ full-map scans after `createGame`.
   hotkeys, buildings hidden until their tech is close), the top-left standings (top 5 + you, top 3 on screens under 800 px tall; land % and
   public army, collapsible; a click centres and opens the nation card) and the top-right cluster (drawer buttons,
   named on screens 1600 px and wider; clock, pause and speed, sound, help, menu). Together about 7% of a 1920x1080
-  and 12% of a 1280x720 screen. Only when needed: toasts (top centre, 4 s;
+  and 12% of a 1280x720 screen; above about 1500 px wide the anchored HUD parts grow with the window (CSS `--ui`, up to
+  x1.35). The camera glides to your capital (zoom 4.5) when you place your start and when the game starts. The help
+  page pauses single player while it is open. Only when needed: toasts (top centre, 4 s;
   alliance requests stay with Accept / Decline), the advisor line above the command bar (`advisor.suggestions()`,
   cycling every 8 s, a button that acts, dismissible, can be switched off) or the first-game tutorial (six steps,
   remembered in localStorage), the spawn bar, the target-mode chip, the map tooltip (terrain with its effect in plain
   words, the resource and what to build on it, owner, relation and army, the building with its level and effect).
   One click away: drawers on the right (Army: mix + auto, what attacks send, active attacks, air and strikes;
   Research with auto; Diplomacy; Events history; Map key: every terrain with swatch and effect, resources, borders
-  and marks, units, strikes, troop counters; the selected building with upgrade and actions; Menu: sound, advisor,
+  and marks, buildings (marker, hotkey, effect, the category colours), units, strikes, troop counters; the selected building with upgrade and actions; Menu: sound, advisor,
   tutorial, minimap, leave), the nation card on the left (Ally / Accept / Break, Gift, Embargo, Attack), the help page.
+  Destructive actions ask first (a warning toast with a confirm button: Demolish from the radial menu, Break an
+  alliance); an alliance request, a gift and an AI's refusal get a toast.
   Pictograms: buildings and deposits use the map markers' silhouettes (icons.ts MARKER_DATA) as inline SVG in one
   colour (hud/glyph.ts), controls use thin line icons. Sound: audio.ts wired as docs/AUDIO.md describes (unlock on the
   first gesture, `update()` per frame, own build / launch / error sounds, UI clicks, volumes in the menu).
   Game over screen with stats.
+
+## 12. Game setup, modifiers and teams
+
+One options model for single player, the setup screen, the multiplayer lobby and the server (`types.ts` `GameSetup`,
+`setup.ts`): `map` (`{ kind: 'generated', type, size }` or `{ kind: 'world', id }`), `aiCount`, `tribeCount` (-1 =
+by land), `difficulty`, `mode` (`'ffa' | 'teams'`), `teamCount` (2-6), `timeLimit` (0 or 15/30/60 min in seconds),
+`victoryLandShare` (0.6-0.9), `modifiers` and `preset` (a label). `GameSettings` = `GameSetup` + seed, player name and
+colour, `humanPlayer`, and for online games `humans` (one `{name, color, team}` seat per player, ids 1..H;
+`setup.humanSeats` reads either form, single player being one seat). The lobby's `LobbySettings` is `GameSetup` + `maxPlayers` (src/net/protocol.ts).
+`validateSetup` is the strict check (server: unknown fields and bad values are errors), `sanitizeSetup` the lenient
+one (saved settings), `mergeSetup` applies a partial patch (modifiers field by field), `applyPreset` /
+`matchPreset` / `PRESETS`, `activeModifiers` / `modifierSummary` give plain-word labels. Chaos is rolled when the
+preset is picked (the roll is not part of the settings, so every client gets the same values).
+
+`createGame(settings, map?, { teams? })` stays synchronous: a world map is loaded first (`await loadWorldMap(id)`)
+and passed in; with the compact modifier the game uses `compactWorldMap` (2 x 2 blocks, half the width and height).
+On a world map AI nation k is the map's spawn k (`worldMapSpawns`, spread-out order) with its real name, and starts
+at its capital (`state.spawnPoints`, or the nearest valid tile; ignored with random spawn). `state.mapClass` is the
+map's size class (generated: its size; world or compact: by land) for the start radius, building spacing and default
+tribes.
+
+Modifiers (`types.Modifiers`), enforced in the sim (`rules.ts`; every refusal has a plain reason) and respected by
+the AI (it never tries what is off) and the advisor (never suggests it):
+
+| Modifier | Effect in the sim |
+|---|---|
+| `randomSpawn` | humans are placed on the first tick (`randomSpawnHumans`), `spawn` is refused; fixed world-map capitals are ignored |
+| `compactMap` | generated: `MAP_SIZES` x `COMPACT_SCALE` (0.5) per side; world: `compactWorldMap`; tribes by the smaller land |
+| `peaceMinutes` 0/2/4/6 | `atPeace(a, b)`: two nations or players (not tribes) can't attack, invade, bomb, shell, drop on, fire at or annex each other; warships hold fire; landings on their coast come home; `peaceReason` says how long is left; events at 1 minute left and at the end |
+| `startingGold` | `STARTING_GOLD` normal 600 / high 5 000 / very high 20 000 for every player |
+| `goldMultiplier` 0.5-3 | gold income x this (`goldRate`) |
+| `troopGrowth` 0.5-2 | positive troop growth x this (`growthRate`) |
+| `buildSpeed` | construction and upgrade time x 1 / 1/3 / one tick (`buildSeconds`) |
+| `noAlliances` | `requestAlliance` / `answerAlliance` refused (teammates stay allied) |
+| `noNukes` | `launchMissile` atom bomb refused (rockets stay) |
+| `noAir` | airfields, aircraft and paratroopers refused |
+| `noNavy` | `buildWarship` refused (transports and trade ships stay) |
+| `noSams` | SAM sites refused |
+| `research` | 'allUnlocked': every nation starts with every tech, research refused; 'off': research and every building that needs a tech refused. Labs (science only) are refused in both |
+| `fastGame` | gold, iron, oil, science, troop growth and front speed x2, construction in half the time |
+
+Teams (`state.teams[playerId]`, 0 = none): from `createGame`'s `opts.teams` (the lobby), else `setup.assignTeams`:
+the seats' chosen teams, then everyone else (auto humans, AI nations) to the smallest team, which is round-robin by
+id when nobody chose (single player: the human, id 1, on team 1). AI nations fill the teams; tribes have none.
+Teammates share a colour family (single player: team 1 keeps the human's colour; online the humans take the first
+shades of their team's colour). `sameTeam` makes
+`areAllied` true, so every "not an ally" rule applies; `breakAlliance` and `requestAlliance` between teammates are
+refused. Victory: section 9.
+

@@ -5,7 +5,9 @@ import type { BuildingType } from '../src/sim/types';
 import { CITY_MAX_LEVEL } from '../src/sim/config';
 import { defaultTribeCount, outnumberRatio, rulesTextEntries } from '../src/client/compat';
 import { computeLabels, fitSize } from '../src/client/labels';
-import { tribesForLevel } from '../src/client/menu';
+import { PLAYER_PALETTE, settingsFromPrefs } from '../src/client/setupScreen';
+import { MAX_AI_COUNT } from '../src/sim/config';
+import { sanitizeSetup, validateSetup } from '../src/sim/setup';
 import { snapBuild } from '../src/client/placement';
 import { claimRect, makeFlatGame } from './helpers';
 
@@ -92,15 +94,19 @@ describe('compat helpers', () => {
     expect(outnumberRatio(null, 0, 100)).toBeNull();
   });
 
-  it('scales the tribe count of the map size by the menu level', () => {
-    for (const size of ['small', 'medium', 'large'] as const) {
-      const d = defaultTribeCount(size);
-      expect(d).toBeGreaterThan(0);
-      expect(tribesForLevel(size, 'none')).toBe(0);
-      expect(tribesForLevel(size, 'few')).toBe(Math.round(d * 0.5));
-      expect(tribesForLevel(size, 'normal')).toBe(d);
-      expect(tribesForLevel(size, 'many')).toBe(Math.round(d * 1.5));
-    }
+  it('builds full game settings from remembered setup prefs (junk falls back to the defaults)', () => {
+    for (const size of ['small', 'medium', 'large'] as const) expect(defaultTribeCount(size)).toBeGreaterThan(0);
+    const setup = sanitizeSetup({ map: { kind: 'world', id: 'europe' }, aiCount: 999, modifiers: { fastGame: true, peaceMinutes: 3 }, junk: 1 });
+    const s = settingsFromPrefs({ setup, playerName: '  ', color: 2, seed: 77 });
+    expect(s.map).toEqual({ kind: 'world', id: 'europe' });
+    expect(s.aiCount).toBe(MAX_AI_COUNT);
+    expect(s.modifiers.fastGame).toBe(true);
+    expect(s.modifiers.peaceMinutes).toBe(0); // 3 is not an option
+    expect(s.playerName).toBe('Player');
+    expect(s.playerColor).toEqual(PLAYER_PALETTE[2]);
+    expect(s.seed).toBe(77);
+    expect(s.humanPlayer).toBe(true);
+    expect(validateSetup(s.modifiers ? { ...setup } : {}, false)).toBeNull();
   });
 
   it('turns config RULES_TEXT into titled entries', () => {
@@ -108,5 +114,56 @@ describe('compat helpers', () => {
       expect(typeof k).toBe('string');
       expect(t.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('radial menu: destructive actions ask first', () => {
+  it('Demolish and Break only open a confirm; the confirm button does it', async () => {
+    const { radialSpec: buildRadialSpec } = await import('../src/client/hud/radialSpec');
+    const { defaultUiState } = await import('../src/client/uiState');
+    const { applyAction } = await import('../src/sim/actions');
+    const { formAlliance } = await import('../src/sim/diplomacy');
+    const s = makeFlatGame(40, 20, 2, { human: true });
+    claimRect(s, 1, 0, 0, 19, 19);
+    claimRect(s, 2, 20, 0, 39, 19);
+    s.humanId = 1;
+    s.players[1].gold = 1e6;
+    s.players[1].iron = 1e6;
+    const tile = 5 * 40 + 5;
+    expect(build(s, 1, 'fort', tile).ok).toBe(true);
+    const fort = [...s.buildings.values()].find((b) => b.owner === 1)!;
+    fort.upgradeLeft = 0;
+    formAlliance(s, 1, 2);
+    const confirms: { text: string; label: string; run: () => void }[] = [];
+    const acts: string[] = [];
+    const ctx = {
+      ui: defaultUiState(),
+      state: () => s,
+      me: () => s.players[1],
+      act: (a: Parameters<typeof applyAction>[2]) => {
+        acts.push(a.type);
+        return applyAction(s, 1, a).ok;
+      },
+      confirm: (text: string, label: string, run: () => void) => confirms.push({ text, label, run }),
+      toast: () => {},
+      refreshSoon: () => {},
+      openDrawer: () => {},
+      closeDrawer: () => {},
+      openNation: () => {},
+      focusTile: () => {},
+      sound: () => {},
+    } as unknown as Parameters<typeof buildRadialSpec>[0];
+    const items = (spec: ReturnType<typeof buildRadialSpec>) => [spec.centre, ...spec.slices].filter(Boolean) as { label: string; run?: () => void }[];
+    const demo = items(buildRadialSpec(ctx, s, s.players[1], tile)).find((x) => x.label === 'Demolish')!;
+    demo.run!();
+    expect(acts).toEqual([]);
+    expect(s.buildings.size).toBe(1);
+    expect(confirms[0].label).toBe('Demolish');
+    confirms[0].run();
+    expect(acts).toEqual(['demolish']);
+    const brk = items(buildRadialSpec(ctx, s, s.players[1], 5 * 40 + 30)).find((x) => x.label === 'Break')!;
+    brk.run!();
+    expect(acts).toEqual(['demolish']);
+    expect(confirms[1].text).toMatch(/traitor/);
   });
 });

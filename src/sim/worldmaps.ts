@@ -159,3 +159,58 @@ export async function loadWorldMap(id: string): Promise<MapData> {
   if (map.landTileCount !== d.landTiles) throw new Error(`worldmaps: land count mismatch on '${id}'`);
   return map;
 }
+
+/**
+ * Compact version of a loaded map (the 'compact map' modifier): half the width and height, so a quarter of the land.
+ * Each new tile looks at a 2 x 2 block: land if at least two of the four are land (the most common land terrain,
+ * ties to the first in reading order), else water (deep if any is deep); its resource is the first one on a land
+ * tile of the block. Deterministic; returns a new MapData with coastal / landTileCount computed.
+ */
+export function compactWorldMap(src: MapData): MapData {
+  const w = Math.max(1, Math.floor(src.width / 2));
+  const h = Math.max(1, Math.floor(src.height / 2));
+  const map = createMapData(w, h);
+  const sw = src.width;
+  const counts = new Uint8Array(16);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i0 = 2 * y * sw + 2 * x;
+      const block = [i0, i0 + 1, i0 + sw, i0 + sw + 1];
+      counts.fill(0);
+      let land = 0;
+      let deep = false;
+      let res = 0;
+      for (const i of block) {
+        const t = src.terrain[i];
+        if (t <= 1) {
+          if (t === 0) deep = true;
+          continue;
+        }
+        land++;
+        counts[t]++;
+        if (!res && src.resource[i]) res = src.resource[i];
+      }
+      const o = y * w + x;
+      if (land >= 2) {
+        let best = 0;
+        for (const i of block) {
+          const t = src.terrain[i];
+          if (t > 1 && (best === 0 || counts[t] > counts[best])) best = t;
+        }
+        map.terrain[o] = best;
+        map.resource[o] = res;
+      } else {
+        map.terrain[o] = deep ? 0 : 1;
+      }
+    }
+  }
+  computeCoastAndLand(map);
+  return map;
+}
+
+/** Where a tile of the full map lands on its compact version (compactWorldMap). */
+export function compactWorldTile(full: MapData, compact: MapData, tile: number): number {
+  const x = Math.min(compact.width - 1, Math.floor((tile % full.width) / 2));
+  const y = Math.min(compact.height - 1, Math.floor(Math.floor(tile / full.width) / 2));
+  return y * compact.width + x;
+}

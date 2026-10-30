@@ -545,7 +545,10 @@ describe('victory and scores', () => {
     updateVictory(s);
     expect(s.phase).toBe('over');
     expect(s.winner).toBe(2); // top score among the living
-    expect(s.events.some((e) => e.kind === 'defeat' && e.players.includes(1))).toBe(true);
+    const defeat = s.events.find((e) => e.kind === 'defeat' && e.players.includes(1));
+    // nobody won: the texts name the leader, not a "winner"
+    expect(defeat?.message).toMatch(/^Defeat: Tester was eliminated \(.* leads the map\)$/);
+    expect(s.events.some((e) => e.kind === 'victory' && / wins/.test(e.message))).toBe(false);
 
     const t = makeFlatGame(10, 10, 3);
     claimRect(t, 1, 0, 0, 1, 1);

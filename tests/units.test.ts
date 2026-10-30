@@ -404,9 +404,10 @@ describe('missiles', () => {
 
   it('tech gates, silo checks and no firing at allies', () => {
     const { s, silo } = siloGame();
-    expect(launchMissile(s, 1, silo.tile, 'rocket', at(s, 55, 15)).ok).toBe(false);
+    expect(launchMissile(s, 1, silo.tile, 'rocket', at(s, 55, 15))).toEqual({ ok: false, reason: 'Needs research: Rocketry' });
     giveTech(s, 1, 'rocketry');
-    expect(launchMissile(s, 1, silo.tile, 'atomBomb', at(s, 55, 15)).ok).toBe(false);
+    // the refusal names the tech as the Research drawer does, not its id
+    expect(launchMissile(s, 1, silo.tile, 'atomBomb', at(s, 55, 15)).reason).toBe('Needs research: Nuclear Fission');
     expect(launchMissile(s, 1, at(s, 6, 6), 'rocket', at(s, 55, 15)).ok).toBe(false); // no silo there
     expect(launchMissile(s, 1, silo.tile, 'rocket', at(s, 10, 10)).ok).toBe(false); // own land
     formAlliance(s, 1, 2);

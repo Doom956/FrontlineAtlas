@@ -3,6 +3,7 @@
 //   ATTACK  the share of troops each attack sends: -/+ steppers, a big value and a slider ([ and ])
 //   GOLD    gold and its rate; iron, oil and science appear as small chips once they matter
 //   BUILD   category tabs and the buildings of that tab (pictogram, cost, hotkey); locked ones stay hidden
+import { buildingAllowed, buildSeconds, mods, researchRule } from '../../sim/rules';
 import { buildingCost, countBuildings } from '../../sim/buildings';
 import { BUILDINGS, BUILDING_ORDER, TECHS } from '../../sim/config';
 import { armyTotal, growthPeak } from '../../sim/economy';
@@ -11,8 +12,8 @@ import { depositCount } from '../../sim/territory';
 import type { BuildingType, GameState, Player, TechId } from '../../sim/types';
 import { formatCount } from '../render/common';
 import { troopsToSend, troopSum } from '../input';
-import { BUILD_TAB_OF, BUILD_TABS, BUILDING_SHORT, type BuildTab } from './text';
-import { el, flash, fmtRate, keycap, sectionTitle, setClass, setText, setTip, setVisible, slider, syncSlider, type HudCtx } from './dom';
+import { BUILD_TAB_OF, BUILD_TABS, buildingTexts, type BuildTab } from './text';
+import { el, flash, fmtRate, fmtSeconds, keycap, sectionTitle, setClass, setText, setTip, setVisible, slider, syncSlider, type HudCtx } from './dom';
 import { iconSpan, lineIcon, worldGlyph } from './glyph';
 import { maxLevel } from '../simx';
 
@@ -218,7 +219,7 @@ export class CommandBar {
       if (!this.revealed.science && (me.researching || me.techs.length > 0 || countBuildings(s, me.id, 'lab', true) > 0 || me.science >= 60)) this.revealed.science = true;
       setVisible(iron.c, this.revealed.iron);
       setVisible(oil.c, this.revealed.oil);
-      setVisible(sci.c, this.revealed.science);
+      setVisible(sci.c, this.revealed.science && researchRule(s) === null);
       setText(iron.v, formatCount(me.iron));
       setText(oil.v, formatCount(me.oil));
       setText(sci.v, me.researching ? `${Math.round((me.researchProgress / TECHS[me.researching].science) * 100)}%` : formatCount(me.science));
@@ -268,13 +269,14 @@ export class CommandBar {
         setText(cost, formatCount(c.gold));
         const reason = buildReason(s, me, type);
         setClass(b, 'disabled', reason !== '');
-        setVisible(b, techNear(me, info.tech) && b.dataset.tab === 'cur');
+        setVisible(b, techNear(me, info.tech) && buildingAllowed(s, type) && b.dataset.tab === 'cur');
         const owned = countBuildings(s, me.id, type, true);
         const lv = maxLevel(type);
+        const tx = buildingTexts(mods(s).noNukes, type, info.description);
         setTip(
           b,
-          `${info.name}  [${info.hotkey}]\n${BUILDING_SHORT[type]}.\n${info.description}` +
-            `\nCost ${formatCount(c.gold)} gold${c.iron ? ` + ${formatCount(c.iron)} iron` : ''}, ${info.buildTime} s` +
+          `${info.name}  [${info.hotkey}]\n${tx.short}.\n${tx.description}` +
+            `\nCost ${formatCount(c.gold)} gold${c.iron ? ` + ${formatCount(c.iron)} iron` : ''}, ${fmtSeconds(buildSeconds(s, info.buildTime))}` +
             (owned ? `. You have ${owned}` : '') +
             (lv > 1 ? `. Build on one of yours to upgrade it (up to level ${lv})` : '') +
             (reason ? `\n${reason}` : ''),

@@ -25,7 +25,7 @@ import { borderTiles, landComponents, landWeight } from '../src/sim/territory';
 import { Terrain } from '../src/sim/types';
 import type { GameState, TerrainId, Troops } from '../src/sim/types';
 import { updateUnits } from '../src/sim/units';
-import { claimRect, makeFlatGame } from './helpers';
+import { claimRect, makeFlatGame, testSettings } from './helpers';
 
 const inf = (n: number): Troops => ({ infantry: n, armor: 0, artillery: 0 });
 const at = (s: GameState, x: number, y: number): number => y * s.map.width + x;
@@ -33,12 +33,13 @@ const at = (s: GameState, x: number, y: number): number => y * s.map.width + x;
 describe('shared contract', () => {
   it('map sizes and player counts', () => {
     expect(MAP_SIZES.huge).toEqual({ width: 2600, height: 1600 });
-    expect(DEFAULT_AI_COUNT).toEqual({ small: 10, medium: 20, large: 35, huge: 50 });
-    expect(DEFAULT_TRIBE_COUNT).toEqual({ small: 40, medium: 100, large: 200, huge: 300 });
-    expect(MAX_AI_COUNT).toBe(80);
-    expect(MAX_TRIBE_COUNT).toBe(500);
-    expect(tribeCountFor({ tribeCount: -1, mapSize: 'huge' })).toBe(300);
-    expect(tribeCountFor({ tribeCount: 9999, mapSize: 'huge' })).toBe(MAX_TRIBE_COUNT);
+    expect(DEFAULT_AI_COUNT).toEqual({ small: 8, medium: 8, large: 8, huge: 8 });
+    expect(DEFAULT_TRIBE_COUNT).toEqual({ small: 120, medium: 200, large: 300, huge: 300 });
+    expect(MAX_AI_COUNT).toBe(40);
+    expect(MAX_TRIBE_COUNT).toBe(600);
+    expect(tribeCountFor(testSettings({ tribeCount: -1, mapSize: 'huge' }))).toBe(300);
+    expect(tribeCountFor(testSettings({ tribeCount: -1, mapSize: 'small' }))).toBe(120);
+    expect(tribeCountFor(testSettings({ tribeCount: 9999, mapSize: 'huge' }))).toBe(MAX_TRIBE_COUNT);
   });
 
   it('records every owner change and fallout end; drain returns them once; overflow when full', () => {

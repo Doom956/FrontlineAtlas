@@ -38,6 +38,7 @@ import {
   WATCHTOWER_LEVEL_RADIUS,
 } from './config';
 import { areAllied } from './diplomacy';
+import { buildingRule, buildSeconds } from './rules';
 import { addEvent, newId } from './state';
 import { ownsNear } from './territory';
 import { hasTech } from './tech';
@@ -214,7 +215,7 @@ export function buildingMaxLevel(type: BuildingType): number {
 }
 /** Minimum distance (tiles, straight line) between any two buildings on this game's map size. */
 export function buildingSpacing(state: GameState): number {
-  return BUILDING_MIN_SPACING_BY_SIZE[state.settings.mapSize as MapSize] ?? BUILDING_MIN_SPACING;
+  return BUILDING_MIN_SPACING_BY_SIZE[state.mapClass as MapSize] ?? BUILDING_MIN_SPACING;
 }
 /** True while a barrage keeps the building out of action (forts give no bonus, SAMs can't fire). */
 export function isDisabled(state: GameState, b: Building): boolean {
@@ -438,6 +439,8 @@ export function resolveBuildTarget(state: GameState, playerId: number, type: Bui
   if (!info) return { error: 'Unknown building' };
   const map = state.map;
   if (!Number.isInteger(tile) || tile < 0 || tile >= map.width * map.height) return { error: 'Invalid tile' };
+  const ruled = buildingRule(state, type);
+  if (ruled) return { error: ruled };
   if (info.tech && !hasTech(p, info.tech)) return { error: `Needs research: ${TECHS[info.tech].name}` };
 
   const spacing = buildingSpacing(state);
@@ -516,7 +519,7 @@ export function build(state: GameState, playerId: number, type: BuildingType, ti
   const info = BUILDINGS[type];
   if (r.upgrade) {
     const existing = state.buildings.get(r.buildingId)!;
-    existing.upgradeLeft = info.buildTime;
+    existing.upgradeLeft = buildSeconds(state, info.buildTime);
     touch(state, indexes.get(state), playerId);
   } else {
     const id = newId(state);
@@ -526,7 +529,7 @@ export function build(state: GameState, playerId: number, type: BuildingType, ti
       owner: playerId,
       tile: r.tile,
       level: 1,
-      buildLeft: info.buildTime,
+      buildLeft: buildSeconds(state, info.buildTime),
       upgradeLeft: 0,
       fighters: 0,
       bombers: 0,

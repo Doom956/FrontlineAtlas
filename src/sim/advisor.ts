@@ -34,6 +34,7 @@ import {
   TICKS_PER_SECOND,
 } from './config';
 import { areAllied } from './diplomacy';
+import { alliancesAllowed, buildingAllowed, peaceActive, researchRule, unitAllowed } from './rules';
 import { hasTech, startResearch } from './tech';
 import { borderTiles, depositCount, ownedTilesOf } from './territory';
 import { paradropRange } from './units';
@@ -312,7 +313,16 @@ export function suggestions(state: GameState, playerId: number): Suggestion[] {
   const p = state.players[playerId];
   if (!p || playerId <= 0 || !p.alive || !p.spawned || state.phase !== 'playing') return [];
   const out: Suggestion[] = [];
+  // The game's modifiers: never suggest what is off (or an attack on a nation during peace time).
+  const peace = peaceActive(state);
+  const noResearch = researchRule(state) !== null;
+  const noAlliances = !alliancesAllowed(state);
   const add = (id: string, text: string, priority: number, tile?: number, building?: BuildingType): void => {
+    if (building && !buildingAllowed(state, building)) return;
+    if (noResearch && id.startsWith('research-')) return;
+    if (noAlliances && (id.startsWith('ally-') || id.startsWith('answer-'))) return;
+    if (peace && (id === 'full-attack' || id === 'barrage' || id === 'paradrop')) return;
+    if (id === 'paradrop' && !unitAllowed(state, 'paradrop')) return;
     const sg: Suggestion = { id, text, priority };
     if (tile !== undefined && tile >= 0) sg.tile = tile;
     if (building) sg.building = building;
@@ -342,7 +352,28 @@ export function suggestions(state: GameState, playerId: number): Suggestion[] {
   }
   if (hardest > 0) {
     const nb = nbs.get(hardest);
-    add(`counter-${hardest}`, `${name(hardest)} is attacking you: attack them back to stop their troops`, 95, nb?.theirs[0], undefined);
+    if (hardestTroops > home * 0.8) {
+      // A counter-attack is paid from the home troops that defend the border: against a bigger force, hold instead.
+      add(`defend-${hardest}`, `${name(hardest)} attacks with more troops than you have at home: don't counter-attack (it spends your defenders), build forts there`, 95, nb?.ours[0], 'fort');
+    } else {
+      add(`counter-${hardest}`, `${name(hardest)} is attacking you: attack them back to stop their troops (this spends home troops)`, 95, nb?.theirs[0], undefined);
+    }
+  }
+  // A neighbour with an army far bigger than our home troops can overrun us in seconds: say so early.
+  let danger = 0;
+  let dangerRatio = 2;
+  for (const [o, nb] of nbs) {
+    const op = state.players[o];
+    if (o === 0 || !op || isTribe(op) || areAllied(state, playerId, o) || !nb.theirs.length) continue;
+    const r = armyTotalOf(state, o) / Math.max(1, home);
+    if (r > dangerRatio) {
+      dangerRatio = r;
+      danger = o;
+    }
+  }
+  if (danger > 0 && danger !== hardest) {
+    const ratio = dangerRatio >= 10 ? Math.round(dangerRatio) : Math.round(dangerRatio * 10) / 10;
+    add(`danger-${danger}`, `DANGER: ${name(danger)}'s army is ${ratio}x your home troops. Keep troops home and build forts on that border`, 93, nbs.get(danger)!.ours[0], 'fort');
   }
   for (const r of state.allianceRequests) {
     if (r.to === playerId && state.players[r.from]?.alive) {

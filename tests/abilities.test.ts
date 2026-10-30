@@ -397,6 +397,22 @@ describe('advisor hints', () => {
     expect(ids).toContain('attack-tribe-3');
     expect(ids).toContain('barrage');
   });
+
+  it('warns of a neighbour army far bigger than the home troops, and says not to counter a bigger attack', () => {
+    const s = makeFlatGame(100, 40, 2, { human: true, seed: 5 });
+    claimRect(s, 1, 0, 0, 49, 39);
+    claimRect(s, 2, 50, 0, 99, 39);
+    s.players[1].troops = inf(20000);
+    s.players[1].maxPop = 1e6;
+    s.players[2].troops = inf(100000);
+    const danger = suggestions(s, 1).find((h) => h.id === 'danger-2');
+    expect(danger?.text).toMatch(/^DANGER: .*5x your home troops/);
+    expect(danger?.building).toBe('fort');
+    s.attacks.push({ id: 78, attacker: 2, target: 1, troops: inf(60000), focusTile: at(s, 49, 10), progress: 0, startTick: 0, amphibious: false, losses: 0, tilesTaken: 0 });
+    const ids = suggestions(s, 1).map((h) => h.id);
+    expect(ids[0]).toBe('defend-2');
+    expect(ids).not.toContain('counter-2');
+  });
 });
 
 describe('abilities are deterministic', () => {

@@ -1,4 +1,5 @@
 // What the radial menu offers for a tile: the likely action in the centre, the rest on the ring.
+import { alliancesAllowed, buildingAllowed, sameTeam, unitAllowed } from '../../sim/rules';
 import { buildCostAt, buildingAt, buildingsOf, canBuild, chargesReady, countBuildings } from '../../sim/buildings';
 import { BUILDINGS, BUILDING_ORDER, RESOURCE_NAMES, TERRAIN, UNITS } from '../../sim/config';
 import { areAllied } from '../../sim/diplomacy';
@@ -12,7 +13,7 @@ import { formatCount } from '../render/common';
 import { barrageAction, barrageCheck, maxLevel, paradropAction, planParadrop } from '../simx';
 import { pct, type HudCtx } from './dom';
 import { techNear } from './commandBar';
-import { GIFT_GOLD } from './nationCard';
+import { confirmBreak, GIFT_GOLD } from './nationCard';
 
 function costText(gold: number, iron: number): string {
   return `${formatCount(gold)} gold` + (iron > 0 ? ` + ${formatCount(iron)} iron` : '');
@@ -78,7 +79,7 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
       label: 'Build',
       icon: 'build',
       hint: 'Pick a building for this tile',
-      submenu: () => BUILDING_ORDER.filter((t) => techNear(me, BUILDINGS[t].tech)).map((t) => buildItem(ctx, state, me, t, tile)),
+      submenu: () => BUILDING_ORDER.filter((t) => techNear(me, BUILDINGS[t].tech) && buildingAllowed(state, t)).map((t) => buildItem(ctx, state, me, t, tile)),
     };
     if (b && b.level < maxLevel(b.type)) {
       const r = canBuild(state, h, b.type, tile);
@@ -103,7 +104,7 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
       if (b.type === 'port' && b.buildLeft <= 0) {
         slices.push({ label: 'Transport', icon: 'transport', hint: 'Then click a coast to land on', run: () => (ui.mode = { kind: 'transport', from: tile }) });
         const u = UNITS.warship;
-        slices.push({
+        if (unitAllowed(state, 'warship')) slices.push({
           label: 'Warship',
           icon: 'warship',
           hint: costText(u.gold, u.iron),
@@ -119,6 +120,7 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
         for (const kind of ['rocket', 'atomBomb'] as const) {
           const u = UNITS[kind];
           if (u.tech && !hasTech(me, u.tech)) continue;
+          if (kind === 'atomBomb' && !unitAllowed(state, 'atomBomb')) continue;
           slices.push({
             label: kind === 'rocket' ? 'Rocket' : 'Atom bomb',
             icon: kind === 'rocket' ? 'rocket' : 'atom',
@@ -129,7 +131,14 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
           });
         }
       }
-      slices.push({ label: 'Demolish', icon: 'demolish', danger: true, hint: `Remove the ${BUILDINGS[b.type].name} (a quarter back)`, run: () => ctx.act({ type: 'demolish', tile }) });
+      const bName = BUILDINGS[b.type].name;
+      slices.push({
+        label: 'Demolish',
+        icon: 'demolish',
+        danger: true,
+        hint: `Remove the ${bName} (a quarter back)`,
+        run: () => ctx.confirm(`Demolish your ${bName}? You get a quarter of its price back.`, 'Demolish', () => ctx.act({ type: 'demolish', tile })),
+      });
     }
   } else if (isAttackable(state, h, tile)) {
     centre = {
@@ -168,6 +177,7 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
         for (const kind of ['rocket', 'atomBomb'] as const) {
           const u = UNITS[kind];
           if (u.tech && !hasTech(me, u.tech)) continue;
+          if (kind === 'atomBomb' && !unitAllowed(state, 'atomBomb')) continue;
           slices.push({
             label: kind === 'rocket' ? 'Rocket' : 'Atom bomb',
             icon: kind === 'rocket' ? 'rocket' : 'atom',
@@ -199,9 +209,11 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
         disabled: troops < 1 ? 'No infantry to send' : undefined,
         run: () => ctx.act({ type: 'gift', to: o, gold: 0, troops }),
       };
-      slices.push({ label: 'Break', icon: 'breakAlly', danger: true, hint: 'Break the alliance: you become a traitor for a while', run: () => ctx.act({ type: 'breakAlliance', with: o }) });
+      if (!sameTeam(state, h, o)) {
+        slices.push({ label: 'Break', icon: 'breakAlly', danger: true, hint: 'Break the alliance: you become a traitor for a while', run: () => confirmBreak(ctx, op.name, o) });
+      }
     } else {
-      slices.push({ label: 'Ally', icon: 'ally', hint: `Ask ${op.name} for an alliance`, disabled: outReq ? 'Request already sent' : undefined, run: () => ctx.act({ type: 'requestAlliance', to: o }) });
+      slices.push({ label: 'Ally', icon: 'ally', hint: `Ask ${op.name} for an alliance`, disabled: !alliancesAllowed(state) ? 'Alliances are off in this game' : outReq ? 'Request already sent' : undefined, run: () => ctx.act({ type: 'requestAlliance', to: o }) });
     }
     slices.push({
       label: `Gift ${GIFT_GOLD}`,

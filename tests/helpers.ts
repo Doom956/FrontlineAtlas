@@ -4,13 +4,18 @@ import { computeCoastAndLand, createMapData } from '../src/sim/mapgen';
 import { makeRng } from '../src/sim/rng';
 import { autoSpawnRemaining, createGame, makeGameState, makePlayer, setOwner } from '../src/sim/state';
 import { Terrain } from '../src/sim/types';
-import type { GameSettings, GameState } from '../src/sim/types';
+import { cloneSetup, DEFAULT_SETUP } from '../src/sim/setup';
+import type { GameSettings, GameState, MapSize, MapType, Modifiers } from '../src/sim/types';
 
-export function testSettings(overrides: Partial<GameSettings> = {}): GameSettings {
-  return {
+/** Overrides for testSettings; `mapType` / `mapSize` are shorthands for a generated `map`. */
+export type TestOverrides = Partial<GameSettings> & { mapType?: MapType; mapSize?: MapSize; mods?: Partial<Modifiers> };
+
+export function testSettings(overrides: TestOverrides = {}): GameSettings {
+  const { mapType, mapSize, mods, ...rest } = overrides;
+  const s: GameSettings = {
+    ...cloneSetup(DEFAULT_SETUP),
     seed: 12345,
-    mapType: 'continents',
-    mapSize: 'small',
+    map: { kind: 'generated', type: mapType ?? 'continents', size: mapSize ?? 'small' },
     aiCount: 3,
     difficulty: 'normal',
     playerName: 'Tester',
@@ -19,15 +24,17 @@ export function testSettings(overrides: Partial<GameSettings> = {}): GameSetting
     timeLimit: 0,
     victoryLandShare: VICTORY_LAND_SHARE,
     tribeCount: 0,
-    ...overrides,
+    ...rest,
   };
+  if (mods) s.modifiers = { ...s.modifiers, ...mods };
+  return s;
 }
 
 /**
  * Small generated game (small continents map, 3 AIs, seed 12345, human id 1) with everyone spawned and phase
  * 'playing'.
  */
-export function makeTestGame(overrides: Partial<GameSettings> = {}): GameState {
+export function makeTestGame(overrides: TestOverrides = {}): GameState {
   const state = createGame(testSettings(overrides));
   autoSpawnRemaining(state);
   state.phase = 'playing';

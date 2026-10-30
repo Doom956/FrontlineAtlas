@@ -8,7 +8,8 @@ import { MAX_EVENTS, TICKS_PER_SECOND, TICK_SECONDS } from './config';
 import { updateDiplomacy } from './diplomacy';
 import { updateEconomy } from './economy';
 import { updateEndgame } from './endgame';
-import { addEvent, autoSpawnRemaining, pruneEliminated } from './state';
+import { mods, updateRules } from './rules';
+import { addEvent, autoSpawnRemaining, pruneEliminated, randomSpawnHumans } from './state';
 import { updateResearch } from './tech';
 import { updateUnits } from './units';
 import { updateVictory } from './victory';
@@ -21,6 +22,7 @@ export function tick(state: GameState): void {
   if (state.phase === 'over') return;
 
   if (state.phase === 'spawn') {
+    if (state.tick === 0 && mods(state).randomSpawn) randomSpawnHumans(state);
     aiSpawn(state);
     state.spawnLeft -= TICK_SECONDS;
     if (state.spawnLeft <= 1e-9) {
@@ -45,6 +47,7 @@ export function tick(state: GameState): void {
     updateAI(state);
     updateAdvisor(state);
     updateVictory(state);
+    updateRules(state, (message) => addEvent(state, 'info', message, [], -1));
   }
 
   state.tick++;

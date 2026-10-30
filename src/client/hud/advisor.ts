@@ -5,6 +5,7 @@
 //   it can be switched off in the menu.
 import { countBuildings } from '../../sim/buildings';
 import { BUILDINGS } from '../../sim/config';
+import { mods } from '../../sim/rules';
 import { gameSeconds } from '../../sim/state';
 import type { GameState, Player } from '../../sim/types';
 import { isTribe } from '../compat';
@@ -36,14 +37,19 @@ interface Step {
   text: (s: GameState, me: Player) => string;
   done: (s: GameState, me: Player, start: StepStart) => boolean;
   key?: string;
-  /** seconds after which the step skips itself */
+  /** game seconds after which the step skips itself (game time: a paused game or an open help page doesn't count) */
   timeout?: number;
+  /** a tile the step's "Show me" button brings into view (else the button reads "Next" and skips the step) */
+  show?: (s: GameState, me: Player) => number;
 }
 interface StepStart {
   tiles: number;
   share: number;
   cities: number;
+  /** game seconds when the step started */
   at: number;
+  /** tick when the step started */
+  tick: number;
   researchOpened: boolean;
 }
 
@@ -64,6 +70,9 @@ export class AdvisorStrip {
   private shownAt = 0;
   private dismissed = new Map<string, number>();
   researchOpened = false;
+  /** the tutorial step's "Show me" tile (-1 = the button says Next) and a pending Next click */
+  private showTile = -1;
+  private skipStep = false;
 
   constructor(private ctx: HudCtx) {
     this.el = el('div', 'advisor hidden');
@@ -118,16 +127,18 @@ export class AdvisorStrip {
 
   private steps: Step[] = [
     {
-      text: (s, me) => (me.spawned ? 'Good spot. Press Start now (or wait for the countdown) to begin.' : 'Click a land tile to place your capital. Pick a place with room around it.'),
+      text: (s, me) => (me.spawned ? (mods(s).randomSpawn ? 'Your start was picked at random. Press Start now (or wait for the countdown) to begin.' : 'Good spot. Press Start now (or wait for the countdown) to begin.') : 'Click a land tile to place your capital. Pick a place with room around it.'),
       done: (s) => s.phase === 'playing',
     },
     {
       text: () => 'Click the empty land next to your border to expand. Your whole border moves; every tile costs a few troops.',
       done: (s, me, st) => me.tiles > st.tiles * 1.6 || s.attacks.some((a) => a.attacker === me.id),
+      show: (_s, me) => me.capital,
     },
     {
       text: () => 'ATTACK is how many of your troops each click sends. Change it with [ and ] or the slider.',
-      done: (_s, _me, st) => Math.abs(this.ctx.ui.attackShare - st.share) > 0.01,
+      // done when the share was changed, or after the next attack (sending the default share is fine too)
+      done: (s, me, st) => Math.abs(this.ctx.ui.attackShare - st.share) > 0.01 || s.attacks.some((a) => a.attacker === me.id && a.startTick > st.tick),
       timeout: 40,
     },
     {
@@ -136,7 +147,7 @@ export class AdvisorStrip {
       timeout: 120,
     },
     {
-      text: () => 'Tribes are the pale lands with small names: weak and easy to take. Click one next to you.',
+      text: () => 'Tribes are the grey lands with a small army number: weak and easy to take. Click one next to you.',
       done: (s, me) => s.attacks.some((a) => a.attacker === me.id && a.target > 0 && isTribe(s.players[a.target])),
       timeout: 60,
     },
@@ -149,10 +160,10 @@ export class AdvisorStrip {
 
   private tutorialUpdate(s: GameState, me: Player): boolean {
     if (!this.tutorial) return false;
-    const now = performance.now();
+    const now = gameSeconds(s);
     let st = this.stepStart;
     if (!st) {
-      st = { tiles: me.tiles, share: this.ctx.ui.attackShare, cities: countBuildings(s, me.id, 'city', true), at: now, researchOpened: this.researchOpened };
+      st = { tiles: me.tiles, share: this.ctx.ui.attackShare, cities: countBuildings(s, me.id, 'city', true), at: now, tick: s.tick, researchOpened: this.researchOpened };
       this.stepStart = st;
     }
     const step = this.steps[this.step];
@@ -160,8 +171,9 @@ export class AdvisorStrip {
       this.endTutorial(true);
       return false;
     }
-    const timedOut = step.timeout !== undefined && s.phase === 'playing' && now - st.at > step.timeout * 1000;
-    if (step.done(s, me, st) || timedOut) {
+    const timedOut = step.timeout !== undefined && s.phase === 'playing' && now - st.at > step.timeout;
+    if (step.done(s, me, st) || timedOut || this.skipStep) {
+      this.skipStep = false;
       this.step++;
       this.stepStart = null;
       if (this.step >= this.steps.length) {
@@ -173,7 +185,10 @@ export class AdvisorStrip {
     setText(this.tag, `Step ${this.step + 1} of ${this.steps.length}`);
     this.icon.innerHTML = lineIcon('info', 16);
     setText(this.text, step.text(s, me));
-    setVisible(this.doBtn, false);
+    // "Show me" brings the step's place into view; steps without one get "Next" (skip just this step)
+    this.showTile = step.show ? step.show(s, me) : -1;
+    setText(this.doBtn, this.showTile >= 0 ? 'Show me' : 'Next');
+    setVisible(this.doBtn, s.phase === 'playing' || this.showTile >= 0);
     setVisible(this.skipBtn, true);
     setVisible(this.closeBtn, false);
     setClass(this.el, 'tut', true);
@@ -235,8 +250,13 @@ export class AdvisorStrip {
   }
 
   private act(): void {
+    if (this.el.classList.contains('tut')) {
+      if (this.showTile >= 0) this.ctx.focusTile(this.showTile, true);
+      else this.skipStep = true;
+      return;
+    }
     const c = this.current;
-    if (!c || this.el.classList.contains('tut')) return;
+    if (!c) return;
     if (c.building) {
       this.ctx.ui.mode = { kind: 'build', building: c.building };
       if (c.tile !== undefined) this.ctx.focusTile(c.tile, false);

@@ -1,5 +1,7 @@
 // Top-left standings: top 5 nations by land plus you, one line each (rank, colour, name, land %, army).
 // Click a row: centre on that nation and open its card. Collapses to a single line; "Show all" lists everyone.
+import { isTeamGame, teamOf } from '../../sim/rules';
+import { teamName } from '../../sim/victory';
 import { areAllied, isTraitor } from '../../sim/diplomacy';
 import type { GameState, Player } from '../../sim/types';
 import { isTribe } from '../compat';
@@ -89,7 +91,12 @@ export class Leaderboard {
       if (myRank > top) shown.push(me);
     }
     if (myRank > 0 && this.all && myRank > ALL_MAX) shown.push(me);
-    setText(this.summary, this.collapsed ? (myRank > 0 ? `You #${myRank} of ${ranked.length}, ${((me.tiles / land) * 100).toFixed(1)}% land` : `${ranked.length} nations`) : 'land, army');
+    // Teams: the summary shows your team's land added up (that is what wins).
+    const myTeam = isTeamGame(s) ? teamOf(s, me.id) : 0;
+    let teamTiles = 0;
+    if (myTeam) for (const p of ranked) if (teamOf(s, p.id) === myTeam) teamTiles += p.tiles;
+    const teamText = myTeam ? `${teamName(myTeam)}: ${((teamTiles / land) * 100).toFixed(1)}% land` : '';
+    setText(this.summary, this.collapsed ? (myRank > 0 ? teamText || `You #${myRank} of ${ranked.length}, ${((me.tiles / land) * 100).toFixed(1)}% land` : `${ranked.length} nations`) : teamText || 'land, army');
     setText(this.more, this.all ? `Show top ${top}` : `Show all ${ranked.length}`);
     setVisible(this.more, ranked.length > top);
     const ids = new Set(shown.map((p) => p.id));
@@ -116,7 +123,8 @@ export class Leaderboard {
       setClass(r.root, 'ally', !isMe && areAllied(s, me.id, p.id));
       setClass(r.root, 'traitor', isTraitor(s, p.id));
       setClass(r.root, 'gap', !this.all && isMe && rank > top);
-      r.root.dataset.tip = isMe ? 'Your nation: click to centre on your capital' : `Click: centre on ${p.name} and show their card`;
+      const team = myTeam ? `\n${teamName(teamOf(s, p.id))}${teamOf(s, p.id) === myTeam ? ' (your team)' : ''}` : '';
+      r.root.dataset.tip = (isMe ? 'Your nation: click to centre on your capital' : `Click: centre on ${p.name} and show their card`) + team;
     }
     const order = shown.map((p) => p.id).join(',');
     if (order !== this.order) {

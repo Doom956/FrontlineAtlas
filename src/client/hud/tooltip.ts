@@ -1,6 +1,7 @@
 // Map hover: a compact card next to the cursor (terrain and what it does, the resource and what to build on it,
 // owner and army, the building and what it does) and, in attack mode, an odds badge. In build mode the card is
 // replaced by the build preview: "Build here" (green), "Upgrade to level N" (blue) or the reason (red), with costs.
+import { buildSeconds, unitAllowed } from '../../sim/rules';
 import { buildingAt, fortMultiplierAt } from '../../sim/buildings';
 import { borders, estimateAttack, supplyEfficiency } from '../../sim/combat';
 import type { AttackEstimate } from '../../sim/combat';
@@ -13,10 +14,10 @@ import { isAttackable, troopsToSend, troopSum } from '../input';
 import { rgbCss } from '../menu';
 import { formatCount } from '../render/common';
 import { armyOf, barrageCheck, barrageRange, BARRAGE_RADIUS, BuildTargetCache, maxLevel, planParadrop } from '../simx';
-import { el, pct, setVisible, type HudCtx } from './dom';
+import { el, fmtSeconds, pct, setVisible, type HudCtx } from './dom';
 import { relationOf } from './drawers';
 import { iconSpan, worldGlyph } from './glyph';
-import { BUILDING_SHORT, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect } from './text';
+import { buildingTexts, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect } from './text';
 
 export class MapTooltip {
   readonly card: HTMLElement;
@@ -112,7 +113,7 @@ export class MapTooltip {
         const info = BUILDINGS[b.type];
         const lv = maxLevel(b.type);
         const name = info.name + (lv > 1 ? ` level ${b.level}` : '') + (b.buildLeft > 0 ? ' (being built)' : '');
-        rows.push(this.line(worldGlyph(b.type, 18), name, BUILDING_SHORT[b.type] + (owner === me.id ? '. Click for details' : ''), 'bld'));
+        rows.push(this.line(worldGlyph(b.type, 18), name, buildingTexts(!unitAllowed(state, 'atomBomb'), b.type, info.description).short + (owner === me.id ? '. Click for details' : ''), 'bld'));
       }
       const def = terr.defense * (owner ? fortMultiplierAt(state, tile, owner) : 1);
       if (def > terr.defense + 0.01) rows.push(this.line(worldGlyph('fort', 18), `Fortified: defence x${def.toFixed(1)}`, 'Artillery is strong against forts', 'warn'));
@@ -169,7 +170,7 @@ export class MapTooltip {
     row.append(iconSpan(worldGlyph(type, 18), 'mt-ic'));
     row.append(el('span', me.gold >= t.cost.gold ? 'g' : 'g bad', `${formatCount(t.cost.gold)} gold`));
     if (t.cost.iron > 0) row.append(el('span', me.iron >= t.cost.iron ? 'g' : 'g bad', `${formatCount(t.cost.iron)} iron`));
-    row.append(el('span', 'dim', `${info.buildTime} s`));
+    row.append(el('span', 'dim', fmtSeconds(buildSeconds(state, info.buildTime))));
     const hint = el('div', 'mt-hint', t.ok ? 'Shift: place several. Esc: stop.' : 'Esc: stop.');
     this.card.className = `mtip price ${t.ok ? (t.upgrade ? 'up' : 'ok') : 'no'}`;
     this.card.replaceChildren(row, hint);

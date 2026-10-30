@@ -31,6 +31,7 @@ import {
   TICKS_PER_SECOND,
 } from './config';
 import { areAllied } from './diplomacy';
+import { atPeace, peaceReason } from './rules';
 import { forEachInRadius } from './grid';
 import { addEvent, newId } from './state';
 import { hasTech } from './tech';
@@ -40,7 +41,7 @@ import type { ActionResult, Barrage, GameState, Player } from './types';
 const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
 
 function hostile(state: GameState, a: number, b: number): boolean {
-  return a !== b && a > 0 && b > 0 && !areAllied(state, a, b);
+  return a !== b && a > 0 && b > 0 && !areAllied(state, a, b) && !atPeace(state, a, b);
 }
 
 /** Artillery a player has: at home plus in its attacks. */
@@ -113,6 +114,8 @@ export function canBarrage(state: GameState, playerId: number, tile: number): Ac
   if (target === 0) return FAIL('Nobody to shell there');
   if (!state.players[target]?.alive) return FAIL('That nation is gone');
   if (areAllied(state, playerId, target)) return FAIL('You cannot shell an ally');
+  const peace = peaceReason(state, playerId, target);
+  if (peace) return FAIL(peace);
   const range = barrageRange(p);
   if (!ownLandWithin(state, playerId, tile, range)) return FAIL(`Too far: guns reach ${range} tiles from your border`);
   if (p.gold < BARRAGE_GOLD) return FAIL(`Not enough gold (${BARRAGE_GOLD})`);

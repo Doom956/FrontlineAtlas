@@ -2,6 +2,7 @@
 import { build, demolish } from './buildings';
 import { boatLandingTile, launchAttack, needsBoat, retreat } from './combat';
 import { answerAlliance, breakAlliance, gift, requestAlliance, toggleEmbargo } from './diplomacy';
+import { mods } from './rules';
 import { canSpawnAt, spawnPlayer } from './state';
 import { startResearch } from './tech';
 import { TECHS } from './config';
@@ -61,6 +62,7 @@ export function applyAction(state: GameState, playerId: number, action: Action):
   }
   if (action.type === 'spawn') {
     if (state.phase !== 'spawn') return FAIL('The spawn phase is over');
+    if (mods(state).randomSpawn) return FAIL('Random starts are on: your start was picked for you');
     if (!isTile(state, action.tile)) return FAIL('Invalid tile');
     if (!canSpawnAt(state, playerId, action.tile)) return FAIL('Cannot start there (water, taken, or too close to another nation)');
     return spawnPlayer(state, playerId, action.tile) ? { ok: true } : FAIL('Cannot start there');

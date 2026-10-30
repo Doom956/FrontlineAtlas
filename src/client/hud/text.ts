@@ -86,6 +86,12 @@ export const BUILDING_SHORT: Record<BuildingType, string> = {
   silo: 'Launches rockets and atom bombs',
 };
 
+/** Short line and long description of a building, adjusted to the game's rules (a silo without atom bombs). */
+export function buildingTexts(noNukes: boolean, type: BuildingType, description: string): { short: string; description: string } {
+  if (type === 'silo' && noNukes) return { short: 'Launches rockets', description: 'Launches rockets (Rocketry); one launch slot per level. Atom bombs are off in this game.' };
+  return { short: BUILDING_SHORT[type], description };
+}
+
 export type BuildTab = 'economy' | 'military' | 'defence' | 'special';
 export const BUILD_TABS: { id: BuildTab; label: string }[] = [
   { id: 'economy', label: 'Economy' },
