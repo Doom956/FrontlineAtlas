@@ -1,6 +1,6 @@
 # Fly.io alternative to render.yaml (uses the Dockerfile). Change `app` to a free name, then: fly deploy --ha=false
 # Keep ONE machine: lobbies and games live in the server's memory. Details: docs/MULTIPLAYER.md.
-app = "borderfall-change-me"
+app = "frontline-atlas-change-me"
 primary_region = "fra"
 
 [build]

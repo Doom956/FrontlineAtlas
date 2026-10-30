@@ -339,6 +339,9 @@ export class Hub implements RoomHost {
       case 'gameOver':
         report(room.reportGameOver(member, msg.turn, msg.winner));
         return;
+      case 'setPause':
+        report(room.setPause(member, msg.paused));
+        return;
     }
   }
 

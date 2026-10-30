@@ -15,6 +15,8 @@ import { blastSummary, modeFor, STRIKE_ORDER, STRIKES, strikeAction, strikeStatu
 import { pct, type HudCtx } from './dom';
 import { techNear } from './commandBar';
 import { confirmBreak, GIFT_GOLD } from './nationCard';
+import { allyAttackAction, bestAllyFor } from '../allies';
+import { isTribe } from '../compat';
 
 const RADIAL_LABEL: Record<StrikeId, string> = { barrage: 'Barrage', bomb: 'Bomb', paradrop: 'Paratroopers', rocket: 'Rocket', atomBomb: 'Atom bomb' };
 
@@ -176,6 +178,20 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
     const inReq = state.allianceRequests.some((r) => r.from === o && r.to === h);
     const outReq = state.allianceRequests.some((r) => r.from === h && r.to === o);
     slices.push({ label: 'Nation', icon: 'info', hint: `${op.name}: army, land and diplomacy`, run: () => ctx.openNation(o) });
+    // allies that matter: ask the ally most likely to say yes (one request per cooldown)
+    if (!allied && !isTribe(op)) {
+      const best = bestAllyFor(state, h, o);
+      const an = best.ally ? state.players[best.ally].name : '';
+      slices.push({
+        label: 'Ask allies',
+        icon: 'diplomacy',
+        hint: an ? `Ask allies to attack here (${an})` : 'Ask allies to attack here',
+        disabled: best.ally ? undefined : best.why,
+        run: () => {
+          if (ctx.act(allyAttackAction(best.ally, o))) ctx.toast(`Asked ${an} to attack ${op.name}`);
+        },
+      });
+    }
     if (inReq) {
       slices.push({ label: 'Accept ally', icon: 'accept', hint: `${op.name} asked for an alliance`, run: () => ctx.act({ type: 'answerAlliance', from: o, accept: true }) });
       slices.push({ label: 'Decline', icon: 'decline', run: () => ctx.act({ type: 'answerAlliance', from: o, accept: false }) });

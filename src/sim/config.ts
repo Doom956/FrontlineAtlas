@@ -145,18 +145,20 @@ export const NEUTRAL_FRONT_RATE = 20;
 export const NEUTRAL_SPEED_TROOPS = 33000;
 export const NEUTRAL_SPEED_CLAMP: [number, number] = [5, 100];
 /**
- * Nations: tiles/s per front tile on plains at even odds; divided by clamp(1 / odds, ODDS_SPEED): outnumbering the
- * defender speeds it up modestly (x1.2 at most), hopeless odds crawl (down to x0.13).
+ * Nations: tiles/s per front tile on plains at even odds; divided by clamp(1 / odds, ODDS_SPEED) when outnumbered
+ * (hopeless odds crawl, down to x0.13); outnumbering speeds it up modestly along the force-limit curve below
+ * (ODDS_SPEED_GAIN; [0] is the ceiling, x1.25).
  */
 export const NATION_FRONT_RATE = 5.2;
-export const ODDS_SPEED: [number, number] = [0.82, 7.5];
+export const ODDS_SPEED: [number, number] = [0.8, 7.5];
 /**
- * Attacker losses per tile vs a nation: ATTACK_LOSS_BASE x terrain defence x forts x clamp(1 / odds, OUTNUMBER_LOSS)
- * x (LOSS_FLAT + LOSS_DENSITY x defender density) / attack power per unit. Odds = attack strength / the defender's
- * home army strength: send more, lose less (x0.6 at 2:1 or better, x2 at 1:2 or worse).
+ * Attacker losses per tile vs a nation: ATTACK_LOSS_BASE x terrain defence x forts x loss factor x (LOSS_FLAT +
+ * LOSS_DENSITY x defender density) / attack power per unit, x heartland and last-stand bonuses. Odds = attack strength
+ * / the defender's home army strength: send more, lose less (loss factor x0.61 at 2:1, x0.54 at 3:1, never under
+ * OUTNUMBER_LOSS[0] (force limit); clamp(1 / odds) up to x2 at 1:2 or worse).
  */
 export const ATTACK_LOSS_BASE = 200;
-export const OUTNUMBER_LOSS: [number, number] = [0.6, 2];
+export const OUTNUMBER_LOSS: [number, number] = [0.52, 2];
 export const LOSS_FLAT = 0.8;
 export const LOSS_DENSITY = 0.04;
 /** The defender loses this x its density (home troops per tile) for every tile taken. */
@@ -180,6 +182,51 @@ export const FRONT_JITTER_MIN = 8;
 export const FRONT_JITTER_SPAN = 10;
 export const FRONT_NEIGHBOUR_WEIGHT = 0.25;
 export const FRONT_TERRAIN_WEIGHT = 0.5;
+// ---------- force limit, heartland, last stand (DESIGN 4.6) ----------
+/**
+ * Force limit: odds (attack strength / the defender's home army defence) past this add strongly diminishing benefit.
+ * Effective odds e = odds up to it, then K + K x FORCE_LIMIT_TAIL x x / (x + K) with x = odds - K, so e never passes
+ * K x (1 + FORCE_LIMIT_TAIL): a 10x army fights like a 3.5x one.
+ */
+export const FORCE_LIMIT_ODDS = 3;
+export const FORCE_LIMIT_TAIL = 0.25;
+/**
+ * Outnumbering (e > 1) speeds the front up by x (1 + ODDS_SPEED_GAIN x (e - 1) / (e - 1 + ODDS_SPEED_HALF)) (x1.2
+ * at 2:1, x1.24 at 3:1, never more than x1.25) and cuts attacker losses by x (1 - OUTNUMBER_LOSS_GAIN x (e - 1) /
+ * (e - 1 + OUTNUMBER_LOSS_HALF)) (x0.69 at 3:2, x0.61 at 2:1, x0.54 at 3:1, x0.52 at most). Being outnumbered
+ * (e < 1) still uses ODDS_SPEED / OUTNUMBER_LOSS[1] (x 1 / clamp(1 / e, ...)).
+ */
+export const ODDS_SPEED_GAIN = 0.3;
+export const ODDS_SPEED_HALF = 0.5;
+export const OUTNUMBER_LOSS_GAIN = 0.55;
+export const OUTNUMBER_LOSS_HALF = 0.4;
+/**
+ * Heartland: tiles of a nation within this radius of its CAPITAL (not other cities) defend better: attacker losses
+ * x (1 + HEARTLAND_DEFENSE x f) and the front x 1 / (1 + HEARTLAND_SLOW x f) slower, f = 1 at the capital fading
+ * linearly to 0 at the edge. Radius = BASE + PER_SQRT_TILE x sqrt(tiles) + PER_CITY_LEVEL x the capital's city level,
+ * at most MAX. When the capital is lost, the heartland moves to the new one after HEARTLAND_MOVE_SECONDS. Tribes have
+ * none.
+ */
+export const HEARTLAND_RADIUS_BASE = 9;
+export const HEARTLAND_RADIUS_PER_SQRT_TILE = 0.12;
+export const HEARTLAND_RADIUS_PER_CITY_LEVEL = 1.5;
+export const HEARTLAND_RADIUS_MAX = 30;
+export const HEARTLAND_DEFENSE = 0.8;
+export const HEARTLAND_SLOW = 0.6;
+export const HEARTLAND_MOVE_SECONDS = 30;
+/**
+ * Last stand: a nation much smaller than its attacker (gap = the larger of army ratio and land ratio, whole armies
+ * incl. troops out in attacks) defends better everywhere: bonus b = LAST_STAND_MAX x clamp((gap - START) / (FULL -
+ * START), 0, 1); attacker losses x (1 + b), the front x 1 / (1 + LAST_STAND_SLOW x b) slower. Tribes neither get nor
+ * trigger it.
+ */
+export const LAST_STAND_START = 2;
+export const LAST_STAND_FULL = 8;
+export const LAST_STAND_MAX = 1;
+export const LAST_STAND_SLOW = 1;
+/** Heartland x last stand never multiplies a tile's defence (losses) or slowdown by more than this. */
+export const DEFENSE_BONUS_CAP = 3.5;
+
 /** Retreat: share of the troops lost (vs a nation; wilderness: nothing). */
 export const RETREAT_LOSS = 0.25;
 export const MIN_ATTACK_TROOPS = 100;
@@ -442,7 +489,7 @@ export const DOCTRINE_SWITCH_INCOME_SECONDS = 5;
 /** Every bonus a doctrine can give, as a fraction (0.25 = +25% or -25%, see each lever's note). */
 export interface DoctrineLevers {
   /** blitz: attack fronts cross plains and desert tiles this much faster */
-  openFrontSpeed?: number;
+  openGroundSpeed?: number;
   /** blitz: converting troops to armor costs this much less gold and iron */
   armorConvertCost?: number;
   /** fortress: the defence a fort adds (its multiplier above 1) is this much stronger */
@@ -485,7 +532,7 @@ export interface DoctrineLevers {
 export type DoctrineLever = keyof DoctrineLevers;
 
 export const DOCTRINE_LEVERS: Record<DoctrineId, DoctrineLevers> = {
-  blitz: { openFrontSpeed: 0.3, armorConvertCost: 0.25 },
+  blitz: { openGroundSpeed: 0.3, armorConvertCost: 0.25 },
   fortress: { fortDefense: 0.25, fortCost: 0.25, defenderLoss: 0.2 },
   siege: { artilleryAttack: 0.2, siegeBonus: 0.25, barrageCooldown: 0.25 },
   merchant: { gold: 0.12, tradeGold: 0.25, marketBonus: 0.25 },
@@ -533,8 +580,8 @@ export const DOCTRINES: Record<DoctrineId, DoctrineInfo> = {
     name: 'Blitz',
     short: 'Fast armored pushes across open ground.',
     levels: [
-      `Fronts cross plains and desert ${pct(L.blitz.openFrontSpeed, 1)} faster; armor costs ${pct(L.blitz.armorConvertCost, 1)} less to convert.`,
-      `Open-ground fronts ${pct(L.blitz.openFrontSpeed, 2)} faster; armor ${pct(L.blitz.armorConvertCost, 2)} cheaper.`,
+      `Fronts cross plains and desert ${pct(L.blitz.openGroundSpeed, 1)} faster; armor costs ${pct(L.blitz.armorConvertCost, 1)} less to convert.`,
+      `Open-ground fronts ${pct(L.blitz.openGroundSpeed, 2)} faster; armor ${pct(L.blitz.armorConvertCost, 2)} cheaper.`,
       `Armor ignores ${Math.round(P.blitz.armorTerrainIgnore * 100)}% of the terrain penalty in forests, hills and swamps.`,
     ],
     color: '#b8794a',
@@ -617,6 +664,52 @@ export const TRAITOR_DEFENSE = 0.6;
 export const AUTO_EMBARGO_SECONDS = 300;
 export const NUKE_OPINION_PENALTY = 60;
 export const BETRAYAL_OPINION_PENALTY = 50;
+
+// ---------- coalitions and allies (DESIGN 9.2) ----------
+/**
+ * Runaway leader: the nation with the most land once it holds at least COALITION_LAND_SHARE of the land and
+ * COALITION_LEAD x the land of the next nation. AIs it threatens (those bordering it, or everyone once it holds
+ * COALITION_ALL_SHARE) ally with each other and with whoever fights it, focus their wars on it, and refuse its
+ * alliance requests. The same rules apply when the leader is a human.
+ */
+export const COALITION_LAND_SHARE = 0.2;
+export const COALITION_LEAD = 1.4;
+export const COALITION_ALL_SHARE = 0.3;
+/** Coalition AIs need x this strength to attack the leader and rank wars on it x COALITION_FOCUS. */
+export const COALITION_NEED = 0.5;
+export const COALITION_FOCUS = 2;
+/** Coalition AIs rank wars on other non-leader nations (fellow members) x this. */
+export const COALITION_OTHER_WARS = 0.5;
+/** Seconds a player must wait between two requests to allies (requestAllyAttack / requestAllyAid). */
+export const ALLY_REQUEST_COOLDOWN = 15;
+/** An unanswered request to an AI ally expires after this many seconds. */
+export const ALLY_REQUEST_TIMEOUT = 20;
+/** An ally that agreed to (or chose to) fight a nation keeps that war going for this many seconds (a pledge). */
+export const ALLY_PLEDGE_SECONDS = 90;
+/** AIs refuse to help a nation they like less than this (personality adds PROFILES allyOpinion / 2). */
+export const ALLY_HELP_MIN_OPINION = -10;
+/** An AI joins a war only with at least this x the target's whole army (or when the target is busy elsewhere: x 0.6). */
+export const ALLY_JOIN_MIN_STRENGTH = 0.45;
+/** Share of the troops above its reserve an AI sends when it joins an ally's war (x personality aggression 0.7..1.3). */
+export const ALLY_JOIN_SHARE = 0.5;
+/** An AI sends aid when an ally is losing badly: incoming troops > ALLY_AID_DANGER x the ally's home army. */
+export const ALLY_AID_DANGER = 1.2;
+/** Aid: this share of the helper's home infantry (at most ALLY_AID_MAX_SHARE of what it has, keeps half its cap). */
+export const ALLY_AID_SHARE = 0.2;
+export const ALLY_AID_MAX_SHARE = 0.35;
+/** Aid as gold (merchants, or allies short of troops): this many seconds of the helper's gold income. */
+export const ALLY_AID_GOLD_SECONDS = 40;
+/** An AI helps the same ally on its own (joins a war or sends aid) at most once per this many seconds. */
+export const ALLY_HELP_COOLDOWN = 45;
+/** Asking costs a little goodwill (opinion of the asker) each time an AI says yes. */
+export const ALLY_ASK_OPINION_COST = 4;
+/**
+ * How readily each personality helps its allies: scales the troops it sends and lowers (above 1) or raises the opinion
+ * it needs of the asker (ALLY_HELP_MIN_OPINION + 20 x (1 - this)). Merchants prefer to send gold.
+ */
+export const ALLY_WILLINGNESS: Record<Personality, number> = { warlord: 1.25, balanced: 1, admiral: 0.9, turtle: 0.8, merchant: 0.7, tribe: 0 };
+/** Trade between allies pays x (1 + this) gold to both. */
+export const ALLY_TRADE_BONUS = 0.25;
 
 // ---------- AI ----------
 export const AI_NAMES = [
@@ -735,8 +828,11 @@ export const RULES_TEXT = {
     `A click picks who you attack (a nation, a tribe or the wilderness), not a point: the whole shared border ` +
     `advances, faster the longer it is. Clicking the same target again adds troops to the running attack; attacking ` +
     `someone who attacks you first cancels their attack troop for troop. Send more than the defender has at home to ` +
-    `lose fewer troops per tile (down to x${OUTNUMBER_LOSS[0]} when you are twice as strong, up to ` +
-    `x${OUTNUMBER_LOSS[1]} at half) and to move a little faster. Land you can't reach on foot gets a transport from ` +
+    `lose fewer troops per tile (x0.61 when you are twice as strong, x0.54 at three times, up to ` +
+    `x${OUTNUMBER_LOSS[1]} at half) and to move a little faster; past ${FORCE_LIMIT_ODDS}:1 more troops add little. ` +
+    `Land near a nation's capital (its heartland) defends up to x${1 + HEARTLAND_DEFENSE} better, and a nation ` +
+    `${LAST_STAND_START}x or more smaller than its attacker makes a last stand (up to x${1 + LAST_STAND_MAX} defence). ` +
+    `Land you can't reach on foot gets a transport from ` +
     `your nearest coast. Retreating costs ${Math.round(RETREAT_LOSS * 100)}% of the troops (nothing in the wilderness). ` +
     `A landed invasion's beachhead supplies it for ${BEACHHEAD_SUPPLY_SECONDS} s.`,
   endgame:
@@ -748,7 +844,10 @@ export const RULES_TEXT = {
   alliances:
     `Alliances last ${ALLIANCE_DURATION / 60} minutes; both sides can renew in the last minute. Breaking one makes you a ` +
     `traitor for ${TRAITOR_DURATION} s (defence x${TRAITOR_DEFENSE}, everyone trusts you less). Being attacked stops ` +
-    `trade with the attacker for ${AUTO_EMBARGO_SECONDS / 60} minutes and cancels pending alliance requests between you.`,
+    `trade with the attacker for ${AUTO_EMBARGO_SECONDS / 60} minutes and cancels pending alliance requests between you. ` +
+    `Ask an ally to attack a nation or to send troops: AI allies say yes or no (and why), join wars on their own when ` +
+    `you are attacked, and trade pays allies ${Math.round(ALLY_TRADE_BONUS * 100)}% more. Nations unite against a ` +
+    `runaway leader (${Math.round(COALITION_LAND_SHARE * 100)}% of the land and well ahead).`,
 } as const;
 
 /** Seconds between two decisions of an AI nation, by difficulty. */

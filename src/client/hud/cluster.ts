@@ -16,6 +16,8 @@ export interface ClusterHooks {
   toggleMute(): void;
   toggleHelp(): void;
   hasAudio(): boolean;
+  /** 'local' = single player; online: 'host' may pause, 'guest' sees a disabled button, 'none' (public) sees none */
+  pauseMode(): 'local' | 'host' | 'guest' | 'none';
 }
 
 export class Cluster {
@@ -26,6 +28,8 @@ export class Cluster {
   private speedShown = -1;
   private pauseBtn: HTMLButtonElement;
   private pauseShown: boolean | null = null;
+  private pauseModeShown = '';
+  private speedGroup: HTMLElement;
   private soundBtn: HTMLButtonElement;
   private soundShown: boolean | null = null;
 
@@ -78,7 +82,11 @@ export class Cluster {
     clock.append(ct);
 
     const speed = el('div', 'cl-group seg cl-speed');
-    this.pauseBtn = sq('pause', 'Pause  (Space)', () => (ctx.ui.paused = !ctx.ui.paused), 'pause');
+    this.speedGroup = speed;
+    this.pauseBtn = sq('pause', 'Pause  (Space)', () => {
+      // a guest's button only explains (aria-disabled keeps its tooltip working)
+      if (this.hooks.pauseMode() !== 'guest') ctx.ui.paused = !ctx.ui.paused;
+    }, 'pause');
     speed.append(this.pauseBtn);
     // one button: shows the speed, a click goes to the next one (x1 -> x2 -> x4 -> x1)
     this.speedBtn = el('button', 'sq txt cl-spd', 'x1');
@@ -168,11 +176,21 @@ export class Cluster {
       this.speedBtn.setAttribute('aria-label', `Game speed x${ui.speed}, click for x${next}`);
     }
     setClass(this.speedBtn, 'fast', ui.speed > 1 && !ui.paused);
-    if (this.pauseShown !== ui.paused) {
+    const pm = this.hooks.pauseMode();
+    if (this.pauseShown !== ui.paused || this.pauseModeShown !== pm) {
       this.pauseShown = ui.paused;
+      this.pauseModeShown = pm;
+      // online: no speed button; the pause button only in private games (working for the host)
+      setClass(this.speedBtn, 'hidden', pm !== 'local');
+      setClass(this.speedGroup, 'hidden', pm === 'none');
       setClass(this.pauseBtn, 'on', ui.paused);
+      setClass(this.pauseBtn, 'dis', pm === 'guest');
+      if (pm === 'guest') this.pauseBtn.setAttribute('aria-disabled', 'true');
+      else this.pauseBtn.removeAttribute('aria-disabled');
       this.pauseBtn.replaceChildren(iconSpan(lineIcon(ui.paused ? 'play' : 'pause', 17)));
-      setTip(this.pauseBtn, ui.paused ? 'Resume  (Space)' : 'Pause  (Space)');
+      const tip = pm === 'guest' ? 'Only the host can pause' : ui.paused ? 'Resume  (Space)' : 'Pause  (Space)';
+      setTip(this.pauseBtn, tip);
+      this.pauseBtn.setAttribute('aria-label', tip.split('  ')[0]);
     }
     const m = this.hooks.muted();
     if (this.soundShown !== m) {

@@ -511,7 +511,7 @@ async function main(): Promise<void> {
     for (const j of jobs) if (j.index % o.of === o.shard) process.stdout.write(JSON.stringify(await runGame(j, o.minutes)) + '\n');
     return;
   }
-  console.log(`Borderfall human bench: ${jobs.length} games (${o.maps.join(',')} x ${o.difficulties.join(',')} x ${o.seeds} seeds from ${o.start}), cap ${o.minutes} min, ${o.jobs} job(s).`);
+  console.log(`Frontline Atlas human bench: ${jobs.length} games (${o.maps.join(',')} x ${o.difficulties.join(',')} x ${o.seeds} seeds from ${o.start}), cap ${o.minutes} min, ${o.jobs} job(s).`);
   const t0 = performance.now();
   let rs: Result[];
   if (o.jobs <= 1) {

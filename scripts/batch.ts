@@ -35,6 +35,7 @@ import { forEachInRadius } from '../src/sim/grid';
 import { tick } from '../src/sim/sim';
 import { applyAction } from '../src/sim/actions';
 import { doctrineUnlockTick } from '../src/sim/doctrines';
+import { runawayLeader } from '../src/sim/allies';
 import { createGame, gameSeconds } from '../src/sim/state';
 import { DOCTRINE_IDS, isTribe } from '../src/sim/types';
 import { cloneSetup, DEFAULT_MODIFIERS, DEFAULT_SETUP, SINGLE_PLAYER_NATIONS } from '../src/sim/setup';
@@ -187,6 +188,12 @@ interface GameResult {
   bombers: number;
   warships: number;
   invasions: number; // transports sent at another nation's coast
+  /** allies.ts: an ally joined a war (allyJoined), sent aid (allyAid), refused a request (allyRefused) */
+  allyJoins: number;
+  allyAids: number;
+  allyRefusals: number;
+  /** seconds with a runaway leader (allies.runawayLeader), and that leader won */
+  leaderSeconds: number;
   landings: number; // transports sent at neutral coast
   /** minute of each nation's / tribe's elimination */
   nationElims: number[];
@@ -305,6 +312,10 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     bombers: 0,
     warships: 0,
     invasions: 0,
+    allyJoins: 0,
+    allyAids: 0,
+    allyRefusals: 0,
+    leaderSeconds: 0,
     landings: 0,
     nationElims: [],
     tribeElims: [],
@@ -370,6 +381,9 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     if (o.doctrines === 'random') for (const p of state.players) if (p.doctrine?.id) p.doctrine.lastSwitchTick = state.tick;
     for (const e of state.events) {
       if (e.kind === 'victory') r.winReason = e.message.replace(/^.* wins: /, '');
+      else if (e.kind === 'allyJoined') r.allyJoins++;
+      else if (e.kind === 'allyAid') r.allyAids++;
+      else if (e.kind === 'allyRefused') r.allyRefusals++;
       else if (e.kind === 'paradrop' && / landed in /.test(e.message)) r.paradropsLanded++;
       else if (e.kind === 'barrage' && / shelled /.test(e.message)) {
         if (/silenced/.test(e.message)) r.barragesSilencing++;
@@ -506,6 +520,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
       }
     }
     if (sec === 480) r.leader8 = tileLeader(state);
+    if (runawayLeader(state) > 0) r.leaderSeconds += sampleEvery / TICKS_PER_SECOND;
     if (sec === 900) r.leader15 = tileLeader(state);
   }
   r.minutes = gameSeconds(state) / 60;
@@ -779,6 +794,11 @@ function report(rs: GameResult[], o: Options): void {
   console.log(`\nEliminations per 5-minute bin (0-5 / 5-10 / ... / 50-55 min):`);
   console.log(`  nations (${nationTotal} total): ${hist(rs.flatMap((r) => r.nationElims))}`);
   console.log(`  tribes  (${tribeTotal} total): ${hist(rs.flatMap((r) => r.tribeElims))}`);
+  const g = Math.max(1, rs.length);
+  console.log(
+    `\nAllies: ${f1(tot((r) => r.allyJoins) / g)} joined wars, ${f1(tot((r) => r.allyAids) / g)} aid shipments, ` +
+      `${f1(tot((r) => r.allyRefusals) / g)} refusals per game; a runaway leader (coalition) for ${f1(tot((r) => r.leaderSeconds) / g / 60)} min per game.`,
+  );
   console.log(`\nNaval: ${rs.reduce((s, r) => s + r.invasions, 0)} invasions, ${rs.reduce((s, r) => s + r.landings, 0)} landings on neutral coasts, ${rs.reduce((s, r) => s + r.warships, 0)} warships.`);
   const atomMins = rs.filter((r) => r.firstAtomMinute >= 0).map((r) => r.firstAtomMinute.toFixed(1));
   console.log(`Atom bombs: ${rs.reduce((s, r) => s + r.atomBombs, 0)} in ${atomMins.length} games, first at minute ${atomMins.join(', ') || '-'}.`);
@@ -897,7 +917,7 @@ async function main(): Promise<void> {
     for (const j of jobs) if (j.index % o.of === o.shard) process.stdout.write(JSON.stringify(await runGame(j, o)) + '\n');
     return;
   }
-  console.log(`Borderfall batch: ${jobs.length} games (${o.sizes.join(',')} x ${o.ais.length ? o.ais.join(',') : 'default'} AIs x ${o.seeds} seeds from ${o.start}, maps ${o.maps.join(',')}), cap ${o.minutes} min, ${o.difficulty}, ${o.jobs} job(s).`);
+  console.log(`Frontline Atlas batch: ${jobs.length} games (${o.sizes.join(',')} x ${o.ais.length ? o.ais.join(',') : 'default'} AIs x ${o.seeds} seeds from ${o.start}, maps ${o.maps.join(',')}), cap ${o.minutes} min, ${o.difficulty}, ${o.jobs} job(s).`);
   const t0 = performance.now();
   let results: GameResult[];
   if (o.jobs <= 1) {

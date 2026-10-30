@@ -47,6 +47,8 @@ interface Session {
   /** online game: the lockstep runner (turns from the server, intents out) */
   mp: MpGame | null;
   mpStatus: MpStatus | null;
+  /** online: ui.paused as the frame left it (a change since then is the host's pause click or Space) */
+  mpPauseShown?: boolean;
 }
 
 // ------------------------------------------------------------------------------------------------ DOM
@@ -133,6 +135,8 @@ function onNetMessage(msg: ServerMessage): void {
   if (msg.type === 'lobbyState') {
     if (!msg.isPublic && msg.hostMemberId === msg.you) lastLobbyHost = msg.code;
     else if (lastLobbyHost === msg.code) lastLobbyHost = '';
+    if (!msg.isPublic) lastPrivateLobby = msg.code;
+    else if (lastPrivateLobby === msg.code) lastPrivateLobby = '';
   }
   if (msg.type === 'welcome' && !msg.resumed && !currentMp) rememberActiveLobby(null);
   currentMp?.handle(msg);
@@ -160,6 +164,7 @@ async function startOnline(start: GameStartMsg): Promise<void> {
     },
   });
   mp.canStartNow = lastLobbyHost === start.code;
+  mp.isPrivate = lastPrivateLobby === start.code;
   currentMp = mp;
   if (!session?.mp) menu.setBusy(start.settings.map.kind === 'world' ? 'Loading map…' : 'Generating map…');
   await new Promise((r) => setTimeout(r, 30)); // let the text paint before the (blocking) map generation
@@ -177,6 +182,7 @@ async function startOnline(start: GameStartMsg): Promise<void> {
     online: true,
     canStartNow: () => mp.canStartNow,
     againLabel: 'Multiplayer',
+    pause: () => ({ mode: mp.canPause ? 'host' : mp.isPrivate && !mp.spectator ? 'guest' : 'none', paused: mp.paused, by: mp.pausedByName() }),
   });
   hud.setUnitProbe(renderer);
   const status = new MpStatus(() => {
@@ -214,8 +220,10 @@ function leaveOnline(toMultiplayer: boolean): void {
   if (toMultiplayer) menu.show('multiplayer');
 }
 
-/** Code of the private lobby this client hosted last (the host may end the spawn phase early). */
+/** Code of the private lobby this client hosted last (the host may end the spawn phase early and pause). */
 let lastLobbyHost = '';
+/** Code of the private lobby this client was in last (its games show the host's pause button, disabled for guests). */
+let lastPrivateLobby = '';
 
 const menu = new Menu(app, { onStart: (settings) => void startGame(settings), net: () => getNet() });
 
@@ -359,8 +367,11 @@ function frame(now: number): void {
   if (s) {
     const t0 = performance.now();
     if (s.mp) {
-      // the server's clock drives an online game: no pause, no speed
-      s.ui.paused = false;
+      // the server's clock drives an online game: no speed; only the private lobby's host pauses (the server stops
+      // sending turns). The pause button, Space and the banner's Resume change ui.paused; that goes to the server.
+      if (s.mpPauseShown !== undefined && s.ui.paused !== s.mpPauseShown) s.mp.setPause(s.ui.paused);
+      s.ui.paused = s.mp.paused && !s.mp.serverOver;
+      s.mpPauseShown = s.ui.paused;
       s.ui.speed = 1;
       s.mp.pump();
       if (net && s.mpStatus) s.mpStatus.update(s.mp, net, s.state, s.hud?.watching ?? false);

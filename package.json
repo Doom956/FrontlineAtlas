@@ -1,7 +1,7 @@
 {
-  "name": "borderfall",
+  "name": "frontline-atlas",
   "version": "1.0.0",
-  "description": "Borderfall: territory-control strategy game in the browser",
+  "description": "Frontline Atlas: territory-control strategy game in the browser",
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:client": "vite",

@@ -60,6 +60,7 @@ import {
   TICK_SECONDS,
   TICKS_PER_SECOND,
   TRADE_GOLD_PER_TILE,
+  ALLY_TRADE_BONUS,
   TRADE_INTERVAL,
   TRANSPORT_MAX_AT_SEA,
   TRANSPORT_PER_PORT,
@@ -667,7 +668,9 @@ function deliverTrade(state: GameState, u: Unit): void {
   for (const id of u.targetOwner === u.owner ? [u.owner] : [u.owner, u.targetOwner]) {
     const p = state.players[id];
     if (!p || id === 0 || !p.alive) continue;
-    const gold = u.cargo * doctrineMore(state, id, 'tradeGold');
+    // Allies trade on better terms (ALLY_TRADE_BONUS).
+    const allied = u.targetOwner !== u.owner && areAllied(state, u.owner, u.targetOwner);
+    const gold = u.cargo * doctrineMore(state, id, 'tradeGold') * (allied ? 1 + ALLY_TRADE_BONUS : 1);
     p.gold += gold;
     p.stats.goldEarned += gold;
     if (!p.isHuman) continue;

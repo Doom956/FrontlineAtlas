@@ -190,6 +190,12 @@ export class Room {
   private overVotes = new Map<number, number>();
   startedAt = 0;
   private emptySince: number | null = null;
+  /** private games: the host paused the game (no turns are sent until it resumes) */
+  paused = false;
+  private pausedAt = 0;
+  private pauseChangedAt = -Infinity;
+  /** when the host's seat was last seen without a connection during the game (null = connected) */
+  private hostGoneSince: number | null = null;
   private overAt = 0;
   winner = 0;
   closed = false;
@@ -506,6 +512,7 @@ export class Room {
     const from = Math.max(0, Math.min(Math.floor(haveTurns), n));
     m.catchUpNext = from < n ? from : null;
     this.pumpCatchUp(m);
+    if (this.paused) m.session?.send(this.pauseStateMsg(this.pausedBy));
   }
 
   /** Index in turnLog of the first logged turn with n >= turn. */
@@ -554,7 +561,7 @@ export class Room {
 
   private onTimer(): void {
     this.timer = null;
-    if (this.phase !== 'running') return;
+    if (this.phase !== 'running' || this.paused) return;
     const turnMs = this.host.opts.turnMs;
     const now = this.host.now();
     let behind = Math.floor((now - this.loopStart) / turnMs) + 1 - this.turnCount;
@@ -597,6 +604,7 @@ export class Room {
   intent(m: Member, action: Action): RoomError {
     if (this.phase !== 'running') return err('notAllowed', 'The game is not running');
     if (m.spectator || m.playerId <= 0) return err('notAllowed', 'Spectators cannot act');
+    if (this.paused) return err('notAllowed', 'The game is paused');
     if (action.type === 'startNow' && (this.isPublic || m.memberId !== this.hostMemberId)) {
       return err('notAllowed', 'Only the host can end the spawn phase early');
     }
@@ -619,6 +627,83 @@ export class Room {
     m.intentsThisTurn++;
     this.pending.push({ playerId: m.playerId, action });
     return null;
+  }
+
+  // ---------------------------------------------------------------------------------------------- pause
+
+  /** Player id of the host (who may pause), 0 for public games or when the host seat is gone. */
+  hostPlayerId(): number {
+    if (this.isPublic) return 0;
+    return this.members.find((x) => x.memberId === this.hostMemberId && !x.spectator)?.playerId ?? 0;
+  }
+
+  /** setPause: only the host of a private game, while it runs; at most one change per pauseToggleMs. */
+  setPause(m: Member, paused: boolean): RoomError {
+    if (this.phase !== 'running') return err('notAllowed', 'The game is not running');
+    if (this.isPublic) return err('notAllowed', 'Public games have no host: they cannot be paused');
+    if (m.spectator || m.memberId !== this.hostMemberId) return err('notHost', 'Only the host can pause or resume the game');
+    if (paused === this.paused) {
+      m.session?.send(this.pauseStateMsg(this.pausedBy));
+      return null;
+    }
+    if (this.host.now() - this.pauseChangedAt < this.host.opts.pauseToggleMs) {
+      return err('rateLimit', 'Wait a moment before pausing or resuming again');
+    }
+    this.applyPause(paused, m.playerId);
+    return null;
+  }
+
+  private pausedBy = 0;
+
+  private pauseStateMsg(by: number): ServerMessage {
+    return { type: 'pauseState', paused: this.paused, by, host: this.hostPlayerId() };
+  }
+
+  /** Stops or restarts the turn loop and tells everyone. by = player id, 0 = the server. */
+  private applyPause(paused: boolean, by: number): void {
+    if (this.phase !== 'running' || paused === this.paused) return;
+    const now = this.host.now();
+    this.pauseChangedAt = now;
+    this.paused = paused;
+    this.pausedBy = by;
+    if (paused) {
+      this.pausedAt = now;
+      if (this.timer) clearTimeout(this.timer);
+      this.timer = null;
+    } else {
+      // Continue from now: no burst of the turns the pause skipped.
+      this.loopStart = now - this.turnCount * this.host.opts.turnMs;
+      if (!this.timer) this.scheduleNext();
+    }
+    this.host.opts.log(`game ${this.code} ${paused ? 'paused' : 'resumed'} by ${by || 'the server'} at turn ${this.turnCount}`);
+    this.broadcastPause(by);
+  }
+
+  private broadcastPause(by: number): void {
+    const msg = this.pauseStateMsg(by);
+    for (const m of this.members) m.session?.send(msg);
+  }
+
+  /** Running private games: hand the host role on when the host stays away; end pauses that ran too long. */
+  private sweepHost(now: number): void {
+    if (this.isPublic) return;
+    const o = this.host.opts;
+    const hostM = this.members.find((x) => x.memberId === this.hostMemberId);
+    if (hostM && hostM.session) this.hostGoneSince = null;
+    else {
+      if (this.hostGoneSince === null) this.hostGoneSince = now;
+      if (now - this.hostGoneSince >= o.pauseHostGoneMs) {
+        const next = this.players.find((p) => p !== hostM && p.session && !p.left);
+        if (next) {
+          this.hostMemberId = next.memberId;
+          this.hostGoneSince = null;
+          this.host.opts.log(`game ${this.code}: host role passed to player ${next.playerId}`);
+        }
+        if (this.paused) this.applyPause(false, 0);
+        else if (next) this.broadcastPause(0);
+      }
+    }
+    if (this.paused && now - this.pausedAt >= o.pauseMaxMs) this.applyPause(false, 0);
   }
 
   // ---------------------------------------------------------------------------------------------- hashes
@@ -803,6 +888,7 @@ export class Room {
           return;
         }
       } else this.emptySince = null;
+      this.sweepHost(now);
       if (now - this.startedAt > o.maxGameMs) this.finish('maxDuration', 0);
     } else if (this.phase === 'over') {
       if (now - this.overAt > o.gameOverLingerMs) this.close('');

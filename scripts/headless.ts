@@ -101,7 +101,7 @@ const t0 = performance.now();
 const state = createGame(settings);
 const tGen = performance.now() - t0;
 console.log(
-  `Borderfall headless: seed ${seed}, ${mapType} ${mapSize} ${state.map.width}x${state.map.height}, ` +
+  `Frontline Atlas headless: seed ${seed}, ${mapType} ${mapSize} ${state.map.width}x${state.map.height}, ` +
     `${aiCount} AIs, ${minutes} min. Land ${state.map.landTileCount} tiles. Map generated in ${tGen.toFixed(0)} ms.`,
 );
 

@@ -2,7 +2,7 @@
 # Render dashboard -> New -> Blueprint -> pick this repository. Details: docs/MULTIPLAYER.md.
 services:
   - type: web
-    name: borderfall
+    name: frontline-atlas
     runtime: node
     plan: free
     # Exactly one instance: lobbies and games live in this process's memory.

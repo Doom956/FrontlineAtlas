@@ -190,7 +190,7 @@ describe('doctrines: each main lever', () => {
     const before = estimateAttack(s, 1, tile, inf(20000))!.tilesPerSecond;
     const armor = convertCost(s.players[1], 'armor', s).gold;
     give(s, 1, 'blitz');
-    expect(estimateAttack(s, 1, tile, inf(20000))!.tilesPerSecond / before).toBeCloseTo(1 + DOCTRINE_LEVERS.blitz.openFrontSpeed!, 6);
+    expect(estimateAttack(s, 1, tile, inf(20000))!.tilesPerSecond / before).toBeCloseTo(1 + DOCTRINE_LEVERS.blitz.openGroundSpeed!, 6);
     expect(convertCost(s.players[1], 'armor', s).gold / armor).toBeCloseTo(1 - DOCTRINE_LEVERS.blitz.armorConvertCost!, 6);
     // Forest is not open ground.
     const f = game({ terrain: Terrain.Forest });

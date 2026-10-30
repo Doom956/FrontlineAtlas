@@ -68,7 +68,7 @@ export async function startServer(partial: Partial<ServerOptions> = {}): Promise
     }
     const notFound = (): void => {
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end(opts.staticDir ? 'Not found' : 'Borderfall game server. The client is not served here (run npm run build).');
+      res.end(opts.staticDir ? 'Not found' : 'Frontline Atlas game server. The client is not served here (run npm run build).');
     };
     if (!opts.staticDir) {
       notFound();

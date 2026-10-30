@@ -21,7 +21,7 @@
 // The heap is built at launch from the attacker's border set (territory.ts) and then updated on every capture:
 // neighbours of a captured tile are queued (duplicates allowed). Stale entries are dropped lazily when they reach the
 // top; a purge every few ticks keeps the front length (distinct queued tiles) honest.
-import { buildingStamp, buildingsOf, countBuildings, depotRadius, fortMultiplierAt, supplySources } from './buildings';
+import { buildingAt, buildingStamp, buildingsOf, countBuildings, depotRadius, fortMultiplierAt, supplySources } from './buildings';
 import {
   ARMOR_SPEED_BONUS,
   ARTILLERY_FORT_BONUS,
@@ -39,8 +39,21 @@ import {
   DEFENDER_LOSS_PER_TILE,
   DOCTRINE_PERKS,
   DEFENDER_NO_SUPPLY,
+  DEFENSE_BONUS_CAP,
   DEPOT_ATTACK_BONUS,
   ENDGAME_SMALL_TILES,
+  FORCE_LIMIT_ODDS,
+  FORCE_LIMIT_TAIL,
+  HEARTLAND_DEFENSE,
+  HEARTLAND_RADIUS_BASE,
+  HEARTLAND_RADIUS_MAX,
+  HEARTLAND_RADIUS_PER_CITY_LEVEL,
+  HEARTLAND_RADIUS_PER_SQRT_TILE,
+  HEARTLAND_SLOW,
+  LAST_STAND_FULL,
+  LAST_STAND_MAX,
+  LAST_STAND_SLOW,
+  LAST_STAND_START,
   HUMAN_GRACE_SECONDS,
   FORT_DEFENSE,
   FORT_SLOW,
@@ -65,7 +78,11 @@ import {
   NEUTRAL_SPEED_TROOPS,
   NO_OIL_ARMOR_FACTOR,
   ODDS_SPEED,
+  ODDS_SPEED_GAIN,
+  ODDS_SPEED_HALF,
   OUTNUMBER_LOSS,
+  OUTNUMBER_LOSS_GAIN,
+  OUTNUMBER_LOSS_HALF,
   RETREAT_LOSS,
   SUPPLY_RANGE,
   TERRAIN,
@@ -329,10 +346,108 @@ export function attackOdds(state: GameState, attackerId: number, troops: Troops,
   for (const k of TROOP_TYPES) if (troops[k] > 0) strength += troops[k] * typeAttack(state, p, k) * matchupVs(k, dp.troops);
   return strength / Math.max(1, defensePower(state, defender));
 }
-/** "Send more, lose less": attacker loss multiplier clamp(1 / odds, OUTNUMBER_LOSS); 1 against neutral land. */
+/**
+ * Force limit (config FORCE_LIMIT_ODDS): odds up to K count in full, beyond it strongly diminishing (a soft ceiling at
+ * K x (1 + FORCE_LIMIT_TAIL)), so raw size alone stops paying off.
+ */
+export function forceLimitedOdds(odds: number): number {
+  const K = FORCE_LIMIT_ODDS;
+  if (!(odds > K)) return odds;
+  const x = odds - K;
+  return K + (K * FORCE_LIMIT_TAIL * x) / (x + K);
+}
+/**
+ * "Send more, lose less": attacker loss multiplier from the (force-limited) odds e: clamp(1 / e) up to
+ * OUTNUMBER_LOSS[1] when outnumbered, a smooth cut (OUTNUMBER_LOSS_GAIN) when outnumbering; 1 against neutral land.
+ */
 function lossFactorFor(defender: number, odds: number): number {
   if (defender <= 0) return 1;
-  return clamp(1 / Math.max(1e-6, odds), OUTNUMBER_LOSS[0], OUTNUMBER_LOSS[1]);
+  const e = forceLimitedOdds(odds);
+  if (e <= 1) return clamp(1 / Math.max(1e-6, e), 1, OUTNUMBER_LOSS[1]);
+  return Math.max(OUTNUMBER_LOSS[0], 1 - (OUTNUMBER_LOSS_GAIN * (e - 1)) / (e - 1 + OUTNUMBER_LOSS_HALF));
+}
+/** Pace multiplier of a front against a nation from the (force-limited) odds: x0.13 .. x1 outnumbered, up to x1.25. */
+export function oddsSpeedFactor(odds: number): number {
+  const e = forceLimitedOdds(odds);
+  if (e <= 1) return 1 / clamp(1 / Math.max(1e-6, e), 1, ODDS_SPEED[1]);
+  return Math.min(1 / ODDS_SPEED[0], 1 + (ODDS_SPEED_GAIN * (e - 1)) / (e - 1 + ODDS_SPEED_HALF));
+}
+
+// ---------- heartland and last stand (config HEARTLAND_*, LAST_STAND_*) ----------
+/** Heartland radius of a player (tiles), 0 = none (dead, tribe, no heartland). */
+export function heartlandRadius(state: GameState, playerId: number): number {
+  const p = state.players[playerId];
+  if (!p || playerId <= 0 || !p.alive || p.heartTile < 0 || isTribe(p)) return 0;
+  let level = 0;
+  const b = p.capital >= 0 ? buildingAt(state, p.capital) : undefined;
+  if (b && b.type === 'city' && b.owner === playerId && b.buildLeft <= 0) level = b.level;
+  const r = HEARTLAND_RADIUS_BASE + HEARTLAND_RADIUS_PER_SQRT_TILE * Math.sqrt(Math.max(0, p.tiles)) + HEARTLAND_RADIUS_PER_CITY_LEVEL * level;
+  return Math.min(HEARTLAND_RADIUS_MAX, r);
+}
+/** For the UI: a player's heartland (centre tile and radius), or null. */
+export function heartlandOf(state: GameState, playerId: number): { tile: number; radius: number } | null {
+  const r = heartlandRadius(state, playerId);
+  return r > 0 ? { tile: state.players[playerId].heartTile, radius: r } : null;
+}
+/** Heartland share 0..1 of `tile` for a heartland centred at (hx, hy) with radius r: 1 at the centre, 0 at the edge. */
+function heartShare(w: number, tile: number, hx: number, hy: number, r: number): number {
+  const dx = (tile % w) - hx;
+  const dy = ((tile / w) | 0) - hy;
+  const d2 = dx * dx + dy * dy;
+  if (d2 >= r * r) return 0;
+  return 1 - Math.sqrt(d2) / r;
+}
+/**
+ * Heartland ("core") defence of `tile` for player pid: the multiplier on an attacker's losses there (1 = none; up to
+ * 1 + HEARTLAND_DEFENSE at the capital, fading to 1 at the heartland's edge). 1 when pid does not own the tile.
+ */
+export function coreDefenseAt(state: GameState, pid: number, tile: number): number {
+  if (!Number.isInteger(tile) || tile < 0 || tile >= state.map.owner.length || state.map.owner[tile] !== pid) return 1;
+  const r = heartlandRadius(state, pid);
+  if (r <= 0) return 1;
+  const w = state.map.width;
+  const h = state.players[pid].heartTile;
+  return Math.min(DEFENSE_BONUS_CAP, 1 + HEARTLAND_DEFENSE * heartShare(w, tile, h % w, (h / w) | 0, r));
+}
+
+/** Moves heartlands to their (new) capitals once HEARTLAND_MOVE_SECONDS have passed since a capital loss. */
+export function updateHeartlands(state: GameState): void {
+  for (const p of state.players) {
+    if (p.heartMoveTick <= 0 || state.tick < p.heartMoveTick) continue;
+    p.heartMoveTick = 0;
+    if (p.alive && p.capital >= 0) p.heartTile = p.capital;
+  }
+}
+
+// Whole army per player (home + attacks + transports), cached per tick for last-stand checks.
+const armyCache = new WeakMap<GameState, { tick: number; army: Float64Array }>();
+/** A player's whole army: troops at home, in attacks and on transports (cached per tick). */
+export function wholeArmy(state: GameState, playerId: number): number {
+  let c = armyCache.get(state);
+  if (!c || c.tick !== state.tick || c.army.length !== state.players.length) {
+    const army = new Float64Array(state.players.length);
+    for (const a of state.attacks) if (a.attacker < army.length) army[a.attacker] += total(a.troops);
+    for (const u of state.units) if (u.owner < army.length && u.troops) army[u.owner] += total(u.troops);
+    for (const p of state.players) army[p.id] = p.alive ? army[p.id] + total(p.troops) : 0;
+    c = { tick: state.tick, army };
+    armyCache.set(state, c);
+  }
+  return c.army[playerId] ?? 0;
+}
+/**
+ * Last stand: the multiplier on `attacker`'s losses against `defender` when the defender is much smaller (army or
+ * land; config LAST_STAND_*): 1 = none, up to 1 + LAST_STAND_MAX. Tribes neither get nor trigger it.
+ */
+export function lastStandFactor(state: GameState, defender: number, attacker: number): number {
+  const dp = state.players[defender];
+  const ap = state.players[attacker];
+  if (!dp || !ap || defender <= 0 || attacker <= 0 || defender === attacker || !dp.alive || !ap.alive) return 1;
+  if (isTribe(dp) || isTribe(ap)) return 1;
+  const gapArmy = wholeArmy(state, attacker) / Math.max(1, wholeArmy(state, defender));
+  const gapLand = ap.tiles / Math.max(1, dp.tiles);
+  const gap = Math.max(gapArmy, gapLand);
+  const b = LAST_STAND_MAX * clamp((gap - LAST_STAND_START) / (LAST_STAND_FULL - LAST_STAND_START), 0, 1);
+  return 1 + b;
 }
 
 /**
@@ -390,6 +505,14 @@ interface FightCtx {
   wildLoss: number;
   /** defender's home losses per tile taken (Fortress: < 1) */
   defenderLossMult: number;
+  /** last stand: multiplier on attacker losses (1 = none) and the front's slowdown from it (>= 1) */
+  lastStand: number;
+  lastStandSlow: number;
+  /** defender's heartland: centre x, y and radius (hr 0 = none); map width */
+  hx: number;
+  hy: number;
+  hr: number;
+  w: number;
 }
 function fightCtx(state: GameState, attackerId: number, troops: Troops, defender: number): FightCtx {
   const odds = attackOdds(state, attackerId, troops, defender);
@@ -415,9 +538,30 @@ function fightCtx(state: GameState, attackerId: number, troops: Troops, defender
     breach: tot > 0 ? Math.max(0, 1 - (troops.artillery / tot) * ARTILLERY_FORT_BREACH) : 1,
     siege: doctrineLever(state, attackerId, 'siegeBonus'),
     armorIgnore: armorTerrainIgnore(state, attackerId),
-    openBudget: 1 / doctrineMore(state, attackerId, 'openFrontSpeed'),
+    openBudget: 1 / doctrineMore(state, attackerId, 'openGroundSpeed'),
     wildLoss: !dp || isTribe(dp) ? doctrineLess(state, attackerId, 'expansionLoss') : 1,
     defenderLossMult: dp ? doctrineLess(state, defender, 'defenderLoss') : 1,
+    ...defenderBonuses(state, attackerId, defender),
+  };
+}
+/** Last stand and heartland of the defender, for fightCtx. */
+function defenderBonuses(
+  state: GameState,
+  attackerId: number,
+  defender: number,
+): { lastStand: number; lastStandSlow: number; hx: number; hy: number; hr: number; w: number } {
+  const w = state.map.width;
+  if (defender <= 0) return { lastStand: 1, lastStandSlow: 1, hx: 0, hy: 0, hr: 0, w };
+  const ls = lastStandFactor(state, defender, attackerId);
+  const hr = heartlandRadius(state, defender);
+  const h = state.players[defender].heartTile;
+  return {
+    lastStand: ls,
+    lastStandSlow: Math.min(DEFENSE_BONUS_CAP, 1 + LAST_STAND_SLOW * (ls - 1)),
+    hx: hr > 0 ? h % w : 0,
+    hy: hr > 0 ? (h / w) | 0 : 0,
+    hr,
+    w,
   };
 }
 
@@ -443,6 +587,7 @@ function tileCost(state: GameState, c: FightCtx, tile: number): TileCost {
   const tid = state.map.terrain[tile];
   const ter = TERRAIN[tid as TerrainId];
   const out = scratchCost;
+  let heartSlow = 1;
   const sup = supplyEfficiency(state, c.attacker, tile);
   const fort = c.defender === 0 ? 1 : fortMultiplierAt(state, tile, c.defender);
   const att = ter.attack;
@@ -461,6 +606,12 @@ function tileCost(state: GameState, c: FightCtx, tile: number): TileCost {
     if (c.tribeTarget) defense *= TRIBE_TARGET_LOSS;
     if (supplyEfficiency(state, c.defender, tile) < 1) defense *= DEFENDER_NO_SUPPLY;
     out.defenderLoss = DEFENDER_LOSS_PER_TILE * c.density * c.defenderLossMult;
+    // Heartland near the capital and the last stand of a much smaller nation (capped together).
+    const core = c.hr > 0 ? heartShare(c.w, tile, c.hx, c.hy, c.hr) : 0;
+    if (core > 0 || c.lastStand > 1) {
+      defense *= Math.min(DEFENSE_BONUS_CAP, (1 + HEARTLAND_DEFENSE * core) * c.lastStand);
+      heartSlow = Math.min(DEFENSE_BONUS_CAP / c.lastStandSlow, 1 + HEARTLAND_SLOW * core);
+    }
   }
   defense *= c.wildLoss;
   out.loss = power > 0 ? defense / power : Infinity;
@@ -468,7 +619,7 @@ function tileCost(state: GameState, c: FightCtx, tile: number): TileCost {
   out.power = power;
   out.fort = fort;
   const fortSlow = fort > 1.01 ? 1 + Math.max(0, FORT_SLOW * (fort / FORT_DEFENSE) - 1) * c.breach : 1;
-  out.budget = (TER_SPEED_COST[tid] * fortSlow) / (0.5 + 0.5 * sup);
+  out.budget = (TER_SPEED_COST[tid] * fortSlow * heartSlow) / (0.5 + 0.5 * sup);
   if (tid === Terrain.Plains || tid === Terrain.Desert) out.budget *= c.openBudget;
   return out;
 }
@@ -485,7 +636,7 @@ function frontRate(state: GameState, c: FightCtx): number {
   let r: number;
   if (c.defender === 0) r = NEUTRAL_FRONT_RATE / clamp(NEUTRAL_SPEED_TROOPS / tot, NEUTRAL_SPEED_CLAMP[0], NEUTRAL_SPEED_CLAMP[1]);
   else {
-    r = NATION_FRONT_RATE / clamp(1 / Math.max(1e-6, c.odds), ODDS_SPEED[0], ODDS_SPEED[1]);
+    r = (NATION_FRONT_RATE * oddsSpeedFactor(c.odds)) / c.lastStandSlow;
     if (c.traitor) r *= TRAITOR_SPEED;
   }
   r *= 1 + (t.armor / tot) * ARMOR_SPEED_BONUS;

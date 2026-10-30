@@ -20,6 +20,7 @@ import {
   DOCTRINE_UNLOCK_SECONDS,
 } from '../sim/config';
 import type { GameSettings, TerrainId } from '../sim/types';
+import { forceLimit } from './allies';
 import { rulesTextEntries } from './compat';
 import { loadSetupPrefs, prefetchThumbs, randomSeed, settingsFromPrefs, SetupScreen, type SetupPrefs } from './setupScreen';
 import { lineIcon, worldGlyph } from './hud/glyph';
@@ -193,6 +194,15 @@ export function howToPlayContent(): HTMLElement {
   const dip = section('Diplomacy');
   para(dip, 'Ally, gift and embargo from a nation\'s card or the radial menu. Allies cannot attack each other. Breaking an alliance makes you a traitor for a while: weaker defence and everyone trusts you less. Symbols next to names: crown = biggest nation, handshake = ally, envelope = alliance request, broken shield = traitor.');
 
+  const def = section('Defence, allies and coalitions');
+  bullets(def, [
+    'Heartland: land deep inside your borders defends harder than the edges. Hover your land for the bonus; open Army (U) or the map key (L) to see a faint gold edge around it.',
+    'Last stand: a nation that is outnumbered defends harder, so finishing off a cornered enemy costs more than it looks.',
+    `Force limit: sending more than about ${forceLimit()}x the defender's strength adds little. The odds badge says when you are past it and how many troops are enough.`,
+    'Coalitions: when one nation runs away with the map, others team up against it. A toast says so; if it is you, expect attacks from several sides.',
+    'Allies: open an ally\'s card or Diplomacy (P). The line under its name says whether it will help or is busy. "Ask to attack…" names an enemy for it, "Ask for troops" asks it to send some; right-click enemy land for "Ask allies". The answer comes as a toast; their fronts show on your map.',
+  ]);
+
   const ctl = section('Controls');
   const cl = el('table', 'tbl keys-tbl');
   const keys: [string, string][] = [
@@ -309,7 +319,7 @@ export class Menu {
   private showTitle(): void {
     this.reset('title');
     const kicker = el('div', 'menu-kicker', 'Territory command');
-    const logo = el('h1', 'logo', 'Borderfall');
+    const logo = el('h1', 'logo', 'Frontline Atlas');
     const sub = el('div', 'tagline', 'Push your borders. Outthink every front.');
     const play = button('Single player', 'primary big', () => this.showPlay());
     play.dataset.test = 'menu-play';

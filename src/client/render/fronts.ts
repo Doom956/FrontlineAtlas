@@ -1,7 +1,9 @@
 // Attack fronts: a troop count pill at each active front (your attacks yellow with an up arrow, attacks on you red
-// with a down arrow, other nations' fights when zoomed in and you have intel). The pill sits on the most recent
+// with a down arrow, your allies' attacks on your enemies in the ally's colour at any zoom, other nations' fights when
+// zoomed in). The pill sits on the most recent
 // capture nearest to the attack's focus, learnt from the tile change feed (no map scans). The front itself glows
 // on the map: captured tiles flash in the shader (tiles.ts).
+import { areAllied } from '../../sim/diplomacy';
 import { armyTotal } from '../../sim/economy';
 import type { Attack, GameState } from '../../sim/types';
 import type { Camera } from '../camera';
@@ -22,6 +24,8 @@ export class FrontLayer {
   private tick = -1;
   private w = 1;
   private now = 0;
+  /** this tick: attacks by your allies on nations you are fighting */
+  private allied = new Set<number>();
 
   reset(w: number): void {
     this.anchors.clear();
@@ -45,6 +49,16 @@ export class FrontLayer {
       live.add(a.id);
     }
     for (const id of this.anchors.keys()) if (!live.has(id)) this.anchors.delete(id);
+    this.allied.clear();
+    const me = state.humanId;
+    if (me > 0) {
+      const enemies = new Set<number>();
+      for (const a of state.attacks) {
+        if (a.attacker === me && a.target > 0) enemies.add(a.target);
+        else if (a.target === me && a.attacker > 0) enemies.add(a.attacker);
+      }
+      if (enemies.size) for (const a of state.attacks) if (enemies.has(a.target) && a.attacker !== me && areAllied(state, me, a.attacker)) this.allied.add(a.id);
+    }
   }
 
   /** Tile feed listener: a tile went from `oldOwner` to `newOwner`. */
@@ -70,14 +84,15 @@ export class FrontLayer {
     for (const a of state.attacks) {
       const mine = me > 0 && a.attacker === me;
       const incoming = me > 0 && a.target === me;
-      if (!mine && !incoming && z < 6) continue;
+      const ally = this.allied.has(a.id);
+      if (!mine && !incoming && !ally && z < 6) continue;
       const anchor = this.anchors.get(a.id);
       const tile = anchor ? anchor.tile : a.focusTile;
       if (tile < 0) continue;
       const s = cam.tileToScreen((tile % w) + 0.5, ((tile / w) | 0) + 0.5);
       if (s.x < -40 || s.y < -40 || s.x > cam.viewW + 40 || s.y > cam.viewH + 40) continue;
       const edge = mine ? '#ffe98a' : incoming ? '#ff6b5e' : css(colors[a.attacker] ?? [200, 200, 200]);
-      pill(ctx, s.x, s.y - Math.max(12, z * 0.9), formatCount(armyTotal(a.troops)), edge, mine ? 'up' : incoming ? 'down' : 'none');
+      pill(ctx, s.x, s.y - Math.max(12, z * 0.9), formatCount(armyTotal(a.troops)), edge, mine || ally ? 'up' : incoming ? 'down' : 'none');
       if (mine && a.focusTile >= 0) {
         const f = cam.tileToScreen((a.focusTile % w) + 0.5, ((a.focusTile / w) | 0) + 0.5);
         ctx.beginPath();

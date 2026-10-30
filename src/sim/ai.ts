@@ -14,6 +14,20 @@
 // The caches live in a WeakMap keyed by the GameState (not in the state): they are derived data, rebuilt on demand,
 // and sampling uses deterministic hashing or state.rng, so the simulation stays deterministic.
 import { applyAction } from './actions';
+import {
+  allyRefusal,
+  announceJoin,
+  atWar,
+  helpOpinionNeeded,
+  inCoalition,
+  losingBadly,
+  pledge,
+  pledgedAgainst,
+  pledgesOf,
+  refuse,
+  runawayLeader,
+  sendAllyAid,
+} from './allies';
 import { armorFedShare, recommendMix, troopShares } from './advisor';
 import { artilleryOf, barrageRange, canBarrage } from './barrage';
 import {
@@ -34,7 +48,15 @@ import {
 import { artillerySiegeBonus, estimateAttack, supplyDistance } from './combat';
 import {
   AI_DECISION_SECONDS,
+  ALLY_ASK_OPINION_COST,
+  ALLY_HELP_COOLDOWN,
+  ALLY_JOIN_MIN_STRENGTH,
+  ALLY_JOIN_SHARE,
+  ALLY_WILLINGNESS,
   ATOM_RADIUS,
+  COALITION_FOCUS,
+  COALITION_NEED,
+  COALITION_OTHER_WARS,
   BARRAGE_GOLD,
   BARRAGE_MIN_ARTILLERY,
   MATCHUP,
@@ -50,7 +72,7 @@ import {
   TROOP_ATTACK,
   UNITS,
 } from './config';
-import { areAllied, isTraitor } from './diplomacy';
+import { areAllied, changeOpinion, isTraitor } from './diplomacy';
 import { doctrineActive, doctrineAdvice, doctrineCooldownLeft, doctrineSwitchCost, doctrineTicks, doctrineUnlocked, doctrineUnlockTick } from './doctrines';
 import { troopCap } from './economy';
 import { forEachInRadius } from './grid';
@@ -468,6 +490,8 @@ interface AIState {
   proposedTick: Map<number, number>;
   /** next tick the doctrine is reviewed (a switch is considered) */
   nextDoctrineTick: number;
+  /** next tick we may help an ally on our own (join its war, send aid): ALLY_HELP_COOLDOWN */
+  nextHelpTick: number;
 }
 
 interface Memory {
@@ -530,7 +554,7 @@ function borderLen(state: GameState, a: number, b: number): number {
 function aiState(m: Memory, id: number): AIState {
   let s = m.ais.get(id);
   if (!s) {
-    s = { decisions: 0, nextWarTick: 0, nextNavalTick: 0, nextDiploTick: 0, nextAirTick: 0, peakTiles: 0, busyTick: 0, nextNukeTick: 0, attacks: new Map(), badLandings: new Map(), proposedTick: new Map(), nextDoctrineTick: 0 };
+    s = { decisions: 0, nextWarTick: 0, nextNavalTick: 0, nextDiploTick: 0, nextAirTick: 0, peakTiles: 0, busyTick: 0, nextNukeTick: 0, attacks: new Map(), badLandings: new Map(), proposedTick: new Map(), nextDoctrineTick: 0, nextHelpTick: 0 };
     m.ais.set(id, s);
   }
   return s;
@@ -709,6 +733,10 @@ interface Ctx {
   threatId: number;
   /** some of our tiles bordering other nations */
   foreignEdges: number[];
+  /** the runaway leader (allies.runawayLeader), 0 = none */
+  leader: number;
+  /** we feel threatened by the leader (allies.inCoalition): ally against it, focus wars on it */
+  coalition: boolean;
 }
 
 /** Share of all land a player holds. */
@@ -806,6 +834,8 @@ function makeCtx(state: GameState, m: Memory, p: Player): Ctx {
     threat,
     threatId,
     foreignEdges,
+    leader: isTribe(p) ? 0 : runawayLeader(state),
+    coalition: !isTribe(p) && inCoalition(state, id),
   };
 }
 
@@ -828,6 +858,7 @@ function decideTribe(ctx: Ctx): void {
   const { state, p, id } = ctx;
   ctx.ai.decisions++;
   answerRequests(ctx);
+  answerAllyRequests(ctx);
   if (ctx.neutralBorder <= 0 || p.tiles >= TRIBE_MAX_TILES) return;
   const running = ctx.myAttacks.find((a) => a.target === 0);
   const reserve = ctx.cap * personal(id, 11, ctx.prof.expandReserve);
@@ -847,6 +878,8 @@ function decide(ctx: Ctx): void {
   answerRequests(ctx);
   manageAttacks(ctx);
   defend(ctx);
+  answerAllyRequests(ctx);
+  allyDuties(ctx);
   expand(ctx);
   barrage(ctx);
   war(ctx);
@@ -1199,9 +1232,11 @@ function warNeed(ctx: Ctx, q: number): number {
   if (diff.coordinate && alliesFighting(ctx, q)) need *= 0.75;
   const lq = landShare(state, q);
   if (lq > 0.3 && lq > landShare(state, id) * 1.5) need *= 0.75;
+  // Coalition against a runaway leader: it is the target, and others fighting it is the point (no pile-on rule).
+  if (ctx.coalition && q === ctx.leader) need *= COALITION_NEED;
   // A nation others are already eating is a crowded prize (a small share, and it fights for its life): no pile-on
   // unless we are much stronger. Gang-ups ended games in their first minutes.
-  need *= 1 + 0.8 * otherAttackers(ctx, q);
+  else need *= 1 + 0.8 * otherAttackers(ctx, q);
   if (state.players[q]?.isHuman && !ctx.incoming.has(q)) need *= diff.humanNeed;
   if (humanSpared(ctx, q)) need *= diff.humanRestraint;
   return need;
@@ -1275,7 +1310,12 @@ function judgeAttack(ctx: Ctx, q: number, tile: number, force: Troops, strength:
   if (est.tilesPerSecond < 2) return -1;
   let score = (expectedTiles / Math.max(1, qp.tiles)) * (1 + prof.aggression) + strength * 0.1;
   if (isTribe(qp)) score *= 1.5; // easy food
-  else score /= 1 + 0.5 * otherAttackers(ctx, q);
+  else if (ctx.coalition && q === ctx.leader) score *= COALITION_FOCUS;
+  else {
+    score /= 1 + 0.5 * otherAttackers(ctx, q);
+    if (ctx.coalition) score *= COALITION_OTHER_WARS; // fellow members: not now
+  }
+  if (pledgedAgainst(state, id, q)) score *= 2;
   if (isTraitor(state, q)) score *= 1.3;
   if (ctx.incoming.has(q)) score *= 1.4;
   return score;
@@ -1305,7 +1345,7 @@ function war(ctx: Ctx): void {
     }
     if (!ready || atPeace(state, id, q)) continue;
     if (!wars.has(q) && wars.size >= prof.maxWars) continue;
-    if (!wars.has(q) && !ctx.incoming.has(q) && otherAttackers(ctx, q) >= 2) continue;
+    if (!wars.has(q) && !ctx.incoming.has(q) && otherAttackers(ctx, q) >= 2 && !(ctx.coalition && q === ctx.leader)) continue;
     const need = warNeed(ctx, q);
     const strength = ctx.army / Math.max(1, estArmy(state, ctx.m, diff, id, q));
     if (strength < need) continue;
@@ -1322,6 +1362,19 @@ function war(ctx: Ctx): void {
     if (amount < MIN_ATTACK_TROOPS * 10) continue;
     const score = judgeAttack(ctx, q, tile, chooseForce(ctx, amount, tile, q), strength);
     if (score > 0) options.push({ target: q, tile, score: score * jitter(state, diff.noise), amount });
+  }
+  // Wars we pledged to fight for an ally (asked, or joined on our own) are kept going.
+  for (const pl of pledgesOf(state, id)) {
+    const q = pl.target;
+    if (!ctx.enemies.includes(q) || atPeace(state, id, q) || options.some((o) => o.target === q)) continue;
+    if (fill < trigger * 0.6 && !ctx.incoming.has(q)) continue;
+    const existing = ctx.myAttacks.find((a) => a.target === q);
+    if (existing && total(existing.troops) > Math.max(room, 0) * 0.3) continue;
+    const tile = pickFrontTile(ctx, q, 2);
+    if (tile < 0) continue;
+    const amount = humanLimit(ctx, q, Math.max(room, ctx.home * 0.2) * diff.shareScale * ALLY_JOIN_SHARE, wars);
+    if (amount < MIN_ATTACK_TROOPS * 10) continue;
+    options.push({ target: q, tile, score: 3 * jitter(state, diff.noise), amount });
   }
   // A full bar wastes growth: a boxed-in nation picks its weakest neighbour rather than sit idle.
   if (!options.length && ctx.neutralBorder <= 0 && fill > 0.75 && ctx.enemies.length) {
@@ -1385,6 +1438,127 @@ function alliesFighting(ctx: Ctx, q: number): boolean {
     if (a.target === q && ctx.allies.includes(a.attacker)) return true;
   }
   return false;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Allies that do things (allies.ts): answers to requests, joining wars, aid
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Attacks `target` for ally `friend` (asked or on our own) and pledges to keep at it: a share of the troops above our
+ * reserve (ALLY_JOIN_SHARE x personality). Returns why it could not (a refusal reason) or null when we are at war
+ * with the target now. Human protections of the difficulty (grace, war count, force cap) still apply.
+ */
+function joinWar(ctx: Ctx, friend: number, target: number, asked: boolean): string | null {
+  const { state, id, diff, prof, p } = ctx;
+  const qp = state.players[target];
+  if (!qp?.alive) return 'that nation is gone';
+  if (atPeace(state, id, target)) return 'it is peace time';
+  if (humanSpared(ctx, target)) return `it will not attack ${qp.name} yet`;
+  const wars = warTargets(ctx);
+  const existing = ctx.myAttacks.find((a) => a.target === target);
+  const will = ALLY_WILLINGNESS[p.personality ?? 'balanced'] ?? 1;
+  const room = ctx.home - ctx.cap * personal(id, 37, prof.reserve) * 0.8;
+  let amount = Math.max(room, ctx.home * 0.25) * ALLY_JOIN_SHARE * will * (asked ? 1 : 0.8);
+  amount = humanLimit(ctx, target, amount, wars);
+  if (amount < MIN_ATTACK_TROOPS * 10) return humanLimit(ctx, target, 1e9, wars) <= 0 ? `it will not attack ${qp.name} now` : 'it has no troops to spare';
+  if (existing && total(existing.troops) > amount * 0.5) {
+    pledge(state, id, friend, target); // already fighting them: that counts
+    return null;
+  }
+  const tile = pickFrontTile(ctx, target, Math.min(2, diff.samples));
+  if (tile < 0) return `it has no border with ${qp.name}`;
+  if (!launch(ctx, tile, chooseForce(ctx, amount, tile, target))) return `it cannot reach ${qp.name}`;
+  pledge(state, id, friend, target);
+  return null;
+}
+
+/** Answers the requests our allies sent us (allies.ts): attack a nation, or send troops. Tribes always refuse. */
+function answerAllyRequests(ctx: Ctx): void {
+  const { state, id } = ctx;
+  if (!state.allyRequests.some((r) => r.ally === id)) return;
+  const mine = state.allyRequests.filter((r) => r.ally === id);
+  state.allyRequests = state.allyRequests.filter((r) => r.ally !== id);
+  for (const r of mine) {
+    const why = allyRefusal(state, id, r.from, r.kind, r.target);
+    if (why) {
+      refuse(state, id, r.from, why);
+      continue;
+    }
+    if (r.kind === 'attack') {
+      const no = joinWar(ctx, r.from, r.target, true);
+      if (no) refuse(state, id, r.from, no);
+      else {
+        announceJoin(state, id, r.from, r.target);
+        changeOpinion(state, id, r.from, -ALLY_ASK_OPINION_COST);
+      }
+    } else {
+      const sent = sendAllyAid(state, id, r.from);
+      if (!sent) refuse(state, id, r.from, 'it has nothing to spare');
+      else {
+        changeOpinion(state, id, r.from, -ALLY_ASK_OPINION_COST);
+        ctx.home = total(ctx.p.troops);
+      }
+    }
+  }
+}
+
+/**
+ * Helping allies on our own, at most once per ALLY_HELP_COOLDOWN: (1) join the defence of an ally attacked by a
+ * nation we border (counter-attack the aggressor), (2) share targets (attack a nation an ally is fighting, when we
+ * border it and are strong enough), (3) send troops to an ally that is losing badly. Never while we fight for our
+ * own survival; only for allies we like enough (helpOpinionNeeded).
+ */
+function allyDuties(ctx: Ctx): void {
+  const { state, id, ai, diff } = ctx;
+  if (state.tick < ai.nextHelpTick || !ctx.allies.length) return;
+  if (ctx.incomingTotal > ctx.home * 0.8) return;
+  const players = state.players;
+  const friends = ctx.allies.filter((a) => players[a]?.alive && !isTribe(players[a]) && state.opinion[id][a] >= helpOpinionNeeded(ctx.p));
+  if (!friends.length) return;
+  let bestFriend = 0;
+  let bestTarget = 0;
+  let bestScore = 0;
+  for (const a of state.attacks) {
+    const tot = total(a.troops);
+    if (tot <= 0) continue;
+    // (1) an ally under attack; (2) an ally attacking a nation.
+    const defending = friends.includes(a.target);
+    const sharing = !defending && friends.includes(a.attacker);
+    if (!defending && !sharing) continue;
+    const friend = defending ? a.target : a.attacker;
+    const x = defending ? a.attacker : a.target;
+    const xp = players[x];
+    if (x <= 0 || x === id || !xp?.alive || isTribe(xp) || areAllied(state, id, x) || atPeace(state, id, x)) continue;
+    if (borderLen(state, id, x) <= 0) continue;
+    if (ctx.myAttacks.some((m) => m.target === x && total(m.troops) > ctx.home * 0.1)) continue;
+    const ratio = ctx.army / Math.max(1, estArmy(state, ctx.m, diff, id, x));
+    // The aggressor is busy with our ally (x0.6); sharing a target needs real strength and a fuller bar.
+    if (defending ? ratio < ALLY_JOIN_MIN_STRENGTH * 0.6 : ratio < ALLY_JOIN_MIN_STRENGTH * 1.5 || ctx.home < ctx.cap * 0.4) continue;
+    let score = (tot / Math.max(1, ctx.army)) * (1 + Math.min(ratio, 3)) * (defending ? 2 : 0.6);
+    if (x === ctx.leader) score *= COALITION_FOCUS;
+    if (players[friend].isHuman) score *= 1.3;
+    if (score > bestScore) {
+      bestScore = score;
+      bestFriend = friend;
+      bestTarget = x;
+    }
+  }
+  if (bestTarget && !joinWar(ctx, bestFriend, bestTarget, false)) {
+    announceJoin(state, id, bestFriend, bestTarget);
+    ai.nextHelpTick = state.tick + ALLY_HELP_COOLDOWN * TICKS_PER_SECOND;
+    return;
+  }
+  // (3) Troops for an ally that is losing badly (we keep half our cap at home: sendAllyAid).
+  if (ctx.home < ctx.cap * 0.45) return;
+  for (const f of friends) {
+    if (!losingBadly(state, f)) continue;
+    if (sendAllyAid(state, id, f)) {
+      ctx.home = total(ctx.p.troops);
+      ai.nextHelpTick = state.tick + ALLY_HELP_COOLDOWN * TICKS_PER_SECOND;
+      return;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -2203,11 +2377,17 @@ export function aiWantsAlliance(state: GameState, ai: number, from: number): boo
   // Tribes take any friend they can get.
   if (isTribe(me)) return true;
   if (!alliancesAllowed(state, ai, from)) return false;
+  // Nobody props up a runaway leader (allies.ts; a human leader too).
+  const leader = runawayLeader(state);
+  if (leader > 0 && from === leader) return false;
   // Never ally (or renew) with the last neighbour we could still fight: a nation boxed in by allies sits idle.
   if (lastOutlet(state, ai, from)) return false;
+  for (const a of state.attacks) if ((a.attacker === from && a.target === ai) || (a.attacker === ai && a.target === from)) return false;
+  // Coalition: nations threatened by the leader welcome anyone threatened too or already fighting it.
+  const opinion0 = state.opinion[ai]?.[from] ?? 0;
+  if (leader > 0 && opinion0 > -30 && inCoalition(state, ai) && (inCoalition(state, from) || atWar(state, from, leader))) return true;
   // Nowhere else to grow and they are the next target: no (renewed) alliance.
   if (nextTarget(state, ai) === from) return false;
-  for (const a of state.attacks) if ((a.attacker === from && a.target === ai) || (a.attacker === ai && a.target === from)) return false;
   const prof = PROFILES[me.personality ?? 'balanced'];
   // Never prop up a runaway leader.
   const land = Math.max(1, state.map.landTileCount);
@@ -2283,13 +2463,15 @@ function diplomacy(ctx: Ctx): void {
   const merchant = p.personality === 'merchant';
   ctx.ai.nextDiploTick = state.tick + Math.round((merchant ? 15 : 30) * TICKS_PER_SECOND * (0.75 + state.rng() * 0.5));
 
-  // Renew alliances that are about to expire while we still like them (and don't need them as a target).
+  // Renew alliances that are about to expire while we still like them (and don't need them as a target; never the
+  // runaway leader).
   const drop = nextTarget(state, id);
   for (const al of state.alliances) {
     if (al.a !== id && al.b !== id) continue;
     const other = al.a === id ? al.b : al.a;
     if (
       other !== drop &&
+      other !== ctx.leader &&
       al.expiresTick - state.tick < 50 * TICKS_PER_SECOND &&
       state.opinion[id][other] > -20 &&
       alliancesAllowed(state, id, other) &&
@@ -2308,8 +2490,11 @@ function diplomacy(ctx: Ctx): void {
     if (q.id === 0 || q.id === id || !q.alive || isTribe(q) || pending.has(q.id) || ctx.allies.includes(q.id)) continue;
     const neighbour = ctx.neighbours.includes(q.id);
     const sharesThreat = !!threatHood && (threatHood.counts.get(q.id) ?? 0) > 0;
-    // Only neighbours, nations facing the same threat, or (merchants) anyone are worth a look.
-    if (!neighbour && !sharesThreat && !merchant) continue;
+    // Coalition partners: threatened by the runaway leader too, or fighting it (humans included).
+    const partner = ctx.coalition && q.id !== ctx.leader && (inCoalition(state, q.id) || atWar(state, q.id, ctx.leader));
+    // Only neighbours, nations facing the same threat, coalition partners, or (merchants) anyone are worth a look.
+    if (!neighbour && !sharesThreat && !merchant && !partner) continue;
+    if (q.id === ctx.leader) continue;
     if (isTraitor(state, q.id) || ctx.incoming.has(q.id) || ctx.myAttacks.some((a) => a.target === q.id) || q.id === drop) continue;
     if (!alliancesAllowed(state, id, q.id) || lastOutlet(state, id, q.id)) continue;
     // Don't ask the same nation again for a while (a human would see the same request every 30 s).
@@ -2322,6 +2507,7 @@ function diplomacy(ctx: Ctx): void {
     if (neighbour && ratio > 1.3) s = ratio + (1 - prof.aggression);
     else if (!neighbour && sharesThreat) s = 1.5;
     else if (merchant && op >= 0) s = 0.8;
+    if (partner && op > -30) s = Math.max(s, atWar(state, q.id, ctx.leader) ? 2 : 1.6);
     if (s <= 0) continue;
     s += op / 100;
     if (s > bestScore) {
@@ -2329,7 +2515,7 @@ function diplomacy(ctx: Ctx): void {
       candidate = q.id;
     }
   }
-  if (candidate && bestScore > 0.6 && ctx.allies.filter((a) => !isTribe(state.players[a])).length < 3) {
+  if (candidate && bestScore > 0.6 && ctx.allies.filter((a) => !isTribe(state.players[a])).length < (ctx.coalition ? 5 : 3)) {
     ctx.ai.proposedTick.set(candidate, state.tick);
     applyAction(state, id, { type: 'requestAlliance', to: candidate });
   }

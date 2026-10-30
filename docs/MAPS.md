@@ -1,6 +1,6 @@
 # Real-world maps
 
-Besides the procedural generator (`src/sim/mapgen.ts`), Borderfall ships 12 maps of the real world. They are baked
+Besides the procedural generator (`src/sim/mapgen.ts`), Frontline Atlas ships 12 maps of the real world. They are baked
 offline from Natural Earth data into small compressed blobs that are bundled with the game, so no data is fetched at
 runtime and every load is identical.
 
@@ -39,7 +39,7 @@ and listed in `src/maps/manifest.json`.
   geography (uplands Natural Earth has no polygon for, such as the Scottish Highlands, Wales, Norway, Iceland, the
   Japanese mountains; some extra arid or wet interiors; woodland belts such as the eastern US, Labrador and
   Fennoscandia; open farmland or treeless areas such as Jutland, East Anglia, the Northern Isles, western Anatolia; the
-  outline of the cold Changtang plateau; rough onshore oil provinces). They are original to Borderfall (same licence as the
+  outline of the cold Changtang plateau; rough onshore oil provinces). They are original to Frontline Atlas (same licence as the
   code) and are not taken from any other data set or game.
 - **Climate shape** (`scripts/maps/terrain.ts`): the northern tree line by longitude and a moisture-by-latitude table
   are simple assumed curves, not measured data.

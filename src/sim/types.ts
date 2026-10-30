@@ -343,6 +343,15 @@ export interface Player {
   doctrine: PlayerDoctrine;
   stats: PlayerStats;
   eliminatedTick: number; // -1 while alive
+  /**
+   * Centre of the heartland (combat.coreDefenseAt): the capital at spawn; after a capital loss it moves to the new
+   * capital at heartMoveTick (HEARTLAND_MOVE_SECONDS later). -1 = no heartland.
+   */
+  heartTile: number;
+  /** tick at which heartTile moves to the current capital (0 = no move pending) */
+  heartMoveTick: number;
+  /** tick from which this player may ask its allies again (requestAllyAttack / requestAllyAid; ALLY_REQUEST_COOLDOWN) */
+  allyAskTick: number;
 }
 
 export interface Alliance {
@@ -355,6 +364,27 @@ export interface AllianceRequest {
   from: number;
   to: number;
   expiresTick: number;
+}
+
+/** A request to an AI ally (Action requestAllyAttack / requestAllyAid), answered on the ally's next decision. */
+export interface AllyRequest {
+  from: number;
+  ally: number;
+  kind: 'attack' | 'aid';
+  /** nation to attack (kind 'attack'), 0 for aid */
+  target: number;
+  expiresTick: number;
+}
+
+/**
+ * An ally fighting `target` for `friend` (asked, or joined on its own): its AI keeps that war going (reinforces it,
+ * ranks it first) until untilTick.
+ */
+export interface AllyPledge {
+  helper: number;
+  friend: number;
+  target: number;
+  untilTick: number;
 }
 
 export type GameEventKind =
@@ -371,6 +401,12 @@ export type GameEventKind =
   | 'allianceFormed'
   | 'allianceBroken'
   | 'allianceExpired'
+  /** an ally joins a war on your side ("Valoria joins your war against Tarsis") */
+  | 'allyJoined'
+  /** an ally sent troops or gold */
+  | 'allyAid'
+  /** an ally said no to a request (the message gives the reason) */
+  | 'allyRefused'
   | 'eliminated'
   | 'capitalLost'
   | 'nuke'
@@ -425,6 +461,10 @@ export interface GameState {
   barrages: Barrage[];
   alliances: Alliance[];
   allianceRequests: AllianceRequest[];
+  /** requests to AI allies waiting for their answer (allies.ts) */
+  allyRequests: AllyRequest[];
+  /** allies committed to a war for a friend (allies.ts) */
+  allyPledges: AllyPledge[];
   /** opinion[a][b] = how AI a feels about b, -100..100 */
   opinion: number[][];
   events: GameEvent[];
@@ -496,6 +536,10 @@ export type Action =
   | { type: 'breakAlliance'; with: number }
   | { type: 'gift'; to: number; gold: number; troops: number }
   | { type: 'toggleEmbargo'; with: number }
+  /** ask an ally to attack `target` (an AI ally answers on its next decision: allyJoined or allyRefused event) */
+  | { type: 'requestAllyAttack'; ally: number; target: number }
+  /** ask an ally for troops (or gold): allyAid or allyRefused event */
+  | { type: 'requestAllyAid'; ally: number }
   | { type: 'setAuto'; mix?: boolean; research?: boolean }
   /** pick a doctrine (first choice) or switch to another one (costs gold, adapt time, cooldown: doctrines.ts) */
   | { type: 'chooseDoctrine'; doctrine: DoctrineId }

@@ -74,6 +74,9 @@ export function hashState(state: GameState): number {
     h = mixInt(h, p.traitorUntil);
     h = mixInt(h, p.embargoes.length);
     for (const e of p.embargoes) h = mixInt(h, e);
+    h = mixInt(h, p.heartTile);
+    h = mixInt(h, p.heartMoveTick);
+    h = mixInt(h, p.allyAskTick);
     const d = p.doctrine;
     if (d) {
       h = mixStr(h, d.id);
@@ -94,6 +97,21 @@ export function hashState(state: GameState): number {
     h = mixInt(h, r.from);
     h = mixInt(h, r.to);
     h = mixInt(h, r.expiresTick);
+  }
+  h = mixInt(h, state.allyRequests.length);
+  for (const r of state.allyRequests) {
+    h = mixInt(h, r.from);
+    h = mixInt(h, r.ally);
+    h = mixInt(h, r.kind === 'attack' ? 1 : 2);
+    h = mixInt(h, r.target);
+    h = mixInt(h, r.expiresTick);
+  }
+  h = mixInt(h, state.allyPledges.length);
+  for (const pl of state.allyPledges) {
+    h = mixInt(h, pl.helper);
+    h = mixInt(h, pl.friend);
+    h = mixInt(h, pl.target);
+    h = mixInt(h, pl.untilTick);
   }
   for (const a of state.attacks) {
     h = mixInt(h, a.id);

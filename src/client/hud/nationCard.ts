@@ -15,6 +15,7 @@ import { armyOf } from '../simx';
 import { btn, el, setClass, setDisabled, setText, setTip, setVisible, type HudCtx } from './dom';
 import { relationOf, TROOP_COLORS } from './drawers';
 import { iconSpan, lineIcon } from './glyph';
+import { AllyHelp } from './allyHelp';
 
 export const GIFT_GOLD = 200;
 
@@ -40,6 +41,8 @@ export class NationCard {
   private gift: HTMLButtonElement;
   private embargo: HTMLButtonElement;
   private attack: HTMLButtonElement;
+  /** allies: what they are up to, ask them to attack or for troops */
+  private allyHelp: AllyHelp;
 
   constructor(private ctx: HudCtx) {
     this.el = el('section', 'ncard hidden');
@@ -82,7 +85,8 @@ export class NationCard {
     this.attack = btn('Attack', 'danger', () => this.doAttack(), 'attack');
     this.attack.dataset.test = 'nc-attack';
     acts.append(this.accept, this.decline, this.ally, this.brk, this.attack, this.gift, this.embargo);
-    this.el.append(head, stats, this.mix, this.mixNote, acts);
+    this.allyHelp = new AllyHelp(ctx);
+    this.el.append(head, stats, this.mix, this.mixNote, this.allyHelp.el, acts);
   }
 
   open(id: number): void {
@@ -147,6 +151,8 @@ export class NationCard {
       setText(this.mixNote, `Infantry ${formatCount(t.infantry)}, armor ${formatCount(t.armor)}, artillery ${formatCount(t.artillery)}`);
     } else setText(this.mixNote, 'Troop mix unknown: build a Watchtower near them or ally with them.');
     const allied = areAllied(s, me.id, p.id);
+    setVisible(this.allyHelp.el, !isMe && allied);
+    if (!isMe && allied) this.allyHelp.update(s, me, p.id);
     const inReq = s.allianceRequests.some((r) => r.from === p.id && r.to === me.id);
     const outReq = s.allianceRequests.some((r) => r.from === me.id && r.to === p.id);
     setVisible(this.accept, !isMe && inReq);

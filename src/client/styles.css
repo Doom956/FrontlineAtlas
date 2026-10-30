@@ -1,4 +1,4 @@
-/* Borderfall UI: "war room". A command table over the map: near-opaque gunmetal panels with a fine brushed grain,
+/* Frontline Atlas UI: "war room". A command table over the map: near-opaque gunmetal panels with a fine brushed grain,
    thin steel rules and corner brackets instead of rounded cards, brass for actions and key numbers, muted status
    colours. Labels in a condensed military sans (uppercase, tracked), values in a legible face with tabular figures.
    Decoration stays minimal: colour, type and crisp lines carry the identity. */
@@ -2375,6 +2375,13 @@ button.ev:hover {
 .lg-sw.m-capital {
   color: #f6e7a6;
 }
+.lg-sw.m-heart {
+  background: radial-gradient(circle at 70% 70%, rgba(227, 192, 78, 0.28) 0 45%, transparent 46%), #6f8f4e;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+.mt-row.core .mt-ic {
+  color: var(--brass-hi);
+}
 .lg-sw.m-front {
   background: linear-gradient(90deg, #6f8f4e 0 50%, #e8cc52 50% 70%, #6f8f4e 70%);
 }
@@ -4105,8 +4112,9 @@ button.toast-t:hover {
   }
 }
 
-/* online HUD: no pause / speed (the server's clock); watchers have no action UI */
-.hud.online .cl-speed {
+/* online HUD: no speed (the server's clock); pause only for the private lobby's host (cluster.ts); watchers have
+   no action UI */
+.hud.online .cl-spd {
   display: none;
 }
 .hud.watching .hud-bottom,
@@ -4281,4 +4289,148 @@ button.toast-t:hover {
 b,
 strong {
   font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- allies, defence hints, online pause */
+.ally-help {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.ally-row {
+  border-bottom: 1px solid rgba(57, 66, 75, 0.6);
+  padding-bottom: 8px;
+}
+.ally-row .drow {
+  border-bottom: 0;
+}
+.ally-row .ally-help {
+  margin-top: 0;
+}
+.ally-st {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--dim);
+}
+.ally-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.ally-st.yes {
+  color: #c9d79a;
+}
+.ally-st.yes .ally-dot {
+  background: var(--olive);
+}
+.ally-st.no .ally-dot {
+  background: var(--brass);
+}
+.ally-btns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.ally-btns .wr-btn {
+  justify-content: flex-start;
+  min-width: 0;
+}
+/* the nation card is narrow: one button per row */
+.ncard .ally-btns {
+  grid-template-columns: minmax(0, 1fr);
+}
+.ally-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px 8px;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--brass);
+  background: rgba(13, 16, 19, 0.55);
+}
+.ally-pick-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ally-pick-h {
+  font: 600 11px/1.2 var(--f-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brass-hi);
+}
+.ally-pick-x {
+  width: 26px;
+  padding: 0;
+  justify-content: center;
+}
+.ally-pick-l {
+  display: flex;
+  flex-direction: column;
+}
+.ally-target {
+  min-height: 28px;
+  padding: 0 4px;
+  border-radius: var(--r);
+}
+.ally-target:hover,
+.ally-target:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+}
+.ally-target .tag {
+  margin-left: auto;
+  font: 600 10.5px/1 var(--f-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--signal);
+}
+.ally-pick .note {
+  margin: 2px 0 0;
+}
+.toast .toast-sw {
+  width: 10px;
+  height: 10px;
+}
+.odds .odds-sub {
+  display: block;
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--dim);
+}
+.sq.dis {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.pause-banner {
+  position: absolute;
+  left: 50%;
+  top: 38%;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 10px 10px 16px;
+  transform: translateX(-50%);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--steel);
+  background-color: var(--metal-a);
+  background-image: var(--grain);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  font: 600 16px/1.2 var(--f-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: auto;
+  animation: drop var(--fast) ease-out;
+}
+.pause-banner .pb-ic {
+  color: var(--steel);
+}
+.pause-banner .wr-btn {
+  text-transform: none;
+  letter-spacing: 0;
 }

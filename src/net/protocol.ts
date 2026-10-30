@@ -18,7 +18,15 @@
 //   (src/sim/hash.ts). While replaying a catchUp only send it for turns >= catchUp.toTurn - HASH_INTERVAL_TURNS
 //   (older ones are dropped by the server's hash rate limit anyway).
 // - When the sim's phase becomes 'over', send `gameOver {turn: n, winner: state.winner}` once.
-// - No pause and no game speed in online games: the server's clock drives the game (one turn per TURN_MS).
+// - No game speed in online games: the server's clock drives the game (one turn per TURN_MS). Pause (protocol 6):
+//   in a PRIVATE game only the host may send `setPause {paused}`; the server then stops (or restarts) sending turns,
+//   so every client freezes in sync, and tells everyone (spectators too) with `pauseState {paused, by, host}`.
+//   Others get error 'notHost'; public games have no host (error 'notAllowed'); toggling faster than once a second
+//   gets 'rateLimit'. Intents sent while paused are refused (error 'notAllowed'). A (re)joining client gets
+//   `pauseState` right after `gameStart` (and its catch-up) when the game is paused, and everyone gets one when the
+//   host role passes on during a game. If the host stays disconnected for 60 s, the host role passes to the next
+//   connected player and a paused game resumes on its own (by = 0); a single pause lasts at most 15 minutes.
+// - Ally requests (protocol 6): `requestAllyAttack {ally, target}` and `requestAllyAid {ally}` intents (player ids).
 // - `startNow` (end the spawn phase early) is relayed only from the host of a private lobby; others get an error.
 // - `chooseDoctrine {doctrine}` (protocol 5): the server checks only that `doctrine` is a DoctrineId; unlock time,
 //   cooldown and gold are the sim's rules (src/sim/doctrines.ts), applied identically on every client.
@@ -60,7 +68,7 @@ export type { GameMode };
 // ------------------------------------------------------------------------------------------------ constants
 
 /** Bumped on any incompatible change to the messages below. `hello.protocol` must equal it. */
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 /** WebSocket path on the server (same host that serves the client, or the one given by ?server=). */
 export const WS_PATH = '/ws';
 /** One turn = one sim tick = 100 ms (config TICK_SECONDS). */
@@ -304,6 +312,11 @@ export interface GameOverReportMsg {
   turn: number;
   winner: number;
 }
+/** Host of a private game only: pause or resume (the server stops / restarts the turns). */
+export interface SetPauseMsg {
+  type: 'setPause';
+  paused: boolean;
+}
 export interface PingMsg {
   type: 'ping';
   /** any number (e.g. performance.now()); echoed in pong */
@@ -322,6 +335,7 @@ export type ClientMessage =
   | IntentMsg
   | HashMsg
   | GameOverReportMsg
+  | SetPauseMsg
   | PingMsg;
 
 // ------------------------------------------------------------------------------------------------ server -> client
@@ -425,6 +439,18 @@ export interface KickedMsg {
   type: 'kicked';
   reason: string;
 }
+/**
+ * The game is paused (no turns until it resumes) or running again. Sent to everyone in the game on every change, after
+ * gameStart (+ catch-up) to a client joining a paused game, and when the host role passes on.
+ */
+export interface PauseStateMsg {
+  type: 'pauseState';
+  paused: boolean;
+  /** player id of who paused / resumed (the host); 0 = the server (auto-resume) */
+  by: number;
+  /** player id of the current host (who may pause); 0 = none (public game, or no player left) */
+  host: number;
+}
 export type GameOverReason = 'finished' | 'abandoned' | 'maxDuration';
 /** The game ended; no more turns follow. */
 export interface GameOverMsg {
@@ -448,6 +474,7 @@ export type ServerMessage =
   | ErrorMsg
   | PongMsg
   | KickedMsg
+  | PauseStateMsg
   | GameOverMsg;
 
 // ------------------------------------------------------------------------------------------------ helpers

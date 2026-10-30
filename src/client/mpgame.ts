@@ -23,6 +23,8 @@ const CATCHUP_BUDGET_MS = 70;
 const FAR_BEHIND = 30;
 /** At most one army mix change per this many ms (slider drags). */
 const MIX_INTERVAL_MS = 300;
+/** A pause click the server hasn't confirmed after this long (while turns keep coming) is dropped. */
+const PAUSE_CONFIRM_MS = 2500;
 /** Hashes kept for the test hook and the desync banner (turn -> hash). */
 const HASHES_KEPT = 120;
 
@@ -64,6 +66,16 @@ export class MpGame {
   rebuild = false;
   /** whether this client may send `startNow` (the private lobby's host) */
   canStartNow = false;
+  /** a private game (its host may pause; public games never pause) */
+  isPrivate = false;
+  /** the host paused the game (server `pauseState`; set at once on the host's own click) */
+  paused = false;
+  /** who paused: a player id (0 = the server) */
+  pausedBy: number | null = null;
+  /** player id of the current host from the server's `pauseState` (-1 = not told yet: canStartNow decides) */
+  hostId = -1;
+  /** our own pause click not confirmed by the server yet (performance.now() of the click, 0 = none pending) */
+  private pauseSentAt = 0;
   private queue: Turn[] = [];
   private mixPending: Extract<Action, { type: 'setArmyMix' }> | null = null;
   private mixSentAt = -Infinity;
@@ -125,6 +137,11 @@ export class MpGame {
   handle(msg: ServerMessage): void {
     switch (msg.type) {
       case 'turn':
+        // turns keep coming long after our pause click: the server didn't take it, show the game running again
+        if (this.pauseSentAt && performance.now() - this.pauseSentAt > PAUSE_CONFIRM_MS) {
+          this.pauseSentAt = 0;
+          if (this.paused) this.paused = false;
+        }
         this.enqueue({ n: msg.n, intents: msg.intents });
         break;
       case 'catchUp':
@@ -140,6 +157,15 @@ export class MpGame {
         break;
       case 'gameOver':
         this.serverOver = msg;
+        this.paused = false;
+        break;
+      case 'pauseState':
+        this.paused = msg.paused;
+        this.pauseSentAt = 0;
+        this.pausedBy = msg.by;
+        // the host role can pass on during a game (the old host stayed away): it decides who may pause now
+        this.hostId = msg.host;
+        if (msg.host > 0) this.isPrivate = true;
         break;
       default:
         break;
@@ -267,6 +293,32 @@ export class MpGame {
     if (!a) return true;
     this.mixSentAt = performance.now();
     return this.net.send({ type: 'intent', action: a });
+  }
+
+  /** Only the private lobby's host may pause an online game. */
+  get canPause(): boolean {
+    if (this.spectator) return false;
+    return this.hostId >= 0 ? this.hostId === this.playerId : this.canStartNow && this.isPrivate;
+  }
+
+  /** Name of whoever paused (the host): for the "Paused by …" banner. */
+  pausedByName(): string {
+    const by = this.pausedBy;
+    if (by && by === this.playerId) return 'you';
+    const p = by ? this.state?.players[by] : undefined;
+    return p?.name ?? (this.canPause ? 'you' : 'the host');
+  }
+
+  /** The host pauses or resumes: shown at once, confirmed by the server's `pauseState` to everyone. */
+  setPause(paused: boolean): boolean {
+    if (!this.canPause || this.serverOver || paused === this.paused) return false;
+    const sent = this.net.send({ type: 'setPause', paused });
+    if (sent) {
+      this.paused = paused;
+      this.pausedBy = this.playerId;
+      this.pauseSentAt = paused ? performance.now() : 0;
+    }
+    return sent;
   }
 
   /** After a desync: rejoin; the server sends gameStart + every turn again and the game is rebuilt from turn 0. */

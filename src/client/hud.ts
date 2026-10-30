@@ -50,6 +50,8 @@ import { button, howToPlayContent } from './menu';
 import { RadialMenu } from './radial';
 import type { RadialSpec } from './radial';
 import { addFloater } from './uiState';
+import { allyEventKind, isCoalitionEvent } from './allies';
+import { swatchCss } from './hud/swatch';
 import { instruction, strikeToastText, type StrikeId } from './strikes';
 import type { Dispatch, UiState } from './uiState';
 
@@ -83,6 +85,11 @@ export interface HudOptions {
   canStartNow?: () => boolean;
   /** game-over card: text of the first button (default "Play again") */
   againLabel?: string;
+  /**
+   * online pause: who may pause (the private lobby's host; 'guest' = a seat in a private game, 'none' = public), whether
+   * the game is paused and by whom. Pausing goes through ui.paused (main sends it to the server).
+   */
+  pause?: () => { mode: 'host' | 'guest' | 'none'; paused: boolean; by: string };
 }
 
 export class Hud {
@@ -124,6 +131,10 @@ export class Hud {
   private startNowBtn: HTMLButtonElement;
   private modeChip: HTMLElement;
   private modeText: HTMLElement;
+  /** online: "Paused by <host>" in the middle of the screen (the host also gets Resume) */
+  private pauseBanner: HTMLElement;
+  private pauseText: HTMLElement;
+  private resumeBtn: HTMLButtonElement;
   private seenEvents = new WeakSet<GameEvent>();
   /** last start position / phase the camera followed (followStart); "" = none yet */
   private startKey = '';
@@ -193,6 +204,7 @@ export class Hud {
       toggleMute: () => this.audio?.setMuted(!this.audio.getSettings().muted),
       toggleHelp: () => this.toggleHelp(),
       hasAudio: () => !!this.audio,
+      pauseMode: () => (hudOpts.online ? hudOpts.pause?.().mode ?? 'none' : 'local'),
     });
 
     this.drawer = new Drawer(this.ctx);
@@ -258,6 +270,13 @@ export class Hud {
     this.modeChip.append(this.modeText, cancel);
     const top = el('div', 'hud-top');
     top.append(this.spawnBar, this.modeChip, this.toasts.el);
+    this.pauseBanner = el('div', 'pause-banner hidden');
+    this.pauseBanner.dataset.test = 'pause-banner';
+    this.pauseBanner.setAttribute('role', 'status');
+    this.pauseText = el('span', 'pb-t');
+    this.resumeBtn = button('Resume', 'wr-btn primary', () => (this.ui.paused = false));
+    this.resumeBtn.dataset.test = 'resume';
+    this.pauseBanner.append(iconSpan(lineIcon('pause', 18), 'pb-ic'), this.pauseText, this.resumeBtn);
 
     // help page and game over (modals)
     this.help = el('div', 'modal hidden');
@@ -278,7 +297,7 @@ export class Hud {
     });
     this.gameOver = el('div', 'modal gameover hidden');
 
-    this.el.append(left, this.cluster.el, this.modChips.el, this.drawer.el, bottom, top, this.tooltip.card, this.tooltip.odds, this.unitCard.el, this.radial.el, this.help, this.gameOver, this.tip);
+    this.el.append(left, this.cluster.el, this.modChips.el, this.drawer.el, bottom, top, this.pauseBanner, this.tooltip.card, this.tooltip.odds, this.unitCard.el, this.radial.el, this.help, this.gameOver, this.tip);
 
     const opts = { signal: this.ac.signal };
     // HUD size: 1 up to ~1500 px wide, then grows a little with the window (up to 1.15): readable on big screens
@@ -556,8 +575,18 @@ export class Hud {
       else if (m.kind === 'transport') chip = 'Transport: click a coast to land on. Esc to cancel.';
       else if (m.kind === 'moveWarship') chip = 'Warship selected: click water to move it. Esc to cancel.';
       else if (m.kind !== 'none') chip = instruction(state, me, m);
-      else if (ui.paused) chip = 'Paused';
+      else if (ui.paused && !this.hudOpts.online) chip = 'Paused';
     }
+    // online pause: a calm banner for everyone
+    const pz = this.hudOpts.online ? this.hudOpts.pause?.() : undefined;
+    const banner = !!pz && pz.paused && state.phase !== 'over';
+    setVisible(this.pauseBanner, banner);
+    if (banner) {
+      setText(this.pauseText, `Paused by ${pz.by}`);
+      setVisible(this.resumeBtn, pz.mode === 'host');
+    }
+    // heartland glow on the map only while the Army drawer or the map key is open
+    ui.showHeartland = !this.watching && (this.drawer.open === 'army' || this.drawer.open === 'legend');
     setText(this.modeText, chip);
     // the wide research tree and doctrine picker cover the chip's spot at the top
     setVisible(this.modeChip, chip !== '' && this.drawer.open !== 'research' && this.drawer.open !== 'doctrine');
@@ -621,6 +650,7 @@ export class Hud {
   private eventToast(state: GameState, me: Player, e: GameEvent, focus: number): void {
     const go = focus >= 0 ? () => this.focusTile(focus, true) : undefined;
     if (this.doctrineToast(me, e)) return;
+    if (this.allyToast(state, me, e, go)) return;
     if (e.kind === 'info' && e.players[0] === me.id) {
       // our gift arrived / our alliance request was turned down: say so (other info events stay in the drawer)
       if (/ sent .+ to /.test(e.message)) {
@@ -698,6 +728,51 @@ export class Hud {
     } else if (d?.id && d.level > 1) {
       this.toasts.show({ text: levelUpText(d.id, d.level), kind: 'good', icon: doctrineIcon(d.id), ms: 5000, key: 'doctrine', onClick: open });
     }
+    return true;
+  }
+
+  /**
+   * Ally news (joined your war, sent troops, said no) with the ally's colour, and coalitions against the leader (a
+   * warning when the leader is you). True when handled.
+   */
+  private allyToast(state: GameState, me: Player, e: GameEvent, go: (() => void) | undefined): boolean {
+    const ak = allyEventKind(e);
+    if (ak) {
+      const other = e.players.find((id) => id > 0 && id !== me.id) ?? 0;
+      const p = other ? state.players[other] : undefined;
+      this.toasts.show({
+        text: e.message,
+        kind: ak === 'allyRefused' ? 'warn' : 'good',
+        icon: ak === 'allyAid' ? 'troops' : ak === 'allyJoined' ? 'attack' : 'diplomacy',
+        swatch: p ? swatchCss(p, me.id) : undefined,
+        ms: 5000,
+        key: `ally:${ak}:${other}`,
+        onClick: go ?? (p ? () => this.openNation(other) : undefined),
+      });
+      return true;
+    }
+    // a human ally asks us for help (only a note: we decide ourselves)
+    const ask = e.kind === 'info' && e.players[0] === me.id ? / asks you (to attack (.+)|for troops)$/.exec(e.message) : null;
+    if (ask) {
+      const from = state.players.find((p) => p && p.id > 0 && e.message.startsWith(`${p.name} asks you`));
+      this.toasts.show({ text: e.message, kind: 'info', icon: 'diplomacy', swatch: from ? swatchCss(from, me.id) : undefined, ms: 7000, key: `allyask:${from?.id ?? 0}`, onClick: go });
+      return true;
+    }
+    if (!isCoalitionEvent(e)) return false;
+    // the leader: named after "against", else the first player of the event
+    let leader: Player | undefined;
+    for (const p of state.players) if (p && p.id > 0 && e.message.includes(`against ${p.name}`) && (!leader || p.name.length > leader.name.length)) leader = p;
+    leader ??= state.players[e.players[0]];
+    const mine = leader?.id === me.id;
+    this.toasts.show({
+      text: mine ? e.message.replace(`against ${me.name}`, 'against you') : e.message,
+      kind: mine ? 'bad' : 'info',
+      icon: 'shield',
+      swatch: leader ? swatchCss(leader, me.id) : undefined,
+      ms: mine ? 9000 : 5000,
+      key: `coalition:${leader?.id ?? 0}`,
+      onClick: go,
+    });
     return true;
   }
 

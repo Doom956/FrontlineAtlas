@@ -7,7 +7,8 @@ import { updateAdvisor } from '../src/sim/advisor';
 import { updateAI } from '../src/sim/ai';
 import { updateBarrages } from '../src/sim/barrage';
 import { updateBuildings } from '../src/sim/buildings';
-import { updateAttacks, updateSupply } from '../src/sim/combat';
+import { updateAttacks, updateHeartlands, updateSupply } from '../src/sim/combat';
+import { updateAllies } from '../src/sim/allies';
 import { DEFAULT_AI_COUNT, DEFAULT_TRIBE_COUNT, MAX_AI_COUNT, MAX_TRIBE_COUNT, VICTORY_LAND_SHARE } from '../src/sim/config';
 import { updateDiplomacy } from '../src/sim/diplomacy';
 import { updateEconomy } from '../src/sim/economy';
@@ -62,6 +63,7 @@ const systems: [string, (s: GameState) => void][] = [
   ['research', updateResearch],
   ['buildings', updateBuildings],
   ['supply', updateSupply],
+  ['heartlands', updateHeartlands],
   ['attacks', updateAttacks],
   ['endgame', updateEndgame],
   ['prune', pruneEliminated],
@@ -69,6 +71,7 @@ const systems: [string, (s: GameState) => void][] = [
   ['barrages', updateBarrages],
   ['prune2', pruneEliminated],
   ['diplomacy', updateDiplomacy],
+  ['allies', updateAllies],
   ['ai', updateAI],
   ['advisor', updateAdvisor],
   ['victory', updateVictory],

@@ -83,6 +83,8 @@ const ACTION_SPECS: ActionSpecs = {
   breakAlliance: { with: PLAYER },
   gift: { to: PLAYER, gold: { k: 'amount' }, troops: { k: 'amount' } },
   toggleEmbargo: { with: PLAYER },
+  requestAllyAttack: { ally: PLAYER, target: PLAYER },
+  requestAllyAid: { ally: PLAYER },
   setAuto: { mix: { k: 'bool', optional: true }, research: { k: 'bool', optional: true } },
   startNow: {},
   chooseDoctrine: { doctrine: { k: 'enum', values: DOCTRINE_IDS } },
@@ -259,6 +261,9 @@ export function validateClientMessage(m: unknown): Result<ClientMessage> {
       if (!isInt(m.turn, 0, MAX_ID)) return fail('gameOver: bad turn');
       if (!isInt(m.winner, 0, MAX_PLAYER)) return fail('gameOver: bad winner');
       return ok({ type: 'gameOver', turn: m.turn, winner: m.winner });
+    case 'setPause':
+      if (typeof m.paused !== 'boolean') return fail('setPause: bad paused (boolean)');
+      return ok({ type: 'setPause', paused: m.paused });
     case 'ping':
       if (m.t !== undefined && !isNum(m.t, -1e15, 1e15)) return fail('ping: bad t');
       return ok(m.t === undefined ? { type: 'ping' } : { type: 'ping', t: m.t });

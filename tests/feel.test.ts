@@ -159,9 +159,11 @@ describe('send more, lose less', () => {
     expect(even.odds).toBeCloseTo(1, 6);
     expect(small.lossFactor).toBe(OUTNUMBER_LOSS[1]);
     expect(even.lossFactor).toBeCloseTo(1, 6);
-    expect(big.lossFactor).toBe(OUTNUMBER_LOSS[0]);
+    // 4:1 is past the force limit: close to the floor, never under it.
+    expect(big.lossFactor).toBeGreaterThan(OUTNUMBER_LOSS[0]);
+    expect(big.lossFactor).toBeLessThan(0.56);
     expect(small.lossPerTile).toBeCloseTo(even.lossPerTile * OUTNUMBER_LOSS[1], 6);
-    expect(big.lossPerTile).toBeCloseTo(even.lossPerTile * OUTNUMBER_LOSS[0], 6);
+    expect(big.lossPerTile).toBeCloseTo(even.lossPerTile * big.lossFactor, 6);
     expect(big.tilesPerSecond).toBeGreaterThan(even.tilesPerSecond);
     expect(even.tilesPerSecond).toBeGreaterThan(small.tilesPerSecond);
     // Neutral land: no odds.

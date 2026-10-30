@@ -47,6 +47,15 @@ export interface ServerOptions {
   maxGameLogBytes: number;
   /** a disconnected player still counts in the game-over vote for this long */
   voteAbsentMs: number;
+  /** pause (private games, host only): least time between two setPause changes from the host */
+  pauseToggleMs: number;
+  /**
+   * The host has been disconnected this long during a running game: the host role passes to the next connected
+   * player, and a game paused by the gone host resumes on its own.
+   */
+  pauseHostGoneMs: number;
+  /** a single pause lasts at most this long (then the game resumes on its own) */
+  pauseMaxMs: number;
   /** take the client IP from the proxy headers (behind Render/Fly/nginx) */
   trustProxy: boolean;
   /**
@@ -89,6 +98,9 @@ export const DEFAULT_OPTIONS: ServerOptions = {
   intentBurst: 40,
   maxGameLogBytes: 48 * 1024 * 1024,
   voteAbsentMs: 180_000,
+  pauseToggleMs: 1000,
+  pauseHostGoneMs: 60_000,
+  pauseMaxMs: 15 * 60_000,
   trustProxy: false,
   proxyHops: 1,
   clientIpHeader: '',

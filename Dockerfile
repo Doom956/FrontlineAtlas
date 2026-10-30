@@ -1,6 +1,6 @@
-# Borderfall: client + multiplayer server in one image.
-#   docker build -t borderfall .
-#   docker run -p 8080:8080 borderfall      -> http://localhost:8080
+# Frontline Atlas: client + multiplayer server in one image.
+#   docker build -t frontline-atlas .
+#   docker run -p 8080:8080 frontline-atlas -> http://localhost:8080
 FROM node:22-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./

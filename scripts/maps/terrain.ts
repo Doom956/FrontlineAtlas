@@ -1,4 +1,4 @@
-// Turns Natural Earth layers into a Borderfall tile map for one frame: land / water, continental shelf, terrain from
+// Turns Natural Earth layers into a Frontline Atlas tile map for one frame: land / water, continental shelf, terrain from
 // physical regions (mountain ranges, plateaus, deserts, wetlands, glaciers, tundra), peaks and climate belts, then
 // cleanup (no speckle) and resources. Everything is deterministic for a given map id.
 import { EXTRA_REGIONS, OIL_REGIONS } from './extra';

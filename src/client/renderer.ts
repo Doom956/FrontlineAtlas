@@ -22,6 +22,7 @@ import { BuildingLayer, FAR_ZOOM } from './render/buildings';
 import { buildingsKey, clamp, ctx2d, shade, type RGB } from './render/common';
 import { DepositLayer } from './render/deposits';
 import { FrontLayer } from './render/fronts';
+import { HeartlandLayer } from './render/heartland';
 import { MapGL } from './render/glmap';
 import { Map2D } from './render/map2d';
 import { Minimap } from './render/minimap';
@@ -81,6 +82,7 @@ export class Renderer {
   private deposits = new DepositLayer();
   private units = new UnitLayer();
   private fronts = new FrontLayer();
+  private heartland = new HeartlandLayer();
   private names = new NameLayer();
   private overlays = new Overlays();
   private mini: Minimap;
@@ -221,6 +223,7 @@ export class Renderer {
     const b = ui.mode.kind === 'build' ? ui.mode.building : null;
     const depFocus = b === 'mine' ? 1 : b === 'oilWell' ? 2 : b === 'farm' ? 3 : 0;
     this.deposits.draw(ctx, state, camera, view, ui.showResources, me, depFocus, d);
+    this.heartland.draw(ctx, state, camera, me, ui.showHeartland && state.phase === 'playing', d);
     this.overlays.rings(ctx, state, camera, ui, snap, me);
     const focus: number[] = [];
     if (ui.hoverTile >= 0 && ui.hoverTile < state.map.building.length && state.map.building[ui.hoverTile] !== 0 && ui.mode.kind === 'none') focus.push(ui.hoverTile);

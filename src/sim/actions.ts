@@ -1,4 +1,5 @@
 // Single entry point for player and AI actions.
+import { requestAllyAid, requestAllyAttack } from './allies';
 import { build, demolish } from './buildings';
 import { boatLandingTile, launchAttack, needsBoat, retreat } from './combat';
 import { answerAlliance, breakAlliance, gift, requestAlliance, toggleEmbargo } from './diplomacy';
@@ -163,6 +164,12 @@ export function applyAction(state: GameState, playerId: number, action: Action):
     case 'chooseDoctrine':
       if (typeof action.doctrine !== 'string') return FAIL('Unknown doctrine');
       return chooseDoctrine(state, playerId, action.doctrine);
+    case 'requestAllyAttack':
+      if (!isPlayerId(state, action.ally) || !isPlayerId(state, action.target)) return FAIL('No such nation');
+      return requestAllyAttack(state, playerId, action.ally, action.target);
+    case 'requestAllyAid':
+      if (!isPlayerId(state, action.ally)) return FAIL('No such nation');
+      return requestAllyAid(state, playerId, action.ally);
     case 'toggleEmbargo':
       if (!isPlayerId(state, action.with)) return FAIL('No such nation');
       return toggleEmbargo(state, playerId, action.with);

@@ -7,6 +7,7 @@ import {
   AI_NAMES,
   BUILDINGS,
   DOCTRINE_PERKS,
+  HEARTLAND_MOVE_SECONDS,
   MAX_AI_COUNT,
   MAX_EVENTS,
   PERSONALITIES,
@@ -90,6 +91,9 @@ export function makePlayer(
     doctrine: { id: null, level: 0, chosenTick: -1, adaptUntilTick: 0, lastSwitchTick: -1 },
     stats: { tilesMax: 0, troopsLost: 0, troopsKilled: 0, tilesCaptured: 0, buildingsBuilt: 0, goldEarned: 0 },
     eliminatedTick: -1,
+    heartTile: -1,
+    heartMoveTick: 0,
+    allyAskTick: 0,
   };
 }
 
@@ -117,6 +121,8 @@ export function makeGameState(
     barrages: [],
     alliances: [],
     allianceRequests: [],
+    allyRequests: [],
+    allyPledges: [],
     opinion: players.map(() => players.map(() => 0)),
     events: [],
     nextId: 1,
@@ -415,6 +421,8 @@ function placeStart(state: GameState, playerId: number, tile: number): void {
     }
   }
   p.capital = tile;
+  p.heartTile = tribe ? -1 : tile;
+  p.heartMoveTick = 0;
   p.spawned = true;
   p.alive = true;
   p.eliminatedTick = -1;
@@ -646,6 +654,8 @@ function moveCapital(state: GameState, playerId: number, lostTile: number, taker
     if (best < 0) best = nearestTile(map, lostTile, Math.max(map.width, map.height) * 1.5, (i) => map.owner[i] === playerId);
   }
   p.capital = best;
+  // The heartland follows the capital after a delay (combat.coreDefenseAt; sim.updateHeartlands).
+  if (p.heartTile >= 0 || p.heartMoveTick > 0) p.heartMoveTick = state.tick + HEARTLAND_MOVE_SECONDS * TICKS_PER_SECOND;
   // A capital that falls back tile by tile under a running attack would otherwise lose 30% gold (and send an
   // event) every few ticks: the penalty and the event only apply once per CAPITAL_LOSS_COOLDOWN.
   const last = lastCapitalLoss.get(state)?.get(playerId);
@@ -671,6 +681,8 @@ function eliminatePlayer(state: GameState, playerId: number, by: number): void {
   p.alive = false;
   p.eliminatedTick = state.tick;
   p.capital = -1;
+  p.heartTile = -1;
+  p.heartMoveTick = 0;
   p.researching = null;
   for (const a of state.attacks) {
     if (a.attacker === playerId) {

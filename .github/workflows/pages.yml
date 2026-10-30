@@ -1,6 +1,6 @@
 # Publishes the game page to GitHub Pages on every push to main.
 # Multiplayer connects to the server in the repository variable SERVER_URL
-# (Settings -> Secrets and variables -> Actions -> Variables), e.g. https://borderfall-xxxx.onrender.com.
+# (Settings -> Secrets and variables -> Actions -> Variables), e.g. https://frontline-atlas-xxxx.onrender.com.
 # Without it the page still works for single player.
 name: Deploy game page
 

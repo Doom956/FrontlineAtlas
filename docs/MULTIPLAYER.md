@@ -1,4 +1,4 @@
-# Borderfall online multiplayer
+# Frontline Atlas online multiplayer
 
 Single player needs no server: the browser runs the whole game. Online games add one small Node server that
 **relays player actions**; it never runs the simulation.
@@ -177,8 +177,8 @@ Health check: `GET /health` returns `{"ok":true, "sessions":..., "rooms":..., "g
 
 The client's multiplayer server URL is, in this order:
 
-1. the page's `?server=` parameter, e.g. `https://you.github.io/borderfall/?server=wss://borderfall.onrender.com`;
-2. the build-time variable `VITE_SERVER_URL` (e.g. `VITE_SERVER_URL=wss://borderfall.onrender.com npm run build`);
+1. the page's `?server=` parameter, e.g. `https://doom956.github.io/FrontlineAtlas/?server=wss://frontline-atlas.onrender.com`;
+2. the build-time variable `VITE_SERVER_URL` (e.g. `VITE_SERVER_URL=wss://frontline-atlas.onrender.com npm run build`);
 3. the page's own origin (`wss://<same host>/ws`): right when the page is served by the game server itself.
 
 `resolveServerUrl()` in `src/net/protocol.ts` implements this (`http(s)://` becomes `ws(s)://`, `/ws` is added when
@@ -187,7 +187,7 @@ the URL has no path).
 **GitHub Pages and the server.** GitHub Pages can only host static files: it serves the single-file client, and
 single player works there fully offline. For online games the page needs a server elsewhere (Render, Fly.io, your
 PC). Either build the Pages copy with `VITE_SERVER_URL` set to the server, or share links with `?server=`. Easiest of
-all: the Render/Fly server serves the client too, so its own URL (e.g. `https://borderfall.onrender.com`) is a
+all: the Render/Fly server serves the client too, so its own URL (e.g. `https://frontline-atlas.onrender.com`) is a
 complete game with multiplayer and nothing else to configure. Pages is served over HTTPS, so the server URL must be
 `wss://` (Render and Fly give you HTTPS automatically).
 
@@ -202,13 +202,13 @@ the first visit after that takes about a minute to wake it up; a restart (deploy
 1. Put the project on GitHub (your own repository; it can be private).
 2. Create an account at <https://render.com> (sign in with GitHub is easiest).
 3. In the Render dashboard click **New** -> **Blueprint**, choose your repository and confirm. Render reads
-   `render.yaml` from the repository: one free web service named `borderfall`, built with
+   `render.yaml` from the repository: one free web service named `frontline-atlas`, built with
    `npm ci --include=dev && npm run build`, started with `npm run start`, health check `/health`.
    (Without the blueprint: **New** -> **Web Service**, pick the repository, Language **Node**, Build Command
    `npm ci --include=dev && npm run build`, Start Command `npm run start`, Instance Type **Free**, then under
    Advanced set Health Check Path `/health` and an environment variable `NODE_VERSION` = `22`.)
-4. Wait for the first build (a few minutes). The log ends with `Borderfall server on port 10000`.
-5. Open the URL Render shows (like `https://borderfall-xxxx.onrender.com`). That page is the full game; multiplayer
+4. Wait for the first build (a few minutes). The log ends with `Frontline Atlas server on port 10000`.
+5. Open the URL Render shows (like `https://frontline-atlas-xxxx.onrender.com`). That page is the full game; multiplayer
    connects to the same address. Send the link to friends.
 6. Every push to the repository's main branch redeploys automatically (`autoDeploy`).
 
@@ -220,7 +220,7 @@ Fly.io runs the Docker image from `Dockerfile` (it needs a credit card; a single
 costs very little or nothing within their allowances, check their current pricing).
 
 1. Install `flyctl` (<https://fly.io/docs/flyctl/install/>) and run `fly auth signup` (or `fly auth login`).
-2. In the project folder: edit `fly.toml` and change `app = "borderfall-change-me"` to a free name, and
+2. In the project folder: edit `fly.toml` and change `app = "frontline-atlas-change-me"` to a free name, and
    `primary_region` to one near your players (`fly platform regions`).
 3. `fly launch --no-deploy --copy-config` (answer *no* to databases), then `fly deploy --ha=false`.
    `--ha=false` keeps **one** machine, which is required (games live in memory).
@@ -230,7 +230,7 @@ costs very little or nothing within their allowances, check their current pricin
 ## 7. Other hosting
 
 Anything that runs a Docker image or Node 22 and supports WebSockets works:
-`docker build -t borderfall . && docker run -p 8080:8080 borderfall`, or `npm ci && npm run build && npm start`.
+`docker build -t frontline-atlas . && docker run -p 8080:8080 frontline-atlas`, or `npm ci && npm run build && npm start`.
 Behind your own nginx/Caddy, forward `/ws` with the WebSocket upgrade headers and set `TRUST_PROXY=1`.
 
 ## 8. The browser client

@@ -49,6 +49,8 @@ import {
   type HudCtx,
 } from './dom';
 import { iconSpan, lineIcon, worldGlyph } from './glyph';
+import { AllyHelp } from './allyHelp';
+import { heartlandBonus, lastStandBonus } from '../allies';
 import { ABILITY_TEXT, article, buildingTexts, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect, terrainNote } from './text';
 
 export const TROOP_COLORS = { infantry: '#9aa86a', armor: '#c9a227', artillery: '#c0564a' } as const;
@@ -125,7 +127,15 @@ export class ArmyPage implements DrawerPage {
       legend.append(s);
       return v;
     });
-    this.root.append(big, mb.el, legend);
+    // the heartland glow shows on the map while this drawer is open: say what it is
+    const heart = el('p', 'note army-heart hidden');
+    this.root.append(big, mb.el, legend, heart);
+    this.upd.push((s, me) => {
+      const core = me.capital >= 0 ? heartlandBonus(s, me.capital) : 0;
+      const ls = lastStandBonus(s, me.id);
+      setVisible(heart, core > 0 || ls > 0);
+      setText(heart, [core > 0 ? `Gold edge on the map: your heartland, up to +${pct(core)} defence.` : '', ls > 0 ? `Last stand: +${pct(ls)} defence while outnumbered.` : ''].filter(Boolean).join(' '));
+    });
     this.upd.push((s, me) => {
       setText(bv, formatCount(fieldArmy(s, me.id)));
       mb.set(me.troops);
@@ -357,6 +367,8 @@ export class DiplomacyPage implements DrawerPage {
   root = el('div', 'page');
   private body = el('div', 'dip');
   private key = '';
+  /** per ally: status line and the two requests (kept across rebuilds so an open picker stays open) */
+  private helps = new Map<number, AllyHelp>();
 
   constructor(private ctx: HudCtx) {
     this.root.append(this.body);
@@ -366,6 +378,12 @@ export class DiplomacyPage implements DrawerPage {
     const inReq = s.allianceRequests.filter((r) => r.to === me.id);
     const outReq = s.allianceRequests.filter((r) => r.from === me.id);
     const allies = s.alliances.filter((a) => a.a === me.id || a.b === me.id);
+    for (const a of allies) {
+      const other = a.a === me.id ? a.b : a.a;
+      let h = this.helps.get(other);
+      if (!h) this.helps.set(other, (h = new AllyHelp(this.ctx)));
+      h.update(s, me, other);
+    }
     const traitors = s.players.filter((p) => p && p.alive && p.id !== me.id && isTraitor(s, p.id));
     const key = [
       inReq.map((r) => r.from).join(','),
@@ -405,7 +423,7 @@ export class DiplomacyPage implements DrawerPage {
       }
     }
     b.append(sectionTitle('Allies'));
-    if (!allies.length) b.append(el('p', 'note', 'No allies. Right-click a nation or open its card from the standings to ask. Allies cannot attack each other and share what they see.'));
+    if (!allies.length) b.append(el('p', 'note', 'No allies. Right-click a nation or open its card from the standings to ask. Allies cannot attack each other, share what they see, and you can ask them to attack your enemies or send troops.'));
     for (const a of allies) {
       const other = a.a === me.id ? a.b : a.a;
       const row = el('div', 'drow');
@@ -413,8 +431,13 @@ export class DiplomacyPage implements DrawerPage {
       const brk = btn('Break', 'mini danger', () => this.ctx.act({ type: 'breakAlliance', with: other }));
       brk.dataset.tip = 'Break the alliance: you become a traitor for a while (weaker defence, everyone trusts you less)';
       row.append(nameBtn(other), el('span', 'dmeta', `${fmtTime(left)} left`), brk);
-      b.append(row);
+      const box = el('div', 'ally-row');
+      box.append(row);
+      const h = this.helps.get(other);
+      if (h) box.append(h.el);
+      b.append(box);
     }
+    for (const id of [...this.helps.keys()]) if (!allies.some((a) => a.a === id || a.b === id)) this.helps.delete(id);
     if (outReq.length) {
       b.append(sectionTitle('Waiting for an answer'));
       for (const r of outReq) {
@@ -545,6 +568,7 @@ export class LegendPage implements DrawerPage {
     mark('m-fort', 'Fort cover', 'Hatched land: attackers there lose double and slow down.');
     mark('m-capital', 'Capital', 'Star: the heart of a nation. Taking it costs them gold.', worldGlyph('capital', 16));
     mark('m-front', 'Front', 'Yellow flashes are your gains, red flashes your losses.');
+    mark('m-heart', 'Heartland', 'Faint gold edge (shown while this key or Army is open): your land deep inside your borders defends harder. Hover a tile for the bonus.');
 
     r.append(sectionTitle('Buildings'));
     const cats = el('p', 'note');

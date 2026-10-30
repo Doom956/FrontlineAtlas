@@ -20,7 +20,7 @@ function findStaticDir(): string | null {
 const staticDir = findStaticDir();
 const server = await startServer({ ...optionsFromEnv(process.env), staticDir });
 server.hub.opts.log(
-  `Borderfall server on port ${server.port} (WebSocket ${server.wsUrl})` +
+  `Frontline Atlas server on port ${server.port} (WebSocket ${server.wsUrl})` +
     (staticDir
       ? `, serving ${staticDir}`
       : process.env.STATIC_DIR === ''

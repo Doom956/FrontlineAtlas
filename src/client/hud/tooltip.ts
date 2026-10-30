@@ -20,6 +20,7 @@ import { iconDataUrl } from '../icons';
 import { el, fmtSeconds, pct, setVisible, type HudCtx } from './dom';
 import { relationOf } from './drawers';
 import { iconSpan, lineIcon, worldGlyph } from './glyph';
+import { forceLimit, heartlandBonus, lastStandBonus } from '../allies';
 import { buildingTexts, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect } from './text';
 
 export class MapTooltip {
@@ -101,7 +102,7 @@ export class MapTooltip {
     const op = state.players[owner];
     const rows: HTMLElement[] = [];
     rows.push(this.line(worldGlyph(TERRAIN_GLYPH[tid], 18), terr.name + (map.coastal[tile] ? ' (coast)' : ''), terrainEffect(tid), 'terr'));
-    let odds: { text: string; cls: string } | null = null;
+    let odds: { text: string; cls: string; sub?: string } | null = null;
     if (!isWater(tid)) {
       const res = map.resource[tile];
       if (res && RESOURCE_TEXT[res]) {
@@ -126,6 +127,15 @@ export class MapTooltip {
       }
       const def = terr.defense * (owner ? fortMultiplierAt(state, tile, owner) : 1);
       if (def > terr.defense + 0.01) rows.push(this.line(worldGlyph('fort', 18), `Fortified: defence x${def.toFixed(1)}`, 'Artillery is strong against forts', 'warn'));
+      // heartland (deep inside a nation) and last stand (a nation fighting outnumbered) defend harder
+      if (owner && op && !isTribe(op)) {
+        const core = heartlandBonus(state, tile);
+        const yours = owner === me.id;
+        if (core > 0) rows.push(this.line(lineIcon('shield', 18), `Heartland: +${pct(core)} defence`, yours ? 'Deep inside your land: attackers lose more here' : 'Deep inside their land: attacks lose more here', 'core'));
+        // yours: against whoever attacks you now; theirs: against you
+        const ls = yours ? lastStandBonus(state, owner) : lastStandBonus(state, owner, me.id);
+        if (ls > 0) rows.push(this.line(lineIcon('shield', 18), `Last stand: +${pct(ls)} while outnumbered`, yours ? 'Your land fights harder while you are outnumbered' : 'They fight harder while outnumbered', 'warn'));
+      }
       if (map.fallout[tile] > 0) rows.push(this.line(worldGlyph('silo', 18), `Fallout: ${Math.ceil(map.fallout[tile])} s`, 'Nobody can hold or build here', 'bad'));
       if (state.phase === 'playing') {
         if (owner === me.id) {
@@ -147,6 +157,7 @@ export class MapTooltip {
     if (odds) {
       this.odds.className = 'odds ' + odds.cls;
       this.odds.textContent = odds.text;
+      if (odds.sub) this.odds.append(el('span', 'odds-sub', odds.sub));
     }
     setVisible(this.odds, !!odds);
   }
@@ -193,7 +204,7 @@ export class MapTooltip {
   }
 
   /** Odds badge: outnumbering against a nation (exact with intel), how far troops reach in the wilderness. */
-  private oddsBadge(state: GameState, me: Player, owner: number, est: AttackEstimate, sent: number): { text: string; cls: string } {
+  private oddsBadge(state: GameState, me: Player, owner: number, est: AttackEstimate, sent: number): { text: string; cls: string; sub?: string } {
     if (!borders(state, me.id, owner)) return { text: owner ? 'No shared border: goes by sea' : 'Not next to you: goes by sea', cls: 'ok' };
     const loss = est.lossPerTile;
     const reach = loss > 0 ? sent / loss : Infinity;
@@ -204,10 +215,16 @@ export class MapTooltip {
     if (ratio === null) return { text: `${formatCount(loss)} lost per tile`, cls: reachCls };
     const cls = ratio >= 1.5 && reach >= 12 ? 'good' : ratio >= 0.8 && reach >= 5 ? 'ok' : 'bad';
     let r: string;
+    const x = (v: number): string => (v >= 10 ? String(Math.round(v)) : v.toFixed(1));
     if (isTribe(op)) r = ratio >= 1.5 ? 'You outnumber them' : ratio >= 0.8 ? 'Even fight' : 'Outnumbered';
     else {
-      const x = (v: number): string => (v >= 10 ? String(Math.round(v)) : v.toFixed(1));
       r = ratio >= 1.1 ? `You ${x(ratio)}x stronger` : ratio > 0.9 ? 'Even fight' : `They are ${x(1 / ratio)}x stronger`;
+    }
+    // the force limit: outnumbering beyond it barely helps, so the extra troops are better kept at home
+    const cap = forceLimit();
+    if (ratio >= cap) {
+      const enough = (sent * cap) / ratio;
+      return { text: r, cls, sub: `Extra troops beyond ${Number.isInteger(cap) ? cap : x(cap)}x add little here (≈${formatCount(enough)} is enough)` };
     }
     return { text: r, cls };
   }

@@ -180,6 +180,25 @@ describe('protocol helpers', () => {
     expect(validateClientMessage({ type: 'createLobby', settings: { aiCount: 999 } }).ok).toBe(false);
     expect(validateClientMessage({ type: 'createLobby', settings: { hack: 1 } }).ok).toBe(false);
   });
+
+  it('validates the ally requests and setPause (protocol 6)', () => {
+    expect(PROTOCOL_VERSION).toBe(6);
+    expect(validateAction({ type: 'requestAllyAttack', ally: 3, target: 5, junk: 1 })).toEqual({ ok: true, value: { type: 'requestAllyAttack', ally: 3, target: 5 } });
+    expect(validateAction({ type: 'requestAllyAid', ally: 3 })).toEqual({ ok: true, value: { type: 'requestAllyAid', ally: 3 } });
+    for (const a of [
+      { type: 'requestAllyAttack', ally: 3 },
+      { type: 'requestAllyAttack', ally: -1, target: 2 },
+      { type: 'requestAllyAttack', ally: 1, target: 1.5 },
+      { type: 'requestAllyAttack', ally: '2', target: 4 },
+      { type: 'requestAllyAid' },
+      { type: 'requestAllyAid', ally: 99999 },
+    ]) {
+      expect(validateAction(a).ok, JSON.stringify(a)).toBe(false);
+    }
+    expect(validateClientMessage({ type: 'setPause', paused: true, x: 1 })).toEqual({ ok: true, value: { type: 'setPause', paused: true } });
+    expect(validateClientMessage({ type: 'setPause', paused: 'yes' }).ok).toBe(false);
+    expect(validateClientMessage({ type: 'setPause' }).ok).toBe(false);
+  });
 });
 
 // ------------------------------------------------------------------------------------------------ private game
@@ -723,5 +742,136 @@ describe('relay server: per-address limits', () => {
     expect(clientIp(req({ 'x-forwarded-for': '6.6.6.6, 1.2.3.4, 172.16.0.1' }), true, 2)).toBe('1.2.3.4');
     expect(clientIp(req({ 'x-forwarded-for': '6.6.6.6', 'fly-client-ip': '5.5.5.5' }), true, 1, 'fly-client-ip')).toBe('5.5.5.5');
     expect(clientIp(req({ 'x-forwarded-for': '6.6.6.6' }), false)).toBe('10.9.9.9');
+  });
+});
+
+// ------------------------------------------------------------------------------------------------ pause
+
+describe('relay server: host pause', () => {
+  let srv: RunningServer;
+  const base = {
+    port: 0,
+    host: '127.0.0.1',
+    publicLobbies: false,
+    turnMs: 40,
+    firstTurnDelayMs: 0,
+    sweepMs: 20,
+    createLobbyCooldownMs: 0,
+    pauseToggleMs: 100,
+    pauseHostGoneMs: 400,
+    ...quiet,
+  };
+  beforeAll(async () => {
+    srv = await startServer({ ...base, maxRoomsPerIp: 50 });
+  });
+  afterAll(async () => {
+    await srv.close();
+  });
+
+  async function game(names: string[]): Promise<{ cs: TestClient[]; code: string }> {
+    const cs = await Promise.all(names.map(() => TestClient.connect(srv.wsUrl)));
+    for (let i = 0; i < cs.length; i++) await cs[i].hello(names[i]);
+    cs[0].send({ type: 'createLobby', settings: { map: { kind: 'generated', type: 'pangaea', size: 'small' }, aiCount: 1 } });
+    const { code } = await cs[0].take('lobbyState');
+    for (const c of cs.slice(1)) {
+      c.send({ type: 'joinLobby', code });
+      await c.take('lobbyState');
+    }
+    cs[0].send({ type: 'startGame' });
+    for (const c of cs) await c.take('gameStart');
+    return { cs, code };
+  }
+  const lastTurn = (c: TestClient): number => Math.max(-1, ...c.inbox.filter((m) => m.type === 'turn').map((m) => (m as Msg<'turn'>).n));
+
+  it('host pauses and resumes for everyone (spectators too); no turns while paused; others are refused', async () => {
+    const { cs, code } = await game(['Host', 'Guest']);
+    const [h, g] = cs;
+    const spec = await TestClient.connect(srv.wsUrl);
+    await spec.hello('Watcher');
+    spec.send({ type: 'joinLobby', code, spectate: true });
+    await spec.take('gameStart');
+    await h.take('turn', (m) => m.n >= 3);
+    // A guest can't pause; neither before nor after the host does.
+    g.send({ type: 'setPause', paused: true });
+    expect((await g.take('error')).code).toBe('notHost');
+    h.send({ type: 'setPause', paused: true });
+    const ps = await Promise.all([h.take('pauseState'), g.take('pauseState'), spec.take('pauseState')]);
+    for (const p of ps) expect(p).toEqual({ type: 'pauseState', paused: true, by: 1, host: 1 });
+    // Turns stop: wait for the last one in flight, then nothing more arrives.
+    await sleep(60);
+    const frozen = lastTurn(g);
+    await sleep(300);
+    expect(lastTurn(g)).toBe(frozen);
+    expect(lastTurn(spec)).toBe(frozen);
+    // Intents are refused while paused.
+    g.send({ type: 'intent', action: { type: 'setAuto', mix: true } });
+    expect((await g.take('error', (e) => e.code === 'notAllowed')).message).toMatch(/paused/);
+    g.send({ type: 'setPause', paused: false });
+    expect((await g.take('error')).code).toBe('notHost');
+    // Toggling too fast is rate-limited.
+    await sleep(120);
+    h.send({ type: 'setPause', paused: false });
+    await Promise.all([h.take('pauseState', (m) => !m.paused), g.take('pauseState', (m) => !m.paused), spec.take('pauseState', (m) => !m.paused)]);
+    h.send({ type: 'setPause', paused: true });
+    expect((await h.take('error')).code).toBe('rateLimit');
+    // Turns continue in order from where they stopped (no burst, no gap).
+    const next = await g.take('turn', (m) => m.n > frozen);
+    expect(next.n).toBe(frozen + 1);
+    for (const c of [...cs, spec]) await c.close();
+  });
+
+  it('a player reconnecting to a paused game gets the pause state after gameStart', async () => {
+    const { cs } = await game(['Host', 'Guest']);
+    const [h, g] = cs;
+    await h.take('turn', (m) => m.n >= 2);
+    h.send({ type: 'setPause', paused: true });
+    await g.take('pauseState');
+    const oldId = g.clientId;
+    await g.close();
+    const g2 = await TestClient.connect(srv.wsUrl);
+    g2.clientId = oldId;
+    await g2.hello('Guest');
+    const gs = await g2.take('gameStart');
+    expect(gs.yourPlayerId).toBe(2);
+    const p = await g2.take('pauseState');
+    expect(p).toMatchObject({ paused: true, by: 1, host: 1 });
+    await sleep(150);
+    expect(g2.has('turn')).toBe(false);
+    for (const c of [h, g2]) await c.close();
+  });
+
+  it('when the paused host stays away, the game resumes on its own and the host role passes on', async () => {
+    const { cs } = await game(['Host', 'Guest']);
+    const [h, g] = cs;
+    await h.take('turn', (m) => m.n >= 2);
+    h.send({ type: 'setPause', paused: true });
+    await g.take('pauseState', (m) => m.paused);
+    await h.close();
+    await sleep(150);
+    expect(g.inbox.some((m) => m.type === 'pauseState' && !(m as Msg<'pauseState'>).paused)).toBe(false);
+    const resumed = await g.take('pauseState', (m) => !m.paused, 3000);
+    expect(resumed).toEqual({ type: 'pauseState', paused: false, by: 0, host: 2 });
+    await g.take('turn');
+    // The guest is the host now: it may pause.
+    await sleep(120);
+    g.send({ type: 'setPause', paused: true });
+    expect(await g.take('pauseState', (m) => m.paused)).toMatchObject({ by: 2, host: 2 });
+    await g.close();
+  });
+
+  it('public games cannot be paused', async () => {
+    const pub = await startServer({ ...base, publicLobbies: true, publicStartMs: 50 });
+    try {
+      const c = await TestClient.connect(pub.wsUrl);
+      await c.hello('Solo');
+      const list = await c.take('lobbyList', (m) => m.lobbies.length > 0);
+      c.send({ type: 'joinLobby', code: list.lobbies[0].code });
+      await c.take('gameStart', () => true, 5000);
+      c.send({ type: 'setPause', paused: true });
+      expect((await c.take('error')).code).toBe('notAllowed');
+      await c.close();
+    } finally {
+      await pub.close();
+    }
   });
 });

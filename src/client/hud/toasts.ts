@@ -12,6 +12,8 @@ export interface ToastSpec {
   text: string;
   kind?: 'info' | 'good' | 'bad' | 'warn';
   icon?: string;
+  /** a nation's colour (CSS): a small swatch before the text (ally news) */
+  swatch?: string;
   /** ms on screen (default 4000); ignored while `sticky` returns true */
   ms?: number;
   /** keep while this is true (checked ~5 Hz) */
@@ -59,6 +61,11 @@ export class Toasts {
     const t = el('div', `toast k-${spec.kind ?? 'info'}`);
     t.dataset.test = 'toast';
     if (spec.icon) t.append(iconSpan(lineIcon(spec.icon, 16), 'ico'));
+    if (spec.swatch) {
+      const sw = el('i', 'sw toast-sw');
+      sw.style.background = spec.swatch;
+      t.append(sw);
+    }
     const txt = el(spec.onClick ? 'button' : 'span', 'toast-t', spec.text);
     if (txt instanceof HTMLButtonElement) {
       txt.type = 'button';

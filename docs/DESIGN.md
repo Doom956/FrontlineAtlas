@@ -1,6 +1,6 @@
-# Borderfall: game design and code contract
+# Frontline Atlas: game design and code contract
 
-Borderfall is a grand-scale territory-control strategy game in the browser: huge pixel maps (up to 2600x1600 tiles,
+Frontline Atlas is a grand-scale territory-control strategy game in the browser: huge pixel maps (up to 2600x1600 tiles,
 nearly 2 million land tiles), dozens of nations and hundreds of tribes, armies of millions, nations that grow by
 pushing their whole borders, and one troop pool that regrows toward a cap. Strategy comes from many decisions that
 matter: three land troop types with counters, terrain that favours some troops over others, supply lines, 17
@@ -216,8 +216,9 @@ scans). Each tick the attack gets a budget of `(front tiles) x rate x 0.1 s` til
 `MAX_TILES_PER_TICK` is only a performance guard), so speed is linear in the front length:
 - wilderness: rate = `NEUTRAL_FRONT_RATE` (20) / clamp(`NEUTRAL_SPEED_TROOPS` (33000) / troops, 5, 100): about
   0.3 x the front per tick with 5 000 troops, at most 0.4 (a flood fill), more troops faster;
-- nations: rate = `NATION_FRONT_RATE` (5.2) / clamp(1 / odds, 0.82, 7.5): an even fight on plains takes about
-  half the front per tick, outnumbering the defender speeds it up modestly (x1.2 at most), hopeless odds crawl;
+- nations: rate = `NATION_FRONT_RATE` (5.2) x `oddsSpeedFactor(odds)`: an even fight on plains takes about half the
+  front per tick; outnumbered = 1 / clamp(1 / odds, 1, 7.5) (hopeless odds crawl); outnumbering speeds it up modestly
+  along the force-limit curve (x1.2 at 2:1, x1.24 at 3:1, never more than x1.25); / the defender's last-stand slowdown;
 - x (1 + armor share x `ARMOR_SPEED_BONUS`) x (1 - artillery share x `ARTILLERY_SLOW` (0.15)) x Logistics x1.15,
   traitor targets x1.25.
 A tile uses `(1 / terrain speed) x fort slow / (0.5 + 0.5 x supply)` of the budget; fort slow = 1 + (`FORT_SLOW` x
@@ -234,7 +235,8 @@ perfect square; at 0.25 with the wider jitter a free expansion grows a round, sl
   expanding pay x0.5).
 - Nations: **odds** = attack strength (troops x type attack x matchup vs the defender's mix, no terrain) / the
   defender's home army defence power. The attacker loses `ATTACK_LOSS_BASE` (200) x terrain defence x forts
-  x clamp(1 / odds, 0.6, 2) (`OUTNUMBER_LOSS`: **send more, lose less**) x (`LOSS_FLAT` + `LOSS_DENSITY` x
+  x loss factor (**send more, lose less**: clamp(1 / odds) up to x2 when outnumbered; x0.69 at 3:2, x0.61 at 2:1,
+  x0.54 at 3:1, never under `OUTNUMBER_LOSS[0]` 0.52: force limit below) x heartland x last stand x (`LOSS_FLAT` + `LOSS_DENSITY` x
   defender density) / attack power per unit, where density = the defender's home troops per tile; x0.6 against a
   traitor, x0.7 against a tribe, x0.85 where the defender is out of supply. The defender loses its density per
   tile (`DEFENDER_LOSS_PER_TILE`), split by composition.
@@ -260,6 +262,28 @@ perfect square; at 0.25 with the wider jitter a free expansion grows a round, sl
   **Human grace**: a human nation neither collapses nor has its main body absorbed in its first
   `HUMAN_GRACE_SECONDS` (180) of game time (its 81-tile start is under the threshold); while walled in it gets a
   `surrounded` event (a red toast, at most every 20 s) telling it to expand or attack out.
+
+**Big nations are favoured, not unstoppable** (combat.ts, numbers in config.ts):
+- **Force limit**: odds past `FORCE_LIMIT_ODDS` (3) count with strongly diminishing returns (`forceLimitedOdds`:
+  e = K + K x `FORCE_LIMIT_TAIL` (0.25) x x / (x + K), x = odds - K, a soft ceiling at 3.75), and speed and losses
+  follow smooth curves of e (`ODDS_SPEED_GAIN` / `_HALF`, `OUTNUMBER_LOSS_GAIN` / `_HALF`), so a 10:1 attack loses
+  per tile what a 3:1 one does. Total land taken still grows with the troops sent; what raw size no longer buys is
+  speed and cheap tiles.
+- **Heartland** (the area around the CAPITAL only, not other cities): tiles of the owner within
+  `heartlandRadius` = `HEARTLAND_RADIUS_BASE` (9) + 0.12 x sqrt(tiles) + 1.5 x the capital's city level (at most 30) of
+  `Player.heartTile` cost attackers x (1 + `HEARTLAND_DEFENSE` x f) and take x (1 + `HEARTLAND_SLOW` x f) of the
+  budget, f = 1 at the centre fading linearly to 0 at the edge. `coreDefenseAt(state, pid, tile)` gives the loss
+  multiplier for the UI (`heartlandOf` the centre and radius). The heartland is set at spawn; when the capital falls
+  it stays where it was and moves to the new capital `HEARTLAND_MOVE_SECONDS` (30) later (`Player.heartMoveTick`,
+  `updateHeartlands`). Tribes have none.
+- **Last stand**: a nation much smaller than its attacker (gap = max(whole army ratio, land ratio), whole army =
+  home + attacks + transports, `wholeArmy`) defends better everywhere: b = `LAST_STAND_MAX` (1) x clamp((gap -
+  `LAST_STAND_START` (2)) / (`LAST_STAND_FULL` (8) - 2), 0, 1); attacker losses x (1 + b), front pace / (1 +
+  `LAST_STAND_SLOW` x b). `lastStandFactor(state, defender, attacker)` = 1 + b for the UI. Tribes neither get nor
+  trigger it. Heartland x last stand is capped at `DEFENSE_BONUS_CAP` (3.5) for losses and slowdown.
+- Measured (`scripts/fight.ts`: a passive 1600-tile nation against an AI with 5x its land and army): before, half its
+  land fell in about 2 s and the capital in about 2 minutes; now the outer land still goes fast but the heartland
+  holds for minutes, and it still falls without help. There is deliberately no overextension or war-weariness rule.
 
 **Army sizes are public.** Everyone sees every nation's army total (`armyTotalOf(state, id)`, buildings.ts: home +
 attacks + transports + cargo planes), like name labels show it. Intel (`hasIntel(viewer, target)`) only gates the
@@ -459,6 +483,36 @@ Effects in config (`TECHS`).
   attacks, gifts, betrayal, relative size.
 - `gift` gold or troops to a player raises their opinion.
 - `embargo` stops trade ships between you and them.
+- **Allies that do things** (allies.ts, AI side in ai.ts; numbers `ALLY_*` in config.ts):
+  - Actions `requestAllyAttack {ally, target}` and `requestAllyAid {ally}`: allies only, one request per player every
+    `ALLY_REQUEST_COOLDOWN` (15) s, one pending request per ally (`state.allyRequests`, expires after 20 s with a
+    "no answer" refusal). An AI ally answers on its next decision: yes = it really attacks the target's shared border
+    with a share of its spare troops (`ALLY_JOIN_SHARE` x personality `ALLY_WILLINGNESS`) and pledges to keep that
+    war going for `ALLY_PLEDGE_SECONDS` (90) (`state.allyPledges`; pledged wars rank first in its war choice), or
+    sends troops (gold for merchants or when it has no troops to spare; it keeps half its cap); no = an
+    `allyRefused` event with the reason (does not trust you enough, fighting for its own survival, no troops to
+    spare, no border with the target, too weak to take it on, allied / on good terms with it, peace time, you have
+    enough troops, will not attack that human yet (difficulty protections)). Each yes costs a little goodwill
+    (`ALLY_ASK_OPINION_COST`). A human ally only gets an info event.
+  - On their own (at most once per `ALLY_HELP_COOLDOWN` (45) s, only for allies they like enough, never while
+    fighting for their own survival): AI allies counter-attack a nation attacking their ally when they border it,
+    share targets (attack a nation their ally fights when they border it and are clearly strong enough), and send
+    troops to an ally that is losing badly (incoming > `ALLY_AID_DANGER` x its home army). They never attack allies.
+  - Events `allyJoined` ("Valoria joins your war against Tarsis"), `allyAid` ("Valoria sent you 120k troops"),
+    `allyRefused` ("Valoria refused: <reason>"). `allyStatus(state, pid, ally)` = {opinion, atWarWith, willHelp,
+    reason, askReadyIn} for the UI. Trade between allies pays x(1 + `ALLY_TRADE_BONUS`) (0.25) to both.
+- **Coalitions against a runaway leader**: `runawayLeader(state)` = the nation with the most land once it holds
+  `COALITION_LAND_SHARE` (20%) and `COALITION_LEAD` (1.4) x the next nation's land (a human too). Nations that border
+  it (everyone once it holds `COALITION_ALL_SHARE` 30%) are in the coalition (`inCoalition`): AIs refuse the
+  leader's alliance requests and don't renew alliances with it, ally with fellow members and with whoever fights
+  the leader (humans included), need x`COALITION_NEED` (0.5) the strength to attack it (no pile-on rule against the
+  leader), rank wars on it x`COALITION_FOCUS` (2) and wars on fellow members x`COALITION_OTHER_WARS` (0.5).
+  Difficulty protections for humans (grace, war count, force cap) still apply.
+
+Online pause (server, protocol 6): only the host of a private game may pause (`setPause`); the server stops sending
+turns so every client freezes in sync and broadcasts `pauseState {paused, by, host}` (spectators too, and to anyone
+joining while paused). Public games can't be paused. If the host stays disconnected for 60 s the host role passes to
+the next connected player and a paused game resumes on its own; a pause lasts at most 15 minutes.
 
 ## 9. Victory
 

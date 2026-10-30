@@ -1,9 +1,10 @@
 // One simulation tick (100 ms of game time). Fixed system order for determinism.
 import { updateAdvisor } from './advisor';
+import { updateAllies } from './allies';
 import { aiSpawn, updateAI } from './ai';
 import { updateBuildings } from './buildings';
 import { updateBarrages } from './barrage';
-import { updateAttacks, updateSupply } from './combat';
+import { updateAttacks, updateHeartlands, updateSupply } from './combat';
 import { MAX_EVENTS, TICKS_PER_SECOND, TICK_SECONDS } from './config';
 import { updateDiplomacy } from './diplomacy';
 import { updateDoctrines } from './doctrines';
@@ -39,6 +40,7 @@ export function tick(state: GameState): void {
     updateResearch(state);
     updateBuildings(state);
     updateSupply(state);
+    updateHeartlands(state);
     updateAttacks(state);
     updateEndgame(state);
     pruneEliminated(state);
@@ -46,6 +48,7 @@ export function tick(state: GameState): void {
     updateBarrages(state);
     pruneEliminated(state);
     updateDiplomacy(state);
+    updateAllies(state);
     updateAI(state);
     updateAdvisor(state);
     updateVictory(state);

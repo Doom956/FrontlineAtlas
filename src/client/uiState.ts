@@ -29,6 +29,8 @@ export interface UiState {
   showResources: boolean; // overlay toggle (V)
   showSupply: boolean; // overlay toggle (B)
   showMinimap: boolean; // minimap toggle (M), off by default: the map itself is the overview
+  /** faint glow along your heartland (set by the HUD while the Army drawer or the map key is open) */
+  showHeartland: boolean;
   contextMenu: { x: number; y: number; tile: number } | null;
   /** last action failure to show as a toast */
   toast: { text: string; until: number } | null;
@@ -68,6 +70,7 @@ export function defaultUiState(): UiState {
     showResources: false,
     showSupply: false,
     showMinimap: false,
+    showHeartland: false,
     contextMenu: null,
     toast: null,
     floaters: [],

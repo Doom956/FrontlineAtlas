@@ -1,6 +1,6 @@
-# Borderfall
+# Frontline Atlas
 
-Borderfall is a grand-scale territory-control strategy game that runs in the browser. You start as a small patch of
+Frontline Atlas is a grand-scale territory-control strategy game that runs in the browser. You start as a small patch of
 land on a huge pixel map (up to 2600x1600 tiles, generated or a real-world map) among a few AI nations and hundreds
 of tribes, and grow by
 pushing your borders into the wilderness and into your neighbours. Your troops regrow by themselves toward a cap
@@ -63,7 +63,7 @@ annexed by it, and so is a tribe of any size walled in by one nation.
 
 ## Play online
 
-Single player needs nothing but the page. For online games the page talks to a small Borderfall server (it only
+Single player needs nothing but the page. For online games the page talks to a small Frontline Atlas server (it only
 relays the players' actions; every browser runs the same deterministic simulation in lockstep):
 
 - **Multiplayer** on the title screen lists the **public games** (Free for all, Teams, and Special with one to three
@@ -81,6 +81,9 @@ To host your own server: `npm run build && npm start` serves the game and the mu
 http://localhost:8080 (`PORT` to change); friends on your network open `http://<your-ip>:8080`. Free hosting on
 Render or Fly.io, how a static copy (e.g. GitHub Pages) finds a server (`?server=` or `VITE_SERVER_URL`) and every
 server setting: [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md).
+
+The published page lives at https://doom956.github.io/FrontlineAtlas/ (the GitHub repository will be renamed to
+`FrontlineAtlas`).
 
 ## How to play
 
