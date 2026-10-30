@@ -501,6 +501,35 @@ are about to attack (SAMs first; with lots of artillery and nothing to silence, 
 sometimes (40% of the air turns with a ready airfield) **drop paratroopers** on a capital or city of a nation they
 clearly outnumber (careful AIs avoid SAM cover), else about 30 tiles behind the main front toward its capital.
 
+**Difficulty** (`settings.difficulty`, part of the setup so every client simulates the same game). Economy is
+config `AI_ECONOMY` (troop growth / income (gold, iron, oil) / troop cap of AI nations; Easy and Normal leave tribes
+alone, Hard and Brutal boost every AI player), decision speed `AI_DECISION_SECONDS`, the rest is `DIFFICULTY` in
+ai.ts. The human's own economy never changes.
+
+| | Easy | Normal (default) | Hard | Brutal |
+|---|---|---|---|---|
+| AI growth / income / cap | x0.7 / x0.7 / x0.7 | x0.88 / x0.88 / x1 | x1.075 / x1.15 / x1 | x1.15 / x1.3 / x1.1 |
+| decides every | 5 s | 3 s | 2 s | 1.5 s |
+| troop shares sent | x0.7 | x0.9 | x1.1 | x1.2 |
+| reads matchups, SAMs (`careful`) / joins allies' wars / atom bombs | no / no / no | yes / no / yes | yes | yes |
+| human grace (no new war on a human that isn't attacking us) | 15 min | 9 min | none | none |
+| strength wanted vs a human (`humanNeed`) | x1.6 | x1.4 | x1 | x0.9 |
+| AI nations at war with a human at once, first 10 min / later | 1 / 1 | 1 / 2 | any | any |
+| attack on a human at most (x the human's whole army) | 0.75 | 0.8 | no limit | no limit |
+| pause after attacking a human (x the usual 10-30 s) | x5 | x4 | x1 | x1 |
+| counter-attacks a human's attack | no | yes | yes | yes |
+
+A nation counts as at war with a human for `HUMAN_WAR_MEMORY_SECONDS` (90 s) after its last attack on it (attacks
+stop and restart), so the limits hold across short raids, landings and barrages; hitting back at a human that
+attacks us and topping up a running war are never blocked. The limits apply to land attacks, landings and
+barrages; Hard and Brutal have none.
+
+Measured with `scripts/humanbench.ts` (a scripted new player: expands into the wilderness and tribes with 25-35%
+sends every 4-6 s, hits back at attackers, builds a few cities, farms and forts, no special abilities or
+alliances, pokes its weakest neighbour once boxed in), default Classic setup, 12 seeds, 30-minute cap:
+
+HUMANBENCH_TABLE
+
 **Tribes** (`Personality 'tribe'`, `isTribe(p)`): `settings.tribeCount` small AI players (negative = the default for
 the land actually played, `setup.defaultTribeCount`: by size class small 120, medium 200, large and huge 300,
 real-world maps 300, compact maps by their quarter of the land; at most `MAX_TRIBE_COUNT` 600). They are the main

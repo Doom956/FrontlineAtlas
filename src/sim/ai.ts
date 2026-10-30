@@ -230,7 +230,7 @@ const HUMAN_WAR_MEMORY_SECONDS = 90;
 /** Game seconds during which AIs accept a human's alliance only out of opinion (no fear or timid alliances). */
 const EARLY_ALLY_SECONDS = 180;
 /**
- * Difficulty profiles (DESIGN section 10). Economy (troop growth, income) is in config AI_ECONOMY and decision speed
+ * Difficulty profiles (DESIGN section 10). Economy (troop growth, income, cap) is in config AI_ECONOMY, decision speed
  * in config AI_DECISION_SECONDS. Checked against scripts/humanbench.ts (a scripted new player).
  */
 export const DIFFICULTY: Readonly<Record<Difficulty, Readonly<DifficultyProfile>>> = {
@@ -248,7 +248,7 @@ export const DIFFICULTY: Readonly<Record<Difficulty, Readonly<DifficultyProfile>
     humanWarsEarly: 1,
     humanWarsLate: 1,
     humanForceCap: 0.75,
-    humanPause: 4,
+    humanPause: 5,
     counterHumans: false,
   },
   normal: {
