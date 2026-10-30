@@ -3,6 +3,7 @@
 // and the Diplomacy drawer.
 import { borders } from '../../sim/combat';
 import type { GameState, Player } from '../../sim/types';
+import { allyRefusal } from '../../sim/allies';
 import { allyAidAction, allyAttackAction, allyStatusOf, attackTargets, warsOf } from '../allies';
 import { btn, el, setClass, setDisabled, setText, setTip, setVisible, type HudCtx } from './dom';
 import { swatchCss } from './swatch';
@@ -83,7 +84,9 @@ export class AllyHelp {
     const ally = this.ally;
     const targets = attackTargets(s, me.id, ally, (id) => borders(s, me.id, id));
     const wars = warsOf(s, me.id);
-    const key = `${ally}|${targets.join(',')}|${[...wars].join(',')}`;
+    // the ally's own refusal for each target (no border, too weak...): asking would only use up the cooldown
+    const why = targets.map((id) => allyRefusal(s, ally, me.id, 'attack', id));
+    const key = `${ally}|${targets.join(',')}|${[...wars].join(',')}|${why.join('/')}`;
     if (key === this.pickKey) return;
     this.pickKey = key;
     setText(this.pickHead, `Ask ${s.players[ally]?.name ?? 'them'} to attack:`);
@@ -92,7 +95,7 @@ export class AllyHelp {
       this.pickList.append(el('p', 'note', 'No enemies or neighbours to name. Right-click enemy land to ask your allies to attack there.'));
       return;
     }
-    for (const id of targets) {
+    for (const [k, id] of targets.entries()) {
       const p = s.players[id];
       const b = el('button', 'pname ally-target');
       b.type = 'button';
@@ -101,7 +104,12 @@ export class AllyHelp {
       sw.style.background = swatchCss(p, me.id);
       b.append(sw, p.name);
       if (wars.has(id)) b.append(el('span', 'tag war', 'at war'));
-      b.addEventListener('click', () => this.askAttack(id));
+      if (why[k]) {
+        b.disabled = true;
+        b.title = `Won't: ${why[k]}`;
+        b.classList.add('no');
+        b.append(el('span', 'ally-why', why[k]!.replace(/^it /, '')));
+      } else b.addEventListener('click', () => this.askAttack(id));
       this.pickList.append(b);
     }
   }
