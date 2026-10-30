@@ -82,6 +82,10 @@ import { borderTiles, coastCount, depositCount, landComponents, sampleOwnedTiles
 import { canParadrop, paradropMaxTroops, paradropRange, unitCost } from './units';
 import { inOvertime, victoryShareNow } from './victory';
 import { hasTech } from './tech';
+import { aiSpend, aiTechOrder, rejectedBranch } from './aispending';
+import { allyTrustDiscount } from './spending';
+import { techStatus } from './techtree';
+import { aiTankDivisions } from './tanks';
 import { DOCTRINE_IDS, TROOP_TYPES, Resource, isTribe, isWater } from './types';
 import type { Attack, BuildingType, Difficulty, DoctrineId, GameState, Personality, Player, TechId, TerrainId, TroopType, Troops } from './types';
 
@@ -748,6 +752,8 @@ function landShare(state: GameState, q: number): number {
 /** Called every tick; nations decide every AI_DECISION_SECONDS, tribes every 4-8 s, all staggered by id. */
 export function updateAI(state: GameState): void {
   if (state.phase !== 'playing') return;
+  // Owner console: frozen AIs make no decisions at all.
+  if (state.admin?.aiFrozen) return;
   const interval = Math.max(1, Math.round((AI_DECISION_SECONDS[state.settings.difficulty] ?? AI_DECISION_SECONDS.normal) * TICKS_PER_SECOND));
   const tribeLo = Math.round(TRIBE_DECISION_SECONDS[0] * TICKS_PER_SECOND);
   const tribeSpan = Math.round((TRIBE_DECISION_SECONDS[1] - TRIBE_DECISION_SECONDS[0]) * TICKS_PER_SECOND);
@@ -758,6 +764,8 @@ export function updateAI(state: GameState): void {
     const every = tribe ? tribeLo + (hash32(p.id) % (tribeSpan + 1)) : interval;
     if ((state.tick + p.id * 7) % every !== 0) continue;
     m ??= memory(state);
+    // Tank divisions (tanks.ts): built from armor first, then sent to spearhead into the war it is fighting.
+    if (!tribe) aiTankDivisions(state, p.id, (a) => applyAction(state, p.id, a));
     refreshArmies(state, m);
     const ctx = makeCtx(state, m, p);
     if (tribe) decideTribe(ctx);
@@ -885,6 +893,11 @@ function decide(ctx: Ctx): void {
   war(ctx);
   doctrine(ctx);
   economy(ctx);
+  // Gold uses and bulk orders (aispending.ts): mercenaries, war bonds, funding allies, bulk upgrades.
+  aiSpend(state, {
+    id: p.id, personality: p.personality, home: ctx.home, cap: ctx.cap, incomingTotal: ctx.incomingTotal, allies: ctx.allies,
+    myAttacks: ctx.myAttacks, threat: ctx.threat, careful: ctx.diff.careful,
+  });
   if (ai.decisions % 3 === p.id % 3) armyMix(ctx);
   if (state.tick >= ai.nextNavalTick) naval(ctx);
   if (state.tick >= ai.nextAirTick) airAndMissiles(ctx);
@@ -1514,7 +1527,7 @@ function allyDuties(ctx: Ctx): void {
   if (state.tick < ai.nextHelpTick || !ctx.allies.length) return;
   if (ctx.incomingTotal > ctx.home * 0.8) return;
   const players = state.players;
-  const friends = ctx.allies.filter((a) => players[a]?.alive && !isTribe(players[a]) && state.opinion[id][a] >= helpOpinionNeeded(ctx.p));
+  const friends = ctx.allies.filter((a) => players[a]?.alive && !isTribe(players[a]) && state.opinion[id][a] >= helpOpinionNeeded(ctx.p) - allyTrustDiscount(state, id, a));
   if (!friends.length) return;
   let bestFriend = 0;
   let bestTarget = 0;
@@ -1609,10 +1622,11 @@ function nextTech(ctx: Ctx): TechId | null {
   const { p, state } = ctx;
   const coastal = coastCount(state, ctx.id) > 0;
   const avail: TechId[] = [];
-  for (const t of ctx.prof.techs) {
+  // Profile order with the branch techs merged in (aispending.ts: one pick per exclusive group).
+  for (const t of aiTechOrder(state, ctx.id, p.personality, ctx.prof.techs)) {
     if (hasTech(p, t)) continue;
-    if (!TECHS[t].requires.every((r) => hasTech(p, r))) continue;
-    if (t === 'navigation' && !coastal) continue;
+    if (techStatus(state, ctx.id, t) !== 'available' || rejectedBranch(state, ctx.id, p.personality, t)) continue;
+    if ((t === 'navigation' || t === 'carriers' || t === 'submarines') && !coastal) continue;
     if (t === 'nuclearFission' && !ctx.diff.nukes) continue;
     avail.push(t);
     if (avail.length >= 2) break;

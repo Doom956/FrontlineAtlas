@@ -432,6 +432,45 @@ Science accumulates; the player picks one tech at a time (also pays gold to star
 
 Effects in config (`TECHS`).
 
+### Branches and exclusive choices (src/sim/techtree.ts)
+
+Branch techs (tiers 2-5) add real choices: a tech with `TechInfo.exclusiveGroup` belongs to a fork, and researching
+(or starting) one member locks the others for the rest of the game (`techStatus` = 'locked-choice', canResearch:
+"You chose Free Trade; Stock Exchange is locked"). Switching an unfinished choice away frees the fork again.
+`TechInfo.requiresAny`: a tech after a fork needs either branch. Numbers: config `TECH_EFFECTS`; the sim systems call
+the small helpers in techtree.ts (economy, combat, buildings, units, allies).
+
+- Propaganda (Agriculture): attacks on you cost 12% more. Railways (Logistics): supply range +25%, fronts +10%.
+- Finance (Banking): Stock Exchange (interest on a gold reserve, up to +20% income) | Free Trade (trade ships +60%,
+  markets -30% cost) -> Industrial Boom (gold, iron, oil +12%) -> National effort: Mass Mobilization (cap +12%,
+  attacks +6%) | Automation (buildings 35% faster, 10% cheaper).
+- Land doctrine (Mechanization): Blitz Tactics (armor-heavy fronts up to +30% speed; tank divisions faster/deeper)
+  | Trench Warfare (your land +15% defence, enemy fronts -15% speed, forts -25% cost).
+- Naval doctrine (Navigation): Carriers (warships shoot down nearby bombers / cargo planes) | Submarines (warships
+  +60% damage to ships, hidden from enemies more than 12 tiles from their ships and coast: `unitVisibleTo`).
+- Air doctrine (Flight): Jet Engines (bombers / cargo planes +40% speed, bombers one more hit) | Strategic Bombing
+  (bomb radius +40%, buildings hit more often, 6% of the victim's gold and iron burnt).
+- Statecraft (Propaganda): Diplomatic Corps (allies trust you 15 points sooner, aid +40%, asks twice as often) |
+  Conscription (cap +5%, growth +6%, mercenaries -25%).
+
+AIs commit to one member per fork (aispending.ts: personality lean + a per-game hash, so both get played) and merge
+the branches into their research order right after the prerequisites.
+
+### Gold uses (src/sim/spending.ts) and bulk orders (src/sim/bulkbuild.ts)
+
+- `hireMercenaries { amount }`: instant infantry; the price per troop rises with game time and with every hire in a
+  60 s window (integrated over the amount) and with the buyer's land share (mercenaries prefer underdogs), at most 15% of the cap per window, home troops at most 10% over the cap.
+- `fundAlly { ally, gold }`: gold to an ally, which likes you more, needs less trust and strength to join your wars
+  and attacks nations at war with you up to +20% harder for 90 s (`GameState.allyFunds`).
+- `warBonds`: +15% attack for 40 s, 150 s cooldown, price max(1 500, 45 s of gold income).
+- `buildMany { building, tile, count 1..5 }`: places (or picks the own building of that type nearby) and queues up
+  to count levels; `upgradeArea { tile, radius, building?, levels }`: queues levels for every own building in the
+  area, cheapest first. Every level is paid up front at its normal price (each makes the next of the type dearer) and
+  built one after another with its normal time (`Building.queuedLevels` / `queuedPaid`); short of money the order
+  queues what it can pay. `cancelQueuedLevels { tile }` refunds the queue; demolishing refunds it in full; a capture
+  drops it. Previews for the client: `buildManyPreview`, `upgradeAreaPreview`, `mercenaryPrice`, `fundAllyEffect`,
+  `warBondsInfo`.
+
 ## 7. Navy, air, missiles (mobile units)
 
 `Unit` objects with float positions, moving each tick.
@@ -444,6 +483,30 @@ Effects in config (`TECHS`).
   first, paid like any tile). Can be sunk. Max 3 at sea per player (+2 per Port, +1 Navigation).
 - **Warship** (Port, Navigation): patrols near its port or a set point; attacks enemy ships within 20 tiles;
   bombards enemy coastal troops (target search and shots every 5 ticks per ship, staggered).
+  Ordered on a clicked water tile (`buildWarship {port, tile}`, src/sim/navy.ts): the tile must be water of the same
+  sea as an own finished Port within `WARSHIP_SPAWN_RANGE` (40) tiles (port -1 = the sim picks the nearest such
+  port); paid at once, it appears after `WARSHIP_BUILD_SECONDS` (6, x build speed) in `state.unitQueue`. The old form
+  without `tile` places it next to the port. **Auto-intercept**: a patrolling warship (state 0) scans every
+  `WARSHIP_SCAN_TICKS` for hostile ships within `WARSHIP_DETECT_RANGE` (2.5 x range): transports first, then warships,
+  then trade ships of nations it is at war with; it chases (state 2, `Unit.chase`) and shoots its quarry first, and
+  sails back to its post (`cargo`) when the target is gone, out of sight for `WARSHIP_CHASE_GIVE_UP` s, or beyond
+  `WARSHIP_LEASH` (60) tiles from the post. Ships under orders (state 1) don't divert. **Groups**: `moveWarships
+  {unitIds, tile}` (own warships only, at most `MAX_GROUP_UNITS`) sends each to its own slot of a formation 2 tiles
+  apart around the click (`navy.formationTiles`).
+- **Tank division** (Factory, Mechanization; src/sim/tanks.ts): `buildTankDivision {tile}` at an own finished
+  Factory (one per Factory level) costs gold, iron, oil and `TANK_DIVISION_TROOPS` from the pool (armor first, with
+  an infantry and artillery escort) and appears after `TANK_BUILD_SECONDS`. `moveTankDivision {unitIds, tile}`: own
+  land = drive there over own land (8-neighbour A*, formation); enemy or neutral land within `TANK_LAUNCH_REACH` of
+  own land = drive to the nearest own tile, then a **spearhead** along the line through the click (at the border
+  the line picks the direction that runs furthest through that owner's land): a band `TANK_SPEARHEAD_WIDTH` wide,
+  `TANK_SPEARHEAD_SPEED` tiles/s on plains (x `TANK_TERRAIN_SPEED`), each tile costing a normal attack's losses x
+  `TANK_SPEARHEAD_LOSS` x terrain x (1 + 1.5 x the defender's armor share). Mountains and forts stop it unless the
+  division carries `TANK_ARTILLERY_SUPPORT` artillery; water, a third nation, `TANK_SPEARHEAD_MAX_DEPTH` or falling
+  under `TANK_SPEARHEAD_MIN_SHARE` of its strength end it (`spearheadEnded`: tiles taken, losses). A spent division
+  disbands (troops go home); a holding division gives own land within `TANK_DEFENSE_RADIUS` +35% defence; bombers
+  hurt divisions on the move; a division whose ground is taken falls back. `spearheadPreview` gives the line, the
+  expected depth and warnings without changing anything. AIs build divisions from armor and spearhead into their
+  main war (`aiTankDivisions`, through applyAction).
 - **Trade ship**: each Port periodically sends one to one of a stable handful of partner ports on its sea (a pair
   hash picks them) of players not at war with it (allies weighted x2), so routes stay cached. Delivered gold goes to
   both owners (scaled by path length). Enemy warships sink them.
@@ -524,7 +587,10 @@ members' land added up, or as the last team standing (`state.winner` = its best-
 player: the one human); online, an eliminated player watches while the others play on. **Overtime**: after `OVERTIME_MINUTES` (25) the needed land
 share drops by `OVERTIME_DROP_PER_MINUTE` (1%) per full minute, down to `OVERTIME_MIN_SHARE` (50%), so games end
 on the map (`victoryShareNow(state)` for the UI). Optional time limit: highest score wins. Score = tiles +
-troops/100 + buildings*50. AI-only games end with a winner in about 20-35 game minutes on medium to huge maps (median 24.5 / 26.5 / 31 min, 4 seeds each, 2026-10)
+troops/100 + buildings*50. **Continue playing**: after the end, `continueGame` (single player: the human, also
+when eliminated; online only the private lobby's host, checked by the server) sets phase back to 'playing' and
+`state.continued`: winner, team and stats stay as recorded, and victory, overtime and the time limit no longer end
+the game. AI-only games end with a winner in about 20-35 game minutes on medium to huge maps (median 24.5 / 26.5 / 31 min, 4 seeds each, 2026-10)
 (`scripts/batch.ts`).
 
 ## 10. AI nations and tribes
@@ -810,3 +876,17 @@ Code contract:
   strength test without personality bias: the batch also keeps them from switching), `off` keeps every bonus off
   (baseline). Besides wins it prints each doctrine's mean land share and survival at the end (more signal than
   wins in a few dozen games).
+
+## 14. Owner console (src/sim/admin.ts)
+
+A hidden console for the owner. Single player: the client unlocks it with a SHA-256 hash of the code. Online: the
+relay server checks `adminAuth {code}` against its `ADMIN_CODE` env var (constant time, 5 wrong tries per address per
+hour, unset = off) and relays `admin` actions only from authenticated sessions (server/admin.ts). Every op is an
+Action `{ type: 'admin', op, player?, other?, tile?, amount?, key?, flag?, troops? }` applied through applyAction on
+every client (lockstep holds); `ADMIN_OPS` lists the fields each op needs. Ops: resources (set / add), troops (set /
+add / fill to cap), research (unlock all, unlock / remove one, finish current), buildings (finish all, place any at
+any level, delete, set level), units (warships at a port, aircraft at an airfield, reload a silo / SAM, spawn a
+warship or a tank division), territory (paint / neutralize a disc, move a capital), diplomacy (force / break an
+alliance, make an AI declare war, set opinion), AI (passive toward a player, freeze all, difficulty), player (god
+mode, doctrine and level, eliminate, revive with troops), game (peace time, reveal intel). No op sends an event
+naming the console. State: `state.admin` (aiPassive, godMode, aiFrozen, revealIntel), hashed.

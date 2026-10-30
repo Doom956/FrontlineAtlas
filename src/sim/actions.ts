@@ -6,10 +6,16 @@ import { answerAlliance, breakAlliance, gift, requestAlliance, toggleEmbargo } f
 import { mods } from './rules';
 import { canSpawnAt, spawnPlayer } from './state';
 import { startResearch } from './tech';
-import { TECHS } from './config';
+import { BUILDINGS, TECHS } from './config';
+import { buyWarBonds, fundAlly, hireMercenaries } from './spending';
+import { buildMany, cancelQueuedLevels, upgradeArea } from './bulkbuild';
 import { launchBarrage } from './barrage';
 import { chooseDoctrine } from './doctrines';
-import { buildAircraft, buildWarship, launchBomber, launchMissile, launchParadrop, launchTransport, moveWarship } from './units';
+import { buildAircraft, launchBomber, launchMissile, launchParadrop, launchTransport, moveWarship } from './units';
+import { moveWarships, orderWarship } from './navy';
+import { buildTankDivision, moveTankDivisions } from './tanks';
+import { aiActionBlocked, applyAdmin } from './admin';
+import { continueGame } from './victory';
 import { TROOP_TYPES } from './types';
 import type { Action, ActionResult, GameState, Player, Troops } from './types';
 
@@ -44,6 +50,9 @@ const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.m
 export function applyAction(state: GameState, playerId: number, action: Action): ActionResult {
   const p = state.players[playerId];
   if (!p || playerId === 0) return FAIL('No such player');
+  // Continuing a finished game and the owner console work for eliminated humans too (they keep watching).
+  if (action && typeof action === 'object' && action.type === 'continueGame') return continueGame(state, playerId);
+  if (action && typeof action === 'object' && action.type === 'admin') return applyAdmin(state, playerId, action);
   if (!p.alive) return FAIL('You have been eliminated');
   if (!action || typeof action !== 'object') return FAIL('Invalid action');
 
@@ -71,6 +80,11 @@ export function applyAction(state: GameState, playerId: number, action: Action):
   }
   if (state.phase !== 'playing') return FAIL(state.phase === 'spawn' ? 'Wait for the spawn phase to end' : 'The game is over');
   if (!p.spawned) return FAIL('You have not spawned');
+  // Owner console: frozen AIs do nothing; protected players can't be targeted by AIs.
+  if (!p.isHuman && state.admin) {
+    const blocked = aiActionBlocked(state, action);
+    if (blocked) return FAIL(blocked);
+  }
 
   switch (action.type) {
     case 'attack': {
@@ -120,8 +134,10 @@ export function applyAction(state: GameState, playerId: number, action: Action):
       return launchTransport(state, playerId, action.from, action.to, clampTroops(p, action.troops));
     }
     case 'buildWarship':
+      if (action.tile !== undefined && !isTile(state, action.tile)) return FAIL('Invalid tile');
+      if (action.tile !== undefined && action.port === -1) return orderWarship(state, playerId, -1, action.tile);
       if (!isTile(state, action.port)) return FAIL('Invalid tile');
-      return buildWarship(state, playerId, action.port);
+      return orderWarship(state, playerId, action.port, action.tile);
     case 'moveWarship':
       if (!isTile(state, action.tile)) return FAIL('Invalid tile');
       return moveWarship(state, playerId, action.unitId, action.tile);
@@ -173,6 +189,38 @@ export function applyAction(state: GameState, playerId: number, action: Action):
     case 'toggleEmbargo':
       if (!isPlayerId(state, action.with)) return FAIL('No such nation');
       return toggleEmbargo(state, playerId, action.with);
+    // ---- gold uses (spending.ts) ----
+    case 'hireMercenaries':
+      if (typeof action.amount !== 'number' || !Number.isFinite(action.amount) || action.amount < 0) return FAIL('Invalid amount');
+      return hireMercenaries(state, playerId, action.amount);
+    case 'fundAlly':
+      if (!isPlayerId(state, action.ally)) return FAIL('No such nation');
+      if (typeof action.gold !== 'number' || !Number.isFinite(action.gold) || action.gold < 0) return FAIL('Invalid amount');
+      return fundAlly(state, playerId, action.ally, action.gold);
+    case 'warBonds':
+      return buyWarBonds(state, playerId);
+    // ---- bulk build (bulkbuild.ts) ----
+    case 'buildMany':
+      if (!isTile(state, action.tile)) return FAIL('Invalid tile');
+      if (typeof action.building !== 'string' || !(action.building in BUILDINGS)) return FAIL('Unknown building');
+      return buildMany(state, playerId, action.building, action.tile, action.count);
+    case 'upgradeArea':
+      if (!isTile(state, action.tile)) return FAIL('Invalid tile');
+      if (action.building !== undefined && (typeof action.building !== 'string' || !(action.building in BUILDINGS))) return FAIL('Unknown building');
+      return upgradeArea(state, playerId, action.tile, action.radius, action.building, action.levels);
+    case 'cancelQueuedLevels':
+      if (!isTile(state, action.tile)) return FAIL('Invalid tile');
+      return cancelQueuedLevels(state, playerId, action.tile);
+    // ---- warship groups (navy.ts) and tank divisions (tanks.ts) ----
+    case 'moveWarships':
+      if (!isTile(state, action.tile)) return FAIL('Invalid tile');
+      return moveWarships(state, playerId, action.unitIds, action.tile);
+    case 'buildTankDivision':
+      if (!isTile(state, action.tile)) return FAIL('Invalid tile');
+      return buildTankDivision(state, playerId, action.tile);
+    case 'moveTankDivision':
+      if (!isTile(state, action.tile)) return FAIL('Invalid tile');
+      return moveTankDivisions(state, playerId, action.unitIds, action.tile);
     default:
       return FAIL('Unknown action');
   }

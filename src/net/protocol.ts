@@ -30,6 +30,18 @@
 // - `startNow` (end the spawn phase early) is relayed only from the host of a private lobby; others get an error.
 // - `chooseDoctrine {doctrine}` (protocol 5): the server checks only that `doctrine` is a DoctrineId; unlock time,
 //   cooldown and gold are the sim's rules (src/sim/doctrines.ts), applied identically on every client.
+// - Continue after the end (protocol 7): when the majority's gameOver ended a PRIVATE game, the server's `gameOver` says
+//   `continuable: true` and the room stays open for CONTINUE_WINDOW_MS. The host may then send the intent
+//   `continueGame`: the server relays it, restarts the turns and tells everyone `gameContinued {by, turn}`; every sim
+//   applies it (phase back to 'playing', the winner stays recorded, the game never ends again by victory or time).
+//   `continueGame` from anyone else gets error 'notHost'. Clients clear their game-over state on `gameContinued`.
+// - Owner console (protocol 7): `adminAuth {code}` (at most ADMIN_CODE_MAX_LENGTH characters). The server compares it
+//   with its ADMIN_CODE env var (unset = no console online) and answers only the sender `adminAuth {ok}`; after 5
+//   wrong codes from one address in an hour it ignores further tries silently. An authenticated session (and its
+//   clientId on reconnect) may send `admin` intents; the server drops them from everyone else (error 'notAllowed').
+// - Warship groups and tank divisions (protocol 7): intents `moveWarships {unitIds, tile}`, `buildTankDivision {tile}`,
+//   `moveTankDivision {unitIds, tile}` (unitIds: 1..MAX_GROUP_UNITS distinct ids); `buildWarship {port, tile?}` (port
+//   -1 with a tile = the sim picks the port).
 // - Send `ping` every PING_INTERVAL_MS; the server closes connections silent for longer than IDLE_TIMEOUT_MS.
 // - Keep `clientId` (random, from makeClientId()) in localStorage: it is your seat. Reconnecting with the same
 //   clientId (a new socket + `hello`) puts you back in your lobby or game: the server answers `welcome {resumed}`
@@ -68,7 +80,11 @@ export type { GameMode };
 // ------------------------------------------------------------------------------------------------ constants
 
 /** Bumped on any incompatible change to the messages below. `hello.protocol` must equal it. */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
+/** Longest owner-console code a client may send (adminAuth). */
+export const ADMIN_CODE_MAX_LENGTH = 128;
+/** A finished private game can be continued by its host for this long (then the room closes). */
+export const CONTINUE_WINDOW_MS = 10 * 60_000;
 /** WebSocket path on the server (same host that serves the client, or the one given by ?server=). */
 export const WS_PATH = '/ws';
 /** One turn = one sim tick = 100 ms (config TICK_SECONDS). */
@@ -317,6 +333,11 @@ export interface SetPauseMsg {
   type: 'setPause';
   paused: boolean;
 }
+/** Owner console login: the server answers this client alone with `adminAuth {ok}` (or nothing when rate-limited). */
+export interface AdminAuthMsg {
+  type: 'adminAuth';
+  code: string;
+}
 export interface PingMsg {
   type: 'ping';
   /** any number (e.g. performance.now()); echoed in pong */
@@ -336,6 +357,7 @@ export type ClientMessage =
   | HashMsg
   | GameOverReportMsg
   | SetPauseMsg
+  | AdminAuthMsg
   | PingMsg;
 
 // ------------------------------------------------------------------------------------------------ server -> client
@@ -460,6 +482,21 @@ export interface GameOverMsg {
   winner: number;
   /** last turn sent */
   turn: number;
+  /** a private game the host may still continue (intent continueGame within CONTINUE_WINDOW_MS) */
+  continuable?: boolean;
+}
+/** The host continued a finished game: turns run again (clients drop their game-over state). */
+export interface GameContinuedMsg {
+  type: 'gameContinued';
+  /** player id of the host who continued */
+  by: number;
+  /** the turn the continueGame intent is in */
+  turn: number;
+}
+/** Answer to adminAuth (only to the sender). */
+export interface AdminAuthResultMsg {
+  type: 'adminAuth';
+  ok: boolean;
 }
 
 export type ServerMessage =
@@ -475,7 +512,9 @@ export type ServerMessage =
   | PongMsg
   | KickedMsg
   | PauseStateMsg
-  | GameOverMsg;
+  | GameOverMsg
+  | GameContinuedMsg
+  | AdminAuthResultMsg;
 
 // ------------------------------------------------------------------------------------------------ helpers
 

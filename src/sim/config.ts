@@ -390,6 +390,13 @@ export interface TechInfo {
   gold: number; // paid when starting
   requires: TechId[];
   description: string;
+  /**
+   * Exclusive choice group (techtree.ts): researching one tech of a group locks the others of that group for the
+   * rest of the game. Absent = an ordinary tech.
+   */
+  exclusiveGroup?: string;
+  /** at least one of these must be researched too (a tech after a choice: either branch leads on) */
+  requiresAny?: TechId[];
 }
 export const TECHS: Record<TechId, TechInfo> = {
   agriculture: { name: 'Agriculture', tier: 1, science: 150, gold: 300, requires: [], description: 'Farms +50% growth.' },
@@ -407,12 +414,89 @@ export const TECHS: Record<TechId, TechInfo> = {
   radar: { name: 'Radar', tier: 3, science: 2200, gold: 1000, requires: ['flight'], description: 'SAM sites; watchtower radius x2.' },
   rocketry: { name: 'Rocketry', tier: 3, science: 2200, gold: 1000, requires: ['ballistics'], description: 'Missile silos and rockets.' },
   nuclearFission: { name: 'Nuclear Fission', tier: 4, science: 5000, gold: 2000, requires: ['rocketry', 'industrialization'], description: 'Atom bombs.' },
+  // ---- branches with exclusive choices (techtree.ts; numbers in the TECH_EFFECTS block below) ----
+  propaganda: { name: 'Propaganda', tier: 2, science: 600, gold: 600, requires: ['agriculture'], description: 'Attacks on your land cost the attacker 12% more troops.' },
+  railways: { name: 'Railways', tier: 3, science: 2200, gold: 1000, requires: ['logistics'], description: 'Supply range +25%, fronts +10% faster, tank divisions 20% cheaper.' },
+  stockExchange: { name: 'Stock Exchange', tier: 3, science: 2200, gold: 1000, requires: ['banking'], exclusiveGroup: 'finance', description: 'Saved gold earns interest (up to +20% gold income while you hold a reserve).' },
+  freeTrade: { name: 'Free Trade', tier: 3, science: 2200, gold: 1000, requires: ['banking'], exclusiveGroup: 'finance', description: 'Your trade ships pay 60% more; markets cost 30% less.' },
+  blitzTactics: { name: 'Blitz Tactics', tier: 3, science: 2200, gold: 1000, requires: ['mechanization'], exclusiveGroup: 'landDoctrine', description: 'Armor-heavy attacks advance up to 30% faster; tank divisions faster and deeper.' },
+  trenchWarfare: { name: 'Trench Warfare', tier: 3, science: 2200, gold: 1000, requires: ['mechanization'], exclusiveGroup: 'landDoctrine', description: 'Your land defends 15% better, enemy fronts against you 15% slower, forts 25% cheaper.' },
+  carriers: { name: 'Carriers', tier: 3, science: 2200, gold: 1000, requires: ['navigation'], exclusiveGroup: 'navalDoctrine', description: 'Warships give fighter cover: they shoot down enemy bombers and cargo planes nearby.' },
+  submarines: { name: 'Submarines', tier: 3, science: 2200, gold: 1000, requires: ['navigation'], exclusiveGroup: 'navalDoctrine', description: 'Warships hit ships 60% harder and stay hidden from enemies until close.' },
+  jetEngines: { name: 'Jet Engines', tier: 3, science: 2200, gold: 1000, requires: ['flight'], exclusiveGroup: 'airDoctrine', description: 'Bombers and cargo planes fly 40% faster; bombers survive one more hit.' },
+  strategicBombing: { name: 'Strategic Bombing', tier: 3, science: 2200, gold: 1000, requires: ['flight'], exclusiveGroup: 'airDoctrine', description: 'Bombs hit a 40% wider area, wreck more buildings and burn 6% of the victim\'s gold and iron.' },
+  diplomaticCorps: { name: 'Diplomatic Corps', tier: 3, science: 2200, gold: 1000, requires: ['propaganda'], exclusiveGroup: 'statecraft', description: 'Allies trust you sooner, help more (aid +40%) and can be asked twice as often.' },
+  conscription: { name: 'Conscription', tier: 3, science: 2200, gold: 1000, requires: ['propaganda'], exclusiveGroup: 'statecraft', description: 'Troop cap +5%, troop growth +6%, mercenaries 25% cheaper.' },
+  industrialBoom: { name: 'Industrial Boom', tier: 4, science: 5000, gold: 2000, requires: ['banking'], requiresAny: ['stockExchange', 'freeTrade'], description: 'Gold, iron and oil +12%.' },
+  massMobilization: { name: 'Mass Mobilization', tier: 5, science: 8000, gold: 3000, requires: ['industrialBoom'], exclusiveGroup: 'capstone', description: 'Troop cap +12% and every attack +6% stronger.' },
+  automation: { name: 'Automation', tier: 5, science: 8000, gold: 3000, requires: ['industrialBoom'], exclusiveGroup: 'capstone', description: 'Buildings and upgrades build 35% faster and cost 10% less.' },
 };
 export const TECH_ORDER: TechId[] = [
   'agriculture', 'metallurgy', 'logistics', 'fortification', 'navigation',
   'banking', 'medicine', 'mechanization', 'ballistics', 'flight',
   'industrialization', 'combinedArms', 'radar', 'rocketry', 'nuclearFission',
+  'propaganda', 'railways', 'stockExchange', 'freeTrade', 'blitzTactics', 'trenchWarfare', 'carriers', 'submarines',
+  'jetEngines', 'strategicBombing', 'diplomaticCorps', 'conscription', 'industrialBoom', 'massMobilization', 'automation',
 ];
+/** Display names of the exclusive choice groups (TechInfo.exclusiveGroup). */
+export const TECH_GROUP_NAMES: Record<string, string> = {
+  finance: 'Finance',
+  landDoctrine: 'Land doctrine',
+  navalDoctrine: 'Naval doctrine',
+  airDoctrine: 'Air doctrine',
+  statecraft: 'Statecraft',
+  capstone: 'National effort',
+};
+/**
+ * Effects of the branch techs (techtree.ts reads them; sim systems call its helpers). Multipliers unless noted.
+ */
+export const TECH_EFFECTS = {
+  /** attacker loss multiplier against a Propaganda holder */
+  propagandaAttackerLoss: 1.12,
+  railwaysSupplyRange: 1.25,
+  railwaysFrontSpeed: 1.1,
+  /** tank division cost multiplier (for the tank-division code: techtree.tankDivisionCostMul) */
+  railwaysTankCost: 0.8,
+  /** Stock Exchange: interest per second on the gold reserve, the reserve counting at most this many seconds of gold income */
+  stockInterestPerS: 0.002,
+  stockInterestCapSeconds: 100,
+  freeTradeGold: 1.6,
+  freeTradeMarketCost: 0.7,
+  /** Blitz Tactics: front speed x (1 + this x armor share of the attack) */
+  blitzArmorSpeed: 0.3,
+  /** tank divisions (techtree.tankDivisionMods): speed and depth */
+  blitzDivisionSpeed: 1.3,
+  blitzDivisionDepth: 1.3,
+  trenchDefense: 1.15,
+  trenchEnemySpeed: 0.85,
+  trenchFortCost: 0.75,
+  /** tank divisions of a Trench Warfare holder defend this much better around them */
+  trenchDivisionDefense: 1.2,
+  /** Carriers: a player's warships shoot down one enemy bomber / cargo plane within this radius, then reload */
+  carrierRadius: 14,
+  carrierCooldown: 12,
+  submarineShipDamage: 1.6,
+  /** Submarines: own warships are hidden from enemies further away than this (tiles) from their ships / coast */
+  submarineRevealRange: 12,
+  jetSpeed: 1.4,
+  jetExtraHp: 1,
+  strategicRadius: 1.4,
+  strategicBuildingHit: 0.8,
+  /** share of the victim's gold and iron stock burnt per raid */
+  strategicResourceBurn: 0.06,
+  /** opinion an ally needs of a Diplomatic Corps holder: this much less */
+  diploOpinionDiscount: 15,
+  diploAidMult: 1.4,
+  diploAskCooldown: 0.5,
+  conscriptionCap: 1.05,
+  conscriptionGrowth: 1.06,
+  conscriptionMercCost: 0.75,
+  industrialBoomIncome: 1.12,
+  mobilizationCap: 1.12,
+  mobilizationAttack: 1.06,
+  automationBuildTime: 0.65,
+  automationCost: 0.9,
+} as const;
 export const COMBINED_ARMS_MIN_SHARE = 0.15;
 export const COMBINED_ARMS_BONUS = 0.2;
 
@@ -436,6 +520,8 @@ export const UNITS: Record<UnitType, UnitInfo> = {
   atomBomb: { name: 'Atom bomb', speed: 35, gold: 6000, iron: 300, oil: 150, hp: 2, tech: 'nuclearFission' },
   /** paratrooper drop: the price is paid per drop */
   transportPlane: { name: 'Cargo plane', speed: 30, gold: 400, iron: 0, oil: 30, hp: 1, tech: 'flight' },
+  /** tank division (tanks.ts): speed = tiles/s moving over own land; the troops it carries are its strength */
+  tankDivision: { name: 'Tank division', speed: 4, gold: 1800, iron: 150, oil: 80, hp: 1, tech: 'mechanization' },
 };
 export const TRANSPORT_MAX_AT_SEA = 3;
 export const TRANSPORT_PER_PORT = 2;
@@ -444,6 +530,59 @@ export const NAVIGATION_TRANSPORT_SPEED = 1.5;
 export const WARSHIP_RANGE = 20;
 export const WARSHIP_DAMAGE_PER_S = 0.5; // hp/s to one target in range
 export const WARSHIP_BOMBARD_KILL = 150; // defender troops/s killed when an enemy coast tile is in range
+// ---------- warships: build where you click, auto-intercept, groups (navy.ts) ----------
+/** seconds from ordering a warship to it appearing (x build speed modifiers; 'instant' = at once) */
+export const WARSHIP_BUILD_SECONDS = 6;
+/** a warship may be ordered on a water tile at most this many tiles from the port that builds it */
+export const WARSHIP_SPAWN_RANGE = 40;
+/** patrolling warships notice enemy ships within this many tiles (2.5 x weapon range) and chase them */
+export const WARSHIP_DETECT_RANGE = WARSHIP_RANGE * 2.5;
+/** ...but never further than this many tiles from their post (they turn back) */
+export const WARSHIP_LEASH = 60;
+/** a chase ends after the target has been out of detection range for this many seconds */
+export const WARSHIP_CHASE_GIVE_UP = 6;
+/** patrolling warships look for ships to intercept every this many ticks (staggered by id) */
+export const WARSHIP_SCAN_TICKS = 10;
+/** most units one group order (moveWarships / moveTankDivision) may carry */
+export const MAX_GROUP_UNITS = 64;
+
+// ---------- tank divisions (tanks.ts) ----------
+/** seconds to build a division at a Factory (x build speed modifiers) */
+export const TANK_BUILD_SECONDS = 20;
+/** troops a division takes from the pool: armor first; infantry and artillery escort it */
+export const TANK_DIVISION_TROOPS = { armor: 6000, infantry: 2000, artillery: 1000 };
+/** at least this much armor must be at home to form a division (it may then take less escort) */
+export const TANK_MIN_ARMOR = 3000;
+/** divisions (alive + being built) per Factory level of a player */
+export const TANK_PER_FACTORY_LEVEL = 1;
+/** spearhead: head speed in tiles/s on plains (x TANK_TERRAIN_SPEED) */
+export const TANK_SPEARHEAD_SPEED = 3;
+/** spearhead width in tiles (odd; the head tile and (width-1)/2 on each side) */
+export const TANK_SPEARHEAD_WIDTH = 3;
+/** spearheads never run deeper than this many tiles */
+export const TANK_SPEARHEAD_MAX_DEPTH = 40;
+/** the clicked tile must be within this many tiles of own land to launch a spearhead */
+export const TANK_LAUNCH_REACH = 4;
+/** spearhead losses = a normal attack's losses for the same tile x this x terrain factor (concentrated armor) */
+export const TANK_SPEARHEAD_LOSS = 0.5;
+/** per terrain id: head speed factor and loss factor (0 speed = stops it; mountains need artillery support) */
+export const TANK_TERRAIN_SPEED: readonly number[] = [0, 0, 1, 0.45, 0.5, 0.15, 1.1, 0.3, 0.8];
+export const TANK_TERRAIN_LOSS: readonly number[] = [1, 1, 0.8, 1.6, 1.4, 3, 0.8, 2, 1.1];
+/** artillery share of a division that lets it push through mountains and forts (slowly, at a high loss) */
+export const TANK_ARTILLERY_SUPPORT = 0.08;
+/** losses x (1 + this x the defender's armor share): an armor-heavy defence blunts spearheads */
+export const TANK_ARMOR_DEFENSE = 1.5;
+/** a spearhead ends when the division has less than this share of the troops it started with */
+export const TANK_SPEARHEAD_MIN_SHARE = 0.2;
+/** a division with fewer troops than this share of a full division disbands (troops go home) */
+export const TANK_DISBAND_SHARE = 0.25;
+/** tiles of own land around a holding division get this defence bonus (losses of attackers x 1 + bonus) */
+export const TANK_DEFENSE_RADIUS = 4;
+export const TANK_DEFENSE_BONUS = 0.35;
+/** a bomber hit kills this share of a division's troops within BOMBER_RADIUS of the impact */
+export const TANK_BOMBER_KILL = 0.15;
+/** search effort for a division's land route over own territory (tiles expanded) */
+export const TANK_PATH_BUDGET = 60000;
 export const TRADE_INTERVAL = 25; // seconds between trade ships per port
 export const TRADE_GOLD_PER_TILE = 0.5; // gold per tile of path length, to each owner
 export const BOMBER_RADIUS = 5;
@@ -802,6 +941,9 @@ export const AUTO_MANAGE_SECONDS = 3;
 export const DEFAULT_TECH_ORDER: TechId[] = [
   'agriculture', 'metallurgy', 'logistics', 'mechanization', 'ballistics', 'fortification', 'banking', 'medicine',
   'industrialization', 'combinedArms', 'navigation', 'flight', 'radar', 'rocketry', 'nuclearFission',
+  // branch techs: the advisor only picks a choice after everything else (techtree.ts techStatus skips locked ones)
+  'railways', 'propaganda', 'stockExchange', 'trenchWarfare', 'conscription', 'industrialBoom', 'carriers', 'jetEngines',
+  'automation',
 ];
 
 // ---------- rule texts for the in-game help ----------
@@ -865,3 +1007,46 @@ export const AI_ECONOMY: Record<Difficulty, { growth: number; income: number; ca
   hard: { growth: 1 + AI_HARD_INCOME_BONUS * 0.5, income: 1 + AI_HARD_INCOME_BONUS, cap: 1 },
   brutal: { growth: 1.15, income: 1.3, cap: 1.1 },
 };
+
+// ---------- gold uses (spending.ts) ----------
+/**
+ * Mercenaries (Action hireMercenaries): instant infantry for gold. Price per troop = MERC_BASE_PRICE x (1 +
+ * MERC_TIME_GROWTH x game minutes) x (1 + MERC_RISE x troops hired in the current window / troop cap), integrated over
+ * the amount (so a big hire pays the rising price). The window is MERC_WINDOW_SECONDS long; at most MERC_CAP_SHARE of
+ * the troop cap per window (at least MERC_MIN_CAP); home troops may end at most MERC_OVER_CAP above the cap.
+ */
+export const MERC_BASE_PRICE = 0.05;
+export const MERC_TIME_GROWTH = 0.03;
+export const MERC_RISE = 4;
+export const MERC_WINDOW_SECONDS = 60;
+export const MERC_CAP_SHARE = 0.15;
+export const MERC_MIN_CAP = 20000;
+export const MERC_OVER_CAP = 0.1;
+export const MERC_MIN_AMOUNT = 1000;
+/** Mercenaries prefer underdogs: price x (1 + this x the buyer's share of all land). */
+export const MERC_LAND_PRICE = 2;
+/**
+ * Funding an ally (Action fundAlly): the gold goes to the ally; for FUND_SECONDS it attacks nations at war with the
+ * funder with +bonus attack (bonus = FUND_MAX_BONUS x min(1, gold / (FUND_FULL_SECONDS x the ally's gold income)),
+ * strongest funding counts), needs FUND_OPINION_DISCOUNT x bonus/FUND_MAX_BONUS less opinion to help the funder and
+ * joins wars against stronger nations (its strength requirement x (1 - bonus)). Opinion + up to FUND_OPINION.
+ */
+export const FUND_MIN_GOLD = 300;
+export const FUND_MAX_BONUS = 0.2;
+export const FUND_FULL_SECONDS = 60;
+export const FUND_SECONDS = 90;
+export const FUND_OPINION = 15;
+export const FUND_OPINION_DISCOUNT = 25;
+/** War bonds (Action warBonds): WAR_BONDS_BONUS attack for WAR_BONDS_SECONDS; price max(min, seconds of gold income). */
+export const WAR_BONDS_BONUS = 0.15;
+export const WAR_BONDS_SECONDS = 40;
+export const WAR_BONDS_COOLDOWN = 150;
+export const WAR_BONDS_MIN_GOLD = 1500;
+export const WAR_BONDS_INCOME_SECONDS = 45;
+
+// ---------- bulk build (bulkbuild.ts) ----------
+/** Action buildMany: at most this many levels per order; upgradeArea: at most this many levels per building. */
+export const BULK_MAX_COUNT = 5;
+/** Action upgradeArea: radius cap (tiles) and at most this many buildings per order. */
+export const UPGRADE_AREA_MAX_RADIUS = 60;
+export const UPGRADE_AREA_MAX_BUILDINGS = 40;

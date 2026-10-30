@@ -280,8 +280,28 @@ export function unitDoing(state: GameState, me: Player, u: Unit): string {
       return `Falling on ${unitPlace(state, me, u.target)}`;
     case 'fighter':
       return 'Intercepting planes';
+    case 'tankDivision':
+      return `${formatCount(armyTotal(u.troops))} troops · ${tankDivisionDoing(state, me.id, u)}`;
   }
   return '';
+}
+
+/** Short status of a division for the Forces drawer and the hover card. */
+export function tankDivisionDoing(state: GameState, me: number, u: Unit): string {
+  const name = (t: number): string => {
+    const o = t >= 0 && t < state.map.owner.length ? state.map.owner[t] : 0;
+    return o === me ? 'your land' : o > 0 ? `${state.players[o]?.name ?? 'enemy'} land` : 'neutral land';
+  };
+  switch (u.state) {
+    case 1:
+      return 'Driving to its new position';
+    case 2:
+      return `Moving up to spearhead into ${name(u.target)}`;
+    case 3:
+      return `Spearhead into ${state.players[u.targetOwner]?.name ?? 'neutral land'}: ${u.cargo | 0} tiles taken`;
+    default:
+      return 'Holding: defends the land around it';
+  }
 }
 
 /** A hostile unit coming at the player (their transports, bombers, cargo planes and missiles aimed at them). */
@@ -308,7 +328,7 @@ export function unitName(u: Unit): string {
 
 /** Icon of a unit type (icons.ts). */
 export function unitIcon(type: UnitType): IconId {
-  return type as IconId;
+  return type === 'tankDivision' ? 'armor' : (type as IconId);
 }
 
 /** HP as "2.5 of 3" (only warships and atom bombs have more than 1). */

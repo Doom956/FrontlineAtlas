@@ -38,6 +38,9 @@ import { doctrineUnlockTick } from '../src/sim/doctrines';
 import { runawayLeader } from '../src/sim/allies';
 import { createGame, gameSeconds } from '../src/sim/state';
 import { DOCTRINE_IDS, isTribe } from '../src/sim/types';
+import { aiSpendStats } from '../src/sim/aispending';
+import type { AISpendStats } from '../src/sim/aispending';
+import { exclusiveGroups, groupMembers } from '../src/sim/techtree';
 import { cloneSetup, DEFAULT_MODIFIERS, DEFAULT_SETUP, SINGLE_PLAYER_NATIONS } from '../src/sim/setup';
 import { loadWorldMap } from '../src/sim/worldmaps';
 import type { BuildingType, Difficulty, DoctrineId, GameSettings, GameState, MapSize, MapType, Modifiers, Troops } from '../src/sim/types';
@@ -236,6 +239,12 @@ interface GameResult {
   doctrines: { id: number; personality: string; doctrine: DoctrineId | null; switches: number; landShare: number; alive: boolean }[];
   /** the winner, or the land leader among nations at the cap (0 = none) */
   topNation: number;
+  /** per nation: the member it chose in each exclusive tech group (done or researching; absent = none) */
+  branches?: { id: number; picks: Record<string, string> }[];
+  /** AI gold uses (aispending.ts counters) */
+  spend?: AISpendStats;
+  /** spearheads that ended: why (text), tiles taken, troops lost */
+  spearheads?: { why: string; tiles: number; lost: number }[];
 }
 
 function wholeArmies(state: GameState): Float64Array {
@@ -346,6 +355,8 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     meanParadrops: 0,
     meanBarrages: 0,
     doctrines: [],
+    branches: [],
+    spearheads: [],
     topNation: 0,
   };
   const doctrineSamples = new Map<number, Map<DoctrineId, number>>();
@@ -384,6 +395,10 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
       else if (e.kind === 'allyJoined') r.allyJoins++;
       else if (e.kind === 'allyAid') r.allyAids++;
       else if (e.kind === 'allyRefused') r.allyRefusals++;
+      else if ((e.kind as string) === 'spearheadEnded') {
+        const m = /spearhead (.*): (\d+) tiles taken, ([\d.]+)(k|M)? troops lost/.exec(e.message);
+        if (m) r.spearheads!.push({ why: m[1], tiles: Number(m[2]), lost: Number(m[3]) * (m[4] === 'M' ? 1e6 : m[4] === 'k' ? 1e3 : 1) });
+      }
       else if (e.kind === 'paradrop' && / landed in /.test(e.message)) r.paradropsLanded++;
       else if (e.kind === 'barrage' && / shelled /.test(e.message)) {
         if (/silenced/.test(e.message)) r.barragesSilencing++;
@@ -545,6 +560,16 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
       alive: p.alive,
     });
   }
+  for (const p of state.players) {
+    if (p.id === 0 || isTribe(p) || (p.eliminatedTick === -1 && !p.spawned)) continue;
+    const picks: Record<string, string> = {};
+    for (const g of exclusiveGroups()) {
+      const t = groupMembers(g).find((m) => p.techs.includes(m) || p.researching === m);
+      if (t) picks[g] = t;
+    }
+    r.branches!.push({ id: p.id, picks });
+  }
+  r.spend = { ...aiSpendStats(state) };
   for (const b of state.buildings.values()) {
     if (b.owner <= 0 || !state.players[b.owner]?.alive) continue;
     const e = (r.endBuildings[b.type] ??= [0, 0, 0]);
@@ -805,6 +830,64 @@ function report(rs: GameResult[], o: Options): void {
   const p99s = rs.map((r) => r.tickP99);
   console.log(`Tick time: median p50 ${f1(median(rs.map((r) => r.tickP50)))} ms, median p95 ${f1(median(rs.map((r) => r.tickP95)))} ms, median p99 ${f1(median(p99s))} ms, worst p99 ${f1(Math.max(...p99s))} ms, worst tick ${f1(Math.max(...rs.map((r) => r.tickMax)))} ms.`);
   doctrineReport(rs);
+  branchReport(rs);
+}
+
+/**
+ * Tech branches: per exclusive group, how often each member was chosen and won (win share / pick share among the
+ * nations that chose in that group; > 1.5 flagged), AI gold uses per game, and spearhead outcomes by how they ended.
+ */
+function branchReport(rs: GameResult[]): void {
+  console.log('\nTech branches (nations that chose in the group; win = winner or land leader at the cap):');
+  console.log('  group          member              picks  pick%   wins  win%  win%/pick%');
+  for (const g of exclusiveGroups()) {
+    let chose = 0;
+    let decided = 0;
+    const picks = new Map<string, number>();
+    const wins = new Map<string, number>();
+    for (const r of rs) {
+      const top = r.branches?.find((b) => b.id === r.topNation);
+      if (top?.picks[g]) decided++;
+      for (const b of r.branches ?? []) {
+        const t = b.picks[g];
+        if (!t) continue;
+        chose++;
+        picks.set(t, (picks.get(t) ?? 0) + 1);
+        if (b.id === r.topNation) wins.set(t, (wins.get(t) ?? 0) + 1);
+      }
+    }
+    for (const t of groupMembers(g)) {
+      const n = picks.get(t) ?? 0;
+      const w = wins.get(t) ?? 0;
+      const ratio = n && decided ? w / decided / (n / chose) : NaN;
+      const flag = ratio > 1.5 && w >= 3 ? '  <-- high' : '';
+      console.log(`  ${g.padEnd(14)} ${t.padEnd(18)} ${String(n).padStart(6)} ${pct(n, chose).padStart(6)} ${String(w).padStart(6)} ${pct(w, decided).padStart(5)}   ${f1(ratio).padStart(5)}${flag}`);
+    }
+  }
+  const g = Math.max(1, rs.length);
+  const sum = (f: (s: AISpendStats) => number): number => rs.reduce((a, r) => a + (r.spend ? f(r.spend) : 0), 0);
+  console.log(
+    `AI gold uses per game: ${f1(sum((s) => s.mercHires) / g)} mercenary hires (${f1(sum((s) => s.mercTroops) / g / 1000)}k troops), ` +
+      `${f1(sum((s) => s.fundings) / g)} ally fundings (${f1(sum((s) => s.fundGold) / g / 1000)}k gold), ${f1(sum((s) => s.bonds) / g)} war bonds, ` +
+      `${f1(sum((s) => s.bulkOrders) / g)} bulk city orders, ${f1(sum((s) => s.areaOrders) / g)} area upgrades; ` +
+      `games with mercenaries ${rs.filter((r) => (r.spend?.mercHires ?? 0) > 0).length}/${rs.length}, with funding ${rs.filter((r) => (r.spend?.fundings ?? 0) > 0).length}/${rs.length}.`,
+  );
+  const sh = rs.flatMap((r) => r.spearheads ?? []);
+  if (sh.length) {
+    const why = new Map<string, { n: number; tiles: number; lost: number }>();
+    for (const x of sh) {
+      const k = x.why.replace(/ (against|into|near|at) .*/, '');
+      const e = why.get(k) ?? { n: 0, tiles: 0, lost: 0 };
+      e.n++;
+      e.tiles += x.tiles;
+      e.lost += x.lost;
+      why.set(k, e);
+    }
+    console.log(`Spearheads: ${sh.length} (${f1(sh.length / g)} per game), median ${median(sh.map((x) => x.tiles))} tiles taken; by ending:`);
+    for (const [k, e] of [...why].sort((a, b) => b[1].n - a[1].n)) {
+      console.log(`  ${k.padEnd(34)} ${String(e.n).padStart(5)}  mean ${f1(e.tiles / e.n)} tiles, ${f1(e.lost / e.n / 1000)}k lost`);
+    }
+  } else console.log('Spearheads: none.');
 }
 
 // ---------------------------------------------------------------------------------------------------------------

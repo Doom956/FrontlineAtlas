@@ -8,6 +8,7 @@
 // by setOwner), so nothing here scans the map.
 import { goldRate, growthRate, resourceRate } from './rules';
 import { cityLevels, countBuildings, buildingsOf, farmUnitsOf } from './buildings';
+import { stockInterest, techCapMul, techGrowthMul, techIncomeMul } from './techtree';
 import {
   AI_ECONOMY,
   AIRCRAFT_OIL_UPKEEP,
@@ -99,7 +100,7 @@ export function troopCap(state: GameState, playerId: number): number {
     CITY_TROOP_CAP * cityLevels(state, playerId) +
     (p.capital >= 0 ? CAPITAL_TROOP_CAP : 0) +
     FARM_TROOP_CAP * farmUnits(state, playerId);
-  return isTribe(p) ? v * TRIBE_CAP_FACTOR : v * aiEconomy(state, p).cap;
+  return isTribe(p) ? v * TRIBE_CAP_FACTOR : v * aiEconomy(state, p).cap * techCapMul(p);
 }
 /** Old name of troopCap (Player.maxPop holds the cap). */
 export function computeMaxPop(state: GameState, playerId: number): number {
@@ -165,6 +166,7 @@ export function growthBonus(state: GameState, p: Player): number {
   const barracks = Math.min(BARRACKS_MAX, countBuildings(state, p.id, 'barracks'));
   let m = 1 + farms * FARM_GROWTH_BONUS + barracks * BARRACKS_GROWTH_BONUS;
   if (hasTech(p, 'medicine')) m *= MEDICINE_GROWTH_MULT;
+  m *= techGrowthMul(p);
   const small = doctrineLever(state, p.id, 'smallGrowth');
   if (small > 0) m *= 1 + small * smallNationFactor(state, p.id);
   if (isTribe(p)) m *= TRIBE_GROWTH_FACTOR;
@@ -255,7 +257,7 @@ export function goldIncome(state: GameState, p: Player): number {
   gold *= doctrineMore(state, p.id, 'gold');
   if (doctrinePerk(state, p.id, 'merchant')) gold *= 1 + DOCTRINE_PERKS.merchant.routeBonus * tradeRoutes(state, p.id);
   if (isTribe(p)) gold *= TRIBE_GOLD_FACTOR;
-  gold *= aiEconomy(state, p).income;
+  gold *= aiEconomy(state, p).income * techIncomeMul(p);
   return gold * goldRate(state);
 }
 /** Own trade ships at sea (Merchant level 3: a bonus per route), at most DOCTRINE_PERKS.merchant.maxRoutes. */
@@ -285,16 +287,18 @@ export function updateEconomy(state: GameState): void {
 
     const aiIncome = aiEconomy(state, p).income;
     const industrial = hasTech(p, 'industrialization');
-    const gold = goldIncome(state, p);
+    // Stock Exchange: interest on the gold reserve (techtree.ts), part of the gold income.
+    const baseGold = goldIncome(state, p);
+    const gold = baseGold + stockInterest(p, baseGold);
 
     let iron = countBuildings(state, p.id, 'mine') * IRON_PER_MINE;
     if (hasTech(p, 'metallurgy')) iron *= METALLURGY_IRON_MULT;
     if (industrial) iron *= INDUSTRIAL_RESOURCE_MULT;
-    iron *= aiIncome * resourceRate(state);
+    iron *= aiIncome * resourceRate(state) * techIncomeMul(p);
 
     let oil = countBuildings(state, p.id, 'oilWell') * OIL_PER_WELL;
     if (industrial) oil *= INDUSTRIAL_RESOURCE_MULT;
-    oil *= aiIncome * resourceRate(state);
+    oil *= aiIncome * resourceRate(state) * techIncomeMul(p);
 
     const science = (BASE_SCIENCE + countBuildings(state, p.id, 'lab') * SCIENCE_PER_LAB) * resourceRate(state);
 

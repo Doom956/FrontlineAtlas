@@ -17,3 +17,7 @@ services:
       # Seconds a public lobby waits after its first player joins.
       - key: PUBLIC_START_SECONDS
         value: "60"
+      # Owner console code for online games (docs/MULTIPLAYER.md). No value here: set it in the Render dashboard
+      # (Environment tab). Unset = the console is off online.
+      - key: ADMIN_CODE
+        sync: false

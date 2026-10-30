@@ -4,7 +4,7 @@ import { population } from './economy';
 import { addEvent, gameSeconds } from './state';
 import { isTeamGame, teamOf } from './rules';
 import { isTribe } from './types';
-import type { GameState } from './types';
+import type { ActionResult, GameState } from './types';
 
 /**
  * Land share needed to win right now: the game's setting (VICTORY_LAND_SHARE by default); in overtime (after
@@ -19,7 +19,23 @@ export function victoryShareNow(state: GameState): number {
 }
 /** True once overtime has started (the needed land share is falling). */
 export function inOvertime(state: GameState): boolean {
-  return state.phase !== 'spawn' && gameSeconds(state) / 60 >= OVERTIME_MINUTES;
+  return !state.continued && state.phase !== 'spawn' && gameSeconds(state) / 60 >= OVERTIME_MINUTES;
+}
+
+/**
+ * Action continueGame: a finished game plays on. phase goes back to 'playing'; winner, winnerTeam and stats stay as
+ * recorded; updateVictory no longer ends the game (no victory, overtime or time limit). Any human may ask in the sim
+ * (single player: the one human); online the relay server lets only the private lobby's host send it. An eliminated
+ * human keeps watching.
+ */
+export function continueGame(state: GameState, playerId: number): ActionResult {
+  const p = state.players[playerId];
+  if (!p || playerId === 0 || !p.isHuman) return { ok: false, reason: 'Only a player can continue the game' };
+  if (state.phase !== 'over') return { ok: false, reason: 'The game is not over' };
+  state.phase = 'playing';
+  state.continued = true;
+  addEvent(state, 'info', 'The game continues', [], -1);
+  return { ok: true };
 }
 
 /** Finished buildings owned by playerId (one pass over all buildings). */
@@ -133,6 +149,8 @@ export function updateVictory(state: GameState): void {
       if (t > 0) teamTiles.set(t, (teamTiles.get(t) ?? 0) + p.tiles);
     }
   }
+  // A continued game (continueGame) never ends again: the original result stays recorded.
+  if (state.continued) return;
 
   // Every human gone (single player: the one human): the game ends. In a multiplayer game an eliminated player
   // only becomes a spectator while other humans play on. Never depends on which human a client controls.

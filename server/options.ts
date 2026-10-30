@@ -1,5 +1,5 @@
 // Server settings. Defaults are for production; tests pass short timers.
-import { IDLE_TIMEOUT_MS, MAX_LOBBY_PLAYERS, MAX_MESSAGE_BYTES, TURN_MS } from '../src/net/protocol';
+import { CONTINUE_WINDOW_MS, IDLE_TIMEOUT_MS, MAX_LOBBY_PLAYERS, MAX_MESSAGE_BYTES, TURN_MS } from '../src/net/protocol';
 
 export interface ServerOptions {
   /** 0 = pick a free port (tests) */
@@ -65,6 +65,10 @@ export interface ServerOptions {
   proxyHops: number;
   /** a header set by the platform's own proxy that holds the client address (e.g. fly-client-ip); '' = none */
   clientIpHeader: string;
+  /** owner console code (env ADMIN_CODE); '' = no console online */
+  adminCode: string;
+  /** a finished private game can be continued by its host for this long (the room stays open meanwhile) */
+  continueWindowMs: number;
   /** allowed Origin headers for WebSockets; empty = any */
   allowedOrigins: string[];
   log: (msg: string) => void;
@@ -104,6 +108,8 @@ export const DEFAULT_OPTIONS: ServerOptions = {
   trustProxy: false,
   proxyHops: 1,
   clientIpHeader: '',
+  adminCode: '',
+  continueWindowMs: CONTINUE_WINDOW_MS,
   allowedOrigins: [],
   log: (msg) => console.log(`[${new Date().toISOString()}] ${msg}`),
 };
@@ -135,6 +141,7 @@ export function optionsFromEnv(env: Record<string, string | undefined>): Partial
   else if (env.FLY_APP_NAME) o.clientIpHeader = 'fly-client-ip';
   // Render and Fly put a proxy in front of the app: the socket address is the proxy's.
   if (env.TRUST_PROXY === '1' || (env.TRUST_PROXY !== '0' && (env.RENDER || env.FLY_APP_NAME))) o.trustProxy = true;
+  if (env.ADMIN_CODE) o.adminCode = env.ADMIN_CODE;
   if (env.ALLOWED_ORIGINS) o.allowedOrigins = env.ALLOWED_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean);
   return o;
 }

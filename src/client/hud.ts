@@ -40,6 +40,9 @@ import {
   SettingsPage,
 } from './hud/drawers';
 import { gameOverCard } from './hud/gameOver';
+import { ContinueRow, VictoryChip, type ContinueRole } from './hud/gameOverContinue';
+import { AdminConsole } from './adminConsole';
+import { selectionChipText } from './selection';
 import { iconSpan, lineIcon } from './hud/glyph';
 import { Leaderboard } from './hud/leaderboard';
 import { NationCard } from './hud/nationCard';
@@ -74,6 +77,10 @@ const TOAST_KINDS: Partial<Record<GameEvent['kind'], 'info' | 'good' | 'bad' | '
   allianceExpired: 'warn',
   eliminated: 'info',
   victory: 'good',
+  warshipReady: 'good',
+  tankDivisionReady: 'good',
+  spearheadStarted: 'info',
+  spearheadEnded: 'info',
   defeat: 'bad',
 };
 
@@ -90,6 +97,10 @@ export interface HudOptions {
    * the game is paused and by whom. Pausing goes through ui.paused (main sends it to the server).
    */
   pause?: () => { mode: 'host' | 'guest' | 'none'; paused: boolean; by: string };
+  /** online: who may continue the finished game (gameOverContinue.ts); single player: always 'host' */
+  continueRole?: () => ContinueRole;
+  /** online: owner console login through the server (adminAuth) */
+  adminAuth?: (code: string) => Promise<boolean>;
 }
 
 export class Hud {
@@ -126,6 +137,10 @@ export class Hud {
   private help: HTMLElement;
   private gameOver: HTMLElement;
   private gameOverShown = false;
+  private continueRow: ContinueRow | null = null;
+  private lastContinue = 0;
+  private victoryChip = new VictoryChip();
+  private admin: AdminConsole;
   private spawnBar: HTMLElement;
   private spawnText: HTMLElement;
   private startNowBtn: HTMLButtonElement;
@@ -266,7 +281,10 @@ export class Hud {
     cancel.setAttribute('aria-label', 'Cancel (Esc)');
     cancel.addEventListener('click', () => {
       if (this.ui.mode.kind !== 'none') this.ui.mode = { kind: 'none' };
-      else this.ui.paused = false;
+      else if (this.ui.selection.length) {
+        this.ui.selection = [];
+        this.ui.pendingSpearhead = null;
+      } else this.ui.paused = false;
     });
     this.modeChip.append(this.modeText, cancel);
     const top = el('div', 'hud-top');
@@ -299,6 +317,18 @@ export class Hud {
     this.gameOver = el('div', 'modal gameover hidden');
 
     this.el.append(left, this.cluster.el, this.modChips.el, this.drawer.el, bottom, top, this.pauseBanner, this.tooltip.card, this.tooltip.odds, this.unitCard.el, this.radial.el, this.help, this.gameOver, this.tip);
+    // after "Continue playing": the recorded winner in the top-right cluster
+    this.cluster.el.append(this.victoryChip.el);
+    // the hidden owner console ("|"; adminConsole.ts)
+    this.admin = new AdminConsole({
+      root: this.el,
+      ui,
+      dispatch,
+      state: () => self.state,
+      online: !!hudOpts.online,
+      auth: hudOpts.adminAuth,
+      toast: (text, kind) => self.toasts.show({ text, kind: kind ?? 'info' }),
+    });
 
     const opts = { signal: this.ac.signal };
     // HUD size: 1 up to ~1500 px wide, then grows a little with the window (up to 1.15): readable on big screens
@@ -354,7 +384,8 @@ export class Hud {
     const own = state.humanId > 0 ? state.players[state.humanId] : undefined;
     // Watching: a spectator, or an online player whose nation fell while the others play on. The neutral entry
     // (id 0) stands in for "me" then: nothing is ours, every action UI is hidden.
-    const watching = !own || (!!this.hudOpts.online && !own.alive && state.phase !== 'over');
+    // a continued game (Keep watching) is watched the same way in single player
+    const watching = !own || ((!!this.hudOpts.online || !!state.continued) && !own.alive && state.phase !== 'over');
     if (watching !== this.watching) this.setWatching(watching);
     const me = own && !watching ? own : own ?? state.players[0];
     if (!me) return;
@@ -362,6 +393,7 @@ export class Hud {
     if (!watching) this.followStart(state, me);
     this.updateFast(state, me);
     this.modChips.update(state);
+    this.admin.update(state);
     if (now - this.lastSlow >= SLOW_MS) {
       this.lastSlow = now;
       if (!watching) this.bar.update(state, me);
@@ -456,6 +488,7 @@ export class Hud {
   }
   /** Closes the topmost overlay (help, drawer, nation card); true if one was open. */
   closeOverlay(): boolean {
+    if (this.admin.close()) return true;
     if (!this.help.classList.contains('hidden')) {
       this.setHelp(false);
       return true;
@@ -477,6 +510,7 @@ export class Hud {
   }
   destroy(): void {
     this.ac.abort();
+    this.admin.destroy();
     this.toasts.clear();
     this.el.remove();
     this.root.classList.remove('mm-on');
@@ -576,7 +610,11 @@ export class Hud {
       if (m.kind === 'build') chip = `Build ${BUILDINGS[m.building].name}: click your land. Esc to cancel.`;
       else if (m.kind === 'transport') chip = 'Transport: click a coast to land on. Esc to cancel.';
       else if (m.kind === 'moveWarship') chip = 'Warship selected: click water to move it. Esc to cancel.';
+      else if (m.kind === 'spawnWarship') chip = 'Warship: click water near your port (shaded) where it should appear. Esc to cancel.';
+      else if (m.kind === 'buildTankDivision') chip = 'Tank division: click one of your factories. Esc to cancel.';
+      else if (m.kind === 'adminTile') chip = m.label;
       else if (m.kind !== 'none') chip = instruction(state, me, m);
+      else if (ui.selection.length && !this.watching) chip = selectionChipText(state, ui);
       else if (ui.paused && !this.hudOpts.online) chip = 'Paused';
     }
     // online pause: a calm banner for everyone
@@ -627,6 +665,17 @@ export class Hud {
     if (!this.watching) this.tooltip.update(state, me, false);
     if (!this.watching) this.unitCard.update(state, me);
     if (state.phase === 'over' && !this.gameOverShown) this.showGameOver(state, me);
+    else if (this.gameOverShown && state.phase !== 'over') {
+      // the game was continued (continueGame): play on, the winner stays on the chip
+      this.gameOverShown = false;
+      this.continueRow = null;
+      this.gameOver.classList.add('hidden');
+    }
+    this.victoryChip.update(state);
+    if (this.continueRow && performance.now() - this.lastContinue > SLOW_MS) {
+      this.lastContinue = performance.now();
+      this.continueRow.update();
+    }
   }
 
   // ---- events: history drawer, toasts for what matters, floaters on the map ----
@@ -882,6 +931,10 @@ export class Hud {
         this.hudOpts.againLabel,
       ),
     );
+    // Continue playing / Keep watching (gameOverContinue.ts) next to Play again and Main menu
+    const role = this.hudOpts.continueRole ?? ((): ContinueRole => 'host');
+    this.continueRow = new ContinueRow(me, role, () => this.ctx.act({ type: 'continueGame' }));
+    this.gameOver.querySelector('.over-btns')?.prepend(this.continueRow.el);
     this.gameOver.classList.remove('hidden');
   }
 }

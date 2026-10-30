@@ -31,6 +31,7 @@ import { Overlays, ringRadius } from './render/overlays';
 import { buildTerrain, type TerrainData } from './render/terrain';
 import { TileFeed } from './render/tiles';
 import { UnitLayer } from './render/units';
+import { SelectionOverlay } from './render/selectionOverlay';
 import type { UiState } from './uiState';
 
 export { formatCount } from './render/common';
@@ -81,6 +82,10 @@ export class Renderer {
   private buildings = new BuildingLayer();
   private deposits = new DepositLayer();
   private units = new UnitLayer();
+  /** selection box, warship placement area, spearhead preview (render/selectionOverlay.ts) */
+  private selectionOverlay = new SelectionOverlay();
+  private selectedSet = new Set<number>();
+  private selectedFrom: readonly number[] | null = null;
   private fronts = new FrontLayer();
   private heartland = new HeartlandLayer();
   private names = new NameLayer();
@@ -219,6 +224,11 @@ export class Renderer {
     const snap = this.currentSnap(state, ui);
     this.units.track(state, nowMs);
     this.units.focusId = this.focusShip(ui);
+    if (ui.selection !== this.selectedFrom) {
+      this.selectedFrom = ui.selection;
+      this.selectedSet = new Set(ui.selection);
+      this.units.selected = this.selectedSet;
+    }
     const frac = this.units.subTick(nowMs, ui.paused, ui.speed);
     const b = ui.mode.kind === 'build' ? ui.mode.building : null;
     const depFocus = b === 'mine' ? 1 : b === 'oilWell' ? 2 : b === 'farm' ? 3 : 0;
@@ -241,6 +251,7 @@ export class Renderer {
     this.overlays.floaters(ctx, ui, camera, nowMs);
     this.overlays.strikeZones(ctx, state, camera, ui);
     this.overlays.hoverAndPreview(ctx, state, camera, ui, snap, this.units, frac, d);
+    this.selectionOverlay.draw(ctx, state, camera, ui, nowMs);
 
     const tMini = performance.now();
     this.stats.msOverlay = tMini - tOver;
@@ -270,6 +281,11 @@ export class Renderer {
   /** Id of your own warship drawn under a canvas point (CSS px), or -1. */
   ownWarshipAt(sx: number, sy: number): number {
     return this.units.ownWarshipAt(sx, sy);
+  }
+
+  /** Ids of your own warships and tank divisions drawn inside a canvas rectangle (CSS px): box selection. */
+  ownUnitsIn(x0: number, y0: number, x1: number, y1: number): number[] {
+    return this.units.ownUnitsIn(x0, y0, x1, y1);
   }
 
   /** Id of any unit drawn under a canvas point (CSS px), or -1 (hover cards). */

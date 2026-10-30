@@ -68,7 +68,23 @@ export type TechId =
   | 'combinedArms'
   | 'radar'
   | 'rocketry'
-  | 'nuclearFission';
+  | 'nuclearFission'
+  // Branches with exclusive choices (techtree.ts; TechInfo.exclusiveGroup / requiresAny in config)
+  | 'stockExchange'
+  | 'freeTrade'
+  | 'industrialBoom'
+  | 'blitzTactics'
+  | 'trenchWarfare'
+  | 'railways'
+  | 'carriers'
+  | 'submarines'
+  | 'jetEngines'
+  | 'strategicBombing'
+  | 'propaganda'
+  | 'diplomaticCorps'
+  | 'conscription'
+  | 'massMobilization'
+  | 'automation';
 
 export type UnitType =
   | 'transport'
@@ -79,7 +95,9 @@ export type UnitType =
   | 'rocket'
   | 'atomBomb'
   /** cargo plane carrying paratroopers from an airfield to a drop tile (Action 'paradrop') */
-  | 'transportPlane';
+  | 'transportPlane'
+  /** commandable armored division (tanks.ts): built at a Factory, moves over own land, launches spearheads */
+  | 'tankDivision';
 
 export type MapType = 'continents' | 'pangaea' | 'archipelago' | 'highlands';
 export type MapSize = 'small' | 'medium' | 'large' | 'huge';
@@ -238,6 +256,13 @@ export interface Building {
   disabledUntil: number;
   /** 1 = intact; barrages take hp off forts and SAMs (0 = destroyed); it repairs slowly (BUILDING_REPAIR_PER_S) */
   hp: number;
+  /**
+   * Further levels queued by Action buildMany / upgradeArea (bulkbuild.ts), already paid: they start one after
+   * another, each with its normal upgrade time. Cancelling (Action cancelQueuedLevels) refunds them; a capture drops them.
+   */
+  queuedLevels: number;
+  /** what the queued levels cost (refunded on cancel); absent = nothing queued */
+  queuedPaid?: { gold: number; iron: number };
 }
 
 /**
@@ -296,6 +321,39 @@ export interface Unit {
   state: number;
   /** destination player for trade ships */
   targetOwner: number;
+  /** warship (navy.ts): id of the enemy ship it is chasing (state 2); absent / 0 = none */
+  chase?: number;
+  /** warship: ticks the chased ship has been out of detection range (gives up after WARSHIP_CHASE_GIVE_UP) */
+  chaseLost?: number;
+  /** tank division (tanks.ts): spearhead start tile (state 3) and its strength (troops) when it started */
+  launch?: number;
+  strength0?: number;
+}
+
+/** A unit being built (navy.ts warships, tanks.ts divisions): it appears at `tile` at readyTick. */
+export interface QueuedUnit {
+  id: number;
+  type: 'warship' | 'tankDivision';
+  owner: number;
+  /** the port / factory tile it is built at */
+  site: number;
+  /** where it appears (a water tile for warships, the factory tile for divisions) */
+  tile: number;
+  readyTick: number;
+  /** tank divisions: the troops taken from the pool for it (returned if the build is lost) */
+  troops: Troops;
+}
+
+/** Owner console state (admin.ts, Action 'admin'): all deterministic, part of the hash. */
+export interface AdminState {
+  /** players no AI may attack */
+  aiPassive: number[];
+  /** players whose tiles can't be captured */
+  godMode: number[];
+  /** every AI stops deciding */
+  aiFrozen: boolean;
+  /** players who see every nation's intel (buildings.hasIntel) */
+  revealIntel: number[];
 }
 
 export interface PlayerStats {
@@ -352,6 +410,29 @@ export interface Player {
   heartMoveTick: number;
   /** tick from which this player may ask its allies again (requestAllyAttack / requestAllyAid; ALLY_REQUEST_COOLDOWN) */
   allyAskTick: number;
+  /** gold uses (spending.ts): mercenaries, war bonds; absent until the first use */
+  spend?: SpendState;
+}
+
+/** Per-player state of the gold uses (spending.ts). Ticks are sim ticks. */
+export interface SpendState {
+  /** mercenaries hired in the current window (raises the price) and the tick the window started */
+  mercRecent: number;
+  mercWindowTick: number;
+  /** war bonds: attack bonus active until this tick; next purchase allowed from bondsReadyTick */
+  bondsUntil: number;
+  bondsReadyTick: number;
+  /** Carriers: tick from which this player's warships can shoot down the next plane (techtree.ts) */
+  carrierReadyTick: number;
+}
+
+/** Gold sent to an ally (Action fundAlly): the ally fights harder against `from`'s enemies until untilTick. */
+export interface AllyFunding {
+  from: number;
+  ally: number;
+  /** attack multiplier bonus (0.1 = +10%) against nations at war with `from` */
+  bonus: number;
+  untilTick: number;
 }
 
 export interface Alliance {
@@ -424,6 +505,12 @@ export type GameEventKind =
   | 'doctrineChosen'
   /** the held doctrine reached a new level (to the player) */
   | 'doctrineLevelUp'
+  /** a warship ordered at a port is ready (navy.ts) */
+  | 'warshipReady'
+  /** a tank division finished at a Factory; a spearhead started / ended (tiles taken, losses) (tanks.ts) */
+  | 'tankDivisionReady'
+  | 'spearheadStarted'
+  | 'spearheadEnded'
   | 'victory'
   | 'defeat';
 
@@ -498,6 +585,17 @@ export interface GameState {
    * land): sets the start radius, building spacing and default tribe counts (setup.sizeClassForLand).
    */
   mapClass: MapSize;
+  /** funded allies (Action fundAlly, spending.ts); absent = none yet */
+  allyFunds?: AllyFunding[];
+  /**
+   * The game was continued after it ended (Action continueGame): phase is back to 'playing', winner / winnerTeam stay
+   * as recorded and victory, overtime and time-limit checks no longer run. Absent = false.
+   */
+  continued?: boolean;
+  /** owner console state (admin.ts); absent = nothing set */
+  admin?: AdminState;
+  /** warships and tank divisions under construction (navy.ts, tanks.ts); absent = none */
+  unitQueue?: QueuedUnit[];
 }
 
 export interface Effect {
@@ -522,7 +620,11 @@ export type Action =
   | { type: 'setArmyMix'; armor: number; artillery: number }
   | { type: 'research'; tech: TechId }
   | { type: 'transport'; from: number; to: number; troops: Troops }
-  | { type: 'buildWarship'; port: number }
+  /**
+   * port = an own finished Port tile (or -1: the nearest suitable one); tile = the water tile where the ship appears
+   * (reachable from that port, within WARSHIP_SPAWN_RANGE). Without tile it appears next to the port.
+   */
+  | { type: 'buildWarship'; port: number; tile?: number }
   | { type: 'moveWarship'; unitId: number; tile: number }
   | { type: 'buildAircraft'; airfield: number; kind: 'bomber' | 'fighter' }
   | { type: 'bomb'; airfield: number; tile: number }
@@ -544,7 +646,83 @@ export type Action =
   /** pick a doctrine (first choice) or switch to another one (costs gold, adapt time, cooldown: doctrines.ts) */
   | { type: 'chooseDoctrine'; doctrine: DoctrineId }
   /** end the spawn phase now (only when every human has spawned; online only the private lobby's host may) */
-  | { type: 'startNow' };
+  | { type: 'startNow' }
+  /** gold uses (spending.ts): instant infantry for gold (price rises with each hire and with game time) */
+  | { type: 'hireMercenaries'; amount: number }
+  /** send gold to an ally: it joins your wars more readily and attacks your enemies harder for a while */
+  | { type: 'fundAlly'; ally: number; gold: number }
+  /** gold for a short attack-power boost (cooldown) */
+  | { type: 'warBonds' }
+  /** bulk build (bulkbuild.ts): place / upgrade a building and queue up to count levels in total (1..5) */
+  | { type: 'buildMany'; building: BuildingType; tile: number; count: number }
+  /** queue up to `levels` upgrades for every own building (of one type) within radius of tile, cheapest first */
+  | { type: 'upgradeArea'; tile: number; radius: number; building?: BuildingType; levels: number }
+  /** cancel the queued (not yet started) levels of the own building on tile; refunds them */
+  | { type: 'cancelQueuedLevels'; tile: number }
+  /** after the game ended: play on (single player: the human; online: only the private lobby's host) */
+  | { type: 'continueGame' }
+  /** move a group of own warships to a water tile in a loose formation (navy.ts; at most MAX_GROUP_UNITS ids) */
+  | { type: 'moveWarships'; unitIds: number[]; tile: number }
+  /** build a tank division at an own finished Factory (tile = the factory) (tanks.ts) */
+  | { type: 'buildTankDivision'; tile: number }
+  /** move divisions over own land; a tile of enemy / neutral land at the border launches a spearhead (tanks.ts) */
+  | { type: 'moveTankDivision'; unitIds: number[]; tile: number }
+  /** owner console (admin.ts): online the server relays it only from an authenticated admin session */
+  | AdminAction;
+
+/** Owner console operations (admin.ts ADMIN_OPS lists them with the fields each one reads). */
+export type AdminOp =
+  | 'setResource'
+  | 'addResource'
+  | 'setTroops'
+  | 'addTroops'
+  | 'fillTroops'
+  | 'unlockAllTechs'
+  | 'unlockTech'
+  | 'removeTech'
+  | 'finishResearch'
+  | 'finishConstructions'
+  | 'placeBuilding'
+  | 'deleteBuilding'
+  | 'setBuildingLevel'
+  | 'giveWarships'
+  | 'giveAircraft'
+  | 'giveCharges'
+  | 'spawnWarship'
+  | 'spawnTankDivision'
+  | 'paintTiles'
+  | 'neutralizeTiles'
+  | 'moveCapital'
+  | 'forceAlliance'
+  | 'breakAlliance'
+  | 'declareWar'
+  | 'setOpinion'
+  | 'aiPassive'
+  | 'freezeAI'
+  | 'setDifficulty'
+  | 'godMode'
+  | 'setDoctrine'
+  | 'eliminate'
+  | 'revive'
+  | 'setPeace'
+  | 'revealIntel';
+
+/**
+ * One owner console operation. Which optional fields an op reads: admin.ts ADMIN_OPS. player = the player it acts on
+ * (0 = the sender), other = a second player, tile = a map tile, amount = a number, key = a resource / tech / building
+ * / doctrine / difficulty / aircraft name, flag = on/off, troops = an exact split.
+ */
+export interface AdminAction {
+  type: 'admin';
+  op: AdminOp;
+  player?: number;
+  other?: number;
+  tile?: number;
+  amount?: number;
+  key?: string;
+  flag?: boolean;
+  troops?: Troops;
+}
 
 export interface ActionResult {
   ok: boolean;

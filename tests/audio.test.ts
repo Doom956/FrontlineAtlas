@@ -47,6 +47,10 @@ const KIND_MAP: Record<GameEventKind, true> = {
   doctrineUnlocked: true,
   doctrineChosen: true,
   doctrineLevelUp: true,
+  warshipReady: true,
+  tankDivisionReady: true,
+  spearheadStarted: true,
+  spearheadEnded: true,
   victory: true,
   defeat: true,
 };

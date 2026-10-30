@@ -132,6 +132,15 @@ for the turn: about 100-200 ms of delay, no prediction). After a `catchUp`, the 
   A game with no connected player ends after 60 s, a game every player has left (`leaveLobby`, another lobby) at
   once; every game ends after 4 hours. A reconnect resumes the room you were in most recently, never a game you left.
 
+**Continue after the end (protocol 7).** When the majority's `gameOver` ends a private game, the server's `gameOver`
+carries `continuable: true` and the room stays open for 10 minutes. The host may send the intent `continueGame`: the
+turns start again, everyone gets `gameContinued {by, turn}`, and every sim plays on (the winner stays recorded; no
+victory, overtime or time limit ends it again). Others get error `notHost`; public games end as before.
+
+**Owner console (protocol 7).** `adminAuth {code}` -> `adminAuth {ok}` to the sender only (see section 5). Console
+intents have `type: 'admin'` with an `op` (src/sim/admin.ts ADMIN_OPS) and are relayed only from authenticated
+sessions.
+
 **Limits.** 16 KB per message, 30 messages/s per connection (bursts of 60; a long flood closes the socket), 10 intents
 per player per turn and 4 per second on average (bursts of 40; the client sends army-mix slider drags at most every
 300 ms), 48 MB of stored turns per game (then intents are refused), 8 connections per IP, 3 open private lobbies or
@@ -213,6 +222,22 @@ the first visit after that takes about a minute to wake it up; a restart (deploy
 6. Every push to the repository's main branch redeploys automatically (`autoDeploy`).
 
 Keep **one instance**: lobbies and games live in the memory of one process, so more instances would split players.
+
+### The owner console online (`ADMIN_CODE`)
+
+The hidden owner console (`|` key in the game) works online only when the server has a code. The code is never in
+the repository: `render.yaml` lists the variable `ADMIN_CODE` without a value (`sync: false`).
+
+1. Render dashboard -> your `frontline-atlas` service -> **Environment**.
+2. Find `ADMIN_CODE` (or **Add Environment Variable** with that key), enter a long code only you know, **Save
+   Changes**. Render redeploys the service (running games end).
+3. In an online game press `|`, type the code and Enter. The server compares it (constant time) and answers only you;
+   your session may then send console actions, which every client applies, so games stay in sync. Console actions
+   from anyone else are dropped by the server.
+
+Without `ADMIN_CODE` the console is off online (every code is refused). After 5 wrong codes from one address within an
+hour the server ignores further tries from it silently. Other hosts: set the `ADMIN_CODE` environment variable the
+same way (Fly: `fly secrets set ADMIN_CODE=...`; Docker: `-e ADMIN_CODE=...`).
 
 ## 6. Alternative: Fly.io
 

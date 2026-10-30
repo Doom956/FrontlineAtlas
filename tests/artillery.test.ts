@@ -11,7 +11,7 @@ import { claimRect, makeFlatGame } from './helpers';
 
 function addBuilding(s: GameState, owner: number, tile: number, type: BuildingType): void {
   const id = s.nextId++;
-  const b: Building = { id, type, owner, tile, level: 1, buildLeft: 0, upgradeLeft: 0, fighters: 0, bombers: 0, cooldown: 0, dropCooldown: 0, disabledUntil: 0, hp: 1 };
+  const b: Building = { id, type, owner, tile, level: 1, buildLeft: 0, upgradeLeft: 0, fighters: 0, bombers: 0, cooldown: 0, dropCooldown: 0, disabledUntil: 0, hp: 1, queuedLevels: 0 };
   s.buildings.set(id, b);
   s.map.building[tile] = id + 1;
 }

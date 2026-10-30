@@ -71,7 +71,7 @@ function landGame(players = 2): GameState {
 
 function addBuilding(s: GameState, type: BuildingType, owner: number, tile: number, level = 1): Building {
   const id = newId(s);
-  const b: Building = { id, type, owner, tile, level, buildLeft: 0, upgradeLeft: 0, fighters: 0, bombers: 0, cooldown: 0, dropCooldown: 0, disabledUntil: 0, hp: 1 };
+  const b: Building = { id, type, owner, tile, level, buildLeft: 0, upgradeLeft: 0, fighters: 0, bombers: 0, cooldown: 0, dropCooldown: 0, disabledUntil: 0, hp: 1, queuedLevels: 0 };
   s.buildings.set(id, b);
   s.map.building[tile] = id + 1;
   markBuildingsChanged(s);

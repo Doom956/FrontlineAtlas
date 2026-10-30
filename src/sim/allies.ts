@@ -31,6 +31,8 @@ import { areAllied, changeOpinion } from './diplomacy';
 import { atPeace, sameTeam } from './rules';
 import { addEvent } from './state';
 import { isTribe } from './types';
+import { allyStrengthMul, allyTrustDiscount } from './spending';
+import { techAllyAidMul, techAllyAskCooldownMul } from './techtree';
 import type { ActionResult, AllyPledge, GameState, Player } from './types';
 
 const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
@@ -134,7 +136,7 @@ export function requestAllyAttack(state: GameState, from: number, ally: number, 
   if (areAllied(state, from, target)) return FAIL(`${t.name} is your ally`);
   const p = state.players[from];
   const a = state.players[ally];
-  p.allyAskTick = state.tick + ALLY_REQUEST_COOLDOWN * TICKS_PER_SECOND;
+  p.allyAskTick = state.tick + Math.round(ALLY_REQUEST_COOLDOWN * techAllyAskCooldownMul(state, from) * TICKS_PER_SECOND);
   if (a.isHuman) {
     addEvent(state, 'info', `${p.name} asks you to attack ${t.name}`, [ally], t.capital);
     return { ok: true };
@@ -149,7 +151,7 @@ export function requestAllyAid(state: GameState, from: number, ally: number): Ac
   if (bad) return FAIL(bad);
   const p = state.players[from];
   const a = state.players[ally];
-  p.allyAskTick = state.tick + ALLY_REQUEST_COOLDOWN * TICKS_PER_SECOND;
+  p.allyAskTick = state.tick + Math.round(ALLY_REQUEST_COOLDOWN * techAllyAskCooldownMul(state, from) * TICKS_PER_SECOND);
   if (a.isHuman) {
     addEvent(state, 'info', `${p.name} asks you for troops`, [ally], p.capital);
     return { ok: true };
@@ -206,7 +208,9 @@ export function sendAllyAid(state: GameState, helper: number, friend: number): {
   const will = ALLY_WILLINGNESS[h.personality ?? 'balanced'] ?? 1;
   const keep = Math.max(0, h.maxPop * 0.5);
   const spare = Math.max(0, h.troops.infantry - Math.max(0, keep - h.troops.armor - h.troops.artillery));
-  let troops = Math.floor(Math.min(h.troops.infantry * ALLY_AID_SHARE * Math.min(1.25, will), h.troops.infantry * ALLY_AID_MAX_SHARE, spare));
+  // Diplomatic Corps (techtree.ts): allies send the friend more.
+  const aidMul = techAllyAidMul(state, friend);
+  let troops = Math.floor(Math.min(h.troops.infantry * ALLY_AID_SHARE * Math.min(1.25, will) * aidMul, h.troops.infantry * ALLY_AID_MAX_SHARE * aidMul, spare));
   if (troops < MIN_ATTACK_TROOPS * 10) troops = 0;
   let gold = 0;
   if (troops === 0 || h.personality === 'merchant') gold = Math.floor(Math.min(h.gold * 0.4, Math.max(0, h.income.gold) * ALLY_AID_GOLD_SECONDS));
@@ -259,7 +263,8 @@ export function allyRefusal(state: GameState, ally: number, from: number, kind: 
   if (isTribe(a)) return kind === 'aid' ? 'a tribe has nothing to spare' : 'a tribe does not go to war';
   if (a.isHuman) return 'players decide for themselves';
   const op = state.opinion[ally]?.[from] ?? 0;
-  if (op < helpOpinionNeeded(a)) return `it does not trust ${f.isHuman ? 'you' : f.name} enough`;
+  // Diplomatic Corps and funding (spending.ts) lower the trust needed.
+  if (op < helpOpinionNeeded(a) - allyTrustDiscount(state, ally, from)) return `it does not trust ${f.isHuman ? 'you' : f.name} enough`;
   const home = total(a.troops);
   const inc = incomingTroops(state, ally);
   if (inc > home * 0.8 && inc > MIN_ATTACK_TROOPS * 10) return 'it is fighting for its own survival';
@@ -278,7 +283,7 @@ export function allyRefusal(state: GameState, ally: number, from: number, kind: 
     if ((state.opinion[ally]?.[target] ?? 0) > 40 && runawayLeader(state) !== target) return `it is on good terms with ${t.name}`;
     if (!borders(state, ally, target)) return `it has no border with ${t.name}`;
     const busy = atWar(state, target, from) || warsOf(state, target).length > 1;
-    const need = ALLY_JOIN_MIN_STRENGTH * (busy ? 0.6 : 1);
+    const need = ALLY_JOIN_MIN_STRENGTH * (busy ? 0.6 : 1) * allyStrengthMul(state, ally, from); // funded: bolder
     if (!isTribe(t) && wholeArmy(state, ally) < wholeArmy(state, target) * need) return `it is too weak to take on ${t.name}`;
   }
   return null;

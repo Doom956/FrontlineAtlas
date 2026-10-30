@@ -6,9 +6,11 @@ import { isWater, TROOP_TYPES } from '../sim/types';
 import type { BuildingType, GameState, Player, Troops } from '../sim/types';
 import type { Camera } from './camera';
 import { resolveBuild } from './simx';
+import { buildClickAction, effectiveCount, upgradeAreaAction } from './hud/buildMenu';
 import { strikeAction, strikeForKey, strikeTarget, type StrikeId } from './strikes';
 import type { Renderer } from './renderer';
 import type { Dispatch, GetState, UiState } from './uiState';
+import { boxSelection, selectAllOf, selectionClick, spawnWarshipAction, tankDivisionClickAction, toggleInSelection } from './selection';
 
 export interface InputDeps {
   canvas: HTMLCanvasElement;
@@ -33,7 +35,7 @@ const DRAG_THRESHOLD = 5; // px before a press becomes a pan
 const LONG_PRESS_MS = 500; // touch: hold this long without moving = radial menu
 const KEY_PAN_SPEED = 700; // screen px per second
 const TOAST_MS = 3000;
-export const SPEEDS: readonly (1 | 2 | 4)[] = [1, 2, 4];
+export const SPEEDS: readonly UiState['speed'][] = [1, 2, 4];
 
 // ------------------------------------------------------------------------------------------------ helpers
 
@@ -124,6 +126,9 @@ function isTextInput(t: EventTarget | null): boolean {
   return t instanceof HTMLInputElement && t.type !== 'range' && t.type !== 'checkbox' && t.type !== 'button';
 }
 
+/** Owner console brush: at most one paint per this many ms while dragging. */
+const BRUSH_MS = 120;
+
 const PAN_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
 // ------------------------------------------------------------------------------------------------ setup
@@ -134,7 +139,19 @@ export function setupInput(deps: InputDeps): () => void {
   const opts = { signal: ac.signal };
 
   // ---- pointer on the map ----
-  let press: { id: number; button: number; x0: number; y0: number; x: number; y: number; dragging: boolean; done: boolean } | null = null;
+  // box: Shift+drag selects own units (selection.ts); brush: the owner console's paint tool paints while dragging
+  let press: { id: number; button: number; x0: number; y0: number; x: number; y: number; dragging: boolean; done: boolean; box?: boolean; brush?: boolean } | null = null;
+  let brushTile = -1;
+  let brushAt = 0;
+  const paint = (tile: number, force: boolean): void => {
+    const m = ui.mode;
+    if (m.kind !== 'adminTile' || tile < 0) return;
+    const now = performance.now();
+    if (!force && (tile === brushTile || now - brushAt < BRUSH_MS)) return;
+    brushTile = tile;
+    brushAt = now;
+    m.pick(tile);
+  };
   let longTimer = 0;
   const openMenuAt = (clientX: number, clientY: number, tile: number) => {
     const s = getState();
@@ -165,6 +182,12 @@ export function setupInput(deps: InputDeps): () => void {
       const p = local(e);
       // Middle button pans right away; left and right become a pan only after moving DRAG_THRESHOLD px.
       press = { id: e.pointerId, button: e.button, x0: p.x, y0: p.y, x: p.x, y: p.y, dragging: e.button === 1, done: closing };
+      if (e.button === 0 && !closing && e.shiftKey && ui.mode.kind === 'none' && e.pointerType !== 'touch') press.box = true;
+      if (e.button === 0 && !closing && ui.mode.kind === 'adminTile' && ui.mode.brush) {
+        press.brush = true;
+        press.done = true;
+        paint(tileAt(p.x, p.y), true);
+      }
       if (e.pointerType === 'touch' && e.button === 0) {
         clearTimeout(longTimer);
         const cx = e.clientX;
@@ -193,7 +216,9 @@ export function setupInput(deps: InputDeps): () => void {
       ui.hoverPx = { x: p.x, y: p.y };
       if (!press || press.id !== e.pointerId) return;
       if (!press.dragging && Math.hypot(p.x - press.x0, p.y - press.y0) > DRAG_THRESHOLD) press.dragging = true;
-      if (press.dragging) {
+      if (press.brush) paint(ui.hoverTile, false);
+      else if (press.box && press.dragging) ui.selectBox = { x0: press.x0, y0: press.y0, x1: p.x, y1: p.y };
+      else if (press.dragging) {
         camera.pan(p.x - press.x, p.y - press.y);
         canvas.classList.add('dragging');
       }
@@ -208,13 +233,27 @@ export function setupInput(deps: InputDeps): () => void {
     press = null;
     clearTimeout(longTimer);
     canvas.classList.remove('dragging');
+    if (pr.box && pr.dragging) {
+      // Shift+drag: the box selects your warships and tank divisions inside it
+      ui.selectBox = null;
+      const s = getState();
+      if (!cancelled && s && s.humanId) {
+        const p = local(e);
+        ui.selection = boxSelection(s, s.humanId, ui.selection, renderer.ownUnitsIn(pr.x0, pr.y0, p.x, p.y), false);
+        ui.pendingSpearhead = null;
+      }
+      return;
+    }
     if (cancelled || pr.dragging || pr.done) return;
     const p = local(e);
     const tile = tileAt(p.x, p.y);
-    // Clicking one of your warships picks it: the next click sets where it patrols.
-    const ship = pr.button === 0 && ui.mode.kind === 'none' ? renderer.ownWarshipAt(p.x, p.y) : -1;
-    if (ship >= 0) ui.mode = { kind: 'moveWarship', unitId: ship };
-    else if (pr.button === 0) leftClick(tile, e.shiftKey);
+    // Clicking one of your warships or tank divisions selects it (Shift+click adds or removes it); the next click
+    // gives the selection its order (selection.ts).
+    const unit = pr.button === 0 && ui.mode.kind === 'none' ? renderer.ownWarshipAt(p.x, p.y) : -1;
+    if (unit >= 0) {
+      ui.selection = e.shiftKey ? toggleInSelection(ui.selection, unit) : [unit];
+      ui.pendingSpearhead = null;
+    } else if (pr.button === 0) leftClick(tile, e.shiftKey);
     // a right-click while aiming or placing cancels it (like Esc); otherwise it opens the radial menu
     else if (pr.button === 2 && ui.mode.kind !== 'none') ui.mode = { kind: 'none' };
     else if (pr.button === 2) openMenuAt(e.clientX, e.clientY, tile);
@@ -259,10 +298,20 @@ export function setupInput(deps: InputDeps): () => void {
     switch (mode.kind) {
       case 'build': {
         // Forgiving placement: the nearest valid own tile near the click, or a nearby building of that type to upgrade.
+        // x3 / x5 (or Shift = x5): Action buildMany queues that many levels (hud/buildMenu.ts).
+        const n = effectiveCount(ui, shift);
+        if (n > 1) {
+          ok = dispatch(buildClickAction(s, h, mode.building, tile, n)).ok;
+          break;
+        }
         const t = resolveBuild(s, h, mode.building, tile);
         ok = dispatch({ type: 'build', building: mode.building, tile: t.tile >= 0 ? t.tile : tile }).ok;
         break;
       }
+      case 'upgradeArea':
+        // the Upgrade-area tool: queue upgrades for your buildings in the circle; stays on for more clicks until Esc
+        dispatch(upgradeAreaAction(mode, tile));
+        return;
       case 'paradrop':
       case 'barrage':
       case 'bomb':
@@ -283,7 +332,23 @@ export function setupInput(deps: InputDeps): () => void {
       case 'moveWarship':
         ok = dispatch({ type: 'moveWarship', unitId: mode.unitId, tile }).ok;
         break;
+      case 'spawnWarship':
+      case 'buildTankDivision': {
+        // warship: the water tile where it appears; tank division: the factory that builds it (selection.ts)
+        const a = mode.kind === 'spawnWarship' ? spawnWarshipAction(s, h, tile) : tankDivisionClickAction(s, h, tile);
+        if (typeof a === 'string') {
+          ui.toast = { text: a, until: performance.now() + TOAST_MS };
+          ok = false;
+        } else ok = dispatch(a).ok;
+        break;
+      }
+      case 'adminTile':
+        // the owner console's pick: it stays on for more clicks until Esc
+        mode.pick(tile);
+        return;
       case 'none':
+        // own units selected: the click is their order (water / own land / spearhead), see selection.ts
+        if (ui.selection.length && selectionClick(s, ui, dispatch, tile, (text) => (ui.toast = { text, until: performance.now() + TOAST_MS }))) return;
         break;
     }
     if (ok !== null) {
@@ -340,6 +405,16 @@ export function setupInput(deps: InputDeps): () => void {
         if (!e.repeat) deps.toggleDrawer?.('doctrine');
         return;
       }
+      // Shift+W: every warship, Shift+A: every tank division (selection.ts); plain W / A pan
+      if (e.shiftKey && (code === 'KeyW' || code === 'KeyA') && s.phase === 'playing') {
+        e.preventDefault();
+        if (!e.repeat) {
+          ui.selection = selectAllOf(s, s.humanId, code === 'KeyW' ? 'warship' : 'tankDivision');
+          ui.pendingSpearhead = null;
+          if (!ui.selection.length) ui.toast = { text: code === 'KeyW' ? 'You have no warships' : 'You have no tank divisions', until: performance.now() + TOAST_MS };
+        }
+        return;
+      }
       // Panning keys are tracked by physical position so they work on any keyboard layout.
       if (PAN_CODES.has(code)) {
         held.add(code);
@@ -351,6 +426,8 @@ export function setupInput(deps: InputDeps): () => void {
         if (ui.contextMenu) ui.contextMenu = null;
         else if (deps.closeOverlay?.()) return;
         else if (ui.mode.kind !== 'none') ui.mode = { kind: 'none' };
+        else if (ui.pendingSpearhead) ui.pendingSpearhead = null;
+        else if (ui.selection.length) ui.selection = [];
         else ui.selectedTile = -1;
         return;
       }

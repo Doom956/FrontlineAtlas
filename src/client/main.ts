@@ -23,6 +23,8 @@ import { setupInput } from './input';
 import { el, Menu, PLAYER_PALETTE } from './menu';
 import { Renderer } from './renderer';
 import { defaultUiState } from './uiState';
+import { requestAdminAuth } from './admin';
+import { adminPerf } from './adminConsole';
 import type { Dispatch, UiState } from './uiState';
 
 const STEP_MS = 1000 / TICKS_PER_SECOND;
@@ -183,6 +185,8 @@ async function startOnline(start: GameStartMsg): Promise<void> {
     canStartNow: () => mp.canStartNow,
     againLabel: 'Multiplayer',
     pause: () => ({ mode: mp.canPause ? 'host' : mp.isPrivate && !mp.spectator ? 'guest' : 'none', paused: mp.paused, by: mp.pausedByName() }),
+    continueRole: () => mp.continueRole(),
+    adminAuth: (code) => requestAdminAuth(getNet(), code),
   });
   hud.setUnitProbe(renderer);
   const status = new MpStatus(() => {
@@ -343,7 +347,9 @@ function runTicks(s: Session, dt: number): void {
   let n = 0;
   while (acc >= STEP_MS && n < max) {
     try {
+      const t0 = performance.now();
       tick(s.state);
+      adminPerf.tickMs = adminPerf.tickMs * 0.9 + (performance.now() - t0) * 0.1;
     } catch (err) {
       console.error('Simulation error', err);
       s.ui.paused = true;

@@ -2,11 +2,13 @@
 // (game rules are checked by the sim on every client). Valid messages are rebuilt field by field, so unknown extra
 // fields are never relayed to other clients.
 
-import { BUILDINGS, TECHS } from '../src/sim/config';
+import { BUILDINGS, MAX_GROUP_UNITS, TECHS } from '../src/sim/config';
+import { ADMIN_OP_LIST } from '../src/sim/admin';
 import { DEFAULT_MODIFIERS, validateSetup } from '../src/sim/setup';
 import { DOCTRINE_IDS } from '../src/sim/types';
 import type { Action, GameSetup, Modifiers } from '../src/sim/types';
 import {
+  ADMIN_CODE_MAX_LENGTH,
   BUILD_MAX_LENGTH,
   CLIENT_ID_PATTERN,
   LOBBY_LIMITS,
@@ -41,14 +43,22 @@ const MAX_PLAYER = 4096;
 const MAX_AMOUNT = 1e12;
 
 type FieldSpec =
-  | { k: 'tile' }
+  | { k: 'tile'; optional?: boolean }
   | { k: 'id' }
-  | { k: 'player' }
+  | { k: 'player'; optional?: boolean }
   | { k: 'amount' }
   | { k: 'share' } // 0..1
   | { k: 'bool'; optional?: boolean }
-  | { k: 'enum'; values: readonly string[] }
-  | { k: 'troops' };
+  | { k: 'enum'; values: readonly string[]; optional?: boolean }
+  | { k: 'troops'; optional?: boolean }
+  /** a port / site tile, or -1 = let the sim pick (buildWarship with a target tile) */
+  | { k: 'siteOrAuto' }
+  /** unit id list for group orders: 1..MAX_GROUP_UNITS distinct ids */
+  | { k: 'ids' }
+  /** any finite number within +-MAX_AMOUNT (owner console amounts may be negative) */
+  | { k: 'signed'; optional?: boolean }
+  /** short identifier (owner console key: resource, tech, building, doctrine ...) */
+  | { k: 'word'; optional?: boolean };
 
 /** One spec per Action type, with exactly that action's fields (tsc fails when the Action union changes). */
 type ActionSpecs = {
@@ -71,7 +81,7 @@ const ACTION_SPECS: ActionSpecs = {
   setArmyMix: { armor: { k: 'share' }, artillery: { k: 'share' } },
   research: { tech: { k: 'enum', values: TECH_IDS } },
   transport: { from: TILE, to: TILE, troops: TROOPS },
-  buildWarship: { port: ID },
+  buildWarship: { port: { k: 'siteOrAuto' }, tile: { k: 'tile', optional: true } },
   moveWarship: { unitId: ID, tile: TILE },
   buildAircraft: { airfield: ID, kind: { k: 'enum', values: ['bomber', 'fighter'] } },
   bomb: { airfield: ID, tile: TILE },
@@ -88,15 +98,39 @@ const ACTION_SPECS: ActionSpecs = {
   setAuto: { mix: { k: 'bool', optional: true }, research: { k: 'bool', optional: true } },
   startNow: {},
   chooseDoctrine: { doctrine: { k: 'enum', values: DOCTRINE_IDS } },
+  // Part B: continue after the end (host only, room.ts), warship groups, tank divisions, the owner console
+  // (relayed only from an admin session: server/admin.ts, room.ts).
+  continueGame: {},
+  moveWarships: { unitIds: { k: 'ids' }, tile: TILE },
+  buildTankDivision: { tile: TILE },
+  moveTankDivision: { unitIds: { k: 'ids' }, tile: TILE },
+  admin: {
+    op: { k: 'enum', values: ADMIN_OP_LIST },
+    player: { k: 'player', optional: true },
+    other: { k: 'player', optional: true },
+    tile: { k: 'tile', optional: true },
+    amount: { k: 'signed', optional: true },
+    key: { k: 'word', optional: true },
+    flag: { k: 'bool', optional: true },
+    troops: { k: 'troops', optional: true },
+  },
+  hireMercenaries: { amount: { k: 'amount' } },
+  fundAlly: { ally: PLAYER, gold: { k: 'amount' } },
+  warBonds: {},
+  buildMany: { building: { k: 'enum', values: BUILDING_TYPES }, tile: TILE, count: { k: 'amount' } },
+  upgradeArea: { tile: TILE, radius: { k: 'amount' }, building: { k: 'enum', values: BUILDING_TYPES, optional: true }, levels: { k: 'amount' } },
+  cancelQueuedLevels: { tile: TILE },
 };
 
 function checkField(spec: FieldSpec, v: unknown): Result<unknown> {
   switch (spec.k) {
     case 'tile':
+      if (v === undefined && spec.optional) return ok(undefined);
       return isInt(v, 0, MAX_TILE) ? ok(v) : fail('bad tile');
     case 'id':
       return isInt(v, 0, MAX_ID) ? ok(v) : fail('bad id');
     case 'player':
+      if (v === undefined && spec.optional) return ok(undefined);
       return isInt(v, 0, MAX_PLAYER) ? ok(v) : fail('bad player id');
     case 'amount':
       return isNum(v, 0, MAX_AMOUNT) ? ok(v) : fail('bad amount');
@@ -106,8 +140,23 @@ function checkField(spec: FieldSpec, v: unknown): Result<unknown> {
       if (v === undefined && spec.optional) return ok(undefined);
       return typeof v === 'boolean' ? ok(v) : fail('bad boolean');
     case 'enum':
+      if (v === undefined && spec.optional) return ok(undefined);
       return typeof v === 'string' && spec.values.includes(v) ? ok(v) : fail('bad value');
+    case 'siteOrAuto':
+      return isInt(v, -1, MAX_ID) ? ok(v) : fail('bad site');
+    case 'ids': {
+      if (!Array.isArray(v) || v.length < 1 || v.length > MAX_GROUP_UNITS) return fail(`bad id list (1..${MAX_GROUP_UNITS})`);
+      if (!v.every((x) => isInt(x, 0, MAX_ID)) || new Set(v).size !== v.length) return fail('bad id list');
+      return ok(v.slice());
+    }
+    case 'signed':
+      if (v === undefined && spec.optional) return ok(undefined);
+      return isNum(v, -MAX_AMOUNT, MAX_AMOUNT) ? ok(v) : fail('bad number');
+    case 'word':
+      if (v === undefined && spec.optional) return ok(undefined);
+      return typeof v === 'string' && /^[A-Za-z0-9_]{1,32}$/.test(v) ? ok(v) : fail('bad key');
     case 'troops': {
+      if (v === undefined && spec.optional) return ok(undefined);
       if (!isObj(v)) return fail('bad troops');
       const { infantry, armor, artillery } = v;
       if (!isNum(infantry, 0, MAX_AMOUNT) || !isNum(armor, 0, MAX_AMOUNT) || !isNum(artillery, 0, MAX_AMOUNT)) {
@@ -264,6 +313,9 @@ export function validateClientMessage(m: unknown): Result<ClientMessage> {
     case 'setPause':
       if (typeof m.paused !== 'boolean') return fail('setPause: bad paused (boolean)');
       return ok({ type: 'setPause', paused: m.paused });
+    case 'adminAuth':
+      if (typeof m.code !== 'string' || m.code.length === 0 || m.code.length > ADMIN_CODE_MAX_LENGTH) return fail('adminAuth: bad code');
+      return ok({ type: 'adminAuth', code: m.code });
     case 'ping':
       if (m.t !== undefined && !isNum(m.t, -1e15, 1e15)) return fail('ping: bad t');
       return ok(m.t === undefined ? { type: 'ping' } : { type: 'ping', t: m.t });

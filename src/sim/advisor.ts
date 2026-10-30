@@ -36,6 +36,7 @@ import {
 import { areAllied } from './diplomacy';
 import { alliancesAllowed, buildingAllowed, peaceActive, researchRule, unitAllowed } from './rules';
 import { hasTech, startResearch } from './tech';
+import { choiceLockedBy, prereqsMet } from './techtree';
 import { borderTiles, depositCount, ownedTilesOf } from './territory';
 import { paradropRange } from './units';
 import { Resource, isTribe, isWater } from './types';
@@ -140,7 +141,8 @@ export function recommendMix(state: GameState, playerId: number, advice: MixAdvi
 export function nextTechInOrder(p: Player, order: readonly TechId[]): TechId | null {
   for (const t of order) {
     if (hasTech(p, t) || p.researching === t) continue;
-    if (!TECHS[t].requires.every((r) => hasTech(p, r))) continue;
+    // requires + requiresAny, and never a tech locked by an exclusive choice (techtree.ts)
+    if (!prereqsMet(p, t) || choiceLockedBy(p, t)) continue;
     return t;
   }
   return null;

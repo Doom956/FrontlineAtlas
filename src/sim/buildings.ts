@@ -44,6 +44,7 @@ import { addEvent, newId } from './state';
 import { doctrineLess, doctrineMore, doctrinePerk } from './doctrines';
 import { ownsNear } from './territory';
 import { hasTech } from './tech';
+import { techBuildingCostMul, techBuildTimeMul } from './techtree';
 import { isWater, Resource } from './types';
 import type { ActionResult, Building, BuildingType, GameState, MapSize, TerrainId, Troops } from './types';
 
@@ -129,6 +130,10 @@ function getIndex(state: GameState): BuildingIndex {
 function listsOf(state: GameState, playerId: number): TypeLists {
   return getIndex(state).byPlayer.get(playerId) ?? EMPTY_LISTS;
 }
+/** A building's level, queue or timers were changed outside this file (bulkbuild.ts): refresh its owner's counts. */
+export function noteBuildingChanged(state: GameState, b: Building): void {
+  touch(state, indexes.get(state), b.owner);
+}
 /** A player's buildings changed (counts, levels, finished): drop its cached counts. */
 function touch(state: GameState, idx: BuildingIndex | undefined, playerId: number): void {
   state.buildingsVersion++;
@@ -162,6 +167,9 @@ function indexRemove(state: GameState, b: Building): void {
 }
 /** setOwner hook: building b changed owner from prevOwner to b.owner (a capture). */
 export function onBuildingCaptured(state: GameState, b: Building, prevOwner: number): void {
+  // Queued levels (bulkbuild.ts) were the old owner's order: they are lost with the building.
+  b.queuedLevels = 0;
+  delete b.queuedPaid;
   const idx = indexes.get(state);
   if (idx && idx.size === state.buildings.size) {
     const list = idx.byPlayer.get(prevOwner)?.[b.type];
@@ -193,7 +201,7 @@ function summaryOf(state: GameState, playerId: number): Summary {
     for (const b of lists[t]) {
       if (!isLive(state, b, playerId, true)) continue;
       s.sitesAll[t]++;
-      s.all[t] += b.level + (b.upgradeLeft > 0 ? 1 : 0);
+      s.all[t] += b.level + (b.upgradeLeft > 0 ? 1 : 0) + (b.queuedLevels || 0);
       if (b.buildLeft > 0) continue;
       s.sitesFinished[t]++;
       s.finished[t] += b.level;
@@ -297,14 +305,18 @@ export function reloadTick(b: Building): void {
  * owned, incl. unfinished buildings and running upgrades). Iron grows the same way.
  */
 export function buildingCost(state: GameState, playerId: number, type: BuildingType): { gold: number; iron: number } {
+  return buildingCostAfter(state, playerId, type, 0);
+}
+/** Price of the level after `extra` more levels of the type are ordered (bulk orders: bulkbuild.ts). */
+export function buildingCostAfter(state: GameState, playerId: number, type: BuildingType, extra: number): { gold: number; iron: number } {
   const info = BUILDINGS[type];
-  const owned = summaryOf(state, playerId).all[type];
-  const k = (1 + info.costGrowth * owned) * (type === 'fort' ? doctrineLess(state, playerId, 'fortCost') : 1);
+  const owned = summaryOf(state, playerId).all[type] + extra;
+  const k = (1 + info.costGrowth * owned) * (type === 'fort' ? doctrineLess(state, playerId, 'fortCost') : 1) * techBuildingCostMul(state, playerId, type);
   return { gold: Math.round(info.cost * k), iron: Math.round(info.iron * k) };
 }
-/** Seconds a construction or upgrade of `type` takes for playerId (Fortress level 3: forts much faster). */
-function buildTimeFor(state: GameState, playerId: number, type: BuildingType): number {
-  const base = BUILDINGS[type].buildTime * (type === 'fort' && doctrinePerk(state, playerId, 'fortress') ? DOCTRINE_PERKS.fortress.fortBuildTime : 1);
+/** Seconds a construction or upgrade of `type` takes for playerId (Fortress level 3: forts much faster; Automation). */
+export function buildTimeFor(state: GameState, playerId: number, type: BuildingType): number {
+  const base = BUILDINGS[type].buildTime * (type === 'fort' && doctrinePerk(state, playerId, 'fortress') ? DOCTRINE_PERKS.fortress.fortBuildTime : 1) * techBuildTimeMul(state, playerId);
   return buildSeconds(state, base);
 }
 
@@ -545,6 +557,7 @@ export function build(state: GameState, playerId: number, type: BuildingType, ti
       dropCooldown: 0,
       disabledUntil: 0,
       hp: 1,
+      queuedLevels: 0,
     };
     state.buildings.set(id, b);
     state.map.building[r.tile] = id + 1;
@@ -559,10 +572,15 @@ export function demolish(state: GameState, playerId: number, tile: number): Acti
   if (!b || b.owner !== playerId) return FAIL('No building of yours here');
   const p = state.players[playerId];
   const info = BUILDINGS[b.type];
-  const others = Math.max(0, summaryOf(state, playerId).all[b.type] - b.level);
+  const others = Math.max(0, summaryOf(state, playerId).all[b.type] - b.level - (b.queuedLevels || 0));
   const k = (1 + info.costGrowth * others) * b.level;
   p.gold += info.cost * k * BUILDING_DEMOLISH_REFUND;
   p.iron += info.iron * k * BUILDING_DEMOLISH_REFUND;
+  // Queued levels never started: paid back in full (bulkbuild.ts).
+  if (b.queuedPaid) {
+    p.gold += b.queuedPaid.gold;
+    p.iron += b.queuedPaid.iron;
+  }
   destroyBuilding(state, b);
   return { ok: true };
 }
@@ -699,6 +717,8 @@ export function watchtowerRadius(state: GameState, playerId: number): number {
  */
 export function hasIntel(state: GameState, viewer: number, target: number): boolean {
   if (viewer === target || target <= 0) return true;
+  // Owner console 'revealIntel' (admin.ts).
+  if (viewer > 0 && state.admin?.revealIntel.includes(viewer)) return true;
   if (viewer <= 0) return false;
   if (areAllied(state, viewer, target)) return true;
   const towers = listsOf(state, viewer).watchtower;
@@ -730,7 +750,7 @@ export function armyTotalOf(state: GameState, playerId: number): number {
   let n = sum(p.troops);
   for (const a of state.attacks) if (a.attacker === playerId) n += sum(a.troops);
   for (const u of state.units) {
-    if (u.owner === playerId && (u.type === 'transport' || u.type === 'transportPlane') && u.hp > 0) n += sum(u.troops);
+    if (u.owner === playerId && (u.type === 'transport' || u.type === 'transportPlane' || u.type === 'tankDivision') && u.hp > 0) n += sum(u.troops);
   }
   return n;
 }

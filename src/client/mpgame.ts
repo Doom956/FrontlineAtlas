@@ -72,6 +72,8 @@ export class MpGame {
   paused = false;
   /** who paused: a player id (0 = the server) */
   pausedBy: number | null = null;
+  /** the host who continued the finished game (server `gameContinued`), 0 = not continued */
+  continuedBy = 0;
   /** player id of the current host from the server's `pauseState` (-1 = not told yet: canStartNow decides) */
   hostId = -1;
   /** our own pause click not confirmed by the server yet (performance.now() of the click, 0 = none pending) */
@@ -158,6 +160,11 @@ export class MpGame {
       case 'gameOver':
         this.serverOver = msg;
         this.paused = false;
+        break;
+      case 'gameContinued':
+        // the host continued the finished game: turns run again (the continueGame intent comes in a turn)
+        this.serverOver = null;
+        this.continuedBy = msg.by;
         break;
       case 'pauseState':
         this.paused = msg.paused;
@@ -266,6 +273,13 @@ export class MpGame {
   dispatch(action: Action): ActionResult {
     if (!this.state) return { ok: false, reason: 'The game is still loading' };
     if (this.spectator) return { ok: false, reason: 'You are watching this game' };
+    // continuing a finished game (the host; the server checks) and the owner console (an authenticated session; the
+    // server drops it from anyone else) also work after the end / for an eliminated player
+    if (action.type === 'continueGame' || action.type === 'admin') {
+      if (action.type === 'admin' && (this.serverOver || this.state.phase === 'over')) return { ok: false, reason: 'The game is over' };
+      if (!this.net.online) return { ok: false, reason: 'Not connected: reconnecting…' };
+      return this.net.send({ type: 'intent', action }) ? { ok: true } : { ok: false, reason: 'Not connected' };
+    }
     if (!this.canAct()) return { ok: false, reason: this.state.phase === 'over' || this.serverOver ? 'The game is over' : 'You have been eliminated' };
     if (action.type === 'startNow' && !this.canStartNow) return { ok: false, reason: 'Only the host can start early' };
     if (!this.net.online) return { ok: false, reason: 'Not connected: reconnecting…' };
@@ -299,6 +313,17 @@ export class MpGame {
   get canPause(): boolean {
     if (this.spectator) return false;
     return this.hostId >= 0 ? this.hostId === this.playerId : this.canStartNow && this.isPrivate;
+  }
+
+  /**
+   * Who may continue the finished game (the game-over card): the private game's host once the server confirmed the
+   * end ('pending' before that), the others wait for the host; a public game can't be continued.
+   */
+  continueRole(): 'host' | 'guest' | 'pending' | 'none' {
+    const o = this.serverOver;
+    if (!o) return this.isPrivate && this.state?.phase === 'over' ? (this.canPause ? 'pending' : 'guest') : 'none';
+    if (!o.continuable) return 'none';
+    return this.canPause ? 'host' : 'guest';
   }
 
   /** Name of whoever paused (the host): for the "Paused by …" banner. */

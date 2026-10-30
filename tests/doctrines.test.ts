@@ -53,7 +53,7 @@ function give(s: GameState, pid: number, id: DoctrineId, level: 1 | 2 | 3 = 2): 
 const choose = (s: GameState, pid: number, doctrine: DoctrineId) => applyAction(s, pid, { type: 'chooseDoctrine', doctrine });
 const inf = (n: number): Troops => ({ infantry: n, armor: 0, artillery: 0 });
 const fakeBuilding = (owner: number, type: Building['type'], level = 1): Building => ({
-  id: 999, type, owner, tile: 0, level, buildLeft: 0, upgradeLeft: 0, fighters: 0, bombers: 0, cooldown: 0, dropCooldown: 0, disabledUntil: 0, hp: 1,
+  id: 999, type, owner, tile: 0, level, buildLeft: 0, upgradeLeft: 0, fighters: 0, bombers: 0, cooldown: 0, dropCooldown: 0, disabledUntil: 0, hp: 1, queuedLevels: 0,
 });
 
 describe('doctrines: unlock', () => {

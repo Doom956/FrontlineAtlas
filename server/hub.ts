@@ -11,6 +11,7 @@ import type { ServerOptions } from './options';
 import { Room } from './room';
 import type { Member, RoomError, RoomHost, RoomSession } from './room';
 import { parseClientMessage } from './validate';
+import { AdminGate } from './admin';
 
 /** Invalid messages tolerated per connection before it is closed. */
 const MAX_INVALID = 200;
@@ -135,10 +136,13 @@ export class Hub implements RoomHost {
   private nextSessionId = 1;
   private rotation: Record<LobbyKind, number> = { ffa: 0, teams: 0, special: 0 };
   private sweepTimer: ReturnType<typeof setInterval>;
+  /** owner console logins (ADMIN_CODE) */
+  readonly admin: AdminGate;
   private stopped = false;
 
   constructor(opts: ServerOptions) {
     this.opts = opts;
+    this.admin = new AdminGate(opts.adminCode, () => this.now());
     this.sweepTimer = setInterval(() => this.sweep(), opts.sweepMs);
     if (opts.publicLobbies) this.ensurePublicLobbies();
   }
@@ -262,6 +266,13 @@ export class Hub implements RoomHost {
     const report = (e: RoomError): void => {
       if (e) this.error(s, e.code, e.message);
     };
+    if (msg.type === 'adminAuth') {
+      // Owner console: answer only this client; rate-limited tries get no answer at all.
+      const r = this.admin.attempt(s.ip, s.clientId, msg.code);
+      if (r !== 'ignored') s.send({ type: 'adminAuth', ok: r === 'ok' });
+      if (r === 'ok') this.opts.log(`owner console unlocked by a session from ${s.ip}`);
+      return;
+    }
     switch (msg.type) {
       case 'createLobby': {
         if (this.rooms.size >= this.opts.maxRooms) {
@@ -331,7 +342,7 @@ export class Hub implements RoomHost {
         report(room.requestStart(member));
         return;
       case 'intent':
-        report(room.intent(member, msg.action));
+        report(room.intent(member, msg.action, this.admin.isAdmin(s.clientId)));
         return;
       case 'hash':
         report(room.hash(member, msg.turn, msg.hash));
@@ -497,6 +508,7 @@ export class Hub implements RoomHost {
     }
     for (const room of [...this.rooms.values()]) room.sweep(now);
     for (const [ip, t] of this.lastCreate) if (now - t > o.createLobbyCooldownMs) this.lastCreate.delete(ip);
+    this.admin.sweep();
     if (o.publicLobbies) this.ensurePublicLobbies();
     const lobbies = this.publicLobbies();
     const key = JSON.stringify(lobbies);

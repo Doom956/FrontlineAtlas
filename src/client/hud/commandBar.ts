@@ -2,26 +2,26 @@
 //   TROOPS  one big readout (home troops / cap, growth trend) over a thin bar with the growth-peak marker
 //   ATTACK  the share of troops each attack sends: -/+ steppers around a big value, a thin slider ([ and ])
 //   GOLD    gold and its rate; iron, oil and science sit behind one small resources chip that opens on hover
-//   BUILD   four small category icons and icon-only buttons (name, cost, hotkey in the tooltip); the Military tab
-//           also sells warships, bombers and fighters (built at your port / airfield nearest the view)
+//   GOLD    also a small "Spend" button: mercenaries, funding an ally, war bonds (hud/spendPanel.ts)
+//   BUILD   a "Build" button (Tab) opening the build menu, a quick bar of six buildings (pinned / most used) and the
+//           x1 / x3 / x5 count (hud/quickBar.ts, hud/buildMenu.ts); warships, aircraft and tank divisions are in the
+//           menu's Military group
 //   STRIKES a compact icon row next to the build buttons, only while a strike is ready, reloading or aimed
 //           (hud/strikeBar.ts; locked ones live in the Forces drawer with how to unlock them)
-import { buildingAllowed, buildSeconds, mods, researchRule } from '../../sim/rules';
+import { researchRule } from '../../sim/rules';
 import { buildingCost, countBuildings } from '../../sim/buildings';
-import { BUILDINGS, BUILDING_ORDER, TECHS, UNITS } from '../../sim/config';
+import { BUILDINGS, TECHS } from '../../sim/config';
 import { armyTotal, growthPeak } from '../../sim/economy';
 import { hasTech } from '../../sim/tech';
 import { depositCount } from '../../sim/territory';
 import type { BuildingType, GameState, Player, TechId } from '../../sim/types';
 import { formatCount } from '../render/common';
 import { troopsToSend, troopSum } from '../input';
-import { BUYABLE_UNITS, buildUnit, priceText, UNIT_TEXT, unitBuildStatus, type BuyableUnit } from '../forces';
-import { iconDataUrl } from '../icons';
-import { BUILD_TAB_OF, BUILD_TABS, buildingTexts, type BuildTab } from './text';
-import { el, flash, fmtRate, fmtSeconds, setClass, setText, setTip, setVisible, slider, syncSlider, type HudCtx } from './dom';
-import { iconSpan, lineIcon, worldGlyph } from './glyph';
-import { maxLevel } from '../simx';
+import { el, flash, fmtRate, setClass, setText, setTip, setVisible, slider, syncSlider, type HudCtx } from './dom';
+import { iconSpan, lineIcon } from './glyph';
 import { StrikeBar } from './strikeBar';
+import { QuickBar } from './quickBar';
+import { SpendPanel } from './spendPanel';
 
 /** A tech is "close" when it is researched, being researched, or all its prerequisites are done. */
 export function techNear(p: Player, t: TechId | null): boolean {
@@ -40,21 +40,12 @@ export function buildReason(state: GameState, me: Player, type: BuildingType): s
   return '';
 }
 
-/** Category tab icons (line icons, so they read as tabs rather than buildings). */
-const TAB_ICON: Record<BuildTab, string> = { economy: 'gold', military: 'army', defence: 'shield', special: 'star' };
-const TAB_TIP: Record<BuildTab, string> = {
-  economy: 'Economy: cities, farms, markets, mines, wells, labs',
-  military: 'Military: barracks, factories, arsenals, depots, hospitals, and warships, bombers, fighters',
-  defence: 'Defence: forts, watchtowers, SAM sites',
-  special: 'Special: ports, airfields, missile silos',
-};
-
 export class CommandBar {
   readonly el: HTMLElement;
-  private tab: BuildTab = 'economy';
-  private tabBtns = new Map<BuildTab, HTMLButtonElement>();
-  private buildBtns = new Map<BuildingType, HTMLButtonElement>();
-  private unitBtns = new Map<BuyableUnit, HTMLButtonElement>();
+  /** BUILD: the Build button, the quick bar, the count selector; owns the build menu and the Upgrade-area panel */
+  readonly quick: QuickBar;
+  /** GOLD: the Spend button and its panel */
+  readonly spend: SpendPanel;
   private upd: ((s: GameState, me: Player) => void)[] = [];
   private lastTroops = -1;
   private lastGold = -1;
@@ -66,34 +57,38 @@ export class CommandBar {
     this.el = el('div', 'cmdbar');
     this.el.dataset.test = 'command-bar';
     this.strikes = new StrikeBar(ctx);
-    this.el.append(this.troops(), this.attack(), this.gold(), this.build());
+    this.quick = new QuickBar(ctx);
+    this.spend = new SpendPanel(ctx);
+    const build = this.quick.el;
+    build.append(this.strikes.el);
+    this.el.append(this.troops(), this.attack(), this.gold(), build, this.quick.menu.el, this.quick.area.el, this.spend.el);
   }
 
   /** ~5 Hz refresh. */
   update(s: GameState, me: Player): void {
     for (const f of this.upd) f(s, me);
     this.strikes.update(s, me);
+    this.quick.update(s, me);
+    this.spend.update(s, me);
   }
 
   /** Every frame: selection highlight follows the build mode. */
   fast(): void {
     this.strikes.fast();
-    const m = this.ctx.ui.mode;
-    const sel = m.kind === 'build' ? m.building : null;
-    for (const [b, button] of this.buildBtns) setClass(button, 'on', b === sel);
-    if (sel && BUILD_TAB_OF[sel] !== this.tab) this.setTab(BUILD_TAB_OF[sel]);
+    this.quick.fast();
   }
 
-  private setTab(t: BuildTab): void {
-    this.tab = t;
-    for (const [id, b] of this.tabBtns) {
-      setClass(b, 'on', id === t);
-      b.setAttribute('aria-selected', String(id === t));
-      b.tabIndex = id === t ? 0 : -1;
+  /** Closes the build menu or the spend panel; true if one was open (Esc). */
+  closePopups(): boolean {
+    if (this.quick.menu.open) {
+      this.quick.menu.close();
+      return true;
     }
-    for (const [b, button] of this.buildBtns) button.dataset.tab = BUILD_TAB_OF[b] === t ? 'cur' : 'other';
-    for (const [, button] of this.unitBtns) button.dataset.tab = t === 'military' ? 'cur' : 'other';
-    this.ctx.refreshSoon();
+    if (this.spend.open) {
+      this.spend.close();
+      return true;
+    }
+    return false;
   }
 
   // ------------------------------------------------------------------------------------------ troops
@@ -231,7 +226,7 @@ export class CommandBar {
     const iron = chip('iron', 'iron: armor, artillery, military buildings');
     const oil = chip('oil', 'oil: armor and aircraft');
     const sci = chip('science', 'science: research (click)');
-    read.append(res);
+    read.append(res, this.spend.button);
     box.append(head, read);
     setTip(big, 'Gold: a base income plus land and cities; Markets add more. Buildings and research cost gold.');
     this.upd.push((s, me) => {
@@ -258,114 +253,6 @@ export class CommandBar {
       // a resource that runs dry gets a red icon even while the list is closed
       setClass(oil.ic, 'low', this.revealed.oil && me.oil < 1 && me.troops.armor > 0);
     });
-    return box;
-  }
-
-  // ------------------------------------------------------------------------------------------ build bar
-
-  private build(): HTMLElement {
-    const box = el('section', 'cb-sec cb-build');
-    const tabs = el('div', 'tabs');
-    tabs.setAttribute('role', 'tablist');
-    tabs.setAttribute('aria-label', 'Build categories');
-    for (const t of BUILD_TABS) {
-      const b = el('button', 'tab');
-      b.type = 'button';
-      b.setAttribute('role', 'tab');
-      b.setAttribute('aria-label', t.label);
-      b.dataset.test = `tab-${t.id}`;
-      b.dataset.tip = TAB_TIP[t.id];
-      b.append(iconSpan(lineIcon(TAB_ICON[t.id], 13, 1.9)));
-      b.addEventListener('click', () => this.setTab(t.id));
-      b.addEventListener('keydown', (e) => {
-        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-        e.preventDefault();
-        e.stopPropagation();
-        const k = BUILD_TABS.findIndex((x) => x.id === this.tab);
-        const n = BUILD_TABS[(k + (e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? BUILD_TABS.length - 1 : 1)) % BUILD_TABS.length].id;
-        this.setTab(n);
-        this.tabBtns.get(n)?.focus();
-      });
-      this.tabBtns.set(t.id, b);
-      tabs.append(b);
-    }
-    const row = el('div', 'bbar');
-    for (const type of BUILDING_ORDER) {
-      const info = BUILDINGS[type];
-      const b = el('button', 'bb');
-      b.type = 'button';
-      b.dataset.test = `build-${type}`;
-      b.dataset.building = type;
-      b.setAttribute('aria-label', `${info.name} (${info.hotkey})`);
-      b.append(iconSpan(worldGlyph(type, 22), 'bb-ic'));
-      b.addEventListener('click', () => {
-        const m = this.ctx.ui.mode;
-        this.ctx.ui.mode = m.kind === 'build' && m.building === type ? { kind: 'none' } : { kind: 'build', building: type };
-        this.ctx.ui.contextMenu = null;
-      });
-      this.buildBtns.set(type, b);
-      row.append(b);
-      this.upd.push((s, me) => {
-        const c = buildingCost(s, me.id, type);
-        const reason = buildReason(s, me, type);
-        setClass(b, 'disabled', reason !== '');
-        setVisible(b, techNear(me, info.tech) && buildingAllowed(s, type) && b.dataset.tab === 'cur');
-        const owned = countBuildings(s, me.id, type, true);
-        const lv = maxLevel(type);
-        const tx = buildingTexts(mods(s).noNukes, type, info.description);
-        setTip(
-          b,
-          `${info.name}  [${info.hotkey}]  ${formatCount(c.gold)} gold${c.iron ? ` + ${formatCount(c.iron)} iron` : ''}\n${tx.short}.\n${tx.description}` +
-            `\nBuilds in ${fmtSeconds(buildSeconds(s, info.buildTime))}` +
-            (owned ? `. You have ${owned}` : '') +
-            (lv > 1 ? `. Build on one of yours to upgrade it (up to level ${lv})` : '') +
-            (reason ? `\n${reason}` : ''),
-        );
-      });
-    }
-    // units for sale (Military tab): a literal picture with a small "unit" corner, built at the best port / airfield
-    for (const kind of BUYABLE_UNITS) {
-      const b = el('button', 'bb unit');
-      b.type = 'button';
-      b.dataset.test = `buy-${kind}`;
-      b.setAttribute('aria-label', `Build a ${UNITS[kind].name}`);
-      const img = el('img', 'bb-img');
-      img.alt = '';
-      img.width = 24;
-      img.height = 24;
-      img.draggable = false;
-      try {
-        img.src = iconDataUrl(kind, 24);
-      } catch {
-        /* no canvas (tests) */
-      }
-      b.append(img, iconSpan(lineIcon('lock', 10, 2.2), 'bb-lock'));
-      b.addEventListener('click', () => {
-        b.blur();
-        const s = this.ctx.state();
-        const me = this.ctx.me();
-        if (!s || !me) return;
-        const why = buildUnit(s, me, (a) => this.ctx.dispatch(a), kind, { x: this.ctx.camera.x, y: this.ctx.camera.y });
-        if (why) {
-          this.ctx.toast(`${UNITS[kind].name}: ${why}`, 'info');
-          this.ctx.sound('uiError');
-        } else if (kind === 'warship') this.ctx.toast('Warship launched. Click it (or Forces, Y) to select it, then click water to move it.', 'good');
-        else this.ctx.toast(`${UNITS[kind].name} ready at your Airfield. ${kind === 'bomber' ? 'Press X to send it on a bombing run.' : 'It guards the sky around the Airfield.'}`, 'good');
-        this.ctx.refreshSoon();
-      });
-      this.unitBtns.set(kind, b);
-      row.append(b);
-      this.upd.push((s, me) => {
-        const st = unitBuildStatus(s, me, kind, { x: this.ctx.camera.x, y: this.ctx.camera.y });
-        setVisible(b, st.allowed && b.dataset.tab === 'cur');
-        setClass(b, 'locked', st.locked);
-        setClass(b, 'disabled', !st.ok);
-        const t = UNIT_TEXT[kind];
-        setTip(b, `${t.name}  ${priceText(kind, s, me.id)}\n${t.what}\nCounter: ${t.counter}\n${st.ok ? st.line : (st.locked ? 'Locked: ' : '') + st.line}`);
-      });
-    }
-    box.append(tabs, row, this.strikes.el);
-    this.setTab('economy');
     return box;
   }
 }

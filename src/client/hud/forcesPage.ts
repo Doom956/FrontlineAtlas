@@ -3,11 +3,14 @@
 //   Air        per airfield: bombers and fighters stored, room, + Bomber / + Fighter / Bomb / Drop
 //   Missiles   per silo: launches loaded or reload time, Rocket / Atom
 //   Artillery  how much, barrage ready or not: Barrage
+//   Land       tank divisions (strength, what they do: Select), + Tank division (click one of your factories)
 // An empty group says in one line how to unlock it. Rows are rebuilt only when their shape changes (new unit,
 // another button state); the status texts update in place at ~5 Hz, so buttons keep hover and focus.
 import { artilleryOf } from '../../sim/barrage';
 import { aircraftCap, buildingsOf, chargesReady, countBuildings, nextChargeIn } from '../../sim/buildings';
-import { BARRAGE_MIN_ARTILLERY, UNITS } from '../../sim/config';
+import { BARRAGE_MIN_ARTILLERY, TANK_DIVISION_TROOPS, TICKS_PER_SECOND, UNITS } from '../../sim/config';
+import { bestFactory, canBuildTankDivision, tankDivisionCost, tankDivisionLimit } from '../../sim/tanks';
+import { enterTankDivisionBuildMode, enterWarshipSpawnMode, selectAllOf } from '../selection';
 import { buildingAllowed, unitAllowed } from '../../sim/rules';
 import { hasTech } from '../../sim/tech';
 import { unitCost } from '../../sim/units';
@@ -157,6 +160,7 @@ export class ForcesPage implements DrawerPage {
   private air: Group;
   private missiles: Group;
   private artillery: Group;
+  private land: Group;
 
   constructor(private ctx: HudCtx) {
     const say = (t: string) => {
@@ -167,8 +171,9 @@ export class ForcesPage implements DrawerPage {
     this.air = new Group('Air', 'air', say);
     this.missiles = new Group('Missiles', 'missiles', say);
     this.artillery = new Group('Artillery', 'artillery', say);
-    const intro = el('p', 'note', 'Click a unit\'s name to find it. Select a warship, then click water to move it. Transports: click land across the sea. Esc cancels.');
-    this.root.append(intro, this.fleet.el, this.air.el, this.missiles.el, this.artillery.el);
+    this.land = new Group('Land', 'land', say);
+    const intro = el('p', 'note', 'Click a unit\'s name to find it. Select warships or tank divisions (click, Shift+click, Shift+drag a box; Shift+W all warships, Shift+A all divisions), then click where they go. Transports: click land across the sea. Esc cancels.');
+    this.root.append(intro, this.fleet.el, this.land.el, this.air.el, this.missiles.el, this.artillery.el);
   }
 
   private near(): { x: number; y: number } {
@@ -182,12 +187,38 @@ export class ForcesPage implements DrawerPage {
     const s = this.ctx.state();
     const me = this.ctx.me();
     if (!s || !me) return;
+    if (kind === 'warship') {
+      // warships appear where you click (water near one of your ports): selection.ts
+      const no = enterWarshipSpawnMode(this.ctx.ui, s, me);
+      if (no) {
+        this.ctx.toast(`Warship: ${no}`, 'info');
+        this.ctx.sound('uiError');
+      } else this.ctx.closeDrawer();
+      return;
+    }
     const why = buildUnit(s, me, (a) => this.ctx.dispatch(a), kind, this.near());
     if (why) {
       this.ctx.toast(`${UNITS[kind].name}: ${why}`, 'info');
       this.ctx.sound('uiError');
     }
     this.ctx.refreshSoon();
+  }
+  /** Enter the factory click mode for a new tank division (or say why not). */
+  private tankMode(): void {
+    const s = this.ctx.state();
+    const me = this.ctx.me();
+    if (!s || !me) return;
+    const no = enterTankDivisionBuildMode(this.ctx.ui, s, me);
+    if (no) {
+      this.ctx.toast(`Tank division: ${no}`, 'info');
+      this.ctx.sound('uiError');
+    } else this.ctx.closeDrawer();
+  }
+  private selectAll(s: GameState, me: Player, type: 'warship' | 'tankDivision'): void {
+    this.ctx.ui.mode = { kind: 'none' };
+    this.ctx.ui.selection = selectAllOf(s, me.id, type);
+    this.ctx.ui.pendingSpearhead = null;
+    this.ctx.closeDrawer();
   }
   private aim(id: StrikeId, mode?: () => void): void {
     const s = this.ctx.state();
@@ -218,7 +249,7 @@ export class ForcesPage implements DrawerPage {
       const rows: RowSpec[] = [];
       const ships = mine.filter((u) => u.type === 'warship');
       ships.forEach((u, k) => {
-        const sel = ctx.ui.mode.kind === 'moveWarship' && ctx.ui.mode.unitId === u.id;
+        const sel = (ctx.ui.mode.kind === 'moveWarship' && ctx.ui.mode.unitId === u.id) || ctx.ui.selection.includes(u.id);
         rows.push({
           key: `w${u.id}`,
           pic: { unit: 'warship' },
@@ -232,7 +263,9 @@ export class ForcesPage implements DrawerPage {
               cls: sel ? 'on' : '',
               tip: 'Select it, then click water to send it there',
               run: () => {
-                ctx.ui.mode = { kind: 'moveWarship', unitId: u.id };
+                ctx.ui.mode = { kind: 'none' };
+                ctx.ui.selection = [u.id];
+                ctx.ui.pendingSpearhead = null;
                 ctx.ui.contextMenu = null;
                 const cur = ctx.state()?.units.find((q) => q.id === u.id);
                 if (cur) ctx.focusTile(this.tileOf(s, cur), false);
@@ -253,8 +286,62 @@ export class ForcesPage implements DrawerPage {
           ? ''
           : st.locked
             ? `Warships: ${UNIT_TEXT.warship.unlock.toLowerCase()}.`
-            : 'No warships yet: + Warship builds one at your Port.';
+            : 'No warships yet: + Warship, then click water near your Port.';
+      if (ships.length > 1) head.push({ label: 'All', tip: 'Select every warship (Shift+W)', run: () => this.selectAll(s, me, 'warship') });
       this.fleet.set(head, rows, empty, focus);
+    }
+
+    // ---- land: tank divisions
+    {
+      const rows: RowSpec[] = [];
+      const tanks = mine.filter((u) => u.type === 'tankDivision');
+      tanks.forEach((u, k) => {
+        const sel = ctx.ui.selection.includes(u.id);
+        rows.push({
+          key: `d${u.id}`,
+          pic: { unit: 'armor' },
+          title: `Tank division ${k + 1}`,
+          status: unitDoing(s, me, u),
+          tile: this.tileOf(s, u),
+          acts: [
+            {
+              label: sel ? 'Selected' : 'Select',
+              cls: sel ? 'on' : '',
+              off: u.state === 3 ? 'In a spearhead: it takes no orders until it ends' : '',
+              tip: 'Select it, then click your land to move it or enemy land at your border to launch a spearhead',
+              run: () => {
+                ctx.ui.mode = { kind: 'none' };
+                ctx.ui.selection = [u.id];
+                ctx.ui.pendingSpearhead = null;
+                ctx.ui.contextMenu = null;
+                ctx.focusTile(this.tileOf(s, u), false);
+                ctx.closeDrawer();
+              },
+            },
+          ],
+        });
+      });
+      const building = (s.unitQueue ?? []).filter((q) => q.type === 'tankDivision' && q.owner === me.id);
+      building.forEach((q) => {
+        rows.push({ key: `q${q.id}`, pic: { unit: 'armor' }, title: 'Tank division', status: `Being built: ${Math.max(0, Math.ceil((q.readyTick - s.tick) / TICKS_PER_SECOND))} s`, tile: q.site, acts: [] });
+      });
+      const c = tankDivisionCost(s, me.id);
+      const limit = tankDivisionLimit(s, me.id);
+      const can = canBuildTankDivision(s, me.id, Math.max(0, bestFactory(s, me.id)));
+      const noFactory = bestFactory(s, me.id) < 0;
+      const off = noFactory ? 'Build a Factory first: tank divisions are built at one' : can.ok ? '' : can.reason ?? 'Not possible now';
+      const head: Act[] = [
+        {
+          label: 'Tank division',
+          icon: 'plus',
+          off,
+          tip: `Tank division: ${formatCount(c.gold)} gold, ${c.iron} iron, ${c.oil} oil and ${formatCount(TANK_DIVISION_TROOPS.armor)} armor with an escort from your army. One per Factory level (${limit} now). Click one of your factories.`,
+          run: () => this.tankMode(),
+        },
+      ];
+      if (tanks.length > 1) head.push({ label: 'All', tip: 'Select every tank division (Shift+A)', run: () => this.selectAll(s, me, 'tankDivision') });
+      const empty = tanks.length || building.length ? '' : hasTech(me, 'mechanization') ? 'No tank divisions yet: + Tank division, then click one of your factories.' : 'Tank divisions: research Mechanization and build a Factory.';
+      this.land.set(head, rows, empty, focus);
     }
 
     // ---- air

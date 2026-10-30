@@ -106,6 +106,11 @@ The published page lives at https://doom956.github.io/FrontlineAtlas/ (the GitHu
 5. Press **T** to open research and pick a tech.
 6. Watch your supply (press **B**), keep fronts close to cities or depots, and click a nation in the standings (or
    right-click its land) for alliances, gifts and embargoes.
+7. Warships are placed on the water you click near one of your ports; patrolling warships chase enemy ships that
+   come close and return to their post. Tank divisions (built at a Factory, Mechanization) drive over your land and,
+   sent at enemy land on your border, punch a narrow, fast spearhead through it (stopped by mountains and forts
+   unless they bring artillery).
+8. After a win (or a loss) you can keep playing: the result stays recorded and the game no longer ends.
 
 Hover any tile for what its terrain and resource do; press **L** for the map key. The advisor line above the bottom
 bar suggests a next step (switch it off in the menu), and the first game starts with a short tutorial.

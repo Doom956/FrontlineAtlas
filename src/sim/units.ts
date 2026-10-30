@@ -78,6 +78,18 @@ import { recordTileChange } from './changes';
 import { addEvent, newId, setOwner } from './state';
 import { onFalloutChange, ownedTilesOf } from './territory';
 import { hasTech } from './tech';
+import {
+  interceptByCarriers,
+  strategicBurn,
+  techAirSpeedMul,
+  techBombBuildingHit,
+  techBombRadiusMul,
+  techBomberExtraHp,
+  techShipDamageMul,
+  techTradeGoldMul,
+} from './techtree';
+import { chaseTargetInRange, interceptStep } from './navy';
+import { bombDivisions } from './tanks';
 import { doctrineLess, doctrineLever, doctrineMore, doctrinePerk } from './doctrines';
 import { TROOP_TYPES, isWater } from './types';
 import type { ActionResult, Building, BuildingType, GameState, Troops, Unit, UnitType } from './types';
@@ -465,6 +477,22 @@ export function buildWarship(state: GameState, playerId: number, portTile: numbe
   return { ok: true };
 }
 
+/**
+ * A warship of `owner` appears on water tile `water` (home = the port tile), patrolling there. Used by queued orders
+ * (navy.ts) and the owner console.
+ */
+export function spawnWarshipAt(state: GameState, owner: number, port: number, water: number): Unit {
+  const u = makeUnit(state, 'warship', owner, port, water);
+  const w = state.map.width;
+  u.x = water % w;
+  u.y = (water / w) | 0;
+  u.path = [water];
+  u.pathPos = 1;
+  u.cargo = water;
+  state.units.push(u);
+  return u;
+}
+
 export function moveWarship(state: GameState, playerId: number, unitId: number, tile: number): ActionResult {
   const u = state.units.find((q) => q.id === unitId);
   if (!u || u.type !== 'warship' || u.owner !== playerId || u.hp <= 0) return FAIL('No such warship');
@@ -478,6 +506,8 @@ export function moveWarship(state: GameState, playerId: number, unitId: number, 
   u.pathPos = 0;
   u.target = path[path.length - 1];
   u.state = 1;
+  u.chase = 0;
+  u.chaseLost = 0;
   return { ok: true };
 }
 
@@ -537,12 +567,14 @@ function warPairs(state: GameState): Set<number> {
 }
 
 function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<number>): void {
+  // Auto-intercept (navy.ts): a patrolling ship may leave its post to chase an enemy ship (state 2), then return.
+  interceptStep(state, u, ships, wars);
   // Movement: sail to the commanded point, then patrol around it.
   if (followPath(state, u, UNITS.warship.speed * doctrineMore(state, u.owner, 'warshipSpeed'))) {
     if (u.state === 1) {
       u.state = 0;
       u.cargo = shipTile(state, u);
-    } else if (state.rng() < WARSHIP_WANDER_CHANCE) {
+    } else if (u.state === 0 && state.rng() < WARSHIP_WANDER_CHANCE) {
       wander(state, u);
     }
   }
@@ -568,9 +600,11 @@ function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<numbe
       target = s;
     }
   }
+  // A chasing ship shoots the ship it chases once it is in range.
+  target = chaseTargetInRange(u, ships, WARSHIP_RANGE) ?? target;
   const showShot = (state.tick + u.id) % (WARSHIP_FIGHT_TICKS * 2) === 0;
   if (target) {
-    target.hp -= WARSHIP_DAMAGE_PER_S * dt;
+    target.hp -= WARSHIP_DAMAGE_PER_S * dt * techShipDamageMul(state, u.owner); // Submarines (techtree.ts)
     if (showShot) state.effects.push({ kind: 'shot', x: u.x + 0.5, y: u.y + 0.5, x2: target.x + 0.5, y2: target.y + 0.5, radius: 0.5, tick: state.tick });
     if (target.hp <= 1e-9) sinkUnit(state, target, u.owner);
     return;
@@ -670,7 +704,7 @@ function deliverTrade(state: GameState, u: Unit): void {
     if (!p || id === 0 || !p.alive) continue;
     // Allies trade on better terms (ALLY_TRADE_BONUS).
     const allied = u.targetOwner !== u.owner && areAllied(state, u.owner, u.targetOwner);
-    const gold = u.cargo * doctrineMore(state, id, 'tradeGold') * (allied ? 1 + ALLY_TRADE_BONUS : 1);
+    const gold = u.cargo * doctrineMore(state, id, 'tradeGold') * (allied ? 1 + ALLY_TRADE_BONUS : 1) * techTradeGoldMul(state, id); // Free Trade
     p.gold += gold;
     p.stats.goldEarned += gold;
     if (!p.isHuman) continue;
@@ -732,6 +766,7 @@ export function launchBomber(state: GameState, playerId: number, airfieldTile: n
   b.bombers--;
   const u = makeUnit(state, 'bomber', playerId, airfieldTile, tile);
   if (doctrinePerk(state, playerId, 'air')) u.hp += DOCTRINE_PERKS.air.bomberExtraHp; // Air level 3: takes an extra hit
+  u.hp += techBomberExtraHp(state, playerId); // Jet Engines (techtree.ts)
   u.targetOwner = target;
   state.units.push(u);
   return { ok: true };
@@ -747,18 +782,20 @@ function dropBombs(state: GameState, u: Unit): void {
   const tile = u.target;
   const owner = map.owner[tile];
   const w = map.width;
-  state.effects.push({ kind: 'explosion', x: (tile % w) + 0.5, y: ((tile / w) | 0) + 0.5, radius: BOMBER_RADIUS, tick: state.tick });
+  const bombR = BOMBER_RADIUS * techBombRadiusMul(state, u.owner); // Strategic Bombing (techtree.ts)
+  const hitChance = techBombBuildingHit(state, u.owner, BOMBER_BUILDING_HIT);
+  state.effects.push({ kind: 'explosion', x: (tile % w) + 0.5, y: ((tile / w) | 0) + 0.5, radius: bombR, tick: state.tick });
   if (!hostile(state, u.owner, owner) || !state.players[owner].alive) return;
   let destroyed = 0;
   const hit = new Map<number, number>(); // hostile owner -> tiles in radius
   let hitTiles = 0;
-  forEachInRadius(map, tile, BOMBER_RADIUS, (i) => {
+  forEachInRadius(map, tile, bombR, (i) => {
     const o = map.owner[i];
     if (!hostile(state, u.owner, o)) return;
     hit.set(o, (hit.get(o) ?? 0) + 1);
     hitTiles++;
     const b = buildingAt(state, i);
-    if (b && hostile(state, u.owner, b.owner) && state.rng() < BOMBER_BUILDING_HIT) {
+    if (b && hostile(state, u.owner, b.owner) && state.rng() < hitChance) {
       destroyBuilding(state, b);
       destroyed++;
     }
@@ -770,8 +807,11 @@ function dropBombs(state: GameState, u: Unit): void {
     const kill = Math.max((BOMBER_MIN_KILL * n) / hitTiles, BOMBER_TROOP_KILL * troopTotal(p.troops) * share);
     killed += killTroops(state, o, kill, u.owner, false);
   }
+  // Tank divisions caught in the blast lose troops (tanks.ts).
+  bombDivisions(state, u.owner, tile);
+  const burnt = strategicBurn(state, u.owner, hit.keys()); // Strategic Bombing: gold and iron burn
   const me = state.players[u.owner];
-  const msg = `${me.name} bombed ${state.players[owner].name}: ${destroyed} building${destroyed === 1 ? '' : 's'} destroyed, ${Math.round(killed)} troops killed`;
+  const msg = `${me.name} bombed ${state.players[owner].name}: ${destroyed} building${destroyed === 1 ? '' : 's'} destroyed, ${Math.round(killed)} troops killed${burnt >= 1 ? `, ${Math.round(burnt)} gold burnt` : ''}`;
   addEvent(state, 'bombing', msg, [u.owner, ...hit.keys()], tile);
 }
 
@@ -1202,13 +1242,13 @@ export function updateUnits(state: GameState): void {
         updateWarship(state, u, ships, wars);
         break;
       case 'bomber':
-        if (moveStraight(state, u, u.state === 0 ? u.target : u.home, UNITS.bomber.speed)) arrived.add(u);
+        if (moveStraight(state, u, u.state === 0 ? u.target : u.home, UNITS.bomber.speed * techAirSpeedMul(state, u.owner))) arrived.add(u);
         threats.push(u);
         break;
       case 'rocket':
       case 'atomBomb':
       case 'transportPlane':
-        if (moveStraight(state, u, u.target, UNITS[u.type].speed)) arrived.add(u);
+        if (moveStraight(state, u, u.target, UNITS[u.type].speed * (u.type === 'transportPlane' ? techAirSpeedMul(state, u.owner) : 1))) arrived.add(u);
         threats.push(u);
         break;
       case 'fighter':
@@ -1219,6 +1259,7 @@ export function updateUnits(state: GameState): void {
   }
 
   interceptThreats(state, threats, sams, airfields);
+  interceptByCarriers(state, threats, units); // Carriers (techtree.ts): warships shoot down planes too
   for (const u of threats) {
     if (u.hp <= 0 || !arrived.has(u) || !players[u.owner]?.alive) continue;
     if (u.type === 'bomber') {

@@ -17,12 +17,15 @@ export class UnitCard {
   private range = el('div', 'uc-r', `Fights ships within ${WARSHIP_RANGE} tiles, shells enemy coasts within ${WARSHIP_RANGE / 2} while at war`);
   private shown = -1;
   private lastMs = 0;
+  private img: HTMLImageElement;
+  private imgType = 'warship';
 
   constructor(private ctx: HudCtx) {
     this.el = el('div', 'ucard hidden');
     this.el.dataset.test = 'unit-card';
     this.el.setAttribute('role', 'status');
     const img = el('img', 'uc-ic');
+    this.img = img;
     img.alt = '';
     img.width = 26;
     img.height = 26;
@@ -38,7 +41,11 @@ export class UnitCard {
     x.type = 'button';
     x.setAttribute('aria-label', 'Deselect (Esc)');
     x.append(iconSpan(lineIcon('close', 12, 2)));
-    x.addEventListener('click', () => (ctx.ui.mode = { kind: 'none' }));
+    x.addEventListener('click', () => {
+      ctx.ui.mode = { kind: 'none' };
+      ctx.ui.selection = [];
+      ctx.ui.pendingSpearhead = null;
+    });
     head.append(img, tt, x);
     this.hp.append(this.hpFill);
     this.el.append(head, this.hp, this.order, this.range);
@@ -49,7 +56,9 @@ export class UnitCard {
     const now = performance.now();
     const force = now - this.lastMs > 200;
     const m = this.ctx.ui.mode;
-    const id = m.kind === 'moveWarship' ? m.unitId : -1;
+    // the warship picked from the Forces drawer, or the one unit selected on the map (selection.ts)
+    const sel = this.ctx.ui.selection;
+    const id = m.kind === 'moveWarship' ? m.unitId : m.kind === 'none' && sel.length === 1 ? sel[0] : -1;
     const u = id >= 0 ? state.units.find((q) => q.id === id && q.hp > 0) : undefined;
     if (!u) {
       if (id >= 0 && m.kind === 'moveWarship') this.ctx.ui.mode = { kind: 'none' }; // sunk while selected
@@ -60,10 +69,21 @@ export class UnitCard {
     if (force || this.shown !== id) {
       this.shown = id;
       this.lastMs = now;
-      const ships = state.units.filter((q) => q.owner === me.id && q.type === 'warship');
-      setText(this.title, `Warship ${ships.indexOf(u) + 1}`);
+      const tank = u.type === 'tankDivision';
+      const same = state.units.filter((q) => q.owner === me.id && q.type === u.type);
+      setText(this.title, `${tank ? 'Tank division' : 'Warship'} ${same.indexOf(u) + 1}`);
       setText(this.sub, 'Yours · selected');
-      this.hpFill.style.width = `${Math.round((Math.max(0, u.hp) / UNITS.warship.hp) * 100)}%`;
+      if (this.imgType !== u.type) {
+        this.imgType = u.type;
+        try {
+          this.img.src = iconDataUrl(tank ? 'armor' : 'warship', 26);
+        } catch {
+          /* no canvas */
+        }
+      }
+      setVisible(this.hp, !tank);
+      setVisible(this.range, !tank);
+      this.hpFill.style.width = `${Math.round((Math.max(0, u.hp) / UNITS[u.type].hp) * 100)}%`;
       this.hp.dataset.tip = `Hull ${hpText(u)}`;
       setText(this.order, unitDoing(state, me, u));
     }

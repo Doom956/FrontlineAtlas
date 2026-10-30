@@ -73,7 +73,7 @@ const idx = (x: number, y: number): number => y * W + x;
 /** Places a finished building directly (no cost, no validation). */
 function addBuilding(state: GameState, owner: number, tile: number, type: BuildingType, level = 1): Building {
   const id = state.nextId++;
-  const b: Building = { id, type, owner, tile, level, buildLeft: 0, upgradeLeft: 0, fighters: 0, bombers: 0, cooldown: 0, dropCooldown: 0, disabledUntil: 0, hp: 1 };
+  const b: Building = { id, type, owner, tile, level, buildLeft: 0, upgradeLeft: 0, fighters: 0, bombers: 0, cooldown: 0, dropCooldown: 0, disabledUntil: 0, hp: 1, queuedLevels: 0 };
   state.buildings.set(id, b);
   state.map.building[tile] = id + 1;
   return b;

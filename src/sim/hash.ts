@@ -85,6 +85,24 @@ export function hashState(state: GameState): number {
       h = mixInt(h, d.adaptUntilTick);
       h = mixInt(h, d.lastSwitchTick);
     }
+    // Gold uses (spending.ts) and the Carriers timer (techtree.ts).
+    const sp = p.spend;
+    if (sp) {
+      h = mixFloat(h, sp.mercRecent);
+      h = mixInt(h, sp.mercWindowTick);
+      h = mixInt(h, sp.bondsUntil);
+      h = mixInt(h, sp.bondsReadyTick);
+      h = mixInt(h, sp.carrierReadyTick);
+    }
+  }
+  // Funded allies (spending.ts).
+  const funds = state.allyFunds ?? [];
+  h = mixInt(h, funds.length);
+  for (const f of funds) {
+    h = mixInt(h, f.from);
+    h = mixInt(h, f.ally);
+    h = mixFloat(h, f.bonus);
+    h = mixInt(h, f.untilTick);
   }
   h = mixInt(h, state.alliances.length);
   for (const al of state.alliances) {
@@ -124,6 +142,38 @@ export function hashState(state: GameState): number {
     h = mixInt(h, Math.round(u.y * 100));
     h = mixFloat(h, u.hp);
     h = mixTroops(h, u.troops);
+    // Orders and chase / spearhead state (navy.ts, tanks.ts).
+    h = mixInt(h, u.state);
+    h = mixInt(h, u.target);
+    h = mixInt(h, u.pathPos);
+    h = mixInt(h, u.path.length);
+    h = mixFloat(h, u.cargo);
+    h = mixInt(h, u.chase ?? 0);
+    h = mixInt(h, u.chaseLost ?? 0);
+    h = mixInt(h, u.launch ?? -1);
+    h = mixFloat(h, u.strength0 ?? -1);
+  }
+  // Units under construction (navy.ts, tanks.ts).
+  const queue = state.unitQueue ?? [];
+  h = mixInt(h, queue.length);
+  for (const q of queue) {
+    h = mixInt(h, q.id);
+    h = mixInt(h, q.owner);
+    h = mixInt(h, q.tile);
+    h = mixInt(h, q.readyTick);
+    h = mixTroops(h, q.troops);
+  }
+  // A continued game, the owner console's switches and the settings it can change (admin.ts).
+  h = mixInt(h, state.continued ? 1 : 0);
+  const ad = state.admin;
+  if (ad) {
+    h = mixInt(h, (ad.aiFrozen ? 1 : 0) | 4);
+    for (const list of [ad.aiPassive, ad.godMode, ad.revealIntel]) {
+      h = mixInt(h, list.length);
+      for (const id of list) h = mixInt(h, id);
+    }
+    h = mixStr(h, state.settings.difficulty);
+    h = mixFloat(h, state.settings.modifiers.peaceMinutes);
   }
   for (const b of state.barrages) {
     h = mixInt(h, b.id);
@@ -142,6 +192,12 @@ export function hashState(state: GameState): number {
     h = mixFloat(h, b.dropCooldown);
     h = mixInt(h, b.disabledUntil);
     h = mixFloat(h, b.hp);
+    // Bulk build queue (bulkbuild.ts).
+    h = mixInt(h, b.queuedLevels || 0);
+    if (b.queuedPaid) {
+      h = mixFloat(h, b.queuedPaid.gold);
+      h = mixFloat(h, b.queuedPaid.iron);
+    }
   }
   return h >>> 0;
 }

@@ -218,7 +218,7 @@ describe('supply', () => {
     // A city is a source too.
     expect(supplyEfficiency(s, 1, at(s, 300, 1))).toBeLessThan(1);
     const id = s.nextId++;
-    s.buildings.set(id, { id, type: 'city', owner: 1, tile: at(s, 290, 0), level: 1, buildLeft: 0, upgradeLeft: 0, fighters: 0, bombers: 0, cooldown: 0, dropCooldown: 0, disabledUntil: 0, hp: 1 });
+    s.buildings.set(id, { id, type: 'city', owner: 1, tile: at(s, 290, 0), level: 1, buildLeft: 0, upgradeLeft: 0, fighters: 0, bombers: 0, cooldown: 0, dropCooldown: 0, disabledUntil: 0, hp: 1, queuedLevels: 0 });
     s.map.building[at(s, 290, 0)] = id + 1;
     expect(supplyEfficiency(s, 1, at(s, 300, 1))).toBe(1);
     updateSupply(s); // harmless

@@ -197,6 +197,10 @@ export class Room {
   /** when the host's seat was last seen without a connection during the game (null = connected) */
   private hostGoneSince: number | null = null;
   private overAt = 0;
+  /** finished private game its host may still continue (continueAfterEnd) */
+  private continuable = false;
+  /** the host continued the game after it ended: game-over reports are ignored from then on */
+  continued = false;
   winner = 0;
   closed = false;
 
@@ -601,7 +605,15 @@ export class Room {
     }
   }
 
-  intent(m: Member, action: Action): RoomError {
+  intent(m: Member, action: Action, isAdmin = false): RoomError {
+    // Owner console: only from a session that proved the code (server/admin.ts); dropped from anyone else.
+    if (action.type === 'admin' && !isAdmin) return err('notAllowed', 'Not allowed');
+    if (action.type === 'continueGame') {
+      if (m.spectator || m.playerId <= 0 || this.isPublic || m.memberId !== this.hostMemberId) {
+        return err('notHost', 'Only the host can continue the game');
+      }
+      if (this.phase === 'over') return this.continueAfterEnd(m, action);
+    }
     if (this.phase !== 'running') return err('notAllowed', 'The game is not running');
     if (m.spectator || m.playerId <= 0) return err('notAllowed', 'Spectators cannot act');
     if (this.paused) return err('notAllowed', 'The game is paused');
@@ -626,6 +638,29 @@ export class Room {
     m.intentTokens--;
     m.intentsThisTurn++;
     this.pending.push({ playerId: m.playerId, action });
+    return null;
+  }
+
+  /**
+   * The host continues a private game the majority ended ('finished'), within continueWindowMs: turns run again with
+   * the continueGame intent in the next turn, and everyone hears `gameContinued`.
+   */
+  private continueAfterEnd(m: Member, action: Action): RoomError {
+    const now = this.host.now();
+    if (!this.continuable || now - this.overAt > this.host.opts.continueWindowMs) return err('notAllowed', 'This game can no longer be continued');
+    this.phase = 'running';
+    this.continued = true;
+    this.continuable = false;
+    this.overVotes.clear();
+    this.emptySince = null;
+    this.paused = false;
+    m.intentsThisTurn++;
+    this.pending.push({ playerId: m.playerId, action });
+    this.loopStart = now - this.turnCount * this.host.opts.turnMs;
+    if (!this.timer) this.scheduleNext();
+    const msg: ServerMessage = { type: 'gameContinued', by: m.playerId, turn: this.turnCount };
+    for (const x of this.members) x.session?.send(msg);
+    this.host.opts.log(`game ${this.code} continued by player ${m.playerId} at turn ${this.turnCount}`);
     return null;
   }
 
@@ -830,6 +865,8 @@ export class Room {
    */
   reportGameOver(m: Member, turn: number, winner: number): RoomError {
     if (this.phase !== 'running') return null;
+    // A continued game never ends by victory again (the sims keep the first result).
+    if (this.continued) return null;
     if (m.spectator || m.desynced) return null;
     if (turn >= this.turnCount) return err('badMessage', 'Game over for a turn that was not sent yet');
     const s = this.startInfo?.settings;
@@ -864,7 +901,10 @@ export class Room {
     this.overAt = this.host.now();
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    // Only a private game the players finished can be continued (by its host, continueAfterEnd).
+    this.continuable = reason === 'finished' && !this.isPublic && this.hostMemberId >= 0;
     const msg: ServerMessage = { type: 'gameOver', reason, winner, turn: this.turnCount - 1 };
+    if (this.continuable) msg.continuable = true;
     for (const m of this.members) m.session?.send(msg);
     this.host.opts.log(`game ${this.code} over (${reason}), winner ${winner}, ${this.turnCount} turns`);
   }
@@ -891,7 +931,8 @@ export class Room {
       this.sweepHost(now);
       if (now - this.startedAt > o.maxGameMs) this.finish('maxDuration', 0);
     } else if (this.phase === 'over') {
-      if (now - this.overAt > o.gameOverLingerMs) this.close('');
+      const linger = this.continuable ? Math.max(o.gameOverLingerMs, o.continueWindowMs) : o.gameOverLingerMs;
+      if (now - this.overAt > linger) this.close('');
     }
   }
 

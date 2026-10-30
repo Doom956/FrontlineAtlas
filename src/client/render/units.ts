@@ -42,7 +42,7 @@ export class UnitLayer {
   private lastTick = -1;
   private lastTickMs = 0;
   private w = 0;
-  /** own warships drawn last frame: id, screen x, y, radius */
+  /** own warships and tank divisions drawn last frame: id, screen x, y, radius */
   private hits: number[] = [];
   /** every unit drawn last frame: id, screen x, y, radius (hover cards for any unit) */
   private allHits: number[] = [];
@@ -52,6 +52,8 @@ export class UnitLayer {
   drawn = 0;
   /** Own warship to ring (hovered or picked); set by the renderer, -1 for none. */
   focusId = -1;
+  /** Selected own units (warships, tank divisions) to ring; set by the renderer from ui.selection. */
+  selected: ReadonlySet<number> = new Set();
 
   reset(w: number): void {
     this.tracks.clear();
@@ -124,7 +126,7 @@ export class UnitLayer {
     if (this.drops.length > 24) this.drops.splice(0, this.drops.length - 24);
   }
 
-  /** Id of your own warship drawn under the screen point, or -1. */
+  /** Id of your own warship or tank division drawn under the screen point, or -1. */
   ownWarshipAt(sx: number, sy: number): number {
     let best = -1;
     let bd = Infinity;
@@ -139,6 +141,18 @@ export class UnitLayer {
       }
     }
     return best;
+  }
+
+  /** Ids of your own warships and tank divisions drawn inside a screen rectangle (Shift+drag box selection). */
+  ownUnitsIn(x0: number, y0: number, x1: number, y1: number): number[] {
+    const lx = Math.min(x0, x1);
+    const hx = Math.max(x0, x1);
+    const ly = Math.min(y0, y1);
+    const hy = Math.max(y0, y1);
+    const out: number[] = [];
+    const h = this.hits;
+    for (let k = 0; k < h.length; k += 4) if (h[k + 1] >= lx && h[k + 1] <= hx && h[k + 2] >= ly && h[k + 2] <= hy) out.push(h[k]);
+    return out;
   }
 
   /** Id of any unit drawn under the screen point (the closest), or -1. */
@@ -225,14 +239,15 @@ export class UnitLayer {
       strokeGlyphs(ctx, list, css(c), css(c, 0.22), UNDER, lw);
       this.drawn += list.length;
     }
-    // own warships: a tiny white tick under the hull, a ring while hovered or picked; clickable (hit area larger than the drawing)
+    // own warships and tank divisions: a tiny white tick under the hull, a ring while hovered, picked or selected
+    // (selection.ts); clickable (hit area larger than the drawing)
     if (me > 0) {
       ctx.beginPath();
       let ring = false;
       for (const e of visible) {
-        if (e.u.owner !== me || e.type !== 'warship') continue;
+        if (e.u.owner !== me || (e.type !== 'warship' && e.type !== 'tankDivision')) continue;
         const r = e.S + 3;
-        if (e.u.id === this.focusId) {
+        if (e.u.id === this.focusId || this.selected.has(e.u.id)) {
           ctx.moveTo(e.x + r, e.y);
           ctx.arc(e.x, e.y, r, 0, Math.PI * 2);
           ring = true;

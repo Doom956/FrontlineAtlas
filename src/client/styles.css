@@ -4448,3 +4448,245 @@ strong {
   text-transform: none;
   letter-spacing: 0;
 }
+
+/* ---------------------------------------------------------------- continue after the end (hud/gameOverContinue.ts) */
+.over-cont {
+  display: contents;
+}
+.over-wait {
+  align-self: center;
+  color: var(--dim);
+  font: 600 14px/1 var(--f-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.cluster .vchip {
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  font: 600 12px/1 var(--f-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brass-hi);
+  white-space: nowrap;
+}
+.cluster .vchip.hidden {
+  display: none;
+}
+.vchip .sw {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+/* ---------------------------------------------------------------- owner console (adminConsole.ts) */
+.adm-line {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: rgba(8, 10, 12, 0.88);
+  border: 1px solid var(--rule);
+  font: 12px/1 ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+  color: var(--faint);
+  z-index: 40;
+}
+.adm-line .adm-in {
+  width: 180px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--brass-hi);
+  font: inherit;
+}
+.adm-panel {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  bottom: 12px;
+  width: 420px;
+  max-width: calc(100vw - 24px);
+  display: flex;
+  flex-direction: column;
+  background-color: rgba(17, 20, 23, 0.97);
+  background-image: var(--grain);
+  border: 1px solid var(--rule-hi);
+  border-left: 3px solid var(--signal);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  z-index: 40;
+  font-size: 12px;
+}
+.adm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px 6px 12px;
+  border-bottom: 1px solid var(--rule);
+}
+.adm-title {
+  font: 700 15px/1 var(--f-label);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--signal);
+}
+.adm-x {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--rule);
+  background: var(--metal-2);
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.adm-target,
+.adm-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 12px;
+}
+.adm-target {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--rule);
+}
+.adm-k {
+  min-width: 56px;
+  color: var(--dim);
+  font: 600 11px/1 var(--f-label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.adm-v {
+  min-width: 64px;
+  color: var(--brass-hi);
+  font-variant-numeric: tabular-nums;
+}
+.adm-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--rule);
+}
+.adm-tab {
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--dim);
+  font: 600 11px/1 var(--f-label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.adm-tab:hover {
+  color: var(--text);
+  border-color: var(--rule);
+}
+.adm-tab.on {
+  color: var(--brass-ink);
+  background: var(--brass);
+}
+.adm-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0 8px;
+}
+.adm-sec {
+  padding: 10px 12px 4px;
+  color: var(--text);
+  font: 600 12px/1 var(--f-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.adm-btn {
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--rule-hi);
+  background: var(--metal-2);
+  color: var(--text);
+  font: 600 11px/1 var(--f-label);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.adm-btn:hover:not(:disabled) {
+  border-color: var(--brass-lo);
+  background: var(--metal-3);
+}
+.adm-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.adm-btn.q {
+  min-width: 44px;
+}
+.adm-btn.wide {
+  flex: 1;
+}
+.adm-btn.danger {
+  border-color: var(--signal-d);
+  color: #f2a395;
+}
+.adm-num,
+.adm-sel {
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--rule);
+  background: var(--ink);
+  color: var(--text);
+  font: 12px/1 var(--f-ui);
+  user-select: text;
+}
+.adm-sel {
+  max-width: 190px;
+}
+.adm-range {
+  width: 140px;
+}
+.adm-seg {
+  display: flex;
+  gap: 2px;
+}
+.adm-tog {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.adm-status {
+  min-height: 26px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--rule);
+  color: var(--olive);
+}
+.adm-status.bad {
+  color: #f2a395;
+}
+.adm-debug {
+  position: absolute;
+  right: 12px;
+  top: 56px;
+  padding: 6px 8px;
+  background: rgba(8, 10, 12, 0.85);
+  border: 1px solid var(--rule);
+  color: #b8e0a0;
+  font: 11px/1.35 ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+  white-space: pre;
+  pointer-events: none;
+  z-index: 30;
+}
+.hud > .adm {
+  pointer-events: none;
+}
+.adm > * {
+  pointer-events: auto;
+}
+.adm > .adm-debug {
+  pointer-events: none;
+}

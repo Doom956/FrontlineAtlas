@@ -103,7 +103,11 @@ import { doctrineLess, doctrineLever, doctrineMore, doctrinePerk } from './doctr
 import { nearestTile } from './grid';
 import { addEvent, gameSeconds, newId, setOwner } from './state';
 import { hasTech } from './tech';
+import { techFrontSpeedMul, techLossMul, techSupplyRangeMul } from './techtree';
+import { attackBonusMul } from './spending';
 import { borderTiles, landComponents } from './territory';
+import { tankDefenseAt } from './tanks';
+import { isProtected } from './admin';
 import { TROOP_TYPES, Terrain, isTribe, isWater } from './types';
 import type { ActionResult, Attack, GameState, Player, TerrainId, TroopType, Troops } from './types';
 
@@ -205,7 +209,7 @@ function combinedArms(p: Player, t: Troops, tot: number): number {
 // (capital, finished cities and depots, live beachheads). No path search; sources are cached per player and
 // rebuilt when the buildings, the capital or the beachheads change.
 function supplyRange(p: Player): number {
-  return SUPPLY_RANGE * (hasTech(p, 'logistics') ? LOGISTICS_RANGE : 1);
+  return SUPPLY_RANGE * (hasTech(p, 'logistics') ? LOGISTICS_RANGE : 1) * techSupplyRangeMul(p);
 }
 
 interface Beachhead {
@@ -526,7 +530,8 @@ function fightCtx(state: GameState, attackerId: number, troops: Troops, defender
     defender,
     troops,
     odds,
-    lossFactor: lossFactorFor(defender, odds),
+    // Trench Warfare / Propaganda of the defender (techtree.ts) make taking its land cost more.
+    lossFactor: lossFactorFor(defender, odds) * techLossMul(state, attackerId, defender),
     density: dp ? total(dp.troops) / Math.max(1, dp.tiles) : 0,
     traitor: dp ? isTraitor(state, defender) : false,
     tribeTarget: !!dp && isTribe(dp),
@@ -534,7 +539,8 @@ function fightCtx(state: GameState, attackerId: number, troops: Troops, defender
     w0: troops.infantry > 0 ? troops.infantry * inv * typeAttack(state, p, 'infantry') * matchupVs('infantry', against) : 0,
     w1: troops.armor > 0 ? troops.armor * inv * typeAttack(state, p, 'armor') * matchupVs('armor', against) : 0,
     w2: troops.artillery > 0 ? troops.artillery * inv * typeAttack(state, p, 'artillery') * matchupVs('artillery', against) : 0,
-    combined: combinedArms(p, troops, tot),
+    // Mass Mobilization, war bonds and allies' funding (spending.ts) on top of combined arms.
+    combined: combinedArms(p, troops, tot) * attackBonusMul(state, attackerId, defender),
     breach: tot > 0 ? Math.max(0, 1 - (troops.artillery / tot) * ARTILLERY_FORT_BREACH) : 1,
     siege: doctrineLever(state, attackerId, 'siegeBonus'),
     armorIgnore: armorTerrainIgnore(state, attackerId),
@@ -603,6 +609,8 @@ function tileCost(state: GameState, c: FightCtx, tile: number): TileCost {
   } else {
     defense = ATTACK_LOSS_BASE * ter.defense * fort * c.lossFactor * (LOSS_FLAT + LOSS_DENSITY * c.density);
     if (c.traitor) defense *= TRAITOR_DEFENSE;
+    // Tank divisions holding nearby (tanks.ts) stiffen the defence.
+    defense *= tankDefenseAt(state, c.defender, tile);
     if (c.tribeTarget) defense *= TRIBE_TARGET_LOSS;
     if (supplyEfficiency(state, c.defender, tile) < 1) defense *= DEFENDER_NO_SUPPLY;
     out.defenderLoss = DEFENDER_LOSS_PER_TILE * c.density * c.defenderLossMult;
@@ -642,6 +650,7 @@ function frontRate(state: GameState, c: FightCtx): number {
   r *= 1 + (t.armor / tot) * ARMOR_SPEED_BONUS;
   r *= 1 - (t.artillery / tot) * ARTILLERY_SLOW;
   if (hasTech(state.players[c.attacker], 'logistics')) r *= LOGISTICS_SPEED;
+  r *= techFrontSpeedMul(state, c.attacker, c.defender, t.armor / tot); // Railways, Blitz Tactics, enemy Trench Warfare
   return r * frontRateMul(state);
 }
 /**
@@ -1340,6 +1349,11 @@ function resolveCounterAttacks(state: GameState, idx: AttackIndex): void {
 function stepAttack(state: GameState, a: Attack, idx: AttackIndex): boolean {
   const players = state.players;
   if (!players[a.attacker].alive) return true;
+  // Owner console god mode (admin.ts): this player's land can't be taken; the attack ends, troops go home.
+  if (a.target !== 0 && isProtected(state, a.target)) {
+    returnTroops(state, a);
+    return true;
+  }
   if (a.target !== 0 && (!players[a.target].alive || areAllied(state, a.attacker, a.target))) {
     returnTroops(state, a);
     return true;
@@ -1496,4 +1510,14 @@ export function frontTiles(state: GameState, playerId: number, owner: number, li
 }
 export function attacksOf(state: GameState, playerId: number): Attack[] {
   return state.attacks.filter((a) => a.attacker === playerId);
+}
+
+/**
+ * Spearheads (tanks.ts): what taking `tile` with `troops` costs, as a normal attack of attackerId on `defender`
+ * would pay there: attacker losses, defender units killed, and the fort multiplier covering the tile.
+ */
+export function tileFightCost(state: GameState, attackerId: number, troops: Troops, defender: number, tile: number): { loss: number; defenderLoss: number; fort: number } {
+  const c = fightCtx(state, attackerId, troops, defender);
+  const t = tileCost(state, c, tile);
+  return { loss: t.loss, defenderLoss: t.defenderLoss, fort: t.fort };
 }
