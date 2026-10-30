@@ -1,5 +1,5 @@
 // GLSL for the map layer (WebGL2). One fullscreen pass: terrain, nations, borders, overlays.
-import { UNDER_CHROMA, UNDER_DETAIL } from './palette';
+import { UNDER_CHROMA, UNDER_DETAIL, UNDER_LUM, UNDER_MID } from './palette';
 
 export const MAP_VS = /* glsl */ `#version 300 es
 void main() {
@@ -240,7 +240,8 @@ void main() {
     // so forest / hills / desert still show as light and dark without competing with the nation's hue.
     vec3 under = textureLod(uTerrCol, uv, 3.0).rgb;
     vec3 calm = mix(under, col, ${UNDER_DETAIL.toFixed(3)});
-    calm = mix(vec3(dot(calm, vec3(0.299, 0.587, 0.114))), calm, ${UNDER_CHROMA.toFixed(3)});
+    float cy = dot(calm, vec3(0.299, 0.587, 0.114));
+    calm = vec3(${UNDER_MID.toFixed(3)} + (cy - ${UNDER_MID.toFixed(3)}) * ${UNDER_LUM.toFixed(3)}) + (calm - cy) * ${UNDER_CHROMA.toFixed(3)};
     vec3 fill = mix(calm, oc, pc.a);
     if (res > 0 && detail > 0.0) {
       // under a nation deposits only shade the colour faintly (no foreign hues, no dotted clusters), and only very
@@ -280,7 +281,7 @@ void main() {
   // ---- borders: where a 4-neighbour (or a diagonal, for corners) has a different owner
   if (o != 0u) {
     bool edge = false;
-    float bpx = clamp(uZoom * 0.11, 1.0, 3.2); // border width in device px
+    float bpx = clamp(uZoom * 0.13, 1.3, 3.2); // border width in device px
     if (uZoom < 1.0) {
       int s = int(ceil(1.0 / uZoom));
       edge = ownerAt(ti + ivec2(s, 0)) != o || ownerAt(ti - ivec2(s, 0)) != o || ownerAt(ti + ivec2(0, s)) != o || ownerAt(ti - ivec2(0, s)) != o;

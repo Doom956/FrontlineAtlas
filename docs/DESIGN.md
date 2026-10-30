@@ -528,7 +528,21 @@ Measured with `scripts/humanbench.ts` (a scripted new player: expands into the w
 sends every 4-6 s, hits back at attackers, builds a few cities, farms and forts, no special abilities or
 alliances, pokes its weakest neighbour once boxed in), default Classic setup, 12 seeds, 30-minute cap:
 
-HUMANBENCH_TABLE
+| map, difficulty | alive 10 / 20 min | land 10 / 20 min | rank at 20 | first AI attack | died (median min) | AI reached the win share |
+|---|---|---|---|---|---|---|
+| medium, Easy | 100% / 100% (before: 0% / 0%) | 9% / 9% | 5 of 9 | 15.0 min (5.9) | 0/12 (12/12 at 6.9) | 1/12 |
+| medium, Normal | 100% / 100% (0% / 0%) | 4% / 1% | 5 | 9.0 min (4.9) | 2/12 at 21.9 (12/12 at 6.0) | 3/12 |
+| medium, Hard | 0% / 0% (unchanged) | - | - | 4.7 min | 12/12 at 5.6 | - |
+| medium, Brutal | 0% / 0% | - | - | 4.5 min | 12/12 at 4.9 | - |
+| World, Easy | 100% / 100% (8% / 0%) | 8% / 8% | 6 | 15.3 min (6.7) | 0/12 (12/12 at 8.2) | 0/12 |
+| World, Normal | 100% / 100% (0% / 0%) | 5% / 3% | 5 | 9.3 min (6.2) | 0/12 (12/12 at 7.1) | 1/12 |
+| World, Hard | 0% / 0% (unchanged) | - | - | 5.3 min | 12/12 at 6.5 | - |
+| World, Brutal | 0% / 0% | - | - | 5.1 min | 12/12 at 5.9 | - |
+
+The scripted player never wins at any difficulty: its 25-35% pokes at a nation take a few hundred tiles (a war
+needs millions of troops), so it survives on Easy and Normal but does not conquer. AI-only games still always end
+with a winner (`scripts/batch.ts`, medium and World, 8 seeds, median winner minute): Easy 30.8 / 33.9 (before
+25.4 / 36.0), Normal 23.5 / 29.2 (21.3 / 33.6), Hard 22.5 / 35.0 (unchanged), Brutal 18.2 / 34.5.
 
 **Tribes** (`Personality 'tribe'`, `isTribe(p)`): `settings.tribeCount` small AI players (negative = the default for
 the land actually played, `setup.defaultTribeCount`: by size class small 120, medium 200, large and huge 300,

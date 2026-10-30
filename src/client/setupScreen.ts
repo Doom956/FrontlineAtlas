@@ -114,6 +114,7 @@ const DIFFICULTY_OPTS: { id: Difficulty; label: string }[] = [
   { id: 'easy', label: 'Easy' },
   { id: 'normal', label: 'Normal' },
   { id: 'hard', label: 'Hard' },
+  { id: 'brutal', label: 'Brutal' },
 ];
 const MODE_OPTS: { id: GameMode; label: string }[] = [
   { id: 'ffa', label: 'Free for all' },

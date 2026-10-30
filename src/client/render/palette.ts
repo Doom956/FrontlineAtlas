@@ -9,7 +9,7 @@ export type DisplayRole = 'nation' | 'own' | 'tribe';
 
 // ---- tunables (see colors-*.png in /tmp/borderfall-shots for the before / after) ----
 /** Chroma kept (x the colour's own) per role: you keep more so you can find yourself; tribes are the calmest. */
-const CHROMA_KEEP: Record<DisplayRole, number> = { nation: 0.7, own: 0.84, tribe: 0.8 };
+const CHROMA_KEEP: Record<DisplayRole, number> = { nation: 0.88, own: 1.0, tribe: 0.85 };
 /** Lightness is pulled towards this by LIGHT_KEEP (1 = unchanged): bright yellows and dark navies meet in the middle. */
 const LIGHT_MID = 0.68;
 const LIGHT_KEEP = 0.72;
@@ -17,13 +17,16 @@ const LIGHT_KEEP = 0.72;
 export const NATION_ALPHA = 0.58;
 export const TRIBE_ALPHA = 0.62;
 /** How much of its own colour the terrain keeps under a nation (0 = grey of the same brightness, 1 = unchanged). */
-export const UNDER_CHROMA = 0.5;
+export const UNDER_CHROMA = 0.55;
+/** Brightness range the terrain keeps under a nation, around UNDER_MID (1 = unchanged): forest and desert barely stripe the land. */
+export const UNDER_LUM = 0.45;
+export const UNDER_MID = 0.42;
 /** Terrain pattern strength under a nation (1 = as on free land): detail shows through softly, not as patches. */
-export const UNDER_DETAIL = 0.5;
+export const UNDER_DETAIL = 0.3;
 /** Border: lightness x, chroma x of the display colour, and the chroma ceiling (borders stay muted too). */
 const BORDER_LIGHT = 0.7;
-const BORDER_CHROMA = 1.3;
-const BORDER_CHROMA_MAX = 0.13;
+const BORDER_CHROMA = 1.2;
+const BORDER_CHROMA_MAX = 0.1;
 
 // ---- OKLab ----
 const lin = (c: number): number => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
@@ -93,7 +96,8 @@ const luma = (c: readonly number[]): number => 0.299 * c[0] + 0.587 * c[1] + 0.1
  */
 export function calmTerrain(terr: readonly number[]): Rgb {
   const y = luma(terr);
-  return [y + (terr[0] - y) * UNDER_CHROMA, y + (terr[1] - y) * UNDER_CHROMA, y + (terr[2] - y) * UNDER_CHROMA];
+  const y2 = (UNDER_MID + (y / 255 - UNDER_MID) * UNDER_LUM) * 255;
+  return [y2 + (terr[0] - y) * UNDER_CHROMA, y2 + (terr[1] - y) * UNDER_CHROMA, y2 + (terr[2] - y) * UNDER_CHROMA];
 }
 
 /** Nation fill over terrain (minimap, 2D fallback): opaque result of the translucent fill. */
