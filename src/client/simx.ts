@@ -72,7 +72,9 @@ export interface Suggestion {
   /** a map point to centre on */
   tile?: number;
   /** a drawer to open */
-  drawer?: 'army' | 'research' | 'diplomacy';
+  drawer?: 'army' | 'forces' | 'research' | 'diplomacy';
+  /** a unit to buy (the button builds one at the best port / airfield) */
+  unit?: 'warship' | 'bomber' | 'fighter';
   /** a target mode to enter */
   mode?: 'barrage' | 'paradrop';
 }

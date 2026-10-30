@@ -166,7 +166,7 @@ export class ForcesPage implements DrawerPage {
     this.air = new Group('Air', 'air', say);
     this.missiles = new Group('Missiles', 'missiles', say);
     this.artillery = new Group('Artillery', 'artillery', say);
-    const intro = el('p', 'note', 'Click a unit\'s name to find it. Select a warship, then click water to move it. Esc cancels.');
+    const intro = el('p', 'note', 'Click a unit\'s name to find it. Select a warship, then click water to move it. Transports: click land across the sea. Esc cancels.');
     this.root.append(intro, this.fleet.el, this.air.el, this.missiles.el, this.artillery.el);
   }
 
@@ -273,7 +273,7 @@ export class ForcesPage implements DrawerPage {
             acts.push({ label: kind === 'bomber' ? 'Bomber' : 'Fighter', icon: 'plus', off, tip: `${u.name}: ${priceText(kind)}. ${UNIT_TEXT[kind].what}`, run: () => ctx.act({ type: 'buildAircraft', airfield: b.tile, kind }) });
           }
           if (unitAllowed(s, 'bomber')) acts.push({ label: 'Bomb', icon: 'bomb', cls: 'danger', off: b.bombers > 0 ? '' : 'No bombers here: build one first', tip: STRIKES.bomb.what, run: () => this.aim('bomb', () => (ctx.ui.mode = { kind: 'bomb', airfield: b.tile })) });
-          if (unitAllowed(s, 'paradrop')) acts.push({ label: 'Drop', icon: 'paradrop', cls: 'danger', off: b.dropCooldown > 0 ? `Next drop in ${Math.ceil(b.dropCooldown)} s` : '', tip: STRIKES.paradrop.what, run: () => this.aim('paradrop', () => (ctx.ui.mode = { kind: 'paradrop', airfield: b.tile })) });
+          if (unitAllowed(s, 'paradrop')) acts.push({ label: 'Paradrop', icon: 'paradrop', cls: 'danger', off: b.dropCooldown > 0 ? `Next drop in ${Math.ceil(b.dropCooldown)} s` : '', tip: STRIKES.paradrop.what, run: () => this.aim('paradrop', () => (ctx.ui.mode = { kind: 'paradrop', airfield: b.tile })) });
         }
         rows.push({
           key: `a${b.id}:${built}`,

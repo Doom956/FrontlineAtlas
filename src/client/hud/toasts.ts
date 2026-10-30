@@ -97,6 +97,11 @@ export class Toasts {
     setTimeout(() => l.el.remove(), 160);
   }
 
+  /** Toasts on screen now. */
+  get count(): number {
+    return this.live.length;
+  }
+
   /** ~5 Hz: expire old toasts. */
   update(): void {
     const now = performance.now();

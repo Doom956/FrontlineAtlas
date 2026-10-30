@@ -326,7 +326,7 @@ export class ResearchPage implements DrawerPage {
       const active = me.researching === n.t;
       const missing = info.requires.filter((r) => !hasTech(me, r));
       let cls = 'avail';
-      let text = `${formatCount(info.gold)}g`;
+      let text = `${formatCount(info.gold)} gold`;
       if (done) {
         cls = 'done';
         text = 'Done';
@@ -335,7 +335,6 @@ export class ResearchPage implements DrawerPage {
         text = pct(me.researchProgress / info.science);
       } else if (rule || missing.length) {
         cls = 'locked';
-        text = `${formatCount(info.gold)}g`;
       }
       for (const c of ['avail', 'done', 'active', 'locked']) setClass(n.btn, c, c === cls);
       setText(n.state, text);

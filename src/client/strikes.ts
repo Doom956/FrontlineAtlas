@@ -199,7 +199,7 @@ export function strikeStatus(state: GameState, me: Player, id: StrikeId): Strike
       if (stored > 0) return { ...st, line: `${stored} bomber${stored === 1 ? '' : 's'} ready. Click enemy land: bombs hit ${BOMBER_RADIUS} tiles around.` };
       const back = bomberBackIn(state, me);
       if (back >= 0) return cool(back, 0, `Your bombers are flying: the next is home in about ${Math.max(1, Math.ceil(back))} s`);
-      return lock('Build a bomber at your Airfield: click the Airfield, or use the Army drawer (U)');
+      return lock('Build a bomber at your Airfield: Military tab, the Airfield, or the Forces drawer (Y)');
     }
     case 'paradrop': {
       st.allowed = unitAllowed(state, 'paradrop') && buildingAllowed(state, 'airfield');

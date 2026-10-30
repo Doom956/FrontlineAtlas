@@ -1,14 +1,21 @@
-// Advisor strip and first-game tutorial: one short line above the command bar.
+// Advisor strip and first-game tutorial: one thin line above the command bar that folds itself into a small tab
+// after a few seconds (hover or click the tab to read it again) and stays folded while a toast is up, so there is
+// never more than one message talking at a time. A suggestion pops open once; later it only waits in the tab.
 // - Tutorial (first game only, remembered in localStorage): six steps that advance when done; can be skipped.
 // - Advisor: the sim's suggestions() (advisor.ts), one at a time, cycling every 8 s, plus two client hints:
-//   artillery when the main foe's front is fortified or hilly, and once per strike (remembered in localStorage) a
+//   artillery when the main foe's front is fortified or hilly, units when they matter (unitAdvice: warships against
+//   enemy fleets off your coast, fighters / SAM sites against enemy bombers; once each, ever), and once per strike (remembered in localStorage) a
 //   first-use hint pointing at its button the first time it is ready ("Bombers ready: press X ...").
 //   Click the button to act (enter build mode, open a drawer, centre the map); X dismisses that hint for a while;
 //   it can be switched off in the menu.
 import { mainFoe, fortifiedShare } from '../../sim/advisor';
-import { countBuildings } from '../../sim/buildings';
-import { BUILDINGS } from '../../sim/config';
-import { mods } from '../../sim/rules';
+import { buildingsOf, countBuildings } from '../../sim/buildings';
+import { BUILDINGS, UNITS } from '../../sim/config';
+import { areAllied } from '../../sim/diplomacy';
+import { forEachInRadius } from '../../sim/grid';
+import { buildingAllowed, mods, unitAllowed } from '../../sim/rules';
+import { hasTech } from '../../sim/tech';
+import { buildUnit, isIncoming, unitBuildStatus } from '../forces';
 import { gameSeconds } from '../../sim/state';
 import type { GameState, Player } from '../../sim/types';
 import { isTribe } from '../compat';
@@ -27,6 +34,51 @@ const STRIKE_HINTS_KEY = 'borderfall.strikeHints.v1';
 const STRIKE_HINT_MS = 15000;
 /** the artillery check (main foe's front: forts, hills) runs this often */
 const ARTILLERY_CHECK_MS = 3000;
+/** the line folds into its tab after this long (tutorial steps stay open a little longer) */
+const OPEN_MS = 7000;
+const TUTORIAL_OPEN_MS = 14000;
+const UNIT_HINTS_KEY = 'borderfall.unitHints.v1';
+/** enemy warships this close (tiles) to your land count as "off your coast" */
+const FLEET_NEAR = 14;
+
+/**
+ * Units the moment calls for, most urgent first (each is shown once, ever): fighters or SAM sites when enemy bombers
+ * or cargo planes are coming at you, warships when enemy warships sail off your coast.
+ */
+export function unitAdvice(s: GameState, me: Player): Suggestion[] {
+  const out: Suggestion[] = [];
+  let air = false;
+  let fleet = false;
+  for (const u of s.units) {
+    if (u.owner === me.id || u.hp <= 0 || areAllied(s, me.id, u.owner)) continue;
+    if (!air && (u.type === 'bomber' || u.type === 'transportPlane') && isIncoming(s, me.id, u)) air = true;
+    if (!fleet && u.type === 'warship') {
+      const w = s.map.width;
+      const t = Math.round(u.y) * w + Math.round(u.x);
+      if (t < 0 || t >= s.map.owner.length) continue;
+      forEachInRadius(s.map, t, FLEET_NEAR, (i) => {
+        if (s.map.owner[i] === me.id) fleet = true;
+      });
+    }
+    if (air && fleet) break;
+  }
+  if (air && unitAllowed(s, 'fighter')) {
+    const st = unitBuildStatus(s, me, 'fighter');
+    const sams = hasTech(me, 'radar') && buildingAllowed(s, 'sam');
+    if (st.ok) out.push({ key: 'unit-fighter', text: 'Enemy planes over your land: Fighters at your Airfield shoot them down', unit: 'fighter' });
+    else if (sams) out.push({ key: 'unit-fighter', text: 'Enemy planes over your land: SAM sites shoot them down', building: 'sam' });
+    else if (hasTech(me, 'flight')) out.push({ key: 'unit-fighter', text: 'Enemy planes over your land: an Airfield with Fighters shoots them down', building: 'airfield' });
+    else out.push({ key: 'unit-fighter', text: 'Enemy planes over your land: research Flight for Fighters (then Radar for SAM sites)', drawer: 'research' });
+  }
+  if (fleet && unitAllowed(s, 'warship')) {
+    const st = unitBuildStatus(s, me, 'warship');
+    if (st.ok) out.push({ key: 'unit-warship', text: 'Enemy warships off your coast: build Warships of your own', unit: 'warship' });
+    else if (!hasTech(me, 'navigation')) out.push({ key: 'unit-warship', text: 'Enemy warships off your coast: research Navigation, then build Warships at a Port', drawer: 'research' });
+    else if (buildingsOf(s, me.id, 'port').length === 0) out.push({ key: 'unit-warship', text: 'Enemy warships off your coast: build a Port, then Warships', building: 'port' });
+    else out.push({ key: 'unit-warship', text: 'Enemy warships off your coast: open Forces (Y) for your fleet', drawer: 'forces' });
+  }
+  return out;
+}
 
 /** First-use hint per strike: what is ready, the key to press and what to click. */
 export const STRIKE_HINTS: Record<StrikeId, string> = {
@@ -119,6 +171,16 @@ export class AdvisorStrip {
   private hintQueue: StrikeId[] = [];
   private hint: { id: StrikeId; until: number } | null = null;
   private art: { at: number; s: Suggestion | null } = { at: -Infinity, s: null };
+  private units: { at: number; list: Suggestion[] } = { at: -Infinity, list: [] };
+  /** unit hints shown (ever) */
+  private unitSeen = new Set<string>((load(UNIT_HINTS_KEY) ?? '').split(',').filter(Boolean));
+  /** what the line shows now (a change opens it again) and until when it stays open */
+  private shownKey = '';
+  private openUntil = 0;
+  /** suggestion keys that already popped open once (they wait in the folded tab afterwards) */
+  private popped = new Set<string>();
+  /** a toast is up (set by the HUD): the line stays folded */
+  toastUp = false;
 
   constructor(private ctx: HudCtx) {
     this.el = el('div', 'advisor hidden');
@@ -126,7 +188,7 @@ export class AdvisorStrip {
     this.doBtn = el('button', 'wr-btn mini primary adv-do', 'Do it');
     this.doBtn.type = 'button';
     this.doBtn.addEventListener('click', () => this.act());
-    this.skipBtn = el('button', 'wr-btn mini ghost', 'Skip tutorial');
+    this.skipBtn = el('button', 'wr-btn mini ghost', 'Skip');
     this.skipBtn.type = 'button';
     this.skipBtn.dataset.test = 'skip-tutorial';
     this.skipBtn.addEventListener('click', () => this.endTutorial(false));
@@ -142,6 +204,12 @@ export class AdvisorStrip {
       setVisible(this.el, false);
     });
     this.text.addEventListener('click', () => this.act());
+    // the folded tab: a click opens the line again
+    this.tag.addEventListener('click', () => {
+      this.openUntil = performance.now() + OPEN_MS;
+      setClass(this.el, 'mini', false);
+    });
+    this.skipBtn.dataset.tip = 'Skip the tutorial (Settings can restart it)';
     this.el.append(this.tag, this.icon, this.text, this.doBtn, this.skipBtn, this.closeBtn);
   }
 
@@ -229,7 +297,7 @@ export class AdvisorStrip {
       }
       return this.tutorialUpdate(s, me);
     }
-    setText(this.tag, `Step ${this.step + 1} of ${this.steps.length}`);
+    setText(this.tag, `Step ${this.step + 1}/${this.steps.length}`);
     this.icon.innerHTML = lineIcon('info', 16);
     setText(this.text, step.text(s, me));
     // "Show me" brings the step's place into view; steps without one get "Next" (skip just this step)
@@ -239,8 +307,24 @@ export class AdvisorStrip {
     setVisible(this.skipBtn, true);
     setVisible(this.closeBtn, false);
     setClass(this.el, 'tut', true);
-    setVisible(this.el, true);
+    this.present(`tut${this.step}`, TUTORIAL_OPEN_MS, false);
     return true;
+  }
+
+  /**
+   * Shows the line for `key`: open for `ms` when it is new (`once`: only the first time this key ever shows), folded
+   * into its tab otherwise, while a toast is up, or once the time is over (hover or focus keeps it open).
+   */
+  private present(key: string, ms: number, once: boolean): void {
+    const now = performance.now();
+    if (key !== this.shownKey) {
+      this.shownKey = key;
+      this.openUntil = once && this.popped.has(key) ? 0 : now + ms;
+      this.popped.add(key);
+    }
+    if (this.el.matches(':hover') || this.el.contains(document.activeElement)) this.openUntil = Math.max(this.openUntil, now + 1500);
+    setClass(this.el, 'mini', this.toastUp || now > this.openUntil);
+    setVisible(this.el, true);
   }
 
   // ------------------------------------------------------------------------------------------ advisor
@@ -262,6 +346,18 @@ export class AdvisorStrip {
     const now = performance.now();
     if (this.strikeHint(now, strikes)) return;
     const list = adviceFor(s, me.id).filter((x) => (this.dismissed.get(x.key) ?? 0) < now);
+    if (now - this.units.at > ARTILLERY_CHECK_MS) this.units = { at: now, list: unitAdvice(s, me).filter((x) => !this.unitSeen.has(x.key)) };
+    const fresh = this.units.list.find((x) => !this.unitSeen.has(x.key));
+    if (fresh) {
+      // a unit hint goes first, once ever
+      this.unitSeen.add(fresh.key);
+      save(UNIT_HINTS_KEY, [...this.unitSeen].join(','));
+      this.units.list = this.units.list.filter((x) => x !== fresh);
+      this.current = fresh;
+      this.shownAt = now;
+      this.idx = 0;
+    }
+    if (this.current && this.current.key.startsWith('unit-') && now - this.shownAt < CYCLE_MS * 2) list.unshift(this.current);
     if (now - this.art.at > ARTILLERY_CHECK_MS) this.art = { at: now, s: artilleryAdvice(s, me) };
     const art = this.art.s;
     if (art && (this.dismissed.get(art.key) ?? 0) < now && !list.some((x) => x.key === 'build-arsenal')) list.splice(Math.min(1, list.length), 0, art);
@@ -279,9 +375,11 @@ export class AdvisorStrip {
     } else this.current = stillThere;
     const c = this.current;
     setText(this.tag, 'Advisor');
-    this.icon.innerHTML = c.building ? worldGlyph(c.building, 16) : c.mode ? worldGlyph(c.mode, 16) : lineIcon(c.drawer === 'research' ? 'science' : c.drawer === 'diplomacy' ? 'diplomacy' : c.tile !== undefined ? 'target' : 'info', 16);
+    this.icon.innerHTML = c.unit ? lineIcon(c.unit === 'warship' ? 'warship' : 'plane', 16) : c.building ? worldGlyph(c.building, 16) : c.mode ? worldGlyph(c.mode, 16) : lineIcon(c.drawer === 'research' ? 'science' : c.drawer === 'diplomacy' ? 'diplomacy' : c.tile !== undefined ? 'target' : 'info', 16);
     setText(this.text, c.text);
-    const label = c.building
+    const label = c.unit
+      ? `Build ${UNITS[c.unit].name}`
+      : c.building
       ? `Build ${BUILDINGS[c.building].name}`
       : c.mode === 'barrage'
         ? 'Aim barrage'
@@ -291,6 +389,8 @@ export class AdvisorStrip {
             ? 'Research'
             : c.drawer === 'army'
               ? 'Army'
+              : c.drawer === 'forces'
+              ? 'Forces'
               : c.drawer === 'diplomacy'
                 ? 'Diplomacy'
                 : c.tile !== undefined
@@ -298,7 +398,7 @@ export class AdvisorStrip {
                   : '';
     setText(this.doBtn, label);
     setVisible(this.doBtn, label !== '');
-    setVisible(this.el, true);
+    this.present(c.key, OPEN_MS, true);
   }
 
   /** Shows the first-use hint of a strike that just became ready (once per strike, ever); true while one shows. */
@@ -320,7 +420,7 @@ export class AdvisorStrip {
     setText(this.text, STRIKE_HINTS[id]);
     setText(this.doBtn, AIM_LABEL[id]);
     setVisible(this.doBtn, true);
-    setVisible(this.el, true);
+    this.present(`hint${id}`, OPEN_MS, false);
     this.strikes = strikes;
     return true;
   }
@@ -340,7 +440,14 @@ export class AdvisorStrip {
     }
     const c = this.current;
     if (!c) return;
-    if (c.building) {
+    if (c.unit) {
+      const s = this.ctx.state();
+      const me = this.ctx.me();
+      if (!s || !me) return;
+      const why = buildUnit(s, me, (a) => this.ctx.dispatch(a), c.unit, { x: this.ctx.camera.x, y: this.ctx.camera.y });
+      this.ctx.toast(why ? `${UNITS[c.unit].name}: ${why}` : `${UNITS[c.unit].name} built. Open Forces (Y) to command it.`, why ? 'info' : 'good');
+      this.ctx.refreshSoon();
+    } else if (c.building) {
       this.ctx.ui.mode = { kind: 'build', building: c.building };
       if (c.tile !== undefined) this.ctx.focusTile(c.tile, false);
     } else if (c.mode) {

@@ -24,7 +24,9 @@ import { AdvisorStrip } from './hud/advisor';
 import { Cluster } from './hud/cluster';
 import { ModChips } from './hud/modChips';
 import { CommandBar, techNear } from './hud/commandBar';
-import { el, setText, setVisible, type DrawerId, type HudCtx } from './hud/dom';
+import { el, setText, setVisible, type DrawerId, type HudCtx, type UnitProbe } from './hud/dom';
+import { ForcesPage } from './hud/forcesPage';
+import { UnitCard } from './hud/unitCard';
 import {
   ArmyPage,
   BuildingPage,
@@ -104,6 +106,8 @@ export class Hud {
   private advisor: AdvisorStrip;
   private toasts: Toasts;
   private tooltip: MapTooltip;
+  private unitCard: UnitCard;
+  private probe: UnitProbe | null = null;
   private events: EventsPage;
   private building: BuildingPage;
   private radial: RadialMenu;
@@ -143,6 +147,7 @@ export class Hud {
     root.append(this.el);
     const self = this;
     this.ctx = {
+      probe: () => self.probe,
       ui,
       dispatch,
       camera,
@@ -190,6 +195,7 @@ export class Hud {
 
     this.drawer = new Drawer(this.ctx);
     this.drawer.add(new ArmyPage(this.ctx));
+    this.drawer.add(new ForcesPage(this.ctx));
     this.drawer.add(new ResearchPage(this.ctx));
     this.drawer.add(new DiplomacyPage(this.ctx));
     this.events = new EventsPage(this.ctx);
@@ -220,6 +226,7 @@ export class Hud {
 
     this.toasts = new Toasts();
     this.tooltip = new MapTooltip(this.ctx);
+    this.unitCard = new UnitCard(this.ctx);
     this.tip = el('div', 'tip hidden');
     this.radial = new RadialMenu(() => {
       this.ui.contextMenu = null;
@@ -268,13 +275,14 @@ export class Hud {
     });
     this.gameOver = el('div', 'modal gameover hidden');
 
-    this.el.append(left, this.cluster.el, this.modChips.el, this.drawer.el, bottom, top, this.tooltip.card, this.tooltip.odds, this.radial.el, this.help, this.gameOver, this.tip);
+    this.el.append(left, this.cluster.el, this.modChips.el, this.drawer.el, bottom, top, this.tooltip.card, this.tooltip.odds, this.unitCard.el, this.radial.el, this.help, this.gameOver, this.tip);
 
     const opts = { signal: this.ac.signal };
-    // HUD size: 1 up to ~1500 px wide, then grows with the window (up to 1.35) so it doesn't look tiny on big screens
+    // HUD size: 1 up to ~1500 px wide, then grows a little with the window (up to 1.15): readable on big screens
+    // without covering more of the map
     const scaleUi = (): void => {
       const k = Math.min(window.innerWidth / 1500, window.innerHeight / 860);
-      this.el.style.setProperty('--ui', Math.max(1, Math.min(1.35, k)).toFixed(3));
+      this.el.style.setProperty('--ui', Math.max(1, Math.min(1.15, k)).toFixed(3));
     };
     scaleUi();
     window.addEventListener('resize', scaleUi, opts);
@@ -338,6 +346,7 @@ export class Hud {
       this.cluster.update(state, me);
       if (!watching) this.card.update(state, me);
       this.drawer.update(state, me);
+      this.advisor.toastUp = this.toasts.count > 0;
       if (!watching) this.advisor.update(state, me, this.bar.strikes);
       if (!watching) this.announceBombers(state, me);
       this.toasts.update();
@@ -352,6 +361,11 @@ export class Hud {
    */
   skipEvents(state: GameState): void {
     for (const e of state.events) this.seenEvents.add(e);
+  }
+
+  /** The renderer's unit hit test: hover cards for any unit and the selected warship's card follow it. */
+  setUnitProbe(p: UnitProbe): void {
+    this.probe = p;
   }
 
   /** Extra HUD parts (the online status line) live inside the HUD so they go away with it. */
@@ -382,7 +396,7 @@ export class Hud {
   }
   /** Opens a drawer (closing another); with toggle, a second press closes it. */
   openDrawer(id: DrawerId, toggle = false): void {
-    // a watcher has no army, research, diplomacy or buildings of its own
+    // a watcher has no army, forces, research, diplomacy or buildings of its own
     if (this.watching && id !== 'events' && id !== 'legend' && id !== 'settings') return;
     if (toggle && this.drawer.open === id) {
       this.drawer.hide();
@@ -535,12 +549,13 @@ export class Hud {
       const m = ui.mode;
       if (m.kind === 'build') chip = `Build ${BUILDINGS[m.building].name}: click your land. Esc to cancel.`;
       else if (m.kind === 'transport') chip = 'Transport: click a coast to land on. Esc to cancel.';
-      else if (m.kind === 'moveWarship') chip = 'Warship: click water to patrol. Esc to cancel.';
+      else if (m.kind === 'moveWarship') chip = 'Warship selected: click water to move it. Esc to cancel.';
       else if (m.kind !== 'none') chip = instruction(state, me, m);
       else if (ui.paused) chip = 'Paused';
     }
     setText(this.modeText, chip);
-    setVisible(this.modeChip, chip !== '');
+    // the wide research tree covers the chip's spot at the top
+    setVisible(this.modeChip, chip !== '' && this.drawer.open !== 'research');
     this.modeChip.classList.toggle('paused', chip === 'Paused');
 
     this.bar.fast();
@@ -574,6 +589,7 @@ export class Hud {
     }
 
     if (!this.watching) this.tooltip.update(state, me, false);
+    if (!this.watching) this.unitCard.update(state, me);
     if (state.phase === 'over' && !this.gameOverShown) this.showGameOver(state, me);
   }
 

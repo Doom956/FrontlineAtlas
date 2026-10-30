@@ -1,5 +1,5 @@
-// Top-left standings: top 5 nations by land plus you, one line each (rank, colour, name, land %, army).
-// Click a row: centre on that nation and open its card. Collapses to a single line; "Show all" lists everyone.
+// Top-left standings: the top 3 nations by land plus you, one line each (rank, colour, name, land %, army).
+// Click a row: centre on that nation and open its card. Collapses to a single line; "All" lists everyone.
 import { isTeamGame, teamOf } from '../../sim/rules';
 import { teamName } from '../../sim/victory';
 import { areAllied, isTraitor } from '../../sim/diplomacy';
@@ -11,7 +11,7 @@ import { armyOf } from '../simx';
 import { el, setClass, setText, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon } from './glyph';
 
-const TOP = 5;
+const TOP = 3;
 const ALL_MAX = 40;
 
 interface Row {
@@ -59,7 +59,9 @@ export class Leaderboard {
       this.order = '';
       ctx.refreshSoon();
     });
-    this.el.append(head, this.list, this.more);
+    const bar = el('div', 'lb-bar');
+    bar.append(head, this.more);
+    this.el.append(bar, this.list);
   }
 
   private makeRow(id: number): Row {
@@ -83,8 +85,7 @@ export class Leaderboard {
     const myRank = ranked.findIndex((p) => p.id === me.id) + 1;
     const land = Math.max(1, s.map.landTileCount);
     let shown: Player[];
-    // short screens: top 3 + you, so the standings stay a small corner card
-    const top = typeof window !== 'undefined' && window.innerHeight < 800 ? 3 : TOP;
+    const top = TOP;
     if (this.all) shown = ranked.slice(0, ALL_MAX);
     else {
       shown = ranked.slice(0, top);
@@ -96,9 +97,11 @@ export class Leaderboard {
     let teamTiles = 0;
     if (myTeam) for (const p of ranked) if (teamOf(s, p.id) === myTeam) teamTiles += p.tiles;
     const teamText = myTeam ? `${teamName(myTeam)}: ${((teamTiles / land) * 100).toFixed(1)}% land` : '';
-    setText(this.summary, this.collapsed ? (myRank > 0 ? teamText || `You #${myRank} of ${ranked.length}, ${((me.tiles / land) * 100).toFixed(1)}% land` : `${ranked.length} nations`) : teamText || 'land, army');
-    setText(this.more, this.all ? `Show top ${top}` : `Show all ${ranked.length}`);
-    setVisible(this.more, ranked.length > top);
+    setText(this.summary, this.collapsed ? (myRank > 0 ? teamText || `You #${myRank} of ${ranked.length}, ${((me.tiles / land) * 100).toFixed(1)}% land` : `${ranked.length} nations`) : teamText);
+    setText(this.more, this.all ? `Top ${top}` : `All ${ranked.length}`);
+    this.more.dataset.tip = this.all ? `Show the top ${top} and you` : `Show all ${ranked.length} nations`;
+    setVisible(this.more, ranked.length > top + 1 && !this.collapsed);
+    this.el.dataset.tip = 'Land share and army of each nation';
     const ids = new Set(shown.map((p) => p.id));
     for (const [id, r] of this.rows) {
       if (!ids.has(id)) {

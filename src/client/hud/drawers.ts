@@ -744,7 +744,12 @@ export class BuildingPage implements DrawerPage {
         r.append(sectionTitle('Warships'));
         warships.slice(0, 8).forEach((id, k) => {
           const row = el('div', 'drow');
-          row.append(el('span', 'pname', `Warship ${k + 1}`), btn('Move', 'mini', () => (ctx.ui.mode = { kind: 'moveWarship', unitId: id })));
+          const sel = btn('Select', 'mini', () => {
+            ctx.ui.mode = { kind: 'moveWarship', unitId: id };
+            ctx.closeDrawer();
+          });
+          sel.dataset.tip = 'Select it, then click water to send it there';
+          row.append(el('span', 'pname', `Warship ${k + 1}`), sel);
           r.append(row);
         });
       }

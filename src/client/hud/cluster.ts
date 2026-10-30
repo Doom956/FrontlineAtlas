@@ -1,5 +1,6 @@
-// Top-right cluster: drawer buttons (army, research, diplomacy, events, legend), the clock, pause and speed,
-// sound and the menu. One row of small square buttons; each shows its hotkey in the tooltip.
+// Top-right cluster: drawer buttons (army, forces, research, diplomacy, events, legend), the clock, pause and one
+// speed button (click cycles x1 / x2 / x4), sound, help and the menu. One slim row of icon buttons in a single panel;
+// each names itself and its hotkey in the tooltip.
 import { TECHS } from '../../sim/config';
 import { gameSeconds } from '../../sim/state';
 import type { GameState, Player } from '../../sim/types';
@@ -20,7 +21,8 @@ export class Cluster {
   readonly el: HTMLElement;
   private upd: ((s: GameState, me: Player) => void)[] = [];
   private drawerBtns = new Map<DrawerId, HTMLButtonElement>();
-  private speedBtns: HTMLButtonElement[] = [];
+  private speedBtn: HTMLButtonElement;
+  private speedShown = -1;
   private pauseBtn: HTMLButtonElement;
   private pauseShown: boolean | null = null;
   private soundBtn: HTMLButtonElement;
@@ -42,14 +44,12 @@ export class Cluster {
     const drawers = el('div', 'cl-group');
     const dbtn = (id: DrawerId, icon: string, tip: string) => {
       const b = sq(icon, tip, () => ctx.openDrawer(id, true), `open-${id}`);
-      // a short name next to the icon on wide screens, so the extra options are findable without hovering
-      b.classList.add('labelled');
-      b.append(el('span', 'sq-l', tip.split('  ')[0]));
       this.drawerBtns.set(id, b);
       drawers.append(b);
       return b;
     };
-    dbtn('army', 'army', 'Army  (U)\nTroop mix, active attacks, air strikes');
+    dbtn('army', 'army', 'Army  (U)\nTroop mix, artillery, active attacks');
+    dbtn('forces', 'warship', 'Forces  (Y)\nWarships, aircraft, missiles and artillery: buy, select, fire');
     const rb = dbtn('research', 'science', 'Research  (T)\nPick technologies');
     const prog = el('span', 'sq-prog');
     rb.append(prog);
@@ -69,17 +69,15 @@ export class Cluster {
     const speed = el('div', 'cl-group seg cl-speed');
     this.pauseBtn = sq('pause', 'Pause  (Space)', () => (ctx.ui.paused = !ctx.ui.paused), 'pause');
     speed.append(this.pauseBtn);
-    for (const s of SPEEDS) {
-      const b = el('button', 'sq txt', `x${s}`);
-      b.type = 'button';
-      b.dataset.tip = `Game speed x${s}  (+ / -)`;
-      b.addEventListener('click', () => {
-        ctx.ui.speed = s;
-        ctx.ui.paused = false;
-      });
-      this.speedBtns.push(b);
-      speed.append(b);
-    }
+    // one button: shows the speed, a click goes to the next one (x1 -> x2 -> x4 -> x1)
+    this.speedBtn = el('button', 'sq txt cl-spd', 'x1');
+    this.speedBtn.type = 'button';
+    this.speedBtn.dataset.test = 'speed';
+    this.speedBtn.addEventListener('click', () => {
+      ctx.ui.speed = SPEEDS[(SPEEDS.indexOf(ctx.ui.speed) + 1) % SPEEDS.length];
+      ctx.ui.paused = false;
+    });
+    speed.append(this.speedBtn);
 
     const sys = el('div', 'cl-group');
     this.soundBtn = sq('sound', 'Sound on/off\nVolumes are in the menu', () => hooks.toggleMute(), 'sound');
@@ -88,7 +86,7 @@ export class Cluster {
     const menu = sq('menu', 'Menu\nSettings, sound, leave the game', () => ctx.openDrawer('settings', true), 'menu');
     this.drawerBtns.set('settings', menu);
     sys.append(this.soundBtn, help, menu);
-    this.el.append(drawers, clock, speed, sys);
+    this.el.append(drawers, speed, clock, sys);
 
     this.upd.push((s, me) => {
       const t = gameSeconds(s);
@@ -125,7 +123,14 @@ export class Cluster {
 
   fast(): void {
     const ui = this.ctx.ui;
-    this.speedBtns.forEach((b, k) => setClass(b, 'on', SPEEDS[k] === ui.speed && !ui.paused));
+    if (this.speedShown !== ui.speed) {
+      this.speedShown = ui.speed;
+      setText(this.speedBtn, `x${ui.speed}`);
+      const next = SPEEDS[(SPEEDS.indexOf(ui.speed) + 1) % SPEEDS.length];
+      setTip(this.speedBtn, `Game speed x${ui.speed}: click for x${next}  (+ / -)`);
+      this.speedBtn.setAttribute('aria-label', `Game speed x${ui.speed}, click for x${next}`);
+    }
+    setClass(this.speedBtn, 'fast', ui.speed > 1 && !ui.paused);
     if (this.pauseShown !== ui.paused) {
       this.pauseShown = ui.paused;
       setClass(this.pauseBtn, 'on', ui.paused);

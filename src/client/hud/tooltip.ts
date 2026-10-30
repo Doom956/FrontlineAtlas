@@ -19,7 +19,7 @@ import { blastSummary, ownHitWarning, STRIKES, strikeOfMode, strikeTarget } from
 import { iconDataUrl } from '../icons';
 import { el, fmtSeconds, pct, setVisible, type HudCtx } from './dom';
 import { relationOf } from './drawers';
-import { iconSpan, worldGlyph } from './glyph';
+import { iconSpan, lineIcon, worldGlyph } from './glyph';
 import { buildingTexts, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect } from './text';
 
 export class MapTooltip {
@@ -60,6 +60,7 @@ export class MapTooltip {
     if (force || key !== this.key) {
       this.key = key;
       if (unit) this.unitCard(state, me, unit);
+      else if (ui.mode.kind === 'moveWarship') this.shipOrder(state, tile);
       else if (ui.mode.kind === 'build' && state.phase === 'playing') this.buildPreview(state, me, ui.mode.building, tile);
       else if (strikeOfMode(ui.mode) && state.phase === 'playing') this.strikePreview(state, me, tile);
       else this.tileCard(state, me, tile);
@@ -148,6 +149,18 @@ export class MapTooltip {
       this.odds.textContent = odds.text;
     }
     setVisible(this.odds, !!odds);
+  }
+
+  /** A warship is selected: say what a click here does. */
+  private shipOrder(state: GameState, tile: number): void {
+    const water = isWater(state.map.terrain[tile]);
+    const ok = water || !!state.map.coastal[tile];
+    this.card.className = `mtip build ${ok ? 'ok' : 'no'}`;
+    this.card.replaceChildren(
+      this.line(lineIcon('warship', 18), ok ? 'Sail here' : 'Warships sail on water', ok ? 'It patrols around this spot' : 'Pick a water tile', 'head'),
+      el('div', 'mt-hint', 'Esc or right-click: cancel.'),
+    );
+    setVisible(this.odds, false);
   }
 
   /** A unit under the pointer: what it is, whose, its hull, what it carries and what it is doing. */

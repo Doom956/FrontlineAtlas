@@ -24,6 +24,7 @@ import type { NetClient } from '../net/client';
 import { BUILDING_SHORT, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect } from './hud/text';
 import { iconDataUrl, type IconId } from './icons';
 import { STRIKE_ORDER, STRIKES, type StrikeId } from './strikes';
+import { UNIT_TEXT } from './forces';
 
 // DOM helpers live in dom.ts (re-exported here for older imports).
 export { button, el, rgbCss, setText } from './dom';
@@ -90,10 +91,10 @@ export function howToPlayContent(): HTMLElement {
 
   const screen = section('The screen');
   bullets(screen, [
-    'Bottom: troops, attack share, gold, the build bar (Economy, Military, Defence, Special) and, once they matter, STRIKES.',
+    'Bottom: troops, attack share, gold (hover the small chip for iron, oil and science), the build bar (four category icons; hover a button for its name and price; Military also sells warships, bombers and fighters) and, when one is ready, the strike icons.',
     'Top left: the standings. Click a nation to see its card: army, land, Ally, Gift, Embargo, Attack.',
-    'Top right: Army (U), Research (T), Diplomacy (P), Events (J), Map key (L), the clock, speed, sound and the menu.',
-    'The advisor line above the bottom bar suggests a useful next step; switch it off in the menu.',
+    'Top right: Army (U), Forces (Y: warships, aircraft, missiles, artillery), Research (T), Diplomacy (P), Events (J), Map key (L), pause, speed (click to change), the clock, sound, help and the menu.',
+    'The advisor line above the bottom bar suggests a useful next step and folds into a small tab after a few seconds (hover it to read it again); switch it off in the menu.',
   ]);
 
   if (rules.length) {
@@ -152,7 +153,7 @@ export function howToPlayContent(): HTMLElement {
   para(rs2, `Science builds up over time (Research Labs add more). ${TECH_ORDER.length} techs in 4 tiers, each costs gold to start. With Auto research on, the next useful tech starts by itself; press T to choose yourself.`);
 
   const strikes = section('Special strikes');
-  para(strikes, 'The STRIKES buttons on the bottom bar show what is ready. Press the key (or click the button), then click the target; Esc or right-click cancels. A locked button says how to unlock it.');
+  para(strikes, 'A strike\'s picture appears at the right end of the bottom bar when it is ready (with a ring while it reloads). Press its key (or click it), then click the target; Esc or right-click cancels. The Forces drawer (Y) lists every strike and says how to unlock the locked ones.');
   const sl = el('ul', 'blist');
   const pic = (id: IconId): string => {
     try {
@@ -165,8 +166,14 @@ export function howToPlayContent(): HTMLElement {
   strikes.append(sl);
   para(strikes, 'Counters: SAM sites shoot down planes and missiles (an atom bomb takes two hits). Fighters at an Airfield shoot down bombers and cargo planes. Nothing stops shells. Forts slow attacks down; artillery and barrages break them.');
 
-  const nav = section('Navy, air and missiles');
-  para(nav, 'Transports carry troops to any coast (click land across the sea). Ports build warships and send trade ships. Airfields build bombers and fighters; silos launch rockets and atom bombs. SAM sites and fighters shoot down what flies over them.');
+  const nav = section('Special units');
+  para(nav, 'Buy warships, bombers and fighters in the build bar\'s Military tab (or at a Port / Airfield). Forces (Y) lists everything you own with its orders. Click your warship on the map (or Select in Forces), then click water to move it; Esc cancels. Hover any unit, yours or an enemy\'s, to see what it is doing. Enemy units coming at you get a red ring.');
+  const ul2 = el('ul', 'blist');
+  for (const id of ['warship', 'transport', 'bomber', 'fighter', 'transportPlane', 'rocket', 'atomBomb', 'artillery'] as const) {
+    const t = UNIT_TEXT[id];
+    ul2.append(glyphItem(pic(t.icon), t.name, `${t.what} Counter: ${t.counter}`, ''));
+  }
+  nav.append(ul2);
 
   const dip = section('Diplomacy');
   para(dip, 'Ally, gift and embargo from a nation\'s card or the radial menu. Allies cannot attack each other. Breaking an alliance makes you a traitor for a while: weaker defence and everyone trusts you less. Symbols next to names: crown = biggest nation, handshake = ally, envelope = alliance request, broken shield = traitor.');
@@ -180,7 +187,7 @@ export function howToPlayContent(): HTMLElement {
     ['Wheel', 'zoom'],
     ['1-9, 0, Q E R H F G N', 'building hotkeys (Shift to place several)'],
     ['[ and ]', 'attack share -/+'],
-    ['U  T  P  J  L', 'Army, Research, Diplomacy, Events, Map key'],
+    ['U  Y  T  P  J  L', 'Army, Forces, Research, Diplomacy, Events, Map key'],
     ['Space', 'pause'],
     ['+ and -', 'game speed'],
     ['V / B / M', 'resource overlay / supply overlay / minimap'],

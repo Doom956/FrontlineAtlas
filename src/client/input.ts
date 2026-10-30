@@ -23,8 +23,8 @@ export interface InputDeps {
   toggleHelp: () => void;
   /** Closes the topmost HUD overlay (modal); returns true if something was closed. */
   closeOverlay?: () => boolean;
-  /** Opens or closes a HUD drawer (U army, P diplomacy, J events, L map key). */
-  toggleDrawer?: (id: 'army' | 'diplomacy' | 'events' | 'legend') => void;
+  /** Opens or closes a HUD drawer (U army, Y forces, P diplomacy, J events, L map key). */
+  toggleDrawer?: (id: 'army' | 'forces' | 'diplomacy' | 'events' | 'legend') => void;
   /** A strike hotkey (Z barrage, X bombing run, K paratroopers, I rocket, O atom bomb): aim it or say why not. */
   strike?: (id: StrikeId) => void;
 }
@@ -374,8 +374,8 @@ export function setupInput(deps: InputDeps): () => void {
       }
       const up = k.length === 1 ? k.toUpperCase() : '';
       if (up === 'T') return deps.openResearch();
-      if (up === 'U' || up === 'P' || up === 'J' || up === 'L') {
-        deps.toggleDrawer?.(up === 'U' ? 'army' : up === 'P' ? 'diplomacy' : up === 'J' ? 'events' : 'legend');
+      if (up === 'U' || up === 'Y' || up === 'P' || up === 'J' || up === 'L') {
+        deps.toggleDrawer?.(up === 'U' ? 'army' : up === 'Y' ? 'forces' : up === 'P' ? 'diplomacy' : up === 'J' ? 'events' : 'legend');
         return;
       }
       if (up === 'M') {

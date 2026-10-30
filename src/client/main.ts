@@ -178,6 +178,7 @@ async function startOnline(start: GameStartMsg): Promise<void> {
     canStartNow: () => mp.canStartNow,
     againLabel: 'Multiplayer',
   });
+  hud.setUnitProbe(renderer);
   const status = new MpStatus(() => {
     if (mp.desync || mp.loadError) mp.reload();
     else getNet().reconnectNow();
@@ -260,6 +261,7 @@ async function startGame(settings: GameSettings): Promise<void> {
     const camera = newCamera(state);
     const ui = defaultUiState();
     const hud = new Hud(app, ui, dispatch, camera, audio);
+    hud.setUnitProbe(renderer);
     hud.onMenu = () => toMenu();
     hud.onPlayAgain = () => void startGame({ ...settings, seed: menu.replaySettings().seed });
     const cleanupInput = setupInput({

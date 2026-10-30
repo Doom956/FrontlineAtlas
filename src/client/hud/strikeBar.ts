@@ -1,16 +1,15 @@
-// STRIKES: the command bar's group of special strikes (barrage, bombing run, paratroopers, rocket, atom bomb).
-// Each button shows its picture, hotkey and state at a glance:
+// STRIKES: a compact icon row at the end of the command bar's build area (barrage, bombing run, paratroopers,
+// rocket, atom bomb). Only strikes you can use show up; each is a picture with its state at a glance (name, hotkey
+// and what it does are in the tooltip):
 //   ready     full colour, brass edge (a stored count where it has one: bombers, loaded silo slots)
 //   cooling   dimmed picture, a ring filling up and the seconds left
-//   locked    greyed with a lock; hover or click says in one line how to unlock it
 //   blocked   ready but missing gold, infantry ...: hover or click says what is missing
-// The group stays hidden in the first minute and a half unless the player already started on a strike; strikes the
-// game's modifiers switch off are hidden for good.
+// Locked strikes stay out of the bar (the Forces drawer, Y, lists them with how to unlock each); the hotkeys still
+// say why not. Strikes the game's modifiers switch off are hidden for good.
 import type { GameState, Player } from '../../sim/types';
 import { iconDataUrl } from '../icons';
 import { aimStrike, allStrikes, STRIKE_ORDER, STRIKES, strikeOfMode, strikesRevealed, type StrikeId, type StrikeStatus } from '../strikes';
-import { el, flash, keycap, sectionTitle, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
-import { iconSpan, lineIcon } from './glyph';
+import { el, flash, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
 
 interface Btn {
   root: HTMLButtonElement;
@@ -31,11 +30,11 @@ export class StrikeBar {
   private fresh: StrikeId[] = [];
 
   constructor(private ctx: HudCtx) {
-    this.el = el('section', 'cb-sec cb-strikes hidden');
+    this.el = el('div', 'skbar hidden');
     this.el.dataset.test = 'strikes';
-    const head = el('div', 'cb-head');
-    head.append(sectionTitle('Strikes'));
-    const row = el('div', 'skbar');
+    this.el.setAttribute('role', 'group');
+    this.el.setAttribute('aria-label', 'Strikes');
+    const row = this.el;
     for (const id of STRIKE_ORDER) {
       const info = STRIKES[id];
       const root = el('button', 'sk locked');
@@ -53,12 +52,9 @@ export class StrikeBar {
       } catch {
         /* no canvas (tests): the label still names it */
       }
-      const label = el('span', 'sk-l', info.label);
-      const kc = keycap(info.key);
-      kc.classList.add('sk-key');
+      const label = el('span', 'sk-l');
       const count = el('span', 'sk-n');
-      const lock = iconSpan(lineIcon('lock', 11, 2.2), 'sk-lock');
-      root.append(ring, img, label, kc, count, lock);
+      root.append(ring, img, label, count);
       root.addEventListener('click', () => {
         // keep the keyboard on the map (Space pauses, letters aim) instead of on this button
         root.blur();
@@ -67,7 +63,6 @@ export class StrikeBar {
       row.append(root);
       this.btns.set(id, { root, ring, label, count, last: null, peak: 0 });
     }
-    this.el.append(head, row);
   }
 
   /** Status of a strike as last computed (null before the first update). */
@@ -105,12 +100,14 @@ export class StrikeBar {
   update(s: GameState, me: Player): void {
     const list = allStrikes(s, me);
     if (!this.revealed && strikesRevealed(s, list)) this.revealed = true;
-    setVisible(this.el, this.revealed && list.some((x) => x.allowed));
+    const cur = strikeOfMode(this.ctx.ui.mode);
+    const shown = (st: StrikeStatus) => st.allowed && (st.state !== 'locked' || st.id === cur);
+    setVisible(this.el, this.revealed && list.some(shown));
     for (const st of list) {
       this.status.set(st.id, st);
       const b = this.btns.get(st.id)!;
       const info = STRIKES[st.id];
-      setVisible(b.root, st.allowed);
+      setVisible(b.root, shown(st));
       if (!st.allowed) continue;
       const was = b.last?.state;
       if (st.state === 'ready' && was && was !== 'ready') {
@@ -124,10 +121,10 @@ export class StrikeBar {
         const total = st.total > 0 ? st.total : b.peak;
         const p = total > 0 ? Math.max(0, Math.min(1, 1 - st.left / total)) : 0;
         b.ring.style.setProperty('--p', p.toFixed(3));
-        setText(b.label, `${Math.max(1, Math.ceil(st.left))} s`);
+        setText(b.label, `${Math.max(1, Math.ceil(st.left))}`);
       } else {
         b.peak = 0;
-        setText(b.label, info.label);
+        setText(b.label, '');
       }
       setText(b.count, st.count > 0 && st.state !== 'locked' ? String(st.count) : '');
       const head = st.state === 'ready' ? 'Ready' : st.state === 'cooldown' ? 'Reloading' : st.state === 'locked' ? 'Locked' : 'Not now';
