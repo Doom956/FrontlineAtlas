@@ -16,6 +16,13 @@ import { fitSize, LABEL_BLOCK_H } from '../labels';
 import { clamp, formatCount } from './common';
 import { OWNER_MASK, type TileFeed } from './tiles';
 
+/** Tribe labels only from this zoom (device px per tile) on, except the hovered tribe. */
+export const TRIBE_LABEL_ZOOM = 3.2;
+/** Below this zoom a tribe shows only its army number (its full name on hover and from here on). */
+export const TRIBE_NAME_ZOOM = 6;
+/** From this zoom building markers are drawn: a label over them fades so the icons stay readable. */
+const ICON_ZOOM = 1.7;
+
 const GRID_CELLS = 250_000;
 const MAX_RECT_CELLS = 2400;
 const BBOX_MS = 1000;
@@ -320,6 +327,8 @@ export class NameLayer {
       const size = (l.fs + (l.ts - l.fs) * g) * z * (tribe ? 0.8 : 1);
       const minPx = tribe ? (l.id === style.hoverOwner ? 9 : 11.5) : p.id === me ? 7 : 8;
       if (size < minPx) continue;
+      // Tribe names only once zoomed in (or the one under the cursor): far out they were just clutter.
+      if (tribe && z < TRIBE_LABEL_ZOOM && l.id !== style.hoverOwner) continue;
       const px = Math.min(size, tribe ? 15 : 46);
       const s = cam.tileToScreen(l.fx + (l.tx - l.fx) * g, l.fy + (l.ty - l.fy) * g);
       if (s.x < -200 || s.y < -60 || s.x > cam.viewW + 200 || s.y > cam.viewH + 60) continue;
@@ -334,12 +343,14 @@ export class NameLayer {
       const iconPx = clamp(px * 0.95, 12, 24);
       const nameFont = `${tribe ? 600 : 700} ${Math.round(px * 1.08)}px 'Barlow Condensed', system-ui, sans-serif`;
       ctx.font = nameFont;
-      const tw = ctx.measureText(p.name).width;
+      // a tribe far out: just its army number (the name on hover), so dozens of "Tribe of the ..." don't pile up
+      const name = tribe && z < TRIBE_NAME_ZOOM && l.id !== style.hoverOwner ? '' : p.name;
+      const tw = name ? ctx.measureText(name).width : 0;
       const iconsW = icons.length ? icons.length * (iconPx + 2) + 2 : 0;
       const totalW = tw + iconsW;
       const small = Math.max(7, px * 0.72);
       // Army sizes are public (sim armyTotalOf); only the troop mix needs intel, and only your own mix is drawn.
-      const showArmy = !tribe || px >= 13.5;
+      const showArmy = !tribe || px >= 13.5 || !name;
       const mixBar = p.id === me && showArmy;
       const bottom = showArmy ? small * 1.2 + px * 0.2 + (mixBar ? 7 : 0) : px * 0.5;
       const x0 = s.x - totalW / 2 - 2;
@@ -358,7 +369,8 @@ export class NameLayer {
       this.drawn++;
       const hs = style.hover;
       const under = !!hs && hs.x > x0 - 6 && hs.x < x1 + 6 && hs.y > y0 - 6 && hs.y < y1 + 6;
-      ctx.globalAlpha = style.targeting ? (under ? 0.15 : 0.45) : under && px > 14 ? 0.35 : tribe ? 0.85 : 1;
+      const overIcons = z >= ICON_ZOOM && coversBuilding(state, cam, x0, y0, x1, y1);
+      ctx.globalAlpha = style.targeting ? (under ? 0.15 : 0.45) : under && px > 14 ? 0.35 : overIcons ? 0.5 : tribe ? 0.85 : 1;
       const nameY = showArmy ? s.y - small * 0.45 : s.y;
       const left = s.x - totalW / 2;
       for (let k = 0; k < icons.length; k++) {
@@ -369,8 +381,10 @@ export class NameLayer {
       ctx.strokeStyle = tribe ? 'rgba(0,0,0,0.5)' : 'rgba(8,10,16,0.78)';
       ctx.fillStyle = traitor ? '#ff9d92' : tribe ? 'rgba(236,236,236,0.85)' : p.id === me ? '#fff6d0' : '#ffffff';
       ctx.font = nameFont;
-      ctx.strokeText(p.name, nameX, nameY);
-      ctx.fillText(p.name, nameX, nameY);
+      if (name) {
+        ctx.strokeText(name, nameX, nameY);
+        ctx.fillText(name, nameX, nameY);
+      }
       if (showArmy) {
         const army = formatCount(armyTotal(p.troops));
         ctx.font = `600 ${Math.round(small)}px 'IBM Plex Sans', system-ui, sans-serif`;
@@ -403,4 +417,20 @@ export class NameLayer {
       x += wk;
     }
   }
+}
+
+/** Whether a screen rectangle has a building tile under it (labels fade over building markers). */
+function coversBuilding(state: GameState, cam: Camera, x0: number, y0: number, x1: number, y1: number): boolean {
+  const a = cam.screenToTile(x0, y0);
+  const b = cam.screenToTile(x1, y1);
+  const w = state.map.width;
+  const tx0 = Math.max(0, Math.floor(a.x));
+  const ty0 = Math.max(0, Math.floor(a.y));
+  const tx1 = Math.min(w - 1, Math.floor(b.x));
+  const ty1 = Math.min(state.map.height - 1, Math.floor(b.y));
+  // a big label far out covers many tiles: sample them (markers are wider than a tile there anyway)
+  const step = Math.max(1, Math.floor(Math.sqrt(((tx1 - tx0 + 1) * (ty1 - ty0 + 1)) / 600)));
+  const building = state.map.building;
+  for (let y = ty0; y <= ty1; y += step) for (let x = tx0; x <= tx1; x += step) if (building[y * w + x] !== 0) return true;
+  return false;
 }

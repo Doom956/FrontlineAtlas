@@ -236,12 +236,13 @@ void main() {
     // instead of cutting it into bands; up close the per-tile pattern shows faintly (lum).
     vec3 under = textureLod(uTerrCol, uv, 3.0).rgb;
     float ul = dot(under, vec3(0.299, 0.587, 0.114));
-    float sh = 1.0 + 0.08 * lum + 0.1 * (ul - 0.5);
+    float sh = 1.0 + 0.05 * lum + 0.1 * (ul - 0.5);
     vec3 fill = oc * sh;
     if (res > 0 && detail > 0.0) {
-      // under a nation deposits only shade the colour (no foreign hues): rocks and oil darker, wheat lighter
+      // under a nation deposits only shade the colour faintly (no foreign hues, no dotted clusters), and only very
+      // close: the deposit markers already say where the fields are
       vec4 dep = depositAt(res, ti, f, px);
-      fill *= 1.0 + dep.a * detail * (res == 3 ? 0.05 : -0.22);
+      fill *= 1.0 + dep.a * smoothstep(10.0, 16.0, uZoom) * (res == 3 ? 0.03 : -0.08);
     }
     // tribes: one solid dusty colour (renderer.tribeDisplayColor) with a little less shading than nations, so
     // each tribe is a calm parcel of land instead of a see-through patch over the terrain

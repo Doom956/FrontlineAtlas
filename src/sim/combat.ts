@@ -39,6 +39,7 @@ import {
   DEFENDER_NO_SUPPLY,
   DEPOT_ATTACK_BONUS,
   ENDGAME_SMALL_TILES,
+  HUMAN_GRACE_SECONDS,
   FORT_DEFENSE,
   FORT_SLOW,
   FRONT_JITTER_MIN,
@@ -77,9 +78,10 @@ import {
   VULNERABILITY,
 } from './config';
 import { areAllied, isTraitor, onAttackStarted } from './diplomacy';
+import { atPeace, frontRate as frontRateMul, peaceReason, sameTeam } from './rules';
 import { hasOilShortage } from './economy';
 import { nearestTile } from './grid';
-import { addEvent, newId, setOwner } from './state';
+import { addEvent, gameSeconds, newId, setOwner } from './state';
 import { hasTech } from './tech';
 import { borderTiles, landComponents } from './territory';
 import { TROOP_TYPES, isTribe, isWater } from './types';
@@ -442,7 +444,7 @@ function frontRate(state: GameState, c: FightCtx): number {
   r *= 1 + (t.armor / tot) * ARMOR_SPEED_BONUS;
   r *= 1 - (t.artillery / tot) * ARTILLERY_SLOW;
   if (hasTech(state.players[c.attacker], 'logistics')) r *= LOGISTICS_SPEED;
-  return r;
+  return r * frontRateMul(state);
 }
 /**
  * Splits `amount` losses over troop types by weight (count x vulnerability); a type that runs out passes its
@@ -795,9 +797,14 @@ function captureTile(state: GameState, a: Attack, tile: number, idx: AttackIndex
 }
 
 // ---------- endgame: fast cleanup ----------
-/** Tiles under which a nation (or tribe) collapses when it is hit. */
-export function collapseThreshold(p: Player): number {
-  return isTribe(p) ? TRIBE_ANNEX_TILES : ENDGAME_SMALL_TILES;
+/**
+ * Tiles under which a nation (or tribe) collapses when it is hit (and is absorbed whole when surrounded). 0 for a
+ * human in its first HUMAN_GRACE_SECONDS of game time: it only loses the tiles that are taken.
+ */
+export function collapseThreshold(state: GameState, p: Player): number {
+  if (isTribe(p)) return TRIBE_ANNEX_TILES;
+  if (p.isHuman && gameSeconds(state) < HUMAN_GRACE_SECONDS) return 0;
+  return ENDGAME_SMALL_TILES;
 }
 /**
  * Gives every tile of `victim` to `taker` (fast cleanup of a dying nation / an annexed pocket); `tiles` limits it
@@ -855,7 +862,7 @@ function ownedTilesFlood(state: GameState, playerId: number): number[] {
 /** After a capture from `victim`: a nation (tribe) below its collapse threshold falls to the attacker at once. */
 function maybeCollapse(state: GameState, victim: number, taker: number): void {
   const vp = state.players[victim];
-  if (!vp || !vp.alive || vp.tiles <= 0 || vp.tiles >= collapseThreshold(vp)) return;
+  if (!vp || !vp.alive || vp.tiles <= 0 || vp.tiles >= collapseThreshold(state, vp)) return;
   const name = vp.name;
   if (annexTiles(state, victim, taker) > 0) {
     addEvent(state, 'info', `${name} collapsed: ${state.players[taker].name} takes the rest of its land`, [victim, taker], state.players[taker].capital);
@@ -957,7 +964,9 @@ export function launchAttack(state: GameState, playerId: number, tile: number, t
   const tp = state.players[target];
   if (target !== 0) {
     if (!tp.alive) return { ok: false, reason: 'That nation is gone' };
-    if (areAllied(state, playerId, target)) return { ok: false, reason: 'You cannot attack an ally' };
+    if (areAllied(state, playerId, target)) return { ok: false, reason: sameTeam(state, playerId, target) ? 'You cannot attack a teammate' : 'You cannot attack an ally' };
+    const peace = peaceReason(state, playerId, target);
+    if (peace) return { ok: false, reason: peace };
   }
   const tot = total(sent);
   if (!amphibious) {
@@ -1190,7 +1199,7 @@ function stepAttack(state: GameState, a: Attack, idx: AttackIndex): boolean {
     spent += cost.loss;
     killed += cost.defenderLoss;
     // Taking the target's last tiles can eliminate it (its troops go home with ours): settle the losses first.
-    if (target !== 0 && players[target].tiles <= collapseThreshold(players[target]) + 1) flush();
+    if (target !== 0 && players[target].tiles <= collapseThreshold(state, players[target]) + 1) flush();
     heapPop(f);
     captureTile(state, a, next, idx);
     a.progress -= cost.budget;
@@ -1259,7 +1268,7 @@ export function estimateAttack(state: GameState, playerId: number, tile: number,
   if (!Number.isInteger(tile) || tile < 0 || tile >= map.owner.length || isWater(map.terrain[tile])) return null;
   const target = map.owner[tile];
   if (target === playerId) return null;
-  if (target !== 0 && (!state.players[target].alive || areAllied(state, playerId, target))) return null;
+  if (target !== 0 && (!state.players[target].alive || areAllied(state, playerId, target) || atPeace(state, playerId, target))) return null;
   // With no troops given, judge a plain infantry force.
   const t = total(troops) > 0 ? troops : { infantry: 1, armor: 0, artillery: 0 };
   const c = fightCtx(state, playerId, t, target);

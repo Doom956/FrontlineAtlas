@@ -86,21 +86,90 @@ export type MapSize = 'small' | 'medium' | 'large' | 'huge';
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type Personality = 'warlord' | 'turtle' | 'merchant' | 'admiral' | 'balanced' | 'tribe';
 
-export interface GameSettings {
-  seed: number;
-  mapType: MapType;
-  mapSize: MapSize;
-  aiCount: number; // AI nations, 0..MAX_AI_COUNT (config)
+export type GameMode = 'ffa' | 'teams';
+/** Which map a game is played on: a procedural one, or a real-world map from src/sim/worldmaps.ts (by id). */
+export type MapChoice = { kind: 'generated'; type: MapType; size: MapSize } | { kind: 'world'; id: string };
+export type StartingGold = 'normal' | 'high' | 'veryHigh';
+export type BuildSpeed = 'normal' | 'fast' | 'instant';
+/** 'allUnlocked' = every tech from the start, 'off' = no research at all. */
+export type ResearchRule = 'normal' | 'allUnlocked' | 'off';
+/** Setup presets (setup.ts PRESETS); 'custom' = anything else. Only a label: the setup's fields are what counts. */
+export type PresetId = 'classic' | 'quickConquest' | 'grandWar' | 'islandHopping' | 'chaos' | 'custom';
+
+/**
+ * Game modifiers, chosen before the start (setup.ts: defaults, presets, validation, labels). The sim enforces every
+ * one of them (rules.ts) and the AI respects them. All deterministic.
+ */
+export interface Modifiers {
+  /** every start (the human's too) is picked at random; world-map nations ignore their real capitals */
+  randomSpawn: boolean;
+  /** a half-size map (a quarter of the land) and, by default, fewer tribes */
+  compactMap: boolean;
+  /** minutes after the start in which nations / players can't attack each other (tribes can be attacked): 0, 2, 4, 6 */
+  peaceMinutes: number;
+  startingGold: StartingGold;
+  /** gold income x this (0.5 .. 3) */
+  goldMultiplier: number;
+  /** troop growth x this (0.5 .. 2) */
+  troopGrowth: number;
+  buildSpeed: BuildSpeed;
+  noAlliances: boolean;
+  /** no atom bombs (rockets stay) */
+  noNukes: boolean;
+  /** no airfields, bombers, fighters or paratroopers */
+  noAir: boolean;
+  /** no warships (transports and trade ships stay) */
+  noNavy: boolean;
+  noSams: boolean;
+  research: ResearchRule;
+  /** income, troop growth, construction, research and front speed x2 */
+  fastGame: boolean;
+}
+
+/**
+ * The options chosen before a game: the setup screen (single player) and the multiplayer lobby share this one model
+ * (setup.ts: DEFAULT_SETUP, presets, validateSetup / sanitizeSetup).
+ */
+export interface GameSetup {
+  map: MapChoice;
+  /** AI nations, 0..MAX_AI_COUNT (config). In multiplayer the humans come on top. */
+  aiCount: number;
+  /** small weak AI tribes (the main early targets); < 0 = the default for the map's land (setup.defaultTribeCount) */
+  tribeCount: number;
   difficulty: Difficulty;
-  playerName: string;
-  playerColor: [number, number, number];
-  /** false = AI-only game (headless balance runs, menu background). */
-  humanPlayer: boolean;
+  mode: GameMode;
+  /** teams mode: number of teams, 2..6 (ignored in ffa). Single player: you are on team 1. */
+  teamCount: number;
   /** 0 = no limit; otherwise seconds of game time, highest score wins. */
   timeLimit: number;
   victoryLandShare: number; // 0..1, default config VICTORY_LAND_SHARE
-  /** small weak AI tribes (early targets, accept any alliance); < 0 = config DEFAULT_TRIBE_COUNT for the map size */
-  tribeCount: number;
+  modifiers: Modifiers;
+  /** which preset the setup came from (display only) */
+  preset: PresetId;
+}
+
+/** One human player's seat (multiplayer: one per lobby player, in player id order 1..H). */
+export interface HumanSeat {
+  name: string;
+  color: [number, number, number];
+  /** teams mode: 1..teamCount; 0 = assigned by createGame (smallest team). Ignored in ffa. */
+  team: number;
+}
+
+/**
+ * Everything a game is built from. Humans: `humans` when it is given and not empty (multiplayer: ids 1..H in that
+ * order); otherwise single player: one human from playerName / playerColor when humanPlayer is true, none when false
+ * (setup.humanSeats reads both forms). Teams are the setup's mode / teamCount (no separate field).
+ */
+export interface GameSettings extends GameSetup {
+  seed: number;
+  /** single player: the human's name and colour (multiplayer: equal to humans[0]) */
+  playerName: string;
+  playerColor: [number, number, number];
+  /** false = AI-only game (headless balance runs, menu background). Ignored when `humans` is given. */
+  humanPlayer: boolean;
+  /** multiplayer: every human seat, ids 1..H in this order */
+  humans?: HumanSeat[];
 }
 
 export interface MapData {
@@ -268,6 +337,8 @@ export type GameEventKind =
   | 'info'
   | 'attackStarted'
   | 'underAttack'
+  /** a small human nation is walled in by one nation (warning during its grace time) */
+  | 'surrounded'
   | 'buildingDone'
   | 'buildingLost'
   | 'buildingCaptured'
@@ -311,7 +382,12 @@ export interface GameState {
   playStartTick: number;
   map: MapData;
   players: Player[]; // index = id; players[0] = neutral placeholder (alive=false)
-  humanId: number; // 0 if no human
+  /**
+   * CLIENT-SIDE: the player this client controls and views (0 = none / spectator). createGame sets it to the first
+   * human; a multiplayer client sets it to its own seat. The sim never reads it (every human is treated alike), so
+   * clients with different humanIds stay in lockstep.
+   */
+  humanId: number;
   buildings: Map<number, Building>;
   attacks: Attack[];
   units: Unit[];
@@ -336,6 +412,22 @@ export interface GameState {
   changes: { tiles: Int32Array; count: number; overflow: boolean };
   /** Incremented whenever a building is added, removed, upgraded, finished or changes owner (cache key). */
   buildingsVersion: number;
+  /**
+   * Team of every player (index = player id): 1..teamCount in a teams game, 0 = no team (FFA, tribes, neutral).
+   * Teammates are permanently allied, can't attack each other and win together (rules.ts sameTeam).
+   */
+  teams: number[];
+  /** the winning team in a teams game (0 = none / FFA); `winner` is then its best-scoring member */
+  winnerTeam: number;
+  /**
+   * Fixed start tile per player id (-1 = none): world-map nations start at their real capitals (unless random spawn).
+   */
+  spawnPoints: number[];
+  /**
+   * Size class of the map actually played (generated: its size, one class smaller per compact step; world maps: by
+   * land): sets the start radius, building spacing and default tribe counts (setup.sizeClassForLand).
+   */
+  mapClass: MapSize;
 }
 
 export interface Effect {
@@ -375,7 +467,7 @@ export type Action =
   | { type: 'gift'; to: number; gold: number; troops: number }
   | { type: 'toggleEmbargo'; with: number }
   | { type: 'setAuto'; mix?: boolean; research?: boolean }
-  /** single player: end the spawn phase now (only when every human has spawned) */
+  /** end the spawn phase now (only when every human has spawned; online only the private lobby's host may) */
   | { type: 'startNow' };
 
 export interface ActionResult {

@@ -1,5 +1,6 @@
 // Research tree.
 import { TECHS, TICK_SECONDS } from './config';
+import { researchRule } from './rules';
 import { addEvent } from './state';
 import type { ActionResult, GameState, Player, TechId } from './types';
 
@@ -13,6 +14,8 @@ export function canResearch(state: GameState, playerId: number, t: TechId): Acti
   const info = TECHS[t];
   if (!p || playerId === 0 || !p.alive) return FAIL('No such player');
   if (!info) return FAIL('Unknown tech');
+  const ruled = researchRule(state);
+  if (ruled) return FAIL(ruled);
   if (hasTech(p, t)) return FAIL(`${info.name} is already researched`);
   if (p.researching === t) return FAIL(`Already researching ${info.name}`);
   const missing = info.requires.filter((r) => !hasTech(p, r));

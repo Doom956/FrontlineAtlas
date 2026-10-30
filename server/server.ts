@@ -20,14 +20,27 @@ export interface RunningServer {
   close(): Promise<void>;
 }
 
-/** Client address: the socket's, or (behind a proxy) Fly-Client-IP / the first X-Forwarded-For entry. */
-export function clientIp(req: IncomingMessage, trustProxy: boolean): string {
+/**
+ * Client address: the socket's, or behind a proxy (trustProxy) the platform's own header (clientIpHeader, e.g.
+ * Fly-Client-IP) or the X-Forwarded-For entry `proxyHops` places from the end. Proxies append the address they saw,
+ * so the first entries are whatever the client sent: never trust them.
+ */
+export function clientIp(req: IncomingMessage, trustProxy: boolean, proxyHops = 1, clientIpHeader = ''): string {
   if (trustProxy) {
-    const fly = req.headers['fly-client-ip'];
-    if (typeof fly === 'string' && fly) return fly.trim();
+    if (clientIpHeader) {
+      const h = req.headers[clientIpHeader.toLowerCase()];
+      const v = (Array.isArray(h) ? h[h.length - 1] : h)?.trim();
+      if (v) return v;
+    }
     const xff = req.headers['x-forwarded-for'];
-    const first = (Array.isArray(xff) ? xff[0] : xff)?.split(',')[0]?.trim();
-    if (first) return first;
+    const list = (Array.isArray(xff) ? xff.join(',') : (xff ?? ''))
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean);
+    const hops = Math.max(1, Math.floor(proxyHops));
+    // fewer entries than proxies: the request did not pass all of them; use the first proxy's view (or the socket)
+    const pick = list.length >= hops ? list[list.length - hops] : list[0];
+    if (pick) return pick;
   }
   return req.socket.remoteAddress ?? 'unknown';
 }
@@ -91,7 +104,7 @@ export async function startServer(partial: Partial<ServerOptions> = {}): Promise
       refuse(socket, 403, 'Forbidden');
       return;
     }
-    const ip = clientIp(req, opts.trustProxy);
+    const ip = clientIp(req, opts.trustProxy, opts.proxyHops, opts.clientIpHeader);
     if (!hub.canAccept(ip)) {
       refuse(socket, 429, 'Too Many Requests');
       return;

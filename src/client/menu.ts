@@ -1,148 +1,21 @@
 // Title screen, game settings and the "How to play" page. Also hosts small DOM helpers shared with the HUD.
-import { BUILDINGS, BUILDING_ORDER, DEFAULT_AI_COUNT, MATCHUP, MAX_AI_COUNT, TECHS, TECH_ORDER, TERRAIN, VICTORY_LAND_SHARE } from '../sim/config';
-import type { Difficulty, GameSettings, MapSize, MapType, TerrainId } from '../sim/types';
-import { defaultTribeCount, rulesTextEntries } from './compat';
+import { BUILDINGS, BUILDING_ORDER, MATCHUP, TECHS, TECH_ORDER, TERRAIN, VICTORY_LAND_SHARE } from '../sim/config';
+import type { GameSettings, TerrainId } from '../sim/types';
+import { rulesTextEntries } from './compat';
+import { loadSetupPrefs, prefetchThumbs, randomSeed, settingsFromPrefs, SetupScreen, type SetupPrefs } from './setupScreen';
 import { lineIcon, worldGlyph } from './hud/glyph';
+import { MultiplayerScreen } from './lobby';
+import type { NetClient } from '../net/client';
 import { ABILITY_TEXT, BUILDING_SHORT, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect } from './hud/text';
 
-// ------------------------------------------------------------------------------------------------ DOM helpers
-
-/** Creates an element with an optional class string and text. */
-export function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
-
-/** Button with a click handler. */
-export function button(label: string, cls: string, onClick: (e: MouseEvent) => void): HTMLButtonElement {
-  const b = el('button', 'btn ' + cls, label);
-  b.type = 'button';
-  b.addEventListener('click', onClick);
-  return b;
-}
-
-export function rgbCss(c: readonly [number, number, number], a = 1): string {
-  return a >= 1 ? `rgb(${c[0]},${c[1]},${c[2]})` : `rgba(${c[0]},${c[1]},${c[2]},${a})`;
-}
-
-/** Text setter that skips the DOM write when nothing changed. */
-export function setText(e: HTMLElement, text: string): void {
-  if (e.textContent !== text) e.textContent = text;
-}
+// DOM helpers live in dom.ts (re-exported here for older imports).
+export { button, el, rgbCss, setText } from './dom';
+import { button, el, rgbCss } from './dom';
 
 // ------------------------------------------------------------------------------------------------ settings
 
-/** Player colour palette (well separated from each other). */
-export const PLAYER_PALETTE: [number, number, number][] = [
-  [64, 160, 255],
-  [255, 255, 255],
-  [255, 92, 92],
-  [255, 176, 46],
-  [250, 230, 70],
-  [110, 220, 90],
-  [40, 200, 180],
-  [170, 110, 255],
-  [255, 110, 200],
-  [150, 90, 50],
-  [40, 40, 50],
-  [140, 220, 255],
-];
-
-const MAP_TYPES: { id: MapType; label: string }[] = [
-  { id: 'continents', label: 'Continents' },
-  { id: 'pangaea', label: 'Pangaea' },
-  { id: 'archipelago', label: 'Archipelago' },
-  { id: 'highlands', label: 'Highlands' },
-];
-const MAP_SIZES_UI: { id: MapSize; label: string }[] = [
-  { id: 'small', label: 'Small' },
-  { id: 'medium', label: 'Medium' },
-  { id: 'large', label: 'Large' },
-  { id: 'huge', label: 'Huge' },
-];
-type TribeLevel = 'none' | 'few' | 'normal' | 'many';
-const TRIBE_LEVELS: { id: TribeLevel; label: string }[] = [
-  { id: 'none', label: 'None' },
-  { id: 'few', label: 'Few' },
-  { id: 'normal', label: 'Normal' },
-  { id: 'many', label: 'Many' },
-];
-const TRIBE_FACTOR: Record<TribeLevel, number> = { none: 0, few: 0.5, normal: 1, many: 1.5 };
-
-/** Tribe count for a map size and menu level (config default x 0 / 0.5 / 1 / 1.5). */
-export function tribesForLevel(size: MapSize, level: TribeLevel): number {
-  return Math.round(defaultTribeCount(size) * TRIBE_FACTOR[level]);
-}
-
-const DIFFICULTIES: { id: Difficulty; label: string }[] = [
-  { id: 'easy', label: 'Easy' },
-  { id: 'normal', label: 'Normal' },
-  { id: 'hard', label: 'Hard' },
-];
-
-interface MenuPrefs {
-  mapType: MapType;
-  mapSize: MapSize;
-  aiCount: number;
-  difficulty: Difficulty;
-  seed: number;
-  playerName: string;
-  color: number; // palette index
-  tribes: TribeLevel;
-}
-
-const PREFS_KEY = 'borderfall.menu';
-
-function randomSeed(): number {
-  return 1 + Math.floor(Math.random() * 999999);
-}
-
-function loadPrefs(): MenuPrefs {
-  const d: MenuPrefs = { mapType: 'continents', mapSize: 'medium', aiCount: DEFAULT_AI_COUNT.medium, difficulty: 'normal', seed: randomSeed(), playerName: 'Player', color: 0, tribes: 'normal' };
-  try {
-    const raw = localStorage.getItem(PREFS_KEY);
-    if (!raw) return d;
-    const p = JSON.parse(raw) as Partial<MenuPrefs>;
-    return {
-      mapType: MAP_TYPES.some((m) => m.id === p.mapType) ? (p.mapType as MapType) : d.mapType,
-      mapSize: MAP_SIZES_UI.some((m) => m.id === p.mapSize) ? (p.mapSize as MapSize) : d.mapSize,
-      aiCount: Number.isInteger(p.aiCount) ? Math.max(2, Math.min(MAX_AI_COUNT, p.aiCount as number)) : d.aiCount,
-      difficulty: DIFFICULTIES.some((m) => m.id === p.difficulty) ? (p.difficulty as Difficulty) : d.difficulty,
-      seed: d.seed, // a fresh seed every visit
-      playerName: typeof p.playerName === 'string' && p.playerName.trim() ? p.playerName.slice(0, 20) : d.playerName,
-      color: Number.isInteger(p.color) && (p.color as number) >= 0 && (p.color as number) < PLAYER_PALETTE.length ? (p.color as number) : 0,
-      tribes: TRIBE_LEVELS.some((m) => m.id === p.tribes) ? (p.tribes as TribeLevel) : d.tribes,
-    };
-  } catch {
-    return d;
-  }
-}
-
-function savePrefs(p: MenuPrefs): void {
-  try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify(p));
-  } catch {
-    /* storage unavailable: ignore */
-  }
-}
-
-export function settingsFromPrefs(p: MenuPrefs): GameSettings {
-  return {
-    seed: p.seed,
-    mapType: p.mapType,
-    mapSize: p.mapSize,
-    aiCount: p.aiCount,
-    difficulty: p.difficulty,
-    playerName: p.playerName.trim() || 'Player',
-    playerColor: PLAYER_PALETTE[p.color] ?? PLAYER_PALETTE[0],
-    humanPlayer: true,
-    timeLimit: 0,
-    victoryLandShare: VICTORY_LAND_SHARE,
-    tribeCount: tribesForLevel(p.mapSize, p.tribes),
-  };
-}
+// The setup screen (map, players, presets, modifiers) and the remembered settings live in setupScreen.ts.
+export { PLAYER_PALETTE, settingsFromPrefs } from './setupScreen';
 
 // ------------------------------------------------------------------------------------------------ how to play
 
@@ -208,7 +81,7 @@ export function howToPlayContent(): HTMLElement {
   }
 
   const tribes = section('Tribes');
-  para(tribes, 'Tribes are small, weak peoples spread over the map: their land has a pale wash and small names. They are cheap to conquer and accept any alliance: easy land in the first minutes.');
+  para(tribes, 'Tribes are small, weak peoples spread over the map: their land is a grey wash with an army number (the name shows when you zoom in). They are cheap to conquer and accept any alliance (but not from a traitor): easy land in the first minutes.');
 
   const troops = section('Troops and counters');
   para(troops, 'Infantry grows by itself. Factories turn infantry into Armor, Arsenals into Artillery. With Auto on (the default) your mix counters your neighbours; open Army (U) to set it yourself. Army sizes are public; the troop mix of a nation shows only near your Watchtowers or for allies.');
@@ -297,37 +170,66 @@ export function howToPlayContent(): HTMLElement {
 
 export interface MenuCallbacks {
   onStart: (settings: GameSettings) => void;
+  /** the multiplayer connection (created on first use) */
+  net: () => NetClient;
 }
 
 /** Title screen with Play (settings) and How to play pages. */
 export class Menu {
   readonly el: HTMLElement;
   private card: HTMLElement;
-  private prefs: MenuPrefs;
+  private prefs: SetupPrefs;
   private busy: HTMLElement;
+  private mp: MultiplayerScreen | null = null;
 
   constructor(root: HTMLElement, private cb: MenuCallbacks) {
-    this.prefs = loadPrefs();
+    this.prefs = loadSetupPrefs();
     this.el = el('div', 'menu');
     this.card = el('div', 'menu-card');
     this.busy = el('div', 'menu-busy hidden');
     this.el.append(this.card, this.busy);
     root.append(this.el);
     this.showTitle();
+    // Map previews for the setup screen, made in the background while the title shows.
+    setTimeout(() => prefetchThumbs(), 1500);
   }
 
   get visible(): boolean {
     return !this.el.classList.contains('hidden');
   }
-  show(page: 'title' | 'play' | 'help' = 'title'): void {
+  show(page: 'title' | 'play' | 'help' | 'multiplayer' = 'title'): void {
     this.el.classList.remove('hidden');
     this.setBusy(null);
     if (page === 'play') this.showPlay();
     else if (page === 'help') this.showHelp();
+    else if (page === 'multiplayer') this.showMultiplayer();
     else this.showTitle();
   }
   hide(): void {
     this.el.classList.add('hidden');
+    this.closeMultiplayer();
+  }
+  /** Opens the multiplayer page; with a code, joins that lobby once connected (?lobby= links). */
+  openMultiplayer(joinCode?: string): void {
+    this.show('multiplayer');
+    if (!joinCode) return;
+    const net = this.cb.net();
+    const tryJoin = () => {
+      if (net.online) {
+        this.mp?.join(joinCode);
+        return true;
+      }
+      return false;
+    };
+    if (!tryJoin()) {
+      const off = net.onStatus(() => {
+        if (tryJoin()) off();
+      });
+    }
+  }
+  private closeMultiplayer(): void {
+    this.mp?.destroy();
+    this.mp = null;
   }
   setBusy(text: string | null): void {
     this.busy.classList.toggle('hidden', !text);
@@ -338,8 +240,13 @@ export class Menu {
     this.prefs.seed = randomSeed();
     return settingsFromPrefs(this.prefs);
   }
+  /** The settings the setup screen holds now (same seed). */
+  currentSettings(): GameSettings {
+    return settingsFromPrefs(this.prefs);
+  }
 
   private reset(cls: string): void {
+    this.closeMultiplayer();
     this.card.className = 'menu-card ' + cls;
     this.card.replaceChildren();
   }
@@ -349,11 +256,15 @@ export class Menu {
     const kicker = el('div', 'menu-kicker', 'Territory command');
     const logo = el('h1', 'logo', 'Borderfall');
     const sub = el('div', 'tagline', 'Push your borders. Outthink every front.');
-    const play = button('New game', 'primary big', () => this.showPlay());
+    const play = button('Single player', 'primary big', () => this.showPlay());
     play.dataset.test = 'menu-play';
+    play.title = 'A game against AI nations, right here in the browser (no server needed)';
+    const online = button('Multiplayer', 'big', () => this.showMultiplayer());
+    online.dataset.test = 'menu-mp';
+    online.title = 'Public games, or a private lobby with friends';
     const help = button('How to play', 'big', () => this.showHelp());
     const col = el('div', 'menu-buttons');
-    col.append(play, help);
+    col.append(play, online, help);
     this.card.append(kicker, logo, sub, col);
   }
 
@@ -366,125 +277,16 @@ export class Menu {
     this.card.append(top, body);
   }
 
+  private showMultiplayer(): void {
+    this.reset('mp');
+    this.mp = new MultiplayerScreen(this.card, this.prefs, { net: this.cb.net, onBack: () => this.showTitle() });
+  }
+
   private showPlay(): void {
-    this.reset('settings');
-    const p = this.prefs;
-    const top = el('div', 'menu-head');
-    top.append(button('Back', 'ghost', () => this.showTitle()), el('h2', '', 'New game'));
-    const form = el('div', 'form');
-
-    const row = (label: string, control: HTMLElement): void => {
-      const r = el('label', 'form-row');
-      r.append(el('span', 'form-label', label), control);
-      form.append(r);
-    };
-    const segmented = <T extends string>(opts: { id: T; label: string }[], get: () => T, set: (v: T) => void): HTMLElement => {
-      const g = el('div', 'seg');
-      const sync = () => g.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === get()));
-      for (const o of opts) {
-        const b = button(o.label, '', () => {
-          set(o.id);
-          sync();
-        });
-        b.dataset.v = o.id;
-        g.append(b);
-      }
-      sync();
-      return g;
-    };
-
-    const name = el('input', 'input');
-    name.type = 'text';
-    name.maxLength = 20;
-    name.value = p.playerName;
-    name.addEventListener('input', () => (p.playerName = name.value));
-    row('Your name', name);
-
-    const colors = el('div', 'palette');
-    PLAYER_PALETTE.forEach((c, k) => {
-      const b = el('button', 'swatch-btn');
-      b.type = 'button';
-      b.style.background = rgbCss(c);
-      b.title = `Colour ${k + 1}`;
-      b.addEventListener('click', () => {
-        p.color = k;
-        colors.querySelectorAll('.swatch-btn').forEach((x, j) => x.classList.toggle('on', j === k));
-      });
-      if (k === p.color) b.classList.add('on');
-      colors.append(b);
+    this.reset('setup');
+    new SetupScreen(this.card, this.prefs, {
+      onBack: () => this.showTitle(),
+      onStart: (settings) => this.cb.onStart(settings),
     });
-    row('Colour', colors);
-
-    row('Map type', segmented(MAP_TYPES, () => p.mapType, (v) => (p.mapType = v)));
-    // Picking a size resets the AI count to that size's default (the slider below can change it).
-    let setAiCount = (_n: number): void => {};
-    let syncTribes = (): void => {};
-    row('Map size', segmented(MAP_SIZES_UI, () => p.mapSize, (v) => {
-      p.mapSize = v;
-      setAiCount(DEFAULT_AI_COUNT[v]);
-      syncTribes();
-    }));
-
-    const ai = el('div', 'range-row');
-    const aiIn = el('input', 'range');
-    aiIn.type = 'range';
-    aiIn.min = '2';
-    aiIn.max = String(MAX_AI_COUNT);
-    aiIn.value = String(p.aiCount);
-    const aiVal = el('span', 'range-val', String(p.aiCount));
-    aiIn.addEventListener('input', () => {
-      p.aiCount = Number(aiIn.value);
-      aiVal.textContent = aiIn.value;
-    });
-    setAiCount = (n: number): void => {
-      p.aiCount = n;
-      aiIn.value = String(n);
-      aiVal.textContent = String(n);
-    };
-    ai.append(aiIn, aiVal);
-    row('AI nations', ai);
-
-    const tribeRow = el('div', 'range-row');
-    const tribeVal = el('span', 'range-val');
-    syncTribes = (): void => {
-      tribeVal.textContent = String(tribesForLevel(p.mapSize, p.tribes));
-    };
-    const tribes = segmented(TRIBE_LEVELS, () => p.tribes, (v) => {
-      p.tribes = v;
-      syncTribes();
-    });
-    tribes.title = 'Small weak AI tribes: easy early targets that accept any alliance';
-    syncTribes();
-    tribeRow.append(tribes, tribeVal);
-    row('Tribes', tribeRow);
-
-    row('Difficulty', segmented(DIFFICULTIES, () => p.difficulty, (v) => (p.difficulty = v)));
-
-    const seedRow = el('div', 'seed-row');
-    const seed = el('input', 'input');
-    seed.type = 'number';
-    seed.min = '1';
-    seed.value = String(p.seed);
-    seed.addEventListener('input', () => {
-      const v = Math.floor(Number(seed.value));
-      if (Number.isFinite(v) && v > 0) p.seed = v;
-    });
-    const dice = button('', 'icon-btn', () => {
-      p.seed = randomSeed();
-      seed.value = String(p.seed);
-    });
-    dice.title = 'Random seed';
-    dice.innerHTML = lineIcon('shuffle', 16);
-    seedRow.append(seed, dice);
-    row('Seed', seedRow);
-
-    const start = button('Start game', 'primary big', () => {
-      savePrefs(p);
-      this.cb.onStart(settingsFromPrefs(p));
-    });
-    start.dataset.test = 'menu-start';
-    const foot = el('div', 'menu-foot');
-    foot.append(start);
-    this.card.append(top, form, foot);
   }
 }

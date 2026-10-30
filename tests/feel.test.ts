@@ -5,11 +5,12 @@ import { applyAction } from '../src/sim/actions';
 import { aiWantsAlliance } from '../src/sim/ai';
 import { mainFoe, recommendMix, updateAdvisor } from '../src/sim/advisor';
 import { markBuildingsChanged } from '../src/sim/buildings';
-import { annexTiles, estimateAttack, frontLength, launchAttack, supplyEfficiency, updateAttacks, updateSupply } from '../src/sim/combat';
+import { annexTiles, collapseThreshold, estimateAttack, frontLength, launchAttack, supplyEfficiency, updateAttacks, updateSupply } from '../src/sim/combat';
 import {
   AUTO_EMBARGO_SECONDS,
   BEACHHEAD_SUPPLY_SECONDS,
   ENDGAME_SMALL_TILES,
+  HUMAN_GRACE_SECONDS,
   OUTNUMBER_LOSS,
   OVERTIME_MIN_SHARE,
   OVERTIME_MINUTES,
@@ -272,6 +273,23 @@ describe('endgame', () => {
     expect(annexTiles(t, 2, 1, [at(t, 11, 11)])).toBe(1);
   });
 
+  it('a small human is neither absorbed nor collapsed in its grace time, but warned; afterwards it is', () => {
+    const s = makeFlatGame(40, 40, 2, { human: true });
+    claimRect(s, 2, 0, 0, 39, 39);
+    claimRect(s, 1, 15, 15, 23, 23); // the 81-tile start, walled in by player 2
+    s.players[1].capital = at(s, 19, 19);
+    s.tick = s.playStartTick + 60 * TICKS_PER_SECOND; // 1 minute into the game
+    expect(collapseThreshold(s, s.players[1])).toBe(0);
+    annexEnclaves(s);
+    expect(s.players[1].alive).toBe(true);
+    expect(s.players[1].tiles).toBe(81);
+    expect(s.events.some((e) => e.kind === 'surrounded' && e.players[0] === 1)).toBe(true);
+    s.tick = s.playStartTick + (HUMAN_GRACE_SECONDS + 1) * TICKS_PER_SECOND;
+    expect(collapseThreshold(s, s.players[1])).toBe(ENDGAME_SMALL_TILES);
+    annexEnclaves(s);
+    expect(s.players[1].alive).toBe(false);
+  });
+
   it('overtime lowers the land share needed to win by 1% a minute, down to 50%', () => {
     const s = makeFlatGame(10, 10, 2);
     expect(victoryShareNow(s)).toBe(VICTORY_LAND_SHARE);
@@ -291,8 +309,8 @@ describe('endgame', () => {
 
 describe('tribes', () => {
   it('are created per map size, spawn at the end of the spawn phase, and are weak', () => {
-    expect(tribeCountFor({ tribeCount: -1, mapSize: 'large' })).toBe(TRIBE_COUNT.large);
-    expect(tribeCountFor({ tribeCount: 3, mapSize: 'large' })).toBe(3);
+    expect(tribeCountFor(testSettings({ tribeCount: -1, mapSize: 'large' }))).toBe(TRIBE_COUNT.large);
+    expect(tribeCountFor(testSettings({ tribeCount: 3, mapSize: 'large' }))).toBe(3);
     const s = createGame(testSettings({ humanPlayer: false, aiCount: 3, tribeCount: 5 }));
     const tribes = s.players.filter((p) => isTribe(p));
     expect(tribes.length).toBe(5);
@@ -310,6 +328,19 @@ describe('tribes', () => {
     expect(s.attacks.some((a) => isTribe(s.players[a.attacker]) && a.target !== 0)).toBe(false);
   }, 30_000);
 
+  it('in the first minutes an AI allies with a human only out of opinion', () => {
+    const s = makeFlatGame(60, 10, 3, { human: true });
+    claimRect(s, 1, 0, 0, 9, 9);
+    claimRect(s, 2, 30, 0, 39, 9); // not neighbours, so not each other's last outlet or next target
+    claimRect(s, 3, 50, 0, 59, 9);
+    s.players[2].personality = 'turtle';
+    s.opinion[2][1] = 0;
+    s.tick = s.playStartTick + 60 * TICKS_PER_SECOND;
+    expect(aiWantsAlliance(s, 2, 1)).toBe(false);
+    s.opinion[2][1] = 90;
+    expect(aiWantsAlliance(s, 2, 1)).toBe(true);
+  });
+
   it('accept every alliance and never count for last nation standing', () => {
     const s = makeFlatGame(30, 10, 3);
     claimRect(s, 1, 0, 0, 9, 9);
@@ -318,6 +349,9 @@ describe('tribes', () => {
     s.players[3].personality = 'tribe';
     s.opinion[3][1] = -90;
     expect(aiWantsAlliance(s, 3, 1)).toBe(true);
+    s.players[1].traitorUntil = s.tick + 100; // ... but not a traitor (ally, break, ally again)
+    expect(aiWantsAlliance(s, 3, 1)).toBe(false);
+    s.players[1].traitorUntil = 0;
     updateVictory(s);
     expect(s.phase).toBe('playing');
     for (let x = 10; x < 20; x++) for (let y = 0; y < 10; y++) setOwner(s, at(s, x, y), 1);

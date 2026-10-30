@@ -8,23 +8,10 @@ import { breakAlliance, formAlliance } from '../src/sim/diplomacy';
 import { tick } from '../src/sim/sim';
 import { createGame, spawnMinDistance } from '../src/sim/state';
 import type { BuildingType, GameSettings, GameState } from '../src/sim/types';
-import { claimRect, makeFlatGame } from './helpers';
+import { claimRect, makeFlatGame, testSettings } from './helpers';
 
 function aiSettings(seed: number, overrides: Partial<GameSettings> = {}): GameSettings {
-  return {
-    seed,
-    mapType: 'continents',
-    mapSize: 'small',
-    aiCount: 4,
-    difficulty: 'normal',
-    playerName: 'Nobody',
-    playerColor: [255, 255, 255],
-    humanPlayer: false,
-    timeLimit: 0,
-    victoryLandShare: VICTORY_LAND_SHARE,
-    tribeCount: 0,
-    ...overrides,
-  };
+  return testSettings({ seed, aiCount: 4, playerName: 'Nobody', humanPlayer: false, victoryLandShare: VICTORY_LAND_SHARE, tribeCount: 0, ...overrides });
 }
 
 /** Runs the spawn phase to its end (the tick that starts the game). */

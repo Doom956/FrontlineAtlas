@@ -40,9 +40,10 @@ export function ctx2d(c: HTMLCanvasElement, opts?: CanvasRenderingContext2DSetti
 /** 1234 -> "1.2k", 2.5e6 -> "2.50M". */
 export function formatCount(n: number): string {
   const v = Math.max(0, n);
-  if (v < 1000) return String(Math.round(v));
-  if (v < 1e6) return (v / 1000).toFixed(v < 1e4 ? 1 : 0) + 'k';
-  return (v / 1e6).toFixed(v < 1e7 ? 2 : 1) + 'M';
+  // thresholds where the rounded text would reach the next unit (999.6 -> "1.0k", 999 600 -> "1.00M", not "1000k")
+  if (v < 999.5) return String(Math.round(v));
+  if (v < 999_500) return (v / 1000).toFixed(v < 9950 ? 1 : 0) + 'k';
+  return (v / 1e6).toFixed(v < 9_995_000 ? 2 : 1) + 'M';
 }
 
 /** Cache key that changes whenever a building is added, removed, upgraded, finished or changes owner. */

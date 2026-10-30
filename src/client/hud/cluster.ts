@@ -66,7 +66,7 @@ export class Cluster {
     const ct = el('span', 'clock-t');
     clock.append(ct);
 
-    const speed = el('div', 'cl-group seg');
+    const speed = el('div', 'cl-group seg cl-speed');
     this.pauseBtn = sq('pause', 'Pause  (Space)', () => (ctx.ui.paused = !ctx.ui.paused), 'pause');
     speed.append(this.pauseBtn);
     for (const s of SPEEDS) {

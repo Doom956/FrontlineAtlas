@@ -1,14 +1,17 @@
 // Balance batch runner: many AI-only games per configuration, aggregated into balance and performance tables.
 //
 // Usage: npx vite-node scripts/batch.ts -- [options]     (spawns workers with node_modules/.bin/vite-node)
-//   --sizes small,medium,large   map sizes (small, medium, large, huge)   (default: small,medium,large)
+//   --sizes small,medium,large   map sizes (small, medium, large, huge) or real-world maps as world:<id>
+//                                (e.g. world:world,world:europe)   (default: small,medium,large)
 //   --ais default                AI nation counts, or 'default' = config DEFAULT_AI_COUNT per size (default)
 //   --maps continents,archipelago,pangaea,highlands
 //                                map types; game k of a configuration uses map k mod the list (default: all four)
 //   --seeds 4                    games per size x AI count      (default: 4)
 //   --start 1                    first seed                     (default: 1)
 //   --minutes 55                 game-minute cap per game       (default: 55)
-//   --tribes -1                  tribes per game, < 0 = config default for the map size
+//   --tribes -1                  tribes per game, < 0 = the default for the map's land (setup.defaultTribeCount)
+//   --mods fastGame,peaceMinutes=4,goldMultiplier=2
+//                                game modifiers (types.Modifiers; a bare name = true)
 //   --difficulty normal          easy | normal | hard
 //   --jobs 4                     parallel worker processes (1 = in this process; use 1 for tick timings)
 //   --json                       also print one JSON line per game
@@ -25,7 +28,9 @@ import { armyTotal, population } from '../src/sim/economy';
 import { tick } from '../src/sim/sim';
 import { createGame, gameSeconds } from '../src/sim/state';
 import { isTribe } from '../src/sim/types';
-import type { BuildingType, Difficulty, GameSettings, GameState, MapSize, MapType, Troops } from '../src/sim/types';
+import { cloneSetup, DEFAULT_MODIFIERS, DEFAULT_SETUP, SINGLE_PLAYER_NATIONS } from '../src/sim/setup';
+import { loadWorldMap } from '../src/sim/worldmaps';
+import type { BuildingType, Difficulty, GameSettings, GameState, MapSize, MapType, Modifiers, Troops } from '../src/sim/types';
 
 // No @types/node in this project: declare the few Node globals used here.
 declare const process: { argv: string[]; exit(code?: number): never; stdout: { write(s: string): boolean } };
@@ -35,7 +40,9 @@ declare const process: { argv: string[]; exit(code?: number): never; stdout: { w
 // ---------------------------------------------------------------------------------------------------------------
 
 interface Options {
-  sizes: MapSize[];
+  /** map sizes, or world:<id> for a real-world map */
+  sizes: string[];
+  mods: Partial<Modifiers>;
   ais: number[];
   maps: MapType[];
   seeds: number;
@@ -54,6 +61,7 @@ function parseOptions(argv: string[]): Options {
   const args = argv.filter((a) => a !== '--');
   const o: Options = {
     sizes: ['small', 'medium', 'large'],
+    mods: {},
     ais: [],
     maps: ['continents', 'archipelago', 'pangaea', 'highlands'],
     seeds: 4,
@@ -71,7 +79,16 @@ function parseOptions(argv: string[]): Options {
     const v = args[k + 1];
     const list = (): string[] => (v ?? '').split(',').filter(Boolean);
     switch (a) {
-      case '--sizes': o.sizes = list() as MapSize[]; k++; break;
+      case '--sizes': o.sizes = list(); k++; break;
+      case '--mods': {
+        for (const item of list()) {
+          const [key, raw] = item.split('=');
+          const val = raw === undefined ? true : raw === 'true' ? true : raw === 'false' ? false : Number.isFinite(Number(raw)) ? Number(raw) : raw;
+          (o.mods as Record<string, unknown>)[key] = val;
+        }
+        k++;
+        break;
+      }
       case '--ais': o.ais = v === 'default' ? [] : list().map(Number); k++; break;
       case '--maps': o.maps = list() as MapType[]; k++; break;
       case '--seeds': o.seeds = Number(v); k++; break;
@@ -98,15 +115,16 @@ function parseOptions(argv: string[]): Options {
 
 interface Job {
   index: number;
-  size: MapSize;
+  /** map size, or world:<id> */
+  size: string;
   ais: number;
   map: MapType;
   seed: number;
 }
 
 /** AI counts to run for a size: --ais, or the size's default. */
-function aisFor(o: Options, size: MapSize): number[] {
-  return o.ais.length ? o.ais : [DEFAULT_AI_COUNT[size]];
+function aisFor(o: Options, size: string): number[] {
+  return o.ais.length ? o.ais : [DEFAULT_AI_COUNT[size as MapSize] ?? SINGLE_PLAYER_NATIONS];
 }
 
 function jobList(o: Options): Job[] {
@@ -224,11 +242,12 @@ function tileLeader(state: GameState): number {
   return best;
 }
 
-function runGame(job: Job, o: Options): GameResult {
+async function runGame(job: Job, o: Options): Promise<GameResult> {
+  const world = job.size.startsWith('world:') ? job.size.slice(6) : null;
   const settings: GameSettings = {
+    ...cloneSetup(DEFAULT_SETUP),
     seed: job.seed,
-    mapType: job.map,
-    mapSize: job.size,
+    map: world ? { kind: 'world', id: world } : { kind: 'generated', type: job.map, size: job.size as MapSize },
     aiCount: job.ais,
     difficulty: o.difficulty,
     playerName: 'Nobody',
@@ -237,8 +256,9 @@ function runGame(job: Job, o: Options): GameResult {
     timeLimit: 0,
     victoryLandShare: VICTORY_LAND_SHARE,
     tribeCount: o.tribes,
+    modifiers: { ...DEFAULT_MODIFIERS, ...o.mods },
   };
-  const state = createGame(settings);
+  const state = createGame(settings, world ? await loadWorldMap(world) : null);
   while (state.phase === 'spawn') {
     tick(state);
     state.events.length = 0;
@@ -690,7 +710,7 @@ async function main(): Promise<void> {
   const o = parseOptions(argv);
   const jobs = jobList(o);
   if (o.shard >= 0) {
-    for (const j of jobs) if (j.index % o.of === o.shard) process.stdout.write(JSON.stringify(runGame(j, o)) + '\n');
+    for (const j of jobs) if (j.index % o.of === o.shard) process.stdout.write(JSON.stringify(await runGame(j, o)) + '\n');
     return;
   }
   console.log(`Borderfall batch: ${jobs.length} games (${o.sizes.join(',')} x ${o.ais.length ? o.ais.join(',') : 'default'} AIs x ${o.seeds} seeds from ${o.start}, maps ${o.maps.join(',')}), cap ${o.minutes} min, ${o.difficulty}, ${o.jobs} job(s).`);
@@ -699,7 +719,7 @@ async function main(): Promise<void> {
   if (o.jobs <= 1) {
     results = [];
     for (const j of jobs) {
-      const r = runGame(j, o);
+      const r = await runGame(j, o);
       results.push(r);
       progress(r, o);
     }

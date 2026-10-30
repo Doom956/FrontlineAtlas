@@ -23,6 +23,7 @@ const KIND_MAP: Record<GameEventKind, true> = {
   info: true,
   attackStarted: true,
   underAttack: true,
+  surrounded: true,
   buildingDone: true,
   buildingLost: true,
   buildingCaptured: true,

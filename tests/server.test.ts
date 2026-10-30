@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { createGame } from '../src/sim/state';
 import {
+  DEFAULT_LOBBY_SETTINGS,
   PROTOCOL_VERSION,
   expandCatchUp,
   isHashTurn,
@@ -11,9 +12,10 @@ import {
   resolveServerUrl,
 } from '../src/net/protocol';
 import type { LobbySettings, ServerMessage } from '../src/net/protocol';
-import { PUBLIC_NATIONS, publicFill } from '../server/hub';
+import { PUBLIC_NATIONS, publicFill, publicNations } from '../server/hub';
 import { assignTeams, resolveColors } from '../server/room';
-import { startServer } from '../server/server';
+import { clientIp, startServer } from '../server/server';
+import type { IncomingMessage } from 'node:http';
 import type { RunningServer } from '../server/server';
 import { validateAction, validateClientMessage } from '../server/validate';
 
@@ -110,7 +112,7 @@ describe('protocol helpers', () => {
   });
 
   it('fills public games with AI nations and replaces clashing colours', () => {
-    const base = { mode: 'ffa', mapSize: 'medium', teamCount: 2 } as LobbySettings;
+    const base: LobbySettings = { ...DEFAULT_LOBBY_SETTINGS, mode: 'ffa', map: { kind: 'generated', type: 'continents', size: 'medium' }, teamCount: 2 };
     expect(publicFill(base, 1).aiCount).toBe(PUBLIC_NATIONS.medium - 1);
     expect(publicFill({ ...base, mode: 'teams', teamCount: 3 }, 2).aiCount % 3).toBe(1);
     const c = resolveColors([
@@ -223,7 +225,7 @@ describe('relay server: private lobby game', () => {
     await c.hello('Ann'); // same name: made unique
     await a.take('lobbyList');
 
-    a.send({ type: 'createLobby', settings: { mapSize: 'small', mapType: 'pangaea', aiCount: 2, maxPlayers: 4 } });
+    a.send({ type: 'createLobby', settings: { map: { kind: 'generated', type: 'pangaea', size: 'small' }, aiCount: 2, maxPlayers: 4, modifiers: { peaceMinutes: 2 } } });
     const ls = await a.take('lobbyState');
     code = ls.code;
     expect(code).toMatch(/^[A-Z2-9]{6}$/);
@@ -257,7 +259,9 @@ describe('relay server: private lobby game', () => {
     expect(g.turnsPlayed).toBe(0);
     expect(g.teams).toBeNull();
     expect(g.playerSlots.map((p) => p.playerId)).toEqual([1, 2, 3]);
-    expect(g.settings).toMatchObject({ mapType: 'pangaea', mapSize: 'small', aiCount: 3, humanPlayer: true, playerName: 'Ann' });
+    expect(g.settings).toMatchObject({ map: { kind: 'generated', type: 'pangaea', size: 'small' }, aiCount: 3, humanPlayer: true, playerName: 'Ann' });
+    expect(g.settings.modifiers.peaceMinutes).toBe(2);
+    expect(g.settings.modifiers.noNukes).toBe(false);
     expect(Number.isInteger(g.settings.seed)).toBe(true);
     // Colours that clash (all three asked for the same one) are replaced.
     expect(new Set(g.playerSlots.map((p) => p.color.join())).size).toBe(3);
@@ -472,9 +476,16 @@ describe('relay server: public lobbies', () => {
     const x = await TestClient.connect(srv.wsUrl);
     await x.hello('Solo');
     const list = await x.take('lobbyList');
-    expect(list.lobbies.map((l) => l.mode).sort()).toEqual(['ffa', 'teams']);
-    const ffa = list.lobbies.find((l) => l.mode === 'ffa')!;
+    expect(list.lobbies.map((l) => l.kind).sort()).toEqual(['ffa', 'special', 'teams']);
+    const ffa = list.lobbies.find((l) => l.kind === 'ffa')!;
     expect(ffa.startsAt).toBeNull();
+    expect(ffa.chips).toEqual([]);
+    // Special: free-for-all with 1-3 random modifiers, listed as chips
+    const special = list.lobbies.find((l) => l.kind === 'special')!;
+    expect(special.mode).toBe('ffa');
+    expect(special.chips.length).toBeGreaterThanOrEqual(1);
+    expect(special.chips.length).toBeLessThanOrEqual(3);
+    expect(special.rules).toBe(special.chips.map((c) => c.label).join(', '));
 
     x.send({ type: 'joinLobby', code: ffa.code });
     const ls = await x.take('lobbyState');
@@ -489,19 +500,20 @@ describe('relay server: public lobbies', () => {
     const gs = await x.take('gameStart', () => true, 2000);
     expect(gs.yourPlayerId).toBe(1);
     expect(gs.playerSlots.length).toBe(1);
-    expect(gs.settings.aiCount).toBe(Math.min(15, PUBLIC_NATIONS[gs.settings.mapSize] - 1));
+    expect(gs.settings.aiCount).toBe(Math.min(15, publicNations(gs.settings) - 1));
+    expect(gs.settings.humans).toEqual([{ name: 'Solo', color: gs.playerSlots[0].color, team: 0 }]);
     await x.take('turn');
 
     // A new FFA lobby replaced the started one.
     const y = await TestClient.connect(srv.wsUrl);
     await y.hello('Next');
     const list2 = await y.take('lobbyList');
-    const ffa2 = list2.lobbies.find((l) => l.mode === 'ffa')!;
+    const ffa2 = list2.lobbies.find((l) => l.kind === 'ffa')!;
     expect(ffa2.code).not.toBe(ffa.code);
-    expect(`${ffa2.mapType}/${ffa2.mapSize}`).not.toBe(`${ffa.mapType}/${ffa.mapSize}`);
+    expect(JSON.stringify(ffa2.map)).not.toBe(JSON.stringify(ffa.map));
 
     // Teams lobby: two humans on auto end up on different teams; AI nations fill the teams evenly.
-    const teams = list2.lobbies.find((l) => l.mode === 'teams')!;
+    const teams = list2.lobbies.find((l) => l.kind === 'teams')!;
     const z = await TestClient.connect(srv.wsUrl);
     await z.hello('Zed');
     y.send({ type: 'joinLobby', code: teams.code });
@@ -513,8 +525,203 @@ describe('relay server: public lobbies', () => {
     expect(t.byPlayer.length).toBe(1 + 2 + gy.settings.aiCount);
     expect(t.byPlayer[1]).not.toBe(t.byPlayer[2]);
     expect(gy.playerSlots.map((p) => p.team)).toEqual([t.byPlayer[1], t.byPlayer[2]]);
+    expect(gy.settings.humans!.map((h) => h.team)).toEqual([t.byPlayer[1], t.byPlayer[2]]);
     const sizes = Array.from({ length: t.count }, (_, k) => t.byPlayer.filter((v) => v === k + 1).length);
     expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThanOrEqual(1);
     for (const c of [x, y, z]) await c.close();
+  });
+});
+
+// ------------------------------------------------------------------------------------------------ abuse and long games
+
+describe('relay server: long games, limits and votes', () => {
+  let srv: RunningServer;
+  const base = { port: 0, host: '127.0.0.1', publicLobbies: false, turnMs: 50, firstTurnDelayMs: 0, sweepMs: 20, createLobbyCooldownMs: 0, ...quiet };
+  beforeAll(async () => {
+    srv = await startServer({ ...base, maxRoomsPerIp: 50 });
+  });
+  afterAll(async () => {
+    await srv.close();
+  });
+
+  /** n clients in a started private game; returns them and the code. */
+  async function game(names: string[]): Promise<{ cs: TestClient[]; code: string }> {
+    const cs = await Promise.all(names.map(() => TestClient.connect(srv.wsUrl)));
+    for (let i = 0; i < cs.length; i++) await cs[i].hello(names[i]);
+    cs[0].send({ type: 'createLobby', settings: { map: { kind: 'generated', type: 'pangaea', size: 'small' }, aiCount: 1 } });
+    const { code } = await cs[0].take('lobbyState');
+    for (const c of cs.slice(1)) {
+      c.send({ type: 'joinLobby', code });
+      await c.take('lobbyState');
+    }
+    cs[0].send({ type: 'startGame' });
+    for (const c of cs) await c.take('gameStart');
+    return { cs, code };
+  }
+
+  it('sends a long history in drained chunks, and only the gap to a client that says what it has', async () => {
+    const { cs, code } = await game(['Long']);
+    const [a] = cs;
+    const room = srv.hub.rooms.get(code)!;
+    const id = a.clientId;
+    await a.close();
+    // Synthetic history: 20000 turns with 3 intents each (~4 MB serialized), more than 8 chunks.
+    const r = room as unknown as { pending: unknown[] };
+    for (let k = 0; k < 20000; k++) {
+      for (let j = 0; j < 3; j++) r.pending.push({ playerId: 1, action: { type: 'setArmyMix', armor: 0.125, artillery: 0.25 } });
+      room.endTurn();
+    }
+    const b = await TestClient.connect(srv.wsUrl);
+    b.clientId = id;
+    expect((await b.hello('Long')).resumed).toBe(code);
+    const gs = await b.take('gameStart');
+    const chunks: Msg<'catchUp'>[] = [];
+    let next = 0;
+    while (next < gs.turnsPlayed) {
+      const cu = await b.take('catchUp', () => true, 5000);
+      expect(cu.fromTurn).toBe(next);
+      expect(JSON.stringify(cu).length).toBeLessThan(700 * 1024);
+      chunks.push(cu);
+      next = cu.toTurn;
+    }
+    expect(chunks.length).toBeGreaterThan(4);
+    const all = chunks.flatMap((c) => expandCatchUp(c));
+    expect(all.length).toBe(next);
+    expect(all.filter((t) => t.intents.length === 3).length).toBeGreaterThanOrEqual(20000);
+    // Live turns only after the catch-up, in order (the synthetic turns put the room's clock ahead: end one by hand).
+    expect(b.has('turn')).toBe(false);
+    room.endTurn();
+    const live = await b.take('turn');
+    expect(live.n).toBe(next);
+    await b.close();
+
+    // A reconnect that says which turns it holds gets only the rest.
+    const c = await TestClient.connect(srv.wsUrl);
+    c.clientId = id;
+    await c.hello('Long', { resume: { code, haveTurns: next - 5 } });
+    const gs2 = await c.take('gameStart');
+    const cu2 = await c.take('catchUp');
+    expect(cu2.fromTurn).toBe(next - 5);
+    expect(cu2.toTurn).toBe(gs2.turnsPlayed);
+    // joinLobby for the game you are in: no second gameStart / catch-up.
+    c.inbox.length = 0;
+    c.send({ type: 'joinLobby', code });
+    await sleep(200);
+    expect(c.has('gameStart') || c.has('catchUp')).toBe(false);
+    await c.close();
+  });
+
+  it('a reconnect puts you in your current lobby, not in a game you left', async () => {
+    const { cs, code } = await game(['Al', 'Bo']);
+    const [a, b] = cs;
+    a.send({ type: 'leaveLobby' });
+    await a.take('lobbyList');
+    a.send({ type: 'createLobby' });
+    const ls = await a.take('lobbyState', (m) => m.code !== code);
+    const id = a.clientId;
+    await a.close();
+    const a2 = await TestClient.connect(srv.wsUrl);
+    a2.clientId = id;
+    expect((await a2.hello('Al')).resumed).toBe(ls.code);
+    await a2.take('lobbyState');
+    expect(a2.has('gameStart')).toBe(false);
+    // The left seat can still be taken back by code.
+    a2.send({ type: 'joinLobby', code });
+    expect((await a2.take('gameStart')).yourPlayerId).toBe(1);
+    for (const x of [a2, b]) await x.close();
+  });
+
+  it('one player cannot end a multi-human game alone, and the winner must exist', async () => {
+    const { cs } = await game(['P1', 'P2', 'P3']);
+    const [a, b, c] = cs;
+    const t = await a.take('turn');
+    a.send({ type: 'gameOver', turn: t.n, winner: 999 });
+    expect((await a.take('error')).code).toBe('badMessage');
+    await b.close();
+    await c.close();
+    await sleep(50);
+    a.send({ type: 'gameOver', turn: t.n, winner: 1 });
+    await sleep(150);
+    expect(a.has('gameOver')).toBe(false);
+    await a.close();
+  });
+
+  it('2 players with different hashes: a soft notice, and a spectator breaks the tie', async () => {
+    const { cs, code } = await game(['H1', 'H2']);
+    const [a, b] = cs;
+    await a.take('turn', (m) => m.n >= 9, 3000);
+    a.send({ type: 'hash', turn: 9, hash: 1 });
+    b.send({ type: 'hash', turn: 9, hash: 2 });
+    const [da, db] = await Promise.all([a.take('desync'), b.take('desync')]);
+    expect(da.majorityHash).toBeNull();
+    expect(db.majorityHash).toBeNull();
+    // Still checked afterwards: a spectator in sync decides who is out.
+    const s = await TestClient.connect(srv.wsUrl);
+    await s.hello('Spec');
+    s.send({ type: 'joinLobby', code, spectate: true });
+    await s.take('gameStart');
+    await a.take('turn', (m) => m.n >= 29, 3000);
+    a.send({ type: 'hash', turn: 29, hash: 7 });
+    b.send({ type: 'hash', turn: 29, hash: 8 });
+    s.send({ type: 'hash', turn: 29, hash: 7 });
+    const d = await b.take('desync');
+    expect(d).toMatchObject({ turn: 29, majorityHash: 7, agreeing: 2, total: 3 });
+    await sleep(100);
+    expect(a.has('desync')).toBe(false);
+    for (const x of [a, b, s]) await x.close();
+  });
+});
+
+describe('relay server: per-address limits', () => {
+  it('caps live rooms per address; leaving a solo game ends it at once', async () => {
+    const srv = await startServer({ port: 0, host: '127.0.0.1', publicLobbies: false, sweepMs: 20, maxRoomsPerIp: 2, createLobbyCooldownMs: 0, ...quiet });
+    const cs = await Promise.all([0, 1, 2].map(() => TestClient.connect(srv.wsUrl)));
+    for (const c of cs) await c.hello('X');
+    const codes: string[] = [];
+    for (const c of cs.slice(0, 2)) {
+      c.send({ type: 'createLobby' });
+      codes.push((await c.take('lobbyState')).code);
+      c.send({ type: 'startGame' });
+      await c.take('gameStart');
+    }
+    cs[2].send({ type: 'createLobby' });
+    expect((await cs[2].take('error')).code).toBe('rateLimit');
+    cs[0].send({ type: 'leaveLobby' });
+    await sleep(50);
+    expect(srv.hub.rooms.has(codes[0])).toBe(false);
+    cs[2].send({ type: 'createLobby' });
+    await cs[2].take('lobbyState');
+    for (const c of cs) await c.close();
+    await srv.close();
+  });
+
+  it('createLobby cooldown and a steady intent budget', async () => {
+    const srv = await startServer({ port: 0, host: '127.0.0.1', publicLobbies: false, turnMs: 50, firstTurnDelayMs: 0, sweepMs: 20, createLobbyCooldownMs: 500, intentsPerSecond: 1, intentBurst: 3, ...quiet });
+    const a = await TestClient.connect(srv.wsUrl);
+    await a.hello('A');
+    a.send({ type: 'createLobby' });
+    await a.take('lobbyState');
+    a.send({ type: 'createLobby' });
+    expect((await a.take('error')).code).toBe('rateLimit');
+    a.send({ type: 'startGame' });
+    await a.take('gameStart');
+    for (let i = 0; i < 6; i++) {
+      a.send({ type: 'intent', action: { type: 'setArmyMix', armor: 0.1, artillery: 0.1 } });
+      await sleep(60);
+    }
+    expect((await a.take('error')).message).toMatch(/slow down/);
+    await sleep(100);
+    const mine = a.inbox.filter((m): m is Msg<'turn'> => m.type === 'turn').flatMap((t) => t.intents);
+    expect(mine.length).toBe(3);
+    await a.close();
+    await srv.close();
+  });
+
+  it('takes the client address from the end of X-Forwarded-For (the first entries are the client\'s own)', () => {
+    const req = (headers: Record<string, string>): IncomingMessage => ({ headers, socket: { remoteAddress: '10.9.9.9' } }) as unknown as IncomingMessage;
+    expect(clientIp(req({ 'x-forwarded-for': '6.6.6.6, 1.2.3.4' }), true)).toBe('1.2.3.4');
+    expect(clientIp(req({ 'x-forwarded-for': '6.6.6.6, 1.2.3.4, 172.16.0.1' }), true, 2)).toBe('1.2.3.4');
+    expect(clientIp(req({ 'x-forwarded-for': '6.6.6.6', 'fly-client-ip': '5.5.5.5' }), true, 1, 'fly-client-ip')).toBe('5.5.5.5');
+    expect(clientIp(req({ 'x-forwarded-for': '6.6.6.6' }), false)).toBe('10.9.9.9');
   });
 });

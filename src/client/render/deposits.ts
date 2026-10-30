@@ -10,7 +10,7 @@ import { clamp, type View } from './common';
 import { buildDeposits, type DepositCluster } from './terrain';
 
 export const DEPOSIT_ZOOM = 4;
-export const CLUSTER_ZOOM = 9;
+export const CLUSTER_ZOOM = 14;
 const CELL = 32;
 const IDS: readonly (ResourceIconId | null)[] = [null, 'iron', 'oil', 'fertile'];
 
@@ -75,8 +75,12 @@ export class DepositLayer {
           if (c.res === 3 && !overlay && focus !== 3 && z < CLUSTER_ZOOM) continue;
           const o = owner[c.tile];
           const foreign = o !== 0 && o !== humanId && humanId > 0;
+          // Inside territory (yours or not) only the bigger fields get a marker unless you look for them, so owned
+          // land doesn't fill up with drops and rocks up close.
+          if (o !== 0 && !overlay && focus === 0 && c.tiles < (near ? 4 : 10)) continue;
           const dim = (foreign && !overlay) || (focus !== 0 && focus !== c.res);
-          drawMarker(ctx, id, ox + c.x * z, oy + c.y * z, focus === c.res ? size * 1.2 : size, { dpr, alpha: dim ? 0.4 : 0.95 });
+          const inside = o !== 0 && !overlay && focus === 0;
+          drawMarker(ctx, id, ox + c.x * z, oy + c.y * z, focus === c.res ? size * 1.2 : inside ? size * 0.85 : size, { dpr, alpha: dim ? 0.35 : inside ? 0.75 : 0.95 });
           this.drawn++;
         }
       }

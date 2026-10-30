@@ -3,9 +3,10 @@
 import { randomInt } from 'node:crypto';
 import WebSocket from 'ws';
 import type { RawData } from 'ws';
-import type { MapSize, MapType } from '../src/sim/types';
+import { activeModifiers, landEstimate, mergeSetup, modifierSummary, MULTIPLAYER_NATIONS, rollModifiers, sizeClassForLand } from '../src/sim/setup';
+import type { MapChoice, MapSize } from '../src/sim/types';
 import { CloseCode, DEFAULT_LOBBY_SETTINGS, LOBBY_CODE_ALPHABET, LOBBY_CODE_LENGTH, PROTOCOL_VERSION } from '../src/net/protocol';
-import type { ClientMessage, ErrorCode, GameMode, LobbySettings, LobbySummary, RGB, ServerMessage } from '../src/net/protocol';
+import type { ClientMessage, ErrorCode, LobbyKind, LobbySettings, LobbySummary, RGB, ServerMessage } from '../src/net/protocol';
 import type { ServerOptions } from './options';
 import { Room } from './room';
 import type { Member, RoomError, RoomHost, RoomSession } from './room';
@@ -16,32 +17,48 @@ const MAX_INVALID = 200;
 /** Messages dropped in a row by the rate limit before the connection is closed. */
 const MAX_FLOOD = 150;
 const HASH_RATE = 20;
-/** A client that can't keep up (send buffer) is disconnected; it can reconnect and catch up. */
+/**
+ * A client that can't keep up (send buffer) is disconnected; it can reconnect and catch up. Catch-ups never get
+ * near it: they are sent in chunks only while the buffer holds less than about 1 MB (Room.pumpCatchUp).
+ */
 const MAX_BUFFERED = 16 * 1024 * 1024;
 
 // ------------------------------------------------------------------------------------------------ public lobbies
 
-/** Map rotation for public games (never the same map twice in a row). */
-export const PUBLIC_ROTATION: readonly [MapType, MapSize][] = [
-  ['continents', 'medium'],
-  ['pangaea', 'small'],
-  ['archipelago', 'large'],
-  ['highlands', 'medium'],
-  ['pangaea', 'large'],
-  ['continents', 'small'],
-  ['archipelago', 'medium'],
-  ['highlands', 'large'],
-  ['continents', 'large'],
-  ['highlands', 'small'],
+/** Map rotation for public games (never the same map twice in a row): generated maps and real-world maps. */
+export const PUBLIC_ROTATION: readonly MapChoice[] = [
+  { kind: 'generated', type: 'continents', size: 'medium' },
+  { kind: 'world', id: 'europe' },
+  { kind: 'generated', type: 'pangaea', size: 'small' },
+  { kind: 'world', id: 'world' },
+  { kind: 'generated', type: 'archipelago', size: 'large' },
+  { kind: 'world', id: 'mediterranean' },
+  { kind: 'generated', type: 'highlands', size: 'medium' },
+  { kind: 'world', id: 'north-america' },
+  { kind: 'generated', type: 'continents', size: 'small' },
+  { kind: 'world', id: 'british-isles' },
 ];
 export const PUBLIC_TEAM_COUNTS: readonly number[] = [2, 3, 2, 4];
-/** Humans per public lobby and nations (humans + AI) per public game, by map size. */
-export const PUBLIC_MAX_PLAYERS: Record<MapSize, number> = { small: 8, medium: 12, large: 16, huge: 16 };
-export const PUBLIC_NATIONS: Record<MapSize, number> = { small: 8, medium: 12, large: 16, huge: 16 };
+/** Public lobby kinds the server keeps open (one of each). */
+export const PUBLIC_KINDS: readonly LobbyKind[] = ['ffa', 'teams', 'special'];
+/** Humans per public lobby and nations (humans + AI) per public game, by the map's size class (about ten nations). */
+export const PUBLIC_MAX_PLAYERS: Record<MapSize, number> = { small: 8, medium: 10, large: 12, huge: 12 };
+export const PUBLIC_NATIONS: Record<MapSize, number> = { small: 8, medium: MULTIPLAYER_NATIONS, large: 12, huge: 12 };
+
+/** Size class of a lobby's map (by its land; compact maps count their quarter). */
+export function lobbyMapClass(settings: Pick<LobbySettings, 'map' | 'modifiers'>): MapSize {
+  if (settings.map.kind === 'generated' && !settings.modifiers.compactMap) return settings.map.size;
+  return sizeClassForLand(landEstimate(settings.map, settings.modifiers.compactMap));
+}
+
+/** Nations (humans + AI) a public game on this map gets. */
+export function publicNations(settings: Pick<LobbySettings, 'map' | 'modifiers'>): number {
+  return PUBLIC_NATIONS[lobbyMapClass(settings)];
+}
 
 /** AI nations filling a public game: up to the map's nation count, a multiple of the team count in teams mode. */
 export function publicFill(settings: LobbySettings, humans: number): LobbySettings {
-  let ai = Math.max(1, PUBLIC_NATIONS[settings.mapSize] - humans);
+  let ai = Math.max(1, publicNations(settings) - humans);
   if (settings.mode === 'teams') {
     const rest = (humans + ai) % settings.teamCount;
     if (rest) ai += settings.teamCount - rest;
@@ -96,6 +113,10 @@ export class Session implements RoomSession {
     this.ws.send(text);
   }
 
+  buffered(): number {
+    return this.ws.bufferedAmount;
+  }
+
   close(code: number, reason: string): void {
     if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) this.ws.close(code, reason);
   }
@@ -109,8 +130,10 @@ export class Hub implements RoomHost {
   readonly rooms = new Map<string, Room>();
   private byClientId = new Map<string, Session>();
   private ipCounts = new Map<string, number>();
+  /** last createLobby per address (cooldown) */
+  private lastCreate = new Map<string, number>();
   private nextSessionId = 1;
-  private rotation: Record<GameMode, number> = { ffa: 0, teams: 0 };
+  private rotation: Record<LobbyKind, number> = { ffa: 0, teams: 0, special: 0 };
   private sweepTimer: ReturnType<typeof setInterval>;
   private stopped = false;
 
@@ -245,13 +268,26 @@ export class Hub implements RoomHost {
           this.error(s, 'serverFull', 'The server is full, try again later');
           return;
         }
-        const settings: LobbySettings = { ...DEFAULT_LOBBY_SETTINGS, ...msg.settings };
+        const now = this.now();
+        if (now - (this.lastCreate.get(s.ip) ?? -Infinity) < this.opts.createLobbyCooldownMs) {
+          this.error(s, 'rateLimit', 'Wait a moment before creating another lobby');
+          return;
+        }
+        // Rooms this address created that still live, not counting the one it is about to leave.
+        const own = [...this.rooms.values()].filter((r) => r !== room && !r.closed && r.phase !== 'over' && r.creatorIp === s.ip).length;
+        if (own >= this.opts.maxRoomsPerIp) {
+          this.error(s, 'rateLimit', `At most ${this.opts.maxRoomsPerIp} open lobbies or games per address: leave one first`);
+          return;
+        }
+        const settings: LobbySettings = mergeSetup(DEFAULT_LOBBY_SETTINGS, msg.settings ?? {});
         if (settings.maxPlayers > this.opts.maxPlayersPerLobby) {
           this.error(s, 'badMessage', `At most ${this.opts.maxPlayersPerLobby} players`);
           return;
         }
         if (room) room.leave(s);
+        this.lastCreate.set(s.ip, now);
         const r = this.createRoom(false, settings);
+        r.creatorIp = s.ip;
         report(r.join(s, false));
         return;
       }
@@ -261,12 +297,13 @@ export class Hub implements RoomHost {
           this.error(s, 'notFound', 'No lobby with that code');
           return;
         }
-        if (room === target) {
-          report(target.join(s, msg.spectate === true));
+        if (room === target && member) {
+          // Already in it: no second gameStart + catch-up (that cost the whole history each time), only the lobby state.
+          target.refresh(member);
           return;
         }
         if (room) room.leave(s);
-        report(target.join(s, msg.spectate === true));
+        report(target.join(s, msg.spectate === true, msg.haveTurns ?? 0));
         return;
       }
       case 'leaveLobby':
@@ -328,16 +365,20 @@ export class Hub implements RoomHost {
     s.color = msg.color;
     s.build = msg.build ?? '';
     this.byClientId.set(s.clientId, s);
+    // The seat to resume: the room this client was attached to most recently, never one it left on purpose.
     let seat: Room | null = null;
+    let seatAt = -Infinity;
     for (const r of this.rooms.values()) {
-      if (!r.closed && r.phase !== 'over' && r.memberByClientId(s.clientId)) {
+      const m = r.resumable(s.clientId);
+      if (m && m.attachedAt > seatAt) {
         seat = r;
-        break;
+        seatAt = m.attachedAt;
       }
     }
     s.send({ type: 'welcome', protocol: PROTOCOL_VERSION, serverTime: this.now(), resumed: seat ? seat.code : null });
     if (seat) {
-      const e = seat.join(s, false);
+      const have = msg.resume && msg.resume.code === seat.code ? msg.resume.haveTurns : 0;
+      const e = seat.join(s, false, have);
       if (e) this.error(s, e.code, e.message);
     }
     if (!s.room) this.sendLobbyList(s);
@@ -359,27 +400,38 @@ export class Hub implements RoomHost {
     return room;
   }
 
-  /** Keeps one public lobby of each mode open. */
+  /**
+   * Keeps one public lobby of each kind open: FFA, Teams and Special (FFA with 1-3 random modifiers). Maps rotate
+   * through PUBLIC_ROTATION (each kind starts at a different place), team counts through PUBLIC_TEAM_COUNTS.
+   */
   ensurePublicLobbies(): void {
     if (this.stopped) return;
-    for (const mode of ['ffa', 'teams'] as GameMode[]) {
+    for (const kind of PUBLIC_KINDS) {
       let open = false;
       for (const r of this.rooms.values()) {
-        if (r.isPublic && r.phase === 'lobby' && !r.closed && r.settings.mode === mode) open = true;
+        if (r.isPublic && r.phase === 'lobby' && !r.closed && r.publicKind === kind) open = true;
       }
       if (open) continue;
-      const k = this.rotation[mode]++;
-      const [mapType, mapSize] = PUBLIC_ROTATION[(k + (mode === 'teams' ? 3 : 0)) % PUBLIC_ROTATION.length];
+      const k = this.rotation[kind]++;
+      const offset = kind === 'teams' ? 3 : kind === 'special' ? 6 : 0;
+      const map = PUBLIC_ROTATION[(k + offset) % PUBLIC_ROTATION.length];
       const base: LobbySettings = {
         ...DEFAULT_LOBBY_SETTINGS,
-        mode,
+        modifiers: { ...DEFAULT_LOBBY_SETTINGS.modifiers },
+        mode: kind === 'teams' ? 'teams' : 'ffa',
         teamCount: PUBLIC_TEAM_COUNTS[k % PUBLIC_TEAM_COUNTS.length],
-        mapType,
-        mapSize,
-        maxPlayers: Math.min(this.opts.maxPlayersPerLobby, PUBLIC_MAX_PLAYERS[mapSize]),
+        map: { ...map },
+        maxPlayers: 0,
       };
+      if (kind === 'special') {
+        // the server may use Math.random: the rolled values (not the roll) go to every client in the settings
+        base.modifiers = { ...base.modifiers, ...rollModifiers(1 + Math.floor(Math.random() * 3), Math.random) };
+        base.preset = 'custom';
+      }
+      base.maxPlayers = Math.min(this.opts.maxPlayersPerLobby, PUBLIC_MAX_PLAYERS[lobbyMapClass(base)]);
       const room = this.createRoom(true, publicFill(base, 1));
       room.publicFill = publicFill;
+      room.publicKind = kind;
     }
   }
 
@@ -403,9 +455,13 @@ export class Hub implements RoomHost {
       if (!r.isPublic || r.phase !== 'lobby' || r.closed) continue;
       out.push({
         code: r.code,
+        kind: r.publicKind ?? (r.settings.mode === 'teams' ? 'teams' : 'ffa'),
         mode: r.settings.mode,
-        mapType: r.settings.mapType,
-        mapSize: r.settings.mapSize,
+        map: { ...r.settings.map },
+        rules: modifierSummary(r.settings),
+        chips: activeModifiers(r.settings)
+          .filter((c) => c.id !== 'teams')
+          .map((c) => ({ id: c.id, label: c.label, detail: c.detail })),
         teamCount: r.settings.teamCount,
         players: r.players.length,
         maxPlayers: r.settings.maxPlayers,
@@ -437,6 +493,7 @@ export class Hub implements RoomHost {
       }
     }
     for (const room of [...this.rooms.values()]) room.sweep(now);
+    for (const [ip, t] of this.lastCreate) if (now - t > o.createLobbyCooldownMs) this.lastCreate.delete(ip);
     if (o.publicLobbies) this.ensurePublicLobbies();
     const lobbies = this.publicLobbies();
     const key = JSON.stringify(lobbies);

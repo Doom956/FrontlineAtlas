@@ -25,6 +25,9 @@ export function ringRadius(state: GameState, type: BuildingType, owner: number):
   return BUILDINGS[type].radius;
 }
 
+/** Your land smaller than this on screen (px across): the capital gets a pulsing locator ring. */
+const LOCATOR_PX = 40;
+
 export class Overlays {
   /** first ETA (s) seen per missile / bomber, for the countdown ring */
   private etas = new Map<number, number>();
@@ -92,8 +95,9 @@ export class Overlays {
    */
   capitals(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, colors: readonly RGB[], me: number, minZoom: number, nowMs: number): void {
     const spawn = state.phase === 'spawn';
-    if (!spawn && cam.zoom < minZoom) return;
     const pulse = 0.5 + 0.5 * Math.sin(nowMs / 260);
+    if (!spawn) this.locator(ctx, state, cam, me, pulse);
+    if (!spawn && cam.zoom < minZoom) return;
     const v = cam.visibleTiles(8);
     for (const p of state.players) {
       if (!p || p.id === 0 || p.capital < 0 || (!p.alive && !spawn) || (spawn && !p.spawned)) continue;
@@ -119,6 +123,14 @@ export class Overlays {
         ctx.strokeStyle = own ? `rgba(255,255,255,${0.55 + 0.4 * pulse})` : css(p.color, tribe ? 0.45 : 0.5 + 0.4 * pulse);
         ctx.stroke();
       }
+      if (p.id === me && !spawn) {
+        // your own capital: a white ring around the star, so it stands out from the others
+        ctx.beginPath();
+        ctx.arc(sx, sy, R * 1.45, 0, Math.PI * 2);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.stroke();
+      }
       this.star(ctx, sx, sy, R, css(colors[p.id] ?? p.color), p.id === me ? '#ffffff' : '#141414');
       if (spawn && p.id !== me && (!tribe || cam.zoom >= 3)) {
         ctx.font = tribe ? "600 11px 'Barlow Condensed', system-ui, sans-serif" : "700 12px 'Barlow Condensed', system-ui, sans-serif";
@@ -131,6 +143,36 @@ export class Overlays {
         ctx.fillText(p.name, sx, sy - R - 2);
       }
     }
+  }
+
+  /**
+   * "You are here": while your land is smaller than about LOCATOR_PX on screen, a pulsing white ring (and a star)
+   * around your capital, so a new player finds their nation at any zoom.
+   */
+  private locator(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, me: number, pulse: number): void {
+    const p = me > 0 ? state.players[me] : undefined;
+    if (!p || !p.alive || p.capital < 0) return;
+    const size = Math.sqrt(Math.max(1, p.tiles)) * cam.zoom;
+    if (size >= LOCATOR_PX) return;
+    const s = cam.tileToScreen((p.capital % this.w) + 0.5, ((p.capital / this.w) | 0) + 0.5);
+    if (s.x < -40 || s.y < -40 || s.x > cam.viewW + 40 || s.y > cam.viewH + 40) return;
+    const r = Math.max(size * 0.75, 14) + 6 * pulse;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = `rgba(255,255,255,${0.6 + 0.4 * pulse})`;
+    ctx.stroke();
+    ctx.font = "700 12px 'Barlow Condensed', system-ui, sans-serif";
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+    ctx.strokeText('YOU', s.x, s.y - r - 3);
+    ctx.fillStyle = '#fff';
+    ctx.fillText('YOU', s.x, s.y - r - 3);
   }
 
   /** Target reticles: red with a countdown for missiles / bombers flying at you, a quieter white one for yours. */

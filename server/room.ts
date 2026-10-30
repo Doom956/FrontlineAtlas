@@ -1,6 +1,10 @@
 // One lobby and, after the start, its game: members, settings, the turn loop, hash votes and game-over votes.
 // The server never runs the sim: it only orders intents into turns and compares the clients' hashes.
 
+import { assignTeams, cloneSetup, mapLabel, mergeSetup } from '../src/sim/setup';
+
+export { assignTeams };
+import { MAX_TRIBE_COUNT } from '../src/sim/config';
 import type { Action, GameSettings } from '../src/sim/types';
 import {
   HASH_INTERVAL_TURNS,
@@ -14,15 +18,16 @@ import type {
   ErrorCode,
   GameOverReason,
   GameStartMsg,
+  LobbyKind,
   LobbyPlayer,
   LobbySettings,
+  LobbySettingsPatch,
   LobbyStateMsg,
   PlayerSlot,
   RGB,
   ServerMessage,
   StampedIntent,
   TeamsInfo,
-  Turn,
 } from '../src/net/protocol';
 import type { ServerOptions } from './options';
 
@@ -36,6 +41,8 @@ export interface RoomSession {
   member: Member | null;
   send(msg: ServerMessage): void;
   sendRaw(text: string): void;
+  /** bytes waiting in the socket's send buffer */
+  buffered(): number;
 }
 
 /** What a room needs from the hub. */
@@ -67,6 +74,32 @@ export interface Member {
   intentsThisTurn: number;
   rateWarned: boolean;
   desynced: boolean;
+  /** left the running game on purpose (leaveLobby, another lobby): not resumed on reconnect, rejoin by code */
+  left: boolean;
+  /** when a session was last attached (the most recent seat wins on reconnect) */
+  attachedAt: number;
+  /** catch-up in progress: the next turn number to send (live turns wait until it is done); null = live */
+  catchUpNext: number | null;
+  /** steady intent budget (token bucket) */
+  intentTokens: number;
+  intentRefill: number;
+  budgetWarnedAt: number;
+  /** told once that the players' hashes disagree without a majority */
+  disagreeWarned: boolean;
+}
+
+/** One catch-up message carries at most about this many bytes of turns, or this many non-empty turns. */
+export const CATCHUP_CHUNK_BYTES = 512 * 1024;
+export const CATCHUP_CHUNK_TURNS = 5000;
+/** The next catch-up chunk is sent only while the socket's send buffer holds less than this. */
+const CATCHUP_LOW_WATER = 1024 * 1024;
+/** Chunks per pump (one pump per turn and per sweep). */
+const CATCHUP_CHUNKS_PER_PUMP = 4;
+
+/** A non-empty turn, serialized once as `{"n":..,"intents":[..]}` (empty turns are only counted). */
+interface LoggedTurn {
+  n: number;
+  json: string;
 }
 
 export type RoomPhase = 'lobby' | 'running' | 'over';
@@ -85,49 +118,22 @@ const MAX_DECIDED = 2000;
 
 // ------------------------------------------------------------------------------------------------ pure helpers
 
-/**
- * Final teams: humans keep a valid chosen team, 'auto' humans go to the smallest team, then every AI nation goes
- * to the team with the fewest members (ties: lowest team). Returns byPlayer[playerId] for ids 0..H+aiCount.
- */
-export function assignTeams(chosen: number[], aiCount: number, teamCount: number): number[] {
-  const size = new Array<number>(teamCount + 1).fill(0);
-  const byPlayer = [0];
-  const smallest = (): number => {
-    let best = 1;
-    for (let t = 2; t <= teamCount; t++) if (size[t] < size[best]) best = t;
-    return best;
-  };
-  const humans = chosen.map((t) => (Number.isInteger(t) && t >= 1 && t <= teamCount ? t : 0));
-  for (const t of humans) if (t > 0) size[t]++;
-  for (const t of humans) {
-    if (t > 0) byPlayer.push(t);
-    else {
-      const s = smallest();
-      size[s]++;
-      byPlayer.push(s);
-    }
-  }
-  for (let k = 0; k < aiCount; k++) {
-    const s = smallest();
-    size[s]++;
-    byPlayer.push(s);
-  }
-  return byPlayer;
-}
-
 function colorDist(a: RGB, b: RGB): number {
   return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
 }
+
+/** Two player colours closer than this (sum of channel differences) count as the same colour. */
+const COLOR_CLASH = 100;
 
 /** Humans in seat order; a colour too close to an earlier player's is replaced by a free palette colour. */
 export function resolveColors(colors: RGB[]): RGB[] {
   const out: RGB[] = [];
   for (const c of colors) {
-    if (out.every((o) => colorDist(o, c) > 60)) {
+    if (out.every((o) => colorDist(o, c) > COLOR_CLASH)) {
       out.push(c);
       continue;
     }
-    const free = PLAYER_COLORS.find((p) => out.every((o) => colorDist(o, p) > 60));
+    const free = PLAYER_COLORS.find((p) => out.every((o) => colorDist(o, p) > COLOR_CLASH));
     out.push(free ? ([...free] as RGB) : c);
   }
   return out;
@@ -158,14 +164,24 @@ export class Room {
   readonly createdAt: number;
   /** for public lobbies: called before the start to fill in the AI count etc. */
   publicFill: ((settings: LobbySettings, humans: number) => LobbySettings) | null = null;
+  /** public lobbies: which kind (the hub keeps one of each open); null for private lobbies */
+  publicKind: LobbyKind | null = null;
 
   private readonly host: RoomHost;
   private nextMemberId = 1;
   private kicked = new Set<string>();
 
+  /** address that created this private lobby (per-address room limit); '' for public lobbies */
+  creatorIp = '';
+
   // game
   private startInfo: Omit<GameStartMsg, 'yourPlayerId' | 'turnsPlayed'> | null = null;
-  readonly turns: Turn[] = [];
+  /** turns sent so far (the next turn number) */
+  turnCount = 0;
+  /** non-empty turns only, already serialized (append-only): catch-ups are cut from it without re-encoding */
+  private readonly turnLog: LoggedTurn[] = [];
+  /** bytes held by turnLog */
+  logBytes = 0;
   private pending: StampedIntent[] = [];
   private loopStart = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -205,12 +221,12 @@ export class Room {
   // ---------------------------------------------------------------------------------------------- membership
 
   /** A session joins (or rejoins with its clientId). */
-  join(session: RoomSession, spectate: boolean): RoomError {
+  join(session: RoomSession, spectate: boolean, haveTurns = 0): RoomError {
     if (this.closed) return err('notFound', 'No lobby with that code');
     if (this.phase === 'over') return err('started', 'That game is over');
     const existing = this.memberByClientId(session.clientId);
     if (existing) {
-      this.attach(existing, session);
+      this.attach(existing, session, haveTurns);
       return null;
     }
     if (this.kicked.has(session.clientId)) return err('kicked', 'You were removed from this lobby');
@@ -234,6 +250,13 @@ export class Room {
       intentsThisTurn: 0,
       rateWarned: false,
       desynced: false,
+      left: false,
+      attachedAt: 0,
+      catchUpNext: null,
+      intentTokens: this.host.opts.intentBurst,
+      intentRefill: this.host.now(),
+      budgetWarnedAt: -Infinity,
+      disagreeWarned: false,
     };
     this.members.push(m);
     if (!this.build && session.build) this.build = session.build;
@@ -243,13 +266,13 @@ export class Room {
       if (this.startsAt === null) this.startsAt = this.host.now() + this.host.opts.publicStartMs;
       this.refreshPublicSettings();
     }
-    this.attach(m, session);
+    this.attach(m, session, haveTurns);
     if (publicPlayer && this.players.length >= this.settings.maxPlayers) this.startGame();
     this.host.roomChanged(this);
     return null;
   }
 
-  private attach(m: Member, session: RoomSession): void {
+  private attach(m: Member, session: RoomSession, haveTurns = 0): void {
     if (m.session && m.session !== session) {
       const old = m.session;
       old.room = null;
@@ -257,14 +280,31 @@ export class Room {
     }
     m.session = session;
     m.disconnectedAt = null;
+    m.left = false;
+    m.attachedAt = this.host.now();
+    // a rejoin replays the game from the turns (the client's Reload after a desync): its hashes count again
+    m.desynced = false;
     session.room = this;
     session.member = m;
     if (this.phase === 'lobby') {
       this.broadcastLobby();
     } else if (this.phase === 'running') {
-      this.sendGameStart(m);
+      this.sendGameStart(m, haveTurns);
       this.broadcastPresence();
     }
+  }
+
+  /** The session is already this member's (joinLobby for the room you are in): resend the lobby state only. */
+  refresh(m: Member): void {
+    if (this.phase !== 'lobby' || !m.session) return;
+    m.session.send(this.lobbyStateFor(m));
+  }
+
+  /** Whether this member is one a reconnect should put back (not a seat the player left on purpose). */
+  resumable(clientId: string): Member | null {
+    if (this.closed || this.phase === 'over') return null;
+    const m = this.memberByClientId(clientId);
+    return m && !m.left ? m : null;
   }
 
   /** The socket closed (the seat stays: reconnect with the same clientId). */
@@ -275,6 +315,7 @@ export class Room {
     if (!m || m.session !== session) return;
     m.session = null;
     m.disconnectedAt = this.host.now();
+    m.catchUpNext = null;
     if (this.phase === 'lobby') {
       if (m.spectator) this.removeMember(m);
       else this.broadcastLobby();
@@ -292,9 +333,19 @@ export class Room {
     if (!m || m.session !== session) return;
     m.session = null;
     m.disconnectedAt = this.host.now();
+    m.catchUpNext = null;
     if (this.phase === 'lobby' || m.spectator) this.removeMember(m);
-    else if (this.phase === 'running') this.broadcastPresence();
+    else if (this.phase === 'running') {
+      m.left = true;
+      this.broadcastPresence();
+    }
     this.host.sessionLeftRoom(session);
+    // Every player left on purpose: nobody will come back to this game, end it now (a disconnect keeps the grace).
+    if (this.phase === 'running' && this.players.every((p) => p.left)) {
+      this.host.opts.log(`game ${this.code}: every player left`);
+      this.finish('abandoned', 0);
+      this.close('');
+    }
   }
 
   private removeMember(m: Member): void {
@@ -329,11 +380,12 @@ export class Room {
 
   // ---------------------------------------------------------------------------------------------- host controls
 
-  updateSettings(m: Member, patch: Partial<LobbySettings>): RoomError {
+  updateSettings(m: Member, patch: LobbySettingsPatch): RoomError {
     if (this.isPublic) return err('notAllowed', 'Public lobby settings are fixed');
     if (m.memberId !== this.hostMemberId) return err('notHost', 'Only the host can change the settings');
     if (this.phase !== 'lobby') return err('started', 'The game has already started');
-    const next = { ...this.settings, ...patch };
+    const next = mergeSetup(this.settings, patch);
+    if (patch.maxPlayers !== undefined) next.maxPlayers = patch.maxPlayers;
     if (next.maxPlayers > this.host.opts.maxPlayersPerLobby) {
       return err('badMessage', `At most ${this.host.opts.maxPlayersPerLobby} players`);
     }
@@ -410,18 +462,14 @@ export class Room {
     const teams: TeamsInfo | null = byPlayer
       ? { count: s.teamCount, names: TEAM_NAMES.slice(0, s.teamCount), byPlayer }
       : null;
+    const { maxPlayers: _seats, ...setup } = cloneSetup(s);
     const settings: GameSettings = {
+      ...setup,
       seed: this.host.makeSeed(),
-      mapType: s.mapType,
-      mapSize: s.mapSize,
-      aiCount: s.aiCount,
-      difficulty: s.difficulty,
       playerName: slots[0].name,
       playerColor: slots[0].color,
       humanPlayer: true,
-      timeLimit: s.timeLimit,
-      victoryLandShare: s.victoryLandShare,
-      tribeCount: s.tribeCount,
+      humans: slots.map((p) => ({ name: p.name, color: [...p.color] as RGB, team: p.team })),
     };
     this.startInfo = {
       type: 'gameStart',
@@ -441,24 +489,65 @@ export class Room {
     this.broadcastPresence();
     this.loopStart = now + this.host.opts.firstTurnDelayMs;
     this.scheduleNext();
-    this.host.opts.log(`game ${this.code} started: ${players.length} players, ${s.mode}, ${s.mapType}/${s.mapSize}`);
+    this.host.opts.log(`game ${this.code} started: ${players.length} players, ${s.mode}, ${mapLabel(s.map)}`);
     this.host.roomChanged(this);
     return true;
   }
 
-  private sendGameStart(m: Member): void {
+  /**
+   * gameStart, then (when the game already ran) the catch-up from the turn the client says it has: in chunks of
+   * about CATCHUP_CHUNK_BYTES, each sent only once the socket has drained (pumpCatchUp), cut from the serialized log.
+   * Live turns wait until the catch-up has reached them.
+   */
+  private sendGameStart(m: Member, haveTurns = 0): void {
     if (!this.startInfo || !m.session) return;
-    const n = this.turns.length;
+    const n = this.turnCount;
     m.session.send({ ...this.startInfo, yourPlayerId: m.spectator ? 0 : m.playerId, turnsPlayed: n });
-    if (n > 0) {
-      m.session.send({ type: 'catchUp', fromTurn: 0, toTurn: n, turns: this.turns.filter((t) => t.intents.length > 0) });
+    const from = Math.max(0, Math.min(Math.floor(haveTurns), n));
+    m.catchUpNext = from < n ? from : null;
+    this.pumpCatchUp(m);
+  }
+
+  /** Index in turnLog of the first logged turn with n >= turn. */
+  private logIndex(turn: number): number {
+    let lo = 0;
+    let hi = this.turnLog.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this.turnLog[mid].n < turn) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  /** Sends the next catch-up chunks while the member's socket has room; the member goes live when done. */
+  private pumpCatchUp(m: Member): void {
+    const s = m.session;
+    if (!s) {
+      m.catchUpNext = null;
+      return;
+    }
+    for (let k = 0; k < CATCHUP_CHUNKS_PER_PUMP && m.catchUpNext !== null; k++) {
+      if (s.buffered() >= CATCHUP_LOW_WATER) return;
+      const from = m.catchUpNext;
+      let i = this.logIndex(from);
+      const parts: string[] = [];
+      let bytes = 0;
+      while (i < this.turnLog.length && bytes < CATCHUP_CHUNK_BYTES && parts.length < CATCHUP_CHUNK_TURNS) {
+        const t = this.turnLog[i++];
+        parts.push(t.json);
+        bytes += t.json.length + 1;
+      }
+      const to = i < this.turnLog.length ? this.turnLog[i].n : this.turnCount;
+      s.sendRaw(`{"type":"catchUp","fromTurn":${from},"toTurn":${to},"turns":[${parts.join(',')}]}`);
+      m.catchUpNext = to < this.turnCount ? to : null;
     }
   }
 
   // ---------------------------------------------------------------------------------------------- turn loop
 
   private scheduleNext(): void {
-    const due = this.loopStart + this.turns.length * this.host.opts.turnMs;
+    const due = this.loopStart + this.turnCount * this.host.opts.turnMs;
     const delay = Math.max(0, due - this.host.now());
     this.timer = setTimeout(() => this.onTimer(), delay);
   }
@@ -468,10 +557,10 @@ export class Room {
     if (this.phase !== 'running') return;
     const turnMs = this.host.opts.turnMs;
     const now = this.host.now();
-    let behind = Math.floor((now - this.loopStart) / turnMs) + 1 - this.turns.length;
+    let behind = Math.floor((now - this.loopStart) / turnMs) + 1 - this.turnCount;
     if (behind > 20) {
       // The process stalled (sleep, long GC): continue from now instead of sending a burst.
-      this.loopStart = now - this.turns.length * turnMs;
+      this.loopStart = now - this.turnCount * turnMs;
       behind = 1;
     }
     for (let i = 0; i < Math.max(1, behind) && this.phase === 'running'; i++) this.endTurn();
@@ -480,16 +569,26 @@ export class Room {
 
   /** Closes the current turn and sends it to everyone. */
   endTurn(): void {
-    const n = this.turns.length;
-    const turn: Turn = { n, intents: this.pending };
+    const n = this.turnCount;
+    const intents = this.pending;
     this.pending = [];
-    this.turns.push(turn);
+    this.turnCount = n + 1;
+    const body = JSON.stringify(intents);
+    if (intents.length > 0) {
+      const json = `{"n":${n},"intents":${body}}`;
+      this.turnLog.push({ n, json });
+      this.logBytes += json.length + 16;
+    }
     for (const m of this.members) {
       m.intentsThisTurn = 0;
       m.rateWarned = false;
     }
-    const text = JSON.stringify({ type: 'turn', n, intents: turn.intents });
-    for (const m of this.members) m.session?.sendRaw(text);
+    const text = `{"type":"turn","n":${n},"intents":${body}}`;
+    for (const m of this.members) {
+      if (!m.session) continue;
+      if (m.catchUpNext === null) m.session.sendRaw(text);
+      else this.pumpCatchUp(m);
+    }
     if (n % HASH_INTERVAL_TURNS === 0) {
       for (const t of [...this.hashes.keys()]) if (t + this.host.opts.hashGraceTurns <= n) this.decideHash(t);
     }
@@ -506,6 +605,17 @@ export class Room {
       m.rateWarned = true;
       return err('rateLimit', `At most ${MAX_INTENTS_PER_TURN} actions per turn: extra ones were dropped`);
     }
+    const o = this.host.opts;
+    const now = this.host.now();
+    m.intentTokens = Math.min(o.intentBurst, m.intentTokens + (Math.max(0, now - m.intentRefill) / 1000) * o.intentsPerSecond);
+    m.intentRefill = now;
+    const full = this.logBytes >= o.maxGameLogBytes;
+    if (m.intentTokens < 1 || full) {
+      if (now - m.budgetWarnedAt < 2000) return null;
+      m.budgetWarnedAt = now;
+      return err('rateLimit', full ? 'This game has reached its size limit: no more actions are accepted' : 'Too many actions: slow down');
+    }
+    m.intentTokens--;
     m.intentsThisTurn++;
     this.pending.push({ playerId: m.playerId, action });
     return null;
@@ -515,7 +625,7 @@ export class Room {
 
   hash(m: Member, turn: number, hash: number): RoomError {
     if (this.phase === 'lobby') return err('notAllowed', 'The game has not started');
-    if (turn >= this.turns.length) return err('badMessage', 'Hash for a turn that was not sent yet');
+    if (turn >= this.turnCount) return err('badMessage', 'Hash for a turn that was not sent yet');
     if (!isHashTurn(turn)) return err('badMessage', `Hashes are for turns n with (n + 1) % ${HASH_INTERVAL_TURNS} === 0`);
     if (m.desynced) return null;
     const d = this.decided.get(turn);
@@ -529,33 +639,60 @@ export class Room {
       this.hashes.set(turn, map);
     }
     map.set(m.memberId, hash);
+    // Decide early once every connected player reported; when they disagree without a majority, also wait for the
+    // spectators in sync (tie-breakers), else the grace period decides.
     const voters = this.players.filter((p) => p.session && !p.desynced);
-    if (voters.length > 0 && voters.every((p) => map.has(p.memberId))) this.decideHash(turn);
+    if (voters.length === 0 || !voters.every((p) => map.has(p.memberId))) return null;
+    const hs = voters.map((p) => map.get(p.memberId) as number);
+    const agree = Math.max(...hs.map((h) => hs.filter((x) => x === h).length));
+    const specs = this.spectators.filter((x) => x.session && !x.desynced);
+    if (agree * 2 > hs.length || specs.every((x) => map.has(x.memberId))) this.decideHash(turn);
     return null;
   }
 
+  /**
+   * The players' majority hash for a turn. Without a strict majority among the players (e.g. a 2-player game where
+   * the two disagree), connected spectators that are in sync break the tie: a hash that a strict majority of players
+   * and spectators together share, and at least one spectator holds, wins.
+   */
   private decideHash(turn: number): void {
     const map = this.hashes.get(turn);
     this.hashes.delete(turn);
     if (!map) return;
     const playerHashes: number[] = [];
+    const specHashes: number[] = [];
     for (const [memberId, h] of map) {
       const m = this.members.find((x) => x.memberId === memberId);
-      if (m && !m.spectator && !m.desynced) playerHashes.push(h);
+      if (!m || m.desynced) continue;
+      if (!m.spectator) playerHashes.push(h);
+      else if (m.session) specHashes.push(h);
     }
     if (playerHashes.length === 0) return;
-    const counts = new Map<number, number>();
-    for (const h of playerHashes) counts.set(h, (counts.get(h) ?? 0) + 1);
-    let best = playerHashes[0];
-    let bestCount = 0;
-    for (const [h, c] of counts) {
-      if (c > bestCount) {
-        best = h;
-        bestCount = c;
+    const top = (list: number[]): [number, number] => {
+      const counts = new Map<number, number>();
+      for (const h of list) counts.set(h, (counts.get(h) ?? 0) + 1);
+      let best = list[0];
+      let bestCount = 0;
+      for (const [h, c] of counts) {
+        if (c > bestCount) {
+          best = h;
+          bestCount = c;
+        }
+      }
+      return [best, bestCount];
+    };
+    let [best, bestCount] = top(playerHashes);
+    let total = playerHashes.length;
+    let majority: number | null = bestCount * 2 > total ? best : null;
+    if (majority === null && specHashes.length > 0) {
+      const all = playerHashes.concat(specHashes);
+      [best, bestCount] = top(all);
+      if (bestCount * 2 > all.length && specHashes.includes(best)) {
+        majority = best;
+        total = all.length;
       }
     }
-    const majority = bestCount * 2 > playerHashes.length ? best : null;
-    const d: HashDecision = { hash: majority, agreeing: majority === null ? 0 : bestCount, total: playerHashes.length };
+    const d: HashDecision = { hash: majority, agreeing: majority === null ? 0 : bestCount, total };
     this.decided.set(turn, d);
     if (this.decided.size > MAX_DECIDED) {
       const oldest = this.decided.keys().next().value;
@@ -569,7 +706,23 @@ export class Room {
 
   private compare(m: Member, turn: number, hash: number, d: HashDecision): void {
     if (m.desynced || hash === d.hash) return;
-    if (d.hash === null && d.total < 2) return;
+    if (d.hash === null) {
+      // No majority: nobody can tell who is right (one false report is enough in a 2-player game). Say so once,
+      // softly, and keep checking later turns: a later majority (a spectator joins, a third player) decides.
+      if (d.total < 2 || m.disagreeWarned) return;
+      m.disagreeWarned = true;
+      m.session?.send({
+        type: 'desync',
+        turn,
+        yourHash: hash,
+        majorityHash: null,
+        agreeing: 0,
+        total: d.total,
+        details: 'The players disagree about the game state and there is no majority to tell who is right.',
+      });
+      this.host.opts.log(`game ${this.code}: no hash majority at turn ${turn}`);
+      return;
+    }
     m.desynced = true;
     m.session?.send({
       type: 'desync',
@@ -578,29 +731,40 @@ export class Room {
       majorityHash: d.hash,
       agreeing: d.agreeing,
       total: d.total,
-      details:
-        d.hash === null
-          ? 'The players disagree about the game state and there is no majority: the game has diverged.'
-          : 'Your game state differs from the other players: what you see may be wrong. Reload to rejoin.',
+      details: 'Your game state differs from the other players: what you see may be wrong. Reload to rejoin.',
     });
     this.host.opts.log(`game ${this.code}: desync of member ${m.memberId} at turn ${turn}`);
   }
 
   // ---------------------------------------------------------------------------------------------- end
 
+  /**
+   * A player's sim says the game is over. Every seated player in sync counts (also one that dropped less than
+   * voteAbsentMs ago; not one that left on purpose): the game ends when a strict majority reports the same winner,
+   * and with 2 or more such players at least 2 must agree, so one client can't end a game for everyone.
+   */
   reportGameOver(m: Member, turn: number, winner: number): RoomError {
     if (this.phase !== 'running') return null;
     if (m.spectator || m.desynced) return null;
-    if (turn >= this.turns.length) return err('badMessage', 'Game over for a turn that was not sent yet');
+    if (turn >= this.turnCount) return err('badMessage', 'Game over for a turn that was not sent yet');
+    const s = this.startInfo?.settings;
+    const maxId = s ? (s.humans?.length ?? 1) + s.aiCount + (s.tribeCount >= 0 ? s.tribeCount : MAX_TRIBE_COUNT) : 0;
+    if (winner > maxId) return err('badMessage', 'No such player');
     this.overVotes.set(m.memberId, winner);
-    const voters = this.players.filter((p) => (p.session || this.overVotes.has(p.memberId)) && !p.desynced);
+    const now = this.host.now();
+    const voters = this.players.filter(
+      (p) =>
+        !p.desynced &&
+        (p.session || this.overVotes.has(p.memberId) || (!p.left && p.disconnectedAt !== null && now - p.disconnectedAt < this.host.opts.voteAbsentMs)),
+    );
     const tally = new Map<number, number>();
     for (const p of voters) {
       const w = this.overVotes.get(p.memberId);
       if (w !== undefined) tally.set(w, (tally.get(w) ?? 0) + 1);
     }
+    const needed = Math.min(2, voters.length);
     for (const [w, c] of tally) {
-      if (c * 2 > voters.length) {
+      if (c * 2 > voters.length && c >= needed) {
         this.finish('finished', w);
         break;
       }
@@ -615,14 +779,15 @@ export class Room {
     this.overAt = this.host.now();
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
-    const msg: ServerMessage = { type: 'gameOver', reason, winner, turn: this.turns.length - 1 };
+    const msg: ServerMessage = { type: 'gameOver', reason, winner, turn: this.turnCount - 1 };
     for (const m of this.members) m.session?.send(msg);
-    this.host.opts.log(`game ${this.code} over (${reason}), winner ${winner}, ${this.turns.length} turns`);
+    this.host.opts.log(`game ${this.code} over (${reason}), winner ${winner}, ${this.turnCount} turns`);
   }
 
   /** Housekeeping, called by the hub every sweep. */
   sweep(now: number): void {
     const o = this.host.opts;
+    if (this.phase !== 'lobby') for (const m of this.members) if (m.catchUpNext !== null) this.pumpCatchUp(m);
     if (this.phase === 'lobby') {
       for (const m of this.members.filter((x) => !x.session && x.disconnectedAt !== null)) {
         if (now - (m.disconnectedAt as number) > o.lobbyReconnectGraceMs) this.removeMember(m);
@@ -679,29 +844,28 @@ export class Room {
     });
   }
 
+  private lobbyStateFor(m: Member, players = this.lobbyPlayers()): LobbyStateMsg {
+    return {
+      type: 'lobbyState',
+      code: this.code,
+      isPublic: this.isPublic,
+      mode: this.settings.mode,
+      hostMemberId: this.hostMemberId,
+      kind: this.publicKind,
+      you: m.memberId,
+      youAreSpectator: m.spectator,
+      players,
+      spectators: this.spectators.length,
+      settings: { ...this.settings },
+      startsAt: this.startsAt,
+      serverTime: this.host.now(),
+    };
+  }
+
   broadcastLobby(): void {
     if (this.phase !== 'lobby' || this.closed) return;
     const players = this.lobbyPlayers();
-    const spectators = this.spectators.length;
-    const now = this.host.now();
-    for (const m of this.members) {
-      if (!m.session) continue;
-      const msg: LobbyStateMsg = {
-        type: 'lobbyState',
-        code: this.code,
-        isPublic: this.isPublic,
-        mode: this.settings.mode,
-        hostMemberId: this.hostMemberId,
-        you: m.memberId,
-        youAreSpectator: m.spectator,
-        players,
-        spectators,
-        settings: { ...this.settings },
-        startsAt: this.startsAt,
-        serverTime: now,
-      };
-      m.session.send(msg);
-    }
+    for (const m of this.members) if (m.session) m.session.send(this.lobbyStateFor(m, players));
   }
 
   private broadcastPresence(): void {

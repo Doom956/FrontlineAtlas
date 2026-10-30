@@ -1,12 +1,13 @@
 // Runs AI-only games without a browser and prints stats.
 // Usage: npx vite-node scripts/headless.ts -- [seed] [minutes] [mapSize] [aiCount] [mapType] [tribes]
 //    or: npm run headless -- [seed] [minutes] [mapSize] [aiCount] [mapType] [tribes]
-// aiCount and tribes default to the menu defaults for the map size (config DEFAULT_AI_COUNT / DEFAULT_TRIBE_COUNT).
+// aiCount and tribes default to the setup defaults (config DEFAULT_AI_COUNT; tribes by the map's land).
 import { DEFAULT_AI_COUNT, MAX_AI_COUNT, TICKS_PER_SECOND, VICTORY_LAND_SHARE } from '../src/sim/config';
 import { armyTotal, population } from '../src/sim/economy';
 import { isTribe } from '../src/sim/types';
 import { tick } from '../src/sim/sim';
 import { createGame } from '../src/sim/state';
+import { cloneSetup, DEFAULT_SETUP } from '../src/sim/setup';
 import { allScores } from '../src/sim/victory';
 import type { GameSettings, GameState, MapSize, MapType } from '../src/sim/types';
 
@@ -22,9 +23,9 @@ const mapType = (['continents', 'pangaea', 'archipelago', 'highlands'].includes(
 const tribeCount = args[5] !== undefined && Number.isFinite(Number(args[5])) ? Math.max(0, Number(args[5])) : -1;
 
 const settings: GameSettings = {
+  ...cloneSetup(DEFAULT_SETUP),
   seed,
-  mapType,
-  mapSize,
+  map: { kind: 'generated', type: mapType, size: mapSize },
   aiCount,
   difficulty: 'normal',
   playerName: 'Nobody',

@@ -7,6 +7,7 @@ import {
   TICKS_PER_SECOND,
   TRAITOR_DURATION,
 } from './config';
+import { alliancesAllowed, sameTeam } from './rules';
 import { addEvent } from './state';
 import { borderTiles } from './territory';
 import { isTribe } from './types';
@@ -21,8 +22,10 @@ const BORDER_CHECK_SECONDS = 10;
 const BORDER_FRICTION_TILES = 120; // shared border edges before friction starts
 const BORDER_FRICTION = 2; // opinion drop per check for a long shared border
 
+/** Allied by an alliance, or teammates (permanently allied in a teams game). */
 export function areAllied(state: GameState, a: number, b: number): boolean {
   if (a === b) return false;
+  if (sameTeam(state, a, b)) return true;
   const lo = a < b ? a : b;
   const hi = a < b ? b : a;
   for (const al of state.alliances) if (al.a === lo && al.b === hi) return true;
@@ -62,6 +65,8 @@ function validPair(state: GameState, a: number, b: number): string | null {
 export function requestAlliance(state: GameState, from: number, to: number): ActionResult {
   const bad = validPair(state, from, to);
   if (bad) return { ok: false, reason: bad };
+  if (sameTeam(state, from, to)) return { ok: false, reason: 'You are on the same team: allied for the whole game' };
+  if (!alliancesAllowed(state)) return { ok: false, reason: 'Alliances are off in this game' };
   const idx = findAlliance(state, from, to);
   if (idx >= 0 && state.alliances[idx].expiresTick - state.tick > ALLIANCE_RENEW_WINDOW * TICKS_PER_SECOND) {
     return { ok: false, reason: 'Already allied' };
@@ -87,6 +92,7 @@ export function answerAlliance(state: GameState, playerId: number, from: number,
     addEvent(state, 'info', `${state.players[playerId].name} rejected the alliance with ${state.players[from].name}`, [from, playerId], -1);
     return { ok: true };
   }
+  if (!alliancesAllowed(state)) return { ok: false, reason: 'Alliances are off in this game' };
   formAlliance(state, from, playerId);
   return { ok: true };
 }
@@ -121,6 +127,7 @@ export function formAlliance(state: GameState, a: number, b: number): void {
 
 /** Ends an alliance early: breaker becomes traitor, opinions drop. */
 export function breakAlliance(state: GameState, playerId: number, other: number): ActionResult {
+  if (sameTeam(state, playerId, other)) return { ok: false, reason: 'Teammates stay allied for the whole game' };
   const idx = findAlliance(state, playerId, other);
   if (idx < 0) return { ok: false, reason: 'Not allied' };
   state.alliances.splice(idx, 1);

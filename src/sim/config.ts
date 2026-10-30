@@ -18,6 +18,9 @@ export const START_OIL = 0;
 export const MAX_EVENTS = 200;
 export const VICTORY_LAND_SHARE = 0.75;
 
+/** Compact-map modifier: width and height x this (a quarter of the tiles). */
+export const COMPACT_SCALE = 0.5;
+
 /** Map sizes in tiles (grand scale: medium about half a million land tiles, huge about 1.8 million). */
 export const MAP_SIZES: Record<MapSize, { width: number; height: number }> = {
   small: { width: 900, height: 560 },
@@ -181,6 +184,11 @@ export const BOAT_LANDING_RADIUS = 120;
 // ---------- endgame ----------
 /** A nation with fewer tiles than this collapses when hit: the attacker takes all of its land at once. */
 export const ENDGAME_SMALL_TILES = 150;
+/**
+ * A human nation's first this many seconds of game time: it neither collapses when hit nor is absorbed when
+ * surrounded (its 81-tile start is under ENDGAME_SMALL_TILES), so a new or slow player gets time to grow.
+ */
+export const HUMAN_GRACE_SECONDS = 180;
 /** Same for tribes (they are food). */
 export const TRIBE_ANNEX_TILES = 250;
 /** Every this many seconds (per player, staggered): enclaves fully surrounded by one hostile nation are annexed by it. */
@@ -334,7 +342,7 @@ export const TECHS: Record<TechId, TechInfo> = {
   fortification: { name: 'Fortification', tier: 1, science: 150, gold: 300, requires: [], description: 'Forts x2.5 and radius 28.' },
   navigation: { name: 'Navigation', tier: 1, science: 150, gold: 300, requires: [], description: 'Warships; transports +50% speed and +1 at sea.' },
   banking: { name: 'Banking', tier: 2, science: 600, gold: 600, requires: ['agriculture'], description: 'Gold +30%, markets x1.5.' },
-  medicine: { name: 'Medicine', tier: 2, science: 600, gold: 600, requires: ['agriculture'], description: 'Hospitals; population growth +20%.' },
+  medicine: { name: 'Medicine', tier: 2, science: 600, gold: 600, requires: ['agriculture'], description: 'Hospitals; troop growth +20%.' },
   mechanization: { name: 'Mechanization', tier: 2, science: 600, gold: 600, requires: ['metallurgy'], description: 'Armor +25% attack and defence.' },
   ballistics: { name: 'Ballistics', tier: 2, science: 600, gold: 600, requires: ['metallurgy'], description: 'Artillery +30% attack; unescorted penalty starts at 55%.' },
   flight: { name: 'Flight', tier: 2, science: 600, gold: 600, requires: ['logistics'], description: 'Airfields, bombers and fighters.' },
@@ -449,12 +457,18 @@ export const AI_COLORS: [number, number, number][] = [
 export const PERSONALITIES: Personality[] = ['warlord', 'turtle', 'merchant', 'admiral', 'balanced'];
 
 // ---------- player counts ----------
-/** AI nations per map size (menu default) and the most the menu allows. */
-export const DEFAULT_AI_COUNT: Record<MapSize, number> = { small: 10, medium: 20, large: 35, huge: 50 };
-export const MAX_AI_COUNT = 80;
-/** Tribes per map size (menu default; GameSettings.tribeCount < 0 means this) and the most allowed. */
-export const DEFAULT_TRIBE_COUNT: Record<MapSize, number> = { small: 40, medium: 100, large: 200, huge: 300 };
-export const MAX_TRIBE_COUNT = 500;
+/**
+ * AI nations per map size (setup default) and the most allowed. Games are mostly about tribes now: a few nations
+ * (single player 8, multiplayer about 10 including the humans, setup.ts) and many tribes to conquer.
+ */
+export const DEFAULT_AI_COUNT: Record<MapSize, number> = { small: 8, medium: 8, large: 8, huge: 8 };
+export const MAX_AI_COUNT = 40;
+/**
+ * Tribes per map size class (GameSettings.tribeCount < 0 means this, by the land actually played: setup.ts
+ * defaultTribeCount; world maps 300) and the most allowed.
+ */
+export const DEFAULT_TRIBE_COUNT: Record<MapSize, number> = { small: 120, medium: 200, large: 300, huge: 300 };
+export const MAX_TRIBE_COUNT = 600;
 /** @deprecated same as DEFAULT_TRIBE_COUNT */
 export const TRIBE_COUNT = DEFAULT_TRIBE_COUNT;
 
@@ -525,7 +539,8 @@ export const RULES_TEXT = {
     `your nearest coast. Retreating costs ${Math.round(RETREAT_LOSS * 100)}% of the troops (nothing in the wilderness). ` +
     `A landed invasion's beachhead supplies it for ${BEACHHEAD_SUPPLY_SECONDS} s.`,
   endgame:
-    `A nation with fewer than ${ENDGAME_SMALL_TILES} tiles (a tribe: ${TRIBE_ANNEX_TILES}) collapses when it is hit. ` +
+    `A nation with fewer than ${ENDGAME_SMALL_TILES} tiles (a tribe: ${TRIBE_ANNEX_TILES}) collapses when it is hit ` +
+    `(players get the first ${HUMAN_GRACE_SECONDS / 60} minutes to grow first). ` +
     `Pockets surrounded by one hostile nation are annexed by it. After ${OVERTIME_MINUTES} minutes the land share ` +
     `needed to win drops by ${Math.round(OVERTIME_DROP_PER_MINUTE * 100)}% a minute, down to ${Math.round(OVERTIME_MIN_SHARE * 100)}%. ` +
     `Tribes don't count for "last nation standing".`,

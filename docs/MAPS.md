@@ -145,28 +145,22 @@ interface WorldMapInfo {
 owned or built, no fallout: exactly the state `generateMap` hands to `createGame`. Each map's data module is imported
 lazily (`import()`); in the single-file build they are inlined like everything else.
 
-## Wiring it into the game (for the settings / menu work)
+## How the game uses them (done; DESIGN.md section 12)
 
-1. `GameSettings` gets `mapId: 'generated' | string` (a world map id). Default `'generated'`; `mapType` / `mapSize`
-   only matter for `'generated'`. Multiplayer: send `mapId` with the other settings (both sides load the same baked
-   map, so it stays deterministic).
-2. `createGame` is synchronous and `loadWorldMap` is async. Simplest: load before creating the game and pass the map
-   in, e.g. `createGame(settings, preloadedMap?)`: when `settings.mapId !== 'generated'`, the caller does
-   `const map = await loadWorldMap(settings.mapId)` (menu start / server lobby) and `createGame` uses it instead of
-   `generateMap(settings, rng)`. Keep drawing from the same rng afterwards (the generator consumes rng calls; a world map
-   consumes none, which is fine because both sides do the same).
-3. Spawns: nations take the map's spawns **in list order** (`worldMapSpawns(id)`; the list is already in spread-out
-   order, so the first N are spread over the map for any N), named after the spawn (`spawn.name` instead of a random
-   AI name), up to the nation count; if there are more nations than spawns, the rest spawn the usual way. Use
-   `spawnPlayer` / `canSpawnAt` so the normal rules (land, minimum distance) still hold; if a spawn is refused, fall
-   back to the nearest valid tile. Tribes spawn as now in the leftover space. The human player picks a start as usual
-   (or could take a country from the list; then skip that spawn for the AI).
-4. Menu ("modifiers before the game starts", single and multiplayer): a map picker with "Generated" plus
-   `listWorldMaps()` (name, size, land tiles). When a world map is picked, pre-set the nation / tribe sliders from
-   `presets.singlePlayer` (single player: aiCount = nations, tribeCount = tribes) or `presets.multiplayer`
-   (multiplayer: aiCount = max(0, nations - human players), tribeCount = tribes). The player can still change them;
-   tribe counts are at most 500 (MAX_TRIBE_COUNT).
-5. Anything that reads `MAP_SIZES[settings.mapSize]` (spawn radius, camera zoom, minimap) should use the real
-   `map.width` / `map.height` instead, or map a world map to the closest size class (by land tiles: < 0.7 M small,
-   < 1.1 M medium, < 1.5 M large, else huge).
+1. `GameSettings.map` is `{ kind: 'generated', type, size }` or `{ kind: 'world', id }` (`setup.ts` validates the id).
+   Multiplayer sends it with the other settings; both sides load the same baked map, so it stays deterministic.
+2. `createGame(settings, map?, opts?)` is synchronous: the client (`main.ts`) and any multiplayer client do
+   `const map = await loadWorldMap(id)` first and pass it in. A world map consumes no rng calls (the generator
+   does), which is fine because every client does the same. The compact modifier uses `compactWorldMap` (half the
+   width and height) and `compactWorldTile` for the spawns.
+3. Spawns: AI nation k takes spawn k (`worldMapSpawns(id)`, spread-out order) with its real name; it starts there
+   (`state.spawnPoints`, nearest valid tile if that one is taken or too close), unless random spawn is on. More AI
+   nations than spawns: the rest get the usual names and spots. Tribes spawn as usual in the leftover space. The
+   human picks a start as usual.
+4. Setup screen and lobby: the map picker shows the generated types and every world map with a preview drawn from
+   the map data (`src/client/mapThumbs.ts`). Defaults: 8 AI nations in single player, about 10 nations in
+   multiplayer (`setup.MULTIPLAYER_NATIONS`), 300 tribes on a world map (compact: by its land). The per-map
+   `presets` here are not used by the game any more (kept in the manifest).
+5. Size class: `state.mapClass` = `setup.sizeClassForLand(landTiles)` (small < 400k, medium < 850k, large < 1.6M,
+   else huge) for world and compact maps; it sets the start radius and building spacing.
 6. Credits: show the Natural Earth attribution above.

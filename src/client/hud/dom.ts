@@ -71,7 +71,7 @@ export function fmtTime(seconds: number): string {
 }
 export function fmtRate(v: number, digits = 1): string {
   const a = Math.abs(v);
-  const s = a < 10 ? a.toFixed(digits) : a < 1000 ? String(Math.round(a)) : a < 1e6 ? (a / 1000).toFixed(a < 1e4 ? 1 : 0) + 'k' : (a / 1e6).toFixed(2) + 'M';
+  const s = a < 10 ? a.toFixed(digits) : a < 999.5 ? String(Math.round(a)) : a < 999_500 ? (a / 1000).toFixed(a < 9950 ? 1 : 0) + 'k' : (a / 1e6).toFixed(2) + 'M';
   return (v < -0.05 ? '-' : '+') + s;
 }
 export function pct(v: number): string {
@@ -95,6 +95,13 @@ export interface HudCtx {
   openNation(id: number): void;
   focusTile(tile: number, zoomIn?: boolean): void;
   toast(text: string, kind?: 'info' | 'good' | 'bad'): void;
+  /** a warning toast with a confirm button (destructive actions: demolish, break an alliance) */
+  confirm(text: string, label: string, run: () => void): void;
   /** plays a UI sound when audio is wired in */
   sound(id: 'uiClick' | 'uiError'): void;
+}
+
+/** Construction time in words: "12 s", or "instant" (one tick). */
+export function fmtSeconds(sec: number): string {
+  return sec <= 0.1 + 1e-9 ? 'instant' : `${Math.max(1, Math.round(sec))} s`;
 }

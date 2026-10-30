@@ -9,7 +9,7 @@
 import { BUILDINGS } from '../../sim/config';
 import type { Building, GameState } from '../../sim/types';
 import type { Camera } from '../camera';
-import { drawMarker, markerReady, type BuildingIconId } from '../icons';
+import { CATEGORY_COLORS, drawMarker, ICON_INFO, markerReady, type BuildingIconId } from '../icons';
 import { buildingsKey, clamp, type RGB, type View } from './common';
 
 export const FAR_ZOOM = 1.7;
@@ -17,6 +17,16 @@ const CELL = 32;
 /** New marker sprites rendered per frame at most (the rest use a neutral plate until their turn). */
 const SPRITE_BUDGET = 24;
 const NEUTRAL_PLATE = '#5d6573';
+/** Markers at least this big (zoom 8+, markerSize) get the building's name underneath. */
+const NAME_MARKER_PX = markerSize(8);
+/** Marker plates by building category: the legend's category colours, darkened so the white glyph reads. */
+export const CATEGORY_PLATES: Record<keyof typeof CATEGORY_COLORS, string> = {
+  economy: '#a57c14',
+  production: '#a8481a',
+  defence: '#2f5fa6',
+  logistics: '#2a7a4b',
+  advanced: '#6e3ca3',
+};
 
 /** Marker size (CSS px) for a zoom level. */
 export function markerSize(zoom: number): number {
@@ -159,11 +169,25 @@ export class BuildingLayer {
     const unfinished = progress < 1;
     const id = b.type as BuildingIconId;
     const alpha = unfinished ? 0.55 : 1;
-    const opts = { plate: c, dpr };
+    // The plate shows what the building does (category colour: economy gold, production orange, defence blue ...);
+    // a frame in the owner's colour shows whose it is.
+    const r = size * 0.5;
+    const fw = clamp(size * 0.09, 1.5, 3);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = 'rgba(10,12,16,0.85)';
+    ctx.beginPath();
+    ctx.roundRect(x - r - fw - 1, y - r - fw - 1, size + 2 * fw + 2, size + 2 * fw + 2, size * 0.3);
+    ctx.fill();
+    ctx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`;
+    ctx.beginPath();
+    ctx.roundRect(x - r - fw, y - r - fw, size + 2 * fw, size + 2 * fw, size * 0.28);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    const cat = ICON_INFO[id].category;
+    const opts = { plate: cat ? CATEGORY_PLATES[cat] : c, dpr };
     if (markerReady(id, size, opts) || this.budget-- > 0) drawMarker(ctx, id, x, y, size, { ...opts, alpha });
     else drawMarker(ctx, id, x, y, size, { plate: NEUTRAL_PLATE, dpr, alpha });
     this.drawn++;
-    const r = size * 0.5;
     if (unfinished) {
       ctx.beginPath();
       ctx.arc(x, y, r + 2.5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
@@ -194,6 +218,18 @@ export class BuildingLayer {
       ctx.fillRect(x - r, y + r + 2, bw, 3);
       ctx.fillStyle = b.hp > 0.5 ? '#e8c84a' : '#e0503c';
       ctx.fillRect(x - r, y + r + 2, bw * b.hp, 3);
+    }
+    if (size >= NAME_MARKER_PX) {
+      // close up (zoom 8+): the building's name under its marker
+      ctx.font = "600 11px 'Barlow Condensed', system-ui, sans-serif";
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      const ny = y + r + (b.hp > 0 && b.hp < 1 ? 7 : 4);
+      ctx.strokeText(BUILDINGS[b.type].name, x, ny);
+      ctx.fillStyle = '#f2f2f2';
+      ctx.fillText(BUILDINGS[b.type].name, x, ny);
     }
   }
 }

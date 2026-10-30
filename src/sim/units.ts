@@ -67,8 +67,10 @@ import {
   WARSHIP_BOMBARD_KILL,
   WARSHIP_DAMAGE_PER_S,
   WARSHIP_RANGE,
+  TECHS,
 } from './config';
 import { areAllied, canTrade, changeOpinion } from './diplomacy';
+import { atPeace, peaceReason, unitRule } from './rules';
 import { forEachInRadius, neighbors4, sameWater, waterPath, waterSearchSpent } from './grid';
 import { recordTileChange } from './changes';
 import { addEvent, newId, setOwner } from './state';
@@ -179,7 +181,7 @@ function shipTile(state: GameState, u: Unit): number {
 }
 /** Hostile = two different real players that are not allied. */
 function hostile(state: GameState, a: number, b: number): boolean {
-  return a !== b && a > 0 && b > 0 && !areAllied(state, a, b);
+  return a !== b && a > 0 && b > 0 && !areAllied(state, a, b) && !atPeace(state, a, b);
 }
 
 /** Straight-line move toward a tile; returns true on arrival. */
@@ -350,6 +352,8 @@ export function launchTransport(state: GameState, playerId: number, from: number
   const target = map.owner[to];
   if (target === playerId) return FAIL('That is your own land');
   if (target !== 0 && areAllied(state, playerId, target)) return FAIL('You cannot invade an ally');
+  const peace = peaceReason(state, playerId, target);
+  if (peace) return FAIL(peace);
 
   const sent = zeroTroops();
   for (const k of TROOP_TYPES) {
@@ -399,8 +403,8 @@ function landTransport(state: GameState, u: Unit): void {
   const troops = u.troops;
   u.troops = zeroTroops();
   u.hp = 0;
-  if (owner === u.owner || (owner !== 0 && areAllied(state, u.owner, owner))) {
-    // Became own or allied land on the way: the troops just come home.
+  if (owner === u.owner || (owner !== 0 && (areAllied(state, u.owner, owner) || atPeace(state, u.owner, owner)))) {
+    // Became own or allied land on the way (or a nation's during peace time): the troops just come home.
     for (const k of TROOP_TYPES) p.troops[k] += troops[k];
     return;
   }
@@ -420,6 +424,8 @@ export function buildWarship(state: GameState, playerId: number, portTile: numbe
   if (!p || playerId === 0 || !p.alive) return FAIL('No such player');
   if (!isTile(state, portTile)) return FAIL('Invalid tile');
   const port = buildingAt(state, portTile);
+  const ruled = unitRule(state, 'warship');
+  if (ruled) return FAIL(ruled);
   if (!isFinished(port, playerId, 'port')) return FAIL('Warships are built at a finished Port of yours');
   if (!hasTech(p, 'navigation')) return FAIL('Needs research: Navigation');
   const bad = canPay(state, playerId, 'warship');
@@ -666,11 +672,13 @@ export function buildAircraft(state: GameState, playerId: number, airfieldTile: 
   const p = state.players[playerId];
   if (!p || playerId === 0 || !p.alive) return FAIL('No such player');
   if (kind !== 'bomber' && kind !== 'fighter') return FAIL('Invalid aircraft');
+  const ruled = unitRule(state, kind);
+  if (ruled) return FAIL(ruled);
   if (!isTile(state, airfieldTile)) return FAIL('Invalid tile');
   const b = buildingAt(state, airfieldTile);
   if (!isFinished(b, playerId, 'airfield')) return FAIL('Aircraft are built at a finished Airfield of yours');
   const tech = UNITS[kind].tech;
-  if (tech && !hasTech(p, tech)) return FAIL(`Needs research: ${tech}`);
+  if (tech && !hasTech(p, tech)) return FAIL(`Needs research: ${TECHS[tech].name}`);
   if (aircraftAt(state, b) >= aircraftCap(b)) return FAIL(`This airfield holds at most ${aircraftCap(b)} aircraft (upgrade it for more)`);
   const bad = canPay(state, playerId, kind);
   if (bad) return FAIL(bad);
@@ -693,6 +701,8 @@ export function launchBomber(state: GameState, playerId: number, airfieldTile: n
   if (target === playerId) return FAIL('That is your own land');
   if (!state.players[target]?.alive) return FAIL('That nation is gone');
   if (areAllied(state, playerId, target)) return FAIL('You cannot bomb an ally');
+  const peace = peaceReason(state, playerId, target);
+  if (peace) return FAIL(peace);
   b.bombers--;
   const u = makeUnit(state, 'bomber', playerId, airfieldTile, tile);
   u.targetOwner = target;
@@ -770,6 +780,8 @@ export function canParadrop(state: GameState, playerId: number, airfieldTile: nu
   const p = state.players[playerId];
   if (!p || playerId === 0 || !p.alive) return FAIL('No such player');
   if (!isTile(state, airfieldTile) || !isTile(state, tile)) return FAIL('Invalid tile');
+  const ruled = unitRule(state, 'paradrop');
+  if (ruled) return FAIL(ruled);
   if (!hasTech(p, 'flight')) return FAIL('Needs research: Flight');
   const b = buildingAt(state, airfieldTile);
   if (!isFinished(b, playerId, 'airfield')) return FAIL('Paratroopers fly from a finished Airfield of yours');
@@ -780,6 +792,8 @@ export function canParadrop(state: GameState, playerId: number, airfieldTile: nu
   if (target === playerId) return FAIL('That is your own land');
   if (target !== 0 && !state.players[target]?.alive) return FAIL('That nation is gone');
   if (target !== 0 && areAllied(state, playerId, target)) return FAIL('You cannot attack an ally');
+  const peace = peaceReason(state, playerId, target);
+  if (peace) return FAIL(peace);
   const range = paradropRange(b);
   if (d2Tiles(state, airfieldTile, tile) > range * range) return FAIL(`Too far: this airfield reaches ${range} tiles`);
   if (typeof troops !== 'number' || !Number.isFinite(troops) || troops < PARADROP_MIN_TROOPS) {
@@ -862,15 +876,21 @@ export function launchMissile(state: GameState, playerId: number, siloTile: numb
   const p = state.players[playerId];
   if (!p || playerId === 0 || !p.alive) return FAIL('No such player');
   if (kind !== 'rocket' && kind !== 'atomBomb') return FAIL('Invalid missile');
+  if (kind === 'atomBomb') {
+    const ruled = unitRule(state, 'atomBomb');
+    if (ruled) return FAIL(ruled);
+  }
   if (!isTile(state, siloTile) || !isTile(state, tile)) return FAIL('Invalid tile');
   const silo = buildingAt(state, siloTile);
   if (!isFinished(silo, playerId, 'silo')) return FAIL('Missiles fly from a finished Missile Silo of yours');
   const tech = UNITS[kind].tech;
-  if (tech && !hasTech(p, tech)) return FAIL(`Needs research: ${tech}`);
+  if (tech && !hasTech(p, tech)) return FAIL(`Needs research: ${TECHS[tech].name}`);
   if (chargesReady(silo) < 1) return FAIL(`The silo is reloading (${Math.ceil(nextChargeIn(silo))} s)`);
   const target = state.map.owner[tile];
   if (target === playerId) return FAIL('That is your own land');
   if (target !== 0 && areAllied(state, playerId, target)) return FAIL('You cannot fire at an ally');
+  const peace = peaceReason(state, playerId, target);
+  if (peace) return FAIL(peace);
   const bad = canPay(state, playerId, kind);
   if (bad) return FAIL(bad);
   pay(state, playerId, kind);

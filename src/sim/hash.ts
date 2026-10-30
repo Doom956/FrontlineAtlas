@@ -1,7 +1,8 @@
 // State hash for desync detection (lockstep multiplayer): two clients that ran the same actions must get the same
 // number. FNV-1a (32 bit) over the parts of the state that every system feeds into: tick, RNG state, tile owners,
-// players' stocks and troops (exact float bits), attacks and units (positions rounded to 1/100 tile), barrages and
-// buildings (level, timers, hp).
+// players' stocks and troops (exact float bits), research (current tech, progress, techs), auto flags, traitor and
+// embargoes, phase and spawn time, alliances and alliance requests, attacks and units (positions rounded to 1/100
+// tile), barrages and buildings (level, timers, hp).
 
 import type { GameState, Troops } from './types';
 
@@ -25,6 +26,13 @@ function mixFloat(h: number, v: number): number {
   h = mixInt(h, u32[0]);
   return mixInt(h, u32[1]);
 }
+function mixStr(h: number, v: string | null): number {
+  if (v === null) return mixInt(h, -1);
+  h = mixInt(h, v.length);
+  for (let k = 0; k < v.length; k++) h = mixInt(h, v.charCodeAt(k));
+  return h;
+}
+const PHASE_CODE = { spawn: 1, playing: 2, over: 3 } as const;
 function mixTroops(h: number, t: Troops): number {
   h = mixFloat(h, t.infantry);
   h = mixFloat(h, t.armor);
@@ -37,6 +45,8 @@ export function hashState(state: GameState): number {
   h = mixInt(h, state.tick);
   h = mixInt(h, state.rngState.s);
   h = mixInt(h, state.nextId);
+  h = mixInt(h, PHASE_CODE[state.phase]);
+  h = mixFloat(h, state.spawnLeft);
   const owner = state.map.owner;
   // Owners are Uint16: two per 32-bit word.
   const n = owner.length;
@@ -56,6 +66,26 @@ export function hashState(state: GameState): number {
     h = mixFloat(h, p.armyMix.armor);
     h = mixFloat(h, p.armyMix.artillery);
     h = mixInt(h, p.barrageReadyTick);
+    h = mixStr(h, p.researching);
+    h = mixFloat(h, p.researchProgress);
+    h = mixInt(h, p.techs.length);
+    for (const t of p.techs) h = mixStr(h, t);
+    h = mixInt(h, (p.auto.mix ? 1 : 0) | (p.auto.research ? 2 : 0));
+    h = mixInt(h, p.traitorUntil);
+    h = mixInt(h, p.embargoes.length);
+    for (const e of p.embargoes) h = mixInt(h, e);
+  }
+  h = mixInt(h, state.alliances.length);
+  for (const al of state.alliances) {
+    h = mixInt(h, al.a);
+    h = mixInt(h, al.b);
+    h = mixInt(h, al.expiresTick);
+  }
+  h = mixInt(h, state.allianceRequests.length);
+  for (const r of state.allianceRequests) {
+    h = mixInt(h, r.from);
+    h = mixInt(h, r.to);
+    h = mixInt(h, r.expiresTick);
   }
   for (const a of state.attacks) {
     h = mixInt(h, a.id);

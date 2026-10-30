@@ -3,19 +3,16 @@
 // fields are never relayed to other clients.
 
 import { BUILDINGS, TECHS } from '../src/sim/config';
-import type { Action } from '../src/sim/types';
+import { DEFAULT_MODIFIERS, validateSetup } from '../src/sim/setup';
+import type { Action, GameSetup, Modifiers } from '../src/sim/types';
 import {
   BUILD_MAX_LENGTH,
   CLIENT_ID_PATTERN,
-  DIFFICULTIES,
-  GAME_MODES,
   LOBBY_LIMITS,
-  MAP_SIZES_LIST,
-  MAP_TYPES,
   NAME_MAX_LENGTH,
   normalizeLobbyCode,
 } from '../src/net/protocol';
-import type { ClientMessage, LobbySettings, RGB } from '../src/net/protocol';
+import type { ClientMessage, LobbySettingsPatch, RGB } from '../src/net/protocol';
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 const ok = <T>(value: T): Result<T> => ({ ok: true, value });
@@ -149,55 +146,34 @@ export function checkColor(v: unknown): RGB | null {
   return [v[0], v[1], v[2]];
 }
 
-/** Validates a partial LobbySettings: every given field must be valid; unknown fields are an error. */
-export function validateLobbySettings(v: unknown): Result<Partial<LobbySettings>> {
+/**
+ * Validates a partial LobbySettings: the shared setup fields with setup.validateSetup (every given field valid,
+ * unknown fields an error; `modifiers` may be partial) plus maxPlayers. Rebuilt field by field.
+ */
+export function validateLobbySettings(v: unknown): Result<LobbySettingsPatch> {
   if (v === undefined) return ok({});
   if (!isObj(v)) return fail('settings must be an object');
-  const out: Partial<LobbySettings> = {};
-  for (const key of Object.keys(v)) {
-    const x = v[key];
-    switch (key) {
-      case 'mode':
-        if (typeof x !== 'string' || !(GAME_MODES as readonly string[]).includes(x)) return fail('bad mode');
-        out.mode = x as LobbySettings['mode'];
-        break;
-      case 'mapType':
-        if (typeof x !== 'string' || !(MAP_TYPES as readonly string[]).includes(x)) return fail('bad mapType');
-        out.mapType = x as LobbySettings['mapType'];
-        break;
-      case 'mapSize':
-        if (typeof x !== 'string' || !(MAP_SIZES_LIST as readonly string[]).includes(x)) return fail('bad mapSize');
-        out.mapSize = x as LobbySettings['mapSize'];
-        break;
-      case 'difficulty':
-        if (typeof x !== 'string' || !(DIFFICULTIES as readonly string[]).includes(x)) return fail('bad difficulty');
-        out.difficulty = x as LobbySettings['difficulty'];
-        break;
-      case 'teamCount':
-      case 'aiCount':
-      case 'tribeCount':
-      case 'maxPlayers': {
-        const [lo, hi] = LOBBY_LIMITS[key];
-        if (!isInt(x, lo, hi)) return fail(`bad ${key} (${lo}..${hi})`);
-        out[key] = x;
-        break;
-      }
-      case 'timeLimit': {
-        const [lo, hi] = LOBBY_LIMITS.timeLimit;
-        if (!(x === 0 || isInt(x, lo, hi))) return fail(`bad timeLimit (0 or ${lo}..${hi})`);
-        out.timeLimit = x as number;
-        break;
-      }
-      case 'victoryLandShare': {
-        const [lo, hi] = LOBBY_LIMITS.victoryLandShare;
-        if (!isNum(x, lo, hi)) return fail(`bad victoryLandShare (${lo}..${hi})`);
-        out.victoryLandShare = x;
-        break;
-      }
-      default:
-        return fail(`unknown setting '${key.slice(0, 32)}'`);
-    }
+  const { maxPlayers, ...setup } = v;
+  if (maxPlayers !== undefined) {
+    const [lo, hi] = LOBBY_LIMITS.maxPlayers;
+    if (!isInt(maxPlayers, lo, hi)) return fail(`bad maxPlayers (${lo}..${hi})`);
   }
+  const bad = validateSetup(setup, true);
+  if (bad) return fail(bad.slice(0, 120));
+  const out: LobbySettingsPatch = {};
+  const src = setup as Partial<GameSetup>;
+  if (src.map) out.map = src.map.kind === 'world' ? { kind: 'world', id: src.map.id } : { kind: 'generated', type: src.map.type, size: src.map.size };
+  for (const k of ['aiCount', 'tribeCount', 'teamCount', 'difficulty', 'mode', 'timeLimit', 'victoryLandShare', 'preset'] as const) {
+    if (src[k] !== undefined) (out as Record<string, unknown>)[k] = src[k];
+  }
+  if (src.modifiers) {
+    const m: Partial<Modifiers> = {};
+    for (const k of Object.keys(DEFAULT_MODIFIERS) as (keyof Modifiers)[]) {
+      if (src.modifiers[k] !== undefined) (m as Record<string, unknown>)[k] = src.modifiers[k];
+    }
+    out.modifiers = m;
+  }
+  if (maxPlayers !== undefined) out.maxPlayers = maxPlayers as number;
   return ok(out);
 }
 
@@ -229,7 +205,14 @@ export function validateClientMessage(m: unknown): Result<ClientMessage> {
         if (typeof m.build !== 'string' || m.build.length > BUILD_MAX_LENGTH) return fail('hello: bad build');
         build = m.build;
       }
-      return ok({ type: 'hello', protocol: m.protocol, name, color, clientId: m.clientId, build });
+      const out: ClientMessage = { type: 'hello', protocol: m.protocol, name, color, clientId: m.clientId, build };
+      if (m.resume !== undefined && m.resume !== null) {
+        const r = m.resume;
+        const code = isObj(r) && typeof r.code === 'string' && r.code.length <= 32 ? normalizeLobbyCode(r.code) : null;
+        if (!code || !isObj(r) || !isInt(r.haveTurns, 0, MAX_ID)) return fail('hello: bad resume');
+        out.resume = { code, haveTurns: r.haveTurns };
+      }
+      return ok(out);
     }
     case 'createLobby': {
       const s = validateLobbySettings(m.settings);
@@ -240,7 +223,10 @@ export function validateClientMessage(m: unknown): Result<ClientMessage> {
       const code = typeof m.code === 'string' && m.code.length <= 32 ? normalizeLobbyCode(m.code) : null;
       if (!code) return fail('joinLobby: bad code');
       if (m.spectate !== undefined && typeof m.spectate !== 'boolean') return fail('joinLobby: bad spectate');
-      return ok({ type: 'joinLobby', code, spectate: m.spectate === true });
+      if (m.haveTurns !== undefined && !isInt(m.haveTurns, 0, MAX_ID)) return fail('joinLobby: bad haveTurns');
+      const out: ClientMessage = { type: 'joinLobby', code, spectate: m.spectate === true };
+      if (m.haveTurns !== undefined) out.haveTurns = m.haveTurns;
+      return ok(out);
     }
     case 'leaveLobby':
       return ok({ type: 'leaveLobby' });

@@ -53,7 +53,8 @@ import {
 import { areAllied, isTraitor } from './diplomacy';
 import { troopCap } from './economy';
 import { forEachInRadius } from './grid';
-import { canSpawnAt, gameSeconds, ownerBox } from './state';
+import { alliancesAllowed as rulesAllowAlliances, atPeace, buildingAllowed, researchRule, unitAllowed } from './rules';
+import { canSpawnAt, gameSeconds, ownerBox, spawnAtFixedPoint } from './state';
 import { borderTiles, coastCount, depositCount, landComponents, sampleOwnedTiles } from './territory';
 import { canParadrop, paradropMaxTroops, paradropRange } from './units';
 import { inOvertime, victoryShareNow } from './victory';
@@ -199,11 +200,20 @@ interface DifficultyProfile {
   coordinate: boolean;
   /** valid spawn candidates compared */
   spawnTries: number;
+  /**
+   * Game seconds during which a human nation is a much less tempting war target (x HUMAN_RESTRAINT strength
+   * needed, unless it attacked us): a new player gets time to learn before the AI armies come. 0 = none.
+   */
+  humanGrace: number;
 }
+/** Extra strength an AI wants before attacking a human during its difficulty's humanGrace. */
+const HUMAN_RESTRAINT = 1.8;
+/** Game seconds during which AIs accept a human's alliance only out of opinion (no fear or timid alliances). */
+const EARLY_ALLY_SECONDS = 180;
 const DIFFICULTY: Record<Difficulty, DifficultyProfile> = {
-  easy: { noise: 0.35, shareScale: 0.75, samples: 3, careful: false, nukes: false, coordinate: false, spawnTries: 20 },
-  normal: { noise: 0.15, shareScale: 1, samples: 5, careful: true, nukes: true, coordinate: false, spawnTries: 50 },
-  hard: { noise: 0.04, shareScale: 1.1, samples: 8, careful: true, nukes: true, coordinate: true, spawnTries: 100 },
+  easy: { noise: 0.35, shareScale: 0.75, samples: 3, careful: false, nukes: false, coordinate: false, spawnTries: 20, humanGrace: 480 },
+  normal: { noise: 0.15, shareScale: 1, samples: 5, careful: true, nukes: true, coordinate: false, spawnTries: 50, humanGrace: 360 },
+  hard: { noise: 0.04, shareScale: 1.1, samples: 8, careful: true, nukes: true, coordinate: true, spawnTries: 100, humanGrace: 0 },
 };
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -534,6 +544,8 @@ export function aiSpawn(state: GameState): void {
       m.spawnAt.set(p.id, at);
     }
     if (elapsed < at) continue;
+    // World maps: the nation starts at its real capital (or the nearest free spot).
+    if ((state.spawnPoints?.[p.id] ?? -1) >= 0 && spawnAtFixedPoint(state, p.id)) continue;
     let best = -1;
     let bestScore = -1;
     let valid = 0;
@@ -996,7 +1008,14 @@ function warNeed(ctx: Ctx, q: number): number {
   // A nation others are already eating is a crowded prize (a small share, and it fights for its life): no pile-on
   // unless we are much stronger. Gang-ups ended games in their first minutes.
   need *= 1 + 0.8 * otherAttackers(ctx, q);
+  if (humanSpared(ctx, q)) need *= HUMAN_RESTRAINT;
   return need;
+}
+
+/** A human in its early-game grace (by difficulty) that is not attacking us: spared unless we are much stronger. */
+function humanSpared(ctx: Ctx, q: number): boolean {
+  const qp = ctx.state.players[q];
+  return !!qp && qp.isHuman && !ctx.incoming.has(q) && gameSeconds(ctx.state) < ctx.diff.humanGrace;
 }
 
 /** Nations other than us (and not allied with us) attacking q right now. */
@@ -1054,7 +1073,7 @@ function war(ctx: Ctx): void {
       if (o) options.push(o);
       continue;
     }
-    if (!ready) continue;
+    if (!ready || atPeace(state, id, q)) continue;
     if (!wars.has(q) && wars.size >= prof.maxWars) continue;
     if (!wars.has(q) && !ctx.incoming.has(q) && otherAttackers(ctx, q) >= 2) continue;
     const need = warNeed(ctx, q);
@@ -1077,6 +1096,7 @@ function war(ctx: Ctx): void {
     let best = 0;
     let bestRatio = 0;
     for (const q of ctx.enemies) {
+      if (atPeace(state, id, q) || humanSpared(ctx, q)) continue;
       const r = ctx.army / Math.max(1, estArmy(state, ctx.m, diff, id, q));
       if (r > bestRatio) {
         bestRatio = r;
@@ -1205,8 +1225,10 @@ function economy(ctx: Ctx): void {
   // Economy first: military buildings wait a few minutes unless a neighbour is threatening.
   const militaryScale = ctx.threat > 1 ? 1 : clamp(minutes / 5, 0.4, 1);
   const opts: BuildOption[] = [];
+  const noResearch = researchRule(state) !== null;
   const add = (type: BuildingType | 'research', prio: number): void => {
     if (prio <= 0) return;
+    if (type === 'research' ? noResearch : !buildingAllowed(state, type)) return;
     if (type === 'research') opts.push({ type, prio });
     else opts.push({ type, prio: prio * (prof.build[type] ?? 1) * (MILITARY.has(type) ? militaryScale : 1) });
   };
@@ -1536,7 +1558,7 @@ function naval(ctx: Ctx): void {
   if (!coast.length) return;
 
   // Warships: admirals keep a fleet, others a guard when rich.
-  if (hasTech(p, 'navigation')) {
+  if (hasTech(p, 'navigation') && unitAllowed(state, 'warship')) {
     const ports = buildingsOf(state, id, 'port').filter((b) => b.buildLeft <= 0);
     let ships = 0;
     for (const u of state.units) if (u.owner === id && u.type === 'warship') ships++;
@@ -1600,7 +1622,7 @@ function landingTarget(ctx: Ctx, coast: readonly number[]): { tile: number; from
   for (const q of state.players) {
     if (q.id === 0 || q.id === id || !q.alive || coastCount(state, q.id) === 0) continue;
     const ratio = ctx.army / Math.max(1, estArmy(state, m, diff, id, q.id));
-    if (ratio < (isTribe(q) ? 2 : 0.4) || areAllied(state, id, q.id)) continue;
+    if (ratio < (isTribe(q) ? 2 : 0.4) || areAllied(state, id, q.id) || atPeace(state, id, q.id)) continue;
     if (!isTribe(q) && ratio < warNeed(ctx, q.id) * 1.1) continue;
     for (const t of sampleOwnedTiles(state, q.id, 'coast', 3)) candidates.push(t);
   }
@@ -1661,7 +1683,7 @@ function foes(ctx: Ctx): number[] {
   const out = new Set<number>();
   for (const a of ctx.myAttacks) if (a.target > 0) out.add(a.target);
   for (const q of ctx.incoming.keys()) out.add(q);
-  return [...out].filter((q) => ctx.state.players[q].alive && !areAllied(ctx.state, ctx.id, q));
+  return [...out].filter((q) => ctx.state.players[q].alive && !areAllied(ctx.state, ctx.id, q) && !atPeace(ctx.state, ctx.id, q));
 }
 
 /** Most valuable enemy building to strike (kinds in priority order), avoiding SAM cover when careful. */
@@ -1841,7 +1863,7 @@ function barrage(ctx: Ctx): void {
  */
 function maybeNuke(ctx: Ctx, silo: number): boolean {
   const { state, p, id, diff } = ctx;
-  if (!diff.nukes || !hasTech(p, 'nuclearFission') || state.tick < ctx.ai.nextNukeTick) return false;
+  if (!diff.nukes || !unitAllowed(state, 'atomBomb') || !hasTech(p, 'nuclearFission') || state.tick < ctx.ai.nextNukeTick) return false;
   const c = UNITS.atomBomb;
   if (p.gold < c.gold || p.iron < c.iron || p.oil < c.oil) return false;
   let target = 0;
@@ -1886,6 +1908,7 @@ function maybeNuke(ctx: Ctx, silo: number): boolean {
 
 function answerRequests(ctx: Ctx): void {
   const { state, id } = ctx;
+  if (!rulesAllowAlliances(state)) return;
   for (const r of state.allianceRequests.filter((x) => x.to === id)) {
     applyAction(state, id, { type: 'answerAlliance', from: r.from, accept: aiWantsAlliance(state, id, r.from) });
   }
@@ -1935,9 +1958,10 @@ export function aiWantsAlliance(state: GameState, ai: number, from: number): boo
   const me = state.players[ai];
   const them = state.players[from];
   if (!me || !them || ai === 0 || from === 0 || ai === from || !me.alive || !them.alive) return false;
+  // Nobody trusts a traitor (not even a tribe: no ally-break-ally again for free).
+  if (isTraitor(state, from)) return false;
   // Tribes take any friend they can get.
   if (isTribe(me)) return true;
-  if (isTraitor(state, from)) return false;
   if (!alliancesAllowed(state, ai, from)) return false;
   // Never ally (or renew) with the last neighbour we could still fight: a nation boxed in by allies sits idle.
   if (lastOutlet(state, ai, from)) return false;
@@ -1952,6 +1976,9 @@ export function aiWantsAlliance(state: GameState, ai: number, from: number): boo
   if (them.tiles >= biggest && them.tiles / land > 0.3 && them.tiles > me.tiles * 1.5) return false;
   const opinion = state.opinion[ai]?.[from] ?? 0;
   if (opinion > prof.allyOpinion) return true;
+  // A human asking in the first minutes is a stranger: only real friends (opinion above) say yes, so allying with
+  // every nation at once is not a free shield.
+  if (them.isHuman && gameSeconds(state) < EARLY_ALLY_SECONDS) return false;
   // A common, stronger neighbour we both fear (the classic reason for non-neighbours to ally).
   const myArmy = armyOf(state, ai);
   const theirArmy = armyOf(state, from);
@@ -2009,6 +2036,10 @@ const PROPOSAL_COOLDOWN_S = 180;
 
 function diplomacy(ctx: Ctx): void {
   const { state, p, prof, id } = ctx;
+  if (!rulesAllowAlliances(state)) {
+    ctx.ai.nextDiploTick = state.tick + 60 * TICKS_PER_SECOND;
+    return;
+  }
   const merchant = p.personality === 'merchant';
   ctx.ai.nextDiploTick = state.tick + Math.round((merchant ? 15 : 30) * TICKS_PER_SECOND * (0.75 + state.rng() * 0.5));
 

@@ -12,10 +12,10 @@
 //  5. Cleanup: 8-neighbour majority filter, regions smaller than N tiles merged into their neighbours, last pass on
 //     tiles that differ from 3+ of their 4 neighbours. Shallow-water band along every coast.
 //  6. Resources as small deposits (3-12 tiles), seeded on a stratified grid so every region gets some.
-import { MAP_SIZES } from './config';
 import { powInt } from './fmath';
 import { Resource, Terrain } from './types';
-import type { GameSettings, MapData, MapType } from './types';
+import { COMPACT_SCALE, MAP_SIZES } from './config';
+import type { GameSettings, MapData, MapSize, MapType } from './types';
 
 // Local copies of the terrain / resource ids: hot loops should not go through imported bindings.
 const T_DEEP: number = Terrain.DeepWater;
@@ -507,12 +507,24 @@ function placeLandmasses(type: MapType, w: number, h: number, landShare: number,
 
 // ---------- generation ----------
 
+/** Width and height of a generated map (compact: x COMPACT_SCALE per side). */
+export function generatedDims(size: MapSize, compact: boolean): { width: number; height: number } {
+  const d = MAP_SIZES[size] ?? MAP_SIZES.medium;
+  if (!compact) return { width: d.width, height: d.height };
+  return { width: Math.round(d.width * COMPACT_SCALE), height: Math.round(d.height * COMPACT_SCALE) };
+}
+
+/**
+ * A procedural map for settings.map (kind 'generated'; anything else gets a medium continents map). The compact-map
+ * modifier halves the width and height (setup.generatedDims).
+ */
 export function generateMap(settings: GameSettings, rng: () => number): MapData {
-  const size = MAP_SIZES[settings.mapSize] ?? MAP_SIZES.medium;
+  const choice = settings.map?.kind === 'generated' ? settings.map : null;
+  const size = generatedDims(choice?.size ?? 'medium', !!settings.modifiers?.compactMap);
   const w = size.width;
   const h = size.height;
   const n = w * h;
-  const mapType: MapType = TYPE_PARAMS[settings.mapType] ? settings.mapType : 'continents';
+  const mapType: MapType = choice && TYPE_PARAMS[choice.type] ? choice.type : 'continents';
   const P = TYPE_PARAMS[mapType];
   const map = createMapData(w, h);
   const S = Math.min(w, h);
@@ -527,7 +539,7 @@ export function generateMap(settings: GameSettings, rng: () => number): MapData 
   const nLake = makeNoise(rng);
   const nSwamp = makeNoise(rng);
 
-  const players = settings.aiCount + (settings.humanPlayer ? 1 : 0);
+  const players = settings.aiCount + (settings.humans?.length || (settings.humanPlayer ? 1 : 0));
   const landShare = Math.min(0.85, Math.max(P.landShare, (players * 400) / n));
   const blobs = placeLandmasses(mapType, w, h, landShare, rng);
 
