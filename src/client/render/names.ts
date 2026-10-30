@@ -12,8 +12,8 @@ import { isTribe } from '../../sim/types';
 import type { GameState, Player } from '../../sim/types';
 import type { Camera } from '../camera';
 import { drawIcon, type StatusIconId } from '../icons';
-import { fitSize, LABEL_BLOCK_H } from '../labels';
-import { clamp, formatCount } from './common';
+import { fitSize, LABEL_BLOCK_H, LABEL_CHAR_W } from '../labels';
+import { clamp, formatCount, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, setTracking } from './common';
 import { OWNER_MASK, type TileFeed } from './tiles';
 
 /** Tribe labels only from this zoom (device px per tile) on, except the hovered tribe. */
@@ -329,7 +329,7 @@ export class NameLayer {
       if (size < minPx) continue;
       // Tribe names only once zoomed in (or the one under the cursor): far out they were just clutter.
       if (tribe && z < TRIBE_LABEL_ZOOM && l.id !== style.hoverOwner) continue;
-      const px = Math.min(size, tribe ? 15 : 46);
+      const px = Math.min(size, tribe ? 14 : 28);
       const s = cam.tileToScreen(l.fx + (l.tx - l.fx) * g, l.fy + (l.ty - l.fy) * g);
       if (s.x < -200 || s.y < -60 || s.x > cam.viewW + 200 || s.y > cam.viewH + 60) continue;
       const icons: StatusIconId[] = [];
@@ -340,15 +340,30 @@ export class NameLayer {
         if (areAllied(state, me, p.id)) icons.push('handshake');
         else if (requests.has(p.id)) icons.push('envelope');
       }
-      const iconPx = clamp(px * 0.95, 12, 24);
-      const nameFont = `${tribe ? 600 : 700} ${Math.round(px * 1.08)}px 'Barlow Condensed', system-ui, sans-serif`;
-      ctx.font = nameFont;
+      const iconPx = clamp(px * 0.85, 12, 20);
+      // Clean map type: nations in tracked uppercase Barlow Condensed 600, tribes in mixed-case 500. Big countries
+      // keep a capped size and spread their letters over the spare width instead of growing into giant letters.
+      ctx.font = tribe ? `500 ${Math.round(px * 1.04)}px ${MAP_LABEL_FAMILY}` : `600 ${Math.round(px)}px ${MAP_LABEL_FAMILY}`;
+      const nameFont = ctx.font;
       // a tribe far out: just its army number (the name on hover), so dozens of "Tribe of the ..." don't pile up
-      const name = tribe && z < TRIBE_NAME_ZOOM && l.id !== style.hoverOwner ? '' : p.name;
-      const tw = name ? ctx.measureText(name).width : 0;
+      const raw = tribe && z < TRIBE_NAME_ZOOM && l.id !== style.hoverOwner ? '' : p.name;
+      const name = tribe ? raw : raw.toUpperCase();
+      let track = tribe ? px * 0.01 : px * 0.07;
+      setTracking(ctx, track);
+      let tw = name ? ctx.measureText(name).width : 0;
+      if (!tribe && name.length > 1 && size > px) {
+        // spare width the region offers at its fitted size (fitSize keeps this inside the territory)
+        const budget = size * (name.length * LABEL_CHAR_W + 0.6) * 0.8;
+        const extra = clamp((budget - tw) / (name.length - 1), 0, px * 0.45);
+        if (extra > 0.5) {
+          track += extra;
+          setTracking(ctx, track);
+          tw = ctx.measureText(name).width;
+        }
+      }
       const iconsW = icons.length ? icons.length * (iconPx + 2) + 2 : 0;
       const totalW = tw + iconsW;
-      const small = Math.max(7, px * 0.72);
+      const small = clamp(px * 0.6, 8, 14);
       // Army sizes are public (sim armyTotalOf); only the troop mix needs intel, and only your own mix is drawn.
       const showArmy = !tribe || px >= 13.5 || !name;
       const mixBar = p.id === me && showArmy;
@@ -376,26 +391,25 @@ export class NameLayer {
       for (let k = 0; k < icons.length; k++) {
         drawIcon(ctx, icons[k], left + k * (iconPx + 2), nameY - iconPx / 2, iconPx, { dpr });
       }
-      const nameX = left + iconsW + tw / 2;
-      ctx.lineWidth = Math.max(2.2, px * 0.2);
-      ctx.strokeStyle = tribe ? 'rgba(0,0,0,0.5)' : 'rgba(8,10,16,0.78)';
-      ctx.fillStyle = traitor ? '#ff9d92' : tribe ? 'rgba(236,236,236,0.85)' : p.id === me ? '#fff6d0' : '#ffffff';
-      ctx.font = nameFont;
+      // canvas letter-spacing also trails the last letter: shift back by half of it to stay centred
+      const nameX = left + iconsW + tw / 2 + (name ? track / 2 : 0);
       if (name) {
-        ctx.strokeText(name, nameX, nameY);
-        ctx.fillText(name, nameX, nameY);
+        ctx.font = nameFont;
+        setTracking(ctx, track);
+        const fill = traitor ? '#ff9d92' : tribe ? 'rgba(232,234,238,0.86)' : p.id === me ? 'rgba(255,240,196,0.96)' : 'rgba(255,255,255,0.93)';
+        haloText(ctx, name, nameX, nameY, fill, px, tribe ? 0.85 : 1);
       }
       if (showArmy) {
         const army = formatCount(armyTotal(p.troops));
-        ctx.font = `600 ${Math.round(small)}px 'IBM Plex Sans', system-ui, sans-serif`;
-        ctx.lineWidth = Math.max(2, small * 0.22);
-        const ay = nameY + px * 0.55 + small * 0.5;
-        ctx.strokeText(army, s.x, ay);
-        ctx.fillStyle = tribe ? 'rgba(220,220,220,0.8)' : traitor ? '#ffc4bd' : '#eef1f6';
-        ctx.fillText(army, s.x, ay);
+        ctx.font = `500 ${Math.round(small)}px ${MAP_NUM_FAMILY}`;
+        setTracking(ctx, small * 0.02);
+        const ay = nameY + px * 0.55 + small * 0.55;
+        const fill = tribe ? 'rgba(222,224,228,0.78)' : traitor ? 'rgba(255,196,189,0.85)' : 'rgba(238,241,246,0.8)';
+        haloText(ctx, army, s.x, ay, fill, small, 0.9);
         if (mixBar) this.mixBar(ctx, p, s.x, ay + small * 0.6 + 3, Math.max(28, Math.min(tw, 90)));
       }
     }
+    setTracking(ctx, 0);
     ctx.globalAlpha = 1;
   }
 

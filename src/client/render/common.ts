@@ -64,7 +64,7 @@ export function pill(
   arrow: 'up' | 'down' | 'none',
   fill = 'rgba(10,13,21,0.84)',
 ): void {
-  ctx.font = "600 11px 'IBM Plex Sans', system-ui, sans-serif";
+  ctx.font = `500 11px ${MAP_NUM_FAMILY}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const tw = ctx.measureText(text).width;
@@ -104,4 +104,36 @@ export function dashedLine(ctx: CanvasRenderingContext2D, x1: number, y1: number
   ctx.strokeStyle = color;
   ctx.stroke();
   ctx.setLineDash([]);
+}
+
+/** Map type: Barlow Condensed for names and labels, IBM Plex Sans for numbers (both bundled in fonts.ts). */
+export const MAP_LABEL_FAMILY = "'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif";
+export const MAP_NUM_FAMILY = "'IBM Plex Sans', system-ui, sans-serif";
+
+/** Canvas letter-spacing in CSS px (no-op where the browser lacks ctx.letterSpacing). */
+export function setTracking(ctx: CanvasRenderingContext2D, px: number): void {
+  const c = ctx as CanvasRenderingContext2D & { letterSpacing?: string };
+  if (typeof c.letterSpacing === 'string') c.letterSpacing = px > 0 ? `${px.toFixed(2)}px` : '0px';
+}
+
+/**
+ * Map label text with a thin, soft halo instead of a thick outline: a faint 1-1.5 px dark stroke carrying a small
+ * blurred shadow, then the fill on top, so the letters stay crisp and readable over light and dark nation colours.
+ * `strength` 0..1 scales the halo (1 = the default for labels over territory).
+ */
+export function haloText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, fill: string, size = 12, strength = 1): void {
+  const m = ctx.getTransform();
+  const scale = Math.hypot(m.a, m.b) || 1;
+  ctx.lineJoin = 'round';
+  ctx.shadowColor = `rgba(4,6,12,${(0.7 * strength).toFixed(2)})`;
+  ctx.shadowBlur = Math.max(2.5, size * 0.22) * scale;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
+  ctx.lineWidth = clamp(size * 0.09, 1, 1.6);
+  ctx.strokeStyle = `rgba(4,6,12,${(0.5 * strength).toFixed(2)})`;
+  ctx.strokeText(text, x, y);
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = fill;
+  ctx.fillText(text, x, y);
 }

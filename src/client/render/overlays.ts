@@ -11,7 +11,7 @@ import type { Camera } from '../camera';
 import { drawMarker, type BuildingIconId } from '../icons';
 import type { Snap } from '../placement';
 import { FLOATER_MS, type UiState } from '../uiState';
-import { clamp, css, dashedLine, mix, pill, type RGB } from './common';
+import { clamp, css, dashedLine, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, mix, pill, setTracking, type RGB } from './common';
 import type { UnitLayer } from './units';
 import { markerSize } from './buildings';
 
@@ -133,14 +133,13 @@ export class Overlays {
       }
       this.star(ctx, sx, sy, R, css(colors[p.id] ?? p.color), p.id === me ? '#ffffff' : '#141414');
       if (spawn && p.id !== me && (!tribe || cam.zoom >= 3)) {
-        ctx.font = tribe ? "600 11px 'Barlow Condensed', system-ui, sans-serif" : "700 12px 'Barlow Condensed', system-ui, sans-serif";
+        ctx.font = tribe ? `500 12px ${MAP_LABEL_FAMILY}` : `600 12px ${MAP_LABEL_FAMILY}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = 'rgba(0,0,0,0.75)';
-        ctx.strokeText(p.name, sx, sy - R - 2);
-        ctx.fillStyle = tribe ? 'rgba(235,235,235,0.8)' : '#fff';
-        ctx.fillText(p.name, sx, sy - R - 2);
+        const track = tribe ? 0 : 0.8;
+        setTracking(ctx, track);
+        haloText(ctx, tribe ? p.name : p.name.toUpperCase(), sx + track / 2, sy - R - 2, tribe ? 'rgba(232,234,238,0.85)' : 'rgba(255,255,255,0.94)', 12);
+        setTracking(ctx, 0);
       }
     }
   }
@@ -165,14 +164,12 @@ export class Overlays {
     ctx.lineWidth = 2;
     ctx.strokeStyle = `rgba(255,255,255,${0.6 + 0.4 * pulse})`;
     ctx.stroke();
-    ctx.font = "700 12px 'Barlow Condensed', system-ui, sans-serif";
+    ctx.font = `600 12px ${MAP_LABEL_FAMILY}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(0,0,0,0.75)';
-    ctx.strokeText('YOU', s.x, s.y - r - 3);
-    ctx.fillStyle = '#fff';
-    ctx.fillText('YOU', s.x, s.y - r - 3);
+    setTracking(ctx, 1.4);
+    haloText(ctx, 'YOU', s.x + 0.7, s.y - r - 3, '#ffffff', 12);
+    setTracking(ctx, 0);
   }
 
   /** Target reticles: red with a countdown for missiles / bombers flying at you, a quieter white one for yours. */
@@ -230,15 +227,11 @@ export class Overlays {
       ctx.stroke();
       if (atMe || z >= 2) {
         const label = `${eta < 9.95 ? eta.toFixed(1) : Math.round(eta)}s`;
-        ctx.font = "600 12px 'IBM Plex Sans', system-ui, sans-serif";
+        ctx.font = `500 12px ${MAP_NUM_FAMILY}`;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = 'rgba(0,0,0,0.8)';
         const lx = s.x + Math.min(R, 22) * 0.75 + 11;
-        ctx.strokeText(label, lx, s.y);
-        ctx.fillStyle = atMe ? '#ffb3aa' : '#fff';
-        ctx.fillText(label, lx, s.y);
+        haloText(ctx, label, lx, s.y, atMe ? '#ffb3aa' : '#ffffff', 12);
       }
     }
     for (const id of this.etas.keys()) if (!live.has(id)) this.etas.delete(id);
@@ -411,8 +404,7 @@ export class Overlays {
     if (list.length === 0) return;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = "600 13px 'IBM Plex Sans', system-ui, sans-serif";
-    ctx.lineJoin = 'round';
+    ctx.font = `500 13px ${MAP_NUM_FAMILY}`;
     let keep = 0;
     for (let k = 0; k < list.length; k++) {
       const f = list[k];
@@ -424,11 +416,7 @@ export class Overlays {
       if (s.x < -80 || s.y < -40 || s.x > cam.viewW + 80 || s.y > cam.viewH + 40) continue;
       const y = s.y - 8 - 30 * t;
       ctx.globalAlpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(0,0,0,0.75)';
-      ctx.strokeText(f.text, s.x, y);
-      ctx.fillStyle = f.color;
-      ctx.fillText(f.text, s.x, y);
+      haloText(ctx, f.text, s.x, y, f.color, 13);
     }
     list.length = keep;
     ctx.globalAlpha = 1;

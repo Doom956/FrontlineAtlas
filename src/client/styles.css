@@ -28,7 +28,7 @@
     repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 3px);
   --f-label: 'Barlow Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif;
   --f-ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --f-logo: 'Saira Stencil One', 'Barlow Condensed', sans-serif;
+  --f-logo: 'Barlow Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif;
   --r: 2px;
   --s1: 4px;
   --s2: 8px;
@@ -1133,7 +1133,8 @@ button.chip:hover {
   border-radius: 1px;
   background: var(--brass);
   color: var(--brass-ink);
-  font: 700 10px/14px var(--f-ui);
+  font: 600 10px/14px var(--f-ui);
+  font-variant-numeric: tabular-nums;
 }
 .sq-dot {
   position: absolute;
@@ -1971,7 +1972,7 @@ button.toast-t:hover {
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 12px;
 }
 .rad-label {
@@ -1984,7 +1985,7 @@ button.toast-t:hover {
   text-transform: uppercase;
   white-space: nowrap;
   color: var(--text);
-  text-shadow: 0 1px 2px #000, 0 0 4px #000;
+  text-shadow: 0 1px 2px rgba(4, 6, 12, 0.7), 0 0 6px rgba(4, 6, 12, 0.45);
   pointer-events: none;
 }
 .rad-centre .rad-label {
@@ -2109,8 +2110,9 @@ button.toast-t:hover {
   border: 1px solid var(--rule);
 }
 .over-t {
-  font: 400 64px/1 var(--f-logo);
-  letter-spacing: 0.04em;
+  font: 600 56px/1 var(--f-logo);
+  letter-spacing: 0.16em;
+  margin-right: -0.16em;
   text-transform: uppercase;
 }
 .over-t.win {
@@ -2258,8 +2260,10 @@ button.toast-t:hover {
   color: var(--brass);
 }
 .logo {
-  font: 400 64px/0.95 var(--f-logo);
-  letter-spacing: 0.02em;
+  font: 600 54px/1 var(--f-logo);
+  letter-spacing: 0.18em;
+  margin-right: -0.18em;
+  text-transform: uppercase;
   color: var(--text);
   margin: 4px 0 2px;
 }
@@ -3098,7 +3102,7 @@ button.toast-t:hover {
   gap: 8px;
 }
 .code-big {
-  font: 400 30px/1 var(--f-logo);
+  font: 600 30px/1 var(--f-logo);
   letter-spacing: 0.12em;
   color: var(--brass-hi);
   user-select: all;
@@ -3397,4 +3401,9 @@ button.toast-t:hover {
 .note .sw {
   margin: 0 3px 0 1px;
   vertical-align: baseline;
+}
+
+b,
+strong {
+  font-weight: 600;
 }

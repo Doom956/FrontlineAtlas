@@ -10,7 +10,7 @@ import { BUILDINGS } from '../../sim/config';
 import type { Building, GameState } from '../../sim/types';
 import type { Camera } from '../camera';
 import { CATEGORY_COLORS, drawMarker, ICON_INFO, markerReady, type BuildingIconId } from '../icons';
-import { buildingsKey, clamp, type RGB, type View } from './common';
+import { buildingsKey, clamp, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, setTracking, type RGB, type View } from './common';
 
 export const FAR_ZOOM = 1.7;
 const CELL = 32;
@@ -207,7 +207,7 @@ export class BuildingLayer {
       ctx.strokeStyle = '#2b2410';
       ctx.stroke();
       ctx.fillStyle = '#2b2410';
-      ctx.font = `800 ${Math.round(br * 1.35)}px system-ui, sans-serif`;
+      ctx.font = `600 ${Math.round(br * 1.3)}px ${MAP_NUM_FAMILY}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(String(b.level), bx, by + 0.5);
@@ -221,15 +221,13 @@ export class BuildingLayer {
     }
     if (size >= NAME_MARKER_PX) {
       // close up (zoom 8+): the building's name under its marker
-      ctx.font = "600 11px 'Barlow Condensed', system-ui, sans-serif";
+      ctx.font = `500 12px ${MAP_LABEL_FAMILY}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
       const ny = y + r + (b.hp > 0 && b.hp < 1 ? 7 : 4);
-      ctx.strokeText(BUILDINGS[b.type].name, x, ny);
-      ctx.fillStyle = '#f2f2f2';
-      ctx.fillText(BUILDINGS[b.type].name, x, ny);
+      setTracking(ctx, 0.4);
+      haloText(ctx, BUILDINGS[b.type].name, x + 0.2, ny, 'rgba(244,245,247,0.92)', 12, 0.9);
+      setTracking(ctx, 0);
     }
   }
 }
