@@ -192,6 +192,7 @@ const LINE: Record<string, string> = {
   copy: '<path d="M9 9h11v11H9z"/><path d="M15 9V4H4v11h5"/>',
   signal: '<path d="M4 20v-3M9 20v-7M14 20V9M19 20V5"/>',
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  lock: '<path d="M5 11h14v10H5z"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
 };
 export type LineIconId = keyof typeof LINE;
 

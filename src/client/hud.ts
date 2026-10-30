@@ -46,6 +46,7 @@ import { button, howToPlayContent } from './menu';
 import { RadialMenu } from './radial';
 import type { RadialSpec } from './radial';
 import { addFloater } from './uiState';
+import { instruction, strikeToastText, type StrikeId } from './strikes';
 import type { Dispatch, UiState } from './uiState';
 
 export { techNear };
@@ -126,6 +127,8 @@ export class Hud {
   private helpPaused = false;
   private lastSelected = -1;
   private lastToast: UiState['toast'] = null;
+  /** own bombers already announced ("Bomber on its way"); null until the first look (no toasts for old ones) */
+  private seenBombers: Set<number> | null = null;
 
   constructor(
     public root: HTMLElement,
@@ -236,7 +239,7 @@ export class Hud {
     this.modeText = el('span', 'mc-t');
     const cancel = el('button', 'mc-x');
     cancel.type = 'button';
-    cancel.append(iconSpan(lineIcon('close', 12, 2)), el('kbd', 'kc', 'Esc'));
+    cancel.append(iconSpan(lineIcon('close', 12, 2)));
     cancel.setAttribute('aria-label', 'Cancel (Esc)');
     cancel.addEventListener('click', () => {
       if (this.ui.mode.kind !== 'none') this.ui.mode = { kind: 'none' };
@@ -335,7 +338,8 @@ export class Hud {
       this.cluster.update(state, me);
       if (!watching) this.card.update(state, me);
       this.drawer.update(state, me);
-      if (!watching) this.advisor.update(state, me);
+      if (!watching) this.advisor.update(state, me, this.bar.strikes);
+      if (!watching) this.announceBombers(state, me);
       this.toasts.update();
       if (!watching) this.tooltip.update(state, me, true);
       this.updateSpawn(state, me);
@@ -370,6 +374,11 @@ export class Hud {
 
   openResearch(): void {
     this.openDrawer('research', true);
+  }
+  /** A strike hotkey: aim it when ready, else say in one line why not. */
+  strike(id: StrikeId): void {
+    if (this.watching) return;
+    this.bar.strikes.aim(id);
   }
   /** Opens a drawer (closing another); with toggle, a second press closes it. */
   openDrawer(id: DrawerId, toggle = false): void {
@@ -524,13 +533,10 @@ export class Hud {
     let chip = '';
     if (state.phase === 'playing') {
       const m = ui.mode;
-      if (m.kind === 'build') chip = `Build ${BUILDINGS[m.building].name}: click your land`;
-      else if (m.kind === 'transport') chip = 'Transport: click a coast to land on';
-      else if (m.kind === 'bomb') chip = 'Bomber: click a target';
-      else if (m.kind === 'missile') chip = `${m.missile === 'atomBomb' ? 'Atom bomb' : 'Rocket'}: click a target`;
-      else if (m.kind === 'moveWarship') chip = 'Warship: click water to patrol';
-      else if (m.kind === 'paradrop') chip = 'Paratroopers: click a drop zone';
-      else if (m.kind === 'barrage') chip = 'Barrage: click the area to shell';
+      if (m.kind === 'build') chip = `Build ${BUILDINGS[m.building].name}: click your land. Esc to cancel.`;
+      else if (m.kind === 'transport') chip = 'Transport: click a coast to land on. Esc to cancel.';
+      else if (m.kind === 'moveWarship') chip = 'Warship: click water to patrol. Esc to cancel.';
+      else if (m.kind !== 'none') chip = instruction(state, me, m);
       else if (ui.paused) chip = 'Paused';
     }
     setText(this.modeText, chip);
@@ -623,11 +629,11 @@ export class Hud {
         return;
       }
     }
-    // strikes: a warning when they hit us, a short report for our own
-    if (e.kind === 'paradrop' || e.kind === 'barrage') {
-      const ours = e.message.startsWith(me.name);
-      // one toast per strike type and shooter: a new report replaces the last instead of stacking up
-      this.toasts.show({ text: e.message, kind: ours ? 'good' : 'bad', icon: e.kind === 'paradrop' ? 'paradrop' : 'barrage', onClick: go, ms: ours ? 3500 : 6000, key: `${e.kind}:${e.players.find((id) => id !== me.id) ?? 0}` });
+    // strikes: a warning when they hit us, a short report for our own (and planes shot down either way)
+    const strike = strikeToastText(e, me);
+    if (strike) {
+      // one toast per strike type and other side: the report replaces the launch note instead of stacking up
+      this.toasts.show({ text: strike.text, kind: strike.kind, icon: strike.icon, onClick: go, ms: strike.kind === 'bad' ? 6000 : 5000, key: `${e.kind === 'nuke' ? 'missile' : e.kind}:${e.players.find((id) => id !== me.id) ?? 0}:${strike.icon}` });
       return;
     }
     const kind = TOAST_KINDS[e.kind];
@@ -642,6 +648,20 @@ export class Hud {
     // "<you> is under attack by X" reads better as "You are under attack by X"
     const text = e.message.startsWith(`${me.name} is under attack`) ? `You are${e.message.slice(me.name.length + 3)}` : e.message;
     if (show) this.toasts.show({ text, kind, onClick: go, ms: kind === 'bad' ? 5000 : 4000, key: e.kind === 'underAttack' ? `ua${e.message}` : undefined });
+  }
+
+  /** A bombing run has no launch event: say that the bomber took off (the report follows when the bombs fall). */
+  private announceBombers(state: GameState, me: Player): void {
+    const first = this.seenBombers === null;
+    const seen = (this.seenBombers ??= new Set());
+    for (const u of state.units) {
+      if (u.type !== 'bomber' || u.owner !== me.id || u.hp <= 0 || seen.has(u.id)) continue;
+      seen.add(u.id);
+      if (first || u.state !== 0) continue;
+      const to = state.players[u.targetOwner]?.name ?? 'the target';
+      this.toasts.show({ text: `Bomber on its way to ${to}. SAM sites and fighters can shoot it down.`, kind: 'info', icon: 'bomb', ms: 3500, key: `bombing:${u.targetOwner}:bomb` });
+    }
+    if (seen.size > 200) this.seenBombers = new Set(state.units.filter((u) => u.type === 'bomber' && u.owner === me.id).map((u) => u.id));
   }
 
   /** Map point an event is about: its tile, else the capital of a player it concerns or names, else -1. */
@@ -733,3 +753,4 @@ export class Hud {
     this.gameOver.classList.remove('hidden');
   }
 }
+

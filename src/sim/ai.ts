@@ -185,7 +185,7 @@ const PROFILES: Record<Personality, Profile> = {
   },
 };
 
-interface DifficultyProfile {
+export interface DifficultyProfile {
   /** relative error of the enemy army estimate and of target scoring */
   noise: number;
   /** scales every troop share the AI sends */
@@ -201,19 +201,90 @@ interface DifficultyProfile {
   /** valid spawn candidates compared */
   spawnTries: number;
   /**
-   * Game seconds during which a human nation is a much less tempting war target (x HUMAN_RESTRAINT strength
-   * needed, unless it attacked us): a new player gets time to learn before the AI armies come. 0 = none.
+   * Game seconds during which a human nation is a much less tempting war target (x humanRestraint strength needed,
+   * unless it attacked us): a new player gets time to learn before the AI armies come. 0 = none.
    */
   humanGrace: number;
+  /** extra strength wanted before attacking a human during humanGrace (Infinity = never starts that war) */
+  humanRestraint: number;
+  /** extra strength wanted before attacking a human, all game (how much the AI picks on the human) */
+  humanNeed: number;
+  /**
+   * Most AI nations at war with a human at once, in the first HUMAN_EARLY_SECONDS and later: a new war on a human is
+   * not started while this many others fought it in the last HUMAN_WAR_MEMORY_SECONDS (hitting back at a human that
+   * attacked us always is).
+   */
+  humanWarsEarly: number;
+  humanWarsLate: number;
+  /** an attack on a human sends at most this many times the human's whole army (Infinity = no limit) */
+  humanForceCap: number;
+  /** after a launch at a human, the pause before the nation's next war launch is this many times longer */
+  humanPause: number;
+  /** counter-attacks a human's attack on us (false: the human's fronts only meet our defence) */
+  counterHumans: boolean;
 }
-/** Extra strength an AI wants before attacking a human during its difficulty's humanGrace. */
-const HUMAN_RESTRAINT = 1.8;
+/** Game seconds counted as 'early' for DifficultyProfile.humanWarsEarly. */
+const HUMAN_EARLY_SECONDS = 600;
+/** A nation that attacked a human within this many seconds still counts as at war with it (attacks stop and restart). */
+const HUMAN_WAR_MEMORY_SECONDS = 60;
 /** Game seconds during which AIs accept a human's alliance only out of opinion (no fear or timid alliances). */
 const EARLY_ALLY_SECONDS = 180;
-const DIFFICULTY: Record<Difficulty, DifficultyProfile> = {
-  easy: { noise: 0.35, shareScale: 0.75, samples: 3, careful: false, nukes: false, coordinate: false, spawnTries: 20, humanGrace: 480 },
-  normal: { noise: 0.15, shareScale: 1, samples: 5, careful: true, nukes: true, coordinate: false, spawnTries: 50, humanGrace: 360 },
-  hard: { noise: 0.04, shareScale: 1.1, samples: 8, careful: true, nukes: true, coordinate: true, spawnTries: 100, humanGrace: 0 },
+/**
+ * Difficulty profiles (DESIGN section 10). Economy (troop growth, income) is in config AI_ECONOMY and decision speed
+ * in config AI_DECISION_SECONDS. Checked against scripts/humanbench.ts (a scripted new player).
+ */
+export const DIFFICULTY: Readonly<Record<Difficulty, Readonly<DifficultyProfile>>> = {
+  easy: {
+    noise: 0.35,
+    shareScale: 0.7,
+    samples: 3,
+    careful: false,
+    nukes: false,
+    coordinate: false,
+    spawnTries: 20,
+    humanGrace: 900,
+    humanRestraint: Infinity,
+    humanNeed: 1.6,
+    humanWarsEarly: 1,
+    humanWarsLate: 1,
+    humanForceCap: 0.75,
+    humanPause: 4,
+    counterHumans: false,
+  },
+  normal: {
+    noise: 0.15,
+    shareScale: 0.9,
+    samples: 5,
+    careful: true,
+    nukes: true,
+    coordinate: false,
+    spawnTries: 50,
+    humanGrace: 540,
+    humanRestraint: Infinity,
+    humanNeed: 1.4,
+    humanWarsEarly: 1,
+    humanWarsLate: 2,
+    humanForceCap: 1,
+    humanPause: 3,
+    counterHumans: true,
+  },
+  hard: {
+    noise: 0.04,
+    shareScale: 1.1,
+    samples: 8,
+    careful: true,
+    nukes: true,
+    coordinate: true,
+    spawnTries: 100,
+    humanGrace: 0,
+    humanRestraint: 1,
+    humanNeed: 1,
+    humanWarsEarly: Infinity,
+    humanWarsLate: Infinity,
+    humanForceCap: Infinity,
+    humanPause: 1,
+    counterHumans: true,
+  },
 };
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -383,6 +454,8 @@ interface Memory {
   /** per tick cache: some hostile nation has bombers or a silo, per player id (-1 unknown) */
   airTick: number;
   air: Int8Array;
+  /** last tick an AI nation was seen attacking a human: key human * 4096 + nation (for DifficultyProfile.humanWars*) */
+  humanFoes: Map<number, number>;
 }
 
 const memories = new WeakMap<GameState, Memory>();
@@ -402,6 +475,7 @@ function memory(state: GameState): Memory {
       army: new Float64Array(state.players.length),
       airTick: -1,
       air: new Int8Array(state.players.length),
+      humanFoes: new Map(),
     };
     memories.set(state, m);
   }
@@ -439,7 +513,11 @@ function refreshArmies(state: GameState, m: Memory): void {
   if (m.army.length !== n) m.army = new Float64Array(n);
   const army = m.army;
   army.fill(0);
-  for (const a of state.attacks) if (a.attacker < n) army[a.attacker] += total(a.troops);
+  for (const a of state.attacks) {
+    if (a.attacker < n) army[a.attacker] += total(a.troops);
+    const t = state.players[a.target];
+    if (t?.isHuman && !state.players[a.attacker]?.isHuman && !isTribe(state.players[a.attacker])) m.humanFoes.set(a.target * 4096 + a.attacker, state.tick);
+  }
   for (const u of state.units) if ((u.type === 'transport' || u.type === 'transportPlane') && u.owner < n) army[u.owner] += total(u.troops);
   for (const p of state.players) army[p.id] = p.alive ? army[p.id] + total(p.troops) : 0;
 }
@@ -901,6 +979,7 @@ function defend(ctx: Ctx): void {
   if (ctx.incomingTotal <= 0) return;
   for (const a of state.attacks) {
     if (a.target !== id) continue;
+    if (!ctx.diff.counterHumans && state.players[a.attacker]?.isHuman) continue;
     const t = total(a.troops);
     if (t < Math.max(MIN_ATTACK_TROOPS * 10, ctx.home * 0.08)) continue;
     // How much land would it take? Judge on one of our tiles facing them.
@@ -1008,7 +1087,8 @@ function warNeed(ctx: Ctx, q: number): number {
   // A nation others are already eating is a crowded prize (a small share, and it fights for its life): no pile-on
   // unless we are much stronger. Gang-ups ended games in their first minutes.
   need *= 1 + 0.8 * otherAttackers(ctx, q);
-  if (humanSpared(ctx, q)) need *= HUMAN_RESTRAINT;
+  if (state.players[q]?.isHuman && !ctx.incoming.has(q)) need *= diff.humanNeed;
+  if (humanSpared(ctx, q)) need *= diff.humanRestraint;
   return need;
 }
 
@@ -1016,6 +1096,36 @@ function warNeed(ctx: Ctx, q: number): number {
 function humanSpared(ctx: Ctx, q: number): boolean {
   const qp = ctx.state.players[q];
   return !!qp && qp.isHuman && !ctx.incoming.has(q) && gameSeconds(ctx.state) < ctx.diff.humanGrace;
+}
+
+/**
+ * Troops we may send at q (`amount` capped by the difficulty's humanForceCap for a human), or 0 when the difficulty
+ * forbids a new war on that human now (enough other nations already fight it; hitting back at a human that attacks
+ * us, and topping up a war we already fight, don't count as new).
+ */
+function humanLimit(ctx: Ctx, q: number, amount: number, wars: Set<number>): number {
+  const qp = ctx.state.players[q];
+  if (!qp?.isHuman) return amount;
+  if (!wars.has(q) && !ctx.incoming.has(q)) {
+    const most = gameSeconds(ctx.state) < HUMAN_EARLY_SECONDS ? ctx.diff.humanWarsEarly : ctx.diff.humanWarsLate;
+    if (most < Infinity && humanFoes(ctx, q) >= most) return 0;
+  }
+  return Math.min(amount, ctx.diff.humanForceCap * Math.max(1, ctx.m.army[q]));
+}
+
+/** Nations we attack right now (not tribes or the wilderness). */
+function warTargets(ctx: Ctx): Set<number> {
+  return new Set(ctx.myAttacks.filter((a) => a.target !== 0 && !isTribe(ctx.state.players[a.target])).map((a) => a.target));
+}
+
+/** AI nations other than us that attacked human q within the last HUMAN_WAR_MEMORY_SECONDS (a war in progress). */
+function humanFoes(ctx: Ctx, q: number): number {
+  const since = ctx.state.tick - HUMAN_WAR_MEMORY_SECONDS * TICKS_PER_SECOND;
+  let n = 0;
+  for (const [key, t] of ctx.m.humanFoes) {
+    if (t >= since && Math.floor(key / 4096) === q && key % 4096 !== ctx.id && ctx.state.players[key % 4096]?.alive) n++;
+  }
+  return n;
 }
 
 /** Nations other than us (and not allied with us) attacking q right now. */
@@ -1063,7 +1173,7 @@ function war(ctx: Ctx): void {
   const trigger = personal(id, 23, prof.trigger);
   const reserveShare = personal(id, 37, prof.reserve) + clamp(ctx.threat - 0.6, 0, 1) * 0.15;
   const room = ctx.home - ctx.cap * reserveShare;
-  const wars = new Set(ctx.myAttacks.filter((a) => a.target !== 0 && !isTribe(state.players[a.target])).map((a) => a.target));
+  const wars = warTargets(ctx);
   const options: WarOption[] = [];
   const ready = fill >= trigger || ctx.incomingTotal > 0;
   for (const q of ctx.enemies) {
@@ -1088,6 +1198,8 @@ function war(ctx: Ctx): void {
       const e = estimateAttack(state, id, tile, chooseForce(ctx, amount, tile, q), 1);
       if (e && e.odds > 0 && e.odds < 1.2) amount = Math.min((amount * 1.2) / e.odds, Math.max(amount, ctx.home - ctx.cap * reserveShare * 0.6));
     }
+    amount = humanLimit(ctx, q, amount, wars);
+    if (amount < MIN_ATTACK_TROOPS * 10) continue;
     const score = judgeAttack(ctx, q, tile, chooseForce(ctx, amount, tile, q), strength);
     if (score > 0) options.push({ target: q, tile, score: score * jitter(state, diff.noise), amount });
   }
@@ -1096,16 +1208,17 @@ function war(ctx: Ctx): void {
     let best = 0;
     let bestRatio = 0;
     for (const q of ctx.enemies) {
-      if (atPeace(state, id, q) || humanSpared(ctx, q)) continue;
+      if (atPeace(state, id, q) || humanSpared(ctx, q) || humanLimit(ctx, q, room, wars) <= 0) continue;
       const r = ctx.army / Math.max(1, estArmy(state, ctx.m, diff, id, q));
       if (r > bestRatio) {
         bestRatio = r;
         best = q;
       }
     }
-    if (best && bestRatio > 0.6) {
+    const amount = best ? humanLimit(ctx, best, room, wars) : 0;
+    if (best && bestRatio > 0.6 && amount >= MIN_ATTACK_TROOPS * 10) {
       const tile = pickFrontTile(ctx, best, 2);
-      if (tile >= 0) options.push({ target: best, tile, score: 1, amount: room });
+      if (tile >= 0) options.push({ target: best, tile, score: 1, amount });
     }
   }
   if (!options.length) {
@@ -1118,7 +1231,7 @@ function war(ctx: Ctx): void {
   const existing = ctx.myAttacks.find((a) => a.target === o.target);
   if (existing && total(existing.troops) > o.amount * 0.4) return;
   if (launch(ctx, o.tile, chooseForce(ctx, o.amount, o.tile, o.target))) {
-    const pause = (10 + 20 * (1 - prof.aggression)) / diff.shareScale;
+    const pause = ((10 + 20 * (1 - prof.aggression)) / diff.shareScale) * (state.players[o.target].isHuman ? diff.humanPause : 1);
     ctx.ai.nextWarTick = state.tick + Math.round(pause * TICKS_PER_SECOND);
   }
 }
@@ -1579,7 +1692,7 @@ function naval(ctx: Ctx): void {
   const target = landingTarget(ctx, coast);
   if (!target) return;
   const share = (target.owner === 0 ? 0.25 : 0.4) * diff.shareScale * (0.7 + prof.naval * 0.6);
-  const amount = Math.min(ctx.home * share, ctx.home - ctx.cap * 0.2);
+  const amount = humanLimit(ctx, target.owner, Math.min(ctx.home * share, ctx.home - ctx.cap * 0.2), warTargets(ctx));
   if (amount < MIN_ATTACK_TROOPS * 20) return;
   const troops = chooseForce(ctx, amount, target.tile, target.owner);
   if (target.owner > 0 && !isTribe(state.players[target.owner])) {
@@ -1612,6 +1725,7 @@ function landingTarget(ctx: Ctx, coast: readonly number[]): { tile: number; from
   const owner = state.map.owner;
   const ourCoast = sample(state, coast, 12);
   const candidates: number[] = [];
+  const wars = warTargets(ctx);
   // Neutral coast: random coastal tiles of the map that nobody owns.
   const all = mapCoast(state, m);
   for (let k = 0; k < 40 && candidates.length < 10 && all.length; k++) {
@@ -1624,6 +1738,7 @@ function landingTarget(ctx: Ctx, coast: readonly number[]): { tile: number; from
     const ratio = ctx.army / Math.max(1, estArmy(state, m, diff, id, q.id));
     if (ratio < (isTribe(q) ? 2 : 0.4) || areAllied(state, id, q.id) || atPeace(state, id, q.id)) continue;
     if (!isTribe(q) && ratio < warNeed(ctx, q.id) * 1.1) continue;
+    if (q.isHuman && humanLimit(ctx, q.id, 1, wars) <= 0) continue;
     for (const t of sampleOwnedTiles(state, q.id, 'coast', 3)) candidates.push(t);
   }
   let best: { tile: number; from: number; owner: number } | null = null;
@@ -1823,7 +1938,9 @@ function barrage(ctx: Ctx): void {
   const main = mainWarTarget(ctx);
   if (main > 0) targets.add(main);
   if (ctx.home / ctx.cap >= personal(id, 23, prof.trigger) * 0.85) {
-    for (const q of ctx.enemies) if (!isTribe(state.players[q])) targets.add(q);
+    const wars = warTargets(ctx);
+    // (a human we may not start a war on yet is not shelled either)
+    for (const q of ctx.enemies) if (!isTribe(state.players[q]) && !humanSpared(ctx, q) && humanLimit(ctx, q, 1, wars) > 0) targets.add(q);
   }
   const w = state.map.width;
   const reach = barrageRange(p) + 6;

@@ -2,7 +2,9 @@
 // floating texts, the hovered tile, the selection and target-mode previews (build ghost, strike circles, routes).
 import { buildingAt } from '../../sim/buildings';
 import { ATOM_CORE_RADIUS, ATOM_RADIUS, BARRAGE_DELAY, BARRAGE_RADIUS, BOMBER_RADIUS, BUILDINGS, FORT_RADIUS_TECH, ROCKET_RADIUS, TICKS_PER_SECOND, UNITS } from '../../sim/config';
-import { canBarrage } from '../../sim/barrage';
+import { barrageRange } from '../../sim/barrage';
+import { airfieldRadius, isDisabled, samRadius } from '../../sim/buildings';
+import { areAllied } from '../../sim/diplomacy';
 import { paradropRange } from '../../sim/units';
 import { hasTech } from '../../sim/tech';
 import { isTribe } from '../../sim/types';
@@ -11,11 +13,17 @@ import type { Camera } from '../camera';
 import { drawMarker, type BuildingIconId } from '../icons';
 import type { Snap } from '../placement';
 import { FLOATER_MS, type UiState } from '../uiState';
+import { barrageReach, strikeOfMode, strikeTarget, type StrikeTarget } from '../strikes';
 import { clamp, css, dashedLine, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, mix, pill, setTracking, type RGB } from './common';
 import type { UnitLayer } from './units';
 import { markerSize } from './buildings';
 
 const RING_TYPES: readonly BuildingType[] = ['fort', 'sam', 'airfield', 'watchtower'];
+/** strike previews: a valid target (brass) or not (red) */
+const OK_LINE = 'rgba(214,170,60,0.95)';
+const OK_FILL = 'rgba(214,170,60,0.16)';
+const BAD_LINE = 'rgba(226,72,52,0.95)';
+const BAD_FILL = 'rgba(226,72,52,0.12)';
 const EFFECT_SECONDS = 1.5;
 
 export function ringRadius(state: GameState, type: BuildingType, owner: number): number {
@@ -32,8 +40,13 @@ export class Overlays {
   /** first ETA (s) seen per missile / bomber, for the countdown ring */
   private etas = new Map<number, number>();
   private w = 1;
-  private barrageKey = '';
-  private barrageOk = false;
+  /** the strike check under the cursor, refreshed when the tile, mode or a few ticks change */
+  private targetKey = '';
+  private target: StrikeTarget | null = null;
+  /** barrage reach shading: the mask as a small canvas, rebuilt every 2 s of game time while aiming */
+  private reachKey = '';
+  private reachCanvas: HTMLCanvasElement | null = null;
+  private reachCell = 1;
 
   reset(w: number): void {
     this.etas.clear();
@@ -428,6 +441,86 @@ export class Overlays {
     return { x: c.x - s / 2, y: c.y - s / 2, s };
   }
 
+  /** The strike check for the hovered tile (cached per tile, mode and 4 ticks). */
+  private check(state: GameState, ui: UiState, tile: number): StrikeTarget | null {
+    const me = state.players[state.humanId];
+    if (!me || !strikeOfMode(ui.mode)) return null;
+    const m = ui.mode;
+    const key = `${tile}|${m.kind}|${m.kind === 'missile' ? m.missile + m.silo : m.kind === 'bomb' || m.kind === 'paradrop' ? m.airfield : ''}|${state.tick >> 2}|${ui.attackShare}`;
+    if (key !== this.targetKey || !this.target) {
+      this.targetKey = key;
+      this.target = strikeTarget(state, me, ui, m, tile);
+    }
+    return this.target;
+  }
+
+  /**
+   * While aiming a strike: where it can go and what stands in the way. Barrage: the land out of the guns' reach is
+   * shaded. Planes and missiles: hostile SAM sites (and, for planes, fighter airfields) show their cover as red
+   * dashed rings, and your launch sites are marked.
+   */
+  strikeZones(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, ui: UiState): void {
+    const id = strikeOfMode(ui.mode);
+    const me = state.players[state.humanId];
+    if (!id || !me || state.phase !== 'playing') return;
+    if (id === 'barrage') {
+      this.drawReach(ctx, state, cam, me.id, barrageRange(me));
+      return;
+    }
+    const planes = id === 'bomb' || id === 'paradrop';
+    const own = id === 'rocket' || id === 'atomBomb' ? 'silo' : 'airfield';
+    for (const b of state.buildings.values()) {
+      if (b.buildLeft > 0) continue;
+      if (b.owner === me.id) {
+        if (b.type === own && id !== 'paradrop') this.ring(ctx, cam, b.tile, 2.5, [214, 170, 60], true);
+        continue;
+      }
+      if (b.owner <= 0 || areAllied(state, me.id, b.owner)) continue;
+      if (b.type === 'sam' && !isDisabled(state, b)) this.ring(ctx, cam, b.tile, samRadius(b), [226, 72, 52], false);
+      else if (planes && b.type === 'airfield' && b.fighters > 0) this.ring(ctx, cam, b.tile, airfieldRadius(b), [226, 120, 52], false);
+    }
+  }
+
+  private drawReach(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, me: number, range: number): void {
+    const key = `${me}|${range}|${Math.floor(state.tick / (2 * TICKS_PER_SECOND))}|${state.map.width}`;
+    if (key !== this.reachKey || !this.reachCanvas) {
+      this.reachKey = key;
+      const mask = barrageReach(state, me, range);
+      const c = this.reachCanvas ?? document.createElement('canvas');
+      c.width = mask.cw;
+      c.height = mask.ch;
+      const g = c.getContext('2d');
+      if (!g) return;
+      const img = g.createImageData(mask.cw, mask.ch);
+      const px = img.data;
+      for (let i = 0; i < mask.inside.length; i++) {
+        const o = i * 4;
+        if (mask.inside[i]) {
+          px[o] = 214;
+          px[o + 1] = 170;
+          px[o + 2] = 60;
+          px[o + 3] = 22;
+        } else {
+          px[o] = 6;
+          px[o + 1] = 8;
+          px[o + 2] = 10;
+          px[o + 3] = 120;
+        }
+      }
+      g.putImageData(img, 0, 0);
+      this.reachCanvas = c;
+      this.reachCell = mask.cell;
+    }
+    const c = this.reachCanvas;
+    if (!c) return;
+    const o = cam.tileToScreen(0, 0);
+    const z = cam.zoom;
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(c, o.x, o.y, c.width * this.reachCell * z, c.height * this.reachCell * z);
+    ctx.restore();
+  }
+
   /** Selection, hovered tile and the preview of the current target mode. */
   hoverAndPreview(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, ui: UiState, snap: Snap | null, units: UnitLayer, frac: number, dpr: number): void {
     const n = state.map.width * state.map.height;
@@ -484,19 +577,25 @@ export class Overlays {
         pill(ctx, gs.x, gs.y - size / 2 - (up ? size * 0.4 : 0) - 14, text, ok ? (up ? '#82afe1' : '#9cc86e') : '#e6705a', up && ok ? 'up' : 'none');
         break;
       }
-      case 'bomb':
-        lineFrom(mode.airfield, 'rgba(255,255,255,0.7)');
-        circle(BOMBER_RADIUS, 'rgba(255,120,60,0.95)', 'rgba(255,120,60,0.18)');
+      case 'bomb': {
+        const t = this.check(state, ui, hover);
+        if (t?.from !== undefined) lineFrom(t.from, 'rgba(255,255,255,0.7)');
+        const ok = !!t?.ok;
+        circle(BOMBER_RADIUS, ok ? OK_LINE : BAD_LINE, ok ? OK_FILL : BAD_FILL);
         break;
-      case 'missile':
-        lineFrom(mode.silo, 'rgba(255,255,255,0.7)');
+      }
+      case 'missile': {
+        const t = this.check(state, ui, hover);
+        if (t?.from !== undefined) lineFrom(t.from, 'rgba(255,255,255,0.7)');
+        const ok = !!t?.ok;
         if (mode.missile === 'atomBomb') {
-          circle(ATOM_RADIUS, 'rgba(255,200,60,0.95)', 'rgba(255,200,60,0.12)');
-          circle(ATOM_CORE_RADIUS, 'rgba(255,90,40,0.95)', 'rgba(255,90,40,0.18)');
+          circle(ATOM_RADIUS, ok ? 'rgba(255,200,60,0.95)' : BAD_LINE, ok ? 'rgba(255,200,60,0.12)' : BAD_FILL);
+          circle(ATOM_CORE_RADIUS, ok ? 'rgba(255,90,40,0.95)' : BAD_LINE, ok ? 'rgba(255,90,40,0.18)' : BAD_FILL);
         } else {
-          circle(ROCKET_RADIUS, 'rgba(255,90,60,0.95)', 'rgba(255,90,60,0.2)');
+          circle(ROCKET_RADIUS, ok ? OK_LINE : BAD_LINE, ok ? OK_FILL : BAD_FILL);
         }
         break;
+      }
       case 'paradrop': {
         // the reach of each of your airfields, the drop disc and the route from the airfield that would fly
         let best = -1;
@@ -526,12 +625,8 @@ export class Overlays {
         break;
       }
       case 'barrage': {
-        if (this.barrageKey !== `${hover}|${state.tick >> 2}`) {
-          this.barrageKey = `${hover}|${state.tick >> 2}`;
-          this.barrageOk = canBarrage(state, state.humanId, hover).ok;
-        }
-        const ok = this.barrageOk;
-        circle(BARRAGE_RADIUS, ok ? 'rgba(214,170,60,0.95)' : 'rgba(226,72,52,0.95)', ok ? 'rgba(214,170,60,0.16)' : 'rgba(226,72,52,0.12)');
+        const ok = !!this.check(state, ui, hover)?.ok;
+        circle(BARRAGE_RADIUS, ok ? OK_LINE : BAD_LINE, ok ? OK_FILL : BAD_FILL);
         break;
       }
       case 'transport':

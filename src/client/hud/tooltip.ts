@@ -13,7 +13,9 @@ import { isTribe, outnumberRatio } from '../compat';
 import { isAttackable, troopsToSend, troopSum } from '../input';
 import { rgbCss } from '../menu';
 import { formatCount } from '../render/common';
-import { armyOf, barrageCheck, barrageRange, BARRAGE_RADIUS, BuildTargetCache, maxLevel, planParadrop } from '../simx';
+import { armyOf, barrageRange, BuildTargetCache, maxLevel } from '../simx';
+import { blastSummary, ownHitWarning, STRIKES, strikeOfMode, strikeTarget } from '../strikes';
+import { iconDataUrl } from '../icons';
 import { el, fmtSeconds, pct, setVisible, type HudCtx } from './dom';
 import { relationOf } from './drawers';
 import { iconSpan, worldGlyph } from './glyph';
@@ -53,7 +55,7 @@ export class MapTooltip {
     if (force || key !== this.key) {
       this.key = key;
       if (ui.mode.kind === 'build' && state.phase === 'playing') this.buildPreview(state, me, ui.mode.building, tile);
-      else if ((ui.mode.kind === 'paradrop' || ui.mode.kind === 'barrage') && state.phase === 'playing') this.strikePreview(state, me, tile);
+      else if (strikeOfMode(ui.mode) && state.phase === 'playing') this.strikePreview(state, me, tile);
       else this.tileCard(state, me, tile);
     }
     if (!this.card.classList.contains('hidden')) this.place(this.card, this.mouse.x + 18, this.mouse.y + 20);
@@ -179,21 +181,32 @@ export class MapTooltip {
 
   private strikePreview(state: GameState, me: Player, tile: number): void {
     const ui = this.ctx.ui;
+    const m = ui.mode;
+    const id = strikeOfMode(m);
+    if (!id) return;
+    const t = strikeTarget(state, me, ui, m, tile);
+    const info = STRIKES[id];
+    const pic = `<img src="${iconDataUrl(info.icon, 22)}" width="22" height="22" alt="">`;
     const rows: HTMLElement[] = [];
-    let why: string;
-    let title: string;
-    if (ui.mode.kind === 'paradrop') {
-      const plan = planParadrop(state, me, ui, tile, ui.mode.airfield);
-      why = plan.reason;
-      title = why || `Drop ${formatCount(plan.troops)} paratroopers here`;
-      rows.push(this.line(worldGlyph('paradrop', 20), title, why ? 'Pick enemy or empty land in the dashed ring' : 'They land and attack from this point', 'head'));
+    if (t.ok) {
+      const title =
+        id === 'barrage' ? 'Shell this area' : id === 'bomb' ? 'Bomb this area' : id === 'paradrop' ? `Drop ${formatCount(t.troops)} paratroopers here` : id === 'rocket' ? 'Fire a rocket here' : 'Drop the atom bomb here';
+      rows.push(this.line(pic, title, blastSummary(state, m, t), 'head'));
+      const own = ownHitWarning(m, t);
+      if (own) rows.push(el('div', 'mt-warn', own));
+      if (t.covered) rows.push(el('div', 'mt-warn', t.covered));
+      rows.push(el('div', 'mt-hint', 'Click to fire. Shift: fire again. Esc or right-click: cancel.'));
     } else {
-      why = barrageCheck(state, me.id, tile);
-      title = why || 'Shell this area';
-      rows.push(this.line(worldGlyph('barrage', 20), title, why ? `Guns reach ${barrageRange(me)} tiles from your land` : `Shells land in 2 s on ${BARRAGE_RADIUS} tiles around: kills defenders, knocks out forts and SAMs`, 'head'));
+      const help =
+        id === 'barrage'
+          ? `Guns reach ${barrageRange(me)} tiles from your border: the lit zone`
+          : id === 'paradrop'
+            ? 'Pick enemy or empty land inside a gold ring'
+            : 'Pick enemy land';
+      rows.push(this.line(pic, t.reason || 'Not possible here', help, 'head'));
+      rows.push(el('div', 'mt-hint', 'Esc or right-click: cancel.'));
     }
-    rows.push(el('div', 'mt-hint', 'Click to confirm, Esc to cancel'));
-    this.card.className = `mtip build ${why ? 'no' : 'ok'}`;
+    this.card.className = `mtip build ${t.ok ? 'ok' : 'no'}`;
     this.card.replaceChildren(...rows);
     setVisible(this.odds, false);
   }

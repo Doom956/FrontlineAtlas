@@ -3,6 +3,7 @@
 //   ATTACK  the share of troops each attack sends: -/+ steppers, a big value and a slider ([ and ])
 //   GOLD    gold and its rate; iron, oil and science appear as small chips once they matter
 //   BUILD   category tabs and the buildings of that tab (pictogram, cost, hotkey); locked ones stay hidden
+//   STRIKES barrage, bombing run, paratroopers, rocket, atom bomb: ready / reloading / locked (hud/strikeBar.ts)
 import { buildingAllowed, buildSeconds, mods, researchRule } from '../../sim/rules';
 import { buildingCost, countBuildings } from '../../sim/buildings';
 import { BUILDINGS, BUILDING_ORDER, TECHS } from '../../sim/config';
@@ -16,6 +17,7 @@ import { BUILD_TAB_OF, BUILD_TABS, buildingTexts, type BuildTab } from './text';
 import { el, flash, fmtRate, fmtSeconds, keycap, sectionTitle, setClass, setText, setTip, setVisible, slider, syncSlider, type HudCtx } from './dom';
 import { iconSpan, lineIcon, worldGlyph } from './glyph';
 import { maxLevel } from '../simx';
+import { StrikeBar } from './strikeBar';
 
 /** A tech is "close" when it is researched, being researched, or all its prerequisites are done. */
 export function techNear(p: Player, t: TechId | null): boolean {
@@ -43,20 +45,25 @@ export class CommandBar {
   private lastTroops = -1;
   private lastGold = -1;
   private revealed = { iron: false, oil: false, science: false };
+  /** STRIKES: barrage, bombing run, paratroopers, rocket, atom bomb (hidden until they matter) */
+  readonly strikes: StrikeBar;
 
   constructor(private ctx: HudCtx) {
     this.el = el('div', 'cmdbar');
     this.el.dataset.test = 'command-bar';
-    this.el.append(this.troops(), this.attack(), this.gold(), this.build());
+    this.strikes = new StrikeBar(ctx);
+    this.el.append(this.troops(), this.attack(), this.gold(), this.build(), this.strikes.el);
   }
 
   /** ~5 Hz refresh. */
   update(s: GameState, me: Player): void {
     for (const f of this.upd) f(s, me);
+    this.strikes.update(s, me);
   }
 
   /** Every frame: selection highlight follows the build mode. */
   fast(): void {
+    this.strikes.fast();
     const m = this.ctx.ui.mode;
     const sel = m.kind === 'build' ? m.building : null;
     for (const [b, button] of this.buildBtns) setClass(button, 'on', b === sel);

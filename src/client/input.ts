@@ -5,7 +5,8 @@ import { areAllied } from '../sim/diplomacy';
 import { isWater, TROOP_TYPES } from '../sim/types';
 import type { BuildingType, GameState, Player, Troops } from '../sim/types';
 import type { Camera } from './camera';
-import { barrageAction, paradropAction, planParadrop, resolveBuild } from './simx';
+import { resolveBuild } from './simx';
+import { strikeAction, strikeForKey, strikeTarget, type StrikeId } from './strikes';
 import type { Renderer } from './renderer';
 import type { Dispatch, GetState, UiState } from './uiState';
 
@@ -24,6 +25,8 @@ export interface InputDeps {
   closeOverlay?: () => boolean;
   /** Opens or closes a HUD drawer (U army, P diplomacy, J events, L map key). */
   toggleDrawer?: (id: 'army' | 'diplomacy' | 'events' | 'legend') => void;
+  /** A strike hotkey (Z barrage, X bombing run, K paratroopers, I rocket, O atom bomb): aim it or say why not. */
+  strike?: (id: StrikeId) => void;
 }
 
 const DRAG_THRESHOLD = 5; // px before a press becomes a pan
@@ -211,6 +214,8 @@ export function setupInput(deps: InputDeps): () => void {
     const ship = pr.button === 0 && ui.mode.kind === 'none' ? renderer.ownWarshipAt(p.x, p.y) : -1;
     if (ship >= 0) ui.mode = { kind: 'moveWarship', unitId: ship };
     else if (pr.button === 0) leftClick(tile, e.shiftKey);
+    // a right-click while aiming or placing cancels it (like Esc); otherwise it opens the radial menu
+    else if (pr.button === 2 && ui.mode.kind !== 'none') ui.mode = { kind: 'none' };
     else if (pr.button === 2) openMenuAt(e.clientX, e.clientY, tile);
   };
   canvas.addEventListener('pointerup', (e) => endPress(e, false), opts);
@@ -254,22 +259,22 @@ export function setupInput(deps: InputDeps): () => void {
         ok = dispatch({ type: 'build', building: mode.building, tile: t.tile >= 0 ? t.tile : tile }).ok;
         break;
       }
-      case 'paradrop': {
-        const plan = planParadrop(s, me, ui, tile, mode.airfield);
-        ok = dispatch(paradropAction(plan, tile)).ok;
+      case 'paradrop':
+      case 'barrage':
+      case 'bomb':
+      case 'missile': {
+        // checked first (the same check the cursor preview shows); the launch site is picked here when not chosen
+        const t = strikeTarget(s, me, ui, mode, tile);
+        const a = strikeAction(mode, tile, t);
+        if (a) ok = dispatch(a).ok;
+        else {
+          ui.toast = { text: t.reason || 'Not possible here', until: performance.now() + TOAST_MS };
+          ok = false;
+        }
         break;
       }
-      case 'barrage':
-        ok = dispatch(barrageAction(tile)).ok;
-        break;
       case 'transport':
         ok = sendTransport(s, ui, dispatch, mode.from, tile);
-        break;
-      case 'bomb':
-        ok = dispatch({ type: 'bomb', airfield: mode.airfield, tile }).ok;
-        break;
-      case 'missile':
-        ok = dispatch({ type: 'launchMissile', silo: mode.silo, kind: mode.missile, tile }).ok;
         break;
       case 'moveWarship':
         ok = dispatch({ type: 'moveWarship', unitId: mode.unitId, tile }).ok;
@@ -384,6 +389,11 @@ export function setupInput(deps: InputDeps): () => void {
       if (up === 'C') {
         const me = s.players[s.humanId];
         if (me && me.capital >= 0) camera.centerOn((me.capital % s.map.width) + 0.5, ((me.capital / s.map.width) | 0) + 0.5);
+        return;
+      }
+      const strike = up ? strikeForKey(up) : null;
+      if (strike && s.phase === 'playing') {
+        deps.strike?.(strike);
         return;
       }
       // Digits by physical key, so Shift+1 still means the City hotkey.

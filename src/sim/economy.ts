@@ -9,7 +9,7 @@
 import { goldRate, growthRate, resourceRate } from './rules';
 import { cityLevels, countBuildings, buildingsOf, farmUnitsOf } from './buildings';
 import {
-  AI_HARD_INCOME_BONUS,
+  AI_ECONOMY,
   AIRCRAFT_OIL_UPKEEP,
   ARMOR_OIL_UPKEEP,
   BARRACKS_GROWTH_BONUS,
@@ -97,7 +97,7 @@ export function troopCap(state: GameState, playerId: number): number {
     CITY_TROOP_CAP * cityLevels(state, playerId) +
     (p.capital >= 0 ? CAPITAL_TROOP_CAP : 0) +
     FARM_TROOP_CAP * farmUnits(state, playerId);
-  return isTribe(p) ? v * TRIBE_CAP_FACTOR : v;
+  return isTribe(p) ? v * TRIBE_CAP_FACTOR : v * aiEconomy(state, p).cap;
 }
 /** Old name of troopCap (Player.maxPop holds the cap). */
 export function computeMaxPop(state: GameState, playerId: number): number {
@@ -135,9 +135,17 @@ function deployedArmor(state: GameState): Float64Array {
   return out;
 }
 
-function isHardAI(state: GameState, p: Player): boolean {
-  return !p.isHuman && state.settings.difficulty === 'hard';
+/**
+ * Difficulty multipliers of an AI player's economy (config AI_ECONOMY): 1 for humans; Easy / Normal slow only the AI
+ * nations (tribes stay food), Hard's bonus goes to every AI player.
+ */
+export function aiEconomy(state: GameState, p: Player): { growth: number; income: number; cap: number } {
+  if (p.isHuman) return NO_SCALE;
+  const e = AI_ECONOMY[state.settings.difficulty] ?? NO_SCALE;
+  if (isTribe(p) && (e.growth < 1 || e.income < 1)) return NO_SCALE;
+  return e;
 }
+const NO_SCALE = { growth: 1, income: 1, cap: 1 } as const;
 
 /** Iron cost per converted unit (Metallurgy -25%). */
 export function convertCost(p: Player, kind: 'armor' | 'artillery'): { gold: number; iron: number } {
@@ -145,14 +153,14 @@ export function convertCost(p: Player, kind: 'armor' | 'artillery'): { gold: num
   return { gold: c.gold, iron: c.iron * (hasTech(p, 'metallurgy') ? METALLURGY_CONVERT_IRON : 1) };
 }
 
-/** Growth multiplier from farms, barracks, Medicine, tribes, Hard AIs and the game's modifiers (positive growth only). */
+/** Growth multiplier from farms, barracks, Medicine, tribes, the AI difficulty and the game's modifiers (positive growth only). */
 export function growthBonus(state: GameState, p: Player): number {
   const farms = farmUnits(state, p.id) * (hasTech(p, 'agriculture') ? AGRICULTURE_FARM_MULT : 1);
   const barracks = Math.min(BARRACKS_MAX, countBuildings(state, p.id, 'barracks'));
   let m = 1 + farms * FARM_GROWTH_BONUS + barracks * BARRACKS_GROWTH_BONUS;
   if (hasTech(p, 'medicine')) m *= MEDICINE_GROWTH_MULT;
   if (isTribe(p)) m *= TRIBE_GROWTH_FACTOR;
-  if (isHardAI(state, p)) m *= 1 + AI_HARD_INCOME_BONUS * 0.5;
+  m *= aiEconomy(state, p).growth;
   return m * growthRate(state);
 }
 
@@ -226,7 +234,7 @@ function convertArmy(state: GameState, p: Player, dt: number): void {
   p.troops.artillery += r;
 }
 
-/** Gold per second: base + land + cities, x markets, Banking; tribes x0.5, Hard AIs a little more. */
+/** Gold per second: base + land + cities, x markets, Banking; tribes x0.5; AI nations x the difficulty's income. */
 export function goldIncome(state: GameState, p: Player): number {
   const banking = hasTech(p, 'banking');
   const marketScale = banking ? BANKING_MARKET_MULT : 1;
@@ -234,7 +242,7 @@ export function goldIncome(state: GameState, p: Player): number {
   let gold = (GOLD_BASE + GOLD_LAND * landValue(landWeight(state, p.id)) + CITY_GOLD * cityLevels(state, p.id)) * (1 + marketBonus);
   if (banking) gold *= BANKING_GOLD_MULT;
   if (isTribe(p)) gold *= TRIBE_GOLD_FACTOR;
-  if (isHardAI(state, p)) gold *= 1 + AI_HARD_INCOME_BONUS;
+  gold *= aiEconomy(state, p).income;
   return gold * goldRate(state);
 }
 
@@ -256,18 +264,18 @@ export function updateEconomy(state: GameState): void {
     p.maxPop = cap;
     const growth = growTroops(state, p, cap, dt);
 
-    const hard = isHardAI(state, p) ? 1 + AI_HARD_INCOME_BONUS : 1;
+    const aiIncome = aiEconomy(state, p).income;
     const industrial = hasTech(p, 'industrialization');
     const gold = goldIncome(state, p);
 
     let iron = countBuildings(state, p.id, 'mine') * IRON_PER_MINE;
     if (hasTech(p, 'metallurgy')) iron *= METALLURGY_IRON_MULT;
     if (industrial) iron *= INDUSTRIAL_RESOURCE_MULT;
-    iron *= hard * resourceRate(state);
+    iron *= aiIncome * resourceRate(state);
 
     let oil = countBuildings(state, p.id, 'oilWell') * OIL_PER_WELL;
     if (industrial) oil *= INDUSTRIAL_RESOURCE_MULT;
-    oil *= hard * resourceRate(state);
+    oil *= aiIncome * resourceRate(state);
 
     const science = (BASE_SCIENCE + countBuildings(state, p.id, 'lab') * SCIENCE_PER_LAB) * resourceRate(state);
 

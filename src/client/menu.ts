@@ -1,12 +1,29 @@
 // Title screen, game settings and the "How to play" page. Also hosts small DOM helpers shared with the HUD.
-import { BUILDINGS, BUILDING_ORDER, MATCHUP, TECHS, TECH_ORDER, TERRAIN, VICTORY_LAND_SHARE } from '../sim/config';
+import {
+  ATOM_RADIUS,
+  BARRAGE_DISABLE_SECONDS,
+  BARRAGE_MIN_ARTILLERY,
+  BARRAGE_RANGE,
+  BOMBER_RADIUS,
+  BUILDINGS,
+  BUILDING_ORDER,
+  MATCHUP,
+  PARADROP_RANGE,
+  ROCKET_RADIUS,
+  TECHS,
+  TECH_ORDER,
+  TERRAIN,
+  VICTORY_LAND_SHARE,
+} from '../sim/config';
 import type { GameSettings, TerrainId } from '../sim/types';
 import { rulesTextEntries } from './compat';
 import { loadSetupPrefs, prefetchThumbs, randomSeed, settingsFromPrefs, SetupScreen, type SetupPrefs } from './setupScreen';
 import { lineIcon, worldGlyph } from './hud/glyph';
 import { MultiplayerScreen } from './lobby';
 import type { NetClient } from '../net/client';
-import { ABILITY_TEXT, BUILDING_SHORT, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect } from './hud/text';
+import { BUILDING_SHORT, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect } from './hud/text';
+import { iconDataUrl, type IconId } from './icons';
+import { STRIKE_ORDER, STRIKES, type StrikeId } from './strikes';
 
 // DOM helpers live in dom.ts (re-exported here for older imports).
 export { button, el, rgbCss, setText } from './dom';
@@ -20,6 +37,15 @@ export { PLAYER_PALETTE, settingsFromPrefs } from './setupScreen';
 // ------------------------------------------------------------------------------------------------ how to play
 
 const TROOP_LABEL = { infantry: 'Infantry', armor: 'Armor', artillery: 'Artillery' } as const;
+
+/** Help page: one line per strike, what it needs first and what it does. */
+const STRIKE_HELP: Record<StrikeId, string> = {
+  barrage: `Needs an Arsenal and ${BARRAGE_MIN_ARTILLERY.toLocaleString('en-US')} artillery. Shells enemy land up to ${BARRAGE_RANGE} tiles from your border: kills troops and silences forts and SAM sites for ${BARRAGE_DISABLE_SECONDS} s.`,
+  bomb: `Needs Flight, an Airfield and a bomber built there. Wrecks buildings and kills troops within ${BOMBER_RADIUS} tiles.`,
+  paradrop: `Needs Flight and an Airfield. Drops infantry up to ${PARADROP_RANGE} tiles away; they attack from where they land.`,
+  rocket: `Needs Rocketry and a Missile Silo. Hits anywhere on the map: destroys enemy buildings within ${ROCKET_RADIUS} tiles.`,
+  atomBomb: `Needs Nuclear Fission and a Missile Silo. Wipes out everything within ${ATOM_RADIUS} tiles, yours too; every nation turns on you.`,
+};
 
 /** Rules summary used by the menu and the in-game help overlay. */
 export function howToPlayContent(): HTMLElement {
@@ -64,7 +90,7 @@ export function howToPlayContent(): HTMLElement {
 
   const screen = section('The screen');
   bullets(screen, [
-    'Bottom: troops, attack share, gold, and the build bar (Economy, Military, Defence, Special).',
+    'Bottom: troops, attack share, gold, the build bar (Economy, Military, Defence, Special) and, once they matter, STRIKES.',
     'Top left: the standings. Click a nation to see its card: army, land, Ally, Gift, Embargo, Attack.',
     'Top right: Army (U), Research (T), Diplomacy (P), Events (J), Map key (L), the clock, speed, sound and the menu.',
     'The advisor line above the bottom bar suggests a useful next step; switch it off in the menu.',
@@ -125,12 +151,19 @@ export function howToPlayContent(): HTMLElement {
   const rs2 = section('Research');
   para(rs2, `Science builds up over time (Research Labs add more). ${TECH_ORDER.length} techs in 4 tiers, each costs gold to start. With Auto research on, the next useful tech starts by itself; press T to choose yourself.`);
 
-  const strikes = section('Strikes');
+  const strikes = section('Special strikes');
+  para(strikes, 'The STRIKES buttons on the bottom bar show what is ready. Press the key (or click the button), then click the target; Esc or right-click cancels. A locked button says how to unlock it.');
   const sl = el('ul', 'blist');
-  sl.append(glyphItem(worldGlyph('paradrop', 18), 'Paratroopers', ABILITY_TEXT.paradrop));
-  sl.append(glyphItem(worldGlyph('barrage', 18), 'Artillery barrage', ABILITY_TEXT.barrage));
+  const pic = (id: IconId): string => {
+    try {
+      return `<img src="${iconDataUrl(id, 18)}" width="18" height="18" alt="">`;
+    } catch {
+      return '';
+    }
+  };
+  for (const id of STRIKE_ORDER) sl.append(glyphItem(pic(STRIKES[id].icon), STRIKES[id].name, STRIKE_HELP[id], STRIKES[id].key));
   strikes.append(sl);
-  para(strikes, 'Both are on the radial menu of enemy land and in the Army drawer (U). Planes and missiles flying at you show a red ring with a countdown; shells show a red disc.');
+  para(strikes, 'Counters: SAM sites shoot down planes and missiles (an atom bomb takes two hits). Fighters at an Airfield shoot down bombers and cargo planes. Nothing stops shells. Forts slow attacks down; artillery and barrages break them.');
 
   const nav = section('Navy, air and missiles');
   para(nav, 'Transports carry troops to any coast (click land across the sea). Ports build warships and send trade ships. Airfields build bombers and fighters; silos launch rockets and atom bombs. SAM sites and fighters shoot down what flies over them.');

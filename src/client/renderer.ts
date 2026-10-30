@@ -234,6 +234,7 @@ export class Renderer {
     this.overlays.barrages(ctx, state, camera, frac, me, nowMs);
     this.fronts.draw(ctx, state, camera, me, this.colors);
     this.overlays.floaters(ctx, ui, camera, nowMs);
+    this.overlays.strikeZones(ctx, state, camera, ui);
     this.overlays.hoverAndPreview(ctx, state, camera, ui, snap, this.units, frac, d);
 
     const tMini = performance.now();

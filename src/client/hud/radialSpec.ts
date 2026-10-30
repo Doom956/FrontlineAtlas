@@ -1,6 +1,6 @@
 // What the radial menu offers for a tile: the likely action in the centre, the rest on the ring.
 import { alliancesAllowed, buildingAllowed, sameTeam, unitAllowed } from '../../sim/rules';
-import { buildCostAt, buildingAt, buildingsOf, canBuild, chargesReady, countBuildings } from '../../sim/buildings';
+import { buildCostAt, buildingAt, canBuild, chargesReady, countBuildings } from '../../sim/buildings';
 import { BUILDINGS, BUILDING_ORDER, RESOURCE_NAMES, TERRAIN, UNITS } from '../../sim/config';
 import { areAllied } from '../../sim/diplomacy';
 import { hasTech } from '../../sim/tech';
@@ -10,10 +10,13 @@ import { isAttackable, sendTransport, troopsToSend, troopSum } from '../input';
 import { rgbCss } from '../menu';
 import type { RadialItem, RadialSpec } from '../radial';
 import { formatCount } from '../render/common';
-import { barrageAction, barrageCheck, maxLevel, paradropAction, planParadrop } from '../simx';
+import { maxLevel } from '../simx';
+import { blastSummary, modeFor, STRIKE_ORDER, STRIKES, strikeAction, strikeStatus, strikeTarget, type StrikeId } from '../strikes';
 import { pct, type HudCtx } from './dom';
 import { techNear } from './commandBar';
 import { confirmBreak, GIFT_GOLD } from './nationCard';
+
+const RADIAL_LABEL: Record<StrikeId, string> = { barrage: 'Barrage', bomb: 'Bomb', paradrop: 'Paratroopers', rocket: 'Rocket', atomBomb: 'Atom bomb' };
 
 function costText(gold: number, iron: number): string {
   return `${formatCount(gold)} gold` + (iron > 0 ? ` + ${formatCount(iron)} iron` : '');
@@ -52,11 +55,7 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
   const res = map.resource[tile];
   const op = owner ? state.players[owner] : null;
   const w = map.width;
-  const near = (a: number) => {
-    const dx = (a % w) - (tile % w);
-    const dy = ((a / w) | 0) - ((tile / w) | 0);
-    return dx * dx + dy * dy;
-  };
+
   const ui = ctx.ui;
   const send = troopsToSend(me, ui);
   const sendText = `${formatCount(troopSum(send))} troops (${pct(ui.attackShare)})`;
@@ -150,44 +149,24 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
     if (map.coastal[tile]) {
       slices.push({ label: 'By sea', icon: 'transport', hint: `Land ${sendText} here by transport`, run: () => sendTransport(state, ui, ctx.dispatch, -1, tile) });
     }
-    if (hasTech(me, 'flight') || buildingsOf(state, h, 'airfield').length) {
-      const plan = planParadrop(state, me, ui, tile);
+    // strikes: the same five as the command bar's STRIKES group, once they are unlocked (locked ones stay off the ring)
+    for (const id of STRIKE_ORDER) {
+      if (!owner && id !== 'paradrop') continue;
+      const st = strikeStatus(state, me, id);
+      if (!st.allowed || st.state === 'locked') continue;
+      const m = modeFor(id);
+      const t = st.state === 'ready' ? strikeTarget(state, me, ui, m, tile) : null;
+      const a = t ? strikeAction(m, tile, t) : null;
       slices.push({
-        label: 'Paratroopers',
-        icon: 'paradrop',
+        label: RADIAL_LABEL[id],
+        icon: STRIKES[id].line,
         danger: true,
-        hint: `Drop ${formatCount(plan.troops)} infantry here by plane`,
-        disabled: plan.reason || undefined,
-        run: () => ctx.act(paradropAction(plan, tile)),
+        hint: t && t.ok ? blastSummary(state, m, t) + (t.covered ? `. ${t.covered}` : '') : STRIKES[id].what,
+        disabled: st.state !== 'ready' ? st.line : t && !t.ok ? t.reason : undefined,
+        run: () => {
+          if (a) ctx.act(a);
+        },
       });
-    }
-    if (owner && (me.troops.artillery > 0 || countBuildings(state, h, 'arsenal', true) > 0)) {
-      const why = barrageCheck(state, h, tile);
-      slices.push({ label: 'Barrage', icon: 'barrage', danger: true, hint: 'Shell this area with your artillery', disabled: why || undefined, run: () => ctx.act(barrageAction(tile)) });
-    }
-    if (owner) {
-      const fields = buildingsOf(state, h, 'airfield').filter((b) => b.buildLeft <= 0);
-      if (fields.length) {
-        const ready = fields.filter((b) => b.bombers > 0).sort((a, b) => near(a.tile) - near(b.tile));
-        slices.push({ label: 'Bomb', icon: 'bomb', danger: true, disabled: ready.length ? undefined : 'No bombers ready', run: () => ctx.act({ type: 'bomb', airfield: ready[0].tile, tile }) });
-      }
-      const silos = buildingsOf(state, h, 'silo').filter((b) => b.buildLeft <= 0);
-      if (silos.length) {
-        const ready = silos.filter((b) => chargesReady(b) > 0).sort((a, b) => near(a.tile) - near(b.tile));
-        for (const kind of ['rocket', 'atomBomb'] as const) {
-          const u = UNITS[kind];
-          if (u.tech && !hasTech(me, u.tech)) continue;
-          if (kind === 'atomBomb' && !unitAllowed(state, 'atomBomb')) continue;
-          slices.push({
-            label: kind === 'rocket' ? 'Rocket' : 'Atom bomb',
-            icon: kind === 'rocket' ? 'rocket' : 'atom',
-            danger: true,
-            hint: costText(u.gold, u.iron),
-            disabled: !ready.length ? 'All silos are reloading' : me.gold < u.gold ? 'Not enough gold' : undefined,
-            run: () => ctx.act({ type: 'launchMissile', silo: ready[0].tile, kind, tile }),
-          });
-        }
-      }
     }
   }
 

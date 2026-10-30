@@ -4,6 +4,7 @@ import { buildSeconds, researchRule, unitAllowed } from '../../sim/rules';
 import { aircraftCap, buildCostAt, buildingAt, chargesReady, canBuild, countBuildings, nextChargeIn } from '../../sim/buildings';
 import { attacksOf } from '../../sim/combat';
 import {
+  BARRAGE_MIN_ARTILLERY,
   BUILDINGS,
   BUILDING_ORDER,
   MATCHUP,
@@ -21,15 +22,18 @@ import { canResearch, hasTech } from '../../sim/tech';
 import { LAND_TERRAINS, Resource } from '../../sim/types';
 import type { Building, BuildingType, GameEvent, GameState, Player, TechId, TerrainId, Troops } from '../../sim/types';
 import { isTribe } from '../compat';
-import { CATEGORY_COLORS, ICON_INFO, markerDataUrl } from '../icons';
+import { CATEGORY_COLORS, ICON_INFO, iconDataUrl, markerDataUrl } from '../icons';
 import { CATEGORY_PLATES } from '../render/buildings';
 import { rgbCss } from '../menu';
 import { formatCount } from '../render/common';
-import { barrageRange, barrageStatus, fieldArmy, maxLevel, paradropReadyIn } from '../simx';
+import { fieldArmy, maxLevel } from '../simx';
+import { aimStrike, STRIKE_ORDER, STRIKES, strikeStatus } from '../strikes';
+import { artilleryOf } from '../../sim/barrage';
 import {
   btn,
   el,
   fmtTime,
+  keycap,
   pct,
   sectionTitle,
   setClass,
@@ -285,40 +289,94 @@ export class ArmyPage implements DrawerPage {
       setVisible(empty, attacks.length === 0);
     });
 
-    // air and strikes
+    // artillery: what it is for, how to get it, how much you have
+    const artSec = el('div', 'artsec');
+    artSec.dataset.test = 'army-artillery';
+    const artHead = el('div', 'art-head');
+    const artIc = el('img', 'art-ic');
+    artIc.alt = '';
+    artIc.width = 28;
+    artIc.height = 28;
+    try {
+      artIc.src = iconDataUrl('artillery', 28);
+    } catch {
+      /* no canvas */
+    }
+    const artCount = el('b', 'art-n');
+    const artOf = el('span', 'art-of');
+    const artRead = el('div', 'art-read');
+    artRead.append(artCount, artOf);
+    artHead.append(artIc, artRead);
+    const artBar = el('div', 'art-bar');
+    const artFill = el('span');
+    artBar.append(artFill);
+    const artWhat = el('p', 'note', 'Artillery breaks forts, hills and dug-in fronts, and fires the artillery barrage.');
+    const artHow = el('p', 'note');
+    artSec.append(sectionTitle('Artillery'), artHead, artBar, artWhat, artHow);
+    // right under the troop mix, whose Artillery slider it refers to
+    status.after(artSec);
+    this.upd.push((s, me) => {
+      const art = artilleryOf(s, me.id);
+      setText(artCount, formatCount(art));
+      setText(artOf, art >= BARRAGE_MIN_ARTILLERY ? 'artillery: enough for a barrage (Z)' : `artillery: a barrage needs ${formatCount(BARRAGE_MIN_ARTILLERY)}`);
+      artFill.style.width = pct(Math.min(1, art / BARRAGE_MIN_ARTILLERY));
+      setClass(artBar, 'full', art >= BARRAGE_MIN_ARTILLERY);
+      const ars = countBuildings(s, me.id, 'arsenal', true);
+      setText(
+        artHow,
+        ars === 0
+          ? `To get it: build an Arsenal (Military tab, key ${BUILDINGS.arsenal.hotkey}), then raise the Artillery slider above.`
+          : me.auto.mix
+            ? 'Your Arsenals make it as the auto mix needs. To make more now, raise the Artillery slider above.'
+            : me.armyMix.artillery < 0.05
+              ? 'Your Arsenals are idle: raise the Artillery slider above.'
+              : `Your Arsenals turn infantry into artillery up to ${pct(me.armyMix.artillery)} of the army.`,
+      );
+    });
+
+    // strikes: the same five as the command bar, each with its state in plain words
     const air = el('div', 'air');
-    const airTitle = sectionTitle('Air and strikes');
-    const para = btn('Paratroopers', 'wide', () => {
-      ui.mode = { kind: 'paradrop', airfield: -1 };
-      ctx.closeDrawer();
-    }, 'paradrop');
-    para.dataset.test = 'ability-paradrop';
-    const paraNote = el('p', 'note');
-    const barr = btn('Artillery barrage', 'wide', () => {
-      ui.mode = { kind: 'barrage' };
-      ctx.closeDrawer();
-    }, 'barrage');
-    barr.dataset.test = 'ability-barrage';
-    const barrNote = el('p', 'note');
+    air.append(sectionTitle('Strikes'));
+    const rows = STRIKE_ORDER.map((id) => {
+      const info = STRIKES[id];
+      const b = btn(info.name, 'wide strike-row', () => {
+        const st = ctx.state();
+        const me = ctx.me();
+        if (!st || !me) return;
+        const why = aimStrike(st, me, ui, id);
+        if (why) ctx.toast(`${info.name}: ${why}`, 'info');
+        else ctx.closeDrawer();
+      });
+      b.dataset.test = `ability-${id}`;
+      try {
+        const img = el('img', 'sr-ic');
+        img.alt = '';
+        img.width = 18;
+        img.height = 18;
+        img.src = iconDataUrl(info.icon, 18);
+        b.prepend(img);
+      } catch {
+        /* no canvas */
+      }
+      b.append(keycap(info.key));
+      const note = el('p', 'note');
+      air.append(b, note);
+      return { id, b, note };
+    });
     const fields = el('div', 'rows');
-    air.append(airTitle, para, paraNote, barr, barrNote, fields);
+    air.append(fields);
     this.root.append(air);
     let fieldKey = '';
     this.upd.push((s, me) => {
       const myFields = [...s.buildings.values()].filter((b) => b.owner === me.id && b.type === 'airfield');
-      const flight = hasTech(me, 'flight');
-      setVisible(air, true);
-      setVisible(para, true);
-      setVisible(paraNote, true);
-      const ready = paradropReadyIn(s, me.id);
-      const why = !flight ? 'Research Flight, then build an Airfield.' : ready < 0 ? 'Build an Airfield first.' : ready > 0 ? `Next plane ready in ${Math.ceil(ready)} s.` : '';
-      setDisabled(para, why !== '');
-      setText(paraNote, why || 'Click, then pick a drop zone in an airfield\'s range. Sends your attack share of infantry.');
-      setTip(para, ABILITY_TEXT.paradrop);
-      const bwhy = barrageStatus(s, me.id);
-      setDisabled(barr, bwhy !== '');
-      setText(barrNote, bwhy ? bwhy + '.' : `Click, then pick enemy land within ${barrageRange(me)} tiles of yours.`);
-      setTip(barr, ABILITY_TEXT.barrage);
+      for (const r of rows) {
+        const st = strikeStatus(s, me, r.id);
+        setVisible(r.b, st.allowed);
+        setVisible(r.note, st.allowed);
+        setClass(r.b, 'dim', st.state !== 'ready');
+        setText(r.note, `${st.line}.`.replace(/\.\.$/, '.'));
+        setTip(r.b, `${STRIKES[r.id].what}\n${STRIKES[r.id].counter}`);
+      }
       const key = myFields.map((b) => `${b.id}:${b.bombers}:${b.fighters}:${b.buildLeft > 0}`).join(',');
       if (key !== fieldKey) {
         fieldKey = key;

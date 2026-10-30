@@ -1,5 +1,5 @@
 // All balance numbers. Rates are per second of game time unless the name says otherwise.
-import type { BuildingType, MapSize, Personality, TechId, TerrainId, TroopType, UnitType } from './types';
+import type { BuildingType, Difficulty, MapSize, Personality, TechId, TerrainId, TroopType, UnitType } from './types';
 
 export const TICK_SECONDS = 0.1;
 export const TICKS_PER_SECOND = 10;
@@ -559,5 +559,17 @@ export const RULES_TEXT = {
     `trade with the attacker for ${AUTO_EMBARGO_SECONDS / 60} minutes and cancels pending alliance requests between you.`,
 } as const;
 
-export const AI_DECISION_SECONDS: Record<'easy' | 'normal' | 'hard', number> = { easy: 4, normal: 3, hard: 2 };
+/** Seconds between two decisions of an AI nation, by difficulty. */
+export const AI_DECISION_SECONDS: Record<Difficulty, number> = { easy: 5, normal: 3, hard: 2 };
+/** Hard AI nations (and tribes) earn this much more gold, iron and oil, and grow troops half as much more. */
 export const AI_HARD_INCOME_BONUS = 0.15;
+/**
+ * Economy of the AI by difficulty: troop growth, income (gold, iron, oil) and troop cap of AI nations x these. Easy
+ * and Normal slow the AI nations only (tribes stay as they are: they are food); Hard keeps its bonus for every AI
+ * player. The human's economy never changes.
+ */
+export const AI_ECONOMY: Record<Difficulty, { growth: number; income: number; cap: number }> = {
+  easy: { growth: 0.7, income: 0.7, cap: 0.6 },
+  normal: { growth: 0.88, income: 0.88, cap: 0.9 },
+  hard: { growth: 1 + AI_HARD_INCOME_BONUS * 0.5, income: 1 + AI_HARD_INCOME_BONUS, cap: 1 },
+};

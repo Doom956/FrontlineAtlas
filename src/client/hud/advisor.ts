@@ -1,8 +1,11 @@
 // Advisor strip and first-game tutorial: one short line above the command bar.
 // - Tutorial (first game only, remembered in localStorage): six steps that advance when done; can be skipped.
-// - Advisor: the sim's suggestions() (advisor.ts), one at a time, cycling every 8 s.
+// - Advisor: the sim's suggestions() (advisor.ts), one at a time, cycling every 8 s, plus two client hints:
+//   artillery when the main foe's front is fortified or hilly, and once per strike (remembered in localStorage) a
+//   first-use hint pointing at its button the first time it is ready ("Bombers ready: press X ...").
 //   Click the button to act (enter build mode, open a drawer, centre the map); X dismisses that hint for a while;
 //   it can be switched off in the menu.
+import { mainFoe, fortifiedShare } from '../../sim/advisor';
 import { countBuildings } from '../../sim/buildings';
 import { BUILDINGS } from '../../sim/config';
 import { mods } from '../../sim/rules';
@@ -10,6 +13,8 @@ import { gameSeconds } from '../../sim/state';
 import type { GameState, Player } from '../../sim/types';
 import { isTribe } from '../compat';
 import { adviceFor, type Suggestion } from '../simx';
+import { STRIKES, strikeOfMode, type StrikeId } from '../strikes';
+import type { StrikeBar } from './strikeBar';
 import { el, setClass, setText, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon, worldGlyph } from './glyph';
 
@@ -17,6 +22,41 @@ const TUTORIAL_KEY = 'borderfall.tutorial.v1';
 const ADVISOR_KEY = 'borderfall.advisor.v1';
 const CYCLE_MS = 8000;
 const DISMISS_MS = 120000;
+const STRIKE_HINTS_KEY = 'borderfall.strikeHints.v1';
+/** a first-use strike hint stays this long (or until the strike is aimed or the hint dismissed) */
+const STRIKE_HINT_MS = 15000;
+/** the artillery check (main foe's front: forts, hills) runs this often */
+const ARTILLERY_CHECK_MS = 3000;
+
+/** First-use hint per strike: what is ready, the key to press and what to click. */
+export const STRIKE_HINTS: Record<StrikeId, string> = {
+  barrage: `Artillery ready: press ${STRIKES.barrage.key} and click enemy land near your border`,
+  bomb: `Bombers ready: press ${STRIKES.bomb.key} and click an enemy building`,
+  paradrop: `Paratroopers ready: press ${STRIKES.paradrop.key} and click enemy land in an Airfield's range`,
+  rocket: `Rocket ready: press ${STRIKES.rocket.key} and click any enemy land on the map`,
+  atomBomb: `Atom bomb ready: press ${STRIKES.atomBomb.key} and click a target. It hits your land too`,
+};
+
+const AIM_LABEL: Record<StrikeId, string> = { barrage: 'Aim barrage', bomb: 'Aim bombers', paradrop: 'Aim drop', rocket: 'Aim rocket', atomBomb: 'Aim atom bomb' };
+
+/**
+ * Artillery advice against the main foe: their front is under forts or on hills (where artillery hits hardest).
+ * Without an Arsenal: build one; with one but little artillery in a hand-set mix: raise it. null = nothing to say.
+ */
+export function artilleryAdvice(s: GameState, me: Player): Suggestion | null {
+  const { foe, frontTiles } = mainFoe(s, me.id);
+  const fp = foe > 0 ? s.players[foe] : undefined;
+  if (!fp || !fp.alive || isTribe(fp) || frontTiles.length < 4) return null;
+  const forts = fortifiedShare(s, foe, frontTiles) > 0.25;
+  let hills = 0;
+  for (const t of frontTiles) if (s.map.terrain[t] === 4) hills++;
+  const hilly = hills / frontTiles.length > 0.3;
+  if (!forts && !hilly) return null;
+  const what = forts ? `${fp.name}'s forts ahead` : `Hills ahead of ${fp.name}`;
+  if (countBuildings(s, me.id, 'arsenal', true) === 0) return { key: 'art-arsenal', text: `${what}: build an Arsenal and use artillery`, building: 'arsenal' };
+  if (!me.auto.mix && me.armyMix.artillery < 0.15) return { key: 'art-mix', text: `${what}: raise Artillery in the Army drawer`, drawer: 'army' };
+  return null;
+}
 
 function load(key: string): string | null {
   try {
@@ -73,6 +113,12 @@ export class AdvisorStrip {
   /** the tutorial step's "Show me" tile (-1 = the button says Next) and a pending Next click */
   private showTile = -1;
   private skipStep = false;
+  /** strikes whose first-use hint was shown (ever) */
+  private hintsSeen = new Set<string>((load(STRIKE_HINTS_KEY) ?? '').split(',').filter(Boolean));
+  /** first-use strike hints waiting to be shown, and the one on screen with its end time */
+  private hintQueue: StrikeId[] = [];
+  private hint: { id: StrikeId; until: number } | null = null;
+  private art: { at: number; s: Suggestion | null } = { at: -Infinity, s: null };
 
   constructor(private ctx: HudCtx) {
     this.el = el('div', 'advisor hidden');
@@ -89,6 +135,7 @@ export class AdvisorStrip {
     this.closeBtn.setAttribute('aria-label', 'Dismiss this hint');
     this.closeBtn.append(iconSpan(lineIcon('close', 12, 2)));
     this.closeBtn.addEventListener('click', () => {
+      this.hint = null;
       if (this.current) this.dismissed.set(this.current.key, performance.now() + DISMISS_MS);
       this.current = null;
       this.shownAt = 0;
@@ -198,11 +245,12 @@ export class AdvisorStrip {
 
   // ------------------------------------------------------------------------------------------ advisor
 
-  update(s: GameState, me: Player): void {
+  update(s: GameState, me: Player, strikes?: StrikeBar): void {
     if (!me.alive || s.phase === 'over') {
       setVisible(this.el, false);
       return;
     }
+    for (const id of strikes?.takeNewlyReady() ?? []) if (!this.hintsSeen.has(id) && !this.hintQueue.includes(id)) this.hintQueue.push(id);
     if (this.tutorialUpdate(s, me)) return;
     setClass(this.el, 'tut', false);
     setVisible(this.skipBtn, false);
@@ -212,7 +260,11 @@ export class AdvisorStrip {
       return;
     }
     const now = performance.now();
+    if (this.strikeHint(now, strikes)) return;
     const list = adviceFor(s, me.id).filter((x) => (this.dismissed.get(x.key) ?? 0) < now);
+    if (now - this.art.at > ARTILLERY_CHECK_MS) this.art = { at: now, s: artilleryAdvice(s, me) };
+    const art = this.art.s;
+    if (art && (this.dismissed.get(art.key) ?? 0) < now && !list.some((x) => x.key === 'build-arsenal')) list.splice(Math.min(1, list.length), 0, art);
     if (!list.length) {
       this.current = null;
       setVisible(this.el, false);
@@ -249,7 +301,38 @@ export class AdvisorStrip {
     setVisible(this.el, true);
   }
 
+  /** Shows the first-use hint of a strike that just became ready (once per strike, ever); true while one shows. */
+  private strikeHint(now: number, strikes?: StrikeBar): boolean {
+    if (!strikes) return false;
+    const h = this.hint;
+    if (h && (now > h.until || strikeOfMode(this.ctx.ui.mode) === h.id || strikes.statusOf(h.id)?.state !== 'ready')) this.hint = null;
+    if (!this.hint) {
+      const id = this.hintQueue.shift();
+      if (!id || strikes.statusOf(id)?.state !== 'ready') return false;
+      this.hint = { id, until: now + STRIKE_HINT_MS };
+      this.hintsSeen.add(id);
+      save(STRIKE_HINTS_KEY, [...this.hintsSeen].join(','));
+    }
+    const id = this.hint.id;
+    this.current = null;
+    setText(this.tag, 'New');
+    this.icon.innerHTML = lineIcon(STRIKES[id].line, 16);
+    setText(this.text, STRIKE_HINTS[id]);
+    setText(this.doBtn, AIM_LABEL[id]);
+    setVisible(this.doBtn, true);
+    setVisible(this.el, true);
+    this.strikes = strikes;
+    return true;
+  }
+  private strikes: StrikeBar | null = null;
+
   private act(): void {
+    if (this.hint && this.strikes) {
+      const id = this.hint.id;
+      this.hint = null;
+      this.strikes.aim(id);
+      return;
+    }
     if (this.el.classList.contains('tut')) {
       if (this.showTile >= 0) this.ctx.focusTile(this.showTile, true);
       else this.skipStep = true;
