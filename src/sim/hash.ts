@@ -6,6 +6,7 @@
 
 import { hashAir } from './airwings';
 import type { GameState, Troops } from './types';
+import { DIVISION_MODES, WARSHIP_STANCES } from './types';
 
 const FNV_OFFSET = 0x811c9dc5;
 const FNV_PRIME = 0x01000193;
@@ -154,6 +155,12 @@ export function hashState(state: GameState): number {
     h = mixInt(h, u.launch ?? -1);
     h = mixFloat(h, u.strength0 ?? -1);
     h = mixInt(h, u.targetOwner ?? 0);
+    // Stances, stations, veterancy and division modes (naval2.ts, armor2.ts).
+    h = mixInt(h, u.stance ? WARSHIP_STANCES.indexOf(u.stance) + 1 : 0);
+    h = mixInt(h, u.station ?? -1);
+    h = mixFloat(h, u.xp ?? 0);
+    h = mixInt(h, u.vet ?? 0);
+    h = mixInt(h, u.mode ? DIVISION_MODES.indexOf(u.mode) + 1 : 0);
   }
   // Units under construction (navy.ts, tanks.ts).
   const queue = state.unitQueue ?? [];

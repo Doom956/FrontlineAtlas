@@ -80,6 +80,7 @@ import { alliancesAllowed as rulesAllowAlliances, atPeace, buildingAllowed, rese
 import { canSpawnAt, gameSeconds, ownerBox, spawnAtFixedPoint } from './state';
 import { borderTiles, coastCount, depositCount, landComponents, sampleOwnedTiles } from './territory';
 import { canParadrop, paradropMaxTroops, paradropRange, unitCost } from './units';
+import { aiAirDoctrineTaste, aiAirTechs, aiAirWings, aiExtraAirfields, airWingBusy } from './airwings';
 import { inOvertime, victoryShareNow } from './victory';
 import { hasTech } from './tech';
 import { aiSpend, aiTechOrder, rejectedBranch } from './aispending';
@@ -930,7 +931,7 @@ function doctrineScores(ctx: Ctx): { id: DoctrineId; score: number }[] {
   const taste = DOCTRINE_TASTE[p.personality ?? 'balanced'];
   const out = doctrineAdvice(state, ctx.id).map((a) => ({
     id: a.id,
-    score: a.score * (taste[a.id] ?? 1) * (1 + (state.rng() * 2 - 1) * diff.doctrineNoise),
+    score: a.score * (taste[a.id] ?? 1) * (a.id === 'air' ? aiAirDoctrineTaste(state, ctx.id) : 1) * (1 + (state.rng() * 2 - 1) * diff.doctrineNoise),
   }));
   out.sort((a, b) => b.score - a.score || DOCTRINE_IDS.indexOf(a.id) - DOCTRINE_IDS.indexOf(b.id));
   return out;
@@ -1623,7 +1624,7 @@ function nextTech(ctx: Ctx): TechId | null {
   const coastal = coastCount(state, ctx.id) > 0;
   const avail: TechId[] = [];
   // Profile order with the branch techs merged in (aispending.ts: one pick per exclusive group).
-  for (const t of aiTechOrder(state, ctx.id, p.personality, ctx.prof.techs)) {
+  for (const t of aiTechOrder(state, ctx.id, p.personality, aiAirTechs(state, ctx.id, ctx.prof.techs))) {
     if (hasTech(p, t)) continue;
     if (techStatus(state, ctx.id, t) !== 'available' || rejectedBranch(state, ctx.id, p.personality, t)) continue;
     if ((t === 'navigation' || t === 'carriers' || t === 'submarines') && !coastal) continue;
@@ -1692,7 +1693,7 @@ function economy(ctx: Ctx): void {
     add('port', count('port') < portCap ? 2 + prof.naval * 4 : 0);
   }
   if (hasTech(p, 'medicine')) add('hospital', count('hospital') < 2 ? 2.5 : 0);
-  if (hasTech(p, 'flight')) add('airfield', count('airfield') < (prof.aggression > 0.5 ? 2 : 1) + (held === 'air' ? 1 : 0) ? 3.5 : 0);
+  if (hasTech(p, 'flight')) add('airfield', count('airfield') < (prof.aggression > 0.5 ? 2 : 1) + (held === 'air' ? 1 : 0) + aiExtraAirfields(state, id) ? 3.5 : 0);
   if (hasTech(p, 'radar') && enemyAirThreat(ctx)) add('sam', count('sam') < 3 ? 4.5 : 0);
   if (hasTech(p, 'rocketry')) add('silo', count('silo') < 1 ? 3 : 0);
 
@@ -2146,6 +2147,8 @@ function airAndMissiles(ctx: Ctx): void {
   ctx.ai.nextAirTick = state.tick + 8 * TICKS_PER_SECOND;
   const fighting = foes(ctx);
   const airThreat = enemyAirThreat(ctx);
+  // Standing air-wing missions first: support over our main attack, strategic raids, fighter patrols (airwings.ts).
+  aiAirWings(state, id, fighting, airThreat);
 
   for (const af of buildingsOf(state, id, 'airfield')) {
     if (af.buildLeft > 0) continue;
@@ -2155,7 +2158,7 @@ function airAndMissiles(ctx: Ctx): void {
     if (af.bombers + af.fighters < aircraftCap(af) - 1 && p.gold > c.gold + 1000 && p.oil >= c.oil && p.iron >= c.iron) {
       applyAction(state, id, { type: 'buildAircraft', airfield: af.tile, kind });
     }
-    if (fighting.length && af.bombers > 0) {
+    if (fighting.length && af.bombers > 0 && !airWingBusy(state, af)) {
       const t = strikeTarget(ctx, ['fort', 'factory', 'arsenal', 'airfield', 'city', 'barracks'], af.tile);
       if (t >= 0) applyAction(state, id, { type: 'bomb', airfield: af.tile, tile: t });
     }
