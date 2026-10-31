@@ -111,20 +111,25 @@ describe('advisor unit hints', () => {
 });
 
 describe('research tree layout', () => {
-  it('puts each tier in its own column, prerequisites to the left, one tech per cell', async () => {
+  it('puts tiers in order left to right, prerequisites in earlier tracks, one slot per cell (a choice shares one)', async () => {
     const { treeLayout, TECH_LINE } = await import('../src/client/hud/researchTree');
-    const { pos, rows, cols } = treeLayout();
-    expect(cols).toBe(Math.max(...TECH_ORDER.map((t) => TECHS[t].tier)));
-    const cells = new Set<string>();
+    const { pos, rows, cols, layout } = treeLayout();
+    expect(cols).toBe(layout.tracks.length);
+    // fits the drawer at 1280x720: at most six rows
+    expect(rows).toBeLessThanOrEqual(6);
+    const cells = new Map<string, string>();
     for (const t of TECH_ORDER) {
       const p = pos.get(t)!;
-      expect(p.col).toBe(TECHS[t].tier - 1);
+      expect(layout.tracks[p.col].tier).toBe(TECHS[t].tier);
       expect(p.row).toBeGreaterThanOrEqual(0);
       expect(p.row).toBeLessThan(rows);
-      cells.add(`${p.col},${p.row}`);
-      for (const r of TECHS[t].requires) expect(pos.get(r)!.col).toBeLessThan(p.col);
+      // one cell per slot: a choice group's techs share theirs
+      const key = TECHS[t].exclusiveGroup ? `group:${TECHS[t].exclusiveGroup}` : t;
+      const cell = `${p.col},${p.row}`;
+      expect(cells.get(cell) ?? key).toBe(key);
+      cells.set(cell, key);
+      for (const r of [...TECHS[t].requires, ...(TECHS[t].requiresAny ?? [])]) expect(pos.get(r)!.col).toBeLessThan(p.col);
       expect(TECH_LINE[t].length).toBeLessThanOrEqual(46);
     }
-    expect(cells.size).toBe(TECH_ORDER.length);
   });
 });

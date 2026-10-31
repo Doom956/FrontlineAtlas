@@ -24,6 +24,7 @@ import { STRIKES, strikeOfMode, type StrikeId } from '../strikes';
 import type { StrikeBar } from './strikeBar';
 import { el, setClass, setText, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon, worldGlyph } from './glyph';
+import { waysToPlayAdvice } from './spendPanel';
 
 const TUTORIAL_KEY = 'borderfall.tutorial.v1';
 const ADVISOR_KEY = 'borderfall.advisor.v1';
@@ -171,6 +172,8 @@ export class AdvisorStrip {
   private hintQueue: StrikeId[] = [];
   private hint: { id: StrikeId; until: number } | null = null;
   private art: { at: number; s: Suggestion | null } = { at: -Infinity, s: null };
+  /** newer ways to play: tech choices, tank divisions, mercenaries, funding allies, Build x5 (spendPanel.ts) */
+  private ways: { at: number; s: Suggestion | null } = { at: -Infinity, s: null };
   private units: { at: number; list: Suggestion[] } = { at: -Infinity, list: [] };
   /** unit hints shown (ever) */
   private unitSeen = new Set<string>((load(UNIT_HINTS_KEY) ?? '').split(',').filter(Boolean));
@@ -361,6 +364,9 @@ export class AdvisorStrip {
     if (now - this.art.at > ARTILLERY_CHECK_MS) this.art = { at: now, s: artilleryAdvice(s, me) };
     const art = this.art.s;
     if (art && (this.dismissed.get(art.key) ?? 0) < now && !list.some((x) => x.key === 'build-arsenal')) list.splice(Math.min(1, list.length), 0, art);
+    if (now - this.ways.at > ARTILLERY_CHECK_MS) this.ways = { at: now, s: waysToPlayAdvice(s, me) };
+    const way = this.ways.s;
+    if (way && (this.dismissed.get(way.key) ?? 0) < now && !list.some((x) => x.key === way.key)) list.push(way);
     if (!list.length) {
       this.current = null;
       setVisible(this.el, false);

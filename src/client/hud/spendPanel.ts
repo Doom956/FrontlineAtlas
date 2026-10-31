@@ -3,7 +3,13 @@
 //   Fund ally    pick an ally, an amount, and the expected effect (fundAllyEffect: stronger against your enemies)
 //   War bonds    gold now for +x% attack for a while, then a cooldown
 // Every refusal reason comes from the sim's own previews, so the button says exactly why before you click.
-import { FUND_MIN_GOLD, MERC_MIN_AMOUNT } from '../../sim/config';
+import { buildingCost, countBuildings } from '../../sim/buildings';
+import { FUND_MIN_GOLD, MERC_MIN_AMOUNT, TECHS } from '../../sim/config';
+import { armyTotal } from '../../sim/economy';
+import { hasTech } from '../../sim/tech';
+import { bestFactory, canBuildTankDivision, tankDivisionCount } from '../../sim/tanks';
+import { exclusiveGroups, groupMembers, techStatus } from '../../sim/techtree';
+import type { Suggestion } from '../simx';
 import { areAllied } from '../../sim/diplomacy';
 import { fundAllyEffect, mercenaryPrice, warBondsInfo, type FundAllyEffect, type MercenaryQuote, type WarBondsInfo } from '../../sim/spending';
 import { isTribe } from '../../sim/types';
@@ -311,4 +317,38 @@ export class SpendPanel {
     setTip(b.box, 'War bonds: pay gold now for stronger attacks for a while; then a cooldown.');
     return b.box;
   }
+}
+
+// ================================================================================================ advisor lines
+
+/**
+ * One advisor line about the newer ways to play (null = nothing to say), lowest priority in the strip:
+ * a tech choice that is open now, tank divisions once you can build them, mercenaries when short of troops at war,
+ * funding an ally at war, and Build x5 when gold piles up.
+ */
+export function waysToPlayAdvice(s: GameState, me: Player): Suggestion | null {
+  // a choice of the tech tree that is open now (and none of it taken yet)
+  for (const g of exclusiveGroups()) {
+    const ts = groupMembers(g);
+    if (ts.some((t) => techStatus(s, me.id, t) !== 'available')) continue;
+    return { key: `choice-${g}`, text: `A choice: ${ts.map((t) => TECHS[t].name).join(' or ')}. Picking one locks the other`, drawer: 'research' };
+  }
+  const home = armyTotal(me.troops);
+  const atWarNow = s.attacks.some((a) => a.target === me.id && a.attacker > 0 && !isTribe(s.players[a.attacker]));
+  if (atWarNow && home < me.maxPop * 0.25) {
+    const q = mercenaryPrice(s, me.id, MERC_MIN_AMOUNT);
+    if (q.affordable >= MERC_MIN_AMOUNT * 2) return { key: 'mercs', text: 'Short of troops under attack: hire mercenaries with gold (Spend, next to your gold)' };
+  }
+  if (atWarNow && me.gold > 2500) {
+    const ally = fundableAllies(s, me.id)[0];
+    if (ally) return { key: 'fund-ally', text: `Fund ${ally.name} (Spend, next to your gold): they fight harder against your enemies` };
+  }
+  if (hasTech(me, 'mechanization') && bestFactory(s, me.id) >= 0 && tankDivisionCount(s, me.id) === 0 && canBuildTankDivision(s, me.id, bestFactory(s, me.id)).ok) {
+    return { key: 'tank-division', text: 'Tank divisions: build one at a Factory (Build menu, Tab) and click enemy land to break through' };
+  }
+  const city = buildingCost(s, me.id, 'city');
+  if (countBuildings(s, me.id, 'city', true) > 0 && me.gold > city.gold * 6) {
+    return { key: 'bulk-city', text: 'Gold piling up: pick x5 in the Build menu (Tab) to take a City straight to level 5', building: 'city' };
+  }
+  return null;
 }
