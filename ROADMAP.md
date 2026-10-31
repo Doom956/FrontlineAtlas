@@ -7,6 +7,9 @@ Working rules (owner's wishes, keep following them):
 - Keep the HUD minimal and clean; literal, simple icons; plain short wording.
 - Live: https://frontline-atlas.onrender.com (server + game, env `ADMIN_CODE` set in Render) and https://doom956.github.io/FrontlineAtlas/ (Pages; repo variable `SERVER_URL`).
 
+## Overnight plan (owner, 2026-10-31)
+Round 1 finishes -> all checks -> merge to `main`. Then round 2 -> all checks + multiplayer sync test -> merge to `main` if green. Then the full balance check -> checks -> merge to `main` if green. Morning summary per pillar.
+
 ## Round 1 (in progress when this file was written): "many ways to win"
 Goal: navy, armor (tank divisions), air, land and economy can each carry a win.
 - Navy: warship stances (auto, hunt, escort, bombard, blockade); bombardment makes your attacks on that coast cheaper/faster; blockade cuts trade/supply; escorts protect transports; veterancy. AI ships act all game.

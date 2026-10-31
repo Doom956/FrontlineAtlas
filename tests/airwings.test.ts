@@ -21,6 +21,7 @@ import { hashState } from '../src/sim/hash';
 import { newId } from '../src/sim/state';
 import { buildAircraft, launchBomber, paradropMaxTroops, updateUnits } from '../src/sim/units';
 import type { Building, BuildingType, GameState, TechId, Troops } from '../src/sim/types';
+import { validateAction } from '../server/validate';
 import { claimRect, makeFlatGame, troopSum } from './helpers';
 
 const inf = (n: number): Troops => ({ infantry: n, armor: 0, artillery: 0 });
@@ -265,5 +266,16 @@ describe('AI air wings', () => {
     aiAirWings(s, 1, [2], true);
     expect(airMissionOf(s, a)).toBe('support');
     expect(airMissionOf(s, b)).toBe('superiority');
+  });
+});
+
+describe('server validation', () => {
+  it('accepts setAirMission and rejects bad fields', () => {
+    const ok = validateAction({ type: 'setAirMission', airfield: 120, mission: 'support', target: 400, refill: true });
+    expect(ok.ok).toBe(true);
+    expect(validateAction({ type: 'setAirMission', airfield: -1, mission: 'superiority' }).ok).toBe(true);
+    expect(validateAction({ type: 'setAirMission', airfield: 120, mission: 'kamikaze' }).ok).toBe(false);
+    expect(validateAction({ type: 'setAirMission', airfield: -2, mission: 'idle' }).ok).toBe(false);
+    expect(validateAction({ type: 'setAirMission', airfield: 1, mission: 'support', target: 1.5 }).ok).toBe(false);
   });
 });

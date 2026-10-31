@@ -416,13 +416,13 @@ export const TECHS: Record<TechId, TechInfo> = {
   nuclearFission: { name: 'Nuclear Fission', tier: 4, science: 5000, gold: 2000, requires: ['rocketry', 'industrialization'], description: 'Atom bombs.' },
   // ---- branches with exclusive choices (techtree.ts; numbers in the TECH_EFFECTS block below) ----
   propaganda: { name: 'Propaganda', tier: 2, science: 600, gold: 600, requires: ['agriculture'], description: 'Attacks on your land cost the attacker 12% more troops.' },
-  railways: { name: 'Railways', tier: 3, science: 2200, gold: 1000, requires: ['logistics'], description: 'Supply range +25%, fronts +10% faster, tank divisions 20% cheaper.' },
+  railways: { name: 'Railways', tier: 3, science: 2200, gold: 1000, requires: ['logistics'], description: 'Supply range +25%, fronts +10% faster, tank divisions 20% cheaper, +1 division per 2 Factory levels.' },
   stockExchange: { name: 'Stock Exchange', tier: 3, science: 2200, gold: 1000, requires: ['banking'], exclusiveGroup: 'finance', description: 'Saved gold earns interest (up to +20% gold income while you hold a reserve).' },
   freeTrade: { name: 'Free Trade', tier: 3, science: 2200, gold: 1000, requires: ['banking'], exclusiveGroup: 'finance', description: 'Your trade ships pay 60% more; markets cost 30% less.' },
   blitzTactics: { name: 'Blitz Tactics', tier: 3, science: 2200, gold: 1000, requires: ['mechanization'], exclusiveGroup: 'landDoctrine', description: 'Armor-heavy attacks advance up to 30% faster; tank divisions faster and deeper.' },
   trenchWarfare: { name: 'Trench Warfare', tier: 3, science: 2200, gold: 1000, requires: ['mechanization'], exclusiveGroup: 'landDoctrine', description: 'Your land defends 15% better, enemy fronts against you 15% slower, forts 25% cheaper.' },
-  carriers: { name: 'Carriers', tier: 3, science: 2200, gold: 1000, requires: ['navigation'], exclusiveGroup: 'navalDoctrine', description: 'Warships give fighter cover: they shoot down enemy bombers and cargo planes nearby.' },
-  submarines: { name: 'Submarines', tier: 3, science: 2200, gold: 1000, requires: ['navigation'], exclusiveGroup: 'navalDoctrine', description: 'Warships hit ships 60% harder and stay hidden from enemies until close.' },
+  carriers: { name: 'Carriers', tier: 3, science: 2200, gold: 1000, requires: ['navigation'], exclusiveGroup: 'navalDoctrine', description: 'Warships give fighter cover: they shoot down enemy bombers and cargo planes nearby; shore bombardment reaches 50% further.' },
+  submarines: { name: 'Submarines', tier: 3, science: 2200, gold: 1000, requires: ['navigation'], exclusiveGroup: 'navalDoctrine', description: 'Warships hit ships 60% harder and stay hidden from enemies until close; blockades reach 50% further and captured trade ships pay 50% more.' },
   jetEngines: { name: 'Jet Engines', tier: 3, science: 2200, gold: 1000, requires: ['flight'], exclusiveGroup: 'airDoctrine', description: 'Bombers and cargo planes fly 40% faster; bombers survive one more hit.' },
   strategicBombing: { name: 'Strategic Bombing', tier: 3, science: 2200, gold: 1000, requires: ['flight'], exclusiveGroup: 'airDoctrine', description: 'Bombs hit a 40% wider area, wreck more buildings and burn 6% of the victim\'s gold and iron.' },
   diplomaticCorps: { name: 'Diplomatic Corps', tier: 3, science: 2200, gold: 1000, requires: ['propaganda'], exclusiveGroup: 'statecraft', description: 'Allies trust you sooner, help more (aid +40%) and can be asked twice as often.' },
@@ -1207,3 +1207,5 @@ export const ARMOR_CUT_BONUS = 10;
 /** escorts sail x this fast to keep up with transports; warships near an own port mend this many hp/s */
 export const NAVY_ESCORT_SPEED = 2;
 export const NAVY_PORT_REPAIR = 0.1;
+/** two nations count as at war while an attack runs between them and this many seconds after (fleets, support divisions) */
+export const NAVY_WAR_MEMORY = 30;

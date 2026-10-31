@@ -89,7 +89,7 @@ import {
   techTradeGoldMul,
 } from './techtree';
 import { chaseTargetInRange } from './navy';
-import { blockadeTradeMul, onShipKilled, shellingMul, shipDamageMul, warshipSpeedMul, warshipThink } from './naval2';
+import { blockadeTradeMul, warSet, onShipKilled, shellingMul, shipDamageMul, warshipSpeedMul, warshipThink } from './naval2';
 import { bombDivisions } from './tanks';
 import { airParadropMul, airStrikeArrived, escortAbsorbs, escortCargo, interceptBySuperiority } from './airwings';
 import { doctrineLess, doctrineLever, doctrineMore, doctrinePerk } from './doctrines';
@@ -559,13 +559,8 @@ function sinkUnit(state: GameState, u: Unit, killer: number): void {
 
 /** Players with an attack running against each other, as a*1024+b in both orders. */
 function warPairs(state: GameState): Set<number> {
-  const s = new Set<number>();
-  for (const a of state.attacks) {
-    if (a.target <= 0 || troopTotal(a.troops) <= 0) continue;
-    s.add(a.attacker * 1024 + a.target);
-    s.add(a.target * 1024 + a.attacker);
-  }
-  return s;
+  // Running attacks plus the recent-war memory (naval2.ts), so fleets keep working between two attacks.
+  return warSet(state);
 }
 
 function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<number>): void {

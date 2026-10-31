@@ -107,7 +107,7 @@ export function airPatrolRadius(b: Building): number {
 export function supportCutOf(strength: number): number {
   if (strength <= 0) return 0;
   let k = 1;
-  // decay^strength for a small integer-ish strength: repeated multiplication (no Math.pow in the sim).
+  // decay^strength by repeated multiplication (deterministic, no transcendental functions).
   const whole = Math.floor(strength);
   for (let i = 0; i < whole; i++) k *= AIR.supportDecay;
   const frac = strength - whole;

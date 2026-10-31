@@ -21,6 +21,7 @@
 import { buildingAt, buildingsOf } from './buildings';
 import {
   MAX_GROUP_UNITS,
+  NAVY_WAR_MEMORY,
   NAVY_AUTO_BOMBARD_REACH,
   NAVY_BEACHHEAD_LOSS,
   NAVY_BLOCKADE_RANGE,
@@ -123,12 +124,62 @@ function cache(state: GameState): NavyCache {
     wars.add(a.attacker * 1024 + a.target);
     wars.add(a.target * 1024 + a.attacker);
   }
+  const wm = state.warMemory;
+  if (wm) {
+    for (let k = 0; k < wm.length; k += 3) {
+      if (wm[k + 2] <= state.tick) continue;
+      wars.add(wm[k] * 1024 + wm[k + 1]);
+      wars.add(wm[k + 1] * 1024 + wm[k]);
+    }
+  }
   c = { tick: state.tick, n: state.units.length, ships, wars, blockaded: null };
   caches.set(state, c);
   return c;
 }
 
-/** True while a and b have an attack running against each other (either way) and are not allied. */
+/**
+ * Keeps state.warMemory: every second, pairs with an attack running get NAVY_WAR_MEMORY more seconds; expired pairs
+ * and pairs that became allies are dropped. Called every tick from sim.ts (after the attacks).
+ */
+export function updateWarMemory(state: GameState): void {
+  if (state.tick % TICKS_PER_SECOND !== 0) return;
+  const until = state.tick + NAVY_WAR_MEMORY * TICKS_PER_SECOND;
+  let wm = state.warMemory;
+  for (const a of state.attacks) {
+    if (a.target <= 0 || a.attacker <= 0) continue;
+    const t = a.troops;
+    if (t.infantry + t.armor + t.artillery <= 0) continue;
+    const lo = Math.min(a.attacker, a.target);
+    const hi = Math.max(a.attacker, a.target);
+    wm ??= state.warMemory = [];
+    let found = false;
+    for (let k = 0; k < wm.length; k += 3) {
+      if (wm[k] === lo && wm[k + 1] === hi) {
+        wm[k + 2] = until;
+        found = true;
+        break;
+      }
+    }
+    if (!found) wm.push(lo, hi, until);
+  }
+  if (!wm || !wm.length) return;
+  const keep: number[] = [];
+  for (let k = 0; k < wm.length; k += 3) {
+    const pa = state.players[wm[k]];
+    const pb = state.players[wm[k + 1]];
+    if (wm[k + 2] <= state.tick || !pa?.alive || !pb?.alive || areAllied(state, wm[k], wm[k + 1])) continue;
+    keep.push(wm[k], wm[k + 1], wm[k + 2]);
+  }
+  if (keep.length) state.warMemory = keep;
+  else delete state.warMemory;
+}
+
+/** Pairs at war now (a * 1024 + b, both orders): attacks running plus the recent-war memory. Do not modify. */
+export function warSet(state: GameState): Set<number> {
+  return cache(state).wars;
+}
+
+/** True while a and b are at war (an attack running between them, or recently) and not allied / at peace. */
 export function atWar(state: GameState, a: number, b: number): boolean {
   return cache(state).wars.has(a * 1024 + b) && hostile(state, a, b);
 }

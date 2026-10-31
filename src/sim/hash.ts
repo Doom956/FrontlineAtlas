@@ -162,6 +162,10 @@ export function hashState(state: GameState): number {
     h = mixInt(h, u.vet ?? 0);
     h = mixInt(h, u.mode ? DIVISION_MODES.indexOf(u.mode) + 1 : 0);
   }
+  // Recent wars (naval2.ts).
+  const wm = state.warMemory ?? [];
+  h = mixInt(h, wm.length);
+  for (const v of wm) h = mixInt(h, v);
   // Units under construction (navy.ts, tanks.ts).
   const queue = state.unitQueue ?? [];
   h = mixInt(h, queue.length);

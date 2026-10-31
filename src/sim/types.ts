@@ -627,6 +627,11 @@ export interface GameState {
   admin?: AdminState;
   /** warships and tank divisions under construction (navy.ts, tanks.ts); absent = none */
   unitQueue?: QueuedUnit[];
+  /**
+   * Recent wars (naval2.ts): [a, b, untilTick, ...] with a < b; a pair counts as at war while an attack runs between
+   * them and NAVY_WAR_MEMORY seconds after (warships and divisions keep working between attacks). Absent = none.
+   */
+  warMemory?: number[];
   /** air wings, air-support zones and strategic raid damage (airwings.ts); absent = none yet */
   air?: AirState;
 }

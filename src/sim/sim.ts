@@ -19,6 +19,7 @@ import { updateUnits } from './units';
 import { updateAir } from './airwings';
 import { updateNavyQueue } from './navy';
 import { updateTanks } from './tanks';
+import { updateWarMemory } from './naval2';
 import { updateVictory } from './victory';
 import type { GameState } from './types';
 
@@ -48,6 +49,7 @@ export function tick(state: GameState): void {
     updateSupply(state);
     updateHeartlands(state);
     updateAttacks(state);
+    updateWarMemory(state);
     updateEndgame(state);
     pruneEliminated(state);
     updateUnits(state);
