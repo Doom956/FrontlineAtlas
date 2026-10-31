@@ -1050,3 +1050,63 @@ export const BULK_MAX_COUNT = 5;
 /** Action upgradeArea: radius cap (tiles) and at most this many buildings per order. */
 export const UPGRADE_AREA_MAX_RADIUS = 60;
 export const UPGRADE_AREA_MAX_BUILDINGS = 40;
+
+// ---------- air wings (airwings.ts) ----------
+/**
+ * Air wings (Action setAirMission): each airfield flies its stored aircraft as one wing on a standing mission.
+ * support: every sortie cooldown a wing of bombers bombs ahead of your attack on the target front (an air-support
+ * zone: enemy defence there is cut, your push goes faster, defenders die and forts are knocked out); strategic: bombers
+ * raid the target nation's cities / factories / markets / ports (normal bomb damage plus a cut to its gold and iron
+ * income for a while); superiority: the fighters patrol a circle (default the airfield) and shoot down enemy
+ * bombers and cargo planes there; idle: nothing automatic. Fighters at a support / strategic airfield escort its
+ * bombers (and cargo planes): an escort fights off one fighter interception.
+ */
+export const AIR = {
+  /** bombers per sortie: base + perLevel x (airfield level - 1), + jets (Jet Engines), + doctrine (Air doctrine held) */
+  wingBase: 3,
+  wingPerLevel: 2,
+  wingJets: 1,
+  wingDoctrine: 1,
+  /** mission reach from the airfield (tiles): range + rangePerLevel x (level - 1) */
+  range: 150,
+  rangePerLevel: 40,
+  /** seconds between sorties (x Air doctrine airfieldReload); when there is nothing to do, check again after idleRecheck */
+  sortieCooldown: 20,
+  idleRecheck: 3,
+  /** support: zone radius (+ per airfield level above 1), how long it lasts after the last strike (s) */
+  supportRadius: 7,
+  supportRadiusPerLevel: 1,
+  supportSeconds: 24,
+  /** support: enemy tile defence cut = maxCut x (1 - decay^strength); strength = bombers that struck the zone */
+  supportMaxCut: 0.45,
+  supportDecay: 0.65,
+  /** support: attacker tile budget x (1 - speed x cut): the push moves faster */
+  supportSpeed: 0.7,
+  /** support strike, per bomber: kills max(minKill x hostile share, killShare x army x tiles hit / their tiles) */
+  supportMinKill: 4000,
+  supportKillShare: 0.03,
+  /** support zone bleeds the defender: per second cut x max(bleedMin, bleedShare x army x zone tiles / their tiles) */
+  supportBleedMin: 60,
+  supportBleedShare: 0.01,
+  /** support: retarget to the nearest hostile tile within this radius when the aim tile was taken */
+  retargetRadius: 26,
+  /** strategic: income cut per bomber (Strategic Bombing x techMul), capped, lasting seconds (Strategic Bombing x techMul) */
+  raidCut: 0.05,
+  raidMaxCut: 0.3,
+  raidSeconds: 45,
+  raidTechMul: 1.6,
+  raidTechMaxCut: 0.45,
+  /** superiority: patrol radius = airfield cover radius x this; patrol centre at most centreReach x cover radius away */
+  superiorityRadiusMul: 1.4,
+  superiorityCentreReach: 2,
+  /** superiority: seconds between interceptions / fighters stationed (x jetsCooldown with Jet Engines) */
+  superiorityCooldown: 8,
+  jetsCooldown: 0.5,
+  /** escort: hits each escorted plane can fight off (Jet Engines: + escortJets); duel chances (see airwings.escortAbsorbs) */
+  escortHits: 1,
+  escortJets: 1,
+  escortDuelKill: 0.3,
+  /** paratroopers: drop size x (1 + paraPerAircraft x aircraft at the airfield), at most paraMaxMul */
+  paraPerAircraft: 0.08,
+  paraMaxMul: 2.2,
+} as const;
