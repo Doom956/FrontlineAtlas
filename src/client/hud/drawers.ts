@@ -870,7 +870,10 @@ export interface SettingsHooks {
   setMuted(m: boolean): void;
   advisorOn(): boolean;
   setAdvisor(on: boolean): void;
-  restartTutorial(): void;
+  /** the in-game guide (guide/guide.ts): on/off and restart from its first step */
+  guideOn(): boolean;
+  setGuide(on: boolean): void;
+  restartGuide(): void;
   leave(): void;
 }
 
@@ -912,7 +915,13 @@ export class SettingsPage implements DrawerPage {
     adv.el.dataset.test = 'advisor-toggle';
     r.append(adv.el, el('p', 'note', 'The advisor line above the command bar suggests a useful next step.'));
     this.sync.push(() => adv.set(hooks.advisorOn()));
-    r.append(btn('Show the tutorial again', 'wide', () => hooks.restartTutorial(), 'help'));
+    const guide = seg2('Guide on', 'Guide off', () => hooks.setGuide(true), () => hooks.setGuide(false));
+    guide.el.dataset.test = 'guide-toggle';
+    r.append(guide.el, el('p', 'note', 'The guide bar walks you through your first game and explains new things once.'));
+    this.sync.push(() => guide.set(hooks.guideOn()));
+    const restart = btn('Restart guide', 'wide', () => hooks.restartGuide(), 'help');
+    restart.dataset.test = 'guide-restart';
+    r.append(restart);
     r.append(sectionTitle('Map'));
     const mm = seg2('Minimap shown', 'Minimap hidden', () => (ctx.ui.showMinimap = true), () => (ctx.ui.showMinimap = false));
     r.append(mm.el, el('p', 'note', 'Key M. Overlays: B shows supply, V shows resources.'));

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Run a balance batch on GitHub's runners instead of this machine (.github/workflows/batch.yml).
 #
-# Usage: scripts/remote-batch.sh <label> [--shards N] [--no-wait] -- <scripts/batch.ts options>
+# Usage: scripts/remote-batch.sh <label> [--shards N] [--no-wait] [--human] -- <scripts/batch.ts options>
+#   --human runs scripts/humanbench.ts instead (its options after --, without --jobs)
 #   e.g. scripts/remote-batch.sh air-sam2 -- --sizes medium --seeds 48 --minutes 50 --decided 0.6 --specialist all
 #
 # Snapshots the working tree as it is (uncommitted changes included, the current branch untouched) onto branch
@@ -15,10 +16,12 @@ label=${1:?label}
 shift
 shards=20
 wait=1
+script=batch
 while [ $# -gt 0 ]; do
   case "$1" in
     --shards) shards=$2; shift 2 ;;
     --no-wait) wait=0; shift ;;
+    --human) script=humanbench; shift ;;
     --) shift; break ;;
     *) echo "unknown option $1" >&2; exit 1 ;;
   esac
@@ -35,6 +38,7 @@ git read-tree HEAD
 git add -A
 git update-index --add --cacheinfo "100644,$(printf '%s\n' "$args" | git hash-object -w --stdin),.bench/args"
 git update-index --add --cacheinfo "100644,$(printf '%s\n' "$shards" | git hash-object -w --stdin),.bench/shards"
+git update-index --add --cacheinfo "100644,$(printf '%s\n' "$script" | git hash-object -w --stdin),.bench/script"
 tree=$(git write-tree)
 unset GIT_INDEX_FILE
 commit=$(git commit-tree "$tree" -p HEAD -m "Batch: $label")

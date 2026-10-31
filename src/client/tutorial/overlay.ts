@@ -8,6 +8,7 @@ import { el, setText } from '../dom';
 import { iconSpan, lineIcon } from '../hud/glyph';
 import { setClass, setVisible } from '../hud/dom';
 import { targetSelectors, type RunnerView, type StepStatus } from './engine';
+import { Spotlight } from './spotlight';
 import './tutorial.css';
 
 export interface OverlayHandlers {
@@ -20,13 +21,6 @@ export interface OverlayHandlers {
   /** close the done card and play on in this game */
   keepPlaying: () => void;
 }
-
-/** Ring padding around the spotlit element (px). */
-const PAD = 6;
-/** HUD panels the arrow stays outside of. */
-const PANELS = '.cmdbar, .drawer, .bm, .cluster, .lb, .ncard, .orders-bar, .bsel';
-/** How far (px) the arrow may move to get outside the element's panel. */
-const ARROW_MAX_SHIFT = 90;
 
 function btn(label: string, cls: string, onClick: () => void, test: string, icon?: string): HTMLButtonElement {
   const b = el('button', `wr-btn ${cls}`);
@@ -66,8 +60,7 @@ export class TutorialOverlay {
   private pips = el('div', 'tut-pips');
   private stepsBtn: HTMLButtonElement;
   private list = el('ol', 'tut-list');
-  private spot = el('div', 'tut-spot');
-  private arrow = el('div', 'tut-arrow');
+  private light = new Spotlight();
   private done = el('div', 'tut-done');
   private doneTitle = el('h2', 'tut-done-t');
   private doneLine = el('p', 'tut-done-l');
@@ -104,12 +97,6 @@ export class TutorialOverlay {
     foot.append(btn('Skip chapter', 'mini ghost', () => h.skipChapter(), 'tut-skip'), btn('Exit tutorial', 'mini ghost', () => h.exit(), 'tut-exit', 'exit'));
     this.card.append(head, this.text, acts, track, this.list, foot);
 
-    // spotlight
-    this.spot.dataset.test = 'tut-spot';
-    this.arrow.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path d="M4 9h9V4l8 8-8 8v-5H4z" fill="currentColor"/></svg>';
-    setVisible(this.spot, false);
-    setVisible(this.arrow, false);
-
     // chapter done
     this.done.dataset.test = 'tut-done';
     this.done.setAttribute('role', 'dialog');
@@ -123,7 +110,7 @@ export class TutorialOverlay {
     this.done.append(dc);
     setVisible(this.done, false);
 
-    this.el.append(this.spot, this.arrow, this.card, this.done);
+    this.el.append(this.light.spot, this.light.arrow, this.card, this.done);
   }
 
   /** Draws the runner's view. nextTitle: the next chapter's title (null = this was the last one). */
@@ -197,65 +184,7 @@ export class TutorialOverlay {
   /** Moves the spotlight onto the step's element and keeps the card clear of open panels (every frame; cheap). */
   frame(): void {
     this.dock();
-    const t = this.target ? findTarget(this.target) : null;
-    if (!t) {
-      this.hideSpot();
-      return;
-    }
-    const r = t.getBoundingClientRect();
-    const host = this.el.getBoundingClientRect();
-    const x = r.left - host.left - PAD;
-    const y = r.top - host.top - PAD;
-    const w = r.width + PAD * 2;
-    const hgt = r.height + PAD * 2;
-    const s = this.spot.style;
-    s.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
-    s.width = `${w.toFixed(1)}px`;
-    s.height = `${hgt.toFixed(1)}px`;
-    setVisible(this.spot, true);
-    // the arrow sits on the side facing the screen's middle and points at the element
-    const vw = host.width || window.innerWidth;
-    const vh = host.height || window.innerHeight;
-    const cx = x + w / 2;
-    const cy = y + hgt / 2;
-    const dx = (cx - vw / 2) / vw;
-    const dy = (cy - vh / 2) / vh;
-    const far = Math.abs(dx) > 0.22 || Math.abs(dy) > 0.22;
-    setVisible(this.arrow, far);
-    if (!far) return;
-    let dir: 'left' | 'right' | 'up' | 'down';
-    if (Math.abs(dx) >= Math.abs(dy)) dir = dx > 0 ? 'right' : 'left';
-    else dir = dy > 0 ? 'down' : 'up';
-    // a wide element at the top or bottom edge reads better with a vertical arrow
-    if (w > vw * 0.4) dir = dy > 0 ? 'down' : 'up';
-    const A = 28;
-    const gap = 8;
-    let ax = cx - A / 2;
-    let ay = cy - A / 2;
-    if (dir === 'right') ax = x - A - gap;
-    else if (dir === 'left') ax = x + w + gap;
-    else if (dir === 'down') ay = y - A - gap;
-    else ay = y + hgt + gap;
-    // outside the panel that holds the element (the command bar, a drawer, the build menu), so it hides nothing there
-    // (only when that stays close: in a big drawer the arrow would end up far from the element, pointing at another one)
-    const panel = t.closest<HTMLElement>(PANELS);
-    if (panel && panel !== t) {
-      const pr = panel.getBoundingClientRect();
-      const bx = ax;
-      const by = ay;
-      if (dir === 'right') ax = Math.min(ax, pr.left - host.left - A - gap);
-      else if (dir === 'left') ax = Math.max(ax, pr.right - host.left + gap);
-      else if (dir === 'down') ay = Math.min(ay, pr.top - host.top - A - gap);
-      else ay = Math.max(ay, pr.bottom - host.top + gap);
-      if (Math.abs(ax - bx) + Math.abs(ay - by) > ARROW_MAX_SHIFT) {
-        ax = bx;
-        ay = by;
-      }
-    }
-    ax = Math.max(4, Math.min(vw - A - 4, ax));
-    ay = Math.max(4, Math.min(vh - A - 4, ay));
-    this.arrow.style.transform = `translate(${ax.toFixed(1)}px, ${ay.toFixed(1)}px)`;
-    if (this.arrow.dataset.dir !== dir) this.arrow.dataset.dir = dir;
+    this.light.onElement(this.target ? findTarget(this.target) : null, this.el.getBoundingClientRect());
   }
 
   /**
@@ -290,8 +219,7 @@ export class TutorialOverlay {
   }
 
   private hideSpot(): void {
-    setVisible(this.spot, false);
-    setVisible(this.arrow, false);
+    this.light.hide();
   }
 
   /** The card yields while a modal (help page, game over) is up. */

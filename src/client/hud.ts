@@ -23,6 +23,8 @@ import type { AudioManager } from './audio';
 import type { Camera } from './camera';
 import { isTribe } from './compat';
 import { AdvisorStrip } from './hud/advisor';
+import { GuideController } from './guide/guide';
+import { tutorialUiFacts } from './tutorial/controller';
 import { Cluster } from './hud/cluster';
 import { ModChips } from './hud/modChips';
 import { CommandBar, techNear } from './hud/commandBar';
@@ -129,6 +131,8 @@ export class Hud {
   private drawer: Drawer;
   private card: NationCard;
   private advisor: AdvisorStrip;
+  /** in-game guide (guide/guide.ts): opening steps and tips; none in Tutorial mode chapters */
+  private guide: GuideController | null = null;
   private toasts: Toasts;
   private tooltip: MapTooltip;
   private unitCard: UnitCard;
@@ -246,6 +250,14 @@ export class Hud {
     this.advisor = new AdvisorStrip(this.ctx);
     if (hudOpts.tutorial) this.advisor.quiet();
     this.tutorialGame = !!hudOpts.tutorial;
+    if (!hudOpts.tutorial) {
+      this.guide = new GuideController(this.ctx, {
+        ui: () => tutorialUiFacts(this.ui, this.tutorialView()),
+        strike: (id) => this.bar?.strikes.statusOf(id)?.state ?? null,
+        modal: () => this.tutorialView().modal,
+        strikeTipShown: (id) => this.advisor.seenStrike(id),
+      });
+    }
     this.drawer.add(
       new SettingsPage(this.ctx, {
         audio: () => this.audio?.getSettings() ?? null,
@@ -253,8 +265,10 @@ export class Hud {
         setMuted: (m) => this.audio?.setMuted(m),
         advisorOn: () => this.advisor.advisorOn,
         setAdvisor: (on) => this.advisor.setAdvisor(on),
-        restartTutorial: () => {
-          this.advisor.restartTutorial();
+        guideOn: () => this.guide?.on ?? false,
+        setGuide: (on) => this.guide?.setOn(on),
+        restartGuide: () => {
+          this.guide?.restart();
           this.drawer.hide();
         },
         leave: () => this.onMenu(),
@@ -266,6 +280,7 @@ export class Hud {
     this.bottomEl = bottom;
     this.orders = new OrdersBar(this.ctx);
     bottom.append(this.orders.el, this.advisor.el, this.bar.el);
+    if (this.guide) this.el.append(this.guide.bar.el);
 
     this.toasts = new Toasts();
     this.tooltip = new MapTooltip(this.ctx);
@@ -404,6 +419,7 @@ export class Hud {
     this.drainEvents(state, me);
     if (!watching) this.followStart(state, me);
     this.updateFast(state, me);
+    if (!watching) this.guide?.frame();
     this.modChips.update(state);
     this.admin.update(state);
     if (now - this.lastSlow >= SLOW_MS) {
@@ -414,6 +430,12 @@ export class Hud {
       if (!watching) this.card.update(state, me);
       this.drawer.update(state, me);
       this.advisor.toastUp = this.toasts.count > 0;
+      if (this.guide) {
+        if (watching) this.guide.bar.render(null);
+        else this.guide.update(state, me, now);
+        // one line at a time: the advisor waits while the guide shows something
+        this.advisor.suppressed = this.guide.showing && !watching;
+      }
       if (!watching) this.advisor.update(state, me, this.bar.strikes);
       if (!watching) this.announceBombers(state, me);
       if (!watching) this.announceCoalition(state, me);
@@ -472,7 +494,6 @@ export class Hud {
       this.drawer.hide();
       return;
     }
-    if (id === 'research') this.advisor.researchOpened = true;
     // the picker answers "Choose a doctrine" and shows a choice itself: its toast would cover the picker's title
     if (id === 'doctrine') this.toasts.dismiss('doctrine');
     if (id === 'events') {
@@ -808,7 +829,8 @@ export class Hud {
     const open = () => this.openDrawer('doctrine');
     const d = me.doctrine;
     if (e.kind === 'doctrineUnlocked') {
-      if (!d?.id && !this.tutorialGame) this.toasts.show({ text: `Choose a doctrine  (${DOCTRINE_KEY})`, kind: 'info', icon: 'doctrine', ms: 7000, key: 'doctrine', onClick: open });
+      // the guide's doctrine tip says the same, with an arrow: no toast while it is due
+      if (!d?.id && !this.tutorialGame && !this.guide?.due('doctrine')) this.toasts.show({ text: `Choose a doctrine  (${DOCTRINE_KEY})`, kind: 'info', icon: 'doctrine', ms: 7000, key: 'doctrine', onClick: open });
     } else if (e.kind === 'doctrineChosen') {
       // ours: made this tick, at our capital (the news about others carries their capital)
       if (d?.id && e.tick === d.chosenTick && e.tile === me.capital && this.drawer.open !== 'doctrine') {

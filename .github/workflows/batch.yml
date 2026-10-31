@@ -1,7 +1,7 @@
 # Balance batches on GitHub's runners (scripts/batch.ts split over many machines).
 # Started by scripts/remote-batch.sh, which pushes a snapshot to a bench/<label> branch with the options in
 # .bench/args and the runner count in .bench/shards. Each runner plays its share of the games with 4 workers; the
-# report job merges them, writes .bench/report.txt and .bench/results.jsonl and pushes them back to the same branch.
+# report job merges them (.bench/script picks scripts/batch.ts (default) or scripts/humanbench.ts), writes .bench/report.txt and .bench/results.jsonl and pushes them back to the same branch.
 # Never runs on main or dev.
 name: Balance batch
 
@@ -49,10 +49,11 @@ jobs:
       - name: Play this runner's games
         run: |
           args=$(cat .bench/args)
+          script=$(cat .bench/script 2>/dev/null || echo batch)
           n=${{ needs.plan.outputs.n }}
           s=${{ matrix.shard }}
           for w in 0 1 2 3; do
-            node_modules/.bin/vite-node scripts/batch.ts -- $args --shard $((s * 4 + w))/$((n * 4)) > out-$w.jsonl 2> err-$w.txt &
+            node_modules/.bin/vite-node scripts/$script.ts -- $args --shard $((s * 4 + w))/$((n * 4)) > out-$w.jsonl 2> err-$w.txt &
           done
           fails=0
           for job in $(jobs -p); do wait "$job" || fails=$((fails + 1)); done
@@ -84,8 +85,9 @@ jobs:
       - name: Merge and report
         run: |
           args=$(cat .bench/args)
+          script=$(cat .bench/script 2>/dev/null || echo batch)
           cat results/*.jsonl > .bench/results.jsonl
-          node_modules/.bin/vite-node scripts/batch.ts -- $args --from .bench/results.jsonl > .bench/report.txt 2>&1 || true
+          node_modules/.bin/vite-node scripts/$script.ts -- $args --from .bench/results.jsonl > .bench/report.txt 2>&1 || true
           cat .bench/report.txt
       - name: Push the results to this branch
         run: |

@@ -17,6 +17,7 @@
 //   --style casual               casual (default) or steady: a player who only sends once its troop bar is 45% full
 //   --trace                      (with --jobs 1) a line per minute about the bot, and its events
 //   --json                       one JSON line per game
+//   --from a.jsonl,b.jsonl       report from JSON lines written by --shard runs (GitHub runners) instead of playing
 //
 // Prints per map x difficulty: share of runs the bot is alive (and the game not lost to an AI win) at 10 / 20 min,
 // its median land share at 10 / 20 min, its median rank among the nations by land at 20 min, the median minute of
@@ -366,6 +367,8 @@ interface Options {
   jobs: number;
   json: boolean;
   shard: number;
+  /** --from: JSON-line result files to report on instead of playing */
+  from: string[];
   of: number;
 }
 
@@ -381,6 +384,7 @@ function parseOptions(argv: string[]): Options {
     jobs: 4,
     json: false,
     shard: -1,
+    from: [],
     of: 1,
   };
   for (let k = 0; k < args.length; k++) {
@@ -396,6 +400,7 @@ function parseOptions(argv: string[]): Options {
       case '--minutes': o.minutes = Number(v); k++; break;
       case '--jobs': o.jobs = Math.max(1, Number(v) || 1); k++; break;
       case '--json': o.json = true; break;
+      case '--from': o.from = list(); k++; break;
       case '--trace': TRACE = true; break;
       case '--style': STYLE = v === 'steady' ? 'steady' : 'casual'; k++; break;
       case '--shard': {
@@ -507,6 +512,15 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const o = parseOptions(argv);
   const jobs = jobList(o);
+  if (o.from.length) {
+    const { readFileSync } = await import('node:fs');
+    const rs: Result[] = [];
+    for (const f of o.from) for (const line of readFileSync(f, 'utf8').split('\n')) if (line.startsWith('{')) rs.push(JSON.parse(line) as Result);
+    rs.sort((a, b) => a.job.index - b.job.index);
+    console.log(`Frontline Atlas human bench report from ${o.from.length} file(s): ${rs.length} of ${jobs.length} games.`);
+    report(rs, o);
+    return;
+  }
   if (o.shard >= 0) {
     for (const j of jobs) if (j.index % o.of === o.shard) process.stdout.write(JSON.stringify(await runGame(j, o.minutes)) + '\n');
     return;
