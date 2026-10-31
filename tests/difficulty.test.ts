@@ -104,26 +104,29 @@ describe('difficulty: AI economy', () => {
 });
 
 describe('difficulty: how AI nations treat a human', () => {
-  it('profiles: easy spares the human longest and sends the least; hard has no human limits', () => {
+  it('profiles: easy spares the human longest and sends the least; hard has early limits; brutal has none', () => {
     const { easy, normal, hard, brutal } = DIFFICULTY;
     expect(easy.humanGrace).toBeGreaterThan(normal.humanGrace);
     expect(normal.humanGrace).toBeGreaterThan(hard.humanGrace);
+    expect(hard.humanGrace).toBeGreaterThan(brutal.humanGrace);
     expect(easy.nukes).toBe(false);
     expect(easy.humanForceCap).toBeLessThan(normal.humanForceCap);
+    expect(normal.humanForceCap).toBeLessThan(hard.humanForceCap);
     expect(normal.humanWarsEarly).toBe(1);
+    expect(hard.humanWarsEarly).toBe(1);
+    expect(hard.humanWarsLate).toBe(Infinity);
     expect(easy.humanWarsLate).toBe(1);
-    for (const p of [hard, brutal]) {
-      expect(p.humanGrace).toBe(0);
-      expect(p.humanForceCap).toBe(Infinity);
-      expect(p.humanWarsEarly).toBe(Infinity);
-      expect(p.careful && p.coordinate && p.nukes).toBe(true);
-    }
+    expect(brutal.humanGrace).toBe(0);
+    expect(brutal.humanForceCap).toBe(Infinity);
+    expect(brutal.humanWarsEarly).toBe(Infinity);
+    for (const p of [hard, brutal]) expect(p.careful && p.coordinate && p.nukes).toBe(true);
   });
 
-  it('easy and normal: no war on the human during its grace; hard attacks at once', () => {
+  it('easy, normal and hard: no war on the human during its grace; brutal attacks at once', () => {
     expect(aiAttacksOnHuman(boxedIn('easy'), 300, 60).size).toBe(0);
     expect(aiAttacksOnHuman(boxedIn('normal'), 300, 60).size).toBe(0);
-    expect(aiAttacksOnHuman(boxedIn('hard'), 300, 60).has(2)).toBe(true);
+    expect(aiAttacksOnHuman(boxedIn('hard'), 300, 60).size).toBe(0);
+    expect(aiAttacksOnHuman(boxedIn('brutal'), 300, 60).has(2)).toBe(true);
   });
 
   it('after the grace, an attack on a human is capped at humanForceCap x its army', () => {
@@ -133,17 +136,19 @@ describe('difficulty: how AI nations treat a human', () => {
     const a = s.attacks.find((x) => x.attacker === 2 && x.target === 1)!;
     const sent = a.troops.infantry + a.troops.armor + a.troops.artillery;
     expect(sent).toBeLessThanOrEqual(DIFFICULTY.normal.humanForceCap * 20000 + 1);
-    // Hard: no cap (it sends far more than the human's army).
-    const h = boxedIn('hard');
+    // Brutal: no cap (it sends far more than the human's army).
+    const h = boxedIn('brutal');
     aiAttacksOnHuman(h, 30, 60);
     const b = h.attacks.find((x) => x.attacker === 2 && x.target === 1)!;
     expect(b.troops.infantry + b.troops.armor + b.troops.artillery).toBeGreaterThan(5 * 20000);
   });
 
-  it('normal: one AI war on the human at a time in the first 10 minutes; hard lets both attack', () => {
+  it('normal and hard: one AI war on the human at a time in the first 10 minutes; brutal lets both attack', () => {
     const n = aiAttacksOnHuman(boxedIn('normal', 3), DIFFICULTY.normal.humanGrace + 10, 40);
     expect(n.size).toBe(1);
-    const h = aiAttacksOnHuman(boxedIn('hard', 3), 30, 40);
+    const hd = aiAttacksOnHuman(boxedIn('hard', 3), DIFFICULTY.hard.humanGrace + 10, 40);
+    expect(hd.size).toBe(1);
+    const h = aiAttacksOnHuman(boxedIn('brutal', 3), 30, 40);
     expect(h.size).toBe(2);
   });
 });
