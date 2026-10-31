@@ -154,7 +154,7 @@ transports are out of it), gold, iron, oil, science. There are no workers and no
   Agriculture x1.5, at most 12 counted), barracks +10% each (3 counted), Medicine x1.2; tribes x0.5.
   `Player.income.pop` is the growth per second.
 - Gold/s = (`GOLD_BASE` 8 + `GOLD_LAND` 0.45 x (land weight)^0.6 + `CITY_GOLD` 5 per city level) x (1 + markets,
-  +12% each up to +120%, x1.5 with Banking) x1.3 with Banking; tribes x0.5; plus trade ship deliveries and loot.
+  +12% each up to +80%, x1.25 with Banking) x1.3 with Banking; tribes x0.5; plus trade ship deliveries and loot.
 - Iron/s = mines * `IRON_PER_MINE` (Metallurgy x1.5). Oil/s = wells * `OIL_PER_WELL`. Industrialization x1.25.
 - Science/s = `BASE_SCIENCE` + labs * `SCIENCE_PER_LAB`.
 - Upkeep: armor burns oil (`ARMOR_OIL_UPKEEP` per unit/s: one well feeds about 600k armor). With no oil, armor
@@ -400,7 +400,7 @@ barrage lose hp and repair at `BUILDING_REPAIR_PER_S`; forts and SAMs are knocke
 |----------|------------------|----:|-------|
 | City | +60k troop cap, +5 gold/s; supply source | 6 | |
 | Farm | +12k troop cap and +4% troop growth (x2 on Fertile) | 5 | not on mountains/desert/swamp/tundra |
-| Market | +12% gold (all together max +120%) | 5 | |
+| Market | +12% gold (all together max +80%) | 5 | |
 | Mine | +iron; within 2 tiles of owned Iron | 5 | |
 | Oil Well | +oil; within 2 tiles of owned Oil | 5 | |
 | Barracks | +10% troop growth, -5% infantry losses (3 levels count) | 3 | |
@@ -506,7 +506,8 @@ the branches into their research order right after the prerequisites.
   disbands (troops go home); a holding division gives own land within `TANK_DEFENSE_RADIUS` +35% defence; bombers
   hurt divisions on the move; a division whose ground is taken falls back. `spearheadPreview` gives the line, the
   expected depth and warnings without changing anything. AIs build divisions from armor and spearhead into their
-  main war (`aiTankDivisions`, through applyAction).
+  main war, or else into the nation attacking them hardest, once the preview expects at least 3 tiles
+  (`aiTankDivisions`, through applyAction).
 - **Trade ship**: each Port periodically sends one to one of a stable handful of partner ports on its sea (a pair
   hash picks them) of players not at war with it (allies weighted x2), so routes stay cached. Delivered gold goes to
   both owners (scaled by path length). Enemy warships sink them.
@@ -596,7 +597,7 @@ the game. AI-only games end with a winner in about 20-35 game minutes on medium 
 ## 10. AI nations and tribes
 
 Personalities change weights: Warlord (attack early, armor heavy), Turtle (forts, artillery, counter-attacks),
-Merchant (cities, markets, ports, trade, alliances), Admiral (ports, warships, invasions), Balanced.
+Merchant (markets, ports, trade, labs), Admiral (ports, warships, invasions), Balanced.
 Difficulty (Easy / Normal / Hard / Brutal, see **Difficulty** below) sets the AI nations' economy, decision speed,
 how well they read the matchups and how they treat a human. AIs act via `applyAction` only. Nothing scans the map:
 each AI reads its **neighbourhood** (border lengths per neighbour, samples of the tiles on both sides of each

@@ -254,7 +254,7 @@ describe('income', () => {
 
     p.techs.push('banking');
     updateEconomy(s);
-    expect(p.income.gold).toBeCloseTo(raw * (1 + MARKET_MAX_BONUS * 1.5) * 1.3, 6);
+    expect(p.income.gold).toBeCloseTo(raw * (1 + MARKET_MAX_BONUS * 1.25) * 1.3, 6);
   });
 
   it('iron, oil, science; Metallurgy and Industrialization', () => {

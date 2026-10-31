@@ -7,7 +7,7 @@ import { formAlliance } from '../src/sim/diplomacy';
 import { hashState } from '../src/sim/hash';
 import { tick } from '../src/sim/sim';
 import { newId } from '../src/sim/state';
-import { bombDivisions, ownLandPath, spawnTankDivision, spearheadPreview, tankDefenseAt, tankDivisionCost, tankDivisionLimit } from '../src/sim/tanks';
+import { aiTankDivisions, bombDivisions, ownLandPath, spawnTankDivision, spearheadPreview, tankDefenseAt, tankDivisionCost, tankDivisionLimit } from '../src/sim/tanks';
 import { Terrain } from '../src/sim/types';
 import type { Building, BuildingType, GameState, Unit } from '../src/sim/types';
 import { claimRect, makeFlatGame } from './helpers';
@@ -245,5 +245,23 @@ describe('AI tank divisions', () => {
     run(s, Math.round((TANK_BUILD_SECONDS + 60) * TICKS_PER_SECOND));
     const built = s.events.some((e) => e.kind === 'tankDivisionReady' && e.players.includes(1));
     expect(built).toBe(true);
+  });
+
+  it('an idle AI division strikes back at the nation attacking it', () => {
+    const s = landGame();
+    const ai = s.players[1];
+    ai.isHuman = false;
+    ai.personality = 'balanced';
+    s.admin!.aiFrozen = false; // no ticks here: only the calls below act
+    const d = spawnTankDivision(s, 1, at(s, 20, 15));
+    const act = (a: Parameters<typeof applyAction>[2]) => applyAction(s, 1, a);
+    // At peace: it holds.
+    aiTankDivisions(s, 1, act);
+    expect(d.state).toBe(0);
+    // Player 2 attacks us: the division heads for a spearhead into player 2.
+    expect(applyAction(s, 2, { type: 'attack', tile: at(s, 29, 15), troops: { infantry: 5000, armor: 0, artillery: 0 } }).ok).toBe(true);
+    aiTankDivisions(s, 1, act);
+    expect(d.state).toBe(2);
+    expect(d.targetOwner).toBe(2);
   });
 });

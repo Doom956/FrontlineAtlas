@@ -995,13 +995,21 @@ export function aiTankDivisions(state: GameState, id: number, act: (a: Action) =
   }
   const idle = mine.filter((u) => u.state === 0 && total(u.troops) >= FULL_DIVISION * 0.5);
   if (!idle.length || personality === 'turtle') return;
-  // The war we fight with the most troops (nations before tribes).
+  // The war we fight with the most troops (nations before tribes), or else the nation attacking us hardest: an idle
+  // division strikes back rather than wait to be overrun.
   let best: { target: number; troops: number } | null = null;
   for (const a of state.attacks) {
-    if (a.attacker !== id || a.target === 0) continue;
-    const tribe = isTribe(state.players[a.target]);
-    const score = total(a.troops) * (tribe ? 0.3 : 1);
-    if (!best || score > best.troops) best = { target: a.target, troops: score };
+    let foe: number;
+    let weight: number;
+    if (a.attacker === id && a.target !== 0) {
+      foe = a.target;
+      weight = isTribe(state.players[a.target]) ? 0.3 : 1;
+    } else if (a.target === id && a.attacker !== 0 && !isTribe(state.players[a.attacker])) {
+      foe = a.attacker;
+      weight = 0.8;
+    } else continue;
+    const score = total(a.troops) * weight;
+    if (!best || score > best.troops) best = { target: foe, troops: score };
   }
   if (!best) return;
   // Their border tile nearest to our first idle division, if the line from there looks worth it.
@@ -1026,6 +1034,8 @@ export function aiTankDivisions(state: GameState, id: number, act: (a: Action) =
     if (near >= 0) act({ type: 'moveTankDivision', unitIds: ids, tile: near });
     return;
   }
-  if (spearheadPreview(state, id, lead.id, tile).expectedDepth < 4) return;
+  // Launch once the line looks worth it (the preview's 'Too weak to get far' bar): waiting longer at the front mostly
+  // ends with the division overrun where it stands.
+  if (spearheadPreview(state, id, lead.id, tile).expectedDepth < 3) return;
   act({ type: 'moveTankDivision', unitIds: ids, tile });
 }

@@ -89,7 +89,7 @@ export const GOLD_BASE = 8;
 export const GOLD_LAND = 0.45;
 export const CITY_GOLD = 5; // per city level
 export const MARKET_GOLD_BONUS = 0.12; // +12% gold per market
-export const MARKET_MAX_BONUS = 1.2;
+export const MARKET_MAX_BONUS = 0.8;
 export const IRON_PER_MINE = 5.0;
 export const OIL_PER_WELL = 2.5;
 export const BASE_SCIENCE = 0.5;
@@ -298,7 +298,7 @@ export const COST_GROWTH = 0.35;
 export const BUILDINGS: Record<BuildingType, BuildingInfo> = {
   city: { name: 'City', hotkey: '1', cost: 800, iron: 0, costGrowth: 0.5, buildTime: 8, tech: null, coastal: false, radius: 0, maxLevel: 6, capturable: true, description: 'More troops (+60k cap) and gold per level; a supply source. Build near it again to upgrade.' },
   farm: { name: 'Farm', hotkey: '2', cost: 300, iron: 0, costGrowth: 0.3, buildTime: 4, tech: null, coastal: false, radius: 0, maxLevel: 5, capturable: true, description: 'More troops (+12k cap) and +4% troop growth per level, double on Fertile land.' },
-  market: { name: 'Market', hotkey: '3', cost: 500, iron: 0, costGrowth: 0.4, buildTime: 5, tech: null, coastal: false, radius: 0, maxLevel: 5, capturable: true, description: '+12% gold per level (all markets together at most +120%).' },
+  market: { name: 'Market', hotkey: '3', cost: 500, iron: 0, costGrowth: 0.4, buildTime: 5, tech: null, coastal: false, radius: 0, maxLevel: 5, capturable: true, description: '+12% gold per level (all markets together at most +80%).' },
   mine: { name: 'Mine', hotkey: '4', cost: 400, iron: 0, costGrowth: 0.3, buildTime: 5, tech: null, coastal: false, radius: 2, maxLevel: 5, capturable: true, description: 'Iron per level (armor, artillery and forts need it). Must be next to an Iron deposit you own.' },
   oilWell: { name: 'Oil Well', hotkey: '5', cost: 450, iron: 20, costGrowth: 0.3, buildTime: 6, tech: null, coastal: false, radius: 2, maxLevel: 5, capturable: true, description: 'Oil per level (armor and aircraft burn it). Must be next to an Oil deposit you own.' },
   barracks: { name: 'Barracks', hotkey: '6', cost: 600, iron: 0, costGrowth: 0.6, buildTime: 6, tech: null, coastal: false, radius: 0, maxLevel: 3, capturable: true, description: '+10% troop growth and -5% infantry losses per level (3 levels count).' },
@@ -404,7 +404,7 @@ export const TECHS: Record<TechId, TechInfo> = {
   logistics: { name: 'Logistics', tier: 1, science: 150, gold: 300, requires: [], description: 'Supply range +50%, attack speed +15%.' },
   fortification: { name: 'Fortification', tier: 1, science: 150, gold: 300, requires: [], description: 'Forts x2.5 and radius 28.' },
   navigation: { name: 'Navigation', tier: 1, science: 150, gold: 300, requires: [], description: 'Warships; transports +50% speed and +1 at sea.' },
-  banking: { name: 'Banking', tier: 2, science: 600, gold: 600, requires: ['agriculture'], description: 'Gold +30%, markets x1.5.' },
+  banking: { name: 'Banking', tier: 2, science: 600, gold: 600, requires: ['agriculture'], description: 'Gold +30%, markets x1.25.' },
   medicine: { name: 'Medicine', tier: 2, science: 600, gold: 600, requires: ['agriculture'], description: 'Hospitals; troop growth +20%.' },
   mechanization: { name: 'Mechanization', tier: 2, science: 600, gold: 600, requires: ['metallurgy'], description: 'Armor +25% attack and defence.' },
   ballistics: { name: 'Ballistics', tier: 2, science: 600, gold: 600, requires: ['metallurgy'], description: 'Artillery +30% attack; unescorted penalty starts at 55%; barrages reach x1.5 farther and reload faster.' },

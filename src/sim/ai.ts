@@ -166,8 +166,8 @@ const PROFILES: Record<Personality, Profile> = {
     maxWars: 1,
     mix: { armor: 0.15, artillery: 0.15 },
     techs: ['agriculture', 'banking', 'navigation', 'medicine', 'metallurgy', 'logistics', 'fortification', 'mechanization', 'flight', 'ballistics', 'industrialization', 'radar', 'rocketry', 'combinedArms', 'nuclearFission'],
-    build: { city: 1.3, market: 1.6, port: 1.6, farm: 1.2, lab: 1.2, barracks: 0.6, factory: 0.7, fort: 0.9 },
-    allyOpinion: 5,
+    build: { market: 1.6, port: 1.6, farm: 1.2, lab: 1.2, barracks: 0.6, factory: 0.7, fort: 0.9 },
+    allyOpinion: 20,
     naval: 0.65,
   },
   admiral: {
@@ -1764,9 +1764,9 @@ function tryBuild(ctx: Ctx, type: BuildingType): boolean {
 /** Cities are upgraded to this level before the AI founds another (unless a front needs supply). */
 const CITY_UPGRADE_FIRST = 3;
 
-/** Most cities an AI founds for its land: one per CITY_TILES tiles (merchants a few more). */
+/** Most cities an AI founds for its land: one per CITY_TILES tiles. */
 function maxCities(ctx: Ctx): number {
-  return 1 + Math.floor((ctx.p.tiles / CITY_TILES) * (ctx.p.personality === 'merchant' ? 1.3 : 1));
+  return 1 + Math.floor(ctx.p.tiles / CITY_TILES);
 }
 
 /** True if a new city may be founded or an existing one upgraded. */
@@ -2474,8 +2474,7 @@ function diplomacy(ctx: Ctx): void {
     ctx.ai.nextDiploTick = state.tick + 60 * TICKS_PER_SECOND;
     return;
   }
-  const merchant = p.personality === 'merchant';
-  ctx.ai.nextDiploTick = state.tick + Math.round((merchant ? 15 : 30) * TICKS_PER_SECOND * (0.75 + state.rng() * 0.5));
+  ctx.ai.nextDiploTick = state.tick + Math.round(30 * TICKS_PER_SECOND * (0.75 + state.rng() * 0.5));
 
   // Renew alliances that are about to expire while we still like them (and don't need them as a target; never the
   // runaway leader).
@@ -2495,7 +2494,7 @@ function diplomacy(ctx: Ctx): void {
     }
   }
 
-  // Propose to a feared strong neighbour, or to a distant nation facing the same threat (merchants: anyone friendly).
+  // Propose to a feared strong neighbour, or to a distant nation facing the same threat.
   const pending = new Set(state.allianceRequests.filter((r) => r.from === id).map((r) => r.to));
   let candidate = 0;
   let bestScore = 0;
@@ -2506,8 +2505,8 @@ function diplomacy(ctx: Ctx): void {
     const sharesThreat = !!threatHood && (threatHood.counts.get(q.id) ?? 0) > 0;
     // Coalition partners: threatened by the runaway leader too, or fighting it (humans included).
     const partner = ctx.coalition && q.id !== ctx.leader && (inCoalition(state, q.id) || atWar(state, q.id, ctx.leader));
-    // Only neighbours, nations facing the same threat, coalition partners, or (merchants) anyone are worth a look.
-    if (!neighbour && !sharesThreat && !merchant && !partner) continue;
+    // Only neighbours, nations facing the same threat and coalition partners are worth a look.
+    if (!neighbour && !sharesThreat && !partner) continue;
     if (q.id === ctx.leader) continue;
     if (isTraitor(state, q.id) || ctx.incoming.has(q.id) || ctx.myAttacks.some((a) => a.target === q.id) || q.id === drop) continue;
     if (!alliancesAllowed(state, id, q.id) || lastOutlet(state, id, q.id)) continue;
@@ -2520,7 +2519,6 @@ function diplomacy(ctx: Ctx): void {
     let s = 0;
     if (neighbour && ratio > 1.3) s = ratio + (1 - prof.aggression);
     else if (!neighbour && sharesThreat) s = 1.5;
-    else if (merchant && op >= 0) s = 0.8;
     if (partner && op > -30) s = Math.max(s, atWar(state, q.id, ctx.leader) ? 2 : 1.6);
     if (s <= 0) continue;
     s += op / 100;
@@ -2538,10 +2536,5 @@ function diplomacy(ctx: Ctx): void {
   // will distrust them and they defend worse for a while).
   if (p.personality === 'warlord' && drop > 0 && ctx.allies.includes(drop) && ctx.m.army[drop] < ctx.army * 0.4 && state.rng() < 0.25) {
     applyAction(state, id, { type: 'breakAlliance', with: drop });
-  }
-
-  // A rare gift: rich merchants sweeten a feared neighbour.
-  if (merchant && p.gold > 6000 && ctx.threatId > 0 && state.opinion[id][ctx.threatId] > -40 && state.rng() < 0.3) {
-    applyAction(state, id, { type: 'gift', to: ctx.threatId, gold: 500, troops: 0 });
   }
 }
