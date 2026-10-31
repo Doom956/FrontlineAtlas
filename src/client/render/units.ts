@@ -11,6 +11,7 @@ import type { Camera } from '../camera';
 import { clamp, css, formatCount, MAP_NUM_FAMILY, type RGB } from './common';
 import { drawTrails, GLYPHS, type Inst, strokeGlyphs } from './unitGlyphs';
 import { isIncoming } from '../forces';
+import { unitVisibleTo } from '../../sim/techtree';
 
 const HIST = 3;
 /** Paratroopers drifting down where a cargo plane arrived (client-only effect). */
@@ -200,6 +201,8 @@ export class UnitLayer {
       const y = oy + (uy + 0.5) * z;
       const S = (base * GLYPHS[u.type].len) / 2;
       if (x < -40 || y < -40 || x > cam.viewW + 40 || y > cam.viewH + 40) continue;
+      // enemy submarines stay hidden until close, sonar, recon or Early Warning shows them (techtree.unitVisibleTo)
+      if (u.variant === 'submarine' && me > 0 && !unitVisibleTo(state, me, u)) continue;
       const own = me > 0 && u.owner === me;
       // far out, units less than a pixel apart are drawn once (your own and the cargo carriers always)
       if (z < 1 && !own && u.type !== 'transport' && u.type !== 'transportPlane') {

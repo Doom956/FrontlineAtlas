@@ -139,6 +139,8 @@ export class ResearchPage implements DrawerPage {
   private footN: HTMLElement;
   private last: { s: GameState; me: Player } | null = null;
   private ro: ResizeObserver | null = null;
+  /** a click on another tech while one is in progress: the second click within a few seconds switches */
+  private switchAsk: { t: TechId; until: number } | null = null;
 
   constructor(private ctx: HudCtx) {
     // header: the two tabs, what is being researched (or science stored), Auto / Manual
@@ -329,6 +331,17 @@ export class ResearchPage implements DrawerPage {
       this.ctx.sound('uiError');
       return;
     }
+    // switching drops the current tech's progress (and frees its fork): ask for a second click first
+    if (me.researching && me.researching !== t && me.researchProgress > 0) {
+      const now = performance.now();
+      if (!this.switchAsk || this.switchAsk.t !== t || now > this.switchAsk.until) {
+        this.switchAsk = { t, until: now + 4000 };
+        const pctDone = Math.floor((me.researchProgress / TECHS[me.researching].science) * 100);
+        this.ctx.toast(`Click ${TECHS[t].name} again to switch: ${TECHS[me.researching].name} (${pctDone}%) loses its progress and gold`, 'info');
+        return;
+      }
+    }
+    this.switchAsk = null;
     this.ctx.act({ type: 'research', tech: t });
   }
 

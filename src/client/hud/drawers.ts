@@ -54,7 +54,7 @@ import { AllyHelp } from './allyHelp';
 import { heartlandBonus, lastStandBonus } from '../allies';
 import { ABILITY_TEXT, article, buildingTexts, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect, terrainNote } from './text';
 import { AirPanel } from './airPanel';
-import { airfieldVariantLine, factoryVariantLine, reconBlock, reconHint, reconLabel, reconOffered, warshipOptions } from './variantOrders';
+import { airfieldVariantLine, factoryVariantLine, reconBlock, reconLabel, reconOffered, warshipOptions } from './variantOrders';
 import { warshipOrderCost } from '../../sim/navy';
 import { VARIANT_NAMES } from '../../sim/variants';
 import { canBuildTankDivision, tankDivisionCost, tankDivisionCount, tankDivisionLimit } from '../../sim/tanks';
@@ -738,7 +738,7 @@ export class BuildingPage implements DrawerPage {
         return res.ok ? '' : res.reason ?? '';
       });
     }
-    // levels queued by Build x3 / x5 or Upgrade area: how many, and a button that cancels them (refund)
+    // levels queued by Build x3 / x5 or Upgrade x3 / x5: how many, and a button that cancels them (refund)
     {
       const q = el('p', 'note bq-note');
       const cancel = btn('Cancel queued levels', 'ghost wide', () => ctx.act({ type: 'cancelQueuedLevels', tile }), 'close');
@@ -784,8 +784,7 @@ export class BuildingPage implements DrawerPage {
       this.upd.push((ss, m) => setText(airNote, airfieldVariantLine(ss, m)));
       if (reconOffered(me)) {
         const rb = add(reconLabel(b), '', 'eye', () => {
-          ctx.ui.mode = { kind: 'recon', airfield: tile };
-          ctx.toast(reconHint(), 'info');
+          ctx.ui.mode = { kind: 'recon', airfield: tile }; // the mode chip shows reconHint()
         }, (ss, m, bb) => reconBlock(ss, m, bb));
         rb.dataset.test = 'order-recon';
       }

@@ -7,6 +7,8 @@
 //   - air support: a subtle dashed disc over each live support zone of yours (and a red one over zones on your land)
 //   - air superiority: the patrol circle of the selected airfield, or of every airfield while picking
 //   - while aiming a stance / mode / mission: the area the click would cover (bombard range, front radius, zone)
+//   - Arsenal: your recon / light-tank reveal circles (steel, fading) and minefields around ports (dotted: brass =
+//     yours or an ally's, red = dangerous to you); the recon aim shows the circle the flight would reveal
 // Cheap: rings and lines only, a few dozen per frame at most.
 import { airPatrolRadius, airSupportRadius, airZones, airWingRange, wingOf } from '../../sim/airwings';
 import { buildingAt, buildingsOf } from '../../sim/buildings';
@@ -14,6 +16,10 @@ import { AIR, ARMOR_SUPPORT_RADIUS, NAVY_CARRIER_SUPPORT_RANGE, NAVY_SUPPORT_RAN
 import { divisionMode } from '../../sim/armor2';
 import { portBlockadedBy, warshipStance } from '../../sim/naval2';
 import { hasTech } from '../../sim/tech';
+import { areAllied } from '../../sim/diplomacy';
+import { minefields } from '../../sim/specials';
+import { revealsOf } from '../../sim/variants';
+import { ARSENAL } from '../../sim/config';
 import type { Building, GameState, Unit } from '../../sim/types';
 import type { Camera } from '../camera';
 import type { UiState } from '../uiState';
@@ -138,6 +144,26 @@ export class PillarOverlay {
       ctx.moveTo(c.x - r * 0.7, c.y + r * 0.7);
       ctx.lineTo(c.x + r * 0.7, c.y - r * 0.7);
       ctx.stroke();
+    }
+
+    // ---- Arsenal: reveal circles of yours, minefields (yours / allied brass, hostile red)
+    for (const rv of revealsOf(state, me)) {
+      const c = at(rv.tile);
+      const r = rv.radius * z;
+      if (!onScreen(c.x, c.y, r)) continue;
+      const fade = Math.min(1, rv.secondsLeft / 10);
+      ring(ctx, c.x, c.y, r, `${STEEL}${0.25 + 0.4 * fade})`, rv.kind === 1 ? [6, 4] : [2, 4], rv.kind === 1 ? `${STEEL}${0.04 + 0.04 * fade})` : undefined);
+    }
+    for (const f of minefields(state)) {
+      const friendly = f.owner === me || areAllied(state, me, f.owner);
+      const c = cam.tileToScreen(f.x + 0.5, f.y + 0.5);
+      const r = f.radius * z;
+      if (!onScreen(c.x, c.y, r)) continue;
+      ring(ctx, c.x, c.y, r, friendly ? `${BRASS}0.35)` : `${RED}0.55)`, [1, 5], friendly ? undefined : `${RED}0.04)`);
+    }
+    if (ui.mode.kind === 'recon' && ui.hoverTile >= 0) {
+      const c = at(ui.hoverTile);
+      ring(ctx, c.x, c.y, ARSENAL.reconRadius * z, `${STEEL}0.8)`, [6, 4], `${STEEL}0.06)`);
     }
 
     // ---- aiming: what the click would cover

@@ -390,7 +390,7 @@ function siteProblem(state: GameState, playerId: number, type: BuildingType, til
   const terrain = map.terrain[tile] as TerrainId;
   if (isWater(terrain)) return 'Cannot build on water';
   if (map.fallout[tile] > 0) return 'This land is irradiated';
-  if (TERRAIN[terrain].noBuild.includes(type)) return `Cannot build a ${info.name} on ${TERRAIN[terrain].name}`;
+  if (TERRAIN[terrain].noBuild.includes(type)) return `Cannot build ${/^[AEIOU]/.test(info.name) ? 'an' : 'a'} ${info.name} on ${TERRAIN[terrain].name}`;
   if (info.coastal && !map.coastal[tile]) return `A ${info.name} must be on the coast`;
   if (map.building[tile] !== 0) return 'This tile already has a building';
   if (type === 'mine' && !depositNear(state, playerId, tile, Resource.Iron, info.radius)) {

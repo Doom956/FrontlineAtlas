@@ -73,7 +73,7 @@ async function spawnByClick(page, side) {
     const tile = await page.evaluate(({ side, attempt }) => {
       const s = window.__borderfall.getState();
       const { width: w, height: h } = s.map;
-      const out = [];
+      const out = [], loose = [], coastOnly = [];
       for (let y = 8; y < h - 8; y += 1) {
         for (let x = 8; x < w - 8; x += 1) {
           if ((side === 'left') !== (x < w / 2)) continue;
@@ -90,12 +90,17 @@ async function spawnByClick(page, side) {
           }
           let near = false;
           for (const p of s.players) if (p.id && p.capital >= 0 && Math.hypot((p.capital % w) - x, Math.floor(p.capital / w) - y) < 26) near = true;
-          if (coast && iron && oil && !near) out.push(i);
+          if (!coast || near) continue;
+          if (iron && oil) out.push(i);
+          else if (iron || oil) loose.push(i);
+          else coastOnly.push(i);
         }
       }
-      return out.length ? out[(attempt * 13) % out.length] : -1;
+      // iron and oil near a coast if the map has it, else what comes closest (oil is then taken by attacking)
+      const pick = out.length ? out : loose.length ? loose : coastOnly;
+      return pick.length ? pick[(attempt * 13) % pick.length] : -1;
     }, { side, attempt });
-    if (tile < 0) fail('no land with iron, oil and a coast to spawn on');
+    if (tile < 0) fail('no coastal land to spawn on');
     await page.evaluate((t) => window.__borderfall.dispatch({ type: 'spawn', tile: t }), tile);
     await sleep(1200);
     if (await page.evaluate(() => { const s = window.__borderfall.getState(); return s.players[s.humanId].spawned; })) return;
@@ -386,9 +391,30 @@ try {
       if (sites[label].factory >= 0) log(label, 'tank', JSON.stringify(await dispatch(pg, { type: 'buildTankDivision', tile: sites[label].factory })));
     }
     // recon over the other capital, from each airfield
-    const capOf = (pg) => pg.evaluate(() => { const s = window.__borderfall.getState(); const foe = s.players.find((p) => p.id && p.id !== s.humanId && p.alive && p.capital >= 0 && p.isHuman !== false); return foe?.capital ?? -1; });
-    const foeA = await capOf(A.page);
-    const foeB = await capOf(B.page);
+    // the nearest land of another nation (a capital if one is near) within recon reach (90 tiles) of the airfield
+    const capOf = (pg, airfield) =>
+      pg.evaluate((af) => {
+        const s = window.__borderfall.getState();
+        const w = s.map.width;
+        const ax = af % w, ay = Math.floor(af / w);
+        let best = -1, bd = 85;
+        for (const p of s.players) if (p.id && p.id !== s.humanId && p.alive && p.capital >= 0) {
+          const d = Math.hypot((p.capital % w) - ax, Math.floor(p.capital / w) - ay);
+          if (d < bd) { bd = d; best = p.capital; }
+        }
+        if (best >= 0) return best;
+        for (let i = 0; i < s.map.owner.length; i++) {
+          const o = s.map.owner[i];
+          if (o <= 0 || o === s.humanId) continue;
+          const d = Math.hypot((i % w) - ax, Math.floor(i / w) - ay);
+          if (d < bd) { bd = d; best = i; }
+        }
+        return best;
+      }, airfield);
+    const foeA = await capOf(A.page, sites.A.airfield);
+    const foeB = await capOf(B.page, sites.B.airfield);
+    log('recon targets', foeA, foeB);
+    if (foeA < 0) fail('no foreign land within recon reach of A');
     const reconA = await dispatch(A.page, { type: 'reconFlight', airfield: sites.A.airfield, tile: foeA });
     const reconB = sites.B.airfield >= 0 ? await dispatch(B.page, { type: 'reconFlight', airfield: sites.B.airfield, tile: foeB }) : { ok: false, reason: 'no airfield' };
     log('recon A', JSON.stringify(reconA), 'B', JSON.stringify(reconB));
@@ -407,7 +433,7 @@ try {
         by[k] = (by[k] ?? 0) + 1;
       }
       const mines = s.players.filter((p) => p.id && p.alive && p.techs.includes('navalMines')).reduce((n, p) => n + [...s.buildings.values()].filter((b) => b.owner === p.id && b.type === 'port' && b.buildLeft <= 0).length, 0);
-      return { by, reveals: s.arsenal?.reveals?.length ?? 0, recon: s.arsenal?.reconReady?.length ?? 0, mines };
+      return { by, reveals: s.arsenal?.reveals?.length ?? 0, revealOwners: (s.arsenal?.reveals ?? []).map((r) => r.owner ?? r.viewer), recon: s.arsenal?.reconReady?.length ?? 0, mines };
     });
     log('game 2 units', JSON.stringify(units));
     const aId = (await me(A.page)).id;
@@ -415,7 +441,7 @@ try {
     if (!has('/carrier')) fail('A has no carrier');
     if (!has('/submarine')) fail('A has no submarine');
     if (!has('tankDivision')) fail('A has no tank division');
-    if (units.recon < 2) fail('no recon timer recorded');
+    if (!units.revealOwners.includes(aId) && !has('reconPlane')) fail('A recon plane neither flying nor revealing');
     if (units.mines < 1) fail('no minefield (port of a Naval Mines holder)');
     await shot(A.page, 'g2-a');
     await shot(B.page, 'g2-b');

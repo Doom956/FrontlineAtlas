@@ -1,6 +1,7 @@
 // The "How to play" page (title screen and in-game help): a quick start on top, everything else in collapsible
 // sections that are closed by default, plus a search box that opens the sections holding a match.
 // Numbers come from the sim config, so the text follows balance changes.
+import { MASTERY_CAP } from '../sim/arsenal';
 import {
   ATOM_RADIUS,
   BARRAGE_DISABLE_SECONDS,
@@ -262,7 +263,15 @@ export function howToPlayContent(): HTMLElement {
   const researchRows: Row[] = [
     { title: 'Science', text: `Builds up over time (Research Labs add more). ${TECH_ORDER.length} techs in ${tiers} tiers; each also costs gold.` },
     { title: 'Auto', text: 'The next useful tech starts by itself. Choosing one by hand turns Auto off.', key: 'T' },
-    { title: 'OR pairs', text: 'Some techs come in pairs marked OR (Stock Exchange or Free Trade, Blitz Tactics or Trench Warfare, Carriers or Submarines ...). Taking one locks the other for good.' },
+    { title: 'OR pairs', text: 'Some techs come in pairs marked OR (Stock Exchange or Free Trade, Blitz Tactics or Trench Warfare ...). Taking one locks the other for good.' },
+    { title: 'Switching', text: 'Clicking another tech while one is in progress asks for a second click: the current one loses its progress and gold.' },
+  ];
+  const arsenalRows: Row[] = [
+    { title: 'Arsenal tab', text: 'The second tab of the Research panel: one row each for Navy, Armor, Air and Shared. Bought like any tech.', key: 'T' },
+    { title: 'Paths', text: 'Each pillar forks (OR): Destroyers + Battleships or Submarines + Carriers; Light or Heavy tanks; Ground-attack planes or Heavy bombers. One path per game.' },
+    { title: 'Specials', text: 'New behaviour, not stats: Naval Mines, Amphibious Tanks, Drop Tanks, Night Bombing, Early Warning. Any path can take them.' },
+    { title: 'Shared', text: 'Mechanized Infantry holds what spearheads take; Recon Planes reveal armies, doctrines and buildings (order it at an Airfield).' },
+    { title: 'Mastery', text: `The last card of a row. At most ${MASTERY_CAP} masteries per game: the header counts "Mastery 1 of ${MASTERY_CAP}".` },
   ];
   const doctrineRows: Row[] = [
     { title: 'Unlock', text: `At ${min(DOCTRINE_UNLOCK_SECONDS)}:00 (half that in a fast game) pick one. It only adds a bonus: every unit, building and strike stays open. The picker marks the three that suit your land and neighbours.`, key: 'Shift D' },
@@ -275,8 +284,9 @@ export function howToPlayContent(): HTMLElement {
     title: DOCTRINES[id].name,
     text: DOCTRINES[id].short,
   }));
-  const research = section('Research and doctrines', 'techs, OR pairs, play styles', [
+  const research = section('Research and doctrines', 'techs, OR pairs, Arsenal paths, mastery, play styles', [
     group('Research', list(researchRows)),
+    group('Arsenal: navy, armor and air paths', list(arsenalRows)),
     group('Doctrines', list(doctrineRows)),
     group('The doctrines', list(doctrineList, true)),
   ]);
