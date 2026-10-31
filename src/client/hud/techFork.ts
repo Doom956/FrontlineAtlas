@@ -1,12 +1,7 @@
-// Tech tree with exclusive choices (the research drawer, hud/researchTree.ts): layout and line routing, no DOM.
-//
-// A choice group (TechInfo.exclusiveGroup) is ONE slot of the tree: its techs sit side by side in a fork with an "OR"
-// marker between them. Tiers are still columns, but a tier with both choices and ordinary techs gets two tracks:
-// its choices first (right next to the techs they branch from), then its ordinary techs. That keeps every track at
-// six rows or fewer, so the tree fits a 1280x720 screen. Lines that have to cross a track run through the gaps
-// between rows and tracks, never behind a card.
-import { TECH_ORDER, TECHS } from '../../sim/config';
-import { groupName } from '../../sim/techtree';
+// Research panel helpers (hud/researchTree.ts, hud/arsenalPage.ts): one-liners and icons of the branch techs, and
+// line geometry (rounded polylines, routing through gaps, the cut mark of a fork not taken). No DOM. The panel's row
+// layout is hud/techRows.ts.
+import { TECHS } from '../../sim/config';
 import type { TechId } from '../../sim/types';
 import { lineIcon, worldGlyph } from './glyph';
 
@@ -52,98 +47,6 @@ export function techParents(t: TechId): { all: TechId[]; any: TechId[] } {
   const info = TECHS[t];
   const any = info.requiresAny ?? [];
   return { all: [...info.requires], any: [...any] };
-}
-
-/** A slot of the tree: one ordinary tech or a whole choice group. */
-export interface TreeSlot {
-  /** tech id, or 'group:<id>' */
-  key: string;
-  techs: TechId[];
-  group: string | null;
-  col: number;
-  row: number;
-}
-export interface TreeTrack {
-  tier: number;
-  choices: boolean;
-  label: string;
-  /** relative width (a fork is wider) */
-  weight: number;
-}
-export interface TreeLayout {
-  slots: TreeSlot[];
-  tracks: TreeTrack[];
-  rows: number;
-  /** slot of every tech */
-  slotOf: Map<TechId, TreeSlot>;
-}
-
-/** Lays the tree out: tracks per tier (choices, then ordinary techs), rows close to their parents. */
-export function forkLayout(order: readonly TechId[] = TECH_ORDER): TreeLayout {
-  const groups = new Map<string, TechId[]>();
-  for (const t of order) {
-    const g = TECHS[t].exclusiveGroup;
-    if (g) groups.set(g, [...(groups.get(g) ?? []), t]);
-  }
-  const slots: TreeSlot[] = [];
-  const seen = new Set<string>();
-  for (const t of order) {
-    const g = TECHS[t].exclusiveGroup;
-    if (g) {
-      if (seen.has(g)) continue;
-      seen.add(g);
-      slots.push({ key: `group:${g}`, techs: groups.get(g)!, group: g, col: -1, row: -1 });
-    } else slots.push({ key: t, techs: [t], group: null, col: -1, row: -1 });
-  }
-  const tierOf = (s: TreeSlot) => Math.min(...s.techs.map((t) => TECHS[t].tier));
-  const tiers = [...new Set(slots.map(tierOf))].sort((a, b) => a - b);
-  const tracks: TreeTrack[] = [];
-  const trackSlots: TreeSlot[][] = [];
-  for (const tier of tiers) {
-    const inTier = slots.filter((s) => tierOf(s) === tier);
-    const forks = inTier.filter((s) => s.group);
-    const plain = inTier.filter((s) => !s.group);
-    if (forks.length) {
-      const wide = Math.max(...forks.map((s) => s.techs.length));
-      tracks.push({ tier, choices: true, label: plain.length ? `Tier ${tier} · choices` : `Tier ${tier} · choose one`, weight: Math.max(1, wide * 0.8) });
-      trackSlots.push(forks);
-    }
-    if (plain.length) {
-      tracks.push({ tier, choices: false, label: `Tier ${tier}`, weight: 1 });
-      trackSlots.push(plain);
-    }
-  }
-  const slotOf = new Map<TechId, TreeSlot>();
-  for (const s of slots) for (const t of s.techs) slotOf.set(t, s);
-  const rows = Math.max(...trackSlots.map((l) => l.length));
-  trackSlots.forEach((list, col) => {
-    const bary = (s: TreeSlot): number => {
-      const ps: number[] = [];
-      for (const t of s.techs) {
-        const p = techParents(t);
-        for (const r of [...p.all, ...p.any]) {
-          const ps2 = slotOf.get(r);
-          if (ps2 && ps2.row >= 0 && ps2.col < col) ps.push(ps2.row);
-        }
-      }
-      return ps.length ? ps.reduce((a, b) => a + b, 0) / ps.length : order.indexOf(s.techs[0]);
-    };
-    const sorted = col === 0 ? list : [...list].sort((a, b) => bary(a) - bary(b) || order.indexOf(a.techs[0]) - order.indexOf(b.techs[0]));
-    const want = sorted.map((s, k) => (col === 0 ? k : Math.round(bary(s))));
-    const at: number[] = [];
-    for (let k = 0; k < sorted.length; k++) at.push(Math.max(k === 0 ? 0 : at[k - 1] + 1, want[k]));
-    for (let k = sorted.length - 1; k >= 0; k--) at[k] = Math.min(at[k], k === sorted.length - 1 ? rows - 1 : at[k + 1] - 1);
-    sorted.forEach((s, k) => {
-      s.col = col;
-      s.row = at[k];
-    });
-  });
-  return { slots, tracks, rows, slotOf };
-}
-
-/** "Finance: choose one" style label of a group. */
-export function forkTitle(group: string): string {
-  return `${groupName(group)}: choose one`;
 }
 
 // ------------------------------------------------------------------------------------------------ line routing

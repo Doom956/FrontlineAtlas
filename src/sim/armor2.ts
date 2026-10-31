@@ -45,6 +45,7 @@ import { atPeace } from './rules';
 import { addEvent } from './state';
 import { hasTech } from './tech';
 import { moveTankDivisions, ownLandPath, spearheadPreview } from './tanks';
+import { armorPocketKillMul, armorPocketMul, armorRefitMul } from './variants';
 import { DIVISION_MODES, TROOP_TYPES, isTribe, isWater } from './types';
 import type { Action, ActionResult, DivisionMode, GameState, Troops, Unit } from './types';
 
@@ -154,7 +155,8 @@ export function collapsePockets(state: GameState, u: Unit, launch: number, headX
     }
   }
   if (!seeds.length) return 0;
-  const cap = Math.min(ARMOR_POCKET_MAX_TILES, Math.floor((vp.tiles - 1) / 2));
+  const maxTiles = Math.round(ARMOR_POCKET_MAX_TILES * armorPocketMul(state, me)); // Armor Mastery (variants.ts)
+  const cap = Math.min(maxTiles, Math.floor((vp.tiles - 1) / 2));
   if (cap < 1) return 0;
   const visited = new Set<number>();
   // Tiles of searches that turned out open: reaching one means this piece is open too (they are not walls).
@@ -163,7 +165,7 @@ export function collapsePockets(state: GameState, u: Unit, launch: number, headX
   const tilesBefore = vp.tiles;
   let taken = 0;
   let pockets = 0;
-  let budget = 4 * ARMOR_POCKET_MAX_TILES;
+  let budget = 4 * maxTiles;
   for (const s0 of seeds) {
     if (visited.has(s0) || owner[s0] !== victim) continue;
     const piece: number[] = [s0];
@@ -216,7 +218,7 @@ export function collapsePockets(state: GameState, u: Unit, launch: number, headX
   // The troops in the pocket are lost (a share of the home army).
   if (vp.alive) {
     const tot = total(vp.troops);
-    const kill = Math.min(tot, (tot * ARMOR_POCKET_KILL * taken) / Math.max(1, tilesBefore));
+    const kill = Math.min(tot, (tot * ARMOR_POCKET_KILL * armorPocketKillMul(state, me) * taken) / Math.max(1, tilesBefore));
     if (kill > 0) {
       for (const k of TROOP_TYPES) vp.troops[k] = Math.max(0, vp.troops[k] - (kill * vp.troops[k]) / tot);
       vp.stats.troopsLost += kill;
@@ -266,7 +268,7 @@ function refit(state: GameState, u: Unit): void {
   if (!p || !p.alive) return;
   const have = total(u.troops);
   if (have >= FULL - 1e-6) return;
-  const rate = nearFactory(state, u) ? ARMOR_REFIT_FACTORY : ARMOR_REFIT_FIELD;
+  const rate = (nearFactory(state, u) ? ARMOR_REFIT_FACTORY : ARMOR_REFIT_FIELD) * armorRefitMul(state, u.owner); // Deep Raids (variants.ts)
   const amount = Math.min(FULL - have, rate * FULL);
   for (const k of TROOP_TYPES) {
     const want = Math.max(0, TANK_DIVISION_TROOPS[k] - u.troops[k]);

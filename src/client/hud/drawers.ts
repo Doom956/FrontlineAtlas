@@ -22,7 +22,7 @@ import { unitCost } from '../../sim/units';
 import { gameSecondsAt } from '../../sim/state';
 import { canResearch, hasTech } from '../../sim/tech';
 import { LAND_TERRAINS, Resource } from '../../sim/types';
-import type { Building, BuildingType, GameEvent, GameState, Player, TechId, TerrainId, Troops } from '../../sim/types';
+import type { Building, BuildingType, GameEvent, GameState, NavalVariant, Player, TechId, TerrainId, Troops } from '../../sim/types';
 import { isTribe } from '../compat';
 import { CATEGORY_COLORS, ICON_INFO, iconDataUrl, markerDataUrl } from '../icons';
 import { CATEGORY_PLATES } from '../render/buildings';
@@ -54,6 +54,9 @@ import { AllyHelp } from './allyHelp';
 import { heartlandBonus, lastStandBonus } from '../allies';
 import { ABILITY_TEXT, article, buildingTexts, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect, terrainNote } from './text';
 import { AirPanel } from './airPanel';
+import { airfieldVariantLine, factoryVariantLine, reconBlock, reconHint, reconLabel, reconOffered, warshipOptions } from './variantOrders';
+import { warshipOrderCost } from '../../sim/navy';
+import { VARIANT_NAMES } from '../../sim/variants';
 import { canBuildTankDivision, tankDivisionCost, tankDivisionCount, tankDivisionLimit } from '../../sim/tanks';
 
 export const TROOP_COLORS = { infantry: '#9aa86a', armor: '#c9a227', artillery: '#c0564a' } as const;
@@ -775,12 +778,23 @@ export class BuildingPage implements DrawerPage {
       add('Paratroopers', 'danger', 'paradrop', () => (ctx.ui.mode = { kind: 'paradrop', airfield: tile }), (_ss, m, bb) =>
         !hasTech(m, 'flight') ? 'Research Flight first' : bb.buildLeft > 0 ? 'Still being built' : bb.dropCooldown > 0 ? `Next drop ready in ${Math.ceil(bb.dropCooldown)} s` : '',
       );
+      // Arsenal (hud/variantOrders.ts): the bomber type of the Air path, and recon flights
+      const airNote = el('p', 'note');
+      actions.before(airNote);
+      this.upd.push((ss, m) => setText(airNote, airfieldVariantLine(ss, m)));
+      if (reconOffered(me)) {
+        const rb = add(reconLabel(b), '', 'eye', () => {
+          ctx.ui.mode = { kind: 'recon', airfield: tile };
+          ctx.toast(reconHint(), 'info');
+        }, (ss, m, bb) => reconBlock(ss, m, bb));
+        rb.dataset.test = 'order-recon';
+      }
     }
     if (b.type === 'factory') {
       // the same Tank division order as the Build menu, right where a player looks for it (this Factory builds it)
       const note = el('p', 'note');
       actions.before(note);
-      this.upd.push((ss, m, bb) => setText(note, bb.buildLeft > 0 ? '' : `${tankDivisionCount(ss, m.id)} of ${tankDivisionLimit(ss, m.id)} tank divisions. A division is commandable: set it to Support front and it breaks through weak spots by itself.`));
+      this.upd.push((ss, m, bb) => setText(note, bb.buildLeft > 0 ? '' : `${tankDivisionCount(ss, m.id)} of ${tankDivisionLimit(ss, m.id)} tank divisions. ${factoryVariantLine(ss, m)} A division is commandable: set it to Support front and it breaks through weak spots by itself.`.replace('  ', ' ')));
       const g0 = ctx.state();
       const price = g0 ? formatCount(tankDivisionCost(g0, b.owner).gold) : '';
       add(`Tank division (${price} gold)`, '', 'plus', () => ctx.act({ type: 'buildTankDivision', tile }), (ss, m, bb) => {
@@ -802,12 +816,15 @@ export class BuildingPage implements DrawerPage {
       }
     }
     if (b.type === 'port') {
-      const g = ctx.state();
-      const first = g ? unitCost(g, b.owner, 'warship') : UNITS.warship;
-      if (allowedNow('warship')) add(`Warship (${formatCount(first.gold)} gold)`, '', 'warship', () => warshipClickMode(ctx), (ss, m, bb) => {
-        const u = unitCost(ss, m.id, 'warship');
-        return !hasTech(m, 'navigation') ? 'Research Navigation first' : bb.buildLeft > 0 ? 'Still being built' : m.gold < u.gold ? 'Not enough gold' : m.iron < u.iron ? 'Not enough iron' : '';
-      });
+      // one button per ship of the chosen Navy path (hud/variantOrders.ts); the standard warship before a pick
+      if (allowedNow('warship')) for (const o of warshipOptions(s, me)) {
+        const x = add(`${o.label} (${formatCount(o.gold)} gold)`, '', 'warship', () => warshipClickMode(ctx, o.variant), (ss, m, bb) => {
+          const u = warshipOrderCost(ss, m.id, o.variant);
+          return !hasTech(m, 'navigation') ? 'Research Navigation first' : bb.buildLeft > 0 ? 'Still being built' : m.gold < u.gold ? 'Not enough gold' : m.iron < u.iron ? 'Not enough iron' : m.oil < u.oil ? 'Not enough oil' : '';
+        });
+        x.dataset.test = `order-${o.variant ?? 'warship'}`;
+        if (!x.dataset.tip) x.dataset.tip = o.tip;
+      }
       add('Send a transport', '', 'transport', () => (ctx.ui.mode = { kind: 'transport', from: tile }), (_ss, _m, bb) => (bb.buildLeft > 0 ? 'Still being built' : ''));
       if (warships.length) {
         r.append(sectionTitle('Warships'));
@@ -1012,10 +1029,11 @@ export function relationOf(s: GameState, me: Player, id: number): { text: string
 }
 
 /** Port "Warship" buttons: the next click picks the water tile (selection.ts spawn mode, valid area shaded). */
-function warshipClickMode(ctx: HudCtx): void {
+function warshipClickMode(ctx: HudCtx, variant?: NavalVariant): void {
   const g = ctx.state();
   const m = ctx.me();
   if (!g || !m) return;
-  const why = enterWarshipSpawnMode(ctx.ui, g, m);
-  ctx.toast(why ? `Warship: ${why}` : 'Warship: click a water tile near your port. Esc cancels.', why ? 'bad' : 'info');
+  const why = enterWarshipSpawnMode(ctx.ui, g, m, variant);
+  const name = variant ? VARIANT_NAMES[variant] : 'Warship';
+  ctx.toast(why ? `${name}: ${why}` : `${name}: click a water tile near your port. Esc cancels.`, why ? 'bad' : 'info');
 }

@@ -3,6 +3,7 @@ import { TECHS, TICK_SECONDS } from './config';
 import { researchRule } from './rules';
 import { addEvent } from './state';
 import { choiceLockReason, missingPrereqs, prereqsMet, techStatus, techStatusReason } from './techtree';
+import { isArsenalTech, masteryLocked } from './arsenal';
 import type { ActionResult, GameState, Player, TechId } from './types';
 
 const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
@@ -22,7 +23,10 @@ export function canResearch(state: GameState, playerId: number, t: TechId): Acti
   // Exclusive choices (techtree.ts): a rival of t researched or being researched locks it.
   const locked = choiceLockReason(p, t);
   if (locked) return FAIL(locked);
-  if ((t === 'carriers' || t === 'submarines' || t === 'jetEngines' || t === 'strategicBombing') && techStatus(state, playerId, t) === 'disabled') {
+  // Mastery in at most MASTERY_CAP pillars (arsenal.ts).
+  const capped = masteryLocked(p, t);
+  if (capped) return FAIL(capped);
+  if ((t === 'carriers' || t === 'submarines' || t === 'jetEngines' || t === 'strategicBombing' || t === 'dropTanks' || t === 'nightBombing' || isArsenalTech(t)) && techStatus(state, playerId, t) === 'disabled') {
     return FAIL(techStatusReason(state, playerId, t) ?? 'Not available in this game');
   }
   if (!prereqsMet(p, t)) return FAIL(`Needs ${missingPrereqs(p, t)}`);

@@ -110,25 +110,33 @@ describe('advisor unit hints', () => {
   });
 });
 
-describe('research tree layout', () => {
-  it('puts tiers in order left to right, prerequisites in earlier tracks, one slot per cell (a choice shares one)', async () => {
-    const { treeLayout, TECH_LINE } = await import('../src/client/hud/researchTree');
-    const { pos, rows, cols, layout } = treeLayout();
-    expect(cols).toBe(layout.tracks.length);
-    // fits the drawer at 1280x720: at most six rows
-    expect(rows).toBeLessThanOrEqual(6);
-    const cells = new Map<string, string>();
+describe('research panel layout', () => {
+  it('puts every tech in one tab and one card, columns left to right by tier, lines only inside a row', async () => {
+    const { TECH_LINE } = await import('../src/client/hud/researchTree');
+    const { panelLayout } = await import('../src/client/hud/techRows');
+    const seen = new Map<string, string>();
+    for (const tab of ['research', 'arsenal'] as const) {
+      const lay = panelLayout(tab);
+      for (const r of lay.rows) {
+        const cells = new Set<string>();
+        const colOf = new Map(r.cards.map((c) => [c.tech, c.col]));
+        for (const c of r.cards) {
+          expect(seen.has(c.tech)).toBe(false);
+          seen.set(c.tech, tab);
+          for (let l = c.lane; l < c.lane + c.span; l++) {
+            const k = `${c.col},${l}`;
+            expect(cells.has(k)).toBe(false);
+            cells.add(k);
+          }
+          expect(c.lane + c.span).toBeLessThanOrEqual(r.lanes);
+        }
+        // every row fits 1280x720: at most two lanes
+        expect(r.lanes).toBeLessThanOrEqual(2);
+        for (const e of r.edges) expect(colOf.get(e.from)!).toBeLessThan(colOf.get(e.to)!);
+      }
+    }
     for (const t of TECH_ORDER) {
-      const p = pos.get(t)!;
-      expect(layout.tracks[p.col].tier).toBe(TECHS[t].tier);
-      expect(p.row).toBeGreaterThanOrEqual(0);
-      expect(p.row).toBeLessThan(rows);
-      // one cell per slot: a choice group's techs share theirs
-      const key = TECHS[t].exclusiveGroup ? `group:${TECHS[t].exclusiveGroup}` : t;
-      const cell = `${p.col},${p.row}`;
-      expect(cells.get(cell) ?? key).toBe(key);
-      cells.set(cell, key);
-      for (const r of [...TECHS[t].requires, ...(TECHS[t].requiresAny ?? [])]) expect(pos.get(r)!.col).toBeLessThan(p.col);
+      expect(seen.has(t)).toBe(true);
       expect(TECH_LINE[t].length).toBeLessThanOrEqual(46);
     }
   });

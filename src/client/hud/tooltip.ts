@@ -60,13 +60,6 @@ export class MapTooltip {
     const uid = ui.mode.kind === 'none' && probe && ui.hoverPx ? probe.unitAt(ui.hoverPx.x, ui.hoverPx.y) : -1;
     const unit = uid >= 0 ? state.units.find((u) => u.id === uid && u.hp > 0) : undefined;
     const key = `${tile}|${unit ? unit.id : -1}|${ui.attackShare}|${ui.attackMixMode}|${ui.mode.kind}|${ui.mode.kind === 'build' ? ui.mode.building : ''}|${effectiveCount(ui, shiftHeld())}|${ui.selection.length > 0}`;
-    // the Upgrade-area tool has its own panel with the live preview (hud/buildMenu.ts)
-    if (ui.mode.kind === 'upgradeArea') {
-      setVisible(this.card, false);
-      setVisible(this.odds, false);
-      this.key = key;
-      return;
-    }
     if (force || key !== this.key) {
       this.key = key;
       if (unit) this.unitCard(state, me, unit);

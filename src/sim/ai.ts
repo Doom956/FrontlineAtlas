@@ -83,6 +83,8 @@ import { canParadrop, paradropMaxTroops, paradropRange, unitCost } from './units
 import { aiAirDoctrineTaste, aiAirTechs, aiAirWings, aiExtraAirfields, airWingBusy } from './airwings';
 import { inOvertime, victoryShareNow } from './victory';
 import { hasTech } from './tech';
+import { pillarOf } from './arsenal';
+import { aiRecon, aiWarshipVariant } from './variantsAI';
 import { aiSpend, aiTechOrder, rejectedBranch } from './aispending';
 import { allyTrustDiscount } from './spending';
 import { techStatus } from './techtree';
@@ -1632,7 +1634,7 @@ function nextTech(ctx: Ctx): TechId | null {
   for (const t of aiTechOrder(state, ctx.id, p.personality, aiAirTechs(state, ctx.id, ctx.prof.techs))) {
     if (hasTech(p, t)) continue;
     if (techStatus(state, ctx.id, t) !== 'available' || rejectedBranch(state, ctx.id, p.personality, t)) continue;
-    if ((t === 'navigation' || t === 'carriers' || t === 'submarines') && !coastal) continue;
+    if ((t === 'navigation' || t === 'carriers' || t === 'submarines' || pillarOf(t) === 'navy') && !coastal) continue; // Navy row (arsenal.ts)
     if (t === 'nuclearFission' && !ctx.diff.nukes) continue;
     avail.push(t);
     if (avail.length >= 2) break;
@@ -1994,7 +1996,8 @@ function naval(ctx: Ctx): void {
     const cap = Math.round(prof.naval * 4 + (ctx.enemies.length ? 1 : 0) + (doctrineActive(state, id) === 'naval' ? 2 : 0));
     const c = unitCost(state, id, 'warship');
     if (ports.length && ships < cap && p.gold > c.gold * 2 && p.iron >= c.iron && p.oil >= c.oil) {
-      applyAction(state, id, { type: 'buildWarship', port: pick(state, ports).tile });
+      const variant = aiWarshipVariant(state, id); // destroyers, battleships, submarines, carriers (variantsAI.ts)
+      applyAction(state, id, variant ? { type: 'buildWarship', port: pick(state, ports).tile, variant } : { type: 'buildWarship', port: pick(state, ports).tile });
     }
   }
 
@@ -2154,6 +2157,7 @@ function airAndMissiles(ctx: Ctx): void {
   const airThreat = enemyAirThreat(ctx);
   // Standing air-wing missions first: support over our main attack, strategic raids, fighter patrols (airwings.ts).
   aiAirWings(state, id, fighting, airThreat);
+  aiRecon(state, id, fighting); // recon flights over the enemy (variantsAI.ts)
 
   for (const af of buildingsOf(state, id, 'airfield')) {
     if (af.buildLeft > 0) continue;

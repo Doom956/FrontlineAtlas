@@ -1,5 +1,5 @@
 // What the unit selection and the unit orders draw on the map (client/selection.ts holds the logic):
-//   - the Shift+drag selection box
+//   - the Shift+drag selection box, and a thin brass outline on the buildings it selected (ui.buildingSel)
 //   - the warship placement mode: the water where a warship can appear, shaded, and a ring / cross at the cursor
 //   - the tank division build mode: rings on your factories
 //   - the spearhead preview: a translucent arrow along spearheadPreview's path, solid as deep as it is expected to
@@ -8,7 +8,8 @@
 import { buildingsOf } from '../../sim/buildings';
 import type { GameState } from '../../sim/types';
 import type { Camera } from '../camera';
-import { previewFor, SPEARHEAD_CONFIRM_MS, splitSelection, warshipSpawnArea, warshipSpawnCheck } from '../selection';
+import { activeBuildings, previewFor, SPEARHEAD_CONFIRM_MS, splitSelection, warshipSpawnArea, warshipSpawnCheck } from '../selection';
+import { FAR_ZOOM, markerSize } from './buildings';
 import type { UiState } from '../uiState';
 import { MAP_NUM_FAMILY } from './common';
 import { pocketPreview } from '../pillars';
@@ -31,6 +32,7 @@ export class SelectionOverlay {
     if (ui.mode.kind === 'buildTankDivision') this.factories(ctx, state, cam);
     if (ui.mode.kind === 'none' && ui.selection.length) this.spearhead(ctx, state, cam, ui, nowMs);
     if (ui.mode.kind === 'adminTile' && ui.mode.brush && ui.hoverTile >= 0) this.brush(ctx, state, cam, ui.hoverTile, ui.mode.radius ?? 0);
+    if (ui.buildingSel.ids.length) this.buildingOutlines(ctx, state, cam, ui);
     const b = ui.selectBox;
     if (b) {
       const x = Math.min(b.x0, b.x1);
@@ -45,6 +47,31 @@ export class SelectionOverlay {
       ctx.strokeRect(x + 0.5, y + 0.5, w, h);
       ctx.setLineDash([]);
     }
+  }
+
+  /** Selected buildings (the Shift+drag box): a thin rounded outline just outside each marker's plate. */
+  private buildingOutlines(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, ui: UiState): void {
+    const list = activeBuildings(state, state.humanId, ui.buildingSel);
+    if (!list.length) return;
+    const w = state.map.width;
+    const z = cam.zoom;
+    const far = z < FAR_ZOOM;
+    const base = far ? Math.max(5, z * 2.2) : markerSize(z);
+    ctx.save();
+    ctx.lineWidth = far ? 1 : 1.5;
+    ctx.strokeStyle = 'rgba(227,192,78,0.9)';
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 2;
+    ctx.beginPath();
+    for (const b of list) {
+      const c = cam.tileToScreen((b.tile % w) + 0.5, ((b.tile / w) | 0) + 0.5);
+      const size = !far && b.type === 'city' ? base * 1.18 : base;
+      const r = far ? size / 2 + 1 : size / 2 + Math.min(3, Math.max(1.5, size * 0.09)) + 3;
+      if (c.x < -r || c.y < -r || c.x > cam.viewW + r || c.y > cam.viewH + r) continue;
+      ctx.roundRect(c.x - r, c.y - r, r * 2, r * 2, far ? 1 : r * 0.45);
+    }
+    ctx.stroke();
+    ctx.restore();
   }
 
   /** Brush outline of the owner console's paint tool. */

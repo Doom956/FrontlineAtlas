@@ -44,6 +44,7 @@ import { addEvent, newId } from './state';
 import { doctrineLess, doctrineMore, doctrinePerk } from './doctrines';
 import { ownsNear } from './territory';
 import { hasTech } from './tech';
+import { revealIntel } from './variants';
 import { techBuildingCostMul, techBuildTimeMul } from './techtree';
 import { isWater, Resource } from './types';
 import type { ActionResult, Building, BuildingType, GameState, MapSize, TerrainId, Troops } from './types';
@@ -721,6 +722,7 @@ export function hasIntel(state: GameState, viewer: number, target: number): bool
   if (viewer > 0 && state.admin?.revealIntel.includes(viewer)) return true;
   if (viewer <= 0) return false;
   if (areAllied(state, viewer, target)) return true;
+  if (revealIntel(state, viewer, target)) return true; // recon flights, light-tank screens (variants.ts)
   const towers = listsOf(state, viewer).watchtower;
   if (towers.length === 0) return false;
   const w = state.map.width;

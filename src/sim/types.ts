@@ -84,7 +84,27 @@ export type TechId =
   | 'diplomaticCorps'
   | 'conscription'
   | 'massMobilization'
-  | 'automation';
+  | 'automation'
+  // Special upgrades (behaviour, not stats; src/sim/specials.ts, config SPECIALS)
+  | 'amphibiousTanks'
+  | 'earlyWarning'
+  | 'navalMines'
+  | 'dropTanks'
+  | 'nightBombing'
+  // Arsenal (arsenal.ts / variants.ts): vehicle variant paths (fork per pillar), shared unlocks, masteries
+  | 'destroyers'
+  | 'battleships'
+  | 'lightTanks'
+  | 'heavyTanks'
+  | 'deepRaids'
+  | 'siegeTanks'
+  | 'groundAttack'
+  | 'heavyBombers'
+  | 'mechInfantry'
+  | 'reconPlanes'
+  | 'navalMastery'
+  | 'armorMastery'
+  | 'airMastery';
 
 export type UnitType =
   | 'transport'
@@ -97,7 +117,19 @@ export type UnitType =
   /** cargo plane carrying paratroopers from an airfield to a drop tile (Action 'paradrop') */
   | 'transportPlane'
   /** commandable armored division (tanks.ts): built at a Factory, moves over own land, launches spearheads */
-  | 'tankDivision';
+  | 'tankDivision'
+  /** recon plane (variants.ts, Action reconFlight): flies from an airfield, reveals a circle for a while, flies home */
+  | 'reconPlane';
+
+/**
+ * Vehicle variants (variants.ts; Unit.variant, absent = the standard unit). Warships: destroyer / battleship (Surface
+ * fleet path), submarine / carrier (Silent service). Tank divisions: lightTank / heavyTank. Bombers: groundAttack /
+ * heavyBomber (stamped at launch from the owner's Air path).
+ */
+export type UnitVariant = 'destroyer' | 'battleship' | 'submarine' | 'carrier' | 'lightTank' | 'heavyTank' | 'groundAttack' | 'heavyBomber';
+export const UNIT_VARIANTS: readonly UnitVariant[] = ['destroyer', 'battleship', 'submarine', 'carrier', 'lightTank', 'heavyTank', 'groundAttack', 'heavyBomber'];
+export type NavalVariant = 'destroyer' | 'battleship' | 'submarine' | 'carrier';
+export const NAVAL_VARIANTS: readonly NavalVariant[] = ['destroyer', 'battleship', 'submarine', 'carrier'];
 
 /**
  * Warship stances (naval2.ts; Unit.stance, Action setUnitStance). auto = hunt enemy ships near its post, bombard enemy
@@ -361,6 +393,10 @@ export interface Unit {
   mission?: number;
   /** air-wing escort (airwings.ts): fighter interceptions this plane's escort can still fight off; absent = 0 */
   escort?: number;
+  /** vehicle variant (variants.ts); absent = the standard unit */
+  variant?: UnitVariant;
+  /** tank division crossing water (Amphibious Tanks, specials.ts): 1 while wading, cleared on landing; absent = 0 */
+  wading?: number;
 }
 
 /** A unit being built (navy.ts warships, tanks.ts divisions): it appears at `tile` at readyTick. */
@@ -375,6 +411,8 @@ export interface QueuedUnit {
   readyTick: number;
   /** tank divisions: the troops taken from the pool for it (returned if the build is lost) */
   troops: Troops;
+  /** warships: the variant ordered (variants.ts); absent = the standard warship */
+  variant?: UnitVariant;
 }
 
 /** Owner console state (admin.ts, Action 'admin'): all deterministic, part of the hash. */
@@ -636,6 +674,33 @@ export interface GameState {
   warMemory?: number[];
   /** air wings, air-support zones and strategic raid damage (airwings.ts); absent = none yet */
   air?: AirState;
+  /** recon reveals, mechanized-infantry hold zones and recon timers (variants.ts); absent = none yet */
+  arsenal?: ArsenalState;
+}
+
+/**
+ * A revealed circle (variants.ts): while it lasts, `owner` has intel on every nation with land, a capital or a building
+ * in it (buildings.hasIntel) and sees its hidden units there (submarines). kind 1 = recon flight, 2 = light-tank screen.
+ */
+export interface RevealZone {
+  owner: number;
+  tile: number;
+  radius: number;
+  untilTick: number;
+  kind: number;
+}
+/** Land a spearhead took with Mechanized infantry (variants.ts): attacks on `owner`'s tiles inside cost more until untilTick. */
+export interface HoldZone {
+  owner: number;
+  tile: number;
+  radius: number;
+  untilTick: number;
+}
+export interface ArsenalState {
+  reveals: RevealZone[];
+  holds: HoldZone[];
+  /** recon timers: [airfield building id, tick its recon plane is ready again, ...] */
+  reconReady: number[];
 }
 
 /** Standing mission of an airfield's air wing (Action setAirMission, airwings.ts). */
@@ -717,7 +782,7 @@ export type Action =
    * port = an own finished Port tile (or -1: the nearest suitable one); tile = the water tile where the ship appears
    * (reachable from that port, within WARSHIP_SPAWN_RANGE). Without tile it appears next to the port.
    */
-  | { type: 'buildWarship'; port: number; tile?: number }
+  | { type: 'buildWarship'; port: number; tile?: number; variant?: NavalVariant }
   | { type: 'moveWarship'; unitId: number; tile: number }
   | { type: 'buildAircraft'; airfield: number; kind: 'bomber' | 'fighter' }
   | { type: 'bomb'; airfield: number; tile: number }
@@ -750,6 +815,8 @@ export type Action =
   | { type: 'buildMany'; building: BuildingType; tile: number; count: number }
   /** queue up to `levels` upgrades for every own building (of one type) within radius of tile, cheapest first */
   | { type: 'upgradeArea'; tile: number; radius: number; building?: BuildingType; levels: number }
+  /** queue 1, 3 or 5 more levels on each selected own building (tiles; bulkbuild.ts), cheapest first as money goes */
+  | { type: 'upgradeBuildings'; tiles: number[]; levels: 1 | 3 | 5 }
   /** cancel the queued (not yet started) levels of the own building on tile; refunds them */
   | { type: 'cancelQueuedLevels'; tile: number }
   /** after the game ended: play on (single player: the human; online: only the private lobby's host) */
@@ -771,6 +838,8 @@ export type Action =
    * superiority = patrol centre (absent = the airfield). refill = re-buy aircraft for the mission automatically.
    */
   | { type: 'setAirMission'; airfield: number; mission: AirMission; target?: number; refill?: boolean }
+  /** recon flight (variants.ts, needs Recon Planes): airfield = an own finished airfield tile or -1 (nearest ready one) */
+  | { type: 'reconFlight'; airfield: number; tile: number }
   | AdminAction;
 
 /** Owner console operations (admin.ts ADMIN_OPS lists them with the fields each one reads). */

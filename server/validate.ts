@@ -2,10 +2,10 @@
 // (game rules are checked by the sim on every client). Valid messages are rebuilt field by field, so unknown extra
 // fields are never relayed to other clients.
 
-import { BUILDINGS, MAX_GROUP_UNITS, TECHS } from '../src/sim/config';
+import { BUILDINGS, MAX_GROUP_UNITS, TECHS, UPGRADE_SELECTION_MAX } from '../src/sim/config';
 import { ADMIN_OP_LIST } from '../src/sim/admin';
 import { DEFAULT_MODIFIERS, validateSetup } from '../src/sim/setup';
-import { AIR_MISSIONS, DIVISION_MODES, DOCTRINE_IDS, WARSHIP_STANCES } from '../src/sim/types';
+import { AIR_MISSIONS, DIVISION_MODES, DOCTRINE_IDS, NAVAL_VARIANTS, WARSHIP_STANCES } from '../src/sim/types';
 import type { Action, GameSetup, Modifiers } from '../src/sim/types';
 import {
   ADMIN_CODE_MAX_LENGTH,
@@ -55,6 +55,8 @@ type FieldSpec =
   | { k: 'siteOrAuto' }
   /** unit id list for group orders: 1..MAX_GROUP_UNITS distinct ids */
   | { k: 'ids' }
+  /** tile list (Action upgradeBuildings): 1..UPGRADE_SELECTION_MAX distinct tiles */
+  | { k: 'tiles' }
   /** any finite number within +-MAX_AMOUNT (owner console amounts may be negative) */
   | { k: 'signed'; optional?: boolean }
   /** short identifier (owner console key: resource, tech, building, doctrine ...) */
@@ -81,7 +83,7 @@ const ACTION_SPECS: ActionSpecs = {
   setArmyMix: { armor: { k: 'share' }, artillery: { k: 'share' } },
   research: { tech: { k: 'enum', values: TECH_IDS } },
   transport: { from: TILE, to: TILE, troops: TROOPS },
-  buildWarship: { port: { k: 'siteOrAuto' }, tile: { k: 'tile', optional: true } },
+  buildWarship: { port: { k: 'siteOrAuto' }, tile: { k: 'tile', optional: true }, variant: { k: 'enum', values: NAVAL_VARIANTS, optional: true } },
   moveWarship: { unitId: ID, tile: TILE },
   buildAircraft: { airfield: ID, kind: { k: 'enum', values: ['bomber', 'fighter'] } },
   bomb: { airfield: ID, tile: TILE },
@@ -119,10 +121,12 @@ const ACTION_SPECS: ActionSpecs = {
   warBonds: {},
   buildMany: { building: { k: 'enum', values: BUILDING_TYPES }, tile: TILE, count: { k: 'amount' } },
   upgradeArea: { tile: TILE, radius: { k: 'amount' }, building: { k: 'enum', values: BUILDING_TYPES, optional: true }, levels: { k: 'amount' } },
+  upgradeBuildings: { tiles: { k: 'tiles' }, levels: { k: 'amount' } },
   cancelQueuedLevels: { tile: TILE },
   setUnitStance: { unitIds: { k: 'ids' }, stance: { k: 'enum', values: WARSHIP_STANCES } },
   setDivisionMode: { unitIds: { k: 'ids' }, mode: { k: 'enum', values: DIVISION_MODES }, front: { k: 'tile', optional: true } },
   setAirMission: { airfield: { k: 'siteOrAuto' }, mission: { k: 'enum', values: AIR_MISSIONS }, target: { k: 'tile', optional: true }, refill: { k: 'bool', optional: true } },
+  reconFlight: { airfield: { k: 'siteOrAuto' }, tile: TILE },
 };
 
 function checkField(spec: FieldSpec, v: unknown): Result<unknown> {
@@ -150,6 +154,11 @@ function checkField(spec: FieldSpec, v: unknown): Result<unknown> {
     case 'ids': {
       if (!Array.isArray(v) || v.length < 1 || v.length > MAX_GROUP_UNITS) return fail(`bad id list (1..${MAX_GROUP_UNITS})`);
       if (!v.every((x) => isInt(x, 0, MAX_ID)) || new Set(v).size !== v.length) return fail('bad id list');
+      return ok(v.slice());
+    }
+    case 'tiles': {
+      if (!Array.isArray(v) || v.length < 1 || v.length > UPGRADE_SELECTION_MAX) return fail(`bad tile list (1..${UPGRADE_SELECTION_MAX})`);
+      if (!v.every((x) => isInt(x, 0, MAX_TILE)) || new Set(v).size !== v.length) return fail('bad tile list');
       return ok(v.slice());
     }
     case 'signed':

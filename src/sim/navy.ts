@@ -26,8 +26,9 @@ import { addEvent, newId } from './state';
 import { hasTech } from './tech';
 import { moveWarship, spawnWarshipAt, unitCost } from './units';
 import { warshipBuildTicks, warshipCount, warshipLimit } from './naval2';
+import { applyWarshipVariant, defaultNavalVariant, navalCanTarget, navalVariantBlock, variantWarshipCost, VARIANT_NAMES } from './variants';
 import { isWater } from './types';
-import type { ActionResult, Building, GameState, QueuedUnit, Unit } from './types';
+import type { ActionResult, Building, GameState, NavalVariant, QueuedUnit, Unit } from './types';
 
 const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
 
@@ -90,12 +91,15 @@ export function warshipSpawnPort(state: GameState, playerId: number, port: numbe
 }
 
 /** Can playerId order a warship at port / water tile right now? (ok, or the reason; nothing changes) */
-export function canOrderWarship(state: GameState, playerId: number, port: number, tile?: number): ActionResult & { port?: number; water?: number } {
+export function canOrderWarship(state: GameState, playerId: number, port: number, tile?: number, variant?: NavalVariant): ActionResult & { port?: number; water?: number } {
   const p = state.players[playerId];
   if (!p || playerId === 0 || !p.alive) return FAIL('No such player');
   const ruled = unitRule(state, 'warship');
   if (ruled) return FAIL(ruled);
   if (!hasTech(p, 'navigation')) return FAIL('Needs research: Navigation');
+  // Variants (variants.ts): an explicit one must be researched; none = the path's first ship.
+  const vBlock = navalVariantBlock(state, playerId, variant);
+  if (vBlock) return FAIL(vBlock);
   let site: Building;
   let water = -1;
   if (tile === undefined) {
@@ -115,11 +119,16 @@ export function canOrderWarship(state: GameState, playerId: number, port: number
   // Fleet cap: grows with port levels (naval2.ts).
   const cap = warshipLimit(state, playerId);
   if (warshipCount(state, playerId) >= cap) return FAIL(`At most ${cap} warships: build or upgrade Ports for more`);
-  const c = unitCost(state, playerId, 'warship');
+  const c = warshipOrderCost(state, playerId, variant);
   if (p.gold < c.gold) return FAIL(`Not enough gold (${c.gold})`);
   if (p.iron < c.iron) return FAIL(`Not enough iron (${c.iron})`);
   if (p.oil < c.oil) return FAIL(`Not enough oil (${c.oil})`);
   return { ok: true, port: site.tile, water };
+}
+
+/** Price of a warship order for playerId: the variant asked for, else the path's default ship (variants.ts). */
+export function warshipOrderCost(state: GameState, playerId: number, variant?: NavalVariant): { gold: number; iron: number; oil: number } {
+  return variantWarshipCost(unitCost(state, playerId, 'warship'), variant ?? defaultNavalVariant(state, playerId));
 }
 
 /** Seconds a warship order takes (build speed modifiers apply; 'instant' = at once). */
@@ -131,18 +140,19 @@ export function warshipBuildSeconds(state: GameState): number {
  * Action buildWarship: pays now; the ship appears on the water tile after warshipBuildSeconds (at once with instant
  * construction). Without `tile` it appears next to the port.
  */
-export function orderWarship(state: GameState, playerId: number, port: number, tile?: number): ActionResult {
-  const r = canOrderWarship(state, playerId, port, tile);
+export function orderWarship(state: GameState, playerId: number, port: number, tile?: number, variant?: NavalVariant): ActionResult {
+  const r = canOrderWarship(state, playerId, port, tile, variant);
   if (!r.ok) return r;
   const p = state.players[playerId];
-  const c = unitCost(state, playerId, 'warship');
+  const v = variant ?? defaultNavalVariant(state, playerId);
+  const c = warshipOrderCost(state, playerId, v);
   p.gold -= c.gold;
   p.iron -= c.iron;
   p.oil -= c.oil;
   // Higher port levels build faster (naval2.ts).
   const ticks = warshipBuildTicks(state, r.port!, warshipBuildSeconds(state));
   if (ticks <= 1) {
-    spawnWarshipAt(state, playerId, r.port!, r.water!);
+    applyWarshipVariant(spawnWarshipAt(state, playerId, r.port!, r.water!), v);
     return { ok: true };
   }
   unitQueue(state).push({
@@ -153,6 +163,7 @@ export function orderWarship(state: GameState, playerId: number, port: number, t
     tile: r.water!,
     readyTick: state.tick + ticks,
     troops: { infantry: 0, armor: 0, artillery: 0 },
+    ...(v ? { variant: v } : {}),
   });
   return { ok: true };
 }
@@ -173,8 +184,9 @@ export function updateNavyQueue(state: GameState): void {
       addEvent(state, 'unitLost', `${p.name} lost a warship being built: its port is gone`, [item.owner], item.site);
       continue;
     }
-    spawnWarshipAt(state, item.owner, item.site, item.tile);
-    addEvent(state, 'warshipReady', 'Warship ready', [item.owner], item.tile);
+    const nv = item.variant as NavalVariant | undefined;
+    applyWarshipVariant(spawnWarshipAt(state, item.owner, item.site, item.tile), nv);
+    addEvent(state, 'warshipReady', `${nv ? VARIANT_NAMES[nv] : 'Warship'} ready`, [item.owner], item.tile);
   }
   if (changed) state.unitQueue = q.filter((u) => u.readyTick >= 0);
 }
@@ -340,7 +352,8 @@ export function interceptStep(
       returnToPost(state, u);
       return;
     }
-    if (d2(t.x, t.y, u.x, u.y) > detect2) {
+    if (d2(t.x, t.y, u.x, u.y) > detect2 || !navalCanTarget(state, u, t)) {
+      // out of sight (a submarine dived away: variants.ts)
       u.chaseLost = (u.chaseLost ?? 0) + WARSHIP_SCAN_TICKS;
       if (u.chaseLost >= WARSHIP_CHASE_GIVE_UP * TICKS_PER_SECOND) {
         returnToPost(state, u);
@@ -364,6 +377,7 @@ export function interceptStep(
     if (d > detect2) continue;
     const rank = interceptRank(state, u.owner, s, wars);
     if (rank < 0 || d2(s.x, s.y, postX, postY) > leash2) continue;
+    if (!navalCanTarget(state, u, s)) continue; // hidden submarines (variants.ts)
     if (rank < bestRank || (rank === bestRank && (d < bestD || (d === bestD && best !== null && s.id < best.id)))) {
       best = s;
       bestRank = rank;

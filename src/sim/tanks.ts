@@ -56,8 +56,10 @@ import { formationTiles, ownGroup, unitQueue } from './navy';
 import { atPeace, buildSeconds, frontRate, peaceReason, sameTeam } from './rules';
 import { addEvent, newId, setOwner } from './state';
 import { hasTech } from './tech';
+import { afterDivisionMove, amphibLaunchBonus, amphibWaterSpeed, canWade, hasAmphibious, isWading, narrowWater, spearheadMayWade } from './specials';
 import { isProtected } from './admin';
 import { tankDivisionMods } from './techtree';
+import { armorBandWidth, armorBreaksThrough, armorCostMul, armorDefenseMul, armorDepthMul, armorLossMul, armorSpeedMul, holdDefenseAt, onFortBreached, onSpearheadDone } from './variants';
 import { aiDivisionModes, collapsePockets, divisionLimitFor, divisionStep, onSpearheadEnded, vetLossMul, vetSpeedMul } from './armor2';
 import { ARMOR_POCKET_EVERY, ARMOR_SUPPORT_READY } from './config';
 import { Terrain, TROOP_TYPES, isTribe, isWater } from './types';
@@ -103,7 +105,7 @@ export interface TankDivisionCost {
 export function tankDivisionCost(state: GameState, playerId: number): TankDivisionCost {
   const c = UNITS.tankDivision;
   const p = state.players[playerId];
-  const k = p ? tankDivisionMods(state, playerId).costMul : 1; // Railways (techtree.ts)
+  const k = p ? tankDivisionMods(state, playerId).costMul * armorCostMul(state, playerId) : 1; // Railways (techtree.ts); light / heavy (variants.ts)
   const pool = p ? p.troops : zero();
   return {
     gold: Math.round(c.gold * k),
@@ -232,11 +234,12 @@ const SQRT2 = 1.4142135623730951;
  * `to`, both own land. Returns the tiles after `from` up to `to` ([] when from === to), or null when unreachable
  * within the search budget.
  */
-export function ownLandPath(state: GameState, owner: number, from: number, to: number, budget = TANK_PATH_BUDGET): number[] | null {
+export function ownLandPath(state: GameState, owner: number, from: number, to: number, budget = TANK_PATH_BUDGET, wade?: (t: number) => boolean): number[] | null {
   const map = state.map;
   const w = map.width;
   const h = map.height;
-  const own = (t: number): boolean => map.owner[t] === owner && !isWater(map.terrain[t]);
+  // wade (Amphibious Tanks, specials.ts): narrow water tiles count as passable too
+  const own = (t: number): boolean => (map.owner[t] === owner && !isWater(map.terrain[t])) || (wade !== undefined && wade(t));
   if (!own(from) || !own(to)) return null;
   if (from === to) return [];
   const tx = to % w;
@@ -324,6 +327,13 @@ export function ownLandPath(state: GameState, owner: number, from: number, to: n
   return out;
 }
 
+/** Own-land route, else (Amphibious Tanks, specials.ts) one that wades across narrow water. */
+function landOrWadePath(state: GameState, owner: number, from: number, to: number): number[] | null {
+  const path = ownLandPath(state, owner, from, to);
+  if (path || !hasAmphibious(state, owner)) return path;
+  return ownLandPath(state, owner, from, to, TANK_PATH_BUDGET, (t) => narrowWater(state, t));
+}
+
 /** Moves along u.path at `speed` tiles/s; stops (holding) where the route leaves own land. True on arrival. */
 function drive(state: GameState, u: Unit, speed: number): boolean {
   const w = state.map.width;
@@ -331,7 +341,7 @@ function drive(state: GameState, u: Unit, speed: number): boolean {
   let step = speed * TICK_SECONDS;
   while (step > 0 && u.pathPos < u.path.length) {
     const t = u.path[u.pathPos];
-    if (owner[t] !== u.owner) {
+    if (owner[t] !== u.owner && !(isWater(state.map.terrain[t]) && canWade(state, u.owner, t))) {
       // The route was cut (land lost): hold where we are.
       u.path = [];
       u.pathPos = 0;
@@ -364,7 +374,7 @@ function launchTileFor(state: GameState, owner: number, tile: number): number {
   const map = state.map;
   let best = -1;
   let bestD = Infinity;
-  forEachInRadius(map, tile, TANK_LAUNCH_REACH, (i, d) => {
+  forEachInRadius(map, tile, TANK_LAUNCH_REACH + amphibLaunchBonus(state, owner), (i, d) => {
     if (map.owner[i] !== owner || isWater(map.terrain[i])) return;
     if (d < bestD || (d === bestD && i < best)) {
       bestD = d;
@@ -462,7 +472,7 @@ export function moveTankDivisions(state: GameState, playerId: number, unitIds: u
     for (let k = 0; k < free.length; k++) {
       const u = free[k];
       const dest = slots.length ? slots[k % slots.length] : tile;
-      const path = ownLandPath(state, playerId, unitTileOf(state, u), dest);
+      const path = landOrWadePath(state, playerId, unitTileOf(state, u), dest);
       if (!path) continue;
       u.path = path;
       u.pathPos = 0;
@@ -501,7 +511,7 @@ export function moveTankDivisions(state: GameState, playerId: number, unitIds: u
         }
       }
     }
-    const path = ownLandPath(state, playerId, unitTileOf(state, u), launch);
+    const path = landOrWadePath(state, playerId, unitTileOf(state, u), launch);
     if (!path) continue;
     u.path = path;
     u.pathPos = 0;
@@ -528,20 +538,22 @@ function armorShare(p: Player | undefined): number {
 }
 /** Head speed (tiles/s) entering a tile of terrain `ter` (0 = can't). */
 function headSpeed(state: GameState, u: Unit, ter: number, defender: number): number {
+  if (isWater(ter)) return amphibWaterSpeed(state, u.owner) * frontRate(state); // Amphibious Tanks (specials.ts)
   let s = TANK_SPEARHEAD_SPEED * (TANK_TERRAIN_SPEED[ter] ?? 0.5);
-  if (ter === Terrain.Mountains && !artillerySupport(u)) return 0;
+  if (ter === Terrain.Mountains && !artillerySupport(u) && !armorBreaksThrough(state, u.owner)) return 0; // heavy tanks (variants.ts)
   const p = state.players[u.owner];
   s *= tankDivisionMods(state, u.owner).speedMul * vetSpeedMul(u); // Blitz Tactics (techtree.ts), veterancy (armor2.ts)
+  s *= armorSpeedMul(state, u.owner); // light / heavy tanks (variants.ts)
   if (ter === Terrain.Plains || ter === Terrain.Desert) s *= doctrineMore(state, u.owner, 'openGroundSpeed');
   if (defender > 0 && hasTech(state.players[defender], 'trenchWarfare')) s *= 0.7;
   return s * frontRate(state);
 }
 function maxDepth(state: GameState, u: Unit): number {
-  return TANK_SPEARHEAD_MAX_DEPTH * tankDivisionMods(state, u.owner).depthMul * vetSpeedMul(u); // Blitz Tactics, veterancy
+  return TANK_SPEARHEAD_MAX_DEPTH * tankDivisionMods(state, u.owner).depthMul * vetSpeedMul(u) * armorDepthMul(state, u.owner); // Blitz Tactics, veterancy, light / heavy (variants.ts)
 }
 
 /** Loss for taking tile t (owner o) with the division, or a reason it can't be taken. */
-function bandCost(state: GameState, u: Unit, t: number, o: number): { loss: number; killed: number } | string {
+function bandCost(state: GameState, u: Unit, t: number, o: number): { loss: number; killed: number; fort?: boolean } | string {
   const map = state.map;
   const ter = map.terrain[t];
   if (isWater(ter)) return 'reached the coast';
@@ -550,12 +562,14 @@ function bandCost(state: GameState, u: Unit, t: number, o: number): { loss: numb
     const why = spearheadBlock(state, u.owner, o);
     if (why) return 'the way is barred';
   }
-  const arty = artillerySupport(u);
+  const arty = artillerySupport(u) || armorBreaksThrough(state, u.owner); // heavy tanks break through (variants.ts)
+  const fort = o > 0 && fortMultiplierAt(state, t, o) > 1.01;
   if (ter === Terrain.Mountains && !arty) return 'stalled in the mountains';
-  if (o > 0 && fortMultiplierAt(state, t, o) > 1.01 && !arty) return 'stopped by a fort';
+  if (fort && !arty) return 'stopped by a fort';
   const c = tileFightCost(state, u.owner, u.troops, o, t);
   if (!Number.isFinite(c.loss)) return 'cannot fight there';
   let loss = c.loss * TANK_SPEARHEAD_LOSS * (TANK_TERRAIN_LOSS[ter] ?? 1) * vetLossMul(u); // veterancy (armor2.ts)
+  loss *= armorLossMul(state, u.owner, ter, fort); // light / heavy tanks, Siege Tanks, Mechanized infantry (variants.ts)
   if (o > 0) {
     // the defender's Trench Warfare already raises c.loss (tileFightCost -> techLossMul): not counted twice
     loss *= 1 + TANK_ARMOR_DEFENSE * armorShare(state.players[o]);
@@ -584,14 +598,14 @@ function killDefenders(state: GameState, victim: number, amount: number, killer:
 }
 
 /** Band tiles across the line at `center` (the centre first), TANK_SPEARHEAD_WIDTH wide. */
-function band(state: GameState, center: number, ux: number, uy: number, out: number[]): number {
+function band(state: GameState, center: number, ux: number, uy: number, out: number[], width = TANK_SPEARHEAD_WIDTH): number {
   const w = state.map.width;
   const h = state.map.height;
   const cx = center % w;
   const cy = (center / w) | 0;
   out[0] = center;
   let n = 1;
-  const half = (TANK_SPEARHEAD_WIDTH - 1) >> 1;
+  const half = (width - 1) >> 1;
   for (let k = 1; k <= half; k++) {
     for (const s of [1, -1]) {
       const x = cx + Math.round(-uy * k * s);
@@ -679,6 +693,7 @@ function startSpearhead(state: GameState, u: Unit): void {
 function endSpearhead(state: GameState, u: Unit, why: string): void {
   // Pockets the line cut off collapse (armor2.ts).
   if (u.launch !== undefined && u.cargo > 0) collapsePockets(state, u, u.launch, u.x, u.y);
+  if (u.launch !== undefined) onSpearheadDone(state, u, u.launch, u.x, u.y, u.cargo); // Mechanized infantry holds (variants.ts)
   const p = state.players[u.owner];
   const lost = Math.max(0, (u.strength0 ?? total(u.troops)) - total(u.troops));
   const o = u.targetOwner;
@@ -747,9 +762,15 @@ function stepSpearhead(state: GameState, u: Unit): void {
   const ny = ly + uy * nd;
   const cur = Math.round(u.y) * w + Math.round(u.x);
   const next = Math.round(ny) * w + Math.round(nx);
+  if (next !== cur && isWater(map.terrain[next]) && spearheadMayWade(state, u, lx, ly, ux, uy, nd)) {
+    // Amphibious Tanks (specials.ts): the head wades across narrow water (no band to take there).
+    u.x = nx;
+    u.y = ny;
+    return;
+  }
   if (next !== cur) {
     // Entering a new tile: take the band across the line (the centre must fall, the sides if affordable).
-    const n = band(state, next, ux, uy, bandScratch);
+    const n = band(state, next, ux, uy, bandScratch, armorBandWidth(state, u.owner, TANK_SPEARHEAD_WIDTH)); // light tanks: thin (variants.ts)
     const floor = (u.strength0 ?? total(u.troops)) * TANK_SPEARHEAD_MIN_SHARE;
     const takenBefore = u.cargo;
     for (let k = 0; k < n; k++) {
@@ -773,6 +794,7 @@ function stepSpearhead(state: GameState, u: Unit): void {
       }
       loseTroops(state, u, c.loss, o);
       killDefenders(state, o, c.killed, u.owner);
+      if (c.fort) onFortBreached(state, u, t, o); // Siege Tanks knock the fort out (variants.ts)
       setOwner(state, t, u.owner);
       u.cargo++;
       if (!u.hp) return;
@@ -818,10 +840,11 @@ export function updateTanks(state: GameState): void {
     any = true;
     if (u.state === 3) {
       stepSpearhead(state, u);
+      if (u.hp > 0 && (u.wading || hasAmphibious(state, u.owner))) afterDivisionMove(state, u); // landings (specials.ts)
       continue;
     }
     const here = unitTileOf(state, u);
-    if (state.map.owner[here] !== u.owner) {
+    if (state.map.owner[here] !== u.owner && !isWading(state, u)) {
       // The ground under a division that isn't attacking was taken: it falls back home, beaten.
       loseTroops(state, u, total(u.troops) * 0.25, state.map.owner[here]);
       addEvent(state, 'unitLost', `${p.name}'s tank division was overrun and fell back`, [u.owner], here);
@@ -834,6 +857,11 @@ export function updateTanks(state: GameState): void {
         if (u.state === 2) startSpearhead(state, u);
         else u.state = 0;
       }
+    }
+    // Amphibious Tanks (specials.ts): landings cost troops; a holding division left in the water falls back home.
+    if ((u.wading || hasAmphibious(state, u.owner)) && afterDivisionMove(state, u)) {
+      disbandDivision(state, u);
+      continue;
     }
     // Refit, support / refit modes (armor2.ts).
     if (u.state === 0 || u.state === 1) divisionStep(state, u);
@@ -874,9 +902,9 @@ export function tankDefenseAt(state: GameState, defender: number, tile: number):
   for (let k = 0; k < l.length; k += 2) {
     const dx = l[k] - x;
     const dy = l[k + 1] - y;
-    if (dx * dx + dy * dy <= r2) return (1 + TANK_DEFENSE_BONUS) * tankDivisionMods(state, defender).defenseMul; // Trench Warfare
+    if (dx * dx + dy * dy <= r2) return (1 + TANK_DEFENSE_BONUS) * tankDivisionMods(state, defender).defenseMul * armorDefenseMul(state, defender); // Trench Warfare, light / heavy (variants.ts)
   }
-  return 1;
+  return holdDefenseAt(state, defender, tile); // Mechanized infantry hold zones (variants.ts)
 }
 
 /** A bomber of `bomber` hit `tile`: hostile divisions on the move within BOMBER_RADIUS lose TANK_BOMBER_KILL. */
@@ -958,10 +986,11 @@ export function spearheadPreview(state: GameState, playerId: number, unitId: num
     const o = map.owner[t];
     if (o === playerId && !isWater(map.terrain[t])) continue; // own pockets cost nothing
     const ter = map.terrain[t];
-    if (ter === Terrain.Mountains) warn(artillerySupport(sim) ? 'Mountains ahead: slow and costly even with artillery' : 'Mountains ahead: spearhead will stall');
+    const breaks = artillerySupport(sim) || armorBreaksThrough(state, playerId);
+    if (ter === Terrain.Mountains) warn(breaks ? 'Mountains ahead: slow and costly even with artillery' : 'Mountains ahead: spearhead will stall');
     if (ter === Terrain.Forest || ter === Terrain.Hills) warn('Forests or hills ahead: the spearhead slows down');
     if (ter === Terrain.Swamp) warn('Swamp ahead: the spearhead bogs down');
-    if (o > 0 && fortMultiplierAt(state, t, o) > 1.01) warn(artillerySupport(sim) ? 'Fort ahead: artillery will breach it at a high cost' : 'Fort ahead: spearhead will stop (bring artillery)');
+    if (o > 0 && fortMultiplierAt(state, t, o) > 1.01) warn(breaks ? 'Fort ahead: it will be breached at a high cost' : 'Fort ahead: spearhead will stop (bring artillery)');
     const c = bandCost(state, sim, t, o);
     if (typeof c === 'string') {
       if (c === 'reached the coast') warn('Water ahead: the spearhead ends at the coast');

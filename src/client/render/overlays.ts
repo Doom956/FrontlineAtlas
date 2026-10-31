@@ -670,24 +670,6 @@ export class Overlays {
         pill(ctx, gs.x, gs.y - size / 2 - (up ? size * 0.4 : 0) - 14, text, ok ? (up ? '#82afe1' : '#9cc86e') : '#e6705a', up && ok ? 'up' : 'none');
         break;
       }
-      case 'upgradeArea': {
-        // the circle, a ring on every building it would upgrade ("+2"), and the total in the label
-        const pv = state.humanId > 0 ? bulkPreviews.area(state, state.humanId, hover, mode.radius, mode.building, mode.levels) : null;
-        const okA = !!pv && pv.levelsQueued > 0;
-        const size = Math.max(18, clamp(6 + z * 2.3, 14, 34));
-        for (const b of pv?.plan ?? []) {
-          const c = cam.tileToScreen((b.tile % this.w) + 0.5, ((b.tile / this.w) | 0) + 0.5);
-          ctx.beginPath();
-          ctx.arc(c.x, c.y, size * 0.75, 0, Math.PI * 2);
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = 'rgba(130,175,225,0.95)';
-          ctx.stroke();
-          pill(ctx, c.x, c.y - size * 0.75 - 9, `+${b.levels}`, '#82afe1', 'up');
-        }
-        const label = !pv ? 'Upgrade area' : okA ? `${pv.buildings} building${pv.buildings === 1 ? '' : 's'} · +${pv.levelsQueued} level${pv.levelsQueued === 1 ? '' : 's'}` : pv.error ?? 'Nothing to upgrade here';
-        this.aimDisc(ctx, cam, hs.x, hs.y, okA, [{ radius: mode.radius }], label);
-        break;
-      }
       case 'bomb': {
         const t = this.check(state, ui, hover);
         if (t?.from !== undefined) lineFrom(t.from, 'rgba(255,255,255,0.6)');

@@ -6,13 +6,16 @@
 //   building of that type it queues up to `count` more levels (also while it is still being built or upgraded).
 // - Action upgradeArea { tile, radius, building?, levels 1..BULK_MAX_COUNT }: queues up to `levels` more levels on
 //   every own building (of one type) within radius, cheapest level first, as far as the money goes.
+// - Action upgradeBuildings { tiles, levels 1 | 3 | 5 }: the same for a list of own buildings (the client's Shift+drag
+//   box selection, client/selection.ts): up to `levels` more levels each, cheapest level first, as far as the money
+//   goes; tiles without a building of yours are skipped (an order fails only when none is yours).
 // - Action cancelQueuedLevels { tile }: drops the levels that have not started and refunds what they cost.
 //
 // Payment: every queued level is paid up front at the price it has in the order (buildings.buildingCostAfter: each
 // level makes the next of that type dearer, as single orders would). When the gold or iron runs out the order
 // queues only what can be paid now and says so ("upgrades what it can"). Building.queuedLevels / queuedPaid are sim
 // state (hash.ts); updateBuildQueues starts the next queued level when a building is idle.
-import { BUILDING_UPGRADE_RADIUS, BUILDINGS, BULK_MAX_COUNT, UPGRADE_AREA_MAX_BUILDINGS, UPGRADE_AREA_MAX_RADIUS } from './config';
+import { BUILDING_UPGRADE_RADIUS, BUILDINGS, BULK_MAX_COUNT, UPGRADE_AREA_MAX_BUILDINGS, UPGRADE_AREA_MAX_RADIUS, UPGRADE_SELECTION_MAX } from './config';
 import {
   build,
   buildingAt,
@@ -233,8 +236,7 @@ function planArea(
   building: BuildingType | undefined,
   levels: number,
   limit: boolean,
-): { cands: Building[]; take: Map<number, number>; cost: BulkCost; requested: number } {
-  const p = state.players[pid];
+): LevelPlan {
   const w = state.map.width;
   const r = Math.min(UPGRADE_AREA_MAX_RADIUS, radius);
   const r2 = r * r;
@@ -242,6 +244,18 @@ function planArea(
     .filter((b) => dist2(w, b.tile, tile) <= r2 && effectiveLevel(b) < buildingMaxLevel(b.type))
     .sort((a, b) => dist2(w, a.tile, tile) - dist2(w, b.tile, tile) || a.id - b.id)
     .slice(0, UPGRADE_AREA_MAX_BUILDINGS);
+  return planLevels(state, pid, cands, levels, limit);
+}
+
+interface LevelPlan {
+  cands: Building[];
+  take: Map<number, number>;
+  cost: BulkCost;
+  requested: number;
+}
+/** Up to `levels` more levels on each candidate: cheapest next level first (money limited when `limit`). */
+function planLevels(state: GameState, pid: number, cands: Building[], levels: number, limit: boolean): LevelPlan {
+  const p = state.players[pid];
   const want = new Map<number, number>();
   let requested = 0;
   for (const b of cands) {
@@ -279,6 +293,48 @@ function planArea(
   return { cands, take, cost, requested };
 }
 
+/** Pays and queues a planned order (prices as planned: each level raises its type's next price). */
+function applyPlan(state: GameState, pid: number, plan: UpgradeAreaPreview['plan']): void {
+  const p = state.players[pid];
+  const byType = new Map<BuildingType, number>();
+  for (const e of plan) byType.set(e.type, (byType.get(e.type) ?? 0) + e.levels);
+  const typePaid = new Map<BuildingType, BulkCost>();
+  for (const [type, n] of byType) {
+    const c: BulkCost = { gold: 0, iron: 0 };
+    for (let k = 0; k < n; k++) {
+      const one = buildingCostAfter(state, pid, type, k);
+      c.gold += one.gold;
+      c.iron += one.iron;
+    }
+    typePaid.set(type, c);
+  }
+  for (const e of plan) {
+    const b = state.buildings.get(e.id);
+    const all = typePaid.get(e.type)!;
+    const share = e.levels / byType.get(e.type)!;
+    const paid = { gold: all.gold * share, iron: all.iron * share };
+    p.gold -= paid.gold;
+    p.iron -= paid.iron;
+    if (b) enqueue(state, b, e.levels, paid);
+  }
+}
+
+/** Fills a preview from a money-limited plan and an unlimited one (for shortBy). */
+function fillPreview(state: GameState, pid: number, got: LevelPlan, all: LevelPlan, out: UpgradeAreaPreview): void {
+  const p = state.players[pid];
+  out.candidates = got.cands.length;
+  out.requested = got.requested;
+  out.cost = got.cost;
+  out.shortBy = { gold: Math.max(0, all.cost.gold - p.gold), iron: Math.max(0, all.cost.iron - p.iron) };
+  for (const b of got.cands) {
+    const n = got.take.get(b.id) ?? 0;
+    if (n <= 0) continue;
+    out.plan.push({ id: b.id, tile: b.tile, type: b.type, levels: n });
+    out.levelsQueued += n;
+  }
+  out.buildings = out.plan.length;
+}
+
 function areaError(state: GameState, pid: number, tile: number, radius: number, building: BuildingType | undefined, levels: number): string | null {
   const p = state.players[pid];
   if (!p || pid <= 0 || !p.alive) return 'No such player';
@@ -303,20 +359,9 @@ export function upgradeAreaPreview(
   };
   const bad = areaError(state, pid, tile, radius, building, levels);
   if (bad) return { ...out, error: bad };
-  const p = state.players[pid];
   const got = planArea(state, pid, tile, radius, building, levels, true);
   const all = planArea(state, pid, tile, radius, building, levels, false);
-  out.candidates = got.cands.length;
-  out.requested = got.requested;
-  out.cost = got.cost;
-  out.shortBy = { gold: Math.max(0, all.cost.gold - p.gold), iron: Math.max(0, all.cost.iron - p.iron) };
-  for (const b of got.cands) {
-    const n = got.take.get(b.id) ?? 0;
-    if (n <= 0) continue;
-    out.plan.push({ id: b.id, tile: b.tile, type: b.type, levels: n });
-    out.levelsQueued += n;
-  }
-  out.buildings = out.plan.length;
+  fillPreview(state, pid, got, all, out);
   if (!out.candidates) out.error = building ? `No ${BUILDINGS[building].name} of yours here that can be upgraded` : 'No building of yours here that can be upgraded';
   else if (!out.levelsQueued) out.error = 'Not enough gold or iron for any upgrade here';
   return out;
@@ -327,31 +372,105 @@ export function upgradeArea(state: GameState, pid: number, tile: number, radius:
   const pv = upgradeAreaPreview(state, pid, tile, radius, building, levels);
   if (pv.error) return FAIL(pv.error);
   const p = state.players[pid];
-  // Pay level by level in the planned order of types (prices as planned: each level raises its type's next price).
-  const byType = new Map<BuildingType, number>();
-  for (const e of pv.plan) byType.set(e.type, (byType.get(e.type) ?? 0) + e.levels);
-  const typePaid = new Map<BuildingType, BulkCost>();
-  for (const [type, n] of byType) {
-    const c: BulkCost = { gold: 0, iron: 0 };
-    for (let k = 0; k < n; k++) {
-      const one = buildingCostAfter(state, pid, type, k);
-      c.gold += one.gold;
-      c.iron += one.iron;
-    }
-    typePaid.set(type, c);
-  }
-  for (const e of pv.plan) {
-    const b = state.buildings.get(e.id);
-    const all = typePaid.get(e.type)!;
-    const share = e.levels / byType.get(e.type)!;
-    const paid = { gold: all.gold * share, iron: all.iron * share };
-    p.gold -= paid.gold;
-    p.iron -= paid.iron;
-    if (b) enqueue(state, b, e.levels, paid);
-  }
+  applyPlan(state, pid, pv.plan);
   if (p.isHuman) {
     const short = pv.levelsQueued < pv.requested ? ` (could afford ${pv.levelsQueued} of ${pv.requested})` : '';
     addEvent(state, 'info', `Upgrades ordered: ${levelWord(pv.levelsQueued)} on ${pv.buildings} building${pv.buildings === 1 ? '' : 's'}${short}`, [pid], tile);
+  }
+  return { ok: true };
+}
+
+// ------------------------------------------------------------------------------------------------ upgradeBuildings
+
+/** Levels an upgradeBuildings order may ask for per building. */
+export const UPGRADE_LEVEL_CHOICES = [1, 3, 5] as const;
+export type UpgradeLevels = (typeof UPGRADE_LEVEL_CHOICES)[number];
+
+export interface UpgradeBuildingsPreview extends UpgradeAreaPreview {
+  /** selected tiles that hold a building of yours */
+  own: number;
+  /** of those, already at (or queued to) their top level */
+  maxed: number;
+  /** seconds until the last ordered level is built (the slowest building; levels of one building go one by one) */
+  seconds: number;
+  /** price of the cheapest next level among the selected buildings (what one level costs at least) */
+  cheapest: BulkCost;
+}
+
+/** The own buildings an upgradeBuildings order is about, in the order of `tiles` (each once). */
+function selectedOwn(state: GameState, pid: number, tiles: readonly number[]): Building[] {
+  const out: Building[] = [];
+  const seen = new Set<number>();
+  for (const t of tiles) {
+    const b = buildingAt(state, t);
+    if (!b || b.owner !== pid || seen.has(b.id) || state.buildings.get(b.id) !== b) continue;
+    seen.add(b.id);
+    out.push(b);
+  }
+  return out;
+}
+
+/** Seconds a building is still busy with work already ordered (construction / upgrade running, queued levels). */
+function busySeconds(state: GameState, b: Building): number {
+  const lv = buildTimeFor(state, b.owner, b.type);
+  return Math.max(0, b.buildLeft) + Math.max(0, b.upgradeLeft) + (b.queuedLevels || 0) * lv;
+}
+
+/** What Action upgradeBuildings would queue now (pure; the selection bar reads it). */
+export function upgradeBuildingsPreview(state: GameState, pid: number, tiles: readonly number[], levels: number): UpgradeBuildingsPreview {
+  const out: UpgradeBuildingsPreview = {
+    error: null, buildings: 0, candidates: 0, levelsQueued: 0, requested: 0, cost: { gold: 0, iron: 0 }, shortBy: { gold: 0, iron: 0 }, plan: [],
+    own: 0, maxed: 0, seconds: 0, cheapest: { gold: 0, iron: 0 },
+  };
+  const p = state.players[pid];
+  if (!p || pid <= 0 || !p.alive) return { ...out, error: 'No such player' };
+  if (!Array.isArray(tiles) || tiles.length < 1 || tiles.length > UPGRADE_SELECTION_MAX) return { ...out, error: `Select 1 to ${UPGRADE_SELECTION_MAX} buildings` };
+  const n = state.map.width * state.map.height;
+  if (!tiles.every((t) => Number.isInteger(t) && t >= 0 && t < n)) return { ...out, error: 'Invalid tile' };
+  if (!(UPGRADE_LEVEL_CHOICES as readonly number[]).includes(levels)) return { ...out, error: 'Levels must be 1, 3 or 5' };
+  const own = selectedOwn(state, pid, tiles);
+  out.own = own.length;
+  if (!own.length) return { ...out, error: 'None of these buildings is yours' };
+  const cands = own.filter((b) => effectiveLevel(b) < buildingMaxLevel(b.type));
+  out.maxed = own.length - cands.length;
+  if (!cands.length) return { ...out, error: own.length === 1 ? 'This building is at its highest level' : 'All selected buildings are at their highest level' };
+  const got = planLevels(state, pid, cands, levels, true);
+  const all = planLevels(state, pid, cands, levels, false);
+  fillPreview(state, pid, got, all, out);
+  for (const e of out.plan) {
+    const b = state.buildings.get(e.id)!;
+    out.seconds = Math.max(out.seconds, busySeconds(state, b) + e.levels * buildTimeFor(state, pid, b.type));
+  }
+  const c = buildingCostAfter(state, pid, cheapestType(state, pid, cands), 0);
+  out.cheapest = { gold: c.gold, iron: c.iron };
+  if (!out.levelsQueued) {
+    out.error = p.gold + 1e-9 < c.gold ? `Not enough gold (${Math.ceil(c.gold)} for the cheapest level)` : `Not enough iron (${Math.ceil(c.iron)} for the cheapest level)`;
+  }
+  return out;
+}
+/** The candidate type whose next level costs the least gold (first on ties). */
+function cheapestType(state: GameState, pid: number, cands: Building[]): BuildingType {
+  let best = cands[0].type;
+  let bg = buildingCostAfter(state, pid, best, 0).gold;
+  for (const b of cands) {
+    const g = buildingCostAfter(state, pid, b.type, 0).gold;
+    if (g < bg) {
+      bg = g;
+      best = b.type;
+    }
+  }
+  return best;
+}
+
+/** Action upgradeBuildings. */
+export function upgradeBuildings(state: GameState, pid: number, tiles: readonly number[], levels: number): ActionResult {
+  const pv = upgradeBuildingsPreview(state, pid, tiles, levels);
+  if (pv.error) return FAIL(pv.error);
+  const p = state.players[pid];
+  applyPlan(state, pid, pv.plan);
+  if (p.isHuman) {
+    const short = pv.levelsQueued < pv.requested ? ` (could afford ${pv.levelsQueued} of ${pv.requested})` : '';
+    addEvent(state, 'info', `Upgrades ordered: ${levelWord(pv.levelsQueued)} on ${pv.buildings} building${pv.buildings === 1 ? '' : 's'}${short}`, [pid], pv.plan[0].tile);
   }
   return { ok: true };
 }

@@ -8,7 +8,7 @@ import { canSpawnAt, spawnPlayer } from './state';
 import { startResearch } from './tech';
 import { BUILDINGS, TECHS } from './config';
 import { buyWarBonds, fundAlly, hireMercenaries } from './spending';
-import { buildMany, cancelQueuedLevels, upgradeArea } from './bulkbuild';
+import { buildMany, cancelQueuedLevels, upgradeArea, upgradeBuildings } from './bulkbuild';
 import { launchBarrage } from './barrage';
 import { chooseDoctrine } from './doctrines';
 import { buildAircraft, launchBomber, launchMissile, launchParadrop, launchTransport, moveWarship } from './units';
@@ -17,9 +17,10 @@ import { buildTankDivision, moveTankDivisions } from './tanks';
 import { setUnitStance } from './naval2';
 import { setDivisionMode } from './armor2';
 import { setAirMission } from './airwings';
+import { reconFlight } from './variants';
 import { aiActionBlocked, applyAdmin } from './admin';
 import { continueGame } from './victory';
-import { TROOP_TYPES } from './types';
+import { NAVAL_VARIANTS, TROOP_TYPES } from './types';
 import type { Action, ActionResult, GameState, Player, Troops } from './types';
 
 const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
@@ -138,9 +139,10 @@ export function applyAction(state: GameState, playerId: number, action: Action):
     }
     case 'buildWarship':
       if (action.tile !== undefined && !isTile(state, action.tile)) return FAIL('Invalid tile');
-      if (action.tile !== undefined && action.port === -1) return orderWarship(state, playerId, -1, action.tile);
+      if (action.variant !== undefined && (typeof action.variant !== 'string' || !NAVAL_VARIANTS.includes(action.variant))) return FAIL('Unknown ship type');
+      if (action.tile !== undefined && action.port === -1) return orderWarship(state, playerId, -1, action.tile, action.variant);
       if (!isTile(state, action.port)) return FAIL('Invalid tile');
-      return orderWarship(state, playerId, action.port, action.tile);
+      return orderWarship(state, playerId, action.port, action.tile, action.variant);
     case 'moveWarship':
       if (!isTile(state, action.tile)) return FAIL('Invalid tile');
       return moveWarship(state, playerId, action.unitId, action.tile);
@@ -211,6 +213,8 @@ export function applyAction(state: GameState, playerId: number, action: Action):
       if (!isTile(state, action.tile)) return FAIL('Invalid tile');
       if (action.building !== undefined && (typeof action.building !== 'string' || !(action.building in BUILDINGS))) return FAIL('Unknown building');
       return upgradeArea(state, playerId, action.tile, action.radius, action.building, action.levels);
+    case 'upgradeBuildings':
+      return upgradeBuildings(state, playerId, action.tiles, action.levels);
     case 'cancelQueuedLevels':
       if (!isTile(state, action.tile)) return FAIL('Invalid tile');
       return cancelQueuedLevels(state, playerId, action.tile);
@@ -229,6 +233,11 @@ export function applyAction(state: GameState, playerId: number, action: Action):
       if (action.airfield !== -1 && !isTile(state, action.airfield)) return FAIL('Invalid tile');
       if (action.target !== undefined && !isTile(state, action.target)) return FAIL('Invalid tile');
       return setAirMission(state, playerId, action.airfield, action.mission, action.target, action.refill);
+    // ---- recon planes (variants.ts) ----
+    case 'reconFlight':
+      if (action.airfield !== -1 && !isTile(state, action.airfield)) return FAIL('Invalid tile');
+      if (!isTile(state, action.tile)) return FAIL('Invalid tile');
+      return reconFlight(state, playerId, action.airfield, action.tile);
     // ---- warship stances (naval2.ts) and division modes (armor2.ts) ----
     case 'setUnitStance':
       return setUnitStance(state, playerId, action.unitIds, action.stance);

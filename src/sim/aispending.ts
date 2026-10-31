@@ -15,6 +15,7 @@ import { fundAllyEffect, mercenaryPrice, warBondsInfo } from './spending';
 import { rivalsOf, techStatus } from './techtree';
 import { isTribe } from './types';
 import type { Attack, GameState, Personality, TechId } from './types';
+import { aiArsenalTech, aiForkPick, aiPriorityArsenalTech, aiSkipsArsenalTech } from './variantsAI';
 
 /** Lean toward the FIRST member of each group by personality (0..1; missing = 0.5). */
 const BRANCH_LEAN: Record<string, Partial<Record<Personality, number>>> = {
@@ -28,7 +29,9 @@ const BRANCH_LEAN: Record<string, Partial<Record<Personality, number>>> = {
 /** An AI researches this many techs of its profile order before any branch tech. */
 const AI_BRANCHES_AFTER = 10;
 /** Branch techs in the order an AI weighs them (exclusive pairs: only the picked member is used). */
-const BRANCH_TECHS: TechId[] = TECH_ORDER.filter((t) => !!TECHS[t].exclusiveGroup || !!TECHS[t].requiresAny || ['propaganda', 'railways'].includes(t));
+const BRANCH_TECHS: TechId[] = TECH_ORDER.filter(
+  (t) => !!TECHS[t].exclusiveGroup || !!TECHS[t].requiresAny || ['propaganda', 'railways'].includes(t) || aiArsenalTech(t), // + arsenal paths (variantsAI.ts)
+);
 
 function mix(a: number, b: number): number {
   let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x6b43a9b5, 0xc2b2ae35);
@@ -49,15 +52,23 @@ export function aiBranchPick(state: GameState, id: number, personality: Personal
   const p = state.players[id];
   // Already chosen (or researching one): stick to it.
   for (const t of members) if (p && (p.techs.includes(t) || p.researching === t)) return t;
+  // Arsenal forks: by the map and personality (variantsAI.ts).
+  const fork = aiForkPick(state, id, group);
+  if (fork) return fork;
   const lean = BRANCH_LEAN[group]?.[personality ?? 'balanced'] ?? 0.5;
   const u = mix(state.settings.seed * 131 + id, groupSalt(group));
   return u < lean ? members[0] : members[members.length - 1];
 }
 
-/** True for techs an AI never wants: the rival of its pick in an exclusive group. */
+/**
+ * True for techs an AI never wants: the rival of its pick in an exclusive group, anything after a rejected one (the other
+ * arsenal branch), and masteries outside its committed pillar (variantsAI.ts).
+ */
 export function rejectedBranch(state: GameState, id: number, personality: Personality | null, t: TechId): boolean {
   const g = TECHS[t].exclusiveGroup;
-  return !!g && aiBranchPick(state, id, personality, g) !== t;
+  if (g && aiBranchPick(state, id, personality, g) !== t) return true;
+  if (aiSkipsArsenalTech(state, id, t)) return true;
+  return TECHS[t].requires.some((r) => rejectedBranch(state, id, personality, r));
 }
 
 /**
@@ -83,11 +94,24 @@ export function aiTechOrder(state: GameState, id: number, personality: Personali
   };
   // Branches only once the core of the profile is done (the base tree paces the game: armor, artillery, flight,
   // atom bombs), then one branch tech after each further profile tech, the rest at the end.
+  // The arsenal path of the pillar the nation committed to comes right after its prerequisites (variantsAI.ts).
+  // Cheapest first (a shared unlock before an expensive upgrade), then in TECH_ORDER.
+  const readyPriority = (): TechId | null => {
+    let best: TechId | null = null;
+    for (const q of pending) {
+      const info = TECHS[q];
+      if (!aiPriorityArsenalTech(state, id, q)) continue;
+      if (!info.requires.every((r) => have.has(r)) || (info.requiresAny && !info.requiresAny.some((r) => have.has(r)))) continue;
+      if (!best || info.science < TECHS[best].science) best = q;
+    }
+    return best;
+  };
   let k = 0;
   for (const t of profile) {
     if (have.has(t)) continue;
     out.push(t);
     have.add(t);
+    for (let b = readyPriority(); b; b = readyPriority()) take(b);
     if (++k >= AI_BRANCHES_AFTER) {
       const b = ready();
       if (b) take(b);

@@ -12,6 +12,9 @@ import { TECH_EFFECTS as E, TECH_GROUP_NAMES, TECH_ORDER, TECHS, TICKS_PER_SECON
 import { areAllied } from './diplomacy';
 import { atPeace, mods, researchRule } from './rules';
 import { addEvent } from './state';
+import { earlyWarningSees, nightDodges } from './specials';
+import { arsenalItem, masteryLocked } from './arsenal';
+import { subRevealedTo } from './variants';
 import type { BuildingType, GameState, Player, SpendState, TechId, Unit } from './types';
 
 export type TechStatus = 'done' | 'researching' | 'available' | 'locked-prereq' | 'locked-choice' | 'disabled';
@@ -64,9 +67,16 @@ export function missingPrereqs(p: Player, t: TechId): string {
   if (info.requiresAny?.length && !info.requiresAny.some((r) => owns(p, r))) parts.push(info.requiresAny.map((r) => TECHS[r].name).join(' or '));
   return parts.join(' and ');
 }
-/** The rival tech that locks t for p (researched, or being researched), or null. */
+/**
+ * The rival tech that locks t for p (researched, or being researched), or null. A tech after a locked one (Battleships
+ * after Destroyers once Submarines is chosen: arsenal.ts forks) is locked by the same choice.
+ */
 export function choiceLockedBy(p: Player, t: TechId): TechId | null {
   for (const o of rivalsOf(t)) if (owns(p, o) || p.researching === o) return o;
+  for (const r of TECHS[t]?.requires ?? []) {
+    const by = choiceLockedBy(p, r);
+    if (by) return by;
+  }
   return null;
 }
 /** "You chose Free Trade; Stock Exchange is locked", or null when t is not locked by a choice. */
@@ -85,6 +95,14 @@ function disabledReason(state: GameState, t: TechId): string | null {
   if (m.research === 'off') return 'Research is off in this game';
   if ((t === 'carriers' || t === 'submarines') && m.noNavy) return 'Warships are off in this game';
   if ((t === 'jetEngines' || t === 'strategicBombing') && m.noAir) return 'Aircraft are off in this game';
+  if ((t === 'dropTanks' || t === 'nightBombing') && m.noAir) return 'Aircraft are off in this game'; // specials.ts
+  // Arsenal variants and masteries (arsenal.ts) of a pillar whose weapons are off.
+  const it = arsenalItem(t);
+  if (it && (it.kind === 'variant' || it.kind === 'mastery')) {
+    if (it.pillar === 'navy' && m.noNavy) return 'Warships are off in this game';
+    if (it.pillar === 'air' && m.noAir) return 'Aircraft are off in this game';
+  }
+  if (t === 'reconPlanes' && m.noAir) return 'Aircraft are off in this game';
   return null;
 }
 
@@ -95,7 +113,7 @@ export function techStatus(state: GameState, pid: number, t: TechId): TechStatus
   if (owns(p, t)) return 'done';
   if (p.researching === t) return 'researching';
   if (disabledReason(state, t) || researchRule(state)) return 'disabled';
-  if (choiceLockedBy(p, t)) return 'locked-choice';
+  if (choiceLockedBy(p, t) || masteryLocked(p, t)) return 'locked-choice'; // forks; mastery cap (arsenal.ts)
   if (!prereqsMet(p, t)) return 'locked-prereq';
   return 'available';
 }
@@ -111,7 +129,7 @@ export function techStatusReason(state: GameState, pid: number, t: TechId): stri
     case 'disabled':
       return disabledReason(state, t) ?? researchRule(state) ?? 'Not available';
     case 'locked-choice':
-      return choiceLockReason(p, t);
+      return choiceLockReason(p, t) ?? masteryLocked(p, t);
     case 'locked-prereq':
       return `Needs ${missingPrereqs(p, t)}`;
     default:
@@ -186,9 +204,14 @@ export function techBuildTimeMul(state: GameState, pid: number): number {
 export function techTradeGoldMul(state: GameState, pid: number): number {
   return techOf(state, pid, 'freeTrade') ? E.freeTradeGold : 1;
 }
-/** Warship damage against ships x (Submarines). */
+/**
+ * Warship damage against ships x. Submarines no longer boost every warship: the submarine variant hits trade ships and
+ * transports harder itself (variants.ts navalDamageMul via naval2.shipDamageMul). Kept for callers: always 1.
+ */
 export function techShipDamageMul(state: GameState, pid: number): number {
-  return techOf(state, pid, 'submarines') ? E.submarineShipDamage : 1;
+  void state;
+  void pid;
+  return 1;
 }
 /** Bomber / cargo plane speed x (Jet Engines). */
 export function techAirSpeedMul(state: GameState, pid: number): number {
@@ -266,15 +289,15 @@ function hostileTo(state: GameState, a: number, b: number): boolean {
 }
 
 /**
- * Carriers: after SAMs and fighters (units.ts interceptThreats), each player with Carriers lets its warships shoot
- * down one hostile bomber or cargo plane within carrierRadius of any of them, then waits carrierCooldown seconds
- * divided by its warship count (at most 4). Threats are handled in the given order (already sorted by threat).
+ * Carriers: after SAMs and fighters (units.ts interceptThreats), each player's carriers (warships of the carrier
+ * variant, variants.ts) shoot down one hostile bomber or cargo plane within carrierRadius of any of them, then wait
+ * carrierCooldown seconds divided by its carrier count (at most 4). Threats are handled in the given order (already sorted by threat).
  */
 export function interceptByCarriers(state: GameState, threats: readonly Unit[], units: readonly Unit[]): void {
   if (!threats.length) return;
   let carriers: Map<number, Unit[]> | null = null;
   for (const u of units) {
-    if (u.type !== 'warship' || u.hp <= 0 || !techOf(state, u.owner, 'carriers')) continue;
+    if (u.type !== 'warship' || u.hp <= 0 || u.variant !== 'carrier') continue; // carrier variant (variants.ts)
     carriers ??= new Map();
     let l = carriers.get(u.owner);
     if (!l) carriers.set(u.owner, (l = []));
@@ -293,6 +316,7 @@ export function interceptByCarriers(state: GameState, threats: readonly Unit[], 
       if (!near) continue;
       ss.carrierReadyTick = state.tick + Math.ceil((E.carrierCooldown / Math.min(4, ships.length)) * TICKS_PER_SECOND);
       state.effects.push({ kind: 'shot', x: near.x + 0.5, y: near.y + 0.5, x2: t.x + 0.5, y2: t.y + 0.5, radius: 0.5, tick: state.tick });
+      if (nightDodges(state, t, owner)) break; // Night Bombing (specials.ts)
       t.hp -= 1;
       if (t.hp <= 0) {
         t.hp = 0;
@@ -312,14 +336,16 @@ export function interceptByCarriers(state: GameState, threats: readonly Unit[], 
 }
 
 /**
- * Submarines: may `viewer` see unit u? Everything is visible except warships of a Submarines holder to a viewer that
- * is not it, not allied with it, and has no own ship or coast within submarineRevealRange (the client hides them,
+ * Submarines: may `viewer` see unit u? Everything is visible except submarines (warships of the submarine variant) to
+ * a viewer that is not their owner, not allied with it, has no destroyer sonar or recon over them (variants.ts) and no
+ * own ship or coast within submarineRevealRange (the client hides them,
  * the minimap too). Cheap enough for the renderer (ships of the viewer, then coast tiles in a small box).
  */
 export function unitVisibleTo(state: GameState, viewer: number, u: Unit): boolean {
-  if (u.type !== 'warship' || u.owner === viewer || !techOf(state, u.owner, 'submarines')) return true;
+  if (u.type !== 'warship' || u.owner === viewer || u.variant !== 'submarine') return true; // submarine variant (variants.ts)
   if (viewer <= 0) return true; // spectators see everything
   if (areAllied(state, viewer, u.owner)) return true;
+  if (subRevealedTo(state, viewer, u)) return true; // destroyer sonar, recon flights (variants.ts)
   const r = E.submarineRevealRange;
   const r2 = r * r;
   for (const s of state.units) {
@@ -336,5 +362,5 @@ export function unitVisibleTo(state: GameState, viewer: number, u: Unit): boolea
       if (map.owner[i] === viewer && (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r2) return true;
     }
   }
-  return false;
+  return earlyWarningSees(state, viewer, u); // Early Warning (specials.ts): farther from the coast and air sites
 }

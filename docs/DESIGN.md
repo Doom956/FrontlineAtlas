@@ -446,15 +446,63 @@ the small helpers in techtree.ts (economy, combat, buildings, units, allies).
   attacks +6%) | Automation (buildings 35% faster, 10% cheaper).
 - Land doctrine (Mechanization): Blitz Tactics (armor-heavy fronts up to +30% speed; tank divisions faster/deeper)
   | Trench Warfare (your land +15% defence, enemy fronts -15% speed, forts -25% cost).
-- Naval doctrine (Navigation): Carriers (warships shoot down nearby bombers / cargo planes) | Submarines (warships
-  +60% damage to ships, hidden from enemies more than 12 tiles from their ships and coast: `unitVisibleTo`).
-- Air doctrine (Flight): Jet Engines (bombers / cargo planes +40% speed, bombers one more hit) | Strategic Bombing
-  (bomb radius +40%, buildings hit more often, 6% of the victim's gold and iron burnt).
+- Navy path and Air path: now the Arsenal forks (below); Carriers, Submarines, Jet Engines and Strategic Bombing
+  became steps on them.
 - Statecraft (Propaganda): Diplomatic Corps (allies trust you 15 points sooner, aid +40%, asks twice as often) |
   Conscription (cap +5%, growth +6%, mercenaries -25%).
 
 AIs commit to one member per fork (aispending.ts: personality lean + a per-game hash, so both get played) and merge
 the branches into their research order right after the prerequisites.
+
+### Arsenal: vehicle variants (src/sim/arsenal.ts, variants.ts, variantsAI.ts, config ARSENAL)
+The Research panel's second tab. Ordinary techs (Action research); `arsenal.ARSENAL_ROWS` groups them in one row per
+pillar (tier 1 unlock, tier 2 fork root, tier 3 upgrade / special, tier 4 mastery); `isArsenalTech` keeps them out of
+the Research tab. A fork is an exclusive group on its two roots; `techtree.choiceLockedBy` follows `requires`, so the
+other root and everything after it lock together ("You chose Destroyers; Carriers is locked").
+- Navy (Navigation; group navalDoctrine "Navy path"): Surface fleet = Destroyers (fast, cheap, sonar reveals
+  submarines within `destroyerSonar`, x3 damage to them) -> Battleships (tough, slow, x1.8 price, shells from twice
+  as far and harder, long naval support) | Silent service = Submarines (hidden: `unitVisibleTo`, fired at only within
+  `subTargetRange` unless a destroyer or recon sees them; x2.5 vs trade ships and transports, longer blockades,
+  richer captures, no shelling or support) -> Carriers (a moving airfield: wings strike anything within
+  `carrierAirRange` of one, bombers launch from it; its fighters shoot down planes nearby). Per ship: Unit.variant,
+  chosen with `buildWarship.variant` (default: the path's first ship; none before a path = the standard warship).
+- Armor (Mechanization; armorPath): Light Tanks (cheaper, faster, deeper, a 1-tile band, reveal ahead while
+  spearheading; rough ground and forts cost more; weaker holding) -> Deep Raids | Heavy Tanks (dearer, slower;
+  through forts and mountains without artillery at lower loss; stronger holding) -> Siege Tanks (forts passed are
+  knocked out). Per player: every division of the owner is its path's variant.
+- Air (Flight; airDoctrine "Air path"): Ground-attack Planes (support strikes x1.6, raids x0.6) -> Jet Engines |
+  Heavy Bombers (raids x1.7, reach x1.5, +1 hp, support x0.7) -> Strategic Bombing. Per player; bombers are stamped.
+- Shared: Mechanized Infantry (spearheads lose 15% less; the land a spearhead took holds: attacks on it cost
+  `mechHoldDefense` x for `mechHoldSeconds`), Recon Planes (Action `reconFlight {airfield | -1, tile}`: a plane flies
+  out, reveals a `reconRadius` circle for `reconSeconds`: intel on every nation with land or a capital in it
+  (buildings.hasIntel) and its submarines there; `reconCooldown` per airfield; gold + oil per flight).
+- Mastery (tier 4) in at most `MASTERY_CAP` = 2 pillars per game (`masteryLocked`: 'locked-choice', "Mastery 2 of 2
+  used (Navy, Air)"): Naval (veterancy xp x2, bombardment / support reach x1.3, +2 warships), Armor (pockets up to x3
+  bigger collapse, x1.5 troops lost in them), Air (every wing x1.5 bombers).
+AIs (variantsAI.ts): a fork by the map and personality (enemy trade and ports -> silent service; forts and mountains
+-> heavy tanks; enemy cities and factories -> heavy bombers; plus a per-game hash), the committed pillar's path right
+after its prerequisites and its mastery only there; one battleship in three, one carrier in four; recon over the
+enemy it fights.
+
+### Special upgrades (src/sim/specials.ts, config SPECIALS)
+Ordinary techs (Action research) that change behaviour, not stats; listed in the Arsenal tab (arsenal.ts, kind 'special').
+- Amphibious Tanks (Mechanization + Navigation): divisions wade across water at most `amphibMaxWater` tiles wide on a
+  straight line (moves: tanks.ownLandPath with specials.narrowWater; spearheads cross instead of stopping at the coast,
+  launch reach + `amphibLaunchReach`). Each landing costs `amphibLandingLoss`. Counters: hostile warships within
+  WARSHIP_RANGE and mines bleed a wading division; a holding division left in the water falls back home.
+- Early Warning (Radar): own SAM radius and airfield fighter cover x `ewRadiusMul`; enemy submarines seen x
+  `ewSubRangeMul` farther from own coast / ships and within `ewSubSiteRange` of own SAMs / airfields / watchtowers;
+  watchtower warnings farther; night bombers dodge it only `nightDodgeVsRadar`.
+- Naval Mines (Navigation + Fortification): water within `mineRadius` (+ per level) of own finished ports. Hostile
+  warships there lose `mineDamagePerS` hp/s; invasions lose `mineTransportLossPerTile` of their troops per mined route
+  tile (cap `mineTransportMaxLoss`; x `mineEscortMul` with an own warship within `mineSweepRadius`, none with a
+  destroyer); destroyers are immune; own / allied ships and trade ships are safe. Counters: escorts, destroyers,
+  taking or bombing the port, landing elsewhere.
+- Drop Tanks (Flight): air-wing reach x `dropTanksRange`, paradrops x `dropTanksParadrop`, superiority patrols x
+  `dropTanksPatrol` (airWingRange / airPatrolRadius / paradropRange take the state for it).
+- Night Bombing (Flight): every SAM shot and fighter pass (airfields, carriers, patrols) at its bombers misses with
+  `nightDodge` (state.rng); bombs scatter up to `nightScatter` tiles, radius x `nightRadius`, damage / support kills /
+  raid cut x `nightEffect`. Counter: Early Warning.
 
 ### Gold uses (src/sim/spending.ts) and bulk orders (src/sim/bulkbuild.ts)
 
@@ -470,6 +518,11 @@ the branches into their research order right after the prerequisites.
   queues what it can pay. `cancelQueuedLevels { tile }` refunds the queue; demolishing refunds it in full; a capture
   drops it. Previews for the client: `buildManyPreview`, `upgradeAreaPreview`, `mercenaryPrice`, `fundAllyEffect`,
   `warBondsInfo`.
+- `upgradeBuildings { tiles (1..200), levels 1 | 3 | 5 }`: the same queueing for a list of own buildings (the
+  client's Shift+drag box selection; tiles without a building of yours are skipped, the order fails only when none is
+  yours), cheapest level first as far as the money goes; preview `upgradeBuildingsPreview` (cost, shortBy, seconds
+  until the slowest building is done). The client has no circle tool any more (`upgradeArea` stays for the AI): the
+  box selects your buildings, chips filter them by type, the bar orders Upgrade x1 / x3 / x5 (U, Shift+U cycles).
 
 ## 7. Navy, air, missiles (mobile units)
 
@@ -813,6 +866,19 @@ full-map scans after `createGame`.
   tutorial, minimap, leave), the nation card on the left (Ally / Accept / Break, Gift, Embargo, Attack), the help page.
   Destructive actions ask first (a warning toast with a confirm button: Demolish from the radial menu, Break an
   alliance); an alliance request, a gift and an AI's refusal get a toast.
+- Research panel (T; hud/researchTree.ts hosts it, hud/arsenalPage.ts draws a tab, hud/techRows.ts lays it out): two
+  tabs, Tab or 1 / 2 switch while it is open. RESEARCH = every tech where `isArsenalTech` is false, in rows Economy,
+  Land, Logistics, Influence; ARSENAL = `ARSENAL_ROWS` (Navy, Armor, Air, Shared; columns Unlock, Path, Path upgrade,
+  Special, Mastery, the Mastery header is the "Mastery 1 of 2" counter). Both tabs share one column grid left to
+  right by tier; a fork is a split (its branches in two lanes, an OR in the gap before them, a dashed rule between,
+  "locks X" flagged on both roots before the pick; hovering one strikes through what it would lock; after the pick
+  the other branch is struck, its lines cut). Lines are drawn only inside a row (through the gaps or a rail above
+  the cards); a prerequisite in another row or tab shows as "+ Name". A card: price, time at the current science
+  rate, one-line effect, Special / Mastery tags; a click buys it; the next affordable card is flagged NEXT and the
+  other tab gets a dot when something there is affordable. Filter chips show one row. Fits 1280x720 (tighter cards
+  under 800 px height). Building panels offer the Arsenal: a Port one button per researched ship of the Navy path
+  (TargetMode spawnWarship.variant), an Airfield the bomber type and "Recon flight" (TargetMode recon -> Action
+  reconFlight), a Factory the division type (hud/variantOrders.ts).
   Pictograms: buildings and deposits use the map markers' silhouettes (icons.ts MARKER_DATA) as inline SVG in one
   colour (hud/glyph.ts), controls use thin line icons. Sound: audio.ts wired as docs/AUDIO.md describes (unlock on the
   first gesture, `update()` per frame, own build / launch / error sounds, UI clicks, volumes in the menu).

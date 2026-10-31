@@ -239,7 +239,7 @@ export function howToPlayContent(): HTMLElement {
   const buildRows: Row[] = [
     { title: 'Place', text: 'Pick a building (hotkey or build bar), click your land. It snaps to the nearest free spot; near one of the same kind it upgrades. Cursor preview: green builds, blue upgrades, red says why not.' },
     { title: 'Build x3 / x5', text: 'Or hold Shift: one click queues that many levels (a City goes straight to level 5). Only what you can pay is queued; the building card cancels for a refund.' },
-    { title: 'Upgrade area', text: 'Build menu, Tools: pick a radius and click. Every building inside gets more levels, cheapest first, as far as your money goes.' },
+    { title: 'Upgrade many', text: 'Hold Shift and drag a box over your buildings: they are selected (chips filter by type). Press U or click Upgrade x1 / x3 / x5: every one gets more levels, cheapest first, as far as your money goes. Shift+U switches x1 / x3 / x5; Esc clears.' },
     { title: 'Quick bar', text: 'Six buildings you use most sit by the Build button. Right-click one in the menu to pin it.' },
     { title: 'Spend', text: 'Button next to your gold. Mercenaries: troops now for gold (the price rises with each hire). War bonds: gold now for stronger attacks for a while.' },
   ];
@@ -375,6 +375,8 @@ export function howToPlayContent(): HTMLElement {
     [['U', 'Y', 'T', 'P', 'J', 'L'], 'Army, Forces, Research, Diplomacy, Events, Map key (terrain and symbols)'],
     [['Shift D'], 'Doctrine picker'],
     [['Shift W', 'Shift A'], 'Select every warship / tank division'],
+    [['Shift drag'], 'Box: select your warships, tank divisions and buildings inside'],
+    [['U', 'Shift U'], 'With buildings selected: upgrade them / switch x1, x3, x5'],
     [['Z X K I O'], 'Strikes: barrage, bomb, paradrop, rocket, atom bomb'],
     [['Space'], 'Pause (single player; the host of a private game)'],
     [['+', '-'], 'Game speed (single player)'],

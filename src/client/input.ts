@@ -6,12 +6,25 @@ import { isWater, TROOP_TYPES } from '../sim/types';
 import type { BuildingType, GameState, Player, Troops } from '../sim/types';
 import type { Camera } from './camera';
 import { resolveBuild } from './simx';
-import { buildClickAction, effectiveCount, upgradeAreaAction } from './hud/buildMenu';
+import { buildClickAction, effectiveCount } from './hud/buildMenu';
 import { strikeAction, strikeForKey, strikeTarget, type StrikeId } from './strikes';
 import type { Renderer } from './renderer';
 import type { Dispatch, GetState, UiState } from './uiState';
 import { pillarPickClick } from './pillars';
-import { boxSelection, selectAllOf, selectionClick, spawnWarshipAction, tankDivisionClickAction, toggleInSelection } from './selection';
+import {
+  activeBuildings,
+  boxBuildingSelection,
+  boxSelection,
+  nextUpgradeLevels,
+  NO_BUILDING_SEL,
+  selectAllOf,
+  selectionClick,
+  spawnWarshipAction,
+  tankDivisionClickAction,
+  toggleInSelection,
+  upgradeSelectionAction,
+} from './selection';
+import { reconClickAction } from './hud/variantOrders';
 
 export interface InputDeps {
   canvas: HTMLCanvasElement;
@@ -235,13 +248,17 @@ export function setupInput(deps: InputDeps): () => void {
     clearTimeout(longTimer);
     canvas.classList.remove('dragging');
     if (pr.box && pr.dragging) {
-      // Shift+drag: the box selects your warships and tank divisions inside it
+      // Shift+drag: the box selects your warships and tank divisions inside it, and your buildings (selection.ts;
+      // the building bar then offers Upgrade x1 / x3 / x5)
       ui.selectBox = null;
       const s = getState();
       if (!cancelled && s && s.humanId) {
         const p = local(e);
         ui.selection = boxSelection(s, s.humanId, ui.selection, renderer.ownUnitsIn(pr.x0, pr.y0, p.x, p.y), false);
         ui.pendingSpearhead = null;
+        const a = camera.screenToTile(pr.x0, pr.y0);
+        const b = camera.screenToTile(p.x, p.y);
+        ui.buildingSel = s.phase === 'playing' ? boxBuildingSelection(s, s.humanId, ui.buildingSel, a.x, a.y, b.x, b.y) : { ...NO_BUILDING_SEL, levels: ui.buildingSel.levels };
       }
       return;
     }
@@ -309,10 +326,6 @@ export function setupInput(deps: InputDeps): () => void {
         ok = dispatch({ type: 'build', building: mode.building, tile: t.tile >= 0 ? t.tile : tile }).ok;
         break;
       }
-      case 'upgradeArea':
-        // the Upgrade-area tool: queue upgrades for your buildings in the circle; stays on for more clicks until Esc
-        dispatch(upgradeAreaAction(mode, tile));
-        return;
       case 'paradrop':
       case 'barrage':
       case 'bomb':
@@ -333,10 +346,19 @@ export function setupInput(deps: InputDeps): () => void {
       case 'moveWarship':
         ok = dispatch({ type: 'moveWarship', unitId: mode.unitId, tile }).ok;
         break;
+      case 'recon': {
+        // a recon plane from the chosen airfield (hud/variantOrders.ts)
+        const a = reconClickAction(s, h, mode.airfield, tile);
+        if (typeof a === 'string') {
+          ui.toast = { text: a, until: performance.now() + TOAST_MS };
+          ok = false;
+        } else ok = dispatch(a).ok;
+        break;
+      }
       case 'spawnWarship':
       case 'buildTankDivision': {
         // warship: the water tile where it appears; tank division: the factory that builds it (selection.ts)
-        const a = mode.kind === 'spawnWarship' ? spawnWarshipAction(s, h, tile) : tankDivisionClickAction(s, h, tile);
+        const a = mode.kind === 'spawnWarship' ? spawnWarshipAction(s, h, tile, mode.variant) : tankDivisionClickAction(s, h, tile);
         if (typeof a === 'string') {
           ui.toast = { text: a, until: performance.now() + TOAST_MS };
           ok = false;
@@ -435,7 +457,10 @@ export function setupInput(deps: InputDeps): () => void {
         else if (deps.closeOverlay?.()) return;
         else if (ui.mode.kind !== 'none') ui.mode = { kind: 'none' };
         else if (ui.pendingSpearhead) ui.pendingSpearhead = null;
-        else if (ui.selection.length) ui.selection = [];
+        else if (ui.selection.length || ui.buildingSel.ids.length) {
+          ui.selection = [];
+          ui.buildingSel = { ...NO_BUILDING_SEL, levels: ui.buildingSel.levels };
+        }
         else ui.selectedTile = -1;
         return;
       }
@@ -465,6 +490,15 @@ export function setupInput(deps: InputDeps): () => void {
       }
       const up = k.length === 1 ? k.toUpperCase() : '';
       if (up === 'T') return deps.openResearch();
+      // With buildings selected (Shift+drag box): U upgrades them, Shift+U cycles x1 / x3 / x5 (selection.ts)
+      if (up === 'U' && s.phase === 'playing' && activeBuildings(s, s.humanId, ui.buildingSel).length) {
+        if (e.shiftKey) ui.buildingSel = { ...ui.buildingSel, levels: nextUpgradeLevels(ui.buildingSel.levels) };
+        else {
+          const a = upgradeSelectionAction(s, s.humanId, ui.buildingSel);
+          if (a) dispatch(a);
+        }
+        return;
+      }
       if (up === 'U' || up === 'Y' || up === 'P' || up === 'J' || up === 'L') {
         deps.toggleDrawer?.(up === 'U' ? 'army' : up === 'Y' ? 'forces' : up === 'P' ? 'diplomacy' : up === 'J' ? 'events' : 'legend');
         return;

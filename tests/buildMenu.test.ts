@@ -2,8 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import { applyAction } from '../src/sim/actions';
 import { buildingAt } from '../src/sim/buildings';
-import { buildManyPreview, upgradeAreaPreview } from '../src/sim/bulkbuild';
-import { BULK_MAX_COUNT, MERC_MIN_AMOUNT, TECH_ORDER, TECHS, UPGRADE_AREA_MAX_RADIUS } from '../src/sim/config';
+import { buildManyPreview } from '../src/sim/bulkbuild';
+import { BULK_MAX_COUNT, MERC_MIN_AMOUNT, TECH_ORDER, TECHS } from '../src/sim/config';
 import { formAlliance } from '../src/sim/diplomacy';
 import { mercenaryPrice, warBondsInfo } from '../src/sim/spending';
 import type { GameState, TechId } from '../src/sim/types';
@@ -14,12 +14,10 @@ import {
   QuickPicks,
   QUICK_SLOTS,
   stableSlots,
-  upgradeAreaAction,
-  upgradeAreaText,
   type PickStore,
 } from '../src/client/hud/buildMenu';
 import { bondsText, fundableAllies, fundText, mercSteps, mercText, waysToPlayAdvice } from '../src/client/hud/spendPanel';
-import { forkLayout, roundedPath, routeEdge } from '../src/client/hud/techFork';
+import { roundedPath, routeEdge } from '../src/client/hud/techFork';
 import { claimRect, makeFlatGame } from './helpers';
 
 function game(gold = 1e6): GameState {
@@ -75,25 +73,6 @@ describe('bulk preview text', () => {
     const t = bulkPreviewText(buildManyPreview(s, 1, 'city', at(s, 20, 20), 3), 'city');
     expect(t.tone).toBe('short');
     expect(t.sub).toMatch(/^Can afford 1 of 3/);
-  });
-
-  it('describes an Upgrade-area plan and an empty area', () => {
-    const s = game();
-    for (const x of [6, 30, 54]) {
-      expect(applyAction(s, 1, { type: 'build', building: 'farm', tile: at(s, x, 10) }).ok).toBe(true);
-      for (const b of s.buildings.values()) b.buildLeft = 0;
-    }
-    const pv = upgradeAreaPreview(s, 1, at(s, 30, 10), 25, undefined, 2);
-    const t = upgradeAreaText(pv);
-    expect(t.ok).toBe(true);
-    expect(t.text).toMatch(/^3 buildings, 6 levels: /);
-    const none = upgradeAreaText(upgradeAreaPreview(s, 1, at(s, 50, 50), 3, undefined, 1));
-    expect(none.ok).toBe(false);
-  });
-
-  it('clamps the Upgrade-area action to the sim limits', () => {
-    expect(upgradeAreaAction({ radius: 999, levels: 9 }, 7)).toEqual({ type: 'upgradeArea', tile: 7, radius: UPGRADE_AREA_MAX_RADIUS, levels: BULK_MAX_COUNT });
-    expect(upgradeAreaAction({ radius: 10, building: 'farm', levels: 3 }, 7)).toEqual({ type: 'upgradeArea', tile: 7, radius: 10, building: 'farm', levels: 3 });
   });
 });
 
@@ -182,29 +161,6 @@ describe('spend panel helpers', () => {
 });
 
 describe('tech tree forks', () => {
-  it('puts every choice group in one slot, a tier with choices and plain techs in two tracks, at most six rows', () => {
-    const lay = forkLayout();
-    expect(lay.rows).toBeLessThanOrEqual(6);
-    const groups = new Set(TECH_ORDER.map((t) => TECHS[t].exclusiveGroup).filter(Boolean));
-    expect(lay.slots.filter((s) => s.group).length).toBe(groups.size);
-    for (const t of TECH_ORDER) {
-      const slot = lay.slotOf.get(t)!;
-      expect(slot.techs).toContain(t);
-      if (TECHS[t].exclusiveGroup) expect(lay.tracks[slot.col].choices).toBe(true);
-      const parents: TechId[] = [...TECHS[t].requires, ...(TECHS[t].requiresAny ?? [])];
-      for (const p of parents) expect(lay.slotOf.get(p)!.col).toBeLessThan(slot.col);
-    }
-    // no two slots in one cell
-    const cells = lay.slots.map((s) => `${s.col},${s.row}`);
-    expect(new Set(cells).size).toBe(cells.length);
-    // tracks go left to right by tier, choices before plain techs of the same tier
-    for (let k = 1; k < lay.tracks.length; k++) {
-      const a = lay.tracks[k - 1];
-      const b = lay.tracks[k];
-      expect(a.tier < b.tier || (a.tier === b.tier && a.choices && !b.choices)).toBe(true);
-    }
-  });
-
   it('routes lines through the gaps, not behind cards', () => {
     const a = { box: { x: 0, y: 100, w: 100, h: 50 } };
     const b = { box: { x: 250, y: 20, w: 100, h: 50 } };

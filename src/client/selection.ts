@@ -7,14 +7,17 @@
 //   - warship orders: "Warship" enters the click-to-place mode (spawnWarship): click water near one of your ports
 //     (WARSHIP_SPAWN_RANGE, same sea); the valid area is shaded (render/selectionOverlay.ts)
 //   - tank divisions are built at a Factory: enterTankDivisionBuildMode(), then click one of your factories
+//   - the same Shift+drag box also picks your buildings in it (ui.buildingSel): filter chips by type, and the bar
+//     (hud/buildingSelection.ts) orders Upgrade x1 / x3 / x5 for them all (Action upgradeBuildings; U, Shift+U cycles)
 // Everything here reads the state and builds actions; nothing changes the game except through dispatch.
 import { buildingAt } from '../sim/buildings';
-import { MAX_GROUP_UNITS, WARSHIP_SPAWN_RANGE } from '../sim/config';
+import { BUILDING_ORDER, MAX_GROUP_UNITS, UPGRADE_SELECTION_MAX, WARSHIP_SPAWN_RANGE } from '../sim/config';
 import { sameWater } from '../sim/grid';
 import { canOrderWarship } from '../sim/navy';
 import { bestFactory, canBuildTankDivision, spearheadPreview, type SpearheadPreview } from '../sim/tanks';
 import { isWater } from '../sim/types';
-import type { Action, GameState, Player, Unit } from '../sim/types';
+import { upgradeBuildingsPreview, type UpgradeBuildingsPreview, type UpgradeLevels } from '../sim/bulkbuild';
+import type { Action, Building, BuildingType, GameState, NavalVariant, Player, Unit } from '../sim/types';
 import { unitBuildStatus } from './forces';
 import { pocketLine, pocketPreview } from './pillars';
 import type { Dispatch, UiState } from './uiState';
@@ -222,17 +225,21 @@ export function warshipSpawnCheck(state: GameState, me: number, tile: number): {
 }
 
 /** The buildWarship action for a click on `tile` in the spawn mode, or the reason it can't go there. */
-export function spawnWarshipAction(state: GameState, me: number, tile: number): Action | string {
+export function spawnWarshipAction(state: GameState, me: number, tile: number, variant?: NavalVariant): Action | string {
   const c = warshipSpawnCheck(state, me, tile);
-  return c.ok ? { type: 'buildWarship', port: c.port, tile } : c.reason;
+  if (c.ok && variant) {
+    const r = canOrderWarship(state, me, c.port, tile, variant);
+    if (!r.ok) return r.reason ?? 'Not possible here';
+  }
+  return c.ok ? { type: 'buildWarship', port: c.port, tile, ...(variant ? { variant } : {}) } : c.reason;
 }
 
 /** "Warship" buttons: enter the click-to-place mode; returns '' or why a warship can't be ordered at all now. */
-export function enterWarshipSpawnMode(ui: UiState, state: GameState, me: Player): string {
+export function enterWarshipSpawnMode(ui: UiState, state: GameState, me: Player, variant?: NavalVariant): string {
   const st = unitBuildStatus(state, me, 'warship');
   if (!st.ok) return st.line;
   ui.contextMenu = null;
-  ui.mode = { kind: 'spawnWarship' };
+  ui.mode = variant ? { kind: 'spawnWarship', variant } : { kind: 'spawnWarship' };
   return '';
 }
 
@@ -331,4 +338,101 @@ export function tankDivisionClickAction(state: GameState, me: number, tile: numb
   if (best < 0) return 'Click one of your Factories';
   const r = canBuildTankDivision(state, me, best);
   return r.ok ? { type: 'buildTankDivision', tile: best } : r.reason ?? 'Not possible here';
+}
+
+// ------------------------------------------------------------------------------------------------ building selection
+
+export type BuildingSel = UiState['buildingSel'];
+export const NO_BUILDING_SEL: BuildingSel = { ids: [], off: [], levels: 1 };
+
+/** Own buildings whose tile lies in the tile rectangle (corners in tile coords, any order, inclusive), ids ascending. */
+export function buildingsInRect(state: GameState, me: number, ax: number, ay: number, bx: number, by: number): number[] {
+  const w = state.map.width;
+  const x0 = Math.floor(Math.min(ax, bx));
+  const x1 = Math.floor(Math.max(ax, bx));
+  const y0 = Math.floor(Math.min(ay, by));
+  const y1 = Math.floor(Math.max(ay, by));
+  const out: number[] = [];
+  for (const b of state.buildings.values()) {
+    if (b.owner !== me || me <= 0) continue;
+    const x = b.tile % w;
+    const y = (b.tile / w) | 0;
+    if (x >= x0 && x <= x1 && y >= y0 && y <= y1) out.push(b.id);
+  }
+  return out.sort((a, b) => a - b);
+}
+
+/** The new building selection after a box (replaces the old one; the levels choice stays). */
+export function boxBuildingSelection(state: GameState, me: number, prev: BuildingSel, ax: number, ay: number, bx: number, by: number): BuildingSel {
+  return { ids: buildingsInRect(state, me, ax, ay, bx, by), off: [], levels: prev.levels };
+}
+
+/** The selected buildings that are still there and still yours (selection order). */
+export function selectedBuildings(state: GameState, me: number, sel: BuildingSel): Building[] {
+  const out: Building[] = [];
+  for (const id of sel.ids) {
+    const b = state.buildings.get(id);
+    if (b && b.owner === me) out.push(b);
+  }
+  return out;
+}
+
+/** The selection without buildings that are gone or lost (same object when nothing changed). */
+export function pruneBuildingSelection(state: GameState, me: number, sel: BuildingSel): BuildingSel {
+  if (!sel.ids.length) return sel;
+  const ids = selectedBuildings(state, me, sel).map((b) => b.id);
+  return ids.length === sel.ids.length ? sel : { ...sel, ids };
+}
+
+/** Selected buildings per type (BUILDING_ORDER), with whether the filter chip has the type on. */
+export function buildingTypeCounts(state: GameState, me: number, sel: BuildingSel): { type: BuildingType; count: number; on: boolean }[] {
+  const n = new Map<BuildingType, number>();
+  for (const b of selectedBuildings(state, me, sel)) n.set(b.type, (n.get(b.type) ?? 0) + 1);
+  return BUILDING_ORDER.filter((t) => n.has(t)).map((t) => ({ type: t, count: n.get(t)!, on: !sel.off.includes(t) }));
+}
+
+/** Filter chip: switches one type on / off (all on again when the last one would go off). */
+export function toggleBuildingType(state: GameState, me: number, sel: BuildingSel, type: BuildingType): BuildingSel {
+  const off = sel.off.includes(type) ? sel.off.filter((t) => t !== type) : [...sel.off, type];
+  const types = buildingTypeCounts(state, me, sel).map((c) => c.type);
+  return { ...sel, off: types.every((t) => off.includes(t)) ? [] : off };
+}
+
+/** The buildings the bar acts on: selected, still yours, type switched on; at most UPGRADE_SELECTION_MAX. */
+export function activeBuildings(state: GameState, me: number, sel: BuildingSel): Building[] {
+  return selectedBuildings(state, me, sel).filter((b) => !sel.off.includes(b.type)).slice(0, UPGRADE_SELECTION_MAX);
+}
+/** Selected and switched on, before the order cap (the bar says when the cap cuts some off). */
+export function activeCount(state: GameState, me: number, sel: BuildingSel): number {
+  let n = 0;
+  for (const b of selectedBuildings(state, me, sel)) if (!sel.off.includes(b.type)) n++;
+  return n;
+}
+
+/** Action upgradeBuildings for the active buildings, or null when none is active. */
+export function upgradeSelectionAction(state: GameState, me: number, sel: BuildingSel, levels: UpgradeLevels = sel.levels): Action | null {
+  const tiles = activeBuildings(state, me, sel).map((b) => b.tile);
+  return tiles.length ? { type: 'upgradeBuildings', tiles, levels } : null;
+}
+
+/** Shift+U: x1 -> x3 -> x5 -> x1. */
+export function nextUpgradeLevels(l: UpgradeLevels): UpgradeLevels {
+  return l === 1 ? 3 : l === 3 ? 5 : 1;
+}
+
+const upCache = new WeakMap<GameState, Map<UpgradeLevels, { key: string; pv: UpgradeBuildingsPreview }>>();
+/** upgradeBuildingsPreview for the active buildings, cached for a few ticks per levels choice (the bar shows x1 / x3 /
+ *  x5 side by side and asks every frame). */
+export function selectionPreview(state: GameState, me: number, sel: BuildingSel, levels: UpgradeLevels): UpgradeBuildingsPreview | null {
+  const a = upgradeSelectionAction(state, me, sel, levels);
+  if (!a || a.type !== 'upgradeBuildings') return null;
+  const p = state.players[me];
+  const key = `${me}|${a.tiles.join(',')}|${Math.floor(state.tick / 3)}|${state.buildingsVersion}|${Math.floor(p?.gold ?? 0)}|${Math.floor(p?.iron ?? 0)}`;
+  let m = upCache.get(state);
+  if (!m) upCache.set(state, (m = new Map()));
+  const c = m.get(levels);
+  if (c && c.key === key) return c.pv;
+  const pv = upgradeBuildingsPreview(state, me, a.tiles, levels);
+  m.set(levels, { key, pv });
+  return pv;
 }

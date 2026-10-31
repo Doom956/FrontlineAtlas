@@ -421,29 +421,53 @@ export const TECHS: Record<TechId, TechInfo> = {
   freeTrade: { name: 'Free Trade', tier: 3, science: 2200, gold: 1000, requires: ['banking'], exclusiveGroup: 'finance', description: 'Your trade ships pay 60% more; markets cost 30% less.' },
   blitzTactics: { name: 'Blitz Tactics', tier: 3, science: 2200, gold: 1000, requires: ['mechanization'], exclusiveGroup: 'landDoctrine', description: 'Armor-heavy attacks advance up to 30% faster; tank divisions faster and deeper.' },
   trenchWarfare: { name: 'Trench Warfare', tier: 3, science: 2200, gold: 1000, requires: ['mechanization'], exclusiveGroup: 'landDoctrine', description: 'Your land defends 15% better, enemy fronts against you 15% slower, forts 25% cheaper.' },
-  carriers: { name: 'Carriers', tier: 3, science: 2200, gold: 1000, requires: ['navigation'], exclusiveGroup: 'navalDoctrine', description: 'Warships give fighter cover: they shoot down enemy bombers and cargo planes nearby; shore bombardment reaches 50% further.' },
-  submarines: { name: 'Submarines', tier: 3, science: 2200, gold: 1000, requires: ['navigation'], exclusiveGroup: 'navalDoctrine', description: 'Warships hit ships 60% harder and stay hidden from enemies until close; blockades reach 50% further and captured trade ships pay 50% more.' },
-  jetEngines: { name: 'Jet Engines', tier: 3, science: 2200, gold: 1000, requires: ['flight'], exclusiveGroup: 'airDoctrine', description: 'Bombers and cargo planes fly 40% faster; bombers survive one more hit.' },
-  strategicBombing: { name: 'Strategic Bombing', tier: 3, science: 2200, gold: 1000, requires: ['flight'], exclusiveGroup: 'airDoctrine', description: 'Bombs hit a 40% wider area, wreck more buildings and burn 6% of the victim\'s gold and iron.' },
+  // Navy path (Arsenal, variants.ts): Surface fleet (Destroyers -> Battleships) OR Silent service (Submarines -> Carriers)
+  carriers: { name: 'Carriers', tier: 4, science: 3500, gold: 1500, requires: ['submarines'], description: 'Build carriers: a moving airfield. Your air wings strike from them far out at sea; their fighters shoot down enemy bombers and cargo planes nearby.' },
+  submarines: { name: 'Submarines', tier: 3, science: 2200, gold: 1000, requires: ['navigation'], exclusiveGroup: 'navalDoctrine', description: 'Silent service: build submarines. Hidden from enemies until close; they hit trade ships and transports much harder, blockade further and capture richer cargo. No shore bombardment.' },
+  // Air path (Arsenal): Ground-attack planes (-> Jet Engines) OR Heavy bombers (-> Strategic Bombing)
+  jetEngines: { name: 'Jet Engines', tier: 4, science: 3500, gold: 1500, requires: ['groundAttack'], description: 'Bombers and cargo planes fly 40% faster; bombers survive one more hit; escorts win their duels.' },
+  strategicBombing: { name: 'Strategic Bombing', tier: 4, science: 3500, gold: 1500, requires: ['heavyBombers'], description: 'Bombs hit a 40% wider area, wreck more buildings and burn 6% of the victim\'s gold and iron.' },
   diplomaticCorps: { name: 'Diplomatic Corps', tier: 3, science: 2200, gold: 1000, requires: ['propaganda'], exclusiveGroup: 'statecraft', description: 'Allies trust you sooner, help more (aid +40%) and can be asked twice as often.' },
   conscription: { name: 'Conscription', tier: 3, science: 2200, gold: 1000, requires: ['propaganda'], exclusiveGroup: 'statecraft', description: 'Troop cap +5%, troop growth +6%, mercenaries 25% cheaper.' },
   industrialBoom: { name: 'Industrial Boom', tier: 4, science: 5000, gold: 2000, requires: ['banking'], requiresAny: ['stockExchange', 'freeTrade'], description: 'Gold, iron and oil +12%.' },
   massMobilization: { name: 'Mass Mobilization', tier: 5, science: 8000, gold: 3000, requires: ['industrialBoom'], exclusiveGroup: 'capstone', description: 'Troop cap +12% and every attack +6% stronger.' },
-  automation: { name: 'Automation', tier: 5, science: 8000, gold: 3000, requires: ['industrialBoom'], exclusiveGroup: 'capstone', description: 'Buildings and upgrades build 35% faster and cost 10% less.' },
+  automation: { name: 'Automation', tier: 5, science: 8000, gold: 3000, requires: ['industrialBoom'], exclusiveGroup: 'capstone', description: 'Buildings and upgrades build 35% faster and cost 10% less.' },  // ---- special upgrades: behaviour, not stats (specials.ts; numbers in the SPECIALS block) ----
+  amphibiousTanks: { name: 'Amphibious Tanks', tier: 3, science: 2200, gold: 1000, requires: ['mechanization', 'navigation'], description: 'Tank divisions wade across straits and rivers up to 5 tiles wide (moves and spearheads); each landing costs 8% of the division, and warships and mines hit divisions in the water.' },
+  earlyWarning: { name: 'Early Warning', tier: 4, science: 3500, gold: 1500, requires: ['radar'], description: 'SAMs and fighters engage 40% farther out; your coast and air sites spot enemy submarines from twice as far; night bombers dodge you much less.' },
+  navalMines: { name: 'Naval Mines', tier: 3, science: 2200, gold: 1000, requires: ['navigation', 'fortification'], description: 'The sea around your ports is mined: enemy warships and submarines there take damage, invasions sailing through lose troops. Your ships and your allies\' are safe; escorts sweep a lane.' },
+  dropTanks: { name: 'Drop Tanks', tier: 3, science: 2200, gold: 1000, requires: ['flight'], description: 'Air wings reach 60% farther, paratroopers 50% farther, fighter patrols cover 30% more.' },
+  nightBombing: { name: 'Night Bombing', tier: 3, science: 2200, gold: 1000, requires: ['flight'], description: 'Bombers dodge 75% of SAM and fighter fire (35% against Early Warning) but bomb less accurately: scattered, 25% weaker.' },
+  // ---- arsenal: vehicle variant paths, shared unlocks, masteries (arsenal.ts, variants.ts; numbers in ARSENAL) ----
+  destroyers: { name: 'Destroyers', tier: 3, science: 2200, gold: 1000, requires: ['navigation'], exclusiveGroup: 'navalDoctrine', description: 'Surface fleet: build destroyers. Fast; they spot submarines nearby and hit them very hard.' },
+  battleships: { name: 'Battleships', tier: 4, science: 3500, gold: 1500, requires: ['destroyers'], description: 'Build battleships: slow and expensive, very tough; they shell enemy coast from twice as far and much harder.' },
+  lightTanks: { name: 'Light Tanks', tier: 3, science: 2200, gold: 1000, requires: ['mechanization'], exclusiveGroup: 'armorPath', description: 'Your tank divisions become light tanks: cheaper and much faster, deeper thin spearheads that reveal the enemy ahead. Forts, hills and mountains hurt them more.' },
+  heavyTanks: { name: 'Heavy Tanks', tier: 3, science: 2200, gold: 1000, requires: ['mechanization'], exclusiveGroup: 'armorPath', description: 'Your tank divisions become heavy tanks: slower and dearer, but they break through forts and mountains and hold ground better.' },
+  deepRaids: { name: 'Deep Raids', tier: 4, science: 3500, gold: 1500, requires: ['lightTanks'], description: 'Light tank spearheads run 30% deeper and 15% faster; divisions refit 50% faster.' },
+  siegeTanks: { name: 'Siege Tanks', tier: 4, science: 3500, gold: 1500, requires: ['heavyTanks'], description: 'Heavy spearheads knock out the forts they pass and lose half as much in forts and mountains.' },
+  groundAttack: { name: 'Ground-attack Planes', tier: 3, science: 2200, gold: 1000, requires: ['flight'], exclusiveGroup: 'airDoctrine', description: 'Your bombers become ground-attack planes: front support strikes hit 60% harder; strategic raids are weaker.' },
+  heavyBombers: { name: 'Heavy Bombers', tier: 3, science: 2200, gold: 1000, requires: ['flight'], exclusiveGroup: 'airDoctrine', description: 'Your bombers become heavy bombers: strategic raids hit 70% harder, 50% longer range, one more hit; front support is weaker.' },
+  mechInfantry: { name: 'Mechanized Infantry', tier: 3, science: 2200, gold: 1000, requires: ['mechanization'], description: 'Infantry rides with your tanks: spearheads lose 15% less, and the land they take holds (attacks on it cost 40% more for a minute).' },
+  reconPlanes: { name: 'Recon Planes', tier: 3, science: 1500, gold: 800, requires: ['flight'], description: 'Airfields fly recon: reveal enemy armies, doctrines, buildings and submarines in a wide circle for 40 seconds.' },
+  navalMastery: { name: 'Naval Mastery', tier: 5, science: 8000, gold: 3000, requires: ['navigation'], requiresAny: ['battleships', 'carriers'], description: 'Mastery: warships earn veterancy twice as fast; bombardment and naval support reach 30% further; +2 warships.' },
+  armorMastery: { name: 'Armor Mastery', tier: 5, science: 8000, gold: 3000, requires: ['mechanization'], requiresAny: ['deepRaids', 'siegeTanks'], description: 'Mastery: encirclements collapse pockets three times as big and destroy more of the troops caught in them.' },
+  airMastery: { name: 'Air Mastery', tier: 5, science: 8000, gold: 3000, requires: ['flight'], requiresAny: ['jetEngines', 'strategicBombing'], description: 'Mastery: every air wing flies 50% more bombers.' },
 };
 export const TECH_ORDER: TechId[] = [
   'agriculture', 'metallurgy', 'logistics', 'fortification', 'navigation',
   'banking', 'medicine', 'mechanization', 'ballistics', 'flight',
   'industrialization', 'combinedArms', 'radar', 'rocketry', 'nuclearFission',
   'propaganda', 'railways', 'stockExchange', 'freeTrade', 'blitzTactics', 'trenchWarfare', 'carriers', 'submarines',
-  'jetEngines', 'strategicBombing', 'diplomaticCorps', 'conscription', 'industrialBoom', 'massMobilization', 'automation',
+  'jetEngines', 'strategicBombing', 'diplomaticCorps', 'conscription', 'industrialBoom', 'massMobilization', 'automation',  'amphibiousTanks', 'earlyWarning', 'navalMines', 'dropTanks', 'nightBombing',
+  'destroyers', 'battleships', 'lightTanks', 'heavyTanks', 'deepRaids', 'siegeTanks', 'groundAttack', 'heavyBombers',
+  'mechInfantry', 'reconPlanes', 'navalMastery', 'armorMastery', 'airMastery',
 ];
 /** Display names of the exclusive choice groups (TechInfo.exclusiveGroup). */
 export const TECH_GROUP_NAMES: Record<string, string> = {
   finance: 'Finance',
   landDoctrine: 'Land doctrine',
-  navalDoctrine: 'Naval doctrine',
-  airDoctrine: 'Air doctrine',
+  navalDoctrine: 'Navy path',
+  airDoctrine: 'Air path',
+  armorPath: 'Armor path',
   statecraft: 'Statecraft',
   capstone: 'National effort',
 };
@@ -522,6 +546,8 @@ export const UNITS: Record<UnitType, UnitInfo> = {
   transportPlane: { name: 'Cargo plane', speed: 30, gold: 400, iron: 0, oil: 30, hp: 1, tech: 'flight' },
   /** tank division (tanks.ts): speed = tiles/s moving over own land; the troops it carries are its strength */
   tankDivision: { name: 'Tank division', speed: 5, gold: 1200, iron: 100, oil: 50, hp: 1, tech: 'mechanization' },
+  /** recon flight (variants.ts): the price is paid per flight */
+  reconPlane: { name: 'Recon plane', speed: 45, gold: 200, iron: 0, oil: 15, hp: 1, tech: 'reconPlanes' },
 };
 export const TRANSPORT_MAX_AT_SEA = 3;
 export const TRANSPORT_PER_PORT = 2;
@@ -1050,6 +1076,8 @@ export const BULK_MAX_COUNT = 5;
 /** Action upgradeArea: radius cap (tiles) and at most this many buildings per order. */
 export const UPGRADE_AREA_MAX_RADIUS = 60;
 export const UPGRADE_AREA_MAX_BUILDINGS = 40;
+/** Action upgradeBuildings (a box selection of own buildings): at most this many tiles per order. */
+export const UPGRADE_SELECTION_MAX = 200;
 
 // ---------- air wings (airwings.ts) ----------
 /**
@@ -1212,3 +1240,144 @@ export const NAVY_WAR_MEMORY = 30;
 /** automatic division drives (support / refit modes) search at most this many tiles, and wait this long after a failed route */
 export const ARMOR_AUTO_PATH_BUDGET = 8000;
 export const ARMOR_RETRY_SECONDS = 20;
+
+// ---------- special upgrades (specials.ts): behaviour changes bought as techs ----------
+export const SPECIALS = {
+  /** systems in specials.ts run every this many ticks (damage scales with the elapsed time) */
+  checkTicks: 5,
+  // Amphibious Tanks
+  /** widest water crossing (tiles of water in a straight line between two shores) */
+  amphibMaxWater: 5,
+  /** spearhead head speed on water, x TANK_SPEARHEAD_SPEED */
+  amphibWaterSpeed: 0.35,
+  /** extra launch reach (tiles) for spearheads across water, on top of TANK_LAUNCH_REACH */
+  amphibLaunchReach: 5,
+  /** share of the division's troops lost on each landing (supply penalty) */
+  amphibLandingLoss: 0.08,
+  /** per second, per hostile warship within WARSHIP_RANGE: share of a wading division's troops lost */
+  amphibShipFirePerS: 0.06,
+  /** share lost when a holding division is stranded on water (it falls back home like an overrun one) */
+  amphibStrandedLoss: 0.25,
+  // Early Warning
+  /** SAM radius and airfield fighter cover radius x this for the holder */
+  ewRadiusMul: 1.4,
+  /** submarine reveal range from own coast and ships x this (techtree.unitVisibleTo, E.submarineRevealRange) */
+  ewSubRangeMul: 2,
+  /** own finished SAMs, airfields and watchtowers spot submarines within this many tiles */
+  ewSubSiteRange: 30,
+  /** watchtower plane / landing warnings radius x this */
+  ewWarnMul: 1.5,
+  // Naval Mines
+  /** water within this radius of a finished own port is mined (+ per port level above 1) */
+  mineRadius: 9,
+  mineRadiusPerLevel: 2,
+  /** hp per second taken by a hostile warship / submarine in a minefield (warships have 3 hp) */
+  mineDamagePerS: 0.1,
+  /** per second: share of a wading tank division's troops lost in a hostile minefield */
+  mineDivisionLossPerS: 0.08,
+  /** invasions: share of the troops aboard lost per mined tile on the transport's route, capped */
+  mineTransportLossPerTile: 0.03,
+  mineTransportMaxLoss: 0.4,
+  /** an own warship within this many tiles of the landing sweeps a lane: the loss x mineEscortMul */
+  mineSweepRadius: 6,
+  mineEscortMul: 0.4,
+  // Drop Tanks
+  /** air-wing mission reach x this */
+  dropTanksRange: 1.6,
+  /** paradrop reach x this */
+  dropTanksParadrop: 1.5,
+  /** superiority patrol radius and patrol-centre reach x this */
+  dropTanksPatrol: 1.3,
+  // Night Bombing
+  /** chance a bomber dodges one SAM shot / fighter pass; against a holder of Early Warning */
+  nightDodge: 0.75,
+  nightDodgeVsRadar: 0.35,
+  /** bombs land up to this many tiles off the aim (uniform in a square, deterministic rng) */
+  nightScatter: 4,
+  /** bomb radius x this; buildings hit, troops killed, support kills and raid cut x nightEffect */
+  nightRadius: 0.85,
+  nightEffect: 0.75,
+};
+
+// ---------- arsenal: vehicle variants, shared unlocks, masteries (arsenal.ts, variants.ts) ----------
+/** Warship variants: multipliers on the standard warship (UNITS.warship, WARSHIP_* numbers); hp = extra hit points. */
+export interface NavalVariantInfo {
+  name: string;
+  /** price x */
+  cost: number;
+  /** speed x */
+  speed: number;
+  /** extra max hp (the standard warship has UNITS.warship.hp) */
+  hp: number;
+  /** auto-intercept detection range x */
+  detect: number;
+  /** damage x against warships */
+  damage: number;
+  /** damage x against trade ships and transports */
+  vsTrade: number;
+  /** damage x against submarines */
+  vsSub: number;
+  /** shore shelling kill x (0 = never shells) and its reach x */
+  shell: number;
+  shellRange: number;
+  /** naval support range x (0 = gives no support to landings / attacks) */
+  support: number;
+  /** blockade range x */
+  blockade: number;
+}
+export const ARSENAL = {
+  /** mastery techs in at most this many pillars per game */
+  masteryCap: 2,
+  naval: {
+    destroyer: { name: 'Destroyer', cost: 0.85, speed: 1.3, hp: 0, detect: 1.5, damage: 1, vsTrade: 1, vsSub: 3, shell: 0.5, shellRange: 1, support: 0.8, blockade: 1 },
+    battleship: { name: 'Battleship', cost: 1.8, speed: 0.7, hp: 3, detect: 1, damage: 1.4, vsTrade: 1, vsSub: 0.5, shell: 2, shellRange: 2, support: 1.8, blockade: 1 },
+    submarine: { name: 'Submarine', cost: 1, speed: 1.05, hp: 0, detect: 1.2, damage: 1, vsTrade: 2.5, vsSub: 1, shell: 0, shellRange: 1, support: 0, blockade: 1.5 },
+    carrier: { name: 'Carrier', cost: 1.7, speed: 0.85, hp: 1, detect: 1.2, damage: 0.6, vsTrade: 0.6, vsSub: 0.6, shell: 0.3, shellRange: 1, support: 1.5, blockade: 1 },
+  } as Record<'destroyer' | 'battleship' | 'submarine' | 'carrier', NavalVariantInfo>,
+  /** submarines: enemy warships other than destroyers fire at a hidden submarine only within this many tiles */
+  subTargetRange: 8,
+  /** ...and their hits on submarines x this */
+  subHitByOthers: 0.6,
+  /** destroyers reveal (and may fire at) submarines within this many tiles */
+  destroyerSonar: 22,
+  /** submarines: captured trade ship gold x this */
+  subCapture: 1.5,
+  /** carriers: an air wing may strike any target within this many tiles of an own carrier (bombers launch from it) */
+  carrierAirRange: 70,
+  /** Naval Mastery: veterancy xp x, bombardment / support reach x, extra warships */
+  navalMasteryXp: 2,
+  navalMasteryRange: 1.3,
+  navalMasteryShips: 2,
+  // tank divisions (per-player path; existing divisions convert)
+  light: { cost: 0.8, speed: 1.45, depth: 1.5, width: 1, roughLoss: 1.5, defense: 0.85, revealRadius: 22, revealSeconds: 20 },
+  heavy: { cost: 1.35, speed: 0.75, depth: 0.9, roughLoss: 0.7, defense: 1.3, loss: 0.9 },
+  /** Deep Raids: light spearhead depth x, speed x, refit x */
+  deepRaidsDepth: 1.3,
+  deepRaidsSpeed: 1.15,
+  deepRaidsRefit: 1.5,
+  /** Siege Tanks: forts passed are knocked out this long; loss in forts / mountains x */
+  siegeFortSeconds: 30,
+  /** ...within this many tiles of the breached tile */
+  siegeFortReach: 12,
+  siegeRoughLoss: 0.5,
+  /** Armor Mastery: pocket size limit x, pocket troop kill x */
+  armorMasteryPocket: 3,
+  armorMasteryKill: 1.5,
+  // bombers (per-player path)
+  groundAttack: { support: 1.6, strategic: 0.6, range: 1, hp: 0 },
+  heavyBomber: { support: 0.7, strategic: 1.7, range: 1.5, hp: 1 },
+  /** Air Mastery: wing size x */
+  airMasteryWing: 1.5,
+  // Mechanized infantry
+  mechSpearheadLoss: 0.85,
+  mechHoldDefense: 1.4,
+  mechHoldSeconds: 60,
+  mechHoldMaxRadius: 14,
+  // Recon planes
+  reconCooldown: 45,
+  /** reach from the airfield (tiles) + per airfield level above 1 */
+  reconRange: 90,
+  reconRangePerLevel: 15,
+  reconRadius: 18,
+  reconSeconds: 40,
+};

@@ -131,6 +131,18 @@ export const GLYPHS: Record<UnitType, Glyph> = {
       { k: 'line', p: [0.08, 0, 1, 0] },
     ],
   },
+  // recon plane: a slim body, long straight wings, a small tail and a lens ring at the nose
+  reconPlane: {
+    len: 0.95,
+    trail: 'air',
+    trailLen: 0.7,
+    shapes: [
+      { k: 'line', p: [1, 0, -1, 0] },
+      { k: 'line', p: [0.15, -1.05, 0.15, 1.05] },
+      { k: 'line', p: [-0.85, -0.38, -0.85, 0.38] },
+      { k: 'ring', p: [0.72, 0, 0.18] },
+    ],
+  },
 };
 for (const g of Object.values(GLYPHS)) {
   g.solid = g.shapes.some((s) => s.k === 'block');

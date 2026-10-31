@@ -1,5 +1,5 @@
 // UI state shared by input, HUD and renderer (client only, never read by the sim).
-import type { Action, ActionResult, BuildingType, GameState } from '../sim/types';
+import type { Action, ActionResult, BuildingType, GameState, NavalVariant } from '../sim/types';
 
 export type TargetMode =
   | { kind: 'none' }
@@ -12,14 +12,15 @@ export type TargetMode =
   | { kind: 'paradrop'; airfield: number }
   /** next click = centre of an artillery barrage */
   | { kind: 'barrage' }
-  /** next click = the water tile where an ordered warship appears (selection.ts; shaded area = valid) */
-  | { kind: 'spawnWarship' }
+  /** next click = the water tile where an ordered warship appears (selection.ts; shaded area = valid); variant = the
+   *  Arsenal ship picked at the Port (absent = the path's default) */
+  | { kind: 'spawnWarship'; variant?: NavalVariant }
+  /** next click = where a recon plane flies from `airfield` (tile; -1 = the nearest ready one; hud/variantOrders.ts) */
+  | { kind: 'recon'; airfield: number }
   /** next click = one of your factories: build a tank division there (selection.ts) */
   | { kind: 'buildTankDivision' }
   /** owner console: clicks go to `pick` (sticky until Esc); brush = dragging paints too (adminConsole.ts) */
   | { kind: 'adminTile'; label: string; pick: (tile: number) => void; brush?: boolean; radius?: number }
-  /** next click = centre of an Upgrade area (Action upgradeArea; hud/buildMenu.ts): radius in tiles, optional type */
-  | { kind: 'upgradeArea'; radius: number; building?: BuildingType; levels: number }
   /** next click aims a stance / mode / air mission (pillars.ts): ships, divisions or an airfield tile (-1 = all) */
   | { kind: 'pillarPick'; pick: 'bombard' | 'blockade' | 'front' | 'airSupport' | 'airStrategic' | 'airSuperiority'; unitIds: number[]; airfield: number; label: string };
 
@@ -51,6 +52,9 @@ export interface UiState {
   selection: number[];
   /** Shift+drag selection box in canvas CSS px while dragging, else null */
   selectBox: { x0: number; y0: number; x1: number; y1: number } | null;
+  /** own buildings picked by the Shift+drag box (selection.ts): ids, building types switched off by the filter
+   *  chips, and the levels U orders (Shift+U cycles x1 / x3 / x5) */
+  buildingSel: { ids: number[]; off: BuildingType[]; levels: 1 | 3 | 5 };
   /** tank divisions selected and enemy land clicked once: the spearhead waiting for a second click to confirm */
   pendingSpearhead: { tile: number; at: number } | null;
   /** owner console debug overlay (fps, ms per tick, AI attacks) */
@@ -99,6 +103,7 @@ export function defaultUiState(): UiState {
     selection: [],
     selectBox: null,
     pendingSpearhead: null,
+    buildingSel: { ids: [], off: [], levels: 1 },
     debugOverlay: false,
     buildCount: 1,
   };

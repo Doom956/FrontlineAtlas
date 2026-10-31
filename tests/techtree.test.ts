@@ -20,6 +20,7 @@ import {
   unitVisibleTo,
 } from '../src/sim/techtree';
 import { buildingCost } from '../src/sim/buildings';
+import { isArsenalTech } from '../src/sim/arsenal';
 import { claimRect, makeFlatGame, makeTestGame } from './helpers';
 import type { TechId, Unit } from '../src/sim/types';
 
@@ -47,12 +48,14 @@ describe('tech tree data', () => {
       expect(info.tier).toBeLessThanOrEqual(5);
     }
   });
-  it('has 12-15 branch techs in 6 exclusive groups of 2', () => {
+  it('has branch techs in 7 exclusive groups of 2 (3 of them Arsenal paths)', () => {
     const groups = exclusiveGroups();
-    expect(groups.length).toBe(6);
+    expect(groups.length).toBe(7);
     for (const g of groups) expect(groupMembers(g).length).toBe(2);
-    expect(TECH_ORDER.length - 15).toBeGreaterThanOrEqual(12);
-    expect(TECH_ORDER.length - 15).toBeLessThanOrEqual(15);
+    // Research tab (arsenal.ts isArsenalTech = false): 12 base techs + the stat / effect branches
+    const research = TECH_ORDER.filter((t) => !isArsenalTech(t));
+    expect(research.length - 12).toBeGreaterThanOrEqual(10);
+    expect(research.length - 12).toBeLessThanOrEqual(15);
   });
   it('warns which tech a choice locks', () => {
     expect(choiceWarning('freeTrade')).toBe('Choosing this locks Stock Exchange');
@@ -144,10 +147,12 @@ describe('branch effects', () => {
     expect(goldIncome(s, p)).toBeCloseTo(g0 * TECH_EFFECTS.industrialBoomIncome);
     expect(troopCap(s, 1)).toBeCloseTo(c0 * TECH_EFFECTS.conscriptionCap);
   });
-  it('Submarines hide warships from enemies far from them', () => {
+  it('Submarines hide from enemies far from them (the submarine variant only)', () => {
     const s = richGame();
     give(s, 2, 'submarines');
-    const ship = { id: 999, type: 'warship', owner: 2, x: 200, y: 200, hp: 3 } as unknown as Unit;
+    const surface = { id: 998, type: 'warship', owner: 2, x: 200, y: 200, hp: 3 } as unknown as Unit;
+    expect(unitVisibleTo(s, 1, surface)).toBe(true);
+    const ship = { id: 999, type: 'warship', owner: 2, x: 200, y: 200, hp: 3, variant: 'submarine' } as unknown as Unit;
     // far outside the 60x40 map: no own ship or coast of player 1 near it
     expect(unitVisibleTo(s, 1, ship)).toBe(false);
     expect(unitVisibleTo(s, 2, ship)).toBe(true);

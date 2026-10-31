@@ -42,7 +42,7 @@ export function buildReason(state: GameState, me: Player, type: BuildingType): s
 
 export class CommandBar {
   readonly el: HTMLElement;
-  /** BUILD: the Build button, the quick bar, the count selector; owns the build menu and the Upgrade-area panel */
+  /** BUILD: the Build button, the quick bar, the count selector; owns the build menu and the building selection bar */
   readonly quick: QuickBar;
   /** GOLD: the Spend button and its panel */
   readonly spend: SpendPanel;
@@ -61,7 +61,7 @@ export class CommandBar {
     this.spend = new SpendPanel(ctx);
     const build = this.quick.el;
     build.append(this.strikes.el);
-    this.el.append(this.troops(), this.attack(), this.gold(), build, this.quick.menu.el, this.quick.area.el, this.spend.el);
+    this.el.append(this.troops(), this.attack(), this.gold(), build, this.quick.menu.el, this.quick.sel.el, this.spend.el);
   }
 
   /** ~5 Hz refresh. */

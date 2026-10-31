@@ -3,15 +3,15 @@
 // enter build mode (one click), right-click to pin / unpin it on the quick bar (hud/quickBar.ts). A count selector
 // x1 / x3 / x5 (holding Shift = x5) makes one click place the building and queue it up to that many levels
 // (Action buildMany: each level still takes its build time; what can't be paid is not queued). The Military group
-// also sells warships, bombers, fighters and tank divisions; the Tools row has "Upgrade area": click a spot to
-// queue upgrades for all your buildings inside a radius (Action upgradeArea), with a live preview.
+// also sells warships, bombers, fighters and tank divisions; the Tools row points to the building selection
+// (Shift+drag a box over your buildings, then Upgrade x1 / x3 / x5: client/selection.ts, hud/buildingSelection.ts).
 //
 // The pure helpers at the top (counts, bulk preview texts, the click's action, quick-bar picks) have no DOM and are
 // what tests/buildMenu.test.ts checks.
 import './buildMenu.css';
-import { buildManyPreview, upgradeAreaPreview, type BuildManyPreview, type BulkCost, type UpgradeAreaPreview } from '../../sim/bulkbuild';
+import { buildManyPreview, type BuildManyPreview, type BulkCost } from '../../sim/bulkbuild';
 import { buildingCost, countBuildings } from '../../sim/buildings';
-import { BUILDINGS, BUILDING_ORDER, BULK_MAX_COUNT, TECHS, UNITS, UPGRADE_AREA_MAX_RADIUS } from '../../sim/config';
+import { BUILDINGS, BUILDING_ORDER, BULK_MAX_COUNT, TECHS, UNITS } from '../../sim/config';
 import { buildingAllowed, buildSeconds, mods } from '../../sim/rules';
 import { hasTech } from '../../sim/tech';
 import { bestFactory, canBuildTankDivision, tankBuildSeconds, tankDivisionCost, tankDivisionCount, tankDivisionLimit } from '../../sim/tanks';
@@ -23,7 +23,7 @@ import { enterTankDivisionBuildMode, enterWarshipSpawnMode } from '../selection'
 import { maxLevel, resolveBuild } from '../simx';
 import type { UiState } from '../uiState';
 import { BUILD_TAB_OF, BUILD_TABS, buildingTexts, type BuildTab } from './text';
-import { el, fmtSeconds, keycap, setClass, setText, setTip, setVisible, slider, syncSlider, type HudCtx } from './dom';
+import { el, fmtSeconds, keycap, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon, worldGlyph } from './glyph';
 
 // ================================================================================================ pure helpers
@@ -34,9 +34,6 @@ export const BUILD_COUNTS: readonly BuildCount[] = [1, 3, 5];
 export const BUILD_MENU_KEY = 'Tab';
 /** Buttons on the quick bar. */
 export const QUICK_SLOTS = 6;
-/** Upgrade area: default and smallest radius (tiles); the largest is the sim's UPGRADE_AREA_MAX_RADIUS. */
-export const AREA_DEFAULT_RADIUS = 14;
-export const AREA_MIN_RADIUS = 3;
 
 /** Count a click uses: Shift held = x5, else the selector (never above the sim's BULK_MAX_COUNT). */
 export function effectiveCount(ui: Pick<UiState, 'buildCount'>, shift: boolean): number {
@@ -76,17 +73,6 @@ export function bulkPreviewText(pv: BuildManyPreview, building: BuildingType): {
     return { text, sub: `Can afford ${pv.levelsQueued} of ${pv.requested}${miss ? ` (short ${miss})` : ''}`, tone: 'short' };
   }
   return { text, sub: 'Each level still takes its build time', tone: pv.upgrade ? 'up' : 'ok' };
-}
-
-/** The Upgrade-area preview in words. */
-export function upgradeAreaText(pv: UpgradeAreaPreview): { text: string; sub: string; ok: boolean } {
-  if (pv.error && !pv.levelsQueued) return { text: pv.error, sub: pv.candidates ? `${pv.candidates} building${pv.candidates === 1 ? '' : 's'} here could be upgraded` : '', ok: false };
-  const text = `${pv.buildings} building${pv.buildings === 1 ? '' : 's'}, ${pv.levelsQueued} level${pv.levelsQueued === 1 ? '' : 's'}: ${costText(pv.cost) || 'free'}`;
-  if (pv.levelsQueued < pv.requested) {
-    const miss = costText(pv.shortBy);
-    return { text, sub: `Can afford ${pv.levelsQueued} of ${pv.requested} levels${miss ? ` (short ${miss})` : ''}; cheapest first`, ok: true };
-  }
-  return { text, sub: 'Cheapest first; each level takes its build time', ok: true };
 }
 
 // ------------------------------------------------------------------------------------------------ quick-bar picks
@@ -347,7 +333,7 @@ export class BuildMenu {
       sec.append(grid);
       colOf[g.id].append(sec);
     }
-    // tools: upgrade area
+    // tools: how to upgrade many buildings at once
     const tools = el('section', 'bm-group bm-tools');
     tools.append(el('div', 'bm-gh', 'Tools'));
     const tg = el('div', 'bm-grid');
@@ -579,15 +565,15 @@ export class BuildMenu {
   }
 
   private areaCard(): HTMLElement {
-    const { b, cost, line, key } = this.shell('bm-upgrade-area', iconSpan(lineIcon('upgrade', 30, 1.8), 'bm-c-ic tool'), 'Upgrade area');
-    key.append(el('span', 'bm-unit-tag', 'tool'));
-    setText(cost, 'Pick a radius, click a spot');
-    setText(line, 'Queues upgrades for all your buildings inside, cheapest first');
+    const { b, cost, line, key } = this.shell('bm-upgrade-sel', iconSpan(lineIcon('upgrade', 30, 1.8), 'bm-c-ic tool'), 'Upgrade many');
+    key.append(el('span', 'bm-unit-tag', 'tip'));
+    setText(cost, 'Shift+drag a box on the map');
+    setText(line, 'Selects your buildings in it; then U upgrades them all');
     b.addEventListener('click', () => {
-      startUpgradeArea(this.ctx.ui);
       this.close();
+      this.ctx.toast('Hold Shift and drag a box over your buildings, then press U (or click Upgrade x1 / x3 / x5)', 'info');
     });
-    setTip(b, 'Upgrade area: queue upgrades for every building of yours inside a circle (or only one type), up to x1 / x3 / x5 levels each, cheapest first, as far as your gold and iron go. Each level still takes its build time.');
+    setTip(b, 'Upgrade many buildings: hold Shift and drag a box on the map. Your buildings inside are selected (filter them by type); the bar then orders Upgrade x1 / x3 / x5 for all of them, cheapest first, as far as your gold and iron go. Each level still takes its build time.');
     this.cards.push({ btn: b, update: () => {} });
     return b;
   }
@@ -598,28 +584,12 @@ export class BuildMenu {
   }
 }
 
-/** Enters the Upgrade-area tool with the last settings. */
-export function startUpgradeArea(ui: UiState): void {
-  ui.contextMenu = null;
-  ui.mode = { kind: 'upgradeArea', radius: lastArea.radius, building: lastArea.building, levels: ui.buildCount };
-}
-const lastArea: { radius: number; building: BuildingType | undefined } = { radius: AREA_DEFAULT_RADIUS, building: undefined };
-
-/** The action an Upgrade-area click sends. */
-export function upgradeAreaAction(mode: { radius: number; building?: BuildingType; levels: number }, tile: number): Action {
-  const a: Action = { type: 'upgradeArea', tile, radius: Math.max(AREA_MIN_RADIUS, Math.min(UPGRADE_AREA_MAX_RADIUS, Math.round(mode.radius))), levels: Math.max(1, Math.min(BULK_MAX_COUNT, mode.levels)) };
-  if (mode.building) a.building = mode.building;
-  return a;
-}
-
 // ------------------------------------------------------------------------------------------------ previews (cached)
 
 /** Per-viewer caches so the previews don't recompute every frame. */
 export class BulkPreviewCache {
   private bk = '';
   private bv: BuildManyPreview | null = null;
-  private ak = '';
-  private av: UpgradeAreaPreview | null = null;
   build(s: GameState, pid: number, b: BuildingType, tile: number, n: number): BuildManyPreview {
     const k = `${b}|${tile}|${n}|${Math.floor(s.tick / 3)}|${s.buildingsVersion}`;
     if (k !== this.bk || !this.bv) {
@@ -628,118 +598,6 @@ export class BulkPreviewCache {
     }
     return this.bv;
   }
-  area(s: GameState, pid: number, tile: number, radius: number, b: BuildingType | undefined, levels: number): UpgradeAreaPreview {
-    const k = `${tile}|${radius}|${b ?? ''}|${levels}|${Math.floor(s.tick / 3)}|${s.buildingsVersion}`;
-    if (k !== this.ak || !this.av) {
-      this.ak = k;
-      this.av = upgradeAreaPreview(s, pid, tile, radius, b, levels);
-    }
-    return this.av;
-  }
 }
-/** Shared by the tooltip, the overlay and the area panel. */
+/** Shared by the tooltip and the overlay. */
 export const bulkPreviews = new BulkPreviewCache();
-
-// ------------------------------------------------------------------------------------------------ upgrade-area panel
-
-/** While the Upgrade-area tool is on: radius, building type, levels, and the live preview at the cursor. */
-export class UpgradeAreaPanel {
-  readonly el: HTMLElement;
-  private radius: HTMLInputElement;
-  private radiusV: HTMLElement;
-  private type: HTMLSelectElement;
-  private lv: HTMLButtonElement[] = [];
-  private main: HTMLElement;
-  private sub: HTMLElement;
-
-  constructor(private ctx: HudCtx) {
-    this.el = el('div', 'ua-panel hidden');
-    this.el.dataset.test = 'upgrade-area';
-    this.el.addEventListener('pointerdown', (e) => e.stopPropagation());
-    const head = el('div', 'ua-head');
-    head.append(iconSpan(lineIcon('upgrade', 16), 'ua-ic'), el('span', 'ua-t', 'Upgrade area'));
-    const x = el('button', 'sq ua-x');
-    x.type = 'button';
-    x.setAttribute('aria-label', 'Stop (Esc)');
-    x.append(iconSpan(lineIcon('close', 14)));
-    x.addEventListener('click', () => (this.ctx.ui.mode = { kind: 'none' }));
-    head.append(x);
-    const row = el('div', 'ua-row');
-    const rl = el('label', 'ua-l', 'Radius');
-    this.radius = slider(AREA_MIN_RADIUS, UPGRADE_AREA_MAX_RADIUS, 1, 'wr-range ua-range');
-    this.radius.setAttribute('aria-label', 'Radius in tiles');
-    this.radius.dataset.test = 'area-radius';
-    this.radiusV = el('span', 'ua-v');
-    this.radius.addEventListener('input', () => this.set({ radius: Number(this.radius.value) }));
-    rl.append(this.radius, this.radiusV);
-    this.type = el('select', 'ua-sel');
-    this.type.setAttribute('aria-label', 'Which buildings');
-    this.type.dataset.test = 'area-type';
-    const all = el('option', '', 'All buildings');
-    all.value = '';
-    this.type.append(all);
-    for (const b of BUILDING_ORDER) {
-      if (maxLevel(b) <= 1) continue;
-      const o = el('option', '', `${BUILDINGS[b].name}s only`);
-      o.value = b;
-      this.type.append(o);
-    }
-    this.type.addEventListener('change', () => this.set({ building: (this.type.value || undefined) as BuildingType | undefined }));
-    const lvs = el('div', 'bm-count ua-lv');
-    lvs.setAttribute('aria-label', 'Levels per building');
-    for (const n of BUILD_COUNTS) {
-      const b = el('button', 'bm-cnt', `+${n}`);
-      b.type = 'button';
-      b.dataset.n = String(n);
-      b.dataset.tip = `Up to ${n} level${n === 1 ? '' : 's'} more on each building`;
-      b.addEventListener('click', () => this.set({ levels: n }));
-      this.lv.push(b);
-      lvs.append(b);
-    }
-    row.append(rl, this.type, lvs);
-    this.main = el('div', 'ua-main');
-    this.sub = el('div', 'ua-sub');
-    this.el.append(head, row, this.main, this.sub);
-  }
-
-  private set(p: Partial<{ radius: number; building: BuildingType | undefined; levels: number }>): void {
-    const m = this.ctx.ui.mode;
-    if (m.kind !== 'upgradeArea') return;
-    const next = { ...m, ...p };
-    if ('building' in p && !p.building) delete next.building;
-    this.ctx.ui.mode = next;
-    lastArea.radius = next.radius;
-    lastArea.building = next.building;
-    this.sync(true);
-  }
-
-  /** Every frame (cheap: the preview is cached). */
-  fast(s: GameState | null, me: Player | null): void {
-    const m = this.ctx.ui.mode;
-    const on = m.kind === 'upgradeArea' && !!s && !!me && s.phase === 'playing';
-    setVisible(this.el, on);
-    if (!on || !s || !me || m.kind !== 'upgradeArea') return;
-    this.sync(false);
-    const tile = this.ctx.ui.hoverTile;
-    if (tile < 0) {
-      setText(this.main, 'Point at your land and click to queue the upgrades');
-      setText(this.sub, `Radius ${m.radius} tiles; Esc or right-click stops`);
-      this.el.dataset.tone = 'idle';
-      return;
-    }
-    const pv = bulkPreviews.area(s, me.id, tile, m.radius, m.building, m.levels);
-    const t = upgradeAreaText(pv);
-    setText(this.main, t.text);
-    setText(this.sub, t.sub);
-    this.el.dataset.tone = !t.ok ? 'no' : pv.levelsQueued < pv.requested ? 'short' : 'ok';
-  }
-
-  private sync(force: boolean): void {
-    const m = this.ctx.ui.mode;
-    if (m.kind !== 'upgradeArea') return;
-    syncSlider(this.radius, m.radius);
-    setText(this.radiusV, `${m.radius}`);
-    if (force || document.activeElement !== this.type) this.type.value = m.building ?? '';
-    for (const b of this.lv) setClass(b, 'on', Number(b.dataset.n) === m.levels);
-  }
-}

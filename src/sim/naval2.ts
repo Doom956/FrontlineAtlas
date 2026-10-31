@@ -67,6 +67,19 @@ import { interceptStep, ownGroup } from './navy';
 import { atPeace } from './rules';
 import { addEvent } from './state';
 import { hasTech } from './tech';
+import {
+  navalBlockadeMul,
+  navalCaptureMul,
+  navalDamageMul,
+  navalDetectMul,
+  navalExtraHp,
+  navalExtraShips,
+  navalReachMul,
+  navalShellMul,
+  navalSpeedMul,
+  navalSupportMul,
+  navalXpMul,
+} from './variants';
 import { WARSHIP_STANCES, isTribe, isWater } from './types';
 import type { Action, ActionResult, GameState, Unit, WarshipStance } from './types';
 
@@ -97,7 +110,7 @@ export function warshipStance(u: Unit): WarshipStance {
 interface NavyCache {
   tick: number;
   n: number;
-  /** owner -> [x, y, x, y, ...] of its alive warships */
+  /** owner -> [x, y, support range x, blockade range x, ...] of its alive warships (variants.ts: per-ship reach) */
   ships: Map<number, number[]>;
   /** a * 1024 + b for every pair with an attack running (both orders) */
   wars: Set<number>;
@@ -114,7 +127,7 @@ function cache(state: GameState): NavyCache {
     if (u.type !== 'warship' || u.hp <= 0) continue;
     let l = ships.get(u.owner);
     if (!l) ships.set(u.owner, (l = []));
-    l.push(u.x, u.y);
+    l.push(u.x, u.y, navalSupportMul(u), navalBlockadeMul(u));
   }
   const wars = new Set<number>();
   for (const a of state.attacks) {
@@ -184,8 +197,12 @@ export function atWar(state: GameState, a: number, b: number): boolean {
   return cache(state).wars.has(a * 1024 + b) && hostile(state, a, b);
 }
 
+/** Blockade range of `owner`'s ships (x each ship's variant: submarines reach further, variants.ts). */
 function blockadeRange(state: GameState, owner: number): number {
-  return NAVY_BLOCKADE_RANGE * (hasTech(state.players[owner], 'submarines') ? NAVY_SUB_BLOCKADE_RANGE : 1);
+  void state;
+  void owner;
+  void NAVY_SUB_BLOCKADE_RANGE; // the submarine variant's ARSENAL.naval.submarine.blockade replaces it
+  return NAVY_BLOCKADE_RANGE;
 }
 
 function blockades(state: GameState): Map<number, number[]> {
@@ -204,9 +221,9 @@ function blockades(state: GameState): Map<number, number[]> {
     for (const [owner, l] of c.ships) {
       if (owner === b.owner || (by0 && owner > by0) || !c.wars.has(owner * 1024 + b.owner) || !hostile(state, owner, b.owner)) continue;
       const r = blockadeRange(state, owner);
-      const r2 = r * r;
-      for (let k = 0; k < l.length; k += 2) {
-        if (d2(l[k], l[k + 1], bx, by) <= r2) {
+      for (let k = 0; k < l.length; k += 4) {
+        const rr = r * l[k + 3];
+        if (d2(l[k], l[k + 1], bx, by) <= rr * rr) {
           by0 = owner;
           break;
         }
@@ -275,8 +292,10 @@ export function blockadeTradeMul(state: GameState, owner: number, portTile: numb
 // Shore bombardment and landings
 // ---------------------------------------------------------------------------------------------------------------
 
+/** Base support range of `owner`'s ships (Naval Mastery reaches further; each ship's variant scales it: variants.ts). */
 function supportRange(state: GameState, owner: number): number {
-  return NAVY_SUPPORT_RANGE * (hasTech(state.players[owner], 'carriers') ? NAVY_CARRIER_SUPPORT_RANGE : 1);
+  void NAVY_CARRIER_SUPPORT_RANGE; // the carrier variant's ARSENAL.naval.carrier.support replaces it
+  return NAVY_SUPPORT_RANGE * navalReachMul(state, owner);
 }
 
 /** Own warships of `owner` within its support range of tile. */
@@ -288,9 +307,11 @@ export function supportingShips(state: GameState, owner: number, tile: number): 
   const x = tile % w;
   const y = (tile / w) | 0;
   const r = supportRange(state, owner);
-  const r2 = r * r;
   let n = 0;
-  for (let k = 0; k < l.length; k += 2) if (d2(l[k], l[k + 1], x, y) <= r2) n++;
+  for (let k = 0; k < l.length; k += 4) {
+    const rr = r * l[k + 2];
+    if (rr > 0 && d2(l[k], l[k + 1], x, y) <= rr * rr) n++;
+  }
   return n;
 }
 
@@ -338,7 +359,7 @@ function escorted(state: GameState, s: Unit): boolean {
 
 /** Damage of warship u against ship target x this: u's veterancy, target's escort. */
 export function shipDamageMul(state: GameState, u: Unit, target: Unit): number {
-  let m = 1 + NAVY_VET_DAMAGE * (u.vet ?? 0);
+  let m = (1 + NAVY_VET_DAMAGE * (u.vet ?? 0)) * navalDamageMul(u, target); // variants (variants.ts)
   if (target.type !== 'warship' && escorted(state, target)) m *= NAVY_ESCORT_DAMAGE;
   return m;
 }
@@ -346,21 +367,21 @@ export function shipDamageMul(state: GameState, u: Unit, target: Unit): number {
 /** Shelling by warship u for dt seconds: kill multiplier of its stance (and veterancy xp). */
 export function shellingMul(state: GameState, u: Unit, dt: number): number {
   gainXp(state, u, NAVY_XP_SHELL_PER_S * dt);
-  return warshipStance(u) === 'bombard' ? NAVY_BOMBARD_STANCE_KILL : 1;
+  return (warshipStance(u) === 'bombard' ? NAVY_BOMBARD_STANCE_KILL : 1) * navalShellMul(u); // variants (variants.ts)
 }
 
 /** Warship speed x this (escorts keep up with transports). */
 export function warshipSpeedMul(u: Unit): number {
-  return u.state === 4 ? NAVY_ESCORT_SPEED : 1;
+  return (u.state === 4 ? NAVY_ESCORT_SPEED : 1) * navalSpeedMul(u); // variants (variants.ts)
 }
 
 /** Max hp of a warship (base + 1 per veterancy level). */
 export function warshipMaxHp(u: Unit): number {
-  return UNITS.warship.hp + (u.vet ?? 0);
+  return UNITS.warship.hp + (u.vet ?? 0) + navalExtraHp(u); // variants (variants.ts)
 }
 
 function gainXp(state: GameState, u: Unit, xp: number): void {
-  u.xp = (u.xp ?? 0) + xp;
+  u.xp = (u.xp ?? 0) + xp * navalXpMul(state, u.owner); // Naval Mastery (variants.ts)
   const lvl = u.vet ?? 0;
   if (lvl < NAVY_VET_XP.length && u.xp >= NAVY_VET_XP[lvl]) {
     u.vet = lvl + 1;
@@ -388,7 +409,8 @@ export function onShipKilled(state: GameState, u: Unit, target: Unit): number {
   if (!blockading) return 0;
   const p = state.players[owner];
   if (!p || !p.alive) return 0;
-  const gold = target.cargo * NAVY_CAPTURE_GOLD * (hasTech(p, 'submarines') ? NAVY_SUB_CAPTURE : 1);
+  void NAVY_SUB_CAPTURE;
+  const gold = target.cargo * NAVY_CAPTURE_GOLD * navalCaptureMul(u); // submarines capture richer cargo (variants.ts)
   p.gold += gold;
   p.stats.goldEarned += gold;
   target.cargo = 0;
@@ -406,7 +428,7 @@ export function onShipKilled(state: GameState, u: Unit, target: Unit): number {
 export function warshipLimit(state: GameState, playerId: number): number {
   let levels = 0;
   for (const b of buildingsOf(state, playerId, 'port')) if (b.owner === playerId && b.buildLeft <= 0) levels += b.level;
-  return NAVY_CAP_BASE + NAVY_CAP_PER_PORT_LEVEL * levels;
+  return NAVY_CAP_BASE + NAVY_CAP_PER_PORT_LEVEL * levels + navalExtraShips(state, playerId); // Naval Mastery
 }
 /** Warships playerId has (alive + being built). */
 export function warshipCount(state: GameState, playerId: number): number {
@@ -678,7 +700,7 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
   }
   if (st === 'auto' || st === 'hunt') {
     const hunt = st === 'hunt';
-    interceptStep(state, u, ships, wars, hunt ? NAVY_HUNT_DETECT : WARSHIP_DETECT_RANGE, hunt ? NAVY_HUNT_LEASH : WARSHIP_LEASH);
+    interceptStep(state, u, ships, wars, (hunt ? NAVY_HUNT_DETECT : WARSHIP_DETECT_RANGE) * navalDetectMul(u), hunt ? NAVY_HUNT_LEASH : WARSHIP_LEASH);
     if (u.state === 1 || u.state === 2) return;
   }
   if ((state.tick + u.id * 3) % NAVY_THINK_TICKS !== 0) return;
@@ -810,6 +832,20 @@ export function aiNavy(state: GameState, id: number, act: (a: Action) => ActionR
   for (const u of rest) {
     if (!foe) assign(u, 'auto');
     else {
+      // Variants have their job (variants.ts): submarines raid trade (blockade / hunt), battleships bombard, carriers
+      // stay on post (their wings strike from there).
+      if (u.variant === 'submarine') {
+        assign(u, foePorts > 0 && u.id % 2 === 0 ? 'blockade' : 'hunt');
+        continue;
+      }
+      if (u.variant === 'battleship') {
+        assign(u, 'bombard');
+        continue;
+      }
+      if (u.variant === 'carrier') {
+        assign(u, 'auto');
+        continue;
+      }
       // A fixed role per ship (by id), so stances don't shuffle as escorts come and go.
       const role = u.id % (personality === 'admiral' ? 4 : 3);
       if (role === 0 && foePorts > 0) assign(u, 'blockade');

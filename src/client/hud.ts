@@ -12,6 +12,8 @@
 //
 // The DOM is built once. update() runs every frame but only does cheap work there; texts and lists refresh at
 // ~5 Hz through each part's update().
+import { reconHint } from './hud/variantOrders';
+import { VARIANT_NAMES } from '../sim/variants';
 import { buildingAt } from '../sim/buildings';
 import { BUILDINGS, DOCTRINES, TICKS_PER_SECOND } from '../sim/config';
 import { mods } from '../sim/rules';
@@ -616,7 +618,8 @@ export class Hud {
       if (m.kind === 'build') chip = `Build ${BUILDINGS[m.building].name}: click your land. Esc to cancel.`;
       else if (m.kind === 'transport') chip = 'Transport: click a coast to land on. Esc to cancel.';
       else if (m.kind === 'moveWarship') chip = 'Warship selected: click water to move it. Esc to cancel.';
-      else if (m.kind === 'spawnWarship') chip = 'Warship: click water near your port (shaded) where it should appear. Esc to cancel.';
+      else if (m.kind === 'spawnWarship') chip = `${m.variant ? VARIANT_NAMES[m.variant] : 'Warship'}: click water near your port (shaded) where it should appear. Esc to cancel.`;
+      else if (m.kind === 'recon') chip = reconHint();
       else if (m.kind === 'buildTankDivision') chip = 'Tank division: click one of your factories. Esc to cancel.';
       else if (m.kind === 'adminTile') chip = m.label;
       else if (m.kind === 'pillarPick') chip = m.label;

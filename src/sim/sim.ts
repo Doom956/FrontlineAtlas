@@ -17,8 +17,10 @@ import { addEvent, autoSpawnRemaining, pruneEliminated, randomSpawnHumans } from
 import { updateResearch } from './tech';
 import { updateUnits } from './units';
 import { updateAir } from './airwings';
+import { updateArsenal } from './variants';
 import { updateNavyQueue } from './navy';
 import { updateTanks } from './tanks';
+import { updateSpecials } from './specials';
 import { updateWarMemory } from './naval2';
 import { updateVictory } from './victory';
 import type { GameState } from './types';
@@ -52,8 +54,10 @@ export function tick(state: GameState): void {
     updateWarMemory(state);
     updateEndgame(state);
     pruneEliminated(state);
+    updateSpecials(state); // mines, wading tank divisions (specials.ts); before updateUnits drops sunk ships
     updateUnits(state);
     updateAir(state);
+    updateArsenal(state); // recon planes, reveals, hold zones (variants.ts)
     updateNavyQueue(state);
     updateTanks(state);
     updateBarrages(state);

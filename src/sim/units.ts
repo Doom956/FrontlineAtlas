@@ -94,6 +94,8 @@ import { bombDivisions } from './tanks';
 import { airParadropMul, airStrikeArrived, escortAbsorbs, escortCargo, interceptBySuperiority } from './airwings';
 import { doctrineLess, doctrineLever, doctrineMore, doctrinePerk } from './doctrines';
 import { TROOP_TYPES, isWater } from './types';
+import { airBomberExtraHp, airVariantOf, navalCanTarget, navalShellMul, navalShellRangeMul } from './variants';
+import { dropTanksParadropMul, earlyWarningMul, earlyWarningWarnMul, mineLandingLoss, nightDodges, nightEffectMul, nightRadiusMul, nightScatter } from './specials';
 import type { ActionResult, Building, BuildingType, GameState, Troops, Unit, UnitType } from './types';
 
 const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
@@ -440,6 +442,9 @@ function landTransport(state: GameState, u: Unit): void {
     for (const k of TROOP_TYPES) p.troops[k] += troops[k];
     return;
   }
+  u.troops = troops;
+  mineLandingLoss(state, u); // Naval Mines (specials.ts): invasions through a minefield lose troops
+  u.troops = zeroTroops();
   const res = launchAttack(state, u.owner, tile, troops, true);
   if (!res.ok) {
     // Own/allied land was handled above, so a failure means the landing was repelled (combat counted the losses).
@@ -590,6 +595,7 @@ function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<numbe
   for (const s of ships) {
     if (s === u || s.hp <= 0 || !hostile(state, u.owner, s.owner)) continue;
     if (s.type === 'tradeShip' && (s.targetOwner === u.owner || areAllied(state, s.targetOwner, u.owner))) continue;
+    if (!navalCanTarget(state, u, s)) continue; // hidden submarines (variants.ts)
     const dx = s.x - u.x;
     const dy = s.y - u.y;
     const d = dx * dx + dy * dy;
@@ -599,7 +605,8 @@ function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<numbe
     }
   }
   // A chasing ship shoots the ship it chases once it is in range.
-  target = chaseTargetInRange(u, ships, WARSHIP_RANGE) ?? target;
+  const chased = chaseTargetInRange(u, ships, WARSHIP_RANGE);
+  if (chased && navalCanTarget(state, u, chased)) target = chased;
   const showShot = (state.tick + u.id) % (WARSHIP_FIGHT_TICKS * 2) === 0;
   if (target) {
     // Submarines (techtree.ts); veterancy and escorts (naval2.ts)
@@ -614,12 +621,12 @@ function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<numbe
   }
 
   // No ship to fight: shell the nearest coast within half range of a player we are at war with.
-  if (!wars.size) return;
+  if (!wars.size || navalShellMul(u) <= 0) return; // submarines never shell (variants.ts)
   const map = state.map;
   const w = map.width;
   let bestTile = -1;
   let bestDist = Infinity;
-  forEachInRadius(map, unitTile(state, u), WARSHIP_RANGE / 2, (i, d) => {
+  forEachInRadius(map, unitTile(state, u), (WARSHIP_RANGE / 2) * navalShellRangeMul(state, u), (i, d) => { // battleships reach further
     if (d >= bestDist || !map.coastal[i]) return;
     const o = map.owner[i];
     if (o === 0 || o === u.owner || !wars.has(u.owner * 1024 + o) || areAllied(state, u.owner, o)) return;
@@ -773,6 +780,9 @@ export function launchBomber(state: GameState, playerId: number, airfieldTile: n
   const u = makeUnit(state, 'bomber', playerId, airfieldTile, tile);
   if (doctrinePerk(state, playerId, 'air')) u.hp += DOCTRINE_PERKS.air.bomberExtraHp; // Air level 3: takes an extra hit
   u.hp += techBomberExtraHp(state, playerId); // Jet Engines (techtree.ts)
+  u.hp += airBomberExtraHp(state, playerId); // heavy bombers (variants.ts)
+  const airV = airVariantOf(state, playerId);
+  if (airV) u.variant = airV;
   u.targetOwner = target;
   state.units.push(u);
   return { ok: true };
@@ -788,8 +798,10 @@ function dropBombs(state: GameState, u: Unit): void {
   const tile = u.target;
   const owner = map.owner[tile];
   const w = map.width;
-  const bombR = BOMBER_RADIUS * techBombRadiusMul(state, u.owner); // Strategic Bombing (techtree.ts)
-  const hitChance = techBombBuildingHit(state, u.owner, BOMBER_BUILDING_HIT);
+  // Strategic Bombing (techtree.ts); Night Bombing (specials.ts): smaller, weaker
+  const night = nightEffectMul(state, u.owner);
+  const bombR = BOMBER_RADIUS * techBombRadiusMul(state, u.owner) * nightRadiusMul(state, u.owner);
+  const hitChance = techBombBuildingHit(state, u.owner, BOMBER_BUILDING_HIT) * night;
   state.effects.push({ kind: 'explosion', x: (tile % w) + 0.5, y: ((tile / w) | 0) + 0.5, radius: bombR, tick: state.tick });
   if (!hostile(state, u.owner, owner) || !state.players[owner].alive) return;
   let destroyed = 0;
@@ -810,7 +822,7 @@ function dropBombs(state: GameState, u: Unit): void {
   for (const [o, n] of hit) {
     const p = state.players[o];
     const share = n / Math.max(1, p.tiles);
-    const kill = Math.max((BOMBER_MIN_KILL * n) / hitTiles, BOMBER_TROOP_KILL * troopTotal(p.troops) * share);
+    const kill = Math.max((BOMBER_MIN_KILL * n) / hitTiles, BOMBER_TROOP_KILL * troopTotal(p.troops) * share) * night;
     killed += killTroops(state, o, kill, u.owner, false);
   }
   // Tank divisions caught in the blast lose troops (tanks.ts).
@@ -836,7 +848,7 @@ function bomberHome(state: GameState, u: Unit): void {
 /** How far an airfield can drop paratroopers (straight line, tiles); with the game state also the Air doctrine's reach. */
 export function paradropRange(b: Building, state?: GameState): number {
   const base = PARADROP_RANGE + PARADROP_RANGE_PER_LEVEL * (b.level - 1);
-  return state ? Math.round(base * doctrineMore(state, b.owner, 'paradropRange')) : base;
+  return state ? Math.round(base * doctrineMore(state, b.owner, 'paradropRange') * dropTanksParadropMul(state, b.owner)) : base; // Drop Tanks (specials.ts)
 }
 
 /** Most troops one drop from this airfield may carry: level x max(PARADROP_TROOPS_PER_LEVEL, share of the army). */
@@ -1120,20 +1132,22 @@ function interceptThreats(state: GameState, threats: Unit[], sams: Building[], a
     for (const s of sams) {
       if (u.hp <= 0) break;
       if (chargesReady(s) < 1 || isDisabled(state, s) || !hostile(state, u.owner, s.owner)) continue;
-      const r = samRadius(s);
+      const r = samRadius(s) * earlyWarningMul(state, s.owner); // Early Warning (specials.ts)
       if (d2To(state, u, s.tile) > r * r) continue;
       useCharge(s);
       state.effects.push({ kind: 'shot', x: (s.tile % w) + 0.5, y: ((s.tile / w) | 0) + 0.5, x2: u.x + 0.5, y2: u.y + 0.5, radius: 0.5, tick: state.tick });
+      if (nightDodges(state, u, s.owner)) continue; // Night Bombing (specials.ts): the shot misses
       u.hp -= 1;
       if (u.hp <= 0) shotDown(state, u, s.owner, 'SAM site');
     }
     if (u.hp <= 0 || (u.type !== 'bomber' && u.type !== 'transportPlane')) continue;
     for (const a of airfields) {
       if (a.fighters <= 0 || a.cooldown > 0 || !hostile(state, u.owner, a.owner)) continue;
-      const r = airfieldRadius(a);
+      const r = airfieldRadius(a) * earlyWarningMul(state, a.owner); // Early Warning (specials.ts)
       if (d2To(state, u, a.tile) > r * r) continue;
       a.cooldown = (FIGHTER_COOLDOWN / a.fighters) * doctrineLess(state, a.owner, 'airfieldReload');
       if (escortAbsorbs(state, u, a.owner, a)) break; // the escort fought it off (airwings.ts)
+      if (nightDodges(state, u, a.owner)) break; // Night Bombing (specials.ts): slipped past in the dark
       // One hit (a bomber of the Air doctrine at level 3 survives the first).
       u.hp -= 1;
       if (u.hp <= 0) shotDown(state, u, a.owner, 'fighters');
@@ -1172,7 +1186,7 @@ function watchtowerWarnings(state: GameState, units: Unit[]): void {
       towers ??= buildingsOf(state, h.id, 'watchtower').filter((b) => b.buildLeft <= 0);
       if (!towers.length) break;
       if (!towers.some((t) => {
-        const r = watchtowerRadiusOf(state, t);
+        const r = watchtowerRadiusOf(state, t) * earlyWarningWarnMul(state, h.id); // Early Warning (specials.ts)
         return d2To(state, u, t.tile) <= r * r;
       })) continue;
       m.warned.add(h.id);
@@ -1274,6 +1288,7 @@ export function updateUnits(state: GameState): void {
     if (u.hp <= 0 || !arrived.has(u) || !players[u.owner]?.alive) continue;
     if (u.type === 'bomber') {
       if (u.state === 0) {
+        nightScatter(state, u); // Night Bombing (specials.ts): the bombs land off the aim
         if (!airStrikeArrived(state, u)) dropBombs(state, u); // air-wing support strikes replace the drop (airwings.ts)
         u.state = 1;
         u.target = u.home;

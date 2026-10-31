@@ -26,6 +26,8 @@ import { atPeace, peaceReason, unitRule } from './rules';
 import { addEvent } from './state';
 import { hasTech } from './tech';
 import { techOf } from './techtree';
+import { dropTanksPatrolMul, dropTanksRangeMul, nightDodges, nightEffectMul, nightRadiusMul } from './specials';
+import { airRaidMul, airRangeMul, airSupportMul, airWingMul, carrierFor } from './variants';
 import { buildAircraft, launchBomber, shotDown, unitCost } from './units';
 import { AIR_MISSIONS, isTribe } from './types';
 import type { ActionResult, AirMission, AirRaid, AirState, AirWing, AirZone, Building, BuildingType, GameState, TechId, Unit } from './types';
@@ -85,12 +87,13 @@ export function airWingSize(state: GameState, b: Building): number {
   let n = AIR.wingBase + AIR.wingPerLevel * (Math.max(1, b.level) - 1);
   if (techOf(state, b.owner, 'jetEngines')) n += AIR.wingJets;
   if (doctrineActive(state, b.owner) === 'air') n += AIR.wingDoctrine;
-  return n;
+  return Math.round(n * airWingMul(state, b.owner)); // Air Mastery (variants.ts)
 }
 
-/** Mission reach of an airfield (tiles, straight line). */
-export function airWingRange(b: Building): number {
-  return AIR.range + AIR.rangePerLevel * (Math.max(1, b.level) - 1);
+/** Mission reach of an airfield (tiles, straight line); with the state also Drop Tanks (specials.ts). */
+export function airWingRange(b: Building, state?: GameState): number {
+  const base = AIR.range + AIR.rangePerLevel * (Math.max(1, b.level) - 1);
+  return state ? base * dropTanksRangeMul(state, b.owner) * airRangeMul(state, b.owner) : base; // heavy bombers (variants.ts)
 }
 
 /** Radius of the support zone this airfield's strikes make. */
@@ -98,9 +101,9 @@ export function airSupportRadius(b: Building | undefined): number {
   return AIR.supportRadius + AIR.supportRadiusPerLevel * (Math.max(1, b?.level ?? 1) - 1);
 }
 
-/** Superiority patrol radius of an airfield. */
-export function airPatrolRadius(b: Building): number {
-  return airfieldRadius(b) * AIR.superiorityRadiusMul;
+/** Superiority patrol radius of an airfield; with the state also Drop Tanks (specials.ts). */
+export function airPatrolRadius(b: Building, state?: GameState): number {
+  return airfieldRadius(b) * AIR.superiorityRadiusMul * (state ? dropTanksPatrolMul(state, b.owner) : 1);
 }
 
 /** Defence cut of a zone strength (diminishing returns per extra bomber). */
@@ -294,7 +297,7 @@ export function setAirMission(state: GameState, pid: number, airfield: number, m
   const w = map.width;
   if (aim >= 0) {
     sites = sites.filter((b) => {
-      const r = mission === 'superiority' ? airfieldRadius(b) * AIR.superiorityCentreReach : airWingRange(b);
+      const r = mission === 'superiority' ? airfieldRadius(b) * AIR.superiorityCentreReach * dropTanksPatrolMul(state, pid) : airWingRange(b, state);
       return d2(w, b.tile, aim) <= r * r;
     });
     if (!sites.length) return FAIL(airfield === -1 ? 'None of your airfields reaches that far' : 'Too far from this airfield');
@@ -383,14 +386,14 @@ function strategicAims(state: GameState, wing: AirWing, b: Building, n: number):
   const fp = state.players[foe];
   if (!fp?.alive) return [];
   const w = state.map.width;
-  const range = airWingRange(b);
+  const range = airWingRange(b, state);
   const sams = buildingsOf(state, foe, 'sam').filter((s) => s.buildLeft <= 0 && !isDisabled(state, s));
   const scored: { tile: number; score: number }[] = [];
   for (const [type, weight] of Object.entries(RAID_WEIGHT) as [BuildingType, number][]) {
     for (const t of buildingsOf(state, foe, type)) {
       if (t.buildLeft > 0 || state.map.owner[t.tile] !== foe) continue;
       const dd = d2(w, b.tile, t.tile);
-      if (dd > range * range) continue;
+      if (dd > range * range && !carrierFor(state, wing.owner, t.tile)) continue; // carriers launch far out (variants.ts)
       let cover = 0;
       for (const s of sams) {
         const r = samRadius(s);
@@ -431,6 +434,15 @@ function launchWing(state: GameState, wing: AirWing, b: Building, aims: number[]
     if (!launchBomber(state, wing.owner, b.tile, aim).ok) break;
     const u = state.units[state.units.length - 1];
     u.mission = mission;
+    // Out of the airfield's reach: the bombers take off from the nearest own carrier in reach (variants.ts).
+    const range = airWingRange(b, state);
+    if (d2(state.map.width, b.tile, aim) > range * range) {
+      const c = carrierFor(state, wing.owner, aim);
+      if (c) {
+        u.x = c.x;
+        u.y = c.y;
+      }
+    }
     if (escorts > 0) {
       u.escort = hits;
       escorts--;
@@ -457,9 +469,9 @@ function sortie(state: GameState, wing: AirWing, b: Building): void {
   if (wing.mission === 'support') {
     const aim = supportAim(state, wing);
     const foe = aim >= 0 ? state.map.owner[aim] : 0;
-    const range = airWingRange(b);
+    const range = airWingRange(b, state);
     // Support flies while we are at war with them (either side attacking), within reach.
-    if (aim >= 0 && atWar(state, wing.owner, foe) && d2(w, b.tile, aim) <= range * range) aims = [aim];
+    if (aim >= 0 && atWar(state, wing.owner, foe) && (d2(w, b.tile, aim) <= range * range || carrierFor(state, wing.owner, aim))) aims = [aim]; // carriers (variants.ts)
   } else {
     mission = MISSION_STRATEGIC;
     const foe = wing.targetOwner;
@@ -502,7 +514,7 @@ function supportStrike(state: GameState, u: Unit): void {
   const victim = map.owner[tile];
   const home = buildingAt(state, u.home);
   const af = home && home.type === 'airfield' && home.owner === u.owner ? home : undefined;
-  const radius = airSupportRadius(af);
+  const radius = airSupportRadius(af) * nightRadiusMul(state, u.owner); // Night Bombing (specials.ts)
   const w = map.width;
   state.effects.push({ kind: 'explosion', x: (tile % w) + 0.5, y: ((tile / w) | 0) + 0.5, radius, tick: state.tick });
   if (!hostile(state, u.owner, victim) || !state.players[victim]?.alive) return;
@@ -529,7 +541,7 @@ function supportStrike(state: GameState, u: Unit): void {
   const vp = state.players[victim];
   const share = tiles / Math.max(1, vp.tiles);
   const army = vp.troops.infantry + vp.troops.armor + vp.troops.artillery;
-  const kill = Math.max((AIR.supportMinKill * tiles) / Math.max(1, hostileTiles), AIR.supportKillShare * army * share);
+  const kill = Math.max((AIR.supportMinKill * tiles) / Math.max(1, hostileTiles), AIR.supportKillShare * army * share) * nightEffectMul(state, u.owner) * airSupportMul(state, u.owner); // ground-attack / heavy (variants.ts)
   const killed = killArmy(state, victim, kill, u.owner);
 
   // Strengthen this wing's zone if it is near, else start a new one.
@@ -539,12 +551,12 @@ function supportStrike(state: GameState, u: Unit): void {
     if (z.owner === u.owner && z.wing === (af?.id ?? -1) && z.untilTick > state.tick && d2(w, z.tile, tile) <= (radius * radius) / 4) zone = z;
   }
   if (zone) {
-    zone.strength += 1;
+    zone.strength += airSupportMul(state, u.owner); // ground-attack planes strike harder (variants.ts)
     zone.untilTick = untilTick;
     zone.tiles = tiles;
     zone.victim = victim;
   } else {
-    air.zones.push({ wing: af?.id ?? -1, owner: u.owner, tile, radius, strength: 1, untilTick, victim, tiles });
+    air.zones.push({ wing: af?.id ?? -1, owner: u.owner, tile, radius, strength: airSupportMul(state, u.owner), untilTick, victim, tiles });
     const me = state.players[u.owner];
     addEvent(state, 'bombing', `${me.name}'s bombers are supporting the attack on ${vp.name}: ${Math.round(killed)} troops killed`, [u.owner, victim], tile);
   }
@@ -570,7 +582,7 @@ function raid(state: GameState, u: Unit): void {
   const victim = state.map.owner[u.target];
   if (!hostile(state, u.owner, victim) || !state.players[victim]?.alive) return;
   const tech = techOf(state, u.owner, 'strategicBombing');
-  const per = AIR.raidCut * (tech ? AIR.raidTechMul : 1);
+  const per = AIR.raidCut * (tech ? AIR.raidTechMul : 1) * nightEffectMul(state, u.owner) * airRaidMul(state, u.owner); // Night Bombing (specials.ts); heavy bombers (variants.ts)
   const max = tech ? AIR.raidTechMaxCut : AIR.raidMaxCut;
   const until = state.tick + Math.round(AIR.raidSeconds * (tech ? AIR.raidTechMul : 1) * TICKS_PER_SECOND);
   const air = airState(state);
@@ -603,7 +615,7 @@ export function interceptBySuperiority(state: GameState, threats: readonly Unit[
     const b = state.buildings.get(wing.airfield);
     if (!b || b.owner !== wing.owner || b.buildLeft > 0 || b.fighters <= 0 || isDisabled(state, b)) continue;
     const centre = wing.target >= 0 ? wing.target : b.tile;
-    const r = airPatrolRadius(b);
+    const r = airPatrolRadius(b, state);
     const cx = (centre % w) + 0.5;
     const cy = ((centre / w) | 0) + 0.5;
     for (const t of threats) {
@@ -616,6 +628,7 @@ export function interceptBySuperiority(state: GameState, threats: readonly Unit[
       wing.coverTick = state.tick + Math.max(1, Math.round(secs * TICKS_PER_SECOND));
       state.effects.push({ kind: 'shot', x: (b.tile % w) + 0.5, y: ((b.tile / w) | 0) + 0.5, x2: t.x + 0.5, y2: t.y + 0.5, radius: 0.5, tick: state.tick });
       if (escortAbsorbs(state, t, wing.owner, b)) break;
+      if (nightDodges(state, t, wing.owner)) break; // Night Bombing (specials.ts)
       t.hp -= 1;
       if (t.hp <= 0) shotDown(state, t, wing.owner, 'fighters');
       break;
@@ -793,7 +806,7 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
       mission = 'superiority';
       patrolling = true;
     } else if (main && front.length) {
-      const range = airWingRange(b);
+      const range = airWingRange(b, state);
       let best = -1;
       let bestD = Infinity;
       for (const t of front) {
@@ -813,7 +826,7 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
     if (mission === 'idle' && fighting.length && (minded || p.personality === 'merchant' || techOf(state, id, 'strategicBombing'))) {
       let bestFoe = 0;
       let bestN = 0;
-      const range = airWingRange(b);
+      const range = airWingRange(b, state);
       for (const q of fighting) {
         const qp = state.players[q];
         if (!qp?.alive || isTribe(qp) || !hostile(state, id, q)) continue;

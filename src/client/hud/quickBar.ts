@@ -1,7 +1,7 @@
 // Command bar BUILD section: a clear "Build" button (Tab) that opens the build menu (hud/buildMenu.ts), a QUICK BAR
 // of six building buttons (pinned ones first, then your most-used; right-click unpins / pins) and the x1 / x3 / x5
-// count selector (holding Shift = x5). Replaces the old category icon tabs. While the Upgrade-area tool is on, its
-// small panel (radius, type, levels, live preview) sits above the bar.
+// count selector (holding Shift = x5). Replaces the old category icon tabs. While the Shift+drag box holds buildings of
+// yours, the building selection bar (hud/buildingSelection.ts: filter chips, Upgrade x1 / x3 / x5) sits above it.
 import { BUILDINGS } from '../../sim/config';
 import { buildingAllowed } from '../../sim/rules';
 import type { BuildingType, GameState, Player } from '../../sim/types';
@@ -17,8 +17,8 @@ import {
   QUICK_SLOTS,
   QuickPicks,
   stableSlots,
-  UpgradeAreaPanel,
 } from './buildMenu';
+import { BuildingSelectionBar } from './buildingSelection';
 import { el, keycap, setClass, setTip, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon, worldGlyph } from './glyph';
 import { TECHS } from '../../sim/config';
@@ -45,7 +45,7 @@ function near(p: Player, t: keyof typeof TECHS | null): boolean {
 export class QuickBar {
   readonly el: HTMLElement;
   readonly menu: BuildMenu;
-  readonly area: UpgradeAreaPanel;
+  readonly sel: BuildingSelectionBar;
   readonly picks: QuickPicks;
   private slots: { b: HTMLButtonElement; ic: HTMLElement; key: HTMLElement; type: BuildingType | null }[] = [];
   private buildBtn: HTMLButtonElement;
@@ -56,7 +56,7 @@ export class QuickBar {
   constructor(private ctx: HudCtx) {
     this.picks = new QuickPicks(browserStore());
     this.menu = new BuildMenu(ctx, { picks: this.picks, picked: () => this.refresh() });
-    this.area = new UpgradeAreaPanel(ctx);
+    this.sel = new BuildingSelectionBar(ctx);
     this.el = el('section', 'cb-sec cb-build qb');
     this.el.dataset.test = 'quick-bar';
 
@@ -66,7 +66,7 @@ export class QuickBar {
     this.buildBtn.dataset.test = 'build-menu-btn';
     this.buildBtn.setAttribute('aria-haspopup', 'dialog');
     this.buildBtn.append(iconSpan(lineIcon('build', 16, 2), 'qb-build-ic'), el('span', 'qb-build-l', 'Build'), keycap(BUILD_MENU_KEY));
-    this.buildBtn.dataset.tip = `Build menu (${BUILD_MENU_KEY}): every building with its cost and what it does, warships, tank divisions and the Upgrade-area tool`;
+    this.buildBtn.dataset.tip = `Build menu (${BUILD_MENU_KEY}): every building with its cost and what it does, warships and tank divisions`;
     this.buildBtn.addEventListener('click', () => this.menu.toggle());
 
     // six quick slots
@@ -194,6 +194,6 @@ export class QuickBar {
     setClass(this.buildBtn, 'on', this.menu.open);
     this.buildBtn.setAttribute('aria-expanded', String(this.menu.open));
     this.count.sync();
-    this.area.fast(this.ctx.state(), this.ctx.me());
+    this.sel.fast(this.ctx.state(), this.ctx.me());
   }
 }

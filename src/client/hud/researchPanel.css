@@ -1,0 +1,637 @@
+/* Research panel (hud/researchTree.ts, hud/arsenalPage.ts): two tabs of rows on a shared column grid. War-room
+   style: metal cards, brass for done / available, steel for researching, dashed for locked, olive for specials. */
+aside.drawer[data-page='research'] {
+  width: min(1320px, calc((100vw - 24px) / var(--ui, 1)));
+}
+aside.drawer[data-page='research'] .dr-body {
+  overflow-x: hidden;
+  padding: 6px 14px 6px;
+}
+.rp-page {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.rp-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.rp-tabs {
+  flex: none;
+  display: flex;
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  background: var(--ink);
+}
+.rp-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  color: var(--dim);
+  font: 600 15px/1 var(--f-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.rp-tab + .rp-tab {
+  border-left: 1px solid var(--rule);
+}
+.rp-tab:hover {
+  color: var(--text);
+  background: var(--metal-2);
+}
+.rp-tab.on {
+  color: var(--brass-ink);
+  background: linear-gradient(180deg, var(--brass-hi), var(--brass));
+}
+.rp-tab-k {
+  font: 600 10px/1 var(--f-ui);
+  letter-spacing: 0;
+  padding: 2px 4px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  opacity: 0.6;
+}
+.rp-tab-dot {
+  display: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brass-hi);
+  box-shadow: 0 0 6px var(--brass);
+}
+.rp-tab-dot.on {
+  display: inline-block;
+}
+.rp-tab.on .rp-tab-dot {
+  display: none;
+}
+.rp-cur {
+  flex: 1;
+  min-width: 160px;
+  row-gap: 3px;
+}
+.rp-cur .rt-cur-v {
+  font-size: 17px;
+}
+.rp-auto.segc {
+  width: 150px;
+  margin: 0;
+}
+.rp-auto .segc-b {
+  min-height: 28px;
+}
+.rp-chips {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.rp-chip {
+  height: 22px;
+  padding: 0 10px;
+  border: 1px solid var(--rule);
+  border-radius: 11px;
+  background: transparent;
+  color: var(--dim);
+  font: 600 11.5px/20px var(--f-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.rp-chip:hover {
+  color: var(--text);
+  border-color: var(--rule-hi);
+}
+.rp-chip.on {
+  color: var(--brass-hi);
+  border-color: var(--brass);
+  background: rgba(201, 162, 39, 0.12);
+}
+/* the Arsenal's Mastery column header: "Mastery 1 of 2: Navy" */
+.rp-colhead-c.rp-mastery {
+  color: var(--brass-hi);
+}
+.rp-colhead-c.rp-mastery.full {
+  color: var(--signal);
+}
+.rp-body {
+  min-width: 0;
+}
+
+/* the grid: a label column, then the tab's columns; each row lays its lanes on the same template */
+.rp-grid {
+  --rp-lab: 22px;
+  --rp-cg: 24px;
+  display: flex;
+  flex-direction: column;
+}
+.rp-colhead,
+.rp-row {
+  display: grid;
+  grid-template-columns: var(--rp-lab) repeat(var(--cols, 5), minmax(0, 1fr));
+  column-gap: var(--rp-cg);
+}
+.rp-colhead {
+  padding-bottom: 2px;
+}
+.rp-colhead-c {
+  font: 600 10px/14px var(--f-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rp-row {
+  position: relative;
+  grid-template-rows: repeat(var(--lanes, 2), auto);
+  row-gap: 10px;
+  padding: 10px 0 6px;
+  border-top: 1px solid var(--rule);
+}
+.rp-row.hidden {
+  display: none;
+}
+.rp-rowlab {
+  grid-column: 1;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  border-left: 2px solid var(--brass-lo);
+  white-space: nowrap;
+}
+.rp-rowlab-t {
+  font: 600 13px/1 var(--f-label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.rp-rowlab-n {
+  font: 500 10.5px/1 var(--f-label);
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+.rp-lines {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.rp-lines path {
+  fill: none;
+  stroke: var(--rule-hi);
+  stroke-width: 1.4;
+  transition: stroke var(--fast), opacity var(--fast);
+}
+.rp-lines path.done {
+  stroke: var(--brass-lo);
+  stroke-width: 1.8;
+}
+.rp-lines path.open {
+  stroke: #8d8a78;
+}
+.rp-lines path.locked {
+  stroke: #66717c;
+  stroke-dasharray: 3 3;
+}
+.rp-lines path.either {
+  stroke-dasharray: 1 3;
+  stroke-linecap: round;
+}
+.rp-lines path.done.either {
+  stroke-dasharray: 0;
+}
+.rp-lines path.fork-cut {
+  stroke: var(--signal-d);
+  stroke-dasharray: 2 4;
+  opacity: 0.7;
+}
+.rp-lines path.cut-mark {
+  stroke: var(--signal);
+  stroke-width: 1.6;
+}
+.rp-lines path.rp-fork-rule {
+  stroke: var(--brass-lo);
+  stroke-width: 1.2;
+  stroke-dasharray: 5 4;
+}
+.rp-grid.hovering .rp-lines path:not(.rp-fork-rule):not(.cut-mark) {
+  opacity: 0.22;
+}
+.rp-grid.hovering .rp-lines path.hl-pre,
+.rp-grid.hovering .rp-lines path.hl-next {
+  opacity: 1;
+  stroke-width: 2.2;
+  stroke-dasharray: 0;
+}
+.rp-grid.hovering .rp-lines path.hl-pre {
+  stroke: var(--brass-hi);
+}
+.rp-grid.hovering .rp-lines path.hl-next {
+  stroke: var(--steel);
+}
+.rp-or {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  font: 700 10px/15px var(--f-label);
+  letter-spacing: 0.1em;
+  padding: 0 4px;
+  border-radius: 2px;
+  color: var(--brass-ink);
+  background: var(--brass);
+  box-shadow: 0 0 0 2px var(--metal);
+  pointer-events: none;
+}
+.rp-or.decided {
+  color: var(--dim);
+  background: var(--metal-3);
+}
+
+/* a card */
+.rp-card {
+  position: relative;
+  z-index: 1;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 62px;
+  padding: 3px 8px 3px 7px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  background: var(--metal-2);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--fast), border-color var(--fast), opacity var(--fast), box-shadow var(--fast);
+}
+.rp-card:focus-visible {
+  outline: 2px solid var(--brass-hi);
+  outline-offset: 2px;
+}
+.rp-ic {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--dim);
+}
+.rp-ring {
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: conic-gradient(var(--steel) calc(var(--p, 0) * 1turn), rgba(255, 255, 255, 0.12) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+  display: none;
+}
+.rp-glyph {
+  line-height: 0;
+}
+.rp-glyph svg {
+  width: 18px;
+  height: 18px;
+}
+.rp-txt {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.rp-top,
+.rp-mid {
+  display: flex;
+  align-items: baseline;
+  line-height: 14px;
+  gap: 6px;
+  min-width: 0;
+}
+.rp-n {
+  flex: 0 0 auto;
+  max-width: 100%;
+  min-width: 0;
+  font: 600 13.5px/1.12 var(--f-label);
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rp-need {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: right;
+  font-size: 10px;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rp-meta {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rp-tag {
+  flex: 0 100 auto;
+  min-width: 0;
+  margin-left: auto;
+  font: 700 9.5px/13px var(--f-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rp-tag:empty {
+  display: none;
+}
+/* "locks X" on a fork before the pick: a flag on the card's top edge, so it never squeezes the price */
+.rp-tag.warn {
+  position: absolute;
+  top: -8px;
+  right: 6px;
+  max-width: calc(100% - 44px);
+  padding: 0 5px;
+  border-radius: 2px;
+  font-size: 8.5px;
+  line-height: 11px;
+  color: #f0b3a1;
+  background: #4a2219;
+  box-shadow: 0 0 0 1px var(--signal-d);
+}
+.rp-tag.special {
+  color: var(--olive);
+}
+.rp-tag.mastery {
+  color: var(--brass-hi);
+}
+.rp-l {
+  font-size: 11px;
+  line-height: 13px;
+  color: var(--dim);
+  /* two lines where there is room (tall screens); one on short ones */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.rp-flag {
+  display: none;
+  position: absolute;
+  top: -8px;
+  left: 36px;
+  font: 700 8.5px/11px var(--f-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0 5px;
+  border-radius: 2px;
+  color: var(--brass-ink);
+  background: var(--brass-hi);
+}
+
+/* kinds: specials have an olive edge, masteries a double brass edge */
+.rp-card.k-special {
+  border-left: 3px solid var(--olive-d);
+}
+.rp-card.k-mastery:not(.locked) {
+  box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.35);
+}
+
+/* states */
+.rp-card.avail {
+  border-color: var(--brass);
+}
+.rp-card.avail.k-special {
+  border-left-color: var(--olive);
+}
+.rp-card.avail .rp-ic,
+.rp-card.avail .rp-meta {
+  color: var(--brass-hi);
+}
+.rp-card.avail:hover {
+  background: var(--metal-3);
+}
+.rp-card.avail.poor {
+  border-color: var(--brass-lo);
+}
+.rp-card.avail.poor .rp-meta {
+  color: #d98a73;
+}
+.rp-card.next {
+  background: linear-gradient(180deg, rgba(227, 192, 78, 0.16), rgba(227, 192, 78, 0.05)), var(--metal-2);
+  box-shadow: 0 0 0 1px var(--brass-hi), 0 0 12px rgba(227, 192, 78, 0.3);
+}
+.rp-card.next .rp-flag {
+  display: block;
+}
+.rp-card.next .rp-tag.warn {
+  max-width: calc(100% - 80px);
+}
+.rp-card.done {
+  background: linear-gradient(180deg, #c9a227, #a9861c);
+  border-color: var(--brass-hi);
+  color: var(--brass-ink);
+}
+.rp-card.done .rp-l,
+.rp-card.done .rp-meta,
+.rp-card.done .rp-need,
+.rp-card.done .rp-tag {
+  color: rgba(26, 21, 8, 0.78);
+}
+.rp-card.done .rp-ic {
+  background: rgba(26, 21, 8, 0.85);
+  color: var(--brass-hi);
+}
+.rp-card.active {
+  border-color: var(--steel);
+  background: rgba(107, 149, 184, 0.14);
+}
+.rp-card.active .rp-ring {
+  display: block;
+}
+.rp-card.active .rp-ic,
+.rp-card.active .rp-meta {
+  color: var(--steel);
+}
+.rp-card.locked {
+  border-style: dashed;
+  background: rgba(34, 41, 48, 0.55);
+  cursor: help;
+}
+.rp-card.locked .rp-n {
+  color: #c4c0b4;
+}
+.rp-card.chose-other,
+.rp-card.capped {
+  opacity: 0.55;
+  border-color: var(--signal-d);
+}
+.rp-card.chose-other .rp-n {
+  text-decoration: line-through;
+  text-decoration-color: var(--signal);
+}
+.rp-card.chose-other .rp-meta,
+.rp-card.capped .rp-meta {
+  color: #d98a73;
+}
+.rp-grid.hovering .rp-card.would-lock {
+  opacity: 0.8;
+  border-color: var(--signal);
+  border-style: dashed;
+}
+.rp-grid.hovering .rp-card.would-lock .rp-n {
+  text-decoration: line-through;
+  text-decoration-color: var(--signal);
+}
+.rp-card.capped .rp-ic::after {
+  content: '';
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--signal);
+  box-shadow: 0 0 0 2px var(--metal);
+}
+
+/* hover / focus: the path lights up, the rest dims */
+.rp-grid.hovering .rp-card:not(.hl):not(.hl-pre):not(.hl-next) {
+  opacity: 0.45;
+}
+.rp-grid.hovering .rp-card.hl,
+.rp-grid.hovering .rp-card.hl-pre,
+.rp-grid.hovering .rp-card.hl-next {
+  opacity: 1;
+}
+.rp-card.hl {
+  box-shadow: 0 0 0 2px var(--brass-hi);
+}
+.rp-card.hl-pre:not(.done) {
+  border-color: var(--brass-hi);
+}
+.rp-card.hl-next {
+  border-color: var(--steel);
+}
+.rp-foot {
+  margin-top: 0;
+  min-height: 46px;
+  padding: 5px 10px;
+}
+.rp-foot .rt-foot-d {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* short screens (1280x720): tighter cards and rows so all four rows fit without scrolling */
+@media (max-height: 800px) {
+  .rp-card {
+    min-height: 44px;
+    padding: 1px 7px 1px 6px;
+    gap: 7px;
+  }
+  .rp-ic {
+    width: 24px;
+    height: 24px;
+  }
+  .rp-glyph svg {
+    width: 16px;
+    height: 16px;
+  }
+  .rp-n {
+    font-size: 13px;
+    line-height: 15px;
+  }
+  .rp-meta,
+  .rp-l {
+    font-size: 10.5px;
+    line-height: 12.5px;
+  }
+  .rp-l {
+    display: block;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .rp-row {
+    row-gap: 8px;
+    padding: 8px 0 1px;
+  }
+  .rp-page {
+    gap: 2px;
+  }
+  .rp-row.one-lane .rp-rowlab-n {
+    display: none;
+  }
+  .rp-colhead-c {
+    line-height: 12px;
+  }
+  .rp-tab {
+    height: 28px;
+    padding: 0 11px;
+    font-size: 14px;
+  }
+  /* footer in two lines: title and the note on one, the description on the other */
+  .rp-foot {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 14px;
+    min-height: 32px;
+    padding: 2px 10px;
+  }
+  .rp-foot .rt-foot-t {
+    font-size: 13px;
+    line-height: 15px;
+    white-space: nowrap;
+  }
+  .rp-foot .rt-foot-n,
+  .rp-foot .rt-foot-d {
+    line-height: 15px;
+  }
+  .rp-colhead {
+    padding-bottom: 0;
+  }
+  .rp-foot .rt-foot-n {
+    grid-row: 1;
+    grid-column: 2;
+    margin-top: 0;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .rp-foot .rt-foot-d {
+    grid-column: 1 / -1;
+    margin-top: 0;
+    -webkit-line-clamp: 1;
+  }
+}
