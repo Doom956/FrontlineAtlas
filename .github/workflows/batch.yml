@@ -1,0 +1,96 @@
+# Balance batches on GitHub's runners (scripts/batch.ts split over many machines).
+# Started by scripts/remote-batch.sh, which pushes a snapshot to a bench/<label> branch with the options in
+# .bench/args and the runner count in .bench/shards. Each runner plays its share of the games with 4 workers; the
+# report job merges them, writes .bench/report.txt and .bench/results.jsonl and pushes them back to the same branch.
+# Never runs on main or dev.
+name: Balance batch
+
+on:
+  push:
+    branches: ['bench/**']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    if: ${{ !startsWith(github.event.head_commit.message, 'Batch results') }}
+    runs-on: ubuntu-latest
+    outputs:
+      shards: ${{ steps.p.outputs.shards }}
+      n: ${{ steps.p.outputs.n }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: p
+        run: |
+          n=$(cat .bench/shards 2>/dev/null || echo 20)
+          echo "n=$n" >> "$GITHUB_OUTPUT"
+          echo "shards=$(node -e "console.log(JSON.stringify([...Array(Number($n)).keys()]))")" >> "$GITHUB_OUTPUT"
+
+  run:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Play this runner's games
+        run: |
+          args=$(cat .bench/args)
+          n=${{ needs.plan.outputs.n }}
+          s=${{ matrix.shard }}
+          for w in 0 1 2 3; do
+            node_modules/.bin/vite-node scripts/batch.ts -- $args --shard $((s * 4 + w))/$((n * 4)) > out-$w.jsonl 2> err-$w.txt &
+          done
+          fails=0
+          for job in $(jobs -p); do wait "$job" || fails=$((fails + 1)); done
+          cat out-*.jsonl > shard-$s.jsonl
+          echo "$(grep -c '^{' shard-$s.jsonl) games, $fails failed workers"
+          tail -n 5 err-*.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shard-${{ matrix.shard }}
+          path: shard-${{ matrix.shard }}.jsonl
+          retention-days: 3
+
+  report:
+    needs: [plan, run]
+    if: ${{ always() && needs.plan.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: shard-*
+          merge-multiple: true
+          path: results
+      - name: Merge and report
+        run: |
+          args=$(cat .bench/args)
+          cat results/*.jsonl > .bench/results.jsonl
+          node_modules/.bin/vite-node scripts/batch.ts -- $args --from .bench/results.jsonl > .bench/report.txt 2>&1 || true
+          cat .bench/report.txt
+      - name: Push the results to this branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .bench/report.txt .bench/results.jsonl
+          git commit -m "Batch results"
+          git push origin HEAD:${{ github.ref_name }}

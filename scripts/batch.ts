@@ -15,6 +15,11 @@
 //   --difficulty normal          easy | normal | hard | brutal
 //   --jobs 4                     parallel worker processes (1 = in this process; use 1 for tick timings)
 //   --json                       also print one JSON line per game
+//   --decided 0.6                end a game early once one nation holds this land share for 60 s (it counts as the
+//                                winner; winMinute = the decision minute; r.decided marks it). 0 = off (default).
+//                                For win rates only: game-length numbers then mean "decided by", not "ended at".
+//   --from a.jsonl,b.jsonl       report from JSON lines written by --shard runs (e.g. GitHub Actions shards) instead
+//                                of playing; pass the same options as the runs so the report groups them the same.
 //   --doctrines ai               ai = the AIs choose (default); random = every nation gets a random doctrine at the
 //                                unlock (a fair test of each doctrine's strength: no personality bias); off = no
 //                                doctrine bonus ever applies (baseline)
@@ -91,6 +96,10 @@ interface Options {
   specialist: FocusPillar[] | null;
   fork: TechId | null;
   slot: number;
+  /** --decided: early end at this land share held for 60 s (0 = off) */
+  decided: number;
+  /** --from: JSON-line result files to report on instead of playing */
+  from: string[];
   /** worker mode: run only jobs with index % of === shard and print JSON lines */
   shard: number;
   of: number;
@@ -115,6 +124,8 @@ function parseOptions(argv: string[]): Options {
     fork: null,
     slot: 1,
     shard: -1,
+    decided: 0,
+    from: [],
     of: 1,
   };
   for (let k = 0; k < args.length; k++) {
@@ -141,6 +152,8 @@ function parseOptions(argv: string[]): Options {
       case '--difficulty': o.difficulty = v as Difficulty; k++; break;
       case '--jobs': o.jobs = Math.max(1, Number(v) || 1); k++; break;
       case '--json': o.json = true; break;
+      case '--decided': o.decided = Math.max(0, Number(v) || 0); k++; break;
+      case '--from': o.from = list(); k++; break;
       case '--doctrines': o.doctrines = v as Options['doctrines']; k++; break;
       case '--specialist': {
         const l = list();
@@ -228,6 +241,8 @@ interface GameResult {
   job: Job;
   winner: number;
   winMinute: number; // -1 without a winner
+  /** --decided ended the game early (winner = the nation that held the share) */
+  decided?: boolean;
   winReason: string;
   minutes: number; // game minutes played
   /** army totals of all nations at 10 / 20 / 30 min (null if the game ended before) */
@@ -512,6 +527,8 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
   const tickMs: number[] = [];
   const cap = Math.round(o.minutes * 60 * TICKS_PER_SECOND);
   const sampleEvery = 10 * TICKS_PER_SECOND;
+  let decidedBy = 0; // --decided: the nation holding the share and for how many samples in a row
+  let decidedFor = 0;
   // --doctrines random: a seeded pick per nation (script-side RNG, not the game's), applied at the unlock.
   let pickSeed = (job.seed * 2654435761) >>> 0;
   const nextPick = (): DoctrineId => {
@@ -725,9 +742,20 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     if (sec === 480) r.leader8 = tileLeader(state);
     if (runawayLeader(state) > 0) r.leaderSeconds += sampleEvery / TICKS_PER_SECOND;
     if (sec === 900) r.leader15 = tileLeader(state);
+    if (o.decided > 0) {
+      const lead = tileLeader(state);
+      const held = lead > 0 && state.players[lead].tiles >= o.decided * state.map.landTileCount;
+      decidedFor = held && lead === decidedBy ? decidedFor + 1 : held ? 1 : 0;
+      decidedBy = held ? lead : 0;
+      if (decidedFor * sampleEvery >= 60 * TICKS_PER_SECOND) break;
+    }
   }
   r.minutes = gameSeconds(state) / 60;
   r.winner = state.winner;
+  if (!r.winner && decidedBy > 0 && decidedFor * sampleEvery >= 60 * TICKS_PER_SECOND) {
+    r.winner = decidedBy;
+    r.decided = true;
+  }
   r.topNation = state.winner || tileLeader(state);
   for (const p of state.players) {
     if (p.id === 0 || isTribe(p) || (p.eliminatedTick === -1 && !p.spawned)) continue;
@@ -795,7 +823,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
   r.winnerBarrages = r.winner ? (barragesBy.get(r.winner) ?? 0) : 0;
   r.meanParadrops = r.paradrops / Math.max(1, r.nations);
   r.meanBarrages = r.barrages / Math.max(1, r.nations);
-  r.winMinute = state.winner ? r.minutes : -1;
+  r.winMinute = r.winner ? r.minutes : -1;
   for (const p of state.players) {
     if (p.id === 0 || p.alive || p.eliminatedTick < 0) continue;
     const m = (p.eliminatedTick - state.playStartTick) / TICKS_PER_SECOND / 60;
@@ -1453,6 +1481,15 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const o = parseOptions(argv);
   const jobs = jobList(o);
+  if (o.from.length) {
+    const { readFileSync } = await import('node:fs');
+    const results: GameResult[] = [];
+    for (const f of o.from) for (const line of readFileSync(f, 'utf8').split('\n')) if (line.startsWith('{')) results.push(JSON.parse(line) as GameResult);
+    results.sort((a, b) => a.job.index - b.job.index);
+    console.log(`Frontline Atlas batch report from ${o.from.length} file(s): ${results.length} of ${jobs.length} games${o.decided ? `, decided at ${Math.round(o.decided * 100)}%` : ''}.`);
+    report(results, o);
+    return;
+  }
   if (o.shard >= 0) {
     for (const j of jobs) if (j.index % o.of === o.shard) process.stdout.write(JSON.stringify(await runGame(j, o)) + '\n');
     return;
