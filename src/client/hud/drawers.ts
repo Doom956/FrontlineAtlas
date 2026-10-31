@@ -337,7 +337,7 @@ export class ArmyPage implements DrawerPage {
       setText(
         artHow,
         ars === 0
-          ? `To get it: build an Arsenal (Military tab, key ${BUILDINGS.arsenal.hotkey}), then raise the Artillery slider above.`
+          ? `To get it: build an Arsenal (Build menu, key ${BUILDINGS.arsenal.hotkey}), then raise the Artillery slider above.`
           : me.auto.mix
             ? 'Your Arsenals make it as the auto mix needs. To make more now, raise the Artillery slider above.'
             : me.armyMix.artillery < 0.05

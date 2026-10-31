@@ -375,7 +375,7 @@ export class ForcesPage implements DrawerPage {
       for (const u of mine.filter((q) => q.type === 'bomber' || q.type === 'transportPlane')) {
         rows.push({ key: `p${u.id}`, pic: { unit: u.type === 'bomber' ? 'bomber' : 'transportPlane' }, title: unitName(u), status: unitDoing(s, me, u), tile: this.tileOf(s, u), acts: [] });
       }
-      const empty = !allowed ? 'Aircraft are off in this game.' : fields.length ? '' : hasTech(me, 'flight') ? 'Bombers and fighters: build an Airfield (Special tab, F).' : `Bombers and fighters: ${UNIT_TEXT.bomber.unlock.toLowerCase()}.`;
+      const empty = !allowed ? 'Aircraft are off in this game.' : fields.length ? '' : hasTech(me, 'flight') ? 'Bombers and fighters: build an Airfield (Build menu, F).' : `Bombers and fighters: ${UNIT_TEXT.bomber.unlock.toLowerCase()}.`;
       this.air.set([], rows, empty, focus);
     }
 
@@ -408,7 +408,7 @@ export class ForcesPage implements DrawerPage {
       for (const u of mine.filter((q) => q.type === 'rocket' || q.type === 'atomBomb')) {
         rows.push({ key: `m${u.id}`, pic: { unit: u.type === 'rocket' ? 'rocket' : 'atomBomb' }, title: unitName(u), status: unitDoing(s, me, u), tile: this.tileOf(s, u), acts: [] });
       }
-      const empty = !allowed ? 'Missiles are off in this game.' : silos.length ? '' : hasTech(me, 'rocketry') ? 'Rockets: build a Missile Silo (Special tab, N).' : `Rockets: ${UNIT_TEXT.rocket.unlock.toLowerCase()}.`;
+      const empty = !allowed ? 'Missiles are off in this game.' : silos.length ? '' : hasTech(me, 'rocketry') ? 'Rockets: build a Missile Silo (Build menu, N).' : `Rockets: ${UNIT_TEXT.rocket.unlock.toLowerCase()}.`;
       this.missiles.set([], rows, empty, focus);
     }
 

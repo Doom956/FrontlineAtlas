@@ -96,7 +96,7 @@ export function howToPlayContent(): HTMLElement {
 
   const screen = section('The screen');
   bullets(screen, [
-    'Bottom: troops, attack share, gold (hover the small chip for iron, oil and science), the build bar (four category icons; hover a button for its name and price; Military also sells warships, bombers and fighters) and, when one is ready, the strike icons.',
+    'Bottom: troops, attack share, gold (hover the small chip for iron, oil and science), a Spend button (mercenaries, funding an ally, war bonds), the Build button (Tab: every building with its name, cost and effect, plus warships, aircraft, tank divisions and the Upgrade-area tool), a quick bar of six buildings you use most (right-click in the menu pins one), the x1 / x3 / x5 count and, when one is ready, the strike icons.',
     'Top left: the standings. Click a nation to see its card: army, land, Ally, Gift, Embargo, Attack.',
     'Top right: Army (U), Forces (Y: warships, aircraft, missiles, artillery), Research (T), Doctrine (Shift+D, from 5:00), Diplomacy (P), Events (J), Map key (L), pause, speed (click to change), the clock, sound, help and the menu.',
     'The advisor line above the bottom bar suggests a useful next step and folds into a small tab after a few seconds (hover it to read it again); switch it off in the menu.',
@@ -121,6 +121,16 @@ export function howToPlayContent(): HTMLElement {
     `Levels grow while you keep the same doctrine: level 2 after ${Math.round(DOCTRINE_LEVEL_SECONDS[1] / 60)} min, level 3 (a small extra perk) after ${Math.round(DOCTRINE_LEVEL_SECONDS[2] / 60)} min.`,
     `The first choice is free. Switching costs gold, leaves you ${DOCTRINE_ADAPT_SECONDS} s without any doctrine while your nation adapts, starts again at level 1, and then has a ${Math.round(DOCTRINE_SWITCH_COOLDOWN / 60)} min cooldown.`,
     'A neighbour\'s doctrine shows on its card and in the standings tip once you share a border, have a Watchtower near it or are allied: counter it.',
+  ]);
+
+  const ways = section('More ways to play');
+  bullets(ways, [
+    'Build x3 / x5 (or hold Shift): one click places a building and queues it up to that many levels, a City straight to level 5. Each level still takes its build time; if gold or iron runs out, only what you can pay is queued. Small pips on the marker show queued levels; the building card cancels them for a refund.',
+    'Upgrade area (Build menu, Tools): pick a radius and click: every building of yours inside (or only one type) gets up to x1 / x3 / x5 more levels, cheapest first, as far as your money goes.',
+    'Tech choices: some techs come in pairs marked OR (Stock Exchange or Free Trade, Blitz Tactics or Trench Warfare, Carriers or Submarines, ...). Researching one locks the other for the rest of the game, so pick the one that suits your plan.',
+    'Mercenaries (Spend, next to your gold): troops right now for gold. The price rises with each hire within a minute and as the game goes on.',
+    'Fund an ally (Spend): send gold to an ally; for a while it fights harder against your enemies and joins your wars more readily. War bonds: gold now for stronger attacks for a while.',
+    'Tank divisions (Build menu, Military; needs Mechanization and a Factory): select them like warships (click, or Shift+drag a box) and click your land to move them. Click enemy land at your border to launch a spearhead: a narrow, fast breakthrough that is strong on plains and stalls at mountains and forts.',
   ]);
 
   const tribes = section('Tribes');
@@ -183,7 +193,7 @@ export function howToPlayContent(): HTMLElement {
   para(strikes, 'Counters: SAM sites shoot down planes and missiles (an atom bomb takes two hits). Fighters at an Airfield shoot down bombers and cargo planes. Nothing stops shells. Forts slow attacks down; artillery and barrages break them.');
 
   const nav = section('Special units');
-  para(nav, 'Buy warships, bombers and fighters in the build bar\'s Military tab (or at a Port / Airfield). Forces (Y) lists everything you own with its orders. Click your warship on the map (or Select in Forces), then click water to move it; Esc cancels. Hover any unit, yours or an enemy\'s, to see what it is doing. Enemy units coming at you get a red ring.');
+  para(nav, 'Buy warships, bombers and fighters in the Military group of the Build menu (Tab; or at a Port / Airfield). Forces (Y) lists everything you own with its orders. Click your warship on the map (or Select in Forces), then click water to move it; Esc cancels. Hover any unit, yours or an enemy\'s, to see what it is doing. Enemy units coming at you get a red ring.');
   const ul2 = el('ul', 'blist');
   for (const id of ['warship', 'transport', 'bomber', 'fighter', 'transportPlane', 'rocket', 'atomBomb', 'artillery'] as const) {
     const t = UNIT_TEXT[id];

@@ -20,7 +20,7 @@ import { formatCount } from './render/common';
 import type { IconId } from './icons';
 import type { Dispatch } from './uiState';
 
-/** Units the build bar sells (Military tab). */
+/** Units the build menu sells (its Military group). */
 export type BuyableUnit = 'warship' | 'bomber' | 'fighter';
 export const BUYABLE_UNITS: readonly BuyableUnit[] = ['warship', 'bomber', 'fighter'];
 
@@ -181,7 +181,7 @@ export function unitBuildStatus(state: GameState, me: Player, kind: BuyableUnit,
   }
   if (!done.length) {
     if (all.length) return { ...st, line: `Your ${kind === 'warship' ? 'Port' : 'Airfield'} is being built` };
-    return { ...st, line: kind === 'warship' ? 'Build a Port on your coast first (Special tab, E)' : 'Build an Airfield first (Special tab, F)' };
+    return { ...st, line: kind === 'warship' ? 'Build a Port on your coast first (Build menu, E)' : 'Build an Airfield first (Build menu, F)' };
   }
   let usable = done;
   if (kind === 'warship') {
