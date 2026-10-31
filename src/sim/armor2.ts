@@ -45,6 +45,7 @@ import { atPeace } from './rules';
 import { addEvent } from './state';
 import { hasTech } from './tech';
 import { moveTankDivisions, ownLandPath, spearheadPreview } from './tanks';
+import { hasAmphibious, narrowWater } from './specials';
 import { armorPocketKillMul, armorPocketMul, armorRefitMul } from './variants';
 import { DIVISION_MODES, TROOP_TYPES, isTribe, isWater } from './types';
 import type { Action, ActionResult, DivisionMode, GameState, Troops, Unit } from './types';
@@ -473,7 +474,7 @@ export function divisionStep(state: GameState, u: Unit): void {
     const strike = bestStrike(state, u, front);
     if (strike) {
       // A cheap route check first (moveTankDivisions searches with the full budget).
-      if (ownLandPath(state, u.owner, unitTile(state, u), strike.launch, ARMOR_AUTO_PATH_BUDGET) && moveTankDivisions(state, u.owner, [u.id], strike.tile).ok) return;
+      if (ownLandPath(state, u.owner, unitTile(state, u), strike.launch, ARMOR_AUTO_PATH_BUDGET, hasAmphibious(state, u.owner) ? (t) => narrowWater(state, t) : undefined) && moveTankDivisions(state, u.owner, [u.id], strike.tile).ok) return;
       u.retryTick = state.tick + ARMOR_RETRY_SECONDS * TICKS_PER_SECOND; // no route to the launch tile
       return;
     }

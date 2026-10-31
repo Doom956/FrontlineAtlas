@@ -6,7 +6,7 @@ import { updateBuildings } from './buildings';
 import { updateBuildQueues } from './bulkbuild';
 import { updateSpending } from './spending';
 import { updateBarrages } from './barrage';
-import { updateAttacks, updateHeartlands, updateSupply } from './combat';
+import { clearArmyCache, updateAttacks, updateHeartlands, updateSupply } from './combat';
 import { MAX_EVENTS, TICKS_PER_SECOND, TICK_SECONDS } from './config';
 import { updateDiplomacy } from './diplomacy';
 import { updateDoctrines } from './doctrines';
@@ -30,6 +30,7 @@ const EFFECT_TTL_TICKS = 3 * TICKS_PER_SECOND;
 
 export function tick(state: GameState): void {
   if (state.phase === 'over') return;
+  clearArmyCache(state); // client reads between ticks must not fill it (combat.ts)
 
   if (state.phase === 'spawn') {
     if (state.tick === 0 && mods(state).randomSpawn) randomSpawnHumans(state);

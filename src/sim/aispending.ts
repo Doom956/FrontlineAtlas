@@ -96,17 +96,21 @@ export function aiTechOrder(state: GameState, id: number, personality: Personali
   // atom bombs), then one branch tech after each further profile tech, the rest at the end.
   // The arsenal path of the pillar the nation committed to comes right after its prerequisites (variantsAI.ts).
   // Cheapest first (a shared unlock before an expensive upgrade), then in TECH_ORDER.
+  // Prerequisites the nation already owns count too (Navigation often comes from outside the profile: ai.ts nextTech).
+  const owned = state.players[id]?.techs ?? [];
+  const got = (r: TechId): boolean => have.has(r) || owned.includes(r);
   const readyPriority = (): TechId | null => {
     let best: TechId | null = null;
     for (const q of pending) {
       const info = TECHS[q];
       if (!aiPriorityArsenalTech(state, id, q)) continue;
-      if (!info.requires.every((r) => have.has(r)) || (info.requiresAny && !info.requiresAny.some((r) => have.has(r)))) continue;
+      if (!info.requires.every(got) || (info.requiresAny && !info.requiresAny.some(got))) continue;
       if (!best || info.science < TECHS[best].science) best = q;
     }
     return best;
   };
   let k = 0;
+  for (let b = readyPriority(); b; b = readyPriority()) take(b);
   for (const t of profile) {
     if (have.has(t)) continue;
     out.push(t);

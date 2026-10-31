@@ -1328,6 +1328,8 @@ export interface NavalVariantInfo {
 export const ARSENAL = {
   /** mastery techs in at most this many pillars per game */
   masteryCap: 2,
+  /** AI: a mastery is put first in the research order only once the nation has this many techs (arsenalAI / variantsAI) */
+  aiMasteryMinTechs: 8,
   naval: {
     destroyer: { name: 'Destroyer', cost: 0.85, speed: 1.3, hp: 0, detect: 1.5, damage: 1, vsTrade: 1, vsSub: 3, shell: 0.5, shellRange: 1, support: 0.8, blockade: 1 },
     battleship: { name: 'Battleship', cost: 1.8, speed: 0.7, hp: 3, detect: 1, damage: 1.4, vsTrade: 1, vsSub: 0.5, shell: 2, shellRange: 2, support: 1.8, blockade: 1 },

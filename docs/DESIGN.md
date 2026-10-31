@@ -503,6 +503,14 @@ Ordinary techs (Action research) that change behaviour, not stats; listed in the
 - Night Bombing (Flight): every SAM shot and fighter pass (airfields, carriers, patrols) at its bombers misses with
   `nightDodge` (state.rng); bombs scatter up to `nightScatter` tiles, radius x `nightRadius`, damage / support kills /
   raid cut x `nightEffect`. Counter: Early Warning.
+AIs (arsenalAI.ts, from ai.ts nextTech): one special per few techs (none before 6 techs) and, except Early Warning,
+only once the committed pillar's fork root is in: Early Warning against a large air force among its neighbours /
+wars (Radar first), Night Bombing for air nations with bombers against strong SAM / fighter cover (not against Early
+Warning), Drop Tanks for air nations with 2+ airfields, Naval Mines for admirals / navies with a port while rivals
+sail, Amphibious Tanks for warlords / armor nations whose coast faces narrow water. With Amphibious Tanks, a division
+with no land front strikes across the strait (aiAmphibTarget) and support-mode route checks may wade. The committed
+pillar sticks once a mastery or path upgrade is in; a mastery only jumps the research queue from
+`ARSENAL.aiMasteryMinTechs` techs; carriers only for nations with an airfield.
 
 ### Gold uses (src/sim/spending.ts) and bulk orders (src/sim/bulkbuild.ts)
 

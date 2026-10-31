@@ -342,6 +342,8 @@ describe('AI', () => {
     expect(aiWarshipVariant(s, 2)).toBe('submarine');
     ai.techs.push('carriers');
     for (let k = 0; k < 3; k++) ship(s, 2, 60 + 2 * k, 30, 'submarine');
+    expect(aiWarshipVariant(s, 2)).toBe('submarine'); // no airfield: nothing would fly from a carrier
+    addBuilding(s, 'airfield', 2, ai.capital >= 0 ? ai.capital : s.map.owner.indexOf(2));
     expect(aiWarshipVariant(s, 2)).toBe('carrier');
   }, 60000);
 });

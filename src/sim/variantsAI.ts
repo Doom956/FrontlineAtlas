@@ -105,7 +105,7 @@ function forkLean(state: GameState, id: number, group: string): number {
     for (const o of others) econ += buildingsOf(state, o, 'city').length + buildingsOf(state, o, 'factory').length;
     let lean = 0.25 + 0.35 * (econ / (econ + 20));
     if (pers === 'merchant' || airMinded(state, id)) lean += 0.15;
-    if (pers === 'warlord') lean -= 0.15;
+    if (pers === 'warlord' || pers === 'turtle') lean -= 0.15; // turtles fight at their own borders: front support
     return lean;
   }
   return 0.5;
@@ -134,6 +134,18 @@ export function aiForkPick(state: GameState, id: number, group: string): TechId 
 /** The pillar AI id commits to (its mastery goes there). */
 export function aiCommittedPillar(state: GameState, id: number): Exclude<Pillar, 'shared'> {
   const p = state.players[id];
+  // Sticky once committed: a mastery, else a path upgrade (Battleships, Siege Tanks, ...) names the pillar, so a coast
+  // won or lost later doesn't move the nation's mastery elsewhere.
+  if (p) {
+    let up: Exclude<Pillar, 'shared'> | null = null;
+    for (const t of p.researching ? [...p.techs, p.researching] : p.techs) {
+      const it = arsenalItem(t);
+      if (!it || it.pillar === 'shared') continue;
+      if (it.kind === 'mastery') return it.pillar;
+      if (it.kind === 'variant' && it.tier >= 3 && !up) up = it.pillar;
+    }
+    if (up) return up;
+  }
   const held = doctrineActive(state, id);
   if (held === 'naval') return 'navy';
   if (held === 'air' || airMinded(state, id)) return 'air';
@@ -168,6 +180,8 @@ export function aiSkipsArsenalTech(state: GameState, id: number, t: TechId): boo
 export function aiPriorityArsenalTech(state: GameState, id: number, t: TechId): boolean {
   const it = arsenalItem(t);
   if (!it || it.kind === 'special') return false;
+  // A mastery (the dearest tech) jumps the queue only once the nation has a broad base (else it starves the economy).
+  if (it.kind === 'mastery' && (state.players[id]?.techs.length ?? 0) < ARSENAL.aiMasteryMinTechs) return false;
   const pillar = aiCommittedPillar(state, id);
   if (it.pillar === pillar) return it.kind !== 'unlock';
   return (t === 'mechInfantry' && pillar === 'armor') || (t === 'reconPlanes' && pillar === 'air');
@@ -197,7 +211,9 @@ export function aiWarshipVariant(state: GameState, id: number): NavalVariant | u
   }
   // About one ship in three a battleship, one in four a carrier (counting the new one).
   if (can.includes('battleship') && ((count.battleship ?? 0) + 1) * 3 <= ships + 1) return 'battleship';
-  if (can.includes('carrier') && ((count.carrier ?? 0) + 1) * 4 <= ships + 1) return 'carrier';
+  // Carriers only with an air force to fly from them (air wings launch from carriers: airwings.ts).
+  const wings = buildingsOf(state, id, 'airfield').some((b) => b.owner === id && b.buildLeft <= 0);
+  if (can.includes('carrier') && wings && ((count.carrier ?? 0) + 1) * 4 <= ships + 1) return 'carrier';
   return can.includes('destroyer') ? 'destroyer' : can.includes('submarine') ? 'submarine' : undefined;
 }
 

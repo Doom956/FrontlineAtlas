@@ -1,7 +1,7 @@
 // Single entry point for player and AI actions.
 import { requestAllyAid, requestAllyAttack } from './allies';
 import { build, demolish } from './buildings';
-import { boatLandingTile, launchAttack, needsBoat, retreat } from './combat';
+import { boatLandingTile, clearArmyCache, launchAttack, needsBoat, retreat } from './combat';
 import { answerAlliance, breakAlliance, gift, requestAlliance, toggleEmbargo } from './diplomacy';
 import { mods } from './rules';
 import { canSpawnAt, spawnPlayer } from './state';
@@ -52,6 +52,7 @@ function clampTroops(p: Player, t: Troops): Troops {
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
 export function applyAction(state: GameState, playerId: number, action: Action): ActionResult {
+  clearArmyCache(state); // client reads between ticks must not fill it (combat.ts)
   const p = state.players[playerId];
   if (!p || playerId === 0) return FAIL('No such player');
   // Continuing a finished game and the owner console work for eliminated humans too (they keep watching).

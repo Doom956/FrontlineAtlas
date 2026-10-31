@@ -78,9 +78,9 @@ export class PillarOverlay {
       const wg = wingOf(state, b);
       if (wg?.mission === 'superiority' || picking?.pick === 'airSuperiority') {
         const centre = picking?.pick === 'airSuperiority' && ui.hoverTile >= 0 ? at(ui.hoverTile) : wg && wg.target >= 0 ? at(wg.target) : c;
-        ring(ctx, centre.x, centre.y, airPatrolRadius(b) * z, `${STEEL}0.55)`, [6, 4], `${STEEL}0.05)`);
+        ring(ctx, centre.x, centre.y, airPatrolRadius(b, state) * z, `${STEEL}0.55)`, [6, 4], `${STEEL}0.05)`);
       }
-      if (picking && (picking.pick === 'airSupport' || picking.pick === 'airStrategic')) ring(ctx, c.x, c.y, airWingRange(b) * z, `${BRASS}0.4)`, [2, 6]);
+      if (picking && (picking.pick === 'airSupport' || picking.pick === 'airStrategic')) ring(ctx, c.x, c.y, airWingRange(b, state) * z, `${BRASS}0.4)`, [2, 6]);
     }
     if (picking && picking.pick === 'airSupport' && ui.hoverTile >= 0) {
       const b = picking.airfield >= 0 ? buildingAt(state, picking.airfield) : fields[0];

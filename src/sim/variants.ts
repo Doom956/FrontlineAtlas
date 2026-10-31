@@ -26,6 +26,7 @@ import { buildingAt, buildingsOf } from './buildings';
 import { areAllied } from './diplomacy';
 import { atPeace, peaceReason, unitRule } from './rules';
 import { addEvent, newId } from './state';
+import { earlyWarningSees } from './specials';
 import { Terrain } from './types';
 import type { ActionResult, ArsenalState, Building, GameState, NavalVariant, Player, TechId, Unit, UnitVariant } from './types';
 
@@ -216,7 +217,7 @@ export function navalCanTarget(state: GameState, shooter: Unit, target: Unit): b
   const d = d2(shooter.x, shooter.y, target.x, target.y);
   if (d <= ARSENAL.subTargetRange * ARSENAL.subTargetRange) return true;
   if (shooter.variant === 'destroyer' && d <= ARSENAL.destroyerSonar * ARSENAL.destroyerSonar) return true;
-  return subRevealedTo(state, shooter.owner, target);
+  return subRevealedTo(state, shooter.owner, target) || earlyWarningSees(state, shooter.owner, target); // + Early Warning (specials.ts)
 }
 
 /**

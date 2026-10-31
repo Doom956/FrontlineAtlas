@@ -214,9 +214,9 @@ export function wingStatus(state: GameState, b: Building): WingStatus {
     nextIn,
     sorties: w?.sorties ?? 0,
     refill: w?.refill ?? true,
-    range: airWingRange(b),
+    range: airWingRange(b, state),
     zone: airSupportRadius(b),
-    patrol: airPatrolRadius(b),
+    patrol: airPatrolRadius(b, state),
     foe,
     target: w?.target ?? -1,
   };

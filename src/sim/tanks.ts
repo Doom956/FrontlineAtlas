@@ -60,6 +60,7 @@ import { afterDivisionMove, amphibLaunchBonus, amphibWaterSpeed, canWade, hasAmp
 import { isProtected } from './admin';
 import { tankDivisionMods } from './techtree';
 import { armorBandWidth, armorBreaksThrough, armorCostMul, armorDefenseMul, armorDepthMul, armorLossMul, armorSpeedMul, holdDefenseAt, onFortBreached, onSpearheadDone } from './variants';
+import { aiAmphibTarget } from './arsenalAI';
 import { aiDivisionModes, collapsePockets, divisionLimitFor, divisionStep, onSpearheadEnded, vetLossMul, vetSpeedMul } from './armor2';
 import { ARMOR_POCKET_EVERY, ARMOR_SUPPORT_READY } from './config';
 import { Terrain, TROOP_TYPES, isTribe, isWater } from './types';
@@ -1069,6 +1070,15 @@ export function aiTankDivisions(state: GameState, id: number, act: (a: Action) =
     if (d < bestD || (d === bestD && t < tile)) {
       bestD = d;
       tile = t;
+    }
+  }
+  // No land front: with Amphibious Tanks, their land across narrow water (arsenalAI.ts).
+  if (tile < 0 && hasAmphibious(state, id)) {
+    tile = aiAmphibTarget(state, id, best.target, lead.x, lead.y);
+    if (tile >= 0) {
+      const dx = (tile % w) - lead.x;
+      const dy = ((tile / w) | 0) - lead.y;
+      bestD = dx * dx + dy * dy;
     }
   }
   if (tile < 0) return;

@@ -296,10 +296,13 @@ export function setAirMission(state: GameState, pid: number, airfield: number, m
   // Range: support / strategic aims (and a patrol centre) must be within reach of the airfield(s).
   const w = map.width;
   if (aim >= 0) {
-    sites = sites.filter((b) => {
+    const inReach = sites.filter((b) => {
       const r = mission === 'superiority' ? airfieldRadius(b) * AIR.superiorityCentreReach * dropTanksPatrolMul(state, pid) : airWingRange(b, state);
       return d2(w, b.tile, aim) <= r * r;
     });
+    // Beyond every airfield's reach: strikes may still fly from an own carrier near the aim (launchWing, variants.ts).
+    if (!inReach.length && mission !== 'superiority' && carrierFor(state, pid, aim)) sites = sites.slice(0, 1);
+    else sites = inReach;
     if (!sites.length) return FAIL(airfield === -1 ? 'None of your airfields reaches that far' : 'Too far from this airfield');
   }
 

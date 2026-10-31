@@ -10,6 +10,7 @@ import { aircraftCap, buildingsOf } from '../sim/buildings';
 import { BOMBER_RADIUS, TECHS, UNITS, WARSHIP_RANGE } from '../sim/config';
 import { areAllied } from '../sim/diplomacy';
 import { unitCost } from '../sim/units';
+import { warshipOrderCost } from '../sim/navy';
 import { armyTotal } from '../sim/economy';
 import { forEachInRadius } from '../sim/grid';
 import { buildingAllowed, unitAllowed } from '../sim/rules';
@@ -112,13 +113,18 @@ export interface UnitBuildStatus {
   site: number;
 }
 
+/** What ordering one `type` costs now: a warship is the path's default variant (navy.warshipOrderCost). */
+function orderCost(state: GameState, pid: number, type: UnitType): { gold: number; iron: number; oil: number } {
+  return type === 'warship' ? warshipOrderCost(state, pid) : unitCost(state, pid, type);
+}
+
 export function priceText(type: UnitType, state?: GameState, pid?: number): string {
-  const u = state && pid !== undefined ? unitCost(state, pid, type) : UNITS[type];
+  const u = state && pid !== undefined ? orderCost(state, pid, type) : UNITS[type];
   return [`${formatCount(u.gold)} gold`, u.iron ? `${formatCount(u.iron)} iron` : '', u.oil ? `${formatCount(u.oil)} oil` : ''].filter(Boolean).join(', ');
 }
 
 function payLine(me: Player, type: UnitType, state?: GameState): string {
-  const u = state ? unitCost(state, me.id, type) : UNITS[type];
+  const u = state ? orderCost(state, me.id, type) : UNITS[type];
   const miss: string[] = [];
   if (me.gold < u.gold) miss.push(`${formatCount(u.gold)} gold`);
   if (me.iron < u.iron) miss.push(`${formatCount(u.iron)} iron`);

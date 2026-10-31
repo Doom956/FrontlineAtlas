@@ -429,6 +429,14 @@ export function updateHeartlands(state: GameState): void {
 
 // Whole army per player (home + attacks + transports), cached per tick for last-stand checks.
 const armyCache = new WeakMap<GameState, { tick: number; army: Float64Array }>();
+/**
+ * Drops the army cache. Called when the sim starts work (sim.tick, actions.applyAction): the client reads
+ * wholeArmy between ticks (attack tooltips, spearhead previews, ally refusals) with the next tick's number, and a cache
+ * filled then would hand the sim stale armies (lockstep desync between clients that render and clients that don't).
+ */
+export function clearArmyCache(state: GameState): void {
+  armyCache.delete(state);
+}
 /** A player's whole army: troops at home, in attacks and on transports (cached per tick). */
 export function wholeArmy(state: GameState, playerId: number): number {
   let c = armyCache.get(state);

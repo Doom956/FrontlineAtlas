@@ -85,6 +85,7 @@ import { inOvertime, victoryShareNow } from './victory';
 import { hasTech } from './tech';
 import { pillarOf } from './arsenal';
 import { aiRecon, aiWarshipVariant } from './variantsAI';
+import { aiSpecialPick } from './arsenalAI';
 import { aiSpend, aiTechOrder, rejectedBranch } from './aispending';
 import { allyTrustDiscount } from './spending';
 import { techStatus } from './techtree';
@@ -1629,6 +1630,9 @@ function nextTech(ctx: Ctx): TechId | null {
   const coastal = coastCount(state, ctx.id) > 0;
   // Fleets (naval2.ts): a coastal nation boxed in (no free land left) or with 5+ techs takes Navigation next.
   if (coastal && !hasTech(p, 'navigation') && (ctx.neutralBorder <= 0 || p.techs.length >= 5) && techStatus(state, ctx.id, 'navigation') === 'available') return 'navigation';
+  // Special upgrades that fit the nation (arsenalAI.ts: Early Warning, Night Bombing, Mines, Amphibious, Drop Tanks).
+  const special = aiSpecialPick(state, ctx.id, ctx.enemies);
+  if (special) return special;
   const avail: TechId[] = [];
   // Profile order with the branch techs merged in (aispending.ts: one pick per exclusive group).
   for (const t of aiTechOrder(state, ctx.id, p.personality, aiAirTechs(state, ctx.id, ctx.prof.techs))) {

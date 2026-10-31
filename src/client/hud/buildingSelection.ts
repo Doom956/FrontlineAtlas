@@ -38,7 +38,7 @@ export function upgradeLine(pv: UpgradeBuildingsPreview | null, levels: UpgradeL
     return { text: `x${levels}: not enough ${what}. The cheapest level costs ${costText(pv.cheapest)}; all ${plural(pv.requested, 'level')} need ${costText(pv.shortBy)} more`, tone: 'no' };
   }
   const what = `x${levels}: ${plural(pv.levelsQueued, 'level')} on ${plural(pv.buildings, 'building')}`;
-  const time = `done in ${fmtSeconds(pv.seconds)}`;
+  const time = pv.seconds <= 0.1 + 1e-9 ? 'done at once' : `done in ${fmtSeconds(pv.seconds)}`;
   if (pv.levelsQueued < pv.requested) {
     return { text: `${what} for ${costText(pv.cost)} (can afford ${pv.levelsQueued} of ${pv.requested}; ${costText(pv.shortBy)} short) · ${time}`, tone: 'short' };
   }
