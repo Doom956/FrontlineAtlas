@@ -195,8 +195,6 @@ function timersOf(state: GameState, id: number): Timers {
   return t;
 }
 const S = TICKS_PER_SECOND;
-/** Mercenaries need this many seconds of gold income saved (AIs at war rarely hold more than ~20 s: they build). */
-const AI_MERC_MIN_GOLD_SECONDS = 8;
 function sum(t: { infantry: number; armor: number; artillery: number }): number {
   return t.infantry + t.armor + t.artillery;
 }
@@ -214,7 +212,7 @@ export function aiSpend(state: GameState, v: AISpendView): void {
   // 1. Mercenaries: losing at home, or a big attack running while the bar is low.
   const losing = v.incomingTotal > v.home * 0.6 && v.incomingTotal > 20000;
   const pushing = v.myAttacks.some((a) => a.target > 0 && !isTribe(state.players[a.target]) && sum(a.troops) > v.home);
-  if (now >= t.merc && (losing || (pushing && v.home < v.cap * 0.35)) && p.gold > income * AI_MERC_MIN_GOLD_SECONDS) {
+  if (now >= t.merc && (losing || (pushing && v.home < v.cap * 0.35)) && p.gold > income * 20) {
     const budget = p.gold * (losing ? 0.5 : 0.3) * warlike;
     const q0 = mercenaryPrice(state, v.id, 1000);
     let amount = Math.floor(Math.min(q0.affordable, budget / Math.max(1e-6, q0.perTroop)));

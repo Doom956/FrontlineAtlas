@@ -33,10 +33,6 @@ import {
   TANK_DEFENSE_BONUS,
   TANK_DEFENSE_RADIUS,
   TANK_DISBAND_SHARE,
-  TANK_FALLBACK_LOSS,
-  TANK_FALLBACK_MIN_SHARE,
-  TANK_FALLBACK_PAUSE,
-  TANK_FALLBACK_RADIUS,
   TANK_DIVISION_TROOPS,
   TANK_LAUNCH_REACH,
   TANK_MIN_ARMOR,
@@ -733,32 +729,6 @@ function endSpearhead(state: GameState, u: Unit, why: string): void {
   if (disband) disbandDivision(state, u);
 }
 
-/** Nearest own land tile within TANK_FALLBACK_RADIUS of `from` (Chebyshev rings, lowest index on ties); -1 = none. */
-function fallbackTile(state: GameState, owner: number, from: number): number {
-  const map = state.map;
-  const w = map.width;
-  const fx = from % w;
-  const fy = (from / w) | 0;
-  for (let r = 1; r <= TANK_FALLBACK_RADIUS; r++) {
-    let best = -1;
-    let bestD = Infinity;
-    for (let y = Math.max(0, fy - r); y <= Math.min(map.height - 1, fy + r); y++) {
-      for (let x = Math.max(0, fx - r); x <= Math.min(w - 1, fx + r); x++) {
-        if (Math.max(Math.abs(x - fx), Math.abs(y - fy)) !== r) continue;
-        const t = y * w + x;
-        if (map.owner[t] !== owner || isWater(map.terrain[t])) continue;
-        const d = (x - fx) * (x - fx) + (y - fy) * (y - fy);
-        if (d < bestD) {
-          bestD = d;
-          best = t;
-        }
-      }
-    }
-    if (best >= 0) return best;
-  }
-  return -1;
-}
-
 /** A division leaves the map: its troops go back to the pool. */
 function disbandDivision(state: GameState, u: Unit): void {
   const p = state.players[u.owner];
@@ -876,22 +846,7 @@ export function updateTanks(state: GameState): void {
     }
     const here = unitTileOf(state, u);
     if (state.map.owner[here] !== u.owner && !isWading(state, u)) {
-      // The ground under a division that isn't attacking was taken: a strong one falls back to own land nearby.
-      const back = total(u.troops) >= FULL_DIVISION * TANK_FALLBACK_MIN_SHARE ? fallbackTile(state, u.owner, here) : -1;
-      if (back >= 0) {
-        loseTroops(state, u, total(u.troops) * TANK_FALLBACK_LOSS, state.map.owner[here]);
-        const w = state.map.width;
-        u.x = back % w;
-        u.y = (back / w) | 0;
-        u.target = back;
-        u.path = [];
-        u.pathPos = 0;
-        if (u.state === 1 || u.state === 2) u.state = 0;
-        u.retryTick = state.tick + TANK_FALLBACK_PAUSE * TICKS_PER_SECOND; // 'support' mode: no drive back to the front for a while (armor2.ts)
-        addEvent(state, 'info', `${p.name}'s tank division fell back under attack`, [u.owner], back);
-        continue;
-      }
-      // Else it falls back home, beaten.
+      // The ground under a division that isn't attacking was taken: it falls back home, beaten.
       loseTroops(state, u, total(u.troops) * 0.25, state.map.owner[here]);
       addEvent(state, 'unitLost', `${p.name}'s tank division was overrun and fell back`, [u.owner], here);
       disbandDivision(state, u);

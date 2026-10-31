@@ -114,20 +114,6 @@ const TILE_UNIT = 8;
 const CITY_TILES = 2400;
 /** At most one atom bomb per AI per this many seconds. */
 const NUKE_PAUSE_SECONDS = 300;
-/** An AI with atom bombs nukes a bordering / attacking nation whose land share is above max(floor, win share - margin). */
-const NUKE_LEADER_FLOOR = 0.45;
-const NUKE_LEADER_MARGIN = 0.15;
-/** Coalition members (against a runaway leader) research Nuclear Fission as soon as they can, and nuke the leader. */
-const NUKE_COALITION_RESEARCH = true;
-const NUKE_COALITION_TARGET = true;
-/** the techs on the way to the bomb, in research order */
-const NUKE_PATH: readonly TechId[] = ['nuclearFission', 'rocketry', 'industrialization', 'ballistics'];
-/** AI SAM sites go about this many tiles behind the main front (bombers strike the front), see siteCandidates. */
-const SAM_FRONT_DEPTH = 24;
-const SAM_NEAR_FRONT = true;
-/** AIs facing enemy bombers research Radar (SAM sites) next once they hold this many techs. */
-const AI_RADAR_VS_AIR = true;
-const AI_RADAR_MIN_TECHS = 4;
 
 interface Profile {
   /** willingness to start wars, 0..1 */
@@ -160,7 +146,7 @@ const PROFILES: Record<Personality, Profile> = {
     strengthNeeded: 0.8,
     maxWars: 3,
     mix: { armor: 0.35, artillery: 0.1 },
-    techs: ['metallurgy', 'mechanization', 'logistics', 'industrialization', 'agriculture', 'ballistics', 'combinedArms', 'medicine', 'flight', 'rocketry', 'nuclearFission', 'banking', 'fortification', 'radar', 'navigation'],
+    techs: ['metallurgy', 'mechanization', 'logistics', 'industrialization', 'agriculture', 'ballistics', 'combinedArms', 'medicine', 'flight', 'rocketry', 'banking', 'fortification', 'radar', 'navigation', 'nuclearFission'],
     build: { barracks: 1.6, factory: 1.5, mine: 1.3, oilWell: 1.3, fort: 0.6, market: 0.8, port: 0.6, hospital: 1.3, supplyDepot: 1.3 },
     allyOpinion: 35,
     naval: 0.25,
@@ -173,7 +159,7 @@ const PROFILES: Record<Personality, Profile> = {
     strengthNeeded: 1.3,
     maxWars: 1,
     mix: { armor: 0.1, artillery: 0.3 },
-    techs: ['fortification', 'metallurgy', 'ballistics', 'agriculture', 'rocketry', 'logistics', 'flight', 'radar', 'medicine', 'mechanization', 'industrialization', 'nuclearFission', 'banking', 'combinedArms', 'navigation'],
+    techs: ['fortification', 'metallurgy', 'ballistics', 'agriculture', 'rocketry', 'logistics', 'flight', 'radar', 'medicine', 'mechanization', 'banking', 'industrialization', 'combinedArms', 'nuclearFission', 'navigation'],
     build: { fort: 2.0, arsenal: 1.5, watchtower: 1.6, farm: 1.2, sam: 1.5, factory: 0.6, port: 0.6 },
     allyOpinion: 15,
     naval: 0.25,
@@ -352,13 +338,13 @@ export const DIFFICULTY: Readonly<Record<Difficulty, Readonly<DifficultyProfile>
     nukes: true,
     coordinate: true,
     spawnTries: 100,
-    humanGrace: 360,
-    humanRestraint: Infinity,
+    humanGrace: 0,
+    humanRestraint: 1,
     humanNeed: 1,
-    humanWarsEarly: 1,
+    humanWarsEarly: Infinity,
     humanWarsLate: Infinity,
-    humanForceCap: 1.2,
-    humanPause: 2,
+    humanForceCap: Infinity,
+    humanPause: 1,
     counterHumans: true,
     doctrineNoise: 0.08,
     doctrineRandom: 0,
@@ -1681,14 +1667,6 @@ function nextTech(ctx: Ctx): TechId | null {
   const coastal = coastCount(state, ctx.id) > 0;
   // Fleets (naval2.ts): a coastal nation boxed in (no free land left) or with 5+ techs takes Navigation next.
   if (coastal && !hasTech(p, 'navigation') && (ctx.neutralBorder <= 0 || p.techs.length >= 5) && techStatus(state, ctx.id, 'navigation') === 'available') return 'navigation';
-  // Enemy bombers about (and a few techs in): Radar for SAM sites.
-  if (AI_RADAR_VS_AIR && p.techs.length >= AI_RADAR_MIN_TECHS && !hasTech(p, 'radar') && enemyAirThreat(ctx)) {
-    for (const t of ['radar', 'flight'] as const) if (techStatus(state, ctx.id, t) === 'available') return t;
-  }
-  // Facing a runaway leader: the bomb first, once it can be researched.
-  if (NUKE_COALITION_RESEARCH && ctx.coalition && ctx.diff.nukes && !hasTech(p, 'nuclearFission')) {
-    for (const t of NUKE_PATH) if (!hasTech(p, t) && techStatus(state, ctx.id, t) === 'available') return t;
-  }
   // Special upgrades that fit the nation (arsenalAI.ts: Early Warning, Night Bombing, Mines, Amphibious, Drop Tanks).
   const special = aiSpecialPick(state, ctx.id, ctx.enemies);
   if (special) return special;
@@ -1919,16 +1897,12 @@ function candidateTiles(ctx: Ctx, type: BuildingType): number[] {
     case 'fort':
     case 'watchtower':
     case 'supplyDepot':
-    case 'airfield':
-    case 'sam': {
-      if (type === 'sam' && !SAM_NEAR_FRONT) return ownedSample(ctx, 20);
-      // SAM sites face the nation most likely to bomb us (bombers strike ahead of its attacks on our land).
-      const foe = type === 'sam' ? ctx.threatId || mainWarTarget(ctx) : type === 'supplyDepot' || type === 'airfield' ? mainWarTarget(ctx) || ctx.threatId : ctx.threatId;
+    case 'airfield': {
+      const foe = type === 'supplyDepot' || type === 'airfield' ? mainWarTarget(ctx) || ctx.threatId : ctx.threatId;
       const edges = foe > 0 ? (ctx.hood.edge.get(foe) ?? EMPTY) : ctx.foreignEdges;
       // Forts a few tiles behind the border (not lost at the first push), depots further back, airfields within
       // reach of the front (fighter cover, paratroopers) but out of the first push.
-      // SAM sites cover the front (where enemy bombers strike) from a little further back.
-      const depth = type === 'fort' ? [8, 12, 5] : type === 'watchtower' ? [3, 5] : type === 'airfield' ? [30, 45, 20] : type === 'sam' ? [SAM_FRONT_DEPTH, SAM_FRONT_DEPTH * 1.5, SAM_FRONT_DEPTH * 0.6] : [16, 24, 10];
+      const depth = type === 'fort' ? [8, 12, 5] : type === 'watchtower' ? [3, 5] : type === 'airfield' ? [30, 45, 20] : [16, 24, 10];
       const out: number[] = [];
       for (const e of sample(state, edges.filter(own), 8)) {
         for (const k of depth) {
@@ -2008,17 +1982,6 @@ function siteScore(ctx: Ctx, type: BuildingType, t: number, upgrade: boolean): n
     case 'airfield':
       // Close enough to the fronts for fighter cover and paratroopers, not on them.
       return 1.5 - Math.abs(safe - 0.35) * 3 + noise;
-    case 'sam': {
-      if (!SAM_NEAR_FRONT) return safe * 2 + noise;
-      // Covering the front, out of the first push; don't stack SAMs (upgrade the one that already covers the spot).
-      if (upgrade) return 1 + noise;
-      let covered = 0;
-      for (const b of buildingsOf(state, id, 'sam')) {
-        const r = samRadius(b) * 0.8;
-        if (dist2(w, t, b.tile) < r * r) covered = 1;
-      }
-      return 1.5 - Math.abs(safe - 0.35) * 3 - covered * 2 + noise;
-    }
     default:
       // Production, science and air buildings: away from the front.
       return safe * 2 + noise;
@@ -2400,11 +2363,9 @@ function maybeNuke(ctx: Ctx, silo: number): boolean {
       }
     }
   }
-  // The runaway leader we border or fight (coalition, allies.ts).
-  if (!target && NUKE_COALITION_TARGET && ctx.coalition && ctx.leader > 0 && !areAllied(state, id, ctx.leader) && (ctx.neighbours.includes(ctx.leader) || ctx.incoming.has(ctx.leader))) target = ctx.leader;
   if (!target) {
     // A nation about to win that we border or fight.
-    const nearWin = Math.max(NUKE_LEADER_FLOOR, victoryShareNow(state) - NUKE_LEADER_MARGIN);
+    const nearWin = Math.max(0.45, victoryShareNow(state) - 0.15);
     for (const q of state.players) {
       if (q.id === 0 || q.id === id || !q.alive || isTribe(q) || areAllied(state, id, q.id)) continue;
       if (landShare(state, q.id) > nearWin && (ctx.neighbours.includes(q.id) || ctx.incoming.has(q.id))) target = q.id;
