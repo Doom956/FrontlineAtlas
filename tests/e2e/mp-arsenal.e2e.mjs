@@ -86,7 +86,7 @@ async function spawnByClick(page, side) {
             const d2 = dx * dx + dy * dy;
             if (d2 <= 25 && s.map.coastal[j] && s.map.terrain[j] > 1) coast = true;
             if (d2 <= 16 && s.map.resource[j] === 1 && s.map.terrain[j] > 1) iron++;
-            if (d2 >= 121 && d2 <= 400 && s.map.resource[j] === 2 && s.map.terrain[j] > 1) oil++;
+            if (d2 >= 256 && d2 <= 400 && s.map.resource[j] === 2 && s.map.terrain[j] > 1) oil++;
           }
           let near = false;
           for (const p of s.players) if (p.id && p.capital >= 0 && Math.hypot((p.capital % w) - x, Math.floor(p.capital / w) - y) < 26) near = true;
