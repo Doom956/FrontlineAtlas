@@ -212,6 +212,22 @@ export class BuildingLayer {
       ctx.textBaseline = 'middle';
       ctx.fillText(String(b.level), bx, by + 0.5);
     }
+    // levels queued by Build x3 / x5 or Upgrade area (Action buildMany / upgradeArea): small pips down the right edge
+    const queued = Math.min(5, b.queuedLevels || 0);
+    if (queued > 0 && size >= 12) {
+      const pr = clamp(size * 0.075, 1.6, 2.6);
+      const px = x + r + fw + pr + 1.5;
+      for (let k = 0; k < queued; k++) {
+        const py = y - r + pr + k * (pr * 2 + 1.5);
+        ctx.beginPath();
+        ctx.arc(px, py, pr, 0, Math.PI * 2);
+        ctx.fillStyle = '#e3c04e';
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(20,16,6,0.9)';
+        ctx.stroke();
+      }
+    }
     if (b.hp > 0 && b.hp < 1) {
       const bw = size;
       ctx.fillStyle = 'rgba(0,0,0,0.65)';
