@@ -99,6 +99,21 @@ export type UnitType =
   /** commandable armored division (tanks.ts): built at a Factory, moves over own land, launches spearheads */
   | 'tankDivision';
 
+/**
+ * Warship stances (naval2.ts; Unit.stance, Action setUnitStance). auto = hunt enemy ships near its post, bombard enemy
+ * coast near your fronts, return to post; hunt = chase ships over a wide zone; escort = stick to own transports and
+ * trade ships (they become much harder to sink); bombard = park off an enemy coast; blockade = park off an enemy port.
+ */
+export type WarshipStance = 'auto' | 'hunt' | 'escort' | 'bombard' | 'blockade';
+export const WARSHIP_STANCES: readonly WarshipStance[] = ['auto', 'hunt', 'escort', 'bombard', 'blockade'];
+/**
+ * Tank division modes (armor2.ts; Unit.mode, Action setDivisionMode). hold = stays where it is (refits slowly in
+ * place); support = holds behind a chosen front and launches spearheads into weak spots there when ready (refits at a
+ * Factory when worn down); refit = drives to the nearest own Factory, refits there, then holds.
+ */
+export type DivisionMode = 'hold' | 'support' | 'refit';
+export const DIVISION_MODES: readonly DivisionMode[] = ['hold', 'support', 'refit'];
+
 export type MapType = 'continents' | 'pangaea' | 'archipelago' | 'highlands';
 export type MapSize = 'small' | 'medium' | 'large' | 'huge';
 export type Difficulty = 'easy' | 'normal' | 'hard' | 'brutal';
@@ -328,6 +343,18 @@ export interface Unit {
   /** tank division (tanks.ts): spearhead start tile (state 3) and its strength (troops) when it started */
   launch?: number;
   strength0?: number;
+  /** warship stance (naval2.ts); absent = 'auto' */
+  stance?: WarshipStance;
+  /**
+   * warship on station (state 3, naval2.ts): the coast / port tile it bombards or blockades; escorting (state 4): the
+   * id of the ship it escorts. Tank division in support mode (armor2.ts): the front tile it supports.
+   */
+  station?: number;
+  /** warships, tank divisions: veterancy points and level 0..3 (naval2.ts, armor2.ts); absent = 0 */
+  xp?: number;
+  vet?: number;
+  /** tank division mode (armor2.ts); absent = 'hold' */
+  mode?: DivisionMode;
 }
 
 /** A unit being built (navy.ts warships, tanks.ts divisions): it appears at `tile` at readyTick. */
@@ -668,6 +695,10 @@ export type Action =
   /** move divisions over own land; a tile of enemy / neutral land at the border launches a spearhead (tanks.ts) */
   | { type: 'moveTankDivision'; unitIds: number[]; tile: number }
   /** owner console (admin.ts): online the server relays it only from an authenticated admin session */
+  /** set the stance of own warships (naval2.ts) */
+  | { type: 'setUnitStance'; unitIds: number[]; stance: WarshipStance }
+  /** set the mode of own tank divisions; support needs `front` (a land tile at or near the front) (armor2.ts) */
+  | { type: 'setDivisionMode'; unitIds: number[]; mode: DivisionMode; front?: number }
   | AdminAction;
 
 /** Owner console operations (admin.ts ADMIN_OPS lists them with the fields each one reads). */
