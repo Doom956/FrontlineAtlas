@@ -41,9 +41,27 @@ Left open (for the balance step or later):
 - The light-tank screen and recon reveal only matter for submarines and intel (there is no fog of war); their circles are subtle.
 - Research tab footer can sit at the panel's bottom edge on 1440x900 (fine at 1280x800).
 
-## After round 2: full balance check
-Benchmarks: run batches on GitHub's runners with `scripts/remote-batch.sh <label> -- <batch.ts options>` (about 10x faster than local; details at the top of /tmp/fa-bal/commands.md and in the script header). `--decided 0.6` ends decided games early (win rates only).
-Measure everything on the finished game (doctrines, tech forks, pillars, variants, economy vs military, game length 20-35 min medium / 25-40 World, early leader at 15 min < ~55%, difficulty: Easy/Normal survivable, Hard not a cliff before minute 10), tune only clear outliers, verify on fresh seeds. Findings from the last audit: economy-first ("merchant") nations won ~2.6x their share (markets/banking already toned down: re-check); tank divisions were overrun 70% of the time; SAMs stopped only ~1.4% of bombers; atom bombs came after games were decided; mercenaries don't decide games; Hard kills a new player before minute 10.
+## After round 2: full balance check - DONE 2026-10-31 (kept changes; what still fails is listed below)
+Benchmarks: run batches on GitHub's runners with `scripts/remote-batch.sh <label> -- <batch.ts options>` (about 10x faster than local; `--decided 0.6` ends decided games early, win rates only). Baseline = the tree before the balance round; every comparison on the same seeds, then on fresh seeds (5001+, 5101+). Log: /tmp/fa-bal/log.md.
+Kept (config.ts / AI): Nuclear Fission 5000/2000 -> 3500/1500; Naval doctrine warships and transports -35% price / +35% speed (was 25%); Merchant doctrine gold +8%, market bonus +15% (was 12% / 25%); light tanks defence 0.85 -> 0.95; tank divisions fall back to own land within 5 tiles (-8% troops) instead of being overrun; AI: heavy-bomber raids, Radar after enemy bombers, SAMs 24 tiles behind the front, coalition nukes, mercenary gold gate 20 s -> 8 s of income; Hard difficulty: 6 min grace, 1 war at a time for the first 10 min, attack cap 1.2x, pause x2 (no longer a cliff).
+Final table on fresh seeds (baseline -> now; ratio = specialist land vs the normal AI in the same slot, 192 pairs):
+| Target | Baseline | Now | Result |
+|---|---|---|---|
+| (a) navy / armor / air / land / economy | 0.40 / 0.93 / 0.65 / 0.72 / 1.44 | 0.67 / 1.30 / 0.75 / 0.75 / 1.62 | armor ok; navy, air, land borderline (0.67-0.75); economy too strong (World 4.0) |
+| (b) length medium / World (min) | 34.0 / 37.5 | 34.6 / 38.8 | inside 20-35 / 25-40 (medium highlands 37.0) |
+| (c) 15-min land leader wins | 26% | 23% | ok |
+| (d) doctrines (random pick) | blitz 2.0 | blitz 2.27, air 0.47 | fail |
+| (d) doctrines (AI pick) | air 2.0, naval 0.3 | air 2.7, siege 1.9, fortress 0.3, naval 0.2 | fail |
+| (d) fork paths | subs 1.5, destroyers 0.5 | all 0.9-1.1 (World ground attack 0.3, 19 picks) | ok on medium |
+| (e) Hard alive at 10 min | 0% | 100%, 8 of 12 die at ~25 min; Easy/Normal 100% at 20 min | ok |
+| (f) bombers shot down | 7% | 10% medium, 13% World | fail (target: meaningful share) |
+| (f) tank divisions overrun | 85% | 72% medium, 67% World | fail |
+| (g) most heavy bombers in one game | 869 | 899 (World 567-1220) | fail |
+| (h) atom bomb >= 5 min before the end | 25% (1 of 4) | 11% (1 of 9) | fail |
+| (h) merchant personality vs its share | 1.9x | 2.0-2.25x | ok (< 2.6x), close |
+| (h) mercenaries | 16 hires/game | 69 hires, winners spend 0.6% of gold | fail: they decide nothing |
+| (i) tick time p99 | 7.2 ms | 7.3 ms | ok |
+Still failing / next: economy specialist is the top pillar (tune the normal-AI economy or Banking/Markets, then re-measure on 192+ pairs: one slot on 48 seeds is noise, slots disagree up to 2x); blitz doctrine over-picked and air under-picked (AI doctrine scoring); SAM/fighter kill share and tank overrun rate still low; heavy-bomber spam (cap or cost curve); atom bombs rarely come early; mercenaries need a bigger role (price or cap). Not checked: humanbench "steady" style, World broken down by map type (6 seeds each), direct measures of destroyers finding subs and forts slowing light tanks. An idle human (no clicks at all) is still eliminated by neighbours/tribes at 3-5 min on Easy and Normal (same as before the round).
 
 ## Parked ideas (owner said later / maybe)
 Building limits (city slots, upkeep), rivers and bridges, wonders, game modes (King of the Hill, capital capture, scenarios), quick chat/emotes/rematch, phone layout, making Easy winnable, calmer tribes.

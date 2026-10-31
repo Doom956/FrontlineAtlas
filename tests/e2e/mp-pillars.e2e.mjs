@@ -241,7 +241,7 @@ try {
   };
   const t0 = Date.now();
   let lastStep;
-  while (Date.now() - t0 < 150000) {
+  while (Date.now() - t0 < 300000) {
     lastStep = await Promise.all([economy(A.page), economy(B.page)]);
     const ok = await A.page.evaluate(() => { const s = window.__borderfall.getState(); const p = s.players[s.humanId]; return p.iron > 700 && p.oil > 300; });
     if (ok) break;

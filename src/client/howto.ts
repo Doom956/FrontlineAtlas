@@ -31,6 +31,8 @@ import {
   ROCKET_RADIUS,
   SAM_COOLDOWN,
   TANK_ARTILLERY_SUPPORT,
+  TANK_FALLBACK_LOSS,
+  TANK_FALLBACK_RADIUS,
   TANK_LAUNCH_REACH,
   TANK_SPEARHEAD_MAX_DEPTH,
   TANK_SPEARHEAD_WIDTH,
@@ -312,6 +314,7 @@ export function howToPlayContent(): HTMLElement {
     { title: 'Move', text: 'Select it like a warship (click, or Shift+drag a box; Shift+A picks all), then click your land.' },
     { title: 'Spearhead', text: `Click enemy land within ${TANK_LAUNCH_REACH} tiles of your border: a ${TANK_SPEARHEAD_WIDTH}-tile-wide breakthrough up to ${TANK_SPEARHEAD_MAX_DEPTH} tiles deep. Fast on plains and desert, slow in forest, hills and swamp.` },
     { title: 'Stalls at', text: `Mountains and forts, unless ${pct(TANK_ARTILLERY_SUPPORT)}% of the division is artillery (then slowly, at high loss).` },
+    { title: 'Overrun', text: `A division that is not attacking and loses the ground under it falls back to your land within ${TANK_FALLBACK_RADIUS} tiles (${pct(TANK_FALLBACK_LOSS)}% of its troops lost) if it still has a fifth of a full division, else it is overrun and its troops go home.` },
   ];
   const counterTable = table(
     ['Threat', 'Stopped by'],

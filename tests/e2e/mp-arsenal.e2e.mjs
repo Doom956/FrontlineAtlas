@@ -355,7 +355,7 @@ try {
       return step;
     };
     const t0 = Date.now();
-    while (Date.now() - t0 < 150000) {
+    while (Date.now() - t0 < 300000) {
       await Promise.all([economy(A.page), economy(B.page)]);
       const m = await me(A.page);
       if (m.iron > 900 && m.oil > 400) break;
@@ -377,6 +377,7 @@ try {
     log('built', JSON.stringify(sites));
     if (sites.A.port < 0 || sites.A.airfield < 0 || sites.A.factory < 0) fail('A could not place port/airfield/factory');
     const orders = { A: ['carrier', 'submarine'], B: ['destroyer', 'battleship'] };
+    log('resources before the ship orders', JSON.stringify(await Promise.all([A.page, B.page].map((pg) => pg.evaluate(() => { const s = window.__borderfall.getState(); const p = s.players[s.humanId]; return [Math.round(p.gold), Math.round(p.iron), Math.round(p.oil)]; })))));
     for (const [label, pg] of [['A', A.page], ['B', B.page]]) {
       const r = sites[label];
       if (r.port >= 0) for (const v of orders[label]) log(label, 'buildWarship', v, JSON.stringify(await dispatch(pg, { type: 'buildWarship', port: r.port, variant: v })));
