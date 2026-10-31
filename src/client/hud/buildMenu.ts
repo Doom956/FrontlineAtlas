@@ -329,6 +329,12 @@ export class BuildMenu {
     close.addEventListener('click', () => this.close());
     head.append(title, countWrap, close);
     const body = el('div', 'bm-body');
+    // three columns: Economy + Tools | Military (two cards wide) | Defence + Special
+    const colA = el('div', 'bm-col');
+    const colB = el('div', 'bm-col wide');
+    const colC = el('div', 'bm-col');
+    body.append(colA, colB, colC);
+    const colOf: Record<BuildTab, HTMLElement> = { economy: colA, military: colB, defence: colC, special: colC };
     for (const g of BUILD_TABS) {
       const sec = el('section', `bm-group bm-${g.id}`);
       sec.append(el('div', 'bm-gh', GROUP_LABEL[g.id]));
@@ -339,7 +345,7 @@ export class BuildMenu {
         grid.append(this.unitCard('tankDivision'));
       }
       sec.append(grid);
-      body.append(sec);
+      colOf[g.id].append(sec);
     }
     // tools: upgrade area
     const tools = el('section', 'bm-group bm-tools');
@@ -347,7 +353,7 @@ export class BuildMenu {
     const tg = el('div', 'bm-grid');
     tg.append(this.areaCard());
     tools.append(tg);
-    body.append(tools);
+    colA.append(tools);
     const foot = el('div', 'bm-foot', 'Click a card to build it. Right-click pins it to the quick bar. x3 / x5 (or hold Shift) queues levels. Esc closes.');
     this.el.append(head, body, foot);
 
