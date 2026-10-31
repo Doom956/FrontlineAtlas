@@ -521,7 +521,7 @@ export const UNITS: Record<UnitType, UnitInfo> = {
   /** paratrooper drop: the price is paid per drop */
   transportPlane: { name: 'Cargo plane', speed: 30, gold: 400, iron: 0, oil: 30, hp: 1, tech: 'flight' },
   /** tank division (tanks.ts): speed = tiles/s moving over own land; the troops it carries are its strength */
-  tankDivision: { name: 'Tank division', speed: 4, gold: 1800, iron: 150, oil: 80, hp: 1, tech: 'mechanization' },
+  tankDivision: { name: 'Tank division', speed: 5, gold: 1200, iron: 100, oil: 50, hp: 1, tech: 'mechanization' },
 };
 export const TRANSPORT_MAX_AT_SEA = 3;
 export const TRANSPORT_PER_PORT = 2;
@@ -548,7 +548,7 @@ export const MAX_GROUP_UNITS = 64;
 
 // ---------- tank divisions (tanks.ts) ----------
 /** seconds to build a division at a Factory (x build speed modifiers) */
-export const TANK_BUILD_SECONDS = 20;
+export const TANK_BUILD_SECONDS = 12;
 /** troops a division takes from the pool: armor first; infantry and artillery escort it */
 export const TANK_DIVISION_TROOPS = { armor: 6000, infantry: 2000, artillery: 1000 };
 /** at least this much armor must be at home to form a division (it may then take less escort) */
@@ -575,7 +575,7 @@ export const TANK_ARMOR_DEFENSE = 1.5;
 /** a spearhead ends when the division has less than this share of the troops it started with */
 export const TANK_SPEARHEAD_MIN_SHARE = 0.2;
 /** a division with fewer troops than this share of a full division disbands (troops go home) */
-export const TANK_DISBAND_SHARE = 0.25;
+export const TANK_DISBAND_SHARE = 0.08;
 /** tiles of own land around a holding division get this defence bonus (losses of attackers x 1 + bonus) */
 export const TANK_DEFENSE_RADIUS = 4;
 export const TANK_DEFENSE_BONUS = 0.35;
@@ -1110,3 +1110,97 @@ export const AIR = {
   paraPerAircraft: 0.08,
   paraMaxMul: 2.2,
 } as const;
+
+// ---------- navy, part three: stances, shore bombardment, blockades, veterancy (naval2.ts) ----------
+/** stanced warships (re)think every this many ticks (staggered by id) */
+export const NAVY_THINK_TICKS = 20;
+/** 'auto': looks for enemy coast to bombard within this many tiles of its post (only nations it is at war with) */
+export const NAVY_AUTO_BOMBARD_REACH = 60;
+/** 'hunt': detection range and leash (tiles) */
+export const NAVY_HUNT_DETECT = 90;
+export const NAVY_HUNT_LEASH = 160;
+/** 'bombard' / 'blockade': a ship looks this far (tiles) for a coast / port to take up station at */
+export const NAVY_STATION_SEEK = 120;
+/** a ship on station sits within this many tiles of the coast / port tile it covers */
+export const NAVY_STATION_DIST = 4;
+/**
+ * Shore bombardment: enemy land within NAVY_SUPPORT_RANGE tiles of an own warship is cheaper to take for the ship's
+ * owner: defence / (1 + bonus), the front advances x (1 + NAVY_SUPPORT_SPEED x bonus) faster there, and the attack
+ * counts as supplied. bonus = NAVY_SUPPORT_BONUS for the first ship, each further ship x NAVY_SUPPORT_DIMINISH of the
+ * one before, at most NAVY_SUPPORT_MAX.
+ */
+export const NAVY_SUPPORT_RANGE = 12;
+export const NAVY_SUPPORT_BONUS = 0.35;
+export const NAVY_SUPPORT_DIMINISH = 0.6;
+export const NAVY_SUPPORT_MAX = 0.8;
+export const NAVY_SUPPORT_SPEED = 0.6;
+/** a ship in 'bombard' stance shells the coast x this (defenders killed per second, WARSHIP_BOMBARD_KILL) */
+export const NAVY_BOMBARD_STANCE_KILL = 1.6;
+/** landings within NAVY_SUPPORT_RANGE of an own warship: the beachhead costs x this and its supply lasts x NAVY_BEACHHEAD_SUPPLY */
+export const NAVY_BEACHHEAD_LOSS = 0.4;
+export const NAVY_BEACHHEAD_SUPPLY = 2;
+/**
+ * Blockade: a port within NAVY_BLOCKADE_RANGE tiles of a warship whose owner is at war with the port's owner is
+ * blockaded: its trade earns x (1 - NAVY_BLOCKADE_TRADE_CUT), the owner's land within NAVY_BLOCKADE_SUPPLY_RADIUS of it
+ * is supplied x NAVY_BLOCKADE_SUPPLY for its attacks and counts as unsupplied for its defence, and the blockader's
+ * warships capture (instead of sink) its trade ships: the cargo x NAVY_CAPTURE_GOLD goes to the blockader.
+ */
+export const NAVY_BLOCKADE_RANGE = 10;
+export const NAVY_BLOCKADE_TRADE_CUT = 0.75;
+export const NAVY_BLOCKADE_SUPPLY_RADIUS = 18;
+export const NAVY_BLOCKADE_SUPPLY = 0.6;
+export const NAVY_CAPTURE_GOLD = 1.5;
+/** 'escort': an escorted ship (an own escort within NAVY_ESCORT_RADIUS tiles) takes x NAVY_ESCORT_DAMAGE from warships */
+export const NAVY_ESCORT_RADIUS = 6;
+export const NAVY_ESCORT_DAMAGE = 0.3;
+/** escorts pick own transports (first) or trade ships within this many tiles; at most NAVY_ESCORT_MAX per ship */
+export const NAVY_ESCORT_PICK = 90;
+export const NAVY_ESCORT_MAX = 3;
+/** veterancy: xp for sinking a ship / per second of shelling; levels at these xp; per level +1 max hp, damage x (1 + NAVY_VET_DAMAGE) */
+export const NAVY_XP_SINK = 3;
+export const NAVY_XP_SHELL_PER_S = 0.05;
+export const NAVY_VET_XP: readonly number[] = [5, 14, 30];
+export const NAVY_VET_DAMAGE = 0.2;
+/** fleet cap: NAVY_CAP_BASE + NAVY_CAP_PER_PORT_LEVEL per finished port level; ports build x (1 + NAVY_PORT_BUILD_SPEED x (level - 1)) faster */
+export const NAVY_CAP_BASE = 4;
+export const NAVY_CAP_PER_PORT_LEVEL = 3;
+export const NAVY_PORT_BUILD_SPEED = 0.35;
+/** Carriers: support range x this; Submarines: blockade range x this and captured gold x NAVY_SUB_CAPTURE */
+export const NAVY_CARRIER_SUPPORT_RANGE = 1.5;
+export const NAVY_SUB_BLOCKADE_RANGE = 1.5;
+export const NAVY_SUB_CAPTURE = 1.5;
+
+// ---------- armor, part two: reusable divisions, refit, veterancy, encirclement, support mode (armor2.ts) ----------
+/** refit per second (share of a full division, taken from the home pool): near an own Factory / anywhere else */
+export const ARMOR_REFIT_FACTORY = 0.03;
+export const ARMOR_REFIT_FIELD = 0.006;
+/** 'near a Factory' = within this many tiles of an own finished Factory */
+export const ARMOR_REFIT_RADIUS = 6;
+/** veterancy: a spearhead taking at least ARMOR_VET_MIN_TILES gives its tiles as xp; levels at these xp */
+export const ARMOR_VET_MIN_TILES = 8;
+export const ARMOR_VET_XP: readonly number[] = [20, 60, 140];
+/** per level: head speed and max depth x (1 + ARMOR_VET_SPEED), losses x (1 - ARMOR_VET_LOSS) */
+export const ARMOR_VET_SPEED = 0.12;
+export const ARMOR_VET_LOSS = 0.08;
+/** Railways: +1 division per this many Factory levels (on top of TANK_PER_FACTORY_LEVEL per level) */
+export const ARMOR_RAILWAY_LEVELS = 2;
+/**
+ * Encirclement: while a spearhead runs (every ARMOR_POCKET_EVERY tiles) and when it ends, pieces of the target's land
+ * next to its line that are cut off (closed by the attacker's / its allies' land and water; no capital) and at most
+ * ARMOR_POCKET_MAX_TILES (and less than half the target's land) collapse to the attacker; the target loses that share
+ * of its home army x ARMOR_POCKET_KILL.
+ */
+export const ARMOR_POCKET_EVERY = 6;
+export const ARMOR_POCKET_MAX_TILES = 3000;
+export const ARMOR_POCKET_KILL = 0.6;
+/** 'support': looks for a weak spot every this many seconds within ARMOR_SUPPORT_RADIUS tiles of its front */
+export const ARMOR_SUPPORT_SCAN_SECONDS = 3;
+export const ARMOR_SUPPORT_RADIUS = 24;
+/** launches when at least this share of a full division; drives back to refit at a Factory below ARMOR_SUPPORT_REFIT */
+export const ARMOR_SUPPORT_READY = 0.7;
+export const ARMOR_SUPPORT_REFIT = 0.45;
+/** holds this many tiles behind the front (within this distance of the front tile) */
+export const ARMOR_SUPPORT_HOLD = 8;
+/** a launch needs at least this expected depth (tiles); a line that cuts the enemy's land counts ARMOR_CUT_BONUS extra */
+export const ARMOR_SUPPORT_MIN_DEPTH = 4;
+export const ARMOR_CUT_BONUS = 10;

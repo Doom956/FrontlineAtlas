@@ -355,6 +355,10 @@ export interface Unit {
   vet?: number;
   /** tank division mode (armor2.ts); absent = 'hold' */
   mode?: DivisionMode;
+  /** bomber / cargo plane flying an air-wing mission (airwings.ts): 1 = support, 2 = strategic; absent = manual */
+  mission?: number;
+  /** air-wing escort (airwings.ts): fighter interceptions this plane's escort can still fight off; absent = 0 */
+  escort?: number;
 }
 
 /** A unit being built (navy.ts warships, tanks.ts divisions): it appears at `tile` at readyTick. */
@@ -623,6 +627,61 @@ export interface GameState {
   admin?: AdminState;
   /** warships and tank divisions under construction (navy.ts, tanks.ts); absent = none */
   unitQueue?: QueuedUnit[];
+  /** air wings, air-support zones and strategic raid damage (airwings.ts); absent = none yet */
+  air?: AirState;
+}
+
+/** Standing mission of an airfield's air wing (Action setAirMission, airwings.ts). */
+export type AirMission = 'idle' | 'support' | 'strategic' | 'superiority';
+export const AIR_MISSIONS: readonly AirMission[] = ['idle', 'support', 'strategic', 'superiority'];
+
+/** One airfield's wing (airwings.ts). Keyed by the airfield building id; dropped when the airfield is gone or taken. */
+export interface AirWing {
+  /** airfield building id and tile */
+  airfield: number;
+  tile: number;
+  owner: number;
+  mission: AirMission;
+  /** support: the front tile it bombs ahead of (follows the front); strategic: a tile of the target nation; superiority: patrol centre; -1 = none */
+  target: number;
+  /** support / strategic: the nation it was set against (0 = none) */
+  targetOwner: number;
+  /** tick of the next sortie / check */
+  nextTick: number;
+  /** re-buy aircraft for the mission automatically (gold permitting) */
+  refill: boolean;
+  /** superiority: tick its fighters can intercept again */
+  coverTick: number;
+  /** sorties flown (for the UI) */
+  sorties: number;
+}
+
+/** A temporary air-support zone (airwings.ts): enemy defence inside is cut for the owner's attacks. */
+export interface AirZone {
+  /** wing (airfield building id) that made it */
+  wing: number;
+  owner: number;
+  tile: number;
+  radius: number;
+  /** bombers that struck it (diminishing returns: AIR.supportDecay) */
+  strength: number;
+  untilTick: number;
+  /** the nation struck (bleeds troops while the zone lasts) and its tiles inside when it was made */
+  victim: number;
+  tiles: number;
+}
+
+/** Strategic-bombing damage to one nation's economy (airwings.ts): gold and iron income x (1 - cut) until untilTick. */
+export interface AirRaid {
+  victim: number;
+  cut: number;
+  untilTick: number;
+}
+
+export interface AirState {
+  wings: AirWing[];
+  zones: AirZone[];
+  raids: AirRaid[];
 }
 
 export interface Effect {
@@ -699,6 +758,12 @@ export type Action =
   | { type: 'setUnitStance'; unitIds: number[]; stance: WarshipStance }
   /** set the mode of own tank divisions; support needs `front` (a land tile at or near the front) (armor2.ts) */
   | { type: 'setDivisionMode'; unitIds: number[]; mode: DivisionMode; front?: number }
+  /**
+   * standing mission of an airfield's air wing (airwings.ts); airfield = an own finished airfield tile, or -1 = every
+   * own airfield that reaches the target. target: support / strategic = a tile of the enemy (or at your front),
+   * superiority = patrol centre (absent = the airfield). refill = re-buy aircraft for the mission automatically.
+   */
+  | { type: 'setAirMission'; airfield: number; mission: AirMission; target?: number; refill?: boolean }
   | AdminAction;
 
 /** Owner console operations (admin.ts ADMIN_OPS lists them with the fields each one reads). */
