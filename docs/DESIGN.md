@@ -565,7 +565,10 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   division carries `TANK_ARTILLERY_SUPPORT` artillery; water, a third nation, `TANK_SPEARHEAD_MAX_DEPTH` or falling
   under `TANK_SPEARHEAD_MIN_SHARE` of its strength end it (`spearheadEnded`: tiles taken, losses). A spent division
   disbands (troops go home); a holding division gives own land within `TANK_DEFENSE_RADIUS` +35% defence; bombers
-  hurt divisions on the move; a division whose ground is taken falls back. `spearheadPreview` gives the line, the
+  hurt divisions on the move; a division not attacking whose ground is taken falls back to the nearest own land
+  within `TANK_FALLBACK_RADIUS` (losing `TANK_FALLBACK_LOSS` of its troops; automatic drives back to the front wait
+  `TANK_FALLBACK_PAUSE` s) while it holds `TANK_FALLBACK_MIN_SHARE` of a full division, else it is overrun and its
+  troops go home. `spearheadPreview` gives the line, the
   expected depth and warnings without changing anything. AIs build divisions from armor and spearhead into their
   main war, or else into the nation attacking them hardest, once the preview expects at least 3 tiles
   (`aiTankDivisions`, through applyAction).
@@ -712,6 +715,13 @@ already covers a spot. With artillery they **barrage** forts and SAM sites near 
 are about to attack (SAMs first; with lots of artillery and nothing to silence, the main front itself), and
 sometimes (40% of the air turns with a ready airfield) **drop paratroopers** on a capital or city of a nation they
 clearly outnumber (careful AIs avoid SAM cover), else about 30 tiles behind the main front toward its capital.
+Air defence: with enemy bombers about and 4+ techs an AI researches Flight and Radar next (`AI_RADAR_VS_AIR`) and
+puts SAM sites about `SAM_FRONT_DEPTH` (24) tiles behind its border with the nation that threatens it most, not
+stacked under another SAM. Airfields flying heavy bombers raid cities (all but the one nearest the main attack) and
+fall back to front support when no city is in reach (`AI_HEAVY_RAIDS`, airwings.ts). Atom bombs: an AI in the
+coalition against a runaway leader researches its way to Nuclear Fission first (`NUKE_PATH`) and nukes the leader
+it borders or fights; any AI nukes a bordering / attacking nation above max(`NUKE_LEADER_FLOOR`, win share -
+`NUKE_LEADER_MARGIN`) of the land, or its main attacker once it has lost half its peak land.
 
 **Difficulty** (`settings.difficulty`, part of the setup so every client simulates the same game). Economy is
 config `AI_ECONOMY` (troop growth / income (gold, iron, oil) / troop cap of AI nations; Easy and Normal leave tribes

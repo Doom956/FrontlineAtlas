@@ -708,7 +708,7 @@ export const DOCTRINE_LEVERS: Record<DoctrineId, DoctrineLevers> = {
   fortress: { fortDefense: 0.25, fortCost: 0.25, defenderLoss: 0.2 },
   siege: { artilleryAttack: 0.2, siegeBonus: 0.25, barrageCooldown: 0.25 },
   merchant: { gold: 0.12, tradeGold: 0.25, marketBonus: 0.25 },
-  naval: { warshipCost: 0.25, warshipSpeed: 0.2, transportSpeed: 0.25, transportHp: 1 },
+  naval: { warshipCost: 0.35, warshipSpeed: 0.2, transportSpeed: 0.35, transportHp: 1 },
   air: { aircraftCost: 0.25, airfieldReload: 0.25, paradropRange: 0.25 },
   expansion: { expansionLoss: 0.3, smallGrowth: 0.3 },
 };
@@ -1358,7 +1358,7 @@ export const ARSENAL = {
   navalMasteryRange: 1.3,
   navalMasteryShips: 2,
   // tank divisions (per-player path; existing divisions convert)
-  light: { cost: 0.8, speed: 1.45, depth: 1.5, width: 1, roughLoss: 1.5, defense: 0.85, revealRadius: 22, revealSeconds: 20 },
+  light: { cost: 0.8, speed: 1.45, depth: 1.5, width: 1, roughLoss: 1.5, defense: 0.95, revealRadius: 22, revealSeconds: 20 },
   heavy: { cost: 1.35, speed: 0.75, depth: 0.9, roughLoss: 0.7, defense: 1.3, loss: 0.9 },
   /** Deep Raids: light spearhead depth x, speed x, refit x */
   deepRaidsDepth: 1.3,

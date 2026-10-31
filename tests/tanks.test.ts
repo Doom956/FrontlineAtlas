@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyAction } from '../src/sim/actions';
 import { markBuildingsChanged } from '../src/sim/buildings';
-import { TANK_BUILD_SECONDS, TANK_DEFENSE_BONUS, TANK_DIVISION_TROOPS, TICKS_PER_SECOND, UNITS } from '../src/sim/config';
+import { TANK_BUILD_SECONDS, TANK_DEFENSE_BONUS, TANK_DIVISION_TROOPS, TANK_FALLBACK_LOSS, TANK_FALLBACK_MIN_SHARE, TANK_FALLBACK_RADIUS, TICKS_PER_SECOND, UNITS } from '../src/sim/config';
 import { formAlliance } from '../src/sim/diplomacy';
 import { hashState } from '../src/sim/hash';
 import { tick } from '../src/sim/sim';
@@ -201,15 +201,37 @@ describe('moving tank divisions', () => {
     expect(sum(d.troops)).toBeLessThan(t0);
   });
 
-  it('a division whose ground is taken falls back home', () => {
+  it('a division whose ground is taken falls back to own land nearby, losing some troops', () => {
+    const s = landGame();
+    const d = spawnTankDivision(s, 1, at(s, 25, 15));
+    const before = sum(d.troops);
+    s.map.owner[at(s, 25, 15)] = 2;
+    run(s, 1);
+    expect(divisions(s).length).toBe(1);
+    expect(d.hp).toBeGreaterThan(0);
+    expect(s.map.owner[Math.round(d.y) * s.map.width + Math.round(d.x)]).toBe(1);
+    expect(Math.max(Math.abs(Math.round(d.x) - 25), Math.abs(Math.round(d.y) - 15))).toBeLessThanOrEqual(TANK_FALLBACK_RADIUS);
+    expect(sum(d.troops)).toBeCloseTo(before * (1 - TANK_FALLBACK_LOSS), 0);
+  });
+
+  it('a division cut off from own land (or worn down) is overrun and falls back home', () => {
     const s = landGame();
     const d = spawnTankDivision(s, 1, at(s, 25, 15));
     const pool = sum(s.players[1].troops);
-    s.map.owner[at(s, 25, 15)] = 2;
+    claimRect(s, 2, 25 - TANK_FALLBACK_RADIUS, 15 - TANK_FALLBACK_RADIUS, 25 + TANK_FALLBACK_RADIUS, 15 + TANK_FALLBACK_RADIUS);
     run(s, 1);
     expect(divisions(s).length).toBe(0);
     expect(sum(s.players[1].troops)).toBeGreaterThan(pool);
     expect(d.hp).toBe(0);
+    // Worn down: under TANK_FALLBACK_MIN_SHARE of a full division it is overrun even with own land next to it.
+    const s2 = landGame();
+    const d2 = spawnTankDivision(s2, 1, at(s2, 25, 15));
+    const full = TANK_DIVISION_TROOPS.armor + TANK_DIVISION_TROOPS.infantry + TANK_DIVISION_TROOPS.artillery;
+    const k = (full * TANK_FALLBACK_MIN_SHARE * 0.9) / sum(d2.troops);
+    d2.troops = { infantry: d2.troops.infantry * k, armor: d2.troops.armor * k, artillery: d2.troops.artillery * k };
+    s2.map.owner[at(s2, 25, 15)] = 2;
+    run(s2, 1);
+    expect(divisions(s2).length).toBe(0);
   });
 
   it('is deterministic', () => {
