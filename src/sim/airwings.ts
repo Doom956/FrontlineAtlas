@@ -27,7 +27,7 @@ import { addEvent } from './state';
 import { hasTech } from './tech';
 import { techOf } from './techtree';
 import { dropTanksPatrolMul, dropTanksRangeMul, nightDodges, nightEffectMul, nightRadiusMul } from './specials';
-import { airRaidMul, airRangeMul, airSupportMul, airVariantOf, airWingMul, carrierFor, carrierReach } from './variants';
+import { airRaidMul, airRangeMul, airSupportMul, airWingMul, carrierFor, carrierReach } from './variants';
 import { buildAircraft, launchBomber, shotDown, unitCost } from './units';
 import { AIR_MISSIONS, isTribe } from './types';
 import type { ActionResult, AirMission, AirRaid, AirState, AirWing, AirZone, Building, BuildingType, GameState, TechId, Unit } from './types';
@@ -37,8 +37,6 @@ const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
 /** Unit.mission values. */
 export const MISSION_SUPPORT = 1;
 export const MISSION_STRATEGIC = 2;
-/** AI: airfields flying heavy bombers raid cities (all but the one nearest the main attack), see aiAirWings. */
-const AI_HEAVY_RAIDS = true;
 
 // ---------------------------------------------------------------------------------------------------------------
 // State and small helpers
@@ -805,44 +803,35 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
   let busy = 0;
   let patrolling = afs.some((b) => airMissionOf(state, b) === 'superiority') && airThreat;
   const sortedAfs = [...afs].sort((a, b) => (main ? d2(w, a.tile, main.focus) - d2(w, b.tile, main.focus) : 0) || a.id - b.id);
-  // Heavy bombers (variants.ts: raids x1.7, support x0.7) raid cities from every airfield but the one nearest the
-  // main attack, and fall back to front support when no city is in reach.
-  const heavy = AI_HEAVY_RAIDS && airVariantOf(state, id) === 'heavyBomber';
-  const supportAim = (b: Building): number => {
-    if (!main || !front.length) return -1;
-    const range = airWingRange(b, state);
-    let best = -1;
-    let bestD = Infinity;
-    for (const t of front) {
-      if (!reaches(b, range, t)) continue;
-      const dd = d2(w, t, main.focus);
-      if (dd < bestD) {
-        bestD = dd;
-        best = t;
-      }
-    }
-    return best;
-  };
   for (const b of sortedAfs) {
     const cur = wingOf(state, b);
     let mission: AirMission = 'idle';
     let target: number | undefined;
-    const raidFirst = heavy && fighting.length > 0 && (afs.length < 2 || b !== sortedAfs[0]);
 
     // Superiority: one airfield with fighters when the enemy flies (the farthest from the front if there are several).
     const wantPatrol = airThreat && b.fighters >= 2 && (afs.length >= 2 ? b === sortedAfs[sortedAfs.length - 1] : !main);
     if (wantPatrol && (!patrolling || cur?.mission === 'superiority')) {
       mission = 'superiority';
       patrolling = true;
-    } else if (main && front.length && !raidFirst) {
-      const best = supportAim(b);
+    } else if (main && front.length) {
+      const range = airWingRange(b, state);
+      let best = -1;
+      let bestD = Infinity;
+      for (const t of front) {
+        if (!reaches(b, range, t)) continue;
+        const dd = d2(w, t, main.focus);
+        if (dd < bestD) {
+          bestD = dd;
+          best = t;
+        }
+      }
       if (best >= 0) {
         mission = 'support';
         // Keep the old aim while it is still on that front (it follows the push by itself).
         target = cur?.mission === 'support' && cur.targetOwner === main.target && cur.target >= 0 && d2(w, cur.target, best) < 30 * 30 ? cur.target : best;
       }
     }
-    if (mission === 'idle' && fighting.length && (minded || heavy || p.personality === 'merchant' || techOf(state, id, 'strategicBombing'))) {
+    if (mission === 'idle' && fighting.length && (minded || p.personality === 'merchant' || techOf(state, id, 'strategicBombing'))) {
       let bestFoe = 0;
       let bestN = 0;
       const range = airWingRange(b, state);
@@ -864,13 +853,6 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
       }
       if (bestFoe > 0) mission = 'strategic';
       else target = undefined;
-    }
-    if (mission === 'idle' && raidFirst && main) {
-      const best = supportAim(b);
-      if (best >= 0) {
-        mission = 'support';
-        target = cur?.mission === 'support' && cur.targetOwner === main.target && cur.target >= 0 && d2(w, cur.target, best) < 30 * 30 ? cur.target : best;
-      }
     }
 
     const refill = minded || doctrineActive(state, id) === 'air';
