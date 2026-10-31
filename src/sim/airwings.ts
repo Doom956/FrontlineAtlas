@@ -27,7 +27,7 @@ import { addEvent } from './state';
 import { hasTech } from './tech';
 import { techOf } from './techtree';
 import { dropTanksPatrolMul, dropTanksRangeMul, nightDodges, nightEffectMul, nightRadiusMul } from './specials';
-import { airRaidMul, airRangeMul, airSupportMul, airWingMul, carrierFor } from './variants';
+import { airRaidMul, airRangeMul, airSupportMul, airWingMul, carrierFor, carrierReach } from './variants';
 import { buildAircraft, launchBomber, shotDown, unitCost } from './units';
 import { AIR_MISSIONS, isTribe } from './types';
 import type { ActionResult, AirMission, AirRaid, AirState, AirWing, AirZone, Building, BuildingType, GameState, TechId, Unit } from './types';
@@ -773,7 +773,9 @@ export function aiAirDoctrineTaste(state: GameState, id: number): number {
  *  - else strategic against the nation we fight that has the most cities in reach (merchant-minded and air-minded
  *    nations, or once we have Strategic Bombing);
  *  - else idle.
- * Air-minded nations refill their wings automatically. Returns the airfields now on support / strategic missions.
+ * "In reach" = within the wing's range of the airfield or within carrierAirRange of an own carrier (bombers then
+ * launch from the carrier, launchWing). Air-minded nations refill their wings automatically. Returns the airfields
+ * now on support / strategic missions.
  */
 export function aiAirWings(state: GameState, id: number, fighting: readonly number[], airThreat: boolean): number {
   const p = state.players[id];
@@ -794,6 +796,9 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
   }
   let front: number[] = [];
   if (main) front = frontTiles(state, id, main.target, 400);
+  // Carriers (variants.ts): wings strike anything an own carrier has in reach, like the player's setAirMission.
+  const byCarrier = carrierReach(state, id);
+  const reaches = (b: Building, range: number, t: number): boolean => d2(w, b.tile, t) <= range * range || (byCarrier !== null && byCarrier(t));
 
   let busy = 0;
   let patrolling = afs.some((b) => airMissionOf(state, b) === 'superiority') && airThreat;
@@ -813,7 +818,7 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
       let best = -1;
       let bestD = Infinity;
       for (const t of front) {
-        if (d2(w, b.tile, t) > range * range) continue;
+        if (!reaches(b, range, t)) continue;
         const dd = d2(w, t, main.focus);
         if (dd < bestD) {
           bestD = dd;
@@ -836,7 +841,7 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
         let n = 0;
         let tile = -1;
         for (const c of buildingsOf(state, q, 'city')) {
-          if (c.buildLeft > 0 || d2(w, b.tile, c.tile) > range * range) continue;
+          if (c.buildLeft > 0 || !reaches(b, range, c.tile)) continue;
           n += c.level;
           tile = c.tile;
         }

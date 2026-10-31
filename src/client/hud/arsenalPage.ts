@@ -301,7 +301,9 @@ export class TechRowsView {
 
   private drawRow(r: RowEl): void {
     const W = r.el.offsetWidth;
-    const H = r.el.offsetHeight;
+    // the padding box, a pixel short: rows have fractional heights and an svg reaching past the row would give the
+    // scrolling rows box (.rp-body) a needless scrollbar; the paths may still draw past it (overflow visible)
+    const H = Math.max(0, r.el.clientHeight - 1);
     r.svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
     r.svg.setAttribute('width', String(W));
     r.svg.setAttribute('height', String(H));

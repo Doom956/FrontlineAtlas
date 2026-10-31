@@ -23,6 +23,7 @@ import { Terrain, isTribe, isWater } from './types';
 import type { GameState, NavalVariant, Personality, TechId } from './types';
 import { airMinded } from './airwings';
 import { canReconFlight, navalVariantsOf, reconRange, reconWorthIt } from './variants';
+import { aiFocusSpec } from './aifocus';
 
 function mix(a: number, b: number): number {
   let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x6b43a9b5, 0xc2b2ae35);
@@ -134,6 +135,8 @@ export function aiForkPick(state: GameState, id: number, group: string): TechId 
 /** The pillar AI id commits to (its mastery goes there). */
 export function aiCommittedPillar(state: GameState, id: number): Exclude<Pillar, 'shared'> {
   const p = state.players[id];
+  const forced = aiFocusSpec(state, id)?.arms; // benchmark specialist (aifocus.ts)
+  if (forced) return forced;
   // Sticky once committed: a mastery, else a path upgrade (Battleships, Siege Tanks, ...) names the pillar, so a coast
   // won or lost later doesn't move the nation's mastery elsewhere.
   if (p) {
@@ -178,6 +181,8 @@ export function aiSkipsArsenalTech(state: GameState, id: number, t: TechId): boo
  * mastery of its committed pillar, plus the shared unlock that fits it (Mechanized infantry for armor, Recon for air).
  */
 export function aiPriorityArsenalTech(state: GameState, id: number, t: TechId): boolean {
+  const g = TECHS[t].exclusiveGroup;
+  if (g && aiFocusSpec(state, id)?.group === g) return true; // benchmark specialist: its fork first (aifocus.ts)
   const it = arsenalItem(t);
   if (!it || it.kind === 'special') return false;
   // A mastery (the dearest tech) jumps the queue only once the nation has a broad base (else it starves the economy).

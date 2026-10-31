@@ -15,6 +15,7 @@ import { fundAllyEffect, mercenaryPrice, warBondsInfo } from './spending';
 import { rivalsOf, techStatus } from './techtree';
 import { isTribe } from './types';
 import type { Attack, GameState, Personality, TechId } from './types';
+import { aiFocusFork } from './aifocus';
 import { aiArsenalTech, aiForkPick, aiPriorityArsenalTech, aiSkipsArsenalTech } from './variantsAI';
 
 /** Lean toward the FIRST member of each group by personality (0..1; missing = 0.5). */
@@ -52,6 +53,9 @@ export function aiBranchPick(state: GameState, id: number, personality: Personal
   const p = state.players[id];
   // Already chosen (or researching one): stick to it.
   for (const t of members) if (p && (p.techs.includes(t) || p.researching === t)) return t;
+  // Benchmark specialist with a forced fork (aifocus.ts).
+  const forced = aiFocusFork(state, id, group);
+  if (forced) return forced;
   // Arsenal forks: by the map and personality (variantsAI.ts).
   const fork = aiForkPick(state, id, group);
   if (fork) return fork;
@@ -173,12 +177,14 @@ export interface AISpendStats {
   bonds: number;
   bulkOrders: number;
   areaOrders: number;
+  /** gold spent on mercenaries per nation id */
+  mercGoldBy: Record<number, number>;
 }
 const timers = new WeakMap<GameState, Map<number, Timers>>();
 const statsOf = new WeakMap<GameState, AISpendStats>();
 export function aiSpendStats(state: GameState): AISpendStats {
   let s = statsOf.get(state);
-  if (!s) statsOf.set(state, (s = { mercHires: 0, mercTroops: 0, fundings: 0, fundGold: 0, bonds: 0, bulkOrders: 0, areaOrders: 0 }));
+  if (!s) statsOf.set(state, (s = { mercHires: 0, mercTroops: 0, fundings: 0, fundGold: 0, bonds: 0, bulkOrders: 0, areaOrders: 0, mercGoldBy: {} }));
   return s;
 }
 function timersOf(state: GameState, id: number): Timers {
@@ -212,9 +218,11 @@ export function aiSpend(state: GameState, v: AISpendView): void {
     let amount = Math.floor(Math.min(q0.affordable, budget / Math.max(1e-6, q0.perTroop)));
     // The price rises within the hire: shrink until it fits the budget.
     for (let k = 0; k < 6 && amount >= 1000 && mercenaryPrice(state, v.id, amount).gold > budget; k++) amount = Math.floor(amount * 0.7);
+    const goldBefore = p.gold;
     if (amount >= 1000 && applyAction(state, v.id, { type: 'hireMercenaries', amount }).ok) {
       stats.mercHires++;
       stats.mercTroops += amount;
+      stats.mercGoldBy[v.id] = (stats.mercGoldBy[v.id] ?? 0) + (goldBefore - p.gold);
       t.merc = now + 30 * S;
       return;
     }

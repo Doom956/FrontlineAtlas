@@ -17,7 +17,7 @@ import { buildTankDivision, moveTankDivisions } from './tanks';
 import { setUnitStance } from './naval2';
 import { setDivisionMode } from './armor2';
 import { setAirMission } from './airwings';
-import { reconFlight } from './variants';
+import { clearIntelCache, reconFlight } from './variants';
 import { aiActionBlocked, applyAdmin } from './admin';
 import { continueGame } from './victory';
 import { NAVAL_VARIANTS, TROOP_TYPES } from './types';
@@ -53,6 +53,7 @@ const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.m
 
 export function applyAction(state: GameState, playerId: number, action: Action): ActionResult {
   clearArmyCache(state); // client reads between ticks must not fill it (combat.ts)
+  clearIntelCache(state); // the same for recon intel (variants.ts)
   const p = state.players[playerId];
   if (!p || playerId === 0) return FAIL('No such player');
   // Continuing a finished game and the owner console work for eliminated humans too (they keep watching).

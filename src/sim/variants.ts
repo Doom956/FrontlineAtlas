@@ -22,7 +22,7 @@
 // Deterministic: no RNG, no transcendental Math; zones are plain arrays in state.arsenal (hashed: hashArsenal).
 import { ARSENAL, TICKS_PER_SECOND, TICK_SECONDS, UNITS } from './config';
 import type { NavalVariantInfo } from './config';
-import { buildingAt, buildingsOf } from './buildings';
+import { buildingAt, buildingsOf, isDisabled } from './buildings';
 import { areAllied } from './diplomacy';
 import { atPeace, peaceReason, unitRule } from './rules';
 import { addEvent, newId } from './state';
@@ -242,6 +242,27 @@ export function carrierFor(state: GameState, owner: number, aim: number): Unit |
   return best;
 }
 
+/**
+ * A reach test over the owner's carriers right now (AI planning, airwings.aiAirWings): true when some live carrier of
+ * `owner` has `aim` within carrierAirRange (the same test as carrierFor, without picking one). Null when it has none.
+ */
+export function carrierReach(state: GameState, owner: number): ((aim: number) => boolean) | null {
+  const xs: number[] = [];
+  for (const u of state.units) {
+    if (u.owner !== owner || u.variant !== 'carrier' || u.type !== 'warship' || u.hp <= 0) continue;
+    xs.push(u.x, u.y);
+  }
+  if (!xs.length) return null;
+  const w = state.map.width;
+  const r2 = ARSENAL.carrierAirRange * ARSENAL.carrierAirRange;
+  return (aim: number): boolean => {
+    const ax = aim % w;
+    const ay = (aim / w) | 0;
+    for (let k = 0; k < xs.length; k += 2) if (d2(xs[k], xs[k + 1], ax, ay) <= r2) return true;
+    return false;
+  };
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Tank divisions (per-player path)
 // ---------------------------------------------------------------------------------------------------------------
@@ -412,6 +433,7 @@ function reconSite(state: GameState, pid: number, airfield: number, tile: number
   const ty = (tile / w) | 0;
   const check = (b: Building): string | null => {
     if (b.type !== 'airfield' || b.owner !== pid || b.buildLeft > 0) return 'Recon planes fly from a finished Airfield of yours';
+    if (isDisabled(state, b)) return `This airfield is knocked out (${Math.ceil((b.disabledUntil - state.tick) / TICKS_PER_SECOND)} s)`;
     const left = reconCooldownLeft(state, b);
     if (left > 0) return `Recon plane ready in ${Math.ceil(left)} s`;
     const r = reconRange(b);
@@ -515,14 +537,24 @@ function addReveal(state: GameState, owner: number, tile: number, radius: number
       if (d2(z.tile % w, (z.tile / w) | 0, tile % w, (tile / w) | 0) <= (radius * radius) / 4) {
         z.tile = tile;
         z.untilTick = until;
+        clearIntelCache(state);
         return;
       }
     }
   }
   a.reveals.push({ owner, tile, radius, untilTick: until, kind });
+  clearIntelCache(state);
 }
 
 const intelCache = new WeakMap<GameState, { tick: number; n: number; seen: Map<number, Set<number>> }>();
+/**
+ * Drops the recon-intel cache. hasIntel feeds AI decisions (advisor, doctrines), so a cache filled by a client read
+ * between ticks (nation card, with the next tick's number) must not reach the sim: called with combat.clearArmyCache
+ * when the sim starts work (sim.tick, actions.applyAction), and whenever a reveal circle is added or moved.
+ */
+export function clearIntelCache(state: GameState): void {
+  intelCache.delete(state);
+}
 /** Nations `viewer` has intel on through its active reveals (land or capital inside a circle). */
 function revealedNations(state: GameState, viewer: number): Set<number> | undefined {
   const a = state.arsenal;

@@ -85,6 +85,8 @@ import { inOvertime, victoryShareNow } from './victory';
 import { hasTech } from './tech';
 import { pillarOf } from './arsenal';
 import { aiRecon, aiWarshipVariant } from './variantsAI';
+import { aiFocus, FOCUS_SPEC } from './aifocus';
+import type { FocusPillar } from './aifocus';
 import { aiSpecialPick } from './arsenalAI';
 import { aiSpend, aiTechOrder, rejectedBranch } from './aispending';
 import { allyTrustDiscount } from './spending';
@@ -112,6 +114,11 @@ const TILE_UNIT = 8;
 const CITY_TILES = 2400;
 /** At most one atom bomb per AI per this many seconds. */
 const NUKE_PAUSE_SECONDS = 300;
+/** An AI with atom bombs nukes a bordering / attacking nation whose land share is above max(floor, win share - margin). */
+const NUKE_LEADER_FLOOR = 0.45;
+const NUKE_LEADER_MARGIN = 0.15;
+/** AI SAM sites go about this many tiles behind the main front (bombers strike the front), see siteCandidates. */
+const SAM_FRONT_DEPTH = 24;
 
 interface Profile {
   /** willingness to start wars, 0..1 */
@@ -216,6 +223,27 @@ const PROFILES: Record<Personality, Profile> = {
     naval: 0.4,
   },
 };
+
+const focusProfiles = new Map<string, Profile>();
+/** A personality's profile bent toward a forced specialisation (benchmark only: aifocus.ts). */
+function focusedProfile(personality: Personality, pillar: FocusPillar): Profile {
+  const key = `${personality}:${pillar}`;
+  let f = focusProfiles.get(key);
+  if (f) return f;
+  const base = PROFILES[personality];
+  const spec = FOCUS_SPEC[pillar];
+  const build: Partial<Record<BuildingType, number>> = { ...base.build };
+  for (const [t, v] of Object.entries(spec.build) as [BuildingType, number][]) build[t] = Math.max(1, build[t] ?? 1) * v;
+  f = {
+    ...base,
+    mix: { armor: base.mix.armor + spec.mix.armor, artillery: base.mix.artillery + spec.mix.artillery },
+    techs: [...spec.techs, ...base.techs.filter((t) => !spec.techs.includes(t))],
+    build,
+    naval: Math.max(base.naval, spec.naval),
+  };
+  focusProfiles.set(key, f);
+  return f;
+}
 
 export interface DifficultyProfile {
   /** relative error of the enemy army estimate and of target scoring */
@@ -834,7 +862,7 @@ function makeCtx(state: GameState, m: Memory, p: Player): Ctx {
     p,
     id,
     ai: aiState(m, id),
-    prof: PROFILES[p.personality ?? 'balanced'],
+    prof: focusOf(state, p),
     diff,
     enemies,
     neighbours,
@@ -852,6 +880,12 @@ function makeCtx(state: GameState, m: Memory, p: Player): Ctx {
     leader: isTribe(p) ? 0 : runawayLeader(state),
     coalition: !isTribe(p) && inCoalition(state, id),
   };
+}
+
+function focusOf(state: GameState, p: Player): Profile {
+  const pers = p.personality ?? 'balanced';
+  const f = isTribe(p) ? undefined : aiFocus(state, p.id);
+  return f ? focusedProfile(pers, f.pillar) : PROFILES[pers];
 }
 
 /** Noisy estimate of another player's whole army (AI cheat, accuracy by difficulty). Stable for ~20 s. */
@@ -952,6 +986,14 @@ function doctrine(ctx: Ctx): void {
   const { state, p, id, ai, diff } = ctx;
   if (!doctrineUnlocked(state, id)) return;
   const d = p.doctrine;
+  const focus = aiFocus(state, id); // benchmark specialist (aifocus.ts): its pillar's doctrine, held for good
+  if (focus) {
+    if (d.id !== null || state.tick < doctrineUnlockTick(state) + (hash32(id * 31 + 7) % (DOCTRINE_FIRST_SPREAD_SECONDS * TICKS_PER_SECOND))) return;
+    const allowed = FOCUS_SPEC[focus.pillar].doctrines;
+    const best = doctrineScores(ctx).find((x) => allowed.includes(x.id))?.id ?? allowed[0];
+    applyAction(state, id, { type: 'chooseDoctrine', doctrine: best });
+    return;
+  }
   if (d.id === null) {
     if (state.tick < doctrineUnlockTick(state) + (hash32(id * 31 + 7) % (DOCTRINE_FIRST_SPREAD_SECONDS * TICKS_PER_SECOND))) return;
     const scores = doctrineScores(ctx);
@@ -1704,7 +1746,7 @@ function economy(ctx: Ctx): void {
     add('port', count('port') < portCap ? 2 + prof.naval * 4 : 0);
   }
   if (hasTech(p, 'medicine')) add('hospital', count('hospital') < 2 ? 2.5 : 0);
-  if (hasTech(p, 'flight')) add('airfield', count('airfield') < (prof.aggression > 0.5 ? 2 : 1) + (held === 'air' ? 1 : 0) + aiExtraAirfields(state, id) ? 3.5 : 0);
+  if (hasTech(p, 'flight')) add('airfield', count('airfield') < (prof.aggression > 0.5 ? 2 : 1) + (held === 'air' ? 1 : 0) + aiExtraAirfields(state, id) + focusExtra(state, id, 'airfields') ? 3.5 : 0);
   if (hasTech(p, 'radar') && enemyAirThreat(ctx)) add('sam', count('sam') < 3 ? 4.5 : 0);
   if (hasTech(p, 'rocketry')) add('silo', count('silo') < 1 ? 3 : 0);
 
@@ -1732,6 +1774,12 @@ function economy(ctx: Ctx): void {
       if (tech && applyAction(state, id, { type: 'research', tech }).ok) done++;
     } else if (tryBuild(ctx, o.type)) done++;
   }
+}
+
+/** Extra warships / airfields of a benchmark specialist (aifocus.ts; 0 for everyone else). */
+function focusExtra(state: GameState, id: number, what: 'warships' | 'airfields'): number {
+  const f = aiFocus(state, id);
+  return f ? FOCUS_SPEC[f.pillar][what] : 0;
 }
 
 /** Gold price of the next level of a type (new building or upgrade: the same price); Infinity for a city without room. */
@@ -1854,12 +1902,14 @@ function candidateTiles(ctx: Ctx, type: BuildingType): number[] {
     case 'fort':
     case 'watchtower':
     case 'supplyDepot':
-    case 'airfield': {
-      const foe = type === 'supplyDepot' || type === 'airfield' ? mainWarTarget(ctx) || ctx.threatId : ctx.threatId;
+    case 'airfield':
+    case 'sam': {
+      const foe = type === 'supplyDepot' || type === 'airfield' || type === 'sam' ? mainWarTarget(ctx) || ctx.threatId : ctx.threatId;
       const edges = foe > 0 ? (ctx.hood.edge.get(foe) ?? EMPTY) : ctx.foreignEdges;
       // Forts a few tiles behind the border (not lost at the first push), depots further back, airfields within
       // reach of the front (fighter cover, paratroopers) but out of the first push.
-      const depth = type === 'fort' ? [8, 12, 5] : type === 'watchtower' ? [3, 5] : type === 'airfield' ? [30, 45, 20] : [16, 24, 10];
+      // SAM sites cover the front (where enemy bombers strike) from a little further back.
+      const depth = type === 'fort' ? [8, 12, 5] : type === 'watchtower' ? [3, 5] : type === 'airfield' ? [30, 45, 20] : type === 'sam' ? [SAM_FRONT_DEPTH, SAM_FRONT_DEPTH * 1.5, SAM_FRONT_DEPTH * 0.6] : [16, 24, 10];
       const out: number[] = [];
       for (const e of sample(state, edges.filter(own), 8)) {
         for (const k of depth) {
@@ -1939,6 +1989,16 @@ function siteScore(ctx: Ctx, type: BuildingType, t: number, upgrade: boolean): n
     case 'airfield':
       // Close enough to the fronts for fighter cover and paratroopers, not on them.
       return 1.5 - Math.abs(safe - 0.35) * 3 + noise;
+    case 'sam': {
+      // Covering the front, out of the first push; don't stack SAMs (upgrade the one that already covers the spot).
+      if (upgrade) return 1 + noise;
+      let covered = 0;
+      for (const b of buildingsOf(state, id, 'sam')) {
+        const r = samRadius(b) * 0.8;
+        if (dist2(w, t, b.tile) < r * r) covered = 1;
+      }
+      return 1.5 - Math.abs(safe - 0.35) * 3 - covered * 2 + noise;
+    }
     default:
       // Production, science and air buildings: away from the front.
       return safe * 2 + noise;
@@ -1997,7 +2057,7 @@ function naval(ctx: Ctx): void {
     const ports = buildingsOf(state, id, 'port').filter((b) => b.buildLeft <= 0);
     let ships = 0;
     for (const u of state.units) if (u.owner === id && u.type === 'warship') ships++;
-    const cap = Math.round(prof.naval * 4 + (ctx.enemies.length ? 1 : 0) + (doctrineActive(state, id) === 'naval' ? 2 : 0));
+    const cap = Math.round(prof.naval * 4 + (ctx.enemies.length ? 1 : 0) + (doctrineActive(state, id) === 'naval' ? 2 : 0) + focusExtra(state, id, 'warships'));
     const c = unitCost(state, id, 'warship');
     if (ports.length && ships < cap && p.gold > c.gold * 2 && p.iron >= c.iron && p.oil >= c.oil) {
       const variant = aiWarshipVariant(state, id); // destroyers, battleships, submarines, carriers (variantsAI.ts)
@@ -2322,7 +2382,7 @@ function maybeNuke(ctx: Ctx, silo: number): boolean {
   }
   if (!target) {
     // A nation about to win that we border or fight.
-    const nearWin = Math.max(0.45, victoryShareNow(state) - 0.15);
+    const nearWin = Math.max(NUKE_LEADER_FLOOR, victoryShareNow(state) - NUKE_LEADER_MARGIN);
     for (const q of state.players) {
       if (q.id === 0 || q.id === id || !q.alive || isTribe(q) || areAllied(state, id, q.id)) continue;
       if (landShare(state, q.id) > nearWin && (ctx.neighbours.includes(q.id) || ctx.incoming.has(q.id))) target = q.id;

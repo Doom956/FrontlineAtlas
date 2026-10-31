@@ -1229,6 +1229,10 @@ export const ARMOR_SUPPORT_READY = 0.7;
 export const ARMOR_SUPPORT_REFIT = 0.45;
 /** holds this many tiles behind the front (within this distance of the front tile) */
 export const ARMOR_SUPPORT_HOLD = 8;
+/** the hold tile has own land this many tiles out in all 4 directions; a 'support' division that ends up elsewhere
+ * (e.g. at the tip of its last spearhead) drives back to one when ARMOR_SUPPORT_SETTLE_INTERIOR */
+export const ARMOR_SUPPORT_HOLD_DEPTH = 3;
+export const ARMOR_SUPPORT_SETTLE_INTERIOR = true;
 /** a launch needs at least this expected depth (tiles); a line that cuts the enemy's land counts ARMOR_CUT_BONUS extra */
 export const ARMOR_SUPPORT_MIN_DEPTH = 4;
 export const ARMOR_CUT_BONUS = 10;

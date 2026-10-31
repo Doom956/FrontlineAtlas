@@ -17,7 +17,7 @@ import { addEvent, autoSpawnRemaining, pruneEliminated, randomSpawnHumans } from
 import { updateResearch } from './tech';
 import { updateUnits } from './units';
 import { updateAir } from './airwings';
-import { updateArsenal } from './variants';
+import { clearIntelCache, updateArsenal } from './variants';
 import { updateNavyQueue } from './navy';
 import { updateTanks } from './tanks';
 import { updateSpecials } from './specials';
@@ -31,6 +31,7 @@ const EFFECT_TTL_TICKS = 3 * TICKS_PER_SECOND;
 export function tick(state: GameState): void {
   if (state.phase === 'over') return;
   clearArmyCache(state); // client reads between ticks must not fill it (combat.ts)
+  clearIntelCache(state); // the same for recon intel (variants.ts)
 
   if (state.phase === 'spawn') {
     if (state.tick === 0 && mods(state).randomSpawn) randomSpawnHumans(state);
