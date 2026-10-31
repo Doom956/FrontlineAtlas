@@ -4690,3 +4690,7 @@ strong {
 .adm > .adm-debug {
   pointer-events: none;
 }
+.adm-quick {
+  padding-top: 0;
+  padding-bottom: 8px;
+}

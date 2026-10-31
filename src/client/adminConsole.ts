@@ -381,12 +381,12 @@ export class AdminConsole {
             inp,
             this.btn('Set', () => this.send('setResource', { player: P(), key, amount: num(inp.value) })),
             this.btn('Add', () => this.send('addResource', { player: P(), key, amount: num(inp.value) })),
-            quick(-step),
-            quick(step),
-            quick(step * 10),
           );
           r.dataset.test = `adm-res-${key}`;
-          this.body.append(r);
+          const q = this.row('', quick(-step), quick(step), quick(step * 10));
+          q.classList.add('adm-quick');
+          q.dataset.test = `adm-quick-${key}`;
+          this.body.append(r, q);
         }
         break;
       case 'troops': {

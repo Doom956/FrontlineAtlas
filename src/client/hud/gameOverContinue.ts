@@ -30,7 +30,7 @@ export class ContinueRow {
     run: () => void,
   ) {
     this.el = el('span', 'over-cont');
-    this.btn = el('button', 'wr-btn primary big');
+    this.btn = el('button', 'wr-btn big');
     this.btn.type = 'button';
     this.btn.dataset.test = 'continue-game';
     this.btn.append(el('span', 'wr-btn-l', continueLabel(me)));

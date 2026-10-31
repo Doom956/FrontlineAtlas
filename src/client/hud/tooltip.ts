@@ -59,7 +59,7 @@ export class MapTooltip {
     const probe = this.ctx.probe();
     const uid = ui.mode.kind === 'none' && probe && ui.hoverPx ? probe.unitAt(ui.hoverPx.x, ui.hoverPx.y) : -1;
     const unit = uid >= 0 ? state.units.find((u) => u.id === uid && u.hp > 0) : undefined;
-    const key = `${tile}|${unit ? unit.id : -1}|${ui.attackShare}|${ui.attackMixMode}|${ui.mode.kind}|${ui.mode.kind === 'build' ? ui.mode.building : ''}|${effectiveCount(ui, shiftHeld())}`;
+    const key = `${tile}|${unit ? unit.id : -1}|${ui.attackShare}|${ui.attackMixMode}|${ui.mode.kind}|${ui.mode.kind === 'build' ? ui.mode.building : ''}|${effectiveCount(ui, shiftHeld())}|${ui.selection.length > 0}`;
     // the Upgrade-area tool has its own panel with the live preview (hud/buildMenu.ts)
     if (ui.mode.kind === 'upgradeArea') {
       setVisible(this.card, false);
@@ -150,7 +150,8 @@ export class MapTooltip {
         if (owner === me.id) {
           const sup = supplyEfficiency(state, me.id, tile);
           if (sup < 0.99) rows.push(this.line('', `Supply ${pct(sup)}`, 'Far from cities and depots: fronts here fight weaker', 'warn'));
-        } else if (isAttackable(state, me.id, tile) && this.ctx.ui.mode.kind === 'none') {
+        } else if (isAttackable(state, me.id, tile) && this.ctx.ui.mode.kind === 'none' && !this.ctx.ui.selection.length) {
+          // (with units selected a click is their order, not an attack: selection.ts)
           const send = troopsToSend(me, this.ctx.ui);
           const est = estimateAttack(state, me.id, tile, send);
           if (est) {
