@@ -38,7 +38,7 @@ const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
 export const MISSION_SUPPORT = 1;
 export const MISSION_STRATEGIC = 2;
 /** AI: airfields flying heavy bombers raid cities (all but the one nearest the main attack), see aiAirWings. */
-const AI_HEAVY_RAIDS = true;
+const AI_HEAVY_RAIDS = false;
 
 // ---------------------------------------------------------------------------------------------------------------
 // State and small helpers
