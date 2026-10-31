@@ -145,7 +145,7 @@ export class TutorialOverlay {
     setVisible(this.done, false);
     setVisible(this.card, true);
     const st = v.step;
-    setText(this.count, `${v.index + 1}/${total}`);
+    setText(this.count, `Step ${v.index + 1} of ${total}`);
     setText(this.text, st?.text ?? '');
     setVisible(this.showBtn, opts.showMe);
     setVisible(this.nextBtn, !!st && !st.done);
@@ -181,7 +181,7 @@ export class TutorialOverlay {
       setText(t, labels[k]);
     });
     const doneN = statuses.filter((s) => s === 'done' || s === 'skipped').length;
-    setText(this.stepsBtn, this.listOpen ? 'Hide steps' : `Steps ${doneN}/${statuses.length}`);
+    setText(this.stepsBtn, this.listOpen ? 'Hide checklist' : `Checklist: ${doneN} done`);
     this.stepsBtn.setAttribute('aria-label', `${this.listOpen ? 'Hide' : 'Show'} the chapter's steps (${cur + 1} of ${statuses.length})`);
   }
 
@@ -191,7 +191,7 @@ export class TutorialOverlay {
     this.stepsBtn.setAttribute('aria-expanded', String(this.listOpen));
     const n = this.pips.childElementCount;
     const doneN = [...this.pips.children].filter((p) => (p as HTMLElement).dataset.s === 'done' || (p as HTMLElement).dataset.s === 'skipped').length;
-    setText(this.stepsBtn, this.listOpen ? 'Hide steps' : `Steps ${doneN}/${n}`);
+    setText(this.stepsBtn, this.listOpen ? 'Hide checklist' : `Checklist: ${doneN} done`);
   }
 
   /** Moves the spotlight onto the step's element and keeps the card clear of open panels (every frame; cheap). */
