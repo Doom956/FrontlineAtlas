@@ -977,7 +977,7 @@ and research): the unlock is at 2:30 there.
 | Blitz | fronts cross plains and desert tiles +30% faster; armor conversion -25% gold and iron | armor ignores half of its terrain attack penalty |
 | Fortress | the defence a fort adds +25%; forts -25% gold and iron; home troops lost when a tile falls -20% | forts build and upgrade 4x faster, repair shell damage 3x faster |
 | Siege | artillery attack +20%; artillery's extra siege bonus +25%; barrage reload -25% | barrage disc +1 tile; forts and SAMs silenced 1.5x longer |
-| Merchant | gold income +12%; trade gold received +25%; market bonus (and its cap) +25% | +1.5% gold per own trade ship at sea (up to 10) |
+| Merchant | gold income +8%; trade gold received +25%; market bonus (and its cap) +15% | +1.5% gold per own trade ship at sea (up to 10) |
 | Naval | warships -25% price, +20% speed; transports +25% speed and +1 hp (twice as hard to sink) | warships repair at sea (0.05 hp/s); coastal shelling x1.5 |
 | Air | bombers, fighters and paradrop planes -25% price; fighter and paradrop cooldowns -25%; paradrop range +25% | bombers survive one extra hit (SAM shot or fighters) |
 | Expansion | losses attacking tribes and wilderness -30%; troop growth +30% while small (full under 6% of the land, none from 15%) | a tribe you eliminate pays 15 s of your gold income + 0.2 gold per tile it held at its peak |

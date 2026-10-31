@@ -225,7 +225,7 @@ describe('coalitions against a runaway leader', () => {
 
   it('coalition AIs go to war on the leader', () => {
     const s = world();
-    s.settings.difficulty = 'hard'; // no human protections in the way
+    s.settings.difficulty = 'brutal'; // no human protections in the way
     for (const p of s.players) if (p.id > 1) p.troops = inf(150000);
     s.players[1].troops = inf(60000);
     let hit = false;
