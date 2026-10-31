@@ -57,6 +57,7 @@ import { atPeace, buildSeconds, frontRate, peaceReason, sameTeam } from './rules
 import { addEvent, newId, setOwner } from './state';
 import { hasTech } from './tech';
 import { isProtected } from './admin';
+import { tankDivisionMods } from './techtree';
 import { Terrain, TROOP_TYPES, isTribe, isWater } from './types';
 import type { Action, ActionResult, GameState, Player, Troops, Unit } from './types';
 
@@ -81,9 +82,6 @@ function fmt(n: number): string {
 function hasRailways(p: Player): boolean {
   return hasTech(p, 'railways');
 }
-function hasBlitz(p: Player): boolean {
-  return hasTech(p, 'blitzTactics');
-}
 
 // ---------------------------------------------------------------------------------------------------------------
 // Cost, limits, building
@@ -103,7 +101,7 @@ export interface TankDivisionCost {
 export function tankDivisionCost(state: GameState, playerId: number): TankDivisionCost {
   const c = UNITS.tankDivision;
   const p = state.players[playerId];
-  const k = p && hasRailways(p) ? 0.8 : 1;
+  const k = p ? tankDivisionMods(state, playerId).costMul : 1; // Railways (techtree.ts)
   const pool = p ? p.troops : zero();
   return {
     gold: Math.round(c.gold * k),
@@ -530,13 +528,13 @@ function headSpeed(state: GameState, u: Unit, ter: number, defender: number): nu
   let s = TANK_SPEARHEAD_SPEED * (TANK_TERRAIN_SPEED[ter] ?? 0.5);
   if (ter === Terrain.Mountains && !artillerySupport(u)) return 0;
   const p = state.players[u.owner];
-  if (hasBlitz(p)) s *= 1.3;
+  s *= tankDivisionMods(state, u.owner).speedMul; // Blitz Tactics (techtree.ts)
   if (ter === Terrain.Plains || ter === Terrain.Desert) s *= doctrineMore(state, u.owner, 'openGroundSpeed');
   if (defender > 0 && hasTech(state.players[defender], 'trenchWarfare')) s *= 0.7;
   return s * frontRate(state);
 }
 function maxDepth(state: GameState, u: Unit): number {
-  return TANK_SPEARHEAD_MAX_DEPTH * (hasBlitz(state.players[u.owner]) ? 1.25 : 1);
+  return TANK_SPEARHEAD_MAX_DEPTH * tankDivisionMods(state, u.owner).depthMul; // Blitz Tactics
 }
 
 /** Loss for taking tile t (owner o) with the division, or a reason it can't be taken. */
@@ -556,8 +554,8 @@ function bandCost(state: GameState, u: Unit, t: number, o: number): { loss: numb
   if (!Number.isFinite(c.loss)) return 'cannot fight there';
   let loss = c.loss * TANK_SPEARHEAD_LOSS * (TANK_TERRAIN_LOSS[ter] ?? 1);
   if (o > 0) {
+    // the defender's Trench Warfare already raises c.loss (tileFightCost -> techLossMul): not counted twice
     loss *= 1 + TANK_ARMOR_DEFENSE * armorShare(state.players[o]);
-    if (hasTech(state.players[o], 'trenchWarfare')) loss *= 1.3;
   }
   return { loss, killed: c.defenderLoss };
 }
@@ -863,7 +861,7 @@ export function tankDefenseAt(state: GameState, defender: number, tile: number):
   for (let k = 0; k < l.length; k += 2) {
     const dx = l[k] - x;
     const dy = l[k + 1] - y;
-    if (dx * dx + dy * dy <= r2) return 1 + TANK_DEFENSE_BONUS;
+    if (dx * dx + dy * dy <= r2) return (1 + TANK_DEFENSE_BONUS) * tankDivisionMods(state, defender).defenseMul; // Trench Warfare
   }
   return 1;
 }

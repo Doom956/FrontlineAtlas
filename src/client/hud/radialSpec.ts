@@ -17,6 +17,7 @@ import { techNear } from './commandBar';
 import { confirmBreak, GIFT_GOLD } from './nationCard';
 import { allyAttackAction, bestAllyFor } from '../allies';
 import { isTribe } from '../compat';
+import { enterWarshipSpawnMode } from '../selection';
 
 const RADIAL_LABEL: Record<StrikeId, string> = { barrage: 'Barrage', bomb: 'Bomb', paradrop: 'Paratroopers', rocket: 'Rocket', atomBomb: 'Atom bomb' };
 
@@ -110,7 +111,10 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
           icon: 'warship',
           hint: costText(u.gold, u.iron),
           disabled: !hasTech(me, 'navigation') ? 'Research Navigation first' : me.gold < u.gold ? 'Not enough gold' : me.iron < u.iron ? 'Not enough iron' : undefined,
-          run: () => ctx.act({ type: 'buildWarship', port: tile }),
+          run: () => {
+            const why = enterWarshipSpawnMode(ui, state, me);
+            ctx.toast(why ? `Warship: ${why}` : 'Warship: click a water tile near your port. Esc cancels.', why ? 'bad' : 'info');
+          },
         });
       }
       if (b.type === 'airfield' && b.buildLeft <= 0) {

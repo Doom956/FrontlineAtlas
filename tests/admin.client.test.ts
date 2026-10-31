@@ -19,13 +19,21 @@ import { validateAction } from '../server/validate';
 import { claimRect, makeFlatGame, testSettings } from './helpers';
 
 describe('console code (single player)', () => {
-  it('stores only the hash of the code, and the hash matches', async () => {
+  // The real code is not in the repo: set ADMIN_TEST_CODE to check it; the mechanism is checked with a stand-in.
+  const real = typeof process !== 'undefined' ? process.env.ADMIN_TEST_CODE : undefined;
+  it('stores only the hash of the code, and the hash check works', async () => {
     expect(ADMIN_CODE_HASH).toMatch(/^[0-9a-f]{64}$/);
-    expect(await sha256Hex('atlas-override')).toBe(ADMIN_CODE_HASH);
-    expect(await checkAdminCode('atlas-override')).toBe(true);
+    expect(await sha256Hex('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+    const h = await sha256Hex('test-code');
+    expect(await checkAdminCode('test-code', h)).toBe(true);
+    if (real) expect(await checkAdminCode(real)).toBe(true);
   });
   it('refuses wrong, empty and near-miss codes', async () => {
-    for (const c of ['', 'atlas', 'atlas-override ', 'ATLAS-OVERRIDE', 'atlas-overrid']) expect(await checkAdminCode(c)).toBe(false);
+    const h = await sha256Hex('test-code');
+    for (const c of ['', 'test', 'test-code ', 'TEST-CODE', 'test-cod']) {
+      expect(await checkAdminCode(c, h)).toBe(false);
+      expect(await checkAdminCode(c)).toBe(false);
+    }
   });
 });
 

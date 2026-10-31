@@ -884,7 +884,7 @@ export class Hud {
       const m = /captured an? (.+?) of /.exec(e.message);
       addFloater(this.ui, { x, y, text: `+${m ? m[1] : 'building'}`, color: '#b8c77a', born });
     } else if (e.kind === 'buildingDone' && e.players[0] === state.humanId && /upgraded/i.test(e.message)) {
-      addFloater(this.ui, { x, y, text: e.message.replace(/.*upgraded to /i, 'Level ').replace(/\.$/, ''), color: '#e8dcb5', born });
+      addFloater(this.ui, { x, y, text: e.message.replace(/.*upgraded to (level )?/i, 'Level ').replace(/\.$/, ''), color: '#e8dcb5', born });
     }
   }
 

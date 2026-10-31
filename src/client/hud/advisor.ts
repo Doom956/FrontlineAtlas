@@ -16,6 +16,7 @@ import { forEachInRadius } from '../../sim/grid';
 import { buildingAllowed, mods, unitAllowed } from '../../sim/rules';
 import { hasTech } from '../../sim/tech';
 import { buildUnit, isIncoming, unitBuildStatus } from '../forces';
+import { enterWarshipSpawnMode } from '../selection';
 import { gameSeconds } from '../../sim/state';
 import type { GameState, Player } from '../../sim/types';
 import { isTribe } from '../compat';
@@ -450,6 +451,11 @@ export class AdvisorStrip {
       const s = this.ctx.state();
       const me = this.ctx.me();
       if (!s || !me) return;
+      if (c.unit === 'warship') {
+        const no = enterWarshipSpawnMode(this.ctx.ui, s, me);
+        this.ctx.toast(no ? `Warship: ${no}` : 'Warship: click a water tile near your port. Esc cancels.', no ? 'info' : 'good');
+        return;
+      }
       const why = buildUnit(s, me, (a) => this.ctx.dispatch(a), c.unit, { x: this.ctx.camera.x, y: this.ctx.camera.y });
       this.ctx.toast(why ? `${UNITS[c.unit].name}: ${why}` : `${UNITS[c.unit].name} built. Open Forces (Y) to command it.`, why ? 'info' : 'good');
       this.ctx.refreshSoon();

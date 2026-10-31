@@ -152,6 +152,7 @@ export function hashState(state: GameState): number {
     h = mixInt(h, u.chaseLost ?? 0);
     h = mixInt(h, u.launch ?? -1);
     h = mixFloat(h, u.strength0 ?? -1);
+    h = mixInt(h, u.targetOwner ?? 0);
   }
   // Units under construction (navy.ts, tanks.ts).
   const queue = state.unitQueue ?? [];

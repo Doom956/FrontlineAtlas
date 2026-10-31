@@ -1,5 +1,6 @@
 // Side drawers (right edge, one at a time, closed by default): Army, Research, Diplomacy, Events, Map key,
 // the selected building and the menu (settings). Each has one big primary readout and plain-word rows.
+import { enterWarshipSpawnMode } from '../selection';
 import { buildSeconds, researchRule, unitAllowed } from '../../sim/rules';
 import { aircraftCap, buildCostAt, buildingAt, chargesReady, canBuild, countBuildings, nextChargeIn } from '../../sim/buildings';
 import { attacksOf } from '../../sim/combat';
@@ -784,7 +785,7 @@ export class BuildingPage implements DrawerPage {
     if (b.type === 'port') {
       const g = ctx.state();
       const first = g ? unitCost(g, b.owner, 'warship') : UNITS.warship;
-      if (allowedNow('warship')) add(`Warship (${formatCount(first.gold)} gold)`, '', 'warship', () => ctx.act({ type: 'buildWarship', port: tile }), (ss, m, bb) => {
+      if (allowedNow('warship')) add(`Warship (${formatCount(first.gold)} gold)`, '', 'warship', () => warshipClickMode(ctx), (ss, m, bb) => {
         const u = unitCost(ss, m.id, 'warship');
         return !hasTech(m, 'navigation') ? 'Research Navigation first' : bb.buildLeft > 0 ? 'Still being built' : m.gold < u.gold ? 'Not enough gold' : m.iron < u.iron ? 'Not enough iron' : '';
       });
@@ -991,3 +992,11 @@ export function relationOf(s: GameState, me: Player, id: number): { text: string
   return { text: parts.join(', '), cls };
 }
 
+/** Port "Warship" buttons: the next click picks the water tile (selection.ts spawn mode, valid area shaded). */
+function warshipClickMode(ctx: HudCtx): void {
+  const g = ctx.state();
+  const m = ctx.me();
+  if (!g || !m) return;
+  const why = enterWarshipSpawnMode(ctx.ui, g, m);
+  ctx.toast(why ? `Warship: ${why}` : 'Warship: click a water tile near your port. Esc cancels.', why ? 'bad' : 'info');
+}
