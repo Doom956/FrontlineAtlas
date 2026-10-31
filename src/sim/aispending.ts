@@ -195,6 +195,11 @@ function timersOf(state: GameState, id: number): Timers {
   return t;
 }
 const S = TICKS_PER_SECOND;
+/** An AI at war (attacking or attacked by a nation) with home troops under this share of the cap and more than
+ * AI_MERC_RICH_SECONDS of gold income saved hires mercenaries with AI_MERC_RICH_BUDGET of its gold. */
+const AI_MERC_RICH_HOME = 0.5;
+const AI_MERC_RICH_SECONDS = 60;
+const AI_MERC_RICH_BUDGET = 0.25;
 function sum(t: { infantry: number; armor: number; artillery: number }): number {
   return t.infantry + t.armor + t.artillery;
 }
@@ -212,8 +217,11 @@ export function aiSpend(state: GameState, v: AISpendView): void {
   // 1. Mercenaries: losing at home, or a big attack running while the bar is low.
   const losing = v.incomingTotal > v.home * 0.6 && v.incomingTotal > 20000;
   const pushing = v.myAttacks.some((a) => a.target > 0 && !isTribe(state.players[a.target]) && sum(a.troops) > v.home);
-  if (now >= t.merc && (losing || (pushing && v.home < v.cap * 0.35)) && p.gold > income * 20) {
-    const budget = p.gold * (losing ? 0.5 : 0.3) * warlike;
+  // At war with a nation and gold piling up: buy troops instead of sitting on the gold (AI_MERC_RICH_*).
+  const warring = v.incomingTotal > 20000 || v.myAttacks.some((a) => a.target > 0 && !isTribe(state.players[a.target]));
+  const rich = warring && v.home < v.cap * AI_MERC_RICH_HOME && p.gold > income * AI_MERC_RICH_SECONDS;
+  if (now >= t.merc && (losing || (pushing && v.home < v.cap * 0.35) || rich) && p.gold > income * 20) {
+    const budget = p.gold * (losing ? 0.5 : rich && !pushing ? AI_MERC_RICH_BUDGET : 0.3) * warlike;
     const q0 = mercenaryPrice(state, v.id, 1000);
     let amount = Math.floor(Math.min(q0.affordable, budget / Math.max(1e-6, q0.perTroop)));
     // The price rises within the hire: shrink until it fits the budget.
