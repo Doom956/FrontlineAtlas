@@ -387,7 +387,13 @@ try {
       }
       await dispatch(pg, { type: 'setArmyMix', armor: 0.5, artillery: 0.1 });
     }
-    await sleep(12000);
+    // A's ordered ships, seen at least once (a lone new submarine can be sunk by AI destroyers before the check below)
+    const seenA = new Set();
+    for (let k = 0; k < 40 && seenA.size < 2; k++) {
+      for (const v of await A.page.evaluate(() => { const s = window.__borderfall.getState(); return s.units.filter((u) => u.owner === s.humanId && u.type === 'warship').map((u) => u.variant); })) seenA.add(v);
+      await sleep(1000);
+    }
+    log('A ships seen', [...seenA].join(','));
     for (const [label, pg] of [['A', A.page], ['B', B.page]]) {
       if (sites[label].factory >= 0) log(label, 'tank', JSON.stringify(await dispatch(pg, { type: 'buildTankDivision', tile: sites[label].factory })));
     }
@@ -438,15 +444,16 @@ try {
         const k = `${q.owner}:${q.type}${q.variant ? `/${q.variant}` : ''}:queued`;
         by[k] = (by[k] ?? 0) + 1;
       }
-      const sunk = (s.events ?? []).filter((e) => /submarine/i.test(e.text ?? e.message ?? '')).map((e) => e.text ?? e.message).slice(-5);
+      const sunk = (s.events ?? []).filter((e) => e.kind === 'unitLost' && e.players.includes(s.humanId)).map((e) => e.message).slice(-5);
       const mines = s.players.filter((p) => p.id && p.alive && p.techs.includes('navalMines')).reduce((n, p) => n + [...s.buildings.values()].filter((b) => b.owner === p.id && b.type === 'port' && b.buildLeft <= 0).length, 0);
       return { by, sunk, reveals: s.arsenal?.reveals?.length ?? 0, revealOwners: (s.arsenal?.reveals ?? []).map((r) => r.owner ?? r.viewer), recon: s.arsenal?.reconReady?.length ?? 0, mines };
     });
     log('game 2 units', JSON.stringify(units));
     const aId = (await me(A.page)).id;
     const has = (k) => Object.keys(units.by).some((x) => x.startsWith(`${aId}:`) && x.includes(k));
-    if (!has('/carrier')) fail('A has no carrier');
-    if (!has('/submarine')) fail('A has no submarine');
+    if (!has('/carrier') && !seenA.has('carrier')) fail('A never had a carrier');
+    if (!has('/submarine') && !seenA.has('submarine')) fail('A never had a submarine');
+    if (!has('/submarine')) log('A submarine lost after it was built', JSON.stringify(units.sunk));
     if (!has('tankDivision')) fail('A has no tank division');
     if (!units.revealOwners.includes(aId) && !has('reconPlane')) fail('A recon plane neither flying nor revealing');
     if (units.mines < 1) fail('no minefield (port of a Naval Mines holder)');
