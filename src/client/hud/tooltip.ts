@@ -22,6 +22,8 @@ import { relationOf } from './drawers';
 import { iconSpan, lineIcon, worldGlyph } from './glyph';
 import { forceLimit, heartlandBonus, lastStandBonus } from '../allies';
 import { buildingTexts, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect } from './text';
+import { bulkPreviews, bulkPreviewText, effectiveCount } from './buildMenu';
+import { shiftHeld } from './quickBar';
 
 export class MapTooltip {
   readonly card: HTMLElement;
@@ -57,7 +59,14 @@ export class MapTooltip {
     const probe = this.ctx.probe();
     const uid = ui.mode.kind === 'none' && probe && ui.hoverPx ? probe.unitAt(ui.hoverPx.x, ui.hoverPx.y) : -1;
     const unit = uid >= 0 ? state.units.find((u) => u.id === uid && u.hp > 0) : undefined;
-    const key = `${tile}|${unit ? unit.id : -1}|${ui.attackShare}|${ui.attackMixMode}|${ui.mode.kind}|${ui.mode.kind === 'build' ? ui.mode.building : ''}`;
+    const key = `${tile}|${unit ? unit.id : -1}|${ui.attackShare}|${ui.attackMixMode}|${ui.mode.kind}|${ui.mode.kind === 'build' ? ui.mode.building : ''}|${effectiveCount(ui, shiftHeld())}`;
+    // the Upgrade-area tool has its own panel with the live preview (hud/buildMenu.ts)
+    if (ui.mode.kind === 'upgradeArea') {
+      setVisible(this.card, false);
+      setVisible(this.odds, false);
+      this.key = key;
+      return;
+    }
     if (force || key !== this.key) {
       this.key = key;
       if (unit) this.unitCard(state, me, unit);
@@ -231,6 +240,8 @@ export class MapTooltip {
 
   /** Build mode: the ghost on the map says what happens (build / upgrade / why not); the cursor shows the price. */
   private buildPreview(state: GameState, me: Player, type: keyof typeof BUILDINGS, tile: number): void {
+    const n = effectiveCount(this.ctx.ui, shiftHeld());
+    if (n > 1) return this.bulkPreview(state, me, type, tile, n);
     const t = this.build.get(state, me.id, type, tile);
     const info = BUILDINGS[type];
     const row = el('div', 'mt-price');
@@ -238,11 +249,23 @@ export class MapTooltip {
     row.append(el('span', me.gold >= t.cost.gold ? 'g' : 'g bad', `${formatCount(t.cost.gold)} gold`));
     if (t.cost.iron > 0) row.append(el('span', me.iron >= t.cost.iron ? 'g' : 'g bad', `${formatCount(t.cost.iron)} iron`));
     row.append(el('span', 'dim', fmtSeconds(buildSeconds(state, info.buildTime))));
-    const hint = el('div', 'mt-hint', t.ok ? 'Shift: place several. Esc: stop.' : 'Esc: stop.');
+    const hint = el('div', 'mt-hint', t.ok ? 'Shift: x5 levels. Esc: stop.' : 'Esc: stop.');
     this.card.className = `mtip price ${t.ok ? (t.upgrade ? 'up' : 'ok') : 'no'}`;
     this.card.replaceChildren(row, hint);
     setVisible(this.odds, false);
   }
+  /** x3 / x5: "City -> level 5: 4 upgrades queued, 12.4k gold" or "Can afford 3 of 5" (sim buildManyPreview). */
+  private bulkPreview(state: GameState, me: Player, type: keyof typeof BUILDINGS, tile: number, n: number): void {
+    const pv = bulkPreviews.build(state, me.id, type, tile, n);
+    const t = bulkPreviewText(pv, type);
+    const row = el('div', 'mt-price');
+    row.append(iconSpan(worldGlyph(type, 18), 'mt-ic'), el('span', t.tone === 'no' ? 'g bad' : 'g', t.text));
+    const sub = el('div', 'mt-hint', t.sub ? `${t.sub}. Esc: stop.` : 'Esc: stop.');
+    this.card.className = `mtip price ${t.tone === 'no' ? 'no' : t.tone === 'up' ? 'up' : 'ok'}`;
+    this.card.replaceChildren(row, sub);
+    setVisible(this.odds, false);
+  }
+
 
   private strikePreview(state: GameState, me: Player, tile: number): void {
     const ui = this.ctx.ui;
