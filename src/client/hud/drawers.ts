@@ -732,6 +732,25 @@ export class BuildingPage implements DrawerPage {
         return res.ok ? '' : res.reason ?? '';
       });
     }
+    // levels queued by Build x3 / x5 or Upgrade area: how many, and a button that cancels them (refund)
+    {
+      const q = el('p', 'note bq-note');
+      const cancel = btn('Cancel queued levels', 'ghost wide', () => ctx.act({ type: 'cancelQueuedLevels', tile }), 'close');
+      cancel.dataset.test = 'cancel-queued';
+      actions.append(cancel);
+      actions.before(q);
+      this.upd.push((_s, _m, bb) => {
+        const n = bb.queuedLevels || 0;
+        const paid = bb.queuedPaid;
+        setVisible(q, n > 0);
+        setVisible(cancel, n > 0);
+        if (n > 0) {
+          setText(q, `${n} more level${n === 1 ? '' : 's'} queued: up to level ${bb.level + (bb.upgradeLeft > 0 ? 1 : 0) + n}, one after another`);
+          const lab = cancel.querySelector('.wr-btn-l');
+          if (lab) lab.textContent = `Cancel ${n} queued level${n === 1 ? '' : 's'}${paid ? ` (refund ${formatCount(paid.gold)} gold${paid.iron >= 1 ? `, ${formatCount(paid.iron)} iron` : ''})` : ''}`;
+        }
+      });
+    }
     if (b.type === 'airfield') {
       const counts = el('p', 'note');
       actions.before(counts);

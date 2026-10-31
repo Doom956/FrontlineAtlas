@@ -63,7 +63,7 @@ function game(seed = 3): GameState {
   // player 1 needs a coast on the sea for its port: give it the strip x 20..29 at y 30..39 (player 2 keeps the rest)
   claimRect(s, 1, 20, 30, 29, 39);
   addBuilding(s, 'port', 1, at(s, 29, 35));
-  addBuilding(s, 'factory', 1, at(s, 10, 20));
+  addBuilding(s, 'factory', 1, at(s, 10, 20)).level = 3;
   spawnWarshipAt(s, 1, at(s, 29, 35), at(s, 31, 35));
   spawnWarshipAt(s, 1, at(s, 29, 35), at(s, 32, 36));
   spawnWarshipAt(s, 2, at(s, 29, 35), at(s, 40, 10)); // an enemy ship
@@ -154,13 +154,13 @@ describe('group orders', () => {
       return applyAction(s, 1, a);
     };
     const toasts: string[] = [];
-    expect(selectionClick(s, ui, dispatch, at(s, 25, 15), (m) => toasts.push(m), 1000)).toBe(true);
+    expect(selectionClick(s, ui, dispatch, at(s, 22, 15), (m) => toasts.push(m), 1000)).toBe(true);
     expect(sent).toEqual([]);
-    expect(ui.pendingSpearhead).toEqual({ tile: at(s, 25, 15), at: 1000 });
+    expect(ui.pendingSpearhead).toEqual({ tile: at(s, 22, 15), at: 1000 });
     expect(selectionChipText(s, ui, 1500)).toMatch(/^Spearhead: about \d+ tiles? deep.*Click again to launch/);
     // a second click one tile away confirms (toward the first clicked tile)
-    expect(selectionClick(s, ui, dispatch, at(s, 26, 15), (m) => toasts.push(m), 2000)).toBe(true);
-    expect(sent).toEqual([{ type: 'moveTankDivision', unitIds: t, tile: at(s, 25, 15) }]);
+    expect(selectionClick(s, ui, dispatch, at(s, 23, 15), (m) => toasts.push(m), 2000)).toBe(true);
+    expect(sent).toEqual([{ type: 'moveTankDivision', unitIds: t, tile: at(s, 22, 15) }]);
     expect(ui.pendingSpearhead).toBeNull();
     expect(toasts).toEqual([]);
   });
@@ -168,9 +168,9 @@ describe('group orders', () => {
   it('a stale preview needs a fresh click', () => {
     const s = game();
     const t = idsOf(s, 1, 'tankDivision');
-    const pending = { tile: at(s, 25, 15), at: 0 };
-    expect(orderForClick(s, 1, t, at(s, 25, 15), pending, 60_000).kind).toBe('preview');
-    expect(orderForClick(s, 1, t, at(s, 25, 15), pending, 100).kind).toBe('act');
+    const pending = { tile: at(s, 22, 15), at: 0 };
+    expect(orderForClick(s, 1, t, at(s, 22, 15), pending, 60_000).kind).toBe('preview');
+    expect(orderForClick(s, 1, t, at(s, 22, 15), pending, 100).kind).toBe('act');
   });
 
   it('the same group order gives the same state on two clients', () => {
