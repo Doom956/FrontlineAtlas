@@ -54,6 +54,7 @@ import { AllyHelp } from './allyHelp';
 import { heartlandBonus, lastStandBonus } from '../allies';
 import { ABILITY_TEXT, article, buildingTexts, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect, terrainNote } from './text';
 import { AirPanel } from './airPanel';
+import { canBuildTankDivision, tankDivisionCost, tankDivisionCount, tankDivisionLimit } from '../../sim/tanks';
 
 export const TROOP_COLORS = { infantry: '#9aa86a', armor: '#c9a227', artillery: '#c0564a' } as const;
 
@@ -774,6 +775,19 @@ export class BuildingPage implements DrawerPage {
       add('Paratroopers', 'danger', 'paradrop', () => (ctx.ui.mode = { kind: 'paradrop', airfield: tile }), (_ss, m, bb) =>
         !hasTech(m, 'flight') ? 'Research Flight first' : bb.buildLeft > 0 ? 'Still being built' : bb.dropCooldown > 0 ? `Next drop ready in ${Math.ceil(bb.dropCooldown)} s` : '',
       );
+    }
+    if (b.type === 'factory') {
+      // the same Tank division order as the Build menu, right where a player looks for it (this Factory builds it)
+      const note = el('p', 'note');
+      actions.before(note);
+      this.upd.push((ss, m, bb) => setText(note, bb.buildLeft > 0 ? '' : `${tankDivisionCount(ss, m.id)} of ${tankDivisionLimit(ss, m.id)} tank divisions. A division is commandable: set it to Support front and it breaks through weak spots by itself.`));
+      const g0 = ctx.state();
+      const price = g0 ? formatCount(tankDivisionCost(g0, b.owner).gold) : '';
+      add(`Tank division (${price} gold)`, '', 'plus', () => ctx.act({ type: 'buildTankDivision', tile }), (ss, m, bb) => {
+        if (bb.buildLeft > 0) return 'Still being built';
+        const r = canBuildTankDivision(ss, m.id, tile);
+        return r.ok ? '' : r.reason ?? 'Not possible now';
+      });
     }
     if (b.type === 'silo') {
       const cd = el('p', 'note');

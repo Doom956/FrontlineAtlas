@@ -202,7 +202,7 @@ export function wingStatus(state: GameState, b: Building): WingStatus {
       line = b.fighters <= 0 ? 'Air superiority: no fighters here (build some)' : `Air superiority · ${b.fighters} fighter${b.fighters === 1 ? '' : 's'} on patrol`;
       break;
     default:
-      line = 'Idle: no automatic sorties';
+      line = b.bombers + b.fighters > 0 ? 'Idle: no automatic sorties. Pick Support to send the bombers with your attacks' : 'Idle: buy bombers, then pick Support to send them with your attacks';
   }
   return {
     mission,

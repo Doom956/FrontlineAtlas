@@ -67,30 +67,27 @@ async function spawnByClick(page, side) {
       const s = window.__borderfall.getState();
       const { width: w, height: h } = s.map;
       const out = [];
-      const dbgc = { a: 0, b: 0, c: 0, d: 0, e: 0 }; window.__dbgc = dbgc;
       for (let y = 8; y < h - 8; y += 1) {
         for (let x = 8; x < w - 8; x += 1) {
           if ((side === 'left') !== (x < w / 2)) continue;
           const i = y * w + x;
           if (s.map.terrain[i] <= 1 || s.map.owner[i] !== 0) continue;
-          let coast = false, iron = 0, oil = 0, water = false;
-          for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
-            if (dx * dx + dy * dy > 25) continue;
+          let coast = false, iron = 0, oil = 0;
+          for (let dy = -22; dy <= 22; dy++) for (let dx = -22; dx <= 22; dx++) {
             const j = (y + dy) * w + x + dx;
-            if (s.map.terrain[j] <= 1) water = true;
-            if (s.map.coastal[j] && s.map.terrain[j] > 1) coast = true;
-            if (s.map.resource[j] === 1 && s.map.terrain[j] > 1) iron++;
-            if (s.map.resource[j] === 2 && s.map.terrain[j] > 1) oil++;
+            if (j < 0 || j >= s.map.terrain.length) continue;
+            const d2 = dx * dx + dy * dy;
+            if (d2 <= 25 && s.map.coastal[j] && s.map.terrain[j] > 1) coast = true;
+            if (d2 <= 16 && s.map.resource[j] === 1 && s.map.terrain[j] > 1) iron++;
+            if (d2 >= 121 && d2 <= 400 && s.map.resource[j] === 2 && s.map.terrain[j] > 1) oil++;
           }
           let near = false;
           for (const p of s.players) if (p.id && p.capital >= 0 && Math.hypot((p.capital % w) - x, Math.floor(p.capital / w) - y) < 26) near = true;
-          dbgc.a += coast ? 1 : 0; dbgc.b += iron ? 1 : 0; dbgc.c += oil ? 1 : 0; dbgc.d += iron && oil ? 1 : 0; dbgc.e += near ? 1 : 0;
           if (coast && iron && oil && !near) out.push(i);
         }
       }
       return out.length ? out[(attempt * 13) % out.length] : -1;
     }, { side, attempt });
-    if (tile < 0) log('map', JSON.stringify(await page.evaluate(() => window.__dbgc)), await page.evaluate(() => { const s = window.__borderfall.getState(); const c = [0, 0, 0, 0]; for (const r of s.map.resource) c[r]++; return JSON.stringify({ w: s.map.width, h: s.map.height, res: c, land: s.map.landTileCount }); }));
     if (tile < 0) fail('no land with iron, oil and a coast to spawn on');
     await page.evaluate((t) => window.__borderfall.dispatch({ type: 'spawn', tile: t }), tile);
     await sleep(1200);
@@ -126,6 +123,25 @@ const ownTiles = (page, coastal, skip) =>
     out.sort((a, b) => a[0] - b[0]);
     return out.slice(skip ?? 0, (skip ?? 0) + 60).map((e) => e[1]);
   }, { coastal, skip });
+/** A tile of ours 12+ tiles from every building of ours (the rule is 10), nearest the capital; coastal ones for ports. */
+const site = (page, coastal, minGap = 12) =>
+  page.evaluate(({ coastal, minGap }) => {
+    const s = window.__borderfall.getState();
+    const me = s.humanId;
+    const w = s.map.width;
+    const cap = s.players[me].capital;
+    const bs = [...s.buildings.values()].filter((b) => b.owner === me).map((b) => [b.tile % w, Math.floor(b.tile / w)]);
+    let best = -1, bd = 1e9;
+    for (let i = 0; i < s.map.owner.length; i++) {
+      if (s.map.owner[i] !== me || s.map.terrain[i] <= 1 || s.map.building[i] !== 0 || s.map.fallout[i] > 0) continue;
+      if (coastal && !s.map.coastal[i]) continue;
+      const x = i % w, y = Math.floor(i / w);
+      if (bs.some(([bx, by]) => Math.hypot(bx - x, by - y) < minGap)) continue;
+      const d = Math.hypot(x - (cap % w), y - Math.floor(cap / w));
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  }, { coastal, minGap });
 async function buildFirst(page, type, tiles) {
   for (const t of tiles) {
     const r = await dispatch(page, { type: 'build', building: type, tile: t });
@@ -146,8 +162,7 @@ try {
   const code = (await A.page.textContent('[data-test=lobby-code]')).trim();
   await A.page.locator('.setup-field:has(.form-label:text-is("Size")) .btn', { hasText: 'Small' }).click();
   // an island map; rich + instant + everything researched, so every pillar unit exists at once
-  const typeBtn = A.page.locator('.setup-field .btn', { hasText: /^Archipelago/ }).first();
-  if (await typeBtn.count()) await typeBtn.click();
+  
   for (const label of ['Very high', 'Instant', 'All unlocked']) {
     const b = A.page.locator('.rules-col .btn', { hasText: new RegExp(`^${label}$`) }).first();
     if (!(await b.count())) fail(`modifier button ${label} not found`);
@@ -182,24 +197,69 @@ try {
       }
       return out;
     }, kind);
-  for (const pg of [A.page, B.page]) {
-    for (const t of (await deposit(pg, 1)).slice(0, 3)) await dispatch(pg, { type: 'build', building: 'mine', tile: t });
-    for (const t of (await deposit(pg, 2)).slice(0, 2)) await dispatch(pg, { type: 'build', building: 'oilWell', tile: t });
+  // iron: a mine on the deposit; oil: the deposit is 11+ tiles away (buildings keep 10 apart), so attack toward it first
+  const economy = async (pg) => {
+    for (const t of (await deposit(pg, 1)).slice(0, 1)) await dispatch(pg, { type: 'build', building: 'mine', tile: t });
+    const step = await pg.evaluate(() => {
+      const b = window.__borderfall;
+      const s = b.getState();
+      const me = s.humanId;
+      const w = s.map.width;
+      const cap = s.players[me].capital;
+      const cx = cap % w, cy = Math.floor(cap / w);
+      const hasWell = [...s.buildings.values()].some((x) => x.owner === me && x.type === 'oilWell');
+      if (hasWell) return { done: true };
+      let best = -1, bd = 1e9;
+      for (let i = 0; i < s.map.resource.length; i++) {
+        if (s.map.resource[i] !== 2 || s.map.terrain[i] <= 1) continue;
+        const d = Math.hypot((i % w) - cx, Math.floor(i / w) - cy);
+        if (d < bd && d < 26) { bd = d; best = i; }
+      }
+      if (best < 0) return { none: true };
+      if (s.map.owner[best] === me) return { well: best };
+      // the own border tile's neutral neighbour nearest to the deposit
+      const bx = best % w, by = Math.floor(best / w);
+      let pick = -1, pd = 1e9;
+      for (let i = 0; i < s.map.owner.length; i++) {
+        if (s.map.owner[i] !== me) continue;
+        const x = i % w, y = Math.floor(i / w);
+        if (Math.hypot(x - bx, y - by) > bd + 4) continue;
+        for (const j of [i + 1, i - 1, i + w, i - w]) {
+          if (s.map.owner[j] === me || s.map.terrain[j] <= 1) continue;
+          const d = Math.hypot((j % w) - bx, Math.floor(j / w) - by);
+          if (d < pd) { pd = d; pick = j; }
+        }
+      }
+      return { attack: pick, dist: pd };
+    });
+    if (step.well !== undefined) await dispatch(pg, { type: 'build', building: 'oilWell', tile: step.well });
+    else if (step.attack !== undefined && step.attack >= 0) {
+      const troops = await pg.evaluate(() => { const s = window.__borderfall.getState(); const t = s.players[s.humanId].troops; return { infantry: Math.floor(t.infantry * 0.8), armor: 0, artillery: 0 }; });
+      await dispatch(pg, { type: 'attack', tile: step.attack, troops });
+    }
+    return step;
+  };
+  const t0 = Date.now();
+  let lastStep;
+  while (Date.now() - t0 < 150000) {
+    lastStep = await Promise.all([economy(A.page), economy(B.page)]);
+    const ok = await A.page.evaluate(() => { const s = window.__borderfall.getState(); const p = s.players[s.humanId]; return p.iron > 700 && p.oil > 300; });
+    if (ok) break;
+    await sleep(3000);
   }
-  await sleep(5000);
-  for (const pg of [A.page, B.page]) for (const t of (await deposit(pg, 2)).slice(0, 3)) await dispatch(pg, { type: 'build', building: 'oilWell', tile: t });
-  log('deposits', (await deposit(A.page, 1)).length, (await deposit(A.page, 2)).length);
-  await sleep(5000);
-  log('economy', await A.page.evaluate(() => { const s = window.__borderfall.getState(); const p = s.players[s.humanId]; return [p.iron, p.oil, [...s.buildings.values()].filter((b) => b.owner === s.humanId).map((b) => b.type).join('/')]; }));
-  await A.page.waitForFunction(() => { const s = window.__borderfall.getState(); const p = s.players[s.humanId]; return p.iron > 700 && p.oil > 300; }, null, { timeout: 120000 });
+  log('economy', JSON.stringify(lastStep), await A.page.evaluate(() => { const s = window.__borderfall.getState(); const p = s.players[s.humanId]; return [Math.round(p.iron), Math.round(p.oil), p.tiles]; }));
+  if (!(await A.page.evaluate(() => { const s = window.__borderfall.getState(); const p = s.players[s.humanId]; return p.iron > 300 && p.oil > 100; }))) fail('A has no iron/oil');
   const result = {};
   for (const [label, pg] of [['A', A.page], ['B', B.page]]) {
-    const coast = await ownTiles(pg, true);
-    const land = await ownTiles(pg, false, 4);
     const r = {};
-    r.port = await buildFirst(pg, 'port', coast);
-    r.airfield = await buildFirst(pg, 'airfield', land);
-    r.factory = await buildFirst(pg, 'factory', (await ownTiles(pg, false, 14)));
+    for (const [key, type, coastal] of [['port', 'port', true], ['airfield', 'airfield', false], ['factory', 'factory', false]]) {
+      const t = await site(pg, coastal);
+      r[key] = t;
+      if (t >= 0) await dispatch(pg, { type: 'build', building: type, tile: t });
+      await sleep(1500);
+    }
+    await sleep(1500);
+    for (const k of ['port', 'airfield', 'factory']) r[k] = await pg.evaluate((k) => { const s = window.__borderfall.getState(); const b = [...s.buildings.values()].find((x) => x.owner === s.humanId && x.type === k && x.buildLeft <= 0); return b ? b.tile : -1; }, k);
     result[label] = r;
   }
   log('built', JSON.stringify(result));
@@ -210,6 +270,10 @@ try {
     if (r.port >= 0) { for (let k = 0; k < 2; k++) log(label, 'warship', JSON.stringify(await dispatch(pg, { type: 'buildWarship', port: r.port }))); }
     if (r.airfield >= 0) { await dispatch(pg, { type: 'buildAircraft', airfield: r.airfield, kind: 'bomber' }); await dispatch(pg, { type: 'buildAircraft', airfield: r.airfield, kind: 'fighter' }); }
     await dispatch(pg, { type: 'setArmyMix', armor: 0.5, artillery: 0.1 });
+  }
+  await sleep(12000);
+  for (const [label, pg] of [['A', A.page], ['B', B.page]]) {
+    const r = result[label];
     if (r.factory >= 0) log(label, 'tank', JSON.stringify(await dispatch(pg, { type: 'buildTankDivision', tile: r.factory })));
   }
   await sleep(6000);
@@ -295,6 +359,9 @@ try {
     return s.units.filter((u) => u.owner === s.humanId).map((u) => `${u.type}:${u.stance ?? u.mode ?? '-'}`);
   });
   log('A orders now', stances.join(' '));
+  const air = await A.page.evaluate(() => { const s = window.__borderfall.getState(); const a = s.air; return a ? JSON.stringify({ wings: a.wings, keys: Object.keys(a) }).slice(0, 400) : 'no air state'; });
+  log('A air', air);
+  if (!/support|superiority/.test(air)) fail('air mission did not stick');
   if (!stances.some((x) => x.startsWith('warship:bombard'))) fail('stance did not stick');
   if (!stances.some((x) => x.startsWith('tankDivision:support'))) fail('division mode did not stick');
   const vb = await view(B.page);
