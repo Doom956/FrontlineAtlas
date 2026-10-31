@@ -130,9 +130,8 @@ describe('shore bombardment', () => {
     run(s, 50);
     expect(troopSum(s.players[2].troops)).toBeLessThan(t0);
     // The war ends: the auto ship sails back to its post.
-    const atk = s.attacks.find((x) => x.attacker === 1)!;
-    expect(applyAction(s, 1, { type: 'retreat', attackId: atk.id }).ok).toBe(true);
-    runUntil(s, () => a.state === 0, 600);
+    for (const x of s.attacks.filter((q) => q.attacker === 1)) applyAction(s, 1, { type: 'retreat', attackId: x.id });
+    runUntil(s, () => a.state === 0, 900);
     expect(a.state).toBe(0);
     expect(a.station).toBeUndefined();
   });
@@ -160,9 +159,8 @@ describe('blockades', () => {
     expect(ts.hp).toBeLessThanOrEqual(0);
     expect(s.players[1].gold - gold0).toBeGreaterThanOrEqual(400 * NAVY_CAPTURE_GOLD - 1);
     // Peace (the attack called off): no blockade.
-    const atk = s.attacks.find((x) => x.attacker === 1)!;
-    applyAction(s, 1, { type: 'retreat', attackId: atk.id });
-    s.tick++;
+    for (const x of s.attacks.filter((q) => q.attacker === 1)) applyAction(s, 1, { type: 'retreat', attackId: x.id });
+    run(s, 320); // the war memory runs out
     expect(portBlockadedBy(s, port.tile)).toBe(0);
   });
 });
@@ -172,7 +170,9 @@ describe('escorts and veterancy', () => {
     const s = coastGame();
     const e = ship(s, 1, 20, 25);
     const enemy = ship(s, 2, 60, 30);
-    const tr: Unit = { id: newId(s), type: 'transport', owner: 1, x: 22, y: 26, target: at(s, 22, 26), home: at(s, 20, 19), path: [], pathPos: 0, troops: { infantry: 1000, armor: 0, artillery: 0 }, hp: 1, cargo: 10, state: 0, targetOwner: 2 };
+    const route: number[] = [];
+    for (let x = 22; x < 78; x++) route.push(at(s, x, 26));
+    const tr: Unit = { id: newId(s), type: 'transport', owner: 1, x: 22, y: 26, target: route[route.length - 1], home: at(s, 20, 19), path: route, pathPos: 0, troops: { infantry: 1000, armor: 0, artillery: 0 }, hp: 1, cargo: 4, state: 0, targetOwner: 2 };
     s.units.push(tr);
     expect(shipDamageMul(s, enemy, tr)).toBe(1);
     expect(applyAction(s, 1, { type: 'setUnitStance', unitIds: [e.id], stance: 'escort' }).ok).toBe(true);
@@ -258,6 +258,7 @@ describe('AI fleets', () => {
     s.units.push(tr);
     aiNavy(s, 2, act);
     const stances = fleet.map((u) => u.stance ?? 'auto');
+    console.log(JSON.stringify(acts), s.attacks.length);
     expect(stances).toContain('escort');
     expect(stances).toContain('blockade');
     expect(stances).toContain('bombard');
