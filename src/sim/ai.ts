@@ -1682,7 +1682,9 @@ function nextTech(ctx: Ctx): TechId | null {
   // Fleets (naval2.ts): a coastal nation boxed in (no free land left) or with 5+ techs takes Navigation next.
   if (coastal && !hasTech(p, 'navigation') && (ctx.neutralBorder <= 0 || p.techs.length >= 5) && techStatus(state, ctx.id, 'navigation') === 'available') return 'navigation';
   // Enemy bombers about (and a few techs in): Radar for SAM sites.
-  if (AI_RADAR_VS_AIR && p.techs.length >= AI_RADAR_MIN_TECHS && !hasTech(p, 'radar') && techStatus(state, ctx.id, 'radar') === 'available' && enemyAirThreat(ctx)) return 'radar';
+  if (AI_RADAR_VS_AIR && p.techs.length >= AI_RADAR_MIN_TECHS && !hasTech(p, 'radar') && enemyAirThreat(ctx)) {
+    for (const t of ['radar', 'flight'] as const) if (techStatus(state, ctx.id, t) === 'available') return t;
+  }
   // Facing a runaway leader: the bomb first, once it can be researched.
   if (NUKE_COALITION_RESEARCH && ctx.coalition && ctx.diff.nukes && !hasTech(p, 'nuclearFission')) {
     for (const t of NUKE_PATH) if (!hasTech(p, t) && techStatus(state, ctx.id, t) === 'available') return t;
@@ -1920,7 +1922,8 @@ function candidateTiles(ctx: Ctx, type: BuildingType): number[] {
     case 'airfield':
     case 'sam': {
       if (type === 'sam' && !SAM_NEAR_FRONT) return ownedSample(ctx, 20);
-      const foe = type === 'supplyDepot' || type === 'airfield' || type === 'sam' ? mainWarTarget(ctx) || ctx.threatId : ctx.threatId;
+      // SAM sites face the nation most likely to bomb us (bombers strike ahead of its attacks on our land).
+      const foe = type === 'sam' ? ctx.threatId || mainWarTarget(ctx) : type === 'supplyDepot' || type === 'airfield' ? mainWarTarget(ctx) || ctx.threatId : ctx.threatId;
       const edges = foe > 0 ? (ctx.hood.edge.get(foe) ?? EMPTY) : ctx.foreignEdges;
       // Forts a few tiles behind the border (not lost at the first push), depots further back, airfields within
       // reach of the front (fighter cover, paratroopers) but out of the first push.
