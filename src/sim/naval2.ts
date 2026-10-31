@@ -77,7 +77,7 @@ function d2(ax: number, ay: number, bx: number, by: number): number {
   return dx * dx + dy * dy;
 }
 function shipTile(state: GameState, u: Unit): number {
-  if (u.path.length && u.pathPos < u.path.length) return u.path[Math.max(0, u.pathPos - 1)] ?? u.path[0];
+  if (u.path.length) return u.path[Math.min(u.pathPos, u.path.length - 1)];
   return Math.round(u.y) * state.map.width + Math.round(u.x);
 }
 function hostile(state: GameState, a: number, b: number): boolean {
@@ -446,7 +446,7 @@ function stationWater(state: GameState, u: Unit, coast: number): number {
       const t = y * w + x;
       if (!isWater(map.terrain[t]) || !sameWater(map, from, t)) continue;
       const du = d2(x, y, u.x, u.y);
-      if (d < bestD || du < bestU) {
+      if (d < bestD || du < bestU || (du === bestU && t < best)) {
         best = t;
         bestD = d;
         bestU = du;
@@ -601,9 +601,12 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
     if ((state.tick + u.id) % ESCORT_FOLLOW_TICKS !== 0) return;
     const s = u.station !== undefined ? state.units.find((q) => q.id === u.station) : undefined;
     if (st !== 'escort' || !s || s.hp <= 0 || s.owner !== u.owner) {
+      // Its charge landed, sank or got home: the escort stays on post right here (it supports the landing).
       u.state = 0;
       u.station = undefined;
-      if (st !== 'escort') backToPost(state, u);
+      u.path = [];
+      u.pathPos = 0;
+      u.cargo = shipTile(state, u);
       return;
     }
     if (d2(s.x, s.y, u.x, u.y) > 4) sail(state, u, escortAim(s, state), 4 * NAVY_ESCORT_PICK);
@@ -650,6 +653,10 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
       if (u.state === 3 && u.station !== undefined && validBlockade(state, u, u.station)) return;
       const t = pickPort(state, u, NAVY_STATION_SEEK);
       if (t >= 0 && goStation(state, u, t, 4 * NAVY_STATION_SEEK)) return;
+      // No enemy port in reach: shell its coast meanwhile.
+      if (u.state === 3 && u.station !== undefined && validBombard(state, u, u.station)) return;
+      const c = pickCoast(state, u, u.x, u.y, NAVY_STATION_SEEK);
+      if (c >= 0 && goStation(state, u, c, 4 * NAVY_STATION_SEEK)) return;
       if (u.state === 3) backToPost(state, u);
       return;
     }
@@ -740,18 +747,16 @@ export function aiNavy(state: GameState, id: number, act: (a: Action) => ActionR
   }
   const rest = fleet.filter((u) => free.has(u.id));
   const foePorts = foe ? buildingsOf(state, foe, 'port').filter((b) => b.owner === foe).length : 0;
-  let k = 0;
   for (const u of rest) {
-    // An escort whose charge is gone goes back to work.
     if (!foe) assign(u, 'auto');
     else {
-      const role = k % (personality === 'admiral' ? 4 : 3);
+      // A fixed role per ship (by id), so stances don't shuffle as escorts come and go.
+      const role = (u.id >>> 1) % (personality === 'admiral' ? 4 : 3);
       if (role === 0 && foePorts > 0) assign(u, 'blockade');
       else if (role === 1) assign(u, 'bombard');
       else if (role === 3) assign(u, 'hunt');
       else assign(u, 'auto');
     }
-    k++;
   }
   for (const [s, ids] of want) {
     for (let i = 0; i < ids.length; i += MAX_GROUP_UNITS) act({ type: 'setUnitStance', unitIds: ids.slice(i, i + MAX_GROUP_UNITS), stance: s });
@@ -765,7 +770,7 @@ export function aiNavy(state: GameState, id: number, act: (a: Action) => ActionR
     if (t < 0) continue;
     if (d2(t % w, (t / w) | 0, u.cargo % w, (u.cargo / w) | 0) <= NAVY_AUTO_BOMBARD_REACH * NAVY_AUTO_BOMBARD_REACH * 0.5) continue;
     const water = stationWater(state, u, t);
-    if (water >= 0) act({ type: 'moveWarship', unitId: u.id, tile: water });
+    if (water >= 0 && act({ type: 'moveWarship', unitId: u.id, tile: water }).ok) return; // one per decision
   }
 }
 

@@ -1204,3 +1204,6 @@ export const ARMOR_SUPPORT_HOLD = 8;
 /** a launch needs at least this expected depth (tiles); a line that cuts the enemy's land counts ARMOR_CUT_BONUS extra */
 export const ARMOR_SUPPORT_MIN_DEPTH = 4;
 export const ARMOR_CUT_BONUS = 10;
+/** escorts sail x this fast to keep up with transports; warships near an own port mend this many hp/s */
+export const NAVY_ESCORT_SPEED = 2;
+export const NAVY_PORT_REPAIR = 0.1;
