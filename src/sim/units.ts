@@ -88,8 +88,10 @@ import {
   techShipDamageMul,
   techTradeGoldMul,
 } from './techtree';
-import { chaseTargetInRange, interceptStep } from './navy';
+import { chaseTargetInRange } from './navy';
+import { blockadeTradeMul, onShipKilled, shellingMul, shipDamageMul, warshipSpeedMul, warshipThink } from './naval2';
 import { bombDivisions } from './tanks';
+import { airParadropMul, airStrikeArrived, escortAbsorbs, escortCargo, interceptBySuperiority } from './airwings';
 import { doctrineLess, doctrineLever, doctrineMore, doctrinePerk } from './doctrines';
 import { TROOP_TYPES, isWater } from './types';
 import type { ActionResult, Building, BuildingType, GameState, Troops, Unit, UnitType } from './types';
@@ -568,9 +570,10 @@ function warPairs(state: GameState): Set<number> {
 
 function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<number>): void {
   // Auto-intercept (navy.ts): a patrolling ship may leave its post to chase an enemy ship (state 2), then return.
-  interceptStep(state, u, ships, wars);
+  // Stances (naval2.ts): auto / hunt intercept (navy.interceptStep), escort, bombard and blockade stations.
+  warshipThink(state, u, ships, wars);
   // Movement: sail to the commanded point, then patrol around it.
-  if (followPath(state, u, UNITS.warship.speed * doctrineMore(state, u.owner, 'warshipSpeed'))) {
+  if (followPath(state, u, UNITS.warship.speed * doctrineMore(state, u.owner, 'warshipSpeed') * warshipSpeedMul(u))) {
     if (u.state === 1) {
       u.state = 0;
       u.cargo = shipTile(state, u);
@@ -604,9 +607,14 @@ function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<numbe
   target = chaseTargetInRange(u, ships, WARSHIP_RANGE) ?? target;
   const showShot = (state.tick + u.id) % (WARSHIP_FIGHT_TICKS * 2) === 0;
   if (target) {
-    target.hp -= WARSHIP_DAMAGE_PER_S * dt * techShipDamageMul(state, u.owner); // Submarines (techtree.ts)
+    // Submarines (techtree.ts); veterancy and escorts (naval2.ts)
+    target.hp -= WARSHIP_DAMAGE_PER_S * dt * techShipDamageMul(state, u.owner) * shipDamageMul(state, u, target);
     if (showShot) state.effects.push({ kind: 'shot', x: u.x + 0.5, y: u.y + 0.5, x2: target.x + 0.5, y2: target.y + 0.5, radius: 0.5, tick: state.tick });
-    if (target.hp <= 1e-9) sinkUnit(state, target, u.owner);
+    if (target.hp <= 1e-9) {
+      // Veterancy; trade ships of a blockaded nation are captured (cargo to us) (naval2.ts).
+      onShipKilled(state, u, target);
+      sinkUnit(state, target, u.owner);
+    }
     return;
   }
 
@@ -624,7 +632,8 @@ function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<numbe
     bestTile = i;
   });
   if (bestTile < 0) return;
-  killTroops(state, map.owner[bestTile], WARSHIP_BOMBARD_KILL * (navalPerk ? DOCTRINE_PERKS.naval.shelling : 1) * dt, u.owner, true);
+  // The 'bombard' stance shells harder; shelling earns veterancy (naval2.ts).
+  killTroops(state, map.owner[bestTile], WARSHIP_BOMBARD_KILL * (navalPerk ? DOCTRINE_PERKS.naval.shelling : 1) * shellingMul(state, u, dt) * dt, u.owner, true);
   if (showShot) {
     state.effects.push({ kind: 'shot', x: u.x + 0.5, y: u.y + 0.5, x2: (bestTile % w) + 0.5, y2: ((bestTile / w) | 0) + 0.5, radius: 0.5, tick: state.tick });
   }
@@ -704,7 +713,9 @@ function deliverTrade(state: GameState, u: Unit): void {
     if (!p || id === 0 || !p.alive) continue;
     // Allies trade on better terms (ALLY_TRADE_BONUS).
     const allied = u.targetOwner !== u.owner && areAllied(state, u.owner, u.targetOwner);
-    const gold = u.cargo * doctrineMore(state, id, 'tradeGold') * (allied ? 1 + ALLY_TRADE_BONUS : 1) * techTradeGoldMul(state, id); // Free Trade
+    const gold =
+      u.cargo * doctrineMore(state, id, 'tradeGold') * (allied ? 1 + ALLY_TRADE_BONUS : 1) * techTradeGoldMul(state, id) * // Free Trade
+      blockadeTradeMul(state, id, id === u.owner ? u.home : u.target); // a blockaded port earns less (naval2.ts)
     p.gold += gold;
     p.stats.goldEarned += gold;
     if (!p.isHuman) continue;
@@ -836,7 +847,8 @@ export function paradropRange(b: Building, state?: GameState): number {
 /** Most troops one drop from this airfield may carry: level x max(PARADROP_TROOPS_PER_LEVEL, share of the army). */
 export function paradropMaxTroops(state: GameState, playerId: number, b: Building): number {
   const army = armyTotalOf(state, playerId);
-  return Math.floor(Math.max(1, b.level) * Math.max(PARADROP_TROOPS_PER_LEVEL, PARADROP_ARMY_SHARE_PER_LEVEL * army));
+  // x more aircraft stationed = bigger drops (air wings, airwings.ts)
+  return Math.floor(Math.max(1, b.level) * Math.max(PARADROP_TROOPS_PER_LEVEL, PARADROP_ARMY_SHARE_PER_LEVEL * army) * airParadropMul(b));
 }
 
 /**
@@ -899,6 +911,7 @@ export function launchParadrop(state: GameState, playerId: number, airfieldTile:
   b.dropCooldown = PARADROP_COOLDOWN * doctrineLess(state, playerId, 'airfieldReload');
   const u = makeUnit(state, 'transportPlane', playerId, airfieldTile, tile);
   u.troops = { infantry: n, armor: 0, artillery: 0 };
+  escortCargo(state, u, b); // fighters at the airfield escort the drop (airwings.ts)
   const target = state.map.owner[tile];
   u.targetOwner = target;
   state.units.push(u);
@@ -1125,6 +1138,7 @@ function interceptThreats(state: GameState, threats: Unit[], sams: Building[], a
       const r = airfieldRadius(a);
       if (d2To(state, u, a.tile) > r * r) continue;
       a.cooldown = (FIGHTER_COOLDOWN / a.fighters) * doctrineLess(state, a.owner, 'airfieldReload');
+      if (escortAbsorbs(state, u, a.owner, a)) break; // the escort fought it off (airwings.ts)
       // One hit (a bomber of the Air doctrine at level 3 survives the first).
       u.hp -= 1;
       if (u.hp <= 0) shotDown(state, u, a.owner, 'fighters');
@@ -1133,7 +1147,7 @@ function interceptThreats(state: GameState, threats: Unit[], sams: Building[], a
   }
 }
 
-function shotDown(state: GameState, u: Unit, by: number, what: string): void {
+export function shotDown(state: GameState, u: Unit, by: number, what: string): void {
   u.hp = 0;
   state.effects.push({ kind: 'explosion', x: u.x + 0.5, y: u.y + 0.5, radius: 1.5, tick: state.tick });
   const aboard = troopTotal(u.troops);
@@ -1260,11 +1274,12 @@ export function updateUnits(state: GameState): void {
 
   interceptThreats(state, threats, sams, airfields);
   interceptByCarriers(state, threats, units); // Carriers (techtree.ts): warships shoot down planes too
+  interceptBySuperiority(state, threats); // air-wing fighter patrols (airwings.ts)
   for (const u of threats) {
     if (u.hp <= 0 || !arrived.has(u) || !players[u.owner]?.alive) continue;
     if (u.type === 'bomber') {
       if (u.state === 0) {
-        dropBombs(state, u);
+        if (!airStrikeArrived(state, u)) dropBombs(state, u); // air-wing support strikes replace the drop (airwings.ts)
         u.state = 1;
         u.target = u.home;
       } else {

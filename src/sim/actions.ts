@@ -14,6 +14,7 @@ import { chooseDoctrine } from './doctrines';
 import { buildAircraft, launchBomber, launchMissile, launchParadrop, launchTransport, moveWarship } from './units';
 import { moveWarships, orderWarship } from './navy';
 import { buildTankDivision, moveTankDivisions } from './tanks';
+import { setAirMission } from './airwings';
 import { aiActionBlocked, applyAdmin } from './admin';
 import { continueGame } from './victory';
 import { TROOP_TYPES } from './types';
@@ -221,6 +222,11 @@ export function applyAction(state: GameState, playerId: number, action: Action):
     case 'moveTankDivision':
       if (!isTile(state, action.tile)) return FAIL('Invalid tile');
       return moveTankDivisions(state, playerId, action.unitIds, action.tile);
+    // ---- air wings (airwings.ts) ----
+    case 'setAirMission':
+      if (action.airfield !== -1 && !isTile(state, action.airfield)) return FAIL('Invalid tile');
+      if (action.target !== undefined && !isTile(state, action.target)) return FAIL('Invalid tile');
+      return setAirMission(state, playerId, action.airfield, action.mission, action.target, action.refill);
     default:
       return FAIL('Unknown action');
   }

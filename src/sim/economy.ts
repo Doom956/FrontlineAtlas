@@ -7,6 +7,7 @@
 // arsenals convert part of the pool into armor and artillery. Land weights come from territory.ts (kept up to date
 // by setOwner), so nothing here scans the map.
 import { goldRate, growthRate, resourceRate } from './rules';
+import { airRaidIncomeMul } from './airwings';
 import { cityLevels, countBuildings, buildingsOf, farmUnitsOf } from './buildings';
 import { stockInterest, techCapMul, techGrowthMul, techIncomeMul } from './techtree';
 import {
@@ -258,6 +259,7 @@ export function goldIncome(state: GameState, p: Player): number {
   if (doctrinePerk(state, p.id, 'merchant')) gold *= 1 + DOCTRINE_PERKS.merchant.routeBonus * tradeRoutes(state, p.id);
   if (isTribe(p)) gold *= TRIBE_GOLD_FACTOR;
   gold *= aiEconomy(state, p).income * techIncomeMul(p);
+  gold *= airRaidIncomeMul(state, p.id); // strategic bombing (airwings.ts)
   return gold * goldRate(state);
 }
 /** Own trade ships at sea (Merchant level 3: a bonus per route), at most DOCTRINE_PERKS.merchant.maxRoutes. */
@@ -295,6 +297,7 @@ export function updateEconomy(state: GameState): void {
     if (hasTech(p, 'metallurgy')) iron *= METALLURGY_IRON_MULT;
     if (industrial) iron *= INDUSTRIAL_RESOURCE_MULT;
     iron *= aiIncome * resourceRate(state) * techIncomeMul(p);
+    iron *= airRaidIncomeMul(state, p.id); // strategic bombing (airwings.ts)
 
     let oil = countBuildings(state, p.id, 'oilWell') * OIL_PER_WELL;
     if (industrial) oil *= INDUSTRIAL_RESOURCE_MULT;

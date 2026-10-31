@@ -16,6 +16,7 @@ import { mods, updateRules } from './rules';
 import { addEvent, autoSpawnRemaining, pruneEliminated, randomSpawnHumans } from './state';
 import { updateResearch } from './tech';
 import { updateUnits } from './units';
+import { updateAir } from './airwings';
 import { updateNavyQueue } from './navy';
 import { updateTanks } from './tanks';
 import { updateVictory } from './victory';
@@ -50,6 +51,7 @@ export function tick(state: GameState): void {
     updateEndgame(state);
     pruneEliminated(state);
     updateUnits(state);
+    updateAir(state);
     updateNavyQueue(state);
     updateTanks(state);
     updateBarrages(state);

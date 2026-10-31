@@ -4,6 +4,7 @@
 // embargoes, doctrines, phase and spawn time, alliances and alliance requests, attacks and units (positions rounded to 1/100
 // tile), barrages and buildings (level, timers, hp).
 
+import { hashAir } from './airwings';
 import type { GameState, Troops } from './types';
 
 const FNV_OFFSET = 0x811c9dc5;
@@ -200,5 +201,7 @@ export function hashState(state: GameState): number {
       h = mixFloat(h, b.queuedPaid.iron);
     }
   }
+  // Air wings, support zones, raids, stored aircraft, mission planes (airwings.ts).
+  h = hashAir(state, h, mixInt, mixFloat);
   return h >>> 0;
 }

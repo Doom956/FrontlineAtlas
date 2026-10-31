@@ -107,6 +107,10 @@ import { techFrontSpeedMul, techLossMul, techSupplyRangeMul } from './techtree';
 import { attackBonusMul } from './spending';
 import { borderTiles, landComponents } from './territory';
 import { tankDefenseAt } from './tanks';
+import { blockadedAt, blockadeSupplyMul, navalBeachheadMul, navalSupportAt } from './naval2';
+import { NAVY_BEACHHEAD_SUPPLY, NAVY_SUPPORT_SPEED } from './config';
+import { airSupportCut } from './airwings';
+import { AIR } from './config';
 import { isProtected } from './admin';
 import { TROOP_TYPES, Terrain, isTribe, isWater } from './types';
 import type { ActionResult, Attack, GameState, Player, TerrainId, TroopType, Troops } from './types';
@@ -594,7 +598,11 @@ function tileCost(state: GameState, c: FightCtx, tile: number): TileCost {
   const ter = TERRAIN[tid as TerrainId];
   const out = scratchCost;
   let heartSlow = 1;
-  const sup = supplyEfficiency(state, c.attacker, tile);
+  let airCut = 0;
+  // Shore bombardment (naval2.ts): own warships nearby make the tile cheaper and faster and count as supply; a
+  // blockade of the attacker's ports nearby cuts its supply.
+  const nav = navalSupportAt(state, c.attacker, tile);
+  const sup = nav > 0 ? 1 : supplyEfficiency(state, c.attacker, tile) * blockadeSupplyMul(state, c.attacker, tile);
   const fort = c.defender === 0 ? 1 : fortMultiplierAt(state, tile, c.defender);
   const att = ter.attack;
   const armorAtt = c.w1 > 0 ? armorTerrain(att.armor, c.armorIgnore) : 0;
@@ -611,8 +619,12 @@ function tileCost(state: GameState, c: FightCtx, tile: number): TileCost {
     if (c.traitor) defense *= TRAITOR_DEFENSE;
     // Tank divisions holding nearby (tanks.ts) stiffen the defence.
     defense *= tankDefenseAt(state, c.defender, tile);
+    // Air-support zones of the attacker (airwings.ts) cut the defence and speed the push.
+    airCut = airSupportCut(state, c.attacker, tile);
+    if (airCut > 0) defense *= 1 - airCut;
     if (c.tribeTarget) defense *= TRIBE_TARGET_LOSS;
-    if (supplyEfficiency(state, c.defender, tile) < 1) defense *= DEFENDER_NO_SUPPLY;
+    if (supplyEfficiency(state, c.defender, tile) < 1 || blockadedAt(state, c.defender, tile)) defense *= DEFENDER_NO_SUPPLY;
+    if (nav > 0) defense /= 1 + nav;
     out.defenderLoss = DEFENDER_LOSS_PER_TILE * c.density * c.defenderLossMult;
     // Heartland near the capital and the last stand of a much smaller nation (capped together).
     const core = c.hr > 0 ? heartShare(c.w, tile, c.hx, c.hy, c.hr) : 0;
@@ -629,6 +641,8 @@ function tileCost(state: GameState, c: FightCtx, tile: number): TileCost {
   const fortSlow = fort > 1.01 ? 1 + Math.max(0, FORT_SLOW * (fort / FORT_DEFENSE) - 1) * c.breach : 1;
   out.budget = (TER_SPEED_COST[tid] * fortSlow * heartSlow) / (0.5 + 0.5 * sup);
   if (tid === Terrain.Plains || tid === Terrain.Desert) out.budget *= c.openBudget;
+  if (nav > 0) out.budget /= 1 + NAVY_SUPPORT_SPEED * nav;
+  if (airCut > 0) out.budget *= 1 - AIR.supportSpeed * airCut;
   return out;
 }
 
@@ -1207,6 +1221,9 @@ export function launchAttack(state: GameState, playerId: number, tile: number, t
   if (amphibious) {
     const c = fightCtx(state, playerId, sent, target);
     const cost = tileCost(state, c, tile);
+    // Landing next to own warships: a strong beachhead bonus (naval2.ts).
+    const navalHead = navalBeachheadMul(state, playerId, tile);
+    cost.loss *= navalHead;
     if (tot < cost.loss) {
       applyDefenderLosses(state, target, (cost.defenderLoss * tot) / cost.loss, playerId);
       applyAttackerLosses(state, force, tot, target, false);
@@ -1222,7 +1239,8 @@ export function launchAttack(state: GameState, playerId: number, tile: number, t
     }
     // The beachhead supplies the invasion until a city or depot can take over.
     const sd = supplyOf(state);
-    sd.beachheads.push({ player: playerId, tile, untilTick: state.tick + BEACHHEAD_SUPPLY_SECONDS * TICKS_PER_SECOND });
+    const headSeconds = BEACHHEAD_SUPPLY_SECONDS * (navalHead < 1 ? NAVY_BEACHHEAD_SUPPLY : 1);
+    sd.beachheads.push({ player: playerId, tile, untilTick: state.tick + Math.round(headSeconds * TICKS_PER_SECOND) });
     sd.headVersion++;
     if (target !== 0) maybeCollapse(state, target, playerId);
     if (target !== 0 && !tp.alive) {

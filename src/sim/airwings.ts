@@ -15,7 +15,7 @@
 //
 // Numbers: config AIR. Deterministic: state.rng only, no transcendental Math functions.
 
-import { AIR, BUILDINGS, TICKS_PER_SECOND, UNITS } from './config';
+import { AIR, TICKS_PER_SECOND } from './config';
 import { aircraftCap, airfieldRadius, buildingAt, buildingsOf, chargesReady, isDisabled, samRadius } from './buildings';
 import { atWar } from './allies';
 import { frontTiles } from './combat';
@@ -865,19 +865,7 @@ export const AIR_MISSION_INFO: Record<AirMission, { name: string; help: string }
   },
 };
 
-/** Air-wing mission constants for the client (radius of the airfield's own cover for drawing patrols). */
-export function airCoverRadius(b: Building): number {
-  return airfieldRadius(b);
-}
-
-// Keep imports used (BUILDINGS / UNITS / aircraftCap referenced for the client helpers below).
 /** How many aircraft the airfield can hold in total (client). */
 export function airWingCap(b: Building): number {
   return aircraftCap(b);
 }
-/** Bomber speed with techs (client ETA). */
-export function airBomberSpeed(state: GameState, pid: number): number {
-  return UNITS.bomber.speed * (techOf(state, pid, 'jetEngines') ? 1.4 : 1);
-}
-/** Airfield base cover radius (client). */
-export const AIR_BASE_COVER = BUILDINGS.airfield.radius;

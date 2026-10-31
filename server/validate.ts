@@ -5,7 +5,7 @@
 import { BUILDINGS, MAX_GROUP_UNITS, TECHS } from '../src/sim/config';
 import { ADMIN_OP_LIST } from '../src/sim/admin';
 import { DEFAULT_MODIFIERS, validateSetup } from '../src/sim/setup';
-import { DOCTRINE_IDS } from '../src/sim/types';
+import { AIR_MISSIONS, DOCTRINE_IDS } from '../src/sim/types';
 import type { Action, GameSetup, Modifiers } from '../src/sim/types';
 import {
   ADMIN_CODE_MAX_LENGTH,
@@ -120,6 +120,7 @@ const ACTION_SPECS: ActionSpecs = {
   buildMany: { building: { k: 'enum', values: BUILDING_TYPES }, tile: TILE, count: { k: 'amount' } },
   upgradeArea: { tile: TILE, radius: { k: 'amount' }, building: { k: 'enum', values: BUILDING_TYPES, optional: true }, levels: { k: 'amount' } },
   cancelQueuedLevels: { tile: TILE },
+  setAirMission: { airfield: { k: 'siteOrAuto' }, mission: { k: 'enum', values: AIR_MISSIONS }, target: { k: 'tile', optional: true }, refill: { k: 'bool', optional: true } },
 };
 
 function checkField(spec: FieldSpec, v: unknown): Result<unknown> {

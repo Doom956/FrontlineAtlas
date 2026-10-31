@@ -25,6 +25,7 @@ import { atPeace, buildSeconds, unitRule } from './rules';
 import { addEvent, newId } from './state';
 import { hasTech } from './tech';
 import { moveWarship, spawnWarshipAt, unitCost } from './units';
+import { warshipBuildTicks, warshipCount, warshipLimit } from './naval2';
 import { isWater } from './types';
 import type { ActionResult, Building, GameState, QueuedUnit, Unit } from './types';
 
@@ -111,6 +112,9 @@ export function canOrderWarship(state: GameState, playerId: number, port: number
     site = r;
     water = tile;
   }
+  // Fleet cap: grows with port levels (naval2.ts).
+  const cap = warshipLimit(state, playerId);
+  if (warshipCount(state, playerId) >= cap) return FAIL(`At most ${cap} warships: build or upgrade Ports for more`);
   const c = unitCost(state, playerId, 'warship');
   if (p.gold < c.gold) return FAIL(`Not enough gold (${c.gold})`);
   if (p.iron < c.iron) return FAIL(`Not enough iron (${c.iron})`);
@@ -135,7 +139,8 @@ export function orderWarship(state: GameState, playerId: number, port: number, t
   p.gold -= c.gold;
   p.iron -= c.iron;
   p.oil -= c.oil;
-  const ticks = Math.round(warshipBuildSeconds(state) * TICKS_PER_SECOND);
+  // Higher port levels build faster (naval2.ts).
+  const ticks = warshipBuildTicks(state, r.port!, warshipBuildSeconds(state));
   if (ticks <= 1) {
     spawnWarshipAt(state, playerId, r.port!, r.water!);
     return { ok: true };
@@ -313,14 +318,22 @@ function chaseTo(state: GameState, u: Unit, t: Unit): boolean {
  * Auto-intercept for one warship (called by units.updateWarship before it moves). Patrolling ships scan every
  * WARSHIP_SCAN_TICKS ticks (staggered by id); chasing ships re-aim at the same pace.
  */
-export function interceptStep(state: GameState, u: Unit, ships: readonly Unit[], wars: Set<number>): void {
+export function interceptStep(
+  state: GameState,
+  u: Unit,
+  ships: readonly Unit[],
+  wars: Set<number>,
+  detect = WARSHIP_DETECT_RANGE,
+  leash = WARSHIP_LEASH,
+): void {
   if (u.state === 1) return; // under orders: sails on (it still fights whatever comes in range)
   if ((state.tick + u.id) % WARSHIP_SCAN_TICKS !== 0) return;
   const w = state.map.width;
   const postX = u.cargo % w;
   const postY = (u.cargo / w) | 0;
-  const leash2 = WARSHIP_LEASH * WARSHIP_LEASH;
-  const detect2 = WARSHIP_DETECT_RANGE * WARSHIP_DETECT_RANGE;
+  // detect / leash: wider for the 'hunt' stance (naval2.ts)
+  const leash2 = leash * leash;
+  const detect2 = detect * detect;
   if (u.state === 2) {
     const t = u.chase ? ships.find((s) => s.id === u.chase) : undefined;
     if (!t || interceptRank(state, u.owner, t, wars) < 0 || d2(t.x, t.y, postX, postY) > leash2) {
