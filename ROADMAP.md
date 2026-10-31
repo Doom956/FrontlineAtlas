@@ -42,6 +42,7 @@ Left open (for the balance step or later):
 - Research tab footer can sit at the panel's bottom edge on 1440x900 (fine at 1280x800).
 
 ## After round 2: full balance check
+Benchmarks: run batches on GitHub's runners with `scripts/remote-batch.sh <label> -- <batch.ts options>` (about 10x faster than local; details at the top of /tmp/fa-bal/commands.md and in the script header). `--decided 0.6` ends decided games early (win rates only).
 Measure everything on the finished game (doctrines, tech forks, pillars, variants, economy vs military, game length 20-35 min medium / 25-40 World, early leader at 15 min < ~55%, difficulty: Easy/Normal survivable, Hard not a cliff before minute 10), tune only clear outliers, verify on fresh seeds. Findings from the last audit: economy-first ("merchant") nations won ~2.6x their share (markets/banking already toned down: re-check); tank divisions were overrun 70% of the time; SAMs stopped only ~1.4% of bombers; atom bombs came after games were decided; mercenaries don't decide games; Hard kills a new player before minute 10.
 
 ## Parked ideas (owner said later / maybe)
