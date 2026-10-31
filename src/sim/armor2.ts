@@ -24,13 +24,11 @@ import {
   ARMOR_REFIT_FIELD,
   ARMOR_REFIT_RADIUS,
   ARMOR_SUPPORT_HOLD,
-  ARMOR_SUPPORT_HOLD_DEPTH,
   ARMOR_SUPPORT_MIN_DEPTH,
   ARMOR_SUPPORT_RADIUS,
   ARMOR_SUPPORT_READY,
   ARMOR_SUPPORT_REFIT,
   ARMOR_SUPPORT_SCAN_SECONDS,
-  ARMOR_SUPPORT_SETTLE_INTERIOR,
   ARMOR_VET_LOSS,
   ARMOR_VET_MIN_TILES,
   ARMOR_VET_SPEED,
@@ -332,16 +330,7 @@ export function setDivisionMode(state: GameState, playerId: number, unitIds: unk
 // Per-tick work (tanks.updateTanks calls divisionStep for every division not in a spearhead)
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Own land ARMOR_SUPPORT_HOLD_DEPTH tiles out from (x, y) in all 4 directions: not the tip of a salient. */
-function interiorAt(state: GameState, owner: number, x: number, y: number): boolean {
-  const map = state.map;
-  const { width: w, height: h } = map;
-  const own = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < w && y < h && map.owner[y * w + x] === owner && !isWater(map.terrain[y * w + x]);
-  const k = ARMOR_SUPPORT_HOLD_DEPTH;
-  return own(x, y) && own(x + k, y) && own(x - k, y) && own(x, y + k) && own(x, y - k);
-}
-
-/** Own land tile to hold behind `front`: interior (own land ARMOR_SUPPORT_HOLD_DEPTH tiles out in all 4 directions), nearest the front. */
+/** Own land tile to hold behind `front`: interior (own land 3 tiles out in all 4 directions), nearest the front. */
 function holdTileNear(state: GameState, owner: number, front: number): number {
   const map = state.map;
   const { width: w, height: h } = map;
@@ -364,7 +353,7 @@ function holdTileNear(state: GameState, owner: number, front: number): number {
         fallback = t;
       }
       if (d >= bestD) continue;
-      if (!interiorAt(state, owner, x, y)) continue;
+      if (!own(x + 3, y) || !own(x - 3, y) || !own(x, y + 3) || !own(x, y - 3)) continue;
       best = t;
       bestD = d;
     }
@@ -490,10 +479,8 @@ export function divisionStep(state: GameState, u: Unit): void {
       return;
     }
   }
-  // Nothing to strike yet: hold just behind the front, on interior land (not left at the tip of the last spearhead,
-  // where the first counter-push overruns it).
-  const settled = u.state === 0 && (!ARMOR_SUPPORT_SETTLE_INTERIOR || interiorAt(state, u.owner, Math.round(u.x), Math.round(u.y)));
-  if (d2(u.x, u.y, front % w, (front / w) | 0) <= (ARMOR_SUPPORT_HOLD + 6) * (ARMOR_SUPPORT_HOLD + 6) && settled) return;
+  // Nothing to strike yet: hold just behind the front.
+  if (d2(u.x, u.y, front % w, (front / w) | 0) <= (ARMOR_SUPPORT_HOLD + 6) * (ARMOR_SUPPORT_HOLD + 6) && u.state === 0) return;
   if ((u.retryTick ?? 0) > state.tick) return;
   const hold = holdTileNear(state, u.owner, front);
   if (hold >= 0 && hold !== unitTile(state, u)) driveTo(state, u, hold, true);

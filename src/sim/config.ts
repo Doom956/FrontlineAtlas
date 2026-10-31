@@ -605,6 +605,13 @@ export const TANK_DISBAND_SHARE = 0.08;
 /** tiles of own land around a holding division get this defence bonus (losses of attackers x 1 + bonus) */
 export const TANK_DEFENSE_RADIUS = 4;
 export const TANK_DEFENSE_BONUS = 0.35;
+/** a division not attacking whose ground is taken falls back to own land within this many tiles (losing this share
+ * of its troops) while it has at least TANK_FALLBACK_MIN_SHARE of a full division; otherwise it is overrun */
+export const TANK_FALLBACK_RADIUS = 5;
+export const TANK_FALLBACK_LOSS = 0.08;
+export const TANK_FALLBACK_MIN_SHARE = 0.2;
+/** seconds a division that fell back waits before an automatic drive back up to the front */
+export const TANK_FALLBACK_PAUSE = 20;
 /** a bomber hit kills this share of a division's troops within BOMBER_RADIUS of the impact */
 export const TANK_BOMBER_KILL = 0.15;
 /** search effort for a division's land route over own territory (tiles expanded) */
@@ -1229,10 +1236,6 @@ export const ARMOR_SUPPORT_READY = 0.7;
 export const ARMOR_SUPPORT_REFIT = 0.45;
 /** holds this many tiles behind the front (within this distance of the front tile) */
 export const ARMOR_SUPPORT_HOLD = 8;
-/** the hold tile has own land this many tiles out in all 4 directions; a 'support' division that ends up elsewhere
- * (e.g. at the tip of its last spearhead) drives back to one when ARMOR_SUPPORT_SETTLE_INTERIOR */
-export const ARMOR_SUPPORT_HOLD_DEPTH = 3;
-export const ARMOR_SUPPORT_SETTLE_INTERIOR = true;
 /** a launch needs at least this expected depth (tiles); a line that cuts the enemy's land counts ARMOR_CUT_BONUS extra */
 export const ARMOR_SUPPORT_MIN_DEPTH = 4;
 export const ARMOR_CUT_BONUS = 10;
