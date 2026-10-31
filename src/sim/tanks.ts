@@ -58,6 +58,8 @@ import { addEvent, newId, setOwner } from './state';
 import { hasTech } from './tech';
 import { isProtected } from './admin';
 import { tankDivisionMods } from './techtree';
+import { aiDivisionModes, collapsePockets, divisionLimitFor, divisionStep, onSpearheadEnded, vetLossMul, vetSpeedMul } from './armor2';
+import { ARMOR_POCKET_EVERY, ARMOR_SUPPORT_READY } from './config';
 import { Terrain, TROOP_TYPES, isTribe, isWater } from './types';
 import type { Action, ActionResult, GameState, Player, Troops, Unit } from './types';
 
@@ -117,7 +119,8 @@ export function tankDivisionCost(state: GameState, playerId: number): TankDivisi
 export function tankDivisionLimit(state: GameState, playerId: number): number {
   let levels = 0;
   for (const b of buildingsOf(state, playerId, 'factory')) if (b.owner === playerId && b.buildLeft <= 0) levels += b.level;
-  return levels * TANK_PER_FACTORY_LEVEL;
+  // + Railways (armor2.ts)
+  return divisionLimitFor(state, playerId, levels);
 }
 /** Divisions playerId has (alive + being built). */
 export function tankDivisionCount(state: GameState, playerId: number): number {
@@ -528,13 +531,13 @@ function headSpeed(state: GameState, u: Unit, ter: number, defender: number): nu
   let s = TANK_SPEARHEAD_SPEED * (TANK_TERRAIN_SPEED[ter] ?? 0.5);
   if (ter === Terrain.Mountains && !artillerySupport(u)) return 0;
   const p = state.players[u.owner];
-  s *= tankDivisionMods(state, u.owner).speedMul; // Blitz Tactics (techtree.ts)
+  s *= tankDivisionMods(state, u.owner).speedMul * vetSpeedMul(u); // Blitz Tactics (techtree.ts), veterancy (armor2.ts)
   if (ter === Terrain.Plains || ter === Terrain.Desert) s *= doctrineMore(state, u.owner, 'openGroundSpeed');
   if (defender > 0 && hasTech(state.players[defender], 'trenchWarfare')) s *= 0.7;
   return s * frontRate(state);
 }
 function maxDepth(state: GameState, u: Unit): number {
-  return TANK_SPEARHEAD_MAX_DEPTH * tankDivisionMods(state, u.owner).depthMul; // Blitz Tactics
+  return TANK_SPEARHEAD_MAX_DEPTH * tankDivisionMods(state, u.owner).depthMul * vetSpeedMul(u); // Blitz Tactics, veterancy
 }
 
 /** Loss for taking tile t (owner o) with the division, or a reason it can't be taken. */
@@ -552,7 +555,7 @@ function bandCost(state: GameState, u: Unit, t: number, o: number): { loss: numb
   if (o > 0 && fortMultiplierAt(state, t, o) > 1.01 && !arty) return 'stopped by a fort';
   const c = tileFightCost(state, u.owner, u.troops, o, t);
   if (!Number.isFinite(c.loss)) return 'cannot fight there';
-  let loss = c.loss * TANK_SPEARHEAD_LOSS * (TANK_TERRAIN_LOSS[ter] ?? 1);
+  let loss = c.loss * TANK_SPEARHEAD_LOSS * (TANK_TERRAIN_LOSS[ter] ?? 1) * vetLossMul(u); // veterancy (armor2.ts)
   if (o > 0) {
     // the defender's Trench Warfare already raises c.loss (tileFightCost -> techLossMul): not counted twice
     loss *= 1 + TANK_ARMOR_DEFENSE * armorShare(state.players[o]);
@@ -674,6 +677,8 @@ function startSpearhead(state: GameState, u: Unit): void {
 }
 
 function endSpearhead(state: GameState, u: Unit, why: string): void {
+  // Pockets the line cut off collapse (armor2.ts).
+  if (u.launch !== undefined && u.cargo > 0) collapsePockets(state, u, u.launch, u.x, u.y);
   const p = state.players[u.owner];
   const lost = Math.max(0, (u.strength0 ?? total(u.troops)) - total(u.troops));
   const o = u.targetOwner;
@@ -699,6 +704,7 @@ function endSpearhead(state: GameState, u: Unit, why: string): void {
   u.strength0 = undefined;
   const taken = u.cargo;
   u.cargo = 0;
+  onSpearheadEnded(state, u, taken); // veterancy (armor2.ts)
   const left = total(u.troops);
   const disband = left < FULL_DIVISION * TANK_DISBAND_SHARE || state.map.owner[here] !== u.owner;
   const tail = disband ? `; the division is spent, ${fmt(left)} troops return home` : '';
@@ -745,6 +751,7 @@ function stepSpearhead(state: GameState, u: Unit): void {
     // Entering a new tile: take the band across the line (the centre must fall, the sides if affordable).
     const n = band(state, next, ux, uy, bandScratch);
     const floor = (u.strength0 ?? total(u.troops)) * TANK_SPEARHEAD_MIN_SHARE;
+    const takenBefore = u.cargo;
     for (let k = 0; k < n; k++) {
       const t = bandScratch[k];
       const o = map.owner[t];
@@ -769,6 +776,10 @@ function stepSpearhead(state: GameState, u: Unit): void {
       setOwner(state, t, u.owner);
       u.cargo++;
       if (!u.hp) return;
+    }
+    // Every ARMOR_POCKET_EVERY tiles: pockets the line has cut off collapse (armor2.ts).
+    if (Math.floor(u.cargo / ARMOR_POCKET_EVERY) > Math.floor(takenBefore / ARMOR_POCKET_EVERY) && u.launch !== undefined) {
+      collapsePockets(state, u, u.launch, nx, ny);
     }
   }
   u.x = nx;
@@ -824,6 +835,8 @@ export function updateTanks(state: GameState): void {
         else u.state = 0;
       }
     }
+    // Refit, support / refit modes (armor2.ts).
+    if (u.state === 0 || u.state === 1) divisionStep(state, u);
   }
   if (!any) return;
   // Divisions moved, started or ended: the defence lookup is rebuilt from the new positions on its next use.
@@ -980,7 +993,8 @@ export function aiTankDivisions(state: GameState, id: number, act: (a: Action) =
   const p = state.players[id];
   if (!p || !p.alive || isTribe(p) || p.isHuman || !hasTech(p, 'mechanization')) return;
   const personality = p.personality ?? 'balanced';
-  const wantMax = personality === 'warlord' ? 3 : personality === 'turtle' || personality === 'merchant' ? 1 : 2;
+  // Warlords commit to armor: as many divisions as their factories allow (up to 6).
+  const wantMax = personality === 'warlord' ? Math.max(3, Math.min(6, tankDivisionLimit(state, id))) : personality === 'turtle' || personality === 'merchant' ? 1 : 2;
   const mine = state.units.filter((u) => u.type === 'tankDivision' && u.owner === id && u.hp > 0);
   const c = tankDivisionCost(state, id);
   if (
@@ -993,7 +1007,9 @@ export function aiTankDivisions(state: GameState, id: number, act: (a: Action) =
     const f = bestFactory(state, id);
     if (f >= 0) act({ type: 'buildTankDivision', tile: f });
   }
-  const idle = mine.filter((u) => u.state === 0 && total(u.troops) >= FULL_DIVISION * 0.5);
+  // 'Support front' mode on the main war's front: they strike weak spots, cut pockets and refit by themselves (armor2.ts).
+  aiDivisionModes(state, id, act);
+  const idle = mine.filter((u) => u.state === 0 && total(u.troops) >= FULL_DIVISION * ARMOR_SUPPORT_READY);
   if (!idle.length || personality === 'turtle') return;
   // The war we fight with the most troops (nations before tribes), or else the nation attacking us hardest: an idle
   // division strikes back rather than wait to be overrun.

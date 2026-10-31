@@ -17,6 +17,7 @@
 
 import { AIR, TICKS_PER_SECOND } from './config';
 import { aircraftCap, airfieldRadius, buildingAt, buildingsOf, chargesReady, isDisabled, samRadius } from './buildings';
+import { applyAction } from './actions';
 import { atWar } from './allies';
 import { frontTiles } from './combat';
 import { areAllied } from './diplomacy';
@@ -836,7 +837,7 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
     const refill = minded || doctrineActive(state, id) === 'air';
     const same = cur && cur.mission === mission && (target === undefined || cur.target === target) && cur.refill === refill;
     if (!same && (mission !== 'idle' || (cur && cur.mission !== 'idle'))) {
-      setAirMission(state, id, b.tile, mission, target, refill);
+      applyAction(state, id, target === undefined ? { type: 'setAirMission', airfield: b.tile, mission, refill } : { type: 'setAirMission', airfield: b.tile, mission, target, refill });
     }
     if (mission === 'support' || mission === 'strategic') busy++;
   }

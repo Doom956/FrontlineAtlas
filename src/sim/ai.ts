@@ -87,6 +87,7 @@ import { aiSpend, aiTechOrder, rejectedBranch } from './aispending';
 import { allyTrustDiscount } from './spending';
 import { techStatus } from './techtree';
 import { aiTankDivisions } from './tanks';
+import { aiNavy } from './naval2';
 import { DOCTRINE_IDS, TROOP_TYPES, Resource, isTribe, isWater } from './types';
 import type { Attack, BuildingType, Difficulty, DoctrineId, GameState, Personality, Player, TechId, TerrainId, TroopType, Troops } from './types';
 
@@ -767,6 +768,8 @@ export function updateAI(state: GameState): void {
     m ??= memory(state);
     // Tank divisions (tanks.ts): built from armor first, then sent to spearhead into the war it is fighting.
     if (!tribe) aiTankDivisions(state, p.id, (a) => applyAction(state, p.id, a));
+    // Warship stances (naval2.ts): blockades, bombardment near the fronts, escorts for invasions.
+    if (!tribe) aiNavy(state, p.id, (a) => applyAction(state, p.id, a));
     refreshArmies(state, m);
     const ctx = makeCtx(state, m, p);
     if (tribe) decideTribe(ctx);

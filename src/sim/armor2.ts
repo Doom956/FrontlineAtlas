@@ -12,7 +12,7 @@
 //   land first; drives back to refit at a Factory when worn down), refit (to the nearest Factory, refit, then hold).
 // Deterministic: no RNG; per-division work staggered by id; fixed tie-breaks.
 import { buildingsOf } from './buildings';
-import { annexTiles } from './combat';
+import { annexTiles, frontTiles } from './combat';
 import {
   ARMOR_CUT_BONUS,
   ARMOR_POCKET_KILL,
@@ -496,9 +496,7 @@ export function aiDivisionModes(state: GameState, id: number, act: (a: Action) =
   const lead = mine[0];
   let front = -1;
   let bestD = Infinity;
-  const { list, len } = borderSample(state, id, foe);
-  for (let k = 0; k < len; k++) {
-    const t = list[k];
+  for (const t of frontTiles(state, id, foe, 64)) {
     const d = d2(t % w, (t / w) | 0, lead.x, lead.y);
     if (d < bestD || (d === bestD && t < front)) {
       bestD = d;
@@ -515,15 +513,4 @@ export function aiDivisionModes(state: GameState, id: number, act: (a: Action) =
     return d2(st % w, (st / w) | 0, front % w, (front / w) | 0) > 40 * 40;
   });
   if (stale.length) act({ type: 'setDivisionMode', unitIds: stale.map((u) => u.id), mode: 'support', front });
-}
-
-/** Up to 64 tiles of `foe` bordering `me` (combat.frontTiles is the source; tanks.ts imports it there). */
-function borderSample(state: GameState, me: number, foe: number): { list: number[]; len: number } {
-  const list = frontTilesFn ? frontTilesFn(state, me, foe, 64) : [];
-  return { list, len: list.length };
-}
-let frontTilesFn: ((state: GameState, me: number, foe: number, limit: number) => number[]) | null = null;
-/** tanks.ts hands over combat.frontTiles (keeps this module's imports small). */
-export function useFrontTiles(fn: (state: GameState, me: number, foe: number, limit: number) => number[]): void {
-  frontTilesFn = fn;
 }

@@ -151,18 +151,27 @@ describe('support missions', () => {
     expect(wingOf(s, af)!.sorties).toBe(1);
   });
 
-  it('the zone expires and the aim follows the front when the target tile is taken', () => {
+  it('the zone expires once the wing stops', () => {
     const s = frontGame();
     const af = airfieldWith(s, 1, at(s, 30, 15), 2);
     expect(applyAction(s, 1, { type: 'setAirMission', airfield: af.tile, mission: 'support', target: at(s, 51, 15) }).ok).toBe(true);
     expect(launchAttack(s, 1, at(s, 50, 15), inf(5000)).ok).toBe(true);
     run(s, () => airZones(s).length > 0);
-    run(s, () => airZones(s).length === 0, (AIR.supportSeconds + AIR.sortieCooldown + 30) * TICKS_PER_SECOND);
-    // The front moved east: the old aim is ours now.
-    claimRect(s, 1, 50, 0, 60, 29);
+    expect(applyAction(s, 1, { type: 'setAirMission', airfield: af.tile, mission: 'idle' }).ok).toBe(true);
+    run(s, () => airZones(s).length === 0, (AIR.supportSeconds + 2) * TICKS_PER_SECOND);
+    expect(airZones(s).length).toBe(0);
+    expect(airSupportCut(s, 1, at(s, 51, 15))).toBe(0);
+  });
+
+  it('the aim follows the front when the target tile is taken', () => {
+    const s = frontGame();
+    const af = airfieldWith(s, 1, at(s, 30, 15), 2);
+    expect(applyAction(s, 1, { type: 'setAirMission', airfield: af.tile, mission: 'support', target: at(s, 51, 15) }).ok).toBe(true);
+    expect(launchAttack(s, 1, at(s, 50, 15), inf(5000)).ok).toBe(true);
+    claimRect(s, 1, 50, 0, 60, 29); // the front moved east: the old aim is ours now
     const wing = wingOf(s, af)!;
-    wing.nextTick = s.tick;
-    run(s, () => s.units.some((u) => u.mission === 1), 5);
+    run(s, () => s.units.some((u) => u.mission === 1), 5 * TICKS_PER_SECOND);
+    expect(s.units.some((u) => u.mission === 1)).toBe(true);
     expect(s.map.owner[wing.target]).toBe(2);
     expect(wing.target % s.map.width).toBeGreaterThan(60);
   });
@@ -196,7 +205,7 @@ describe('superiority and escorts', () => {
     const bomberBase = airfieldWith(s, 2, at(s, 90, 15), 1);
     // Our fighters sit far from the bomber's path, but the patrol circle is centred on it.
     const fighters = airfieldWith(s, 1, at(s, 5, 2), 0, 2);
-    fighters.level = 1;
+    fighters.cooldown = 1e6; // its normal cover is busy: only the patrol can shoot
     expect(applyAction(s, 1, { type: 'setAirMission', airfield: fighters.tile, mission: 'superiority', target: at(s, 20, 15) }).ok).toBe(true);
     expect(launchBomber(s, 2, bomberBase.tile, at(s, 20, 15)).ok).toBe(true);
     run(s, () => s.units.length === 0);
