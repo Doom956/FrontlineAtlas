@@ -433,8 +433,14 @@ try {
         const k = `${u.owner}:${u.type}${u.variant ? `/${u.variant}` : ''}`;
         by[k] = (by[k] ?? 0) + 1;
       }
+      // still being built at a port / factory counts too (ships queue one after another)
+      for (const q of s.unitQueue ?? []) {
+        const k = `${q.owner}:${q.type}${q.variant ? `/${q.variant}` : ''}:queued`;
+        by[k] = (by[k] ?? 0) + 1;
+      }
+      const sunk = (s.events ?? []).filter((e) => /submarine/i.test(e.text ?? e.message ?? '')).map((e) => e.text ?? e.message).slice(-5);
       const mines = s.players.filter((p) => p.id && p.alive && p.techs.includes('navalMines')).reduce((n, p) => n + [...s.buildings.values()].filter((b) => b.owner === p.id && b.type === 'port' && b.buildLeft <= 0).length, 0);
-      return { by, reveals: s.arsenal?.reveals?.length ?? 0, revealOwners: (s.arsenal?.reveals ?? []).map((r) => r.owner ?? r.viewer), recon: s.arsenal?.reconReady?.length ?? 0, mines };
+      return { by, sunk, reveals: s.arsenal?.reveals?.length ?? 0, revealOwners: (s.arsenal?.reveals ?? []).map((r) => r.owner ?? r.viewer), recon: s.arsenal?.reconReady?.length ?? 0, mines };
     });
     log('game 2 units', JSON.stringify(units));
     const aId = (await me(A.page)).id;
