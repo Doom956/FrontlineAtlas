@@ -118,8 +118,8 @@ const NUKE_PAUSE_SECONDS = 300;
 const NUKE_LEADER_FLOOR = 0.45;
 const NUKE_LEADER_MARGIN = 0.15;
 /** Coalition members (against a runaway leader) research Nuclear Fission as soon as they can, and nuke the leader. */
-const NUKE_COALITION_RESEARCH = true;
-const NUKE_COALITION_TARGET = true;
+const NUKE_COALITION_RESEARCH = false;
+const NUKE_COALITION_TARGET = false;
 /** the techs on the way to the bomb, in research order */
 const NUKE_PATH: readonly TechId[] = ['nuclearFission', 'rocketry', 'industrialization', 'ballistics'];
 /** AI SAM sites go about this many tiles behind the main front (bombers strike the front), see siteCandidates. */
