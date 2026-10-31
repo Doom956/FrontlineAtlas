@@ -196,7 +196,7 @@ function timersOf(state: GameState, id: number): Timers {
 }
 const S = TICKS_PER_SECOND;
 /** Mercenaries need this many seconds of gold income saved (AIs at war rarely hold more than ~20 s: they build). */
-const AI_MERC_MIN_GOLD_SECONDS = 8;
+const AI_MERC_MIN_GOLD_SECONDS = 20;
 function sum(t: { infantry: number; armor: number; artillery: number }): number {
   return t.infantry + t.armor + t.artillery;
 }
