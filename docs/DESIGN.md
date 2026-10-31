@@ -516,6 +516,8 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
 
 - `hireMercenaries { amount }`: instant infantry; the price per troop rises with game time and with every hire in a
   60 s window (integrated over the amount) and with the buyer's land share (mercenaries prefer underdogs), at most 15% of the cap per window, home troops at most 10% over the cap.
+  AIs hire when losing at home or when a big attack runs on a low bar, with at least `AI_MERC_MIN_GOLD_SECONDS` (8) of
+  gold income saved (aispending.ts; AIs at war rarely hold more than ~20 s, so the old 20 s gate almost never let them hire).
 - `fundAlly { ally, gold }`: gold to an ally, which likes you more, needs less trust and strength to join your wars
   and attacks nations at war with you up to +20% harder for 90 s (`GameState.allyFunds`).
 - `warBonds`: +15% attack for 40 s, 150 s cooldown, price max(1 500, 45 s of gold income).
@@ -734,17 +736,17 @@ ai.ts. The human's own economy never changes.
 | decides every | 5 s | 3 s | 2 s | 1.5 s |
 | troop shares sent | x0.7 | x0.9 | x1.1 | x1.2 |
 | reads matchups, SAMs (`careful`) / joins allies' wars / atom bombs | no / no / no | yes / no / yes | yes | yes |
-| human grace (no new war on a human that isn't attacking us) | 15 min | 9 min | none | none |
+| human grace (no new war on a human that isn't attacking us) | 15 min | 9 min | 6 min | none |
 | strength wanted vs a human (`humanNeed`) | x1.6 | x1.4 | x1 | x0.9 |
-| AI nations at war with a human at once, first 10 min / later | 1 / 1 | 1 / 2 | any | any |
-| attack on a human at most (x the human's whole army) | 0.75 | 0.8 | no limit | no limit |
-| pause after attacking a human (x the usual 10-30 s) | x5 | x4 | x1 | x1 |
+| AI nations at war with a human at once, first 10 min / later | 1 / 1 | 1 / 2 | 1 / any | any |
+| attack on a human at most (x the human's whole army) | 0.75 | 0.8 | 1.2 | no limit |
+| pause after attacking a human (x the usual 10-30 s) | x5 | x4 | x2 | x1 |
 | counter-attacks a human's attack | no | yes | yes | yes |
 
 A nation counts as at war with a human for `HUMAN_WAR_MEMORY_SECONDS` (90 s) after its last attack on it (attacks
 stop and restart), so the limits hold across short raids, landings and barrages; hitting back at a human that
 attacks us and topping up a running war are never blocked. The limits apply to land attacks, landings and
-barrages; Hard and Brutal have none.
+barrages; Brutal has none.
 
 Measured with `scripts/humanbench.ts` (a scripted new player: expands into the wilderness and tribes with 25-35%
 sends every 4-6 s, hits back at attackers, builds a few cities, farms and forts, no special abilities or
@@ -754,11 +756,11 @@ alliances, pokes its weakest neighbour once boxed in), default Classic setup, 12
 |---|---|---|---|---|---|---|
 | medium, Easy | 100% / 100% (before: 0% / 0%) | 9% / 9% | 5 of 9 | 15.0 min (5.9) | 0/12 (12/12 at 6.9) | 1/12 |
 | medium, Normal | 100% / 100% (0% / 0%) | 4% / 1% | 5 | 9.0 min (4.9) | 2/12 at 21.9 (12/12 at 6.0) | 3/12 |
-| medium, Hard | 0% / 0% (unchanged) | - | - | 4.7 min | 12/12 at 5.6 | - |
+| medium, Hard | 100% / 75% (before the 2026-10-31 limits: 8% / 0%) | 5% / 0% | 7.5 | 6.7 min | 5/12 at 19.1 (12/12 at 6.8) | 3/12 |
 | medium, Brutal | 0% / 0% | - | - | 4.5 min | 12/12 at 4.9 | - |
 | World, Easy | 100% / 100% (8% / 0%) | 8% / 8% | 6 | 15.3 min (6.7) | 0/12 (12/12 at 8.2) | 0/12 |
 | World, Normal | 100% / 100% (0% / 0%) | 5% / 3% | 5 | 9.3 min (6.2) | 0/12 (12/12 at 7.1) | 1/12 |
-| World, Hard | 0% / 0% (unchanged) | - | - | 5.3 min | 12/12 at 6.5 | - |
+| World, Hard | 100% / 100% (25% / 0%) | 4% / 1% | 7 | 6.9 min | 3/12 at 27.4 (12/12 at 7.9) | 0/12 |
 | World, Brutal | 0% / 0% | - | - | 5.1 min | 12/12 at 5.9 | - |
 
 The scripted player never wins at any difficulty: its 25-35% pokes at a nation take a few hundred tiles (a war
@@ -977,7 +979,7 @@ and research): the unlock is at 2:30 there.
 | Blitz | fronts cross plains and desert tiles +30% faster; armor conversion -25% gold and iron | armor ignores half of its terrain attack penalty |
 | Fortress | the defence a fort adds +25%; forts -25% gold and iron; home troops lost when a tile falls -20% | forts build and upgrade 4x faster, repair shell damage 3x faster |
 | Siege | artillery attack +20%; artillery's extra siege bonus +25%; barrage reload -25% | barrage disc +1 tile; forts and SAMs silenced 1.5x longer |
-| Merchant | gold income +12%; trade gold received +25%; market bonus (and its cap) +25% | +1.5% gold per own trade ship at sea (up to 10) |
+| Merchant | gold income +8%; trade gold received +25%; market bonus (and its cap) +15% | +1.5% gold per own trade ship at sea (up to 10) |
 | Naval | warships -25% price, +20% speed; transports +25% speed and +1 hp (twice as hard to sink) | warships repair at sea (0.05 hp/s); coastal shelling x1.5 |
 | Air | bombers, fighters and paradrop planes -25% price; fighter and paradrop cooldowns -25%; paradrop range +25% | bombers survive one extra hit (SAM shot or fighters) |
 | Expansion | losses attacking tribes and wilderness -30%; troop growth +30% while small (full under 6% of the land, none from 15%) | a tribe you eliminate pays 15 s of your gold income + 0.2 gold per tile it held at its peak |

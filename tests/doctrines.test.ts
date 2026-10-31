@@ -177,7 +177,7 @@ describe('doctrines: levels', () => {
     const l1 = goldIncome(s, s.players[1]) / base - 1;
     give(s, 1, 'merchant', 2);
     const l2 = goldIncome(s, s.players[1]) / base - 1;
-    expect(l1).toBeGreaterThan(0.05);
+    expect(l1).toBeGreaterThan(0.5 * DOCTRINE_LEVERS.merchant.gold!);
     expect(l1).toBeLessThan(l2);
     expect(l2).toBeCloseTo(DOCTRINE_LEVERS.merchant.gold!, 6);
   });
