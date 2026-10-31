@@ -256,6 +256,24 @@ describe('AI air wings', () => {
     expect(s.units.some((u) => u.mission === 1)).toBe(true);
   });
 
+  it('heavy bombers raid cities from all but the airfield nearest the attack, else support the front', () => {
+    const s = frontGame();
+    giveTech(s, 1, 'heavyBombers');
+    const near = airfieldWith(s, 1, at(s, 40, 15), 3);
+    const far = airfieldWith(s, 1, at(s, 10, 15), 3);
+    expect(launchAttack(s, 1, at(s, 50, 15), inf(20000)).ok).toBe(true);
+    // No enemy city: both support the front.
+    aiAirWings(s, 1, [2], false);
+    expect(airMissionOf(s, near)).toBe('support');
+    expect(airMissionOf(s, far)).toBe('support');
+    // An enemy city in reach: the far airfield raids it, the near one keeps supporting.
+    const city = addBuilding(s, 'city', 2, at(s, 80, 15));
+    aiAirWings(s, 1, [2], false);
+    expect(airMissionOf(s, near)).toBe('support');
+    expect(airMissionOf(s, far)).toBe('strategic');
+    expect(wingOf(s, far)!.target).toBe(city.tile);
+  });
+
   it('patrols against enemy air with a second airfield, idles with nothing to do', () => {
     const s = frontGame();
     const a = airfieldWith(s, 1, at(s, 30, 10), 2, 0);
