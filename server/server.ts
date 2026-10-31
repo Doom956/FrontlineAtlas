@@ -1,15 +1,21 @@
 // HTTP + WebSocket server: serves the built client, /health, and the game protocol on WS_PATH.
 
 import { createServer } from 'node:http';
-import type { IncomingMessage, Server } from 'node:http';
+import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { Duplex } from 'node:stream';
 import { WebSocketServer } from 'ws';
-import { WS_PATH } from '../src/net/protocol';
+import { ADMIN_CODE_MAX_LENGTH, WS_PATH } from '../src/net/protocol';
 import { Hub } from './hub';
 import { DEFAULT_OPTIONS } from './options';
 import type { ServerOptions } from './options';
 import { serveStatic } from './static';
+
+/** The public client page (GitHub Pages): may call /api/admin-check from another origin. */
+export const PAGES_ORIGIN = 'https://doom956.github.io';
+/** Largest body /api/admin-check reads (bytes). */
+export const ADMIN_CHECK_MAX_BYTES = 1024;
+export const ADMIN_CHECK_PATH = '/api/admin-check';
 
 export interface RunningServer {
   port: number;
@@ -50,13 +56,94 @@ function refuse(socket: Duplex, status: number, text: string): void {
   socket.destroy();
 }
 
+/**
+ * CORS for the admin check: the Origin header (if any) must be the server's own origin or an allowed one
+ * (ALLOWED_ORIGINS, else the GitHub Pages site). Returns the origin to echo, '' (no Origin: not a browser page) or
+ * null (refused).
+ */
+export function adminCheckOrigin(req: IncomingMessage, allowed: string[]): string | null {
+  const origin = req.headers.origin;
+  if (!origin) return '';
+  const list = allowed.length > 0 ? allowed : [PAGES_ORIGIN];
+  if (list.includes(origin)) return origin;
+  try {
+    if (new URL(origin).host === req.headers.host) return origin;
+  } catch {
+    /* not a URL */
+  }
+  return null;
+}
+
+/** Reads a small JSON body; null when it is too large, not JSON or not an object. */
+function readSmallJson(req: IncomingMessage): Promise<Record<string, unknown> | null> {
+  return new Promise((resolve) => {
+    let size = 0;
+    const chunks: Buffer[] = [];
+    let over = false;
+    req.on('data', (c: Buffer) => {
+      size += c.length;
+      if (size > ADMIN_CHECK_MAX_BYTES) {
+        over = true;
+        chunks.length = 0;
+        return; // keep draining (cheap) so the answer can still be sent
+      }
+      if (!over) chunks.push(c);
+    });
+    req.on('error', () => resolve(null));
+    req.on('end', () => {
+      if (over) return resolve(null);
+      try {
+        const v: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        resolve(v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+      } catch {
+        resolve(null);
+      }
+    });
+  });
+}
+
 export async function startServer(partial: Partial<ServerOptions> = {}): Promise<RunningServer> {
   const opts: ServerOptions = { ...DEFAULT_OPTIONS, ...partial };
   const hub = new Hub(opts);
   const started = Date.now();
 
+  const handleAdminCheck = (req: IncomingMessage, res: ServerResponse): void => {
+    const origin = adminCheckOrigin(req, opts.allowedOrigins);
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', Vary: 'Origin' };
+    if (origin) headers['Access-Control-Allow-Origin'] = origin;
+    const reply = (status: number, ok: boolean): void => {
+      res.writeHead(status, headers).end(JSON.stringify({ ok }));
+    };
+    if (origin === null) return reply(403, false);
+    if (req.method === 'OPTIONS') {
+      res
+        .writeHead(204, { ...headers, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600' })
+        .end();
+      return;
+    }
+    if (req.method !== 'POST') {
+      res.writeHead(405, { ...headers, Allow: 'POST, OPTIONS' }).end(JSON.stringify({ ok: false }));
+      return;
+    }
+    const declared = Number(req.headers['content-length'] ?? 0);
+    if (declared > ADMIN_CHECK_MAX_BYTES) {
+      res.writeHead(413, { ...headers, Connection: 'close' }).end(JSON.stringify({ ok: false }));
+      return;
+    }
+    const ip = clientIp(req, opts.trustProxy, opts.proxyHops, opts.clientIpHeader);
+    void readSmallJson(req).then((body) => {
+      const code = body?.code;
+      if (typeof code !== 'string' || code.length === 0 || code.length > ADMIN_CODE_MAX_LENGTH) return reply(body ? 200 : 400, false);
+      reply(200, hub.admin.check(ip, code));
+    });
+  };
+
   const http = createServer((req, res) => {
     const url = req.url ?? '/';
+    if (url === ADMIN_CHECK_PATH || url.startsWith(`${ADMIN_CHECK_PATH}?`)) {
+      handleAdminCheck(req, res);
+      return;
+    }
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       res.writeHead(405, { Allow: 'GET, HEAD' }).end();
       return;

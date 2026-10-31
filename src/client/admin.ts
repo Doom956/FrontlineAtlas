@@ -1,39 +1,63 @@
 // Owner console access (client side). Nothing here is visible in the UI; adminConsole.ts uses it.
-//   - single player: the code typed at the hidden terminal line is hashed (SHA-256, Web Crypto) and compared with
-//     ADMIN_CODE_HASH; the plain code is never stored in the repo
-//   - online: the relay server is the authority (server/admin.ts): the code goes out as `adminAuth {code}` and only
-//     the server's `adminAuth {ok}` answer unlocks; a rate-limited try gets no answer (treated as wrong after a wait)
+//   - one code everywhere: the ADMIN_CODE of the relay server (server/admin.ts); no code or hash is in the repository
+//   - single player: the code typed at the hidden terminal line is sent to the server's POST /api/admin-check
+//     (same server address as the multiplayer client: ?server=, VITE_SERVER_URL, same origin); only {ok:true}
+//     unlocks. The free server may need up to a minute to wake, so the check waits for it.
+//   - online: the code goes out as `adminAuth {code}` and only the server's `adminAuth {ok}` answer unlocks; a
+//     rate-limited try gets no answer (treated as wrong after a wait)
 //   - an unlock lasts for the browser session (sessionStorage; private windows or blocked storage just forget it)
+import { defaultServerUrl } from '../net/client';
 
-/** SHA-256 (hex) of the owner code. Regenerate: node -e "console.log(require('crypto').createHash('sha256').update('<code>').digest('hex'))" */
-export const ADMIN_CODE_HASH = '0e5f31e7a5f4549f60018a676d1e22663d1a91219a3256aaedf77ac5e4d6d697';
 /** How long an online login waits for the server's answer before it counts as wrong (ms). */
 export const ADMIN_AUTH_TIMEOUT_MS = 4000;
+/** How long the single-player check waits for the server (ms): a sleeping free server takes up to ~60 s to wake. */
+export const ADMIN_CHECK_TIMEOUT_MS = 75_000;
+/** Path of the HTTP check on the multiplayer server. */
+export const ADMIN_CHECK_PATH = '/api/admin-check';
 
 const STORE_KEY = 'fa.console';
 
-/** Lower-case hex SHA-256 of a text (Web Crypto; rejects where crypto.subtle is missing, e.g. plain http pages). */
-export async function sha256Hex(text: string): Promise<string> {
-  const data = new TextEncoder().encode(text);
-  const buf = await globalThis.crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/** Equal-length strings compared without stopping at the first difference. */
-function sameText(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let d = 0;
-  for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return d === 0;
-}
-
-/** Single player: whether `code` is the owner code (false when hashing is not available). */
-export async function checkAdminCode(code: string, hash = ADMIN_CODE_HASH): Promise<boolean> {
-  if (!code) return false;
+/** The HTTP address of the check for a server's WebSocket URL (ws -> http, wss -> https), or null. */
+export function adminCheckUrl(wsUrl: string | null): string | null {
+  if (!wsUrl) return null;
   try {
-    return sameText(await sha256Hex(code), hash);
+    const u = new URL(wsUrl);
+    if (u.protocol === 'wss:') u.protocol = 'https:';
+    else if (u.protocol === 'ws:') u.protocol = 'http:';
+    else return null;
+    u.pathname = ADMIN_CHECK_PATH;
+    u.search = '';
+    u.hash = '';
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Single player: asks the multiplayer server whether `code` is the owner code. True only on `{ok: true}`; a wrong
+ * code, a network failure, a timeout or any other answer is false (the line just clears).
+ */
+export async function checkAdminCode(code: string, url: string | null = adminCheckUrl(defaultServerUrl()), timeoutMs = ADMIN_CHECK_TIMEOUT_MS): Promise<boolean> {
+  if (!code || !url || typeof fetch !== 'function') return false;
+  const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+  const timer = setTimeout(() => ctl?.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+      cache: 'no-store',
+      credentials: 'omit',
+      signal: ctl?.signal,
+    });
+    if (!res.ok) return false;
+    const body = (await res.json()) as { ok?: unknown };
+    return body.ok === true;
   } catch {
     return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

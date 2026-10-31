@@ -4650,9 +4650,17 @@ strong {
   border: 0;
   outline: 0;
   background: transparent;
-  color: transparent;
+  color: var(--text);
   caret-color: var(--brass-hi);
   font: inherit;
+  letter-spacing: 0.12em;
+}
+.adm-line .adm-wait {
+  color: var(--faint);
+  letter-spacing: 0.1em;
+}
+.adm-line .adm-wait.hidden {
+  display: none;
 }
 .adm-panel {
   position: absolute;

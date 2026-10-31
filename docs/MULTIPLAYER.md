@@ -225,18 +225,27 @@ Keep **one instance**: lobbies and games live in the memory of one process, so m
 
 ### The owner console online (`ADMIN_CODE`)
 
-The hidden owner console (`|` key in the game) works online only when the server has a code. The code is never in
-the repository: `render.yaml` lists the variable `ADMIN_CODE` without a value (`sync: false`).
+The hidden owner console (`|` key in the game) has **one code everywhere: the server's `ADMIN_CODE`**. It works in
+single player and in multiplayer, and only when the server has a code. The code (or a hash of it) is never in the
+repository: `render.yaml` lists the variable `ADMIN_CODE` without a value (`sync: false`).
 
 1. Render dashboard -> your `frontline-atlas` service -> **Environment**.
 2. Find `ADMIN_CODE` (or **Add Environment Variable** with that key), enter a long code only you know, **Save
    Changes**. Render redeploys the service (running games end).
-3. In an online game press `|`, type the code and Enter. The server compares it (constant time) and answers only you;
-   your session may then send console actions, which every client applies, so games stay in sync. Console actions
-   from anyone else are dropped by the server.
+3. In an online game press `|`, type the code (shown as dots) and Enter. The server compares it (constant time) and
+   answers only you; your session may then send console actions, which every client applies, so games stay in sync.
+   Console actions from anyone else are dropped by the server.
+4. In single player press `|` the same way. The page asks the multiplayer server (`POST /api/admin-check` with
+   `{"code": "..."}`, answer `{"ok": true|false}`; the server address is the same as for multiplayer: `?server=`,
+   `VITE_SERVER_URL`, else the page's own origin). A free server that is asleep can take up to about a minute to
+   answer; the line shows "..." meanwhile (the page waits up to 75 s). A wrong code or no connection just clears the
+   line. Single player therefore needs the server to be reachable. The unlock lasts for the browser session.
 
-Without `ADMIN_CODE` the console is off online (every code is refused). After 5 wrong codes from one address within an
-hour the server ignores further tries from it silently. Other hosts: set the `ADMIN_CODE` environment variable the
+The check endpoint allows calls from the GitHub Pages site (`https://doom956.github.io`) and from the server's own
+origin; with `ALLOWED_ORIGINS` set, that list replaces the Pages default (the server's own origin always works).
+
+Without `ADMIN_CODE` the console is off everywhere (every code is refused). After 5 wrong codes from one address within
+an hour (websocket and HTTP tries count together) the server ignores further tries from it silently. Other hosts: set the `ADMIN_CODE` environment variable the
 same way (Fly: `fly secrets set ADMIN_CODE=...`; Docker: `-e ADMIN_CODE=...`).
 
 ## 6. Alternative: Fly.io

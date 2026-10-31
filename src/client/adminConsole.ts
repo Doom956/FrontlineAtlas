@@ -1,8 +1,9 @@
 // Owner console (client). Nothing in the UI points to it:
 //   - the pipe key "|" opens a one-line prompt at the bottom left that only says "terminal line" with a blinking
 //     caret; Esc closes it. The right code + Enter opens the Command console; a wrong one just clears the line.
-//   - single player checks the code against a hash (admin.ts); online the relay server checks it (adminAuth) and
-//     relays the console's actions only from that session. An unlock lasts for the browser session.
+//   - one code everywhere, the server's ADMIN_CODE: single player asks the server over HTTP (admin.ts), online the
+//     relay server checks it (adminAuth) and relays the console's actions only from that session. What is typed
+//     shows as dots; while the server answers a subtle "…" shows. An unlock lasts for the browser session.
 //   - every change is an Action { type: 'admin', op, ... } (src/sim/admin.ts) sent through the normal dispatch, so
 //     online games stay in sync; nothing announces the console to other players.
 // Map picks (a nation, a tile, a brush) use the 'adminTile' target mode: clicks go to the console until Esc.
@@ -11,6 +12,7 @@ import { DOCTRINE_IDS, isWater } from '../sim/types';
 import type { Action, AdminOp, BuildingType, GameState, TechId, Troops } from '../sim/types';
 import { el, setText } from './dom';
 import { formatCount } from './render/common';
+import { ADMIN_CODE_MAX_LENGTH } from '../net/protocol';
 import { checkAdminCode, isUnlocked, setUnlocked, type AdminScope } from './admin';
 import type { Dispatch, UiState } from './uiState';
 
@@ -74,10 +76,87 @@ function num(v: string, fallback = 0): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/**
+ * The hidden one-line prompt: the bare label "terminal line" and a masked input (dots, normal colour, brass caret) so
+ * every keystroke is visible. Keys typed in it never reach the game (the hotkeys also skip text inputs).
+ */
+export class TerminalLine {
+  readonly el: HTMLElement;
+  readonly input: HTMLInputElement;
+  private readonly wait: HTMLElement;
+
+  constructor(private readonly handlers: { submit: () => void; escape: () => void }) {
+    this.el = el('div', 'adm-line hidden');
+    this.el.dataset.test = 'terminal-line';
+    this.input = el('input', 'adm-in');
+    this.input.type = 'password';
+    this.input.autocomplete = 'off';
+    this.input.spellcheck = false;
+    this.input.maxLength = ADMIN_CODE_MAX_LENGTH;
+    this.input.setAttribute('aria-label', 'terminal line');
+    // keep password managers and autofill out of it
+    this.input.setAttribute('data-lpignore', 'true');
+    this.input.setAttribute('data-1p-ignore', 'true');
+    this.input.name = 'terminal-line';
+    this.wait = el('span', 'adm-wait hidden', '…');
+    this.el.append(el('span', 'adm-lbl', 'terminal line'), this.input, this.wait);
+    this.input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        this.handlers.escape();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        this.handlers.submit();
+      }
+    });
+    // the other key events stay out of the game too
+    for (const t of ['keyup', 'keypress'] as const) this.input.addEventListener(t, (e) => e.stopPropagation());
+    // a click anywhere on the line (label, padding) puts the caret back in the input
+    this.el.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      if (e.target !== this.input) {
+        e.preventDefault();
+        this.input.focus();
+      }
+    });
+  }
+
+  get isOpen(): boolean {
+    return !this.el.classList.contains('hidden');
+  }
+
+  /** Shows the line, empty, with the caret in it (again on the next frame in case the map click took it back). */
+  open(): void {
+    this.el.classList.remove('hidden');
+    this.input.value = '';
+    this.setBusy(false);
+    this.input.focus();
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => {
+        if (this.isOpen && typeof document !== 'undefined' && document.activeElement !== this.input) this.input.focus();
+      });
+    }
+  }
+
+  close(): void {
+    this.input.value = '';
+    this.setBusy(false);
+    this.el.classList.add('hidden');
+    this.input.blur();
+  }
+
+  /** While the server answers: the typed dots are cleared and a "…" shows (the input stays focused, read-only). */
+  setBusy(busy: boolean): void {
+    this.wait.classList.toggle('hidden', !busy);
+    this.input.readOnly = busy;
+    if (busy) this.input.value = '';
+  }
+}
+
 export class AdminConsole {
   readonly el: HTMLElement;
-  private line: HTMLElement;
-  private lineInput: HTMLInputElement;
+  private line: TerminalLine;
   private panel: HTMLElement;
   private body: HTMLElement;
   private status: HTMLElement;
@@ -98,24 +177,7 @@ export class AdminConsole {
     this.scope = deps.online ? 'online' : 'local';
     this.el = el('div', 'adm');
     // the hidden line
-    this.line = el('div', 'adm-line hidden');
-    this.line.dataset.test = 'terminal-line';
-    this.lineInput = el('input', 'adm-in');
-    this.lineInput.type = 'text';
-    this.lineInput.autocomplete = 'off';
-    this.lineInput.spellcheck = false;
-    this.lineInput.setAttribute('aria-label', 'terminal line');
-    this.line.append(el('span', 'adm-lbl', 'terminal line'), this.lineInput);
-    this.lineInput.addEventListener('keydown', (e) => {
-      e.stopPropagation();
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        this.closeLine();
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        void this.submit();
-      }
-    });
+    this.line = new TerminalLine({ submit: () => void this.submit(), escape: () => this.closeLine() });
     // the console
     this.panel = el('div', 'adm-panel hidden');
     this.panel.dataset.test = 'admin-console';
@@ -172,7 +234,7 @@ export class AdminConsole {
     });
     this.debug = el('div', 'adm-debug hidden');
     this.debug.dataset.test = 'debug-overlay';
-    this.el.append(this.line, this.panel, this.debug);
+    this.el.append(this.line.el, this.panel, this.debug);
     deps.root.append(this.el);
 
     window.addEventListener(
@@ -195,7 +257,7 @@ export class AdminConsole {
 
   /** Esc from the HUD: closes the line or the console (not while a map pick is on: Esc ends the pick first). */
   close(): boolean {
-    if (!this.line.classList.contains('hidden')) {
+    if (this.line.isOpen) {
       this.closeLine();
       return true;
     }
@@ -230,21 +292,17 @@ export class AdminConsole {
   // ---------------------------------------------------------------------------------------- line and unlock
 
   private openLine(): void {
-    this.line.classList.remove('hidden');
-    this.lineInput.value = '';
-    this.lineInput.focus();
+    this.line.open();
   }
   private closeLine(): void {
-    this.lineInput.value = '';
-    this.line.classList.add('hidden');
-    this.lineInput.blur();
+    this.line.close();
   }
   private async submit(): Promise<void> {
     if (this.checking) return;
-    const code = this.lineInput.value;
-    this.lineInput.value = '';
+    const code = this.line.input.value;
     if (!code) return;
     this.checking = true;
+    this.line.setBusy(true);
     let ok = false;
     try {
       ok = this.deps.online ? !!(await this.deps.auth?.(code)) : await checkAdminCode(code);
@@ -252,7 +310,12 @@ export class AdminConsole {
       ok = false;
     }
     this.checking = false;
-    if (!ok) return; // wrong: the line just clears
+    this.line.setBusy(false);
+    if (!ok) {
+      // wrong, or the server could not be reached: the line just clears
+      if (this.line.isOpen) this.line.input.focus();
+      return;
+    }
     setUnlocked(this.scope, true);
     this.closeLine();
     this.setOpen(true);

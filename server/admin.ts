@@ -2,6 +2,7 @@
 // the ADMIN_CODE environment variable (constant time). No ADMIN_CODE = no console online. After ADMIN_MAX_FAILS wrong
 // codes from one address within ADMIN_FAIL_WINDOW_MS, further tries from it are ignored silently. A session that
 // passed (and its clientId when it reconnects) may send `admin` intents; room.ts drops them from anyone else.
+// Single player asks the same server over HTTP (POST /api/admin-check, server.ts): same code, same rate limit.
 import { createHash, timingSafeEqual } from 'node:crypto';
 
 export const ADMIN_MAX_FAILS = 5;
@@ -32,6 +33,17 @@ export class AdminGate {
 
   /** Checks a code from `ip` / `clientId`: 'ok' (now admin), 'wrong', or 'ignored' (rate-limited: no answer). */
   attempt(ip: string, clientId: string, code: string): AdminAttempt {
+    const r = this.compare(ip, code);
+    if (r === 'ok') this.admins.add(clientId);
+    return r;
+  }
+
+  /** Plain yes/no for the HTTP check (single player): same compare and same rate limit, but nobody becomes admin. */
+  check(ip: string, code: string): boolean {
+    return this.compare(ip, code) === 'ok';
+  }
+
+  private compare(ip: string, code: string): AdminAttempt {
     const now = this.now();
     const list = (this.fails.get(ip) ?? []).filter((t) => now - t < ADMIN_FAIL_WINDOW_MS);
     if (list.length >= ADMIN_MAX_FAILS) {
@@ -40,10 +52,7 @@ export class AdminGate {
     }
     // Hash both sides so the comparison has a fixed length and takes the same time whatever was sent.
     const good = this.code !== null && timingSafeEqual(digest(code), this.code);
-    if (good) {
-      this.admins.add(clientId);
-      return 'ok';
-    }
+    if (good) return 'ok';
     list.push(now);
     this.fails.set(ip, list);
     return 'wrong';

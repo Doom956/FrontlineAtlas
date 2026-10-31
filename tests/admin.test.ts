@@ -15,7 +15,7 @@ import type { Action, AdminAction, Building, GameState } from '../src/sim/types'
 import { makeClientId, PROTOCOL_VERSION } from '../src/net/protocol';
 import type { ServerMessage } from '../src/net/protocol';
 import { AdminGate, ADMIN_MAX_FAILS } from '../server/admin';
-import { startServer } from '../server/server';
+import { ADMIN_CHECK_MAX_BYTES, ADMIN_CHECK_PATH, PAGES_ORIGIN, startServer } from '../server/server';
 import type { RunningServer } from '../server/server';
 import { validateAction, validateClientMessage } from '../server/validate';
 import { claimRect, makeFlatGame } from './helpers';
@@ -461,5 +461,111 @@ describe('server: continue after the end', () => {
     expect(g.has('gameOver')).toBe(false);
     h.close();
     g.close();
+  });
+});
+
+describe('server: POST /api/admin-check (single player uses the same ADMIN_CODE)', () => {
+  const post = (srv: RunningServer, body: unknown, headers: Record<string, string> = {}): Promise<Response> =>
+    fetch(`http://127.0.0.1:${srv.port}${ADMIN_CHECK_PATH}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: typeof body === 'string' ? body : JSON.stringify(body),
+    });
+
+  it('right code -> {ok:true}; wrong, empty, odd bodies -> {ok:false}', async () => {
+    const srv = await startServer({ ...base, adminCode: 'owner-secret' });
+    try {
+      const good = await post(srv, { code: 'owner-secret' });
+      expect(good.status).toBe(200);
+      expect(await good.json()).toEqual({ ok: true });
+      expect(good.headers.get('cache-control')).toBe('no-store');
+      for (const body of [{ code: 'owner-secre' }, { code: 'OWNER-SECRET' }, { code: '' }, { code: 5 }, {}, 'not json', '[]']) {
+        const r = await post(srv, body);
+        expect(await r.json()).toEqual({ ok: false });
+      }
+      expect((await fetch(`http://127.0.0.1:${srv.port}${ADMIN_CHECK_PATH}`)).status).toBe(405);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('ADMIN_CODE unset: every code gives {ok:false}', async () => {
+    const srv = await startServer({ ...base });
+    try {
+      expect(await (await post(srv, { code: 'owner-secret' })).json()).toEqual({ ok: false });
+      expect(await (await post(srv, { code: 'anything' })).json()).toEqual({ ok: false });
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('5 wrong codes per address, then always {ok:false} without comparing (also the right one)', async () => {
+    const srv = await startServer({ ...base, adminCode: 'owner-secret' });
+    try {
+      for (let k = 0; k < ADMIN_MAX_FAILS; k++) expect(await (await post(srv, { code: `wrong${k}` })).json()).toEqual({ ok: false });
+      expect(await (await post(srv, { code: 'owner-secret' })).json()).toEqual({ ok: false });
+      // the websocket login shares the limit
+      const [a] = await privateGame(srv, ['Late']);
+      a.send({ type: 'adminAuth', code: 'owner-secret' });
+      await sleep(150);
+      expect(a.has('adminAuth')).toBe(false);
+      a.close();
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('the check does not make anyone admin (only the websocket login does)', async () => {
+    const srv = await startServer({ ...base, adminCode: 'owner-secret' });
+    try {
+      expect(await (await post(srv, { code: 'owner-secret' })).json()).toEqual({ ok: true });
+      const [a] = await privateGame(srv, ['Plain']);
+      a.send({ type: 'intent', action: { type: 'admin', op: 'freezeAI', flag: true } });
+      expect((await a.take('error')).code).toBe('notAllowed');
+      a.close();
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('CORS: the GitHub Pages site and same origin pass; other origins are refused; preflight answers', async () => {
+    const srv = await startServer({ ...base, adminCode: 'owner-secret' });
+    try {
+      const pages = await post(srv, { code: 'owner-secret' }, { Origin: PAGES_ORIGIN });
+      expect(pages.headers.get('access-control-allow-origin')).toBe(PAGES_ORIGIN);
+      expect(await pages.json()).toEqual({ ok: true });
+      const same = `http://127.0.0.1:${srv.port}`;
+      const own = await post(srv, { code: 'nope' }, { Origin: same });
+      expect(own.headers.get('access-control-allow-origin')).toBe(same);
+      const evil = await post(srv, { code: 'owner-secret' }, { Origin: 'https://evil.example' });
+      expect(evil.status).toBe(403);
+      expect(evil.headers.get('access-control-allow-origin')).toBeNull();
+      expect(await evil.json()).toEqual({ ok: false });
+      const pre = await fetch(`http://127.0.0.1:${srv.port}${ADMIN_CHECK_PATH}`, {
+        method: 'OPTIONS',
+        headers: { Origin: PAGES_ORIGIN, 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type' },
+      });
+      expect(pre.status).toBe(204);
+      expect(pre.headers.get('access-control-allow-origin')).toBe(PAGES_ORIGIN);
+      expect(pre.headers.get('access-control-allow-methods')).toContain('POST');
+      expect(pre.headers.get('access-control-allow-headers')?.toLowerCase()).toContain('content-type');
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('ALLOWED_ORIGINS replaces the default site; the body is size-capped', async () => {
+    const srv = await startServer({ ...base, adminCode: 'owner-secret', allowedOrigins: ['https://mine.example'] });
+    try {
+      expect((await post(srv, { code: 'owner-secret' }, { Origin: 'https://mine.example' })).status).toBe(200);
+      expect((await post(srv, { code: 'owner-secret' }, { Origin: PAGES_ORIGIN })).status).toBe(403);
+      const big = await post(srv, { code: 'x'.repeat(ADMIN_CHECK_MAX_BYTES + 10) });
+      expect(big.status).toBe(413);
+      expect(await big.json()).toEqual({ ok: false });
+      // a too-long code inside the cap is refused without being compared
+      expect(await (await post(srv, { code: 'x'.repeat(500) })).json()).toEqual({ ok: false });
+    } finally {
+      await srv.close();
+    }
   });
 });

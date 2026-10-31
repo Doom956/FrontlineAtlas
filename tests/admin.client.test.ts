@@ -1,9 +1,9 @@
-// Owner console, client side (src/client/admin.ts, adminConsole.ts helpers, mpgame.ts): the hashed code, the
-// session unlock, the online login through the server, the actions the console sends (valid for the server and the
+// Owner console, client side (src/client/admin.ts, adminConsole.ts helpers, mpgame.ts): the server-checked code
+// (single player over HTTP), the terminal line, the session unlock, the online login through the server, the actions the console sends (valid for the server and the
 // sim, deterministic), and continuing a finished online game from the client.
-import { afterEach, describe, expect, it } from 'vitest';
-import { ADMIN_AUTH_TIMEOUT_MS, ADMIN_CODE_HASH, checkAdminCode, isUnlocked, requestAdminAuth, setUnlocked, sha256Hex, type AdminNet } from '../src/client/admin';
-import { adminAction, isConsoleHotkey, QUICK_STEP, RESOURCE_KEYS } from '../src/client/adminConsole';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ADMIN_AUTH_TIMEOUT_MS, ADMIN_CHECK_TIMEOUT_MS, adminCheckUrl, checkAdminCode, isUnlocked, requestAdminAuth, setUnlocked, type AdminNet } from '../src/client/admin';
+import { adminAction, isConsoleHotkey, QUICK_STEP, RESOURCE_KEYS, TerminalLine } from '../src/client/adminConsole';
 import { continueLabel, winnerText } from '../src/client/hud/gameOverContinue';
 import { MpGame } from '../src/client/mpgame';
 import type { NetClient } from '../src/net/client';
@@ -18,22 +18,197 @@ import type { Action, AdminAction, AdminOp, Building, BuildingType, GameState } 
 import { validateAction } from '../server/validate';
 import { claimRect, makeFlatGame, testSettings } from './helpers';
 
-describe('console code (single player)', () => {
-  // The real code is not in the repo: set ADMIN_TEST_CODE to check it; the mechanism is checked with a stand-in.
-  const real = typeof process !== 'undefined' ? process.env.ADMIN_TEST_CODE : undefined;
-  it('stores only the hash of the code, and the hash check works', async () => {
-    expect(ADMIN_CODE_HASH).toMatch(/^[0-9a-f]{64}$/);
-    expect(await sha256Hex('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
-    const h = await sha256Hex('test-code');
-    expect(await checkAdminCode('test-code', h)).toBe(true);
-    if (real) expect(await checkAdminCode(real)).toBe(true);
+describe('console code (single player asks the server)', () => {
+  const URL_OK = 'https://srv.example/api/admin-check';
+  afterEach(() => vi.unstubAllGlobals());
+  const stubFetch = (impl: (url: string, init: RequestInit) => Promise<Partial<Response>>) => {
+    const f = vi.fn(impl as unknown as typeof fetch);
+    vi.stubGlobal('fetch', f);
+    return f;
+  };
+
+  it('the check address comes from the server URL of the multiplayer client', () => {
+    expect(adminCheckUrl('wss://frontline-atlas.onrender.com/ws')).toBe('https://frontline-atlas.onrender.com/api/admin-check');
+    expect(adminCheckUrl('ws://localhost:8097/ws?x=1')).toBe('http://localhost:8097/api/admin-check');
+    expect(adminCheckUrl(null)).toBeNull();
+    expect(adminCheckUrl('ftp://x/ws')).toBeNull();
   });
-  it('refuses wrong, empty and near-miss codes', async () => {
-    const h = await sha256Hex('test-code');
-    for (const c of ['', 'test', 'test-code ', 'TEST-CODE', 'test-cod']) {
-      expect(await checkAdminCode(c, h)).toBe(false);
-      expect(await checkAdminCode(c)).toBe(false);
+  it('posts the code as JSON and unlocks only on {ok:true}', async () => {
+    const f = stubFetch(async (_u, init) => ({ ok: true, json: async () => ({ ok: JSON.parse(String(init.body)).code === 'test-code' }) }));
+    expect(await checkAdminCode('test-code', URL_OK)).toBe(true);
+    const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(URL_OK);
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({ code: 'test-code' });
+    for (const c of ['', 'test', 'test-code ', 'TEST-CODE']) expect(await checkAdminCode(c, URL_OK)).toBe(false);
+    expect(f).toHaveBeenCalledTimes(4); // the empty code never leaves the page
+  });
+  it('wrong answers, http errors, bad bodies and network failures are all just false', async () => {
+    stubFetch(async () => ({ ok: true, json: async () => ({ ok: false }) }));
+    expect(await checkAdminCode('x', URL_OK)).toBe(false);
+    stubFetch(async () => ({ ok: true, json: async () => ({ ok: 'true' }) }));
+    expect(await checkAdminCode('x', URL_OK)).toBe(false);
+    stubFetch(async () => ({ ok: false, status: 403, json: async () => ({ ok: true }) }));
+    expect(await checkAdminCode('x', URL_OK)).toBe(false);
+    stubFetch(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    expect(await checkAdminCode('x', URL_OK)).toBe(false);
+    stubFetch(async () => ({ ok: true, json: async () => Promise.reject(new Error('bad json')) }));
+    expect(await checkAdminCode('x', URL_OK)).toBe(false);
+    expect(await checkAdminCode('x', null)).toBe(false);
+  });
+  it('waits for a sleeping server (75 s) and gives up after that', async () => {
+    expect(ADMIN_CHECK_TIMEOUT_MS).toBe(75_000);
+    vi.useFakeTimers();
+    try {
+      stubFetch((_u, init) => new Promise((_res, rej) => init.signal?.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError')))));
+      const p = checkAdminCode('x', URL_OK);
+      let settled = false;
+      void p.then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(74_000);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(await p).toBe(false);
+    } finally {
+      vi.useRealTimers();
     }
+  });
+});
+
+/** Just enough DOM for el() and TerminalLine (the test environment is node). */
+function fakeDom() {
+  type Handler = (e: Record<string, unknown>) => void;
+  class FakeEl {
+    className = '';
+    textContent = '';
+    value = '';
+    type = 'text';
+    readOnly = false;
+    name = '';
+    maxLength = -1;
+    autocomplete = '';
+    spellcheck = true;
+    dataset: Record<string, string> = {};
+    attrs: Record<string, string> = {};
+    children: FakeEl[] = [];
+    handlers = new Map<string, Handler[]>();
+    focused = false;
+    classList = {
+      contains: (c: string) => this.className.split(' ').includes(c),
+      add: (c: string) => void (this.classList.contains(c) || (this.className = `${this.className} ${c}`.trim())),
+      remove: (c: string) => void (this.className = this.className.split(' ').filter((x) => x && x !== c).join(' ')),
+      toggle: (c: string, on?: boolean) => void ((on ?? !this.classList.contains(c)) ? this.classList.add(c) : this.classList.remove(c)),
+    };
+    constructor(public tag: string) {}
+    append(...k: FakeEl[]) {
+      this.children.push(...k);
+    }
+    setAttribute(k: string, v: string) {
+      this.attrs[k] = v;
+    }
+    addEventListener(t: string, h: Handler) {
+      this.handlers.set(t, [...(this.handlers.get(t) ?? []), h]);
+    }
+    focus() {
+      fake.active = this;
+      this.focused = true;
+    }
+    blur() {
+      if (fake.active === this) fake.active = null;
+      this.focused = false;
+    }
+    fire(t: string, e: Record<string, unknown> = {}) {
+      const ev = { stopped: false, prevented: false, stopPropagation() { this.stopped = true; }, preventDefault() { this.prevented = true; }, ...e };
+      for (const h of this.handlers.get(t) ?? []) h(ev);
+      return ev as typeof ev & { stopped: boolean; prevented: boolean };
+    }
+  }
+  const fake = {
+    active: null as FakeEl | null,
+    Cls: FakeEl,
+    install() {
+      vi.stubGlobal('document', {
+        createElement: (tag: string) => new FakeEl(tag),
+        get activeElement() {
+          return fake.active;
+        },
+      });
+    },
+  };
+  return fake;
+}
+
+describe('terminal line (what the owner sees while typing)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const make = () => {
+    const dom = fakeDom();
+    dom.install();
+    const calls = { submit: 0, escape: 0 };
+    const line = new TerminalLine({ submit: () => calls.submit++, escape: () => calls.escape++ });
+    const input = line.input as unknown as InstanceType<typeof dom.Cls>;
+    return { dom, line, input, root: line.el as unknown as InstanceType<typeof dom.Cls>, calls };
+  };
+
+  it('the input is a password field (masked dots, readable colour) with the bare label and no other hints', () => {
+    const { input, root } = make();
+    expect(input.type).toBe('password');
+    expect(input.attrs['aria-label']).toBe('terminal line');
+    expect(input.autocomplete).toBe('off');
+    const label = root.children.find((c) => c.className === 'adm-lbl');
+    expect(label?.textContent).toBe('terminal line');
+    expect(root.children.map((c) => c.textContent).filter((t) => t && t !== '…' && t !== 'terminal line')).toEqual([]);
+  });
+  it('opens with the caret in the input, even if the focus was elsewhere (clicked the map)', () => {
+    const { dom, line, input, root } = make();
+    const other = new dom.Cls('canvas');
+    other.focus();
+    expect(root.classList.contains('hidden')).toBe(true);
+    line.open();
+    expect(root.classList.contains('hidden')).toBe(false);
+    expect(dom.active).toBe(input);
+    expect(line.isOpen).toBe(true);
+    line.close();
+    expect(dom.active).toBeNull();
+    expect(line.isOpen).toBe(false);
+  });
+  it('re-takes focus on the next frame when the click that came with the hotkey stole it', () => {
+    const { dom, line, input } = make();
+    let frame: (() => void) | null = null;
+    vi.stubGlobal('requestAnimationFrame', (f: () => void) => void (frame = f));
+    line.open();
+    new dom.Cls('canvas').focus();
+    frame!();
+    expect(dom.active).toBe(input);
+  });
+  it('clicking the line puts the caret back in the input', () => {
+    const { dom, line, root, input } = make();
+    line.open();
+    new dom.Cls('canvas').focus();
+    const ev = root.fire('pointerdown', { target: root });
+    expect(ev.prevented).toBe(true);
+    expect(dom.active).toBe(input);
+  });
+  it('keys typed in the line never reach the game; Enter submits, Esc closes', () => {
+    const { input, calls } = make();
+    for (const t of ['keydown', 'keyup', 'keypress']) expect(input.fire(t, { key: 'w' }).stopped).toBe(true);
+    input.fire('keydown', { key: 'Enter' });
+    input.fire('keydown', { key: 'Escape' });
+    expect(calls).toEqual({ submit: 1, escape: 1 });
+  });
+  it('waiting shows "…", clears the dots, keeps the focus; a wrong answer leaves an empty line', () => {
+    const { dom, line, input, root } = make();
+    line.open();
+    input.value = 'secret';
+    line.setBusy(true);
+    const wait = root.children.find((c) => c.textContent === '…')!;
+    expect(wait.classList.contains('hidden')).toBe(false);
+    expect(input.value).toBe('');
+    expect(input.readOnly).toBe(true);
+    expect(dom.active).toBe(input);
+    line.setBusy(false);
+    expect(wait.classList.contains('hidden')).toBe(true);
+    expect(input.readOnly).toBe(false);
   });
 });
 
