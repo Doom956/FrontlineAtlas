@@ -191,15 +191,18 @@ export class SelectionOverlay {
     ctx.font = `600 11px ${MAP_NUM_FAMILY}`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    const lx = b.x + hs + 6;
     const lines = warn ? [label, warn] : [label];
     const tw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 10;
     const th = lines.length * 14 + 4;
+    // keep the label on screen: flip it to the left of the head near the right edge, nudge it down / up at the top / bottom
+    let lx = b.x + hs + 6;
+    if (lx - 5 + tw > cam.viewW - 4) lx = Math.max(9, b.x - hs - 6 - tw + 5);
+    const ly = Math.max(th / 2 + 100, Math.min(cam.viewH - th / 2 - 80, b.y)); // below the top cluster and its toasts, above the command bar
     ctx.fillStyle = 'rgba(10,13,21,0.82)';
-    ctx.fillRect(lx - 5, b.y - th / 2, tw, th);
+    ctx.fillRect(lx - 5, ly - th / 2, tw, th);
     lines.forEach((l, k) => {
       ctx.fillStyle = k === 0 ? BRASS : '#f0b07a';
-      ctx.fillText(l, lx, b.y - th / 2 + 9 + k * 14);
+      ctx.fillText(l, lx, ly - th / 2 + 9 + k * 14);
     });
   }
 }

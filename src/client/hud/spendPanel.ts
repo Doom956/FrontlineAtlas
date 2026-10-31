@@ -290,8 +290,8 @@ export class SpendPanel {
       if (s && me) refresh(s, me);
     });
     b.go.addEventListener('click', () => {
-      const name = this.ctx.state()?.players[this.ally]?.name ?? 'your ally';
-      if (this.ctx.act({ type: 'fundAlly', ally: this.ally, gold })) this.ctx.toast(`${formatCount(gold)} gold sent to ${name}: they fight harder against your enemies for a while`, 'good');
+      // the sim's 'allyAid' event already toasts "You funded <ally> with ..."; a second toast here said the same thing
+      this.ctx.act({ type: 'fundAlly', ally: this.ally, gold });
     });
     this.upd.push(refresh);
     setTip(b.box, 'Fund an ally: send gold; the ally fights harder against your enemies for a while and joins your wars more readily.');
