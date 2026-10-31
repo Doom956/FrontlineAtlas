@@ -32,6 +32,7 @@ import { buildTerrain, type TerrainData } from './render/terrain';
 import { TileFeed } from './render/tiles';
 import { UnitLayer } from './render/units';
 import { SelectionOverlay } from './render/selectionOverlay';
+import { PillarOverlay } from './render/pillarOverlay';
 import type { UiState } from './uiState';
 
 export { formatCount } from './render/common';
@@ -84,6 +85,8 @@ export class Renderer {
   private units = new UnitLayer();
   /** selection box, warship placement area, spearhead preview (render/selectionOverlay.ts) */
   private selectionOverlay = new SelectionOverlay();
+  /** stance ranges, blockades, escorts, supported fronts, air zones (render/pillarOverlay.ts) */
+  private pillarOverlay = new PillarOverlay();
   private selectedSet = new Set<number>();
   private selectedFrom: readonly number[] | null = null;
   private fronts = new FrontLayer();
@@ -251,6 +254,7 @@ export class Renderer {
     this.overlays.floaters(ctx, ui, camera, nowMs);
     this.overlays.strikeZones(ctx, state, camera, ui);
     this.overlays.hoverAndPreview(ctx, state, camera, ui, snap, this.units, frac, d);
+    this.pillarOverlay.draw(ctx, state, camera, ui, this.units, frac, nowMs);
     this.selectionOverlay.draw(ctx, state, camera, ui, nowMs);
 
     const tMini = performance.now();

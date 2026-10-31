@@ -14,7 +14,9 @@
 import { buildingsOf } from './buildings';
 import { annexTiles, frontTiles } from './combat';
 import {
+  ARMOR_AUTO_PATH_BUDGET,
   ARMOR_CUT_BONUS,
+  ARMOR_RETRY_SECONDS,
   ARMOR_POCKET_KILL,
   ARMOR_POCKET_MAX_TILES,
   ARMOR_RAILWAY_LEVELS,
@@ -155,6 +157,8 @@ export function collapsePockets(state: GameState, u: Unit, launch: number, headX
   const cap = Math.min(ARMOR_POCKET_MAX_TILES, Math.floor((vp.tiles - 1) / 2));
   if (cap < 1) return 0;
   const visited = new Set<number>();
+  // Tiles of searches that turned out open: reaching one means this piece is open too (they are not walls).
+  const openTiles = new Set<number>();
   const closes = (o: number, t: number): boolean => o === me || isWater(terrain[t]) || (o > 0 && o !== victim && areAllied(state, me, o));
   const tilesBefore = vp.tiles;
   let taken = 0;
@@ -187,6 +191,9 @@ export function collapsePockets(state: GameState, u: Unit, launch: number, headX
           if (!visited.has(j)) {
             visited.add(j);
             piece.push(j);
+          } else if (openTiles.has(j)) {
+            open = true;
+            break;
           }
           continue;
         }
@@ -196,7 +203,10 @@ export function collapsePockets(state: GameState, u: Unit, launch: number, headX
         }
       }
     }
-    if (open) continue;
+    if (open) {
+      for (const t of piece) openTiles.add(t);
+      continue;
+    }
     const moved = annexTiles(state, victim, me, piece);
     if (moved <= 0) continue;
     taken += moved;
@@ -271,9 +281,15 @@ function refit(state: GameState, u: Unit): void {
 // Action setDivisionMode
 // ---------------------------------------------------------------------------------------------------------------
 
-function driveTo(state: GameState, u: Unit, dest: number): boolean {
-  const path = ownLandPath(state, u.owner, unitTile(state, u), dest);
-  if (!path) return false;
+function driveTo(state: GameState, u: Unit, dest: number, auto = false): boolean {
+  if (auto && (u.retryTick ?? 0) > state.tick) return false;
+  // Automatic drives search less and wait ARMOR_RETRY_SECONDS after a failed route (an unreachable front / Factory).
+  const path = ownLandPath(state, u.owner, unitTile(state, u), dest, auto ? ARMOR_AUTO_PATH_BUDGET : undefined);
+  if (!path) {
+    if (auto) u.retryTick = state.tick + ARMOR_RETRY_SECONDS * TICKS_PER_SECOND;
+    return false;
+  }
+  u.retryTick = undefined;
   u.path = path;
   u.pathPos = 0;
   u.target = dest;
@@ -349,6 +365,8 @@ function isFoe(state: GameState, me: number, o: number): boolean {
 
 interface Strike {
   tile: number;
+  /** own tile the spearhead starts from */
+  launch: number;
   score: number;
 }
 
@@ -402,7 +420,7 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
     }
     const score = pv.expectedDepth + (cut ? ARMOR_CUT_BONUS : 0);
     if (pv.expectedDepth < ARMOR_SUPPORT_MIN_DEPTH && !cut) continue;
-    if (!best || score > best.score || (score === best.score && t < best.tile)) best = { tile: t, score };
+    if (!best || score > best.score || (score === best.score && t < best.tile)) best = { tile: t, launch: pv.launch, score };
   }
   return best;
 }
@@ -427,7 +445,7 @@ export function divisionStep(state: GameState, u: Unit): void {
     }
     if (!nearFactory(state, u)) {
       const f = nearestFactory(state, u.owner, unitTile(state, u));
-      if (f < 0 || !driveTo(state, u, f)) u.mode = 'hold';
+      if (f < 0 || !driveTo(state, u, f, true)) u.mode = 'hold';
     }
     return;
   }
@@ -441,21 +459,28 @@ export function divisionStep(state: GameState, u: Unit): void {
   // Worn down: refit at a Factory first (or in place without one).
   if (s < ARMOR_SUPPORT_REFIT && !nearFactory(state, u)) {
     const f = nearestFactory(state, u.owner, unitTile(state, u));
-    if (f >= 0 && driveTo(state, u, f)) return;
+    if (f >= 0 && driveTo(state, u, f, true)) return;
   }
   if (s < ARMOR_SUPPORT_READY) {
     if (nearFactory(state, u)) return; // refitting
     if (s < ARMOR_SUPPORT_REFIT) return; // no Factory to reach: refits slowly where it is
   }
-  if (s >= ARMOR_SUPPORT_READY) {
+  const w = state.map.width;
+  const near = d2(u.x, u.y, front % w, (front / w) | 0) <= (ARMOR_SUPPORT_RADIUS + 12) * (ARMOR_SUPPORT_RADIUS + 12);
+  if (s >= ARMOR_SUPPORT_READY && near && (u.retryTick ?? 0) <= state.tick) {
     const strike = bestStrike(state, u, front);
-    if (strike && moveTankDivisions(state, u.owner, [u.id], strike.tile).ok) return;
+    if (strike) {
+      // A cheap route check first (moveTankDivisions searches with the full budget).
+      if (ownLandPath(state, u.owner, unitTile(state, u), strike.launch, ARMOR_AUTO_PATH_BUDGET) && moveTankDivisions(state, u.owner, [u.id], strike.tile).ok) return;
+      u.retryTick = state.tick + ARMOR_RETRY_SECONDS * TICKS_PER_SECOND; // no route to the launch tile
+      return;
+    }
   }
   // Nothing to strike yet: hold just behind the front.
-  const w = state.map.width;
   if (d2(u.x, u.y, front % w, (front / w) | 0) <= (ARMOR_SUPPORT_HOLD + 6) * (ARMOR_SUPPORT_HOLD + 6) && u.state === 0) return;
+  if ((u.retryTick ?? 0) > state.tick) return;
   const hold = holdTileNear(state, u.owner, front);
-  if (hold >= 0 && hold !== unitTile(state, u)) driveTo(state, u, hold);
+  if (hold >= 0 && hold !== unitTile(state, u)) driveTo(state, u, hold, true);
 }
 
 // ---------------------------------------------------------------------------------------------------------------

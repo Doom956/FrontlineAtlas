@@ -19,7 +19,9 @@ export type TargetMode =
   /** owner console: clicks go to `pick` (sticky until Esc); brush = dragging paints too (adminConsole.ts) */
   | { kind: 'adminTile'; label: string; pick: (tile: number) => void; brush?: boolean; radius?: number }
   /** next click = centre of an Upgrade area (Action upgradeArea; hud/buildMenu.ts): radius in tiles, optional type */
-  | { kind: 'upgradeArea'; radius: number; building?: BuildingType; levels: number };
+  | { kind: 'upgradeArea'; radius: number; building?: BuildingType; levels: number }
+  /** next click aims a stance / mode / air mission (pillars.ts): ships, divisions or an airfield tile (-1 = all) */
+  | { kind: 'pillarPick'; pick: 'bombard' | 'blockade' | 'front' | 'airSupport' | 'airStrategic' | 'airSuperiority'; unitIds: number[]; airfield: number; label: string };
 
 export interface UiState {
   mode: TargetMode;

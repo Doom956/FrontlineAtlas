@@ -1209,3 +1209,6 @@ export const NAVY_ESCORT_SPEED = 2;
 export const NAVY_PORT_REPAIR = 0.1;
 /** two nations count as at war while an attack runs between them and this many seconds after (fleets, support divisions) */
 export const NAVY_WAR_MEMORY = 30;
+/** automatic division drives (support / refit modes) search at most this many tiles, and wait this long after a failed route */
+export const ARMOR_AUTO_PATH_BUDGET = 8000;
+export const ARMOR_RETRY_SECONDS = 20;

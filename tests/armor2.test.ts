@@ -6,8 +6,10 @@ import { markBuildingsChanged } from '../src/sim/buildings';
 import { ARMOR_REFIT_FACTORY, ARMOR_REFIT_FIELD, ARMOR_VET_XP, TANK_BUILD_SECONDS, TANK_DIVISION_TROOPS, UNITS } from '../src/sim/config';
 import { hashState } from '../src/sim/hash';
 import { tick } from '../src/sim/sim';
-import { newId } from '../src/sim/state';
+import { computeCoastAndLand } from '../src/sim/mapgen';
+import { newId, setOwner } from '../src/sim/state';
 import { spawnTankDivision, tankDivisionLimit } from '../src/sim/tanks';
+import { Terrain } from '../src/sim/types';
 import type { Action, Building, BuildingType, GameState, Unit } from '../src/sim/types';
 import { validateAction } from '../server/validate';
 import { claimRect, makeFlatGame, troopSum } from './helpers';
@@ -149,6 +151,23 @@ describe('encirclement', () => {
     expect(collapsePockets(o, v, at(o, 29, 15), 42, 15)).toBe(12 * 13); // only the south piece
     expect(o.map.owner[at(o, 35, 5)]).toBe(2);
     expect(o.map.owner[at(o, 35, 25)]).toBe(1);
+  });
+
+  it('land still joined to the capital around the head does not collapse (open searches are not walls)', () => {
+    // 100x40: water east of x 29; player 2 holds a strip x 20..29, y 0..29 (capital north), player 1 the rest.
+    const s = makeFlatGame(100, 40, 2, { human: true, seed: 5 });
+    for (let y = 0; y < 40; y++) for (let x = 30; x < 100; x++) s.map.terrain[at(s, x, y)] = Terrain.DeepWater;
+    computeCoastAndLand(s.map);
+    claimRect(s, 1, 0, 0, 19, 39);
+    claimRect(s, 2, 20, 0, 29, 29);
+    claimRect(s, 1, 20, 30, 29, 39);
+    s.players[2].capital = at(s, 25, 3);
+    // A short spearhead took x 20..23 of rows 19..21: x 24..29 still joins north and south.
+    for (let y = 19; y <= 21; y++) for (let x = 20; x <= 23; x++) setOwner(s, at(s, x, y), 1);
+    const u = spawnTankDivision(s, 1, at(s, 10, 20));
+    u.targetOwner = 2;
+    expect(collapsePockets(s, u, at(s, 19, 20), 23, 20)).toBe(0);
+    expect(s.map.owner[at(s, 22, 25)]).toBe(2);
   });
 
   it('a spearhead through the gap cuts the land west of the column off, and it collapses', () => {

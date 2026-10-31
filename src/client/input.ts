@@ -10,6 +10,7 @@ import { buildClickAction, effectiveCount, upgradeAreaAction } from './hud/build
 import { strikeAction, strikeForKey, strikeTarget, type StrikeId } from './strikes';
 import type { Renderer } from './renderer';
 import type { Dispatch, GetState, UiState } from './uiState';
+import { pillarPickClick } from './pillars';
 import { boxSelection, selectAllOf, selectionClick, spawnWarshipAction, tankDivisionClickAction, toggleInSelection } from './selection';
 
 export interface InputDeps {
@@ -346,6 +347,13 @@ export function setupInput(deps: InputDeps): () => void {
         // the owner console's pick: it stays on for more clicks until Esc
         mode.pick(tile);
         return;
+      case 'pillarPick': {
+        // aims a warship stance, a division's front or an air mission (pillars.ts)
+        const r = pillarPickClick(s, ui, dispatch, tile);
+        if (!r.ok && r.reason) ui.toast = { text: r.reason, until: performance.now() + TOAST_MS };
+        ok = r.ok;
+        break;
+      }
       case 'none':
         // own units selected: the click is their order (water / own land / spearhead), see selection.ts
         if (ui.selection.length && selectionClick(s, ui, dispatch, tile, (text) => (ui.toast = { text, until: performance.now() + TOAST_MS }))) return;

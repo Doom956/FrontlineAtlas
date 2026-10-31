@@ -19,6 +19,9 @@ import { aircraftAt, buildUnit, hpText, priceText, UNIT_TEXT, unitBuildStatus, u
 import { iconDataUrl, type IconId } from '../icons';
 import { formatCount } from '../render/common';
 import { aimStrike, STRIKES, strikeStatus, type StrikeId } from '../strikes';
+import { divisionOrderLine, pillarSummary, setMission, STANCE_INFO, vetOf, warshipOrderLine } from '../pillars';
+import { warshipStance } from '../../sim/naval2';
+import { AirPanel } from './airPanel';
 import { el, sectionTitle, setText, setTip, type DrawerId, type HudCtx } from './dom';
 import type { DrawerPage } from './drawers';
 import { iconSpan, lineIcon, worldGlyph } from './glyph';
@@ -42,6 +45,8 @@ interface RowSpec {
   tile: number;
   acts: Act[];
   warn?: boolean;
+  /** a panel under the row (an airfield's mission selector, hud/airPanel.ts); kept across rebuilds by its owner */
+  extra?: HTMLElement;
 }
 
 function pic(p: RowSpec['pic'], px: number): HTMLElement {
@@ -131,7 +136,10 @@ class Group {
           this.rowBtns.push(bs);
           acts.append(...bs);
           row.append(pic(r.pic, 26), txt, acts);
-          return row;
+          if (!r.extra) return row;
+          const wrap = el('div', 'frow-wrap');
+          wrap.append(row, r.extra);
+          return wrap;
         }),
       );
       setText(this.empty, empty);
@@ -161,6 +169,10 @@ export class ForcesPage implements DrawerPage {
   private missiles: Group;
   private artillery: Group;
   private land: Group;
+  /** each airfield's mission selector, by airfield tile (kept so its buttons keep hover and focus) */
+  private airPanels = new Map<number, AirPanel>();
+  /** one line: what each pillar is doing ("3 warships, 2 at work · 1 division on a front · 1 of 2 wings on a mission") */
+  private summary = el('p', 'note forces-sum');
 
   constructor(private ctx: HudCtx) {
     const say = (t: string) => {
@@ -173,7 +185,8 @@ export class ForcesPage implements DrawerPage {
     this.artillery = new Group('Artillery', 'artillery', say);
     this.land = new Group('Land', 'land', say);
     const intro = el('p', 'note', 'Click a unit\'s name to find it. Select warships or tank divisions (click, Shift+click, Shift+drag a box; Shift+W all warships, Shift+A all divisions), then click where they go. Transports: click land across the sea. Esc cancels.');
-    this.root.append(intro, this.fleet.el, this.land.el, this.air.el, this.missiles.el, this.artillery.el);
+    this.summary.dataset.test = 'forces-summary';
+    this.root.append(intro, this.summary, this.fleet.el, this.land.el, this.air.el, this.missiles.el, this.artillery.el);
   }
 
   private near(): { x: number; y: number } {
@@ -243,6 +256,16 @@ export class ForcesPage implements DrawerPage {
     const ctx = this.ctx;
     const focus = (t: number) => ctx.focusTile(t, true);
     const mine = s.units.filter((u) => u.owner === me.id && u.hp > 0);
+    {
+      const p = pillarSummary(s, me.id);
+      const parts: string[] = [];
+      if (p.ships) parts.push(`${p.ships} warship${p.ships === 1 ? '' : 's'}, ${p.shipsWorking} at work${p.blockading ? `, ${p.blockading} port${p.blockading === 1 ? '' : 's'} blockaded` : ''}`);
+      if (p.tanks) parts.push(`${p.tanks} division${p.tanks === 1 ? '' : 's'}, ${p.tanksSupporting} on a front`);
+      if (p.wings) parts.push(`${p.wingsOnMission} of ${p.wings} air wing${p.wings === 1 ? '' : 's'} on a mission`);
+      if (p.blockaded) parts.push(`${p.blockaded} of your ports blockaded: sink the ships off them`);
+      setText(this.summary, parts.join(' · '));
+      this.summary.classList.toggle('hidden', !parts.length);
+    }
 
     // ---- fleet
     {
@@ -254,14 +277,14 @@ export class ForcesPage implements DrawerPage {
           key: `w${u.id}`,
           pic: { unit: 'warship' },
           title: `Warship ${k + 1}`,
-          status: `Hull ${hpText(u)} · ${unitDoing(s, me, u)}`,
+          status: `${STANCE_INFO[warshipStance(u)].name}${(u.vet ?? 0) > 0 ? ` ${'★'.repeat(vetOf(u).level)}` : ''} · Hull ${hpText(u)} · ${warshipOrderLine(s, me.id, u) || unitDoing(s, me, u)}`,
           tile: this.tileOf(s, u),
           warn: u.hp < UNITS.warship.hp,
           acts: [
             {
               label: sel ? 'Selected' : 'Select',
               cls: sel ? 'on' : '',
-              tip: 'Select it, then click water to send it there',
+              tip: 'Select it: set its stance (Auto, Hunt, Escort, Bombard, Blockade) or click water to send it there',
               run: () => {
                 ctx.ui.mode = { kind: 'none' };
                 ctx.ui.selection = [u.id];
@@ -301,14 +324,14 @@ export class ForcesPage implements DrawerPage {
           key: `d${u.id}`,
           pic: { unit: 'armor' },
           title: `Tank division ${k + 1}`,
-          status: unitDoing(s, me, u),
+          status: `${(u.vet ?? 0) > 0 ? `${'★'.repeat(vetOf(u).level)} · ` : ''}${divisionOrderLine(s, me.id, u)}`,
           tile: this.tileOf(s, u),
           acts: [
             {
               label: sel ? 'Selected' : 'Select',
               cls: sel ? 'on' : '',
               off: u.state === 3 ? 'In a spearhead: it takes no orders until it ends' : '',
-              tip: 'Select it, then click your land to move it or enemy land at your border to launch a spearhead',
+              tip: 'Select it: Hold, Support front (it spearheads by itself) or Refit; or click your land to move it, enemy land at your border to spearhead',
               run: () => {
                 ctx.ui.mode = { kind: 'none' };
                 ctx.ui.selection = [u.id];
@@ -363,6 +386,12 @@ export class ForcesPage implements DrawerPage {
           if (unitAllowed(s, 'bomber')) acts.push({ label: 'Bomb', icon: 'bomb', cls: 'danger', off: b.bombers > 0 ? '' : 'No bombers here: build one first', tip: STRIKES.bomb.what, run: () => this.aim('bomb', () => (ctx.ui.mode = { kind: 'bomb', airfield: b.tile })) });
           if (unitAllowed(s, 'paradrop')) acts.push({ label: 'Paradrop', icon: 'paradrop', cls: 'danger', off: b.dropCooldown > 0 ? `Next drop in ${Math.ceil(b.dropCooldown)} s` : '', tip: STRIKES.paradrop.what, run: () => this.aim('paradrop', () => (ctx.ui.mode = { kind: 'paradrop', airfield: b.tile })) });
         }
+        let panel = this.airPanels.get(b.tile);
+        if (!panel) {
+          panel = new AirPanel(ctx, b.tile, true);
+          this.airPanels.set(b.tile, panel);
+        }
+        panel.update(s, me, b);
         rows.push({
           key: `a${b.id}:${built}`,
           pic: { building: 'airfield' },
@@ -370,13 +399,30 @@ export class ForcesPage implements DrawerPage {
           status: built ? `${b.bombers} bomber${b.bombers === 1 ? '' : 's'}, ${b.fighters} fighter${b.fighters === 1 ? '' : 's'} · room for ${Math.max(0, room)} more` : `Being built: ${Math.ceil(b.buildLeft)} s`,
           tile: b.tile,
           acts,
+          extra: built ? panel.el : undefined,
         });
       });
       for (const u of mine.filter((q) => q.type === 'bomber' || q.type === 'transportPlane')) {
         rows.push({ key: `p${u.id}`, pic: { unit: u.type === 'bomber' ? 'bomber' : 'transportPlane' }, title: unitName(u), status: unitDoing(s, me, u), tile: this.tileOf(s, u), acts: [] });
       }
       const empty = !allowed ? 'Aircraft are off in this game.' : fields.length ? '' : hasTech(me, 'flight') ? 'Bombers and fighters: build an Airfield (Build menu, F).' : `Bombers and fighters: ${UNIT_TEXT.bomber.unlock.toLowerCase()}.`;
-      this.air.set([], rows, empty, focus);
+      for (const t of [...this.airPanels.keys()]) if (!fields.some((b) => b.tile === t)) this.airPanels.delete(t);
+      // one click: every airfield that reaches supports a front (then click the attack or front)
+      const head: Act[] = [];
+      const ready = fields.filter((b) => b.buildLeft <= 0);
+      if (ready.length > 1 && hasTech(me, 'flight') && unitAllowed(s, 'bomber')) {
+        head.push({
+          label: 'All: support',
+          icon: 'attack',
+          tip: 'Every airfield in reach bombs ahead of your attack on one front: click the attack or front',
+          run: () => {
+            const why = setMission(s, ctx.ui, ctx.dispatch, -1, 'support');
+            if (why) ctx.toast(why, 'info');
+            else ctx.closeDrawer();
+          },
+        });
+      }
+      this.air.set(head, rows, empty, focus);
     }
 
     // ---- missiles

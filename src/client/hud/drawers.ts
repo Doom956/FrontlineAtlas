@@ -53,6 +53,7 @@ import { iconSpan, lineIcon, worldGlyph } from './glyph';
 import { AllyHelp } from './allyHelp';
 import { heartlandBonus, lastStandBonus } from '../allies';
 import { ABILITY_TEXT, article, buildingTexts, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect, terrainNote } from './text';
+import { AirPanel } from './airPanel';
 
 export const TROOP_COLORS = { infantry: '#9aa86a', armor: '#c9a227', artillery: '#c0564a' } as const;
 
@@ -756,6 +757,10 @@ export class BuildingPage implements DrawerPage {
       const counts = el('p', 'note');
       actions.before(counts);
       this.upd.push((_s, _m, bb) => setText(counts, `${bb.bombers} bombers, ${bb.fighters} fighters (room for ${aircraftCap(bb)})`));
+      // the wing's standing mission: Support front / Strategic / Superiority / Idle (hud/airPanel.ts)
+      const wing = new AirPanel(ctx, tile);
+      actions.before(wing.el);
+      this.upd.push((ss, m, bb) => wing.update(ss, m, bb));
       for (const kind of ['bomber', 'fighter'] as const) {
         const name = UNITS[kind].name;
         const g = ctx.state();

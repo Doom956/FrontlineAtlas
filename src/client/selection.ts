@@ -16,6 +16,7 @@ import { bestFactory, canBuildTankDivision, spearheadPreview, type SpearheadPrev
 import { isWater } from '../sim/types';
 import type { Action, GameState, Player, Unit } from '../sim/types';
 import { unitBuildStatus } from './forces';
+import { pocketLine, pocketPreview } from './pillars';
 import type { Dispatch, UiState } from './uiState';
 
 /** A spearhead preview older than this waits for a fresh click (ms). */
@@ -203,9 +204,12 @@ export function selectionChipText(state: GameState, ui: UiState, now = performan
   const pend = ui.pendingSpearhead;
   if (pend && now - pend.at < SPEARHEAD_CONFIRM_MS && c.tanks.length) {
     const p = previewFor(state, me, ui.selection, pend.tile);
-    if (p && !p.reason) return `${spearheadLine(p)}. Click again to launch, Esc to cancel.`;
+    if (p && !p.reason) {
+      const pocket = pocketLine(state, pocketPreview(state, me, p));
+      return `${spearheadLine(p)}${pocket ? `. ${pocket}` : ''}. Click again to launch, Esc to cancel.`;
+    }
   }
-  const what = c.warships.length && c.tanks.length ? 'click water or land to move them' : c.warships.length ? 'click water to move' : 'click your land to move, enemy land to spearhead';
+  const what = c.warships.length && c.tanks.length ? 'click water or land to move them, or give orders below' : c.warships.length ? 'click water to move, or pick a stance below' : 'click your land to move, enemy land to spearhead, or pick a mode below';
   return `${head}: ${what}. Esc clears.`;
 }
 

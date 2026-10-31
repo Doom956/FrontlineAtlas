@@ -355,6 +355,8 @@ export interface Unit {
   vet?: number;
   /** tank division mode (armor2.ts); absent = 'hold' */
   mode?: DivisionMode;
+  /** tank division (armor2.ts): no automatic drive is tried before this tick (the last route failed); absent = 0 */
+  retryTick?: number;
   /** bomber / cargo plane flying an air-wing mission (airwings.ts): 1 = support, 2 = strategic; absent = manual */
   mission?: number;
   /** air-wing escort (airwings.ts): fighter interceptions this plane's escort can still fight off; absent = 0 */

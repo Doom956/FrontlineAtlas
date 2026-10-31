@@ -17,6 +17,7 @@ import { hasTech } from '../sim/tech';
 import { isWater } from '../sim/types';
 import type { Building, GameState, Player, Unit, UnitType } from '../sim/types';
 import { formatCount } from './render/common';
+import { warshipOrderLine } from './pillars';
 import type { IconId } from './icons';
 import type { Dispatch } from './uiState';
 
@@ -260,6 +261,9 @@ export function unitDoing(state: GameState, me: Player, u: Unit): string {
     case 'warship': {
       const foe = enemyShipNear(state, u);
       if (foe) return `Fighting ${nameOf(state, me, foe.owner)} ${foe.type === 'tradeShip' ? 'trade ship' : UNITS[foe.type].name.toLowerCase()}`;
+      // stance work: shelling a coast, blockading a port, escorting (pillars.ts)
+      const order = u.owner === me.id ? warshipOrderLine(state, me.id, u) : '';
+      if (order) return order;
       if (u.state === 1) {
         const to = unitPlace(state, me, u.target);
         return to.startsWith('off ') ? `Sailing ${to}` : `Sailing to ${to}`;
@@ -299,8 +303,12 @@ export function tankDivisionDoing(state: GameState, me: number, u: Unit): string
       return `Moving up to spearhead into ${name(u.target)}`;
     case 3:
       return `Spearhead into ${state.players[u.targetOwner]?.name ?? 'neutral land'}: ${u.cargo | 0} tiles taken`;
-    default:
+    default: {
+      const mode = u.mode ?? 'hold';
+      if (mode === 'support') return 'Supporting a front: spearheads into weak spots when ready';
+      if (mode === 'refit') return 'Refitting at a Factory';
       return 'Holding: defends the land around it';
+    }
   }
 }
 

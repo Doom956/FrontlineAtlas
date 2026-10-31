@@ -1,6 +1,9 @@
 // The selected unit's card: a small card next to your selected warship (it follows the ship) with its type, owner,
 // hull and current order, while the line at the top says what a click does. Esc or the X cancels the selection.
-import { UNITS, WARSHIP_RANGE } from '../../sim/config';
+import { WARSHIP_RANGE } from '../../sim/config';
+import { divisionMode, divisionStrength } from '../../sim/armor2';
+import { warshipMaxHp, warshipStance } from '../../sim/naval2';
+import { MODE_INFO, STANCE_INFO, vetOf } from '../pillars';
 import type { GameState, Player } from '../../sim/types';
 import { hpText, unitDoing } from '../forces';
 import { iconDataUrl } from '../icons';
@@ -72,7 +75,8 @@ export class UnitCard {
       const tank = u.type === 'tankDivision';
       const same = state.units.filter((q) => q.owner === me.id && q.type === u.type);
       setText(this.title, `${tank ? 'Tank division' : 'Warship'} ${same.indexOf(u) + 1}`);
-      setText(this.sub, 'Yours · selected');
+      const lvl = vetOf(u).level;
+      setText(this.sub, `Yours · ${tank ? MODE_INFO[divisionMode(u)].name : STANCE_INFO[warshipStance(u)].name}${lvl ? ` · veteran ${lvl}` : ''}`);
       if (this.imgType !== u.type) {
         this.imgType = u.type;
         try {
@@ -81,10 +85,10 @@ export class UnitCard {
           /* no canvas */
         }
       }
-      setVisible(this.hp, !tank);
       setVisible(this.range, !tank);
-      this.hpFill.style.width = `${Math.round((Math.max(0, u.hp) / UNITS[u.type].hp) * 100)}%`;
-      this.hp.dataset.tip = `Hull ${hpText(u)}`;
+      const share = tank ? divisionStrength(u) : Math.max(0, u.hp) / Math.max(1, warshipMaxHp(u));
+      this.hpFill.style.width = `${Math.round(Math.min(1, share) * 100)}%`;
+      this.hp.dataset.tip = tank ? `Strength ${Math.round(share * 100)}%` : `Hull ${hpText(u)}`;
       setText(this.order, unitDoing(state, me, u));
     }
     const p = this.ctx.probe()?.unitScreen(id);

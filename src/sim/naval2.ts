@@ -648,6 +648,14 @@ const ESCORT_FOLLOW_TICKS = 5;
  */
 export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], wars: Set<number>): void {
   const st = warshipStance(u);
+  // Only auto / hunt chase ships: a chase left over from before a stance change ends here.
+  if (u.state === 2 && st !== 'auto' && st !== 'hunt') {
+    u.state = 0;
+    u.chase = 0;
+    u.chaseLost = 0;
+    u.path = [];
+    u.pathPos = 0;
+  }
   // Escorts re-aim often (their charge moves fast).
   if (u.state === 4) {
     if ((state.tick + u.id) % ESCORT_FOLLOW_TICKS !== 0) return;

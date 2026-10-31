@@ -508,6 +508,35 @@ the branches into their research order right after the prerequisites.
   expected depth and warnings without changing anything. AIs build divisions from armor and spearhead into their
   main war, or else into the nation attacking them hardest, once the preview expects at least 3 tiles
   (`aiTankDivisions`, through applyAction).
+- **Warship stances, shore bombardment, blockades** (src/sim/naval2.ts; `setUnitStance {unitIds, stance}`):
+  `auto` (default: intercepts near its post and, while its owner is at war, parks off enemy coast within
+  `NAVY_AUTO_BOMBARD_REACH` of the post, fronts first, then goes home), `hunt` (intercepts over
+  `NAVY_HUNT_DETECT` / `NAVY_HUNT_LEASH`), `escort` (sticks to own transports, then trade ships; an escorted ship takes
+  x `NAVY_ESCORT_DAMAGE` damage; escorts sail x2), `bombard` (parks off enemy coast, shells x
+  `NAVY_BOMBARD_STANCE_KILL`), `blockade` (parks off an enemy port). State 3 = on station (`Unit.station` = the coast
+  or port tile), 4 = escorting (`station` = the ship's id). "At war" = an attack running between the two, or within
+  `NAVY_WAR_MEMORY` s (`state.warMemory`). Fronts: enemy land within `NAVY_SUPPORT_RANGE` of own warships costs
+  defence / (1 + bonus) and advances faster (bonus 0.35 for the first ship, x0.6 for each further one, cap 0.8) and
+  counts as supplied; a landing next to own warships pays x `NAVY_BEACHHEAD_LOSS` and its beachhead supplies twice as
+  long. A port within `NAVY_BLOCKADE_RANGE` of a warship at war with its owner is blockaded: its trade pays x 0.25,
+  its owner's land within `NAVY_BLOCKADE_SUPPLY_RADIUS` is badly supplied (attacks) and unsupplied (defence), and the
+  blockader's warships capture its trade ships (cargo x `NAVY_CAPTURE_GOLD` to them). Veterancy (sinking, shelling):
+  +1 max hp and +20% damage per level; ships near an own port mend. Fleet cap `NAVY_CAP_BASE` + 3 per port level;
+  higher ports build faster. Carriers: support range x1.5; Submarines: blockade range and captured gold x1.5. AIs
+  (`aiNavy`): at war, fixed roles per ship (blockade / bombard / auto, admirals also hunt), escorts for transports,
+  idle ships move their post toward the enemy's coast; coastal AIs research Navigation once boxed in or at 5 techs.
+- **Divisions, part two** (src/sim/armor2.ts; `setDivisionMode {unitIds, mode, front?}`): a spearhead no longer
+  spends a division (it disbands only under `TANK_DISBAND_SHARE`); holding divisions refit from the pool
+  (`ARMOR_REFIT_FACTORY` per s near an own Factory, `ARMOR_REFIT_FIELD` elsewhere). Spearheads of 8+ tiles give
+  veterancy (`ARMOR_VET_XP`): +12% speed and depth, -8% losses per level. Encirclement: every `ARMOR_POCKET_EVERY`
+  tiles and at the end, pieces of the target's land next to the line closed by the attacker's / allied land, water
+  and the map edge (no capital, under half its land, at most `ARMOR_POCKET_MAX_TILES`) collapse to the attacker,
+  killing that share x `ARMOR_POCKET_KILL` of its army. Modes: `hold`; `support` (holds behind `front`, every
+  `ARMOR_SUPPORT_SCAN_SECONDS` strikes the best of 8 border tiles of nations at war within `ARMOR_SUPPORT_RADIUS` by
+  expected depth + `ARMOR_CUT_BONUS` for a line that crosses their land, when at `ARMOR_SUPPORT_READY` strength;
+  drives to a Factory to refit under `ARMOR_SUPPORT_REFIT`); `refit` (to the nearest Factory, then hold). Cap: one
+  per Factory level, + one per 2 levels with Railways. AIs put their divisions on `support` at the main war's front
+  (`aiDivisionModes`); warlords field up to 6.
 - **Trade ship**: each Port periodically sends one to one of a stable handful of partner ports on its sea (a pair
   hash picks them) of players not at war with it (allies weighted x2), so routes stay cached. Delivered gold goes to
   both owners (scaled by path length). Enemy warships sink them.
@@ -749,6 +778,20 @@ full-map scans after `createGame`.
   (`buildWarship {port, tile}`); "Tank division" (`enterTankDivisionBuildMode`) asks for a click on one of your
   factories. After a game ends, "Continue playing" / "Keep watching" (online only the private game's host) sends
   `continueGame`; a "Victory: <winner>" chip stays in the top-right cluster.
+- Pillar controls (client/pillars.ts, hud/ordersBar.ts, hud/airPanel.ts, hud/pillarAdvice.ts,
+  render/pillarOverlay.ts): with warships or tank divisions selected, an orders bar above the advisor line holds the
+  stance (Auto / Hunt / Escort / Bombard / Blockade, `setUnitStance`) or mode (Hold / Support front / Refit,
+  `setDivisionMode`) buttons with a one-line explanation, veterancy pips and a hull / strength meter. Bombard and
+  Blockade are set at once and then take an optional click on an enemy coast / port (the ships sail there with
+  `moveWarships`; Esc lets them pick the nearest); Support front waits for a click on the front (target mode
+  `pillarPick`). Every finished airfield gets a mission selector (Support / Strategic / Superiority / Idle,
+  `setAirMission`, a click for the target; re-buy losses toggle) in its building drawer and in the Forces drawer's Air
+  group (header: "All: support" = airfield -1). The Forces drawer's rows show stance / mode / mission and a summary
+  line per pillar. The map shows the shore-support range of selected warships, station lines and crosshairs, escort
+  links, blockade rings on ports, supported fronts (dotted line + flag), live air-support zones and the superiority
+  patrol circle. The spearhead preview hatches the pocket it would encircle (a client copy of armor2's pocket rule)
+  and says "Encircles ~N tiles". The advisor suggests a pillar when it fits (coastal front: Bombard; open ground:
+  Support front; dug-in front: air support; enemy planes: superiority).
 - HUD (hud.ts + hud/*, "war room" style: near-opaque gunmetal panels, thin steel rules, brass for actions and key
   numbers; Barlow Condensed labels, IBM Plex Sans values, Saira Stencil One logo, all bundled in fonts.ts). The
   default screen has only three things: the bottom command bar (troops / cap with growth, trend arrow, a bar with the

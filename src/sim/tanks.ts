@@ -1044,8 +1044,10 @@ export function aiTankDivisions(state: GameState, id: number, act: (a: Action) =
   }
   if (tile < 0) return;
   const ids = idle.slice(0, 2).map((u) => u.id);
-  // Far from that front: drive up first (the front moves while they drive); spearhead on a later decision.
+  // Far from that front: drive up first (the front moves while they drive); spearhead on a later decision. Divisions on
+  // 'support' (armor2.ts) drive up by themselves.
   if (bestD > 30 * 30) {
+    if (lead.mode === 'support') return;
     const near = launchTileFor(state, id, tile);
     if (near >= 0) act({ type: 'moveTankDivision', unitIds: ids, tile: near });
     return;

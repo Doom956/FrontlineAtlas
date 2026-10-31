@@ -161,6 +161,7 @@ export function hashState(state: GameState): number {
     h = mixFloat(h, u.xp ?? 0);
     h = mixInt(h, u.vet ?? 0);
     h = mixInt(h, u.mode ? DIVISION_MODES.indexOf(u.mode) + 1 : 0);
+    h = mixInt(h, u.retryTick ?? 0);
   }
   // Recent wars (naval2.ts).
   const wm = state.warMemory ?? [];

@@ -29,6 +29,7 @@ import { ForcesPage } from './hud/forcesPage';
 import { DoctrinePage } from './hud/doctrinePage';
 import { DOCTRINE_KEY, doctrineIcon, fmtDuration, levelUpText } from './doctrineView';
 import { UnitCard } from './hud/unitCard';
+import { OrdersBar } from './hud/ordersBar';
 import {
   ArmyPage,
   BuildingPage,
@@ -127,6 +128,8 @@ export class Hud {
   private toasts: Toasts;
   private tooltip: MapTooltip;
   private unitCard: UnitCard;
+  /** stance / mode bar while warships or tank divisions are selected (hud/ordersBar.ts) */
+  private orders: OrdersBar;
   private probe: UnitProbe | null = null;
   private events: EventsPage;
   private building: BuildingPage;
@@ -253,7 +256,8 @@ export class Hud {
     this.bar = new CommandBar(this.ctx);
     const bottom = el('div', 'hud-bottom');
     this.bottomEl = bottom;
-    bottom.append(this.advisor.el, this.bar.el);
+    this.orders = new OrdersBar(this.ctx);
+    bottom.append(this.orders.el, this.advisor.el, this.bar.el);
 
     this.toasts = new Toasts();
     this.tooltip = new MapTooltip(this.ctx);
@@ -615,6 +619,7 @@ export class Hud {
       else if (m.kind === 'spawnWarship') chip = 'Warship: click water near your port (shaded) where it should appear. Esc to cancel.';
       else if (m.kind === 'buildTankDivision') chip = 'Tank division: click one of your factories. Esc to cancel.';
       else if (m.kind === 'adminTile') chip = m.label;
+      else if (m.kind === 'pillarPick') chip = m.label;
       else if (m.kind !== 'none') chip = instruction(state, me, m);
       else if (ui.selection.length && !this.watching) chip = selectionChipText(state, ui);
       else if (ui.paused && !this.hudOpts.online) chip = 'Paused';
@@ -666,6 +671,7 @@ export class Hud {
 
     if (!this.watching) this.tooltip.update(state, me, false);
     if (!this.watching) this.unitCard.update(state, me);
+    if (!this.watching) this.orders.update(state, me);
     if (state.phase === 'over' && !this.gameOverShown) this.showGameOver(state, me);
     else if (this.gameOverShown && state.phase !== 'over') {
       // the game was continued (continueGame): play on, the winner stays on the chip

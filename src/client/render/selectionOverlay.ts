@@ -11,6 +11,7 @@ import type { Camera } from '../camera';
 import { previewFor, SPEARHEAD_CONFIRM_MS, splitSelection, warshipSpawnArea, warshipSpawnCheck } from '../selection';
 import type { UiState } from '../uiState';
 import { MAP_NUM_FAMILY } from './common';
+import { pocketPreview } from '../pillars';
 
 const AREA_MS = 1000;
 const BRASS = '#e3c04e';
@@ -152,6 +153,17 @@ export class SelectionOverlay {
     if (pts.length < 2) return;
     const deep = Math.min(pts.length - 1, Math.max(1, p.expectedDepth));
     const alpha = pend >= 0 ? 0.55 : 0.32;
+    // encirclement: the pocket the line would cut off, hatched in brass (pillars.pocketPreview)
+    const pocket = pocketPreview(state, me, p);
+    if (pocket) {
+      const z = cam.zoom;
+      ctx.fillStyle = `rgba(227,192,78,${pend >= 0 ? 0.26 : 0.16})`;
+      for (const t of pocket.tiles) {
+        const q = cam.tileToScreen(t % w, (t / w) | 0);
+        if (q.x < -z || q.y < -z || q.x > cam.viewW || q.y > cam.viewH) continue;
+        ctx.fillRect(q.x, q.y, z + 0.5, z + 0.5);
+      }
+    }
     const width = Math.max(5, Math.min(16, cam.zoom * 2.2));
     // solid part: as deep as it is expected to get
     ctx.lineCap = 'round';
@@ -191,7 +203,9 @@ export class SelectionOverlay {
     ctx.font = `600 11px ${MAP_NUM_FAMILY}`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    const lines = warn ? [label, warn] : [label];
+    const lines = [label];
+    if (pocket) lines.push(`encircles ~${pocket.tiles.length} tiles`);
+    if (warn) lines.push(warn);
     const tw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 10;
     const th = lines.length * 14 + 4;
     // keep the label on screen: flip it to the left of the head near the right edge, nudge it down / up at the top / bottom
@@ -201,7 +215,7 @@ export class SelectionOverlay {
     ctx.fillStyle = 'rgba(10,13,21,0.82)';
     ctx.fillRect(lx - 5, ly - th / 2, tw, th);
     lines.forEach((l, k) => {
-      ctx.fillStyle = k === 0 ? BRASS : '#f0b07a';
+      ctx.fillStyle = k === 0 || (pocket && k === 1) ? BRASS : '#f0b07a';
       ctx.fillText(l, lx, ly - th / 2 + 9 + k * 14);
     });
   }
