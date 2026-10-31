@@ -61,7 +61,7 @@ import { atPeace, buildSeconds, frontRate, peaceReason, sameTeam } from './rules
 import { addEvent, newId, setOwner } from './state';
 import { hasTech } from './tech';
 import { afterDivisionMove, amphibLaunchBonus, amphibWaterSpeed, canWade, hasAmphibious, isWading, narrowWater, spearheadMayWade } from './specials';
-import { isProtected } from './admin';
+import { isProtected, tutorialShielded } from './admin';
 import { tankDivisionMods } from './techtree';
 import { armorBandWidth, armorBreaksThrough, armorCostMul, armorDefenseMul, armorDepthMul, armorLossMul, armorSpeedMul, holdDefenseAt, onFortBreached, onSpearheadDone } from './variants';
 import { aiAmphibTarget } from './arsenalAI';
@@ -452,7 +452,7 @@ function spearheadBlock(state: GameState, playerId: number, target: number): str
   if (areAllied(state, playerId, target)) return sameTeam(state, playerId, target) ? 'You cannot attack a teammate' : 'You cannot attack an ally';
   const peace = peaceReason(state, playerId, target);
   if (peace) return peace;
-  if (isProtected(state, target)) return 'The line there cannot be broken';
+  if (isProtected(state, target) || tutorialShielded(state, target)) return 'The line there cannot be broken';
   return null;
 }
 

@@ -26,6 +26,10 @@ import { defaultUiState } from './uiState';
 import { requestAdminAuth } from './admin';
 import { adminPerf } from './adminConsole';
 import type { Dispatch, UiState } from './uiState';
+import { setupTutorial, tutorialMap, tutorialSettings } from '../sim/tutorialScenario';
+import { TutorialController } from './tutorial/controller';
+import { tutorialChapters } from './tutorial/catalog';
+import type { TutorialChapterId } from './tutorial/engine';
 
 const STEP_MS = 1000 / TICKS_PER_SECOND;
 /** Most ticks run in one frame per x1 of speed; beyond that the game slows down instead of spiralling. */
@@ -51,6 +55,8 @@ interface Session {
   mpStatus: MpStatus | null;
   /** online: ui.paused as the frame left it (a change since then is the host's pause click or Space) */
   mpPauseShown?: boolean;
+  /** a tutorial chapter's game (single player only): its steps and overlay */
+  tutorial?: TutorialController;
 }
 
 // ------------------------------------------------------------------------------------------------ DOM
@@ -229,11 +235,12 @@ let lastLobbyHost = '';
 /** Code of the private lobby this client was in last (its games show the host's pause button, disabled for guests). */
 let lastPrivateLobby = '';
 
-const menu = new Menu(app, { onStart: (settings) => void startGame(settings), net: () => getNet() });
+const menu = new Menu(app, { onStart: (settings) => void startGame(settings), net: () => getNet(), onTutorial: (id) => void startTutorial(id) });
 
 function endSession(): void {
   if (!session) return;
   session.cleanupInput();
+  session.tutorial?.destroy();
   session.hud?.destroy();
   session = null;
 }
@@ -245,11 +252,20 @@ function newCamera(state: GameState): Camera {
   return cam;
 }
 
-/** Starts a game: a real-world map is loaded first (createGame is synchronous), a generated one is made from the seed. */
-async function startGame(settings: GameSettings): Promise<void> {
-  const world = settings.map.kind === 'world' ? settings.map.id : null;
+/** Starts a tutorial chapter: a small single-player practice game (tutorialScenario.ts) with the chapter's steps. */
+function startTutorial(id: TutorialChapterId): Promise<void> {
+  return startGame(tutorialSettings(id, identity()), id);
+}
+
+/**
+ * Starts a game: a real-world map is loaded first (createGame is synchronous), a generated one is made from the seed.
+ * tutorial: a tutorial chapter's game (setupTutorial runs after createGame; the overlay comes with the HUD).
+ */
+async function startGame(settings: GameSettings, tutorial?: TutorialChapterId): Promise<void> {
+  const world = settings.map.kind === 'world' && !tutorial ? settings.map.id : null;
   menu.setBusy(world ? 'Loading map…' : 'Generating map…');
-  let preloaded: MapData | null = null;
+  // a tutorial chapter plays on its own hand-made map
+  let preloaded: MapData | null = tutorial ? tutorialMap(tutorial) : null;
   if (world) {
     try {
       preloaded = await loadWorldMap(world);
@@ -264,6 +280,7 @@ async function startGame(settings: GameSettings): Promise<void> {
     let state: GameState;
     try {
       state = createGame(settings, preloaded);
+      if (tutorial) setupTutorial(state, tutorial);
     } catch (err) {
       console.error(err);
       menu.setBusy('Could not create the game (see console)');
@@ -272,10 +289,10 @@ async function startGame(settings: GameSettings): Promise<void> {
     endSession();
     const camera = newCamera(state);
     const ui = defaultUiState();
-    const hud = new Hud(app, ui, dispatch, camera, audio);
+    const hud = new Hud(app, ui, dispatch, camera, audio, { tutorial: !!tutorial });
     hud.setUnitProbe(renderer);
-    hud.onMenu = () => toMenu();
-    hud.onPlayAgain = () => void startGame({ ...settings, seed: menu.replaySettings().seed });
+    hud.onMenu = () => toMenu(tutorial ? 'tutorial' : 'title');
+    hud.onPlayAgain = () => void (tutorial ? startTutorial(tutorial) : startGame({ ...settings, seed: menu.replaySettings().seed }));
     const cleanupInput = setupInput({
       canvas,
       minimap,
@@ -291,6 +308,14 @@ async function startGame(settings: GameSettings): Promise<void> {
       strike: (id) => hud.strike(id),
     });
     session = { state, camera, ui, hud, cleanupInput, human: true, settings, mp: null, mpStatus: null };
+    const chapter = tutorial ? tutorialChapters().find((c) => c.id === tutorial) : undefined;
+    if (chapter) {
+      session.tutorial = new TutorialController(chapter, tutorialChapters(), hud, ui, () => (session?.human ? session.state : null), {
+        exit: () => toMenu('title'),
+        chapterList: () => toMenu('tutorial'),
+        start: (id) => void startTutorial(id),
+      });
+    }
     if (currentMp) {
       // a single-player game ends any online one
       net?.send({ type: 'leaveLobby' });
@@ -326,10 +351,10 @@ function startBackground(): void {
   }
 }
 
-function toMenu(): void {
+function toMenu(page: 'title' | 'tutorial' = 'title'): void {
   startBackground();
   app.classList.add('in-menu');
-  menu.show('title');
+  menu.show(page);
 }
 
 // ------------------------------------------------------------------------------------------------ loop
@@ -408,6 +433,10 @@ function frame(now: number): void {
         renderer.render(cur.state, cur.camera, cur.ui, now);
         const t3 = performance.now();
         cur.hud?.update(cur.state);
+        if (cur.tutorial) {
+          cur.tutorial.update(now);
+          cur.tutorial.frame();
+        }
         perf.render += t3 - t2;
         perf.hud += performance.now() - t3;
         perf.frames++;
@@ -430,6 +459,10 @@ declare global {
       camera: () => Camera | null;
       /** Starts a game from the setup screen's settings with these overrides (a new seed unless given). */
       startGame: (settings?: Partial<GameSettings>) => Promise<void>;
+      /** Starts a tutorial chapter (tests). */
+      startTutorial: (id: TutorialChapterId) => Promise<void>;
+      /** the tutorial game's chapter and step, null outside the tutorial */
+      tutorial: () => { chapter: string; step: number; stepId: string; finished: boolean } | null;
       /** Runs n ticks synchronously (tests). */
       advance: (n: number) => void;
       toMenu: () => void;
@@ -457,6 +490,12 @@ window.__borderfall = {
   ui: () => (session && session.human ? session.ui : null),
   camera: () => session?.camera ?? null,
   startGame: (partial = {}) => startGame({ ...menu.replaySettings(), ...partial, humanPlayer: true }),
+  startTutorial: (id: TutorialChapterId) => startTutorial(id),
+  tutorial: () => {
+    const t = session?.tutorial;
+    if (!t) return null;
+    return { chapter: t.chapter.id, step: t.runner.index, stepId: t.runner.step?.id ?? '', finished: t.runner.finished };
+  },
   advance: (n: number) => {
     const s = session;
     if (!s) return;

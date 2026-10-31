@@ -167,6 +167,7 @@ export class RadialMenu {
   private button(it: RadialItem, cls: string, leave: () => void): HTMLButtonElement {
     const b = el('button', cls + (it.danger ? ' danger' : '') + (it.disabled ? ' off' : '') + (it.submenu ? ' has-sub' : ''));
     b.type = 'button';
+    b.dataset.test = `rad-${it.label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
     b.setAttribute('aria-label', it.label + (it.hint ? ` (${it.hint})` : ''));
     if (it.disabled) b.setAttribute('aria-disabled', 'true');
     b.append(iconEl(it), el('span', 'rad-label', it.label));

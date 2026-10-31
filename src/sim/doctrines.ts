@@ -42,12 +42,14 @@ const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
 export function doctrineTicks(state: GameState, seconds: number): number {
   return Math.round((seconds * TICKS_PER_SECOND) / progressRate(state));
 }
-/** Game seconds (the clock the player sees) at which doctrines unlock. */
+/** Game seconds (the clock the player sees) at which doctrines unlock (a tutorial chapter may open them at 0:00). */
 export function doctrineUnlockSeconds(state: GameState): number {
+  if (state.tutorial?.doctrinesEarly) return 0;
   return doctrineTicks(state, DOCTRINE_UNLOCK_SECONDS) / TICKS_PER_SECOND;
 }
 /** Tick at which doctrines unlock (only meaningful once play started). */
 export function doctrineUnlockTick(state: GameState): number {
+  if (state.tutorial?.doctrinesEarly) return state.playStartTick;
   return state.playStartTick + doctrineTicks(state, DOCTRINE_UNLOCK_SECONDS);
 }
 /** "5:00" */

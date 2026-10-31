@@ -83,6 +83,23 @@ export function isAiPassiveTarget(state: GameState, playerId: number): boolean {
 export function aiFrozen(state: GameState): boolean {
   return !!state.admin && state.admin.aiFrozen;
 }
+/**
+ * Tutorial (tutorialScenario.ts): the taught player is down to its last TutorialState.minTiles tiles, so attacks
+ * and spearheads on it stop there.
+ */
+export function tutorialShielded(state: GameState, playerId: number): boolean {
+  const t = state.tutorial;
+  return !!t && t.noElimination && playerId === t.human && (state.players[playerId]?.tiles ?? 0) <= t.minTiles;
+}
+/** Tutorial: the taught player, which never collapses or gets absorbed (combat.collapseThreshold). */
+export function tutorialKeeps(state: GameState, playerId: number): boolean {
+  const t = state.tutorial;
+  return !!t && t.noElimination && playerId === t.human;
+}
+/** Tutorial: this AI makes no decisions until tutorialWake. */
+export function tutorialFrozen(state: GameState, playerId: number): boolean {
+  return !!state.tutorial && state.tutorial.frozen.includes(playerId);
+}
 /** viewer sees every nation's intel (buildings.hasIntel). */
 export function seesAllIntel(state: GameState, viewer: number): boolean {
   return !!state.admin && state.admin.revealIntel.includes(viewer);

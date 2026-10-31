@@ -32,6 +32,7 @@ export class AirPanel {
       const b = el('button', 'wr-btn mini ap-b');
       b.type = 'button';
       b.dataset.v = m;
+      b.dataset.test = `air-${m}`;
       b.append(iconSpan(lineIcon(i.icon, 14, 2)), el('span', 'wr-btn-l', m === 'support' ? 'Support' : m === 'strategic' ? 'Strategic' : m === 'superiority' ? 'Superiority' : 'Idle'));
       setTip(b, `${i.name}: ${i.help}${i.pick && m !== 'superiority' ? ' Then click the target.' : ''}`);
       b.setAttribute('aria-pressed', 'false');

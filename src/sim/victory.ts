@@ -149,8 +149,8 @@ export function updateVictory(state: GameState): void {
       if (t > 0) teamTiles.set(t, (teamTiles.get(t) ?? 0) + p.tiles);
     }
   }
-  // A continued game (continueGame) never ends again: the original result stays recorded.
-  if (state.continued) return;
+  // A continued game (continueGame) never ends again: the original result stays recorded. A tutorial never ends.
+  if (state.continued || state.tutorial) return;
 
   // Every human gone (single player: the one human): the game ends. In a multiplayer game an eliminated player
   // only becomes a spectator while other humans play on. Never depends on which human a client controls.

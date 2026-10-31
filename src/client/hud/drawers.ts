@@ -769,15 +769,16 @@ export class BuildingPage implements DrawerPage {
         const name = UNITS[kind].name;
         const g = ctx.state();
         const first = g ? unitCost(g, b.owner, kind) : UNITS[kind];
-        add(`${name} (${formatCount(first.gold)} gold)`, '', 'plus', () => ctx.act({ type: 'buildAircraft', airfield: tile, kind }), (ss, m, bb) => {
+        const ab = add(`${name} (${formatCount(first.gold)} gold)`, '', 'plus', () => ctx.act({ type: 'buildAircraft', airfield: tile, kind }), (ss, m, bb) => {
           const u = unitCost(ss, m.id, kind);
           return bb.buildLeft > 0 ? 'Still being built' : bb.bombers + bb.fighters >= aircraftCap(bb) ? 'Airfield is full' : m.gold < u.gold ? 'Not enough gold' : m.iron < u.iron ? 'Not enough iron' : m.oil < u.oil ? 'Not enough oil' : '';
         });
+        ab.dataset.test = `order-${kind}`;
       }
-      add('Bomb a target', 'danger', 'bomb', () => (ctx.ui.mode = { kind: 'bomb', airfield: tile }), (_ss, _m, bb) => (bb.bombers > 0 ? '' : 'No bombers here'));
+      add('Bomb a target', 'danger', 'bomb', () => (ctx.ui.mode = { kind: 'bomb', airfield: tile }), (_ss, _m, bb) => (bb.bombers > 0 ? '' : 'No bombers here')).dataset.test = 'order-bomb';
       add('Paratroopers', 'danger', 'paradrop', () => (ctx.ui.mode = { kind: 'paradrop', airfield: tile }), (_ss, m, bb) =>
         !hasTech(m, 'flight') ? 'Research Flight first' : bb.buildLeft > 0 ? 'Still being built' : bb.dropCooldown > 0 ? `Next drop ready in ${Math.ceil(bb.dropCooldown)} s` : '',
-      );
+      ).dataset.test = 'order-paradrop';
       // Arsenal (hud/variantOrders.ts): the bomber type of the Air path, and recon flights
       const airNote = el('p', 'note');
       actions.before(airNote);
@@ -800,7 +801,7 @@ export class BuildingPage implements DrawerPage {
         if (bb.buildLeft > 0) return 'Still being built';
         const r = canBuildTankDivision(ss, m.id, tile);
         return r.ok ? '' : r.reason ?? 'Not possible now';
-      });
+      }).dataset.test = 'order-tank-division';
     }
     if (b.type === 'silo') {
       const cd = el('p', 'note');
@@ -811,7 +812,7 @@ export class BuildingPage implements DrawerPage {
         const u = UNITS[kind];
         add(`${u.name} (${formatCount(u.gold)} gold)`, 'danger', kind === 'rocket' ? 'rocket' : 'atom', () => (ctx.ui.mode = { kind: 'missile', silo: tile, missile: kind }), (_ss, m, bb) =>
           u.tech && !hasTech(m, u.tech) ? `Research ${TECHS[u.tech].name} first` : bb.buildLeft > 0 ? 'Still being built' : chargesReady(bb) <= 0 ? 'Reloading' : m.gold < u.gold ? 'Not enough gold' : m.iron < u.iron ? 'Not enough iron' : m.oil < u.oil ? 'Not enough oil' : '',
-        );
+        ).dataset.test = `order-${kind}`;
       }
     }
     if (b.type === 'port') {
@@ -824,7 +825,7 @@ export class BuildingPage implements DrawerPage {
         x.dataset.test = `order-${o.variant ?? 'warship'}`;
         if (!x.dataset.tip) x.dataset.tip = o.tip;
       }
-      add('Send a transport', '', 'transport', () => (ctx.ui.mode = { kind: 'transport', from: tile }), (_ss, _m, bb) => (bb.buildLeft > 0 ? 'Still being built' : ''));
+      add('Send a transport', '', 'transport', () => (ctx.ui.mode = { kind: 'transport', from: tile }), (_ss, _m, bb) => (bb.buildLeft > 0 ? 'Still being built' : '')).dataset.test = 'order-transport';
       if (warships.length) {
         r.append(sectionTitle('Warships'));
         warships.slice(0, 8).forEach((id, k) => {

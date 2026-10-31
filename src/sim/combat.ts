@@ -111,7 +111,7 @@ import { blockadedAt, blockadeSupplyMul, navalBeachheadMul, navalSupportAt } fro
 import { NAVY_BEACHHEAD_SUPPLY, NAVY_SUPPORT_SPEED } from './config';
 import { airSupportCut } from './airwings';
 import { AIR } from './config';
-import { isProtected } from './admin';
+import { isProtected, tutorialKeeps, tutorialShielded } from './admin';
 import { TROOP_TYPES, Terrain, isTribe, isWater } from './types';
 import type { ActionResult, Attack, GameState, Player, TerrainId, TroopType, Troops } from './types';
 
@@ -1033,6 +1033,7 @@ function captureTile(state: GameState, a: Attack, tile: number, idx: AttackIndex
 export function collapseThreshold(state: GameState, p: Player): number {
   if (isTribe(p)) return TRIBE_ANNEX_TILES;
   if (p.isHuman && gameSeconds(state) < HUMAN_GRACE_SECONDS) return 0;
+  if (state.tutorial && tutorialKeeps(state, p.id)) return 0; // tutorial: the taught player never collapses
   return ENDGAME_SMALL_TILES;
 }
 /**
@@ -1436,6 +1437,12 @@ function stepAttack(state: GameState, a: Attack, idx: AttackIndex): boolean {
     }
     spent += cost.loss;
     killed += cost.defenderLoss;
+    // Tutorial: the taught player keeps its last tiles (tutorialScenario.ts); the attack ends, troops go home.
+    if (target !== 0 && state.tutorial && tutorialShielded(state, target)) {
+      flush();
+      returnTroops(state, a);
+      return true;
+    }
     // Taking the target's last tiles can eliminate it (its troops go home with ours): settle the losses first.
     if (target !== 0 && players[target].tiles <= collapseThreshold(state, players[target]) + 1) flush();
     heapPop(f);

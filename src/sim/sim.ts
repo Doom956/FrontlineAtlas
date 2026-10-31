@@ -22,6 +22,7 @@ import { updateNavyQueue } from './navy';
 import { updateTanks } from './tanks';
 import { updateSpecials } from './specials';
 import { updateWarMemory } from './naval2';
+import { updateTutorial } from './tutorialScenario';
 import { updateVictory } from './victory';
 import type { GameState } from './types';
 
@@ -69,6 +70,7 @@ export function tick(state: GameState): void {
     updateSpending(state);
     updateAI(state);
     updateAdvisor(state);
+    if (state.tutorial) updateTutorial(state); // tutorial games only (tutorialScenario.ts)
     updateVictory(state);
     updateRules(state, (message) => addEvent(state, 'info', message, [], -1));
   }

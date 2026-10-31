@@ -1,0 +1,449 @@
+/* Tutorial overlay (overlay.ts): step card bottom left, brass spotlight ring + arrow, "Chapter done" card.
+   Everything but the two cards lets the pointer through to the game. */
+.hud > .tut,
+.tut {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+}
+.tut.covered .tut-card,
+.tut.covered .tut-spot,
+.tut.covered .tut-arrow {
+  visibility: hidden;
+}
+
+/* ---------------------------------------------------------------- step card */
+.tut-card {
+  position: absolute;
+  left: 12px;
+  bottom: calc(86px * var(--ui, 1));
+  width: 300px;
+  padding: 12px 14px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: auto;
+  background-color: var(--metal-a);
+  background-image: var(--grain);
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--brass);
+  border-radius: var(--r);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 8px 24px rgba(0, 0, 0, 0.45);
+  transform: scale(var(--ui, 1));
+  transform-origin: bottom left;
+}
+.tut-card.nod {
+  animation: tut-nod 360ms ease-out;
+}
+@keyframes tut-nod {
+  0% {
+    translate: -6px 0;
+    border-left-color: var(--brass-hi);
+  }
+  100% {
+    translate: 0 0;
+  }
+}
+.tut-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tut-kicker {
+  font: 600 11px/1 var(--f-label);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--brass);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tut-count {
+  font: 600 12px/1 var(--f-label);
+  letter-spacing: 0.08em;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+.tut-text {
+  margin: 0;
+  font: 500 15px/1.4 var(--f-ui);
+  color: var(--text);
+  text-wrap: pretty;
+}
+.tut-acts {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.tut-acts:not(:has(> :not(.hidden))) {
+  display: none;
+}
+.tut-track {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--rule);
+}
+.tut-pips {
+  display: flex;
+  gap: 3px;
+  flex: 1;
+}
+.tut-pips i {
+  flex: 1;
+  height: 3px;
+  background: var(--metal-4);
+}
+.tut-pips i[data-s='done'] {
+  background: var(--olive);
+}
+.tut-pips i[data-s='skipped'] {
+  background: var(--faint);
+}
+.tut-pips i[data-s='current'] {
+  background: var(--brass);
+}
+.tut-steps {
+  border: 0;
+  background: transparent;
+  padding: 2px 0;
+  font: 600 11px/1 var(--f-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tut-steps:hover,
+.tut-steps:focus-visible {
+  color: var(--text);
+}
+.tut-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.tut-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font: 400 12.5px/1.35 var(--f-ui);
+  color: var(--faint);
+}
+.tut-list li[data-s='current'] {
+  color: var(--text);
+}
+.tut-list li[data-s='done'] {
+  color: var(--dim);
+}
+.tut-tick {
+  flex: none;
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--rule-hi);
+  color: transparent;
+}
+.tut-list li[data-s='done'] .tut-tick {
+  border-color: var(--olive-d);
+  background: var(--olive-d);
+  color: var(--text);
+}
+.tut-list li[data-s='current'] .tut-tick {
+  border-color: var(--brass);
+}
+.tut-list li[data-s='skipped'] .tut-li-t {
+  text-decoration: line-through;
+}
+.tut-foot {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 -8px;
+}
+.tut-foot .wr-btn {
+  color: var(--dim);
+  border-color: transparent;
+}
+.tut-foot .wr-btn:hover:not(:disabled) {
+  color: var(--text);
+}
+
+/* docked at the top (a wide panel covers the corner): one compact line */
+.tut-card.top {
+  top: 12px;
+  bottom: auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px 7px 12px;
+  transform: none;
+  border-left-width: 2px;
+}
+.tut-card.top .tut-head {
+  flex: none;
+}
+.tut-card.top .tut-kicker,
+.tut-card.top .tut-track,
+.tut-card.top .tut-list,
+.tut-card.top .tut-foot {
+  display: none;
+}
+.tut-card.top .tut-text {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.3;
+}
+.tut-card.top .tut-acts {
+  flex: none;
+}
+
+/* ---------------------------------------------------------------- spotlight */
+.tut-spot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border: 2px solid var(--brass-hi);
+  border-radius: 3px;
+  box-shadow:
+    0 0 0 1px rgba(13, 16, 19, 0.9),
+    0 0 18px rgba(227, 192, 78, 0.45);
+  pointer-events: none;
+  animation: tut-pulse 1.4s ease-in-out infinite;
+}
+@keyframes tut-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(13, 16, 19, 0.9),
+      0 0 10px rgba(227, 192, 78, 0.3);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(13, 16, 19, 0.9),
+      0 0 0 6px rgba(227, 192, 78, 0.18),
+      0 0 22px rgba(227, 192, 78, 0.55);
+  }
+}
+.tut-arrow {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 28px;
+  height: 28px;
+  color: var(--brass-hi);
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
+}
+.tut-arrow svg {
+  display: block;
+  animation: tut-bob-x 0.9s ease-in-out infinite;
+}
+.tut-arrow[data-dir='left'] svg {
+  rotate: 180deg;
+}
+.tut-arrow[data-dir='down'] svg {
+  rotate: 90deg;
+}
+.tut-arrow[data-dir='up'] svg {
+  rotate: -90deg;
+}
+@keyframes tut-bob-x {
+  0%,
+  100% {
+    translate: -3px 0;
+  }
+  50% {
+    translate: 3px 0;
+  }
+}
+
+/* ---------------------------------------------------------------- chapter done */
+.tut-done {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(13, 16, 19, 0.55);
+  pointer-events: auto;
+}
+.tut-done-card {
+  position: relative;
+  width: min(380px, calc(100vw - 32px));
+  padding: 26px 28px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  background-color: var(--metal-a);
+  background-image: var(--grain);
+  border: 1px solid var(--rule);
+  border-top: 2px solid var(--olive);
+  border-radius: var(--r);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  animation: rise var(--fast) ease-out;
+}
+.tut-done-ic {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+  color: var(--olive);
+  border: 1px solid var(--olive-d);
+}
+.tut-done-t {
+  font: 600 30px/1.05 var(--f-logo);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.tut-done-l {
+  margin: 0 0 10px;
+  color: var(--dim);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.tut-done-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+.tut-done-acts .wr-btn.ghost {
+  margin-left: auto;
+}
+
+/* ---------------------------------------------------------------- menu: chapter list */
+.menu-card.tutorial {
+  width: 640px;
+}
+.tut-chapters {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tut-ch {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  text-align: left;
+  color: var(--text);
+  background: var(--metal-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  cursor: pointer;
+  transition: background var(--fast), border-color var(--fast);
+}
+.tut-ch:hover,
+.tut-ch:focus-visible {
+  background: var(--metal-3);
+  border-color: var(--brass-lo);
+}
+.tut-ch:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
+.tut-ch-n {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  font: 600 16px/1 var(--f-label);
+  color: var(--dim);
+  border: 1px solid var(--rule-hi);
+}
+.tut-ch.done .tut-ch-n {
+  color: var(--text);
+  background: var(--olive-d);
+  border-color: var(--olive);
+}
+.tut-ch.next .tut-ch-n {
+  color: var(--brass-ink);
+  background: var(--brass);
+  border-color: var(--brass-hi);
+}
+.tut-ch-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.tut-ch-t {
+  font: 600 17px/1.1 var(--f-label);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.tut-ch-b {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--dim);
+}
+.tut-ch-m {
+  font: 600 12px/1 var(--f-label);
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.tut-ch.done .tut-ch-m {
+  color: var(--olive);
+}
+.tut-list-note {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--dim);
+}
+.menu-hint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--brass-lo);
+  border-left: 2px solid var(--brass);
+  border-radius: var(--r);
+  background: rgba(201, 162, 39, 0.06);
+  font-size: 13.5px;
+  color: var(--text);
+}
+.menu-hint span {
+  flex: 1;
+}
+
+@media (max-width: 720px) {
+  .tut-card {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    bottom: auto;
+    top: 64px;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tut-spot,
+  .tut-arrow svg,
+  .tut-card.nod {
+    animation: none;
+  }
+}

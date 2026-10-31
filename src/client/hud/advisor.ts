@@ -27,6 +27,7 @@ import { el, setClass, setText, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon, worldGlyph } from './glyph';
 import { waysToPlayAdvice } from './spendPanel';
 import { pillarAdvice } from './pillarAdvice';
+import { isChapterDone } from '../tutorial/engine';
 
 const TUTORIAL_KEY = 'borderfall.tutorial.v1';
 const ADVISOR_KEY = 'borderfall.advisor.v1';
@@ -157,7 +158,8 @@ export class AdvisorStrip {
   private skipBtn: HTMLButtonElement;
   private closeBtn: HTMLButtonElement;
   private on = load(ADVISOR_KEY) !== 'off';
-  private tutorial = load(TUTORIAL_KEY) !== 'done';
+  /** the first-game steps; not needed after the Basics chapter of tutorial mode (tutorial/engine.ts) */
+  private tutorial = load(TUTORIAL_KEY) !== 'done' && !isChapterDone('basics');
   private step = 0;
   private stepStart: StepStart | null = null;
   private current: Suggestion | null = null;
@@ -237,6 +239,13 @@ export class AdvisorStrip {
   get tutorialActive(): boolean {
     return this.tutorial;
   }
+  /** A tutorial game (tutorial mode): no first-game steps, no advisor or first-use hints; nothing is saved. */
+  quiet(): void {
+    this.quietMode = true;
+    this.tutorial = false;
+    setVisible(this.el, false);
+  }
+  private quietMode = false;
 
   private endTutorial(finished: boolean): void {
     this.tutorial = false;
@@ -337,7 +346,7 @@ export class AdvisorStrip {
   // ------------------------------------------------------------------------------------------ advisor
 
   update(s: GameState, me: Player, strikes?: StrikeBar): void {
-    if (!me.alive || s.phase === 'over') {
+    if (this.quietMode || !me.alive || s.phase === 'over') {
       setVisible(this.el, false);
       return;
     }

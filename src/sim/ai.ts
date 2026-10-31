@@ -13,6 +13,7 @@
 //
 // The caches live in a WeakMap keyed by the GameState (not in the state): they are derived data, rebuilt on demand,
 // and sampling uses deterministic hashing or state.rng, so the simulation stays deterministic.
+import { tutorialFrozen } from './admin';
 import { applyAction } from './actions';
 import {
   allyRefusal,
@@ -802,6 +803,7 @@ export function updateAI(state: GameState): void {
   let m: Memory | null = null;
   for (const p of state.players) {
     if (!isAI(p) || !p.alive || !p.spawned) continue;
+    if (state.tutorial && tutorialFrozen(state, p.id)) continue; // tutorial: asleep until tutorialWake
     const tribe = isTribe(p);
     const every = tribe ? tribeLo + (hash32(p.id) % (tribeSpan + 1)) : interval;
     if ((state.tick + p.id * 7) % every !== 0) continue;

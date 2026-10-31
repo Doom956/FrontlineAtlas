@@ -104,6 +104,8 @@ export interface HudOptions {
   continueRole?: () => ContinueRole;
   /** online: owner console login through the server (adminAuth) */
   adminAuth?: (code: string) => Promise<boolean>;
+  /** a tutorial game (tutorial/controller.ts): the first-game steps and the advisor's hints stay quiet */
+  tutorial?: boolean;
 }
 
 export class Hud {
@@ -136,6 +138,8 @@ export class Hud {
   private events: EventsPage;
   private building: BuildingPage;
   private radial: RadialMenu;
+  /** a tutorial game: its steps say when to pick a doctrine, so the unlock toast stays quiet */
+  private tutorialGame = false;
   private ctxOpen: UiState['contextMenu'] = null;
   private tip: HTMLElement;
   private tipTarget: HTMLElement | null = null;
@@ -240,6 +244,8 @@ export class Hud {
     this.building = new BuildingPage(this.ctx);
     this.drawer.add(this.building);
     this.advisor = new AdvisorStrip(this.ctx);
+    if (hudOpts.tutorial) this.advisor.quiet();
+    this.tutorialGame = !!hudOpts.tutorial;
     this.drawer.add(
       new SettingsPage(this.ctx, {
         audio: () => this.audio?.getSettings() ?? null,
@@ -512,6 +518,35 @@ export class Hud {
     }
     return false;
   }
+  // ------------------------------------------------------------------------------------------ tutorial mode
+
+  /** What is open now, for the tutorial's step checks (tutorial/controller.ts). */
+  tutorialView(): { drawer: DrawerId | null; researchTab: 'research' | 'arsenal'; buildMenu: boolean; nationCard: number; modal: boolean } {
+    return {
+      drawer: this.drawer.open,
+      researchTab: this.drawer.page<ResearchPage>('research').currentTab,
+      buildMenu: this.bar.quick.menu.open,
+      nationCard: this.card.id,
+      modal: !this.help.classList.contains('hidden') || !this.gameOver.classList.contains('hidden'),
+    };
+  }
+  /** Opens a panel for a tutorial step: a drawer, the Research drawer on its Arsenal tab, or the build menu. */
+  openTutorialPanel(name: DrawerId | 'build' | 'arsenal'): void {
+    if (name === 'build') {
+      this.drawer.hide();
+      this.bar.quick.menu.show();
+      return;
+    }
+    if (this.bar.quick.menu.open) this.bar.quick.menu.close();
+    const id: DrawerId = name === 'arsenal' ? 'research' : name;
+    if (this.drawer.open !== id) this.openDrawer(id);
+    if (id === 'research') this.drawer.page<ResearchPage>('research').setTab(name === 'arsenal' ? 'arsenal' : 'research');
+  }
+  /** Centres a tile (zooms in when far out). */
+  centreOn(tile: number): void {
+    this.focusTile(tile, true);
+  }
+
   /** What the radial menu offers for a tile (kept public for tests). */
   radialSpec(state: GameState, me: Player, tile: number): RadialSpec {
     return buildRadialSpec(this.ctx, state, me, tile);
@@ -773,7 +808,7 @@ export class Hud {
     const open = () => this.openDrawer('doctrine');
     const d = me.doctrine;
     if (e.kind === 'doctrineUnlocked') {
-      if (!d?.id) this.toasts.show({ text: `Choose a doctrine  (${DOCTRINE_KEY})`, kind: 'info', icon: 'doctrine', ms: 7000, key: 'doctrine', onClick: open });
+      if (!d?.id && !this.tutorialGame) this.toasts.show({ text: `Choose a doctrine  (${DOCTRINE_KEY})`, kind: 'info', icon: 'doctrine', ms: 7000, key: 'doctrine', onClick: open });
     } else if (e.kind === 'doctrineChosen') {
       // ours: made this tick, at our capital (the news about others carries their capital)
       if (d?.id && e.tick === d.chosenTick && e.tile === me.capital && this.drawer.open !== 'doctrine') {

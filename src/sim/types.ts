@@ -676,6 +676,25 @@ export interface GameState {
   air?: AirState;
   /** recon reveals, mechanized-infantry hold zones and recon timers (variants.ts); absent = none yet */
   arsenal?: ArsenalState;
+  /** single-player tutorial chapter (tutorialScenario.ts); absent = a normal game */
+  tutorial?: TutorialState;
+}
+
+/** Tutorial chapters (src/sim/tutorialScenario.ts; the client's chapter list is src/client/tutorial/chapters.ts). */
+export type TutorialChapterId = 'basics' | 'war' | 'economy' | 'navy' | 'armor' | 'air' | 'arsenal' | 'diplomacy';
+/** A tutorial game's rules (tutorialScenario.ts). Part of the hash; set only by setupTutorial and its helpers. */
+export interface TutorialState {
+  chapter: TutorialChapterId;
+  /** the player the tutorial teaches */
+  human: number;
+  /** the human can't be eliminated: attacks stop at minTiles, no collapse, revived at `home` if it ever falls */
+  noElimination: boolean;
+  minTiles: number;
+  home: number;
+  /** AI ids (nations and tribes) that make no decisions until tutorialWake */
+  frozen: number[];
+  /** doctrines open at 0:00 instead of DOCTRINE_UNLOCK_SECONDS */
+  doctrinesEarly: boolean;
 }
 
 /**

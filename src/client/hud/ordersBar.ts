@@ -50,6 +50,7 @@ class ChoiceRow<T extends string> {
       const b = el('button', 'wr-btn mini ob-b');
       b.type = 'button';
       b.dataset.v = v;
+      b.dataset.test = `${test === 'orders-ships' ? 'stance' : 'mode'}-${v}`;
       b.append(iconSpan(lineIcon(i.icon, 14, 2)), el('span', 'wr-btn-l', i.name));
       b.setAttribute('aria-pressed', 'false');
       setTip(b, i.help + (i.pick ? ' Then click where.' : ''));

@@ -191,6 +191,17 @@ export function hashState(state: GameState): number {
     h = mixStr(h, state.settings.difficulty);
     h = mixFloat(h, state.settings.modifiers.peaceMinutes);
   }
+  // Tutorial rules (tutorialScenario.ts).
+  const tu = state.tutorial;
+  if (tu) {
+    h = mixStr(h, tu.chapter);
+    h = mixInt(h, tu.human);
+    h = mixInt(h, (tu.noElimination ? 1 : 0) | (tu.doctrinesEarly ? 2 : 0) | 8);
+    h = mixInt(h, tu.minTiles);
+    h = mixInt(h, tu.home);
+    h = mixInt(h, tu.frozen.length);
+    for (const id of tu.frozen) h = mixInt(h, id);
+  }
   for (const b of state.barrages) {
     h = mixInt(h, b.id);
     h = mixInt(h, b.tile);

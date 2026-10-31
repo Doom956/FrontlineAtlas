@@ -68,6 +68,7 @@ export class Leaderboard {
   private makeRow(id: number): Row {
     const root = el('button', 'lb-row');
     root.type = 'button';
+    root.dataset.test = `lb-row-${id}`;
     const rank = el('span', 'c-rank');
     const sw = el('span', 'sw');
     const name = el('span', 'c-name');

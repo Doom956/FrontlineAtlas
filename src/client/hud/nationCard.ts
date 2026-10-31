@@ -84,6 +84,9 @@ export class NationCard {
     this.embargo = btn('Embargo', '', () => act({ type: 'toggleEmbargo', with: this.id }), 'embargo');
     this.attack = btn('Attack', 'danger', () => this.doAttack(), 'attack');
     this.attack.dataset.test = 'nc-attack';
+    this.ally.dataset.test = 'nc-ally';
+    this.accept.dataset.test = 'nc-accept';
+    this.gift.dataset.test = 'nc-gift';
     acts.append(this.accept, this.decline, this.ally, this.brk, this.attack, this.gift, this.embargo);
     this.allyHelp = new AllyHelp(ctx);
     this.el.append(head, stats, this.mix, this.mixNote, this.allyHelp.el, acts);
