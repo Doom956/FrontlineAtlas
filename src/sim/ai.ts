@@ -126,7 +126,7 @@ const NUKE_PATH: readonly TechId[] = ['nuclearFission', 'rocketry', 'industriali
 const SAM_FRONT_DEPTH = 24;
 const SAM_NEAR_FRONT = true;
 /** AIs facing enemy bombers research Radar (SAM sites) next once they hold this many techs. */
-const AI_RADAR_VS_AIR = true;
+const AI_RADAR_VS_AIR = false;
 const AI_RADAR_MIN_TECHS = 4;
 
 interface Profile {
