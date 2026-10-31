@@ -42,7 +42,7 @@ import {
 import { gameOverCard } from './hud/gameOver';
 import { ContinueRow, VictoryChip, type ContinueRole } from './hud/gameOverContinue';
 import { AdminConsole } from './adminConsole';
-import { selectionChipText } from './selection';
+import { pruneSelection, selectionChipText } from './selection';
 import { iconSpan, lineIcon } from './hud/glyph';
 import { Leaderboard } from './hud/leaderboard';
 import { NationCard } from './hud/nationCard';
@@ -408,6 +408,8 @@ export class Hud {
       this.toasts.update();
       if (!watching) this.tooltip.update(state, me, true);
       this.updateSpawn(state, me);
+      // units sunk or lost drop out of the selection (selection.ts)
+      if (this.ui.selection.length) this.ui.selection = pruneSelection(state, state.humanId, this.ui.selection);
     }
   }
 

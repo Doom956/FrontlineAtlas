@@ -739,6 +739,15 @@ full-map scans after `createGame`.
   cancel or close. In attack mode a badge by the cursor shows the odds in words (`estimateAttack().odds`: "You 2.3x
   stronger", "Even fight", "They are 3x stronger"; army sizes are public, so this needs no intel). Target modes: build, transport, bomb, missile, move warship, paradrop (dashed range ring of each airfield,
   drop disc), barrage (disc in green or red).
+- Unit selection (selection.ts, render/selectionOverlay.ts): click one of your warships or tank divisions to select
+  it, Shift+click to add / remove, Shift+drag a box to select all inside, Shift+W every warship, Shift+A every tank
+  division, Esc clears; a chip says "3 warships selected". With a selection a click on water sends the warships (one
+  `moveWarships`), on your land drives the divisions (`moveTankDivision`), on enemy / neutral land at your border shows
+  `spearheadPreview` as a translucent arrow (solid as deep as expected, the first warning at its head) and a second
+  click launches it. "Warship" (Forces drawer) enters a click-to-place mode with the reachable water shaded
+  (`buildWarship {port, tile}`); "Tank division" (`enterTankDivisionBuildMode`) asks for a click on one of your
+  factories. After a game ends, "Continue playing" / "Keep watching" (online only the private game's host) sends
+  `continueGame`; a "Victory: <winner>" chip stays in the top-right cluster.
 - HUD (hud.ts + hud/*, "war room" style: near-opaque gunmetal panels, thin steel rules, brass for actions and key
   numbers; Barlow Condensed labels, IBM Plex Sans values, Saira Stencil One logo, all bundled in fonts.ts). The
   default screen has only three things: the bottom command bar (troops / cap with growth, trend arrow, a bar with the
@@ -890,3 +899,7 @@ warship or a tank division), territory (paint / neutralize a disc, move a capita
 alliance, make an AI declare war, set opinion), AI (passive toward a player, freeze all, difficulty), player (god
 mode, doctrine and level, eliminate, revive with troops), game (peace time, reveal intel). No op sends an event
 naming the console. State: `state.admin` (aiPassive, godMode, aiFrozen, revealIntel), hashed.
+Client (src/client/admin.ts, adminConsole.ts): no visible entry; "|" opens a bare "terminal line", the right code +
+Enter opens the Command console (target picker or a click on a nation, tabs per area, map picks and a paint brush
+through the `adminTile` target mode), a wrong code just clears the line. The unlock lasts for the browser session
+(sessionStorage). Speed x8 / x16 and the debug overlay (fps, ms per tick, AI attacks) are client-only.

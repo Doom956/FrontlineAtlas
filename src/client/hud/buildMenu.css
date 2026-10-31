@@ -669,3 +669,6 @@
 .rtree.forked .rt-l {
   font-size: 11px;
 }
+.bm-tools .bm-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
