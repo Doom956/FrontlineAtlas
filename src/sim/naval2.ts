@@ -521,7 +521,7 @@ function validBlockade(state: GameState, u: Unit, port: number): boolean {
 
 /**
  * Best enemy coast tile to shell for u within `reach` of (cx, cy): coast of nations at war with u's owner, in u's sea,
- * near the owner's own land (the front) first, then near the ship. Scans every second tile. -1 = none.
+ * near the owner's own land (the front) first, then near the ship. -1 = none.
  */
 function pickCoast(state: GameState, u: Unit, cx: number, cy: number, reach: number): number {
   const c = cache(state);
@@ -539,8 +539,9 @@ function pickCoast(state: GameState, u: Unit, cx: number, cy: number, reach: num
   const x1 = Math.min(w - 1, Math.round(cx) + r);
   const y0 = Math.max(0, Math.round(cy) - r);
   const y1 = Math.min(h - 1, Math.round(cy) + r);
-  for (let y = y0 + ((y0 + u.id) & 1); y <= y1; y += 2) {
-    for (let x = x0; x <= x1; x += 2) {
+  // A checkerboard (half the tiles): it still meets every coastline at least every second tile.
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0 + ((x0 + y + u.id) & 1); x <= x1; x += 2) {
       const t = y * w + x;
       if (!map.coastal[t]) continue;
       const o = owner[t];
@@ -802,7 +803,7 @@ export function aiNavy(state: GameState, id: number, act: (a: Action) => ActionR
     if (!foe) assign(u, 'auto');
     else {
       // A fixed role per ship (by id), so stances don't shuffle as escorts come and go.
-      const role = (u.id >>> 1) % (personality === 'admiral' ? 4 : 3);
+      const role = u.id % (personality === 'admiral' ? 4 : 3);
       if (role === 0 && foePorts > 0) assign(u, 'blockade');
       else if (role === 1) assign(u, 'bombard');
       else if (role === 3) assign(u, 'hunt');

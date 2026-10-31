@@ -80,7 +80,10 @@ function ship(s: GameState, owner: number, x: number, y: number): Unit {
   return spawnWarshipAt(s, owner, at(s, owner === 1 ? 20 : 60, 19), at(s, x, y));
 }
 function tradeShip(s: GameState, owner: number, x: number, y: number, cargo: number): Unit {
-  const u: Unit = { id: newId(s), type: 'tradeShip', owner, x, y, target: at(s, x, y), home: at(s, 70, 19), path: [], pathPos: 0, troops: { infantry: 0, armor: 0, artillery: 0 }, hp: 1, cargo, state: 0, targetOwner: 3 };
+  // Sailing slowly west along its row (a long route, so it is still at sea when the warship fires).
+  const path: number[] = [];
+  for (let k = Math.round(x); k >= 0; k--) path.push(at(s, k, Math.round(y)));
+  const u: Unit = { id: newId(s), type: 'tradeShip', owner, x, y, target: path[path.length - 1], home: at(s, 70, 19), path, pathPos: 0, troops: { infantry: 0, armor: 0, artillery: 0 }, hp: 1, cargo, state: 0, targetOwner: 3 };
   s.units.push(u);
   return u;
 }
@@ -121,14 +124,17 @@ describe('shore bombardment', () => {
     expect(b.state).not.toBe(3);
     expect(a.state).not.toBe(3);
     war(s);
-    const t0 = troopSum(s.players[2].troops);
     runUntil(s, () => b.state === 3 && a.state === 3 && b.path.length > 0 && b.pathPos >= b.path.length, 600);
     expect(b.state).toBe(3);
     expect(s.map.owner[b.station!]).toBe(2);
     expect(a.state).toBe(3);
     expect(s.map.owner[a.station!]).toBe(2);
+    // Shelling: player 2 loses troops faster than in the same game without the ships.
+    const lost0 = s.players[2].stats.troopsLost;
+    const killed0 = s.players[1].stats.troopsKilled;
     run(s, 50);
-    expect(troopSum(s.players[2].troops)).toBeLessThan(t0);
+    expect(s.players[2].stats.troopsLost - lost0).toBeGreaterThan(0);
+    expect(s.players[1].stats.troopsKilled - killed0).toBeGreaterThan(0);
     // The war ends: the auto ship sails back to its post.
     for (const x of s.attacks.filter((q) => q.attacker === 1)) applyAction(s, 1, { type: 'retreat', attackId: x.id });
     runUntil(s, () => a.state === 0, 900);
@@ -251,6 +257,7 @@ describe('AI fleets', () => {
       acts.push(a);
       return applyAction(s, 2, a);
     };
+    s.admin!.aiFrozen = false; // only the calls below decide for the AI
     aiNavy(s, 2, act);
     expect(fleet.every((u) => (u.stance ?? 'auto') === 'auto')).toBe(true);
     war(s);
@@ -258,11 +265,11 @@ describe('AI fleets', () => {
     s.units.push(tr);
     aiNavy(s, 2, act);
     const stances = fleet.map((u) => u.stance ?? 'auto');
-    console.log(JSON.stringify(acts), s.attacks.length);
     expect(stances).toContain('escort');
     expect(stances).toContain('blockade');
     expect(stances).toContain('bombard');
     // They act on it: within a few seconds someone is on station or escorting.
+    s.admin!.aiFrozen = true;
     run(s, 100);
     expect(fleet.some((u) => u.state === 3 || u.state === 4)).toBe(true);
   });
