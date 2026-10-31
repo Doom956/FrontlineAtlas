@@ -684,7 +684,7 @@ export class Overlays {
           ctx.stroke();
           pill(ctx, c.x, c.y - size * 0.75 - 9, `+${b.levels}`, '#82afe1', 'up');
         }
-        const label = !pv ? 'Upgrade area' : okA ? `${pv.buildings} buildings · +${pv.levelsQueued} levels` : pv.error ?? 'Nothing to upgrade here';
+        const label = !pv ? 'Upgrade area' : okA ? `${pv.buildings} building${pv.buildings === 1 ? '' : 's'} · +${pv.levelsQueued} level${pv.levelsQueued === 1 ? '' : 's'}` : pv.error ?? 'Nothing to upgrade here';
         this.aimDisc(ctx, cam, hs.x, hs.y, okA, [{ radius: mode.radius }], label);
         break;
       }

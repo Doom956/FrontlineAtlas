@@ -264,15 +264,16 @@ export class ResearchPage implements DrawerPage {
     const state = el('span', 'rt-s');
     const line = el('span', 'rt-l', lineOf(t));
     if (fork >= 0) {
-      // fork cards: icon and state on top, the name (two lines) under them; the one-liner is in the footer
+      // fork cards: the name on top, the icon and the state under it; the one-liner is in the footer
       const top = el('span', 'rt-head2');
       top.append(ic, state);
-      b.append(top, name);
+      b.append(name, top);
     } else {
-      const top = el('span', 'rt-top');
-      top.append(name, state);
+      // the name gets the full width; under it the state (price, Done, %) and the one-liner
+      const meta = el('span', 'rt-meta');
+      meta.append(state, line);
       const txt = el('span', 'rt-txt');
-      txt.append(top, line);
+      txt.append(name, meta);
       b.append(ic, txt);
     }
     b.addEventListener('pointerenter', () => this.setFocus(t));

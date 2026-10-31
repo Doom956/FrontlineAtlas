@@ -105,7 +105,7 @@ export function forkLayout(order: readonly TechId[] = TECH_ORDER): TreeLayout {
     const plain = inTier.filter((s) => !s.group);
     if (forks.length) {
       const wide = Math.max(...forks.map((s) => s.techs.length));
-      tracks.push({ tier, choices: true, label: plain.length ? `Tier ${tier} · choices` : `Tier ${tier} · choose one`, weight: Math.max(1, wide * 0.9) });
+      tracks.push({ tier, choices: true, label: plain.length ? `Tier ${tier} · choices` : `Tier ${tier} · choose one`, weight: Math.max(1, wide * 0.8) });
       trackSlots.push(forks);
     }
     if (plain.length) {
