@@ -413,7 +413,7 @@ export const TECHS: Record<TechId, TechInfo> = {
   combinedArms: { name: 'Combined Arms', tier: 3, science: 2200, gold: 1000, requires: ['mechanization', 'ballistics'], description: '+20% attack when every troop type is at least 15% of the force.' },
   radar: { name: 'Radar', tier: 3, science: 2200, gold: 1000, requires: ['flight'], description: 'SAM sites; watchtower radius x2.' },
   rocketry: { name: 'Rocketry', tier: 3, science: 2200, gold: 1000, requires: ['ballistics'], description: 'Missile silos and rockets.' },
-  nuclearFission: { name: 'Nuclear Fission', tier: 4, science: 3500, gold: 1500, requires: ['rocketry', 'industrialization'], description: 'Atom bombs.' },
+  nuclearFission: { name: 'Nuclear Fission', tier: 4, science: 5000, gold: 2000, requires: ['rocketry', 'industrialization'], description: 'Atom bombs.' },
   // ---- branches with exclusive choices (techtree.ts; numbers in the TECH_EFFECTS block below) ----
   propaganda: { name: 'Propaganda', tier: 2, science: 600, gold: 600, requires: ['agriculture'], description: 'Attacks on your land cost the attacker 12% more troops.' },
   railways: { name: 'Railways', tier: 3, science: 2200, gold: 1000, requires: ['logistics'], description: 'Supply range +25%, fronts +10% faster, tank divisions 20% cheaper, +1 division per 2 Factory levels.' },
@@ -605,13 +605,6 @@ export const TANK_DISBAND_SHARE = 0.08;
 /** tiles of own land around a holding division get this defence bonus (losses of attackers x 1 + bonus) */
 export const TANK_DEFENSE_RADIUS = 4;
 export const TANK_DEFENSE_BONUS = 0.35;
-/** a division not attacking whose ground is taken falls back to own land within this many tiles (losing this share
- * of its troops) while it has at least TANK_FALLBACK_MIN_SHARE of a full division; otherwise it is overrun */
-export const TANK_FALLBACK_RADIUS = 5;
-export const TANK_FALLBACK_LOSS = 0.08;
-export const TANK_FALLBACK_MIN_SHARE = 0.2;
-/** seconds a division that fell back waits before an automatic drive back up to the front */
-export const TANK_FALLBACK_PAUSE = 20;
 /** a bomber hit kills this share of a division's troops within BOMBER_RADIUS of the impact */
 export const TANK_BOMBER_KILL = 0.15;
 /** search effort for a division's land route over own territory (tiles expanded) */
@@ -707,8 +700,8 @@ export const DOCTRINE_LEVERS: Record<DoctrineId, DoctrineLevers> = {
   blitz: { openGroundSpeed: 0.3, armorConvertCost: 0.25 },
   fortress: { fortDefense: 0.25, fortCost: 0.25, defenderLoss: 0.2 },
   siege: { artilleryAttack: 0.2, siegeBonus: 0.25, barrageCooldown: 0.25 },
-  merchant: { gold: 0.08, tradeGold: 0.25, marketBonus: 0.15 },
-  naval: { warshipCost: 0.35, warshipSpeed: 0.2, transportSpeed: 0.35, transportHp: 1 },
+  merchant: { gold: 0.12, tradeGold: 0.25, marketBonus: 0.25 },
+  naval: { warshipCost: 0.25, warshipSpeed: 0.2, transportSpeed: 0.25, transportHp: 1 },
   air: { aircraftCost: 0.25, airfieldReload: 0.25, paradropRange: 0.25 },
   expansion: { expansionLoss: 0.3, smallGrowth: 0.3 },
 };
@@ -1358,7 +1351,7 @@ export const ARSENAL = {
   navalMasteryRange: 1.3,
   navalMasteryShips: 2,
   // tank divisions (per-player path; existing divisions convert)
-  light: { cost: 0.8, speed: 1.45, depth: 1.5, width: 1, roughLoss: 1.5, defense: 0.95, revealRadius: 22, revealSeconds: 20 },
+  light: { cost: 0.8, speed: 1.45, depth: 1.5, width: 1, roughLoss: 1.5, defense: 0.85, revealRadius: 22, revealSeconds: 20 },
   heavy: { cost: 1.35, speed: 0.75, depth: 0.9, roughLoss: 0.7, defense: 1.3, loss: 0.9 },
   /** Deep Raids: light spearhead depth x, speed x, refit x */
   deepRaidsDepth: 1.3,
