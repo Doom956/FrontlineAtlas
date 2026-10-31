@@ -9,6 +9,7 @@ Working rules (owner's wishes, keep following them):
 
 ## Overnight plan (owner, 2026-10-31)
 Round 1 finishes -> all checks -> merge to `main`. Then round 2 -> all checks + multiplayer sync test -> merge to `main` if green. Then the full balance check -> checks -> merge to `main` if green. Morning summary per pillar.
+Status: round 1 merged to main 2026-10-31 05:40 UTC (fbe8710; specialist benchmark not built yet: it moves to the balance check). Round 2 running as workflow wf_9e15181c-ff1 (script under ~/.claude/projects/.../workflows/scripts/frontline-atlas-round2-arsenal-*.js).
 
 ## Round 1 (in progress when this file was written): "many ways to win"
 Goal: navy, armor (tank divisions), air, land and economy can each carry a win.
