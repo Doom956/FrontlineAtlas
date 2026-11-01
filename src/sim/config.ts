@@ -704,12 +704,12 @@ export interface DoctrineLevers {
 export type DoctrineLever = keyof DoctrineLevers;
 
 export const DOCTRINE_LEVERS: Record<DoctrineId, DoctrineLevers> = {
-  blitz: { openGroundSpeed: 0.3, armorConvertCost: 0.25 },
+  blitz: { openGroundSpeed: 0.2, armorConvertCost: 0.25 },
   fortress: { fortDefense: 0.25, fortCost: 0.25, defenderLoss: 0.2 },
   siege: { artilleryAttack: 0.2, siegeBonus: 0.25, barrageCooldown: 0.25 },
   merchant: { gold: 0.08, tradeGold: 0.25, marketBonus: 0.15 },
   naval: { warshipCost: 0.35, warshipSpeed: 0.2, transportSpeed: 0.35, transportHp: 1 },
-  air: { aircraftCost: 0.25, airfieldReload: 0.25, paradropRange: 0.25 },
+  air: { aircraftCost: 0.4, airfieldReload: 0.25, paradropRange: 0.25 },
   expansion: { expansionLoss: 0.3, smallGrowth: 0.3 },
 };
 
@@ -1101,7 +1101,7 @@ export const AIR = {
   wingBase: 3,
   wingPerLevel: 2,
   wingJets: 1,
-  wingDoctrine: 1,
+  wingDoctrine: 2,
   /** mission reach from the airfield (tiles): range + rangePerLevel x (level - 1) */
   range: 150,
   rangePerLevel: 40,
