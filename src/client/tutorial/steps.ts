@@ -128,8 +128,8 @@ export const QUICK_TUTORIAL: TutorialChapter = {
       label: 'Pick a tech',
       text: `Click ${AGRI.name} (farms grow faster). Techs cost science and gold.`,
       target: 'tech-agriculture || tab-research',
-      // any tech counts
-      done: (_s, me) => me.researching !== null || me.techs.length > 0,
+      // any tech counts (an Arsenal item bought instead too)
+      done: (_s, me) => me.researching !== null || me.techs.length > 0 || (me.procuring?.length ?? 0) > 0,
     },
   ],
 };

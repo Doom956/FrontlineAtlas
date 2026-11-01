@@ -24,7 +24,7 @@ const OUT = '/tmp/borderfall-shots';
 mkdirSync(OUT, { recursive: true });
 const W = 1280;
 const H = 800;
-const PORT = 8099;
+const PORT = Number(process.env.E2E_PORT) || 8099; // E2E_PORT: another port when several runs share the machine
 const URL = `http://127.0.0.1:${PORT}/`;
 const errors = [];
 const servers = [];
@@ -35,6 +35,7 @@ const fail = (m) => {
 };
 
 async function startServer(port, env = {}) {
+  if (await fetch(`http://127.0.0.1:${port}/health`).then((r) => r.ok, () => false)) fail(`port ${port} is already in use (set E2E_PORT)`);
   const proc = spawn('node', ['server-dist/index.js'], { env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
   proc.stderr.on('data', (d) => process.stderr.write(`[srv err] ${d}`));
   servers.push(proc);
@@ -254,13 +255,22 @@ try {
   {
     const { A, B, C } = await lobby(['Very high', 'Instant', '×3'], ['Fast game']);
     log('game 1 playing', JSON.stringify(await me(A.page)));
-    // a lab each, next to the capital city
+    // a lab each, next to the capital city (online, a build lands when its turn runs: slower on a busy machine; an
+    // order that never lands is sent again)
+    const hasLab = async (pg) => (await ownBuildings(pg)).some((b) => b.type === 'lab' && b.left <= 0);
     for (const pg of [A.page, B.page]) {
-      const t = await site(pg, false);
-      const r = await dispatch(pg, { type: 'build', building: 'lab', tile: t });
-      if (!r.ok) fail(`lab: ${r.reason}`);
+      for (let attempt = 0; attempt < 3 && !(await hasLab(pg)); attempt++) {
+        const t = await site(pg, false);
+        const r = await dispatch(pg, { type: 'build', building: 'lab', tile: t });
+        log('lab site', t, JSON.stringify(r));
+        if (!r.ok) fail(`lab: ${r.reason}`);
+        for (let k = 0; k < 20 && !(await hasLab(pg)); k++) await sleep(1000);
+      }
     }
-    await sleep(2500);
+    if (!(await hasLab(A.page)) || !(await hasLab(B.page))) {
+      const dump = await Promise.all([A.page, B.page].map(async (pg) => ({ b: await ownBuildings(pg), turn: await pg.evaluate(() => window.__borderfall.turn()), ev: await pg.evaluate(() => window.__borderfall.getState().events.slice(-6).map((e) => e.message)) })));
+      fail(`labs not built: ${JSON.stringify(dump)}`);
+    }
     // ---- A: Shift+drag a box over its lab and capital city, then Upgrade x3 on the selection bar
     const before = await ownBuildings(A.page);
     const lab = before.find((b) => b.type === 'lab');
@@ -293,7 +303,11 @@ try {
     log('selection bar:', barText);
     await shot(A.page, 'g1-selection');
     await A.page.click('[data-test=upgrade-x3]');
-    await sleep(3000);
+    // online, the upgrade lands when its turn runs (slower on a busy machine)
+    for (let k = 0; k < 30; k++) {
+      await sleep(1000);
+      if (((await ownBuildings(A.page)).find((b) => b.tile === lab.tile)?.level ?? 0) >= lab.level + 3) break;
+    }
     const after = await ownBuildings(A.page);
     const labAfter = after.find((b) => b.tile === lab.tile);
     log('A lab level', lab.level, '->', labAfter.level, JSON.stringify(after.map((b) => `${b.type}:${b.level}`)));

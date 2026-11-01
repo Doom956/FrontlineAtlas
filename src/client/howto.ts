@@ -4,6 +4,8 @@
 import { MASTERY_CAP, isArsenalTech } from '../sim/arsenal';
 import {
   ARSENAL_PRICES,
+  BASE_SCIENCE,
+  SCIENCE_PER_LAB,
   ATOM_RADIUS,
   BARRAGE_DISABLE_SECONDS,
   BARRAGE_MIN_ARTILLERY,
@@ -271,7 +273,7 @@ export function howToPlayContent(): HTMLElement {
   const tiers = Math.max(...resTechs.map((t) => TECHS[t].tier));
   const secs = Object.values(ARSENAL_PRICES.tiers).map((x) => x.seconds);
   const researchRows: Row[] = [
-    { title: 'Science', text: `Builds up over time (Research Labs add more). ${resTechs.length} techs in ${tiers} tiers, one at a time; each also costs gold.` },
+    { title: 'Science', text: `Builds up by ${BASE_SCIENCE} a second, +${SCIENCE_PER_LAB} per Research Lab level. ${resTechs.length} techs in ${tiers} tiers, one at a time; each also costs gold. The first tiers go quickly; the last ones take most of a game.` },
     { title: 'Auto', text: 'The next useful tech starts by itself. Choosing one by hand turns Auto off.', key: 'T' },
     { title: 'OR pairs', text: 'Some techs come in pairs marked OR (Stock Exchange or Free Trade, Blitz Tactics or Trench Warfare ...). Taking one locks the other for good.' },
     { title: 'Switching', text: 'Clicking another tech while one is in progress asks for a second click: the current one loses its progress and gold.' },
@@ -279,6 +281,7 @@ export function howToPlayContent(): HTMLElement {
   const arsenalRows: Row[] = [
     { title: 'Arsenal tab', text: 'The second tab of the Research panel: one row each for Navy, Armor, Air and Shared.', key: 'T' },
     { title: 'Buying', text: `Not researched: bought with gold plus iron (armor) or oil and some iron (navy, air), and delivered ${Math.min(...secs)}-${Math.max(...secs)} s later. Several can be on order at once; the header shows each with a countdown.` },
+    { title: 'Prices', text: `By column: ${[1, 2, 3, 4].map((k) => `${['unlock', 'path', 'upgrade or special', 'mastery'][k - 1]} ${n(ARSENAL_PRICES.tiers[k].gold)} gold + ${n(ARSENAL_PRICES.tiers[k].resource)} iron / oil`).join('; ')}. The three unlocks (Navigation, Mechanization, Flight) take iron only.` },
     { title: 'Buildings', text: 'Navy items need a Port, armor items a Factory, air items an Airfield. Flight itself unlocks the Airfield, so it needs none.' },
     { title: 'Paths', text: 'Each pillar forks (OR): Destroyers + Battleships or Submarines + Carriers; Light or Heavy tanks; Ground-attack planes or Heavy bombers. One path per game.' },
     { title: 'Specials', text: 'New behaviour, not stats: Naval Mines, Amphibious Tanks, Drop Tanks, Night Bombing, Early Warning. Any path can take them.' },
