@@ -1726,8 +1726,25 @@ function nextTech(ctx: Ctx): TechId | null {
 function aiOrder(ctx: Ctx): TechId[] {
   let m = techMemo.get(ctx);
   if (!m) techMemo.set(ctx, (m = {}));
-  return (m.order ??= aiTechOrder(ctx.state, ctx.id, ctx.p.personality, aiAirTechs(ctx.state, ctx.id, ctx.prof.techs)));
+  return (m.order ??= cachedOrder(ctx));
 }
+/**
+ * aiTechOrder is costly and only changes with the nation's techs and orders (and slowly with the map: fork leans), so
+ * it is kept per nation for up to ORDER_CACHE_TICKS while its techs, research and orders stay the same.
+ */
+function cachedOrder(ctx: Ctx): TechId[] {
+  const { state, id, p } = ctx;
+  let m = orderCache.get(state);
+  if (!m) orderCache.set(state, (m = new Map()));
+  const key = `${p.techs.length}|${p.researching ?? ''}|${(p.procuring ?? []).map((o) => o.tech).join(',')}`;
+  const c = m.get(id);
+  if (c && c.key === key && state.tick - c.tick < ORDER_CACHE_TICKS) return c.order;
+  const order = aiTechOrder(state, id, p.personality, aiAirTechs(state, id, ctx.prof.techs));
+  m.set(id, { tick: state.tick, key, order });
+  return order;
+}
+const ORDER_CACHE_TICKS = 50;
+const orderCache = new WeakMap<GameState, Map<number, { tick: number; key: string; order: TechId[] }>>();
 /** arsenalAI.aiSpecialPick, once per decision (nextTech and nextArsenal both ask). */
 function aiSpecial(ctx: Ctx): TechId | null {
   let m = techMemo.get(ctx);

@@ -39,7 +39,8 @@ describe('arsenal card states', () => {
     expect(a.building).toBe('port');
     expect(a.reason).toBe('Build a Port first');
     expect(a.price.gold).toBeGreaterThan(0);
-    expect(a.price.oil).toBeGreaterThan(0);
+    expect(a.price.iron).toBeGreaterThan(0);
+    expect(a.price.oil).toBe(0); // tier-1 unlocks cost iron only: a nation without oil can still start a pillar
     expect(howToGet(s, me, 'navigation')).toBe('Build a Port, then buy Navigation in the Arsenal (T)');
     addBuilding(s, 'port', 1, 5 * 40 + 5);
     expect(arsenalCard(s, me, 'navigation').state).toBe('buy');
@@ -68,13 +69,14 @@ describe('arsenal card states', () => {
     const s = rich();
     const me = s.players[1];
     addBuilding(s, 'port', 1, 5 * 40 + 5);
-    me.oil = 0;
+    me.iron = 0;
     const a = arsenalCard(s, me, 'navigation');
     expect(a.state).toBe('poor');
-    expect(a.short).toEqual({ gold: false, iron: false, oil: true });
-    expect(a.reason).toMatch(/oil/);
+    expect(a.short).toEqual({ gold: false, iron: true, oil: false });
+    expect(a.reason).toMatch(/iron/);
     const html = priceHtml(a);
-    expect(html).toMatch(/p-oil short/);
+    expect(html).toMatch(/p-iron short/);
+    expect(html).not.toMatch(/p-oil/);
     expect(html).toMatch(/p-gold"/);
     expect(html).toMatch(/<svg/);
     expect(html).toMatch(new RegExp(`${a.price.seconds} s`));
