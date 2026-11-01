@@ -113,6 +113,8 @@ const QBLOCK = 8;
 const TILE_UNIT = 8;
 /** An AI founds one city per this many owned tiles (and upgrades them once it has them all). */
 const CITY_TILES = 2400;
+/** Most airfields an AI keeps (more than AIR.massFree on missions only slow each other's sorties, airwings.ts). */
+const AI_MAX_AIRFIELDS = 3;
 /** At most one atom bomb per AI per this many seconds. */
 const NUKE_PAUSE_SECONDS = 300;
 /** An AI with atom bombs nukes a bordering / attacking nation whose land share is above max(floor, win share - margin). */
@@ -1765,7 +1767,7 @@ function economy(ctx: Ctx): void {
     add('port', count('port') < portCap ? 2 + prof.naval * 4 : 0);
   }
   if (hasTech(p, 'medicine')) add('hospital', count('hospital') < 2 ? 2.5 : 0);
-  if (hasTech(p, 'flight')) add('airfield', count('airfield') < (prof.aggression > 0.5 ? 2 : 1) + (held === 'air' ? 1 : 0) + aiExtraAirfields(state, id) + focusExtra(state, id, 'airfields') ? 3.5 : 0);
+  if (hasTech(p, 'flight')) add('airfield', count('airfield') < Math.min(AI_MAX_AIRFIELDS, (prof.aggression > 0.5 ? 2 : 1) + (held === 'air' ? 1 : 0) + aiExtraAirfields(state, id) + focusExtra(state, id, 'airfields')) ? 3.5 : 0);
   if (hasTech(p, 'radar') && enemyAirThreat(ctx)) add('sam', count('sam') < 3 ? 4.5 : 0);
   if (hasTech(p, 'rocketry')) add('silo', count('silo') < 1 ? 3 : 0);
 
