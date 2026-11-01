@@ -492,7 +492,14 @@ function sortie(state: GameState, wing: AirWing, b: Building): void {
     return;
   }
   wing.sorties++;
-  wing.nextTick = state.tick + Math.max(1, Math.round(AIR.sortieCooldown * doctrineLess(state, wing.owner, 'airfieldReload') * TICKS_PER_SECOND));
+  wing.nextTick = state.tick + Math.max(1, Math.round(AIR.sortieCooldown * doctrineLess(state, wing.owner, 'airfieldReload') * massCooldownMul(state, wing.owner) * TICKS_PER_SECOND));
+}
+
+/** Sortie cooldown x for a nation with many airfields on support / strategic missions (AIR.massFree, AIR.massCooldown). */
+export function massCooldownMul(state: GameState, owner: number): number {
+  let n = 0;
+  for (const w of airState(state).wings) if (w.owner === owner && (w.mission === 'support' || w.mission === 'strategic')) n++;
+  return 1 + AIR.massCooldown * Math.max(0, n - AIR.massFree);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -893,7 +900,7 @@ export const AIR_MISSION_INFO: Record<AirMission, { name: string; help: string }
   idle: { name: 'Idle', help: 'No automatic sorties; manual bombing and paradrops still work.' },
   support: {
     name: 'Support front',
-    help: `Every ${AIR.sortieCooldown} s the wing bombs ahead of your attack: enemy defence there drops up to ${Math.round(AIR.supportMaxCut * 100)}%, your push is faster, defenders die and forts are knocked out. Follows the front.`,
+    help: `Every ${AIR.sortieCooldown} s the wing bombs ahead of your attack: enemy defence there drops up to ${Math.round(AIR.supportMaxCut * 100)}%, your push is faster, defenders die and forts are knocked out. Follows the front. More than ${AIR.massFree} airfields on missions fly slower (+${Math.round(AIR.massCooldown * 100)}% time between sorties per extra one).`,
   },
   strategic: {
     name: 'Strategic bombing',
