@@ -6,7 +6,8 @@ import { GUIDE_KEY, GuideEngine, LEGACY_TUTORIAL_KEY, loadGuidePrefs, TIP_GAP_MS
 import { guideTips, openingSteps } from '../src/client/guide/steps';
 import type { TutorialUi } from '../src/client/tutorial/engine';
 import type { GameState, Player } from '../src/sim/types';
-import { makeTestGame } from './helpers';
+import { applyAction } from '../src/sim/actions';
+import { claimRect, makeFlatGame, makeTestGame } from './helpers';
 
 class MemStorage {
   data = new Map<string, string>();
@@ -332,5 +333,23 @@ describe('guide: real content', () => {
     expect(shown).toContain('doctrine');
     expect(shown.indexOf('research')).toBeLessThan(shown.indexOf('doctrine'));
     expect(new Set(shown).size).toBe(shown.length);
+  });
+
+  it('a neighbour attacking the player brings the critical tip at once, pointing at the attacked tile', () => {
+    store.setItem(GUIDE_KEY, JSON.stringify({ on: true, openingDone: true, tips: [] }));
+    const s = makeFlatGame(40, 20, 2, { human: true });
+    claimRect(s, 1, 0, 0, 19, 19);
+    claimRect(s, 2, 20, 0, 39, 19);
+    const me = s.players[1];
+    const g = new GuideEngine([], guideTips());
+    const at = (): GuideCtx => ({ s, me, ui: UI, sec: 30, now: (world.now += 200), strike: () => null });
+    expect(g.update(at())).toBeNull();
+    const target = 10 * 40 + 19;
+    const r = applyAction(s, 2, { type: 'attack', tile: target, troops: { infantry: 1000, armor: 0, artillery: 0 } });
+    expect(r.ok).toBe(true);
+    const v = g.update(at());
+    expect(v?.id).toBe('attacked');
+    expect(v?.text).toContain(s.players[2].name);
+    expect(v?.tile).toBe(target);
   });
 });

@@ -56,8 +56,10 @@ src/client/   browser only
                 (Canvas2D fallback), terrain.ts, buildings.ts, deposits.ts, units.ts, fronts.ts, names.ts,
                 overlays.ts, minimap.ts
   icons.ts      pictogram library: detailed icons and simplified map markers (incl. the cargo plane)
-  hud/          HUD parts: command bar, standings, cluster, drawers, nation card, map tooltip, toasts, advisor and
-                tutorial, radial menu contents, glyphs (inline SVG pictograms), plain-word texts
+  hud/          HUD parts: command bar, standings, cluster, drawers, nation card, map tooltip, toasts, advisor,
+                radial menu contents, glyphs (inline SVG pictograms), plain-word texts
+  guide/        in-game guide: engine.ts (opening steps, one-time tips, prefs), steps.ts (content), bar.ts (the bar
+                + spotlight), guide.ts (wired into the HUD); tutorial/ = Tutorial mode chapters, spotlight.ts shared
   simx.ts       client helpers over sim features: build targets, levels, public armies, advice, paradrop, barrage
   fonts.ts      bundled fonts (FontFace API)
   camera.ts     pan / zoom / screen<->tile
@@ -877,13 +879,14 @@ full-map scans after `createGame`.
   x1.35). The camera glides to your capital (zoom 4.5) when you place your start and when the game starts. The help
   page pauses single player while it is open. Only when needed: toasts (top centre, 4 s;
   alliance requests stay with Accept / Decline), the advisor line above the command bar (`advisor.suggestions()`,
-  cycling every 8 s, a button that acts, dismissible, can be switched off) or the first-game tutorial (six steps,
-  remembered in localStorage), the spawn bar, the target-mode chip, the map tooltip (terrain with its effect in plain
+  cycling every 8 s, a button that acts, dismissible, can be switched off) or the guide bar (src/client/guide/: an
+  opening of nine steps in a new player's first game, then one-time tips when they become useful; a brass ring and an
+  arrow on the button or map tile; Next / Skip / Hide guide; never both lines at once), the spawn bar, the target-mode chip, the map tooltip (terrain with its effect in plain
   words, the resource and what to build on it, owner, relation and army, the building with its level and effect).
   One click away: drawers on the right (Army: mix + auto, what attacks send, active attacks, air and strikes;
   Research with auto; Diplomacy; Events history; Map key: every terrain with swatch and effect, resources, borders
   and marks, buildings (marker, hotkey, effect, the category colours), units, strikes, troop counters; the selected building with upgrade and actions; Menu: sound, advisor,
-  tutorial, minimap, leave), the nation card on the left (Ally / Accept / Break, Gift, Embargo, Attack), the help page.
+  guide on/off and Restart guide, minimap, leave), the nation card on the left (Ally / Accept / Break, Gift, Embargo, Attack), the help page.
   Destructive actions ask first (a warning toast with a confirm button: Demolish from the radial menu, Break an
   alliance); an alliance request, a gift and an AI's refusal get a toast.
 - Research panel (T; hud/researchTree.ts hosts it, hud/arsenalPage.ts draws a tab, hud/techRows.ts lays it out): two
