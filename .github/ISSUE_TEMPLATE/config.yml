@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Play Frontline Atlas
+    url: https://frontline-atlas.onrender.com
+    about: Single player and online games in your browser.
+  - name: Fast page
+    url: https://doom956.github.io/FrontlineAtlas/
+    about: Loads quicker. Try it here to see if a bug also happens there.
