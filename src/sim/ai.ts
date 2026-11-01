@@ -978,13 +978,18 @@ const DOCTRINE_SWITCH_MARGIN = 1.8;
 /** First picks are spread over this many seconds after the unlock (by id). */
 const DOCTRINE_FIRST_SPREAD_SECONDS = 40;
 
+/** Air doctrine score an air-minded AI gives itself before it has Flight (doctrineAdvice: 0.3 + 0.45 with Flight). */
+const AIR_PLAN_SCORE = 0.75;
 /** Doctrine scores for this AI: situation (doctrineAdvice) x personality taste x difficulty noise. Best first. */
 function doctrineScores(ctx: Ctx): { id: DoctrineId; score: number }[] {
   const { state, p, diff } = ctx;
   const taste = DOCTRINE_TASTE[p.personality ?? 'balanced'];
+  const airTaste = aiAirDoctrineTaste(state, ctx.id);
   const out = doctrineAdvice(state, ctx.id).map((a) => ({
     id: a.id,
-    score: a.score * (taste[a.id] ?? 1) * (a.id === 'air' ? aiAirDoctrineTaste(state, ctx.id) : 1) * (1 + (state.rng() * 2 - 1) * diff.doctrineNoise),
+    // An air-minded nation plans for Flight: it scores Air as if it had it (else only nations already rich in
+    // airfields switch to Air later, and Air looks like a winner's pick).
+    score: (a.id === 'air' && airTaste > 1 ? Math.max(a.score, AIR_PLAN_SCORE) * airTaste : a.score * (taste[a.id] ?? 1)) * (1 + (state.rng() * 2 - 1) * diff.doctrineNoise),
   }));
   out.sort((a, b) => b.score - a.score || DOCTRINE_IDS.indexOf(a.id) - DOCTRINE_IDS.indexOf(b.id));
   return out;
