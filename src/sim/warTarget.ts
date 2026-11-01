@@ -1,8 +1,9 @@
 // Follow my war: a player's units and air wings aim at the player's current war target by themselves, so a new
 // attack doesn't need every wing, fleet and division to be re-aimed by hand.
 //
-// War target of a human player (updateFollow, every FOLLOW_EVERY_SECONDS): the nation it attacks with the most troops
-// right now (nations before tribes: tribe attacks count x FOLLOW_TRIBE_WEIGHT; ties: lower id); with no attack
+// War target of a human player (updateFollow): the nation it attacks with the most troops right now (nations before
+// tribes: tribe attacks count x FOLLOW_TRIBE_WEIGHT; ties: lower id; the current one stays unless another is attacked
+// with FOLLOW_SWITCH times its troops); units re-aim at it every few seconds. With no attack
 // running, the nation it attacked last, for FOLLOW_MEMORY_SECONDS after that attack ended. Its main front = that
 // nation's border tile nearest the focus of the biggest attack on it (or of the last one). Both are kept in hashed
 // state (state.follow), so every client aims at the same tiles at the same ticks.
@@ -34,6 +35,8 @@ export const FOLLOW_EVERY_SECONDS = 2;
 export const FOLLOW_MEMORY_SECONDS = 60;
 /** Attacks on tribes count this much when picking the war target (nations first). */
 export const FOLLOW_TRIBE_WEIGHT = 0.3;
+/** Another nation becomes the war target while the current one is attacked too only with this many times the troops. */
+export const FOLLOW_SWITCH = 1.25;
 /** Auto recon flies this many tiles past the main front, toward the target's capital (when that is still its land). */
 const RECON_DEPTH = 12;
 
@@ -83,24 +86,34 @@ function biggestAttack(state: GameState, pid: number, nation: number): { focus: 
   return best;
 }
 
-/** The nation pid attacks with the most troops right now (summed over its attacks on it), or 0. */
-function attackedNow(state: GameState, pid: number): number {
+/** Troops pid attacks each valid nation with right now (summed; tribes x FOLLOW_TRIBE_WEIGHT). */
+function attackScores(state: GameState, pid: number): Map<number, number> {
   const sums = new Map<number, number>();
   for (const a of state.attacks) {
     if (a.attacker !== pid || a.target <= 0) continue;
     const tr = a.troops.infantry + a.troops.armor + a.troops.artillery;
     if (tr <= 0 || !validTarget(state, pid, a.target)) continue;
-    sums.set(a.target, (sums.get(a.target) ?? 0) + tr);
+    sums.set(a.target, (sums.get(a.target) ?? 0) + tr * (isTribe(state.players[a.target]) ? FOLLOW_TRIBE_WEIGHT : 1));
   }
+  return sums;
+}
+
+/**
+ * The nation pid attacks with the most troops right now (ties: lower id), or 0. `current` (the war target so far)
+ * keeps the place unless another nation is attacked with FOLLOW_SWITCH times its troops (no flapping between fronts).
+ */
+function attackedNow(state: GameState, pid: number, current = 0): number {
+  const sums = attackScores(state, pid);
   let best = 0;
   let bestScore = 0;
-  for (const [n, tr] of sums) {
-    const score = tr * (isTribe(state.players[n]) ? FOLLOW_TRIBE_WEIGHT : 1);
+  for (const [n, score] of sums) {
     if (score > bestScore || (score === bestScore && n < best)) {
       best = n;
       bestScore = score;
     }
   }
+  const cur = current > 0 ? sums.get(current) : undefined;
+  if (cur !== undefined && cur * FOLLOW_SWITCH >= bestScore) return current;
   return best;
 }
 
@@ -121,29 +134,39 @@ function frontNear(state: GameState, pid: number, nation: number, anchor: number
 }
 
 /**
- * Re-evaluates every human player's war target (every FOLLOW_EVERY_SECONDS; sim.ts, after the war memory) and flies
- * due auto-recon flights.
+ * Keeps every human player's war target (sim.ts, after the war memory). Every tick with attacks running: a player
+ * attacking takes the nation it attacks hardest as its target at once (attacks are short, a check every few seconds
+ * would miss them); every FOLLOW_EVERY_SECONDS: main fronts are worked out again, expired targets dropped and due
+ * auto-recon flights flown. Cheap: one pass over the attacks per human player per tick.
  */
 export function updateFollow(state: GameState): void {
-  if (state.tick % EVERY_TICKS !== 0) return;
+  const due = state.tick % EVERY_TICKS === 0;
+  if (!due && !state.attacks.length) return;
   const old = state.follow?.targets ?? [];
   const out: number[] = [];
   for (const p of state.players) {
     if (!p || p.id <= 0 || !p.isHuman || !p.alive) continue;
-    const now = attackedNow(state, p.id);
+    const k = recIndex(state, p.id);
+    const had = k >= 0 ? old[k + 1] : 0;
+    const now = attackedNow(state, p.id, had);
     if (now > 0) {
       const focus = biggestAttack(state, p.id, now)?.focus ?? p.capital;
-      out.push(p.id, now, focus, state.tick, frontNear(state, p.id, now, focus));
+      // The front tile: worked out on the check ticks (mainFront works it out meanwhile for a new target).
+      const front = due ? frontNear(state, p.id, now, focus) : now === had ? old[k + 4] : -1;
+      out.push(p.id, now, focus, state.tick, front);
       continue;
     }
-    const k = recIndex(state, p.id);
     if (k < 0) continue;
+    if (!due) {
+      out.push(old[k], old[k + 1], old[k + 2], old[k + 3], old[k + 4]);
+      continue;
+    }
     const nation = old[k + 1];
     if (state.tick - old[k + 3] > MEMORY_TICKS || !validTarget(state, p.id, nation)) continue;
     out.push(p.id, nation, old[k + 2], old[k + 3], frontNear(state, p.id, nation, old[k + 2]));
   }
   if (out.length || state.follow) followState(state).targets = out;
-  autoRecon(state);
+  if (due) autoRecon(state);
 }
 
 /**
@@ -313,9 +336,8 @@ export function followTargetOf(state: GameState, x: Unit | Building): FollowInfo
 export function warTargetOf(state: GameState, pid: number): { nation: number; tile: number; attacking: boolean; secondsLeft: number } {
   const nation = followedNation(state, pid);
   if (nation <= 0) return { nation: 0, tile: -1, attacking: false, secondsLeft: 0 };
-  const k = recIndex(state, pid);
-  const last = state.follow!.targets[k + 3];
-  const attacking = last === state.tick - (state.tick % EVERY_TICKS);
+  const last = state.follow!.targets[recIndex(state, pid) + 3];
+  const attacking = attackScores(state, pid).has(nation);
   return { nation, tile: mainFront(state, pid, nation), attacking, secondsLeft: attacking ? FOLLOW_MEMORY_SECONDS : Math.max(0, (last + MEMORY_TICKS - state.tick) / TICKS_PER_SECOND) };
 }
 

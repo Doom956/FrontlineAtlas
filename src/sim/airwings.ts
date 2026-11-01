@@ -43,6 +43,8 @@ export const MISSION_SUPPORT = 1;
 export const MISSION_STRATEGIC = 2;
 /** AI: airfields flying heavy bombers raid cities (all but the one nearest the main attack), see aiAirWings. */
 const AI_HEAVY_RAIDS = true;
+/** Following wings re-aim this often between sorties (warTarget.ts re-evaluates war targets every 2 s). */
+const FOLLOW_AIM_TICKS = 2 * TICKS_PER_SECOND;
 
 // ---------------------------------------------------------------------------------------------------------------
 // State and small helpers
@@ -703,9 +705,14 @@ export function updateAir(state: GameState): void {
       return !!b && b.type === 'airfield' && b.owner === wing.owner && state.players[wing.owner]?.alive;
     });
     for (const wing of air.wings) {
-      if (wing.mission === 'idle' || state.tick < wing.nextTick) continue;
+      if (wing.mission === 'idle') continue;
       const b = state.buildings.get(wing.airfield)!;
       if (b.buildLeft > 0) continue;
+      if (state.tick < wing.nextTick) {
+        // Follow my war: re-aim between sorties too (the client shows the aim; patrols move at once).
+        if (wing.follow && (state.tick + wing.airfield) % FOLLOW_AIM_TICKS === 0) followWing(state, wing, b);
+        continue;
+      }
       sortie(state, wing, b);
     }
   }

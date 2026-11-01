@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { applyAction } from '../src/sim/actions';
 import { wingOf } from '../src/sim/airwings';
 import { markBuildingsChanged } from '../src/sim/buildings';
+import { frontTiles } from '../src/sim/combat';
 import { hashState } from '../src/sim/hash';
 import { computeCoastAndLand } from '../src/sim/mapgen';
 import { tick } from '../src/sim/sim';
@@ -36,7 +37,7 @@ function game(seed = 5): GameState {
     p.gold = 1e6;
     p.iron = 1e5;
     p.oil = 1e5;
-    p.troops = { infantry: p.id === 1 ? 400000 : 150000, armor: 0, artillery: 0 };
+    p.troops = { infantry: p.id === 1 ? 400000 : 60000, armor: 0, artillery: 0 };
   }
   s.players[1].techs.push('flight', 'navigation', 'mechanization', 'reconPlanes');
   return s;
@@ -61,7 +62,8 @@ function runUntil(s: GameState, pred: () => boolean, max = 1500): boolean {
 }
 /** Player 1 attacks nation `foe` across the shared border with `troops` infantry. */
 function attack(s: GameState, foe: 2 | 3, troops: number): void {
-  const tile = foe === 2 ? at(s, 39, 8) : at(s, 80, 8);
+  const border = frontTiles(s, 1, foe);
+  const tile = border[Math.floor(border.length / 2)];
   const r = applyAction(s, 1, { type: 'attack', tile, troops: { infantry: troops, armor: 0, artillery: 0 } });
   expect(r.reason ?? '').toBe('');
 }
@@ -78,20 +80,31 @@ function airfield(s: GameState, bombers: number, fighters = 0): Building {
 function bomberTargets(s: GameState, since: number): number[] {
   return s.units.filter((u) => u.type === 'bomber' && u.owner === 1 && u.id > since && u.cargo === 0).map((u) => s.map.owner[u.target]);
 }
+const EVERY = 2 * TICKS_PER_SECOND;
 const lastId = (s: GameState): number => s.units.reduce((m, u) => Math.max(m, u.id), 0);
 
 describe('war target', () => {
-  it('follows the attack with the most troops and switches when the player attacks someone else harder', () => {
+  it('follows the attack with the most troops and switches when the player attacks someone else', () => {
     const s = game();
     expect(followedNation(s, 1)).toBe(0);
+    // Two attacks running at the next check: the bigger one wins.
+    run(s, EVERY - 1 - (s.tick % EVERY));
     attack(s, 2, 20000);
-    run(s, 2 * TICKS_PER_SECOND + 1);
-    expect(followedNation(s, 1)).toBe(2);
-    const f2 = mainFront(s, 1, 2);
-    expect(s.map.owner[f2]).toBe(2);
-    expect(warTargetOf(s, 1)).toMatchObject({ nation: 2, attacking: true });
     attack(s, 3, 60000);
-    run(s, 2 * TICKS_PER_SECOND + 1);
+    run(s, 2);
+    expect(followedNation(s, 1)).toBe(3);
+    expect(warTargetOf(s, 1)).toMatchObject({ nation: 3, attacking: true });
+    run(s, EVERY - 1 - (s.tick % EVERY));
+    attack(s, 2, 60000);
+    attack(s, 3, 20000);
+    run(s, 2);
+    expect(followedNation(s, 1)).toBe(2);
+    expect(s.map.owner[mainFront(s, 1, 2)]).toBe(2);
+    // The attacks end; then the player attacks 3: it becomes the war target.
+    run(s, 10 * TICKS_PER_SECOND);
+    expect(followedNation(s, 1)).toBe(2);
+    attack(s, 3, 20000);
+    run(s, EVERY + 1);
     expect(followedNation(s, 1)).toBe(3);
     expect(s.map.owner[mainFront(s, 1, 3)]).toBe(3);
     // AI players have no war target (their units keep their own logic).
@@ -118,10 +131,16 @@ describe('air wings', () => {
   it('strategic follows the war target; a picked target fixes it; Follow again goes back', () => {
     const s = game();
     const af = airfield(s, 8, 2);
-    const c2 = addBuilding(s, 'city', 2, at(s, 20, 10), 3);
-    addBuilding(s, 'city', 2, at(s, 25, 5), 3);
-    const c3 = addBuilding(s, 'city', 3, at(s, 100, 10), 3);
-    addBuilding(s, 'city', 3, at(s, 95, 5), 3);
+    // Cities for both nations, rebuilt before each check (bombs destroy buildings by chance).
+    const spots: [number, number][] = [[20, 10], [25, 5], [15, 15]];
+    const restock = (): void => {
+      for (const [x, y] of spots) {
+        if (!s.map.building[at(s, x, y)]) addBuilding(s, 'city', 2, at(s, x, y), 3);
+        if (!s.map.building[at(s, 119 - x, y)]) addBuilding(s, 'city', 3, at(s, 119 - x, y), 3);
+      }
+    };
+    restock();
+    const c2 = s.buildings.get(s.map.building[at(s, 20, 10)] - 1)!;
     // A player's mission without a target follows the war.
     expect(applyAction(s, 1, { type: 'setAirMission', airfield: af.tile, mission: 'strategic' }).ok).toBe(true);
     expect(wingOf(s, af)!.follow).toBe(true);
@@ -137,6 +156,7 @@ describe('air wings', () => {
     attack(s, 3, 90000);
     run(s, 2 * TICKS_PER_SECOND + 1);
     expect(followTargetOf(s, af)).toMatchObject({ follow: true, nation: 3 });
+    restock();
     since = lastId(s);
     expect(runUntil(s, () => bomberTargets(s, since).length > 0)).toBe(true);
     expect(new Set(bomberTargets(s, since))).toEqual(new Set([3]));
@@ -144,17 +164,23 @@ describe('air wings', () => {
     expect(applyAction(s, 1, { type: 'setAirMission', airfield: af.tile, mission: 'strategic', target: c2.tile }).ok).toBe(true);
     expect(wingOf(s, af)!.follow).toBeUndefined();
     expect(followTargetOf(s, af)).toMatchObject({ follow: false, nation: 2 });
-    attack(s, 2, 10000); // keep that war going
+    // A Fixed raid flies while that war goes on: attack 2 just before the next sortie is due.
+    run(s, Math.max(0, wingOf(s, af)!.nextTick - s.tick - 1));
+    attack(s, 2, 30000);
+    restock();
     since = lastId(s);
     expect(runUntil(s, () => bomberTargets(s, since).length > 0)).toBe(true);
     expect(new Set(bomberTargets(s, since))).toEqual(new Set([2]));
-    // Follow again.
+    // Follow again (the war target is 2 now: we attacked it last), then the player attacks 3 again.
     expect(applyAction(s, 1, { type: 'setAirMission', airfield: af.tile, mission: 'strategic', follow: true }).ok).toBe(true);
+    expect(followTargetOf(s, af)).toMatchObject({ follow: true, nation: 2 });
+    attack(s, 3, 30000);
+    run(s, EVERY + 1);
     expect(followTargetOf(s, af)).toMatchObject({ follow: true, nation: 3 });
+    restock();
     since = lastId(s);
     expect(runUntil(s, () => bomberTargets(s, since).length > 0)).toBe(true);
     expect(new Set(bomberTargets(s, since))).toEqual(new Set([3]));
-    expect(c3.owner).toBe(3);
   });
 
   it('support bombs the main front and superiority patrols over it; both move when the war target changes', () => {
@@ -181,6 +207,7 @@ describe('air wings', () => {
 
   it('AI missions stay as they were (no follow), and a player can still fix a mission with a target', () => {
     const s = game();
+    s.admin!.aiFrozen = false;
     s.players[2].techs.push('flight');
     const ai = addBuilding(s, 'airfield', 2, at(s, 20, 10));
     expect(applyAction(s, 2, { type: 'setAirMission', airfield: ai.tile, mission: 'superiority' }).ok).toBe(true);
@@ -218,6 +245,7 @@ describe('warships', () => {
     expect(u.fixed).toBe(2);
     expect(applyAction(s, 1, { type: 'setUnitStance', unitIds: [u.id], stance: 'bombard', follow: true }).ok).toBe(true);
     expect(u.fixed).toBeUndefined();
+    attack(s, 3, 30000); // the war target was 2 (attacked last)
     expect(runUntil(s, () => stationOwner(s, u) === 3, 900)).toBe(true);
     // Pins only on another nation's land.
     expect(applyAction(s, 1, { type: 'setUnitStance', unitIds: [u.id], stance: 'bombard', target: at(s, 60, 5) }).ok).toBe(false);
@@ -254,6 +282,7 @@ describe('tank divisions', () => {
     expect(d.station! % s.map.width).toBeGreaterThan(75);
     // AI divisions still need a front.
     s.players[2].techs.push('mechanization');
+    s.admin!.aiFrozen = false;
     const ad = spawnTankDivision(s, 2, at(s, 20, 10));
     expect(applyAction(s, 2, { type: 'setDivisionMode', unitIds: [ad.id], mode: 'support' }).reason).toMatch(/front/);
   });
@@ -272,8 +301,9 @@ describe('auto recon', () => {
     expect(autoReconOn(s, af)).toBe(true);
     expect(runUntil(s, () => recon().length > 0, 60)).toBe(true);
     expect(recon()[0].targetOwner).toBe(2);
-    run(s, 60);
-    expect(recon().length).toBe(1); // one flight while its reveal lasts
+    const first = recon()[0].id;
+    run(s, 100);
+    expect(s.units.some((u) => u.type === 'reconPlane' && u.id > first)).toBe(false); // one flight while its reveal lasts
     expect(applyAction(s, 1, { type: 'setAutoRecon', airfield: -1, on: false }).ok).toBe(true);
     expect(autoReconOn(s, af)).toBe(false);
     // Needs the tech and an own airfield.
