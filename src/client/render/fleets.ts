@@ -8,6 +8,13 @@
 export const FLEET_RADIUS = 4;
 /** Fleets are drawn as markers below this zoom (screen px per tile): 4 tiles are then under ~16 px apart. */
 export const FLEET_ZOOM = 4;
+/** Far out, ships closer than this on screen (CSS px) join too, so markers and ships never pile up. */
+export const FLEET_MIN_PX = 16;
+
+/** The joining distance in screen px at zoom z: FLEET_RADIUS tiles, at least FLEET_MIN_PX. */
+export function fleetRadiusPx(z: number): number {
+  return Math.max(FLEET_RADIUS * z, FLEET_MIN_PX);
+}
 
 export interface FleetPoint {
   id: number;

@@ -4,7 +4,7 @@
 // short V wake. A small troop pill on transports at mid/close zoom; your own warships carry a tiny tick (a ring only
 // while one is hovered or picked, UnitLayer.focusId); they can be clicked to give orders, the hit area is larger than
 // the drawing. At far zoom units on the same pixel are drawn once and only missiles keep their trails. Zoomed out
-// (FLEET_ZOOM), warships of one owner within FLEET_RADIUS tiles draw as one fleet marker with a count badge
+// (FLEET_ZOOM), warships of one owner within FLEET_RADIUS tiles (or 16 px on screen) draw as one fleet marker with a count badge
 // (render/fleets.ts); a click on your own marker selects that fleet (ownFleetAt).
 import { TICKS_PER_SECOND } from '../../sim/config';
 import { armyTotal } from '../../sim/economy';
@@ -14,7 +14,7 @@ import { clamp, css, formatCount, MAP_NUM_FAMILY, type RGB } from './common';
 import { drawTrails, GLYPHS, type Inst, strokeGlyphs } from './unitGlyphs';
 import { isIncoming } from '../forces';
 import { unitVisibleTo } from '../../sim/techtree';
-import { clusterFleets, FLEET_RADIUS, FLEET_ZOOM, type FleetPoint } from './fleets';
+import { clusterFleets, FLEET_ZOOM, fleetRadiusPx, type FleetPoint } from './fleets';
 
 const HIST = 3;
 /** Paratroopers drifting down where a cargo plane arrived (client-only effect). */
@@ -252,7 +252,7 @@ export class UnitLayer {
     if (grouping) {
       const pts: FleetPoint[] = [];
       for (const e of visible) if (e.type === 'warship') pts.push({ id: e.u.id, owner: e.u.owner, x: e.x, y: e.y });
-      const fleets = pts.length > 1 ? clusterFleets(pts, FLEET_RADIUS * z) : [];
+      const fleets = pts.length > 1 ? clusterFleets(pts, fleetRadiusPx(z)) : [];
       if (fleets.length) {
         const byId = new Map<number, Vis>();
         for (const e of visible) if (e.type === 'warship') byId.set(e.u.id, e);

@@ -313,6 +313,7 @@ export function howToPlayContent(): HTMLElement {
     { title: 'Buy', text: 'Warships, bombers and fighters are in the Military group of the build menu (or at a Port / Airfield). Forces lists everything you own with its orders.', key: 'Y' },
     { title: 'Orders', text: 'Click your warship (or Select in Forces), then click water to move it. Shift+W selects every warship, a double-click every one on screen; zoomed out, close ships show as one fleet marker with a count (click it for the fleet). The Forces drawer (Y) gives all of them one order. Hover any unit to see what it is doing; enemy units heading for you get a red ring.' },
     { title: 'Follow my war', text: 'Air missions, Bombard / Blockade ships and Support-front tanks follow your war by default: they switch to the nation you attack. A map click fixes a target; Follow my war switches back.' },
+    { title: 'Group orders', text: 'With 2 or more warships, airfields or tank divisions, Forces (Y) shows one order bar per type: one click orders them all. Units on another order show as "set by hand"; Reset to all brings them back. Shift+W / Shift+A or a double-click selects the whole group.' },
   ];
   const tank = UNITS.tankDivision;
   const tankRows: Row[] = [

@@ -52,6 +52,8 @@ export interface RenderStats {
   buildings: number;
   deposits: number;
   units: number;
+  /** fleet markers drawn (render/fleets.ts) */
+  fleets: number;
   labels: number;
   labelsComputed: number;
   /** ms this frame: tile feed + labels + palette/forts/aux, GPU uploads + draw call, overlay, minimap */
@@ -119,7 +121,7 @@ export class Renderer {
   private auxRect: [number, number, number, number] | null = null;
   private auxSig = '';
 
-  stats: RenderStats = { gl: false, uploads: 0, uploadTiles: 0, tilesApplied: 0, buildings: 0, deposits: 0, units: 0, labels: 0, labelsComputed: 0, msPrep: 0, msMap: 0, msOverlay: 0, msMinimap: 0, msFronts: 0, frontSegments: 0, msFx: 0 };
+  stats: RenderStats = { gl: false, uploads: 0, uploadTiles: 0, tilesApplied: 0, buildings: 0, deposits: 0, units: 0, fleets: 0, labels: 0, labelsComputed: 0, msPrep: 0, msMap: 0, msOverlay: 0, msMinimap: 0, msFronts: 0, frontSegments: 0, msFx: 0 };
 
   constructor(public canvas: HTMLCanvasElement, public minimap: HTMLCanvasElement) {
     this.ctx = ctx2d(canvas);
@@ -297,6 +299,7 @@ export class Renderer {
     this.stats.buildings = this.buildings.drawn;
     this.stats.deposits = this.deposits.drawn;
     this.stats.units = this.units.drawn;
+    this.stats.fleets = this.units.fleets;
     this.stats.labels = this.names.drawn;
     this.stats.labelsComputed = this.names.computed;
   }

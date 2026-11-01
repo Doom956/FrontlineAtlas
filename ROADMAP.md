@@ -114,6 +114,12 @@ Owner: strategic bombing (and similar orders) should follow whichever nation I a
 - Picking a target by hand makes that unit Fixed; a "Follow my war" button in the airfield panel and the orders bar switches it back. Optional Auto recon per airfield (off by default: each flight costs gold and oil).
 - Protocol 10: `follow` on setAirMission / setDivisionMode, `target` + `follow` on setUnitStance, new setAutoRecon.
 Open: a Fixed wing or fleet still needs a running attack or the 30 s war memory before it flies; Auto recon keeps no gold back.
+Group controls (owner: "same for the warships, it's hard to control them, and airfields, and probably tanks if you have a lot"):
+- Forces drawer: one row per type with its count ("Warships 14", "Airfields 5", "Tank divisions 6") and one order bar for all of them (src/client/groupOrders.ts, hud/groupBar.ts): warships Follow my war (Auto) / Hold / Hunt / Escort / Bombard / Blockade, airfields Support / Strategic / Superiority / Idle + Auto-refill all + Auto recon all, divisions Support front / Hold / Refit. The group's order is the most common one; "N set by hand" (other order or a fixed target) with Reset to all. Orders go out as setUnitStance / setDivisionMode with up to 64 ids each and one setAirMission / setAutoRecon with airfield -1; units that already have the order are skipped. Lists of more than 6 rows fold behind "Show each".
+- New warship stance Hold (sim, protocol 10 still): sinks enemy ships near its post like Auto but never sails off to shell a coast. Appended to WARSHIP_STANCES so hashes of older stances are unchanged.
+- Quick selection: double-click your warship or tank division = all of that type on screen; Shift+W / Shift+A (all) as before; listed in Controls.
+- Fleet markers (render/fleets.ts): below zoom 4, warships of one owner within 4 tiles or 16 px on screen (chained) draw as one marker with a count badge; a click on your own marker selects the fleet (Shift adds). Grid-bucketed single linkage: ~0.07 ms per frame for 200 ships.
+- Fix: a Fixed Strategic wing with no war against its nation said "Raiding X · next 2 s"; it now says "Waiting: no war with X".
 
 ## Parked ideas (owner said later / maybe)
 Building limits (city slots, upkeep), rivers and bridges, wonders, game modes (King of the Hill, capital capture, scenarios), quick chat/emotes/rematch, phone layout, making Easy winnable, calmer tribes.

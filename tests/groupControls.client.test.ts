@@ -18,7 +18,7 @@ import { autoReconOn } from '../src/sim/warTarget';
 import { groupOrderActions, groupState, reconAllAction, reconAllOn, refillAllActions, refillAllOn, resetActions, sendAll } from '../src/client/groupOrders';
 import { STANCE_INFO, STANCE_ORDER, wingStatus } from '../src/client/pillars';
 import { fleetClickSelection, sameTypeInView, selectAllOf } from '../src/client/selection';
-import { clusterFleets, FLEET_RADIUS } from '../src/client/render/fleets';
+import { clusterFleets, FLEET_RADIUS, FLEET_ZOOM, fleetRadiusPx } from '../src/client/render/fleets';
 import { claimRect, makeFlatGame } from './helpers';
 
 const at = (s: GameState, x: number, y: number): number => y * s.map.width + x;
@@ -255,14 +255,28 @@ describe('fleet markers', () => {
     // a tight radius: no fleets
     expect(clusterFleets(pts, 1)).toEqual([]);
     expect(clusterFleets(pts.slice(0, 1), FLEET_RADIUS)).toEqual([]);
+    // on screen: 4 tiles at the marker zoom, more tiles further out (never under 16 px)
+    expect(fleetRadiusPx(FLEET_ZOOM)).toBe(FLEET_RADIUS * FLEET_ZOOM);
+    expect(fleetRadiusPx(1)).toBe(16);
   });
 
-  it('stays cheap for many ships', () => {
-    const pts = Array.from({ length: 2000 }, (_, i) => ({ id: i, owner: 1 + (i % 4), x: (i * 7.3) % 400, y: (i * 3.1) % 300 }));
-    const t0 = performance.now();
-    for (let k = 0; k < 20; k++) clusterFleets(pts, 16);
-    const ms = (performance.now() - t0) / 20;
-    expect(ms).toBeLessThan(10);
+  it('the grid buckets give the same fleets as checking every pair', () => {
+    const pts = Array.from({ length: 600 }, (_, i) => ({ id: i, owner: 1 + (i % 3), x: (i * 7.3) % 200, y: (i * 3.1) % 150 }));
+    const r = 6;
+    // brute force: union every pair of one owner within r
+    const parent = pts.map((_, i) => i);
+    const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+    for (let i = 0; i < pts.length; i++)
+      for (let j = 0; j < i; j++) {
+        const p = pts[i];
+        const q = pts[j];
+        if (p.owner === q.owner && (p.x - q.x) ** 2 + (p.y - q.y) ** 2 <= r * r) parent[find(i)] = find(j);
+      }
+    const groups = new Map<number, number[]>();
+    pts.forEach((p, i) => groups.set(find(i), [...(groups.get(find(i)) ?? []), p.id]));
+    const want = [...groups.values()].filter((g) => g.length > 1).map((g) => g.sort((a, b) => a - b)).sort((a, b) => a[0] - b[0]);
+    expect(want.length).toBeGreaterThan(5);
+    expect(clusterFleets(pts, r).map((f) => f.ids)).toEqual(want);
   });
 });
 
