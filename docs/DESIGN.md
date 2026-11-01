@@ -584,7 +584,7 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   `NAVY_BOMBARD_STANCE_KILL`), `blockade` (parks off an enemy port). State 3 = on station (`Unit.station` = the coast
   or port tile), 4 = escorting (`station` = the ship's id). "At war" = an attack running between the two, or within
   `NAVY_WAR_MEMORY` s (`state.warMemory`). Fronts: enemy land within `NAVY_SUPPORT_RANGE` of own warships costs
-  defence / (1 + bonus) and advances faster (bonus 0.35 for the first ship, x0.6 for each further one, cap 0.8) and
+  defence / (1 + bonus) and advances faster (bonus 0.45 for the first ship, x0.6 for each further one, cap 1) and
   counts as supplied; a landing next to own warships pays x `NAVY_BEACHHEAD_LOSS` and its beachhead supplies twice as
   long. A port within `NAVY_BLOCKADE_RANGE` of a warship at war with its owner is blockaded: its trade pays x 0.25,
   its owner's land within `NAVY_BLOCKADE_SUPPLY_RADIUS` is badly supplied (attacks) and unsupplied (defence), and the
@@ -722,7 +722,10 @@ clearly outnumber (careful AIs avoid SAM cover), else about 30 tiles behind the 
 Air defence: with enemy bombers about and 4+ techs an AI researches Flight and Radar next (`AI_RADAR_VS_AIR`) and
 puts SAM sites about `SAM_FRONT_DEPTH` (24) tiles behind its border with the nation that threatens it most, not
 stacked under another SAM. Airfields flying heavy bombers raid cities (all but the one nearest the main attack) and
-fall back to front support when no city is in reach (`AI_HEAVY_RAIDS`, airwings.ts). Atom bombs: an AI in the
+fall back to front support when no city is in reach (`AI_HEAVY_RAIDS`, airwings.ts). An AI keeps at most
+`AI_MAX_AIRFIELDS` (3) airfields: a nation with more than `AIR.massFree` (2) airfields on support / strategic missions
+flies each of them `AIR.massCooldown` (+50%) slower per extra one (`massCooldownMul`), so mass airfields no longer
+multiply sorties. Atom bombs: an AI in the
 coalition against a runaway leader researches its way to Nuclear Fission first (`NUKE_PATH`) and nukes the leader
 it borders or fights; any AI nukes a bordering / attacking nation above max(`NUKE_LEADER_FLOOR`, win share -
 `NUKE_LEADER_MARGIN`) of the land, or its main attacker once it has lost half its peak land.
@@ -979,11 +982,11 @@ and research): the unlock is at 2:30 there.
 
 | Doctrine | Levers (full bonus) | Level 3 perk |
 | --- | --- | --- |
-| Blitz | fronts cross plains and desert tiles +30% faster; armor conversion -25% gold and iron | armor ignores half of its terrain attack penalty |
+| Blitz | fronts cross plains and desert tiles +10% faster; armor conversion -15% gold and iron | armor ignores 30% of its terrain attack penalty |
 | Fortress | the defence a fort adds +25%; forts -25% gold and iron; home troops lost when a tile falls -20% | forts build and upgrade 4x faster, repair shell damage 3x faster |
 | Siege | artillery attack +20%; artillery's extra siege bonus +25%; barrage reload -25% | barrage disc +1 tile; forts and SAMs silenced 1.5x longer |
 | Merchant | gold income +8%; trade gold received +25%; market bonus (and its cap) +15% | +1.5% gold per own trade ship at sea (up to 10) |
-| Naval | warships -35% price, +20% speed; transports +35% speed and +1 hp (twice as hard to sink) | warships repair at sea (0.05 hp/s); coastal shelling x1.5 |
+| Naval | warships -35% price, +20% speed; transports +35% speed and +1 hp (twice as hard to sink); trade gold received +40% | warships repair at sea (0.05 hp/s); coastal shelling x1.5 |
 | Air | bombers, fighters and paradrop planes -25% price; fighter and paradrop cooldowns -25%; paradrop range +25% | bombers survive one extra hit (SAM shot or fighters) |
 | Expansion | losses attacking tribes and wilderness -30%; troop growth +30% while small (full under 6% of the land, none from 15%) | a tribe you eliminate pays 15 s of your gold income + 0.2 gold per tile it held at its peak |
 
