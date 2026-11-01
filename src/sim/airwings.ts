@@ -430,7 +430,9 @@ function refillWing(state: GameState, wing: AirWing, b: Building): void {
 
 /** Launches up to the wing size of stored bombers at the aims (round robin), with escorts while fighters last. */
 function launchWing(state: GameState, wing: AirWing, b: Building, aims: number[], mission: number): number {
-  const size = Math.min(b.bombers, airWingSize(state, b));
+  let flying = 0;
+  for (const u of state.units) if (u.type === 'bomber' && u.owner === wing.owner && u.hp > 0 && u.mission) flying++;
+  const size = Math.min(b.bombers, airWingSize(state, b), AIR.maxAirborne - flying);
   let escorts = escortHitsFor(state, b) > 0 ? b.fighters : 0;
   const hits = escortHitsFor(state, b);
   let sent = 0;
