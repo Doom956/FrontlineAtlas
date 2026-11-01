@@ -244,6 +244,8 @@ export const ENDGAME_SMALL_TILES = 150;
  * surrounded (its 81-tile start is under ENDGAME_SMALL_TILES), so a new or slow player gets time to grow.
  */
 export const HUMAN_GRACE_SECONDS = 180;
+/** Longer on the easier difficulties (seconds; missing = HUMAN_GRACE_SECONDS): an idle new player isn't swallowed at once. */
+export const HUMAN_GRACE_BY_DIFFICULTY: Partial<Record<Difficulty, number>> = { easy: 600, normal: 360 };
 /** Same for tribes (they are food). */
 export const TRIBE_ANNEX_TILES = 250;
 /** Every this many seconds (per player, staggered): enclaves fully surrounded by one hostile nation are annexed by it. */
@@ -1035,7 +1037,7 @@ export const AI_HARD_INCOME_BONUS = 0.15;
  * (tribes too). The human's economy never changes.
  */
 export const AI_ECONOMY: Record<Difficulty, { growth: number; income: number; cap: number }> = {
-  easy: { growth: 0.7, income: 0.7, cap: 0.7 },
+  easy: { growth: 0.6, income: 0.6, cap: 0.5 },
   normal: { growth: 0.88, income: 0.88, cap: 1 },
   hard: { growth: 1 + AI_HARD_INCOME_BONUS * 0.5, income: 1 + AI_HARD_INCOME_BONUS, cap: 1 },
   brutal: { growth: 1.15, income: 1.3, cap: 1.1 },
