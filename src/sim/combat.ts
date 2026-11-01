@@ -222,18 +222,25 @@ interface Beachhead {
   tile: number;
   untilTick: number;
 }
+/**
+ * A player's candidate supply sources. Its content must be a function of the key fields only (buildings stamp,
+ * capital, beachhead version, expiry), never of when it was built: the client fills it between ticks (advisor,
+ * attack tooltips through supplyEfficiency), so a list filtered by tile owners at build time would differ between a
+ * client that read it and one that did not (a lockstep desync). Owners are checked when it is used.
+ */
 interface SupplyCache {
   version: number;
   capital: number;
   heads: number;
   /** tick until which the cached beachhead list is valid (first expiry) */
   validUntil: number;
+  tiles: Int32Array;
   xs: Int32Array;
   ys: Int32Array;
 }
 interface SupplyData {
   beachheads: Beachhead[];
-  /** bumped whenever a beachhead is added */
+  /** bumped whenever a beachhead is added or dropped */
   headVersion: number;
   byPlayer: Map<number, SupplyCache>;
 }
@@ -260,15 +267,21 @@ function supplyCache(state: GameState, playerId: number): SupplyCache {
   let c = d.byPlayer.get(playerId);
   const stamp = buildingStamp(state, playerId);
   if (c && c.version === stamp && c.capital === p.capital && c.heads === d.headVersion && state.tick < c.validUntil) return c;
-  const tiles = supplySourceTiles(state, playerId);
+  // Unfiltered by tile owner (supplyDistance checks it): see SupplyCache.
+  const tiles = supplySources(state, playerId);
   const w = state.map.width;
   let validUntil = Infinity;
-  for (const b of d.beachheads) if (b.player === playerId && b.untilTick > state.tick) validUntil = Math.min(validUntil, b.untilTick);
+  for (const b of d.beachheads) {
+    if (b.player !== playerId || b.untilTick <= state.tick) continue;
+    tiles.push(b.tile);
+    validUntil = Math.min(validUntil, b.untilTick);
+  }
   c = {
     version: stamp,
     capital: p.capital,
     heads: d.headVersion,
     validUntil,
+    tiles: Int32Array.from(tiles),
     xs: new Int32Array(tiles.map((t) => t % w)),
     ys: new Int32Array(tiles.map((t) => (t / w) | 0)),
   };
@@ -286,7 +299,10 @@ export function supplyDistance(state: GameState, playerId: number, tile: number)
   let best = Infinity;
   const xs = c.xs;
   const ys = c.ys;
+  const src = c.tiles;
+  const owner = state.map.owner;
   for (let k = 0; k < xs.length; k++) {
+    if (owner[src[k]] !== playerId) continue;
     const dx = xs[k] - x;
     const dy = ys[k] - y;
     const d2 = dx * dx + dy * dy;
@@ -314,7 +330,9 @@ export function updateSupply(state: GameState): void {
   if (!d || !d.beachheads.length) return;
   if (state.tick % TICKS_PER_SECOND !== 0) return;
   const owner = state.map.owner;
+  const n = d.beachheads.length;
   d.beachheads = d.beachheads.filter((b) => b.untilTick > state.tick && owner[b.tile] === b.player);
+  if (d.beachheads.length !== n) d.headVersion++; // a dropped head leaves the cached source lists (supplyCache)
 }
 
 /** Depot attack bonus: DEPOT_ATTACK_BONUS when a finished supply depot of playerId covers the tile (depotRadius). */

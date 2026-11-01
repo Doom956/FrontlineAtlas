@@ -118,6 +118,15 @@ interface NavyCache {
   blockaded: Map<number, number[]> | null;
 }
 const caches = new WeakMap<GameState, NavyCache>();
+/**
+ * Drops the navy cache (ships, wars, blockades). The client reads it between ticks with the next tick's number (atWar,
+ * blockadedPorts, portBlockadedBy: forces, spend and ally panels), before that tick's actions start attacks and its
+ * mines sink ships: called with combat.clearArmyCache when the sim starts work (sim.tick, actions.applyAction), so
+ * rendering and non-rendering clients stay in lockstep. Free: the cache is keyed by tick, so it is rebuilt every tick.
+ */
+export function clearNavyCache(state: GameState): void {
+  caches.delete(state);
+}
 
 function cache(state: GameState): NavyCache {
   let c = caches.get(state);

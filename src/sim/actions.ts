@@ -15,7 +15,7 @@ import { chooseDoctrine } from './doctrines';
 import { buildAircraft, launchBomber, launchMissile, launchParadrop, launchTransport, moveWarship } from './units';
 import { moveWarships, orderWarship } from './navy';
 import { buildTankDivision, clearDefenseCache, moveTankDivisions } from './tanks';
-import { setUnitStance } from './naval2';
+import { clearNavyCache, setUnitStance } from './naval2';
 import { setDivisionMode } from './armor2';
 import { setAirMission } from './airwings';
 import { clearIntelCache, reconFlight } from './variants';
@@ -57,6 +57,7 @@ export function applyAction(state: GameState, playerId: number, action: Action):
   clearIntelCache(state); // the same for recon intel (variants.ts)
   clearDefenseCache(state); // division defence (tanks.ts)
   clearLeaderCache(state); // runaway leader (allies.ts)
+  clearNavyCache(state); // ships, wars, blockades (naval2.ts)
   const p = state.players[playerId];
   if (!p || playerId === 0) return FAIL('No such player');
   // Continuing a finished game and the owner console work for eliminated humans too (they keep watching).

@@ -22,7 +22,7 @@ import { clearIntelCache, updateArsenal } from './variants';
 import { updateNavyQueue } from './navy';
 import { clearDefenseCache, updateTanks } from './tanks';
 import { updateSpecials } from './specials';
-import { updateWarMemory } from './naval2';
+import { clearNavyCache, updateWarMemory } from './naval2';
 import { updateTutorial } from './tutorialScenario';
 import { updateVictory } from './victory';
 import type { GameState } from './types';
@@ -36,6 +36,7 @@ export function tick(state: GameState): void {
   clearIntelCache(state); // the same for recon intel (variants.ts)
   clearDefenseCache(state); // division defence (tanks.ts)
   clearLeaderCache(state); // runaway leader (allies.ts)
+  clearNavyCache(state); // ships, wars, blockades (naval2.ts)
 
   if (state.phase === 'spawn') {
     if (state.tick === 0 && mods(state).randomSpawn) randomSpawnHumans(state);
