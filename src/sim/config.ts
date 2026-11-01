@@ -1144,6 +1144,9 @@ export const AIR = {
   /** paratroopers: drop size x (1 + paraPerAircraft x aircraft at the airfield), at most paraMaxMul */
   paraPerAircraft: 0.08,
   paraMaxMul: 2.2,
+  /** a nation flying more than massFree airfields on support / strategic missions: every wing's sortie cooldown x (1 + massCooldown x the extra ones) */
+  massFree: 2,
+  massCooldown: 0.5,
 } as const;
 
 // ---------- navy, part three: stances, shore bombardment, blockades, veterancy (naval2.ts) ----------
