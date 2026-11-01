@@ -106,7 +106,7 @@ describe('warship stances', () => {
 });
 
 describe('division modes', () => {
-  it('Hold and Refit go at once; Support front waits for the front click', () => {
+  it('Hold and Refit go at once; Support front follows your war at once and the front click fixes it', () => {
     const s = game();
     const ui = defaultUiState();
     const { dispatch, sent } = recorder(s);
@@ -116,7 +116,7 @@ describe('division modes', () => {
     expect(sharedMode(s, 1, tanks)).toBe('refit');
     expect(setMode(s, ui, dispatch, tanks, 'support')).toBe('');
     expect(ui.mode.kind).toBe('pillarPick');
-    expect(sent.some((a) => a.type === 'setDivisionMode' && a.mode === 'support')).toBe(false);
+    expect(sent.some((a) => a.type === 'setDivisionMode' && a.mode === 'support' && a.follow === true)).toBe(true);
     expect(pillarPickClick(s, ui, dispatch, at(s, 35, 10)).ok).toBe(false); // water
     const r = pillarPickClick(s, ui, dispatch, at(s, 20, 15));
     expect(r.reason).toBe('');
