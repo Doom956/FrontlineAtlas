@@ -189,6 +189,10 @@ export class GuideEngine {
   seen(id: string): boolean {
     return this.prefs.tips.includes(id);
   }
+  /** this tip is on screen or waiting in the queue (the guide is on) */
+  pending(id: string): boolean {
+    return this.prefs.on && (this.tip?.t.id === id || this.queue.includes(id));
+  }
 
   /** Checks steps and tips (~5 times a second); returns what to show, null = nothing. */
   update(c: GuideCtx): GuideView | null {
@@ -401,4 +405,15 @@ export class GuideEngine {
   private tile(id: string, f: GuideStep['tile'], c: GuideCtx): number {
     return f ? safe(() => f(c), -1, (e) => this.fail(id, e)) : -1;
   }
+}
+
+/**
+ * The advisor hints (hud/advisor.ts keys) the guide already gives, so the advisor skips them: an alliance request
+ * ('answer-<nation>') while the alliance tip shows or waits, or once it named that nation (`named`, this game); enemy
+ * planes ('unit-fighter') while the air-defence tip shows or waits, or once it has shown.
+ */
+export function guideCovers(g: Pick<GuideEngine, 'pending' | 'seen'>, named: ReadonlySet<number>, key: string): boolean {
+  if (key.startsWith('answer-')) return g.pending('alliance') || named.has(Number(key.slice('answer-'.length)));
+  if (key === 'unit-fighter') return g.pending('airDefence') || g.seen('airDefence');
+  return false;
 }

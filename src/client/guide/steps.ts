@@ -3,15 +3,19 @@
 // `tile` the map tile the arrow shows when there is no element. Everything here only reads the game.
 import { isArsenalTech } from '../../sim/arsenal';
 import { buildingCost, countBuildings } from '../../sim/buildings';
-import { DOCTRINE_UNLOCK_SECONDS, TECHS } from '../../sim/config';
+import { borders } from '../../sim/combat';
+import { BUILDINGS, DOCTRINE_UNLOCK_SECONDS, TECHS } from '../../sim/config';
+import { areAllied } from '../../sim/diplomacy';
 import { neighbors4, nearestTile, tileDist } from '../../sim/grid';
-import { mods } from '../../sim/rules';
-import { canResearch } from '../../sim/tech';
+import { buildingAllowed, mods, researchRule, unitAllowed } from '../../sim/rules';
+import { canResearch, hasTech } from '../../sim/tech';
+import { coastCount } from '../../sim/territory';
 import { isTribe, isWater } from '../../sim/types';
 import type { BuildingType, GameState, Player, TechId } from '../../sim/types';
 import { victoryShareNow } from '../../sim/victory';
 import { coalitionLeader } from '../allies';
 import { DOCTRINE_KEY } from '../doctrineView';
+import { isIncoming } from '../forces';
 import { snapBuild } from '../placement';
 import { STRIKE_ORDER, STRIKES, type StrikeId } from '../strikes';
 import type { GuideCtx, GuideStep, GuideTip } from './engine';
@@ -155,6 +159,59 @@ function canStartAny(c: GuideCtx, arsenal: boolean): boolean {
 const panel = (c: GuideCtx, ...names: string[]): boolean => c.ui.openPanel !== null && names.includes(c.ui.openPanel);
 const playing = (c: GuideCtx): boolean => c.s.phase === 'playing';
 
+// ------------------------------------------------------------------------------------------------ getting ships, tanks, planes
+
+/** Research can give t now or soon: research is on, t is not owned or under way, its prerequisites are owned. */
+function techDue(c: GuideCtx, t: TechId): boolean {
+  if (researchRule(c.s) !== null || hasTech(c.me, t) || c.me.researching === t) return false;
+  return TECHS[t].requires.every((r) => hasTech(c.me, r));
+}
+/** The tech's card in the Arsenal tab, else that tab, else the Research button. */
+const techTarget = (t: TechId): string => `tech-${t} || tab-arsenal || open-research`;
+/** The building's card in the Build menu, else its quick-bar slot, else the Build button (none in build mode). */
+const buildTarget = (c: GuideCtx, b: BuildingType): string | undefined => (c.ui.buildMode === b ? undefined : `bm-${b} || build-${b} || build-menu-btn`);
+/** None of this type, built or being built. */
+const lacks = (c: GuideCtx, b: BuildingType): boolean => countBuildings(c.s, c.me.id, b, true) === 0;
+const hotkey = (b: BuildingType): string => BUILDINGS[b].hotkey;
+
+/** The player has a coast and the sea matters: no nation borders them by land (an island), or 6 minutes in. */
+function seaMatters(c: GuideCtx): boolean {
+  if (coastCount(c.s, c.me.id) <= 0) return false;
+  if (c.sec >= 360) return true;
+  if (c.sec < 120) return false;
+  const island = cached(c.s, `island${c.me.id}`, () => (c.s.players.some((p) => p.alive && p.id > 0 && p.id !== c.me.id && !isTribe(p) && borders(c.s, c.me.id, p.id)) ? 0 : 1));
+  return island === 1;
+}
+
+/** A free coastal tile of the player's, nearest the capital (-1 = none). */
+function coastTile(c: GuideCtx): number {
+  const h = home(c);
+  if (h < 0) return -1;
+  return cached(c.s, `coast${c.me.id}`, () => nearestTile(c.s.map, h, 200, (i) => c.s.map.owner[i] === c.me.id && c.s.map.coastal[i] === 1 && c.s.map.building[i] === 0));
+}
+
+/** Enemy bombers or cargo planes flying at the player, or an enemy air wing set against them with bombers. */
+export function enemyAirOnMe(s: GameState, me: Player): boolean {
+  for (const u of s.units) if ((u.type === 'bomber' || u.type === 'transportPlane') && isIncoming(s, me.id, u)) return true;
+  for (const w of s.air?.wings ?? []) {
+    if (w.owner === me.id || w.targetOwner !== me.id || (w.mission !== 'support' && w.mission !== 'strategic') || areAllied(s, me.id, w.owner)) continue;
+    if ((s.buildings.get(w.airfield)?.bombers ?? 0) > 0) return true;
+  }
+  return false;
+}
+
+/** What answers enemy planes for this player now: SAM sites, Fighters, an Airfield, or research (null = nothing). */
+function airAnswer(c: GuideCtx): { text: string; target: string | undefined; tile: number } | null {
+  const { s, me } = c;
+  const lead = 'Enemy planes over your land.';
+  if (hasTech(me, 'radar') && buildingAllowed(s, 'sam')) return { text: `${lead} SAM sites (${hotkey('sam')}) shoot them down.`, target: buildTarget(c, 'sam'), tile: -1 };
+  if (!unitAllowed(s, 'fighter')) return null;
+  if (countBuildings(s, me.id, 'airfield', false) > 0) return { text: `${lead} Click your Airfield and buy Fighters.`, target: 'order-fighter', tile: buildingTile(s, me, 'airfield') };
+  if (hasTech(me, 'flight') && buildingAllowed(s, 'airfield')) return { text: `${lead} Build an Airfield (${hotkey('airfield')}) for Fighters.`, target: buildTarget(c, 'airfield'), tile: -1 };
+  if (researchRule(s) === null) return { text: `${lead} Research Flight (T, Arsenal tab) for Fighters.`, target: techTarget('flight'), tile: -1 };
+  return null;
+}
+
 // ------------------------------------------------------------------------------------------------ opening
 
 /** The opening: start, troops, gold, expand, attack size, a City, a tribe, the standings. */
@@ -286,6 +343,21 @@ export function guideTips(): GuideTip[] {
       when: (c) => playing(c) && attackOnMe(c.s, c.me) !== null,
     },
     {
+      id: 'airDefence',
+      text: (c) => airAnswer(c)?.text ?? 'Enemy planes over your land.',
+      target: (c) => airAnswer(c)?.target,
+      tile: (c) => airAnswer(c)?.tile ?? -1,
+      when: (c) => playing(c) && enemyAirOnMe(c.s, c.me) && airAnswer(c) !== null,
+      // closes once the player starts on an answer
+      done: (c) =>
+        c.ui.buildMode === 'sam' ||
+        c.ui.buildMode === 'airfield' ||
+        panel(c, 'arsenal') ||
+        countBuildings(c.s, c.me.id, 'sam', true) > 0 ||
+        c.s.units.some((u) => u.owner === c.me.id && u.type === 'fighter') ||
+        [...c.s.buildings.values()].some((b) => b.owner === c.me.id && b.type === 'airfield' && b.fighters > 0),
+    },
+    {
       id: 'research',
       text: 'Press T for Research and pick a tech: new buildings, stronger troops.',
       target: 'open-research',
@@ -331,6 +403,25 @@ export function guideTips(): GuideTip[] {
       when: (c) => playing(c) && readyStrike(c) !== null,
       done: (c) => c.ui.aiming !== null,
     },
+    // Ships, tanks and planes: how to get them (the tech, then the building), then how to use them. Each step only
+    // once it is the next one for the player.
+    {
+      id: 'navyTech',
+      text: 'Your coast opens the sea: research Navigation (T, Arsenal tab) for warships.',
+      target: techTarget('navigation'),
+      when: (c) => playing(c) && unitAllowed(c.s, 'warship') && techDue(c, 'navigation') && seaMatters(c),
+      still: (c) => techDue(c, 'navigation'),
+      done: (c) => !techDue(c, 'navigation'),
+    },
+    {
+      id: 'navyPort',
+      text: (c) => (c.ui.buildMode === 'port' ? 'Now click your coast to place the Port.' : `Navigation is done. Build a Port (${hotkey('port')}) on your coast for warships.`),
+      target: (c) => buildTarget(c, 'port'),
+      tile: (c) => (c.ui.buildMode === 'port' ? coastTile(c) : -1),
+      when: (c) => playing(c) && unitAllowed(c.s, 'warship') && buildingAllowed(c.s, 'port') && hasTech(c.me, 'navigation') && coastCount(c.s, c.me.id) > 0 && lacks(c, 'port'),
+      still: (c) => lacks(c, 'port'),
+      done: (c) => !lacks(c, 'port'),
+    },
     {
       id: 'navy',
       text: (c) =>
@@ -339,16 +430,48 @@ export function guideTips(): GuideTip[] {
           : 'Click your Port, then Warship. Select ships to give them a stance.',
       target: 'order-warship || order-destroyer || order-submarine',
       tile: (c) => buildingTile(c.s, c.me, 'port'),
-      when: (c) => playing(c) && owns(c.s, c.me, 'port'),
+      when: (c) => playing(c) && owns(c.s, c.me, 'port') && hasTech(c.me, 'navigation') && unitAllowed(c.s, 'warship'),
       done: (c) => c.s.units.some((u) => u.owner === c.me.id && u.type === 'warship'),
+    },
+    {
+      id: 'armorTech',
+      text: 'Research Mechanization (T, Arsenal tab) for tank divisions.',
+      target: techTarget('mechanization'),
+      when: (c) => playing(c) && c.sec >= 300 && techDue(c, 'mechanization'),
+      still: (c) => techDue(c, 'mechanization'),
+      done: (c) => !techDue(c, 'mechanization'),
+    },
+    {
+      id: 'armorFactory',
+      text: (c) => (c.ui.buildMode === 'factory' ? 'Now click your land to place the Factory.' : `Mechanization is done. Build a Factory (${hotkey('factory')}) for tank divisions.`),
+      target: (c) => buildTarget(c, 'factory'),
+      when: (c) => playing(c) && buildingAllowed(c.s, 'factory') && hasTech(c.me, 'mechanization') && lacks(c, 'factory'),
+      still: (c) => lacks(c, 'factory'),
+      done: (c) => !lacks(c, 'factory'),
     },
     {
       id: 'armor',
       text: 'Click your Factory, then Tank division. Select it, then click enemy land to spearhead.',
       target: 'order-tank-division',
       tile: (c) => buildingTile(c.s, c.me, 'factory'),
-      when: (c) => playing(c) && owns(c.s, c.me, 'factory'),
+      when: (c) => playing(c) && owns(c.s, c.me, 'factory') && hasTech(c.me, 'mechanization'),
       done: (c) => c.s.units.some((u) => u.owner === c.me.id && u.type === 'tankDivision'),
+    },
+    {
+      id: 'airTech',
+      text: 'Research Flight (T, Arsenal tab) for Airfields, bombers and fighters.',
+      target: techTarget('flight'),
+      when: (c) => playing(c) && c.sec >= 300 && buildingAllowed(c.s, 'airfield') && techDue(c, 'flight'),
+      still: (c) => techDue(c, 'flight'),
+      done: (c) => !techDue(c, 'flight'),
+    },
+    {
+      id: 'airField',
+      text: (c) => (c.ui.buildMode === 'airfield' ? 'Now click your land to place the Airfield.' : `Flight is done. Build an Airfield (${hotkey('airfield')}) for bombers and fighters.`),
+      target: (c) => buildTarget(c, 'airfield'),
+      when: (c) => playing(c) && buildingAllowed(c.s, 'airfield') && hasTech(c.me, 'flight') && lacks(c, 'airfield'),
+      still: (c) => lacks(c, 'airfield'),
+      done: (c) => !lacks(c, 'airfield'),
     },
     {
       id: 'air',

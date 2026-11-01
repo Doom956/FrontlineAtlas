@@ -265,6 +265,9 @@ export class Hud {
         strikeTipShown: (id) => this.advisor.seenStrike(id),
         canStartNow: () => hudOpts.canStartNow?.() ?? true,
       });
+      // the guide's alliance and air-defence tips: the advisor does not say the same again
+      const guide = this.guide;
+      this.advisor.covered = (key) => guide.covers(key);
     }
     this.drawer.add(
       new SettingsPage(this.ctx, {

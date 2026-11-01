@@ -23,7 +23,7 @@ import {
 } from '../src/sim/setup';
 import { tick } from '../src/sim/sim';
 import { annexEnclaves } from '../src/sim/endgame';
-import { autoSpawnRemaining, createGame, gameSeconds, setOwner } from '../src/sim/state';
+import { autoSpawnRemaining, colorSeen, createGame, gameSeconds, MIN_HUMAN_COLOR_DIST, setOwner } from '../src/sim/state';
 import { isTribe } from '../src/sim/types';
 import type { GameState, Modifiers } from '../src/sim/types';
 import { victoryShareNow } from '../src/sim/victory';
@@ -254,6 +254,20 @@ describe('modifiers in play', () => {
       tick(b);
     }
     expect(hashState(a)).toBe(hashState(b));
+  });
+});
+
+describe('nation colours', () => {
+  it('no AI nation looks like the human: the default blue gets no sky blue next to it, even with many nations', () => {
+    for (const playerColor of [[64, 160, 255], [255, 92, 92], [52, 120, 246]] as [number, number, number][]) {
+      const s = createGame(testSettings({ aiCount: 30, tribeCount: 4, playerColor }));
+      const ais = s.players.filter((p) => p.id > 0 && !p.isHuman && !isTribe(p));
+      expect(ais.length).toBe(30);
+      for (const p of ais) expect(colorSeen(p.color, playerColor), `${p.name} ${p.color}`).toBeGreaterThanOrEqual(MIN_HUMAN_COLOR_DIST);
+    }
+    // the sky blue that used to pass the old check is too close to the default blue; red is far from it
+    expect(colorSeen([0, 150, 220], [64, 160, 255])).toBeLessThan(MIN_HUMAN_COLOR_DIST);
+    expect(colorSeen([220, 60, 60], [64, 160, 255])).toBeGreaterThan(MIN_HUMAN_COLOR_DIST);
   });
 });
 

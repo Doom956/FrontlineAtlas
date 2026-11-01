@@ -2,11 +2,12 @@
 // once each (ever) and one at a time, a fight-critical tip cuts in, Skip / Hide / Restart are remembered, and a
 // broken or blocked localStorage never breaks the game. No DOM.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GUIDE_KEY, GuideEngine, LEGACY_TUTORIAL_KEY, loadGuidePrefs, TIP_GAP_MS, TIP_MS, type GuideCtx, type GuideStep, type GuideTip } from '../src/client/guide/engine';
-import { guideTips, openingSteps } from '../src/client/guide/steps';
+import { GUIDE_KEY, GuideEngine, guideCovers, LEGACY_TUTORIAL_KEY, loadGuidePrefs, TIP_GAP_MS, TIP_MS, type GuideCtx, type GuideStep, type GuideTip } from '../src/client/guide/engine';
+import { enemyAirOnMe, guideTips, openingSteps } from '../src/client/guide/steps';
 import type { TutorialUi } from '../src/client/tutorial/engine';
-import type { GameState, Player } from '../src/sim/types';
+import { Terrain, type GameState, type Player, type Unit } from '../src/sim/types';
 import { applyAction } from '../src/sim/actions';
+import { computeCoastAndLand } from '../src/sim/mapgen';
 import { claimRect, makeFlatGame, makeTestGame } from './helpers';
 
 class MemStorage {
@@ -284,7 +285,12 @@ describe('guide: real content', () => {
     expect(openingSteps({ centreTile: () => 0 }).map((s) => s.id)).toEqual(['spawn', 'start', 'troops', 'gold', 'expand', 'share', 'city', 'tribe', 'standings']);
     const ids = guideTips().map((t) => t.id);
     expect(new Set(ids).size).toBe(ids.length);
-    for (const want of ['attacked', 'research', 'doctrine', 'idle', 'strike', 'navy', 'armor', 'air', 'alliance', 'coalition', 'arsenal', 'upgrade']) expect(ids).toContain(want);
+    for (const want of ['attacked', 'airDefence', 'research', 'doctrine', 'idle', 'strike', 'navyTech', 'navyPort', 'navy', 'armorTech', 'armorFactory', 'armor', 'airTech', 'airField', 'air', 'alliance', 'coalition', 'arsenal', 'upgrade']) expect(ids).toContain(want);
+    // how to get it comes before how to use it
+    for (const [a, b, c] of [['navyTech', 'navyPort', 'navy'], ['armorTech', 'armorFactory', 'armor'], ['airTech', 'airField', 'air']]) {
+      expect(ids.indexOf(a)).toBeLessThan(ids.indexOf(b));
+      expect(ids.indexOf(b)).toBeLessThan(ids.indexOf(c));
+    }
     expect(guideTips().filter((t) => t.critical).map((t) => t.id)).toEqual(['attacked']);
   });
 
@@ -414,5 +420,167 @@ describe('guide: real content', () => {
     world.flags.t1 = true;
     run(g2);
     expect(g2.queued).toEqual(['t1', 't2']);
+  });
+});
+
+describe('guide: getting ships, tanks and planes', () => {
+  const W = 40;
+  /** Player 1 (human) on the left, player 2 on the right, open sea between them (x 15..24) unless `sea` is false. */
+  function game(sea = true): GameState {
+    const s = makeFlatGame(W, 20, 2, { human: true });
+    if (sea) {
+      for (let y = 0; y < 20; y++) for (let x = 15; x < 25; x++) s.map.terrain[y * W + x] = Terrain.DeepWater;
+      computeCoastAndLand(s.map);
+      claimRect(s, 1, 0, 0, 14, 19);
+      claimRect(s, 2, 25, 0, 39, 19);
+    } else {
+      claimRect(s, 1, 0, 0, 19, 19);
+      claimRect(s, 2, 20, 0, 39, 19);
+    }
+    s.players[1].gold = 100000;
+    s.players[1].iron = 10000;
+    return s;
+  }
+  const tip = (id: string): GuideTip => guideTips().find((t) => t.id === id)!;
+  const at = (s: GameState, sec: number, ui: Partial<TutorialUi> = {}): GuideCtx => ({ s, me: s.players[1], ui: { ...UI, ...ui }, sec, now: 0, strike: () => null });
+  const target = (t: GuideTip, c: GuideCtx): string | undefined => (typeof t.target === 'function' ? t.target(c) : t.target);
+  const text = (t: GuideTip, c: GuideCtx): string => (typeof t.text === 'function' ? t.text(c) : t.text);
+  const build = (s: GameState, type: 'port' | 'factory' | 'airfield', pred: (i: number) => boolean): boolean => {
+    for (let i = 0; i < s.map.owner.length; i++) if (s.map.owner[i] === 1 && pred(i) && applyAction(s, 1, { type: 'build', building: type, tile: i }).ok) return true;
+    return false;
+  };
+
+  it('Navigation: on a coast with the enemy across the water, then a Port, then warships', () => {
+    const s = game();
+    const me = s.players[1];
+    const navyTech = tip('navyTech');
+    const navyPort = tip('navyPort');
+    expect(navyTech.when(at(s, 60))).toBe(false); // the opening's time
+    expect(navyTech.when(at(s, 150))).toBe(true); // no land border: the sea is the way
+    expect(target(navyTech, at(s, 150))).toBe('tech-navigation || tab-arsenal || open-research');
+    expect(text(navyTech, at(s, 150))).toMatch(/Navigation/);
+    expect(navyPort.when(at(s, 150))).toBe(false);
+    me.techs.push('navigation');
+    expect(navyTech.done!(at(s, 150))).toBe(true);
+    expect(navyTech.when(at(s, 150))).toBe(false);
+    expect(navyPort.when(at(s, 150))).toBe(true);
+    expect(target(navyPort, at(s, 150))).toBe('bm-port || build-port || build-menu-btn');
+    // in build mode: no button, the arrow shows a free tile of the coast
+    const placing = at(s, 150, { buildMode: 'port' });
+    expect(target(navyPort, placing)).toBeUndefined();
+    const t = navyPort.tile!(placing);
+    expect(t).toBeGreaterThanOrEqual(0);
+    expect(s.map.owner[t]).toBe(1);
+    expect(s.map.coastal[t]).toBe(1);
+    expect(tip('navy').when(at(s, 150))).toBe(false);
+    expect(build(s, 'port', (i) => s.map.coastal[i] === 1)).toBe(true);
+    expect(navyPort.done!(at(s, 150))).toBe(true);
+  });
+
+  it('Navigation: with a land border only after 6 minutes; never without a coast', () => {
+    const s = game();
+    // a land bridge: the two nations border each other
+    for (let x = 15; x < 25; x++) s.map.terrain[10 * W + x] = Terrain.Plains;
+    computeCoastAndLand(s.map);
+    claimRect(s, 1, 15, 10, 19, 10);
+    claimRect(s, 2, 20, 10, 24, 10);
+    expect(tip('navyTech').when(at(s, 150))).toBe(false);
+    expect(tip('navyTech').when(at(s, 360))).toBe(true);
+    const land = game(false);
+    expect(tip('navyTech').when(at(land, 400))).toBe(false);
+    land.players[1].techs.push('navigation');
+    expect(tip('navyPort').when(at(land, 400))).toBe(false);
+  });
+
+  it('Mechanization once Metallurgy is done, then a Factory, then the tank division', () => {
+    const s = game(false);
+    const me = s.players[1];
+    expect(tip('armorTech').when(at(s, 400))).toBe(false); // Metallurgy first
+    me.techs.push('metallurgy');
+    expect(tip('armorTech').when(at(s, 200))).toBe(false);
+    expect(tip('armorTech').when(at(s, 400))).toBe(true);
+    expect(target(tip('armorTech'), at(s, 400))).toBe('tech-mechanization || tab-arsenal || open-research');
+    me.researching = 'mechanization';
+    expect(tip('armorTech').done!(at(s, 400))).toBe(true);
+    me.researching = null;
+    me.techs.push('mechanization');
+    expect(tip('armorFactory').when(at(s, 400))).toBe(true);
+    expect(target(tip('armorFactory'), at(s, 400))).toBe('bm-factory || build-factory || build-menu-btn');
+    expect(build(s, 'factory', () => true)).toBe(true);
+    expect(tip('armorFactory').done!(at(s, 400))).toBe(true);
+  });
+
+  it('a Factory without Mechanization does not bring the tank-division tip', () => {
+    const s = game(false);
+    expect(build(s, 'factory', () => true)).toBe(true);
+    // finish it
+    for (const b of s.buildings.values()) b.buildLeft = 0;
+    const armor = tip('armor');
+    const before = armor.when(at(s, 400));
+    s.players[1].techs.push('mechanization');
+    expect(before).toBe(false);
+    expect(armor.when(at(s, 400))).toBe(true);
+  });
+
+  it('Flight once Logistics is done, then an Airfield', () => {
+    const s = game(false);
+    const me = s.players[1];
+    me.techs.push('logistics');
+    expect(tip('airTech').when(at(s, 400))).toBe(true);
+    expect(target(tip('airTech'), at(s, 400))).toBe('tech-flight || tab-arsenal || open-research');
+    me.techs.push('flight');
+    expect(tip('airTech').when(at(s, 400))).toBe(false);
+    expect(tip('airField').when(at(s, 400))).toBe(true);
+    expect(target(tip('airField'), at(s, 400))).toBe('bm-airfield || build-airfield || build-menu-btn');
+  });
+
+  it('enemy bombers coming: SAM sites after Radar, else Fighters or research', () => {
+    const s = game();
+    const me = s.players[1];
+    const air = tip('airDefence');
+    expect(air.when(at(s, 400))).toBe(false);
+    const bomber = { id: 999, type: 'bomber', owner: 2, hp: 1, x: 30, y: 10, target: 10 * W + 5, targetOwner: 1, state: 0 } as unknown as Unit;
+    s.units.push(bomber);
+    expect(enemyAirOnMe(s, me)).toBe(true);
+    expect(air.when(at(s, 400))).toBe(true);
+    expect(text(air, at(s, 400))).toMatch(/Research Flight/);
+    expect(target(air, at(s, 400))).toBe('tech-flight || tab-arsenal || open-research');
+    me.techs.push('logistics', 'flight', 'radar');
+    expect(text(air, at(s, 400))).toMatch(/SAM sites \(G\)/);
+    expect(target(air, at(s, 400))).toBe('bm-sam || build-sam || build-menu-btn');
+    expect(air.done!(at(s, 400, { buildMode: 'sam' }))).toBe(true);
+    // a bomber on its way home: nothing
+    bomber.state = 1;
+    expect(enemyAirOnMe(s, me)).toBe(false);
+  });
+});
+
+describe('guide and advisor: one says it, not both', () => {
+  it('the advisor skips an alliance request while the alliance tip shows or waits, and after it named that nation', () => {
+    store.setItem(GUIDE_KEY, JSON.stringify({ on: true, openingDone: true, tips: [] }));
+    const g = new GuideEngine([], [{ id: 'alliance', text: 'X offers an alliance', when: flag('ask') }, { id: 'airDefence', text: 'planes', when: flag('air') }]);
+    const named = new Set<number>();
+    expect(guideCovers(g, named, 'answer-3')).toBe(false);
+    world.flags.ask = true;
+    expect(run(g)?.id).toBe('alliance');
+    expect(guideCovers(g, named, 'answer-3')).toBe(true);
+    named.add(3);
+    g.next();
+    expect(guideCovers(g, named, 'answer-3')).toBe(true); // the same request, after the tip
+    expect(guideCovers(g, named, 'answer-4')).toBe(false); // another nation's: the advisor says it
+    expect(guideCovers(g, named, 'research-navigation')).toBe(false);
+    // enemy planes: covered while the tip waits and once it has shown
+    expect(guideCovers(g, named, 'unit-fighter')).toBe(false);
+    world.flags.air = true;
+    run(g);
+    expect(g.queued).toContain('airDefence');
+    expect(guideCovers(g, named, 'unit-fighter')).toBe(true);
+    expect(runFor(g, TIP_GAP_MS + 400)?.id).toBe('airDefence');
+    g.next();
+    world.flags.air = false;
+    expect(guideCovers(g, named, 'unit-fighter')).toBe(true);
+    // the guide off: nothing waits, the advisor speaks (a tip already shown stays covered)
+    g.setOn(false);
+    expect(guideCovers(g, new Set(), 'answer-3')).toBe(false);
   });
 });

@@ -145,6 +145,20 @@ function colorDist(a: [number, number, number], b: [number, number, number]): nu
   return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
 }
 
+/** An AI colour must be at least this far (colorSeen) from every human's: two blues a player can't tell apart count as one. */
+export const MIN_HUMAN_COLOR_DIST = 140;
+/**
+ * How far apart two colours look: the "redmean" weighted distance (0..~765), closer to the eye than plain RGB (it
+ * weighs green most and red or blue by how red the pair is). Display only: colours never enter the hash.
+ */
+export function colorSeen(a: readonly [number, number, number], b: readonly [number, number, number]): number {
+  const rm = (a[0] + b[0]) / 2;
+  const dr = a[0] - b[0];
+  const dg = a[1] - b[1];
+  const db = a[2] - b[2];
+  return Math.sqrt((2 + rm / 256) * dr * dr + 4 * dg * dg + (2 + (255 - rm) / 256) * db * db);
+}
+
 /** Tribes for a game: settings.tribeCount when it is >= 0 (at most MAX_TRIBE_COUNT), else the default for the land. */
 export function tribeCountFor(settings: Pick<GameSettings, 'tribeCount' | 'map' | 'modifiers'>, landTiles?: number): number {
   return tribesFor(settings, landTiles);
@@ -215,8 +229,8 @@ export function createGame(settings: GameSettings, preloaded?: MapData | null, o
   for (const seat of seats) players.push(makePlayer(players.length, seat.name || 'Player', seat.color, true, null));
   const humanCount = seats.length;
   const names = shuffle(rng, AI_NAMES.slice());
-  // AI colours in order, skipping ones too close to a human's colour.
-  let colors = AI_COLORS.filter((c) => seats.every((h) => colorDist(c, h.color) > 90));
+  // AI colours in order, skipping ones that look like a human's colour (the default blue next to an AI's sky blue).
+  let colors = AI_COLORS.filter((c) => seats.every((h) => colorDist(c, h.color) > 90 && colorSeen(c, h.color) >= MIN_HUMAN_COLOR_DIST));
   if (colors.length === 0) colors = AI_COLORS.slice();
   const aiCount = Math.max(0, Math.min(MAX_AI_COUNT, Math.floor(settings.aiCount)));
   // World maps: AI nations are the real countries (in the map's spread-out order) at their capitals.

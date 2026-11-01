@@ -1,7 +1,8 @@
 // Advisor strip: one thin line above the command bar that folds itself into a small tab after a few seconds (hover
 // or click the tab to read it again) and stays folded while a toast is up, so there is never more than one message
 // talking at a time. A suggestion pops open once; later it only waits in the tab. It stays hidden while the in-game
-// guide (guide/guide.ts, which replaced the old first-game tutorial steps) shows its bar (`suppressed`).
+// guide (guide/guide.ts, which replaced the old first-game tutorial steps) shows its bar (`suppressed`), and skips
+// the hints the guide gives itself (`covered`: an alliance request, enemy planes).
 // - Advisor: the sim's suggestions() (advisor.ts), one at a time, cycling every 8 s, plus two client hints:
 //   artillery when the main foe's front is fortified or hilly, units when they matter (unitAdvice: warships against
 //   enemy fleets off your coast, fighters / SAM sites against enemy bombers; once each, ever), and once per strike (remembered in localStorage) a
@@ -160,6 +161,8 @@ export class AdvisorStrip {
   toastUp = false;
   /** the guide's bar is up (set by the HUD): the line stays hidden, so only one of them talks */
   suppressed = false;
+  /** the guide covers this hint (set by the HUD, guide/guide.ts covers): the advisor skips it */
+  covered: (key: string) => boolean = () => false;
 
   constructor(private ctx: HudCtx) {
     this.el = el('div', 'advisor hidden');
@@ -240,9 +243,9 @@ export class AdvisorStrip {
     }
     const now = performance.now();
     if (this.strikeHint(now, strikes)) return;
-    const list = adviceFor(s, me.id).filter((x) => (this.dismissed.get(x.key) ?? 0) < now);
+    const list = adviceFor(s, me.id).filter((x) => (this.dismissed.get(x.key) ?? 0) < now && !this.covered(x.key));
     if (now - this.units.at > ARTILLERY_CHECK_MS) this.units = { at: now, list: unitAdvice(s, me).filter((x) => !this.unitSeen.has(x.key)) };
-    const fresh = this.units.list.find((x) => !this.unitSeen.has(x.key));
+    const fresh = this.units.list.find((x) => !this.unitSeen.has(x.key) && !this.covered(x.key));
     if (fresh) {
       // a unit hint goes first, once ever
       this.unitSeen.add(fresh.key);
@@ -252,7 +255,7 @@ export class AdvisorStrip {
       this.shownAt = now;
       this.idx = 0;
     }
-    if (this.current && this.current.key.startsWith('unit-') && now - this.shownAt < CYCLE_MS * 2) list.unshift(this.current);
+    if (this.current && this.current.key.startsWith('unit-') && !this.covered(this.current.key) && now - this.shownAt < CYCLE_MS * 2) list.unshift(this.current);
     if (now - this.art.at > ARTILLERY_CHECK_MS) this.art = { at: now, s: artilleryAdvice(s, me) };
     const art = this.art.s;
     if (art && (this.dismissed.get(art.key) ?? 0) < now && !list.some((x) => x.key === 'build-arsenal')) list.splice(Math.min(1, list.length), 0, art);

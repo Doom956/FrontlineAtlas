@@ -8,7 +8,7 @@ import type { HudCtx } from '../hud/dom';
 import type { StrikeId } from '../strikes';
 import { isChapterDone, type TutorialUi } from '../tutorial/engine';
 import { GuideBar } from './bar';
-import { GuideEngine, type GuideCtx, type GuideView } from './engine';
+import { GuideEngine, guideCovers, type GuideCtx, type GuideView } from './engine';
 import { guideTips, openingSteps } from './steps';
 
 export interface GuideHooks {
@@ -29,6 +29,8 @@ export class GuideController {
   readonly bar: GuideBar;
   private view: GuideView | null = null;
   private last: GuideCtx | null = null;
+  /** nations whose alliance request the alliance tip named in this game */
+  private allianceFrom = new Set<number>();
 
   constructor(
     private ctx: HudCtx,
@@ -45,6 +47,11 @@ export class GuideController {
     // a player who finished the Basics chapter of Tutorial mode gets the tips only
     this.engine = new GuideEngine(openingSteps({ centreTile, canStartNow: () => hooks.canStartNow?.() ?? true }), guideTips(), { skipOpening: isChapterDone('basics') });
     this.engine.onChange = (v) => {
+      if (v?.kind === 'tip' && v.id === 'alliance' && this.last) {
+        const me = this.last.me.id;
+        const r = this.last.s.allianceRequests.find((q) => q.to === me);
+        if (r) this.allianceFrom.add(r.from);
+      }
       if (v?.kind === 'tip' && v.id === 'strike' && this.last) {
         for (const id of ['barrage', 'bomb', 'paradrop', 'rocket', 'atomBomb'] as StrikeId[]) {
           if (this.last.strike(id) === 'ready') {
@@ -102,6 +109,14 @@ export class GuideController {
   /** this tip will still show (the guide is on and it has not shown yet) */
   due(id: string): boolean {
     return this.engine.on && !this.engine.seen(id);
+  }
+
+  /**
+   * The guide says what this advisor hint says (it shows or waits now, or showed it already), so the advisor skips
+   * it: an alliance request the alliance tip names, enemy planes once the air-defence tip covers them.
+   */
+  covers(key: string): boolean {
+    return guideCovers(this.engine, this.allianceFrom, key);
   }
 
   /** Checks the steps and tips and redraws the bar (call at the HUD's ~5 Hz refresh). */
