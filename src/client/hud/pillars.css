@@ -209,8 +209,11 @@
   color: var(--olive);
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* up to two lines in the narrow airfield panel, then an ellipsis */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 .fw-row.fixed .fw-line {
   color: var(--dim);

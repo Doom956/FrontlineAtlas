@@ -277,6 +277,11 @@ describe('tank divisions', () => {
     run(s, 6 * TICKS_PER_SECOND);
     expect(d.station).toBe(west);
     expect(followTargetOf(s, d)).toMatchObject({ follow: false, tile: west });
+    // A front picked on our own side names the nation across it.
+    const ownSide = at(s, 41, 10);
+    expect(s.map.owner[ownSide]).toBe(1);
+    expect(applyAction(s, 1, { type: 'setDivisionMode', unitIds: [d.id], mode: 'support', front: ownSide }).ok).toBe(true);
+    expect(followTargetOf(s, d)).toMatchObject({ follow: false, tile: ownSide, nation: 2 });
     expect(applyAction(s, 1, { type: 'setDivisionMode', unitIds: [d.id], mode: 'support', follow: true }).ok).toBe(true);
     expect(d.fixed).toBeUndefined();
     expect(d.station! % s.map.width).toBeGreaterThan(75);

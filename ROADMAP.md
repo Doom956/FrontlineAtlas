@@ -107,5 +107,13 @@ Still open: economy and land specialists, Blitz and AI Air-doctrine picks, early
 - Summary on the game-over card: land over time, key moments, a nations table; the Victory chip reopens it after playing on (src/client/summary/).
 Open: 60 fps not confirmed on a real GPU (far-zoom p95 frame time 20-26 ms vs 16-18 ms before in the software-rendering test browser, few frames, noisy); the player's blue is close to the AI nation Vesperia's; the guide and the advisor sometimes give the same alliance tip.
 
+## Round 4: "Follow my war" (2026-11-01, branch `round4`, not merged yet)
+Owner: strategic bombing (and similar orders) should follow whichever nation I attack, without resetting it.
+- The player's war target (src/sim/warTarget.ts): the nation attacked with the most troops now (tribes count less, a 1.25x margin before switching), else the last one attacked within 60 s.
+- Default for the player's units: air wings (Strategic raids it, Support bombs its main front, Superiority patrols over that front), warships (Bombard / Blockade / Auto go for its coast and ports first) and tank divisions on Support front. AI units are unchanged.
+- Picking a target by hand makes that unit Fixed; a "Follow my war" button in the airfield panel and the orders bar switches it back. Optional Auto recon per airfield (off by default: each flight costs gold and oil).
+- Protocol 10: `follow` on setAirMission / setDivisionMode, `target` + `follow` on setUnitStance, new setAutoRecon.
+Open: a Fixed wing or fleet still needs a running attack or the 30 s war memory before it flies; Auto recon keeps no gold back.
+
 ## Parked ideas (owner said later / maybe)
 Building limits (city slots, upkeep), rivers and bridges, wonders, game modes (King of the Hill, capital capture, scenarios), quick chat/emotes/rematch, phone layout, making Easy winnable, calmer tribes.

@@ -325,11 +325,37 @@ export function followTargetOf(state: GameState, x: Unit | Building): FollowInfo
   if (x.type === 'tankDivision') {
     if (x.mode !== 'support') return null;
     const tile = x.station ?? -1;
-    if (x.fixed) return { follow: false, nation: tile >= 0 ? state.map.owner[tile] : 0, tile };
+    if (x.fixed) return { follow: false, nation: tile >= 0 ? acrossFront(state, tile, x.owner) : 0, tile };
     if (!unitFollows(state, x)) return null;
     return { follow: true, nation: followedNation(state, x.owner), tile };
   }
   return null;
+}
+
+/** The nation a front tile faces: its owner, or for a tile on pid's side the nearest other nation within 4 tiles (0 = none). */
+function acrossFront(state: GameState, tile: number, pid: number): number {
+  const m = state.map;
+  const own = m.owner[tile];
+  if (own !== pid) return own;
+  const w = m.width;
+  const h = m.height;
+  const x0 = tile % w;
+  const y0 = (tile - x0) / w;
+  for (let r = 1; r <= 4; r++) {
+    let best = 0;
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const x = x0 + dx;
+        const y = y0 + dy;
+        if (x < 0 || y < 0 || x >= w || y >= h) continue;
+        const o = m.owner[y * w + x];
+        if (o !== 0 && o !== pid && (best === 0 || o < best)) best = o;
+      }
+    }
+    if (best) return best;
+  }
+  return 0;
 }
 
 /** pid's war target for the HUD: nation (0 = none), main front tile, attacking now or remembered (seconds left). */

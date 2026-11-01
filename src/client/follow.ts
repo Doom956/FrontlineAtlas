@@ -28,7 +28,8 @@ export interface FollowTarget {
 export function followOf(state: GameState, kind: FollowKind, id: number): FollowTarget | null {
   const x = kind === 'air' ? buildingAt(state, id) : state.units.find((u) => u.id === id && u.type === (kind === 'warship' ? 'warship' : 'tankDivision'));
   const f = x ? followTargetOf(state, x) : null;
-  return f ? { nation: f.nation, tile: f.tile, fixed: !f.follow } : null;
+  // a front picked on our own side names no nation ("Fixed: your front")
+  return f && x ? { nation: f.nation === x.owner ? 0 : f.nation, tile: f.tile, fixed: !f.follow } : null;
 }
 
 /** Does this choice follow the owner's war at all? (stances / modes / missions without a target do not) */
