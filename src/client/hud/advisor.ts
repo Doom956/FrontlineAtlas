@@ -1,7 +1,7 @@
-// Advisor strip and first-game tutorial: one thin line above the command bar that folds itself into a small tab
-// after a few seconds (hover or click the tab to read it again) and stays folded while a toast is up, so there is
-// never more than one message talking at a time. A suggestion pops open once; later it only waits in the tab.
-// - Tutorial (first game only, remembered in localStorage): six steps that advance when done; can be skipped.
+// Advisor strip: one thin line above the command bar that folds itself into a small tab after a few seconds (hover
+// or click the tab to read it again) and stays folded while a toast is up, so there is never more than one message
+// talking at a time. A suggestion pops open once; later it only waits in the tab. It stays hidden while the in-game
+// guide (guide/guide.ts, which replaced the old first-game tutorial steps) shows its bar (`suppressed`).
 // - Advisor: the sim's suggestions() (advisor.ts), one at a time, cycling every 8 s, plus two client hints:
 //   artillery when the main foe's front is fortified or hilly, units when they matter (unitAdvice: warships against
 //   enemy fleets off your coast, fighters / SAM sites against enemy bombers; once each, ever), and once per strike (remembered in localStorage) a
@@ -13,7 +13,7 @@ import { buildingsOf, countBuildings } from '../../sim/buildings';
 import { BUILDINGS, UNITS } from '../../sim/config';
 import { areAllied } from '../../sim/diplomacy';
 import { forEachInRadius } from '../../sim/grid';
-import { buildingAllowed, mods, unitAllowed } from '../../sim/rules';
+import { buildingAllowed, unitAllowed } from '../../sim/rules';
 import { hasTech } from '../../sim/tech';
 import { buildUnit, isIncoming, unitBuildStatus } from '../forces';
 import { enterWarshipSpawnMode } from '../selection';
@@ -27,9 +27,7 @@ import { el, setClass, setText, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon, worldGlyph } from './glyph';
 import { waysToPlayAdvice } from './spendPanel';
 import { pillarAdvice } from './pillarAdvice';
-import { isChapterDone } from '../tutorial/engine';
 
-const TUTORIAL_KEY = 'borderfall.tutorial.v1';
 const ADVISOR_KEY = 'borderfall.advisor.v1';
 const CYCLE_MS = 8000;
 const DISMISS_MS = 120000;
@@ -38,9 +36,8 @@ const STRIKE_HINTS_KEY = 'borderfall.strikeHints.v1';
 const STRIKE_HINT_MS = 15000;
 /** the artillery check (main foe's front: forts, hills) runs this often */
 const ARTILLERY_CHECK_MS = 3000;
-/** the line folds into its tab after this long (tutorial steps stay open a little longer) */
+/** the line folds into its tab after this long */
 const OPEN_MS = 7000;
-const TUTORIAL_OPEN_MS = 14000;
 const UNIT_HINTS_KEY = 'borderfall.unitHints.v1';
 /** enemy warships this close (tiles) to your land count as "off your coast" */
 const FLEET_NEAR = 14;
@@ -129,47 +126,18 @@ function save(key: string, v: string): void {
   }
 }
 
-interface Step {
-  text: (s: GameState, me: Player) => string;
-  done: (s: GameState, me: Player, start: StepStart) => boolean;
-  key?: string;
-  /** game seconds after which the step skips itself (game time: a paused game or an open help page doesn't count) */
-  timeout?: number;
-  /** a tile the step's "Show me" button brings into view (else the button reads "Next" and skips the step) */
-  show?: (s: GameState, me: Player) => number;
-}
-interface StepStart {
-  tiles: number;
-  share: number;
-  cities: number;
-  /** game seconds when the step started */
-  at: number;
-  /** tick when the step started */
-  tick: number;
-  researchOpened: boolean;
-}
-
 export class AdvisorStrip {
   readonly el: HTMLElement;
   private tag = el('span', 'adv-tag');
   private icon = el('span', 'adv-ic');
   private text = el('span', 'adv-text');
   private doBtn: HTMLButtonElement;
-  private skipBtn: HTMLButtonElement;
   private closeBtn: HTMLButtonElement;
   private on = load(ADVISOR_KEY) !== 'off';
-  /** the first-game steps; not needed after the Basics chapter of tutorial mode (tutorial/engine.ts) */
-  private tutorial = load(TUTORIAL_KEY) !== 'done' && !isChapterDone('basics');
-  private step = 0;
-  private stepStart: StepStart | null = null;
   private current: Suggestion | null = null;
   private idx = 0;
   private shownAt = 0;
   private dismissed = new Map<string, number>();
-  researchOpened = false;
-  /** the tutorial step's "Show me" tile (-1 = the button says Next) and a pending Next click */
-  private showTile = -1;
-  private skipStep = false;
   /** strikes whose first-use hint was shown (ever) */
   private hintsSeen = new Set<string>((load(STRIKE_HINTS_KEY) ?? '').split(',').filter(Boolean));
   /** first-use strike hints waiting to be shown, and the one on screen with its end time */
@@ -190,6 +158,8 @@ export class AdvisorStrip {
   private popped = new Set<string>();
   /** a toast is up (set by the HUD): the line stays folded */
   toastUp = false;
+  /** the guide's bar is up (set by the HUD): the line stays hidden, so only one of them talks */
+  suppressed = false;
 
   constructor(private ctx: HudCtx) {
     this.el = el('div', 'advisor hidden');
@@ -197,10 +167,6 @@ export class AdvisorStrip {
     this.doBtn = el('button', 'wr-btn mini primary adv-do', 'Do it');
     this.doBtn.type = 'button';
     this.doBtn.addEventListener('click', () => this.act());
-    this.skipBtn = el('button', 'wr-btn mini ghost', 'Skip');
-    this.skipBtn.type = 'button';
-    this.skipBtn.dataset.test = 'skip-tutorial';
-    this.skipBtn.addEventListener('click', () => this.endTutorial(false));
     this.closeBtn = el('button', 'adv-x');
     this.closeBtn.type = 'button';
     this.closeBtn.setAttribute('aria-label', 'Dismiss this hint');
@@ -218,8 +184,7 @@ export class AdvisorStrip {
       this.openUntil = performance.now() + OPEN_MS;
       setClass(this.el, 'mini', false);
     });
-    this.skipBtn.dataset.tip = 'Skip the tutorial (Settings can restart it)';
-    this.el.append(this.tag, this.icon, this.text, this.doBtn, this.skipBtn, this.closeBtn);
+    this.el.append(this.tag, this.icon, this.text, this.doBtn, this.closeBtn);
   }
 
   get advisorOn(): boolean {
@@ -228,103 +193,21 @@ export class AdvisorStrip {
   setAdvisor(on: boolean): void {
     this.on = on;
     save(ADVISOR_KEY, on ? 'on' : 'off');
-    if (!on && !this.tutorial) setVisible(this.el, false);
+    if (!on) setVisible(this.el, false);
   }
-  restartTutorial(): void {
-    this.tutorial = true;
-    this.step = 0;
-    this.stepStart = null;
-    save(TUTORIAL_KEY, 'todo');
-  }
-  get tutorialActive(): boolean {
-    return this.tutorial;
-  }
-  /** A tutorial game (tutorial mode): no first-game steps, no advisor or first-use hints; nothing is saved. */
+  /** A tutorial game (tutorial mode): no advisor or first-use hints; nothing is saved. */
   quiet(): void {
     this.quietMode = true;
-    this.tutorial = false;
     setVisible(this.el, false);
   }
   private quietMode = false;
-
-  private endTutorial(finished: boolean): void {
-    this.tutorial = false;
-    save(TUTORIAL_KEY, 'done');
-    setVisible(this.el, false);
-    if (finished) this.ctx.toast('Tutorial complete. Hover anything for help, press L for the map key.', 'good');
-  }
-
-  // ------------------------------------------------------------------------------------------ tutorial
-
-  private steps: Step[] = [
-    {
-      text: (s, me) => (me.spawned ? (mods(s).randomSpawn ? 'Your start was picked at random. Press Start now (or wait for the countdown) to begin.' : 'Good spot. Press Start now (or wait for the countdown) to begin.') : 'Click a land tile to place your capital. Pick a place with room around it.'),
-      done: (s) => s.phase === 'playing',
-    },
-    {
-      text: () => 'Click the empty land next to your border to expand. Your whole border moves; every tile costs a few troops.',
-      done: (s, me, st) => me.tiles > st.tiles * 1.6 || s.attacks.some((a) => a.attacker === me.id),
-      show: (_s, me) => me.capital,
-    },
-    {
-      text: () => 'ATTACK is how many of your troops each click sends. Change it with [ and ] or the slider.',
-      // done when the share was changed, or after the next attack (sending the default share is fine too)
-      done: (s, me, st) => Math.abs(this.ctx.ui.attackShare - st.share) > 0.01 || s.attacks.some((a) => a.attacker === me.id && a.startTick > st.tick),
-      timeout: 40,
-    },
-    {
-      text: () => 'Build a City: press 1 (or the City button below), then click your land. Cities raise your troop cap and gold.',
-      done: (s, me, st) => countBuildings(s, me.id, 'city', true) > st.cities,
-      timeout: 120,
-    },
-    {
-      text: () => 'Tribes are the grey lands with a small army number: weak and easy to take. Click one next to you.',
-      done: (s, me) => s.attacks.some((a) => a.attacker === me.id && a.target > 0 && isTribe(s.players[a.target])),
-      timeout: 60,
-    },
-    {
-      text: () => 'Press T to open Research and pick a tech. Techs unlock buildings and make your troops stronger.',
-      done: (_s, me) => this.researchOpened || (!!me.researching && !me.auto.research),
-      timeout: 60,
-    },
-  ];
-
-  private tutorialUpdate(s: GameState, me: Player): boolean {
-    if (!this.tutorial) return false;
-    const now = gameSeconds(s);
-    let st = this.stepStart;
-    if (!st) {
-      st = { tiles: me.tiles, share: this.ctx.ui.attackShare, cities: countBuildings(s, me.id, 'city', true), at: now, tick: s.tick, researchOpened: this.researchOpened };
-      this.stepStart = st;
-    }
-    const step = this.steps[this.step];
-    if (!step) {
-      this.endTutorial(true);
-      return false;
-    }
-    const timedOut = step.timeout !== undefined && s.phase === 'playing' && now - st.at > step.timeout;
-    if (step.done(s, me, st) || timedOut || this.skipStep) {
-      this.skipStep = false;
-      this.step++;
-      this.stepStart = null;
-      if (this.step >= this.steps.length) {
-        this.endTutorial(true);
-        return false;
-      }
-      return this.tutorialUpdate(s, me);
-    }
-    setText(this.tag, `Step ${this.step + 1}/${this.steps.length}`);
-    this.icon.innerHTML = lineIcon('info', 16);
-    setText(this.text, step.text(s, me));
-    // "Show me" brings the step's place into view; steps without one get "Next" (skip just this step)
-    this.showTile = step.show ? step.show(s, me) : -1;
-    setText(this.doBtn, this.showTile >= 0 ? 'Show me' : 'Next');
-    setVisible(this.doBtn, s.phase === 'playing' || this.showTile >= 0);
-    setVisible(this.skipBtn, true);
-    setVisible(this.closeBtn, false);
-    setClass(this.el, 'tut', true);
-    this.present(`tut${this.step}`, TUTORIAL_OPEN_MS, false);
-    return true;
+  /** The guide explained this strike: its first-use hint is not needed any more (remembered). */
+  seenStrike(id: StrikeId): void {
+    this.hintQueue = this.hintQueue.filter((x) => x !== id);
+    if (this.hint?.id === id) this.hint = null;
+    if (this.hintsSeen.has(id)) return;
+    this.hintsSeen.add(id);
+    save(STRIKE_HINTS_KEY, [...this.hintsSeen].join(','));
   }
 
   /**
@@ -351,11 +234,7 @@ export class AdvisorStrip {
       return;
     }
     for (const id of strikes?.takeNewlyReady() ?? []) if (!this.hintsSeen.has(id) && !this.hintQueue.includes(id)) this.hintQueue.push(id);
-    if (this.tutorialUpdate(s, me)) return;
-    setClass(this.el, 'tut', false);
-    setVisible(this.skipBtn, false);
-    setVisible(this.closeBtn, true);
-    if (!this.on || s.phase !== 'playing' || gameSeconds(s) < 8) {
+    if (this.suppressed || !this.on || s.phase !== 'playing' || gameSeconds(s) < 8) {
       setVisible(this.el, false);
       return;
     }
@@ -453,11 +332,6 @@ export class AdvisorStrip {
       const id = this.hint.id;
       this.hint = null;
       this.strikes.aim(id);
-      return;
-    }
-    if (this.el.classList.contains('tut')) {
-      if (this.showTile >= 0) this.ctx.focusTile(this.showTile, true);
-      else this.skipStep = true;
       return;
     }
     const c = this.current;

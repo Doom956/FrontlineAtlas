@@ -447,3 +447,8 @@
     animation: none;
   }
 }
+
+/* a map tile (spotlight.ts onPoint): a round ring */
+.tut-spot.round {
+  border-radius: 50%;
+}
