@@ -1,6 +1,8 @@
-// Arsenal: the vehicle side of research (the Research panel's second tab). Every item is an ordinary tech (TechId +
-// TECHS entry) bought with Action 'research', so the rules (prerequisites, exclusive forks, gold, science) are the
-// tech tree's (techtree.ts). This file only groups them into rows and adds the mastery cap.
+// Arsenal: the vehicle side of the tech tree (the Research panel's second tab). Every item is an ordinary tech (TechId +
+// TECHS entry) with the tech tree's prerequisites and exclusive forks (techtree.ts), but it is not researched: it is
+// bought with gold + iron / oil (Action 'procure') and delivered after a short timer (procurement.ts; prices in
+// config ARSENAL_PRICES). This file groups them into rows and adds the mastery cap. An item on order (Player.procuring)
+// counts like one being researched: it locks the other side of its fork and uses a mastery slot.
 //
 // Rows (one per pillar, left to right by tier):
 //   Navy    Navigation -> Destroyers -> Battleships   OR   Submarines -> Carriers;  Naval Mines;  Naval Mastery
@@ -107,35 +109,46 @@ export const PILLAR_NAMES: Record<Pillar, string> = { navy: 'Navy', armor: 'Armo
 export function isMasteryTech(t: TechId): boolean {
   return ITEMS.get(t)?.kind === 'mastery';
 }
-/** Pillars in which p has (or is researching) the mastery. */
+/** True while tech t is on order for p (bought, not delivered yet: procurement.ts). */
+export function onOrder(p: Player, t: TechId): boolean {
+  const o = p.procuring;
+  if (!o) return false;
+  for (const x of o) if (x.tech === t) return true;
+  return false;
+}
+/** True if p owns t, is researching it or has it on order. */
+export function ownsOrPending(p: Player, t: TechId): boolean {
+  return p.techs.includes(t) || p.researching === t || onOrder(p, t);
+}
+
+/** Pillars in which p has (or has on order) the mastery. */
 export function masteryPillars(p: Player): Pillar[] {
   const out: Pillar[] = [];
   for (const pl of ['navy', 'armor', 'air'] as const) {
-    const t = MASTERY_TECHS[pl];
-    if (p.techs.includes(t) || p.researching === t) out.push(pl);
+    if (ownsOrPending(p, MASTERY_TECHS[pl])) out.push(pl);
   }
   return out;
 }
 /**
- * Why p may not research mastery tech t ("Mastery 2 of 2 used (Navy, Air)"), or null (not a mastery, already owned /
- * being researched, or a slot is free).
+ * Why p may not order mastery tech t ("Mastery 2 of 2 used (Navy, Air)"), or null (not a mastery, already owned /
+ * on order, or a slot is free).
  */
 export function masteryLocked(p: Player, t: TechId): string | null {
   const it = ITEMS.get(t);
   if (!it || it.kind !== 'mastery') return null;
-  if (p.techs.includes(t) || p.researching === t) return null;
+  if (ownsOrPending(p, t)) return null;
   const used = masteryPillars(p).filter((x) => x !== it.pillar);
   if (used.length < MASTERY_CAP) return null;
   return `Mastery ${used.length} of ${MASTERY_CAP} used (${used.map((x) => PILLAR_NAMES[x]).join(', ')}); ${TECHS[t].name} is locked`;
 }
 
-/** The branch root p chose in a pillar's fork (owned or being researched), or null. */
+/** The branch root p chose in a pillar's fork (owned or on order), or null. */
 export function pathOf(p: Player, pillar: Pillar): TechId | null {
   for (const row of ARSENAL_ROWS) {
     if (row.pillar !== pillar) continue;
     for (const it of row.items) {
       if (it.branch !== it.tech) continue;
-      if (p.techs.includes(it.tech) || p.researching === it.tech) return it.tech;
+      if (ownsOrPending(p, it.tech)) return it.tech;
     }
   }
   return null;

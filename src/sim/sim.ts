@@ -15,6 +15,7 @@ import { updateEndgame } from './endgame';
 import { mods, updateRules } from './rules';
 import { addEvent, autoSpawnRemaining, pruneEliminated, randomSpawnHumans } from './state';
 import { updateResearch } from './tech';
+import { updateProcurement } from './procurement';
 import { updateUnits } from './units';
 import { updateAir } from './airwings';
 import { clearIntelCache, updateArsenal } from './variants';
@@ -49,6 +50,7 @@ export function tick(state: GameState): void {
     updateDoctrines(state);
     updateEconomy(state);
     updateResearch(state);
+    updateProcurement(state); // Arsenal deliveries
     updateBuildings(state);
     updateBuildQueues(state);
     updateSupply(state);

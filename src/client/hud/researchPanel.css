@@ -659,3 +659,160 @@ aside.drawer[data-page='research'] .dr-body {
     -webkit-line-clamp: 1;
   }
 }
+
+/* ---- Arsenal: bought, not researched (hud/procure.ts). Price in gold / iron / oil and the delivery time, a Buy
+   pill, "Build a Port first" while the building is missing, a countdown bar while on order. ---- */
+.rp-arsenal .rp-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-variant-numeric: tabular-nums;
+}
+.rp-p {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+.rp-p svg {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  opacity: 0.85;
+}
+.rp-p.p-time {
+  color: var(--faint);
+}
+.rp-card.avail .rp-p.p-time {
+  color: var(--dim);
+}
+.rp-p.short,
+.rp-card.avail.poor .rp-p.short {
+  color: #e2785f;
+}
+.rp-card.avail.poor .rp-meta {
+  color: var(--dim);
+}
+/* a flag on the card's bottom edge (like the "locks X" flag on the top edge), so it never squeezes the price */
+.rp-buy {
+  position: absolute;
+  right: 6px;
+  bottom: -7px;
+  padding: 0 7px;
+  border-radius: 2px;
+  font: 700 8.5px/12px var(--f-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--brass-ink);
+  background: var(--brass-hi);
+  z-index: 2;
+}
+.rp-buy.hidden {
+  display: none;
+}
+.rp-card.avail:hover .rp-buy,
+.rp-card.avail:focus-visible .rp-buy {
+  background: #f0d36a;
+}
+.rp-card.poor .rp-buy {
+  color: var(--dim);
+  background: var(--metal-2);
+  box-shadow: inset 0 0 0 1px var(--brass-lo);
+}
+/* the building it needs is missing: greyed, the effect line says what to build */
+.rp-card.needs-building {
+  opacity: 0.8;
+}
+.rp-l.warn {
+  color: #e0a35a;
+  font-weight: 600;
+}
+/* on order: a countdown bar along the card's bottom edge */
+.rp-bar {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  border-radius: 0 0 var(--r) var(--r);
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.rp-bar.on {
+  display: block;
+}
+.rp-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--steel);
+  transition: width 0.25s linear;
+}
+
+/* the Arsenal header: orders in progress */
+.rp-orders {
+  flex: 1;
+  min-width: 160px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.rp-orders.hidden {
+  display: none;
+}
+.rp-orders-none,
+.rp-orders-l {
+  font-size: 12px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+.rp-orders-l {
+  font: 600 10.5px/14px var(--f-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--steel);
+}
+.rp-order {
+  display: inline-grid;
+  grid-template-columns: auto auto 54px auto;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px 0 5px;
+  border: 1px solid rgba(107, 149, 184, 0.55);
+  border-radius: 12px;
+  background: rgba(107, 149, 184, 0.12);
+  white-space: nowrap;
+}
+.rp-order-ic {
+  line-height: 0;
+  color: var(--steel);
+}
+.rp-order-ic svg {
+  width: 14px;
+  height: 14px;
+}
+.rp-order-n {
+  font: 600 12px/1 var(--f-label);
+  letter-spacing: 0.03em;
+}
+.rp-order-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.rp-order-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--steel);
+  transition: width 0.25s linear;
+}
+.rp-order-t {
+  font-size: 11.5px;
+  color: var(--steel);
+  font-variant-numeric: tabular-nums;
+  min-width: 30px;
+  text-align: right;
+}

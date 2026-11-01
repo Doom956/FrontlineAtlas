@@ -4,6 +4,7 @@ import { buildCostAt, buildingAt, canBuild, chargesReady, countBuildings } from 
 import { BUILDINGS, BUILDING_ORDER, RESOURCE_NAMES, TERRAIN, UNITS } from '../../sim/config';
 import { areAllied } from '../../sim/diplomacy';
 import { hasTech } from '../../sim/tech';
+import { techFirst } from './procure';
 import { isWater, Resource } from '../../sim/types';
 import type { BuildingType, GameState, Player, TerrainId } from '../../sim/types';
 import { isAttackable, sendTransport, troopsToSend, troopSum } from '../input';
@@ -110,7 +111,7 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
           label: 'Warship',
           icon: 'warship',
           hint: costText(u.gold, u.iron),
-          disabled: !hasTech(me, 'navigation') ? 'Research Navigation first' : me.gold < u.gold ? 'Not enough gold' : me.iron < u.iron ? 'Not enough iron' : undefined,
+          disabled: !hasTech(me, 'navigation') ? techFirst('navigation') : me.gold < u.gold ? 'Not enough gold' : me.iron < u.iron ? 'Not enough iron' : undefined,
           run: () => {
             const why = enterWarshipSpawnMode(ui, state, me);
             ctx.toast(why ? `Warship: ${why}` : 'Warship: click a water tile near your port. Esc cancels.', why ? 'bad' : 'info');

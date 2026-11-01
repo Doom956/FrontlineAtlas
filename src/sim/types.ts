@@ -463,6 +463,8 @@ export interface Player {
   techs: TechId[];
   researching: TechId | null;
   researchProgress: number; // science points put into the current tech
+  /** Arsenal items bought and not yet delivered (procurement.ts), in order of purchase; absent = none */
+  procuring?: { tech: TechId; readyTick: number }[];
   /** tick until which this player is a traitor (0 = not) */
   traitorUntil: number;
   /** tick from which the next artillery barrage may be fired (Action 'barrage'; global per player) */
@@ -796,6 +798,8 @@ export type Action =
   | { type: 'demolish'; tile: number }
   | { type: 'setArmyMix'; armor: number; artillery: number }
   | { type: 'research'; tech: TechId }
+  /** buy an Arsenal item (arsenal.ts) with gold + iron / oil; delivered after a timer (procurement.ts) */
+  | { type: 'procure'; tech: TechId }
   | { type: 'transport'; from: number; to: number; troops: Troops }
   /**
    * port = an own finished Port tile (or -1: the nearest suitable one); tile = the water tile where the ship appears

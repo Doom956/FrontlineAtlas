@@ -23,6 +23,7 @@ import { el, keycap, setClass, setTip, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon, worldGlyph } from './glyph';
 import { TECHS } from '../../sim/config';
 import { hasTech } from '../../sim/tech';
+import { techComing } from './procure';
 
 let shiftDown = false;
 /** True while Shift is held (x5 placement; the ghost preview reads it). */
@@ -36,10 +37,10 @@ function isTextInput(t: EventTarget | null): boolean {
   return t instanceof HTMLInputElement && t.type !== 'range' && t.type !== 'checkbox' && t.type !== 'button';
 }
 
-/** A tech is "close" when researched, being researched, or all its prerequisites are done. */
+/** A tech is "close" when researched, being researched or on order, or all its prerequisites are done. */
 function near(p: Player, t: keyof typeof TECHS | null): boolean {
   if (!t) return true;
-  return hasTech(p, t) || p.researching === t || TECHS[t].requires.every((r) => hasTech(p, r));
+  return techComing(p, t) || TECHS[t].requires.every((r) => hasTech(p, r));
 }
 
 export class QuickBar {

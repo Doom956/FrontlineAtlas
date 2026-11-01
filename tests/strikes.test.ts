@@ -56,8 +56,8 @@ describe('strike status', () => {
     const lines = Object.fromEntries(allStrikes(s, me).map((x) => [x.id, x]));
     for (const id of STRIKE_ORDER) expect(lines[id].state).toBe('locked');
     expect(lines.barrage.line).toBe('Build an Arsenal, then raise Artillery in the Army drawer (U)');
-    expect(lines.bomb.line).toBe('Research Flight and build an Airfield, then build a bomber there');
-    expect(lines.paradrop.line).toBe('Research Flight and build an Airfield');
+    expect(lines.bomb.line).toBe('Buy Flight in the Arsenal (T), then build an Airfield, then build a bomber there');
+    expect(lines.paradrop.line).toBe('Buy Flight in the Arsenal (T), then build an Airfield');
     expect(lines.rocket.line).toBe('Research Rocketry and build a Missile Silo');
     expect(lines.atomBomb.line).toBe('Research Nuclear Fission and build a Missile Silo');
     // nothing started and early in the game: the group stays hidden

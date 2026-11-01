@@ -6,6 +6,7 @@ import { answerAlliance, breakAlliance, gift, requestAlliance, toggleEmbargo } f
 import { mods } from './rules';
 import { canSpawnAt, spawnPlayer } from './state';
 import { startResearch } from './tech';
+import { procure } from './procurement';
 import { BUILDINGS, TECHS } from './config';
 import { buyWarBonds, fundAlly, hireMercenaries } from './spending';
 import { buildMany, cancelQueuedLevels, upgradeArea, upgradeBuildings } from './bulkbuild';
@@ -133,6 +134,9 @@ export function applyAction(state: GameState, playerId: number, action: Action):
       if (r.ok) p.auto.research = false; // picked by hand: the advisor stops choosing
       return r;
     }
+    case 'procure':
+      if (!(action.tech in TECHS)) return FAIL('Unknown tech');
+      return procure(state, playerId, action.tech); // Arsenal items (procurement.ts)
     case 'transport': {
       if (!isTile(state, action.from) || !isTile(state, action.to)) return FAIL('Invalid tile');
       const bad = checkTroops(p, action.troops);

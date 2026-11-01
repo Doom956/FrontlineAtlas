@@ -182,7 +182,7 @@ describe('protocol helpers', () => {
   });
 
   it('validates the ally requests and setPause (protocol 6)', () => {
-    expect(PROTOCOL_VERSION).toBe(9);
+    expect(PROTOCOL_VERSION).toBe(10);
     expect(validateAction({ type: 'requestAllyAttack', ally: 3, target: 5, junk: 1 })).toEqual({ ok: true, value: { type: 'requestAllyAttack', ally: 3, target: 5 } });
     expect(validateAction({ type: 'requestAllyAid', ally: 3 })).toEqual({ ok: true, value: { type: 'requestAllyAid', ally: 3 } });
     for (const a of [

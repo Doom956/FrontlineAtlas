@@ -70,12 +70,13 @@ export function unitAdvice(s: GameState, me: Player): Suggestion[] {
     if (st.ok) out.push({ key: 'unit-fighter', text: 'Enemy planes over your land: Fighters at your Airfield shoot them down', unit: 'fighter' });
     else if (sams) out.push({ key: 'unit-fighter', text: 'Enemy planes over your land: SAM sites shoot them down', building: 'sam' });
     else if (hasTech(me, 'flight')) out.push({ key: 'unit-fighter', text: 'Enemy planes over your land: an Airfield with Fighters shoots them down', building: 'airfield' });
-    else out.push({ key: 'unit-fighter', text: 'Enemy planes over your land: research Flight for Fighters (then Radar for SAM sites)', drawer: 'research' });
+    else out.push({ key: 'unit-fighter', text: 'Enemy planes over your land: buy Flight in the Arsenal for Fighters (then research Radar for SAM sites)', drawer: 'research' });
   }
   if (fleet && unitAllowed(s, 'warship')) {
     const st = unitBuildStatus(s, me, 'warship');
     if (st.ok) out.push({ key: 'unit-warship', text: 'Enemy warships off your coast: build Warships of your own', unit: 'warship' });
-    else if (!hasTech(me, 'navigation')) out.push({ key: 'unit-warship', text: 'Enemy warships off your coast: research Navigation, then build Warships at a Port', drawer: 'research' });
+    else if (!hasTech(me, 'navigation') && buildingsOf(s, me.id, 'port').length === 0) out.push({ key: 'unit-warship', text: 'Enemy warships off your coast: build a Port, then buy Navigation in the Arsenal for Warships', building: 'port' });
+    else if (!hasTech(me, 'navigation')) out.push({ key: 'unit-warship', text: 'Enemy warships off your coast: buy Navigation in the Arsenal, then Warships at your Port', drawer: 'research' });
     else if (buildingsOf(s, me.id, 'port').length === 0) out.push({ key: 'unit-warship', text: 'Enemy warships off your coast: build a Port, then Warships', building: 'port' });
     else out.push({ key: 'unit-warship', text: 'Enemy warships off your coast: open Forces (Y) for your fleet', drawer: 'forces' });
   }

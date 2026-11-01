@@ -13,6 +13,7 @@ import { buildingCost, countBuildings } from '../../sim/buildings';
 import { BUILDINGS, TECHS } from '../../sim/config';
 import { armyTotal, growthPeak } from '../../sim/economy';
 import { hasTech } from '../../sim/tech';
+import { onOrder, techComing, techFirst } from './procure';
 import { depositCount } from '../../sim/territory';
 import type { BuildingType, GameState, Player, TechId } from '../../sim/types';
 import { formatCount } from '../render/common';
@@ -23,15 +24,15 @@ import { StrikeBar } from './strikeBar';
 import { QuickBar } from './quickBar';
 import { SpendPanel } from './spendPanel';
 
-/** A tech is "close" when it is researched, being researched, or all its prerequisites are done. */
+/** A tech is "close" when it is researched, being researched or on order, or all its prerequisites are done. */
 export function techNear(p: Player, t: TechId | null): boolean {
   if (!t) return true;
-  return hasTech(p, t) || p.researching === t || TECHS[t].requires.every((r) => hasTech(p, r));
+  return techComing(p, t) || TECHS[t].requires.every((r) => hasTech(p, r));
 }
 
 export function buildReason(state: GameState, me: Player, type: BuildingType): string {
   const info = BUILDINGS[type];
-  if (info.tech && !hasTech(me, info.tech)) return `Research ${TECHS[info.tech].name} first`;
+  if (info.tech && !hasTech(me, info.tech)) return onOrder(me, info.tech) ? `${TECHS[info.tech].name} is on order (Arsenal)` : techFirst(info.tech);
   const c = buildingCost(state, me.id, type);
   if (me.gold < c.gold) return `Needs ${formatCount(c.gold)} gold (you have ${formatCount(me.gold)})`;
   if (me.iron < c.iron) return `Needs ${formatCount(c.iron)} iron: build a Mine on iron`;

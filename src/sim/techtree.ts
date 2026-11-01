@@ -13,10 +13,11 @@ import { areAllied } from './diplomacy';
 import { atPeace, mods, researchRule } from './rules';
 import { addEvent } from './state';
 import { earlyWarningSees, nightDodges } from './specials';
-import { arsenalItem, masteryLocked } from './arsenal';
+import { arsenalItem, isArsenalTech, masteryLocked, onOrder } from './arsenal';
 import { subRevealedTo } from './variants';
 import type { BuildingType, GameState, Player, SpendState, TechId, Unit } from './types';
 
+/** 'researching' also means "on order" for an Arsenal item (procurement.ts: bought, waiting for delivery). */
 export type TechStatus = 'done' | 'researching' | 'available' | 'locked-prereq' | 'locked-choice' | 'disabled';
 
 function owns(p: Player | undefined, t: TechId): boolean {
@@ -72,7 +73,7 @@ export function missingPrereqs(p: Player, t: TechId): string {
  * after Destroyers once Submarines is chosen: arsenal.ts forks) is locked by the same choice.
  */
 export function choiceLockedBy(p: Player, t: TechId): TechId | null {
-  for (const o of rivalsOf(t)) if (owns(p, o) || p.researching === o) return o;
+  for (const o of rivalsOf(t)) if (owns(p, o) || p.researching === o || onOrder(p, o)) return o; // an order locks at once (procurement.ts)
   for (const r of TECHS[t]?.requires ?? []) {
     const by = choiceLockedBy(p, r);
     if (by) return by;
@@ -111,7 +112,7 @@ export function techStatus(state: GameState, pid: number, t: TechId): TechStatus
   const p = pl(state, pid);
   if (!p || !TECHS[t]) return 'disabled';
   if (owns(p, t)) return 'done';
-  if (p.researching === t) return 'researching';
+  if (p.researching === t || onOrder(p, t)) return 'researching'; // Arsenal: on order
   if (disabledReason(state, t) || researchRule(state)) return 'disabled';
   if (choiceLockedBy(p, t) || masteryLocked(p, t)) return 'locked-choice'; // forks; mastery cap (arsenal.ts)
   if (!prereqsMet(p, t)) return 'locked-prereq';
@@ -125,7 +126,7 @@ export function techStatusReason(state: GameState, pid: number, t: TechId): stri
     case 'done':
       return `${TECHS[t].name} is already researched`;
     case 'researching':
-      return `Already researching ${TECHS[t].name}`;
+      return isArsenalTech(t) ? `${TECHS[t].name} is on order` : `Already researching ${TECHS[t].name}`;
     case 'disabled':
       return disabledReason(state, t) ?? researchRule(state) ?? 'Not available';
     case 'locked-choice':

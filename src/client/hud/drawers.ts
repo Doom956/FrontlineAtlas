@@ -21,6 +21,7 @@ import { armyTotal, convertCost, hasOilShortage } from '../../sim/economy';
 import { unitCost } from '../../sim/units';
 import { gameSecondsAt } from '../../sim/state';
 import { canResearch, hasTech } from '../../sim/tech';
+import { techFirst } from './procure';
 import { LAND_TERRAINS, Resource } from '../../sim/types';
 import type { Building, BuildingType, GameEvent, GameState, NavalVariant, Player, TechId, TerrainId, Troops } from '../../sim/types';
 import { isTribe } from '../compat';
@@ -778,7 +779,7 @@ export class BuildingPage implements DrawerPage {
       }
       add('Bomb a target', 'danger', 'bomb', () => (ctx.ui.mode = { kind: 'bomb', airfield: tile }), (_ss, _m, bb) => (bb.bombers > 0 ? '' : 'No bombers here')).dataset.test = 'order-bomb';
       add('Paratroopers', 'danger', 'paradrop', () => (ctx.ui.mode = { kind: 'paradrop', airfield: tile }), (_ss, m, bb) =>
-        !hasTech(m, 'flight') ? 'Research Flight first' : bb.buildLeft > 0 ? 'Still being built' : bb.dropCooldown > 0 ? `Next drop ready in ${Math.ceil(bb.dropCooldown)} s` : '',
+        !hasTech(m, 'flight') ? techFirst('flight') : bb.buildLeft > 0 ? 'Still being built' : bb.dropCooldown > 0 ? `Next drop ready in ${Math.ceil(bb.dropCooldown)} s` : '',
       ).dataset.test = 'order-paradrop';
       // Arsenal (hud/variantOrders.ts): the bomber type of the Air path, and recon flights
       const airNote = el('p', 'note');
@@ -812,7 +813,7 @@ export class BuildingPage implements DrawerPage {
         if (kind === 'atomBomb' && !allowedNow('atomBomb')) continue;
         const u = UNITS[kind];
         add(`${u.name} (${formatCount(u.gold)} gold)`, 'danger', kind === 'rocket' ? 'rocket' : 'atom', () => (ctx.ui.mode = { kind: 'missile', silo: tile, missile: kind }), (_ss, m, bb) =>
-          u.tech && !hasTech(m, u.tech) ? `Research ${TECHS[u.tech].name} first` : bb.buildLeft > 0 ? 'Still being built' : chargesReady(bb) <= 0 ? 'Reloading' : m.gold < u.gold ? 'Not enough gold' : m.iron < u.iron ? 'Not enough iron' : m.oil < u.oil ? 'Not enough oil' : '',
+          u.tech && !hasTech(m, u.tech) ? techFirst(u.tech) : bb.buildLeft > 0 ? 'Still being built' : chargesReady(bb) <= 0 ? 'Reloading' : m.gold < u.gold ? 'Not enough gold' : m.iron < u.iron ? 'Not enough iron' : m.oil < u.oil ? 'Not enough oil' : '',
         ).dataset.test = `order-${kind}`;
       }
     }
@@ -821,7 +822,7 @@ export class BuildingPage implements DrawerPage {
       if (allowedNow('warship')) for (const o of warshipOptions(s, me)) {
         const x = add(`${o.label} (${formatCount(o.gold)} gold)`, '', 'warship', () => warshipClickMode(ctx, o.variant), (ss, m, bb) => {
           const u = warshipOrderCost(ss, m.id, o.variant);
-          return !hasTech(m, 'navigation') ? 'Research Navigation first' : bb.buildLeft > 0 ? 'Still being built' : m.gold < u.gold ? 'Not enough gold' : m.iron < u.iron ? 'Not enough iron' : m.oil < u.oil ? 'Not enough oil' : '';
+          return !hasTech(m, 'navigation') ? techFirst('navigation') : bb.buildLeft > 0 ? 'Still being built' : m.gold < u.gold ? 'Not enough gold' : m.iron < u.iron ? 'Not enough iron' : m.oil < u.oil ? 'Not enough oil' : '';
         });
         x.dataset.test = `order-${o.variant ?? 'warship'}`;
         if (!x.dataset.tip) x.dataset.tip = o.tip;

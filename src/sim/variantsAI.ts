@@ -141,7 +141,7 @@ export function aiCommittedPillar(state: GameState, id: number): Exclude<Pillar,
   // won or lost later doesn't move the nation's mastery elsewhere.
   if (p) {
     let up: Exclude<Pillar, 'shared'> | null = null;
-    for (const t of p.researching ? [...p.techs, p.researching] : p.techs) {
+    for (const t of [...p.techs, ...(p.researching ? [p.researching] : []), ...(p.procuring ?? []).map((o) => o.tech)]) {
       const it = arsenalItem(t);
       if (!it || it.pillar === 'shared') continue;
       if (it.kind === 'mastery') return it.pillar;

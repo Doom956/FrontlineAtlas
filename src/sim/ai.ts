@@ -84,11 +84,13 @@ import { canParadrop, paradropMaxTroops, paradropRange, unitCost } from './units
 import { aiAirDoctrineTaste, aiAirTechs, aiAirWings, aiExtraAirfields, airWingBusy } from './airwings';
 import { inOvertime, victoryShareNow } from './victory';
 import { hasTech } from './tech';
-import { pillarOf } from './arsenal';
+import { isArsenalTech, pillarOf } from './arsenal';
+import { arsenalPrice } from './procurement';
 import { aiRecon, aiWarshipVariant } from './variantsAI';
 import { aiFocus, FOCUS_SPEC } from './aifocus';
 import type { FocusPillar } from './aifocus';
-import { aiSpecialPick } from './arsenalAI';
+import { aiCommittedArsenal, aiProcureAffordable, aiProcurePick, aiSpecialPick } from './arsenalAI';
+import type { ProcurePick } from './arsenalAI';
 import { aiSpend, aiTechOrder, rejectedBranch } from './aispending';
 import { allyTrustDiscount } from './spending';
 import { techStatus } from './techtree';
@@ -131,6 +133,11 @@ const SAM_NEAR_FRONT = true;
 /** AIs facing enemy bombers research Radar (SAM sites) next once they hold this many techs. */
 const AI_RADAR_VS_AIR = true;
 const AI_RADAR_MIN_TECHS = 4;
+/** Priority of an Arsenal purchase in economy() (research is 6..10), + this for the committed pillar's items */
+const AI_PROCURE_PRIO = 5.5;
+const AI_PROCURE_COMMITTED = 2.5;
+/** Priority of the building a wanted Arsenal item waits for (Port, Factory; the Airfield comes with Flight) */
+const AI_PROCURE_BUILDING_PRIO = 5;
 
 interface Profile {
   /** willingness to start wars, 0..1 */
@@ -1650,7 +1657,7 @@ function allyDuties(ctx: Ctx): void {
 const MILITARY = new Set<BuildingType>(['barracks', 'factory', 'arsenal', 'fort', 'supplyDepot', 'watchtower', 'airfield', 'sam', 'silo', 'hospital']);
 
 interface BuildOption {
-  type: BuildingType | 'research';
+  type: BuildingType | 'research' | 'procure';
   prio: number;
 }
 
@@ -1686,28 +1693,25 @@ function inland(ctx: Ctx, t: number): number {
   return Math.sqrt(d2);
 }
 
+/** The next Research-tab tech (Arsenal items are bought instead: nextArsenal / procurement.ts). */
 function nextTech(ctx: Ctx): TechId | null {
   const { p, state } = ctx;
-  const coastal = coastCount(state, ctx.id) > 0;
-  // Fleets (naval2.ts): a coastal nation boxed in (no free land left) or with 5+ techs takes Navigation next.
-  if (coastal && !hasTech(p, 'navigation') && (ctx.neutralBorder <= 0 || p.techs.length >= 5) && techStatus(state, ctx.id, 'navigation') === 'available') return 'navigation';
-  // Enemy bombers about (and a few techs in): Radar for SAM sites.
+  // Enemy bombers about (and a few techs in): Radar for SAM sites (Flight is bought: nextArsenal).
   if (AI_RADAR_VS_AIR && p.techs.length >= AI_RADAR_MIN_TECHS && !hasTech(p, 'radar') && enemyAirThreat(ctx)) {
-    for (const t of ['radar', 'flight'] as const) if (techStatus(state, ctx.id, t) === 'available') return t;
+    if (techStatus(state, ctx.id, 'radar') === 'available') return 'radar';
   }
   // Facing a runaway leader: the bomb first, once it can be researched.
   if (NUKE_COALITION_RESEARCH && ctx.coalition && ctx.diff.nukes && !hasTech(p, 'nuclearFission')) {
     for (const t of NUKE_PATH) if (!hasTech(p, t) && techStatus(state, ctx.id, t) === 'available') return t;
   }
-  // Special upgrades that fit the nation (arsenalAI.ts: Early Warning, Night Bombing, Mines, Amphibious, Drop Tanks).
+  // Special upgrades that fit the nation (arsenalAI.ts): a Research-tab prerequisite of one (Radar, Fortification).
   const special = aiSpecialPick(state, ctx.id, ctx.enemies);
-  if (special) return special;
+  if (special && !isArsenalTech(special)) return special;
   const avail: TechId[] = [];
   // Profile order with the branch techs merged in (aispending.ts: one pick per exclusive group).
-  for (const t of aiTechOrder(state, ctx.id, p.personality, aiAirTechs(state, ctx.id, ctx.prof.techs))) {
-    if (hasTech(p, t)) continue;
+  for (const t of aiOrder(ctx)) {
+    if (hasTech(p, t) || isArsenalTech(t)) continue;
     if (techStatus(state, ctx.id, t) !== 'available' || rejectedBranch(state, ctx.id, p.personality, t)) continue;
-    if ((t === 'navigation' || t === 'carriers' || t === 'submarines' || pillarOf(t) === 'navy') && !coastal) continue; // Navy row (arsenal.ts)
     if (t === 'nuclearFission' && !ctx.diff.nukes) continue;
     avail.push(t);
     if (avail.length >= 2) break;
@@ -1715,6 +1719,31 @@ function nextTech(ctx: Ctx): TechId | null {
   if (!avail.length) return null;
   // Easy AIs sometimes take their second choice.
   return ctx.diff.careful || avail.length === 1 || state.rng() < 0.6 ? avail[0] : avail[1];
+}
+
+/** The nation's research order (profile + branch techs, Research and Arsenal items together: aispending.ts). */
+function aiOrder(ctx: Ctx): TechId[] {
+  return aiTechOrder(ctx.state, ctx.id, ctx.p.personality, aiAirTechs(ctx.state, ctx.id, ctx.prof.techs));
+}
+
+/**
+ * The Arsenal item to buy next (procurement.ts) and a building a wanted item waits for: the situational picks first
+ * (Navigation when boxed in on a coast, Flight against bombers, the bomb's Mechanization, a special), then the
+ * research order (arsenalAI.aiProcurePick).
+ */
+function nextArsenal(ctx: Ctx): ProcurePick {
+  const { p, state, id } = ctx;
+  const coastal = coastCount(state, id) > 0;
+  const first: TechId[] = [];
+  // Fleets (naval2.ts): a coastal nation boxed in (no free land left) or with 5+ techs takes Navigation next.
+  if (coastal && !hasTech(p, 'navigation') && (ctx.neutralBorder <= 0 || p.techs.length >= 5)) first.push('navigation');
+  if (AI_RADAR_VS_AIR && p.techs.length >= AI_RADAR_MIN_TECHS && !hasTech(p, 'radar') && enemyAirThreat(ctx)) first.push('flight');
+  if (NUKE_COALITION_RESEARCH && ctx.coalition && ctx.diff.nukes && !hasTech(p, 'nuclearFission')) first.push('mechanization');
+  const special = aiSpecialPick(state, id, ctx.enemies);
+  if (special && isArsenalTech(special)) first.push(special);
+  const skip = (t: TechId): boolean =>
+    rejectedBranch(state, id, p.personality, t) || ((t === 'navigation' || pillarOf(t) === 'navy') && !coastal); // Navy row (arsenal.ts)
+  return aiProcurePick(state, id, first, aiOrder(ctx), skip);
 }
 
 /** Picks what to spend gold on (one or two items per decision): buildings by need x personality, or research. */
@@ -1730,10 +1759,10 @@ function economy(ctx: Ctx): void {
   const held = doctrineActive(state, id);
   const lean = held ? DOCTRINE_BUILD[held] : {};
   const noResearch = researchRule(state) !== null;
-  const add = (type: BuildingType | 'research', prio: number): void => {
+  const add = (type: BuildingType | 'research' | 'procure', prio: number): void => {
     if (prio <= 0) return;
-    if (type === 'research' ? noResearch : !buildingAllowed(state, type)) return;
-    if (type === 'research') opts.push({ type, prio });
+    if (type === 'research' || type === 'procure' ? noResearch : !buildingAllowed(state, type)) return;
+    if (type === 'research' || type === 'procure') opts.push({ type, prio });
     else opts.push({ type, prio: prio * (prof.build[type] ?? 1) * (lean[type] ?? 1) * (MILITARY.has(type) ? militaryScale : 1) });
   };
 
@@ -1780,6 +1809,12 @@ function economy(ctx: Ctx): void {
   // Research competes for the same gold (science saved while idle is not lost, so no rush).
   const tech = p.researching ? null : nextTech(ctx);
   if (tech) add('research', 6 + (p.science >= TECHS[tech].science * 0.5 ? 3 : 0) + (prof.techs[0] === tech ? 1 : 0));
+  // Arsenal purchases (procurement.ts) compete for the same gold; iron / oil short -> wait (no gold saved for it). A
+  // wanted item that waits for its building (Port, Factory, Airfield) makes that building more urgent.
+  const arms = noResearch ? { tech: null } : nextArsenal(ctx);
+  const armsTech = arms.tech && aiProcureAffordable(state, id, arms.tech) ? arms.tech : null;
+  if (armsTech) add('procure', AI_PROCURE_PRIO + (aiCommittedArsenal(state, id, armsTech) ? AI_PROCURE_COMMITTED : 0) - (ctx.threat > 1.5 ? 1.5 : 0));
+  if (arms.needs && count(arms.needs) === 0) add(arms.needs, AI_PROCURE_BUILDING_PRIO);
 
   // Best first; an option we can't afford yet keeps part of its price saved, so cheaper, less important
   // items don't eat the savings for it forever.
@@ -1789,7 +1824,7 @@ function economy(ctx: Ctx): void {
   let saved = 0;
   for (const o of opts) {
     if (done >= 2) break;
-    const cost = o.type === 'research' ? (tech ? TECHS[tech].gold : Infinity) : goldCost(ctx, o.type);
+    const cost = o.type === 'research' ? (tech ? TECHS[tech].gold : Infinity) : o.type === 'procure' ? (armsTech ? arsenalPrice(state, id, armsTech).gold : Infinity) : goldCost(ctx, o.type);
     if (p.gold - saved < cost) {
       saved += Math.min(cost, p.gold) * 0.6;
       continue;
@@ -1799,6 +1834,8 @@ function economy(ctx: Ctx): void {
     if (o.prio < top * 0.5 && p.gold - saved < cost * 3) continue;
     if (o.type === 'research') {
       if (tech && applyAction(state, id, { type: 'research', tech }).ok) done++;
+    } else if (o.type === 'procure') {
+      if (armsTech && applyAction(state, id, { type: 'procure', tech: armsTech }).ok) done++;
     } else if (tryBuild(ctx, o.type)) done++;
   }
 }

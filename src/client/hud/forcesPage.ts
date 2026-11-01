@@ -13,6 +13,7 @@ import { bestFactory, canBuildTankDivision, tankDivisionCost, tankDivisionLimit 
 import { enterTankDivisionBuildMode, enterWarshipSpawnMode, selectAllOf } from '../selection';
 import { buildingAllowed, unitAllowed } from '../../sim/rules';
 import { hasTech } from '../../sim/tech';
+import { techFirst } from './procure';
 import { unitCost } from '../../sim/units';
 import type { Building, GameState, Player, Unit } from '../../sim/types';
 import { aircraftAt, buildUnit, hpText, priceText, UNIT_TEXT, unitBuildStatus, unitDoing, unitName, type BuyableUnit } from '../forces';
@@ -363,7 +364,7 @@ export class ForcesPage implements DrawerPage {
         },
       ];
       if (tanks.length > 1) head.push({ label: 'All', tip: 'Select every tank division (Shift+A)', run: () => this.selectAll(s, me, 'tankDivision') });
-      const empty = tanks.length || building.length ? '' : hasTech(me, 'mechanization') ? 'No tank divisions yet: + Tank division, then click one of your factories.' : 'Tank divisions: research Mechanization and build a Factory.';
+      const empty = tanks.length || building.length ? '' : hasTech(me, 'mechanization') ? 'No tank divisions yet: + Tank division, then click one of your factories.' : 'Tank divisions: build a Factory, then buy Mechanization in the Arsenal (T).';
       this.land.set(head, rows, empty, focus);
     }
 
@@ -438,7 +439,7 @@ export class ForcesPage implements DrawerPage {
           for (const kind of ['rocket', 'atomBomb'] as const) {
             if (kind === 'atomBomb' && !unitAllowed(s, 'atomBomb')) continue;
             const u = UNITS[kind];
-            const off = u.tech && !hasTech(me, u.tech) ? `Research ${u.tech === 'nuclearFission' ? 'Nuclear Fission' : 'Rocketry'} first` : ready <= 0 ? 'Reloading' : me.gold < u.gold ? `Needs ${formatCount(u.gold)} gold` : me.iron < u.iron ? `Needs ${u.iron} iron` : me.oil < u.oil ? `Needs ${u.oil} oil` : '';
+            const off = u.tech && !hasTech(me, u.tech) ? techFirst(u.tech) : ready <= 0 ? 'Reloading' : me.gold < u.gold ? `Needs ${formatCount(u.gold)} gold` : me.iron < u.iron ? `Needs ${u.iron} iron` : me.oil < u.oil ? `Needs ${u.oil} oil` : '';
             acts.push({ label: kind === 'rocket' ? 'Rocket' : 'Atom', icon: kind === 'rocket' ? 'rocket' : 'atom', cls: 'danger', off, tip: `${STRIKES[kind].what} ${priceText(kind)}.`, run: () => this.aim(kind, () => (ctx.ui.mode = { kind: 'missile', silo: b.tile, missile: kind })) });
           }
         }

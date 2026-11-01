@@ -29,6 +29,7 @@ import { tick } from '../src/sim/sim';
 import { canSpawnAt, createGame, gameSeconds, ownerBox } from '../src/sim/state';
 import { borderTiles } from '../src/sim/territory';
 import { applyAction } from '../src/sim/actions';
+import { isArsenalTech } from '../src/sim/arsenal';
 import { cloneSetup, DEFAULT_MODIFIERS, DEFAULT_SETUP, SINGLE_PLAYER_NATIONS } from '../src/sim/setup';
 import { isTribe, isWater } from '../src/sim/types';
 import { loadWorldMap } from '../src/sim/worldmaps';
@@ -227,6 +228,8 @@ interface Result {
   share20: number;
   /** rank among the alive nations by land at 20 min (1 = biggest; nations + 1 if dead) */
   rank20: number;
+  /** Research-tab techs the bot has at 20 min (Arsenal items are bought, not researched: arsenal.ts) */
+  research20: number;
   /** game seconds of the first AI nation attack on the bot (-1 none) */
   firstAttack: number;
   /** most AI nations attacking it at once in the first 10 min */
@@ -276,6 +279,7 @@ async function runGame(job: Job, minutes: number): Promise<Result> {
     share10: 0,
     share20: 0,
     rank20: 0,
+    research20: 0,
     firstAttack: -1,
     maxWars10: 0,
     attackers10: 0,
@@ -328,6 +332,7 @@ async function runGame(job: Job, minutes: number): Promise<Result> {
       next20 = false;
       r.alive20 = me.alive;
       r.share20 = me.tiles / land;
+      r.research20 = me.techs.filter((t) => !isArsenalTech(t)).length;
       r.rank20 = me.alive ? 1 + nations.filter((q) => q.id !== ME && q.alive && q.tiles > me.tiles).length : nations.length + 1;
     }
   }
@@ -438,7 +443,7 @@ const pct = (x: number): string => `${Math.round(x * 100)}%`;
 const f1 = (x: number): string => (Number.isFinite(x) ? x.toFixed(1) : '-');
 
 function report(rs: Result[], o: Options): void {
-  const head = ['map', 'diff', 'runs', 'alive10', 'alive20', 'land10', 'land20', 'rank20', '1st atk', 'wars10', 'atkrs10', 'died', 'death min', 'wins', 'AI won', 'AI win min'];
+  const head = ['map', 'diff', 'runs', 'alive10', 'alive20', 'land10', 'land20', 'rank20', 'res20', '1st atk', 'wars10', 'atkrs10', 'died', 'death min', 'wins', 'AI won', 'AI win min'];
   const rows: string[][] = [head];
   for (const map of o.maps) {
     for (const d of o.difficulties) {
@@ -457,6 +462,7 @@ function report(rs: Result[], o: Options): void {
         pct(median(g.map((r) => r.share10))),
         pct(median(g.map((r) => r.share20))),
         f1(median(g.map((r) => r.rank20))),
+        f1(median(g.filter((r) => r.alive20).map((r) => r.research20))),
         firsts.length ? `${f1(median(firsts))}m` : 'never',
         String(Math.max(...g.map((r) => r.maxWars10))),
         f1(median(g.map((r) => r.attackers10))),

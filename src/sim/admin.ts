@@ -14,6 +14,7 @@ import { gameSeconds, newId, setOwner } from './state';
 import { spawnWarshipAt } from './units';
 import { DOCTRINE_IDS, TROOP_TYPES, isWater } from './types';
 import type { Action, ActionResult, AdminAction, AdminOp, AdminState, Building, BuildingType, Difficulty, DoctrineId, GameState, TechId, Troops } from './types';
+import { deliverAllOrders } from './procurement';
 
 const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
 const OK: ActionResult = { ok: true };
@@ -237,6 +238,7 @@ export function applyAdmin(state: GameState, senderId: number, a: AdminAction): 
       for (const t of Object.keys(TECHS) as TechId[]) if (!p.techs.includes(t)) p.techs.push(t);
       p.researching = null;
       p.researchProgress = 0;
+      p.procuring = []; // Arsenal orders (procurement.ts): granted now
       return OK;
     case 'unlockTech':
     case 'removeTech': {
@@ -248,15 +250,19 @@ export function applyAdmin(state: GameState, senderId: number, a: AdminAction): 
           p.researching = null;
           p.researchProgress = 0;
         }
+        if (p.procuring) p.procuring = p.procuring.filter((o) => o.tech !== t); // an order of it is granted now
       } else p.techs = p.techs.filter((x) => x !== t);
       return OK;
     }
-    case 'finishResearch':
-      if (!p.researching) return FAIL('Nothing is being researched');
+    case 'finishResearch': {
+      // The running research and every Arsenal order (procurement.ts) finish at once.
+      const orders = deliverAllOrders(state, p.id);
+      if (!p.researching) return orders > 0 ? OK : FAIL('Nothing is being researched or on order');
       if (!p.techs.includes(p.researching)) p.techs.push(p.researching);
       p.researching = null;
       p.researchProgress = 0;
       return OK;
+    }
     case 'finishConstructions': {
       let n = 0;
       for (const b of state.buildings.values()) {

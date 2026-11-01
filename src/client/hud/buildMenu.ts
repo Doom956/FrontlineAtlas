@@ -14,6 +14,7 @@ import { buildingCost, countBuildings } from '../../sim/buildings';
 import { BUILDINGS, BUILDING_ORDER, BULK_MAX_COUNT, TECHS, UNITS } from '../../sim/config';
 import { buildingAllowed, buildSeconds, mods } from '../../sim/rules';
 import { hasTech } from '../../sim/tech';
+import { howToGet, onOrder, techComing, techFirst } from './procure';
 import { bestFactory, canBuildTankDivision, tankBuildSeconds, tankDivisionCost, tankDivisionCount, tankDivisionLimit } from '../../sim/tanks';
 import type { Action, BuildingType, GameState, Player } from '../../sim/types';
 import { formatCount } from '../render/common';
@@ -177,17 +178,17 @@ export function browserStore(): PickStore | null {
 
 // ------------------------------------------------------------------------------------------------ building texts
 
-/** A tech is "close" when it is researched, being researched, or all its prerequisites are done. */
+/** A tech is "close" when it is researched, being researched or on order, or all its prerequisites are done. */
 function techClose(p: Player, t: keyof typeof TECHS | null): boolean {
   if (!t) return true;
-  return hasTech(p, t) || p.researching === t || TECHS[t].requires.every((r) => hasTech(p, r));
+  return techComing(p, t) || TECHS[t].requires.every((r) => hasTech(p, r));
 }
 
 /** Why a building can't be built now ('' = it can). */
 export function lockReason(state: GameState, me: Player, type: BuildingType): string {
   const info = BUILDINGS[type];
   if (!buildingAllowed(state, type)) return 'Off in this game';
-  if (info.tech && !hasTech(me, info.tech)) return `Research ${TECHS[info.tech].name} first`;
+  if (info.tech && !hasTech(me, info.tech)) return onOrder(me, info.tech) ? `${TECHS[info.tech].name} is on order (Arsenal)` : techFirst(info.tech);
   const c = buildingCost(state, me.id, type);
   if (me.gold < c.gold) return `Needs ${formatCount(c.gold)} gold`;
   if (me.iron < c.iron) return `Needs ${formatCount(c.iron)} iron: build a Mine`;
@@ -220,7 +221,7 @@ export type MenuUnit = BuyableUnit | 'tankDivision';
 export function tankDivisionStatus(state: GameState, me: Player): { allowed: boolean; ok: boolean; locked: boolean; line: string; factory: number } {
   const allowed = buildingAllowed(state, 'factory');
   if (!allowed) return { allowed, ok: false, locked: true, line: 'Tank divisions are off in this game', factory: -1 };
-  if (!hasTech(me, 'mechanization')) return { allowed, ok: false, locked: true, line: `Research ${TECHS.mechanization.name} first`, factory: -1 };
+  if (!hasTech(me, 'mechanization')) return { allowed, ok: false, locked: true, line: onOrder(me, 'mechanization') ? `${TECHS.mechanization.name} is on order (Arsenal)` : howToGet(state, me, 'mechanization'), factory: -1 };
   const f = bestFactory(state, me.id);
   if (f < 0) return { allowed, ok: false, locked: true, line: 'Build a Factory first (7)', factory: -1 };
   const r = canBuildTankDivision(state, me.id, f);
