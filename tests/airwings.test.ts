@@ -9,6 +9,7 @@ import {
   airSupportCut,
   airWingSize,
   airZones,
+  massCooldownMul,
   updateAir,
   wingOf,
 } from '../src/sim/airwings';
@@ -114,6 +115,21 @@ describe('setAirMission', () => {
     expect(airWingSize(s, af)).toBe(AIR.wingBase + 2 * AIR.wingPerLevel);
     giveTech(s, 1, 'jetEngines');
     expect(airWingSize(s, af)).toBe(AIR.wingBase + 2 * AIR.wingPerLevel + AIR.wingJets);
+  });
+
+  it('more than AIR.massFree airfields on missions slow every wing of that nation', () => {
+    const s = frontGame();
+    const target = at(s, 52, 15);
+    const afs = [10, 14, 18, 22].map((y) => airfieldWith(s, 1, at(s, 40, y), 1));
+    expect(massCooldownMul(s, 1)).toBe(1);
+    for (const af of afs.slice(0, AIR.massFree)) expect(applyAction(s, 1, { type: 'setAirMission', airfield: af.tile, mission: 'support', target }).ok).toBe(true);
+    expect(massCooldownMul(s, 1)).toBe(1);
+    for (const af of afs.slice(AIR.massFree)) expect(applyAction(s, 1, { type: 'setAirMission', airfield: af.tile, mission: 'support', target }).ok).toBe(true);
+    expect(massCooldownMul(s, 1)).toBeCloseTo(1 + AIR.massCooldown * (afs.length - AIR.massFree), 9);
+    expect(massCooldownMul(s, 2)).toBe(1);
+    // A patrol does not count.
+    expect(applyAction(s, 1, { type: 'setAirMission', airfield: afs[3].tile, mission: 'superiority' }).ok).toBe(true);
+    expect(massCooldownMul(s, 1)).toBeCloseTo(1 + AIR.massCooldown * (afs.length - 1 - AIR.massFree), 9);
   });
 });
 
