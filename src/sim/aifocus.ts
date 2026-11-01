@@ -52,7 +52,7 @@ export const FOCUS_SPEC: Readonly<Record<FocusPillar, FocusSpec>> = {
     build: { fort: 1.6, arsenal: 1.8, barracks: 1.4, watchtower: 1.2 }, mix: { armor: 0, artillery: 0.15 }, naval: 0, warships: 0, airfields: 0,
   },
   economy: {
-    arms: null, group: 'finance', doctrines: ['merchant'], techs: ['agriculture', 'banking'],
+    arms: null, group: 'finance', doctrines: ['merchant'], techs: [],
     build: { market: 1.8, lab: 1.4, city: 1.15, port: 1.3, farm: 1.2 }, mix: { armor: 0, artillery: 0 }, naval: 0, warships: 0, airfields: 0,
   },
 };
