@@ -55,8 +55,8 @@ import type { GameState, Player, Troops } from './types';
 // Tech multipliers (DESIGN 6 / TECHS descriptions).
 const AGRICULTURE_FARM_MULT = 1.5;
 const MEDICINE_GROWTH_MULT = 1.2;
-const BANKING_GOLD_MULT = 1.3;
-const BANKING_MARKET_MULT = 1.25;
+const BANKING_GOLD_MULT = 1.15;
+const BANKING_MARKET_MULT = 1.1;
 const METALLURGY_IRON_MULT = 1.5;
 const METALLURGY_CONVERT_IRON = 0.75;
 const INDUSTRIAL_RESOURCE_MULT = 1.25;
