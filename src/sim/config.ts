@@ -413,7 +413,7 @@ export const TECHS: Record<TechId, TechInfo> = {
   combinedArms: { name: 'Combined Arms', tier: 3, science: 2200, gold: 1000, requires: ['mechanization', 'ballistics'], description: '+20% attack when every troop type is at least 15% of the force.' },
   radar: { name: 'Radar', tier: 3, science: 2200, gold: 1000, requires: ['flight'], description: 'SAM sites; watchtower radius x2.' },
   rocketry: { name: 'Rocketry', tier: 3, science: 2200, gold: 1000, requires: ['ballistics'], description: 'Missile silos and rockets.' },
-  nuclearFission: { name: 'Nuclear Fission', tier: 4, science: 3500, gold: 1500, requires: ['rocketry', 'industrialization'], description: 'Atom bombs.' },
+  nuclearFission: { name: 'Nuclear Fission', tier: 4, science: 2500, gold: 1000, requires: ['rocketry', 'industrialization'], description: 'Atom bombs.' },
   // ---- branches with exclusive choices (techtree.ts; numbers in the TECH_EFFECTS block below) ----
   propaganda: { name: 'Propaganda', tier: 2, science: 600, gold: 600, requires: ['agriculture'], description: 'Attacks on your land cost the attacker 12% more troops.' },
   railways: { name: 'Railways', tier: 3, science: 2200, gold: 1000, requires: ['logistics'], description: 'Supply range +25%, fronts +10% faster, tank divisions 20% cheaper, +1 division per 2 Factory levels.' },
