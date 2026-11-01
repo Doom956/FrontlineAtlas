@@ -607,9 +607,9 @@ export const TANK_DEFENSE_RADIUS = 4;
 export const TANK_DEFENSE_BONUS = 0.35;
 /** a division not attacking whose ground is taken falls back to own land within this many tiles (losing this share
  * of its troops) while it has at least TANK_FALLBACK_MIN_SHARE of a full division; otherwise it is overrun */
-export const TANK_FALLBACK_RADIUS = 5;
+export const TANK_FALLBACK_RADIUS = 8;
 export const TANK_FALLBACK_LOSS = 0.08;
-export const TANK_FALLBACK_MIN_SHARE = 0.2;
+export const TANK_FALLBACK_MIN_SHARE = 0.1;
 /** seconds a division that fell back waits before an automatic drive back up to the front */
 export const TANK_FALLBACK_PAUSE = 20;
 /** a bomber hit kills this share of a division's troops within BOMBER_RADIUS of the impact */
@@ -704,11 +704,11 @@ export interface DoctrineLevers {
 export type DoctrineLever = keyof DoctrineLevers;
 
 export const DOCTRINE_LEVERS: Record<DoctrineId, DoctrineLevers> = {
-  blitz: { openGroundSpeed: 0.3, armorConvertCost: 0.25 },
-  fortress: { fortDefense: 0.25, fortCost: 0.25, defenderLoss: 0.2 },
+  blitz: { openGroundSpeed: 0.1, armorConvertCost: 0.15 },
+  fortress: { fortDefense: 0.4, fortCost: 0.3, defenderLoss: 0.4 },
   siege: { artilleryAttack: 0.2, siegeBonus: 0.25, barrageCooldown: 0.25 },
   merchant: { gold: 0.08, tradeGold: 0.25, marketBonus: 0.15 },
-  naval: { warshipCost: 0.35, warshipSpeed: 0.2, transportSpeed: 0.35, transportHp: 1 },
+  naval: { warshipCost: 0.35, warshipSpeed: 0.2, transportSpeed: 0.35, transportHp: 1, tradeGold: 0.4 },
   air: { aircraftCost: 0.25, airfieldReload: 0.25, paradropRange: 0.25 },
   expansion: { expansionLoss: 0.3, smallGrowth: 0.3 },
 };
@@ -716,7 +716,7 @@ export const DOCTRINE_LEVERS: Record<DoctrineId, DoctrineLevers> = {
 /** Level-3 signature perks (and the expansion doctrine's 'small' range, used from level 1). */
 export const DOCTRINE_PERKS = {
   /** armor ignores this share of the terrain's attack penalty (forest, hills, mountains, swamp ...) */
-  blitz: { armorTerrainIgnore: 0.5 },
+  blitz: { armorTerrainIgnore: 0.3 },
   /** forts build and upgrade in this share of the time and repair barrage damage this many times faster */
   fortress: { fortBuildTime: 0.25, fortRepair: 3 },
   /** barrage disc + this many tiles; forts and SAM sites stay silenced this many times longer */
@@ -796,8 +796,8 @@ export const DOCTRINES: Record<DoctrineId, DoctrineInfo> = {
     name: 'Naval',
     short: 'Rule the sea: cheaper, faster warships and tougher transports.',
     levels: [
-      `Warships ${pct(L.naval.warshipCost, 1)} cheaper and ${pct(L.naval.warshipSpeed, 1)} faster; transports ${pct(L.naval.transportSpeed, 1)} faster and tougher.`,
-      `Warships ${pct(L.naval.warshipCost, 2)} cheaper and ${pct(L.naval.warshipSpeed, 2)} faster; transports ${pct(L.naval.transportSpeed, 2)} faster, twice as hard to sink.`,
+      `Warships ${pct(L.naval.warshipCost, 1)} cheaper and ${pct(L.naval.warshipSpeed, 1)} faster; transports ${pct(L.naval.transportSpeed, 1)} faster and tougher; trade ships carry +${pct(L.naval.tradeGold, 1)}.`,
+      `Warships ${pct(L.naval.warshipCost, 2)} cheaper and ${pct(L.naval.warshipSpeed, 2)} faster; transports ${pct(L.naval.transportSpeed, 2)} faster, twice as hard to sink; trade ships carry +${pct(L.naval.tradeGold, 2)}.`,
       `Warships repair at sea and shell coasts ${P.naval.shelling}x harder.`,
     ],
     color: '#4f8a94',
@@ -1109,8 +1109,8 @@ export const AIR = {
   sortieCooldown: 20,
   idleRecheck: 3,
   /** support: zone radius (+ per airfield level above 1), how long it lasts after the last strike (s) */
-  supportRadius: 7,
-  supportRadiusPerLevel: 1,
+  supportRadius: 11,
+  supportRadiusPerLevel: 2,
   supportSeconds: 24,
   /** support: enemy tile defence cut = maxCut x (1 - decay^strength); strength = bombers that struck the zone */
   supportMaxCut: 0.45,
@@ -1144,6 +1144,9 @@ export const AIR = {
   /** paratroopers: drop size x (1 + paraPerAircraft x aircraft at the airfield), at most paraMaxMul */
   paraPerAircraft: 0.08,
   paraMaxMul: 2.2,
+  /** a nation flying more than massFree airfields on support / strategic missions: every wing's sortie cooldown x (1 + massCooldown x the extra ones) */
+  massFree: 2,
+  massCooldown: 0.5,
 } as const;
 
 // ---------- navy, part three: stances, shore bombardment, blockades, veterancy (naval2.ts) ----------
