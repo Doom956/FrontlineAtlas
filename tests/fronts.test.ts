@@ -3,8 +3,10 @@
 import { describe, expect, it } from 'vitest';
 import { createTileChanges, recordTileChange } from '../src/sim/changes';
 import type { Attack, GameState } from '../src/sim/types';
-import { edgeId, FrontLayer, frontSpots, measuredSpeed, mergeSegments, pairKey, seedEdges, WAR_MEMORY_TICKS } from '../src/client/render/fronts';
+import { chainSegments, edgeId, FrontLayer, frontSpots, measuredSpeed, mergeSegments, pairKey, seedEdges, WAR_MEMORY_TICKS } from '../src/client/render/fronts';
 import { OWNER_MASK, TileFeed } from '../src/client/render/tiles';
+import { Camera } from '../src/client/camera';
+import type { UiState } from '../src/client/uiState';
 import { makeRng } from '../src/sim/rng';
 import { onOwnerChange } from '../src/sim/territory';
 
@@ -80,6 +82,33 @@ describe('mergeSegments', () => {
     let len = 0;
     for (let k = 0; k < segs.length; k += 4) len += Math.abs(segs[k + 2] - segs[k]) + Math.abs(segs[k + 3] - segs[k + 1]);
     expect(len).toBe(7 + 7);
+  });
+});
+
+describe('chainSegments', () => {
+  const length = (lines: number[][]): number => {
+    let len = 0;
+    for (const l of lines) for (let k = 2; k < l.length; k += 2) len += Math.abs(l[k] - l[k - 2]) + Math.abs(l[k + 1] - l[k - 1]);
+    return len;
+  };
+  it('joins an L into one polyline and a closed square into one loop', () => {
+    expect(chainSegments([4, 0, 4, 3, 4, 3, 7, 3])).toEqual([[4, 0, 4, 3, 7, 3]]);
+    const sq = chainSegments([0, 0, 2, 0, 0, 2, 2, 2, 0, 0, 0, 2, 2, 0, 2, 2]);
+    expect(sq.length).toBe(1);
+    expect(sq[0].length).toBe(10);
+    expect(length(sq)).toBe(8);
+  });
+  it('keeps every unit of a staircase border', () => {
+    const w = 12;
+    const h = 12;
+    const own = new Uint16Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) own[y * w + x] = x <= y || (x > 8 && y < 3) ? 1 : 2;
+    const segs = mergeSegments(scan((i) => own[i], w, h, 1, 2), w);
+    let total = 0;
+    for (let k = 0; k < segs.length; k += 4) total += Math.abs(segs[k + 2] - segs[k]) + Math.abs(segs[k + 3] - segs[k + 1]);
+    const lines = chainSegments(segs);
+    expect(length(lines)).toBe(total);
+    expect(lines.length).toBeLessThan(segs.length / 4);
   });
 });
 
@@ -188,6 +217,42 @@ describe('FrontLayer', () => {
     layer.begin(s, 200);
     expect(layer.edgesOf(1, 2)).toBeUndefined();
     expect(pairKey(2, 1)).toBe(pairKey(1, 2));
+  });
+
+  it('draws a front that only touches after the attack started (amphibious landing, far off screen)', () => {
+    const w = 60;
+    const h = 40;
+    const s = fakeState(w, h);
+    for (let i = 0; i < w * h; i++) s.map.owner[i] = i % w < 10 ? 1 : i % w >= 50 ? 2 : 0;
+    s.attacks.push(attack(1, 1, 2));
+    const feed = new TileFeed();
+    feed.reset(s);
+    const layer = new FrontLayer();
+    layer.reset(w, feed);
+    feed.listeners.push(layer.onChange);
+    const ctx = new Proxy({}, { get: () => () => undefined, set: () => true }) as unknown as CanvasRenderingContext2D;
+    const cam = new Camera(w, h);
+    cam.resize(1200, 800);
+    const ui = { hoverTile: -1, hoverPx: null, mode: { kind: 'none' }, contextMenu: null } as unknown as UiState;
+    const frame = (k: number): void => {
+      layer.begin(s, k * 16);
+      feed.update(k * 16, 1);
+      layer.drawLines(ctx, s, cam, ui, 1);
+    };
+    s.tick = 1;
+    frame(1);
+    expect(layer.segments).toBe(0); // no shared border yet
+    // player 1 lands next to player 2
+    for (let y = 0; y < h; y++) {
+      const i = y * w + 49;
+      s.map.owner[i] = 1;
+      recordTileChange(s, i);
+    }
+    for (let k = 2; k < 12; k++) {
+      s.tick = k;
+      frame(k);
+    }
+    expect(layer.segments).toBe(1);
   });
 
   it('ignores fights with tribes', () => {

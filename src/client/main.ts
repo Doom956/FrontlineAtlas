@@ -502,7 +502,12 @@ window.__borderfall = {
   advance: (n: number) => {
     const s = session;
     if (!s) return;
-    for (let k = 0; k < n && s.state.phase !== 'over'; k++) tick(s.state);
+    for (let k = 0; k < n && s.state.phase !== 'over'; k++) {
+      tick(s.state);
+      // the end summary's history samples every ~10 s of game time: feed it as the frames would
+      if (k % 20 === 19) s.hud?.feedHistory(s.state);
+    }
+    s.hud?.feedHistory(s.state);
   },
   toMenu,
   perf: () => {

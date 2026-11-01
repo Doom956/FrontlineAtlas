@@ -62,6 +62,8 @@ import { allyEventKind, coalitionLeader } from './allies';
 import { swatchCss } from './hud/swatch';
 import { instruction, strikeToastText, type StrikeId } from './strikes';
 import type { Dispatch, UiState } from './uiState';
+import { GameHistory } from './summary/history';
+import { summaryView } from './summary/view';
 
 export { techNear };
 
@@ -153,6 +155,11 @@ export class Hud {
   private continueRow: ContinueRow | null = null;
   private lastContinue = 0;
   private victoryChip = new VictoryChip();
+  /** land over time, battles, key moments: the end-of-game summary's data (summary/history.ts) */
+  readonly history = new GameHistory();
+  private historyFailed = false;
+  /** the summary was reopened from the victory chip after a continued game (not the game-over card) */
+  private reviewing = false;
   private admin: AdminConsole;
   private spawnBar: HTMLElement;
   private spawnText: HTMLElement;
@@ -347,6 +354,10 @@ export class Hud {
     this.el.append(left, this.cluster.el, this.modChips.el, this.drawer.el, bottom, top, this.pauseBanner, this.tooltip.card, this.tooltip.odds, this.unitCard.el, this.radial.el, this.help, this.gameOver, this.tip);
     // after "Continue playing": the recorded winner in the top-right cluster
     this.cluster.el.append(this.victoryChip.el);
+    this.victoryChip.onOpen = () => {
+      const st = this.state;
+      if (st) this.showSummary(st);
+    };
     // the hidden owner console ("|"; adminConsole.ts)
     this.admin = new AdminConsole({
       root: this.el,
@@ -409,6 +420,7 @@ export class Hud {
       this.state = state;
       this.lastSlow = -Infinity;
     }
+    this.feedHistory(state);
     const own = state.humanId > 0 ? state.players[state.humanId] : undefined;
     // Watching: a spectator, or an online player whose nation fell while the others play on. The neutral entry
     // (id 0) stands in for "me" then: nothing is ours, every action UI is hidden.
@@ -536,6 +548,10 @@ export class Hud {
     }
     if (this.card.isOpen) {
       this.card.close();
+      return true;
+    }
+    if (this.reviewing) {
+      this.closeSummary();
       return true;
     }
     return false;
@@ -733,7 +749,7 @@ export class Hud {
     if (!this.watching) this.unitCard.update(state, me);
     if (!this.watching) this.orders.update(state, me);
     if (state.phase === 'over' && !this.gameOverShown) this.showGameOver(state, me);
-    else if (this.gameOverShown && state.phase !== 'over') {
+    else if (this.gameOverShown && state.phase !== 'over' && !this.reviewing) {
       // the game was continued (continueGame): play on, the winner stays on the chip
       this.gameOverShown = false;
       this.continueRow = null;
@@ -985,8 +1001,52 @@ export class Hud {
     setVisible(this.tip, false);
   }
 
+  /** Feeds the end-of-game history (also called by the test hook's fast-forward); a failure only costs the summary. */
+  feedHistory(state: GameState): void {
+    if (this.historyFailed) return;
+    try {
+      this.history.update(state);
+    } catch (err) {
+      this.historyFailed = true;
+      console.error('Game history error (the end summary is off for this game)', err);
+    }
+  }
+
+  /** The summary block for the game-over card, or undefined (the short card) if it can't be built. */
+  private summaryBlock(state: GameState): HTMLElement | undefined {
+    if (this.historyFailed) return undefined;
+    try {
+      return summaryView(state, this.history);
+    } catch (err) {
+      console.error('Summary error', err);
+      return undefined;
+    }
+  }
+
+  /** The summary again after a continued game (victory chip): same card, "Back to the game" instead of Continue. */
+  private showSummary(state: GameState): void {
+    const own = state.humanId > 0 ? state.players[state.humanId] : undefined;
+    const me = own ?? state.players[0];
+    if (!me || state.phase === 'over') return;
+    this.reviewing = true;
+    this.drawer.hide();
+    this.gameOver.replaceChildren(
+      gameOverCard(state, me, () => this.onPlayAgain(), () => this.onMenu(), () => this.closeSummary(), this.hudOpts.againLabel, {
+        summary: this.summaryBlock(state),
+        lookLabel: 'Back to the game',
+      }),
+    );
+    this.gameOver.classList.remove('hidden');
+  }
+  private closeSummary(): void {
+    this.reviewing = false;
+    this.gameOver.classList.add('hidden');
+    this.gameOver.replaceChildren();
+  }
+
   private showGameOver(state: GameState, me: Player): void {
     this.gameOverShown = true;
+    this.reviewing = false;
     this.ui.contextMenu = null;
     this.ui.mode = { kind: 'none' };
     this.drawer.hide();
@@ -998,6 +1058,7 @@ export class Hud {
         () => this.onMenu(),
         () => this.gameOver.classList.add('hidden'),
         this.hudOpts.againLabel,
+        { summary: this.summaryBlock(state) },
       ),
     );
     // Continue playing / Keep watching (gameOverContinue.ts) next to Play again and Main menu

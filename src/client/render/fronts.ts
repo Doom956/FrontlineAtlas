@@ -29,8 +29,15 @@ const STALE_MS = 1500;
 export const WAR_MEMORY_TICKS = 300;
 /** ...and fades out over the last this many ticks. */
 const FADE_TICKS = 60;
-/** A pair's front path is rebuilt at most every this many frames (it changes on most frames during a fight). */
-const REBUILD_FRAMES = 3;
+/**
+ * A pair's front path is rebuilt at most every this many frames (it changes on most frames during a fight): close
+ * up every 2nd frame, zoomed out (a tile under 1.5 px) every 8th.
+ */
+function rebuildFrames(zoom: number): number {
+  return zoom >= 3 ? 2 : zoom >= 1.5 ? 4 : 8;
+}
+/** ...and at most about this many edges of paths are rebuilt per frame (the rest wait a frame or two). */
+const REBUILD_EDGES = 3000;
 /** Push arrow spots are recomputed at most every this many frames (or when the zoom changes a step). */
 const SPOT_FRAMES = 8;
 /** Each warring pair's edge set is rebuilt from the border lists this often (heals any drift from feed lag). */
@@ -73,10 +80,13 @@ interface Pair {
   active: boolean;
   bornMs: number;
   seedMs: number;
+  seedTick: number;
   dirty: boolean;
   builtFrame: number;
   path: Path2D | null;
   segs: number[];
+  /** the runs joined into polylines [x0, y0, x1, y1, ...] (clean corners, fewer caps) */
+  lines: number[][];
   box: [number, number, number, number];
   spots: FrontSpot[];
   spotFrame: number;
@@ -226,6 +236,57 @@ export function frontSpots(edges: Iterable<number>, ownerAt: (i: number) => numb
   return out;
 }
 
+/**
+ * Joins line runs [x0, y0, x1, y1, ...] that meet end to end into polylines, so corners join instead of overlapping
+ * caps. Starts at loose ends first, then walks the closed loops that remain.
+ */
+export function chainSegments(segs: readonly number[]): number[][] {
+  const m = segs.length / 4;
+  const at = new Map<number, number[]>();
+  const key = (x: number, y: number): number => x * 8192 + y;
+  for (let s = 0; s < m; s++) {
+    for (const e of [0, 2]) {
+      const k = key(segs[s * 4 + e], segs[s * 4 + e + 1]);
+      const l = at.get(k);
+      if (l) l.push(s);
+      else at.set(k, [s]);
+    }
+  }
+  const used = new Uint8Array(m);
+  const out: number[][] = [];
+  const walk = (s0: number, fromEnd: number): void => {
+    // fromEnd: which end of s0 the chain starts at (0 = first point, 2 = second)
+    const line = [segs[s0 * 4 + fromEnd], segs[s0 * 4 + fromEnd + 1]];
+    let s = s0;
+    let e = fromEnd;
+    for (;;) {
+      used[s] = 1;
+      const o = 2 - e;
+      const x = segs[s * 4 + o];
+      const y = segs[s * 4 + o + 1];
+      line.push(x, y);
+      const next = at.get(key(x, y))?.find((t) => !used[t]);
+      if (next === undefined) break;
+      s = next;
+      e = segs[s * 4] === x && segs[s * 4 + 1] === y ? 0 : 2;
+    }
+    out.push(line);
+  };
+  for (let s = 0; s < m; s++) {
+    if (used[s]) continue;
+    for (const e of [0, 2]) {
+      if (used[s]) break;
+      if ((at.get(key(segs[s * 4 + e], segs[s * 4 + e + 1]))?.length ?? 0) !== 2) walk(s, e);
+    }
+  }
+  for (let s = 0; s < m; s++) if (!used[s]) walk(s, 0);
+  return out;
+}
+
+function near(b: readonly number[], x0: number, y0: number, x1: number, y1: number, margin: number): boolean {
+  return !(b[2] < x0 - margin || b[3] < y0 - margin || b[0] > x1 + margin || b[1] > y1 + margin);
+}
+
 /** Measured tiles per second of game time from (tick, tilesTaken) samples, oldest first. */
 export function measuredSpeed(samples: readonly number[]): number {
   const m = samples.length;
@@ -263,6 +324,7 @@ export class FrontLayer {
   private memo = new Map<number, ArrowMemo>();
   private reduced = prefersReducedMotion();
   private hoverKey = -1;
+  private spotBudget = 0;
   /** front segments drawn last frame (stats / tests) */
   segments = 0;
   arrowsDrawn = 0;
@@ -296,9 +358,9 @@ export class FrontLayer {
       this.gen = feed.fullGen;
       for (const p of this.pairs.values()) this.seed(state, p);
     }
-    // spread re-seeding: at most one pair per frame
+    // spread re-seeding: at most one pair per frame, and only once the game moved on (nothing drifts while paused)
     for (const p of this.pairs.values()) {
-      if (nowMs - p.seedMs >= RESEED_MS) {
+      if (nowMs - p.seedMs >= RESEED_MS && p.seedTick !== state.tick) {
         this.seed(state, p);
         break;
       }
@@ -358,21 +420,25 @@ export class FrontLayer {
   }
 
   private newPair(lo: number, hi: number, nowMs: number): Pair {
-    return { lo, hi, edges: new Set(), lastTick: -1, active: false, bornMs: nowMs, seedMs: 0, dirty: true, builtFrame: -1e9, path: null, segs: [], box: [0, 0, 0, 0], spots: [], spotFrame: -1e9, spotZoom: NaN, spotsDirty: true };
+    return { lo, hi, edges: new Set(), lastTick: -1, active: false, bornMs: nowMs, seedMs: 0, seedTick: -1, dirty: true, builtFrame: -1, path: null, segs: [], lines: [], box: [0, 0, 0, 0], spots: [], spotFrame: -1e9, spotZoom: NaN, spotsDirty: true };
   }
 
   /** Rebuilds a pair's edges from the smaller of the two sim border lists, checked against the drawn mirror. */
   private seed(state: GameState, p: Pair): void {
     p.seedMs = this.now;
-    p.edges.clear();
-    p.dirty = true;
-    p.spotsDirty = true;
+    p.seedTick = state.tick;
     if (!this.feed) return;
     const A = borderTiles(state, p.lo);
     const B = borderTiles(state, p.hi);
     const n = this.feed.n;
-    if (A.len <= B.len) seedEdges(this.ownerAt, A.list, A.len, p.lo, p.hi, this.w, n, p.edges);
-    else seedEdges(this.ownerAt, B.list, B.len, p.hi, p.lo, this.w, n, p.edges);
+    const out = new Set<number>();
+    if (A.len <= B.len) seedEdges(this.ownerAt, A.list, A.len, p.lo, p.hi, this.w, n, out);
+    else seedEdges(this.ownerAt, B.list, B.len, p.hi, p.lo, this.w, n, out);
+    // unchanged (the usual case: the feed kept it exact): keep the cached path
+    if (out.size === p.edges.size && [...out].every((e) => p.edges.has(e))) return;
+    p.edges = out;
+    p.dirty = true;
+    p.spotsDirty = true;
   }
 
   /** Tile feed listener: a tile went from `oldOwner` to `newOwner` (the mirror still holds the old owner). */
@@ -441,14 +507,15 @@ export class FrontLayer {
       if (y > y1) y1 = y;
     }
     p.box = [x0, y0, x1, y1];
+    p.lines = chainSegments(segs);
     if (typeof Path2D === 'undefined') {
       p.path = null;
       return;
     }
     const path = new Path2D();
-    for (let k = 0; k < segs.length; k += 4) {
-      path.moveTo(segs[k], segs[k + 1]);
-      path.lineTo(segs[k + 2], segs[k + 3]);
+    for (const l of p.lines) {
+      path.moveTo(l[0], l[1]);
+      for (let k = 2; k < l.length; k += 2) path.lineTo(l[k], l[k + 1]);
     }
     p.path = path;
   }
@@ -466,35 +533,41 @@ export class FrontLayer {
     const vy1 = cam.y + cam.viewH / 2 / z + 1;
     const pulse = this.reduced ? 0.5 : 0.5 + 0.5 * Math.sin((this.now / 1000) * Math.PI * 1.2);
     const draw: { p: Pair; a: number; mine: boolean; hot: boolean }[] = [];
+    let budget = REBUILD_EDGES;
+    const every = rebuildFrames(z);
     for (const [k, p] of this.pairs) {
-      if (p.dirty && (this.frame - p.builtFrame >= REBUILD_FRAMES || !p.path)) this.build(p);
+      // rebuild changed paths every few frames, near the view only, a bounded number of edges per frame
+      if (p.dirty && (p.builtFrame < 0 || (this.frame - p.builtFrame >= every && budget > 0 && (p.segs.length === 0 || near(p.box, vx0, vy0, vx1, vy1, 40))))) {
+        budget -= p.edges.size;
+        this.build(p);
+      }
       if (p.segs.length === 0) continue;
-      const [bx0, by0, bx1, by1] = p.box;
-      if (bx1 < vx0 || by1 < vy0 || bx0 > vx1 || by0 > vy1) continue;
+      if (!near(p.box, vx0, vy0, vx1, vy1, 0)) continue;
       const a = this.pairAlpha(p);
       if (a <= 0.01) continue;
       draw.push({ p, a, mine: me > 0 && (p.lo === me || p.hi === me), hot: k === this.hoverKey });
       this.segments += p.segs.length / 4;
     }
     if (draw.length === 0) return;
-    // the line keeps a steady screen width; a touch thinner when zoomed far out
-    const scale = z < 1.2 ? 0.8 : 1;
+    // the line keeps a steady screen width; yours a touch thinner when zoomed far out (others' stay readable)
+    const far = z < 1.2;
     ctx.save();
     ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * (cam.viewW / 2 - cam.x * z), dpr * (cam.viewH / 2 - cam.y * z));
     ctx.lineCap = 'square';
     ctx.lineJoin = 'miter';
+    ctx.miterLimit = 2;
     // casings first, so a crossing pair's casing never covers another pair's line
     for (const d of draw) {
       ctx.globalAlpha = d.a * (d.mine ? 0.7 : 0.55);
       ctx.strokeStyle = 'rgb(8,10,14)';
-      ctx.lineWidth = ((d.mine ? 5 : 3.8) + (d.hot ? 1.4 : 0)) * scale / z;
+      ctx.lineWidth = ((d.mine ? (far ? 4 : 5) : 3.8) + (d.hot ? 1.4 : 0)) / z;
       this.stroke(ctx, d.p);
     }
     for (const d of draw) {
       const base = d.mine ? 0.85 + 0.15 * pulse : 0.72 + 0.16 * pulse;
       ctx.globalAlpha = d.a * (d.hot ? 1 : base);
       ctx.strokeStyle = css(d.mine ? BRASS : d.hot ? mix(BONE, [255, 255, 255], 0.4) : BONE);
-      ctx.lineWidth = ((d.mine ? 2.4 : 1.7) + (d.hot ? 0.8 : 0)) * scale / z;
+      ctx.lineWidth = ((d.mine ? (far ? 2 : 2.4) : 1.7) + (d.hot ? 0.8 : 0)) / z;
       this.stroke(ctx, d.p);
     }
     ctx.restore();
@@ -505,11 +578,10 @@ export class FrontLayer {
       ctx.stroke(p.path);
       return;
     }
-    const s = p.segs;
     ctx.beginPath();
-    for (let k = 0; k < s.length; k += 4) {
-      ctx.moveTo(s[k], s[k + 1]);
-      ctx.lineTo(s[k + 2], s[k + 3]);
+    for (const l of p.lines) {
+      ctx.moveTo(l[0], l[1]);
+      for (let k = 2; k < l.length; k += 2) ctx.lineTo(l[k], l[k + 1]);
     }
     ctx.stroke();
   }
@@ -518,6 +590,9 @@ export class FrontLayer {
   private spotsOf(p: Pair, z: number): FrontSpot[] {
     const zb = Math.round(Math.log2(z) * 2);
     if (p.spotZoom === zb && (!p.spotsDirty || this.frame - p.spotFrame < SPOT_FRAMES)) return p.spots;
+    // a moving front keeps last frame's spots when this frame's budget is spent (a new zoom always recomputes)
+    if (p.spotZoom === zb && this.spotBudget <= 0) return p.spots;
+    this.spotBudget -= p.edges.size;
     p.spotZoom = zb;
     p.spotFrame = this.frame;
     p.spotsDirty = false;
@@ -562,9 +637,14 @@ export class FrontLayer {
 
   private arrows(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, me: number, colors: readonly RGB[], pills: { x: number; y: number }[]): void {
     this.arrowsDrawn = 0;
+    this.spotBudget = REBUILD_EDGES;
     const z = cam.zoom;
     const cands: Arrow[] = [];
     const live = new Set<number>();
+    const vx0 = cam.x - cam.viewW / 2 / z;
+    const vy0 = cam.y - cam.viewH / 2 / z;
+    const vx1 = cam.x + cam.viewW / 2 / z;
+    const vy1 = cam.y + cam.viewH / 2 / z;
     for (const a of state.attacks) {
       const p = this.pairs.get(pairKey(a.attacker, a.target));
       if (!p || !p.active) continue;
@@ -574,6 +654,10 @@ export class FrontLayer {
       const strong = mine || incoming || ally;
       if (!strong && z < OTHERS_ARROW_ZOOM) continue;
       live.add(a.id);
+      if (!near(p.box, vx0, vy0, vx1, vy1, 0)) {
+        this.memo.delete(a.id);
+        continue;
+      }
       const spots = this.spotsOf(p, z);
       const sign = a.attacker === p.lo ? 1 : -1;
       const speed = measuredSpeed(this.speedLog.get(a.id) ?? []);

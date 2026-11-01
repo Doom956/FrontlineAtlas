@@ -27,6 +27,9 @@ export type SoundId =
   | 'allianceExpired'
   | 'capitalLost'
   | 'capitalTaken'
+  | 'cityTaken'
+  | 'cityLost'
+  | 'shipSunk'
   | 'explosion'
   | 'atomBomb'
   | 'missileLaunch'
@@ -68,6 +71,9 @@ export const SOUND_INFO: Readonly<Record<SoundId, SoundInfo>> = {
   allianceExpired: { dur: 1.4, gapMs: 1500, priority: 1 },
   capitalLost: { dur: 1.8, gapMs: 3000, priority: 3 },
   capitalTaken: { dur: 1.2, gapMs: 3000, priority: 2 },
+  cityTaken: { dur: 0.9, gapMs: 700, priority: 2 },
+  cityLost: { dur: 1.0, gapMs: 700, priority: 2 },
+  shipSunk: { dur: 1.3, gapMs: 600, priority: 1 },
   explosion: { dur: 0.95, gapMs: 110, priority: 1 },
   atomBomb: { dur: 5.2, gapMs: 1500, priority: 3 },
   missileLaunch: { dur: 1.35, gapMs: 500, priority: 1 },
@@ -164,11 +170,19 @@ export interface SoundChoice {
   volume: number;
 }
 
+/** A ship sunk by a warship or a mine ("lost a transport ... to X's warship", "... hit a mine ... and sank"). */
+const SHIP_SUNK = /to .+'s warship$|\bsank\b/;
+/** A city changing hands ("X captured a City of Y"). */
+const CITY_CAPTURED = /captured a City\b/;
+
 /**
  * Which sound a sim event makes for the human player `humanId`, or null. Only events concerning the human
  * (or the few global big ones) make a sound. Pure: the same event always gives the same answer.
+ * `near` = false when the event's tile is far off screen: a city changing hands or a ship sinking is then
+ * silent (the event log still has it); undefined = unknown, treated as near.
  */
-export function soundForEvent(e: GameEvent, humanId: number): SoundChoice | null {
+export function soundForEvent(e: GameEvent, humanId: number, near?: boolean): SoundChoice | null {
+  const far = near === false;
   const h = humanId;
   const global = e.players.length === 0;
   const mine = h > 0 && e.players.includes(h);
@@ -194,6 +208,7 @@ export function soundForEvent(e: GameEvent, humanId: number): SoundChoice | null
     case 'buildingLost':
       return first ? pick('buildingLost') : null;
     case 'buildingCaptured':
+      if (mine && CITY_CAPTURED.test(e.message)) return far ? null : pick(first ? 'cityTaken' : 'cityLost');
       if (first) return pick('buildingDone', 0.6);
       return mine ? pick('buildingLost') : null;
     case 'researchDone':
@@ -223,6 +238,7 @@ export function soundForEvent(e: GameEvent, humanId: number): SoundChoice | null
       return mine ? pick('explosion', first ? 0.8 : 1) : null;
     case 'unitLost':
       if (!mine) return null;
+      if (SHIP_SUNK.test(e.message)) return far ? null : pick('shipSunk', first ? 1 : 0.8);
       if (first) return pick('unitLost');
       return pick('explosion', 0.5); // an enemy unit lost to us (or its landing on our coast repelled)
     case 'tradeDelivered':
@@ -514,6 +530,23 @@ const RECIPES: Record<SoundId, Recipe> = {
     v.brass(392, 0.16, 0.2, 0.1);
     v.brass(523, 0.32, 0.85, 0.11, 0.15);
     v.drum(98, 0, 0.2);
+  },
+  // a city of yours changes hands: a short rising bugle call with a drum; lost: the same call falling, muted
+  cityTaken: (v) => {
+    v.brass(294, 0, 0.14, 0.08);
+    v.brass(440, 0.12, 0.6, 0.09, 0.1);
+    v.drum(110, 0, 0.14);
+  },
+  cityLost: (v) => {
+    v.brass(330, 0, 0.18, 0.07);
+    v.brass(247, 0.16, 0.7, 0.075, 0.12);
+    v.tone({ f: 82, f2: 55, dur: 0.8, gain: 0.12, attack: 0.01 });
+  },
+  // ship sunk: a low hull crump, then water closing over it (a falling filtered wash with a bubble tail)
+  shipSunk: (v) => {
+    v.tone({ f: 90, f2: 40, dur: 0.4, gain: 0.2, attack: 0.004 });
+    v.noise({ dur: 1.2, gain: 0.16, fs: [1800, 700, 250], attack: 0.01, am: { rate: 9, depth: 0.5 } });
+    for (let i = 0; i < 3; i++) v.tone({ f: 420 + i * 90, f2: 900 + i * 120, at: 0.45 + i * 0.13, dur: 0.06, gain: 0.025, attack: 0.002 });
   },
   explosion: (v) => {
     v.noise({ dur: 0.9, gain: 0.3, fs: [2500, 900, 150], attack: 0.004 });
@@ -843,9 +876,9 @@ export class AudioManager {
   }
 
   /** Maps a sim event to a sound (see soundForEvent). Returns the sound played, or null. */
-  onGameEvent(e: GameEvent, humanId: number, screenPan?: number): SoundId | null {
+  onGameEvent(e: GameEvent, humanId: number, screenPan?: number, near?: boolean): SoundId | null {
     try {
-      const ch = soundForEvent(e, humanId);
+      const ch = soundForEvent(e, humanId, near);
       if (!ch) return null;
       if (ch.id === 'underAttack' || ch.id === 'shipHorn' || ch.id === 'capitalLost' || (ch.id === 'missileLaunch' && e.players[0] !== humanId)) {
         this.raiseAlarm(ch.id === 'capitalLost' ? 1 : 0.7);
@@ -919,7 +952,8 @@ export class AudioManager {
         const e = evs[i];
         this.seenEvents.add(e);
         const pan = e.tile >= 0 && view ? this.tilePan(state, view, e.tile) : undefined;
-        this.onGameEvent(e, h, pan ?? undefined);
+        const near = e.tile >= 0 && view ? this.tileNear(state, view, e.tile) : undefined;
+        this.onGameEvent(e, h, pan ?? undefined, near);
       }
       const w = state.map.width;
       for (const fx of state.effects) {
@@ -1067,6 +1101,13 @@ export class AudioManager {
     const w = state.map.width;
     const s = view.tileToScreen((tile % w) + 0.5, Math.floor(tile / w) + 0.5);
     return panFromScreenX(s.x, view.viewW);
+  }
+
+  /** True when `tile` is on screen or less than one view width / height beyond its edge. */
+  private tileNear(state: GameState, view: ScreenView, tile: number): boolean {
+    const w = state.map.width;
+    const s = view.tileToScreen((tile % w) + 0.5, Math.floor(tile / w) + 0.5);
+    return s.x >= -view.viewW && s.y >= -view.viewH && s.x <= view.viewW * 2 && s.y <= view.viewH * 2;
   }
 
   private synth(id: SoundId, vol: number, pan: number): void {

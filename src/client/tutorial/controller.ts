@@ -120,6 +120,8 @@ export class TutorialController {
     if (this.runner.finished && !this.recorded) {
       this.recorded = true;
       markChapterDone(this.chapter.id);
+      // the closing card stands alone: the last step's Research drawer closes behind it
+      if (view.drawer) this.hud.closeOverlay();
     }
     const rv = this.runner.view();
     this.overlay.render(rv, { showMe: this.showTile() >= 0, target: stepTarget(rv.step, s) });

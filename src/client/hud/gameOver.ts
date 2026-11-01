@@ -1,4 +1,5 @@
-// End screen: victory or defeat, your place and a few numbers, play again.
+// End screen: victory or defeat, your place and a few numbers, play again. With a summary (summary/view.ts) the card
+// widens: the land-over-time chart, key moments and the nations' stats replace the short stats list.
 import { gameSeconds } from '../../sim/state';
 import type { GameState, Player } from '../../sim/types';
 import { teamOf } from '../../sim/rules';
@@ -12,13 +13,25 @@ import { btn, el, fmtTime } from './dom';
  * The game-over card. `me` is the client's nation; a spectator passes the neutral entry (id 0) and gets the result
  * without a victory / defeat verdict or personal numbers.
  */
-export function gameOverCard(state: GameState, me: Player, onAgain: () => void, onMenu: () => void, onLook: () => void, againLabel = 'Play again'): HTMLElement {
+export function gameOverCard(
+  state: GameState,
+  me: Player,
+  onAgain: () => void,
+  onMenu: () => void,
+  onLook: () => void,
+  againLabel = 'Play again',
+  opts: { summary?: HTMLElement; lookLabel?: string } = {},
+): HTMLElement {
   const watcher = me.id === 0;
   const won = !watcher && (state.winner === me.id || (state.winnerTeam > 0 && teamOf(state, me.id) === state.winnerTeam));
   const winner = state.players[state.winner];
-  const card = el('div', 'over-card');
-  card.append(el('div', 'wr-sec', watcher ? 'Final result' : won ? 'Mission complete' : 'Mission failed'));
-  card.append(el('h1', watcher ? 'over-t' : won ? 'over-t win' : 'over-t lose', watcher ? 'Game over' : won ? 'Victory' : 'Defeat'));
+  const card = el('div', opts.summary ? 'over-card sum-card' : 'over-card');
+  const head = el('div', 'over-head');
+  const title = el('div', 'over-title');
+  head.append(title);
+  card.append(head);
+  title.append(el('div', 'wr-sec', watcher ? 'Final result' : won ? 'Mission complete' : 'Mission failed'));
+  title.append(el('h1', watcher ? 'over-t' : won ? 'over-t win' : 'over-t lose', watcher ? 'Game over' : won ? 'Victory' : 'Defeat'));
   const sub = el('p', 'over-sub');
   // Every human was eliminated: nobody reached a win condition, the "winner" is only the nation leading the map.
   const allHumansOut = state.players.some((p) => p.isHuman) && state.players.every((p) => !p.isHuman || !p.alive);
@@ -31,7 +44,7 @@ export function gameOverCard(state: GameState, me: Player, onAgain: () => void, 
     const team = state.winnerTeam > 0 ? `${teamName(state.winnerTeam)} (led by ${winner.name})` : '';
     sub.append(dot, won ? (team ? `Your team rules the map: ${team}.` : 'Your nation rules the map.') : team ? `${team} wins.` : `${winner.name} wins.`);
   } else sub.append('Nobody wins.');
-  card.append(sub);
+  title.append(sub);
   const scores = allScores(state);
   const ranked = state.players.filter((p) => p.id !== 0 && !isTribe(p)).sort((a, b) => scores[b.id] - scores[a.id]);
   const place = ranked.findIndex((p) => p.id === me.id) + 1;
@@ -47,7 +60,7 @@ export function gameOverCard(state: GameState, me: Player, onAgain: () => void, 
     cell(formatCount(scores[me.id]), 'score');
   } else cell(String(ranked.length), 'nations');
   cell(fmtTime(gameSeconds(state)), 'game time');
-  card.append(big);
+  head.append(big);
   const grid = el('div', 'stats');
   const rows: [string, string][] = [
     ['Most land', `${formatCount(st.tilesMax)} tiles (${((st.tilesMax / Math.max(1, state.map.landTileCount)) * 100).toFixed(1)}%)`],
@@ -58,11 +71,12 @@ export function gameOverCard(state: GameState, me: Player, onAgain: () => void, 
     ['Gold earned', formatCount(st.goldEarned)],
   ];
   for (const [k, v] of rows) grid.append(el('span', 'k', k), el('span', 'v', v));
-  if (!watcher) card.append(grid);
+  if (opts.summary) card.append(opts.summary);
+  else if (!watcher) card.append(grid);
   const btns = el('div', 'over-btns');
   const again = btn(againLabel, 'primary big', onAgain);
   again.dataset.test = 'play-again';
-  btns.append(again, btn('Main menu', 'big', onMenu), btn('Look at the map', 'big ghost', onLook));
+  btns.append(again, btn('Main menu', 'big', onMenu), btn(opts.lookLabel ?? 'Look at the map', 'big ghost', onLook));
   card.append(btns);
   return card;
 }

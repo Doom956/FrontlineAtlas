@@ -1,0 +1,346 @@
+/* End-of-game summary (summary/view.ts) on the game-over card: chart left, nations compared right. War-room style:
+   thin steel rules, brass for you and the best value, nation colours only on the lines and their chips. */
+
+/* the short card keeps its old stacked layout: the header wrappers don't box anything */
+.over-head,
+.over-title {
+  display: contents;
+}
+
+.over-card.sum-card {
+  width: min(1240px, calc(100vw - 32px));
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  padding: 20px 24px;
+  gap: 14px;
+}
+.sum-card .over-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--rule);
+}
+.sum-card .over-title {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.sum-card .over-t {
+  font-size: 44px;
+}
+.sum-card .over-sub {
+  margin: 0;
+}
+.sum-card .over-big {
+  grid-template-columns: repeat(3, auto);
+  gap: 32px;
+  padding: 0;
+  border: 0;
+  text-align: right;
+}
+.sum-card .over-btns {
+  margin-top: 2px;
+}
+
+.sum {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr);
+  gap: 24px;
+}
+.sum-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.sum h2.wr-sec {
+  margin: 0;
+}
+.sum-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* legend: a short line in each nation's colour */
+.sum-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 12px;
+  color: var(--dim);
+}
+.sum-legend .lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.sum-legend .sw {
+  width: 12px;
+  height: 3px;
+  border-radius: 1px;
+}
+.sum-legend .lg.me {
+  color: var(--text);
+  font-weight: 600;
+}
+.sum-legend .lg.me .sw {
+  height: 4px;
+}
+.sum-legend .lg.faded::before {
+  content: '';
+  width: 12px;
+  height: 1px;
+  background: var(--faint);
+}
+
+/* chart */
+.sum-chart {
+  position: relative;
+  height: clamp(200px, 34vh, 330px);
+}
+.sum-chart svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.sum-grid line {
+  stroke: var(--rule);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+.sum-grid line.base {
+  stroke: var(--rule-hi);
+}
+.sum-grid text,
+.sum-ends text {
+  fill: var(--faint);
+  font: 11px var(--f-ui);
+}
+.sum-win line {
+  stroke: var(--brass-lo);
+  stroke-dasharray: 4 4;
+}
+.sum-win text {
+  fill: var(--brass);
+  font: 600 11px var(--f-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.sum-lines polyline {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.sum-lines .faded {
+  stroke: var(--faint);
+  stroke-width: 1;
+  opacity: 0.4;
+}
+.sum-lines .top {
+  stroke-width: 1.75;
+}
+.sum-lines .me {
+  stroke-width: 3;
+}
+.sum-lines .halo {
+  stroke: var(--ink);
+  stroke-width: 6;
+  opacity: 0.8;
+}
+.sum-ends text {
+  fill: var(--dim);
+}
+.sum-ends text.me {
+  fill: var(--text);
+  font-weight: 600;
+}
+.sum-guide {
+  stroke: var(--brass);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+.sum-guide.hidden {
+  display: none;
+}
+.sum-marks .mark line {
+  stroke: var(--rule-hi);
+}
+.sum-marks .mark circle {
+  fill: var(--metal-3);
+  stroke: var(--rule-hi);
+  stroke-width: 1;
+}
+.sum-marks .mark text {
+  fill: var(--dim);
+  font: 600 10px var(--f-ui);
+}
+.sum-marks .mark.mine circle {
+  stroke: var(--brass);
+}
+.sum-marks .mark.mine text {
+  fill: var(--brass-hi);
+}
+.sum-marks .mark.on circle {
+  fill: var(--brass);
+  stroke: var(--brass-hi);
+}
+.sum-marks .mark.on text {
+  fill: var(--brass-ink);
+}
+.sum-tip {
+  position: absolute;
+  top: 2px;
+  left: 0;
+  z-index: 2;
+  padding: 6px 9px;
+  background: var(--metal-2);
+  border: 1px solid var(--rule-hi);
+  border-radius: var(--r);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  pointer-events: none;
+}
+.sum-tip.hidden {
+  display: none;
+}
+
+/* key moments under the chart (numbers match the markers) */
+.sum-moments {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+  font-size: 12.5px;
+}
+.sum-moments li {
+  display: grid;
+  grid-template-columns: 16px 42px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: var(--r);
+  color: var(--dim);
+  outline: none;
+}
+.sum-moments .n {
+  font: 600 11px var(--f-ui);
+  color: var(--faint);
+  text-align: center;
+}
+.sum-moments .t {
+  color: var(--faint);
+}
+.sum-moments .x {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sum-moments li.mine .x {
+  color: var(--text);
+}
+.sum-moments li.mine .n {
+  color: var(--brass);
+}
+.sum-moments li.on {
+  background: var(--metal-3);
+}
+.sum-moments li:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--brass);
+}
+.sum-empty {
+  margin: 0;
+  color: var(--faint);
+}
+
+/* nations compared */
+.sum-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12.5px;
+}
+.sum-tbl th,
+.sum-tbl td {
+  padding: 6px 8px;
+  text-align: right;
+  border-bottom: 1px solid var(--rule);
+}
+.sum-tbl thead th {
+  vertical-align: bottom;
+  font-weight: 600;
+  border-bottom-color: var(--rule-hi);
+}
+.sum-tbl thead th:first-child {
+  width: 30%;
+}
+.sum-tbl tbody th {
+  text-align: left;
+  font-weight: 400;
+  color: var(--dim);
+}
+.sum-nat {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  min-width: 0;
+}
+.sum-nat .sw {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.sum-nat .nm {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sum-tag {
+  display: block;
+  margin-top: 3px;
+  font: 600 10.5px/1.2 var(--f-label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.sum-tbl th.me .sum-tag {
+  color: var(--brass);
+}
+.sum-tbl .me {
+  background: rgba(201, 162, 39, 0.06);
+}
+.sum-tbl td.best {
+  color: var(--brass-hi);
+  font-weight: 600;
+}
+
+@media (max-height: 760px) {
+  .sum-card .over-t {
+    font-size: 36px;
+  }
+  .over-card.sum-card {
+    padding: 16px 20px;
+    gap: 12px;
+  }
+}
+@media (max-width: 1000px) {
+  .sum {
+    grid-template-columns: 1fr;
+  }
+}
+.sum-lines .top.win {
+  stroke-width: 2.25;
+}

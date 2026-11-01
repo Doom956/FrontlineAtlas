@@ -1,7 +1,8 @@
 // Playing on after the end (Action continueGame):
 //   - the game-over card gets "Continue playing" ("Keep watching" when your nation is gone) next to Play again and
 //     Main menu; online only the host of a private game may continue (the others read "Waiting for the host…")
-//   - after continuing, a small chip "Victory: <winner>" stays in the top-right cluster (the result stays recorded)
+//   - after continuing, a small chip "Victory: <winner>" stays in the top-right cluster (the result stays recorded);
+//     clicking it opens the game summary again
 import { teamName } from '../../sim/victory';
 import type { GameState, Player } from '../../sim/types';
 import { swatchCss } from './swatch';
@@ -73,10 +74,20 @@ export class VictoryChip {
   private dot: HTMLElement;
   private text: HTMLElement;
   private shown = '';
+  /** set by the HUD: opens the game summary */
+  onOpen: () => void = () => {};
 
   constructor() {
     this.el = el('div', 'cl-group vchip hidden');
     this.el.dataset.test = 'victory-chip';
+    this.el.setAttribute('role', 'button');
+    this.el.tabIndex = 0;
+    this.el.addEventListener('click', () => this.onOpen());
+    this.el.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      this.onOpen();
+    });
     this.dot = el('i', 'sw');
     this.text = el('span', 'vc-t');
     this.el.append(this.dot, this.text);
@@ -92,6 +103,6 @@ export class VictoryChip {
     setText(this.text, `Victory: ${w}`);
     const p = state.players[state.winner];
     this.dot.style.background = p ? swatchCss(p, state.humanId) : '';
-    this.el.dataset.tip = `${w} won this game. You chose to play on: the result stays recorded.`;
+    this.el.dataset.tip = `${w} won this game. You chose to play on: the result stays recorded. Click for the game summary.`;
   }
 }

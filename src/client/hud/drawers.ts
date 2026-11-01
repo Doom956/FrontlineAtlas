@@ -58,6 +58,7 @@ import { airfieldVariantLine, factoryVariantLine, reconBlock, reconLabel, reconO
 import { warshipOrderCost } from '../../sim/navy';
 import { VARIANT_NAMES } from '../../sim/variants';
 import { canBuildTankDivision, tankDivisionCost, tankDivisionCount, tankDivisionLimit } from '../../sim/tanks';
+import { fxEnabled, setFxEnabled } from '../fx/settings';
 
 export const TROOP_COLORS = { infantry: '#9aa86a', armor: '#c9a227', artillery: '#c0564a' } as const;
 
@@ -926,6 +927,10 @@ export class SettingsPage implements DrawerPage {
     const mm = seg2('Minimap shown', 'Minimap hidden', () => (ctx.ui.showMinimap = true), () => (ctx.ui.showMinimap = false));
     r.append(mm.el, el('p', 'note', 'Key M. Overlays: B shows supply, V shows resources.'));
     this.sync.push(() => mm.set(ctx.ui.showMinimap));
+    const fx = seg2('Map effects on', 'Map effects off', () => setFxEnabled(true), () => setFxEnabled(false));
+    fx.el.dataset.test = 'fx-toggle';
+    r.append(fx.el, el('p', 'note', 'Short flashes when land or a city changes hands, a ship sinks or a bomb lands. A nearby nuke shakes the view.'));
+    this.sync.push(() => fx.set(fxEnabled()));
     r.append(sectionTitle('Game'));
     let confirmUntil = 0;
     const leave = btn('Leave to the main menu', 'danger wide', () => {

@@ -33,6 +33,7 @@ import { TileFeed } from './render/tiles';
 import { UnitLayer } from './render/units';
 import { SelectionOverlay } from './render/selectionOverlay';
 import { PillarOverlay } from './render/pillarOverlay';
+import { BattleFx } from './fx/battleFx';
 import type { UiState } from './uiState';
 
 export { formatCount } from './render/common';
@@ -58,6 +59,12 @@ export interface RenderStats {
   msMap: number;
   msOverlay: number;
   msMinimap: number;
+  /** ms this frame in the front lines layer (lines, push arrows, pills, hover card; part of msPrep + msOverlay) */
+  msFronts: number;
+  /** front line runs drawn this frame */
+  frontSegments: number;
+  /** ms this frame in the battle effects (fx/battleFx.ts: reading new events + drawing; part of msPrep + msOverlay) */
+  msFx: number;
 }
 
 export class Renderer {
@@ -93,6 +100,9 @@ export class Renderer {
   private heartland = new HeartlandLayer();
   private names = new NameLayer();
   private overlays = new Overlays();
+  /** capture ripples, city pulses, splashes, smoke, dust, shockwaves, the nuke shake (fx/) */
+  private fx = new BattleFx();
+  private shookBy = { x: 0, y: 0 };
   private mini: Minimap;
   private snapCache = new BuildTargetCache();
 
@@ -109,7 +119,7 @@ export class Renderer {
   private auxRect: [number, number, number, number] | null = null;
   private auxSig = '';
 
-  stats: RenderStats = { gl: false, uploads: 0, uploadTiles: 0, tilesApplied: 0, buildings: 0, deposits: 0, units: 0, labels: 0, labelsComputed: 0, msPrep: 0, msMap: 0, msOverlay: 0, msMinimap: 0 };
+  stats: RenderStats = { gl: false, uploads: 0, uploadTiles: 0, tilesApplied: 0, buildings: 0, deposits: 0, units: 0, labels: 0, labelsComputed: 0, msPrep: 0, msMap: 0, msOverlay: 0, msMinimap: 0, msFronts: 0, frontSegments: 0, msFx: 0 };
 
   constructor(public canvas: HTMLCanvasElement, public minimap: HTMLCanvasElement) {
     this.ctx = ctx2d(canvas);
@@ -171,11 +181,24 @@ export class Renderer {
     if (this.lastFrameMs > 0) this.frameMs = this.frameMs * 0.9 + clamp(nowMs - this.lastFrameMs, 4, 100) * 0.1;
     this.lastFrameMs = nowMs;
     this.resizeIfNeeded(camera);
+    // battle effects: read what is new, then shake the view a few px after a nearby nuke (undone after drawing)
+    if (this.shookBy.x !== 0 || this.shookBy.y !== 0) this.unshake(camera);
+    this.fx.update(state, camera, nowMs);
+    (globalThis as any).__fxdbg = this.fx; // DEBUG-REMOVE
+    const sh = this.fx.shake(nowMs);
+    if (sh.x !== 0 || sh.y !== 0) {
+      this.shookBy.x = sh.x / camera.zoom;
+      this.shookBy.y = sh.y / camera.zoom;
+      camera.x += this.shookBy.x;
+      camera.y += this.shookBy.y;
+    }
     if (state.players.length > this.colors.length) this.syncColors(state);
 
     const tPrep = performance.now();
     // ---- tiles: this frame's share of the changes (spread over the frames of one tick)
+    let tf = performance.now();
     this.fronts.begin(state, nowMs);
+    let msFronts = performance.now() - tf;
     const tickMs = 100 / ui.speed;
     this.feed.update(nowMs, ui.paused ? 1 : Math.round(tickMs / this.frameMs));
     this.names.update(state, this.feed, nowMs);
@@ -237,7 +260,9 @@ export class Renderer {
     const depFocus = b === 'mine' ? 1 : b === 'oilWell' ? 2 : b === 'farm' ? 3 : 0;
     this.deposits.draw(ctx, state, camera, view, ui.showResources, me, depFocus, d);
     this.heartland.draw(ctx, state, camera, me, ui.showHeartland && state.phase === 'playing', d);
+    tf = performance.now();
     this.fronts.drawLines(ctx, state, camera, ui, d);
+    msFronts += performance.now() - tf;
     this.overlays.rings(ctx, state, camera, ui, snap, me);
     const focus: number[] = [];
     if (ui.hoverTile >= 0 && ui.hoverTile < state.map.building.length && state.map.building[ui.hoverTile] !== 0 && ui.mode.kind === 'none') focus.push(ui.hoverTile);
@@ -249,9 +274,14 @@ export class Renderer {
     const hs = ui.hoverTile >= 0 ? camera.tileToScreen((ui.hoverTile % this.w) + 0.5, ((ui.hoverTile / this.w) | 0) + 0.5) : null;
     const hoverOwner = ui.hoverTile >= 0 && ui.hoverTile < state.map.owner.length ? state.map.owner[ui.hoverTile] : 0;
     this.names.draw(ctx, state, camera, me, { hoverOwner, targeting: ui.mode.kind !== 'none', hover: hs }, nowMs, d);
+    this.fx.draw(ctx, camera, nowMs); // over the names: a city pulse's label must stay readable
     this.overlays.telegraphs(ctx, state, camera, this.units, frac, me, nowMs, this.colors);
     this.overlays.barrages(ctx, state, camera, frac, me, nowMs, this.colors);
+    tf = performance.now();
     this.fronts.draw(ctx, state, camera, me, this.colors, ui);
+    msFronts += performance.now() - tf;
+    this.stats.msFronts = msFronts;
+    this.stats.frontSegments = this.fronts.segments;
     this.overlays.floaters(ctx, ui, camera, nowMs);
     this.overlays.strikeZones(ctx, state, camera, ui);
     this.overlays.hoverAndPreview(ctx, state, camera, ui, snap, this.units, frac, d);
@@ -260,14 +290,23 @@ export class Renderer {
 
     const tMini = performance.now();
     this.stats.msOverlay = tMini - tOver;
+    if (this.shookBy.x !== 0 || this.shookBy.y !== 0) this.unshake(camera);
     this.mini.draw(state, camera, this.feed, me, nowMs);
     this.stats.msMinimap = performance.now() - tMini;
+    this.stats.msFx = this.fx.ms;
     this.stats.gl = !!this.gl;
     this.stats.buildings = this.buildings.drawn;
     this.stats.deposits = this.deposits.drawn;
     this.stats.units = this.units.drawn;
     this.stats.labels = this.names.drawn;
     this.stats.labelsComputed = this.names.computed;
+  }
+
+  private unshake(camera: Camera): void {
+    camera.x -= this.shookBy.x;
+    camera.y -= this.shookBy.y;
+    this.shookBy.x = 0;
+    this.shookBy.y = 0;
   }
 
   /** Minimap click -> tile coords, or null if outside. */
