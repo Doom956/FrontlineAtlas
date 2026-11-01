@@ -691,14 +691,14 @@ describe('research', () => {
     const p = s.players[1];
     p.gold = 10000;
     p.income.science = 10;
-    const need = TECHS.navigation.science;
+    const need = TECHS.fortification.science;
     runTicks(s, need + 40, updateResearch); // need + 40 science banked
     expect(p.science).toBeCloseTo(need + 40);
-    startResearch(s, 1, 'navigation');
+    startResearch(s, 1, 'fortification');
     expect(p.researchProgress).toBeCloseTo(need);
     expect(p.science).toBeCloseTo(40);
     runTicks(s, 1, updateResearch);
-    expect(p.techs).toContain('navigation');
+    expect(p.techs).toContain('fortification');
     expect(p.science).toBeCloseTo(41);
   });
 

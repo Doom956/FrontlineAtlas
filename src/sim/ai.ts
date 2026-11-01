@@ -66,6 +66,7 @@ import {
   SPAWN_SECONDS,
   SUPPLY_RANGE,
   TECHS,
+  ARSENAL_PRICES,
   TERRAIN,
   TICKS_PER_SECOND,
   TRIBE_DECISION_SECONDS,
@@ -1705,7 +1706,7 @@ function nextTech(ctx: Ctx): TechId | null {
     for (const t of NUKE_PATH) if (!hasTech(p, t) && techStatus(state, ctx.id, t) === 'available') return t;
   }
   // Special upgrades that fit the nation (arsenalAI.ts): a Research-tab prerequisite of one (Radar, Fortification).
-  const special = aiSpecialPick(state, ctx.id, ctx.enemies);
+  const special = aiSpecial(ctx);
   if (special && !isArsenalTech(special)) return special;
   const avail: TechId[] = [];
   // Profile order with the branch techs merged in (aispending.ts: one pick per exclusive group).
@@ -1723,8 +1724,19 @@ function nextTech(ctx: Ctx): TechId | null {
 
 /** The nation's research order (profile + branch techs, Research and Arsenal items together: aispending.ts). */
 function aiOrder(ctx: Ctx): TechId[] {
-  return aiTechOrder(ctx.state, ctx.id, ctx.p.personality, aiAirTechs(ctx.state, ctx.id, ctx.prof.techs));
+  let m = techMemo.get(ctx);
+  if (!m) techMemo.set(ctx, (m = {}));
+  return (m.order ??= aiTechOrder(ctx.state, ctx.id, ctx.p.personality, aiAirTechs(ctx.state, ctx.id, ctx.prof.techs)));
 }
+/** arsenalAI.aiSpecialPick, once per decision (nextTech and nextArsenal both ask). */
+function aiSpecial(ctx: Ctx): TechId | null {
+  let m = techMemo.get(ctx);
+  if (!m) techMemo.set(ctx, (m = {}));
+  if (m.special === undefined) m.special = aiSpecialPick(ctx.state, ctx.id, ctx.enemies);
+  return m.special;
+}
+/** Per-decision memo of the research order and special pick (a Ctx lives for one AI decision). */
+const techMemo = new WeakMap<Ctx, { order?: TechId[]; special?: TechId | null }>();
 
 /**
  * The Arsenal item to buy next (procurement.ts) and a building a wanted item waits for: the situational picks first
@@ -1733,13 +1745,14 @@ function aiOrder(ctx: Ctx): TechId[] {
  */
 function nextArsenal(ctx: Ctx): ProcurePick {
   const { p, state, id } = ctx;
+  if ((p.procuring?.length ?? 0) >= ARSENAL_PRICES.aiMaxOrders) return { tech: null };
   const coastal = coastCount(state, id) > 0;
   const first: TechId[] = [];
   // Fleets (naval2.ts): a coastal nation boxed in (no free land left) or with 5+ techs takes Navigation next.
   if (coastal && !hasTech(p, 'navigation') && (ctx.neutralBorder <= 0 || p.techs.length >= 5)) first.push('navigation');
   if (AI_RADAR_VS_AIR && p.techs.length >= AI_RADAR_MIN_TECHS && !hasTech(p, 'radar') && enemyAirThreat(ctx)) first.push('flight');
   if (NUKE_COALITION_RESEARCH && ctx.coalition && ctx.diff.nukes && !hasTech(p, 'nuclearFission')) first.push('mechanization');
-  const special = aiSpecialPick(state, id, ctx.enemies);
+  const special = aiSpecial(ctx);
   if (special && isArsenalTech(special)) first.push(special);
   const skip = (t: TechId): boolean =>
     rejectedBranch(state, id, p.personality, t) || ((t === 'navigation' || pillarOf(t) === 'navy') && !coastal); // Navy row (arsenal.ts)
