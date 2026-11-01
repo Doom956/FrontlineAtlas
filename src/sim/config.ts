@@ -607,9 +607,9 @@ export const TANK_DEFENSE_RADIUS = 4;
 export const TANK_DEFENSE_BONUS = 0.35;
 /** a division not attacking whose ground is taken falls back to own land within this many tiles (losing this share
  * of its troops) while it has at least TANK_FALLBACK_MIN_SHARE of a full division; otherwise it is overrun */
-export const TANK_FALLBACK_RADIUS = 5;
+export const TANK_FALLBACK_RADIUS = 8;
 export const TANK_FALLBACK_LOSS = 0.08;
-export const TANK_FALLBACK_MIN_SHARE = 0.2;
+export const TANK_FALLBACK_MIN_SHARE = 0.1;
 /** seconds a division that fell back waits before an automatic drive back up to the front */
 export const TANK_FALLBACK_PAUSE = 20;
 /** a bomber hit kills this share of a division's troops within BOMBER_RADIUS of the impact */
