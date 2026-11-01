@@ -189,8 +189,8 @@ const PROFILES: Record<Personality, Profile> = {
     strengthNeeded: 1.3,
     maxWars: 1,
     mix: { armor: 0.15, artillery: 0.15 },
-    techs: ['agriculture', 'banking', 'navigation', 'medicine', 'metallurgy', 'logistics', 'fortification', 'mechanization', 'flight', 'ballistics', 'industrialization', 'radar', 'rocketry', 'combinedArms', 'nuclearFission'],
-    build: { market: 1.6, port: 1.6, farm: 1.2, lab: 1.2, barracks: 0.6, factory: 0.7, fort: 0.9 },
+    techs: ['agriculture', 'navigation', 'medicine', 'banking', 'metallurgy', 'logistics', 'fortification', 'mechanization', 'flight', 'ballistics', 'industrialization', 'radar', 'rocketry', 'combinedArms', 'nuclearFission'],
+    build: { market: 1.3, port: 1.4, farm: 1.2, lab: 1.2, barracks: 0.6, factory: 0.7, fort: 0.9 },
     allyOpinion: 20,
     naval: 0.65,
   },
@@ -272,8 +272,6 @@ export interface DifficultyProfile {
   coordinate: boolean;
   /** valid spawn candidates compared */
   spawnTries: number;
-  /** AI starts keep this many times the usual spacing from a human's start (room for a new player to grow) */
-  humanRoom: number;
   /**
    * Game seconds during which a human nation is a much less tempting war target (x humanRestraint strength needed,
    * unless it attacked us): a new player gets time to learn before the AI armies come. 0 = none.
@@ -319,7 +317,6 @@ export const DIFFICULTY: Readonly<Record<Difficulty, Readonly<DifficultyProfile>
     nukes: false,
     coordinate: false,
     spawnTries: 20,
-    humanRoom: 2,
     humanGrace: 900,
     humanRestraint: Infinity,
     humanNeed: 1.6,
@@ -339,7 +336,6 @@ export const DIFFICULTY: Readonly<Record<Difficulty, Readonly<DifficultyProfile>
     nukes: true,
     coordinate: false,
     spawnTries: 50,
-    humanRoom: 1,
     humanGrace: 540,
     humanRestraint: Infinity,
     humanNeed: 1.4,
@@ -359,7 +355,6 @@ export const DIFFICULTY: Readonly<Record<Difficulty, Readonly<DifficultyProfile>
     nukes: true,
     coordinate: true,
     spawnTries: 100,
-    humanRoom: 1,
     humanGrace: 360,
     humanRestraint: Infinity,
     humanNeed: 1,
@@ -379,7 +374,6 @@ export const DIFFICULTY: Readonly<Record<Difficulty, Readonly<DifficultyProfile>
     nukes: true,
     coordinate: true,
     spawnTries: 150,
-    humanRoom: 1,
     humanGrace: 0,
     humanRestraint: 1,
     humanNeed: 0.9,
@@ -680,7 +674,7 @@ function qualityGrid(state: GameState, m: Memory): Float32Array {
 }
 
 /** Spawn score: land quality around the tile (blocks weighted by ring), coast for sea powers, distance from others. */
-function spawnScore(state: GameState, m: Memory, p: Player, tile: number, spacing: number, humanRoom = 1): number {
+function spawnScore(state: GameState, m: Memory, p: Player, tile: number, spacing: number): number {
   const map = state.map;
   const w = map.width;
   const q = qualityGrid(state, m);
@@ -703,7 +697,7 @@ function spawnScore(state: GameState, m: Memory, p: Player, tile: number, spacin
   let dmin = Infinity;
   for (const o of state.players) {
     if (o.id === 0 || o.id === p.id || !o.spawned || o.capital < 0) continue;
-    dmin = Math.min(dmin, Math.sqrt(dist2(w, tile, o.capital)) / (o.isHuman ? humanRoom : 1));
+    dmin = Math.min(dmin, Math.sqrt(dist2(w, tile, o.capital)));
   }
   const far = dmin === Infinity ? 1 : clamp(dmin / spacing, 0.1, 1.1);
   // Spread out: distance matters as much as land quality (nations start far apart on grand maps).
@@ -741,7 +735,7 @@ export function aiSpawn(state: GameState): void {
       const t = Math.floor(state.rng() * n);
       if (isWater(map.terrain[t]) || !canSpawnAt(state, p.id, t)) continue;
       valid++;
-      const s = spawnScore(state, m, p, t, spacing, diff.humanRoom);
+      const s = spawnScore(state, m, p, t, spacing);
       if (s > bestScore) {
         bestScore = s;
         best = t;
