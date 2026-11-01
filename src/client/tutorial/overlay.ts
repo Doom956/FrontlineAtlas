@@ -1,7 +1,8 @@
 // Tutorial overlay: the step card (bottom left), the spotlight on the UI element a step needs (a pulsing brass ring,
-// plus an arrow pointing at it from the screen's middle side) and the "Chapter done" card.
-// - Step card: chapter and step count, the instruction, Show me (centres the step's tile) or Next (read-only steps),
-//   a row of pips with a Steps toggle for the checklist, Skip chapter and Exit tutorial.
+// plus an arrow pointing at it from the screen's middle side) and the closing card.
+// - Step card: step count, the instruction, Show me (centres the step's tile) or Next (read-only steps), a row of
+//   pips with a toggle for the checklist, and Exit tutorial.
+// - Closing card: the guide takes over from here; Play now (a normal Easy game) or Main menu.
 // - The spotlight follows its element every frame (frame()); nothing is drawn while the element is hidden.
 // Pointer events pass through everything but the cards, so the game stays playable under the overlay.
 import { el, setText } from '../dom';
@@ -14,12 +15,10 @@ import './tutorial.css';
 export interface OverlayHandlers {
   showMe: () => void;
   next: () => void;
-  skipChapter: () => void;
+  /** to the title screen */
   exit: () => void;
-  nextChapter: () => void;
-  chapterList: () => void;
-  /** close the done card and play on in this game */
-  keepPlaying: () => void;
+  /** a normal Easy game */
+  playNow: () => void;
 }
 
 function btn(label: string, cls: string, onClick: () => void, test: string, icon?: string): HTMLButtonElement {
@@ -62,9 +61,7 @@ export class TutorialOverlay {
   private list = el('ol', 'tut-list');
   private light = new Spotlight();
   private done = el('div', 'tut-done');
-  private doneTitle = el('h2', 'tut-done-t');
-  private doneLine = el('p', 'tut-done-l');
-  private doneNext: HTMLButtonElement;
+  private donePlay: HTMLButtonElement;
   private target: string | undefined;
   private listOpen = false;
   private shownKey = '';
@@ -94,39 +91,43 @@ export class TutorialOverlay {
     this.list.dataset.test = 'tut-list';
     setVisible(this.list, false);
     const foot = el('div', 'tut-foot');
-    foot.append(btn('Skip chapter', 'mini ghost', () => h.skipChapter(), 'tut-skip'), btn('Exit tutorial', 'mini ghost', () => h.exit(), 'tut-exit', 'exit'));
+    foot.append(btn('Exit tutorial', 'mini ghost', () => h.exit(), 'tut-exit', 'exit'));
     this.card.append(head, this.text, acts, track, this.list, foot);
 
-    // chapter done
+    // closing card
     this.done.dataset.test = 'tut-done';
     this.done.setAttribute('role', 'dialog');
-    this.done.setAttribute('aria-label', 'Chapter done');
+    this.done.setAttribute('aria-label', 'Tutorial done');
     const dc = el('div', 'tut-done-card');
     const badge = iconSpan(lineIcon('accept', 22, 2.2), 'tut-done-ic');
-    this.doneNext = btn('Next chapter', 'primary', () => h.nextChapter(), 'tut-next-chapter');
+    this.donePlay = btn('Play now', 'primary', () => h.playNow(), 'tut-play');
+    this.donePlay.title = 'A normal game against Easy AI nations';
     const dActs = el('div', 'tut-done-acts');
-    dActs.append(this.doneNext, btn('Chapter list', '', () => h.chapterList(), 'tut-chapters'), btn('Keep playing', 'ghost', () => h.keepPlaying(), 'tut-keep'));
-    dc.append(badge, el('span', 'tut-kicker', 'Chapter done'), this.doneTitle, this.doneLine, dActs);
+    dActs.append(this.donePlay, btn('Main menu', '', () => h.exit(), 'tut-menu'));
+    dc.append(
+      badge,
+      el('span', 'tut-kicker', 'Tutorial done'),
+      el('h2', 'tut-done-t', "That's the basics."),
+      el('p', 'tut-done-l', 'The guide will show you the rest (navy, tanks, air, strikes) when you first need it.'),
+      dActs,
+    );
     this.done.append(dc);
     setVisible(this.done, false);
 
     this.el.append(this.light.spot, this.light.arrow, this.card, this.done);
   }
 
-  /** Draws the runner's view. nextTitle: the next chapter's title (null = this was the last one). */
-  render(v: RunnerView, opts: { showMe: boolean; nextTitle: string | null; target?: string }): void {
+  /** Draws the runner's view. */
+  render(v: RunnerView, opts: { showMe: boolean; target?: string }): void {
     const total = v.chapter.steps.length;
-    setText(this.kicker, `Tutorial · ${v.chapter.title}`);
+    setText(this.kicker, v.chapter.title);
     if (v.finished) {
       setVisible(this.card, false);
       this.target = undefined;
       this.hideSpot();
-      setText(this.doneTitle, v.chapter.title);
-      setText(this.doneLine, opts.nextTitle ? `Next up: ${opts.nextTitle}.` : 'That was the last chapter. You know every part of the game now.');
-      setVisible(this.doneNext, !!opts.nextTitle);
       const wasHidden = this.done.classList.contains('hidden');
       setVisible(this.done, true);
-      if (wasHidden) (opts.nextTitle ? this.doneNext : this.done.querySelector<HTMLButtonElement>('[data-test=tut-chapters]'))?.focus({ preventScroll: true });
+      if (wasHidden) this.donePlay.focus({ preventScroll: true });
       return;
     }
     setVisible(this.done, false);
@@ -169,14 +170,13 @@ export class TutorialOverlay {
     });
     const doneN = statuses.filter((s) => s === 'done' || s === 'skipped').length;
     setText(this.stepsBtn, this.listOpen ? 'Hide checklist' : `Checklist: ${doneN} done`);
-    this.stepsBtn.setAttribute('aria-label', `${this.listOpen ? 'Hide' : 'Show'} the chapter's steps (${cur + 1} of ${statuses.length})`);
+    this.stepsBtn.setAttribute('aria-label', `${this.listOpen ? 'Hide' : 'Show'} the tutorial's steps (${cur + 1} of ${statuses.length})`);
   }
 
   private toggleList(): void {
     this.listOpen = !this.listOpen;
     setVisible(this.list, this.listOpen);
     this.stepsBtn.setAttribute('aria-expanded', String(this.listOpen));
-    const n = this.pips.childElementCount;
     const doneN = [...this.pips.children].filter((p) => (p as HTMLElement).dataset.s === 'done' || (p as HTMLElement).dataset.s === 'skipped').length;
     setText(this.stepsBtn, this.listOpen ? 'Hide checklist' : `Checklist: ${doneN} done`);
   }

@@ -51,7 +51,7 @@ A territory-control strategy game that runs in your browser. Single player needs
 4. Press `Tab` to build (cities and farms first), `T` for research, `Shift+D` for a doctrine at 5:00.
 5. Click a nation in the standings to ally, gift or embargo. Hold 75% of the land, or be the last nation standing.
 
-New to it? Press **Tutorial** on the title screen: eight short practice games, one topic each.
+New to it? Press **Tutorial** on the title screen: one 5-minute practice game with the basics. The in-game guide covers the rest when you first need it.
 
 The in-game **How to play** page (title screen, or `?` in a game) has a quick start and a searchable guide.
 

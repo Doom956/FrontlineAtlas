@@ -59,7 +59,7 @@ src/client/   browser only
   hud/          HUD parts: command bar, standings, cluster, drawers, nation card, map tooltip, toasts, advisor,
                 radial menu contents, glyphs (inline SVG pictograms), plain-word texts
   guide/        in-game guide: engine.ts (opening steps, one-time tips, prefs), steps.ts (content), bar.ts (the bar
-                + spotlight), guide.ts (wired into the HUD); tutorial/ = Tutorial mode chapters, spotlight.ts shared
+                + spotlight), guide.ts (wired into the HUD); tutorial/ = Tutorial mode (one quick practice game), spotlight.ts shared
   simx.ts       client helpers over sim features: build targets, levels, public armies, advice, paradrop, barrage
   fonts.ts      bundled fonts (FontFace API)
   camera.ts     pan / zoom / screen<->tile

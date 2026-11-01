@@ -3,8 +3,7 @@ import type { GameSettings } from '../sim/types';
 import { loadSetupPrefs, prefetchThumbs, randomSeed, settingsFromPrefs, SetupScreen, type SetupPrefs } from './setupScreen';
 import { MultiplayerScreen } from './lobby';
 import type { NetClient } from '../net/client';
-import { showTutorialPage, tutorialHint } from './tutorial/menuPage';
-import type { TutorialChapterId } from './tutorial/engine';
+import { tutorialButton, tutorialHint } from './tutorial/menuEntry';
 
 // DOM helpers live in dom.ts (re-exported here for older imports).
 export { button, el, rgbCss, setText } from './dom';
@@ -25,8 +24,8 @@ export interface MenuCallbacks {
   onStart: (settings: GameSettings) => void;
   /** the multiplayer connection (created on first use) */
   net: () => NetClient;
-  /** start a tutorial chapter (a single-player practice game) */
-  onTutorial?: (id: TutorialChapterId) => void;
+  /** start the tutorial (a single-player practice game) */
+  onTutorial?: () => void;
 }
 
 /** Title screen with Play (settings) and How to play pages. */
@@ -52,11 +51,10 @@ export class Menu {
   get visible(): boolean {
     return !this.el.classList.contains('hidden');
   }
-  show(page: 'title' | 'play' | 'help' | 'multiplayer' | 'tutorial' = 'title'): void {
+  show(page: 'title' | 'play' | 'help' | 'multiplayer' = 'title'): void {
     this.el.classList.remove('hidden');
     this.setBusy(null);
     if (page === 'play') this.showPlay();
-    else if (page === 'tutorial') this.showTutorial();
     else if (page === 'help') this.showHelp();
     else if (page === 'multiplayer') this.showMultiplayer();
     else this.showTitle();
@@ -118,20 +116,13 @@ export class Menu {
     const online = button('Multiplayer', 'big', () => this.showMultiplayer());
     online.dataset.test = 'menu-mp';
     online.title = 'Public games, or a private lobby with friends';
-    const tut = button('Tutorial', 'big', () => this.showTutorial());
-    tut.dataset.test = 'menu-tutorial';
-    tut.title = 'Short practice games that teach one part of the game each';
+    const tut = tutorialButton(() => this.cb.onTutorial?.());
     const help = button('How to play', 'big', () => this.showHelp());
     const col = el('div', 'menu-buttons');
     col.append(play, online, tut, help);
     this.card.append(kicker, logo, sub, col);
-    const hint = this.cb.onTutorial ? tutorialHint((id) => this.cb.onTutorial?.(id)) : null;
+    const hint = this.cb.onTutorial ? tutorialHint(() => this.cb.onTutorial?.()) : null;
     if (hint) this.card.append(hint);
-  }
-
-  private showTutorial(): void {
-    this.reset('tutorial');
-    showTutorialPage(this.card, { onBack: () => this.showTitle(), onStart: (id) => this.cb.onTutorial?.(id) });
   }
 
   private showHelp(): void {

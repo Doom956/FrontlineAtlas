@@ -1,7 +1,8 @@
-// Tutorial mode, the part without DOM: chapter and step types, the step runner and the saved progress.
-// - A chapter is a short practice game (src/sim/tutorialScenario.ts sets it up); its steps run one at a time.
+// Tutorial mode, the part without DOM: the tutorial and step types, the step runner and the saved progress.
+// - The tutorial is one short practice game (src/sim/tutorialScenario.ts sets it up); its steps run one at a time.
 // - A step is done when its `done` predicate turns true (checked ~5 times a second); a step without one waits for Next.
-// - Progress (chapters done, the one-time "try the tutorial" hint) is kept in localStorage under PROGRESS_KEY.
+// - Progress (tutorial finished, the one-time "try the tutorial" hint) is kept in localStorage under PROGRESS_KEY.
+//   The tutorial's id is 'basics' (the first chapter of the old chapter list), so finishing either counts.
 // The overlay (overlay.ts) draws the runner's view; the controller (controller.ts) ties both to the HUD.
 import type { TutorialChapterId, TutorialGrant } from '../../sim/tutorialScenario';
 import type { GameState, Player } from '../../sim/types';
@@ -49,15 +50,17 @@ export interface TutorialApi {
   wake(ids: number[] | 'all', opts?: { hostile?: boolean }): void;
   /** freezes AIs again */
   freeze(ids: number[]): void;
-  /** a named tile of this chapter (tutorialScenario.ts TUTORIAL_TILE_KEYS), -1 if none */
+  /** a named tile of the tutorial map (tutorialScenario.ts TUTORIAL_TILE_KEYS), -1 if none */
   tile(key: string): number;
-  /** player id of a chapter role ('rival', 'tribe', ... tutorialScenario.ts TUTORIAL_ROLES), 0 if none */
+  /** player id of a role ('rival', 'tribe': tutorialScenario.ts TUTORIAL_ROLES), 0 if none */
   player(role: string): number;
+  /** cuts a frozen AI's army down to `infantry` troops (an "attack it" step) */
+  weaken(aiId: number, infantry: number): void;
   /** makes an AI attack the player now (a "defend" step); false if it can't */
   enemyAttack(aiId: number): boolean;
   /** finishes the player's constructions, upgrades, research and queued units now */
   finish(): void;
-  /** Basics: ends the spawn phase once the player has placed the start */
+  /** ends the spawn phase once the player has placed the start */
   startNow(): boolean;
   openPanel(name: 'build' | 'research' | 'arsenal' | 'forces' | 'doctrine' | 'diplomacy'): void;
   /** brings a tile into view (zooms in a little when far out) */
@@ -83,11 +86,10 @@ export interface TutorialStep {
   onEnter?: (api: TutorialApi) => void;
 }
 
+/** The tutorial (a list of steps on one practice game). Engine tests use small ones of their own. */
 export interface TutorialChapter {
   id: TutorialChapterId;
   title: string;
-  /** one line for the chapter list */
-  blurb: string;
   /** about how long it takes */
   minutes: number;
   steps: TutorialStep[];
@@ -98,7 +100,7 @@ export interface TutorialChapter {
 export const PROGRESS_KEY = 'frontline.tutorial.v2';
 
 export interface TutorialProgress {
-  /** chapters finished at least once */
+  /** tutorials finished at least once (the tutorial is 'basics') */
   done: TutorialChapterId[];
   /** the "New here? Try the tutorial" hint was shown (it shows once) */
   suggested: boolean;
@@ -144,7 +146,7 @@ export function isChapterDone(id: TutorialChapterId): boolean {
   return loadProgress().done.includes(id);
 }
 
-/** True while the one-time "try the tutorial" hint is still due: nothing done yet and never shown. */
+/** True while the one-time "try the tutorial" hint is still due: never finished and never shown. */
 export function suggestionDue(): boolean {
   const p = loadProgress();
   return !p.suggested && p.done.length === 0;
@@ -155,17 +157,6 @@ export function markSuggested(): void {
   if (p.suggested) return;
   p.suggested = true;
   saveProgress(p);
-}
-
-/** The chapter after `id` in `list`, or null at the end. */
-export function nextChapter(list: readonly TutorialChapter[], id: TutorialChapterId): TutorialChapter | null {
-  const i = list.findIndex((c) => c.id === id);
-  return i >= 0 && i + 1 < list.length ? list[i + 1] : null;
-}
-
-/** The first chapter not done yet (the list's "Continue"), else the first. */
-export function firstOpenChapter(list: readonly TutorialChapter[], done: readonly TutorialChapterId[]): TutorialChapter | null {
-  return list.find((c) => !done.includes(c.id)) ?? list[0] ?? null;
 }
 
 // ------------------------------------------------------------------------------------------------ runner
@@ -182,7 +173,7 @@ export interface RunnerView {
 }
 
 /**
- * Runs a chapter's steps: enters each (onEnter), checks its `done` on every update and moves on when it is true, or
+ * Runs the tutorial's steps: enters each (onEnter), checks its `done` on every update and moves on when it is true, or
  * on next() for a read-only step. A step that throws counts as not done (logged once). finished = all steps passed.
  */
 export class TutorialRunner {
@@ -231,7 +222,7 @@ export class TutorialRunner {
     this.advance(st.done ? 'skipped' : 'done');
   }
 
-  /** Ends the chapter at once, the steps left count as skipped. */
+  /** Ends the tutorial at once, the steps left count as skipped. */
   skipAll(): void {
     if (this.finished) return;
     for (let k = this.i; k < this.statuses.length; k++) this.statuses[k] = 'skipped';

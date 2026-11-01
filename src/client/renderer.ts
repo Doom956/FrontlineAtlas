@@ -5,7 +5,7 @@
 //           with crisp borders, capture flashes along the fronts, fort coverage, fallout, supply / spawn / resource
 //           overlays. Falls back to Canvas2D (render/map2d.ts) without WebGL2.
 //   overlay Canvas2D on top (the canvas main.ts gives us; input listens on it): deposits, buildings, capitals,
-//           units, effects, labels, front pills, reticles, floaters, hover and previews.
+//           front lines, units, effects, labels, front pills and push arrows, reticles, floaters, hover and previews.
 // Tile ownership reaches the GPU through the sim's change feed (render/tiles.ts): no per-frame map scans. Labels,
 // fronts and the minimap listen to the same feed. Everything in screen space is culled through spatial grids.
 import { supplyEfficiency } from '../sim/combat';
@@ -146,7 +146,7 @@ export class Renderer {
     this.buildings.reset();
     this.deposits.setGame(state);
     this.units.reset(map.width);
-    this.fronts.reset(map.width);
+    this.fronts.reset(map.width, this.feed);
     this.names.setGame(state);
     this.overlays.reset(map.width);
     this.mini.setGame(state, this.terr);
@@ -237,6 +237,7 @@ export class Renderer {
     const depFocus = b === 'mine' ? 1 : b === 'oilWell' ? 2 : b === 'farm' ? 3 : 0;
     this.deposits.draw(ctx, state, camera, view, ui.showResources, me, depFocus, d);
     this.heartland.draw(ctx, state, camera, me, ui.showHeartland && state.phase === 'playing', d);
+    this.fronts.drawLines(ctx, state, camera, ui, d);
     this.overlays.rings(ctx, state, camera, ui, snap, me);
     const focus: number[] = [];
     if (ui.hoverTile >= 0 && ui.hoverTile < state.map.building.length && state.map.building[ui.hoverTile] !== 0 && ui.mode.kind === 'none') focus.push(ui.hoverTile);
@@ -250,7 +251,7 @@ export class Renderer {
     this.names.draw(ctx, state, camera, me, { hoverOwner, targeting: ui.mode.kind !== 'none', hover: hs }, nowMs, d);
     this.overlays.telegraphs(ctx, state, camera, this.units, frac, me, nowMs, this.colors);
     this.overlays.barrages(ctx, state, camera, frac, me, nowMs, this.colors);
-    this.fronts.draw(ctx, state, camera, me, this.colors);
+    this.fronts.draw(ctx, state, camera, me, this.colors, ui);
     this.overlays.floaters(ctx, ui, camera, nowMs);
     this.overlays.strikeZones(ctx, state, camera, ui);
     this.overlays.hoverAndPreview(ctx, state, camera, ui, snap, this.units, frac, d);

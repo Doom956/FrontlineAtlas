@@ -1,13 +1,11 @@
-// Tutorial engine (src/client/tutorial/engine.ts): the step runner, saved progress, target selectors, and a sanity
-// check of the chapters the menu lists. No DOM.
+// Tutorial engine (src/client/tutorial/engine.ts): the step runner, saved progress and target selectors. No DOM.
+// The tutorial's own content is checked in tutorialSteps.test.ts.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  firstOpenChapter,
   isChapterDone,
   loadProgress,
   markChapterDone,
   markSuggested,
-  nextChapter,
   PROGRESS_KEY,
   suggestionDue,
   targetSelectors,
@@ -16,7 +14,6 @@ import {
   type TutorialChapter,
   type TutorialUi,
 } from '../src/client/tutorial/engine';
-import { tutorialChapters } from '../src/client/tutorial/catalog';
 import type { GameState, Player } from '../src/sim/types';
 
 class MemStorage {
@@ -59,6 +56,7 @@ function fakeApi(): TutorialApi & { calls: string[] } {
     freeze: (ids) => calls.push(`freeze:${String(ids)}`),
     tile: () => -1,
     player: () => 0,
+    weaken: (id, n) => calls.push(`weaken:${id}:${n}`),
     enemyAttack: () => false,
     finish: () => calls.push('finish'),
     startNow: () => false,
@@ -73,8 +71,7 @@ const ME = {} as Player;
 function chapter(): TutorialChapter {
   return {
     id: 'basics',
-    title: 'Basics',
-    blurb: 'test',
+    title: 'Tutorial',
     minutes: 3,
     steps: [
       { id: 'read', text: 'Read this.' },
@@ -154,7 +151,7 @@ describe('tutorial progress', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it('remembers finished chapters under its own key', () => {
+  it('remembers a finished tutorial under its own key (old chapter ids stay readable)', () => {
     expect(loadProgress()).toEqual({ done: [], suggested: false });
     markChapterDone('basics');
     markChapterDone('basics');
@@ -165,7 +162,7 @@ describe('tutorial progress', () => {
     expect(PROGRESS_KEY).toBe('frontline.tutorial.v2');
   });
 
-  it('suggests the tutorial once, and never after a chapter was played', () => {
+  it('suggests the tutorial once, and never after it was finished', () => {
     expect(suggestionDue()).toBe(true);
     markSuggested();
     expect(suggestionDue()).toBe(false);
@@ -188,42 +185,12 @@ describe('tutorial progress', () => {
     expect(() => markChapterDone('basics')).not.toThrow();
     expect(loadProgress().done).toEqual([]);
   });
-
-  it('picks the next chapter and the first open one', () => {
-    const list = tutorialChapters();
-    expect(firstOpenChapter(list, [])?.id).toBe(list[0].id);
-    if (list.length > 1) {
-      expect(nextChapter(list, list[0].id)?.id).toBe(list[1].id);
-      expect(firstOpenChapter(list, [list[0].id])?.id).toBe(list[1].id);
-    }
-    expect(nextChapter(list, list[list.length - 1].id)).toBeNull();
-    expect(firstOpenChapter(list, list.map((c) => c.id))?.id).toBe(list[0].id);
-  });
 });
 
-describe('tutorial targets and chapters', () => {
+describe('tutorial targets', () => {
   it('turns a bare word into a data-test selector and keeps fallbacks in order', () => {
     expect(targetSelectors(undefined)).toEqual([]);
     expect(targetSelectors('attack-share')).toEqual(['[data-test="attack-share"]']);
     expect(targetSelectors('[data-test=orders-ships] [data-v=bombard] || open-forces')).toEqual(['[data-test=orders-ships] [data-v=bombard]', '[data-test="open-forces"]']);
-  });
-
-  it('every chapter has a title, a one-line blurb, 2-5 minutes and short steps with unique ids', () => {
-    const list = tutorialChapters();
-    expect(list.length).toBeGreaterThan(0);
-    expect(list[0].id).toBe('basics');
-    expect(new Set(list.map((c) => c.id)).size).toBe(list.length);
-    for (const c of list) {
-      expect(c.title.length).toBeGreaterThan(0);
-      expect(c.blurb.length).toBeLessThanOrEqual(90);
-      expect(c.minutes).toBeGreaterThanOrEqual(2);
-      expect(c.minutes).toBeLessThanOrEqual(5);
-      expect(c.steps.length).toBeGreaterThan(0);
-      expect(new Set(c.steps.map((s) => s.id)).size).toBe(c.steps.length);
-      for (const s of c.steps) {
-        expect(s.text.length, `${c.id}/${s.id}`).toBeGreaterThan(0);
-        expect(s.text.length, `${c.id}/${s.id} is long`).toBeLessThanOrEqual(140);
-      }
-    }
   });
 });

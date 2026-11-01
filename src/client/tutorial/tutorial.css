@@ -268,7 +268,7 @@
   }
 }
 
-/* ---------------------------------------------------------------- chapter done */
+/* ---------------------------------------------------------------- closing card */
 .tut-done {
   position: absolute;
   inset: 0;
@@ -280,7 +280,7 @@
 }
 .tut-done-card {
   position: relative;
-  width: min(380px, calc(100vw - 32px));
+  width: min(420px, calc(100vw - 32px));
   padding: 26px 28px 22px;
   display: flex;
   flex-direction: column;
@@ -325,92 +325,16 @@
   margin-left: auto;
 }
 
-/* ---------------------------------------------------------------- menu: chapter list */
-.menu-card.tutorial {
-  width: 640px;
-}
-.tut-chapters {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.tut-ch {
-  width: 100%;
-  display: grid;
-  grid-template-columns: 30px 1fr auto;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 14px;
-  text-align: left;
-  color: var(--text);
-  background: var(--metal-2);
-  border: 1px solid var(--rule);
-  border-radius: var(--r);
-  cursor: pointer;
-  transition: background var(--fast), border-color var(--fast);
-}
-.tut-ch:hover,
-.tut-ch:focus-visible {
-  background: var(--metal-3);
-  border-color: var(--brass-lo);
-}
-.tut-ch:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 1px;
-}
-.tut-ch-n {
-  display: inline-flex;
-  width: 30px;
-  height: 30px;
-  align-items: center;
-  justify-content: center;
-  font: 600 16px/1 var(--f-label);
-  color: var(--dim);
-  border: 1px solid var(--rule-hi);
-}
-.tut-ch.done .tut-ch-n {
-  color: var(--text);
-  background: var(--olive-d);
-  border-color: var(--olive);
-}
-.tut-ch.next .tut-ch-n {
-  color: var(--brass-ink);
-  background: var(--brass);
-  border-color: var(--brass-hi);
-}
-.tut-ch-body {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-.tut-ch-t {
-  font: 600 17px/1.1 var(--f-label);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.tut-ch-b {
-  font-size: 13px;
-  line-height: 1.35;
-  color: var(--dim);
-}
-.tut-ch-m {
-  font: 600 12px/1 var(--f-label);
+/* ---------------------------------------------------------------- menu: the Tutorial button's note and the hint */
+.menu-buttons .tut-menu-note {
+  font: 600 11px/1 var(--f-label);
   letter-spacing: 0.08em;
-  color: var(--faint);
-  white-space: nowrap;
+  text-transform: uppercase;
+  color: var(--dim);
   font-variant-numeric: tabular-nums;
 }
-.tut-ch.done .tut-ch-m {
+.menu-buttons .tut-menu-note.done {
   color: var(--olive);
-}
-.tut-list-note {
-  margin: 0 0 12px;
-  font-size: 13px;
-  color: var(--dim);
 }
 .menu-hint {
   display: flex;

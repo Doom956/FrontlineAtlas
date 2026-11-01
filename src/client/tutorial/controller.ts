@@ -1,12 +1,12 @@
-// Tutorial mode in a running game: ties a chapter's step runner (engine.ts) to the HUD and the overlay (overlay.ts).
+// Tutorial mode in a running game: ties the tutorial's step runner (engine.ts) to the HUD and the overlay (overlay.ts).
 // Single player only: the scenario helpers (src/sim/tutorialScenario.ts) are called directly between ticks; nothing
 // goes through actions or the network. main.ts makes one per tutorial game and calls update() / frame() every frame.
-import { tutorialEnemyAttack, tutorialFinish, tutorialFreeze, tutorialGrant, tutorialPlayer, tutorialStart, tutorialTile, tutorialWake } from '../../sim/tutorialScenario';
+import { tutorialEnemyAttack, tutorialFinish, tutorialFreeze, tutorialGrant, tutorialPlayer, tutorialStart, tutorialTile, tutorialWake, tutorialWeaken } from '../../sim/tutorialScenario';
 import type { GameState, Player } from '../../sim/types';
 import type { Hud } from '../hud';
 import { strikeOfMode } from '../strikes';
 import type { UiState } from '../uiState';
-import { markChapterDone, nextChapter, stepTarget, TutorialRunner, type TutorialApi, type TutorialChapter, type TutorialChapterId, type TutorialUi } from './engine';
+import { markChapterDone, stepTarget, TutorialRunner, type TutorialApi, type TutorialChapter, type TutorialUi } from './engine';
 import { TutorialOverlay } from './overlay';
 
 /** Steps are checked this often (ms). */
@@ -15,10 +15,8 @@ const CHECK_MS = 200;
 export interface TutorialHooks {
   /** leave the tutorial for the title screen */
   exit: () => void;
-  /** leave the game for the chapter list */
-  chapterList: () => void;
-  /** start a chapter (a new practice game) */
-  start: (id: TutorialChapterId) => void;
+  /** leave the tutorial for a normal Easy game */
+  playNow: () => void;
 }
 
 /** The UI facts a step can check, read from the HUD and the shared UI state. */
@@ -46,12 +44,10 @@ export class TutorialController {
   readonly runner: TutorialRunner;
   private overlay: TutorialOverlay;
   private last = -Infinity;
-  private dismissed = false;
   private recorded = false;
 
   constructor(
     readonly chapter: TutorialChapter,
-    private chapters: readonly TutorialChapter[],
     private hud: Hud,
     private ui: UiState,
     private getState: () => GameState | null,
@@ -64,8 +60,9 @@ export class TutorialController {
       grant: (g) => tutorialGrant(self.state(), self.state().humanId, g),
       wake: (ids, opts) => tutorialWake(self.state(), ids, opts),
       freeze: (ids) => tutorialFreeze(self.state(), ids),
-      tile: (key) => tutorialTile(self.state(), chapter.id, key),
-      player: (role) => tutorialPlayer(self.state(), chapter.id, role),
+      tile: (key) => tutorialTile(self.state(), key),
+      player: (role) => tutorialPlayer(self.state(), role),
+      weaken: (id, troops) => tutorialWeaken(self.state(), id, troops),
       enemyAttack: (id) => tutorialEnemyAttack(self.state(), id),
       finish: () => tutorialFinish(self.state(), self.state().humanId),
       startNow: () => tutorialStart(self.state()),
@@ -78,26 +75,14 @@ export class TutorialController {
     this.runner.onChange = () => {
       this.last = -Infinity; // redraw at once
     };
-    const next = nextChapter(chapters, chapter.id);
     this.overlay = new TutorialOverlay({
       showMe: () => {
         const t = this.showTile();
         if (t >= 0) hud.centreOn(t);
       },
       next: () => this.runner.next(),
-      skipChapter: () => {
-        if (next) hooks.start(next.id);
-        else hooks.chapterList();
-      },
       exit: () => hooks.exit(),
-      nextChapter: () => {
-        if (next) hooks.start(next.id);
-      },
-      chapterList: () => hooks.chapterList(),
-      keepPlaying: () => {
-        this.dismissed = true;
-        this.overlay.el.classList.add('hidden');
-      },
+      playNow: () => hooks.playNow(),
     });
     hud.addOverlay(this.overlay.el);
   }
@@ -124,7 +109,6 @@ export class TutorialController {
 
   /** Checks the step (~5 Hz) and redraws the card; call every frame after the HUD's update. */
   update(now: number): void {
-    if (this.dismissed) return;
     const s = this.getState();
     if (!s) return;
     const view = this.hud.tutorialView();
@@ -135,17 +119,15 @@ export class TutorialController {
     if (me && s.phase !== 'over') this.runner.update(s, me, tutorialUiFacts(this.ui, view));
     if (this.runner.finished && !this.recorded) {
       this.recorded = true;
-      // only a chapter played to its end gets the tick (Skip chapter leaves without one)
-      if (this.runner.view().statuses.some((x) => x === 'done')) markChapterDone(this.chapter.id);
+      markChapterDone(this.chapter.id);
     }
-    const next = nextChapter(this.chapters, this.chapter.id);
     const rv = this.runner.view();
-    this.overlay.render(rv, { showMe: this.showTile() >= 0, nextTitle: next?.title ?? null, target: stepTarget(rv.step, s) });
+    this.overlay.render(rv, { showMe: this.showTile() >= 0, target: stepTarget(rv.step, s) });
   }
 
   /** Keeps the spotlight on its element (every frame). */
   frame(): void {
-    if (!this.dismissed) this.overlay.frame();
+    this.overlay.frame();
   }
 
   destroy(): void {
