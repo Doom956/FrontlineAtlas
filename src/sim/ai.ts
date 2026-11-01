@@ -116,8 +116,8 @@ const CITY_TILES = 2400;
 /** At most one atom bomb per AI per this many seconds. */
 const NUKE_PAUSE_SECONDS = 300;
 /** An AI with atom bombs nukes a bordering / attacking nation whose land share is above max(floor, win share - margin). */
-const NUKE_LEADER_FLOOR = 0.45;
-const NUKE_LEADER_MARGIN = 0.15;
+const NUKE_LEADER_FLOOR = 0.35;
+const NUKE_LEADER_MARGIN = 0.25;
 /** Coalition members (against a runaway leader) research Nuclear Fission as soon as they can, and nuke the leader. */
 const NUKE_COALITION_RESEARCH = true;
 const NUKE_COALITION_TARGET = true;
