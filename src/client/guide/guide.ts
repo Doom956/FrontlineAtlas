@@ -108,6 +108,7 @@ export class GuideController {
     this.last = c;
     this.view = this.engine.update(c);
     this.bar.render(this.view);
+    this.bar.frame();
   }
 
   /** Keeps the bar placed and the spotlight on its element or tile (every frame). */

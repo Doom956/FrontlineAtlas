@@ -89,7 +89,7 @@ export class GuideBar {
       return;
     }
     setVisible(this.el, true);
-    setClass(this.bar, 'tip', v.kind === 'tip');
+    setClass(this.bar, 'is-tip', v.kind === 'tip');
     this.bar.dataset.step = v.id;
     this.bar.dataset.kind = v.kind;
     setText(this.count, v.kind === 'step' ? `${v.index + 1}/${v.total}` : 'Tip');

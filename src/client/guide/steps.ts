@@ -185,7 +185,7 @@ export function openingSteps(view: { centreTile: () => number }): GuideStep[] {
     },
     {
       id: 'expand',
-      text: 'Click empty land next to your border to expand. Each tile costs a few troops.',
+      text: 'Click empty land next to your border to expand. Each tile costs troops.',
       tile: expandTile,
       begin: (c) => ({ tiles: c.me.tiles, tick: c.s.tick }),
       done: (c, m) => c.me.tiles > m.tiles * 1.6 || ownAttack(c.s, c.me, m.tick),
@@ -193,7 +193,7 @@ export function openingSteps(view: { centreTile: () => number }): GuideStep[] {
     },
     {
       id: 'share',
-      text: 'ATTACK is the share of troops each click sends. Drag it, or press [ and ].',
+      text: 'ATTACK: the share of troops each click sends. Drag it, or press [ and ].',
       target: 'attack-share',
       begin: (c) => ({ share: c.ui.attackShare, tick: c.s.tick }),
       done: (c, m) => Math.abs(c.ui.attackShare - m.share) > 0.01 || ownAttack(c.s, c.me, m.tick),
@@ -217,17 +217,25 @@ export function openingSteps(view: { centreTile: () => number }): GuideStep[] {
       text: (c) => {
         const t = tribeTile(c);
         return t >= 0 && !touches(c.s, t, c.me.id)
-          ? 'Tribes are the grey lands with small armies: easy to take. Expand toward the arrow, then click the tribe.'
-          : 'Tribes are the grey lands with small armies: easy to take. Click the one at the arrow.';
+          ? 'A tribe (grey land, small army) lies that way: expand at the arrow, then click it.'
+          : 'Tribes (grey land, small army) are easy to take: click the one at the arrow.';
       },
-      tile: tribeTile,
+      tile: (c) => {
+        const t = tribeTile(c);
+        if (t < 0 || touches(c.s, t, c.me.id)) return t;
+        // not next to us yet: the empty land on our border nearest the tribe
+        const near = cached(c.s, `toward${c.me.id}`, () =>
+          nearestTile(c.s.map, t, Math.min(200, tileDist(c.s.map, t, home(c)) + 4), (i) => c.s.map.owner[i] === 0 && isLand(c.s, i) && touches(c.s, i, c.me.id)),
+        );
+        return near >= 0 ? near : t;
+      },
       skipIf: (c) => !c.s.players.some((p) => p.alive && isTribe(p)),
       done: (c) => c.s.attacks.some((a) => a.attacker === c.me.id && a.target > 0 && isTribe(c.s.players[a.target])),
       timeout: 90,
     },
     {
       id: 'standings',
-      text: (c) => `Standings: who holds the most land. Hold ${Math.round(victoryShareNow(c.s) * 100)}% of the land, or be the last nation, to win.`,
+      text: (c) => `Standings: who holds the most land. Hold ${Math.round(victoryShareNow(c.s) * 100)}% of it, or be the last nation, to win.`,
       target: 'leaderboard',
     },
   ];
@@ -246,14 +254,14 @@ export function guideTips(): GuideTip[] {
       text: (c) => {
         const a = attackOnMe(c.s, c.me);
         const name = a ? c.s.players[a.attacker]?.name ?? 'A neighbour' : 'A neighbour';
-        return `${name} attacks you. Troops at home defend: keep ATTACK low, build a Fort (9) there, or hit back at their land.`;
+        return `${name} attacks you! Troops at home defend. Hit back at their land, or build a Fort (9) there.`;
       },
       tile: (c) => attackOnMe(c.s, c.me)?.tile ?? -1,
       when: (c) => playing(c) && attackOnMe(c.s, c.me) !== null,
     },
     {
       id: 'research',
-      text: 'Research is open: press T and pick a tech. Techs unlock buildings and make troops stronger.',
+      text: 'Press T for Research and pick a tech: new buildings, stronger troops.',
       target: 'open-research',
       when: (c) => playing(c) && c.sec >= 40 && (c.me.researching !== null || canStartAny(c, false)),
       still: (c) => !panel(c, 'research', 'arsenal'),
@@ -261,7 +269,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'doctrine',
-      text: `Doctrines are open: pick one style of war (${DOCTRINE_KEY}). It grows stronger the longer you keep it.`,
+      text: `Doctrines are open (${DOCTRINE_KEY}): pick a style of war. It grows the longer you keep it.`,
       target: 'doctrine-go || open-doctrine',
       when: (c) => playing(c) && c.sec >= DOCTRINE_UNLOCK_SECONDS && !c.me.doctrine.id,
       still: (c) => !c.me.doctrine.id,
@@ -269,7 +277,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'idle',
-      text: 'Your troops are full and idle: full troops stop growing. Attack, expand or build.',
+      text: 'Troops full and idle: they stop growing. Attack, expand or build.',
       target: 'troops',
       when: (c) => {
         const full = playing(c) && c.me.maxPop > 0 && homeTroops(c.me) >= c.me.maxPop * 0.95 && !ownAttack(c.s, c.me);
@@ -288,7 +296,7 @@ export function guideTips(): GuideTip[] {
       id: 'strike',
       text: (c) => {
         const id = readyStrike(c);
-        return id ? `${STRIKES[id].name} ready: press ${STRIKES[id].key} (or this button), then click the target.` : 'A strike is ready.';
+        return id ? `${STRIKES[id].name} ready: press ${STRIKES[id].key} or this button, then click the target.` : 'A strike is ready.';
       },
       target: (c) => {
         const id = readyStrike(c);
@@ -301,8 +309,8 @@ export function guideTips(): GuideTip[] {
       id: 'navy',
       text: (c) =>
         c.ui.selectedTile >= 0 && c.s.map.building[c.ui.selectedTile] > 0
-          ? 'Order a Warship here. Select ships (click or drag) to set a stance: hunt, escort, bombard, blockade.'
-          : 'Your Port builds Warships: click it, then Warship. Selected ships take stances.',
+          ? 'Order a Warship here. Selected ships take stances: hunt, escort, bombard, blockade.'
+          : 'Click your Port, then Warship. Select ships to give them a stance.',
       target: 'order-warship || order-destroyer || order-submarine',
       tile: (c) => buildingTile(c.s, c.me, 'port'),
       when: (c) => playing(c) && owns(c.s, c.me, 'port'),
@@ -310,7 +318,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'armor',
-      text: 'Your Factory builds Tank divisions: click it, then Tank division. Select one and click enemy land to spearhead.',
+      text: 'Click your Factory, then Tank division. Select it, then click enemy land to spearhead.',
       target: 'order-tank-division',
       tile: (c) => buildingTile(c.s, c.me, 'factory'),
       when: (c) => playing(c) && owns(c.s, c.me, 'factory'),
@@ -318,7 +326,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'air',
-      text: 'Your Airfield flies missions: click it, buy Bombers, then pick Support (a front) or Strategic (their income).',
+      text: 'Click your Airfield: buy Bombers, then pick Support (a front) or Strategic (income).',
       target: 'air-support || order-bomber',
       tile: (c) => buildingTile(c.s, c.me, 'airfield'),
       when: (c) => playing(c) && owns(c.s, c.me, 'airfield'),
@@ -329,7 +337,7 @@ export function guideTips(): GuideTip[] {
       text: (c) => {
         const r = c.s.allianceRequests.find((q) => q.to === c.me.id);
         const name = r ? c.s.players[r.from]?.name ?? 'A nation' : 'A nation';
-        return `${name} offers an alliance: click them in the standings, then Accept. Allies don't attack each other.`;
+        return `${name} offers an alliance: click them in the standings, then Accept.`;
       },
       target: (c) => {
         const r = c.s.allianceRequests.find((q) => q.to === c.me.id);
@@ -342,8 +350,8 @@ export function guideTips(): GuideTip[] {
       id: 'coalition',
       text: (c) =>
         coalitionLeader(c.s) === c.me.id
-          ? 'Nations formed a coalition against you: expect attacks from several sides. Fort your borders, make allies.'
-          : 'Nations formed a coalition against the leader. Join the war on them, or use the quiet to grow.',
+          ? 'Nations formed a coalition against you. Fort your borders and find allies.'
+          : 'Nations formed a coalition against the leader: join in, or grow in peace.',
       target: (c) => {
         const l = coalitionLeader(c.s);
         return l ? `lb-row-${l} || leaderboard` : 'leaderboard';
@@ -352,7 +360,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'arsenal',
-      text: `Arsenal is open (T, Arsenal tab): navy, armor and air each fork into two paths. Mastery in ${MASTERY_CAP} at most.`,
+      text: `Arsenal (T, Arsenal tab): navy, armor and air fork into two paths; mastery in ${MASTERY_CAP}.`,
       target: (c) => (panel(c, 'research') ? 'tab-arsenal' : 'open-research'),
       // later in the game (after the doctrine pick opens), once an Arsenal item can be started
       when: (c) => playing(c) && c.sec >= DOCTRINE_UNLOCK_SECONDS + 60 && canStartAny(c, true),
@@ -361,7 +369,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'upgrade',
-      text: 'Upgrade many at once: Shift-drag a box over your buildings, then Upgrade x1, x3 or x5 (U).',
+      text: 'Upgrade many at once: Shift-drag over your buildings, then Upgrade x1, x3 or x5.',
       target: 'building-selection',
       tile: (c) => c.me.capital,
       when: (c) => playing(c) && ownedBuildings(c.s, c.me) >= 5,
