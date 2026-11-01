@@ -1109,8 +1109,8 @@ export const AIR = {
   sortieCooldown: 20,
   idleRecheck: 3,
   /** support: zone radius (+ per airfield level above 1), how long it lasts after the last strike (s) */
-  supportRadius: 7,
-  supportRadiusPerLevel: 1,
+  supportRadius: 11,
+  supportRadiusPerLevel: 2,
   supportSeconds: 24,
   /** support: enemy tile defence cut = maxCut x (1 - decay^strength); strength = bombers that struck the zone */
   supportMaxCut: 0.45,
