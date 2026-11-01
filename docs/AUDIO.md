@@ -131,6 +131,7 @@ other nations only are silent, except the global ones (`players: []`).
 | `underAttack` | human | `underAttack` alert (raises tension) |
 | `buildingDone` | first | `buildingDone` (city upgrades a bit louder) |
 | `buildingLost` | first | `buildingLost` |
+| `buildingCaptured` | a City, first / human; silent when far off screen | `cityTaken` / `cityLost` |
 | `buildingCaptured` | first (we took it) / human (taken from us) | `buildingDone` (soft) / `buildingLost` |
 | `researchDone` | human | `researchDone` |
 | `allianceRequest` | human (asked to us) | `allianceRequest` chime |
@@ -144,6 +145,7 @@ other nations only are silent, except the global ones (`players: []`).
 | `missile` | human, "launched" | `missileLaunch` (raises tension when aimed at us) |
 | `missile` | human, strike report | `explosion` |
 | `bombing` | human | `explosion` |
+| `unitLost` | human, a ship sunk by a warship or a mine; silent when far off screen | `shipSunk` |
 | `unitLost` | first / human (enemy unit lost to us) | `unitLost` / `explosion` (soft) |
 | `tradeDelivered` | human | `tradeCoin` |
 | `victory` | first | `victory` fanfare (if someone else wins, the `defeat` event follows) |
@@ -157,6 +159,9 @@ other nations only are silent, except the global ones (`players: []`).
 | `explosion` | on screen | `explosion` (quieter for small radius, e.g. ships sunk) |
 | `capture` | the human's own capture (`update()` checks the tile owner) | `capture` tick, very quiet, panned, max ~14/s |
 | `shot` | on screen | `shot` (very soft) |
+
+"Far off screen" means more than one view width or height beyond the screen edge (`update()` checks the event's
+tile against the camera). Big news (nukes, your capital) plays wherever it happens.
 
 Other sounds are not mapped to an event or effect. `uiClick`, `uiHover`, `uiError` and `buildPlaced` come from
 the HUD and `dispatch`. `countdown` comes from `update()` during the spawn phase, at 5..1 seconds.
@@ -177,6 +182,8 @@ the HUD and `dispatch`. `countdown` comes from `update()` during the spawn phase
 | `allianceRequest` | three-bell major chime | 1500 | 2 |
 | `allianceFormed` / `allianceBroken` / `allianceExpired` | major arpeggio + pad / tritone drop / two falling bells | 1500 | 2/2/1 |
 | `capitalLost` / `capitalTaken` | minor brass chord + boom / rising brass + drum | 3000 | 3/2 |
+| `cityTaken` / `cityLost` | short rising bugle call + drum / falling call over a low drop | 700 | 2 |
+| `shipSunk` | low hull crump, a wash of water, a few bubbles | 600 | 1 |
 | `explosion` | filtered noise burst + sine thump | 110 | 1 |
 | `atomBomb` | deep falling boom + long wobbling rumble (5 s) | 1500 | 3 |
 | `missileLaunch` | band-passed noise whoosh | 500 | 1 |
@@ -218,3 +225,25 @@ is hidden.
     tension 1.
 
   There were no console errors or warnings.
+
+## Map effects
+
+The battle effects (`src/client/fx/`) are drawn, not heard, and have their own switch: Menu > Map > "Map effects
+on / off" (saved in `localStorage` as `borderfall.fx.v1`). They are read-only like the sounds: the director reads
+new events, effects, dead units and vanished forts from the state each frame and never writes to it.
+
+| Trigger | Effect | Gap (ms) | Max at once |
+|---|---|---|---|
+| `capture` effect on a tile now yours (zoom 2+) | soft ring | 90 | 8 |
+| `buildingCaptured` of a City, yours | gold pulse (the HUD's "+City" floater names it) / red pulse + "City lost" | 300 | 3 |
+| `capitalLost` concerning you | three-ring pulse + "Capital taken" / "Capital lost" | 1000 | 2 |
+| 1.5-tile `explosion` where a ship died | splash rings, droplets, sinking fragments | 150 | 4 |
+| 1.5-tile `explosion` where a plane died | ember + smoke puff | 150 | 4 |
+| `barrage` effect | dust that settles over the disc | 200 | 4 |
+| a fort disappears (not captured) | ring of heavy dust + debris | 300 | 3 |
+| `explosion` 4+ tiles (rocket, bombs) | one shockwave ring | 120 | 4 |
+| `nuke` effect | two wide rings; a 6 px shake for 0.6 s when within ~1.5 views of the camera | 300 | 2 |
+
+The pool holds 40 effects; cosmetic ones (ripples, barrage dust) stop at 75% and are the first to be replaced.
+Nothing is shown for things off screen, older than 1.5 s, or after a jump of more than 3 s (online catch-up).
+`prefers-reduced-motion` keeps the effects and drops the shake.

@@ -1,7 +1,7 @@
 // Tutorial overlay: the step card (bottom left), the spotlight on the UI element a step needs (a pulsing brass ring,
 // plus an arrow pointing at it from the screen's middle side) and the closing card.
 // - Step card: step count, the instruction, Show me (centres the step's tile) or Next (read-only steps), a row of
-//   pips with a toggle for the checklist, and Exit tutorial.
+//   pips with a toggle for the list of steps, and Exit tutorial.
 // - Closing card: the guide takes over from here; Play now (a normal Easy game) or Main menu.
 // - The spotlight follows its element every frame (frame()); nothing is drawn while the element is hidden.
 // Pointer events pass through everything but the cards, so the game stays playable under the overlay.
@@ -168,8 +168,7 @@ export class TutorialOverlay {
       const t = li.querySelector('.tut-li-t') as HTMLElement;
       setText(t, labels[k]);
     });
-    const doneN = statuses.filter((s) => s === 'done' || s === 'skipped').length;
-    setText(this.stepsBtn, this.listOpen ? 'Hide checklist' : `Checklist: ${doneN} done`);
+    setText(this.stepsBtn, this.listOpen ? 'Hide steps' : 'All steps');
     this.stepsBtn.setAttribute('aria-label', `${this.listOpen ? 'Hide' : 'Show'} the tutorial's steps (${cur + 1} of ${statuses.length})`);
   }
 
@@ -177,8 +176,7 @@ export class TutorialOverlay {
     this.listOpen = !this.listOpen;
     setVisible(this.list, this.listOpen);
     this.stepsBtn.setAttribute('aria-expanded', String(this.listOpen));
-    const doneN = [...this.pips.children].filter((p) => (p as HTMLElement).dataset.s === 'done' || (p as HTMLElement).dataset.s === 'skipped').length;
-    setText(this.stepsBtn, this.listOpen ? 'Hide checklist' : `Checklist: ${doneN} done`);
+    setText(this.stepsBtn, this.listOpen ? 'Hide steps' : 'All steps');
   }
 
   /** Moves the spotlight onto the step's element and keeps the card clear of open panels (every frame; cheap). */

@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { createTileChanges, recordTileChange } from '../src/sim/changes';
 import type { Attack, GameState } from '../src/sim/types';
-import { chainSegments, edgeId, FrontLayer, frontSpots, measuredSpeed, mergeSegments, pairKey, seedEdges, WAR_MEMORY_TICKS } from '../src/client/render/fronts';
+import { chainSegments, chunkLines, edgeId, farStep, FrontLayer, frontSpots, measuredSpeed, mergeSegments, pairKey, seedEdges, simplifyLine, WAR_MEMORY_TICKS } from '../src/client/render/fronts';
 import { OWNER_MASK, TileFeed } from '../src/client/render/tiles';
 import { Camera } from '../src/client/camera';
 import type { UiState } from '../src/client/uiState';
@@ -109,6 +109,36 @@ describe('chainSegments', () => {
     const lines = chainSegments(segs);
     expect(length(lines)).toBe(total);
     expect(lines.length).toBeLessThan(segs.length / 4);
+  });
+});
+
+describe('far zoom lines', () => {
+  it('keeps every point from about a pixel per tile up', () => {
+    expect(farStep(1.2)).toBe(0);
+    expect(farStep(4)).toBe(0);
+    expect(farStep(1)).toBe(1);
+    expect(farStep(0.5)).toBe(2);
+    expect(farStep(0.2)).toBe(4);
+  });
+  it('drops stair steps within the step but keeps both ends and long runs', () => {
+    const stairs = [0, 0, 1, 0, 1, 1, 2, 1, 2, 2, 3, 2, 3, 3];
+    const s1 = simplifyLine(stairs, 1);
+    expect(s1.slice(0, 2)).toEqual([0, 0]);
+    expect(s1.slice(-2)).toEqual([3, 3]);
+    expect(s1.length).toBeLessThan(stairs.length);
+    for (let k = 2; k < s1.length - 2; k += 2) expect(Math.hypot(s1[k] - s1[k - 2], s1[k + 1] - s1[k - 1])).toBeGreaterThan(1);
+    expect(simplifyLine([0, 0, 10, 0, 10, 8], 1)).toEqual([0, 0, 10, 0, 10, 8]);
+    expect(simplifyLine([0, 0, 5, 0], 4)).toEqual([0, 0, 5, 0]);
+  });
+  it('cuts lines into pieces that share their ends and cover every point', () => {
+    const l: number[] = [];
+    for (let k = 0; k < 100; k++) l.push(k, k % 2);
+    const ch = chunkLines([l, [0, 0, 3, 0]], 10);
+    expect(ch.length).toBe(12); // 100 points in pieces of 10 sharing ends: 11, plus the short line
+    expect(ch[0].pts.slice(-2)).toEqual(ch[1].pts.slice(0, 2));
+    expect(ch[10].pts.slice(-2)).toEqual([99, 1]);
+    expect(ch[0].box).toEqual([0, 0, 9, 1]);
+    expect(ch[11].pts).toEqual([0, 0, 3, 0]);
   });
 });
 

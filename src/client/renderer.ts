@@ -184,7 +184,6 @@ export class Renderer {
     // battle effects: read what is new, then shake the view a few px after a nearby nuke (undone after drawing)
     if (this.shookBy.x !== 0 || this.shookBy.y !== 0) this.unshake(camera);
     this.fx.update(state, camera, nowMs);
-    (globalThis as any).__fxdbg = this.fx; // DEBUG-REMOVE
     const sh = this.fx.shake(nowMs);
     if (sh.x !== 0 || sh.y !== 0) {
       this.shookBy.x = sh.x / camera.zoom;

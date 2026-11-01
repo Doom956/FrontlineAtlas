@@ -84,6 +84,11 @@ interface Pair {
   dirty: boolean;
   builtFrame: number;
   path: Path2D | null;
+  /** zoomed far out: a lighter copy of the path (stair steps under a pixel dropped), rebuilt with the path */
+  farPath: Path2D | null;
+  farStep: number;
+  /** the lines cut into short pieces with their boxes: zoomed in, only the pieces in view are stroked */
+  chunks: { box: [number, number, number, number]; pts: number[] }[];
   segs: number[];
   /** the runs joined into polylines [x0, y0, x1, y1, ...] (clean corners, fewer caps) */
   lines: number[][];
@@ -283,6 +288,55 @@ export function chainSegments(segs: readonly number[]): number[][] {
   return out;
 }
 
+/**
+ * Zoomed far out a tile is about a pixel, and a diagonal border's one-tile stair steps cost a lot to stroke without
+ * showing: the line then drops points closer than this many tiles (about a pixel on screen). 0 = keep every point.
+ */
+export function farStep(zoom: number): number {
+  return zoom >= 1.2 ? 0 : Math.max(1, 2 ** Math.floor(Math.log2(1.2 / zoom)));
+}
+
+/** Points per piece when a front's lines are cut up for culling (pieces share their end points, so lines stay joined). */
+const CHUNK_POINTS = 48;
+
+/** Cuts polylines into pieces of at most `n` points, each with its box; neighbouring pieces share an end point. */
+export function chunkLines(lines: readonly number[][], n: number): { box: [number, number, number, number]; pts: number[] }[] {
+  const out: { box: [number, number, number, number]; pts: number[] }[] = [];
+  for (const l of lines) {
+    const m = l.length / 2;
+    for (let a = 0; a < m - 1; a += n - 1) {
+      const e = Math.min(m, a + n);
+      const pts = l.slice(a * 2, e * 2);
+      let x0 = Infinity;
+      let y0 = Infinity;
+      let x1 = -Infinity;
+      let y1 = -Infinity;
+      for (let k = 0; k < pts.length; k += 2) {
+        if (pts[k] < x0) x0 = pts[k];
+        if (pts[k] > x1) x1 = pts[k];
+        if (pts[k + 1] < y0) y0 = pts[k + 1];
+        if (pts[k + 1] > y1) y1 = pts[k + 1];
+      }
+      out.push({ box: [x0, y0, x1, y1], pts });
+    }
+  }
+  return out;
+}
+
+/** Drops the points of a polyline within `step` tiles of the last kept one (the ends always stay). */
+export function simplifyLine(l: readonly number[], step: number): number[] {
+  if (l.length <= 4) return l.slice();
+  const out = [l[0], l[1]];
+  const t2 = step * step;
+  for (let k = 2; k < l.length - 2; k += 2) {
+    const dx = l[k] - out[out.length - 2];
+    const dy = l[k + 1] - out[out.length - 1];
+    if (dx * dx + dy * dy > t2) out.push(l[k], l[k + 1]);
+  }
+  out.push(l[l.length - 2], l[l.length - 1]);
+  return out;
+}
+
 function near(b: readonly number[], x0: number, y0: number, x1: number, y1: number, margin: number): boolean {
   return !(b[2] < x0 - margin || b[3] < y0 - margin || b[0] > x1 + margin || b[1] > y1 + margin);
 }
@@ -420,7 +474,7 @@ export class FrontLayer {
   }
 
   private newPair(lo: number, hi: number, nowMs: number): Pair {
-    return { lo, hi, edges: new Set(), lastTick: -1, active: false, bornMs: nowMs, seedMs: 0, seedTick: -1, dirty: true, builtFrame: -1, path: null, segs: [], lines: [], box: [0, 0, 0, 0], spots: [], spotFrame: -1e9, spotZoom: NaN, spotsDirty: true };
+    return { lo, hi, edges: new Set(), lastTick: -1, active: false, bornMs: nowMs, seedMs: 0, seedTick: -1, dirty: true, builtFrame: -1, path: null, farPath: null, farStep: 0, chunks: [], segs: [], lines: [], box: [0, 0, 0, 0], spots: [], spotFrame: -1e9, spotZoom: NaN, spotsDirty: true };
   }
 
   /** Rebuilds a pair's edges from the smaller of the two sim border lists, checked against the drawn mirror. */
@@ -492,6 +546,8 @@ export class FrontLayer {
   private build(p: Pair): void {
     p.dirty = false;
     p.builtFrame = this.frame;
+    p.farPath = null;
+    p.farStep = 0;
     const segs = mergeSegments(p.edges, this.w);
     p.segs = segs;
     let x0 = Infinity;
@@ -508,6 +564,7 @@ export class FrontLayer {
     }
     p.box = [x0, y0, x1, y1];
     p.lines = chainSegments(segs);
+    p.chunks = chunkLines(p.lines, CHUNK_POINTS);
     if (typeof Path2D === 'undefined') {
       p.path = null;
       return;
@@ -532,7 +589,7 @@ export class FrontLayer {
     const vx1 = cam.x + cam.viewW / 2 / z + 1;
     const vy1 = cam.y + cam.viewH / 2 / z + 1;
     const pulse = this.reduced ? 0.5 : 0.5 + 0.5 * Math.sin((this.now / 1000) * Math.PI * 1.2);
-    const draw: { p: Pair; a: number; mine: boolean; hot: boolean }[] = [];
+    const draw: { p: Pair; a: number; mine: boolean; hot: boolean; path: Path2D | null }[] = [];
     let budget = REBUILD_EDGES;
     const every = rebuildFrames(z);
     for (const [k, p] of this.pairs) {
@@ -545,7 +602,7 @@ export class FrontLayer {
       if (!near(p.box, vx0, vy0, vx1, vy1, 0)) continue;
       const a = this.pairAlpha(p);
       if (a <= 0.01) continue;
-      draw.push({ p, a, mine: me > 0 && (p.lo === me || p.hi === me), hot: k === this.hoverKey });
+      draw.push({ p, a, mine: me > 0 && (p.lo === me || p.hi === me), hot: k === this.hoverKey, path: this.pathFor(p, z, vx0, vy0, vx1, vy1) });
       this.segments += p.segs.length / 4;
     }
     if (draw.length === 0) return;
@@ -561,23 +618,56 @@ export class FrontLayer {
       ctx.globalAlpha = d.a * (d.mine ? 0.7 : 0.55);
       ctx.strokeStyle = 'rgb(8,10,14)';
       ctx.lineWidth = ((d.mine ? (far ? 4 : 5) : 3.8) + (d.hot ? 1.4 : 0)) / z;
-      this.stroke(ctx, d.p);
+      this.stroke(ctx, d, z);
     }
     for (const d of draw) {
       const base = d.mine ? 0.85 + 0.15 * pulse : 0.72 + 0.16 * pulse;
       ctx.globalAlpha = d.a * (d.hot ? 1 : base);
       ctx.strokeStyle = css(d.mine ? BRASS : d.hot ? mix(BONE, [255, 255, 255], 0.4) : BONE);
       ctx.lineWidth = ((d.mine ? (far ? 2 : 2.4) : 1.7) + (d.hot ? 0.8 : 0)) / z;
-      this.stroke(ctx, d.p);
+      this.stroke(ctx, d, z);
     }
     ctx.restore();
   }
 
-  private stroke(ctx: CanvasRenderingContext2D, p: Pair): void {
-    if (p.path) {
-      ctx.stroke(p.path);
+  /**
+   * The path to stroke this frame (null without Path2D): far out, the lighter copy; a pair reaching past the view, only
+   * its pieces in view (the stroke cost grows with every point, on screen or not); otherwise the whole cached path.
+   */
+  private pathFor(p: Pair, z: number, vx0: number, vy0: number, vx1: number, vy1: number): Path2D | null {
+    if (!p.path) return null;
+    const step = farStep(z);
+    if (step > 0) {
+      if (p.farStep !== step || !p.farPath) {
+        const path = new Path2D();
+        for (const l0 of p.lines) {
+          const l = simplifyLine(l0, step);
+          path.moveTo(l[0], l[1]);
+          for (let k = 2; k < l.length; k += 2) path.lineTo(l[k], l[k + 1]);
+        }
+        p.farPath = path;
+        p.farStep = step;
+      }
+      return p.farPath;
+    }
+    const b = p.box;
+    if (b[0] >= vx0 && b[1] >= vy0 && b[2] <= vx1 && b[3] <= vy1) return p.path;
+    const path = new Path2D();
+    for (const c of p.chunks) {
+      if (!near(c.box, vx0, vy0, vx1, vy1, 4)) continue; // a casing reaches ~3 tiles past its line at z 1.2
+      const l = c.pts;
+      path.moveTo(l[0], l[1]);
+      for (let k = 2; k < l.length; k += 2) path.lineTo(l[k], l[k + 1]);
+    }
+    return path;
+  }
+
+  private stroke(ctx: CanvasRenderingContext2D, d: { p: Pair; path: Path2D | null }, z: number): void {
+    if (d.path) {
+      ctx.stroke(d.path);
       return;
     }
+    const p = d.p;
     ctx.beginPath();
     for (const l of p.lines) {
       ctx.moveTo(l[0], l[1]);

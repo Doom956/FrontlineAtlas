@@ -53,6 +53,8 @@ A territory-control strategy game that runs in your browser. Single player needs
 
 New to it? Press **Tutorial** on the title screen: one 5-minute practice game with the basics. The in-game guide covers the rest when you first need it.
 
+In a war, the border gets a **front line** with arrows into the land being taken (brass for yours); hover it for the speed. Short **map effects** flash when a city changes hands, a ship sinks or a bomb lands (Menu, Map effects off). At the end, the **summary** shows land over time, the key moments and each nation's numbers.
+
 The in-game **How to play** page (title screen, or `?` in a game) has a quick start and a searchable guide.
 
 ## Multiplayer

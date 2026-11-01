@@ -179,7 +179,7 @@ export function howToPlayContent(): HTMLElement {
     { icon: lineIcon('doctrine', 18), title: 'Doctrines', text: `At ${min(DOCTRINE_UNLOCK_SECONDS)}:00 pick a play style: Blitz, Fortress, Siege ...`, key: 'Shift D' },
     { icon: lineIcon('rocket', 18), title: 'Strikes', text: 'A strike icon lights up in the bottom bar when ready: press its key, click the target.' },
     { icon: lineIcon('ally', 18), title: 'Allies', text: 'Click a nation in the standings, then Ally. Allies cannot attack each other.', key: 'P' },
-    { icon: lineIcon('help', 18), title: 'Tutorial', text: 'Title screen, Tutorial: short practice games, one topic each. In games, the guide bar points the way (Menu: Guide).' },
+    { icon: lineIcon('help', 18), title: 'Tutorial', text: 'Title screen, Tutorial: one 5-minute practice game, step by step. In games, the guide bar points the way (Menu: Guide).' },
   ];
   const quick = el('section', 'hw-quick');
   quick.append(
@@ -193,6 +193,7 @@ export function howToPlayContent(): HTMLElement {
   const attackRows: Row[] = [
     { title: 'Target', text: 'A click picks who you hit (nation, tribe or wilderness), not a point: the whole shared border advances. Click again to add troops.' },
     { title: 'Odds', text: `Send more than the defender has at home to lose fewer troops per tile. Past ${forceLimit()}:1 extra troops add little; the odds badge says when.` },
+    { title: 'Front lines', text: 'Borders at war get a bright line with arrows into the land being taken: brass on your fronts, pale on others\'. Hover one for its speed.' },
     { title: 'Hit back', text: 'Attacking a nation that attacks you cancels its attack troop for troop.' },
     { title: 'Retreat', text: `Costs ${pct(RETREAT_LOSS)}% of the troops (nothing in the wilderness).` },
     { title: 'Across water', text: `A transport leaves from your nearest coast. A landing is supplied for ${BEACHHEAD_SUPPLY_SECONDS} s.` },
@@ -203,6 +204,8 @@ export function howToPlayContent(): HTMLElement {
     { title: 'Tribes', text: 'Small grey peoples with an army number. They never attack, accept any alliance (not from a traitor) and are cheap land early.' },
     { title: 'Collapse', text: `A nation under ${ENDGAME_SMALL_TILES} tiles (a tribe: ${TRIBE_ANNEX_TILES}) falls when hit; you get ${min(HUMAN_GRACE_SECONDS)} min to grow first. Pockets walled in by one nation are annexed.` },
     { title: 'Overtime', text: `After ${OVERTIME_MINUTES} min the land share needed to win drops ${pct(OVERTIME_DROP_PER_MINUTE)}% a minute, down to ${pct(OVERTIME_MIN_SHARE)}%.` },
+    { title: 'Map effects', text: 'Short flashes when land or a city changes hands, a ship sinks or a bomb lands. Turn them off in Menu, Map effects.' },
+    { title: 'Summary', text: 'At the end: land over time, the key moments and each nation\'s numbers. After playing on, click the Victory chip to see it again.' },
   ];
   const troopOrder = ['infantry', 'armor', 'artillery'] as const;
   const matchup = table(
