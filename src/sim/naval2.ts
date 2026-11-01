@@ -9,6 +9,7 @@
 //   escort    sticks to own transports (first) and trade ships: an escorted ship takes x NAVY_ESCORT_DAMAGE damage
 //   bombard   parks off an enemy coast (at war) and shells it harder (NAVY_BOMBARD_STANCE_KILL); never chases
 //   blockade  parks off an enemy port (at war); never chases
+//   hold      stays at its post: sinks enemy ships near it like auto, but never sails off to shell a coast
 // Follow my war (warTarget.ts): a player's ships aim bombard / blockade / auto at the owner's war target first (other
 // wars when it has no coast or port in reach); a stance set with a target tile pins them to that nation (Unit.fixed:
 // only it) until the player picks Follow again. Ships on station move to the target's coast when it changes. AI-owned
@@ -699,8 +700,8 @@ const FOLLOW_RECHECK_THINKS = 3;
  */
 export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], wars: Set<number>): void {
   const st = warshipStance(u);
-  // Only auto / hunt chase ships: a chase left over from before a stance change ends here.
-  if (u.state === 2 && st !== 'auto' && st !== 'hunt') {
+  // Only auto / hunt / hold chase ships: a chase left over from before a stance change ends here.
+  if (u.state === 2 && st !== 'auto' && st !== 'hunt' && st !== 'hold') {
     u.state = 0;
     u.chase = 0;
     u.chaseLost = 0;
@@ -727,7 +728,7 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
     }
     return;
   }
-  if (st === 'auto' || st === 'hunt') {
+  if (st === 'auto' || st === 'hunt' || st === 'hold') {
     const hunt = st === 'hunt';
     interceptStep(state, u, ships, wars, (hunt ? NAVY_HUNT_DETECT : WARSHIP_DETECT_RANGE) * navalDetectMul(u), hunt ? NAVY_HUNT_LEASH : WARSHIP_LEASH);
     if (u.state === 1 || u.state === 2) return;
@@ -746,6 +747,9 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
   const keep = (valid: boolean): boolean => valid && (!only || owners[u.station!] === aim);
   switch (st) {
     case 'hunt':
+      return;
+    case 'hold':
+      if (u.state === 3) backToPost(state, u); // left over from another stance
       return;
     case 'auto': {
       if (u.state === 3) {

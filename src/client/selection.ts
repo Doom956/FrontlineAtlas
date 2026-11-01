@@ -1,6 +1,7 @@
 // Selecting and ordering your own warships and tank divisions (client only; the rules stay in the sim).
 //   - click one of your units: select it; Shift+click adds / removes it; Shift+drag a box: select all inside
-//     (input.ts); Shift+W selects every warship, Shift+A every tank division; Esc clears
+//     (input.ts); Shift+W selects every warship, Shift+A every tank division; a double-click on one selects all of
+//     its type on screen; zoomed out a click on your fleet marker selects that fleet (render/fleets.ts); Esc clears
 //   - with a selection, a click on water sends the warships (moveWarships, one action for the group); a click on
 //     your own land drives the divisions there (moveTankDivision); a click on enemy or neutral land next to your
 //     border shows the spearhead preview (spearheadPreview) and a second click on it launches the spearhead
@@ -71,6 +72,30 @@ export function selectAllOf(state: GameState, me: number, type: CommandableType)
   for (const u of state.units) if (u.type === type && isCommandable(u, me)) out.push(u.id);
   out.sort((a, b) => a - b);
   return out.slice(0, MAX_GROUP_UNITS);
+}
+
+/**
+ * Double-click on one of your units: every own unit of its type among `inView` (the ones drawn on screen), oldest
+ * first, capped. [] when the id is not an own warship / division.
+ */
+export function sameTypeInView(state: GameState, me: number, unitId: number, inView: readonly number[]): number[] {
+  const byId = unitById(state);
+  const u = byId.get(unitId);
+  if (!isCommandable(u, me)) return [];
+  const out = new Set<number>();
+  for (const id of inView) {
+    const q = byId.get(id);
+    if (isCommandable(q, me) && q.type === u.type) out.add(id);
+  }
+  out.add(unitId);
+  return [...out].sort((a, b) => a - b).slice(0, MAX_GROUP_UNITS);
+}
+
+/** A click on your fleet marker: selects the fleet; Shift+click adds it (or takes it out when all of it is selected). */
+export function fleetClickSelection(state: GameState, me: number, sel: readonly number[], fleet: readonly number[], add: boolean): number[] {
+  if (!add) return pruneSelection(state, me, [...fleet]);
+  if (fleet.every((id) => sel.includes(id))) return sel.filter((id) => !fleet.includes(id));
+  return pruneSelection(state, me, [...sel, ...fleet.filter((id) => !sel.includes(id))]);
 }
 
 export interface SelectionCounts {

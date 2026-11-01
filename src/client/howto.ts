@@ -311,7 +311,7 @@ export function howToPlayContent(): HTMLElement {
   }));
   const unitHow: Row[] = [
     { title: 'Buy', text: 'Warships, bombers and fighters are in the Military group of the build menu (or at a Port / Airfield). Forces lists everything you own with its orders.', key: 'Y' },
-    { title: 'Orders', text: 'Click your warship (or Select in Forces), then click water to move it. Shift+W selects every warship. Hover any unit to see what it is doing; enemy units heading for you get a red ring.' },
+    { title: 'Orders', text: 'Click your warship (or Select in Forces), then click water to move it. Shift+W selects every warship, a double-click every one on screen; zoomed out, close ships show as one fleet marker with a count (click it for the fleet). The Forces drawer (Y) gives all of them one order. Hover any unit to see what it is doing; enemy units heading for you get a red ring.' },
     { title: 'Follow my war', text: 'Air missions, Bombard / Blockade ships and Support-front tanks follow your war by default: they switch to the nation you attack. A map click fixes a target; Follow my war switches back.' },
   ];
   const tank = UNITS.tankDivision;
@@ -394,6 +394,7 @@ export function howToPlayContent(): HTMLElement {
     [['U', 'Y', 'T', 'P', 'J', 'L'], 'Army, Forces, Research, Diplomacy, Events, Map key (terrain and symbols)'],
     [['Shift D'], 'Doctrine picker'],
     [['Shift W', 'Shift A'], 'Select every warship / tank division'],
+    [['Double click'], 'On your warship or tank division: select all of that type on screen'],
     [['Shift drag'], 'Box: select your warships, tank divisions and buildings inside'],
     [['U', 'Shift U'], 'With buildings selected: upgrade them / switch x1, x3, x5'],
     [['Z X K I O'], 'Strikes: barrage, bomb, paradrop, rocket, atom bomb'],

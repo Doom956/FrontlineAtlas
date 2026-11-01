@@ -1,5 +1,5 @@
 // Orders bar: a slim strip above the advisor line, only while own warships or tank divisions are selected.
-//   Warships        Auto · Hunt · Escort · Bombard · Blockade (the stance they share is lit); Bombard / Blockade then
+//   Warships        Auto · Hold · Hunt · Escort · Bombard · Blockade (the stance they share is lit); Bombard / Blockade then
 //                   ask for a coast / port click (optional: Esc lets the ships pick the nearest one)
 //   Tank divisions  Hold · Support front (then click a front) · Refit, veterancy pips, strength bar (refit progress)
 // One line under the buttons explains the stance under the pointer (or the lit one) and, for divisions, the

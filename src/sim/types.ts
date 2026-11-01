@@ -136,8 +136,9 @@ export const NAVAL_VARIANTS: readonly NavalVariant[] = ['destroyer', 'battleship
  * coast near your fronts, return to post; hunt = chase ships over a wide zone; escort = stick to own transports and
  * trade ships (they become much harder to sink); bombard = park off an enemy coast; blockade = park off an enemy port.
  */
-export type WarshipStance = 'auto' | 'hunt' | 'escort' | 'bombard' | 'blockade';
-export const WARSHIP_STANCES: readonly WarshipStance[] = ['auto', 'hunt', 'escort', 'bombard', 'blockade'];
+export type WarshipStance = 'auto' | 'hunt' | 'escort' | 'bombard' | 'blockade' | 'hold';
+// 'hold' last: hash.ts mixes the index, so the older stances keep theirs
+export const WARSHIP_STANCES: readonly WarshipStance[] = ['auto', 'hunt', 'escort', 'bombard', 'blockade', 'hold'];
 /**
  * Tank division modes (armor2.ts; Unit.mode, Action setDivisionMode). hold = stays where it is (refits slowly in
  * place); support = holds behind a chosen front and launches spearheads into weak spots there when ready (refits at a

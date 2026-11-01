@@ -226,3 +226,85 @@
   border-color: var(--olive-d);
   cursor: default;
 }
+
+/* Forces drawer group bar (hud/groupBar.ts): "Warships 14" + one order for all of them */
+.gbar {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: 'head btns' 'line line' 'hand hand' 'extra extra';
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 4px;
+  margin: 0 0 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--brass-lo);
+  border-radius: var(--r);
+  background: rgba(0, 0, 0, 0.14);
+}
+.gb-head {
+  grid-area: head;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+.gb-t {
+  font: 600 13px/1.2 var(--f-label);
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+.gb-n {
+  font: 600 13px/1.2 var(--f-label);
+  color: var(--brass-hi);
+  font-variant-numeric: tabular-nums;
+}
+.gb-btns {
+  grid-area: btns;
+  justify-content: flex-end;
+}
+.gb-b .ico {
+  display: none;
+}
+.gb-line {
+  grid-area: line;
+  font: 400 11.5px/1.3 var(--f-ui);
+  color: var(--dim);
+  min-height: 15px;
+}
+.gb-hand {
+  grid-area: hand;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font: 400 11.5px/1.3 var(--f-ui);
+  color: #f0b07a;
+}
+.gb-hand.hidden,
+.gb-extra.hidden,
+.gbar.hidden {
+  display: none;
+}
+.gb-extra {
+  grid-area: extra;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.gb-tg.on {
+  color: var(--olive);
+  border-color: var(--olive-d);
+}
+.fg-more {
+  margin: 0 0 4px;
+}
+@media (max-width: 720px) {
+  .gbar {
+    grid-template-columns: 1fr;
+    grid-template-areas: 'head' 'btns' 'line' 'hand' 'extra';
+  }
+  .gb-btns {
+    justify-content: flex-start;
+  }
+}

@@ -16,6 +16,7 @@ import { areAllied } from '../sim/diplomacy';
 import { sameWater } from '../sim/grid';
 import { divisionMode, divisionStrength } from '../sim/armor2';
 import { AIR_MISSION_INFO, airMissionOf, airPatrolRadius, airRaidOn, airSupportRadius, airWingCap, airWingRange, airWingSize, wingOf } from '../sim/airwings';
+import { atWar as warRunning } from '../sim/allies';
 import { atWar, blockadedPorts, portBlockadedBy, warshipStance } from '../sim/naval2';
 import { hasTech } from '../sim/tech';
 import type { SpearheadPreview } from '../sim/tanks';
@@ -39,12 +40,13 @@ export interface ChoiceInfo {
 
 export const STANCE_INFO: Record<WarshipStance, ChoiceInfo> = {
   auto: { name: 'Auto', icon: 'shield', help: 'Guards its post: sinks enemy ships nearby and shells enemy coast near your fronts while at war.' },
+  hold: { name: 'Hold', icon: 'stop', help: 'Stays at its post: sinks enemy ships that come near, but never sails off to shell a coast.' },
   hunt: { name: 'Hunt', icon: 'target', help: 'Chases enemy ships over a wide area.' },
   escort: { name: 'Escort', icon: 'transport', help: 'Sticks to your transports and trade ships: escorted ships are much harder to sink.' },
   bombard: { name: 'Bombard', icon: 'barrage', help: `Parks off an enemy coast: land within ${NAVY_SUPPORT_RANGE} tiles is cheaper and faster to take and loses defenders.`, pick: 'bombard' },
   blockade: { name: 'Blockade', icon: 'embargo', help: `Parks off an enemy port (within ${NAVY_BLOCKADE_RANGE} tiles): it loses trade, its region's supply drops, its trade ships are captured.`, pick: 'blockade' },
 };
-export const STANCE_ORDER: readonly WarshipStance[] = ['auto', 'hunt', 'escort', 'bombard', 'blockade'];
+export const STANCE_ORDER: readonly WarshipStance[] = ['auto', 'hold', 'hunt', 'escort', 'bombard', 'blockade'];
 
 export const MODE_INFO: Record<DivisionMode, ChoiceInfo> = {
   hold: { name: 'Hold', icon: 'stop', help: 'Stays where it is and defends the land around it; refits slowly in place.' },
@@ -203,7 +205,9 @@ export function wingStatus(state: GameState, b: Building): WingStatus {
       break;
     case 'strategic': {
       const raid = foe > 0 ? airRaidOn(state, foe) : null;
-      line = b.bombers <= 0 ? `Strategic: no bombers here (${w?.refill ? 'buying more' : 'build some'})` : foe <= 0 ? 'Strategic: raids the next nation you attack' : `Raiding ${fname}${raid ? ` · income −${Math.round(raid.cut * 100)}%` : ''} · next ${nextIn} s`;
+      // a Fixed wing flies only while that war runs (airwings: atWar); a following one raids its war target
+      const idleFixed = foe > 0 && !w?.follow && !warRunning(state, b.owner, foe);
+      line = b.bombers <= 0 ? `Strategic: no bombers here (${w?.refill ? 'buying more' : 'build some'})` : foe <= 0 ? 'Strategic: raids the next nation you attack' : idleFixed ? `Waiting: no war with ${fname}` : `Raiding ${fname}${raid ? ` · income −${Math.round(raid.cut * 100)}%` : ''} · next ${nextIn} s`;
       break;
     }
     case 'superiority':

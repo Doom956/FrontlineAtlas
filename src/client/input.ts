@@ -17,6 +17,8 @@ import {
   boxSelection,
   nextUpgradeLevels,
   NO_BUILDING_SEL,
+  fleetClickSelection,
+  sameTypeInView,
   selectAllOf,
   selectionClick,
   spawnWarshipAction,
@@ -267,8 +269,14 @@ export function setupInput(deps: InputDeps): () => void {
     const tile = tileAt(p.x, p.y);
     // Clicking one of your warships or tank divisions selects it (Shift+click adds or removes it); the next click
     // gives the selection its order (selection.ts).
-    const unit = pr.button === 0 && ui.mode.kind === 'none' ? renderer.ownWarshipAt(p.x, p.y) : -1;
-    if (unit >= 0) {
+    const fleet = pr.button === 0 && ui.mode.kind === 'none' ? renderer.ownFleetAt(p.x, p.y) : null;
+    const unit = pr.button === 0 && ui.mode.kind === 'none' && !fleet ? renderer.ownWarshipAt(p.x, p.y) : -1;
+    const st = fleet ? getState() : null;
+    if (fleet && st) {
+      // zoomed out: a fleet marker selects the whole fleet (render/fleets.ts)
+      ui.selection = fleetClickSelection(st, st.humanId, ui.selection, fleet, e.shiftKey);
+      ui.pendingSpearhead = null;
+    } else if (unit >= 0) {
       ui.selection = e.shiftKey ? toggleInSelection(ui.selection, unit) : [unit];
       ui.pendingSpearhead = null;
     } else if (pr.button === 0) leftClick(tile, e.shiftKey);
@@ -277,6 +285,21 @@ export function setupInput(deps: InputDeps): () => void {
     else if (pr.button === 2) openMenuAt(e.clientX, e.clientY, tile);
   };
   canvas.addEventListener('pointerup', (e) => endPress(e, false), opts);
+  // Double-click on one of your warships or tank divisions: all of that type on screen (the first click already
+  // selected it; selection.ts)
+  canvas.addEventListener(
+    'dblclick',
+    (e) => {
+      const s = getState();
+      if (!s || !s.humanId || ui.mode.kind !== 'none' || e.shiftKey) return;
+      const p = local(e);
+      const unit = renderer.ownFleetAt(p.x, p.y)?.[0] ?? renderer.ownWarshipAt(p.x, p.y);
+      if (unit < 0) return;
+      ui.selection = sameTypeInView(s, s.humanId, unit, renderer.ownUnitsIn(0, 0, camera.viewW, camera.viewH));
+      ui.pendingSpearhead = null;
+    },
+    opts,
+  );
   canvas.addEventListener('pointercancel', (e) => endPress(e, true), opts);
   canvas.addEventListener(
     'pointerleave',

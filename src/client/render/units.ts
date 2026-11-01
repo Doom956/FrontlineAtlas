@@ -3,7 +3,9 @@
 // many units in one area stay readable; missiles trail a long fading contrail, planes a faint short one and ships a
 // short V wake. A small troop pill on transports at mid/close zoom; your own warships carry a tiny tick (a ring only
 // while one is hovered or picked, UnitLayer.focusId); they can be clicked to give orders, the hit area is larger than
-// the drawing. At far zoom units on the same pixel are drawn once and only missiles keep their trails.
+// the drawing. At far zoom units on the same pixel are drawn once and only missiles keep their trails. Zoomed out
+// (FLEET_ZOOM), warships of one owner within FLEET_RADIUS tiles draw as one fleet marker with a count badge
+// (render/fleets.ts); a click on your own marker selects that fleet (ownFleetAt).
 import { TICKS_PER_SECOND } from '../../sim/config';
 import { armyTotal } from '../../sim/economy';
 import type { GameState, Unit } from '../../sim/types';
@@ -12,6 +14,7 @@ import { clamp, css, formatCount, MAP_NUM_FAMILY, type RGB } from './common';
 import { drawTrails, GLYPHS, type Inst, strokeGlyphs } from './unitGlyphs';
 import { isIncoming } from '../forces';
 import { unitVisibleTo } from '../../sim/techtree';
+import { clusterFleets, FLEET_RADIUS, FLEET_ZOOM, type FleetPoint } from './fleets';
 
 const HIST = 3;
 /** Paratroopers drifting down where a cargo plane arrived (client-only effect). */
@@ -23,7 +26,8 @@ const UNDER = 'rgba(6,9,15,0.6)';
 const glyphPx = (z: number): number => clamp(7 + z * 1.2, 8, 10);
 const strokePx = (z: number): number => clamp(1.2 + z * 0.15, 1.25, 1.7);
 
-type Vis = Inst & { u: Unit };
+/** `fleet`: this entry is a fleet marker standing for these ships (the lead, u, is the lowest id). */
+type Vis = Inst & { u: Unit; fleet?: number[] };
 
 interface Track {
   px: number;
@@ -47,6 +51,10 @@ export class UnitLayer {
   private hits: number[] = [];
   /** every unit drawn last frame: id, screen x, y, radius (hover cards for any unit) */
   private allHits: number[] = [];
+  /** own fleet markers drawn last frame: member ids, screen x, y, radius */
+  private fleetHits: { ids: number[]; x: number; y: number; r: number }[] = [];
+  /** fleet markers drawn last frame (stats / tests) */
+  fleets = 0;
   /** cargo planes that reached their drop tile: where and when, for the parachutes */
   private drops: { x: number; y: number; owner: number; born: number }[] = [];
   private planes = new Map<number, { tx: number; ty: number; owner: number }>();
@@ -144,6 +152,20 @@ export class UnitLayer {
     return best;
   }
 
+  /** The ships of your own fleet marker under the screen point (zoomed out), or null. */
+  ownFleetAt(sx: number, sy: number): number[] | null {
+    let best: number[] | null = null;
+    let bd = Infinity;
+    for (const f of this.fleetHits) {
+      const d = (f.x - sx) ** 2 + (f.y - sy) ** 2;
+      if (d <= f.r * f.r && d < bd) {
+        bd = d;
+        best = f.ids;
+      }
+    }
+    return best;
+  }
+
   /** Ids of your own warships and tank divisions drawn inside a screen rectangle (Shift+drag box selection). */
   ownUnitsIn(x0: number, y0: number, x1: number, y1: number): number[] {
     const lx = Math.min(x0, x1);
@@ -184,6 +206,8 @@ export class UnitLayer {
     this.drawn = 0;
     this.hits.length = 0;
     this.allHits.length = 0;
+    this.fleetHits.length = 0;
+    this.fleets = 0;
     if (this.drops.length) this.drawDrops(ctx, cam, colors, nowMs);
     if (state.units.length === 0) return;
     const z = cam.zoom;
@@ -191,8 +215,9 @@ export class UnitLayer {
     const oy = cam.viewH / 2 - cam.y * z;
     const me = humanId;
     const base = glyphPx(z);
-    const visible: Vis[] = [];
+    let visible: Vis[] = [];
     const taken = new Set<number>();
+    const grouping = z < FLEET_ZOOM;
     for (const u of state.units) {
       const t = this.tracks.get(u.id);
       const ux = t ? t.px + (t.cx - t.px) * frac : u.x;
@@ -205,7 +230,7 @@ export class UnitLayer {
       if (u.variant === 'submarine' && me > 0 && !unitVisibleTo(state, me, u)) continue;
       const own = me > 0 && u.owner === me;
       // far out, units less than a pixel apart are drawn once (your own and the cargo carriers always)
-      if (z < 1 && !own && u.type !== 'transport' && u.type !== 'transportPlane') {
+      if (z < 1 && !own && u.type !== 'transport' && u.type !== 'transportPlane' && u.type !== 'warship') {
         const key = (Math.floor(x) + 64) * 16384 + Math.floor(y) + 64;
         if (taken.has(key)) continue;
         taken.add(key);
@@ -222,7 +247,31 @@ export class UnitLayer {
         moving = t.hn >= 2 && Math.abs(t.hx[0] - t.hx[1]) + Math.abs(t.hy[0] - t.hy[1]) > 1e-4;
       }
       visible.push({ u, type: u.type, x, y, S, angle, moving });
-      this.allHits.push(u.id, x, y, Math.max(10, S + 5));
+    }
+    // zoomed out: close warships of one owner become one marker (screen px, so the radius scales with the zoom)
+    if (grouping) {
+      const pts: FleetPoint[] = [];
+      for (const e of visible) if (e.type === 'warship') pts.push({ id: e.u.id, owner: e.u.owner, x: e.x, y: e.y });
+      const fleets = pts.length > 1 ? clusterFleets(pts, FLEET_RADIUS * z) : [];
+      if (fleets.length) {
+        const byId = new Map<number, Vis>();
+        for (const e of visible) if (e.type === 'warship') byId.set(e.u.id, e);
+        const gone = new Set<number>();
+        const marks: Vis[] = [];
+        for (const f of fleets) {
+          const lead = byId.get(f.ids[0])!;
+          for (const id of f.ids) gone.add(id);
+          marks.push({ u: lead.u, type: 'warship', x: f.x, y: f.y, S: lead.S * 1.25, angle: lead.angle, moving: false, fleet: f.ids });
+        }
+        visible = visible.filter((e) => e.type !== 'warship' || !gone.has(e.u.id));
+        visible.push(...marks);
+        this.fleets = marks.length;
+      }
+    }
+    for (const e of visible) {
+      const r = Math.max(10, e.S + 5);
+      if (e.fleet) for (const id of e.fleet) this.allHits.push(id, e.x, e.y, r);
+      else this.allHits.push(e.u.id, e.x, e.y, r);
     }
     drawTrails(ctx, visible, z >= 0.45);
     // glyphs: one dark under-stroke, one faint fill, one colour stroke (and solid cargo blocks) per owner
@@ -250,7 +299,8 @@ export class UnitLayer {
       for (const e of visible) {
         if (e.u.owner !== me || (e.type !== 'warship' && e.type !== 'tankDivision')) continue;
         const r = e.S + 3;
-        if (e.u.id === this.focusId || this.selected.has(e.u.id)) {
+        const ids = e.fleet;
+        if (ids ? ids.some((id) => id === this.focusId || this.selected.has(id)) : e.u.id === this.focusId || this.selected.has(e.u.id)) {
           ctx.moveTo(e.x + r, e.y);
           ctx.arc(e.x, e.y, r, 0, Math.PI * 2);
           ring = true;
@@ -258,7 +308,11 @@ export class UnitLayer {
           ctx.moveTo(e.x - 2, e.y + e.S * 0.5 + 3);
           ctx.lineTo(e.x + 2, e.y + e.S * 0.5 + 3);
         }
-        this.hits.push(e.u.id, e.x, e.y, Math.max(14, e.S + 6));
+        if (ids) {
+          // every ship of the fleet sits under the marker (box selection, hover); a click takes the whole fleet
+          for (const id of ids) this.hits.push(id, e.x, e.y, Math.max(14, e.S + 6));
+          this.fleetHits.push({ ids, x: e.x, y: e.y, r: Math.max(14, e.S + 6) });
+        } else this.hits.push(e.u.id, e.x, e.y, Math.max(14, e.S + 6));
       }
       ctx.lineWidth = ring ? 1.25 : 1.5;
       ctx.strokeStyle = 'rgba(255,255,255,0.75)';
@@ -279,6 +333,14 @@ export class UnitLayer {
         ctx.lineWidth = 1.25;
         ctx.strokeStyle = `rgba(255,107,94,${(0.45 + 0.25 * Math.sin(nowMs / 260)).toFixed(3)})`;
         ctx.stroke();
+      }
+    }
+    // fleet markers: the number of ships in a small badge at the top right (owner-coloured edge)
+    if (this.fleets) {
+      for (const e of visible) {
+        if (!e.fleet) continue;
+        const c = colors[e.u.owner] ?? [200, 200, 200];
+        countBadge(ctx, e.x + e.S * 0.9, e.y - e.S * 0.9, String(e.fleet.length), me > 0 && e.u.owner === me ? '#ffe98a' : css(c));
       }
     }
     // transports: a small troop pill and, on cargo planes, a tiny parachute mark (mid and close zoom)
@@ -351,6 +413,24 @@ function chute(ctx: CanvasRenderingContext2D, x: number, y: number, color: strin
     ctx.strokeStyle = pass === 0 ? UNDER : color;
     ctx.stroke();
   }
+}
+
+/** A fleet's ship count: a small round badge (a pill for 10+). */
+function countBadge(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, edge: string): void {
+  ctx.font = `600 9px ${MAP_NUM_FAMILY}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const bh = 12;
+  const bw = Math.max(bh, ctx.measureText(text).width + 6);
+  ctx.beginPath();
+  ctx.roundRect(x - bw / 2, y - bh / 2, bw, bh, bh / 2);
+  ctx.fillStyle = 'rgba(10,13,21,0.88)';
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = edge;
+  ctx.stroke();
+  ctx.fillStyle = '#fff';
+  ctx.fillText(text, x, y + 0.5);
 }
 
 /** Small rounded label with a coloured edge for troop counts; `arrow` marks your own push (up) / an incoming one (down). */

@@ -326,6 +326,11 @@ export class Renderer {
     return this.units.ownWarshipAt(sx, sy);
   }
 
+  /** The ships of your own fleet marker under a canvas point (CSS px; zoomed out), or null. */
+  ownFleetAt(sx: number, sy: number): number[] | null {
+    return this.units.ownFleetAt(sx, sy);
+  }
+
   /** Ids of your own warships and tank divisions drawn inside a canvas rectangle (CSS px): box selection. */
   ownUnitsIn(x0: number, y0: number, x1: number, y1: number): number[] {
     return this.units.ownUnitsIn(x0, y0, x1, y1);

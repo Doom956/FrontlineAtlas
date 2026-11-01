@@ -19,10 +19,11 @@ import { aircraftAt, buildUnit, hpText, priceText, UNIT_TEXT, unitBuildStatus, u
 import { iconDataUrl, type IconId } from '../icons';
 import { formatCount } from '../render/common';
 import { aimStrike, STRIKES, strikeStatus, type StrikeId } from '../strikes';
-import { divisionOrderLine, pillarSummary, setMission, STANCE_INFO, vetOf, warshipOrderLine } from '../pillars';
+import { airReady, divisionOrderLine, pillarSummary, setMission, STANCE_INFO, vetOf, warshipOrderLine } from '../pillars';
 import { warshipStance } from '../../sim/naval2';
 import { AirPanel } from './airPanel';
-import { el, sectionTitle, setText, setTip, type DrawerId, type HudCtx } from './dom';
+import { GroupBar } from './groupBar';
+import { el, sectionTitle, setText, setTip, setVisible, type DrawerId, type HudCtx } from './dom';
 import type { DrawerPage } from './drawers';
 import { iconSpan, lineIcon, worldGlyph } from './glyph';
 
@@ -48,6 +49,9 @@ interface RowSpec {
   /** a panel under the row (an airfield's mission selector, hud/airPanel.ts); kept across rebuilds by its owner */
   extra?: HTMLElement;
 }
+
+/** More rows than this: the list folds away behind "Show each" (the group bar orders them all). */
+const FOLD_AT = 6;
 
 function pic(p: RowSpec['pic'], px: number): HTMLElement {
   if (p.building) return iconSpan(worldGlyph(p.building, px), 'fr-ic');
@@ -75,8 +79,10 @@ class Group {
   private statusEls: HTMLElement[] = [];
   private headBtns: HTMLButtonElement[] = [];
   private rowBtns: HTMLButtonElement[][] = [];
+  private more: HTMLButtonElement;
+  private open = false;
 
-  constructor(title: string, test: string, private say: (text: string) => void) {
+  constructor(title: string, test: string, private say: (text: string) => void, bar?: HTMLElement) {
     this.el = el('section', 'fgroup');
     this.el.dataset.test = `forces-${test}`;
     this.head = el('div', 'fg-head');
@@ -84,7 +90,14 @@ class Group {
     this.head.append(sectionTitle(title), this.headActs);
     this.list = el('div', 'fg-list');
     this.empty = el('p', 'note fg-empty');
-    this.el.append(this.head, this.list, this.empty);
+    this.more = el('button', 'wr-btn mini ghost fg-more hidden');
+    this.more.type = 'button';
+    this.more.dataset.test = `forces-${test}-more`;
+    this.more.addEventListener('click', () => {
+      this.open = !this.open;
+      this.key = ''; // rebuild: the label and the list change
+    });
+    this.el.append(this.head, ...(bar ? [bar] : []), this.more, this.list, this.empty);
   }
 
   /** A row / header button; an unavailable one stays focusable and says why when pressed. */
@@ -143,6 +156,11 @@ class Group {
         }),
       );
       setText(this.empty, empty);
+      const fold = rows.length > FOLD_AT;
+      setVisible(this.more, fold);
+      setText(this.more, this.open ? 'Hide the list' : `Show each (${rows.length})`);
+      this.more.setAttribute('aria-expanded', String(this.open));
+      setVisible(this.list, !fold || this.open);
     }
     rows.forEach((r, k) => {
       const st = this.statusEls[k];
@@ -171,6 +189,10 @@ export class ForcesPage implements DrawerPage {
   private land: Group;
   /** each airfield's mission selector, by airfield tile (kept so its buttons keep hover and focus) */
   private airPanels = new Map<number, AirPanel>();
+  /** one order for every warship / airfield / tank division (hud/groupBar.ts) */
+  private shipBar: GroupBar;
+  private airBar: GroupBar;
+  private tankBar: GroupBar;
   /** one line: what each pillar is doing ("3 warships, 2 at work · 1 division on a front · 1 of 2 wings on a mission") */
   private summary = el('p', 'note forces-sum');
 
@@ -179,12 +201,15 @@ export class ForcesPage implements DrawerPage {
       ctx.toast(t, 'info');
       ctx.sound('uiError');
     };
-    this.fleet = new Group('Fleet', 'fleet', say);
-    this.air = new Group('Air', 'air', say);
+    this.shipBar = new GroupBar(ctx, 'warship');
+    this.airBar = new GroupBar(ctx, 'air');
+    this.tankBar = new GroupBar(ctx, 'division');
+    this.fleet = new Group('Fleet', 'fleet', say, this.shipBar.el);
+    this.air = new Group('Air', 'air', say, this.airBar.el);
     this.missiles = new Group('Missiles', 'missiles', say);
     this.artillery = new Group('Artillery', 'artillery', say);
-    this.land = new Group('Land', 'land', say);
-    const intro = el('p', 'note', 'Click a unit\'s name to find it. Select warships or tank divisions (click, Shift+click, Shift+drag a box; Shift+W all warships, Shift+A all divisions), then click where they go. Transports: click land across the sea. Esc cancels.');
+    this.land = new Group('Land', 'land', say, this.tankBar.el);
+    const intro = el('p', 'note', 'Click a unit\'s name to find it. Select warships or tank divisions (click, Shift+click, Shift+drag a box; double-click one for all of its kind in view; Shift+W all warships, Shift+A all divisions), then click where they go. The bar at the top of a group orders all of them at once. Transports: click land across the sea. Esc cancels.');
     this.summary.dataset.test = 'forces-summary';
     this.root.append(intro, this.summary, this.fleet.el, this.land.el, this.air.el, this.missiles.el, this.artillery.el);
   }
@@ -284,7 +309,7 @@ export class ForcesPage implements DrawerPage {
             {
               label: sel ? 'Selected' : 'Select',
               cls: sel ? 'on' : '',
-              tip: 'Select it: set its stance (Auto, Hunt, Escort, Bombard, Blockade) or click water to send it there',
+              tip: 'Select it: set its stance (Auto, Hold, Hunt, Escort, Bombard, Blockade) or click water to send it there',
               run: () => {
                 ctx.ui.mode = { kind: 'none' };
                 ctx.ui.selection = [u.id];
@@ -311,6 +336,7 @@ export class ForcesPage implements DrawerPage {
             ? `Warships: ${UNIT_TEXT.warship.unlock.toLowerCase()}.`
             : 'No warships yet: + Warship, then click water near your Port.';
       if (ships.length > 1) head.push({ label: 'All', tip: 'Select every warship (Shift+W)', run: () => this.selectAll(s, me, 'warship') });
+      this.shipBar.update(s, me, 2);
       this.fleet.set(head, rows, empty, focus);
     }
 
@@ -363,6 +389,7 @@ export class ForcesPage implements DrawerPage {
         },
       ];
       if (tanks.length > 1) head.push({ label: 'All', tip: 'Select every tank division (Shift+A)', run: () => this.selectAll(s, me, 'tankDivision') });
+      this.tankBar.update(s, me, 2);
       const empty = tanks.length || building.length ? '' : hasTech(me, 'mechanization') ? 'No tank divisions yet: + Tank division, then click one of your factories.' : 'Tank divisions: research Mechanization and build a Factory.';
       this.land.set(head, rows, empty, focus);
     }
@@ -412,7 +439,7 @@ export class ForcesPage implements DrawerPage {
       const ready = fields.filter((b) => b.buildLeft <= 0);
       if (ready.length > 1 && hasTech(me, 'flight') && unitAllowed(s, 'bomber')) {
         head.push({
-          label: 'All: support',
+          label: 'All: pick a front',
           icon: 'attack',
           tip: 'Every airfield in reach bombs ahead of your attack on one front: click the attack or front',
           run: () => {
@@ -422,6 +449,7 @@ export class ForcesPage implements DrawerPage {
           },
         });
       }
+      this.airBar.update(s, me, allowed && airReady(me) && unitAllowed(s, 'bomber') ? 2 : Infinity);
       this.air.set(head, rows, empty, focus);
     }
 
