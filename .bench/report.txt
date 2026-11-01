@@ -1,0 +1,9 @@
+Frontline Atlas human bench report from 1 file(s): 144 of 144 games.
+map          diff    runs  alive10  alive20  land10  land20  rank20  1st atk  wars10  atkrs10   died  death min  wins  AI won  AI win min
+medium       easy      24     100%     100%      6%      7%     7.0    15.2m       1      0.0   0/24          -  0/24    0/24           -
+medium       normal    24     100%     100%      5%      4%     6.0     9.4m       1      1.0   0/24          -  0/24    0/24           -
+medium       hard      24     100%      88%      4%      0%     6.5     6.4m       1      1.0  12/24       26.1  0/24    2/24        29.3
+world:world  easy      24     100%     100%      4%      4%     7.5    15.2m       0      0.0   0/24          -  0/24    0/24           -
+world:world  normal    24     100%     100%      3%      3%     7.0     9.7m       1      1.0   0/24          -  0/24    0/24           -
+world:world  hard      24     100%     100%      3%      0%     8.0     6.3m       1      1.0  10/24       24.8  0/24    1/24        29.0
+(alive = alive with no AI win yet; land = median share of all land; rank among 9 nations by land, dead = last; 1st atk = median minute of the first AI nation attack; wars10 = most AI nations attacking at once in the first 10 min (worst run); atkrs10 = median distinct AI attackers in the first 10 min; died = bot eliminated before the cap, death min = median minute; AI won = an AI reached the victory share while the bot lived; cap 30 min)
