@@ -22,6 +22,7 @@ import type { SpearheadPreview } from '../sim/tanks';
 import { isWater } from '../sim/types';
 import type { Action, AirMission, Building, DivisionMode, GameState, Player, Unit, WarshipStance } from '../sim/types';
 import type { Dispatch, UiState } from './uiState';
+import { followOf, followsWar } from './follow';
 
 export type PillarPick = 'bombard' | 'blockade' | 'front' | 'airSupport' | 'airStrategic' | 'airSuperiority';
 
@@ -47,7 +48,7 @@ export const STANCE_ORDER: readonly WarshipStance[] = ['auto', 'hunt', 'escort',
 
 export const MODE_INFO: Record<DivisionMode, ChoiceInfo> = {
   hold: { name: 'Hold', icon: 'stop', help: 'Stays where it is and defends the land around it; refits slowly in place.' },
-  support: { name: 'Support front', icon: 'attack', help: 'Holds behind a front you pick and spearheads into its weak spots by itself when ready.', pick: 'front' },
+  support: { name: 'Support front', icon: 'attack', help: 'Holds behind your main front (it follows your war) and spearheads into its weak spots by itself when ready.', pick: 'front' },
   refit: { name: 'Refit', icon: 'upgrade', help: 'Drives to your nearest Factory and refills its tanks there, then holds.' },
 };
 export const MODE_ORDER: readonly DivisionMode[] = ['hold', 'support', 'refit'];
@@ -62,12 +63,18 @@ export function airInfo(m: AirMission): ChoiceInfo {
 
 /** The chip line while picking. */
 export const PICK_LABEL: Record<PillarPick, string> = {
-  bombard: 'Bombard: click an enemy coast. Esc lets them pick the nearest one.',
-  blockade: 'Blockade: click an enemy port. Esc lets them pick the nearest one.',
+  bombard: 'Bombard: following your war. Click an enemy coast to fix one, or Esc.',
+  blockade: 'Blockade: following your war. Click an enemy port to fix one, or Esc.',
+  front: 'Support front: following your war. Click a front to fix one, or Esc.',
+  airSupport: 'Air support: following your war. Click an attack or front to fix one, or Esc.',
+  airStrategic: 'Strategic bombing: following your war. Click a nation to raid to fix it, or Esc.',
+  airSuperiority: 'Air superiority: patrols over your main front. Click to fix the patrol, or Esc.',
+};
+/** The old pick lines (a target is needed): when the sim refuses a mission without one. */
+const PICK_NEEDED: Partial<Record<PillarPick, string>> = {
   front: 'Support front: click the front to hold behind. Esc cancels.',
   airSupport: 'Air support: click an attack or front. Esc cancels.',
   airStrategic: 'Strategic bombing: click a city or any land of the nation to raid. Esc cancels.',
-  airSuperiority: 'Air superiority: click where the fighters patrol (your land or the front). Esc patrols over the airfield.',
 };
 
 // ------------------------------------------------------------------------------------------------ helpers
@@ -190,12 +197,13 @@ export function wingStatus(state: GameState, b: Building): WingStatus {
   switch (mission) {
     case 'support':
       if (b.bombers <= 0) line = `Support: no bombers here (${w?.refill ? 'buying more' : 'build some'})`;
+      else if (foe <= 0) line = 'Support: the bombers join your next attack';
       else if (foe > 0 && !state.attacks.some((a) => a.attacker === b.owner && a.target === foe)) line = `Support: attack ${fname} on this front and the bombers join in`;
       else line = `Supporting your attack on ${fname} · next sortie ${nextIn} s`;
       break;
     case 'strategic': {
       const raid = foe > 0 ? airRaidOn(state, foe) : null;
-      line = b.bombers <= 0 ? `Strategic: no bombers here (${w?.refill ? 'buying more' : 'build some'})` : `Raiding ${fname}${raid ? ` · income −${Math.round(raid.cut * 100)}%` : ''} · next ${nextIn} s`;
+      line = b.bombers <= 0 ? `Strategic: no bombers here (${w?.refill ? 'buying more' : 'build some'})` : foe <= 0 ? 'Strategic: raids the next nation you attack' : `Raiding ${fname}${raid ? ` · income −${Math.round(raid.cut * 100)}%` : ''} · next ${nextIn} s`;
       break;
     }
     case 'superiority':
@@ -228,7 +236,8 @@ export function wingStatus(state: GameState, b: Building): WingStatus {
 export function setStance(state: GameState, ui: UiState, dispatch: Dispatch, ids: readonly number[], stance: WarshipStance): string {
   const ships = ownUnits(state, state.humanId, ids, 'warship').map((u) => u.id).slice(0, MAX_GROUP_UNITS);
   if (!ships.length) return 'Select warships first';
-  const r = dispatch({ type: 'setUnitStance', unitIds: ships, stance });
+  // a new stance follows your war (Bombard / Blockade / Auto); a map click then fixes it
+  const r = dispatch(followsWar('warship', stance) ? { type: 'setUnitStance', unitIds: ships, stance, follow: true } : { type: 'setUnitStance', unitIds: ships, stance });
   if (!r.ok) return r.reason ?? 'Not possible now';
   const pick = STANCE_INFO[stance].pick;
   if (pick) ui.mode = { kind: 'pillarPick', pick, unitIds: ships, airfield: -1, label: PICK_LABEL[pick] };
@@ -240,7 +249,9 @@ export function setMode(state: GameState, ui: UiState, dispatch: Dispatch, ids: 
   const tanks = ownUnits(state, state.humanId, ids, 'tankDivision').map((u) => u.id).slice(0, MAX_GROUP_UNITS);
   if (!tanks.length) return 'Select tank divisions first';
   if (mode === 'support') {
-    ui.mode = { kind: 'pillarPick', pick: 'front', unitIds: tanks, airfield: -1, label: PICK_LABEL.front };
+    // follows your war at once; the front click (optional) fixes it. A sim that still needs the front: the click.
+    const f = dispatch({ type: 'setDivisionMode', unitIds: tanks, mode, follow: true });
+    ui.mode = { kind: 'pillarPick', pick: 'front', unitIds: tanks, airfield: -1, label: f.ok ? PICK_LABEL.front : PICK_NEEDED.front! };
     return '';
   }
   const r = dispatch({ type: 'setDivisionMode', unitIds: tanks, mode });
@@ -253,18 +264,51 @@ export function setMode(state: GameState, ui: UiState, dispatch: Dispatch, ids: 
  */
 export function setMission(state: GameState, ui: UiState, dispatch: Dispatch, airfield: number, mission: AirMission, refill?: boolean): string {
   const pick = AIR_PICK[mission];
-  if (mission === 'idle' || mission === 'superiority') {
-    const r = dispatch(refill === undefined ? { type: 'setAirMission', airfield, mission } : { type: 'setAirMission', airfield, mission, refill });
+  const follow = followsWar('air', mission);
+  const base = refill === undefined ? { type: 'setAirMission' as const, airfield, mission } : { type: 'setAirMission' as const, airfield, mission, refill };
+  const r = dispatch(follow ? { ...base, follow: true } : base);
+  // support / strategic follow your war at once; a sim that still needs a target gets it from the click
+  if (!r.ok && (mission === 'idle' || mission === 'superiority')) return r.reason ?? 'Not possible now';
+  if (pick) ui.mode = { kind: 'pillarPick', pick, unitIds: [], airfield, label: r.ok ? PICK_LABEL[pick] : PICK_NEEDED[pick] ?? PICK_LABEL[pick] };
+  return '';
+}
+
+/** Puts an airfield's wing back on Follow my war (same mission and refill). */
+export function followWingAgain(state: GameState, dispatch: Dispatch, b: Building): string {
+  const s = wingStatus(state, b);
+  if (!followsWar('air', s.mission)) return '';
+  const r = dispatch({ type: 'setAirMission', airfield: b.tile, mission: s.mission, refill: s.refill, follow: true });
+  return r.ok ? '' : r.reason ?? 'Not possible now';
+}
+
+/** Puts the selected warships (Bombard / Blockade / Auto) or Support divisions back on Follow my war. */
+export function followUnitsAgain(state: GameState, dispatch: Dispatch, kind: 'warship' | 'division', ids: readonly number[]): string {
+  const units = ownUnits(state, state.humanId, ids, kind === 'warship' ? 'warship' : 'tankDivision');
+  const groups = new Map<string, number[]>();
+  for (const u of units) {
+    const c = kind === 'warship' ? warshipStance(u) : divisionMode(u);
+    if (!followsWar(kind, c)) continue;
+    const g = groups.get(c) ?? [];
+    g.push(u.id);
+    groups.set(c, g);
+  }
+  if (!groups.size) return kind === 'warship' ? 'Pick Bombard or Blockade first' : 'Pick Support front first';
+  for (const [c, g] of groups) {
+    const unitIds = g.slice(0, MAX_GROUP_UNITS);
+    const r = dispatch(kind === 'warship' ? { type: 'setUnitStance', unitIds, stance: c as WarshipStance, follow: true } : { type: 'setDivisionMode', unitIds, mode: c as DivisionMode, follow: true });
     if (!r.ok) return r.reason ?? 'Not possible now';
   }
-  if (pick) ui.mode = { kind: 'pillarPick', pick, unitIds: [], airfield, label: PICK_LABEL[pick] };
   return '';
 }
 
 /** The refill flag of an airfield's wing ('re-buy losses'), toggled with the same mission and target. */
 export function toggleRefill(state: GameState, dispatch: Dispatch, b: Building): string {
   const s = wingStatus(state, b);
-  const a: Action = s.target >= 0 && s.mission !== 'idle' ? { type: 'setAirMission', airfield: b.tile, mission: s.mission, target: s.target, refill: !s.refill } : { type: 'setAirMission', airfield: b.tile, mission: s.mission, refill: !s.refill };
+  // a following wing stays on Follow; a fixed one keeps its target
+  const following = followsWar('air', s.mission) && followOf(state, 'air', b.tile)?.fixed !== true;
+  const a: Action = following
+    ? ({ type: 'setAirMission', airfield: b.tile, mission: s.mission, refill: !s.refill, follow: true })
+    : s.target >= 0 && s.mission !== 'idle' ? { type: 'setAirMission', airfield: b.tile, mission: s.mission, target: s.target, refill: !s.refill } : { type: 'setAirMission', airfield: b.tile, mission: s.mission, refill: !s.refill };
   const r = dispatch(a);
   return r.ok ? '' : r.reason ?? 'Not possible now';
 }
@@ -339,7 +383,10 @@ export function pillarPickClick(state: GameState, ui: UiState, dispatch: Dispatc
       else if (foe === me || foe <= 0 || areAllied(state, me, foe)) return { ok: false, reason: 'Click an enemy coast (or Esc to let them pick one)' };
       const water = waterNear(state, aim, from, 6);
       if (water < 0) return { ok: false, reason: 'Your warships cannot reach that coast from their sea' };
-      const r = dispatch({ type: 'moveWarships', unitIds: ships.map((u) => u.id).slice(0, MAX_GROUP_UNITS), tile: water });
+      const ids = ships.map((u) => u.id).slice(0, MAX_GROUP_UNITS);
+      // a picked nation pins them (Fixed) until Follow my war is picked again; a click on open water does not
+      if (foe > 0) dispatch({ type: 'setUnitStance', unitIds: ids, stance: m.pick, target: aim });
+      const r = dispatch({ type: 'moveWarships', unitIds: ids, tile: water });
       const info = r.ok && foe > 0 && !atWar(state, me, foe) ? `They open fire once you are at war with ${state.players[foe]?.name ?? 'them'}` : undefined;
       return { ...fail(r, 'Your warships cannot reach there'), info };
     }
@@ -347,7 +394,8 @@ export function pillarPickClick(state: GameState, ui: UiState, dispatch: Dispatc
       const tanks = ownUnits(state, me, m.unitIds, 'tankDivision');
       if (!tanks.length) return { ok: true, reason: '' };
       if (isWater(map.terrain[tile])) return { ok: false, reason: 'Click a land tile at your front' };
-      return fail(dispatch({ type: 'setDivisionMode', unitIds: tanks.map((u) => u.id).slice(0, MAX_GROUP_UNITS), mode: 'support', front: tile }), 'Pick a tile at one of your fronts');
+      // a picked front is fixed until Follow my war is picked again
+      return fail(dispatch({ type: 'setDivisionMode', unitIds: tanks.map((u) => u.id).slice(0, MAX_GROUP_UNITS), mode: 'support', front: tile, follow: false }), 'Pick a tile at one of your fronts');
     }
     case 'airSupport':
     case 'airStrategic':
@@ -355,7 +403,7 @@ export function pillarPickClick(state: GameState, ui: UiState, dispatch: Dispatc
       const mission: AirMission = m.pick === 'airSupport' ? 'support' : m.pick === 'airStrategic' ? 'strategic' : 'superiority';
       const b = m.airfield >= 0 ? buildingAt(state, m.airfield) : undefined;
       const refill = b ? wingOf(state, b)?.refill ?? true : true;
-      return fail(dispatch({ type: 'setAirMission', airfield: m.airfield, mission, target: tile, refill }), 'Not possible there');
+      return fail(dispatch({ type: 'setAirMission', airfield: m.airfield, mission, target: tile, refill, follow: false }), 'Not possible there');
     }
   }
 }

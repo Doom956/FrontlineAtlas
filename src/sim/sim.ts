@@ -22,6 +22,7 @@ import { updateNavyQueue } from './navy';
 import { updateTanks } from './tanks';
 import { updateSpecials } from './specials';
 import { updateWarMemory } from './naval2';
+import { updateFollow } from './warTarget';
 import { updateTutorial } from './tutorialScenario';
 import { updateVictory } from './victory';
 import type { GameState } from './types';
@@ -55,6 +56,7 @@ export function tick(state: GameState): void {
     updateHeartlands(state);
     updateAttacks(state);
     updateWarMemory(state);
+    updateFollow(state); // war targets for Follow my war, auto recon (warTarget.ts)
     updateEndgame(state);
     pruneEliminated(state);
     updateSpecials(state); // mines, wading tank divisions (specials.ts); before updateUnits drops sunk ships

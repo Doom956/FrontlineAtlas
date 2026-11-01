@@ -393,6 +393,12 @@ export interface Unit {
   mission?: number;
   /** air-wing escort (airwings.ts): fighter interceptions this plane's escort can still fight off; absent = 0 */
   escort?: number;
+  /**
+   * Follow my war (warTarget.ts): warships = the nation the player pinned them to (bombard / blockade / auto aim only
+   * at it); tank divisions in support mode = 1 when the player picked the front. Absent = they follow their owner's
+   * war target (human owners; AI-owned units keep their own logic).
+   */
+  fixed?: number;
   /** vehicle variant (variants.ts); absent = the standard unit */
   variant?: UnitVariant;
   /** tank division crossing water (Amphibious Tanks, specials.ts): 1 while wading, cleared on landing; absent = 0 */
@@ -676,6 +682,8 @@ export interface GameState {
   air?: AirState;
   /** recon reveals, mechanized-infantry hold zones and recon timers (variants.ts); absent = none yet */
   arsenal?: ArsenalState;
+  /** war targets that units on Follow my war aim at, and auto-recon airfields (warTarget.ts); absent = none yet */
+  follow?: FollowState;
   /** single-player tutorial chapter (tutorialScenario.ts); absent = a normal game */
   tutorial?: TutorialState;
 }
@@ -722,6 +730,17 @@ export interface ArsenalState {
   reconReady: number[];
 }
 
+/**
+ * Follow my war (warTarget.ts), re-evaluated every FOLLOW_EVERY_SECONDS for human players.
+ * targets: [player, nation, focus tile, last tick it was attacked, main front tile, ...] (5 numbers per player, by
+ * player id): the nation the player attacks with the most troops (or attacked last, for FOLLOW_MEMORY_SECONDS), the
+ * focus tile of that attack and the nation's border tile nearest it. recon: airfield building ids with auto recon on.
+ */
+export interface FollowState {
+  targets: number[];
+  recon: number[];
+}
+
 /** Standing mission of an airfield's air wing (Action setAirMission, airwings.ts). */
 export type AirMission = 'idle' | 'support' | 'strategic' | 'superiority';
 export const AIR_MISSIONS: readonly AirMission[] = ['idle', 'support', 'strategic', 'superiority'];
@@ -745,6 +764,11 @@ export interface AirWing {
   coverTick: number;
   /** sorties flown (for the UI) */
   sorties: number;
+  /**
+   * Follow my war (warTarget.ts): the wing retargets itself to its owner's war target (strategic: that nation's
+   * cities / factories; support: the owner's main front; superiority: patrol over that front). false / absent = fixed.
+   */
+  follow?: boolean;
 }
 
 /** A temporary air-support zone (airwings.ts): enemy defence inside is cut for the owner's attacks. */
@@ -848,15 +872,26 @@ export type Action =
   | { type: 'moveTankDivision'; unitIds: number[]; tile: number }
   /** owner console (admin.ts): online the server relays it only from an authenticated admin session */
   /** set the stance of own warships (naval2.ts) */
-  | { type: 'setUnitStance'; unitIds: number[]; stance: WarshipStance }
-  /** set the mode of own tank divisions; support needs `front` (a land tile at or near the front) (armor2.ts) */
-  | { type: 'setDivisionMode'; unitIds: number[]; mode: DivisionMode; front?: number }
+  /**
+   * target = a tile of the nation to pin them to (Fixed: they bombard / blockade only that nation); follow = true:
+   * back to Follow my war (they aim at your war target, warTarget.ts). Neither: they keep their current choice.
+   */
+  | { type: 'setUnitStance'; unitIds: number[]; stance: WarshipStance; target?: number; follow?: boolean }
+  /**
+   * set the mode of own tank divisions (armor2.ts); support: `front` (a land tile at or near the front) fixes the
+   * front; without it (or with follow = true) a player's divisions follow their main front (warTarget.ts)
+   */
+  | { type: 'setDivisionMode'; unitIds: number[]; mode: DivisionMode; front?: number; follow?: boolean }
   /**
    * standing mission of an airfield's air wing (airwings.ts); airfield = an own finished airfield tile, or -1 = every
    * own airfield that reaches the target. target: support / strategic = a tile of the enemy (or at your front),
    * superiority = patrol centre (absent = the airfield). refill = re-buy aircraft for the mission automatically.
+   * follow = true (or, for a player, no target): Follow my war, the wing retargets to your war target by itself
+   * (warTarget.ts); a target makes it Fixed.
    */
-  | { type: 'setAirMission'; airfield: number; mission: AirMission; target?: number; refill?: boolean }
+  | { type: 'setAirMission'; airfield: number; mission: AirMission; target?: number; refill?: boolean; follow?: boolean }
+  /** auto recon (warTarget.ts): the airfield (or -1 = every own finished airfield) scouts your war target when ready */
+  | { type: 'setAutoRecon'; airfield: number; on: boolean }
   /** recon flight (variants.ts, needs Recon Planes): airfield = an own finished airfield tile or -1 (nearest ready one) */
   | { type: 'reconFlight'; airfield: number; tile: number }
   | AdminAction;

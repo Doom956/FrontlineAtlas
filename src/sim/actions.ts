@@ -18,6 +18,7 @@ import { setUnitStance } from './naval2';
 import { setDivisionMode } from './armor2';
 import { setAirMission } from './airwings';
 import { clearIntelCache, reconFlight } from './variants';
+import { setAutoRecon } from './warTarget';
 import { aiActionBlocked, applyAdmin } from './admin';
 import { continueGame } from './victory';
 import { NAVAL_VARIANTS, TROOP_TYPES } from './types';
@@ -234,7 +235,10 @@ export function applyAction(state: GameState, playerId: number, action: Action):
     case 'setAirMission':
       if (action.airfield !== -1 && !isTile(state, action.airfield)) return FAIL('Invalid tile');
       if (action.target !== undefined && !isTile(state, action.target)) return FAIL('Invalid tile');
-      return setAirMission(state, playerId, action.airfield, action.mission, action.target, action.refill);
+      return setAirMission(state, playerId, action.airfield, action.mission, action.target, action.refill, action.follow);
+    case 'setAutoRecon':
+      if (action.airfield !== -1 && !isTile(state, action.airfield)) return FAIL('Invalid tile');
+      return setAutoRecon(state, playerId, action.airfield, action.on);
     // ---- recon planes (variants.ts) ----
     case 'reconFlight':
       if (action.airfield !== -1 && !isTile(state, action.airfield)) return FAIL('Invalid tile');
@@ -242,10 +246,11 @@ export function applyAction(state: GameState, playerId: number, action: Action):
       return reconFlight(state, playerId, action.airfield, action.tile);
     // ---- warship stances (naval2.ts) and division modes (armor2.ts) ----
     case 'setUnitStance':
-      return setUnitStance(state, playerId, action.unitIds, action.stance);
+      if (action.target !== undefined && !isTile(state, action.target)) return FAIL('Invalid tile');
+      return setUnitStance(state, playerId, action.unitIds, action.stance, action.target, action.follow);
     case 'setDivisionMode':
       if (action.front !== undefined && !isTile(state, action.front)) return FAIL('Invalid tile');
-      return setDivisionMode(state, playerId, action.unitIds, action.mode, action.front);
+      return setDivisionMode(state, playerId, action.unitIds, action.mode, action.front, action.follow);
     default:
       return FAIL('Unknown action');
   }

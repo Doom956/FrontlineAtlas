@@ -3,11 +3,15 @@
 //                   ask for a coast / port click (optional: Esc lets the ships pick the nearest one)
 //   Tank divisions  Hold · Support front (then click a front) · Refit, veterancy pips, strength bar (refit progress)
 // One line under the buttons explains the stance under the pointer (or the lit one) and, for divisions, the
-// encirclement hint of the spearhead preview. Everything is one or two clicks; the rules stay in the sim.
+// encirclement hint of the spearhead preview. Bombard / Blockade / Auto ships and Support divisions follow your war
+// by default: a follow row says whom (or "Fixed: ..." after a map pick, with Follow my war to switch back).
+// Everything is one or two clicks; the rules stay in the sim.
 import { divisionStrength } from '../../sim/armor2';
 import { warshipMaxHp } from '../../sim/naval2';
 import type { GameState, Player, Unit } from '../../sim/types';
-import { MODE_INFO, MODE_ORDER, pocketLine, pocketPreview, setMode, setStance, sharedMode, sharedStance, STANCE_INFO, STANCE_ORDER, vetOf, VET_MAX, type ChoiceInfo } from '../pillars';
+import { followsWar, followText, groupFollow } from '../follow';
+import { followUnitsAgain, MODE_INFO, MODE_ORDER, pocketLine, pocketPreview, setMode, setStance, sharedMode, sharedStance, STANCE_INFO, STANCE_ORDER, vetOf, VET_MAX, type ChoiceInfo } from '../pillars';
+import { FollowRow } from './followRow';
 import { previewFor, SPEARHEAD_CONFIRM_MS, splitSelection } from '../selection';
 import { el, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon } from './glyph';
@@ -37,9 +41,10 @@ class ChoiceRow<T extends string> {
   private buttons = new Map<T, HTMLButtonElement>();
   private hover: T | null = null;
   readonly line = el('div', 'ob-line');
+  readonly follow: FollowRow;
   private pipKey = '';
 
-  constructor(test: string, order: readonly T[], private info: Record<T, ChoiceInfo>, run: (v: T) => void, private onHover: () => void) {
+  constructor(test: string, order: readonly T[], private info: Record<T, ChoiceInfo>, run: (v: T) => void, private onHover: () => void, onFollow: () => void) {
     this.el = el('div', 'ob-row');
     this.el.dataset.test = test;
     const btns = el('div', 'ob-btns');
@@ -53,7 +58,7 @@ class ChoiceRow<T extends string> {
       b.dataset.test = `${test === 'orders-ships' ? 'stance' : 'mode'}-${v}`;
       b.append(iconSpan(lineIcon(i.icon, 14, 2)), el('span', 'wr-btn-l', i.name));
       b.setAttribute('aria-pressed', 'false');
-      setTip(b, i.help + (i.pick ? ' Then click where.' : ''));
+      setTip(b, i.help + (i.pick ? ' Follows your war; click where to fix it.' : ''));
       b.addEventListener('click', () => run(v));
       const enter = (): void => {
         this.hover = v;
@@ -72,7 +77,8 @@ class ChoiceRow<T extends string> {
     }
     this.meter.append(this.meterFill);
     this.head.append(this.title, this.pips, this.meter);
-    this.el.append(this.head, btns, this.line);
+    this.follow = new FollowRow(`${test === 'orders-ships' ? 'stance' : 'mode'}-follow`, onFollow);
+    this.el.append(this.head, btns, this.line, this.follow.el);
   }
 
   set(title: string, active: T | null, vet: { level: number; next: number } | null, meter: number | null, meterTip: string, status: string): void {
@@ -123,15 +129,34 @@ export class OrdersBar {
       ctx.sound('uiClick');
       say(setStance(s, ctx.ui, ctx.dispatch, splitSelection(s, s.humanId, ctx.ui.selection).warships, v));
       poke();
-    }, poke);
+    }, poke, () => {
+      const s = ctx.state();
+      if (!s) return;
+      ctx.sound('uiClick');
+      say(followUnitsAgain(s, ctx.dispatch, 'warship', splitSelection(s, s.humanId, ctx.ui.selection).warships));
+      poke();
+    });
     this.tanks = new ChoiceRow('orders-tanks', MODE_ORDER, MODE_INFO, (v) => {
       const s = ctx.state();
       if (!s) return;
       ctx.sound('uiClick');
       say(setMode(s, ctx.ui, ctx.dispatch, splitSelection(s, s.humanId, ctx.ui.selection).tanks, v));
       poke();
-    }, poke);
+    }, poke, () => {
+      const s = ctx.state();
+      if (!s) return;
+      ctx.sound('uiClick');
+      say(followUnitsAgain(s, ctx.dispatch, 'division', splitSelection(s, s.humanId, ctx.ui.selection).tanks));
+      poke();
+    });
     this.el.append(this.ships.el, this.tanks.el);
+  }
+
+  /** The follow row of a group: shown when the shared stance / mode follows a war (Bombard, Blockade, Auto, Support). */
+  private followLine<T extends string>(row: ChoiceRow<T>, state: GameState, me: number, kind: 'warship' | 'division', choice: string | null, ids: readonly number[]): void {
+    const fw = choice !== null && followsWar(kind, choice);
+    const t = fw ? groupFollow(state, kind, ids) : null;
+    row.follow.set(fw && t !== null, !t?.fixed, t && choice ? followText(state, me, kind, choice, t) : '');
   }
 
   update(state: GameState, me: Player): void {
@@ -161,9 +186,11 @@ export class OrdersBar {
       const top = ships.reduce((a, u) => Math.max(a, u.vet ?? 0), 0);
       const lead = ships.find((u) => (u.vet ?? 0) === top) ?? ships[0];
       const hull = ships.reduce((a, u) => a + Math.max(0, u.hp) / Math.max(1, warshipMaxHp(u)), 0) / ships.length;
+      const stance = sharedStance(state, me.id, c.warships);
+      this.followLine(this.ships, state, me.id, 'warship', stance, c.warships);
       this.ships.set(
         c.warships.length === 1 ? 'Warship' : `${c.warships.length} warships`,
-        sharedStance(state, me.id, c.warships),
+        stance,
         vetOf(lead),
         hull,
         `Hull ${Math.round(hull * 100)}%${ships.length > 1 ? ' on average' : ''}. Ships mend near your ports.`,
@@ -184,9 +211,11 @@ export class OrdersBar {
         const p = pend >= 0 ? previewFor(state, me.id, ui.selection, pend) : null;
         status = pocketLine(state, pocketPreview(state, me.id, p));
       }
+      const mode = sharedMode(state, me.id, c.tanks);
+      this.followLine(this.tanks, state, me.id, 'division', mode, c.tanks);
       this.tanks.set(
         c.tanks.length === 1 ? 'Tank division' : `${c.tanks.length} tank divisions`,
-        sharedMode(state, me.id, c.tanks),
+        mode,
         vetOf(lead),
         str,
         `Strength ${Math.round(str * 100)}%${str < 0.99 ? ': refits from your army while it holds (fast near a Factory)' : ''}`,

@@ -10,6 +10,9 @@
 // - Modes (Unit.mode, Action setDivisionMode): hold (default), support (Unit.station = the front tile: holds behind
 //   it, launches spearheads into the weakest spot within ARMOR_SUPPORT_RADIUS when ready, lines that cut the enemy's
 //   land first; drives back to refit at a Factory when worn down), refit (to the nearest Factory, refit, then hold).
+// - Follow my war (warTarget.ts): a player's division put on support without a front picked follows the main front
+//   against the owner's war target (Unit.station moves with it); with no war target it holds where it is. A picked
+//   front makes it Fixed (Unit.fixed = 1) until the player picks Follow again. AI divisions always get a front.
 // Deterministic: no RNG; per-division work staggered by id; fixed tie-breaks.
 import { buildingsOf } from './buildings';
 import { annexTiles, frontTiles } from './combat';
@@ -47,10 +50,13 @@ import { hasTech } from './tech';
 import { moveTankDivisions, ownLandPath, spearheadPreview } from './tanks';
 import { hasAmphibious, narrowWater } from './specials';
 import { armorPocketKillMul, armorPocketMul, armorRefitMul } from './variants';
+import { followedNation, mainFront, unitFollows } from './warTarget';
 import { DIVISION_MODES, TROOP_TYPES, isTribe, isWater } from './types';
 import type { Action, ActionResult, DivisionMode, GameState, Troops, Unit } from './types';
 
 const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
+/** A following division keeps its front while it is within this many tiles of the main front (warTarget.ts). */
+const FOLLOW_KEEP = 24;
 const total = (t: Troops): number => t.infantry + t.armor + t.artillery;
 const FULL = TANK_DIVISION_TROOPS.armor + TANK_DIVISION_TROOPS.infantry + TANK_DIVISION_TROOPS.artillery;
 
@@ -301,22 +307,34 @@ function driveTo(state: GameState, u: Unit, dest: number, auto = false): boolean
 }
 
 /**
- * Action setDivisionMode: hold / support (needs `front`, a land tile at or near a front of yours) / refit (drives
- * to the nearest own Factory). Divisions in a spearhead take the mode when it ends.
+ * Action setDivisionMode: hold / support / refit (drives to the nearest own Factory). Support: `front` (a land tile
+ * at or near a front of yours) fixes the front; a player's divisions without one (or with follow = true) follow the
+ * main front against the war target (warTarget.ts). Divisions in a spearhead take the mode when it ends.
  */
-export function setDivisionMode(state: GameState, playerId: number, unitIds: unknown, mode: unknown, front?: number): ActionResult {
+export function setDivisionMode(state: GameState, playerId: number, unitIds: unknown, mode: unknown, front?: number, follow?: boolean): ActionResult {
   if (typeof mode !== 'string' || !(DIVISION_MODES as readonly string[]).includes(mode)) return FAIL('Unknown mode');
+  if (follow !== undefined && typeof follow !== 'boolean') return FAIL('Invalid value');
   const group = ownGroup(state, playerId, unitIds, 'tankDivision', 'tank divisions');
   if (typeof group === 'string') return FAIL(group);
   const map = state.map;
-  if (mode === 'support') {
+  const following = mode === 'support' && (follow === true || (follow === undefined && front === undefined && !!state.players[playerId]?.isHuman));
+  if (mode === 'support' && !following) {
     if (front === undefined || !Number.isInteger(front) || front < 0 || front >= map.owner.length) return FAIL('Pick the front to support');
     if (isWater(map.terrain[front])) return FAIL('Pick a land tile at the front');
   }
   if (mode === 'refit' && nearestFactory(state, playerId, unitTile(state, group[0])) < 0) return FAIL('You need a finished Factory to refit at');
+  const foe = following ? followedNation(state, playerId) : 0;
+  const followFront = foe > 0 ? mainFront(state, playerId, foe) : -1;
   for (const u of group) {
     u.mode = mode as DivisionMode;
-    u.station = mode === 'support' ? front : undefined;
+    if (following) {
+      delete u.fixed;
+      u.station = followFront >= 0 ? followFront : undefined;
+    } else {
+      u.station = mode === 'support' ? front : undefined;
+      if (mode === 'support' && state.players[playerId]?.isHuman) u.fixed = 1; // AI divisions don't follow anyway
+      else delete u.fixed;
+    }
     if (u.state === 3) continue;
     if (mode === 'refit') {
       const f = nearestFactory(state, playerId, unitTile(state, u));
@@ -453,9 +471,10 @@ export function divisionStep(state: GameState, u: Unit): void {
     return;
   }
   // support
+  if (unitFollows(state, u)) followFront(state, u);
   const front = u.station;
   if (front === undefined) {
-    u.mode = 'hold';
+    if (!unitFollows(state, u)) u.mode = 'hold'; // following with no war target: holds where it is
     return;
   }
   if (u.state === 1) return; // on its way (to the front or to a Factory)
@@ -484,6 +503,22 @@ export function divisionStep(state: GameState, u: Unit): void {
   if ((u.retryTick ?? 0) > state.tick) return;
   const hold = holdTileNear(state, u.owner, front);
   if (hold >= 0 && hold !== unitTile(state, u)) driveTo(state, u, hold, true);
+}
+
+/** Follow my war: moves a following division's front to the main front against its owner's war target. */
+function followFront(state: GameState, u: Unit): void {
+  const foe = followedNation(state, u.owner);
+  if (foe <= 0) return; // no war target: keep the front it has (or hold where it is)
+  const f = mainFront(state, u.owner, foe);
+  if (f < 0 || f === u.station) return;
+  const st = u.station;
+  const w = state.map.width;
+  // Keep a front that is still the target's land (or ours: the push went past it) near the main front.
+  if (st !== undefined) {
+    const o = state.map.owner[st];
+    if ((o === foe || o === u.owner) && d2(st % w, (st / w) | 0, f % w, (f / w) | 0) <= FOLLOW_KEEP * FOLLOW_KEEP) return;
+  }
+  u.station = f; // a drive under way ends first; the next think holds behind the new front
 }
 
 // ---------------------------------------------------------------------------------------------------------------

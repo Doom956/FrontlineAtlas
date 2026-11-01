@@ -9,6 +9,10 @@
 //   escort    sticks to own transports (first) and trade ships: an escorted ship takes x NAVY_ESCORT_DAMAGE damage
 //   bombard   parks off an enemy coast (at war) and shells it harder (NAVY_BOMBARD_STANCE_KILL); never chases
 //   blockade  parks off an enemy port (at war); never chases
+// Follow my war (warTarget.ts): a player's ships aim bombard / blockade / auto at the owner's war target first (other
+// wars when it has no coast or port in reach); a stance set with a target tile pins them to that nation (Unit.fixed:
+// only it) until the player picks Follow again. Ships on station move to the target's coast when it changes. AI-owned
+// ships keep their own logic (any war).
 // Warship states used here (units.ts / navy.ts have 0 patrol, 1 ordered, 2 chasing): 3 = on station (Unit.station
 // = the coast / port tile it covers; sailing there or parked), 4 = escorting (Unit.station = the escorted ship's id).
 //
@@ -64,6 +68,7 @@ import {
 import { areAllied } from './diplomacy';
 import { sameWater, waterPath } from './grid';
 import { interceptStep, ownGroup } from './navy';
+import { shipWarTarget } from './warTarget';
 import { atPeace } from './rules';
 import { addEvent } from './state';
 import { hasTech } from './tech';
@@ -446,13 +451,26 @@ export function portBuildMul(level: number): number {
 // Action setUnitStance
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Action setUnitStance: sets the stance of own warships; they act on it at their next think. */
-export function setUnitStance(state: GameState, playerId: number, unitIds: unknown, stance: unknown): ActionResult {
+/**
+ * Action setUnitStance: sets the stance of own warships; they act on it at their next think. target = a tile of the
+ * nation to pin them to (Fixed); follow = true: back to Follow my war; neither: they keep their current choice.
+ */
+export function setUnitStance(state: GameState, playerId: number, unitIds: unknown, stance: unknown, target?: number, follow?: boolean): ActionResult {
   if (typeof stance !== 'string' || !(WARSHIP_STANCES as readonly string[]).includes(stance)) return FAIL('Unknown stance');
+  if (follow !== undefined && typeof follow !== 'boolean') return FAIL('Invalid value');
   const group = ownGroup(state, playerId, unitIds, 'warship', 'warships');
   if (typeof group === 'string') return FAIL(group);
+  let pin = 0;
+  if (target !== undefined && follow !== true) {
+    if (!Number.isInteger(target) || target < 0 || target >= state.map.owner.length) return FAIL('Invalid tile');
+    pin = state.map.owner[target];
+    if (pin <= 0 || pin === playerId || !state.players[pin]?.alive) return FAIL('Pick a tile of the nation to aim at');
+    if (areAllied(state, playerId, pin)) return FAIL('That nation is your ally');
+  }
   for (const u of group) {
     u.stance = stance as WarshipStance;
+    if (pin > 0) u.fixed = pin;
+    else if (follow === true) delete u.fixed;
     if (u.state === 3 || u.state === 4) {
       // Off station / escort duty: back to patrolling; the next think picks a new task.
       u.state = 0;
@@ -541,11 +559,15 @@ function validBlockade(state: GameState, u: Unit, port: number): boolean {
   return !!b && b.type === 'port' && atWar(state, u.owner, b.owner);
 }
 
+/** Score added to coast / ports of other nations than the one a ship aims at (warTarget.ts): any of its own wins. */
+const OFF_TARGET = 1e6;
+
 /**
  * Best enemy coast tile to shell for u within `reach` of (cx, cy): coast of nations at war with u's owner, in u's sea,
- * near the owner's own land (the front) first, then near the ship. -1 = none.
+ * the nation it aims at first (`aim`, warTarget.shipWarTarget; with `only` nothing else), near the owner's own land
+ * (the front) first, then near the ship. -1 = none.
  */
-function pickCoast(state: GameState, u: Unit, cx: number, cy: number, reach: number): number {
+function pickCoast(state: GameState, u: Unit, cx: number, cy: number, reach: number, aim = 0, only = false): number {
   const c = cache(state);
   if (!c.wars.size) return -1;
   const map = state.map;
@@ -568,8 +590,9 @@ function pickCoast(state: GameState, u: Unit, cx: number, cy: number, reach: num
       if (!map.coastal[t]) continue;
       const o = owner[t];
       if (o <= 0 || o === me || !c.wars.has(me * 1024 + o)) continue;
+      if (only && o !== aim) continue;
       if (d2(x, y, cx, cy) > reach * reach) continue;
-      let score = Math.sqrt(d2(x, y, u.x, u.y));
+      let score = Math.sqrt(d2(x, y, u.x, u.y)) + (aim > 0 && o !== aim ? OFF_TARGET : 0);
       // Next to our land (3 tiles out in the 4 directions): that is where our fronts are.
       if ((x > 2 && owner[t - 3] === me) || (x < w - 3 && owner[t + 3] === me) || (y > 2 && owner[t - 3 * w] === me) || (y < h - 3 && owner[t + 3 * w] === me)) score -= 40;
       if (score >= bestScore || !hostile(state, me, o)) continue;
@@ -583,17 +606,21 @@ function pickCoast(state: GameState, u: Unit, cx: number, cy: number, reach: num
   return best;
 }
 
-/** Nearest enemy port (at war) within `reach` of the ship, in its sea; -1 = none. */
-function pickPort(state: GameState, u: Unit, reach: number): number {
+/** Nearest enemy port (at war) within `reach` of the ship, in its sea (`aim`'s first; with `only` nothing else); -1 = none. */
+function pickPort(state: GameState, u: Unit, reach: number, aim = 0, only = false): number {
   const c = cache(state);
   if (!c.wars.size) return -1;
   const w = state.map.width;
   const from = shipTile(state, u);
   let best = -1;
-  let bestD = reach * reach;
+  let bestD = Infinity;
+  const r2 = reach * reach;
   for (const b of state.buildings.values()) {
     if (b.type !== 'port' || b.owner <= 0 || b.owner === u.owner || !c.wars.has(u.owner * 1024 + b.owner)) continue;
-    const d = d2(b.tile % w, (b.tile / w) | 0, u.x, u.y);
+    if (only && b.owner !== aim) continue;
+    const raw = d2(b.tile % w, (b.tile / w) | 0, u.x, u.y);
+    if (raw > r2) continue;
+    const d = raw + (aim > 0 && b.owner !== aim ? OFF_TARGET : 0);
     if (d > bestD || (d === bestD && best >= 0 && b.tile > best)) continue;
     if (!hostile(state, u.owner, b.owner) || stationWaterFor(state, from, b.tile) < 0) continue;
     best = b.tile;
@@ -663,6 +690,8 @@ function escortAim(s: Unit, state: GameState): number {
 }
 
 const ESCORT_FOLLOW_TICKS = 5;
+/** Ships on station off another nation than their aim look for the aim's coast every this many thinks. */
+const FOLLOW_RECHECK_THINKS = 3;
 
 /**
  * One warship's stance logic, called by units.updateWarship every tick before it moves (most work only every
@@ -707,38 +736,68 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
   repairAtPort(state, u);
   if (u.state === 1 || u.state === 2) return; // under orders / chasing
   const w = state.map.width;
+  // Follow my war / Fixed (warTarget.ts): the nation it aims at (0 = any war), and whether only that one counts.
+  if (u.fixed && !state.players[u.fixed]?.alive) delete u.fixed; // the pinned nation is gone: back to Follow
+  const aim = shipWarTarget(state, u);
+  const only = !!u.fixed && u.fixed > 0;
+  const owners = state.map.owner;
+  // On station off another nation than the aim: look for the aim's coast every FOLLOW_RECHECK_THINKS thinks.
+  const recheck = aim > 0 && u.state === 3 && u.station !== undefined && owners[u.station] !== aim && (((state.tick + u.id * 3) / NAVY_THINK_TICKS) | 0) % FOLLOW_RECHECK_THINKS === 0;
+  const keep = (valid: boolean): boolean => valid && (!only || owners[u.station!] === aim);
   switch (st) {
     case 'hunt':
       return;
     case 'auto': {
       if (u.state === 3) {
-        if (u.station !== undefined && validBombard(state, u, u.station)) return;
+        if (u.station !== undefined && keep(validBombard(state, u, u.station))) {
+          if (!recheck) return;
+          const t = pickCoast(state, u, u.cargo % w, (u.cargo / w) | 0, NAVY_AUTO_BOMBARD_REACH, aim, true);
+          if (t >= 0) goStation(state, u, t, 4 * NAVY_AUTO_BOMBARD_REACH);
+          return;
+        }
         // The coast fell or the war ended: another spot near the post, else home.
-        const next = pickCoast(state, u, u.cargo % w, (u.cargo / w) | 0, NAVY_AUTO_BOMBARD_REACH);
+        const next = pickCoast(state, u, u.cargo % w, (u.cargo / w) | 0, NAVY_AUTO_BOMBARD_REACH, aim, only);
         if (next < 0 || !goStation(state, u, next, 4 * NAVY_AUTO_BOMBARD_REACH)) backToPost(state, u);
         return;
       }
       // Patrolling with nothing to chase: shell enemy coast near the post (fronts first) while at war.
       if (!wars.size) return;
-      const t = pickCoast(state, u, u.cargo % w, (u.cargo / w) | 0, NAVY_AUTO_BOMBARD_REACH);
+      const t = pickCoast(state, u, u.cargo % w, (u.cargo / w) | 0, NAVY_AUTO_BOMBARD_REACH, aim, only);
       if (t >= 0) goStation(state, u, t, 4 * NAVY_AUTO_BOMBARD_REACH);
       return;
     }
     case 'bombard': {
-      if (u.state === 3 && u.station !== undefined && validBombard(state, u, u.station)) return;
-      const t = pickCoast(state, u, u.x, u.y, NAVY_STATION_SEEK);
+      if (u.state === 3 && u.station !== undefined && keep(validBombard(state, u, u.station))) {
+        if (!recheck) return;
+        const t = pickCoast(state, u, u.x, u.y, NAVY_STATION_SEEK, aim, true);
+        if (t >= 0) goStation(state, u, t, 4 * NAVY_STATION_SEEK);
+        return;
+      }
+      const t = pickCoast(state, u, u.x, u.y, NAVY_STATION_SEEK, aim, only);
       if (t >= 0 && goStation(state, u, t, 4 * NAVY_STATION_SEEK)) return;
       if (u.state === 3) backToPost(state, u);
       return;
     }
     case 'blockade': {
-      if (u.state === 3 && u.station !== undefined && validBlockade(state, u, u.station)) return;
-      const t = pickPort(state, u, NAVY_STATION_SEEK);
-      if (t >= 0 && goStation(state, u, t, 4 * NAVY_STATION_SEEK)) return;
+      if (u.state === 3 && u.station !== undefined && keep(validBlockade(state, u, u.station))) {
+        if (!recheck) return;
+        const t = pickPort(state, u, NAVY_STATION_SEEK, aim, true);
+        if (t >= 0) goStation(state, u, t, 4 * NAVY_STATION_SEEK);
+        return;
+      }
+      // The aim's ports first, then its coast; other wars only when it has neither in reach.
+      const t = pickPort(state, u, NAVY_STATION_SEEK, aim, only);
+      const tOn = t >= 0 && (aim <= 0 || owners[t] === aim);
+      if (tOn && goStation(state, u, t, 4 * NAVY_STATION_SEEK)) return;
       // No enemy port in reach: shell its coast meanwhile.
-      if (u.state === 3 && u.station !== undefined && validBombard(state, u, u.station)) return;
-      const c = pickCoast(state, u, u.x, u.y, NAVY_STATION_SEEK);
-      if (c >= 0 && goStation(state, u, c, 4 * NAVY_STATION_SEEK)) return;
+      const onCoast = u.state === 3 && u.station !== undefined && keep(validBombard(state, u, u.station));
+      if (onCoast && (aim <= 0 || owners[u.station!] === aim || !recheck)) return;
+      const c = pickCoast(state, u, u.x, u.y, NAVY_STATION_SEEK, aim, only);
+      const cOn = c >= 0 && (aim <= 0 || owners[c] === aim);
+      if (cOn && goStation(state, u, c, 4 * NAVY_STATION_SEEK)) return;
+      if (onCoast) return;
+      if (!tOn && t >= 0 && goStation(state, u, t, 4 * NAVY_STATION_SEEK)) return;
+      if (!cOn && c >= 0 && goStation(state, u, c, 4 * NAVY_STATION_SEEK)) return;
       if (u.state === 3) backToPost(state, u);
       return;
     }

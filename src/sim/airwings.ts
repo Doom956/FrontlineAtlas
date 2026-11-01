@@ -9,6 +9,9 @@
 //  - superiority: the airfield's fighters patrol a circle (default: around the airfield) and shoot down enemy bombers
 //                 and cargo planes in it (faster with Jet Engines), on top of the airfield's normal fighter cover.
 //  - idle:        nothing automatic (manual 'bomb' and 'paradrop' orders still work).
+// Follow my war (AirWing.follow, warTarget.ts; a player's default when no target is picked): the wing retargets itself
+// to its owner's war target before every sortie / check: strategic raids that nation, support bombs the main front,
+// superiority patrols over our side of it (else over the airfield). A picked target makes the wing Fixed.
 // Fighters at a support / strategic airfield escort its bombers and cargo planes: an escort fights off a fighter
 // interception (a duel that can cost either side a fighter; Jet Engines wins it). Paratroopers drop bigger groups from
 // airfields with more aircraft.
@@ -29,6 +32,7 @@ import { techOf } from './techtree';
 import { dropTanksPatrolMul, dropTanksRangeMul, nightDodges, nightEffectMul, nightRadiusMul } from './specials';
 import { airRaidMul, airRangeMul, airSupportMul, airVariantOf, airWingMul, carrierFor, carrierReach } from './variants';
 import { buildAircraft, launchBomber, shotDown, unitCost } from './units';
+import { followedNation, mainFront } from './warTarget';
 import { AIR_MISSIONS, isTribe } from './types';
 import type { ActionResult, AirMission, AirRaid, AirState, AirWing, AirZone, Building, BuildingType, GameState, TechId, Unit } from './types';
 
@@ -250,10 +254,14 @@ function nearestHostile(state: GameState, pid: number, around: number, r: number
  * a hostile target (support: an enemy tile at or near your front; strategic: a tile of the target nation),
  * peace / alliances, range. Setting the same mission again keeps the sortie timer.
  */
-export function setAirMission(state: GameState, pid: number, airfield: number, mission: AirMission, target?: number, refill?: boolean): ActionResult {
+export function setAirMission(state: GameState, pid: number, airfield: number, mission: AirMission, target?: number, refill?: boolean, follow?: boolean): ActionResult {
   const p = state.players[pid];
   if (!p || pid === 0 || !p.alive) return FAIL('No such player');
   if (!AIR_MISSIONS.includes(mission)) return FAIL('Unknown mission');
+  if (follow !== undefined && typeof follow !== 'boolean') return FAIL('Invalid value');
+  // Follow my war: asked for, or a player's default when no target is picked (AI players always pick one).
+  const following = mission !== 'idle' && (follow === true || (follow === undefined && target === undefined && p.isHuman));
+  if (following) target = undefined;
   const ruled = unitRule(state, 'bomber');
   if (ruled) return FAIL(ruled);
   if (!hasTech(p, 'flight')) return FAIL('Needs research: Flight');
@@ -273,7 +281,9 @@ export function setAirMission(state: GameState, pid: number, airfield: number, m
 
   let aim = -1;
   let foe = 0;
-  if (mission === 'support' || mission === 'strategic') {
+  if (following) {
+    // No aim to check: the wing picks one from the war target before each sortie (followWing).
+  } else if (mission === 'support' || mission === 'strategic') {
     if (target === undefined) return FAIL(mission === 'support' ? 'Pick the front to support' : 'Pick the nation to bomb');
     const o = map.owner[target];
     if (o === pid || o === 0) {
@@ -322,6 +332,10 @@ export function setAirMission(state: GameState, pid: number, airfield: number, m
     wing.mission = mission;
     wing.target = aim;
     wing.targetOwner = mission === 'support' || mission === 'strategic' ? foe : 0;
+    if (following) {
+      wing.follow = true;
+      followWing(state, wing, b);
+    } else delete wing.follow;
     if (refill !== undefined) wing.refill = !!refill && mission !== 'idle';
     if (mission === 'idle') wing.refill = false;
   }
@@ -457,8 +471,35 @@ function launchWing(state: GameState, wing: AirWing, b: Building, aims: number[]
   return sent;
 }
 
+/**
+ * Follow my war: aims a following wing at its owner's war target (warTarget.ts). strategic: that nation (raid aims
+ * nearest the main front first); support: the main front (supportAim then follows it as it moves); superiority: our
+ * tile nearest the main front, when the patrol centre may be there, else the airfield. No war target: no aim.
+ */
+function followWing(state: GameState, wing: AirWing, b: Building): void {
+  const foe = followedNation(state, wing.owner);
+  const front = foe > 0 ? mainFront(state, wing.owner, foe) : -1;
+  if (wing.mission === 'superiority') {
+    let centre = -1;
+    if (front >= 0) {
+      const own = nearestOwn(state, wing.owner, front, 12);
+      const r = airfieldRadius(b) * AIR.superiorityCentreReach * dropTanksPatrolMul(state, wing.owner);
+      if (own >= 0 && d2(state.map.width, b.tile, own) <= r * r) centre = own;
+    }
+    wing.target = centre;
+    wing.targetOwner = 0;
+    return;
+  }
+  if (wing.mission !== 'support' && wing.mission !== 'strategic') return;
+  wing.targetOwner = foe;
+  // Support keeps its aim while it is still that nation's land near the main front (it follows the push itself).
+  if (wing.mission === 'support' && foe > 0 && wing.target >= 0 && state.map.owner[wing.target] === foe && front >= 0 && d2(state.map.width, wing.target, front) <= AIR.retargetRadius * AIR.retargetRadius) return;
+  wing.target = front;
+}
+
 function sortie(state: GameState, wing: AirWing, b: Building): void {
   const idle = state.tick + AIR.idleRecheck * TICKS_PER_SECOND;
+  if (wing.follow) followWing(state, wing, b);
   if (wing.refill) refillWing(state, wing, b);
   if (wing.mission !== 'support' && wing.mission !== 'strategic') {
     wing.nextTick = idle;
@@ -475,12 +516,12 @@ function sortie(state: GameState, wing: AirWing, b: Building): void {
     const aim = supportAim(state, wing);
     const foe = aim >= 0 ? state.map.owner[aim] : 0;
     const range = airWingRange(b, state);
-    // Support flies while we are at war with them (either side attacking), within reach.
-    if (aim >= 0 && atWar(state, wing.owner, foe) && (d2(w, b.tile, aim) <= range * range || carrierFor(state, wing.owner, aim))) aims = [aim]; // carriers (variants.ts)
+    // Support flies while we are at war with them (either side attacking; following: our war target), within reach.
+    if (aim >= 0 && (atWar(state, wing.owner, foe) || (wing.follow && foe > 0 && foe === followedNation(state, wing.owner))) && (d2(w, b.tile, aim) <= range * range || carrierFor(state, wing.owner, aim))) aims = [aim]; // carriers (variants.ts)
   } else {
     mission = MISSION_STRATEGIC;
     const foe = wing.targetOwner;
-    if (foe > 0 && hostile(state, wing.owner, foe) && atWar(state, wing.owner, foe)) aims = strategicAims(state, wing, b, 3);
+    if (foe > 0 && hostile(state, wing.owner, foe) && (wing.follow || atWar(state, wing.owner, foe))) aims = strategicAims(state, wing, b, 3);
   }
   if (!aims.length) {
     wing.nextTick = idle;
@@ -696,7 +737,7 @@ export function hashAir(state: GameState, h: number, mixInt: (h: number, v: numb
       h = mixInt(h, wing.targetOwner);
       h = mixInt(h, wing.nextTick);
       h = mixInt(h, wing.coverTick);
-      h = mixInt(h, wing.refill ? 1 : 0);
+      h = mixInt(h, (wing.refill ? 1 : 0) | (wing.follow ? 2 : 0));
     }
     h = mixInt(h, air.zones.length);
     for (const z of air.zones) {

@@ -194,3 +194,32 @@
   padding: 0 6px;
   letter-spacing: 0.05em;
 }
+
+/* Follow my war row (hud/followRow.ts): status line + the toggle back from a fixed target */
+.fw-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+.fw-line {
+  font: 400 11.5px/1.3 var(--f-ui);
+  color: var(--olive);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fw-row.fixed .fw-line {
+  color: var(--dim);
+}
+.fw-b {
+  flex: none;
+}
+.fw-b.on {
+  color: var(--olive);
+  border-color: var(--olive-d);
+  cursor: default;
+}

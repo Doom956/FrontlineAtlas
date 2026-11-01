@@ -189,7 +189,8 @@ describe("'support front' mode", () => {
   it('needs a front; refit needs a Factory; the server validates it', () => {
     const s = landGame();
     const d = spawnTankDivision(s, 1, at(s, 20, 15));
-    expect(applyAction(s, 1, { type: 'setDivisionMode', unitIds: [d.id], mode: 'support' }).reason).toMatch(/front/);
+    // Without a front a player's divisions follow the war target (warTarget.ts); an explicit follow: false needs one.
+    expect(applyAction(s, 1, { type: 'setDivisionMode', unitIds: [d.id], mode: 'support', follow: false }).reason).toMatch(/front/);
     expect(applyAction(s, 1, { type: 'setDivisionMode', unitIds: [d.id], mode: 'refit' }).reason).toMatch(/Factory/);
     expect(applyAction(s, 1, { type: 'setDivisionMode', unitIds: [d.id], mode: 'charge' as never }).ok).toBe(false);
     expect(applyAction(s, 1, { type: 'setDivisionMode', unitIds: [d.id], mode: 'support', front: at(s, 30, 15) }).ok).toBe(true);

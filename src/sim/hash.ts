@@ -5,6 +5,7 @@
 // tile), barrages and buildings (level, timers, hp).
 
 import { hashAir } from './airwings';
+import { hashFollow } from './warTarget';
 import { hashArsenal } from './variants';
 import type { GameState, Troops } from './types';
 import { DIVISION_MODES, WARSHIP_STANCES } from './types';
@@ -164,6 +165,7 @@ export function hashState(state: GameState): number {
     h = mixInt(h, u.mode ? DIVISION_MODES.indexOf(u.mode) + 1 : 0);
     h = mixInt(h, u.retryTick ?? 0);
     if (u.wading) h = mixInt(h, u.wading); // Amphibious Tanks (specials.ts)
+    if (u.fixed) h = mixInt(h, u.fixed | 0x20000); // Follow my war: pinned (warTarget.ts)
   }
   // Recent wars (naval2.ts).
   const wm = state.warMemory ?? [];
@@ -230,5 +232,7 @@ export function hashState(state: GameState): number {
   h = hashAir(state, h, mixInt, mixFloat);
   // Unit variants, recon reveals, hold zones, recon timers (variants.ts).
   h = hashArsenal(state, h, mixInt, mixFloat);
+  // War targets and auto recon (warTarget.ts).
+  h = hashFollow(state, h, mixInt);
   return h >>> 0;
 }

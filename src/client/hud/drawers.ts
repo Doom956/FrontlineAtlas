@@ -54,6 +54,8 @@ import { AllyHelp } from './allyHelp';
 import { heartlandBonus, lastStandBonus } from '../allies';
 import { ABILITY_TEXT, article, buildingTexts, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect, terrainNote } from './text';
 import { AirPanel } from './airPanel';
+import { autoReconText } from '../follow';
+import { autoReconOn } from '../../sim/warTarget';
 import { airfieldVariantLine, factoryVariantLine, reconBlock, reconLabel, reconOffered, warshipOptions } from './variantOrders';
 import { warshipOrderCost } from '../../sim/navy';
 import { VARIANT_NAMES } from '../../sim/variants';
@@ -789,6 +791,24 @@ export class BuildingPage implements DrawerPage {
           ctx.ui.mode = { kind: 'recon', airfield: tile }; // the mode chip shows reconHint()
         }, (ss, m, bb) => reconBlock(ss, m, bb));
         rb.dataset.test = 'order-recon';
+        // auto recon (Follow my war): off by default, since each flight costs gold and oil
+        const ar = btn('Auto recon: off', 'ghost', () => {
+          const ss = ctx.state();
+          const bb = ss ? buildingAt(ss, tile) : undefined;
+          if (ss && bb) ctx.act({ type: 'setAutoRecon', airfield: tile, on: !autoReconOn(ss, bb) });
+        }, 'eye');
+        ar.dataset.test = 'auto-recon';
+        actions.append(ar);
+        this.upd.push((ss, m, bb) => {
+          const on = autoReconOn(ss, bb);
+          const t = autoReconText(ss, m.id, on);
+          const lab = ar.querySelector('.wr-btn-l');
+          if (lab && lab.textContent !== t.label) lab.textContent = t.label;
+          setClass(ar, 'on', on);
+          if (ar.getAttribute('aria-pressed') !== String(on)) ar.setAttribute('aria-pressed', String(on));
+          setDisabled(ar, bb.buildLeft > 0);
+          setTip(ar, bb.buildLeft > 0 ? 'Still being built' : t.tip);
+        });
       }
     }
     if (b.type === 'factory') {

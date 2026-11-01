@@ -2,13 +2,16 @@
 // the wing (bombers per sortie, aircraft stored / room), what it is doing now and a "re-buy losses" toggle.
 // Used by the selected-building drawer (drawers.ts) and the Forces drawer's Air group (one per airfield).
 // Support / Strategic ask for a map click (an attack or front / the nation to raid); Superiority patrols over the
-// airfield at once and a click can move the patrol.
+// airfield at once and a click can move the patrol. Missions follow your war by default (client/follow.ts): the
+// follow row says whom, and after a map pick "Fixed: ..." with a Follow my war button back.
 import { formatCount } from '../render/common';
 import { airSortieCost } from '../../sim/airwings';
 import { buildingAt } from '../../sim/buildings';
 import { unitAllowed } from '../../sim/rules';
 import type { AirMission, Building, GameState, Player } from '../../sim/types';
-import { AIR_ORDER, airInfo, airReady, setMission, toggleRefill, wingStatus } from '../pillars';
+import { followOf, followsWar, followText } from '../follow';
+import { AIR_ORDER, airInfo, airReady, followWingAgain, setMission, toggleRefill, wingStatus } from '../pillars';
+import { FollowRow } from './followRow';
 import { el, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon } from './glyph';
 import './pillars.css';
@@ -21,6 +24,7 @@ export class AirPanel {
   private refill: HTMLButtonElement;
   private btns = new Map<AirMission, HTMLButtonElement>();
   private refillOn: boolean | null = null;
+  private follow: FollowRow;
 
   constructor(private ctx: HudCtx, readonly tile: number, compact = false) {
     this.el = el('div', compact ? 'airpanel compact' : 'airpanel');
@@ -34,7 +38,7 @@ export class AirPanel {
       b.dataset.v = m;
       b.dataset.test = `air-${m}`;
       b.append(iconSpan(lineIcon(i.icon, 14, 2)), el('span', 'wr-btn-l', m === 'support' ? 'Support' : m === 'strategic' ? 'Strategic' : m === 'superiority' ? 'Superiority' : 'Idle'));
-      setTip(b, `${i.name}: ${i.help}${i.pick && m !== 'superiority' ? ' Then click the target.' : ''}`);
+      setTip(b, `${i.name}: ${i.help}${i.pick ? ' Follows your war; click a target to fix it.' : ''}`);
       b.setAttribute('aria-pressed', 'false');
       b.addEventListener('click', () => this.pick(m));
       this.btns.set(m, b);
@@ -50,9 +54,18 @@ export class AirPanel {
       if (why) ctx.toast(why, 'info');
       ctx.refreshSoon();
     });
+    this.follow = new FollowRow('air-follow', () => {
+      const s = ctx.state();
+      const b = s ? buildingAt(s, this.tile) : undefined;
+      if (!s || !b) return;
+      ctx.sound('uiClick');
+      const why = followWingAgain(s, ctx.dispatch, b);
+      if (why) ctx.toast(why, 'info');
+      ctx.refreshSoon();
+    });
     const foot = el('div', 'ap-foot');
     foot.append(this.wing, this.refill);
-    this.el.append(this.seg, this.line, foot);
+    this.el.append(this.seg, this.line, this.follow.el, foot);
   }
 
   private pick(m: AirMission): void {
@@ -82,6 +95,9 @@ export class AirPanel {
     }
     setText(this.line, st.line);
     setClass(this.line, 'warn', (st.mission === 'support' || st.mission === 'strategic') && st.bombers <= 0 || (st.mission === 'superiority' && st.fighters <= 0));
+    const fw = followsWar('air', st.mission);
+    const ft = fw ? followOf(s, 'air', b.tile) : null;
+    this.follow.set(ft !== null, !ft?.fixed, ft ? followText(s, b.owner, 'air', st.mission, ft) : '');
     setText(this.wing, `Wing ${st.size} bombers per sortie · ${st.bombers + st.fighters}/${st.cap} aircraft · reach ${st.range}`);
     const c = airSortieCost(s, me.id);
     if (this.refillOn !== st.refill) {

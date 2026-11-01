@@ -426,8 +426,8 @@ export function guideTips(): GuideTip[] {
       id: 'navy',
       text: (c) =>
         c.ui.selectedTile >= 0 && c.s.map.building[c.ui.selectedTile] > 0
-          ? 'Order a Warship here. Selected ships take stances: hunt, escort, bombard, blockade.'
-          : 'Click your Port, then Warship. Select ships to give them a stance.',
+          ? 'Order a Warship here. Select ships for a stance; Bombard and Blockade follow your war by default.'
+          : 'Click your Port, then Warship. Select ships for a stance: they follow your war by default.',
       target: 'order-warship || order-destroyer || order-submarine',
       tile: (c) => buildingTile(c.s, c.me, 'port'),
       when: (c) => playing(c) && owns(c.s, c.me, 'port') && hasTech(c.me, 'navigation') && unitAllowed(c.s, 'warship'),
@@ -451,7 +451,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'armor',
-      text: 'Click your Factory, then Tank division. Select it, then click enemy land to spearhead.',
+      text: 'Click your Factory, then Tank division. Click enemy land to spearhead; Support front follows your war.',
       target: 'order-tank-division',
       tile: (c) => buildingTile(c.s, c.me, 'factory'),
       when: (c) => playing(c) && owns(c.s, c.me, 'factory') && hasTech(c.me, 'mechanization'),
@@ -475,7 +475,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'air',
-      text: 'Click your Airfield: buy Bombers, then pick Support (a front) or Strategic (income).',
+      text: 'Click your Airfield: buy Bombers, then pick Support or Strategic. Missions follow your war by default.',
       target: 'air-support || order-bomber',
       tile: (c) => buildingTile(c.s, c.me, 'airfield'),
       when: (c) => playing(c) && owns(c.s, c.me, 'airfield'),

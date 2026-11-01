@@ -123,10 +123,18 @@ const ACTION_SPECS: ActionSpecs = {
   upgradeArea: { tile: TILE, radius: { k: 'amount' }, building: { k: 'enum', values: BUILDING_TYPES, optional: true }, levels: { k: 'amount' } },
   upgradeBuildings: { tiles: { k: 'tiles' }, levels: { k: 'amount' } },
   cancelQueuedLevels: { tile: TILE },
-  setUnitStance: { unitIds: { k: 'ids' }, stance: { k: 'enum', values: WARSHIP_STANCES } },
-  setDivisionMode: { unitIds: { k: 'ids' }, mode: { k: 'enum', values: DIVISION_MODES }, front: { k: 'tile', optional: true } },
-  setAirMission: { airfield: { k: 'siteOrAuto' }, mission: { k: 'enum', values: AIR_MISSIONS }, target: { k: 'tile', optional: true }, refill: { k: 'bool', optional: true } },
+  // Follow my war (protocol 10): follow flags, a stance's pinned target, auto recon.
+  setUnitStance: { unitIds: { k: 'ids' }, stance: { k: 'enum', values: WARSHIP_STANCES }, target: { k: 'tile', optional: true }, follow: { k: 'bool', optional: true } },
+  setDivisionMode: { unitIds: { k: 'ids' }, mode: { k: 'enum', values: DIVISION_MODES }, front: { k: 'tile', optional: true }, follow: { k: 'bool', optional: true } },
+  setAirMission: {
+    airfield: { k: 'siteOrAuto' },
+    mission: { k: 'enum', values: AIR_MISSIONS },
+    target: { k: 'tile', optional: true },
+    refill: { k: 'bool', optional: true },
+    follow: { k: 'bool', optional: true },
+  },
   reconFlight: { airfield: { k: 'siteOrAuto' }, tile: TILE },
+  setAutoRecon: { airfield: { k: 'siteOrAuto' }, on: { k: 'bool' } },
 };
 
 function checkField(spec: FieldSpec, v: unknown): Result<unknown> {
