@@ -82,5 +82,24 @@ Kept: human grace by difficulty (a walled-in human can't collapse or be absorbed
 Results: idle human on Easy / Normal alive at 12 min in 12/12 (was 4/12 and 3/8: absorbed at 3-5 min by the AI that walled it in, no attack); scripted new player Easy rank at 20 min median 6.5 / 6 -> 4 / 5 of 9 (medium / World; fresh seeds 7 / 7 -> 5 / 5), Easy and Normal alive at 20 min 100%, Hard and Brutal unchanged; winners' mercenary share 0.6 -> 1.8% of gold; merchant personality 2.0x -> 1.85x its share (1.6x with that change alone); specialists (288 pairs) navy 0.67 -> 0.82, armor 1.34 -> 1.13, air 0.90 -> 0.83, land 0.69 -> 0.73, economy 1.68 -> 1.66; length 34.8 / 36.6 -> 36.0 / 36.5 min.
 Still failing: economy specialist ~1.65 (its edge is early Agriculture + Banking and a market/lab lean; every gold cut tried (markets, Banking) moved economy into range but pushed navy and air down, since airfields, bombers and warships need gold); mercenaries still a small share; atom bombs >= 5 min before the end 7-8%; AI-only Easy games rarely end within 50 min (13%, was 58%).
 
+## Guide + balance round: final check (2026-11-01, on `dev`, not merged yet)
+Checks green: `npx tsc -p .`, `npx tsc -p server`, `npx vitest run` (703 tests; no balance-number test needed updating), `npm run build`; multiplayer `mp-pillars` and `mp-arsenal` PASS (hashes agree; `mp-arsenal` once failed its fixed 5 s "research seen by A, B, C" wait while three browser runs shared the machine, then passed alone). New-player run on Easy at 1280x720: the 9 opening steps each pointed at the right button or tile and moved on; no console errors. How to play has a Guide row (Menu > Help: Guide on / off, Restart guide).
+Balance verification on fresh seeds (7001+) vs base2 (c700ea3); "base" = the old tree on the same fresh seeds. Log: /tmp/fa-bal/log2.md.
+| Target | base2 | Base, fresh seeds | Now [95%] | Result |
+|---|---|---|---|---|
+| Specialist navy / armor / air | 0.77 / 1.70 / 0.68 | 0.45 / 1.25 / 0.68 | 0.87 / 0.99 / 0.84 | pass (air: slot 1 1.25, slot 2 0.59) |
+| Specialist land / economy | 0.61 / 1.43 | 0.83 / 1.63 | 0.71 [0.52-0.96] / 1.66 [1.28-2.29] | fail |
+| Blitz / Air / Fortress (random pick) | 1.92 / 0.69 / 0.76 | 2.23 / 0.61 / 0.55 | 1.82 / 0.65 / 0.65 | fail |
+| Naval / Siege / Merchant / Expansion | 0.44 / 0.99 / 1.21 / 0.95 | 0.97 / 0.88 / 1.04 / 0.61 | 0.74 / 1.10 / 1.04 / 0.93 | pass |
+| AI doctrine picks, Air win ratio | 2.05 | 3.00 | 3.06 (34 picks) | fail |
+| Bomber sorties / most aircraft, max / median | 4.7x / 1.7x | 3.9x / 1.7x | 3.1x / 1.2x | pass |
+| Median length medium / World (min) | 34.3 / 38.3 | 34.7 / 37.8 | 36.2 / 40.4 | over target; the change itself +0.4 / +1.8, not clearly real |
+| Leader at 15 min wins / Hard alive at 10 min | 20% / 100% | 27% / 100% | 21% / 100% | pass |
+| Atom bombs 5+ min before the end | 9% | 3/16 | 3/10 (14% with the tuners' runs) | fail |
+| Winners' gold on mercenaries | 0.6% | 0.6% | 1.8% | fail (small) |
+| Slowest 1% of ticks (ms) | 7.2-7.6 | 6.2 | 6.3 | pass |
+Claims that didn't hold on fresh seeds: Blitz 1.82 (not 1.55); AI Air-doctrine picks still 3.1; merchant personality 1.48x its share before and after; idle human on Normal alive at 12 min 10/12 (deaths at 10.5 and 11.2 min, after its 6-min grace; Easy 12/12); new player on Easy, World map rank 7.3 -> 6.8 (no clear change; medium 6.75 -> 5.25 is real).
+Still open: economy and land specialists, Blitz and AI Air-doctrine picks, early atom bombs, mercenaries; AI-only Easy games rarely end (5 of 48 within 50 min, was 22); guide: attacked / coalition / strike tips not seen in a browser with a real AI attack, a passive player sees the opening for ~5 min, texts not translated; not checked: Brutal, World by map type.
+
 ## Parked ideas (owner said later / maybe)
 Building limits (city slots, upkeep), rivers and bridges, wonders, game modes (King of the Hill, capital capture, scenarios), quick chat/emotes/rematch, phone layout, making Easy winnable, calmer tribes.

@@ -728,7 +728,8 @@ stacked under another SAM. Airfields flying heavy bombers raid cities (all but t
 fall back to front support when no city is in reach (`AI_HEAVY_RAIDS`, airwings.ts). An AI keeps at most
 `AI_MAX_AIRFIELDS` (3) airfields: a nation with more than `AIR.massFree` (2) airfields on support / strategic missions
 flies each of them `AIR.massCooldown` (+50%) slower per extra one (`massCooldownMul`), so mass airfields no longer
-multiply sorties. Atom bombs: an AI in the
+multiply sorties. A support mission's strikes leave a support zone of radius `AIR.supportRadius` (11, +2 per airfield
+level above 1) for `AIR.supportSeconds` (24) s. Atom bombs: an AI in the
 coalition against a runaway leader researches its way to Nuclear Fission first (`NUKE_PATH`) and nukes the leader
 it borders or fights; any AI nukes a bordering / attacking nation above max(`NUKE_LEADER_FLOOR`, win share -
 `NUKE_LEADER_MARGIN`) of the land, or its main attacker once it has lost half its peak land.
