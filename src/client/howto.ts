@@ -179,7 +179,8 @@ export function howToPlayContent(): HTMLElement {
     { icon: lineIcon('doctrine', 18), title: 'Doctrines', text: `At ${min(DOCTRINE_UNLOCK_SECONDS)}:00 pick a play style: Blitz, Fortress, Siege ...`, key: 'Shift D' },
     { icon: lineIcon('rocket', 18), title: 'Strikes', text: 'A strike icon lights up in the bottom bar when ready: press its key, click the target.' },
     { icon: lineIcon('ally', 18), title: 'Allies', text: 'Click a nation in the standings, then Ally. Allies cannot attack each other.', key: 'P' },
-    { icon: lineIcon('help', 18), title: 'Tutorial', text: 'Title screen, Tutorial: one 5-minute practice game, step by step. In games, the guide bar points the way (Menu: Guide).' },
+    { icon: lineIcon('help', 18), title: 'Tutorial', text: 'Title screen, Tutorial: one 5-minute practice game, step by step.' },
+    { icon: lineIcon('help', 18), title: 'Guide', text: 'In games, a small bar above the command bar walks you through the start and explains new things once. Menu (Esc) > Help: Guide on / off, Restart guide.' },
   ];
   const quick = el('section', 'hw-quick');
   quick.append(

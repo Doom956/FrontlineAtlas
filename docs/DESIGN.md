@@ -262,7 +262,9 @@ perfect square; at 0.25 with the wider jitter a free expansion grows a round, sl
   piece fully surrounded by one hostile nation (no water, no neutral land; the map edge doesn't count) that is under
   half of the player's land is annexed by it; a small nation's main body too. Allies keep their pockets.
   **Human grace**: a human nation neither collapses nor has its main body absorbed in its first
-  `HUMAN_GRACE_SECONDS` (180) of game time (its 81-tile start is under the threshold); while walled in it gets a
+  `HUMAN_GRACE_SECONDS` (180) of game time, 6 min on Normal and 10 min on Easy (`HUMAN_GRACE_BY_DIFFICULTY`,
+  `combat.humanGraceSeconds`; its 81-tile start is under the threshold, and before this an idle new player was
+  absorbed at 3-5 min by the AI that had walled it in, without any attack); while walled in it gets a
   `surrounded` event (a red toast, at most every 20 s) telling it to expand or attack out.
 
 **Big nations are favoured, not unstoppable** (combat.ts, numbers in config.ts):
@@ -518,8 +520,9 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
 
 - `hireMercenaries { amount }`: instant infantry; the price per troop rises with game time and with every hire in a
   60 s window (integrated over the amount) and with the buyer's land share (mercenaries prefer underdogs), at most 15% of the cap per window, home troops at most 10% over the cap.
-  AIs hire when losing at home or when a big attack runs on a low bar, with at least `AI_MERC_MIN_GOLD_SECONDS` (8) of
-  gold income saved (aispending.ts; AIs at war rarely hold more than ~20 s, so the old 20 s gate almost never let them hire).
+  AIs hire when losing at home or when a big attack runs while the bar is under half full, with at least
+  `AI_MERC_MIN_GOLD_SECONDS` (4) of gold income saved, spending up to 45% of their gold (60% when losing), at most
+  every 20 s (aispending.ts; AIs at war rarely hold more than ~20 s, so the old 20 s gate almost never let them hire).
 - `fundAlly { ally, gold }`: gold to an ally, which likes you more, needs less trust and strength to join your wars
   and attacks nations at war with you up to +20% harder for 90 s (`GameState.allyFunds`).
 - `warBonds`: +15% attack for 40 s, 150 s cooldown, price max(1 500, 45 s of gold income).
@@ -584,7 +587,7 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   `NAVY_BOMBARD_STANCE_KILL`), `blockade` (parks off an enemy port). State 3 = on station (`Unit.station` = the coast
   or port tile), 4 = escorting (`station` = the ship's id). "At war" = an attack running between the two, or within
   `NAVY_WAR_MEMORY` s (`state.warMemory`). Fronts: enemy land within `NAVY_SUPPORT_RANGE` of own warships costs
-  defence / (1 + bonus) and advances faster (bonus 0.35 for the first ship, x0.6 for each further one, cap 0.8) and
+  defence / (1 + bonus) and advances faster (bonus 0.45 for the first ship, x0.6 for each further one, cap 1) and
   counts as supplied; a landing next to own warships pays x `NAVY_BEACHHEAD_LOSS` and its beachhead supplies twice as
   long. A port within `NAVY_BLOCKADE_RANGE` of a warship at war with its owner is blockaded: its trade pays x 0.25,
   its owner's land within `NAVY_BLOCKADE_SUPPLY_RADIUS` is badly supplied (attacks) and unsupplied (defence), and the
@@ -722,7 +725,11 @@ clearly outnumber (careful AIs avoid SAM cover), else about 30 tiles behind the 
 Air defence: with enemy bombers about and 4+ techs an AI researches Flight and Radar next (`AI_RADAR_VS_AIR`) and
 puts SAM sites about `SAM_FRONT_DEPTH` (24) tiles behind its border with the nation that threatens it most, not
 stacked under another SAM. Airfields flying heavy bombers raid cities (all but the one nearest the main attack) and
-fall back to front support when no city is in reach (`AI_HEAVY_RAIDS`, airwings.ts). Atom bombs: an AI in the
+fall back to front support when no city is in reach (`AI_HEAVY_RAIDS`, airwings.ts). An AI keeps at most
+`AI_MAX_AIRFIELDS` (3) airfields: a nation with more than `AIR.massFree` (2) airfields on support / strategic missions
+flies each of them `AIR.massCooldown` (+50%) slower per extra one (`massCooldownMul`), so mass airfields no longer
+multiply sorties. A support mission's strikes leave a support zone of radius `AIR.supportRadius` (11, +2 per airfield
+level above 1) for `AIR.supportSeconds` (24) s. Atom bombs: an AI in the
 coalition against a runaway leader researches its way to Nuclear Fission first (`NUKE_PATH`) and nukes the leader
 it borders or fights; any AI nukes a bordering / attacking nation above max(`NUKE_LEADER_FLOOR`, win share -
 `NUKE_LEADER_MARGIN`) of the land, or its main attacker once it has lost half its peak land.
@@ -734,11 +741,13 @@ ai.ts. The human's own economy never changes.
 
 | | Easy | Normal (default) | Hard | Brutal |
 |---|---|---|---|---|
-| AI growth / income / cap | x0.7 / x0.7 / x0.7 | x0.88 / x0.88 / x1 | x1.075 / x1.15 / x1 | x1.15 / x1.3 / x1.1 |
+| AI growth / income / cap | x0.5 / x0.6 / x0.5 | x0.88 / x0.88 / x1 | x1.075 / x1.15 / x1 | x1.15 / x1.3 / x1.1 |
 | decides every | 5 s | 3 s | 2 s | 1.5 s |
 | troop shares sent | x0.7 | x0.9 | x1.1 | x1.2 |
 | reads matchups, SAMs (`careful`) / joins allies' wars / atom bombs | no / no / no | yes / no / yes | yes | yes |
 | human grace (no new war on a human that isn't attacking us) | 15 min | 9 min | 6 min | none |
+| human can't collapse or be absorbed when walled in (`HUMAN_GRACE_BY_DIFFICULTY`) | 10 min | 6 min | 3 min | 3 min |
+| AI starts keep x the usual spacing from a human start (`humanRoom`) | x2 | x1 | x1 | x1 |
 | strength wanted vs a human (`humanNeed`) | x1.6 | x1.4 | x1 | x0.9 |
 | AI nations at war with a human at once, first 10 min / later | 1 / 1 | 1 / 2 | 1 / any | any |
 | attack on a human at most (x the human's whole army) | 0.75 | 0.8 | 1.2 | no limit |
@@ -764,6 +773,12 @@ alliances, pokes its weakest neighbour once boxed in), default Classic setup, 12
 | World, Normal | 100% / 100% (0% / 0%) | 5% / 3% | 5 | 9.3 min (6.2) | 0/12 (12/12 at 7.1) | 1/12 |
 | World, Hard | 100% / 100% (25% / 0%) | 4% / 1% | 7 | 6.9 min | 3/12 at 27.4 (12/12 at 7.9) | 0/12 |
 | World, Brutal | 0% / 0% | - | - | 5.1 min | 12/12 at 5.9 | - |
+
+2026-11-01 (24 seeds, after the longer grace, Easy spawn room and Easy AI economy x0.5 / x0.6 / x0.5): rank at 20 min
+on Easy medium 4, World 5 (before 6.5 / 6; fresh seeds 101-148: 7 / 7 -> 5 / 5), Easy and Normal alive at 20 min
+100%, Hard and Brutal unchanged. An idle human (no clicks) is now alive at 12 min on Easy and Normal (before:
+absorbed at 3-5 min in 8 of 12 seeds by the AI that walled it in). AI-only Easy games end more slowly (13% with a
+winner within 50 min, before 58%).
 
 The scripted player never wins at any difficulty: its 25-35% pokes at a nation take a few hundred tiles (a war
 needs millions of troops), so it survives on Easy and Normal but does not conquer. AI-only games still always end
@@ -979,11 +994,11 @@ and research): the unlock is at 2:30 there.
 
 | Doctrine | Levers (full bonus) | Level 3 perk |
 | --- | --- | --- |
-| Blitz | fronts cross plains and desert tiles +30% faster; armor conversion -25% gold and iron | armor ignores half of its terrain attack penalty |
+| Blitz | fronts cross plains and desert tiles +10% faster; armor conversion -15% gold and iron | armor ignores 30% of its terrain attack penalty |
 | Fortress | the defence a fort adds +25%; forts -25% gold and iron; home troops lost when a tile falls -20% | forts build and upgrade 4x faster, repair shell damage 3x faster |
 | Siege | artillery attack +20%; artillery's extra siege bonus +25%; barrage reload -25% | barrage disc +1 tile; forts and SAMs silenced 1.5x longer |
 | Merchant | gold income +8%; trade gold received +25%; market bonus (and its cap) +15% | +1.5% gold per own trade ship at sea (up to 10) |
-| Naval | warships -35% price, +20% speed; transports +35% speed and +1 hp (twice as hard to sink) | warships repair at sea (0.05 hp/s); coastal shelling x1.5 |
+| Naval | warships -35% price, +20% speed; transports +35% speed and +1 hp (twice as hard to sink); trade gold received +40% | warships repair at sea (0.05 hp/s); coastal shelling x1.5 |
 | Air | bombers, fighters and paradrop planes -25% price; fighter and paradrop cooldowns -25%; paradrop range +25% | bombers survive one extra hit (SAM shot or fighters) |
 | Expansion | losses attacking tribes and wilderness -30%; troop growth +30% while small (full under 6% of the land, none from 15%) | a tribe you eliminate pays 15 s of your gold income + 0.2 gold per tile it held at its peak |
 

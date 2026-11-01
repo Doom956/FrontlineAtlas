@@ -244,6 +244,8 @@ export const ENDGAME_SMALL_TILES = 150;
  * surrounded (its 81-tile start is under ENDGAME_SMALL_TILES), so a new or slow player gets time to grow.
  */
 export const HUMAN_GRACE_SECONDS = 180;
+/** Longer on the easier difficulties (seconds; missing = HUMAN_GRACE_SECONDS): an idle new player isn't swallowed at once. */
+export const HUMAN_GRACE_BY_DIFFICULTY: Partial<Record<Difficulty, number>> = { easy: 600, normal: 360 };
 /** Same for tribes (they are food). */
 export const TRIBE_ANNEX_TILES = 250;
 /** Every this many seconds (per player, staggered): enclaves fully surrounded by one hostile nation are annexed by it. */
@@ -607,9 +609,9 @@ export const TANK_DEFENSE_RADIUS = 4;
 export const TANK_DEFENSE_BONUS = 0.35;
 /** a division not attacking whose ground is taken falls back to own land within this many tiles (losing this share
  * of its troops) while it has at least TANK_FALLBACK_MIN_SHARE of a full division; otherwise it is overrun */
-export const TANK_FALLBACK_RADIUS = 5;
+export const TANK_FALLBACK_RADIUS = 8;
 export const TANK_FALLBACK_LOSS = 0.08;
-export const TANK_FALLBACK_MIN_SHARE = 0.2;
+export const TANK_FALLBACK_MIN_SHARE = 0.1;
 /** seconds a division that fell back waits before an automatic drive back up to the front */
 export const TANK_FALLBACK_PAUSE = 20;
 /** a bomber hit kills this share of a division's troops within BOMBER_RADIUS of the impact */
@@ -704,11 +706,11 @@ export interface DoctrineLevers {
 export type DoctrineLever = keyof DoctrineLevers;
 
 export const DOCTRINE_LEVERS: Record<DoctrineId, DoctrineLevers> = {
-  blitz: { openGroundSpeed: 0.3, armorConvertCost: 0.25 },
+  blitz: { openGroundSpeed: 0.1, armorConvertCost: 0.15 },
   fortress: { fortDefense: 0.25, fortCost: 0.25, defenderLoss: 0.2 },
   siege: { artilleryAttack: 0.2, siegeBonus: 0.25, barrageCooldown: 0.25 },
   merchant: { gold: 0.08, tradeGold: 0.25, marketBonus: 0.15 },
-  naval: { warshipCost: 0.35, warshipSpeed: 0.2, transportSpeed: 0.35, transportHp: 1 },
+  naval: { warshipCost: 0.35, warshipSpeed: 0.2, transportSpeed: 0.35, transportHp: 1, tradeGold: 0.4 },
   air: { aircraftCost: 0.25, airfieldReload: 0.25, paradropRange: 0.25 },
   expansion: { expansionLoss: 0.3, smallGrowth: 0.3 },
 };
@@ -716,7 +718,7 @@ export const DOCTRINE_LEVERS: Record<DoctrineId, DoctrineLevers> = {
 /** Level-3 signature perks (and the expansion doctrine's 'small' range, used from level 1). */
 export const DOCTRINE_PERKS = {
   /** armor ignores this share of the terrain's attack penalty (forest, hills, mountains, swamp ...) */
-  blitz: { armorTerrainIgnore: 0.5 },
+  blitz: { armorTerrainIgnore: 0.3 },
   /** forts build and upgrade in this share of the time and repair barrage damage this many times faster */
   fortress: { fortBuildTime: 0.25, fortRepair: 3 },
   /** barrage disc + this many tiles; forts and SAM sites stay silenced this many times longer */
@@ -796,8 +798,8 @@ export const DOCTRINES: Record<DoctrineId, DoctrineInfo> = {
     name: 'Naval',
     short: 'Rule the sea: cheaper, faster warships and tougher transports.',
     levels: [
-      `Warships ${pct(L.naval.warshipCost, 1)} cheaper and ${pct(L.naval.warshipSpeed, 1)} faster; transports ${pct(L.naval.transportSpeed, 1)} faster and tougher.`,
-      `Warships ${pct(L.naval.warshipCost, 2)} cheaper and ${pct(L.naval.warshipSpeed, 2)} faster; transports ${pct(L.naval.transportSpeed, 2)} faster, twice as hard to sink.`,
+      `Warships ${pct(L.naval.warshipCost, 1)} cheaper and ${pct(L.naval.warshipSpeed, 1)} faster; transports ${pct(L.naval.transportSpeed, 1)} faster and tougher; trade ships carry +${pct(L.naval.tradeGold, 1)}.`,
+      `Warships ${pct(L.naval.warshipCost, 2)} cheaper and ${pct(L.naval.warshipSpeed, 2)} faster; transports ${pct(L.naval.transportSpeed, 2)} faster, twice as hard to sink; trade ships carry +${pct(L.naval.tradeGold, 2)}.`,
       `Warships repair at sea and shell coasts ${P.naval.shelling}x harder.`,
     ],
     color: '#4f8a94',
@@ -1012,7 +1014,7 @@ export const RULES_TEXT = {
     `A landed invasion's beachhead supplies it for ${BEACHHEAD_SUPPLY_SECONDS} s.`,
   endgame:
     `A nation with fewer than ${ENDGAME_SMALL_TILES} tiles (a tribe: ${TRIBE_ANNEX_TILES}) collapses when it is hit ` +
-    `(players get the first ${HUMAN_GRACE_SECONDS / 60} minutes to grow first). ` +
+    `(players get the first ${HUMAN_GRACE_SECONDS / 60} minutes to grow first: ${(HUMAN_GRACE_BY_DIFFICULTY.normal ?? HUMAN_GRACE_SECONDS) / 60} on Normal, ${(HUMAN_GRACE_BY_DIFFICULTY.easy ?? HUMAN_GRACE_SECONDS) / 60} on Easy). ` +
     `Pockets surrounded by one hostile nation are annexed by it. After ${OVERTIME_MINUTES} minutes the land share ` +
     `needed to win drops by ${Math.round(OVERTIME_DROP_PER_MINUTE * 100)}% a minute, down to ${Math.round(OVERTIME_MIN_SHARE * 100)}%. ` +
     `Tribes don't count for "last nation standing".`,
@@ -1035,7 +1037,7 @@ export const AI_HARD_INCOME_BONUS = 0.15;
  * (tribes too). The human's economy never changes.
  */
 export const AI_ECONOMY: Record<Difficulty, { growth: number; income: number; cap: number }> = {
-  easy: { growth: 0.7, income: 0.7, cap: 0.7 },
+  easy: { growth: 0.5, income: 0.6, cap: 0.5 },
   normal: { growth: 0.88, income: 0.88, cap: 1 },
   hard: { growth: 1 + AI_HARD_INCOME_BONUS * 0.5, income: 1 + AI_HARD_INCOME_BONUS, cap: 1 },
   brutal: { growth: 1.15, income: 1.3, cap: 1.1 },
@@ -1109,8 +1111,8 @@ export const AIR = {
   sortieCooldown: 20,
   idleRecheck: 3,
   /** support: zone radius (+ per airfield level above 1), how long it lasts after the last strike (s) */
-  supportRadius: 7,
-  supportRadiusPerLevel: 1,
+  supportRadius: 11,
+  supportRadiusPerLevel: 2,
   supportSeconds: 24,
   /** support: enemy tile defence cut = maxCut x (1 - decay^strength); strength = bombers that struck the zone */
   supportMaxCut: 0.45,
@@ -1144,6 +1146,9 @@ export const AIR = {
   /** paratroopers: drop size x (1 + paraPerAircraft x aircraft at the airfield), at most paraMaxMul */
   paraPerAircraft: 0.08,
   paraMaxMul: 2.2,
+  /** a nation flying more than massFree airfields on support / strategic missions: every wing's sortie cooldown x (1 + massCooldown x the extra ones) */
+  massFree: 2,
+  massCooldown: 0.5,
 } as const;
 
 // ---------- navy, part three: stances, shore bombardment, blockades, veterancy (naval2.ts) ----------
@@ -1164,15 +1169,15 @@ export const NAVY_STATION_DIST = 4;
  * counts as supplied. bonus = NAVY_SUPPORT_BONUS for the first ship, each further ship x NAVY_SUPPORT_DIMINISH of the
  * one before, at most NAVY_SUPPORT_MAX.
  */
-export const NAVY_SUPPORT_RANGE = 12;
-export const NAVY_SUPPORT_BONUS = 0.35;
+export const NAVY_SUPPORT_RANGE = 18;
+export const NAVY_SUPPORT_BONUS = 0.45;
 export const NAVY_SUPPORT_DIMINISH = 0.6;
-export const NAVY_SUPPORT_MAX = 0.8;
+export const NAVY_SUPPORT_MAX = 1;
 export const NAVY_SUPPORT_SPEED = 0.6;
 /** a ship in 'bombard' stance shells the coast x this (defenders killed per second, WARSHIP_BOMBARD_KILL) */
 export const NAVY_BOMBARD_STANCE_KILL = 1.6;
 /** landings within NAVY_SUPPORT_RANGE of an own warship: the beachhead costs x this and its supply lasts x NAVY_BEACHHEAD_SUPPLY */
-export const NAVY_BEACHHEAD_LOSS = 0.4;
+export const NAVY_BEACHHEAD_LOSS = 0.2;
 export const NAVY_BEACHHEAD_SUPPLY = 2;
 /**
  * Blockade: a port within NAVY_BLOCKADE_RANGE tiles of a warship whose owner is at war with the port's owner is

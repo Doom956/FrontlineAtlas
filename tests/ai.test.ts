@@ -1,13 +1,13 @@
 // AI nations (WP-E): spawning, a whole AI-only game, alliance answers, determinism, hands off the human.
 import { describe, expect, it } from 'vitest';
 import { applyAction } from '../src/sim/actions';
-import { aiSpawn, aiWantsAlliance, updateAI } from '../src/sim/ai';
+import { aiSpawn, aiWantsAlliance, DIFFICULTY, updateAI } from '../src/sim/ai';
 import { SPAWN_SECONDS, TICKS_PER_SECOND, VICTORY_LAND_SHARE } from '../src/sim/config';
 import { launchAttack } from '../src/sim/combat';
 import { breakAlliance, formAlliance } from '../src/sim/diplomacy';
 import { tick } from '../src/sim/sim';
-import { createGame, spawnMinDistance } from '../src/sim/state';
-import type { BuildingType, GameSettings, GameState } from '../src/sim/types';
+import { canSpawnAt, createGame, spawnMinDistance } from '../src/sim/state';
+import type { BuildingType, Difficulty, GameSettings, GameState } from '../src/sim/types';
 import { claimRect, makeFlatGame, testSettings } from './helpers';
 
 function aiSettings(seed: number, overrides: Partial<GameSettings> = {}): GameSettings {
@@ -40,6 +40,39 @@ describe('aiSpawn', () => {
         expect(Math.sqrt(dx * dx + dy * dy)).toBeGreaterThanOrEqual(spawnMinDistance(state));
       }
     }
+  });
+
+  it('on Easy, AI starts keep more room around a human start than on Hard', () => {
+    const nearest = (difficulty: Difficulty, seed: number): number => {
+      const state = createGame(aiSettings(seed, { humanPlayer: true, aiCount: 6, difficulty }));
+      const w = state.map.width;
+      // The human picks a start first (the middle-most valid tile), then the AIs come.
+      let tile = -1;
+      for (let r = 0; r < w && tile < 0; r++) {
+        const t = ((state.map.height / 2) | 0) * w + ((w / 2) | 0) + r;
+        if (canSpawnAt(state, 1, t)) tile = t;
+      }
+      expect(applyAction(state, 1, { type: 'spawn', tile }).ok).toBe(true);
+      const ticks = Math.round((SPAWN_SECONDS - 1) * TICKS_PER_SECOND);
+      for (let k = 0; k < ticks; k++) tick(state);
+      let best = Infinity;
+      for (const p of state.players) {
+        if (p.id <= 1 || !p.spawned) continue;
+        const dx = (p.capital % w) - (tile % w);
+        const dy = ((p.capital / w) | 0) - ((tile / w) | 0);
+        best = Math.min(best, Math.sqrt(dx * dx + dy * dy));
+      }
+      return best;
+    };
+    expect(DIFFICULTY.easy.humanRoom).toBeGreaterThan(1);
+    for (const d of ['normal', 'hard', 'brutal'] as const) expect(DIFFICULTY[d].humanRoom).toBe(1);
+    let easy = 0;
+    let hard = 0;
+    for (const seed of [11, 12, 13]) {
+      easy += nearest('easy', seed);
+      hard += nearest('hard', seed);
+    }
+    expect(easy).toBeGreaterThan(hard);
   });
 
   it('does nothing outside the spawn phase or for the human', () => {
