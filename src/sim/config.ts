@@ -696,6 +696,8 @@ export interface DoctrineLevers {
   airfieldReload?: number;
   /** air: paradrop range this much longer */
   paradropRange?: number;
+  /** air: support strikes (defence cut, kills) and strategic raids this much stronger */
+  strikePower?: number;
   /** expansion: losses attacking tribes and the wilderness this much lower */
   expansionLoss?: number;
   /** expansion: troop growth this much higher while small (DOCTRINE_PERKS.expansion.smallShare) */
@@ -704,12 +706,12 @@ export interface DoctrineLevers {
 export type DoctrineLever = keyof DoctrineLevers;
 
 export const DOCTRINE_LEVERS: Record<DoctrineId, DoctrineLevers> = {
-  blitz: { openGroundSpeed: 0.3, armorConvertCost: 0.25 },
+  blitz: { openGroundSpeed: 0.15, armorConvertCost: 0.2 },
   fortress: { fortDefense: 0.25, fortCost: 0.25, defenderLoss: 0.2 },
   siege: { artilleryAttack: 0.2, siegeBonus: 0.25, barrageCooldown: 0.25 },
   merchant: { gold: 0.08, tradeGold: 0.25, marketBonus: 0.15 },
-  naval: { warshipCost: 0.35, warshipSpeed: 0.2, transportSpeed: 0.35, transportHp: 1 },
-  air: { aircraftCost: 0.25, airfieldReload: 0.25, paradropRange: 0.25 },
+  naval: { warshipCost: 0.35, warshipSpeed: 0.2, transportSpeed: 0.35, transportHp: 1, tradeGold: 0.4 },
+  air: { aircraftCost: 0.25, airfieldReload: 0.25, paradropRange: 0.25, strikePower: 0.5 },
   expansion: { expansionLoss: 0.3, smallGrowth: 0.3 },
 };
 

@@ -21,7 +21,7 @@ import { applyAction } from './actions';
 import { atWar } from './allies';
 import { frontTiles } from './combat';
 import { areAllied } from './diplomacy';
-import { doctrineActive, doctrineLess } from './doctrines';
+import { doctrineActive, doctrineLess, doctrineMore } from './doctrines';
 import { atPeace, peaceReason, unitRule } from './rules';
 import { addEvent } from './state';
 import { hasTech } from './tech';
@@ -513,6 +513,11 @@ export function airStrikeArrived(state: GameState, u: Unit): boolean {
   return false;
 }
 
+/** Support strike strength x: ground-attack / heavy bombers (variants.ts) and the Air doctrine's strikePower. */
+function strikeMul(state: GameState, owner: number): number {
+  return airSupportMul(state, owner) * doctrineMore(state, owner, 'strikePower');
+}
+
 function supportStrike(state: GameState, u: Unit): void {
   const map = state.map;
   const tile = u.target;
@@ -546,7 +551,7 @@ function supportStrike(state: GameState, u: Unit): void {
   const vp = state.players[victim];
   const share = tiles / Math.max(1, vp.tiles);
   const army = vp.troops.infantry + vp.troops.armor + vp.troops.artillery;
-  const kill = Math.max((AIR.supportMinKill * tiles) / Math.max(1, hostileTiles), AIR.supportKillShare * army * share) * nightEffectMul(state, u.owner) * airSupportMul(state, u.owner); // ground-attack / heavy (variants.ts)
+  const kill = Math.max((AIR.supportMinKill * tiles) / Math.max(1, hostileTiles), AIR.supportKillShare * army * share) * nightEffectMul(state, u.owner) * strikeMul(state, u.owner); // ground-attack / heavy (variants.ts)
   const killed = killArmy(state, victim, kill, u.owner);
 
   // Strengthen this wing's zone if it is near, else start a new one.
@@ -556,12 +561,12 @@ function supportStrike(state: GameState, u: Unit): void {
     if (z.owner === u.owner && z.wing === (af?.id ?? -1) && z.untilTick > state.tick && d2(w, z.tile, tile) <= (radius * radius) / 4) zone = z;
   }
   if (zone) {
-    zone.strength += airSupportMul(state, u.owner); // ground-attack planes strike harder (variants.ts)
+    zone.strength += strikeMul(state, u.owner); // ground-attack planes strike harder (variants.ts)
     zone.untilTick = untilTick;
     zone.tiles = tiles;
     zone.victim = victim;
   } else {
-    air.zones.push({ wing: af?.id ?? -1, owner: u.owner, tile, radius, strength: airSupportMul(state, u.owner), untilTick, victim, tiles });
+    air.zones.push({ wing: af?.id ?? -1, owner: u.owner, tile, radius, strength: strikeMul(state, u.owner), untilTick, victim, tiles });
     const me = state.players[u.owner];
     addEvent(state, 'bombing', `${me.name}'s bombers are supporting the attack on ${vp.name}: ${Math.round(killed)} troops killed`, [u.owner, victim], tile);
   }
@@ -587,7 +592,7 @@ function raid(state: GameState, u: Unit): void {
   const victim = state.map.owner[u.target];
   if (!hostile(state, u.owner, victim) || !state.players[victim]?.alive) return;
   const tech = techOf(state, u.owner, 'strategicBombing');
-  const per = AIR.raidCut * (tech ? AIR.raidTechMul : 1) * nightEffectMul(state, u.owner) * airRaidMul(state, u.owner); // Night Bombing (specials.ts); heavy bombers (variants.ts)
+  const per = AIR.raidCut * (tech ? AIR.raidTechMul : 1) * nightEffectMul(state, u.owner) * airRaidMul(state, u.owner) * doctrineMore(state, u.owner, 'strikePower'); // Night Bombing (specials.ts); heavy bombers (variants.ts)
   const max = tech ? AIR.raidTechMaxCut : AIR.raidMaxCut;
   const until = state.tick + Math.round(AIR.raidSeconds * (tech ? AIR.raidTechMul : 1) * TICKS_PER_SECOND);
   const air = airState(state);
