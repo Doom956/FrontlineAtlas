@@ -62,6 +62,7 @@ import { DOCTRINE_IDS, isTribe } from '../src/sim/types';
 import { aiSpendStats } from '../src/sim/aispending';
 import type { AISpendStats } from '../src/sim/aispending';
 import { exclusiveGroups, groupMembers } from '../src/sim/techtree';
+import { arsenalItem, isArsenalTech } from '../src/sim/arsenal';
 import { cloneSetup, DEFAULT_MODIFIERS, DEFAULT_SETUP, SINGLE_PLAYER_NATIONS } from '../src/sim/setup';
 import { loadWorldMap } from '../src/sim/worldmaps';
 import { FOCUS_PILLARS, FOCUS_SPEC, setAIFocus } from '../src/sim/aifocus';
@@ -253,6 +254,11 @@ interface GameResult {
   buildings: Partial<Record<BuildingType, number>>;
   /** mean techs per alive nation at 20 min (-1 if over) */
   techs20: number;
+  /** mean Research-tab (non-Arsenal) techs per alive nation at 10 / 20 / 30 min (-1 if over); mean Arsenal items owned at 20 min */
+  resTab?: number[];
+  arsenal20?: number;
+  /** per nation: minute its first fork variant (tier 2) / special / mastery arrived (owned, not on order) */
+  arrivals?: { path: number[]; special: number[]; mastery: number[] };
   /** tiles leader among nations at 8 min, 15 min (0 if over) */
   leader8: number;
   leader15: number;
@@ -448,6 +454,9 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     winnerMix: null,
     buildings: {},
     techs20: -1,
+    resTab: [-1, -1, -1],
+    arsenal20: -1,
+    arrivals: { path: [], special: [], mastery: [] },
     leader8: 0,
     leader15: 0,
     atomBombs: 0,
@@ -527,6 +536,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
   const tickMs: number[] = [];
   const cap = Math.round(o.minutes * 60 * TICKS_PER_SECOND);
   const sampleEvery = 10 * TICKS_PER_SECOND;
+  const arrived = new Set<string>();
   let decidedBy = 0; // --decided: the nation holding the share and for how many samples in a row
   let decidedFor = 0;
   // --doctrines random: a seeded pick per nation (script-side RNG, not the game's), applied at the unlock.
@@ -669,6 +679,21 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
       if (slot && owner === slot.id && n > slot.peakAircraft) slot.peakAircraft = n;
     }
     const sec = Math.round(gameSeconds(state));
+    for (const p of state.players) {
+      if (p.id === 0 || isTribe(p) || !p.alive) continue;
+      for (const k of ['path', 'special', 'mastery'] as const) {
+        const key = `${k}:${p.id}`;
+        if (arrived.has(key)) continue;
+        const has = p.techs.some((t) => {
+          const it = arsenalItem(t);
+          if (!it) return false;
+          return k === 'path' ? it.kind === 'variant' && it.tier === 2 : it.kind === k;
+        });
+        if (!has) continue;
+        arrived.add(key);
+        r.arrivals![k].push(minute);
+      }
+    }
     if (r.fissionMinute < 0 && state.players.some((p) => p.alive && p.techs.includes('nuclearFission'))) r.fissionMinute = minute;
     const armies = wholeArmies(state);
     for (const p of state.players) if (p.id !== 0 && !isTribe(p) && armies[p.id] > r.maxArmy) r.maxArmy = armies[p.id];
@@ -710,6 +735,21 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
         m.artillery += t.artillery;
       }
       r.mixAt[slot] = m;
+      {
+        let n = 0;
+        let res = 0;
+        let ars = 0;
+        for (const p of state.players) {
+          if (p.id === 0 || isTribe(p) || !p.alive) continue;
+          n++;
+          for (const t of p.techs) {
+            if (isArsenalTech(t)) ars++;
+            else res++;
+          }
+        }
+        r.resTab![slot] = n ? res / n : -1;
+        if (slot === 1) r.arsenal20 = n ? ars / n : -1;
+      }
       if (slot === 1) {
         let n = 0;
         let techs = 0;
@@ -780,7 +820,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     if (p.id === 0 || isTribe(p) || (p.eliminatedTick === -1 && !p.spawned)) continue;
     const picks: Record<string, string> = {};
     for (const g of exclusiveGroups()) {
-      const t = groupMembers(g).find((m) => p.techs.includes(m) || p.researching === m);
+      const t = groupMembers(g).find((m) => p.techs.includes(m) || p.researching === m || (p.procuring ?? []).some((o) => o.tech === m));
       if (t) picks[g] = t;
     }
     r.branches!.push({ id: p.id, picks });
@@ -1076,6 +1116,7 @@ function report(all: GameResult[], o: Options): void {
   console.log(`Tick time: median p50 ${f1(median(rs.map((r) => r.tickP50)))} ms, median p95 ${f1(median(rs.map((r) => r.tickP95)))} ms, median p99 ${f1(median(p99s))} ms, worst p99 ${f1(Math.max(...p99s))} ms, worst tick ${f1(Math.max(...rs.map((r) => r.tickMax)))} ms.`);
   doctrineReport(rs);
   branchReport(rs);
+  researchPaceReport(rs);
   counterReport(rs);
   if (o.specialist) specialistReport(all, o);
 }
@@ -1313,6 +1354,28 @@ function specialistReport(all: GameResult[], o: Options): void {
  * Tech branches: per exclusive group, how often each member was chosen and won (win share / pick share among the
  * nations that chose in that group; > 1.5 flagged), AI gold uses per game, and spearhead outcomes by how they ended.
  */
+/** Research-tab techs owned at 10/20/30 min and Arsenal arrival minutes (first in the game, and per nation). */
+function researchPaceReport(rs: GameResult[]): void {
+  const total = (Object.keys(TECHS) as TechId[]).filter((t) => !isArsenalTech(t)).length;
+  const at = (k: number): string => {
+    const v = rs.map((r) => r.resTab?.[k] ?? -1).filter((x) => x >= 0);
+    if (!v.length) return '-';
+    const mean = v.reduce((a, b) => a + b, 0) / v.length;
+    return `${f1(mean)} (${Math.round((100 * mean) / total)}%)`;
+  };
+  const a20 = rs.map((r) => r.arsenal20 ?? -1).filter((x) => x >= 0);
+  console.log(`\nResearch tab (${total} techs), mean owned per alive nation: 10 min ${at(0)}, 20 min ${at(1)}, 30 min ${at(2)}; Arsenal items at 20 min ${a20.length ? f1(a20.reduce((a, b) => a + b, 0) / a20.length) : '-'}.`);
+  for (const k of ['path', 'special', 'mastery'] as const) {
+    const firsts = rs.map((r) => r.arrivals?.[k] ?? []).filter((v) => v.length).map((v) => Math.min(...v));
+    const per = rs.flatMap((r) => r.arrivals?.[k] ?? []);
+    const nations = rs.reduce((s, r) => s + r.nations, 0);
+    console.log(
+      `  first ${k.padEnd(8)} arrival: first in game median ${f1(median(firsts))} min (min ${firsts.length ? f1(Math.min(...firsts)) : '-'}, in ${firsts.length}/${rs.length} games); ` +
+        `per nation median ${f1(median(per))} min, ${per.length} nations of ${nations} (${pct(per.length, nations)}), 25th pct ${f1(per.sort((a, b) => a - b)[Math.floor(per.length / 4)] ?? NaN)}`,
+    );
+  }
+}
+
 function branchReport(rs: GameResult[]): void {
   console.log('\nTech branches (nations that chose in the group; win = winner or land leader at the cap):');
   console.log('  group          member              picks  pick%   wins  win%  win%/pick%  land at end  alive');
