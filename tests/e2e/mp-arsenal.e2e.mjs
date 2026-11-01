@@ -3,7 +3,8 @@
 //     building selection bar, then a Port, a mine and an oil well each (Arsenal items are bought with gold + iron / oil
 //     and navy items need a Port), both buy Navigation, A buys a navy fork from the Arsenal card (T, Arsenal tab,
 //     Destroyers), the other branch and a mastery without its prerequisite are refused, B researches Fortification
-//     (Research tab, science) and buys a special (Naval Mines); both orders are delivered after their timers.
+//     (Research tab, science), builds a Factory and buys Mechanization and a special (Amphibious Tanks: iron only, as
+//     B may have no oil in reach); the orders are delivered after their timers.
 //   Game 2 (every tech unlocked): variant warships (carrier, submarine, destroyer, battleship), a tank division, recon
 //     flights, a strategic mission with a carrier at sea, minefields around ports.
 // Hashes must match on all three clients in both games, and no console errors.
@@ -121,14 +122,14 @@ async function compareHashes(pages, minCommon = 3) {
   return common.map(Number).sort((a, b) => a - b);
 }
 const dispatch = (page, action) => page.evaluate((a) => window.__borderfall.dispatch(a), action);
-/** A tile of ours 12+ tiles from every building of ours (the rule is 10), nearest the capital; coastal ones for ports. */
+/** A tile of ours 12+ tiles from every building (anyone's: the rule is 10 on a small map), nearest the capital; coastal ones for ports. */
 const site = (page, coastal, minGap = 12) =>
   page.evaluate(({ coastal, minGap }) => {
     const s = window.__borderfall.getState();
     const me = s.humanId;
     const w = s.map.width;
     const cap = s.players[me].capital;
-    const bs = [...s.buildings.values()].filter((b) => b.owner === me).map((b) => [b.tile % w, Math.floor(b.tile / w)]);
+    const bs = [...s.buildings.values()].map((b) => [b.tile % w, Math.floor(b.tile / w)]);
     let best = -1, bd = 1e9;
     for (let i = 0; i < s.map.owner.length; i++) {
       if (s.map.owner[i] !== me || s.map.terrain[i] <= 1 || s.map.building[i] !== 0 || s.map.fallout[i] > 0) continue;
@@ -207,9 +208,18 @@ const deposit = (pg, kind) =>
     for (let i = 0; i < s.map.owner.length; i++) if (s.map.owner[i] === s.humanId && s.map.resource[i] === kind && s.map.building[i] === 0) out.push(i);
     return out;
   }, kind);
-// iron: a mine on the deposit; oil: attack toward the nearest deposit, then a well on it (one step per call)
-const economy = async (pg) => {
-  for (const t of (await deposit(pg, 1)).slice(0, 1)) await dispatch(pg, { type: 'build', building: 'mine', tile: t });
+// iron: a mine on a deposit; oil: attack toward the nearest deposit, then a well on it (one step per call; `k` turns
+// through the candidate tiles, so a site the sim refuses, e.g. too close to another building, isn't tried forever)
+const economy = async (pg, k = 0) => {
+  const kinds = await pg.evaluate(() => { const s = window.__borderfall.getState(); return [...s.buildings.values()].filter((b) => b.owner === s.humanId).map((b) => b.type); });
+  const ironSites = await deposit(pg, 1);
+  if (ironSites.length && kinds.filter((x) => x === 'mine').length < 2) await dispatch(pg, { type: 'build', building: 'mine', tile: ironSites[k % ironSites.length] });
+  const oilSites = await deposit(pg, 2);
+  if (oilSites.length && !kinds.includes('oilWell') && k % 3 !== 2) {
+    const t = oilSites[k % oilSites.length];
+    await dispatch(pg, { type: 'build', building: 'oilWell', tile: t });
+    return { well: t };
+  }
   const step = await pg.evaluate(() => {
     const s = window.__borderfall.getState();
     const me = s.humanId;
@@ -257,6 +267,16 @@ try {
     log('game 1 playing', JSON.stringify(await me(A.page)));
     // a lab each, next to the capital city (online, a build lands when its turn runs: slower on a busy machine; an
     // order that never lands is sent again)
+    // grow first: a start is too small for two buildings 10 tiles apart (the spacing rule on a small map), and the
+    // mine, lab, Port and oil well all need room. The economy step attacks toward oil and puts a mine on iron.
+    const landOf = (pg) => pg.evaluate(() => { const s = window.__borderfall.getState(); return s.players[s.humanId].tiles; });
+    for (let k = 0; k < 40; k++) {
+      await Promise.all([economy(A.page, k), economy(B.page, k)]);
+      const land = [await landOf(A.page), await landOf(B.page)];
+      if (k % 5 === 0) log('growing', JSON.stringify(land));
+      if (land.every((x) => x >= 600)) break;
+      await sleep(3000);
+    }
     const hasLab = async (pg) => (await ownBuildings(pg)).some((b) => b.type === 'lab' && b.left <= 0);
     for (const pg of [A.page, B.page]) {
       for (let attempt = 0; attempt < 3 && !(await hasLab(pg)); attempt++) {
@@ -319,21 +339,48 @@ try {
     await Promise.all([A.page.keyboard.press('Escape')]);
 
     // ---- Arsenal items are bought with gold + iron / oil (navy items need a Port): a Port, a mine and an oil well each
-    for (const pg of [A.page, B.page]) {
-      const t = await site(pg, true);
-      if (t < 0) fail('no coastal site for a Port');
-      const r = await dispatch(pg, { type: 'build', building: 'port', tile: t });
-      if (!r.ok) fail(`port: ${r.reason}`);
-    }
+    const geo = (pg) =>
+      pg.evaluate(() => {
+        const s = window.__borderfall.getState();
+        const me = s.humanId;
+        let tiles = 0, coast = 0, iron = 0, oil = 0;
+        for (let i = 0; i < s.map.owner.length; i++) {
+          if (s.map.owner[i] !== me) continue;
+          tiles++;
+          if (s.map.coastal[i] && s.map.terrain[i] > 1) coast++;
+          if (s.map.resource[i] === 1) iron++;
+          if (s.map.resource[i] === 2) oil++;
+        }
+        return { tiles, coast, iron, oil, alive: s.players[me].alive, buildings: [...s.buildings.values()].filter((b) => b.owner === me).map((b) => `${b.type}:${b.level}`) };
+      });
+    log('geo A', JSON.stringify(await geo(A.page)), 'B', JSON.stringify(await geo(B.page)));
+    const hasPort = async (pg) => (await ownBuildings(pg)).some((b) => b.type === 'port' && b.left <= 0);
     // B researches Fortification meanwhile (Research tab: science, one at a time)
     let r = await dispatch(B.page, { type: 'research', tech: 'fortification' });
     if (!r.ok) fail(`B fortification: ${r.reason}`);
-    // Naval Mines costs B 600 iron + 1400 oil, Navigation 300 iron each, Destroyers A 300 iron + 700 oil
-    const want = { A: { iron: 700, oil: 800 }, B: { iron: 1000, oil: 1500 } };
+    // Navigation 300 iron each, Destroyers A 300 iron + 700 oil; B Mechanization 300 + Amphibious Tanks 2000 iron
+    const want = { A: { iron: 700, oil: 800 }, B: { iron: 2800, oil: 0 } };
+    const hasFactory = async (pg) => (await ownBuildings(pg)).some((b) => b.type === 'factory' && b.left <= 0);
     const raised = new Set();
+    let loops = 0;
     const t0 = Date.now();
     while (Date.now() - t0 < 360000) {
-      await Promise.all([economy(A.page), economy(B.page)]);
+      const steps = await Promise.all([economy(A.page, loops), economy(B.page, loops)]);
+      // a Port as soon as the land reaches a free coastal site (the start is small: the economy step expands it)
+      if (loops % 3 === 0) {
+        for (const pg of [A.page, B.page]) {
+          if (await hasPort(pg)) continue;
+          let t = -1;
+          for (const gap of [12, 10]) if ((t = await site(pg, true, gap)) >= 0) break;
+          if (t >= 0) log('port site', t, JSON.stringify(await dispatch(pg, { type: 'build', building: 'port', tile: t })));
+        }
+        if (!(await hasFactory(B.page))) {
+          let t = -1;
+          for (const gap of [12, 10]) if ((t = await site(B.page, false, gap)) >= 0) break;
+          if (t >= 0) log('factory site', t, JSON.stringify(await dispatch(B.page, { type: 'build', building: 'factory', tile: t })));
+        }
+      }
+      if (++loops % 10 === 1) log('economy steps', JSON.stringify(steps), JSON.stringify(await geo(A.page)), JSON.stringify(await geo(B.page)));
       // mines and wells to level 5 (instant building)
       for (const pg of [A.page, B.page]) {
         const ex = (await ownBuildings(pg)).filter((x) => (x.type === 'mine' || x.type === 'oilWell') && x.level < 5 && !raised.has(`${x.tile}`));
@@ -343,11 +390,11 @@ try {
         }
       }
       const [ma, mb] = [await me(A.page), await me(B.page)];
-      if (ma.iron >= want.A.iron && ma.oil >= want.A.oil && mb.iron >= want.B.iron && mb.oil >= want.B.oil) break;
+      if (ma.iron >= want.A.iron && ma.oil >= want.A.oil && mb.iron >= want.B.iron && mb.oil >= want.B.oil && (await hasPort(A.page)) && (await hasPort(B.page)) && (await hasFactory(B.page))) break;
       await sleep(3000);
     }
     log('A', JSON.stringify(await me(A.page)), 'B', JSON.stringify(await me(B.page)));
-    if (!(await ownBuildings(A.page)).some((x) => x.type === 'port' && x.left <= 0)) fail('A has no finished Port');
+    if (!(await hasPort(A.page)) || !(await hasPort(B.page)) || !(await hasFactory(B.page))) fail(`no finished Port (A or B): ${JSON.stringify(await geo(A.page))} ${JSON.stringify(await geo(B.page))}`);
     await waitFor(async () => (await me(B.page)).techs.includes('fortification'), 90000, 'B fortification');
     // the old research action on an Arsenal item is refused (bought instead): nothing changes
     await dispatch(A.page, { type: 'research', tech: 'navigation' });
@@ -370,7 +417,7 @@ try {
     await shot(A.page, 'g1-arsenal-before');
     const goldBefore = (await me(A.page)).gold;
     await A.page.click('[data-test=tech-destroyers]');
-    await waitFor(async () => (await me(A.page)).procuring.includes('destroyers'), 8000, 'Destroyers on order after the card click');
+    await waitFor(async () => (await me(A.page)).procuring.includes('destroyers'), 20000, 'Destroyers on order after the card click');
     await A.page.waitForSelector('[data-test=order-destroyers]', { state: 'visible', timeout: 5000 });
     log(`A paid ${goldBefore - (await me(A.page)).gold} gold (with income) for Destroyers`);
     await sleep(600);
@@ -386,30 +433,44 @@ try {
       log(`A orders ${tech}: on order ${m.procuring.join(',')}`);
       if (m.procuring.includes(tech) || m.techs.includes(tech)) fail(`${tech} was accepted (the fork / mastery lock did not hold)`);
     }
-    // B buys a special: Naval Mines (needs Navigation + Fortification)
-    r = await dispatch(B.page, { type: 'procure', tech: 'navalMines' });
-    if (!r.ok) fail(`B navalMines: ${r.reason}`);
-    await waitFor(async () => (await me(B.page)).procuring.includes('navalMines'), 8000, 'Naval Mines on order');
+    // B buys Mechanization (armor unlock, needs a Factory), then a special: Amphibious Tanks (Mechanization + Navigation)
+    r = await dispatch(B.page, { type: 'procure', tech: 'mechanization' });
+    if (!r.ok) fail(`B mechanization: ${r.reason}`);
+    await waitFor(async () => (await me(B.page)).techs.includes('mechanization'), 90000, 'Mechanization delivered');
+    r = await dispatch(B.page, { type: 'procure', tech: 'amphibiousTanks' });
+    if (!r.ok) fail(`B amphibiousTanks: ${r.reason}`);
+    await waitFor(async () => (await me(B.page)).procuring.includes('amphibiousTanks'), 15000, 'Amphibious Tanks on order');
     // let the clients settle on the same turn, then compare what each sees
     await sleep(3000);
     {
       const ids0 = { a: (await me(A.page)).id, b: (await me(B.page)).id };
-      const views = await Promise.all([A.page, B.page, C.page].map(async (pg) => `${await researchOf(pg, ids0.a)} / ${await researchOf(pg, ids0.b)}`));
+      // clients run the same turns a moment apart: read again until they agree (a real desync never does)
+      let views = [];
+      for (let k = 0; k < 15; k++) {
+        views = await Promise.all([A.page, B.page, C.page].map(async (pg) => `${await researchOf(pg, ids0.a)} / ${await researchOf(pg, ids0.b)}`));
+        if (new Set(views).size === 1) break;
+        await sleep(1000);
+      }
       log('orders seen by A, B, C:', views[0]);
       if (new Set(views).size !== 1) fail(`clients disagree on orders:\n${views.join('\n')}`);
     }
-    // delivery: Destroyers 25 s, Naval Mines 35 s
-    await waitFor(async () => (await me(A.page)).techs.includes('destroyers') && (await me(B.page)).techs.includes('navalMines'), 90000, 'orders delivered');
+    // delivery: Destroyers 25 s, Amphibious Tanks 35 s
+    await waitFor(async () => (await me(A.page)).techs.includes('destroyers') && (await me(B.page)).techs.includes('amphibiousTanks'), 120000, 'orders delivered');
     await sleep(800);
     await shot(A.page, 'g1-arsenal-delivered');
     await A.page.keyboard.press('Escape');
     await sleep(3000);
     const ids = { a: (await me(A.page)).id, b: (await me(B.page)).id };
-    const views = await Promise.all([A.page, B.page, C.page].map(async (pg) => `${await researchOf(pg, ids.a)} / ${await researchOf(pg, ids.b)}`));
+    let views = [];
+    for (let k = 0; k < 15; k++) {
+      views = await Promise.all([A.page, B.page, C.page].map(async (pg) => `${await researchOf(pg, ids.a)} / ${await researchOf(pg, ids.b)}`));
+      if (new Set(views).size === 1) break;
+      await sleep(1000);
+    }
     log('research and orders seen by A, B, C:', views[0]);
     if (new Set(views).size !== 1) fail(`clients disagree on research:\n${views.join('\n')}`);
     const [va, vb] = views[0].split(' / ');
-    if (!va.split('|')[2].split(',').includes('destroyers') || !vb.split('|')[2].split(',').includes('navalMines')) fail('the orders did not land');
+    if (!va.split('|')[2].split(',').includes('destroyers') || !vb.split('|')[2].split(',').includes('amphibiousTanks')) fail('the orders did not land');
     const common = await compareHashes([A.page, B.page, C.page], 10);
     log(`game 1: hashes agree on ${common.length} turns (${common[0]}..${common[common.length - 1]})`);
     const desync = await Promise.all([A.page, B.page, C.page].map((p) => p.evaluate(() => window.__borderfall.mp().desync)));
