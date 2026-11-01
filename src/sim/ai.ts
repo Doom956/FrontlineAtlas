@@ -294,6 +294,8 @@ export interface DifficultyProfile {
   humanPause: number;
   /** counter-attacks a human's attack on us (false: the human's fronts only meet our defence) */
   counterHumans: boolean;
+  /** during humanGrace, leaves the tribes that border a human to it (a new player's first meals) */
+  spareHumanTribes: boolean;
   /** doctrine choice: relative noise on each doctrine's score, and the chance of a pick at random */
   doctrineNoise: number;
   doctrineRandom: number;
@@ -325,6 +327,7 @@ export const DIFFICULTY: Readonly<Record<Difficulty, Readonly<DifficultyProfile>
     humanForceCap: 0.75,
     humanPause: 5,
     counterHumans: false,
+    spareHumanTribes: true,
     doctrineNoise: 0.6,
     doctrineRandom: 0.35,
   },
@@ -344,6 +347,7 @@ export const DIFFICULTY: Readonly<Record<Difficulty, Readonly<DifficultyProfile>
     humanForceCap: 0.8,
     humanPause: 4,
     counterHumans: true,
+    spareHumanTribes: false,
     doctrineNoise: 0.2,
     doctrineRandom: 0,
   },
@@ -363,6 +367,7 @@ export const DIFFICULTY: Readonly<Record<Difficulty, Readonly<DifficultyProfile>
     humanForceCap: 1.2,
     humanPause: 2,
     counterHumans: true,
+    spareHumanTribes: false,
     doctrineNoise: 0.08,
     doctrineRandom: 0,
   },
@@ -382,6 +387,7 @@ export const DIFFICULTY: Readonly<Record<Difficulty, Readonly<DifficultyProfile>
     humanForceCap: Infinity,
     humanPause: 1,
     counterHumans: true,
+    spareHumanTribes: false,
     doctrineNoise: 0.05,
     doctrineRandom: 0,
   },
@@ -1492,6 +1498,7 @@ function tribeOption(ctx: Ctx, q: number, room: number): WarOption | null {
   const { state, id, diff } = ctx;
   const qp = state.players[q];
   if (ctx.myAttacks.some((a) => a.target === q)) return null; // already eating it
+  if (diff.spareHumanTribes && gameSeconds(state) < diff.humanGrace && bordersHuman(state, q)) return null;
   const strength = ctx.army / Math.max(1, estArmy(state, ctx.m, diff, id, q));
   if (strength < 2) return null;
   const fronts = frontSamples(ctx, q);
@@ -1504,6 +1511,23 @@ function tribeOption(ctx: Ctx, q: number, room: number): WarOption | null {
   if (amount < Math.max(MIN_ATTACK_TROOPS * 5, want * 0.5)) return null;
   const score = (1 + qp.tiles / 400) * jitter(state, diff.noise);
   return { target: q, tile, score, amount };
+}
+
+/** True if a human nation's land touches q's (tribes are small: their whole border is read). */
+function bordersHuman(state: GameState, q: number): boolean {
+  const { owner, width: w } = state.map;
+  const n = owner.length;
+  const { list, len } = borderTiles(state, q);
+  for (let k = 0; k < len; k++) {
+    const t = list[k];
+    const x = t % w;
+    for (const j of [x > 0 ? t - 1 : -1, x < w - 1 ? t + 1 : -1, t - w, t + w]) {
+      if (j < 0 || j >= n) continue;
+      const o = owner[j];
+      if (o > 0 && o !== q && state.players[o]?.isHuman) return true;
+    }
+  }
+  return false;
 }
 
 /** True if one of our allies is attacking q or being attacked by q. */

@@ -244,6 +244,8 @@ export const ENDGAME_SMALL_TILES = 150;
  * surrounded (its 81-tile start is under ENDGAME_SMALL_TILES), so a new or slow player gets time to grow.
  */
 export const HUMAN_GRACE_SECONDS = 180;
+/** Longer on the easier difficulties (seconds; missing = HUMAN_GRACE_SECONDS): an idle new player isn't swallowed at once. */
+export const HUMAN_GRACE_BY_DIFFICULTY: Partial<Record<Difficulty, number>> = { easy: 600, normal: 360 };
 /** Same for tribes (they are food). */
 export const TRIBE_ANNEX_TILES = 250;
 /** Every this many seconds (per player, staggered): enclaves fully surrounded by one hostile nation are annexed by it. */
