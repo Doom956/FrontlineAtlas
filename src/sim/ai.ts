@@ -311,7 +311,7 @@ const EARLY_ALLY_SECONDS = 180;
 export const DIFFICULTY: Readonly<Record<Difficulty, Readonly<DifficultyProfile>>> = {
   easy: {
     noise: 0.35,
-    shareScale: 0.7,
+    shareScale: 0.55,
     samples: 3,
     careful: false,
     nukes: false,
