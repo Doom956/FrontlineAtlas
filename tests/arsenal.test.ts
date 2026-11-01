@@ -5,7 +5,7 @@ import { aiBranchPick } from '../src/sim/aispending';
 import { airWingRange, airWingSize } from '../src/sim/airwings';
 import { ARSENAL_ROWS, MASTERY_CAP, isArsenalTech, masteryLocked, masteryPillars, pathOf } from '../src/sim/arsenal';
 import { hasIntel, markBuildingsChanged } from '../src/sim/buildings';
-import { ARSENAL, TECHS, UNITS } from '../src/sim/config';
+import { ARSENAL, NAVY_SUPPORT_RANGE, TECHS, UNITS } from '../src/sim/config';
 import { hashState } from '../src/sim/hash';
 import { computeCoastAndLand } from '../src/sim/mapgen';
 import { supportingShips } from '../src/sim/naval2';
@@ -203,7 +203,7 @@ describe('warship variants', () => {
   it('battleships give naval support from further out; submarines give none', () => {
     const s = coastGame();
     const coast = at(s, 50, 19);
-    const far = ship(s, 1, 50, 36); // 17 tiles from the coast: beyond a standard ship's support range
+    const far = ship(s, 1, 50, 19 + NAVY_SUPPORT_RANGE + 2); // just beyond a standard ship's support range
     s.tick++;
     expect(supportingShips(s, 1, coast)).toBe(0);
     far.variant = 'battleship';
