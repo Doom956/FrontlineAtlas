@@ -780,7 +780,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     if (p.id === 0 || isTribe(p) || (p.eliminatedTick === -1 && !p.spawned)) continue;
     const picks: Record<string, string> = {};
     for (const g of exclusiveGroups()) {
-      const t = groupMembers(g).find((m) => p.techs.includes(m) || p.researching === m);
+      const t = groupMembers(g).find((m) => p.techs.includes(m) || p.researching === m || (p.procuring ?? []).some((o) => o.tech === m));
       if (t) picks[g] = t;
     }
     r.branches!.push({ id: p.id, picks });

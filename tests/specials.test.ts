@@ -81,20 +81,24 @@ describe('special upgrade techs', () => {
       expect(TECHS[t].name.length).toBeGreaterThan(3);
       expect(TECHS[t].description.length).toBeGreaterThan(10);
       expect(TECH_ORDER).toContain(t);
-      expect(validateAction({ type: 'research', tech: t }).ok).toBe(true);
+      expect(validateAction({ type: 'procure', tech: t }).ok).toBe(true);
     }
     expect(TECHS.earlyWarning.requires).toContain('radar');
     const s = straitGame(3, 2);
     expect(techStatus(s, 1, 'amphibiousTanks')).toBe('available');
     expect(techStatus(s, 1, 'earlyWarning')).toBe('locked-prereq');
-    expect(applyAction(s, 1, { type: 'research', tech: 'amphibiousTanks' }).ok).toBe(true);
+    // Arsenal items are bought (procurement.ts): armor items need a Factory.
+    s.players[1].gold = s.players[1].iron = s.players[1].oil = 1e6;
+    expect(applyAction(s, 1, { type: 'procure', tech: 'amphibiousTanks' }).reason).toBe('Needs a Factory');
+    addBuilding(s, 'factory', 1, s.players[1].capital);
+    expect(applyAction(s, 1, { type: 'procure', tech: 'amphibiousTanks' }).ok).toBe(true);
   });
   it('air specials are off when aircraft are off', () => {
     const s = straitGame(3, 2);
     s.settings.modifiers.noAir = true;
     give(s, 1, 'logistics', 'flight');
     expect(techStatus(s, 1, 'dropTanks')).toBe('disabled');
-    expect(applyAction(s, 1, { type: 'research', tech: 'nightBombing' }).ok).toBe(false);
+    expect(applyAction(s, 1, { type: 'procure', tech: 'nightBombing' }).ok).toBe(false);
   });
 });
 

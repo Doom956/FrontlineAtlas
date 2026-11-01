@@ -92,7 +92,7 @@ export const MARKET_GOLD_BONUS = 0.12; // +12% gold per market
 export const MARKET_MAX_BONUS = 0.8;
 export const IRON_PER_MINE = 5.0;
 export const OIL_PER_WELL = 2.5;
-export const BASE_SCIENCE = 1.5;
+export const BASE_SCIENCE = 3;
 export const SCIENCE_PER_LAB = 1.0;
 export const ARMOR_OIL_UPKEEP = 0.000004; // oil per armor unit per second (one well feeds about 600k armor)
 export const AIRCRAFT_OIL_UPKEEP = 0.02; // oil per stored aircraft per second
@@ -411,27 +411,27 @@ export const TECHS: Record<TechId, TechInfo> = {
   mechanization: { name: 'Mechanization', tier: 2, science: 600, gold: 600, requires: ['metallurgy'], description: 'Armor +25% attack and defence.' },
   ballistics: { name: 'Ballistics', tier: 2, science: 300, gold: 600, requires: ['metallurgy'], description: 'Artillery +30% attack; unescorted penalty starts at 55%; barrages reach x1.5 farther and reload faster.' },
   flight: { name: 'Flight', tier: 2, science: 600, gold: 600, requires: ['logistics'], description: 'Airfields, bombers and fighters.' },
-  industrialization: { name: 'Industrialization', tier: 3, science: 1450, gold: 1000, requires: ['mechanization'], description: 'Factories and arsenals convert twice as fast; mines and wells +25%.' },
-  combinedArms: { name: 'Combined Arms', tier: 3, science: 1450, gold: 1000, requires: ['mechanization', 'ballistics'], description: '+20% attack when every troop type is at least 15% of the force.' },
-  radar: { name: 'Radar', tier: 3, science: 1450, gold: 1000, requires: ['flight'], description: 'SAM sites; watchtower radius x2.' },
-  rocketry: { name: 'Rocketry', tier: 3, science: 1450, gold: 1000, requires: ['ballistics'], description: 'Missile silos and rockets.' },
-  nuclearFission: { name: 'Nuclear Fission', tier: 4, science: 2350, gold: 1500, requires: ['rocketry', 'industrialization'], description: 'Atom bombs.' },
+  industrialization: { name: 'Industrialization', tier: 3, science: 1300, gold: 1000, requires: ['mechanization'], description: 'Factories and arsenals convert twice as fast; mines and wells +25%.' },
+  combinedArms: { name: 'Combined Arms', tier: 3, science: 1300, gold: 1000, requires: ['mechanization', 'ballistics'], description: '+20% attack when every troop type is at least 15% of the force.' },
+  radar: { name: 'Radar', tier: 3, science: 1300, gold: 1000, requires: ['flight'], description: 'SAM sites; watchtower radius x2.' },
+  rocketry: { name: 'Rocketry', tier: 3, science: 1300, gold: 1000, requires: ['ballistics'], description: 'Missile silos and rockets.' },
+  nuclearFission: { name: 'Nuclear Fission', tier: 4, science: 2100, gold: 1500, requires: ['rocketry', 'industrialization'], description: 'Atom bombs.' },
   // ---- branches with exclusive choices (techtree.ts; numbers in the TECH_EFFECTS block below) ----
   propaganda: { name: 'Propaganda', tier: 2, science: 300, gold: 600, requires: ['agriculture'], description: 'Attacks on your land cost the attacker 12% more troops.' },
-  railways: { name: 'Railways', tier: 3, science: 1450, gold: 1000, requires: ['logistics'], description: 'Supply range +25%, fronts +10% faster, tank divisions 20% cheaper, +1 division per 2 Factory levels.' },
-  stockExchange: { name: 'Stock Exchange', tier: 3, science: 1450, gold: 1000, requires: ['banking'], exclusiveGroup: 'finance', description: 'Saved gold earns interest (up to +20% gold income while you hold a reserve).' },
-  freeTrade: { name: 'Free Trade', tier: 3, science: 1450, gold: 1000, requires: ['banking'], exclusiveGroup: 'finance', description: 'Your trade ships pay 60% more; markets cost 30% less.' },
-  blitzTactics: { name: 'Blitz Tactics', tier: 3, science: 1450, gold: 1000, requires: ['mechanization'], exclusiveGroup: 'landDoctrine', description: 'Armor-heavy attacks advance up to 30% faster; tank divisions faster and deeper.' },
-  trenchWarfare: { name: 'Trench Warfare', tier: 3, science: 1450, gold: 1000, requires: ['mechanization'], exclusiveGroup: 'landDoctrine', description: 'Your land defends 15% better, enemy fronts against you 15% slower, forts 25% cheaper.' },
+  railways: { name: 'Railways', tier: 3, science: 1300, gold: 1000, requires: ['logistics'], description: 'Supply range +25%, fronts +10% faster, tank divisions 20% cheaper, +1 division per 2 Factory levels.' },
+  stockExchange: { name: 'Stock Exchange', tier: 3, science: 1300, gold: 1000, requires: ['banking'], exclusiveGroup: 'finance', description: 'Saved gold earns interest (up to +20% gold income while you hold a reserve).' },
+  freeTrade: { name: 'Free Trade', tier: 3, science: 1300, gold: 1000, requires: ['banking'], exclusiveGroup: 'finance', description: 'Your trade ships pay 60% more; markets cost 30% less.' },
+  blitzTactics: { name: 'Blitz Tactics', tier: 3, science: 1300, gold: 1000, requires: ['mechanization'], exclusiveGroup: 'landDoctrine', description: 'Armor-heavy attacks advance up to 30% faster; tank divisions faster and deeper.' },
+  trenchWarfare: { name: 'Trench Warfare', tier: 3, science: 1300, gold: 1000, requires: ['mechanization'], exclusiveGroup: 'landDoctrine', description: 'Your land defends 15% better, enemy fronts against you 15% slower, forts 25% cheaper.' },
   // Navy path (Arsenal, variants.ts): Surface fleet (Destroyers -> Battleships) OR Silent service (Submarines -> Carriers)
   carriers: { name: 'Carriers', tier: 4, science: 3500, gold: 1500, requires: ['submarines'], description: 'Build carriers: a moving airfield. Your air wings strike from them far out at sea; their fighters shoot down enemy bombers and cargo planes nearby.' },
   submarines: { name: 'Submarines', tier: 3, science: 2200, gold: 1000, requires: ['navigation'], exclusiveGroup: 'navalDoctrine', description: 'Silent service: build submarines. Hidden from enemies until close; they hit trade ships and transports much harder, blockade further and capture richer cargo. No shore bombardment.' },
   // Air path (Arsenal): Ground-attack planes (-> Jet Engines) OR Heavy bombers (-> Strategic Bombing)
   jetEngines: { name: 'Jet Engines', tier: 4, science: 3500, gold: 1500, requires: ['groundAttack'], description: 'Bombers and cargo planes fly 40% faster; bombers survive one more hit; escorts win their duels.' },
   strategicBombing: { name: 'Strategic Bombing', tier: 4, science: 3500, gold: 1500, requires: ['heavyBombers'], description: 'Bombs hit a 40% wider area, wreck more buildings and burn 6% of the victim\'s gold and iron.' },
-  diplomaticCorps: { name: 'Diplomatic Corps', tier: 3, science: 1450, gold: 1000, requires: ['propaganda'], exclusiveGroup: 'statecraft', description: 'Allies trust you sooner, help more (aid +40%) and can be asked twice as often.' },
-  conscription: { name: 'Conscription', tier: 3, science: 1450, gold: 1000, requires: ['propaganda'], exclusiveGroup: 'statecraft', description: 'Troop cap +5%, troop growth +6%, mercenaries 25% cheaper.' },
-  industrialBoom: { name: 'Industrial Boom', tier: 4, science: 3350, gold: 2000, requires: ['banking'], requiresAny: ['stockExchange', 'freeTrade'], description: 'Gold, iron and oil +12%.' },
+  diplomaticCorps: { name: 'Diplomatic Corps', tier: 3, science: 1300, gold: 1000, requires: ['propaganda'], exclusiveGroup: 'statecraft', description: 'Allies trust you sooner, help more (aid +40%) and can be asked twice as often.' },
+  conscription: { name: 'Conscription', tier: 3, science: 1300, gold: 1000, requires: ['propaganda'], exclusiveGroup: 'statecraft', description: 'Troop cap +5%, troop growth +6%, mercenaries 25% cheaper.' },
+  industrialBoom: { name: 'Industrial Boom', tier: 4, science: 3000, gold: 2000, requires: ['banking'], requiresAny: ['stockExchange', 'freeTrade'], description: 'Gold, iron and oil +12%.' },
   massMobilization: { name: 'Mass Mobilization', tier: 5, science: 8000, gold: 3000, requires: ['industrialBoom'], exclusiveGroup: 'capstone', description: 'Troop cap +12% and every attack +6% stronger.' },
   automation: { name: 'Automation', tier: 5, science: 8000, gold: 3000, requires: ['industrialBoom'], exclusiveGroup: 'capstone', description: 'Buildings and upgrades build 35% faster and cost 10% less.' },  // ---- special upgrades: behaviour, not stats (specials.ts; numbers in the SPECIALS block) ----
   amphibiousTanks: { name: 'Amphibious Tanks', tier: 3, science: 2200, gold: 1000, requires: ['mechanization', 'navigation'], description: 'Tank divisions wade across straits and rivers up to 5 tiles wide (moves and spearheads); each landing costs 8% of the division, and warships and mines hit divisions in the water.' },
@@ -1418,6 +1418,11 @@ export const ARSENAL_PRICES = {
     navy: { iron: 0.3, oil: 0.7 },
     air: { iron: 0.3, oil: 0.7 },
   } as Record<'armor' | 'navy' | 'air', { iron: number; oil: number }>,
+  /**
+   * the first item of each row (Navigation, Mechanization, Flight) is paid in iron only: a nation without oil wells
+   * can still get transports' Navigation bonus and Radar / SAM sites (Radar needs Flight)
+   */
+  unlockMix: { iron: 1, oil: 0 },
   /** shared items: which pillar's mix and building they use (none = no building needed) */
   shared: {
     mechInfantry: 'armor',

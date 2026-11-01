@@ -73,7 +73,7 @@ export function arsenalPrice(state: GameState, pid: number, t: TechId): ArsenalP
   const pillar = armPillarOf(t);
   if (!it || !pillar) return { gold: 0, iron: 0, oil: 0, seconds: 0 };
   const tier = ARSENAL_PRICES.tiers[it.tier] ?? ARSENAL_PRICES.tiers[3];
-  const mix = ARSENAL_PRICES.mix[pillar];
+  const mix = it.tier === 1 ? ARSENAL_PRICES.unlockMix : ARSENAL_PRICES.mix[pillar];
   const out: ArsenalPrice = {
     gold: tier.gold,
     iron: Math.round(tier.resource * mix.iron),

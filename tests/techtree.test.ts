@@ -106,7 +106,7 @@ describe('exclusive choices', () => {
     s.players[1].gold = 1e6;
     expect(techStatus(s, 1, 'carriers')).toBe('disabled');
     expect(techStatus(s, 1, 'jetEngines')).toBe('disabled');
-    expect(applyAction(s, 1, { type: 'research', tech: 'submarines' }).ok).toBe(false);
+    expect(applyAction(s, 1, { type: 'procure', tech: 'submarines' }).reason).toBe('Warships are off in this game');
   }, 60000);
 });
 

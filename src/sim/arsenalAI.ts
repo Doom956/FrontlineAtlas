@@ -255,7 +255,14 @@ export function aiProcurePick(
   for (const t of order) {
     if (p.techs.includes(t)) continue;
     if (!isArsenalTech(t)) {
-      if (p.researching !== t && !skip(t) && techStatus(state, id, t) === 'available') ahead++;
+      if (p.researching === t || skip(t)) continue;
+      const st = techStatus(state, id, t);
+      if (st === 'available') ahead++;
+      // A Research-tab tech the order has reached that waits for an Arsenal item (Industrialization and Trench
+      // Warfare after Mechanization, Radar after Flight): buy that item.
+      else if (st === 'locked-prereq' && ahead <= ARSENAL_PRICES.aiLookahead) {
+        for (const r of TECHS[t].requires) if (isArsenalTech(r) && tryItem(r)) return { tech: r, needs };
+      }
       continue;
     }
     if (ahead > ARSENAL_PRICES.aiLookahead && !aiCommittedArsenal(state, id, t)) continue;

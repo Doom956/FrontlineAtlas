@@ -269,12 +269,13 @@ export function tutorialEnemyAttack(state: GameState, aiId: number): boolean {
   return applyAdmin(state, t.human, { type: 'admin', op: 'declareWar', player: aiId, other: t.human }).ok;
 }
 
-/** Finishes the player's constructions, upgrades, research and queued warships / tank divisions now. */
+/** Finishes the player's constructions, upgrades, research, Arsenal orders and queued warships / tank divisions now. */
 export function tutorialFinish(state: GameState, pid: number): void {
   const t = state.tutorial;
   if (!t || state.phase !== 'playing') return;
   applyAdmin(state, t.human, { type: 'admin', op: 'finishConstructions', player: pid });
-  if (state.players[pid]?.researching) applyAdmin(state, t.human, { type: 'admin', op: 'finishResearch', player: pid });
+  const tp = state.players[pid];
+  if (tp && (tp.researching || tp.procuring?.length)) applyAdmin(state, t.human, { type: 'admin', op: 'finishResearch', player: pid });
   for (const q of unitQueue(state)) if (q.owner === pid && q.readyTick > state.tick) q.readyTick = state.tick;
 }
 
