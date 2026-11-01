@@ -2,8 +2,9 @@
 // preferences. The bar (bar.ts) draws the view; the controller (guide.ts) feeds the engine from the HUD.
 // - Opening: steps in order when a game starts. A step with `done` moves on when it turns true (or after `timeout`
 //   game seconds); a read-only step waits for Next (or READ_SECONDS of game time). Finished once = never again.
-// - Tips: each shows once, ever. A tip joins the queue when its `when` turns true; one tip at a time, TIP_GAP_MS apart,
-//   each on screen until the player does it (`done`), presses Next / Skip, or TIP_MS of unpaused time passes.
+// - Tips: each shows once, ever. A tip joins the queue when its `when` turns true (the queue keeps the list order);
+//   one tip at a time, TIP_GAP_MS apart, each on screen until the player does it (`done`), presses Next / Skip,
+//   or TIP_MS of unpaused time passes.
 //   A critical tip (you are attacked) goes first and may cut in on the opening or another tip; while one applies,
 //   no other tip starts.
 // - Prefs in localStorage (GUIDE_KEY): on/off, opening done, tips seen. Every storage access may fail (private mode,
@@ -291,14 +292,24 @@ export class GuideEngine {
     console.error(`Guide ${id} failed`, e);
   }
 
+  /** Queues the tips that just became useful. The queue keeps the tips' list order (critical first, then most
+   *  useful first), not the order they came in: after a long opening several wait, and e.g. the doctrine pick
+   *  should not wait behind an idle-troops hint. */
   private collect(c: GuideCtx): void {
+    let added = false;
     for (const t of this.tips) {
       if (this.seen(t.id) || this.queue.includes(t.id) || this.tip?.t === t) continue;
       if (this.check(t.id, () => t.when(c))) {
-        if (t.critical) this.queue.unshift(t.id);
-        else this.queue.push(t.id);
+        this.queue.push(t.id);
+        added = true;
       }
     }
+    if (added) this.queue.sort((a, b) => this.rank(a) - this.rank(b));
+  }
+
+  private rank(id: string): number {
+    const i = this.tips.findIndex((t) => t.id === id);
+    return (this.tipById.get(id)?.critical ? 0 : this.tips.length) + (i < 0 ? this.tips.length : i);
   }
 
   private pendingCritical(c: GuideCtx): GuideTip | null {

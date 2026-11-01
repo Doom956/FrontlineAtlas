@@ -168,14 +168,20 @@ export function openingSteps(view: { centreTile: () => number }): GuideStep[] {
     },
     {
       id: 'start',
-      text: (c) => (mods(c.s).randomSpawn ? 'Your start was picked for you. Press Start now to begin.' : 'Good spot. Click again to move it, or press Start now.'),
-      target: 'start-now',
-      tile: (c) => c.me.capital,
+      text: (c) =>
+        !c.me.spawned
+          ? 'Click open land to place your start, then press Start now.'
+          : mods(c.s).randomSpawn
+            ? 'Your start was picked for you. Press Start now to begin.'
+            : 'Good spot. Click again to move it, or press Start now.',
+      // not placed yet (the first step was skipped): the arrow shows open land, Start now appears once placed
+      target: (c) => (c.me.spawned ? 'start-now' : undefined),
+      tile: (c) => (c.me.spawned ? c.me.capital : startTile(c, view.centreTile())),
       done: (c) => c.s.phase !== 'spawn',
     },
     {
       id: 'troops',
-      text: 'Troops: your army. They regrow by themselves, fastest near the brass mark.',
+      text: 'Troops: your army. They regrow by themselves, fastest when the bar is near its mark.',
       target: 'troops',
     },
     {
@@ -187,6 +193,8 @@ export function openingSteps(view: { centreTile: () => number }): GuideStep[] {
       id: 'expand',
       text: 'Click empty land next to your border to expand. Each tile costs troops.',
       tile: expandTile,
+      // no empty land near the border any more (e.g. the guide was restarted later in a game): nothing to point at
+      skipIf: (c) => playing(c) && c.me.capital >= 0 && expandTile(c) < 0,
       begin: (c) => ({ tiles: c.me.tiles, tick: c.s.tick }),
       done: (c, m) => c.me.tiles > m.tiles * 1.6 || ownAttack(c.s, c.me, m.tick),
       timeout: 60,
@@ -208,8 +216,8 @@ export function openingSteps(view: { centreTile: () => number }): GuideStep[] {
       },
       target: (c) => (c.ui.buildMode === 'city' ? undefined : 'build-city || build-menu-btn'),
       tile: (c) => (c.ui.buildMode === 'city' ? cityTile(c) : -1),
-      begin: (c) => ({ cities: countBuildings(c.s, c.me.id, 'city', true) }),
-      done: (c, m) => countBuildings(c.s, c.me.id, 'city', true) > m.cities,
+      // a City of their own (built, or being built) is the goal: one built before this step counts too
+      done: (c) => countBuildings(c.s, c.me.id, 'city', true) > 0,
       timeout: 120,
     },
     {
@@ -337,12 +345,11 @@ export function guideTips(): GuideTip[] {
       text: (c) => {
         const r = c.s.allianceRequests.find((q) => q.to === c.me.id);
         const name = r ? c.s.players[r.from]?.name ?? 'A nation' : 'A nation';
-        return `${name} offers an alliance: click them in the standings, then Accept.`;
+        return `${name} offers an alliance. Open Diplomacy (P) to accept or decline.`;
       },
-      target: (c) => {
-        const r = c.s.allianceRequests.find((q) => q.to === c.me.id);
-        return r ? `nc-accept || lb-row-${r.from} || leaderboard` : 'leaderboard';
-      },
+      // the nation's card when it is open, else the Diplomacy button (it carries the request count); the nation
+      // is often not in the short standings list
+      target: 'nc-accept || open-diplomacy',
       when: (c) => playing(c) && c.s.allianceRequests.some((q) => q.to === c.me.id),
       done: (c) => !c.s.allianceRequests.some((q) => q.to === c.me.id),
     },

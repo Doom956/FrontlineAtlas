@@ -42,6 +42,7 @@ export class GuideController {
     };
     // a player who finished the Basics chapter of Tutorial mode gets the tips only
     this.engine = new GuideEngine(openingSteps({ centreTile }), guideTips(), { skipOpening: isChapterDone('basics') });
+    (window as any).__guideDbg = this.engine; // DBGTMP
     this.engine.onChange = (v) => {
       if (v?.kind === 'tip' && v.id === 'strike' && this.last) {
         for (const id of ['barrage', 'bomb', 'paradrop', 'rocket', 'atomBomb'] as StrikeId[]) {
