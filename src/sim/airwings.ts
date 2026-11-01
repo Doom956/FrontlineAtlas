@@ -492,7 +492,14 @@ function sortie(state: GameState, wing: AirWing, b: Building): void {
     return;
   }
   wing.sorties++;
-  wing.nextTick = state.tick + Math.max(1, Math.round(AIR.sortieCooldown * doctrineLess(state, wing.owner, 'airfieldReload') * TICKS_PER_SECOND));
+  wing.nextTick = state.tick + Math.max(1, Math.round(AIR.sortieCooldown * doctrineLess(state, wing.owner, 'airfieldReload') * massCooldownMul(state, wing.owner) * TICKS_PER_SECOND));
+}
+
+/** Sortie cooldown x for a nation with many airfields on support / strategic missions (AIR.massFree, AIR.massCooldown). */
+export function massCooldownMul(state: GameState, owner: number): number {
+  let n = 0;
+  for (const w of airState(state).wings) if (w.owner === owner && (w.mission === 'support' || w.mission === 'strategic')) n++;
+  return 1 + AIR.massCooldown * Math.max(0, n - AIR.massFree);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
