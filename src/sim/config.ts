@@ -705,7 +705,7 @@ export type DoctrineLever = keyof DoctrineLevers;
 
 export const DOCTRINE_LEVERS: Record<DoctrineId, DoctrineLevers> = {
   blitz: { openGroundSpeed: 0.3, armorConvertCost: 0.25 },
-  fortress: { fortDefense: 0.25, fortCost: 0.25, defenderLoss: 0.2 },
+  fortress: { fortDefense: 0.4, fortCost: 0.25, defenderLoss: 0.3 },
   siege: { artilleryAttack: 0.2, siegeBonus: 0.25, barrageCooldown: 0.25 },
   merchant: { gold: 0.08, tradeGold: 0.25, marketBonus: 0.15 },
   naval: { warshipCost: 0.35, warshipSpeed: 0.2, transportSpeed: 0.35, transportHp: 1 },
