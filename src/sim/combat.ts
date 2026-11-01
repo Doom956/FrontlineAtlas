@@ -54,7 +54,6 @@ import {
   LAST_STAND_MAX,
   LAST_STAND_SLOW,
   LAST_STAND_START,
-  HUMAN_GRACE_BY_DIFFICULTY,
   HUMAN_GRACE_SECONDS,
   FORT_DEFENSE,
   FORT_SLOW,
@@ -1027,17 +1026,13 @@ function captureTile(state: GameState, a: Attack, tile: number, idx: AttackIndex
 }
 
 // ---------- endgame: fast cleanup ----------
-/** A human's grace (no collapse, no absorbing) for this game's difficulty, in game seconds. */
-export function humanGraceSeconds(state: GameState): number {
-  return HUMAN_GRACE_BY_DIFFICULTY[state.settings.difficulty] ?? HUMAN_GRACE_SECONDS;
-}
 /**
  * Tiles under which a nation (or tribe) collapses when it is hit (and is absorbed whole when surrounded). 0 for a
- * human in its first humanGraceSeconds of game time: it only loses the tiles that are taken.
+ * human in its first HUMAN_GRACE_SECONDS of game time: it only loses the tiles that are taken.
  */
 export function collapseThreshold(state: GameState, p: Player): number {
   if (isTribe(p)) return TRIBE_ANNEX_TILES;
-  if (p.isHuman && gameSeconds(state) < humanGraceSeconds(state)) return 0;
+  if (p.isHuman && gameSeconds(state) < HUMAN_GRACE_SECONDS) return 0;
   if (state.tutorial && tutorialKeeps(state, p.id)) return 0; // tutorial: the taught player never collapses
   return ENDGAME_SMALL_TILES;
 }

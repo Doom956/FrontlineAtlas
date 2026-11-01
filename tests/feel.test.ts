@@ -5,7 +5,7 @@ import { applyAction } from '../src/sim/actions';
 import { aiWantsAlliance } from '../src/sim/ai';
 import { mainFoe, recommendMix, updateAdvisor } from '../src/sim/advisor';
 import { markBuildingsChanged } from '../src/sim/buildings';
-import { annexTiles, collapseThreshold, estimateAttack, frontLength, humanGraceSeconds, launchAttack, supplyEfficiency, updateAttacks, updateSupply } from '../src/sim/combat';
+import { annexTiles, collapseThreshold, estimateAttack, frontLength, launchAttack, supplyEfficiency, updateAttacks, updateSupply } from '../src/sim/combat';
 import {
   AUTO_EMBARGO_SECONDS,
   BEACHHEAD_SUPPLY_SECONDS,
@@ -28,7 +28,7 @@ import { computeCoastAndLand } from '../src/sim/mapgen';
 import { tick } from '../src/sim/sim';
 import { createGame, gameSeconds, isTribe, newId, setOwner, tribeCountFor } from '../src/sim/state';
 import { Terrain } from '../src/sim/types';
-import type { Building, BuildingType, Difficulty, GameState, Troops } from '../src/sim/types';
+import type { Building, BuildingType, GameState, Troops } from '../src/sim/types';
 import { inOvertime, updateVictory, victoryShareNow } from '../src/sim/victory';
 import { claimRect, makeFlatGame, testSettings, troopSum } from './helpers';
 
@@ -286,28 +286,10 @@ describe('endgame', () => {
     expect(s.players[1].alive).toBe(true);
     expect(s.players[1].tiles).toBe(81);
     expect(s.events.some((e) => e.kind === 'surrounded' && e.players[0] === 1)).toBe(true);
-    s.tick = s.playStartTick + (humanGraceSeconds(s) + 1) * TICKS_PER_SECOND;
+    s.tick = s.playStartTick + (HUMAN_GRACE_SECONDS + 1) * TICKS_PER_SECOND;
     expect(collapseThreshold(s, s.players[1])).toBe(ENDGAME_SMALL_TILES);
     annexEnclaves(s);
     expect(s.players[1].alive).toBe(false);
-  });
-
-  it('the human grace is longer on Easy and Normal (an idle new player is not swallowed at once), 3 min on Hard and Brutal', () => {
-    const s = makeFlatGame(10, 10, 2, { human: true });
-    const graceOf = (d: Difficulty): number => {
-      s.settings.difficulty = d;
-      return humanGraceSeconds(s);
-    };
-    expect(graceOf('hard')).toBe(HUMAN_GRACE_SECONDS);
-    expect(graceOf('brutal')).toBe(HUMAN_GRACE_SECONDS);
-    expect(graceOf('normal')).toBeGreaterThanOrEqual(300);
-    expect(graceOf('easy')).toBeGreaterThanOrEqual(480);
-    expect(graceOf('easy')).toBeGreaterThan(graceOf('normal'));
-    s.settings.difficulty = 'easy';
-    s.tick = s.playStartTick + (HUMAN_GRACE_SECONDS + 60) * TICKS_PER_SECOND;
-    expect(collapseThreshold(s, s.players[1])).toBe(0);
-    s.settings.difficulty = 'hard';
-    expect(collapseThreshold(s, s.players[1])).toBe(ENDGAME_SMALL_TILES);
   });
 
   it('overtime lowers the land share needed to win by 1% a minute, down to 50%', () => {

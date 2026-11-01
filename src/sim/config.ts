@@ -244,8 +244,6 @@ export const ENDGAME_SMALL_TILES = 150;
  * surrounded (its 81-tile start is under ENDGAME_SMALL_TILES), so a new or slow player gets time to grow.
  */
 export const HUMAN_GRACE_SECONDS = 180;
-/** Longer on the easier difficulties (seconds; missing = HUMAN_GRACE_SECONDS): an idle new player isn't swallowed at once. */
-export const HUMAN_GRACE_BY_DIFFICULTY: Partial<Record<Difficulty, number>> = { easy: 600, normal: 360 };
 /** Same for tribes (they are food). */
 export const TRIBE_ANNEX_TILES = 250;
 /** Every this many seconds (per player, staggered): enclaves fully surrounded by one hostile nation are annexed by it. */
@@ -1014,7 +1012,7 @@ export const RULES_TEXT = {
     `A landed invasion's beachhead supplies it for ${BEACHHEAD_SUPPLY_SECONDS} s.`,
   endgame:
     `A nation with fewer than ${ENDGAME_SMALL_TILES} tiles (a tribe: ${TRIBE_ANNEX_TILES}) collapses when it is hit ` +
-    `(players get the first ${HUMAN_GRACE_SECONDS / 60} minutes to grow first: ${(HUMAN_GRACE_BY_DIFFICULTY.normal ?? HUMAN_GRACE_SECONDS) / 60} on Normal, ${(HUMAN_GRACE_BY_DIFFICULTY.easy ?? HUMAN_GRACE_SECONDS) / 60} on Easy). ` +
+    `(players get the first ${HUMAN_GRACE_SECONDS / 60} minutes to grow first). ` +
     `Pockets surrounded by one hostile nation are annexed by it. After ${OVERTIME_MINUTES} minutes the land share ` +
     `needed to win drops by ${Math.round(OVERTIME_DROP_PER_MINUTE * 100)}% a minute, down to ${Math.round(OVERTIME_MIN_SHARE * 100)}%. ` +
     `Tribes don't count for "last nation standing".`,
@@ -1037,7 +1035,7 @@ export const AI_HARD_INCOME_BONUS = 0.15;
  * (tribes too). The human's economy never changes.
  */
 export const AI_ECONOMY: Record<Difficulty, { growth: number; income: number; cap: number }> = {
-  easy: { growth: 0.5, income: 0.6, cap: 0.5 },
+  easy: { growth: 0.7, income: 0.7, cap: 0.7 },
   normal: { growth: 0.88, income: 0.88, cap: 1 },
   hard: { growth: 1 + AI_HARD_INCOME_BONUS * 0.5, income: 1 + AI_HARD_INCOME_BONUS, cap: 1 },
   brutal: { growth: 1.15, income: 1.3, cap: 1.1 },
