@@ -2,7 +2,7 @@
 
 Working rules (owner's wishes, keep following them):
 - Work on branch `dev`; only finished, tested work goes to `main` (Render and GitHub Pages deploy `main` automatically).
-- Before merging: `npx tsc -p .`, `npx tsc -p server`, `npx vitest run`, `npm run build` all green (a few long tests can time out only while the machine is busy; re-run them alone).
+- Before merging: `npx tsc -p .`, `npx tsc -p server`, `npx vitest run`, `npm run build` all green (the build no longer type-checks: Render's free build has ~512 MB and tsc pushed it over) (a few long tests can time out only while the machine is busy; re-run them alone).
 - Commits are authored by the owner (Doom956); never mention any AI tool or the reference game's name in the repo; never write the admin code anywhere.
 - Keep the HUD minimal and clean; literal, simple icons; plain short wording.
 - Live: https://frontline-atlas.onrender.com (server + game, env `ADMIN_CODE` set in Render) and https://doom956.github.io/FrontlineAtlas/ (Pages; repo variable `SERVER_URL`).

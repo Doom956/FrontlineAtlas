@@ -126,7 +126,7 @@ You need Node.js 22 or newer.
 npm install      # install dependencies
 npm run dev      # dev server (Vite) plus the multiplayer server; open the printed URL
 npm test         # unit tests (Vitest)
-npm run build    # type-check and build the client (dist/index.html) and the server
+npm run build    # build the client (dist/index.html) and the server (npm run typecheck checks types)
 npm start        # serve the game and the multiplayer server on http://localhost:8080
 ```
 
