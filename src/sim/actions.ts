@@ -1,5 +1,5 @@
 // Single entry point for player and AI actions.
-import { requestAllyAid, requestAllyAttack } from './allies';
+import { clearLeaderCache, requestAllyAid, requestAllyAttack } from './allies';
 import { build, demolish } from './buildings';
 import { boatLandingTile, clearArmyCache, launchAttack, needsBoat, retreat } from './combat';
 import { answerAlliance, breakAlliance, gift, requestAlliance, toggleEmbargo } from './diplomacy';
@@ -14,7 +14,7 @@ import { launchBarrage } from './barrage';
 import { chooseDoctrine } from './doctrines';
 import { buildAircraft, launchBomber, launchMissile, launchParadrop, launchTransport, moveWarship } from './units';
 import { moveWarships, orderWarship } from './navy';
-import { buildTankDivision, moveTankDivisions } from './tanks';
+import { buildTankDivision, clearDefenseCache, moveTankDivisions } from './tanks';
 import { setUnitStance } from './naval2';
 import { setDivisionMode } from './armor2';
 import { setAirMission } from './airwings';
@@ -55,6 +55,8 @@ const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.m
 export function applyAction(state: GameState, playerId: number, action: Action): ActionResult {
   clearArmyCache(state); // client reads between ticks must not fill it (combat.ts)
   clearIntelCache(state); // the same for recon intel (variants.ts)
+  clearDefenseCache(state); // division defence (tanks.ts)
+  clearLeaderCache(state); // runaway leader (allies.ts)
   const p = state.players[playerId];
   if (!p || playerId === 0) return FAIL('No such player');
   // Continuing a finished game and the owner console work for eliminated humans too (they keep watching).

@@ -111,12 +111,42 @@ async function spawnByClick(page, side) {
   }
   fail('could not spawn');
 }
+/**
+ * After a hash mismatch: the host pauses, the clients settle on one turn, and each state's top-level parts (and each
+ * player's fields) are fingerprinted, so the report names what differs.
+ */
+async function diffParts(pages) {
+  await pages[0].click('[data-test=pause]').catch(() => {});
+  await sleep(4000);
+  const prints = await Promise.all(pages.map((pg) =>
+    pg.evaluate(() => {
+      const fp = (v) => {
+        const str = JSON.stringify(v, (_k, x) => (x instanceof Map ? [...x.entries()] : x instanceof Set ? [...x] : ArrayBuffer.isView(x) ? Array.from(x).reduce((h, y, i) => (h * 31 + y * (i + 1)) | 0, 7) : x)) ?? 'undefined';
+        let h = 0;
+        for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
+        return h;
+      };
+      const s = window.__borderfall.getState();
+      const out = { turn: window.__borderfall.turn() };
+      for (const k of Object.keys(s)) if (k !== 'players' && k !== 'map') out[k] = fp(s[k]);
+      for (const k of Object.keys(s.map)) out[`map.${k}`] = fp(s.map[k]);
+      for (const p of s.players) for (const k of Object.keys(p)) out[`p${p.id}.${k}`] = fp(p[k]);
+      return out;
+    })));
+  const keys = new Set(prints.flatMap((x) => Object.keys(x)));
+  const diff = {};
+  for (const k of keys) if (new Set(prints.map((x) => x[k])).size > 1) diff[k] = prints.map((x) => x[k]);
+  return diff;
+}
 async function compareHashes(pages, minCommon = 3) {
   const maps = await Promise.all(pages.map((p) => p.evaluate(() => window.__borderfall.hashes())));
   const common = Object.keys(maps[0]).filter((t) => maps.every((m) => t in m));
   for (const t of common) {
     const vals = maps.map((m) => m[t]);
-    if (new Set(vals).size !== 1) fail(`hash mismatch at turn ${t}: ${vals.join(' ')}`);
+    if (new Set(vals).size !== 1) {
+      log(`hash mismatch at turn ${t}: ${vals.join(' ')}; state parts that differ:`, JSON.stringify(await diffParts(pages)));
+      fail(`hash mismatch at turn ${t}: ${vals.join(' ')}`);
+    }
   }
   if (common.length < minCommon) fail(`only ${common.length} common hash turns`);
   return common.map(Number).sort((a, b) => a - b);

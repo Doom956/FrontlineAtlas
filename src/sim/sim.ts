@@ -1,6 +1,6 @@
 // One simulation tick (100 ms of game time). Fixed system order for determinism.
 import { updateAdvisor } from './advisor';
-import { updateAllies } from './allies';
+import { clearLeaderCache, updateAllies } from './allies';
 import { aiSpawn, updateAI } from './ai';
 import { updateBuildings } from './buildings';
 import { updateBuildQueues } from './bulkbuild';
@@ -20,7 +20,7 @@ import { updateUnits } from './units';
 import { updateAir } from './airwings';
 import { clearIntelCache, updateArsenal } from './variants';
 import { updateNavyQueue } from './navy';
-import { updateTanks } from './tanks';
+import { clearDefenseCache, updateTanks } from './tanks';
 import { updateSpecials } from './specials';
 import { updateWarMemory } from './naval2';
 import { updateTutorial } from './tutorialScenario';
@@ -34,6 +34,8 @@ export function tick(state: GameState): void {
   if (state.phase === 'over') return;
   clearArmyCache(state); // client reads between ticks must not fill it (combat.ts)
   clearIntelCache(state); // the same for recon intel (variants.ts)
+  clearDefenseCache(state); // division defence (tanks.ts)
+  clearLeaderCache(state); // runaway leader (allies.ts)
 
   if (state.phase === 'spawn') {
     if (state.tick === 0 && mods(state).randomSpawn) randomSpawnHumans(state);

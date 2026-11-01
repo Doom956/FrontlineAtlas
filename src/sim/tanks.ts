@@ -923,6 +923,14 @@ export function updateTanks(state: GameState): void {
 // ---------------------------------------------------------------------------------------------------------------
 
 const defenseCache = new WeakMap<GameState, { tick: number; n: number; by: Map<number, number[]> }>();
+/**
+ * Drops the division-defence cache. The client reads it between ticks with the next tick's number (combat.estimateAttack
+ * for front lines and attack tooltips), before that tick moves the divisions: called with combat.clearArmyCache when the
+ * sim starts work (sim.tick, actions.applyAction), so rendering and non-rendering clients stay in lockstep.
+ */
+export function clearDefenseCache(state: GameState): void {
+  defenseCache.delete(state);
+}
 
 /** Defence multiplier on attacks against `defender` at `tile` from its holding divisions nearby (1 = none). */
 export function tankDefenseAt(state: GameState, defender: number, tile: number): number {

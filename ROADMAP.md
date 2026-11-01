@@ -128,9 +128,17 @@ Tune later: Nuclear Fission now first at 18.3 min (was 37.3), atom bombs 11 in 9
 Fission's science is the lever); median game 35.8 -> 29.0 min, 81% of games end in 25-50 min (was 96%); fewer slot
 nations alive at 20 min (armor specialist 79% -> 54%); navy still under 0.7, economy high; the scripted new player
 was not measured in the batch.
-Final check: tsc (both), build, vitest green apart from tests that time out only under load (they time out the same
-on the old tree); mp-arsenal (now buys Navigation, Destroyers and Naval Mines with procure) and mp-pillars: see the
-final-check report; e2e scripts take `E2E_PORT` and refuse a port another run already uses.
+Final check: `npx tsc -p .`, `npx tsc -p server`, `npm run build`, `npx vitest run` (737) green. mp-arsenal (now
+grows land, builds a Port / Factory / mine / well, buys Navigation, Destroyers, Mechanization and Amphibious Tanks with
+procure; fork and mastery refusals; the old research action refused) and mp-pillars PASS on the final build, hashes
+agree. One earlier mp-arsenal run on a very busy machine had a hash mismatch (turn 3219, Bob's client only) that did
+not come back in three later runs; not explained. Defensive fix: the division-defence and runaway-leader caches are
+now dropped when the sim starts work, like the army cache (client reads between ticks; tests/lockstepReads.test.ts),
+and the e2e now prints which state parts differ on a mismatch. E2e scripts take `E2E_PORT` and refuse a port another
+run already uses. New-player browser run (Easy): Research card -> Logistics, Arsenal: Flight bought and delivered,
+a path item without an Airfield shows "Build an Airfield first", Ground-attack Planes + Drop Tanks on order at once
+with countdowns, both delivered, fork locks Heavy Bombers; quick tutorial finished in 62 s; no console errors.
+Screenshots /tmp/borderfall-shots/proc-check-*.png.
 
 ## Parked ideas (owner said later / maybe)
 Building limits (city slots, upkeep), rivers and bridges, wonders, game modes (King of the Hill, capital capture, scenarios), quick chat/emotes/rematch, phone layout, making Easy winnable, calmer tribes.
