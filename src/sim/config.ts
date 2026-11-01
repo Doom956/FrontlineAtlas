@@ -1340,8 +1340,11 @@ export interface NavalVariantInfo {
 export const ARSENAL = {
   /** mastery techs in at most this many pillars per game */
   masteryCap: 2,
-  /** AI: a mastery is put first in the research order only once the nation has this many techs (arsenalAI / variantsAI) */
-  aiMasteryMinTechs: 8,
+  /**
+   * AI: a mastery is put first in the research order / bought at once only once the nation has this many techs
+   * (arsenalAI / variantsAI; Research and Arsenal together: 8 when the Arsenal was researched too)
+   */
+  aiMasteryMinTechs: 16,
   naval: {
     destroyer: { name: 'Destroyer', cost: 0.85, speed: 1.3, hp: 0, detect: 1.5, damage: 1, vsTrade: 1, vsSub: 3, shell: 0.5, shellRange: 1, support: 0.8, blockade: 1 },
     battleship: { name: 'Battleship', cost: 1.8, speed: 0.7, hp: 3, detect: 1, damage: 1.4, vsTrade: 1, vsSub: 0.5, shell: 2, shellRange: 2, support: 1.8, blockade: 1 },
@@ -1404,10 +1407,10 @@ export const ARSENAL = {
 export const ARSENAL_PRICES = {
   /** by arsenal column (arsenal.ts ArsenalItem.tier: 1 unlock, 2 path root / shared unlock, 3 upgrade / special, 4 mastery) */
   tiers: {
-    1: { gold: 1200, resource: 250, seconds: 20 },
-    2: { gold: 2500, resource: 900, seconds: 25 },
-    3: { gold: 4200, resource: 1600, seconds: 35 },
-    4: { gold: 9000, resource: 4000, seconds: 45 },
+    1: { gold: 1500, resource: 300, seconds: 20 },
+    2: { gold: 3000, resource: 1000, seconds: 25 },
+    3: { gold: 5000, resource: 2000, seconds: 35 },
+    4: { gold: 15000, resource: 6000, seconds: 45 },
   } as Record<number, { gold: number; resource: number; seconds: number }>,
   /** share of the tier's resource amount paid in iron / oil, per pillar (armor: iron; navy and air: oil plus some iron) */
   mix: {
@@ -1426,7 +1429,7 @@ export const ARSENAL_PRICES = {
   /** the building each pillar's items need (finished, own); an item that unlocks that building itself is exempt */
   building: { navy: 'port', armor: 'factory', air: 'airfield' } as Record<'armor' | 'navy' | 'air', BuildingType>,
   /** AI: at most this many items on order at once */
-  aiMaxOrders: 0,
+  aiMaxOrders: 2,
   /** AI: iron / oil it keeps back for units (tank divisions, warships, bombers) after a purchase */
   aiIronReserve: 150,
   aiOilReserve: 100,
