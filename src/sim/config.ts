@@ -92,7 +92,7 @@ export const MARKET_GOLD_BONUS = 0.12; // +12% gold per market
 export const MARKET_MAX_BONUS = 0.8;
 export const IRON_PER_MINE = 5.0;
 export const OIL_PER_WELL = 2.5;
-export const BASE_SCIENCE = 3; // was 0.5: research is quicker, mostly at the start (labs add SCIENCE_PER_LAB each)
+export const BASE_SCIENCE = 2; // was 0.5: research is quicker, mostly at the start (labs add SCIENCE_PER_LAB each)
 export const SCIENCE_PER_LAB = 1.0;
 export const ARMOR_OIL_UPKEEP = 0.000004; // oil per armor unit per second (one well feeds about 600k armor)
 export const AIRCRAFT_OIL_UPKEEP = 0.02; // oil per stored aircraft per second
@@ -415,7 +415,7 @@ export const TECHS: Record<TechId, TechInfo> = {
   combinedArms: { name: 'Combined Arms', tier: 3, science: 1300, gold: 1000, requires: ['mechanization', 'ballistics'], description: '+20% attack when every troop type is at least 15% of the force.' },
   radar: { name: 'Radar', tier: 3, science: 1300, gold: 1000, requires: ['flight'], description: 'SAM sites; watchtower radius x2.' },
   rocketry: { name: 'Rocketry', tier: 3, science: 1300, gold: 1000, requires: ['ballistics'], description: 'Missile silos and rockets.' },
-  nuclearFission: { name: 'Nuclear Fission', tier: 4, science: 2100, gold: 1500, requires: ['rocketry', 'industrialization'], description: 'Atom bombs.' },
+  nuclearFission: { name: 'Nuclear Fission', tier: 4, science: 14000, gold: 3000, requires: ['rocketry', 'industrialization'], description: 'Atom bombs.' },
   // ---- branches with exclusive choices (techtree.ts; numbers in the TECH_EFFECTS block below) ----
   propaganda: { name: 'Propaganda', tier: 2, science: 300, gold: 600, requires: ['agriculture'], description: 'Attacks on your land cost the attacker 12% more troops.' },
   railways: { name: 'Railways', tier: 3, science: 1300, gold: 1000, requires: ['logistics'], description: 'Supply range +25%, fronts +10% faster, tank divisions 20% cheaper, +1 division per 2 Factory levels.' },
@@ -431,9 +431,9 @@ export const TECHS: Record<TechId, TechInfo> = {
   strategicBombing: { name: 'Strategic Bombing', tier: 4, science: 3500, gold: 1500, requires: ['heavyBombers'], description: 'Bombs hit a 40% wider area, wreck more buildings and burn 6% of the victim\'s gold and iron.' },
   diplomaticCorps: { name: 'Diplomatic Corps', tier: 3, science: 1300, gold: 1000, requires: ['propaganda'], exclusiveGroup: 'statecraft', description: 'Allies trust you sooner, help more (aid +40%) and can be asked twice as often.' },
   conscription: { name: 'Conscription', tier: 3, science: 1300, gold: 1000, requires: ['propaganda'], exclusiveGroup: 'statecraft', description: 'Troop cap +5%, troop growth +6%, mercenaries 25% cheaper.' },
-  industrialBoom: { name: 'Industrial Boom', tier: 4, science: 3000, gold: 2000, requires: ['banking'], requiresAny: ['stockExchange', 'freeTrade'], description: 'Gold, iron and oil +12%.' },
-  massMobilization: { name: 'Mass Mobilization', tier: 5, science: 8000, gold: 3000, requires: ['industrialBoom'], exclusiveGroup: 'capstone', description: 'Troop cap +12% and every attack +6% stronger.' },
-  automation: { name: 'Automation', tier: 5, science: 8000, gold: 3000, requires: ['industrialBoom'], exclusiveGroup: 'capstone', description: 'Buildings and upgrades build 35% faster and cost 10% less.' },  // ---- special upgrades: behaviour, not stats (specials.ts; numbers in the SPECIALS block) ----
+  industrialBoom: { name: 'Industrial Boom', tier: 4, science: 4000, gold: 2000, requires: ['banking'], requiresAny: ['stockExchange', 'freeTrade'], description: 'Gold, iron and oil +12%.' },
+  massMobilization: { name: 'Mass Mobilization', tier: 5, science: 12000, gold: 3000, requires: ['industrialBoom'], exclusiveGroup: 'capstone', description: 'Troop cap +12% and every attack +6% stronger.' },
+  automation: { name: 'Automation', tier: 5, science: 12000, gold: 3000, requires: ['industrialBoom'], exclusiveGroup: 'capstone', description: 'Buildings and upgrades build 35% faster and cost 10% less.' },  // ---- special upgrades: behaviour, not stats (specials.ts; numbers in the SPECIALS block) ----
   amphibiousTanks: { name: 'Amphibious Tanks', tier: 3, science: 2200, gold: 1000, requires: ['mechanization', 'navigation'], description: 'Tank divisions wade across straits and rivers up to 5 tiles wide (moves and spearheads); each landing costs 8% of the division, and warships and mines hit divisions in the water.' },
   earlyWarning: { name: 'Early Warning', tier: 4, science: 3500, gold: 1500, requires: ['radar'], description: 'SAMs and fighters engage 40% farther out; your coast and air sites spot enemy submarines from twice as far; night bombers dodge you much less.' },
   navalMines: { name: 'Naval Mines', tier: 3, science: 2200, gold: 1000, requires: ['navigation', 'fortification'], description: 'The sea around your ports is mined: enemy warships and submarines there take damage, invasions sailing through lose troops. Your ships and your allies\' are safe; escorts sweep a lane.' },
@@ -1408,9 +1408,9 @@ export const ARSENAL_PRICES = {
   /** by arsenal column (arsenal.ts ArsenalItem.tier: 1 unlock, 2 path root / shared unlock, 3 upgrade / special, 4 mastery) */
   tiers: {
     1: { gold: 1500, resource: 300, seconds: 20 },
-    2: { gold: 3000, resource: 1000, seconds: 25 },
-    3: { gold: 5000, resource: 2000, seconds: 35 },
-    4: { gold: 15000, resource: 6000, seconds: 45 },
+    2: { gold: 3600, resource: 1200, seconds: 25 },
+    3: { gold: 9000, resource: 3500, seconds: 35 },
+    4: { gold: 25000, resource: 10000, seconds: 45 },
   } as Record<number, { gold: number; resource: number; seconds: number }>,
   /** share of the tier's resource amount paid in iron / oil, per pillar (armor: iron; navy and air: oil plus some iron) */
   mix: {
