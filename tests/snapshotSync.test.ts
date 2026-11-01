@@ -27,7 +27,7 @@ type Turn = { playerId: number; action: Action }[];
 /** The human seat's intents for this turn, decided from the reference game (as the human's client would). */
 function humanIntents(s: GameState, n: number): Turn {
   const p = s.players[1];
-  if (s.phase !== 'playing' || !p?.alive || n % 40 !== 0) return [];
+  if (s.phase !== 'playing' || !p?.isHuman || !p.alive || n % 40 !== 0) return [];
   const b = borderTiles(s, 1);
   if (!b.len) return [];
   const w = s.map.width;
@@ -48,6 +48,9 @@ function runTurn(s: GameState, turn: Turn): void {
   tick(s);
 }
 
+/** Lets the test runner's worker talk to its main process (minutes of synchronous ticks time out its RPC). */
+const yieldToRunner = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
 interface Client {
   name: string;
   state: GameState;
@@ -56,16 +59,20 @@ interface Client {
 }
 
 /** Runs the scenario; returns the first mismatch ("name@tick") or null, and how much the shop was used. */
-function scenario(settings: GameSettings, ticks: number, rejoinAt: readonly number[]): { mismatch: string | null; orders: number } {
+async function scenario(settings: GameSettings, ticks: number, rejoinAt: readonly number[]): Promise<{ mismatch: string | null; orders: number }> {
   const log: Turn[] = [];
   const quiet: Client = { name: 'quiet', state: createGame(settings), readEvery: 0 };
   const clients: Client[] = [quiet, { name: 'live', state: createGame(settings), readEvery: 1 }];
   let orders = 0;
   for (let n = 0; n < ticks; n++) {
+    if (n % 200 === 0) await yieldToRunner();
     if (rejoinAt.includes(n)) {
       // Catch-up: a fresh game replays the turn log in one burst (no HUD in between), then plays on as a busy client.
       const s = createGame(settings);
-      for (let k = 0; k < n; k++) runTurn(s, log[k]);
+      for (let k = 0; k < n; k++) {
+        runTurn(s, log[k]);
+        if (k % 500 === 499) await yieldToRunner();
+      }
       clients.push({ name: `rejoin@${n}`, state: s, readEvery: 3 });
     }
     log.push(humanIntents(quiet.state, n));
@@ -83,11 +90,17 @@ function scenario(settings: GameSettings, ticks: number, rejoinAt: readonly numb
 }
 
 describe('lockstep: rejoin (turn-log replay) and HUD reads between ticks', () => {
-  // Medium continents, 8 AI nations + a scripted human, normal research (the Arsenal shop is on), 17 game minutes.
-  for (const seed of [1, 5]) {
-    it(`seed ${seed}: live, quiet and rejoined clients hash the same`, () => {
-      const settings = testSettings({ seed, mapType: 'continents', mapSize: 'medium', aiCount: 8, humanPlayer: true, tribeCount: -1 });
-      const r = scenario(settings, 17 * 600, [3000, 7000]);
+  // Medium continents, 8 AI nations, normal research (the Arsenal shop is on), 20 game minutes; one game also has a
+  // scripted human seat. Seeds where the reads used to desync the game (supply cache, minute 9-12).
+  const cases = [
+    { seed: 7, human: false },
+    { seed: 9, human: false },
+    { seed: 6, human: true },
+  ];
+  for (const { seed, human } of cases) {
+    it(`seed ${seed}${human ? ' with a human' : ''}: live, quiet and rejoined clients hash the same`, async () => {
+      const settings = testSettings({ seed, mapType: 'continents', mapSize: 'medium', aiCount: 8, humanPlayer: human, tribeCount: -1 });
+      const r = await scenario(settings, 20 * 600, [3000, 7000]);
       expect(r.orders).toBeGreaterThan(0); // AIs bought from the Arsenal shop
       expect(r.mismatch).toBeNull();
     }, 900_000);

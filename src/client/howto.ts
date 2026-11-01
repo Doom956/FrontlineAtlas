@@ -273,7 +273,7 @@ export function howToPlayContent(): HTMLElement {
   const tiers = Math.max(...resTechs.map((t) => TECHS[t].tier));
   const secs = Object.values(ARSENAL_PRICES.tiers).map((x) => x.seconds);
   const researchRows: Row[] = [
-    { title: 'Science', text: `Builds up by ${BASE_SCIENCE} a second, +${SCIENCE_PER_LAB} per Research Lab level. ${resTechs.length} techs in ${tiers} tiers, one at a time; each also costs gold. The first tiers go quickly; the last ones take most of a game.` },
+    { title: 'Science', text: `Builds up by ${BASE_SCIENCE} a second, +${SCIENCE_PER_LAB} per Research Lab level. ${resTechs.length} techs in ${tiers} tiers, one at a time; each also costs gold. The first tiers go quickly; Nuclear Fission and the last tier take most of a game.` },
     { title: 'Auto', text: 'The next useful tech starts by itself. Choosing one by hand turns Auto off.', key: 'T' },
     { title: 'OR pairs', text: 'Some techs come in pairs marked OR (Stock Exchange or Free Trade, Blitz Tactics or Trench Warfare ...). Taking one locks the other for good.' },
     { title: 'Switching', text: 'Clicking another tech while one is in progress asks for a second click: the current one loses its progress and gold.' },
