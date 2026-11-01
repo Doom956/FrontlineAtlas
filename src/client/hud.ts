@@ -256,6 +256,7 @@ export class Hud {
         strike: (id) => this.bar?.strikes.statusOf(id)?.state ?? null,
         modal: () => this.tutorialView().modal,
         strikeTipShown: (id) => this.advisor.seenStrike(id),
+        canStartNow: () => hudOpts.canStartNow?.() ?? true,
       });
     }
     this.drawer.add(

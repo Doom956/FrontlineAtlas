@@ -18,6 +18,8 @@ export interface GuideHooks {
   strike: (id: StrikeId) => string | null;
   /** a modal (help page, game over) is up: the bar yields */
   modal: () => boolean;
+  /** Start now can be pressed in this game (online only the host has it) */
+  canStartNow?: () => boolean;
   /** the strike tip showed for this strike: the advisor's own first-use hint for it is not needed */
   strikeTipShown?: (id: StrikeId) => void;
 }
@@ -41,8 +43,7 @@ export class GuideController {
       return y * s.map.width + x;
     };
     // a player who finished the Basics chapter of Tutorial mode gets the tips only
-    this.engine = new GuideEngine(openingSteps({ centreTile }), guideTips(), { skipOpening: isChapterDone('basics') });
-    (window as any).__guideDbg = this.engine; // DBGTMP
+    this.engine = new GuideEngine(openingSteps({ centreTile, canStartNow: () => hooks.canStartNow?.() ?? true }), guideTips(), { skipOpening: isChapterDone('basics') });
     this.engine.onChange = (v) => {
       if (v?.kind === 'tip' && v.id === 'strike' && this.last) {
         for (const id of ['barrage', 'bomb', 'paradrop', 'rocket', 'atomBomb'] as StrikeId[]) {

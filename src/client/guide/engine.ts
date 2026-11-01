@@ -53,6 +53,8 @@ export interface GuideStep {
   timeout?: number;
   /** not needed in this game (e.g. no tribes left): passed over */
   skipIf?: (c: GuideCtx) => boolean;
+  /** waits (bar hidden) until the war starts: e.g. troops are 0/0 during the spawn phase */
+  playingOnly?: boolean;
 }
 
 export interface GuideTip {
@@ -346,6 +348,7 @@ export class GuideEngine {
         this.advance();
         continue;
       }
+      if (st.playingOnly && c.s.phase !== 'playing') return null;
       if (!this.mem) {
         this.mem = safe(() => st.begin?.(c) ?? {}, {}, (e) => this.fail(st.id, e));
         this.stepAt = c.sec;

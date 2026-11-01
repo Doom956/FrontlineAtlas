@@ -1,7 +1,7 @@
 // The guide's content: the opening sequence (in order, when a game starts) and the contextual tips (once each, when
 // they become useful). Text is one short line; `target` names the HUD element (data-test values, ' || ' = fallbacks),
 // `tile` the map tile the arrow shows when there is no element. Everything here only reads the game.
-import { isArsenalTech, MASTERY_CAP } from '../../sim/arsenal';
+import { isArsenalTech } from '../../sim/arsenal';
 import { buildingCost, countBuildings } from '../../sim/buildings';
 import { DOCTRINE_UNLOCK_SECONDS, TECHS } from '../../sim/config';
 import { neighbors4, nearestTile, tileDist } from '../../sim/grid';
@@ -158,7 +158,9 @@ const playing = (c: GuideCtx): boolean => c.s.phase === 'playing';
 // ------------------------------------------------------------------------------------------------ opening
 
 /** The opening: start, troops, gold, expand, attack size, a City, a tribe, the standings. */
-export function openingSteps(view: { centreTile: () => number }): GuideStep[] {
+export function openingSteps(view: { centreTile: () => number; canStartNow?: () => boolean }): GuideStep[] {
+  /** online, only the host has Start now: the others wait for the countdown */
+  const startNow = (): boolean => view.canStartNow?.() ?? true;
   return [
     {
       id: 'spawn',
@@ -168,29 +170,31 @@ export function openingSteps(view: { centreTile: () => number }): GuideStep[] {
     },
     {
       id: 'start',
-      text: (c) =>
-        !c.me.spawned
-          ? 'Click open land to place your start, then press Start now.'
-          : mods(c.s).randomSpawn
-            ? 'Your start was picked for you. Press Start now to begin.'
-            : 'Good spot. Click again to move it, or press Start now.',
+      text: (c) => {
+        const go = startNow() ? 'press Start now' : 'wait for the countdown';
+        if (!c.me.spawned) return `Click open land to place your start, then ${go}.`;
+        return mods(c.s).randomSpawn ? `Your start was picked for you. ${startNow() ? 'Press Start now to begin.' : 'The war begins after the countdown.'}` : `Good spot. Click again to move it, or ${go}.`;
+      },
       // not placed yet (the first step was skipped): the arrow shows open land, Start now appears once placed
-      target: (c) => (c.me.spawned ? 'start-now' : undefined),
+      target: (c) => (c.me.spawned && startNow() ? 'start-now' : undefined),
       tile: (c) => (c.me.spawned ? c.me.capital : startTile(c, view.centreTile())),
       done: (c) => c.s.phase !== 'spawn',
     },
     {
       id: 'troops',
+      playingOnly: true,
       text: 'Troops: your army. They regrow by themselves, fastest when the bar is near its mark.',
       target: 'troops',
     },
     {
       id: 'gold',
+      playingOnly: true,
       text: 'Gold comes in every second. It pays for buildings and research.',
       target: 'resources',
     },
     {
       id: 'expand',
+      playingOnly: true,
       text: 'Click empty land next to your border to expand. Each tile costs troops.',
       tile: expandTile,
       // no empty land near the border any more (e.g. the guide was restarted later in a game): nothing to point at
@@ -201,6 +205,7 @@ export function openingSteps(view: { centreTile: () => number }): GuideStep[] {
     },
     {
       id: 'share',
+      playingOnly: true,
       text: 'ATTACK: the share of troops each click sends. Drag it, or press [ and ].',
       target: 'attack-share',
       begin: (c) => ({ share: c.ui.attackShare, tick: c.s.tick }),
@@ -209,6 +214,7 @@ export function openingSteps(view: { centreTile: () => number }): GuideStep[] {
     },
     {
       id: 'city',
+      playingOnly: true,
       text: (c) => {
         const cost = buildingCost(c.s, c.me.id, 'city').gold;
         if (c.me.gold < cost) return `A City costs ${cost} gold (you have ${Math.floor(c.me.gold)}). Then press 1 and click your land.`;
@@ -222,6 +228,7 @@ export function openingSteps(view: { centreTile: () => number }): GuideStep[] {
     },
     {
       id: 'tribe',
+      playingOnly: true,
       text: (c) => {
         const t = tribeTile(c);
         return t >= 0 && !touches(c.s, t, c.me.id)
@@ -243,6 +250,7 @@ export function openingSteps(view: { centreTile: () => number }): GuideStep[] {
     },
     {
       id: 'standings',
+      playingOnly: true,
       text: (c) => `Standings: who holds the most land. Hold ${Math.round(victoryShareNow(c.s) * 100)}% of it, or be the last nation, to win.`,
       target: 'leaderboard',
     },
@@ -255,16 +263,26 @@ export function openingSteps(view: { centreTile: () => number }): GuideStep[] {
 export function guideTips(): GuideTip[] {
   /** tick since which the player's troops are full and no attack of theirs runs (per game) */
   const idleSince = new WeakMap<GameState, number>();
+  /** the last attack on the player (per game): the tip keeps naming it and pointing at it after a short attack ends */
+  const lastAttack = new WeakMap<GameState, { attacker: number; tile: number }>();
+  const attack = (c: GuideCtx): { attacker: number; tile: number; now: boolean } | null => {
+    const a = attackOnMe(c.s, c.me);
+    if (a) lastAttack.set(c.s, a);
+    const last = a ?? lastAttack.get(c.s);
+    return last ? { ...last, now: !!a } : null;
+  };
   return [
     {
       id: 'attacked',
       critical: true,
       text: (c) => {
-        const a = attackOnMe(c.s, c.me);
-        const name = a ? c.s.players[a.attacker]?.name ?? 'A neighbour' : 'A neighbour';
-        return `${name} attacks you! Troops at home defend. Hit back at their land, or build a Fort (9) there.`;
+        const a = attack(c);
+        const name = (a && c.s.players[a.attacker]?.name) || 'A neighbour';
+        return a && !a.now
+          ? `${name} attacked you. Keep troops at home, hit back, or build a Fort (9) on that border.`
+          : `${name} attacks you! Troops at home defend. Hit back, or build a Fort (9) there.`;
       },
-      tile: (c) => attackOnMe(c.s, c.me)?.tile ?? -1,
+      tile: (c) => attack(c)?.tile ?? -1,
       when: (c) => playing(c) && attackOnMe(c.s, c.me) !== null,
     },
     {
@@ -367,7 +385,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'arsenal',
-      text: `Arsenal (T, Arsenal tab): navy, armor and air fork into two paths; mastery in ${MASTERY_CAP}.`,
+      text: 'Arsenal (T, Arsenal tab): better ships, tanks and planes. Each splits into two paths: pick one.',
       target: (c) => (panel(c, 'research') ? 'tab-arsenal' : 'open-research'),
       // later in the game (after the doctrine pick opens), once an Arsenal item can be started
       when: (c) => playing(c) && c.sec >= DOCTRINE_UNLOCK_SECONDS + 60 && canStartAny(c, true),

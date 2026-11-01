@@ -351,5 +351,68 @@ describe('guide: real content', () => {
     expect(v?.id).toBe('attacked');
     expect(v?.text).toContain(s.players[2].name);
     expect(v?.tile).toBe(target);
+    // the attack is over before the player has read it: the tip still names the attacker and points there
+    s.attacks.length = 0;
+    const after = g.update(at());
+    expect(after?.id).toBe('attacked');
+    expect(after?.text).toContain(`${s.players[2].name} attacked you`);
+    expect(after?.tile).toBe(target);
+  });
+
+  it('a skipped first step: the start step does not say "Good spot" before a start is placed', () => {
+    const s = makeTestGame();
+    const me = s.players[s.humanId];
+    const start = openingSteps({ centreTile: () => me.capital })[1];
+    const wasSpawned = me.spawned;
+    me.spawned = false;
+    const c: GuideCtx = { s, me, ui: UI, sec: 0, now: 0, strike: () => null };
+    const text = typeof start.text === 'function' ? start.text(c) : start.text;
+    expect(text).not.toMatch(/Good spot/);
+    expect(typeof start.target === 'function' ? start.target(c) : start.target).toBeUndefined();
+    me.spawned = wasSpawned;
+  });
+
+  it('the City step is done by a City built before it showed', () => {
+    const s = makeTestGame();
+    const me = s.players[s.humanId];
+    const city = openingSteps({ centreTile: () => me.capital }).find((st) => st.id === 'city')!;
+    const c: GuideCtx = { s, me, ui: UI, sec: 30, now: 0, strike: () => null };
+    expect(city.done!(c, {})).toBe(false);
+    me.gold = 100000;
+    let placed = false;
+    for (let t = 0; t < s.map.owner.length && !placed; t++) if (s.map.owner[t] === me.id) placed = applyAction(s, me.id, { type: 'build', building: 'city', tile: t }).ok;
+    expect(placed).toBe(true);
+    expect(city.done!(c, {})).toBe(true);
+  });
+
+  it('a step marked playingOnly waits for the war to start (Skip in the spawn phase does not show 0/0 troops)', () => {
+    const g = new GuideEngine([{ id: 'first', text: 'pick a start', done: flag('x') }, { id: 'later', text: 'troops', playingOnly: true }], []);
+    world.phase = 'spawn';
+    expect(run(g)?.id).toBe('first');
+    g.skip();
+    expect(run(g)).toBeNull();
+    world.phase = 'playing';
+    expect(run(g)?.id).toBe('later');
+  });
+
+  it('waiting tips come in the list order, not the order they became useful', () => {
+    store.setItem(GUIDE_KEY, JSON.stringify({ on: true, openingDone: true, tips: [] }));
+    const g = new GuideEngine([], TIPS);
+    world.flags.t2 = true;
+    expect(run(g)?.id).toBe('t2');
+    world.flags.t1 = true;
+    run(g);
+    world.flags.t2 = false;
+    expect(g.queued).toEqual(['t1']);
+    // a third tip that came in before t1 is useful waits behind it
+    const g2 = new GuideEngine([], [...TIPS, { id: 't0', text: 'late in the list', when: flag('t0') }]);
+    world.flags = { t0: true };
+    world.now += TIP_GAP_MS;
+    store.setItem(GUIDE_KEY, JSON.stringify({ on: true, openingDone: true, tips: [] }));
+    expect(run(g2)?.id).toBe('t0');
+    world.flags.t2 = true;
+    world.flags.t1 = true;
+    run(g2);
+    expect(g2.queued).toEqual(['t1', 't2']);
   });
 });
