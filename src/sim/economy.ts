@@ -21,6 +21,7 @@ import {
   CITY_GOLD,
   CITY_TROOP_CAP,
   CONVERT_ARMY_SHARE,
+  CONVERT_GOLD_SHARE,
   CONVERT_COST,
   CONVERT_RATE,
   DOCTRINE_PERKS,
@@ -201,7 +202,7 @@ function growTroops(state: GameState, p: Player, cap: number, dt: number): numbe
 }
 
 /** Factories turn infantry into armor, arsenals into artillery, until the target mix is reached. */
-function convertArmy(state: GameState, p: Player, dt: number): void {
+function convertArmy(state: GameState, p: Player, dt: number, goldIncome: number): void {
   const army = armyTotal(p.troops);
   if (army <= 0) return;
   const factories = countBuildings(state, p.id, 'factory');
@@ -234,7 +235,11 @@ function convertArmy(state: GameState, p: Player, dt: number): void {
   const goldNeed = wantA * costA.gold + wantR * costR.gold;
   const ironNeed = wantA * costA.iron + wantR * costR.iron;
   let scale = 1;
-  if (goldNeed > p.gold) scale = Math.min(scale, p.gold / goldNeed);
+  // The base rate per building is always paid for; the extra speed a big army gets spends at most CONVERT_GOLD_SHARE
+  // of this tick's gold income, so the rest of the income always reaches the stock (no gold pinned at 0).
+  const baseGold = (factories * CONVERT_RATE.armor * costA.gold + arsenals * CONVERT_RATE.artillery * costR.gold) * speed * dt;
+  const goldBudget = Math.min(p.gold, Math.max(baseGold, Math.max(0, goldIncome) * CONVERT_GOLD_SHARE * dt));
+  if (goldNeed > goldBudget) scale = Math.min(scale, goldNeed > 0 ? goldBudget / goldNeed : 1);
   if (ironNeed > p.iron) scale = Math.min(scale, p.iron / ironNeed);
   const a = wantA * scale;
   const r = wantR * scale;
@@ -328,7 +333,7 @@ export function updateEconomy(state: GameState): void {
     }
     p.stats.goldEarned += gold * dt;
 
-    convertArmy(state, p, dt);
+    convertArmy(state, p, dt, gold);
 
     p.income.gold = gold;
     p.income.iron = iron;
