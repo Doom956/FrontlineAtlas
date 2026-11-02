@@ -10,7 +10,7 @@ import { buildingAt } from '../../sim/buildings';
 import { unitAllowed } from '../../sim/rules';
 import type { AirMission, Building, GameState, Player } from '../../sim/types';
 import { followOf, followsWar, followText } from '../follow';
-import { AIR_ORDER, airInfo, airReady, followWingAgain, setMission, toggleRefill, wingStatus } from '../pillars';
+import { AIR_ORDER, airInfo, airReady, followWingAgain, idleAirLabel, setMission, toggleRefill, wingStatus } from '../pillars';
 import { FollowRow } from './followRow';
 import { el, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon } from './glyph';
@@ -24,6 +24,8 @@ export class AirPanel {
   private refill: HTMLButtonElement;
   private btns = new Map<AirMission, HTMLButtonElement>();
   private refillOn: boolean | null = null;
+  /** the idle button's label now ("Idle", or "Auto cover" for an Air doctrine holder) */
+  private idleName = 'Idle';
   private follow: FollowRow;
 
   constructor(private ctx: HudCtx, readonly tile: number, compact = false) {
@@ -89,6 +91,14 @@ export class AirPanel {
     setVisible(this.el, ok);
     if (!ok) return;
     const st = wingStatus(s, b);
+    const idle = idleAirLabel(s, b.owner);
+    const ib = this.btns.get('idle');
+    if (ib && idle.name !== this.idleName) {
+      this.idleName = idle.name;
+      const l = ib.querySelector('.wr-btn-l');
+      if (l) l.textContent = idle.name;
+      setTip(ib, `${idle.name}: ${idle.help}`);
+    }
     for (const [m, x] of this.btns) {
       setClass(x, 'on', m === st.mission);
       if (x.getAttribute('aria-pressed') !== String(m === st.mission)) x.setAttribute('aria-pressed', String(m === st.mission));
