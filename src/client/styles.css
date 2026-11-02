@@ -2372,6 +2372,10 @@ button.ev:hover {
 .lg-sw.m-fort {
   background: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.35) 0 2px, transparent 2px 6px), #6f8f4e;
 }
+.lg-sw.m-trench {
+  background: #6f8f4e;
+  color: #33210f;
+}
 .lg-sw.m-capital {
   color: #f6e7a6;
 }
@@ -2381,6 +2385,12 @@ button.ev:hover {
 }
 .mt-row.core .mt-ic {
   color: var(--brass-hi);
+}
+.mt-row.trench .mt-ic {
+  color: #c79a63;
+}
+.mt-row.trench .mt-main {
+  color: #e2c39a;
 }
 .lg-sw.m-front {
   background: linear-gradient(90deg, #6f8f4e 0 50%, #e8cc52 50% 70%, #6f8f4e 70%);
