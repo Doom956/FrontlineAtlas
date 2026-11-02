@@ -1,0 +1,263 @@
+/* Start page (menu.ts showTitle): a command column on the leading side over the live map. The map stays (it is the
+   game's identity) but is dimmed while any menu page shows, so the menu reads first. One brass action, quiet rows. */
+
+.app.in-menu canvas.map-gl,
+.app.in-menu canvas.map {
+  filter: saturate(0.45) brightness(0.6);
+  transition: filter 400ms ease-out;
+}
+/* the overlay canvas (names, borders, units) a step quieter still, so city labels don't compete with the menu */
+.app.in-menu canvas.map {
+  opacity: 0.6;
+}
+
+.menu.at-title {
+  justify-content: flex-start;
+  align-items: stretch;
+  background: linear-gradient(90deg, rgba(13, 16, 19, 0.55) 0, rgba(13, 16, 19, 0.35) 40%, rgba(13, 16, 19, 0) 62%);
+}
+
+/* the column: no boxed card, just a rail with a rule on its trailing edge */
+.menu-card.title {
+  width: calc(400px + clamp(24px, 5vw, 96px) + 40px);
+  max-width: 100%;
+  max-height: none;
+  height: 100%;
+  justify-content: center;
+  align-items: stretch;
+  gap: 0;
+  padding: 32px 40px 32px clamp(24px, 5vw, 96px);
+  overflow-y: auto;
+  background: rgba(16, 20, 24, 0.86);
+  border: 0;
+  border-inline-end: 1px solid var(--rule);
+  border-radius: 0;
+  box-shadow: 12px 0 32px rgba(0, 0, 0, 0.35);
+}
+.menu-card.title::before {
+  display: none;
+}
+
+.menu-title-head {
+  margin-bottom: 32px;
+}
+.logo {
+  margin: 0;
+  font: 600 54px/0.98 var(--f-logo);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.tagline {
+  margin: 12px 0 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--dim);
+}
+
+/* rejoin: only while the player is still in a lobby; it then holds the brass button */
+.menu-rejoin {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 10px 10px 14px;
+  border: 1px solid var(--brass-lo);
+  border-inline-start: 2px solid var(--brass);
+  border-radius: var(--r);
+  background: rgba(201, 162, 39, 0.06);
+}
+.menu-rejoin-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--text);
+}
+.menu-rejoin-text strong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+/* the main action */
+.btn.menu-play {
+  justify-content: space-between;
+  width: 100%;
+  min-height: 56px;
+  padding: 0 20px;
+  font-size: 19px;
+  letter-spacing: 0.12em;
+}
+.menu-play-note {
+  font: 500 13px/1 var(--f-ui);
+  letter-spacing: 0;
+  text-transform: none;
+  opacity: 0.72;
+}
+
+/* play again: the last setup in one line, started at once on a new seed */
+.menu-replay {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 4px 0 0 2px;
+}
+.menu-replay-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--faint);
+}
+.menu-replay-sum {
+  color: var(--dim);
+}
+.menu-replay .btn {
+  flex: none;
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--brass-hi);
+  border-color: var(--brass-lo);
+}
+
+/* the quiet rows */
+.menu-rows {
+  display: flex;
+  flex-direction: column;
+  margin-top: 28px;
+  border-top: 1px solid var(--rule);
+}
+.btn.menu-row {
+  justify-content: flex-start;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 8px 0 4px;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 16px;
+  letter-spacing: 0.1em;
+  color: var(--text);
+  text-align: start;
+}
+.btn.menu-row:hover:not(:disabled) {
+  background: var(--metal-3);
+  border-color: var(--rule);
+}
+.btn.menu-row:active:not(:disabled) {
+  background: var(--metal-2);
+  box-shadow: none;
+}
+.menu-row-label {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+.menu-row .ico {
+  display: inline-flex;
+  color: var(--faint);
+  transition: color var(--fast), transform var(--fast);
+}
+.btn.menu-row:hover .ico,
+.btn.menu-row:focus-visible .ico {
+  color: var(--brass-hi);
+  transform: translateX(2px);
+}
+.menu-row-note {
+  font: 500 13px/1 var(--f-ui);
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--dim);
+}
+.menu-row-note.done {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--olive);
+}
+.menu-row-note.done .ico {
+  color: inherit;
+  transform: none;
+}
+/* first visit: the tutorial row is the suggested next step (brass leading edge and a short note) */
+.btn.menu-row.suggested {
+  padding-inline-start: 12px;
+  box-shadow: inset 2px 0 0 var(--brass);
+  background: rgba(201, 162, 39, 0.05);
+}
+.btn.menu-row.suggested:hover:not(:disabled) {
+  background: var(--metal-3);
+}
+.menu-row-hint {
+  font: 500 13px/1 var(--f-ui);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--brass-hi);
+}
+
+@media (min-width: 1600px) and (min-height: 900px) {
+  .logo {
+    font-size: 64px;
+  }
+  .menu-card.title {
+    width: calc(440px + clamp(24px, 5vw, 96px) + 48px);
+    padding-inline-end: 48px;
+  }
+}
+
+/* phone: a bottom sheet; the map stays visible (a little brighter) above it */
+@media (max-width: 640px) {
+  .app.in-menu canvas.map-gl,
+  .app.in-menu canvas.map {
+    filter: saturate(0.55) brightness(0.75);
+  }
+  /* the sheet covers the lower half: lift the map into the free space above it */
+  .app.in-menu:has(.menu.at-title:not(.hidden)) canvas.map-gl,
+  .app.in-menu:has(.menu.at-title:not(.hidden)) canvas.map {
+    translate: 0 -22dvh;
+  }
+  .menu.at-title {
+    align-items: flex-end;
+    background: linear-gradient(180deg, rgba(13, 16, 19, 0) 0, rgba(13, 16, 19, 0) 30%, rgba(13, 16, 19, 0.6) 100%);
+  }
+  .menu-card.title {
+    width: 100%;
+    height: auto;
+    max-height: 72dvh;
+    justify-content: flex-start;
+    padding: 24px 16px max(16px, env(safe-area-inset-bottom));
+    border-inline-end: 0;
+    border-top: 1px solid var(--rule);
+    border-radius: var(--r) var(--r) 0 0;
+    box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.4);
+    background: rgba(18, 22, 26, 0.95);
+  }
+  .menu-title-head {
+    margin-bottom: 24px;
+  }
+  .logo {
+    font-size: clamp(30px, 10.2vw, 40px);
+  }
+  .tagline {
+    margin-top: 8px;
+  }
+  .menu-rows {
+    margin-top: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app.in-menu canvas.map-gl,
+  .app.in-menu canvas.map,
+  .menu-row .ico {
+    transition: none;
+  }
+}

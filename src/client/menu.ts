@@ -1,9 +1,13 @@
 // Title screen, game settings and the "How to play" page. Also hosts small DOM helpers shared with the HUD.
-import type { GameSettings } from '../sim/types';
+import type { GameSettings, GameSetup } from '../sim/types';
+import { getWorldMap } from '../sim/worldmaps';
+import { mapSizeName, mapTypeName } from '../sim/setup';
 import { loadSetupPrefs, prefetchThumbs, randomSeed, settingsFromPrefs, SetupScreen, type SetupPrefs } from './setupScreen';
-import { MultiplayerScreen } from './lobby';
+import { activeLobby, MultiplayerScreen } from './lobby';
 import type { NetClient } from '../net/client';
-import { tutorialButton, tutorialHint } from './tutorial/menuEntry';
+import { tutorialButton } from './tutorial/menuEntry';
+import { iconSpan, lineIcon } from './hud/glyph';
+import './menu.css';
 
 // DOM helpers live in dom.ts (re-exported here for older imports).
 export { button, el, rgbCss, setText } from './dom';
@@ -101,28 +105,64 @@ export class Menu {
 
   private reset(cls: string): void {
     this.closeMultiplayer();
+    this.el.classList.toggle('at-title', cls === 'title');
     this.card.className = 'menu-card ' + cls;
     this.card.replaceChildren();
   }
 
+  /**
+   * The start page: a command column on the leading side over the dimmed live map. One brass action (Play, or Rejoin
+   * while the player is still in a lobby), a "Play again" line for returning players, then quiet rows.
+   */
   private showTitle(): void {
     this.reset('title');
-    const kicker = el('div', 'menu-kicker', 'Territory command');
-    const logo = el('h1', 'logo', 'Frontline Atlas');
-    const sub = el('div', 'tagline', 'Push your borders. Outthink every front.');
-    const play = button('Single player', 'primary big', () => this.showPlay());
+    const head = el('header', 'menu-title-head');
+    head.append(el('h1', 'logo', 'Frontline Atlas'), el('p', 'tagline', 'Push your borders. Outthink every front.'));
+    this.card.append(head);
+
+    const lobby = activeLobby();
+    if (lobby) {
+      const row = el('div', 'menu-rejoin');
+      const text = el('span', 'menu-rejoin-text', 'You are in lobby ');
+      text.append(el('strong', '', lobby), document.createTextNode('.'));
+      const go = button('Rejoin', 'primary', () => this.openMultiplayer());
+      go.dataset.test = 'menu-rejoin';
+      row.append(text, go);
+      this.card.append(row);
+    }
+
+    const play = button('', `big menu-play${lobby ? '' : ' primary'}`, () => this.showPlay());
     play.dataset.test = 'menu-play';
     play.title = 'A game against AI nations, right here in the browser (no server needed)';
-    const online = button('Multiplayer', 'big', () => this.showMultiplayer());
+    play.append(el('span', '', 'Play'), el('span', 'menu-play-note', 'Against AI'));
+    this.card.append(play);
+
+    if (hasSavedSetup()) {
+      const again = el('div', 'menu-replay');
+      const text = el('span', 'menu-replay-text', 'Last setup: ');
+      text.append(el('span', 'menu-replay-sum', setupLine(this.prefs.setup)));
+      const go = button('Play again', 'ghost', () => this.cb.onStart(this.replaySettings()));
+      go.classList.add('mini');
+      go.dataset.test = 'menu-replay';
+      go.title = 'Start the same setup at once, on a new map seed';
+      again.append(text, go);
+      this.card.append(again);
+    }
+
+    const rows = el('nav', 'menu-rows');
+    rows.setAttribute('aria-label', 'More');
+    const online = menuRow('Multiplayer', 'Public games, or a private lobby with friends', () => this.showMultiplayer());
     online.dataset.test = 'menu-mp';
-    online.title = 'Public games, or a private lobby with friends';
-    const tut = tutorialButton(() => this.cb.onTutorial?.());
-    const help = button('How to play', 'big', () => this.showHelp());
-    const col = el('div', 'menu-buttons');
-    col.append(play, online, tut, help);
-    this.card.append(kicker, logo, sub, col);
-    const hint = this.cb.onTutorial ? tutorialHint(() => this.cb.onTutorial?.()) : null;
-    if (hint) this.card.append(hint);
+    rows.append(online);
+    if (this.cb.onTutorial) rows.append(tutorialButton(() => this.cb.onTutorial?.()));
+    rows.append(menuRow('How to play', 'The rules and controls on one page', () => this.showHelp()));
+    this.card.append(rows);
+    // Enter starts: the main action holds the focus (Rejoin while in a lobby).
+    requestAnimationFrame(() => {
+      if (!this.visible || !this.card.classList.contains('title')) return;
+      const main = this.card.querySelector<HTMLButtonElement>('.menu-rejoin .btn, .menu-play');
+      main?.focus({ preventScroll: true });
+    });
   }
 
   private showHelp(): void {
@@ -146,4 +186,33 @@ export class Menu {
       onStart: (settings) => this.cb.onStart(settings),
     });
   }
+}
+
+// ------------------------------------------------------------------------------------------------ start page helpers
+
+/** A quiet row on the start page: a label, a chevron on the trailing side. */
+function menuRow(label: string, title: string, onClick: () => void): HTMLButtonElement {
+  const b = button('', 'menu-row', onClick);
+  b.title = title;
+  b.append(el('span', 'menu-row-label', label), iconSpan(lineIcon('chevronRight', 16, 2)));
+  return b;
+}
+
+/** True once the setup screen has saved a setup (setupScreen.ts PREFS_KEY). */
+function hasSavedSetup(): boolean {
+  try {
+    return localStorage.getItem('borderfall.setup.v2') !== null;
+  } catch {
+    return false;
+  }
+}
+
+const DIFFICULTY_WORD: Record<GameSetup['difficulty'], string> = { easy: 'Easy', normal: 'Normal', hard: 'Hard', brutal: 'Brutal' };
+
+/** "Medium continents, 8 AI nations, Normal" (teams: ", 3 teams"). */
+function setupLine(s: GameSetup): string {
+  const map = s.map.kind === 'world' ? (getWorldMap(s.map.id)?.name ?? 'World map') : `${mapSizeName(s.map.size)} ${mapTypeName(s.map.type).toLowerCase()}`;
+  const ai = s.aiCount === 1 ? '1 AI nation' : `${s.aiCount} AI nations`;
+  const teams = s.mode === 'teams' ? `, ${s.teamCount} teams` : '';
+  return `${map}, ${ai}, ${DIFFICULTY_WORD[s.difficulty]}${teams}`;
 }
