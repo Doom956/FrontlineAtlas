@@ -19,11 +19,14 @@ function bigArmy(): GameState {
   p.oil = 1e6;
   p.auto.mix = false;
   p.armyMix = { armor: 0.3, artillery: 0.15 };
-  const sites: ['factory' | 'arsenal', number][] = [['factory', 2], ['factory', 6], ['factory', 10], ['factory', 14], ['factory', 18], ['factory', 22], ['arsenal', 26], ['arsenal', 30], ['arsenal', 34]];
+  // cities for a real-game income (the base conversion rate of 9 buildings is always paid; the cap is on the rest)
+  const sites: ['factory' | 'arsenal' | 'city', number][] = [['factory', 2], ['factory', 6], ['factory', 10], ['factory', 14], ['factory', 18], ['factory', 22], ['arsenal', 26], ['arsenal', 30], ['arsenal', 34]];
+  for (let k = 0; k < 8; k++) sites.push(['city', 2 + k * 4]);
   for (const [type, x] of sites) {
     const id = newId(s);
-    s.buildings.set(id, { id, type, owner: 1, tile: at(x, 10), level: 3, buildLeft: 0, upgradeLeft: 0, fighters: 0, bombers: 0, cooldown: 0, dropCooldown: 0, disabledUntil: 0, hp: 1, queuedLevels: 0 });
-    s.map.building[at(x, 10)] = id + 1;
+    const y = type === 'city' ? 30 : 10;
+    s.buildings.set(id, { id, type, owner: 1, tile: at(x, y), level: type === 'city' ? 10 : 3, buildLeft: 0, upgradeLeft: 0, fighters: 0, bombers: 0, cooldown: 0, dropCooldown: 0, disabledUntil: 0, hp: 1, queuedLevels: 0 });
+    s.map.building[at(x, y)] = id + 1;
   }
   markBuildingsChanged(s);
   return s;
@@ -39,8 +42,8 @@ describe('army conversion and gold', () => {
     for (let k = 0; k < 100; k++) tick(s);
     expect(p.troops.armor).toBeGreaterThan(armor0); // conversion still runs
     expect(p.gold).toBeGreaterThan(start); // and gold is not drained
-    // at least half of what was earned stayed in the stock
-    expect(p.gold - start).toBeGreaterThanOrEqual(p.income.gold * 10 * 0.5 * 0.95);
+    // most of what was earned stayed in the stock (half the income, minus the small base rate)
+    expect(p.gold - start).toBeGreaterThan(p.income.gold * 10 * 0.3);
   });
   it('stays deterministic', () => {
     const a = bigArmy();

@@ -235,8 +235,10 @@ function convertArmy(state: GameState, p: Player, dt: number, goldIncome: number
   const goldNeed = wantA * costA.gold + wantR * costR.gold;
   const ironNeed = wantA * costA.iron + wantR * costR.iron;
   let scale = 1;
-  // At most CONVERT_GOLD_SHARE of this tick's gold income: the rest of the income always reaches the stock.
-  const goldBudget = Math.min(p.gold, Math.max(0, goldIncome) * CONVERT_GOLD_SHARE * dt);
+  // The base rate per building is always paid for; the extra speed a big army gets spends at most CONVERT_GOLD_SHARE
+  // of this tick's gold income, so the rest of the income always reaches the stock (no gold pinned at 0).
+  const baseGold = (factories * CONVERT_RATE.armor * costA.gold + arsenals * CONVERT_RATE.artillery * costR.gold) * speed * dt;
+  const goldBudget = Math.min(p.gold, Math.max(baseGold, Math.max(0, goldIncome) * CONVERT_GOLD_SHARE * dt));
   if (goldNeed > goldBudget) scale = Math.min(scale, goldNeed > 0 ? goldBudget / goldNeed : 1);
   if (ironNeed > p.iron) scale = Math.min(scale, p.iron / ironNeed);
   const a = wantA * scale;
