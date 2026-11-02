@@ -126,6 +126,10 @@
   flex-direction: column;
   gap: 24px;
 }
+/* a column that scrolls never squeezes its parts */
+.setup-col > * {
+  flex-shrink: 0;
+}
 .setup-main > .setup-col {
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -135,6 +139,12 @@
 .fade-scroll.more-below,
 .map-grid.more-below {
   mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), rgba(0, 0, 0, 0.15));
+}
+.fade-scroll.more-above {
+  mask-image: linear-gradient(to top, #000 calc(100% - 28px), rgba(0, 0, 0, 0.15));
+}
+.fade-scroll.more-above.more-below {
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.15), #000 28px, #000 calc(100% - 36px), rgba(0, 0, 0, 0.15));
 }
 .setup-sec {
   display: flex;
@@ -160,7 +170,7 @@
 .map-tabs {
   flex: 0 1 260px;
 }
-.map-tabs .btn {
+.map-tabs.setup-seg .btn {
   flex: 1;
 }
 
@@ -289,7 +299,7 @@
   flex: 0 1 120px;
   min-width: 0;
 }
-.stepper {
+.ai-stepper {
   display: flex;
   align-items: center;
   flex: none;
@@ -297,7 +307,9 @@
   border-radius: var(--r);
 }
 .btn.step-btn {
+  flex: none;
   width: 32px;
+  min-width: 32px;
   min-height: 30px;
   border: 0;
   border-radius: 0;
@@ -477,6 +489,7 @@
   padding-bottom: 16px;
 }
 .with-side > .setup-main > .setup-col {
+  flex: none;
   overflow: visible;
   padding: 0;
 }
@@ -529,7 +542,7 @@
     width: min(1480px, calc(100vw - 32px));
   }
   .map-grid.world {
-    max-height: 300px;
+    max-height: 330px;
   }
 }
 @media (max-height: 800px) {
@@ -583,10 +596,12 @@
     padding: 0;
   }
   .setup-main > .setup-col {
+    flex: none;
     overflow: visible;
     padding: 0;
   }
-  .fade-scroll.more-below {
+  .fade-scroll.more-below,
+  .fade-scroll.more-above {
     mask-image: none;
   }
   .map-grid,
@@ -613,8 +628,12 @@
   .lobby-col {
     display: contents;
   }
+  .setup-body.with-side {
+    gap: 14px;
+  }
   .with-side > .setup-main {
     order: 1;
+    margin-top: 18px;
   }
   .with-side .lobby-actions {
     order: 2;
@@ -673,6 +692,20 @@
   .map-grid,
   .map-grid.world {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* twelve real-world maps: one row that scrolls sideways, the next map peeking */
+  .map-grid.world {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: 42%;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    margin-inline-end: -16px;
+    padding-inline-end: 16px;
+  }
+  .map-grid.world .map-thumb {
+    scroll-snap-align: start;
   }
   .setup-sec-head {
     flex-wrap: wrap;

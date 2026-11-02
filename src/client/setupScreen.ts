@@ -363,6 +363,7 @@ export class SetupScreen {
     const check = (): void => {
       const more = box.scrollHeight - box.clientHeight - box.scrollTop > 4;
       box.classList.toggle('more-below', more);
+      box.classList.toggle('more-above', box.scrollTop > 4);
     };
     box.addEventListener('scroll', check, { passive: true });
     if (typeof ResizeObserver !== 'undefined') {
@@ -774,7 +775,7 @@ export class SetupScreen {
       minus.disabled = this.s.aiCount <= 0 || this.card.classList.contains('readonly');
       plus.disabled = this.s.aiCount >= MAX_AI_COUNT || this.card.classList.contains('readonly');
     });
-    const stepper = el('div', 'stepper');
+    const stepper = el('div', 'ai-stepper');
     stepper.append(minus, aiOut, plus);
     const aiRow = el('div', 'range-row ai-row');
     aiRow.append(stepper, ai);
