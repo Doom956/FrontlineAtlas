@@ -139,6 +139,28 @@ run already uses. New-player browser run (Easy): Research card -> Logistics, Ars
 a path item without an Airfield shows "Build an Airfield first", Ground-attack Planes + Drop Tanks on order at once
 with countdowns, both delivered, fork locks Heavy Bombers; quick tutorial finished in 62 s; no console errors.
 Screenshots /tmp/borderfall-shots/proc-check-*.png.
+Pacing pass (config.ts; 48 medium seeds + `--specialist all`; old main / shop round / now): `BASE_SCIENCE` 3 -> 2;
+Nuclear Fission 2100 science + 1500 gold -> 14000 + 3000; Industrial Boom 3000 -> 4000 science; Mass Mobilization and
+Automation 8000 -> 12000; tier 2/3 science stay 300 / 1300; Arsenal path 3000 + 1000 -> 3600 + 1200, upgrade / special
+5000 + 2000 -> 9000 + 3500, mastery 15000 + 6000 -> 25000 + 10000 (unlock unchanged). Research tab owned at 20 min
+10 / 58 / 52%; first path per nation 12.5 / 7.8 / 8.3 min; first Fission 37.3 / 18.3 / 27.5 min; atom bombs 11 / 65 /
+26; median win 35.8 / 29.0 / 30.3 min; nations alive at 20 min 80 / 60 / 62%. Game length and survival don't come back
+with these levers (every variant 29.4-30.7 min); the cause is elsewhere in the shop round (untested guesses: faster
+tier 1-2 research, the AI's buying). New seeds (`--start 1001`) not checked; survival numbers are noisy (+-14 points).
+Desync fix (HUD reads between ticks changed sim caches; there is no state snapshot: a late joiner or reload replays
+every turn from 0): the supply-source cache filtered beachheads by owner when built and its key didn't change on a
+capture (now filtered when used; dropping beachheads bumps the version); the navy cache is cleared at tick start and in
+`applyAction` (`clearNavyCache`); owned coast / iron / oil lists are compacted only in `setOwner`, never on a read; a
+captured building goes into its new owner's index in id order. Audit of every module-level cache in src/sim: the AI-only
+caches are filled at the same ticks on every client and would only break with a real state snapshot. Test
+`tests/snapshotSync.test.ts` (helper `tests/hudReads.ts`, ~5 min): a game reading the HUD every tick, a quiet one and
+two rebuilt from the turn log must hash the same; all 3 cases failed on the old code (split at ticks 5550 / 7060 /
+8310). No new state, protocol still 10; AI behaviour changes slightly (supply always current), no balance batch after it.
+Join check (2026-11-01, dev 45e94f6): tsc both, `npm run build`, `npx vitest run` (740, snapshot test included) green;
+mp-arsenal #1: game 1 hashes agree (120 turns, 2129..3319), then game 2 failed before its hash check ("A could not
+place port/airfield/factory": A found no oil in 5 min and got no Airfield / Factory site; script, not a desync);
+mp-arsenal #2 PASS (game 1: 119 turns 3299..4479, game 2: 119 turns 889..2069); mp-pillars PASS (120 turns 889..2079).
+No hash mismatch or desync flag in any run.
 
 ## Parked ideas (owner said later / maybe)
 Building limits (city slots, upkeep), rivers and bridges, wonders, game modes (King of the Hill, capital capture, scenarios), quick chat/emotes/rematch, phone layout, making Easy winnable, calmer tribes.
