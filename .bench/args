@@ -1,1 +1,1 @@
---sizes medium --maps continents,archipelago,pangaea,highlands --seeds 192 --start 17001 --minutes 50 --decided 0.6 --doctrines random
+--sizes medium --maps continents,archipelago,pangaea,highlands --seeds 96 --start 17001 --minutes 50 --decided 0.6 --specialist all --slot 2 --rule trenches=0
