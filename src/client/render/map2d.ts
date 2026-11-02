@@ -1,12 +1,18 @@
 // Canvas2D fallback for the map layer (no WebGL2): 1 px per tile canvases drawn scaled through the camera with
 // smoothing off. Flat terrain colours, nation fill with darker borders (your border white), fallout tint, and the
-// supply / spawn / resource overlays. No terrain patterns or capture flashes. Same palette as the WebGL layer
+// supply / spawn / resource overlays, and trenches only as a darker border on level 2+. No terrain patterns or
+// capture flashes. Same palette as the WebGL layer
 // (palette.ts): calmer colours, fill opacity and the calmed terrain underneath baked into one opaque pixel.
 import type { MapData } from '../../sim/types';
 import { ctx2d, makeCanvas, mix, type View } from './common';
 import { borderColor, displayColor, NATION_ALPHA, paintOver } from './palette';
 import { RESOURCE_RGB, type TerrainData } from './terrain';
 import { dirtyRects, FALLOUT_BIT, OWNER_MASK, type TileFeed } from './tiles';
+import type { TrenchFeed } from './trenchFeed';
+
+/** Border colour of a level 2+ trench (dark earth), mixed in by this much. */
+const TRENCH_RGB = [52, 34, 18];
+const TRENCH_MIX = 0.55;
 
 const FILL_ALPHA = Math.round(NATION_ALPHA * 255);
 
@@ -23,6 +29,7 @@ export class Map2D {
   /** RGBA per owner: fill and border */
   fill = new Uint8Array(4096 * 4);
   border = new Uint8Array(4096 * 4);
+  private trench: Uint8Array | null = null;
 
   setGame(map: MapData, terr: TerrainData): void {
     const w = map.width;
@@ -71,16 +78,24 @@ export class Map2D {
   }
 
   /** Recomputes the dirty blocks (and their 1-tile rim, whose borders may change) of the territory image. */
-  update(feed: TileFeed): void {
+  update(feed: TileFeed, trench?: TrenchFeed): void {
     const img = this.img;
     const ctx = this.terrCtx;
-    if (!img || !ctx || feed.dirtyList.length === 0) return;
-    for (const [x, y, rw, rh] of dirtyRects(feed, 0)) {
+    this.trench = trench && trench.any && trench.n === this.w * this.h ? trench.level : null;
+    if (!img || !ctx) return;
+    if (feed.dirtyList.length > 0) this.redraw(feed.mirror, dirtyRects(feed, 0));
+    if (trench && trench.dirtyList.length > 0 && trench.n === this.w * this.h) this.redraw(feed.mirror, dirtyRects(trench, 0));
+  }
+
+  private redraw(mirror: Uint32Array, rects: number[][]): void {
+    const img = this.img!;
+    const ctx = this.terrCtx!;
+    for (const [x, y, rw, rh] of rects) {
       const x0 = Math.max(0, x - 1);
       const y0 = Math.max(0, y - 1);
       const x1 = Math.min(this.w, x + rw + 1);
       const y1 = Math.min(this.h, y + rh + 1);
-      for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) this.pixel(feed.mirror, yy * this.w + xx);
+      for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) this.pixel(mirror, yy * this.w + xx);
       ctx.putImageData(img, 0, 0, x0, y0, x1 - x0, y1 - y0);
     }
   }
@@ -145,6 +160,11 @@ export class Map2D {
       g = p[o4 + 1];
       b = p[o4 + 2];
       a = p[o4 + 3];
+      if (edge && this.trench && this.trench[i] >= 2) {
+        r += (TRENCH_RGB[0] - r) * TRENCH_MIX;
+        g += (TRENCH_RGB[1] - g) * TRENCH_MIX;
+        b += (TRENCH_RGB[2] - b) * TRENCH_MIX;
+      }
       if (!edge && this.terrRgba) {
         // translucent fill over the calmed terrain, baked into an opaque pixel
         const t = this.terrRgba;

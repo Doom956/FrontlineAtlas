@@ -1,5 +1,6 @@
 // State hash for desync detection (lockstep multiplayer): two clients that ran the same actions must get the same
-// number. FNV-1a (32 bit) over the parts of the state that every system feeds into: tick, RNG state, tile owners,
+// number. FNV-1a (32 bit) over the parts of the state that every system feeds into: tick, RNG state, tile owners and
+// trench dig points,
 // players' stocks and troops (exact float bits), research (current tech, progress, techs), auto flags, traitor and
 // embargoes, doctrines, phase and spawn time, alliances and alliance requests, attacks and units (positions rounded to 1/100
 // tile), barrages and buildings (level, timers, hp).
@@ -57,6 +58,13 @@ export function hashState(state: GameState): number {
   let i = 0;
   for (; i + 1 < n; i += 2) h = mixInt(h, owner[i] | (owner[i + 1] << 16));
   if (i < n) h = mixInt(h, owner[i]);
+  // Trench dig points (trenches.ts): four bytes per word.
+  const dig = state.trench?.dig;
+  if (dig) {
+    let k = 0;
+    for (; k + 3 < dig.length; k += 4) h = mixInt(h, dig[k] | (dig[k + 1] << 8) | (dig[k + 2] << 16) | (dig[k + 3] << 24));
+    for (; k < dig.length; k++) h = mixInt(h, dig[k]);
+  }
   for (const p of state.players) {
     h = mixInt(h, p.id);
     h = mixInt(h, (p.alive ? 1 : 0) | (p.spawned ? 2 : 0));
@@ -146,6 +154,10 @@ export function hashState(state: GameState): number {
     h = mixInt(h, a.id);
     h = mixInt(h, a.target);
     h = mixTroops(h, a.troops);
+    // Air cover stall window (airwings.ts).
+    h = mixInt(h, a.coverTick ?? -1);
+    h = mixInt(h, a.coverPrevTaken ?? -1);
+    h = mixInt(h, a.coverStalled ?? -1);
   }
   for (const u of state.units) {
     h = mixInt(h, u.id);

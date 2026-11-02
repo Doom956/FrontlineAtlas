@@ -63,7 +63,7 @@ export function pill(
   edge: string,
   arrow: 'up' | 'down' | 'none',
   fill = 'rgba(10,13,21,0.84)',
-): void {
+): number {
   ctx.font = `500 11px ${MAP_NUM_FAMILY}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -93,6 +93,7 @@ export function pill(
   }
   ctx.fillStyle = '#fff';
   ctx.fillText(text, x + ax / 2, y + 0.5);
+  return bw;
 }
 
 export function dashedLine(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, color: string): void {

@@ -73,6 +73,7 @@ import { shipWarTarget } from './warTarget';
 import { atPeace } from './rules';
 import { addEvent } from './state';
 import { hasTech } from './tech';
+import { frontTrench } from './trenches';
 import {
   navalBlockadeMul,
   navalCaptureMul,
@@ -90,6 +91,8 @@ import { WARSHIP_STANCES, isTribe, isWater } from './types';
 import type { Action, ActionResult, GameState, Unit, WarshipStance } from './types';
 
 const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
+/** AI: auto-role warships bombard when the land front with the foe averages this trench level (trenches.ts). */
+const AI_NAVY_DUG_LEVEL = 1.5;
 
 function d2(ax: number, ay: number, bx: number, by: number): number {
   const dx = ax - bx;
@@ -901,6 +904,8 @@ export function aiNavy(state: GameState, id: number, act: (a: Action) => ActionR
   }
   const rest = fleet.filter((u) => free.has(u.id));
   const foePorts = foe ? buildingsOf(state, foe, 'port').filter((b) => b.owner === foe).length : 0;
+  // A dug-in land front with the foe (trenches.ts): the patrolling ships bombard instead (they flatten coastal trenches).
+  const foeDug = foe > 0 && !isTribe(state.players[foe]) ? frontTrench(state, id, foe) >= AI_NAVY_DUG_LEVEL : false;
   for (const u of rest) {
     if (!foe) assign(u, 'auto');
     else {
@@ -923,7 +928,7 @@ export function aiNavy(state: GameState, id: number, act: (a: Action) => ActionR
       if (role === 0 && foePorts > 0) assign(u, 'blockade');
       else if (role === 1) assign(u, 'bombard');
       else if (role === 3) assign(u, 'hunt');
-      else assign(u, 'auto');
+      else assign(u, foeDug ? 'bombard' : 'auto');
     }
   }
   for (const [s, ids] of want) {

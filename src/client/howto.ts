@@ -38,6 +38,7 @@ import {
   TANK_FALLBACK_RADIUS,
   TANK_LAUNCH_REACH,
   TANK_SPEARHEAD_MAX_DEPTH,
+  TRENCH,
   TANK_SPEARHEAD_WIDTH,
   TECHS,
   TECH_ORDER,
@@ -203,6 +204,7 @@ export function howToPlayContent(): HTMLElement {
     { title: 'Across water', text: `A transport leaves from your nearest coast. A landing is supplied for ${BEACHHEAD_SUPPLY_SECONDS} s.` },
     { title: 'Regrowth', text: 'Troops regrow fastest near the brass marker on the troop bar (about 40% of the cap). A full bar barely grows: keep spending.' },
     { title: 'Heartland', text: `Land deep inside a nation's borders defends up to x${1 + HEARTLAND_DEFENSE} better.` },
+    { title: 'Trenches', text: `Borders between nations dig in over time (a dark zig-zag line). Artillery, barrages, planes and warships flatten trenches, and landings go around them. Each level, up to ${TRENCH.baseMaxLevel} (+1 with Fortress, +1 with Trench Warfare), costs attackers ${pct(TRENCH.step)}% more and slows them ${pct(TRENCH.slow)}%; land that changes hands starts undug. Tribes and coasts never dig.` },
     { title: 'Last stand', text: `A nation ${LAST_STAND_START}x or more smaller than its attacker defends up to x${1 + LAST_STAND_MAX}.` },
     { title: 'Supply', text: 'Fronts far from your capital, cities and forts fight weaker (overlay: B). Forts also protect the hatched land.', key: 'B' },
     { title: 'Tribes', text: 'Small grey peoples with an army number. They never attack, accept any alliance (not from a traitor) and are cheap land early.' },
@@ -292,6 +294,7 @@ export function howToPlayContent(): HTMLElement {
     { title: 'Unlock', text: `At ${min(DOCTRINE_UNLOCK_SECONDS)}:00 (half that in a fast game) pick one. It only adds a bonus: every unit, building and strike stays open. The picker marks the three that suit your land and neighbours.`, key: 'Shift D' },
     { title: 'Levels', text: `Level 2 after ${min(DOCTRINE_LEVEL_SECONDS[1])} min, level 3 (a small extra perk) after ${min(DOCTRINE_LEVEL_SECONDS[2])} min with the same doctrine.` },
     { title: 'Switching', text: `The first choice is free. A switch costs gold, leaves you ${DOCTRINE_ADAPT_SECONDS} s with none, restarts at level 1, then has a ${min(DOCTRINE_SWITCH_COOLDOWN)} min cooldown.` },
+    { title: 'Air cover', text: 'Air doctrine: your idle airfields bomb the trenches in front of your attacks by themselves, for free. Set a mission to use them elsewhere.' },
     { title: 'Scouting', text: "A neighbour's doctrine shows on its card once you share a border, have a Watchtower near it or are allied. Counter it." },
   ];
   const doctrineList: Row[] = (Object.keys(DOCTRINES) as DoctrineId[]).map((id) => ({

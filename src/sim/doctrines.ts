@@ -30,6 +30,7 @@ import type { DoctrineLever } from './config';
 import { mods, progressRate } from './rules';
 import { addEvent } from './state';
 import { hasTech } from './tech';
+import { trenchLevel } from './trenches';
 import { borderTiles, coastCount, depositCount } from './territory';
 import { DOCTRINE_IDS, Terrain, isTribe } from './types';
 import type { ActionResult, DoctrineId, GameState, Player } from './types';
@@ -278,6 +279,10 @@ interface Situation {
   /** hostile warships or transports near us, or our transports at sea against a nation */
   seaWar: number;
   artilleryShare: number;
+  /** sampled own border edges with a non-allied nation, those whose own tile is dug in to level 2+, and the summed trench level of the enemy tile across */
+  hostileEdges: number;
+  ownDug2: number;
+  enemyDug: number;
 }
 
 const MAX_BORDER_SAMPLES = 1500;
@@ -305,6 +310,9 @@ function situation(state: GameState, pid: number): Situation {
     flight: hasTech(p, 'flight'),
     seaWar: 0,
     artilleryShare: 0,
+    hostileEdges: 0,
+    ownDug2: 0,
+    enemyDug: 0,
   };
   const army = p.troops.infantry + p.troops.armor + p.troops.artillery;
   s.artilleryShare = army > 0 ? p.troops.artillery / army : 0;
@@ -322,7 +330,12 @@ function situation(state: GameState, pid: number): Situation {
       else if (isTribe(state.players[o])) s.tribe++;
       else {
         s.nationTiles++;
-        if (!areAllied(state, pid, o)) s.nations.set(o, (s.nations.get(o) ?? 0) + 1);
+        if (!areAllied(state, pid, o)) {
+          s.nations.set(o, (s.nations.get(o) ?? 0) + 1);
+          s.hostileEdges++;
+          if (trenchLevel(state, list[k]) >= 2) s.ownDug2++;
+          s.enemyDug += trenchLevel(state, j);
+        }
       }
     }
   }
@@ -368,6 +381,10 @@ export function doctrineAdvice(state: GameState, pid: number): DoctrineAdvice[] 
   const wildShare = (s.neutral + s.tribe) / foreign;
   const nations = s.nations.size;
   const big = s.bigId ? state.players[s.bigId] : null;
+  // Dug-in borders (trenches.ts): our line, and the enemy line we face (mean level across our hostile edges).
+  const ownDugShare = s.hostileEdges > 0 ? s.ownDug2 / s.hostileEdges : 0;
+  const enemyDug = s.hostileEdges > 0 ? s.enemyDug / s.hostileEdges : 0;
+  const breakTerm = Math.min(0.4, 0.15 * enemyDug);
   const out: DoctrineAdvice[] = [];
   const add = (id: DoctrineId, score: number, reason: string): void => {
     out.push({ id, score: Math.max(0, score), reason });
@@ -384,19 +401,25 @@ export function doctrineAdvice(state: GameState, pid: number): DoctrineAdvice[] 
           ? 'You have oil for armor, though open ground is scarce around you'
           : 'Armored pushes, though open ground is scarce around you',
   );
+  // (A "2+ nations attack you" term was tried and dropped: it steered losing nations into Fortress, AI Fortress 0.5.)
+  const fortDug = ownDugShare >= 0.3 && s.bigRatio > 1 ? 0.15 : 0;
   add(
     'fortress',
-    0.45 + 0.2 * Math.min(nations, 3) + (s.bigRatio > 1.2 ? Math.min(0.9, (s.bigRatio - 1) * 0.6) : 0),
-    big && s.bigRatio > 1.2
-      ? `${big.name} borders you with ${s.bigRatio.toFixed(1)}x your land`
-      : nations > 0
-        ? `You border ${nations} rival nation${nations === 1 ? '' : 's'}`
-        : 'Quiet borders: forts matter less for now',
+    0.45 + 0.2 * Math.min(nations, 3) + (s.bigRatio > 1.2 ? Math.min(0.9, (s.bigRatio - 1) * 0.6) : 0) + fortDug,
+    fortDug > 0
+      ? 'Your borders are dug in: Fortress digs deeper'
+      : big && s.bigRatio > 1.2
+        ? `${big.name} borders you with ${s.bigRatio.toFixed(1)}x your land`
+        : nations > 0
+          ? `You border ${nations} rival nation${nations === 1 ? '' : 's'}`
+          : 'Quiet borders: forts matter less for now',
   );
   add(
     'siege',
-    0.45 + Math.min(1.1, s.enemyForts * 0.22) + (s.artilleryShare > 0.15 ? 0.2 : 0) + (nations > 0 ? 0.1 : 0),
-    s.enemyForts > 0
+    0.45 + Math.min(1.1, s.enemyForts * 0.22) + (s.artilleryShare > 0.15 ? 0.2 : 0) + (nations > 0 ? 0.1 : 0) + breakTerm,
+    breakTerm >= 0.15
+      ? 'Their line is dug in: guns break it'
+      : s.enemyForts > 0
       ? `${s.enemyForts} enemy fort${s.enemyForts === 1 ? '' : 's'} stand on your neighbours' land`
       : s.artilleryShare > 0.15
         ? `${pct(s.artilleryShare)} of your army is artillery`
@@ -421,10 +444,12 @@ export function doctrineAdvice(state: GameState, pid: number): DoctrineAdvice[] 
   );
   add(
     'air',
-    m.noAir ? 0.05 : 0.3 + (s.flight ? 0.45 : 0) + Math.min(0.6, s.airfields * 0.3),
+    m.noAir ? 0.05 : 0.3 + (s.flight ? 0.35 : 0) + Math.min(0.5, s.airfields * 0.25) + breakTerm,
     m.noAir
       ? 'No air force in this game'
-      : s.airfields > 0
+      : breakTerm >= 0.15
+        ? 'Their line is dug in: planes break it'
+        : s.airfields > 0
         ? `${s.airfields} airfield${s.airfields === 1 ? '' : 's'} ready for bombers and paratroopers`
         : s.flight
           ? 'You have Flight: airfields are open to you'
