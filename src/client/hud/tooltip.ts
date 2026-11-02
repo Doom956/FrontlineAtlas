@@ -24,6 +24,7 @@ import { forceLimit, heartlandBonus, lastStandBonus } from '../allies';
 import { buildingTexts, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect } from './text';
 import { bulkPreviews, bulkPreviewText, effectiveCount } from './buildMenu';
 import { shiftHeld } from './quickBar';
+import { dugInLevel, dugInPct, trenchInfoAt, trenchTileText } from '../trench';
 
 export class MapTooltip {
   readonly card: HTMLElement;
@@ -129,6 +130,12 @@ export class MapTooltip {
       }
       const def = terr.defense * (owner ? fortMultiplierAt(state, tile, owner) : 1);
       if (def > terr.defense + 0.01) rows.push(this.line(worldGlyph('fort', 18), `Fortified: defence x${def.toFixed(1)}`, 'Artillery is strong against forts', 'warn'));
+      // dug-in border: how deep, what it costs an attacker and what breaks it
+      const tr = owner && op && !isTribe(op) ? trenchInfoAt(state, tile) : null;
+      if (tr) {
+        const t = trenchTileText(tr);
+        rows.push(this.line(lineIcon('trench', 18), t.main, t.sub, 'trench'));
+      }
       // heartland (deep inside a nation) and last stand (a nation fighting outnumbered) defend harder
       if (owner && op && !isTribe(op)) {
         const core = heartlandBonus(state, tile);
@@ -150,6 +157,14 @@ export class MapTooltip {
           if (est) {
             const n = troopSum(send);
             if (est.lossPerTile > 0) rows.push(this.line('', `Click to attack with ${formatCount(n)}`, `about ${formatCount(n / est.lossPerTile)} tiles, ${formatCount(est.lossPerTile)} lost per tile`, 'atk'));
+            // their side of the border is dug in: say how much it costs, and at level 2+ what breaks it
+            if (owner && op && !isTribe(op)) {
+              const dug = dugInPct(state, me.id, owner, est, tile);
+              if (dug >= 5) {
+                const deep = dugInLevel(state, me.id, owner, est, tile) >= 2;
+                rows.push(this.line(lineIcon('shovel', 18), `Dug in: +${dug}%`, deep ? 'Bring artillery or a barrage first, or land behind the line.' : 'Their border has trenches: attacks there cost more', 'trench'));
+              }
+            }
             odds = this.oddsBadge(state, me, owner, est, n);
           }
         }
