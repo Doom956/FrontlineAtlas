@@ -6,7 +6,7 @@ const BUILDINGS: Record<string, IconId[]> = {
   economy: ['city', 'farm', 'market', 'mine', 'oilWell', 'lab'],
   production: ['barracks', 'factory', 'arsenal'],
   defence: ['fort', 'watchtower', 'sam'],
-  logistics: ['supplyDepot', 'port', 'hospital'],
+  logistics: ['port', 'hospital'],
   advanced: ['airfield', 'silo'],
 };
 const GROUPS: Record<string, IconId[]> = {
@@ -44,8 +44,8 @@ function checkPath(d: string): string | null {
 }
 
 describe('icons', () => {
-  it('has the 44 listed ids, each with info and path data', () => {
-    expect(ICON_IDS.length).toBe(44);
+  it('has the 43 listed ids, each with info and path data', () => {
+    expect(ICON_IDS.length).toBe(43);
     for (const id of ICON_IDS) {
       expect(ICON_INFO[id].label.length).toBeGreaterThan(0);
       const layers = ICON_DATA[id];
@@ -62,7 +62,7 @@ describe('icons', () => {
 
   it('puts buildings in the listed categories and other icons in their groups', () => {
     const buildings = ICON_IDS.filter((id) => ICON_INFO[id].group === 'building');
-    expect(buildings.length).toBe(17);
+    expect(buildings.length).toBe(16);
     for (const [cat, ids] of Object.entries(BUILDINGS)) {
       expect(buildings.filter((id) => ICON_INFO[id].category === cat).sort()).toEqual([...ids].sort());
       expect(CATEGORY_COLORS[cat as keyof typeof CATEGORY_COLORS]).toMatch(/^#[0-9a-f]{6}$/i);

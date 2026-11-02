@@ -41,7 +41,7 @@ export const FOCUS_SPEC: Readonly<Record<FocusPillar, FocusSpec>> = {
   },
   armor: {
     arms: 'armor', group: 'armorPath', doctrines: ['blitz'], techs: ['metallurgy', 'mechanization', 'industrialization'],
-    build: { factory: 1.8, oilWell: 1.5, mine: 1.3, supplyDepot: 1.2 }, mix: { armor: 0.2, artillery: 0 }, naval: 0, warships: 0, airfields: 0,
+    build: { factory: 1.8, oilWell: 1.5, mine: 1.3 }, mix: { armor: 0.2, artillery: 0 }, naval: 0, warships: 0, airfields: 0,
   },
   air: {
     arms: 'air', group: 'airDoctrine', doctrines: ['air'], techs: ['logistics', 'flight', 'radar'],
