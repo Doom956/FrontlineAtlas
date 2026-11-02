@@ -33,7 +33,6 @@ import {
 } from './config';
 import { atWar, fmtTroops } from './allies';
 import { areAllied, changeOpinion } from './diplomacy';
-import { doctrineLess } from './doctrines';
 import { addEvent, gameSeconds } from './state';
 import { spendState, techAllyOpinionDiscount, techAttackMul, techMercCostMul } from './techtree';
 import { isTribe } from './types';
@@ -79,7 +78,7 @@ function mercCap(p: Player): number {
 function mercBase(state: GameState, pid: number): number {
   const p = state.players[pid];
   const land = p ? p.tiles / Math.max(1, state.map.landTileCount) : 0;
-  return MERC_BASE_PRICE * (1 + MERC_TIME_GROWTH * (gameSeconds(state) / 60)) * (1 + MERC_LAND_PRICE * land) * techMercCostMul(state, pid) * doctrineLess(state, pid, 'mercCost');
+  return MERC_BASE_PRICE * (1 + MERC_TIME_GROWTH * (gameSeconds(state) / 60)) * (1 + MERC_LAND_PRICE * land) * techMercCostMul(state, pid);
 }
 /** Gold for `a` troops when `r` were hired in this window already (the rising price integrated). */
 function mercGold(base: number, r: number, a: number, cap: number): number {
