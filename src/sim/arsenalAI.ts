@@ -1,5 +1,11 @@
-// AI use of the special upgrades (specials.ts) and of Amphibious Tanks crossings. ai.ts / tanks.ts call in here;
-// research goes through the usual nextTech (applyAction 'research').
+// AI use of the special upgrades (specials.ts), of Amphibious Tanks crossings and AI purchases of Arsenal items
+// (procurement.ts: aiProcurePick / aiProcureAffordable; ai.ts economy() orders with applyAction 'procure').
+//
+// Purchases: Arsenal items are bought with gold + iron / oil instead of researched. The AI buys what its research order
+// (aispending.aiTechOrder: committed pillar's path, upgrades and mastery right after their prerequisites, the rest in
+// profile order) would have reached: an item once at most ARSENAL_PRICES.aiLookahead available Research-tab techs come
+// before it (its committed pillar's path at once), at most aiMaxOrders on order, keeping aiIronReserve / aiOilReserve
+// back for tank divisions, warships and bombers. ai.ts weighs the purchase against buildings and research for gold.
 //
 // Which special fits a nation (aiSpecialPick, best first; only once its core research is under way, one special per
 // few techs):
@@ -13,14 +19,17 @@
 // Deterministic: state only (per-tick caches in WeakMaps, rebuilt from the state).
 import { airMinded } from './airwings';
 import { buildingsOf } from './buildings';
-import { SPECIALS, TECHS } from './config';
+import { ARSENAL_PRICES, SPECIALS, TECHS } from './config';
+import { arsenalPrice, canProcure, canProcureIgnoringCost } from './procurement';
+import { aiPriorityArsenalTech } from './variantsAI';
+import { arsenalItem, isArsenalTech, onOrder } from './arsenal';
 import { areAllied } from './diplomacy';
 import { atPeace } from './rules';
 import { aiSpecialTechs, narrowWater, SPECIAL_TECHS } from './specials';
 import { techStatus } from './techtree';
 import { ownedTilesOf } from './territory';
 import { isTribe, isWater } from './types';
-import type { GameState, Player, TechId } from './types';
+import type { BuildingType, GameState, Player, TechId } from './types';
 import { aiCommittedPillar } from './variantsAI';
 import { pathOf } from './arsenal';
 import type { Pillar } from './arsenal';
@@ -206,4 +215,79 @@ export function aiSpecialPick(state: GameState, id: number, enemies: readonly nu
     for (const r of TECHS[t].requires) if (!p.techs.includes(r) && techStatus(state, id, r) === 'available') return r;
   }
   return null;
+}
+
+/** What an AI buys next from the Arsenal: the item (null = nothing now) and a building a wanted item still needs. */
+export interface ProcurePick {
+  tech: TechId | null;
+  /** a wanted item waits for this building (Port, Factory, Airfield): ai.ts builds it sooner */
+  needs?: BuildingType;
+}
+
+/**
+ * The Arsenal item AI id buys next (prices not checked: see aiProcureAffordable). `first` = items wanted at once in this
+ * order (situational picks from ai.ts: Navigation when boxed in, Flight against bombers, a special); `order` = the
+ * nation's whole research order (aispending.aiTechOrder), `rejected` its rule for the rival side of a fork.
+ */
+export function aiProcurePick(
+  state: GameState,
+  id: number,
+  first: readonly TechId[],
+  order: readonly TechId[],
+  skip: (t: TechId) => boolean,
+): ProcurePick {
+  const p = state.players[id];
+  if (!p || !p.alive || isTribe(p)) return { tech: null };
+  if ((p.procuring?.length ?? 0) >= ARSENAL_PRICES.aiMaxOrders) return { tech: null };
+  let needs: BuildingType | undefined;
+  const tryItem = (t: TechId): boolean => {
+    if (p.techs.includes(t) || onOrder(p, t) || skip(t)) return false;
+    const ok = canProcureIgnoringCost(state, id, t);
+    if (ok.ok) return true;
+    if (!needs) {
+      const b = arsenalPrice(state, id, t).needs;
+      if (b && ok.reason?.startsWith('Needs a')) needs = b;
+    }
+    return false;
+  };
+  for (const t of first) if (isArsenalTech(t) && tryItem(t)) return { tech: t, needs };
+  let ahead = 0;
+  for (const t of order) {
+    if (p.techs.includes(t)) continue;
+    if (!isArsenalTech(t)) {
+      if (p.researching === t || skip(t)) continue;
+      const st = techStatus(state, id, t);
+      if (st === 'available') ahead++;
+      // A Research-tab tech the order has reached that waits for an Arsenal item (Industrialization and Trench
+      // Warfare after Mechanization, Radar after Flight): buy that item.
+      else if (st === 'locked-prereq' && ahead <= ARSENAL_PRICES.aiLookahead) {
+        for (const r of TECHS[t].requires) if (isArsenalTech(r) && tryItem(r)) return { tech: r, needs };
+      }
+      continue;
+    }
+    if (ahead > ARSENAL_PRICES.aiLookahead && !aiCommittedArsenal(state, id, t)) continue;
+    if (tryItem(t)) return { tech: t, needs };
+  }
+  return { tech: null, needs };
+}
+
+/**
+ * Arsenal items of the AI's committed pillar that it buys as soon as it can (no waiting for its research order): the
+ * pillar's unlock, path, upgrades and (with a broad base) mastery, plus the shared unlock that fits it
+ * (variantsAI.aiPriorityArsenalTech).
+ */
+export function aiCommittedArsenal(state: GameState, id: number, t: TechId): boolean {
+  if (aiPriorityArsenalTech(state, id, t)) return true;
+  const it = arsenalItem(t);
+  return !!it && it.kind === 'unlock' && it.pillar !== 'shared' && it.pillar === aiCommittedPillar(state, id);
+}
+
+/** True if AI id can pay for t now and keep its iron / oil reserve for units. */
+export function aiProcureAffordable(state: GameState, id: number, t: TechId): boolean {
+  const p = state.players[id];
+  if (!p || !canProcure(state, id, t).ok) return false;
+  const price = arsenalPrice(state, id, t);
+  if (price.iron > 0 && p.iron - price.iron < ARSENAL_PRICES.aiIronReserve) return false;
+  if (price.oil > 0 && p.oil - price.oil < ARSENAL_PRICES.aiOilReserve) return false;
+  return true;
 }

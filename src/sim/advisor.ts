@@ -40,6 +40,7 @@ import { choiceLockedBy, prereqsMet } from './techtree';
 import { borderTiles, depositCount, ownedTilesOf } from './territory';
 import { paradropRange } from './units';
 import { Resource, isTribe, isWater } from './types';
+import { isArsenalTech } from './arsenal';
 import type { BuildingType, GameState, Player, TechId, Troops } from './types';
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
@@ -136,11 +137,11 @@ export function recommendMix(state: GameState, playerId: number, advice: MixAdvi
 
 /**
  * Next tech in `order` the player can research now (prerequisites met, not done or under way), or null. It does
- * not check gold.
+ * not check gold. Arsenal items are skipped: they are bought by the player (procurement.ts), never by the advisor.
  */
 export function nextTechInOrder(p: Player, order: readonly TechId[]): TechId | null {
   for (const t of order) {
-    if (hasTech(p, t) || p.researching === t) continue;
+    if (hasTech(p, t) || p.researching === t || isArsenalTech(t)) continue;
     // requires + requiresAny, and never a tech locked by an exclusive choice (techtree.ts)
     if (!prereqsMet(p, t) || choiceLockedBy(p, t)) continue;
     return t;

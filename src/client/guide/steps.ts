@@ -8,6 +8,7 @@ import { BUILDINGS, DOCTRINE_UNLOCK_SECONDS, TECHS } from '../../sim/config';
 import { areAllied } from '../../sim/diplomacy';
 import { neighbors4, nearestTile, tileDist } from '../../sim/grid';
 import { buildingAllowed, mods, researchRule, unitAllowed } from '../../sim/rules';
+import { canProcure } from '../../sim/procurement';
 import { canResearch, hasTech } from '../../sim/tech';
 import { coastCount } from '../../sim/territory';
 import { isTribe, isWater } from '../../sim/types';
@@ -16,6 +17,7 @@ import { victoryShareNow } from '../../sim/victory';
 import { coalitionLeader } from '../allies';
 import { DOCTRINE_KEY } from '../doctrineView';
 import { isIncoming } from '../forces';
+import { missingBuilding, onOrder, priceOf } from '../hud/procure';
 import { snapBuild } from '../placement';
 import { STRIKE_ORDER, STRIKES, type StrikeId } from '../strikes';
 import type { GuideCtx, GuideStep, GuideTip } from './engine';
@@ -147,11 +149,11 @@ function readyStrike(c: GuideCtx): StrikeId | null {
   return null;
 }
 
-/** Any tech (or Arsenal item) the player could start now. */
+/** Any tech the player could start now, or (arsenal) any Arsenal item it could buy now. */
 function canStartAny(c: GuideCtx, arsenal: boolean): boolean {
   for (const t of Object.keys(TECHS) as TechId[]) {
     if (isArsenalTech(t) !== arsenal) continue;
-    if (canResearch(c.s, c.me.id, t).ok) return true;
+    if ((arsenal ? canProcure(c.s, c.me.id, t) : canResearch(c.s, c.me.id, t)).ok) return true;
   }
   return false;
 }
@@ -161,10 +163,25 @@ const playing = (c: GuideCtx): boolean => c.s.phase === 'playing';
 
 // ------------------------------------------------------------------------------------------------ getting ships, tanks, planes
 
-/** Research can give t now or soon: research is on, t is not owned or under way, its prerequisites are owned. */
+/** t can be had now or soon: research is on, t is not owned, researching or on order, its prerequisites are owned. */
 function techDue(c: GuideCtx, t: TechId): boolean {
-  if (researchRule(c.s) !== null || hasTech(c.me, t) || c.me.researching === t) return false;
+  if (researchRule(c.s) !== null || hasTech(c.me, t) || c.me.researching === t || onOrder(c.me, t)) return false;
   return TECHS[t].requires.every((r) => hasTech(c.me, r));
+}
+/**
+ * Getting an Arsenal unlock (Navigation, Mechanization, Flight): build the building it needs first (a Port for
+ * Navigation), then buy it in the Arsenal. `what` ends the line ("for warships").
+ */
+function getUnlock(c: GuideCtx, t: TechId, what: string, lead = ''): { text: string; target: string | undefined; tile: number } {
+  const b = missingBuilding(c.s, c.me, t);
+  const name = TECHS[t].name;
+  const pre = lead ? `${lead} ` : '';
+  if (b) {
+    if (countBuildings(c.s, c.me.id, b, true) > 0) return { text: `${pre}Your ${BUILDINGS[b].name} is being built; then buy ${name} in the Arsenal (T) ${what}.`, target: 'open-research', tile: buildingTile(c.s, c.me, b) };
+    if (c.ui.buildMode === b) return { text: `Now click your ${b === 'port' ? 'coast' : 'land'} to place the ${BUILDINGS[b].name}.`, target: undefined, tile: b === 'port' ? coastTile(c) : -1 };
+    return { text: `${pre}Build ${b === 'airfield' ? 'an' : 'a'} ${BUILDINGS[b].name} (${hotkey(b)})${b === 'port' ? ' on your coast' : ''}, then buy ${name} in the Arsenal (T) ${what}.`, target: buildTarget(c, b), tile: -1 };
+  }
+  return { text: `${pre}Buy ${name} in the Arsenal (T, Arsenal tab) ${what}: it arrives ${priceOf(c.s, c.me, t).seconds} s later.`, target: techTarget(t), tile: -1 };
 }
 /** The tech's card in the Arsenal tab, else that tab, else the Research button. */
 const techTarget = (t: TechId): string => `tech-${t} || tab-arsenal || open-research`;
@@ -208,7 +225,7 @@ function airAnswer(c: GuideCtx): { text: string; target: string | undefined; til
   if (!unitAllowed(s, 'fighter')) return null;
   if (countBuildings(s, me.id, 'airfield', false) > 0) return { text: `${lead} Click your Airfield and buy Fighters.`, target: 'order-fighter', tile: buildingTile(s, me, 'airfield') };
   if (hasTech(me, 'flight') && buildingAllowed(s, 'airfield')) return { text: `${lead} Build an Airfield (${hotkey('airfield')}) for Fighters.`, target: buildTarget(c, 'airfield'), tile: -1 };
-  if (researchRule(s) === null) return { text: `${lead} Research Flight (T, Arsenal tab) for Fighters.`, target: techTarget('flight'), tile: -1 };
+  if (researchRule(s) === null) return getUnlock(c, 'flight', 'for Fighters', lead);
   return null;
 }
 
@@ -407,8 +424,9 @@ export function guideTips(): GuideTip[] {
     // once it is the next one for the player.
     {
       id: 'navyTech',
-      text: 'Your coast opens the sea: research Navigation (T, Arsenal tab) for warships.',
-      target: techTarget('navigation'),
+      text: (c) => getUnlock(c, 'navigation', 'for warships', 'Your coast opens the sea:').text,
+      target: (c) => getUnlock(c, 'navigation', 'for warships').target,
+      tile: (c) => getUnlock(c, 'navigation', 'for warships').tile,
       when: (c) => playing(c) && unitAllowed(c.s, 'warship') && techDue(c, 'navigation') && seaMatters(c),
       still: (c) => techDue(c, 'navigation'),
       done: (c) => !techDue(c, 'navigation'),
@@ -435,8 +453,8 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'armorTech',
-      text: 'Research Mechanization (T, Arsenal tab) for tank divisions.',
-      target: techTarget('mechanization'),
+      text: (c) => getUnlock(c, 'mechanization', 'for tank divisions').text,
+      target: (c) => getUnlock(c, 'mechanization', 'for tank divisions').target,
       when: (c) => playing(c) && c.sec >= 300 && techDue(c, 'mechanization'),
       still: (c) => techDue(c, 'mechanization'),
       done: (c) => !techDue(c, 'mechanization'),
@@ -459,8 +477,8 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'airTech',
-      text: 'Research Flight (T, Arsenal tab) for Airfields, bombers and fighters.',
-      target: techTarget('flight'),
+      text: (c) => getUnlock(c, 'flight', 'for Airfields, bombers and fighters').text,
+      target: (c) => getUnlock(c, 'flight', 'for Airfields, bombers and fighters').target,
       when: (c) => playing(c) && c.sec >= 300 && buildingAllowed(c.s, 'airfield') && techDue(c, 'flight'),
       still: (c) => techDue(c, 'flight'),
       done: (c) => !techDue(c, 'flight'),
@@ -508,7 +526,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'arsenal',
-      text: 'Arsenal (T, Arsenal tab): better ships, tanks and planes. Each splits into two paths: pick one.',
+      text: 'Arsenal (T, Arsenal tab): buy better ships, tanks and planes with gold, iron and oil. Each splits into two paths: pick one.',
       target: (c) => (panel(c, 'research') ? 'tab-arsenal' : 'open-research'),
       // later in the game (after the doctrine pick opens), once an Arsenal item can be started
       when: (c) => playing(c) && c.sec >= DOCTRINE_UNLOCK_SECONDS + 60 && canStartAny(c, true),

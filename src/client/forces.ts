@@ -19,6 +19,7 @@ import { isWater } from '../sim/types';
 import type { Building, GameState, Player, Unit, UnitType } from '../sim/types';
 import { formatCount } from './render/common';
 import { warshipOrderLine } from './pillars';
+import { howToGet, onOrder } from './hud/procure';
 import type { IconId } from './icons';
 import type { Dispatch } from './uiState';
 
@@ -45,7 +46,7 @@ export const UNIT_TEXT: Record<SpecialId, UnitText> = {
     icon: 'warship',
     what: `Sinks enemy ships within ${WARSHIP_RANGE} tiles and shells enemy coasts within ${WARSHIP_RANGE / 2} tiles while you are at war.`,
     counter: 'Only other warships sink it.',
-    unlock: 'Research Navigation and build a Port',
+    unlock: 'Build a Port, then buy Navigation (Arsenal)',
   },
   transport: {
     name: 'Transport',
@@ -59,21 +60,21 @@ export const UNIT_TEXT: Record<SpecialId, UnitText> = {
     icon: 'bomber',
     what: `Waits at its Airfield; a bombing run (X) wrecks buildings and troops within ${BOMBER_RADIUS} tiles, then it flies home.`,
     counter: 'SAM sites and enemy fighters shoot it down.',
-    unlock: 'Research Flight and build an Airfield',
+    unlock: 'Buy Flight (Arsenal), then build an Airfield',
   },
   fighter: {
     name: 'Fighter',
     icon: 'fighter',
     what: 'Waits at its Airfield and shoots down enemy bombers and cargo planes that fly nearby.',
     counter: 'Each interception needs a reload; losing the Airfield loses its planes.',
-    unlock: 'Research Flight and build an Airfield',
+    unlock: 'Buy Flight (Arsenal), then build an Airfield',
   },
   transportPlane: {
     name: 'Paratroopers',
     icon: 'transportPlane',
     what: 'A cargo plane drops infantry behind the lines (K): they take the tile and attack from there.',
     counter: 'SAM sites and enemy fighters can down the plane with everyone aboard.',
-    unlock: 'Research Flight and build an Airfield',
+    unlock: 'Buy Flight (Arsenal), then build an Airfield',
   },
   rocket: {
     name: 'Rocket',
@@ -182,9 +183,11 @@ export function unitBuildStatus(state: GameState, me: Player, kind: BuyableUnit,
   const all = buildingsOf(state, me.id, site);
   const done = all.filter((b) => b.buildLeft <= 0);
   if (!hasTech(me, tech)) {
-    const pre = TECHS[tech].requires.filter((t) => !hasTech(me, t)).map((t) => TECHS[t].name);
-    const research = pre.length ? `Research ${pre.join(' + ')}, then ${TECHS[tech].name}` : `Research ${TECHS[tech].name}`;
-    return { ...st, line: done.length ? `${research} (T)` : `${research} (T) and build ${kind === 'warship' ? 'a Port' : 'an Airfield'}` };
+    // Arsenal items are bought (hud/procure.ts); Navigation needs a Port first, Flight unlocks the Airfield
+    if (onOrder(me, tech)) return { ...st, line: `${TECHS[tech].name} is on order (Arsenal)` };
+    const how = howToGet(state, me, tech);
+    const site2 = kind === 'warship' ? 'a Port' : 'an Airfield';
+    return { ...st, line: done.length || /^Build|, then build/.test(how) ? how : `${how}, then build ${site2}` };
   }
   if (!done.length) {
     if (all.length) return { ...st, line: `Your ${kind === 'warship' ? 'Port' : 'Airfield'} is being built` };

@@ -65,10 +65,11 @@ describe('research panel state', () => {
     const res = panelLayout('research');
     const n1 = nextAffordable(s, me, res)!;
     expect(TECHS[n1].tier).toBe(1);
-    const a1 = nextAffordable(s, me, ars)!;
-    expect(['navigation', 'mechanization', 'flight']).toContain(a1);
-    expect(TECHS[a1].requires.every((r) => me.techs.includes(r))).toBe(true);
-    // only the Air row
+    // Arsenal items are bought with iron / oil too and need their building (procure.ts): none yet, nothing to flag
+    me.iron = 100_000;
+    me.oil = 100_000;
+    expect(nextAffordable(s, me, ars)).toBeNull();
+    // only the Air row (Flight needs no building: it unlocks the Airfield)
     me.techs.push('logistics');
     expect(nextAffordable(s, me, ars, new Set(['air']))).toBe('flight');
     // a fork root once the rival is chosen is never next

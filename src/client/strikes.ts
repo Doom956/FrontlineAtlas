@@ -166,7 +166,7 @@ function bomberBackIn(state: GameState, me: Player): number {
   return best;
 }
 
-const lockedFlight = 'Research Flight and build an Airfield';
+const lockedFlight = 'Buy Flight in the Arsenal (T), then build an Airfield';
 
 /** Where a strike stands for the player right now. */
 export function strikeStatus(state: GameState, me: Player, id: StrikeId): StrikeStatus {

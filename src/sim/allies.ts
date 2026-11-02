@@ -55,6 +55,13 @@ export function fmtTroops(n: number): string {
 // ---------------------------------------------------------------------------------------------------------------
 
 const leaderCache = new WeakMap<GameState, { tick: number; leader: number; share: number }>();
+/**
+ * Drops the runaway-leader cache: the client reads runawayLeader between ticks (ally panel, game summary) with the next
+ * tick's number, before that tick's fronts move land. Called with combat.clearArmyCache when the sim starts work.
+ */
+export function clearLeaderCache(state: GameState): void {
+  leaderCache.delete(state);
+}
 
 function leaderInfo(state: GameState): { leader: number; share: number } {
   const c = leaderCache.get(state);

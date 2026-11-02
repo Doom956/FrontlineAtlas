@@ -4,6 +4,9 @@
 // Each tab is one TechRowsView (hud/arsenalPage.ts; layout in hud/techRows.ts): a row per group, left to right by
 // tier, thin lines from prerequisites, forks as a split with OR, the next affordable card flagged, filter chips per
 // row, and the card itself buys the tech. The footer explains the hovered / focused card in full.
+// Research-tab techs cost gold to start and science to finish, one at a time. Arsenal items are bought with gold plus
+// iron or oil and delivered after a short timer (sim/procurement.ts, hud/procure.ts); several can be on order at once:
+// on the Arsenal tab the header lists the orders with a countdown bar each.
 import { researchRule } from '../../sim/rules';
 import { BUILDINGS, TECHS } from '../../sim/config';
 import { MASTERY_CAP, PILLAR_NAMES, arsenalItem } from '../../sim/arsenal';
@@ -13,7 +16,8 @@ import type { BuildingType, GameState, Player, TechId } from '../../sim/types';
 import { formatCount } from '../render/common';
 import { el, pct, setClass, setText, type DrawerId, type HudCtx } from './dom';
 import { seg2, type DrawerPage } from './drawers';
-import { lineIcon, worldGlyph } from './glyph';
+import { iconSpan, lineIcon, worldGlyph } from './glyph';
+import { aBuilding, arsenalCard, ordersOf, type Order } from './procure';
 import { BRANCH_TECH_ICON, BRANCH_TECH_LINE } from './techFork';
 import { TechRowsView } from './arsenalPage';
 import { formatEta, masteryCounter, nextAffordable, panelLayout, researchEta, tabOf, type PanelTab, type RowId } from './techRows';
@@ -132,6 +136,9 @@ export class ResearchPage implements DrawerPage {
   private filters: Record<PanelTab, Set<RowId>> = { research: new Set(), arsenal: new Set() };
   private tabBtns = new Map<PanelTab, { b: HTMLButtonElement; dot: HTMLElement }>();
   private chipBox: HTMLElement;
+  /** the Arsenal tab's orders strip (in place of the research progress) */
+  private ordersBox: HTMLElement;
+  private orderEls = new Map<TechId, { root: HTMLElement; fill: HTMLElement; left: HTMLElement }>();
   private mastery: HTMLElement;
   private focus: TechId | null = null;
   private footT: HTMLElement;
@@ -179,11 +186,18 @@ export class ResearchPage implements DrawerPage {
     this.chipBox = el('div', 'rp-chips');
     this.chipBox.setAttribute('role', 'group');
     this.chipBox.setAttribute('aria-label', 'Show rows');
-    head.append(tabs, this.chipBox, cur, autoSeg.el);
+    this.ordersBox = el('div', 'rp-orders');
+    this.ordersBox.dataset.test = 'arsenal-orders';
+    this.ordersBox.setAttribute('aria-label', 'On order');
+    head.append(tabs, this.chipBox, cur, this.ordersBox, autoSeg.el);
     this.root.append(head);
     this.upd.push((s, me) => {
       const rule = researchRule(s);
-      setClass(autoSeg.el, 'hidden', !!rule);
+      const ars = this.tab === 'arsenal';
+      setClass(cur, 'hidden', ars);
+      setClass(this.ordersBox, 'hidden', !ars);
+      if (ars) this.updateOrders(s, me);
+      setClass(autoSeg.el, 'hidden', !!rule || ars);
       setClass(bar, 'hidden', !!rule || !me.researching);
       const c = me.researching ? TECHS[me.researching] : null;
       if (rule) {
@@ -320,10 +334,59 @@ export class ResearchPage implements DrawerPage {
     requestAnimationFrame(() => this.views[this.tab].draw());
   }
 
+  /** The Arsenal header: each order with its name, a countdown bar and the seconds left (soonest first). */
+  private updateOrders(s: GameState, me: Player): void {
+    const orders = ordersOf(s, me);
+    const seen = new Set<TechId>();
+    const kids: HTMLElement[] = [];
+    if (!orders.length) {
+      kids.push(el('span', 'rp-orders-none', 'Nothing on order · items arrive 20-45 s after you buy'));
+    } else {
+      kids.push(el('span', 'rp-orders-l', `On order (${orders.length})`));
+      for (const o of orders) {
+        seen.add(o.tech);
+        let e = this.orderEls.get(o.tech);
+        if (!e) {
+          const root = el('span', 'rp-order');
+          root.dataset.test = `order-${o.tech}`;
+          const bar = el('span', 'rp-order-bar');
+          const fill = el('span');
+          bar.append(fill);
+          const left = el('span', 'rp-order-t');
+          root.append(iconSpan(iconOf(o.tech), 'rp-order-ic'), el('span', 'rp-order-n', TECHS[o.tech].name), bar, left);
+          e = { root, fill, left };
+          this.orderEls.set(o.tech, e);
+        }
+        this.setOrder(e, o);
+        kids.push(e.root);
+      }
+    }
+    for (const t of [...this.orderEls.keys()]) if (!seen.has(t)) this.orderEls.delete(t);
+    const same = kids.length === this.ordersBox.children.length && kids.every((k, i) => this.ordersBox.children[i] === k);
+    if (!same) this.ordersBox.replaceChildren(...kids);
+  }
+  private setOrder(e: { root: HTMLElement; fill: HTMLElement; left: HTMLElement }, o: Order): void {
+    e.fill.style.width = pct(o.frac);
+    setText(e.left, formatEta(o.left));
+    e.root.setAttribute('aria-label', `${TECHS[o.tech].name}: arrives in ${formatEta(o.left)}`);
+  }
+
   private pick(t: TechId): void {
     const s = this.ctx.state();
     const me = this.ctx.me();
     if (!s || !me) return;
+    if (tabOf(t) === 'arsenal') {
+      // Arsenal: bought at once (gold + iron / oil), delivered after a timer; several can be on order
+      const a = arsenalCard(s, me, t);
+      if (a.state === 'done' || a.state === 'ordered') return;
+      if (a.state !== 'buy') {
+        this.ctx.toast(`${TECHS[t].name}: ${a.reason || 'not possible now'}`, 'info');
+        this.ctx.sound('uiError');
+        return;
+      }
+      this.ctx.act({ type: 'procure', tech: t });
+      return;
+    }
     if (hasTech(me, t) || me.researching === t) return;
     const r = canResearch(s, me.id, t);
     if (!r.ok) {
@@ -355,7 +418,7 @@ export class ResearchPage implements DrawerPage {
       const any = tab === this.tab ? null : nextAffordable(s, me, v.layout);
       const { dot } = this.tabBtns.get(tab)!;
       setClass(dot, 'on', !!any);
-      dot.dataset.tip = any ? `${TECHS[any].name} can be researched now` : '';
+      dot.dataset.tip = any ? `${TECHS[any].name} can be ${tab === 'arsenal' ? 'bought' : 'researched'} now` : '';
     }
     const m = masteryCounter(me);
     setText(this.mastery, m.text.replace(' · ', ': '));
@@ -374,9 +437,13 @@ export class ResearchPage implements DrawerPage {
         this.footD,
         this.tab === 'research'
           ? 'Lines run from each tech to what it unlocks; "+ Name" is a prerequisite in another row or tab. OR marks a choice: picking one locks the other for the rest of the game. A tech costs gold to start and science to finish.'
-          : `Each pillar forks: pick one path (OR) and its upgrade, add special upgrades, and finish with a Mastery. Masteries in at most ${MASTERY_CAP} pillars per game. Bought like any tech: gold to start, science to finish.`,
+          : `Bought with gold plus iron or oil, delivered 20-45 s later, several at once. Navy needs a Port, armor a Factory, air an Airfield. One path (OR) per pillar; Masteries in ${MASTERY_CAP} pillars at most.`,
       );
       setText(this.footN, '');
+      return;
+    }
+    if (tabOf(t) === 'arsenal') {
+      this.updateArsenalFoot(s, me, t);
       return;
     }
     const info = TECHS[t];
@@ -402,6 +469,47 @@ export class ResearchPage implements DrawerPage {
       if (warn) note += ` ${warn} for the rest of the game.`;
     }
     setText(this.footN, note);
+  }
+
+  /** The footer for an Arsenal card: price, delivery time, what it unlocks, and what stands in the way. */
+  private updateArsenalFoot(s: GameState, me: Player, t: TechId): void {
+    const info = TECHS[t];
+    const g = info.exclusiveGroup;
+    const it = arsenalItem(t);
+    const a = arsenalCard(s, me, t);
+    const p = a.price;
+    const kind = it ? (it.kind === 'special' ? ' · special upgrade' : it.kind === 'mastery' ? ' · mastery' : it.kind === 'variant' ? ` · ${PILLAR_NAMES[it.pillar]} path` : '') : '';
+    const cost = [`${formatCount(p.gold)} gold`, p.iron ? `${formatCount(p.iron)} iron` : '', p.oil ? `${formatCount(p.oil)} oil` : ''].filter(Boolean).join(', ');
+    setText(this.footT, `${info.name}${g ? ` · ${groupName(g)}: choose one` : kind} · ${cost} · arrives ${formatEta(p.seconds)} after you buy it`);
+    const unl = UNLOCKS[t]?.map((b) => BUILDINGS[b].name) ?? [];
+    const needs = p.needs ? ` Needs ${aBuilding(p.needs)}.` : '';
+    setText(this.footD, info.description + (unl.length ? ` Unlocks: ${unl.join(', ')}.` : '') + needs);
+    let note = '';
+    switch (a.state) {
+      case 'done':
+        note = 'In service.';
+        break;
+      case 'ordered':
+        note = `On order: arrives in ${formatEta(a.order!.left)}.`;
+        break;
+      case 'building':
+        note = `${a.reason}${p.needs === 'port' ? ' on your coast' : ''}, then buy it here.`;
+        break;
+      case 'buy': {
+        note = 'Click to buy it.';
+        const warn = choiceWarning(t);
+        if (warn) note += ` ${warn} for the rest of the game.`;
+        break;
+      }
+      case 'prereq': {
+        const other = [...info.requires, ...(info.requiresAny ?? [])].filter((r) => !hasTech(me, r) && tabOf(r) !== 'arsenal');
+        note = `${a.reason}.${other.length ? ` (${other.map((r) => TECHS[r].name).join(', ')}: Research tab.)` : ''}`;
+        break;
+      }
+      default:
+        note = `${a.reason}.`;
+    }
+    setText(this.footN, note.replace(/\.\.$/, '.'));
   }
 
   update(s: GameState, me: Player): void {

@@ -133,7 +133,7 @@ export interface DropPlan {
  * nearest one, with its reason). Uses the sim's canParadrop.
  */
 export function planParadrop(state: GameState, me: Player, ui: UiState, tile: number, airfield = -1): DropPlan {
-  if (!hasTech(me, 'flight')) return { reason: 'Research Flight first', airfield: -1, troops: 0 };
+  if (!hasTech(me, 'flight')) return { reason: 'Buy Flight in the Arsenal first', airfield: -1, troops: 0 };
   const fields = airfield >= 0 ? [buildingAt(state, airfield)].filter((b): b is Building => !!b) : airfieldsNear(state, me.id, tile);
   if (!fields.length) return { reason: 'Build an Airfield first', airfield: -1, troops: 0 };
   let first: DropPlan | null = null;

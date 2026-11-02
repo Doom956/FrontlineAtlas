@@ -5,7 +5,9 @@
 // and time ("1,000 gold · 3:40") or its state, a tag (Special, Mastery, "locks Submarines" on a fork before you pick),
 // and a one-line effect. Click (or Enter) buys it. A fork is a split: the branches in two lanes with an OR between
 // them and a dashed rule along the gap; after a pick the other branch is dimmed, struck through and its lines cut.
-// The next affordable card glows with a NEXT flag. Lines route through the gaps between columns and lanes, or along a
+// The next affordable card glows with a NEXT flag. Arsenal cards (hud/procure.ts) are bought, not researched: the price
+// in gold / iron / oil and the delivery time, a Buy pill, "Build a Port first" while the building it needs is missing,
+// and a countdown bar while on order. Lines route through the gaps between columns and lanes, or along a
 // rail above the cards, never behind one. Arrow keys move between cards (across rows too).
 import './researchPanel.css';
 import { TECHS } from '../../sim/config';
@@ -14,8 +16,9 @@ import { choiceLockedBy, rivalsOf, techStatus, techStatusReason } from '../../si
 import type { GameState, Player, TechId } from '../../sim/types';
 import { formatCount } from '../render/common';
 import { el, pct, setClass, setText } from './dom';
-import { iconSpan } from './glyph';
+import { iconSpan, lineIcon } from './glyph';
 import { cutMark, roundedPath, type Box, type Pt } from './techFork';
+import { arsenalCard, type ArsenalCard } from './procure';
 import { formatEta, masteryCapLine, researchEta, type PanelLayout, type PanelRow, type RowCard, type RowEdge, type RowId } from './techRows';
 
 export interface RowsHooks {
@@ -36,6 +39,11 @@ interface CardEl {
   tag: HTMLElement;
   line: HTMLElement;
   flag: HTMLElement;
+  /** Arsenal cards: the Buy pill and the delivery bar */
+  buy?: HTMLElement;
+  bar?: HTMLElement;
+  /** last price markup written (the price has icons: rebuilt only when it changes) */
+  metaKey?: string;
   rowEl: HTMLElement;
   rowIdx: number;
 }
@@ -153,15 +161,25 @@ export class TechRowsView {
     const meta = el('span', 'rp-meta');
     const tag = el('span', 'rp-tag');
     mid.append(meta, tag);
+    let buy: HTMLElement | undefined;
+    let bar: HTMLElement | undefined;
+    if (this.layout.tab === 'arsenal') {
+      buy = el('span', 'rp-buy', 'Buy');
+      buy.setAttribute('aria-hidden', 'true');
+      mid.append(buy);
+      bar = el('span', 'rp-bar');
+      bar.append(el('span'));
+    }
     const line = el('span', 'rp-l', this.hooks.line(c.tech));
     const txt = el('span', 'rp-txt');
     txt.append(top, mid, line);
     const flag = el('span', 'rp-flag', 'Next');
     b.append(ic, txt, flag);
+    if (bar) b.append(bar);
     b.addEventListener('pointerenter', () => this.setFocus(c.tech));
     b.addEventListener('focus', () => this.setFocus(c.tech));
     b.addEventListener('click', () => this.hooks.pick(c.tech));
-    this.cards.set(c.tech, { c, btn: b, ring, name, need, meta, tag, line, flag, rowEl, rowIdx });
+    this.cards.set(c.tech, { c, btn: b, ring, name, need, meta, tag, line, flag, buy, bar, rowEl, rowIdx });
     return b;
   }
 
@@ -184,6 +202,10 @@ export class TechRowsView {
   }
 
   private updateCard(s: GameState, me: Player, n: CardEl, next: TechId | null): void {
+    if (this.layout.tab === 'arsenal') {
+      this.updateArsenalCard(s, me, n, next);
+      return;
+    }
     const t = n.c.tech;
     const info = TECHS[t];
     const st = techStatus(s, me.id, t);
@@ -250,13 +272,85 @@ export class TechRowsView {
     void tip;
   }
 
+  /** An Arsenal card: bought with gold plus iron / oil, delivered after a timer (hud/procure.ts). */
+  private updateArsenalCard(s: GameState, me: Player, n: CardEl, next: TechId | null): void {
+    const t = n.c.tech;
+    const info = TECHS[t];
+    const a = arsenalCard(s, me, t);
+    const st = a.state;
+    const cls = st === 'done' ? 'done' : st === 'ordered' ? 'active' : st === 'buy' ? 'avail' : st === 'poor' ? 'avail poor' : 'locked';
+    for (const k of ['avail', 'done', 'active', 'locked']) setClass(n.btn, k, cls.split(' ').includes(k));
+    setClass(n.btn, 'poor', st === 'poor');
+    setClass(n.btn, 'chose-other', st === 'chose-other');
+    setClass(n.btn, 'capped', st === 'capped');
+    setClass(n.btn, 'needs-building', st === 'building');
+    setClass(n.btn, 'next', next === t);
+    // the price line: icons and numbers, or the state
+    let text: string | null = null;
+    if (st === 'done') text = 'In service';
+    else if (st === 'ordered') text = `Arrives in ${formatEta(a.order!.left)}`;
+    else if (st === 'chose-other') text = `You chose ${TECHS[a.chose!].name}`;
+    else if (st === 'capped' || st === 'disabled') text = a.reason;
+    const key = text ?? priceKey(a);
+    if (n.metaKey !== key) {
+      n.metaKey = key;
+      if (text !== null) setText(n.meta, text);
+      else n.meta.innerHTML = priceHtml(a);
+    }
+    const f = a.order ? a.order.frac : 0;
+    n.ring.style.setProperty('--p', f.toFixed(3));
+    if (n.bar) {
+      setClass(n.bar, 'on', st === 'ordered');
+      (n.bar.firstElementChild as HTMLElement).style.width = `${(f * 100).toFixed(1)}%`;
+    }
+    if (n.buy) setClass(n.buy, 'hidden', st !== 'buy' && st !== 'poor');
+    // the effect line, or what is missing: "Build a Port first"
+    setText(n.line, st === 'building' ? a.reason : this.hooks.line(t));
+    setClass(n.line, 'warn', st === 'building');
+    const row = this.rows[n.rowIdx].r;
+    const out = (row.outside[t] ?? []).filter((r) => !hasTech(me, r));
+    const anyOut = (info.requiresAny ?? []).filter((r) => out.includes(r));
+    const needTxt = out.length ? `+ ${out.filter((r) => !anyOut.includes(r)).map((r) => TECHS[r].name).concat(anyOut.length ? [anyOut.map((r) => TECHS[r].name).join(' or ')] : []).join(', ')}` : '';
+    setText(n.need, st === 'done' || st === 'ordered' ? '' : needTxt);
+    // tag: a fork before the pick says what it locks (a flag on the top edge); Special / Mastery when there is room
+    const rivals = rivalsOf(t);
+    const open = st === 'buy' || st === 'poor' || st === 'building' || st === 'prereq';
+    let tag = '';
+    let tagCls = '';
+    if (rivals.length && open) {
+      tag = `locks ${rivals.map((r) => SHORT[r] ?? TECHS[r].name).join(', ')}`;
+      tagCls = 'warn';
+    } else if (text !== null) {
+      // only when the line shows a state, not the price (the column headers say Special / Mastery too)
+      if (n.c.kind === 'special') {
+        tag = 'Special';
+        tagCls = 'special';
+      } else if (n.c.kind === 'mastery') {
+        tag = st === 'capped' ? 'Locked' : 'Mastery';
+        tagCls = 'mastery';
+      }
+    }
+    setText(n.tag, tag);
+    n.tag.className = `rp-tag ${tagCls}`;
+    const p = a.price;
+    const cost = [`${formatCount(p.gold)} gold`, p.iron ? `${formatCount(p.iron)} iron` : '', p.oil ? `${formatCount(p.oil)} oil` : ''].filter(Boolean).join(', ');
+    const why =
+      st === 'done' ? 'In service'
+      : st === 'ordered' ? `On order, arrives in ${formatEta(a.order!.left)}`
+      : st === 'buy' ? `Buy for ${cost}, delivered in ${formatEta(p.seconds)}`
+      : st === 'poor' ? `${a.reason}. Costs ${cost}`
+      : `Locked: ${a.reason}`;
+    n.btn.setAttribute('aria-label', `${info.name}: ${this.hooks.line(t)}. ${why}${tagCls === 'warn' ? `. Choosing this ${tag}` : ''}`);
+    n.btn.setAttribute('aria-disabled', String(st !== 'buy'));
+  }
+
   private updateEdges(s: GameState, me: Player): void {
     for (const r of this.rows) {
       for (const x of r.edges) {
         const from = hasTech(me, x.e.from);
         const to = hasTech(me, x.e.to);
-        const cutFrom = techStatus(s, me.id, x.e.from) === 'locked-choice';
-        const cut = cutFrom || techStatus(s, me.id, x.e.to) === 'locked-choice';
+        const cutFrom = this.choiceLocked(s, me, x.e.from);
+        const cut = cutFrom || this.choiceLocked(s, me, x.e.to);
         const base = to && from ? 'done' : cut ? 'fork-cut' : from ? 'open' : 'locked';
         const keep = ['hl-pre', 'hl-next'].filter((c) => x.path.classList.contains(c)).join(' ');
         const cls = `${base}${x.e.any ? ' either' : ''}${keep ? ` ${keep}` : ''}`;
@@ -267,10 +361,17 @@ export class TechRowsView {
       }
       // a decided fork: the rule between the branches turns solid on the chosen side
       r.r.forks.forEach((f, k) => {
-        const chosen = f.roots.find((t) => hasTech(me, t) || me.researching === t);
+        const chosen = f.roots.find((t) => hasTech(me, t) || me.researching === t || (me.procuring ?? []).some((o) => o.tech === t));
         setClass(r.ors[k], 'decided', !!chosen);
       });
     }
+  }
+
+  /** Locked by a fork pick or the mastery cap (Arsenal: an order counts as a pick). */
+  private choiceLocked(s: GameState, me: Player, t: TechId): boolean {
+    if (this.layout.tab !== 'arsenal') return techStatus(s, me.id, t) === 'locked-choice';
+    const st = arsenalCard(s, me, t).state;
+    return st === 'chose-other' || st === 'capped';
   }
 
   /** Forces a re-layout of the lines on the next update (the panel opened or the window changed). */
@@ -472,4 +573,16 @@ export class TechRowsView {
     }
     pick?.btn.focus();
   }
+}
+
+const RES_ICON = { gold: lineIcon('gold', 11, 2), iron: lineIcon('iron', 11, 2), oil: lineIcon('oil', 11, 2), time: lineIcon('clock', 11, 2) };
+function priceKey(a: ArsenalCard): string {
+  const p = a.price;
+  return `${p.gold}|${p.iron}|${p.oil}|${p.seconds}|${a.short.gold ? 1 : 0}${a.short.iron ? 1 : 0}${a.short.oil ? 1 : 0}`;
+}
+/** "[gold] 1.5k  [iron] 80  [oil] 40  [clock] 30 s": each resource the price has, short ones marked. */
+export function priceHtml(a: ArsenalCard): string {
+  const p = a.price;
+  const part = (k: 'gold' | 'iron' | 'oil', v: number): string => (v > 0 ? `<span class="rp-p p-${k}${a.short[k] ? ' short' : ''}">${RES_ICON[k]}${formatCount(v)}</span>` : '');
+  return `${part('gold', p.gold)}${part('iron', p.iron)}${part('oil', p.oil)}<span class="rp-p p-time">${RES_ICON.time}${Math.round(p.seconds)} s</span>`;
 }

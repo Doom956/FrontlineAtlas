@@ -72,6 +72,13 @@ export function hashState(state: GameState): number {
     h = mixInt(h, p.barrageReadyTick);
     h = mixStr(h, p.researching);
     h = mixFloat(h, p.researchProgress);
+    // Arsenal orders (procurement.ts).
+    const ord = p.procuring ?? [];
+    h = mixInt(h, ord.length);
+    for (const o of ord) {
+      h = mixStr(h, o.tech);
+      h = mixInt(h, o.readyTick);
+    }
     h = mixInt(h, p.techs.length);
     for (const t of p.techs) h = mixStr(h, t);
     h = mixInt(h, (p.auto.mix ? 1 : 0) | (p.auto.research ? 2 : 0));

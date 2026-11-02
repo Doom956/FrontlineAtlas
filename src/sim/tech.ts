@@ -2,8 +2,8 @@
 import { TECHS, TICK_SECONDS } from './config';
 import { researchRule } from './rules';
 import { addEvent } from './state';
-import { choiceLockReason, missingPrereqs, prereqsMet, techStatus, techStatusReason } from './techtree';
-import { isArsenalTech, masteryLocked } from './arsenal';
+import { choiceLockReason, missingPrereqs, prereqsMet } from './techtree';
+import { isArsenalTech } from './arsenal';
 import type { ActionResult, GameState, Player, TechId } from './types';
 
 const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
@@ -16,6 +16,8 @@ export function canResearch(state: GameState, playerId: number, t: TechId): Acti
   const info = TECHS[t];
   if (!p || playerId === 0 || !p.alive) return FAIL('No such player');
   if (!info) return FAIL('Unknown tech');
+  // Arsenal items are bought, not researched (procurement.ts: Action 'procure').
+  if (isArsenalTech(t)) return FAIL(`${info.name} is not researched: buy it in the Arsenal tab (order it with gold, iron and oil)`);
   const ruled = researchRule(state);
   if (ruled) return FAIL(ruled);
   if (hasTech(p, t)) return FAIL(`${info.name} is already researched`);
@@ -23,12 +25,6 @@ export function canResearch(state: GameState, playerId: number, t: TechId): Acti
   // Exclusive choices (techtree.ts): a rival of t researched or being researched locks it.
   const locked = choiceLockReason(p, t);
   if (locked) return FAIL(locked);
-  // Mastery in at most MASTERY_CAP pillars (arsenal.ts).
-  const capped = masteryLocked(p, t);
-  if (capped) return FAIL(capped);
-  if ((t === 'carriers' || t === 'submarines' || t === 'jetEngines' || t === 'strategicBombing' || t === 'dropTanks' || t === 'nightBombing' || isArsenalTech(t)) && techStatus(state, playerId, t) === 'disabled') {
-    return FAIL(techStatusReason(state, playerId, t) ?? 'Not available in this game');
-  }
   if (!prereqsMet(p, t)) return FAIL(`Needs ${missingPrereqs(p, t)}`);
   if (p.gold < info.gold) return FAIL(`Not enough gold (${info.gold})`);
   return { ok: true };

@@ -428,7 +428,7 @@ export function doctrineAdvice(state: GameState, pid: number): DoctrineAdvice[] 
         ? `${s.airfields} airfield${s.airfields === 1 ? '' : 's'} ready for bombers and paratroopers`
         : s.flight
           ? 'You have Flight: airfields are open to you'
-          : 'Research Flight first to make use of it',
+          : 'Buy Flight in the Arsenal first to make use of it',
   );
   add(
     'expansion',

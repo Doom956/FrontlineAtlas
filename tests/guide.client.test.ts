@@ -1,6 +1,7 @@
 // In-game guide (src/client/guide/engine.ts, steps.ts): the opening runs in order and moves on by itself, tips show
 // once each (ever) and one at a time, a fight-critical tip cuts in, Skip / Hide / Restart are remembered, and a
 // broken or blocked localStorage never breaks the game. No DOM.
+import { markBuildingsChanged } from '../src/sim/buildings';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GUIDE_KEY, GuideEngine, guideCovers, LEGACY_TUTORIAL_KEY, loadGuidePrefs, TIP_GAP_MS, TIP_MS, type GuideCtx, type GuideStep, type GuideTip } from '../src/client/guide/engine';
 import { enemyAirOnMe, guideTips, openingSteps } from '../src/client/guide/steps';
@@ -457,8 +458,19 @@ describe('guide: getting ships, tanks and planes', () => {
     const navyPort = tip('navyPort');
     expect(navyTech.when(at(s, 60))).toBe(false); // the opening's time
     expect(navyTech.when(at(s, 150))).toBe(true); // no land border: the sea is the way
-    expect(target(navyTech, at(s, 150))).toBe('tech-navigation || tab-arsenal || open-research');
-    expect(text(navyTech, at(s, 150))).toMatch(/Navigation/);
+    // Navigation is bought in the Arsenal and needs a Port (procurement.ts): the Port first, then the card
+    expect(target(navyTech, at(s, 150))).toBe('bm-port || build-port || build-menu-btn');
+    expect(text(navyTech, at(s, 150))).toMatch(/Build a Port \(E\) on your coast, then buy Navigation in the Arsenal/);
+    expect(navyTech.tile!(at(s, 150, { buildMode: 'port' }))).toBeGreaterThanOrEqual(0);
+    const withPort = game();
+    expect(build(withPort, 'port', (i) => withPort.map.coastal[i] === 1)).toBe(true);
+    expect(text(navyTech, at(withPort, 150))).toMatch(/Port is being built/);
+    for (const b of withPort.buildings.values()) b.buildLeft = 0;
+    markBuildingsChanged(withPort);
+    expect(target(navyTech, at(withPort, 150))).toBe('tech-navigation || tab-arsenal || open-research');
+    expect(text(navyTech, at(withPort, 150))).toMatch(/Buy Navigation in the Arsenal/);
+    withPort.players[1].procuring = [{ tech: 'navigation', readyTick: 1e6 }];
+    expect(navyTech.done!(at(withPort, 150))).toBe(true);
     expect(navyPort.when(at(s, 150))).toBe(false);
     me.techs.push('navigation');
     expect(navyTech.done!(at(s, 150))).toBe(true);
@@ -499,10 +511,12 @@ describe('guide: getting ships, tanks and planes', () => {
     me.techs.push('metallurgy');
     expect(tip('armorTech').when(at(s, 200))).toBe(false);
     expect(tip('armorTech').when(at(s, 400))).toBe(true);
-    expect(target(tip('armorTech'), at(s, 400))).toBe('tech-mechanization || tab-arsenal || open-research');
-    me.researching = 'mechanization';
+    // Mechanization needs a Factory (procurement.ts): the Factory first
+    expect(target(tip('armorTech'), at(s, 400))).toBe('bm-factory || build-factory || build-menu-btn');
+    expect(text(tip('armorTech'), at(s, 400))).toMatch(/Build a Factory \(7\), then buy Mechanization in the Arsenal/);
+    me.procuring = [{ tech: 'mechanization', readyTick: 1e6 }];
     expect(tip('armorTech').done!(at(s, 400))).toBe(true);
-    me.researching = null;
+    me.procuring = [];
     me.techs.push('mechanization');
     expect(tip('armorFactory').when(at(s, 400))).toBe(true);
     expect(target(tip('armorFactory'), at(s, 400))).toBe('bm-factory || build-factory || build-menu-btn');
@@ -543,7 +557,7 @@ describe('guide: getting ships, tanks and planes', () => {
     s.units.push(bomber);
     expect(enemyAirOnMe(s, me)).toBe(true);
     expect(air.when(at(s, 400))).toBe(true);
-    expect(text(air, at(s, 400))).toMatch(/Research Flight/);
+    expect(text(air, at(s, 400))).toMatch(/Buy Flight in the Arsenal/);
     expect(target(air, at(s, 400))).toBe('tech-flight || tab-arsenal || open-research');
     me.techs.push('logistics', 'flight', 'radar');
     expect(text(air, at(s, 400))).toMatch(/SAM sites \(G\)/);

@@ -200,14 +200,14 @@ export function onOwnerChange(state: GameState, tile: number, old: number, nw: n
     if (fo) t.falloutWeight[nw] += wt;
     if (coastal[tile]) {
       t.coastCount[nw]++;
-      t.coastList[nw].push(tile);
+      addOwned(state, t.coastList[nw], t.coastCount[nw], tile, nw);
     }
     if (r === 1) {
       t.ironCount[nw]++;
-      t.ironList[nw].push(tile);
+      addOwned(state, t.ironList[nw], t.ironCount[nw], tile, nw);
     } else if (r === 2) {
       t.oilCount[nw]++;
-      t.oilList[nw].push(tile);
+      addOwned(state, t.oilList[nw], t.oilCount[nw], tile, nw);
     }
     t.blocks[nw * nb + block]++;
     refreshBorder(t, map, tile);
@@ -281,6 +281,15 @@ export function depositCount(state: GameState, playerId: number, kind: 1 | 2): n
 }
 
 /** Compacts a lazy list: keeps tiles still owned by playerId, once each. */
+/**
+ * Appends a tile the player just took to one of its lazy owned-tile lists, compacting the list once it holds twice
+ * the real count. Only here (in setOwner), never in a read: ownedTilesOf is also called by the client between ticks
+ * (advisor), and a compaction at a client-chosen moment would change what the AI samples from the list (lockstep).
+ */
+function addOwned(state: GameState, list: number[], count: number, tile: number, playerId: number): void {
+  list.push(tile);
+  if (list.length > count * 2 + 64) compact(state, list, playerId);
+}
 function compact(state: GameState, list: number[], playerId: number): void {
   const owner = state.map.owner;
   const seen = new Set<number>();
@@ -295,17 +304,14 @@ function compact(state: GameState, list: number[], playerId: number): void {
 
 /**
  * Owned coastal tiles ('coast'), iron deposits ('iron') or oil deposits ('oil') of a player. The list is kept lazily:
- * it may still hold tiles the player lost or the same tile twice (it is compacted once it grows to twice the real
- * count), so check the owner of every entry. Do not modify it.
+ * it may still hold tiles the player lost or the same tile twice (it is compacted when a tile is added and it
+ * holds twice the real count), so check the owner of every entry. Do not modify it.
  */
 export function ownedTilesOf(state: GameState, playerId: number, kind: 'coast' | 'iron' | 'oil'): readonly number[] {
   const t = get(state);
   if (playerId <= 0 || playerId >= t.pc) return [];
   const lists = kind === 'coast' ? t.coastList : kind === 'iron' ? t.ironList : t.oilList;
-  const counts = kind === 'coast' ? t.coastCount : kind === 'iron' ? t.ironCount : t.oilCount;
-  const list = lists[playerId];
-  if (list.length > counts[playerId] * 2 + 64) compact(state, list, playerId);
-  return list;
+  return lists[playerId]; // compacted only when a tile is added (addOwned): a read never changes it
 }
 
 /**

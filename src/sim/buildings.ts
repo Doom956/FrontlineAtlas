@@ -179,7 +179,12 @@ export function onBuildingCaptured(state: GameState, b: Building, prevOwner: num
       list!.splice(k, 1);
       let lists = idx.byPlayer.get(b.owner);
       if (!lists) idx.byPlayer.set(b.owner, (lists = emptyLists()));
-      lists[b.type].push(b);
+      // In id order, like a rebuilt index (state.buildings holds them in id order): the lists must not depend on
+      // whether the index was rebuilt in between, which a client read between ticks can do (lockstep).
+      const to = lists[b.type];
+      let at = to.length;
+      while (at > 0 && to[at - 1].id > b.id) at--;
+      to.splice(at, 0, b);
     } else indexes.delete(state);
   }
   const now = indexes.get(state);

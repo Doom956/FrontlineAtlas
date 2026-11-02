@@ -12,7 +12,7 @@ import { supportingShips } from '../src/sim/naval2';
 import { tick } from '../src/sim/sim';
 import { newId } from '../src/sim/state';
 import { spawnTankDivision, tankDivisionCost } from '../src/sim/tanks';
-import { canResearch } from '../src/sim/tech';
+import { canProcure } from '../src/sim/procurement';
 import { techStatus, techStatusReason, unitVisibleTo } from '../src/sim/techtree';
 import { spawnWarshipAt } from '../src/sim/units';
 import { applyWarshipVariant, carrierFor, holdDefenseAt, navalCanTarget, navalDamageMul } from '../src/sim/variants';
@@ -107,14 +107,15 @@ describe('fork locks', () => {
     const p = s.players[1];
     expect(techStatus(s, 1, 'destroyers')).toBe('available');
     expect(techStatus(s, 1, 'battleships')).toBe('locked-prereq');
-    expect(applyAction(s, 1, { type: 'research', tech: 'destroyers' }).ok).toBe(true);
+    addBuilding(s, 'port', 1, at(s, 20, 19));
+    expect(applyAction(s, 1, { type: 'procure', tech: 'destroyers' }).ok).toBe(true); // on order (procurement.ts)
     expect(techStatus(s, 1, 'submarines')).toBe('locked-choice');
     expect(techStatus(s, 1, 'carriers')).toBe('locked-choice');
     expect(techStatusReason(s, 1, 'carriers')).toBe('You chose Destroyers; Carriers is locked');
-    expect(canResearch(s, 1, 'submarines').ok).toBe(false);
+    expect(canProcure(s, 1, 'submarines').ok).toBe(false);
     expect(pathOf(p, 'navy')).toBe('destroyers');
     give(s, 1, 'destroyers');
-    p.researching = null;
+    p.procuring = [];
     expect(techStatus(s, 1, 'battleships')).toBe('available');
     // Armor and air forks work the same way.
     give(s, 1, 'mechanization', 'flight', 'heavyTanks', 'groundAttack');
@@ -133,15 +134,16 @@ describe('mastery cap', () => {
     give(s, 1, 'mechanization', 'flight', 'destroyers', 'battleships', 'lightTanks', 'deepRaids', 'groundAttack', 'jetEngines');
     expect(techStatus(s, 1, 'navalMastery')).toBe('available');
     give(s, 1, 'navalMastery');
-    expect(applyAction(s, 1, { type: 'research', tech: 'armorMastery' }).ok).toBe(true);
+    addBuilding(s, 'factory', 1, at(s, 5, 5));
+    expect(applyAction(s, 1, { type: 'procure', tech: 'armorMastery' }).ok).toBe(true);
     expect(masteryPillars(p)).toEqual(['navy', 'armor']);
     expect(techStatus(s, 1, 'airMastery')).toBe('locked-choice');
     expect(masteryLocked(p, 'airMastery')).toMatch(/^Mastery 2 of 2 used \(Navy, Armor\)/);
     expect(techStatusReason(s, 1, 'airMastery')).toMatch(/Mastery 2 of 2/);
-    expect(canResearch(s, 1, 'airMastery').reason).toMatch(/Mastery 2 of 2/);
-    // The running one is not locked by itself; switching away frees the slot.
+    expect(canProcure(s, 1, 'airMastery').reason).toMatch(/Mastery 2 of 2/);
+    // The ordered one is not locked by itself; without the order the slot is free.
     expect(masteryLocked(p, 'armorMastery')).toBeNull();
-    p.researching = null;
+    p.procuring = [];
     expect(techStatus(s, 1, 'airMastery')).toBe('available');
   });
 });
@@ -311,7 +313,7 @@ describe('validation', () => {
     expect(validateAction({ type: 'buildWarship', port: 12, variant: 'battleship' }).ok).toBe(true);
     expect(validateAction({ type: 'buildWarship', port: 12, variant: 'yacht' }).ok).toBe(false);
     expect(validateAction({ type: 'buildWarship', port: 12 }).ok).toBe(true);
-    expect(validateAction({ type: 'research', tech: 'navalMastery' }).ok).toBe(true);
+    expect(validateAction({ type: 'procure', tech: 'navalMastery' }).ok).toBe(true);
     // The sim refuses an unknown variant too.
     const s = coastGame();
     const port = addBuilding(s, 'port', 1, at(s, 20, 19));

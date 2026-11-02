@@ -16,6 +16,7 @@ import { rivalsOf, techStatus } from './techtree';
 import { isTribe } from './types';
 import type { Attack, GameState, Personality, TechId } from './types';
 import { aiFocusFork } from './aifocus';
+import { ownsOrPending } from './arsenal';
 import { aiArsenalTech, aiForkPick, aiPriorityArsenalTech, aiSkipsArsenalTech } from './variantsAI';
 
 /** Lean toward the FIRST member of each group by personality (0..1; missing = 0.5). */
@@ -51,8 +52,8 @@ function groupSalt(g: string): number {
 export function aiBranchPick(state: GameState, id: number, personality: Personality | null, group: string): TechId {
   const members = TECH_ORDER.filter((t) => TECHS[t].exclusiveGroup === group);
   const p = state.players[id];
-  // Already chosen (or researching one): stick to it.
-  for (const t of members) if (p && (p.techs.includes(t) || p.researching === t)) return t;
+  // Already chosen (owned or on order): stick to it.
+  for (const t of members) if (p && ownsOrPending(p, t)) return t;
   // Benchmark specialist with a forced fork (aifocus.ts).
   const forced = aiFocusFork(state, id, group);
   if (forced) return forced;

@@ -8,11 +8,13 @@
 // each (the OR sits between them) and everything after a branch root stays in that branch's lane. Lines are drawn
 // only inside a row (prerequisites in another row or tab show on the card as "+ Name"), after a transitive reduction
 // (Naval Mastery needs Navigation, but the line runs from the path's end).
-import { ARSENAL_ROWS, MASTERY_CAP, PILLAR_NAMES, arsenalItem, isArsenalTech, masteryLocked, masteryPillars, type Pillar } from '../../sim/arsenal';
+import { ARSENAL_ROWS, MASTERY_CAP, PILLAR_NAMES, arsenalItem, isArsenalTech, type Pillar } from '../../sim/arsenal';
 import { TECHS, TECH_ORDER } from '../../sim/config';
+import { canProcure } from '../../sim/procurement';
 import { canResearch } from '../../sim/tech';
 import { techStatus } from '../../sim/techtree';
 import type { GameState, Player, TechId } from '../../sim/types';
+import { masteryCapped, masteryUsed, onOrder } from './procure';
 
 export type PanelTab = 'research' | 'arsenal';
 export type RowId = 'economy' | 'land' | 'logistics' | 'influence' | Pillar;
@@ -271,8 +273,8 @@ export function formatEta(sec: number | null): string {
 }
 
 /**
- * The next thing worth buying in a tab: the lowest-tier tech that can be researched right now (prerequisites met,
- * gold enough, not locked), in the panel's reading order (columns left to right, rows top to bottom). Rows outside
+ * The next thing worth buying in a tab: the lowest-tier tech that can be researched (Research tab) or bought (Arsenal,
+ * sim/procurement.ts) right now (prerequisites met, gold enough, not locked, not on order), in the panel's reading order (columns left to right, rows top to bottom). Rows outside
  * `only` (a filter) are skipped. null when nothing is affordable.
  */
 export function nextAffordable(s: GameState, me: Player, lay: PanelLayout, only?: ReadonlySet<RowId>): TechId | null {
@@ -280,8 +282,8 @@ export function nextAffordable(s: GameState, me: Player, lay: PanelLayout, only?
   lay.rows.forEach((r, ri) => {
     if (only && only.size && !only.has(r.id)) return;
     for (const c of r.cards) {
-      if (me.researching === c.tech || techStatus(s, me.id, c.tech) !== 'available') continue;
-      if (!canResearch(s, me.id, c.tech).ok) continue;
+      if (me.researching === c.tech || onOrder(me, c.tech) || techStatus(s, me.id, c.tech) !== 'available') continue;
+      if (!(lay.tab === 'arsenal' ? canProcure(s, me.id, c.tech) : canResearch(s, me.id, c.tech)).ok) continue;
       const tier = TECHS[c.tech].tier;
       const k = { t: c.tech, tier, col: c.col, row: ri, lane: c.lane };
       if (!best || tier < best.tier || (tier === best.tier && (c.col < best.col || (c.col === best.col && (ri < best.row || (ri === best.row && c.lane < best.lane)))))) best = k;
@@ -290,17 +292,16 @@ export function nextAffordable(s: GameState, me: Player, lay: PanelLayout, only?
   return (best as { t: TechId } | null)?.t ?? null;
 }
 
-/** "Mastery 1 of 2" counter (with the pillars) and whether the cap is used up. */
+/** "Mastery 1 of 2" counter (with the pillars; a mastery on order counts) and whether the cap is used up. */
 export function masteryCounter(me: Player): { text: string; full: boolean; pillars: Pillar[] } {
-  const ps = masteryPillars(me);
+  const ps = masteryUsed(me);
   const names = ps.map((p) => PILLAR_NAMES[p]).join(', ');
   return { text: `Mastery ${ps.length} of ${MASTERY_CAP}${names ? ` · ${names}` : ''}`, full: ps.length >= MASTERY_CAP, pillars: ps };
 }
 
 /** Short reason a mastery card is capped ("Cap used: Navy, Air"), or null. */
 export function masteryCapLine(me: Player, t: TechId): string | null {
-  if (!masteryLocked(me, t)) return null;
-  return `Cap used: ${masteryPillars(me).map((p) => PILLAR_NAMES[p]).join(', ')}`;
+  return masteryCapped(me, t);
 }
 
 /** What kind of card a tech is (for tags and styles). */

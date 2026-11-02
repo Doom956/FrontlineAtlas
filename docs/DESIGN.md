@@ -158,7 +158,8 @@ transports are out of it), gold, iron, oil, science. There are no workers and no
 - Gold/s = (`GOLD_BASE` 8 + `GOLD_LAND` 0.45 x (land weight)^0.6 + `CITY_GOLD` 5 per city level) x (1 + markets,
   +12% each up to +80%, x1.25 with Banking) x1.3 with Banking; tribes x0.5; plus trade ship deliveries and loot.
 - Iron/s = mines * `IRON_PER_MINE` (Metallurgy x1.5). Oil/s = wells * `OIL_PER_WELL`. Industrialization x1.25.
-- Science/s = `BASE_SCIENCE` + labs * `SCIENCE_PER_LAB`.
+- Science/s = `BASE_SCIENCE` 2 (was 0.5 before the Arsenal shop, 3 in its first round) + labs * `SCIENCE_PER_LAB`. Science only pays for
+  the Research tab; Arsenal items are bought with gold + iron / oil (section 6, procurement).
 - Upkeep: armor burns oil (`ARMOR_OIL_UPKEEP` per unit/s: one well feeds about 600k armor). With no oil, armor
   fights at 50%. Aircraft burn oil too. Negative stocks are clamped to 0.
 - **Army mix** (target shares for armor and artillery, rest infantry). Factories convert infantry to armor and
@@ -425,14 +426,21 @@ per-player sums of levels cached until that player's buildings change.
 
 ## 6. Research
 
-Science accumulates; the player picks one tech at a time (also pays gold to start). Tree:
+Science accumulates; the player picks one tech at a time (also pays gold to start). Only the Research tab works this
+way: Arsenal items (navy, armor and air rows, below) are bought (procurement.ts). Science costs since the Arsenal shop
+(2026-11-01): tier 1 150 (unchanged), tier 2 300 (was 600), tier 3 1300 (was 2200), tier 4 Nuclear Fission 14000
+science + 3000 gold (was 3500 / 1500) and Industrial Boom 4000 (was 5000), tier 5 12000 (was 8000); other gold costs
+unchanged. Faster mostly at the start: with `BASE_SCIENCE` 2 a nation owns about 28% of the Research tab at 10 min,
+52% at 20 min and 63% at 30 min (48 medium seeds; was 6% / 10% / 20%), while Nuclear Fission stays a late goal (first
+nation 27.5 min, was 37.3; 2100 science in the first shop round gave 18.3 min and 65 atom bombs in 37 of 48 games).
+Tree:
 
 - Tier 1: Agriculture, Metallurgy, Logistics, Fortification, Navigation
 - Tier 2: Banking (Agriculture), Medicine (Agriculture), Mechanization (Metallurgy), Ballistics (Metallurgy),
   Flight (Logistics)
 - Tier 3: Industrialization (Mechanization), Combined Arms (Mechanization + Ballistics), Radar (Flight),
   Rocketry (Ballistics)
-- Tier 4: Nuclear Fission (Rocketry + Industrialization; 3500 science, 1500 gold since the balance check, was 5000 / 2000)
+- Tier 4: Nuclear Fission (Rocketry + Industrialization; 14000 science, 3000 gold; was 5000 / 2000, then 3500 / 1500)
 
 Effects in config (`TECHS`).
 
@@ -459,9 +467,29 @@ AIs commit to one member per fork (aispending.ts: personality lean + a per-game 
 the branches into their research order right after the prerequisites.
 
 ### Arsenal: vehicle variants (src/sim/arsenal.ts, variants.ts, variantsAI.ts, config ARSENAL)
-The Research panel's second tab. Ordinary techs (Action research); `arsenal.ARSENAL_ROWS` groups them in one row per
-pillar (tier 1 unlock, tier 2 fork root, tier 3 upgrade / special, tier 4 mastery); `isArsenalTech` keeps them out of
-the Research tab. A fork is an exclusive group on its two roots; `techtree.choiceLockedBy` follows `requires`, so the
+The Research panel's second tab. Techs in `TECHS` (owned in Player.techs like any tech), but BOUGHT, not researched;
+`arsenal.ARSENAL_ROWS` groups them in one row per pillar (tier 1 unlock, tier 2 fork root, tier 3 upgrade / special,
+tier 4 mastery); `isArsenalTech` keeps them out of the Research tab.
+
+Procurement (src/sim/procurement.ts, config `ARSENAL_PRICES`, Action `procure {tech}`): paid in full when ordered
+(no cancel, no refund), delivered after a timer (`Player.procuring: { tech, readyTick }[]`, hashed; updateProcurement
+each tick pushes the tech to Player.techs with a 'researchDone' event "Delivered: <name>"). Several items can be on
+order at once. Prices by column: unlock 1500 gold + 300 iron, 20 s; path root / shared 3600 + 1200, 25 s; upgrade /
+special 9000 + 3500, 35 s; mastery 25000 + 10000, 45 s (first shop round: 3000 + 1000, 5000 + 2000, 15000 + 6000). The resource amount is iron for armor and 30% iron + 70% oil
+for navy and air; the three unlocks (Navigation, Mechanization, Flight) are iron only. Each pillar's items need a
+finished own building: navy a Port, armor a Factory, air an Airfield, except an item that unlocks that building or
+leads to it (Flight unlocks the Airfield: none) and Early Warning (Radar's special: none). The tree rules stay:
+prerequisites delivered, ordering one fork root locks the other at once, an order counts toward the mastery cap.
+Action `research` on an Arsenal item is refused ("... is not researched: buy it in the Arsenal tab ..."). The admin
+'finishResearch' and the tutorial deliver orders at once (deliverAllOrders). AIs (arsenalAI.ts) order the next item
+of their order (their committed pillar's path at once), at most `aiMaxOrders` 2 on order, keeping `aiIronReserve` /
+`aiOilReserve`.
+Result (48 medium seeds, before the shop -> first shop round -> pacing round with the prices above): Arsenal items
+owned at 20 min 3.2 -> 6.6 -> 5.1; first path per nation 12.5 -> 7.8 -> 8.3 min (first in a game 10.3 -> 4.6 -> 4.6);
+first special per nation 23.8 -> 12.7 -> 18.3; first mastery in a game 27.5 -> 19.3 -> 26.2; first Nuclear Fission
+37.3 -> 18.3 -> 27.5 min (atom bombs 11 in 9 games -> 65 in 37 -> 26 in 19, first use median 39.6 -> 24.0 -> 31.4);
+median game 35.8 -> 29.0 -> 30.3 min; nations alive at 20 min 80% -> 60% -> 62%. Game length and early eliminations
+(10-20 min) barely move with science or Arsenal prices: they come from elsewhere in the shop round. A fork is an exclusive group on its two roots; `techtree.choiceLockedBy` follows `requires`, so the
 other root and everything after it lock together ("You chose Destroyers; Carriers is locked").
 - Navy (Navigation; group navalDoctrine "Navy path"): Surface fleet = Destroyers (fast, cheap, sonar reveals
   submarines within `destroyerSonar`, x3 damage to them) -> Battleships (tough, slow, x1.8 price, shells from twice
@@ -489,7 +517,7 @@ after its prerequisites and its mastery only there; one battleship in three, one
 enemy it fights.
 
 ### Special upgrades (src/sim/specials.ts, config SPECIALS)
-Ordinary techs (Action research) that change behaviour, not stats; listed in the Arsenal tab (arsenal.ts, kind 'special').
+Arsenal items (bought: Action procure) that change behaviour, not stats; listed in the Arsenal tab (arsenal.ts, kind 'special').
 - Amphibious Tanks (Mechanization + Navigation): divisions wade across water at most `amphibMaxWater` tiles wide on a
   straight line (moves: tanks.ownLandPath with specials.narrowWater; spearheads cross instead of stopping at the coast,
   launch reach + `amphibLaunchReach`). Each landing costs `amphibLandingLoss`. Counters: hostile warships within
@@ -911,8 +939,10 @@ full-map scans after `createGame`.
   right by tier; a fork is a split (its branches in two lanes, an OR in the gap before them, a dashed rule between,
   "locks X" flagged on both roots before the pick; hovering one strikes through what it would lock; after the pick
   the other branch is struck, its lines cut). Lines are drawn only inside a row (through the gaps or a rail above
-  the cards); a prerequisite in another row or tab shows as "+ Name". A card: price, time at the current science
-  rate, one-line effect, Special / Mastery tags; a click buys it; the next affordable card is flagged NEXT and the
+  the cards); a prerequisite in another row or tab shows as "+ Name". A Research card: science and gold, time at the
+  current science rate, one-line effect; a click starts it. An Arsenal card (hud/procure.ts): gold + iron / oil, the
+  delivery time, the building it needs, Special / Mastery tags; a click buys it, and the tab's header lists each order
+  with a countdown bar; the next affordable card is flagged NEXT and the
   other tab gets a dot when something there is affordable. Filter chips show one row. Fits 1280x720 (tighter cards
   under 800 px height). Building panels offer the Arsenal: a Port one button per researched ship of the Navy path
   (TargetMode spawnWarship.variant), an Airfield the bomber type and "Recon flight" (TargetMode recon -> Action

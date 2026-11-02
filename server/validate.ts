@@ -82,6 +82,7 @@ const ACTION_SPECS: ActionSpecs = {
   demolish: { tile: TILE },
   setArmyMix: { armor: { k: 'share' }, artillery: { k: 'share' } },
   research: { tech: { k: 'enum', values: TECH_IDS } },
+  procure: { tech: { k: 'enum', values: TECH_IDS } },
   transport: { from: TILE, to: TILE, troops: TROOPS },
   buildWarship: { port: { k: 'siteOrAuto' }, tile: { k: 'tile', optional: true }, variant: { k: 'enum', values: NAVAL_VARIANTS, optional: true } },
   moveWarship: { unitId: ID, tile: TILE },

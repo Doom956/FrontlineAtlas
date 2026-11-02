@@ -26,6 +26,7 @@ const fail = (m) => {
 };
 
 async function startServer(port, env = {}) {
+  if (await fetch(`http://127.0.0.1:${port}/health`).then((r) => r.ok, () => false)) fail(`port ${port} is already in use (set E2E_PORT)`);
   const proc = spawn('node', ['server-dist/index.js'], { env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
   proc.stderr.on('data', (d) => process.stderr.write(`[srv err] ${d}`));
   servers.push(proc);
@@ -152,8 +153,9 @@ async function buildFirst(page, type, tiles) {
 
 let exitCode = 0;
 try {
-  await startServer(8098, { PUBLIC_START_SECONDS: '60' });
-  const URL = 'http://127.0.0.1:8098/';
+  const port = Number(process.env.E2E_PORT) || 8098; // E2E_PORT: another port when several runs share the machine
+  await startServer(port, { PUBLIC_START_SECONDS: '60' });
+  const URL = `http://127.0.0.1:${port}/`;
   const A = await newClient('A', URL);
   const B = await newClient('B', URL);
   await setName(A.page, 'Alice');

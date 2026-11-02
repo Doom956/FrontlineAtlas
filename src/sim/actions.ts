@@ -1,11 +1,12 @@
 // Single entry point for player and AI actions.
-import { requestAllyAid, requestAllyAttack } from './allies';
+import { clearLeaderCache, requestAllyAid, requestAllyAttack } from './allies';
 import { build, demolish } from './buildings';
 import { boatLandingTile, clearArmyCache, launchAttack, needsBoat, retreat } from './combat';
 import { answerAlliance, breakAlliance, gift, requestAlliance, toggleEmbargo } from './diplomacy';
 import { mods } from './rules';
 import { canSpawnAt, spawnPlayer } from './state';
 import { startResearch } from './tech';
+import { procure } from './procurement';
 import { BUILDINGS, TECHS } from './config';
 import { buyWarBonds, fundAlly, hireMercenaries } from './spending';
 import { buildMany, cancelQueuedLevels, upgradeArea, upgradeBuildings } from './bulkbuild';
@@ -13,8 +14,8 @@ import { launchBarrage } from './barrage';
 import { chooseDoctrine } from './doctrines';
 import { buildAircraft, launchBomber, launchMissile, launchParadrop, launchTransport, moveWarship } from './units';
 import { moveWarships, orderWarship } from './navy';
-import { buildTankDivision, moveTankDivisions } from './tanks';
-import { setUnitStance } from './naval2';
+import { buildTankDivision, clearDefenseCache, moveTankDivisions } from './tanks';
+import { clearNavyCache, setUnitStance } from './naval2';
 import { setDivisionMode } from './armor2';
 import { setAirMission } from './airwings';
 import { clearIntelCache, reconFlight } from './variants';
@@ -55,6 +56,9 @@ const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.m
 export function applyAction(state: GameState, playerId: number, action: Action): ActionResult {
   clearArmyCache(state); // client reads between ticks must not fill it (combat.ts)
   clearIntelCache(state); // the same for recon intel (variants.ts)
+  clearDefenseCache(state); // division defence (tanks.ts)
+  clearLeaderCache(state); // runaway leader (allies.ts)
+  clearNavyCache(state); // ships, wars, blockades (naval2.ts)
   const p = state.players[playerId];
   if (!p || playerId === 0) return FAIL('No such player');
   // Continuing a finished game and the owner console work for eliminated humans too (they keep watching).
@@ -134,6 +138,9 @@ export function applyAction(state: GameState, playerId: number, action: Action):
       if (r.ok) p.auto.research = false; // picked by hand: the advisor stops choosing
       return r;
     }
+    case 'procure':
+      if (!(action.tech in TECHS)) return FAIL('Unknown tech');
+      return procure(state, playerId, action.tech); // Arsenal items (procurement.ts)
     case 'transport': {
       if (!isTile(state, action.from) || !isTile(state, action.to)) return FAIL('Invalid tile');
       const bad = checkTroops(p, action.troops);

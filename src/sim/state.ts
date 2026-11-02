@@ -700,6 +700,7 @@ function eliminatePlayer(state: GameState, playerId: number, by: number): void {
   p.heartTile = -1;
   p.heartMoveTick = 0;
   p.researching = null;
+  p.procuring = [];
   for (const a of state.attacks) {
     if (a.attacker === playerId) {
       a.troops.infantry = a.troops.armor = a.troops.artillery = 0;

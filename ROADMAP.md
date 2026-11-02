@@ -107,6 +107,61 @@ Still open: economy and land specialists, Blitz and AI Air-doctrine picks, early
 - Summary on the game-over card: land over time, key moments, a nations table; the Victory chip reopens it after playing on (src/client/summary/).
 Open: 60 fps not confirmed on a real GPU (far-zoom p95 frame time 20-26 ms vs 16-18 ms before in the software-rendering test browser, few frames, noisy); the player's blue is close to the AI nation Vesperia's; the guide and the advisor sometimes give the same alliance tip.
 
+## Arsenal shop + faster research (2026-11-01, on `dev`, not merged yet)
+Owner: the Arsenal and the Research tree shouldn't all be research points that take that long.
+- Arsenal items (navy, armor, air rows, specials, masteries, Mechanized Infantry, Recon Planes) are BOUGHT, not
+  researched (src/sim/procurement.ts, Action `procure`, `Player.procuring` hashed, config `ARSENAL_PRICES`): unlock
+  1500 gold + 300 iron (20 s); path / shared 3000 + 1000 (25 s); upgrade / special 5000 + 2000 (35 s); mastery 15000 +
+  6000 (45 s). Armor pays iron, navy and air 70% oil + 30% iron; the three unlocks iron only. Navy items need a Port,
+  armor a Factory, air an Airfield (Flight unlocks the Airfield, so it needs none; Early Warning none). Several on
+  order at once; forks lock at the order; mastery cap 2 counts orders. `research` on an Arsenal item is refused.
+- Research tab: `BASE_SCIENCE` 0.5 -> 3; science tier 2 600 -> 300, tier 3 2200 -> 1300, Fission 3500 -> 2100,
+  Industrial Boom 5000 -> 3000 (tier 1 and gold unchanged).
+- Client: Arsenal cards show gold + iron / oil, delivery time and the building needed; the tab header lists orders
+  with a countdown; guide tips and How to play say buy (Prices row added); doctrine advice "Buy Flight in the
+  Arsenal first".
+Results (48 medium seeds, before = 890fc20): Research tab owned at 20 min 10% -> 58% (31% at 10 min, 76% at 30 min);
+Arsenal items owned 3.2 -> 6.6; first path 10.3 -> 4.6 min (per nation 12.5 -> 7.8); first special 20.1 -> 10.8; first
+mastery 27.5 -> 19.3. Specialists navy 0.51 -> 0.66, armor 1.22 -> 0.97, air 0.69 -> 0.97, land 0.95 -> 0.89, economy
+1.65 -> 1.53. None of the price-adjustment triggers fired, so the starting prices stay.
+Tune later: Nuclear Fission now first at 18.3 min (was 37.3), atom bombs 11 in 9 games -> 65 in 37 (first at 24 min;
+Fission's science is the lever); median game 35.8 -> 29.0 min, 81% of games end in 25-50 min (was 96%); fewer slot
+nations alive at 20 min (armor specialist 79% -> 54%); navy still under 0.7, economy high; the scripted new player
+was not measured in the batch.
+Final check: `npx tsc -p .`, `npx tsc -p server`, `npm run build`, `npx vitest run` (737) green. mp-arsenal (now
+grows land, builds a Port / Factory / mine / well, buys Navigation, Destroyers, Mechanization and Amphibious Tanks with
+procure; fork and mastery refusals; the old research action refused) and mp-pillars PASS on the final build, hashes
+agree. One earlier mp-arsenal run on a very busy machine had a hash mismatch (turn 3219, Bob's client only) that did
+not come back in three later runs; not explained. Defensive fix: the division-defence and runaway-leader caches are
+now dropped when the sim starts work, like the army cache (client reads between ticks; tests/lockstepReads.test.ts),
+and the e2e now prints which state parts differ on a mismatch. E2e scripts take `E2E_PORT` and refuse a port another
+run already uses. New-player browser run (Easy): Research card -> Logistics, Arsenal: Flight bought and delivered,
+a path item without an Airfield shows "Build an Airfield first", Ground-attack Planes + Drop Tanks on order at once
+with countdowns, both delivered, fork locks Heavy Bombers; quick tutorial finished in 62 s; no console errors.
+Screenshots /tmp/borderfall-shots/proc-check-*.png.
+Pacing pass (config.ts; 48 medium seeds + `--specialist all`; old main / shop round / now): `BASE_SCIENCE` 3 -> 2;
+Nuclear Fission 2100 science + 1500 gold -> 14000 + 3000; Industrial Boom 3000 -> 4000 science; Mass Mobilization and
+Automation 8000 -> 12000; tier 2/3 science stay 300 / 1300; Arsenal path 3000 + 1000 -> 3600 + 1200, upgrade / special
+5000 + 2000 -> 9000 + 3500, mastery 15000 + 6000 -> 25000 + 10000 (unlock unchanged). Research tab owned at 20 min
+10 / 58 / 52%; first path per nation 12.5 / 7.8 / 8.3 min; first Fission 37.3 / 18.3 / 27.5 min; atom bombs 11 / 65 /
+26; median win 35.8 / 29.0 / 30.3 min; nations alive at 20 min 80 / 60 / 62%. Game length and survival don't come back
+with these levers (every variant 29.4-30.7 min); the cause is elsewhere in the shop round (untested guesses: faster
+tier 1-2 research, the AI's buying). New seeds (`--start 1001`) not checked; survival numbers are noisy (+-14 points).
+Desync fix (HUD reads between ticks changed sim caches; there is no state snapshot: a late joiner or reload replays
+every turn from 0): the supply-source cache filtered beachheads by owner when built and its key didn't change on a
+capture (now filtered when used; dropping beachheads bumps the version); the navy cache is cleared at tick start and in
+`applyAction` (`clearNavyCache`); owned coast / iron / oil lists are compacted only in `setOwner`, never on a read; a
+captured building goes into its new owner's index in id order. Audit of every module-level cache in src/sim: the AI-only
+caches are filled at the same ticks on every client and would only break with a real state snapshot. Test
+`tests/snapshotSync.test.ts` (helper `tests/hudReads.ts`, ~5 min): a game reading the HUD every tick, a quiet one and
+two rebuilt from the turn log must hash the same; all 3 cases failed on the old code (split at ticks 5550 / 7060 /
+8310). No new state, protocol still 10; AI behaviour changes slightly (supply always current), no balance batch after it.
+Join check (2026-11-01, dev 45e94f6): tsc both, `npm run build`, `npx vitest run` (740, snapshot test included) green;
+mp-arsenal #1: game 1 hashes agree (120 turns, 2129..3319), then game 2 failed before its hash check ("A could not
+place port/airfield/factory": A found no oil in 5 min and got no Airfield / Factory site; script, not a desync);
+mp-arsenal #2 PASS (game 1: 119 turns 3299..4479, game 2: 119 turns 889..2069); mp-pillars PASS (120 turns 889..2079).
+No hash mismatch or desync flag in any run.
+
 ## Round 4: "Follow my war" (2026-11-01, branch `round4`, not merged yet)
 Owner: strategic bombing (and similar orders) should follow whichever nation I attack, without resetting it.
 - The player's war target (src/sim/warTarget.ts): the nation attacked with the most troops now (tribes count less, a 1.25x margin before switching), else the last one attacked within 60 s.
