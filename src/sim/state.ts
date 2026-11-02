@@ -29,6 +29,7 @@ import { generateMap } from './mapgen';
 import { makeRng, randInt, shuffle } from './rng';
 import { assignTeams, DEFAULT_MODIFIERS, humanSeats, STARTING_GOLD, sizeClassForLand, tribesFor } from './setup';
 import { borderTiles, initTerritory, landComponents, onOwnerChange } from './territory';
+import { createTrenchState, resetTrench } from './trenches';
 import { isTribe, isWater } from './types';
 import type { GameEventKind, GameSettings, GameState, MapData, MapSize, Personality, Player } from './types';
 import { compactWorldMap, compactWorldTile, worldMapSpawns } from './worldmaps';
@@ -131,6 +132,7 @@ export function makeGameState(
     winner: 0,
     effects: [],
     changes: createTileChanges(),
+    trench: createTrenchState(map.owner.length),
     buildingsVersion: 0,
     teams: players.map((p) => (extra.teams?.[p.id] ?? 0) | 0),
     winnerTeam: 0,
@@ -597,6 +599,7 @@ export function setOwner(state: GameState, tile: number, newOwner: number): void
     if (b && b.length === state.players.length * 4) growBox(b, newOwner, tile % map.width, (tile / map.width) | 0);
   }
   map.owner[tile] = newOwner;
+  resetTrench(state, tile); // a tile that changes hands starts undug (trenches.ts)
   onOwnerChange(state, tile, old, newOwner);
   recordTileChange(state, tile);
   const players = state.players;

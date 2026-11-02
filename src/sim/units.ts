@@ -74,6 +74,7 @@ import {
 import { areAllied, canTrade, changeOpinion } from './diplomacy';
 import { atPeace, peaceReason, unitRule } from './rules';
 import { forEachInRadius, neighbors4, sameWater, waterPath, waterSearchSpent } from './grid';
+import { flattenDisc } from './trenches';
 import { recordTileChange } from './changes';
 import { addEvent, newId, setOwner } from './state';
 import { onFalloutChange, ownedTilesOf } from './territory';
@@ -1083,6 +1084,7 @@ function atomImpact(state: GameState, u: Unit): void {
     killed += killTroops(state, o, share * troopTotal(p.troops) * Math.min(1, n / Math.max(1, p.tiles)), u.owner, false);
   }
   let destroyed = 0;
+  flattenDisc(state, tile, ATOM_RADIUS, 255, 0); // the blast fills every trench (trenches.ts)
   forEachInRadius(map, tile, ATOM_RADIUS, (i) => {
     const b = buildingAt(state, i);
     if (b) {

@@ -7,6 +7,7 @@ import type { GameState, Player } from '../../sim/types';
 import { GROUP_CHOICES, groupOrderActions, groupState, reconAllAction, reconAllOn, refillAllActions, refillAllOn, resetActions, sendAll, type GroupChoice, type GroupKind } from '../groupOrders';
 import { el, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon } from './glyph';
+import { idleAirLabel } from '../pillars';
 import './pillars.css';
 
 const TITLE: Record<GroupKind, [string, string]> = {
@@ -36,6 +37,8 @@ export class GroupBar {
   private btns = new Map<GroupChoice, HTMLButtonElement>();
   private hover: GroupChoice | null = null;
   private lit: GroupChoice | null = null;
+  /** air: the idle choice reads "Auto cover" for an Air doctrine holder (pillars.idleAirLabel) */
+  private idle: { name: string; help: string } | null = null;
   private refill: HTMLButtonElement | null = null;
   private recon: HTMLButtonElement | null = null;
   private extra: HTMLElement | null = null;
@@ -114,7 +117,7 @@ export class GroupBar {
   private showLine(): void {
     const v = this.hover ?? this.lit;
     const info = GROUP_CHOICES[this.kind].find((i) => i.v === v);
-    setText(this.line, info ? info.help : '');
+    setText(this.line, v === 'idle' && this.idle ? this.idle.help : info ? info.help : '');
   }
 
   /** Hidden while the player has fewer than `min` of the type. */
@@ -126,6 +129,16 @@ export class GroupBar {
     const [one, many] = TITLE[this.kind];
     setText(this.title, n === 1 ? one : many);
     setText(this.count, String(n));
+    if (this.kind === 'air') {
+      const idle = idleAirLabel(s, me.id);
+      const b = this.btns.get('idle');
+      if (b && idle.name !== (this.idle?.name ?? 'Idle')) {
+        const l = b.querySelector('.wr-btn-l');
+        if (l) l.textContent = idle.name;
+        setTip(b, idle.help);
+      }
+      this.idle = idle;
+    }
     // lit: the group's order (all of them have it, or most of them: then "set by hand" says how many differ)
     this.lit = g.choice;
     for (const [v, b] of this.btns) {
