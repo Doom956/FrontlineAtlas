@@ -353,7 +353,7 @@ describe('Air cover', () => {
 });
 
 describe('AI doctrine advice', () => {
-  it('a dug-in enemy line raises Siege and Air; own dug borders next to a bigger neighbour raise Fortress', () => {
+  it('a dug-in enemy line raises Siege and Air (Air harder); own dug borders leave Fortress as it was', () => {
     const s = front();
     const score = (pid: number, id: DoctrineId): number => doctrineAdvice(s, pid).find((a) => a.id === id)!.score;
     const siege0 = score(1, 'siege');
@@ -361,12 +361,9 @@ describe('AI doctrine advice', () => {
     const fort0 = score(1, 'fortress');
     dig(s, 100);
     expect(score(1, 'siege')).toBeCloseTo(siege0 + Math.min(0.4, 0.15 * 2), 6);
-    expect(score(1, 'air')).toBeCloseTo(air0 + Math.min(0.4, 0.15 * 2), 6);
-    // Fortress: own line dug, but the neighbour is not bigger: no change until it is.
+    expect(score(1, 'air')).toBeCloseTo(air0 + Math.min(0.5, 0.3 * 2), 6);
+    // Fortress: no trench term (it steered losing nations into Fortress).
     expect(score(1, 'fortress')).toBeCloseTo(fort0, 6);
-    for (let y = 0; y < 20; y++) setOwner(s, at(s, 29, y), 2); // 2 is now bigger (31 vs 29 columns)
-    dig(s, 100);
-    expect(score(1, 'fortress')).toBeGreaterThan(fort0 + 0.1);
   });
 });
 
