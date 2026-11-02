@@ -3,7 +3,7 @@
 // A rendering client calls these with the NEXT tick's number, before that tick's work; a client that is busy (several
 // turns per frame) or catching up calls them less often or not at all. They must not change what the sim decides.
 import { mainFoe, fortifiedShare, openness, suggestions } from '../src/sim/advisor';
-import { airRaidOn, airSortieCost, airZones } from '../src/sim/airwings';
+import { airCoverActive, airCoverSorties, airRaidOn, airSortieCost, airZones } from '../src/sim/airwings';
 import { allyRefusal, allyStatus, runawayLeader } from '../src/sim/allies';
 import { buildManyPreview, upgradeBuildingsPreview } from '../src/sim/bulkbuild';
 import { barrageReadyIn, canBarrage } from '../src/sim/barrage';
@@ -19,6 +19,7 @@ import { warBondsInfo, mercenaryPrice, fundAllyEffect } from '../src/sim/spendin
 import { bestFactory, canBuildTankDivision, spearheadPreview, tankDivisionLimit } from '../src/sim/tanks';
 import { canResearch } from '../src/sim/tech';
 import { techStatus } from '../src/sim/techtree';
+import { drainTrenchChanges, frontTrench, trenchInfoAt, trenchLevel, trenchMaxLevel } from '../src/sim/trenches';
 import { borderTiles, coastCount, depositCount } from '../src/sim/territory';
 import { canParadrop } from '../src/sim/units';
 import { canReconFlight, reconCooldownLeft, revealsOf } from '../src/sim/variants';
@@ -58,13 +59,17 @@ export const READS: Record<string, Read> = {
       estimateAttack(s, pid, t, troops);
       supplyEfficiency(s, pid, t);
       const o = s.map.owner[t];
+      trenchLevel(s, t);
+      trenchInfoAt(s, t);
       if (o > 0) {
         coreDefenseAt(s, o, t);
         lastStandFactor(s, o, pid);
         borders(s, pid, o);
+        frontTrench(s, pid, o);
       }
     }
-    attacksOf(s, pid);
+    for (const a of attacksOf(s, pid)) if (a.target > 0) frontTrench(s, pid, a.target);
+    trenchMaxLevel(s, pid);
   },
   naval: (s, pid) => {
     for (const p of s.players) if (p.id > 0 && p.id !== pid) atWar(s, pid, p.id);
@@ -140,6 +145,8 @@ export const READS: Record<string, Read> = {
         reconCooldownLeft(s, b);
       }
     }
+    for (const b of buildingsOf(s, pid, 'airfield')) airCoverActive(s, b.tile);
+    airCoverSorties(s, pid);
     barrageReadyIn(s, pid);
     airRaidOn(s, pid);
     airSortieCost(s, pid);
@@ -148,6 +155,7 @@ export const READS: Record<string, Read> = {
   map: (s) => {
     minefields(s);
     airZones(s);
+    drainTrenchChanges(s);
   },
 };
 export const GROUPS = Object.keys(READS);
