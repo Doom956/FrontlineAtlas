@@ -258,12 +258,10 @@ export const OVERTIME_MIN_SHARE = 0.5;
 
 // ---------- supply ----------
 // Cheap model: a front tile's supply distance is the straight-line distance to the nearest own supply source
-// (capital, finished cities and depots, live beachheads), no path search.
+// (capital, finished cities and forts, live beachheads), no path search.
 export const SUPPLY_RANGE = 110;
 export const MIN_SUPPLY_EFF = 0.45;
 export const DEFENDER_NO_SUPPLY = 0.85;
-export const DEPOT_ATTACK_BONUS = 0.1;
-export const DEPOT_RADIUS = 60;
 
 // ---------- buildings ----------
 // Buildings are few and levelled (DESIGN section 5): a build order near an own building of the same type upgrades it
@@ -306,8 +304,7 @@ export const BUILDINGS: Record<BuildingType, BuildingInfo> = {
   barracks: { name: 'Barracks', hotkey: '6', cost: 600, iron: 0, costGrowth: 0.6, buildTime: 6, tech: null, coastal: false, radius: 0, maxLevel: 3, capturable: true, description: '+10% troop growth and -5% infantry losses per level (3 levels count).' },
   factory: { name: 'Factory', hotkey: '7', cost: 900, iron: 60, costGrowth: 0.5, buildTime: 10, tech: null, coastal: false, radius: 0, maxLevel: 5, capturable: true, description: 'Turns troops into Armor (fast, strong on open ground; burns oil). Faster per level.' },
   arsenal: { name: 'Arsenal', hotkey: '8', cost: 800, iron: 60, costGrowth: 0.5, buildTime: 10, tech: null, coastal: false, radius: 0, maxLevel: 5, capturable: true, description: 'Turns troops into Artillery (beats forts; fires barrages). Faster per level.' },
-  fort: { name: 'Fort', hotkey: '9', cost: 700, iron: 30, costGrowth: 0.35, buildTime: 8, tech: null, coastal: false, radius: 20, maxLevel: 5, capturable: true, description: 'Attackers lose x2 and move half as fast nearby; stronger and wider per level. Artillery beats forts.' },
-  supplyDepot: { name: 'Supply Depot', hotkey: '0', cost: 500, iron: 10, costGrowth: 0.35, buildTime: 6, tech: null, coastal: false, radius: 60, maxLevel: 3, capturable: true, description: 'Supplies your fronts nearby and gives them +10% attack; wider per level.' },
+  fort: { name: 'Fort', hotkey: '9', cost: 700, iron: 30, costGrowth: 0.35, buildTime: 8, tech: null, coastal: false, radius: 20, maxLevel: 5, capturable: true, description: 'Attackers lose x2 and move half as fast nearby; a supply source. Stronger and wider per level. Artillery beats forts.' },
   watchtower: { name: 'Watchtower', hotkey: 'Q', cost: 350, iron: 0, costGrowth: 0.3, buildTime: 4, tech: null, coastal: false, radius: 80, maxLevel: 3, capturable: true, description: 'Shows the troop mix of nearby enemies, +20% defence close by, warns of planes and landings. Wider per level.' },
   port: { name: 'Port', hotkey: 'E', cost: 700, iron: 0, costGrowth: 0.4, buildTime: 8, tech: null, coastal: true, radius: 0, maxLevel: 5, capturable: true, description: 'Coastal. Trade ships (gold), free fast transports, warships. More of all per level.' },
   lab: { name: 'Research Lab', hotkey: 'R', cost: 750, iron: 0, costGrowth: 0.7, buildTime: 8, tech: null, coastal: false, radius: 0, maxLevel: 5, capturable: true, description: '+1 science/s per level.' },
@@ -317,7 +314,7 @@ export const BUILDINGS: Record<BuildingType, BuildingInfo> = {
   silo: { name: 'Missile Silo', hotkey: 'N', cost: 2000, iron: 150, costGrowth: 0.6, buildTime: 15, tech: 'rocketry', coastal: false, radius: 0, maxLevel: 3, capturable: false, description: 'Launches rockets (Rocketry) and atom bombs (Nuclear Fission); one launch slot per level.' },
 };
 export const BUILDING_ORDER: BuildingType[] = [
-  'city', 'farm', 'market', 'mine', 'oilWell', 'barracks', 'factory', 'arsenal', 'fort', 'supplyDepot',
+  'city', 'farm', 'market', 'mine', 'oilWell', 'barracks', 'factory', 'arsenal', 'fort',
   'watchtower', 'port', 'lab', 'hospital', 'airfield', 'sam', 'silo',
 ];
 /** @deprecated use BUILDINGS.city.maxLevel (buildings.buildingMaxLevel) */
@@ -336,8 +333,6 @@ export const WATCHTOWER_LEVEL_RADIUS = 20;
 export const SAM_LEVEL_RADIUS = 10;
 /** Airfield fighter cover radius + this per level above 1. */
 export const AIRFIELD_LEVEL_RADIUS = 15;
-/** Supply depot attack-bonus radius + this per level above 1. */
-export const DEPOT_LEVEL_RADIUS = 15;
 /** Trade ship gold x (1 + this x (port level - 1)). */
 export const PORT_LEVEL_TRADE = 0.5;
 export const BUILDING_DEMOLISH_REFUND = 0.25;

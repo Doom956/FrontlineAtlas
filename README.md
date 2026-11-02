@@ -74,7 +74,7 @@
 
 - **Three troop types.** Infantry, armor and artillery counter each other. Factories and Arsenals set your mix.
 - **Terrain and supply.** Forest, hills, mountains, swamp, desert and tundra change defence and speed. Far fronts fight weaker.
-- **17 buildings, levelled.** Cities, farms, markets, mines, forts, ports, labs, airfields, SAM sites, missile silos and more.
+- **16 buildings, levelled.** Cities, farms, markets, mines, forts, ports, labs, airfields, SAM sites, missile silos and more.
 - **Research.** 48 techs in 5 tiers across two tabs. OR choices lock the other branch for good.
 - **Seven doctrines.** From 5:00 pick a play style: Blitz, Fortress, Siege, Merchant, Naval, Air or Expansion. Nothing is ever forbidden.
 - **Warships with stances.** Auto, hunt, escort, bombard or blockade.
@@ -144,7 +144,7 @@ Every client runs the same simulation. The server only relays orders and compare
 | Drag, `W` `A` `S` `D`, arrows | Pan the map |
 | Mouse wheel | Zoom |
 | `Tab` | Build menu |
-| `1`-`9`, `0`, `Q` `E` `R` `H` `F` `G` `N` | Building hotkeys (hold Shift to place several) |
+| `1`-`9`, `Q` `E` `R` `H` `F` `G` `N` | Building hotkeys (hold Shift to place several) |
 | `[` and `]` | Attack share down / up |
 | `T` `U` `Y` `P` `J` `L` | Research, Army, Forces, Diplomacy, Events, Map key |
 | `Shift+D` | Doctrine picker |

@@ -3,7 +3,7 @@
 Frontline Atlas is a grand-scale territory-control strategy game in the browser: huge pixel maps (up to 2600x1600 tiles,
 nearly 2 million land tiles), dozens of nations and hundreds of tribes, armies of millions, nations that grow by
 pushing their whole borders, and one troop pool that regrows toward a cap. Strategy comes from many decisions that
-matter: three land troop types with counters, terrain that favours some troops over others, supply lines, 17
+matter: three land troop types with counters, terrain that favours some troops over others, supply lines, 16
 levelled buildings, a research tree, navy, air power, missiles, paratroopers, artillery barrages and diplomacy.
 
 Design direction: **simple surface, deep options.** The default screen reads like a classic territory game (solid
@@ -180,7 +180,7 @@ transports are out of it), gold, iron, oil, science. There are no workers and no
   to answer, troops nearly full (expand / attack the weakest neighbour), a weak tribe next door, cities (none yet,
   another one, an upgrade), farms (on Fertile land when we own some), a Mine / Oil Well on owned deposits, Market and
   Lab, the main foe (lots of armor -> forts on hills or infantry in forests; forts -> an Arsenal; bombers / silos ->
-  a SAM Site), a front beyond supply (a Supply Depot near it), a fort or SAM to shell with a barrage, ready
+  a SAM Site), a front beyond supply (a Fort near it: forts are supply sources), a fort or SAM to shell with a barrage, ready
   paratroopers (or "silence the SAM first"), research when auto research is off, and friendly neighbours to ally
   with (especially ones fighting our enemy). `tile` is where to look or click (for buildings: the spot
   resolveBuildTarget would pick), `building` lets the client preselect the building.
@@ -244,7 +244,7 @@ perfect square; at 0.25 with the wider jitter a free expansion grows a round, sl
   traitor, x0.7 against a tribe, x0.85 where the defender is out of supply. The defender loses its density per
   tile (`DEFENDER_LOSS_PER_TILE`), split by composition.
 - Attack power per unit = composition-weighted (type attack x terrain attack x matchup x artillery siege bonus)
-  x supply efficiency x depot bonus x combined arms (1 for plain infantry on supplied plains). Siege bonus
+  x supply efficiency x combined arms (1 for plain infantry on supplied plains). Siege bonus
   (`artillerySiegeBonus`) = 1 + (`ARTILLERY_FORT_BONUS` (3) - 1) x min(1, (fort multiplier - 1) / (`FORT_DEFENSE` - 1)):
   x3 under a fort, x1.4 under a lone watchtower, x1 in the open. Losses are split by
   vulnerability (infantry 1.0, armor 0.6, artillery 1.0 or 1.8 when over 40% of the force), barracks cut infantry
@@ -337,7 +337,7 @@ only within 20-30 tiles of your border and only one spot every 14-20 s, capturin
 paratroopers can land outside SAM range (and need SAM cover gone to survive inside it). Barrages kill a few percent
 of an army at most, so defence (forts out of reach, depth, numbers) still matters.
 
-**Supply** (cheap model, no path search). Supply sources: capital, finished cities and supply depots, and for
+**Supply** (cheap model, no path search). Supply sources: capital, finished cities and finished forts, and for
 `BEACHHEAD_SUPPLY_SECONDS` the landing tile of an invasion. A tile's supply distance is the straight-line distance
 to the player's nearest source (sources cached per player, rebuilt when its buildings, capital or beachheads
 change). Within `SUPPLY_RANGE` (110 tiles, Logistics +50%) efficiency is 1, falling linearly to `MIN_SUPPLY_EFF` at
@@ -375,7 +375,7 @@ client previews with it). For an order of `type` at tile T:
 3. The result is `{ tile, upgrade, cost, level, buildingId, affordable, reason? }` (the order is possible; `affordable`
    false with `reason` "Not enough gold / iron") or `{ error }`. Tech is checked first ("Needs research: Medicine").
 
-**Levels.** `Building.level` 1..`BUILDINGS[type].maxLevel`: city 6, barracks 3, supply depot 3, watchtower 3,
+**Levels.** `Building.level` 1..`BUILDINGS[type].maxLevel`: city 6, barracks 3, watchtower 3,
 hospital 2, airfield 3, SAM 3, silo 3, everything else 5. An upgrade costs the same as a new building and takes the
 type's `buildTime`; meanwhile the building keeps working at its old level (`Building.upgradeLeft` counts down, then
 the level goes up, `buildingDone` event "... upgraded to level N"). **Price** of the next level, new or upgrade:
@@ -389,7 +389,6 @@ at sea per port level. Spatial effects grow modestly:
 - Fort: radius `fortRadius` = 20 (Fortification 28) + `FORT_LEVEL_RADIUS` (3) per level above 1, defence
   `fortDefense` = x2 (Fortification x2.5) + `FORT_LEVEL_DEFENSE` (0.25) per level; the strongest working fort counts.
 - Watchtower: intel radius 80 + `WATCHTOWER_LEVEL_RADIUS` (20) per level (Radar x2).
-- Supply depot: attack-bonus radius 60 + `DEPOT_LEVEL_RADIUS` (15) per level.
 - Airfield: fighter cover 80 + `AIRFIELD_LEVEL_RADIUS` (15) per level, `aircraftCap` = 6 per level, paradrop range
   and size per level (section 4).
 - SAM site: radius 60 + `SAM_LEVEL_RADIUS` (10) per level and **L shots** per salvo; silo: **L launch slots**.
@@ -411,8 +410,7 @@ barrage lose hp and repair at `BUILDING_REPAIR_PER_S`; forts and SAMs are knocke
 | Barracks | +10% troop growth, -5% infantry losses (3 levels count) | 3 | |
 | Factory | converts troops -> armor | 5 | |
 | Arsenal | converts troops -> artillery | 5 | |
-| Fort | attackers lose x2 and move half as fast within 20 tiles; wider and stronger per level | 5 | |
-| Supply Depot | supply source, +10% attack for fronts within 60 tiles (+15 per level) | 3 | |
+| Fort | attackers lose x2 and move half as fast within 20 tiles; wider and stronger per level; supply source | 5 | |
 | Watchtower | shows enemy troop mix within 80 tiles (+20 per level), +20% def within 12, early warning of bombers, cargo planes and transports | 3 | |
 | Port | coastal; trade ships, faster free transports, warships | 5 | coast |
 | Research Lab | +1 science/s | 5 | |
@@ -746,7 +744,8 @@ an army mix that counters the main foe, research, ally with strong neighbours th
 and retreat attacks that bleed without taking land. Every build order goes through `resolveBuildTarget` (the same
 rule as a click): economic types prefer upgrading the building they have (fewer, bigger buildings), cities are
 upgraded to level 3 before another is founded (unless a front lacks supply), forts and towers upgrade the one that
-already covers a spot. With artillery they **barrage** forts and SAM sites near the fronts of nations they fight or
+already covers a spot, and a main front mostly beyond supply gets a fort behind it (forts are supply sources; the
+spot farthest from our other sources wins). With artillery they **barrage** forts and SAM sites near the fronts of nations they fight or
 are about to attack (SAMs first; with lots of artillery and nothing to silence, the main front itself), and
 sometimes (40% of the air turns with a ready airfield) **drop paratroopers** on a capital or city of a nation they
 clearly outnumber (careful AIs avoid SAM cover), else about 30 tiles behind the main front toward its capital.
