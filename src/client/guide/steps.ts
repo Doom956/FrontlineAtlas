@@ -20,6 +20,8 @@ import { isIncoming } from '../forces';
 import { missingBuilding, onOrder, priceOf } from '../hud/procure';
 import { snapBuild } from '../placement';
 import { STRIKE_ORDER, STRIKES, type StrikeId } from '../strikes';
+import { airCoverSorties, deepestFrontTile, frontTrench, hasTrenches, trenchLevel } from '../trench';
+import { borderTiles } from '../../sim/territory';
 import type { GuideCtx, GuideStep, GuideTip } from './engine';
 
 // ------------------------------------------------------------------------------------------------ helpers
@@ -229,6 +231,62 @@ function airAnswer(c: GuideCtx): { text: string; target: string | undefined; til
   return null;
 }
 
+// ------------------------------------------------------------------------------------------------ trenches, Air cover
+
+/** The trench tip waits for this many own level 2+ border tiles facing a nation (a stretch you can see). */
+const TRENCH_TIP_TILES = 8;
+
+/**
+ * Where trenches first matter to the player (the `trench` tip): the deepest tile of a front their attack runs into
+ * that averages level 2+, else the first of their own level 2+ border tiles facing a nation, once there are
+ * TRENCH_TIP_TILES of them. -1 = neither yet.
+ */
+export function trenchSpot(c: GuideCtx): number {
+  const { s, me } = c;
+  if (!hasTrenches(s)) return -1;
+  return cached(s, `trench${me.id}`, () => {
+    for (const a of s.attacks) {
+      if (a.attacker !== me.id || a.target <= 0 || isTribe(s.players[a.target])) continue;
+      if (frontTrench(s, me.id, a.target) >= 2) {
+        const t = deepestFrontTile(s, me.id, a.target);
+        if (t >= 0) return t;
+      }
+    }
+    // own border: a stretch long enough to see (TRENCH_TIP_TILES tiles at level 2+ facing a nation)
+    const { list, len } = borderTiles(s, me.id);
+    const w = s.map.width;
+    let first = -1;
+    let n = 0;
+    for (let k = 0; k < len && n < TRENCH_TIP_TILES; k++) {
+      const i = list[k];
+      if (trenchLevel(s, i) < 2) continue;
+      for (const j of [i - 1, i + 1, i - w, i + w]) {
+        if (j < 0 || j >= s.map.owner.length || (j === i - 1 && i % w === 0) || (j === i + 1 && j % w === 0)) continue;
+        const o = s.map.owner[j];
+        if (o > 0 && o !== me.id && !isTribe(s.players[o])) {
+          if (first < 0) first = i;
+          n++;
+          break;
+        }
+      }
+    }
+    return n >= TRENCH_TIP_TILES ? first : -1;
+  });
+}
+
+/** The tile of the player's newest live Air cover zone (the `airCover` tip), -1 = none. */
+export function airCoverSpot(c: GuideCtx): number {
+  const air = c.s.air;
+  if (!air?.cover || airCoverSorties(c.s, c.me.id) <= 0) return -1;
+  let best = -1;
+  let until = -1;
+  for (const z of air.zones) {
+    if (z.owner !== c.me.id || z.untilTick <= c.s.tick || !air.cover.some((x) => x.airfield === z.wing)) continue;
+    if (z.untilTick > until) (best = z.tile), (until = z.untilTick);
+  }
+  return best;
+}
+
 // ------------------------------------------------------------------------------------------------ opening
 
 /** The opening: start, troops, gold, expand, attack size, a City, a tribe, the standings. */
@@ -358,6 +416,12 @@ export function guideTips(): GuideTip[] {
       },
       tile: (c) => attack(c)?.tile ?? -1,
       when: (c) => playing(c) && attackOnMe(c.s, c.me) !== null,
+    },
+    {
+      id: 'trench',
+      text: 'That dark line is a trench: quiet borders dig in, so attacks there cost more. Break it with artillery, a barrage, planes or warships, or land behind it.',
+      tile: trenchSpot,
+      when: (c) => playing(c) && trenchSpot(c) >= 0,
     },
     {
       id: 'airDefence',
@@ -498,6 +562,14 @@ export function guideTips(): GuideTip[] {
       tile: (c) => buildingTile(c.s, c.me, 'airfield'),
       when: (c) => playing(c) && owns(c.s, c.me, 'airfield'),
       done: (c) => (c.s.air?.wings ?? []).some((w) => w.owner === c.me.id && (w.mission === 'support' || w.mission === 'strategic')),
+    },
+    {
+      id: 'airCover',
+      text: 'Your idle airfields now bomb enemy trenches in front of your attacks, free of charge. Set a mission to use them elsewhere.',
+      tile: airCoverSpot,
+      // the player's first automatic Air cover sortie (Air doctrine)
+      when: (c) => playing(c) && airCoverSpot(c) >= 0,
+      still: (c) => airCoverSpot(c) >= 0,
     },
     {
       id: 'alliance',

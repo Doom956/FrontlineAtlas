@@ -1,4 +1,5 @@
 // One simulation tick (100 ms of game time). Fixed system order for determinism.
+import { updateTrenches } from './trenches';
 import { updateAdvisor } from './advisor';
 import { clearLeaderCache, updateAllies } from './allies';
 import { aiSpawn, updateAI } from './ai';
@@ -60,6 +61,7 @@ export function tick(state: GameState): void {
     updateSupply(state);
     updateHeartlands(state);
     updateAttacks(state);
+    updateTrenches(state); // dug-in borders: staggered dig passes (trenches.ts)
     updateWarMemory(state);
     updateFollow(state); // war targets for Follow my war, auto recon (warTarget.ts)
     updateEndgame(state);
