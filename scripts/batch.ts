@@ -34,6 +34,7 @@
 //                                heavyTanks, groundAttack | heavyBombers, blitzTactics | trenchWarfare (land),
 //                                stockExchange | freeTrade (economy))
 //   --slot 1                     with --specialist: which AI nation (1 = the first non-tribe AI nation)
+//   --rule marketCapFixed,stackAdd=1  gold rule switches (config GOLD_RULES; merchantMerc = Merchant gold -> cheaper mercenaries)
 //
 // What it prints, per configuration and over all games: share of games with a winner and the median minute of the
 // win, army mix (armor / artillery share of all nations' armies) at 10/20/30 min, the troop mixes winners used,
@@ -49,7 +50,7 @@
 // With --specialist: per pillar and map type, the slot's win rate (Wilson 95%), land share at 10/20/30 min and at the
 // end, survival at 20/30 min, the game's median finish minute and the pillar's units, for the specialist and the
 // baseline, with the specialist/baseline ratio of wins and of land at the end (paired bootstrap 95% over seeds).
-import { BUILDING_ORDER, DEFAULT_AI_COUNT, TECHS, TICKS_PER_SECOND, VICTORY_LAND_SHARE, WATCHTOWER_DEF_RADIUS } from '../src/sim/config';
+import { BUILDING_ORDER, DEFAULT_AI_COUNT, DOCTRINE_LEVERS, GOLD_RULES, TECHS, TICKS_PER_SECOND, VICTORY_LAND_SHARE, WATCHTOWER_DEF_RADIUS } from '../src/sim/config';
 import { armyTotal, population } from '../src/sim/economy';
 import { fortMultiplierAt, fortRadius } from '../src/sim/buildings';
 import { forEachInRadius } from '../src/sim/grid';
@@ -101,6 +102,8 @@ interface Options {
   decided: number;
   /** --from: JSON-line result files to report on instead of playing */
   from: string[];
+  /** --rule: gold rule switches set for this run */
+  rules: string[];
   /** worker mode: run only jobs with index % of === shard and print JSON lines */
   shard: number;
   of: number;
@@ -124,6 +127,7 @@ function parseOptions(argv: string[]): Options {
     specialist: null,
     fork: null,
     slot: 1,
+    rules: [],
     shard: -1,
     decided: 0,
     from: [],
@@ -140,6 +144,24 @@ function parseOptions(argv: string[]): Options {
           const [key, raw] = item.split('=');
           const val = raw === undefined ? true : raw === 'true' ? true : raw === 'false' ? false : Number.isFinite(Number(raw)) ? Number(raw) : raw;
           (o.mods as Record<string, unknown>)[key] = val;
+        }
+        k++;
+        break;
+      }
+      case '--rule': {
+        // Gold rule switches for A/B runs (config GOLD_RULES; merchantMerc: the Merchant doctrine's gold +8% becomes
+        // mercenaries 30% cheaper). Every shard parses the same argv, so all games of a run use the same rules.
+        for (const item of list()) {
+          const [key, raw] = item.split('=');
+          const on = raw === undefined || raw === '1' || raw === 'true';
+          if (key === 'merchantMerc') {
+            if (on) Object.assign(DOCTRINE_LEVERS.merchant, { gold: 0, mercCost: 0.3 });
+          } else if (key in GOLD_RULES) (GOLD_RULES as Record<string, boolean>)[key] = on;
+          else {
+            console.error(`Unknown rule ${key} (${Object.keys(GOLD_RULES).join(', ')}, merchantMerc)`);
+            process.exit(1);
+          }
+          o.rules.push(`${key}=${on ? 1 : 0}`);
         }
         k++;
         break;
@@ -1619,7 +1641,7 @@ async function main(): Promise<void> {
     for (const j of jobs) if (j.index % o.of === o.shard) process.stdout.write(JSON.stringify(await runGame(j, o)) + '\n');
     return;
   }
-  console.log(`Frontline Atlas batch: ${jobs.length} games (${o.sizes.join(',')} x ${o.ais.length ? o.ais.join(',') : 'default'} AIs x ${o.seeds} seeds from ${o.start}, maps ${o.maps.join(',')}), cap ${o.minutes} min, ${o.difficulty}, ${o.jobs} job(s)${o.specialist ? `, specialist ${o.specialist.join(',') || 'none'} + baseline, slot ${o.slot}${o.fork ? `, fork ${o.fork}` : ''}` : ''}.`);
+  console.log(`Frontline Atlas batch: ${jobs.length} games (${o.sizes.join(',')} x ${o.ais.length ? o.ais.join(',') : 'default'} AIs x ${o.seeds} seeds from ${o.start}, maps ${o.maps.join(',')}), cap ${o.minutes} min, ${o.difficulty}, ${o.jobs} job(s)${o.specialist ? `, specialist ${o.specialist.join(',') || 'none'} + baseline, slot ${o.slot}${o.fork ? `, fork ${o.fork}` : ''}` : ''}${o.rules.length ? `, rules ${o.rules.join(',')}` : ''}.`);
   const t0 = performance.now();
   let results: GameResult[];
   if (o.jobs <= 1) {
