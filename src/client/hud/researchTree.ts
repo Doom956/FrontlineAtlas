@@ -55,7 +55,7 @@ export const TECH_LINE: Record<TechId, string> = {
   logistics: 'Wider supply, faster attacks',
   fortification: 'Forts 2.5x stronger and wider',
   navigation: 'Unlocks warships; faster transports',
-  banking: '+30% gold; better markets',
+  banking: '+30% gold; markets reach +80% sooner',
   medicine: 'Unlocks Hospitals; faster troop growth',
   mechanization: 'Armor +25% attack and defence',
   ballistics: 'Artillery +30%; longer barrages',

@@ -84,20 +84,21 @@ export const TROOP_GROWTH_K = 1.5;
 export const TROOP_GROWTH_EXP = 0.73;
 export const FARM_GROWTH_BONUS = 0.04; // +4% troop growth per finished farm (x2 on Fertile), counted up to FARM_MAX
 export const FARM_MAX = 12;
-/** Gold/s = GOLD_BASE + GOLD_LAND x (land weight)^TROOP_CAP_LAND_EXP + CITY_GOLD per city level, x markets, Banking. */
+/** Gold/s = (GOLD_BASE + GOLD_LAND x (land weight)^TROOP_CAP_LAND_EXP + CITY_GOLD per city level) x (1 + markets + Banking + doctrine) (GOLD_RULES). */
 export const GOLD_BASE = 8;
 export const GOLD_LAND = 0.45;
 export const CITY_GOLD = 5; // per city level
 export const MARKET_GOLD_BONUS = 0.12; // +12% gold per market
 export const MARKET_MAX_BONUS = 0.8;
 /**
- * Gold rule switches (balance round 4, A/B runs: scripts/batch.ts --rule name=1). A real game never changes them.
+ * How gold bonuses combine (balance round 4; scripts/rules.ts flips them for A/B runs, a real game never does).
  * marketCapFixed: Banking and the Merchant doctrine make each market level pay more, but all markets together still
- *   stop at MARKET_MAX_BONUS (before: they scaled the limit too, x1.44 with both).
+ *   stop at MARKET_MAX_BONUS (before, they lifted the limit too: x1.44 with both at the limit).
  * stackAdd: the percentage gold bonuses (markets, Banking, the doctrine's gold) add up into one bonus instead of
- *   multiplying each other.
+ *   multiplying each other (+80% markets and +30% Banking = +110%, was x2.34). An early stack of every gold bonus
+ *   (the economy pillar) no longer snowballs; a nation with one or two bonuses loses little.
  */
-export const GOLD_RULES = { marketCapFixed: false, stackAdd: false };
+export const GOLD_RULES = { marketCapFixed: true, stackAdd: true };
 export const IRON_PER_MINE = 5.0;
 export const OIL_PER_WELL = 2.5;
 export const BASE_SCIENCE = 2; // was 0.5 (3 in the first shop round): research is quicker, mostly at the start (labs add SCIENCE_PER_LAB each)
@@ -409,7 +410,7 @@ export const TECHS: Record<TechId, TechInfo> = {
   logistics: { name: 'Logistics', tier: 1, science: 150, gold: 300, requires: [], description: 'Supply range +50%, attack speed +15%.' },
   fortification: { name: 'Fortification', tier: 1, science: 150, gold: 300, requires: [], description: 'Forts x2.5 and radius 28.' },
   navigation: { name: 'Navigation', tier: 1, science: 150, gold: 300, requires: [], description: 'Warships; transports +50% speed and +1 at sea.' },
-  banking: { name: 'Banking', tier: 2, science: 300, gold: 600, requires: ['agriculture'], description: 'Gold +30%, markets x1.25.' },
+  banking: { name: 'Banking', tier: 2, science: 300, gold: 600, requires: ['agriculture'], description: 'Gold +30% (added to the market bonus); each market level pays 25% more, all markets still at most +80%.' },
   medicine: { name: 'Medicine', tier: 2, science: 300, gold: 600, requires: ['agriculture'], description: 'Hospitals; troop growth +20%.' },
   mechanization: { name: 'Mechanization', tier: 2, science: 600, gold: 600, requires: ['metallurgy'], description: 'Armor +25% attack and defence.' },
   ballistics: { name: 'Ballistics', tier: 2, science: 300, gold: 600, requires: ['metallurgy'], description: 'Artillery +30% attack; unescorted penalty starts at 55%; barrages reach x1.5 farther and reload faster.' },
@@ -685,7 +686,7 @@ export interface DoctrineLevers {
   gold?: number;
   /** merchant: gold carried by own trade ships this much higher */
   tradeGold?: number;
-  /** merchant: market bonus (and its cap) this much higher */
+  /** merchant: each market level's bonus this much higher (all markets still stop at MARKET_MAX_BONUS) */
   marketBonus?: number;
   /** merchant (rule test): mercenaries cost this much less */
   mercCost?: number;

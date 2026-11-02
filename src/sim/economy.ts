@@ -247,8 +247,9 @@ function convertArmy(state: GameState, p: Player, dt: number): void {
 }
 
 /**
- * Gold per second: base + land + cities, x markets, Banking, the Merchant doctrine (gold, markets, level 3: more per
- * trade ship at sea); tribes x0.5; AI nations x the difficulty's income.
+ * Gold per second: base + land + cities, x (1 + markets + Banking + the Merchant doctrine's gold) (GOLD_RULES: the
+ * bonuses add up; Banking and Merchant raise each market level but not the +80% market limit); Merchant level 3: more
+ * per trade ship at sea; tribes x0.5; AI nations x the difficulty's income.
  */
 export function goldIncome(state: GameState, p: Player): number {
   const banking = hasTech(p, 'banking');

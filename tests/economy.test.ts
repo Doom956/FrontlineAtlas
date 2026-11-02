@@ -231,7 +231,7 @@ describe('troop cap and growth (one pool)', () => {
 });
 
 describe('income', () => {
-  it('gold: base + land + cities, x markets (capped), Banking', () => {
+  it('gold: base + land + cities, x (1 + markets (capped) + Banking)', () => {
     const s = twoPlayers();
     const p = s.players[1];
     const land = landValue(20 * H);
@@ -254,7 +254,15 @@ describe('income', () => {
 
     p.techs.push('banking');
     updateEconomy(s);
-    expect(p.income.gold).toBeCloseTo(raw * (1 + MARKET_MAX_BONUS * 1.25) * 1.3, 6);
+    // Banking adds +30% to the market bonus; its x1.25 on markets can't lift the +80% limit (GOLD_RULES).
+    expect(p.income.gold).toBeCloseTo(raw * (1 + MARKET_MAX_BONUS + 0.3), 6);
+    // Below the limit Banking's x1.25 counts: 4 market levels = 48% x 1.25 = 60%.
+    const few = twoPlayers();
+    const q = few.players[1];
+    q.techs.push('banking');
+    for (let k = 0; k < 4; k++) addBuilding(few, 1, idx(2 + 6 * k, 2), 'market');
+    updateEconomy(few);
+    expect(q.income.gold).toBeCloseTo((GOLD_BASE + GOLD_LAND * land) * (1 + 4 * MARKET_GOLD_BONUS * 1.25 + 0.3), 6);
   });
 
   it('iron, oil, science; Metallurgy and Industrialization', () => {
