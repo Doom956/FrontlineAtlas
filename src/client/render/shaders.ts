@@ -20,6 +20,8 @@ void main() {
  *            hover), rows 8-11 border colour (palette.ts does the colour work, once per palette change)
  *   uFort    R16UI  owner of the fort covering the tile (0 = none)
  *   uAux     R8     supply class (overlay) or spawn mask (spawn phase)
+ *   uTrench  R8     trench level 0..4 (trenchFeed.ts): an earth hatch on dug tiles, a zig-zag line along the edge that
+ *                   faces another nation, and far out only a darker border on level 2+
  */
 export const MAP_FS = /* glsl */ `#version 300 es
 precision highp float;
@@ -33,6 +35,7 @@ uniform sampler2D uTerrCol;
 uniform sampler2D uPal;
 uniform usampler2D uFort;
 uniform sampler2D uAux;
+uniform sampler2D uTrench;
 
 uniform vec2 uView;
 uniform vec2 uCenter;
@@ -43,6 +46,7 @@ uniform uint uNowDs;
 uniform int uAuxMode;
 uniform int uShowRes;
 uniform int uFortOn;
+uniform int uTrenchOn;
 uniform vec3 uTerr[9];
 uniform vec3 uRes[4];
 uniform vec3 uBg;
@@ -64,6 +68,48 @@ float hash(ivec2 c, uint salt) {
   uint x = uint(c.x) * 1664525u ^ (uint(c.y) * 1013904223u) ^ (salt * 2654435761u);
   x ^= x >> 16u; x *= 0x7feb352du; x ^= x >> 15u; x *= 0x846ca68bu; x ^= x >> 16u;
   return float(x) * (1.0 / 4294967296.0);
+}
+int trenchAt(ivec2 p) {
+  p = clamp(p, ivec2(0), ivec2(uMap) - 1);
+  return int(texelFetch(uTrench, p, 0).r * 255.0 + 0.5);
+}
+// A nation other than o (not nobody, not a tribe): the side trenches face.
+bool foeAt(ivec2 p, uint o) {
+  uint n = ownerAt(p);
+  return n != 0u && n != o && int(pal(n, 1).r * 255.0 + 0.5) != 3;
+}
+// Distance from the fragment to the nearest edge (or outer corner) of tile ti that faces a foe of o, 1e3 = none; s =
+// the position along that edge in tile units (continuous across tiles). Using the nearest edge keeps the trench line
+// one unbroken offset curve around staircase borders.
+float foeEdge(ivec2 ti, vec2 f, vec2 t, uint o, out float s) {
+  float d = 1e3;
+  s = 0.0;
+  if (foeAt(ti + ivec2(-1, 0), o) && f.x < d) { d = f.x; s = t.y; }
+  if (foeAt(ti + ivec2(1, 0), o) && 1.0 - f.x < d) { d = 1.0 - f.x; s = t.y; }
+  if (foeAt(ti + ivec2(0, -1), o) && f.y < d) { d = f.y; s = t.x; }
+  if (foeAt(ti + ivec2(0, 1), o) && 1.0 - f.y < d) { d = 1.0 - f.y; s = t.x; }
+  if (d > 0.7) {
+    float k;
+    if (foeAt(ti + ivec2(-1, -1), o) && (k = length(f)) < d) { d = k; s = t.x + t.y; }
+    if (foeAt(ti + ivec2(1, -1), o) && (k = length(f - vec2(1.0, 0.0))) < d) { d = k; s = t.x - t.y; }
+    if (foeAt(ti + ivec2(-1, 1), o) && (k = length(f - vec2(0.0, 1.0))) < d) { d = k; s = t.x - t.y; }
+    if (foeAt(ti + ivec2(1, 1), o) && (k = length(f - vec2(1.0))) < d) { d = k; s = t.x + t.y; }
+  }
+  return d;
+}
+// Trench symbol at depth d from the facing edge: a line with short teeth pointing at the enemy (the map sign of a
+// dug-in line). Level 1 dashed, 2 solid, 3 doubled, 4 doubled and heavier.
+float trenchMark(float d, float s, int lvl, float px) {
+  float c = 0.36;
+  float hw = max(0.04, px * 0.6) * (lvl >= 4 ? 1.6 : 1.0);
+  float aa = px * 0.9;
+  float a = 1.0 - smoothstep(hw, hw + aa, abs(d - c));
+  if (lvl >= 3) a = max(a, 1.0 - smoothstep(hw, hw + aa, abs(d - c - 0.2)));
+  float q = abs(fract(s * 2.0) - 0.5) / 2.0;
+  float tooth = (1.0 - smoothstep(hw, hw + aa, q)) * step(c - 0.2, d) * step(d, c);
+  a = max(a, tooth);
+  if (lvl == 1) a *= step(fract(s * 1.25 + 0.2), 0.6);
+  return a;
 }
 // 0..1 coverage of a disc of radius r (tile units) at distance d, antialiased over one device pixel.
 float disc(float d, float r, float px) {
@@ -260,6 +306,23 @@ void main() {
         col = mix(col, int(flags.r * 255.0 + 0.5) == 1 ? vec3(1.0) : oc * 0.55, hatch * 0.2);
       }
     }
+    // trenches (dug-in borders): a faint earth hatch on dug tiles, a zig-zag line along each edge facing a nation
+    if (uTrenchOn == 1 && uZoom >= 2.5) {
+      int lvl = trenchAt(ti);
+      if (lvl > 0) {
+        vec3 earth = vec3(0.2, 0.13, 0.07);
+        float period = max(0.6, 6.0 * px);
+        float s = fract((t.x - t.y) / period);
+        float hatch = 1.0 - smoothstep(0.1, 0.1 + 1.5 * px / period, abs(s - 0.5) * 2.0 - 0.8);
+        col = mix(col, earth, hatch * (0.06 + 0.03 * float(min(lvl, 3))) * smoothstep(2.5, 4.0, uZoom));
+        float zz = smoothstep(3.0, 5.0, uZoom);
+        if (zz > 0.0) {
+          float sAlong;
+          float d = foeEdge(ti, f, t, o, sAlong);
+          if (d < 1.0) col = mix(col, earth, trenchMark(d, sAlong, lvl, px) * 0.88 * zz);
+        }
+      }
+    }
   }
 
   // ---- fallout
@@ -288,6 +351,8 @@ void main() {
     } else {
       float bw = min(1.0, bpx * px);
       float hb = flags.b > 0.0 ? 1.6 : 1.0;
+      // far out a level 2+ trench shows as a thicker, earth-dark border (the line itself needs ~4 px a tile)
+      if (uTrenchOn == 1 && uZoom < 5.0 && trenchAt(ti) >= 2) hb = max(hb, 1.0 + 0.9 * (1.0 - smoothstep(3.0, 5.0, uZoom)));
       bw = min(1.0, bw * hb);
       bool l = f.x < bw, r = f.x > 1.0 - bw, u = f.y < bw, d = f.y > 1.0 - bw;
       if (l && ownerAt(ti + ivec2(-1, 0)) != o) edge = true;
@@ -309,6 +374,11 @@ void main() {
         bc = mix(oc, vec3(1.0), 0.6);
         float period = max(1.5, 12.0 * px);
         if (fract((t.x + t.y) / period) > 0.6) bc = oc * 0.6;
+      }
+      // far out the trench line can't be drawn: a level 2+ trench darkens the border to earth instead
+      if (uTrenchOn == 1 && uZoom < 5.0) {
+        int tl = trenchAt(ti);
+        if (tl >= 2) bc = mix(bc, vec3(0.2, 0.13, 0.07), (0.5 + 0.1 * float(tl - 2)) * (1.0 - smoothstep(3.0, 5.0, uZoom)));
       }
       if (flags.g > 0.5) bc = mix(bc, vec3(0.95, 0.2, 0.15), 0.7);
       int hv = int(flags.b * 255.0 + 0.5);

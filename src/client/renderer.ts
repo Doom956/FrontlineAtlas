@@ -25,6 +25,7 @@ import { FrontLayer } from './render/fronts';
 import { HeartlandLayer } from './render/heartland';
 import { MapGL } from './render/glmap';
 import { Map2D } from './render/map2d';
+import { TrenchFeed } from './render/trenchFeed';
 import { Minimap } from './render/minimap';
 import { NameLayer } from './render/names';
 import { Overlays, ringRadius } from './render/overlays';
@@ -89,6 +90,8 @@ export class Renderer {
   private frameMs = 16.7;
 
   private feed = new TileFeed();
+  /** trench level per tile (dug-in borders), fed like the tile feed */
+  private trench = new TrenchFeed();
   private buildings = new BuildingLayer();
   private deposits = new DepositLayer();
   private units = new UnitLayer();
@@ -145,6 +148,7 @@ export class Renderer {
     this.humanId = state.humanId;
     this.terr = buildTerrain(map);
     this.feed.reset(state);
+    this.trench.reset(state, this.feed.fullGen);
     this.colors = [];
     this.palSig = '';
     this.syncColors(state);
@@ -173,6 +177,7 @@ export class Renderer {
     this.auxRect = null;
     this.auxSig = '';
     this.feed.clearDirty();
+    this.trench.clearDirty();
   }
 
   /** Draws a frame. */
@@ -202,6 +207,7 @@ export class Renderer {
     let msFronts = performance.now() - tf;
     const tickMs = 100 / ui.speed;
     this.feed.update(nowMs, ui.paused ? 1 : Math.round(tickMs / this.frameMs));
+    this.trench.update(nowMs, this.feed.fullGen);
     this.names.update(state, this.feed, nowMs);
     this.updatePalette(state, ui);
     this.updateForts(state);
@@ -218,6 +224,7 @@ export class Renderer {
     const gl = this.gl;
     if (gl) {
       gl.uploadOwner(this.feed);
+      gl.uploadTrench(this.trench);
       gl.draw(this.canvas.width, this.canvas.height, {
         centerX: camera.x,
         centerY: camera.y,
@@ -227,11 +234,12 @@ export class Renderer {
         auxMode: this.auxMode,
         showRes: ui.showResources,
         fortOn: this.forts.size > 0,
+        trenchOn: this.trench.any,
       });
       this.stats.uploads = gl.uploads;
       this.stats.uploadTiles = gl.uploadTiles;
     } else if (this.map2d) {
-      this.map2d.update(this.feed);
+      this.map2d.update(this.feed, this.trench);
       ctx.setTransform(d * z, 0, 0, d * z, d * (camera.viewW / 2 - camera.x * z), d * (camera.viewH / 2 - camera.y * z));
       ctx.fillStyle = '#0a111c';
       ctx.fillRect(0, 0, this.w, this.h);
@@ -241,6 +249,7 @@ export class Renderer {
     }
     this.stats.tilesApplied = this.feed.applied;
     this.feed.clearDirty();
+    this.trench.clearDirty();
 
     // ---- overlay (CSS px)
     const tOver = performance.now();
