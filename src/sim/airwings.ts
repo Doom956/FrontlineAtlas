@@ -18,11 +18,11 @@
 //
 // Numbers: config AIR. Deterministic: state.rng only, no transcendental Math functions.
 
-import { AIR, TICKS_PER_SECOND } from './config';
+import { AIR, AIR_COVER, TICKS_PER_SECOND } from './config';
 import { aircraftCap, airfieldRadius, buildingAt, buildingsOf, chargesReady, isDisabled, samRadius } from './buildings';
 import { applyAction } from './actions';
 import { atWar } from './allies';
-import { frontTiles } from './combat';
+import { frontLength, frontTiles } from './combat';
 import { areAllied } from './diplomacy';
 import { doctrineActive, doctrineLess } from './doctrines';
 import { atPeace, peaceReason, unitRule } from './rules';
@@ -33,14 +33,17 @@ import { dropTanksPatrolMul, dropTanksRangeMul, nightDodges, nightEffectMul, nig
 import { airRaidMul, airRangeMul, airSupportMul, airVariantOf, airWingMul, carrierFor, carrierReach } from './variants';
 import { buildAircraft, launchBomber, shotDown, unitCost } from './units';
 import { followedNation, mainFront } from './warTarget';
+import { frontTrench, trenchLevel } from './trenches';
 import { AIR_MISSIONS, isTribe } from './types';
-import type { ActionResult, AirMission, AirRaid, AirState, AirWing, AirZone, Building, BuildingType, GameState, TechId, Unit } from './types';
+import type { ActionResult, AirCover, AirMission, AirRaid, AirState, AirWing, AirZone, Attack, Building, BuildingType, GameState, TechId, Unit } from './types';
 
 const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
 
 /** Unit.mission values. */
 export const MISSION_SUPPORT = 1;
 export const MISSION_STRATEGIC = 2;
+/** Air cover (Air doctrine): an automatic support sortie from an idle airfield; its zone lasts AIR_COVER.zoneMul longer. */
+export const MISSION_COVER = 3;
 /** AI: airfields flying heavy bombers raid cities (all but the one nearest the main attack), see aiAirWings. */
 const AI_HEAVY_RAIDS = true;
 /** Following wings re-aim this often between sorties (warTarget.ts re-evaluates war targets every 2 s). */
@@ -555,7 +558,7 @@ export function massCooldownMul(state: GameState, owner: number): number {
  * normal bomb drop follows). Manual bombers: false.
  */
 export function airStrikeArrived(state: GameState, u: Unit): boolean {
-  if (u.mission === MISSION_SUPPORT) {
+  if (u.mission === MISSION_SUPPORT || u.mission === MISSION_COVER) {
     supportStrike(state, u);
     return true;
   }
@@ -573,7 +576,7 @@ function supportStrike(state: GameState, u: Unit): void {
   const w = map.width;
   state.effects.push({ kind: 'explosion', x: (tile % w) + 0.5, y: ((tile / w) | 0) + 0.5, radius, tick: state.tick });
   if (!hostile(state, u.owner, victim) || !state.players[victim]?.alive) return;
-  const untilTick = state.tick + AIR.supportSeconds * TICKS_PER_SECOND;
+  const untilTick = state.tick + Math.round(AIR.supportSeconds * (u.mission === MISSION_COVER ? AIR_COVER.zoneMul : 1) * TICKS_PER_SECOND);
   // Count the victim's tiles in the zone and knock out its forts there.
   let tiles = 0;
   let hostileTiles = 0;
@@ -607,7 +610,7 @@ function supportStrike(state: GameState, u: Unit): void {
   }
   if (zone) {
     zone.strength += airSupportMul(state, u.owner); // ground-attack planes strike harder (variants.ts)
-    zone.untilTick = untilTick;
+    zone.untilTick = Math.max(zone.untilTick, untilTick);
     zone.tiles = tiles;
     zone.victim = victim;
   } else {
@@ -692,11 +695,159 @@ export function interceptBySuperiority(state: GameState, threats: readonly Unit[
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// Air cover (Air doctrine signature): "your idle airfields bomb the trenches in front of your attacks by themselves"
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Updates an Air holder's attack stall window (AIR_COVER.stallSeconds); returns true when the last window stalled. */
+function coverStalled(state: GameState, a: Attack): boolean {
+  const win = Math.max(1, Math.round(AIR_COVER.stallSeconds * TICKS_PER_SECOND));
+  if (a.coverTick === undefined || a.coverPrevTaken === undefined) {
+    a.coverTick = state.tick;
+    a.coverPrevTaken = a.tilesTaken;
+    a.coverStalled = 0;
+    return false;
+  }
+  if (state.tick - a.coverTick >= win) {
+    const need = Math.max(AIR_COVER.stallMinTiles, AIR_COVER.stallShare * frontLength(state, a));
+    a.coverStalled = a.tilesTaken - a.coverPrevTaken < need ? 1 : 0;
+    a.coverTick = state.tick;
+    a.coverPrevTaken = a.tilesTaken;
+  }
+  return a.coverStalled === 1;
+}
+
+/** The cover record of an airfield (building id), if it ever flew auto cover. */
+function coverOf(state: GameState, airfield: number): AirCover | undefined {
+  const c = state.air?.cover;
+  if (!c) return undefined;
+  for (const x of c) if (x.airfield === airfield) return x;
+  return undefined;
+}
+
+/**
+ * True when the airfield (tile) of an Air doctrine holder is on Air cover: idle (no mission set) with bombers, or
+ * flying an auto-cover sortie now. For the airfield label ("Auto cover" instead of "Idle"). Pure read.
+ */
+export function airCoverActive(state: GameState, airfieldTile: number): boolean {
+  const b = buildingAt(state, airfieldTile);
+  if (!b || b.type !== 'airfield' || b.buildLeft > 0 || doctrineActive(state, b.owner) !== 'air') return false;
+  if (airMissionOf(state, b) !== 'idle') return false;
+  const c = coverOf(state, b.id);
+  return b.bombers > 0 || (!!c && c.owner === b.owner && c.nextTick > state.tick);
+}
+
+/** Auto-cover sorties a player's airfields have flown (the client's guide step fires at the first). Pure read. */
+export function airCoverSorties(state: GameState, pid: number): number {
+  let n = 0;
+  for (const c of state.air?.cover ?? []) if (c.owner === pid) n += c.sorties;
+  return n;
+}
+
+/** Front of an own attack worth covering: its mean trench level, and whether it stalled. */
+interface CoverFront {
+  attack: Attack;
+  index: number;
+  depth: number;
+  tiles: number[];
+}
+
+/**
+ * Air cover pass of one Air holder (once a second, staggered by id): idle airfields with bombers fly a support sortie
+ * at the holder's attack on a nation whose front averages AIR_COVER.minLevel or more, or that stalled. Deepest front
+ * first, then the lowest attack index; the aim is that front's deepest-dug tile in reach (ties: nearest the attack's
+ * focus, then the lowest tile index). One sortie per airfield per sortie cooldown, at most AIR_COVER.maxAirfields
+ * airfields per nation cooling down at once.
+ */
+function coverFor(state: GameState, pid: number): void {
+  const p = state.players[pid];
+  // Stall windows of the holder's attacks on nations (kept even with no airfield ready).
+  const fronts: CoverFront[] = [];
+  for (let k = 0; k < state.attacks.length; k++) {
+    const a = state.attacks[k];
+    if (a.attacker !== pid || a.target <= 0) continue;
+    const tp = state.players[a.target];
+    if (!tp?.alive || isTribe(tp) || !hostile(state, pid, a.target)) continue;
+    if (a.troops.infantry + a.troops.armor + a.troops.artillery <= 0) continue;
+    const stalled = coverStalled(state, a);
+    const depth = frontTrench(state, pid, a.target);
+    if (depth >= AIR_COVER.minLevel || stalled) fronts.push({ attack: a, index: k, depth, tiles: [] });
+  }
+  if (!fronts.length || !hasTech(p, 'flight') || unitRule(state, 'bomber')) return;
+  const afs = buildingsOf(state, pid, 'airfield').filter((b) => b.buildLeft <= 0 && b.bombers > 0 && airMissionOf(state, b) === 'idle');
+  if (!afs.length) return;
+  const air = airState(state);
+  const cover = (air.cover ??= []);
+  // Drop records of lost airfields.
+  if (cover.some((c) => { const b = state.buildings.get(c.airfield); return !b || b.type !== 'airfield' || b.owner !== c.owner; })) {
+    air.cover = cover.filter((c) => { const b = state.buildings.get(c.airfield); return !!b && b.type === 'airfield' && b.owner === c.owner; });
+  }
+  const list = air.cover!;
+  let busy = 0;
+  for (const c of list) if (c.owner === pid && c.nextTick > state.tick) busy++;
+  if (busy >= AIR_COVER.maxAirfields) return;
+  fronts.sort((x, y) => y.depth - x.depth || x.index - y.index);
+  const w = state.map.width;
+  afs.sort((a, b) => a.id - b.id);
+  for (const b of afs) {
+    if (busy >= AIR_COVER.maxAirfields) return;
+    let rec = coverOf(state, b.id);
+    if (rec && rec.owner !== pid) {
+      rec.owner = pid; // captured airfield: a fresh record
+      rec.nextTick = 0;
+      rec.sorties = 0;
+    }
+    if (rec && rec.nextTick > state.tick) continue;
+    const range = airWingRange(b, state);
+    let aim = -1;
+    for (const f of fronts) {
+      if (!f.tiles.length) f.tiles = frontTiles(state, pid, f.attack.target, 400);
+      let bestLvl = -1;
+      let bestD = Infinity;
+      for (const t of f.tiles) {
+        if (d2(w, b.tile, t) > range * range) continue;
+        const lvl = trenchLevel(state, t);
+        const dd = d2(w, t, f.attack.focusTile);
+        if (lvl > bestLvl || (lvl === bestLvl && dd < bestD)) {
+          bestLvl = lvl;
+          bestD = dd;
+          aim = t;
+        }
+      }
+      if (aim >= 0) break;
+    }
+    if (aim < 0) continue;
+    const pseudo: AirWing = { airfield: b.id, tile: b.tile, owner: pid, mission: 'support', target: aim, targetOwner: state.map.owner[aim], nextTick: 0, refill: false, coverTick: 0, sorties: 0 };
+    const sent = launchWing(state, pseudo, b, [aim], MISSION_COVER);
+    if (sent <= 0) continue;
+    if (!rec) {
+      rec = { airfield: b.id, owner: pid, nextTick: 0, sorties: 0 };
+      list.push(rec);
+    }
+    rec.sorties++;
+    rec.nextTick = state.tick + Math.max(1, Math.round(AIR.sortieCooldown * doctrineLess(state, pid, 'airfieldReload') * massCooldownMul(state, pid) * TICKS_PER_SECOND));
+    busy++;
+  }
+}
+
+/** Air cover for every Air doctrine holder, once a second each (staggered by id). */
+function updateAirCover(state: GameState): void {
+  if (state.phase !== 'playing') return;
+  const players = state.players;
+  for (let pid = 1; pid < players.length; pid++) {
+    if ((state.tick + pid) % TICKS_PER_SECOND !== 0) continue;
+    const p = players[pid];
+    if (!p.alive || isTribe(p) || doctrineActive(state, pid) !== 'air') continue;
+    coverFor(state, pid);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // Tick
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Drops wings of lost airfields, flies due sorties, bleeds defenders in support zones, expires zones and raids. */
 export function updateAir(state: GameState): void {
+  updateAirCover(state);
   const air = state.air;
   if (!air) return;
   if (air.wings.length) {
@@ -753,6 +904,14 @@ export function hashAir(state: GameState, h: number, mixInt: (h: number, v: numb
       h = mixFloat(h, z.strength);
       h = mixInt(h, z.untilTick);
       h = mixInt(h, z.victim);
+    }
+    const cover = air.cover ?? [];
+    h = mixInt(h, cover.length);
+    for (const c of cover) {
+      h = mixInt(h, c.airfield);
+      h = mixInt(h, c.owner);
+      h = mixInt(h, c.nextTick);
+      h = mixInt(h, c.sorties);
     }
     h = mixInt(h, air.raids.length);
     for (const r of air.raids) {
@@ -818,7 +977,7 @@ export function aiAirDoctrineTaste(state: GameState, id: number): number {
   const p = state.players[id];
   if (!p || p.isHuman || isTribe(p)) return 1;
   const pers = p.personality ?? 'balanced';
-  return (pers === 'balanced' || pers === 'turtle') && hash32(id * 131 + 17) % 2 === 0 ? 1.6 : 1;
+  return (pers === 'balanced' || pers === 'turtle') && hash32(id * 131 + 17) % 2 === 0 ? 1.15 : 1;
 }
 
 /**
@@ -843,13 +1002,27 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
   const minded = airMinded(state, id);
 
   // Main attack: the one with the most troops against a live non-tribe nation.
-  let main: { target: number; focus: number; troops: number } | null = null;
+  let main: { target: number; focus: number; troops: number; attack: Attack } | null = null;
   for (const a of state.attacks) {
     if (a.attacker !== id || a.target <= 0) continue;
     const tp = state.players[a.target];
     if (!tp?.alive || isTribe(tp)) continue;
     const tr = a.troops.infantry + a.troops.armor + a.troops.artillery;
-    if (!main || tr > main.troops) main = { target: a.target, focus: a.focusTile, troops: tr };
+    if (!main || tr > main.troops) main = { target: a.target, focus: a.focusTile, troops: tr, attack: a };
+  }
+  // Air cover (Air doctrine): a dug-in or stalled main front is bombed for free by idle airfields, so the airfield
+  // nearest it stays idle, and strategic raids wait while any own front is dug in or stalled.
+  const airHolder = doctrineActive(state, id) === 'air';
+  const mainCovered = airHolder && !!main && (frontTrench(state, id, main.target) >= AIR_COVER.minLevel || main.attack.coverStalled === 1);
+  let anyCovered = mainCovered;
+  if (airHolder && !anyCovered) {
+    for (const a of state.attacks) {
+      if (a.attacker !== id || a.target <= 0 || isTribe(state.players[a.target])) continue;
+      if (a.coverStalled === 1 || frontTrench(state, id, a.target) >= AIR_COVER.minLevel) {
+        anyCovered = true;
+        break;
+      }
+    }
   }
   let front: number[] = [];
   if (main) front = frontTiles(state, id, main.target, 400);
@@ -870,7 +1043,9 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
     let bestD = Infinity;
     for (const t of front) {
       if (!reaches(b, range, t)) continue;
-      const dd = d2(w, t, main.focus);
+      // Dug-in tiles weigh more (trenches.ts): distance / (1 + level)^2.
+      const lvl = trenchLevel(state, t);
+      const dd = d2(w, t, main.focus) / ((1 + lvl) * (1 + lvl));
       if (dd < bestD) {
         bestD = dd;
         best = t;
@@ -889,6 +1064,8 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
     if (wantPatrol && (!patrolling || cur?.mission === 'superiority')) {
       mission = 'superiority';
       patrolling = true;
+    } else if (mainCovered && b === sortedAfs[0] && b.bombers > 0) {
+      // left idle: Air cover flies it at the dug-in main front (coverFor)
     } else if (main && front.length && !raidFirst) {
       const best = supportAim(b);
       if (best >= 0) {
@@ -897,7 +1074,7 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
         target = cur?.mission === 'support' && cur.targetOwner === main.target && cur.target >= 0 && d2(w, cur.target, best) < 30 * 30 ? cur.target : best;
       }
     }
-    if (mission === 'idle' && fighting.length && (minded || heavy || p.personality === 'merchant' || techOf(state, id, 'strategicBombing'))) {
+    if (mission === 'idle' && !(mainCovered && b === sortedAfs[0]) && !(airHolder && anyCovered) && fighting.length && (minded || heavy || p.personality === 'merchant' || techOf(state, id, 'strategicBombing'))) {
       let bestFoe = 0;
       let bestN = 0;
       const range = airWingRange(b, state);
@@ -920,7 +1097,7 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
       if (bestFoe > 0) mission = 'strategic';
       else target = undefined;
     }
-    if (mission === 'idle' && raidFirst && main) {
+    if (mission === 'idle' && raidFirst && main && !(mainCovered && b === sortedAfs[0])) {
       const best = supportAim(b);
       if (best >= 0) {
         mission = 'support';
