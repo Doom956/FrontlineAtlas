@@ -236,14 +236,20 @@ describe('doctrines: each main lever', () => {
     expect(lost(true)).toBeLessThan(plain);
   });
 
-  it('siege: artillery hits harder and barrages reload faster; level 3 widens the barrage', () => {
+  it('siege: artillery hits harder against trenches (not in the open) and barrages reload faster; level 3 widens the barrage', () => {
     const s = game();
     const guns: Troops = { infantry: 10000, armor: 0, artillery: 10000 };
     s.players[1].troops = { infantry: 10000, armor: 0, artillery: 10000 };
     const loss = estimateAttack(s, 1, 31, guns)!.lossPerTile;
+    s.trench!.dig[31] = 100; // dug in to level 2 (trenches.ts)
+    const dugLoss = estimateAttack(s, 1, 31, guns)!.lossPerTile;
+    s.trench!.dig[31] = 0;
     const cd = barrageCooldown(s.players[1], s);
     give(s, 1, 'siege');
-    expect(estimateAttack(s, 1, 31, guns)!.lossPerTile).toBeLessThan(loss);
+    expect(estimateAttack(s, 1, 31, guns)!.lossPerTile).toBeCloseTo(loss, 9); // undug, unfortified: no bonus
+    s.trench!.dig[31] = 100;
+    expect(estimateAttack(s, 1, 31, guns)!.lossPerTile).toBeLessThan(dugLoss);
+    s.trench!.dig[31] = 0;
     expect(barrageCooldown(s.players[1], s) / cd).toBeCloseTo(1 - DOCTRINE_LEVERS.siege.barrageCooldown!, 6);
     expect(barrageRadius(s, 1)).toBe(BARRAGE_RADIUS);
     give(s, 1, 'siege', 3);

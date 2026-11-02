@@ -35,7 +35,7 @@ function clientReads(s: GameState): void {
 }
 
 describe('lockstep: client reads between ticks', () => {
-  it('a client that renders (reads combat numbers between ticks) stays in sync with one that does not', () => {
+  it('a client that renders (reads combat numbers between ticks) stays in sync with one that does not', async () => {
     const make = (): GameState => {
       const s = makeTestGame({ seed: 31, aiCount: 5, mapType: 'continents', mapSize: 'small' });
       rich(s);
@@ -45,6 +45,7 @@ describe('lockstep: client reads between ticks', () => {
     const rendering = make();
     let diverged = -1;
     for (let k = 0; k < 1600 && diverged < 0; k++) {
+      if (k % 200 === 0) await new Promise<void>((resolve) => setTimeout(resolve, 0)); // keep the runner's worker RPC alive
       clientReads(rendering);
       tick(quiet);
       tick(rendering);
