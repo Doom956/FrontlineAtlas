@@ -176,7 +176,10 @@ Group controls (owner: "same for the warships, it's hard to control them, and ai
 - Fleet markers (render/fleets.ts): below zoom 4, warships of one owner within 4 tiles or 16 px on screen (chained) draw as one marker with a count badge; a click on your own marker selects the fleet (Shift adds). Grid-bucketed single linkage: ~0.07 ms per frame for 200 ships.
 - Fix: a Fixed Strategic wing with no war against its nation said "Raiding X · next 2 s"; it now says "Waiting: no war with X".
 
-## Doctrine + mercenary tune (2026-11-02, on `dev`, not merged yet)
+## Economy rule + doctrine + mercenary tune (2026-11-02, on `dev`, not merged yet)
+Kept, economy (config `GOLD_RULES`, economy.ts): the gold bonuses (markets, Banking, doctrine gold) add up instead of
+multiplying, and Banking / Merchant make each market level pay more but no longer lift the +80% market limit. Economy
+specialist 1.64 -> 1.30 on 384 pairs; the other pillars within noise. Log: /tmp/fa-bal/log4.md.
 Kept: AI mercenaries also during any war against another AI nation while the bar is under 65% (wars on a human keep the
 old triggers), budget 45 / 60% -> 60 / 75% of gold, 20 -> 12 s between hires (aispending.ts); Blitz armor conversion
 -15% -> -10%; Air doctrine aircraft -25% -> -35%, airfield reload -25% -> -40%.
@@ -189,6 +192,31 @@ into range but every other pillar down), Fortress 0.4 / 0.4 / 0.3 (no measurable
 are short of gold, not of price).
 Still open: economy specialist 1.3-1.5 vs a normal AI; AI Air pickers win ~1.7-2x by selection; research at 20 min
 ~49-50% (edge of target).
+Final check on fresh seeds 13001+ (base4 = 9bdda7e vs now = e7bf301; medium 192 pairs / games, World 24-48, [95%]):
+| Target | base4 | Now | Result |
+|---|---|---|---|
+| Specialist economy | 1.63 [1.22-2.19] | 1.28 [0.97-1.72] | fail, much closer |
+| Specialist navy / armor / air / land | 0.66 / 0.96 / 0.83 / 0.78 | 0.69 / 0.88 / 0.73 / 0.68 | armor pass; navy, air, land fail |
+| Random doctrines Blitz / Air | 1.11 / 0.88 | 1.43 / 0.69 | fail (the doctrine change itself: +0.11 / -0.18, within noise) |
+| Random doctrines, the others | 0.62-1.18 | 0.74-1.40 | pass |
+| AI picks Air / Merchant / Fortress | 1.80 / 1.30 / 0.60 | 1.63 / 1.35 / 0.49 | fail |
+| Winners' gold on mercenaries | 1.7% | 9.7% (World 8.6%) | pass |
+| Length medium / World (min) | 30.3 / 35.9 | 31.7 / 36.6 | pass |
+| Leader at 15 min wins / first Fission (min) | 38% / 27.5 | 31% / 28.5 | pass |
+| Research at 20 min, medium / World | 51.5% / 50.9% | 49.9% / 49.3% | fail (edge; spread over all three changes) |
+| Easy, Normal / Hard alive at 20 min | 100% / 60% | 100% / 81% | pass |
+| Tick time p50 / p99 (ms) | 0.9 / ~8 | 1.2 / ~8 | p50 +30% (comes with the economy rule) |
+Tuners' claims refuted on fresh seeds: specialists navy 0.98 / armor 1.08 / air 0.93 / land 1.18 (came out 0.69 / 0.88
+/ 0.73 / 0.68); AI Merchant picks 1.6 -> 1.0 (1.30 -> 1.35); Blitz / Air moving toward 1. Softer mercenaries (old
+budget, or only below 50% with 20 s between hires) didn't bring research back. Nothing reverted.
+Still open: economy specialist ~1.3; navy, air and land specialists ~0.7; Blitz random pick ~1.4; AI Air and Fortress
+picks; research at 20 min just under 50%; tick p50 up ~30%; Brutal not checked.
+
+## Site icon (2026-11-02, on `dev`, not merged yet)
+`public/favicon.svg` (navy square, orange territory pushing a gold front line into teal) plus favicon.ico (16/32/48),
+favicon-32.png, apple-touch-icon.png (180), icon-192/512, icon-512-maskable.png and site.webmanifest ("Frontline
+Atlas", short name "Atlas"); relative links in index.html, so it works at `/` and under `/FrontlineAtlas/`. Remake the
+PNG / ICO files with `node scripts/site-icons.mjs` after changing the SVG. Not checked: the live sites, a phone home screen.
 
 ## Parked ideas (owner said later / maybe)
 Building limits (city slots, upkeep), rivers and bridges, wonders, game modes (King of the Hill, capital capture, scenarios), quick chat/emotes/rematch, phone layout, making Easy winnable, calmer tribes.
