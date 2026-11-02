@@ -1,0 +1,50 @@
+name: Feature idea
+description: Suggest a new feature, a rule change or a balance tweak.
+title: "Idea: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas are welcome. Check [ROADMAP.md](../blob/main/ROADMAP.md) first: it may already be planned.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Fronts and combat
+        - Navy
+        - Armor
+        - Air
+        - Economy and buildings
+        - Research, Arsenal and doctrines
+        - Diplomacy
+        - AI nations
+        - Maps
+        - Multiplayer
+        - Interface and controls
+        - Tutorial and guide
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's missing or frustrating
+      description: The situation in a game where you wanted this.
+      placeholder: Late in big games I lose track of which fronts are stalling.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: What would happen in the game. Keep it short.
+      placeholder: Stalled fronts could pulse red in the front-line overlay.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Other ways to solve it
+      description: Optional. Anything else you thought of.

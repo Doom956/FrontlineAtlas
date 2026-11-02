@@ -1,81 +1,151 @@
 <div align="center">
 
-# Frontline Atlas
+<a href="https://frontline-atlas.onrender.com"><img src="docs/images/banner.webp" width="100%" alt="Frontline Atlas: push your borders, outthink every front. An atom bomb goes off on France's front as the teal nation Atlas pushes in."></a>
 
-**Push your borders. Outthink every front.**
-A territory-control strategy game that runs in your browser. Single player needs nothing but the page.
+<br>
 
-[![Play now](https://img.shields.io/badge/%E2%96%B6%20Play%20now-frontline--atlas.onrender.com-c9a227?style=for-the-badge)](https://frontline-atlas.onrender.com)
-[![Fast page](https://img.shields.io/badge/Fast%20page-GitHub%20Pages-2d6cdf?style=for-the-badge)](https://doom956.github.io/FrontlineAtlas/)
+<a href="https://frontline-atlas.onrender.com"><img src="docs/images/btn-play.png" height="44" alt="Play now"></a>&nbsp;
+<a href="https://doom956.github.io/FrontlineAtlas/"><img src="docs/images/btn-fast.png" height="44" alt="Fast page: a lighter copy that loads quicker"></a>
 
-![Node 22+](https://img.shields.io/badge/node-%E2%89%A5%2022-5fa04e?style=flat-square)
-![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square)
-![Multiplayer](https://img.shields.io/badge/multiplayer-lockstep-8a5cf6?style=flat-square)
-![License MIT](https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square)
+<sub>Free in your browser. No install, no account.</sub>
 
-<img src="docs/images/hero.webp" alt="Frontline Atlas: a nation's land with buildings, standings and the build bar" width="900">
+<br>
+
+**Choose a target, not a tile.** Every border you share with it advances at once. Then win your way: with a navy, tank divisions, air wings, a wall of forts or a booming economy.
+
+<img src="docs/images/front-push.gif" width="100%" alt="A brass front line with push arrows moves into France as Atlas's troop counts tick up.">
+
+<sub>The front pushing into France at 2x speed.</sub>
 
 </div>
 
-> **Play now** has single player and online games. **Fast page** loads quicker and plays single player offline;
-> for online games it needs the server (see [Multiplayer](#multiplayer)).
-
-## Screenshots
-
-| | |
-|:--|:--|
-| <img src="docs/images/title.webp" alt="Title screen" width="440"><br>**Title screen** | <img src="docs/images/how-to-play.webp" alt="The How to play page" width="440"><br>**How to play:** quick start, search, collapsible sections |
-| <img src="docs/images/world-map.webp" alt="The real-world map" width="440"><br>**Real-world map** with countries as AI nations | <img src="docs/images/build-menu.webp" alt="The build menu" width="440"><br>**Build menu:** every building, unit and tool |
-| <img src="docs/images/research-tree.webp" alt="The research tree" width="440"><br>**Research tree** with OR choices | <img src="docs/images/doctrines.webp" alt="The doctrine picker" width="440"><br>**Doctrines** from minute 5 |
+<br>
 
 ## Features
 
-- **One click, one front.** You pick who you attack, not a point: the whole shared border advances, faster the longer it is.
-- **Three troop types.** Infantry, armor and artillery counter each other; Factories and Arsenals set your mix.
-- **Terrain and supply.** Forests, hills, mountains, swamps, deserts and tundra change defence and speed. Far fronts fight weaker.
+<table>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/images/war-fronts.webp" width="100%" alt="Atlas has taken France's capital: the captured land glows, labels mark a captured city, arsenal and farm, and bombers fly over the front.">
+<br><b>Whole fronts, one click</b>
+<br>Pick who you attack. The shared border moves, faster the longer it is.
+</td>
+<td width="50%" valign="top">
+<img src="docs/images/arsenal.webp" width="100%" alt="The Arsenal tab of the Research panel: navy, armor and air rows, Destroyers picked over Submarines, Heavy Bombers 47% researched.">
+<br><b>Arsenal paths</b>
+<br>Fork your navy, armor and air. One path each per game, two masteries at most.
+</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/images/nuke.gif" width="100%" alt="Animation: target rings count down over a French city on the front, a missile flies in, then the blast, the shockwave and the fallout.">
+<br><b>Strikes and atom bombs</b>
+<br>Barrages, bombs, paradrops, rockets and nukes. SAM sites shoot them down.
+</td>
+<td width="50%" valign="top">
+<img src="docs/images/world-map.webp" width="100%" alt="The World map five minutes in, with fifteen AI nations and Atlas in East Africa.">
+<br><b>12 real-world maps</b>
+<br>World, Europe, Asia and nine more, or a generated continent or archipelago.
+</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/images/lobby.webp" width="100%" alt="A private lobby: the game settings, the join code RUXWFM and four players in different colours.">
+<br><b>Online lobbies</b>
+<br>Public games, or a private lobby with a 6-character code. AI fills the free seats.
+</td>
+<td width="50%" valign="top">
+<img src="docs/images/guide.webp" width="100%" alt="The in-game guide at step 7 of 9, Build a City, with a brass arrow on the City button below Atlas's first land.">
+<br><b>Learn as you play</b>
+<br>A 5-minute tutorial, then a small guide that explains each new thing once.
+</td>
+</tr>
+</table>
+
+<details>
+<summary><b>Everything in the game</b></summary>
+<br>
+
+- **Three troop types.** Infantry, armor and artillery counter each other. Factories and Arsenals set your mix.
+- **Terrain and supply.** Forest, hills, mountains, swamp, desert and tundra change defence and speed. Far fronts fight weaker.
 - **17 buildings, levelled.** Cities, farms, markets, mines, forts, ports, labs, airfields, SAM sites, missile silos and more.
-- **A research tree.** 30 techs in 5 tiers, with OR choices that lock the other branch for good.
-- **Seven doctrines.** From 5:00 pick a play style (Blitz, Fortress, Siege, Merchant, Naval, Air, Expansion). Nothing is ever forbidden.
-- **Sea, air and missiles.** Transports, warships, bombers, fighters, paratroopers, artillery barrages, rockets and atom bombs.
-- **Tank divisions.** Punch a fast spearhead through enemy land; mountains and forts stall it.
+- **Research.** 48 techs in 5 tiers across two tabs. OR choices lock the other branch for good.
+- **Seven doctrines.** From 5:00 pick a play style: Blitz, Fortress, Siege, Merchant, Naval, Air or Expansion. Nothing is ever forbidden.
+- **Warships with stances.** Auto, hunt, escort, bombard or blockade.
+- **Tank divisions.** Fast spearheads that survive, refit and gain veterancy. Encircled pockets collapse.
+- **Air wings.** Support a front, bomb an enemy's income or hold the sky with fighters.
 - **Diplomacy.** Alliances, gifts, embargoes, traitor penalties, and coalitions against a runaway leader.
-- **Real-world maps.** 12 of them (World, Europe, Asia, Africa, the Americas ...) or generated continents and islands.
-- **AI nations and tribes.** Personalities and difficulty levels, plus hundreds of weak tribes to conquer.
-- **Online play.** Public games, private lobbies with a code, spectators, and a deterministic lockstep simulation.
+- **AI nations and tribes.** Personalities, four difficulty levels, and hundreds of small tribes to absorb.
+- **Fair online play.** A deterministic lockstep simulation: every browser computes the same game.
+
+</details>
 
 ## How to play
 
 1. Press **Single player**, pick a map and start. Click a land tile to place your capital.
 2. Click land next to yours to expand. Click an enemy border to attack it.
-3. **ATTACK %** (keys `[` and `]`) is the share of your troops each click sends. Keep spending: a full troop bar barely grows.
-4. Press `Tab` to build (cities and farms first), `T` for research, `Shift+D` for a doctrine at 5:00.
-5. Click a nation in the standings to ally, gift or embargo. Hold 75% of the land, or be the last nation standing.
+3. Set **Attack %** with `[` and `]`. Keep spending: a full troop bar barely grows.
+4. Press `Tab` to build (cities and farms first) and `T` for research.
+5. At 5:00, press `Shift+D` and pick a doctrine. Click a nation in the standings to ally, gift or embargo.
 
-New to it? Press **Tutorial** on the title screen: one 5-minute practice game with the basics. The in-game guide covers the rest when you first need it.
+New here? Press **Tutorial** on the title screen. In any game, `?` opens a searchable guide.
 
-In a war, the border gets a **front line** with arrows into the land being taken (brass for yours); hover it for the speed. Short **map effects** flash when a city changes hands, a ship sinks or a bomb lands (Menu, Map effects off). At the end, the **summary** shows land over time, the key moments and each nation's numbers.
+## Ways to win
 
-The in-game **How to play** page (title screen, or `?` in a game) has a quick start and a searchable guide.
+| Path | How it carries a game |
+|:--|:--|
+| **Navy** | Warships bombard a coast to speed your landings, and blockades cut enemy trade. |
+| **Armor** | Tank divisions punch deep spearheads and close pockets that then collapse. |
+| **Air** | Air wings bomb ahead of your fronts and cut enemy income with raids. |
+| **Land** | Forts hold the line, artillery breaks theirs, and the heartland defends itself. |
+| **Economy** | Cities, markets and trade outgrow everyone. Gold buys mercenaries and war bonds. |
+
+A game ends when one nation holds 75% of the land, is the last one standing, or leads on score when a time limit runs out. Teams win together.
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/images/victory.gif" width="100%" alt="Animation: a 15-minute game on the Europe map sped up from the first spawn; Atlas overtakes Russia and the Victory card appears.">
+<br><b>A whole game in eight seconds</b>
+<br>Fifteen minutes on the Europe map, from the first spawn to the win.
+</td>
+<td width="50%" valign="top">
+<img src="docs/images/summary.webp" width="100%" alt="The Victory card: land over time per nation, the key moments of the game and a table comparing the nations.">
+<br><b>Then the summary</b>
+<br>Land over time, the key moments and every nation's numbers side by side.
+</td>
+</tr>
+</table>
 
 ## Multiplayer
 
-- **Public games.** Free for all, Teams and Special (random modifiers). Join one: it starts when its countdown ends; AI nations fill the free places.
-- **Private lobbies.** The single-player setup plus a seat count. Share the 6-character code or invite link; friends press **Join**.
-- **Host pause.** Only the host of a private game can pause. Public games never pause, and there is no game speed online.
-- **Watch** a game as a spectator, and reconnect after a dropped connection: the game catches up by itself.
+- **Public games.** Free for all, Teams, or Special with random modifiers. AI nations fill the free places.
+- **Private lobbies.** The full single-player setup plus a seat count. Share the code or an invite link.
+- **Spectators.** Watch a game with the whole map in view. A fallen player keeps watching.
+- **Host pause.** Only a private game's host can pause. Public games never pause.
+- **Reconnect.** A dropped connection rejoins and catches up by itself.
+
+Every client runs the same simulation. The server only relays orders and compares state hashes.
 
 <details>
 <summary><b>Controls</b></summary>
+<br>
 
 | Input | Action |
-|-------|--------|
+|:--|:--|
 | Left click | Attack neutral or enemy land; select your own tile; place a building in build mode |
 | Right click (long-press on touch) | Radial menu: the likely action in the centre, the rest on a ring |
 | Drag, `W` `A` `S` `D`, arrows | Pan the map |
 | Mouse wheel | Zoom |
 | `Tab` | Build menu |
 | `1`-`9`, `0`, `Q` `E` `R` `H` `F` `G` `N` | Building hotkeys (hold Shift to place several) |
-| `[` and `]` | Attack share -/+ |
+| `[` and `]` | Attack share down / up |
 | `T` `U` `Y` `P` `J` `L` | Research, Army, Forces, Diplomacy, Events, Map key |
 | `Shift+D` | Doctrine picker |
 | `Shift+W` / `Shift+A` | Select every warship / tank division |
@@ -91,30 +161,31 @@ The in-game **How to play** page (title screen, or `?` in a game) has a quick st
 
 <details>
 <summary><b>Game setup: modes, presets and modifiers</b></summary>
+<br>
 
-The setup screen (single player) and the multiplayer lobby share one options model (`src/sim/setup.ts`). The sim
-enforces every rule (`src/sim/rules.ts`) and the AI plays by it too.
+Single player and the multiplayer lobby share one options model (`src/sim/setup.ts`). The simulation enforces every rule (`src/sim/rules.ts`), and the AI plays by them too.
 
 - **Map:** Continents, Pangaea, Archipelago or Highlands in four sizes, or a real-world map.
-- **Players:** AI nations (default 8) and tribes (Auto = by the map's land).
+- **Players:** AI nations (default 8) and tribes (Auto sizes them to the map's land).
+- **Difficulty:** Easy, Normal, Hard or Brutal.
 - **Mode:** free for all, or 2 to 6 teams. Teammates are allied all game and win together.
 - **Presets:** Classic, Quick Conquest, Grand War, Island Hopping, Chaos (random modifiers).
 
 | Group | Modifier | What it does |
-|---|---|---|
+|:--|:--|:--|
 | Economy | Starting gold | Normal (600), High (5,000) or Very high (20,000) |
 | Economy | Gold income | x0.5 to x3 |
 | Economy | Troop growth | x0.5 to x2 |
 | Economy | Build speed | Normal, Fast or Instant |
 | Economy | Research | Normal, All unlocked or Off |
 | Combat | Peace time | 2, 4 or 6 minutes without attacks between nations |
-| Combat | No atom bombs / No air force / No warships / No SAM sites | switch that part of the game off |
-| Rules | Random starts | every start is picked at random, yours too |
-| Rules | Compact map | half the width and height |
-| Rules | No alliances | teammates stay allied |
-| Rules | Fast game | double speed for income, growth, building, research and fronts |
+| Combat | No atom bombs / No air force / No warships / No SAM sites | Switches that part of the game off |
+| Rules | Random starts | Every start is picked at random, yours too |
+| Rules | Compact map | Half the width and height |
+| Rules | No alliances | Teammates stay allied |
+| Rules | Fast game | Double speed for income, growth, building, research and fronts |
 | Rules | Time limit | 15, 30 or 60 minutes, then the highest score wins |
-| Rules | Victory | the land share that wins: 60, 70, 75, 80 or 90% |
+| Rules | Victory | The land share that wins: 60, 70, 75, 80 or 90% |
 
 </details>
 
@@ -122,40 +193,56 @@ enforces every rule (`src/sim/rules.ts`) and the AI plays by it too.
 
 You need Node.js 22 or newer.
 
+**Play locally**
+
 ```sh
-npm install      # install dependencies
-npm run dev      # dev server (Vite) plus the multiplayer server; open the printed URL
-npm test         # unit tests (Vitest)
-npm run build    # build the client (dist/index.html) and the server (npm run typecheck checks types)
-npm start        # serve the game and the multiplayer server on http://localhost:8080
+npm install
+npm run dev      # dev server plus the multiplayer server; open the printed URL
 ```
 
-`dist/index.html` is one self-contained file: open it from disk or put it on any static host. Friends on your
-network can join `http://<your-ip>:8080`.
+**Test and ship**
+
+```sh
+npm test         # unit tests (Vitest)
+npm run build    # client (dist/index.html) and server; npm run typecheck checks types
+npm start        # game and multiplayer server on http://localhost:8080
+```
+
+`dist/index.html` is one self-contained file. Open it from disk or put it on any static host. Friends on your network can join at `http://<your-ip>:8080`.
 
 <details>
-<summary><b>Server settings (environment variables)</b></summary>
+<summary><b>Server settings</b></summary>
+<br>
 
-All optional. Full list and meanings: [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md).
+All optional. Full list: [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md).
 
 | Variable | Default | Meaning |
-|----------|---------|---------|
+|:--|:--|:--|
 | `PORT` | 8080 | HTTP and WebSocket port |
-| `HOST` | 0.0.0.0 | listen address |
-| `STATIC_DIR` | `dist` | folder with the built client; empty = serve no files |
-| `PUBLIC_START_SECONDS` | 60 | public lobby countdown |
-| `PUBLIC_LOBBIES` | 1 | `0` = no public lobbies |
-| `MAX_CONNECTIONS_PER_IP` | 8 | connections per address |
-| `MAX_ROOMS` / `MAX_ROOMS_PER_IP` | 500 / 3 | lobbies and games at once |
-| `TRUST_PROXY`, `PROXY_HOPS`, `CLIENT_IP_HEADER` | auto | how the client address is read behind a proxy |
-| `ALLOWED_ORIGINS` | any | page origins allowed to open the WebSocket |
+| `HOST` | 0.0.0.0 | Listen address |
+| `STATIC_DIR` | `dist` | Folder with the built client; empty serves no files |
+| `PUBLIC_START_SECONDS` | 60 | Public lobby countdown |
+| `PUBLIC_LOBBIES` | 1 | `0` turns public lobbies off |
+| `MAX_CONNECTIONS_PER_IP` | 8 | Connections per address |
+| `MAX_ROOMS` / `MAX_ROOMS_PER_IP` | 500 / 3 | Lobbies and games at once |
+| `TRUST_PROXY`, `PROXY_HOPS`, `CLIENT_IP_HEADER` | auto | How the client address is read behind a proxy |
+| `ALLOWED_ORIGINS` | any | Page origins allowed to open the WebSocket |
+
+</details>
+
+<details>
+<summary><b>Deploy</b></summary>
+<br>
+
+A static copy (GitHub Pages) plays single player. The Node server also hosts online games. Free hosting on Render or Fly.io, how a static page finds a server (`?server=` or `VITE_SERVER_URL`) and every setting: [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md).
 
 </details>
 
 <details>
 <summary><b>Balance and profiling tools</b></summary>
+<br>
 
-These run without a browser:
+These run without a browser.
 
 ```sh
 # AI-only game: seed, minutes, map size, AI count, map type
@@ -172,34 +259,48 @@ npx vite-node scripts/batch.ts -- --sizes medium,large,world:world --seeds 8 --j
 
 </details>
 
-## Deploy
-
-A static copy (GitHub Pages) plays single player; the Node server also hosts online games. Free hosting on Render
-or Fly.io, how a static page finds a server (`?server=` or `VITE_SERVER_URL`) and every server setting:
-[docs/MULTIPLAYER.md](docs/MULTIPLAYER.md).
-
 ## Project structure
 
-| Path | What |
-|------|------|
-| `src/sim/` | Deterministic simulation: no DOM, no `Math.random`. Rules, combat, economy, AI, maps. All balance numbers in `config.ts` |
+| Path | What lives there |
+|:--|:--|
+| `src/sim/` | Deterministic simulation: rules, combat, economy, AI, maps. No DOM, no `Math.random`. Balance numbers in `config.ts` |
 | `src/client/` | Browser only: menu, renderer (WebGL2 + Canvas2D), HUD, input, audio |
 | `src/net/` | Wire protocol and the WebSocket client |
 | `src/maps/` | Baked real-world map data |
-| `server/` | The multiplayer relay server (Node, `ws`): lobbies, turns, hash votes |
-| `tests/` | Vitest unit tests and a Playwright end-to-end test |
+| `server/` | Multiplayer relay server (Node, `ws`): lobbies, turns, hash checks |
+| `tests/` | Vitest unit tests and Playwright end-to-end tests |
 | `scripts/` | Headless runs, profiling, balance batches, map baking |
-| `docs/` | [DESIGN](docs/DESIGN.md), [MAPS](docs/MAPS.md), [MULTIPLAYER](docs/MULTIPLAYER.md), [AUDIO](docs/AUDIO.md) |
+| `docs/` | [Design](docs/DESIGN.md), [Maps](docs/MAPS.md), [Multiplayer](docs/MULTIPLAYER.md), [Audio](docs/AUDIO.md) |
 
-The simulation only changes through `tick(state)` and `applyAction(state, playerId, action)`: the same seed and the
-same actions always give the same game. The client reads the state every frame and sends actions; the AI uses the
-same action path as the player.
+The simulation only changes through `tick(state)` and `applyAction(state, playerId, action)`. The same seed and the same actions always give the same game. The AI uses the same action path as the player.
+
+## Built with
+
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-7-646cff?style=flat-square&logo=vite&logoColor=white)
+![WebGL2](https://img.shields.io/badge/WebGL2-Canvas2D-990000?style=flat-square&logo=webgl&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-22%2B-5fa04e?style=flat-square&logo=nodedotjs&logoColor=white)
+![WebSocket](https://img.shields.io/badge/WebSocket-lockstep-8a5cf6?style=flat-square)
+![Vitest](https://img.shields.io/badge/tested%20with-Vitest-6e9f18?style=flat-square&logo=vitest&logoColor=white)
+
+## Roadmap and contributing
+
+What is planned next, and what the balance checks still flag: [ROADMAP.md](ROADMAP.md). Past releases: [CHANGELOG.md](CHANGELOG.md). Want to help? Read [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Credits
 
-Real-world map data: [Natural Earth](https://www.naturalearthdata.com) (public domain). Fonts: Barlow Condensed and
-IBM Plex Sans, bundled through Fontsource. Details on data sources: [docs/MAPS.md](docs/MAPS.md).
+Real-world map data from [Natural Earth](https://www.naturalearthdata.com) (public domain). Fonts: Barlow Condensed and IBM Plex Sans, bundled through Fontsource. Data sources in detail: [docs/MAPS.md](docs/MAPS.md).
 
 ## License
 
-MIT, see `package.json`.
+[MIT](LICENSE) © 2026 Doom956
+
+<br>
+
+<div align="center">
+
+<a href="https://frontline-atlas.onrender.com"><img src="docs/images/btn-play.png" height="44" alt="Play now"></a>
+
+<sub>Choose a target. Move the whole front.</sub>
+
+</div>

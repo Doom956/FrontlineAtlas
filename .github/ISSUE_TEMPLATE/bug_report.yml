@@ -1,0 +1,73 @@
+name: Bug report
+description: Something in the game broke or behaved wrongly.
+title: "Bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. A short, exact report is easiest to fix.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What went wrong, in a sentence or two.
+      placeholder: My tank division stopped at a river and never moved again.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What you did just before it went wrong.
+      placeholder: |
+        1. Single player, Europe map, Normal difficulty
+        2. Built a tank division at 6:00
+        3. Ordered a spearhead across the Rhine
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      placeholder: The spearhead crosses, or the game says why it can't.
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where you played
+      options:
+        - Play now (frontline-atlas.onrender.com)
+        - Fast page (GitHub Pages)
+        - My own build
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Game mode
+      options:
+        - Single player
+        - Tutorial
+        - Online, public game
+        - Online, private lobby
+        - Spectating
+    validations:
+      required: true
+  - type: input
+    id: map
+    attributes:
+      label: Map and setup
+      description: Map, size, difficulty and any modifiers or preset.
+      placeholder: World, Hard, Fast game, 30-minute time limit
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      placeholder: Firefox 133 on Windows 11, or Safari on iPhone 15
+    validations:
+      required: true
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshot or console output
+      description: Drag in a screenshot. For a crash, paste the browser console (F12) errors.
