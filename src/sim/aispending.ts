@@ -220,7 +220,7 @@ export function aiSpend(state: GameState, v: AISpendView): void {
   const pushing = v.myAttacks.some((a) => a.target > 0 && !isTribe(state.players[a.target]) && sum(a.troops) > v.home);
   const fighting = v.myAttacks.some((a) => a.target > 0 && !isTribe(state.players[a.target]) && !state.players[a.target].isHuman);
   if (now >= t.merc && (losing || (pushing && v.home < v.cap * 0.5) || (fighting && v.home < v.cap * 0.65)) && p.gold > income * AI_MERC_MIN_GOLD_SECONDS) {
-    const budget = p.gold * (losing ? 0.75 : 0.6) * warlike;
+    const budget = p.gold * (losing ? 0.6 : 0.45) * warlike;
     const q0 = mercenaryPrice(state, v.id, 1000);
     let amount = Math.floor(Math.min(q0.affordable, budget / Math.max(1e-6, q0.perTroop)));
     // The price rises within the hire: shrink until it fits the budget.
