@@ -95,7 +95,7 @@ const ARSENAL_ICON: Partial<Record<TechId, () => string>> = {
 const TECH_ICON = {
   agriculture: () => worldGlyph('farm', 20),
   metallurgy: () => worldGlyph('mine', 20),
-  logistics: () => worldGlyph('supplyDepot', 20),
+  logistics: () => lineIcon('transport', 20),
   fortification: () => worldGlyph('fort', 20),
   navigation: () => lineIcon('warship', 20),
   banking: () => worldGlyph('market', 20),

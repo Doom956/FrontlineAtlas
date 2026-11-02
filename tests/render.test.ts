@@ -175,7 +175,7 @@ describe('terrain data', () => {
 
 describe('map markers', () => {
   it('has a simplified glyph for every building and deposit', () => {
-    expect(MARKER_IDS.length).toBe(20);
+    expect(MARKER_IDS.length).toBe(19);
     for (const id of MARKER_IDS) {
       const layers = MARKER_DATA[id];
       expect(layers.length, id).toBeGreaterThan(0);

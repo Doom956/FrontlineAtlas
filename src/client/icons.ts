@@ -22,7 +22,6 @@ export type BuildingIconId =
   | 'factory'
   | 'arsenal'
   | 'fort'
-  | 'supplyDepot'
   | 'watchtower'
   | 'port'
   | 'lab'
@@ -61,7 +60,6 @@ export const ICON_INFO: Record<IconId, IconInfo> = {
   fort: { label: 'Fort', group: 'building', category: 'defence' },
   watchtower: { label: 'Watchtower', group: 'building', category: 'defence' },
   sam: { label: 'SAM Site', group: 'building', category: 'defence' },
-  supplyDepot: { label: 'Supply Depot', group: 'building', category: 'logistics' },
   port: { label: 'Port', group: 'building', category: 'logistics' },
   hospital: { label: 'Hospital', group: 'building', category: 'logistics' },
   airfield: { label: 'Airfield', group: 'building', category: 'advanced' },
@@ -598,7 +596,7 @@ export const ICON_DATA: Record<IconId, IconLayer[]> = {
     F(rect(18.5, 50, 9, 10), STEEL_D, { noOutline: true }),
   ],
   arsenal: [
-    // depot hall: long wall, pitched roof, gable end receding to the right, big sliding hangar door
+    // arms hall: long wall, pitched roof, gable end receding to the right, big sliding hangar door
     F(poly(44, 46, 44, 26, 56, 19.5, 56, 40), OLIVE_L, { edge: true }),
     shadeC(rect(0, 0, 64, 64), 0.32),
     F(poly(44, 26, 50, 13, 56, 19.5), '#7f8456', { edge: true }),
@@ -653,19 +651,6 @@ export const ICON_DATA: Record<IconId, IconLayer[]> = {
     S(join(line(25, 15, 25, 26), line(32, 15, 32, 26), line(39, 15, 39, 26)), WOOD_D, 1.4, { noOutline: true }),
     F(poly(8, 15, 32, 3, 56, 15), '#6b5643', { edge: true }),
     shadeC(rect(32, 0, 32, 20), 0.25),
-  ],
-  supplyDepot: [
-    F(poly(38, 58, 38, 30, 58, 24, 58, 52), '#94a0aa', { edge: true }),
-    shadeC(rect(0, 0, 64, 64), 0.32),
-    F(poly(38, 30, 21, 21, 41, 15, 58, 24), ROOF, { edge: true }),
-    F(poly(4, 58, 4, 30, 21, 21, 38, 30, 38, 58), '#94a0aa', { edge: true }),
-    S(join(...[8, 12, 16, 26, 30, 34].map((x) => line(x, 18, x, 58))), '#7a8792', 0.8, { clip: true, detail: true }),
-    F(rect(11, 38, 20, 20), STEEL_D, { noOutline: true }),
-    S(join(line(11, 42, 31, 42), line(11, 46, 31, 46), line(11, 50, 31, 50), line(11, 54, 31, 54)), STEEL_DD, 0.8, { noOutline: true, detail: true }),
-    F(rect(35, 58, 28, 3.5), WOOD_D),
-    ...crate(36, 45, 13, 13),
-    ...crate(49, 45, 13, 13),
-    ...crate(42.5, 32.5, 13, 12.5),
   ],
   port: [
     F(rect(0, 52, 64, 10), WATER),
@@ -1413,7 +1398,7 @@ export interface MarkerLayer {
 }
 
 export const MARKER_IDS: readonly MarkerId[] = [
-  'city', 'farm', 'market', 'mine', 'oilWell', 'barracks', 'factory', 'arsenal', 'fort', 'supplyDepot',
+  'city', 'farm', 'market', 'mine', 'oilWell', 'barracks', 'factory', 'arsenal', 'fort',
   'watchtower', 'port', 'lab', 'hospital', 'airfield', 'sam', 'silo', 'iron', 'oil', 'fertile',
 ];
 export const MARKER_DETAIL_PX = 26;
@@ -1481,7 +1466,7 @@ export const MARKER_DATA: Record<MarkerId, MarkerLayer[]> = {
     MF(join(circ(50, 9, 4.2), circ(57.5, 5.5, 3))),
     MC(join(rect(11, 39, 6, 6), rect(22, 39, 6, 6), rect(33, 39, 6, 6))),
   ],
-  // depot hall behind a wheeled cannon
+  // arms hall behind a wheeled cannon
   arsenal: [
     MF(poly(6, 38, 6, 22, 14, 12, 50, 12, 58, 22, 58, 38)),
     MC(rect(34, 24, 14, 14)),
@@ -1499,11 +1484,6 @@ export const MARKER_DATA: Record<MarkerId, MarkerLayer[]> = {
     )),
     MC('M26 56V46A6 6 0 0 1 38 46V56Z'),
     MC(join(rect(11.5, 25, 3, 7), rect(49.5, 25, 3, 7)), { detail: true }),
-  ],
-  // stacked crates
-  supplyDepot: [
-    MF(join(rrect(7, 36, 23, 20, 1.5), rrect(34, 36, 23, 20, 1.5), rrect(20.5, 13, 23, 20, 1.5))),
-    { d: join(line(7, 36, 30, 56), line(34, 36, 57, 56), line(20.5, 13, 43.5, 33)), mode: 'cutStroke', width: 2, detail: true },
   ],
   // tall wooden tower: splayed legs, cabin, pointed roof
   watchtower: [

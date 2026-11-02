@@ -640,11 +640,11 @@ describe('building lookups', () => {
     expect(hasIntel(far, 1, 2)).toBe(true);
   });
 
-  it('supply sources: capital, finished cities and depots', () => {
+  it('supply sources: capital, finished cities and forts', () => {
     const s = twoPlayers();
     const c = addBuilding(s, 1, idx(3, 3), 'city');
-    addBuilding(s, 1, idx(10, 3), 'supplyDepot');
-    addBuilding(s, 1, idx(15, 3), 'supplyDepot').buildLeft = 2;
+    addBuilding(s, 1, idx(10, 3), 'fort');
+    addBuilding(s, 1, idx(15, 3), 'fort').buildLeft = 2;
     addBuilding(s, 1, idx(3, 10), 'market');
     expect(supplySources(s, 1).sort((a, b) => a - b)).toEqual([c.tile, idx(10, 3), s.players[1].capital].sort((a, b) => a - b));
   });
