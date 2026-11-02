@@ -34,7 +34,7 @@
 //                                heavyTanks, groundAttack | heavyBombers, blitzTactics | trenchWarfare (land),
 //                                stockExchange | freeTrade (economy))
 //   --slot 1                     with --specialist: which AI nation (1 = the first non-tribe AI nation)
-//   --rule marketCapFixed,stackAdd=1  gold rule switches (config GOLD_RULES; merchantMerc = Merchant gold -> cheaper mercenaries)
+//   --rule marketCapFixed,stackAdd=1  gold rule switches (config GOLD_RULES; merchantMerc = Merchant gold -> cheaper mercenaries; bankingScience=600 = Banking's science)
 //
 // What it prints, per configuration and over all games: share of games with a winner and the median minute of the
 // win, army mix (armor / artillery share of all nations' armies) at 10/20/30 min, the troop mixes winners used,
@@ -156,12 +156,14 @@ function parseOptions(argv: string[]): Options {
           const on = raw === undefined || raw === '1' || raw === 'true';
           if (key === 'merchantMerc') {
             if (on) Object.assign(DOCTRINE_LEVERS.merchant, { gold: 0, mercCost: 0.3 });
+          } else if (key === 'bankingScience') {
+            if (raw !== undefined && Number(raw) > 0) (TECHS.banking as { science: number }).science = Number(raw);
           } else if (key in GOLD_RULES) (GOLD_RULES as Record<string, boolean>)[key] = on;
           else {
-            console.error(`Unknown rule ${key} (${Object.keys(GOLD_RULES).join(', ')}, merchantMerc)`);
+            console.error(`Unknown rule ${key} (${Object.keys(GOLD_RULES).join(', ')}, merchantMerc, bankingScience=N)`);
             process.exit(1);
           }
-          o.rules.push(`${key}=${on ? 1 : 0}`);
+          o.rules.push(`${key}=${raw ?? 1}`);
         }
         k++;
         break;
