@@ -249,6 +249,36 @@ Not re-measured on the final tree: specialists and random doctrines with the las
 doctrine normal AIs pick). Still open: AI Air pickers ~1.5x (selection: rich nations pick it), AI Fortress ~0.6, air
 specialist ~0.75, World specialists (intervals 0.2-6). Breakthrough (design5 section 5) stays in reserve.
 
+Final check on fresh seeds (base = 769e4ed, now = the dev tree at ca7813c; 17001+ and 18001+, medium 192 games /
+pairs per set, World 24, [95%] paired by seed; log and files: /tmp/fa-bal/gh/v17*, v18*). The tuning rounds' claims
+mostly did not reproduce: on 17001+ the base already passed the random-doctrine target, and "Blitz fixed" and
+"economy specialist into range" were refuted. Nothing reverted: nothing got clearly worse because of the two
+mechanics, and switching either off did not fix the one real drop.
+| Target | Base | Now | Result |
+|---|---|---|---|
+| Random doctrines, 17001+ | 0.77-1.30 | Naval 1.51 [1.14-1.91], Fortress 0.60, Blitz 1.30 | fail (Naval +0.54, the only significant change) |
+| Random doctrines, 18001+ | Fortress 0.68, Siege 1.39 | 0.75-1.31 | pass (base fails) |
+| Random doctrines, 768 games | Blitz 1.38, Expansion 0.72, Siege 1.22 | Blitz 1.32, Expansion 0.96, Siege 0.97 | pass on average; Blitz -0.06 [-0.30 to +0.16] (not fixed) |
+| AI picks, 384 games | Air 2.00, Fortress 0.74, Naval 0.88 | Air 1.60 [1.28-1.93], Fortress 0.69, Naval 0.85 (4% of picks), Merchant 1.18 | fail, as in base |
+| Specialists, 17001+ | navy 0.59 / armor 0.77 / air 0.86 / land 0.98 / economy 1.36 | 0.87 / 0.92 / 0.61 / 1.04 / 1.43 | navy and armor pass; air and economy fail |
+| Air specialist, 384 pairs | 0.83 | 0.69 (now/base 0.84 [0.60-1.15]) | fail, not significant |
+| Length medium / World (median min) | 30.4 / 39.1 | 30.0 / 37.0 | pass |
+| Leader at 15 min wins (768 games) | 31.9% | 37.0% (+5.1 [+0.8 to +9.4]) | drifted up |
+| Fission / research at 20 min | 28.0 / 11.40 | 27.5 / 11.42 | pass |
+| Winners' gold on mercenaries | 8.6% | 9.6% | pass |
+| Easy / Normal / Hard alive at 20 | 100 / 96-100 / 75-88% | 100 / 100 / 75-88% | pass, Hard unchanged |
+| Tick time (huge map, 40 AIs p50 / p95 / p99 ms) | 2.77 / 6.14 / 8.89 | 2.80 / 6.57 / 9.68 | within budget; ~+15-20% at p99 |
+Switched off (17001+): trenches off -> land / armor specialists 0.68 / 0.62 (trenches are what lift them), random
+Naval 1.13, Fortress 0.94, AI Air picks 1%; Air cover off -> air specialist 0.64, random Air 0.94 (no measured gain);
+warship flattening 25 instead of 50 -> Naval 1.21 but Blitz 1.52 (noise moving between doctrines, not adopted).
+Checks on this tree: tsc (client and server), 806 tests, build, e2e mp-pillars and mp-arsenal (hashes below); an Easy
+game played as a new player (screenshots /tmp/borderfall-shots/b5-check-*.png): the trench tip came at 4:50 on the
+player's first dug border, Show me pointed at it, the tooltip and the "Dug in: +N%" attack line explain it, the
+doctrine cards read clearly. Not seen in play: Air cover (covered by tests and a staged screenshot only).
+Still open: random Naval high and Fortress low on one seed set; AI Air pickers ~1.6x and AI Fortress / Naval picks
+low; air specialist ~0.7 and economy specialist ~1.4; leader at 15 min +5 points; Air cover costs CPU and AI
+airfield use with no measured gain (simplify or drop: owner's call); Brutal and World specialists not checked.
+
 ## Site icon (2026-11-02, on `dev`, not merged yet)
 `public/favicon.svg` (navy square, orange territory pushing a gold front line into teal) plus favicon.ico (16/32/48),
 favicon-32.png, apple-touch-icon.png (180), icon-192/512, icon-512-maskable.png and site.webmanifest ("Frontline

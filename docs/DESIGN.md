@@ -329,6 +329,10 @@ trenches, and landings go around them.** Automatic for everyone (no action), dra
   than max(2, 15% of the front) tiles in the last 10 s, aimed at that front's deepest tile in reach; at most 6
   airfields cooling down at once; the zone lasts 2x as long. Manual missions override it (the panel shows idle as
   "Auto cover"). The AI Air holder leaves the airfield nearest such a front idle so Air cover flies it.
+- Measured (fresh seeds 17001+ / 18001+, against live main and with each mechanic switched off): trenches lift the
+  land and armor specialists (0.68 / 0.62 with trenches off -> 1.04 / 0.92) and make the AI's doctrine choice
+  depend on dug lines; they add ~15-20% to tick p99. Air cover has no measured gain so far (air specialist 0.64 off
+  vs 0.61 on): a candidate to simplify. Full table: ROADMAP.md, "Balance pass 4".
 
 ### Special land abilities
 
