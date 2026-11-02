@@ -271,7 +271,9 @@ mechanics, and switching either off did not fix the one real drop.
 Switched off (17001+): trenches off -> land / armor specialists 0.68 / 0.62 (trenches are what lift them), random
 Naval 1.13, Fortress 0.94, AI Air picks 1%; Air cover off -> air specialist 0.64, random Air 0.94 (no measured gain);
 warship flattening 25 instead of 50 -> Naval 1.21 but Blitz 1.52 (noise moving between doctrines, not adopted).
-Checks on this tree: tsc (client and server), 806 tests, build, e2e mp-pillars and mp-arsenal (hashes below); an Easy
+Checks on this tree: tsc (client and server), 806 tests, build; e2e mp-pillars PASS (hashes agree on 119 turns);
+mp-arsenal failed twice in its scripted setup before any hash check (no port on 2 coast tiles; no room for player
+B's lab), the same flakes seen on earlier trees, so its hashes are unchecked on this tree; an Easy
 game played as a new player (screenshots /tmp/borderfall-shots/b5-check-*.png): the trench tip came at 4:50 on the
 player's first dug border, Show me pointed at it, the tooltip and the "Dug in: +N%" attack line explain it, the
 doctrine cards read clearly. Not seen in play: Air cover (covered by tests and a staged screenshot only).
