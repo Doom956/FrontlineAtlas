@@ -24,6 +24,7 @@ import { isWater } from '../sim/types';
 import type { Action, AirMission, Building, DivisionMode, GameState, Player, Unit, WarshipStance } from '../sim/types';
 import type { Dispatch, UiState } from './uiState';
 import { followOf, followsWar } from './follow';
+import { autoCoverHolder, coverFlying } from './trench';
 
 export type PillarPick = 'bombard' | 'blockade' | 'front' | 'airSupport' | 'airStrategic' | 'airSuperiority';
 
@@ -58,6 +59,15 @@ export const MODE_ORDER: readonly DivisionMode[] = ['hold', 'support', 'refit'];
 const AIR_ICON: Record<AirMission, string> = { idle: 'pause', support: 'attack', strategic: 'bomb', superiority: 'plane' };
 const AIR_PICK: Partial<Record<AirMission, PillarPick>> = { support: 'airSupport', strategic: 'airStrategic', superiority: 'airSuperiority' };
 export const AIR_ORDER: readonly AirMission[] = ['support', 'strategic', 'superiority', 'idle'];
+/** The idle mission of an Air doctrine holder: its idle airfields fly Air cover by themselves (trench.ts). */
+export const AUTO_COVER = {
+  name: 'Auto cover',
+  help: 'Air doctrine: your idle airfields bomb the trenches in front of your attacks by themselves, for free. Set a mission to use them elsewhere.',
+} as const;
+/** Short label of the idle choice: "Auto cover" for an Air doctrine holder, else "Idle". */
+export function idleAirLabel(state: GameState, pid: number): { name: string; help: string } {
+  return autoCoverHolder(state, pid) ? AUTO_COVER : { name: 'Idle', help: AIR_MISSION_INFO.idle.help };
+}
 export function airInfo(m: AirMission): ChoiceInfo {
   const i = AIR_MISSION_INFO[m];
   return { name: i.name, icon: AIR_ICON[m], help: i.help, pick: AIR_PICK[m] };
@@ -214,7 +224,10 @@ export function wingStatus(state: GameState, b: Building): WingStatus {
       line = b.fighters <= 0 ? 'Air superiority: no fighters here (build some)' : `Air superiority · ${b.fighters} fighter${b.fighters === 1 ? '' : 's'} on patrol`;
       break;
     default:
-      line = b.bombers + b.fighters > 0 ? 'Idle: no automatic sorties. Pick Support to send the bombers with your attacks' : 'Idle: buy bombers, then pick Support to send them with your attacks';
+      if (autoCoverHolder(state, b.owner)) {
+        // Air doctrine: an idle airfield is on Air cover (trench.ts)
+        line = b.bombers <= 0 ? `${AUTO_COVER.name}: buy bombers and they bomb enemy trenches ahead of your attacks` : coverFlying(state, b) ? `${AUTO_COVER.name}: bombing the dug-in line ahead of your attack, free` : `${AUTO_COVER.name}: bombs dug-in or stalled fronts ahead of your attacks by itself, free`;
+      } else line = b.bombers + b.fighters > 0 ? 'Idle: no automatic sorties. Pick Support to send the bombers with your attacks' : 'Idle: buy bombers, then pick Support to send them with your attacks';
   }
   return {
     mission,
