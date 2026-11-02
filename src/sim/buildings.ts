@@ -7,7 +7,7 @@
 //   2. otherwise the order snaps to the nearest valid own tile within BUILDING_SNAP_RADIUS of T (T itself first, then
 //      by distance, then row, then column), at least the map size's spacing (buildingSpacing) from every building.
 // Every effect scales with the level: countBuildings returns the SUM OF LEVELS, so "+12% gold per market" means per
-// market level; forts, SAMs, watchtowers, airfields and depots also reach further per level (helpers below).
+// market level; forts, SAMs, watchtowers and airfields also reach further per level (helpers below).
 import {
   AIRCRAFT_MAX_PER_AIRFIELD,
   AIRFIELD_LEVEL_RADIUS,
@@ -20,8 +20,6 @@ import {
   BUILDING_SNAP_RADIUS,
   BUILDING_UPGRADE_RADIUS,
   BUILDINGS,
-  DEPOT_LEVEL_RADIUS,
-  DEPOT_RADIUS,
   FORT_DEFENSE,
   FORT_DEFENSE_TECH,
   FORT_LEVEL_DEFENSE,
@@ -261,10 +259,6 @@ export function airfieldRadius(b: Building): number {
 /** Aircraft an airfield can hold (bombers + fighters, incl. bombers out flying). */
 export function aircraftCap(b: Building): number {
   return AIRCRAFT_MAX_PER_AIRFIELD * Math.max(1, b.level);
-}
-/** Attack-bonus radius of a supply depot. */
-export function depotRadius(b: Building): number {
-  return DEPOT_RADIUS + DEPOT_LEVEL_RADIUS * (b.level - 1);
 }
 /** Intel radius of one watchtower: base + WATCHTOWER_LEVEL_RADIUS per level above 1, Radar doubles it. */
 export function watchtowerRadiusOf(state: GameState, b: Building): number {
@@ -762,13 +756,13 @@ export function armyTotalOf(state: GameState, playerId: number): number {
   return n;
 }
 
-/** Supply source tiles of a player: capital, finished cities, finished supply depots. */
+/** Supply source tiles of a player: capital, finished cities, finished forts. */
 export function supplySources(state: GameState, playerId: number): number[] {
   const p = state.players[playerId];
   const out: number[] = [];
   if (p && p.capital >= 0) out.push(p.capital);
   const lists = listsOf(state, playerId);
   for (const b of lists.city) if (isLive(state, b, playerId, false) && b.tile !== p?.capital) out.push(b.tile);
-  for (const b of lists.supplyDepot) if (isLive(state, b, playerId, false)) out.push(b.tile);
+  for (const b of lists.fort) if (isLive(state, b, playerId, false)) out.push(b.tile);
   return out;
 }

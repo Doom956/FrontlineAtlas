@@ -15,13 +15,13 @@
 //
 // Losses: wilderness NEUTRAL_LOSS_PER_TILE x terrain defence per tile; a nation's tile costs ATTACK_LOSS_BASE x
 // terrain defence x forts x clamp(1 / odds, 0.6, 2) x (LOSS_FLAT + LOSS_DENSITY x defender density), divided by the
-// attack power per unit (troop types, terrain attack, matchups, supply, depots, techs); the defender loses its density
+// attack power per unit (troop types, terrain attack, matchups, supply, techs); the defender loses its density
 // per tile. Tribes as targets cost x0.7.
 //
 // The heap is built at launch from the attacker's border set (territory.ts) and then updated on every capture:
 // neighbours of a captured tile are queued (duplicates allowed). Stale entries are dropped lazily when they reach the
 // top; a purge every few ticks keeps the front length (distinct queued tiles) honest.
-import { buildingAt, buildingStamp, buildingsOf, countBuildings, depotRadius, fortMultiplierAt, supplySources } from './buildings';
+import { buildingAt, buildingStamp, countBuildings, fortMultiplierAt, supplySources } from './buildings';
 import {
   ARMOR_SPEED_BONUS,
   ARTILLERY_FORT_BONUS,
@@ -40,7 +40,6 @@ import {
   DOCTRINE_PERKS,
   DEFENDER_NO_SUPPLY,
   DEFENSE_BONUS_CAP,
-  DEPOT_ATTACK_BONUS,
   ENDGAME_SMALL_TILES,
   FORCE_LIMIT_ODDS,
   FORCE_LIMIT_TAIL,
@@ -211,7 +210,7 @@ function combinedArms(p: Player, t: Troops, tot: number): number {
 
 // ---------- supply ----------
 // Cheap model: the supply distance of a tile is the straight-line distance to the nearest own supply source
-// (capital, finished cities and depots, live beachheads). No path search; sources are cached per player and
+// (capital, finished cities and forts, live beachheads). No path search; sources are cached per player and
 // rebuilt when the buildings, the capital or the beachheads change.
 function supplyRange(p: Player): number {
   return SUPPLY_RANGE * (hasTech(p, 'logistics') ? LOGISTICS_RANGE : 1) * techSupplyRangeMul(p);
@@ -251,7 +250,7 @@ function supplyOf(state: GameState): SupplyData {
   return d;
 }
 
-/** Supply source tiles of a player (capital, finished cities and depots it owns, live beachheads). */
+/** Supply source tiles of a player (capital, finished cities and forts it owns, live beachheads). */
 export function supplySourceTiles(state: GameState, playerId: number): number[] {
   const owner = state.map.owner;
   const out = supplySources(state, playerId).filter((t) => owner[t] === playerId);
@@ -333,22 +332,6 @@ export function updateSupply(state: GameState): void {
   const n = d.beachheads.length;
   d.beachheads = d.beachheads.filter((b) => b.untilTick > state.tick && owner[b.tile] === b.player);
   if (d.beachheads.length !== n) d.headVersion++; // a dropped head leaves the cached source lists (supplyCache)
-}
-
-/** Depot attack bonus: DEPOT_ATTACK_BONUS when a finished supply depot of playerId covers the tile (depotRadius). */
-function depotBonus(state: GameState, playerId: number, tile: number): number {
-  if (countBuildings(state, playerId, 'supplyDepot') === 0) return 0;
-  const w = state.map.width;
-  const x = tile % w;
-  const y = (tile / w) | 0;
-  for (const b of buildingsOf(state, playerId, 'supplyDepot')) {
-    if (b.buildLeft > 0) continue;
-    const dx = (b.tile % w) - x;
-    const dy = ((b.tile / w) | 0) - y;
-    const r = depotRadius(b);
-    if (dx * dx + dy * dy <= r * r) return DEPOT_ATTACK_BONUS;
-  }
-  return 0;
 }
 
 // ---------- combat formulas ----------
@@ -488,7 +471,7 @@ export function lastStandFactor(state: GameState, defender: number, attacker: nu
 /**
  * Attack power per unit of `troops` (owned by attackerId) against `tile`, fighting a force of composition `against`
  * (null = neutral land): composition-weighted (type attack x terrain attack x matchup x artillery fort bonus)
- * x supply x depot x combined arms. Plain infantry on supplied plains = 1.
+ * x supply x combined arms. Plain infantry on supplied plains = 1.
  */
 function powerPerUnit(state: GameState, attackerId: number, troops: Troops, tile: number, against: Troops | null, fort: number): number {
   const tot = total(troops);
@@ -504,7 +487,6 @@ function powerPerUnit(state: GameState, attackerId: number, troops: Troops, tile
     sum += (troops[k] / tot) * m;
   }
   sum *= supplyEfficiency(state, attackerId, tile);
-  sum *= 1 + depotBonus(state, attackerId, tile);
   sum *= combinedArms(p, troops, tot);
   return sum;
 }
@@ -635,8 +617,6 @@ function tileCost(state: GameState, c: FightCtx, tile: number): TileCost {
   const armorAtt = c.w1 > 0 ? armorTerrain(att.armor, c.armorIgnore) : 0;
   let power = c.w0 * att.infantry + c.w1 * armorAtt + (c.w2 > 0 ? c.w2 * att.artillery * artillerySiegeBonus(fort, c.siege) : 0);
   power *= sup * c.combined;
-  const depot = depotBonus(state, c.attacker, tile);
-  if (depot > 0) power *= 1 + depot;
   let defense: number;
   if (c.defender === 0) {
     defense = NEUTRAL_LOSS_PER_TILE * ter.defense * (c.tribeAttacker ? TRIBE_NEUTRAL_LOSS : 1);
@@ -1269,7 +1249,7 @@ export function launchAttack(state: GameState, playerId: number, tile: number, t
       addTroops(p.troops, force.troops);
       return { ok: true };
     }
-    // The beachhead supplies the invasion until a city or depot can take over.
+    // The beachhead supplies the invasion until a city or fort can take over.
     const sd = supplyOf(state);
     const headSeconds = BEACHHEAD_SUPPLY_SECONDS * (navalHead < 1 ? NAVY_BEACHHEAD_SUPPLY : 1);
     sd.beachheads.push({ player: playerId, tile, untilTick: state.tick + Math.round(headSeconds * TICKS_PER_SECOND) });
@@ -1347,7 +1327,7 @@ export function retreat(state: GameState, playerId: number, attackId: number): A
 
 /**
  * Clash power per unit of force `t` (of attacker) pushing into `tile` against force `against`: like a tile
- * capture (terrain attack, matchup, artillery vs forts, supply, depots, combined arms) divided by the terrain
+ * capture (terrain attack, matchup, artillery vs forts, supply, combined arms) divided by the terrain
  * defence and fort multiplier the other side holds there. tile < 0 (no front): no terrain, no forts.
  */
 function clashPowerPerUnit(state: GameState, attacker: number, t: Troops, against: Troops, tile: number, holder: number): number {

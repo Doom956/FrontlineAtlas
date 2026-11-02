@@ -487,7 +487,7 @@ export function suggestions(state: GameState, playerId: number): Suggestion[] {
     if (k > 0 && far / k > 0.4 && farTile >= 0) {
       const ours = nbs.get(foe)?.ours ?? [];
       const anchor = ours.length ? inwardOwn(state, playerId, ours[0], 15) : -1;
-      add('build-depot', 'Your front is far from supply: build a Supply Depot near it', 62, spotFor(state, playerId, 'supplyDepot', anchor), 'supplyDepot');
+      add('build-supply-fort', 'Your front is far from supply: build a Fort near it (forts are supply sources)', 62, spotFor(state, playerId, 'fort', anchor), 'fort');
     }
     // Enemy planes or missiles and no SAM.
     if (hasTech(p, 'radar') && countBuildings(state, playerId, 'sam', true) === 0) {

@@ -172,7 +172,7 @@ const PROFILES: Record<Personality, Profile> = {
     maxWars: 3,
     mix: { armor: 0.35, artillery: 0.1 },
     techs: ['metallurgy', 'mechanization', 'logistics', 'industrialization', 'agriculture', 'ballistics', 'combinedArms', 'medicine', 'flight', 'rocketry', 'nuclearFission', 'banking', 'fortification', 'radar', 'navigation'],
-    build: { barracks: 1.6, factory: 1.5, mine: 1.3, oilWell: 1.3, fort: 0.6, market: 0.8, port: 0.6, hospital: 1.3, supplyDepot: 1.3 },
+    build: { barracks: 1.6, factory: 1.5, mine: 1.3, oilWell: 1.3, fort: 0.6, market: 0.8, port: 0.6, hospital: 1.3 },
     allyOpinion: 35,
     naval: 0.25,
   },
@@ -1045,7 +1045,7 @@ function doctrine(ctx: Ctx): void {
 
 /** Build priority multipliers that lean into the held doctrine (missing = 1). */
 const DOCTRINE_BUILD: Record<DoctrineId, Partial<Record<BuildingType, number>>> = {
-  blitz: { factory: 1.4, oilWell: 1.3, supplyDepot: 1.2 },
+  blitz: { factory: 1.4, oilWell: 1.3 },
   fortress: { fort: 1.6, watchtower: 1.3 },
   siege: { arsenal: 1.5 },
   merchant: { market: 1.5, port: 1.3, city: 1.1 },
@@ -1655,11 +1655,13 @@ function allyDuties(ctx: Ctx): void {
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Buildings that only pay off in war. */
-const MILITARY = new Set<BuildingType>(['barracks', 'factory', 'arsenal', 'fort', 'supplyDepot', 'watchtower', 'airfield', 'sam', 'silo', 'hospital']);
+const MILITARY = new Set<BuildingType>(['barracks', 'factory', 'arsenal', 'fort', 'watchtower', 'airfield', 'sam', 'silo', 'hospital']);
 
 interface BuildOption {
   type: BuildingType | 'research' | 'procure';
   prio: number;
+  /** a fort meant as a supply source for a main front beyond supply (placed and scored for that) */
+  supply?: boolean;
 }
 
 /** Random tiles of ours: sampled in our bounding box (re-checked for ownership), plus the capital. */
@@ -1789,11 +1791,11 @@ function economy(ctx: Ctx): void {
   const held = doctrineActive(state, id);
   const lean = held ? DOCTRINE_BUILD[held] : {};
   const noResearch = researchRule(state) !== null;
-  const add = (type: BuildingType | 'research' | 'procure', prio: number): void => {
+  const add = (type: BuildingType | 'research' | 'procure', prio: number, supply = false): void => {
     if (prio <= 0) return;
     if (type === 'research' || type === 'procure' ? noResearch : !buildingAllowed(state, type)) return;
     if (type === 'research' || type === 'procure') opts.push({ type, prio });
-    else opts.push({ type, prio: prio * (prof.build[type] ?? 1) * (lean[type] ?? 1) * (MILITARY.has(type) ? militaryScale : 1) });
+    else opts.push({ type, prio: prio * (prof.build[type] ?? 1) * (lean[type] ?? 1) * (MILITARY.has(type) ? militaryScale : 1), supply });
   };
 
   // Cities are the backbone (troop cap, gold, supply), more urgent as the troops near their cap. Their number
@@ -1821,12 +1823,15 @@ function economy(ctx: Ctx): void {
     add('arsenal', count('arsenal') < arsenalCap ? (count('arsenal') === 0 ? 6.5 : 4.5) + armyWeight : 0);
   }
   // Forts along the border with the most threatening neighbour; towers for warning and a little defence.
+  let fortCap = 0;
   if (ctx.threatId > 0) {
     const len = borderLen(state, id, ctx.threatId);
-    add('fort', count('fort') < Math.min(10, Math.ceil(len / 200)) ? 2 + clamp(ctx.threat, 0, 2) * 1.8 : 0);
+    fortCap = Math.min(10, Math.ceil(len / 200));
+    add('fort', count('fort') < fortCap ? 2 + clamp(ctx.threat, 0, 2) * 1.8 : 0);
     add('watchtower', count('watchtower') < Math.min(3, ctx.enemies.length) ? 2 : 0);
   }
-  if (frontNeedsSupply(ctx)) add('supplyDepot', count('supplyDepot') < 2 + T / 2500 ? 5 : 0);
+  // Forts are supply sources: one near a main front that is mostly beyond supply (placed for supply, tryBuild).
+  if (frontNeedsSupply(ctx)) add('fort', count('fort') < fortCap + 2 + T / 2500 ? 5 : 0, true);
   if (coastCount(state, id) > 0) {
     const portCap = Math.round(prof.naval * 3 + (T > 400 ? 1 : 0));
     add('port', count('port') < portCap ? 2 + prof.naval * 4 : 0);
@@ -1866,7 +1871,7 @@ function economy(ctx: Ctx): void {
       if (tech && applyAction(state, id, { type: 'research', tech }).ok) done++;
     } else if (o.type === 'procure') {
       if (armsTech && applyAction(state, id, { type: 'procure', tech: armsTech }).ok) done++;
-    } else if (tryBuild(ctx, o.type)) done++;
+    } else if (tryBuild(ctx, o.type, o.supply === true)) done++;
   }
 }
 
@@ -1894,7 +1899,7 @@ const UPGRADE_FIRST = new Set<BuildingType>(['farm', 'market', 'barracks', 'fact
  * the nearest valid tile), and the resulting spot is scored. The order is sent with the candidate tile, so the sim
  * resolves it the same way.
  */
-function tryBuild(ctx: Ctx, type: BuildingType): boolean {
+function tryBuild(ctx: Ctx, type: BuildingType, supply = false): boolean {
   const { state, p, id } = ctx;
   if (type === 'city') return buildCity(ctx);
   const cost = buildingCost(state, id, type);
@@ -1902,11 +1907,11 @@ function tryBuild(ctx: Ctx, type: BuildingType): boolean {
   let best = -1;
   let bestScore = -Infinity;
   const seen = new Set<number>();
-  for (const t of candidateTiles(ctx, type)) {
+  for (const t of candidateTiles(ctx, type, supply)) {
     const r = resolveBuildTarget(state, id, type, t);
     if ('error' in r || !r.affordable || seen.has(r.tile)) continue;
     seen.add(r.tile);
-    const s = siteScore(ctx, type, r.tile, r.upgrade) + (r.upgrade && UPGRADE_FIRST.has(type) ? 1.5 : 0);
+    const s = siteScore(ctx, type, r.tile, r.upgrade, supply) + (r.upgrade && UPGRADE_FIRST.has(type) ? 1.5 : 0);
     if (s > bestScore) {
       bestScore = s;
       best = t;
@@ -1970,8 +1975,11 @@ function buildCity(ctx: Ctx): boolean {
   return up >= 0 && applyAction(state, id, { type: 'build', building: 'city', tile: up }).ok;
 }
 
-/** Candidate tiles per building type: deposit-, coast- or border-derived, else a random owned sample. */
-function candidateTiles(ctx: Ctx, type: BuildingType): number[] {
+/**
+ * Candidate tiles per building type: deposit-, coast- or border-derived, else a random owned sample. `supply`: a
+ * fort meant as a supply source (behind the main war front instead of the most threatening neighbour's border).
+ */
+function candidateTiles(ctx: Ctx, type: BuildingType, supply = false): number[] {
   const { state, id } = ctx;
   const owner = state.map.owner;
   const w = state.map.width;
@@ -1995,15 +2003,14 @@ function candidateTiles(ctx: Ctx, type: BuildingType): number[] {
       return sampleOwnedTiles(state, id, 'coast', 16);
     case 'fort':
     case 'watchtower':
-    case 'supplyDepot':
     case 'airfield':
     case 'sam': {
       if (type === 'sam' && !SAM_NEAR_FRONT) return ownedSample(ctx, 20);
       // SAM sites face the nation most likely to bomb us (bombers strike ahead of its attacks on our land).
-      const foe = type === 'sam' ? ctx.threatId || mainWarTarget(ctx) : type === 'supplyDepot' || type === 'airfield' ? mainWarTarget(ctx) || ctx.threatId : ctx.threatId;
+      const foe = type === 'sam' ? ctx.threatId || mainWarTarget(ctx) : supply || type === 'airfield' ? mainWarTarget(ctx) || ctx.threatId : ctx.threatId;
       const edges = foe > 0 ? (ctx.hood.edge.get(foe) ?? EMPTY) : ctx.foreignEdges;
-      // Forts a few tiles behind the border (not lost at the first push), depots further back, airfields within
-      // reach of the front (fighter cover, paratroopers) but out of the first push.
+      // Forts a few tiles behind the border (not lost at the first push), airfields within reach of the front
+      // (fighter cover, paratroopers) but out of the first push.
       // SAM sites cover the front (where enemy bombers strike) from a little further back.
       const depth = type === 'fort' ? [8, 12, 5] : type === 'watchtower' ? [3, 5] : type === 'airfield' ? [30, 45, 20] : type === 'sam' ? [SAM_FRONT_DEPTH, SAM_FRONT_DEPTH * 1.5, SAM_FRONT_DEPTH * 0.6] : [16, 24, 10];
       const out: number[] = [];
@@ -2038,8 +2045,11 @@ function inward(ctx: Ctx, e: number, k: number): number {
   return y * w + x;
 }
 
-/** How good a spot is for a type (higher is better); `upgrade`: the order upgrades the building on t. */
-function siteScore(ctx: Ctx, type: BuildingType, t: number, upgrade: boolean): number {
+/**
+ * How good a spot is for a type (higher is better); `upgrade`: the order upgrades the building on t; `supply`: a fort
+ * meant as a supply source (the farther the spot from our supply, the better).
+ */
+function siteScore(ctx: Ctx, type: BuildingType, t: number, upgrade: boolean, supply = false): number {
   const { state, id } = ctx;
   const map = state.map;
   const w = map.width;
@@ -2064,7 +2074,8 @@ function siteScore(ctx: Ctx, type: BuildingType, t: number, upgrade: boolean): n
         const r = fortRadius(state, b);
         if (dist2(w, t, b.tile) < r * r * 1.2) covered = 1;
       }
-      return TERRAIN[ter].defense - covered * 3 + noise;
+      const reach = supply ? Math.min(supplyDistance(state, id, t), 300) / 50 : 0;
+      return TERRAIN[ter].defense - covered * 3 + reach + noise;
     }
     case 'watchtower': {
       if (upgrade) return TERRAIN[ter].defense * 0.5 + noise;
@@ -2075,8 +2086,6 @@ function siteScore(ctx: Ctx, type: BuildingType, t: number, upgrade: boolean): n
       }
       return TERRAIN[ter].defense * 0.5 - covered * 2 + noise;
     }
-    case 'supplyDepot':
-      return Math.min(supplyDistance(state, id, t), 300) / 50 + noise;
     case 'port':
       return safe + noise;
     case 'mine':
@@ -2102,7 +2111,7 @@ function siteScore(ctx: Ctx, type: BuildingType, t: number, upgrade: boolean): n
   }
 }
 
-/** True if our main front is mostly beyond supply range (a depot would help). */
+/** True if our main front is mostly beyond supply range (a fort or city near it would help). */
 function frontNeedsSupply(ctx: Ctx): boolean {
   const foe = mainWarTarget(ctx) || ctx.threatId;
   if (foe <= 0) return false;

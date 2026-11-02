@@ -44,7 +44,6 @@ export type BuildingType =
   | 'factory'
   | 'arsenal'
   | 'fort'
-  | 'supplyDepot'
   | 'watchtower'
   | 'port'
   | 'lab'

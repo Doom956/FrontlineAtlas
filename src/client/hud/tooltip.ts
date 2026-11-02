@@ -142,7 +142,7 @@ export class MapTooltip {
       if (state.phase === 'playing') {
         if (owner === me.id) {
           const sup = supplyEfficiency(state, me.id, tile);
-          if (sup < 0.99) rows.push(this.line('', `Supply ${pct(sup)}`, 'Far from cities and depots: fronts here fight weaker', 'warn'));
+          if (sup < 0.99) rows.push(this.line('', `Supply ${pct(sup)}`, 'Far from cities and forts: fronts here fight weaker', 'warn'));
         } else if (isAttackable(state, me.id, tile) && this.ctx.ui.mode.kind === 'none' && !this.ctx.ui.selection.length) {
           // (with units selected a click is their order, not an attack: selection.ts)
           const send = troopsToSend(me, this.ctx.ui);
