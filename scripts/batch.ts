@@ -34,7 +34,7 @@
 //                                heavyTanks, groundAttack | heavyBombers, blitzTactics | trenchWarfare (land),
 //                                stockExchange | freeTrade (economy))
 //   --slot 1                     with --specialist: which AI nation (1 = the first non-tribe AI nation)
-//   --rule marketCapFixed,stackAdd=1  gold rule switches (config GOLD_RULES; merchantMerc = Merchant gold -> cheaper mercenaries)
+//   --rule marketCapFixed,stackAdd   rule switches for A/B runs (scripts/rules.ts)
 //
 // What it prints, per configuration and over all games: share of games with a winner and the median minute of the
 // win, army mix (armor / artillery share of all nations' armies) at 10/20/30 min, the troop mixes winners used,
@@ -50,7 +50,7 @@
 // With --specialist: per pillar and map type, the slot's win rate (Wilson 95%), land share at 10/20/30 min and at the
 // end, survival at 20/30 min, the game's median finish minute and the pillar's units, for the specialist and the
 // baseline, with the specialist/baseline ratio of wins and of land at the end (paired bootstrap 95% over seeds).
-import { BUILDING_ORDER, DEFAULT_AI_COUNT, DOCTRINE_LEVERS, GOLD_RULES, TECHS, TICKS_PER_SECOND, VICTORY_LAND_SHARE, WATCHTOWER_DEF_RADIUS } from '../src/sim/config';
+import { BUILDING_ORDER, DEFAULT_AI_COUNT, TECHS, TICKS_PER_SECOND, VICTORY_LAND_SHARE, WATCHTOWER_DEF_RADIUS } from '../src/sim/config';
 import { armyTotal, population } from '../src/sim/economy';
 import { fortMultiplierAt, fortRadius } from '../src/sim/buildings';
 import { forEachInRadius } from '../src/sim/grid';
@@ -67,6 +67,7 @@ import { arsenalItem, isArsenalTech } from '../src/sim/arsenal';
 import { cloneSetup, DEFAULT_MODIFIERS, DEFAULT_SETUP, SINGLE_PLAYER_NATIONS } from '../src/sim/setup';
 import { loadWorldMap } from '../src/sim/worldmaps';
 import { FOCUS_PILLARS, FOCUS_SPEC, setAIFocus } from '../src/sim/aifocus';
+import { applyRules } from './rules';
 import type { FocusPillar } from '../src/sim/aifocus';
 import { aiCommittedPillar } from '../src/sim/variantsAI';
 import { coastCount } from '../src/sim/territory';
@@ -148,24 +149,7 @@ function parseOptions(argv: string[]): Options {
         k++;
         break;
       }
-      case '--rule': {
-        // Gold rule switches for A/B runs (config GOLD_RULES; merchantMerc: the Merchant doctrine's gold +8% becomes
-        // mercenaries 30% cheaper). Every shard parses the same argv, so all games of a run use the same rules.
-        for (const item of list()) {
-          const [key, raw] = item.split('=');
-          const on = raw === undefined || raw === '1' || raw === 'true';
-          if (key === 'merchantMerc') {
-            if (on) Object.assign(DOCTRINE_LEVERS.merchant, { gold: 0, mercCost: 0.3 });
-          } else if (key in GOLD_RULES) (GOLD_RULES as Record<string, boolean>)[key] = on;
-          else {
-            console.error(`Unknown rule ${key} (${Object.keys(GOLD_RULES).join(', ')}, merchantMerc)`);
-            process.exit(1);
-          }
-          o.rules.push(`${key}=${on ? 1 : 0}`);
-        }
-        k++;
-        break;
-      }
+      case '--rule': o.rules.push(...applyRules(list())); k++; break;
       case '--ais': o.ais = v === 'default' ? [] : list().map(Number); k++; break;
       case '--maps': o.maps = list() as MapType[]; k++; break;
       case '--seeds': o.seeds = Number(v); k++; break;

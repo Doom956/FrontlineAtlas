@@ -25,6 +25,7 @@
 // its wins, and how often / when an AI reached the victory share while it was still alive.
 import { buildingCost } from '../src/sim/buildings';
 import { MIN_ATTACK_TROOPS, TICKS_PER_SECOND, VICTORY_LAND_SHARE } from '../src/sim/config';
+import { applyRules } from './rules';
 import { tick } from '../src/sim/sim';
 import { canSpawnAt, createGame, gameSeconds, ownerBox } from '../src/sim/state';
 import { borderTiles } from '../src/sim/territory';
@@ -397,6 +398,7 @@ function parseOptions(argv: string[]): Options {
     const v = args[k + 1] ?? '';
     const list = (): string[] => v.split(',').filter(Boolean);
     switch (a) {
+      case '--rule': applyRules(list()); k++; break;
       case '--maps': o.maps = list(); k++; break;
       case '--types': o.types = list() as MapType[]; k++; break;
       case '--difficulty': o.difficulties = list() as Difficulty[]; k++; break;
