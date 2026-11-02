@@ -28,7 +28,7 @@ function clientReads(s: GameState): void {
 }
 
 describe('lockstep: division and leader reads between ticks', () => {
-  it('a rendering client (front lines next to moving divisions) stays in sync with one that does not render', () => {
+  it('a rendering client (front lines next to moving divisions) stays in sync with one that does not render', async () => {
     const make = (): GameState => {
       const s = makeTestGame({ seed: 77, aiCount: 6, humanPlayer: false, mapType: 'continents', mapSize: 'small', mods: { research: 'allUnlocked', startingGold: 'veryHigh', fastGame: true } });
       for (const p of s.players) {
@@ -43,6 +43,7 @@ describe('lockstep: division and leader reads between ticks', () => {
     let diverged = -1;
     let divisions = 0;
     for (let k = 0; k < 3000 && diverged < 0; k++) {
+      if (k % 200 === 0) await new Promise<void>((resolve) => setTimeout(resolve, 0)); // keep the runner's worker RPC alive
       clientReads(rendering);
       tick(quiet);
       tick(rendering);

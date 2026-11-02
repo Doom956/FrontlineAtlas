@@ -426,7 +426,7 @@ export const TECHS: Record<TechId, TechInfo> = {
   stockExchange: { name: 'Stock Exchange', tier: 3, science: 1300, gold: 1000, requires: ['banking'], exclusiveGroup: 'finance', description: 'Saved gold earns interest (up to +20% gold income while you hold a reserve).' },
   freeTrade: { name: 'Free Trade', tier: 3, science: 1300, gold: 1000, requires: ['banking'], exclusiveGroup: 'finance', description: 'Your trade ships pay 60% more; markets cost 30% less.' },
   blitzTactics: { name: 'Blitz Tactics', tier: 3, science: 1300, gold: 1000, requires: ['mechanization'], exclusiveGroup: 'landDoctrine', description: 'Armor-heavy attacks advance up to 30% faster; tank divisions faster and deeper.' },
-  trenchWarfare: { name: 'Trench Warfare', tier: 3, science: 1300, gold: 1000, requires: ['mechanization'], exclusiveGroup: 'landDoctrine', description: 'Your land defends 15% better, enemy fronts against you 15% slower, forts 25% cheaper.' },
+  trenchWarfare: { name: 'Trench Warfare', tier: 3, science: 1300, gold: 1000, requires: ['mechanization'], exclusiveGroup: 'landDoctrine', description: 'Your land defends 15% better, enemy fronts against you 15% slower, forts 25% cheaper; your trenches dig 1.5x faster, one level deeper.' },
   // Navy path (Arsenal, variants.ts): Surface fleet (Destroyers -> Battleships) OR Silent service (Submarines -> Carriers)
   carriers: { name: 'Carriers', tier: 4, science: 3500, gold: 1500, requires: ['submarines'], description: 'Build carriers: a moving airfield. Your air wings strike from them far out at sea; their fighters shoot down enemy bombers and cargo planes nearby.' },
   submarines: { name: 'Submarines', tier: 3, science: 2200, gold: 1000, requires: ['navigation'], exclusiveGroup: 'navalDoctrine', description: 'Silent service: build submarines. Hidden from enemies until close; they hit trade ships and transports much harder, blockade further and capture richer cargo. No shore bombardment.' },
@@ -502,6 +502,9 @@ export const TECH_EFFECTS = {
   trenchFortCost: 0.75,
   /** tank divisions of a Trench Warfare holder defend this much better around them */
   trenchDivisionDefense: 1.2,
+  /** Trench Warfare: own borders dig one trench level deeper and this many times faster (trenches.ts) */
+  trenchLevels: 1,
+  trenchDigMul: 1.5,
   /** Carriers: a player's warships shoot down one enemy bomber / cargo plane within this radius, then reload */
   carrierRadius: 14,
   carrierCooldown: 12,
@@ -641,6 +644,64 @@ export const FIGHTER_COOLDOWN = 12;
 /** Aircraft an airfield holds per level. */
 export const AIRCRAFT_MAX_PER_AIRFIELD = 6;
 
+// ---------- dug-in borders (trenches.ts) ----------
+/**
+ * Dug-in borders: a nation's own land within `band` tiles of a land border with a non-allied nation digs in over time
+ * (tribes, the wilderness and coasts never dig). Dig points per tile 0..200; level = floor(dig / pointsPerLevel), at
+ * most baseMaxLevel (+1 Fortress, +1 Trench Warfare). Each player's pass runs every passSeconds of game time
+ * (x rules.progressRate), staggered by id. Attackers pay defence x (1 + step x level) and need budget x (1 + slow x
+ * level) on a dug tile (inside DEFENSE_BONUS_CAP; artillery and heavy tanks breach part of it). Barrages, atom bombs,
+ * air-support zones and bombarding warships flatten trenches; a captured tile starts undug.
+ */
+export const TRENCH = {
+  /** tiles deep on the owner's side of a border with a non-allied nation */
+  band: 3,
+  /** band with the Fortress doctrine (level >= 1) */
+  fortressBand: 5,
+  pointsPerLevel: 50,
+  /** +1 Fortress (trenchLevels lever), +1 Trench Warfare: cap 4 */
+  baseMaxLevel: 2,
+  /** game seconds between two dig passes of one player (x rules.progressRate) */
+  passSeconds: 5,
+  /** dig points per pass per band tile, x the dig multiplier (at least 1) */
+  digPoints: 6,
+  /** points lost per pass by dug tiles that are no longer in the band */
+  decayPoints: 6,
+  /** the runaway coalition leader digs this much slower (a turtling leader can't freeze the map) */
+  leaderDigMul: 1 / 3,
+  /** attacker loss x (1 + step x effective level), with heartland and last stand inside DEFENSE_BONUS_CAP */
+  step: 0.15,
+  /** front budget x (1 + slow x effective level), inside DEFENSE_BONUS_CAP */
+  slow: 0.15,
+  /** front priority: ticks per level (attacks take thin stretches first) */
+  prioPerLevel: 3,
+  /** points a barrage removes on the hostile tiles of its disc (2 levels) */
+  barrageFlatten: 100,
+  /** points a hostile air-support zone removes per owner pass in its radius (1 level per 10 s; x Air airFlatten) */
+  zoneFlattenPerPass: 40,
+  /** points a bombarding warship at war removes per owner pass within its support range (x Naval level-3 shelling) */
+  shipFlattenPerPass: 50,
+  /** AI: war-target cost x (1 + warScoreStep x mean front level) */
+  warScoreStep: 0.15,
+  /** frontTrench: at most this many evenly strided samples of the shared border */
+  sampleTiles: 32,
+} as const;
+
+/**
+ * Air cover (airwings.ts), the Air doctrine's signature: an idle airfield of an Air holder with bombers flies a support
+ * sortie at the holder's own attack on a nation whose front averages minLevel+ trench levels, or that took fewer than
+ * max(stallMinTiles, stallShare x front length) tiles in the last stallSeconds. It aims at the deepest-dug front tile;
+ * its zones last zoneMul x longer. At most maxAirfields airfields per nation are on auto cover at once.
+ */
+export const AIR_COVER = {
+  stallSeconds: 10,
+  stallShare: 0.15,
+  stallMinTiles: 2,
+  minLevel: 1,
+  zoneMul: 2,
+  maxAirfields: 6,
+} as const;
+
 // ---------- doctrines ----------
 // A doctrine (src/sim/doctrines.ts) is chosen mid-game, can be switched and only ever adds bonuses: every unit,
 // building and strike stays open to everyone. Each doctrine has a few levers (DOCTRINE_LEVERS: the full bonus as a
@@ -676,7 +737,7 @@ export interface DoctrineLevers {
   fortCost?: number;
   /** fortress: troops lost by this player's home army when a tile of it falls are this much fewer */
   defenderLoss?: number;
-  /** siege: artillery attack this much higher */
+  /** siege: artillery attack this much higher against dug-in tiles (trench level >= 1) and tiles under a fort */
   artilleryAttack?: number;
   /** siege: artillery's extra bonus against forts and towers this much higher */
   siegeBonus?: number;
@@ -702,6 +763,12 @@ export interface DoctrineLevers {
   airfieldReload?: number;
   /** air: paradrop range this much longer */
   paradropRange?: number;
+  /** air: own air-support zones flatten enemy trenches this much faster (trenches.ts) */
+  airFlatten?: number;
+  /** fortress: own borders dig in this much faster (trenches.ts) */
+  digSpeed?: number;
+  /** fortress: any value > 0 = trenches one level deeper and the dug band TRENCH.fortressBand deep (trenches.ts) */
+  trenchLevels?: number;
   /** expansion: losses attacking tribes and the wilderness this much lower */
   expansionLoss?: number;
   /** expansion: troop growth this much higher while small (DOCTRINE_PERKS.expansion.smallShare) */
@@ -711,11 +778,11 @@ export type DoctrineLever = keyof DoctrineLevers;
 
 export const DOCTRINE_LEVERS: Record<DoctrineId, DoctrineLevers> = {
   blitz: { openGroundSpeed: 0.1, armorConvertCost: 0.1 },
-  fortress: { fortDefense: 0.25, fortCost: 0.25, defenderLoss: 0.2 },
-  siege: { artilleryAttack: 0.2, siegeBonus: 0.25, barrageCooldown: 0.25 },
+  fortress: { fortDefense: 0.25, fortCost: 0.25, defenderLoss: 0.2, digSpeed: 1, trenchLevels: 1 },
+  siege: { artilleryAttack: 0.25, siegeBonus: 0.25, barrageCooldown: 0.25 },
   merchant: { gold: 0.08, tradeGold: 0.25, marketBonus: 0.15 },
   naval: { warshipCost: 0.35, warshipSpeed: 0.2, transportSpeed: 0.35, transportHp: 1, tradeGold: 0.4 },
-  air: { aircraftCost: 0.35, airfieldReload: 0.4, paradropRange: 0.25 },
+  air: { aircraftCost: 0.35, airfieldReload: 0.4, paradropRange: 0.25, airFlatten: 1 },
   expansion: { expansionLoss: 0.3, smallGrowth: 0.3 },
 };
 
@@ -756,10 +823,10 @@ const P = DOCTRINE_PERKS;
 export const DOCTRINES: Record<DoctrineId, DoctrineInfo> = {
   blitz: {
     name: 'Blitz',
-    short: 'Fast armored pushes across open ground.',
+    short: 'Fast pushes over open, undug ground; cheaper armor.',
     levels: [
-      `Fronts cross plains and desert ${pct(L.blitz.openGroundSpeed, 1)} faster; armor costs ${pct(L.blitz.armorConvertCost, 1)} less to convert.`,
-      `Open-ground fronts ${pct(L.blitz.openGroundSpeed, 2)} faster; armor ${pct(L.blitz.armorConvertCost, 2)} cheaper.`,
+      `Fronts cross undug plains and desert ${pct(L.blitz.openGroundSpeed, 1)} faster; armor costs ${pct(L.blitz.armorConvertCost, 1)} less to convert.`,
+      `Undug open-ground fronts ${pct(L.blitz.openGroundSpeed, 2)} faster; armor ${pct(L.blitz.armorConvertCost, 2)} cheaper.`,
       `Armor ignores ${Math.round(P.blitz.armorTerrainIgnore * 100)}% of the terrain penalty in forests, hills and swamps.`,
     ],
     color: '#b8794a',
@@ -767,10 +834,10 @@ export const DOCTRINES: Record<DoctrineId, DoctrineInfo> = {
   },
   fortress: {
     name: 'Fortress',
-    short: 'Hold the line: stronger, cheaper forts and fewer losses at home.',
+    short: 'Your borders dig in twice as fast and one level deeper; stronger, cheaper forts.',
     levels: [
-      `Forts ${pct(L.fortress.fortDefense, 1)} stronger and ${pct(L.fortress.fortCost, 1)} cheaper; ${pct(L.fortress.defenderLoss, 1)} fewer losses when land falls.`,
-      `Forts ${pct(L.fortress.fortDefense, 2)} stronger and ${pct(L.fortress.fortCost, 2)} cheaper; ${pct(L.fortress.defenderLoss, 2)} fewer losses when land falls.`,
+      `Borders dig in ${pct(L.fortress.digSpeed, 1)} faster, one level deeper and ${TRENCH.fortressBand} tiles deep; forts ${pct(L.fortress.fortDefense, 1)} stronger and ${pct(L.fortress.fortCost, 1)} cheaper; ${pct(L.fortress.defenderLoss, 1)} fewer losses when land falls.`,
+      `Borders dig in ${pct(L.fortress.digSpeed, 2)} faster; forts ${pct(L.fortress.fortDefense, 2)} stronger and ${pct(L.fortress.fortCost, 2)} cheaper; ${pct(L.fortress.defenderLoss, 2)} fewer losses when land falls.`,
       `Forts build ${Math.round(1 / P.fortress.fortBuildTime)}x faster and repair shell damage ${P.fortress.fortRepair}x faster.`,
     ],
     color: '#5f7fa8',
@@ -778,10 +845,10 @@ export const DOCTRINES: Record<DoctrineId, DoctrineInfo> = {
   },
   siege: {
     name: 'Siege',
-    short: 'Guns first: artillery breaks forts and barrages come more often.',
+    short: 'Guns hit hardest where the enemy is dug in.',
     levels: [
-      `Artillery attack +${pct(L.siege.artilleryAttack, 1)}, siege bonus +${pct(L.siege.siegeBonus, 1)}, barrages reload ${pct(L.siege.barrageCooldown, 1)} faster.`,
-      `Artillery attack +${pct(L.siege.artilleryAttack, 2)}, siege bonus +${pct(L.siege.siegeBonus, 2)}, barrages reload ${pct(L.siege.barrageCooldown, 2)} faster.`,
+      `Artillery attack +${pct(L.siege.artilleryAttack, 1)} against trenches and forts, siege bonus +${pct(L.siege.siegeBonus, 1)}, barrages reload ${pct(L.siege.barrageCooldown, 1)} faster.`,
+      `Artillery attack +${pct(L.siege.artilleryAttack, 2)} against trenches and forts, siege bonus +${pct(L.siege.siegeBonus, 2)}, barrages reload ${pct(L.siege.barrageCooldown, 2)} faster.`,
       `Barrages hit ${P.siege.barrageRadius} tile wider and silence forts and SAM sites ${P.siege.disableMult}x longer.`,
     ],
     color: '#9a6a5c',
@@ -804,17 +871,17 @@ export const DOCTRINES: Record<DoctrineId, DoctrineInfo> = {
     levels: [
       `Warships ${pct(L.naval.warshipCost, 1)} cheaper and ${pct(L.naval.warshipSpeed, 1)} faster; transports ${pct(L.naval.transportSpeed, 1)} faster and tougher; trade ships carry +${pct(L.naval.tradeGold, 1)}.`,
       `Warships ${pct(L.naval.warshipCost, 2)} cheaper and ${pct(L.naval.warshipSpeed, 2)} faster; transports ${pct(L.naval.transportSpeed, 2)} faster, twice as hard to sink; trade ships carry +${pct(L.naval.tradeGold, 2)}.`,
-      `Warships repair at sea and shell coasts ${P.naval.shelling}x harder.`,
+      `Warships repair at sea, shell coasts ${P.naval.shelling}x harder and flatten coastal trenches ${P.naval.shelling}x faster.`,
     ],
     color: '#4f8a94',
     icon: 'doctrine-naval',
   },
   air: {
     name: 'Air',
-    short: 'Own the sky: cheaper aircraft, quicker airfields, longer drops.',
+    short: 'Idle airfields bomb enemy trenches by themselves; cheaper planes.',
     levels: [
-      `Aircraft and drops ${pct(L.air.aircraftCost, 1)} cheaper; airfields ready ${pct(L.air.airfieldReload, 1)} sooner; drop range +${pct(L.air.paradropRange, 1)}.`,
-      `Aircraft and drops ${pct(L.air.aircraftCost, 2)} cheaper; airfields ready ${pct(L.air.airfieldReload, 2)} sooner; drop range +${pct(L.air.paradropRange, 2)}.`,
+      `Idle airfields with bombers cover your attacks on dug-in or stalled fronts by themselves; support zones flatten trenches ${pct(L.air.airFlatten, 1)} faster; aircraft and drops ${pct(L.air.aircraftCost, 1)} cheaper; airfields ready ${pct(L.air.airfieldReload, 1)} sooner; drop range +${pct(L.air.paradropRange, 1)}.`,
+      `Support zones flatten trenches ${pct(L.air.airFlatten, 2)} faster; aircraft and drops ${pct(L.air.aircraftCost, 2)} cheaper; airfields ready ${pct(L.air.airfieldReload, 2)} sooner; drop range +${pct(L.air.paradropRange, 2)}.`,
       `Bombers survive one extra hit from SAM sites or fighters.`,
     ],
     color: '#7a83a8',
