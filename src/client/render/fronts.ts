@@ -11,7 +11,9 @@
 // Troop pills: a count at each active front (your attacks with an up arrow, attacks on you with a down arrow, your
 //   allies' attacks on your enemies at any zoom, other nations' fights when zoomed in), on the most recent capture
 //   nearest to the attack's focus, learnt from the tile feed.
-// Hover a front: a small card "Your attack on X: +N tiles/s, troops left Y" next to the pointer.
+// Hover a front: a small card "Your attack on X: +N tiles/s, troops left Y" next to the pointer, with a shovel line
+//   "Dug in: +30%" when the defender's side is dug in and a plane line when Air cover bombs it (trench.ts).
+// Air cover: a small plane glyph next to the troop pill of an attack that idle airfields cover by themselves.
 import { estimateAttack } from '../../sim/combat';
 import { areAllied } from '../../sim/diplomacy';
 import { armyTotal } from '../../sim/economy';
@@ -22,6 +24,7 @@ import type { Camera } from '../camera';
 import type { UiState } from '../uiState';
 import { clamp, css, formatCount, MAP_NUM_FAMILY, mix, pill, type RGB } from './common';
 import { OWNER_MASK, type TileFeed } from './tiles';
+import { coveringAirfields, dugInPct } from '../trench';
 
 /** An anchor older than this is replaced by any newer capture. */
 const STALE_MS = 1500;
@@ -56,6 +59,40 @@ const PAIR_K = 4096;
 const BRASS: RGB = [227, 192, 78];
 const BONE: RGB = [228, 223, 210];
 const SIGNAL = '#ff6b5e';
+/** trench lines (hover card): dug earth, light enough to read on the dark card */
+const DUG: RGB = [214, 172, 120];
+
+type GlyphKind = 'shovel' | 'plane';
+/** 24 x 24 outlines (the HUD's line icons, glyph.ts) for canvas glyphs: shovel = dug in, plane = Air cover. */
+const GLYPH_PATHS: Record<GlyphKind, { d: string; fill: boolean }> = {
+  shovel: { d: 'M14 10l5-5M16.5 2.5l5 5M11.5 8.5l4 4-4.5 4.5c-2 2-4.5 3-7 3 0-2.5 1-5 3-7z', fill: false },
+  plane: { d: 'M12 3c1 0 1.5 1 1.5 2.5V10l7 4v2l-7-2v4l2 1.5V21L12 20l-3.5 1v-1.5l2-1.5v-4l-7 2v-2l7-4V5.5C10.5 4 11 3 12 3z', fill: true },
+};
+const glyphCache = new Map<GlyphKind, Path2D>();
+/** A glyph centred at (x, y), `size` px, with a dark halo so it reads over any map colour. */
+function glyph(ctx: CanvasRenderingContext2D, kind: GlyphKind, x: number, y: number, size: number, color: string): void {
+  if (typeof Path2D === 'undefined') return;
+  let p = glyphCache.get(kind);
+  if (!p) glyphCache.set(kind, (p = new Path2D(GLYPH_PATHS[kind].d)));
+  const k = size / 24;
+  ctx.save();
+  ctx.translate(x - size / 2, y - size / 2);
+  ctx.scale(k, k);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(8,10,14,0.85)';
+  ctx.lineWidth = 5;
+  ctx.stroke(p);
+  if (GLYPH_PATHS[kind].fill) {
+    ctx.fillStyle = color;
+    ctx.fill(p);
+  } else {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.2;
+    ctx.stroke(p);
+  }
+  ctx.restore();
+}
 
 interface Anchor {
   tile: number;
@@ -709,7 +746,8 @@ export class FrontLayer {
       const py = s.y - Math.max(12, z * 0.9);
       pills.push({ x: s.x, y: py });
       const edge = mine ? '#ffe98a' : incoming ? SIGNAL : css(colors[a.attacker] ?? [200, 200, 200]);
-      pill(ctx, s.x, py, formatCount(armyTotal(a.troops)), edge, mine || ally ? 'up' : incoming ? 'down' : 'none');
+      const pw = pill(ctx, s.x, py, formatCount(armyTotal(a.troops)), edge, mine || ally ? 'up' : incoming ? 'down' : 'none');
+      if (coveringAirfields(state, a.attacker, a.target).length > 0) glyph(ctx, 'plane', s.x + pw / 2 + 9, py, 13, mine ? '#ffe98a' : '#e4dfd2');
       if (mine && a.focusTile >= 0) {
         const f = cam.tileToScreen((a.focusTile % w) + 0.5, ((a.focusTile / w) | 0) + 0.5);
         ctx.beginPath();
@@ -878,13 +916,27 @@ export class FrontLayer {
     return est ? est.tilesPerSecond : measuredSpeed(log);
   }
 
+  /** dugInPct for the hover card, once per tick and pair (it samples the whole shared border). */
+  private dugCache = { tick: -1, map: new Map<number, number>() };
+  private dugIn(state: GameState, attacker: number, target: number): number {
+    const c = this.dugCache;
+    if (c.tick !== state.tick) {
+      c.tick = state.tick;
+      c.map.clear();
+    }
+    const k = attacker * PAIR_K + target;
+    let v = c.map.get(k);
+    if (v === undefined) c.map.set(k, (v = dugInPct(state, attacker, target)));
+    return v;
+  }
+
   private hoverCard(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, ui: UiState, me: number, colors: readonly RGB[]): void {
     const k = this.hoverKey;
     const at = ui.hoverPx;
     if (k < 0 || !at) return;
     const p = this.pairs.get(k);
     if (!p) return;
-    const rows: { text: string; color: RGB }[] = [];
+    const rows: { text: string; color: RGB; icon?: GlyphKind }[] = [];
     const name = (id: number): string => state.players[id]?.name ?? 'Unknown';
     const list = state.attacks.filter((a) => (a.attacker === p.lo && a.target === p.hi) || (a.attacker === p.hi && a.target === p.lo));
     list.sort((a, b) => (b.attacker === me ? 1 : 0) - (a.attacker === me ? 1 : 0));
@@ -893,6 +945,10 @@ export class FrontLayer {
       const rate = `+${sp >= 10 ? Math.round(sp) : sp.toFixed(1)} tiles/s`;
       const who = a.attacker === me ? `Your attack on ${name(a.target)}` : a.target === me ? `${name(a.attacker)} attacks you` : `${name(a.attacker)} attacks ${name(a.target)}`;
       rows.push({ text: `${who}: ${rate}, troops left ${formatCount(armyTotal(a.troops))}`, color: (colors[a.attacker] ?? [200, 200, 200]) as RGB });
+      const dug = this.dugIn(state, a.attacker, a.target);
+      if (dug >= 5) rows.push({ text: `Dug in: +${dug}%${a.attacker === me && dug >= 30 ? ': artillery, a barrage or planes break it' : ''}`, color: DUG, icon: 'shovel' });
+      const cover = coveringAirfields(state, a.attacker, a.target).length;
+      if (cover > 0) rows.push({ text: `Air cover: ${cover} ${a.attacker === me ? 'of your ' : ''}airfield${cover === 1 ? ' is' : 's are'} bombing this line`, color: BONE, icon: 'plane' });
     }
     if (rows.length === 0) return;
     const mine = me > 0 && (p.lo === me || p.hi === me);
@@ -919,11 +975,14 @@ export class FrontLayer {
     ctx.fillRect(x0, y0, 3, bh);
     rows.forEach((r, n) => {
       const y = y0 + 5 + lh * n + lh / 2;
-      ctx.fillStyle = css(r.color);
-      ctx.fillRect(x0 + 11, y - 4, 8, 8);
-      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-      ctx.strokeRect(x0 + 11.5, y - 3.5, 7, 7);
-      ctx.fillStyle = '#e4dfd2';
+      if (r.icon) glyph(ctx, r.icon, x0 + 15, y, 12, css(r.color));
+      else {
+        ctx.fillStyle = css(r.color);
+        ctx.fillRect(x0 + 11, y - 4, 8, 8);
+        ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+        ctx.strokeRect(x0 + 11.5, y - 3.5, 7, 7);
+      }
+      ctx.fillStyle = r.icon ? css(r.color) : '#e4dfd2';
       ctx.fillText(r.text, x0 + 25, y + 0.5);
     });
     ctx.restore();
