@@ -35,6 +35,8 @@ import { areAllied } from './diplomacy';
 import { doctrineLess, doctrinePerk } from './doctrines';
 import { atPeace, peaceReason } from './rules';
 import { forEachInRadius } from './grid';
+import { flattenDisc } from './trenches';
+import { TRENCH } from './config';
 import { addEvent, newId } from './state';
 import { hasTech } from './tech';
 import { TROOP_TYPES, isWater } from './types';
@@ -206,6 +208,7 @@ function impact(state: GameState, b: Barrage): void {
       addEvent(state, 'buildingLost', `${state.players[bl.owner].name} lost a ${BUILDINGS[bl.type].name} to shelling`, [bl.owner], i);
     }
   });
+  flattenDisc(state, b.tile, radius, TRENCH.barrageFlatten, b.owner); // shells flatten trenches (trenches.ts)
   const total = barrageKill(b.artillery);
   let killed = 0;
   for (const [o, n] of hit) {
