@@ -114,6 +114,8 @@ export const HOSPITAL_MAX = 2;
 export const CONVERT_RATE: Record<'armor' | 'artillery', number> = { armor: 400, artillery: 350 }; // units/s per building
 /** Big armies convert faster: per building at least this share of the whole army per second. */
 export const CONVERT_ARMY_SHARE = 0.0015;
+/** Factories and arsenals spend at most this share of the gold income on conversion, so a big army can't pin gold at 0. */
+export const CONVERT_GOLD_SHARE = 0.5;
 export const CONVERT_COST: Record<'armor' | 'artillery', { gold: number; iron: number }> = {
   armor: { gold: 0.025, iron: 0.0008 },
   artillery: { gold: 0.02, iron: 0.0009 },
