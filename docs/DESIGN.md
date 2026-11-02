@@ -297,6 +297,39 @@ attacks + transports + cargo planes), like name labels show it. Intel (`hasIntel
 troop **composition** (infantry / armor / artillery split): self, allies, or a watchtower of the viewer in range of
 the target's capital, buildings or land (`watchtowerRadiusOf`, + `WATCHTOWER_LEVEL_RADIUS` per level, Radar x2).
 
+### Dug-in borders (src/sim/trenches.ts, config TRENCH)
+
+One line for players: **borders between nations dig in over time; artillery, barrages, planes and warships flatten
+trenches, and landings go around them.** Automatic for everyone (no action), drawn on the map, taught by the guide's
+`trench` tip.
+
+- Where: a nation's own inland land within `TRENCH.band` (3) tiles of a land border with a non-allied nation
+  (Fortress: `fortressBand` 5). Tribes, the wilderness and water never cause digging; tribes never dig; coastal tiles
+  never dig, so landings meet undug ground.
+- Digging: `state.trench.dig` holds 0..200 dig points per tile (one byte, hashed after the owner array); level =
+  points / 50. A pass per player every 5 s of game time (staggered by id, x `progressRate`) adds 6 points x
+  `trenchDigMul` (Fortress `digSpeed`, Trench Warfare x1.5, the runaway coalition leader x1/3) to every band tile:
+  level 1 after ~42 s, level 2 after ~85 s. Max level 2, +1 Fortress (`trenchLevels`), +1 Trench Warfare. Tiles that
+  leave the band lose 6 points a pass; a tile that changes hands starts at 0 (`setOwner`).
+- Combat (`combat.ts tileCost`): effective level = level x the artillery breach x the heavy-tank breach; attacker
+  losses x (1 + 0.15 x it) and front budget x (1 + 0.15 x it), inside `DEFENSE_BONUS_CAP` with heartland and last
+  stand. `frontPriority` adds 3 ticks per level, so pushes take thin or flattened stretches first.
+  `AttackEstimate.trench` / `trenchPct` give the client the breached level.
+- Flattening: a barrage removes 100 points in its disc, an atom bomb all; in the owner's pass, every live air-support
+  zone of a nation at war with it removes 40 points (x Air `airFlatten`) and every bombarding warship at war 50 (x
+  the Naval level-3 shelling perk) in reach.
+- AI: war-target scores / (1 + 0.15 x mean front level); +0.10 artillery share, a barrage on the deepest tile with
+  half the guns, warships on bombard and landing scores x1.5 against a front averaging level 1.5+; air support aims
+  weigh a tile's distance by 1 / (1 + level).
+- Reads for the client (pure, no cache writes; listed in tests/hudReads.ts): `trenchLevel`, `trenchMaxLevel`,
+  `trenchInfoAt`, `frontTrench` (<= 32 strided border samples), `drainTrenchChanges` (tiles whose level changed in a
+  tick, for the trench texture). Batch baseline: `--rule trenches=0` (`setTrenchesOffByDefault`, script-only).
+- Air cover (Air doctrine signature, `airwings.ts`, config `AIR_COVER`): once a second, an Air holder's idle airfields
+  with bombers fly a free support sortie at its attack on a nation whose front averages level 1+ or that took fewer
+  than max(2, 15% of the front) tiles in the last 10 s, aimed at that front's deepest tile in reach; at most 6
+  airfields cooling down at once; the zone lasts 2x as long. Manual missions override it (the panel shows idle as
+  "Auto cover"). The AI Air holder leaves the airfield nearest such a front idle so Air cover flies it.
+
 ### Special land abilities
 
 **Paratroopers** (`Action { type: 'paradrop'; airfield; tile; troops }`, units.ts). Needs Flight and a finished own
@@ -850,6 +883,15 @@ full-map scans after `createGame`.
   (`borderfall.setup.v2`, read through setup.sanitizeSetup). In the game the active modifiers show as chips under
   the top-right cluster (hud/modChips.ts, tooltips; peace time counts down); disabled buildings, warships, atom
   bombs and the Ally button disappear or say why.
+- Trenches and Air cover (src/client/trench.ts, render/trenchFeed.ts): an R8 trench texture fed by
+  `drainTrenchChanges` (dirty 64 x 64 blocks; full rebuild on load and rejoin). Dug tiles get a faint earth hatch;
+  the edge facing another nation a dark line with short teeth toward the enemy (dashed at level 1, solid 2, double 3,
+  heavier 4); far out only level 2+ as a darker border (the 2D fallback draws only that). Tooltip: "Trench 2 of 3:
+  attackers lose 30% more and advance 30% slower here ..."; attack hover: "Dug in: +N%" (the front's average level
+  after your breach) and, at 2+, "Bring artillery or a barrage first, or land behind the line."; front card: "Air
+  cover: N airfields are bombing this line"; a plane glyph on covered troop pills; an Air holder's idle airfield
+  reads "Auto cover". Guide tips `trench` (8 own level-2 border tiles, or an attack into a level-2 front) and
+  `airCover` (first auto sortie).
 - Spawn phase (`SPAWN_SECONDS`): click a land tile to place your capital (else random); click again to move it.
   The `startNow` action ends the phase on the next tick once every human has picked (single player: you).
   `state.playStartTick` records the tick the phase ended; `gameSeconds(state)` (state.ts) counts from it and is the
@@ -1025,12 +1067,12 @@ and research): the unlock is at 2:30 there.
 
 | Doctrine | Levers (full bonus) | Level 3 perk |
 | --- | --- | --- |
-| Blitz | fronts cross plains and desert tiles +10% faster; armor conversion -10% gold and iron | armor ignores 30% of its terrain attack penalty |
-| Fortress | the defence a fort adds +25%; forts -25% gold and iron; home troops lost when a tile falls -20% | forts build and upgrade 4x faster, repair shell damage 3x faster |
-| Siege | artillery attack +20%; artillery's extra siege bonus +25%; barrage reload -25% | barrage disc +1 tile; forts and SAMs silenced 1.5x longer |
+| Blitz | fronts cross undug plains and desert tiles +10% faster; armor conversion -10% gold and iron | armor ignores 30% of its terrain attack penalty |
+| Fortress | the defence a fort adds +25%; forts -25% gold and iron; home troops lost when a tile falls -20%; borders dig 2x faster, one level deeper, 5 tiles deep | forts build and upgrade 4x faster, repair shell damage 3x faster |
+| Siege | artillery attack +25% on dug-in or fortified tiles only; artillery's extra siege bonus +25%; barrage reload -25% | barrage disc +1 tile; forts and SAMs silenced 1.5x longer |
 | Merchant | gold income +8%; trade gold received +25%; each market level +15% (the +80% limit stays) | +1.5% gold per own trade ship at sea (up to 10) |
-| Naval | warships -35% price, +20% speed; transports +35% speed and +1 hp (twice as hard to sink); trade gold received +40% | warships repair at sea (0.05 hp/s); coastal shelling x1.5 |
-| Air | bombers, fighters and paradrop planes -35% price; fighter and paradrop cooldowns -40%; paradrop range +25% | bombers survive one extra hit (SAM shot or fighters) |
+| Naval | warships -35% price, +20% speed; transports +35% speed and +1 hp (twice as hard to sink); trade gold received +40% | warships repair at sea (0.05 hp/s); coastal shelling and trench flattening x1.5 |
+| Air | Air cover (idle airfields bomb dug-in or stalled fronts by themselves); support zones flatten trenches 2x faster; bombers, fighters and paradrop planes -35% price; fighter and paradrop cooldowns -40%; paradrop range +25% | bombers survive one extra hit (SAM shot or fighters) |
 | Expansion | losses attacking tribes and wilderness -30%; troop growth +30% while small (full under 6% of the land, none from 15%) | a tribe you eliminate pays 15 s of your gold income + 0.2 gold per tile it held at its peak |
 
 Code contract:
@@ -1053,8 +1095,9 @@ Code contract:
   (no RNG: safe to call from the client). Events: `doctrineUnlocked` (to the humans), `doctrineChosen` (to the
   chooser; as news to humans who border it, are allied or have watchtower intel), `doctrineLevelUp` (to the holder).
 - AI (`ai.ts` `doctrine`): picks within 40 s of the unlock by `doctrineAdvice` (the same situation scores the UI
-  shows) x a personality taste (`DOCTRINE_TASTE`) x difficulty noise (`doctrineNoise`; Easy also picks at random
-  `doctrineRandom` of the time). It reviews once a minute and switches only after holding a doctrine 8 minutes, when
+  shows; dug-in enemy lines raise Siege and Air, own dug borders next to a bigger neighbour raise Fortress) x a
+  personality taste (`DOCTRINE_TASTE`, damped to 1 + 0.55 x (v - 1) within 0.8-1.25) x difficulty noise
+  (`doctrineNoise`; Easy also picks at random `doctrineRandom` of the time). It reviews once a minute and switches only after holding a doctrine 8 minutes, when
   another one scores `DOCTRINE_SWITCH_MARGIN` (1.8, +0.25 per level it would lose) times better and it has twice the
   price in gold (a new sea war raises Naval, enemy forts raise Siege, a bigger neighbour raises Fortress). It leans
   into the held doctrine: build priorities (`DOCTRINE_BUILD`), army mix (`DOCTRINE_MIX`), a few more warships
