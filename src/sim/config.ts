@@ -90,6 +90,14 @@ export const GOLD_LAND = 0.45;
 export const CITY_GOLD = 5; // per city level
 export const MARKET_GOLD_BONUS = 0.12; // +12% gold per market
 export const MARKET_MAX_BONUS = 0.8;
+/**
+ * Gold rule switches (balance round 4, A/B runs: scripts/batch.ts --rule name=1). A real game never changes them.
+ * marketCapFixed: Banking and the Merchant doctrine make each market level pay more, but all markets together still
+ *   stop at MARKET_MAX_BONUS (before: they scaled the limit too, x1.44 with both).
+ * stackAdd: the percentage gold bonuses (markets, Banking, the doctrine's gold) add up into one bonus instead of
+ *   multiplying each other.
+ */
+export const GOLD_RULES = { marketCapFixed: false, stackAdd: false };
 export const IRON_PER_MINE = 5.0;
 export const OIL_PER_WELL = 2.5;
 export const BASE_SCIENCE = 2; // was 0.5 (3 in the first shop round): research is quicker, mostly at the start (labs add SCIENCE_PER_LAB each)
@@ -679,6 +687,8 @@ export interface DoctrineLevers {
   tradeGold?: number;
   /** merchant: market bonus (and its cap) this much higher */
   marketBonus?: number;
+  /** merchant (rule test): mercenaries cost this much less */
+  mercCost?: number;
   /** naval: warships cost this much less (gold, iron, oil) */
   warshipCost?: number;
   /** naval: warships sail this much faster */
