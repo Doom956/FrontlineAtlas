@@ -346,6 +346,13 @@ export interface Attack {
   /** total units lost so far (for stats / UI) */
   losses: number;
   tilesTaken: number;
+  /**
+   * Air cover stall window (airwings.ts, Air doctrine holders only): tick the window started, tilesTaken then, and
+   * whether the last finished window took too few tiles (1) or not (0). Absent until an Air holder's check starts it.
+   */
+  coverTick?: number;
+  coverPrevTaken?: number;
+  coverStalled?: number;
 }
 
 export interface Unit {
@@ -682,6 +689,8 @@ export interface GameState {
   warMemory?: number[];
   /** air wings, air-support zones and strategic raid damage (airwings.ts); absent = none yet */
   air?: AirState;
+  /** dug-in borders (trenches.ts); created by createGame (absent only in hand-built test states = no trenches) */
+  trench?: TrenchState;
   /** recon reveals, mechanized-infantry hold zones and recon timers (variants.ts); absent = none yet */
   arsenal?: ArsenalState;
   /** war targets that units on Follow my war aim at, and auto-recon airfields (warTarget.ts); absent = none yet */
@@ -799,6 +808,38 @@ export interface AirState {
   wings: AirWing[];
   zones: AirZone[];
   raids: AirRaid[];
+  /**
+   * Air cover (airwings.ts): idle airfields of Air doctrine holders that flew an automatic support sortie: airfield
+   * building id, owner, tick it may fly again, and auto sorties flown. Absent = none yet.
+   */
+  cover?: AirCover[];
+}
+
+/** One airfield's Air cover record (airwings.ts). */
+export interface AirCover {
+  airfield: number;
+  owner: number;
+  nextTick: number;
+  sorties: number;
+}
+
+/**
+ * Dug-in borders (trenches.ts). `dig` (dig points per tile, 0..200; level = floor(dig / TRENCH.pointsPerLevel)) is
+ * hashed; the rest is derived and rebuilt the same way on every client.
+ */
+export interface TrenchState {
+  dig: Uint8Array;
+  /** per player: tiles that may hold dig points of theirs (stale entries are dropped in their pass) */
+  dug: number[][];
+  /** scratch generation marks (band membership, de-duplication) */
+  mark: Int32Array;
+  gen: number;
+  /** tiles whose trench level changed since the client last drained them (drainTrenchChanges) */
+  changes: Int32Array;
+  changeCount: number;
+  changeOverflow: boolean;
+  /** script-only baseline switch (setTrenchesOff): no digging, every level reads 0; never set by an action */
+  off: boolean;
 }
 
 export interface Effect {
