@@ -977,7 +977,7 @@ export function aiAirDoctrineTaste(state: GameState, id: number): number {
   const p = state.players[id];
   if (!p || p.isHuman || isTribe(p)) return 1;
   const pers = p.personality ?? 'balanced';
-  return (pers === 'balanced' || pers === 'turtle') && hash32(id * 131 + 17) % 2 === 0 ? 1.15 : 1;
+  return (pers === 'balanced' || pers === 'turtle') && hash32(id * 131 + 17) % 2 === 0 ? 1.3 : 1;
 }
 
 /**
@@ -1043,9 +1043,9 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
     let bestD = Infinity;
     for (const t of front) {
       if (!reaches(b, range, t)) continue;
-      // Dug-in tiles weigh more (trenches.ts): distance / (1 + level)^2.
+      // Dug-in tiles weigh more (trenches.ts): distance / (1 + level).
       const lvl = trenchLevel(state, t);
-      const dd = d2(w, t, main.focus) / ((1 + lvl) * (1 + lvl));
+      const dd = d2(w, t, main.focus) / (1 + lvl);
       if (dd < bestD) {
         bestD = dd;
         best = t;
@@ -1074,7 +1074,7 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
         target = cur?.mission === 'support' && cur.targetOwner === main.target && cur.target >= 0 && d2(w, cur.target, best) < 30 * 30 ? cur.target : best;
       }
     }
-    if (mission === 'idle' && !(mainCovered && b === sortedAfs[0]) && !(airHolder && anyCovered) && fighting.length && (minded || heavy || p.personality === 'merchant' || techOf(state, id, 'strategicBombing'))) {
+    if (mission === 'idle' && !(mainCovered && b === sortedAfs[0]) && !(airHolder && anyCovered && supportAim(b) >= 0) && fighting.length && (minded || heavy || p.personality === 'merchant' || techOf(state, id, 'strategicBombing'))) {
       let bestFoe = 0;
       let bestN = 0;
       const range = airWingRange(b, state);

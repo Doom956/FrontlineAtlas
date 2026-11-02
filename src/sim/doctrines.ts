@@ -283,8 +283,6 @@ interface Situation {
   hostileEdges: number;
   ownDug2: number;
   enemyDug: number;
-  /** nations (not tribes) attacking us now */
-  attackers: number;
 }
 
 const MAX_BORDER_SAMPLES = 1500;
@@ -315,7 +313,6 @@ function situation(state: GameState, pid: number): Situation {
     hostileEdges: 0,
     ownDug2: 0,
     enemyDug: 0,
-    attackers: 0,
   };
   const army = p.troops.infantry + p.troops.armor + p.troops.artillery;
   s.artilleryShare = army > 0 ? p.troops.artillery / army : 0;
@@ -349,12 +346,6 @@ function situation(state: GameState, pid: number): Situation {
       s.bigId = q;
     }
     for (const b of buildingsOf(state, q, 'fort')) if (b.buildLeft <= 0) s.enemyForts++;
-  }
-  const seen = new Set<number>();
-  for (const a of state.attacks) {
-    if (a.target !== pid || a.attacker <= 0 || seen.has(a.attacker) || isTribe(state.players[a.attacker])) continue;
-    seen.add(a.attacker);
-    s.attackers++;
   }
   for (const u of state.units) {
     if (u.hp <= 0) continue;
@@ -410,20 +401,18 @@ export function doctrineAdvice(state: GameState, pid: number): DoctrineAdvice[] 
           ? 'You have oil for armor, though open ground is scarce around you'
           : 'Armored pushes, though open ground is scarce around you',
   );
-  const fortDug = ownDugShare >= 0.3 && s.bigRatio > 1 ? 0.25 : 0;
-  const fortPressed = s.attackers >= 2 ? 0.35 : 0;
+  // (A "2+ nations attack you" term was tried and dropped: it steered losing nations into Fortress, AI Fortress 0.5.)
+  const fortDug = ownDugShare >= 0.3 && s.bigRatio > 1 ? 0.15 : 0;
   add(
     'fortress',
-    0.45 + 0.2 * Math.min(nations, 3) + (s.bigRatio > 1.2 ? Math.min(0.9, (s.bigRatio - 1) * 0.6) : 0) + fortDug + fortPressed,
-    fortPressed > 0
-      ? `${s.attackers} nations are attacking you: dig in deeper`
-      : fortDug > 0
-        ? 'Your borders are dug in: Fortress digs deeper'
-        : big && s.bigRatio > 1.2
-          ? `${big.name} borders you with ${s.bigRatio.toFixed(1)}x your land`
-          : nations > 0
-            ? `You border ${nations} rival nation${nations === 1 ? '' : 's'}`
-            : 'Quiet borders: forts matter less for now',
+    0.45 + 0.2 * Math.min(nations, 3) + (s.bigRatio > 1.2 ? Math.min(0.9, (s.bigRatio - 1) * 0.6) : 0) + fortDug,
+    fortDug > 0
+      ? 'Your borders are dug in: Fortress digs deeper'
+      : big && s.bigRatio > 1.2
+        ? `${big.name} borders you with ${s.bigRatio.toFixed(1)}x your land`
+        : nations > 0
+          ? `You border ${nations} rival nation${nations === 1 ? '' : 's'}`
+          : 'Quiet borders: forts matter less for now',
   );
   add(
     'siege',
@@ -438,7 +427,7 @@ export function doctrineAdvice(state: GameState, pid: number): DoctrineAdvice[] 
   );
   add(
     'merchant',
-    0.45 + Math.min(0.45, s.ports * 0.15) + Math.min(0.3, s.markets * 0.06) + (nations === 0 ? 0.15 : 0),
+    0.55 + Math.min(0.45, s.ports * 0.15) + Math.min(0.3, s.markets * 0.06) + (nations === 0 ? 0.25 : 0),
     s.ports + s.markets > 0
       ? `${s.ports} port${s.ports === 1 ? '' : 's'} and ${s.markets} market${s.markets === 1 ? '' : 's'} to make the most of`
       : 'Gold pays for everything: a safe choice for a growing economy',
@@ -455,7 +444,7 @@ export function doctrineAdvice(state: GameState, pid: number): DoctrineAdvice[] 
   );
   add(
     'air',
-    m.noAir ? 0.05 : 0.3 + (s.flight ? 0.25 : 0) + Math.min(0.4, s.airfields * 0.2) + breakTerm,
+    m.noAir ? 0.05 : 0.3 + (s.flight ? 0.35 : 0) + Math.min(0.5, s.airfields * 0.25) + breakTerm,
     m.noAir
       ? 'No air force in this game'
       : breakTerm >= 0.15

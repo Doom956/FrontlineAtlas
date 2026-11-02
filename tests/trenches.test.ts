@@ -202,7 +202,7 @@ describe('flattening', () => {
     expect(lvlAt(s, 31, 10)).toBe(0);
   });
 
-  it('a live air-support zone of a nation at war flattens 1 level per 10 s (Air doctrine faster)', () => {
+  it('a live air-support zone of a nation at war flattens TRENCH.zoneFlattenPerPass per pass (Air doctrine faster)', () => {
     const run = (air: boolean): number => {
       const s = front();
       dig(s, 100);
@@ -214,9 +214,11 @@ describe('flattening', () => {
       expect(lvlAt(s, 27, 2)).toBe(2); // outside the zone
       return before - s.trench!.dig[at(s, 27, 10)];
     };
-    // Each pass digs first (capped), then the zone flattens: the second pass's digging is the only one that counts.
-    expect(run(false)).toBe(2 * TRENCH.zoneFlattenPerPass - TRENCH.digPoints);
-    expect(run(true)).toBe(2 * Math.round(TRENCH.zoneFlattenPerPass * (1 + DOCTRINE_LEVERS.air.airFlatten!)) - TRENCH.digPoints);
+    // Each pass digs first (capped), then the zone flattens: the second pass's digging is the only one that counts
+    // (a tile can't lose more than the 100 points it held).
+    expect(run(false)).toBe(Math.min(100, 2 * TRENCH.zoneFlattenPerPass - TRENCH.digPoints));
+    expect(run(true)).toBe(Math.min(100, 2 * Math.round(TRENCH.zoneFlattenPerPass * (1 + DOCTRINE_LEVERS.air.airFlatten!)) - TRENCH.digPoints));
+    expect(run(true)).toBeGreaterThan(run(false));
   });
 });
 
@@ -288,7 +290,7 @@ describe('Air cover', () => {
     if (opts.dug !== false) dig(s, 100);
     if (opts.air !== false) setDoctrine(s, 1, 'air');
     const afs: Building[] = [];
-    for (let k = 0; k < (opts.airfields ?? 1); k++) afs.push(addAirfield(s, 1, at(s, 10, 2 + 4 * k), 3));
+    for (let k = 0; k < (opts.airfields ?? 1); k++) afs.push(addAirfield(s, 1, at(s, 10 + 4 * Math.floor(k / 5), 2 + 4 * (k % 5)), 3));
     expect(launchAttack(s, 1, at(s, 30, 10), inf(5000)).ok).toBe(true);
     return { s, afs };
   }
@@ -351,7 +353,7 @@ describe('Air cover', () => {
 });
 
 describe('AI doctrine advice', () => {
-  it('a dug-in enemy line raises Siege and Air; own dug borders and two attackers raise Fortress', () => {
+  it('a dug-in enemy line raises Siege and Air; own dug borders next to a bigger neighbour raise Fortress', () => {
     const s = front();
     const score = (pid: number, id: DoctrineId): number => doctrineAdvice(s, pid).find((a) => a.id === id)!.score;
     const siege0 = score(1, 'siege');
@@ -364,7 +366,7 @@ describe('AI doctrine advice', () => {
     expect(score(1, 'fortress')).toBeCloseTo(fort0, 6);
     for (let y = 0; y < 20; y++) setOwner(s, at(s, 29, y), 2); // 2 is now bigger (31 vs 29 columns)
     dig(s, 100);
-    expect(score(1, 'fortress')).toBeGreaterThan(fort0 + 0.2);
+    expect(score(1, 'fortress')).toBeGreaterThan(fort0 + 0.1);
   });
 });
 

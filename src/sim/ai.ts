@@ -1066,10 +1066,10 @@ const DOCTRINE_BUILD: Record<DoctrineId, Partial<Record<BuildingType, number>>> 
   expansion: { city: 1.15, farm: 1.2, barracks: 1.15 },
 };
 /** Extra artillery share against a main front dug in to this mean level (trenches.ts). */
-const AI_TRENCH_GUNS_LEVEL = 2;
+const AI_TRENCH_GUNS_LEVEL = 1.5;
 const AI_TRENCH_ARTILLERY = 0.1;
 /** Landing score x this on the coast of a nation whose front with us is dug in (AI_TRENCH_GUNS_LEVEL+). */
-const AI_TRENCH_LANDING = 1.25;
+const AI_TRENCH_LANDING = 1.5;
 /** Extra armor / artillery share the AI wants under a doctrine. */
 const DOCTRINE_MIX: Partial<Record<DoctrineId, { armor: number; artillery: number }>> = {
   blitz: { armor: 0.1, artillery: 0 },

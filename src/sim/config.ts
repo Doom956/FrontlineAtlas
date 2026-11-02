@@ -677,10 +677,10 @@ export const TRENCH = {
   prioPerLevel: 3,
   /** points a barrage removes on the hostile tiles of its disc (2 levels) */
   barrageFlatten: 100,
-  /** points a hostile air-support zone removes per owner pass in its radius (1 level per 10 s; x Air airFlatten) */
-  zoneFlattenPerPass: 25,
-  /** points a bombarding warship at war removes per owner pass within its support range (x Naval level-3 shelling) */
-  shipFlattenPerPass: 25,
+  /** points a hostile air-support zone removes per owner pass in its radius (about 1 level per 7 s; x Air airFlatten) */
+  zoneFlattenPerPass: 40,
+  /** points a bombarding warship at war removes per owner pass within its support range (1 level per pass; x Naval level-3 shelling) */
+  shipFlattenPerPass: 50,
   /** AI: war-target cost x (1 + warScoreStep x mean front level) */
   warScoreStep: 0.15,
   /** frontTrench: at most this many evenly strided samples of the shared border */
@@ -698,8 +698,8 @@ export const AIR_COVER = {
   stallShare: 0.15,
   stallMinTiles: 2,
   minLevel: 1,
-  zoneMul: 1.5,
-  maxAirfields: 3,
+  zoneMul: 2,
+  maxAirfields: 6,
 } as const;
 
 // ---------- doctrines ----------

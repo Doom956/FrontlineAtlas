@@ -240,8 +240,9 @@ function hostileNation(state: GameState, pid: number, q: number): boolean {
   return !!qp && qp.alive && !isTribe(qp) && !areAllied(state, pid, q);
 }
 
-// Scratch BFS queue (reused; the pass is synchronous).
+// Scratch BFS queue and per-pass hostility table (reused; the pass is synchronous).
 let queue: number[] = [];
+let hostileTo = new Uint8Array(0);
 
 /** One dig pass of player pid: band, digging, decay, then owner-side flattening. */
 function passFor(state: GameState, t: TrenchState, pid: number): void {
@@ -263,12 +264,16 @@ function passFor(state: GameState, t: TrenchState, pid: number): void {
 
   // Band: seeds are own land tiles (not coastal) with a 4-neighbour of a hostile nation; rings over own inland land.
   queue.length = 0;
+  const np = state.players.length;
+  if (hostileTo.length < np) hostileTo = new Uint8Array(np);
+  for (let q = 0; q < np; q++) hostileTo[q] = hostileNation(state, pid, q) ? 1 : 0;
+  const hot = hostileTo;
   const { list, len } = borderTiles(state, pid);
   for (let k = 0; k < len; k++) {
     const i = list[k];
     if (coastal[i] || isWater(terrain[i]) || mark[i] === gen) continue;
     const x = i % w;
-    if ((x > 0 && hostileNation(state, pid, owner[i - 1])) || (x < w - 1 && hostileNation(state, pid, owner[i + 1])) || (i >= w && hostileNation(state, pid, owner[i - w])) || (i < n - w && hostileNation(state, pid, owner[i + w]))) {
+    if ((x > 0 && hot[owner[i - 1]]) || (x < w - 1 && hot[owner[i + 1]]) || (i >= w && hot[owner[i - w]]) || (i < n - w && hot[owner[i + w]])) {
       mark[i] = gen;
       queue.push(i);
     }

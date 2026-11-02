@@ -92,7 +92,7 @@ import type { Action, ActionResult, GameState, Unit, WarshipStance } from './typ
 
 const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
 /** AI: auto-role warships bombard when the land front with the foe averages this trench level (trenches.ts). */
-const AI_NAVY_DUG_LEVEL = 2;
+const AI_NAVY_DUG_LEVEL = 1.5;
 
 function d2(ax: number, ay: number, bx: number, by: number): number {
   const dx = ax - bx;
