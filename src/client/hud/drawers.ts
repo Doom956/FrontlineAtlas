@@ -576,6 +576,7 @@ export class LegendPage implements DrawerPage {
     mark('m-traitor', 'Traitor', 'Red border: they broke an alliance and defend worse for a while.');
     mark('m-tribe', 'Tribes', 'Grey wash with an army number (the name when zoomed in): weak peoples, easy early land.');
     mark('m-fort', 'Fort cover', 'Hatched land: attackers there lose double and slow down.');
+    mark('m-trench', 'Trench', 'Dark zig-zag line inside a border: quiet borders between nations dig in, and attacks there cost more. Artillery, barrages, planes and warships flatten it.', lineIcon('trench', 22));
     mark('m-capital', 'Capital', 'Star: the heart of a nation. Taking it costs them gold.', worldGlyph('capital', 16));
     mark('m-front', 'Front', 'Yellow flashes are your gains, red flashes your losses.');
     mark('m-heart', 'Heartland', 'Faint gold edge (shown while this key or Army is open): your land deep inside your borders defends harder. Hover a tile for the bonus.');

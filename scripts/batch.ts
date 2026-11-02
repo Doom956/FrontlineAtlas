@@ -70,7 +70,9 @@ import { FOCUS_PILLARS, FOCUS_SPEC, setAIFocus } from '../src/sim/aifocus';
 import { applyRules } from './rules';
 import type { FocusPillar } from '../src/sim/aifocus';
 import { aiCommittedPillar } from '../src/sim/variantsAI';
-import { coastCount } from '../src/sim/territory';
+import { borderTiles, coastCount } from '../src/sim/territory';
+import { trenchLevel } from '../src/sim/trenches';
+import { airCoverSorties } from '../src/sim/airwings';
 import { armorVariantOf } from '../src/sim/variants';
 import type { BuildingType, Difficulty, DoctrineId, GameSettings, GameState, MapSize, MapType, Modifiers, TechId, Troops, Unit } from '../src/sim/types';
 
@@ -268,6 +270,9 @@ interface GameResult {
   /** tiles leader among nations at 8 min, 15 min (0 if over) */
   leader8: number;
   leader15: number;
+  /** trenches.ts: mean trench level of nations' border tiles facing another nation at 15 min (-1 if over), auto-cover sorties (Air doctrine) */
+  trench15?: number;
+  coverSorties?: number;
   atomBombs: number;
   firstAtomMinute: number; // -1 none
   /** nation that dropped the first atom bomb (0 none) */
@@ -414,6 +419,30 @@ function nationTroops(state: GameState, id: number): Troops {
     t.artillery += u.troops.artillery;
   }
   return t;
+}
+
+/** Mean trench level of nations' border tiles that touch another nation's land (trenches.ts). */
+function borderTrench(state: GameState): number {
+  const { owner } = state.map;
+  const w = state.map.width;
+  let n = 0;
+  let sum = 0;
+  for (const p of state.players) {
+    if (p.id === 0 || !p.alive || isTribe(p)) continue;
+    const { list, len } = borderTiles(state, p.id);
+    for (let k = 0; k < len; k++) {
+      const i = list[k];
+      let foe = false;
+      for (const j of [i - 1, i + 1, i - w, i + w]) {
+        const o = j >= 0 && j < owner.length ? owner[j] : 0;
+        if (o > 0 && o !== p.id && !isTribe(state.players[o])) foe = true;
+      }
+      if (!foe) continue;
+      n++;
+      sum += trenchLevel(state, i);
+    }
+  }
+  return n ? sum / n : 0;
 }
 
 function tileLeader(state: GameState): number {
@@ -847,7 +876,10 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     }
     if (sec === 480) r.leader8 = tileLeader(state);
     if (runawayLeader(state) > 0) r.leaderSeconds += sampleEvery / TICKS_PER_SECOND;
-    if (sec === 900) r.leader15 = tileLeader(state);
+    if (sec === 900) {
+      r.leader15 = tileLeader(state);
+      r.trench15 = borderTrench(state);
+    }
     if (o.decided > 0) {
       const lead = tileLeader(state);
       const held = lead > 0 && state.players[lead].tiles >= o.decided * state.map.landTileCount;
@@ -927,6 +959,8 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     e[1] += b.level;
     e[2] = Math.max(e[2], b.level);
   }
+  r.coverSorties = 0;
+  for (const p of state.players) r.coverSorties += airCoverSorties(state, p.id);
   r.winnerParadrops = r.winner ? (dropsBy.get(r.winner) ?? 0) : 0;
   r.winnerBarrages = r.winner ? (barragesBy.get(r.winner) ?? 0) : 0;
   r.meanParadrops = r.paradrops / Math.max(1, r.nations);
@@ -1100,6 +1134,8 @@ function report(all: GameResult[], o: Options): void {
   for (const map of o.maps) summary(`map ${map}`, rs.filter((r) => r.job.map === map));
   console.log('');
   summary('all', rs);
+  const t15 = rs.filter((r) => (r.trench15 ?? -1) >= 0).map((r) => r.trench15!);
+  console.log(`\nTrenches: mean level of nation-facing border tiles at 15 min ${t15.length ? (t15.reduce((a, b) => a + b, 0) / t15.length).toFixed(2) : '-'}; Air cover sorties per game ${(rs.reduce((a, r) => a + (r.coverSorties ?? 0), 0) / Math.max(1, rs.length)).toFixed(1)}.`);
 
   // Winners' mixes.
   const won = rs.filter((r) => r.winner > 0);
