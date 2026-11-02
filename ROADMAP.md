@@ -212,6 +212,43 @@ budget, or only below 50% with 20 s between hires) didn't bring research back. N
 Still open: economy specialist ~1.3; navy, air and land specialists ~0.7; Blitz random pick ~1.4; AI Air and Fortress
 picks; research at 20 min just under 50%; tick p50 up ~30%; Brutal not checked.
 
+## Balance pass 4: dug-in borders + Air cover (2026-11-02, on `dev`, not merged yet)
+Number tuning had stalled, so two automatic, visible mechanics (design: /tmp/fa-bal/design5.md, log: /tmp/fa-bal/log5.md):
+- Trenches (src/sim/trenches.ts, config `TRENCH`): borders between nations dig in over time (level 1 after ~40 s, max
+  2, Fortress +1 and twice as fast, Trench Warfare +1); attacks on dug tiles cost +15% and go 15% slower per level;
+  artillery and heavy tanks breach part of it; barrages, atom bombs, air-support zones and bombarding warships flatten
+  it; coasts never dig (landings go around); captured tiles start undug. Drawn on the map, tooltip, guide tip `trench`.
+- Air cover (airwings.ts, config `AIR_COVER`): an Air-doctrine nation's idle airfields bomb dug-in or stalled fronts of
+  its own attacks by themselves (free; "Auto cover" in the airfield panel, plane on the troop pill, guide tip).
+- Rule changes with them: Blitz's open-ground speed only on undug tiles; Siege's artillery bonus (0.25) only on dug or
+  fortified tiles; Fortress digs 2x / one level deeper / 5 tiles deep; Air zones flatten 2x.
+- AI: dug fronts lower war scores, raise artillery and barrages, send warships to bombard and landings behind the line;
+  doctrine advice: a dug enemy line raises Siege and Air; habit tastes damped (1 + 0.55 x (v - 1), 0.8-1.25).
+Tuning (4 rounds, seeds 14001+ then fresh 15001+): the design's AI doctrine edits killed AI Air picks (2 of 1536) and
+pushed Fortress to 38% of picks at 0.5: Merchant advice went back to base, Air's Flight / airfield terms halfway back
+(0.35 / 0.25 each, cap 0.5), air-minded taste 1.3, Air's dug-line term 0.3 x level (cap 0.5), Fortress trench terms
+dropped. Mechanics: zone flattening 25 -> 40 per pass, warships 25 -> 50, Air cover up to 6 airfields with 2x zones,
+AI reacts at a mean front level 1.5 (was 2), landing bias x1.5, air-support aims weigh distance by 1 / (1 + level),
+raids held back only for airfields that reach the covered front. Tried and dropped: Air airFlatten 2 (no effect).
+Results (base = live main 769e4ed, same seeds; medium 192 games / pairs per set, [95%]):
+| Target | Base | Now | Result |
+|---|---|---|---|
+| Random doctrines, fresh seeds | Blitz 1.69 [1.31-2.07], Expansion 0.65, others 0.76-1.09 | all 0.87-1.27 (Blitz 1.27, Fortress 0.87, Air 0.92) | pass (base fails) |
+| Random doctrines, 14001+ | Blitz 1.53, Expansion 0.71 | 0.80-1.39 (r2d) | pass |
+| AI picks, 384 games | Air 1.66, Merchant 1.15, Fortress 0.70, Naval 0.66 | Air 1.57 [1.26-1.90], Merchant 1.35, Fortress 0.63, Naval 0.45 [0.13-0.80] | Air at ~1.5 (was 2.0 before the last fix); Fortress / Naval low as in base |
+| Specialists, 384 pairs | navy 0.81 / armor 0.94 / air 0.86 / land 1.01 / economy 1.55 | 0.85 / 0.99 / 0.75 / 1.02 / 1.23 | economy into range; air below 0.8 (now/base 0.87 [0.64-1.23]) |
+| Length medium / World (median min) | 30.2 / 36.9 | 30.4 (29.9 final) / 36.1 | pass |
+| Leader at 15 min wins | 32-37% | 30-37% | pass |
+| Fission (median min) | 27.8-28.3 | 27.3-27.9 | pass |
+| Research at 20 min (of 23) | 11.40 | 11.33-11.38 | pass (within noise) |
+| Winners' gold on mercenaries | 9.0% (World 6.6%) | 8.7% (6.4%) | pass |
+| Easy / Normal alive at 20 | 100% | 100% | pass |
+| Hard alive at 20 (48 seeds) | medium 65%, World 88% | medium 73%, World 79% | mixed, within noise |
+| Trench pass cost | - | 7-10% of tick time, p99 1.6-2.4 ms | local p99 ~7 -> ~8-10 ms on 4 games |
+Not re-measured on the final tree: specialists and random doctrines with the last AI-choice fix (it only changes which
+doctrine normal AIs pick). Still open: AI Air pickers ~1.5x (selection: rich nations pick it), AI Fortress ~0.6, air
+specialist ~0.75, World specialists (intervals 0.2-6). Breakthrough (design5 section 5) stays in reserve.
+
 ## Site icon (2026-11-02, on `dev`, not merged yet)
 `public/favicon.svg` (navy square, orange territory pushing a gold front line into teal) plus favicon.ico (16/32/48),
 favicon-32.png, apple-touch-icon.png (180), icon-192/512, icon-512-maskable.png and site.webmanifest ("Frontline
