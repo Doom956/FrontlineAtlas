@@ -112,13 +112,14 @@ export class Camera {
   }
 
   /**
-   * Fills the view with the map (no edge showing), centred: the menu's background map. In a tall view (phones) only
-   * `tallShare` of the view height is filled, so the map isn't blown up to fill the space a bottom sheet covers.
+   * The menu's background map, centred. A wide view shows the whole map (its coasts make it read as a map). A tall
+   * view (phones) is filled across, and down to `tallShare` of its height, so no map edge shows above the bottom sheet.
    */
-  cover(tallShare = 0.7): void {
+  menuView(tallShare = 0.7): void {
     this.anim = null;
-    const h = this.viewH > this.viewW ? this.viewH * tallShare : this.viewH;
-    this.zoom = clampNum(Math.max(this.viewW / this.mapW, h / this.mapH), this.minZoom, MAX_ZOOM);
+    const tall = this.viewH > this.viewW;
+    const z = tall ? Math.max(this.viewW / this.mapW, (this.viewH * tallShare) / this.mapH) : this.fitZoom;
+    this.zoom = clampNum(z, this.minZoom, MAX_ZOOM);
     this.x = this.mapW / 2;
     this.y = this.mapH / 2;
   }

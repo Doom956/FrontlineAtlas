@@ -433,7 +433,7 @@ function frame(now: number): void {
       try {
         const t2 = performance.now();
         if (cur.human) cur.camera.step(now);
-        else cur.camera.cover(); // the menu's background map fills the screen
+        else cur.camera.menuView(); // the menu's background map (kept framed when the window changes size)
         renderer.render(cur.state, cur.camera, cur.ui, now);
         const t3 = performance.now();
         cur.hud?.update(cur.state);

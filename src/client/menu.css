@@ -11,7 +11,7 @@
   opacity: 0.6;
 }
 
-/* the start page: the map's middle sits in the free space beside the column (the camera covers the screen) */
+/* the start page: the map's middle sits in the free space beside the column (its far edge goes under the column) */
 .app.in-menu:has(.menu.at-title:not(.hidden)) canvas.map-gl,
 .app.in-menu:has(.menu.at-title:not(.hidden)) canvas.map {
   translate: calc((400px + clamp(24px, 5vw, 96px) + 40px) / 2) 0;

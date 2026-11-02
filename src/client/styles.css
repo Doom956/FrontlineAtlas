@@ -3696,6 +3696,20 @@ mark.hw-hit {
   width: 20px;
   height: 20px;
 }
+/* phone: the colours take their own line (twelve don't fit beside the name) */
+@media (max-width: 640px) {
+  .mp-you {
+    flex-wrap: wrap;
+  }
+  .mp-you .input {
+    flex: 1;
+    width: auto;
+  }
+  .mp-you .palette {
+    flex-basis: 100%;
+    flex-wrap: wrap;
+  }
+}
 .mp-msg {
   color: var(--dim);
   font-size: 13px;

@@ -423,7 +423,8 @@ aside.drawer[data-page='research'] .dr-body {
   display: none;
   position: absolute;
   top: -7px;
-  left: 40px;
+  /* right-hand end: the left end of a fork's top card sits under the fork's "Choose one" label */
+  right: 10px;
   padding: 0 5px;
   border-radius: 2px;
   font: 700 9px/12px var(--f-label);

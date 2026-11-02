@@ -31,7 +31,7 @@
 <br>Pick who you attack. The shared border moves, faster the longer it is.
 </td>
 <td width="50%" valign="top">
-<img src="docs/images/arsenal.webp" width="100%" alt="The Arsenal tab of the Research panel: navy, armor and air rows, Destroyers picked over Submarines, Heavy Bombers 47% researched.">
+<img src="docs/images/arsenal.webp" width="100%" alt="The Arsenal tab of the Research panel: navy, armor and air rows with prices on each card, Drop Tanks on order and arriving in 33 s, and Light Tanks picked, waiting for a second click to confirm.">
 <br><b>Arsenal paths</b>
 <br>Fork your navy, armor and air. One path each per game, two masteries at most.
 </td>
