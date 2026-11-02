@@ -699,7 +699,7 @@ export const AIR_COVER = {
   stallMinTiles: 2,
   minLevel: 1,
   zoneMul: 2,
-  maxAirfields: 6,
+  maxAirfields: 0,
 } as const;
 
 // ---------- doctrines ----------
