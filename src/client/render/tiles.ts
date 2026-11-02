@@ -242,7 +242,7 @@ export class TileFeed {
  * Groups dirty blocks into upload rectangles: per block row, runs of dirty blocks (gaps of up to `gap` clean blocks
  * are bridged, fewer and larger uploads). Returns tile rectangles [x, y, w, h] clipped to the map.
  */
-export function dirtyRects(feed: TileFeed, gap = 1): number[][] {
+export function dirtyRects(feed: Pick<TileFeed, 'dirtyList' | 'bx' | 'by' | 'dirty' | 'w' | 'h'>, gap = 1): number[][] {
   const out: number[][] = [];
   if (feed.dirtyList.length === 0) return out;
   const { bx, by, dirty, w, h } = feed;
