@@ -155,8 +155,9 @@ transports are out of it), gold, iron, oil, science. There are no workers and no
   pool shrinks back to the cap, every type alike. Bonuses on positive growth: farms +4% each (x2 Fertile,
   Agriculture x1.5, at most 12 counted), barracks +10% each (3 counted), Medicine x1.2; tribes x0.5.
   `Player.income.pop` is the growth per second.
-- Gold/s = (`GOLD_BASE` 8 + `GOLD_LAND` 0.45 x (land weight)^0.6 + `CITY_GOLD` 5 per city level) x (1 + markets,
-  +12% each up to +80%, x1.25 with Banking) x1.3 with Banking; tribes x0.5; plus trade ship deliveries and loot.
+- Gold/s = (`GOLD_BASE` 8 + `GOLD_LAND` 0.45 x (land weight)^0.6 + `CITY_GOLD` 5 per city level) x (1 + markets
+  + Banking + doctrine gold, added up): markets +12% each (x1.25 with Banking, +15% with Merchant), all markets
+  together at most +80%; Banking +30%; Merchant +8%; tribes x0.5; plus trade ship deliveries and loot.
 - Iron/s = mines * `IRON_PER_MINE` (Metallurgy x1.5). Oil/s = wells * `OIL_PER_WELL`. Industrialization x1.25.
 - Science/s = `BASE_SCIENCE` 2 (was 0.5 before the Arsenal shop, 3 in its first round) + labs * `SCIENCE_PER_LAB`. Science only pays for
   the Research tab; Arsenal items are bought with gold + iron / oil (section 6, procurement).
@@ -546,9 +547,10 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
 
 - `hireMercenaries { amount }`: instant infantry; the price per troop rises with game time and with every hire in a
   60 s window (integrated over the amount) and with the buyer's land share (mercenaries prefer underdogs), at most 15% of the cap per window, home troops at most 10% over the cap.
-  AIs hire when losing at home or when a big attack runs while the bar is under half full, with at least
-  `AI_MERC_MIN_GOLD_SECONDS` (4) of gold income saved, spending up to 45% of their gold (60% when losing), at most
-  every 20 s (aispending.ts; AIs at war rarely hold more than ~20 s, so the old 20 s gate almost never let them hire).
+  AIs hire when losing at home, when a big attack runs while the bar is under half full, or during any war against
+  another AI nation while the bar is under 65% (wars on a human keep only the first two), with at least
+  `AI_MERC_MIN_GOLD_SECONDS` (4) of gold income saved, spending up to 60% of their gold (75% when losing; x1.3 warlord,
+  x0.8 merchant and turtle), at most every 12 s (aispending.ts).
 - `fundAlly { ally, gold }`: gold to an ally, which likes you more, needs less trust and strength to join your wars
   and attacks nations at war with you up to +20% harder for 90 s (`GameState.allyFunds`).
 - `warBonds`: +15% attack for 40 s, 150 s cooldown, price max(1 500, 45 s of gold income).
@@ -1023,12 +1025,12 @@ and research): the unlock is at 2:30 there.
 
 | Doctrine | Levers (full bonus) | Level 3 perk |
 | --- | --- | --- |
-| Blitz | fronts cross plains and desert tiles +10% faster; armor conversion -15% gold and iron | armor ignores 30% of its terrain attack penalty |
+| Blitz | fronts cross plains and desert tiles +10% faster; armor conversion -10% gold and iron | armor ignores 30% of its terrain attack penalty |
 | Fortress | the defence a fort adds +25%; forts -25% gold and iron; home troops lost when a tile falls -20% | forts build and upgrade 4x faster, repair shell damage 3x faster |
 | Siege | artillery attack +20%; artillery's extra siege bonus +25%; barrage reload -25% | barrage disc +1 tile; forts and SAMs silenced 1.5x longer |
-| Merchant | gold income +8%; trade gold received +25%; market bonus (and its cap) +15% | +1.5% gold per own trade ship at sea (up to 10) |
+| Merchant | gold income +8%; trade gold received +25%; each market level +15% (the +80% limit stays) | +1.5% gold per own trade ship at sea (up to 10) |
 | Naval | warships -35% price, +20% speed; transports +35% speed and +1 hp (twice as hard to sink); trade gold received +40% | warships repair at sea (0.05 hp/s); coastal shelling x1.5 |
-| Air | bombers, fighters and paradrop planes -25% price; fighter and paradrop cooldowns -25%; paradrop range +25% | bombers survive one extra hit (SAM shot or fighters) |
+| Air | bombers, fighters and paradrop planes -35% price; fighter and paradrop cooldowns -40%; paradrop range +25% | bombers survive one extra hit (SAM shot or fighters) |
 | Expansion | losses attacking tribes and wilderness -30%; troop growth +30% while small (full under 6% of the land, none from 15%) | a tribe you eliminate pays 15 s of your gold income + 0.2 gold per tile it held at its peak |
 
 Code contract:
