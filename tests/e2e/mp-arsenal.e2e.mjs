@@ -404,10 +404,12 @@ try {
           for (const gap of [12, 10]) if ((t = await site(pg, true, gap)) >= 0) break;
           if (t >= 0) log('port site', t, JSON.stringify(await dispatch(pg, { type: 'build', building: 'port', tile: t })));
         }
-        if (!(await hasFactory(B.page))) {
+        // a Factory for both (A needs one when its land has no oil: it then buys the tank path instead of the navy path)
+        for (const pg of [A.page, B.page]) {
+          if (await hasFactory(pg)) continue;
           let t = -1;
-          for (const gap of [12, 10]) if ((t = await site(B.page, false, gap)) >= 0) break;
-          if (t >= 0) log('factory site', t, JSON.stringify(await dispatch(B.page, { type: 'build', building: 'factory', tile: t })));
+          for (const gap of [12, 10]) if ((t = await site(pg, false, gap)) >= 0) break;
+          if (t >= 0) log('factory site', t, JSON.stringify(await dispatch(pg, { type: 'build', building: 'factory', tile: t })));
         }
       }
       if (++loops % 10 === 1) log('economy steps', JSON.stringify(steps), JSON.stringify(await geo(A.page)), JSON.stringify(await geo(B.page)));
@@ -420,10 +422,18 @@ try {
         }
       }
       const [ma, mb] = [await me(A.page), await me(B.page)];
-      if (ma.iron >= want.A.iron && ma.oil >= want.A.oil && mb.iron >= want.B.iron && mb.oil >= want.B.oil && (await hasPort(A.page)) && (await hasPort(B.page)) && (await hasFactory(B.page))) break;
+      // A without oil after ~40 rounds buys the iron-only tank path instead (some starts have no reachable oil)
+      const aReady = ma.oil >= want.A.oil ? ma.iron >= want.A.iron : loops > 40 && ma.iron >= 1500 && (await hasFactory(A.page));
+      if (aReady && mb.iron >= want.B.iron && mb.oil >= want.B.oil && (await hasPort(A.page)) && (await hasPort(B.page)) && (await hasFactory(B.page))) break;
       await sleep(3000);
     }
     log('A', JSON.stringify(await me(A.page)), 'B', JSON.stringify(await me(B.page)));
+    // the fork A buys from its card: Destroyers (navy, needs oil) or, with no oil, Light Tanks (armor, iron only)
+    const navyFork = (await me(A.page)).oil >= want.A.oil;
+    const fork = navyFork ? 'destroyers' : 'lightTanks';
+    const otherBranch = navyFork ? 'submarines' : 'heavyTanks';
+    const lockedAfter = navyFork ? ['submarines', 'navalMastery', 'carriers'] : ['heavyTanks', 'armorMastery', 'siegeTanks'];
+    log('A buys', fork, navyFork ? '(navy path)' : '(armor path: no oil on its land)');
     if (!(await hasPort(A.page)) || !(await hasPort(B.page)) || !(await hasFactory(B.page))) fail(`no finished Port (A or B): ${JSON.stringify(await geo(A.page))} ${JSON.stringify(await geo(B.page))}`);
     await waitFor(async () => (await me(B.page)).techs.includes('fortification'), 90000, 'B fortification');
     // the old research action on an Arsenal item is refused (bought instead): nothing changes
@@ -439,24 +449,30 @@ try {
     log('orders A / B', JSON.stringify((await me(A.page)).procuring), JSON.stringify((await me(B.page)).procuring));
     await waitFor(async () => (await me(A.page)).techs.includes('navigation') && (await me(B.page)).techs.includes('navigation'), 90000, 'navigation delivered');
     log('A', JSON.stringify(await me(A.page)));
-    // A buys Destroyers from its Arsenal card: T opens the panel, the Arsenal tab, click the card
+    if (!navyFork) {
+      if (!(await hasFactory(A.page))) fail('A has no oil and no Factory: it can buy neither path');
+      r = await dispatch(A.page, { type: 'procure', tech: 'mechanization' });
+      if (!r.ok) fail(`A mechanization: ${r.reason}`);
+      await waitFor(async () => (await me(A.page)).techs.includes('mechanization'), 90000, 'A Mechanization delivered');
+    }
+    // A buys its fork from its Arsenal card: T opens the panel, the Arsenal tab, click the card
     await A.page.mouse.move(W / 2, H / 2);
     await A.page.keyboard.press('KeyT');
     await A.page.click('[data-test=tab-arsenal]');
-    await A.page.waitForSelector('[data-test=tech-destroyers]', { state: 'visible' });
+    await A.page.waitForSelector(`[data-test=tech-${fork}]`, { state: 'visible' });
     await shot(A.page, 'g1-arsenal-before');
     const goldBefore = (await me(A.page)).gold;
-    await A.page.click('[data-test=tech-destroyers]');
-    await waitFor(async () => (await me(A.page)).procuring.includes('destroyers'), 20000, 'Destroyers on order after the card click');
-    await A.page.waitForSelector('[data-test=order-destroyers]', { state: 'visible', timeout: 5000 });
-    log(`A paid ${goldBefore - (await me(A.page)).gold} gold (with income) for Destroyers`);
+    await A.page.click(`[data-test=tech-${fork}]`);
+    await waitFor(async () => (await me(A.page)).procuring.includes(fork), 20000, `${fork} on order after the card click`);
+    await A.page.waitForSelector(`[data-test=order-${fork}]`, { state: 'visible', timeout: 5000 });
+    log(`A paid ${goldBefore - (await me(A.page)).gold} gold (with income) for ${fork}`);
     await sleep(600);
     await shot(A.page, 'g1-arsenal-ordered');
-    const subCard = await A.page.locator('[data-test=tech-submarines]').getAttribute('class');
-    log('A submarines card after the order:', subCard);
+    const subCard = await A.page.locator(`[data-test=tech-${otherBranch}]`).getAttribute('class');
+    log(`A ${otherBranch} card after the order:`, subCard);
     // the other branch and a mastery without its prerequisite are refused
     // (online, dispatch only queues the order: the sim refuses it when the turn runs, so check the state after)
-    for (const tech of ['submarines', 'navalMastery', 'carriers']) {
+    for (const tech of lockedAfter) {
       await dispatch(A.page, { type: 'procure', tech });
       await sleep(1500);
       const m = await me(A.page);
@@ -485,7 +501,7 @@ try {
       if (new Set(views).size !== 1) fail(`clients disagree on orders:\n${views.join('\n')}`);
     }
     // delivery: Destroyers 25 s, Amphibious Tanks 35 s
-    await waitFor(async () => (await me(A.page)).techs.includes('destroyers') && (await me(B.page)).techs.includes('amphibiousTanks'), 120000, 'orders delivered');
+    await waitFor(async () => (await me(A.page)).techs.includes(fork) && (await me(B.page)).techs.includes('amphibiousTanks'), 120000, 'orders delivered');
     await sleep(800);
     await shot(A.page, 'g1-arsenal-delivered');
     await A.page.keyboard.press('Escape');
@@ -500,7 +516,7 @@ try {
     log('research and orders seen by A, B, C:', views[0]);
     if (new Set(views).size !== 1) fail(`clients disagree on research:\n${views.join('\n')}`);
     const [va, vb] = views[0].split(' / ');
-    if (!va.split('|')[2].split(',').includes('destroyers') || !vb.split('|')[2].split(',').includes('amphibiousTanks')) fail('the orders did not land');
+    if (!va.split('|')[2].split(',').includes(fork) || !vb.split('|')[2].split(',').includes('amphibiousTanks')) fail('the orders did not land');
     const common = await compareHashes([A.page, B.page, C.page], 10);
     log(`game 1: hashes agree on ${common.length} turns (${common[0]}..${common[common.length - 1]})`);
     const desync = await Promise.all([A.page, B.page, C.page].map((p) => p.evaluate(() => window.__borderfall.mp().desync)));
