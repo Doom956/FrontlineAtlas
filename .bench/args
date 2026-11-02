@@ -1,0 +1,1 @@
+--sizes medium --maps continents,archipelago,pangaea,highlands --specialist all --minutes 50 --decided 0.6 --seeds 96 --start 9001 --slot 1 --rule marketCapFixed,stackAdd,merchantMerc
