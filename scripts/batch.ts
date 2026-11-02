@@ -341,6 +341,8 @@ interface GameResult {
   nationGold?: { id: number; earned: number; merc: number }[];
   /** --specialist: the slot nation */
   slot?: SlotResult;
+  /** economy probe per nation at 10 / 20 / 30 min and the end */
+  econ?: EconNation[];
 }
 
 /** The --specialist slot's game, specialist or baseline. */
@@ -417,6 +419,60 @@ function tileLeader(state: GameState): number {
   return best;
 }
 
+
+// --- economy probe (benchmark only; reads the sim, never changes a value) ------------------------------------------
+/** One nation's economy at a moment: gold earned so far, income/s, Research-tab and Arsenal techs, standing buildings
+ *  (type -> [sites, levels]), gold spent so far per spending site (file:function of the code that lowered p.gold). */
+interface EconSnap { earned: number; income: number; gold: number; res: number; ars: number; land: number; bld: Record<string, [number, number]>; spent: Record<string, number> }
+interface EconNation { id: number; personality: string; at: (EconSnap | null)[]; end: EconSnap | null }
+function installEconProbe(state: GameState): { spent: Map<number, Record<string, number>> } {
+  const spent = new Map<number, Record<string, number>>();
+  const rx = /at (?:([\w.<>$]+) )?\(?(?:.*[\/])?([\w.-]+)\.ts/;
+  for (const p of state.players) {
+    if (p.id === 0 || isTribe(p)) continue;
+    const rec: Record<string, number> = {};
+    spent.set(p.id, rec);
+    let v = p.gold;
+    Object.defineProperty(p, 'gold', {
+      enumerable: true,
+      configurable: true,
+      get: () => v,
+      set: (n: number) => {
+        if (n < v) {
+          const lim = Error.stackTraceLimit;
+          Error.stackTraceLimit = 2;
+          const e: { stack?: string } = {};
+          Error.captureStackTrace(e);
+          Error.stackTraceLimit = lim;
+          const line = (e.stack ?? '').split('\n')[2] ?? '';
+          const m = rx.exec(line);
+          const key = m ? `${m[2]}:${(m[1] ?? '?').replace(/^Object\./, '')}` : 'unknown';
+          rec[key] = (rec[key] ?? 0) + (v - n);
+        }
+        v = n;
+      },
+    });
+  }
+  return { spent };
+}
+function econSnap(state: GameState, id: number, spent: Record<string, number>): EconSnap {
+  const p = state.players[id];
+  let res = 0;
+  let ars = 0;
+  for (const t of p.techs) {
+    if (isArsenalTech(t)) ars++;
+    else res++;
+  }
+  const bld: Record<string, [number, number]> = {};
+  for (const b of state.buildings.values()) {
+    if (b.owner !== id) continue;
+    const e = (bld[b.type] ??= [0, 0]);
+    e[0]++;
+    e[1] += b.level;
+  }
+  return { earned: p.stats.goldEarned, income: p.income.gold, gold: p.gold, res, ars, land: p.alive ? p.tiles / Math.max(1, state.map.landTileCount) : 0, bld, spent: { ...spent } };
+}
+
 async function runGame(job: Job, o: Options): Promise<GameResult> {
   const world = job.size.startsWith('world:') ? job.size.slice(6) : null;
   const settings: GameSettings = {
@@ -436,6 +492,9 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
   const state = createGame(settings, world ? await loadWorldMap(world) : null);
   // --specialist: the slot is the o.slot-th AI nation (ids follow the setup: humans, AI nations, tribes).
   const slotId = job.focus ? (state.players.filter((p) => p.id > 0 && !p.isHuman && !isTribe(p))[o.slot - 1]?.id ?? 0) : 0;
+  const econProbe = installEconProbe(state);
+  const econ: EconNation[] = [];
+  for (const p of state.players) if (p.id && !isTribe(p)) econ.push({ id: p.id, personality: p.personality ?? 'human', at: [null, null, null], end: null });
   if (slotId && job.focus && job.focus !== 'none') {
     const fork = o.fork && TECHS[o.fork].exclusiveGroup === FOCUS_SPEC[job.focus].group ? o.fork : undefined;
     setAIFocus(state, slotId, fork ? { pillar: job.focus, fork } : { pillar: job.focus });
@@ -728,6 +787,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     }
     for (const [slot, at] of [[0, 600], [1, 1200], [2, 1800]] as const) {
       if (sec !== at) continue;
+      for (const e of econ) if (state.players[e.id].alive) e.at[slot] = econSnap(state, e.id, econProbe.spent.get(e.id)!);
       const m: MixSample = { infantry: 0, armor: 0, artillery: 0 };
       for (const t of perNation) {
         m.infantry += t.infantry;
@@ -826,6 +886,8 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     r.branches!.push({ id: p.id, picks });
   }
   r.spend = { ...aiSpendStats(state) };
+  for (const e of econ) e.end = econSnap(state, e.id, econProbe.spent.get(e.id)!);
+  r.econ = econ;
   for (const p of state.players) {
     if (p.id === 0 || isTribe(p) || !p.spawned) continue;
     r.nationGold!.push({ id: p.id, earned: p.stats.goldEarned, merc: r.spend.mercGoldBy?.[p.id] ?? 0 });
