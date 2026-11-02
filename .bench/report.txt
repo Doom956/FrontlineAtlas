@@ -1,0 +1,107 @@
+Frontline Atlas batch report from 1 file(s): 192 of 192 games, decided at 60%.
+
+Per configuration (a/r = armor/artillery % of all armies; mixW = winners with >= 15% armor or
+artillery, # = distinct mixes; ld8W / ld15W = leader at 8 / 15 min won; atom and invade: count/games;
+t1atm = median minute of the first atom bomb; tFiss = median minute the first nation had Nuclear Fission;
+idl/hld = nation samples with troops >= 90% of the cap and no attack of their own, not attacked / attacked;
+maxArmy = median over games of the biggest nation army; p50 / p95 / p99 ms per tick)
+
+config                   n  won%  tWin 25-50 10m a/r 20m a/r 30m a/r  mixW # tch20  ld8W ld15W  atom t1atm tFiss  invade  bomber  rckt  wshp idl/hld maxArmy   p50   p95   p99
+medium 8 AIs           192  100%  29.1   78%    8/16   11/26   10/27   100% 3  16.0   16%   36%  55/42  31.9  27.6 24906/192 52905/192  2970  8400    6/1%  10.3M   1.1   5.7  23.0
+
+map continents          48  100%  27.7   71%    9/15   12/24   10/25   100% 3  16.2   13%   29%  19/14  30.0  26.4 6637/48 11640/48   693  2114    6/1%  10.1M   1.1   6.0  19.4
+map archipelago         48  100%  28.3   67%    8/12   14/25   16/24   100% 2  15.3   21%   48%    6/5  34.1  28.7 8682/48 14801/48   574  2347    7/1%   9.2M   1.0   5.4  19.5
+map pangaea             48  100%  28.1   77%    8/20   11/27    9/27   100% 2  16.8   15%   35%    7/6  31.8  26.5 4131/48 11831/48   658  1717    6/1%  10.6M   1.1   6.2  23.0
+map highlands           48  100%  31.3   98%    6/18    9/28    6/29   100% 3  16.0   15%   31%  23/17  32.3  27.8 5456/48 14633/48  1045  2222    5/1%  11.0M   1.0   5.3  21.3
+
+all                    192  100%  29.1   78%    8/16   11/26   10/27   100% 3  16.0   16%   36%  55/42  31.9  27.6 24906/192 52905/192  2970  8400    6/1%  10.3M   1.1   5.7  23.0
+
+Winner troop mixes (types >= 15% of the army, second half of the game): inf+arm+art 66, inf+art 122, inf+arm 4
+Win reasons: ? 140, land share 52
+
+Buildings started (total over all games / games with at least one):
+  city 17986/192, farm 8602/192, market 3927/192, mine 6779/192, oilWell 5838/192, barracks 1717/192, factory 5231/192, arsenal 4191/192, fort 9801/192, watchtower 4202/192, port 3430/192, lab 4408/192, hospital 1136/192, airfield 2144/192, sam 3161/189, silo 666/187
+Standing at the end (sites / mean level / highest level), summed over games:
+  city 15232/2.8/6, farm 8561/4.0/5, market 3645/3.9/5, mine 6639/2.0/5, oilWell 5729/1.8/5, barracks 1708/2.1/3, factory 3330/2.4/5, arsenal 3906/2.1/5, fort 4616/1.1/5, watchtower 4198/1.1/3, port 3332/1.6/5, lab 4253/2.7/5, hospital 1136/1.6/2, airfield 669/1.0/2, sam 869/1.0/3, silo 248/1.0/1
+  354.5 buildings per game at the end, 44.3 per nation (incl. dead ones)
+
+Paradrops: 1675 (123 shot down, 1219 landed on nations) in 188 games.
+Barrages: 78341 (54066 silenced forts / SAMs) in 192 games.
+  per barrage: median 34051 killed (mean 46225), median 2.06% of the target's home army (p90 7.71%)
+Fortified tiles taken by nations: 7245836 (37738.7 per game), 26% by attacks with >= 15% artillery.
+Winners with >= 15% artillery: 188 of 192 (98%).
+Shot down: 7375 of 52905 bombers, 746 of 3025 missiles.
+Winners used 2.7 paradrops (nation mean 1.1) and 74.5 barrages (nation mean 51.0) per game.
+
+Eliminations per 5-minute bin (0-5 / 5-10 / ... / 50-55 min):
+  nations (1536 total): 0 / 10 / 228 / 305 / 249 / 105 / 32 / 5 / 4 / 0 / 0
+  tribes  (34560 total): 23617 / 10898 / 45 / 0 / 0 / 0 / 0 / 0 / 0 / 0 / 0
+
+Allies: 82.5 joined wars, 22.8 aid shipments, 0.0 refusals per game; a runaway leader (coalition) for 6.3 min per game.
+
+Naval: 24906 invasions, 4043 landings on neutral coasts, 8400 warships.
+Atom bombs: 55 in 42 games, first at minute 32.6, 32.7, 34.1, 30.2, 33.2, 31.8, 32.3, 35.4, 31.1, 40.4, 29.0, 30.3, 32.4, 33.0, 31.1, 32.3, 32.6, 35.0, 38.3, 29.1, 30.0, 33.9, 30.2, 28.2, 30.0, 29.7, 29.3, 29.6, 37.8, 28.8, 31.4, 32.4, 41.9, 32.9, 27.2, 31.2, 27.5, 34.4, 32.0, 30.0, 32.9, 27.6.
+Tick time: median p50 1.1 ms, median p95 5.7 ms, median p99 11.1 ms, worst p99 23.0 ms, worst tick 202.0 ms.
+
+Doctrines (held longest; 1536 nations in 192 games, 192 with a winner or land leader):
+  doctrine    picks  pick%   wins  win%   win%/pick%   land at end  alive at end
+  blitz         199    13%     30   16%     1.2         13.9%        36%
+  fortress      227    15%     26   14%     0.9         11.8%        39%
+  siege         231    15%     40   21%     1.4         16.1%        45%
+  merchant      219    14%     30   16%     1.1         13.1%        41%
+  naval         217    14%     19   10%     0.7         11.0%        40%
+  air           237    15%     23   12%     0.8         10.7%        35%
+  expansion     206    13%     24   13%     0.9         10.9%        36%
+  0 nations switched (0 switches, 0.0 per nation)
+  merchant  won 50 of 295 nations; held: naval 54, merchant 47, air 45, fortress 42, blitz 41, siege 37, expansion 29
+  warlord   won 20 of 312 nations; held: fortress 50, air 49, expansion 46, blitz 46, naval 43, merchant 40, siege 38
+  turtle    won 20 of 290 nations; held: expansion 48, siege 45, merchant 42, fortress 42, air 39, blitz 39, naval 35
+  admiral   won 25 of 299 nations; held: air 51, siege 49, expansion 47, merchant 41, naval 41, fortress 37, blitz 33
+  balanced  won 77 of 340 nations; held: siege 62, fortress 56, air 53, merchant 49, naval 44, blitz 40, expansion 36
+
+Tech branches (nations that chose in the group; win = winner or land leader at the cap):
+  group          member              picks  pick%   wins  win%  win%/pick%  land at end  alive
+  finance        stockExchange         238    40%     71   42%     1.0       28.5%    71%
+  finance        freeTrade             357    60%     99   58%     1.0       24.4%    63%
+  landDoctrine   blitzTactics          172    48%     69   43%     0.9       35.3%    80%
+  landDoctrine   trenchWarfare         187    52%     90   57%     1.1       40.7%    86%
+  navalDoctrine  submarines            297    57%     65   58%     1.0       20.7%    58%
+  navalDoctrine  destroyers            223    43%     48   42%     1.0       18.8%    54%
+  statecraft     diplomaticCorps       194    57%     65   49%     0.9       31.8%    74%
+  statecraft     conscription          148    43%     69   51%     1.2       37.8%    83%
+  capstone       massMobilization       40    40%     24   42%     1.1       50.4%   100%
+  capstone       automation             61    60%     33   58%     1.0       48.8%   100%
+  armorPath      lightTanks            132    38%     22   25%     0.7       14.3%    39%  <-- low
+  armorPath      heavyTanks            214    62%     66   75%     1.2       26.0%    57%
+  airDoctrine    groundAttack          123    32%     32   31%     1.0       24.5%    68%
+  airDoctrine    heavyBombers          266    68%     70   69%     1.0       26.4%    65%
+AI gold uses per game: 95.1 mercenary hires (1654.2k troops), 0.3 ally fundings (0.8k gold), 0.0 war bonds, 0.0 bulk city orders, 0.0 area upgrades; games with mercenaries 192/192, with funding 49/192.
+Spearheads: 4211 (21.9 per game), median 8 tiles taken; by ending:
+  ran out of strength                 2510  mean 21.9 tiles, 6.4k lost
+  reached the coast                    840  mean 5.8 tiles, 1.5k lost
+  reached its full depth               469  mean 25.5 tiles, 2.7k lost
+  ran                                  376  mean 5.9 tiles, 1.7k lost
+  stalled in the mountains               7  mean 7.7 tiles, 2.2k lost
+  the way is barred                      4  mean 27.8 tiles, 2.9k lost
+  that nation is gone                    4  mean 0.0 tiles, 0.0k lost
+  you cannot attack an ally              1  mean 0.0 tiles, 0.0k lost
+
+Research tab (23 techs), mean owned per alive nation: 10 min 6.5 (28%), 20 min 11.7 (51%), 30 min 14.4 (63%); Arsenal items at 20 min 4.3.
+  first path     arrival: first in game median 5.7 min (min 2.8, in 192/192 games); per nation median 9.5 min, 1081 nations of 1536 (70%), 25th pct 8.0
+  first special  arrival: first in game median 18.8 min (min 12.7, in 178/192 games); per nation median 21.0 min, 327 nations of 1536 (21%), 25th pct 18.2
+  first mastery  arrival: first in game median 29.3 min (min 20.3, in 41/192 games); per nation median 29.7 min, 43 nations of 1536 (3%), 25th pct 27.3
+
+Bombers shot down: 7375 of 52905 sorties (14%): SAM sites 2525 (5%), fighters 4849 (9%), carrier fighters 1 (0%).
+  sorties by variant: heavy bombers 21797, ground-attack 7883, standard 23225.
+Tank divisions: 3723 formed (19.4 per game): overrun 2600 (70%), spent after a spearhead 59 (2%), alive at the end 909 (24%), lost otherwise 155 (4%).
+Units per game (appeared; bomber = sorties, transportPlane = paradrops): type  median / max (seed of the max)
+  atomBomb 0.0 / 3 (medium continents 9017);  bomber 256.0 / 777 (medium archipelago 9058);  bomber:groundAttack 0.0 / 369 (medium highlands 9080)
+  bomber:heavyBomber 98.5 / 535 (medium archipelago 9046);  reconPlane 6.0 / 27 (medium continents 9189);  rocket 13.5 / 60 (medium highlands 9036)
+  tankDivision 19.0 / 39 (medium continents 9069);  tankDivision:heavyTank 0.0 / 11 (medium continents 9109);  tankDivision:lightTank 0.0 / 18 (medium continents 9069)
+  tradeShip 122.5 / 408 (medium archipelago 9146);  transport 138.5 / 351 (medium archipelago 9058);  transportPlane 7.0 / 37 (medium highlands 9116)
+  warship 40.0 / 135 (medium highlands 9036);  warship:battleship 0.0 / 4 (medium archipelago 9058);  warship:carrier 0.0 / 5 (medium continents 9093)
+  warship:destroyer 2.0 / 24 (medium continents 9137);  warship:submarine 3.0 / 46 (medium highlands 9056)
+  peak aircraft of one nation (stored + flying): median 18.0, max 18
+Atom bombs: first use in 42/192 games at median minute 31.9, those games ended at 34.8; median 2.9 min before the end, >= 5 min before the end in 24%; first user won 7/42.
+  per game (first use / end): 33/40, 33/37, 34/34, 30/34, 33/34, 32/41, 32/40, 35/37, 31/34, 40/44, 29/31, 30/35, 32/34, 33/37, 31/37, 32/35, 33/36, 35/40, 38/40, 29/31, 30/32, 34/35, 30/32, 28/30, 30/34, 30/32, 29/30, 30/30, 38/42, 29/31, 31/37, 32/40, 42/44, 33/37, 27/34, 31/34, 27/28, 34/38, 32/37, 30/31, 33/36, 28/29
+Mercenaries: winners spent 1.8% of their gold on them (nation mean 3.2%); 192/192 winners hired; winners paid 23% of all mercenary gold (their share of nations 13%).
