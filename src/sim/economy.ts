@@ -29,6 +29,7 @@ import {
   FARM_TROOP_CAP,
   GOLD_BASE,
   GOLD_LAND,
+  GOLD_RULES,
   IRON_PER_MINE,
   MARKET_GOLD_BONUS,
   MARKET_MAX_BONUS,
@@ -252,10 +253,16 @@ function convertArmy(state: GameState, p: Player, dt: number): void {
 export function goldIncome(state: GameState, p: Player): number {
   const banking = hasTech(p, 'banking');
   const marketScale = (banking ? BANKING_MARKET_MULT : 1) * doctrineMore(state, p.id, 'marketBonus');
-  const marketBonus = Math.min(countBuildings(state, p.id, 'market') * MARKET_GOLD_BONUS, MARKET_MAX_BONUS) * marketScale;
-  let gold = (GOLD_BASE + GOLD_LAND * landValue(landWeight(state, p.id)) + CITY_GOLD * cityLevels(state, p.id)) * (1 + marketBonus);
-  if (banking) gold *= BANKING_GOLD_MULT;
-  gold *= doctrineMore(state, p.id, 'gold');
+  const markets = countBuildings(state, p.id, 'market') * MARKET_GOLD_BONUS;
+  const marketBonus = GOLD_RULES.marketCapFixed ? Math.min(markets * marketScale, MARKET_MAX_BONUS) : Math.min(markets, MARKET_MAX_BONUS) * marketScale;
+  const base = GOLD_BASE + GOLD_LAND * landValue(landWeight(state, p.id)) + CITY_GOLD * cityLevels(state, p.id);
+  let gold: number;
+  if (GOLD_RULES.stackAdd) gold = base * (1 + marketBonus + (banking ? BANKING_GOLD_MULT - 1 : 0) + doctrineLever(state, p.id, 'gold'));
+  else {
+    gold = base * (1 + marketBonus);
+    if (banking) gold *= BANKING_GOLD_MULT;
+    gold *= doctrineMore(state, p.id, 'gold');
+  }
   if (doctrinePerk(state, p.id, 'merchant')) gold *= 1 + DOCTRINE_PERKS.merchant.routeBonus * tradeRoutes(state, p.id);
   if (isTribe(p)) gold *= TRIBE_GOLD_FACTOR;
   gold *= aiEconomy(state, p).income * techIncomeMul(p);
