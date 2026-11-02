@@ -110,7 +110,9 @@ import { tankDefenseAt } from './tanks';
 import { blockadedAt, blockadeSupplyMul, navalBeachheadMul, navalSupportAt } from './naval2';
 import { NAVY_BEACHHEAD_SUPPLY, NAVY_SUPPORT_SPEED } from './config';
 import { airSupportCut } from './airwings';
-import { AIR } from './config';
+import { AIR, TRENCH } from './config';
+import { trenchLevel } from './trenches';
+import { armorBreaksThrough } from './variants';
 import { isProtected, tutorialKeeps, tutorialShielded } from './admin';
 import { TROOP_TYPES, Terrain, isTribe, isWater } from './types';
 import type { ActionResult, Attack, GameState, Player, TerrainId, TroopType, Troops } from './types';
@@ -162,7 +164,7 @@ function typeAttack(state: GameState, p: Player, k: TroopType): number {
     if (hasOilShortage(state, p.id)) v *= NO_OIL_ARMOR_FACTOR;
   } else if (k === 'artillery') {
     if (hasTech(p, 'ballistics')) v *= BALLISTICS_ARTILLERY;
-    v *= doctrineMore(state, p.id, 'artilleryAttack');
+    // (the Siege doctrine's artilleryAttack lever applies per tile, only against trenches and forts: tileCost)
   }
   return v;
 }
@@ -511,6 +513,10 @@ interface FightCtx {
   combined: number;
   /** what is left of a fort's extra slowdown after the guns (1 - artillery share x ARTILLERY_FORT_BREACH, >= 0) */
   breach: number;
+  /** what is left of a trench after heavy tanks (1 - armor share for a heavy-tank nation, else 1) */
+  heavyBreach: number;
+  /** attacker's Siege artilleryAttack lever: artillery x (1 + it) against dug-in or fortified tiles */
+  siegeAttack: number;
   // Doctrine levers (doctrines.ts), looked up once per tick:
   /** attacker's siegeBonus lever (Siege) */
   siege: number;
@@ -555,6 +561,8 @@ function fightCtx(state: GameState, attackerId: number, troops: Troops, defender
     // Mass Mobilization, war bonds and allies' funding (spending.ts) on top of combined arms.
     combined: combinedArms(p, troops, tot) * attackBonusMul(state, attackerId, defender),
     breach: tot > 0 ? Math.max(0, 1 - (troops.artillery / tot) * ARTILLERY_FORT_BREACH) : 1,
+    heavyBreach: tot > 0 && armorBreaksThrough(state, attackerId) ? Math.max(0, 1 - troops.armor / tot) : 1,
+    siegeAttack: doctrineLever(state, attackerId, 'artilleryAttack'),
     siege: doctrineLever(state, attackerId, 'siegeBonus'),
     armorIgnore: armorTerrainIgnore(state, attackerId),
     openBudget: 1 / doctrineMore(state, attackerId, 'openGroundSpeed'),
@@ -613,9 +621,13 @@ function tileCost(state: GameState, c: FightCtx, tile: number): TileCost {
   const nav = navalSupportAt(state, c.attacker, tile);
   const sup = nav > 0 ? 1 : supplyEfficiency(state, c.attacker, tile) * blockadeSupplyMul(state, c.attacker, tile);
   const fort = c.defender === 0 ? 1 : fortMultiplierAt(state, tile, c.defender);
+  // Dug-in borders (trenches.ts): nations only; artillery and heavy tanks breach part of it.
+  const lvl = c.defender > 0 && !c.tribeTarget ? trenchLevel(state, tile) : 0;
+  const dug = lvl * c.breach * c.heavyBreach;
   const att = ter.attack;
   const armorAtt = c.w1 > 0 ? armorTerrain(att.armor, c.armorIgnore) : 0;
-  let power = c.w0 * att.infantry + c.w1 * armorAtt + (c.w2 > 0 ? c.w2 * att.artillery * artillerySiegeBonus(fort, c.siege) : 0);
+  const siegeAtt = c.siegeAttack > 0 && (lvl > 0 || fort > 1.01) ? 1 + c.siegeAttack : 1;
+  let power = c.w0 * att.infantry + c.w1 * armorAtt + (c.w2 > 0 ? c.w2 * att.artillery * artillerySiegeBonus(fort, c.siege) * siegeAtt : 0);
   power *= sup * c.combined;
   let defense: number;
   if (c.defender === 0) {
@@ -635,9 +647,10 @@ function tileCost(state: GameState, c: FightCtx, tile: number): TileCost {
     out.defenderLoss = DEFENDER_LOSS_PER_TILE * c.density * c.defenderLossMult;
     // Heartland near the capital and the last stand of a much smaller nation (capped together).
     const core = c.hr > 0 ? heartShare(c.w, tile, c.hx, c.hy, c.hr) : 0;
-    if (core > 0 || c.lastStand > 1) {
-      defense *= Math.min(DEFENSE_BONUS_CAP, (1 + HEARTLAND_DEFENSE * core) * c.lastStand);
-      heartSlow = Math.min(DEFENSE_BONUS_CAP / c.lastStandSlow, 1 + HEARTLAND_SLOW * core);
+    if (core > 0 || c.lastStand > 1 || dug > 0) {
+      // Trenches go inside the same cap.
+      defense *= Math.min(DEFENSE_BONUS_CAP, (1 + HEARTLAND_DEFENSE * core) * c.lastStand * (1 + TRENCH.step * dug));
+      heartSlow = Math.min(DEFENSE_BONUS_CAP / c.lastStandSlow, (1 + HEARTLAND_SLOW * core) * (1 + TRENCH.slow * dug));
     }
   }
   defense *= c.wildLoss;
@@ -647,7 +660,7 @@ function tileCost(state: GameState, c: FightCtx, tile: number): TileCost {
   out.fort = fort;
   const fortSlow = fort > 1.01 ? 1 + Math.max(0, FORT_SLOW * (fort / FORT_DEFENSE) - 1) * c.breach : 1;
   out.budget = (TER_SPEED_COST[tid] * fortSlow * heartSlow) / (0.5 + 0.5 * sup);
-  if (tid === Terrain.Plains || tid === Terrain.Desert) out.budget *= c.openBudget;
+  if ((tid === Terrain.Plains || tid === Terrain.Desert) && lvl === 0) out.budget *= c.openBudget; // Blitz: undug open ground
   if (nav > 0) out.budget /= 1 + NAVY_SUPPORT_SPEED * nav;
   if (airCut > 0) out.budget *= 1 - AIR.supportSpeed * airCut;
   return out;
@@ -828,8 +841,9 @@ function ownedNeighbours(state: GameState, tile: number, playerId: number): numb
 /** Front priority (lower = taken first), in ticks. */
 function frontPriority(state: GameState, a: Attack, tile: number): number {
   const nb = ownedNeighbours(state, tile, a.attacker);
+  const dug = a.target > 0 ? trenchLevel(state, tile) * TRENCH.prioPerLevel : 0; // thin stretches fall first
   const jitter = FRONT_JITTER_MIN + state.rng() * FRONT_JITTER_SPAN;
-  return state.tick + jitter * (1 - FRONT_NEIGHBOUR_WEIGHT * nb + TER_PRIO[state.map.terrain[tile]]);
+  return state.tick + dug + jitter * (1 - FRONT_NEIGHBOUR_WEIGHT * nb + TER_PRIO[state.map.terrain[tile]]);
 }
 function queueTile(state: GameState, a: Attack, f: Front, tile: number): void {
   f.queued.add(tile);
@@ -1501,6 +1515,10 @@ export interface AttackEstimate {
   lossFactor: number;
   /** front length used for tilesPerSecond */
   frontTiles: number;
+  /** trench level of this tile after your artillery / heavy tanks breach part of it (trenches.ts; 0 = undug) */
+  trench: number;
+  /** what the trench adds to losses here (0.3 = +30%; before DEFENSE_BONUS_CAP) */
+  trenchPct: number;
 }
 
 /**
@@ -1531,7 +1549,9 @@ export function estimateAttack(state: GameState, playerId: number, tile: number,
   const budget = cost.budget;
   const rate = frontRate(state, c);
   const perSecond = (Math.max(len, FRONT_MIN_TILES) * rate) / budget;
-  return { lossPerTile, tilesPerSecond: perSecond, defensePerTile, odds: c.odds, lossFactor: c.lossFactor, frontTiles: len };
+  const lvl = target > 0 && !c.tribeTarget ? trenchLevel(state, tile) : 0;
+  const trench = lvl * c.breach * c.heavyBreach;
+  return { lossPerTile, tilesPerSecond: perSecond, defensePerTile, odds: c.odds, lossFactor: c.lossFactor, frontTiles: len, trench, trenchPct: TRENCH.step * trench };
 }
 
 /** True if any tile of `owner` (0 = neutral land) is 4-adjacent to a tile of playerId (from the border set). */
