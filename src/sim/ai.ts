@@ -71,9 +71,11 @@ import {
   TICKS_PER_SECOND,
   TRIBE_DECISION_SECONDS,
   TRIBE_MAX_TILES,
+  TRENCH,
   TROOP_ATTACK,
   UNITS,
 } from './config';
+import { meanTrenchLevel, trenchLevel } from './trenches';
 import { areAllied, changeOpinion, isTraitor } from './diplomacy';
 import { doctrineActive, doctrineAdvice, doctrineCooldownLeft, doctrineSwitchCost, doctrineTicks, doctrineUnlocked, doctrineUnlockTick } from './doctrines';
 import { troopCap } from './economy';
@@ -976,12 +978,22 @@ function decide(ctx: Ctx): void {
 // Doctrines
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Personality taste on top of doctrineAdvice (missing = 1). */
+/**
+ * Personality taste on top of doctrineAdvice (missing = 1), damped so habit no longer outweighs the situation: each
+ * raw value v counts as 1 + DOCTRINE_TASTE_DAMP x (v - 1), clamped to DOCTRINE_TASTE_RANGE.
+ */
+const DOCTRINE_TASTE_DAMP = 0.55;
+const DOCTRINE_TASTE_RANGE: readonly [number, number] = [0.8, 1.25];
+function dampTaste(raw: Partial<Record<DoctrineId, number>>): Partial<Record<DoctrineId, number>> {
+  const out: Partial<Record<DoctrineId, number>> = {};
+  for (const [k, v] of Object.entries(raw) as [DoctrineId, number][]) out[k] = clamp(1 + DOCTRINE_TASTE_DAMP * (v - 1), DOCTRINE_TASTE_RANGE[0], DOCTRINE_TASTE_RANGE[1]);
+  return out;
+}
 const DOCTRINE_TASTE: Record<Personality, Partial<Record<DoctrineId, number>>> = {
-  warlord: { blitz: 1.35, siege: 1.15, expansion: 1.1, fortress: 0.65, merchant: 0.65, naval: 0.75 },
-  turtle: { fortress: 1.5, siege: 1.15, merchant: 1.05, blitz: 0.65, expansion: 0.8, naval: 0.75 },
-  merchant: { merchant: 1.5, naval: 1.1, blitz: 0.65, siege: 0.75, air: 0.85 },
-  admiral: { naval: 1.5, merchant: 1.1, fortress: 0.8, siege: 0.85 },
+  warlord: dampTaste({ blitz: 1.35, siege: 1.15, expansion: 1.1, fortress: 0.65, merchant: 0.65, naval: 0.75 }),
+  turtle: dampTaste({ fortress: 1.5, siege: 1.15, merchant: 1.05, blitz: 0.65, expansion: 0.8, naval: 0.75 }),
+  merchant: dampTaste({ merchant: 1.5, naval: 1.1, blitz: 0.65, siege: 0.75, air: 0.85 }),
+  admiral: dampTaste({ naval: 1.5, merchant: 1.1, fortress: 0.8, siege: 0.85 }),
   balanced: {},
   tribe: {},
 };
@@ -1046,13 +1058,18 @@ function doctrine(ctx: Ctx): void {
 /** Build priority multipliers that lean into the held doctrine (missing = 1). */
 const DOCTRINE_BUILD: Record<DoctrineId, Partial<Record<BuildingType, number>>> = {
   blitz: { factory: 1.4, oilWell: 1.3 },
-  fortress: { fort: 1.6, watchtower: 1.3 },
+  fortress: { fort: 1.3, watchtower: 1.3 }, // trenches dig for free: less gold into forts
   siege: { arsenal: 1.5 },
   merchant: { market: 1.5, port: 1.3, city: 1.1 },
   naval: { port: 1.6 },
   air: { airfield: 1.8, sam: 1.2 },
   expansion: { city: 1.15, farm: 1.2, barracks: 1.15 },
 };
+/** Extra artillery share against a main front dug in to this mean level (trenches.ts). */
+const AI_TRENCH_GUNS_LEVEL = 1.5;
+const AI_TRENCH_ARTILLERY = 0.1;
+/** Landing score x this on the coast of a nation whose front with us is dug in (AI_TRENCH_GUNS_LEVEL+). */
+const AI_TRENCH_LANDING = 1.5;
 /** Extra armor / artillery share the AI wants under a doctrine. */
 const DOCTRINE_MIX: Partial<Record<DoctrineId, { armor: number; artillery: number }>> = {
   blitz: { armor: 0.1, artillery: 0 },
@@ -1071,7 +1088,9 @@ function armyMix(ctx: Ctx): void {
   const foe = mainWarTarget(ctx) || ctx.threatId;
   const frontTiles = foe > 0 ? (ctx.hood.front.get(foe) ?? EMPTY) : (ctx.hood.front.get(0) ?? EMPTY);
   const lean = DOCTRINE_MIX[doctrineActive(state, id) ?? 'expansion'];
-  const base = lean ? { armor: prof.mix.armor + lean.armor, artillery: prof.mix.artillery + lean.artillery } : prof.mix;
+  const base = lean ? { armor: prof.mix.armor + lean.armor, artillery: prof.mix.artillery + lean.artillery } : { ...prof.mix };
+  // A dug-in main front (trenches.ts): guns breach trenches.
+  if (foe > 0 && meanTrenchLevel(state, frontSamples(ctx, foe)) >= AI_TRENCH_GUNS_LEVEL) base.artillery += AI_TRENCH_ARTILLERY;
   const { armor, artillery } = recommendMix(state, id, { base, foe, frontTiles, careful: diff.careful, army: ctx.army });
   if (Math.abs(armor - p.armyMix.armor) > 0.03 || Math.abs(artillery - p.armyMix.artillery) > 0.03) {
     applyAction(state, id, { type: 'setArmyMix', armor, artillery });
@@ -1404,6 +1423,8 @@ function judgeAttack(ctx: Ctx, q: number, tile: number, force: Troops, strength:
     score /= 1 + 0.5 * otherAttackers(ctx, q);
     if (ctx.coalition) score *= COALITION_OTHER_WARS; // fellow members: not now
   }
+  // Dug-in fronts cost more (trenches.ts): the war target's mean front level.
+  if (!isTribe(qp)) score /= 1 + TRENCH.warScoreStep * meanTrenchLevel(state, frontSamples(ctx, q));
   if (pledgedAgainst(state, id, q)) score *= 2;
   if (isTraitor(state, q)) score *= 1.3;
   if (ctx.incoming.has(q)) score *= 1.4;
@@ -2233,6 +2254,7 @@ function landingTarget(ctx: Ctx, coast: readonly number[]): { tile: number; from
   }
   let best: { tile: number; from: number; owner: number } | null = null;
   let bestScore = -Infinity;
+  const dugFront = new Map<number, number>();
   for (const t of candidates) {
     const q = owner[t];
     const bad = ctx.ai.badLandings.get(t);
@@ -2252,6 +2274,12 @@ function landingTarget(ctx: Ctx, coast: readonly number[]): { tile: number; from
     let s = tileValue(state, t) * 10 - d * 0.08 + (q === 0 ? 6 : 0);
     if (q > 0 && isTraitor(state, q)) s += 3;
     if (q > 0 && isTribe(state.players[q])) s += 2;
+    // Landings go around dug-in lines (trenches.ts; coasts never dig).
+    if (q > 0 && s > 0 && !isTribe(state.players[q])) {
+      let lvl = dugFront.get(q);
+      if (lvl === undefined) dugFront.set(q, (lvl = meanTrenchLevel(state, frontSamples(ctx, q))));
+      if (lvl >= AI_TRENCH_GUNS_LEVEL) s *= AI_TRENCH_LANDING;
+    }
     s *= jitter(state, diff.noise);
     if (s <= bestScore) continue;
     // Land reachable on foot is not a landing.
@@ -2454,6 +2482,22 @@ function barrage(ctx: Ctx): void {
         best = b.tile;
         bestScore = score;
       }
+    }
+  }
+  // A dug-in main front (trenches.ts): shell its deepest sampled tile (flattens 2 levels); needs fewer guns.
+  if (best < 0 && main > 0 && guns >= BARRAGE_MIN_ARTILLERY * 2) {
+    const fr = frontSamples(ctx, main);
+    if (meanTrenchLevel(state, fr) >= AI_TRENCH_GUNS_LEVEL) {
+      let deep = -1;
+      let deepLvl = 0;
+      for (const t of fr) {
+        const lvl = trenchLevel(state, t);
+        if (lvl > deepLvl && canBarrage(state, id, t).ok) {
+          deepLvl = lvl;
+          deep = t;
+        }
+      }
+      if (deep >= 0) best = deep;
     }
   }
   if (best < 0 && main > 0 && guns >= BARRAGE_MIN_ARTILLERY * 4) {
