@@ -176,5 +176,19 @@ Group controls (owner: "same for the warships, it's hard to control them, and ai
 - Fleet markers (render/fleets.ts): below zoom 4, warships of one owner within 4 tiles or 16 px on screen (chained) draw as one marker with a count badge; a click on your own marker selects the fleet (Shift adds). Grid-bucketed single linkage: ~0.07 ms per frame for 200 ships.
 - Fix: a Fixed Strategic wing with no war against its nation said "Raiding X · next 2 s"; it now says "Waiting: no war with X".
 
+## Doctrine + mercenary tune (2026-11-02, on `dev`, not merged yet)
+Kept: AI mercenaries also during any war against another AI nation while the bar is under 65% (wars on a human keep the
+old triggers), budget 45 / 60% -> 60 / 75% of gold, 20 -> 12 s between hires (aispending.ts); Blitz armor conversion
+-15% -> -10%; Air doctrine aircraft -25% -> -35%, airfield reload -25% -> -40%.
+Results (medium, 192-384 games per figure): winners' gold on mercenaries 1.9% -> 9.5-9.9% (World 1.7 -> 6.4%); random
+doctrines Blitz 1.32 -> 1.21, Air 0.76 -> 0.88 (both seed sets agree); length, leader at 15 min, Fission unchanged;
+research at 20 min -0.2 to -0.45 techs; Hard humanbench unchanged on 72 seeds; Easy / Normal 100% alive at 20 min.
+Found: the AI Air-doctrine win ratio (~2x) is the AIs that pick it, not the doctrine: with no doctrine bonus at all
+its pickers still win 2.6x (they already own Flight and airfields). Tried and dropped: Banking +20% (economy specialist
+into range but every other pillar down), Fortress 0.4 / 0.4 / 0.3 (no measurable effect), cheaper mercenaries (AIs
+are short of gold, not of price).
+Still open: economy specialist 1.3-1.5 vs a normal AI; AI Air pickers win ~1.7-2x by selection; research at 20 min
+~49-50% (edge of target).
+
 ## Parked ideas (owner said later / maybe)
 Building limits (city slots, upkeep), rivers and bridges, wonders, game modes (King of the Hill, capital capture, scenarios), quick chat/emotes/rematch, phone layout, making Easy winnable, calmer tribes.

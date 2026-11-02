@@ -3,7 +3,9 @@
 // - Research: aiTechOrder merges a nation's profile order with the branch techs, each branch placed right after its
 //   prerequisites; for every exclusive group the nation commits to ONE member, picked from a personality lean and a
 //   per-game hash of its id (so both options get played and batch.ts can compare their win rates).
-// - Gold: mercenaries when a war goes badly or a big attack needs troops, funding an ally that fights a common enemy,
+// - Gold: mercenaries when a war goes badly, a big attack needs troops or a war against another AI nation runs with the
+//   bar under 65% (wars on a human keep the first two triggers only, so difficulty is unchanged), funding an ally that
+//   fights a common enemy,
 //   war bonds before a strong push, bulk city upgrades and area upgrades when gold piles up.
 // Decisions are deterministic (hashes and state only). Timers live in a per-game WeakMap like ai.ts's memory.
 import { applyAction } from './actions';
@@ -212,11 +214,13 @@ export function aiSpend(state: GameState, v: AISpendView): void {
   const stats = aiSpendStats(state);
   const warlike = v.personality === 'warlord' ? 1.3 : v.personality === 'merchant' || v.personality === 'turtle' ? 0.8 : 1;
 
-  // 1. Mercenaries: losing at home, or a big attack running while the bar is low.
+  // 1. Mercenaries: losing at home, a big attack running while the bar is low, or any war against an AI nation while
+  //    the bar is under 65% (makes mercenaries a regular use of gold: ~10% of a winner's gold instead of ~2%).
   const losing = v.incomingTotal > v.home * 0.6 && v.incomingTotal > 20000;
   const pushing = v.myAttacks.some((a) => a.target > 0 && !isTribe(state.players[a.target]) && sum(a.troops) > v.home);
-  if (now >= t.merc && (losing || (pushing && v.home < v.cap * 0.5)) && p.gold > income * AI_MERC_MIN_GOLD_SECONDS) {
-    const budget = p.gold * (losing ? 0.6 : 0.45) * warlike;
+  const fighting = v.myAttacks.some((a) => a.target > 0 && !isTribe(state.players[a.target]) && !state.players[a.target].isHuman);
+  if (now >= t.merc && (losing || (pushing && v.home < v.cap * 0.5) || (fighting && v.home < v.cap * 0.65)) && p.gold > income * AI_MERC_MIN_GOLD_SECONDS) {
+    const budget = p.gold * (losing ? 0.75 : 0.6) * warlike;
     const q0 = mercenaryPrice(state, v.id, 1000);
     let amount = Math.floor(Math.min(q0.affordable, budget / Math.max(1e-6, q0.perTroop)));
     // The price rises within the hire: shrink until it fits the budget.
@@ -226,7 +230,7 @@ export function aiSpend(state: GameState, v: AISpendView): void {
       stats.mercHires++;
       stats.mercTroops += amount;
       stats.mercGoldBy[v.id] = (stats.mercGoldBy[v.id] ?? 0) + (goldBefore - p.gold);
-      t.merc = now + 20 * S;
+      t.merc = now + 12 * S;
       return;
     }
     t.merc = now + 10 * S;
