@@ -1095,7 +1095,7 @@ Code contract:
   (no RNG: safe to call from the client). Events: `doctrineUnlocked` (to the humans), `doctrineChosen` (to the
   chooser; as news to humans who border it, are allied or have watchtower intel), `doctrineLevelUp` (to the holder).
 - AI (`ai.ts` `doctrine`): picks within 40 s of the unlock by `doctrineAdvice` (the same situation scores the UI
-  shows; dug-in enemy lines raise Siege and Air, own dug borders next to a bigger neighbour raise Fortress) x a
+  shows; a dug-in enemy line raises Siege (+0.15 x its mean level, up to 0.4) and Air (+0.3 x, up to 0.5)) x a
   personality taste (`DOCTRINE_TASTE`, damped to 1 + 0.55 x (v - 1) within 0.8-1.25) x difficulty noise
   (`doctrineNoise`; Easy also picks at random `doctrineRandom` of the time). It reviews once a minute and switches only after holding a doctrine 8 minutes, when
   another one scores `DOCTRINE_SWITCH_MARGIN` (1.8, +0.25 per level it would lose) times better and it has twice the
