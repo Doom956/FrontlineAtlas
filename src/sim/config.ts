@@ -688,8 +688,6 @@ export interface DoctrineLevers {
   tradeGold?: number;
   /** merchant: each market level's bonus this much higher (all markets still stop at MARKET_MAX_BONUS) */
   marketBonus?: number;
-  /** merchant (rule test): mercenaries cost this much less */
-  mercCost?: number;
   /** naval: warships cost this much less (gold, iron, oil) */
   warshipCost?: number;
   /** naval: warships sail this much faster */
@@ -1056,7 +1054,7 @@ export const AI_ECONOMY: Record<Difficulty, { growth: number; income: number; ca
  * the amount (so a big hire pays the rising price). The window is MERC_WINDOW_SECONDS long; at most MERC_CAP_SHARE of
  * the troop cap per window (at least MERC_MIN_CAP); home troops may end at most MERC_OVER_CAP above the cap.
  */
-export const MERC_BASE_PRICE = 0.05;
+export const MERC_BASE_PRICE = 0.035;
 export const MERC_TIME_GROWTH = 0.03;
 export const MERC_RISE = 4;
 export const MERC_WINDOW_SECONDS = 60;
@@ -1065,7 +1063,7 @@ export const MERC_MIN_CAP = 20000;
 export const MERC_OVER_CAP = 0.1;
 export const MERC_MIN_AMOUNT = 1000;
 /** Mercenaries prefer underdogs: price x (1 + this x the buyer's share of all land). */
-export const MERC_LAND_PRICE = 2;
+export const MERC_LAND_PRICE = 1;
 /**
  * Funding an ally (Action fundAlly): the gold goes to the ally; for FUND_SECONDS it attacks nations at war with the
  * funder with +bonus attack (bonus = FUND_MAX_BONUS x min(1, gold / (FUND_FULL_SECONDS x the ally's gold income)),
