@@ -1012,7 +1012,7 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
   }
   // Air cover (Air doctrine): a dug-in or stalled main front is bombed for free by idle airfields, so the airfield
   // nearest it stays idle, and strategic raids wait while any own front is dug in or stalled.
-  const airHolder = doctrineActive(state, id) === 'air';
+  const airHolder = false && doctrineActive(state, id) === 'air';
   const mainCovered = airHolder && !!main && (frontTrench(state, id, main.target) >= AIR_COVER.minLevel || main.attack.coverStalled === 1);
   let anyCovered = mainCovered;
   if (airHolder && !anyCovered) {
