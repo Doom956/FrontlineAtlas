@@ -146,6 +146,7 @@ export class ResearchPage implements DrawerPage {
   private views: Record<PanelTab, TechRowsView>;
   private tab: PanelTab = 'research';
   /** the phone's row switcher: one row of the tab at a time */
+  private body: HTMLElement | null = null;
   private phoneRow: Record<PanelTab, RowId | null> = { research: null, arsenal: null };
   private tabBtns = new Map<PanelTab, { b: HTMLButtonElement; dot: HTMLElement }>();
   private chipBox: HTMLElement;
@@ -253,6 +254,7 @@ export class ResearchPage implements DrawerPage {
     this.mastery.dataset.test = 'mastery-count';
     const main = el('div', 'rp-main');
     const body = el('div', 'rp-body');
+    this.body = body;
     body.append(this.views.research.root, this.views.arsenal.root);
     this.det = this.buildDetail();
     main.append(body, this.det.root);
@@ -345,6 +347,7 @@ export class ResearchPage implements DrawerPage {
     this.views[tab].invalidate();
     if (this.last) this.update(this.last.s, this.last.me);
     else requestAnimationFrame(() => this.views[tab].draw());
+    this.scrollToOpen();
   }
   get currentTab(): PanelTab {
     return this.tab;
@@ -370,6 +373,7 @@ export class ResearchPage implements DrawerPage {
         this.select(null);
         this.applyRows();
         if (this.last) this.update(this.last.s, this.last.me);
+        this.scrollToOpen();
       });
       return c;
     });
@@ -394,7 +398,22 @@ export class ResearchPage implements DrawerPage {
       });
       this.ro.observe(this.root);
     }
-    requestAnimationFrame(() => this.views[this.tab].draw());
+    requestAnimationFrame(() => {
+      this.views[this.tab].draw();
+      this.scrollToOpen();
+    });
+  }
+
+  /**
+   * Phone list: starts at the first card still open in the row (late in a game the owned ones fill the top), with its
+   * tier label in view. Wider screens show every row and never scroll here.
+   */
+  private scrollToOpen(): void {
+    const body = this.body;
+    if (!body || !this.isPhone()) return;
+    const grid = this.views[this.tab].root;
+    const first = [...grid.querySelectorAll<HTMLElement>('.rp-card')].find((c) => c.offsetParent !== null && !c.classList.contains('done') && !c.classList.contains('off'));
+    body.scrollTop = first ? Math.max(0, first.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - 34) : 0;
   }
 
   /** `rp-open` on the HUD while the panel is open: on a phone the guide bar folds to one line under it. */
@@ -586,17 +605,19 @@ export class ResearchPage implements DrawerPage {
       const a = arsenalCard(s, me, t);
       const p = a.price;
       const parts = [`${v(p.gold, a.short.gold)} gold`];
-      const have = [formatCount(me.gold)];
+      // "you have" only for what is short (the red figure): the rest is affordable, and the line stays short
+      const have = a.short.gold ? [`${formatCount(me.gold)} gold`] : [];
       if (p.iron) {
         parts.push(`${v(p.iron, a.short.iron)} iron`);
-        have.push(formatCount(me.iron));
+        if (a.short.iron) have.push(`${formatCount(me.iron)} iron`);
       }
       if (p.oil) {
         parts.push(`${v(p.oil, a.short.oil)} oil`);
-        have.push(formatCount(me.oil));
+        if (a.short.oil) have.push(`${formatCount(me.oil)} oil`);
       }
       if (a.state !== 'done' && a.state !== 'ordered') {
-        facts.push(['Price', `${parts.join(' &nbsp;')} &nbsp;· ${Math.round(p.seconds)} s to arrive<span class="rp-d-have">you have ${have.join(' · ')}</span>`]);
+        const hv = have.length ? `<span class="rp-d-have">you have ${have.join(', ')}</span>` : '';
+        facts.push(['Price', `${parts.join(' &nbsp;')} <span class="rp-d-nw">· ${Math.round(p.seconds)} s to arrive</span>${hv}`]);
       }
       if (needs) facts.push(['Needs', needs]);
       ({ state, look } = {
@@ -626,7 +647,7 @@ export class ResearchPage implements DrawerPage {
       const r = canResearch(s, me.id, t);
       const left = me.income.science > 0 ? (info.science - me.researchProgress) / me.income.science : null;
       if (st !== 'done' && st !== 'researching') {
-        facts.push(['Cost', `${v(info.gold, me.gold < info.gold)} gold &nbsp;${v(info.science)} science &nbsp;· ${formatEta(researchEta(me, t))}<span class="rp-d-have">you have ${formatCount(me.gold)} gold</span>`]);
+        facts.push(['Cost', `${v(info.gold, me.gold < info.gold)} gold &nbsp;${v(info.science)} science <span class="rp-d-nw">· ${formatEta(researchEta(me, t))}</span>${me.gold < info.gold ? `<span class="rp-d-have">you have ${formatCount(me.gold)} gold</span>` : ''}`]);
       }
       if (needs) facts.push(['Needs', needs]);
       if (st === 'done') ({ state, look } = { state: 'Owned', look: 'done' });

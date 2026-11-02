@@ -11,6 +11,12 @@
   opacity: 0.6;
 }
 
+/* the start page: the map's middle sits in the free space beside the column (the camera covers the screen) */
+.app.in-menu:has(.menu.at-title:not(.hidden)) canvas.map-gl,
+.app.in-menu:has(.menu.at-title:not(.hidden)) canvas.map {
+  translate: calc((400px + clamp(24px, 5vw, 96px) + 40px) / 2) 0;
+}
+
 .menu.at-title {
   justify-content: flex-start;
   align-items: stretch;
@@ -134,7 +140,7 @@
   gap: 12px;
   width: 100%;
   min-height: 48px;
-  padding: 0 8px 0 4px;
+  padding: 0 8px 0 12px;
   border: 0;
   border-bottom: 1px solid var(--rule);
   border-radius: 0;
@@ -189,7 +195,6 @@
 }
 /* first visit: the tutorial row is the suggested next step (brass leading edge and a short note) */
 .btn.menu-row.suggested {
-  padding-inline-start: 12px;
   box-shadow: inset 2px 0 0 var(--brass);
   background: rgba(201, 162, 39, 0.05);
 }
@@ -210,6 +215,10 @@
   .menu-card.title {
     width: calc(440px + clamp(24px, 5vw, 96px) + 48px);
     padding-inline-end: 48px;
+  }
+  .app.in-menu:has(.menu.at-title:not(.hidden)) canvas.map-gl,
+  .app.in-menu:has(.menu.at-title:not(.hidden)) canvas.map {
+    translate: calc((440px + clamp(24px, 5vw, 96px) + 48px) / 2) 0;
   }
 }
 

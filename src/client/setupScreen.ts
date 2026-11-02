@@ -166,7 +166,7 @@ function changeCount(a: GameSetup, b: GameSetup): number {
 
 /**
  * The game in two plain lines: "Medium continents map. You against 8 AI nations on Normal, free for all." and
- * "Changes: Fast game, No atom bombs" (or "Standard rules"). `lobby`: "The players and 8 AI nations ...".
+ * "Rules: Fast game, No atom bombs" (or "Standard rules"). `lobby`: "The players and 8 AI nations ...".
  * The title screen's "Play again" row uses the first line too.
  */
 export function setupBriefing(s: GameSetup, lobby = false): { main: string; rules: string; changes: number } {
@@ -182,7 +182,7 @@ export function setupBriefing(s: GameSetup, lobby = false): { main: string; rule
   const mods = activeModifiers(s).filter((m) => m.id !== 'teams');
   return {
     main: `${map}${compact}. ${who}${diff}, ${how}.`,
-    rules: mods.length ? `Changes: ${mods.map((m) => m.label).join(', ')}` : 'Standard rules',
+    rules: mods.length ? `Rules: ${mods.map((m) => m.label).join(', ')}` : 'Standard rules',
     changes: mods.length,
   };
 }
@@ -501,7 +501,7 @@ export class SetupScreen {
       custom.classList.toggle('hidden', !isCustom);
       if (isCustom) {
         const n = changeCount(this.s, this.base);
-        setText(customText, `Custom: ${n} ${n === 1 ? 'change' : 'changes'} to ${baseName}`);
+        setText(customText, `${baseName} with ${n} ${n === 1 ? 'change' : 'changes'}`);
         reset.title = `Back to ${baseName}`;
         reset.setAttribute('aria-label', `Reset to ${baseName}`);
       } else setText(line, PRESET_TEXT[this.s.preset]?.line ?? '');

@@ -23,7 +23,7 @@ describe('setup briefing', () => {
     s.modifiers.noNukes = true;
     const b = setupBriefing(s);
     expect(b.main).toMatch(/^Small continents map\. You against 4 AI nations on \w+, in 3 teams \(you lead team 1\)\.$/);
-    expect(b.rules).toBe('Changes: No atom bombs, Fast game');
+    expect(b.rules).toBe('Rules: No atom bombs, Fast game');
     expect(b.changes).toBe(2);
     expect(setupBriefing(s, true).main).toMatch(/The players and 4 AI nations .*, in 3 teams\.$/);
   });

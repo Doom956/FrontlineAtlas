@@ -64,8 +64,21 @@ const svgEl = <K extends keyof SVGElementTagNameMap>(k: K, cls?: string): SVGEle
   if (cls) e.setAttribute('class', cls);
   return e;
 };
-const MARK = { done: lineIcon('accept', 14, 2.2), locked: lineIcon('lock', 13, 1.8) };
+const MARK = { done: lineIcon('accept', 14, 2.2) };
 let uid = 0;
+
+/**
+ * A locked card's line: the first missing tech, and "+n" when more are missing ("Needs Banking +1"), so it fits the
+ * card. The detail pane and the card's accessible name give the whole requirement.
+ */
+function needsShort(me: Player, t: TechId): string {
+  const info = TECHS[t];
+  const has = (r: TechId): boolean => me.techs.includes(r);
+  const parts = info.requires.filter((r) => !has(r)).map((r) => TECHS[r].name);
+  if (info.requiresAny?.length && !info.requiresAny.some(has)) parts.push(info.requiresAny.map((r) => TECHS[r].name).join(' or '));
+  if (!parts.length) return 'Locked';
+  return parts.length === 1 ? `Needs ${parts[0]}` : `Needs ${parts[0]} +${parts.length - 1}`;
+}
 
 /** Column label without the old "· choose one" (the fork bracket says it). */
 export function colLabel(label: string): string {
@@ -91,8 +104,12 @@ export class TechRowsView {
     // column labels
     const head = el('div', 'rp-colhead');
     head.append(el('span', 'rp-colhead-k'));
+    let prev = '';
     for (const c of layout.cols) {
-      const h = el('span', 'rp-colhead-c', colLabel(c.label));
+      // a tier that spans two columns is named once (the second "Tier 3" read like a mistake)
+      const label = colLabel(c.label);
+      const h = el('span', 'rp-colhead-c', label === prev ? '' : label);
+      prev = label;
       this.heads.set(c.key, h);
       head.append(h);
     }
@@ -221,7 +238,8 @@ export class TechRowsView {
     n.look = look;
     for (const k of ['avail', 'done', 'active', 'locked', 'off'] as const) setClass(n.btn, k, k === look);
     for (const [k, v] of Object.entries(extra)) setClass(n.btn, k, v);
-    const mk = look === 'done' ? 'done' : look === 'locked' ? 'locked' : '';
+    // locked cards need no padlock: the dashed outline and "Needs X" say it (and leave the requirement room)
+    const mk = look === 'done' ? 'done' : '';
     if (n.markKey !== mk) {
       n.markKey = mk;
       n.mark.innerHTML = mk ? MARK[mk] : '';
@@ -250,6 +268,7 @@ export class TechRowsView {
     const res = canResearch(s, me.id, t);
     let look: CardLook = 'avail';
     let text: string | null = null;
+    let full: string | null = null; // the whole requirement, for screen readers (the card shows a short one)
     let bar: number | null = null;
     const capLine = st === 'locked-choice' ? masteryCapLine(me, t) : null;
     if (st === 'done') {
@@ -269,7 +288,8 @@ export class TechRowsView {
     } else if (st === 'locked-prereq') {
       look = 'locked';
       const miss = missingPrereqs(me, t);
-      text = miss ? `Needs ${miss}` : 'Locked';
+      text = miss ? needsShort(me, t) : 'Locked';
+      if (miss) full = `Needs ${miss}`;
     }
     const poor = look === 'avail' && !res.ok;
     this.setLook(n, look, { poor, next: next === t, 'chose-other': st === 'locked-choice' && !capLine, capped: !!capLine });
@@ -277,7 +297,7 @@ export class TechRowsView {
     const eta = formatEta(researchEta(me, t));
     this.setMeta(n, text ?? `${info.gold}|${eta}|${short ? 1 : 0}`, () => researchPriceHtml(info.gold, eta, short), text !== null);
     this.setBar(n, bar);
-    const why = text ?? (res.ok ? `Available: ${formatCount(info.gold)} gold, ${eta}` : res.reason ?? 'Not possible now');
+    const why = full ?? text ?? (res.ok ? `Available: ${formatCount(info.gold)} gold, ${eta}` : res.reason ?? 'Not possible now');
     const fork = rivalsOf(t).length && (look === 'avail' || look === 'locked') ? ', choose one' : '';
     n.btn.setAttribute('aria-label', `${info.name}: ${why}${fork}`);
   }
@@ -291,19 +311,21 @@ export class TechRowsView {
     const look: CardLook = st === 'done' ? 'done' : st === 'ordered' ? 'active' : st === 'buy' || st === 'poor' ? 'avail' : st === 'building' || st === 'prereq' ? 'locked' : 'off';
     this.setLook(n, look, { poor: st === 'poor', next: next === t, 'chose-other': st === 'chose-other', capped: st === 'capped', 'needs-building': st === 'building' });
     let text: string | null = null;
+    let full: string | null = null;
     if (st === 'done') text = 'In service';
     else if (st === 'ordered') text = `Arrives in ${formatEta(a.order!.left)}`;
     else if (st === 'chose-other') text = 'Not chosen';
     else if (st === 'building') text = a.reason;
     else if (st === 'prereq') {
       const miss = missingPrereqs(me, t);
-      text = miss ? `Needs ${miss}` : a.reason;
+      text = miss ? needsShort(me, t) : a.reason;
+      if (miss) full = `Needs ${miss}`;
     } else if (st === 'capped' || st === 'disabled') text = a.reason;
     this.setMeta(n, text ?? priceKey(a), () => priceHtml(a), text !== null);
     this.setBar(n, st === 'ordered' ? a.order!.frac : null);
     const p = a.price;
     const cost = [`${formatCount(p.gold)} gold`, p.iron ? `${formatCount(p.iron)} iron` : '', p.oil ? `${formatCount(p.oil)} oil` : ''].filter(Boolean).join(', ');
-    const why = st === 'buy' ? `Buy for ${cost}, arrives ${formatEta(p.seconds)} later` : st === 'poor' ? `${a.reason}. Costs ${cost}` : text ?? a.reason;
+    const why = st === 'buy' ? `Buy for ${cost}, arrives ${formatEta(p.seconds)} later` : st === 'poor' ? `${a.reason}. Costs ${cost}` : full ?? text ?? a.reason;
     const fork = rivalsOf(t).length && (look === 'avail' || look === 'locked') ? ', choose one' : '';
     n.btn.setAttribute('aria-label', `${info.name}: ${why}${fork}`);
   }

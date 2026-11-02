@@ -432,7 +432,8 @@ function frame(now: number): void {
     if (cur) {
       try {
         const t2 = performance.now();
-        cur.camera.step(now);
+        if (cur.human) cur.camera.step(now);
+        else cur.camera.cover(); // the menu's background map fills the screen
         renderer.render(cur.state, cur.camera, cur.ui, now);
         const t3 = performance.now();
         cur.hud?.update(cur.state);

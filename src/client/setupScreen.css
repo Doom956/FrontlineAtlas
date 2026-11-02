@@ -502,12 +502,31 @@
   border-inline-start: 1px solid var(--rule);
   gap: 12px;
 }
+/* Start and Leave stay in view at the bottom of the lobby column while it scrolls */
+.lobby-col > .lobby-actions {
+  position: sticky;
+  bottom: -16px;
+  z-index: 2;
+  margin-bottom: -16px;
+  padding-bottom: 16px;
+  background: var(--metal-a);
+}
 .setup-foot.lobby-mode .lobby-foot {
   flex: none;
   margin: 0;
   padding: 0;
   border: 0;
   justify-content: flex-end;
+}
+/* your team: the choices share the row (a box with an empty end read as broken) */
+.lobby-col .team-seg .btn {
+  flex: 1;
+}
+/* one settings column beside the lobby column: smaller map previews, so Players and Rules come into view sooner */
+@media (min-width: 1001px) and (max-width: 1499px) {
+  .with-side .map-grid {
+    grid-template-columns: repeat(4, minmax(0, 168px));
+  }
 }
 @media (min-width: 1500px) {
   .with-side > .setup-main {
@@ -566,7 +585,7 @@
     padding: 3px 0;
   }
   .map-grid.world {
-    max-height: 200px;
+    max-height: 300px;
   }
   .setup-foot {
     padding: 10px 0 12px;
@@ -749,9 +768,7 @@
   }
   .sum-main {
     font-size: 13px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    text-wrap: pretty;
   }
   .sum-rules {
     display: none;

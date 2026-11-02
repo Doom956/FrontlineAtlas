@@ -211,7 +211,7 @@ const DIFFICULTY_WORD: Record<GameSetup['difficulty'], string> = { easy: 'Easy',
 
 /** "Medium continents, 8 AI nations, Normal" (teams: ", 3 teams"). */
 function setupLine(s: GameSetup): string {
-  const map = s.map.kind === 'world' ? (getWorldMap(s.map.id)?.name ?? 'World map') : `${mapSizeName(s.map.size)} ${mapTypeName(s.map.type).toLowerCase()}`;
+  const map = s.map.kind === 'world' ? `${getWorldMap(s.map.id)?.name ?? 'World'} map` : `${mapSizeName(s.map.size)} ${mapTypeName(s.map.type).toLowerCase()}`;
   const ai = s.aiCount === 1 ? '1 AI nation' : `${s.aiCount} AI nations`;
   const teams = s.mode === 'teams' ? `, ${s.teamCount} teams` : '';
   return `${map}, ${ai}, ${DIFFICULTY_WORD[s.difficulty]}${teams}`;
