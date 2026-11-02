@@ -688,8 +688,6 @@ export interface DoctrineLevers {
   tradeGold?: number;
   /** merchant: each market level's bonus this much higher (all markets still stop at MARKET_MAX_BONUS) */
   marketBonus?: number;
-  /** merchant (rule test): mercenaries cost this much less */
-  mercCost?: number;
   /** naval: warships cost this much less (gold, iron, oil) */
   warshipCost?: number;
   /** naval: warships sail this much faster */
