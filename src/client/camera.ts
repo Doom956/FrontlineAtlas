@@ -111,6 +111,19 @@ export class Camera {
     this.y = this.mapH / 2;
   }
 
+  /**
+   * The menu's background map, centred. A wide view shows the whole map (its coasts make it read as a map). A tall
+   * view (phones) is filled across, and down to `tallShare` of its height, so no map edge shows above the bottom sheet.
+   */
+  menuView(tallShare = 0.7): void {
+    this.anim = null;
+    const tall = this.viewH > this.viewW;
+    const z = tall ? Math.max(this.viewW / this.mapW, (this.viewH * tallShare) / this.mapH) : this.fitZoom;
+    this.zoom = clampNum(z, this.minZoom, MAX_ZOOM);
+    this.x = this.mapW / 2;
+    this.y = this.mapH / 2;
+  }
+
   /** Integer tile rectangle [x0, x1) x [y0, y1) visible on screen, clipped to the map (may be empty). */
   visibleTiles(margin = 0): { x0: number; y0: number; x1: number; y1: number } {
     const a = this.screenToTile(0, 0);

@@ -325,35 +325,6 @@
   margin-left: auto;
 }
 
-/* ---------------------------------------------------------------- menu: the Tutorial button's note and the hint */
-.menu-buttons .tut-menu-note {
-  font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--dim);
-  font-variant-numeric: tabular-nums;
-}
-.menu-buttons .tut-menu-note.done {
-  color: var(--olive);
-}
-.menu-hint {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  margin-top: 14px;
-  padding: 10px 12px;
-  border: 1px solid var(--brass-lo);
-  border-left: 2px solid var(--brass);
-  border-radius: var(--r);
-  background: rgba(201, 162, 39, 0.06);
-  font-size: 13.5px;
-  color: var(--text);
-}
-.menu-hint span {
-  flex: 1;
-}
-
 @media (max-width: 720px) {
   .tut-card {
     left: 8px;

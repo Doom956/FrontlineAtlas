@@ -193,9 +193,14 @@ async function lobby(rules, toggles) {
   await A.page.waitForSelector('[data-test=lobby-code]');
   const code = (await A.page.textContent('[data-test=lobby-code]')).trim();
   await A.page.locator('.setup-field:has(.form-label:text-is("Size")) .btn', { hasText: 'Small' }).click();
-  for (const label of rules) {
-    const b = A.page.locator('.rules-col .btn', { hasText: new RegExp(`^${label.replace(/[×]/g, '\\$&')}$`) }).first();
-    if (!(await b.count())) fail(`modifier button ${label} not found`);
+  // the less-used rules are folded under "More rules"
+  await A.page.click('[data-test=more-rules]');
+  for (const rule of rules) {
+    // a label, or [group name, label] for a button whose label is used by more than one rule ("Fast")
+    const [group, label] = Array.isArray(rule) ? rule : [null, rule];
+    const scope = group ? `.rules-col [role=group][aria-label="${group}"] .btn` : '.rules-col .btn';
+    const b = A.page.locator(scope, { hasText: new RegExp(`^${label.replace(/[×]/g, '\\$&')}$`) }).first();
+    if (!(await b.count())) fail(`rule button ${label} not found`);
     await b.click();
   }
   for (const name of toggles) {
@@ -293,7 +298,7 @@ try {
 
   // ================================================================ game 1: research, Shift-select upgrade
   {
-    const { A, B, C } = await lobby(['Very high', 'Instant', '×3'], ['Fast game']);
+    const { A, B, C } = await lobby(['Very high', 'Instant', '×3', ['Game speed', 'Fast']], []);
     log('game 1 playing', JSON.stringify(await me(A.page)));
     // a lab each, next to the capital city (online, a build lands when its turn runs: slower on a busy machine; an
     // order that never lands is sent again)
@@ -455,14 +460,16 @@ try {
       if (!r.ok) fail(`A mechanization: ${r.reason}`);
       await waitFor(async () => (await me(A.page)).techs.includes('mechanization'), 90000, 'A Mechanization delivered');
     }
-    // A buys its fork from its Arsenal card: T opens the panel, the Arsenal tab, click the card
+    // A buys its fork from its Arsenal card: T opens the panel, the Arsenal tab, click the card, then confirm
     await A.page.mouse.move(W / 2, H / 2);
     await A.page.keyboard.press('KeyT');
     await A.page.click('[data-test=tab-arsenal]');
     await A.page.waitForSelector(`[data-test=tech-${fork}]`, { state: 'visible' });
     await shot(A.page, 'g1-arsenal-before');
     const goldBefore = (await me(A.page)).gold;
+    // a path is a choice for the rest of the game: the first click selects the card, the detail pane's button confirms
     await A.page.click(`[data-test=tech-${fork}]`);
+    await A.page.click('[data-test=detail-buy]');
     await waitFor(async () => (await me(A.page)).procuring.includes(fork), 20000, `${fork} on order after the card click`);
     await A.page.waitForSelector(`[data-test=order-${fork}]`, { state: 'visible', timeout: 5000 });
     log(`A paid ${goldBefore - (await me(A.page)).gold} gold (with income) for ${fork}`);

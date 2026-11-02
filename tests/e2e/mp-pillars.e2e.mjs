@@ -164,7 +164,8 @@ try {
   const code = (await A.page.textContent('[data-test=lobby-code]')).trim();
   await A.page.locator('.setup-field:has(.form-label:text-is("Size")) .btn', { hasText: 'Small' }).click();
   // an island map; rich + instant + everything researched, so every pillar unit exists at once
-  
+  // (starting gold and build speed are folded under "More rules")
+  await A.page.click('[data-test=more-rules]');
   for (const label of ['Very high', 'Instant', 'All unlocked']) {
     const b = A.page.locator('.rules-col .btn', { hasText: new RegExp(`^${label}$`) }).first();
     if (!(await b.count())) fail(`modifier button ${label} not found`);
