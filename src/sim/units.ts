@@ -69,6 +69,7 @@ import {
   DOCTRINE_PERKS,
   WARSHIP_DAMAGE_PER_S,
   WARSHIP_RANGE,
+  WARSHIP_SHELL_RANGE,
   TECHS,
 } from './config';
 import { areAllied, canTrade, changeOpinion } from './diplomacy';
@@ -627,7 +628,7 @@ function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<numbe
   const w = map.width;
   let bestTile = -1;
   let bestDist = Infinity;
-  forEachInRadius(map, unitTile(state, u), (WARSHIP_RANGE / 2) * navalShellRangeMul(state, u), (i, d) => { // battleships reach further
+  forEachInRadius(map, unitTile(state, u), WARSHIP_SHELL_RANGE * navalShellRangeMul(state, u), (i, d) => { // battleships reach further
     if (d >= bestDist || !map.coastal[i]) return;
     const o = map.owner[i];
     if (o === 0 || o === u.owner || !wars.has(u.owner * 1024 + o) || areAllied(state, u.owner, o)) return;
