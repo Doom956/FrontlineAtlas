@@ -213,6 +213,9 @@ function makeDivision(state: GameState, owner: number, factory: number, troops: 
     state: 0,
     targetOwner: 0,
   };
+  // A player's new division supports the front of its war by itself (armor2.ts: Support, following); AI divisions
+  // get their modes from aiDivisionModes.
+  if (state.players[owner]?.isHuman) u.mode = 'support';
   state.units.push(u);
   return u;
 }

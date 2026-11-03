@@ -53,13 +53,15 @@ import { hasTech } from './tech';
 import { moveTankDivisions, ownLandPath, spearheadPreview } from './tanks';
 import { hasAmphibious, narrowWater } from './specials';
 import { armorPocketKillMul, armorPocketMul, armorRefitMul } from './variants';
-import { followedNation, mainFront, unitFollows } from './warTarget';
+import { followedNation, liveFoes, mainFront, unitFollows } from './warTarget';
 import { DIVISION_MODES, TROOP_TYPES, isTribe, isWater } from './types';
 import type { Action, ActionResult, DivisionMode, GameState, Troops, Unit } from './types';
 
 const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
 /** A following division keeps its front while it is within this many tiles of the main front (warTarget.ts). */
 const FOLLOW_KEEP = 24;
+/** A following division that can't reach the main front over its land supports a front it can reach this long. */
+const DETOUR_SECONDS = 60;
 const total = (t: Troops): number => t.infantry + t.armor + t.artillery;
 const FULL = TANK_DIVISION_TROOPS.armor + TANK_DIVISION_TROOPS.infantry + TANK_DIVISION_TROOPS.artillery;
 
@@ -300,7 +302,23 @@ function driveTo(state: GameState, u: Unit, dest: number, auto = false): boolean
   const w = state.map.width;
   const farR = ARMOR_SUPPORT_RADIUS + 12;
   const far = d2(u.x, u.y, dest % w, (dest / w) | 0) > farR * farR;
-  const path = ownLandPath(state, u.owner, unitTile(state, u), dest, auto ? (far ? TANK_MOBILITY.jumpBudget : ARMOR_AUTO_PATH_BUDGET) : undefined);
+  let path = ownLandPath(state, u.owner, unitTile(state, u), dest, auto ? (far ? TANK_MOBILITY.jumpBudget : ARMOR_AUTO_PATH_BUDGET) : undefined);
+  if (!path && auto && far) {
+    // The quick search gave up on a far jump: a flood of our land finds any route there, or tells a following
+    // division that its front can't be reached over our land (it then supports a front it can reach for a while).
+    const from = unitTile(state, u);
+    const prev = landFlood(state, u.owner, from);
+    if (prev[dest] >= 0) path = floodPath(prev, from, dest);
+    else if (divisionMode(u) === 'support' && unitFollows(state, u)) {
+      const alt = reachableFront(state, u, prev, u.station ?? dest);
+      if (alt) {
+        u.station = alt.front;
+        u.detour = state.tick + DETOUR_SECONDS * TICKS_PER_SECOND;
+        dest = alt.hold;
+        path = floodPath(prev, from, dest);
+      }
+    }
+  }
   if (!path) {
     // A failed far jump (the bigger search) waits TANK_MOBILITY.jumpRetry times as long.
     if (auto) u.retryTick = state.tick + ARMOR_RETRY_SECONDS * (far ? TANK_MOBILITY.jumpRetry : 1) * TICKS_PER_SECOND;
@@ -312,6 +330,86 @@ function driveTo(state: GameState, u: Unit, dest: number, auto = false): boolean
   u.target = dest;
   u.state = path.length ? 1 : 0;
   return true;
+}
+
+/**
+ * Flood of `owner`'s land from `from` (8 directions; a diagonal step needs one of its two side tiles, as in
+ * tanks.ownLandPath): prev[t] = the tile t was reached from (`from` itself for the start), -1 = not reached.
+ */
+function landFlood(state: GameState, owner: number, from: number): Int32Array {
+  const map = state.map;
+  const { width: w, height: h } = map;
+  const prev = new Int32Array(map.owner.length).fill(-1);
+  const own = (t: number): boolean => map.owner[t] === owner && !isWater(map.terrain[t]);
+  if (!own(from)) return prev;
+  prev[from] = from;
+  const queue: number[] = [from];
+  for (let head = 0; head < queue.length; head++) {
+    const cur = queue[head];
+    const cx = cur % w;
+    const cy = (cur / w) | 0;
+    for (let k = 0; k < 8; k++) {
+      const x = cx + DX8[k];
+      const y = cy + DY8[k];
+      if (x < 0 || y < 0 || x >= w || y >= h) continue;
+      const t = y * w + x;
+      if (prev[t] >= 0 || !own(t)) continue;
+      if (k >= 4 && !own(cy * w + x) && !own(y * w + cx)) continue;
+      prev[t] = cur;
+      queue.push(t);
+    }
+  }
+  return prev;
+}
+const DX8 = [1, -1, 0, 0, 1, 1, -1, -1];
+const DY8 = [0, 0, 1, -1, 1, -1, 1, -1];
+
+/** The route from `from` to a flooded tile `to` (landFlood), without `from` (like ownLandPath). */
+function floodPath(prev: Int32Array, from: number, to: number): number[] {
+  const out: number[] = [];
+  for (let t = to; t !== from; t = prev[t]) out.push(t);
+  out.reverse();
+  return out;
+}
+
+/**
+ * A front following division u can reach (prev = landFlood from it): the war target's border tile next to the
+ * flooded land nearest `ref`, else that of another nation we fight (nations first, lower id; nearest the division),
+ * with the tile to hold behind it. null = none.
+ */
+function reachableFront(state: GameState, u: Unit, prev: Int32Array, ref: number): { front: number; hold: number } | null {
+  const map = state.map;
+  const { width: w, height: h } = map;
+  const touches = (t: number): boolean => {
+    const x = t % w;
+    const y = (t / w) | 0;
+    return (x > 0 && prev[t - 1] >= 0) || (x < w - 1 && prev[t + 1] >= 0) || (y > 0 && prev[t - w] >= 0) || (y < h - 1 && prev[t + w] >= 0);
+  };
+  const pick = (n: number, anchor: number): number => {
+    let best = -1;
+    let bestD = Infinity;
+    for (const t of frontTiles(state, u.owner, n, 4000)) {
+      if (!touches(t)) continue;
+      const d = d2(t % w, (t / w) | 0, anchor % w, (anchor / w) | 0);
+      if (d < bestD || (d === bestD && t < best)) {
+        bestD = d;
+        best = t;
+      }
+    }
+    return best;
+  };
+  const foe = followedNation(state, u.owner);
+  let front = foe > 0 ? pick(foe, ref) : -1;
+  if (front < 0) {
+    for (const n of liveFoes(state, u.owner)) {
+      if (n === foe) continue;
+      front = pick(n, unitTile(state, u));
+      if (front >= 0) break;
+    }
+  }
+  if (front < 0) return null;
+  const hold = holdTileNear(state, u.owner, front, (t) => prev[t] >= 0);
+  return hold >= 0 ? { front, hold } : null;
 }
 
 /**
@@ -335,6 +433,7 @@ export function setDivisionMode(state: GameState, playerId: number, unitIds: unk
   const followFront = foe > 0 ? mainFront(state, playerId, foe) : -1;
   for (const u of group) {
     u.mode = mode as DivisionMode;
+    delete u.detour;
     if (following) {
       delete u.fixed;
       u.station = followFront >= 0 ? followFront : undefined;
@@ -356,8 +455,8 @@ export function setDivisionMode(state: GameState, playerId: number, unitIds: unk
 // Per-tick work (tanks.updateTanks calls divisionStep for every division not in a spearhead)
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Own land tile to hold behind `front`: interior (own land 3 tiles out in all 4 directions), nearest the front. */
-function holdTileNear(state: GameState, owner: number, front: number): number {
+/** Own land tile to hold behind `front` (and `ok`): interior (own land 3 tiles out in all 4 directions), nearest the front. */
+function holdTileNear(state: GameState, owner: number, front: number, ok?: (t: number) => boolean): number {
   const map = state.map;
   const { width: w, height: h } = map;
   const fx = front % w;
@@ -374,6 +473,7 @@ function holdTileNear(state: GameState, owner: number, front: number): number {
       const d = d2(x, y, fx, fy);
       if (d > r * r) continue;
       const t = y * w + x;
+      if (ok && !ok(t)) continue;
       if (d < fallbackD) {
         fallbackD = d;
         fallback = t;
@@ -513,20 +613,56 @@ export function divisionStep(state: GameState, u: Unit): void {
   if (hold >= 0 && hold !== unitTile(state, u)) driveTo(state, u, hold, true);
 }
 
-/** Follow my war: moves a following division's front to the main front against its owner's war target. */
+/**
+ * Follow my war: moves a following division's front to the main front against its owner's war target. With no
+ * shared border (a war overseas) it supports the nearest front of another war of ours, else holds where it is. On a
+ * detour (the main front can't be reached over our land, driveTo) it keeps the front it can reach until the detour
+ * ends, then tries the main front again.
+ */
 function followFront(state: GameState, u: Unit): void {
   const foe = followedNation(state, u.owner);
   if (foe <= 0) return; // no war target: keep the front it has (or hold where it is)
-  const f = mainFront(state, u.owner, foe);
-  if (f < 0 || f === u.station) return;
   const st = u.station;
+  const owners = state.map.owner;
+  if (u.detour !== undefined) {
+    if (u.detour > state.tick && st !== undefined && (owners[st] === u.owner || isFoe(state, u.owner, owners[st]))) return;
+    delete u.detour;
+  }
+  let f = mainFront(state, u.owner, foe);
+  if (f < 0) {
+    f = otherFront(state, u, foe);
+    if (f < 0) {
+      u.station = undefined; // nothing to support over land: hold where it is
+      return;
+    }
+  }
+  if (f === st) return;
   const w = state.map.width;
-  // Keep a front that is still the target's land (or ours: the push went past it) near the main front.
+  // Keep a front that is still that nation's land (or ours: the push went past it) near the front.
   if (st !== undefined) {
-    const o = state.map.owner[st];
-    if ((o === foe || o === u.owner) && d2(st % w, (st / w) | 0, f % w, (f / w) | 0) <= FOLLOW_KEEP * FOLLOW_KEEP) return;
+    const o = owners[st];
+    if ((o === owners[f] || o === u.owner) && d2(st % w, (st / w) | 0, f % w, (f / w) | 0) <= FOLLOW_KEEP * FOLLOW_KEEP) return;
   }
   u.station = f; // a drive under way ends first; the next think holds behind the new front
+}
+
+/** The border tile nearest division u of another nation its owner fights (nations first, lower id); -1 = none. */
+function otherFront(state: GameState, u: Unit, foe: number): number {
+  const w = state.map.width;
+  for (const n of liveFoes(state, u.owner)) {
+    if (n === foe) continue;
+    let best = -1;
+    let bestD = Infinity;
+    for (const t of frontTiles(state, u.owner, n, 4000)) {
+      const d = d2(t % w, (t / w) | 0, u.x, u.y);
+      if (d < bestD || (d === bestD && t < best)) {
+        bestD = d;
+        best = t;
+      }
+    }
+    if (best >= 0) return best;
+  }
+  return -1;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

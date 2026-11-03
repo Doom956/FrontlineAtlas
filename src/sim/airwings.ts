@@ -33,7 +33,8 @@ import { dropTanksPatrolMul, dropTanksRangeMul, nightDodges, nightEffectMul, nig
 import { airRaidMul, airRangeMul, airSupportMul, airVariantOf, airWingMul, carrierFor, carrierReach } from './variants';
 import { buildAircraft, launchBomber, shotDown, unitCost } from './units';
 import { hashResults, leadAim, updateAutoFire } from './airstrike';
-import { followedNation, mainFront } from './warTarget';
+import { followedNation, liveFoes, mainFront } from './warTarget';
+import { ownedTilesOf } from './territory';
 import { frontTrench, trenchLevel } from './trenches';
 import { AIR_MISSIONS, isTribe } from './types';
 import type { ActionResult, AirCover, AirMission, AirRaid, AirState, AirWing, AirZone, Attack, Building, BuildingType, GameState, TechId, Unit } from './types';
@@ -360,7 +361,46 @@ export function setAirMission(state: GameState, pid: number, airfield: number, m
     // Re-buy losses works on every mission, idle included (manual strikes, Air cover).
     if (refill !== undefined) wing.refill = !!refill;
   }
+  // "Every airfield": airfields built later get this choice too (autoWings).
+  if (airfield === -1) {
+    const defs = (air.defaults ??= []);
+    let k = 0;
+    while (k < defs.length && defs[k] !== pid) k += 4;
+    const keepRefill = k < defs.length ? defs[k + 2] & 2 : 0;
+    const flags = (following ? 1 : 0) | (refill === undefined ? keepRefill : refill ? 2 : 0);
+    const rec = [pid, AIR_MISSIONS.indexOf(mission), flags, following ? -1 : aim];
+    if (k < defs.length) defs.splice(k, 4, ...rec);
+    else defs.push(...rec);
+  }
   return { ok: true };
+}
+
+/**
+ * A player's airfields without a wing yet (new ones, captured ones) get its "every airfield" choice (AirState.defaults;
+ * a picked target out of this airfield's reach: the same mission following its war), else Support following its war,
+ * so a new player's airfields join the war by themselves. Once a second; AI players set their own missions.
+ */
+function autoWings(state: GameState): void {
+  if (state.tick % TICKS_PER_SECOND !== 0 || state.phase !== 'playing') return;
+  for (const p of state.players) {
+    if (!p || p.id <= 0 || !p.alive || !p.isHuman || isTribe(p) || !hasTech(p, 'flight') || unitRule(state, 'bomber')) continue;
+    for (const b of buildingsOf(state, p.id, 'airfield')) {
+      if (b.owner !== p.id || b.buildLeft > 0 || wingOf(state, b)) continue;
+      const defs = state.air?.defaults ?? [];
+      let k = 0;
+      while (k < defs.length && defs[k] !== p.id) k += 4;
+      if (k >= defs.length) {
+        setAirMission(state, p.id, b.tile, 'support', undefined, undefined, true);
+        continue;
+      }
+      const mission = AIR_MISSIONS[defs[k + 1]] ?? 'support';
+      const follow = (defs[k + 2] & 1) !== 0;
+      const refill = (defs[k + 2] & 2) !== 0;
+      const target = defs[k + 3] >= 0 ? defs[k + 3] : undefined;
+      if (setAirMission(state, p.id, b.tile, mission, follow ? undefined : target, refill, follow).ok) continue;
+      setAirMission(state, p.id, b.tile, mission, undefined, refill, mission !== 'idle');
+    }
+  }
 }
 
 /** Nearest tile of pid (or an ally) within r of `around`; -1 = none. */
@@ -587,8 +627,9 @@ function launchWing(state: GameState, wing: AirWing, b: Building, aims: number[]
 
 /**
  * Follow my war: aims a following wing at its owner's war target (warTarget.ts). strategic: that nation (raid aims
- * nearest the main front first); support: the main front (supportAim then follows it as it moves); superiority: our
- * tile nearest the main front, when the patrol centre may be there, else the airfield. No war target: no aim.
+ * nearest the main front first); support: the main front (supportAim then follows it as it moves), else (out of the
+ * airfield's reach, or a war overseas) the nearest aim it can reach (supportInReach); superiority: our tile nearest
+ * the main front, when the patrol centre may be there, else the airfield. No war target: no aim.
  */
 function followWing(state: GameState, wing: AirWing, b: Building): void {
   const foe = followedNation(state, wing.owner);
@@ -608,6 +649,52 @@ function followWing(state: GameState, wing: AirWing, b: Building): void {
   wing.targetOwner = foe;
   // Support aims at the main front as it is now (the sortie leads it by the push, airstrike.leadAim).
   wing.target = front;
+  if (wing.mission !== 'support' || foe <= 0) return;
+  const range = airWingRange(b, state);
+  const w = state.map.width;
+  if (front >= 0 && (d2(w, b.tile, front) <= range * range || carrierFor(state, wing.owner, front))) return;
+  const aim = supportInReach(state, wing.owner, foe, b, range, front);
+  if (aim < 0) return;
+  wing.target = aim;
+  wing.targetOwner = state.map.owner[aim];
+}
+
+/**
+ * A support aim airfield b reaches when the main front (`front`, -1 = none: overseas) is out of its reach: the war
+ * target's border tile in reach nearest the main front; else (overseas) the war target's coast nearest the airfield
+ * (warTarget.warAim's choice when that is in reach); else the border tile in reach of another nation we fight (nearest
+ * the airfield; nations before tribes). -1 = none.
+ */
+function supportInReach(state: GameState, owner: number, foe: number, b: Building, range: number, front: number): number {
+  const w = state.map.width;
+  const r2 = range * range;
+  const nearest = (tiles: readonly number[], ref: number): number => {
+    let best = -1;
+    let bestD = Infinity;
+    for (const t of tiles) {
+      if (d2(w, b.tile, t) > r2) continue;
+      const d = d2(w, t, ref);
+      if (d < bestD || (d === bestD && t < best)) {
+        bestD = d;
+        best = t;
+      }
+    }
+    return best;
+  };
+  if (front >= 0) {
+    const t = nearest(frontTiles(state, owner, foe, 4000), front);
+    if (t >= 0) return t;
+  } else {
+    const coast = state.map.owner;
+    const t = nearest(ownedTilesOf(state, foe, 'coast').filter((c) => coast[c] === foe), b.tile);
+    if (t >= 0) return t;
+  }
+  for (const n of liveFoes(state, owner)) {
+    if (n === foe) continue;
+    const t = nearest(frontTiles(state, owner, n, 4000), b.tile);
+    if (t >= 0) return t;
+  }
+  return -1;
 }
 
 function sortie(state: GameState, wing: AirWing, b: Building): void {
@@ -637,7 +724,18 @@ function sortie(state: GameState, wing: AirWing, b: Building): void {
   } else {
     mission = MISSION_STRATEGIC;
     const foe = wing.targetOwner;
-    if (foe > 0 && hostile(state, wing.owner, foe) && (wing.follow || atWar(state, wing.owner, foe))) aims = strategicAims(state, wing, b, Math.max(1, Math.min(b.bombers, airWingSize(state, b))));
+    const n = Math.max(1, Math.min(b.bombers, airWingSize(state, b)));
+    if (foe > 0 && hostile(state, wing.owner, foe) && (wing.follow || atWar(state, wing.owner, foe))) aims = strategicAims(state, wing, b, n);
+    // Following with nothing of the war target in reach: raid another nation we fight (nations first, lower id).
+    if (!aims.length && wing.follow && foe > 0) {
+      for (const other of liveFoes(state, wing.owner)) {
+        if (other === foe || isTribe(state.players[other])) continue;
+        wing.targetOwner = other;
+        aims = strategicAims(state, wing, b, n);
+        if (aims.length) break;
+      }
+      if (!aims.length) wing.targetOwner = foe;
+    }
   }
   if (!aims.length) {
     wing.nextTick = idle;
@@ -1009,6 +1107,7 @@ function updateAirCover(state: GameState): void {
 
 /** Drops wings of lost airfields, flies due sorties, bleeds defenders in support zones, expires zones and raids. */
 export function updateAir(state: GameState): void {
+  autoWings(state); // a player's new airfields join its war (Support, following) or take its "every airfield" choice
   updateAirCover(state);
   updateAutoFire(state); // rocket auto-fire (airstrike.ts)
   const air = state.air;
@@ -1085,6 +1184,10 @@ export function hashAir(state: GameState, h: number, mixInt: (h: number, v: numb
       h = mixInt(h, c.sorties);
     }
     h = hashResults(air, h, mixInt, mixFloat); // last strike results (airstrike.ts)
+    if (air.defaults) {
+      h = mixInt(h, air.defaults.length | 0x80000);
+      for (const v of air.defaults) h = mixInt(h, v);
+    }
     h = mixInt(h, air.raids.length);
     for (const r of air.raids) {
       h = mixInt(h, r.victim);
