@@ -15,7 +15,7 @@ import { isAttackable, troopsToSend, troopSum } from '../input';
 import { swatchCss } from './swatch';
 import { formatCount } from '../render/common';
 import { armyOf, barrageRange, BuildTargetCache, maxLevel } from '../simx';
-import { blastSummary, ownHitWarning, STRIKES, strikeOfMode, strikeRoleLine, strikeTarget } from '../strikes';
+import { ownHitWarning, STRIKES, strikeBody, strikeOfMode, strikeRoleLine, strikeTarget } from '../strikes';
 import { iconDataUrl } from '../icons';
 import { el, fmtSeconds, pct, setVisible, type HudCtx } from './dom';
 import { relationOf } from './drawers';
@@ -296,7 +296,7 @@ export class MapTooltip {
               : id === 'rocket'
                 ? t.count > 1 ? `Fire ${t.count} rockets here` : 'Fire a rocket here'
                 : t.count > 1 ? `Drop ${t.count} atom bombs here` : 'Drop the atom bomb here';
-      rows.push(this.line(pic, title, blastSummary(state, m, t), 'head'));
+      rows.push(this.line(pic, title, strikeBody(state, m, t), 'head'));
       const role = strikeRoleLine(state, t, tile);
       if (role) rows.push(el('div', 'mt-hint', role));
       const own = ownHitWarning(m, t);
