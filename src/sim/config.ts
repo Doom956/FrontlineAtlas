@@ -1522,8 +1522,8 @@ export const STRIKE = {
   /** a hostile building (not a fort) within this many tiles of a manual aim makes it a raid on that building */
   buildingPick: 2,
   /** heavy bombers on a raid: bomb radius x, buildings hit and troops killed x (Heavy Bombers: the bigger payload) */
-  heavyRadius: 1.15,
-  heavyPayload: 1.25,
+  heavyRadius: 1.3,
+  heavyPayload: 1.6,
   /** lead aim: predicted front advance (tiles) = depth speed x flight seconds x leadMul, at most leadMax, + leadMargin past it */
   leadMul: 1.2,
   leadMax: 14,
