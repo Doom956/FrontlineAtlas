@@ -85,7 +85,7 @@ import { alliancesAllowed as rulesAllowAlliances, atPeace, buildingAllowed, rese
 import { canSpawnAt, gameSeconds, ownerBox, spawnAtFixedPoint } from './state';
 import { borderTiles, coastCount, depositCount, landComponents, sampleOwnedTiles } from './territory';
 import { canParadrop, paradropMaxTroops, paradropRange, unitCost } from './units';
-import { aiAirDoctrineTaste, aiAirTechs, aiAirWings, aiExtraAirfields, airWingBusy } from './airwings';
+import { aiAirDoctrineTaste, aiAirTechs, aiAirWings, aiExtraAirfields, airWingBusy, airWingRange } from './airwings';
 import { inOvertime, victoryShareNow } from './victory';
 import { hasTech } from './tech';
 import { isArsenalTech, pillarOf } from './arsenal';
@@ -2321,7 +2321,7 @@ function foes(ctx: Ctx): number[] {
 }
 
 /** Most valuable enemy building to strike (kinds in priority order), avoiding SAM cover when careful. */
-function strikeTarget(ctx: Ctx, kinds: BuildingType[], from: number): number {
+function strikeTarget(ctx: Ctx, kinds: BuildingType[], from: number, reach = Infinity): number {
   const { state } = ctx;
   const w = state.map.width;
   let best = -1;
@@ -2332,6 +2332,7 @@ function strikeTarget(ctx: Ctx, kinds: BuildingType[], from: number): number {
     for (let k = 0; k < kinds.length; k++) {
       for (const b of buildingsOf(state, q, kinds[k])) {
         if (state.map.owner[b.tile] !== q) continue;
+        if (from >= 0 && dist2(w, from, b.tile) > reach * reach) continue; // bombers: the airfield's reach
         let covered = 0;
         for (const s of sams) {
           const r = samRadius(s);
@@ -2367,7 +2368,7 @@ function airAndMissiles(ctx: Ctx): void {
       applyAction(state, id, { type: 'buildAircraft', airfield: af.tile, kind });
     }
     if (fighting.length && af.bombers > 0 && !airWingBusy(state, af)) {
-      const t = strikeTarget(ctx, ['fort', 'factory', 'arsenal', 'airfield', 'city', 'barracks'], af.tile);
+      const t = strikeTarget(ctx, ['fort', 'factory', 'arsenal', 'airfield', 'city', 'barracks'], af.tile, airWingRange(af, state));
       if (t >= 0) applyAction(state, id, { type: 'bomb', airfield: af.tile, tile: t });
     }
     if (fighting.length) paradrop(ctx, af.tile, fighting);

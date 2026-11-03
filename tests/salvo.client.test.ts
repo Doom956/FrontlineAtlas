@@ -110,7 +110,7 @@ describe('salvo preview and click', () => {
     expect(t.radius).toBeGreaterThan(0);
     expect(t.kills).toBeGreaterThan(0);
     expect(blastSummary(s, m, t)).toMatch(/^3 bombers from 2 airfields: ~[\d.]+k? troops/);
-    expect(instruction(s, me, m, ui)).toMatch(/^Bombing run \(x3\)/);
+    expect(instruction(s, me, m, ui)).toMatch(/^Bombing run x3: click enemy land/);
     const act = strikeAction(m, tile, t)!;
     expect(act).toEqual({ type: 'bomb', airfield: -1, tile, count: 3 });
     expect(applyAction(s, 1, act).ok).toBe(true);
@@ -122,7 +122,7 @@ describe('salvo preview and click', () => {
     const s = landGame();
     const me = s.players[1];
     tech(s, 'flight');
-    const a = addBuilding(s, 'airfield', 1, at(s, 50, 20), 2);
+    const a = addBuilding(s, 'airfield', 1, at(s, 10, 20), 1);
     a.bombers = 4;
     const ui = defaultUiState();
     ui.salvo = { bomb: 0, rocket: 1, atomBomb: 1 };
@@ -130,8 +130,9 @@ describe('salvo preview and click', () => {
     const t = strikeTarget(s, me, ui, m, at(s, 100, 20));
     expect(t.count).toBe(4);
     expect(strikeAction(m, at(s, 100, 20), t)).toMatchObject({ count: 0, airfield: -1 });
-    const far = strikeTarget(s, me, ui, m, at(s, 215, 20));
-    if (!far.ok) expect(far.reason).toMatch(/Too far|reach/);
+    const far = strikeTarget(s, me, ui, m, at(s, 200, 20));
+    expect(far.ok).toBe(false);
+    expect(far.reason).toMatch(/^Too far: your nearest bombers reach 150 tiles, this is 190 away/);
   });
 
   it('x5 rockets with 2 loaded: says how many fly and how many are missing', () => {

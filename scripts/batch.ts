@@ -58,6 +58,8 @@ import { tick } from '../src/sim/sim';
 import { applyAction } from '../src/sim/actions';
 import { doctrineUnlockTick } from '../src/sim/doctrines';
 import { runawayLeader } from '../src/sim/allies';
+import { areAllied } from '../src/sim/diplomacy';
+import { atPeace } from '../src/sim/rules';
 import { createGame, gameSeconds } from '../src/sim/state';
 import { DOCTRINE_IDS, isTribe } from '../src/sim/types';
 import { aiSpendStats } from '../src/sim/aispending';
@@ -322,6 +324,10 @@ interface GameResult {
   fortTakenArt: number;
   bombersShot: number;
   missilesShot: number;
+  /** bomber arrivals over their aim; of them: came home with the bombs (no drop), dropped centred off hostile land */
+  bomberArrivals?: number;
+  bombsHome?: number;
+  bombsOff?: number;
   /** abilities used by the winner and the mean per nation */
   winnerParadrops: number;
   winnerBarrages: number;
@@ -643,9 +649,47 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     if (o.doctrines === 'random' && state.tick === doctrineUnlockTick(state)) {
       for (const p of state.players) if (p.id && p.alive && !isTribe(p)) applyAction(state, p.id, { type: 'chooseDoctrine', doctrine: nextPick() });
     }
+    const outB: Unit[] = [];
+    const rockT: number[] = [];
+    for (const u of state.units) {
+      if (u.hp <= 0) continue;
+      if (u.type === 'bomber' && u.state === 0) outB.push(u);
+      else if (u.type === 'rocket') rockT.push(u.target);
+    }
     const t0 = performance.now();
     tick(state);
     tickMs.push(performance.now() - t0);
+    // Wasted payloads (read-only): each bomber that reached its aim this tick is matched to the nearest bomb explosion
+    // (not a rocket's) within 30 tiles; none = it flew home with its bombs; centred off hostile land = wasted drop.
+    if (outB.length) {
+      const arr = outB.filter((u) => u.hp > 0 && u.state === 1);
+      if (arr.length) {
+        const w = state.map.width;
+        const ex = state.effects.filter((e) => e.kind === 'explosion' && e.radius > 2 && !rockT.includes(Math.floor(e.y) * w + Math.floor(e.x)));
+        const used = new Set<number>();
+        for (const u of arr) {
+          r.bomberArrivals = (r.bomberArrivals ?? 0) + 1;
+          let best = -1;
+          let bd = 30 * 30;
+          for (let i = 0; i < ex.length; i++) {
+            if (used.has(i)) continue;
+            const dx = ex[i].x - (u.x + 0.5);
+            const dy = ex[i].y - (u.y + 0.5);
+            if (dx * dx + dy * dy < bd) {
+              bd = dx * dx + dy * dy;
+              best = i;
+            }
+          }
+          if (best < 0) {
+            r.bombsHome = (r.bombsHome ?? 0) + 1;
+            continue;
+          }
+          used.add(best);
+          const o = state.map.owner[Math.floor(ex[best].y) * w + Math.floor(ex[best].x)];
+          if (!(o > 0 && o !== u.owner && !areAllied(state, u.owner, o) && !atPeace(state, u.owner, o))) r.bombsOff = (r.bombsOff ?? 0) + 1;
+        }
+      }
+    }
     // --doctrines off: every doctrine stays 'adapting' (no bonus), so the AIs play as before doctrines existed.
     if (o.doctrines === 'off') for (const p of state.players) if (p.doctrine?.id) p.doctrine.adaptUntilTick = 0x7fffffff;
     // --doctrines random: the switch cooldown never ends, so each nation keeps its random doctrine (levels still grow).
@@ -1190,6 +1234,12 @@ function report(all: GameResult[], o: Options): void {
   const artW = won.filter((r) => (share(r.winnerMix)?.artillery ?? 0) >= 0.15).length;
   console.log(`Winners with >= 15% artillery: ${artW} of ${won.length} (${pct(artW, won.length)}).`);
   console.log(`Shot down: ${tot((r) => r.bombersShot)} of ${tot((r) => r.bombers)} bombers, ${tot((r) => r.missilesShot)} of ${tot((r) => r.rockets + r.atomBombs)} missiles.`);
+  {
+    const a = tot((r) => r.bomberArrivals ?? 0);
+    const h = tot((r) => r.bombsHome ?? 0);
+    const off = tot((r) => r.bombsOff ?? 0);
+    console.log(`Bomber payloads: ${a} arrivals (${f1(a / Math.max(1, rs.length))} per game), wasted ${pct(h + off, a)} (home with bombs ${pct(h, a)}, dropped off hostile land ${pct(off, a)}); rockets ${f1(tot((r) => r.rockets) / Math.max(1, rs.length))} per game.`);
+  }
   const wonGames = rs.filter((r) => r.winner > 0);
   if (wonGames.length) {
     const wd = wonGames.reduce((s, r) => s + r.winnerParadrops, 0) / wonGames.length;
