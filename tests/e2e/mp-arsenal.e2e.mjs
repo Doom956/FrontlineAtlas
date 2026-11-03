@@ -403,7 +403,9 @@ try {
     await A.page.click(`[data-test=tech-${fork}]`);
     await A.page.click('[data-test=detail-buy]');
     await waitFor(async () => (await me(A.page)).procuring.includes(fork), 20000, `${fork} on order after the card click`);
-    await A.page.waitForSelector(`[data-test=order-${fork}]`, { state: 'visible', timeout: 5000 });
+    // the order chip shows (read from the DOM: its countdown re-renders it every second, so a locator wait for a
+    // stable visible element can time out while the chip is on screen)
+    await A.page.waitForFunction((sel) => { const e = document.querySelector(sel); return !!e && e.getBoundingClientRect().width > 0; }, `[data-test=order-${fork}]`, { timeout: 10000 });
     log(`A paid ${goldBefore - (await me(A.page)).gold} gold (with income) for ${fork}`);
     await sleep(600);
     await shot(A.page, 'g1-arsenal-ordered');

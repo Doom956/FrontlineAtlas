@@ -204,12 +204,20 @@ try {
     const me = s.humanId;
     return { tick: s.tick, gold: s.players[me].gold, iron: s.players[me].iron, oil: s.players[me].oil, armor: s.players[me].troops.armor, tech: [...(s.players[me].techs ?? [])].length, b: [...s.buildings.values()].filter((b) => b.owner === me && ['port','airfield','factory'].includes(b.type)).map((b) => `${b.type}:${b.level}:${b.buildLeft}`), q: (s.unitQueue ?? []).length, units: s.units.length, intents: window.__borderfall.mp()?.nextTurn };
   })));
-  const units = await A.page.evaluate(() => {
+  const unitsOfA = () => A.page.evaluate(() => {
     const s = window.__borderfall.getState();
     const me = s.humanId;
     const mine = s.units.filter((u) => u.owner === me).map((u) => ({ id: u.id, type: u.type }));
     return { mine, queue: (s.unitQueue ?? []).length };
   });
+  let units = await unitsOfA();
+  // AI warships can sink a new one at its port before the orders below: then (only then) A builds another
+  for (let k = 0; k < 3 && !units.mine.some((u) => u.type === 'warship'); k++) {
+    log('A has no warship now; its losses:', JSON.stringify(await A.page.evaluate(() => { const s = window.__borderfall.getState(); return s.events.filter((e) => e.kind === 'unitLost' && e.players?.includes(s.humanId)).slice(-4).map((e) => e.message); })));
+    log('A warship', JSON.stringify(await dispatch(A.page, { type: 'buildWarship', port: result.A.port })));
+    for (let j = 0; j < 16 && !(await hasShip(A.page)); j++) await sleep(500);
+    units = await unitsOfA();
+  }
   log('A units', JSON.stringify(units));
   const ships = units.mine.filter((u) => u.type === 'warship').map((u) => u.id);
   const divs = units.mine.filter((u) => u.type === 'tankDivision').map((u) => u.id);
