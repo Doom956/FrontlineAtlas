@@ -1044,6 +1044,18 @@ full-map scans after `createGame`.
   guide on/off and Restart guide, minimap, leave), the nation card on the left (Ally / Accept / Break, Gift, Embargo, Attack), the help page.
   Destructive actions ask first (a warning toast with a confirm button: Demolish from the radial menu, Break an
   alliance); an alliance request, a gift and an AI's refusal get a toast.
+- Alerts (client/alerts.ts, hud/alerts.ts): the big events about you as cards under the standings, not toasts: a
+  nation attacks you, your capital under attack (an attacker holds land within 5 tiles of it, again every 60 s while
+  it lasts) or lost, land falling fast (30+ tiles and 8% of your land in 10 s), a port newly blockaded, a ship sunk, a
+  tank division overrun or stranded, an atom bomb, rocket, bomber, landing or paratroopers on their way to your land,
+  an ally asking for help. `alertFromEvent` reads sim events; `AlertWatch` compares the state between looks (~5 Hz)
+  for what has no event (plain fields plus `blockadedPorts`, both safe between ticks; a warship gone without an event
+  still counts). `AlertFeed` merges: the same story within 30 s raises a count ("x3"), another story of a kind within
+  its gap (4-6 s) joins that card under a summary line, so no kind floods the screen. At most 3 cards, newest on top,
+  7-9 s each with a draining hairline (held while the pointer is over them). Click or tap a card: the camera glides to
+  the spot (zoom 4.5 or closer) and two rings ping it. The bell in the top-right cluster (red count of entries with
+  news) opens the Alerts drawer: the last 20, same click to jump. No hotkey. Hidden for spectators; a catch-up replay
+  takes stock again instead of alerting.
 - Research panel (T; hud/researchTree.ts hosts it, hud/arsenalPage.ts draws a tab, hud/techRows.ts lays it out): two
   tabs, Tab or 1 / 2 switch while it is open. RESEARCH = every tech where `isArsenalTech` is false, in rows Economy,
   Land, Logistics, Influence; ARSENAL = `ARSENAL_ROWS` (Navy, Armor, Air, Shared; columns Unlock, Path, Path upgrade,

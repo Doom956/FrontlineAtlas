@@ -5,6 +5,7 @@ import { DOCTRINES, TECHS } from '../../sim/config';
 import { gameSeconds } from '../../sim/state';
 import type { GameState, Player } from '../../sim/types';
 import { inOvertime, victoryShareNow } from '../../sim/victory';
+import { unreadBadge } from '../alerts';
 import { SPEEDS } from '../input';
 import { DOCTRINE_KEY, doctrineIcon, doctrineStatus, fmtDuration } from '../doctrineView';
 import { el, fmtTime, setClass, setText, setTip, type DrawerId, type HudCtx } from './dom';
@@ -18,6 +19,8 @@ export interface ClusterHooks {
   hasAudio(): boolean;
   /** 'local' = single player; online: 'host' may pause, 'guest' sees a disabled button, 'none' (public) sees none */
   pauseMode(): 'local' | 'host' | 'guest' | 'none';
+  /** alerts not seen in the Alerts drawer yet (the bell's badge) */
+  alertsUnread(): number;
 }
 
 export class Cluster {
@@ -74,6 +77,10 @@ export class Cluster {
     const eb = dbtn('events', 'events', 'Events  (J)\nWhat happened so far');
     const dot = el('span', 'sq-dot hidden');
     eb.append(dot);
+    // the bell: the Alerts drawer (big events, click one to jump there); a red count of the ones not seen yet
+    const bell = dbtn('alerts', 'bell', 'Alerts\nBig events. Click one to see it on the map');
+    const bellBadge = el('span', 'sq-badge al-badge hidden');
+    bell.append(bellBadge);
     dbtn('legend', 'legend', 'Map key  (L)\nTerrain, resources and map symbols');
 
     const clock = el('div', 'clock');
@@ -153,6 +160,10 @@ export class Cluster {
       const req = s.allianceRequests.filter((r) => r.to === me.id).length;
       setText(badge, String(req));
       setClass(badge, 'hidden', req === 0);
+      const unread = hooks.alertsUnread();
+      setText(bellBadge, unreadBadge(unread));
+      setClass(bellBadge, 'hidden', unread === 0);
+      bell.setAttribute('aria-label', unread ? `Alerts, ${unread} new` : 'Alerts');
     });
     this.eventsDot = dot;
   }

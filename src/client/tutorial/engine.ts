@@ -10,7 +10,7 @@ import type { GameState, Player } from '../../sim/types';
 export type { TutorialChapterId };
 
 /** Panels a step can open or check. 'arsenal' is the Research drawer on its Arsenal tab, 'build' the build menu. */
-export type TutorialPanel = 'build' | 'research' | 'arsenal' | 'forces' | 'doctrine' | 'diplomacy' | 'army' | 'events' | 'legend' | 'building' | 'settings';
+export type TutorialPanel = 'build' | 'research' | 'arsenal' | 'forces' | 'doctrine' | 'diplomacy' | 'army' | 'events' | 'alerts' | 'legend' | 'building' | 'settings';
 
 /** Read-only UI facts a step's `done` can check. */
 export interface TutorialUi {

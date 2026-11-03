@@ -188,6 +188,7 @@ export function howToPlayContent(): HTMLElement {
     { icon: lineIcon('doctrine', 18), title: 'Doctrines', text: `At ${min(DOCTRINE_UNLOCK_SECONDS)}:00 pick a play style: Blitz, Fortress, Siege ...`, key: 'Shift D' },
     { icon: lineIcon('rocket', 18), title: 'Strikes', text: 'A strike icon lights up in the bottom bar when ready: press its key, click the target.' },
     { icon: lineIcon('ally', 18), title: 'Allies', text: 'Click a nation in the standings, then Ally. Allies cannot attack each other.', key: 'P' },
+    { icon: lineIcon('bell', 18), title: 'Alerts', text: 'Big news about you shows on the left: attacks, your capital in danger, lost ships and tanks, bombs on their way. Click one to see the spot. The bell (top right) lists the last 20.' },
     { icon: lineIcon('help', 18), title: 'Tutorial', text: 'Title screen, Tutorial: one 5-minute practice game, step by step.' },
     { icon: lineIcon('help', 18), title: 'Guide', text: 'In games, a small bar above the command bar walks you through the start and explains new things once. Menu (Esc) > Help: Guide on / off, Restart guide.' },
   ];
@@ -388,7 +389,7 @@ export function howToPlayContent(): HTMLElement {
     { title: 'Alliances', text: `Last ${min(ALLIANCE_DURATION)} min; both sides can renew in the last minute. Allies cannot attack each other, and trade pays allies ${pct(ALLY_TRADE_BONUS)}% more.` },
     { title: 'Traitor', text: `Breaking an alliance makes you a traitor for ${TRAITOR_DURATION} s: defence x${TRAITOR_DEFENSE} and everyone trusts you less.` },
     { title: 'Attacked', text: `The attacker loses trade with you for ${min(AUTO_EMBARGO_SECONDS)} min and pending alliance requests between you are cancelled.` },
-    { title: 'Ask allies', text: 'The line under an ally\'s name says whether it will help or is busy. "Ask to attack..." names an enemy, "Ask for troops" asks for some; right-click enemy land for "Ask allies". The answer comes as a toast.' },
+    { title: 'Ask allies', text: 'The line under an ally\'s name says whether it will help or is busy. "Ask to attack..." names an enemy, "Ask for troops" asks for some; right-click enemy land for "Ask allies". The answer comes as a toast; an ally asking you shows as an alert.' },
     { title: 'Fund an ally', text: 'Spend > fund: send gold; for a while it fights harder against your enemies and joins your wars more readily.' },
     { title: 'Coalitions', text: `When one nation holds ${pct(COALITION_LAND_SHARE)}% of the land and is well ahead, the others team up against it. A toast says so.` },
     { title: 'Teams', text: 'In a teams game, teammates are allied all game and win together.' },
