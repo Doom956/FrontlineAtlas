@@ -241,7 +241,8 @@ export function economyStep({ want, level, land, avoid, gap, mineCount, attackSh
       }
       if (best >= 0) break;
     }
-    placed[type] = best;
+    // -1: no room yet; -2: ordered now (finished buildings are listed by tile above)
+    placed[type] = best >= 0 ? -2 : -1;
     if (best >= 0) actions.push({ type: 'build', building: type, tile: best });
   }
   notes.placed = placed;
