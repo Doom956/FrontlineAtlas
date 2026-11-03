@@ -218,6 +218,34 @@ async function waitFor(fn, ms, what) {
   fail(`timed out: ${what}`);
 }
 
+/** Whether a warship of ours of this variant exists or is being built. */
+const hasShip = (pg, variant) =>
+  pg.evaluate((v) => {
+    const s = window.__borderfall.getState();
+    const me = s.humanId;
+    return s.units.some((u) => u.owner === me && u.type === 'warship' && (!v || u.variant === v)) || (s.unitQueue ?? []).some((q) => q.owner === me && q.type === 'warship' && (!v || q.variant === v));
+  }, variant ?? null);
+/**
+ * Orders a warship and checks it appeared (online an order is only checked when its turn runs, so dispatch says ok
+ * either way): sent again up to twice, with what the port and the purse looked like when it did not appear.
+ */
+async function orderShip(label, pg, port, variant) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    log(label, 'buildWarship', variant ?? 'default', JSON.stringify(await dispatch(pg, { type: 'buildWarship', port, ...(variant ? { variant } : {}) })));
+    for (let k = 0; k < 16; k++) {
+      await sleep(500);
+      if (await hasShip(pg, variant)) return true;
+    }
+    log(label, `no ${variant ?? 'warship'} after the order:`, JSON.stringify(await pg.evaluate((port) => {
+      const s = window.__borderfall.getState();
+      const me = s.humanId;
+      const p = s.players[me];
+      const b = [...s.buildings.values()].find((x) => x.tile === port);
+      return { port: b ? { owner: b.owner, type: b.type, level: b.level, buildLeft: b.buildLeft, upgradeLeft: b.upgradeLeft } : null, gold: Math.round(p.gold), iron: Math.round(p.iron), oil: Math.round(p.oil), warships: s.units.filter((u) => u.owner === me && u.type === 'warship').length, events: s.events.filter((e) => e.players?.includes(me)).slice(-4).map((e) => e.message) };
+    }, port)));
+  }
+  return false;
+}
 /** A scripted player's economy (scripted.mjs economyStep): one step per call. */
 const driverFor = (c) => economyDriver(c.label, (fn, arg) => c.page.evaluate(fn, arg), (a) => dispatch(c.page, a), log);
 
@@ -465,7 +493,7 @@ try {
     log('resources before the ship orders', JSON.stringify(await Promise.all([A.page, B.page].map((pg) => pg.evaluate(() => { const s = window.__borderfall.getState(); const p = s.players[s.humanId]; return [Math.round(p.gold), Math.round(p.iron), Math.round(p.oil)]; })))));
     for (const [label, pg] of [['A', A.page], ['B', B.page]]) {
       const r = sites[label];
-      if (r.port >= 0) for (const v of orders[label]) log(label, 'buildWarship', v, JSON.stringify(await dispatch(pg, { type: 'buildWarship', port: r.port, variant: v })));
+      if (r.port >= 0) for (const v of orders[label]) await orderShip(label, pg, r.port, v);
       if (r.airfield >= 0) {
         await dispatch(pg, { type: 'buildAircraft', airfield: r.airfield, kind: 'bomber' });
         await dispatch(pg, { type: 'buildAircraft', airfield: r.airfield, kind: 'fighter' });

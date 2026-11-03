@@ -91,6 +91,13 @@ async function compareHashes(pages, minCommon = 3) {
 }
 /** Runs a dispatch in the page and waits for it to land (the next turn(s)). */
 const dispatch = (page, action) => page.evaluate((a) => window.__borderfall.dispatch(a), action);
+/** Whether a warship of ours exists or is being built. */
+const hasShip = (pg) =>
+  pg.evaluate(() => {
+    const s = window.__borderfall.getState();
+    const me = s.humanId;
+    return s.units.some((u) => u.owner === me && u.type === 'warship') || (s.unitQueue ?? []).some((q) => q.owner === me && q.type === 'warship');
+  });
 /** Own tiles near the capital: coastal ones first for ports. */
 const ownTiles = (page, coastal, skip) =>
   page.evaluate(({ coastal, skip }) => {
@@ -174,7 +181,15 @@ try {
   await sleep(2500);
   for (const [label, pg] of [['A', A.page], ['B', B.page]]) {
     const r = result[label];
-    if (r.port >= 0) { for (let k = 0; k < 2; k++) log(label, 'warship', JSON.stringify(await dispatch(pg, { type: 'buildWarship', port: r.port }))); }
+    if (r.port >= 0) {
+      for (let k = 0; k < 2; k++) log(label, 'warship', JSON.stringify(await dispatch(pg, { type: 'buildWarship', port: r.port })));
+      // online an order is only checked when its turn runs (dispatch says ok either way): one more if none appeared
+      for (let k = 0; k < 16 && !(await hasShip(pg)); k++) await sleep(500);
+      if (!(await hasShip(pg))) {
+        log(label, 'no warship after the orders', JSON.stringify(await pg.evaluate(() => { const s = window.__borderfall.getState(); const p = s.players[s.humanId]; return { gold: Math.round(p.gold), iron: Math.round(p.iron), oil: Math.round(p.oil), events: s.events.filter((e) => e.players?.includes(s.humanId)).slice(-4).map((e) => e.message) }; })));
+        log(label, 'warship', JSON.stringify(await dispatch(pg, { type: 'buildWarship', port: r.port })));
+      }
+    }
     if (r.airfield >= 0) { await dispatch(pg, { type: 'buildAircraft', airfield: r.airfield, kind: 'bomber' }); await dispatch(pg, { type: 'buildAircraft', airfield: r.airfield, kind: 'fighter' }); }
     await dispatch(pg, { type: 'setArmyMix', armor: 0.5, artillery: 0.1 });
   }
