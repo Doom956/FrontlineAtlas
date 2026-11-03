@@ -343,7 +343,7 @@ Make it so you can spawn the ships anywhere, they attack in a much bigger range;
   a spearhead.
 Open: AI tank/ship use on World maps (24 games, too few); tick p99 at 40 AIs; scripts/profile.ts skips warships and divisions.
 
-## Auto for every vehicle (2026-11-03, branch `auto-all`, not merged yet)
+## Auto for every vehicle (2026-11-03, live)
 Owner: "auto is for every vehicle needs to be improved"; earlier: strategic should hit whoever I attack, warships,
 airfields and many tanks are hard to control. Easy for new players, no hotkeys. Protocol 16.
 - War target: the nation the player attacks; with no attack of its own, the last target while that war is live (a
@@ -370,13 +370,15 @@ airfields and many tanks are hard to control. Easy for new players, no hotkeys. 
   after, apart from tick times; the casual-human bench (Easy / Normal, 48 games) is identical too.
 - Checks: tsc (client, server), full vitest (6 tests hit the 5 s timeout under load, all pass with a longer timeout),
   npm run build.
-- Not checked: Playwright e2e; a passive-player bench (the defence war target is covered by unit tests only); hard
+- Multiplayer e2e on GitHub runners: both tests passed on their default maps and a random map (with groups, alerts
+  and save/resume merged too).
+- Not checked: a passive-player bench (the defence war target is covered by unit tests only); hard
   difficulty and other map sizes.
 - Left open: warships are still sunk at ~72% of those bought (mostly by enemy warships); divisions spend 16% of war
   time refitting; silos idle 77% (no target near the front: the list was kept narrow, rockets cost 900 gold);
   airfields have nothing in reach about 17% of their war time.
 
-## Groups, alerts, save/resume (2026-11-03, branch qol-d, not merged yet)
+## Groups, alerts, save/resume (2026-11-03, live)
 Owner wanted these three after ships/tanks and bombers, all clickable with visible buttons (no new hotkeys). Client
 only: no src/sim file changed (released together with the auto round, protocol 16), save format 1. DESIGN.md (client section) and How to play updated.
 - Groups (unitGroups.ts, hud/groupsStrip.ts): in Forces, select warships or tank divisions, click New group: a
@@ -406,7 +408,8 @@ only: no src/sim file changed (released together with the auto round, protocol 1
   row tappable with a selection and while paused, alert cards, chip and toast fully visible, nation card unmoved and
   its buttons on top, Save/Cancel rename, alerts move between columns on resize). Screenshots
   /tmp/borderfall-shots/d-merged-*.png, d-fix-*.png.
-- Not checked: multiplayer e2e (nothing online changed); real phones (only a desktop browser at phone size); a real
+- Multiplayer e2e on GitHub runners (with the auto round): both tests passed on their default maps and a random map.
+- Not checked: real phones (only a desktop browser at phone size); a real
   sim error during play (tests inject one); a game over 3 M characters. Alerts in the play checks were injected
   events. Open: on phones the new-player guide bar (its own layer) sits over an open drawer, including group rows,
   until Next or Hide guide; hovering a group shows its tooltip over the name.
