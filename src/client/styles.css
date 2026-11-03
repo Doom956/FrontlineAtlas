@@ -2226,7 +2226,8 @@ button.fr-t:hover {
   top: 0;
   width: 210px;
   padding: 6px 6px 7px 8px;
-  pointer-events: auto;
+  /* clicks go through to the map (a spearhead or move target can sit under the card); only the X takes them */
+  pointer-events: none;
   background-color: var(--metal-a);
   background-image: var(--grain);
   border: 1px solid var(--rule);
@@ -2234,6 +2235,9 @@ button.fr-t:hover {
   border-radius: var(--r);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
   font-size: 12px;
+}
+.ucard .mc-x {
+  pointer-events: auto;
 }
 .uc-head {
   display: flex;

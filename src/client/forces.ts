@@ -7,10 +7,12 @@
 //   - unitDoing() / unitPlace(): what a unit on the map is doing, in words ("heading to Azuria's coast")
 // The rules stay in the sim (buildWarship, buildAircraft, moveWarship); this file only reads and phrases them.
 import { aircraftCap, buildingsOf } from '../sim/buildings';
-import { BOMBER_RADIUS, TECHS, UNITS, WARSHIP_RANGE } from '../sim/config';
+import { BOMBER_RADIUS, NAVY_SUPPORT_RANGE, TECHS, UNITS, WARSHIP_RANGE } from '../sim/config';
+import { SHELL_RANGE_TILES } from './reach';
 import { areAllied } from '../sim/diplomacy';
 import { unitCost } from '../sim/units';
 import { warshipOrderCost } from '../sim/navy';
+import { mendingInPort, warshipMaxHp } from '../sim/naval2';
 import { armyTotal } from '../sim/economy';
 import { forEachInRadius } from '../sim/grid';
 import { buildingAllowed, unitAllowed } from '../sim/rules';
@@ -44,7 +46,7 @@ export const UNIT_TEXT: Record<SpecialId, UnitText> = {
   warship: {
     name: 'Warship',
     icon: 'warship',
-    what: `Sinks enemy ships within ${WARSHIP_RANGE} tiles and shells enemy coasts within ${WARSHIP_RANGE / 2} tiles while you are at war.`,
+    what: `Placed on any water your ports reach. Sinks enemy ships within ${WARSHIP_RANGE} tiles; at war it shells enemy coast within ${SHELL_RANGE_TILES} and backs attacks within ${NAVY_SUPPORT_RANGE}.`,
     counter: 'Only other warships sink it.',
     unlock: 'Build a Port, then buy Navigation (Arsenal)',
   },
@@ -270,6 +272,8 @@ export function unitDoing(state: GameState, me: Player, u: Unit): string {
     case 'warship': {
       const foe = enemyShipNear(state, u);
       if (foe) return `Fighting ${nameOf(state, me, foe.owner)} ${foe.type === 'tradeShip' ? 'trade ship' : UNITS[foe.type].name.toLowerCase()}`;
+      // roaming ships mend at a port of theirs, then sail out again (naval2.mendingInPort)
+      if (u.owner === me.id && mendingInPort(state, u)) return `Repairing at your port (hull ${hpText(u)})`;
       // stance work: shelling a coast, blockading a port, escorting (pillars.ts)
       const order = u.owner === me.id ? warshipOrderLine(state, me.id, u) : '';
       if (order) return order;
@@ -314,7 +318,7 @@ export function tankDivisionDoing(state: GameState, me: number, u: Unit): string
       return `Spearhead into ${state.players[u.targetOwner]?.name ?? 'neutral land'}: ${u.cargo | 0} tiles taken`;
     default: {
       const mode = u.mode ?? 'hold';
-      if (mode === 'support') return 'Supporting a front: spearheads into weak spots when ready';
+      if (mode === 'support') return 'Supporting your main front: spearheads into weak spots when ready';
       if (mode === 'refit') return 'Refitting at a Factory';
       return 'Holding: defends the land around it';
     }
@@ -350,7 +354,8 @@ export function unitIcon(type: UnitType): IconId {
 
 /** HP as "2.5 of 3" (only warships and atom bombs have more than 1). */
 export function hpText(u: Unit): string {
-  const max = UNITS[u.type].hp;
+  // warships: veterancy and variants add hull (the sim's warshipMaxHp), so "4 of 3" never shows
+  const max = u.type === 'warship' ? warshipMaxHp(u) : UNITS[u.type].hp;
   const v = Math.max(0, u.hp);
   return `${v >= 10 || Number.isInteger(v) ? Math.round(v) : v.toFixed(1)} of ${max}`;
 }

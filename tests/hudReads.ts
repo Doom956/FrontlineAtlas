@@ -12,18 +12,20 @@ import { buildCostAt, buildingsOf, canBuild, hasIntel, resolveBuildTarget } from
 import { attacksOf, borders, coreDefenseAt, estimateAttack, lastStandFactor, supplyEfficiency } from '../src/sim/combat';
 import { BUILDING_ORDER, TECH_ORDER } from '../src/sim/config';
 import { convertCost, hasOilShortage } from '../src/sim/economy';
-import { atWar, blockadedPorts, portBlockadedBy } from '../src/sim/naval2';
-import { canOrderWarship, warshipOrderCost } from '../src/sim/navy';
+import { atWar, blockadedPorts, mendingInPort, portBlockadedBy, warshipMaxHp } from '../src/sim/naval2';
+import { canOrderWarship, warshipOrderCost, warshipSpawnable, warshipSpawnSeas } from '../src/sim/navy';
 import { arsenalPrice, canProcure } from '../src/sim/procurement';
 import { minefields } from '../src/sim/specials';
 import { warBondsInfo, mercenaryPrice, fundAllyEffect } from '../src/sim/spending';
-import { bestFactory, canBuildTankDivision, spearheadPreview, tankDivisionLimit } from '../src/sim/tanks';
+import { bestFactory, canBuildTankDivision, divisionDriveSpeed, divisionMoveTime, ownLandPath, spearheadPreview, tankDivisionLimit } from '../src/sim/tanks';
 import { canResearch } from '../src/sim/tech';
 import { techStatus } from '../src/sim/techtree';
 import { drainTrenchChanges, frontTrench, trenchInfoAt, trenchLevel, trenchMaxLevel } from '../src/sim/trenches';
 import { borderTiles, coastCount, depositCount } from '../src/sim/territory';
 import { canParadrop } from '../src/sim/units';
-import { canReconFlight, reconCooldownLeft, revealsOf } from '../src/sim/variants';
+import { canReconFlight, navalReachMul, navalShellMul, navalShellRangeMul, navalSupportMul, reconCooldownLeft, revealsOf } from '../src/sim/variants';
+import { waterComponents } from '../src/sim/grid';
+import { frontRate } from '../src/sim/rules';
 import { allScores, victoryShareNow } from '../src/sim/victory';
 import type { GameState } from '../src/sim/types';
 
@@ -77,6 +79,9 @@ export const READS: Record<string, Read> = {
     blockadedPorts(s, pid);
     for (const b of buildingsOf(s, pid, 'port')) portBlockadedBy(s, b.tile);
     canOrderWarship(s, pid, buildingsOf(s, pid, 'port')[0]?.tile ?? -1);
+    // the spawn mode's shading and cursor (any water of a sea an own port touches)
+    warshipSpawnSeas(s, pid);
+    for (const b of buildingsOf(s, pid, 'port')) warshipSpawnable(s, pid, b.tile + s.map.width);
     warshipOrderCost(s, pid);
   },
   allies: (s, pid) => {
@@ -134,7 +139,30 @@ export const READS: Record<string, Read> = {
     for (const u of s.units) {
       if (u.owner !== pid || u.hp <= 0) continue;
       if (u.type === 'tankDivision' && across.length) spearheadPreview(s, pid, u.id, across[0]);
+      // the rail-move preview (client/reach.railMove): a route over own land to one of the border tiles
+      if (u.type === 'tankDivision') {
+        const own = frontTiles(s, pid, k + 9, 1)[0];
+        if (own !== undefined) {
+          ownLandPath(s, pid, Math.round(u.y) * s.map.width + Math.round(u.x), own);
+          divisionMoveTime(s, u, own);
+        }
+        if (own !== undefined) divisionMoveTime(s, u, own);
+      }
+      // ship rings (client/reach.shipReach)
+      if (u.type === 'warship') {
+        navalShellMul(u);
+        navalShellRangeMul(s, u);
+        navalSupportMul(u);
+        mendingInPort(s, u);
+        warshipMaxHp(u); // hull text (client/forces.hpText)
+      }
     }
+    navalReachMul(s, pid);
+    divisionDriveSpeed(s, pid);
+    warshipSpawnSeas(s, pid);
+    frontRate(s);
+    divisionDriveSpeed(s, pid);
+    waterComponents(s.map); // the warship placement shading (client/reach.portSeas)
     bestFactory(s, pid);
     tankDivisionLimit(s, pid);
     if (across.length) {

@@ -151,7 +151,7 @@ export class Hub implements RoomHost {
     return Date.now();
   }
   makeSeed(): number {
-    return randomInt(1, 0x7fffffff);
+    return this.opts.fixedSeed ?? randomInt(1, 0x7fffffff);
   }
 
   // ---------------------------------------------------------------------------------------------- connections

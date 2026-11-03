@@ -346,7 +346,7 @@ export class AdvisorStrip {
       if (!s || !me) return;
       if (c.unit === 'warship') {
         const no = enterWarshipSpawnMode(this.ctx.ui, s, me);
-        this.ctx.toast(no ? `Warship: ${no}` : 'Warship: click a water tile near your port. Esc cancels.', no ? 'info' : 'good');
+        this.ctx.toast(no ? `Warship: ${no}` : 'Warship: click any water your ports reach (shaded). Esc cancels.', no ? 'info' : 'good');
         return;
       }
       const why = buildUnit(s, me, (a) => this.ctx.dispatch(a), c.unit, { x: this.ctx.camera.x, y: this.ctx.camera.y });

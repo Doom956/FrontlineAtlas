@@ -311,5 +311,38 @@ fast push landing 1-11 tiles ahead of the front on enemy land, a x5 salvo, an Al
 hitting 2 forts and a city, no atom bomb fired); screenshots /tmp/borderfall-shots/air-check-*.png. Not checked:
 World-map batches, forced Heavy Bombers / Ground-attack fork benchmarks, tick timings.
 
+## Ships and tanks (2026-11-03, on `dev`, not merged yet)
+Owner: "the tanks are kind of useless right now, they move way way too slow to attack so they rarely get used; the
+warships are also kind of useless because they just stay in one area and the auto function doesn't really change that.
+Make it so you can spawn the ships anywhere, they attack in a much bigger range; for the tanks idk."
+- Warships: placed on any water of a sea one of your finished Ports touches (no 40-tile limit; same price and build
+  time); gun range 20 -> 35, detection 3x range, shelling half the gun range (battleships x2), shore support range
+  18 -> 30 (each extra ship 0.75 of the one before, cap 1.4). At war, Auto / Follow ships roam their whole sea to the
+  war target's coast and go home only to repair (under half hull); Hunt searches the whole sea; Hold stays put.
+- Tank divisions: moves over own connected land by rail at 20 tiles/s (Railways x1.5); spearheads 3 -> 8 tiles/s,
+  60 deep, launched up to 12 tiles past the border (no water on the line, except narrow water with Amphibious
+  Tanks); Support front divisions jump to the war's main front and strike weak spots at half strength; AIs build up
+  to half their factory capacity in divisions (max 6).
+- Measured (24001+, 192 pairs, base a0adddc): navy specialist 0.76 -> 1.01, armor 1.09 -> 1.13 (inside the target,
+  "better than base" not shown for armor), divisions per game 20.4 -> 43.0, warships in action 11 -> 16% of ship
+  time; game length, leader at 15 min and difficulty unchanged. Huge-map p99 tick ~3 ms higher (neither version
+  under 15 ms at 40 AIs). Log: /tmp/fa-bal/log6.md.
+- Final check: tsc both, vitest 827/827, build OK. E2E: no hash check reached in 6 runs (3 each, the allowed reruns): mp-pillars failed in the
+  scripted player's start (no spawn site with iron, oil and a coast x2; "A has no iron/oil"), mp-arsenal in its
+  economy ("labs not built" x2: no oil within 26 tiles, so the start never grew; "Mechanization delivered" timed
+  out); all before any ship or division exists, no desync or hash mismatch logged. Needs a pass on the fast PC or the
+  flaky scripted-player fix. Easy game as a new player (screenshots
+  /tmp/borderfall-shots/st-check-*.png): a warship ordered from the Port card and placed 96 tiles out by a click
+  appeared there and, at war, took station off the enemy coast and shelled it (veteran in ~1 min); a division
+  rail-moved 160 tiles (227-tile route) in 6-8.5 s and a two-click spearhead took 28 tiles (4 into mountains, as
+  its preview warned). Small fixes: the unit card no longer
+  catches map clicks (a spearhead target 12 tiles out could sit under it; only its X takes clicks); warship hull
+  text uses the real maximum ("4 of 3" for veterans and variants before); How to play says a second click launches
+  a spearhead.
+Open: AI tank/ship use on World maps (24 games, too few); tick p99 at 40 AIs; scripts/profile.ts skips warships and divisions.
+
+## Queued next (owner, 2026-11-03)
+In order, after ships/tanks, bombers QoL and "auto for everything": (1) Groups strip (no hotkeys: owner wants to avoid relying on hotkeys for new players): in Forces, select units -> "+ New group" -> a button "Fleet 1 · 8 ships", click selects, a target icon centres the camera; (2) clickable alerts for big events (capital under attack, port blockaded, division overrun, nuke incoming) that jump to the spot; (3) save and resume single player (orders log; "Continue" row on the start page). Later: anonymous real-match stats on the server for balance, rematch + quick chat, replays, in-game phone/touch HUD, real-GPU performance check, flaky scripted-player e2e fix.
+
 ## Parked ideas (owner said later / maybe)
 Building limits (city slots, upkeep), rivers and bridges, wonders, game modes (King of the Hill, capital capture, scenarios), quick chat/emotes/rematch, phone layout, making Easy winnable, calmer tribes.

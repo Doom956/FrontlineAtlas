@@ -1,7 +1,7 @@
 // The selected unit's card: a small card next to your selected warship (it follows the ship) with its type, owner,
 // hull and current order, while the line at the top says what a click does. Esc or the X cancels the selection.
-import { WARSHIP_RANGE } from '../../sim/config';
 import { divisionMode, divisionStrength } from '../../sim/armor2';
+import { divisionReachLine, shipReachLine } from '../reach';
 import { warshipMaxHp, warshipStance } from '../../sim/naval2';
 import { MODE_INFO, STANCE_INFO, vetOf } from '../pillars';
 import type { GameState, Player } from '../../sim/types';
@@ -17,7 +17,7 @@ export class UnitCard {
   private hp = el('span', 'uc-hp');
   private hpFill = el('i');
   private order = el('div', 'uc-o');
-  private range = el('div', 'uc-r', `Fights ships within ${WARSHIP_RANGE} tiles, shells enemy coasts within ${WARSHIP_RANGE / 2} while at war`);
+  private range = el('div', 'uc-r', '');
   private shown = -1;
   private lastMs = 0;
   private img: HTMLImageElement;
@@ -85,7 +85,7 @@ export class UnitCard {
           /* no canvas */
         }
       }
-      setVisible(this.range, !tank);
+      setText(this.range, tank ? divisionReachLine(state, u) : shipReachLine(state, u));
       const share = tank ? divisionStrength(u) : Math.max(0, u.hp) / Math.max(1, warshipMaxHp(u));
       this.hpFill.style.width = `${Math.round(Math.min(1, share) * 100)}%`;
       this.hp.dataset.tip = tank ? `Strength ${Math.round(share * 100)}%` : `Hull ${hpText(u)}`;

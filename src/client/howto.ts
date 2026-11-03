@@ -39,7 +39,11 @@ import {
   TANK_LAUNCH_REACH,
   TANK_SPEARHEAD_MAX_DEPTH,
   TRENCH,
+  TANK_SPEARHEAD_SPEED,
+  TANK_MOBILITY,
   TANK_SPEARHEAD_WIDTH,
+  NAVY_SUPPORT_RANGE,
+  WARSHIP_RANGE,
   TECHS,
   TECH_ORDER,
   TERRAIN,
@@ -56,6 +60,7 @@ import type { BuildingType, DoctrineId, TerrainId } from '../sim/types';
 import { forceLimit } from './allies';
 import { el } from './dom';
 import { UNIT_TEXT } from './forces';
+import { SHELL_RANGE_TILES } from './reach';
 import { lineIcon, worldGlyph } from './hud/glyph';
 import { BUILDING_SHORT, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect } from './hud/text';
 import { iconDataUrl, type IconId } from './icons';
@@ -325,6 +330,8 @@ export function howToPlayContent(): HTMLElement {
   }));
   const unitHow: Row[] = [
     { title: 'Buy', text: 'Warships, bombers and fighters are in the Military group of the build menu (or at a Port / Airfield). Forces lists everything you own with its orders.', key: 'Y' },
+    { title: 'Place a warship', text: `Click any water of a sea one of your Ports touches, however far out: off the enemy coast works too. Selected ships show their rings: guns (${WARSHIP_RANGE} tiles), shelling (${SHELL_RANGE_TILES}) and shore support (${NAVY_SUPPORT_RANGE}); battleships shell twice as far.` },
+    { title: 'Ships at war', text: 'Auto ships leave their post: they sail to your war target\'s coast anywhere on their sea, sink ships and shell, and go home only to repair. Hunt ships search the whole sea for enemy ships.' },
     { title: 'Orders', text: 'Click your warship (or Select in Forces), then click water to move it. Shift+W selects every warship, a double-click every one on screen; zoomed out, close ships show as one fleet marker with a count (click it for the fleet). The Forces drawer (Y) gives all of them one order. Hover any unit to see what it is doing; enemy units heading for you get a red ring.' },
     { title: 'Follow my war', text: 'Air missions, Bombard / Blockade ships and Support-front tanks follow your war by default: they switch to the nation you attack. A map click fixes a target; Follow my war switches back.' },
     { title: 'Air missions', text: 'An airfield on Support bombs ahead of your attack and keeps pace with the front; on Strategic it raids the most valuable targets of the nation you fight (factories, cities, airfields, SAM sites in the way), never ones already destroyed. Each airfield shows its last result ("Last raid: 3 buildings hit"). Re-buy losses replaces lost bombers on every mission, Air cover too.' },
@@ -333,8 +340,9 @@ export function howToPlayContent(): HTMLElement {
   const tank = UNITS.tankDivision;
   const tankRows: Row[] = [
     { title: 'Build', text: `Military group, needs Mechanization and a Factory (one per Factory level). Costs ${n(tank.gold)} gold, ${tank.iron} iron, ${tank.oil} oil and takes armor from your pool.` },
-    { title: 'Move', text: 'Select it like a warship (click, or Shift+drag a box; Shift+A picks all), then click your land.' },
-    { title: 'Spearhead', text: `Click enemy land within ${TANK_LAUNCH_REACH} tiles of your border: a ${TANK_SPEARHEAD_WIDTH}-tile-wide breakthrough up to ${TANK_SPEARHEAD_MAX_DEPTH} tiles deep. Fast on plains and desert, slow in forest, hills and swamp.` },
+    { title: 'Move', text: `Select tank divisions like warships (click, or Shift+drag a box; Shift+A picks all), then click your land: they drive there fast over your own land (${Math.round(tank.speed)} tiles/s, Railways x${TANK_MOBILITY.railways}). Hovering shows the route and when they arrive.` },
+    { title: 'Spearhead', text: `Click enemy land up to ${TANK_LAUNCH_REACH} tiles past your border, with no water on the way (Amphibious Tanks cross narrow water), then click again to launch: the tanks drive to the nearest own tile, then make a ${TANK_SPEARHEAD_WIDTH}-tile-wide breakthrough up to ${TANK_SPEARHEAD_MAX_DEPTH} tiles deep at ${TANK_SPEARHEAD_SPEED} tiles/s on plains. Fast on plains and desert, slow in forest, hills and swamp.` },
+    { title: 'Support front', text: 'Left on Support front, tank divisions ride to your current war\'s main front by themselves and spearhead into its weak spots whenever they are ready.' },
     { title: 'Stalls at', text: `Mountains and forts, unless ${pct(TANK_ARTILLERY_SUPPORT)}% of the division is artillery (then slowly, at high loss).` },
     { title: 'Overrun', text: `A division that is not attacking and loses the ground under it falls back to your land within ${TANK_FALLBACK_RADIUS} tiles (${pct(TANK_FALLBACK_LOSS)}% of its troops lost) if it still has a fifth of a full division, else it is overrun and its troops go home.` },
   ];
@@ -345,9 +353,9 @@ export function howToPlayContent(): HTMLElement {
       ['Rocket', 'SAM sites (one hit)'],
       ['Atom bomb', 'SAM sites (two hits)'],
       ['Artillery shells', 'Nothing: only range limits them'],
-      ['Warship, transport', 'Enemy warships'],
+      ['Warship, transport', 'Enemy warships (destroyers for submarines); naval mines'],
       ['Attacks on land', 'Forts slow them; artillery and barrages break forts'],
-      ['Tank spearhead', 'Mountains and forts; armor-heavy defence'],
+      ['Tank spearhead', 'Mountains and forts; bombers; armor-heavy defence'],
     ].map((r) => ({ cells: r })),
     'keys-tbl',
   );

@@ -226,6 +226,8 @@ describe('tank variants', () => {
     const base = landGame();
     mountainWall(base);
     const d0 = spawnTankDivision(base, 1, at(base, 26, 15));
+    d0.troops.artillery = 0; // no artillery escort: only heavy tanks get through (spearheads are fast enough now that
+    // a full escort pays its way across two mountain tiles)
     expect(applyAction(base, 1, { type: 'moveTankDivision', unitIds: [d0.id], tile: at(base, 31, 15) }).ok).toBe(true);
     run(base, 400);
     expect(base.map.owner[at(base, 36, 15)]).toBe(2);
@@ -234,6 +236,8 @@ describe('tank variants', () => {
     mountainWall(s);
     give(s, 1, 'heavyTanks');
     const d = spawnTankDivision(s, 1, at(s, 26, 15));
+    d.troops.artillery = 0;
+    d.troops.armor += 1000; // same strength as a full division
     expect(applyAction(s, 1, { type: 'moveTankDivision', unitIds: [d.id], tile: at(s, 31, 15) }).ok).toBe(true);
     run(s, 400);
     expect(s.map.owner[at(s, 36, 15)]).toBe(1);

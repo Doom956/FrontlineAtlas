@@ -3,7 +3,8 @@
 // - Action buildTankDivision {tile}: at an own finished Factory; costs UNITS.tankDivision (gold, iron, oil) plus
 //   TANK_DIVISION_TROOPS taken from the pool (armor first, with an infantry and artillery escort); built over
 //   TANK_BUILD_SECONDS in state.unitQueue; at most TANK_PER_FACTORY_LEVEL per Factory level (alive + being built).
-// - Action moveTankDivision {unitIds, tile}: own land = drive there over own land (a land path, loose formation);
+// - Action moveTankDivision {unitIds, tile}: own land = drive there over own land (a land path, loose formation) by
+//   rail: UNITS.tankDivision.speed tiles/s, x TANK_MOBILITY.railways with Railways (divisionDriveSpeed);
 //   enemy or neutral land within TANK_LAUNCH_REACH of own land = drive to the nearest own tile, then launch a
 //   SPEARHEAD: the head runs along the line from that tile through the clicked tile, taking a band
 //   TANK_SPEARHEAD_WIDTH wide, fast on plains and desert, slow in forests and hills, stopped by mountains and forts
@@ -40,6 +41,7 @@ import {
   TANK_DIVISION_TROOPS,
   TANK_LAUNCH_REACH,
   TANK_MIN_ARMOR,
+  TANK_MOBILITY,
   TANK_PATH_BUDGET,
   TANK_PER_FACTORY_LEVEL,
   TANK_SPEARHEAD_LOSS,
@@ -65,6 +67,7 @@ import { isProtected, tutorialShielded } from './admin';
 import { tankDivisionMods } from './techtree';
 import { armorBandWidth, armorBreaksThrough, armorCostMul, armorDefenseMul, armorDepthMul, armorLossMul, armorSpeedMul, holdDefenseAt, onFortBreached, onSpearheadDone } from './variants';
 import { aiAmphibTarget } from './arsenalAI';
+import { landComponents } from './territory';
 import { aiDivisionModes, collapsePockets, divisionLimitFor, divisionStep, onSpearheadEnded, vetLossMul, vetSpeedMul } from './armor2';
 import { ARMOR_POCKET_EVERY, ARMOR_SUPPORT_READY } from './config';
 import { Terrain, TROOP_TYPES, isTribe, isWater } from './types';
@@ -247,6 +250,11 @@ export function ownLandPath(state: GameState, owner: number, from: number, to: n
   const own = (t: number): boolean => (map.owner[t] === owner && !isWater(map.terrain[t])) || (wade !== undefined && wade(t));
   if (!own(from) || !own(to)) return null;
   if (from === to) return [];
+  // Another landmass can't be reached over land (no search; with wading allowed it might be).
+  if (wade === undefined) {
+    const lc = landComponents(map);
+    if (lc[from] !== lc[to]) return null;
+  }
   const tx = to % w;
   const ty = (to / w) | 0;
   const heur = (t: number): number => {
@@ -339,20 +347,60 @@ function landOrWadePath(state: GameState, owner: number, from: number, to: numbe
   return ownLandPath(state, owner, from, to, TANK_PATH_BUDGET, (t) => narrowWater(state, t));
 }
 
-/** Moves along u.path at `speed` tiles/s; stops (holding) where the route leaves own land. True on arrival. */
+/** Tiles/s playerId's divisions drive over own land (a rail move; Railways faster; game speed rules apply). */
+export function divisionDriveSpeed(state: GameState, playerId: number): number {
+  const p = state.players[playerId];
+  return UNITS.tankDivision.speed * (p && hasRailways(p) ? TANK_MOBILITY.railways : 1) * frontRate(state);
+}
+
+/**
+ * Seconds division u needs to drive to own land tile `tile` (its route over own land / the time it would take
+ * now); -1 when it can't get there (not own land, no route, a spearhead running). Read-only (one route search).
+ */
+export function divisionMoveTime(state: GameState, u: Unit, tile: number): number {
+  if (u.type !== 'tankDivision' || u.hp <= 0 || u.state === 3 || !isTileIn(state, tile)) return -1;
+  if (state.map.owner[tile] !== u.owner || !isLand(state, tile)) return -1;
+  const path = landOrWadePath(state, u.owner, unitTileOf(state, u), tile);
+  if (!path) return -1;
+  const v = divisionDriveSpeed(state, u.owner);
+  const wade = Math.min(v, TANK_MOBILITY.wadeSpeed * frontRate(state));
+  if (v <= 0 || wade <= 0) return -1;
+  const w = state.map.width;
+  let secs = 0;
+  let px = u.x;
+  let py = u.y;
+  for (const t of path) {
+    const dx = (t % w) - px;
+    const dy = ((t / w) | 0) - py;
+    secs += Math.sqrt(dx * dx + dy * dy) / (isWater(state.map.terrain[t]) ? wade : v);
+    px = t % w;
+    py = (t / w) | 0;
+  }
+  return secs;
+}
+
+/**
+ * Moves along u.path at `speed` tiles/s (water it wades across, Amphibious Tanks: at most TANK_MOBILITY.wadeSpeed);
+ * stops (holding) where the route leaves own land. True on arrival.
+ */
 function drive(state: GameState, u: Unit, speed: number): boolean {
   const w = state.map.width;
   const owner = state.map.owner;
-  let step = speed * TICK_SECONDS;
-  while (step > 0 && u.pathPos < u.path.length) {
+  const wade = Math.min(speed, TANK_MOBILITY.wadeSpeed * frontRate(state));
+  let time = TICK_SECONDS;
+  while (time > 0 && u.pathPos < u.path.length) {
     const t = u.path[u.pathPos];
-    if (owner[t] !== u.owner && !(isWater(state.map.terrain[t]) && canWade(state, u.owner, t))) {
+    const wet = isWater(state.map.terrain[t]);
+    if (owner[t] !== u.owner && !(wet && canWade(state, u.owner, t))) {
       // The route was cut (land lost): hold where we are.
       u.path = [];
       u.pathPos = 0;
       u.state = 0;
       return false;
     }
+    const v = wet ? wade : speed;
+    if (v <= 0) break;
+    const step = v * time;
     const dx = (t % w) - u.x;
     const dy = ((t / w) | 0) - u.y;
     const d = Math.sqrt(dx * dx + dy * dy);
@@ -360,11 +408,11 @@ function drive(state: GameState, u: Unit, speed: number): boolean {
       u.x = t % w;
       u.y = (t / w) | 0;
       u.pathPos++;
-      step -= d;
+      time -= d / v;
     } else {
       u.x += (dx / d) * step;
       u.y += (dy / d) * step;
-      step = 0;
+      time = 0;
     }
   }
   return u.pathPos >= u.path.length;
@@ -374,19 +422,38 @@ function drive(state: GameState, u: Unit, speed: number): boolean {
 // Orders
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Nearest own land tile to `tile` within TANK_LAUNCH_REACH (ties: lower index), or -1. */
+/**
+ * Nearest own land tile to `tile` within TANK_LAUNCH_REACH (ties: lower index) whose straight line to it crosses no
+ * water (narrow water a division with Amphibious Tanks can wade is fine), or -1.
+ */
 function launchTileFor(state: GameState, owner: number, tile: number): number {
   const map = state.map;
-  let best = -1;
-  let bestD = Infinity;
+  const cand: number[] = [];
+  const dist: number[] = [];
   forEachInRadius(map, tile, TANK_LAUNCH_REACH + amphibLaunchBonus(state, owner), (i, d) => {
     if (map.owner[i] !== owner || isWater(map.terrain[i])) return;
-    if (d < bestD || (d === bestD && i < best)) {
-      bestD = d;
-      best = i;
-    }
+    cand.push(i);
+    dist.push(d);
   });
-  return best;
+  if (!cand.length) return -1;
+  const order = cand.map((_, k) => k).sort((a, b) => dist[a] - dist[b] || cand[a] - cand[b]);
+  const amphib = hasAmphibious(state, owner);
+  const w = map.width;
+  const tx = tile % w;
+  const ty = (tile / w) | 0;
+  for (const k of order) {
+    const from = cand[k];
+    const fx = from % w;
+    const fy = (from / w) | 0;
+    const n = Math.max(Math.abs(tx - fx), Math.abs(ty - fy));
+    let clear = true;
+    for (let j = 1; j < n && clear; j++) {
+      const t = Math.round(fy + ((ty - fy) * j) / n) * w + Math.round(fx + ((tx - fx) * j) / n);
+      if (isWater(map.terrain[t]) && !(amphib && narrowWater(state, t))) clear = false;
+    }
+    if (clear) return from;
+  }
+  return -1;
 }
 
 /**
@@ -898,8 +965,7 @@ export function updateTanks(state: GameState): void {
       continue;
     }
     if (u.state === 1 || u.state === 2) {
-      const speed = UNITS.tankDivision.speed * (hasRailways(p) ? 1.5 : 1) * frontRate(state);
-      if (drive(state, u, speed)) {
+      if (drive(state, u, divisionDriveSpeed(state, u.owner))) {
         if (u.state === 2) startSpearhead(state, u);
         else u.state = 0;
       }
@@ -1076,16 +1142,19 @@ export function aiTankDivisions(state: GameState, id: number, act: (a: Action) =
   const p = state.players[id];
   if (!p || !p.alive || isTribe(p) || p.isHuman || !hasTech(p, 'mechanization')) return;
   const personality = p.personality ?? 'balanced';
-  // Warlords commit to armor: as many divisions as their factories allow (up to 6).
-  const wantMax = personality === 'warlord' ? Math.max(3, Math.min(6, tankDivisionLimit(state, id))) : personality === 'turtle' || personality === 'merchant' ? 1 : 2;
+  // Warlords commit to armor: as many divisions as their factories allow (up to 6); others field a few whenever their
+  // factories and armor allow (TANK_MOBILITY's bar: price and armor at home with a margin).
+  // ...and anyone with factories to spare fields up to half their capacity (at most 6).
+  const cap = tankDivisionLimit(state, id);
+  const wantMax = personality === 'warlord' ? Math.max(3, Math.min(6, cap)) : Math.max(personality === 'turtle' || personality === 'merchant' ? 2 : 3, Math.min(6, Math.floor(cap / 2)));
   const mine = state.units.filter((u) => u.type === 'tankDivision' && u.owner === id && u.hp > 0);
   const c = tankDivisionCost(state, id);
   if (
     tankDivisionCount(state, id) < Math.min(wantMax, tankDivisionLimit(state, id)) &&
-    p.gold > c.gold * 2.5 &&
-    p.iron >= c.iron * 1.5 &&
-    p.oil >= c.oil * 1.5 &&
-    p.troops.armor >= TANK_DIVISION_TROOPS.armor * 1.5
+    p.gold > c.gold * TANK_MOBILITY.aiGold &&
+    p.iron >= c.iron * TANK_MOBILITY.aiMaterials &&
+    p.oil >= c.oil * TANK_MOBILITY.aiMaterials &&
+    p.troops.armor >= TANK_DIVISION_TROOPS.armor * TANK_MOBILITY.aiArmor
   ) {
     const f = bestFactory(state, id);
     if (f >= 0) act({ type: 'buildTankDivision', tile: f });

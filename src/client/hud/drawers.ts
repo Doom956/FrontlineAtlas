@@ -1089,5 +1089,5 @@ function warshipClickMode(ctx: HudCtx, variant?: NavalVariant): void {
   if (!g || !m) return;
   const why = enterWarshipSpawnMode(ctx.ui, g, m, variant);
   const name = variant ? VARIANT_NAMES[variant] : 'Warship';
-  ctx.toast(why ? `${name}: ${why}` : `${name}: click a water tile near your port. Esc cancels.`, why ? 'bad' : 'info');
+  ctx.toast(why ? `${name}: ${why}` : `${name}: click any water your ports reach (shaded). Esc cancels.`, why ? 'bad' : 'info');
 }

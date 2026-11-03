@@ -43,7 +43,7 @@ export const GROUP_CHOICES: Record<GroupKind, readonly GroupChoiceInfo[]> = {
     { v: 'idle', name: 'Idle', icon: 'pause', help: 'No airfield flies by itself.' },
   ],
   division: [
-    { v: 'support', name: 'Support front', icon: 'attack', help: 'All hold behind your main front (it follows your war) and spearhead into weak spots by themselves.' },
+    { v: 'support', name: 'Support front', icon: 'attack', help: 'All ride to your current war\'s main front (they follow your war) and spearhead into weak spots by themselves.' },
     { v: 'hold', name: 'Hold', icon: 'stop', help: 'All stay where they are and defend the land around them.' },
     { v: 'refit', name: 'Refit', icon: 'upgrade', help: 'All drive to your nearest Factory and refill there.' },
   ],

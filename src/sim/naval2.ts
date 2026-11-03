@@ -3,12 +3,17 @@
 //
 // Stances (Unit.stance, Action setUnitStance; absent = 'auto'):
 //   auto      intercepts enemy ships near its post (navy.interceptStep); when none are around and its owner is at war,
-//             sails to enemy coast within NAVY_AUTO_BOMBARD_REACH of its post (near its fronts first) and shells it;
-//             goes back to its post when that war is over
-//   hunt      intercepts over a wide zone (NAVY_HUNT_DETECT / NAVY_HUNT_LEASH)
+//             takes up station off enemy coast anywhere in its sea (Follow my war: the war target's coast nearest the
+//             main front; else near the ship, our fronts first) and shells it; its post moves with it (it roams), and
+//             it patrols where it is when that war is over
+//   hunt      intercepts any hostile ship within NAVY_HUNT_DETECT and ships of nations at war anywhere in its sea
+//             (no leash); patrols where the chase ended
+//   auto and hunt ships under NAVY_REACH.repairBelow of their hp sail to the nearest own Port of their sea and stay
+//   there until mended
 //   escort    sticks to own transports (first) and trade ships: an escorted ship takes x NAVY_ESCORT_DAMAGE damage
-//   bombard   parks off an enemy coast (at war) and shells it harder (NAVY_BOMBARD_STANCE_KILL); never chases
-//   blockade  parks off an enemy port (at war); never chases
+//   bombard   parks off an enemy coast (at war; near it first, else anywhere in its sea) and shells it harder
+//             (NAVY_BOMBARD_STANCE_KILL); never chases; back to its post when the war is over
+//   blockade  parks off an enemy port (at war; anywhere in its sea); never chases
 //   hold      stays at its post: sinks enemy ships near it like auto, but never sails off to shell a coast
 // Follow my war (warTarget.ts): a player's ships aim bombard / blockade / auto at the owner's war target first (other
 // wars when it has no coast or port in reach); a stance set with a target tile pins them to that nation (Unit.fixed:
@@ -27,7 +32,6 @@ import { buildingAt, buildingsOf } from './buildings';
 import {
   MAX_GROUP_UNITS,
   NAVY_WAR_MEMORY,
-  NAVY_AUTO_BOMBARD_REACH,
   NAVY_BEACHHEAD_LOSS,
   NAVY_BLOCKADE_RANGE,
   NAVY_BLOCKADE_SUPPLY,
@@ -44,9 +48,9 @@ import {
   NAVY_ESCORT_RADIUS,
   NAVY_ESCORT_SPEED,
   NAVY_HUNT_DETECT,
-  NAVY_HUNT_LEASH,
   NAVY_PORT_BUILD_SPEED,
   NAVY_PORT_REPAIR,
+  NAVY_REACH,
   NAVY_STATION_DIST,
   NAVY_STATION_SEEK,
   NAVY_SUB_BLOCKADE_RANGE,
@@ -65,11 +69,13 @@ import {
   UNITS,
   WARSHIP_DETECT_RANGE,
   WARSHIP_LEASH,
+  WARSHIP_SCAN_TICKS,
 } from './config';
 import { areAllied } from './diplomacy';
-import { sameWater, waterPath } from './grid';
+import { sameWater, waterComponents, waterPath } from './grid';
 import { interceptStep, ownGroup } from './navy';
-import { shipWarTarget } from './warTarget';
+import { ownedTilesOf } from './territory';
+import { mainFront, shipWarTarget, unitFollows } from './warTarget';
 import { atPeace } from './rules';
 import { addEvent } from './state';
 import { hasTech } from './tech';
@@ -125,6 +131,8 @@ interface NavyCache {
   wars: Set<number>;
   /** blockades, built on first use: port owner -> [x, y, blockader, ...] of its blockaded ports */
   blockaded: Map<number, number[]> | null;
+  /** per player, built on first use: the players it is at war with (ids ascending; check hostile / alive on use) */
+  foes: Map<number, number[]> | null;
 }
 const caches = new WeakMap<GameState, NavyCache>();
 /**
@@ -163,7 +171,7 @@ function cache(state: GameState): NavyCache {
       wars.add(wm[k + 1] * 1024 + wm[k]);
     }
   }
-  c = { tick: state.tick, n: state.units.length, ships, wars, blockaded: null };
+  c = { tick: state.tick, n: state.units.length, ships, wars, blockaded: null, foes: null };
   caches.set(state, c);
   return c;
 }
@@ -208,6 +216,20 @@ export function updateWarMemory(state: GameState): void {
 /** Pairs at war now (a * 1024 + b, both orders): attacks running plus the recent-war memory. Do not modify. */
 export function warSet(state: GameState): Set<number> {
   return cache(state).wars;
+}
+
+/** Nations `me` is at war with now (ids ascending; alive and hostile). Do not modify. */
+function foesOf(state: GameState, me: number): number[] {
+  const c = cache(state);
+  c.foes ??= new Map();
+  let l = c.foes.get(me);
+  if (l) return l;
+  l = [];
+  if (c.wars.size) {
+    for (const p of state.players) if (p && p.id > 0 && p.id !== me && p.alive && c.wars.has(me * 1024 + p.id) && hostile(state, me, p.id)) l.push(p.id);
+  }
+  c.foes.set(me, l);
+  return l;
 }
 
 /** True while a and b are at war (an attack running between them, or recently) and not allied / at peace. */
@@ -499,7 +521,11 @@ export function setUnitStance(state: GameState, playerId: number, unitIds: unkno
 // Stance behaviour (units.updateWarship calls warshipThink before it moves)
 // ---------------------------------------------------------------------------------------------------------------
 
-function sail(state: GameState, u: Unit, to: number, maxLen: number): boolean {
+/** Route search effort for a ship crossing its sea (a roaming station, a trip to a Port for repairs). */
+const FAR_SAIL_BUDGET = 12000;
+
+/** Sets u's route to water tile `to`; maxLen undefined = anywhere in the sea (a larger search). False = no route. */
+function sail(state: GameState, u: Unit, to: number, maxLen?: number): boolean {
   const from = shipTile(state, u);
   if (from === to) {
     u.path = [];
@@ -507,7 +533,7 @@ function sail(state: GameState, u: Unit, to: number, maxLen: number): boolean {
     u.target = to;
     return true;
   }
-  const path = waterPath(state.map, from, to, maxLen, 6000);
+  const path = maxLen === undefined ? waterPath(state.map, from, to, undefined, FAR_SAIL_BUDGET) : waterPath(state.map, from, to, maxLen, 6000);
   if (!path || !path.length) return false;
   u.path = path;
   u.pathPos = 0;
@@ -515,10 +541,19 @@ function sail(state: GameState, u: Unit, to: number, maxLen: number): boolean {
   return true;
 }
 
+/**
+ * No route to a station / Port (a far search that ran out of budget): the ship waits NAVY_REACH.sailRetry seconds
+ * before its next station or repair trip (retryTick), so it doesn't repeat the costly search every think. Returns false.
+ */
+function sailFailed(state: GameState, u: Unit): boolean {
+  u.retryTick = state.tick + NAVY_REACH.sailRetry * TICKS_PER_SECOND;
+  return false;
+}
+
 /** Back to the post (Unit.cargo): state 1 (on arrival it patrols there again). */
 function backToPost(state: GameState, u: Unit): void {
   u.station = undefined;
-  if (sail(state, u, u.cargo, 4 * WARSHIP_LEASH)) {
+  if (sail(state, u, u.cargo)) {
     u.state = 1;
     return;
   }
@@ -658,15 +693,170 @@ function stationWaterFor(state: GameState, from: number, coast: number): number 
   return -1;
 }
 
-/** Takes up station off `tile` (a coast or port tile): state 3. False when no water there can be reached. */
-function goStation(state: GameState, u: Unit, tile: number, maxLen: number): boolean {
+/**
+ * Takes up station off `tile` (a coast or port tile): state 3. False when no water there can be reached. `roam`
+ * ('auto'): the ship's post (Unit.cargo) moves there too, so it intercepts and patrols around its new spot.
+ */
+function goStation(state: GameState, u: Unit, tile: number, roam = false): boolean {
   const water = stationWater(state, u, tile);
-  if (water < 0 || !sail(state, u, water, maxLen)) return false;
+  if (water < 0 || !sail(state, u, water)) return sailFailed(state, u);
   u.state = 3;
   u.station = tile;
   u.chase = 0;
   u.chaseLost = 0;
+  if (roam) u.cargo = water;
   return true;
+}
+
+/** Off station: patrols right where it is (its post moves here). */
+function settle(state: GameState, u: Unit): void {
+  u.state = 0;
+  u.station = undefined;
+  u.path = [];
+  u.pathPos = 0;
+  u.cargo = shipTile(state, u);
+}
+
+/**
+ * Best enemy coast tile anywhere in u's sea, of `nations` (at war with u's owner): nearest `anchor` (-1 = the ship),
+ * next to our land first (fronts), away from tiles other own ships are stationed off (they spread along the coast).
+ * Looks at up to NAVY_REACH.roamSamples coast tiles per nation (a stride through its coast list). -1 = none.
+ */
+function roamCoast(state: GameState, u: Unit, nations: readonly number[], anchor: number): number {
+  const map = state.map;
+  const { width: w, height: h, owner } = map;
+  const comp = waterComponents(map);
+  const sea = comp[shipTile(state, u)];
+  if (!sea) return -1;
+  const me = u.owner;
+  const ax = anchor >= 0 ? anchor % w : u.x;
+  const ay = anchor >= 0 ? (anchor / w) | 0 : u.y;
+  const taken: number[] = [];
+  for (const s of state.units) {
+    if (s !== u && s.type === 'warship' && s.owner === me && s.hp > 0 && s.state === 3 && s.station !== undefined) taken.push(s.station);
+  }
+  const cr2 = NAVY_REACH.crowdRadius * NAVY_REACH.crowdRadius;
+  let best = -1;
+  let bestScore = Infinity;
+  for (const n of nations) {
+    if (!hostile(state, me, n)) continue;
+    const list = ownedTilesOf(state, n, 'coast');
+    if (!list.length) continue;
+    const step = Math.max(1, Math.ceil(list.length / NAVY_REACH.roamSamples));
+    for (let k = u.id % step; k < list.length; k += step) {
+      const t = list[k];
+      if (owner[t] !== n) continue;
+      const x = t % w;
+      const y = (t / w) | 0;
+      if (!((x > 0 && comp[t - 1] === sea) || (x < w - 1 && comp[t + 1] === sea) || (y > 0 && comp[t - w] === sea) || (y < h - 1 && comp[t + w] === sea))) continue;
+      let score = Math.sqrt(d2(x, y, ax, ay));
+      if ((x > 2 && owner[t - 3] === me) || (x < w - 3 && owner[t + 3] === me) || (y > 2 && owner[t - 3 * w] === me) || (y < h - 3 && owner[t + 3 * w] === me)) score -= 40;
+      for (const q of taken) if (d2(q % w, (q / w) | 0, x, y) <= cr2) score += NAVY_REACH.crowdPenalty;
+      if (score < bestScore || (score === bestScore && t < best)) {
+        best = t;
+        bestScore = score;
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Enemy coast for u to shell: the nation it aims at first (`aim`; a following ship: nearest the owner's main front
+ * against it, anywhere in the sea; else near the ship, then anywhere in the sea); with `only` nothing else; else any
+ * nation at war, near the ship first, then anywhere in the sea. -1 = none.
+ */
+function findCoast(state: GameState, u: Unit, aim: number, only: boolean): number {
+  const foes = foesOf(state, u.owner);
+  if (!foes.length) return -1;
+  if (aim > 0 && foes.includes(aim)) {
+    const front = unitFollows(state, u) ? mainFront(state, u.owner, aim) : -1;
+    const t = front >= 0 ? roamCoast(state, u, [aim], front) : nearOrRoam(state, u, [aim], aim);
+    if (t >= 0) return t;
+  }
+  if (only) return -1;
+  return nearOrRoam(state, u, foes, 0);
+}
+function nearOrRoam(state: GameState, u: Unit, nations: readonly number[], aim: number): number {
+  const t = pickCoast(state, u, u.x, u.y, NAVY_STATION_SEEK, aim, aim > 0);
+  return t >= 0 ? t : roamCoast(state, u, nations, -1);
+}
+
+/** True when an own finished Port is within 8 tiles of u (where it mends). */
+function portNear(state: GameState, u: Unit): boolean {
+  const w = state.map.width;
+  for (const b of buildingsOf(state, u.owner, 'port')) {
+    if (b.owner !== u.owner || b.buildLeft > 0) continue;
+    if (d2(b.tile % w, (b.tile / w) | 0, u.x, u.y) <= 64) return true;
+  }
+  return false;
+}
+
+/**
+ * Follow my war: an 'auto' ship on station off its war target's coast far (over 2 x NAVY_SUPPORT_RANGE) from the
+ * main front moves to the coast nearest it when that is clearly nearer (the war moved along the coast).
+ */
+function followMainFront(state: GameState, u: Unit, aim: number): void {
+  const front = mainFront(state, u.owner, aim);
+  if (front < 0 || u.station === undefined) return;
+  const w = state.map.width;
+  const fx = front % w;
+  const fy = (front / w) | 0;
+  const far = 2 * NAVY_SUPPORT_RANGE;
+  const now = d2(u.station % w, (u.station / w) | 0, fx, fy);
+  if (now <= far * far) return;
+  const t = roamCoast(state, u, [aim], front);
+  if (t < 0 || t === u.station) return;
+  const better = Math.sqrt(d2(t % w, (t / w) | 0, fx, fy));
+  if (better + NAVY_SUPPORT_RANGE < Math.sqrt(now)) goStation(state, u, t, true);
+}
+
+/** The own finished Port nearest u that touches its sea (tile), or -1. */
+function repairPort(state: GameState, u: Unit): number {
+  const w = state.map.width;
+  const from = shipTile(state, u);
+  let best = -1;
+  let bestD = Infinity;
+  for (const b of buildingsOf(state, u.owner, 'port')) {
+    if (b.owner !== u.owner || b.buildLeft > 0 || !sameWater(state.map, from, b.tile)) continue;
+    const d = d2(b.tile % w, (b.tile / w) | 0, u.x, u.y);
+    if (d < bestD || (d === bestD && b.tile < best)) {
+      bestD = d;
+      best = b.tile;
+    }
+  }
+  return best;
+}
+
+/** Sends a damaged roaming ship to the nearest own finished Port of its sea (state 1; it mends there). False = none. */
+function goRepair(state: GameState, u: Unit): boolean {
+  const best = repairPort(state, u);
+  if (best < 0) return false;
+  const from = shipTile(state, u);
+  const water = stationWaterFor(state, from, best);
+  if (water < 0 || !sail(state, u, water)) return sailFailed(state, u);
+  u.state = 1;
+  u.station = undefined;
+  u.chase = 0;
+  u.chaseLost = 0;
+  return true;
+}
+
+/** True while a damaged 'auto' / 'hunt' ship sits at an own Port mending (units.ts: it doesn't wander off). */
+export function mendingInPort(state: GameState, u: Unit): boolean {
+  const st = warshipStance(u);
+  return (st === 'auto' || st === 'hunt') && u.hp < warshipMaxHp(u) - 1e-9 && portNear(state, u);
+}
+
+/**
+ * True when roaming ship u should mend now: damaged and at an own Port, or badly damaged with an own Port on its sea
+ * to sail to (without one it fights on).
+ */
+function mending(state: GameState, u: Unit): boolean {
+  const max = warshipMaxHp(u);
+  if (u.hp >= max - 1e-9) return false;
+  if (portNear(state, u)) return true;
+  return u.hp < NAVY_REACH.repairBelow * max && repairPort(state, u) >= 0;
 }
 
 function escortsOf(state: GameState, id: number): number {
@@ -740,25 +930,54 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
     }
     return;
   }
+  const roams = st === 'auto' || st === 'hunt';
   if (st === 'auto' || st === 'hunt' || st === 'hold') {
-    const hunt = st === 'hunt';
-    interceptStep(state, u, ships, wars, (hunt ? NAVY_HUNT_DETECT : WARSHIP_DETECT_RANGE) * navalDetectMul(u), hunt ? NAVY_HUNT_LEASH : WARSHIP_LEASH);
+    if (roams && u.hp < warshipMaxHp(u) - 1e-9 && (state.tick + u.id) % WARSHIP_SCAN_TICKS === 0 && mending(state, u)) {
+      // Badly damaged (or mending at a Port): no chases; the think below sends it to a Port.
+      if (u.state === 2) {
+        u.state = 0;
+        u.chase = 0;
+        u.chaseLost = 0;
+        u.path = [];
+        u.pathPos = 0;
+      }
+    } else {
+      const hunt = st === 'hunt';
+      interceptStep(state, u, ships, wars, (hunt ? NAVY_HUNT_DETECT : WARSHIP_DETECT_RANGE) * navalDetectMul(u), WARSHIP_LEASH, hunt);
+    }
     if (u.state === 1 || u.state === 2) return;
   }
   if ((state.tick + u.id * 3) % NAVY_THINK_TICKS !== 0) return;
   repairAtPort(state, u);
   if (u.state === 1 || u.state === 2) return; // under orders / chasing
-  const w = state.map.width;
+  // Roaming ships mend at a Port of their sea: badly damaged ones sail there, damaged ones there stay until whole.
+  if (roams && mending(state, u)) {
+    if (portNear(state, u)) {
+      if (u.state === 3) settle(state, u);
+      return;
+    }
+    if ((u.retryTick ?? 0) <= state.tick && goRepair(state, u)) return;
+  }
   // Follow my war / Fixed (warTarget.ts): the nation it aims at (0 = any war), and whether only that one counts.
   if (u.fixed && !state.players[u.fixed]?.alive) delete u.fixed; // the pinned nation is gone: back to Follow
   const aim = shipWarTarget(state, u);
   const only = !!u.fixed && u.fixed > 0;
   const owners = state.map.owner;
   // On station off another nation than the aim: look for the aim's coast every FOLLOW_RECHECK_THINKS thinks.
-  const recheck = aim > 0 && u.state === 3 && u.station !== undefined && owners[u.station] !== aim && (((state.tick + u.id * 3) / NAVY_THINK_TICKS) | 0) % FOLLOW_RECHECK_THINKS === 0;
+  const due = (((state.tick + u.id * 3) / NAVY_THINK_TICKS) | 0) % FOLLOW_RECHECK_THINKS === 0;
+  const recheck = aim > 0 && u.state === 3 && u.station !== undefined && owners[u.station] !== aim && due && (u.retryTick ?? 0) <= state.tick;
   const keep = (valid: boolean): boolean => valid && (!only || owners[u.station!] === aim);
+  // A ship whose last coast search found nothing waits NAVY_REACH.retrySeconds before the next one.
+  const waiting = (u.retryTick ?? 0) > state.tick;
+  const search = (): number => {
+    if (waiting) return -1;
+    const t = findCoast(state, u, aim, only);
+    if (t < 0 && foesOf(state, u.owner).length) u.retryTick = state.tick + NAVY_REACH.retrySeconds * TICKS_PER_SECOND;
+    return t;
+  };
   switch (st) {
     case 'hunt':
+      if (u.state === 3) settle(state, u); // left over from another stance
       return;
     case 'hold':
       if (u.state === 3) backToPost(state, u); // left over from another stance
@@ -766,54 +985,54 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
     case 'auto': {
       if (u.state === 3) {
         if (u.station !== undefined && keep(validBombard(state, u, u.station))) {
-          if (!recheck) return;
-          const t = pickCoast(state, u, u.cargo % w, (u.cargo / w) | 0, NAVY_AUTO_BOMBARD_REACH, aim, true);
-          if (t >= 0) goStation(state, u, t, 4 * NAVY_AUTO_BOMBARD_REACH);
+          if (recheck) {
+            const t = findCoast(state, u, aim, true);
+            if (t >= 0 && t !== u.station) goStation(state, u, t, true);
+          } else if (due && aim > 0 && (u.retryTick ?? 0) <= state.tick && unitFollows(state, u)) followMainFront(state, u, aim);
           return;
         }
-        // The coast fell or the war ended: another spot near the post, else home.
-        const next = pickCoast(state, u, u.cargo % w, (u.cargo / w) | 0, NAVY_AUTO_BOMBARD_REACH, aim, only);
-        if (next < 0 || !goStation(state, u, next, 4 * NAVY_AUTO_BOMBARD_REACH)) backToPost(state, u);
+        // The coast fell or the war ended: other enemy coast in our sea, else patrol right here.
+        const next = search();
+        if (next < 0 || !goStation(state, u, next, true)) settle(state, u);
         return;
       }
-      // Patrolling with nothing to chase: shell enemy coast near the post (fronts first) while at war.
-      if (!wars.size) return;
-      const t = pickCoast(state, u, u.cargo % w, (u.cargo / w) | 0, NAVY_AUTO_BOMBARD_REACH, aim, only);
-      if (t >= 0) goStation(state, u, t, 4 * NAVY_AUTO_BOMBARD_REACH);
+      // Patrolling with nothing to chase: at war, take up station off enemy coast anywhere in our sea and shell it.
+      const t = search();
+      if (t >= 0) goStation(state, u, t, true);
       return;
     }
     case 'bombard': {
       if (u.state === 3 && u.station !== undefined && keep(validBombard(state, u, u.station))) {
         if (!recheck) return;
-        const t = pickCoast(state, u, u.x, u.y, NAVY_STATION_SEEK, aim, true);
-        if (t >= 0) goStation(state, u, t, 4 * NAVY_STATION_SEEK);
+        const t = findCoast(state, u, aim, true);
+        if (t >= 0 && t !== u.station) goStation(state, u, t);
         return;
       }
-      const t = pickCoast(state, u, u.x, u.y, NAVY_STATION_SEEK, aim, only);
-      if (t >= 0 && goStation(state, u, t, 4 * NAVY_STATION_SEEK)) return;
+      const t = search();
+      if (t >= 0 && goStation(state, u, t)) return;
       if (u.state === 3) backToPost(state, u);
       return;
     }
     case 'blockade': {
       if (u.state === 3 && u.station !== undefined && keep(validBlockade(state, u, u.station))) {
         if (!recheck) return;
-        const t = pickPort(state, u, NAVY_STATION_SEEK, aim, true);
-        if (t >= 0) goStation(state, u, t, 4 * NAVY_STATION_SEEK);
+        const t = pickPort(state, u, Infinity, aim, true);
+        if (t >= 0 && t !== u.station) goStation(state, u, t);
         return;
       }
-      // The aim's ports first, then its coast; other wars only when it has neither in reach.
-      const t = pickPort(state, u, NAVY_STATION_SEEK, aim, only);
+      // The aim's ports first, then its coast; other wars only when it has neither in our sea.
+      const t = pickPort(state, u, Infinity, aim, only);
       const tOn = t >= 0 && (aim <= 0 || owners[t] === aim);
-      if (tOn && goStation(state, u, t, 4 * NAVY_STATION_SEEK)) return;
+      if (tOn && goStation(state, u, t)) return;
       // No enemy port in reach: shell its coast meanwhile.
       const onCoast = u.state === 3 && u.station !== undefined && keep(validBombard(state, u, u.station));
       if (onCoast && (aim <= 0 || owners[u.station!] === aim || !recheck)) return;
-      const c = pickCoast(state, u, u.x, u.y, NAVY_STATION_SEEK, aim, only);
+      const c = search();
       const cOn = c >= 0 && (aim <= 0 || owners[c] === aim);
-      if (cOn && goStation(state, u, c, 4 * NAVY_STATION_SEEK)) return;
+      if (cOn && goStation(state, u, c)) return;
       if (onCoast) return;
-      if (!tOn && t >= 0 && goStation(state, u, t, 4 * NAVY_STATION_SEEK)) return;
-      if (!cOn && c >= 0 && goStation(state, u, c, 4 * NAVY_STATION_SEEK)) return;
+      if (!tOn && t >= 0 && goStation(state, u, t)) return;
+      if (!cOn && c >= 0 && goStation(state, u, c)) return;
       if (u.state === 3) backToPost(state, u);
       return;
     }
@@ -850,8 +1069,8 @@ function repairAtPort(state: GameState, u: Unit): void {
 /**
  * AI nations (ai.updateAI on their decision ticks, through applyAction): give the fleet jobs. At war with a coastal
  * enemy: roles by ship id order: blockade the enemy's ports, bombard its coast near our fronts, the rest 'auto'
- * (they hunt and shell near their posts); admirals also hunt. Transports at sea get escorts. At peace: all 'auto'.
- * Idle 'auto' ships far from any war move their post toward the main enemy's coast.
+ * (they intercept and roam to enemy coast anywhere in their sea); admirals also hunt. Transports at sea get escorts.
+ * At peace: all 'auto'.
  */
 export function aiNavy(state: GameState, id: number, act: (a: Action) => ActionResult): void {
   const p = state.players[id];
@@ -934,17 +1153,7 @@ export function aiNavy(state: GameState, id: number, act: (a: Action) => ActionR
   for (const [s, ids] of want) {
     for (let i = 0; i < ids.length; i += MAX_GROUP_UNITS) act({ type: 'setUnitStance', unitIds: ids.slice(i, i + MAX_GROUP_UNITS), stance: s });
   }
-  // Auto ships patrolling far from the enemy: move the post toward its nearest coast (they then shell / hunt there).
-  if (!foe) return;
-  const w = state.map.width;
-  for (const u of rest) {
-    if (warshipStance(u) !== 'auto' || u.state !== 0) continue;
-    const t = pickCoast(state, u, u.x, u.y, NAVY_STATION_SEEK);
-    if (t < 0) continue;
-    if (d2(t % w, (t / w) | 0, u.cargo % w, (u.cargo / w) | 0) <= NAVY_AUTO_BOMBARD_REACH * NAVY_AUTO_BOMBARD_REACH * 0.5) continue;
-    const water = stationWater(state, u, t);
-    if (water >= 0 && act({ type: 'moveWarship', unitId: u.id, tile: water }).ok) return; // one per decision
-  }
+  // 'auto' ships at war find enemy coast anywhere in their sea by themselves (warshipThink): no post moves needed.
 }
 
 /** Ticks a warship order takes at the port on `site` (navy.orderWarship): faster at higher port levels. */

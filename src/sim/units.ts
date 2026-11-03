@@ -69,6 +69,7 @@ import {
   DOCTRINE_PERKS,
   WARSHIP_DAMAGE_PER_S,
   WARSHIP_RANGE,
+  WARSHIP_SHELL_RANGE,
   TECHS,
 } from './config';
 import { areAllied, canTrade, changeOpinion } from './diplomacy';
@@ -90,7 +91,7 @@ import {
   techTradeGoldMul,
 } from './techtree';
 import { chaseTargetInRange } from './navy';
-import { blockadeTradeMul, warSet, onShipKilled, shellingMul, shipDamageMul, warshipSpeedMul, warshipThink } from './naval2';
+import { blockadeTradeMul, warSet, onShipKilled, shellingMul, shipDamageMul, mendingInPort, warshipSpeedMul, warshipThink } from './naval2';
 import { bombDivisions } from './tanks';
 import { airParadropMul, airWingRange, escortAbsorbs, escortCargo, interceptBySuperiority } from './airwings';
 import { bomberArrived } from './airstrike';
@@ -524,6 +525,10 @@ export function moveWarship(state: GameState, playerId: number, unitId: number, 
 function wander(state: GameState, u: Unit): void {
   const map = state.map;
   const w = map.width;
+  // Far from its post (a chase or a station trip cut short): it patrols where it is (its post moves here); a route
+  // back within the patrol search would only fail, at a cost, every time.
+  const here = shipTile(state, u);
+  if (d2Tiles(state, here, u.cargo) > 4 * WARSHIP_PATROL_RADIUS * WARSHIP_PATROL_RADIUS) u.cargo = here;
   const cx = u.cargo % w;
   const cy = (u.cargo / w) | 0;
   const r = WARSHIP_PATROL_RADIUS;
@@ -579,7 +584,7 @@ function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<numbe
     if (u.state === 1) {
       u.state = 0;
       u.cargo = shipTile(state, u);
-    } else if (u.state === 0 && state.rng() < WARSHIP_WANDER_CHANCE) {
+    } else if (u.state === 0 && !mendingInPort(state, u) && state.rng() < WARSHIP_WANDER_CHANCE) {
       wander(state, u);
     }
   }
@@ -628,7 +633,7 @@ function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<numbe
   const w = map.width;
   let bestTile = -1;
   let bestDist = Infinity;
-  forEachInRadius(map, unitTile(state, u), (WARSHIP_RANGE / 2) * navalShellRangeMul(state, u), (i, d) => { // battleships reach further
+  forEachInRadius(map, unitTile(state, u), WARSHIP_SHELL_RANGE * navalShellRangeMul(state, u), (i, d) => { // battleships reach further
     if (d >= bestDist || !map.coastal[i]) return;
     const o = map.owner[i];
     if (o === 0 || o === u.owner || !wars.has(u.owner * 1024 + o) || areAllied(state, u.owner, o)) return;

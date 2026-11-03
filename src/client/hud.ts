@@ -702,7 +702,7 @@ export class Hud {
       if (m.kind === 'build') chip = `Build ${BUILDINGS[m.building].name}: click your land. Esc to cancel.`;
       else if (m.kind === 'transport') chip = 'Transport: click a coast to land on. Esc to cancel.';
       else if (m.kind === 'moveWarship') chip = 'Warship selected: click water to move it. Esc to cancel.';
-      else if (m.kind === 'spawnWarship') chip = `${m.variant ? VARIANT_NAMES[m.variant] : 'Warship'}: click water near your port (shaded) where it should appear. Esc to cancel.`;
+      else if (m.kind === 'spawnWarship') chip = `${m.variant ? VARIANT_NAMES[m.variant] : 'Warship'}: click any water your ports reach (shaded) where it should appear. Esc to cancel.`;
       else if (m.kind === 'recon') chip = reconHint();
       else if (m.kind === 'buildTankDivision') chip = 'Tank division: click one of your factories. Esc to cancel.';
       else if (m.kind === 'adminTile') chip = m.label;

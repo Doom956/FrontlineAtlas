@@ -11,8 +11,10 @@
 //   it, launches spearheads into the weakest spot within ARMOR_SUPPORT_RADIUS when ready, lines that cut the enemy's
 //   land first; drives back to refit at a Factory when worn down), refit (to the nearest Factory, refit, then hold).
 // - Follow my war (warTarget.ts): a player's division put on support without a front picked follows the main front
-//   against the owner's war target (Unit.station moves with it); with no war target it holds where it is. A picked
-//   front makes it Fixed (Unit.fixed = 1) until the player picks Follow again. AI divisions always get a front.
+//   against the owner's war target (Unit.station moves with it; it jumps there by rail, a route search of
+//   TANK_MOBILITY.jumpBudget for a far front); with no war target it holds where it is. A picked front makes it Fixed
+//   (Unit.fixed = 1) until the player picks Follow again. AI divisions always get a front: the foe's border tile
+//   nearest the focus of the biggest attack between them (their main front).
 // Deterministic: no RNG; per-division work staggered by id; fixed tie-breaks.
 import { buildingsOf } from './buildings';
 import { annexTiles, frontTiles } from './combat';
@@ -37,6 +39,7 @@ import {
   ARMOR_VET_SPEED,
   ARMOR_VET_XP,
   TANK_DIVISION_TROOPS,
+  TANK_MOBILITY,
   TANK_PER_FACTORY_LEVEL,
   TANK_SPEARHEAD_WIDTH,
   TICKS_PER_SECOND,
@@ -292,10 +295,15 @@ function refit(state: GameState, u: Unit): void {
 
 function driveTo(state: GameState, u: Unit, dest: number, auto = false): boolean {
   if (auto && (u.retryTick ?? 0) > state.tick) return false;
-  // Automatic drives search less and wait ARMOR_RETRY_SECONDS after a failed route (an unreachable front / Factory).
-  const path = ownLandPath(state, u.owner, unitTile(state, u), dest, auto ? ARMOR_AUTO_PATH_BUDGET : undefined);
+  // Automatic drives search less (a jump to a far front: TANK_MOBILITY.jumpBudget) and wait ARMOR_RETRY_SECONDS after
+  // a failed route (an unreachable front / Factory).
+  const w = state.map.width;
+  const farR = ARMOR_SUPPORT_RADIUS + 12;
+  const far = d2(u.x, u.y, dest % w, (dest / w) | 0) > farR * farR;
+  const path = ownLandPath(state, u.owner, unitTile(state, u), dest, auto ? (far ? TANK_MOBILITY.jumpBudget : ARMOR_AUTO_PATH_BUDGET) : undefined);
   if (!path) {
-    if (auto) u.retryTick = state.tick + ARMOR_RETRY_SECONDS * TICKS_PER_SECOND;
+    // A failed far jump (the bigger search) waits TANK_MOBILITY.jumpRetry times as long.
+    if (auto) u.retryTick = state.tick + ARMOR_RETRY_SECONDS * (far ? TANK_MOBILITY.jumpRetry : 1) * TICKS_PER_SECOND;
     return false;
   }
   u.retryTick = undefined;
@@ -555,12 +563,27 @@ export function aiDivisionModes(state: GameState, id: number, act: (a: Action) =
     if (ids.length) act({ type: 'setDivisionMode', unitIds: ids, mode: 'hold' });
     return;
   }
-  // Front tile: the foe's border tile nearest the first division (a sample of the shared border).
+  // Front tile: the main front, the foe's border tile nearest the focus of the biggest attack between us (either way;
+  // ties: lower id); without one, nearest the first division.
+  let focus = -1;
+  let focusTroops = 0;
+  let focusId = Infinity;
+  for (const a of state.attacks) {
+    if (!((a.attacker === id && a.target === foe) || (a.attacker === foe && a.target === id))) continue;
+    const tr = total(a.troops);
+    if (tr > focusTroops || (tr === focusTroops && a.id < focusId)) {
+      focus = a.focusTile;
+      focusTroops = tr;
+      focusId = a.id;
+    }
+  }
   const lead = mine[0];
+  const ax = focus >= 0 ? focus % w : lead.x;
+  const ay = focus >= 0 ? (focus / w) | 0 : lead.y;
   let front = -1;
   let bestD = Infinity;
-  for (const t of frontTiles(state, id, foe, 64)) {
-    const d = d2(t % w, (t / w) | 0, lead.x, lead.y);
+  for (const t of frontTiles(state, id, foe)) {
+    const d = d2(t % w, (t / w) | 0, ax, ay);
     if (d < bestD || (d === bestD && t < front)) {
       bestD = d;
       front = t;
@@ -571,8 +594,8 @@ export function aiDivisionModes(state: GameState, id: number, act: (a: Action) =
     if (divisionMode(u) !== 'support' || u.station === undefined) return true;
     const st = u.station;
     const o = owner[st];
-    // Still a foe's tile, or our own near the front (the front moved on): keep it.
-    if (o === foe) return false;
+    // A foe's tile or our own (the front moved on) near the main front: keep it; elsewhere they jump to it.
+    if (o !== foe && o !== id) return true;
     return d2(st % w, (st / w) | 0, front % w, (front / w) | 0) > 40 * 40;
   });
   if (stale.length) act({ type: 'setDivisionMode', unitIds: stale.map((u) => u.id), mode: 'support', front });

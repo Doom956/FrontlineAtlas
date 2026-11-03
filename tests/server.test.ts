@@ -182,7 +182,7 @@ describe('protocol helpers', () => {
   });
 
   it('refuses a Supply Depot (removed in protocol 12)', () => {
-    expect(PROTOCOL_VERSION).toBe(14);
+    expect(PROTOCOL_VERSION).toBe(15);
     expect(validateAction({ type: 'build', building: 'supplyDepot', tile: 9 }).ok).toBe(false);
     expect(validateAction({ type: 'buildMany', building: 'supplyDepot', tile: 9, count: 2 }).ok).toBe(false);
     expect(validateAction({ type: 'upgradeArea', tile: 9, radius: 5, building: 'supplyDepot', levels: 1 }).ok).toBe(false);
@@ -190,7 +190,7 @@ describe('protocol helpers', () => {
   });
 
   it('validates the ally requests and setPause (protocol 6)', () => {
-    expect(PROTOCOL_VERSION).toBe(14);
+    expect(PROTOCOL_VERSION).toBe(15);
     expect(validateAction({ type: 'requestAllyAttack', ally: 3, target: 5, junk: 1 })).toEqual({ ok: true, value: { type: 'requestAllyAttack', ally: 3, target: 5 } });
     expect(validateAction({ type: 'requestAllyAid', ally: 3 })).toEqual({ ok: true, value: { type: 'requestAllyAid', ally: 3 } });
     for (const a of [

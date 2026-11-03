@@ -2,11 +2,11 @@
 import { describe, expect, it } from 'vitest';
 import { applyAction } from '../src/sim/actions';
 import { markBuildingsChanged } from '../src/sim/buildings';
-import { UNITS, WARSHIP_BUILD_SECONDS, WARSHIP_LEASH, WARSHIP_SPAWN_RANGE, TICKS_PER_SECOND } from '../src/sim/config';
+import { UNITS, WARSHIP_BUILD_SECONDS, WARSHIP_LEASH, TICKS_PER_SECOND } from '../src/sim/config';
 import { formAlliance } from '../src/sim/diplomacy';
 import { hashState } from '../src/sim/hash';
 import { computeCoastAndLand } from '../src/sim/mapgen';
-import { formationTiles, updateNavyQueue, warshipSpawnPort } from '../src/sim/navy';
+import { formationTiles, updateNavyQueue, warshipSpawnable, warshipSpawnPort, warshipSpawnSeas } from '../src/sim/navy';
 import { newId } from '../src/sim/state';
 import { spawnWarshipAt, updateUnits } from '../src/sim/units';
 import { Terrain, isWater } from '../src/sim/types';
@@ -55,12 +55,11 @@ function runUntil(s: GameState, pred: () => boolean, max = 3000): number {
 const ships = (s: GameState, owner?: number): Unit[] => s.units.filter((u) => u.type === 'warship' && u.hp > 0 && (owner === undefined || u.owner === owner));
 
 describe('warship spawn where you click', () => {
-  it('needs water reachable from an own port within WARSHIP_SPAWN_RANGE; appears after the build time', () => {
+  it('needs water of a sea an own port touches (any distance); appears after the build time', () => {
     const s = seaGame();
     const port = addBuilding(s, 'port', 1, at(s, 19, 20));
     const order = (tile: number, p = port.tile) => applyAction(s, 1, { type: 'buildWarship', port: p, tile });
     expect(order(at(s, 10, 20)).reason).toMatch(/water/);
-    expect(order(at(s, 19 + WARSHIP_SPAWN_RANGE + 5, 20)).reason).toMatch(/Too far/);
     expect(order(at(s, 6, 6)).reason).toMatch(/reached by sea/); // the lake
     expect(applyAction(s, 2, { type: 'buildWarship', port: port.tile, tile: at(s, 30, 20) }).reason).toMatch(/Port of yours/);
     const gold = s.players[1].gold;
@@ -77,6 +76,36 @@ describe('warship spawn where you click', () => {
     expect(at(s, Math.round(w.x), Math.round(w.y))).toBe(target);
     expect(w.cargo).toBe(target);
     expect(s.events.some((e) => e.kind === 'warshipReady' && e.players.includes(1))).toBe(true);
+  });
+
+  it('anywhere in that sea, far from the port, but not on a lake or another ocean', () => {
+    const s = seaGame();
+    // A second ocean the port doesn't touch: a strip of land splits the sea at x 70 (rows 0..39).
+    for (let y = 0; y < 40; y++) s.map.terrain[at(s, 70, y)] = Terrain.Plains;
+    computeCoastAndLand(s.map);
+    expect(warshipSpawnSeas(s, 1).size).toBe(0);
+    expect(warshipSpawnable(s, 1, at(s, 30, 20))).toBe(false); // no port yet
+    const port = addBuilding(s, 'port', 1, at(s, 19, 20));
+    expect(warshipSpawnSeas(s, 1).size).toBe(1);
+    const far = at(s, 69, 39); // 50+ tiles from the port, same sea
+    expect(warshipSpawnable(s, 1, far)).toBe(true);
+    expect(warshipSpawnable(s, 1, at(s, 90, 20))).toBe(false); // the other ocean
+    expect(warshipSpawnable(s, 1, at(s, 6, 6))).toBe(false); // the lake
+    expect(applyAction(s, 1, { type: 'buildWarship', port: -1, tile: at(s, 90, 20) }).reason).toMatch(/reached by sea/);
+    expect(applyAction(s, 1, { type: 'buildWarship', port: port.tile, tile: at(s, 6, 6) }).reason).toMatch(/reached by sea/);
+    const gold = s.players[1].gold;
+    expect(applyAction(s, 1, { type: 'buildWarship', port: -1, tile: far }).ok).toBe(true);
+    expect(s.players[1].gold).toBe(gold - UNITS.warship.gold); // same price
+    expect(s.unitQueue?.[0].site).toBe(port.tile);
+    step(s, Math.round(WARSHIP_BUILD_SECONDS * TICKS_PER_SECOND) - 2);
+    expect(ships(s, 1).length).toBe(0); // same build time
+    step(s, 3);
+    const w = ships(s, 1)[0];
+    expect(at(s, Math.round(w.x), Math.round(w.y))).toBe(far);
+    // A port on the lake shore opens the lake too.
+    addBuilding(s, 'port', 1, at(s, 8, 6));
+    expect(warshipSpawnable(s, 1, at(s, 6, 6))).toBe(true);
+    expect(warshipSpawnSeas(s, 1).size).toBe(2);
   });
 
   it('port -1 picks the nearest suitable port; the old form (no tile) still works', () => {
@@ -133,10 +162,10 @@ describe('warship auto-intercept', () => {
     expect(hunter.state).toBe(2);
     // The prey "escapes" far beyond the leash: the hunter returns.
     prey.path = [];
-    prey.x = 21;
+    prey.x = 20;
     prey.y = 38;
-    hunter.cargo = at(s, 118, 2); // post far east: the prey is now > WARSHIP_LEASH from it
-    expect(118 - 21).toBeGreaterThan(WARSHIP_LEASH);
+    hunter.cargo = at(s, 119, 2); // post far east: the prey is now > WARSHIP_LEASH from it
+    expect(Math.hypot(119 - 20, 38 - 2)).toBeGreaterThan(WARSHIP_LEASH);
     runUntil(s, () => hunter.state !== 2, 100);
     expect(hunter.state).toBe(1);
     expect(hunter.chase).toBe(0);
