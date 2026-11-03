@@ -83,6 +83,7 @@ import { troopCap } from './economy';
 import { forEachInRadius } from './grid';
 import { alliancesAllowed as rulesAllowAlliances, atPeace, buildingAllowed, researchRule, unitAllowed } from './rules';
 import { canSpawnAt, gameSeconds, ownerBox, spawnAtFixedPoint } from './state';
+import { mainFront } from './warTarget';
 import { borderTiles, coastCount, depositCount, landComponents, sampleOwnedTiles } from './territory';
 import { canParadrop, paradropMaxTroops, paradropRange, unitCost } from './units';
 import { aiAirDoctrineTaste, aiAirTechs, aiAirWings, aiExtraAirfields, airWingBusy, airWingRange } from './airwings';
@@ -2370,6 +2371,14 @@ function airAndMissiles(ctx: Ctx): void {
     if (fighting.length && af.bombers > 0 && !airWingBusy(state, af)) {
       const t = strikeTarget(ctx, ['fort', 'factory', 'arsenal', 'airfield', 'city', 'barracks'], af.tile, airWingRange(af, state));
       if (t >= 0) applyAction(state, id, { type: 'bomb', airfield: af.tile, tile: t });
+      else {
+        // Nothing worth a raid in reach: a front strike on the main front of the nearest foe in reach instead.
+        const r = airWingRange(af, state);
+        for (const q of fighting) {
+          const f = mainFront(state, id, q);
+          if (f >= 0 && dist2(state.map.width, af.tile, f) <= r * r && applyAction(state, id, { type: 'bomb', airfield: af.tile, tile: f }).ok) break;
+        }
+      }
     }
     if (fighting.length) paradrop(ctx, af.tile, fighting);
   }
