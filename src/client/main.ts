@@ -34,6 +34,7 @@ import { Replayer } from './save/replay';
 import { LoadPage } from './save/saveViews';
 import { loadSeconds, type SaveData } from './save/format';
 import { clearSave, readSave, writeSave } from './save/store';
+import { getUnitGroups, setUnitGroups } from './unitGroups';
 import { GameHistory } from './summary/history';
 import { gameSeconds } from '../sim/state';
 
@@ -69,6 +70,8 @@ interface Session {
   tutorial?: TutorialController;
   /** single player outside the tutorial: the actions for the save (save/recorder.ts) */
   recorder?: GameRecorder;
+  /** the groups (JSON) in the last save written, so a group change alone saves again */
+  savedGroups?: string;
   /** the save was removed because the game ended (a continued game saves again) */
   overCleared?: boolean;
 }
@@ -391,10 +394,16 @@ function autosave(): void {
   }
   s.overCleared = false;
   if (state.tick === 0 && rec.log.length === 0) return;
-  if (!rec.changedSince(state)) return;
+  // groups are UI state, not actions: a renamed or new group is worth saving even while the game is paused
+  const groups = getUnitGroups(s.ui);
+  const groupsText = JSON.stringify(groups);
+  if (!rec.changedSince(state) && groupsText === s.savedGroups) return;
   let result: ReturnType<typeof writeSave>;
   try {
-    result = writeSave(rec.snapshot(state, adminPerf.tickMs, Date.now()));
+    const data = rec.snapshot(state, adminPerf.tickMs, Date.now());
+    data.groups = groups;
+    result = writeSave(data);
+    if (result === 'ok') s.savedGroups = groupsText;
   } catch (err) {
     console.error('Save failed', err);
     result = 'failed';
@@ -546,6 +555,11 @@ async function continueSaved(): Promise<void> {
     // a save loaded anyway starts a fresh list of checks (its old hashes belong to the other version)
     const recorder = new GameRecorder(settings, { log: save.log, checks: matched ? save.checks : [] });
     beginSession(state, settings, { recorder, history });
+    // the player's groups come back as they were (bad data gives none; unit ids match because the replay is exact)
+    if (session) {
+      setUnitGroups(session.ui, save.groups);
+      session.savedGroups = JSON.stringify(getUnitGroups(session.ui));
+    }
     // what happened before the save is history, not news
     session?.hud?.skipEvents(state);
     audio?.skipTo(state);

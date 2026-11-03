@@ -1275,6 +1275,29 @@ canvas.minimap {
 .cl-spd.fast {
   color: var(--brass-hi);
 }
+/* phones: the row can be wider than the screen (up to 14 buttons and the clock), so it never goes past the left
+   edge and its buttons narrow to fit, never under 22px; before this the first drawer buttons (Strike, Forces) sat
+   off the screen */
+@media (max-width: 640px) {
+  .cluster {
+    max-width: calc(100vw - 24px);
+  }
+  .cluster > .cl-group {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .cluster .sq {
+    flex: 0 1 32px;
+    min-width: 22px;
+  }
+  .cluster .sq.txt {
+    flex-basis: 30px;
+  }
+  .cluster .clock {
+    min-width: 46px;
+    padding: 0 6px;
+  }
+}
 .clock {
   display: flex;
   align-items: center;

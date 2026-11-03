@@ -10,6 +10,8 @@ import type { Action, BuildingType, GameSettings, GameState } from '../src/sim/t
 import { checkSave, clockText, loadNote, parseSave, saveBuildId, saveFacts, savedAgo, SAVE_FORMAT, type SaveData } from '../src/client/save/format';
 import { GameRecorder, thinChecks } from '../src/client/save/recorder';
 import { Replayer } from '../src/client/save/replay';
+import { defaultUiState } from '../src/client/uiState';
+import { getUnitGroups, setUnitGroups } from '../src/client/unitGroups';
 import { testSettings } from './helpers';
 
 function settings(): GameSettings {
@@ -236,6 +238,29 @@ describe('save format', () => {
     const noSettings = base() as unknown as Record<string, unknown>;
     delete noSettings.settings;
     expect(checkSave(noSettings).status).toBe('broken');
+  });
+
+  it('keeps the unit groups (bad group data loads no groups, the save still loads)', () => {
+    const ui = defaultUiState();
+    ui.groups.groups.push({ id: 2, name: 'North fleet', ids: [41, 42] });
+    ui.groups.next = 3;
+    const withGroups = base();
+    withGroups.groups = getUnitGroups(ui);
+    const slot = parseSave(JSON.stringify(withGroups));
+    expect(slot?.status).toBe('ok');
+    const back = defaultUiState();
+    setUnitGroups(back, slot?.status === 'ok' ? slot.save.groups : null);
+    expect(back.groups.groups).toEqual([{ id: 2, name: 'North fleet', ids: [41, 42] }]);
+    expect(back.groups.next).toBe(3);
+    // an older save without groups, or damaged group data
+    const none = defaultUiState();
+    setUnitGroups(none, base().groups);
+    expect(none.groups.groups).toEqual([]);
+    const bad = base();
+    bad.groups = 'not groups';
+    expect(checkSave(bad).status).toBe('ok');
+    setUnitGroups(none, bad.groups);
+    expect(none.groups.groups).toEqual([]);
   });
 
   it('a save from another build or format is "old" and keeps its card text', () => {

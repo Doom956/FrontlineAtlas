@@ -47,6 +47,8 @@ export interface SaveData {
   /** in log order; the last one is the state at the save */
   checks: Checkpoint[];
   meta: SaveMeta;
+  /** the player's unit groups (unitGroups.ts, plain JSON); optional, and checked only when it is put back */
+  groups?: unknown;
 }
 
 /** Result of reading a save: usable, from another version (only discard), or unreadable. */

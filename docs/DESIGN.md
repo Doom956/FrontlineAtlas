@@ -949,7 +949,8 @@ full-map scans after `createGame`.
   `airCover` (first auto sortie).
 - Save and continue, single player only (src/client/save/): a save is the game's settings (with the seed), the
   ordered log of the human's actions as `[tick, action]` (the tick = `state.tick` when dispatch applied it) and a few
-  checkpoints `{t, n, h}` = `hashState` after `n` log entries at tick `t`. main.ts records every dispatched action
+  checkpoints `{t, n, h}` = `hashState` after `n` log entries at tick `t`, plus the unit groups (UI only, not
+  hashed). main.ts records every dispatched action
   before applying it (a slider drag's army mix changes in one tick collapse to the last one) and writes the save to
   localStorage (`borderfall.save`, one slot) every 30 s, when the page is hidden or closed and when leaving to the
   menu; a finished game removes it (a continued one saves again). The tutorial and online games never save. Loading
@@ -1026,7 +1027,8 @@ full-map scans after `createGame`.
   + adds the selected units, x deletes it with an Undo for a few seconds. All buttons, no hotkeys. Units that are
   sunk, destroyed or captured drop out; a group with none left stays greyed with "0". At most 12 groups of up to
   MAX_GROUP_UNITS units; a unit can be in several. The groups live in UiState.groups (plain JSON, new per game);
-  getUnitGroups(ui) / setUnitGroups(ui, data) are the hooks for a saved game. Airfields are buildings, not units, so
+  a single-player save stores them (SaveData.groups, optional, read with setUnitGroups after the replay; unit ids
+  match because the replay is exact) and a group change alone saves again. Airfields are buildings, not units, so
   they are not in groups.
 - Pillar controls (client/pillars.ts, hud/ordersBar.ts, hud/airPanel.ts, hud/pillarAdvice.ts,
   render/pillarOverlay.ts): with warships or tank divisions selected, an orders bar above the advisor line holds the
