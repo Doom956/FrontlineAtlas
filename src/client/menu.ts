@@ -7,6 +7,8 @@ import { activeLobby, MultiplayerScreen } from './lobby';
 import type { NetClient } from '../net/client';
 import { tutorialButton } from './tutorial/menuEntry';
 import { iconSpan, lineIcon } from './hud/glyph';
+import { askDialog, saveCard, type LoadPage } from './save/saveViews';
+import { clearSave, readSave } from './save/store';
 import './menu.css';
 
 // DOM helpers live in dom.ts (re-exported here for older imports).
@@ -30,6 +32,8 @@ export interface MenuCallbacks {
   net: () => NetClient;
   /** start the tutorial (a single-player practice game) */
   onTutorial?: () => void;
+  /** load the saved single-player game (save/) */
+  onContinue?: () => void;
 }
 
 /** Title screen with Play (settings) and How to play pages. */
@@ -98,6 +102,20 @@ export class Menu {
     this.prefs.seed = randomSeed();
     return settingsFromPrefs(this.prefs);
   }
+  /** Shows the loading page of a saved game (main.ts fills it in and leaves it). */
+  showLoad(page: LoadPage): void {
+    this.el.classList.remove('hidden');
+    this.setBusy(null);
+    this.reset('load');
+    this.card.append(page.el);
+  }
+  /**
+   * Starts a new single-player game. With a saved game that can still be loaded, asks first: the new game replaces
+   * it (main.ts deletes it when the game starts).
+   */
+  private startNew(settings: GameSettings): void {
+    confirmReplaceSave(this.el, () => this.cb.onStart(settings));
+  }
   /** The settings the setup screen holds now (same seed). */
   currentSettings(): GameSettings {
     return settingsFromPrefs(this.prefs);
@@ -120,18 +138,32 @@ export class Menu {
     head.append(el('h1', 'logo', 'Frontline Atlas'), el('p', 'tagline', 'Push your borders. Outthink every front.'));
     this.card.append(head);
 
+    // a saved single-player game comes first: Continue is then the main action
+    const slot = this.cb.onContinue ? readSave() : null;
+    if (slot && this.cb.onContinue) {
+      const onContinue = this.cb.onContinue;
+      this.card.append(
+        saveCard(slot, {
+          onContinue,
+          remove: () => clearSave(),
+          onDeleted: () => this.showTitle(),
+        }),
+      );
+    }
+    const saved = slot?.status === 'ok';
+
     const lobby = activeLobby();
     if (lobby) {
       const row = el('div', 'menu-rejoin');
       const text = el('span', 'menu-rejoin-text', 'You are in lobby ');
       text.append(el('strong', '', lobby), document.createTextNode('.'));
-      const go = button('Rejoin', 'primary', () => this.openMultiplayer());
+      const go = button('Rejoin', saved ? '' : 'primary', () => this.openMultiplayer());
       go.dataset.test = 'menu-rejoin';
       row.append(text, go);
       this.card.append(row);
     }
 
-    const play = button('', `big menu-play${lobby ? '' : ' primary'}`, () => this.showPlay());
+    const play = button('', `big menu-play${lobby || saved ? '' : ' primary'}`, () => this.showPlay());
     play.dataset.test = 'menu-play';
     play.title = 'A game against AI nations, right here in the browser (no server needed)';
     play.append(el('span', '', 'Play'), el('span', 'menu-play-note', 'Against AI'));
@@ -141,7 +173,7 @@ export class Menu {
       const again = el('div', 'menu-replay');
       const text = el('span', 'menu-replay-text', 'Last setup: ');
       text.append(el('span', 'menu-replay-sum', setupLine(this.prefs.setup)));
-      const go = button('Play again', 'ghost', () => this.cb.onStart(this.replaySettings()));
+      const go = button('Play again', 'ghost', () => this.startNew(this.replaySettings()));
       go.classList.add('mini');
       go.dataset.test = 'menu-replay';
       go.title = 'Start the same setup at once, on a new map seed';
@@ -160,7 +192,7 @@ export class Menu {
     // Enter starts: the main action holds the focus (Rejoin while in a lobby).
     requestAnimationFrame(() => {
       if (!this.visible || !this.card.classList.contains('title')) return;
-      const main = this.card.querySelector<HTMLButtonElement>('.menu-rejoin .btn, .menu-play');
+      const main = this.card.querySelector<HTMLButtonElement>('.menu-save-go, .menu-rejoin .btn, .menu-play');
       main?.focus({ preventScroll: true });
     });
   }
@@ -183,12 +215,36 @@ export class Menu {
     this.reset('setup');
     new SetupScreen(this.card, this.prefs, {
       onBack: () => this.showTitle(),
-      onStart: (settings) => this.cb.onStart(settings),
+      onStart: (settings) => this.startNew(settings),
     });
   }
 }
 
 // ------------------------------------------------------------------------------------------------ start page helpers
+
+/**
+ * Runs `start` at once, or after a yes when a saved game that can still be loaded would be replaced by a new one.
+ * An unreadable or older-version save is replaced without asking (it can't be continued anyway).
+ */
+export function confirmReplaceSave(root: HTMLElement, start: () => void): void {
+  const slot = readSave();
+  if (slot?.status !== 'ok') {
+    start();
+    return;
+  }
+  const { meta } = slot.save;
+  askDialog(
+    root,
+    {
+      title: 'Replace your saved game?',
+      text: `A new game takes the place of your saved game (${meta.map}, ${Math.floor(meta.minutes)} min played). Only one game is kept.`,
+      confirm: 'Start new game',
+      cancel: 'Keep saved game',
+      testId: 'save-replace-yes',
+    },
+    start,
+  );
+}
 
 /** A quiet row on the start page: a label, a chevron on the trailing side. */
 function menuRow(label: string, title: string, onClick: () => void): HTMLButtonElement {

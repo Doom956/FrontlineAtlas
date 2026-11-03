@@ -947,6 +947,26 @@ full-map scans after `createGame`.
   cover: N airfields are bombing this line"; a plane glyph on covered troop pills; an Air holder's idle airfield
   reads "Auto cover". Guide tips `trench` (8 own level-2 border tiles, or an attack into a level-2 front) and
   `airCover` (first auto sortie).
+- Save and continue, single player only (src/client/save/): a save is the game's settings (with the seed), the
+  ordered log of the human's actions as `[tick, action]` (the tick = `state.tick` when dispatch applied it) and a few
+  checkpoints `{t, n, h}` = `hashState` after `n` log entries at tick `t`. main.ts records every dispatched action
+  before applying it (a slider drag's army mix changes in one tick collapse to the last one) and writes the save to
+  localStorage (`borderfall.save`, one slot) every 30 s, when the page is hidden or closed and when leaving to the
+  menu; a finished game removes it (a continued one saves again). The tutorial and online games never save. Loading
+  rebuilds the game with createGame and replays the log (save/replay.ts: before each tick, that tick's actions in
+  order), comparing each checkpoint on the way, in ~90 ms slices with a progress bar and the time left. Why a replay
+  and not a state snapshot: no snapshot serialisation exists (online catch-up also replays turns), GameState has
+  typed arrays, maps and caches that would all need writing and reading back in step with every sim change, and a
+  replay is only right when the sim is deterministic, which lockstep already requires and tests check. The cost is
+  load time: about the game's length times the tick cost (some ms per tick on a medium map), so the start page says
+  "Takes about N min to load" for long games. Versioning: each save carries `SAVE_FORMAT` and `clientBuildId()`
+  (protocol version + balance data); any other value shows the card as "from an older version" with only Delete.
+  Code changes that keep the balance data are caught by the checkpoints: the first different hash stops the load
+  with "This save doesn't match this version" (Load anyway plays the rest without checks; Delete). Storage errors are
+  caught everywhere; a full storage drops the old save and tries again (and puts it back if that fails too); saves
+  over 3 M characters are not written (the player is told once). Start page: the saved-game card above Play (map,
+  minutes played, land share, saved time ago, Continue, Delete with an inline question); starting a new game asks
+  "Replace your saved game?" first.
 - Spawn phase (`SPAWN_SECONDS`): click a land tile to place your capital (else random); click again to move it.
   The `startNow` action ends the phase on the next tick once every human has picked (single player: you).
   `state.playStartTick` records the tick the phase ended; `gameSeconds(state)` (state.ts) counts from it and is the
