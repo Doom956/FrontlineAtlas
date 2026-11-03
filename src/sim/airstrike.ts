@@ -332,6 +332,8 @@ export function bombSalvo(state: GameState, pid: number, airfield: number, tile:
   if (typeof want === 'string') return FAIL(want);
   const p = state.players[pid];
   if (!p || pid === 0 || !p.alive) return FAIL('No such player');
+  const ruledB = unitRule(state, 'bomber');
+  if (ruledB) return FAIL(ruledB);
   const n = state.map.owner.length;
   if (!Number.isInteger(tile) || tile < 0 || tile >= n) return FAIL('Invalid tile');
   if (airfield !== -1 && (!Number.isInteger(airfield) || airfield < 0 || airfield >= n)) return FAIL('Invalid tile');
@@ -384,6 +386,9 @@ export function missileSalvo(state: GameState, pid: number, silo: number, kind: 
   if (typeof want === 'string') return FAIL(want);
   const p = state.players[pid];
   if (!p || pid === 0 || !p.alive) return FAIL('No such player');
+  if (kind !== 'rocket' && kind !== 'atomBomb') return FAIL('Invalid missile');
+  const ruled = kind === 'atomBomb' ? unitRule(state, 'atomBomb') : null;
+  if (ruled) return FAIL(ruled);
   if (silo !== -1 && (!Number.isInteger(silo) || silo < 0 || silo >= state.map.owner.length)) return FAIL('Invalid tile');
   const sites = salvoSilos(state, pid, silo, tile);
   if (!sites.length) {
@@ -480,6 +485,7 @@ export function strikePreview(state: GameState, pid: number, kind: StrikeKind, t
   else why = peaceReason(state, pid, o) ?? '';
   if (!why && kind === 'atomBomb') why = unitRule(state, 'atomBomb') ?? '';
   if (!why && !isBomb && !hasTech(p, UNITS[kind].tech!)) why = `Needs research: ${kind === 'rocket' ? 'Rocketry' : 'Nuclear Fission'}`;
+  if (!why && isBomb) why = unitRule(state, 'bomber') ?? '';
   if (!why && isBomb && !hasTech(p, 'flight')) why = 'Needs research: Flight';
 
   const out = emptyPreview(role0, tile, why);

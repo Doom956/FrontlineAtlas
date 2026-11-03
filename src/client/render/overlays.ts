@@ -14,7 +14,7 @@ import type { Camera } from '../camera';
 import { drawMarker, type BuildingIconId } from '../icons';
 import type { Snap } from '../placement';
 import { FLOATER_MS, type UiState } from '../uiState';
-import { barrageReach, strikeOfMode, strikeTarget, type StrikeTarget } from '../strikes';
+import { barrageReach, fmtR, strikeOfMode, strikeTarget, type StrikeTarget } from '../strikes';
 import { bombReach, bomberRadiusOf } from '../airSim';
 import { bulkPreviews, bulkPreviewText, effectiveCount } from '../hud/buildMenu';
 import { shiftHeld } from '../hud/quickBar';
@@ -696,16 +696,17 @@ export class Overlays {
         }
         if (aim !== hover) dashedLine(ctx, hs.x, hs.y, as.x, as.y, 'rgba(214,170,60,0.9)');
         const r = t?.radius || bomberRadiusOf(state, state.humanId);
-        const what = t && t.count > 1 ? `${t.count} bombers` : 'Bombing run';
-        const role = t?.role === 'support' ? ' · front strike' : t?.role === 'raid' ? ' · raid' : '';
-        this.aimDisc(ctx, cam, as.x, as.y, !!t?.ok, [{ radius: r }], `${what}${role} · radius ${Number.isInteger(r) ? r : r.toFixed(1)} tiles`);
+        const ok = !!t?.ok;
+        const what = ok && t && t.count > 1 ? `${t.count} bombers` : 'Bombing run';
+        const role = !ok ? '' : t?.role === 'support' ? ' · front strike' : t?.role === 'raid' ? ' · raid' : '';
+        this.aimDisc(ctx, cam, as.x, as.y, ok, [{ radius: r }], `${what}${role} · radius ${fmtR(r)} tiles`);
         break;
       }
       case 'missile': {
         const t = this.check(state, ui, hover);
         for (const f of t?.siteTiles.length ? t.siteTiles : t ? [t.from] : []) lineFrom(f, 'rgba(255,255,255,0.6)');
         const ok = !!t?.ok;
-        const many = t && t.count > 1 ? ` x${t.count}` : '';
+        const many = ok && t && t.count > 1 ? ` x${t.count}` : '';
         if (mode.missile === 'atomBomb') {
           this.aimDisc(ctx, cam, hs.x, hs.y, ok, [{ radius: ATOM_RADIUS }, { radius: ATOM_CORE_RADIUS, core: true }], `Atom bomb${many} · core ${ATOM_CORE_RADIUS} · blast ${ATOM_RADIUS} tiles`);
         } else {

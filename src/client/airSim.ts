@@ -47,13 +47,28 @@ export function salvoAction(kind: SalvoKind, from: number, tile: number, size: S
 
 // ------------------------------------------------------------------------------------------------ air wing results
 
+const kText = (v: number): string => (v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e4 ? `${Math.round(v / 1e3)}k` : v >= 1e3 ? `${(v / 1e3).toFixed(1)}k` : `${Math.round(v)}`);
+
 /** The latest raid of an airfield as one line ("Last raid: 3 buildings hit in Vesperia, 2.1k troops · 12 s ago"). */
 export function wingResult(state: GameState, b: Building): { ago: number; line: string } {
-  const r = wingLastResult(state, b.tile);
-  if (!r) return { ago: -1, line: '' };
-  const ago = Math.floor(r.secondsAgo);
+  const x = wingLastResult(state, b.tile);
+  if (!x) return { ago: -1, line: '' };
+  const r = x.result;
+  const ago = Math.floor(x.secondsAgo);
   const agoText = ago < 60 ? `${ago} s ago` : `${Math.floor(ago / 60)} min ago`;
-  return { ago, line: `${r.text} · ${agoText}` };
+  const name = r.victim > 0 ? state.players[r.victim]?.name ?? '' : '';
+  const back = r.saved > 0 ? `${r.saved} bomber${r.saved === 1 ? '' : 's'} came back with ${r.saved === 1 ? 'its' : 'their'} bombs` : '';
+  const parts: string[] = [];
+  if (r.buildings > 0) parts.push(`${r.buildings} building${r.buildings === 1 ? '' : 's'} hit`);
+  if (r.kills >= 1) parts.push(`${kText(r.kills)} troops`);
+  if (r.gold >= 1) parts.push(`${kText(r.gold)} gold burnt`);
+  const flew = r.bombers > 1 ? ` (${r.bombers} bombers)` : '';
+  let line: string;
+  if (r.bombers <= 0 || !parts.length) line = back ? `Last sortie: no enemy land left near the aim, ${back}` : 'Last sortie: nothing hit';
+  else if (r.mission === 1) line = `Support${flew}: hit ${parts.join(', ')} ahead of your push${name ? ` on ${name}` : ''}`;
+  else line = `Last raid${flew}: ${parts.join(', ')}${name ? ` in ${name}` : ''}`;
+  if (r.bombers > 0 && parts.length && back) line += `; ${back}`;
+  return { ago, line: `${line} · ${agoText}` };
 }
 
 // ------------------------------------------------------------------------------------------------ rocket auto-fire
