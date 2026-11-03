@@ -154,7 +154,7 @@ async function buildFirst(page, type, tiles) {
 let exitCode = 0;
 try {
   const port = Number(process.env.E2E_PORT) || 8098; // E2E_PORT: another port when several runs share the machine
-  await startServer(port, { PUBLIC_START_SECONDS: '60' });
+  await startServer(port, { PUBLIC_START_SECONDS: '60', FIXED_SEED: process.env.FIXED_SEED ?? '12' });
   const URL = `http://127.0.0.1:${port}/`;
   const A = await newClient('A', URL);
   const B = await newClient('B', URL);

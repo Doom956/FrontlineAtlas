@@ -294,7 +294,7 @@ const economy = async (pg, k = 0) => {
 
 let exitCode = 0;
 try {
-  await startServer(PORT, { PUBLIC_START_SECONDS: '60' });
+  await startServer(PORT, { PUBLIC_START_SECONDS: '60', FIXED_SEED: process.env.FIXED_SEED ?? '12' });
 
   // ================================================================ game 1: research, Shift-select upgrade
   {

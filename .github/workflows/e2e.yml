@@ -1,6 +1,8 @@
 # Multiplayer end-to-end checks (tests/e2e/mp-pillars and mp-arsenal) on GitHub's runners, one clean machine per
 # test and map seed. Started by pushing a snapshot to an e2e/<label> branch (scripts/remote-e2e.sh). The seeds to try
-# are in .e2e/seeds (one line, space separated). Never runs on main or dev.
+# are in .e2e/seeds (one line, space separated; 0 = a random map). Without FIXED_SEED the tests use map seed 12,
+# which has iron, oil and coast for both scripted players (seeds 12 and 13 passed both tests on 2026-11-03).
+# Never runs on main or dev.
 name: Multiplayer e2e
 
 on:
@@ -46,7 +48,6 @@ jobs:
         env:
           FIXED_SEED: ${{ matrix.seed }}
         run: |
-          [ "$FIXED_SEED" = 0 ] && unset FIXED_SEED
           node tests/e2e/${{ matrix.test }}.e2e.mjs 2>&1 | tee e2e.log
           exit ${PIPESTATUS[0]}
       - if: always()
