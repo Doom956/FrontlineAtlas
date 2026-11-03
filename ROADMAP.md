@@ -287,5 +287,8 @@ favicon-32.png, apple-touch-icon.png (180), icon-192/512, icon-512-maskable.png 
 Atlas", short name "Atlas"); relative links in index.html, so it works at `/` and under `/FrontlineAtlas/`. Remake the
 PNG / ICO files with `node scripts/site-icons.mjs` after changing the SVG. Not checked: the live sites, a phone home screen.
 
+## Queued next (owner, 2026-11-03)
+In order, after ships/tanks, bombers QoL and "auto for everything": (1) Groups strip (no hotkeys: owner wants to avoid relying on hotkeys for new players): in Forces, select units -> "+ New group" -> a button "Fleet 1 · 8 ships", click selects, a target icon centres the camera; (2) clickable alerts for big events (capital under attack, port blockaded, division overrun, nuke incoming) that jump to the spot; (3) save and resume single player (orders log; "Continue" row on the start page). Later: anonymous real-match stats on the server for balance, rematch + quick chat, replays, in-game phone/touch HUD, real-GPU performance check, flaky scripted-player e2e fix.
+
 ## Parked ideas (owner said later / maybe)
 Building limits (city slots, upkeep), rivers and bridges, wonders, game modes (King of the Hill, capital capture, scenarios), quick chat/emotes/rematch, phone layout, making Easy winnable, calmer tribes.
