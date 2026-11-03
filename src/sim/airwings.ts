@@ -586,6 +586,34 @@ function refillWing(state: GameState, wing: AirWing, b: Building): void {
   }
 }
 
+/** True when nation n has a raid target (RAID_WEIGHT) within reach of airfield b (as strategicAims sees it). Pure read. */
+function raidInReach(state: GameState, b: Building, n: number): boolean {
+  const w = state.map.width;
+  const range = airWingRange(b, state);
+  for (const type of Object.keys(RAID_WEIGHT) as BuildingType[]) {
+    for (const t of buildingsOf(state, n, type)) {
+      if (t.buildLeft > 0 || state.map.owner[t.tile] !== n) continue;
+      if (d2(w, b.tile, t.tile) <= range * range || carrierFor(state, b.owner, t.tile)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * A following strategic airfield b: the nation its bombers raid now (as sortie picks it): the war target `foe` when it
+ * has something in reach, else another nation we fight (nations first, lower id); 0 = nothing in reach. Pure read
+ * (the airfield's Auto line).
+ */
+export function followRaidOf(state: GameState, b: Building, foe: number): number {
+  if (foe <= 0 || !state.players[foe]?.alive || !hostile(state, b.owner, foe)) return 0;
+  if (raidInReach(state, b, foe)) return foe;
+  for (const other of liveFoes(state, b.owner)) {
+    if (other === foe || isTribe(state.players[other])) continue;
+    if (raidInReach(state, b, other)) return other;
+  }
+  return 0;
+}
+
 /**
  * Sends one stored bomber of airfield b at `aim` on `mission` (support / strategic / cover; manual strikes pick one by
  * the aim, airstrike.ts). Beyond the airfield's reach it takes off from the nearest own carrier in reach (variants.ts).

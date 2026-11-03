@@ -7,7 +7,7 @@ import { wingOf } from '../src/sim/airwings';
 import { autoFireAll } from '../src/sim/airstrike';
 import { markBuildingsChanged } from '../src/sim/buildings';
 import { frontTiles } from '../src/sim/combat';
-import { TANK_MOBILITY, TICKS_PER_SECOND } from '../src/sim/config';
+import { NAVY_REACH, NAVY_WAR_MEMORY, TANK_MOBILITY, TICKS_PER_SECOND } from '../src/sim/config';
 import { hashState } from '../src/sim/hash';
 import { computeCoastAndLand } from '../src/sim/mapgen';
 import { tick } from '../src/sim/sim';
@@ -15,6 +15,7 @@ import { newId } from '../src/sim/state';
 import { spawnTankDivision } from '../src/sim/tanks';
 import { buildAircraft, spawnWarshipAt } from '../src/sim/units';
 import { followedNation, liveFoes, mainFront, warAim } from '../src/sim/warTarget';
+import { warshipMaxHp } from '../src/sim/naval2';
 import { Terrain } from '../src/sim/types';
 import type { Attack, Building, BuildingType, GameState } from '../src/sim/types';
 import { airAutoLine, siloAutoLine, unitAutoLine } from '../src/client/follow';
@@ -47,9 +48,10 @@ function addBuilding(s: GameState, type: BuildingType, owner: number, tile: numb
   return b;
 }
 /** An attack record of `attacker` on `target` (as the attack action would make, without spending troops). */
-function pushAttack(s: GameState, attacker: number, target: number, focus: number, troops = 20000): void {
-  const a: Attack = { id: 800 + s.attacks.length, attacker, target, troops: { infantry: troops, armor: 0, artillery: 0 }, focusTile: focus, progress: 0, startTick: s.tick, amphibious: false, losses: 0, tilesTaken: 0 };
+function pushAttack(s: GameState, attacker: number, target: number, focus: number, troops = 20000): Attack {
+  const a: Attack = { id: 800 + s.attacks.length + s.tick, attacker, target, troops: { infantry: troops, armor: 0, artillery: 0 }, focusTile: focus, progress: 0, startTick: s.tick, amphibious: false, losses: 0, tilesTaken: 0 };
   s.attacks.push(a);
+  return a;
 }
 /** pid and `other` stay at war (state.warMemory) without an attack running. */
 function longWar(s: GameState, a: number, b: number): void {
@@ -314,6 +316,143 @@ describe('warships weigh the odds', () => {
     }
     expect(back).toBe(true);
     expect(unitAutoLine(s, 1, mine)).toBe('Auto: outnumbered, falling back to port');
+    // It waits a while before it looks for a coast again.
+    expect(mine.retryTick).toBeGreaterThan(s.tick + (NAVY_REACH.regroupSeconds - 3) * SEC);
+  });
+});
+
+describe('review fixes', () => {
+  it('a short poke by another nation between two waves of ours does not take the war target', () => {
+    const s = strip();
+    const u = spawnTankDivision(s, 1, at(s, 60, 20));
+    const wave = pushAttack(s, 1, 3, at(s, 80, 20), 50000);
+    run(s, 5 * SEC);
+    expect(followedNation(s, 1)).toBe(3);
+    s.attacks = s.attacks.filter((a) => a !== wave);
+    run(s, 5 * SEC);
+    expect(followedNation(s, 1)).toBe(3);
+    // Nation 2 pokes us for one tick, then a while later attacks again.
+    const poke = pushAttack(s, 2, 1, at(s, 39, 5), 20000);
+    run(s, 1);
+    s.attacks = s.attacks.filter((a) => a !== poke);
+    for (let k = 0; k < 5 * SEC; k++) {
+      tick(s);
+      expect(followedNation(s, 1)).toBe(3);
+    }
+    expect(u.station! % s.map.width).toBe(80);
+    // Once the war with 3 has gone quiet (no attack either way for NAVY_WAR_MEMORY s), the nation attacking us wins.
+    const wm = s.warMemory!;
+    for (let k = 0; k < wm.length; k += 3) if (wm[k] === 1 && wm[k + 1] === 3) wm[k + 2] = s.tick;
+    pushAttack(s, 2, 1, at(s, 39, 5), 20000);
+    run(s, 2 * SEC + 1);
+    expect(followedNation(s, 1)).toBe(2);
+    expect(NAVY_WAR_MEMORY).toBeGreaterThan(0);
+  });
+
+  it('a division near a front it cannot reach over its land supports a front it can reach', () => {
+    // Own land A x 0..29 and B x 60..89 (the capital's), nation 3 between them, nation 2 east of B.
+    const s = makeFlatGame(120, 40, 3, { human: true, seed: 9 });
+    claimRect(s, 1, 0, 0, 29, 39);
+    claimRect(s, 3, 30, 0, 59, 39);
+    claimRect(s, 1, 60, 0, 89, 39);
+    claimRect(s, 2, 90, 0, 119, 39);
+    s.players[1].capital = at(s, 75, 20);
+    rich(s);
+    longWar(s, 1, 3);
+    const wave = pushAttack(s, 1, 3, at(s, 59, 20), 20000);
+    // 33 tiles from the main front (x 59, B's side), 3 from A's own border with 3.
+    const u = spawnTankDivision(s, 1, at(s, 26, 20));
+    run(s, 2);
+    s.attacks = s.attacks.filter((a) => a !== wave);
+    let moved = false;
+    for (let k = 0; k < 15 * SEC && !moved; k++) {
+      tick(s);
+      moved = u.state !== 0;
+    }
+    expect(followedNation(s, 1)).toBe(3);
+    expect(mainFront(s, 1, 3) % s.map.width).toBe(59);
+    expect(moved).toBe(true);
+    expect(u.detour).toBeGreaterThan(s.tick);
+    expect(s.map.owner[u.station!]).toBe(3);
+    expect(u.station! % s.map.width).toBeLessThanOrEqual(31);
+  });
+
+  it("an outnumbered auto ship doesn't sail back into the same enemy group", () => {
+    // Land y 0..9: the player x 0..99 and 130..199, nation 2 x 100..129 with 3 warships off its coast; sea below.
+    const s = makeFlatGame(200, 80, 2, { human: true, seed: 6 });
+    for (let y = 10; y < 80; y++) for (let x = 0; x < 200; x++) s.map.terrain[at(s, x, y)] = Terrain.DeepWater;
+    computeCoastAndLand(s.map);
+    claimRect(s, 1, 0, 0, 99, 9);
+    claimRect(s, 2, 100, 0, 129, 9);
+    claimRect(s, 1, 130, 0, 199, 9);
+    rich(s);
+    longWar(s, 1, 2);
+    const port = addBuilding(s, 'port', 1, at(s, 10, 9), 1);
+    const mine = spawnWarshipAt(s, 1, port.tile, at(s, 10, 10));
+    for (const x of [110, 115, 120]) spawnWarshipAt(s, 2, at(s, x, 9), at(s, x, 12)).stance = 'escort';
+    for (let k = 0; k < 60 * SEC; k++) {
+      tick(s);
+      expect(mine.hp).toBeGreaterThan(0);
+      expect(mine.x).toBeLessThan(110 - NAVY_REACH.oddsRadius);
+    }
+    expect(mine.hp).toBe(warshipMaxHp(mine));
+  });
+
+  it('a ship sailing back to its post at a Port after a won chase is not "outnumbered"', () => {
+    const s = makeFlatGame(120, 80, 2, { human: true, seed: 6 });
+    for (let y = 10; y < 80; y++) for (let x = 0; x < 120; x++) s.map.terrain[at(s, x, y)] = Terrain.DeepWater;
+    computeCoastAndLand(s.map);
+    claimRect(s, 1, 0, 0, 59, 9);
+    claimRect(s, 2, 60, 0, 119, 9);
+    rich(s);
+    const port = addBuilding(s, 'port', 1, at(s, 30, 9), 1);
+    const mine = spawnWarshipAt(s, 1, port.tile, at(s, 30, 10));
+    const foe = spawnWarshipAt(s, 2, at(s, 70, 9), at(s, 30, 75));
+    const lines = new Set<string>();
+    for (let k = 0; k < 40 * SEC; k++) {
+      tick(s);
+      if (mine.state === 2 && foe.hp > 0) foe.hp = 0;
+      lines.add(unitAutoLine(s, 1, mine));
+    }
+    expect([...lines]).not.toContain('Auto: outnumbered, falling back to port');
+    expect([...lines]).not.toContain('Auto: going to port for repairs');
+  });
+
+  it("a following strategic airfield's line names the nation it really raids", () => {
+    // The player x 0..99, nation 3 x 100..199 (a land border), sea x 200..299, nation 2 x 300..399 (the war target).
+    const s = makeFlatGame(400, 40, 3, { human: true, seed: 4 });
+    for (let y = 0; y < 40; y++) for (let x = 200; x < 300; x++) s.map.terrain[at(s, x, y)] = Terrain.DeepWater;
+    computeCoastAndLand(s.map);
+    claimRect(s, 1, 0, 0, 99, 39);
+    claimRect(s, 3, 100, 0, 199, 39);
+    claimRect(s, 2, 300, 0, 399, 39);
+    rich(s);
+    longWar(s, 1, 2);
+    longWar(s, 1, 3);
+    s.follow!.targets = [1, 2, at(s, 99, 20), 0, -1];
+    addBuilding(s, 'city', 2, at(s, 350, 20), 2);
+    const af = addBuilding(s, 'airfield', 1, at(s, 20, 20), 1);
+    for (let k = 0; k < 2; k++) expect(buildAircraft(s, 1, af.tile, 'bomber').ok).toBe(true);
+    expect(applyAction(s, 1, { type: 'setAirMission', airfield: af.tile, mission: 'strategic', follow: true }).ok).toBe(true);
+    run(s, 1);
+    expect(followedNation(s, 1)).toBe(2);
+    expect(airAutoLine(s, af)).toBe(`Auto: ${s.players[2].name} is out of reach`);
+    addBuilding(s, 'city', 3, at(s, 150, 20), 2);
+    expect(airAutoLine(s, af)).toBe(`Auto: ${s.players[2].name} out of reach, raiding ${s.players[3].name}`);
+  });
+
+  it("an AI player's front against a nation that only attacks it stays the border nearest its capital", () => {
+    // AI 2 y 0..19 and AI 3 y 20..39 share a 400-tile border; 3 attacks 2 at the far east end.
+    const s = makeFlatGame(400, 40, 3, { human: true, seed: 3 });
+    claimRect(s, 1, 0, 0, 9, 9);
+    claimRect(s, 2, 10, 0, 399, 19);
+    claimRect(s, 3, 10, 20, 399, 39);
+    rich(s);
+    s.players[2].capital = at(s, 20, 10);
+    pushAttack(s, 3, 2, at(s, 390, 19), 20000);
+    const f = mainFront(s, 2, 3);
+    expect(s.map.owner[f]).toBe(3);
+    expect(f % s.map.width).toBeLessThan(40);
   });
 });
 

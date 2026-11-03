@@ -693,23 +693,25 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   them (`aiDivisionModes`); warlords field up to 6.
 - **Auto for every vehicle** (protocol 16; src/sim/warTarget.ts and the vehicle files): what a new player's vehicles do
   with no clicks. A player's **war target** (`updateFollow`): the nation it attacks with the most troops; with no
-  attack on a nation of its own, the nation attacking it hardest (defence is a war too; a nation before a tribe it
-  attacks); with neither, the last target stays while that war is live (an attack either way within
-  `NAVY_WAR_MEMORY` s) and `FOLLOW_MEMORY_SECONDS` after. Defaults for a player's new units (AI units unchanged):
+  attack on a nation of its own, the last target while that war is live (an attack either way within
+  `NAVY_WAR_MEMORY` s: a short poke by another nation between two of our waves doesn't swing the units), else the
+  nation attacking it hardest (defence is a war too; a nation before a tribe it attacks); the last target stays
+  `FOLLOW_MEMORY_SECONDS` after its war ends. AI players keep their own front anchor (their attack, else capital). Defaults for a player's new units (AI units unchanged):
   divisions start on `support`, following (`tanks.makeDivision`); an airfield with no wing gets the player's last
   "every airfield" choice (`setAirMission` with airfield -1 stores it in `AirState.defaults`, hashed; a picked target
   out of reach: the same mission following), else Support following (`airwings.autoWings`, once a second); silos
   auto-fire (above); warships stay `auto`. Reach: a following support wing whose main front is beyond its reach bombs
   the target's border tile in reach nearest the main front, else (overseas) the target's coast nearest the airfield,
   else the border of another nation we fight (`supportInReach`); a following strategic wing with nothing of the
-  target in reach raids another nation we fight. Divisions: a far drive the quick search gives up on floods the
-  player's land (`landFlood`) and drives that route; when the main front can't be reached over own land, a following
-  division supports the target's border it can reach (or another war's) for `DETOUR_SECONDS` (60, `Unit.detour`,
+  target in reach raids another nation we fight. Divisions: a drive the quick search gives up on floods the
+  player's land (`landFlood`) and drives that route; when the main front can't be reached over own land (found by
+  that flood, or near the front when the strike's launch tile can't be reached), a following division supports the target's border it can reach (or another war's) for `DETOUR_SECONDS` (60, `Unit.detour`,
   hashed); with no land border to the target at all it supports the nearest front of another war, else holds.
   Warships: a player's `auto` ship doesn't start or keep a chase where hostile warships within
   `NAVY_REACH.oddsRadius` (50) of the target outnumber its own warships near it (`navy.outnumbered`), falls back to
-  the nearest own Port of its sea when they outnumber it where it is, and a coast watched by more enemy warships than
-  own ones scores `dangerPenalty` (60 tiles) worse per ship short. The cards say
+  the nearest own Port of its sea when they outnumber it where it is (then waits `NAVY_REACH.regroupSeconds`, 20,
+  before its next coast search) and skips coasts watched by more enemy warships than own ones (other stances score
+  such a coast `dangerPenalty`, 60 tiles, worse per ship short). The cards say
   what auto does in one line (`client/follow.ts`: `unitAutoLine`, `airAutoLine`, `siloAutoLine`, e.g. "Auto:
   supporting the front with Azuria", "Auto: no war, waiting").
 - **Trade ship**: each Port periodically sends one to one of a stable handful of partner ports on its sea (a pair

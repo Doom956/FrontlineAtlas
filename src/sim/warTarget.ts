@@ -4,9 +4,9 @@
 // War target of a human player (updateFollow): the nation it attacks with the most troops right now (nations before
 // tribes: tribe attacks count x FOLLOW_TRIBE_WEIGHT; ties: lower id; the current one stays unless another is attacked
 // with FOLLOW_SWITCH times its troops); units re-aim at it every few seconds. A player attacking no nation (only
-// tribes, or nothing) takes the nation attacking it hardest instead (defence counts too). With no attack either way,
-// the last war target stays while that war is live (an attack either way in the last NAVY_WAR_MEMORY seconds) and for
-// FOLLOW_MEMORY_SECONDS after. Its main front = that nation's border tile nearest the focus of the biggest attack
+// tribes, or nothing) keeps its last war target while that war is live (an attack either way in the last
+// NAVY_WAR_MEMORY seconds), else takes the nation attacking it hardest (defence counts too). With no attack either
+// way, the last war target stays FOLLOW_MEMORY_SECONDS after its war ends. Its main front = that nation's border tile nearest the focus of the biggest attack
 // between them (or of the last one). Both are kept in hashed state (state.follow), so every client aims at the same
 // tiles at the same ticks. With no shared border (a war overseas) warAim gives the target's coast nearest that focus
 // for wings and rockets; divisions then support another war that has a land front they can reach (armor2.ts).
@@ -197,16 +197,20 @@ export function updateFollow(state: GameState): void {
     let focus = -1;
     if (now > 0 && !isTribe(state.players[now])) focus = biggestAttack(state, p.id, now)?.focus ?? p.capital;
     else {
-      // No attack on a nation of our own: the nation attacking us hardest (defending counts as a war too), else a
-      // nation we still fight (a live war) before a tribe we attack.
-      const threat = pickBest(threatScores(state, p.id), had);
-      if (threat > 0) {
-        now = threat;
-        focus = biggestThreat(state, p.id, threat)?.focus ?? p.capital;
-      } else if (had > 0 && had !== now && !isTribe(state.players[had]) && validTarget(state, p.id, had) && liveWar(state, p.id, had)) {
+      // No attack on a nation of our own: the war target so far while that war is live (between two waves of ours, a
+      // short poke by another nation must not swing every unit across the country), else the nation attacking us
+      // hardest (defending counts as a war too), else a tribe we attack.
+      const threats = threatScores(state, p.id);
+      if (had > 0 && !isTribe(state.players[had]) && validTarget(state, p.id, had) && liveWar(state, p.id, had)) {
         now = had;
-        focus = old[k + 2];
-      } else if (now > 0) focus = biggestAttack(state, p.id, now)?.focus ?? p.capital;
+        focus = threats.has(had) ? (biggestThreat(state, p.id, had)?.focus ?? old[k + 2]) : old[k + 2];
+      } else {
+        const threat = pickBest(threats, had);
+        if (threat > 0) {
+          now = threat;
+          focus = biggestThreat(state, p.id, threat)?.focus ?? p.capital;
+        } else if (now > 0) focus = biggestAttack(state, p.id, now)?.focus ?? p.capital;
+      }
     }
     if (now > 0) {
       // The front tile: worked out on the check ticks (mainFront works it out meanwhile for a new target).
@@ -231,8 +235,8 @@ export function updateFollow(state: GameState): void {
 }
 
 /**
- * pid's war target: the nation it attacks with the most troops, else the nation attacking it hardest, else the last
- * one while that war is live and for FOLLOW_MEMORY_SECONDS after; 0 = none (also for AI players: their units keep
+ * pid's war target: the nation it attacks with the most troops, else the last one while that war is live, else the
+ * nation attacking it hardest, else the last one for FOLLOW_MEMORY_SECONDS after its war; 0 = none (also for AI players: their units keep
  * their own logic).
  */
 export function followedNation(state: GameState, pid: number): number {
@@ -260,12 +264,15 @@ export function mainFront(state: GameState, pid: number, target: number): number
   return frontNear(state, pid, target, focusOf(state, pid, target));
 }
 
-/** Where the war between pid and `target` centres: the war target's focus, else the biggest attack either way, else pid's capital. */
+/**
+ * Where the war between pid and `target` centres: the war target's focus, else pid's biggest attack on it (a player:
+ * else its biggest attack on pid), else pid's capital. AI players keep the old anchor (their own attack or capital).
+ */
 function focusOf(state: GameState, pid: number, target: number): number {
   const k = recIndex(state, pid);
   const t = state.follow?.targets;
   if (k >= 0 && t && t[k + 1] === target) return t[k + 2];
-  const big = biggestAttack(state, pid, target) ?? biggestThreat(state, pid, target);
+  const big = biggestAttack(state, pid, target) ?? (state.players[pid]?.isHuman ? biggestThreat(state, pid, target) : null);
   return big ? big.focus : (state.players[pid]?.capital ?? -1);
 }
 

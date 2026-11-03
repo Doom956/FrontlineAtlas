@@ -7,12 +7,14 @@
 //   levels at ARMOR_VET_XP give a faster, deeper head and lower losses (vetSpeedMul, vetLossMul).
 // - Encirclement (collapsePockets): pieces of the target's land next to a spearhead's line that are cut off (closed by
 //   the attacker's / its allies' land, water and the map edge; no capital) collapse to the attacker at once.
-// - Modes (Unit.mode, Action setDivisionMode): hold (default), support (Unit.station = the front tile: holds behind
+// - Modes (Unit.mode, Action setDivisionMode): hold (default for AI), support (Unit.station = the front tile: holds behind
 //   it, launches spearheads into the weakest spot within ARMOR_SUPPORT_RADIUS when ready, lines that cut the enemy's
 //   land first; drives back to refit at a Factory when worn down), refit (to the nearest Factory, refit, then hold).
 // - Follow my war (warTarget.ts): a player's division put on support without a front picked follows the main front
 //   against the owner's war target (Unit.station moves with it; it jumps there by rail, a route search of
-//   TANK_MOBILITY.jumpBudget for a far front); with no war target it holds where it is. A picked front makes it Fixed
+//   TANK_MOBILITY.jumpBudget for a far front, then a flood of our land when that gives up); a front it can't reach
+//   over our land makes it support one it can reach for DETOUR_SECONDS; with no war target it holds where it is. A
+//   player's new divisions start on support, following. A picked front makes it Fixed
 //   (Unit.fixed = 1) until the player picks Follow again. AI divisions always get a front: the foe's border tile
 //   nearest the focus of the biggest attack between them (their main front).
 // Deterministic: no RNG; per-division work staggered by id; fixed tie-breaks.
@@ -303,19 +305,17 @@ function driveTo(state: GameState, u: Unit, dest: number, auto = false): boolean
   const farR = ARMOR_SUPPORT_RADIUS + 12;
   const far = d2(u.x, u.y, dest % w, (dest / w) | 0) > farR * farR;
   let path = ownLandPath(state, u.owner, unitTile(state, u), dest, auto ? (far ? TANK_MOBILITY.jumpBudget : ARMOR_AUTO_PATH_BUDGET) : undefined);
-  if (!path && auto && far && state.players[u.owner]?.isHuman) {
-    // A player's division (AI divisions keep the quick search): the quick search gave up on a far jump, so a flood of
-    // our land finds any route there, or tells a following division that its front can't be reached over our land (it
-    // then supports a front it can reach for a while).
+  if (!path && auto && state.players[u.owner]?.isHuman) {
+    // A player's division (AI divisions keep the quick search): the quick search gave up, so a flood of our land finds
+    // any route there, or tells a following division that its front can't be reached over our land (it then supports
+    // a front it can reach for a while).
     const from = unitTile(state, u);
     const prev = landFlood(state, u.owner, from);
     if (prev[dest] >= 0) path = floodPath(prev, from, dest);
-    else if (divisionMode(u) === 'support' && unitFollows(state, u)) {
-      const alt = reachableFront(state, u, prev, u.station ?? dest);
-      if (alt) {
-        u.station = alt.front;
-        u.detour = state.tick + DETOUR_SECONDS * TICKS_PER_SECOND;
-        dest = alt.hold;
+    else {
+      const hold = startDetour(state, u, prev);
+      if (hold >= 0) {
+        dest = hold;
         path = floodPath(prev, from, dest);
       }
     }
@@ -374,18 +374,34 @@ function floodPath(prev: Int32Array, from: number, to: number): number[] {
 }
 
 /**
+ * A player's following support division whose front can't be reached over our land (prev = landFlood from it):
+ * supports a front it can reach for DETOUR_SECONDS (u.station, u.detour). Returns the tile to hold, -1 = none.
+ */
+function startDetour(state: GameState, u: Unit, prev: Int32Array): number {
+  if (divisionMode(u) !== 'support' || !unitFollows(state, u)) return -1;
+  const alt = reachableFront(state, u, prev, u.station ?? unitTile(state, u));
+  if (!alt) return -1;
+  u.station = alt.front;
+  u.detour = state.tick + DETOUR_SECONDS * TICKS_PER_SECOND;
+  return alt.hold;
+}
+
+/** True when tile t (a front) is next to flooded land (landFlood). */
+function floodTouches(state: GameState, prev: Int32Array, t: number): boolean {
+  const w = state.map.width;
+  const x = t % w;
+  const y = (t / w) | 0;
+  return prev[t] >= 0 || (x > 0 && prev[t - 1] >= 0) || (x < w - 1 && prev[t + 1] >= 0) || (y > 0 && prev[t - w] >= 0) || (y < state.map.height - 1 && prev[t + w] >= 0);
+}
+
+/**
  * A front following division u can reach (prev = landFlood from it): the war target's border tile next to the
  * flooded land nearest `ref`, else that of another nation we fight (nations first, lower id; nearest the division),
  * with the tile to hold behind it. null = none.
  */
 function reachableFront(state: GameState, u: Unit, prev: Int32Array, ref: number): { front: number; hold: number } | null {
-  const map = state.map;
-  const { width: w, height: h } = map;
-  const touches = (t: number): boolean => {
-    const x = t % w;
-    const y = (t / w) | 0;
-    return (x > 0 && prev[t - 1] >= 0) || (x < w - 1 && prev[t + 1] >= 0) || (y > 0 && prev[t - w] >= 0) || (y < h - 1 && prev[t + w] >= 0);
-  };
+  const w = state.map.width;
+  const touches = (t: number): boolean => floodTouches(state, prev, t);
   const pick = (n: number, anchor: number): number => {
     let best = -1;
     let bestD = Infinity;
@@ -603,6 +619,19 @@ export function divisionStep(state: GameState, u: Unit): void {
     if (strike) {
       // A cheap route check first (moveTankDivisions searches with the full budget).
       if (ownLandPath(state, u.owner, unitTile(state, u), strike.launch, ARMOR_AUTO_PATH_BUDGET, hasAmphibious(state, u.owner) ? (t) => narrowWater(state, t) : undefined) && moveTankDivisions(state, u.owner, [u.id], strike.tile).ok) return;
+      // A player's following division near a front on land it can't reach (another piece of ours): support a front it
+      // can reach for a while instead of retrying the same strike all war.
+      if (u.detour === undefined && state.players[u.owner]?.isHuman && unitFollows(state, u)) {
+        const from = unitTile(state, u);
+        const prev = landFlood(state, u.owner, from);
+        if (!floodTouches(state, prev, front)) {
+          const hold = startDetour(state, u, prev);
+          if (hold >= 0) {
+            if (hold !== from) driveTo(state, u, hold, true);
+            return;
+          }
+        }
+      }
       u.retryTick = state.tick + ARMOR_RETRY_SECONDS * TICKS_PER_SECOND; // no route to the launch tile
       return;
     }

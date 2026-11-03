@@ -6,11 +6,12 @@
 // The actions carry follow: true to switch back; a map click on a target makes the unit or mission fixed.
 import { buildingAt, buildingsOf } from '../sim/buildings';
 import type { Building, GameState, Unit } from '../sim/types';
-import { ARMOR_SUPPORT_READY, UNITS } from '../sim/config';
+import { ARMOR_SUPPORT_READY, NAVY_REACH, UNITS } from '../sim/config';
 import { followedNation, followTargetOf, liveFoes, warTargetOf } from '../sim/warTarget';
 import { mendingInPort, warshipMaxHp, warshipStance } from '../sim/naval2';
 import { divisionStrength } from '../sim/armor2';
-import { airCoverActive, airMissionOf, wingOf } from '../sim/airwings';
+import { airCoverActive, airMissionOf, followRaidOf, wingOf } from '../sim/airwings';
+import { outnumbered } from '../sim/navy';
 import { autoFireOn, autoFireSaving, autoFireTargetsFor } from '../sim/airstrike';
 import { hasTech } from '../sim/tech';
 
@@ -110,7 +111,10 @@ export function unitAutoLine(state: GameState, me: number, u: Unit): string {
     if (st === 'hunt') return 'Auto: hunting enemy ships in its sea';
     if (mendingInPort(state, u)) return 'Auto: repairing at port, then back out';
     if (u.state === 1 && st === 'auto' && u.path.length && nearOwnPort(state, u.owner, u.path[u.path.length - 1])) {
-      return u.hp < warshipMaxHp(u) - 1e-9 ? 'Auto: going to port for repairs' : 'Auto: outnumbered, falling back to port';
+      // Sailing to a Port: to mend (badly damaged), away from a bigger enemy group, or just back to its post there.
+      if (u.hp < NAVY_REACH.repairBelow * warshipMaxHp(u)) return 'Auto: going to port for repairs';
+      if (state.players[me]?.isHuman && outnumbered(state, u, u, state.units)) return 'Auto: outnumbered, falling back to port';
+      return 'Auto: sailing back to port';
     }
     const fixed = u.fixed && u.fixed > 0 ? u.fixed : 0;
     const aim = fixed || nation;
@@ -161,7 +165,13 @@ export function airAutoLine(state: GameState, b: Building): string {
   if (nation <= 0) return 'Auto: no war, waiting';
   const aimOwner = wing && wing.target >= 0 ? state.map.owner[wing.target] : 0;
   const fixed = wing?.follow ? '' : ' (fixed)';
-  if (mission === 'strategic') return `Auto: raiding ${nameOf(state, nation)}${fixed}`;
+  if (mission === 'strategic') {
+    if (!wing?.follow) return `Auto: raiding ${nameOf(state, nation)}${fixed}`;
+    const raid = followRaidOf(state, b, nation);
+    if (raid <= 0) return `Auto: ${nameOf(state, nation)} is out of reach`;
+    if (raid !== nation) return `Auto: ${nameOf(state, nation)} out of reach, raiding ${nameOf(state, raid)}`;
+    return `Auto: raiding ${nameOf(state, nation)}`;
+  }
   if (!wing || wing.target < 0) return `Auto: ${nameOf(state, nation)} is out of reach`;
   if (aimOwner > 0 && aimOwner !== nation && aimOwner !== b.owner) return `Auto: ${nameOf(state, nation)} out of reach, bombing ${nameOf(state, aimOwner)}`;
   return `Auto: bombing the front with ${nameOf(state, nation)}${fixed}`;

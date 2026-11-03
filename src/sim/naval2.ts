@@ -625,6 +625,8 @@ function pickCoast(state: GameState, u: Unit, cx: number, cy: number, reach: num
   const owner = map.owner;
   const me = u.owner;
   const from = shipTile(state, u);
+  // A player's Auto ship skips coasts where enemy warships outnumber ours (shipOdds).
+  const odds = warshipStance(u) === 'auto' ? shipOdds(state, u) : null;
   let best = -1;
   let bestScore = Infinity;
   const r = Math.ceil(reach);
@@ -645,6 +647,7 @@ function pickCoast(state: GameState, u: Unit, cx: number, cy: number, reach: num
       // Next to our land (3 tiles out in the 4 directions): that is where our fronts are.
       if ((x > 2 && owner[t - 3] === me) || (x < w - 3 && owner[t + 3] === me) || (y > 2 && owner[t - 3 * w] === me) || (y < h - 3 && owner[t + 3 * w] === me)) score -= 40;
       if (score >= bestScore || !hostile(state, me, o)) continue;
+      if (odds && odds(x, y) > 0) continue;
       // Reachable by sea from here: some water next to it shares our sea.
       if (!((x > 0 && isWater(map.terrain[t - 1]) && sameWater(map, from, t - 1)) || (x < w - 1 && isWater(map.terrain[t + 1]) && sameWater(map, from, t + 1)) ||
         (y > 0 && isWater(map.terrain[t - w]) && sameWater(map, from, t - w)) || (y < h - 1 && isWater(map.terrain[t + w]) && sameWater(map, from, t + w)))) continue;
@@ -719,6 +722,31 @@ function settle(state: GameState, u: Unit): void {
 }
 
 /**
+ * A player's ship (null for AI ships, or with no enemy warships about): (x, y) -> how many enemy warships within
+ * NAVY_REACH.oddsRadius of that tile outnumber ours there (u counts wherever it is); 0 = even or better.
+ */
+function shipOdds(state: GameState, u: Unit): ((x: number, y: number) => number) | null {
+  const me = u.owner;
+  if (!state.players[me]?.isHuman) return null;
+  const enemies: Unit[] = [];
+  const friends: Unit[] = [];
+  for (const s of state.units) {
+    if (s.type !== 'warship' || s.hp <= 0) continue;
+    if (s.owner === me) friends.push(s);
+    else if (hostile(state, me, s.owner)) enemies.push(s);
+  }
+  if (!enemies.length) return null;
+  const or2 = NAVY_REACH.oddsRadius * NAVY_REACH.oddsRadius;
+  return (x, y) => {
+    let short = 0;
+    for (const e of enemies) if (d2(e.x, e.y, x, y) <= or2) short++;
+    if (short <= 0) return 0;
+    for (const f of friends) if (f === u || d2(f.x, f.y, x, y) <= or2) short--;
+    return Math.max(0, short);
+  };
+}
+
+/**
  * Best enemy coast tile anywhere in u's sea, of `nations` (at war with u's owner): nearest `anchor` (-1 = the ship),
  * next to our land first (fronts), away from tiles other own ships are stationed off (they spread along the coast).
  * Looks at up to NAVY_REACH.roamSamples coast tiles per nation (a stride through its coast list). -1 = none.
@@ -737,17 +765,10 @@ function roamCoast(state: GameState, u: Unit, nations: readonly number[], anchor
     if (s !== u && s.type === 'warship' && s.owner === me && s.hp > 0 && s.state === 3 && s.station !== undefined) taken.push(s.station);
   }
   const cr2 = NAVY_REACH.crowdRadius * NAVY_REACH.crowdRadius;
-  // A player's ships weigh the odds: enemy warships near a coast beyond our ships there make it worse.
-  const enemies: Unit[] = [];
-  const friends: Unit[] = [];
-  if (state.players[me]?.isHuman) {
-    for (const s of state.units) {
-      if (s.type !== 'warship' || s.hp <= 0) continue;
-      if (s.owner === me) friends.push(s);
-      else if (hostile(state, me, s.owner)) enemies.push(s);
-    }
-  }
-  const or2 = NAVY_REACH.oddsRadius * NAVY_REACH.oddsRadius;
+  // A player's ships weigh the odds: an Auto ship skips coasts where enemy warships outnumber ours, other stances
+  // score them worse (orders are kept).
+  const odds = shipOdds(state, u);
+  const skip = warshipStance(u) === 'auto';
   let best = -1;
   let bestScore = Infinity;
   for (const n of nations) {
@@ -764,12 +785,11 @@ function roamCoast(state: GameState, u: Unit, nations: readonly number[], anchor
       let score = Math.sqrt(d2(x, y, ax, ay));
       if ((x > 2 && owner[t - 3] === me) || (x < w - 3 && owner[t + 3] === me) || (y > 2 && owner[t - 3 * w] === me) || (y < h - 3 && owner[t + 3 * w] === me)) score -= 40;
       for (const q of taken) if (d2(q % w, (q / w) | 0, x, y) <= cr2) score += NAVY_REACH.crowdPenalty;
-      if (enemies.length) {
-        let short = 0;
-        for (const e of enemies) if (d2(e.x, e.y, x, y) <= or2) short++;
+      if (odds) {
+        const short = odds(x, y);
         if (short > 0) {
-          for (const f of friends) if (d2(f.x, f.y, x, y) <= or2 || f === u) short--;
-          if (short > 0) score += NAVY_REACH.dangerPenalty * short;
+          if (skip) continue;
+          score += NAVY_REACH.dangerPenalty * short;
         }
       }
       if (score < bestScore || (score === bestScore && t < best)) {
@@ -973,7 +993,11 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
   repairAtPort(state, u);
   if (u.state === 1 || u.state === 2) return; // under orders / chasing
   // A player's 'auto' ship outnumbered by enemy warships around it falls back to a Port of its sea.
-  if (st === 'auto' && state.players[u.owner]?.isHuman && !portNear(state, u) && outnumbered(state, u, u, ships) && (u.retryTick ?? 0) <= state.tick && goRepair(state, u)) return;
+  // It then waits NAVY_REACH.regroupSeconds before the next coast search (no trips straight back to the same fight).
+  if (st === 'auto' && state.players[u.owner]?.isHuman && !portNear(state, u) && outnumbered(state, u, u, ships) && (u.retryTick ?? 0) <= state.tick && goRepair(state, u)) {
+    u.retryTick = state.tick + NAVY_REACH.regroupSeconds * TICKS_PER_SECOND;
+    return;
+  }
   // Roaming ships mend at a Port of their sea: badly damaged ones sail there, damaged ones there stay until whole.
   if (roams && mending(state, u)) {
     if (portNear(state, u)) {
