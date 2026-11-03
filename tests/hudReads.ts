@@ -3,8 +3,8 @@
 // A rendering client calls these with the NEXT tick's number, before that tick's work; a client that is busy (several
 // turns per frame) or catching up calls them less often or not at all. They must not change what the sim decides.
 import { mainFoe, fortifiedShare, openness, suggestions } from '../src/sim/advisor';
-import { airCoverActive, airCoverSorties, airRaidOn, airSortieCost, airZones } from '../src/sim/airwings';
-import { autoFireAll, autoFireOn, leadAim, strikePreview, strikeRole, wingLastResult } from '../src/sim/airstrike';
+import { airCoverActive, airCoverSorties, airRaidOn, airSortieCost, airWingRange, airZones } from '../src/sim/airwings';
+import { autoFireAll, autoFireOn, leadAim, raidRadius, strikePreview, strikeRole, wingLastResult } from '../src/sim/airstrike';
 import { allyRefusal, allyStatus, runawayLeader } from '../src/sim/allies';
 import { buildManyPreview, upgradeBuildingsPreview } from '../src/sim/bulkbuild';
 import { barrageReadyIn, canBarrage } from '../src/sim/barrage';
@@ -149,7 +149,9 @@ export const READS: Record<string, Read> = {
     for (const b of buildingsOf(s, pid, 'airfield')) {
       airCoverActive(s, b.tile);
       wingLastResult(s, b.tile);
+      airWingRange(b, s);
     }
+    raidRadius(s, pid);
     for (const b of buildingsOf(s, pid, 'silo')) autoFireOn(s, b.tile);
     autoFireAll(s, pid);
     // Strike previews (the strike bar's tooltip and salvo picker).

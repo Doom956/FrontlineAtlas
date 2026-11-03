@@ -23,7 +23,7 @@ import {
 } from '../sim/config';
 import { areAllied } from '../sim/diplomacy';
 import { forEachInRadius } from '../sim/grid';
-import { buildingAllowed, peaceReason, unitAllowed } from '../sim/rules';
+import { buildingAllowed, unitAllowed } from '../sim/rules';
 import { gameSeconds } from '../sim/state';
 import { unitCost } from '../sim/units';
 import { hasTech } from '../sim/tech';
@@ -170,8 +170,9 @@ function bomberBackIn(state: GameState, me: Player): number {
 const lockedFlight = 'Buy Flight in the Arsenal (T), then build an Airfield';
 
 /** A radius for text: whole tiles, one decimal when it has one (Night Bombing 4.3). */
-function fmtR(r: number): string {
-  return Number.isInteger(r) ? String(r) : r.toFixed(1);
+export function fmtR(r: number): string {
+  const v = Math.round(r * 10) / 10;
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
 }
 
 /** The salvo kind a strike fires with (bomb, rocket, atom bomb), or null (barrage, paratroopers). */
@@ -310,13 +311,13 @@ export function instruction(state: GameState, me: Player, m: TargetMode, ui?: Pi
     case 'barrage':
       return `Barrage: click enemy land within ${barrageRange(me)} tiles of your border.${tail}`;
     case 'bomb':
-      return `Bombing run (${salvoLabel(salvoOf(ui, 'bomb'))}): click enemy land. Bombs hit ${fmtR(bomberRadiusOf(state, me.id))} tiles around.${tail}`;
+      return `Bombing run ${salvoLabel(salvoOf(ui, 'bomb'))}: click enemy land.${tail}`;
     case 'paradrop':
       return `Paratroopers: click enemy or empty land inside a gold ring.${tail}`;
     case 'rocket':
-      return `Rocket (${salvoLabel(salvoOf(ui, 'rocket'))}): click enemy land anywhere on the map.${tail}`;
+      return `Rocket ${salvoLabel(salvoOf(ui, 'rocket'))}: click enemy land anywhere on the map.${tail}`;
     case 'atomBomb':
-      return `Atom bomb (${salvoLabel(salvoOf(ui, 'atomBomb'))}): click a target. It hits all within ${ATOM_RADIUS} tiles, yours too.${tail}`;
+      return `Atom bomb ${salvoLabel(salvoOf(ui, 'atomBomb'))}: click a target. It hits all within ${ATOM_RADIUS} tiles, yours too.${tail}`;
   }
 }
 
@@ -536,16 +537,30 @@ export function blastSummary(state: GameState, m: TargetMode, t: StrikeTarget): 
   return `${salvoHead(m, t)}: ${effectText(m, t, victim)}`;
 }
 
-/** "3 bombers from 2 airfields" / "1 rocket" / "2 of 5 rockets (the rest reloading)". */
+/** "3 bombers from 2 airfields" / "1 rocket" / "2 rockets from 2 silos (3 more not ready)". */
 export function salvoHead(m: TargetMode, t: StrikeTarget): string {
   const unit = m.kind === 'bomb' ? 'bomber' : m.kind === 'missile' && m.missile === 'atomBomb' ? 'atom bomb' : 'rocket';
   const n = Math.max(1, t.count);
+  return `${n} ${unit}${n === 1 ? '' : 's'}${salvoDetail(m, t)}`;
+}
+
+/** " from 2 airfields (3 more not ready)" ('' for one site and a full salvo). */
+export function salvoDetail(m: TargetMode, t: StrikeTarget): string {
+  const n = Math.max(1, t.count);
   const want = t.size === 0 ? t.ready : t.size;
   const site = m.kind === 'bomb' ? 'airfield' : 'silo';
-  let s = `${n} ${unit}${n === 1 ? '' : 's'}`;
-  if (t.sites > 1) s += ` from ${t.sites} ${site}s`;
-  if (want > n) s += ` (${want - n} more not ready${m.kind === 'missile' && t.ready >= want ? ' or not paid for' : ''})`;
+  let s = t.sites > 1 ? ` from ${t.sites} ${site}s` : '';
+  if (want > n) s += ` (${want - n} more not ready${m.kind === 'missile' && t.ready >= want ? ' or not paid for' : m.kind === 'bomb' ? ' or out of reach' : ''})`;
   return s;
+}
+
+/** The tooltip body under "Send 3 bombers here": where they fly from (when it says more) and what they hit. */
+export function strikeBody(state: GameState, m: TargetMode, t: StrikeTarget): string {
+  if (m.kind !== 'bomb' && m.kind !== 'missile') return blastSummary(state, m, t);
+  const victim = t.victim > 0 ? state.players[t.victim]?.name ?? 'the enemy' : 'the enemy';
+  const d = salvoDetail(m, t).trim();
+  const e = effectText(m, t, victim);
+  return d ? `${d.charAt(0).toUpperCase()}${d.slice(1)}: ${e}` : `${e.charAt(0).toUpperCase()}${e.slice(1)}`;
 }
 
 function effectText(m: TargetMode, t: StrikeTarget, victim: string): string {
@@ -568,7 +583,7 @@ export function strikeRoleLine(state: GameState, t: StrikeTarget, tile: number):
     if (t.aim >= 0 && t.aim !== tile) {
       const w = state.map.width;
       const d = Math.round(Math.hypot((t.aim % w) - (tile % w), ((t.aim / w) | 0) - ((tile / w) | 0)));
-      return `Front strike: aims ${d} tile${d === 1 ? '' : 's'} ahead, where your push will be when they arrive`;
+      if (d >= 2) return `Front strike: aims ${d} tiles ahead, where your push will be when they arrive`;
     }
     return 'Front strike: cuts their defence for your push';
   }

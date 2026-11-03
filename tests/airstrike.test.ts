@@ -286,13 +286,14 @@ describe('better auto', () => {
     s.map.building[gone.tile] = 0;
     markBuildingsChanged(s);
     const u = s.units.find((x) => x.target === gone.tile)!;
+    s.units = [u]; // only this bomber's drop below
     let centre = -1;
     for (let k = 0; k < 400 && u.state === 0; k++) {
       const t0 = s.tick;
       updateUnits(s);
       updateAir(s);
       s.tick++;
-      if (u.state === 1) {
+      if ((u.state as number) === 1) {
         const e = s.effects.filter((x) => x.tick === t0 && x.kind === 'explosion');
         centre = e.length ? Math.floor(e[e.length - 1].y) * s.map.width + Math.floor(e[e.length - 1].x) : -1;
       }
