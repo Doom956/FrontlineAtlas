@@ -1518,9 +1518,9 @@ export const ARSENAL_PRICES = {
 // ---------- one strike rule, smart aim, salvos, rocket auto-fire (airstrike.ts) ----------
 export const STRIKE = {
   /** a manual bomb aimed within this many tiles of own / allied land (and not at a building) is a front support strike */
-  frontReach: 8,
+  frontReach: 4,
   /** a hostile building (not a fort) within this many tiles of a manual aim makes it a raid on that building */
-  buildingPick: 2,
+  buildingPick: 3,
   /** heavy bombers on a raid: bomb radius x, buildings hit and troops killed x (Heavy Bombers: the bigger payload) */
   heavyRadius: 1.15,
   heavyPayload: 1.25,
