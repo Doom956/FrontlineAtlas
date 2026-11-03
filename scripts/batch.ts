@@ -392,6 +392,8 @@ interface SlotResult {
   artilleryShare: number;
   goldEarned: number;
   mercGold: number;
+  /** this nation's warship samples (GameResult.shipUse) */
+  ships?: { alive: number; action: number; moving: number };
 }
 
 /** Key a new unit is counted under: type, plus type:variant for variant ships, tanks (the owner's path) and bombers. */
@@ -615,7 +617,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
         id: slotId, personality: state.players[slotId].personality ?? 'human', coastal: coastCount(state, slotId) > 0,
         win: false, strictWin: false, land: [-1, -1, -1], landEnd: 0, alive20: false, alive30: false, elimMinute: -1,
         doctrine: null, picks: {}, pillar: '', units: {}, buildings: {}, barrages: 0, paradrops: 0, invasions: 0, landings: 0,
-        peakAircraft: 0, armorShare: 0, artilleryShare: 0, goldEarned: 0, mercGold: 0,
+        peakAircraft: 0, armorShare: 0, artilleryShare: 0, goldEarned: 0, mercGold: 0, ships: { alive: 0, action: 0, moving: 0 },
       }
     : null;
   let slotMixSamples = 0;
@@ -734,7 +736,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
       }
     }
     if ((state.tick - state.playStartTick) % sampleEvery !== 0) continue;
-    shipUseSample(state, r.shipUse!);
+    shipUseSample(state, r.shipUse!, slot);
     {
       const owner = state.map.owner;
       for (const i of fortTiles) {
@@ -1698,7 +1700,7 @@ async function main(): Promise<void> {
 void main();
 
 /** One warship-use sample (see GameResult.shipUse); read-only over the state. */
-function shipUseSample(state: GameState, su: { alive: number; action: number; moving: number }): void {
+function shipUseSample(state: GameState, su: { alive: number; action: number; moving: number }, slot: SlotResult | null): void {
   const wars = new Set<number>();
   for (const at of state.attacks) {
     if (at.troops.infantry + at.troops.armor + at.troops.artillery <= 0) continue;
@@ -1710,8 +1712,13 @@ function shipUseSample(state: GameState, su: { alive: number; action: number; mo
   const r2 = WARSHIP_RANGE * WARSHIP_RANGE;
   for (const u of ships) {
     if (u.type !== 'warship' || isTribe(state.players[u.owner])) continue;
+    const mineS = slot && slot.ships && u.owner === slot.id ? slot.ships : null;
     su.alive++;
-    if (u.path && u.pathPos < u.path.length) su.moving++;
+    if (mineS) mineS.alive++;
+    if (u.path && u.pathPos < u.path.length) {
+      su.moving++;
+      if (mineS) mineS.moving++;
+    }
     let act = (u.chase ?? 0) > 0;
     if (!act) {
       for (const s of ships) {
@@ -1729,6 +1736,9 @@ function shipUseSample(state: GameState, su: { alive: number; action: number; mo
         if (o > 0 && o !== u.owner && wars.has(u.owner * 1024 + o) && !areAllied(state, u.owner, o)) act = true;
       });
     }
-    if (act) su.action++;
+    if (act) {
+      su.action++;
+      if (mineS) mineS.action++;
+    }
   }
 }

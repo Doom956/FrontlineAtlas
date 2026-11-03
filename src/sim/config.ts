@@ -594,7 +594,7 @@ export const TANK_MIN_ARMOR = 3000;
 /** divisions (alive + being built) per Factory level of a player */
 export const TANK_PER_FACTORY_LEVEL = 1;
 /** spearhead: head speed in tiles/s on plains (x TANK_TERRAIN_SPEED) */
-export const TANK_SPEARHEAD_SPEED = 6;
+export const TANK_SPEARHEAD_SPEED = 8;
 /** spearhead width in tiles (odd; the head tile and (width-1)/2 on each side) */
 export const TANK_SPEARHEAD_WIDTH = 3;
 /** spearheads never run deeper than this many tiles */
@@ -1274,8 +1274,8 @@ export const NAVY_STATION_DIST = 4;
  */
 export const NAVY_SUPPORT_RANGE = 30;
 export const NAVY_SUPPORT_BONUS = 0.45;
-export const NAVY_SUPPORT_DIMINISH = 0.6;
-export const NAVY_SUPPORT_MAX = 1;
+export const NAVY_SUPPORT_DIMINISH = 0.75;
+export const NAVY_SUPPORT_MAX = 1.4;
 export const NAVY_SUPPORT_SPEED = 0.6;
 /** a ship in 'bombard' stance shells the coast x this (defenders killed per second, WARSHIP_BOMBARD_KILL) */
 export const NAVY_BOMBARD_STANCE_KILL = 1.6;
@@ -1340,7 +1340,7 @@ export const ARMOR_POCKET_KILL = 0.6;
 export const ARMOR_SUPPORT_SCAN_SECONDS = 2;
 export const ARMOR_SUPPORT_RADIUS = 24;
 /** launches when at least this share of a full division; drives back to refit at a Factory below ARMOR_SUPPORT_REFIT */
-export const ARMOR_SUPPORT_READY = 0.6;
+export const ARMOR_SUPPORT_READY = 0.5;
 export const ARMOR_SUPPORT_REFIT = 0.4;
 /** holds this many tiles behind the front (within this distance of the front tile) */
 export const ARMOR_SUPPORT_HOLD = 8;
