@@ -50,7 +50,7 @@
 // With --specialist: per pillar and map type, the slot's win rate (Wilson 95%), land share at 10/20/30 min and at the
 // end, survival at 20/30 min, the game's median finish minute and the pillar's units, for the specialist and the
 // baseline, with the specialist/baseline ratio of wins and of land at the end (paired bootstrap 95% over seeds).
-import { BUILDING_ORDER, DEFAULT_AI_COUNT, TECHS, TICKS_PER_SECOND, VICTORY_LAND_SHARE, WATCHTOWER_DEF_RADIUS } from '../src/sim/config';
+import { BUILDING_ORDER, DEFAULT_AI_COUNT, TECHS, TICKS_PER_SECOND, VICTORY_LAND_SHARE, WARSHIP_RANGE, WATCHTOWER_DEF_RADIUS } from '../src/sim/config';
 import { armyTotal, population } from '../src/sim/economy';
 import { fortMultiplierAt, fortRadius } from '../src/sim/buildings';
 import { forEachInRadius } from '../src/sim/grid';
@@ -73,7 +73,8 @@ import { aiCommittedPillar } from '../src/sim/variantsAI';
 import { borderTiles, coastCount } from '../src/sim/territory';
 import { trenchLevel } from '../src/sim/trenches';
 import { airCoverSorties } from '../src/sim/airwings';
-import { armorVariantOf } from '../src/sim/variants';
+import { armorVariantOf, navalShellMul, navalShellRangeMul } from '../src/sim/variants';
+import { areAllied } from '../src/sim/diplomacy';
 import type { BuildingType, Difficulty, DoctrineId, GameSettings, GameState, MapSize, MapType, Modifiers, TechId, Troops, Unit } from '../src/sim/types';
 
 // No @types/node in this project: declare the few Node globals used here.
@@ -348,6 +349,9 @@ interface GameResult {
   /** tank divisions: formed, overrun (ground taken under a holding division), spent (spearhead ended it), still alive at
    *  the end; the rest were lost otherwise (amphibious fall-back, owner eliminated, ...) */
   divisions?: { formed: number; overrun: number; spent: number; survived: number };
+  /** warship samples (every 10 s): nation warships alive, in action (chasing, a ship of a nation at war within
+   *  WARSHIP_RANGE, or enemy coast at war within shelling range), under way (following a path) */
+  shipUse?: { alive: number; action: number; moving: number };
   /** per nation (spawned, not tribes): gold earned and spent on mercenaries */
   nationGold?: { id: number; earned: number; merc: number }[];
   /** --specialist: the slot nation */
@@ -603,6 +607,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     bombersShotFighters: 0,
     bombersShotCarrier: 0,
     divisions: { formed: 0, overrun: 0, spent: 0, survived: 0 },
+    shipUse: { alive: 0, action: 0, moving: 0 },
     nationGold: [],
   };
   const slot: SlotResult | null = slotId
@@ -729,6 +734,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
       }
     }
     if ((state.tick - state.playStartTick) % sampleEvery !== 0) continue;
+    shipUseSample(state, r.shipUse!);
     {
       const owner = state.map.owner;
       for (const i of fortTiles) {
@@ -1246,6 +1252,19 @@ function counterReport(rs: GameResult[]): void {
     d.survived += r.divisions.survived;
   }
   const other = Math.max(0, d.formed - d.overrun - d.spent - d.survived);
+  {
+    const su = { alive: 0, action: 0, moving: 0 };
+    let mins = 0;
+    for (const r of rs) {
+      mins += r.minutes;
+      if (!r.shipUse) continue;
+      su.alive += r.shipUse.alive;
+      su.action += r.shipUse.action;
+      su.moving += r.shipUse.moving;
+    }
+    const sm = 10 / 60; // one sample = 10 s
+    console.log(`Warship use: ${f1((su.alive * sm) / Math.max(1, mins))} ships afloat on average, in action ${f1((su.action * sm) / Math.max(1, mins))} (ship-minutes in action per game minute; ${f1((su.action * sm) / g)} per game, ${pct(su.action, su.alive)} of ship time), under way ${pct(su.moving, su.alive)}.`);
+  }
   console.log(`Tank divisions: ${d.formed} formed (${f1(d.formed / g)} per game): overrun ${d.overrun} (${pct(d.overrun, d.formed)}), spent after a spearhead ${d.spent} (${pct(d.spent, d.formed)}), alive at the end ${d.survived} (${pct(d.survived, d.formed)}), lost otherwise ${other} (${pct(other, d.formed)}).`);
   // Units per type per game.
   const keys = new Set<string>();
@@ -1677,3 +1696,39 @@ async function main(): Promise<void> {
 }
 
 void main();
+
+/** One warship-use sample (see GameResult.shipUse); read-only over the state. */
+function shipUseSample(state: GameState, su: { alive: number; action: number; moving: number }): void {
+  const wars = new Set<number>();
+  for (const at of state.attacks) {
+    if (at.troops.infantry + at.troops.armor + at.troops.artillery <= 0) continue;
+    wars.add(at.attacker * 1024 + at.target);
+    wars.add(at.target * 1024 + at.attacker);
+  }
+  const ships = state.units.filter((x) => x.hp > 0 && (x.type === 'warship' || x.type === 'transport' || x.type === 'tradeShip'));
+  const map = state.map;
+  const r2 = WARSHIP_RANGE * WARSHIP_RANGE;
+  for (const u of ships) {
+    if (u.type !== 'warship' || isTribe(state.players[u.owner])) continue;
+    su.alive++;
+    if (u.path && u.pathPos < u.path.length) su.moving++;
+    let act = (u.chase ?? 0) > 0;
+    if (!act) {
+      for (const s of ships) {
+        if (s === u || !wars.has(u.owner * 1024 + s.owner) || areAllied(state, u.owner, s.owner)) continue;
+        const dx = s.x - u.x;
+        const dy = s.y - u.y;
+        if (dx * dx + dy * dy <= r2) { act = true; break; }
+      }
+    }
+    if (!act && navalShellMul(u) > 0) {
+      const t = (u.y | 0) * map.width + (u.x | 0);
+      forEachInRadius(map, t, (WARSHIP_RANGE / 2) * navalShellRangeMul(state, u), (i) => {
+        if (act || !map.coastal[i]) return;
+        const o = map.owner[i];
+        if (o > 0 && o !== u.owner && wars.has(u.owner * 1024 + o) && !areAllied(state, u.owner, o)) act = true;
+      });
+    }
+    if (act) su.action++;
+  }
+}
