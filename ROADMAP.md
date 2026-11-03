@@ -303,10 +303,15 @@ Make it so you can spawn the ships anywhere, they attack in a much bigger range;
   "better than base" not shown for armor), divisions per game 20.4 -> 43.0, warships in action 11 -> 16% of ship
   time; game length, leader at 15 min and difficulty unchanged. Huge-map p99 tick ~3 ms higher (neither version
   under 15 ms at 40 AIs). Log: /tmp/fa-bal/log6.md.
-- Final check: tsc both, vitest 827/827, build OK. E2E: E2E_RESULTS. Easy game as a new player (screenshots
+- Final check: tsc both, vitest 827/827, build OK. E2E: no hash check reached in 6 runs (3 each, the allowed reruns): mp-pillars failed in the
+  scripted player's start (no spawn site with iron, oil and a coast x2; "A has no iron/oil"), mp-arsenal in its
+  economy ("labs not built" x2: no oil within 26 tiles, so the start never grew; "Mechanization delivered" timed
+  out); all before any ship or division exists, no desync or hash mismatch logged. Needs a pass on the fast PC or the
+  flaky scripted-player fix. Easy game as a new player (screenshots
   /tmp/borderfall-shots/st-check-*.png): a warship ordered from the Port card and placed 96 tiles out by a click
   appeared there and, at war, took station off the enemy coast and shelled it (veteran in ~1 min); a division
-  rail-moved 160 tiles in 8.5 s and a two-click spearhead took 28 tiles. Small fixes: the unit card no longer
+  rail-moved 160 tiles (227-tile route) in 6-8.5 s and a two-click spearhead took 28 tiles (4 into mountains, as
+  its preview warned). Small fixes: the unit card no longer
   catches map clicks (a spearhead target 12 tiles out could sit under it; only its X takes clicks); warship hull
   text uses the real maximum ("4 of 3" for veterans and variants before); How to play says a second click launches
   a spearhead.
