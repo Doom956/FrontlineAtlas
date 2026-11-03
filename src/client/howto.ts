@@ -189,6 +189,7 @@ export function howToPlayContent(): HTMLElement {
     { icon: lineIcon('rocket', 18), title: 'Strikes', text: 'A strike icon lights up in the bottom bar when ready: press its key, click the target.' },
     { icon: lineIcon('ally', 18), title: 'Allies', text: 'Click a nation in the standings, then Ally. Allies cannot attack each other.', key: 'P' },
     { icon: lineIcon('help', 18), title: 'Tutorial', text: 'Title screen, Tutorial: one 5-minute practice game, step by step.' },
+    { icon: lineIcon('play', 18), title: 'Saving', text: 'Single-player games save by themselves as you play. Close the page any time, then press Continue on the title screen. One game is kept: a new game replaces it.' },
     { icon: lineIcon('help', 18), title: 'Guide', text: 'In games, a small bar above the command bar walks you through the start and explains new things once. Menu (Esc) > Help: Guide on / off, Restart guide.' },
   ];
   const quick = el('section', 'hw-quick');

@@ -111,6 +111,8 @@ export interface HudOptions {
   adminAuth?: (code: string) => Promise<boolean>;
   /** a tutorial game (tutorial/controller.ts): the first-game steps and the advisor's hints stay quiet */
   tutorial?: boolean;
+  /** single player with autosave (save/): the Menu drawer says the game is kept */
+  saves?: boolean;
 }
 
 export class Hud {
@@ -157,7 +159,7 @@ export class Hud {
   private lastContinue = 0;
   private victoryChip = new VictoryChip();
   /** land over time, battles, key moments: the end-of-game summary's data (summary/history.ts) */
-  readonly history = new GameHistory();
+  history = new GameHistory();
   private historyFailed = false;
   /** the summary was reopened from the victory chip after a continued game (not the game-over card) */
   private reviewing = false;
@@ -286,6 +288,7 @@ export class Hud {
           this.drawer.hide();
         },
         leave: () => this.onMenu(),
+        saves: !!hudOpts.saves,
       }),
     );
 
@@ -1011,6 +1014,11 @@ export class Hud {
   private hideTip(): void {
     this.tipTarget = null;
     setVisible(this.tip, false);
+  }
+
+  /** A loaded save brings the history its replay collected (main.ts continueSaved). */
+  adoptHistory(history: GameHistory): void {
+    this.history = history;
   }
 
   /** Feeds the end-of-game history (also called by the test hook's fast-forward); a failure only costs the summary. */
