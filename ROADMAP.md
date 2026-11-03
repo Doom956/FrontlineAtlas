@@ -287,6 +287,7 @@ favicon-32.png, apple-touch-icon.png (180), icon-192/512, icon-512-maskable.png 
 Atlas", short name "Atlas"); relative links in index.html, so it works at `/` and under `/FrontlineAtlas/`. Remake the
 PNG / ICO files with `node scripts/site-icons.mjs` after changing the SVG. Not checked: the live sites, a phone home screen.
 
+<<<<<<< HEAD
 ## Air strikes QoL (2026-11-03, branch `air-strikes`, not merged yet)
 Owner: manual bombs ignored Heavy Bombers, bombers hit land the push had already taken, auto missions were limited,
 and firing many rockets was tedious. Done (src/sim/airstrike.ts, config `STRIKE`, protocol 14; DESIGN.md section 7,
@@ -312,6 +313,9 @@ hitting 2 forts and a city, no atom bomb fired); screenshots /tmp/borderfall-sho
 World-map batches, forced Heavy Bombers / Ground-attack fork benchmarks, tick timings.
 
 ## Ships and tanks (2026-11-03, on `dev`, not merged yet)
+=======
+## Ships and tanks (2026-11-03, live)
+>>>>>>> dev
 Owner: "the tanks are kind of useless right now, they move way way too slow to attack so they rarely get used; the
 warships are also kind of useless because they just stay in one area and the auto function doesn't really change that.
 Make it so you can spawn the ships anywhere, they attack in a much bigger range; for the tanks idk."
@@ -330,8 +334,10 @@ Make it so you can spawn the ships anywhere, they attack in a much bigger range;
 - Final check: tsc both, vitest 827/827, build OK. E2E: no hash check reached in 6 runs (3 each, the allowed reruns): mp-pillars failed in the
   scripted player's start (no spawn site with iron, oil and a coast x2; "A has no iron/oil"), mp-arsenal in its
   economy ("labs not built" x2: no oil within 26 tiles, so the start never grew; "Mechanization delivered" timed
-  out); all before any ship or division exists, no desync or hash mismatch logged. Needs a pass on the fast PC or the
-  flaky scripted-player fix. Easy game as a new player (screenshots
+  out); all before any ship or division exists, no desync or hash mismatch logged. Fixed by giving the tests a known map: the server
+  takes FIXED_SEED (tests only) and the tests default to map seed 12; on GitHub runners (scripts/remote-e2e.sh,
+  .github/workflows/e2e.yml) seeds 12 and 13 passed both tests with matching hashes, 4 other seeds failed in the same
+  scripted setup. Easy game as a new player (screenshots
   /tmp/borderfall-shots/st-check-*.png): a warship ordered from the Port card and placed 96 tiles out by a click
   appeared there and, at war, took station off the enemy coast and shelled it (veteran in ~1 min); a division
   rail-moved 160 tiles (227-tile route) in 6-8.5 s and a two-click spearhead took 28 tiles (4 into mountains, as
