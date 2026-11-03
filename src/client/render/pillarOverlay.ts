@@ -113,7 +113,7 @@ export class PillarOverlay {
           if (z >= 0.9 && ringed.length <= 3) {
             ringLabel(ctx, p.x, p.y - r.weapon * z, `guns ${Math.round(r.weapon)}`, `${RED}0.85)`);
             if (r.support > 0) ringLabel(ctx, p.x, p.y + r.support * z, `shore support ${Math.round(r.support)}`, `${STEEL}0.9)`);
-            if (r.shell > 0 && Math.abs(r.shell - r.support) > 1.5) ringLabel(ctx, p.x, p.y - r.shell * z, `shelling ${Math.round(r.shell)}`, `${BRASS}0.9)`);
+            if (r.shell > 0 && Math.abs(r.shell - r.support) > 1.5) ringLabel(ctx, p.x, p.y - r.shell * z, `shelling ${Math.floor(r.shell)}`, `${BRASS}0.9)`);
           }
         }
         if (u.state === 3 && u.station !== undefined && u.station >= 0) {

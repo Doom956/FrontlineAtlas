@@ -319,11 +319,21 @@ function shipTileOf(state: GameState, u: Unit): number {
   return Math.round(u.y) * state.map.width + Math.round(u.x);
 }
 
-/** Sends a chasing warship back to its post (state 1: on arrival it patrols there again). */
-function returnToPost(state: GameState, u: Unit): void {
+/**
+ * Sends a chasing warship back to its post (state 1: on arrival it patrols there again). `stay` (a 'hunt' ship,
+ * which roams its sea): it patrols where the chase ended instead.
+ */
+function returnToPost(state: GameState, u: Unit, stay = false): void {
   u.chase = 0;
   u.chaseLost = 0;
   const from = shipTileOf(state, u);
+  if (stay) {
+    u.path = [];
+    u.pathPos = 0;
+    u.state = 0;
+    u.cargo = from;
+    return;
+  }
   const path = waterPath(state.map, from, u.cargo, 4 * WARSHIP_LEASH, 6000);
   if (path && path.length) {
     u.path = path;
@@ -338,9 +348,9 @@ function returnToPost(state: GameState, u: Unit): void {
   }
 }
 
-function chaseTo(state: GameState, u: Unit, t: Unit): boolean {
+function chaseTo(state: GameState, u: Unit, t: Unit, far = false): boolean {
   const to = shipTileOf(state, t);
-  const path = waterPath(state.map, shipTileOf(state, u), to, 4 * WARSHIP_DETECT_RANGE, 4000);
+  const path = waterPath(state.map, shipTileOf(state, u), to, far ? undefined : 4 * WARSHIP_DETECT_RANGE, 4000);
   if (!path) return false;
   u.path = path;
   u.pathPos = 0;
@@ -350,7 +360,8 @@ function chaseTo(state: GameState, u: Unit, t: Unit): boolean {
 
 /**
  * Auto-intercept for one warship (called by units.updateWarship before it moves). Patrolling ships scan every
- * WARSHIP_SCAN_TICKS ticks (staggered by id); chasing ships re-aim at the same pace.
+ * WARSHIP_SCAN_TICKS ticks (staggered by id); chasing ships re-aim at the same pace. `far` ('hunt', naval2.ts): ships
+ * of nations at war with u's owner are seen anywhere in u's sea, there is no leash, and a chase ends where it is.
  */
 export function interceptStep(
   state: GameState,
@@ -359,6 +370,7 @@ export function interceptStep(
   wars: Set<number>,
   detect = WARSHIP_DETECT_RANGE,
   leash = WARSHIP_LEASH,
+  far = false,
 ): void {
   if (u.state === 1) return; // under orders: sails on (it still fights whatever comes in range)
   if ((state.tick + u.id) % WARSHIP_SCAN_TICKS !== 0) return;
@@ -366,48 +378,52 @@ export function interceptStep(
   const postX = u.cargo % w;
   const postY = (u.cargo / w) | 0;
   // detect / leash: wider for the 'hunt' stance (naval2.ts)
-  const leash2 = leash * leash;
+  const leash2 = far ? Infinity : leash * leash;
   const detect2 = detect * detect;
+  const me = u.owner;
   if (u.state === 2) {
     const t = u.chase ? ships.find((s) => s.id === u.chase) : undefined;
-    if (!t || interceptRank(state, u.owner, t, wars) < 0 || d2(t.x, t.y, postX, postY) > leash2) {
-      returnToPost(state, u);
+    if (!t || interceptRank(state, me, t, wars) < 0 || d2(t.x, t.y, postX, postY) > leash2) {
+      returnToPost(state, u, far);
       return;
     }
-    if (d2(t.x, t.y, u.x, u.y) > detect2 || !navalCanTarget(state, u, t)) {
+    const dt = d2(t.x, t.y, u.x, u.y);
+    if ((dt > detect2 && !(far && wars.has(me * 1024 + t.owner))) || !navalCanTarget(state, u, t)) {
       // out of sight (a submarine dived away: variants.ts)
       u.chaseLost = (u.chaseLost ?? 0) + WARSHIP_SCAN_TICKS;
       if (u.chaseLost >= WARSHIP_CHASE_GIVE_UP * TICKS_PER_SECOND) {
-        returnToPost(state, u);
+        returnToPost(state, u, far);
         return;
       }
     } else u.chaseLost = 0;
-    // Re-aim when the target moved away from where we are heading.
+    // Re-aim when the target moved away from where we are heading (a far target: by a sixth of the distance).
     const end = u.path.length ? u.path[u.path.length - 1] : -1;
-    if (end < 0 || u.pathPos >= u.path.length || d2(end % w, (end / w) | 0, t.x, t.y) > 9) {
-      if (!chaseTo(state, u, t)) returnToPost(state, u);
+    if (end < 0 || u.pathPos >= u.path.length || d2(end % w, (end / w) | 0, t.x, t.y) > Math.max(9, dt / 36)) {
+      if (!chaseTo(state, u, t, far)) returnToPost(state, u, far);
     }
     return;
   }
-  // Patrolling: the best target in sight (rank, then distance, then id) within the leash of our post.
+  // Patrolling: the best target in sight (rank, then distance, then id) within the leash of our post; hunting ('far'):
+  // also ships of nations at war anywhere in our sea.
+  const comp = far ? waterComponents(state.map) : null;
+  const sea = comp ? comp[shipTileOf(state, u)] : 0;
   let best: Unit | null = null;
   let bestRank = 99;
   let bestD = Infinity;
   for (const s of ships) {
-    if (s === u || s.owner === u.owner) continue;
+    if (s === u || s.owner === me) continue;
     const d = d2(s.x, s.y, u.x, u.y);
-    if (d > detect2) continue;
-    const rank = interceptRank(state, u.owner, s, wars);
+    if (d > detect2 && (!comp || !wars.has(me * 1024 + s.owner) || comp[shipTileOf(state, s)] !== sea)) continue;
+    const rank = interceptRank(state, me, s, wars);
     if (rank < 0 || d2(s.x, s.y, postX, postY) > leash2) continue;
+    if (rank > bestRank || (rank === bestRank && (d > bestD || (d === bestD && best !== null && s.id > best.id)))) continue;
     if (!navalCanTarget(state, u, s)) continue; // hidden submarines (variants.ts)
-    if (rank < bestRank || (rank === bestRank && (d < bestD || (d === bestD && best !== null && s.id < best.id)))) {
-      best = s;
-      bestRank = rank;
-      bestD = d;
-    }
+    best = s;
+    bestRank = rank;
+    bestD = d;
   }
   if (!best) return;
-  if (!chaseTo(state, u, best)) return;
+  if (!chaseTo(state, u, best, far)) return;
   u.state = 2;
   u.chase = best.id;
   u.chaseLost = 0;

@@ -3,7 +3,7 @@
 // change there shows up here without edits.
 //   - shipReach: guns (ships), shelling (enemy coast) and shore support (fronts) of one warship
 //   - railMovePreview: the route a division would drive over your own land to a tile, and how long it takes
-import { NAVY_SUPPORT_RANGE, TANK_LAUNCH_REACH, UNITS, WARSHIP_RANGE } from '../sim/config';
+import { NAVY_SUPPORT_RANGE, TANK_LAUNCH_REACH, TANK_MOBILITY, UNITS, WARSHIP_RANGE } from '../sim/config';
 import { waterComponents } from '../sim/grid';
 import { frontRate } from '../sim/rules';
 import { ownLandPath } from '../sim/tanks';
@@ -15,6 +15,8 @@ import { navalReachMul, navalShellMul, navalShellRangeMul, navalSupportMul } fro
 /** Shore shelling reach of a standard warship (the sim shells within half its gun range, x the ship's variant). */
 // TODO(sim): if the sim gets its own shelling-range constant, read it here instead of WARSHIP_RANGE / 2.
 export const SHELL_RANGE_BASE = WARSHIP_RANGE / 2;
+/** The same, as a whole number of tiles for text. */
+export const SHELL_RANGE_TILES = Math.floor(SHELL_RANGE_BASE);
 
 export interface ShipReach {
   /** fights enemy ships within this many tiles */
@@ -73,7 +75,7 @@ export function spawnTileReason(state: GameState, seas: ReadonlySet<number>, til
 // TODO(sim): use the sim's divisionMoveTime once it exists, so terrain or other speed rules are counted too.
 export function divisionSpeed(state: GameState, owner: number): number {
   const p = state.players[owner];
-  return UNITS.tankDivision.speed * (p && hasTech(p, 'railways') ? 1.5 : 1) * frontRate(state);
+  return UNITS.tankDivision.speed * (p && hasTech(p, 'railways') ? TANK_MOBILITY.railways : 1) * frontRate(state);
 }
 
 export interface RailMove {
@@ -122,7 +124,7 @@ export function arrivalText(seconds: number): string {
 export function shipReachLine(state: GameState, u: Unit): string {
   const r = shipReach(state, u);
   const parts = [`Fights ships within ${Math.round(r.weapon)} tiles`];
-  if (r.shell > 0) parts.push(`shells enemy coast within ${Math.round(r.shell)}`);
+  if (r.shell > 0) parts.push(`shells enemy coast within ${Math.floor(r.shell)}`);
   if (r.support > 0) parts.push(`backs your attacks within ${Math.round(r.support)}`);
   return `${parts.join(', ')} (at war)`;
 }
