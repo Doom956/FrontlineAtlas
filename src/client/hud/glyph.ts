@@ -208,6 +208,10 @@ const LINE: Record<string, string> = {
   'doctrine-naval': '<circle cx="12" cy="5" r="2"/><path d="M12 7v13M8.5 10h7M4.5 13.5A7.5 7 0 0 0 12 20a7.5 7 0 0 0 7.5-6.5M3 15l1.5-1.5L6 15M18 15l1.5-1.5L21 15"/>',
   'doctrine-air': '<path d="M12 3c1 0 1.5 1 1.5 2.5V10l7 4v2l-7-2v4l2 1.5V21L12 20l-3.5 1v-1.5l2-1.5v-4l-7 2v-2l7-4V5.5C10.5 4 11 3 12 3z"/>',
   'doctrine-expansion': '<path d="M8.5 17V3.5M8.5 4h9l-2.5 3.25 2.5 3.25h-9"/><path d="M2.5 20.5c3-2.5 6-2.5 9.5-1s6.5 1.5 9.5-1"/>',
+  // alerts (alerts.ts): the bell button, a blockade anchor, a tank
+  bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15zM10 20.5h4M12 3v2"/>',
+  anchor: '<circle cx="12" cy="5" r="2"/><path d="M12 7v13.5M8 10.5h8M4 13a8 7.5 0 0 0 16 0M2.5 14.5L4 13l1.5 1.5M18.5 14.5L20 13l1.5 1.5"/>',
+  tank: '<path d="M3.5 14h17l-2 5h-13z"/><path d="M6.5 14v-3.5h8l1.5 3.5M10.5 10.5V8.5h9"/><circle cx="7.5" cy="16.5" r=".6"/><circle cx="16.5" cy="16.5" r=".6"/>',
 };
 export type LineIconId = keyof typeof LINE;
 

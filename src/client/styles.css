@@ -4482,3 +4482,325 @@ strong {
   padding-top: 0;
   padding-bottom: 8px;
 }
+
+/* ---------------------------------------------------------------- alerts (hud/alerts.ts)
+   Big events as slips under the standings: a red (or brass) rule, the icon on a tinted tile, one line, "x3" for
+   repeats and a hairline running down until the slip fades. The whole slip is the button that jumps to the spot. */
+.alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.alerts:empty {
+  display: none;
+}
+.alert {
+  --al: var(--signal);
+  --al-tint: rgba(212, 80, 58, 0.18);
+  --al-ink: #f3a899;
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  background-color: var(--metal-a);
+  background-image: var(--grain);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--al);
+  border-radius: var(--r);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  animation: al-in 180ms ease-out;
+  transition: opacity 0.2s, transform 0.2s;
+}
+.alert.t-warn {
+  --al: var(--brass);
+  --al-tint: rgba(201, 162, 39, 0.16);
+  --al-ink: var(--brass-hi);
+}
+.alert.t-info {
+  --al: var(--steel);
+  --al-tint: rgba(107, 149, 184, 0.18);
+  --al-ink: #a9c6de;
+}
+.alert.out {
+  opacity: 0;
+  transform: translateX(-10px);
+}
+@keyframes al-in {
+  from {
+    transform: translateX(-14px);
+    opacity: 0;
+  }
+}
+.al-go {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 2px 8px 7px;
+  border: 0;
+  background: none;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+}
+.al-go:disabled {
+  cursor: default;
+}
+.al-go:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.al-ic {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--al-tint);
+  color: var(--al-ink);
+}
+.al-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+.al-go .al-t {
+  font: 600 13px/1.25 var(--f-ui);
+  overflow-wrap: anywhere;
+}
+.al-h {
+  font-size: 11px;
+  color: var(--faint);
+}
+.al-h:empty {
+  display: none;
+}
+.al-go:not(:disabled):hover .al-h {
+  color: var(--al-ink);
+}
+.al-n {
+  flex: none;
+  align-self: center;
+  margin-left: auto;
+  padding: 0 4px;
+  min-width: 22px;
+  text-align: center;
+  background: var(--brass);
+  color: var(--brass-ink);
+  font: 700 11px/16px var(--f-ui);
+}
+.alert.bump .al-n,
+.alert.bump .al-ic {
+  animation: al-bump 260ms ease-out;
+}
+@keyframes al-bump {
+  40% {
+    transform: scale(1.22);
+  }
+}
+.al-x {
+  flex: none;
+  display: inline-flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 26px;
+  padding: 7px 0 0;
+  border: 0;
+  background: none;
+  color: var(--faint);
+  cursor: pointer;
+}
+.al-x:hover {
+  color: var(--text);
+}
+.al-life {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--al);
+  opacity: 0.7;
+  transform-origin: left center;
+}
+.alerts.held .al-life {
+  animation-play-state: paused !important;
+}
+@keyframes al-life {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+/* the ping on the map after a jump: two rings and a dot */
+.hud > .map-ping {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  --pg: var(--signal);
+}
+.map-ping.p-warn {
+  --pg: var(--brass-hi);
+}
+.map-ping.p-info {
+  --pg: var(--steel);
+}
+.map-ping i,
+.map-ping b {
+  position: absolute;
+  border-radius: 50%;
+}
+.map-ping i {
+  left: -52px;
+  top: -52px;
+  width: 104px;
+  height: 104px;
+  border: 3px solid var(--pg);
+  opacity: 0;
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.55), inset 0 0 0 1.5px rgba(0, 0, 0, 0.55);
+}
+.map-ping b {
+  left: -5px;
+  top: -5px;
+  width: 10px;
+  height: 10px;
+  background: var(--pg);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+}
+.map-ping.go i {
+  animation: ping-ring 900ms ease-out 2;
+}
+.map-ping.go i + i {
+  animation-delay: 300ms;
+}
+.map-ping.go b {
+  animation: ping-dot 1800ms ease-out forwards;
+}
+@keyframes ping-ring {
+  from {
+    transform: scale(0.12);
+    opacity: 1;
+  }
+  55% {
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+@keyframes ping-dot {
+  0%,
+  70% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+/* the bell's count is red: news about you */
+.sq-badge.al-badge {
+  background: var(--signal);
+  color: #fff;
+}
+.hud.watching [data-test='open-alerts'],
+.hud.watching .alerts {
+  display: none;
+}
+/* the Alerts drawer */
+.al-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+}
+.al-row {
+  display: grid;
+  grid-template-columns: 36px 18px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  border: 0;
+  border-bottom: 1px solid rgba(57, 66, 75, 0.6);
+  background: none;
+  text-align: left;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+.al-row:disabled {
+  cursor: default;
+}
+.al-row:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+.al-row .al-tm {
+  color: var(--faint);
+}
+/* news since the log was last opened */
+.al-row.new {
+  background: rgba(212, 80, 58, 0.08);
+  box-shadow: inset 2px 0 0 var(--signal);
+}
+.al-row.new .al-tm {
+  padding-left: 6px;
+  color: var(--dim);
+}
+.al-row .al-ic {
+  width: 18px;
+  height: 18px;
+  background: none;
+  color: #f3a899;
+}
+.al-row.t-warn .al-ic {
+  color: var(--brass-hi);
+}
+.al-row.t-info .al-ic {
+  color: #a9c6de;
+}
+.al-row .al-n {
+  margin: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .alert,
+  .alert.bump .al-n,
+  .alert.bump .al-ic {
+    animation: none;
+  }
+  .al-life {
+    display: none;
+  }
+  .map-ping.go i {
+    animation: ping-dot 1800ms ease-out forwards;
+    transform: scale(0.45);
+  }
+  .map-ping.go i + i {
+    display: none;
+  }
+}
+/* phones: the narrow column takes two short slips (the bell lists the rest) */
+@media (max-width: 640px) {
+  .al-h {
+    display: none;
+  }
+  .alert:nth-child(n + 3) {
+    display: none;
+  }
+  .al-go {
+    padding: 6px 2px 7px 6px;
+  }
+  .al-go .al-t {
+    font-size: 12px;
+  }
+  .al-ic {
+    width: 24px;
+    height: 24px;
+  }
+}
