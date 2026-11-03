@@ -107,11 +107,11 @@ describe('shore bombardment', () => {
     expect(tileFightCost(s, 1, troops, 2, coast).loss).toBeLessThan(one);
     expect(supportBonusFor(20)).toBeLessThan(supportBonusFor(2) * 2);
     // Far inland: no support; the enemy's ships don't help us.
-    expect(navalSupportAt(s, 1, at(s, 50, 2))).toBe(0);
+    expect(navalSupportAt(s, 1, at(s, 79, 0))).toBe(0); // beyond NAVY_SUPPORT_RANGE of both ships
     expect(navalSupportAt(s, 2, coast)).toBe(0);
     // Landings next to own warships: the beachhead bonus.
     expect(navalBeachheadMul(s, 1, coast)).toBe(NAVY_BEACHHEAD_LOSS);
-    expect(navalBeachheadMul(s, 1, at(s, 75, 2))).toBe(1);
+    expect(navalBeachheadMul(s, 1, at(s, 79, 0))).toBe(1);
   });
 
   it("'bombard' parks off the enemy coast at war and shells it; 'auto' does it near its post and goes home after the war", () => {

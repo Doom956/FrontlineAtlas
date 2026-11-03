@@ -3,11 +3,10 @@
 // change there shows up here without edits.
 //   - shipReach: guns (ships), shelling (enemy coast) and shore support (fronts) of one warship
 //   - railMovePreview: the route a division would drive over your own land to a tile, and how long it takes
-import { NAVY_SUPPORT_RANGE, TANK_LAUNCH_REACH, TANK_MOBILITY, UNITS, WARSHIP_RANGE } from '../sim/config';
+import { NAVY_SUPPORT_RANGE, TANK_LAUNCH_REACH, WARSHIP_RANGE } from '../sim/config';
 import { waterComponents } from '../sim/grid';
-import { frontRate } from '../sim/rules';
-import { ownLandPath } from '../sim/tanks';
-import { hasTech } from '../sim/tech';
+import { warshipSpawnSeas } from '../sim/navy';
+import { divisionDriveSpeed, divisionMoveTime, ownLandPath } from '../sim/tanks';
 import { isWater } from '../sim/types';
 import type { GameState, Unit } from '../sim/types';
 import { navalReachMul, navalShellMul, navalShellRangeMul, navalSupportMul } from '../sim/variants';
@@ -38,23 +37,9 @@ export function shipReach(state: GameState, u: Unit): ShipReach {
 
 // ------------------------------------------------------------------------------------------------ warship placement
 
-/** Water body ids touched by your finished ports (the seas a warship can be placed on). */
+/** Water body ids touched by your finished ports (the seas a warship can be placed on; navy.warshipSpawnSeas). */
 export function portSeas(state: GameState, me: number): Set<number> {
-  const map = state.map;
-  const c = waterComponents(map);
-  const w = map.width;
-  const out = new Set<number>();
-  for (const b of state.buildings.values()) {
-    if (b.type !== 'port' || b.owner !== me || b.buildLeft > 0) continue;
-    const t = b.tile;
-    const x = t % w;
-    if (c[t]) out.add(c[t]);
-    if (x > 0 && c[t - 1]) out.add(c[t - 1]);
-    if (x < w - 1 && c[t + 1]) out.add(c[t + 1]);
-    if (t >= w && c[t - w]) out.add(c[t - w]);
-    if (t < c.length - w && c[t + w]) out.add(c[t + w]);
-  }
-  return out;
+  return warshipSpawnSeas(state, me);
 }
 
 /**
@@ -71,11 +56,9 @@ export function spawnTileReason(state: GameState, seas: ReadonlySet<number>, til
 
 // ------------------------------------------------------------------------------------------------ rail moves
 
-/** Driving speed of `owner`'s divisions over own land, tiles per second (Railways and the game speed included). */
-// TODO(sim): use the sim's divisionMoveTime once it exists, so terrain or other speed rules are counted too.
+/** Driving speed of `owner`'s divisions over own land, tiles per second (tanks.divisionDriveSpeed). */
 export function divisionSpeed(state: GameState, owner: number): number {
-  const p = state.players[owner];
-  return UNITS.tankDivision.speed * (p && hasTech(p, 'railways') ? TANK_MOBILITY.railways : 1) * frontRate(state);
+  return divisionDriveSpeed(state, owner);
 }
 
 export interface RailMove {
@@ -87,12 +70,16 @@ export interface RailMove {
   seconds: number;
 }
 
-/** The route a division would drive to own tile `to` and how long it takes, or null when it can't get there. */
+/**
+ * The route a division would drive to own tile `to` and how long it takes (tanks.divisionMoveTime, wading included),
+ * or null when it can't get there. A route through shallow water (Amphibious Tanks) is drawn as a straight line.
+ */
 export function railMove(state: GameState, u: Unit, to: number): RailMove | null {
+  const seconds = divisionMoveTime(state, u, to);
+  if (seconds < 0) return null;
   const w = state.map.width;
   const from = Math.round(u.y) * w + Math.round(u.x);
-  const route = ownLandPath(state, u.owner, from, to);
-  if (!route) return null;
+  const route = ownLandPath(state, u.owner, from, to) ?? [to];
   let length = 0;
   let px = u.x;
   let py = u.y;
@@ -103,8 +90,7 @@ export function railMove(state: GameState, u: Unit, to: number): RailMove | null
     px = t % w;
     py = (t / w) | 0;
   }
-  const v = divisionSpeed(state, u.owner);
-  return { path: [from, ...route], length, seconds: v > 0 ? length / v : Infinity };
+  return { path: [from, ...route], length, seconds };
 }
 
 /** "under a second", "about 4 s", "about 1 min 10 s". */
@@ -120,17 +106,16 @@ export function arrivalText(seconds: number): string {
 
 // ------------------------------------------------------------------------------------------------ one-line texts
 
-/** "Guns 35 tiles · shells coast 17 · shore support 30" for a ship's card (its variant counted). */
+/** "Guns 35 tiles · shelling 17 · shore support 30" for a ship's card (its variant counted). */
 export function shipReachLine(state: GameState, u: Unit): string {
   const r = shipReach(state, u);
-  const parts = [`Fights ships within ${Math.round(r.weapon)} tiles`];
-  if (r.shell > 0) parts.push(`shells enemy coast within ${Math.floor(r.shell)}`);
-  if (r.support > 0) parts.push(`backs your attacks within ${Math.round(r.support)}`);
-  return `${parts.join(', ')} (at war)`;
+  const parts = [`Guns ${Math.round(r.weapon)} tiles`];
+  if (r.shell > 0) parts.push(`shelling ${Math.floor(r.shell)}`);
+  if (r.support > 0) parts.push(`shore support ${Math.round(r.support)}`);
+  return parts.join(' · ');
 }
 
-/** "Drives over your land at 20 tiles/s; spearheads start up to 12 tiles past your border" for a division's card. */
+/** "Rail moves 30 tiles/s · aims up to 12 tiles past your border" for a division's card. */
 export function divisionReachLine(state: GameState, u: Unit): string {
-  const v = divisionSpeed(state, u.owner);
-  return `Drives over your land at ${Math.round(v)} tiles/s; spearheads start up to ${TANK_LAUNCH_REACH} tiles past your border`;
+  return `Rail moves ${Math.round(divisionSpeed(state, u.owner))} tiles/s · aims up to ${TANK_LAUNCH_REACH} tiles past your border`;
 }

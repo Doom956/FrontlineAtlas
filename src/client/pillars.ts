@@ -40,7 +40,7 @@ export interface ChoiceInfo {
 }
 
 export const STANCE_INFO: Record<WarshipStance, ChoiceInfo> = {
-  auto: { name: 'Auto', icon: 'shield', help: 'Guards its post in peace; at war it sails to the enemy\'s coast anywhere on its sea, sinks ships and shells near your fronts, and comes home only to repair.' },
+  auto: { name: 'Auto', icon: 'shield', help: 'Guards its post; at war it roams its sea to the enemy coast, sinks ships and shells, home only to repair.' },
   hold: { name: 'Hold', icon: 'stop', help: 'Stays at its post: sinks enemy ships that come near, but never sails off to shell a coast.' },
   hunt: { name: 'Hunt', icon: 'target', help: 'Seeks out enemy ships anywhere on its sea and chases them down.' },
   escort: { name: 'Escort', icon: 'transport', help: 'Sticks to your transports and trade ships: escorted ships are much harder to sink.' },

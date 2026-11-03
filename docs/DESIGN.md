@@ -614,25 +614,30 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   waypoints of a coarse 8x8-block route (weighted A*, Chebyshev heuristic), with a search budget per launch
   (AIs smaller than humans). On arrival it becomes an `Attack` from a 1-tile beachhead (the landing tile is captured
   first, paid like any tile). Can be sunk. Max 3 at sea per player (+2 per Port, +1 Navigation).
-- **Warship** (Port, Navigation): patrols near its port or a set point; attacks enemy ships within 20 tiles;
-  bombards enemy coastal troops (target search and shots every 5 ticks per ship, staggered).
-  Ordered on a clicked water tile (`buildWarship {port, tile}`, src/sim/navy.ts): the tile must be water of the same
-  sea as an own finished Port within `WARSHIP_SPAWN_RANGE` (40) tiles (port -1 = the sim picks the nearest such
-  port); paid at once, it appears after `WARSHIP_BUILD_SECONDS` (6, x build speed) in `state.unitQueue`. The old form
-  without `tile` places it next to the port. **Auto-intercept**: a patrolling warship (state 0) scans every
-  `WARSHIP_SCAN_TICKS` for hostile ships within `WARSHIP_DETECT_RANGE` (2.5 x range): transports first, then warships,
-  then trade ships of nations it is at war with; it chases (state 2, `Unit.chase`) and shoots its quarry first, and
-  sails back to its post (`cargo`) when the target is gone, out of sight for `WARSHIP_CHASE_GIVE_UP` s, or beyond
-  `WARSHIP_LEASH` (60) tiles from the post. Ships under orders (state 1) don't divert. **Groups**: `moveWarships
+- **Warship** (Port, Navigation): patrols near its port or a set point; attacks enemy ships within `WARSHIP_RANGE`
+  (35) tiles; bombards enemy coastal troops within half of it (battleships x2; target search and shots every 5 ticks
+  per ship, staggered).
+  Ordered on a clicked water tile (`buildWarship {port, tile}`, src/sim/navy.ts): any water of a sea an own finished
+  Port touches, however far from it (`warshipSpawnable`, `warshipSpawnSeas`; port -1 = the sim picks the nearest such
+  port; a lake or another ocean no port of yours touches is refused); paid at once, it appears there after
+  `WARSHIP_BUILD_SECONDS` (6, x build speed, faster at higher port levels) in `state.unitQueue`. The old form without
+  `tile` places it next to the port. **Auto-intercept**: a patrolling warship (state 0) scans every
+  `WARSHIP_SCAN_TICKS` for hostile ships of its sea within `WARSHIP_DETECT_RANGE` (3 x range): transports first, then
+  warships, then trade ships of nations it is at war with; it chases (state 2, `Unit.chase`) and shoots its quarry
+  first, and sails back to its post (`cargo`) when the target is gone, out of sight for `WARSHIP_CHASE_GIVE_UP` s, or
+  beyond `WARSHIP_LEASH` (100) tiles from the post. Ships under orders (state 1) don't divert. **Groups**: `moveWarships
   {unitIds, tile}` (own warships only, at most `MAX_GROUP_UNITS`) sends each to its own slot of a formation 2 tiles
   apart around the click (`navy.formationTiles`).
 - **Tank division** (Factory, Mechanization; src/sim/tanks.ts): `buildTankDivision {tile}` at an own finished
   Factory (one per Factory level) costs gold, iron, oil and `TANK_DIVISION_TROOPS` from the pool (armor first, with
   an infantry and artillery escort) and appears after `TANK_BUILD_SECONDS`. `moveTankDivision {unitIds, tile}`: own
-  land = drive there over own land (8-neighbour A*, formation); enemy or neutral land within `TANK_LAUNCH_REACH` of
-  own land = drive to the nearest own tile, then a **spearhead** along the line through the click (at the border
-  the line picks the direction that runs furthest through that owner's land): a band `TANK_SPEARHEAD_WIDTH` wide,
-  `TANK_SPEARHEAD_SPEED` tiles/s on plains (x `TANK_TERRAIN_SPEED`), each tile costing a normal attack's losses x
+  land = drive there over own land (8-neighbour A*, formation) by rail: `UNITS.tankDivision.speed` (20) tiles/s, x
+  `TANK_MOBILITY.railways` with Railways, wading at most `TANK_MOBILITY.wadeSpeed` (`divisionDriveSpeed`,
+  `divisionMoveTime`); enemy or neutral land within `TANK_LAUNCH_REACH` (12) of own land = drive to the nearest own
+  tile whose straight line to the click crosses no water (narrow water with Amphibious Tanks), then a **spearhead**
+  along the line through the click (at the border the line picks the direction that runs furthest through that
+  owner's land): a band `TANK_SPEARHEAD_WIDTH` wide, `TANK_SPEARHEAD_SPEED` (6) tiles/s on plains (x
+  `TANK_TERRAIN_SPEED`), at most `TANK_SPEARHEAD_MAX_DEPTH` (60) deep, each tile costing a normal attack's losses x
   `TANK_SPEARHEAD_LOSS` x terrain x (1 + 1.5 x the defender's armor share). Mountains and forts stop it unless the
   division carries `TANK_ARTILLERY_SUPPORT` artillery; water, a third nation, `TANK_SPEARHEAD_MAX_DEPTH` or falling
   under `TANK_SPEARHEAD_MIN_SHARE` of its strength end it (`spearheadEnded`: tiles taken, losses). A spent division
@@ -641,15 +646,22 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   within `TANK_FALLBACK_RADIUS` (losing `TANK_FALLBACK_LOSS` of its troops; automatic drives back to the front wait
   `TANK_FALLBACK_PAUSE` s) while it holds `TANK_FALLBACK_MIN_SHARE` of a full division, else it is overrun and its
   troops go home. `spearheadPreview` gives the line, the
-  expected depth and warnings without changing anything. AIs build divisions from armor and spearhead into their
-  main war, or else into the nation attacking them hardest, once the preview expects at least 3 tiles
-  (`aiTankDivisions`, through applyAction).
+  expected depth and warnings without changing anything. AIs build divisions whenever a Factory, armor and the price
+  allow (`TANK_MOBILITY.aiGold` / `aiMaterials` / `aiArmor`; up to 3, warlords 6, turtles and merchants 2) and
+  spearhead into their main war, or else into the nation attacking them hardest, once the preview expects at least 3
+  tiles (`aiTankDivisions`, through applyAction).
 - **Warship stances, shore bombardment, blockades** (src/sim/naval2.ts; `setUnitStance {unitIds, stance}`):
-  `auto` (default: intercepts near its post and, while its owner is at war, parks off enemy coast within
-  `NAVY_AUTO_BOMBARD_REACH` of the post, fronts first, then goes home), `hunt` (intercepts over
-  `NAVY_HUNT_DETECT` / `NAVY_HUNT_LEASH`), `escort` (sticks to own transports, then trade ships; an escorted ship takes
+  `auto` (default: intercepts near its post and, while its owner is at war, roams: takes up station off enemy coast
+  anywhere in its sea (Follow my war: the war target's coast nearest the main front; else near the ship, then
+  anywhere; fronts first; stations `NAVY_REACH.crowdRadius` apart) and its post moves with it; after the war it
+  patrols where it is), `hunt` (intercepts any hostile ship within `NAVY_HUNT_DETECT` and ships of nations at war
+  anywhere in its sea, no leash; patrols where the chase ended), `hold` (intercepts near its post, never roams);
+  `auto` / `hunt` ships under `NAVY_REACH.repairBelow` of their hp sail to the nearest own Port of their sea (if
+  there is one) and stay there until mended; a coast search that finds nothing waits `NAVY_REACH.retrySeconds`
+  (`Unit.retryTick`); `escort` (sticks to own transports, then trade ships; an escorted ship takes
   x `NAVY_ESCORT_DAMAGE` damage; escorts sail x2), `bombard` (parks off enemy coast, shells x
-  `NAVY_BOMBARD_STANCE_KILL`), `blockade` (parks off an enemy port). State 3 = on station (`Unit.station` = the coast
+  `NAVY_BOMBARD_STANCE_KILL`; near it first, else anywhere in its sea; home after the war), `blockade` (parks off
+  an enemy port anywhere in its sea). State 3 = on station (`Unit.station` = the coast
   or port tile), 4 = escorting (`station` = the ship's id). "At war" = an attack running between the two, or within
   `NAVY_WAR_MEMORY` s (`state.warMemory`). Fronts: enemy land within `NAVY_SUPPORT_RANGE` of own warships costs
   defence / (1 + bonus) and advances faster (bonus 0.45 for the first ship, x0.6 for each further one, cap 1) and
@@ -659,8 +671,8 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   blockader's warships capture its trade ships (cargo x `NAVY_CAPTURE_GOLD` to them). Veterancy (sinking, shelling):
   +1 max hp and +20% damage per level; ships near an own port mend. Fleet cap `NAVY_CAP_BASE` + 3 per port level;
   higher ports build faster. Carriers: support range x1.5; Submarines: blockade range and captured gold x1.5. AIs
-  (`aiNavy`): at war, fixed roles per ship (blockade / bombard / auto, admirals also hunt), escorts for transports,
-  idle ships move their post toward the enemy's coast; coastal AIs research Navigation once boxed in or at 5 techs.
+  (`aiNavy`): at war, fixed roles per ship (blockade / bombard / auto, admirals also hunt), escorts for transports
+  (their auto ships roam to the enemy's coast by themselves); coastal AIs research Navigation once boxed in or at 5 techs.
 - **Divisions, part two** (src/sim/armor2.ts; `setDivisionMode {unitIds, mode, front?}`): a spearhead no longer
   spends a division (it disbands only under `TANK_DISBAND_SHARE`); holding divisions refit from the pool
   (`ARMOR_REFIT_FACTORY` per s near an own Factory, `ARMOR_REFIT_FIELD` elsewhere). Spearheads of 8+ tiles give
@@ -671,8 +683,10 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   `ARMOR_SUPPORT_SCAN_SECONDS` strikes the best of 8 border tiles of nations at war within `ARMOR_SUPPORT_RADIUS` by
   expected depth + `ARMOR_CUT_BONUS` for a line that crosses their land, when at `ARMOR_SUPPORT_READY` strength;
   drives to a Factory to refit under `ARMOR_SUPPORT_REFIT`); `refit` (to the nearest Factory, then hold). Cap: one
-  per Factory level, + one per 2 levels with Railways. AIs put their divisions on `support` at the main war's front
-  (`aiDivisionModes`); warlords field up to 6.
+  per Factory level, + one per 2 levels with Railways. A support division whose front is more than
+  `ARMOR_SUPPORT_RADIUS` + 12 tiles away jumps there by rail (route search `TANK_MOBILITY.jumpBudget`). AIs put their
+  divisions on `support` at the main war's front: the foe's border tile nearest the focus of the biggest attack between
+  them (`aiDivisionModes`); warlords field up to 6.
 - **Trade ship**: each Port periodically sends one to one of a stable handful of partner ports on its sea (a pair
   hash picks them) of players not at war with it (allies weighted x2), so routes stay cached. Delivered gold goes to
   both owners (scaled by path length). Enemy warships sink them.

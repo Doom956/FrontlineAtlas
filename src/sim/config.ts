@@ -628,13 +628,17 @@ export const TANK_BOMBER_KILL = 0.15;
 export const TANK_PATH_BUDGET = 60000;
 /**
  * Tank mobility (tanks.ts, armor2.ts): divisions move over their own (connected) land by rail at
- * UNITS.tankDivision.speed tiles/s, x railways with Railways; an automatic jump of a 'support' division to a front
+ * UNITS.tankDivision.speed tiles/s, x railways with Railways (wadeSpeed across water); an automatic jump of a 'support' division to a front
  * further than ARMOR_SUPPORT_RADIUS + 12 tiles away searches its route with jumpBudget (nearer drives:
- * ARMOR_AUTO_PATH_BUDGET). AI build bar: gold / iron and oil / armor at home of at least these times a division's price.
+ * ARMOR_AUTO_PATH_BUDGET; land routes to another landmass are refused without a search). AI build bar: gold / iron and oil / armor at home of at least these times a division's price.
  */
 export const TANK_MOBILITY = {
   railways: 1.5,
-  jumpBudget: 30000,
+  /** tiles/s across narrow water a division wades (Amphibious Tanks): no rail there */
+  wadeSpeed: 5,
+  jumpBudget: 20000,
+  /** a failed jump waits this many times ARMOR_RETRY_SECONDS before the next try */
+  jumpRetry: 3,
   aiGold: 1.6,
   aiMaterials: 1.2,
   aiArmor: 1.1,

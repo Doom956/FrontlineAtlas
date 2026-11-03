@@ -348,9 +348,13 @@ function returnToPost(state: GameState, u: Unit, stay = false): void {
   }
 }
 
+/** Route search effort for a chase across the sea ('hunt'); a failed one waits FAR_RETRY_TICKS before the next look. */
+const FAR_CHASE_BUDGET = 12000;
+const FAR_RETRY_TICKS = 3 * TICKS_PER_SECOND;
+
 function chaseTo(state: GameState, u: Unit, t: Unit, far = false): boolean {
   const to = shipTileOf(state, t);
-  const path = waterPath(state.map, shipTileOf(state, u), to, far ? undefined : 4 * WARSHIP_DETECT_RANGE, 4000);
+  const path = far ? waterPath(state.map, shipTileOf(state, u), to, undefined, FAR_CHASE_BUDGET) : waterPath(state.map, shipTileOf(state, u), to, 4 * WARSHIP_DETECT_RANGE, 4000);
   if (!path) return false;
   u.path = path;
   u.pathPos = 0;
@@ -403,17 +407,19 @@ export function interceptStep(
     }
     return;
   }
-  // Patrolling: the best target in sight (rank, then distance, then id) within the leash of our post; hunting ('far'):
-  // also ships of nations at war anywhere in our sea.
-  const comp = far ? waterComponents(state.map) : null;
-  const sea = comp ? comp[shipTileOf(state, u)] : 0;
+  // Patrolling: the best target in sight (rank, then distance, then id) within the leash of our post, on our sea (a
+  // ship on a lake next door can't be reached); hunting ('far'): also ships of nations at war anywhere in our sea.
+  if (far && (u.retryTick ?? 0) > state.tick) return; // the last chase across the sea found no route
+  const comp = waterComponents(state.map);
+  const sea = comp[shipTileOf(state, u)];
   let best: Unit | null = null;
   let bestRank = 99;
   let bestD = Infinity;
   for (const s of ships) {
     if (s === u || s.owner === me) continue;
     const d = d2(s.x, s.y, u.x, u.y);
-    if (d > detect2 && (!comp || !wars.has(me * 1024 + s.owner) || comp[shipTileOf(state, s)] !== sea)) continue;
+    if (d > detect2 && (!far || !wars.has(me * 1024 + s.owner))) continue;
+    if (comp[shipTileOf(state, s)] !== sea) continue;
     const rank = interceptRank(state, me, s, wars);
     if (rank < 0 || d2(s.x, s.y, postX, postY) > leash2) continue;
     if (rank > bestRank || (rank === bestRank && (d > bestD || (d === bestD && best !== null && s.id > best.id)))) continue;
@@ -423,7 +429,10 @@ export function interceptStep(
     bestD = d;
   }
   if (!best) return;
-  if (!chaseTo(state, u, best, far)) return;
+  if (!chaseTo(state, u, best, far)) {
+    if (far) u.retryTick = state.tick + FAR_RETRY_TICKS;
+    return;
+  }
   u.state = 2;
   u.chase = best.id;
   u.chaseLost = 0;

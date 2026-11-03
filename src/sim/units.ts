@@ -90,7 +90,7 @@ import {
   techTradeGoldMul,
 } from './techtree';
 import { chaseTargetInRange } from './navy';
-import { blockadeTradeMul, warSet, onShipKilled, shellingMul, shipDamageMul, warshipSpeedMul, warshipThink } from './naval2';
+import { blockadeTradeMul, warSet, onShipKilled, shellingMul, shipDamageMul, mendingInPort, warshipSpeedMul, warshipThink } from './naval2';
 import { bombDivisions } from './tanks';
 import { airParadropMul, airStrikeArrived, escortAbsorbs, escortCargo, interceptBySuperiority } from './airwings';
 import { doctrineLess, doctrineLever, doctrineMore, doctrinePerk } from './doctrines';
@@ -578,7 +578,7 @@ function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<numbe
     if (u.state === 1) {
       u.state = 0;
       u.cargo = shipTile(state, u);
-    } else if (u.state === 0 && state.rng() < WARSHIP_WANDER_CHANCE) {
+    } else if (u.state === 0 && !mendingInPort(state, u) && state.rng() < WARSHIP_WANDER_CHANCE) {
       wander(state, u);
     }
   }

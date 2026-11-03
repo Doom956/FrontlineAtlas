@@ -104,13 +104,13 @@ export class PillarOverlay {
       if (u.type === 'warship') {
         const p = posOf(u);
         // one set of rings per group of ships close together (a fleet of 5 draws one set, not five)
-        if (sel.has(u.id) && !ringed.some((q) => Math.abs(q.x - p.x) + Math.abs(q.y - p.y) < range * z * 0.3)) {
+        if (sel.has(u.id) && !ringed.some((q) => Math.abs(q.x - p.x) + Math.abs(q.y - p.y) < Math.max(24, 12 * z))) {
           ringed.push(p);
           const r = shipReach(state, u);
           if (r.support > 0) ring(ctx, p.x, p.y, r.support * z, `${STEEL}0.45)`, [5, 5], `${STEEL}0.035)`);
           if (r.shell > 0 && Math.abs(r.shell - r.support) > 1.5) ring(ctx, p.x, p.y, r.shell * z, `${BRASS}0.45)`, [1, 4]);
           ring(ctx, p.x, p.y, r.weapon * z, `${RED}0.4)`, []);
-          if (z >= 0.9 && ringed.length <= 3) {
+          if (z >= 0.9 && ringed.length === 1) {
             ringLabel(ctx, p.x, p.y - r.weapon * z, `guns ${Math.round(r.weapon)}`, `${RED}0.85)`);
             if (r.support > 0) ringLabel(ctx, p.x, p.y + r.support * z, `shore support ${Math.round(r.support)}`, `${STEEL}0.9)`);
             if (r.shell > 0 && Math.abs(r.shell - r.support) > 1.5) ringLabel(ctx, p.x, p.y - r.shell * z, `shelling ${Math.floor(r.shell)}`, `${BRASS}0.9)`);

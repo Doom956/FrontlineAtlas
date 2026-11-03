@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyAction } from '../src/sim/actions';
 import { markBuildingsChanged } from '../src/sim/buildings';
-import { MAX_GROUP_UNITS, WARSHIP_SPAWN_RANGE } from '../src/sim/config';
+import { MAX_GROUP_UNITS, TANK_LAUNCH_REACH, UNITS } from '../src/sim/config';
 import { hashState } from '../src/sim/hash';
 import { computeCoastAndLand } from '../src/sim/mapgen';
 import { newId } from '../src/sim/state';
@@ -25,7 +25,12 @@ import {
   toggleInSelection,
   warshipSpawnArea,
   warshipSpawnCheck,
+  warshipSpawnHint,
+  railLine,
+  railPreviewFor,
+  previewFor,
 } from '../src/client/selection';
+import { arrivalText, divisionSpeed, portSeas, railMove, shipReach } from '../src/client/reach';
 import { defaultUiState } from '../src/client/uiState';
 import { claimRect, makeFlatGame } from './helpers';
 
@@ -186,27 +191,83 @@ describe('group orders', () => {
 });
 
 describe('warship placement', () => {
-  it('accepts water near an own port on the same sea, says why otherwise', () => {
+  it('accepts any water of a sea an own port touches, however far, and says why otherwise', () => {
     const s = game();
     const ok = spawnWarshipAction(s, 1, at(s, 40, 35));
     expect(ok).toEqual({ type: 'buildWarship', port: at(s, 29, 35), tile: at(s, 40, 35) });
     expect(applyAction(s, 1, ok as Action)).toEqual({ ok: true });
-    expect(typeof spawnWarshipAction(s, 1, at(s, 29 + WARSHIP_SPAWN_RANGE + 5, 35))).toBe('string');
+    // far out on the same sea (65+ tiles from the port): fine now
+    expect(spawnWarshipAction(s, 1, at(s, 95, 2))).toEqual({ type: 'buildWarship', port: at(s, 29, 35), tile: at(s, 95, 2) });
     expect(spawnWarshipAction(s, 1, at(s, 10, 30))).toMatch(/water/i);
     expect(typeof spawnWarshipAction(s, 1, at(s, 6, 6))).toBe('string'); // the lake: not reachable from the port
     expect(warshipSpawnCheck(s, 2, at(s, 40, 35)).ok).toBe(false); // player 2 has no port
   });
 
-  it('shades exactly the reachable water within range', () => {
+  it('shades the whole sea the ports touch, and the cursor gives a short reason elsewhere', () => {
     const s = game();
     const a = warshipSpawnArea(s, 1)!;
     const inMask = (x: number, y: number): boolean => x >= a.x0 && y >= a.y0 && x < a.x0 + a.w && y < a.y0 + a.h && a.mask[(y - a.y0) * a.w + (x - a.x0)] === 1;
     expect(inMask(40, 35)).toBe(true);
+    expect(inMask(99, 0)).toBe(true); // the far corner of the sea
     expect(inMask(10, 30)).toBe(false); // land
     expect(inMask(6, 6)).toBe(false); // lake
-    expect(inMask(29 + WARSHIP_SPAWN_RANGE + 1, 35)).toBe(false); // out of range
-    for (let y = a.y0; y < a.y0 + a.h; y++) for (let x = a.x0; x < a.x0 + a.w; x++) if (inMask(x, y)) expect(warshipSpawnCheck(s, 1, at(s, x, y)).ok).toBe(true);
+    for (let y = a.y0; y < a.y0 + a.h; y += 3) for (let x = a.x0; x < a.x0 + a.w; x += 3) if (inMask(x, y)) expect(warshipSpawnCheck(s, 1, at(s, x, y)).ok).toBe(true);
     expect(warshipSpawnArea(s, 2)).toBeNull();
+    const seas = portSeas(s, 1);
+    expect(warshipSpawnHint(s, 1, seas, at(s, 60, 20))).toBe('');
+    expect(warshipSpawnHint(s, 1, seas, at(s, 10, 30))).toMatch(/^Land/);
+    expect(warshipSpawnHint(s, 1, seas, at(s, 6, 6))).toBe('No port of yours on this sea');
+    expect(warshipSpawnHint(s, 2, portSeas(s, 2), at(s, 60, 20))).toBe('Build a Port first');
+  });
+
+  it('ship rings: guns, shelling and shore support of each ship', () => {
+    const s = game();
+    const ship = s.units.find((u) => u.owner === 1 && u.type === 'warship')!;
+    const r = shipReach(s, ship);
+    expect(r.weapon).toBeGreaterThan(0);
+    expect(r.shell).toBeGreaterThan(0);
+    expect(r.support).toBeGreaterThan(0);
+    const before = hashState(s);
+    shipReach(s, { ...ship, variant: 'battleship' });
+    expect(shipReach(s, { ...ship, variant: 'battleship' }).shell).toBeCloseTo(r.shell * 2);
+    expect(shipReach(s, { ...ship, variant: 'submarine' }).shell).toBe(0);
+    expect(hashState(s)).toBe(before);
+  });
+});
+
+describe('rail moves and spearhead reach', () => {
+  it('hovering own land shows the route and the arrival time; foreign land shows none', () => {
+    const s = game();
+    const sel = selectAllOf(s, 1, 'tankDivision');
+    const lead = s.units.find((u) => u.id === sel[0])!;
+    const before = hashState(s);
+    const m = railPreviewFor(s, 1, sel, at(s, 10, 30), 0)!;
+    expect(m.path[0]).toBe(at(s, Math.round(lead.x), Math.round(lead.y)));
+    expect(m.path[m.path.length - 1]).toBe(at(s, 10, 30));
+    expect(m.length).toBeGreaterThanOrEqual(20);
+    expect(m.seconds).toBeCloseTo(m.length / divisionSpeed(s, 1));
+    expect(divisionSpeed(s, 1)).toBeGreaterThanOrEqual(UNITS.tankDivision.speed * 0.5);
+    expect(railLine(m)).toMatch(/arrives in/);
+    expect(railPreviewFor(s, 1, sel, at(s, 25, 10), 1000)).toBeNull(); // enemy land: a spearhead, not a drive
+    expect(railPreviewFor(s, 1, sel, at(s, 50, 10), 2000)).toBeNull(); // water
+    expect(railMove(s, lead, at(s, 25, 10))).toBeNull();
+    expect(hashState(s)).toBe(before);
+  });
+
+  it('arrival text', () => {
+    expect(arrivalText(0.4)).toBe('under a second');
+    expect(arrivalText(4.2)).toBe('about 4 s');
+    expect(arrivalText(70)).toBe('about 1 min 10 s');
+    expect(arrivalText(Infinity)).toBe('cannot get there');
+  });
+
+  it('a spearhead can be aimed as far past the border as the launch reach', () => {
+    const s = game();
+    const sel = selectAllOf(s, 1, 'tankDivision');
+    const deep = Math.min(29, 19 + TANK_LAUNCH_REACH);
+    const p = previewFor(s, 1, sel, at(s, deep, 10));
+    expect(p).not.toBeNull();
+    expect(p!.reason === '' || !/next to your border/.test(p!.reason)).toBe(true);
   });
 });
 

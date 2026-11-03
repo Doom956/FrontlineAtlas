@@ -157,11 +157,11 @@ export function previewFor(state: GameState, me: number, sel: readonly number[],
 }
 
 const railCache = new WeakMap<GameState, { key: string; at: number; m: RailMove | null }>();
-/** Below this many ms between two new routes the last one is kept (A* over a big empire on every mouse move). */
+/** At most one new route search per this many ms (an A* over a big empire on every mouse move would stutter). */
 const RAIL_THROTTLE_MS = 90;
 /**
  * The drive of the lead division to `tile` (own land, or the launch tile of a spearhead): route and arrival time.
- * Cached for a few ticks per tile; while the mouse moves fast the last route stays up to RAIL_THROTTLE_MS.
+ * Cached for a few ticks per tile; while the mouse moves fast, a new tile waits up to RAIL_THROTTLE_MS for its route.
  */
 export function railPreviewFor(state: GameState, me: number, sel: readonly number[], tile: number, now = performance.now()): RailMove | null {
   if (tile < 0 || tile >= state.map.owner.length || state.map.owner[tile] !== me || isWater(state.map.terrain[tile])) return null;

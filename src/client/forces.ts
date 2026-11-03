@@ -12,6 +12,7 @@ import { SHELL_RANGE_TILES } from './reach';
 import { areAllied } from '../sim/diplomacy';
 import { unitCost } from '../sim/units';
 import { warshipOrderCost } from '../sim/navy';
+import { mendingInPort } from '../sim/naval2';
 import { armyTotal } from '../sim/economy';
 import { forEachInRadius } from '../sim/grid';
 import { buildingAllowed, unitAllowed } from '../sim/rules';
@@ -271,6 +272,8 @@ export function unitDoing(state: GameState, me: Player, u: Unit): string {
     case 'warship': {
       const foe = enemyShipNear(state, u);
       if (foe) return `Fighting ${nameOf(state, me, foe.owner)} ${foe.type === 'tradeShip' ? 'trade ship' : UNITS[foe.type].name.toLowerCase()}`;
+      // roaming ships mend at a port of theirs, then sail out again (naval2.mendingInPort)
+      if (u.owner === me.id && mendingInPort(state, u)) return `Repairing at your port (hull ${hpText(u)})`;
       // stance work: shelling a coast, blockading a port, escorting (pillars.ts)
       const order = u.owner === me.id ? warshipOrderLine(state, me.id, u) : '';
       if (order) return order;

@@ -336,9 +336,9 @@ export function howToPlayContent(): HTMLElement {
   const tank = UNITS.tankDivision;
   const tankRows: Row[] = [
     { title: 'Build', text: `Military group, needs Mechanization and a Factory (one per Factory level). Costs ${n(tank.gold)} gold, ${tank.iron} iron, ${tank.oil} oil and takes armor from your pool.` },
-    { title: 'Move', text: `Select it like a warship (click, or Shift+drag a box; Shift+A picks all), then click your land: it drives there fast over your own land (${Math.round(tank.speed)} tiles/s, Railways x${TANK_MOBILITY.railways}). Hovering shows the route and when it arrives.` },
-    { title: 'Spearhead', text: `Click enemy land up to ${TANK_LAUNCH_REACH} tiles past your border: the division drives to the nearest own tile, then makes a ${TANK_SPEARHEAD_WIDTH}-tile-wide breakthrough up to ${TANK_SPEARHEAD_MAX_DEPTH} tiles deep at ${TANK_SPEARHEAD_SPEED} tiles/s on plains. Fast on plains and desert, slow in forest, hills and swamp.` },
-    { title: 'Support front', text: 'Left on Support front, divisions ride to your current war\'s main front by themselves and spearhead into its weak spots whenever they are ready.' },
+    { title: 'Move', text: `Select tank divisions like warships (click, or Shift+drag a box; Shift+A picks all), then click your land: they drive there fast over your own land (${Math.round(tank.speed)} tiles/s, Railways x${TANK_MOBILITY.railways}). Hovering shows the route and when they arrive.` },
+    { title: 'Spearhead', text: `Click enemy land up to ${TANK_LAUNCH_REACH} tiles past your border: the tanks drive to the nearest own tile, then make a ${TANK_SPEARHEAD_WIDTH}-tile-wide breakthrough up to ${TANK_SPEARHEAD_MAX_DEPTH} tiles deep at ${TANK_SPEARHEAD_SPEED} tiles/s on plains. Fast on plains and desert, slow in forest, hills and swamp.` },
+    { title: 'Support front', text: 'Left on Support front, tank divisions ride to your current war\'s main front by themselves and spearhead into its weak spots whenever they are ready.' },
     { title: 'Stalls at', text: `Mountains and forts, unless ${pct(TANK_ARTILLERY_SUPPORT)}% of the division is artillery (then slowly, at high loss).` },
     { title: 'Overrun', text: `A division that is not attacking and loses the ground under it falls back to your land within ${TANK_FALLBACK_RADIUS} tiles (${pct(TANK_FALLBACK_LOSS)}% of its troops lost) if it still has a fifth of a full division, else it is overrun and its troops go home.` },
   ];

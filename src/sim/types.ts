@@ -394,7 +394,10 @@ export interface Unit {
   vet?: number;
   /** tank division mode (armor2.ts); absent = 'hold' */
   mode?: DivisionMode;
-  /** tank division (armor2.ts): no automatic drive is tried before this tick (the last route failed); absent = 0 */
+  /**
+   * tank division (armor2.ts): no automatic drive is tried before this tick (the last route failed); warship
+   * (naval2.ts, navy.ts): no coast search / chase across the sea before this tick (the last one found nothing); absent = 0
+   */
   retryTick?: number;
   /** bomber / cargo plane flying an air-wing mission (airwings.ts): 1 = support, 2 = strategic; absent = manual */
   mission?: number;
@@ -868,7 +871,7 @@ export type Action =
   | { type: 'transport'; from: number; to: number; troops: Troops }
   /**
    * port = an own finished Port tile (or -1: the nearest suitable one); tile = the water tile where the ship appears
-   * (reachable from that port, within WARSHIP_SPAWN_RANGE). Without tile it appears next to the port.
+   * (any water of a sea that port touches, however far: navy.warshipSpawnable). Without tile it appears next to the port.
    */
   | { type: 'buildWarship'; port: number; tile?: number; variant?: NavalVariant }
   | { type: 'moveWarship'; unitId: number; tile: number }
