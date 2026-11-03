@@ -76,7 +76,7 @@ const STRIKE_HELP: Record<StrikeId, string> = {
   barrage: `Needs an Arsenal and ${n(BARRAGE_MIN_ARTILLERY)} artillery. Shells enemy land up to ${BARRAGE_RANGE} tiles from your border: kills troops, silences forts and SAM sites for ${BARRAGE_DISABLE_SECONDS} s.`,
   bomb: `Needs Flight, an Airfield and a bomber. Wrecks buildings and kills troops within ${BOMBER_RADIUS} tiles, as far as the airfield reaches (the gold rings). Works exactly like a mission sortie: Heavy Bombers, Ground-attack planes, Strategic Bombing, Night Bombing and Drop Tanks all count. Near your front it bombs ahead of your push; over a building it raids it.`,
   paradrop: `Needs Flight and an Airfield. Drops infantry up to ${PARADROP_RANGE} tiles away; they attack from where they land.`,
-  rocket: `Needs Rocketry and a Missile Silo. Hits anywhere: destroys enemy buildings within ${ROCKET_RADIUS} tiles. Auto-fire (Forces, Y) fires them by itself at the nation you fight.`,
+  rocket: `Needs Rocketry and a Missile Silo. Hits anywhere: destroys enemy buildings within ${ROCKET_RADIUS} tiles. Your silos fire them by themselves at the nation you fight (auto-fire, on unless you switch it off).`,
   atomBomb: `Needs Nuclear Fission and a Missile Silo. Wipes out everything within ${ATOM_RADIUS} tiles, yours too; every nation turns on you.`,
 };
 
@@ -299,7 +299,7 @@ export function howToPlayContent(): HTMLElement {
     { title: 'Unlock', text: `At ${min(DOCTRINE_UNLOCK_SECONDS)}:00 (half that in a fast game) pick one. It only adds a bonus: every unit, building and strike stays open. The picker marks the three that suit your land and neighbours.`, key: 'Shift D' },
     { title: 'Levels', text: `Level 2 after ${min(DOCTRINE_LEVEL_SECONDS[1])} min, level 3 (a small extra perk) after ${min(DOCTRINE_LEVEL_SECONDS[2])} min with the same doctrine.` },
     { title: 'Switching', text: `The first choice is free. A switch costs gold, leaves you ${DOCTRINE_ADAPT_SECONDS} s with none, restarts at level 1, then has a ${min(DOCTRINE_SWITCH_COOLDOWN)} min cooldown.` },
-    { title: 'Air cover', text: 'Air doctrine: your idle airfields bomb the trenches in front of your attacks by themselves, for free. Set a mission to use them elsewhere.' },
+    { title: 'Air cover', text: 'Air doctrine: airfields set to Idle bomb the trenches in front of your attacks by themselves, for free.' },
     { title: 'Scouting', text: "A neighbour's doctrine shows on its card once you share a border, have a Watchtower near it or are allied. Counter it." },
   ];
   const doctrineList: Row[] = (Object.keys(DOCTRINES) as DoctrineId[]).map((id) => ({
@@ -320,7 +320,7 @@ export function howToPlayContent(): HTMLElement {
     { title: 'Fire', text: 'A ready strike shows at the right end of the bottom bar (a ring while it reloads). Press its key, then click the target. Esc or right-click cancels. Forces says how to unlock the locked ones.', key: 'Y' },
     { title: 'Salvos', text: 'Bombs, rockets and atom bombs fire x1, x3, x5 or All per click: pick it in the bar at the top while aiming, or right-click the strike button. Bombers come from every airfield in reach, rockets from every loaded silo; the preview says how many fly and what they will hit. Bombs and rockets remember the size; atom bombs start at x1 and a salvo of them asks first.' },
     { title: 'Smart aim', text: 'Bombers aimed at a front aim ahead of your attack, where the front will be when they arrive. If you have taken the spot by then, they bomb the nearest enemy land along that front instead, or fly home with their bombs.' },
-    { title: 'Rocket auto-fire', text: 'Forces (Y), Missiles: Auto-fire on a silo, or Auto-fire all for every silo (later ones too). Loaded rockets then fly by themselves at the nation you fight: forts and SAM sites near your front first, then cities near it, keeping some gold in reserve. Off by default; atom bombs never fire by themselves.', key: 'Y' },
+    { title: 'Rocket auto-fire', text: 'Forces (Y), Missiles: Auto-fire on a silo, or Auto-fire all for every silo (later ones too). Loaded rockets fly by themselves at the nation you fight: forts and SAM sites near your front first, then cities near it, keeping some gold in reserve. On by default; switch it off on a silo or for all silos in Forces. Atom bombs never fire by themselves.', key: 'Y' },
   ];
   const unitRows: Row[] = (['warship', 'transport', 'bomber', 'fighter', 'transportPlane'] as const).map((id) => ({
     icon: pic(UNIT_TEXT[id].icon),
@@ -333,8 +333,8 @@ export function howToPlayContent(): HTMLElement {
     { title: 'Place a warship', text: `Click any water of a sea one of your Ports touches, however far out: off the enemy coast works too. Selected ships show their rings: guns (${WARSHIP_RANGE} tiles), shelling (${SHELL_RANGE_TILES}) and shore support (${NAVY_SUPPORT_RANGE}); battleships shell twice as far.` },
     { title: 'Ships at war', text: 'Auto ships leave their post: they sail to your war target\'s coast anywhere on their sea, sink ships and shell, and go home only to repair. Hunt ships search the whole sea for enemy ships.' },
     { title: 'Orders', text: 'Click your warship (or Select in Forces), then click water to move it. Shift+W selects every warship, a double-click every one on screen; zoomed out, close ships show as one fleet marker with a count (click it for the fleet). The Forces drawer (Y) gives all of them one order. Hover any unit to see what it is doing; enemy units heading for you get a red ring.' },
-    { title: 'Follow my war', text: 'Air missions, Bombard / Blockade ships and Support-front tanks follow your war by default: they switch to the nation you attack. A map click fixes a target; Follow my war switches back.' },
-    { title: 'Air missions', text: 'An airfield on Support bombs ahead of your attack and keeps pace with the front; on Strategic it raids the most valuable targets of the nation you fight (factories, cities, airfields, SAM sites in the way), never ones already destroyed. Each airfield shows its last result ("Last raid: 3 buildings hit"). Re-buy losses replaces lost bombers on every mission, Air cover too.' },
+    { title: 'Follow my war', text: 'Your tanks, airfields, warships and silos fight by themselves: they go after the nation you attack, or the one attacking you. Each card says what it does now ("Auto: ..."). A map click fixes a target; Follow my war switches back.' },
+    { title: 'Air missions', text: 'New airfields start on Support (or the mission you last set for all airfields). An airfield on Support bombs ahead of your attack, or the nearest enemy front it can reach, and keeps pace with the front; on Strategic it raids the most valuable targets of the nation you fight (factories, cities, airfields, SAM sites in the way), never ones already destroyed. Each airfield shows its last result ("Last raid: 3 buildings hit"). Re-buy losses replaces lost bombers on every mission, Air cover too.' },
     { title: 'Group orders', text: 'With 2 or more warships, airfields or tank divisions, Forces (Y) shows one order bar per type: one click orders them all. Units on another order show as "set by hand"; Reset to all brings them back. Shift+W / Shift+A or a double-click selects the whole group.' },
   ];
   const tank = UNITS.tankDivision;
@@ -342,7 +342,7 @@ export function howToPlayContent(): HTMLElement {
     { title: 'Build', text: `Military group, needs Mechanization and a Factory (one per Factory level). Costs ${n(tank.gold)} gold, ${tank.iron} iron, ${tank.oil} oil and takes armor from your pool.` },
     { title: 'Move', text: `Select tank divisions like warships (click, or Shift+drag a box; Shift+A picks all), then click your land: they drive there fast over your own land (${Math.round(tank.speed)} tiles/s, Railways x${TANK_MOBILITY.railways}). Hovering shows the route and when they arrive.` },
     { title: 'Spearhead', text: `Click enemy land up to ${TANK_LAUNCH_REACH} tiles past your border, with no water on the way (Amphibious Tanks cross narrow water), then click again to launch: the tanks drive to the nearest own tile, then make a ${TANK_SPEARHEAD_WIDTH}-tile-wide breakthrough up to ${TANK_SPEARHEAD_MAX_DEPTH} tiles deep at ${TANK_SPEARHEAD_SPEED} tiles/s on plains. Fast on plains and desert, slow in forest, hills and swamp.` },
-    { title: 'Support front', text: 'Left on Support front, tank divisions ride to your current war\'s main front by themselves and spearhead into its weak spots whenever they are ready.' },
+    { title: 'Support front', text: 'New tank divisions start on Support front: they ride to your current war\'s main front by themselves and spearhead into its weak spots whenever they are ready. Hold keeps them where they are.' },
     { title: 'Stalls at', text: `Mountains and forts, unless ${pct(TANK_ARTILLERY_SUPPORT)}% of the division is artillery (then slowly, at high loss).` },
     { title: 'Overrun', text: `A division that is not attacking and loses the ground under it falls back to your land within ${TANK_FALLBACK_RADIUS} tiles (${pct(TANK_FALLBACK_LOSS)}% of its troops lost) if it still has a fifth of a full division, else it is overrun and its troops go home.` },
   ];

@@ -160,6 +160,9 @@ describe('rocket auto-fire switches and wing results', () => {
     tech(s, 'rocketry');
     const a = addBuilding(s, 'silo', 1, at(s, 20, 20));
     addBuilding(s, 'silo', 1, at(s, 30, 30));
+    // on for every silo by default; all off, then one silo, then every silo
+    expect(autoFireCount(s, 1)).toEqual({ silos: 2, on: 2 });
+    expect(applyAction(s, 1, autoFireAction(-1, false)).ok).toBe(true);
     expect(autoFireCount(s, 1)).toEqual({ silos: 2, on: 0 });
     expect(applyAction(s, 1, autoFireAction(a.tile, true)).ok).toBe(true);
     expect(siloAutoFire(s, a)).toBe(true);

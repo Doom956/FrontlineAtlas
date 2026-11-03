@@ -12,6 +12,7 @@
 import { buildingAt, buildingsOf } from './buildings';
 import {
   MAX_GROUP_UNITS,
+  NAVY_REACH,
   TICKS_PER_SECOND,
   WARSHIP_BUILD_SECONDS,
   WARSHIP_CHASE_GIVE_UP,
@@ -307,6 +308,23 @@ function interceptRank(state: GameState, me: number, s: Unit, wars: Set<number>)
   return -1;
 }
 
+/**
+ * True when hostile warships within NAVY_REACH.oddsRadius of `target` outnumber u's owner's warships within it of u
+ * (u included).
+ */
+export function outnumbered(state: GameState, u: Unit, target: Unit, ships: readonly Unit[]): boolean {
+  const r2 = NAVY_REACH.oddsRadius * NAVY_REACH.oddsRadius;
+  let foes = 0;
+  let mine = 0;
+  for (const s of ships) {
+    if (s.type !== 'warship' || s.hp <= 0) continue;
+    if (s.owner === u.owner) {
+      if (d2(s.x, s.y, u.x, u.y) <= r2) mine++;
+    } else if (hostileTo(state, u.owner, s.owner) && d2(s.x, s.y, target.x, target.y) <= r2) foes++;
+  }
+  return foes > mine;
+}
+
 function d2(ax: number, ay: number, bx: number, by: number): number {
   const dx = ax - bx;
   const dy = ay - by;
@@ -375,6 +393,7 @@ export function interceptStep(
   detect = WARSHIP_DETECT_RANGE,
   leash = WARSHIP_LEASH,
   far = false,
+  odds = false,
 ): void {
   if (u.state === 1) return; // under orders: sails on (it still fights whatever comes in range)
   if ((state.tick + u.id) % WARSHIP_SCAN_TICKS !== 0) return;
@@ -387,7 +406,7 @@ export function interceptStep(
   const me = u.owner;
   if (u.state === 2) {
     const t = u.chase ? ships.find((s) => s.id === u.chase) : undefined;
-    if (!t || interceptRank(state, me, t, wars) < 0 || d2(t.x, t.y, postX, postY) > leash2) {
+    if (!t || interceptRank(state, me, t, wars) < 0 || d2(t.x, t.y, postX, postY) > leash2 || (odds && outnumbered(state, u, t, ships))) {
       returnToPost(state, u, far);
       return;
     }
@@ -429,6 +448,7 @@ export function interceptStep(
     bestD = d;
   }
   if (!best) return;
+  if (odds && outnumbered(state, u, best, ships)) return; // a player's 'auto' ship doesn't take on a fight it is outnumbered in
   if (!chaseTo(state, u, best, far)) {
     if (far) u.retryTick = state.tick + FAR_RETRY_TICKS;
     return;

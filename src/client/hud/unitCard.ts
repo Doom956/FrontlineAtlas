@@ -6,6 +6,7 @@ import { warshipMaxHp, warshipStance } from '../../sim/naval2';
 import { MODE_INFO, STANCE_INFO, vetOf } from '../pillars';
 import type { GameState, Player } from '../../sim/types';
 import { hpText, unitDoing } from '../forces';
+import { unitAutoLine } from '../follow';
 import { iconDataUrl } from '../icons';
 import { el, setText, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon } from './glyph';
@@ -17,6 +18,8 @@ export class UnitCard {
   private hp = el('span', 'uc-hp');
   private hpFill = el('i');
   private order = el('div', 'uc-o');
+  /** what it does by itself ("Auto: supporting the front with Azuria") */
+  private auto = el('div', 'uc-a');
   private range = el('div', 'uc-r', '');
   private shown = -1;
   private lastMs = 0;
@@ -51,7 +54,8 @@ export class UnitCard {
     });
     head.append(img, tt, x);
     this.hp.append(this.hpFill);
-    this.el.append(head, this.hp, this.order, this.range);
+    this.auto.dataset.test = 'unit-auto';
+    this.el.append(head, this.hp, this.order, this.auto, this.range);
   }
 
   /** Every frame: follow the selected warship on screen; texts at ~5 Hz. */
@@ -90,6 +94,9 @@ export class UnitCard {
       this.hpFill.style.width = `${Math.round(Math.min(1, share) * 100)}%`;
       this.hp.dataset.tip = tank ? `Strength ${Math.round(share * 100)}%` : `Hull ${hpText(u)}`;
       setText(this.order, unitDoing(state, me, u));
+      const auto = unitAutoLine(state, me.id, u);
+      setText(this.auto, auto);
+      setVisible(this.auto, auto !== '');
     }
     const p = this.ctx.probe()?.unitScreen(id);
     setVisible(this.el, !!p);

@@ -574,7 +574,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'armor',
-      text: 'Click your Factory, then Tank division. Click your land to rush it there, enemy land to spearhead; Support front follows your war.',
+      text: 'Click your Factory, then Tank division. It supports your war by itself; click your land to rush it there, enemy land to spearhead.',
       target: 'order-tank-division',
       tile: (c) => buildingTile(c.s, c.me, 'factory'),
       when: (c) => playing(c) && owns(c.s, c.me, 'factory') && hasTech(c.me, 'mechanization'),
@@ -598,15 +598,15 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'air',
-      text: 'Click your Airfield: buy Bombers, then pick Support or Strategic. Missions follow your war by default.',
-      target: 'air-support || order-bomber',
+      text: 'Click your Airfield and buy Bombers: they bomb ahead of your attacks by themselves (Support). Pick another mission there.',
+      target: 'order-bomber || air-support',
       tile: (c) => buildingTile(c.s, c.me, 'airfield'),
       when: (c) => playing(c) && owns(c.s, c.me, 'airfield'),
-      done: (c) => (c.s.air?.wings ?? []).some((w) => w.owner === c.me.id && (w.mission === 'support' || w.mission === 'strategic')),
+      done: (c) => [...c.s.buildings.values()].some((b) => b.owner === c.me.id && b.type === 'airfield' && b.bombers + b.fighters > 0),
     },
     {
       id: 'airCover',
-      text: 'Your idle airfields now bomb enemy trenches in front of your attacks, free of charge. Set a mission to use them elsewhere.',
+      text: 'Your airfields set to Idle now bomb enemy trenches in front of your attacks, free of charge.',
       tile: airCoverSpot,
       // the player's first automatic Air cover sortie (Air doctrine)
       when: (c) => playing(c) && airCoverSpot(c) >= 0,

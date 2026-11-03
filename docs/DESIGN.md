@@ -330,7 +330,7 @@ trenches, and landings go around them.** Automatic for everyone (no action), dra
   with bombers fly a free support sortie at its attack on a nation whose front averages level 1+ or that took fewer
   than max(2, 15% of the front) tiles in the last 10 s, aimed at that front's deepest tile in reach; at most 6
   airfields cooling down at once; the zone lasts 2x as long. Manual missions override it (the panel shows idle as
-  "Auto cover"). The AI Air holder leaves the airfield nearest such a front idle so Air cover flies it.
+  "Auto cover"; a player's airfields start on Support, so cover flies those set to Idle). The AI Air holder leaves the airfield nearest such a front idle so Air cover flies it.
 - Measured (fresh seeds 17001+ / 18001+, against live main and with each mechanic switched off): trenches lift the
   land and armor specialists (0.68 / 0.62 with trenches off -> 1.04 / 0.92) and make the AI's doctrine choice
   depend on dug lines; they add ~15-20% to tick p99. Air cover has no measured gain so far (air specialist 0.64 off
@@ -691,6 +691,27 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   `ARMOR_SUPPORT_RADIUS` + 12 tiles away jumps there by rail (route search `TANK_MOBILITY.jumpBudget`). AIs put their
   divisions on `support` at the main war's front: the foe's border tile nearest the focus of the biggest attack between
   them (`aiDivisionModes`); warlords field up to 6.
+- **Auto for every vehicle** (protocol 16; src/sim/warTarget.ts and the vehicle files): what a new player's vehicles do
+  with no clicks. A player's **war target** (`updateFollow`): the nation it attacks with the most troops; with no
+  attack on a nation of its own, the nation attacking it hardest (defence is a war too; a nation before a tribe it
+  attacks); with neither, the last target stays while that war is live (an attack either way within
+  `NAVY_WAR_MEMORY` s) and `FOLLOW_MEMORY_SECONDS` after. Defaults for a player's new units (AI units unchanged):
+  divisions start on `support`, following (`tanks.makeDivision`); an airfield with no wing gets the player's last
+  "every airfield" choice (`setAirMission` with airfield -1 stores it in `AirState.defaults`, hashed; a picked target
+  out of reach: the same mission following), else Support following (`airwings.autoWings`, once a second); silos
+  auto-fire (above); warships stay `auto`. Reach: a following support wing whose main front is beyond its reach bombs
+  the target's border tile in reach nearest the main front, else (overseas) the target's coast nearest the airfield,
+  else the border of another nation we fight (`supportInReach`); a following strategic wing with nothing of the
+  target in reach raids another nation we fight. Divisions: a far drive the quick search gives up on floods the
+  player's land (`landFlood`) and drives that route; when the main front can't be reached over own land, a following
+  division supports the target's border it can reach (or another war's) for `DETOUR_SECONDS` (60, `Unit.detour`,
+  hashed); with no land border to the target at all it supports the nearest front of another war, else holds.
+  Warships: a player's `auto` ship doesn't start or keep a chase where hostile warships within
+  `NAVY_REACH.oddsRadius` (50) of the target outnumber its own warships near it (`navy.outnumbered`), falls back to
+  the nearest own Port of its sea when they outnumber it where it is, and a coast watched by more enemy warships than
+  own ones scores `dangerPenalty` (60 tiles) worse per ship short. The cards say
+  what auto does in one line (`client/follow.ts`: `unitAutoLine`, `airAutoLine`, `siloAutoLine`, e.g. "Auto:
+  supporting the front with Azuria", "Auto: no war, waiting").
 - **Trade ship**: each Port periodically sends one to one of a stable handful of partner ports on its sea (a pair
   hash picks them) of players not at war with it (allies weighted x2), so routes stay cached. Delivered gold goes to
   both owners (scaled by path length). Enemy warships sink them.
@@ -741,7 +762,9 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
 - **Rocket auto-fire** (`setAutoFire {silo | -1, on}`, `FollowState.fire` / `fireAll`, hashed): once per
   `fireSeconds` per player, loaded silos with it on fire a rocket at the Follow-my-war nation: forts within
   `fireFortReach` (30) of the main front and SAMs whose cover reaches it first, then cities within `fireCityReach`
-  (40); it keeps `fireReserve` (2) rocket prices in gold. Off by default; atom bombs never fire by themselves. The AI
+  (40); a war overseas (no shared border) aims around the target's coast nearest the war (`warTarget.warAim`); it
+  keeps `fireReserve` (2) rocket prices in gold. On by default for every player's silos (`makeGameState` puts the
+  humans in `fireAll`; Auto-fire all off stops it, later silos included); atom bombs never fire by themselves. The AI
   does not use it (it fires its silos itself).
 
 ## 8. Diplomacy

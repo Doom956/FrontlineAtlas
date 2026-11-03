@@ -52,7 +52,7 @@ interface RowSpec {
   extra?: HTMLElement;
 }
 
-const AUTO_FIRE_HELP = 'fires rockets by itself as soon as one is loaded, at the nation you fight (forts and SAM sites near your front first, then cities near it), keeping some gold in reserve. Never atom bombs. Off by default.';
+const AUTO_FIRE_HELP = 'fires rockets by itself as soon as one is loaded, at the nation you fight (forts and SAM sites near your front first, then cities near it), keeping some gold in reserve. Never atom bombs. On by default.';
 
 /** More rows than this: the list folds away behind "Show each" (the group bar orders them all). */
 const FOLD_AT = 6;

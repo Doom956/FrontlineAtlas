@@ -9,7 +9,8 @@
 //   hunt      intercepts any hostile ship within NAVY_HUNT_DETECT and ships of nations at war anywhere in its sea
 //             (no leash); patrols where the chase ended
 //   auto and hunt ships under NAVY_REACH.repairBelow of their hp sail to the nearest own Port of their sea and stay
-//   there until mended
+//   there until mended; a player's auto ships also weigh the odds (no chase into, no station near, more enemy
+//   warships than ours; outnumbered where they are: back to a Port, NAVY_REACH.oddsRadius)
 //   escort    sticks to own transports (first) and trade ships: an escorted ship takes x NAVY_ESCORT_DAMAGE damage
 //   bombard   parks off an enemy coast (at war; near it first, else anywhere in its sea) and shells it harder
 //             (NAVY_BOMBARD_STANCE_KILL); never chases; back to its post when the war is over
@@ -73,7 +74,7 @@ import {
 } from './config';
 import { areAllied } from './diplomacy';
 import { sameWater, waterComponents, waterPath } from './grid';
-import { interceptStep, ownGroup } from './navy';
+import { interceptStep, outnumbered, ownGroup } from './navy';
 import { ownedTilesOf } from './territory';
 import { mainFront, shipWarTarget, unitFollows } from './warTarget';
 import { atPeace } from './rules';
@@ -736,6 +737,17 @@ function roamCoast(state: GameState, u: Unit, nations: readonly number[], anchor
     if (s !== u && s.type === 'warship' && s.owner === me && s.hp > 0 && s.state === 3 && s.station !== undefined) taken.push(s.station);
   }
   const cr2 = NAVY_REACH.crowdRadius * NAVY_REACH.crowdRadius;
+  // A player's ships weigh the odds: enemy warships near a coast beyond our ships there make it worse.
+  const enemies: Unit[] = [];
+  const friends: Unit[] = [];
+  if (state.players[me]?.isHuman) {
+    for (const s of state.units) {
+      if (s.type !== 'warship' || s.hp <= 0) continue;
+      if (s.owner === me) friends.push(s);
+      else if (hostile(state, me, s.owner)) enemies.push(s);
+    }
+  }
+  const or2 = NAVY_REACH.oddsRadius * NAVY_REACH.oddsRadius;
   let best = -1;
   let bestScore = Infinity;
   for (const n of nations) {
@@ -752,6 +764,14 @@ function roamCoast(state: GameState, u: Unit, nations: readonly number[], anchor
       let score = Math.sqrt(d2(x, y, ax, ay));
       if ((x > 2 && owner[t - 3] === me) || (x < w - 3 && owner[t + 3] === me) || (y > 2 && owner[t - 3 * w] === me) || (y < h - 3 && owner[t + 3 * w] === me)) score -= 40;
       for (const q of taken) if (d2(q % w, (q / w) | 0, x, y) <= cr2) score += NAVY_REACH.crowdPenalty;
+      if (enemies.length) {
+        let short = 0;
+        for (const e of enemies) if (d2(e.x, e.y, x, y) <= or2) short++;
+        if (short > 0) {
+          for (const f of friends) if (d2(f.x, f.y, x, y) <= or2 || f === u) short--;
+          if (short > 0) score += NAVY_REACH.dangerPenalty * short;
+        }
+      }
       if (score < bestScore || (score === bestScore && t < best)) {
         best = t;
         bestScore = score;
@@ -943,13 +963,17 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
       }
     } else {
       const hunt = st === 'hunt';
-      interceptStep(state, u, ships, wars, (hunt ? NAVY_HUNT_DETECT : WARSHIP_DETECT_RANGE) * navalDetectMul(u), WARSHIP_LEASH, hunt);
+      // A player's 'auto' ship weighs the odds: no chase where enemy warships outnumber ours (navy.outnumbered).
+      const odds = st === 'auto' && !!state.players[u.owner]?.isHuman;
+      interceptStep(state, u, ships, wars, (hunt ? NAVY_HUNT_DETECT : WARSHIP_DETECT_RANGE) * navalDetectMul(u), WARSHIP_LEASH, hunt, odds);
     }
     if (u.state === 1 || u.state === 2) return;
   }
   if ((state.tick + u.id * 3) % NAVY_THINK_TICKS !== 0) return;
   repairAtPort(state, u);
   if (u.state === 1 || u.state === 2) return; // under orders / chasing
+  // A player's 'auto' ship outnumbered by enemy warships around it falls back to a Port of its sea.
+  if (st === 'auto' && state.players[u.owner]?.isHuman && !portNear(state, u) && outnumbered(state, u, u, ships) && (u.retryTick ?? 0) <= state.tick && goRepair(state, u)) return;
   // Roaming ships mend at a Port of their sea: badly damaged ones sail there, damaged ones there stay until whole.
   if (roams && mending(state, u)) {
     if (portNear(state, u)) {

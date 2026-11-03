@@ -10,7 +10,8 @@
 // a new player would when it has the money: warships at its port (up to MAX_SHIPS), tank divisions up to the Factory
 // limit, bombers and fighters (2:1) to fill its airfield, and builds one missile silo. It never gives a vehicle an
 // order (no moves, targets, manual strikes or rockets). --clicks picks what it sets:
-//   none  pure defaults: warships auto (Follow my war), divisions hold, airfields idle, silo auto-fire off
+//   none  pure defaults: warships auto (Follow my war); since protocol 16 divisions Support and airfields Support
+//         (both following) and silos auto-fire (before: divisions hold, airfields idle, auto-fire off)
 //   once  one plausible click per vehicle when it appears: each new division Support front (following), each new
 //         airfield Support (following, no target), silos auto-fire on (all silos); warships keep their default
 // A list (none,once) plays the same seeds with each setting.
@@ -758,10 +759,10 @@ class Meter {
       else if (mission !== 'superiority' && b.bombers <= 0) bump(v.why, `${mission}: fighters only`);
       else if (mission === 'superiority') bump(v.why, 'superiority over the airfield');
       else {
-        const aim = wing?.follow ? front : (wing?.target ?? -1);
+        const aim = wing && wing.target >= 0 ? wing.target : wing?.follow ? front : -1;
         const rr = airWingRange(b, state);
         const out = aim >= 0 && ((aim % w) - (b.tile % w)) ** 2 + (((aim / w) | 0) - ((b.tile / w) | 0)) ** 2 > rr * rr;
-        bump(v.why, `${mission}: ${out ? 'main front out of the airfield reach' : 'aim in reach, no sortie'}`);
+        bump(v.why, `${mission}: ${aim < 0 ? 'nothing in reach' : out ? 'aim out of the airfield reach' : 'aim in reach, no sortie'}`);
       }
     }
 
