@@ -213,16 +213,21 @@ export function economyStep({ want, level, land, avoid, gap, mineCount, attackSh
     const done = has(type);
     if (done.length) { placed[type] = done[0].buildLeft <= 0 ? done[0].tile : -2; continue; }
     if (busy.has(type)) { placed[type] = -2; continue; }
-    let best = -1, bd = 1e9;
-    for (let i = 0; i < OWN.length; i++) {
-      if (OWN[i] !== me || T[i] <= 1 || B[i] !== 0 || FALL[i] > 0) continue;
-      if (type === 'port' && !COAST[i]) continue;
-      if (type === 'airfield' && (T[i] === 5 || T[i] === 7)) continue;
-      const d = Math.hypot((i % w) - cx, Math.floor(i / w) - cy);
-      if (d >= bd) continue;
-      if (tooClose(i, gap ?? SP + 2)) continue;
-      if (actions.some((a) => a.tile !== undefined && Math.hypot((a.tile % w) - (i % w), Math.floor(a.tile / w) - Math.floor(i / w)) < (gap ?? SP + 2))) continue;
-      bd = d; best = i;
+    // a margin over the spacing rule first, then the rule itself (a small land may only fit them that way)
+    let best = -1;
+    for (const g of [gap ?? SP + 2, SP]) {
+      let bd = 1e9;
+      for (let i = 0; i < OWN.length; i++) {
+        if (OWN[i] !== me || T[i] <= 1 || B[i] !== 0 || FALL[i] > 0) continue;
+        if (type === 'port' && !COAST[i]) continue;
+        if (type === 'airfield' && (T[i] === 5 || T[i] === 7)) continue;
+        const d = Math.hypot((i % w) - cx, Math.floor(i / w) - cy);
+        if (d >= bd) continue;
+        if (tooClose(i, g)) continue;
+        if (actions.some((a) => a.tile !== undefined && Math.hypot((a.tile % w) - (i % w), Math.floor(a.tile / w) - Math.floor(i / w)) < g)) continue;
+        bd = d; best = i;
+      }
+      if (best >= 0) break;
     }
     placed[type] = best;
     if (best >= 0) actions.push({ type: 'build', building: type, tile: best });
@@ -237,7 +242,7 @@ export function economyStep({ want, level, land, avoid, gap, mineCount, attackSh
     for (let i = 0; i < RES.length; i++) {
       if (RES[i] !== res || T[i] <= 1 || OWN[i] === me || !free(i) || avoidSet.has(i)) continue;
       const d = Math.hypot((i % w) - cx, Math.floor(i / w) - cy);
-      if (d < bd && d < 40) { bd = d; best = i; }
+      if (d < bd) { bd = d; best = i; }
     }
     return best;
   };
@@ -264,11 +269,39 @@ export function economyStep({ want, level, land, avoid, gap, mineCount, attackSh
       }
     }
   }
-  const infantry = p.troops.infantry;
-  const running = s.attacks.filter((a) => a.attacker === me).length;
-  if (pick >= 0 && infantry > 400 && running < 6) {
-    actions.push({ type: 'attack', tile: pick, troops: { infantry: Math.floor(infantry * (attackShare ?? 0.6)), armor: 0, artillery: 0 } });
+  // nothing free next to us (nations and water all round): a free coast across the water (the attack order sends a
+  // transport from our nearest coast)
+  if (goalKind !== 'none' && pick < 0) {
+    const gx = goal >= 0 ? goal % w : cx, gy = goal >= 0 ? Math.floor(goal / w) : cy;
+    for (let i = 0; i < OWN.length; i++) {
+      if (!COAST[i] || T[i] <= 1 || OWN[i] === me || !free(i) || avoidSet.has(i)) continue;
+      const d = Math.hypot((i % w) - gx, Math.floor(i / w) - gy);
+      if (d < pd && Math.hypot((i % w) - cx, Math.floor(i / w) - cy) < 80) { pd = d; pick = i; }
+    }
+    notes.boat = pick;
   }
+  const infantry = p.troops.infantry;
+  const mineAtt = s.attacks.filter((a) => a.attacker === me);
+  if (pick >= 0 && infantry > 400 && mineAtt.length < 6) {
+    actions.push({ type: 'attack', tile: pick, troops: { infantry: Math.floor(infantry * (attackShare ?? 0.5)), armor: 0, artillery: 0 } });
+  }
+  // what the border touches (wilderness, tribes, nations, water) and the running attacks: for the log
+  const border = { w: 0, t: 0, n: 0, s: 0 };
+  for (let i = 0; i < OWN.length; i++) {
+    if (OWN[i] !== me) continue;
+    const x = i % w;
+    for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i + w, i - w]) {
+      if (j < 0 || j >= OWN.length || OWN[j] === me) continue;
+      if (T[j] <= 1) border.s++;
+      else if (OWN[j] === 0) border.w++;
+      else if (s.players[OWN[j]]?.personality === 'tribe') border.t++;
+      else border.n++;
+    }
+  }
+  notes.border = border;
+  notes.inf = Math.round(infantry);
+  notes.att = mineAtt.map((a) => `${a.target}:${Math.round(a.troops.infantry)}`).join(' ');
+  notes.pick = pick;
   notes.goal = goal;
   notes.goalKind = goalKind;
   notes.dist = goal >= 0 ? Math.round(pd * 10) / 10 : null;
@@ -290,7 +323,7 @@ export function economyDriver(label, evaluate, dispatch, log = () => {}, patienc
   const avoid = [];
   const sent = new Map();
   let step = 0;
-  let goal = -1, best = 1e9, stale = 0;
+  let goal = -1, best = 1e9, stale = 0, lastTiles = 0, flat = 0;
   return async (opts = {}) => {
     step++;
     const skip = [...sent].filter(([, k]) => step - k <= 1).map(([t]) => t);
@@ -300,6 +333,11 @@ export function economyDriver(label, evaluate, dispatch, log = () => {}, patienc
       if (a.type === 'build') sent.set(a.building, step);
     }
     const n = r.notes;
+    // growth that stalls is logged with what the border touches (for the next person reading a failed run)
+    if (n.goalKind !== 'none' && n.tiles <= lastTiles) {
+      if (++flat % 5 === 0) log(label, 'land not growing', JSON.stringify(n));
+    } else flat = 0;
+    lastTiles = n.tiles;
     if (n.goal >= 0 && n.dist !== null) {
       if (n.goal !== goal) {
         goal = n.goal;
