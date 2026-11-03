@@ -1144,7 +1144,9 @@ export function aiTankDivisions(state: GameState, id: number, act: (a: Action) =
   const personality = p.personality ?? 'balanced';
   // Warlords commit to armor: as many divisions as their factories allow (up to 6); others field a few whenever their
   // factories and armor allow (TANK_MOBILITY's bar: price and armor at home with a margin).
-  const wantMax = personality === 'warlord' ? Math.max(3, Math.min(6, tankDivisionLimit(state, id))) : personality === 'turtle' || personality === 'merchant' ? 2 : 3;
+  // ...and anyone with factories to spare fields up to half their capacity (at most 6).
+  const cap = tankDivisionLimit(state, id);
+  const wantMax = personality === 'warlord' ? Math.max(3, Math.min(6, cap)) : Math.max(personality === 'turtle' || personality === 'merchant' ? 2 : 3, Math.min(6, Math.floor(cap / 2)));
   const mine = state.units.filter((u) => u.type === 'tankDivision' && u.owner === id && u.hp > 0);
   const c = tankDivisionCost(state, id);
   if (
