@@ -2276,6 +2276,11 @@ button.fr-t:hover {
 .uc-o {
   color: var(--text);
 }
+.uc-a {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--text);
+}
 .uc-r {
   margin-top: 3px;
   font-size: 11px;

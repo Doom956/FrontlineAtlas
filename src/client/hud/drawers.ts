@@ -57,7 +57,7 @@ import { ABILITY_TEXT, article, buildingTexts, RESOURCE_TEXT, TERRAIN_GLYPH, ter
 import { AirPanel } from './airPanel';
 import { autoFireAction } from '../airSim';
 import { autoFireOn } from '../../sim/airstrike';
-import { autoReconText } from '../follow';
+import { autoReconText, siloAutoLine } from '../follow';
 import { autoReconOn } from '../../sim/warTarget';
 import { airfieldVariantLine, factoryVariantLine, reconBlock, reconLabel, reconOffered, warshipOptions } from './variantOrders';
 import { warshipOrderCost } from '../../sim/navy';
@@ -832,6 +832,11 @@ export class BuildingPage implements DrawerPage {
       const cd = el('p', 'note');
       actions.before(cd);
       this.upd.push((_s, _m, bb) => setText(cd, bb.buildLeft > 0 ? '' : chargesReady(bb) > 0 ? `${chargesReady(bb)} of ${Math.max(1, bb.level)} launches ready` : `Reloading: ${Math.ceil(nextChargeIn(bb))} s`));
+      // what it does by itself ("Auto: fires rockets at Azuria when loaded")
+      const autoLine = el('p', 'note');
+      autoLine.dataset.test = 'silo-auto';
+      actions.before(autoLine);
+      this.upd.push((ss, _m, bb) => setText(autoLine, bb.buildLeft > 0 ? '' : siloAutoLine(ss, bb)));
       for (const kind of ['rocket', 'atomBomb'] as const) {
         if (kind === 'atomBomb' && !allowedNow('atomBomb')) continue;
         const u = UNITS[kind];

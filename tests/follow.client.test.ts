@@ -180,6 +180,8 @@ describe('Follow my war: tank divisions', () => {
     const ui = defaultUiState();
     const { dispatch, sent } = recorder(s);
     const tanks = ids(s, 'tankDivision');
+    expect(setMode(s, ui, dispatch, tanks, 'hold')).toBe(''); // new divisions start on Support (following)
+    sent.length = 0;
     expect(followUnitsAgain(s, dispatch, 'division', tanks)).toBe('Pick Support front first');
     expect(setMode(s, ui, dispatch, tanks, 'support')).toBe('');
     expect(sent[0].type === 'setDivisionMode' && sent[0].mode === 'support' && sent[0].follow === true && sent[0].front === undefined).toBe(true);

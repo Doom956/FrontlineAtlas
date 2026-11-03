@@ -139,6 +139,9 @@ export function makeGameState(
     spawnPoints: players.map((p) => extra.spawnPoints?.[p.id] ?? -1),
     mapClass: mapClassOf(settings, map),
   };
+  // Rocket auto-fire is on for every human's silos from the start (airstrike.ts; off with Auto-fire all off).
+  const humans = players.filter((p) => p.id > 0 && p.isHuman).map((p) => p.id);
+  if (humans.length) state.follow = { targets: [], recon: [], fireAll: humans };
   initTerritory(state);
   return state;
 }

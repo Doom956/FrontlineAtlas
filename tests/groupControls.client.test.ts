@@ -85,6 +85,10 @@ describe('group orders: fan-out', () => {
   it('divisions: one setDivisionMode for all; Support front follows', () => {
     const s = game();
     const { dispatch, sent } = recorder(s);
+    // a player's new divisions support the war by themselves; put them on Hold first
+    expect(groupState(s, 1, 'division').choice).toBe('support');
+    expect(sendAll(dispatch, groupOrderActions(s, 1, 'division', 'hold'))).toBe('');
+    sent.length = 0;
     expect(sendAll(dispatch, groupOrderActions(s, 1, 'division', 'support'))).toBe('');
     expect(sent.length).toBe(1);
     const a = sent[0];

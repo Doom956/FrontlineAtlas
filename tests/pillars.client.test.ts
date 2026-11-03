@@ -111,6 +111,8 @@ describe('division modes', () => {
     const ui = defaultUiState();
     const { dispatch, sent } = recorder(s);
     const tanks = ids(s, 'tankDivision');
+    expect(sharedMode(s, 1, tanks)).toBe('support'); // a player's new divisions support the war by themselves
+    expect(setMode(s, ui, dispatch, tanks, 'hold')).toBe('');
     expect(sharedMode(s, 1, tanks)).toBe('hold');
     expect(setMode(s, ui, dispatch, tanks, 'refit')).toBe('');
     expect(sharedMode(s, 1, tanks)).toBe('refit');

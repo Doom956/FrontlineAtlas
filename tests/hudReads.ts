@@ -27,6 +27,8 @@ import { canReconFlight, navalReachMul, navalShellMul, navalShellRangeMul, naval
 import { waterComponents } from '../src/sim/grid';
 import { frontRate } from '../src/sim/rules';
 import { allScores, victoryShareNow } from '../src/sim/victory';
+import { followedNation, followTargetOf, liveFoes, warAim, warTargetOf } from '../src/sim/warTarget';
+import { airAutoLine, siloAutoLine, unitAutoLine } from '../src/client/follow';
 import type { GameState } from '../src/sim/types';
 
 type Read = (s: GameState, pid: number, k: number) => void;
@@ -198,6 +200,26 @@ export const READS: Record<string, Read> = {
     airRaidOn(s, pid);
     airSortieCost(s, pid);
     revealsOf(s, pid);
+  },
+  // "Auto: ..." lines (client/follow.ts) and the war target reads behind them
+  auto: (s, pid) => {
+    const nation = followedNation(s, pid);
+    warTargetOf(s, pid);
+    liveFoes(s, pid);
+    if (nation > 0) warAim(s, pid, nation);
+    for (const u of s.units) {
+      if (u.owner !== pid || u.hp <= 0) continue;
+      if (u.type === 'warship' || u.type === 'tankDivision') {
+        unitAutoLine(s, pid, u);
+        followTargetOf(s, u);
+      }
+    }
+    for (const b of buildingsOf(s, pid, 'airfield')) {
+      if (b.buildLeft > 0) continue;
+      airAutoLine(s, b);
+      followTargetOf(s, b);
+    }
+    for (const b of buildingsOf(s, pid, 'silo')) siloAutoLine(s, b);
   },
   map: (s) => {
     minefields(s);

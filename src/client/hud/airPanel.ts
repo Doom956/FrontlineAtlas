@@ -9,7 +9,7 @@ import { airSortieCost } from '../../sim/airwings';
 import { buildingAt } from '../../sim/buildings';
 import { unitAllowed } from '../../sim/rules';
 import type { AirMission, Building, GameState, Player } from '../../sim/types';
-import { followOf, followsWar, followText } from '../follow';
+import { airAutoLine, followOf, followsWar, followText } from '../follow';
 import { AIR_ORDER, airInfo, airReady, followWingAgain, idleAirLabel, setMission, toggleRefill, wingStatus } from '../pillars';
 import { FollowRow } from './followRow';
 import { el, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
@@ -20,6 +20,8 @@ export class AirPanel {
   readonly el: HTMLElement;
   private seg = el('div', 'ap-seg');
   private line = el('div', 'ap-line');
+  /** what the airfield does by itself ("Auto: bombing the front with Azuria") */
+  private auto = el('div', 'ap-line');
   private wing = el('div', 'ap-wing');
   /** the latest raid's result (hidden before the first) */
   private last = el('div', 'ap-last');
@@ -70,7 +72,8 @@ export class AirPanel {
     const foot = el('div', 'ap-foot');
     foot.append(this.wing, this.refill);
     this.last.dataset.test = 'air-last';
-    this.el.append(this.seg, this.line, this.last, this.follow.el, foot);
+    this.auto.dataset.test = 'air-auto';
+    this.el.append(this.seg, this.auto, this.line, this.last, this.follow.el, foot);
   }
 
   private pick(m: AirMission): void {
@@ -106,6 +109,7 @@ export class AirPanel {
       setClass(x, 'on', m === st.mission);
       if (x.getAttribute('aria-pressed') !== String(m === st.mission)) x.setAttribute('aria-pressed', String(m === st.mission));
     }
+    setText(this.auto, airAutoLine(s, b));
     setText(this.line, st.line);
     setText(this.last, st.last);
     setVisible(this.last, st.last !== '');

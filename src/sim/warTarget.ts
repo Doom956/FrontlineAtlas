@@ -3,10 +3,13 @@
 //
 // War target of a human player (updateFollow): the nation it attacks with the most troops right now (nations before
 // tribes: tribe attacks count x FOLLOW_TRIBE_WEIGHT; ties: lower id; the current one stays unless another is attacked
-// with FOLLOW_SWITCH times its troops); units re-aim at it every few seconds. With no attack
-// running, the nation it attacked last, for FOLLOW_MEMORY_SECONDS after that attack ended. Its main front = that
-// nation's border tile nearest the focus of the biggest attack on it (or of the last one). Both are kept in hashed
-// state (state.follow), so every client aims at the same tiles at the same ticks.
+// with FOLLOW_SWITCH times its troops); units re-aim at it every few seconds. A player attacking no nation (only
+// tribes, or nothing) takes the nation attacking it hardest instead (defence counts too). With no attack either way,
+// the last war target stays while that war is live (an attack either way in the last NAVY_WAR_MEMORY seconds) and for
+// FOLLOW_MEMORY_SECONDS after. Its main front = that nation's border tile nearest the focus of the biggest attack
+// between them (or of the last one). Both are kept in hashed state (state.follow), so every client aims at the same
+// tiles at the same ticks. With no shared border (a war overseas) warAim gives the target's coast nearest that focus
+// for wings and rockets; divisions then support another war that has a land front they can reach (armor2.ts).
 //
 // Who follows (the default for a player's new units and missions; a manual target makes them Fixed until the player
 // picks Follow again; AI-owned units keep their own logic):
@@ -26,6 +29,7 @@ import { atPeace } from './rules';
 import { hasTech } from './tech';
 import { canReconFlight, reconFlight, reconRange } from './variants';
 import { wingOf } from './airwings';
+import { ownedTilesOf } from './territory';
 import { isTribe } from './types';
 import type { ActionResult, Building, FollowState, GameState, Unit } from './types';
 
@@ -86,6 +90,58 @@ function biggestAttack(state: GameState, pid: number, nation: number): { focus: 
   return best;
 }
 
+/** Nations (not tribes) attacking pid right now, troops summed. */
+function threatScores(state: GameState, pid: number): Map<number, number> {
+  const sums = new Map<number, number>();
+  for (const a of state.attacks) {
+    if (a.target !== pid || a.attacker <= 0) continue;
+    const tr = a.troops.infantry + a.troops.armor + a.troops.artillery;
+    if (tr <= 0 || isTribe(state.players[a.attacker]) || !validTarget(state, pid, a.attacker)) continue;
+    sums.set(a.attacker, (sums.get(a.attacker) ?? 0) + tr);
+  }
+  return sums;
+}
+
+/** The biggest attack by `nation` on pid (ties: lower id), or null. */
+function biggestThreat(state: GameState, pid: number, nation: number): { focus: number; troops: number } | null {
+  let best: { focus: number; troops: number; id: number } | null = null;
+  for (const a of state.attacks) {
+    if (a.attacker !== nation || a.target !== pid) continue;
+    const tr = a.troops.infantry + a.troops.armor + a.troops.artillery;
+    if (tr <= 0) continue;
+    if (!best || tr > best.troops || (tr === best.troops && a.id < best.id)) best = { focus: a.focusTile, troops: tr, id: a.id };
+  }
+  return best;
+}
+
+/** True while a and b fight: an attack either way running, or one within NAVY_WAR_MEMORY seconds (state.warMemory). */
+function liveWar(state: GameState, a: number, b: number): boolean {
+  for (const x of state.attacks) {
+    if ((x.attacker === a && x.target === b) || (x.attacker === b && x.target === a)) return true;
+  }
+  const wm = state.warMemory;
+  if (!wm) return false;
+  const lo = Math.min(a, b);
+  const hi = Math.max(a, b);
+  for (let k = 0; k < wm.length; k += 3) if (wm[k] === lo && wm[k + 1] === hi) return wm[k + 2] > state.tick;
+  return false;
+}
+
+/** Highest score (ties: lower id); `current` keeps the place unless another has FOLLOW_SWITCH times its score. */
+function pickBest(sums: Map<number, number>, current: number): number {
+  let best = 0;
+  let bestScore = 0;
+  for (const [n, score] of sums) {
+    if (score > bestScore || (score === bestScore && n < best)) {
+      best = n;
+      bestScore = score;
+    }
+  }
+  const cur = current > 0 ? sums.get(current) : undefined;
+  if (cur !== undefined && cur * FOLLOW_SWITCH >= bestScore) return current;
+  return best;
+}
+
 /** Troops pid attacks each valid nation with right now (summed; tribes x FOLLOW_TRIBE_WEIGHT). */
 function attackScores(state: GameState, pid: number): Map<number, number> {
   const sums = new Map<number, number>();
@@ -103,18 +159,7 @@ function attackScores(state: GameState, pid: number): Map<number, number> {
  * keeps the place unless another nation is attacked with FOLLOW_SWITCH times its troops (no flapping between fronts).
  */
 function attackedNow(state: GameState, pid: number, current = 0): number {
-  const sums = attackScores(state, pid);
-  let best = 0;
-  let bestScore = 0;
-  for (const [n, score] of sums) {
-    if (score > bestScore || (score === bestScore && n < best)) {
-      best = n;
-      bestScore = score;
-    }
-  }
-  const cur = current > 0 ? sums.get(current) : undefined;
-  if (cur !== undefined && cur * FOLLOW_SWITCH >= bestScore) return current;
-  return best;
+  return pickBest(attackScores(state, pid), current);
 }
 
 /** `nation`'s border tile with pid nearest `anchor` (ties: lower tile); -1 = no shared border. */
@@ -148,9 +193,22 @@ export function updateFollow(state: GameState): void {
     if (!p || p.id <= 0 || !p.isHuman || !p.alive) continue;
     const k = recIndex(state, p.id);
     const had = k >= 0 ? old[k + 1] : 0;
-    const now = attackedNow(state, p.id, had);
+    let now = attackedNow(state, p.id, had);
+    let focus = -1;
+    if (now > 0 && !isTribe(state.players[now])) focus = biggestAttack(state, p.id, now)?.focus ?? p.capital;
+    else {
+      // No attack on a nation of our own: the nation attacking us hardest (defending counts as a war too), else a
+      // nation we still fight (a live war) before a tribe we attack.
+      const threat = pickBest(threatScores(state, p.id), had);
+      if (threat > 0) {
+        now = threat;
+        focus = biggestThreat(state, p.id, threat)?.focus ?? p.capital;
+      } else if (had > 0 && had !== now && !isTribe(state.players[had]) && validTarget(state, p.id, had) && liveWar(state, p.id, had)) {
+        now = had;
+        focus = old[k + 2];
+      } else if (now > 0) focus = biggestAttack(state, p.id, now)?.focus ?? p.capital;
+    }
     if (now > 0) {
-      const focus = biggestAttack(state, p.id, now)?.focus ?? p.capital;
       // The front tile: worked out on the check ticks (mainFront works it out meanwhile for a new target).
       const front = due ? frontNear(state, p.id, now, focus) : now === had ? old[k + 4] : -1;
       out.push(p.id, now, focus, state.tick, front);
@@ -162,16 +220,20 @@ export function updateFollow(state: GameState): void {
       continue;
     }
     const nation = old[k + 1];
-    if (state.tick - old[k + 3] > MEMORY_TICKS || !validTarget(state, p.id, nation)) continue;
-    out.push(p.id, nation, old[k + 2], old[k + 3], frontNear(state, p.id, nation, old[k + 2]));
+    if (!validTarget(state, p.id, nation)) continue;
+    // A live war (an attack either way lately) keeps the target; FOLLOW_MEMORY_SECONDS run from its end.
+    const last = liveWar(state, p.id, nation) ? state.tick : old[k + 3];
+    if (state.tick - last > MEMORY_TICKS) continue;
+    out.push(p.id, nation, old[k + 2], last, frontNear(state, p.id, nation, old[k + 2]));
   }
   if (out.length || state.follow) followState(state).targets = out;
   if (due) autoRecon(state);
 }
 
 /**
- * pid's war target: the nation it attacks with the most troops, else the one it attacked within the last
- * FOLLOW_MEMORY_SECONDS; 0 = none (also for AI players: their units keep their own logic).
+ * pid's war target: the nation it attacks with the most troops, else the nation attacking it hardest, else the last
+ * one while that war is live and for FOLLOW_MEMORY_SECONDS after; 0 = none (also for AI players: their units keep
+ * their own logic).
  */
 export function followedNation(state: GameState, pid: number): number {
   const k = recIndex(state, pid);
@@ -183,7 +245,7 @@ export function followedNation(state: GameState, pid: number): number {
 }
 
 /**
- * pid's main front against `target`: target's border tile nearest the focus of pid's biggest attack on it (the
+ * pid's main front against `target`: target's border tile nearest the focus of the biggest attack between them (the
  * last one when none runs); -1 = no shared border. For the war target this is the tile kept in state.follow while it
  * is still target's land; otherwise it is worked out now.
  */
@@ -194,10 +256,56 @@ export function mainFront(state: GameState, pid: number, target: number): number
   if (k >= 0 && t && t[k + 1] === target) {
     const f = t[k + 4];
     if (f >= 0 && state.map.owner[f] === target) return f;
-    return frontNear(state, pid, target, t[k + 2]);
   }
-  const big = biggestAttack(state, pid, target);
-  return frontNear(state, pid, target, big ? big.focus : (state.players[pid]?.capital ?? -1));
+  return frontNear(state, pid, target, focusOf(state, pid, target));
+}
+
+/** Where the war between pid and `target` centres: the war target's focus, else the biggest attack either way, else pid's capital. */
+function focusOf(state: GameState, pid: number, target: number): number {
+  const k = recIndex(state, pid);
+  const t = state.follow?.targets;
+  if (k >= 0 && t && t[k + 1] === target) return t[k + 2];
+  const big = biggestAttack(state, pid, target) ?? biggestThreat(state, pid, target);
+  return big ? big.focus : (state.players[pid]?.capital ?? -1);
+}
+
+/**
+ * A tile of `target` for wings and rockets to aim at: the main front, else (no shared border: a war overseas) its
+ * coast tile nearest the war's focus (else its capital). -1 = none. Pure read: scans the whole coast list (no
+ * sampling, so it doesn't depend on the list's order).
+ */
+export function warAim(state: GameState, pid: number, target: number): number {
+  const front = mainFront(state, pid, target);
+  if (front >= 0 || target <= 0 || target === pid) return front;
+  const tp = state.players[target];
+  if (!tp?.alive) return -1;
+  const map = state.map;
+  const w = map.width;
+  const n = map.owner.length;
+  const anchor = focusOf(state, pid, target);
+  let best = -1;
+  let bestD = Infinity;
+  for (const t of ownedTilesOf(state, target, 'coast')) {
+    if (map.owner[t] !== target) continue;
+    const d = anchor >= 0 && anchor < n ? d2(w, t, anchor) : 0;
+    if (d < bestD || (d === bestD && t < best)) {
+      bestD = d;
+      best = t;
+    }
+  }
+  if (best >= 0) return best;
+  return tp.capital >= 0 && tp.capital < n && map.owner[tp.capital] === target ? tp.capital : -1;
+}
+
+/** Nations pid fights now (an attack either way running or within NAVY_WAR_MEMORY s), ids ascending; nations before tribes. */
+export function liveFoes(state: GameState, pid: number): number[] {
+  const out: number[] = [];
+  const tribes: number[] = [];
+  for (const p of state.players) {
+    if (!p || p.id <= 0 || p.id === pid || !validTarget(state, pid, p.id) || !liveWar(state, pid, p.id)) continue;
+    (isTribe(p) ? tribes : out).push(p.id);
+  }
+  return out.concat(tribes);
 }
 
 /** True when unit u (warship, tank division) follows its owner's war target: a player's unit not pinned. */
