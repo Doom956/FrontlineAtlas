@@ -39,6 +39,8 @@ src/sim/      deterministic simulation, no DOM, no Math.random (use state.rng), 
   advisor.ts    army mix and research advice (AI and players on auto), plain-language hints (suggestions)
   units.ts      mobile units: transports, warships, trade ships, bombers, fighters, missiles, cargo planes
                 (paratroopers)
+  airstrike.ts  one strike rule for bombers (manual bombs = wing sorties), smart aim / re-aim, salvos, rocket
+                auto-fire, strike previews and each airfield's last result
   barrage.ts    artillery barrages (telegraphed shelling near your border)
   diplomacy.ts  alliances, requests, betrayal, AI opinion
   ai.ts         AI nations (produce Actions, never touch state directly except via applyAction)
@@ -676,14 +678,15 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
 - **Trade ship**: each Port periodically sends one to one of a stable handful of partner ports on its sea (a pair
   hash picks them) of players not at war with it (allies weighted x2), so routes stay cached. Delivered gold goes to
   both owners (scaled by path length). Enemy warships sink them.
-- **Bomber** (Airfield, Flight): flies to a target tile; on arrival destroys buildings in radius 5 (chance each) and
-  kills defender troops in radius; then flies home. SAMs and enemy fighters in range can shoot it down.
+- **Bomber** (Airfield, Flight): flies to a target tile within its airfield's reach (`airWingRange`); on arrival a
+  front strike or a raid, by the same rule as a wing sortie (below); then flies home. SAMs and enemy fighters in
+  range can shoot it down.
 - **Cargo plane** (`transportPlane`, Airfield, Flight): carries paratroopers straight to their drop tile (section
   4, Special land abilities); intercepted like a bomber.
 - **Fighter** (Airfield): stationed; intercepts enemy bombers and cargo planes within its airfield's radius (80, +15
   per level).
 - **Rocket** (Silo, Rocketry): fast missile, radius 7: destroys buildings, kills troops. A level-L silo has L launch
-  slots (one reload `SILO_COOLDOWN` each, reloading L times as fast).
+  slots (one reload `SILO_COOLDOWN` each, reloading L times as fast). Can fire by itself (auto-fire, below).
 - **Atom bomb** (Silo, Nuclear Fission): radius 35: destroys buildings, kills 60-90% of the army share in the area,
   turns tiles neutral with fallout within 14. Every AI that sees a nuke drops opinion of the launcher sharply.
 - **Interception is deterministic** (`RULES_TEXT.interception` in config is the help text): threats are handled atom
@@ -694,6 +697,36 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   then meets the first ready hostile airfield with fighters in range: shot down, and that airfield needs
   `FIGHTER_COOLDOWN / fighters` seconds to be ready again. No dice anywhere, so players can plan their cover, and
   attackers can plan saturation (more threats than shots) or silence SAMs with a barrage first.
+
+### Strikes: one rule, smart aim, salvos, auto-fire (src/sim/airstrike.ts, config STRIKE)
+
+- **One strike rule.** A manual bomb (`bomb`) and a wing sortie run the same code on arrival (`bomberArrived`). Role
+  (`strikeRole`): a finished hostile building (not a fort) within `buildingPick` (3) of the aim makes it a raid;
+  else own / allied land within `frontReach` (4) makes it a front strike (`supportStrike`: support zone, defence cut,
+  trench flattening, kills x Ground-attack / heavy); else a raid (income cut plus `dropBombs`: buildings, troops,
+  Strategic Bombing gold / iron burn). Heavy Bombers drop a wider, bigger load on raids (radius x `heavyRadius`
+  1.15, payload x `heavyPayload` 1.25, raid strength x1.7, reach x1.5); Night Bombing, Drop Tanks, carriers and the
+  doctrine levers apply to both. Manual bombs now need the airfield's reach (`airWingRange`, the gold rings).
+- **Smart aim** (`leadAim`): a front strike aims past the clicked front tile by the push's depth speed (tiles taken
+  per second / border length) x flight time x `leadMul` (1.2), at most `leadMax` (14), plus `leadMargin` (2), on the
+  foe's land, then the best tile within `leadPick` (3) (dug-in tiles and forts first). Support missions and Air cover
+  aim the same way, re-aimed every sortie. **Re-aim on arrival** (`reaim`): an aim no longer hostile takes the
+  nearest hostile tile within `reaimRadius` (14) (the old nation first; front strikes `reaimDeeper` 2 past it, a
+  strategic sortie a raid building within `raidReaim` 10); none: the bomber flies home with its bombs (no refund,
+  the bomber is kept).
+- **Strategic missions** pick the most valuable building of the Follow-my-war nation in reach (factories, cities,
+  airfields, SAMs on the route), never a wrecked one. **Last result** per airfield (`AirState.results`, hashed;
+  arrivals within `resultMergeSeconds` add up; `wingLastResult` for the client): "Last raid: 3 buildings hit in X",
+  "Support: hit 2.1k troops ahead of your push", "came back with their bombs". Re-buy losses works on every mission.
+- **Salvos** (`bombSalvo`, `missileSalvo`; protocol 14): `bomb` / `launchMissile` take `count` (absent 1, 0 = every
+  ready one, at most `maxSalvo` 64) and a site of -1 = every own site; bombers come from every ready airfield in
+  reach, nearest first; rockets from every loaded silo. Prices per missile unchanged. `strikePreview` (pure read)
+  gives the client the role, aim, radius, how many fly and the expected kills / wrecks / cuts.
+- **Rocket auto-fire** (`setAutoFire {silo | -1, on}`, `FollowState.fire` / `fireAll`, hashed): once per
+  `fireSeconds` per player, loaded silos with it on fire a rocket at the Follow-my-war nation: forts within
+  `fireFortReach` (30) of the main front and SAMs whose cover reaches it first, then cities within `fireCityReach`
+  (40); it keeps `fireReserve` (2) rocket prices in gold. Off by default; atom bombs never fire by themselves. The AI
+  does not use it (it fires its silos itself).
 
 ## 8. Diplomacy
 
@@ -791,7 +824,9 @@ clearly outnumber (careful AIs avoid SAM cover), else about 30 tiles behind the 
 Air defence: with enemy bombers about and 4+ techs an AI researches Flight and Radar next (`AI_RADAR_VS_AIR`) and
 puts SAM sites about `SAM_FRONT_DEPTH` (24) tiles behind its border with the nation that threatens it most, not
 stacked under another SAM. Airfields flying heavy bombers raid cities (all but the one nearest the main attack) and
-fall back to front support when no city is in reach (`AI_HEAVY_RAIDS`, airwings.ts). An AI keeps at most
+fall back to front support when no city is in reach (`AI_HEAVY_RAIDS`, airwings.ts). Manual AI bombs only go to
+targets in the airfield's reach; with no raid target in reach, an AI airfield bombs the main front of a nation it
+fights instead (a front strike, led ahead of its push). An AI keeps at most
 `AI_MAX_AIRFIELDS` (3) airfields: a nation with more than `AIR.massFree` (2) airfields on support / strategic missions
 flies each of them `AIR.massCooldown` (+50%) slower per extra one (`massCooldownMul`), so mass airfields no longer
 multiply sorties. A support mission's strikes leave a support zone of radius `AIR.supportRadius` (11, +2 per airfield
@@ -933,7 +968,12 @@ full-map scans after `createGame`.
   = building hotkeys; [ and ] = attack share; T research, U army, P diplomacy, J events, L map key, M minimap; Esc =
   cancel or close. In attack mode a badge by the cursor shows the odds in words (`estimateAttack().odds`: "You 2.3x
   stronger", "Even fight", "They are 3x stronger"; army sizes are public, so this needs no intel). Target modes: build, transport, bomb, missile, move warship, paradrop (dashed range ring of each airfield,
-  drop disc), barrage (disc in green or red).
+  drop disc), barrage (disc in green or red). Bomb and missile aims (client/strikes.ts, hud/salvoPicker.ts,
+  salvoPrefs.ts): a Salvo bar (x1 / x3 / x5 / All, "N ready"; right-click a strike button cycles it) remembered per
+  kind in localStorage (atom bombs are not remembered and start at x1; a salvo of them asks first); the tooltip shows the role
+  ("Front strike: aims N tiles ahead ..." / "Raid"), how many fly from how many sites, and `strikePreview`'s radius
+  and expected troops / buildings / cuts; the map marks the led aim and the blast disc. Forces (Y), Missiles:
+  Auto-fire per silo and Auto-fire all; airfield rows and drawers show the last result line.
 - Unit selection (selection.ts, render/selectionOverlay.ts): click one of your warships or tank divisions to select
   it, Shift+click to add / remove, Shift+drag a box to select all inside, Shift+W every warship, Shift+A every tank
   division, Esc clears; a chip says "3 warships selected". With a selection a click on water sends the warships (one
