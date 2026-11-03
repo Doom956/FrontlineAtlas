@@ -1,0 +1,45 @@
+Frontline Atlas auto bench report from 1 file(s): 480 of 480 games, cap 25 min.
+
+=== --clicks none: 240 games (medium x continents,archipelago,pangaea,highlands x normal) ===
+Player 1: alive at 15 / 25 min 100% / 100%; land share at 15 / 25 min mean 8% +-0 / 9% +-1 (median 8% / 7%); at war 69% +-1 of the game.
+While at war: no war target 0% +-0, war target but no land front (mainFront -1) 4% +-1, only defending 78% +-1 (per-game shares, mean +- 95%).
+vehicle         games  built/g  unit-min/g   USEFUL     IDLE   moving    other  1st use med s  never used                             useful as
+warships          211     19.4        92.1  46% +-3  11% +-2  41% +-2   2% +-0            6.0          7%                  shell 83%, fight 17%
+tank divisions    228      6.1        64.6  41% +-2  13% +-2  30% +-2  16% +-1           12.0          2%       spearhead 58%, at the front 42%
+airfields         234      1.0        12.6  76% +-3  19% +-3   0% +-0   5% +-3            6.0          3%  between sorties 66%, bombers out 34%
+silos             235      1.0         9.5  25% +-2  75% +-2   0% +-0   0% +-0           50.0          8%                            fired 100%
+(shares of unit-time while player 1 is at war, per game then mean +- 95% over games that had the vehicle at war; 1st use = seconds from appearing to the first useful sample, any time; never used = of units that appeared 3+ min before the end)
+  warships idle/other reasons (pooled unit-samples): coast search found nothing (waiting) 62%; patrolling, has a war target 24%; mending at port 12%; on station, nothing in range 2%; no war target 0%
+  tank divisions idle/other reasons (pooled unit-samples): refit (worn down) 51%; support: no land route to its front (waiting) 28%; support: near its front, no strike worth it 10%; support: war target has no land front 5%; support: front far, not moving 4%; support: no route to a strike launch tile (waiting) 1%; support: no front set 1%; support: no war target 0%
+  airfields idle/other reasons (pooled unit-samples): support: main front out of the airfield reach 77%; no aircraft 15%; support: war target has no land front 5%; support: aim in reach, no sortie 2%; support: fighters only 1%; support: no war target 0%; mission idle (default) 0%
+  silos idle/other reasons (pooled unit-samples): no target near the front 89%; keeps a reserve (gold / iron / oil) 6%; war target has no land front 5%; no war target 0%
+Payloads: bomber arrivals 18866 (78.6/game), brought home 2%, off hostile land 0%; wing sorties 28.0/game; rockets fired 7.9/game.
+Bought per game: warships 19.7, divisions 6.2, bombers 8.2, fighters 3.1. Lost per game: warships 15.0, divisions overrun 1.6 / spent 0.1 / gone otherwise 0.0, aircraft 9.1.
+Losses by kind (per game): P1 lost a warship to an enemy's warship 15.1; P1 lost a trade ship to an enemy's warship 5.0; P1 tank division was overrun and fell back 1.6; P1 lost a transport with N troops to an enemy's warship 0.7; P1 lost a bomber: its airfield is gone 0.4; Qadesh's fighters shot down a bomber of Bench 0.3.
+type         games  land25  noTarget  noFront  ship use  ship idle  tank use  tank idle  air use  air idle  silo use  silo idle
+continents      60      8%    0% +-0   5% +-1   45% +-5     7% +-4   45% +-4     7% +-2  81% +-6   18% +-6   26% +-4    74% +-4
+archipelago     60     11%    0% +-0   8% +-2   48% +-6    11% +-4   35% +-5    32% +-8  66% +-7   30% +-7   35% +-4    65% +-4
+pangaea         60      4%    0% +-0   1% +-0   47% +-5    14% +-4   43% +-5     4% +-1  81% +-7   14% +-5   20% +-4    80% +-4
+highlands       60      6%    0% +-0   2% +-0   44% +-5    12% +-4   41% +-4     8% +-2  76% +-7   15% +-4   18% +-3    82% +-3
+
+=== --clicks once: 240 games (medium x continents,archipelago,pangaea,highlands x normal) ===
+Player 1: alive at 15 / 25 min 100% / 100%; land share at 15 / 25 min mean 8% +-0 / 9% +-1 (median 8% / 7%); at war 69% +-1 of the game.
+While at war: no war target 0% +-0, war target but no land front (mainFront -1) 4% +-1, only defending 78% +-1 (per-game shares, mean +- 95%).
+vehicle         games  built/g  unit-min/g   USEFUL     IDLE   moving    other  1st use med s  never used                             useful as
+warships          212     19.1        91.2  45% +-3  11% +-2  42% +-2   2% +-1            8.0          8%                  shell 83%, fight 17%
+tank divisions    228      6.3        65.0  42% +-2  13% +-2  30% +-2  15% +-1           12.0          2%       spearhead 60%, at the front 40%
+airfields         235      1.0        12.5  75% +-3  20% +-3   0% +-0   5% +-3            6.0          3%  between sorties 66%, bombers out 34%
+silos             235      1.0         9.5  25% +-2  75% +-2   0% +-0   0% +-0           54.0          9%                            fired 100%
+(shares of unit-time while player 1 is at war, per game then mean +- 95% over games that had the vehicle at war; 1st use = seconds from appearing to the first useful sample, any time; never used = of units that appeared 3+ min before the end)
+  warships idle/other reasons (pooled unit-samples): coast search found nothing (waiting) 61%; patrolling, has a war target 25%; mending at port 13%; on station, nothing in range 1%; no war target 0%
+  tank divisions idle/other reasons (pooled unit-samples): refit (worn down) 50%; support: no land route to its front (waiting) 28%; support: near its front, no strike worth it 11%; support: war target has no land front 5%; support: front far, not moving 4%; support: no route to a strike launch tile (waiting) 1%; support: no front set 1%; support: no war target 0%
+  airfields idle/other reasons (pooled unit-samples): support: main front out of the airfield reach 77%; no aircraft 17%; support: war target has no land front 4%; support: aim in reach, no sortie 2%; support: no war target 0%; support: fighters only 0%; mission idle (default) 0%
+  silos idle/other reasons (pooled unit-samples): no target near the front 90%; keeps a reserve (gold / iron / oil) 6%; war target has no land front 4%; no war target 0%
+Payloads: bomber arrivals 18425 (76.8/game), brought home 2%, off hostile land 0%; wing sorties 27.5/game; rockets fired 7.7/game.
+Bought per game: warships 19.5, divisions 6.5, bombers 8.8, fighters 3.2. Lost per game: warships 14.9, divisions overrun 1.7 / spent 0.1 / gone otherwise 0.0, aircraft 9.9.
+Losses by kind (per game): P1 lost a warship to an enemy's warship 15.1; P1 lost a trade ship to an enemy's warship 5.4; P1 tank division was overrun and fell back 1.7; P1 lost a transport with N troops to an enemy's warship 0.8; P1 lost a bomber: its airfield is gone 0.4; Qadesh's fighters shot down a bomber of Bench 0.4.
+type         games  land25  noTarget  noFront  ship use  ship idle  tank use  tank idle  air use  air idle  silo use  silo idle
+continents      60      8%    0% +-0   4% +-1   45% +-4     8% +-4   47% +-4     7% +-2  82% +-5   17% +-5   26% +-4    74% +-4
+archipelago     60     11%    0% +-0   9% +-2   47% +-6    11% +-4   35% +-4    31% +-7  66% +-7   30% +-7   36% +-4    64% +-4
+pangaea         60      5%    0% +-0   2% +-0   47% +-6    13% +-4   42% +-5     6% +-1  79% +-6   17% +-5   19% +-4    81% +-4
+highlands       60      6%    0% +-0   1% +-0   41% +-5    12% +-4   43% +-4     7% +-2  73% +-8   16% +-5   18% +-3    82% +-3
