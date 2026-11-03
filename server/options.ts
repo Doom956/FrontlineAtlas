@@ -13,6 +13,8 @@ export interface ServerOptions {
   firstTurnDelayMs: number;
   /** keep one FFA and one Teams public lobby open */
   publicLobbies: boolean;
+  /** every game uses this map seed (end-to-end tests only; unset = random) */
+  fixedSeed?: number;
   /** public lobby countdown, started when the first player joins */
   publicStartMs: number;
   maxPlayersPerLobby: number;
@@ -141,6 +143,8 @@ export function optionsFromEnv(env: Record<string, string | undefined>): Partial
   else if (env.FLY_APP_NAME) o.clientIpHeader = 'fly-client-ip';
   // Render and Fly put a proxy in front of the app: the socket address is the proxy's.
   if (env.TRUST_PROXY === '1' || (env.TRUST_PROXY !== '0' && (env.RENDER || env.FLY_APP_NAME))) o.trustProxy = true;
+  const seed = int('FIXED_SEED');
+  if (seed !== undefined && seed > 0) o.fixedSeed = seed;
   if (env.ADMIN_CODE) o.adminCode = env.ADMIN_CODE;
   if (env.ALLOWED_ORIGINS) o.allowedOrigins = env.ALLOWED_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean);
   return o;
