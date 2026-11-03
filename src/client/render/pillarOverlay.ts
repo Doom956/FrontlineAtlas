@@ -1,5 +1,6 @@
 // What the pillars draw on the map (client/pillars.ts phrases them; the rules are in naval2 / armor2 / airwings):
-//   - selected warships: their shore-support range (dashed ring; land inside is cheaper and faster to take)
+//   - selected warships: their gun range (thin ring: enemy ships inside are fought), shelling range (dotted) and shore-
+//     support range (dashed, filled: land inside is cheaper and faster to take), per variant (reach.shipReach)
 //   - own warships on station: a thin line to the coast / port they cover and a small crosshair there
 //   - blockades: a ring with a bar over every blockaded port you are part of (brass = yours, red = against you)
 //   - escorts: a thin line from each escorting warship to the transport / trade ship it guards
@@ -12,10 +13,9 @@
 // Cheap: rings and lines only, a few dozen per frame at most.
 import { airPatrolRadius, airSupportRadius, airZones, airWingRange, wingOf } from '../../sim/airwings';
 import { buildingAt, buildingsOf } from '../../sim/buildings';
-import { AIR, ARMOR_SUPPORT_RADIUS, NAVY_CARRIER_SUPPORT_RANGE, NAVY_SUPPORT_RANGE, TICKS_PER_SECOND } from '../../sim/config';
+import { AIR, ARMOR_SUPPORT_RADIUS, NAVY_SUPPORT_RANGE, TICKS_PER_SECOND } from '../../sim/config';
 import { divisionMode } from '../../sim/armor2';
 import { portBlockadedBy, warshipStance } from '../../sim/naval2';
-import { hasTech } from '../../sim/tech';
 import { areAllied } from '../../sim/diplomacy';
 import { minefields } from '../../sim/specials';
 import { revealsOf } from '../../sim/variants';
@@ -24,6 +24,9 @@ import type { Building, GameState, Unit } from '../../sim/types';
 import type { Camera } from '../camera';
 import type { UiState } from '../uiState';
 import type { UnitLayer } from './units';
+import { shipReach } from '../reach';
+import { navalReachMul } from '../../sim/variants';
+import { MAP_NUM_FAMILY } from './common';
 
 const BRASS = 'rgba(227,192,78,';
 const STEEL = 'rgba(160,220,255,';
@@ -42,7 +45,7 @@ export class PillarOverlay {
     };
     const onScreen = (x: number, y: number, r: number) => x + r > 0 && y + r > 0 && x - r < cam.viewW && y - r < cam.viewH;
     const sel = new Set(ui.selection);
-    const range = NAVY_SUPPORT_RANGE * (hasTech(state.players[me], 'carriers') ? NAVY_CARRIER_SUPPORT_RANGE : 1);
+    const range = NAVY_SUPPORT_RANGE * navalReachMul(state, me); // a standard ship's shore support (aiming a bombard)
     const byId = new Map<number, Unit>();
     for (const u of state.units) byId.set(u.id, u);
     ctx.save();
@@ -100,10 +103,18 @@ export class PillarOverlay {
       if (u.owner !== me || u.hp <= 0) continue;
       if (u.type === 'warship') {
         const p = posOf(u);
-        // one ring per group of ships close together (a fleet of 5 draws one ring, not five)
-        if (sel.has(u.id) && !ringed.some((q) => Math.abs(q.x - p.x) + Math.abs(q.y - p.y) < range * z * 0.7)) {
+        // one set of rings per group of ships close together (a fleet of 5 draws one set, not five)
+        if (sel.has(u.id) && !ringed.some((q) => Math.abs(q.x - p.x) + Math.abs(q.y - p.y) < range * z * 0.3)) {
           ringed.push(p);
-          ring(ctx, p.x, p.y, range * z, `${STEEL}0.45)`, [5, 5], `${STEEL}0.035)`);
+          const r = shipReach(state, u);
+          if (r.support > 0) ring(ctx, p.x, p.y, r.support * z, `${STEEL}0.45)`, [5, 5], `${STEEL}0.035)`);
+          if (r.shell > 0 && Math.abs(r.shell - r.support) > 1.5) ring(ctx, p.x, p.y, r.shell * z, `${BRASS}0.45)`, [1, 4]);
+          ring(ctx, p.x, p.y, r.weapon * z, `${RED}0.4)`, []);
+          if (z >= 0.9 && ringed.length <= 3) {
+            ringLabel(ctx, p.x, p.y - r.weapon * z, `guns ${Math.round(r.weapon)}`, `${RED}0.85)`);
+            if (r.support > 0) ringLabel(ctx, p.x, p.y + r.support * z, `shore support ${Math.round(r.support)}`, `${STEEL}0.9)`);
+            if (r.shell > 0 && Math.abs(r.shell - r.support) > 1.5) ringLabel(ctx, p.x, p.y - r.shell * z, `shelling ${Math.round(r.shell)}`, `${BRASS}0.9)`);
+          }
         }
         if (u.state === 3 && u.station !== undefined && u.station >= 0) {
           const s = at(u.station);
@@ -175,6 +186,18 @@ export class PillarOverlay {
     }
     ctx.restore();
   }
+}
+
+/** A tiny label on a ring (centred on its top or bottom point). */
+function ringLabel(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, color: string): void {
+  ctx.font = `600 10px ${MAP_NUM_FAMILY}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const w = ctx.measureText(text).width + 8;
+  ctx.fillStyle = 'rgba(10,13,21,0.72)';
+  ctx.fillRect(x - w / 2, y - 7, w, 14);
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
 }
 
 function ring(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, stroke: string, dash: number[], fill?: string): void {

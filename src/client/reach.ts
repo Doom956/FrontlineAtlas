@@ -3,7 +3,7 @@
 // change there shows up here without edits.
 //   - shipReach: guns (ships), shelling (enemy coast) and shore support (fronts) of one warship
 //   - railMovePreview: the route a division would drive over your own land to a tile, and how long it takes
-import { NAVY_SUPPORT_RANGE, UNITS, WARSHIP_RANGE } from '../sim/config';
+import { NAVY_SUPPORT_RANGE, TANK_LAUNCH_REACH, UNITS, WARSHIP_RANGE } from '../sim/config';
 import { waterComponents } from '../sim/grid';
 import { frontRate } from '../sim/rules';
 import { ownLandPath } from '../sim/tanks';
@@ -114,4 +114,21 @@ export function arrivalText(seconds: number): string {
   const m = Math.floor(s / 60);
   const r = s % 60;
   return r ? `about ${m} min ${r} s` : `about ${m} min`;
+}
+
+// ------------------------------------------------------------------------------------------------ one-line texts
+
+/** "Guns 35 tiles · shells coast 17 · shore support 30" for a ship's card (its variant counted). */
+export function shipReachLine(state: GameState, u: Unit): string {
+  const r = shipReach(state, u);
+  const parts = [`Fights ships within ${Math.round(r.weapon)} tiles`];
+  if (r.shell > 0) parts.push(`shells enemy coast within ${Math.round(r.shell)}`);
+  if (r.support > 0) parts.push(`backs your attacks within ${Math.round(r.support)}`);
+  return `${parts.join(', ')} (at war)`;
+}
+
+/** "Drives over your land at 20 tiles/s; spearheads start up to 12 tiles past your border" for a division's card. */
+export function divisionReachLine(state: GameState, u: Unit): string {
+  const v = divisionSpeed(state, u.owner);
+  return `Drives over your land at ${Math.round(v)} tiles/s; spearheads start up to ${TANK_LAUNCH_REACH} tiles past your border`;
 }

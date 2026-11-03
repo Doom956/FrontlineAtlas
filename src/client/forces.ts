@@ -7,7 +7,8 @@
 //   - unitDoing() / unitPlace(): what a unit on the map is doing, in words ("heading to Azuria's coast")
 // The rules stay in the sim (buildWarship, buildAircraft, moveWarship); this file only reads and phrases them.
 import { aircraftCap, buildingsOf } from '../sim/buildings';
-import { BOMBER_RADIUS, TECHS, UNITS, WARSHIP_RANGE } from '../sim/config';
+import { BOMBER_RADIUS, NAVY_SUPPORT_RANGE, TECHS, UNITS, WARSHIP_RANGE } from '../sim/config';
+import { SHELL_RANGE_BASE } from './reach';
 import { areAllied } from '../sim/diplomacy';
 import { unitCost } from '../sim/units';
 import { warshipOrderCost } from '../sim/navy';
@@ -44,7 +45,7 @@ export const UNIT_TEXT: Record<SpecialId, UnitText> = {
   warship: {
     name: 'Warship',
     icon: 'warship',
-    what: `Sinks enemy ships within ${WARSHIP_RANGE} tiles and shells enemy coasts within ${WARSHIP_RANGE / 2} tiles while you are at war.`,
+    what: `Placed on any water your ports reach. Sinks enemy ships within ${WARSHIP_RANGE} tiles; at war it shells enemy coast within ${SHELL_RANGE_BASE} and backs attacks within ${NAVY_SUPPORT_RANGE}.`,
     counter: 'Only other warships sink it.',
     unlock: 'Build a Port, then buy Navigation (Arsenal)',
   },

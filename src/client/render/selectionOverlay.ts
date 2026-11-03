@@ -319,7 +319,7 @@ function tag(ctx: CanvasRenderingContext2D, cam: Camera, x: number, y: number, l
   const tw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 10;
   const th = lines.length * 14 + 4;
   let lx = x;
-  if (lx - 5 + tw > cam.viewW - 4) lx = Math.max(9, x - 2 * (x - (x - 16)) - tw);
+  if (lx - 5 + tw > cam.viewW - 4) lx = Math.max(9, x - 32 - tw); // to the other side of the point
   const ly = Math.max(th / 2 + 100, Math.min(cam.viewH - th / 2 - 80, y));
   ctx.fillStyle = 'rgba(10,13,21,0.82)';
   ctx.fillRect(lx - 5, ly - th / 2, tw, th);

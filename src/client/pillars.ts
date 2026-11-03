@@ -40,9 +40,9 @@ export interface ChoiceInfo {
 }
 
 export const STANCE_INFO: Record<WarshipStance, ChoiceInfo> = {
-  auto: { name: 'Auto', icon: 'shield', help: 'Guards its post: sinks enemy ships nearby and shells enemy coast near your fronts while at war.' },
+  auto: { name: 'Auto', icon: 'shield', help: 'Guards its post in peace; at war it sails to the enemy\'s coast anywhere on its sea, sinks ships and shells near your fronts, and comes home only to repair.' },
   hold: { name: 'Hold', icon: 'stop', help: 'Stays at its post: sinks enemy ships that come near, but never sails off to shell a coast.' },
-  hunt: { name: 'Hunt', icon: 'target', help: 'Chases enemy ships over a wide area.' },
+  hunt: { name: 'Hunt', icon: 'target', help: 'Seeks out enemy ships anywhere on its sea and chases them down.' },
   escort: { name: 'Escort', icon: 'transport', help: 'Sticks to your transports and trade ships: escorted ships are much harder to sink.' },
   bombard: { name: 'Bombard', icon: 'barrage', help: `Parks off an enemy coast: land within ${NAVY_SUPPORT_RANGE} tiles is cheaper and faster to take and loses defenders.`, pick: 'bombard' },
   blockade: { name: 'Blockade', icon: 'embargo', help: `Parks off an enemy port (within ${NAVY_BLOCKADE_RANGE} tiles): it loses trade, its region's supply drops, its trade ships are captured.`, pick: 'blockade' },
