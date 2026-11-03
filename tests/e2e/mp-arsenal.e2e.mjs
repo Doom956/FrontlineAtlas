@@ -13,6 +13,7 @@ import { spawn, execSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { economyDriver, spawnCandidates } from './scripted.mjs';
 
 const require = createRequire(import.meta.url);
 let pw;
@@ -72,42 +73,24 @@ async function waitGame(page, timeout = 30000) {
   await page.waitForFunction(() => !!window.__borderfall.mp() && window.__borderfall.turn() >= 0 && !document.querySelector('.menu:not(.hidden)'), null, { timeout });
 }
 async function spawnByClick(page, side) {
-  // a land tile with iron, oil and a coast nearby, far from every other start
-  for (let attempt = 0; attempt < 12; attempt++) {
-    const tile = await page.evaluate(({ side, attempt }) => {
-      const s = window.__borderfall.getState();
-      const { width: w, height: h } = s.map;
-      const out = [], loose = [], coastOnly = [];
-      for (let y = 8; y < h - 8; y += 1) {
-        for (let x = 8; x < w - 8; x += 1) {
-          if ((side === 'left') !== (x < w / 2)) continue;
-          const i = y * w + x;
-          if (s.map.terrain[i] <= 1 || s.map.owner[i] !== 0) continue;
-          let coast = false, iron = 0, oil = 0;
-          for (let dy = -22; dy <= 22; dy++) for (let dx = -22; dx <= 22; dx++) {
-            const j = (y + dy) * w + x + dx;
-            if (j < 0 || j >= s.map.terrain.length) continue;
-            const d2 = dx * dx + dy * dy;
-            if (d2 <= 25 && s.map.coastal[j] && s.map.terrain[j] > 1) coast = true;
-            if (d2 <= 16 && s.map.resource[j] === 1 && s.map.terrain[j] > 1) iron++;
-            if (d2 >= 256 && d2 <= 400 && s.map.resource[j] === 2 && s.map.terrain[j] > 1) oil++;
-          }
-          let near = false;
-          for (const p of s.players) if (p.id && p.capital >= 0 && Math.hypot((p.capital % w) - x, Math.floor(p.capital / w) - y) < 26) near = true;
-          if (!coast || near) continue;
-          if (iron && oil) out.push(i);
-          else if (iron || oil) loose.push(i);
-          else coastOnly.push(i);
-        }
+  // the best start on our half: oil, iron and a coast inside the first territory if the map has such a spot
+  // (scripted.mjs spawnCandidates), so the economy needs no lucky conquest
+  const cands = await page.evaluate(spawnCandidates, { side, count: 12 });
+  if (!cands.length) fail('no coastal land to spawn on');
+  for (const c of cands) {
+    if ((await page.evaluate(() => window.__borderfall.getState().phase)) !== 'spawn') {
+      log(side, 'the spawn phase ended before our pick: the game placed this start');
+      return;
+    }
+    await page.evaluate((t) => window.__borderfall.dispatch({ type: 'spawn', tile: t }), c.tile);
+    for (let k = 0; k < 8; k++) {
+      await sleep(300);
+      const cap = await page.evaluate(() => { const s = window.__borderfall.getState(); const p = s.players[s.humanId]; return p.spawned ? p.capital : -1; });
+      if (cap >= 0) {
+        log(side, 'start', cap, cap === c.tile ? `tier ${c.tier}` : `(not our pick ${c.tier}/${c.tile}: placed by the game)`);
+        return;
       }
-      // iron and oil near a coast if the map has it, else what comes closest (oil is then taken by attacking)
-      const pick = out.length ? out : loose.length ? loose : coastOnly;
-      return pick.length ? pick[(attempt * 13) % pick.length] : -1;
-    }, { side, attempt });
-    if (tile < 0) fail('no coastal land to spawn on');
-    await page.evaluate((t) => window.__borderfall.dispatch({ type: 'spawn', tile: t }), tile);
-    await sleep(1200);
-    if (await page.evaluate(() => { const s = window.__borderfall.getState(); return s.players[s.humanId].spawned; })) return;
+    }
   }
   fail('could not spawn');
 }
@@ -240,61 +223,44 @@ async function waitFor(fn, ms, what) {
   fail(`timed out: ${what}`);
 }
 
-const deposit = (pg, kind) =>
-  pg.evaluate((kind) => {
-    const s = window.__borderfall.getState();
-    const out = [];
-    for (let i = 0; i < s.map.owner.length; i++) if (s.map.owner[i] === s.humanId && s.map.resource[i] === kind && s.map.building[i] === 0) out.push(i);
-    return out;
-  }, kind);
-// iron: a mine on a deposit; oil: attack toward the nearest deposit, then a well on it (one step per call; `k` turns
-// through the candidate tiles, so a site the sim refuses, e.g. too close to another building, isn't tried forever)
-const economy = async (pg, k = 0) => {
-  const kinds = await pg.evaluate(() => { const s = window.__borderfall.getState(); return [...s.buildings.values()].filter((b) => b.owner === s.humanId).map((b) => b.type); });
-  const ironSites = await deposit(pg, 1);
-  if (ironSites.length && kinds.filter((x) => x === 'mine').length < 2) await dispatch(pg, { type: 'build', building: 'mine', tile: ironSites[k % ironSites.length] });
-  const oilSites = await deposit(pg, 2);
-  if (oilSites.length && !kinds.includes('oilWell') && k % 3 !== 2) {
-    const t = oilSites[k % oilSites.length];
-    await dispatch(pg, { type: 'build', building: 'oilWell', tile: t });
-    return { well: t };
-  }
-  const step = await pg.evaluate(() => {
+/** Our warships of this variant (any variant when none is given): afloat, and in the build queue. */
+const shipsOf = (pg, variant) =>
+  pg.evaluate((v) => {
     const s = window.__borderfall.getState();
     const me = s.humanId;
-    const w = s.map.width;
-    const cap = s.players[me].capital;
-    const cx = cap % w, cy = Math.floor(cap / w);
-    if ([...s.buildings.values()].some((x) => x.owner === me && x.type === 'oilWell')) return { done: true };
-    let best = -1, bd = 1e9;
-    for (let i = 0; i < s.map.resource.length; i++) {
-      if (s.map.resource[i] !== 2 || s.map.terrain[i] <= 1) continue;
-      const d = Math.hypot((i % w) - cx, Math.floor(i / w) - cy);
-      if (d < bd && d < 26) { bd = d; best = i; }
+    return {
+      afloat: s.units.filter((u) => u.owner === me && u.type === 'warship' && (!v || u.variant === v)).length,
+      queued: (s.unitQueue ?? []).filter((q) => q.owner === me && q.type === 'warship' && (!v || q.variant === v)).length,
+    };
+  }, variant ?? null);
+/** Variants each label's ships were seen afloat with (a new submarine can be sunk by AI destroyers within seconds). */
+const seenShips = { A: new Set(), B: new Set() };
+/**
+ * Orders a warship and checks it appeared (online an order is only checked when its turn runs, so dispatch says ok
+ * either way): sent again up to twice, with what the port and the purse looked like when it did not appear.
+ */
+async function orderShip(label, pg, port, variant) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const before = await shipsOf(pg, variant);
+    log(label, 'buildWarship', variant ?? 'default', JSON.stringify(await dispatch(pg, { type: 'buildWarship', port, ...(variant ? { variant } : {}) })));
+    for (let k = 0; k < 16; k++) {
+      await sleep(500);
+      const now = await shipsOf(pg, variant);
+      if (now.afloat > before.afloat) seenShips[label].add(variant ?? 'any');
+      if (now.afloat > before.afloat || now.queued > before.queued) return true;
     }
-    if (best < 0) return { none: true };
-    if (s.map.owner[best] === me) return { well: best };
-    const bx = best % w, by = Math.floor(best / w);
-    let pick = -1, pd = 1e9;
-    for (let i = 0; i < s.map.owner.length; i++) {
-      if (s.map.owner[i] !== me) continue;
-      const x = i % w, y = Math.floor(i / w);
-      if (Math.hypot(x - bx, y - by) > bd + 4) continue;
-      for (const j of [i + 1, i - 1, i + w, i - w]) {
-        if (s.map.owner[j] === me || s.map.terrain[j] <= 1) continue;
-        const d = Math.hypot((j % w) - bx, Math.floor(j / w) - by);
-        if (d < pd) { pd = d; pick = j; }
-      }
-    }
-    return { attack: pick };
-  });
-  if (step.well !== undefined) await dispatch(pg, { type: 'build', building: 'oilWell', tile: step.well });
-  else if (step.attack !== undefined && step.attack >= 0) {
-    const troops = await pg.evaluate(() => { const s = window.__borderfall.getState(); const t = s.players[s.humanId].troops; return { infantry: Math.floor(t.infantry * 0.8), armor: 0, artillery: 0 }; });
-    await dispatch(pg, { type: 'attack', tile: step.attack, troops });
+    log(label, `no ${variant ?? 'warship'} after the order:`, JSON.stringify(await pg.evaluate((port) => {
+      const s = window.__borderfall.getState();
+      const me = s.humanId;
+      const p = s.players[me];
+      const b = [...s.buildings.values()].find((x) => x.tile === port);
+      return { port: b ? { owner: b.owner, type: b.type, level: b.level, buildLeft: b.buildLeft, upgradeLeft: b.upgradeLeft } : null, gold: Math.round(p.gold), iron: Math.round(p.iron), oil: Math.round(p.oil), warships: s.units.filter((u) => u.owner === me && u.type === 'warship').length, events: s.events.filter((e) => e.players?.includes(me)).slice(-4).map((e) => e.message) };
+    }, port)));
   }
-  return step;
-};
+  return false;
+}
+/** A scripted player's economy (scripted.mjs economyStep): one step per call. */
+const driverFor = (c) => economyDriver(c.label, (fn, arg) => c.page.evaluate(fn, arg), (a) => dispatch(c.page, a), log);
 
 let exitCode = 0;
 try {
@@ -304,16 +270,14 @@ try {
   {
     const { A, B, C } = await lobby(['Very high', 'Instant', '×3', ['Game speed', 'Fast']], []);
     log('game 1 playing', JSON.stringify(await me(A.page)));
-    // a lab each, next to the capital city (online, a build lands when its turn runs: slower on a busy machine; an
-    // order that never lands is sent again)
-    // grow first: a start is too small for two buildings 10 tiles apart (the spacing rule on a small map), and the
-    // mine, lab, Port and oil well all need room. The economy step attacks toward oil and puts a mine on iron.
-    const landOf = (pg) => pg.evaluate(() => { const s = window.__borderfall.getState(); return s.players[s.humanId].tiles; });
-    for (let k = 0; k < 40; k++) {
-      await Promise.all([economy(A.page, k), economy(B.page, k)]);
-      const land = [await landOf(A.page), await landOf(B.page)];
-      if (k % 5 === 0) log('growing', JSON.stringify(land));
-      if (land.every((x) => x >= 600)) break;
+    // a lab each (online, a build lands when its turn runs: slower on a busy machine; an order that never lands is
+    // sent again). First a mine and an oil well, and growth (attacks on wilderness and tribes only) until the land has
+    // room for the lab, the Port and the Factory: buildings keep 10 tiles apart on a small map (scripted.mjs)
+    const drivers = [driverFor(A), driverFor(B)];
+    for (let k = 0; k < 60; k++) {
+      const n = await Promise.all(drivers.map((d) => d({ want: ['lab'], level: 5, land: 600 })));
+      if (k % 5 === 0) log('growing', JSON.stringify(n));
+      if (n.every((x) => x.tiles >= 600 && x.placed.lab >= 0)) break;
       await sleep(3000);
     }
     const hasLab = async (pg) => (await ownBuildings(pg)).some((b) => b.type === 'lab' && b.left <= 0);
@@ -400,36 +364,13 @@ try {
     // Navigation 300 iron each, Destroyers A 300 iron + 700 oil; B Mechanization 300 + Amphibious Tanks 2000 iron
     const want = { A: { iron: 700, oil: 800 }, B: { iron: 2800, oil: 0 } };
     const hasFactory = async (pg) => (await ownBuildings(pg)).some((b) => b.type === 'factory' && b.left <= 0);
-    const raised = new Set();
     let loops = 0;
     const t0 = Date.now();
     while (Date.now() - t0 < 360000) {
-      const steps = await Promise.all([economy(A.page, loops), economy(B.page, loops)]);
-      // a Port as soon as the land reaches a free coastal site (the start is small: the economy step expands it)
-      if (loops % 3 === 0) {
-        for (const pg of [A.page, B.page]) {
-          if (await hasPort(pg)) continue;
-          let t = -1;
-          for (const gap of [12, 10]) if ((t = await site(pg, true, gap)) >= 0) break;
-          if (t >= 0) log('port site', t, JSON.stringify(await dispatch(pg, { type: 'build', building: 'port', tile: t })));
-        }
-        // a Factory for both (A needs one when its land has no oil: it then buys the tank path instead of the navy path)
-        for (const pg of [A.page, B.page]) {
-          if (await hasFactory(pg)) continue;
-          let t = -1;
-          for (const gap of [12, 10]) if ((t = await site(pg, false, gap)) >= 0) break;
-          if (t >= 0) log('factory site', t, JSON.stringify(await dispatch(pg, { type: 'build', building: 'factory', tile: t })));
-        }
-      }
-      if (++loops % 10 === 1) log('economy steps', JSON.stringify(steps), JSON.stringify(await geo(A.page)), JSON.stringify(await geo(B.page)));
-      // mines and wells to level 5 (instant building)
-      for (const pg of [A.page, B.page]) {
-        const ex = (await ownBuildings(pg)).filter((x) => (x.type === 'mine' || x.type === 'oilWell') && x.level < 5 && !raised.has(`${x.tile}`));
-        for (const x of ex) {
-          raised.add(`${x.tile}`);
-          await dispatch(pg, { type: 'upgradeBuildings', tiles: [x.tile], levels: 5 - x.level });
-        }
-      }
+      // mines and wells to level 5 (instant building), a Port and a Factory each as soon as the land has room
+      // (A needs the Factory when its land has no oil: it then buys the tank path instead of the navy path)
+      const steps = await Promise.all(drivers.map((d) => d({ want: ['port', 'factory'], level: 5 })));
+      if (++loops % 10 === 1) log('economy steps', JSON.stringify(steps));
       const [ma, mb] = [await me(A.page), await me(B.page)];
       // A without oil after ~40 rounds buys the iron-only tank path instead (some starts have no reachable oil)
       const aReady = ma.oil >= want.A.oil ? ma.iron >= want.A.iron : loops > 40 && ma.iron >= 1500 && (await hasFactory(A.page));
@@ -475,7 +416,9 @@ try {
     await A.page.click(`[data-test=tech-${fork}]`);
     await A.page.click('[data-test=detail-buy]');
     await waitFor(async () => (await me(A.page)).procuring.includes(fork), 20000, `${fork} on order after the card click`);
-    await A.page.waitForSelector(`[data-test=order-${fork}]`, { state: 'visible', timeout: 5000 });
+    // the order chip shows (read from the DOM: its countdown re-renders it every second, so a locator wait for a
+    // stable visible element can time out while the chip is on screen)
+    await A.page.waitForFunction((sel) => { const e = document.querySelector(sel); return !!e && e.getBoundingClientRect().width > 0; }, `[data-test=order-${fork}]`, { timeout: 10000 });
     log(`A paid ${goldBefore - (await me(A.page)).gold} gold (with income) for ${fork}`);
     await sleep(600);
     await shot(A.page, 'g1-arsenal-ordered');
@@ -540,24 +483,23 @@ try {
   {
     const { A, B, C } = await lobby(['Very high', 'Instant', 'All unlocked'], []);
     log('game 2 playing');
+    // a mine and an oil well, then Port, Airfield and Factory; the land grows until there is room (scripted.mjs)
+    const want = ['port', 'airfield', 'factory'];
+    const drivers = [driverFor(A), driverFor(B)];
+    const ready = (n) => n.wells.length > 0 && n.mines.length > 0 && want.every((k) => n.placed[k] >= 0) && n.iron > 900 && n.oil > 400;
     const t0 = Date.now();
-    while (Date.now() - t0 < 300000) {
-      await Promise.all([economy(A.page), economy(B.page)]);
-      const m = await me(A.page);
-      if (m.iron > 900 && m.oil > 400) break;
+    let notes = [];
+    for (let k = 0; Date.now() - t0 < 300000; k++) {
+      notes = await Promise.all(drivers.map((d) => d({ want, level: 5 })));
+      if (k % 10 === 0) log('economy', JSON.stringify(notes));
+      if (ready(notes[0]) && (ready(notes[1]) || Date.now() - t0 > 200000)) break;
       await sleep(3000);
     }
-    log('economy A', JSON.stringify(await me(A.page)).slice(0, 120));
+    log('economy', JSON.stringify(notes));
     const sites = {};
     for (const [label, pg] of [['A', A.page], ['B', B.page]]) {
       const r = {};
-      for (const [key, coastal] of [['port', true], ['airfield', false], ['factory', false]]) {
-        const t = await site(pg, coastal);
-        if (t >= 0) await dispatch(pg, { type: 'build', building: key, tile: t });
-        await sleep(1500);
-      }
-      await sleep(1500);
-      for (const k of ['port', 'airfield', 'factory']) r[k] = (await ownBuildings(pg)).find((b) => b.type === k && b.left <= 0)?.tile ?? -1;
+      for (const k of want) r[k] = (await ownBuildings(pg)).find((b) => b.type === k && b.left <= 0)?.tile ?? -1;
       sites[label] = r;
     }
     log('built', JSON.stringify(sites));
@@ -566,7 +508,7 @@ try {
     log('resources before the ship orders', JSON.stringify(await Promise.all([A.page, B.page].map((pg) => pg.evaluate(() => { const s = window.__borderfall.getState(); const p = s.players[s.humanId]; return [Math.round(p.gold), Math.round(p.iron), Math.round(p.oil)]; })))));
     for (const [label, pg] of [['A', A.page], ['B', B.page]]) {
       const r = sites[label];
-      if (r.port >= 0) for (const v of orders[label]) log(label, 'buildWarship', v, JSON.stringify(await dispatch(pg, { type: 'buildWarship', port: r.port, variant: v })));
+      if (r.port >= 0) for (const v of orders[label]) await orderShip(label, pg, r.port, v);
       if (r.airfield >= 0) {
         await dispatch(pg, { type: 'buildAircraft', airfield: r.airfield, kind: 'bomber' });
         await dispatch(pg, { type: 'buildAircraft', airfield: r.airfield, kind: 'fighter' });
@@ -574,7 +516,7 @@ try {
       await dispatch(pg, { type: 'setArmyMix', armor: 0.5, artillery: 0.1 });
     }
     // A's ordered ships, seen at least once (a lone new submarine can be sunk by AI destroyers before the check below)
-    const seenA = new Set();
+    const seenA = seenShips.A;
     for (let k = 0; k < 40 && seenA.size < 2; k++) {
       for (const v of await A.page.evaluate(() => { const s = window.__borderfall.getState(); return s.units.filter((u) => u.owner === s.humanId && u.type === 'warship').map((u) => u.variant); })) seenA.add(v);
       await sleep(1000);
