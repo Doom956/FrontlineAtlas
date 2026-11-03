@@ -3,7 +3,7 @@
 // change there shows up here without edits.
 //   - shipReach: guns (ships), shelling (enemy coast) and shore support (fronts) of one warship
 //   - railMovePreview: the route a division would drive over your own land to a tile, and how long it takes
-import { NAVY_SUPPORT_RANGE, TANK_LAUNCH_REACH, WARSHIP_RANGE } from '../sim/config';
+import { NAVY_SUPPORT_RANGE, TANK_LAUNCH_REACH, WARSHIP_RANGE, WARSHIP_SHELL_RANGE } from '../sim/config';
 import { waterComponents } from '../sim/grid';
 import { warshipSpawnSeas } from '../sim/navy';
 import { divisionDriveSpeed, divisionMoveTime, ownLandPath } from '../sim/tanks';
@@ -11,9 +11,8 @@ import { isWater } from '../sim/types';
 import type { GameState, Unit } from '../sim/types';
 import { navalReachMul, navalShellMul, navalShellRangeMul, navalSupportMul } from '../sim/variants';
 
-/** Shore shelling reach of a standard warship (the sim shells within half its gun range, x the ship's variant). */
-// TODO(sim): if the sim gets its own shelling-range constant, read it here instead of WARSHIP_RANGE / 2.
-export const SHELL_RANGE_BASE = WARSHIP_RANGE / 2;
+/** Shore shelling reach of a standard warship (sim WARSHIP_SHELL_RANGE, x the ship's variant). */
+export const SHELL_RANGE_BASE = WARSHIP_SHELL_RANGE;
 /** The same, as a whole number of tiles for text. */
 export const SHELL_RANGE_TILES = Math.floor(SHELL_RANGE_BASE);
 

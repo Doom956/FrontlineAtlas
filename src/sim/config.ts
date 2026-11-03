@@ -566,6 +566,8 @@ export const PORT_TRANSPORT_SPEED = 1.6;
 export const NAVIGATION_TRANSPORT_SPEED = 1.5;
 /** warships fight ships within this many tiles and shell enemy coast within half of it (battleships x2) */
 export const WARSHIP_RANGE = 35;
+/** warships at war shell enemy coast within this many tiles (x navalShellRangeMul: battleships x2) */
+export const WARSHIP_SHELL_RANGE = WARSHIP_RANGE / 2;
 export const WARSHIP_DAMAGE_PER_S = 0.5; // hp/s to one target in range
 export const WARSHIP_BOMBARD_KILL = 150; // defender troops/s killed when an enemy coast tile is in range
 // ---------- warships: build where you click, auto-intercept, groups (navy.ts) ----------
