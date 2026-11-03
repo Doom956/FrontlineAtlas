@@ -2358,6 +2358,18 @@ button.fr-t:hover {
   width: 28px;
   min-height: 30px;
 }
+/* renaming: Save and Cancel take the place of + and x */
+.ug-row.editing {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+.ug-row.editing .ug-add,
+.ug-row.editing .ug-del {
+  display: none;
+}
+.ug-row .ug-save,
+.ug-row .ug-cancel {
+  min-height: 30px;
+}
 .ug-undo {
   display: flex;
   align-items: center;
@@ -4196,6 +4208,22 @@ mark.hw-hit {
     min-width: 0;
     top: 164px;
   }
+  /* the alert cards sit in this column on phones (hud.ts), as wide as the toasts */
+  .hud-top > .alerts {
+    width: 100%;
+  }
+  /* on a narrow screen the messages here share the strip with the nation card and an open drawer: those stay on
+     top, so the messages never block their buttons (the bell keeps count of the alerts); the bottom bars stay above
+     the drawer as before */
+  .hud > .hud-left {
+    z-index: 1;
+  }
+  .hud > .drawer {
+    z-index: 2;
+  }
+  .hud > .hud-bottom {
+    z-index: 3;
+  }
   /* the build bar scrolls sideways, with faded edges hinting at more */
   .bbar {
     min-width: 0;
@@ -4726,9 +4754,10 @@ strong {
   font: 600 13px/1.25 var(--f-ui);
   overflow-wrap: anywhere;
 }
+/* the only cue that the card jumps to the spot: --dim (about 6.5:1 on the card), not --faint, so it reads without hover */
 .al-h {
   font-size: 11px;
-  color: var(--faint);
+  color: var(--dim);
 }
 .al-h:empty {
   display: none;

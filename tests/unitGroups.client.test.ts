@@ -21,6 +21,7 @@ import {
   groupFocusTile,
   groupLabel,
   groupSelection,
+  groupTap,
   importUnitGroups,
   isGroupSelected,
   MAX_UNIT_GROUPS,
@@ -152,6 +153,14 @@ describe('unit groups: selecting, adding, dead units', () => {
 });
 
 describe('unit groups: rename, delete, undo, focus', () => {
+  it('a click on a group that is already the selection without a click on it (just made) only arms the rename', () => {
+    expect(groupTap(false, false)).toBe('select');
+    expect(groupTap(false, true)).toBe('select');
+    // New group leaves it selected: the first click keeps the selection, the second renames
+    expect(groupTap(true, false)).toBe('arm');
+    expect(groupTap(true, true)).toBe('rename');
+  });
+
   it('renames (trimmed, cut to length, empty keeps the old name)', () => {
     const s = game();
     const g = newUnitGroups();

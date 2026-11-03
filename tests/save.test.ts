@@ -9,7 +9,7 @@ import { canSpawnAt, createGame } from '../src/sim/state';
 import type { Action, BuildingType, GameSettings, GameState } from '../src/sim/types';
 import { checkSave, clockText, loadNote, parseSave, saveBuildId, saveFacts, savedAgo, SAVE_FORMAT, type SaveData } from '../src/client/save/format';
 import { GameRecorder, thinChecks } from '../src/client/save/recorder';
-import { Replayer } from '../src/client/save/replay';
+import { MAX_TICK_RETRIES, Replayer } from '../src/client/save/replay';
 import { defaultUiState } from '../src/client/uiState';
 import { getUnitGroups, setUnitGroups } from '../src/client/unitGroups';
 import { testSettings } from './helpers';
@@ -203,6 +203,133 @@ describe('save and continue: replay', () => {
   }, 60_000);
 });
 
+describe('save and continue: a game that differs or failed', () => {
+  /** Plays `ticks` ticks with a few clicks; `step` is the sim step (the live loop catches a throw and goes on). */
+  function playWith(step: (s: GameState) => void, ticks: number, extra: (state: GameState, act: (a: Action) => void, rec: GameRecorder) => void) {
+    const s = settings();
+    const rec = new GameRecorder(s);
+    const state = createGame(s);
+    const rnd = lcg(3);
+    const act = (a: Action) => {
+      rec.record(state.tick, a);
+      applyAction(state, state.humanId, a);
+    };
+    for (let k = 0; k < ticks; k++) {
+      script(state, act, rnd);
+      extra(state, act, rec);
+      try {
+        step(state);
+      } catch {
+        // main.ts runTicks: noted, paused; the player resumes (the next pass calls the tick again)
+        rec.noteTickError(state.tick);
+        act({ type: 'setAuto', mix: false });
+      }
+    }
+    return { state, rec };
+  }
+
+  /** A sim step that fails once per game at tick `at`, after changing the state (a bug half way through a tick). */
+  function failingStep(at: number): (s: GameState) => void {
+    const failed = new WeakSet<GameState>();
+    return (s) => {
+      if (s.tick === at && !failed.has(s)) {
+        failed.add(s);
+        s.players[1].gold += 7;
+        throw new Error('sim bug');
+      }
+      tick(s);
+    };
+  }
+
+  it('a tick that failed while playing fails at the same point on load, and the game goes on', () => {
+    const step = failingStep(90);
+    const { state, rec } = playWith(step, 160, () => {});
+    expect(rec.tickErrors).toEqual([[90, expect.any(Number)]]);
+    const save = JSON.parse(JSON.stringify(rec.snapshot(state, 2, 1000))) as SaveData;
+    expect(checkSave(save).status).toBe('ok');
+    expect(save.tickErrors?.length).toBe(1);
+    const again = createGame(save.settings);
+    const r = new Replayer(again, save, undefined, step);
+    for (let guard = 0; guard < 100_000 && !r.run(37); guard++);
+    expect(r.mismatch).toBeNull();
+    expect(r.done).toBe(true);
+    expect(hashState(again)).toBe(hashState(state));
+    expect(r.played().tickErrors).toEqual(save.tickErrors);
+  }, 60_000);
+
+  it('saves taken just before and just after the failed tick match too', () => {
+    const step = failingStep(90);
+    const saves: { save: SaveData; hash: number }[] = [];
+    playWith(step, 95, (state, _act, r) => {
+      // at tick 90 before the failure, then after it (the player paused, clicked once, the game saved)
+      if (state.tick === 90 && saves.length === r.tickErrors.length) {
+        saves.push({ save: JSON.parse(JSON.stringify(r.snapshot(state, 2, 1000))) as SaveData, hash: hashState(state) });
+      }
+    });
+    expect(saves.length).toBe(2);
+    expect(saves[1].save.checks.slice(-2).map((c) => c.e ?? 0)).toEqual([0, 1]);
+    for (const { save, hash } of saves) {
+      const again = createGame(save.settings);
+      const r = new Replayer(again, save, undefined, step);
+      for (let guard = 0; guard < 100_000 && !r.run(37); guard++);
+      expect(r.mismatch).toBeNull();
+      expect(r.done).toBe(true);
+      expect(hashState(again)).toBe(hash);
+      expect(r.checked).toBe(save.checks.length);
+    }
+  }, 60_000);
+
+  it('a save without the note still loads (the tick is tried again), and a tick that never works stops the load', () => {
+    const step = failingStep(90);
+    const { state, rec } = playWith(step, 140, () => {});
+    const save = JSON.parse(JSON.stringify(rec.snapshot(state, 2, 1000))) as SaveData;
+    delete save.tickErrors;
+    for (const c of save.checks) delete c.e;
+    const again = createGame(save.settings);
+    const r = new Replayer(again, save, undefined, step);
+    for (let guard = 0; guard < 100_000 && !r.run(37); guard++) if (r.mismatch) r.keepGoing();
+    expect(r.done).toBe(true);
+    expect(again.tick).toBe(save.tick);
+    // a tick that throws every time
+    const broken = new Replayer(createGame(save.settings), save, undefined, (s) => {
+      if (s.tick === 60) throw new Error('always');
+      tick(s);
+    });
+    expect(() => {
+      for (let guard = 0; guard < 100_000 && !broken.run(37); guard++);
+    }).toThrow('always');
+    expect(MAX_TICK_RETRIES).toBeGreaterThan(1);
+  }, 60_000);
+
+  it('a save loaded anyway that ends earlier in this version goes on from what was applied', () => {
+    const { state, rec } = playWith(tick, 200, (st, act) => {
+      if (st.tick === 150) act({ type: 'setAuto', research: false });
+    });
+    const save = JSON.parse(JSON.stringify(rec.snapshot(state, 2, 1000))) as SaveData;
+    const late = save.log.filter(([t]) => t > 100).length;
+    expect(late).toBeGreaterThan(0);
+    // this version's game stops at tick 100 (it is over there)
+    const stop = (s: GameState) => {
+      if (s.tick < 100) tick(s);
+    };
+    const again = createGame(save.settings);
+    const r = new Replayer(again, save, undefined, stop);
+    for (let guard = 0; guard < 100_000 && !r.run(37); guard++);
+    expect(r.mismatch).toEqual({ tick: 100, kind: 'stuck' });
+    r.keepGoing();
+    for (let guard = 0; guard < 100_000 && !r.run(37); guard++);
+    expect(r.done).toBe(true);
+    const from = r.played();
+    expect(from.log.length).toBe(save.log.length - late);
+    expect(from.log.every(([t]) => t <= 100)).toBe(true);
+    // the player continues: the next save is in order and can be read
+    const rec2 = new GameRecorder(save.settings, { ...from, checks: [] });
+    rec2.record(again.tick, { type: 'continueGame' });
+    const next = JSON.parse(JSON.stringify(rec2.snapshot(again, 2, 2000))) as SaveData;
+    expect(checkSave(next).status).toBe('ok');
+  }, 60_000);
+});
+
 describe('save format', () => {
   function base(): SaveData {
     return {
@@ -235,6 +362,13 @@ describe('save format', () => {
     const badCheck = base();
     badCheck.checks.push({ t: 50, n: 9, h: 1 });
     expect(checkSave(badCheck).status).toBe('broken');
+    const badErrors = base();
+    badErrors.tickErrors = [[40, 1], [30, 1]];
+    expect(checkSave(badErrors).status).toBe('broken');
+    const goodErrors = base();
+    goodErrors.tickErrors = [[30, 2]];
+    goodErrors.checks = [{ t: 50, n: 2, h: 123, e: 1 }];
+    expect(checkSave(goodErrors).status).toBe('ok');
     const noSettings = base() as unknown as Record<string, unknown>;
     delete noSettings.settings;
     expect(checkSave(noSettings).status).toBe('broken');

@@ -137,6 +137,16 @@ export function groupSelection(state: GameState, me: number, grp: UnitGroup): nu
   return pruneSelection(state, me, grp.ids);
 }
 
+/**
+ * What a click on a group's button does. `selected`: the group is the selection now; `armed`: the group a click
+ * already picked (and still the selection). A group that is the selection without a click on it (just made, or the
+ * same units picked on the map) is only armed by the first click, so that click never opens the name field.
+ */
+export function groupTap(selected: boolean, armed: boolean): 'select' | 'arm' | 'rename' {
+  if (!selected) return 'select';
+  return armed ? 'rename' : 'arm';
+}
+
 /** True when the selection is exactly the group's live members (its button is lit). */
 export function isGroupSelected(state: GameState, me: number, grp: UnitGroup, sel: readonly number[]): boolean {
   const live = groupSelection(state, me, grp);

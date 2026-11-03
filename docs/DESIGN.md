@@ -965,7 +965,11 @@ full-map scans after `createGame`.
   Code changes that keep the balance data are caught by the checkpoints: the first different hash stops the load
   with "This save doesn't match this version" (Load anyway plays the rest without checks; Delete). Storage errors are
   caught everywhere; a full storage drops the old save and tries again (and puts it back if that fails too); saves
-  over 3 M characters are not written (the player is told once). Start page: the saved-game card above Play (map,
+  over 3 M characters are not written (the player is told once; the last save stays for Continue, and is still
+  removed when that game ends). A sim tick that throws while playing (the game pauses, the player can resume) is noted
+  in the save (`tickErrors`: `[tick, log entries applied]`; checkpoints after it carry `e` = errors so far): the
+  replay calls that tick at the same point, lets it fail the same way and goes on. A save loaded anyway that ends
+  earlier in this version continues from the log entries the replay applied, not the whole log. Start page: the saved-game card above Play (map,
   minutes played, land share, saved time ago, Continue, Delete with an inline question); starting a new game asks
   "Replace your saved game?" first.
 - Spawn phase (`SPAWN_SECONDS`): click a land tile to place your capital (else random); click again to move it.
@@ -1023,7 +1027,8 @@ full-map scans after `createGame`.
 - Unit groups (unitGroups.ts, hud/groupsStrip.ts; client only, no action): the Forces drawer's Groups strip. "New
   group" saves the selected warships / tank divisions as a button "Fleet 1 · 8 ships" (Tanks 1 for divisions only,
   Group 1 when mixed: "3 ships, 2 divisions"). A click selects the group (the button lights while it is the
-  selection), a second click renames it in place, the target icon centres the map on the member nearest its middle,
+  selection), a second click renames it in place (Save and Cancel buttons next to the field; a group that became the
+  selection without a click on it, such as one just made, needs one click first), the target icon centres the map on the member nearest its middle,
   + adds the selected units, x deletes it with an Undo for a few seconds. All buttons, no hotkeys. Units that are
   sunk, destroyed or captured drop out; a group with none left stays greyed with "0". At most 12 groups of up to
   MAX_GROUP_UNITS units; a unit can be in several. The groups live in UiState.groups (plain JSON, new per game);
@@ -1066,7 +1071,9 @@ full-map scans after `createGame`.
   guide on/off and Restart guide, minimap, leave), the nation card on the left (Ally / Accept / Break, Gift, Embargo, Attack), the help page.
   Destructive actions ask first (a warning toast with a confirm button: Demolish from the radial menu, Break an
   alliance); an alliance request, a gift and an AI's refusal get a toast.
-- Alerts (client/alerts.ts, hud/alerts.ts): the big events about you as cards under the standings, not toasts: a
+- Alerts (client/alerts.ts, hud/alerts.ts): the big events about you as cards under the standings (on phones in the
+  top-centre column between the mode chip and the toasts, so they never overlap; that column sits under an open
+  drawer, the nation card and the bottom bars there), not toasts: a
   nation attacks you, your capital under attack (an attacker holds land within 5 tiles of it, again every 60 s while
   it lasts) or lost, land falling fast (30+ tiles and 8% of your land in 10 s), a port newly blockaded, a ship sunk, a
   tank division overrun or stranded, an atom bomb, rocket, bomber, landing or paratroopers on their way to your land,

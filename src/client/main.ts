@@ -385,14 +385,16 @@ let lastAutosave = 0;
 function autosave(): void {
   const s = session;
   const rec = s?.recorder;
-  if (!s || !s.human || s.mp || s.tutorial || !rec || rec.disabled) return;
+  if (!s || !s.human || s.mp || s.tutorial || !rec) return;
   const state = s.state;
   if (state.phase === 'over') {
+    // also when saving stopped earlier: the older save would bring back a game that is over
     if (!s.overCleared) clearSave();
     s.overCleared = true;
     return;
   }
   s.overCleared = false;
+  if (rec.disabled) return;
   if (state.tick === 0 && rec.log.length === 0) return;
   // groups are UI state, not actions: a renamed or new group is worth saving even while the game is paused
   const groups = getUnitGroups(s.ui);
@@ -410,7 +412,10 @@ function autosave(): void {
   }
   if (result === 'ok') return;
   rec.disabled = true; // told once: this game is not saved from now on
-  const text = result === 'tooBig' ? 'This game is too long to keep in the browser. It is no longer saved.' : 'The browser blocked saving (storage full or off). This game is not saved.';
+  const text =
+    result === 'tooBig'
+      ? 'This game is too long to keep in the browser. New progress is not saved: Continue starts from the last save.'
+      : 'The browser blocked saving (storage full or off). New progress is not saved.';
   s.ui.toast = { text, until: performance.now() + 8000 };
 }
 
@@ -552,8 +557,9 @@ async function continueSaved(): Promise<void> {
     }
     if (r !== 'done') return;
     if (loadJob === job) loadJob = null;
-    // a save loaded anyway starts a fresh list of checks (its old hashes belong to the other version)
-    const recorder = new GameRecorder(settings, { log: save.log, checks: matched ? save.checks : [] });
+    // a save loaded anyway starts a fresh list of checks (its old hashes belong to the other version); only what the
+    // replay applied goes on (a game that ended earlier in this version never saw the rest of the log)
+    const recorder = new GameRecorder(settings, { ...replay.played(), checks: matched ? save.checks : [] });
     beginSession(state, settings, { recorder, history });
     // the player's groups come back as they were (bad data gives none; unit ids match because the replay is exact)
     if (session) {
@@ -618,6 +624,8 @@ function runTicks(s: Session, dt: number): void {
       adminPerf.tickMs = adminPerf.tickMs * 0.9 + (performance.now() - t0) * 0.1;
     } catch (err) {
       console.error('Simulation error', err);
+      // the save notes it: a load replays the failed tick at the same point and goes on, as the player can here
+      s.recorder?.noteTickError(s.state.tick);
       s.ui.paused = true;
       s.ui.toast = { text: 'Simulation error: game paused (see console)', until: performance.now() + 10000 };
       acc = 0;

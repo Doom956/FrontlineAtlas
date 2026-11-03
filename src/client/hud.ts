@@ -72,6 +72,8 @@ import { summaryView } from './summary/view';
 export { techNear };
 
 const SLOW_MS = 200; // ~5 Hz refresh of texts and lists
+/** the phone layout of styles.css ("phones" section) */
+const PHONE_MEDIA = '(max-width: 640px)';
 /** Zoom the camera glides to when your start is placed and when the game starts (your 9x9 start ~40 px wide). */
 const START_ZOOM = 4.5;
 const TOAST_KINDS: Partial<Record<GameEvent['kind'], 'info' | 'good' | 'bad' | 'warn'>> = {
@@ -346,6 +348,17 @@ export class Hud {
     this.modeChip.append(this.modeText, this.salvo.el, cancel);
     const top = el('div', 'hud-top');
     top.append(this.spawnBar, this.modeChip, this.toasts.el);
+    // phones: the alerts stack with the top-centre messages (between the mode chip and the toasts) instead of under
+    // the standings, where the full-width chip and toasts covered them and each card pushed the nation card down
+    const phone = typeof matchMedia === 'function' ? matchMedia(PHONE_MEDIA) : null;
+    const placeAlerts = (): void => {
+      const stack = this.alertStack.el;
+      if (phone?.matches) {
+        if (stack.parentElement !== top) top.insertBefore(stack, this.toasts.el);
+      } else if (stack.parentElement !== left) left.insertBefore(stack, this.card.el);
+    };
+    placeAlerts();
+    phone?.addEventListener('change', placeAlerts, { signal: this.ac.signal });
     this.pauseBanner = el('div', 'pause-banner hidden');
     this.pauseBanner.dataset.test = 'pause-banner';
     this.pauseBanner.setAttribute('role', 'status');

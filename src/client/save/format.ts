@@ -15,12 +15,16 @@ export const SAVE_FORMAT = 1;
 /** One recorded action: [tick it was applied at (state.tick then), the action]. */
 export type LogEntry = [tick: number, action: Action];
 
-/** A state hash after `n` log entries were applied at tick `t` (hashState). */
+/** A state hash after `n` log entries were applied at tick `t` (hashState), and `e` tick errors (left out when 0). */
 export interface Checkpoint {
   t: number;
   n: number;
   h: number;
+  e?: number;
 }
+
+/** A tick that threw while playing: [state.tick then, log entries applied by then]. The player resumed after it. */
+export type TickError = [tick: number, n: number];
 
 /** What the start page shows without replaying anything. */
 export interface SaveMeta {
@@ -49,6 +53,8 @@ export interface SaveData {
   meta: SaveMeta;
   /** the player's unit groups (unitGroups.ts, plain JSON); optional, and checked only when it is put back */
   groups?: unknown;
+  /** ticks that threw while playing, in order (replay.ts calls them at the same point); left out when none */
+  tickErrors?: TickError[];
 }
 
 /** Result of reading a save: usable, from another version (only discard), or unreadable. */
@@ -90,10 +96,22 @@ export function checkSave(v: unknown, build = saveBuildId()): SaveSlot {
   }
   let prev: Checkpoint | null = null;
   for (const c of v.checks as unknown[]) {
-    if (!isObj(c) || !isCount(c.t) || !isCount(c.n) || !isNum(c.h)) return { status: 'broken' };
+    if (!isObj(c) || !isCount(c.t) || !isCount(c.n) || !isNum(c.h) || (c.e !== undefined && !isCount(c.e))) return { status: 'broken' };
     if (c.t > tick || c.n > v.log.length) return { status: 'broken' };
-    if (prev && (c.t < prev.t || c.n < prev.n)) return { status: 'broken' };
-    prev = { t: c.t, n: c.n, h: c.h };
+    const e = c.e ?? 0;
+    if (prev && (c.t < prev.t || c.n < prev.n || e < (prev.e ?? 0))) return { status: 'broken' };
+    prev = { t: c.t, n: c.n, h: c.h, e };
+  }
+  if (v.tickErrors !== undefined) {
+    if (!Array.isArray(v.tickErrors)) return { status: 'broken' };
+    let pt = 0;
+    let pn = 0;
+    for (const e of v.tickErrors as unknown[]) {
+      if (!Array.isArray(e) || e.length !== 2 || !isCount(e[0]) || !isCount(e[1])) return { status: 'broken' };
+      if (e[0] > tick || e[1] > v.log.length || e[0] < pt || e[1] < pn) return { status: 'broken' };
+      pt = e[0];
+      pn = e[1];
+    }
   }
   return { status: 'ok', save: v as unknown as SaveData };
 }

@@ -1,7 +1,7 @@
 // Groups strip at the top of the Forces drawer (client/unitGroups.ts holds the data and the rules):
 //   + New group           saves the selected warships / tank divisions as "Fleet 1 · 8 ships"
-//   [Fleet 1 · 8 ships ◎] click: selects the group (lit while it is the selection); click it again to rename it in place;
-//                         the target icon centres the map on it
+//   [Fleet 1 · 8 ships ◎] click: selects the group (lit while it is the selection); click it again to rename it in place
+//                         (Save and Cancel buttons while the name is edited); the target icon centres the map on it
 //   +  / x                add the selected units to that group / delete it (Undo for a few seconds)
 // Everything is a visible button, no hotkeys. Rows are rebuilt only when the list of groups changes; counts and the lit
 // state update in place, so buttons keep hover and focus. Nothing here changes the game.
@@ -17,6 +17,7 @@ import {
   groupCounts,
   groupFocusTile,
   groupSelection,
+  groupTap,
   isGroupSelected,
   newGroupBlock,
   pruneUnitGroups,
@@ -64,6 +65,8 @@ export class GroupsStrip {
   private key = '';
   /** the group whose name is being edited (-1 = none) */
   private editing = -1;
+  /** the group a click picked while it stays the selection: the next click on it renames it (-1 = none) */
+  private armed = -1;
   private undoUntil = 0;
 
   constructor(private ctx: HudCtx) {
@@ -118,6 +121,8 @@ export class GroupsStrip {
     if (why) return this.say(why);
     const g = createGroup(this.ctx.ui.groups, s, s.humanId, this.ctx.ui.selection);
     if (typeof g === 'string') return this.say(g);
+    // the new group is the selection already: the first click on it must not open the name field
+    this.armed = -1;
     this.ctx.sound('uiClick');
     this.ctx.toast(`${g.name}: ${countText(groupCounts(s, s.humanId, g))}. Click it to select them again.`, 'good');
     this.refresh();
@@ -131,7 +136,13 @@ export class GroupsStrip {
     const ui = this.ctx.ui;
     const ids = groupSelection(s, s.humanId, g);
     if (!ids.length) return this.say(`No units left in ${g.name}. Delete it, or select units and click + to fill it.`);
-    if (isGroupSelected(s, s.humanId, g, ui.selection)) return this.edit(id);
+    const tap = groupTap(isGroupSelected(s, s.humanId, g, ui.selection), this.armed === id);
+    if (tap === 'rename') return this.edit(id);
+    this.armed = id;
+    if (tap === 'arm') {
+      this.ctx.sound('uiClick');
+      return this.refresh();
+    }
     ui.mode = { kind: 'none' };
     ui.selection = ids;
     ui.pendingSpearhead = null;
@@ -180,7 +191,8 @@ export class GroupsStrip {
     this.refresh();
   }
 
-  /** Turns the group's button into a text field: Enter or leaving it keeps the name, Esc cancels. */
+  /** Turns the group's button into a text field with Save and Cancel next to it (Enter and Esc work too; leaving the
+   *  field keeps the name, as Save does). */
   private edit(id: number): void {
     const r = this.rows.get(id);
     const g = this.find(id);
@@ -193,6 +205,21 @@ export class GroupsStrip {
     input.dataset.test = 'group-name';
     input.setAttribute('aria-label', `New name for ${g.name}`);
     input.spellcheck = false;
+    // visible buttons for touch screens (no Esc key there): they replace + and x while the name is edited
+    const save = el('button', 'wr-btn mini primary ug-save');
+    save.type = 'button';
+    save.dataset.test = 'group-name-save';
+    save.append(el('span', 'wr-btn-l', 'Save'));
+    const cancel = el('button', 'wr-btn mini ghost ug-cancel');
+    cancel.type = 'button';
+    cancel.dataset.test = 'group-name-cancel';
+    cancel.append(el('span', 'wr-btn-l', 'Cancel'));
+    // the field loses focus before the button's click lands: the press says which one it was
+    let pressed: 'save' | 'cancel' | null = null;
+    save.addEventListener('pointerdown', () => (pressed = 'save'));
+    cancel.addEventListener('pointerdown', () => (pressed = 'cancel'));
+    save.addEventListener('click', () => finish(true, true));
+    cancel.addEventListener('click', () => finish(false, true));
     let done = false;
     // swaps the button back in place (no rebuild: a click on another group that ended the edit still lands)
     const finish = (keep: boolean, refocus: boolean): void => {
@@ -201,6 +228,9 @@ export class GroupsStrip {
       const name = keep ? renameGroup(this.ctx.ui.groups, id, input.value) : '';
       if (name) setText(r.name, name);
       if (input.isConnected) input.replaceWith(r.pick);
+      save.remove();
+      cancel.remove();
+      r.row.classList.remove('editing');
       this.editing = -1;
       this.key = this.keyOf(); // the rows show the new name already
       this.refresh();
@@ -216,8 +246,10 @@ export class GroupsStrip {
         finish(false, true);
       }
     });
-    input.addEventListener('blur', () => finish(true, false));
+    input.addEventListener('blur', () => finish(pressed !== 'cancel', pressed !== null));
     r.pick.replaceWith(input);
+    r.row.classList.add('editing');
+    r.row.append(save, cancel);
     input.focus();
     input.select();
   }
@@ -288,11 +320,13 @@ export class GroupsStrip {
       const empty = !c.ships && !c.divisions;
       const on = !empty && isGroupSelected(s, me.id, g, sel);
       if (on) lit = g;
+      else if (this.armed === g.id) this.armed = -1;
       setText(r.count, countText(c));
       setClass(r.row, 'on', on);
       setClass(r.row, 'empty', empty);
       if (r.pick.getAttribute('aria-pressed') !== String(on)) r.pick.setAttribute('aria-pressed', String(on));
-      setTip(r.pick, empty ? `No units left in ${g.name}` : on ? 'Selected. Click again to rename' : `Select ${g.name}`);
+      const armed = on && this.armed === g.id;
+      setTip(r.pick, empty ? `No units left in ${g.name}` : armed ? 'Selected. Click again to rename' : on ? `${g.name} is selected` : `Select ${g.name}`);
       setClass(r.find, 'off', empty);
       // names change in place on a rename, so the labels follow here
       label(r.find, `Show ${g.name} on the map`);
@@ -307,11 +341,13 @@ export class GroupsStrip {
     setText(
       this.hint,
       this.editing >= 0
-        ? 'Type a name, then Enter. Esc keeps the old one.'
+        ? 'Type a new name, then Save. Cancel keeps the old one.'
         : !groups.length
         ? 'Select ships or tank divisions on the map, then New group. One click on a group selects them again.'
         : lit
-          ? `${lit.name} selected: click it again to rename it.`
+          ? this.armed === lit.id
+            ? `${lit.name} selected: click it again to rename it.`
+            : `${lit.name} selected. To rename it, click it twice.`
           : 'Click a group to select it. The target shows it on the map.',
     );
   }
