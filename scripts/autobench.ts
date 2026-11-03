@@ -48,6 +48,7 @@ import { buildingCost, buildingsOf, canBuild, chargesReady } from '../src/sim/bu
 import {
   AIR,
   ARMOR_SUPPORT_HOLD,
+  ARMOR_SUPPORT_RADIUS,
   ARMOR_SUPPORT_READY,
   MIN_ATTACK_TROOPS,
   NAVY_BLOCKADE_RANGE,
@@ -71,7 +72,7 @@ import { isArsenalTech } from '../src/sim/arsenal';
 import { warSet, warshipCount, warshipLimit } from '../src/sim/naval2';
 import { bestFactory, tankDivisionCount, tankDivisionLimit } from '../src/sim/tanks';
 import { divisionMode, divisionStrength } from '../src/sim/armor2';
-import { wingOf } from '../src/sim/airwings';
+import { airWingRange, wingOf } from '../src/sim/airwings';
 import { autoFireOn } from '../src/sim/airstrike';
 import { unitCost } from '../src/sim/units';
 import { followedNation, mainFront } from '../src/sim/warTarget';
@@ -700,8 +701,12 @@ class Meter {
         if (mode === 'hold') bump(v.why, 'mode hold (default)');
         else if (mode === 'refit') bump(v.why, 'mode refit');
         else if (u.station === undefined) bump(v.why, `support: ${reasonTarget() ?? 'no front set'}`);
-        else if ((u.retryTick ?? 0) > t) bump(v.why, 'support: route to front failed (waiting)');
-        else bump(v.why, `support: ${reasonTarget() ?? 'front set, not moving'}`);
+        else {
+          const st = u.station;
+          const far = ((st % w) - u.x) ** 2 + (((st / w) | 0) - u.y) ** 2 > (ARMOR_SUPPORT_RADIUS + 12) ** 2;
+          if ((u.retryTick ?? 0) > t) bump(v.why, far ? 'support: no land route to its front (waiting)' : 'support: no route to a strike launch tile (waiting)');
+          else bump(v.why, `support: ${reasonTarget() ?? (far ? 'front far, not moving' : 'near its front, no strike worth it')}`);
+        }
       }
     }
 
@@ -744,7 +749,12 @@ class Meter {
       else if (wing?.follow && reasonTarget()) bump(v.why, `${mission}: ${reasonTarget()}`);
       else if (mission !== 'superiority' && b.bombers <= 0) bump(v.why, `${mission}: fighters only`);
       else if (mission === 'superiority') bump(v.why, 'superiority over the airfield');
-      else bump(v.why, `${mission}: war target and bombers, no sortie (aim out of reach / cooldown)`);
+      else {
+        const aim = wing?.follow ? front : (wing?.target ?? -1);
+        const rr = airWingRange(b, state);
+        const out = aim >= 0 && ((aim % w) - (b.tile % w)) ** 2 + (((aim / w) | 0) - ((b.tile / w) | 0)) ** 2 > rr * rr;
+        bump(v.why, `${mission}: ${out ? 'main front out of the airfield reach' : 'aim in reach, no sortie'}`);
+      }
     }
 
     // Silos
