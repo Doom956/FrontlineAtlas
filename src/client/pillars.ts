@@ -51,7 +51,7 @@ export const STANCE_ORDER: readonly WarshipStance[] = ['auto', 'hold', 'hunt', '
 
 export const MODE_INFO: Record<DivisionMode, ChoiceInfo> = {
   hold: { name: 'Hold', icon: 'stop', help: 'Stays where it is and defends the land around it; refits slowly in place.' },
-  support: { name: 'Support front', icon: 'attack', help: 'Holds behind your main front (it follows your war) and spearheads into its weak spots by itself when ready.', pick: 'front' },
+  support: { name: 'Support front', icon: 'attack', help: 'Rides to your current war\'s main front (it follows your war) and spearheads into its weak spots by itself, again and again.', pick: 'front' },
   refit: { name: 'Refit', icon: 'upgrade', help: 'Drives to your nearest Factory and refills its tanks there, then holds.' },
 };
 export const MODE_ORDER: readonly DivisionMode[] = ['hold', 'support', 'refit'];

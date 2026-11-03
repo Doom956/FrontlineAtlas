@@ -508,8 +508,8 @@ export function guideTips(): GuideTip[] {
       id: 'navy',
       text: (c) =>
         c.ui.selectedTile >= 0 && c.s.map.building[c.ui.selectedTile] > 0
-          ? 'Order a Warship here. Select ships for a stance; Bombard and Blockade follow your war by default.'
-          : 'Click your Port, then Warship. Select ships for a stance: they follow your war by default.',
+          ? 'Order a Warship here, then click any water of this sea to place it, even off the enemy coast. At war, Auto ships sail out by themselves.'
+          : 'Click your Port, then Warship: it can appear on any water of that sea. At war, Auto ships sail to the enemy coast by themselves.',
       target: 'order-warship || order-destroyer || order-submarine',
       tile: (c) => buildingTile(c.s, c.me, 'port'),
       when: (c) => playing(c) && owns(c.s, c.me, 'port') && hasTech(c.me, 'navigation') && unitAllowed(c.s, 'warship'),
@@ -533,7 +533,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'armor',
-      text: 'Click your Factory, then Tank division. Click enemy land to spearhead; Support front follows your war.',
+      text: 'Click your Factory, then Tank division. Click your land to rush it there, enemy land to spearhead; Support front follows your war.',
       target: 'order-tank-division',
       tile: (c) => buildingTile(c.s, c.me, 'factory'),
       when: (c) => playing(c) && owns(c.s, c.me, 'factory') && hasTech(c.me, 'mechanization'),

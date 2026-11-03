@@ -1,10 +1,11 @@
 // Warships, part two (units.ts keeps movement, patrols and gunnery):
-// - ordering a warship on a clicked water tile near an own port (Action buildWarship with `tile`), built over
-//   WARSHIP_BUILD_SECONDS in state.unitQueue;
+// - ordering a warship on a clicked water tile of any sea an own finished port touches (Action buildWarship with
+//   `tile`), built over WARSHIP_BUILD_SECONDS in state.unitQueue;
 // - auto-intercept: a patrolling warship that sees an enemy ship within WARSHIP_DETECT_RANGE leaves its post
 //   (Unit.cargo, its patrol centre) to chase it (transports first, then warships, then trade ships of nations at war)
 //   and sails back when the target is gone, out of sight for WARSHIP_CHASE_GIVE_UP seconds, or beyond WARSHIP_LEASH
-//   from the post. Warship states: 0 patrolling, 1 sailing to an ordered tile, 2 chasing Unit.chase;
+//   from the post; 'hunt' ships (naval2.ts) also chase ships of nations at war anywhere in their sea, with no leash,
+//   and patrol where the chase ended. Warship states: 0 patrolling, 1 sailing to an ordered tile, 2 chasing Unit.chase;
 // - group orders (Action moveWarships) in a loose formation;
 // - formationTiles, shared with tank divisions (tanks.ts).
 // Everything is deterministic (no RNG here; scans are staggered by unit id).
@@ -17,10 +18,9 @@ import {
   WARSHIP_DETECT_RANGE,
   WARSHIP_LEASH,
   WARSHIP_SCAN_TICKS,
-  WARSHIP_SPAWN_RANGE,
 } from './config';
 import { areAllied } from './diplomacy';
-import { neighbors4, sameWater, waterPath } from './grid';
+import { neighbors4, sameWater, waterComponents, waterPath } from './grid';
 import { atPeace, buildSeconds, unitRule } from './rules';
 import { addEvent, newId } from './state';
 import { hasTech } from './tech';
@@ -53,19 +53,14 @@ export function unitQueue(state: GameState): QueuedUnit[] {
 
 /**
  * Port that can build a warship on water tile `tile` for playerId: `port` itself when given (>= 0), else the nearest
- * own finished port within WARSHIP_SPAWN_RANGE whose sea reaches the tile. Returns the port or a reason.
+ * own finished port that touches the tile's sea (any distance: the ship is placed there). Returns the port or a reason.
  */
 export function warshipSpawnPort(state: GameState, playerId: number, port: number, tile: number): Building | string {
   const map = state.map;
   if (!isTileIn(state, tile)) return 'Invalid tile';
   if (!isWater(map.terrain[tile])) return 'Click a water tile: warships are placed at sea';
   const w = map.width;
-  const r2 = WARSHIP_SPAWN_RANGE * WARSHIP_SPAWN_RANGE;
-  const ok = (b: Building): string | null => {
-    if (tileDist2(w, b.tile, tile) > r2) return `Too far from your port: at most ${WARSHIP_SPAWN_RANGE} tiles`;
-    if (!sameWater(map, b.tile, tile)) return "That water can't be reached by sea from your port";
-    return null;
-  };
+  const ok = (b: Building): string | null => (sameWater(map, b.tile, tile) ? null : "That water can't be reached by sea from your port");
   if (port >= 0) {
     const b = isTileIn(state, port) ? buildingAt(state, port) : undefined;
     if (!b || b.type !== 'port' || b.owner !== playerId || b.buildLeft > 0) return 'Warships are built at a finished Port of yours';
@@ -88,6 +83,33 @@ export function warshipSpawnPort(state: GameState, playerId: number, port: numbe
     }
   }
   return best ?? why;
+}
+
+/**
+ * True when playerId could place a warship on `tile` (water of a sea one of its finished ports touches), ignoring
+ * money, research and the fleet cap (canOrderWarship checks everything). Read-only.
+ */
+export function warshipSpawnable(state: GameState, playerId: number, tile: number): boolean {
+  return typeof warshipSpawnPort(state, playerId, -1, tile) !== 'string';
+}
+
+/** Water body ids (grid.waterComponents) of the seas playerId's finished ports touch: where its warships can be placed. */
+export function warshipSpawnSeas(state: GameState, playerId: number): Set<number> {
+  const map = state.map;
+  const c = waterComponents(map);
+  const w = map.width;
+  const out = new Set<number>();
+  for (const b of buildingsOf(state, playerId, 'port')) {
+    if (b.owner !== playerId || b.buildLeft > 0) continue;
+    const t = b.tile;
+    const x = t % w;
+    if (c[t]) out.add(c[t]);
+    if (x > 0 && c[t - 1]) out.add(c[t - 1]);
+    if (x < w - 1 && c[t + 1]) out.add(c[t + 1]);
+    if (t >= w && c[t - w]) out.add(c[t - w]);
+    if (t < c.length - w && c[t + w]) out.add(c[t + w]);
+  }
+  return out;
 }
 
 /** Can playerId order a warship at port / water tile right now? (ok, or the reason; nothing changes) */

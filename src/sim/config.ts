@@ -555,8 +555,8 @@ export const UNITS: Record<UnitType, UnitInfo> = {
   atomBomb: { name: 'Atom bomb', speed: 35, gold: 6000, iron: 300, oil: 150, hp: 2, tech: 'nuclearFission' },
   /** paratrooper drop: the price is paid per drop */
   transportPlane: { name: 'Cargo plane', speed: 30, gold: 400, iron: 0, oil: 30, hp: 1, tech: 'flight' },
-  /** tank division (tanks.ts): speed = tiles/s moving over own land; the troops it carries are its strength */
-  tankDivision: { name: 'Tank division', speed: 5, gold: 1200, iron: 100, oil: 50, hp: 1, tech: 'mechanization' },
+  /** tank division (tanks.ts): speed = tiles/s moving over own land (a rail move; TANK_MOBILITY); the troops it carries are its strength */
+  tankDivision: { name: 'Tank division', speed: 20, gold: 1200, iron: 100, oil: 50, hp: 1, tech: 'mechanization' },
   /** recon flight (variants.ts): the price is paid per flight */
   reconPlane: { name: 'Recon plane', speed: 45, gold: 200, iron: 0, oil: 15, hp: 1, tech: 'reconPlanes' },
 };
@@ -564,18 +564,17 @@ export const TRANSPORT_MAX_AT_SEA = 3;
 export const TRANSPORT_PER_PORT = 2;
 export const PORT_TRANSPORT_SPEED = 1.6;
 export const NAVIGATION_TRANSPORT_SPEED = 1.5;
-export const WARSHIP_RANGE = 20;
+/** warships fight ships within this many tiles and shell enemy coast within half of it (battleships x2) */
+export const WARSHIP_RANGE = 35;
 export const WARSHIP_DAMAGE_PER_S = 0.5; // hp/s to one target in range
 export const WARSHIP_BOMBARD_KILL = 150; // defender troops/s killed when an enemy coast tile is in range
 // ---------- warships: build where you click, auto-intercept, groups (navy.ts) ----------
 /** seconds from ordering a warship to it appearing (x build speed modifiers; 'instant' = at once) */
 export const WARSHIP_BUILD_SECONDS = 6;
-/** a warship may be ordered on a water tile at most this many tiles from the port that builds it */
-export const WARSHIP_SPAWN_RANGE = 40;
-/** patrolling warships notice enemy ships within this many tiles (2.5 x weapon range) and chase them */
-export const WARSHIP_DETECT_RANGE = WARSHIP_RANGE * 2.5;
-/** ...but never further than this many tiles from their post (they turn back) */
-export const WARSHIP_LEASH = 60;
+/** patrolling warships notice enemy ships within this many tiles (3 x weapon range) and chase them */
+export const WARSHIP_DETECT_RANGE = WARSHIP_RANGE * 3;
+/** ...but never further than this many tiles from their post (they turn back); 'hunt' has no leash (NAVY_REACH) */
+export const WARSHIP_LEASH = 100;
 /** a chase ends after the target has been out of detection range for this many seconds */
 export const WARSHIP_CHASE_GIVE_UP = 6;
 /** patrolling warships look for ships to intercept every this many ticks (staggered by id) */
@@ -593,13 +592,13 @@ export const TANK_MIN_ARMOR = 3000;
 /** divisions (alive + being built) per Factory level of a player */
 export const TANK_PER_FACTORY_LEVEL = 1;
 /** spearhead: head speed in tiles/s on plains (x TANK_TERRAIN_SPEED) */
-export const TANK_SPEARHEAD_SPEED = 3;
+export const TANK_SPEARHEAD_SPEED = 6;
 /** spearhead width in tiles (odd; the head tile and (width-1)/2 on each side) */
 export const TANK_SPEARHEAD_WIDTH = 3;
 /** spearheads never run deeper than this many tiles */
-export const TANK_SPEARHEAD_MAX_DEPTH = 40;
-/** the clicked tile must be within this many tiles of own land to launch a spearhead */
-export const TANK_LAUNCH_REACH = 4;
+export const TANK_SPEARHEAD_MAX_DEPTH = 60;
+/** the clicked tile must be within this many tiles of own land to launch a spearhead (an aim behind their front) */
+export const TANK_LAUNCH_REACH = 12;
 /** spearhead losses = a normal attack's losses for the same tile x this x terrain factor (concentrated armor) */
 export const TANK_SPEARHEAD_LOSS = 0.5;
 /** per terrain id: head speed factor and loss factor (0 speed = stops it; mountains need artillery support) */
@@ -627,6 +626,19 @@ export const TANK_FALLBACK_PAUSE = 20;
 export const TANK_BOMBER_KILL = 0.15;
 /** search effort for a division's land route over own territory (tiles expanded) */
 export const TANK_PATH_BUDGET = 60000;
+/**
+ * Tank mobility (tanks.ts, armor2.ts): divisions move over their own (connected) land by rail at
+ * UNITS.tankDivision.speed tiles/s, x railways with Railways; an automatic jump of a 'support' division to a front
+ * further than ARMOR_SUPPORT_RADIUS + 12 tiles away searches its route with jumpBudget (nearer drives:
+ * ARMOR_AUTO_PATH_BUDGET). AI build bar: gold / iron and oil / armor at home of at least these times a division's price.
+ */
+export const TANK_MOBILITY = {
+  railways: 1.5,
+  jumpBudget: 30000,
+  aiGold: 1.6,
+  aiMaterials: 1.2,
+  aiArmor: 1.1,
+} as const;
 export const TRADE_INTERVAL = 25; // seconds between trade ships per port
 export const TRADE_GOLD_PER_TILE = 0.5; // gold per tile of path length, to each owner
 export const BOMBER_RADIUS = 5;
@@ -1227,12 +1239,24 @@ export const AIR = {
 // ---------- navy, part three: stances, shore bombardment, blockades, veterancy (naval2.ts) ----------
 /** stanced warships (re)think every this many ticks (staggered by id) */
 export const NAVY_THINK_TICKS = 20;
-/** 'auto': looks for enemy coast to bombard within this many tiles of its post (only nations it is at war with) */
-export const NAVY_AUTO_BOMBARD_REACH = 60;
-/** 'hunt': detection range and leash (tiles) */
-export const NAVY_HUNT_DETECT = 90;
-export const NAVY_HUNT_LEASH = 160;
-/** 'bombard' / 'blockade': a ship looks this far (tiles) for a coast / port to take up station at */
+/** 'hunt': detection range for any hostile ship (tiles); ships of nations at war are hunted anywhere in its sea (NAVY_REACH) */
+export const NAVY_HUNT_DETECT = 160;
+/**
+ * Fleet reach (naval2.ts, navy.ts): warships are ordered on any water of a sea one of your finished Ports touches.
+ * At war, 'auto' ships (Follow my war: toward the war target's main front) and 'bombard' ships take up station off
+ * enemy coast anywhere in their sea (their post moves with them), and 'hunt' ships chase ships of nations at war
+ * anywhere in it. Roaming ships under repairBelow of their max hp sail to the nearest own Port of their sea and stay
+ * until mended. A coast search looks at up to roamSamples coast tiles per nation; one that finds nothing waits
+ * retrySeconds; stations within crowdRadius of another own ship's station cost crowdPenalty tiles of distance.
+ */
+export const NAVY_REACH = {
+  repairBelow: 0.5,
+  roamSamples: 600,
+  retrySeconds: 5,
+  crowdRadius: 6,
+  crowdPenalty: 20,
+} as const;
+/** 'auto' / 'bombard' / 'blockade': a ship looks for enemy coast this far (tiles) around it first, then anywhere in its sea */
 export const NAVY_STATION_SEEK = 120;
 /** a ship on station sits within this many tiles of the coast / port tile it covers */
 export const NAVY_STATION_DIST = 4;
@@ -1242,7 +1266,7 @@ export const NAVY_STATION_DIST = 4;
  * counts as supplied. bonus = NAVY_SUPPORT_BONUS for the first ship, each further ship x NAVY_SUPPORT_DIMINISH of the
  * one before, at most NAVY_SUPPORT_MAX.
  */
-export const NAVY_SUPPORT_RANGE = 18;
+export const NAVY_SUPPORT_RANGE = 30;
 export const NAVY_SUPPORT_BONUS = 0.45;
 export const NAVY_SUPPORT_DIMINISH = 0.6;
 export const NAVY_SUPPORT_MAX = 1;
@@ -1307,11 +1331,11 @@ export const ARMOR_POCKET_EVERY = 6;
 export const ARMOR_POCKET_MAX_TILES = 3000;
 export const ARMOR_POCKET_KILL = 0.6;
 /** 'support': looks for a weak spot every this many seconds within ARMOR_SUPPORT_RADIUS tiles of its front */
-export const ARMOR_SUPPORT_SCAN_SECONDS = 3;
+export const ARMOR_SUPPORT_SCAN_SECONDS = 2;
 export const ARMOR_SUPPORT_RADIUS = 24;
 /** launches when at least this share of a full division; drives back to refit at a Factory below ARMOR_SUPPORT_REFIT */
-export const ARMOR_SUPPORT_READY = 0.7;
-export const ARMOR_SUPPORT_REFIT = 0.45;
+export const ARMOR_SUPPORT_READY = 0.6;
+export const ARMOR_SUPPORT_REFIT = 0.4;
 /** holds this many tiles behind the front (within this distance of the front tile) */
 export const ARMOR_SUPPORT_HOLD = 8;
 /** a launch needs at least this expected depth (tiles); a line that cuts the enemy's land counts ARMOR_CUT_BONUS extra */
@@ -1324,7 +1348,7 @@ export const NAVY_PORT_REPAIR = 0.1;
 export const NAVY_WAR_MEMORY = 30;
 /** automatic division drives (support / refit modes) search at most this many tiles, and wait this long after a failed route */
 export const ARMOR_AUTO_PATH_BUDGET = 8000;
-export const ARMOR_RETRY_SECONDS = 20;
+export const ARMOR_RETRY_SECONDS = 10;
 
 // ---------- special upgrades (specials.ts): behaviour changes bought as techs ----------
 export const SPECIALS = {

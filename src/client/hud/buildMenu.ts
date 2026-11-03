@@ -548,7 +548,7 @@ export class BuildMenu {
           setClass(b, 'short', !st.locked && !st.ok);
           setText(line, st.ok ? 'Breakthroughs on land; click a Factory' : st.line);
           setClass(line, 'why', !st.ok);
-          setTip(b, `Tank division  ${tankPriceText(s, me.id)}\nA commandable armored division: move it over your land, or click enemy land at your border to launch a fast spearhead.\n${st.line}`);
+          setTip(b, `Tank division  ${tankPriceText(s, me.id)}\nA commandable armored division: click your land to drive there fast (rail moves), or enemy land near your border to launch a fast spearhead.\n${st.line}`);
           return;
         }
         const st = unitBuildStatus(s, me, kind, { x: this.ctx.camera.x, y: this.ctx.camera.y });

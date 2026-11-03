@@ -315,7 +315,7 @@ export function tankDivisionDoing(state: GameState, me: number, u: Unit): string
       return `Spearhead into ${state.players[u.targetOwner]?.name ?? 'neutral land'}: ${u.cargo | 0} tiles taken`;
     default: {
       const mode = u.mode ?? 'hold';
-      if (mode === 'support') return 'Supporting a front: spearheads into weak spots when ready';
+      if (mode === 'support') return 'Supporting your main front: spearheads into weak spots when ready';
       if (mode === 'refit') return 'Refitting at a Factory';
       return 'Holding: defends the land around it';
     }

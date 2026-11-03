@@ -335,7 +335,7 @@ export class ForcesPage implements DrawerPage {
           ? ''
           : st.locked
             ? `Warships: ${UNIT_TEXT.warship.unlock.toLowerCase()}.`
-            : 'No warships yet: + Warship, then click water near your Port.';
+            : 'No warships yet: + Warship, then click any water your ports reach.';
       if (ships.length > 1) head.push({ label: 'All', tip: 'Select every warship (Shift+W)', run: () => this.selectAll(s, me, 'warship') });
       this.shipBar.update(s, me, 2);
       this.fleet.set(head, rows, empty, focus);
@@ -358,7 +358,7 @@ export class ForcesPage implements DrawerPage {
               label: sel ? 'Selected' : 'Select',
               cls: sel ? 'on' : '',
               off: u.state === 3 ? 'In a spearhead: it takes no orders until it ends' : '',
-              tip: 'Select it: Hold, Support front (it spearheads by itself) or Refit; or click your land to move it, enemy land at your border to spearhead',
+              tip: 'Select it: Hold, Support front (it spearheads by itself) or Refit; or click your land to drive it there fast, enemy land near your border to spearhead',
               run: () => {
                 ctx.ui.mode = { kind: 'none' };
                 ctx.ui.selection = [u.id];

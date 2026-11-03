@@ -269,7 +269,7 @@ export function selectionChipText(state: GameState, ui: UiState, now = performan
   const what = c.warships.length && c.tanks.length
     ? 'click water or land to move them, or give orders below'
     : c.warships.length
-      ? 'click any water of their sea to move, or pick a stance below'
+      ? 'click water to move, or pick a stance below'
       : `click your land to drive there fast, enemy land up to ${TANK_LAUNCH_REACH} tiles past your border to spearhead, or pick a mode below`;
   return `${head}: ${what}. Esc clears.`;
 }
