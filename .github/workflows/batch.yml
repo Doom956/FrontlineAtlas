@@ -1,7 +1,7 @@
 # Balance batches on GitHub's runners (scripts/batch.ts split over many machines).
 # Started by scripts/remote-batch.sh, which pushes a snapshot to a bench/<label> branch with the options in
 # .bench/args and the runner count in .bench/shards. Each runner plays its share of the games with 4 workers; the
-# report job merges them (.bench/script picks scripts/batch.ts (default) or scripts/humanbench.ts), writes .bench/report.txt and .bench/results.jsonl and pushes them back to the same branch.
+# report job merges them (.bench/script picks scripts/batch.ts (default), scripts/humanbench.ts or another scripts/<name>.ts), writes .bench/report.txt and .bench/results.jsonl and pushes them back to the same branch.
 # Never runs on main or dev.
 name: Balance batch
 

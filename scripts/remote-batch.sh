@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Run a balance batch on GitHub's runners instead of this machine (.github/workflows/batch.yml).
 #
-# Usage: scripts/remote-batch.sh <label> [--shards N] [--no-wait] [--human] -- <scripts/batch.ts options>
+# Usage: scripts/remote-batch.sh <label> [--shards N] [--no-wait] [--human | --script NAME] -- <scripts/batch.ts options>
 #   --human runs scripts/humanbench.ts instead (its options after --, without --jobs)
+#   --script NAME runs scripts/NAME.ts instead (same --shard s/n and --from contract, e.g. autobench)
 #   e.g. scripts/remote-batch.sh air-sam2 -- --sizes medium --seeds 48 --minutes 50 --decided 0.6 --specialist all
 #
 # Snapshots the working tree as it is (uncommitted changes included, the current branch untouched) onto branch
@@ -22,6 +23,7 @@ while [ $# -gt 0 ]; do
     --shards) shards=$2; shift 2 ;;
     --no-wait) wait=0; shift ;;
     --human) script=humanbench; shift ;;
+    --script) script=$2; shift 2 ;;
     --) shift; break ;;
     *) echo "unknown option $1" >&2; exit 1 ;;
   esac
