@@ -499,6 +499,8 @@ interface Result {
   bombs: { arrivals: number; home: number; off: number };
   rockets: number;
   sorties: number;
+  /** player 1's unitLost events by kind (names and numbers taken out) */
+  lossWhy: Record<string, number>;
 }
 
 function hostile(state: GameState, a: number, b: number): boolean {
@@ -541,6 +543,7 @@ class Meter {
       bombs: { arrivals: 0, home: 0, off: 0 },
       rockets: 0,
       sorties: 0,
+      lossWhy: {},
     };
   }
 
@@ -548,6 +551,11 @@ class Meter {
   events(state: GameState): void {
     for (const e of state.events) {
       if (e.players[0] !== ME) continue;
+      if (e.kind === 'unitLost') {
+        // Names out, numbers out: one key per kind of loss.
+        const key = e.message.replace(/\d[\d.,]*[kM]?/g, 'N').replace(new RegExp(`^${state.players[ME].name}('s)?`), 'P1').replace(/to [^']+'s/, "to an enemy's").replace(/(off|into) [^']+'s/, "$1 an enemy's");
+        bump(this.r.lossWhy, key);
+      }
       if (e.kind === 'unitLost' && /tank division was overrun/.test(e.message)) this.overrunNow++;
       else if ((e.kind as string) === 'spearheadEnded' && /the division is spent/.test(e.message)) this.spentNow++;
     }
@@ -1081,6 +1089,10 @@ function report(rs: Result[], o: Options): void {
     console.log(
       `Bought per game: warships ${f1(sumOf((r) => r.bought.ships) / n)}, divisions ${f1(sumOf((r) => r.bought.tanks) / n)}, bombers ${f1(sumOf((r) => r.bought.bombers) / n)}, fighters ${f1(sumOf((r) => r.bought.fighters) / n)}. Lost per game: warships ${f1(sumOf((r) => r.lost.ships) / n)}, divisions overrun ${f1(sumOf((r) => r.lost.overrun) / n)} / spent ${f1(sumOf((r) => r.lost.spent) / n)} / gone otherwise ${f1(sumOf((r) => r.lost.divOther) / n)}, aircraft ${f1(sumOf((r) => r.lost.aircraft) / n)}.`,
     );
+    const lw: Record<string, number> = {};
+    for (const r of g) for (const [key, c] of Object.entries(r.lossWhy ?? {})) lw[key] = (lw[key] ?? 0) + c;
+    const lws = Object.entries(lw).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    if (lws.length) console.log(`Losses by kind (per game): ${lws.map(([key, c]) => `${key} ${f1(c / n)}`).join('; ')}.`);
     // Per map type: the main shares.
     const types = [...new Set(g.map((r) => r.job.type))];
     if (types.length > 1) {
