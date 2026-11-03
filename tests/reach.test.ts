@@ -24,8 +24,8 @@ import { computeCoastAndLand } from '../src/sim/mapgen';
 import { navalSupportAt, supportingShips, warshipMaxHp } from '../src/sim/naval2';
 import { tick } from '../src/sim/sim';
 import { newId } from '../src/sim/state';
-import { divisionDriveSpeed, divisionMoveTime, spawnTankDivision, tankDivisionCost } from '../src/sim/tanks';
-import { spawnWarshipAt } from '../src/sim/units';
+import { aiTankDivisions, divisionDriveSpeed, divisionMoveTime, spawnTankDivision, tankDivisionCost } from '../src/sim/tanks';
+import { spawnWarshipAt, WARSHIP_PATROL_RADIUS } from '../src/sim/units';
 import { navalShellRangeMul } from '../src/sim/variants';
 import { Terrain } from '../src/sim/types';
 import type { Building, BuildingType, GameState, Unit } from '../src/sim/types';
@@ -150,6 +150,17 @@ describe("roaming 'auto' ships", () => {
     expect(d2t(s, u.station!, post)).toBeGreaterThan(100);
   });
 
+  it('a ship far from its post (a chase or a trip cut short) patrols where it is', () => {
+    const { s, port } = longCoast();
+    const here = at(s, 120, 30);
+    const u = spawnWarshipAt(s, 1, port.tile, here);
+    u.stance = 'hold';
+    u.cargo = at(s, 10, 22); // its old post, 110 tiles away
+    const moved = runUntil(s, () => u.cargo !== at(s, 10, 22), 60 * TICKS_PER_SECOND);
+    expect(moved).toBe(true);
+    expect(d2t(s, u.cargo, here)).toBeLessThanOrEqual(2 * WARSHIP_PATROL_RADIUS + 2);
+  });
+
   it("'hold' ships never roam", () => {
     const { s, port } = longCoast();
     const post = at(s, 10, 22);
@@ -262,7 +273,7 @@ describe('tank divisions: rail moves', () => {
     expect(runUntil(s, () => d.state === 3, 50)).toBe(true);
     const x0 = d.x;
     run(s, TICKS_PER_SECOND);
-    expect(d.x - x0).toBeGreaterThan(TANK_SPEARHEAD_SPEED * 0.7); // ~6 tiles in a second on plains (was 3)
+    expect(d.x - x0).toBeGreaterThan(TANK_SPEARHEAD_SPEED * 0.7); // TANK_SPEARHEAD_SPEED tiles a second on plains (was 3)
     expect(runUntil(s, () => d.state !== 3, 600)).toBe(true);
     let taken = 0;
     for (let x = 30; x < 135; x++) if (s.map.owner[at(s, x, 15)] === 1) taken++;
@@ -340,6 +351,35 @@ describe('support divisions jump to the main front', () => {
     ai.troops = { infantry: 40000, armor: 7000, artillery: 2000 }; // under the old 9000 armor bar
     const built = runUntil(s, () => s.events.some((e) => e.kind === 'tankDivisionReady' && e.players.includes(1)) || (s.unitQueue ?? []).some((q) => q.owner === 1), 30 * TICKS_PER_SECOND);
     expect(built).toBe(true);
+  });
+});
+
+describe('AI divisions follow factory capacity', () => {
+  function aiWithFactories(levels: number, divisions: number): GameState {
+    const s = makeFlatGame(60, 30, 2, { seed: 6 });
+    claimRect(s, 1, 0, 0, 29, 29);
+    claimRect(s, 2, 30, 0, 59, 29);
+    s.settings.victoryLandShare = 0.99;
+    const ai = s.players[1];
+    ai.personality = 'balanced';
+    ai.techs.push('mechanization');
+    for (let k = 0; k < levels; k += 5) addBuilding(s, 'factory', 1, at(s, 5 + 4 * (k / 5), 15), Math.min(5, levels - k));
+    rich(s);
+    ai.troops = { infantry: 200000, armor: 60000, artillery: 20000 };
+    for (let k = 0; k < divisions; k++) spawnTankDivision(s, 1, at(s, 10 + k, 5));
+    return s;
+  }
+  const queued = (s: GameState): number => (s.unitQueue ?? []).filter((q) => q.owner === 1 && q.type === 'tankDivision').length;
+  it('a balanced AI with 3 divisions builds a 4th only with factory capacity for 8+ (half of it, at most 6)', () => {
+    const small = aiWithFactories(5, 3);
+    aiTankDivisions(small, 1, (a) => applyAction(small, 1, a));
+    expect(queued(small)).toBe(0);
+    const big = aiWithFactories(10, 3);
+    aiTankDivisions(big, 1, (a) => applyAction(big, 1, a));
+    expect(queued(big)).toBe(1);
+    const full = aiWithFactories(15, 6); // half of 15 = 7, capped at 6
+    aiTankDivisions(full, 1, (a) => applyAction(full, 1, a));
+    expect(queued(full)).toBe(0);
   });
 });
 

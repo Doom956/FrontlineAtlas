@@ -625,7 +625,8 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   `WARSHIP_SCAN_TICKS` for hostile ships of its sea within `WARSHIP_DETECT_RANGE` (3 x range): transports first, then
   warships, then trade ships of nations it is at war with; it chases (state 2, `Unit.chase`) and shoots its quarry
   first, and sails back to its post (`cargo`) when the target is gone, out of sight for `WARSHIP_CHASE_GIVE_UP` s, or
-  beyond `WARSHIP_LEASH` (100) tiles from the post. Ships under orders (state 1) don't divert. **Groups**: `moveWarships
+  beyond `WARSHIP_LEASH` (100) tiles from the post. A patrolling ship more than 2 x `WARSHIP_PATROL_RADIUS` from its
+  post (a chase or a trip cut short) patrols where it is (its post moves there). Ships under orders (state 1) don't divert. **Groups**: `moveWarships
   {unitIds, tile}` (own warships only, at most `MAX_GROUP_UNITS`) sends each to its own slot of a formation 2 tiles
   apart around the click (`navy.formationTiles`).
 - **Tank division** (Factory, Mechanization; src/sim/tanks.ts): `buildTankDivision {tile}` at an own finished
@@ -636,7 +637,7 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   `divisionMoveTime`); enemy or neutral land within `TANK_LAUNCH_REACH` (12) of own land = drive to the nearest own
   tile whose straight line to the click crosses no water (narrow water with Amphibious Tanks), then a **spearhead**
   along the line through the click (at the border the line picks the direction that runs furthest through that
-  owner's land): a band `TANK_SPEARHEAD_WIDTH` wide, `TANK_SPEARHEAD_SPEED` (6) tiles/s on plains (x
+  owner's land): a band `TANK_SPEARHEAD_WIDTH` wide, `TANK_SPEARHEAD_SPEED` (8) tiles/s on plains (x
   `TANK_TERRAIN_SPEED`), at most `TANK_SPEARHEAD_MAX_DEPTH` (60) deep, each tile costing a normal attack's losses x
   `TANK_SPEARHEAD_LOSS` x terrain x (1 + 1.5 x the defender's armor share). Mountains and forts stop it unless the
   division carries `TANK_ARTILLERY_SUPPORT` artillery; water, a third nation, `TANK_SPEARHEAD_MAX_DEPTH` or falling
@@ -647,7 +648,8 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   `TANK_FALLBACK_PAUSE` s) while it holds `TANK_FALLBACK_MIN_SHARE` of a full division, else it is overrun and its
   troops go home. `spearheadPreview` gives the line, the
   expected depth and warnings without changing anything. AIs build divisions whenever a Factory, armor and the price
-  allow (`TANK_MOBILITY.aiGold` / `aiMaterials` / `aiArmor`; up to 3, warlords 6, turtles and merchants 2) and
+  allow (`TANK_MOBILITY.aiGold` / `aiMaterials` / `aiArmor`; up to 3, turtles and merchants 2, or half their factory
+  capacity when that is more, at most 6; warlords up to their capacity, at most 6) and
   spearhead into their main war, or else into the nation attacking them hardest, once the preview expects at least 3
   tiles (`aiTankDivisions`, through applyAction).
 - **Warship stances, shore bombardment, blockades** (src/sim/naval2.ts; `setUnitStance {unitIds, stance}`):
@@ -658,13 +660,13 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   anywhere in its sea, no leash; patrols where the chase ended), `hold` (intercepts near its post, never roams);
   `auto` / `hunt` ships under `NAVY_REACH.repairBelow` of their hp sail to the nearest own Port of their sea (if
   there is one) and stay there until mended; a coast search that finds nothing waits `NAVY_REACH.retrySeconds`
-  (`Unit.retryTick`); `escort` (sticks to own transports, then trade ships; an escorted ship takes
+  and a station / Port trip whose route search fails waits `NAVY_REACH.sailRetry` (45 s) (`Unit.retryTick`); `escort` (sticks to own transports, then trade ships; an escorted ship takes
   x `NAVY_ESCORT_DAMAGE` damage; escorts sail x2), `bombard` (parks off enemy coast, shells x
   `NAVY_BOMBARD_STANCE_KILL`; near it first, else anywhere in its sea; home after the war), `blockade` (parks off
   an enemy port anywhere in its sea). State 3 = on station (`Unit.station` = the coast
   or port tile), 4 = escorting (`station` = the ship's id). "At war" = an attack running between the two, or within
   `NAVY_WAR_MEMORY` s (`state.warMemory`). Fronts: enemy land within `NAVY_SUPPORT_RANGE` of own warships costs
-  defence / (1 + bonus) and advances faster (bonus 0.45 for the first ship, x0.6 for each further one, cap 1) and
+  defence / (1 + bonus) and advances faster (bonus 0.45 for the first ship, x0.75 for each further one, cap 1.4) and
   counts as supplied; a landing next to own warships pays x `NAVY_BEACHHEAD_LOSS` and its beachhead supplies twice as
   long. A port within `NAVY_BLOCKADE_RANGE` of a warship at war with its owner is blockaded: its trade pays x 0.25,
   its owner's land within `NAVY_BLOCKADE_SUPPLY_RADIUS` is badly supplied (attacks) and unsupplied (defence), and the
