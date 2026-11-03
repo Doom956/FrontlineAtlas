@@ -999,6 +999,15 @@ full-map scans after `createGame`.
   (`buildWarship {port, tile}`); "Tank division" (`enterTankDivisionBuildMode`) asks for a click on one of your
   factories. After a game ends, "Continue playing" / "Keep watching" (online only the private game's host) sends
   `continueGame`; a "Victory: <winner>" chip stays in the top-right cluster.
+- Unit groups (unitGroups.ts, hud/groupsStrip.ts; client only, no action): the Forces drawer's Groups strip. "New
+  group" saves the selected warships / tank divisions as a button "Fleet 1 · 8 ships" (Tanks 1 for divisions only,
+  Group 1 when mixed: "3 ships, 2 divisions"). A click selects the group (the button lights while it is the
+  selection), a second click renames it in place, the target icon centres the map on the member nearest its middle,
+  + adds the selected units, x deletes it with an Undo for a few seconds. All buttons, no hotkeys. Units that are
+  sunk, destroyed or captured drop out; a group with none left stays greyed with "0". At most 12 groups of up to
+  MAX_GROUP_UNITS units; a unit can be in several. The groups live in UiState.groups (plain JSON, new per game);
+  getUnitGroups(ui) / setUnitGroups(ui, data) are the hooks for a saved game. Airfields are buildings, not units, so
+  they are not in groups.
 - Pillar controls (client/pillars.ts, hud/ordersBar.ts, hud/airPanel.ts, hud/pillarAdvice.ts,
   render/pillarOverlay.ts): with warships or tank divisions selected, an orders bar above the advisor line holds the
   stance (Auto / Hunt / Escort / Bombard / Blockade, `setUnitStance`) or mode (Hold / Support front / Refit,

@@ -2219,6 +2219,138 @@ button.fr-t:hover {
   margin: 2px 0 0;
 }
 
+/* forces drawer: the player's named groups (hud/groupsStrip.ts). One chip per group: the name and count select it,
+   the target at its right end finds it on the map; + and x sit outside the chip. Lit = it is the selection. */
+.ug-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ug-list:empty {
+  display: none;
+}
+.ug-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px 28px;
+  align-items: center;
+  gap: 4px;
+}
+.ug-chip {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  min-height: 30px;
+  border: 1px solid var(--rule-hi);
+  border-radius: var(--r);
+  background: var(--metal-2);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 1px 0 rgba(0, 0, 0, 0.5);
+  transition: border-color var(--fast), background var(--fast);
+}
+.ug-chip:hover {
+  border-color: var(--brass-lo);
+}
+.ug-pick,
+.ug-find {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.ug-pick {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 10px;
+  text-align: left;
+  font: 600 14px/28px var(--f-label);
+  letter-spacing: 0.04em;
+}
+.ug-pick:hover,
+.ug-find:hover {
+  background: var(--metal-3);
+}
+.ug-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ug-dot {
+  color: var(--faint);
+}
+.ug-n {
+  flex-shrink: 0;
+  white-space: nowrap;
+  color: var(--brass-hi);
+}
+.ug-find {
+  flex: 0 0 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-left: 1px solid var(--rule);
+  color: var(--dim);
+  line-height: 0;
+}
+.ug-find:hover {
+  color: var(--brass-hi);
+}
+.ug-edit {
+  flex: 1;
+  min-width: 0;
+  margin: 2px;
+  padding: 0 8px;
+  border: 1px solid var(--brass);
+  border-radius: var(--r);
+  background: var(--ink);
+  color: var(--text);
+  font: 600 14px/24px var(--f-label);
+  letter-spacing: 0.04em;
+  user-select: text;
+}
+.ug-edit:focus-visible {
+  outline: none;
+}
+.ug-row.on .ug-chip {
+  border-color: var(--brass);
+  background: var(--metal-3);
+  box-shadow: inset 3px 0 0 var(--brass);
+}
+.ug-row.on .ug-name {
+  color: var(--brass-hi);
+}
+.ug-row.empty .ug-chip {
+  border-style: dashed;
+  background: transparent;
+  box-shadow: none;
+}
+.ug-row.empty .ug-name,
+.ug-row.empty .ug-n,
+.ug-row.empty .ug-find {
+  color: var(--faint);
+}
+.ug-row .wr-btn.icon {
+  width: 28px;
+  min-height: 30px;
+}
+.ug-undo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 2px 2px 2px 8px;
+  border: 1px dashed var(--rule-hi);
+  border-radius: var(--r);
+  font-size: 12px;
+  color: var(--dim);
+}
+.ug-hint {
+  margin: 6px 0 0;
+}
+
 /* the selected unit's card: follows the unit on the map */
 .ucard {
   position: absolute;
@@ -4055,7 +4187,8 @@ mark.hw-hit {
   .bb {
     flex: 0 0 auto;
   }
-  .drawer {
+  .drawer,
+  .drawer[data-page='forces'] {
     width: calc(100vw - 24px);
     max-height: 55vh;
   }

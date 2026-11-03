@@ -1,6 +1,7 @@
 // UI state shared by input, HUD and renderer (client only, never read by the sim).
 import type { Action, ActionResult, BuildingType, GameState, NavalVariant } from '../sim/types';
 import { loadSalvo, type SalvoPrefs } from './salvoPrefs';
+import type { UnitGroups } from './unitGroups';
 
 export type TargetMode =
   | { kind: 'none' }
@@ -66,6 +67,8 @@ export interface UiState {
   /** salvo size per strike (x1 / x3 / x5 / All = 0): how many bombers / missiles one click sends (salvoPrefs.ts;
    *  bombs and rockets are remembered, atom bombs start at x1) */
   salvo: SalvoPrefs;
+  /** the player's named unit groups for this game (unitGroups.ts; plain JSON, a saved game can store it) */
+  groups: UnitGroups;
 }
 
 /** A short-lived text rising from a map position. */
@@ -111,6 +114,7 @@ export function defaultUiState(): UiState {
     debugOverlay: false,
     buildCount: 1,
     salvo: loadSalvo(),
+    groups: { next: 1, groups: [], removed: null },
   };
 }
 

@@ -25,6 +25,7 @@ import { airReady, divisionOrderLine, pillarSummary, setMission, STANCE_INFO, ve
 import { warshipStance } from '../../sim/naval2';
 import { AirPanel } from './airPanel';
 import { GroupBar } from './groupBar';
+import { GroupsStrip } from './groupsStrip';
 import { el, sectionTitle, setText, setTip, setVisible, type DrawerId, type HudCtx } from './dom';
 import type { DrawerPage } from './drawers';
 import { iconSpan, lineIcon, worldGlyph } from './glyph';
@@ -199,6 +200,8 @@ export class ForcesPage implements DrawerPage {
   private tankBar: GroupBar;
   /** one line: what each pillar is doing ("3 warships, 2 at work · 1 division on a front · 1 of 2 wings on a mission") */
   private summary = el('p', 'note forces-sum');
+  /** the player's named groups of ships and divisions (hud/groupsStrip.ts) */
+  private groups: GroupsStrip;
 
   constructor(private ctx: HudCtx) {
     const say = (t: string) => {
@@ -215,7 +218,8 @@ export class ForcesPage implements DrawerPage {
     this.land = new Group('Land', 'land', say, this.tankBar.el);
     const intro = el('p', 'note', 'Click a unit\'s name to find it. Select warships or tank divisions (click, Shift+click, Shift+drag a box; double-click one for all of its kind in view; Shift+W all warships, Shift+A all divisions), then click where they go. The bar at the top of a group orders all of them at once. Transports: click land across the sea. Esc cancels.');
     this.summary.dataset.test = 'forces-summary';
-    this.root.append(intro, this.summary, this.fleet.el, this.land.el, this.air.el, this.missiles.el, this.artillery.el);
+    this.groups = new GroupsStrip(ctx);
+    this.root.append(intro, this.summary, this.groups.el, this.fleet.el, this.land.el, this.air.el, this.missiles.el, this.artillery.el);
   }
 
   private near(): { x: number; y: number } {
@@ -295,6 +299,7 @@ export class ForcesPage implements DrawerPage {
       setText(this.summary, parts.join(' · '));
       this.summary.classList.toggle('hidden', !parts.length);
     }
+    this.groups.update(s, me);
 
     // ---- fleet
     {
