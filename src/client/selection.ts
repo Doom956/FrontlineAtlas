@@ -5,15 +5,17 @@
 //   - with a selection, a click on water sends the warships (moveWarships, one action for the group); a click on
 //     your own land drives the divisions there (moveTankDivision); a click on enemy or neutral land next to your
 //     border shows the spearhead preview (spearheadPreview) and a second click on it launches the spearhead
-//   - warship orders: "Warship" enters the click-to-place mode (spawnWarship): click water near one of your ports
-//     (WARSHIP_SPAWN_RANGE, same sea); the valid area is shaded (render/selectionOverlay.ts)
+//   - warship orders: "Warship" enters the click-to-place mode (spawnWarship): click any water of a sea one of your
+//     ports touches; the valid water is shaded, the cursor says why elsewhere (render/selectionOverlay.ts)
+//   - hovering your own land with divisions selected draws the route they would drive and when they arrive
+//     (railPreviewFor; moves over your own land are fast, like by rail)
 //   - tank divisions are built at a Factory: enterTankDivisionBuildMode(), then click one of your factories
 //   - the same Shift+drag box also picks your buildings in it (ui.buildingSel): filter chips by type, and the bar
 //     (hud/buildingSelection.ts) orders Upgrade x1 / x3 / x5 for them all (Action upgradeBuildings; U, Shift+U cycles)
 // Everything here reads the state and builds actions; nothing changes the game except through dispatch.
 import { buildingAt } from '../sim/buildings';
-import { BUILDING_ORDER, MAX_GROUP_UNITS, UPGRADE_SELECTION_MAX, WARSHIP_SPAWN_RANGE } from '../sim/config';
-import { sameWater } from '../sim/grid';
+import { BUILDING_ORDER, MAX_GROUP_UNITS, TANK_LAUNCH_REACH, UPGRADE_SELECTION_MAX } from '../sim/config';
+import { waterComponents } from '../sim/grid';
 import { canOrderWarship } from '../sim/navy';
 import { bestFactory, canBuildTankDivision, spearheadPreview, type SpearheadPreview } from '../sim/tanks';
 import { isWater } from '../sim/types';
@@ -21,6 +23,7 @@ import { upgradeBuildingsPreview, type UpgradeBuildingsPreview, type UpgradeLeve
 import type { Action, Building, BuildingType, GameState, NavalVariant, Player, Unit } from '../sim/types';
 import { unitBuildStatus } from './forces';
 import { pocketLine, pocketPreview } from './pillars';
+import { arrivalText, portSeas, railMove, spawnTileReason, type RailMove } from './reach';
 import type { Dispatch, UiState } from './uiState';
 
 /** A spearhead preview older than this waits for a fresh click (ms). */
@@ -153,6 +156,32 @@ export function previewFor(state: GameState, me: number, sel: readonly number[],
   return p;
 }
 
+const railCache = new WeakMap<GameState, { key: string; at: number; m: RailMove | null }>();
+/** Below this many ms between two new routes the last one is kept (A* over a big empire on every mouse move). */
+const RAIL_THROTTLE_MS = 90;
+/**
+ * The drive of the lead division to `tile` (own land, or the launch tile of a spearhead): route and arrival time.
+ * Cached for a few ticks per tile; while the mouse moves fast the last route stays up to RAIL_THROTTLE_MS.
+ */
+export function railPreviewFor(state: GameState, me: number, sel: readonly number[], tile: number, now = performance.now()): RailMove | null {
+  if (tile < 0 || tile >= state.map.owner.length || state.map.owner[tile] !== me || isWater(state.map.terrain[tile])) return null;
+  const lead = leadDivision(state, me, sel);
+  if (!lead) return null;
+  const key = `${lead.id}:${tile}:${Math.floor(state.tick / 10)}`;
+  const c = railCache.get(state);
+  if (c && c.key === key) return c.m;
+  if (c && now - c.at < RAIL_THROTTLE_MS && c.key.startsWith(`${lead.id}:${tile}:`)) return c.m;
+  if (c && now - c.at < RAIL_THROTTLE_MS) return null;
+  const m = railMove(state, lead, tile);
+  railCache.set(state, { key, at: now, m });
+  return m;
+}
+
+/** "By rail: arrives in about 4 s" for the chip and the map label. */
+export function railLine(m: RailMove | null): string {
+  return m ? `Drive over your land: arrives in ${arrivalText(m.seconds)}` : 'No route over your own land';
+}
+
 /** One line about a spearhead preview: "Spearhead: about 12 tiles deep. Mountains ahead: spearhead will stall". */
 export function spearheadLine(p: SpearheadPreview): string {
   if (p.reason) return p.reason;
@@ -237,7 +266,11 @@ export function selectionChipText(state: GameState, ui: UiState, now = performan
       return `${spearheadLine(p)}${pocket ? `. ${pocket}` : ''}. Click again to launch, Esc to cancel.`;
     }
   }
-  const what = c.warships.length && c.tanks.length ? 'click water or land to move them, or give orders below' : c.warships.length ? 'click water to move, or pick a stance below' : 'click your land to move, enemy land to spearhead, or pick a mode below';
+  const what = c.warships.length && c.tanks.length
+    ? 'click water or land to move them, or give orders below'
+    : c.warships.length
+      ? 'click any water of their sea to move, or pick a stance below'
+      : `click your land to drive there fast, enemy land up to ${TANK_LAUNCH_REACH} tiles past your border to spearhead, or pick a mode below`;
   return `${head}: ${what}. Esc clears.`;
 }
 
@@ -269,48 +302,49 @@ export function enterWarshipSpawnMode(ui: UiState, state: GameState, me: Player,
 }
 
 /**
- * Water tiles where a warship can be placed now (shaded in the spawn mode): within WARSHIP_SPAWN_RANGE of one of your
- * finished ports, on a sea that port reaches. A mask over the bounding box (x0, y0, w, h); null when there is none.
+ * Water tiles where a warship can be placed now (shaded in the spawn mode): any water of a sea one of your finished
+ * ports touches, however far from the port. A mask over the bounding box (x0, y0, w, h); null when there is none.
+ * `seas` (reach.portSeas) can be passed when the caller has it already.
  */
-export function warshipSpawnArea(state: GameState, me: number): { x0: number; y0: number; w: number; h: number; mask: Uint8Array } | null {
+export function warshipSpawnArea(state: GameState, me: number, seas: ReadonlySet<number> = portSeas(state, me)): { x0: number; y0: number; w: number; h: number; mask: Uint8Array } | null {
+  if (!seas.size) return null;
   const map = state.map;
   const W = map.width;
-  const R = WARSHIP_SPAWN_RANGE;
-  const ports: number[] = [];
-  for (const b of state.buildings.values()) if (b.type === 'port' && b.owner === me && b.buildLeft <= 0) ports.push(b.tile);
-  if (!ports.length) return null;
-  let x0 = Infinity;
-  let y0 = Infinity;
-  let x1 = -Infinity;
-  let y1 = -Infinity;
-  for (const t of ports) {
-    const x = t % W;
-    const y = (t / W) | 0;
-    x0 = Math.min(x0, Math.max(0, x - R));
-    y0 = Math.min(y0, Math.max(0, y - R));
-    x1 = Math.max(x1, Math.min(W - 1, x + R));
-    y1 = Math.max(y1, Math.min(map.height - 1, y + R));
+  const c = waterComponents(map);
+  let maxId = 0;
+  for (const id of seas) maxId = Math.max(maxId, id);
+  const pick = new Uint8Array(maxId + 1);
+  for (const id of seas) pick[id] = 1;
+  const on = (t: number): boolean => c[t] > 0 && c[t] <= maxId && pick[c[t]] === 1;
+  let x0 = W;
+  let y0 = map.height;
+  let x1 = -1;
+  let y1 = -1;
+  for (let y = 0; y < map.height; y++) {
+    const row = y * W;
+    for (let x = 0; x < W; x++) {
+      if (!on(row + x)) continue;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      y1 = y;
+    }
   }
+  if (x1 < 0) return null;
   const w = x1 - x0 + 1;
   const h = y1 - y0 + 1;
   const mask = new Uint8Array(w * h);
-  let any = false;
-  for (const p of ports) {
-    const px = p % W;
-    const py = (p / W) | 0;
-    for (let y = Math.max(0, py - R); y <= Math.min(map.height - 1, py + R); y++) {
-      for (let x = Math.max(0, px - R); x <= Math.min(W - 1, px + R); x++) {
-        const k = (y - y0) * w + (x - x0);
-        if (mask[k]) continue;
-        if ((x - px) ** 2 + (y - py) ** 2 > R * R) continue;
-        const t = y * W + x;
-        if (!isWater(map.terrain[t]) || !sameWater(map, p, t)) continue;
-        mask[k] = 1;
-        any = true;
-      }
-    }
-  }
-  return any ? { x0, y0, w, h, mask } : null;
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (on(y * W + x)) mask[(y - y0) * w + (x - x0)] = 1;
+  return { x0, y0, w, h, mask };
+}
+
+/** Short reason for the cursor while placing a warship ('' = it can go there). */
+export function warshipSpawnHint(state: GameState, me: number, seas: ReadonlySet<number>, tile: number): string {
+  const why = spawnTileReason(state, seas, tile);
+  if (why) return why;
+  const c = warshipSpawnCheck(state, me, tile);
+  if (c.ok) return '';
+  return c.reason.length > 44 ? `${c.reason.split(/[:.]/)[0]}` : c.reason;
 }
 
 // ------------------------------------------------------------------------------------------------ tank divisions

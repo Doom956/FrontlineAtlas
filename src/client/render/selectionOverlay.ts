@@ -1,14 +1,17 @@
 // What the unit selection and the unit orders draw on the map (client/selection.ts holds the logic):
 //   - the Shift+drag selection box, and a thin brass outline on the buildings it selected (ui.buildingSel)
-//   - the warship placement mode: the water where a warship can appear, shaded, and a ring / cross at the cursor
+//   - the warship placement mode: the water where a warship can appear (any sea your ports touch), shaded, and a ring
+//     at the cursor, or a cross with a short reason where it can't go
 //   - the tank division build mode: rings on your factories
 //   - the spearhead preview: a translucent arrow along spearheadPreview's path, solid as deep as it is expected to
-//     get and dashed beyond, with the expected depth and the first warning at its head
-// Cheap: the shaded area is a small offscreen canvas (one pixel per tile) rebuilt about once a second.
+//     get and dashed beyond, with the expected depth and the first warning at its head, and the drive to its launch
+//   - the rail move: hovering your own land with divisions selected, the route over your land and the arrival time
+// Cheap: the shaded area is an offscreen canvas (one pixel per tile) rebuilt only when your ports' seas change.
 import { buildingsOf } from '../../sim/buildings';
 import type { GameState } from '../../sim/types';
 import type { Camera } from '../camera';
-import { activeBuildings, previewFor, SPEARHEAD_CONFIRM_MS, splitSelection, warshipSpawnArea, warshipSpawnCheck } from '../selection';
+import { activeBuildings, previewFor, railPreviewFor, SPEARHEAD_CONFIRM_MS, splitSelection, warshipSpawnArea, warshipSpawnHint } from '../selection';
+import { arrivalText, portSeas, type RailMove } from '../reach';
 import { FAR_ZOOM, markerSize } from './buildings';
 import type { UiState } from '../uiState';
 import { MAP_NUM_FAMILY } from './common';
@@ -23,14 +26,23 @@ export class SelectionOverlay {
   private areaBox: { x0: number; y0: number; w: number; h: number } | null = null;
   private areaAt = -Infinity;
   private areaKey = '';
+  private seas: Set<number> | null = null;
 
   draw(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, ui: UiState, nowMs: number): void {
     const me = state.humanId;
     if (me <= 0 || state.phase !== 'playing') return;
     if (ui.mode.kind === 'spawnWarship') this.spawnArea(ctx, state, cam, ui, nowMs);
-    else this.areaKey = '';
+    else if (this.areaKey) {
+      this.areaKey = '';
+      this.seas = null;
+      this.area = null; // a whole-ocean canvas is not kept around between placements
+      this.areaBox = null;
+    }
     if (ui.mode.kind === 'buildTankDivision') this.factories(ctx, state, cam);
-    if (ui.mode.kind === 'none' && ui.selection.length) this.spearhead(ctx, state, cam, ui, nowMs);
+    if (ui.mode.kind === 'none' && ui.selection.length) {
+      this.spearhead(ctx, state, cam, ui, nowMs);
+      this.railMove(ctx, state, cam, ui, nowMs);
+    }
     if (ui.mode.kind === 'adminTile' && ui.mode.brush && ui.hoverTile >= 0) this.brush(ctx, state, cam, ui.hoverTile, ui.mode.radius ?? 0);
     if (ui.buildingSel.ids.length) this.buildingOutlines(ctx, state, cam, ui);
     const b = ui.selectBox;
@@ -89,11 +101,14 @@ export class SelectionOverlay {
 
   private spawnArea(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, ui: UiState, nowMs: number): void {
     const me = state.humanId;
-    const key = `${me}:${state.map.width}`;
-    if (key !== this.areaKey || nowMs - this.areaAt > AREA_MS) {
-      this.areaKey = key;
+    if (nowMs - this.areaAt > AREA_MS || !this.seas) {
       this.areaAt = nowMs;
-      this.buildArea(state, me);
+      this.seas = portSeas(state, me);
+      const key = `${me}:${state.map.width}:${[...this.seas].sort((a, b) => a - b).join(',')}`;
+      if (key !== this.areaKey) {
+        this.areaKey = key;
+        this.buildArea(state, me, this.seas);
+      }
     }
     const z = cam.zoom;
     if (this.area && this.areaBox) {
@@ -107,12 +122,12 @@ export class SelectionOverlay {
     if (t < 0 || t >= state.map.owner.length) return;
     const w = state.map.width;
     const c = cam.tileToScreen((t % w) + 0.5, ((t / w) | 0) + 0.5);
-    const ok = warshipSpawnCheck(state, me, t).ok;
+    const why = warshipSpawnHint(state, me, this.seas, t);
     const r = Math.max(7, z * 1.2);
     ctx.lineWidth = 1.5;
-    ctx.strokeStyle = ok ? BRASS : RED;
+    ctx.strokeStyle = why ? RED : BRASS;
     ctx.beginPath();
-    if (ok) {
+    if (!why) {
       ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
     } else {
       ctx.moveTo(c.x - r * 0.6, c.y - r * 0.6);
@@ -121,10 +136,11 @@ export class SelectionOverlay {
       ctx.lineTo(c.x - r * 0.6, c.y + r * 0.6);
     }
     ctx.stroke();
+    if (why) tag(ctx, cam, c.x + r + 6, c.y, [why], '#f0b07a');
   }
 
-  private buildArea(state: GameState, me: number): void {
-    const a = warshipSpawnArea(state, me);
+  private buildArea(state: GameState, me: number, seas: ReadonlySet<number>): void {
+    const a = warshipSpawnArea(state, me, seas);
     if (!a || typeof document === 'undefined') {
       this.area = null;
       this.areaBox = null;
@@ -136,16 +152,58 @@ export class SelectionOverlay {
     const c2 = cv.getContext('2d');
     if (!c2) return;
     const img = c2.createImageData(a.w, a.h);
+    const d = img.data;
     for (let k = 0; k < a.mask.length; k++) {
       if (!a.mask[k]) continue;
-      img.data[k * 4] = 120;
-      img.data[k * 4 + 1] = 190;
-      img.data[k * 4 + 2] = 255;
-      img.data[k * 4 + 3] = 70;
+      d[k * 4] = 120;
+      d[k * 4 + 1] = 190;
+      d[k * 4 + 2] = 255;
+      d[k * 4 + 3] = 46; // soft: a whole ocean can be lit
     }
     c2.putImageData(img, 0, 0);
     this.area = cv;
     this.areaBox = { x0: a.x0, y0: a.y0, w: a.w, h: a.h };
+  }
+
+  /** Divisions selected, hovering your own land: the route they would drive and when the lead one arrives. */
+  private railMove(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, ui: UiState, nowMs: number): void {
+    const me = state.humanId;
+    if (ui.pendingSpearhead && nowMs - ui.pendingSpearhead.at < SPEARHEAD_CONFIRM_MS) return;
+    if (!splitSelection(state, me, ui.selection).tanks.length) return;
+    const m = railPreviewFor(state, me, ui.selection, ui.hoverTile, nowMs);
+    if (!m || m.path.length < 2) return;
+    const end = this.route(ctx, state, cam, m, 0.75);
+    tag(ctx, cam, end.x + 10, end.y, [`by rail: ${arrivalText(m.seconds)}`], BRASS);
+  }
+
+  /** Dotted brass route over your land (a division's drive); returns the screen point of its end. */
+  private route(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, m: RailMove, alpha: number): { x: number; y: number } {
+    const w = state.map.width;
+    const pts = m.path.map((t) => cam.tileToScreen((t % w) + 0.5, ((t / w) | 0) + 0.5));
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    // long routes: every few points is enough on screen
+    const step = Math.max(1, Math.floor(pts.length / 400));
+    for (let k = step; k < pts.length; k += step) ctx.lineTo(pts[k].x, pts[k].y);
+    const e = pts[pts.length - 1];
+    ctx.lineTo(e.x, e.y);
+    ctx.setLineDash([2, 5]);
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = `rgba(10,13,21,${alpha * 0.6})`;
+    ctx.stroke();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = `rgba(227,192,78,${alpha})`;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, Math.max(3, Math.min(6, cam.zoom)), 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(227,192,78,${alpha})`;
+    ctx.fill();
+    ctx.restore();
+    return e;
   }
 
   private factories(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera): void {
@@ -180,6 +238,9 @@ export class SelectionOverlay {
     if (pts.length < 2) return;
     const deep = Math.min(pts.length - 1, Math.max(1, p.expectedDepth));
     const alpha = pend >= 0 ? 0.55 : 0.32;
+    // the drive to the launch tile first (spearheads start up to TANK_LAUNCH_REACH tiles past your border)
+    const drive = railPreviewFor(state, me, ui.selection, p.launch, nowMs);
+    if (drive && drive.path.length > 1) this.route(ctx, state, cam, drive, alpha + 0.15);
     // encirclement: the pocket the line would cut off, hatched in brass (pillars.pocketPreview)
     const pocket = pocketPreview(state, me, p);
     if (pocket) {
@@ -232,6 +293,7 @@ export class SelectionOverlay {
     ctx.textBaseline = 'middle';
     const lines = [label];
     if (pocket) lines.push(`encircles ~${pocket.tiles.length} tiles`);
+    if (drive && drive.seconds >= 1) lines.push(`starts in ${arrivalText(drive.seconds).replace('about ', '~')}`);
     if (warn) lines.push(warn);
     const tw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 10;
     const th = lines.length * 14 + 4;
@@ -242,8 +304,26 @@ export class SelectionOverlay {
     ctx.fillStyle = 'rgba(10,13,21,0.82)';
     ctx.fillRect(lx - 5, ly - th / 2, tw, th);
     lines.forEach((l, k) => {
-      ctx.fillStyle = k === 0 || (pocket && k === 1) ? BRASS : '#f0b07a';
+      ctx.fillStyle = k === 0 || (pocket && k === 1) || l.startsWith('starts in') ? BRASS : '#f0b07a';
       ctx.fillText(l, lx, ly - th / 2 + 9 + k * 14);
     });
   }
+}
+
+/** A small dark label left-centred at (x, y), kept on screen (flips left near the right edge). */
+function tag(ctx: CanvasRenderingContext2D, cam: Camera, x: number, y: number, lines: readonly string[], color: string): void {
+  ctx.save();
+  ctx.font = `600 11px ${MAP_NUM_FAMILY}`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  const tw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 10;
+  const th = lines.length * 14 + 4;
+  let lx = x;
+  if (lx - 5 + tw > cam.viewW - 4) lx = Math.max(9, x - 2 * (x - (x - 16)) - tw);
+  const ly = Math.max(th / 2 + 100, Math.min(cam.viewH - th / 2 - 80, y));
+  ctx.fillStyle = 'rgba(10,13,21,0.82)';
+  ctx.fillRect(lx - 5, ly - th / 2, tw, th);
+  ctx.fillStyle = color;
+  lines.forEach((l, k) => ctx.fillText(l, lx, ly - th / 2 + 9 + k * 14));
+  ctx.restore();
 }
