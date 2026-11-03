@@ -68,11 +68,16 @@ async function spawnByClick(page, side) {
   const cands = await page.evaluate(spawnCandidates, { side, count: 12 });
   if (!cands.length) fail('no land with oil and a coast to spawn on');
   for (const c of cands) {
+    if ((await page.evaluate(() => window.__borderfall.getState().phase)) !== 'spawn') {
+      log(side, 'the spawn phase ended before our pick: the game placed this start');
+      return;
+    }
     await page.evaluate((t) => window.__borderfall.dispatch({ type: 'spawn', tile: t }), c.tile);
     for (let k = 0; k < 8; k++) {
       await sleep(300);
-      if (await page.evaluate(() => { const s = window.__borderfall.getState(); return s.players[s.humanId].spawned; })) {
-        log(side, 'start', c.tile, 'tier', c.tier);
+      const cap = await page.evaluate(() => { const s = window.__borderfall.getState(); const p = s.players[s.humanId]; return p.spawned ? p.capital : -1; });
+      if (cap >= 0) {
+        log(side, 'start', cap, cap === c.tile ? `tier ${c.tier}` : `(not our pick ${c.tier}/${c.tile}: placed by the game)`);
         return;
       }
     }

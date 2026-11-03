@@ -78,11 +78,16 @@ async function spawnByClick(page, side) {
   const cands = await page.evaluate(spawnCandidates, { side, count: 12 });
   if (!cands.length) fail('no coastal land to spawn on');
   for (const c of cands) {
+    if ((await page.evaluate(() => window.__borderfall.getState().phase)) !== 'spawn') {
+      log(side, 'the spawn phase ended before our pick: the game placed this start');
+      return;
+    }
     await page.evaluate((t) => window.__borderfall.dispatch({ type: 'spawn', tile: t }), c.tile);
     for (let k = 0; k < 8; k++) {
       await sleep(300);
-      if (await page.evaluate(() => { const s = window.__borderfall.getState(); return s.players[s.humanId].spawned; })) {
-        log(side, 'start', c.tile, 'tier', c.tier);
+      const cap = await page.evaluate(() => { const s = window.__borderfall.getState(); const p = s.players[s.humanId]; return p.spawned ? p.capital : -1; });
+      if (cap >= 0) {
+        log(side, 'start', cap, cap === c.tile ? `tier ${c.tier}` : `(not our pick ${c.tier}/${c.tile}: placed by the game)`);
         return;
       }
     }
@@ -218,23 +223,31 @@ async function waitFor(fn, ms, what) {
   fail(`timed out: ${what}`);
 }
 
-/** Whether a warship of ours of this variant exists or is being built. */
-const hasShip = (pg, variant) =>
+/** Our warships of this variant (any variant when none is given): afloat, and in the build queue. */
+const shipsOf = (pg, variant) =>
   pg.evaluate((v) => {
     const s = window.__borderfall.getState();
     const me = s.humanId;
-    return s.units.some((u) => u.owner === me && u.type === 'warship' && (!v || u.variant === v)) || (s.unitQueue ?? []).some((q) => q.owner === me && q.type === 'warship' && (!v || q.variant === v));
+    return {
+      afloat: s.units.filter((u) => u.owner === me && u.type === 'warship' && (!v || u.variant === v)).length,
+      queued: (s.unitQueue ?? []).filter((q) => q.owner === me && q.type === 'warship' && (!v || q.variant === v)).length,
+    };
   }, variant ?? null);
+/** Variants each label's ships were seen afloat with (a new submarine can be sunk by AI destroyers within seconds). */
+const seenShips = { A: new Set(), B: new Set() };
 /**
  * Orders a warship and checks it appeared (online an order is only checked when its turn runs, so dispatch says ok
  * either way): sent again up to twice, with what the port and the purse looked like when it did not appear.
  */
 async function orderShip(label, pg, port, variant) {
   for (let attempt = 0; attempt < 3; attempt++) {
+    const before = await shipsOf(pg, variant);
     log(label, 'buildWarship', variant ?? 'default', JSON.stringify(await dispatch(pg, { type: 'buildWarship', port, ...(variant ? { variant } : {}) })));
     for (let k = 0; k < 16; k++) {
       await sleep(500);
-      if (await hasShip(pg, variant)) return true;
+      const now = await shipsOf(pg, variant);
+      if (now.afloat > before.afloat) seenShips[label].add(variant ?? 'any');
+      if (now.afloat > before.afloat || now.queued > before.queued) return true;
     }
     log(label, `no ${variant ?? 'warship'} after the order:`, JSON.stringify(await pg.evaluate((port) => {
       const s = window.__borderfall.getState();
@@ -503,7 +516,7 @@ try {
       await dispatch(pg, { type: 'setArmyMix', armor: 0.5, artillery: 0.1 });
     }
     // A's ordered ships, seen at least once (a lone new submarine can be sunk by AI destroyers before the check below)
-    const seenA = new Set();
+    const seenA = seenShips.A;
     for (let k = 0; k < 40 && seenA.size < 2; k++) {
       for (const v of await A.page.evaluate(() => { const s = window.__borderfall.getState(); return s.units.filter((u) => u.owner === s.humanId && u.type === 'warship').map((u) => u.variant); })) seenA.add(v);
       await sleep(1000);

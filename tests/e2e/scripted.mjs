@@ -21,16 +21,26 @@ export function spawnCandidates({ side, count }) {
   const minCap = R * 3 + 2 + 8;
   const land = (i) => T[i] > 1;
   const caps = s.players.filter((p) => p.id && p.id !== s.humanId && p.capital >= 0).map((p) => [p.capital % w, Math.floor(p.capital / w)]);
-  // deposits by kind, for "near" lookups
-  const oilT = [], ironT = [];
+  // oil deposits on (or next to) our half
+  const oilT = [];
   for (let i = 0; i < RES.length; i++) {
-    if (!land(i)) continue;
-    if (RES[i] === 2) oilT.push(i);
-    else if (RES[i] === 1) ironT.push(i);
+    if (RES[i] !== 2 || !land(i)) continue;
+    const x = i % w;
+    if (side === 'left' ? x < w / 2 + R : x >= w / 2 - R) oilT.push(i);
   }
-  const nearest = (list, x, y) => {
-    let d = 1e9;
-    for (const j of list) d = Math.min(d, Math.hypot((j % w) - x, Math.floor(j / w) - y));
+  // distance to the nearest deposit of `res` within 16 tiles (99 if none): a scan of the square around the tile
+  const nearest = (res, x, y) => {
+    let d = 99;
+    for (let dy = -16; dy <= 16; dy++) {
+      const yy = y + dy;
+      if (yy < 0 || yy >= h) continue;
+      for (let dx = -16; dx <= 16; dx++) {
+        const xx = x + dx;
+        if (xx < 0 || xx >= w) continue;
+        const j = yy * w + xx;
+        if (RES[j] === res && land(j)) d = Math.min(d, Math.hypot(dx, dy));
+      }
+    }
     return d;
   };
   const disk = (c) => {
@@ -74,7 +84,6 @@ export function spawnCandidates({ side, count }) {
       if (okTile(y * w + x)) cand.add(y * w + x);
     }
   }
-  for (let y = 8; y < h - 8; y += 3) for (let x = 8; x < w - 8; x += 3) if (okTile(y * w + x)) cand.add(y * w + x);
   // land connected to a tile, counted up to `cap` (a small island leaves no room to grow: the scripted players do
   // not sail)
   const comp = new Int32Array(T.length).fill(-1);
@@ -105,10 +114,10 @@ export function spawnCandidates({ side, count }) {
   };
   const BIG = 3000;
   const scored = [];
-  for (const c of cand) {
+  const score = (c) => {
     const cx = c % w, cy = Math.floor(c / w);
     const D = disk(c);
-    if (D.length < R * R * 2) continue; // a sliver of land (most of the disk is water or taken)
+    if (D.length < R * R * 2) return; // a sliver of land (most of the disk is water or taken)
     const mass = landmass(c, BIG);
     const coast = D.some((i) => COAST[i]);
     const oilIn = D.filter((i) => RES[i] === 2);
@@ -120,8 +129,8 @@ export function spawnCandidates({ side, count }) {
       for (const b of mineSites) if (dist(a, b) >= GAP) { pair = true; break; }
       if (pair) break;
     }
-    const ironNear = ironIn.length ? 0 : nearest(ironT, cx, cy);
-    const oilNear = oilIn.length ? 0 : nearest(oilT, cx, cy);
+    const ironNear = ironIn.length ? 0 : nearest(1, cx, cy);
+    const oilNear = oilIn.length ? 0 : nearest(2, cx, cy);
     const coastNear = coast;
     let tier;
     if (oilIn.length && coast && pair) tier = 0;
@@ -129,11 +138,14 @@ export function spawnCandidates({ side, count }) {
     else if (oilIn.length && coast) tier = 2;
     else if (coastNear && oilNear <= 16 && ironNear <= 16) tier = 3;
     else if (coastNear) tier = 4;
-    else continue;
+    else return;
     if (mass < BIG) tier += 10; // only if nothing else is left
     // within a tier: more land at the start, deposits closer
     scored.push([tier, -D.length + ironNear * 2 + oilNear * 2, c]);
-  }
+  };
+  for (const c of cand) score(c);
+  // no oil start on a big landmass: a coarse grid over our half (oil and iron near, or at least a coast)
+  if (!scored.some((e) => e[0] <= 2)) for (let y = 8; y < h - 8; y += 4) for (let x = 8; x < w - 8; x += 4) if (okTile(y * w + x)) score(y * w + x);
   scored.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
   return scored.slice(0, count ?? 12).map((e) => ({ tile: e[2], tier: e[0] }));
 }
