@@ -1274,7 +1274,7 @@ export const NAVY_STATION_DIST = 4;
  */
 export const NAVY_SUPPORT_RANGE = 30;
 export const NAVY_SUPPORT_BONUS = 0.45;
-export const NAVY_SUPPORT_DIMINISH = 0.6;
+export const NAVY_SUPPORT_DIMINISH = 0.75;
 export const NAVY_SUPPORT_MAX = 1;
 export const NAVY_SUPPORT_SPEED = 0.6;
 /** a ship in 'bombard' stance shells the coast x this (defenders killed per second, WARSHIP_BOMBARD_KILL) */
