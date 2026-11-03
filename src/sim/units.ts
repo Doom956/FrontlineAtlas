@@ -524,6 +524,10 @@ export function moveWarship(state: GameState, playerId: number, unitId: number, 
 function wander(state: GameState, u: Unit): void {
   const map = state.map;
   const w = map.width;
+  // Far from its post (a chase or a station trip cut short): it patrols where it is (its post moves here); a route
+  // back within the patrol search would only fail, at a cost, every time.
+  const here = shipTile(state, u);
+  if (d2Tiles(state, here, u.cargo) > 4 * WARSHIP_PATROL_RADIUS * WARSHIP_PATROL_RADIUS) u.cargo = here;
   const cx = u.cargo % w;
   const cy = (u.cargo / w) | 0;
   const r = WARSHIP_PATROL_RADIUS;
