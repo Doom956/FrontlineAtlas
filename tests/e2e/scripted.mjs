@@ -75,11 +75,41 @@ export function spawnCandidates({ side, count }) {
     }
   }
   for (let y = 8; y < h - 8; y += 3) for (let x = 8; x < w - 8; x += 3) if (okTile(y * w + x)) cand.add(y * w + x);
+  // land connected to a tile, counted up to `cap` (a small island leaves no room to grow: the scripted players do
+  // not sail)
+  const comp = new Int32Array(T.length).fill(-1);
+  const compSize = [];
+  const landmass = (c, cap) => {
+    if (comp[c] >= 0) return compSize[comp[c]];
+    const id = compSize.length;
+    let n = 0;
+    const stack = [c];
+    comp[c] = id;
+    while (stack.length && n < cap) {
+      const i = stack.pop();
+      n++;
+      const x = i % w;
+      for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w]) {
+        if (j < 0 || j >= T.length || !land(j)) continue;
+        if (comp[j] >= 0) {
+          if (comp[j] !== id && compSize[comp[j]] >= cap) n = cap; // part of a mass already known to be big
+          continue;
+        }
+        comp[j] = id;
+        stack.push(j);
+      }
+    }
+    // a capped count leaves part of the mass unlabelled: a later count that reaches it is big too (above)
+    compSize.push(Math.min(n, cap));
+    return n;
+  };
+  const BIG = 3000;
   const scored = [];
   for (const c of cand) {
     const cx = c % w, cy = Math.floor(c / w);
     const D = disk(c);
     if (D.length < R * R * 2) continue; // a sliver of land (most of the disk is water or taken)
+    const mass = landmass(c, BIG);
     const coast = D.some((i) => COAST[i]);
     const oilIn = D.filter((i) => RES[i] === 2);
     const ironIn = D.filter((i) => RES[i] === 1);
@@ -100,6 +130,7 @@ export function spawnCandidates({ side, count }) {
     else if (coastNear && oilNear <= 16 && ironNear <= 16) tier = 3;
     else if (coastNear) tier = 4;
     else continue;
+    if (mass < BIG) tier += 10; // only if nothing else is left
     // within a tier: more land at the start, deposits closer
     scored.push([tier, -D.length + ironNear * 2 + oilNear * 2, c]);
   }
