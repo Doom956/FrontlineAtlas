@@ -541,6 +541,15 @@ function sail(state: GameState, u: Unit, to: number, maxLen?: number): boolean {
   return true;
 }
 
+/**
+ * No route to a station / Port (a far search that ran out of budget): the ship waits NAVY_REACH.sailRetry seconds
+ * before its next station or repair trip (retryTick), so it doesn't repeat the costly search every think. Returns false.
+ */
+function sailFailed(state: GameState, u: Unit): boolean {
+  u.retryTick = state.tick + NAVY_REACH.sailRetry * TICKS_PER_SECOND;
+  return false;
+}
+
 /** Back to the post (Unit.cargo): state 1 (on arrival it patrols there again). */
 function backToPost(state: GameState, u: Unit): void {
   u.station = undefined;
@@ -690,7 +699,7 @@ function stationWaterFor(state: GameState, from: number, coast: number): number 
  */
 function goStation(state: GameState, u: Unit, tile: number, roam = false): boolean {
   const water = stationWater(state, u, tile);
-  if (water < 0 || !sail(state, u, water)) return false;
+  if (water < 0 || !sail(state, u, water)) return sailFailed(state, u);
   u.state = 3;
   u.station = tile;
   u.chase = 0;
@@ -825,7 +834,7 @@ function goRepair(state: GameState, u: Unit): boolean {
   if (best < 0) return false;
   const from = shipTile(state, u);
   const water = stationWaterFor(state, from, best);
-  if (water < 0 || !sail(state, u, water)) return false;
+  if (water < 0 || !sail(state, u, water)) return sailFailed(state, u);
   u.state = 1;
   u.station = undefined;
   u.chase = 0;
@@ -947,7 +956,7 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
       if (u.state === 3) settle(state, u);
       return;
     }
-    if (goRepair(state, u)) return;
+    if ((u.retryTick ?? 0) <= state.tick && goRepair(state, u)) return;
   }
   // Follow my war / Fixed (warTarget.ts): the nation it aims at (0 = any war), and whether only that one counts.
   if (u.fixed && !state.players[u.fixed]?.alive) delete u.fixed; // the pinned nation is gone: back to Follow
@@ -956,7 +965,7 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
   const owners = state.map.owner;
   // On station off another nation than the aim: look for the aim's coast every FOLLOW_RECHECK_THINKS thinks.
   const due = (((state.tick + u.id * 3) / NAVY_THINK_TICKS) | 0) % FOLLOW_RECHECK_THINKS === 0;
-  const recheck = aim > 0 && u.state === 3 && u.station !== undefined && owners[u.station] !== aim && due;
+  const recheck = aim > 0 && u.state === 3 && u.station !== undefined && owners[u.station] !== aim && due && (u.retryTick ?? 0) <= state.tick;
   const keep = (valid: boolean): boolean => valid && (!only || owners[u.station!] === aim);
   // A ship whose last coast search found nothing waits NAVY_REACH.retrySeconds before the next one.
   const waiting = (u.retryTick ?? 0) > state.tick;
@@ -979,7 +988,7 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
           if (recheck) {
             const t = findCoast(state, u, aim, true);
             if (t >= 0 && t !== u.station) goStation(state, u, t, true);
-          } else if (due && aim > 0 && unitFollows(state, u)) followMainFront(state, u, aim);
+          } else if (due && aim > 0 && (u.retryTick ?? 0) <= state.tick && unitFollows(state, u)) followMainFront(state, u, aim);
           return;
         }
         // The coast fell or the war ended: other enemy coast in our sea, else patrol right here.
