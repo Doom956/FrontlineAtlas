@@ -341,6 +341,27 @@ Make it so you can spawn the ships anywhere, they attack in a much bigger range;
   a spearhead.
 Open: AI tank/ship use on World maps (24 games, too few); tick p99 at 40 AIs; scripts/profile.ts skips warships and divisions.
 
+## Auto for every vehicle (2026-11-03, branch `auto-all`, not merged yet; protocol 16)
+Owner: "auto is for every vehicle needs to be improved"; easy for new players, no hotkeys.
+- War target also from defence: a player attacking no nation follows the nation attacking it hardest (a nation beats
+  a tribe of its own); the target stays while that war is live and a minute after.
+- New defaults for a player's units (AI unchanged): divisions Support (following), airfields Support (following; an
+  "every airfield" choice also reaches later airfields), silos auto-fire on. Warships stay Auto.
+- Reach: support wings out of reach of the main front bomb the nearest front they can reach; overseas wars give wings
+  and rockets the target's coast; divisions flood their own land when the quick route search gives up, and detour to
+  a front they can reach for 60 s; a player's Auto ships avoid chases and stations where they are outnumbered and
+  fall back to a Port.
+- Cards: one "Auto: ..." line on the unit card, the airfield panel and the silo card.
+- Auto bench (scripts/autobench.ts on GitHub runners, 240 medium games, normal, 25 min, --clicks none = no orders;
+  before: auto-base2, after: auto-fix3): divisions useful 10% -> 41% (idle 89% -> 13%), airfields 0% -> 75% (27
+  sorties a game), silos 0% -> 26% (7.9 rockets a game), warships 50% -> 47% (losses 12.6 of 17.2 -> 13.4 of 18.3
+  bought; with every vehicle busy, auto-fix1 before the ship rule: 15.0 of 19.7), player land at 25 min 7% -> 9%
+  (median 5% -> 7%).
+- Left open: warships are still sunk at ~73% (mostly by enemy warships); divisions spend 16% of war time refitting and
+  29% driving; 'nothing in reach' for 15% of airfield time; silos idle 74% (no target near the front: the target list
+  was kept narrow on purpose, rockets cost 900 gold); a passive-player bench style (to size defence-only wars) is not
+  built.
+
 ## Queued next (owner, 2026-11-03)
 In order, after ships/tanks, bombers QoL and "auto for everything": (1) Groups strip (no hotkeys: owner wants to avoid relying on hotkeys for new players): in Forces, select units -> "+ New group" -> a button "Fleet 1 · 8 ships", click selects, a target icon centres the camera; (2) clickable alerts for big events (capital under attack, port blockaded, division overrun, nuke incoming) that jump to the spot; (3) save and resume single player (orders log; "Continue" row on the start page). Later: anonymous real-match stats on the server for balance, rematch + quick chat, replays, in-game phone/touch HUD, real-GPU performance check, flaky scripted-player e2e fix.
 
