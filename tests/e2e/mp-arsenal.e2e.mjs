@@ -193,6 +193,10 @@ async function lobby(rules, toggles) {
   await A.page.waitForSelector('[data-test=lobby-code]');
   const code = (await A.page.textContent('[data-test=lobby-code]')).trim();
   await A.page.locator('.setup-field:has(.form-label:text-is("Size")) .btn', { hasText: 'Small' }).click();
+  // Easy AI nations: on harder ones a scripted player was sometimes wiped out before it could build a Port
+  const easy = A.page.locator('[role=group][aria-label="Difficulty"] .btn', { hasText: /^Easy$/ }).first();
+  if (await easy.count()) await easy.click();
+  else log('no Difficulty buttons in the lobby, AI stays on its default');
   // the less-used rules are folded under "More rules"
   await A.page.click('[data-test=more-rules]');
   for (const rule of rules) {
@@ -294,7 +298,7 @@ const economy = async (pg, k = 0) => {
 
 let exitCode = 0;
 try {
-  await startServer(PORT, { PUBLIC_START_SECONDS: '60' });
+  await startServer(PORT, { PUBLIC_START_SECONDS: '60', FIXED_SEED: process.env.FIXED_SEED ?? '12' });
 
   // ================================================================ game 1: research, Shift-select upgrade
   {
