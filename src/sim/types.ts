@@ -413,6 +413,11 @@ export interface Unit {
   variant?: UnitVariant;
   /** tank division crossing water (Amphibious Tanks, specials.ts): 1 while wading, cleared on landing; absent = 0 */
   wading?: number;
+  /**
+   * tank division following its owner's war (armor2.ts): it supports another front it can reach over own land until
+   * this tick (the main front could not be reached); absent = none
+   */
+  detour?: number;
 }
 
 /** A unit being built (navy.ts warships, tanks.ts divisions): it appears at `tile` at readyTick. */
@@ -821,6 +826,12 @@ export interface AirState {
   cover?: AirCover[];
   /** last strike result per airfield (airstrike.ts, wingLastResult); absent = none yet */
   results?: AirResult[];
+  /**
+   * A player's mission choice for every airfield (setAirMission with airfield -1), which airfields built later get
+   * too (airwings.autoWings): per player owner, AIR_MISSIONS index, flags (1 follow, 2 refill), target tile (-1 =
+   * none). Absent = none yet: a player's new airfields then fly Support, following its war.
+   */
+  defaults?: number[];
 }
 
 /**

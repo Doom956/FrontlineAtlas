@@ -13,7 +13,7 @@ import { buildAircraft, spawnWarshipAt } from '../src/sim/units';
 import { autoReconOn, followTargetOf, followedNation, FOLLOW_MEMORY_SECONDS, mainFront, warTargetOf } from '../src/sim/warTarget';
 import { Terrain } from '../src/sim/types';
 import type { Building, BuildingType, GameState, Unit } from '../src/sim/types';
-import { TICKS_PER_SECOND } from '../src/sim/config';
+import { NAVY_WAR_MEMORY, TICKS_PER_SECOND } from '../src/sim/config';
 import { validateAction } from '../server/validate';
 import { claimRect, makeFlatGame } from './helpers';
 
@@ -111,7 +111,7 @@ describe('war target', () => {
     expect(followedNation(s, 2)).toBe(0);
   });
 
-  it('falls back to the last nation attacked for a minute, then to nothing', () => {
+  it('keeps the last nation attacked while that war is live and for a minute after, then nothing', () => {
     const s = game();
     attack(s, 2, 20000);
     run(s, 2 * TICKS_PER_SECOND + 1);
@@ -121,7 +121,10 @@ describe('war target', () => {
     const w = warTargetOf(s, 1);
     expect(w.attacking).toBe(false);
     expect(w.secondsLeft).toBeGreaterThan(40);
+    // The war stays live NAVY_WAR_MEMORY seconds after the last attack (naval2.warSet); the minute runs from there.
     run(s, (FOLLOW_MEMORY_SECONDS + 5) * TICKS_PER_SECOND);
+    expect(followedNation(s, 1)).toBe(2);
+    run(s, NAVY_WAR_MEMORY * TICKS_PER_SECOND);
     expect(followedNation(s, 1)).toBe(0);
     expect(warTargetOf(s, 1).nation).toBe(0);
   });

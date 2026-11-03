@@ -1263,6 +1263,13 @@ export const NAVY_REACH = {
   sailRetry: 45,
   crowdRadius: 6,
   crowdPenalty: 20,
+  /**
+   * a player's 'auto' ship counts enemy warships within this many tiles of a ship it would chase (and of a coast it
+   * would shell) against its own warships within it of itself (of that coast): it doesn't start or keep a chase it is
+   * outnumbered in, and each warship short adds dangerPenalty to a coast's score (tiles)
+   */
+  oddsRadius: 50,
+  dangerPenalty: 60,
 } as const;
 /** 'auto' / 'bombard' / 'blockade': a ship looks for enemy coast this far (tiles) around it first, then anywhere in its sea */
 export const NAVY_STATION_SEEK = 120;

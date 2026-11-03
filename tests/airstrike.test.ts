@@ -381,11 +381,16 @@ describe('rocket auto-fire', () => {
     expect(followedNation(s, 1)).toBe(2);
     return s;
   }
-  it('is off by default; on, ready silos fire rockets at forts near the front first, never atom bombs', () => {
+  it('is on by default for a player (off stops it); on, ready silos fire rockets at forts near the front first, never atom bombs', () => {
     const s = war();
+    // On from the start for every silo of a player (later ones too); Auto-fire all off stops it.
+    expect(autoFireAll(s, 1)).toBe(true);
+    expect(autoFireAll(s, 2)).toBe(false); // AI nations fire their own way
+    expect(applyAction(s, 1, { type: 'setAutoFire', silo: -1, on: false }).ok).toBe(true);
     const silo = addBuilding(s, 'silo', 1, at(s, 40, 20), 2);
     const fort = addBuilding(s, 'fort', 2, at(s, 95, 20));
     addBuilding(s, 'city', 2, at(s, 100, 5));
+    expect(autoFireOn(s, silo.tile)).toBe(false);
     for (let k = 0; k < 2 * TICKS_PER_SECOND; k++) tick(s);
     expect(s.units.some((u) => u.type === 'rocket')).toBe(false);
     expect(applyAction(s, 1, { type: 'setAutoFire', silo: -1, on: true }).ok).toBe(true);

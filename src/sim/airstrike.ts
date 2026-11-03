@@ -44,7 +44,7 @@ import { nightEffectMul, nightRadiusMul, nightScatter } from './specials';
 import { trenchLevel } from './trenches';
 import { ROCKET_TROOP_KILL, dropBombs, launchMissile, unitCost } from './units';
 import { airSupportMul, airVariantOf, carrierFor } from './variants';
-import { followedNation, mainFront } from './warTarget';
+import { followedNation, warAim } from './warTarget';
 import type { ActionResult, AirResult, AirState, Building, BuildingType, GameState, Unit } from './types';
 
 const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
@@ -736,9 +736,12 @@ export function setAutoFire(state: GameState, pid: number, silo: number, on: boo
   return { ok: true };
 }
 
-/** Rocket targets of pid against `nation`, best first: forts near the main front, SAMs covering it, cities near it. */
+/**
+ * Rocket targets of pid against `nation`, best first: forts near the main front, SAMs covering it, cities near it
+ * (a war overseas: around the nation's coast nearest the war, warTarget.warAim).
+ */
 function autoFireTargets(state: GameState, pid: number, nation: number): number[] {
-  const front = mainFront(state, pid, nation);
+  const front = warAim(state, pid, nation);
   if (front < 0) return [];
   const w = state.map.width;
   const owner = state.map.owner;
@@ -752,6 +755,19 @@ function autoFireTargets(state: GameState, pid: number, nation: number): number[
     ...pick('sam', (b, dd) => dd <= (samRadius(b) + 10) * (samRadius(b) + 10)),
     ...pick('city', (_b, dd) => dd <= STRIKE.fireCityReach * STRIKE.fireCityReach),
   ];
+}
+
+/** Rocket auto-fire targets of pid against `nation` now, best first (client: the silo's Auto line). Pure read. */
+export function autoFireTargetsFor(state: GameState, pid: number, nation: number): number[] {
+  return nation > 0 && hostile(state, pid, nation) ? autoFireTargets(state, pid, nation) : [];
+}
+
+/** True when pid keeps its rocket reserve (STRIKE.fireReserve prices): auto-fire waits for more gold / iron / oil. Pure read. */
+export function autoFireSaving(state: GameState, pid: number): boolean {
+  const p = state.players[pid];
+  if (!p) return false;
+  const c = unitCost(state, pid, 'rocket');
+  return p.gold < c.gold * STRIKE.fireReserve || p.iron < c.iron * STRIKE.fireReserve || p.oil < c.oil * STRIKE.fireReserve;
 }
 
 /**
