@@ -921,6 +921,8 @@ export interface SettingsHooks {
   setGuide(on: boolean): void;
   restartGuide(): void;
   leave(): void;
+  /** single player with autosave: a note under Leave says the game is kept */
+  saves?: boolean;
 }
 
 export class SettingsPage implements DrawerPage {
@@ -989,6 +991,7 @@ export class SettingsPage implements DrawerPage {
     }, 'exit');
     leave.dataset.test = 'leave';
     r.append(leave);
+    if (hooks.saves) r.append(el('p', 'note', 'Your game is saved as you play. Continue it from the title screen.'));
   }
 
   update(): void {

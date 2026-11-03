@@ -20,7 +20,7 @@ import { activeLobby, rememberActiveLobby } from './lobby';
 import { MpGame } from './mpgame';
 import { loadSetupPrefs } from './setupScreen';
 import { setupInput } from './input';
-import { el, Menu, PLAYER_PALETTE } from './menu';
+import { button, confirmReplaceSave, el, Menu, PLAYER_PALETTE } from './menu';
 import { Renderer } from './renderer';
 import { defaultUiState } from './uiState';
 import { requestAdminAuth } from './admin';
@@ -29,6 +29,14 @@ import type { Dispatch, UiState } from './uiState';
 import { setupTutorial, tutorialMap, tutorialSettings } from '../sim/tutorialScenario';
 import { TutorialController } from './tutorial/controller';
 import { QUICK_TUTORIAL } from './tutorial/steps';
+import { GameRecorder } from './save/recorder';
+import { Replayer } from './save/replay';
+import { LoadPage } from './save/saveViews';
+import { loadSeconds, type SaveData } from './save/format';
+import { clearSave, readSave, writeSave } from './save/store';
+import { getUnitGroups, setUnitGroups } from './unitGroups';
+import { GameHistory } from './summary/history';
+import { gameSeconds } from '../sim/state';
 
 const STEP_MS = 1000 / TICKS_PER_SECOND;
 /** Most ticks run in one frame per x1 of speed; beyond that the game slows down instead of spiralling. */
@@ -39,6 +47,10 @@ const TOAST_MS = 3000;
 const BG_MAX_SECONDS = 600;
 /** The background stays cheap: the small map with a few nations and tribes. */
 const BG_TRIBES = 20;
+/** Single player saves itself this often (ms of real time), and when the page is hidden or left (save/). */
+const AUTOSAVE_MS = 30_000;
+/** A loading replay works this long (ms) before it lets the page paint its progress bar. */
+const LOAD_SLICE_MS = 90;
 
 interface Session {
   state: GameState;
@@ -56,6 +68,12 @@ interface Session {
   mpPauseShown?: boolean;
   /** a tutorial chapter's game (single player only): its steps and overlay */
   tutorial?: TutorialController;
+  /** single player outside the tutorial: the actions for the save (save/recorder.ts) */
+  recorder?: GameRecorder;
+  /** the groups (JSON) in the last save written, so a group change alone saves again */
+  savedGroups?: string;
+  /** the save was removed because the game ended (a continued game saves again) */
+  overCleared?: boolean;
 }
 
 // ------------------------------------------------------------------------------------------------ DOM
@@ -88,7 +106,12 @@ const dispatch: Dispatch = (action: Action): ActionResult => {
   let r: ActionResult;
   try {
     // online: never applied here; it goes to the server and comes back in a turn for every client
-    r = s.mp ? s.mp.dispatch(action) : applyAction(s.state, s.state.humanId, action);
+    if (s.mp) r = s.mp.dispatch(action);
+    else {
+      // single player: noted for the save first (a replay applies it at this same tick)
+      s.recorder?.record(s.state.tick, action);
+      r = applyAction(s.state, s.state.humanId, action);
+    }
   } catch (err) {
     console.error('Action failed', action, err);
     r = { ok: false, reason: 'Something went wrong (see console)' };
@@ -235,7 +258,12 @@ let lastLobbyHost = '';
 /** Code of the private lobby this client was in last (its games show the host's pause button, disabled for guests). */
 let lastPrivateLobby = '';
 
-const menu = new Menu(app, { onStart: (settings) => void startGame(settings), net: () => getNet(), onTutorial: () => void startTutorial() });
+const menu = new Menu(app, {
+  onStart: (settings) => void startGame(settings),
+  net: () => getNet(),
+  onTutorial: () => void startTutorial(),
+  onContinue: () => void continueSaved(),
+});
 
 function endSession(): void {
   if (!session) return;
@@ -257,10 +285,11 @@ function startTutorial(): Promise<void> {
   return startGame(tutorialSettings(identity()), true);
 }
 
-/** The tutorial's Play now: a normal game on the default setup against Easy AIs. */
-function startEasyGame(): Promise<void> {
+/** The tutorial's Play now: a normal game on the default setup against Easy AIs (asks first if it replaces a save). */
+function startEasyGame(): void {
   const me = identity();
-  return startGame({ ...cloneSetup(DEFAULT_SETUP), difficulty: 'easy', seed: 1 + Math.floor(Math.random() * 1e6), playerName: me.name, playerColor: me.color, humanPlayer: true });
+  const settings: GameSettings = { ...cloneSetup(DEFAULT_SETUP), difficulty: 'easy', seed: 1 + Math.floor(Math.random() * 1e6), playerName: me.name, playerColor: me.color, humanPlayer: true };
+  confirmReplaceSave(app, () => void startGame(settings));
 }
 
 /**
@@ -284,6 +313,8 @@ async function startGame(settings: GameSettings, tutorial = false): Promise<void
   // Let the "generating" text paint before the (blocking) map generation.
   setTimeout(() => {
     let state: GameState;
+    // the recorder copies the settings before createGame sees them (tutorial and online games are never saved)
+    const recorder = tutorial ? undefined : new GameRecorder(settings);
     try {
       state = createGame(settings, preloaded);
       if (tutorial) setupTutorial(state);
@@ -292,45 +323,255 @@ async function startGame(settings: GameSettings, tutorial = false): Promise<void
       menu.setBusy('Could not create the game (see console)');
       return;
     }
-    endSession();
-    const camera = newCamera(state);
-    const ui = defaultUiState();
-    const hud = new Hud(app, ui, dispatch, camera, audio, { tutorial: !!tutorial });
-    hud.setUnitProbe(renderer);
-    hud.onMenu = () => toMenu();
-    hud.onPlayAgain = () => void (tutorial ? startTutorial() : startGame({ ...settings, seed: menu.replaySettings().seed }));
-    const cleanupInput = setupInput({
-      canvas,
-      minimap,
-      camera,
-      renderer,
-      ui,
-      getState: () => (session && session.human ? session.state : null),
-      dispatch,
-      openResearch: () => hud.openResearch(),
-      toggleHelp: () => hud.toggleHelp(),
-      closeOverlay: () => hud.closeOverlay(),
-      toggleDrawer: (id) => hud.toggleDrawer(id),
-      strike: (id) => hud.strike(id),
-      confirm: (text, label, run) => hud.confirm(text, label, run),
-    });
-    session = { state, camera, ui, hud, cleanupInput, human: true, settings, mp: null, mpStatus: null };
-    if (tutorial) {
-      session.tutorial = new TutorialController(QUICK_TUTORIAL, hud, ui, () => (session?.human ? session.state : null), {
-        exit: () => toMenu(),
-        playNow: () => void startEasyGame(),
-      });
-    }
-    if (currentMp) {
-      // a single-player game ends any online one
-      net?.send({ type: 'leaveLobby' });
-      rememberActiveLobby(null);
-      currentMp = null;
-    }
-    acc = 0;
-    menu.hide();
-    app.classList.remove('in-menu');
+    // a new game replaces the saved one (the menu asked first)
+    if (recorder) clearSave();
+    beginSession(state, settings, { tutorial, recorder });
   }, 30);
+}
+
+/** Shows a single-player game that was just made (startGame) or loaded (continueSaved): HUD, input, the loop. */
+function beginSession(state: GameState, settings: GameSettings, opts: { tutorial?: boolean; recorder?: GameRecorder; history?: GameHistory }): void {
+  const tutorial = !!opts.tutorial;
+  endSession();
+  const camera = newCamera(state);
+  const ui = defaultUiState();
+  const hud = new Hud(app, ui, dispatch, camera, audio, { tutorial, saves: !!opts.recorder });
+  hud.setUnitProbe(renderer);
+  if (opts.history) hud.adoptHistory(opts.history);
+  hud.onMenu = () => toMenu();
+  hud.onPlayAgain = () => void (tutorial ? startTutorial() : startGame({ ...settings, seed: menu.replaySettings().seed }));
+  const cleanupInput = setupInput({
+    canvas,
+    minimap,
+    camera,
+    renderer,
+    ui,
+    getState: () => (session && session.human ? session.state : null),
+    dispatch,
+    openResearch: () => hud.openResearch(),
+    toggleHelp: () => hud.toggleHelp(),
+    closeOverlay: () => hud.closeOverlay(),
+    toggleDrawer: (id) => hud.toggleDrawer(id),
+    strike: (id) => hud.strike(id),
+    confirm: (text, label, run) => hud.confirm(text, label, run),
+  });
+  session = { state, camera, ui, hud, cleanupInput, human: true, settings, mp: null, mpStatus: null, recorder: opts.recorder };
+  lastAutosave = performance.now();
+  if (tutorial) {
+    session.tutorial = new TutorialController(QUICK_TUTORIAL, hud, ui, () => (session?.human ? session.state : null), {
+      exit: () => toMenu(),
+      playNow: () => startEasyGame(),
+    });
+  }
+  if (currentMp) {
+    // a single-player game ends any online one
+    net?.send({ type: 'leaveLobby' });
+    rememberActiveLobby(null);
+    currentMp = null;
+  }
+  acc = 0;
+  menu.hide();
+  app.classList.remove('in-menu');
+}
+
+// ------------------------------------------------------------------------------------------------ save and continue
+
+let lastAutosave = 0;
+
+/**
+ * Saves the single-player game (never the tutorial or an online game). A finished game removes its save instead; a
+ * game that is continued after the end saves again.
+ */
+function autosave(): void {
+  const s = session;
+  const rec = s?.recorder;
+  if (!s || !s.human || s.mp || s.tutorial || !rec) return;
+  const state = s.state;
+  if (state.phase === 'over') {
+    // also when saving stopped earlier: the older save would bring back a game that is over
+    if (!s.overCleared) clearSave();
+    s.overCleared = true;
+    return;
+  }
+  s.overCleared = false;
+  if (rec.disabled) return;
+  if (state.tick === 0 && rec.log.length === 0) return;
+  // groups are UI state, not actions: a renamed or new group is worth saving even while the game is paused
+  const groups = getUnitGroups(s.ui);
+  const groupsText = JSON.stringify(groups);
+  if (!rec.changedSince(state) && groupsText === s.savedGroups) return;
+  let result: ReturnType<typeof writeSave>;
+  try {
+    const data = rec.snapshot(state, adminPerf.tickMs, Date.now());
+    data.groups = groups;
+    result = writeSave(data);
+    if (result === 'ok') s.savedGroups = groupsText;
+  } catch (err) {
+    console.error('Save failed', err);
+    result = 'failed';
+  }
+  if (result === 'ok') return;
+  rec.disabled = true; // told once: this game is not saved from now on
+  const text =
+    result === 'tooBig'
+      ? 'This game is too long to keep in the browser. New progress is not saved: Continue starts from the last save.'
+      : 'The browser blocked saving (storage full or off). New progress is not saved.';
+  s.ui.toast = { text, until: performance.now() + 8000 };
+}
+
+// the page going away or into the background: save now (the next 30 s may never come)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') autosave();
+});
+window.addEventListener('pagehide', () => autosave());
+
+/** The load running now (Cancel sets cancelled; a newer load replaces it). */
+let loadJob: { cancelled: boolean } | null = null;
+/** the last finished load, for the test hook: the state right after the replay */
+let lastLoad: { tick: number; hash: number; checked: number; matched: boolean } | null = null;
+
+/** Lets the browser paint and handle clicks (a message is not throttled like a timer in a background tab). */
+function yieldToBrowser(): Promise<void> {
+  return new Promise((resolve) => {
+    const ch = new MessageChannel();
+    ch.port1.onmessage = () => resolve();
+    ch.port2.postMessage(null);
+  });
+}
+
+/**
+ * Continue: builds the saved game again from its settings and replays its actions to the saved tick (save/replay.ts),
+ * with a progress bar. A save that doesn't match this version (a hash differs) is explained and can be loaded anyway
+ * or deleted.
+ */
+async function continueSaved(): Promise<void> {
+  const slot = readSave();
+  if (slot?.status !== 'ok') {
+    menu.show('title');
+    return;
+  }
+  const save: SaveData = slot.save;
+  const job = { cancelled: false };
+  loadJob = job;
+  const cancel = () => {
+    job.cancelled = true;
+    if (loadJob === job) loadJob = null;
+    menu.show('title');
+  };
+  let page = new LoadPage(save.meta.map, loadSeconds(save), { onCancel: cancel });
+  menu.showLoad(page);
+  const problem = (title: string, text: string, extra: HTMLButtonElement[] = []) => {
+    if (loadJob === job) loadJob = null;
+    const del = button('Delete saved game', 'danger', () => {
+      clearSave();
+      menu.show('title');
+    });
+    del.dataset.test = 'save-load-delete';
+    const back = button('Back', 'ghost', () => menu.show('title'));
+    page.problem(title, text, [del, back, ...extra]);
+  };
+
+  const settings = save.settings;
+  let preloaded: MapData | null = null;
+  try {
+    if (settings.map.kind === 'world') preloaded = await loadWorldMap(settings.map.id);
+    await new Promise((r) => setTimeout(r, 30)); // let the page paint before the (blocking) map generation
+  } catch (err) {
+    console.error(err);
+    problem('Could not load the map', 'The map of this saved game could not be loaded. Check your connection and try again.');
+    return;
+  }
+  if (job.cancelled) return;
+  let state: GameState;
+  try {
+    state = createGame(settings, preloaded);
+  } catch (err) {
+    console.error(err);
+    problem('Could not load this game', 'The saved game could not be rebuilt in this version.');
+    return;
+  }
+  const history = new GameHistory();
+  const replay = new Replayer(state, save, (st) => {
+    // the end summary samples every ~10 s of game time: feed it as the test hook's fast-forward does
+    if (st.tick % 20 === 0) {
+      try {
+        history.update(st);
+      } catch {
+        // only the summary would miss it
+      }
+    }
+  });
+  const totalMin = Math.floor(save.meta.minutes);
+  const started = performance.now();
+  const startTick = state.tick;
+
+  const run = async (): Promise<'done' | 'mismatch' | 'cancelled' | 'error'> => {
+    for (;;) {
+      const t0 = performance.now();
+      try {
+        while (performance.now() - t0 < LOAD_SLICE_MS) if (replay.run(10)) break;
+      } catch (err) {
+        console.error('Replay failed', err);
+        return 'error';
+      }
+      if (replay.mismatch) return 'mismatch';
+      const elapsed = (performance.now() - started) / 1000;
+      const doneTicks = state.tick - startTick;
+      const leftTicks = save.tick - state.tick;
+      // the measured pace once there is a second of it, the saving machine's pace before
+      const left = elapsed >= 1 && doneTicks > 0 ? (leftTicks * elapsed) / doneTicks : loadSeconds({ tick: leftTicks, meta: save.meta });
+      const min = Math.floor(gameSeconds(state) / 60);
+      page.set(replay.progress, replay.done ? 0 : left, totalMin >= 1 ? `Minute ${Math.min(min, totalMin)} of ${totalMin}` : 'Replaying');
+      if (replay.done) return 'done';
+      await yieldToBrowser();
+      if (job.cancelled) return 'cancelled';
+    }
+  };
+
+  const result = await run();
+  let matched = true;
+  if (result === 'mismatch') {
+    const go = button('Load anyway', 'primary', () => {
+      matched = false;
+      replay.keepGoing();
+      loadJob = job;
+      page = new LoadPage(save.meta.map, loadSeconds({ tick: save.tick - state.tick, meta: save.meta }), { onCancel: cancel });
+      menu.showLoad(page);
+      void run().then(finish);
+    });
+    go.dataset.test = 'save-load-anyway';
+    problem(
+      "This save doesn't match this version",
+      'The game changed since this save was made, so it would not play out as you left it. You can load it anyway and keep playing a slightly different game, or delete it.',
+      [go],
+    );
+    return;
+  }
+  finish(result);
+
+  function finish(r: 'done' | 'mismatch' | 'cancelled' | 'error'): void {
+    if (r === 'cancelled' || job.cancelled) return;
+    if (r === 'error') {
+      problem('Could not load this game', 'Something in the saved game failed to replay in this version.');
+      return;
+    }
+    if (r !== 'done') return;
+    if (loadJob === job) loadJob = null;
+    // a save loaded anyway starts a fresh list of checks (its old hashes belong to the other version); only what the
+    // replay applied goes on (a game that ended earlier in this version never saw the rest of the log)
+    const recorder = new GameRecorder(settings, { ...replay.played(), checks: matched ? save.checks : [] });
+    beginSession(state, settings, { recorder, history });
+    // the player's groups come back as they were (bad data gives none; unit ids match because the replay is exact)
+    if (session) {
+      setUnitGroups(session.ui, save.groups);
+      session.savedGroups = JSON.stringify(getUnitGroups(session.ui));
+    }
+    // what happened before the save is history, not news
+    session?.hud?.skipEvents(state);
+    audio?.skipTo(state);
+    if (session) session.ui.toast = { text: 'Game loaded', until: performance.now() + TOAST_MS };
+    lastLoad = { tick: state.tick, hash: hashState(state), checked: replay.checked, matched };
+  }
 }
 
 function startBackground(): void {
@@ -357,6 +598,7 @@ function startBackground(): void {
 }
 
 function toMenu(): void {
+  autosave(); // leaving a single-player game keeps it for Continue
   startBackground();
   app.classList.add('in-menu');
   menu.show('title');
@@ -382,6 +624,8 @@ function runTicks(s: Session, dt: number): void {
       adminPerf.tickMs = adminPerf.tickMs * 0.9 + (performance.now() - t0) * 0.1;
     } catch (err) {
       console.error('Simulation error', err);
+      // the save notes it: a load replays the failed tick at the same point and goes on, as the player can here
+      s.recorder?.noteTickError(s.state.tick);
       s.ui.paused = true;
       s.ui.toast = { text: 'Simulation error: game paused (see console)', until: performance.now() + 10000 };
       acc = 0;
@@ -416,7 +660,11 @@ function frame(now: number): void {
         s.hud?.skipEvents(s.state);
         audio?.skipTo(s.state);
       }
-    } else runTicks(s, dt);
+    } else if (s.human || !loadJob) runTicks(s, dt); // the menu's background game rests while a save loads
+    if (s.recorder && (now - lastAutosave >= AUTOSAVE_MS || s.state.phase === 'over')) {
+      lastAutosave = now;
+      autosave();
+    }
     if (s.human && audio && !s.mp?.replaying) {
       try {
         audio.update(s.state, s.camera);
@@ -431,7 +679,8 @@ function frame(now: number): void {
       startBackground();
     }
     const cur = session;
-    if (cur) {
+    // while a save loads, the menu's background map stands still (its last frame stays): the replay gets the time
+    if (cur && (cur.human || !loadJob)) {
       try {
         const t2 = performance.now();
         if (cur.human) cur.camera.step(now);
@@ -486,6 +735,8 @@ declare global {
       mp: () => { code: string; playerId: number; nextTurn: number; behind: number; desync: boolean; status: string; latency: number | null; spectator: boolean } | null;
       /** online: drops the socket like a network failure (the client reconnects by itself) */
       dropConnection: () => void;
+      /** the last loaded save: tick and hash right after its replay, checkpoints compared, whether they matched */
+      lastLoad: () => { tick: number; hash: number; checked: number; matched: boolean } | null;
     };
   }
 }
@@ -529,6 +780,7 @@ window.__borderfall = {
     return { code: m.code, playerId: m.playerId, nextTurn: m.nextTurn, behind: m.behind, desync: !!m.desync, status: net?.status ?? 'idle', latency: net?.latencyMs ?? null, spectator: m.spectator };
   },
   dropConnection: () => net?.dropForTest(),
+  lastLoad: () => lastLoad,
 };
 
 startBackground();

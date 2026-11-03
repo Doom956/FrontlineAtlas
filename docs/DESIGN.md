@@ -972,6 +972,31 @@ full-map scans after `createGame`.
   cover: N airfields are bombing this line"; a plane glyph on covered troop pills; an Air holder's idle airfield
   reads "Auto cover". Guide tips `trench` (8 own level-2 border tiles, or an attack into a level-2 front) and
   `airCover` (first auto sortie).
+- Save and continue, single player only (src/client/save/): a save is the game's settings (with the seed), the
+  ordered log of the human's actions as `[tick, action]` (the tick = `state.tick` when dispatch applied it) and a few
+  checkpoints `{t, n, h}` = `hashState` after `n` log entries at tick `t`, plus the unit groups (UI only, not
+  hashed). main.ts records every dispatched action
+  before applying it (a slider drag's army mix changes in one tick collapse to the last one) and writes the save to
+  localStorage (`borderfall.save`, one slot) every 30 s, when the page is hidden or closed and when leaving to the
+  menu; a finished game removes it (a continued one saves again). The tutorial and online games never save. Loading
+  rebuilds the game with createGame and replays the log (save/replay.ts: before each tick, that tick's actions in
+  order), comparing each checkpoint on the way, in ~90 ms slices with a progress bar and the time left. Why a replay
+  and not a state snapshot: no snapshot serialisation exists (online catch-up also replays turns), GameState has
+  typed arrays, maps and caches that would all need writing and reading back in step with every sim change, and a
+  replay is only right when the sim is deterministic, which lockstep already requires and tests check. The cost is
+  load time: about the game's length times the tick cost (some ms per tick on a medium map), so the start page says
+  "Takes about N min to load" for long games. Versioning: each save carries `SAVE_FORMAT` and `clientBuildId()`
+  (protocol version + balance data); any other value shows the card as "from an older version" with only Delete.
+  Code changes that keep the balance data are caught by the checkpoints: the first different hash stops the load
+  with "This save doesn't match this version" (Load anyway plays the rest without checks; Delete). Storage errors are
+  caught everywhere; a full storage drops the old save and tries again (and puts it back if that fails too); saves
+  over 3 M characters are not written (the player is told once; the last save stays for Continue, and is still
+  removed when that game ends). A sim tick that throws while playing (the game pauses, the player can resume) is noted
+  in the save (`tickErrors`: `[tick, log entries applied]`; checkpoints after it carry `e` = errors so far): the
+  replay calls that tick at the same point, lets it fail the same way and goes on. A save loaded anyway that ends
+  earlier in this version continues from the log entries the replay applied, not the whole log. Start page: the saved-game card above Play (map,
+  minutes played, land share, saved time ago, Continue, Delete with an inline question); starting a new game asks
+  "Replace your saved game?" first.
 - Spawn phase (`SPAWN_SECONDS`): click a land tile to place your capital (else random); click again to move it.
   The `startNow` action ends the phase on the next tick once every human has picked (single player: you).
   `state.playStartTick` records the tick the phase ended; `gameSeconds(state)` (state.ts) counts from it and is the
@@ -1024,6 +1049,17 @@ full-map scans after `createGame`.
   (`buildWarship {port, tile}`); "Tank division" (`enterTankDivisionBuildMode`) asks for a click on one of your
   factories. After a game ends, "Continue playing" / "Keep watching" (online only the private game's host) sends
   `continueGame`; a "Victory: <winner>" chip stays in the top-right cluster.
+- Unit groups (unitGroups.ts, hud/groupsStrip.ts; client only, no action): the Forces drawer's Groups strip. "New
+  group" saves the selected warships / tank divisions as a button "Fleet 1 · 8 ships" (Tanks 1 for divisions only,
+  Group 1 when mixed: "3 ships, 2 divisions"). A click selects the group (the button lights while it is the
+  selection), a second click renames it in place (Save and Cancel buttons next to the field; a group that became the
+  selection without a click on it, such as one just made, needs one click first), the target icon centres the map on the member nearest its middle,
+  + adds the selected units, x deletes it with an Undo for a few seconds. All buttons, no hotkeys. Units that are
+  sunk, destroyed or captured drop out; a group with none left stays greyed with "0". At most 12 groups of up to
+  MAX_GROUP_UNITS units; a unit can be in several. The groups live in UiState.groups (plain JSON, new per game);
+  a single-player save stores them (SaveData.groups, optional, read with setUnitGroups after the replay; unit ids
+  match because the replay is exact) and a group change alone saves again. Airfields are buildings, not units, so
+  they are not in groups.
 - Pillar controls (client/pillars.ts, hud/ordersBar.ts, hud/airPanel.ts, hud/pillarAdvice.ts,
   render/pillarOverlay.ts): with warships or tank divisions selected, an orders bar above the advisor line holds the
   stance (Auto / Hunt / Escort / Bombard / Blockade, `setUnitStance`) or mode (Hold / Support front / Refit,
@@ -1060,6 +1096,20 @@ full-map scans after `createGame`.
   guide on/off and Restart guide, minimap, leave), the nation card on the left (Ally / Accept / Break, Gift, Embargo, Attack), the help page.
   Destructive actions ask first (a warning toast with a confirm button: Demolish from the radial menu, Break an
   alliance); an alliance request, a gift and an AI's refusal get a toast.
+- Alerts (client/alerts.ts, hud/alerts.ts): the big events about you as cards under the standings (on phones in the
+  top-centre column between the mode chip and the toasts, so they never overlap; that column sits under an open
+  drawer, the nation card and the bottom bars there), not toasts: a
+  nation attacks you, your capital under attack (an attacker holds land within 5 tiles of it, again every 60 s while
+  it lasts) or lost, land falling fast (30+ tiles and 8% of your land in 10 s), a port newly blockaded, a ship sunk, a
+  tank division overrun or stranded, an atom bomb, rocket, bomber, landing or paratroopers on their way to your land,
+  an ally asking for help. `alertFromEvent` reads sim events; `AlertWatch` compares the state between looks (~5 Hz)
+  for what has no event (plain fields plus `blockadedPorts`, both safe between ticks; a warship gone without an event
+  still counts). `AlertFeed` merges: the same story within 30 s raises a count ("x3"), another story of a kind within
+  its gap (4-6 s) joins that card under a summary line, so no kind floods the screen. At most 3 cards, newest on top,
+  7-9 s each with a draining hairline (held while the pointer is over them). Click or tap a card: the camera glides to
+  the spot (zoom 4.5 or closer) and two rings ping it. The bell in the top-right cluster (red count of entries with
+  news) opens the Alerts drawer: the last 20, same click to jump. No hotkey. Hidden for spectators; a catch-up replay
+  takes stock again instead of alerting.
 - Research panel (T; hud/researchTree.ts hosts it, hud/arsenalPage.ts draws a tab, hud/techRows.ts lays it out): two
   tabs, Tab or 1 / 2 switch while it is open. RESEARCH = every tech where `isArsenalTech` is false, in rows Economy,
   Land, Logistics, Influence; ARSENAL = `ARSENAL_ROWS` (Navy, Armor, Air, Shared; columns Unlock, Path, Path upgrade,

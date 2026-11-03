@@ -376,8 +376,43 @@ airfields and many tanks are hard to control. Easy for new players, no hotkeys. 
   time refitting; silos idle 77% (no target near the front: the list was kept narrow, rockets cost 900 gold);
   airfields have nothing in reach about 17% of their war time.
 
+## Groups, alerts, save/resume (2026-11-03, branch qol-d, not merged yet)
+Owner wanted these three after ships/tanks and bombers, all clickable with visible buttons (no new hotkeys). Client
+only: no src/sim file changed (released together with the auto round, protocol 16), save format 1. DESIGN.md (client section) and How to play updated.
+- Groups (unitGroups.ts, hud/groupsStrip.ts): in Forces, select warships or tank divisions, click New group: a
+  button "Fleet 1 · 8 ships" (Tanks 1, Group 1 when mixed). Click it to select them again (lit while selected), the
+  target icon centres the map on them, + adds the selection, x deletes (Undo). Click a selected group again to rename
+  it, with Save and Cancel buttons (a group that is already the selection, such as one just made, needs one click
+  first, so a first tap never opens the phone keyboard). Lost units drop out. Saved with the game.
+- Alerts (alerts.ts, hud/alerts.ts): big events about you (attacks, capital under attack or lost, land falling fast,
+  port blockaded, ship sunk, division overrun or stranded, atom bomb / rocket / bomber / landing / paratroopers on
+  the way, an ally asking for help) as cards under the standings; repeats count up ("x3"). Click a card: the camera
+  jumps there with a ping. The bell in the top bar (red count) opens the last 20. On phones the cards sit in the
+  top-centre column with the mode chip and toasts (they covered each other before), and an open drawer and the
+  nation card stay above that column.
+- Save and continue, single player (save/): every 30 s and when the page closes or goes to the menu; "Continue" on
+  the start page replays the game's orders to the same state (hash checked; a save from changed code can be loaded
+  anyway or deleted). A game that ended earlier in this version goes on from what was replayed (before: the next
+  save was unreadable); a sim error while playing is noted, so the load fails and goes on at the same point (before:
+  "Could not load this game"); a finished game removes its save even after saving stopped (too long or storage
+  full), and that toast now says Continue starts from the last save.
+- Top bar on phones: buttons narrow to fit (the bell had pushed Forces off the left edge).
+- Checks: tsc (client, server), build, full vitest 899 of 901 (the 2 others, a doctrines and a trenches hash test,
+  hit the 5 s timeout under load and pass alone: 39/39). Tests: save.test.ts (replay, tick errors before
+  and after a save, an older save without the note, a tick that never works, a save loaded anyway that ends early,
+  format checks), unitGroups.client.test.ts, alerts.client.test.ts. Playwright on the built app: the merge check
+  (21/21: groups, reload, Continue with the same hash, groups back, a paused rename saved, alerts and camera jump,
+  bell log, phone pass) and the review-fix check (47/47 at 390x844 and 360x780 with touch, and 1440x900: every group
+  row tappable with a selection and while paused, alert cards, chip and toast fully visible, nation card unmoved and
+  its buttons on top, Save/Cancel rename, alerts move between columns on resize). Screenshots
+  /tmp/borderfall-shots/d-merged-*.png, d-fix-*.png.
+- Not checked: multiplayer e2e (nothing online changed); real phones (only a desktop browser at phone size); a real
+  sim error during play (tests inject one); a game over 3 M characters. Alerts in the play checks were injected
+  events. Open: on phones the new-player guide bar (its own layer) sits over an open drawer, including group rows,
+  until Next or Hide guide; hovering a group shows its tooltip over the name.
+
 ## Queued next (owner, 2026-11-03)
-In order, after ships/tanks, bombers QoL and "auto for everything": (1) Groups strip (no hotkeys: owner wants to avoid relying on hotkeys for new players): in Forces, select units -> "+ New group" -> a button "Fleet 1 · 8 ships", click selects, a target icon centres the camera; (2) clickable alerts for big events (capital under attack, port blockaded, division overrun, nuke incoming) that jump to the spot; (3) save and resume single player (orders log; "Continue" row on the start page). Later: anonymous real-match stats on the server for balance, rematch + quick chat, replays, in-game phone/touch HUD, real-GPU performance check, flaky scripted-player e2e fix.
+Later: anonymous real-match stats on the server for balance, rematch + quick chat, replays, in-game phone/touch HUD, real-GPU performance check, flaky scripted-player e2e fix.
 
 ## Parked ideas (owner said later / maybe)
 Building limits (city slots, upkeep), rivers and bridges, wonders, game modes (King of the Hill, capital capture, scenarios), quick chat/emotes/rematch, phone layout, making Easy winnable, calmer tribes.

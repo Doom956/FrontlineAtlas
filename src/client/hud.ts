@@ -5,7 +5,8 @@
 //             they matter), build bar with category tabs (hud/commandBar.ts)
 //   top-left  standings: top 5 + you, collapsible (hud/leaderboard.ts)
 //   top-right cluster: drawer buttons, clock, pause / speed, sound, help, menu (hud/cluster.ts)
-// Only when needed: toasts (top centre), the advisor line or tutorial step above the command bar, the spawn bar,
+// Only when needed: alerts (left, under the standings: big events, a click jumps there; hud/alerts.ts), toasts (top
+// centre), the advisor line or tutorial step above the command bar, the spawn bar,
 // the target-mode chip, the map tooltip / build preview at the cursor, the radial menu.
 // One click away: the drawers on the right (army, research, diplomacy, events, map key, the selected building,
 // menu), the nation card on the left, the help page.
@@ -22,7 +23,9 @@ import type { GameEvent, GameState, Player } from '../sim/types';
 import type { AudioManager } from './audio';
 import type { Camera } from './camera';
 import { isTribe } from './compat';
+import { AlertFeed, AlertWatch, alertFromEvent, isShipLossAlert, type AlertEntry, type AlertSpec } from './alerts';
 import { AdvisorStrip } from './hud/advisor';
+import { AlertStack, AlertsPage, MapPing } from './hud/alerts';
 import { GuideController } from './guide/guide';
 import { tutorialUiFacts } from './tutorial/controller';
 import { Cluster } from './hud/cluster';
@@ -69,6 +72,8 @@ import { summaryView } from './summary/view';
 export { techNear };
 
 const SLOW_MS = 200; // ~5 Hz refresh of texts and lists
+/** the phone layout of styles.css ("phones" section) */
+const PHONE_MEDIA = '(max-width: 640px)';
 /** Zoom the camera glides to when your start is placed and when the game starts (your 9x9 start ~40 px wide). */
 const START_ZOOM = 4.5;
 const TOAST_KINDS: Partial<Record<GameEvent['kind'], 'info' | 'good' | 'bad' | 'warn'>> = {
@@ -111,6 +116,8 @@ export interface HudOptions {
   adminAuth?: (code: string) => Promise<boolean>;
   /** a tutorial game (tutorial/controller.ts): the first-game steps and the advisor's hints stay quiet */
   tutorial?: boolean;
+  /** single player with autosave (save/): the Menu drawer says the game is kept */
+  saves?: boolean;
 }
 
 export class Hud {
@@ -157,7 +164,7 @@ export class Hud {
   private lastContinue = 0;
   private victoryChip = new VictoryChip();
   /** land over time, battles, key moments: the end-of-game summary's data (summary/history.ts) */
-  readonly history = new GameHistory();
+  history = new GameHistory();
   private historyFailed = false;
   /** the summary was reopened from the victory chip after a continued game (not the game-over card) */
   private reviewing = false;
@@ -185,6 +192,11 @@ export class Hud {
   /** own bombers already announced ("Bomber on its way"); null until the first look (no toasts for old ones) */
   private seenBombers: Set<number> | null = null;
   private coalitionSeen = 0;
+  /** big events (alerts.ts): the feed behind the bell, the watch for those the sim has no event for, the cards */
+  private alertFeed = new AlertFeed();
+  private alertWatch = new AlertWatch();
+  private alertStack: AlertStack;
+  private ping: MapPing;
 
   constructor(
     public root: HTMLElement,
@@ -234,8 +246,10 @@ export class Hud {
 
     this.board = new Leaderboard(this.ctx);
     this.card = new NationCard(this.ctx);
+    this.alertStack = new AlertStack((e) => this.jumpTo(e));
+    this.ping = new MapPing(camera);
     const left = el('div', 'hud-left');
-    left.append(this.board.el, this.card.el);
+    left.append(this.board.el, this.alertStack.el, this.card.el);
 
     this.cluster = new Cluster(this.ctx, {
       isOpen: (id) => this.drawer?.open === id,
@@ -244,6 +258,7 @@ export class Hud {
       toggleHelp: () => this.toggleHelp(),
       hasAudio: () => !!this.audio,
       pauseMode: () => (hudOpts.online ? hudOpts.pause?.().mode ?? 'none' : 'local'),
+      alertsUnread: () => this.alertFeed.unread,
     });
 
     this.drawer = new Drawer(this.ctx);
@@ -254,6 +269,7 @@ export class Hud {
     this.drawer.add(new DiplomacyPage(this.ctx));
     this.events = new EventsPage(this.ctx);
     this.drawer.add(this.events);
+    this.drawer.add(new AlertsPage(this.alertFeed, (e) => this.jumpTo(e)));
     this.drawer.add(new LegendPage());
     this.building = new BuildingPage(this.ctx);
     this.drawer.add(this.building);
@@ -286,6 +302,7 @@ export class Hud {
           this.drawer.hide();
         },
         leave: () => this.onMenu(),
+        saves: !!hudOpts.saves,
       }),
     );
 
@@ -331,6 +348,17 @@ export class Hud {
     this.modeChip.append(this.modeText, this.salvo.el, cancel);
     const top = el('div', 'hud-top');
     top.append(this.spawnBar, this.modeChip, this.toasts.el);
+    // phones: the alerts stack with the top-centre messages (between the mode chip and the toasts) instead of under
+    // the standings, where the full-width chip and toasts covered them and each card pushed the nation card down
+    const phone = typeof matchMedia === 'function' ? matchMedia(PHONE_MEDIA) : null;
+    const placeAlerts = (): void => {
+      const stack = this.alertStack.el;
+      if (phone?.matches) {
+        if (stack.parentElement !== top) top.insertBefore(stack, this.toasts.el);
+      } else if (stack.parentElement !== left) left.insertBefore(stack, this.card.el);
+    };
+    placeAlerts();
+    phone?.addEventListener('change', placeAlerts, { signal: this.ac.signal });
     this.pauseBanner = el('div', 'pause-banner hidden');
     this.pauseBanner.dataset.test = 'pause-banner';
     this.pauseBanner.setAttribute('role', 'status');
@@ -358,7 +386,7 @@ export class Hud {
     });
     this.gameOver = el('div', 'modal gameover hidden');
 
-    this.el.append(left, this.cluster.el, this.modChips.el, this.drawer.el, bottom, top, this.pauseBanner, this.tooltip.card, this.tooltip.odds, this.unitCard.el, this.radial.el, this.help, this.gameOver, this.tip);
+    this.el.append(this.ping.el, left, this.cluster.el, this.modChips.el, this.drawer.el, bottom, top, this.pauseBanner, this.tooltip.card, this.tooltip.odds, this.unitCard.el, this.radial.el, this.help, this.gameOver, this.tip);
     // after "Continue playing": the recorded winner in the top-right cluster
     this.cluster.el.append(this.victoryChip.el);
     this.victoryChip.onOpen = () => {
@@ -437,6 +465,7 @@ export class Hud {
     const me = own && !watching ? own : own ?? state.players[0];
     if (!me) return;
     this.drainEvents(state, me);
+    this.ping.frame(now);
     if (!watching) this.followStart(state, me);
     this.updateFast(state, me);
     if (!watching) this.guide?.frame();
@@ -460,6 +489,8 @@ export class Hud {
       if (!watching) this.announceBombers(state, me);
       if (!watching) this.announceCoalition(state, me);
       this.toasts.update();
+      if (!watching) for (const a of this.alertWatch.look(state, me)) this.raiseAlert(a, state.tick);
+      this.alertStack.update(now);
       if (!watching) this.tooltip.update(state, me, true);
       this.updateSpawn(state, me);
       // units sunk or lost drop out of the selection (selection.ts)
@@ -473,6 +504,8 @@ export class Hud {
    */
   skipEvents(state: GameState): void {
     for (const e of state.events) this.seenEvents.add(e);
+    // the alert watch takes stock again afterwards (no alerts for what the replay changed)
+    this.alertWatch.reset();
   }
 
   /** The renderer's unit hit test: hover cards for any unit and the selected warship's card follow it. */
@@ -495,6 +528,8 @@ export class Hud {
       this.card.close();
       if (this.drawer.open && this.drawer.open !== 'events' && this.drawer.open !== 'legend' && this.drawer.open !== 'settings') this.drawer.hide();
       this.radial.close();
+      this.alertStack.clear();
+      this.alertWatch.reset();
     }
   }
 
@@ -604,6 +639,7 @@ export class Hud {
     this.ac.abort();
     this.admin.destroy();
     this.toasts.clear();
+    this.alertStack.clear();
     this.el.remove();
     this.root.classList.remove('mm-on');
     this.state = null;
@@ -794,7 +830,35 @@ export class Hud {
     }
   }
 
+  /** A big event (alerts.ts) becomes an alert card instead of a toast; true when it did (or when it stays quiet). */
+  private eventAlert(state: GameState, me: Player, e: GameEvent): boolean {
+    if (this.watching) return false;
+    const a = alertFromEvent(state, me, e);
+    if (!a) return false;
+    // the opening seconds: border clashes of the first expansions are no news
+    if (e.kind === 'underAttack' && gameSeconds(state) < 5) return true;
+    if (isShipLossAlert(a)) this.alertWatch.noteShipEvent();
+    this.raiseAlert(a, e.tick);
+    return true;
+  }
+
+  private raiseAlert(a: AlertSpec, tick: number): void {
+    const { entry } = this.alertFeed.push(a, performance.now(), tick);
+    this.alertStack.show(entry);
+  }
+
+  /** An alert clicked (card or log): the camera glides to its spot and a ring pings it. */
+  private jumpTo(a: AlertEntry): void {
+    const s = this.state;
+    if (!s || a.tile < 0 || a.tile >= s.map.owner.length) return;
+    const w = s.map.width;
+    const cam = this.camera;
+    cam.flyTo((a.tile % w) + 0.5, ((a.tile / w) | 0) + 0.5, Math.max(cam.zoom, START_ZOOM), 600);
+    this.ping.ping(a.tile, w, a.tone);
+  }
+
   private eventToast(state: GameState, me: Player, e: GameEvent, focus: number): void {
+    if (this.eventAlert(state, me, e)) return;
     const go = focus >= 0 ? () => this.focusTile(focus, true) : undefined;
     if (this.doctrineToast(me, e)) return;
     if (this.allyToast(state, me, e, go)) return;
@@ -1011,6 +1075,11 @@ export class Hud {
   private hideTip(): void {
     this.tipTarget = null;
     setVisible(this.tip, false);
+  }
+
+  /** A loaded save brings the history its replay collected (main.ts continueSaved). */
+  adoptHistory(history: GameHistory): void {
+    this.history = history;
   }
 
   /** Feeds the end-of-game history (also called by the test hook's fast-forward); a failure only costs the summary. */
