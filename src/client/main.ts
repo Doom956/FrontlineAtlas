@@ -214,6 +214,7 @@ async function startOnline(start: GameStartMsg): Promise<void> {
     closeOverlay: () => hud.closeOverlay(),
     toggleDrawer: (id) => hud.toggleDrawer(id),
     strike: (id) => hud.strike(id),
+    confirm: (text, label, run) => hud.confirm(text, label, run),
   });
   session = { state, camera, ui, hud, cleanupInput, human: true, settings: start.settings, mp, mpStatus: status };
   menu.hide();
@@ -311,6 +312,7 @@ async function startGame(settings: GameSettings, tutorial = false): Promise<void
       closeOverlay: () => hud.closeOverlay(),
       toggleDrawer: (id) => hud.toggleDrawer(id),
       strike: (id) => hud.strike(id),
+      confirm: (text, label, run) => hud.confirm(text, label, run),
     });
     session = { state, camera, ui, hud, cleanupInput, human: true, settings, mp: null, mpStatus: null };
     if (tutorial) {

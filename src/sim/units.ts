@@ -92,11 +92,12 @@ import {
 import { chaseTargetInRange } from './navy';
 import { blockadeTradeMul, warSet, onShipKilled, shellingMul, shipDamageMul, warshipSpeedMul, warshipThink } from './naval2';
 import { bombDivisions } from './tanks';
-import { airParadropMul, airStrikeArrived, escortAbsorbs, escortCargo, interceptBySuperiority } from './airwings';
+import { airParadropMul, airWingRange, escortAbsorbs, escortCargo, interceptBySuperiority } from './airwings';
+import { bomberArrived } from './airstrike';
 import { doctrineLess, doctrineLever, doctrineMore, doctrinePerk } from './doctrines';
 import { TROOP_TYPES, isWater } from './types';
-import { airBomberExtraHp, airVariantOf, navalCanTarget, navalShellMul, navalShellRangeMul } from './variants';
-import { dropTanksParadropMul, earlyWarningMul, earlyWarningWarnMul, mineLandingLoss, nightDodges, nightEffectMul, nightRadiusMul, nightScatter } from './specials';
+import { airBomberExtraHp, airVariantOf, carrierFor, navalCanTarget, navalShellMul, navalShellRangeMul } from './variants';
+import { dropTanksParadropMul, earlyWarningMul, earlyWarningWarnMul, mineLandingLoss, nightDodges, nightEffectMul, nightRadiusMul } from './specials';
 import type { ActionResult, Building, BuildingType, GameState, Troops, Unit, UnitType } from './types';
 
 const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
@@ -777,6 +778,9 @@ export function launchBomber(state: GameState, playerId: number, airfieldTile: n
   if (areAllied(state, playerId, target)) return FAIL('You cannot bomb an ally');
   const peace = peaceReason(state, playerId, target);
   if (peace) return FAIL(peace);
+  // Reach: the airfield's mission range (heavy bombers, Drop Tanks), or an own carrier near the aim (airwings.ts).
+  const range = airWingRange(b, state);
+  if (d2Tiles(state, airfieldTile, tile) > range * range && !carrierFor(state, playerId, tile)) return FAIL(`Too far from this airfield (reach ${Math.round(range)} tiles)`);
   b.bombers--;
   const u = makeUnit(state, 'bomber', playerId, airfieldTile, tile);
   if (doctrinePerk(state, playerId, 'air')) u.hp += DOCTRINE_PERKS.air.bomberExtraHp; // Air level 3: takes an extra hit
@@ -789,28 +793,36 @@ export function launchBomber(state: GameState, playerId: number, airfieldTile: n
   return { ok: true };
 }
 
+/** What a bomb drop did (airstrike.ts adds it to the airfield's last result). */
+export interface DropResult {
+  buildings: number;
+  kills: number;
+  gold: number;
+}
+
 /**
- * Bombs fall: each hostile building in BOMBER_RADIUS is destroyed with BOMBER_BUILDING_HIT chance; each hostile
- * player with land there loses max(BOMBER_MIN_KILL x their share of the hit land, BOMBER_TROOP_KILL x army x
- * tiles hit / their tiles) troops, capped at their army.
+ * Bombs fall (the raid part of a strike, airstrike.ts): each hostile building in BOMBER_RADIUS (x Strategic Bombing,
+ * x Night Bombing, x `radiusMul`) is destroyed with BOMBER_BUILDING_HIT chance (x payload); each hostile player with
+ * land there loses max(BOMBER_MIN_KILL x their share of the hit land, BOMBER_TROOP_KILL x army x tiles hit / their
+ * tiles) troops (x payload), capped at their army. Works off the centre tile's owner: a scattered night drop still
+ * hits the enemy land in the radius.
  */
-function dropBombs(state: GameState, u: Unit): void {
+export function dropBombs(state: GameState, u: Unit, radiusMul = 1, payload = 1): DropResult {
   const map = state.map;
   const tile = u.target;
-  const owner = map.owner[tile];
   const w = map.width;
+  const out: DropResult = { buildings: 0, kills: 0, gold: 0 };
   // Strategic Bombing (techtree.ts); Night Bombing (specials.ts): smaller, weaker
-  const night = nightEffectMul(state, u.owner);
-  const bombR = BOMBER_RADIUS * techBombRadiusMul(state, u.owner) * nightRadiusMul(state, u.owner);
-  const hitChance = techBombBuildingHit(state, u.owner, BOMBER_BUILDING_HIT) * night;
+  const night = nightEffectMul(state, u.owner) * payload;
+  const bombR = BOMBER_RADIUS * techBombRadiusMul(state, u.owner) * nightRadiusMul(state, u.owner) * radiusMul;
+  const hitChance = Math.min(1, techBombBuildingHit(state, u.owner, BOMBER_BUILDING_HIT) * night);
   state.effects.push({ kind: 'explosion', x: (tile % w) + 0.5, y: ((tile / w) | 0) + 0.5, radius: bombR, tick: state.tick });
-  if (!hostile(state, u.owner, owner) || !state.players[owner].alive) return;
   let destroyed = 0;
   const hit = new Map<number, number>(); // hostile owner -> tiles in radius
   let hitTiles = 0;
   forEachInRadius(map, tile, bombR, (i) => {
     const o = map.owner[i];
-    if (!hostile(state, u.owner, o)) return;
+    if (!hostile(state, u.owner, o) || !state.players[o]?.alive) return;
     hit.set(o, (hit.get(o) ?? 0) + 1);
     hitTiles++;
     const b = buildingAt(state, i);
@@ -819,6 +831,7 @@ function dropBombs(state: GameState, u: Unit): void {
       destroyed++;
     }
   });
+  if (!hitTiles) return out;
   let killed = 0;
   for (const [o, n] of hit) {
     const p = state.players[o];
@@ -830,9 +843,17 @@ function dropBombs(state: GameState, u: Unit): void {
   bombDivisions(state, u.owner, tile);
   const burnt = strategicBurn(state, u.owner, hit.keys()); // Strategic Bombing: gold and iron burn
   const me = state.players[u.owner];
-  const msg = `${me.name} bombed ${state.players[owner].name}: ${destroyed} building${destroyed === 1 ? '' : 's'} destroyed, ${Math.round(killed)} troops killed${burnt >= 1 ? `, ${Math.round(burnt)} gold burnt` : ''}`;
+  let victim = map.owner[tile];
+  if (!hit.has(victim)) victim = [...hit.keys()].sort((a, b) => (hit.get(b) ?? 0) - (hit.get(a) ?? 0) || a - b)[0];
+  const msg = `${me.name} bombed ${state.players[victim].name}: ${destroyed} building${destroyed === 1 ? '' : 's'} destroyed, ${Math.round(killed)} troops killed${burnt >= 1 ? `, ${Math.round(burnt)} gold burnt` : ''}`;
   addEvent(state, 'bombing', msg, [u.owner, ...hit.keys()], tile);
+  out.buildings = destroyed;
+  out.kills = killed;
+  out.gold = burnt;
+  return out;
 }
+
+/** The arrival of a bomber over its aim is handled by airstrike.bomberArrived (re-aim, scatter, strike). */
 
 /** Bomber back over its airfield: stored again, or lost if the airfield is gone or taken. */
 function bomberHome(state: GameState, u: Unit): void {
@@ -1290,8 +1311,7 @@ export function updateUnits(state: GameState): void {
     if (u.hp <= 0 || !arrived.has(u) || !players[u.owner]?.alive) continue;
     if (u.type === 'bomber') {
       if (u.state === 0) {
-        nightScatter(state, u); // Night Bombing (specials.ts): the bombs land off the aim
-        if (!airStrikeArrived(state, u)) dropBombs(state, u); // air-wing support strikes replace the drop (airwings.ts)
+        bomberArrived(state, u); // re-aim, Night Bombing scatter, then the support strike or the raid (airstrike.ts)
         u.state = 1;
         u.target = u.home;
       } else {

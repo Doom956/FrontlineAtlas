@@ -2,7 +2,8 @@
 // they become useful). Text is one short line; `target` names the HUD element (data-test values, ' || ' = fallbacks),
 // `tile` the map tile the arrow shows when there is no element. Everything here only reads the game.
 import { isArsenalTech } from '../../sim/arsenal';
-import { buildingCost, countBuildings } from '../../sim/buildings';
+import { buildingCost, chargesReady, countBuildings } from '../../sim/buildings';
+import { autoFireCount } from '../airSim';
 import { borders } from '../../sim/combat';
 import { BUILDINGS, DOCTRINE_UNLOCK_SECONDS, TECHS } from '../../sim/config';
 import { areAllied } from '../../sim/diplomacy';
@@ -143,6 +144,26 @@ function attackOnMe(s: GameState, me: Player): { attacker: number; tile: number 
     if (!best || n > best.n) best = { attacker: a.attacker, tile: a.focusTile, n };
   }
   return best;
+}
+
+/** Bombers stored at finished airfields. */
+function storedBombers(c: GuideCtx): number {
+  let n = 0;
+  for (const b of c.s.buildings.values()) if (b.owner === c.me.id && b.type === 'airfield' && b.buildLeft <= 0) n += b.bombers;
+  return n;
+}
+/** Rockets loaded in finished silos. */
+function loadedRockets(c: GuideCtx): number {
+  if (!hasTech(c.me, 'rocketry')) return 0;
+  let n = 0;
+  for (const b of c.s.buildings.values()) if (b.owner === c.me.id && b.type === 'silo' && b.buildLeft <= 0) n += chargesReady(b);
+  return n;
+}
+/** Bombs or rockets ready for a salvo (3+ bombers, 2+ rockets) and the strike ready on the bar, else null. */
+function salvoReady(c: GuideCtx): 'bomb' | 'rocket' | null {
+  if (c.strike('bomb') === 'ready' && storedBombers(c) >= 3) return 'bomb';
+  if (c.strike('rocket') === 'ready' && loadedRockets(c) >= 2) return 'rocket';
+  return null;
 }
 
 /** First strike that is ready now. */
@@ -483,6 +504,26 @@ export function guideTips(): GuideTip[] {
       },
       when: (c) => playing(c) && readyStrike(c) !== null,
       done: (c) => c.ui.aiming !== null,
+    },
+    {
+      // several bombers or rockets ready: one click can send them all (hud/salvoPicker.ts)
+      id: 'salvo',
+      text: (c) => {
+        const k = salvoReady(c);
+        const n = k === 'bomb' ? storedBombers(c) : loadedRockets(c);
+        return `${n} ${k === 'bomb' ? 'bombers' : 'rockets'} ready: right-click this button for x3, x5 or All in one click (or pick it at the top while aiming).`;
+      },
+      target: (c) => `strike-${salvoReady(c) ?? 'bomb'}`,
+      when: (c) => playing(c) && salvoReady(c) !== null,
+      done: (c) => c.ui.aiming === 'bomb' || c.ui.aiming === 'rocket',
+    },
+    {
+      // two or more silos: rockets can fire by themselves (Forces, Missiles)
+      id: 'autoFire',
+      text: 'Several silos: Forces (Y), Missiles, Auto-fire all fires your rockets by themselves at the nation you fight. Atom bombs never fire by themselves.',
+      target: 'open-forces',
+      when: (c) => playing(c) && hasTech(c.me, 'rocketry') && countBuildings(c.s, c.me.id, 'silo', true) >= 2 && !autoFireCount(c.s, c.me.id).on && ownAttack(c.s, c.me),
+      done: (c) => autoFireCount(c.s, c.me.id).on > 0 || c.ui.openPanel === 'forces',
     },
     // Ships, tanks and planes: how to get them (the tech, then the building), then how to use them. Each step only
     // once it is the next one for the player.

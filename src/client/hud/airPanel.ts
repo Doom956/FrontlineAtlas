@@ -21,6 +21,8 @@ export class AirPanel {
   private seg = el('div', 'ap-seg');
   private line = el('div', 'ap-line');
   private wing = el('div', 'ap-wing');
+  /** the latest raid's result (hidden before the first) */
+  private last = el('div', 'ap-last');
   private refill: HTMLButtonElement;
   private btns = new Map<AirMission, HTMLButtonElement>();
   private refillOn: boolean | null = null;
@@ -67,7 +69,8 @@ export class AirPanel {
     });
     const foot = el('div', 'ap-foot');
     foot.append(this.wing, this.refill);
-    this.el.append(this.seg, this.line, this.follow.el, foot);
+    this.last.dataset.test = 'air-last';
+    this.el.append(this.seg, this.line, this.last, this.follow.el, foot);
   }
 
   private pick(m: AirMission): void {
@@ -104,6 +107,8 @@ export class AirPanel {
       if (x.getAttribute('aria-pressed') !== String(m === st.mission)) x.setAttribute('aria-pressed', String(m === st.mission));
     }
     setText(this.line, st.line);
+    setText(this.last, st.last);
+    setVisible(this.last, st.last !== '');
     setClass(this.line, 'warn', (st.mission === 'support' || st.mission === 'strategic') && st.bombers <= 0 || (st.mission === 'superiority' && st.fighters <= 0));
     const fw = followsWar('air', st.mission);
     const ft = fw ? followOf(s, 'air', b.tile) : null;
@@ -117,6 +122,6 @@ export class AirPanel {
     }
     setClass(this.refill, 'on', st.refill);
     setTip(this.refill, `${st.refill ? 'On' : 'Off'}: replace bombers lost on missions automatically (${formatCount(c.gold)} gold each, gold permitting)`);
-    setVisible(this.refill, st.mission === 'support' || st.mission === 'strategic');
+    setVisible(this.refill, st.refillShown);
   }
 }

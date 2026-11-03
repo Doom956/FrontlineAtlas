@@ -750,6 +750,9 @@ export interface ArsenalState {
 export interface FollowState {
   targets: number[];
   recon: number[];
+  /** rocket auto-fire (airstrike.ts): silo building ids with it on, and players with it on for every silo; absent = none */
+  fire?: number[];
+  fireAll?: number[];
 }
 
 /** Standing mission of an airfield's air wing (Action setAirMission, airwings.ts). */
@@ -813,6 +816,28 @@ export interface AirState {
    * building id, owner, tick it may fly again, and auto sorties flown. Absent = none yet.
    */
   cover?: AirCover[];
+  /** last strike result per airfield (airstrike.ts, wingLastResult); absent = none yet */
+  results?: AirResult[];
+}
+
+/**
+ * What one airfield's latest raid did (airstrike.ts): bombers arriving within STRIKE.resultMergeSeconds of each other
+ * add up. mission: 1 = front support, 2 = raid. saved = bombers that came back with their bombs (no enemy land left
+ * near the aim).
+ */
+export interface AirResult {
+  airfield: number;
+  owner: number;
+  /** tick of the first and of the latest arrival */
+  start: number;
+  tick: number;
+  mission: number;
+  victim: number;
+  bombers: number;
+  saved: number;
+  buildings: number;
+  kills: number;
+  gold: number;
 }
 
 /** One airfield's Air cover record (airwings.ts). */
@@ -873,8 +898,13 @@ export type Action =
   | { type: 'buildWarship'; port: number; tile?: number; variant?: NavalVariant }
   | { type: 'moveWarship'; unitId: number; tile: number }
   | { type: 'buildAircraft'; airfield: number; kind: 'bomber' | 'fighter' }
-  | { type: 'bomb'; airfield: number; tile: number }
-  | { type: 'launchMissile'; silo: number; kind: 'rocket' | 'atomBomb'; tile: number }
+  /**
+   * bombers at tile (airstrike.ts): airfield = an own finished airfield tile, or -1 = every own airfield that reaches
+   * it (nearest first). count = bombers to send (absent = 1, 0 = every ready one in reach).
+   */
+  | { type: 'bomb'; airfield: number; tile: number; count?: number }
+  /** missiles at tile: silo = an own silo tile, or -1 = every own silo (nearest first); count as for 'bomb' */
+  | { type: 'launchMissile'; silo: number; kind: 'rocket' | 'atomBomb'; tile: number; count?: number }
   /** paratroopers: `troops` infantry fly from an own airfield (tile) to an enemy / neutral land tile (units.ts) */
   | { type: 'paradrop'; airfield: number; tile: number; troops: number }
   /** artillery barrage on an enemy tile near your border (barrage.ts) */
@@ -937,6 +967,8 @@ export type Action =
   | { type: 'setAirMission'; airfield: number; mission: AirMission; target?: number; refill?: boolean; follow?: boolean }
   /** auto recon (warTarget.ts): the airfield (or -1 = every own finished airfield) scouts your war target when ready */
   | { type: 'setAutoRecon'; airfield: number; on: boolean }
+  /** rocket auto-fire (airstrike.ts, needs Rocketry): the silo (or -1 = every own silo, also later ones) fires rockets at your war target when ready; never atom bombs */
+  | { type: 'setAutoFire'; silo: number; on: boolean }
   /** recon flight (variants.ts, needs Recon Planes): airfield = an own finished airfield tile or -1 (nearest ready one) */
   | { type: 'reconFlight'; airfield: number; tile: number }
   | AdminAction;

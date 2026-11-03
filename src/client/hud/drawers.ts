@@ -55,6 +55,8 @@ import { AllyHelp } from './allyHelp';
 import { heartlandBonus, lastStandBonus } from '../allies';
 import { ABILITY_TEXT, article, buildingTexts, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect, terrainNote } from './text';
 import { AirPanel } from './airPanel';
+import { autoFireAction } from '../airSim';
+import { autoFireOn } from '../../sim/airstrike';
 import { autoReconText } from '../follow';
 import { autoReconOn } from '../../sim/warTarget';
 import { airfieldVariantLine, factoryVariantLine, reconBlock, reconLabel, reconOffered, warshipOptions } from './variantOrders';
@@ -837,6 +839,22 @@ export class BuildingPage implements DrawerPage {
           u.tech && !hasTech(m, u.tech) ? techFirst(u.tech) : bb.buildLeft > 0 ? 'Still being built' : chargesReady(bb) <= 0 ? 'Reloading' : m.gold < u.gold ? 'Not enough gold' : m.iron < u.iron ? 'Not enough iron' : m.oil < u.oil ? 'Not enough oil' : '',
         ).dataset.test = `order-${kind}`;
       }
+      // rocket auto-fire at your war target (airstrike.ts; never atom bombs): one switch per silo
+      const auto = add('Auto-fire rockets', 'ghost', 'rocket', () => {
+        const ss = ctx.state();
+        if (ss) ctx.act(autoFireAction(tile, !autoFireOn(ss, tile)));
+      }, (_ss, m) => (hasTech(m, 'rocketry') ? '' : techFirst('rocketry')));
+      auto.dataset.test = 'silo-autofire';
+      auto.setAttribute('aria-pressed', 'false');
+      this.upd.push((ss, m) => {
+        const on = autoFireOn(ss, tile);
+        const lab = auto.querySelector('.wr-btn-l');
+        const text = on ? 'Auto-fire rockets: on' : 'Auto-fire rockets: off';
+        if (lab && lab.textContent !== text) lab.textContent = text;
+        setClass(auto, 'on', on);
+        auto.setAttribute('aria-pressed', String(on));
+        if (hasTech(m, 'rocketry')) setTip(auto, on ? 'On: fires a rocket by itself whenever one is loaded, at the nation you fight. Click to stop.' : 'Fires rockets by itself whenever one is loaded, at the nation you fight: forts and SAM sites near your front first, then cities near it, keeping some gold in reserve. Never atom bombs. Forces (Y) switches every silo at once.');
+      });
     }
     if (b.type === 'port') {
       // one button per ship of the chosen Navy path (hud/variantOrders.ts); the standard warship before a pick

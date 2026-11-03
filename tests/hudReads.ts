@@ -4,6 +4,7 @@
 // turns per frame) or catching up calls them less often or not at all. They must not change what the sim decides.
 import { mainFoe, fortifiedShare, openness, suggestions } from '../src/sim/advisor';
 import { airCoverActive, airCoverSorties, airRaidOn, airSortieCost, airZones } from '../src/sim/airwings';
+import { autoFireAll, autoFireOn, leadAim, strikePreview, strikeRole, wingLastResult } from '../src/sim/airstrike';
 import { allyRefusal, allyStatus, runawayLeader } from '../src/sim/allies';
 import { buildManyPreview, upgradeBuildingsPreview } from '../src/sim/bulkbuild';
 import { barrageReadyIn, canBarrage } from '../src/sim/barrage';
@@ -145,7 +146,23 @@ export const READS: Record<string, Read> = {
         reconCooldownLeft(s, b);
       }
     }
-    for (const b of buildingsOf(s, pid, 'airfield')) airCoverActive(s, b.tile);
+    for (const b of buildingsOf(s, pid, 'airfield')) {
+      airCoverActive(s, b.tile);
+      wingLastResult(s, b.tile);
+    }
+    for (const b of buildingsOf(s, pid, 'silo')) autoFireOn(s, b.tile);
+    autoFireAll(s, pid);
+    // Strike previews (the strike bar's tooltip and salvo picker).
+    for (const t of across) {
+      strikeRole(s, pid, t);
+      strikePreview(s, pid, 'bomb', t, 1);
+      strikePreview(s, pid, 'bomb', t, 0);
+      strikePreview(s, pid, 'rocket', t, 3);
+      strikePreview(s, pid, 'atomBomb', t, 1);
+      const o = s.map.owner[t];
+      const af = buildingsOf(s, pid, 'airfield')[0];
+      if (o > 0 && af) leadAim(s, pid, o, t, af.tile);
+    }
     airCoverSorties(s, pid);
     barrageReadyIn(s, pid);
     airRaidOn(s, pid);

@@ -12,7 +12,8 @@ import { buyWarBonds, fundAlly, hireMercenaries } from './spending';
 import { buildMany, cancelQueuedLevels, upgradeArea, upgradeBuildings } from './bulkbuild';
 import { launchBarrage } from './barrage';
 import { chooseDoctrine } from './doctrines';
-import { buildAircraft, launchBomber, launchMissile, launchParadrop, launchTransport, moveWarship } from './units';
+import { buildAircraft, launchParadrop, launchTransport, moveWarship } from './units';
+import { bombSalvo, missileSalvo, setAutoFire } from './airstrike';
 import { moveWarships, orderWarship } from './navy';
 import { buildTankDivision, clearDefenseCache, moveTankDivisions } from './tanks';
 import { clearNavyCache, setUnitStance } from './naval2';
@@ -161,12 +162,16 @@ export function applyAction(state: GameState, playerId: number, action: Action):
       if (action.kind !== 'bomber' && action.kind !== 'fighter') return FAIL('Invalid aircraft');
       return buildAircraft(state, playerId, action.airfield, action.kind);
     case 'bomb':
-      if (!isTile(state, action.airfield) || !isTile(state, action.tile)) return FAIL('Invalid tile');
-      return launchBomber(state, playerId, action.airfield, action.tile);
+      // airfield -1 = every own airfield in reach; count = salvo size (airstrike.ts)
+      if ((action.airfield !== -1 && !isTile(state, action.airfield)) || !isTile(state, action.tile)) return FAIL('Invalid tile');
+      return bombSalvo(state, playerId, action.airfield, action.tile, action.count);
     case 'launchMissile':
-      if (!isTile(state, action.silo) || !isTile(state, action.tile)) return FAIL('Invalid tile');
+      if ((action.silo !== -1 && !isTile(state, action.silo)) || !isTile(state, action.tile)) return FAIL('Invalid tile');
       if (action.kind !== 'rocket' && action.kind !== 'atomBomb') return FAIL('Invalid missile');
-      return launchMissile(state, playerId, action.silo, action.kind, action.tile);
+      return missileSalvo(state, playerId, action.silo, action.kind, action.tile, action.count);
+    case 'setAutoFire':
+      if (action.silo !== -1 && !isTile(state, action.silo)) return FAIL('Invalid tile');
+      return setAutoFire(state, playerId, action.silo, action.on);
     case 'paradrop':
       if (!isTile(state, action.airfield) || !isTile(state, action.tile)) return FAIL('Invalid tile');
       if (typeof action.troops !== 'number' || !Number.isFinite(action.troops) || action.troops < 0) return FAIL('Invalid troop count');

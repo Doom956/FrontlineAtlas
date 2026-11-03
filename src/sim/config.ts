@@ -1514,3 +1514,35 @@ export const ARSENAL_PRICES = {
   /** AI: an item is bought once at most this many available Research-tab techs come before it in the nation's order */
   aiLookahead: 2,
 };
+
+// ---------- one strike rule, smart aim, salvos, rocket auto-fire (airstrike.ts) ----------
+export const STRIKE = {
+  /** a manual bomb aimed within this many tiles of own / allied land (and not at a building) is a front support strike */
+  frontReach: 8,
+  /** a hostile building (not a fort) within this many tiles of a manual aim makes it a raid on that building */
+  buildingPick: 2,
+  /** heavy bombers on a raid: bomb radius x, buildings hit and troops killed x (Heavy Bombers: the bigger payload) */
+  heavyRadius: 1.15,
+  heavyPayload: 1.25,
+  /** lead aim: predicted front advance (tiles) = depth speed x flight seconds x leadMul, at most leadMax, + leadMargin past it */
+  leadMul: 1.2,
+  leadMax: 14,
+  leadMargin: 2,
+  /** lead aim: around the predicted point, prefer dug-in tiles and forts within this many tiles */
+  leadPick: 3,
+  /** on arrival: the aim is no longer hostile -> the nearest hostile tile within this radius (support: reaimDeeper past it) */
+  reaimRadius: 10,
+  reaimDeeper: 2,
+  /** on arrival over a raid aim whose building is gone: another raid building within this radius */
+  raidReaim: 10,
+  /** strike results of one airfield arriving within this many seconds of each other count as one raid (wingLastResult) */
+  resultMergeSeconds: 10,
+  /** most launchers one salvo action may fire (0 = every ready one) */
+  maxSalvo: 64,
+  /** rocket auto-fire: a pass every this many seconds per player; it keeps this many rocket prices in gold */
+  fireSeconds: 1,
+  fireReserve: 2,
+  /** rocket auto-fire targets: forts within fireFortReach of the main front, SAMs whose cover reaches it, cities within fireCityReach */
+  fireFortReach: 30,
+  fireCityReach: 40,
+} as const;

@@ -1,7 +1,7 @@
 // Forces drawer (Y): every special unit you own, grouped, with its state in one line and its orders as buttons.
 //   Fleet      warships (hull, where, what they do: Select), transports at sea (troops, destination: Find)
 //   Air        per airfield: bombers and fighters stored, room, + Bomber / + Fighter / Bomb / Drop
-//   Missiles   per silo: launches loaded or reload time, Rocket / Atom
+//   Missiles   per silo: launches loaded or reload time, Rocket / Atom, rocket Auto-fire (and one for all silos)
 //   Artillery  how much, barrage ready or not: Barrage
 //   Land       tank divisions (strength, what they do: Select), + Tank division (click one of your factories)
 // An empty group says in one line how to unlock it. Rows are rebuilt only when their shape changes (new unit,
@@ -20,6 +20,7 @@ import { aircraftAt, buildUnit, hpText, priceText, UNIT_TEXT, unitBuildStatus, u
 import { iconDataUrl, type IconId } from '../icons';
 import { formatCount } from '../render/common';
 import { aimStrike, STRIKES, strikeStatus, type StrikeId } from '../strikes';
+import { autoFireAction, autoFireAll, autoFireCount, siloAutoFire } from '../airSim';
 import { airReady, divisionOrderLine, pillarSummary, setMission, STANCE_INFO, vetOf, warshipOrderLine } from '../pillars';
 import { warshipStance } from '../../sim/naval2';
 import { AirPanel } from './airPanel';
@@ -50,6 +51,8 @@ interface RowSpec {
   /** a panel under the row (an airfield's mission selector, hud/airPanel.ts); kept across rebuilds by its owner */
   extra?: HTMLElement;
 }
+
+const AUTO_FIRE_HELP = 'fires rockets by itself as soon as one is loaded, at the nation you fight (forts and SAM sites near your front first, then cities near it), keeping some gold in reserve. Never atom bombs. Off by default.';
 
 /** More rows than this: the list folds away behind "Show each" (the group bar orders them all). */
 const FOLD_AT = 6;
@@ -470,12 +473,23 @@ export class ForcesPage implements DrawerPage {
             const off = u.tech && !hasTech(me, u.tech) ? techFirst(u.tech) : ready <= 0 ? 'Reloading' : me.gold < u.gold ? `Needs ${formatCount(u.gold)} gold` : me.iron < u.iron ? `Needs ${u.iron} iron` : me.oil < u.oil ? `Needs ${u.oil} oil` : '';
             acts.push({ label: kind === 'rocket' ? 'Rocket' : 'Atom', icon: kind === 'rocket' ? 'rocket' : 'atom', cls: 'danger', off, tip: `${STRIKES[kind].what} ${priceText(kind)}.`, run: () => this.aim(kind, () => (ctx.ui.mode = { kind: 'missile', silo: b.tile, missile: kind })) });
           }
+          if (hasTech(me, 'rocketry')) {
+            const on = siloAutoFire(s, b);
+            acts.push({
+              label: on ? 'Auto-fire on' : 'Auto-fire',
+              icon: on ? 'accept' : 'rocket',
+              cls: on ? 'on autofire' : '',
+              tip: on ? 'On: fires rockets by itself when loaded, at the nation you fight. Click to stop.' : `Auto-fire: ${AUTO_FIRE_HELP}`,
+              run: () => ctx.act(autoFireAction(b.tile, !on)),
+            });
+          }
         }
+        const auto = built && siloAutoFire(s, b) ? ' · auto-fire on' : '';
         rows.push({
           key: `s${b.id}:${built}`,
           pic: { building: 'silo' },
           title: `Missile Silo ${k + 1}${b.level > 1 ? ` (level ${b.level})` : ''}`,
-          status: !built ? `Being built: ${Math.ceil(b.buildLeft)} s` : ready > 0 ? `${ready} of ${Math.max(1, b.level)} launch${b.level > 1 ? 'es' : ''} loaded` : `Reloading: ${Math.ceil(nextChargeIn(b))} s`,
+          status: (!built ? `Being built: ${Math.ceil(b.buildLeft)} s` : ready > 0 ? `${ready} of ${Math.max(1, b.level)} launch${b.level > 1 ? 'es' : ''} loaded` : `Reloading: ${Math.ceil(nextChargeIn(b))} s`) + auto,
           tile: b.tile,
           acts,
         });
@@ -484,7 +498,20 @@ export class ForcesPage implements DrawerPage {
         rows.push({ key: `m${u.id}`, pic: { unit: u.type === 'rocket' ? 'rocket' : 'atomBomb' }, title: unitName(u), status: unitDoing(s, me, u), tile: this.tileOf(s, u), acts: [] });
       }
       const empty = !allowed ? 'Missiles are off in this game.' : silos.length ? '' : hasTech(me, 'rocketry') ? 'Rockets: build a Missile Silo (Build menu, N).' : `Rockets: ${UNIT_TEXT.rocket.unlock.toLowerCase()}.`;
-      this.missiles.set([], rows, empty, focus);
+      // one switch for every silo (later ones too): rockets fire by themselves at your war target, never atom bombs
+      const head: Act[] = [];
+      if (allowed && hasTech(me, 'rocketry') && silos.some((b) => b.buildLeft <= 0)) {
+        const all = autoFireAll(s, me.id);
+        const n = autoFireCount(s, me.id);
+        head.push({
+          label: all ? 'Auto-fire all: on' : n.on > 0 ? `Auto-fire all (${n.on} of ${n.silos} on)` : 'Auto-fire all',
+          icon: all ? 'accept' : 'rocket',
+          cls: all ? 'on autofire' : '',
+          tip: all ? 'On: every silo, also ones you build later, fires rockets by itself. Click to stop them all.' : `Every silo, also ones you build later: ${AUTO_FIRE_HELP}`,
+          run: () => ctx.act(autoFireAction(-1, !all)),
+        });
+      }
+      this.missiles.set(head, rows, empty, focus);
     }
 
     // ---- artillery

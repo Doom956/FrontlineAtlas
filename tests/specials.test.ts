@@ -250,6 +250,7 @@ function airGame(seed = 8): GameState {
 }
 function flyBomber(s: GameState, from: Building, to: number): Unit {
   from.bombers++;
+  from.level = 2; // reach 190 tiles: these flights cross 180
   expect(launchBomber(s, 2, from.tile, to).ok).toBe(true); // AIs are frozen: straight to the sim
   return s.units[s.units.length - 1];
 }

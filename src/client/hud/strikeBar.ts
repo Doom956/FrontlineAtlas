@@ -4,11 +4,15 @@
 //   ready     full colour, brass edge (a stored count where it has one: bombers, loaded silo slots)
 //   cooling   dimmed picture, a ring filling up and the seconds left
 //   blocked   ready but missing gold, infantry ...: hover or click says what is missing
+// Bombing run, rocket and atom bomb carry their salvo size (x3 / x5 / All, bottom left; right-click cycles it,
+// hud/salvoPicker.ts).
 // Locked strikes stay out of the bar (the Forces drawer, Y, lists them with how to unlock each); the hotkeys still
 // say why not. Strikes the game's modifiers switch off are hidden for good.
 import type { GameState, Player } from '../../sim/types';
 import { iconDataUrl } from '../icons';
-import { aimStrike, allStrikes, STRIKE_ORDER, STRIKES, strikeOfMode, strikesRevealed, type StrikeId, type StrikeStatus } from '../strikes';
+import { aimStrike, allStrikes, salvoKindOf, salvoOf, STRIKE_ORDER, STRIKES, strikeOfMode, strikesRevealed, type StrikeId, type StrikeStatus } from '../strikes';
+import { salvoLabel } from '../salvoPrefs';
+import { cycleSalvo, salvoTip } from './salvoPicker';
 import { el, flash, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
 
 interface Btn {
@@ -16,6 +20,8 @@ interface Btn {
   ring: HTMLElement;
   label: HTMLElement;
   count: HTMLElement;
+  /** salvo size badge (bomb, rocket, atom bomb) */
+  size: HTMLElement;
   last: StrikeStatus | null;
   /** biggest cooldown seen since it last was ready (for a ring when the full reload time is not known) */
   peak: number;
@@ -54,14 +60,25 @@ export class StrikeBar {
       }
       const label = el('span', 'sk-l');
       const count = el('span', 'sk-n');
-      root.append(ring, img, label, count);
+      const size = el('span', 'sk-x');
+      root.append(ring, img, label, count, size);
       root.addEventListener('click', () => {
         // keep the keyboard on the map (Space pauses, letters aim) instead of on this button
         root.blur();
         this.aim(id);
       });
+      const kind = salvoKindOf(id);
+      if (kind) {
+        // right-click: the next salvo size (x1 -> x3 -> x5 -> All)
+        root.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          const n = cycleSalvo(this.ctx.ui, kind);
+          this.ctx.toast(`${info.name}: ${salvoTip(kind, n)}`, 'info');
+          this.ctx.refreshSoon();
+        });
+      }
       row.append(root);
-      this.btns.set(id, { root, ring, label, count, last: null, peak: 0 });
+      this.btns.set(id, { root, ring, label, count, size, last: null, peak: 0 });
     }
   }
 
@@ -127,8 +144,12 @@ export class StrikeBar {
         setText(b.label, '');
       }
       setText(b.count, st.count > 0 && st.state !== 'locked' ? String(st.count) : '');
+      const kind = salvoKindOf(st.id);
+      const size = kind ? salvoOf(this.ctx.ui, kind) : 1;
+      setText(b.size, kind && size !== 1 ? salvoLabel(size) : '');
       const head = st.state === 'ready' ? 'Ready' : st.state === 'cooldown' ? 'Reloading' : st.state === 'locked' ? 'Locked' : 'Not now';
-      setTip(b.root, `${info.name}  [${info.key}]\n${head}: ${st.line}\n${info.what}\n${info.counter}`);
+      const salvo = kind ? `\nSalvo ${salvoTip(kind, size)}. Right-click: x1 / x3 / x5 / All.` : '';
+      setTip(b.root, `${info.name}  [${info.key}]\n${head}: ${st.line}${salvo}\n${info.what}\n${info.counter}`);
     }
   }
 }

@@ -61,6 +61,7 @@ import { addFloater } from './uiState';
 import { allyEventKind, coalitionLeader } from './allies';
 import { swatchCss } from './hud/swatch';
 import { instruction, strikeToastText, type StrikeId } from './strikes';
+import { SalvoPicker } from './hud/salvoPicker';
 import type { Dispatch, UiState } from './uiState';
 import { GameHistory } from './summary/history';
 import { summaryView } from './summary/view';
@@ -165,6 +166,8 @@ export class Hud {
   private spawnText: HTMLElement;
   private startNowBtn: HTMLButtonElement;
   private modeChip: HTMLElement;
+  /** x1 / x3 / x5 / All while a bomb or missile is aimed (hud/salvoPicker.ts) */
+  private salvo!: SalvoPicker;
   private modeText: HTMLElement;
   /** online: "Paused by <host>" in the middle of the screen (the host also gets Resume) */
   private pauseBanner: HTMLElement;
@@ -324,7 +327,8 @@ export class Hud {
         this.ui.pendingSpearhead = null;
       } else this.ui.paused = false;
     });
-    this.modeChip.append(this.modeText, cancel);
+    this.salvo = new SalvoPicker(this.ctx);
+    this.modeChip.append(this.modeText, this.salvo.el, cancel);
     const top = el('div', 'hud-top');
     top.append(this.spawnBar, this.modeChip, this.toasts.el);
     this.pauseBanner = el('div', 'pause-banner hidden');
@@ -501,6 +505,10 @@ export class Hud {
   strike(id: StrikeId): void {
     if (this.watching) return;
     this.bar.strikes.aim(id);
+  }
+  /** A warning toast with a confirm button (input.ts: an atom bomb salvo). */
+  confirm(text: string, label: string, run: () => void): void {
+    this.ctx.confirm(text, label, run);
   }
   /** Opens a drawer (closing another); with toggle, a second press closes it. */
   openDrawer(id: DrawerId, toggle = false): void {
@@ -699,7 +707,7 @@ export class Hud {
       else if (m.kind === 'buildTankDivision') chip = 'Tank division: click one of your factories. Esc to cancel.';
       else if (m.kind === 'adminTile') chip = m.label;
       else if (m.kind === 'pillarPick') chip = m.label;
-      else if (m.kind !== 'none') chip = instruction(state, me, m);
+      else if (m.kind !== 'none') chip = instruction(state, me, m, ui);
       else if (ui.selection.length && !this.watching) chip = selectionChipText(state, ui);
       else if (ui.paused && !this.hudOpts.online) chip = 'Paused';
     }
@@ -714,6 +722,7 @@ export class Hud {
     // heartland glow on the map only while the Army drawer or the map key is open
     ui.showHeartland = !this.watching && (this.drawer.open === 'army' || this.drawer.open === 'legend');
     setText(this.modeText, chip);
+    this.salvo.update(state, me);
     // the wide research tree and doctrine picker cover the chip's spot at the top
     setVisible(this.modeChip, chip !== '' && this.drawer.open !== 'research' && this.drawer.open !== 'doctrine');
     this.modeChip.classList.toggle('paused', chip === 'Paused');

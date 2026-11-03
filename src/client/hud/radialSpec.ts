@@ -12,6 +12,7 @@ import { swatchCss } from './swatch';
 import type { RadialItem, RadialSpec } from '../radial';
 import { formatCount } from '../render/common';
 import { maxLevel } from '../simx';
+import { autoFireAction, siloAutoFire } from '../airSim';
 import { blastSummary, modeFor, STRIKE_ORDER, STRIKES, strikeAction, strikeStatus, strikeTarget, type StrikeId } from '../strikes';
 import { pct, type HudCtx } from './dom';
 import { techNear } from './commandBar';
@@ -136,6 +137,16 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
             run: () => (ui.mode = { kind: 'missile', silo: tile, missile: kind }),
           });
         }
+        if (hasTech(me, 'rocketry')) {
+          // rocket auto-fire at your war target (never atom bombs)
+          const on = siloAutoFire(state, b);
+          slices.push({
+            label: on ? 'Auto-fire off' : 'Auto-fire',
+            icon: 'rocket',
+            hint: on ? 'Stop firing rockets by itself' : 'Fires rockets by itself when loaded: forts, SAM sites, then cities of the nation you fight. Never atom bombs.',
+            run: () => ctx.act(autoFireAction(tile, !on)),
+          });
+        }
       }
       const bName = BUILDINGS[b.type].name;
       slices.push({
@@ -171,7 +182,10 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
         hint: t && t.ok ? blastSummary(state, m, t) + (t.covered ? `. ${t.covered}` : '') : STRIKES[id].what,
         disabled: st.state !== 'ready' ? st.line : t && !t.ok ? t.reason : undefined,
         run: () => {
-          if (a) ctx.act(a);
+          if (!a) return;
+          // more than one atom bomb at once asks first
+          if (a.type === 'launchMissile' && a.kind === 'atomBomb' && t && t.count > 1) ctx.confirm(`Fire ${t.count} atom bombs at once? Each wipes out everything within ${t.radius} tiles, your own land too, and every nation turns on you.`, `Fire ${t.count}`, () => ctx.act(a));
+          else ctx.act(a);
         },
       });
     }

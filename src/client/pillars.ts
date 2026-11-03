@@ -25,6 +25,7 @@ import type { Action, AirMission, Building, DivisionMode, GameState, Player, Uni
 import type { Dispatch, UiState } from './uiState';
 import { followOf, followsWar } from './follow';
 import { autoCoverHolder, coverFlying } from './trench';
+import { wingResult } from './airSim';
 
 export type PillarPick = 'bombard' | 'blockade' | 'front' | 'airSupport' | 'airStrategic' | 'airSuperiority';
 
@@ -180,6 +181,10 @@ export interface WingStatus {
   mission: AirMission;
   /** "Supporting the front with Azuria · next sortie 12 s" */
   line: string;
+  /** the latest raid's result ("Last raid: 3 buildings hit in Vesperia · 12 s ago"; '' = none yet, airSim.wingResult) */
+  last: string;
+  /** Re-buy losses applies to this mission (Support, Strategic, and Air cover on an Air doctrine's idle airfield) */
+  refillShown: boolean;
   /** bombers per sortie */
   size: number;
   bombers: number;
@@ -232,6 +237,8 @@ export function wingStatus(state: GameState, b: Building): WingStatus {
   return {
     mission,
     line,
+    last: wingResult(state, b).line,
+    refillShown: mission === 'support' || mission === 'strategic' || (mission === 'idle' && autoCoverHolder(state, b.owner)),
     size: airWingSize(state, b),
     bombers: b.bombers,
     fighters: b.fighters,

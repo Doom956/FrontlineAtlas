@@ -45,6 +45,8 @@ export interface InputDeps {
   toggleDrawer?: (id: 'army' | 'forces' | 'diplomacy' | 'events' | 'legend' | 'doctrine') => void;
   /** A strike hotkey (Z barrage, X bombing run, K paratroopers, I rocket, O atom bomb): aim it or say why not. */
   strike?: (id: StrikeId) => void;
+  /** A warning with a confirm button (an atom bomb salvo asks first). */
+  confirm?: (text: string, label: string, run: () => void) => void;
 }
 
 const DRAG_THRESHOLD = 5; // px before a press becomes a pan
@@ -356,7 +358,12 @@ export function setupInput(deps: InputDeps): () => void {
         // checked first (the same check the cursor preview shows); the launch site is picked here when not chosen
         const t = strikeTarget(s, me, ui, mode, tile);
         const a = strikeAction(mode, tile, t);
-        if (a) ok = dispatch(a).ok;
+        if (a && a.type === 'launchMissile' && a.kind === 'atomBomb' && t.count > 1 && deps.confirm) {
+          // more than one atom bomb at once: asks first (the salvo goes when confirmed)
+          const n = t.count;
+          deps.confirm(`Fire ${n} atom bombs at once? Each wipes out everything within ${t.radius} tiles, your own land too, and every nation turns on you.`, `Fire ${n}`, () => dispatch(a));
+          ok = true;
+        } else if (a) ok = dispatch(a).ok;
         else {
           ui.toast = { text: t.reason || 'Not possible here', until: performance.now() + TOAST_MS };
           ok = false;

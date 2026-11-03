@@ -1,5 +1,6 @@
 // UI state shared by input, HUD and renderer (client only, never read by the sim).
 import type { Action, ActionResult, BuildingType, GameState, NavalVariant } from '../sim/types';
+import { loadSalvo, type SalvoPrefs } from './salvoPrefs';
 
 export type TargetMode =
   | { kind: 'none' }
@@ -62,6 +63,9 @@ export interface UiState {
   /** build menu / quick bar count x1 / x3 / x5: a click places the building and queues it up to that many levels
    *  (Action buildMany; holding Shift = x5) */
   buildCount: 1 | 3 | 5;
+  /** salvo size per strike (x1 / x3 / x5 / All = 0): how many bombers / missiles one click sends (salvoPrefs.ts;
+   *  bombs and rockets are remembered, atom bombs start at x1) */
+  salvo: SalvoPrefs;
 }
 
 /** A short-lived text rising from a map position. */
@@ -106,6 +110,7 @@ export function defaultUiState(): UiState {
     buildingSel: { ids: [], off: [], levels: 1 },
     debugOverlay: false,
     buildCount: 1,
+    salvo: loadSalvo(),
   };
 }
 

@@ -375,5 +375,12 @@ export function hashFollow(state: GameState, h: number, mixInt: (h: number, v: n
   for (const v of f.targets) h = mixInt(h, v);
   h = mixInt(h, f.recon.length);
   for (const v of f.recon) h = mixInt(h, v);
+  // Rocket auto-fire (airstrike.ts), once set.
+  if (f.fire || f.fireAll) {
+    h = mixInt(h, (f.fire?.length ?? 0) | 0x40000);
+    for (const v of f.fire ?? []) h = mixInt(h, v);
+    h = mixInt(h, f.fireAll?.length ?? 0);
+    for (const v of f.fireAll ?? []) h = mixInt(h, v);
+  }
   return h;
 }

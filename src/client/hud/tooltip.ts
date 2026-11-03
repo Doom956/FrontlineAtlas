@@ -15,7 +15,7 @@ import { isAttackable, troopsToSend, troopSum } from '../input';
 import { swatchCss } from './swatch';
 import { formatCount } from '../render/common';
 import { armyOf, barrageRange, BuildTargetCache, maxLevel } from '../simx';
-import { blastSummary, ownHitWarning, STRIKES, strikeOfMode, strikeTarget } from '../strikes';
+import { blastSummary, ownHitWarning, STRIKES, strikeOfMode, strikeRoleLine, strikeTarget } from '../strikes';
 import { iconDataUrl } from '../icons';
 import { el, fmtSeconds, pct, setVisible, type HudCtx } from './dom';
 import { relationOf } from './drawers';
@@ -60,7 +60,7 @@ export class MapTooltip {
     const probe = this.ctx.probe();
     const uid = ui.mode.kind === 'none' && probe && ui.hoverPx ? probe.unitAt(ui.hoverPx.x, ui.hoverPx.y) : -1;
     const unit = uid >= 0 ? state.units.find((u) => u.id === uid && u.hp > 0) : undefined;
-    const key = `${tile}|${unit ? unit.id : -1}|${ui.attackShare}|${ui.attackMixMode}|${ui.mode.kind}|${ui.mode.kind === 'build' ? ui.mode.building : ''}|${effectiveCount(ui, shiftHeld())}|${ui.selection.length > 0}`;
+    const key = `${tile}|${unit ? unit.id : -1}|${ui.attackShare}|${ui.attackMixMode}|${ui.mode.kind}|${ui.mode.kind === 'build' ? ui.mode.building : ''}|${effectiveCount(ui, shiftHeld())}|${ui.selection.length > 0}|${ui.mode.kind === 'missile' ? ui.mode.missile : ''}|${ui.salvo?.bomb}${ui.salvo?.rocket}${ui.salvo?.atomBomb}`;
     if (force || key !== this.key) {
       this.key = key;
       if (unit) this.unitCard(state, me, unit);
@@ -287,18 +287,29 @@ export class MapTooltip {
     const rows: HTMLElement[] = [];
     if (t.ok) {
       const title =
-        id === 'barrage' ? 'Shell this area' : id === 'bomb' ? 'Bomb this area' : id === 'paradrop' ? `Drop ${formatCount(t.troops)} paratroopers here` : id === 'rocket' ? 'Fire a rocket here' : 'Drop the atom bomb here';
+        id === 'barrage'
+          ? 'Shell this area'
+          : id === 'bomb'
+            ? t.count > 1 ? `Send ${t.count} bombers here` : 'Bomb this area'
+            : id === 'paradrop'
+              ? `Drop ${formatCount(t.troops)} paratroopers here`
+              : id === 'rocket'
+                ? t.count > 1 ? `Fire ${t.count} rockets here` : 'Fire a rocket here'
+                : t.count > 1 ? `Drop ${t.count} atom bombs here` : 'Drop the atom bomb here';
       rows.push(this.line(pic, title, blastSummary(state, m, t), 'head'));
+      const role = strikeRoleLine(state, t, tile);
+      if (role) rows.push(el('div', 'mt-hint', role));
       const own = ownHitWarning(m, t);
       if (own) rows.push(el('div', 'mt-warn', own));
       if (t.covered) rows.push(el('div', 'mt-warn', t.covered));
-      rows.push(el('div', 'mt-hint', 'Click to fire. Shift: fire again. Esc or right-click: cancel.'));
+      const salvo = id === 'bomb' || id === 'rocket' || id === 'atomBomb' ? ' Salvo size: top bar.' : '';
+      rows.push(el('div', 'mt-hint', `Click to fire. Shift: fire again.${salvo} Esc or right-click: cancel.`));
     } else {
       const help =
         id === 'barrage'
           ? `Guns reach ${barrageRange(me)} tiles from your border: the lit zone`
-          : id === 'paradrop'
-            ? 'Pick enemy or empty land inside a gold ring'
+          : id === 'paradrop' || id === 'bomb'
+            ? id === 'bomb' ? 'Pick enemy land inside a gold ring (your bombers\' reach)' : 'Pick enemy or empty land inside a gold ring'
             : 'Pick enemy land';
       rows.push(this.line(pic, t.reason || 'Not possible here', help, 'head'));
       rows.push(el('div', 'mt-hint', 'Esc or right-click: cancel.'));

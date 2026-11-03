@@ -2,7 +2,7 @@
 // (game rules are checked by the sim on every client). Valid messages are rebuilt field by field, so unknown extra
 // fields are never relayed to other clients.
 
-import { BUILDINGS, MAX_GROUP_UNITS, TECHS, UPGRADE_SELECTION_MAX } from '../src/sim/config';
+import { BUILDINGS, MAX_GROUP_UNITS, STRIKE, TECHS, UPGRADE_SELECTION_MAX } from '../src/sim/config';
 import { ADMIN_OP_LIST } from '../src/sim/admin';
 import { DEFAULT_MODIFIERS, validateSetup } from '../src/sim/setup';
 import { AIR_MISSIONS, DIVISION_MODES, DOCTRINE_IDS, NAVAL_VARIANTS, WARSHIP_STANCES } from '../src/sim/types';
@@ -60,7 +60,9 @@ type FieldSpec =
   /** any finite number within +-MAX_AMOUNT (owner console amounts may be negative) */
   | { k: 'signed'; optional?: boolean }
   /** short identifier (owner console key: resource, tech, building, doctrine ...) */
-  | { k: 'word'; optional?: boolean };
+  | { k: 'word'; optional?: boolean }
+  /** salvo size: an integer 0..STRIKE.maxSalvo (0 = every ready launcher) */
+  | { k: 'count'; optional?: boolean };
 
 /** One spec per Action type, with exactly that action's fields (tsc fails when the Action union changes). */
 type ActionSpecs = {
@@ -87,8 +89,9 @@ const ACTION_SPECS: ActionSpecs = {
   buildWarship: { port: { k: 'siteOrAuto' }, tile: { k: 'tile', optional: true }, variant: { k: 'enum', values: NAVAL_VARIANTS, optional: true } },
   moveWarship: { unitId: ID, tile: TILE },
   buildAircraft: { airfield: ID, kind: { k: 'enum', values: ['bomber', 'fighter'] } },
-  bomb: { airfield: ID, tile: TILE },
-  launchMissile: { silo: ID, kind: { k: 'enum', values: ['rocket', 'atomBomb'] }, tile: TILE },
+  // Salvos (protocol 14): a site of -1 = every own site; count = how many fly (absent 1, 0 = every ready one).
+  bomb: { airfield: { k: 'siteOrAuto' }, tile: TILE, count: { k: 'count', optional: true } },
+  launchMissile: { silo: { k: 'siteOrAuto' }, kind: { k: 'enum', values: ['rocket', 'atomBomb'] }, tile: TILE, count: { k: 'count', optional: true } },
   paradrop: { airfield: TILE, tile: TILE, troops: { k: 'amount' } },
   barrage: { tile: TILE },
   requestAlliance: { to: PLAYER },
@@ -136,6 +139,7 @@ const ACTION_SPECS: ActionSpecs = {
   },
   reconFlight: { airfield: { k: 'siteOrAuto' }, tile: TILE },
   setAutoRecon: { airfield: { k: 'siteOrAuto' }, on: { k: 'bool' } },
+  setAutoFire: { silo: { k: 'siteOrAuto' }, on: { k: 'bool' } },
 };
 
 function checkField(spec: FieldSpec, v: unknown): Result<unknown> {
@@ -173,6 +177,9 @@ function checkField(spec: FieldSpec, v: unknown): Result<unknown> {
     case 'signed':
       if (v === undefined && spec.optional) return ok(undefined);
       return isNum(v, -MAX_AMOUNT, MAX_AMOUNT) ? ok(v) : fail('bad number');
+    case 'count':
+      if (v === undefined && spec.optional) return ok(undefined);
+      return isInt(v, 0, STRIKE.maxSalvo) ? ok(v) : fail(`bad count (0..${STRIKE.maxSalvo})`);
     case 'word':
       if (v === undefined && spec.optional) return ok(undefined);
       return typeof v === 'string' && /^[A-Za-z0-9_]{1,32}$/.test(v) ? ok(v) : fail('bad key');

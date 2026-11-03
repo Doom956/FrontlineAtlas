@@ -64,6 +64,7 @@ import {
   MIN_ATTACK_TROOPS,
   PARADROP_MIN_TROOPS,
   SPAWN_SECONDS,
+  STRIKE,
   SUPPLY_RANGE,
   TECHS,
   ARSENAL_PRICES,
@@ -2373,14 +2374,20 @@ function airAndMissiles(ctx: Ctx): void {
   }
 
   if (!hasTech(p, 'rocketry')) return;
+  // Rockets: every ready silo that doesn't nuke fires at the best target, as one salvo (airstrike.ts).
+  let ready = 0;
   for (const silo of buildingsOf(state, id, 'silo')) {
     if (silo.buildLeft > 0 || chargesReady(silo) < 1) continue;
     if (maybeNuke(ctx, silo.tile)) continue;
-    const c = UNITS.rocket;
-    if (!fighting.length || p.gold < c.gold + 600 || p.iron < c.iron || p.oil < c.oil) continue;
-    const t = strikeTarget(ctx, ['silo', 'sam', 'fort', 'airfield', 'factory'], -1);
-    if (t >= 0) applyAction(state, id, { type: 'launchMissile', silo: silo.tile, kind: 'rocket', tile: t });
+    ready++;
   }
+  const c = UNITS.rocket;
+  if (!ready || !fighting.length) return;
+  // Each launch keeps 600 gold back, as before.
+  const afford = Math.min(ready, Math.floor((p.gold - 600) / c.gold), c.iron > 0 ? Math.floor(p.iron / c.iron) : ready, c.oil > 0 ? Math.floor(p.oil / c.oil) : ready);
+  if (afford < 1) return;
+  const t = strikeTarget(ctx, ['silo', 'sam', 'fort', 'airfield', 'factory'], -1);
+  if (t >= 0) applyAction(state, id, { type: 'launchMissile', silo: -1, kind: 'rocket', tile: t, count: Math.min(afford, STRIKE.maxSalvo) });
 }
 
 /**

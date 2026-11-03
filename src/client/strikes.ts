@@ -30,7 +30,8 @@ import { hasTech } from '../sim/tech';
 import type { Action, Building, GameEvent, GameState, Player, UnitType } from '../sim/types';
 import type { IconId } from './icons';
 import { formatCount } from './render/common';
-import { airfieldsNear, barrageCheck, paradropRange, planParadrop } from './simx';
+import { bombReach, bomberRadiusOf, previewStrike, salvoAction, salvoLabel, type SalvoKind, type SalvoSize } from './airSim';
+import { barrageCheck, paradropRange, planParadrop } from './simx';
 import type { TargetMode, UiState } from './uiState';
 
 export type StrikeId = 'barrage' | 'bomb' | 'paradrop' | 'rocket' | 'atomBomb';
@@ -70,7 +71,7 @@ export const STRIKES: Record<StrikeId, StrikeInfo> = {
     key: 'X',
     icon: 'bomber',
     line: 'bomb',
-    what: `A bomber wrecks buildings and kills troops within ${BOMBER_RADIUS} tiles, then flies home.`,
+    what: `Bombers wreck buildings and kill troops within ${BOMBER_RADIUS} tiles (more with Strategic Bombing), then fly home. Your Air path counts: Heavy Bombers hit harder, Ground-attack planes hit troops at the front harder.`,
     counter: 'SAM sites and enemy fighters shoot bombers down on the way.',
   },
   paradrop: {
@@ -168,6 +169,22 @@ function bomberBackIn(state: GameState, me: Player): number {
 
 const lockedFlight = 'Buy Flight in the Arsenal (T), then build an Airfield';
 
+/** A radius for text: whole tiles, one decimal when it has one (Night Bombing 4.3). */
+function fmtR(r: number): string {
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
+}
+
+/** The salvo kind a strike fires with (bomb, rocket, atom bomb), or null (barrage, paratroopers). */
+export function salvoKindOf(id: StrikeId | null): SalvoKind | null {
+  return id === 'bomb' || id === 'rocket' || id === 'atomBomb' ? id : null;
+}
+
+/** The salvo size picked for this strike (x1 when none is set). */
+export function salvoOf(ui: Pick<UiState, 'salvo'> | undefined, kind: SalvoKind): SalvoSize {
+  const v = ui?.salvo?.[kind];
+  return v === 1 || v === 3 || v === 5 || v === 0 ? v : 1;
+}
+
 /** Where a strike stands for the player right now. */
 export function strikeStatus(state: GameState, me: Player, id: StrikeId): StrikeStatus {
   const st: StrikeStatus = { id, allowed: true, state: 'ready', left: 0, total: 0, line: '', count: -1, started: false };
@@ -196,7 +213,7 @@ export function strikeStatus(state: GameState, me: Player, id: StrikeId): Strike
       if (!fields.length) return lock(building(state, me, 'airfield') ? 'Your Airfield is being built: then build a bomber there' : 'Build an Airfield, then build a bomber there');
       const stored = fields.reduce((n, b) => n + b.bombers, 0);
       st.count = stored;
-      if (stored > 0) return { ...st, line: `${stored} bomber${stored === 1 ? '' : 's'} ready. Click enemy land: bombs hit ${BOMBER_RADIUS} tiles around.` };
+      if (stored > 0) return { ...st, line: `${stored} bomber${stored === 1 ? '' : 's'} ready. Click enemy land: bombs hit ${fmtR(bomberRadiusOf(state, me.id))} tiles around.` };
       const back = bomberBackIn(state, me);
       if (back >= 0) return cool(back, 0, `Your bombers are flying: the next is home in about ${Math.max(1, Math.ceil(back))} s`);
       return lock('Build a bomber at your Airfield: Build menu (Tab), the Airfield, or the Forces drawer (Y)');
@@ -285,7 +302,7 @@ export function strikeOfMode(m: TargetMode): StrikeId | null {
 }
 
 /** The line at the top of the screen while aiming (ends with how to cancel). */
-export function instruction(state: GameState, me: Player, m: TargetMode): string {
+export function instruction(state: GameState, me: Player, m: TargetMode, ui?: Pick<UiState, 'salvo'>): string {
   const id = strikeOfMode(m);
   if (!id) return '';
   const tail = ' Esc to cancel.';
@@ -293,13 +310,13 @@ export function instruction(state: GameState, me: Player, m: TargetMode): string
     case 'barrage':
       return `Barrage: click enemy land within ${barrageRange(me)} tiles of your border.${tail}`;
     case 'bomb':
-      return `Bombing run: click enemy land. Bombs hit ${BOMBER_RADIUS} tiles around.${tail}`;
+      return `Bombing run (${salvoLabel(salvoOf(ui, 'bomb'))}): click enemy land. Bombs hit ${fmtR(bomberRadiusOf(state, me.id))} tiles around.${tail}`;
     case 'paradrop':
       return `Paratroopers: click enemy or empty land inside a gold ring.${tail}`;
     case 'rocket':
-      return `Rocket: click enemy land anywhere on the map.${tail}`;
+      return `Rocket (${salvoLabel(salvoOf(ui, 'rocket'))}): click enemy land anywhere on the map.${tail}`;
     case 'atomBomb':
-      return `Atom bomb: click a target. It hits all within ${ATOM_RADIUS} tiles, yours too.${tail}`;
+      return `Atom bomb (${salvoLabel(salvoOf(ui, 'atomBomb'))}): click a target. It hits all within ${ATOM_RADIUS} tiles, yours too.${tail}`;
   }
 }
 
@@ -333,6 +350,28 @@ export interface StrikeTarget {
   victim: number;
   /** a SAM site or fighters cover the route or target (planes and missiles only) */
   covered: string;
+  /** bombs and missiles: how many fly with this click (the salvo), how many are ready in reach, from how many sites */
+  count: number;
+  ready: number;
+  sites: number;
+  /** the launch sites that fly (airfield / silo tiles, first = `from`) */
+  siteTiles: number[];
+  /** the salvo picked (x1 / x3 / x5 / All = 0) */
+  size: SalvoSize;
+  /** bombs: 'support' (a front strike, aimed ahead of your push) or 'raid'; missiles: their kind; '' = not a bomb or missile */
+  role: string;
+  /** where it aims (a front strike leads the push: may differ from the clicked tile; -1 = the click) */
+  aim: number;
+  /** blast radius (tiles) and the expected result of the whole salvo (airstrike.strikePreview) */
+  radius: number;
+  kills: number;
+  wrecks: number;
+  /** support: defence cut in the zone and how long it lasts (s); raid: income cut and seconds; Strategic Bombing gold burnt */
+  zoneCut: number;
+  zoneSeconds: number;
+  incomeCut: number;
+  raidSeconds: number;
+  burn: number;
 }
 
 function hostileTo(state: GameState, me: number, o: number): boolean {
@@ -391,25 +430,14 @@ function coverOnRoute(state: GameState, me: number, from: number, to: number, pl
   return '';
 }
 
-function d2(w: number, a: number, b: number): number {
-  const dx = (a % w) - (b % w);
-  const dy = ((a / w) | 0) - ((b / w) | 0);
-  return dx * dx + dy * dy;
-}
 
-/** Why the sim would refuse a bomb or missile on `tile` because of who owns it ('' = fine). */
-function ownerReason(state: GameState, me: number, tile: number, missile: boolean): string {
-  const o = state.map.owner[tile];
-  if (o === me) return 'That is your own land';
-  if (o === 0) return missile ? '' : 'Nobody to bomb there';
-  if (!state.players[o]?.alive) return 'That nation is gone';
-  if (areAllied(state, me, o)) return missile ? 'You cannot fire at an ally' : 'You cannot bomb an ally';
-  return peaceReason(state, me, o) ?? '';
-}
 
 /** What a click with this target mode on `tile` would do. */
 export function strikeTarget(state: GameState, me: Player, ui: UiState, m: TargetMode, tile: number): StrikeTarget {
-  const t: StrikeTarget = { ok: false, reason: '', from: -1, troops: 0, enemyTiles: 0, enemyBuildings: 0, ownTiles: 0, ownBuildings: 0, victim: -1, covered: '' };
+  const t: StrikeTarget = {
+    ok: false, reason: '', from: -1, troops: 0, enemyTiles: 0, enemyBuildings: 0, ownTiles: 0, ownBuildings: 0, victim: -1, covered: '',
+    count: 0, ready: 0, sites: 0, siteTiles: [], size: 1, role: '', aim: -1, radius: 0, kills: 0, wrecks: 0, zoneCut: 0, zoneSeconds: 0, incomeCut: 0, raidSeconds: 0, burn: 0,
+  };
   const map = state.map;
   if (tile < 0 || tile >= map.owner.length) return { ...t, reason: 'Pick a tile on the map' };
   const w = map.width;
@@ -427,42 +455,54 @@ export function strikeTarget(state: GameState, me: Player, ui: UiState, m: Targe
     if (!plan.reason && plan.airfield >= 0) t.covered = coverOnRoute(state, me.id, plan.airfield, tile, true);
     return { ...t, ok: plan.reason === '', reason: plan.reason };
   }
-  if (m.kind === 'bomb') {
-    let from = m.airfield;
-    if (from < 0) {
-      const ready = airfieldsNear(state, me.id, tile).filter((b) => b.bombers > 0);
-      from = ready.length ? ready[0].tile : -1;
-    }
-    t.from = from;
-    const b = from >= 0 ? buildingAt(state, from) : undefined;
-    let why = '';
-    if (!b || b.owner !== me.id || b.type !== 'airfield' || b.buildLeft > 0) why = 'Bombers fly from a finished Airfield of yours';
-    else if (b.bombers < 1) why = 'No bombers at this airfield';
-    else why = ownerReason(state, me.id, tile, false);
-    blast(state, me.id, tile, BOMBER_RADIUS, t, false);
-    if (!why && t.enemyTiles === 0) why = 'Nothing of the enemy to hit there';
-    if (!why) t.covered = coverOnRoute(state, me.id, from, tile, true);
-    return { ...t, ok: why === '', reason: why };
-  }
-  // missiles
-  const kind = m.kind === 'missile' ? m.missile : 'rocket';
-  let from = m.kind === 'missile' ? m.silo : -1;
-  if (from < 0) {
-    const silos = buildingsOf(state, me.id, 'silo')
-      .filter((b) => b.buildLeft <= 0 && chargesReady(b) > 0)
-      .sort((a, b) => d2(w, a.tile, tile) - d2(w, b.tile, tile));
-    from = silos.length ? silos[0].tile : -1;
-  }
-  t.from = from;
-  const silo = from >= 0 ? buildingAt(state, from) : undefined;
-  let why = '';
-  if (!silo || silo.owner !== me.id || silo.type !== 'silo' || silo.buildLeft > 0) why = 'All your silos are reloading';
-  else if (chargesReady(silo) < 1) why = `The silo is reloading (${Math.ceil(nextChargeIn(silo))} s)`;
-  else why = ownerReason(state, me.id, tile, true) || payLine(me, kind);
-  blast(state, me.id, tile, kind === 'atomBomb' ? ATOM_RADIUS : ROCKET_RADIUS, t, kind === 'atomBomb');
-  if (!why && t.enemyTiles === 0) why = 'Nothing of the enemy to hit there';
-  if (!why) t.covered = coverOnRoute(state, me.id, from, tile, false);
+  const kind: SalvoKind = m.kind === 'bomb' ? 'bomb' : m.kind === 'missile' ? m.missile : 'rocket';
+  const fixed = m.kind === 'bomb' ? m.airfield : m.kind === 'missile' ? m.silo : -1;
+  const size = salvoOf(ui, kind);
+  // the sim's own preview (airstrike.strikePreview): who flies, where it aims and what it does
+  const { pv, ready } = previewStrike(state, me.id, kind, tile, size, fixed);
+  t.size = size;
+  t.ready = ready;
+  t.count = pv.launchers;
+  t.sites = pv.sites.length;
+  t.siteTiles = pv.sites;
+  t.from = pv.sites.length ? pv.sites[0] : -1;
+  t.role = pv.role;
+  t.aim = pv.aim;
+  t.radius = pv.radius;
+  t.kills = pv.kills;
+  t.wrecks = pv.buildingsHit;
+  t.zoneCut = pv.zoneCut;
+  t.zoneSeconds = pv.zoneSeconds;
+  t.incomeCut = pv.raidCut;
+  t.raidSeconds = pv.raidSeconds;
+  t.burn = pv.goldBurn;
+  t.victim = pv.victim > 0 ? pv.victim : -1;
+  t.enemyTiles = pv.enemyTiles;
+  t.enemyBuildings = pv.enemyBuildings;
+  t.ownTiles = pv.ownTiles;
+  t.ownBuildings = pv.ownBuildings;
+  let why = pv.reason;
+  if (kind === 'bomb' && !pv.launchers && fixed < 0) why = tooFar(state, me.id, tile) || why;
+  if (!why) t.covered = coverOnRoute(state, me.id, t.from, t.aim >= 0 ? t.aim : tile, kind === 'bomb');
   return { ...t, ok: why === '', reason: why };
+}
+
+/** Bombers stored but none in reach of tile: "Too far: your bombers reach 60 tiles, this is 85 away" ('' = not that). */
+function tooFar(state: GameState, pid: number, tile: number): string {
+  const w = state.map.width;
+  let best = '';
+  let gap = Infinity;
+  for (const b of buildingsOf(state, pid, 'airfield')) {
+    if (b.buildLeft > 0 || b.bombers < 1) continue;
+    const d = Math.hypot((b.tile % w) - (tile % w), ((b.tile / w) | 0) - ((tile / w) | 0));
+    const r = bombReach(state, b);
+    if (d <= r) return '';
+    if (d - r < gap) {
+      gap = d - r;
+      best = `Too far: your nearest bombers reach ${Math.round(r)} tiles, this is ${Math.round(d)} away (the gold rings)`;
+    }
+  }
+  return best;
 }
 
 
@@ -475,24 +515,65 @@ export function strikeAction(m: TargetMode, tile: number, t: StrikeTarget): Acti
     case 'paradrop':
       return { type: 'paradrop', airfield: t.from, tile, troops: t.troops };
     case 'bomb':
-      return { type: 'bomb', airfield: t.from, tile };
+      return salvoAction('bomb', t.from, tile, t.size, m.airfield);
     case 'missile':
-      return { type: 'launchMissile', silo: t.from, kind: m.missile, tile };
+      return salvoAction(m.missile, t.from, tile, t.size, m.silo);
     default:
       return null;
   }
 }
 
-/** One short line on what the strike would hit there ("Hits 3 buildings and 120 tiles of Ardania"). */
+/** One short line on what the strike would hit there ("3 bombers from 2 airfields: ~16k troops, 2 buildings of Ardania"). */
 export function blastSummary(state: GameState, m: TargetMode, t: StrikeTarget): string {
   const victim = t.victim > 0 ? state.players[t.victim]?.name ?? 'the enemy' : 'the enemy';
   if (m.kind === 'paradrop') return `${formatCount(t.troops)} infantry land and attack from here`;
-  const parts: string[] = [];
-  if (t.enemyBuildings) parts.push(`${t.enemyBuildings} building${t.enemyBuildings === 1 ? '' : 's'}`);
-  parts.push(`${formatCount(t.enemyTiles)} tiles of ${victim}`);
-  let s = `Hits ${parts.join(' and ')}`;
-  if (m.kind === 'barrage') s += `. Lands in ${BARRAGE_DELAY} s`;
+  if (m.kind === 'barrage') {
+    const parts: string[] = [];
+    if (t.enemyBuildings) parts.push(`${t.enemyBuildings} building${t.enemyBuildings === 1 ? '' : 's'}`);
+    parts.push(`${formatCount(t.enemyTiles)} tiles of ${victim}`);
+    return `Hits ${parts.join(' and ')}. Lands in ${BARRAGE_DELAY} s`;
+  }
+  return `${salvoHead(m, t)}: ${effectText(m, t, victim)}`;
+}
+
+/** "3 bombers from 2 airfields" / "1 rocket" / "2 of 5 rockets (the rest reloading)". */
+export function salvoHead(m: TargetMode, t: StrikeTarget): string {
+  const unit = m.kind === 'bomb' ? 'bomber' : m.kind === 'missile' && m.missile === 'atomBomb' ? 'atom bomb' : 'rocket';
+  const n = Math.max(1, t.count);
+  const want = t.size === 0 ? t.ready : t.size;
+  const site = m.kind === 'bomb' ? 'airfield' : 'silo';
+  let s = `${n} ${unit}${n === 1 ? '' : 's'}`;
+  if (t.sites > 1) s += ` from ${t.sites} ${site}s`;
+  if (want > n) s += ` (${want - n} more not ready${m.kind === 'missile' && t.ready >= want ? ' or not paid for' : ''})`;
   return s;
+}
+
+function effectText(m: TargetMode, t: StrikeTarget, victim: string): string {
+  const atom = m.kind === 'missile' && m.missile === 'atomBomb';
+  const parts: string[] = [];
+  if (t.kills >= 1) parts.push(`~${formatCount(t.kills)} troops`);
+  const wrecks = atom ? t.enemyBuildings : Math.round(t.wrecks);
+  if (wrecks > 0) parts.push(`~${wrecks} building${wrecks === 1 ? '' : 's'}`);
+  if (atom || !parts.length) parts.push(`${formatCount(t.enemyTiles)} tiles`);
+  let s = `${parts.join(', ')} of ${victim} within ${fmtR(t.radius)} tiles`;
+  if (t.zoneCut > 0) s += `; their defence there −${Math.round(t.zoneCut * 100)}% for ${Math.round(t.zoneSeconds)} s`;
+  if (t.incomeCut > 0) s += `; their income −${Math.round(t.incomeCut * 100)}% for ${Math.round(t.raidSeconds)} s`;
+  if (t.burn >= 1) s += `; ${formatCount(t.burn)} gold burnt`;
+  return s;
+}
+
+/** Bombs: what kind of strike this click is ("Front strike, aimed ahead of your push" / "Raid"); '' for missiles. */
+export function strikeRoleLine(state: GameState, t: StrikeTarget, tile: number): string {
+  if (t.role === 'support') {
+    if (t.aim >= 0 && t.aim !== tile) {
+      const w = state.map.width;
+      const d = Math.round(Math.hypot((t.aim % w) - (tile % w), ((t.aim / w) | 0) - ((tile / w) | 0)));
+      return `Front strike: aims ${d} tile${d === 1 ? '' : 's'} ahead, where your push will be when they arrive`;
+    }
+    return 'Front strike: cuts their defence for your push';
+  }
+  if (t.role === 'raid') return 'Raid: wrecks buildings and cuts their income';
+  return '';
 }
 
 /** Atom bomb only: what of your own the blast would hit ('' = nothing). */

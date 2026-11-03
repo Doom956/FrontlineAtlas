@@ -2,7 +2,7 @@
 // floating texts, the hovered tile, the selection and target-mode previews (build ghost, strike circles, routes).
 import { buildingAt } from '../../sim/buildings';
 import { barrageRadius } from '../../sim/barrage';
-import { ATOM_CORE_RADIUS, ATOM_RADIUS, BARRAGE_DELAY, BARRAGE_RADIUS, BOMBER_RADIUS, BUILDINGS, FORT_RADIUS_TECH, ROCKET_RADIUS, TICKS_PER_SECOND, UNITS } from '../../sim/config';
+import { ATOM_CORE_RADIUS, ATOM_RADIUS, BARRAGE_DELAY, BARRAGE_RADIUS, BUILDINGS, FORT_RADIUS_TECH, ROCKET_RADIUS, TICKS_PER_SECOND, UNITS } from '../../sim/config';
 import { barrageRange } from '../../sim/barrage';
 import { airfieldRadius, isDisabled, samRadius } from '../../sim/buildings';
 import { areAllied } from '../../sim/diplomacy';
@@ -15,6 +15,7 @@ import { drawMarker, type BuildingIconId } from '../icons';
 import type { Snap } from '../placement';
 import { FLOATER_MS, type UiState } from '../uiState';
 import { barrageReach, strikeOfMode, strikeTarget, type StrikeTarget } from '../strikes';
+import { bombReach, bomberRadiusOf } from '../airSim';
 import { bulkPreviews, bulkPreviewText, effectiveCount } from '../hud/buildMenu';
 import { shiftHeld } from '../hud/quickBar';
 import { clamp, css, dashedLine, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, mix, pill, setTracking, type RGB } from './common';
@@ -277,7 +278,7 @@ export class Overlays {
         this.etas.set(u.id, eta0);
       }
       const s = cam.tileToScreen(tx, ty);
-      const outer = kind === 'atomBomb' ? ATOM_RADIUS : kind === 'rocket' ? ROCKET_RADIUS : kind === 'transportPlane' ? 2.5 : BOMBER_RADIUS;
+      const outer = kind === 'atomBomb' ? ATOM_RADIUS : kind === 'rocket' ? ROCKET_RADIUS : kind === 'transportPlane' ? 2.5 : bomberRadiusOf(state, u.owner);
       const R = outer * z;
       if (s.x < -R - 20 || s.y < -R - 20 || s.x > cam.viewW + R + 20 || s.y > cam.viewH + R + 20) continue;
       // strikes between others stay faint and vanish when they would only be specks
@@ -502,7 +503,7 @@ export class Overlays {
     const me = state.players[state.humanId];
     if (!me || !strikeOfMode(ui.mode)) return null;
     const m = ui.mode;
-    const key = `${tile}|${m.kind}|${m.kind === 'missile' ? m.missile + m.silo : m.kind === 'bomb' || m.kind === 'paradrop' ? m.airfield : ''}|${state.tick >> 2}|${ui.attackShare}`;
+    const key = `${tile}|${m.kind}|${m.kind === 'missile' ? m.missile + m.silo : m.kind === 'bomb' || m.kind === 'paradrop' ? m.airfield : ''}|${state.tick >> 2}|${ui.attackShare}|${ui.salvo?.bomb}${ui.salvo?.rocket}${ui.salvo?.atomBomb}`;
     if (key !== this.targetKey || !this.target) {
       this.targetKey = key;
       this.target = strikeTarget(state, me, ui, m, tile);
@@ -672,18 +673,43 @@ export class Overlays {
       }
       case 'bomb': {
         const t = this.check(state, ui, hover);
-        if (t?.from !== undefined) lineFrom(t.from, 'rgba(255,255,255,0.6)');
-        this.aimDisc(ctx, cam, hs.x, hs.y, !!t?.ok, [{ radius: BOMBER_RADIUS }], `Bombing run · radius ${BOMBER_RADIUS} tiles`);
+        // the reach of each airfield with bombers (dim: none ready there)
+        for (const b of state.buildings.values()) {
+          if (b.owner !== state.humanId || b.type !== 'airfield' || b.buildLeft > 0) continue;
+          if (mode.airfield >= 0 && b.tile !== mode.airfield) continue;
+          const c = cam.tileToScreen((b.tile % this.w) + 0.5, ((b.tile / this.w) | 0) + 0.5);
+          ctx.beginPath();
+          ctx.arc(c.x, c.y, bombReach(state, b) * z, 0, Math.PI * 2);
+          ctx.setLineDash([6, 5]);
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = b.bombers > 0 ? 'rgba(214,170,60,0.7)' : 'rgba(200,200,200,0.35)';
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        // a front strike aims ahead of the push: the disc sits where the bombs will fall, a dashed line from the cursor
+        const aim = t && t.ok && t.aim >= 0 && t.aim < n ? t.aim : hover;
+        const as = aim === hover ? hs : cam.tileToScreen((aim % this.w) + 0.5, ((aim / this.w) | 0) + 0.5);
+        for (const f of t?.siteTiles.length ? t.siteTiles : t ? [t.from] : []) {
+          if (f < 0 || f >= n) continue;
+          const a = cam.tileToScreen((f % this.w) + 0.5, ((f / this.w) | 0) + 0.5);
+          dashedLine(ctx, a.x, a.y, as.x, as.y, 'rgba(255,255,255,0.6)');
+        }
+        if (aim !== hover) dashedLine(ctx, hs.x, hs.y, as.x, as.y, 'rgba(214,170,60,0.9)');
+        const r = t?.radius || bomberRadiusOf(state, state.humanId);
+        const what = t && t.count > 1 ? `${t.count} bombers` : 'Bombing run';
+        const role = t?.role === 'support' ? ' · front strike' : t?.role === 'raid' ? ' · raid' : '';
+        this.aimDisc(ctx, cam, as.x, as.y, !!t?.ok, [{ radius: r }], `${what}${role} · radius ${Number.isInteger(r) ? r : r.toFixed(1)} tiles`);
         break;
       }
       case 'missile': {
         const t = this.check(state, ui, hover);
-        if (t?.from !== undefined) lineFrom(t.from, 'rgba(255,255,255,0.6)');
+        for (const f of t?.siteTiles.length ? t.siteTiles : t ? [t.from] : []) lineFrom(f, 'rgba(255,255,255,0.6)');
         const ok = !!t?.ok;
+        const many = t && t.count > 1 ? ` x${t.count}` : '';
         if (mode.missile === 'atomBomb') {
-          this.aimDisc(ctx, cam, hs.x, hs.y, ok, [{ radius: ATOM_RADIUS }, { radius: ATOM_CORE_RADIUS, core: true }], `Atom bomb · core ${ATOM_CORE_RADIUS} · blast ${ATOM_RADIUS} tiles`);
+          this.aimDisc(ctx, cam, hs.x, hs.y, ok, [{ radius: ATOM_RADIUS }, { radius: ATOM_CORE_RADIUS, core: true }], `Atom bomb${many} · core ${ATOM_CORE_RADIUS} · blast ${ATOM_RADIUS} tiles`);
         } else {
-          this.aimDisc(ctx, cam, hs.x, hs.y, ok, [{ radius: ROCKET_RADIUS }], `Rocket · radius ${ROCKET_RADIUS} tiles`);
+          this.aimDisc(ctx, cam, hs.x, hs.y, ok, [{ radius: ROCKET_RADIUS }], `Rocket${many} · radius ${ROCKET_RADIUS} tiles`);
         }
         break;
       }

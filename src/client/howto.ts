@@ -69,9 +69,9 @@ const min = (seconds: number): number => Math.round(seconds / 60);
 /** One line per strike: what it needs first and what it does. */
 const STRIKE_HELP: Record<StrikeId, string> = {
   barrage: `Needs an Arsenal and ${n(BARRAGE_MIN_ARTILLERY)} artillery. Shells enemy land up to ${BARRAGE_RANGE} tiles from your border: kills troops, silences forts and SAM sites for ${BARRAGE_DISABLE_SECONDS} s.`,
-  bomb: `Needs Flight, an Airfield and a bomber. Wrecks buildings and kills troops within ${BOMBER_RADIUS} tiles.`,
+  bomb: `Needs Flight, an Airfield and a bomber. Wrecks buildings and kills troops within ${BOMBER_RADIUS} tiles, as far as the airfield reaches (the gold rings). Works exactly like a mission sortie: Heavy Bombers, Ground-attack planes, Strategic Bombing, Night Bombing and Drop Tanks all count. Near your front it bombs ahead of your push; over a building it raids it.`,
   paradrop: `Needs Flight and an Airfield. Drops infantry up to ${PARADROP_RANGE} tiles away; they attack from where they land.`,
-  rocket: `Needs Rocketry and a Missile Silo. Hits anywhere: destroys enemy buildings within ${ROCKET_RADIUS} tiles.`,
+  rocket: `Needs Rocketry and a Missile Silo. Hits anywhere: destroys enemy buildings within ${ROCKET_RADIUS} tiles. Auto-fire (Forces, Y) fires them by itself at the nation you fight.`,
   atomBomb: `Needs Nuclear Fission and a Missile Silo. Wipes out everything within ${ATOM_RADIUS} tiles, yours too; every nation turns on you.`,
 };
 
@@ -313,6 +313,9 @@ export function howToPlayContent(): HTMLElement {
   const strikeRows: Row[] = STRIKE_ORDER.map((id) => ({ icon: pic(STRIKES[id].icon), title: STRIKES[id].name, text: STRIKE_HELP[id], key: STRIKES[id].key }));
   const strikeHow: Row[] = [
     { title: 'Fire', text: 'A ready strike shows at the right end of the bottom bar (a ring while it reloads). Press its key, then click the target. Esc or right-click cancels. Forces says how to unlock the locked ones.', key: 'Y' },
+    { title: 'Salvos', text: 'Bombs, rockets and atom bombs fire x1, x3, x5 or All per click: pick it in the bar at the top while aiming, or right-click the strike button. Bombers come from every airfield in reach, rockets from every loaded silo; the preview says how many fly and what they will hit. Bombs and rockets remember the size; atom bombs start at x1 and a salvo of them asks first.' },
+    { title: 'Smart aim', text: 'Bombers aimed at a front aim ahead of your attack, where the front will be when they arrive. If you have taken the spot by then, they bomb the nearest enemy land along that front instead, or fly home with their bombs.' },
+    { title: 'Rocket auto-fire', text: 'Forces (Y), Missiles: Auto-fire on a silo, or Auto-fire all for every silo (later ones too). Loaded rockets then fly by themselves at the nation you fight: forts and SAM sites near your front first, then cities near it, keeping some gold in reserve. Off by default; atom bombs never fire by themselves.', key: 'Y' },
   ];
   const unitRows: Row[] = (['warship', 'transport', 'bomber', 'fighter', 'transportPlane'] as const).map((id) => ({
     icon: pic(UNIT_TEXT[id].icon),
@@ -324,6 +327,7 @@ export function howToPlayContent(): HTMLElement {
     { title: 'Buy', text: 'Warships, bombers and fighters are in the Military group of the build menu (or at a Port / Airfield). Forces lists everything you own with its orders.', key: 'Y' },
     { title: 'Orders', text: 'Click your warship (or Select in Forces), then click water to move it. Shift+W selects every warship, a double-click every one on screen; zoomed out, close ships show as one fleet marker with a count (click it for the fleet). The Forces drawer (Y) gives all of them one order. Hover any unit to see what it is doing; enemy units heading for you get a red ring.' },
     { title: 'Follow my war', text: 'Air missions, Bombard / Blockade ships and Support-front tanks follow your war by default: they switch to the nation you attack. A map click fixes a target; Follow my war switches back.' },
+    { title: 'Air missions', text: 'An airfield on Support bombs ahead of your attack and keeps pace with the front; on Strategic it raids the most valuable targets of the nation you fight (factories, cities, airfields, SAM sites in the way), never ones already destroyed. Each airfield shows its last result ("Last raid: 3 buildings hit"). Re-buy losses replaces lost bombers on every mission, Air cover too.' },
     { title: 'Group orders', text: 'With 2 or more warships, airfields or tank divisions, Forces (Y) shows one order bar per type: one click orders them all. Units on another order show as "set by hand"; Reset to all brings them back. Shift+W / Shift+A or a double-click selects the whole group.' },
   ];
   const tank = UNITS.tankDivision;

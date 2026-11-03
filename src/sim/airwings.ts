@@ -32,6 +32,7 @@ import { techOf } from './techtree';
 import { dropTanksPatrolMul, dropTanksRangeMul, nightDodges, nightEffectMul, nightRadiusMul } from './specials';
 import { airRaidMul, airRangeMul, airSupportMul, airVariantOf, airWingMul, carrierFor, carrierReach } from './variants';
 import { buildAircraft, launchBomber, shotDown, unitCost } from './units';
+import { hashResults, leadAim, updateAutoFire } from './airstrike';
 import { followedNation, mainFront } from './warTarget';
 import { frontTrench, trenchLevel } from './trenches';
 import { AIR_MISSIONS, isTribe } from './types';
@@ -152,6 +153,21 @@ export function airSupportCut(state: GameState, attacker: number, tile: number):
     if (dx * dx + dy * dy <= z.radius * z.radius) s += z.strength;
   }
   return s > 0 ? supportCutOf(s) : 0;
+}
+
+/**
+ * Defence cut on `tile` for `attacker` after `bombers` more support strikes there (the
+ * strengths of the live zones covering it plus the new ones). For the strike preview (airstrike.ts). Pure read.
+ */
+export function airSupportCutAfter(state: GameState, attacker: number, tile: number, bombers: number): number {
+  const air = state.air;
+  const w = state.map.width;
+  let s = bombers * airSupportMul(state, attacker);
+  for (const z of air?.zones ?? []) {
+    if (z.owner !== attacker || z.untilTick <= state.tick) continue;
+    if (d2(w, z.tile, tile) <= z.radius * z.radius) s += z.strength;
+  }
+  return supportCutOf(s);
 }
 
 /** Income share a nation keeps under strategic bombing (1 = untouched); economy.goldIncome and iron multiply by it. */
@@ -341,8 +357,8 @@ export function setAirMission(state: GameState, pid: number, airfield: number, m
       wing.follow = true;
       followWing(state, wing, b);
     } else delete wing.follow;
-    if (refill !== undefined) wing.refill = !!refill && mission !== 'idle';
-    if (mission === 'idle') wing.refill = false;
+    // Re-buy losses works on every mission, idle included (manual strikes, Air cover).
+    if (refill !== undefined) wing.refill = !!refill;
   }
   return { ok: true };
 }
@@ -373,51 +389,106 @@ function nearestOwn(state: GameState, pid: number, around: number, r: number): n
 // Sorties
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Support aim for this sortie: the wing's target if still hostile, else the nearest hostile tile (a bit deeper). */
+/**
+ * Support front for this sortie: the target nation's tile on our shared border nearest the wing's aim (so a fixed aim
+ * keeps pace with the front as it moves), else, with no shared border there, the aim if still hostile or the nearest
+ * hostile tile (a bit deeper). The sortie then leads it by the push (airstrike.leadAim).
+ */
 function supportAim(state: GameState, wing: AirWing): number {
   const map = state.map;
   const t = wing.target;
   if (t < 0) return -1;
   const o = map.owner[t];
+  const foe = wing.targetOwner > 0 ? wing.targetOwner : o;
+  if (foe > 0 && hostile(state, wing.owner, foe)) {
+    const w = map.width;
+    let best = -1;
+    let bestD = 4 * AIR.retargetRadius * AIR.retargetRadius;
+    for (const f of frontTiles(state, wing.owner, foe, 4000)) {
+      const dd = d2(w, f, t);
+      if (dd < bestD || (dd === bestD && f < best)) {
+        bestD = dd;
+        best = f;
+      }
+    }
+    if (best >= 0) {
+      wing.target = best;
+      wing.targetOwner = foe;
+      return best;
+    }
+  }
   if (o > 0 && hostile(state, wing.owner, o) && (o === wing.targetOwner || wing.targetOwner === 0)) return t;
   const h = nearestHostile(state, wing.owner, t, AIR.retargetRadius, wing.targetOwner);
   if (h < 0) return -1;
-  // The front moved: aim a few tiles past the nearest enemy tile, in the direction it moved.
-  const w = map.width;
-  const dx = (h % w) - (t % w);
-  const dy = ((h / w) | 0) - ((t / w) | 0);
-  const len = Math.sqrt(dx * dx + dy * dy);
-  let aim = h;
-  if (len >= 1) {
-    const step = 3 / len;
-    const x = Math.round((h % w) + dx * step);
-    const y = Math.round(((h / w) | 0) + dy * step);
-    if (x >= 0 && x < w && y >= 0 && y < map.height) {
-      const deeper = y * w + x;
-      if (map.owner[deeper] === map.owner[h]) aim = deeper;
-    }
-  }
+  const aim = deeperAlong(state, t, h, 3);
   wing.target = aim;
   wing.targetOwner = map.owner[aim];
   return aim;
 }
 
-const RAID_WEIGHT: Partial<Record<BuildingType, number>> = { city: 3, factory: 2.5, market: 2, port: 1.5, lab: 1.5, mine: 1, oilWell: 1 };
+/** `steps` tiles past `h` in the direction from `from` to `h`, while still `h`'s owner's land; else h. */
+export function deeperAlong(state: GameState, from: number, h: number, steps: number): number {
+  const map = state.map;
+  const w = map.width;
+  const dx = (h % w) - (from % w);
+  const dy = ((h / w) | 0) - ((from / w) | 0);
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 1) return h;
+  const x = Math.round((h % w) + (dx * steps) / len);
+  const y = Math.round(((h / w) | 0) + (dy * steps) / len);
+  if (x < 0 || x >= w || y < 0 || y >= map.height) return h;
+  const deeper = y * w + x;
+  return map.owner[deeper] === map.owner[h] ? deeper : h;
+}
 
-/** Strategic targets for this sortie: the best economic buildings of the target nation within reach (best first). */
+/** Nearest tile hostile to pid within r of `around` (prefers `prefer`'s land); -1 = none. For airstrike.ts. */
+export function nearestHostileTile(state: GameState, pid: number, around: number, r: number, prefer: number): number {
+  return nearestHostile(state, pid, around, r, prefer);
+}
+
+/** Raid target values (strategic sorties, raid re-aims, airstrike.ts). SAMs count only when they cover the route. */
+export const RAID_WEIGHT: Partial<Record<BuildingType, number>> = { city: 3, factory: 2.5, airfield: 2.2, market: 2, silo: 2, port: 1.5, lab: 1.5, mine: 1, oilWell: 1 };
+/** Value of a SAM that covers the route to a raid target (it would shoot the bombers down). */
+const RAID_SAM_WEIGHT = 2.4;
+
+/** Own bombers on their way to `tile` (outbound). */
+export function bombersBound(state: GameState, owner: number, tile: number): number {
+  let n = 0;
+  for (const u of state.units) if (u.type === 'bomber' && u.owner === owner && u.state === 0 && u.hp > 0 && u.target === tile) n++;
+  return n;
+}
+
+/** True when the straight route from `a` to `b` passes within r of tile `c`. */
+function routeNear(w: number, a: number, b: number, c: number, r: number): boolean {
+  const ax = a % w, ay = (a / w) | 0, bx = b % w, by = (b / w) | 0, cx = c % w, cy = (c / w) | 0;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 > 0 ? ((cx - ax) * dx + (cy - ay) * dy) / len2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  const px = ax + dx * t - cx;
+  const py = ay + dy * t - cy;
+  return px * px + py * py <= r * r;
+}
+
+/**
+ * Strategic targets for this sortie: the most valuable buildings of the target nation within reach (cities,
+ * factories, airfields, markets, silos, ports, labs, mines, oil wells; SAMs that cover the route to one of them),
+ * best first, one per bomber where there are enough: a building already struck by own bombers on their way counts
+ * less, so the wing spreads out instead of hitting what is already gone.
+ */
 function strategicAims(state: GameState, wing: AirWing, b: Building, n: number): number[] {
   const foe = wing.targetOwner;
   const fp = state.players[foe];
-  if (!fp?.alive) return [];
+  if (!fp?.alive || n <= 0) return [];
   const w = state.map.width;
   const range = airWingRange(b, state);
-  const sams = buildingsOf(state, foe, 'sam').filter((s) => s.buildLeft <= 0 && !isDisabled(state, s));
+  const sams = buildingsOf(state, foe, 'sam').filter((s) => s.buildLeft <= 0 && !isDisabled(state, s) && state.map.owner[s.tile] === foe);
   const scored: { tile: number; score: number }[] = [];
+  const inReach = (t: number): boolean => d2(w, b.tile, t) <= range * range || !!carrierFor(state, wing.owner, t); // carriers launch far out (variants.ts)
   for (const [type, weight] of Object.entries(RAID_WEIGHT) as [BuildingType, number][]) {
     for (const t of buildingsOf(state, foe, type)) {
-      if (t.buildLeft > 0 || state.map.owner[t.tile] !== foe) continue;
-      const dd = d2(w, b.tile, t.tile);
-      if (dd > range * range && !carrierFor(state, wing.owner, t.tile)) continue; // carriers launch far out (variants.ts)
+      if (t.buildLeft > 0 || state.map.owner[t.tile] !== foe || !inReach(t.tile)) continue;
       let cover = 0;
       for (const s of sams) {
         const r = samRadius(s);
@@ -427,8 +498,36 @@ function strategicAims(state: GameState, wing: AirWing, b: Building, n: number):
       scored.push({ tile: t.tile, score: weight * (1 + 0.3 * (t.level - 1)) - cover * 1.5 - near });
     }
   }
-  scored.sort((a, c) => c.score - a.score || a.tile - c.tile);
-  return scored.slice(0, n).map((s) => s.tile);
+  // SAMs that guard the route to one of the best targets.
+  const top = [...scored].sort((a, c) => c.score - a.score || a.tile - c.tile).slice(0, Math.max(3, n));
+  for (const s of sams) {
+    if (!inReach(s.tile)) continue;
+    const r = samRadius(s);
+    if (!top.some((t) => routeNear(w, b.tile, t.tile, s.tile, r))) continue;
+    scored.push({ tile: s.tile, score: RAID_SAM_WEIGHT * (1 + 0.3 * (s.level - 1)) - (wing.target >= 0 ? Math.sqrt(d2(w, wing.target, s.tile)) / range : 0) });
+  }
+  if (!scored.length) return [];
+  // Spread: each own bomber already bound for a target (and each pick here) lowers its value.
+  const bound = new Map<number, number>();
+  for (const u of state.units) {
+    if (u.type !== 'bomber' || u.owner !== wing.owner || u.state !== 0 || u.hp <= 0) continue;
+    bound.set(u.target, (bound.get(u.target) ?? 0) + 1);
+  }
+  const out: number[] = [];
+  for (let k = 0; k < n; k++) {
+    let best = -1;
+    let bestS = -Infinity;
+    for (const c of scored) {
+      const v = c.score - 2.5 * (bound.get(c.tile) ?? 0);
+      if (v > bestS || (v === bestS && c.tile < best)) {
+        bestS = v;
+        best = c.tile;
+      }
+    }
+    out.push(best);
+    bound.set(best, (bound.get(best) ?? 0) + 1);
+  }
+  return out;
 }
 
 /** Re-buys aircraft for a refill wing (at most two per check; keeps twice the price in gold). */
@@ -447,6 +546,27 @@ function refillWing(state: GameState, wing: AirWing, b: Building): void {
   }
 }
 
+/**
+ * Sends one stored bomber of airfield b at `aim` on `mission` (support / strategic / cover; manual strikes pick one by
+ * the aim, airstrike.ts). Beyond the airfield's reach it takes off from the nearest own carrier in reach (variants.ts).
+ * Returns the bomber, or why it could not fly.
+ */
+export function launchFrom(state: GameState, owner: number, b: Building, aim: number, mission: number): Unit | string {
+  const r = launchBomber(state, owner, b.tile, aim);
+  if (!r.ok) return r.reason ?? 'Not possible';
+  const u = state.units[state.units.length - 1];
+  u.mission = mission;
+  const range = airWingRange(b, state);
+  if (d2(state.map.width, b.tile, aim) > range * range) {
+    const c = carrierFor(state, owner, aim);
+    if (c) {
+      u.x = c.x;
+      u.y = c.y;
+    }
+  }
+  return u;
+}
+
 /** Launches up to the wing size of stored bombers at the aims (round robin), with escorts while fighters last. */
 function launchWing(state: GameState, wing: AirWing, b: Building, aims: number[], mission: number): number {
   const size = Math.min(b.bombers, airWingSize(state, b));
@@ -454,19 +574,8 @@ function launchWing(state: GameState, wing: AirWing, b: Building, aims: number[]
   const hits = escortHitsFor(state, b);
   let sent = 0;
   for (let k = 0; k < size; k++) {
-    const aim = aims[k % aims.length];
-    if (!launchBomber(state, wing.owner, b.tile, aim).ok) break;
-    const u = state.units[state.units.length - 1];
-    u.mission = mission;
-    // Out of the airfield's reach: the bombers take off from the nearest own carrier in reach (variants.ts).
-    const range = airWingRange(b, state);
-    if (d2(state.map.width, b.tile, aim) > range * range) {
-      const c = carrierFor(state, wing.owner, aim);
-      if (c) {
-        u.x = c.x;
-        u.y = c.y;
-      }
-    }
+    const u = launchFrom(state, wing.owner, b, aims[k % aims.length], mission);
+    if (typeof u === 'string') break;
     if (escorts > 0) {
       u.escort = hits;
       escorts--;
@@ -497,8 +606,7 @@ function followWing(state: GameState, wing: AirWing, b: Building): void {
   }
   if (wing.mission !== 'support' && wing.mission !== 'strategic') return;
   wing.targetOwner = foe;
-  // Support keeps its aim while it is still that nation's land near the main front (it follows the push itself).
-  if (wing.mission === 'support' && foe > 0 && wing.target >= 0 && state.map.owner[wing.target] === foe && front >= 0 && d2(state.map.width, wing.target, front) <= AIR.retargetRadius * AIR.retargetRadius) return;
+  // Support aims at the main front as it is now (the sortie leads it by the push, airstrike.leadAim).
   wing.target = front;
 }
 
@@ -518,15 +626,18 @@ function sortie(state: GameState, wing: AirWing, b: Building): void {
   let aims: number[] = [];
   let mission = MISSION_SUPPORT;
   if (wing.mission === 'support') {
-    const aim = supportAim(state, wing);
-    const foe = aim >= 0 ? state.map.owner[aim] : 0;
+    const front = supportAim(state, wing);
+    const foe = front >= 0 ? state.map.owner[front] : 0;
     const range = airWingRange(b, state);
+    // Lead the push: aim where the front will be when the bombers get there (airstrike.ts).
+    let aim = front >= 0 ? leadAim(state, wing.owner, foe, front, b.tile) : -1;
+    if (aim >= 0 && d2(w, b.tile, aim) > range * range && !carrierFor(state, wing.owner, aim)) aim = front;
     // Support flies while we are at war with them (either side attacking; following: our war target), within reach.
     if (aim >= 0 && (atWar(state, wing.owner, foe) || (wing.follow && foe > 0 && foe === followedNation(state, wing.owner))) && (d2(w, b.tile, aim) <= range * range || carrierFor(state, wing.owner, aim))) aims = [aim]; // carriers (variants.ts)
   } else {
     mission = MISSION_STRATEGIC;
     const foe = wing.targetOwner;
-    if (foe > 0 && hostile(state, wing.owner, foe) && (wing.follow || atWar(state, wing.owner, foe))) aims = strategicAims(state, wing, b, 3);
+    if (foe > 0 && hostile(state, wing.owner, foe) && (wing.follow || atWar(state, wing.owner, foe))) aims = strategicAims(state, wing, b, Math.max(1, Math.min(b.bombers, airWingSize(state, b))));
   }
   if (!aims.length) {
     wing.nextTick = idle;
@@ -552,30 +663,59 @@ export function massCooldownMul(state: GameState, owner: number): number {
 // Arrivals
 // ---------------------------------------------------------------------------------------------------------------
 
-/**
- * A mission bomber is over its target (units.updateUnits, before dropBombs). Support: the strike (zone, kills, forts
- * knocked out) replaces the normal bomb drop; returns true. Strategic: adds the income raid and returns false (the
- * normal bomb drop follows). Manual bombers: false.
- */
-export function airStrikeArrived(state: GameState, u: Unit): boolean {
-  if (u.mission === MISSION_SUPPORT || u.mission === MISSION_COVER) {
-    supportStrike(state, u);
-    return true;
+/** The nation a strike centred on `tile` works against: the centre's owner if hostile, else `prefer`, else the hostile nation with the most land in the radius (0 = none). */
+function strikeVictim(state: GameState, owner: number, tile: number, radius: number, prefer: number): number {
+  const map = state.map;
+  const c = map.owner[tile];
+  if (hostile(state, owner, c) && state.players[c]?.alive) return c;
+  const w = map.width;
+  const r = Math.floor(radius);
+  const cx = tile % w;
+  const cy = (tile / w) | 0;
+  const count = new Map<number, number>();
+  for (let y = Math.max(0, cy - r); y <= Math.min(map.height - 1, cy + r); y++) {
+    for (let x = Math.max(0, cx - r); x <= Math.min(w - 1, cx + r); x++) {
+      if ((x - cx) * (x - cx) + (y - cy) * (y - cy) > radius * radius) continue;
+      const o = map.owner[y * w + x];
+      if (hostile(state, owner, o)) count.set(o, (count.get(o) ?? 0) + 1);
+    }
   }
-  if (u.mission === MISSION_STRATEGIC) raid(state, u);
-  return false;
+  if (prefer > 0 && count.has(prefer) && state.players[prefer]?.alive) return prefer;
+  let best = 0;
+  let bestN = 0;
+  for (const [o, n] of count) {
+    if (!state.players[o]?.alive) continue;
+    if (n > bestN || (n === bestN && o < best)) {
+      best = o;
+      bestN = n;
+    }
+  }
+  return best;
 }
 
-function supportStrike(state: GameState, u: Unit): void {
+/** Radius of a support strike by bomber u (its airfield's zone radius, x Night Bombing). */
+export function supportStrikeRadius(state: GameState, owner: number, home: number): number {
+  const b = buildingAt(state, home);
+  const af = b && b.type === 'airfield' && b.owner === owner ? b : undefined;
+  return airSupportRadius(af) * nightRadiusMul(state, owner); // Night Bombing (specials.ts)
+}
+
+/**
+ * Front support strike of bomber u over u.target (airstrike.bomberArrived; manual front strikes, support and cover
+ * sorties alike): an air-support zone (defence cut, faster push, trench flattening in trenches.ts), defenders killed
+ * (x ground-attack / heavy, x Night Bombing) and the victim's forts in it knocked out. Returns the kills and victim
+ * (null = nothing hostile there).
+ */
+export function supportStrike(state: GameState, u: Unit): { victim: number; kills: number } | null {
   const map = state.map;
   const tile = u.target;
-  const victim = map.owner[tile];
   const home = buildingAt(state, u.home);
   const af = home && home.type === 'airfield' && home.owner === u.owner ? home : undefined;
-  const radius = airSupportRadius(af) * nightRadiusMul(state, u.owner); // Night Bombing (specials.ts)
+  const radius = supportStrikeRadius(state, u.owner, u.home);
   const w = map.width;
   state.effects.push({ kind: 'explosion', x: (tile % w) + 0.5, y: ((tile / w) | 0) + 0.5, radius, tick: state.tick });
-  if (!hostile(state, u.owner, victim) || !state.players[victim]?.alive) return;
+  const victim = strikeVictim(state, u.owner, tile, radius, u.targetOwner);
+  if (victim <= 0) return null;
   const untilTick = state.tick + Math.round(AIR.supportSeconds * (u.mission === MISSION_COVER ? AIR_COVER.zoneMul : 1) * TICKS_PER_SECOND);
   // Count the victim's tiles in the zone and knock out its forts there.
   let tiles = 0;
@@ -618,6 +758,7 @@ function supportStrike(state: GameState, u: Unit): void {
     const me = state.players[u.owner];
     addEvent(state, 'bombing', `${me.name}'s bombers are supporting the attack on ${vp.name}: ${Math.round(killed)} troops killed`, [u.owner, victim], tile);
   }
+  return { victim, kills: killed };
 }
 
 /** Kills `amount` of a nation's troops split by composition; returns the number killed. */
@@ -636,13 +777,17 @@ function killArmy(state: GameState, victim: number, amount: number, killer: numb
   return k;
 }
 
-function raid(state: GameState, u: Unit): void {
-  const victim = state.map.owner[u.target];
-  if (!hostile(state, u.owner, victim) || !state.players[victim]?.alive) return;
+/**
+ * Income raid of bomber u (the strategic part of a raid strike, airstrike.bomberArrived): the victim's gold and iron
+ * income x (1 - cut) for a while (Strategic Bombing: stronger, longer; x heavy / ground-attack, x Night Bombing).
+ * Returns the victim (0 = none) and the cut added.
+ */
+export function raid(state: GameState, u: Unit, victim: number): { victim: number; cut: number } {
+  if (!hostile(state, u.owner, victim) || !state.players[victim]?.alive) return { victim: 0, cut: 0 };
   const tech = techOf(state, u.owner, 'strategicBombing');
-  const per = AIR.raidCut * (tech ? AIR.raidTechMul : 1) * nightEffectMul(state, u.owner) * airRaidMul(state, u.owner); // Night Bombing (specials.ts); heavy bombers (variants.ts)
+  const per = raidCutPer(state, u.owner);
   const max = tech ? AIR.raidTechMaxCut : AIR.raidMaxCut;
-  const until = state.tick + Math.round(AIR.raidSeconds * (tech ? AIR.raidTechMul : 1) * TICKS_PER_SECOND);
+  const until = state.tick + Math.round(raidSecondsOf(state, u.owner) * TICKS_PER_SECOND);
   const air = airState(state);
   let r = air.raids.find((x) => x.victim === victim);
   if (!r) {
@@ -650,8 +795,22 @@ function raid(state: GameState, u: Unit): void {
     air.raids.push(r);
   }
   if (r.untilTick <= state.tick) r.cut = 0;
+  const before = r.cut;
   r.cut = Math.min(max, r.cut + per);
   r.untilTick = Math.max(r.untilTick, until);
+  return { victim, cut: r.cut - before };
+}
+
+/** Income cut one raiding bomber of `owner` adds (Strategic Bombing, Night Bombing, heavy / ground-attack). */
+export function raidCutPer(state: GameState, owner: number): number {
+  return AIR.raidCut * (techOf(state, owner, 'strategicBombing') ? AIR.raidTechMul : 1) * nightEffectMul(state, owner) * airRaidMul(state, owner); // Night Bombing (specials.ts); heavy bombers (variants.ts)
+}
+/** Most income cut raids of `owner` reach, and how long one lasts (s). */
+export function raidMaxCutOf(state: GameState, owner: number): number {
+  return techOf(state, owner, 'strategicBombing') ? AIR.raidTechMaxCut : AIR.raidMaxCut;
+}
+export function raidSecondsOf(state: GameState, owner: number): number {
+  return AIR.raidSeconds * (techOf(state, owner, 'strategicBombing') ? AIR.raidTechMul : 1);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -816,6 +975,9 @@ function coverFor(state: GameState, pid: number): void {
       if (aim >= 0) break;
     }
     if (aim < 0) continue;
+    // Lead the push (airstrike.ts), staying in reach.
+    const led = leadAim(state, pid, state.map.owner[aim], aim, b.tile);
+    if (led >= 0 && d2(w, b.tile, led) <= range * range) aim = led;
     const pseudo: AirWing = { airfield: b.id, tile: b.tile, owner: pid, mission: 'support', target: aim, targetOwner: state.map.owner[aim], nextTick: 0, refill: false, coverTick: 0, sorties: 0 };
     const sent = launchWing(state, pseudo, b, [aim], MISSION_COVER);
     if (sent <= 0) continue;
@@ -848,6 +1010,7 @@ function updateAirCover(state: GameState): void {
 /** Drops wings of lost airfields, flies due sorties, bleeds defenders in support zones, expires zones and raids. */
 export function updateAir(state: GameState): void {
   updateAirCover(state);
+  updateAutoFire(state); // rocket auto-fire (airstrike.ts)
   const air = state.air;
   if (!air) return;
   if (air.wings.length) {
@@ -856,7 +1019,15 @@ export function updateAir(state: GameState): void {
       return !!b && b.type === 'airfield' && b.owner === wing.owner && state.players[wing.owner]?.alive;
     });
     for (const wing of air.wings) {
-      if (wing.mission === 'idle') continue;
+      if (wing.mission === 'idle') {
+        // Re-buy losses for manual strikes and Air cover too (refill set on an idle airfield).
+        if (wing.refill && state.tick >= wing.nextTick) {
+          const b = state.buildings.get(wing.airfield)!;
+          if (b.buildLeft <= 0) refillWing(state, wing, b);
+          wing.nextTick = state.tick + AIR.idleRecheck * TICKS_PER_SECOND;
+        }
+        continue;
+      }
       const b = state.buildings.get(wing.airfield)!;
       if (b.buildLeft > 0) continue;
       if (state.tick < wing.nextTick) {
@@ -913,6 +1084,7 @@ export function hashAir(state: GameState, h: number, mixInt: (h: number, v: numb
       h = mixInt(h, c.nextTick);
       h = mixInt(h, c.sorties);
     }
+    h = hashResults(air, h, mixInt, mixFloat); // last strike results (airstrike.ts)
     h = mixInt(h, air.raids.length);
     for (const r of air.raids) {
       h = mixInt(h, r.victim);
@@ -1105,7 +1277,8 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
       }
     }
 
-    const refill = minded || doctrineActive(state, id) === 'air';
+    // Re-buy losses on missions; idle only for the airfield left to Air cover.
+    const refill = (minded || airHolder) && (mission !== 'idle' || (mainCovered && b === sortedAfs[0]));
     const same = cur && cur.mission === mission && (target === undefined || cur.target === target) && cur.refill === refill;
     if (!same && (mission !== 'idle' || (cur && cur.mission !== 'idle'))) {
       applyAction(state, id, target === undefined ? { type: 'setAirMission', airfield: b.tile, mission, refill } : { type: 'setAirMission', airfield: b.tile, mission, target, refill });

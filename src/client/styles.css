@@ -2541,6 +2541,51 @@ button.toast-t:hover {
 .modechip.paused {
   border-left-color: var(--steel);
 }
+/* salvo size while a bomb or missile is aimed (hud/salvoPicker.ts) */
+.salvo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 10px;
+  border-left: 1px solid var(--rule);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.salvo.hidden {
+  display: none;
+}
+.salvo-l {
+  font: 600 11px/1 var(--f-label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.salvo-n {
+  font: 500 12px/1 var(--f-ui);
+  color: var(--dim);
+  white-space: nowrap;
+}
+/* the salvo size on a strike button (x3 / x5 / All) */
+.sk-x {
+  position: absolute;
+  bottom: 1px;
+  left: 2px;
+  padding: 0 2px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.55);
+  font: 600 9px/11px var(--f-label);
+  color: var(--brass-hi);
+  pointer-events: none;
+}
+.sk-x:empty {
+  display: none;
+}
+/* rocket auto-fire switch on a silo row (hud/forcesPage.ts) */
+.fr-act.on,
+.wr-btn.on.autofire {
+  border-color: var(--brass);
+  color: var(--brass-hi);
+}
 
 /* ---------------------------------------------------------------- hover cards */
 .tip {

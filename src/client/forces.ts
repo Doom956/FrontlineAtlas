@@ -58,7 +58,7 @@ export const UNIT_TEXT: Record<SpecialId, UnitText> = {
   bomber: {
     name: 'Bomber',
     icon: 'bomber',
-    what: `Waits at its Airfield; a bombing run (X) wrecks buildings and troops within ${BOMBER_RADIUS} tiles, then it flies home.`,
+    what: `Waits at its Airfield; a bombing run (X, x1 / x3 / x5 / All) wrecks buildings and troops within ${BOMBER_RADIUS} tiles as far as the airfield reaches, then it flies home. Near your front it bombs ahead of your push.`,
     counter: 'SAM sites and enemy fighters shoot it down.',
     unlock: 'Buy Flight (Arsenal), then build an Airfield',
   },
