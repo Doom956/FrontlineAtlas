@@ -287,5 +287,29 @@ favicon-32.png, apple-touch-icon.png (180), icon-192/512, icon-512-maskable.png 
 Atlas", short name "Atlas"); relative links in index.html, so it works at `/` and under `/FrontlineAtlas/`. Remake the
 PNG / ICO files with `node scripts/site-icons.mjs` after changing the SVG. Not checked: the live sites, a phone home screen.
 
+## Air strikes QoL (2026-11-03, branch `air-strikes`, not merged yet)
+Owner: manual bombs ignored Heavy Bombers, bombers hit land the push had already taken, auto missions were limited,
+and firing many rockets was tedious. Done (src/sim/airstrike.ts, config `STRIKE`, protocol 14; DESIGN.md section 7,
+"Strikes"): (1) one strike rule: a manual bomb runs the wing-sortie code (Heavy Bombers wider / bigger raids, Ground-
+attack, Strategic Bombing burn, Night Bombing, Drop Tanks, doctrines, trench flattening) and needs the airfield's
+reach; the preview shows role, radius and expected kills / wrecks / cuts. (2) Smart aim: front strikes lead the push
+by its speed x flight time; on arrival a lost aim re-aims within 14 tiles or the bombers fly home with their bombs.
+(3) Support missions keep pace with the front, Strategic picks the best live target of the Follow-my-war nation,
+each airfield shows its last result, re-buy losses on every mission. (4) Salvos x1 / x3 / x5 / All (remembered;
+atom bombs x1, salvo asks first). (5) Rocket auto-fire per silo / all silos (forts and SAMs near the front, then
+cities; never atom bombs). AI: manual bombs only in reach; with no raid target in reach it bombs the main front of a
+nation it fights (owner's call: AI code, not just a number). Costs unchanged.
+Measured (192 specialist pairs + 96 normal games per seed set; base = main a0adddc, fresh seeds 26001+): wasted
+payloads 30% -> 11%, bombers shot down 16% -> 6%, bomber sorties 43.4k -> 33.5k, rockets per game 40.4 -> 42.7; air
+specialist 0.79 -> 0.75 (goal 0.8-1.25 not reached; intervals about +-0.3); other specialists, game length, first
+atom bomb about unchanged; Humanbench Easy / Normal unchanged. Log: /tmp/fa-bal/log7.md.
+Checks: tsc (client, server), vitest 844 tests, build; e2e mp-pillars and mp-arsenal failed 3 times each in their
+scripted setup before any hash check (menu click under load; no spawn spot / no iron or oil; labs not built), so
+multiplayer hashes are unchecked on this tree (a unit test compares hashes of two games with salvos, auto-fire and a
+support wing); a played check (Heavy Bombers raid preview 5.8 vs 5 tiles and a 5.75-tile drop, front strikes during a
+fast push landing 1-11 tiles ahead of the front on enemy land, a x5 salvo, an All rocket salvo from 2 silos, auto-fire
+hitting 2 forts and a city, no atom bomb fired); screenshots /tmp/borderfall-shots/air-check-*.png. Not checked:
+World-map batches, forced Heavy Bombers / Ground-attack fork benchmarks, tick timings.
+
 ## Parked ideas (owner said later / maybe)
 Building limits (city slots, upkeep), rivers and bridges, wonders, game modes (King of the Hill, capital capture, scenarios), quick chat/emotes/rematch, phone layout, making Easy winnable, calmer tribes.
