@@ -11,7 +11,7 @@ import { buildCostAt, buildingsOf, canBuild, hasIntel, resolveBuildTarget } from
 import { attacksOf, borders, coreDefenseAt, estimateAttack, lastStandFactor, supplyEfficiency } from '../src/sim/combat';
 import { BUILDING_ORDER, TECH_ORDER } from '../src/sim/config';
 import { convertCost, hasOilShortage } from '../src/sim/economy';
-import { atWar, blockadedPorts, mendingInPort, portBlockadedBy } from '../src/sim/naval2';
+import { atWar, blockadedPorts, mendingInPort, portBlockadedBy, warshipMaxHp } from '../src/sim/naval2';
 import { canOrderWarship, warshipOrderCost, warshipSpawnable, warshipSpawnSeas } from '../src/sim/navy';
 import { arsenalPrice, canProcure } from '../src/sim/procurement';
 import { minefields } from '../src/sim/specials';
@@ -153,6 +153,7 @@ export const READS: Record<string, Read> = {
         navalShellRangeMul(s, u);
         navalSupportMul(u);
         mendingInPort(s, u);
+        warshipMaxHp(u); // hull text (client/forces.hpText)
       }
     }
     navalReachMul(s, pid);

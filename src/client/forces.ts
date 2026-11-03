@@ -12,7 +12,7 @@ import { SHELL_RANGE_TILES } from './reach';
 import { areAllied } from '../sim/diplomacy';
 import { unitCost } from '../sim/units';
 import { warshipOrderCost } from '../sim/navy';
-import { mendingInPort } from '../sim/naval2';
+import { mendingInPort, warshipMaxHp } from '../sim/naval2';
 import { armyTotal } from '../sim/economy';
 import { forEachInRadius } from '../sim/grid';
 import { buildingAllowed, unitAllowed } from '../sim/rules';
@@ -354,7 +354,8 @@ export function unitIcon(type: UnitType): IconId {
 
 /** HP as "2.5 of 3" (only warships and atom bombs have more than 1). */
 export function hpText(u: Unit): string {
-  const max = UNITS[u.type].hp;
+  // warships: veterancy and variants add hull (the sim's warshipMaxHp), so "4 of 3" never shows
+  const max = u.type === 'warship' ? warshipMaxHp(u) : UNITS[u.type].hp;
   const v = Math.max(0, u.hp);
   return `${v >= 10 || Number.isInteger(v) ? Math.round(v) : v.toFixed(1)} of ${max}`;
 }
