@@ -10,6 +10,9 @@
 // Changed tiles mark 64 x 64 blocks dirty; the GPU (or Canvas2D) layer re-uploads only dirty blocks.
 // Listeners hear every owner change with the old and the new owner (front anchors, minimap, label grid).
 // When the feed overflows, a new game starts or the queue fills up, `fullGen` increments: consumers rebuild.
+// Fog of war (fog/fogView.ts): with `vis` set, a change in a block out of view is not applied (the mirror keeps the
+// last owner seen there, so everything that reads the mirror shows the known map); revealBlock() catches a block up
+// when it comes into view (no capture flash), and full() keeps the remembered owners of explored blocks.
 import { drainTileChanges } from '../../sim/changes';
 import type { GameState } from '../../sim/types';
 import { clamp } from './common';
@@ -47,6 +50,10 @@ export class TileFeed {
   listeners: OwnerListener[] = [];
   /** tiles applied in the last update (for stats / tests) */
   applied = 0;
+  /** fog of war: 2 = tile in view, 1 = explored, 0 = never seen (null = no fog: everything in view) */
+  vis: ((i: number) => number) | null = null;
+  /** the mirror holds remembered owners worth keeping on a full rebuild (false right after reset) */
+  private memory = false;
 
   private queue = new Int32Array(0);
   private qHead = 0;
@@ -76,6 +83,7 @@ export class TileFeed {
     this.dirty = new Uint8Array(this.bx * this.by);
     this.hasFeed = !!(state as { changes?: unknown }).changes;
     if (this.hasFeed) drainTileChanges(state); // everything so far is in the full rebuild
+    this.memory = false;
     this.full();
   }
 
@@ -85,7 +93,18 @@ export class TileFeed {
     if (!s) return;
     const { owner, fallout } = s.map;
     const m = this.mirror;
-    for (let i = 0; i < this.n; i++) m[i] = (owner[i] & OWNER_MASK) | (fallout[i] > 0 ? FALLOUT_BIT : 0);
+    const vis = this.vis;
+    if (!vis) {
+      for (let i = 0; i < this.n; i++) m[i] = (owner[i] & OWNER_MASK) | (fallout[i] > 0 ? FALLOUT_BIT : 0);
+    } else {
+      // Fog: live in view, the remembered owner where explored (the state's after a reload), nothing elsewhere.
+      for (let i = 0; i < this.n; i++) {
+        const v = vis(i);
+        const live = (owner[i] & OWNER_MASK) | (fallout[i] > 0 ? FALLOUT_BIT : 0);
+        m[i] = v === 2 || (v === 1 && !this.memory) ? live : v === 1 ? m[i] & (OWNER_MASK | FALLOUT_BIT) : 0;
+      }
+    }
+    this.memory = true;
     for (let k = 0; k < this.qLen; k++) this.queued[this.queue[(this.qHead + k) % this.queue.length]] = 0;
     this.qHead = 0;
     this.qLen = 0;
@@ -133,6 +152,26 @@ export class TileFeed {
     return this.mirror[i] & OWNER_MASK;
   }
 
+  /** Fog: queues every tile of a block (bs x bs at block bx, by) whose mirror differs from the state; no flashes. */
+  revealBlock(bx: number, by: number, bs: number): void {
+    const s = this.state;
+    if (!s) return;
+    const { owner, fallout } = s.map;
+    const m = this.mirror;
+    const x1 = Math.min(this.w, (bx + 1) * bs);
+    const y1 = Math.min(this.h, (by + 1) * bs);
+    for (let y = by * bs; y < y1; y++) {
+      for (let x = bx * bs; x < x1; x++) {
+        const i = y * this.w + x;
+        const v = (owner[i] & OWNER_MASK) | (fallout[i] > 0 ? FALLOUT_BIT : 0);
+        if (v !== (m[i] & (OWNER_MASK | FALLOUT_BIT))) {
+          if (!this.enqueue(i)) return;
+          this.queued[i] = 2; // quiet: no capture flash
+        }
+      }
+    }
+  }
+
   // ------------------------------------------------------------------ internals
 
   /** Moves changed tiles into the queue; false = can't keep up incrementally (caller rebuilds). */
@@ -172,10 +211,13 @@ export class TileFeed {
     const me = this.humanId;
     const time = (nowDs & 0xffff) << 16;
     const ls = this.listeners;
+    const vis = this.vis;
     for (let k = 0; k < take; k++) {
       const i = q[this.qHead];
       this.qHead = (this.qHead + 1) % cap;
+      const quiet = this.queued[i] === 2;
       this.queued[i] = 0;
+      if (vis && vis(i) !== 2) continue; // fog: out of view, keep the last owner seen
       const old = m[i];
       const oldOwner = old & OWNER_MASK;
       const o = owner[i] & OWNER_MASK;
@@ -184,7 +226,7 @@ export class TileFeed {
       let v = o | f;
       if (o !== oldOwner) {
         // Flash: your captures (also of neutral land), your losses, and fights between others (not their expansion).
-        const kind = me > 0 && o === me ? FLASH_MINE : me > 0 && oldOwner === me ? FLASH_LOST : oldOwner !== 0 && o !== 0 ? FLASH_OTHER : 0;
+        const kind = quiet ? 0 : me > 0 && o === me ? FLASH_MINE : me > 0 && oldOwner === me ? FLASH_LOST : oldOwner !== 0 && o !== 0 ? FLASH_OTHER : 0;
         if (kind) {
           v |= (kind << KIND_SHIFT) | time;
           this.pushFlash(i, nowDs);

@@ -11,8 +11,11 @@ import { armyOf } from '../simx';
 import { doctrineLabel, knownDoctrine } from '../doctrineView';
 import { el, setClass, setText, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon } from './glyph';
+import { activeFog, ARMY_HIDDEN_TIP } from '../fog/fogView';
 
 const TOP = 3;
+/** Swatch of a nation fog hides (no colour until you meet it). */
+const UNKNOWN_SWATCH = 'repeating-linear-gradient(135deg, #3a3f48 0 3px, #2a2e35 3px 6px)';
 const ALL_MAX = 40;
 
 interface Row {
@@ -104,6 +107,9 @@ export class Leaderboard {
     this.more.dataset.tip = this.all ? `Show the top ${top} and you` : `Show all ${ranked.length} nations`;
     setVisible(this.more, ranked.length > top + 1 && !this.collapsed);
     this.el.dataset.tip = 'Land share and army of each nation';
+    // fog of war: every nation is ranked by land (land share is public), but only met ones show a name and colour,
+    // and an army only when in sight, allied or with intel
+    const fog = activeFog(s);
     const ids = new Set(shown.map((p) => p.id));
     for (const [id, r] of this.rows) {
       if (!ids.has(id)) {
@@ -119,19 +125,25 @@ export class Leaderboard {
       }
       const rank = ranked.indexOf(p) + 1;
       setText(r.rank, String(rank));
-      r.sw.style.background = swatchCss(p, me.id);
       const isMe = p.id === me.id;
-      setText(r.name, isMe ? `${p.name} (you)` : p.name);
+      const met = !fog || fog.isMet(p.id);
+      const army = fog ? fog.armyShown(s, p.id) : armyOf(s, p.id);
+      r.sw.style.background = met ? swatchCss(p, me.id) : UNKNOWN_SWATCH;
+      setText(r.name, isMe ? `${p.name} (you)` : met ? p.name : 'Unknown');
       setText(r.land, `${((p.tiles / land) * 100).toFixed(1)}%`);
-      setText(r.army, formatCount(armyOf(s, p.id)));
+      setText(r.army, army === null ? (met ? '?' : '') : formatCount(army));
+      r.army.dataset.tip = army === null && met ? ARMY_HIDDEN_TIP : '';
       setClass(r.root, 'me', isMe);
+      setClass(r.root, 'unmet', !met);
       setClass(r.root, 'ally', !isMe && areAllied(s, me.id, p.id));
-      setClass(r.root, 'traitor', isTraitor(s, p.id));
+      setClass(r.root, 'traitor', met && isTraitor(s, p.id));
       setClass(r.root, 'gap', !this.all && isMe && rank > top);
       const team = myTeam ? `\n${teamName(teamOf(s, p.id))}${teamOf(s, p.id) === myTeam ? ' (your team)' : ''}` : '';
-      const kd = knownDoctrine(s, me.id, p.id);
+      const kd = met ? knownDoctrine(s, me.id, p.id) : null;
       const doc = kd ? `\nDoctrine: ${doctrineLabel(kd.id, kd.level, kd.adapting)}` : '';
-      r.root.dataset.tip = (isMe ? 'Your nation: click to centre on your capital' : `Click: centre on ${p.name} and show their card`) + team + doc;
+      r.root.dataset.tip = met
+        ? (isMe ? 'Your nation: click to centre on your capital' : `Click: centre on ${p.name} and show their card`) + team + doc
+        : 'A nation you have not met yet. Expand, build a Watchtower or send ships to find them.';
     }
     const order = shown.map((p) => p.id).join(',');
     if (order !== this.order) {

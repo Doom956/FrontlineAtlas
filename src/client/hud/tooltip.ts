@@ -1,7 +1,7 @@
 // Map hover: a compact card next to the cursor (terrain and what it does, the resource and what to build on it,
 // owner and army, the building and what it does) and, in attack mode, an odds badge. In build mode the card is
 // replaced by the build preview: "Build here" (green), "Upgrade to level N" (blue) or the reason (red), with costs.
-import { buildSeconds, unitAllowed } from '../../sim/rules';
+import { buildSeconds, peaceReason, unitAllowed } from '../../sim/rules';
 import { buildingAt, fortMultiplierAt } from '../../sim/buildings';
 import { borders, estimateAttack, supplyEfficiency } from '../../sim/combat';
 import type { AttackEstimate } from '../../sim/combat';
@@ -15,7 +15,7 @@ import { isAttackable, troopsToSend, troopSum } from '../input';
 import { swatchCss } from './swatch';
 import { formatCount } from '../render/common';
 import { armyOf, barrageRange, BuildTargetCache, maxLevel } from '../simx';
-import { ownHitWarning, STRIKES, strikeBody, strikeOfMode, strikeRoleLine, strikeTarget } from '../strikes';
+import { fmtR, ownHitWarning, STRIKES, strikeBody, strikeOfMode, strikeRoleLine, strikeTarget } from '../strikes';
 import { iconDataUrl } from '../icons';
 import { el, fmtSeconds, pct, setVisible, type HudCtx } from './dom';
 import { relationOf } from './drawers';
@@ -25,6 +25,7 @@ import { buildingTexts, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect } from './te
 import { bulkPreviews, bulkPreviewText, effectiveCount } from './buildMenu';
 import { shiftHeld } from './quickBar';
 import { dugInLevel, dugInPct, trenchInfoAt, trenchTileText } from '../trench';
+import { activeFog, ARMY_HIDDEN_TIP, type FogView } from '../fog/fogView';
 
 export class MapTooltip {
   readonly card: HTMLElement;
@@ -98,6 +99,11 @@ export class MapTooltip {
   }
 
   private tileCard(state: GameState, me: Player, tile: number): void {
+    const fog = activeFog(state);
+    if (fog && !fog.visible(tile)) {
+      this.fogCard(state, me, tile, fog);
+      return;
+    }
     const map = state.map;
     const tid = map.terrain[tile] as TerrainId;
     const terr = TERRAIN[tid];
@@ -114,7 +120,8 @@ export class MapTooltip {
       }
       if (owner && op) {
         const rel = owner === me.id ? 'Your land' : relationOf(state, me, owner).text;
-        const army = owner === me.id ? '' : `army ${formatCount(armyOf(state, owner))}`;
+        const seenArmy = owner === me.id ? null : fog ? fog.armyShown(state, owner) : armyOf(state, owner);
+        const army = owner === me.id ? '' : seenArmy === null ? 'army ?' : `army ${formatCount(seenArmy)}`;
         const r = this.line('', op.name, [rel, army].filter(Boolean).join(', '), 'own');
         const sw = r.querySelector('.mt-ic') as HTMLElement;
         sw.classList.add('sw');
@@ -165,7 +172,8 @@ export class MapTooltip {
                 rows.push(this.line(lineIcon('shovel', 18), `Dug in: +${dug}%`, deep ? 'Bring artillery or a barrage first, or land behind the line.' : 'Their border has trenches: attacks there cost more', 'trench'));
               }
             }
-            odds = this.oddsBadge(state, me, owner, est, n);
+            // fog of war: no odds against a defender you can't see
+            if (!fog || !owner || fog.armyShown(state, owner) !== null) odds = this.oddsBadge(state, me, owner, est, n);
           }
         }
       }
@@ -178,6 +186,54 @@ export class MapTooltip {
       if (odds.sub) this.odds.append(el('span', 'odds-sub', odds.sub));
     }
     setVisible(this.odds, !!odds);
+  }
+
+  /**
+   * Fog of war, a tile out of view: unexplored = terrain only; explored = what you saw last (owner, building) with no
+   * army, defence or attack numbers. A click still attacks whoever holds it now (input.ts).
+   */
+  private fogCard(state: GameState, me: Player, tile: number, fog: FogView): void {
+    const map = state.map;
+    const tid = map.terrain[tile] as TerrainId;
+    const terr = TERRAIN[tid];
+    const rows: HTMLElement[] = [];
+    rows.push(this.line(worldGlyph(TERRAIN_GLYPH[tid], 18), terr.name + (map.coastal[tile] ? ' (coast)' : ''), terrainEffect(tid), 'terr'));
+    const explored = fog.explored(tile);
+    if (!isWater(tid)) {
+      if (!explored) rows.push(this.line(lineIcon('eye', 18), 'Unexplored', 'You have not looked here yet. Expand, build a Watchtower or send ships and planes to see it.', 'own wild'));
+      else {
+        const res = map.resource[tile];
+        if (res && RESOURCE_TEXT[res]) {
+          const r = RESOURCE_TEXT[res];
+          rows.push(this.line(worldGlyph(res === 1 ? 'iron' : res === 2 ? 'oil' : 'fertile', 18), r.name, r.use, 'res'));
+        }
+        const owner = fog.knownOwner(state, tile);
+        const op = state.players[owner];
+        if (owner && op && fog.isMet(owner)) {
+          const rel = owner === me.id ? 'Your land' : relationOf(state, me, owner).text;
+          const r = this.line('', `Last seen: ${op.name}`, `${rel}. Out of sight: it may have changed`, 'own');
+          const sw = r.querySelector('.mt-ic') as HTMLElement;
+          sw.classList.add('sw');
+          sw.style.background = swatchCss(op, me.id);
+          rows.push(r);
+        } else rows.push(this.line('', 'Last seen: wilderness', 'Out of sight: it may have changed', 'own wild'));
+        const b = fog.buildingAt(state, tile);
+        if (b) {
+          const info = BUILDINGS[b.type];
+          rows.push(this.line(worldGlyph(b.type, 18), `${info.name} (last seen)`, buildingTexts(!unitAllowed(state, 'atomBomb'), b.type, info.description).short, 'bld'));
+        }
+      }
+      if (state.phase === 'playing' && isAttackable(state, me.id, tile) && this.ctx.ui.mode.kind === 'none' && !this.ctx.ui.selection.length) {
+        // peace time: the nation last seen there can't be attacked yet (as for land in view: estimateAttack says no)
+        const peace = peaceReason(state, me.id, fog.knownOwner(state, tile));
+        const n = troopSum(troopsToSend(me, this.ctx.ui));
+        if (peace) rows.push(this.line('', 'No attack yet', peace, 'own'));
+        else rows.push(this.line('', `Click to attack with ${formatCount(n)}`, 'Out of sight: you find out who holds it when your troops get there', 'atk'));
+      }
+    }
+    this.card.className = 'mtip';
+    this.card.replaceChildren(...rows);
+    setVisible(this.odds, false);
   }
 
   /** A warship is selected: say what a click here does. */
@@ -296,12 +352,14 @@ export class MapTooltip {
               : id === 'rocket'
                 ? t.count > 1 ? `Fire ${t.count} rockets here` : 'Fire a rocket here'
                 : t.count > 1 ? `Drop ${t.count} atom bombs here` : 'Drop the atom bomb here';
-      rows.push(this.line(pic, title, strikeBody(state, m, t), 'head'));
+      // fog of war: the blast and the launch site always; what it would hit only when all of it is in view
+      const hidden = t.blind;
+      rows.push(this.line(pic, title, hidden ? `${t.radius > 0 ? `Radius ${fmtR(t.radius)} tiles. ` : ''}Out of sight: you will see what it hit when it lands` : strikeBody(state, m, t), 'head'));
       const role = strikeRoleLine(state, t, tile);
       if (role) rows.push(el('div', 'mt-hint', role));
       const own = ownHitWarning(m, t);
       if (own) rows.push(el('div', 'mt-warn', own));
-      if (t.covered) rows.push(el('div', 'mt-warn', t.covered));
+      if (t.covered && !hidden) rows.push(el('div', 'mt-warn', t.covered));
       const salvo = id === 'bomb' || id === 'rocket' || id === 'atomBomb' ? ' Salvo size: top bar.' : '';
       rows.push(el('div', 'mt-hint', `Click to fire. Shift: fire again.${salvo} Esc or right-click: cancel.`));
     } else {

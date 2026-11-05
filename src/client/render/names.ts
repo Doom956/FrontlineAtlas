@@ -6,6 +6,7 @@
 // ~GRID_CELLS cells), kept current from the tile change feed. Bounding boxes come from one pass over the grid every
 // BBOX_MS; the largest-rectangle search (labels.ts sizing rules) runs for a few players per frame so every label is
 // refreshed about every REFRESH_MS. Labels glide to their new place and size.
+import type { FogView } from '../fog/fogView';
 import { areAllied, isTraitor } from '../../sim/diplomacy';
 import { armyTotal } from '../../sim/economy';
 import { isTribe } from '../../sim/types';
@@ -293,8 +294,12 @@ export class NameLayer {
     return t * (2 - t);
   }
 
+  /** fog of war view (set by the renderer each frame; null or inactive = no fog) */
+  fog: FogView | null = null;
+
   draw(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, humanId: number, style: NameStyle, nowMs: number, dpr: number): void {
     this.drawn = 0;
+    const fog = this.fog?.active ? this.fog : null;
     // during the spawn phase the capitals carry the names
     if (state.phase === 'spawn') return;
     const me = humanId;
@@ -365,7 +370,8 @@ export class NameLayer {
       const totalW = tw + iconsW;
       const small = clamp(px * (name ? 0.62 : 0.8), tribe ? 10.5 : 10, 14);
       // Army sizes are public (sim armyTotalOf); only the troop mix needs intel, and only your own mix is drawn.
-      const showArmy = !tribe || px >= 13.5 || !name;
+      // fog of war: the army number only for nations in sight, allies or with intel (fog/fogView.ts armyShown)
+      const showArmy = (!tribe || px >= 13.5 || !name) && (!fog || fog.armyShown(state, p.id) !== null);
       const mixBar = p.id === me && showArmy;
       const bottom = showArmy ? small * 1.2 + px * 0.2 + (mixBar ? 7 : 0) : px * 0.5;
       const x0 = s.x - totalW / 2 - 2;

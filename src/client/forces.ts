@@ -6,6 +6,7 @@
 //   - buildUnit(): buys one at the best site (the port / airfield nearest the view with room)
 //   - unitDoing() / unitPlace(): what a unit on the map is doing, in words ("heading to Azuria's coast")
 // The rules stay in the sim (buildWarship, buildAircraft, moveWarship); this file only reads and phrases them.
+import { activeFog, knownOwnerOf, nationName } from './fog/fogView';
 import { aircraftCap, buildingsOf } from '../sim/buildings';
 import { BOMBER_RADIUS, NAVY_SUPPORT_RANGE, TECHS, UNITS, WARSHIP_RANGE } from '../sim/config';
 import { SHELL_RANGE_TILES } from './reach';
@@ -231,26 +232,40 @@ function tileOf(state: GameState, u: Unit): number {
 
 function nameOf(state: GameState, me: Player, id: number): string {
   if (id === me.id) return 'your';
-  const p = state.players[id];
-  return p ? `${p.name}'s` : 'unknown';
+  return state.players[id] ? `${foeName(state, id, 'unknown')}'s` : 'unknown';
 }
 
-/** Where a tile is in words: "Azuria's coast", "your coast", "open sea", "Azuria's land". */
+/**
+ * Where a tile is in words: "Azuria's coast", "your coast", "open sea", "Azuria's land". Fog of war: by the owner this
+ * player knows (last seen), "unexplored land" / "unexplored waters" where it never looked.
+ */
 export function unitPlace(state: GameState, me: Player, tile: number): string {
   const m = state.map;
   if (tile < 0 || tile >= m.owner.length) return 'open sea';
-  const o = m.owner[tile];
-  if (!isWater(m.terrain[tile])) return o > 0 ? `${nameOf(state, me, o)} ${m.coastal[tile] ? 'coast' : 'land'}` : 'the wilderness';
+  const fog = activeFog(state);
+  const water = isWater(m.terrain[tile]);
+  if (fog && !fog.explored(tile)) return water ? 'unexplored waters' : 'unexplored land';
+  const o = knownOwnerOf(state, tile);
+  if (!water) return o > 0 ? `${nameOf(state, me, o)} ${m.coastal[tile] ? 'coast' : 'land'}` : 'the wilderness';
   // water: the nearest owned coast within a few tiles
   let best = -1;
   let bd = Infinity;
   forEachInRadius(m, tile, 6, (i, d) => {
-    if (d < bd && m.owner[i] > 0 && !isWater(m.terrain[i])) {
+    if (d >= bd || isWater(m.terrain[i])) return;
+    const k = fog ? fog.knownOwner(state, i) : m.owner[i];
+    if (k > 0) {
       bd = d;
-      best = m.owner[i];
+      best = k;
     }
   });
   return best > 0 ? `off ${nameOf(state, me, best)} coast` : 'open sea';
+}
+
+/** A nation named for this player: its name once met, else "an unknown nation". */
+function foeName(state: GameState, id: number, fallback: string): string {
+  if (!state.players[id] || id <= 0) return fallback;
+  const n = nationName(state, id);
+  return n === state.players[id].name ? n : 'an unknown nation';
 }
 
 /** A hostile ship within warship range of a warship (it is fighting it). */
@@ -287,9 +302,9 @@ export function unitDoing(state: GameState, me: Player, u: Unit): string {
     case 'transport':
       return `${formatCount(armyTotal(u.troops))} troops heading to ${unitPlace(state, me, u.target)}`;
     case 'tradeShip':
-      return `Carrying ${formatCount(u.cargo)} gold to ${state.players[u.targetOwner]?.name ?? 'a port'}`;
+      return `Carrying ${formatCount(u.cargo)} gold to ${foeName(state, u.targetOwner, 'a port')}`;
     case 'bomber':
-      return u.state === 0 ? `Flying to bomb ${state.players[u.targetOwner]?.name ?? 'a target'}` : 'Flying home to its Airfield';
+      return u.state === 0 ? `Flying to bomb ${bombTarget(state, me, u)}` : 'Flying home to its Airfield';
     case 'transportPlane':
       return `Dropping ${formatCount(armyTotal(u.troops))} paratroopers on ${unitPlace(state, me, u.target)}`;
     case 'rocket':
@@ -303,11 +318,23 @@ export function unitDoing(state: GameState, me: Player, u: Unit): string {
   return '';
 }
 
+/** Whom a bomber flies at, as this player may know it (fog of war: the land last seen at its target). */
+function bombTarget(state: GameState, me: Player, u: Unit): string {
+  const fog = activeFog(state);
+  if (!fog || u.target < 0 || u.target >= state.map.owner.length || fog.visible(u.target)) return foeName(state, u.targetOwner, 'a target');
+  if (!fog.explored(u.target)) return 'unexplored land';
+  const k = fog.knownOwner(state, u.target);
+  return k > 0 && k !== me.id ? foeName(state, k, 'a target') : 'a target';
+}
+
 /** Short status of a division for the Forces drawer and the hover card. */
 export function tankDivisionDoing(state: GameState, me: number, u: Unit): string {
+  // fog of war: the owner this player knows there
   const name = (t: number): string => {
-    const o = t >= 0 && t < state.map.owner.length ? state.map.owner[t] : 0;
-    return o === me ? 'your land' : o > 0 ? `${state.players[o]?.name ?? 'enemy'} land` : 'neutral land';
+    const fog = activeFog(state);
+    if (fog && t >= 0 && !fog.explored(t)) return 'unexplored land';
+    const o = t >= 0 && t < state.map.owner.length ? knownOwnerOf(state, t) : 0;
+    return o === me ? 'your land' : o > 0 ? `${foeName(state, o, 'enemy')} land` : 'neutral land';
   };
   switch (u.state) {
     case 1:
@@ -315,7 +342,7 @@ export function tankDivisionDoing(state: GameState, me: number, u: Unit): string
     case 2:
       return `Moving up to spearhead into ${name(u.target)}`;
     case 3:
-      return `Spearhead into ${state.players[u.targetOwner]?.name ?? 'neutral land'}: ${u.cargo | 0} tiles taken`;
+      return `Spearhead into ${foeName(state, u.targetOwner, 'neutral land')}: ${u.cargo | 0} tiles taken`;
     default: {
       const mode = u.mode ?? 'hold';
       if (mode === 'support') return 'Supporting your main front: spearheads into weak spots when ready';
@@ -328,6 +355,11 @@ export function tankDivisionDoing(state: GameState, me: number, u: Unit): string
 /** A hostile unit coming at the player (their transports, bombers, cargo planes and missiles aimed at them). */
 export function isIncoming(state: GameState, me: number, u: Unit): boolean {
   if (me <= 0 || u.owner === me || u.hp <= 0 || areAllied(state, me, u.owner)) return false;
+  // fog of war: transports, cargo planes and bombers count once seen (rocket and atom bomb launches are announced)
+  if (u.type !== 'rocket' && u.type !== 'atomBomb' && state.fog) {
+    const fog = activeFog(state);
+    if (fog && !fog.unitShown(state, u)) return false;
+  }
   const t = u.target >= 0 && u.target < state.map.owner.length ? state.map.owner[u.target] : 0;
   switch (u.type) {
     case 'transport':

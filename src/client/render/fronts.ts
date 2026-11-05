@@ -14,6 +14,7 @@
 // Hover a front: a small card "Your attack on X: +N tiles/s, troops left Y" next to the pointer, with a shovel line
 //   "Dug in: +30%" when the defender's side is dug in and a plane line when Air cover bombs it (trench.ts).
 // Air cover: a small plane glyph next to the troop pill of an attack that idle airfields cover by themselves.
+import type { FogView } from '../fog/fogView';
 import { estimateAttack } from '../../sim/combat';
 import { areAllied } from '../../sim/diplomacy';
 import { armyTotal } from '../../sim/economy';
@@ -439,6 +440,17 @@ export class FrontLayer {
   }
 
   private ownerAt = (i: number): number => (this.feed ? this.feed.mirror[i] & OWNER_MASK : 0);
+  /** fog of war view (set by the renderer each frame; null or inactive = no fog) */
+  fog: FogView | null = null;
+
+  /** Fog of war: wars between others show only where you see the fighting (yours and your allies' always). */
+  private seenWar(state: GameState, a: Attack): boolean {
+    const fog = this.fog;
+    if (!fog?.active) return true;
+    const me = state.humanId;
+    if (a.attacker === me || a.target === me || areAllied(state, me, a.attacker) || areAllied(state, me, a.target)) return true;
+    return a.focusTile >= 0 && fog.visible(a.focusTile);
+  }
 
   /** Call before the tile feed applies this frame's changes. */
   begin(state: GameState, nowMs: number): void {
@@ -472,7 +484,7 @@ export class FrontLayer {
       if (!log) this.speedLog.set(a.id, (log = []));
       log.push(state.tick, a.tilesTaken);
       while (log.length > 4 && log[0] < state.tick - SPEED_WINDOW_TICKS) log.splice(0, 2);
-      if (feed && this.atWar(state, a)) {
+      if (feed && this.atWar(state, a) && this.seenWar(state, a)) {
         const k = pairKey(a.attacker, a.target);
         let p = this.pairs.get(k);
         if (!p) {
@@ -738,6 +750,7 @@ export class FrontLayer {
       const incoming = me > 0 && a.target === me;
       const ally = this.allied.has(a.id);
       if (!mine && !incoming && !ally && z < 6) continue;
+      if (!mine && !incoming && !ally && !this.seenWar(state, a)) continue;
       const anchor = this.anchors.get(a.id);
       const tile = anchor ? anchor.tile : a.focusTile;
       if (tile < 0) continue;

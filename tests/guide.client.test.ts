@@ -598,3 +598,30 @@ describe('guide and advisor: one says it, not both', () => {
     expect(guideCovers(g, new Set(), 'answer-3')).toBe(false);
   });
 });
+
+describe('guide: early tips', () => {
+  it('an early tip (the fog of war one) cuts into the opening once, then the opening goes on and other tips still follow', () => {
+    const tips: GuideTip[] = [{ id: 'fogEarly', text: 'fog', early: true, when: flag('fog') }, ...TIPS];
+    const g = new GuideEngine(STEPS, tips);
+    expect(run(g)?.id).toBe('a');
+    world.flags.fog = true;
+    const v = run(g);
+    expect(v?.kind).toBe('tip');
+    expect(v?.id).toBe('fogEarly');
+    // shown for its time, then the opening comes back where it was
+    expect(runFor(g, TIP_MS + 400)?.id).toBe('a');
+    expect(g.openingActive).toBe(true);
+    // never twice; once the opening is over, normal tips start
+    world.flags.t2 = true;
+    g.skip();
+    g.next();
+    world.flags.a = true;
+    expect(run(g)?.id).not.toBe('fogEarly');
+  });
+
+  it('the real fog tip is early and names a way to see more that needs no research', () => {
+    const fog = guideTips().find((t) => t.id === 'fog')!;
+    expect(fog.early).toBe(true);
+    expect(typeof fog.text === 'string' ? fog.text : '').toMatch(/Watchtower/);
+  });
+});

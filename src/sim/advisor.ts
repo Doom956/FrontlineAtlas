@@ -5,6 +5,7 @@
 // recommendMix() is the AI's mix logic (personality base, then the main foe's mix, the terrain of the front, enemy
 // forts, and what our oil and buildings allow). updateAdvisor() runs it, plus a default research order, for every
 // player with auto flags on, every AUTO_MANAGE_SECONDS. suggestions() only reads the state.
+import { knownTile } from './fog';
 import { artilleryOf, canBarrage } from './barrage';
 import {
   armyTotalOf,
@@ -468,7 +469,7 @@ export function suggestions(state: GameState, playerId: number): Suggestion[] {
     if (hasIntel(state, playerId, foe) && troopShares(fp.troops).armor > 0.35) {
       add(`armor-${foe}`, `${fp.name} fields lots of armor: forts on hills, or more infantry in forests and swamps`, 52, undefined, 'fort');
     }
-    if (countBuildings(state, foe, 'fort') > 0 && countBuildings(state, playerId, 'arsenal', true) === 0 && canPay('arsenal', 0.8)) {
+    if (buildingsOf(state, foe, 'fort').some((b) => b.buildLeft <= 0 && knownTile(state, playerId, b.tile)) && countBuildings(state, playerId, 'arsenal', true) === 0 && canPay('arsenal', 0.8)) {
       add('build-arsenal', `${fp.name} has forts: build an Arsenal, artillery beats forts`, 58, spotFor(state, playerId, 'arsenal', capital), 'arsenal');
     }
     // Supply: is most of the front beyond supply range?
@@ -491,7 +492,7 @@ export function suggestions(state: GameState, playerId: number): Suggestion[] {
     }
     // Enemy planes or missiles and no SAM.
     if (hasTech(p, 'radar') && countBuildings(state, playerId, 'sam', true) === 0) {
-      const air = buildingsOf(state, foe, 'silo').length > 0 || buildingsOf(state, foe, 'airfield').some((b) => b.bombers > 0);
+      const air = buildingsOf(state, foe, 'silo').some((b) => knownTile(state, playerId, b.tile)) || buildingsOf(state, foe, 'airfield').some((b) => b.bombers > 0 && knownTile(state, playerId, b.tile));
       if (air) add('build-sam', `${fp.name} has bombers or missiles: build a SAM Site`, 57, spotFor(state, playerId, 'sam', capital), 'sam');
     }
   }
@@ -503,7 +504,7 @@ export function suggestions(state: GameState, playerId: number): Suggestion[] {
     for (const [o, nb] of nbs) {
       if (o === 0 || areAllied(state, playerId, o) || !nb.theirs.length || target >= 0) continue;
       for (const b of [...buildingsOf(state, o, 'sam'), ...buildingsOf(state, o, 'fort')]) {
-        if (b.buildLeft > 0 || isDisabled(state, b) || state.map.owner[b.tile] !== o) continue;
+        if (b.buildLeft > 0 || isDisabled(state, b) || state.map.owner[b.tile] !== o || !knownTile(state, playerId, b.tile)) continue;
         if (!canBarrage(state, playerId, b.tile).ok) continue;
         target = b.tile;
         what = `${name(o)}'s ${BUILDINGS[b.type].name}`;
@@ -512,7 +513,7 @@ export function suggestions(state: GameState, playerId: number): Suggestion[] {
     }
     if (target >= 0) add('barrage', `Shell ${what} with an artillery barrage before you attack`, 64, target);
   }
-  if (fp && fp.alive && !isTribe(fp) && hasTech(p, 'flight') && fp.capital >= 0 && home > PARADROP_MIN_TROOPS * 10) {
+  if (fp && fp.alive && !isTribe(fp) && hasTech(p, 'flight') && fp.capital >= 0 && knownTile(state, playerId, fp.capital) && home > PARADROP_MIN_TROOPS * 10) {
     const w = state.map.width;
     for (const af of buildingsOf(state, playerId, 'airfield')) {
       if (af.buildLeft > 0 || af.dropCooldown > 0) continue;
@@ -522,7 +523,7 @@ export function suggestions(state: GameState, playerId: number): Suggestion[] {
       if (dx * dx + dy * dy > r * r) continue;
       let covered = false;
       for (const s of buildingsOf(state, foe, 'sam')) {
-        if (s.buildLeft > 0 || isDisabled(state, s) || chargesReady(s) < 1) continue;
+        if (s.buildLeft > 0 || isDisabled(state, s) || chargesReady(s) < 1 || !knownTile(state, playerId, s.tile)) continue;
         const sr = samRadius(s);
         const sx = (s.tile % w) - (fp.capital % w);
         const sy = ((s.tile / w) | 0) - ((fp.capital / w) | 0);

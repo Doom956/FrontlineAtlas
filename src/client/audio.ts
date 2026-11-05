@@ -6,6 +6,7 @@
 // Without an AudioContext (Node tests, old browsers, blocked audio) every method still works and never throws:
 // the rate limiting runs as usual, nothing is synthesized. See docs/AUDIO.md for the integration steps.
 
+import { fogEvent, fogFor } from './fog/fogView';
 import type { Effect, GameEvent, GameState } from '../sim/types';
 
 // ================================================================================================ sound table
@@ -949,16 +950,19 @@ export class AudioManager {
       let k = evs.length - 1;
       while (k >= 0 && !this.seenEvents.has(evs[k])) k--;
       for (let i = k + 1; i < evs.length; i++) {
-        const e = evs[i];
-        this.seenEvents.add(e);
+        this.seenEvents.add(evs[i]);
+        const e = state.fog ? fogEvent(state, evs[i]) : evs[i]; // fog of war: no sound placed on land you never saw
         const pan = e.tile >= 0 && view ? this.tilePan(state, view, e.tile) : undefined;
         const near = e.tile >= 0 && view ? this.tileNear(state, view, e.tile) : undefined;
         this.onGameEvent(e, h, pan ?? undefined, near);
       }
       const w = state.map.width;
+      const fog = state.fog ? fogFor(state) : null;
       for (const fx of state.effects) {
         if (this.seenEffects.has(fx)) continue;
         this.seenEffects.add(fx);
+        // fog of war: no sound from fights and bombs you can't see
+        if (fog?.active && !fog.visible(Math.max(0, Math.min(state.map.height - 1, Math.floor(fx.y))) * w + Math.max(0, Math.min(w - 1, Math.floor(fx.x))))) continue;
         let pan: number | undefined;
         if (view) {
           const s = view.tileToScreen(fx.x, fx.y);

@@ -181,8 +181,13 @@ describe('protocol helpers', () => {
     expect(validateClientMessage({ type: 'createLobby', settings: { hack: 1 } }).ok).toBe(false);
   });
 
+  it('accepts the fog of war rule in lobby settings (protocol 17)', () => {
+    expect(validateClientMessage({ type: 'createLobby', settings: { modifiers: { fogOfWar: true } } }).ok).toBe(true);
+    expect(validateClientMessage({ type: 'createLobby', settings: { modifiers: { fogOfWar: 1 } } }).ok).toBe(false);
+  });
+
   it('refuses a Supply Depot (removed in protocol 12)', () => {
-    expect(PROTOCOL_VERSION).toBe(16);
+    expect(PROTOCOL_VERSION).toBe(17);
     expect(validateAction({ type: 'build', building: 'supplyDepot', tile: 9 }).ok).toBe(false);
     expect(validateAction({ type: 'buildMany', building: 'supplyDepot', tile: 9, count: 2 }).ok).toBe(false);
     expect(validateAction({ type: 'upgradeArea', tile: 9, radius: 5, building: 'supplyDepot', levels: 1 }).ok).toBe(false);
@@ -190,7 +195,7 @@ describe('protocol helpers', () => {
   });
 
   it('validates the ally requests and setPause (protocol 6)', () => {
-    expect(PROTOCOL_VERSION).toBe(16);
+    expect(PROTOCOL_VERSION).toBe(17);
     expect(validateAction({ type: 'requestAllyAttack', ally: 3, target: 5, junk: 1 })).toEqual({ ok: true, value: { type: 'requestAllyAttack', ally: 3, target: 5 } });
     expect(validateAction({ type: 'requestAllyAid', ally: 3 })).toEqual({ ok: true, value: { type: 'requestAllyAid', ally: 3 } });
     for (const a of [
@@ -271,8 +276,8 @@ describe('relay server: private lobby game', () => {
     expect((await b.take('error')).code).toBe('notHost');
     b.send({ type: 'updateLobbySettings', settings: { aiCount: 3 } });
     expect((await b.take('error')).code).toBe('notHost');
-    a.send({ type: 'updateLobbySettings', settings: { aiCount: 3 } });
-    await b.take('lobbyState', (m) => m.settings.aiCount === 3);
+    a.send({ type: 'updateLobbySettings', settings: { aiCount: 3, modifiers: { fogOfWar: true } } });
+    await b.take('lobbyState', (m) => m.settings.aiCount === 3 && m.settings.modifiers.fogOfWar === true);
 
     a.send({ type: 'startGame' });
     const starts = await Promise.all([a.take('gameStart'), b.take('gameStart'), c.take('gameStart')]);
@@ -289,11 +294,13 @@ describe('relay server: private lobby game', () => {
     expect(g.settings).toMatchObject({ map: { kind: 'generated', type: 'pangaea', size: 'small' }, aiCount: 3, humanPlayer: true, playerName: 'Ann' });
     expect(g.settings.modifiers.peaceMinutes).toBe(2);
     expect(g.settings.modifiers.noNukes).toBe(false);
+    expect(g.settings.modifiers.fogOfWar).toBe(true); // the host's rule reaches every seat
     expect(Number.isInteger(g.settings.seed)).toBe(true);
     // Colours that clash (all three asked for the same one) are replaced.
     expect(new Set(g.playerSlots.map((p) => p.color.join())).size).toBe(3);
     // The settings are a complete GameSettings: the sim can build the game from them.
     const state = createGame(g.settings);
+    expect(state.fog).toBeDefined();
     expect(state.players.filter((p) => p.alive && p.personality !== 'tribe').length).toBeGreaterThanOrEqual(1 + g.settings.aiCount);
     // Lobby actions are refused once started.
     a.send({ type: 'updateLobbySettings', settings: { aiCount: 4 } });

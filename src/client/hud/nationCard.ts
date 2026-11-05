@@ -1,5 +1,6 @@
 // Nation card (left edge under the standings): who they are, their army and land, your relation, and the
 // diplomacy buttons (Ally / Accept / Break, Gift, Embargo, Attack). Opened from the standings or the radial menu.
+import { activeFog, ARMY_HIDDEN_TIP } from '../fog/fogView';
 import { alliancesAllowed, sameTeam } from '../../sim/rules';
 import { hasIntel } from '../../sim/buildings';
 import { borders } from '../../sim/combat';
@@ -110,13 +111,17 @@ export class NationCard {
     const me = this.ctx.me();
     const p = s?.players[this.id];
     if (!s || !me || !p || p.capital < 0) return;
+    const fog = activeFog(s);
+    if (fog && !borders(s, me.id, p.id) && fog.knownCapital(s, p.id) < 0) return;
     this.ctx.act({ type: 'attack', tile: p.capital, troops: troopsToSend(me, this.ctx.ui) });
   }
 
   update(s: GameState, me: Player): void {
     if (!this.id) return;
     const p = s.players[this.id];
-    if (!p || !p.alive) {
+    // fog of war: no card for a nation you have not met (hud.openNation says so instead)
+    const fog = activeFog(s);
+    if (!p || !p.alive || (fog && !fog.isMet(p.id))) {
       this.close();
       return;
     }
@@ -141,7 +146,9 @@ export class NationCard {
         setTip(this.doc, [`Doctrine: ${d.name}${kd.adapting ? '' : `, level ${kd.level}`}`, d.short, ...now].join('\n'));
       }
     }
-    setText(this.army, formatCount(armyOf(s, p.id)));
+    const army = fog ? fog.armyShown(s, p.id) : armyOf(s, p.id);
+    setText(this.army, army === null ? '?' : formatCount(army));
+    setTip(this.army, army === null ? ARMY_HIDDEN_TIP : '');
     setText(this.land, `${((p.tiles / Math.max(1, s.map.landTileCount)) * 100).toFixed(1)}%`);
     const intel = isMe || hasIntel(s, me.id, p.id);
     setVisible(this.mix, intel);
@@ -179,7 +186,11 @@ export class NationCard {
     setVisible(this.attack, !isMe && !allied);
     const send = troopSum(troopsToSend(me, this.ctx.ui));
     const near = borders(s, me.id, p.id);
-    setTip(this.attack, `Send ${formatCount(send)} troops (${Math.round(this.ctx.ui.attackShare * 100)}%) ${near ? 'across your shared border' : 'by sea: you share no border'}`);
+    // fog of war: the card attacks their capital, so you need a shared border or a capital you have seen
+    const lost = !!fog && !near && fog.knownCapital(s, p.id) < 0;
+    setDisabled(this.attack, lost);
+    if (lost) setTip(this.attack, 'You do not know where they are yet. Expand, build a Watchtower or send ships to find their capital.');
+    else setTip(this.attack, `Send ${formatCount(send)} troops (${Math.round(this.ctx.ui.attackShare * 100)}%) ${near ? 'across your shared border' : 'by sea: you share no border'}`);
   }
 }
 

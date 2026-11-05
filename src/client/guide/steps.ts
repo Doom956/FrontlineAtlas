@@ -2,6 +2,7 @@
 // they become useful). Text is one short line; `target` names the HUD element (data-test values, ' || ' = fallbacks),
 // `tile` the map tile the arrow shows when there is no element. Everything here only reads the game.
 import { isArsenalTech } from '../../sim/arsenal';
+import { fogOn } from '../../sim/fog';
 import { buildingCost, chargesReady, countBuildings } from '../../sim/buildings';
 import { autoFireCount } from '../airSim';
 import { borders } from '../../sim/combat';
@@ -437,6 +438,12 @@ export function guideTips(): GuideTip[] {
       },
       tile: (c) => attack(c)?.tile ?? -1,
       when: (c) => playing(c) && attackOnMe(c.s, c.me) !== null,
+    },
+    {
+      id: 'fog',
+      early: true,
+      text: 'Fog of war is on: dark land is unexplored, grey land is what you saw last. Expand, build a Watchtower or send ships and planes to see more.',
+      when: (c) => playing(c) && fogOn(c.s) && c.me.alive,
     },
     {
       id: 'trench',

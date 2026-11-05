@@ -13,6 +13,7 @@
 //
 // The DOM is built once. update() runs every frame but only does cheap work there; texts and lists refresh at
 // ~5 Hz through each part's update().
+import { activeFog, fogEvent, UNMET_TOAST } from './fog/fogView';
 import { reconHint } from './hud/variantOrders';
 import { VARIANT_NAMES } from '../sim/variants';
 import { buildingAt } from '../sim/buildings';
@@ -655,7 +656,14 @@ export class Hud {
     const s = this.state;
     const p = s?.players[id];
     if (!s || !p) return;
-    if (p.capital >= 0) this.camera.centerOn((p.capital % s.map.width) + 0.5, ((p.capital / s.map.width) | 0) + 0.5);
+    // fog of war: an unmet nation has no card and no place on your map yet; a met one centres on its known capital
+    const fog = activeFog(s);
+    if (fog && !fog.isMet(id)) {
+      this.toasts.show({ text: UNMET_TOAST, kind: 'info', key: 'unmet' });
+      return;
+    }
+    const cap = fog ? fog.knownCapital(s, id) : p.capital;
+    if (cap >= 0) this.camera.centerOn((cap % s.map.width) + 0.5, ((cap / s.map.width) | 0) + 0.5);
     if (this.watching) return;
     if (id !== s.humanId) this.card.open(id);
     else this.card.close();
@@ -817,9 +825,10 @@ export class Hud {
     let k = evs.length - 1;
     while (k >= 0 && !this.seenEvents.has(evs[k])) k--;
     for (let i = k + 1; i < evs.length; i++) {
-      const e = evs[i];
-      this.seenEvents.add(e);
-      if (e.players.length && !e.players.includes(me.id)) continue;
+      const raw = evs[i];
+      this.seenEvents.add(raw);
+      if (raw.players.length && !raw.players.includes(me.id)) continue;
+      const e = fogEvent(state, raw); // fog of war: news of nations you have not met stays vague
       const focus = this.eventFocus(state, e);
       this.events.add(state, e, focus);
       if (this.drawer.open !== 'events' && e.kind !== 'tradeDelivered' && e.kind !== 'info') {
@@ -981,14 +990,18 @@ export class Hud {
     const leader = state.players[leaderId];
     if (!leader) return;
     const mine = leaderId === me.id;
+    // fog of war: the leader is named only once you have met them
+    const fog = activeFog(state);
+    const known = !fog || fog.isMet(leaderId);
+    const cap = fog ? fog.knownCapital(state, leaderId) : leader.capital;
     this.toasts.show({
-      text: mine ? 'Nations are forming a coalition against you. Expect attacks from several sides.' : `Nations are forming a coalition against ${leader.name}.`,
+      text: mine ? 'Nations are forming a coalition against you. Expect attacks from several sides.' : `Nations are forming a coalition against ${known ? leader.name : 'a nation you have not met'}.`,
       kind: mine ? 'bad' : 'info',
       icon: 'shield',
-      swatch: swatchCss(leader, me.id),
+      swatch: known ? swatchCss(leader, me.id) : undefined,
       ms: mine ? 9000 : 5000,
       key: `coalition:${leaderId}`,
-      onClick: leader.capital >= 0 ? () => this.focusTile(leader.capital, true) : undefined,
+      onClick: cap >= 0 ? () => this.focusTile(cap, true) : undefined,
     });
   }
 
@@ -1008,10 +1021,13 @@ export class Hud {
 
   /** Map point an event is about: its tile, else the capital of a player it concerns or names, else -1. */
   private eventFocus(state: GameState, e: GameEvent): number {
-    if (e.tile >= 0) return e.tile;
+    // fog of war: only spots you have explored and capitals you know (no jumping to unseen land)
+    const fog = activeFog(state);
+    if (e.tile >= 0) return !fog || fog.explored(e.tile) ? e.tile : -1;
     const h = state.humanId;
     const cap = (id: number) => {
       const p = state.players[id];
+      if (fog) return p ? fog.knownCapital(state, id) : -1;
       return p && p.capital >= 0 ? p.capital : -1;
     };
     for (const id of e.players) if (id !== h && cap(id) >= 0) return cap(id);
@@ -1019,8 +1035,8 @@ export class Hud {
     let len = 0;
     for (const p of state.players) {
       if (!p || p.id === 0 || p.name.length <= len || !e.message.includes(p.name)) continue;
-      if (p.capital >= 0) {
-        best = p.capital;
+      if (cap(p.id) >= 0) {
+        best = cap(p.id);
         len = p.name.length;
       }
     }

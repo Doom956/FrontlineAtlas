@@ -67,6 +67,7 @@ export const DEFAULT_MODIFIERS: Modifiers = {
   noSams: false,
   research: 'normal',
   fastGame: false,
+  fogOfWar: false,
 };
 
 /** Single-player defaults ('Classic'). */
@@ -169,7 +170,7 @@ export function mapError(v: unknown): string | null {
 }
 
 type ModKey = keyof Modifiers;
-const BOOL_MODS: readonly ModKey[] = ['randomSpawn', 'compactMap', 'noAlliances', 'noNukes', 'noAir', 'noNavy', 'noSams', 'fastGame'];
+const BOOL_MODS: readonly ModKey[] = ['randomSpawn', 'compactMap', 'noAlliances', 'noNukes', 'noAir', 'noNavy', 'noSams', 'fastGame', 'fogOfWar'];
 
 /** Checks one modifier value; returns an error or null. */
 function modError(k: string, x: unknown): string | null {
@@ -438,6 +439,7 @@ export function activeModifiers(s: Pick<GameSetup, 'modifiers' | 'timeLimit' | '
   if (m.randomSpawn) out.push({ id: 'randomSpawn', label: 'Random starts', detail: 'Every start is picked at random, yours too.', group: 'rules' });
   if (m.compactMap) out.push({ id: 'compactMap', label: 'Compact map', detail: 'A half-size map: a quarter of the land and fewer tribes.', group: 'rules' });
   if (m.noAlliances) out.push({ id: 'noAlliances', label: 'No alliances', detail: 'Nobody can form alliances.', group: 'rules' });
+  if (m.fogOfWar) out.push({ id: 'fogOfWar', label: 'Fog of war', detail: 'You see only near your land, units and allies. Grey land is what you saw last.', group: 'rules' });
   if (m.fastGame) out.push({ id: 'fastGame', label: 'Fast game', detail: 'Income, troop growth, building, research and fronts run twice as fast.', group: 'rules' });
   if (s.timeLimit > 0) out.push({ id: 'timeLimit', label: `${Math.round(s.timeLimit / 60)} min limit`, detail: `After ${Math.round(s.timeLimit / 60)} minutes the highest score wins.`, group: 'rules' });
   if (s.victoryLandShare !== VICTORY_LAND_SHARE) out.push({ id: 'victory', label: `Win at ${Math.round(s.victoryLandShare * 100)}%`, detail: `Holding ${Math.round(s.victoryLandShare * 100)}% of the land wins.`, group: 'rules' });

@@ -30,6 +30,7 @@ import { makeRng, randInt, shuffle } from './rng';
 import { assignTeams, DEFAULT_MODIFIERS, humanSeats, STARTING_GOLD, sizeClassForLand, tribesFor } from './setup';
 import { borderTiles, initTerritory, landComponents, onOwnerChange } from './territory';
 import { createTrenchState, resetTrench } from './trenches';
+import { createFog } from './fog';
 import { isTribe, isWater } from './types';
 import type { GameEventKind, GameSettings, GameState, MapData, MapSize, Personality, Player } from './types';
 import { compactWorldMap, compactWorldTile, worldMapSpawns } from './worldmaps';
@@ -143,6 +144,7 @@ export function makeGameState(
   const humans = players.filter((p) => p.id > 0 && p.isHuman).map((p) => p.id);
   if (humans.length) state.follow = { targets: [], recon: [], fireAll: humans };
   initTerritory(state);
+  if (settings.modifiers?.fogOfWar) state.fog = createFog(state); // fog of war (fog.ts)
   return state;
 }
 

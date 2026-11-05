@@ -11,6 +11,7 @@
 //   - Arsenal: your recon / light-tank reveal circles (steel, fading) and minefields around ports (dotted: brass =
 //     yours or an ally's, red = dangerous to you); the recon aim shows the circle the flight would reveal
 // Cheap: rings and lines only, a few dozen per frame at most.
+import { activeFog } from '../fog/fogView';
 import { airPatrolRadius, airSupportRadius, airZones, airWingRange, wingOf } from '../../sim/airwings';
 import { buildingAt, buildingsOf } from '../../sim/buildings';
 import { AIR, ARMOR_SUPPORT_RADIUS, NAVY_SUPPORT_RANGE, TICKS_PER_SECOND } from '../../sim/config';
@@ -165,8 +166,11 @@ export class PillarOverlay {
       const fade = Math.min(1, rv.secondsLeft / 10);
       ring(ctx, c.x, c.y, r, `${STEEL}${0.25 + 0.4 * fade})`, rv.kind === 1 ? [6, 4] : [2, 4], rv.kind === 1 ? `${STEEL}${0.04 + 0.04 * fade})` : undefined);
     }
+    const fog = activeFog(state);
     for (const f of minefields(state)) {
       const friendly = f.owner === me || areAllied(state, me, f.owner);
+      // fog of war: hostile minefields only around ports in water you have explored
+      if (fog && !friendly && !fog.explored(Math.round(f.y) * w + Math.round(f.x))) continue;
       const c = cam.tileToScreen(f.x + 0.5, f.y + 0.5);
       const r = f.radius * z;
       if (!onScreen(c.x, c.y, r)) continue;

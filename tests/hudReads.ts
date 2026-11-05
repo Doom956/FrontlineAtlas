@@ -29,6 +29,7 @@ import { frontRate } from '../src/sim/rules';
 import { allScores, victoryShareNow } from '../src/sim/victory';
 import { followedNation, followTargetOf, liveFoes, warAim, warTargetOf } from '../src/sim/warTarget';
 import { airAutoLine, siloAutoLine, unitAutoLine } from '../src/client/follow';
+import { airSeen, fogOn, knownTile, unitSeen, visibleTile } from '../src/sim/fog';
 import type { GameState } from '../src/sim/types';
 
 type Read = (s: GameState, pid: number, k: number) => void;
@@ -220,6 +221,25 @@ export const READS: Record<string, Read> = {
       followTargetOf(s, b);
     }
     for (const b of buildingsOf(s, pid, 'silo')) siloAutoLine(s, b);
+  },
+  // fog of war (fog.ts): what the map, units layer, tooltip and standings ask (pure reads; no-ops without the rule)
+  fog: (s, pid, k) => {
+    fogOn(s);
+    const n = s.map.owner.length;
+    for (let j = 0; j < 8; j++) {
+      const t = (k * 7919 + j * 104729) % n;
+      visibleTile(s, pid, t);
+      knownTile(s, pid, t);
+    }
+    for (const t of acrossTiles(s, pid, k, 4)) {
+      visibleTile(s, pid, t);
+      knownTile(s, pid, t);
+    }
+    for (const u of s.units) {
+      if (u.hp <= 0) continue;
+      unitSeen(s, pid, u);
+      if (u.type === 'bomber' || u.type === 'rocket' || u.type === 'fighter') airSeen(s, pid, u);
+    }
   },
   map: (s) => {
     minefields(s);

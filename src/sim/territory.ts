@@ -369,6 +369,17 @@ export function tilesInBlock(state: GameState, playerId: number, tile: number): 
   return t.blocks[playerId * t.bw * t.bh + ((y / BLOCK) | 0) * t.bw + ((x / BLOCK) | 0)];
 }
 
+/**
+ * Tiles playerId owns in every BLOCK x BLOCK block (a read-only view, index = by * bw + bx; empty for an unknown id).
+ * Exact incremental data (setOwner keeps it), so reading it never depends on when it is read.
+ */
+export function blockCountsOf(state: GameState, playerId: number): { counts: Uint16Array; bw: number; bh: number } {
+  const t = get(state);
+  const nb = t.bw * t.bh;
+  if (playerId <= 0 || playerId >= t.pc) return { counts: new Uint16Array(0), bw: t.bw, bh: t.bh };
+  return { counts: t.blocks.subarray(playerId * nb, (playerId + 1) * nb), bw: t.bw, bh: t.bh };
+}
+
 /** True if tiles changed owner on or next to the player's land since its recent changes were last taken. */
 export function isDirty(state: GameState, playerId: number): boolean {
   const t = get(state);

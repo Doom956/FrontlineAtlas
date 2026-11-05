@@ -316,7 +316,7 @@ export const BUILDINGS: Record<BuildingType, BuildingInfo> = {
   factory: { name: 'Factory', hotkey: '7', cost: 900, iron: 60, costGrowth: 0.5, buildTime: 10, tech: null, coastal: false, radius: 0, maxLevel: 5, capturable: true, description: 'Turns troops into Armor (fast, strong on open ground; burns oil). Faster per level.' },
   arsenal: { name: 'Arsenal', hotkey: '8', cost: 800, iron: 60, costGrowth: 0.5, buildTime: 10, tech: null, coastal: false, radius: 0, maxLevel: 5, capturable: true, description: 'Turns troops into Artillery (beats forts; fires barrages). Faster per level.' },
   fort: { name: 'Fort', hotkey: '9', cost: 700, iron: 30, costGrowth: 0.35, buildTime: 8, tech: null, coastal: false, radius: 20, maxLevel: 5, capturable: true, description: 'Attackers lose x2 and move half as fast nearby; a supply source. Stronger and wider per level. Artillery beats forts.' },
-  watchtower: { name: 'Watchtower', hotkey: 'Q', cost: 350, iron: 0, costGrowth: 0.3, buildTime: 4, tech: null, coastal: false, radius: 80, maxLevel: 3, capturable: true, description: 'Shows the troop mix of nearby enemies, +20% defence close by, warns of planes and landings. Wider per level.' },
+  watchtower: { name: 'Watchtower', hotkey: 'Q', cost: 350, iron: 0, costGrowth: 0.3, buildTime: 4, tech: null, coastal: false, radius: 80, maxLevel: 3, capturable: true, description: 'Shows the troop mix of nearby enemies, +20% defence close by, warns of planes and landings. With fog of war on it also sees far. Wider per level.' },
   port: { name: 'Port', hotkey: 'E', cost: 700, iron: 0, costGrowth: 0.4, buildTime: 8, tech: null, coastal: true, radius: 0, maxLevel: 5, capturable: true, description: 'Coastal. Trade ships (gold), free fast transports, warships. More of all per level.' },
   lab: { name: 'Research Lab', hotkey: 'R', cost: 750, iron: 0, costGrowth: 0.7, buildTime: 8, tech: null, coastal: false, radius: 0, maxLevel: 5, capturable: true, description: '+1 science/s per level.' },
   hospital: { name: 'Hospital', hotkey: 'H', cost: 600, iron: 0, costGrowth: 0.6, buildTime: 6, tech: 'medicine', coastal: false, radius: 0, maxLevel: 2, capturable: true, description: '15% of your attack losses come back as troops, per level (2 levels count).' },
@@ -1367,6 +1367,30 @@ export const NAVY_WAR_MEMORY = 30;
 /** automatic division drives (support / refit modes) search at most this many tiles, and wait this long after a failed route */
 export const ARMOR_AUTO_PATH_BUDGET = 8000;
 export const ARMOR_RETRY_SECONDS = 10;
+
+// ---------- fog of war (fog.ts; game rule Modifiers.fogOfWar) ----------
+/**
+ * Vision in a fog game. The grid is territory.BLOCK x BLOCK tiles (16); radii are in tiles. A block is in view when its
+ * nearest point is within the radius of a source (the rule of territory.ownsNear).
+ */
+export const FOG = {
+  /** own and allied land see this far past their border (every block holding an own tile is a source) */
+  landBand: 24,
+  /** humans refresh their vision every this many ticks (0.5 s), staggered by (tick + id) */
+  humanTicks: 5,
+  /** AI nations refresh every this many ticks (1 s), staggered the same way; tribes have no vision */
+  aiTicks: 10,
+  /** vision of one unit by type (0 = none); the submarine variant uses `submarine` */
+  unit: { warship: 30, submarine: 18, transport: 12, tradeShip: 10, tankDivision: 20, bomber: 14, fighter: 18, transportPlane: 12, reconPlane: 20, rocket: 0, atomBomb: 0 } as Record<string, number>,
+  /** ground vision of a finished watchtower = buildings.watchtowerRadiusOf x this */
+  watchtowerMul: 0.5,
+  /** a finished Port sees this far (mostly sea: spots landings) */
+  portSea: 30,
+  /** client drawing: explored land brightness and saturation, unexplored terrain brightness */
+  exploredShade: 0.62,
+  exploredSaturation: 0.35,
+  unexploredShade: 0.28,
+};
 
 // ---------- special upgrades (specials.ts): behaviour changes bought as techs ----------
 export const SPECIALS = {

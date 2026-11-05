@@ -3,6 +3,7 @@
 // CLUSTER_ZOOM on one per 8-connected cluster; with the resource overlay on, fields at any zoom (merged on a coarser
 // grid when zoomed far out). Deposits on
 // other nations' land are drawn faded. The tiles themselves are marked by the map shader up close.
+import type { FogView } from '../fog/fogView';
 import type { GameState } from '../../sim/types';
 import type { Camera } from '../camera';
 import { drawMarker, type ResourceIconId } from '../icons';
@@ -31,6 +32,8 @@ export class DepositLayer {
   private farther: Grid | null = null;
   private gh = 0;
   drawn = 0;
+  /** fog of war view (set by the renderer each frame; null or inactive = no fog) */
+  fog: FogView | null = null;
 
   setGame(state: GameState): void {
     const { width: w, height: h } = state.map;
@@ -60,7 +63,8 @@ export class DepositLayer {
     const cy0 = Math.max(0, Math.floor((v.y0 - pad) / CELL));
     const cx1 = Math.min(grid.gw - 1, Math.floor((v.x1 + pad) / CELL));
     const cy1 = Math.min(this.gh - 1, Math.floor((v.y1 + pad) / CELL));
-    const { building, owner } = state.map;
+    const { building } = state.map;
+    const fog = this.fog?.active ? this.fog : null;
     // Zoomed out only the bigger fields (the overlay shows them all): keeps the view calm.
     const minTiles = near ? 1 : z < 2 ? 10 : overlay || focus !== 0 ? 3 : 8;
     for (let cy = cy0; cy <= cy1; cy++) {
@@ -70,10 +74,11 @@ export class DepositLayer {
           const c = list[k];
           if (c.x < v.x0 - pad || c.x >= v.x1 + pad || c.y < v.y0 - pad || c.y >= v.y1 + pad) continue;
           if (c.tiles < minTiles || building[c.tile] !== 0) continue;
+          if (fog && !fog.explored(c.tile)) continue; // fog of war: deposits only where you have looked
           const id = IDS[c.res];
           if (!id) continue;
           if (c.res === 3 && !overlay && focus !== 3 && z < CLUSTER_ZOOM) continue;
-          const o = owner[c.tile];
+          const o = fog ? fog.knownOwner(state, c.tile) : state.map.owner[c.tile];
           const foreign = o !== 0 && o !== humanId && humanId > 0;
           // Inside territory (yours or not) only the bigger fields get a marker unless you look for them, so owned
           // land doesn't fill up with drops and rocks up close.

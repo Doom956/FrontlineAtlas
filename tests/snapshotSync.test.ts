@@ -105,4 +105,10 @@ describe('lockstep: rejoin (turn-log replay) and HUD reads between ticks', () =>
       expect(r.mismatch).toBeNull();
     }, 900_000);
   }
+  // Fog of war (fog.ts): hashed vision that the AI obeys; the reads above include the fog group.
+  it('fog of war, seed 6 with a human: live, quiet and rejoined clients hash the same', async () => {
+    const settings = testSettings({ seed: 6, mapType: 'continents', mapSize: 'medium', aiCount: 8, humanPlayer: true, tribeCount: -1, mods: { fogOfWar: true } });
+    const r = await scenario(settings, 12 * 600, [2500, 5000]);
+    expect(r.mismatch).toBeNull();
+  }, 900_000);
 });

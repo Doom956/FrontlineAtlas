@@ -86,7 +86,8 @@ Rules for the sim:
   belongs to one game, like an `Attack`). Pure scratch buffers that carry nothing between calls are allowed.
 - `hashState(state)` (hash.ts) covers tick, RNG state, phase and spawn time, tile owners, players' stocks, troops and
   barrage reload, research (current tech, progress, techs), auto flags, traitor time and embargoes, alliances and
-  alliance requests, attacks, units (incl. troops aboard), pending barrages and buildings (level, timers, hp); tests check that two games fed the same actions hash the same, also with another game ticking in
+  alliance requests, attacks, units (incl. troops aboard), pending barrages and buildings (level, timers, hp), and the
+  fog of war vision bitsets when that rule is on (`hashFog`, nothing without it); tests check that two games fed the same actions hash the same, also with another game ticking in
   between.
 - No TypeScript `enum`s or namespaces (keep syntax erasable). Use `as const` objects and string unions.
 - Tick = 100 ms of game time (`TICK_SECONDS = 0.1`). All rates in config are per second; multiply by `TICK_SECONDS`.
@@ -947,6 +948,12 @@ large 25, the World map 35 (median winner minute); Quick Conquest 20. Nations sp
 quality) with a start radius by map size (`SPAWN_RADIUS_BY_SIZE` 5 / 6 / 7 / 8) and at least `spawnMinDistance`
 (3 x radius + 2) between capitals.
 
+**Fog of war** (section 12): AI nations only aim at tiles they have explored (`fog.knownTile`): coasts of nations
+and tribes for landings, strike, raid, barrage, paradrop, nuke and amphibious targets, recon toward a capital (else
+one recon radius past a known edge of the foe's land), and hunting warships only chase ships in view. Land fronts,
+defence, economy and coalitions are unchanged (they work on the border, which is always in view, and on public land
+shares). Every gate is a no-op without the rule, so AI tests and balance runs are not affected.
+
 **Performance budget** (huge map, 50 AIs, 300 tribes, 20 game minutes, Node, `scripts/profile.ts`): tick p50 under
 4 ms, p95 under 8 ms, p99 under 15 ms. Periodic per-player work is staggered by a hash of the id; there are no
 full-map scans after `createGame`.
@@ -1169,6 +1176,7 @@ the AI (it never tries what is off) and the advisor (never suggests it):
 | `noSams` | SAM sites refused |
 | `research` | 'allUnlocked': every nation starts with every tech, research refused; 'off': research and every building that needs a tech refused. Labs (science only) are refused in both |
 | `fastGame` | gold, iron, oil, science, troop growth and front speed x2, construction in half the time |
+| `fogOfWar` | per-player vision (fog.ts, see Fog of war below); AI and auto units only aim at known tiles |
 
 Teams (`state.teams[playerId]`, 0 = none): from `createGame`'s `opts.teams` (the lobby), else `setup.assignTeams`:
 the seats' chosen teams, then everyone else (auto humans, AI nations) to the smallest team, which is round-robin by
@@ -1178,6 +1186,87 @@ shades of their team's colour). `sameTeam` makes
 `areAllied` true, so every "not an ally" rule applies; `breakAlliance` and `requestAlliance` between teammates are
 refused. Victory: section 9.
 
+
+### Fog of war (src/sim/fog.ts, src/client/fog/fogView.ts, config FOG)
+
+A game rule (`Modifiers.fogOfWar`, off by default; a row in the setup's common rules, a chip in game and in the
+lobby). You see only near your land, units and allies; dark land is unexplored, grey land is what you saw last.
+
+**Vision (sim, lockstep).** One grid of `territory.BLOCK` x `BLOCK` (16 x 16) tile blocks. Per player three bitsets
+in `GameState.fog`: `own` (what its own sources saw at its last refresh), `now` (blocks in view at the last refresh)
+and `seen` (ever in view, explored). A block is in view
+when its nearest point is within a source's radius (the rule of `territory.ownsNear`). `updateFog` runs in `tick()`
+after `updateArsenal` and before the AI: humans every `FOG.humanTicks` (0.5 s), AI nations every `FOG.aiTicks` (1 s),
+staggered by id; tribes have no vision. One full pass at the start of play. Allies and teammates share live vision
+(each player's `now` is its own stamp OR'd with every living ally's last own stamp, at most `FOG.aiTicks` old, so a
+bloc of k members costs k stamps a cycle, not k x k), and what an ally showed stays explored.
+Created by `makeGameState` only with the rule; never by a reader. Hashed (`hashFog`). Integer math only.
+
+| Source | Radius (tiles) |
+|---|---|
+| own land (every block holding an own tile) | `FOG.landBand` 24 past the block |
+| warship / submarine / transport / trade ship | 30 / 18 / 12 / 10 |
+| tank division / bomber / fighter / cargo plane / recon plane | 20 / 14 / 18 / 12 / 20 |
+| rocket, atom bomb | none |
+| finished Watchtower | `watchtowerRadiusOf` x 0.5 (40 at level 1, Radar doubles it) |
+| finished Port | `FOG.portSea` 30 (spots landings) |
+| recon reveals (recon flights, light-tank screens) | their circle while it lasts |
+| aircraft and missiles only | SAM and airfield radar of you and your allies (Early Warning widens it) |
+
+Fog is active only while playing: the whole map shows in the spawn phase (everyone picks a start), and it lifts at
+the end and in a continued game. Spectators, a player eliminated in a free-for-all and owners with the console's
+`revealIntel` see everything; a player eliminated in a teams game while the team lives sees what the team sees.
+Watchtower intel (troop mix), plane and landing warnings, submarine hiding and missile launch events work as before
+on top of it (warnings reach farther than vision on purpose).
+
+**What a player sees (client view filter).** `fogView.ts` reads the bits for this seat and keeps what the player
+remembers, which is not game state: the tile feed (render/tiles.ts) stops taking owner changes in blocks out of view,
+so its mirror is the known map (last owner seen; 0 where never seen); a block that comes into view is caught up
+without capture flashes. It also remembers buildings and capitals last seen and the nations met (land, a building,
+a unit or a capital in view, an alliance request either way, an event addressed to you) and in sight now.
+- Unexplored: terrain only, dark and grey (the shape of the map was public in the spawn phase); no nations, borders,
+  buildings, units, deposits, trenches, fallout or effects.
+- Explored, out of view: the last owners seen, greyed and darker; remembered buildings greyed without level badge.
+- In view: live, as without fog.
+The map shader reads a `bw` x `bh` R8 fog texture (one texel per block), decodes the explored and in-view bits of
+the 4 nearest blocks and blends them, then smoothsteps each: the edges are soft, and each fade stays inside the
+blocks that have the bit (never-seen land is dark right from its edge, so the owners kept for hidden land never show
+at full light); a gentle value-noise wobble (up to ~3 tiles) keeps the edges from running straight along the grid. No border line is drawn across the edge of two blocks unless both are in view (owners from different
+moments would draw straight fake borders there). The Canvas2D fallback draws the grid scaled with smoothing; the
+minimap follows. Nations in sight are exact: any player holding a tile of a block in view (the territory index's
+per-block counts), re-checked at least every 5 ticks.
+
+**Leaks closed.** Standings rank every nation by land (land shares are public: victory and coalitions use them) but
+show a nation you have not met as "Unknown" with a striped swatch and no army; a met nation's army shows only while it
+is in sight, allied or under watchtower or recon intel ("?" otherwise). The nation card opens only for met nations
+(a toast says why otherwise); Attack needs a shared border or a capital you have seen. Tooltip: "Unexplored" (terrain
+only) or "Last seen: X" with the remembered building and no army or odds; strike previews show the blast but not what
+it would hit out of view. Events: the fall of a nation you have not met reads "A nation you have not met has fallen",
+other news for everyone (an atom bomb) names such nations "an unknown nation" and on land you never explored has no
+map spot (no camera jump, no panned sound);
+event and coalition clicks only jump to explored land or known capitals. Enemy units, telegraphs, barrages, effects,
+fronts between others, SAM rings, labels' army line, sounds and battle effects only where you see. Incoming
+transports, cargo planes and bombers count once seen (rocket and atom bomb launches keep their warning event).
+
+**Auto units obey it like the AI.** Strategic air wings and rocket auto-fire only hit buildings you have seen (their
+line says "no targets you have seen in reach. Scout first"); auto recon and hunting warships follow the AI rules.
+Manual orders go by what you know: you may attack or land on land you can't see, and strikes (bombs, rockets, atom
+bombs, barrages) need enemy land you have seen there (last seen counts). Their previews, the warship Bombard and
+Blockade picks and the air mission picks never tell who holds hidden land; a click on land that changed while out of
+sight can still fail (the sim decides with the real owner, like an attack).
+
+**Lockstep and honesty.** Every client holds the full state, so a modified client could see through the fog: online
+fog is honour based. Spectators and eliminated watchers may pass on what they see. After a reload or a rejoin, the
+remembered owners of explored land out of view are those at load time (the memory is client side).
+
+Performance (`npx vite-node scripts/fogbench.ts`: huge map 2600 x 1600, 40 AI nations, 300 tribes, 5 game minutes,
+Node on a busy 4-core machine): a full vision pass for every player 8.7 ms (once, at the start of play); the
+staggered refresh 0.7-1.1 ms per tick; `hashState` 21.8 ms with the fog bits against 20.7 ms without. A block whose
+8 neighbours are all your land marks only itself (its land band is covered by the blocks around it), which keeps big
+nations cheap. Teams and alliance blocs (same map, 2 teams or two blocs of 20, 300 ticks in): staggered refresh about
+0.4 ms per tick, full pass 4.5 ms (each player's own stamp is made once and OR'd into its allies' views; before that
+a bloc of k cost k x k stamps: 4.6 ms per tick, 72 ms full pass). Client: the fog texture and the minimap are rebuilt
+only when the view's bits change.
 
 ## 13. Doctrines
 

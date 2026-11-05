@@ -14,6 +14,7 @@ import { clamp, css, formatCount, MAP_NUM_FAMILY, type RGB } from './common';
 import { drawTrails, GLYPHS, type Inst, strokeGlyphs } from './unitGlyphs';
 import { isIncoming } from '../forces';
 import { unitVisibleTo } from '../../sim/techtree';
+import type { FogView } from '../fog/fogView';
 import { clusterFleets, FLEET_ZOOM, fleetRadiusPx, type FleetPoint } from './fleets';
 
 const HIST = 3;
@@ -88,6 +89,9 @@ export class UnitLayer {
   }
 
   /** Records positions once per tick (interpolation, headings, trails). */
+  /** fog of war view (set by the renderer each frame; null or inactive = no fog) */
+  fog: FogView | null = null;
+
   track(state: GameState, nowMs: number): void {
     if (state.tick === this.lastTick) return;
     this.lastTick = state.tick;
@@ -130,7 +134,7 @@ export class UnitLayer {
       this.tracks.delete(id);
     }
     for (const u of state.units) {
-      if (u.type === 'transportPlane' && u.state === 0) this.planes.set(u.id, { tx: (u.target % w) + 0.5, ty: ((u.target / w) | 0) + 0.5, owner: u.owner });
+      if (u.type === 'transportPlane' && u.state === 0 && (!this.fog?.active || this.fog.unitShown(state, u))) this.planes.set(u.id, { tx: (u.target % w) + 0.5, ty: ((u.target / w) | 0) + 0.5, owner: u.owner });
     }
     if (this.drops.length > 24) this.drops.splice(0, this.drops.length - 24);
   }
@@ -214,6 +218,7 @@ export class UnitLayer {
     const ox = cam.viewW / 2 - cam.x * z;
     const oy = cam.viewH / 2 - cam.y * z;
     const me = humanId;
+    const fog = this.fog?.active ? this.fog : null;
     const base = glyphPx(z);
     let visible: Vis[] = [];
     const taken = new Set<number>();
@@ -228,6 +233,8 @@ export class UnitLayer {
       if (x < -40 || y < -40 || x > cam.viewW + 40 || y > cam.viewH + 40) continue;
       // enemy submarines stay hidden until close, sonar, recon or Early Warning shows them (techtree.unitVisibleTo)
       if (u.variant === 'submarine' && me > 0 && !unitVisibleTo(state, me, u)) continue;
+      // fog of war: other nations' units only where you see them (fog/fogView.ts); hit tests follow
+      if (fog && !fog.unitShown(state, u)) continue;
       const own = me > 0 && u.owner === me;
       // far out, units less than a pixel apart are drawn once (your own and the cargo carriers always)
       if (z < 1 && !own && u.type !== 'transport' && u.type !== 'transportPlane' && u.type !== 'warship') {

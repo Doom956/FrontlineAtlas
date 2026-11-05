@@ -815,13 +815,14 @@ export class SetupScreen {
       return g;
     };
 
-    // The four rules most players touch.
+    // The five rules most players touch.
     const common = el('div', 'mod-list');
     common.append(
       this.modRow('Peace time', () => (m().peaceMinutes > 0 ? `Nations can't attack each other for ${m().peaceMinutes} minutes; tribes can be attacked` : 'Wars between nations can start at once'), this.seg<number>('Peace time', PEACE_MINUTES.map((x) => ({ id: x, label: x ? `${x} min` : 'Off' })), () => m().peaceMinutes, (v) => (m().peaceMinutes = v))),
       this.modRow('Game speed', () => (m().fastGame ? 'Income, growth, building, research and fronts at double speed' : 'Everything at its usual pace'), this.seg<'normal' | 'fast'>('Game speed', [{ id: 'normal', label: 'Normal' }, { id: 'fast', label: 'Fast' }], () => (m().fastGame ? 'fast' : 'normal'), (v) => (m().fastGame = v === 'fast'), 'speed-seg')),
       this.modRow('Time limit', () => (this.s.timeLimit > 0 ? 'When time runs out, the highest score wins' : 'Play until someone wins'), this.seg<number>('Time limit', TIME_LIMIT_MINUTES.map((x) => ({ id: x * 60, label: x ? `${x} min` : 'Off' })), () => this.s.timeLimit, (v) => (this.s.timeLimit = v))),
       this.modRow('Research', () => (m().research === 'allUnlocked' ? 'Every nation starts with every technology' : m().research === 'off' ? 'No research: what needs a technology stays locked' : 'Research techs with science and gold; buy Arsenal items'), this.seg<ResearchRule>('Research', RESEARCH_OPTS, () => m().research, (v) => (m().research = v))),
+      this.modRow('Fog of war', () => (m().fogOfWar ? 'You see only near your land, units and allies. Scout to find the rest' : 'The whole map is in view'), this.seg<'off' | 'on'>('Fog of war', [{ id: 'off', label: 'Off' }, { id: 'on', label: 'On' }], () => (m().fogOfWar ? 'on' : 'off'), (v) => (m().fogOfWar = v === 'on'))),
     );
 
     // The other twelve, folded, in three groups.
@@ -860,7 +861,7 @@ export class SetupScreen {
       this.prefs.setup = { ...keep, modifiers: { ...DEFAULT_SETUP.modifiers }, timeLimit: 0, victoryLandShare: VICTORY_LAND_SHARE };
       this.changed();
     });
-    reset.title = 'Every rule back to standard, the four above included';
+    reset.title = 'Every rule back to standard, the five above included';
     this.syncs.push(() => {
       reset.disabled = this.card.classList.contains('readonly') || activeModifiers(this.s).filter((x) => x.id !== 'teams').length === 0;
     });
