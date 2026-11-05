@@ -50,6 +50,7 @@ import {
 import { gameOverCard } from './hud/gameOver';
 import { ContinueRow, VictoryChip, type ContinueRole } from './hud/gameOverContinue';
 import { AdminConsole } from './adminConsole';
+import type { AdminConsoleDeps } from './adminConsole';
 import { pruneSelection, selectionChipText } from './selection';
 import { iconSpan, lineIcon } from './hud/glyph';
 import { Leaderboard } from './hud/leaderboard';
@@ -114,6 +115,8 @@ export interface HudOptions {
   continueRole?: () => ContinueRole;
   /** online: owner console login through the server (adminAuth) */
   adminAuth?: (code: string) => Promise<boolean>;
+  /** online: the console's Games, Announce and Effects tabs (adminOnline.ts) */
+  adminPowers?: AdminConsoleDeps['powers'];
   /** a tutorial game (tutorial/controller.ts): the first-game steps and the advisor's hints stay quiet */
   tutorial?: boolean;
   /** single player with autosave (save/): the Menu drawer says the game is kept */
@@ -401,6 +404,7 @@ export class Hud {
       state: () => self.state,
       online: !!hudOpts.online,
       auth: hudOpts.adminAuth,
+      powers: hudOpts.adminPowers,
       toast: (text, kind) => self.toasts.show({ text, kind: kind ?? 'info' }),
     });
 

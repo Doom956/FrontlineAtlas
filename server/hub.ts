@@ -6,12 +6,14 @@ import type { RawData } from 'ws';
 import { activeModifiers, landEstimate, mergeSetup, modifierSummary, MULTIPLAYER_NATIONS, rollModifiers, sizeClassForLand } from '../src/sim/setup';
 import type { MapChoice, MapSize } from '../src/sim/types';
 import { CloseCode, DEFAULT_LOBBY_SETTINGS, LOBBY_CODE_ALPHABET, LOBBY_CODE_LENGTH, PROTOCOL_VERSION } from '../src/net/protocol';
-import type { ClientMessage, ErrorCode, LobbyKind, LobbySettings, LobbySummary, RGB, ServerMessage } from '../src/net/protocol';
+import { ADMIN_ROOMS_MAX } from '../src/net/protocol';
+import type { AdminClientMessage, ClientMessage, ErrorCode, LobbyKind, LobbySettings, LobbySummary, RGB, ServerMessage } from '../src/net/protocol';
 import type { ServerOptions } from './options';
 import { Room } from './room';
 import type { Member, RoomError, RoomHost, RoomSession } from './room';
 import { parseClientMessage } from './validate';
-import { AdminGate } from './admin';
+import { AdminGate, AdminLimiter, SHOW_ALL_COST } from './admin';
+import type { AdminPowerKind } from './admin';
 
 /** Invalid messages tolerated per connection before it is closed. */
 const MAX_INVALID = 200;
@@ -86,6 +88,8 @@ export class Session implements RoomSession {
   lastRateError = 0;
   /** fingerprint of the last lobby list sent ('' = send again) */
   listKey = '';
+  /** owner powers budget (made on the first use by an admin session) */
+  adminLimiter: AdminLimiter | null = null;
   closed = false;
 
   constructor(
@@ -274,6 +278,14 @@ export class Hub implements RoomHost {
       return;
     }
     switch (msg.type) {
+      case 'adminRooms':
+      case 'adminAnnounce':
+      case 'adminNotice':
+      case 'adminSpectacle':
+      case 'adminMute':
+      case 'adminKick':
+        this.adminPower(s, msg);
+        return;
       case 'createLobby': {
         if (this.rooms.size >= this.opts.maxRooms) {
           this.error(s, 'serverFull', 'The server is full, try again later');
@@ -325,6 +337,8 @@ export class Hub implements RoomHost {
         break;
     }
     if (!room || !member) {
+      // hashes and game-over reports still in flight after leaving or being removed: nothing to say about them
+      if (msg.type === 'hash' || msg.type === 'gameOver') return;
       this.error(s, 'notInLobby', 'You are not in a lobby');
       return;
     }
@@ -354,6 +368,101 @@ export class Hub implements RoomHost {
         report(room.setPause(member, msg.paused));
         return;
     }
+  }
+
+  // ---------------------------------------------------------------------------------------------- owner powers
+
+  /**
+   * Owner powers: only from a session that proved the code (else the same plain 'notAllowed' as an admin intent),
+   * within their own rate limit; every answer is an `adminAck` to the sender alone. Nothing here touches a game's
+   * state: announcements, notices and effects are plain messages, mute and kick are room bookkeeping.
+   */
+  private adminPower(s: Session, msg: AdminClientMessage): void {
+    if (!this.admin.isAdmin(s.clientId)) {
+      this.error(s, 'notAllowed', 'Not allowed');
+      return;
+    }
+    const kind: AdminPowerKind = msg.type === 'adminRooms' ? 'list' : msg.type === 'adminMute' || msg.type === 'adminKick' ? 'moderate' : 'show';
+    const wide = (msg.type === 'adminAnnounce' || msg.type === 'adminSpectacle') && msg.scope === 'all';
+    s.adminLimiter ??= new AdminLimiter(() => this.now());
+    if (!s.adminLimiter.take(kind, wide ? SHOW_ALL_COST : 1)) {
+      this.error(s, 'rateLimit', 'Wait a moment before sending that again');
+      return;
+    }
+    const ack = (ok: boolean, message: string, reached?: number): void => {
+      const a: ServerMessage = { type: 'adminAck', what: msg.type, ok, message };
+      if (reached !== undefined) a.reached = reached;
+      s.send(a);
+    };
+    if (msg.type === 'adminRooms') {
+      const now = this.now();
+      const all = [...this.rooms.values()].filter((r) => !r.closed);
+      const order = { running: 0, lobby: 1, over: 2 } as const;
+      all.sort((a, b) => order[a.phase] - order[b.phase] || b.connectedPlayers() - a.connectedPlayers() || a.code.localeCompare(b.code));
+      s.send({ type: 'adminRooms', serverTime: now, rooms: all.slice(0, ADMIN_ROOMS_MAX).map((r) => r.adminInfo(now)), total: all.length });
+      return;
+    }
+    if (wide) {
+      // every session that said hello: in a game, in a lobby or on the lobby list
+      const out: ServerMessage =
+        msg.type === 'adminAnnounce'
+          ? { type: 'announcement', title: msg.title, text: msg.text, style: msg.style, seconds: msg.seconds }
+          : this.spectacleMsg(msg as Extract<AdminClientMessage, { type: 'adminSpectacle' }>, '');
+      const text = JSON.stringify(out);
+      let n = 0;
+      for (const x of this.sessions) {
+        if (!x.clientId || x.closed) continue;
+        x.sendRaw(text);
+        n++;
+      }
+      this.opts.log(`owner ${msg.type === 'adminAnnounce' ? 'announcement' : `effect ${(msg as { kind: string }).kind}`} to every session (${n})`);
+      ack(true, `Sent to ${n} ${n === 1 ? 'screen' : 'screens'}`, n);
+      return;
+    }
+    const room = msg.code ? this.rooms.get(msg.code) : s.room;
+    if (!room || room.closed) {
+      ack(false, msg.code ? 'No game with that code' : 'You are not in a game: pick one in Games');
+      return;
+    }
+    switch (msg.type) {
+      case 'adminAnnounce': {
+        const n = room.broadcastAll({ type: 'announcement', title: msg.title, text: msg.text, style: msg.style, seconds: msg.seconds });
+        ack(true, `Sent to ${n} in ${room.code}`, n);
+        return;
+      }
+      case 'adminSpectacle': {
+        const n = room.broadcastAll(this.spectacleMsg(msg, room.code));
+        ack(true, `Sent to ${n} in ${room.code}`, n);
+        return;
+      }
+      case 'adminNotice': {
+        const ok = room.sendTo(msg.memberId, { type: 'notice', text: msg.text, style: msg.style, seconds: 8 });
+        ack(ok, ok ? 'Sent' : 'That player is not connected');
+        return;
+      }
+      case 'adminMute': {
+        const e = room.muteMember(msg.memberId, msg.minutes);
+        ack(!e, e ? e.message : msg.minutes > 0 ? `Muted for ${msg.minutes} min` : 'Mute lifted');
+        return;
+      }
+      case 'adminKick': {
+        const e = room.removeByOwner(msg.memberId, s.clientId);
+        if (!e) this.opts.log(`game ${room.code}: member ${msg.memberId} removed by the owner`);
+        ack(!e, e ? e.message : 'Removed');
+        return;
+      }
+    }
+  }
+
+  private spectacleMsg(msg: Extract<AdminClientMessage, { type: 'adminSpectacle' }>, code: string): ServerMessage {
+    const out: ServerMessage = { type: 'spectacle', kind: msg.kind };
+    if (msg.tile !== undefined && code) {
+      out.tile = msg.tile;
+      out.code = code;
+    }
+    if (msg.label) out.label = msg.label;
+    if (msg.seconds !== undefined) out.seconds = msg.seconds;
+    return out;
   }
 
   private hello(s: Session, msg: Extract<ClientMessage, { type: 'hello' }>): void {

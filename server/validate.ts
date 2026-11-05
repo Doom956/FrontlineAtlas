@@ -9,13 +9,22 @@ import { AIR_MISSIONS, DIVISION_MODES, DOCTRINE_IDS, NAVAL_VARIANTS, WARSHIP_STA
 import type { Action, GameSetup, Modifiers } from '../src/sim/types';
 import {
   ADMIN_CODE_MAX_LENGTH,
+  ANNOUNCE_SECONDS,
+  ANNOUNCE_STYLES,
+  BROADCAST_LABEL_MAX,
+  BROADCAST_TEXT_MAX,
+  BROADCAST_TITLE_MAX,
+  COUNTDOWN_SECONDS,
+  MUTE_MAX_MINUTES,
+  SPECTACLE_KINDS,
+  cleanBroadcastText,
   BUILD_MAX_LENGTH,
   CLIENT_ID_PATTERN,
   LOBBY_LIMITS,
   NAME_MAX_LENGTH,
   normalizeLobbyCode,
 } from '../src/net/protocol';
-import type { ClientMessage, LobbySettingsPatch, RGB } from '../src/net/protocol';
+import type { AdminClientMessage, AnnounceStyle, BroadcastScope, ClientMessage, LobbySettingsPatch, RGB, SpectacleKind } from '../src/net/protocol';
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 const ok = <T>(value: T): Result<T> => ({ ok: true, value });
@@ -344,9 +353,100 @@ export function validateClientMessage(m: unknown): Result<ClientMessage> {
     case 'adminAuth':
       if (typeof m.code !== 'string' || m.code.length === 0 || m.code.length > ADMIN_CODE_MAX_LENGTH) return fail('adminAuth: bad code');
       return ok({ type: 'adminAuth', code: m.code });
+    case 'adminRooms':
+    case 'adminAnnounce':
+    case 'adminNotice':
+    case 'adminSpectacle':
+    case 'adminMute':
+    case 'adminKick':
+      return validateAdminMessage(m);
     case 'ping':
       if (m.t !== undefined && !isNum(m.t, -1e15, 1e15)) return fail('ping: bad t');
       return ok(m.t === undefined ? { type: 'ping' } : { type: 'ping', t: m.t });
+    default:
+      return fail('unknown message type');
+  }
+}
+
+// ------------------------------------------------------------------------------------------------ owner powers
+
+/** Optional room code of an owner power: absent = the owner's own room. */
+function optCode(v: unknown): Result<string | undefined> {
+  if (v === undefined) return ok(undefined);
+  const code = typeof v === 'string' && v.length <= 32 ? normalizeLobbyCode(v) : null;
+  return code ? ok(code) : fail('bad code');
+}
+
+/**
+ * The owner powers (server/admin.ts checks the session first). Texts go through cleanBroadcastText (control and
+ * bidi characters out, one line, length capped); every other field is an exact enum or integer range.
+ */
+export function validateAdminMessage(m: Obj): Result<AdminClientMessage> {
+  const t = m.type as AdminClientMessage['type'];
+  const code = optCode(m.code);
+  if (!code.ok) return fail(`${t}: bad code`);
+  const withCode = (out: AdminClientMessage): Result<AdminClientMessage> => {
+    if (code.value) (out as { code?: string }).code = code.value;
+    return ok(out);
+  };
+  const style = (v: unknown): AnnounceStyle | null => (typeof v === 'string' && (ANNOUNCE_STYLES as readonly string[]).includes(v) ? (v as AnnounceStyle) : null);
+  const scope = (v: unknown): BroadcastScope | null => (v === 'room' || v === 'all' ? v : null);
+  switch (t) {
+    case 'adminRooms':
+      return ok({ type: 'adminRooms' });
+    case 'adminAnnounce': {
+      const sc = scope(m.scope);
+      const st = style(m.style);
+      const text = cleanBroadcastText(m.text, BROADCAST_TEXT_MAX);
+      const title = m.title === undefined ? '' : cleanBroadcastText(m.title, BROADCAST_TITLE_MAX);
+      if (!sc) return fail('adminAnnounce: bad scope');
+      if (!st) return fail('adminAnnounce: bad style');
+      if (!text) return fail(`adminAnnounce: text must be 1..${BROADCAST_TEXT_MAX} characters`);
+      if (title === null) return fail(`adminAnnounce: title must be at most ${BROADCAST_TITLE_MAX} characters`);
+      if (!isInt(m.seconds, ANNOUNCE_SECONDS[0], ANNOUNCE_SECONDS[1])) return fail('adminAnnounce: bad seconds');
+      return withCode({ type: 'adminAnnounce', scope: sc, title, text, style: st, seconds: m.seconds });
+    }
+    case 'adminNotice': {
+      const st = style(m.style);
+      const text = cleanBroadcastText(m.text, BROADCAST_TEXT_MAX);
+      if (!isInt(m.memberId, 0, MAX_ID)) return fail('adminNotice: bad memberId');
+      if (!st) return fail('adminNotice: bad style');
+      if (!text) return fail(`adminNotice: text must be 1..${BROADCAST_TEXT_MAX} characters`);
+      return withCode({ type: 'adminNotice', memberId: m.memberId, text, style: st });
+    }
+    case 'adminSpectacle': {
+      const sc = scope(m.scope);
+      if (!sc) return fail('adminSpectacle: bad scope');
+      if (typeof m.kind !== 'string' || !(SPECTACLE_KINDS as readonly string[]).includes(m.kind)) return fail('adminSpectacle: bad kind');
+      const kind = m.kind as SpectacleKind;
+      const out: Extract<AdminClientMessage, { type: 'adminSpectacle' }> = { type: 'adminSpectacle', scope: sc, kind };
+      if (m.tile !== undefined) {
+        if (!isInt(m.tile, 0, MAX_TILE)) return fail('adminSpectacle: bad tile');
+        if (kind !== 'ping' && kind !== 'confetti' && kind !== 'fireworks') return fail('adminSpectacle: this effect has no tile');
+        out.tile = m.tile;
+      }
+      if (kind === 'ping' && out.tile === undefined) return fail('adminSpectacle: ping needs a tile');
+      if (out.tile !== undefined && sc !== 'room') return fail('adminSpectacle: an effect on a tile goes to one game');
+      if (m.label !== undefined) {
+        const label = cleanBroadcastText(m.label, BROADCAST_LABEL_MAX);
+        if (label === null) return fail(`adminSpectacle: label must be at most ${BROADCAST_LABEL_MAX} characters`);
+        if (kind !== 'ping' && kind !== 'countdown') return fail('adminSpectacle: this effect has no label');
+        if (label) out.label = label;
+      }
+      if (m.seconds !== undefined || kind === 'countdown') {
+        if (kind !== 'countdown') return fail('adminSpectacle: only a countdown has seconds');
+        if (!isInt(m.seconds, COUNTDOWN_SECONDS[0], COUNTDOWN_SECONDS[1])) return fail('adminSpectacle: bad seconds');
+        out.seconds = m.seconds;
+      }
+      return withCode(out);
+    }
+    case 'adminMute':
+      if (!isInt(m.memberId, 0, MAX_ID)) return fail('adminMute: bad memberId');
+      if (!isInt(m.minutes, 0, MUTE_MAX_MINUTES)) return fail(`adminMute: minutes must be 0..${MUTE_MAX_MINUTES}`);
+      return withCode({ type: 'adminMute', memberId: m.memberId, minutes: m.minutes });
+    case 'adminKick':
+      if (!isInt(m.memberId, 0, MAX_ID)) return fail('adminKick: bad memberId');
+      return withCode({ type: 'adminKick', memberId: m.memberId });
     default:
       return fail('unknown message type');
   }

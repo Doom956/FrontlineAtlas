@@ -24,7 +24,9 @@ import { button, confirmReplaceSave, el, Menu, PLAYER_PALETTE } from './menu';
 import { Renderer } from './renderer';
 import { defaultUiState } from './uiState';
 import { requestAdminAuth } from './admin';
-import { adminPerf } from './adminConsole';
+import { AdminConsole, adminPerf } from './adminConsole';
+import type { AdminConsoleDeps } from './adminConsole';
+import { BroadcastLayer } from './broadcast';
 import type { Dispatch, UiState } from './uiState';
 import { setupTutorial, tutorialMap, tutorialSettings } from '../sim/tutorialScenario';
 import { TutorialController } from './tutorial/controller';
@@ -87,6 +89,8 @@ mmWrap.append(minimap);
 app.append(canvas, mmWrap);
 const renderer = new Renderer(canvas, minimap);
 void loadFonts();
+// announcements, notices and effects from the server, on top of the menu and the game (broadcast.ts)
+const broadcast = new BroadcastLayer(document.body, app);
 
 // Sound: procedural, quiet by default, unlocked by the first click or key (autoplay policy). See docs/AUDIO.md.
 let audio: AudioManager | null = null;
@@ -102,7 +106,8 @@ let session: Session | null = null;
 
 const dispatch: Dispatch = (action: Action): ActionResult => {
   const s = session;
-  if (!s || !s.human || !s.state.humanId) return { ok: false, reason: s?.mp?.spectator ? 'You are watching this game' : 'No game running' };
+  const watchingOwner = !!s?.mp?.spectator && action.type === 'admin'; // the console while watching (the server checks)
+  if (!s || !s.human || (!s.state.humanId && !watchingOwner)) return { ok: false, reason: s?.mp?.spectator ? 'You are watching this game' : 'No game running' };
   let r: ActionResult;
   try {
     // online: never applied here; it goes to the server and comes back in a turn for every client
@@ -132,6 +137,24 @@ const dispatch: Dispatch = (action: Action): ActionResult => {
 let net: NetClient | null = null;
 /** The online game being built or played (messages are routed to it even before its session exists). */
 let currentMp: MpGame | null = null;
+/** The online lobby this client is in (before a game starts), '' = none. */
+let lobbyCodeNow = '';
+
+/** What the owner console's online tabs need (adminOnline.ts). */
+const adminPowers: NonNullable<AdminConsoleDeps['powers']> = {
+  net: () => getNet(),
+  roomCode: () => (currentMp && !currentMp.serverOver ? currentMp.code : lobbyCodeNow || null),
+  preview: (m) => broadcast.announce(m),
+};
+
+/** Online login from anywhere: connects first (a sleeping free server takes a while to wake). */
+async function adminAuthOnline(code: string): Promise<boolean> {
+  const n = getNet();
+  n.connect();
+  const end = performance.now() + 60_000;
+  while (!n.online && performance.now() < end && n.status !== 'noServer') await new Promise((r) => setTimeout(r, 200));
+  return n.online ? requestAdminAuth(n, code) : false;
+}
 
 function identity(): { name: string; color: RGB } {
   const p = loadSetupPrefs();
@@ -149,6 +172,19 @@ function getNet(): NetClient {
 }
 
 function onNetMessage(msg: ServerMessage): void {
+  broadcast.handle(msg);
+  if (msg.type === 'lobbyState') lobbyCodeNow = msg.code;
+  else if (msg.type === 'lobbyList' || msg.type === 'gameStart' || (msg.type === 'welcome' && !msg.resumed)) lobbyCodeNow = '';
+  if (msg.type === 'kicked' && currentMp) {
+    // removed from the running game: back to the multiplayer page with the plain reason
+    lobbyCodeNow = '';
+    rememberActiveLobby(null);
+    currentMp = null;
+    toMenu();
+    menu.show('multiplayer');
+    broadcast.notice(msg.reason, 'warning');
+    return;
+  }
   if (msg.type === 'gameStart') {
     void startOnline(msg);
     return;
@@ -215,6 +251,7 @@ async function startOnline(start: GameStartMsg): Promise<void> {
     pause: () => ({ mode: mp.canPause ? 'host' : mp.isPrivate && !mp.spectator ? 'guest' : 'none', paused: mp.paused, by: mp.pausedByName() }),
     continueRole: () => mp.continueRole(),
     adminAuth: (code) => requestAdminAuth(getNet(), code),
+    adminPowers,
   });
   hud.setUnitProbe(renderer);
   const status = new MpStatus(() => {
@@ -240,6 +277,19 @@ async function startOnline(start: GameStartMsg): Promise<void> {
     confirm: (text, label, run) => hud.confirm(text, label, run),
   });
   session = { state, camera, ui, hud, cleanupInput, human: true, settings: start.settings, mp, mpStatus: status };
+  menuConsole.hide();
+  broadcast.setView(() =>
+    session?.mp === mp
+      ? {
+          code: mp.code,
+          mapWidth: state.map.width,
+          mapHeight: state.map.height,
+          tileToScreen: (x, y) => camera.tileToScreen(x, y),
+          canvas,
+          focus: (t) => camera.flyTo((t % state.map.width) + 0.5, Math.floor(t / state.map.width) + 0.5, Math.max(camera.zoom, 6), 600),
+        }
+      : null,
+  );
   menu.hide();
   app.classList.remove('in-menu');
 }
@@ -258,6 +308,22 @@ let lastLobbyHost = '';
 /** Code of the private lobby this client was in last (its games show the host's pause button, disabled for guests). */
 let lastPrivateLobby = '';
 
+// The owner console on the menu (online tabs only: Games, Announce, Effects). Hidden like the in-game one ("|");
+// it gives the key to the game's console while a game is on screen.
+const menuConsoleRoot = el('div', 'adm-menu');
+document.body.append(menuConsoleRoot);
+const menuConsole = new AdminConsole({
+  root: menuConsoleRoot,
+  ui: defaultUiState(),
+  dispatch: () => ({ ok: false, reason: 'No game running' }),
+  state: () => null,
+  online: true,
+  auth: adminAuthOnline,
+  toast: () => {},
+  powers: adminPowers,
+  active: () => !session || !session.human,
+});
+
 const menu = new Menu(app, {
   onStart: (settings) => void startGame(settings),
   net: () => getNet(),
@@ -266,6 +332,7 @@ const menu = new Menu(app, {
 });
 
 function endSession(): void {
+  broadcast.setView(null);
   if (!session) return;
   session.cleanupInput();
   session.tutorial?.destroy();
@@ -356,6 +423,7 @@ function beginSession(state: GameState, settings: GameSettings, opts: { tutorial
     confirm: (text, label, run) => hud.confirm(text, label, run),
   });
   session = { state, camera, ui, hud, cleanupInput, human: true, settings, mp: null, mpStatus: null, recorder: opts.recorder };
+  menuConsole.hide();
   lastAutosave = performance.now();
   if (tutorial) {
     session.tutorial = new TutorialController(QUICK_TUTORIAL, hud, ui, () => (session?.human ? session.state : null), {

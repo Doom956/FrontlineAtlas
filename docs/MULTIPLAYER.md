@@ -141,6 +141,25 @@ victory, overtime or time limit ends it again). Others get error `notHost`; publ
 intents have `type: 'admin'` with an `op` (src/sim/admin.ts ADMIN_OPS) and are relayed only from authenticated
 sessions.
 
+**Owner powers online.** An authenticated session may also send `adminRooms` (answer `adminRooms {rooms, total}`:
+every room with code, phase, players, spectators, minutes and its people), `adminAnnounce {scope, code?, title, text,
+style, seconds}`, `adminNotice {code?, memberId, text, style}`, `adminSpectacle {scope, code?, kind, tile?, label?,
+seconds?}` (kind: ping, countdown, confetti, fireworks, shake), `adminMute {code?, memberId, minutes}` (0 lifts it)
+and `adminKick {code?, memberId}`. `scope` is `room` (the room `code`, else the sender's own) or `all` (every session
+on the server, lobby list included); an effect on a tile goes to one room. The server answers each with
+`adminAck {what, ok, message, reached?}` to the sender alone; from anyone else they get error `notAllowed` and do
+nothing. Own rate limit per session: the list 4 at once then 1/s, what players see 5 at once then one every 2 s (a
+server-wide one costs 2), moderation 6 then 1/s. Players receive plain messages: `announcement {title, text, style,
+seconds}`, `notice {text, style, seconds}`, `spectacle {kind, code?, tile?, label?, seconds?}` and, when removed,
+`kicked {reason: 'You were removed from this game'}` (joining that room again is refused, also as a spectator).
+None of these are intents: they never change a game, are never hashed and can't desync. Text is cleaned on the server
+and again on the client (`cleanBroadcastText`: control, zero-width and bidi characters out, one line; text at most
+200 characters, title and labels 40) and shown with textContent only. Mutes are kept per room by clientId (a rejoin
+keeps them); the chat reads them with `Room.isMuted(memberId)`. Watching: the owner joins a running game with the
+normal `joinLobby {spectate: true}` and counts as one more anonymous spectator; from that seat the server relays
+`admin` intents (stamped player 0) and refuses every other intent. The sim needs an explicit nation for every op from
+player 0 ('Pick a nation' otherwise).
+
 **Limits.** 16 KB per message, 30 messages/s per connection (bursts of 60; a long flood closes the socket), 10 intents
 per player per turn and 4 per second on average (bursts of 40; the client sends army-mix slider drags at most every
 300 ms), 48 MB of stored turns per game (then intents are refused), 8 connections per IP, 3 open private lobbies or
@@ -243,6 +262,16 @@ repository: `render.yaml` lists the variable `ADMIN_CODE` without a value (`sync
 
 The check endpoint allows calls from the GitHub Pages site (`https://doom956.github.io`) and from the server's own
 origin; with `ALLOWED_ORIGINS` set, that list replaces the Pages default (the server's own origin always works).
+
+Online the console also opens from the menu (`|` there too) with three more tabs. **Games** lists every room on the
+server; **Watch** joins a running game as a spectator (the console then works on that game, with every op aimed at a
+nation you pick), **Make target** aims Announce and Effects at that game, **People** shows who is in it with
+Message, Mute and Remove. **Announce** sends a banner to this game, the target game or every screen on the server
+(title, text up to 200 characters, Info / Warning / Celebration, time on screen; Preview shows it to you alone), and
+a short message to one player. **Effects**: a ring with a label on a tile you click ("Look here"; players can click
+it to go there when it is off screen), a countdown, confetti and fireworks over the screen or a tile, a short screen
+shake. Players never see the words admin, console or owner: banners say "Announcement" or your title, messages
+"Message". With reduced motion on their system there is no shake and a tenth of the particles.
 
 Without `ADMIN_CODE` the console is off everywhere (every code is refused). After 5 wrong codes from one address within
 an hour (websocket and HTTP tries count together) the server ignores further tries from it silently. Other hosts: set the `ADMIN_CODE` environment variable the

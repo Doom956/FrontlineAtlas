@@ -327,6 +327,11 @@ export function setupInput(deps: InputDeps): () => void {
 
   function leftClick(tile: number, shift: boolean): void {
     const s = getState();
+    // the owner console's map picks also work while watching (no nation of one's own)
+    if (s && tile >= 0 && ui.mode.kind === 'adminTile') {
+      ui.mode.pick(tile);
+      return;
+    }
     if (!s || tile < 0 || !s.humanId) return;
     const h = s.humanId;
     if (s.phase === 'spawn') {

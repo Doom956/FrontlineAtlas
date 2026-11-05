@@ -15,6 +15,8 @@ import { formatCount } from './render/common';
 import { ADMIN_CODE_MAX_LENGTH } from '../net/protocol';
 import { checkAdminCode, isUnlocked, setUnlocked, type AdminScope } from './admin';
 import type { Dispatch, UiState } from './uiState';
+import { ONLINE_TABS, OnlinePowers } from './adminOnline';
+import type { OnlinePowersDeps, OnlineTab } from './adminOnline';
 
 /** Rolling cost of one sim tick (ms), kept by main.ts for the debug overlay. */
 export const adminPerf = { tickMs: 0 };
@@ -48,9 +50,13 @@ export interface AdminConsoleDeps {
   /** online login: resolves true when the server accepted the code */
   auth?: (code: string) => Promise<boolean>;
   toast: (text: string, kind?: 'info' | 'good' | 'bad' | 'warn') => void;
+  /** online: the Games, Announce and Effects tabs (adminOnline.ts); the console fills in the UI hooks */
+  powers?: Pick<OnlinePowersDeps, 'net' | 'roomCode' | 'preview'>;
+  /** false while another console owns the "|" key (the menu's console while a game is on screen) */
+  active?: () => boolean;
 }
 
-type Tab = 'resources' | 'troops' | 'research' | 'buildings' | 'units' | 'territory' | 'diplomacy' | 'ai' | 'player' | 'game';
+type Tab = OnlineTab | 'resources' | 'troops' | 'research' | 'buildings' | 'units' | 'territory' | 'diplomacy' | 'ai' | 'player' | 'game';
 const TABS: [Tab, string][] = [
   ['resources', 'Resources'],
   ['troops', 'Troops'],
@@ -162,6 +168,8 @@ export class AdminConsole {
   private status: HTMLElement;
   private tabBtns = new Map<Tab, HTMLButtonElement>();
   private tab: Tab = 'resources';
+  private powers: OnlinePowers | null = null;
+  private tgtRow: HTMLElement;
   private target = 0;
   private targetSel: HTMLSelectElement;
   private targetSig = '';
@@ -172,6 +180,8 @@ export class AdminConsole {
   private frames: number[] = [];
   private ac = new AbortController();
   private scope: AdminScope;
+  /** opened once already (the first open online starts on Games) */
+  private opened = false;
 
   constructor(private deps: AdminConsoleDeps) {
     this.scope = deps.online ? 'online' : 'local';
@@ -212,14 +222,32 @@ export class AdminConsole {
       this.render();
     });
     tgt.append(el('span', 'adm-k', 'Target'), this.targetSel, pick, meBtn);
+    this.tgtRow = tgt;
     const tabs = el('div', 'adm-tabs');
-    for (const [id, label] of TABS) {
+    if (deps.online && deps.powers) {
+      this.powers = new OnlinePowers({
+        ...deps.powers,
+        state: () => this.deps.state(),
+        pickTile: (label, pickFn) => {
+          if (!this.deps.state()) return;
+          this.pickTile(label, pickFn);
+        },
+        endPick: () => {
+          if (this.deps.ui.mode.kind === 'adminTile') this.deps.ui.mode = { kind: 'none' };
+        },
+        say: (text, bad) => this.say(text, bad),
+        rerender: () => {
+          if (this.isOpen) this.render();
+        },
+        openTab: () => (this.isOpen && (this.tab === 'games' || this.tab === 'announce' || this.tab === 'effects') ? this.tab : null),
+        goTab: (t) => this.goTab(t),
+      });
+    }
+    const tabList: [Tab, string][] = this.powers ? [...ONLINE_TABS, ...TABS] : TABS;
+    for (const [id, label] of tabList) {
       const b = el('button', 'adm-tab', label);
       b.type = 'button';
-      b.addEventListener('click', () => {
-        this.tab = id;
-        this.render();
-      });
+      b.addEventListener('click', () => this.goTab(id));
       this.tabBtns.set(id, b);
       tabs.append(b);
     }
@@ -241,6 +269,7 @@ export class AdminConsole {
       'keydown',
       (e) => {
         if (!isConsoleHotkey(e) || e.altKey || isTyping(e.target)) return;
+        if (this.deps.active && !this.deps.active()) return;
         e.preventDefault();
         e.stopPropagation();
         if (e.repeat) return;
@@ -268,7 +297,20 @@ export class AdminConsole {
     return false;
   }
 
+  /** Closes the line and the console (another screen takes the "|" key). */
+  hide(): void {
+    if (this.line.isOpen) this.closeLine();
+    if (this.isOpen) this.setOpen(false);
+  }
+
+  private goTab(t: Tab): void {
+    this.tab = t;
+    this.render();
+    if (t === 'games' || t === 'announce' || t === 'effects') this.powers?.opened(t);
+  }
+
   destroy(): void {
+    this.powers?.destroy();
     this.ac.abort();
     if (this.deps.ui.mode.kind === 'adminTile') this.deps.ui.mode = { kind: 'none' };
     this.el.remove();
@@ -325,9 +367,13 @@ export class AdminConsole {
     this.panel.classList.toggle('hidden', !open);
     if (open) {
       const s = this.deps.state();
+      // without a game (the menu) only the online tabs exist; online the console opens on Games
+      if (this.powers && (!s || !this.opened)) this.tab = 'games';
+      this.opened = true;
       if (!this.target && s) this.target = s.humanId;
       this.syncTargets(s, true);
       this.render();
+      if (this.tab === 'games' || this.tab === 'announce' || this.tab === 'effects') this.powers?.opened(this.tab);
     } else if (this.deps.ui.mode.kind === 'adminTile') this.deps.ui.mode = { kind: 'none' };
   }
 
@@ -427,8 +473,18 @@ export class AdminConsole {
   private render(): void {
     this.live = [];
     this.body.replaceChildren();
-    for (const [id, b] of this.tabBtns) b.classList.toggle('on', id === this.tab);
     const s = this.deps.state();
+    // no game on screen (the menu): only the online tabs; the target row is for game tabs only
+    for (const [id, b] of this.tabBtns) {
+      b.classList.toggle('on', id === this.tab);
+      b.classList.toggle('hidden', !s && !ONLINE_TABS.some(([o]) => o === id));
+    }
+    const online = this.tab === 'games' || this.tab === 'announce' || this.tab === 'effects';
+    this.tgtRow.classList.toggle('hidden', !s || online);
+    if (online && this.powers) {
+      this.powers.render(this.tab as OnlineTab, this.body);
+      return;
+    }
     if (!s) return;
     const P = () => this.target;
     switch (this.tab) {

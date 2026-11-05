@@ -1260,3 +1260,8 @@ Client (src/client/admin.ts, adminConsole.ts): no visible entry; "|" opens a bar
 Enter opens the Command console (target picker or a click on a nation, tabs per area, map picks and a paint brush
 through the `adminTile` target mode), a wrong code just clears the line. The unlock lasts for the browser session
 (sessionStorage). Speed x8 / x16 and the debug overlay (fps, ms per tick, AI attacks) are client-only.
+Online the console also has Games (every room on the server, Watch as a spectator, People with Message, Mute and
+Remove), Announce (a banner for one game or every screen, a message for one player) and Effects (a ring with a label
+on a tile, a countdown, confetti, fireworks, a screen shake). These are server messages, not actions: they never touch
+the game state (src/client/broadcast.ts shows them; docs/MULTIPLAYER.md has the messages). A watching owner's
+console actions come as player 0; the sim then needs an explicit nation for every op.

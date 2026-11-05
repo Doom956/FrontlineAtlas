@@ -15,6 +15,7 @@ import {
   isHashTurn,
 } from '../src/net/protocol';
 import type {
+  AdminRoomInfo,
   ErrorCode,
   GameOverReason,
   GameStartMsg,
@@ -170,6 +171,8 @@ export class Room {
   private readonly host: RoomHost;
   private nextMemberId = 1;
   private kicked = new Set<string>();
+  /** owner mutes: clientId -> server time the mute ends (a rejoin keeps it) */
+  private readonly mutes = new Map<string, number>();
 
   /** address that created this private lobby (per-address room limit); '' for public lobbies */
   creatorIp = '';
@@ -234,12 +237,13 @@ export class Room {
   join(session: RoomSession, spectate: boolean, haveTurns = 0): RoomError {
     if (this.closed) return err('notFound', 'No lobby with that code');
     if (this.phase === 'over') return err('started', 'That game is over');
+    // Removed by the host (lobby) or the owner (also from a running game, where the seat stays): no way back in.
+    if (this.kicked.has(session.clientId)) return err('kicked', this.phase === 'lobby' ? 'You were removed from this lobby' : 'You were removed from this game');
     const existing = this.memberByClientId(session.clientId);
     if (existing) {
       this.attach(existing, session, haveTurns);
       return null;
     }
-    if (this.kicked.has(session.clientId)) return err('kicked', 'You were removed from this lobby');
     if (this.build && session.build && this.build !== session.build) {
       return err('version', 'This lobby runs a different version of the game: reload the page');
     }
@@ -439,6 +443,111 @@ export class Room {
     return null;
   }
 
+  // ---------------------------------------------------------------------------------------------- owner powers
+
+  /** Whether this member may not send chat now (owner mute). The chat reads this; unknown members are not muted. */
+  isMuted(memberId: number): boolean {
+    return this.muteLeftMs(memberId) > 0;
+  }
+
+  /** ms of mute left for this member (0 = not muted). */
+  muteLeftMs(memberId: number): number {
+    const m = this.members.find((x) => x.memberId === memberId);
+    if (!m) return 0;
+    const until = this.mutes.get(m.clientId);
+    if (until === undefined) return 0;
+    const left = until - this.host.now();
+    if (left <= 0) {
+      this.mutes.delete(m.clientId);
+      return 0;
+    }
+    return left;
+  }
+
+  /** Owner: mutes a member for `minutes` (0 = lifts it). */
+  muteMember(memberId: number, minutes: number): RoomError {
+    const m = this.members.find((x) => x.memberId === memberId);
+    if (!m) return err('notFound', 'No such player in that game');
+    if (minutes <= 0) this.mutes.delete(m.clientId);
+    else this.mutes.set(m.clientId, this.host.now() + minutes * 60_000);
+    return null;
+  }
+
+  /**
+   * Owner: removes a member from the lobby or game for good (a plain `kicked` note; joining again is refused). In a
+   * running game a player's seat stays (the nation keeps its land, nobody controls it), like a player who left.
+   */
+  removeByOwner(memberId: number, ownerClientId: string): RoomError {
+    if (this.closed || this.phase === 'over') return err('notAllowed', 'That game is over');
+    const m = this.members.find((x) => x.memberId === memberId);
+    if (!m) return err('notFound', 'No such player in that game');
+    if (m.clientId === ownerClientId) return err('notAllowed', 'You cannot remove yourself');
+    this.kicked.add(m.clientId);
+    const s = m.session;
+    if (s) {
+      s.send({ type: 'kicked', reason: 'You were removed from this game' });
+      this.leave(s);
+      return null;
+    }
+    if (this.phase === 'lobby' || m.spectator) this.removeMember(m);
+    else {
+      m.left = true;
+      this.broadcastPresence();
+      if (this.players.every((p) => p.left)) {
+        this.finish('abandoned', 0);
+        this.close('');
+      }
+    }
+    return null;
+  }
+
+  /** Sends one message to every connected member (players and spectators); returns how many got it. */
+  broadcastAll(msg: ServerMessage): number {
+    const text = JSON.stringify(msg);
+    let n = 0;
+    for (const m of this.members) {
+      if (!m.session) continue;
+      m.session.sendRaw(text);
+      n++;
+    }
+    return n;
+  }
+
+  /** Sends to one member; false when nobody is connected on that seat. */
+  sendTo(memberId: number, msg: ServerMessage): boolean {
+    const m = this.members.find((x) => x.memberId === memberId);
+    if (!m?.session) return false;
+    m.session.send(msg);
+    return true;
+  }
+
+  /** The room as the owner's Games list shows it. */
+  adminInfo(now: number): AdminRoomInfo {
+    const since = this.phase === 'lobby' ? this.createdAt : this.startedAt;
+    return {
+      code: this.code,
+      phase: this.phase,
+      isPublic: this.isPublic,
+      mode: this.settings.mode,
+      map: mapLabel(this.settings.map),
+      players: this.players.length,
+      connected: this.connectedPlayers(),
+      spectators: this.spectators.filter((m) => m.session).length,
+      minutes: Math.max(0, Math.floor((now - since) / 60_000)),
+      turn: this.turnCount,
+      paused: this.paused,
+      members: this.members.map((m) => ({
+        memberId: m.memberId,
+        name: m.name,
+        playerId: m.playerId,
+        spectator: m.spectator,
+        connected: m.session !== null,
+        left: m.left,
+        mutedMinutes: Math.ceil(this.muteLeftMs(m.memberId) / 60_000),
+      })),
+    };
+  }
+
   // ---------------------------------------------------------------------------------------------- start
 
   private refreshPublicSettings(): void {
@@ -615,7 +724,8 @@ export class Room {
       if (this.phase === 'over') return this.continueAfterEnd(m, action);
     }
     if (this.phase !== 'running') return err('notAllowed', 'The game is not running');
-    if (m.spectator || m.playerId <= 0) return err('notAllowed', 'Spectators cannot act');
+    // The owner watching as a spectator may send console actions (stamped player 0) and nothing else.
+    if ((m.spectator || m.playerId <= 0) && !(action.type === 'admin' && isAdmin)) return err('notAllowed', 'Spectators cannot act');
     if (this.paused) return err('notAllowed', 'The game is paused');
     if (action.type === 'startNow' && (this.isPublic || m.memberId !== this.hostMemberId)) {
       return err('notAllowed', 'Only the host can end the spawn phase early');
