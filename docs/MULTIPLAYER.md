@@ -137,6 +137,11 @@ carries `continuable: true` and the room stays open for 10 minutes. The host may
 turns start again, everyone gets `gameContinued {by, turn}`, and every sim plays on (the winner stays recorded; no
 victory, overtime or time limit ends it again). Others get error `notHost`; public games end as before.
 
+**Fog of war (protocol 17).** `modifiers.fogOfWar` is a lobby setting like the others (`validateSetup`); a client
+without the rule would desync in a fog game, so the protocol version went up. Every client simulates the full state and
+draws only its own seat's view (spectators see everything), so online fog is honour based: a modified client could
+read the hidden state.
+
 **Owner console (protocol 7).** `adminAuth {code}` -> `adminAuth {ok}` to the sender only (see section 5). Console
 intents have `type: 'admin'` with an `op` (src/sim/admin.ts ADMIN_OPS) and are relayed only from authenticated
 sessions.

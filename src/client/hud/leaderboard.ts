@@ -11,7 +11,7 @@ import { armyOf } from '../simx';
 import { doctrineLabel, knownDoctrine } from '../doctrineView';
 import { el, setClass, setText, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon } from './glyph';
-import { activeFog, ARMY_HIDDEN_TIP, UNKNOWN_NATION } from '../fog/fogView';
+import { activeFog, ARMY_HIDDEN_TIP } from '../fog/fogView';
 
 const TOP = 3;
 /** Swatch of a nation fog hides (no colour until you meet it). */
@@ -129,7 +129,7 @@ export class Leaderboard {
       const met = !fog || fog.isMet(p.id);
       const army = fog ? fog.armyShown(s, p.id) : armyOf(s, p.id);
       r.sw.style.background = met ? swatchCss(p, me.id) : UNKNOWN_SWATCH;
-      setText(r.name, isMe ? `${p.name} (you)` : met ? p.name : UNKNOWN_NATION);
+      setText(r.name, isMe ? `${p.name} (you)` : met ? p.name : 'Unknown');
       setText(r.land, `${((p.tiles / land) * 100).toFixed(1)}%`);
       setText(r.army, army === null ? (met ? '?' : '') : formatCount(army));
       r.army.dataset.tip = army === null && met ? ARMY_HIDDEN_TIP : '';

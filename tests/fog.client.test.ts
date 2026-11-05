@@ -298,7 +298,7 @@ describe('fog: what the HUD shows', () => {
     const text = root.text();
     expect(text).not.toContain('Varkos');
     expect(text).not.toContain('Orlen');
-    expect(text).toContain(UNKNOWN_NATION);
+    expect(text).toContain('Unknown'); // the short form of UNKNOWN_NATION (narrow column; the tip says the rest)
     const row3 = root.find((e) => e.dataset.test === 'lb-row-3')!;
     expect(row3.classList.contains('unmet')).toBe(true);
     // Met and in sight: name and army; out of sight again: "?".
