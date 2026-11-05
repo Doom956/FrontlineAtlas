@@ -1368,6 +1368,30 @@ export const NAVY_WAR_MEMORY = 30;
 export const ARMOR_AUTO_PATH_BUDGET = 8000;
 export const ARMOR_RETRY_SECONDS = 10;
 
+// ---------- fog of war (fog.ts; game rule Modifiers.fogOfWar) ----------
+/**
+ * Vision in a fog game. The grid is territory.BLOCK x BLOCK tiles (16); radii are in tiles. A block is in view when its
+ * nearest point is within the radius of a source (the rule of territory.ownsNear).
+ */
+export const FOG = {
+  /** own and allied land see this far past their border (every block holding an own tile is a source) */
+  landBand: 24,
+  /** humans refresh their vision every this many ticks (0.5 s), staggered by (tick + id) */
+  humanTicks: 5,
+  /** AI nations refresh every this many ticks (1 s), staggered the same way; tribes have no vision */
+  aiTicks: 10,
+  /** vision of one unit by type (0 = none); the submarine variant uses `submarine` */
+  unit: { warship: 30, submarine: 18, transport: 12, tradeShip: 10, tankDivision: 20, bomber: 14, fighter: 18, transportPlane: 12, reconPlane: 20, rocket: 0, atomBomb: 0 } as Record<string, number>,
+  /** ground vision of a finished watchtower = buildings.watchtowerRadiusOf x this */
+  watchtowerMul: 0.5,
+  /** a finished Port sees this far (mostly sea: spots landings) */
+  portSea: 30,
+  /** client drawing: explored land brightness and saturation, unexplored terrain brightness */
+  exploredShade: 0.62,
+  exploredSaturation: 0.35,
+  unexploredShade: 0.28,
+};
+
 // ---------- special upgrades (specials.ts): behaviour changes bought as techs ----------
 export const SPECIALS = {
   /** systems in specials.ts run every this many ticks (damage scales with the elapsed time) */

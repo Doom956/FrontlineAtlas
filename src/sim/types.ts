@@ -209,6 +209,8 @@ export interface Modifiers {
   research: ResearchRule;
   /** income, troop growth, construction, research and front speed x2 */
   fastGame: boolean;
+  /** fog of war: you see only near your land, units and allies (fog.ts); AI and auto units only aim at what they know */
+  fogOfWar: boolean;
 }
 
 /**
@@ -705,6 +707,21 @@ export interface GameState {
   follow?: FollowState;
   /** single-player tutorial chapter (tutorialScenario.ts); absent = a normal game */
   tutorial?: TutorialState;
+  /** fog of war vision per player (fog.ts); created by makeGameState only when Modifiers.fogOfWar is on, else absent */
+  fog?: FogState;
+}
+
+/**
+ * Fog of war vision (fog.ts), on a grid of territory.BLOCK x BLOCK tiles (bw x bh blocks, `words` 32-bit words per
+ * bitset, block index = by * bw + bx). Indexed by player id; null for id 0 and tribes (no vision). `now` = blocks in
+ * view at the player's last refresh (own sources plus allies'), `seen` = blocks ever in view (explored). Hashed.
+ */
+export interface FogState {
+  bw: number;
+  bh: number;
+  words: number;
+  seen: (Uint32Array | null)[];
+  now: (Uint32Array | null)[];
 }
 
 /** Tutorial chapters (src/sim/tutorialScenario.ts; the client's chapter list is src/client/tutorial/chapters.ts). */

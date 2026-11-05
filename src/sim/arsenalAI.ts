@@ -17,6 +17,7 @@
 //   Drop Tanks       air-committed nations with two or more airfields
 // specials.aiSpecialTechs ranks the situational fit; the personality / pillar rules here decide who wants which.
 // Deterministic: state only (per-tick caches in WeakMaps, rebuilt from the state).
+import { knownTile } from './fog';
 import { airMinded } from './airwings';
 import { buildingsOf } from './buildings';
 import { ARSENAL_PRICES, SPECIALS, TECHS } from './config';
@@ -130,7 +131,7 @@ export function aiAmphibTarget(state: GameState, id: number, foe: number, fx: nu
     const t = coast[k];
     if (state.map.owner[t] !== id) continue;
     const q = acrossNarrow(state, id, t, foe);
-    if (q < 0) continue;
+    if (q < 0 || !knownTile(state, id, q)) continue; // fog of war: known tiles only
     const dx = (q % w) - fx;
     const dy = ((q / w) | 0) - fy;
     const d = dx * dx + dy * dy;

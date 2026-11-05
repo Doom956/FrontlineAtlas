@@ -15,6 +15,7 @@
 //
 // Deterministic: state.rng only (night scatter), fixed iteration orders, no transcendental Math functions.
 
+import { knownTile } from './fog';
 import { AIR, ATOM_KILL_SHARE, ATOM_RADIUS, BOMBER_BUILDING_HIT, BOMBER_MIN_KILL, BOMBER_RADIUS, BOMBER_TROOP_KILL, ROCKET_KILL_MIN, ROCKET_RADIUS, STRIKE, TECH_EFFECTS, TICKS_PER_SECOND, UNITS } from './config';
 import {
   MISSION_COVER,
@@ -747,7 +748,7 @@ function autoFireTargets(state: GameState, pid: number, nation: number): number[
   const owner = state.map.owner;
   const pick = (type: BuildingType, ok: (b: Building, dd: number) => boolean): number[] =>
     buildingsOf(state, nation, type)
-      .filter((b) => b.buildLeft <= 0 && owner[b.tile] === nation && ok(b, d2(w, b.tile, front)))
+      .filter((b) => b.buildLeft <= 0 && owner[b.tile] === nation && knownTile(state, pid, b.tile) && ok(b, d2(w, b.tile, front))) // fog: known only
       .sort((a, b) => d2(w, a.tile, front) - d2(w, b.tile, front) || a.id - b.id)
       .map((b) => b.tile);
   return [

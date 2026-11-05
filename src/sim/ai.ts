@@ -84,6 +84,7 @@ import { forEachInRadius } from './grid';
 import { alliancesAllowed as rulesAllowAlliances, atPeace, buildingAllowed, researchRule, unitAllowed } from './rules';
 import { canSpawnAt, gameSeconds, ownerBox, spawnAtFixedPoint } from './state';
 import { mainFront } from './warTarget';
+import { fogOn, knownTile } from './fog';
 import { borderTiles, coastCount, depositCount, landComponents, sampleOwnedTiles } from './territory';
 import { canParadrop, paradropMaxTroops, paradropRange, unitCost } from './units';
 import { aiAirDoctrineTaste, aiAirTechs, aiAirWings, aiExtraAirfields, airWingBusy, airWingRange } from './airwings';
@@ -2252,7 +2253,11 @@ function landingTarget(ctx: Ctx, coast: readonly number[]): { tile: number; from
     if (ratio < (isTribe(q) ? 2 : 0.4) || areAllied(state, id, q.id) || atPeace(state, id, q.id)) continue;
     if (!isTribe(q) && ratio < warNeed(ctx, q.id) * 1.1) continue;
     if (q.isHuman && humanLimit(ctx, q.id, 1, wars) <= 0) continue;
-    for (const t of sampleOwnedTiles(state, q.id, 'coast', 3)) candidates.push(t);
+    // Fog of war (fog.ts): only coast this AI has seen (sailing to empty land is how anyone explores).
+    if (fogOn(state)) {
+      let n = 0;
+      for (const t of sampleOwnedTiles(state, q.id, 'coast', 12)) if (n < 3 && knownTile(state, id, t)) (candidates.push(t), n++);
+    } else for (const t of sampleOwnedTiles(state, q.id, 'coast', 3)) candidates.push(t);
   }
   let best: { tile: number; from: number; owner: number } | null = null;
   let bestScore = -Infinity;
@@ -2332,7 +2337,7 @@ function strikeTarget(ctx: Ctx, kinds: BuildingType[], from: number, reach = Inf
     const sams = ctx.diff.careful ? buildingsOf(state, q, 'sam').filter((b) => b.buildLeft <= 0 && !isDisabled(state, b)) : [];
     for (let k = 0; k < kinds.length; k++) {
       for (const b of buildingsOf(state, q, kinds[k])) {
-        if (state.map.owner[b.tile] !== q) continue;
+        if (state.map.owner[b.tile] !== q || !knownTile(state, ctx.id, b.tile)) continue; // fog: known buildings only
         if (from >= 0 && dist2(w, from, b.tile) > reach * reach) continue; // bombers: the airfield's reach
         let covered = 0;
         for (const s of sams) {
@@ -2442,7 +2447,7 @@ function paradrop(ctx: Ctx, airfield: number, fighting: number[]): void {
       }
     }
     for (const [t, value] of spots) {
-      if (t < 0 || t >= owner.length || owner[t] !== q || dist2(w, airfield, t) > range * range) continue;
+      if (t < 0 || t >= owner.length || owner[t] !== q || dist2(w, airfield, t) > range * range || !knownTile(state, id, t)) continue;
       let cover = 0;
       for (const s of sams) {
         const r = samRadius(s);
@@ -2489,7 +2494,7 @@ function barrage(ctx: Ctx): void {
     if (!edges.length) continue;
     for (const type of ['sam', 'fort'] as const) {
       for (const b of buildingsOf(state, q, type)) {
-        if (b.buildLeft > 0 || state.map.owner[b.tile] !== q) continue;
+        if (b.buildLeft > 0 || state.map.owner[b.tile] !== q || !knownTile(state, id, b.tile)) continue; // fog: known only
         if (b.disabledUntil - state.tick > 3 * TICKS_PER_SECOND) continue; // still silenced
         const score = (type === 'sam' ? 2 : 1) + b.level * 0.5 + (1 - b.hp);
         if (score <= bestScore) continue;
@@ -2562,7 +2567,7 @@ function maybeNuke(ctx: Ctx, silo: number): boolean {
   const spots = buildingsOf(state, target, 'city').sort((a, b) => b.level - a.level).map((b) => b.tile);
   if (state.players[target].capital >= 0) spots.push(state.players[target].capital);
   for (const t of spots.slice(0, 4)) {
-    if (state.map.owner[t] !== target) continue;
+    if (state.map.owner[t] !== target || !knownTile(state, id, t)) continue; // fog: known spots only
     let ours = 0;
     forEachInRadius(state.map, t, ATOM_RADIUS, (i) => {
       if (state.map.owner[i] === id) ours++;

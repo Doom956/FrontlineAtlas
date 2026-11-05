@@ -21,6 +21,7 @@
 //    war target while no reveal of ours covers it.
 // Deterministic: no RNG; fixed orders (player id, building id).
 
+import { knownTile, pushInward } from './fog';
 import { buildingAt, buildingsOf } from './buildings';
 import { frontTiles } from './combat';
 import { TICKS_PER_SECOND } from './config';
@@ -376,6 +377,11 @@ function reconAim(state: GameState, owner: number, nation: number, b: Building):
   const w = map.width;
   const cap = state.players[nation]?.capital ?? -1;
   const r = reconRange(b);
+  // Fog of war (fog.ts): toward the capital only when it is known; else one recon radius past the front, away from home.
+  if (cap >= 0 && cap < map.owner.length && !knownTile(state, owner, cap)) {
+    const t = pushInward(state, owner, nation, front);
+    return t >= 0 && d2(w, b.tile, t) <= r * r ? t : front;
+  }
   if (cap >= 0 && cap < map.owner.length) {
     const dx = (cap % w) - (front % w);
     const dy = ((cap / w) | 0) - ((front / w) | 0);

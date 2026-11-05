@@ -12,6 +12,7 @@
 // - Warships: a battleship every third ship once it has Battleships, a carrier every fourth once it has Carriers.
 // - Recon: every ARSENAL.reconCooldown + a bit, over the capital of the nation it fights hardest, when in reach.
 // Deterministic: state and hashes only.
+import { fogOn, fogReconAim, knownTile } from './fog';
 import { applyAction } from './actions';
 import { arsenalItem, isMasteryTech, pillarOf } from './arsenal';
 import type { Pillar } from './arsenal';
@@ -237,12 +238,13 @@ export function aiRecon(state: GameState, id: number, fighting: readonly number[
   for (const foe of fighting) {
     const fp = state.players[foe];
     if (!fp?.alive || !reconWorthIt(state, id, foe)) continue;
-    // Its capital if in reach, else its building nearest one of our airfields (within recon reach).
-    let aim = fp.capital >= 0 && canReconFlight(state, id, -1, fp.capital).ok ? fp.capital : -1;
+    // Its capital if in reach, else its building nearest one of our airfields (within recon reach). Fog of war
+    // (fog.ts): only a capital or building it knows; else a known front tile pushed one recon radius inward.
+    let aim = fp.capital >= 0 && knownTile(state, id, fp.capital) && canReconFlight(state, id, -1, fp.capital).ok ? fp.capital : -1;
     if (aim < 0) {
       let bestD = Infinity;
       for (const b of buildingsOf(state, foe)) {
-        if (b.owner !== foe) continue;
+        if (b.owner !== foe || !knownTile(state, id, b.tile)) continue;
         for (const f of fields) {
           const dx = (b.tile % w) - (f.tile % w);
           const dy = ((b.tile / w) | 0) - ((f.tile / w) | 0);
@@ -255,6 +257,7 @@ export function aiRecon(state: GameState, id: number, fighting: readonly number[
         }
       }
     }
+    if (aim < 0 && fogOn(state)) aim = fogReconAim(state, id, foe);
     if (aim < 0) continue;
     if (applyAction(state, id, { type: 'reconFlight', airfield: -1, tile: aim }).ok) {
       m.set(id, state.tick + Math.round((ARSENAL.reconCooldown + 15) * TICKS_PER_SECOND));

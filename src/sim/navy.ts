@@ -9,6 +9,7 @@
 // - group orders (Action moveWarships) in a loose formation;
 // - formationTiles, shared with tank divisions (tanks.ts).
 // Everything is deterministic (no RNG here; scans are staggered by unit id).
+import { fogOn, visibleTile } from './fog';
 import { buildingAt, buildingsOf } from './buildings';
 import {
   MAX_GROUP_UNITS,
@@ -411,7 +412,8 @@ export function interceptStep(
       return;
     }
     const dt = d2(t.x, t.y, u.x, u.y);
-    if ((dt > detect2 && !(far && wars.has(me * 1024 + t.owner))) || !navalCanTarget(state, u, t)) {
+    const lost = fogOn(state) && !visibleTile(state, me, shipTileOf(state, t)); // fog of war: it sailed out of view
+    if ((dt > detect2 && !(far && wars.has(me * 1024 + t.owner) && !lost)) || !navalCanTarget(state, u, t)) {
       // out of sight (a submarine dived away: variants.ts)
       u.chaseLost = (u.chaseLost ?? 0) + WARSHIP_SCAN_TICKS;
       if (u.chaseLost >= WARSHIP_CHASE_GIVE_UP * TICKS_PER_SECOND) {
@@ -434,10 +436,12 @@ export function interceptStep(
   let best: Unit | null = null;
   let bestRank = 99;
   let bestD = Infinity;
+  const fog = fogOn(state);
   for (const s of ships) {
     if (s === u || s.owner === me) continue;
     const d = d2(s.x, s.y, u.x, u.y);
     if (d > detect2 && (!far || !wars.has(me * 1024 + s.owner))) continue;
+    if (fog && !visibleTile(state, me, shipTileOf(state, s))) continue; // fog of war (fog.ts): only ships in view
     if (comp[shipTileOf(state, s)] !== sea) continue;
     const rank = interceptRank(state, me, s, wars);
     if (rank < 0 || d2(s.x, s.y, postX, postY) > leash2) continue;

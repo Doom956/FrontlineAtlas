@@ -7,6 +7,7 @@
 
 import { hashAir } from './airwings';
 import { hashFollow } from './warTarget';
+import { hashFog } from './fog';
 import { hashArsenal } from './variants';
 import type { GameState, Troops } from './types';
 import { DIVISION_MODES, WARSHIP_STANCES } from './types';
@@ -254,5 +255,7 @@ export function hashState(state: GameState): number {
   h = hashArsenal(state, h, mixInt, mixFloat);
   // War targets and auto recon (warTarget.ts).
   h = hashFollow(state, h, mixInt);
+  // Fog of war vision (fog.ts); nothing without the rule.
+  h = hashFog(state, h, mixInt);
   return h >>> 0;
 }

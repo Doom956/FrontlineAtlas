@@ -18,6 +18,7 @@
 //
 // Numbers: config AIR. Deterministic: state.rng only, no transcendental Math functions.
 
+import { knownTile } from './fog';
 import { AIR, AIR_COVER, TICKS_PER_SECOND } from './config';
 import { aircraftCap, airfieldRadius, buildingAt, buildingsOf, chargesReady, isDisabled, samRadius } from './buildings';
 import { applyAction } from './actions';
@@ -528,7 +529,7 @@ function strategicAims(state: GameState, wing: AirWing, b: Building, n: number):
   const inReach = (t: number): boolean => d2(w, b.tile, t) <= range * range || !!carrierFor(state, wing.owner, t); // carriers launch far out (variants.ts)
   for (const [type, weight] of Object.entries(RAID_WEIGHT) as [BuildingType, number][]) {
     for (const t of buildingsOf(state, foe, type)) {
-      if (t.buildLeft > 0 || state.map.owner[t.tile] !== foe || !inReach(t.tile)) continue;
+      if (t.buildLeft > 0 || state.map.owner[t.tile] !== foe || !inReach(t.tile) || !knownTile(state, wing.owner, t.tile)) continue; // fog: known only
       let cover = 0;
       for (const s of sams) {
         const r = samRadius(s);
@@ -541,7 +542,7 @@ function strategicAims(state: GameState, wing: AirWing, b: Building, n: number):
   // SAMs that guard the route to one of the best targets.
   const top = [...scored].sort((a, c) => c.score - a.score || a.tile - c.tile).slice(0, Math.max(3, n));
   for (const s of sams) {
-    if (!inReach(s.tile)) continue;
+    if (!inReach(s.tile) || !knownTile(state, wing.owner, s.tile)) continue;
     const r = samRadius(s);
     if (!top.some((t) => routeNear(w, b.tile, t.tile, s.tile, r))) continue;
     scored.push({ tile: s.tile, score: RAID_SAM_WEIGHT * (1 + 0.3 * (s.level - 1)) - (wing.target >= 0 ? Math.sqrt(d2(w, wing.target, s.tile)) / range : 0) });
@@ -592,7 +593,7 @@ function raidInReach(state: GameState, b: Building, n: number): boolean {
   const range = airWingRange(b, state);
   for (const type of Object.keys(RAID_WEIGHT) as BuildingType[]) {
     for (const t of buildingsOf(state, n, type)) {
-      if (t.buildLeft > 0 || state.map.owner[t.tile] !== n) continue;
+      if (t.buildLeft > 0 || state.map.owner[t.tile] !== n || !knownTile(state, b.owner, t.tile)) continue; // fog: known only
       if (d2(w, b.tile, t.tile) <= range * range || carrierFor(state, b.owner, t.tile)) return true;
     }
   }

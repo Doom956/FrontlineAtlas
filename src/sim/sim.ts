@@ -25,6 +25,7 @@ import { clearDefenseCache, updateTanks } from './tanks';
 import { updateSpecials } from './specials';
 import { clearNavyCache, updateWarMemory } from './naval2';
 import { updateFollow } from './warTarget';
+import { updateFog } from './fog';
 import { updateTutorial } from './tutorialScenario';
 import { updateVictory } from './victory';
 import type { GameState } from './types';
@@ -50,6 +51,7 @@ export function tick(state: GameState): void {
       state.phase = 'playing';
       state.playStartTick = state.tick;
       addEvent(state, 'info', 'The war begins!', [], -1);
+      updateFog(state, true); // fog of war: everyone starts with vision (fog.ts)
     }
   } else {
     updateDoctrines(state);
@@ -70,6 +72,7 @@ export function tick(state: GameState): void {
     updateUnits(state);
     updateAir(state);
     updateArsenal(state); // recon planes, reveals, hold zones (variants.ts)
+    updateFog(state); // fog of war vision (fog.ts); after reveals, before the AI decides
     updateNavyQueue(state);
     updateTanks(state);
     updateBarrages(state);
