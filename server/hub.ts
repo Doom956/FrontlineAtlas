@@ -367,6 +367,9 @@ export class Hub implements RoomHost {
       case 'setPause':
         report(room.setPause(member, msg.paused));
         return;
+      case 'chat':
+        room.chat(member, msg);
+        return;
     }
   }
 

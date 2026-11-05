@@ -48,10 +48,18 @@
 //   game: they are not lockstep intents, are never hashed and can't desync. Clients show their text with textContent
 //   only, cut to the limits below (cleanBroadcastText). An owner watching a game as a spectator may send `admin`
 //   intents (stamped playerId 0; the sim then needs an explicit nation for every op) and no other intent.
-//   Mutes are kept per room by clientId; the chat round reads them through Room.isMuted(memberId).
+//   Mutes are kept per room by clientId; the chat reads them through Room.isMuted(memberId).
 // - Warship groups and tank divisions (protocol 7): intents `moveWarships {unitIds, tile}`, `buildTankDivision {tile}`,
 //   `moveTankDivision {unitIds, tile}` (unitIds: 1..MAX_GROUP_UNITS distinct ids); `buildWarship {port, tile?}` (port
 //   -1 with a tile = the sim picks the port).
+// - Chat (online lobbies and games only): send `chat {channel, text, ping?}`. The server cleans the text (control
+//   characters out, spaces collapsed, 1..CHAT_MAX_LENGTH characters), masks rude words with ***, rate-limits it
+//   (CHAT_BURST messages per CHAT_WINDOW_MS, then a short cooldown) and relays it as `chat {entry}` to the members
+//   who may read it: 'all' reaches everyone (spectators too), 'team' only the sender's teammates in a running teams
+//   game, and a spectator always writes in the 'spectators' channel (spectators only). `ping` (a tile, team chat
+//   only) marks a spot on the teammates' maps. A refused message gets `chatNotice {reason, text}` for the sender
+//   alone. On every (re)join, and when the game starts, the server sends `chatHistory`: the last CHAT_HISTORY
+//   messages this member may read, plus the channels it may use. Chat never touches the game state (no lockstep).
 // - Send `ping` every PING_INTERVAL_MS; the server closes connections silent for longer than IDLE_TIMEOUT_MS.
 // - Keep `clientId` (random, from makeClientId()) in localStorage: it is your seat. Reconnecting with the same
 //   clientId (a new socket + `hello`) puts you back in your lobby or game: the server answers `welcome {resumed}`
@@ -90,9 +98,17 @@ export type { GameMode };
 // ------------------------------------------------------------------------------------------------ constants
 
 /** Bumped on any incompatible change to the messages below. `hello.protocol` must equal it. */
-export const PROTOCOL_VERSION = 16;
+export const PROTOCOL_VERSION = 17;
 /** Longest owner-console code a client may send (adminAuth). */
 export const ADMIN_CODE_MAX_LENGTH = 128;
+/** Longest chat message (characters, after cleaning). */
+export const CHAT_MAX_LENGTH = 160;
+/** Chat rate limit: at most CHAT_BURST messages per CHAT_WINDOW_MS, then CHAT_COOLDOWN_MS of quiet. */
+export const CHAT_BURST = 5;
+export const CHAT_WINDOW_MS = 10_000;
+export const CHAT_COOLDOWN_MS = 10_000;
+/** Messages a room keeps for members who join or reconnect. */
+export const CHAT_HISTORY = 50;
 /** A finished private game can be continued by its host for this long (then the room closes). */
 export const CONTINUE_WINDOW_MS = 10 * 60_000;
 /** Owner powers: longest announcement / notice text, title and effect label (characters, after cleaning). */
@@ -413,6 +429,17 @@ export interface AdminKickMsg {
   memberId: number;
 }
 export type AdminClientMessage = AdminRoomsMsg | AdminAnnounceMsg | AdminNoticeMsg | AdminSpectacleMsg | AdminMuteMsg | AdminKickMsg;
+/** What a chat message is sent to: 'all', 'team' (teammates), or 'spectators' (only spectators write and read it). */
+export type ChatChannel = 'all' | 'team' | 'spectators';
+/** A chat message. Spectators may send any channel: the server puts it in 'spectators'. */
+export interface ChatSendMsg {
+  type: 'chat';
+  channel: 'all' | 'team';
+  /** 1..CHAT_MAX_LENGTH characters after the server's cleaning */
+  text: string;
+  /** team chat in a running game: a tile to mark on the teammates' maps */
+  ping?: number;
+}
 export interface PingMsg {
   type: 'ping';
   /** any number (e.g. performance.now()); echoed in pong */
@@ -434,6 +461,7 @@ export type ClientMessage =
   | SetPauseMsg
   | AdminAuthMsg
   | AdminClientMessage
+  | ChatSendMsg
   | PingMsg;
 
 // ------------------------------------------------------------------------------------------------ server -> client
@@ -646,6 +674,49 @@ export interface SpectacleMsg {
   seconds?: number;
 }
 export const ADMIN_ROOMS_MAX = 150;
+/** One relayed chat message. The text is plain text: show it with textContent only. */
+export interface ChatEntry {
+  /** increasing per room */
+  id: number;
+  channel: ChatChannel;
+  /** the sender's memberId in this room */
+  from: number;
+  name: string;
+  color: RGB;
+  /** the sender's player id in the game, 0 in the lobby and for spectators */
+  playerId: number;
+  text: string;
+  /** a tile marked on the map (team chat only) */
+  ping?: number;
+  /** server time (ms) */
+  at: number;
+}
+/** A new chat message for you. */
+export interface ChatRelayMsg {
+  type: 'chat';
+  entry: ChatEntry;
+}
+/** The recent chat of the room you are in (replaces what you have) and what you may send. */
+export interface ChatHistoryMsg {
+  type: 'chatHistory';
+  code: string;
+  /** your memberId */
+  you: number;
+  /** you are a spectator: your messages go to the 'spectators' channel */
+  spectator: boolean;
+  /** team chat is open to you (a player in a running teams game) */
+  team: boolean;
+  entries: ChatEntry[];
+}
+export type ChatNoticeReason = 'rateLimit' | 'muted' | 'notAllowed';
+/** Your chat message was not sent (only you see this). */
+export interface ChatNoticeMsg {
+  type: 'chatNotice';
+  reason: ChatNoticeReason;
+  text: string;
+  /** rateLimit: ms until you may chat again */
+  retryMs?: number;
+}
 
 export type ServerMessage =
   | WelcomeMsg
@@ -667,7 +738,10 @@ export type ServerMessage =
   | AdminAckMsg
   | AnnouncementMsg
   | NoticeMsg
-  | SpectacleMsg;
+  | SpectacleMsg
+  | ChatRelayMsg
+  | ChatHistoryMsg
+  | ChatNoticeMsg;
 
 // ------------------------------------------------------------------------------------------------ helpers
 

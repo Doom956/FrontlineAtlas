@@ -47,6 +47,8 @@ turns follow the last one. Spectators join a running game by its code the same w
 | `src/net/client.ts` | browser connection: `hello`, persistent clientId, reconnects with backoff, ping / latency, server clock |
 | `src/client/mpgame.ts` | the lockstep runner: turn queue, catch-up, intents out, hashes out, desync / reload |
 | `src/client/lobby.ts` | the Multiplayer pages: public list, join by code, private lobby (the setup screen in lobby mode) |
+| `src/client/chat/` | chat: `store.ts` (messages, unread, mutes, chat off), `view.ts` (button, panel, quick chat) |
+| `server/chat.ts`, `server/chatWords.ts` | chat text cleaning, the word filter and its list, the chat rate limit |
 | `src/client/hud/mpStatus.ts` | in-game status line (connection, ping, players) and banners (reconnecting, catching up, out of sync) |
 | `server/server.ts` | `startServer(options)`: HTTP (static client, `/health`) + WebSocket upgrade on `/ws` |
 | `server/hub.ts` | connections, `hello`, rate limits, timeouts, lobby list, public lobby scheduler |
@@ -56,6 +58,7 @@ turns follow the last one. Spectators join a running game by its code the same w
 | `server/index.ts` | production entry (bundled to `server-dist/index.js`) |
 | `scripts/dev.mjs` | `npm run dev`: Vite + server together |
 | `tests/server.test.ts` | real WebSocket clients against an in-process server |
+| `tests/chat.server.test.ts`, `tests/chat.client.test.ts` | chat: cleaning, filter, rate limit, routing, history; text-only rendering |
 | `tests/multiplayer.test.ts` | several humans in the sim: seats, teams, victory, lockstep hashes whichever player a client controls |
 | `tests/mpclient.test.ts` | the lockstep runner with a fake connection: order, catch-up, gaps, hashes, intents |
 | `tests/e2e/mp.e2e.mjs` | browser end-to-end test (Playwright, run by hand after `npm run build`) |
@@ -141,7 +144,7 @@ victory, overtime or time limit ends it again). Others get error `notHost`; publ
 intents have `type: 'admin'` with an `op` (src/sim/admin.ts ADMIN_OPS) and are relayed only from authenticated
 sessions.
 
-**Owner powers online.** An authenticated session may also send `adminRooms` (answer `adminRooms {rooms, total}`:
+**Owner powers online (protocol 17).** An authenticated session may also send `adminRooms` (answer `adminRooms {rooms, total}`:
 every room with code, phase, players, spectators, minutes and its people), `adminAnnounce {scope, code?, title, text,
 style, seconds}`, `adminNotice {code?, memberId, text, style}`, `adminSpectacle {scope, code?, kind, tile?, label?,
 seconds?}` (kind: ping, countdown, confetti, fireworks, shake), `adminMute {code?, memberId, minutes}` (0 lifts it)
@@ -159,6 +162,16 @@ keeps them); the chat reads them with `Room.isMuted(memberId)`. Watching: the ow
 normal `joinLobby {spectate: true}` and counts as one more anonymous spectator; from that seat the server relays
 `admin` intents (stamped player 0) and refuses every other intent. The sim needs an explicit nation for every op from
 player 0 ('Pick a nation' otherwise).
+
+**Chat (protocol 17).** Online lobbies and games only, never part of the game state (no lockstep, no hashes). `chat
+{channel, text, ping?}`: the server cleans the text (control and invisible characters out, spaces collapsed, 1..160
+characters), masks the words in `server/chatWords.ts` with `***` and relays `chat {entry}` to those who may read it:
+`all` reaches everyone, `team` only teammates in a running teams game (with an optional map mark, `ping`, a tile), and
+spectators always write in their own `spectators` channel that players don't see. 5 messages per 10 s per member, then
+10 s of quiet; refusals (too fast, muted with `adminMute`, team chat not open) come back as `chatNotice` to the sender
+alone. The room keeps the last 50 messages: every join, reconnect and the game start send `chatHistory` with the ones
+that member may read. Clients show chat with `textContent` only (no HTML, no links); a player hiding someone lasts the
+browser session and "Chat off" (Menu, or the switch in the lobby) hides everything.
 
 **Limits.** 16 KB per message, 30 messages/s per connection (bursts of 60; a long flood closes the socket), 10 intents
 per player per turn and 4 per second on average (bursts of 40; the client sends army-mix slider drags at most every

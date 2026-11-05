@@ -502,8 +502,17 @@
   border-inline-start: 1px solid var(--rule);
   gap: 12px;
 }
+/* the redrawn parts of the lobby column (lobby.ts) lay out as if they were the column's own children */
+.lobby-top,
+.lobby-bottom {
+  display: contents;
+}
+.lobby-top > *,
+.lobby-bottom > * {
+  flex-shrink: 0;
+}
 /* Start and Leave stay in view at the bottom of the lobby column while it scrolls */
-.lobby-col > .lobby-actions {
+.lobby-col .lobby-actions {
   position: sticky;
   bottom: -16px;
   z-index: 2;

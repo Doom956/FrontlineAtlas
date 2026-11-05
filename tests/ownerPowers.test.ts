@@ -341,6 +341,60 @@ describe('owner powers: server', () => {
     expect(g.cs[1].has('notice')).toBe(false);
   });
 
+  it("the owner's mute and remove apply to chat", async () => {
+    const owner = track(await connected(srv, 'Owner'));
+    expect(await owner.auth()).toBe(true);
+    const g = await privateGame(srv, ['C1', 'C2']);
+    track(g.cs);
+    const [c1, c2] = g.cs;
+    const spec = track(await connected(srv, 'Watcher'));
+    spec.send({ type: 'joinLobby', code: g.code, spectate: true });
+    await spec.take('gameStart');
+    const room = srv.hub.rooms.get(g.code)!;
+    const id2 = room.members.find((m) => m.name === 'C2')!.memberId;
+    const idSpec = room.members.find((m) => m.name === 'Watcher')!.memberId;
+    c2.send({ type: 'chat', channel: 'all', text: 'before' });
+    await c1.take('chat', (m) => m.entry.text === 'before');
+    // muted: refused with a note to the sender alone, nobody else gets it
+    owner.send({ type: 'adminMute', code: g.code, memberId: id2, minutes: 5 });
+    expect((await owner.take('adminAck')).ok).toBe(true);
+    c2.send({ type: 'chat', channel: 'all', text: 'while muted' });
+    const n = await c2.take('chatNotice');
+    expect(n.reason).toBe('muted');
+    expect(n.text).toBe("You can't send messages in this game for 5 more minutes.");
+    // the mute is kept by clientId: reconnecting doesn't lift it
+    const back = track(await Client.connect(srv.wsUrl));
+    back.clientId = c2.clientId;
+    c2.close();
+    back.send({ type: 'hello', protocol: PROTOCOL_VERSION, name: 'C2', color: [1, 2, 3], clientId: back.clientId, build: 'test', resume: { code: g.code, haveTurns: 0 } });
+    expect((await back.take('welcome')).resumed).toBe(g.code);
+    await back.take('chatHistory');
+    expect(room.isMuted(id2)).toBe(true);
+    // (notes to one member come at most every 1.5 s, so this one is refused without a second note)
+    back.send({ type: 'chat', channel: 'all', text: 'after reconnect' });
+    // lifted: chat works again
+    owner.send({ type: 'adminMute', code: g.code, memberId: id2, minutes: 0 });
+    expect((await owner.take('adminAck')).ok).toBe(true);
+    back.send({ type: 'chat', channel: 'all', text: 'free again' });
+    await c1.take('chat', (m) => m.entry.text === 'free again');
+    await sleep(60);
+    const seen = (c: Client): string[] => c.inbox.flatMap((m) => (m.type === 'chat' ? [m.entry.text] : []));
+    expect(seen(c1)).not.toContain('while muted');
+    expect(seen(c1)).not.toContain('after reconnect');
+    expect(seen(spec)).not.toContain('while muted');
+    // a removed spectator can't chat and reads nothing more
+    owner.send({ type: 'adminKick', code: g.code, memberId: idSpec });
+    expect((await owner.take('adminAck')).ok).toBe(true);
+    expect((await spec.take('kicked')).reason).toBe('You were removed from this game');
+    spec.send({ type: 'chat', channel: 'all', text: 'let me back' });
+    expect((await spec.take('error')).code).toBe('notInLobby');
+    c1.send({ type: 'chat', channel: 'all', text: 'after the removal' });
+    await back.take('chat', (m) => m.entry.text === 'after the removal');
+    await sleep(60);
+    expect(seen(spec)).not.toContain('after the removal');
+    expect(seen(c1)).not.toContain('let me back');
+  });
+
   it('kick: removed from a running game with a plain note, and refused when coming back', async () => {
     const owner = track(await connected(srv, 'Owner'));
     expect(await owner.auth()).toBe(true);

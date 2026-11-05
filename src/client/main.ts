@@ -27,6 +27,7 @@ import { requestAdminAuth } from './admin';
 import { AdminConsole, adminPerf } from './adminConsole';
 import type { AdminConsoleDeps } from './adminConsole';
 import { BroadcastLayer } from './broadcast';
+import { chatFor } from './chat/store';
 import type { Dispatch, UiState } from './uiState';
 import { setupTutorial, tutorialMap, tutorialSettings } from '../sim/tutorialScenario';
 import { TutorialController } from './tutorial/controller';
@@ -165,6 +166,8 @@ function getNet(): NetClient {
   if (!net) {
     net = new NetClient(identity());
     net.on(onNetMessage);
+    // the room's chat listens from the first message on (the lobby's history comes right after joining)
+    chatFor(net);
     // a reconnect tells the server which game we hold and how far, so the catch-up only sends the gap
     net.setResume(() => (currentMp && !currentMp.serverOver ? { code: currentMp.code, haveTurns: currentMp.haveTurns() } : null));
   }
@@ -252,6 +255,7 @@ async function startOnline(start: GameStartMsg): Promise<void> {
     continueRole: () => mp.continueRole(),
     adminAuth: (code) => requestAdminAuth(getNet(), code),
     adminPowers,
+    chat: chatFor(getNet()),
   });
   hud.setUnitProbe(renderer);
   const status = new MpStatus(() => {
