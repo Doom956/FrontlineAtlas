@@ -187,10 +187,17 @@ function stampSource(state: GameState, words: Uint32Array, q: number): void {
   // Land: every block holding a tile of q stamps the land band disc.
   const { counts } = blockCountsOf(state, q);
   const nb = bw * bh;
+  // A block whose 8 neighbours are all q's (or off the map) only marks itself: its disc is covered by the discs of
+  // the blocks between it and any land that is not q's (the disc shrinks monotonically toward its centre).
+  const own = (x: number, y: number): boolean => x < 0 || y < 0 || x >= bw || y >= bh || counts[y * bw + x] > 0;
   for (let b = 0; b < nb && b < counts.length; b++) {
     if (counts[b] === 0) continue;
     const bx = b % bw;
     const by = (b - bx) / bw;
+    if (own(bx - 1, by - 1) && own(bx, by - 1) && own(bx + 1, by - 1) && own(bx - 1, by) && own(bx + 1, by) && own(bx - 1, by + 1) && own(bx, by + 1) && own(bx + 1, by + 1)) {
+      words[b >>> 5] |= 1 << (b & 31);
+      continue;
+    }
     for (let k = 0; k < LAND_DISC.length; k += 2) {
       const x = bx + LAND_DISC[k];
       const y = by + LAND_DISC[k + 1];

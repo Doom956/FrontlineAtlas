@@ -9,7 +9,7 @@ import { hashState } from '../src/sim/hash';
 import { interceptStep } from '../src/sim/navy';
 import { activeModifiers, DEFAULT_MODIFIERS, sanitizeSetup, validateSetup, DEFAULT_SETUP, cloneSetup } from '../src/sim/setup';
 import { tick } from '../src/sim/sim';
-import { createGame, newId } from '../src/sim/state';
+import { createGame, newId, setOwner } from '../src/sim/state';
 import { BLOCK } from '../src/sim/territory';
 import type { Building, BuildingType, GameState, Unit, UnitType } from '../src/sim/types';
 import { claimRect, makeFlatGame, testSettings } from './helpers';
@@ -136,6 +136,35 @@ describe('fog of war: vision', () => {
     updateFog(s, true);
     expect(inView(s, 1, 10, 10)).toBe(false);
     expect(explored(s, 1, 10, 10)).toBe(true);
+  });
+
+  it('land vision equals the full land band of every owned block (interior blocks skip their disc)', () => {
+    const s = makeFlatGame(400, 320, 3, { human: true, seed: 9 });
+    s.settings.modifiers = { ...s.settings.modifiers, fogOfWar: true };
+    // irregular land: a big block with a hole, a thin strip, scattered single tiles
+    claimRect(s, 1, 40, 40, 250, 200);
+    for (let y = 100; y < 140; y++) for (let x = 120; x < 170; x++) setOwner(s, y * 400 + x, 2);
+    claimRect(s, 1, 0, 300, 399, 303);
+    for (let k = 0; k < 40; k++) setOwner(s, ((k * 7919) % 320) * 400 + ((k * 104729) % 400), 1);
+    s.fog = createFog(s);
+    updateFog(s, true);
+    const f = s.fog!;
+    const owned = new Set<number>();
+    for (let i = 0; i < s.map.owner.length; i++) if (s.map.owner[i] === 1) owned.add((((i / 400) | 0) >> 4) * f.bw + ((i % 400) >> 4));
+    const want = new Uint32Array(f.words);
+    const r = FOG.landBand;
+    for (const b of owned) {
+      const bx = b % f.bw;
+      const by = (b - bx) / f.bw;
+      for (let y = 0; y < f.bh; y++) {
+        for (let x = 0; x < f.bw; x++) {
+          const gx = Math.max(0, Math.abs(x - bx) - 1) * BLOCK;
+          const gy = Math.max(0, Math.abs(y - by) - 1) * BLOCK;
+          if (gx * gx + gy * gy <= r * r) want[(y * f.bw + x) >>> 5] |= 1 << ((y * f.bw + x) & 31);
+        }
+      }
+    }
+    expect([...f.now[1]!]).toEqual([...want]);
   });
 
   it('seen is monotonic over a played fog game', () => {

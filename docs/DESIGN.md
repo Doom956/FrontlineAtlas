@@ -1247,8 +1247,11 @@ Manual orders stay free: you may attack, bomb or land on land you can't see.
 fog is honour based. Spectators and eliminated watchers may pass on what they see. After a reload or a rejoin, the
 remembered owners of explored land out of view are those at load time (the memory is client side).
 
-Performance (huge map 2600 x 1600, 40 AI nations, 300 tribes, Node): a full vision pass for every player about 9 ms
-(once, at the start of play); the staggered refresh about 0.7-1 ms per tick; `hashFog` about 0.5 ms per hash.
+Performance (`npx vite-node scripts/fogbench.ts`: huge map 2600 x 1600, 40 AI nations, 300 tribes, 5 game minutes,
+Node on a busy 4-core machine): a full vision pass for every player 8.7 ms (once, at the start of play); the
+staggered refresh 0.7-1.1 ms per tick; `hashState` 21.8 ms with the fog bits against 20.7 ms without. A block whose
+8 neighbours are all your land marks only itself (its land band is covered by the blocks around it), which keeps big
+nations cheap. Client: the fog texture and the minimap are rebuilt only when the view's bits change.
 
 ## 13. Doctrines
 
