@@ -90,7 +90,7 @@ describe('fog of war: the rule', () => {
     const on = { ...full, modifiers: { ...full.modifiers, fogOfWar: true } };
     const chip = activeModifiers(on).find((m) => m.id === 'fogOfWar');
     expect(chip?.label).toBe('Fog of war');
-    expect(chip?.detail).not.toMatch(/—/);
+    expect(chip?.detail).not.toMatch(/\u2014/);
   });
 
   it('is created with the game, lifts in the spawn phase, at the end and in a continued game', () => {
