@@ -6,6 +6,7 @@
 //   - buildUnit(): buys one at the best site (the port / airfield nearest the view with room)
 //   - unitDoing() / unitPlace(): what a unit on the map is doing, in words ("heading to Azuria's coast")
 // The rules stay in the sim (buildWarship, buildAircraft, moveWarship); this file only reads and phrases them.
+import { activeFog } from './fog/fogView';
 import { aircraftCap, buildingsOf } from '../sim/buildings';
 import { BOMBER_RADIUS, NAVY_SUPPORT_RANGE, TECHS, UNITS, WARSHIP_RANGE } from '../sim/config';
 import { SHELL_RANGE_TILES } from './reach';
@@ -328,6 +329,11 @@ export function tankDivisionDoing(state: GameState, me: number, u: Unit): string
 /** A hostile unit coming at the player (their transports, bombers, cargo planes and missiles aimed at them). */
 export function isIncoming(state: GameState, me: number, u: Unit): boolean {
   if (me <= 0 || u.owner === me || u.hp <= 0 || areAllied(state, me, u.owner)) return false;
+  // fog of war: transports, cargo planes and bombers count once seen (rocket and atom bomb launches are announced)
+  if (u.type !== 'rocket' && u.type !== 'atomBomb' && state.fog) {
+    const fog = activeFog(state);
+    if (fog && !fog.unitShown(state, u)) return false;
+  }
   const t = u.target >= 0 && u.target < state.map.owner.length ? state.map.owner[u.target] : 0;
   switch (u.type) {
     case 'transport':

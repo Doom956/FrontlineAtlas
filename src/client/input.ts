@@ -1,4 +1,5 @@
 // Mouse and keyboard handling on the map canvas.
+import { knownOwnerOf } from './fog/fogView';
 import { buildingsOf } from '../sim/buildings';
 import { BUILDINGS, BUILDING_ORDER } from '../sim/config';
 import { areAllied } from '../sim/diplomacy';
@@ -82,7 +83,9 @@ export function troopSum(t: Troops): number {
 export function isAttackable(state: GameState, playerId: number, tile: number): boolean {
   const map = state.map;
   if (tile < 0 || tile >= map.owner.length || isWater(map.terrain[tile])) return false;
-  const o = map.owner[tile];
+  // fog of war: decide with the owner you know (unexplored land counts as land you may attack); the sim still
+  // resolves whoever holds it now
+  const o = knownOwnerOf(state, tile);
   if (o === playerId) return false;
   return o === 0 || (state.players[o].alive && !areAllied(state, playerId, o));
 }

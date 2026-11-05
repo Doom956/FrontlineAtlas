@@ -6,6 +6,8 @@
 //   fort    rectangles around forts that were added or removed
 //   aux     supply classes (own territory box, about once a second) or the spawn mask (spawn phase)
 //   trench  trench level per tile (R8, 0..4), dirty blocks from the trench feed (trenchFeed.ts)
+//   fog     fog of war, one texel per 16 x 16 tile block (R8: 255 in view, 110 explored, 0 never seen; LINEAR, so the
+//           shader gets soft edges), re-sent only when the view changes (fog/fogView.ts)
 import type { MapData } from '../../sim/types';
 import type { RGB } from './common';
 import { borderColor, displayColor, NATION_ALPHA, TRIBE_ALPHA, type DisplayRole, type Rgb } from './palette';
@@ -31,6 +33,8 @@ export interface MapUniforms {
   fortOn: boolean;
   /** any tile dug: draw trench lines */
   trenchOn: boolean;
+  /** fog of war is drawn (the fog texture holds this client's view) */
+  fogOn?: boolean;
 }
 
 export class MapGL {
@@ -38,7 +42,10 @@ export class MapGL {
   lost = false;
   private prog: WebGLProgram;
   private loc: Record<string, WebGLUniformLocation | null> = {};
-  private tex: Record<'owner' | 'terrId' | 'depth' | 'terrCol' | 'pal' | 'fort' | 'aux' | 'trench', WebGLTexture>;
+  private tex: Record<'owner' | 'terrId' | 'depth' | 'terrCol' | 'pal' | 'fort' | 'aux' | 'trench' | 'fog', WebGLTexture>;
+  /** fog texture size in blocks (0 = none uploaded) */
+  private fogW = 0;
+  private fogH = 0;
   private vao: WebGLVertexArrayObject;
   /** display + border colours by (rgb, role): the same few colours come back on every palette re-send */
   private shown = new Map<number, { fill: Rgb; border: Rgb }>();
@@ -71,10 +78,10 @@ export class MapGL {
     this.gl = gl;
     this.prog = link(gl, MAP_VS, MAP_FS);
     gl.useProgram(this.prog);
-    for (const name of ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uView', 'uCenter', 'uZoom', 'uMap', 'uTime', 'uNowDs', 'uAuxMode', 'uShowRes', 'uFortOn', 'uTrenchOn', 'uTerr', 'uRes', 'uBg']) {
+    for (const name of ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uView', 'uCenter', 'uZoom', 'uMap', 'uTime', 'uNowDs', 'uAuxMode', 'uShowRes', 'uFortOn', 'uTrenchOn', 'uTerr', 'uRes', 'uBg', 'uFog', 'uFogOn', 'uFogScale']) {
       this.loc[name] = gl.getUniformLocation(this.prog, name);
     }
-    const units = ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench'];
+    const units = ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uFog'];
     units.forEach((u, k) => gl.uniform1i(this.loc[u], k));
     gl.uniform3fv(this.loc.uTerr, new Float32Array(TERRAIN_RGB.flatMap((c) => c.map((v) => v / 255))));
     gl.uniform3fv(this.loc.uRes, new Float32Array(RESOURCE_RGB.flatMap((c) => c.map((v) => v / 255))));
@@ -84,7 +91,7 @@ export class MapGL {
       if (!t) throw new Error('createTexture failed');
       return t;
     };
-    this.tex = { owner: mk(), terrId: mk(), depth: mk(), terrCol: mk(), pal: mk(), fort: mk(), aux: mk(), trench: mk() };
+    this.tex = { owner: mk(), terrId: mk(), depth: mk(), terrCol: mk(), pal: mk(), fort: mk(), aux: mk(), trench: mk(), fog: mk() };
     const vao = gl.createVertexArray();
     if (!vao) throw new Error('createVertexArray failed');
     this.vao = vao;
@@ -140,7 +147,30 @@ export class MapGL {
     // trench levels
     this.bind(7, this.tex.trench, gl.NEAREST, gl.NEAREST);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, w, h, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array(w * h));
+    // fog of war (a 1 x 1 placeholder until a fog view uploads its grid)
+    this.bind(8, this.tex.fog, gl.LINEAR, gl.LINEAR);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 1, 1, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array([255]));
+    this.fogW = 0;
+    this.fogH = 0;
     gl.uniform2f(this.loc.uMap, w, h);
+  }
+
+  /** Uploads the fog grid (bw x bh blocks of 16 tiles; values as fog/fogView.ts tex). */
+  uploadFog(tex: Uint8Array, bw: number, bh: number): void {
+    if (bw <= 0 || bh <= 0 || tex.length < bw * bh) return;
+    const gl = this.gl;
+    gl.activeTexture(gl.TEXTURE8);
+    gl.bindTexture(gl.TEXTURE_2D, this.tex.fog);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    resetUnpack(gl);
+    if (bw !== this.fogW || bh !== this.fogH) {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, bw, bh, 0, gl.RED, gl.UNSIGNED_BYTE, tex);
+      this.fogW = bw;
+      this.fogH = bh;
+    } else gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, bw, bh, gl.RED, gl.UNSIGNED_BYTE, tex);
+    gl.useProgram(this.prog);
+    gl.uniform2f(this.loc.uFogScale, 1 / (bw * 16), 1 / (bh * 16));
+    this.uploads++;
   }
 
   /** Uploads the dirty blocks of the owner mirror. */
@@ -207,7 +237,7 @@ export class MapGL {
     const gl = this.gl;
     gl.viewport(0, 0, viewW, viewH);
     gl.useProgram(this.prog);
-    const order: (keyof MapGL['tex'])[] = ['owner', 'terrId', 'depth', 'terrCol', 'pal', 'fort', 'aux', 'trench'];
+    const order: (keyof MapGL['tex'])[] = ['owner', 'terrId', 'depth', 'terrCol', 'pal', 'fort', 'aux', 'trench', 'fog'];
     order.forEach((k, unit) => {
       gl.activeTexture(gl.TEXTURE0 + unit);
       gl.bindTexture(gl.TEXTURE_2D, this.tex[k]);
@@ -222,6 +252,7 @@ export class MapGL {
     gl.uniform1i(L.uShowRes, u.showRes ? 1 : 0);
     gl.uniform1i(L.uFortOn, u.fortOn ? 1 : 0);
     gl.uniform1i(L.uTrenchOn, u.trenchOn ? 1 : 0);
+    gl.uniform1i(L.uFogOn, u.fogOn && this.fogW > 0 ? 1 : 0);
     gl.bindVertexArray(this.vao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }

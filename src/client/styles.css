@@ -1097,6 +1097,14 @@ canvas.minimap {
 .lb-row.traitor .c-name {
   color: #f09a88;
 }
+/* fog of war: a nation you have not met (no name, no colour, no army) */
+.lb-row.unmet .c-name {
+  color: var(--faint);
+  font-style: italic;
+}
+.lb-row.unmet .sw {
+  box-shadow: inset 0 0 0 1px var(--rule-hi);
+}
 .c-rank {
   color: var(--faint);
   font-size: 11px;

@@ -9,6 +9,7 @@
 //   first-use hint pointing at its button the first time it is ready ("Bombers ready: press X ...").
 //   Click the button to act (enter build mode, open a drawer, centre the map); X dismisses that hint for a while;
 //   it can be switched off in the menu.
+import { activeFog } from '../fog/fogView';
 import { mainFoe, fortifiedShare } from '../../sim/advisor';
 import { buildingsOf, countBuildings } from '../../sim/buildings';
 import { BUILDINGS, UNITS } from '../../sim/config';
@@ -51,10 +52,11 @@ export function unitAdvice(s: GameState, me: Player): Suggestion[] {
   const out: Suggestion[] = [];
   let air = false;
   let fleet = false;
+  const fog = activeFog(s); // fog of war: only warships you see
   for (const u of s.units) {
     if (u.owner === me.id || u.hp <= 0 || areAllied(s, me.id, u.owner)) continue;
     if (!air && (u.type === 'bomber' || u.type === 'transportPlane') && isIncoming(s, me.id, u)) air = true;
-    if (!fleet && u.type === 'warship') {
+    if (!fleet && u.type === 'warship' && (!fog || fog.unitShown(s, u))) {
       const w = s.map.width;
       const t = Math.round(u.y) * w + Math.round(u.x);
       if (t < 0 || t >= s.map.owner.length) continue;

@@ -30,6 +30,8 @@ export class Map2D {
   fill = new Uint8Array(4096 * 4);
   border = new Uint8Array(4096 * 4);
   private trench: Uint8Array | null = null;
+  /** fog of war: one pixel per 16 x 16 block, drawn scaled with smoothing (null = no fog) */
+  private fogCv: HTMLCanvasElement | null = null;
 
   setGame(map: MapData, terr: TerrainData): void {
     const w = map.width;
@@ -123,6 +125,25 @@ export class Map2D {
     c.putImageData(im, 0, 0);
   }
 
+  /** Fog of war grid (fog/fogView.ts tex: 255 in view, 110 explored, 0 never seen); null clears it. */
+  setFog(tex: Uint8Array | null, bw: number, bh: number): void {
+    if (!tex || bw <= 0 || bh <= 0) {
+      this.fogCv = null;
+      return;
+    }
+    if (!this.fogCv || this.fogCv.width !== bw || this.fogCv.height !== bh) this.fogCv = makeCanvas(bw, bh);
+    const c = ctx2d(this.fogCv);
+    const im = c.createImageData(bw, bh);
+    const d = im.data;
+    for (let b = 0; b < bw * bh; b++) {
+      const v = tex[b];
+      if (v >= 200) continue;
+      if (v > 0) d.set([40, 44, 52, 115], b * 4);
+      else d.set([10, 17, 28, 184], b * 4);
+    }
+    c.putImageData(im, 0, 0);
+  }
+
   /** Draws the layers (the context's transform must map tile units to pixels). */
   draw(ctx: CanvasRenderingContext2D, v: View, showRes: boolean, aux: boolean): void {
     if (!this.terrainCv || !this.terrCv) return;
@@ -134,6 +155,11 @@ export class Map2D {
     ctx.drawImage(this.terrCv, v.x0, v.y0, sw, sh, v.x0, v.y0, sw, sh);
     if (aux && this.auxCv) ctx.drawImage(this.auxCv, v.x0, v.y0, sw, sh, v.x0, v.y0, sw, sh);
     if (showRes && this.resCv) ctx.drawImage(this.resCv, v.x0, v.y0, sw, sh, v.x0, v.y0, sw, sh);
+    if (this.fogCv) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(this.fogCv, 0, 0, this.fogCv.width * 16, this.fogCv.height * 16);
+      ctx.imageSmoothingEnabled = false;
+    }
   }
 
   private pixel(m: Uint32Array, i: number): void {

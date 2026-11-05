@@ -217,6 +217,7 @@ export function howToPlayContent(): HTMLElement {
     { title: 'Tribes', text: 'Small grey peoples with an army number. They never attack, accept any alliance (not from a traitor) and are cheap land early.' },
     { title: 'Collapse', text: `A nation under ${ENDGAME_SMALL_TILES} tiles (a tribe: ${TRIBE_ANNEX_TILES}) falls when hit; you get ${min(HUMAN_GRACE_SECONDS)} min to grow first. Pockets walled in by one nation are annexed.` },
     { title: 'Overtime', text: `After ${OVERTIME_MINUTES} min the land share needed to win drops ${pct(OVERTIME_DROP_PER_MINUTE)}% a minute, down to ${pct(OVERTIME_MIN_SHARE)}%.` },
+    { title: 'Fog of war', text: 'A game rule you turn on in the setup. You see near your land, ships, tanks, planes and Watchtowers, and what your allies see. Dark land is unexplored; grey land shows what you saw last. Recon planes and Watchtowers see farther. AI nations play by the same fog.' },
     { title: 'Map effects', text: 'Short flashes when land or a city changes hands, a ship sinks or a bomb lands. Turn them off in Menu, Map effects.' },
     { title: 'Summary', text: 'At the end: land over time, the key moments and each nation\'s numbers. After playing on, click the Victory chip to see it again.' },
   ];

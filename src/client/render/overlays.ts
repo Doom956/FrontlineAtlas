@@ -9,7 +9,7 @@ import { areAllied } from '../../sim/diplomacy';
 import { paradropRange } from '../../sim/units';
 import { hasTech } from '../../sim/tech';
 import { isTribe } from '../../sim/types';
-import type { BuildingType, Effect, GameState } from '../../sim/types';
+import type { Building, BuildingType, Effect, GameState } from '../../sim/types';
 import type { Camera } from '../camera';
 import { drawMarker, type BuildingIconId } from '../icons';
 import type { Snap } from '../placement';
@@ -20,6 +20,7 @@ import { bulkPreviews, bulkPreviewText, effectiveCount } from '../hud/buildMenu'
 import { shiftHeld } from '../hud/quickBar';
 import { clamp, css, dashedLine, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, mix, pill, setTracking, type RGB } from './common';
 import type { UnitLayer } from './units';
+import type { FogView } from '../fog/fogView';
 import { markerSize } from './buildings';
 import { displayColor, type DisplayRole } from './palette';
 
@@ -49,6 +50,11 @@ export class Overlays {
   private reachCell = 1;
   /** muted map shade per colour and role, as 'r,g,b' (see mutedRgb) */
   private muted = new Map<string, string>();
+  /** fog of war view (set by the renderer each frame; null or inactive = no fog) */
+  fog: FogView | null = null;
+  private get fv(): FogView | null {
+    return this.fog?.active ? this.fog : null;
+  }
 
   reset(w: number): void {
     this.etas.clear();
@@ -80,10 +86,12 @@ export class Overlays {
       if (at >= 0) this.ring(ctx, cam, at, ringRadius(state, type, me), [255, 255, 255], true);
     }
     if (hover >= 0 && ui.mode.kind !== 'build') {
-      const b = buildingAt(state, hover);
+      // fog of war: the building you see or remember there (none where you never looked)
+      const fog = this.fv;
+      const b = fog ? fog.buildingAt(state, hover) : buildingAt(state, hover);
       if (b && RING_TYPES.includes(b.type)) {
         const c = state.players[b.owner]?.color ?? [255, 255, 255];
-        this.ring(ctx, cam, b.tile, ringRadius(state, b.type, b.owner), mix(c, [255, 255, 255], 0.5), true);
+        this.ring(ctx, cam, hover, ringRadius(state, b.type, b.owner), mix(c, [255, 255, 255], 0.5), true);
       }
     }
   }
@@ -114,16 +122,20 @@ export class Overlays {
     if (!spawn) this.locator(ctx, state, cam, me, pulse);
     if (!spawn && cam.zoom < minZoom) return;
     const v = cam.visibleTiles(8);
+    const fog = this.fv;
     for (const p of state.players) {
       if (!p || p.id === 0 || p.capital < 0 || (!p.alive && !spawn) || (spawn && !p.spawned)) continue;
-      const x = p.capital % this.w;
-      const y = (p.capital / this.w) | 0;
+      // fog of war: only capitals in view or remembered (fog/fogView.ts)
+      const cap = fog ? fog.knownCapital(state, p.id) : p.capital;
+      if (cap < 0) continue;
+      const x = cap % this.w;
+      const y = (cap / this.w) | 0;
       if (x < v.x0 || x >= v.x1 || y < v.y0 || y >= v.y1) continue;
       const tribe = isTribe(p);
       // tribes get no star once the game runs: a star on every small parcel was only noise
       if (tribe && (!spawn || cam.zoom < 1.5)) continue;
       const s = cam.tileToScreen(x + 0.5, y + 0.5);
-      const hasBuilding = state.map.building[p.capital] !== 0;
+      const hasBuilding = state.map.building[cap] !== 0;
       const R = clamp(cam.zoom * 0.6, 5, 10) * (tribe ? 0.7 : 1);
       // top-left of the capital's city marker (its level badge sits top-right)
       const off = hasBuilding ? markerSize(cam.zoom) * 0.62 : 0;
@@ -266,6 +278,8 @@ export class Overlays {
       const own = u.owner === me;
       const atMe = !own && state.map.owner[u.target] === me;
       if (drop && !own && !atMe) continue;
+      // fog of war: others' strikes only while the plane or missile is seen (launches at you also come as an alert)
+      if (!own && this.fv && !this.fv.unitShown(state, u)) continue;
       live.add(u.id);
       const tx = (u.target % this.w) + 0.5;
       const ty = ((u.target / this.w) | 0) + 0.5;
@@ -325,6 +339,7 @@ export class Overlays {
       const atMe = me > 0 && b.owner !== me && b.target === me;
       const mine = b.owner === me;
       if (!atMe && !mine && R < 4) continue;
+      if (!atMe && !mine && this.fv && !this.fv.visible(b.tile)) continue; // fog of war: others' barrages only in view
       const rgb = atMe ? '236,74,58' : this.mutedRgb(colors, state, b.owner, me);
       const k = atMe ? 1 : mine ? 0.75 : 0.55;
       const left = clamp((b.hitTick - now) / (BARRAGE_DELAY * TICKS_PER_SECOND), 0, 1);
@@ -356,7 +371,11 @@ export class Overlays {
 
   effects(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, frac: number): void {
     const z = cam.zoom;
+    const fog = this.fv;
+    const w = state.map.width;
     for (const e of state.effects) {
+      // fog of war: explosions and shots only where you see
+      if (fog && !fog.visible(Math.max(0, Math.min(state.map.height - 1, Math.floor(e.y))) * w + Math.max(0, Math.min(w - 1, Math.floor(e.x))))) continue;
       const age = (state.tick - e.tick + frac) / TICKS_PER_SECOND;
       const t = age / EFFECT_SECONDS;
       if (t < 0 || t >= 1) continue;
@@ -526,6 +545,7 @@ export class Overlays {
     }
     const planes = id === 'bomb' || id === 'paradrop';
     const own = id === 'rocket' || id === 'atomBomb' ? 'silo' : 'airfield';
+    const fog = this.fv;
     for (const b of state.buildings.values()) {
       if (b.buildLeft > 0) continue;
       if (b.owner === me.id) {
@@ -533,8 +553,16 @@ export class Overlays {
         continue;
       }
       if (b.owner <= 0 || areAllied(state, me.id, b.owner)) continue;
+      if (fog && !fog.visible(b.tile)) continue; // fog of war: hostile sites you see (remembered ones below)
       if (b.type === 'sam' && !isDisabled(state, b)) this.ring(ctx, cam, b.tile, samRadius(b), [226, 72, 52], false);
       else if (planes && b.type === 'airfield' && b.fighters > 0) this.ring(ctx, cam, b.tile, airfieldRadius(b), [226, 120, 52], false);
+    }
+    if (!fog) return;
+    // remembered hostile SAM sites and airfields (last seen; their fighters are unknown)
+    for (const [tile, r] of fog.buildings) {
+      if (fog.visible(tile) || r.owner <= 0 || areAllied(state, me.id, r.owner)) continue;
+      if (r.type === 'sam') this.ring(ctx, cam, tile, samRadius(r as Building), [226, 72, 52], false);
+      else if (planes && r.type === 'airfield') this.ring(ctx, cam, tile, airfieldRadius(r as Building), [226, 120, 52], false);
     }
   }
 

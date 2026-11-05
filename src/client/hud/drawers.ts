@@ -1,5 +1,6 @@
 // Side drawers (right edge, one at a time, closed by default): Army, Research, Diplomacy, Events, Map key,
 // the selected building and the menu (settings). Each has one big primary readout and plain-word rows.
+import { activeFog } from '../fog/fogView';
 import { enterWarshipSpawnMode } from '../selection';
 import { buildSeconds, researchRule, unitAllowed } from '../../sim/rules';
 import { aircraftCap, buildCostAt, buildingAt, chargesReady, canBuild, countBuildings, nextChargeIn } from '../../sim/buildings';
@@ -396,7 +397,9 @@ export class DiplomacyPage implements DrawerPage {
       if (!h) this.helps.set(other, (h = new AllyHelp(this.ctx)));
       h.update(s, me, other);
     }
-    const traitors = s.players.filter((p) => p && p.alive && p.id !== me.id && isTraitor(s, p.id));
+    const fog = activeFog(s);
+    // fog of war: only nations you have met
+    const traitors = s.players.filter((p) => p && p.alive && p.id !== me.id && isTraitor(s, p.id) && (!fog || fog.isMet(p.id)));
     const key = [
       inReq.map((r) => r.from).join(','),
       outReq.map((r) => r.to).join(','),

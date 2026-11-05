@@ -7,6 +7,8 @@ import { clamp, ctx2d, makeCanvas, type RGB } from './common';
 import { displayColor, NATION_ALPHA, paintOver, TRIBE_ALPHA, type DisplayRole } from './palette';
 import type { TerrainData } from './terrain';
 import { OWNER_MASK, type TileFeed } from './tiles';
+import { FOG } from '../../sim/config';
+import type { FogView } from '../fog/fogView';
 
 const MINIMAP_CSS_W = 220;
 const MINIMAP_MS = 250;
@@ -34,6 +36,9 @@ export class Minimap {
   private dirty = false;
   private pushedMs = -Infinity;
   private gen = -1;
+  /** fog of war view drawn last (its gen), -1 = none */
+  private fogGen = -1;
+  private fog: FogView | null = null;
   private pending: number[] = [];
 
   constructor(public canvas: HTMLCanvasElement) {
@@ -102,11 +107,14 @@ export class Minimap {
     this.pending.push(py * this.mw + px);
   };
 
-  draw(state: GameState, cam: Camera, feed: TileFeed, humanId: number, nowMs: number): void {
+  draw(state: GameState, cam: Camera, feed: TileFeed, humanId: number, nowMs: number, fog: FogView | null = null): void {
     if (!this.base || !this.img) return;
     this.syncShown(state, humanId);
-    if (feed.fullGen !== this.gen) {
+    const fg = fog && fog.active ? fog.bitsGen : -1;
+    this.fog = fg >= 0 ? fog : null;
+    if (feed.fullGen !== this.gen || fg !== this.fogGen) {
       this.gen = feed.fullGen;
+      this.fogGen = fg;
       this.pending.length = 0;
       for (let p = 0; p < this.mw * this.mh; p++) this.pixel(p, feed);
       this.dirty = true;
@@ -171,6 +179,21 @@ export class Minimap {
         r = m[0];
         g = m[1];
         b = m[2];
+      }
+    }
+    const v = this.fog ? this.fog.tileVis(t) : 2;
+    if (v < 2) {
+      // fog of war: explored greyed and darker, never seen dark (the map shader's formula)
+      const l = 0.299 * r + 0.587 * g + 0.114 * b;
+      if (v === 1) {
+        const sat = FOG.exploredSaturation;
+        r = (l + (r - l) * sat) * FOG.exploredShade;
+        g = (l + (g - l) * sat) * FOG.exploredShade;
+        b = (l + (b - l) * sat) * FOG.exploredShade;
+      } else {
+        r = 10 + (l * FOG.unexploredShade - 10) * 0.6;
+        g = 17 + (l * FOG.unexploredShade - 17) * 0.6;
+        b = 28 + (l * FOG.unexploredShade - 28) * 0.6;
       }
     }
     d[k] = r;

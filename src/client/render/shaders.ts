@@ -1,5 +1,6 @@
 // GLSL for the map layer (WebGL2). One fullscreen pass: terrain, nations, borders, overlays.
 import { UNDER_CHROMA, UNDER_DETAIL, UNDER_LUM, UNDER_MID } from './palette';
+import { FOG } from '../../sim/config';
 
 export const MAP_VS = /* glsl */ `#version 300 es
 void main() {
@@ -36,6 +37,9 @@ uniform sampler2D uPal;
 uniform usampler2D uFort;
 uniform sampler2D uAux;
 uniform sampler2D uTrench;
+uniform sampler2D uFog;
+uniform int uFogOn;
+uniform vec2 uFogScale;
 
 uniform vec2 uView;
 uniform vec2 uCenter;
@@ -238,6 +242,16 @@ void main() {
   int ter = int(tr.r + 0.5);
   int res = int(tr.g + 0.5);
   bool water = ter <= 1;
+  // fog of war: one LINEAR texel per 16 x 16 block (255 in view, 110 explored, 0 never seen); smoothstep on the
+  // bilinear value gives soft, rounded edges instead of block squares
+  float fogSeen = 1.0;
+  float fogLive = 1.0;
+  if (uFogOn == 1) {
+    float fv = texture(uFog, t * uFogScale).r;
+    fogSeen = smoothstep(0.18, 0.32, fv);
+    fogLive = smoothstep(0.62, 0.82, fv);
+  }
+  bool live = fogLive > 0.5;
 
   // ---- terrain
   float lum = 0.0;
@@ -270,7 +284,7 @@ void main() {
   // ---- deposits on unowned land (close zoom)
   uint raw = rawAt(ti);
   uint o = raw & 0xFFFu;
-  if (res > 0 && detail > 0.0) {
+  if (res > 0 && detail > 0.0 && fogSeen > 0.5) {
     vec4 dep = depositAt(res, ti, f, px);
     if (o == 0u) col = mix(col, dep.rgb, dep.a * detail);
   }
@@ -297,7 +311,7 @@ void main() {
     }
     col = fill;
     // fort coverage: light diagonal hatch on the protected tiles
-    if (uFortOn == 1 && uZoom >= 2.0) {
+    if (uFortOn == 1 && uZoom >= 2.0 && live) {
       uint fo = texelFetch(uFort, ti, 0).r;
       if (fo == o) {
         float period = max(1.4, 9.0 * px);
@@ -307,7 +321,7 @@ void main() {
       }
     }
     // trenches (dug-in borders): a faint earth hatch on dug tiles, a zig-zag line along each edge facing a nation
-    if (uTrenchOn == 1 && uZoom >= 2.5) {
+    if (uTrenchOn == 1 && uZoom >= 2.5 && live) {
       int lvl = trenchAt(ti);
       if (lvl > 0) {
         vec3 earth = vec3(0.2, 0.13, 0.07);
@@ -326,14 +340,14 @@ void main() {
   }
 
   // ---- fallout
-  if ((raw & 0x1000u) != 0u) {
+  if ((raw & 0x1000u) != 0u && live) {
     float stripe = step(0.5, fract((t.x - t.y) * 0.5));
     col = mix(col, vec3(0.5, 0.58, 0.36), 0.55 + 0.1 * stripe * detail);
   }
 
   // ---- capture flash (fronts): yours yellow, losses red, others a light glow
   uint kind = (raw >> 13u) & 7u;
-  if (kind != 0u) {
+  if (kind != 0u && live) {
     float age = float((uNowDs - (raw >> 16u)) & 0xFFFFu) * 0.1;
     float a = clamp(1.0 - age / 1.6, 0.0, 1.0);
     a = a * a;
@@ -352,7 +366,7 @@ void main() {
       float bw = min(1.0, bpx * px);
       float hb = flags.b > 0.0 ? 1.6 : 1.0;
       // far out a level 2+ trench shows as a thicker, earth-dark border (the line itself needs ~4 px a tile)
-      if (uTrenchOn == 1 && uZoom < 5.0 && trenchAt(ti) >= 2) hb = max(hb, 1.0 + 0.9 * (1.0 - smoothstep(3.0, 5.0, uZoom)));
+      if (uTrenchOn == 1 && live && uZoom < 5.0 && trenchAt(ti) >= 2) hb = max(hb, 1.0 + 0.9 * (1.0 - smoothstep(3.0, 5.0, uZoom)));
       bw = min(1.0, bw * hb);
       bool l = f.x < bw, r = f.x > 1.0 - bw, u = f.y < bw, d = f.y > 1.0 - bw;
       if (l && ownerAt(ti + ivec2(-1, 0)) != o) edge = true;
@@ -376,7 +390,7 @@ void main() {
         if (fract((t.x + t.y) / period) > 0.6) bc = oc * 0.6;
       }
       // far out the trench line can't be drawn: a level 2+ trench darkens the border to earth instead
-      if (uTrenchOn == 1 && uZoom < 5.0) {
+      if (uTrenchOn == 1 && live && uZoom < 5.0) {
         int tl = trenchAt(ti);
         if (tl >= 2) bc = mix(bc, vec3(0.2, 0.13, 0.07), (0.5 + 0.1 * float(tl - 2)) * (1.0 - smoothstep(3.0, 5.0, uZoom)));
       }
@@ -386,6 +400,14 @@ void main() {
       else if (hv == 2) bc = mix(bc, vec3(1.0, 0.22, 0.16), 0.55 + 0.45 * (0.5 + 0.5 * sin(uTime * 6.0)));
       col = mix(col, bc, ba);
     }
+  }
+
+  // ---- fog of war: explored land greyed and darker (what you saw last), unexplored dark terrain only
+  if (uFogOn == 1) {
+    float g = dot(col, vec3(0.299, 0.587, 0.114));
+    vec3 mem = mix(vec3(g), col, ${FOG.exploredSaturation.toFixed(3)}) * ${FOG.exploredShade.toFixed(3)};
+    vec3 dark = mix(uBg, vec3(g) * ${FOG.unexploredShade.toFixed(3)}, 0.6);
+    col = mix(dark, mix(mem, col, fogLive), fogSeen);
   }
 
   // ---- overlays
@@ -402,7 +424,7 @@ void main() {
     else if (o == 0u && !water && (raw & 0x1000u) == 0u) col = mix(col, vec3(1.0), 0.08);
   }
   if (uShowRes == 1) {
-    if (res > 0) {
+    if (res > 0 && fogSeen > 0.5) {
       float ring = 1.0;
       col = mix(col * 0.5, uRes[res], 0.85 * ring);
     } else col *= 0.55;

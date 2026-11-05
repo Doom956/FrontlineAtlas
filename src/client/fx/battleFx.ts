@@ -7,6 +7,7 @@
 // before they use any of the rate budget. The nuke shake (a few px, decaying in 0.6 s) only plays when the blast is
 // near the camera, never with prefers-reduced-motion.
 
+import type { FogView } from '../fog/fogView';
 import type { BuildingType, Effect, GameEvent, GameState, Unit } from '../../sim/types';
 import { FxPool, type ScreenCam } from './layer';
 import { FxLimiter, fxForEffect, fxForEvent, isPlane, isShip, type FxSpawn } from './map';
@@ -43,6 +44,8 @@ export class BattleFx {
   private reduced = prefersReducedMotion();
   private wasOn = true;
   private spawnsThisFrame: FxSpawn[] = [];
+  /** fog of war view (set by the renderer each frame; null or inactive = no fog): effects only where you see */
+  fog: FogView | null = null;
 
   /** Reads what is new in `state` and starts its effects. Call once per frame before drawing. */
   update(state: GameState, cam: ScreenCam, now: number): void {
@@ -67,7 +70,13 @@ export class BattleFx {
       if (now - this.fortScanAt >= FORT_SCAN_MS) this.scanForts(state, spawns, now);
       this.snapshotUnits(state);
       this.pool.prune(now);
-      for (const s of spawns) this.spawn(s, cam, now);
+      const fog = this.fog?.active ? this.fog : null;
+      const w = state.map.width;
+      const h = state.map.height;
+      for (const s of spawns) {
+        if (fog && !fog.visible(Math.max(0, Math.min(h - 1, Math.floor(s.y))) * w + Math.max(0, Math.min(w - 1, Math.floor(s.x))))) continue;
+        this.spawn(s, cam, now);
+      }
     } catch {
       /* never break the frame */
     } finally {

@@ -6,10 +6,13 @@
 // The hovered or selected building is drawn as a bigger marker. Unfinished buildings are faded with a progress
 // ring; levels above 1 get a badge; damaged ones a health bar.
 // Culling: a spatial grid (CELL tiles) rebuilt when the buildings change (GameState.buildingsVersion).
+// Fog of war (fog/fogView.ts): buildings in view are drawn live; in explored blocks out of view the ones last seen
+// there are drawn greyed, without level badge or progress; nothing in blocks never seen.
 import { BUILDINGS } from '../../sim/config';
 import type { Building, GameState } from '../../sim/types';
 import type { Camera } from '../camera';
 import { CATEGORY_COLORS, drawMarker, ICON_INFO, markerReady, type BuildingIconId } from '../icons';
+import type { FogView } from '../fog/fogView';
 import { buildingsKey, clamp, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, setTracking, type RGB, type View } from './common';
 
 export const FAR_ZOOM = 1.7;
@@ -33,8 +36,14 @@ export function markerSize(zoom: number): number {
   return clamp(6 + zoom * 2.3, 16, 40);
 }
 
+/** Remembered (last seen, out of view) markers: drawn greyed. */
+const ghosts = new WeakSet<Building>();
+
 export class BuildingLayer {
   private key = -1;
+  private fogGen = -1;
+  /** fog of war view (set by the renderer each frame; null or inactive = no fog) */
+  fog: FogView | null = null;
   private w = 0;
   private gw = 0;
   private gh = 0;
@@ -58,7 +67,19 @@ export class BuildingLayer {
     for (let k = 0; k < cells.length; k++) cells[k] = [];
     this.cities = [];
     this.forts = [];
-    for (const b of state.buildings.values()) {
+    const fog = this.fog?.active ? this.fog : null;
+    const shown: Building[] = [];
+    if (!fog) for (const b of state.buildings.values()) shown.push(b);
+    else {
+      for (const b of state.buildings.values()) if (fog.visible(b.tile)) shown.push(b);
+      for (const [tile, r] of fog.buildings) {
+        if (fog.visible(tile)) continue;
+        const g: Building = { id: -1 - tile, type: r.type, owner: r.owner, tile, level: r.level, buildLeft: 0, upgradeLeft: 0, fighters: 0, bombers: 0, cooldown: 0, dropCooldown: 0, disabledUntil: 0, hp: 1, queuedLevels: 0 };
+        ghosts.add(g);
+        shown.push(g);
+      }
+    }
+    for (const b of shown) {
       const x = b.tile % map.width;
       const y = (b.tile / map.width) | 0;
       cells[((y / CELL) | 0) * this.gw + ((x / CELL) | 0)].push(b);
@@ -80,8 +101,10 @@ export class BuildingLayer {
     dpr: number,
   ): void {
     const key = buildingsKey(state);
-    if (key !== this.key || state.map.width !== this.w || this.cells.length === 0) {
+    const fg = this.fog?.active ? this.fog.gen : -1;
+    if (key !== this.key || fg !== this.fogGen || state.map.width !== this.w || this.cells.length === 0) {
       this.key = key;
+      this.fogGen = fg;
       this.rebuild(state);
     }
     this.drawn = 0;
@@ -164,11 +187,14 @@ export class BuildingLayer {
   }
 
   private drawOne(ctx: CanvasRenderingContext2D, b: Building, x: number, y: number, size: number, colors: readonly RGB[], dpr: number): void {
-    const c = colors[b.owner] ?? [128, 128, 128];
+    const ghost = ghosts.has(b);
+    const oc = colors[b.owner] ?? [128, 128, 128];
+    // last seen (fog of war): a grey frame, faded, no level badge
+    const c = ghost ? ([110, 114, 122] as RGB) : oc;
     const progress = b.buildLeft > 0 ? clamp(1 - b.buildLeft / Math.max(0.01, BUILDINGS[b.type].buildTime), 0, 1) : 1;
     const unfinished = progress < 1;
     const id = b.type as BuildingIconId;
-    const alpha = unfinished ? 0.55 : 1;
+    const alpha = ghost ? 0.5 : unfinished ? 0.55 : 1;
     // The plate shows what the building does (category colour: economy gold, production orange, defence blue ...);
     // a frame in the owner's colour shows whose it is.
     const r = size * 0.5;
@@ -195,7 +221,7 @@ export class BuildingLayer {
       ctx.strokeStyle = 'rgba(255,255,255,0.95)';
       ctx.stroke();
     }
-    if (b.level > 1) {
+    if (b.level > 1 && !ghost) {
       const br = clamp(size * 0.22, 4.5, 8);
       const bx = x + r * 0.78;
       const by = y - r * 0.78;

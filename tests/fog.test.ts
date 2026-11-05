@@ -249,11 +249,11 @@ describe('fog of war: vision', () => {
 });
 
 describe('fog of war: lockstep', () => {
-  const settings = () => testSettings({ seed: 21, aiCount: 5, tribeCount: 3, mapType: 'islands', mods: { fogOfWar: true } });
+  const settings = () => testSettings({ seed: 21, aiCount: 5, tribeCount: 3, mapType: 'archipelago', mods: { fogOfWar: true } });
   it('two fog games hash the same; fog on and off differ; the hash covers the fog bits', () => {
     const a = createGame(settings());
     const b = createGame(settings());
-    const off = createGame(testSettings({ seed: 21, aiCount: 5, tribeCount: 3, mapType: 'islands' }));
+    const off = createGame(testSettings({ seed: 21, aiCount: 5, tribeCount: 3, mapType: 'archipelago' }));
     for (let k = 0; k < 1500; k++) {
       tick(a);
       tick(b);
@@ -276,7 +276,7 @@ describe('fog of war: AI and auto units aim only at what they know', () => {
         aiCount: 6,
         tribeCount: 0,
         humanPlayer: false,
-        mapType: 'islands',
+        mapType: 'archipelago',
         difficulty: 'hard',
         mods: { fogOfWar: true, research: 'allUnlocked', startingGold: 'veryHigh', fastGame: true },
       }),

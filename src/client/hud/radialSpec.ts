@@ -1,4 +1,5 @@
 // What the radial menu offers for a tile: the likely action in the centre, the rest on the ring.
+import { activeFog } from '../fog/fogView';
 import { alliancesAllowed, buildingAllowed, sameTeam, unitAllowed } from '../../sim/rules';
 import { buildCostAt, buildingAt, canBuild, chargesReady, countBuildings } from '../../sim/buildings';
 import { BUILDINGS, BUILDING_ORDER, RESOURCE_NAMES, TERRAIN, UNITS } from '../../sim/config';
@@ -54,7 +55,10 @@ function buildItem(ctx: HudCtx, state: GameState, me: Player, type: BuildingType
 export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: number): RadialSpec {
   const map = state.map;
   const h = me.id;
-  const owner = map.owner[tile];
+  // fog of war: the owner you know (last seen out of view, nobody where you never looked)
+  const fog = activeFog(state);
+  const vis = fog ? fog.tileVis(tile) : 2;
+  const owner = fog ? fog.knownOwner(state, tile) : map.owner[tile];
   const water = isWater(map.terrain[tile]);
   const terr = TERRAIN[map.terrain[tile] as TerrainId];
   const res = map.resource[tile];
@@ -66,7 +70,7 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
   const sendText = `${formatCount(troopSum(send))} troops (${pct(ui.attackShare)})`;
   const slices: RadialItem[] = [];
   let centre: RadialItem | null = null;
-  const title = op ? op.name + (owner === h ? ' (you)' : '') : water ? terr.name : 'Wilderness';
+  const title = vis === 0 && !water ? 'Unknown land' : op ? (vis === 1 ? 'Last seen: ' : '') + op.name + (owner === h ? ' (you)' : '') : water ? terr.name : 'Wilderness';
   const subtitle = water ? '' : terr.name + (res ? `, ${RESOURCE_NAMES[res] === 'Fertile' ? 'fertile land' : RESOURCE_NAMES[res].toLowerCase()}` : '');
 
   if (water) {
@@ -179,7 +183,7 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
         label: RADIAL_LABEL[id],
         icon: STRIKES[id].line,
         danger: true,
-        hint: t && t.ok ? blastSummary(state, m, t) + (t.covered ? `. ${t.covered}` : '') : STRIKES[id].what,
+        hint: t && t.ok ? (vis === 2 ? blastSummary(state, m, t) + (t.covered ? `. ${t.covered}` : '') : 'Out of sight: you will see what it hit when it lands') : STRIKES[id].what,
         disabled: st.state !== 'ready' ? st.line : t && !t.ok ? t.reason : undefined,
         run: () => {
           if (!a) return;
@@ -191,7 +195,7 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
     }
   }
 
-  if (owner && owner !== h && op && op.alive) {
+  if (owner && owner !== h && op && op.alive && (!fog || fog.isMet(owner))) {
     const o = owner;
     const allied = areAllied(state, h, o);
     const inReq = state.allianceRequests.some((r) => r.from === o && r.to === h);

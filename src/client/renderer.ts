@@ -35,6 +35,7 @@ import { UnitLayer } from './render/units';
 import { SelectionOverlay } from './render/selectionOverlay';
 import { PillarOverlay } from './render/pillarOverlay';
 import { BattleFx } from './fx/battleFx';
+import { fogFor, type FogView } from './fog/fogView';
 import type { UiState } from './uiState';
 
 export { formatCount } from './render/common';
@@ -123,6 +124,9 @@ export class Renderer {
   private auxMs = -Infinity;
   private auxRect: [number, number, number, number] | null = null;
   private auxSig = '';
+  /** fog of war view of the current game (null = the rule is off) and the view bits last sent to the map layer */
+  private fog: FogView | null = null;
+  private fogSent = -1;
 
   stats: RenderStats = { gl: false, uploads: 0, uploadTiles: 0, tilesApplied: 0, buildings: 0, deposits: 0, units: 0, fleets: 0, labels: 0, labelsComputed: 0, msPrep: 0, msMap: 0, msOverlay: 0, msMinimap: 0, msFronts: 0, frontSegments: 0, msFx: 0 };
 
@@ -147,6 +151,9 @@ export class Renderer {
     this.h = map.height;
     this.humanId = state.humanId;
     this.terr = buildTerrain(map);
+    this.feed.vis = null; // the new game's fog view attaches below (render)
+    this.fog = null;
+    this.fogSent = -1;
     this.feed.reset(state);
     this.trench.reset(state, this.feed.fullGen);
     this.colors = [];
@@ -188,6 +195,17 @@ export class Renderer {
     if (this.lastFrameMs > 0) this.frameMs = this.frameMs * 0.9 + clamp(nowMs - this.lastFrameMs, 4, 100) * 0.1;
     this.lastFrameMs = nowMs;
     this.resizeIfNeeded(camera);
+    // fog of war (fog/fogView.ts): the view of this client's seat; the tile feed keeps the known map for it
+    const fog = state.fog ? fogFor(state) : null;
+    if (fog) fog.attach(this.feed);
+    this.fog = fog;
+    this.units.fog = fog;
+    this.buildings.fog = fog;
+    this.overlays.fog = fog;
+    this.names.fog = fog;
+    this.fronts.fog = fog;
+    this.deposits.fog = fog;
+    this.fx.fog = fog;
     // battle effects: read what is new, then shake the view a few px after a nearby nuke (undone after drawing)
     if (this.shookBy.x !== 0 || this.shookBy.y !== 0) this.unshake(camera);
     this.fx.update(state, camera, nowMs);
@@ -222,7 +240,12 @@ export class Renderer {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     const gl = this.gl;
+    const fogOn = !!fog && fog.active;
+    const fogSend = fogOn && fog.bitsGen !== this.fogSent;
+    if (fogSend) this.fogSent = fog.bitsGen;
+    if (!fogOn) this.fogSent = -1;
     if (gl) {
+      if (fogSend) gl.uploadFog(fog.tex, fog.bw, fog.bh);
       gl.uploadOwner(this.feed);
       gl.uploadTrench(this.trench);
       gl.draw(this.canvas.width, this.canvas.height, {
@@ -235,10 +258,13 @@ export class Renderer {
         showRes: ui.showResources,
         fortOn: this.forts.size > 0,
         trenchOn: this.trench.any,
+        fogOn,
       });
       this.stats.uploads = gl.uploads;
       this.stats.uploadTiles = gl.uploadTiles;
     } else if (this.map2d) {
+      if (fogSend) this.map2d.setFog(fog.tex, fog.bw, fog.bh);
+      else if (!fogOn) this.map2d.setFog(null, 0, 0);
       this.map2d.update(this.feed, this.trench);
       ctx.setTransform(d * z, 0, 0, d * z, d * (camera.viewW / 2 - camera.x * z), d * (camera.viewH / 2 - camera.y * z));
       ctx.fillStyle = '#0a111c';
@@ -282,7 +308,7 @@ export class Renderer {
     this.units.draw(ctx, state, camera, frac, this.colors, me, d, nowMs);
     this.overlays.effects(ctx, state, camera, frac);
     const hs = ui.hoverTile >= 0 ? camera.tileToScreen((ui.hoverTile % this.w) + 0.5, ((ui.hoverTile / this.w) | 0) + 0.5) : null;
-    const hoverOwner = ui.hoverTile >= 0 && ui.hoverTile < state.map.owner.length ? state.map.owner[ui.hoverTile] : 0;
+    const hoverOwner = ui.hoverTile >= 0 && ui.hoverTile < state.map.owner.length ? this.knownOwner(state, ui.hoverTile) : 0;
     this.names.draw(ctx, state, camera, me, { hoverOwner, targeting: ui.mode.kind !== 'none', hover: hs }, nowMs, d);
     this.fx.draw(ctx, camera, nowMs); // over the names: a city pulse's label must stay readable
     this.overlays.telegraphs(ctx, state, camera, this.units, frac, me, nowMs, this.colors);
@@ -301,7 +327,7 @@ export class Renderer {
     const tMini = performance.now();
     this.stats.msOverlay = tMini - tOver;
     if (this.shookBy.x !== 0 || this.shookBy.y !== 0) this.unshake(camera);
-    this.mini.draw(state, camera, this.feed, me, nowMs);
+    this.mini.draw(state, camera, this.feed, me, nowMs, fog);
     this.stats.msMinimap = performance.now() - tMini;
     this.stats.msFx = this.fx.ms;
     this.stats.gl = !!this.gl;
@@ -311,6 +337,11 @@ export class Renderer {
     this.stats.fleets = this.units.fleets;
     this.stats.labels = this.names.drawn;
     this.stats.labelsComputed = this.names.computed;
+  }
+
+  /** Owner of a tile as this client knows it (fog of war: last seen, 0 where never seen). */
+  private knownOwner(state: GameState, tile: number): number {
+    return this.fog?.active ? this.fog.knownOwner(state, tile) : state.map.owner[tile];
   }
 
   private unshake(camera: Camera): void {
@@ -424,12 +455,14 @@ export class Renderer {
     let hv = 0;
     const t = ui.hoverTile;
     if (me > 0 && ui.mode.kind === 'none' && state.phase === 'playing' && t >= 0 && t < state.map.owner.length) {
-      const o = state.map.owner[t];
+      const o = this.knownOwner(state, t);
       const mp = state.players[me];
       const op = state.players[o];
       if (o !== 0 && o !== me && op && op.alive && mp && mp.alive && !areAllied(state, me, o)) {
         const send = armyTotal(mp.troops) * ui.attackShare;
-        const weak = op.tiles * 4 < mp.tiles || armyTotal(op.troops) < send * 1.25;
+        // fog of war: no "easy target" pulse for a nation whose army you can't see
+        const hidden = !!this.fog?.active && this.fog.armyShown(state, o) === null;
+        const weak = !hidden && (op.tiles * 4 < mp.tiles || armyTotal(op.troops) < send * 1.25);
         hover = o;
         hv = weak ? 2 : 1;
       }
