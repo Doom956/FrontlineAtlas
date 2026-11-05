@@ -27,6 +27,8 @@ const SHIFT = 4;
 /** Fog texture values: in view, explored, never seen. */
 export const FOG_LIVE = 255;
 export const FOG_SEEN = 110;
+/** nations in sight are re-checked at least this often (ticks; FOG.humanTicks) */
+const SIGHT_TICKS = 5;
 
 export interface Remembered {
   type: BuildingType;
@@ -75,6 +77,7 @@ export class FogView {
   private lastTick = -1;
   private lastPhase = '';
   private lastBuildings = -1;
+  private lastSight = -1;
   private readEvents = new WeakSet<object>();
 
   private visFn = (i: number): number => this.tileVis(i);
@@ -128,7 +131,10 @@ export class FogView {
       this.lastBuildings = state.buildingsVersion;
       this.remember(state);
       this.gen++;
-    } else if (bitsTick) this.contacts(state);
+    } else if (bitsTick) {
+      if (state.tick - this.lastSight >= SIGHT_TICKS || state.tick < this.lastSight) this.sight(state);
+      else this.contacts(state);
+    }
   }
 
   // ------------------------------------------------------------------ reads
@@ -213,6 +219,7 @@ export class FogView {
     this.lastTick = -1;
     this.lastPhase = '';
     this.lastBuildings = -1;
+    this.lastSight = -1;
     this.readEvents = new WeakSet<object>();
     this.buildings.clear();
     this.capitals.clear();
@@ -291,6 +298,17 @@ export class FogView {
       this.buildings.set(b.tile, { type: b.type, owner: b.owner, level: b.level });
       this.met.add(b.owner);
     }
+    this.sight(state);
+  }
+
+  /**
+   * Capitals in view, nations in sight now (land in a block in view, or a unit you see) and nations met. Runs with
+   * every change of the bits or buildings and at least every SIGHT_TICKS ticks (land and units move into view between).
+   */
+  private sight(state: GameState): void {
+    const me = this.viewer;
+    this.lastSight = state.tick;
+    const metBefore = this.met.size;
     for (const [id, tile] of [...this.capitals]) {
       const p = state.players[id];
       if (this.visible(tile) && (!p || !p.alive || p.capital !== tile)) this.capitals.delete(id);
@@ -325,8 +343,10 @@ export class FogView {
     }
     for (const u of state.units) if (u.hp > 0 && u.owner !== me && this.unitShown(state, u)) sight.add(u.owner);
     for (const q of sight) this.met.add(q);
+    const same = sight.size === this.inSight.size && [...sight].every((q) => this.inSight.has(q));
     this.inSight = sight;
     this.contacts(state);
+    if (!same || this.met.size !== metBefore) this.gen++;
   }
 
   /** Diplomatic contact makes a nation met: alliance requests either way, and events addressed to you naming it. */
