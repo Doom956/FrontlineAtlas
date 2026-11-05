@@ -441,7 +441,8 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'fog',
-      text: 'Fog of war is on: dark land is unexplored and grey land is what you saw last. Expand, sail or fly recon to look around.',
+      early: true,
+      text: 'Fog of war is on: dark land is unexplored, grey land is what you saw last. Expand, build a Watchtower or send ships and planes to see more.',
       when: (c) => playing(c) && fogOn(c.s) && c.me.alive,
     },
     {

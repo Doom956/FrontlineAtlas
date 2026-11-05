@@ -1240,8 +1240,11 @@ fronts between others, SAM rings, labels' army line, sounds and battle effects o
 transports, cargo planes and bombers count once seen (rocket and atom bomb launches keep their warning event).
 
 **Auto units obey it like the AI.** Strategic air wings and rocket auto-fire only hit buildings you have seen (their
-line says "no known targets in reach. Fly recon over them"); auto recon and hunting warships follow the AI rules.
-Manual orders stay free: you may attack, bomb or land on land you can't see.
+line says "no targets you have seen in reach. Scout first"); auto recon and hunting warships follow the AI rules.
+Manual orders go by what you know: you may attack or land on land you can't see, and strikes (bombs, rockets, atom
+bombs, barrages) need enemy land you have seen there (last seen counts). Their previews, the warship Bombard and
+Blockade picks and the air mission picks never tell who holds hidden land; a click on land that changed while out of
+sight can still fail (the sim decides with the real owner, like an attack).
 
 **Lockstep and honesty.** Every client holds the full state, so a modified client could see through the fog: online
 fog is honour based. Spectators and eliminated watchers may pass on what they see. After a reload or a rejoin, the

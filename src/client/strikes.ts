@@ -7,7 +7,9 @@
 //   - barrageReach(): which tiles a barrage can reach (the shaded zone while aiming)
 // The rules stay in the sim (canBarrage, canParadrop, launchBomber, launchMissile); this file only phrases them and
 // checks a click before it is sent, so a wasted strike shows its reason at the cursor instead.
-import { artilleryOf, barrageCooldown, barrageRadius, barrageRange, barrageReadyIn } from '../sim/barrage';
+import { artilleryOf, barrageCooldown, barrageRadius, barrageRange, barrageReadyIn, ownLandWithin } from '../sim/barrage';
+import { noMissileReason } from '../sim/airstrike';
+import { activeFog, nationName, type FogView } from './fog/fogView';
 import { airfieldRadius, buildingAt, buildingsOf, chargesReady, isDisabled, nextChargeIn, samRadius } from '../sim/buildings';
 import {
   ATOM_RADIUS,
@@ -23,7 +25,7 @@ import {
 } from '../sim/config';
 import { areAllied } from '../sim/diplomacy';
 import { forEachInRadius } from '../sim/grid';
-import { buildingAllowed, unitAllowed } from '../sim/rules';
+import { buildingAllowed, peaceActive, unitAllowed } from '../sim/rules';
 import { gameSeconds } from '../sim/state';
 import { unitCost } from '../sim/units';
 import { hasTech } from '../sim/tech';
@@ -363,6 +365,8 @@ export interface StrikeTarget {
   role: string;
   /** where it aims (a front strike leads the push: may differ from the clicked tile; -1 = the click) */
   aim: number;
+  /** fog of war: part of the target is out of view, so what it would hit is not shown (the counts are 0) */
+  blind: boolean;
   /** blast radius (tiles) and the expected result of the whole salvo (airstrike.strikePreview) */
   radius: number;
   kills: number;
@@ -423,21 +427,100 @@ function coverOnRoute(state: GameState, me: number, from: number, to: number, pl
     }
     return false;
   };
+  // fog of war: only SAM sites and airfields this player sees or remembers
+  const fog = activeFog(state);
   for (const b of state.buildings.values()) {
     if (b.buildLeft > 0 || !hostileTo(state, me, b.owner)) continue;
-    if (b.type === 'sam' && !isDisabled(state, b) && near(b, samRadius(b))) return `${state.players[b.owner].name}'s SAM site covers the route: it may be shot down`;
-    if (planes && b.type === 'airfield' && b.fighters > 0 && near(b, airfieldRadius(b))) return `${state.players[b.owner].name}'s fighters cover the route: it may be shot down`;
+    if (fog && fog.buildingAt(state, b.tile)?.type !== b.type) continue;
+    if (b.type === 'sam' && !isDisabled(state, b) && near(b, samRadius(b))) return `${nationName(state, b.owner)}'s SAM site covers the route: it may be shot down`;
+    if (planes && b.type === 'airfield' && b.fighters > 0 && near(b, airfieldRadius(b))) return `${nationName(state, b.owner)}'s fighters cover the route: it may be shot down`;
   }
   return '';
 }
 
 
 
-/** What a click with this target mode on `tile` would do. */
+/**
+ * What a click with this target mode on `tile` would do. Fog of war: judged by what this player knows (fogStrike), so
+ * sweeping the cursor over dark land tells nothing about who holds it.
+ */
 export function strikeTarget(state: GameState, me: Player, ui: UiState, m: TargetMode, tile: number): StrikeTarget {
+  const t = liveStrikeTarget(state, me, ui, m, tile);
+  const fog = activeFog(state);
+  return fog && tile >= 0 && tile < state.map.owner.length ? fogStrike(state, fog, me, m, tile, t) : t;
+}
+
+/** The sim's answers that depend on who holds the target (they must not show through fog). */
+const OWNER_REASONS = new Set([
+  'That is your own land',
+  'Nobody to bomb there',
+  'Nobody to shell there',
+  'Nothing of the enemy to hit there',
+  'That nation is gone',
+  'You cannot bomb an ally',
+  'You cannot fire at an ally',
+  'You cannot shell an ally',
+  'You cannot attack an ally',
+]);
+function ownerReason(why: string): boolean {
+  return OWNER_REASONS.has(why) || why.startsWith('Peace time:');
+}
+
+/**
+ * Fog of war: a strike target as this player may know it. Land out of view counts by its last seen owner: a strike
+ * needs enemy land you have seen there (bombs and barrages: the tile itself; rockets and atom bombs: anywhere in the
+ * blast), and the sim's answers about the real owner are replaced by the ones the launch sites give (reach, reload,
+ * gold). What a blast would hit is not counted when part of it is out of view (`blind`). A click can still fail when
+ * the land changed while out of sight: the sim decides with the real owner, like an attack.
+ */
+function fogStrike(state: GameState, fog: FogView, me: Player, m: TargetMode, tile: number, t: StrikeTarget): StrikeTarget {
+  const id = strikeOfMode(m);
+  if (!id) return t;
+  const hiddenClick = !fog.visible(tile);
+  const hostile = (k: number): boolean => k > 0 && k !== me.id && !!state.players[k]?.alive && !areAllied(state, me.id, k);
+  // blast area: anything out of view, any enemy land known there
+  const aim = t.aim >= 0 ? t.aim : tile;
+  const r = id === 'barrage' ? barrageRadius(state, me.id) : t.radius;
+  let hidden = hiddenClick;
+  let known = false;
+  if (id !== 'paradrop' && r > 0) {
+    forEachInRadius(state.map, aim, r, (i) => {
+      if (!fog.visible(i)) hidden = true;
+      if (!known && hostile(fog.knownOwner(state, i))) known = true;
+    });
+  } else known = hostile(fog.knownOwner(state, aim));
+  const out: StrikeTarget = hidden ? { ...t, blind: true, enemyTiles: 0, enemyBuildings: 0, victim: -1, kills: 0, wrecks: 0, zoneCut: 0, incomeCut: 0, burn: 0, covered: hiddenClick ? '' : t.covered } : t;
+  if (!hidden) return t;
+  const no = (reason: string): StrikeTarget => ({ ...out, ok: false, reason });
+  if (hiddenClick && peaceActive(state)) return no('Peace time: strike only where you can see who holds the land');
+  if (id === 'paradrop') return out; // hidden land is never your own or an ally's: the drop only needs land
+  const unseen = !fog.explored(tile);
+  const tileFoe = hostile(fog.knownOwner(state, tile));
+  if ((id === 'bomb' || id === 'barrage') && !tileFoe) {
+    return no(unseen ? 'Unexplored: you have not seen enemy land there' : id === 'bomb' ? 'Last seen: nobody to bomb there' : 'Last seen: nobody to shell there');
+  }
+  if (!known) return no(unseen ? 'Unexplored: you have not seen enemy land there' : 'Last seen: nothing of the enemy there');
+  if (t.ok || !ownerReason(t.reason)) return out;
+  // the sim said no because of who holds it now: say what the launch sites say instead
+  if (id === 'barrage') {
+    const range = barrageRange(me);
+    if (!ownLandWithin(state, me.id, tile, range)) return no(`Too far: guns reach ${range} tiles from your border`);
+    if (me.gold < BARRAGE_GOLD) return no(`Not enough gold (${BARRAGE_GOLD})`);
+    return { ...out, ok: true, reason: '' };
+  }
+  if (t.count > 0) return { ...out, ok: true, reason: '' };
+  if (id === 'bomb') {
+    const fixed = m.kind === 'bomb' ? m.airfield : -1;
+    return no(fixed >= 0 ? 'No bombers at this airfield (or out of its reach)' : tooFar(state, me.id, tile) || 'No airfield with bombers reaches that far');
+  }
+  return no(noMissileReason(state, me.id, id === 'atomBomb' ? 'atomBomb' : 'rocket', m.kind === 'missile' ? m.silo : -1));
+}
+
+/** What a click would do, by the live state (strikeTarget applies fog of war on top). */
+function liveStrikeTarget(state: GameState, me: Player, ui: UiState, m: TargetMode, tile: number): StrikeTarget {
   const t: StrikeTarget = {
     ok: false, reason: '', from: -1, troops: 0, enemyTiles: 0, enemyBuildings: 0, ownTiles: 0, ownBuildings: 0, victim: -1, covered: '',
-    count: 0, ready: 0, sites: 0, siteTiles: [], size: 1, role: '', aim: -1, radius: 0, kills: 0, wrecks: 0, zoneCut: 0, zoneSeconds: 0, incomeCut: 0, raidSeconds: 0, burn: 0,
+    count: 0, ready: 0, sites: 0, siteTiles: [], size: 1, role: '', aim: -1, blind: false, radius: 0, kills: 0, wrecks: 0, zoneCut: 0, zoneSeconds: 0, incomeCut: 0, raidSeconds: 0, burn: 0,
   };
   const map = state.map;
   if (tile < 0 || tile >= map.owner.length) return { ...t, reason: 'Pick a tile on the map' };

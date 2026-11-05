@@ -189,7 +189,7 @@ export class NationCard {
     // fog of war: the card attacks their capital, so you need a shared border or a capital you have seen
     const lost = !!fog && !near && fog.knownCapital(s, p.id) < 0;
     setDisabled(this.attack, lost);
-    if (lost) setTip(this.attack, 'You do not know where they are yet. Explore or fly recon to find their capital.');
+    if (lost) setTip(this.attack, 'You do not know where they are yet. Expand, build a Watchtower or send ships to find their capital.');
     else setTip(this.attack, `Send ${formatCount(send)} troops (${Math.round(this.ctx.ui.attackShare * 100)}%) ${near ? 'across your shared border' : 'by sea: you share no border'}`);
   }
 }

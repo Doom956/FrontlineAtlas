@@ -200,7 +200,7 @@ export class MapTooltip {
     rows.push(this.line(worldGlyph(TERRAIN_GLYPH[tid], 18), terr.name + (map.coastal[tile] ? ' (coast)' : ''), terrainEffect(tid), 'terr'));
     const explored = fog.explored(tile);
     if (!isWater(tid)) {
-      if (!explored) rows.push(this.line(lineIcon('eye', 18), 'Unexplored', 'You have not looked here yet. Expand, sail or fly recon to see it.', 'own wild'));
+      if (!explored) rows.push(this.line(lineIcon('eye', 18), 'Unexplored', 'You have not looked here yet. Expand, build a Watchtower or send ships and planes to see it.', 'own wild'));
       else {
         const res = map.resource[tile];
         if (res && RESOURCE_TEXT[res]) {
@@ -349,9 +349,8 @@ export class MapTooltip {
               : id === 'rocket'
                 ? t.count > 1 ? `Fire ${t.count} rockets here` : 'Fire a rocket here'
                 : t.count > 1 ? `Drop ${t.count} atom bombs here` : 'Drop the atom bomb here';
-      // fog of war: the blast and the launch site always; what it would hit only where you see
-      const fog = activeFog(state);
-      const hidden = !!fog && !fog.visible(t.aim >= 0 ? t.aim : tile);
+      // fog of war: the blast and the launch site always; what it would hit only when all of it is in view
+      const hidden = t.blind;
       rows.push(this.line(pic, title, hidden ? `${t.radius > 0 ? `Radius ${fmtR(t.radius)} tiles. ` : ''}Out of sight: you will see what it hit when it lands` : strikeBody(state, m, t), 'head'));
       const role = strikeRoleLine(state, t, tile);
       if (role) rows.push(el('div', 'mt-hint', role));

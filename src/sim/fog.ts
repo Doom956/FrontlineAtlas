@@ -1,10 +1,11 @@
 // Fog of war (game rule Modifiers.fogOfWar): what each player sees.
 //
-// Vision lives on a coarse grid of territory.BLOCK x BLOCK tiles (16 x 16). Per player two bitsets: `now` = blocks in
-// view at the last refresh, `seen` = blocks ever in view (explored). Sources (config FOG): own land sees FOG.landBand
-// tiles past its edge, units see FOG.unit[type], finished watchtowers and ports see their radius, recon reveals see
-// their circle. Allies and teammates share live vision: a player's `now` is stamped from its own sources and those of
-// everyone allied with it, so what an ally showed stays explored after the alliance ends.
+// Vision lives on a coarse grid of territory.BLOCK x BLOCK tiles (16 x 16). Per player three bitsets: `own` = what its
+// own sources saw at its last refresh, `now` = blocks in view at the last refresh (own plus allies' own), `seen` =
+// blocks ever in view (explored). Sources (config FOG): own land sees FOG.landBand tiles past its edge, units see
+// FOG.unit[type], finished watchtowers and ports see their radius, recon reveals see their circle. Allies and
+// teammates share live vision: a player's `now` is its own stamp OR'd with those of everyone allied with it, so what an
+// ally showed stays explored after the alliance ends.
 //
 // It is part of the lockstep state (GameState.fog, hashed by hashFog) because AI nations and auto units obey it (they
 // only aim at known tiles: ai.ts, airwings.ts, airstrike.ts, ...). It is created by makeGameState when the rule is on
@@ -45,12 +46,14 @@ export function createFog(state: GameState): FogState {
   const words = (bw * bh + 31) >>> 5;
   const seen: (Uint32Array | null)[] = [];
   const now: (Uint32Array | null)[] = [];
+  const own: (Uint32Array | null)[] = [];
   for (const p of state.players) {
     const has = p.id > 0 && !isTribe(p);
     seen.push(has ? new Uint32Array(words) : null);
     now.push(has ? new Uint32Array(words) : null);
+    own.push(has ? new Uint32Array(words) : null);
   }
-  return { bw, bh, words, seen, now };
+  return { bw, bh, words, seen, now, own };
 }
 
 /** True while the fog rule shapes what players see and what AI / auto units may aim at. */
@@ -228,33 +231,58 @@ function stampSource(state: GameState, words: Uint32Array, q: number): void {
   }
 }
 
-/** Recomputes player p's vision now (own sources plus every ally's and teammate's) and adds it to what it has seen. */
-function refresh(state: GameState, p: number): void {
+/** Recomputes what player p's own sources see (land, units, buildings, reveals) into f.own[p]. */
+function stampOwn(state: GameState, p: number): void {
+  const own = state.fog!.own[p];
+  if (!own) return;
+  own.fill(0);
+  if (state.players[p].alive) stampSource(state, own, p);
+}
+
+/**
+ * Player p's vision now: its own sources (just restamped) OR'd with the last own stamp of every living ally and
+ * teammate (each restamps on its own schedule, so an ally's part is at most FOG.aiTicks old). Adds it to what p has
+ * seen. One stamp per refresh whatever the size of the bloc (a bloc of k members costs k stamps a cycle, not k * k).
+ */
+function combine(state: GameState, p: number): void {
   const f = state.fog!;
   const now = f.now[p];
   const seen = f.seen[p];
-  if (!now || !seen) return;
-  now.fill(0);
-  if (!state.players[p].alive) return;
-  stampSource(state, now, p);
+  const own = f.own[p];
+  if (!now || !seen || !own) return;
+  if (!state.players[p].alive) {
+    now.fill(0);
+    return;
+  }
+  now.set(own);
   for (const q of state.players) {
-    if (q.id <= 0 || q.id === p || !q.alive || !areAllied(state, p, q.id)) continue;
-    stampSource(state, now, q.id);
+    const o = f.own[q.id];
+    if (!o || q.id === p || !q.alive || !areAllied(state, p, q.id)) continue;
+    for (let k = 0; k < now.length; k++) now[k] |= o[k];
   }
   for (let k = 0; k < now.length; k++) seen[k] |= now[k];
 }
 
 /**
  * Vision refresh (sim.ts, after updateArsenal): humans every FOG.humanTicks, AI nations every FOG.aiTicks, staggered
- * by id. `all` refreshes every player (the moment play starts). No-op without fog or outside the playing phase.
+ * by id. `all` refreshes every player (the moment play starts): every own stamp first, then every view. No-op without
+ * fog or outside the playing phase.
  */
 export function updateFog(state: GameState, all = false): void {
   if (!fogOn(state)) return;
   const f = state.fog!;
+  if (all) {
+    for (const p of state.players) if (f.now[p.id]) stampOwn(state, p.id);
+    for (const p of state.players) if (f.now[p.id]) combine(state, p.id);
+    return;
+  }
   for (const p of state.players) {
     if (!f.now[p.id]) continue;
     const every = p.isHuman ? FOG.humanTicks : FOG.aiTicks;
-    if (all || (state.tick + p.id) % every === 0) refresh(state, p.id);
+    if ((state.tick + p.id) % every === 0) {
+      stampOwn(state, p.id);
+      combine(state, p.id);
+    }
   }
 }
 
@@ -267,10 +295,12 @@ export function hashFog(state: GameState, h: number, mixInt: (h: number, v: numb
   for (let id = 0; id < f.now.length; id++) {
     const now = f.now[id];
     const seen = f.seen[id];
+    const own = f.own[id];
     h = mixInt(h, now ? 1 : 0);
-    if (!now || !seen) continue;
+    if (!now || !seen || !own) continue;
     for (let k = 0; k < seen.length; k++) h = mixInt(h, seen[k]);
     for (let k = 0; k < now.length; k++) h = mixInt(h, now[k]);
+    for (let k = 0; k < own.length; k++) h = mixInt(h, own[k]);
   }
   return h;
 }

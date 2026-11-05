@@ -93,7 +93,7 @@ export function barrageKill(artillery: number): number {
 }
 
 /** True if playerId owns a tile within r (straight line) of tile. Early exit; at most (2r+1)^2 reads. */
-function ownLandWithin(state: GameState, playerId: number, tile: number, r: number): boolean {
+export function ownLandWithin(state: GameState, playerId: number, tile: number, r: number): boolean {
   const map = state.map;
   const w = map.width;
   const cx = tile % w;

@@ -70,6 +70,8 @@ export interface GuideTip {
   done?: (c: GuideCtx) => boolean;
   /** a fight-critical tip: shown first, nothing else meanwhile */
   critical?: boolean;
+  /** shown as soon as it applies, even during the opening steps (which wait meanwhile); unlike critical, other tips may follow */
+  early?: boolean;
 }
 
 export interface GuidePrefs {
@@ -217,6 +219,8 @@ export class GuideEngine {
       } else return this.emit(this.tipView(t, c));
     }
     if (critical) return this.emit(this.showTip(critical, c));
+    const early = playing ? this.pendingTip(c, 'early') : null;
+    if (early) return this.emit(this.showTip(early, c));
     if (this.openingActive) {
       const v = this.openingStep(c);
       if (v) return this.emit(v);
@@ -319,9 +323,14 @@ export class GuideEngine {
   }
 
   private pendingCritical(c: GuideCtx): GuideTip | null {
+    return this.pendingTip(c, 'critical');
+  }
+
+  /** The first queued tip with that flag that still applies (taken off the queue), or null. */
+  private pendingTip(c: GuideCtx, flag: 'critical' | 'early'): GuideTip | null {
     for (const id of this.queue) {
       const t = this.tipById.get(id);
-      if (t?.critical && this.check(id, () => (t.still ?? t.when)(c))) {
+      if (t?.[flag] && this.check(id, () => (t.still ?? t.when)(c))) {
         this.queue = this.queue.filter((x) => x !== id);
         return t;
       }

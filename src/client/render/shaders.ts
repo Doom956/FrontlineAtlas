@@ -65,6 +65,38 @@ uint ownerAt(ivec2 p) {
   if (p.x < 0 || p.y < 0 || p.x >= int(uMap.x) || p.y >= int(uMap.y)) return 0u;
   return texelFetch(uOwner, p, 0).r & 0xFFFu;
 }
+// Fog of war, exact per block: 2 = in view, 1 = explored, 0 = never seen (the fog texture, one texel per 16 x 16 block).
+int fogAt(ivec2 p) {
+  ivec2 sz = textureSize(uFog, 0);
+  float v = texelFetch(uFog, clamp(p >> 4, ivec2(0), sz - 1), 0).r;
+  return v > 0.7 ? 2 : v > 0.2 ? 1 : 0;
+}
+// A border is drawn where a neighbour has another owner, except across the edge of two blocks that are not both in
+// view: there the owners come from different moments (live and last seen, or two old looks), so the line would be a
+// straight fog seam, not a border.
+bool borderTo(ivec2 p, ivec2 q, uint o, int fogHere) {
+  if (ownerAt(q) == o) return false;
+  if (uFogOn == 0 || (p >> 4) == (q >> 4) || q.x < 0 || q.y < 0 || q.x >= int(uMap.x) || q.y >= int(uMap.y)) return true;
+  return fogHere == 2 && fogAt(q) == 2;
+}
+// Bilinear blend of the explored (x) and in-view (y) bits of the 4 nearest blocks: each bit is decoded per block
+// before blending, so a block's fade stays inside the blocks that have the bit (never-seen land is dark right from
+// its edge, and the owners kept for hidden land never show at full light).
+vec2 fogBits(vec2 t) {
+  ivec2 sz = textureSize(uFog, 0);
+  vec2 b = t / 16.0 - 0.5;
+  ivec2 b0 = ivec2(floor(b));
+  vec2 w = b - vec2(b0);
+  vec2 acc = vec2(0.0);
+  for (int j = 0; j < 2; j++) {
+    for (int i = 0; i < 2; i++) {
+      float v = texelFetch(uFog, clamp(b0 + ivec2(i, j), ivec2(0), sz - 1), 0).r;
+      float wt = (i == 0 ? 1.0 - w.x : w.x) * (j == 0 ? 1.0 - w.y : w.y);
+      acc += vec2(step(0.2, v), step(0.7, v)) * wt;
+    }
+  }
+  return acc;
+}
 vec4 pal(uint o, int row) {
   return texelFetch(uPal, ivec2(int(o & 1023u), int(o >> 10u) + row * 4), 0);
 }
@@ -242,14 +274,16 @@ void main() {
   int ter = int(tr.r + 0.5);
   int res = int(tr.g + 0.5);
   bool water = ter <= 1;
-  // fog of war: one LINEAR texel per 16 x 16 block (255 in view, 110 explored, 0 never seen); smoothstep on the
-  // bilinear value gives soft, rounded edges instead of block squares
+  // fog of war: one texel per 16 x 16 block (255 in view, 110 explored, 0 never seen); smoothstep on the blended
+  // bits gives soft, rounded edges inside the seen / live blocks instead of block squares
   float fogSeen = 1.0;
   float fogLive = 1.0;
+  int fogHere = 2;
   if (uFogOn == 1) {
-    float fv = texture(uFog, t * uFogScale).r;
-    fogSeen = smoothstep(0.18, 0.32, fv);
-    fogLive = smoothstep(0.62, 0.82, fv);
+    vec2 fb = fogBits(t);
+    fogSeen = smoothstep(0.55, 0.95, fb.x);
+    fogLive = smoothstep(0.55, 0.95, fb.y);
+    fogHere = fogAt(ti);
   }
   bool live = fogLive > 0.5;
 
@@ -361,7 +395,7 @@ void main() {
     float bpx = clamp(uZoom * 0.13, 1.3, 3.2); // border width in device px
     if (uZoom < 1.0) {
       int s = int(ceil(1.0 / uZoom));
-      edge = ownerAt(ti + ivec2(s, 0)) != o || ownerAt(ti - ivec2(s, 0)) != o || ownerAt(ti + ivec2(0, s)) != o || ownerAt(ti - ivec2(0, s)) != o;
+      edge = borderTo(ti, ti + ivec2(s, 0), o, fogHere) || borderTo(ti, ti - ivec2(s, 0), o, fogHere) || borderTo(ti, ti + ivec2(0, s), o, fogHere) || borderTo(ti, ti - ivec2(0, s), o, fogHere);
     } else {
       float bw = min(1.0, bpx * px);
       float hb = flags.b > 0.0 ? 1.6 : 1.0;
@@ -369,14 +403,14 @@ void main() {
       if (uTrenchOn == 1 && live && uZoom < 5.0 && trenchAt(ti) >= 2) hb = max(hb, 1.0 + 0.9 * (1.0 - smoothstep(3.0, 5.0, uZoom)));
       bw = min(1.0, bw * hb);
       bool l = f.x < bw, r = f.x > 1.0 - bw, u = f.y < bw, d = f.y > 1.0 - bw;
-      if (l && ownerAt(ti + ivec2(-1, 0)) != o) edge = true;
-      else if (r && ownerAt(ti + ivec2(1, 0)) != o) edge = true;
-      else if (u && ownerAt(ti + ivec2(0, -1)) != o) edge = true;
-      else if (d && ownerAt(ti + ivec2(0, 1)) != o) edge = true;
-      else if (l && u && ownerAt(ti + ivec2(-1, -1)) != o) edge = true;
-      else if (r && u && ownerAt(ti + ivec2(1, -1)) != o) edge = true;
-      else if (l && d && ownerAt(ti + ivec2(-1, 1)) != o) edge = true;
-      else if (r && d && ownerAt(ti + ivec2(1, 1)) != o) edge = true;
+      if (l && borderTo(ti, ti + ivec2(-1, 0), o, fogHere)) edge = true;
+      else if (r && borderTo(ti, ti + ivec2(1, 0), o, fogHere)) edge = true;
+      else if (u && borderTo(ti, ti + ivec2(0, -1), o, fogHere)) edge = true;
+      else if (d && borderTo(ti, ti + ivec2(0, 1), o, fogHere)) edge = true;
+      else if (l && u && borderTo(ti, ti + ivec2(-1, -1), o, fogHere)) edge = true;
+      else if (r && u && borderTo(ti, ti + ivec2(1, -1), o, fogHere)) edge = true;
+      else if (l && d && borderTo(ti, ti + ivec2(-1, 1), o, fogHere)) edge = true;
+      else if (r && d && borderTo(ti, ti + ivec2(1, 1), o, fogHere)) edge = true;
     }
     if (edge) {
       vec3 oc = pal(o, 0).rgb;
