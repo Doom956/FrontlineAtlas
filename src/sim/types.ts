@@ -714,7 +714,8 @@ export interface GameState {
 /**
  * Fog of war vision (fog.ts), on a grid of territory.BLOCK x BLOCK tiles (bw x bh blocks, `words` 32-bit words per
  * bitset, block index = by * bw + bx). Indexed by player id; null for id 0 and tribes (no vision). `now` = blocks in
- * view at the player's last refresh (own sources plus allies'), `seen` = blocks ever in view (explored). Hashed.
+ * view at the player's last refresh (own sources plus allies' last own stamps), `seen` = blocks ever in view
+ * (explored), `own` = what its own sources saw at its last refresh. Hashed.
  */
 export interface FogState {
   bw: number;
@@ -722,6 +723,8 @@ export interface FogState {
   words: number;
   seen: (Uint32Array | null)[];
   now: (Uint32Array | null)[];
+  /** what the player's own sources saw at its last refresh (allies OR this into their `now`) */
+  own: (Uint32Array | null)[];
 }
 
 /** Tutorial chapters (src/sim/tutorialScenario.ts; the client's chapter list is src/client/tutorial/chapters.ts). */
