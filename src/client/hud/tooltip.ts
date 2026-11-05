@@ -1,7 +1,7 @@
 // Map hover: a compact card next to the cursor (terrain and what it does, the resource and what to build on it,
 // owner and army, the building and what it does) and, in attack mode, an odds badge. In build mode the card is
 // replaced by the build preview: "Build here" (green), "Upgrade to level N" (blue) or the reason (red), with costs.
-import { buildSeconds, unitAllowed } from '../../sim/rules';
+import { buildSeconds, peaceReason, unitAllowed } from '../../sim/rules';
 import { buildingAt, fortMultiplierAt } from '../../sim/buildings';
 import { borders, estimateAttack, supplyEfficiency } from '../../sim/combat';
 import type { AttackEstimate } from '../../sim/combat';
@@ -200,7 +200,7 @@ export class MapTooltip {
     rows.push(this.line(worldGlyph(TERRAIN_GLYPH[tid], 18), terr.name + (map.coastal[tile] ? ' (coast)' : ''), terrainEffect(tid), 'terr'));
     const explored = fog.explored(tile);
     if (!isWater(tid)) {
-      if (!explored) rows.push(this.line(lineIcon('eye', 18), 'Unexplored', 'You have not looked here yet. Expand, sail or fly recon to see it.', 'own wild'));
+      if (!explored) rows.push(this.line(lineIcon('eye', 18), 'Unexplored', 'You have not looked here yet. Expand, build a Watchtower or send ships and planes to see it.', 'own wild'));
       else {
         const res = map.resource[tile];
         if (res && RESOURCE_TEXT[res]) {
@@ -224,8 +224,11 @@ export class MapTooltip {
         }
       }
       if (state.phase === 'playing' && isAttackable(state, me.id, tile) && this.ctx.ui.mode.kind === 'none' && !this.ctx.ui.selection.length) {
+        // peace time: the nation last seen there can't be attacked yet (as for land in view: estimateAttack says no)
+        const peace = peaceReason(state, me.id, fog.knownOwner(state, tile));
         const n = troopSum(troopsToSend(me, this.ctx.ui));
-        rows.push(this.line('', `Click to attack with ${formatCount(n)}`, 'Out of sight: you find out who holds it when your troops get there', 'atk'));
+        if (peace) rows.push(this.line('', 'No attack yet', peace, 'own'));
+        else rows.push(this.line('', `Click to attack with ${formatCount(n)}`, 'Out of sight: you find out who holds it when your troops get there', 'atk'));
       }
     }
     this.card.className = 'mtip';
@@ -349,9 +352,8 @@ export class MapTooltip {
               : id === 'rocket'
                 ? t.count > 1 ? `Fire ${t.count} rockets here` : 'Fire a rocket here'
                 : t.count > 1 ? `Drop ${t.count} atom bombs here` : 'Drop the atom bomb here';
-      // fog of war: the blast and the launch site always; what it would hit only where you see
-      const fog = activeFog(state);
-      const hidden = !!fog && !fog.visible(t.aim >= 0 ? t.aim : tile);
+      // fog of war: the blast and the launch site always; what it would hit only when all of it is in view
+      const hidden = t.blind;
       rows.push(this.line(pic, title, hidden ? `${t.radius > 0 ? `Radius ${fmtR(t.radius)} tiles. ` : ''}Out of sight: you will see what it hit when it lands` : strikeBody(state, m, t), 'head'));
       const role = strikeRoleLine(state, t, tile);
       if (role) rows.push(el('div', 'mt-hint', role));

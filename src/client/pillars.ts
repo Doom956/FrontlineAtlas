@@ -26,6 +26,8 @@ import type { Dispatch, UiState } from './uiState';
 import { followOf, followsWar } from './follow';
 import { autoCoverHolder, coverFlying } from './trench';
 import { wingResult } from './airSim';
+import { activeFog, knownOwnerOf, nationName as fogName } from './fog/fogView';
+import { atPeace } from '../sim/rules';
 
 export type PillarPick = 'bombard' | 'blockade' | 'front' | 'airSupport' | 'airStrategic' | 'airSuperiority';
 
@@ -105,7 +107,7 @@ function ownUnits(state: GameState, me: number, ids: readonly number[], type: Un
 
 function nationName(state: GameState, me: number, id: number): string {
   if (id === me) return 'your';
-  return id > 0 ? `${state.players[id]?.name ?? 'enemy'}'s` : 'neutral';
+  return id > 0 ? (state.players[id] ? `${fogName(state, id)}'s` : "enemy's") : 'neutral';
 }
 
 /** Veterancy level 0..3 and progress to the next one (0..1; 1 at the top level). */
@@ -150,7 +152,7 @@ export function warshipOrderLine(state: GameState, me: number, u: Unit): string 
   }
   if (u.state === 3 && u.station !== undefined && u.station >= 0 && u.station < state.map.owner.length) {
     const b = buildingAt(state, u.station);
-    const o = state.map.owner[u.station];
+    const o = knownOwnerOf(state, u.station);
     const arrived = !u.path.length || u.pathPos >= u.path.length;
     if (b && b.type === 'port' && st === 'blockade') return `${arrived ? 'Blockading' : 'Sailing to blockade'} ${nationName(state, me, b.owner)} port`;
     return `${arrived ? 'Shelling' : 'Sailing to shell'} ${nationName(state, me, o)} coast`;
@@ -168,8 +170,8 @@ export function divisionOrderLine(state: GameState, me: number, u: Unit): string
   if (u.state === 3) parts.push('In a spearhead');
   else if (mode === 'support') {
     const f = u.station ?? -1;
-    const o = f >= 0 && f < state.map.owner.length ? state.map.owner[f] : 0;
-    parts.push(o > 0 && o !== me ? `Supporting the front with ${state.players[o]?.name ?? 'the enemy'}` : 'Supporting a front');
+    const o = f >= 0 && f < state.map.owner.length ? knownOwnerOf(state, f) : 0;
+    parts.push(o > 0 && o !== me ? `Supporting the front with ${state.players[o] ? fogName(state, o) : 'the enemy'}` : 'Supporting a front');
   } else if (mode === 'refit') parts.push(u.state === 1 ? 'Driving to a Factory to refit' : 'Refitting at a Factory');
   else parts.push(u.state === 1 ? 'Driving to its new position' : 'Holding');
   parts.push(`${pct}% strength`);
@@ -209,7 +211,7 @@ export function wingStatus(state: GameState, b: Building): WingStatus {
   const tps = TICKS_PER_SECOND;
   const nextIn = w && (mission === 'support' || mission === 'strategic') ? Math.max(0, Math.ceil((w.nextTick - state.tick) / tps)) : -1;
   const foe = w?.targetOwner ?? 0;
-  const fname = foe > 0 ? state.players[foe]?.name ?? 'the enemy' : 'the enemy';
+  const fname = foe > 0 ? (state.players[foe] ? fogName(state, foe) : 'the enemy') : 'the enemy';
   let line: string;
   switch (mission) {
     case 'support':
@@ -369,8 +371,11 @@ function portNear(state: GameState, me: number, tile: number): Building | null {
   const cy = (tile / w) | 0;
   let best: Building | null = null;
   let bestD = 26;
+  // fog of war: only ports this player sees or remembers there
+  const fog = activeFog(state);
   for (const b of state.buildings.values()) {
     if (b.type !== 'port' || b.owner === me || b.owner <= 0 || areAllied(state, me, b.owner)) continue;
+    if (fog && fog.buildingAt(state, b.tile)?.type !== 'port') continue;
     const dx = (b.tile % w) - cx;
     const dy = ((b.tile / w) | 0) - cy;
     const d = dx * dx + dy * dy;
@@ -390,6 +395,9 @@ export function pillarPickClick(state: GameState, ui: UiState, dispatch: Dispatc
   const map = state.map;
   if (tile < 0 || tile >= map.owner.length) return { ok: false, reason: 'Click on the map' };
   const fail = (r: { ok: boolean; reason?: string }, why: string) => ({ ok: r.ok, reason: r.ok ? '' : r.reason ?? why });
+  // fog of war: a pick is judged by the land this player knows (last seen), never by who holds hidden land now
+  const fog = activeFog(state);
+  const ownerOf = (t: number): number => (fog ? fog.knownOwner(state, t) : map.owner[t]);
   switch (m.pick) {
     case 'bombard':
     case 'blockade': {
@@ -397,7 +405,7 @@ export function pillarPickClick(state: GameState, ui: UiState, dispatch: Dispatc
       if (!ships.length) return { ok: true, reason: '' };
       const from = unitTileOf(state, ships[0]);
       let aim = tile;
-      let foe = map.owner[tile];
+      let foe = ownerOf(tile);
       if (m.pick === 'blockade') {
         const port = portNear(state, me, tile);
         if (!port) return { ok: false, reason: 'Click an enemy port (or Esc to let them pick one)' };
@@ -411,7 +419,7 @@ export function pillarPickClick(state: GameState, ui: UiState, dispatch: Dispatc
       // a picked nation pins them (Fixed) until Follow my war is picked again; a click on open water does not
       if (foe > 0) dispatch({ type: 'setUnitStance', unitIds: ids, stance: m.pick, target: aim });
       const r = dispatch({ type: 'moveWarships', unitIds: ids, tile: water });
-      const info = r.ok && foe > 0 && !atWar(state, me, foe) ? `They open fire once you are at war with ${state.players[foe]?.name ?? 'them'}` : undefined;
+      const info = r.ok && foe > 0 && !atWar(state, me, foe) ? `They open fire once you are at war with ${state.players[foe] ? fogName(state, foe) : 'them'}` : undefined;
       return { ...fail(r, 'Your warships cannot reach there'), info };
     }
     case 'front': {
@@ -427,9 +435,26 @@ export function pillarPickClick(state: GameState, ui: UiState, dispatch: Dispatc
       const mission: AirMission = m.pick === 'airSupport' ? 'support' : m.pick === 'airStrategic' ? 'strategic' : 'superiority';
       const b = m.airfield >= 0 ? buildingAt(state, m.airfield) : undefined;
       const refill = b ? wingOf(state, b)?.refill ?? true : true;
+      if (fog && !fog.visible(tile)) {
+        const why = fogAirPick(state, me, mission, ownerOf(tile));
+        if (why) return { ok: false, reason: why };
+      }
       return fail(dispatch({ type: 'setAirMission', airfield: m.airfield, mission, target: tile, refill, follow: false }), 'Not possible there');
     }
   }
+}
+
+/**
+ * Fog of war: why an air mission can't be picked on a tile out of view, judged by its known owner ('' = send it and
+ * let the sim decide). Strategic raids need land of a nation you have seen there; support needs enemy land you have
+ * seen; fighter patrols stay over land you can see (your own, your allies' and the front are always in view).
+ */
+function fogAirPick(state: GameState, me: number, mission: AirMission, known: number): string {
+  if (mission === 'superiority') return 'Fighters patrol over your own or allied land (or right at the front)';
+  const foe = known > 0 && known !== me && !areAllied(state, me, known) && state.players[known]?.alive;
+  if (!foe) return mission === 'support' ? 'Pick enemy land you have seen, at your front' : 'Pick land of a nation you have seen (dark land is unexplored)';
+  if (atPeace(state, me, known)) return 'Peace time: nations can\'t attack each other yet';
+  return '';
 }
 
 // ------------------------------------------------------------------------------------------------ encirclement hint
@@ -561,7 +586,7 @@ function computePocket(state: GameState, me: number, p: SpearheadPreview): Pocke
 /** "Cuts off ~40 tiles of Azuria: they collapse" ('' = no pocket). */
 export function pocketLine(state: GameState, p: PocketPreview | null): string {
   if (!p || !p.tiles.length) return '';
-  return `Encircles ~${p.tiles.length} tiles of ${state.players[p.victim]?.name ?? 'the enemy'}: they collapse`;
+  return `Encircles ~${p.tiles.length} tiles of ${(state.players[p.victim] ? fogName(state, p.victim) : 'the enemy')}: they collapse`;
 }
 
 // ------------------------------------------------------------------------------------------------ overview

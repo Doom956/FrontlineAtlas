@@ -461,6 +461,15 @@ function armyOf(state: GameState, pid: number): number {
   return t ? t.infantry + t.armor + t.artillery : 0;
 }
 
+/** Why no missile of `kind` flies from `from` (a silo tile, -1 = every silo) whatever the target: no silo, reloading or too poor. */
+export function noMissileReason(state: GameState, pid: number, kind: 'rocket' | 'atomBomb', from = -1): string {
+  const c = unitCost(state, pid, kind);
+  const own = from >= 0 ? [buildingAt(state, from)].filter((b): b is Building => !!b && b.type === 'silo' && b.owner === pid) : buildingsOf(state, pid, 'silo').filter((b) => b.buildLeft <= 0);
+  if (!own.length) return 'Missiles fly from a finished Missile Silo of yours';
+  if (own.every((b) => chargesReady(b) < 1)) return own.length === 1 ? `The silo is reloading (${Math.ceil(nextChargeIn(own[0]))} s)` : 'All your silos are reloading';
+  return `Not enough resources (${c.gold} gold, ${c.iron} iron, ${c.oil} oil a launch)`;
+}
+
 /**
  * What a strike of `kind` by pid at `tile` with `count` launchers (1 default, 0 = every ready one) from `from` (a
  * site tile, -1 = every site, as the salvo picks them) would do: the role, the aim and radius, how many fly, and
@@ -523,12 +532,7 @@ export function strikePreview(state: GameState, pid: number, kind: StrikeKind, t
       }
       if (k > 0) sites.push(b);
     }
-    if (!out.reason && !launchers) {
-      const own = from >= 0 ? [buildingAt(state, from)].filter((b): b is Building => !!b && b.type === 'silo' && b.owner === pid) : buildingsOf(state, pid, 'silo').filter((b) => b.buildLeft <= 0);
-      if (!own.length) out.reason = 'Missiles fly from a finished Missile Silo of yours';
-      else if (own.every((b) => chargesReady(b) < 1)) out.reason = own.length === 1 ? `The silo is reloading (${Math.ceil(nextChargeIn(own[0]))} s)` : 'All your silos are reloading';
-      else out.reason = `Not enough resources (${c.gold} gold, ${c.iron} iron, ${c.oil} oil a launch)`;
-    }
+    if (!out.reason && !launchers) out.reason = noMissileReason(state, pid, kind, from);
   }
   out.launchers = launchers;
   out.sites = sites.map((b) => b.tile);

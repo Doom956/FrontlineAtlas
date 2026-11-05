@@ -183,7 +183,7 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
         label: RADIAL_LABEL[id],
         icon: STRIKES[id].line,
         danger: true,
-        hint: t && t.ok ? (vis === 2 ? blastSummary(state, m, t) + (t.covered ? `. ${t.covered}` : '') : 'Out of sight: you will see what it hit when it lands') : STRIKES[id].what,
+        hint: t && t.ok ? (!t.blind ? blastSummary(state, m, t) + (t.covered ? `. ${t.covered}` : '') : 'Out of sight: you will see what it hit when it lands') : STRIKES[id].what,
         disabled: st.state !== 'ready' ? st.line : t && !t.ok ? t.reason : undefined,
         run: () => {
           if (!a) return;

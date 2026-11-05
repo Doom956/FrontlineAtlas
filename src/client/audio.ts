@@ -6,7 +6,7 @@
 // Without an AudioContext (Node tests, old browsers, blocked audio) every method still works and never throws:
 // the rate limiting runs as usual, nothing is synthesized. See docs/AUDIO.md for the integration steps.
 
-import { fogFor } from './fog/fogView';
+import { fogEvent, fogFor } from './fog/fogView';
 import type { Effect, GameEvent, GameState } from '../sim/types';
 
 // ================================================================================================ sound table
@@ -950,8 +950,8 @@ export class AudioManager {
       let k = evs.length - 1;
       while (k >= 0 && !this.seenEvents.has(evs[k])) k--;
       for (let i = k + 1; i < evs.length; i++) {
-        const e = evs[i];
-        this.seenEvents.add(e);
+        this.seenEvents.add(evs[i]);
+        const e = state.fog ? fogEvent(state, evs[i]) : evs[i]; // fog of war: no sound placed on land you never saw
         const pan = e.tile >= 0 && view ? this.tilePan(state, view, e.tile) : undefined;
         const near = e.tile >= 0 && view ? this.tileNear(state, view, e.tile) : undefined;
         this.onGameEvent(e, h, pan ?? undefined, near);

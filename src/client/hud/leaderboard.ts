@@ -143,7 +143,7 @@ export class Leaderboard {
       const doc = kd ? `\nDoctrine: ${doctrineLabel(kd.id, kd.level, kd.adapting)}` : '';
       r.root.dataset.tip = met
         ? (isMe ? 'Your nation: click to centre on your capital' : `Click: centre on ${p.name} and show their card`) + team + doc
-        : 'A nation you have not met yet. Explore or fly recon to find them.';
+        : 'A nation you have not met yet. Expand, build a Watchtower or send ships to find them.';
     }
     const order = shown.map((p) => p.id).join(',');
     if (order !== this.order) {

@@ -17,7 +17,7 @@ import { airSeen, fogOn, seesAll } from '../../sim/fog';
 import { armyTotalOf, hasIntel } from '../../sim/buildings';
 import { areAllied } from '../../sim/diplomacy';
 import { sameTeam } from '../../sim/rules';
-import { borderTiles } from '../../sim/territory';
+import { blockCountsOf } from '../../sim/territory';
 import { unitVisibleTo } from '../../sim/techtree';
 import type { BuildingType, GameState, Unit } from '../../sim/types';
 
@@ -27,6 +27,8 @@ const SHIFT = 4;
 /** Fog texture values: in view, explored, never seen. */
 export const FOG_LIVE = 255;
 export const FOG_SEEN = 110;
+/** nations in sight are re-checked at least this often (ticks; FOG.humanTicks) */
+const SIGHT_TICKS = 5;
 
 export interface Remembered {
   type: BuildingType;
@@ -75,6 +77,7 @@ export class FogView {
   private lastTick = -1;
   private lastPhase = '';
   private lastBuildings = -1;
+  private lastSight = -1;
   private readEvents = new WeakSet<object>();
 
   private visFn = (i: number): number => this.tileVis(i);
@@ -128,7 +131,10 @@ export class FogView {
       this.lastBuildings = state.buildingsVersion;
       this.remember(state);
       this.gen++;
-    } else if (bitsTick) this.contacts(state);
+    } else if (bitsTick) {
+      if (state.tick - this.lastSight >= SIGHT_TICKS || state.tick < this.lastSight) this.sight(state);
+      else this.contacts(state);
+    }
   }
 
   // ------------------------------------------------------------------ reads
@@ -213,6 +219,7 @@ export class FogView {
     this.lastTick = -1;
     this.lastPhase = '';
     this.lastBuildings = -1;
+    this.lastSight = -1;
     this.readEvents = new WeakSet<object>();
     this.buildings.clear();
     this.capitals.clear();
@@ -291,6 +298,17 @@ export class FogView {
       this.buildings.set(b.tile, { type: b.type, owner: b.owner, level: b.level });
       this.met.add(b.owner);
     }
+    this.sight(state);
+  }
+
+  /**
+   * Capitals in view, nations in sight now (land in a block in view, or a unit you see) and nations met. Runs with
+   * every change of the bits or buildings and at least every SIGHT_TICKS ticks (land and units move into view between).
+   */
+  private sight(state: GameState): void {
+    const me = this.viewer;
+    this.lastSight = state.tick;
+    const metBefore = this.met.size;
     for (const [id, tile] of [...this.capitals]) {
       const p = state.players[id];
       if (this.visible(tile) && (!p || !p.alive || p.capital !== tile)) this.capitals.delete(id);
@@ -308,40 +326,27 @@ export class FogView {
         this.met.add(p.id);
       }
     }
-    // Land in view: five sample tiles per visible block (centre and corners), and the owners across our border.
-    const { owner } = state.map;
-    const w = state.map.width;
-    const h = state.map.height;
+    // Land in view: every player holding a tile of a block in view (the territory index's per-block counts, exact).
     const nb = this.bw * this.bh;
-    for (let b = 0; b < nb; b++) {
-      if (!(this.now[b >>> 5] & (1 << (b & 31)))) continue;
-      const x0 = (b % this.bw) * FOG_BLOCK;
-      const y0 = ((b / this.bw) | 0) * FOG_BLOCK;
-      const x1 = Math.min(w - 1, x0 + FOG_BLOCK - 1);
-      const y1 = Math.min(h - 1, y0 + FOG_BLOCK - 1);
-      const cx = Math.min(w - 1, x0 + 8);
-      const cy = Math.min(h - 1, y0 + 8);
-      for (const t of [cy * w + cx, y0 * w + x0, y0 * w + x1, y1 * w + x0, y1 * w + x1]) {
-        const o = owner[t];
-        if (o > 0) sight.add(o);
-      }
-    }
-    const bt = borderTiles(state, me);
-    const step = Math.max(1, Math.floor(bt.len / 400));
-    for (let k = 0; k < bt.len; k += step) {
-      const t = bt.list[k];
-      const x = t % w;
-      for (const d of [x > 0 ? -1 : 0, x < w - 1 ? 1 : 0, -w, w]) {
-        const u = t + d;
-        if (d === 0 || u < 0 || u >= owner.length) continue;
-        const o = owner[u];
-        if (o > 0 && o !== me) sight.add(o);
+    const vis: number[] = [];
+    for (let b = 0; b < nb; b++) if (this.now[b >>> 5] & (1 << (b & 31))) vis.push(b);
+    for (const p of state.players) {
+      if (p.id <= 0 || p.id === me || !p.alive || sight.has(p.id)) continue;
+      const { counts } = blockCountsOf(state, p.id);
+      if (!counts.length || !p.tiles) continue;
+      for (let k = 0; k < vis.length; k++) {
+        if (counts[vis[k]] > 0) {
+          sight.add(p.id);
+          break;
+        }
       }
     }
     for (const u of state.units) if (u.hp > 0 && u.owner !== me && this.unitShown(state, u)) sight.add(u.owner);
     for (const q of sight) this.met.add(q);
+    const same = sight.size === this.inSight.size && [...sight].every((q) => this.inSight.has(q));
     this.inSight = sight;
     this.contacts(state);
+    if (!same || this.met.size !== metBefore) this.gen++;
   }
 
   /** Diplomatic contact makes a nation met: alliance requests either way, and events addressed to you naming it. */
@@ -403,26 +408,49 @@ export function nationName(state: GameState, id: number): string {
 }
 export const UNKNOWN_NATION = 'Unknown nation';
 /** Toast for a click on a nation this player has not met. */
-export const UNMET_TOAST = 'You have not met this nation yet. Explore or fly recon to find them.';
+export const UNMET_TOAST = 'You have not met this nation yet. Expand toward them, or build a Watchtower to see further.';
 /** Tip for an army number fog hides. */
-export const ARMY_HIDDEN_TIP = 'Out of sight: build a Watchtower or fly recon';
+export const ARMY_HIDDEN_TIP = 'Out of sight: a Watchtower near them shows it';
 
 /**
- * An event as this client may read it (fog of war): a broadcast about the fall of a nation it has not met says so
- * without the name. Returns the event itself when nothing is hidden (a copy otherwise; the sim's event is untouched).
+ * An event as this client may read it (fog of war). Events addressed to you name nations you then know (contacts()
+ * marks them met). Broadcasts (no players listed: an atom bomb, the fall of a nation) say nothing about nations you
+ * have not met: the fall of one says so without the name, any other names one only as "an unknown nation"; and a
+ * broadcast on land you never explored carries no map spot (no camera jump, no panned sound). Returns the event
+ * itself when nothing is hidden (a copy otherwise; the sim's event is untouched).
  */
 export function fogEvent<E extends { kind: string; message: string; players: number[]; tile: number }>(state: GameState, e: E): E {
   const fog = activeFog(state);
-  if (!fog || e.players.length > 0 || e.kind !== 'eliminated') return e;
-  for (const p of state.players) {
-    const head = `${p.name} has been eliminated`;
-    if (p.id <= 0 || !e.message.startsWith(head)) continue;
-    if (!fog.isMet(p.id)) return { ...e, message: 'A nation you have not met has fallen' };
-    // "... by Y": Y is named only once met
-    for (const q of state.players) {
-      if (q.id > 0 && !fog.isMet(q.id) && e.message.startsWith(`${head} by ${q.name}`)) return { ...e, message: `${head} by a nation you have not met` };
+  if (!fog || e.players.length > 0) return e;
+  let message = e.message;
+  if (e.kind === 'eliminated') {
+    for (const p of state.players) {
+      const head = `${p.name} has been eliminated`;
+      if (p.id <= 0 || !e.message.startsWith(head)) continue;
+      if (!fog.isMet(p.id)) message = 'A nation you have not met has fallen';
+      else {
+        // "... by Y": Y is named only once met
+        for (const q of state.players) {
+          if (q.id > 0 && !fog.isMet(q.id) && e.message.startsWith(`${head} by ${q.name}`)) message = `${head} by a nation you have not met`;
+        }
+      }
+      break;
     }
-    return e;
-  }
-  return e;
+  } else message = hideUnmet(state, fog, message);
+  const tile = e.tile >= 0 && !fog.explored(e.tile) ? -1 : e.tile;
+  return message === e.message && tile === e.tile ? e : { ...e, message, tile };
+}
+
+/** A text with the names of nations this player has not met replaced by "an unknown nation" (longest names first). */
+function hideUnmet(state: GameState, fog: FogView, text: string): string {
+  const unmet = state.players.filter((p) => p.id > 0 && p.name && !fog.isMet(p.id) && text.includes(p.name)).sort((a, b) => b.name.length - a.name.length);
+  if (!unmet.length) return text;
+  // met names that hold an unmet one ("Varkosia" and "Varkos") are set aside first
+  const kept = state.players.filter((p) => p.id > 0 && p.name && fog.isMet(p.id) && text.includes(p.name) && unmet.some((q) => p.name.includes(q.name)));
+  let out = text;
+  kept.forEach((p, k) => (out = out.split(p.name).join(`\u0001${k}\u0001`)));
+  for (const p of unmet) out = out.split(p.name).join('\u0000');
+  out = out.split('\u0000').join('an unknown nation');
+  kept.forEach((p, k) => (out = out.split(`\u0001${k}\u0001`).join(p.name)));
+  return out.charAt(0).toUpperCase() + out.slice(1);
 }

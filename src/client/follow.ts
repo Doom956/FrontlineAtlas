@@ -15,6 +15,7 @@ import { airCoverActive, airMissionOf, followRaidOf, wingOf } from '../sim/airwi
 import { outnumbered } from '../sim/navy';
 import { autoFireOn, autoFireSaving, autoFireTargetsFor } from '../sim/airstrike';
 import { hasTech } from '../sim/tech';
+import { nationName } from './fog/fogView';
 
 export type FollowKind = 'air' | 'warship' | 'division';
 
@@ -46,7 +47,7 @@ export function followsWar(kind: FollowKind, choice: string): boolean {
   return choice === 'support';
 }
 
-const nameOf = (state: GameState, id: number): string => state.players[id]?.name ?? 'the enemy';
+const nameOf = (state: GameState, id: number): string => (state.players[id] ? nationName(state, id) : 'the enemy');
 
 /** "Following: your attack on Azuria" / "Following: Azuria, attacking you" / "Following: Azuria (last attack)" / "Following: no war yet". */
 export function followingLine(state: GameState, owner: number, t: FollowTarget): string {
@@ -170,7 +171,7 @@ export function airAutoLine(state: GameState, b: Building): string {
     if (!wing?.follow) return `Auto: raiding ${nameOf(state, nation)}${fixed}`;
     const raid = followRaidOf(state, b, nation);
     // fog of war: raids only hit buildings you have seen (sim airwings.ts)
-    if (raid <= 0) return fogOn(state) ? 'Auto: no known targets in reach. Fly recon over them' : `Auto: ${nameOf(state, nation)} is out of reach`;
+    if (raid <= 0) return fogOn(state) ? 'Auto: no targets you have seen in reach. Scout first: ships, planes or a Watchtower' : `Auto: ${nameOf(state, nation)} is out of reach`;
     if (raid !== nation) return `Auto: ${nameOf(state, nation)} out of reach, raiding ${nameOf(state, raid)}`;
     return `Auto: raiding ${nameOf(state, nation)}`;
   }
@@ -186,7 +187,7 @@ export function siloAutoLine(state: GameState, b: Building): string {
   if (!autoFireOn(state, b.tile)) return 'Auto: off (rockets fire only when you aim them)';
   const nation = followedNation(state, b.owner);
   if (nation <= 0) return 'Auto: no war, waiting';
-  if (!autoFireTargetsFor(state, b.owner, nation).length) return fogOn(state) ? `Auto: no known target near the front with ${nameOf(state, nation)}. Fly recon over them` : `Auto: no target near the front with ${nameOf(state, nation)}`;
+  if (!autoFireTargetsFor(state, b.owner, nation).length) return fogOn(state) ? `Auto: no target you have seen near the front with ${nameOf(state, nation)}. Scout first: ships, planes or a Watchtower` : `Auto: no target near the front with ${nameOf(state, nation)}`;
   if (autoFireSaving(state, b.owner)) return 'Auto: saving up (keeps the price of 2 rockets)';
   return `Auto: fires rockets at ${nameOf(state, nation)} when loaded`;
 }
