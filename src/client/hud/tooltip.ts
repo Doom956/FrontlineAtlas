@@ -1,7 +1,7 @@
 // Map hover: a compact card next to the cursor (terrain and what it does, the resource and what to build on it,
 // owner and army, the building and what it does) and, in attack mode, an odds badge. In build mode the card is
 // replaced by the build preview: "Build here" (green), "Upgrade to level N" (blue) or the reason (red), with costs.
-import { buildSeconds, unitAllowed } from '../../sim/rules';
+import { buildSeconds, peaceReason, unitAllowed } from '../../sim/rules';
 import { buildingAt, fortMultiplierAt } from '../../sim/buildings';
 import { borders, estimateAttack, supplyEfficiency } from '../../sim/combat';
 import type { AttackEstimate } from '../../sim/combat';
@@ -224,8 +224,11 @@ export class MapTooltip {
         }
       }
       if (state.phase === 'playing' && isAttackable(state, me.id, tile) && this.ctx.ui.mode.kind === 'none' && !this.ctx.ui.selection.length) {
+        // peace time: the nation last seen there can't be attacked yet (as for land in view: estimateAttack says no)
+        const peace = peaceReason(state, me.id, fog.knownOwner(state, tile));
         const n = troopSum(troopsToSend(me, this.ctx.ui));
-        rows.push(this.line('', `Click to attack with ${formatCount(n)}`, 'Out of sight: you find out who holds it when your troops get there', 'atk'));
+        if (peace) rows.push(this.line('', 'No attack yet', peace, 'own'));
+        else rows.push(this.line('', `Click to attack with ${formatCount(n)}`, 'Out of sight: you find out who holds it when your troops get there', 'atk'));
       }
     }
     this.card.className = 'mtip';

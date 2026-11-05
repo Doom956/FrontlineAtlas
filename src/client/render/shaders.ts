@@ -105,6 +105,14 @@ float hash(ivec2 c, uint salt) {
   x ^= x >> 16u; x *= 0x7feb352du; x ^= x >> 15u; x *= 0x846ca68bu; x ^= x >> 16u;
   return float(x) * (1.0 / 4294967296.0);
 }
+// Smooth value noise in 0..1 (fog edges wobble instead of running straight along the block grid).
+float vnoise(vec2 p, uint salt) {
+  ivec2 i = ivec2(floor(p));
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash(i, salt), b = hash(i + ivec2(1, 0), salt), c = hash(i + ivec2(0, 1), salt), d = hash(i + ivec2(1, 1), salt);
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
 int trenchAt(ivec2 p) {
   p = clamp(p, ivec2(0), ivec2(uMap) - 1);
   return int(texelFetch(uTrench, p, 0).r * 255.0 + 0.5);
@@ -280,9 +288,11 @@ void main() {
   float fogLive = 1.0;
   int fogHere = 2;
   if (uFogOn == 1) {
-    vec2 fb = fogBits(t);
-    fogSeen = smoothstep(0.55, 0.95, fb.x);
-    fogLive = smoothstep(0.55, 0.95, fb.y);
+    // a gentle wobble (up to ~3 tiles) so the edges of the block grid read as a natural haze, not straight lines
+    vec2 wob = (vec2(vnoise(t / 9.0, 61u), vnoise(t / 9.0, 67u)) - 0.5) * 6.0;
+    vec2 fb = fogBits(t + wob);
+    fogSeen = smoothstep(0.5, 1.0, fb.x);
+    fogLive = smoothstep(0.5, 1.0, fb.y);
     fogHere = fogAt(ti);
   }
   bool live = fogLive > 0.5;

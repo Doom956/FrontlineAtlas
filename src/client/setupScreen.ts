@@ -861,7 +861,7 @@ export class SetupScreen {
       this.prefs.setup = { ...keep, modifiers: { ...DEFAULT_SETUP.modifiers }, timeLimit: 0, victoryLandShare: VICTORY_LAND_SHARE };
       this.changed();
     });
-    reset.title = 'Every rule back to standard, the four above included';
+    reset.title = 'Every rule back to standard, the five above included';
     this.syncs.push(() => {
       reset.disabled = this.card.classList.contains('readonly') || activeModifiers(this.s).filter((x) => x.id !== 'teams').length === 0;
     });

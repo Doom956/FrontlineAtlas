@@ -1192,12 +1192,14 @@ refused. Victory: section 9.
 A game rule (`Modifiers.fogOfWar`, off by default; a row in the setup's common rules, a chip in game and in the
 lobby). You see only near your land, units and allies; dark land is unexplored, grey land is what you saw last.
 
-**Vision (sim, lockstep).** One grid of `territory.BLOCK` x `BLOCK` (16 x 16) tile blocks. Per player two bitsets in
-`GameState.fog`: `now` (blocks in view at the last refresh) and `seen` (ever in view, explored). A block is in view
+**Vision (sim, lockstep).** One grid of `territory.BLOCK` x `BLOCK` (16 x 16) tile blocks. Per player three bitsets
+in `GameState.fog`: `own` (what its own sources saw at its last refresh), `now` (blocks in view at the last refresh)
+and `seen` (ever in view, explored). A block is in view
 when its nearest point is within a source's radius (the rule of `territory.ownsNear`). `updateFog` runs in `tick()`
 after `updateArsenal` and before the AI: humans every `FOG.humanTicks` (0.5 s), AI nations every `FOG.aiTicks` (1 s),
 staggered by id; tribes have no vision. One full pass at the start of play. Allies and teammates share live vision
-(each player's `now` is stamped from its own sources and every ally's), and what an ally showed stays explored.
+(each player's `now` is its own stamp OR'd with every living ally's last own stamp, at most `FOG.aiTicks` old, so a
+bloc of k members costs k stamps a cycle, not k x k), and what an ally showed stays explored.
 Created by `makeGameState` only with the rule; never by a reader. Hashed (`hashFog`). Integer math only.
 
 | Source | Radius (tiles) |
@@ -1226,15 +1228,22 @@ a unit or a capital in view, an alliance request either way, an event addressed 
   buildings, units, deposits, trenches, fallout or effects.
 - Explored, out of view: the last owners seen, greyed and darker; remembered buildings greyed without level badge.
 - In view: live, as without fog.
-The map shader samples a `bw` x `bh` R8 fog texture with LINEAR filtering and smoothsteps it, so the edges are soft
-instead of 16-tile squares; the Canvas2D fallback draws the same grid scaled with smoothing; the minimap follows.
+The map shader reads a `bw` x `bh` R8 fog texture (one texel per block), decodes the explored and in-view bits of
+the 4 nearest blocks and blends them, then smoothsteps each: the edges are soft, and each fade stays inside the
+blocks that have the bit (never-seen land is dark right from its edge, so the owners kept for hidden land never show
+at full light). No border line is drawn across the edge of two blocks unless both are in view (owners from different
+moments would draw straight fake borders there). The Canvas2D fallback draws the grid scaled with smoothing; the
+minimap follows. Nations in sight are exact: any player holding a tile of a block in view (the territory index's
+per-block counts), re-checked at least every 5 ticks.
 
 **Leaks closed.** Standings rank every nation by land (land shares are public: victory and coalitions use them) but
 show a nation you have not met as "Unknown" with a striped swatch and no army; a met nation's army shows only while it
 is in sight, allied or under watchtower or recon intel ("?" otherwise). The nation card opens only for met nations
 (a toast says why otherwise); Attack needs a shared border or a capital you have seen. Tooltip: "Unexplored" (terrain
 only) or "Last seen: X" with the remembered building and no army or odds; strike previews show the blast but not what
-it would hit out of view. Events: the fall of a nation you have not met reads "A nation you have not met has fallen";
+it would hit out of view. Events: the fall of a nation you have not met reads "A nation you have not met has fallen",
+other news for everyone (an atom bomb) names such nations "an unknown nation" and on land you never explored has no
+map spot (no camera jump, no panned sound);
 event and coalition clicks only jump to explored land or known capitals. Enemy units, telegraphs, barrages, effects,
 fronts between others, SAM rings, labels' army line, sounds and battle effects only where you see. Incoming
 transports, cargo planes and bombers count once seen (rocket and atom bomb launches keep their warning event).

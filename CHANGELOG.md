@@ -8,6 +8,8 @@ The big rounds of work, newest first. Each one was merged to `main` and deployed
   Watchtowers, and what your allies see. Dark land is unexplored; grey land shows what you saw last.
 - AI nations play by the same fog: no landings, strikes or nukes on places they have never seen.
 - Standings, nation cards, tooltips and news keep nations you have not met unknown, and armies out of sight show "?".
+- Strikes go by what you know: bombs, rockets, atom bombs and barrages need enemy land you have seen there, and
+  aiming over dark land tells nothing about who holds it.
 - Off by default, never in the tutorial. Online games need the new version (protocol 17).
 
 ## 2026-11-01 · Learning the game, reading the war

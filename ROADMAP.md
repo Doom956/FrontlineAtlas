@@ -414,6 +414,35 @@ only: no src/sim file changed (released together with the auto round, protocol 1
   events. Open: on phones the new-player guide bar (its own layer) sits over an open drawer, including group rows,
   until Next or Hide guide; hovering a group shows its tooltip over the name.
 
+## Fog of war (2026-11-05, branch `fog`, not merged yet)
+Owner asked for a fog of war game mode. A game rule (Modifiers.fogOfWar), off by default, never in the tutorial.
+Protocol 17 (the owner-chat round also bumps it: whichever merges second takes the next number).
+- Rule: each player sees in 16 x 16 tile blocks. Sources: own land (24 tiles past the border), units (warship 30,
+  tank division 20, transport 12, planes 12 to 20), finished Watchtowers (half their intel radius, 40 at level 1) and
+  Ports (30), recon reveals. Allies and teammates share vision; planes and missiles also show on SAM and airfield
+  radar. Vision is lockstep state (src/sim/fog.ts, hashed) because AI and auto units obey it. Lifted in the spawn
+  phase, at the end, in a continued game, for spectators and with the owner console's revealIntel.
+- What players see: dark terrain where never seen; explored land greyed, showing what was last seen (owners,
+  buildings); live land in view. Standings say "Unknown" for nations not met and "?" for armies out of sight; nation
+  cards and diplomacy open only for met nations; news about unmet nations (falls, atom bombs) does not name them.
+  Strikes need enemy land seen there; strike previews, warship picks, air mission picks and unit status lines never
+  tell who holds hidden land. The setup row and a first guide tip (shown even during the opening steps) explain it;
+  the tip and the dark-land tooltip point to Watchtowers, which need no research.
+- AI in fog: landings, strikes, drops, barrages, nukes, recon, air-wing raids and rocket auto-fire aim only at places
+  their side has seen; hunting warships chase only ships in view.
+- Review fixes (second pass): strike preview, Blockade/Bombard and air picks, Forces/unit lines and atom bomb news no
+  longer leak hidden owners or names; nations in sight are exact (any land in a block in view, re-checked every 5
+  ticks); ally vision costs one stamp per player (teams huge map: 4.6 -> 0.4 ms a tick, full pass 72 -> 4.5 ms);
+  the map shader keeps fades inside seen/live blocks and draws no borders across fog seams; guide tip early; peace
+  time on the out-of-sight attack line; Reset rules text says five.
+- Checks: see the final report (tsc, server tsc, full vitest, build, Playwright single player and online, GitHub
+  e2e, AI batch on main vs fog with fog off).
+- Not checked: real GPUs and phones; AI strength with fog on vs off in headless runs; the Canvas2D fallback's fog
+  edges (still a smoothed block grid). Open: last-seen memory is lost on reload or rejoin; the AI knows the current
+  buildings in explored areas while a human sees the last-seen ones; a click on remembered land that changed while
+  out of sight can still fail with the sim's reason (like an attack); online fog is honour based (every client holds
+  the full state).
+
 ## Queued next (owner, 2026-11-03)
 Later: anonymous real-match stats on the server for balance, rematch + quick chat, replays, in-game phone/touch HUD, real-GPU performance check, flaky scripted-player e2e fix.
 
