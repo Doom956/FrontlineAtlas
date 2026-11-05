@@ -10,6 +10,8 @@ import { TEAM_COLORS } from '../sim/state';
 import type { GameSetup } from '../sim/types';
 import { button, el, rgbCss, setText } from './dom';
 import { lineIcon } from './hud/glyph';
+import { ChatView } from './chat/view';
+import { chatEnabled, chatFor, setChatEnabled } from './chat/store';
 import { PLAYER_PALETTE, saveSetupPrefs, SetupScreen, type SetupPrefs } from './setupScreen';
 
 /** Settings edits are sent at most this often (sliders fire many input events). */
@@ -100,6 +102,11 @@ export class MultiplayerScreen {
   private msgEl: HTMLElement | null = null;
   // lobby page parts
   private side: HTMLElement | null = null;
+  /** the column's parts: top (code, players, teams) and bottom (Start, Leave) are redrawn; the chat stays */
+  private sideTop: HTMLElement | null = null;
+  private sideBottom: HTMLElement | null = null;
+  private chat: ChatView | null = null;
+  private chatSwitch: HTMLElement | null = null;
   private lobbyStatus: HTMLElement | null = null;
   private countdownEl: HTMLElement | null = null;
 
@@ -127,6 +134,8 @@ export class MultiplayerScreen {
     this.offs = [];
     clearInterval(this.timer);
     if (this.sendTimer) clearTimeout(this.sendTimer);
+    this.chat?.destroy();
+    this.chat = null;
   }
 
   /** Joins a lobby by its code (also used for ?lobby= links). */
@@ -229,6 +238,8 @@ export class MultiplayerScreen {
   private showBrowse(): void {
     this.view = 'browse';
     this.setup = null;
+    this.chat?.destroy();
+    this.chat = null;
     this.side = this.lobbyStatus = this.countdownEl = null;
     const card = this.card;
     card.className = 'menu-card mp';
@@ -379,6 +390,24 @@ export class MultiplayerScreen {
     this.message = '';
     this.side = el('section', 'setup-col lobby-col');
     this.side.setAttribute('aria-label', 'Lobby');
+    this.sideTop = el('div', 'lobby-top');
+    this.sideBottom = el('div', 'lobby-bottom');
+    this.chat?.destroy();
+    this.chat = new ChatView(chatFor(this.hooks.net()), { mode: 'lobby' });
+    const chatSec = el('div', 'lobby-chat');
+    this.chatSwitch = el('div', 'seg setup-seg chat-switch');
+    this.chatSwitch.dataset.test = 'chat-toggle';
+    for (const on of [true, false]) {
+      const b = button(on ? 'Chat on' : 'Chat off', '', () => {
+        setChatEnabled(on);
+        this.renderChatSwitch();
+      });
+      b.dataset.on = String(on);
+      this.chatSwitch.append(b);
+    }
+    chatSec.append(this.chat.el, this.chatSwitch);
+    this.side.append(this.sideTop, chatSec, this.sideBottom);
+    this.renderChatSwitch();
     this.lobbyStatus = el('div', 'menu-foot lobby-foot');
     this.lobbyPrefs.setup = cloneSetup(l.settings);
     const title = l.isPublic ? `${l.kind ? KIND_LABEL[l.kind] : 'Public'} game` : 'Private lobby';
@@ -390,6 +419,15 @@ export class MultiplayerScreen {
     );
     this.card.classList.add('lobby');
     this.renderLobby();
+  }
+
+  private renderChatSwitch(): void {
+    const on = chatEnabled();
+    for (const b of this.chatSwitch?.querySelectorAll<HTMLButtonElement>('button') ?? []) {
+      const mine = b.dataset.on === String(on);
+      b.classList.toggle('on', mine);
+      b.setAttribute('aria-pressed', String(mine));
+    }
   }
 
   private queueSettings(s: GameSetup): void {
@@ -415,8 +453,8 @@ export class MultiplayerScreen {
 
   private renderLobby(): void {
     const l = this.lobby;
-    const side = this.side;
-    if (!l || !side || !this.setup) return;
+    const side = this.sideTop;
+    if (!l || !side || !this.sideBottom || !this.setup) return;
     const host = this.isHost();
     // the server's settings, unless the host has an edit on its way
     if (!(host && (this.pendingSetup || this.sendTimer))) this.setup.setSetup(l.settings, host);
@@ -516,7 +554,7 @@ export class MultiplayerScreen {
     const leave = button('Leave', 'ghost', () => this.leave());
     leave.dataset.test = 'mp-leave';
     act.append(leave);
-    side.append(act);
+    this.sideBottom.replaceChildren(act);
     this.renderLobbyStatus();
   }
 

@@ -12,9 +12,14 @@ import {
   NAME_MAX_LENGTH,
   PLAYER_COLORS,
   TEAM_NAMES,
+  CHAT_HISTORY,
   isHashTurn,
 } from '../src/net/protocol';
 import type {
+  ChatEntry,
+  ChatHistoryMsg,
+  ChatNoticeReason,
+  ChatSendMsg,
   ErrorCode,
   GameOverReason,
   GameStartMsg,
@@ -30,6 +35,7 @@ import type {
   TeamsInfo,
 } from '../src/net/protocol';
 import type { ServerOptions } from './options';
+import { ChatLimiter, maskChatText } from './chat';
 
 /** What a room needs from a connection (implemented by the hub's Session). */
 export interface RoomSession {
@@ -86,7 +92,21 @@ export interface Member {
   budgetWarnedAt: number;
   /** told once that the players' hashes disagree without a majority */
   disagreeWarned: boolean;
+  /** chat rate limit (kept across reconnects: a new socket does not reset it) */
+  chatLimit: ChatLimiter;
+  /** last chat notice sent (a flood gets one notice now and then, not one per message) */
+  chatNoticeAt: number;
 }
+
+/** A chat message the room keeps (history for joiners): the entry and the team it was written to. */
+interface ChatRecord {
+  entry: ChatEntry;
+  /** team channel: the sender's team */
+  team: number;
+}
+
+/** Chat notices to one member at most this often. */
+const CHAT_NOTICE_MS = 1500;
 
 /** One catch-up message carries at most about this many bytes of turns, or this many non-empty turns. */
 export const CATCHUP_CHUNK_BYTES = 512 * 1024;
@@ -203,6 +223,9 @@ export class Room {
   continued = false;
   winner = 0;
   closed = false;
+  /** the last CHAT_HISTORY chat messages */
+  private chatLog: ChatRecord[] = [];
+  private nextChatId = 1;
 
   constructor(host: RoomHost, code: string, isPublic: boolean, settings: LobbySettings) {
     this.host = host;
@@ -267,6 +290,8 @@ export class Room {
       intentRefill: this.host.now(),
       budgetWarnedAt: -Infinity,
       disagreeWarned: false,
+      chatLimit: new ChatLimiter(this.host.opts.chatBurst, this.host.opts.chatWindowMs, this.host.opts.chatCooldownMs),
+      chatNoticeAt: -Infinity,
     };
     this.members.push(m);
     if (!this.build && session.build) this.build = session.build;
@@ -302,6 +327,7 @@ export class Room {
       this.sendGameStart(m, haveTurns);
       this.broadcastPresence();
     }
+    this.sendChatHistory(m);
   }
 
   /** The session is already this member's (joinLobby for the room you are in): resend the lobby state only. */
@@ -497,6 +523,8 @@ export class Room {
     this.startedAt = now;
     for (const m of this.members) if (m.session) this.sendGameStart(m);
     this.broadcastPresence();
+    // team chat opens with the teams: everyone gets the channels they may use now
+    for (const m of this.members) this.sendChatHistory(m);
     this.loopStart = now + this.host.opts.firstTurnDelayMs;
     this.scheduleNext();
     this.host.opts.log(`game ${this.code} started: ${players.length} players, ${s.mode}, ${mapLabel(s.map)}`);
@@ -952,6 +980,96 @@ export class Room {
       this.host.sessionLeftRoom(s);
     }
     this.host.roomClosed(this);
+  }
+
+  // ---------------------------------------------------------------------------------------------- chat
+
+  /**
+   * Whether this member may not chat. The owner's moderation sets it; until that exists nobody is muted.
+   * TODO(owner powers): replace this stub with the real mute list when that round merges.
+   */
+  isMuted(_memberId: number): boolean {
+    return false;
+  }
+
+  /** Team chat is open to this member: a player in a running (or just finished) teams game. */
+  private teamChatOpen(m: Member): boolean {
+    return this.phase !== 'lobby' && this.settings.mode === 'teams' && !m.spectator && m.team > 0;
+  }
+
+  /** Whether a member may read a chat message. */
+  private canRead(m: Member, r: ChatRecord): boolean {
+    switch (r.entry.channel) {
+      case 'all':
+        return true;
+      case 'spectators':
+        return m.spectator;
+      case 'team':
+        return !m.spectator && r.team > 0 && m.team === r.team;
+    }
+  }
+
+  private chatNotice(m: Member, reason: ChatNoticeReason, text: string, retryMs?: number): void {
+    const now = this.host.now();
+    if (now - m.chatNoticeAt < CHAT_NOTICE_MS) return;
+    m.chatNoticeAt = now;
+    const msg: ServerMessage = { type: 'chatNotice', reason, text };
+    if (retryMs !== undefined) msg.retryMs = retryMs;
+    m.session?.send(msg);
+  }
+
+  /**
+   * A chat message from a member (the text is already cleaned by validate.ts). Refusals go to the sender alone as a
+   * chatNotice; a message that passes is masked (chat.ts), kept for the history and sent to everyone who may read it.
+   * Chat is never part of the game: no turns, no hashes.
+   */
+  chat(m: Member, msg: ChatSendMsg): void {
+    if (this.closed) return;
+    if (this.isMuted(m.memberId)) {
+      this.chatNotice(m, 'muted', "You can't send messages in this game.");
+      return;
+    }
+    const channel = m.spectator ? 'spectators' : msg.channel;
+    if (channel === 'team' && !this.teamChatOpen(m)) {
+      this.chatNotice(m, 'notAllowed', this.phase === 'lobby' ? 'Team chat opens when the game starts.' : 'Team chat is for teams games.');
+      return;
+    }
+    const wait = m.chatLimit.take(this.host.now());
+    if (wait > 0) {
+      this.chatNotice(m, 'rateLimit', `Too many messages. You can chat again in ${Math.ceil(wait / 1000)} s.`, wait);
+      return;
+    }
+    const entry: ChatEntry = {
+      id: this.nextChatId++,
+      channel,
+      from: m.memberId,
+      name: m.name,
+      color: [...m.color] as RGB,
+      playerId: m.spectator ? 0 : m.playerId,
+      text: maskChatText(msg.text),
+      at: this.host.now(),
+    };
+    // a map mark only for teammates in a running game
+    if (msg.ping !== undefined && channel === 'team' && this.phase === 'running') entry.ping = msg.ping;
+    const rec: ChatRecord = { entry, team: channel === 'team' ? m.team : 0 };
+    this.chatLog.push(rec);
+    if (this.chatLog.length > CHAT_HISTORY) this.chatLog.splice(0, this.chatLog.length - CHAT_HISTORY);
+    const text = JSON.stringify({ type: 'chat', entry });
+    for (const x of this.members) if (x.session && this.canRead(x, rec)) x.session.sendRaw(text);
+  }
+
+  /** The recent chat this member may read, and the channels it may use (on every attach and at the start). */
+  private sendChatHistory(m: Member): void {
+    if (!m.session) return;
+    const msg: ChatHistoryMsg = {
+      type: 'chatHistory',
+      code: this.code,
+      you: m.memberId,
+      spectator: m.spectator,
+      team: this.teamChatOpen(m),
+      entries: this.chatLog.filter((r) => this.canRead(m, r)).map((r) => r.entry),
+    };
+    m.session.send(msg);
   }
 
   // ---------------------------------------------------------------------------------------------- messages

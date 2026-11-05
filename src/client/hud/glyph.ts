@@ -211,6 +211,9 @@ const LINE: Record<string, string> = {
   // alerts (alerts.ts): the bell button, a blockade anchor, a tank
   bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15zM10 20.5h4M12 3v2"/>',
   anchor: '<circle cx="12" cy="5" r="2"/><path d="M12 7v13.5M8 10.5h8M4 13a8 7.5 0 0 0 16 0M2.5 14.5L4 13l1.5 1.5M18.5 14.5L20 13l1.5 1.5"/>',
+  // chat (chat/view.ts): a speech box and a send arrow
+  chat: '<path d="M4 5h16v11H11l-4.5 3.5V16H4z"/><path d="M8 9.5h8M8 12.5h5"/>',
+  send: '<path d="M4 12l16-7-5 15-3-6.5zM12 13.5l8-8.5"/>',
   tank: '<path d="M3.5 14h17l-2 5h-13z"/><path d="M6.5 14v-3.5h8l1.5 3.5M10.5 10.5V8.5h9"/><circle cx="7.5" cy="16.5" r=".6"/><circle cx="16.5" cy="16.5" r=".6"/>',
 };
 export type LineIconId = keyof typeof LINE;

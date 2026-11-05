@@ -4,12 +4,14 @@
 
 import { BUILDINGS, MAX_GROUP_UNITS, STRIKE, TECHS, UPGRADE_SELECTION_MAX } from '../src/sim/config';
 import { ADMIN_OP_LIST } from '../src/sim/admin';
+import { cleanChatText } from './chat';
 import { DEFAULT_MODIFIERS, validateSetup } from '../src/sim/setup';
 import { AIR_MISSIONS, DIVISION_MODES, DOCTRINE_IDS, NAVAL_VARIANTS, WARSHIP_STANCES } from '../src/sim/types';
 import type { Action, GameSetup, Modifiers } from '../src/sim/types';
 import {
   ADMIN_CODE_MAX_LENGTH,
   BUILD_MAX_LENGTH,
+  CHAT_MAX_LENGTH,
   CLIENT_ID_PATTERN,
   LOBBY_LIMITS,
   NAME_MAX_LENGTH,
@@ -344,6 +346,17 @@ export function validateClientMessage(m: unknown): Result<ClientMessage> {
     case 'adminAuth':
       if (typeof m.code !== 'string' || m.code.length === 0 || m.code.length > ADMIN_CODE_MAX_LENGTH) return fail('adminAuth: bad code');
       return ok({ type: 'adminAuth', code: m.code });
+    case 'chat': {
+      if (m.channel !== 'all' && m.channel !== 'team') return fail('chat: channel must be all or team');
+      const text = cleanChatText(m.text);
+      if (text === null) return fail(`chat: text must be 1..${CHAT_MAX_LENGTH} characters`);
+      const out: ClientMessage = { type: 'chat', channel: m.channel, text };
+      if (m.ping !== undefined) {
+        if (!isInt(m.ping, 0, MAX_TILE)) return fail('chat: bad ping');
+        out.ping = m.ping;
+      }
+      return ok(out);
+    }
     case 'ping':
       if (m.t !== undefined && !isNum(m.t, -1e15, 1e15)) return fail('ping: bad t');
       return ok(m.t === undefined ? { type: 'ping' } : { type: 'ping', t: m.t });
