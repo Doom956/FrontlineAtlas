@@ -116,8 +116,8 @@ export class TerminalLine {
         this.handlers.submit();
       }
     });
-    // the other key events stay out of the game too
-    for (const t of ['keyup', 'keypress'] as const) this.input.addEventListener(t, (e) => e.stopPropagation());
+    // keypress stays out of the game too; keyup still reaches the page so a held pan key is let go (input.ts)
+    this.input.addEventListener('keypress', (e) => e.stopPropagation());
     // a click anywhere on the line (label, padding) puts the caret back in the input
     this.el.addEventListener('pointerdown', (e) => {
       e.stopPropagation();

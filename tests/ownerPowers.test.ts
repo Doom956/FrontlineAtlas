@@ -395,6 +395,43 @@ describe('owner powers: server', () => {
     expect(seen(c1)).not.toContain('let me back');
   });
 
+  it('remove and mute also hold for a new clientId from the same address; the owner and members already in are not touched', async () => {
+    const owner = track(await connected(srv, 'Owner'));
+    expect(await owner.auth()).toBe(true);
+    // every test client connects from 127.0.0.1: 'Mate' plays for the same address as the troublemaker
+    const l = await privateGame(srv, ['Host', 'Bad', 'Mate'], false);
+    track(l.cs);
+    const [host, bad, mate] = l.cs;
+    const room = srv.hub.rooms.get(l.code)!;
+    const idOf = (name: string): number => room.members.find((m) => m.name === name)!.memberId;
+    owner.send({ type: 'adminMute', code: l.code, memberId: idOf('Bad'), minutes: 60 });
+    expect((await owner.take('adminAck')).ok).toBe(true);
+    // a private window: a fresh clientId with the same name starts muted
+    const twin = track(await connected(srv, 'Bad'));
+    twin.send({ type: 'joinLobby', code: l.code });
+    await twin.take('chatHistory');
+    twin.send({ type: 'chat', channel: 'all', text: 'new me' });
+    expect((await twin.take('chatNotice')).reason).toBe('muted');
+    // a member who was already in from that address chats as before
+    mate.send({ type: 'chat', channel: 'all', text: 'still here' });
+    await host.take('chat', (m) => m.entry.text === 'still here');
+    owner.send({ type: 'adminKick', code: l.code, memberId: idOf('Bad') });
+    expect((await owner.take('adminAck')).ok).toBe(true);
+    await bad.take('kicked');
+    const fresh = track(await connected(srv, 'Bad'));
+    fresh.send({ type: 'joinLobby', code: l.code });
+    expect(await fresh.take('error')).toMatchObject({ code: 'kicked', message: 'You were removed from this lobby' });
+    fresh.send({ type: 'joinLobby', code: l.code, spectate: true });
+    expect((await fresh.take('error')).code).toBe('kicked');
+    // the owner (same address in this test) may still watch, and the others play on
+    owner.send({ type: 'joinLobby', code: l.code, spectate: true });
+    await owner.take('chatHistory');
+    expect(room.members.some((m) => m.name === 'Mate' && m.session)).toBe(true);
+    await sleep(60);
+    const seen = (c: Client): string[] => c.inbox.flatMap((m) => (m.type === 'chat' ? [m.entry.text] : []));
+    expect(seen(host)).not.toContain('new me');
+  });
+
   it('kick: removed from a running game with a plain note, and refused when coming back', async () => {
     const owner = track(await connected(srv, 'Owner'));
     expect(await owner.auth()).toBe(true);

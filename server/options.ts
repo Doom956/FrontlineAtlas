@@ -77,6 +77,8 @@ export interface ServerOptions {
   chatBurst: number;
   chatWindowMs: number;
   chatCooldownMs: number;
+  /** chat: at most this many messages per chatWindowMs from one address in one room (several players may share it) */
+  chatAddressBurst: number;
   log: (msg: string) => void;
 }
 
@@ -120,6 +122,7 @@ export const DEFAULT_OPTIONS: ServerOptions = {
   chatBurst: CHAT_BURST,
   chatWindowMs: CHAT_WINDOW_MS,
   chatCooldownMs: CHAT_COOLDOWN_MS,
+  chatAddressBurst: CHAT_BURST * 4,
   log: (msg) => console.log(`[${new Date().toISOString()}] ${msg}`),
 };
 

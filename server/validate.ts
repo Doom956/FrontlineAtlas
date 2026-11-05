@@ -4,7 +4,7 @@
 
 import { BUILDINGS, MAX_GROUP_UNITS, STRIKE, TECHS, UPGRADE_SELECTION_MAX } from '../src/sim/config';
 import { ADMIN_OP_LIST } from '../src/sim/admin';
-import { cleanChatText } from './chat';
+import { CONTROL, MARK_PILES, cleanChatText } from './chat';
 import { DEFAULT_MODIFIERS, validateSetup } from '../src/sim/setup';
 import { AIR_MISSIONS, DIVISION_MODES, DOCTRINE_IDS, NAVAL_VARIANTS, WARSHIP_STANCES } from '../src/sim/types';
 import type { Action, GameSetup, Modifiers } from '../src/sim/types';
@@ -223,11 +223,15 @@ export function validateAction(v: unknown): Result<Action> {
 
 // ------------------------------------------------------------------------------------------------ fields
 
-/** Trims, removes control characters and collapses spaces; null when empty or too long afterwards. */
+/**
+ * Trims, removes control and invisible characters (the same set as chat text, server/chat.ts), cuts piles of
+ * combining marks and collapses spaces; null when empty or too long afterwards. Names show next to every chat
+ * message, so an invisible character must not make a second "Aurora" look like the first (room.ts uniqueName).
+ */
 export function cleanName(v: unknown): string | null {
   if (typeof v !== 'string' || v.length > NAME_MAX_LENGTH * 4) return null;
-  // eslint-disable-next-line no-control-regex
-  const s = v.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/g, '').replace(/\s+/g, ' ').trim();
+  // line breaks and tabs part words; every other invisible character goes ("Au<zero width>rora" is "Aurora")
+  const s = v.normalize('NFC').replace(/[\t\n\r\u2028\u2029]/g, ' ').replace(CONTROL, '').replace(MARK_PILES, '$1').replace(/\s+/g, ' ').trim();
   if (s.length === 0 || s.length > NAME_MAX_LENGTH) return null;
   return s;
 }

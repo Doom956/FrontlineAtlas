@@ -157,8 +157,11 @@ seconds}`, `notice {text, style, seconds}`, `spectacle {kind, code?, tile?, labe
 `kicked {reason: 'You were removed from this game'}` (joining that room again is refused, also as a spectator).
 None of these are intents: they never change a game, are never hashed and can't desync. Text is cleaned on the server
 and again on the client (`cleanBroadcastText`: control, zero-width and bidi characters out, one line; text at most
-200 characters, title and labels 40) and shown with textContent only. Mutes are kept per room by clientId (a rejoin
-keeps them); the chat reads them with `Room.isMuted(memberId)`. Watching: the owner joins a running game with the
+200 characters, title and labels 40) and shown with textContent only. Mutes and removals are kept per room by clientId
+(a rejoin keeps them) and by the address the member joined from: a new clientId from that address is refused
+(`kicked`) or starts muted for the rest of the mute. Members already in the room from that address keep chatting and
+playing, and an authenticated session is never refused, so on a shared address (a school, one home network) only
+people who join later are caught. The chat reads mutes with `Room.isMuted(memberId)`. Watching: the owner joins a running game with the
 normal `joinLobby {spectate: true}` and counts as one more anonymous spectator; from that seat the server relays
 `admin` intents (stamped player 0) and refuses every other intent. The sim needs an explicit nation for every op from
 player 0 ('Pick a nation' otherwise).
@@ -167,8 +170,10 @@ player 0 ('Pick a nation' otherwise).
 {channel, text, ping?}`: the server cleans the text (control and invisible characters out, spaces collapsed, 1..160
 characters), masks the words in `server/chatWords.ts` with `***` and relays `chat {entry}` to those who may read it:
 `all` reaches everyone, `team` only teammates in a running teams game (with an optional map mark, `ping`, a tile), and
-spectators always write in their own `spectators` channel that players don't see. 5 messages per 10 s per member, then
-10 s of quiet; refusals (too fast, muted with `adminMute`, team chat not open) come back as `chatNotice` to the sender
+spectators always write in their own `spectators` channel that players don't see. 5 messages per 10 s per clientId
+and 20 per 10 s per address in each room (`chatAddressBurst`; the owner's session only has the first), then 10 s of
+quiet. The room keeps these limiters for its whole life, so leaving and joining again, or a reconnect, starts no new
+budget; refusals (too fast, muted with `adminMute`, team chat not open) come back as `chatNotice` to the sender
 alone. The room keeps the last 50 messages: every join, reconnect and the game start send `chatHistory` with the ones
 that member may read. Clients show chat with `textContent` only (no HTML, no links); a player hiding someone lasts the
 browser session and "Chat off" (Menu, or the switch in the lobby) hides everything.

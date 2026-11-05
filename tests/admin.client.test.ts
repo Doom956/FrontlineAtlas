@@ -191,7 +191,9 @@ describe('terminal line (what the owner sees while typing)', () => {
   });
   it('keys typed in the line never reach the game; Enter submits, Esc closes', () => {
     const { input, calls } = make();
-    for (const t of ['keydown', 'keyup', 'keypress']) expect(input.fire(t, { key: 'w' }).stopped).toBe(true);
+    for (const t of ['keydown', 'keypress']) expect(input.fire(t, { key: 'w' }).stopped).toBe(true);
+    // a release still reaches the page (a held pan key is let go)
+    expect(input.fire('keyup', { key: 'w' }).stopped).toBeFalsy();
     input.fire('keydown', { key: 'Enter' });
     input.fire('keydown', { key: 'Escape' });
     expect(calls).toEqual({ submit: 1, escape: 1 });

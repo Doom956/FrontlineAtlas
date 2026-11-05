@@ -10,9 +10,9 @@ export const CHAT_RAW_MAX = CHAT_MAX_LENGTH * 4;
 // C0/C1 control characters, line and paragraph separators, and invisible characters that change how text reads
 // (bidi overrides and isolates, zero-width spaces, BOM, soft hyphen, Mongolian vowel separator). U+200D (zero-width
 // joiner) stays: emoji sequences use it.
-const CONTROL = /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b\u200c\u200e\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffb]/g;
+export const CONTROL = /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b\u200c\u200e\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffb]/g;
 /** More than two combining marks on one letter ("zalgo" text spilling over other lines): cut to two. */
-const MARK_PILES = /(\p{M}{2})\p{M}+/gu;
+export const MARK_PILES = /(\p{M}{2})\p{M}+/gu;
 
 /**
  * Cleans a chat message: control and invisible characters become spaces, runs of white space become one space, the
@@ -75,5 +75,10 @@ export class ChatLimiter {
     }
     this.times.push(now);
     return 0;
+  }
+
+  /** Nothing counted in the window and no cooldown running: forgetting this limiter changes nothing. */
+  idle(now: number): boolean {
+    return now >= this.quietUntil && this.times.every((t) => now - t >= this.windowMs);
   }
 }

@@ -2,7 +2,8 @@
 // opens the chat panel: channel tabs (All / Team in teams games), the messages with each sender's name in their
 // nation colour, a click on a name to mute or unmute that player (this browser session), quick-chat buttons and the
 // input with Send. Used in the game HUD (hud.ts) and the lobby (lobby.ts). Everything players typed is put in the page
-// with textContent only: no HTML, no links. Keys typed in the input never reach the game.
+// with textContent only: no HTML, no links. Keys typed in the input never reach the game (only key releases do, so a
+// pan key held down when the chat opened stops panning).
 import { CHAT_MAX_LENGTH } from '../../net/protocol';
 import type { ChatEntry, RGB } from '../../net/protocol';
 import { button, el, rgbCss, setText } from '../dom';
@@ -193,7 +194,8 @@ export class ChatView {
         this.setOpen(false);
       }
     });
-    for (const t of ['keyup', 'keypress'] as const) this.input.addEventListener(t, (e) => e.stopPropagation());
+    // keyup still reaches the page: a pan key held when the input took focus must be let go (input.ts)
+    this.input.addEventListener('keypress', (e) => e.stopPropagation());
     const send = el('button', 'chat-send');
     send.type = 'submit';
     send.dataset.test = 'chat-send';
@@ -416,6 +418,12 @@ export class ChatView {
     const err = this.store.send(this.tab, text);
     if (err) this.say(err);
     else this.input.value = '';
+    this.keepTyping();
+  }
+
+  /** After a send by mouse or touch the caret goes back to the message box, so the next letters are not game keys. */
+  private keepTyping(): void {
+    if (this.isOpen) this.input.focus({ preventScroll: true });
   }
 
   private sendQuick(q: QuickChat): void {
@@ -428,10 +436,12 @@ export class ChatView {
       }
       const err = this.store.send('team', text, tile);
       if (err) this.say(err);
+      this.keepTyping();
       return;
     }
     const err = this.store.send(this.tab, text);
     if (err) this.say(err);
+    this.keepTyping();
   }
 
   private say(text: string): void {

@@ -41,6 +41,8 @@ import { ChatLimiter, maskChatText } from './chat';
 /** What a room needs from a connection (implemented by the hub's Session). */
 export interface RoomSession {
   readonly clientId: string;
+  /** the connection's address (the owner's remove and mute also hold for a new clientId from it) */
+  readonly ip: string;
   readonly name: string;
   readonly color: RGB;
   readonly build: string;
@@ -64,6 +66,8 @@ export interface RoomHost {
   /** game seed (crypto random in production) */
   makeSeed(): number;
   now(): number;
+  /** whether this client proved the owner code (never refused by an address the owner removed or muted) */
+  isOwner(clientId: string): boolean;
 }
 
 export interface Member {
@@ -93,8 +97,15 @@ export interface Member {
   budgetWarnedAt: number;
   /** told once that the players' hashes disagree without a majority */
   disagreeWarned: boolean;
-  /** chat rate limit (kept across reconnects: a new socket does not reset it) */
+  /** address of the session that joined (owner remove and mute record it) */
+  ip: string;
+  /**
+   * chat rate limit, kept by the room per clientId: a reconnect, leaving and joining again, or a new seat in the
+   * same room all get this same limiter back
+   */
   chatLimit: ChatLimiter;
+  /** the room's chat limit for this member's address (several sockets with new clientIds share it) */
+  addrLimit: ChatLimiter;
   /** last chat notice sent (a flood gets one notice now and then, not one per message) */
   chatNoticeAt: number;
 }
@@ -108,6 +119,8 @@ interface ChatRecord {
 
 /** Chat notices to one member at most this often. */
 const CHAT_NOTICE_MS = 1500;
+/** A room forgets idle chat limiters of clients that are gone once it holds more than this many. */
+const CHAT_LIMITERS_KEPT = 256;
 
 /** One catch-up message carries at most about this many bytes of turns, or this many non-empty turns. */
 export const CATCHUP_CHUNK_BYTES = 512 * 1024;
@@ -193,6 +206,15 @@ export class Room {
   private kicked = new Set<string>();
   /** owner mutes: clientId -> server time the mute ends (a rejoin keeps it) */
   private readonly mutes = new Map<string, number>();
+  /**
+   * The owner's remove and mute also hold for the address they were made at: a new clientId from it (a private window,
+   * cleared site data) is refused, or starts muted. Members already in the room from that address are not touched.
+   */
+  private readonly kickedIps = new Set<string>();
+  private readonly muteIps = new Map<string, number>();
+  /** chat limiters per clientId and per address, kept for the room's life (leaving and joining again keeps them) */
+  private readonly chatLimits = new Map<string, ChatLimiter>();
+  private readonly addrLimits = new Map<string, ChatLimiter>();
 
   /** address that created this private lobby (per-address room limit); '' for public lobbies */
   creatorIp = '';
@@ -267,6 +289,10 @@ export class Room {
       this.attach(existing, session, haveTurns);
       return null;
     }
+    const owner = this.host.isOwner(session.clientId);
+    if (!owner && session.ip && this.kickedIps.has(session.ip)) {
+      return err('kicked', this.phase === 'lobby' ? 'You were removed from this lobby' : 'You were removed from this game');
+    }
     if (this.build && session.build && this.build !== session.build) {
       return err('version', 'This lobby runs a different version of the game: reload the page');
     }
@@ -294,9 +320,15 @@ export class Room {
       intentRefill: this.host.now(),
       budgetWarnedAt: -Infinity,
       disagreeWarned: false,
-      chatLimit: new ChatLimiter(this.host.opts.chatBurst, this.host.opts.chatWindowMs, this.host.opts.chatCooldownMs),
+      ip: session.ip,
+      chatLimit: this.limiter(this.chatLimits, session.clientId, this.host.opts.chatBurst),
+      addrLimit: this.limiter(this.addrLimits, session.ip, this.host.opts.chatAddressBurst),
       chatNoticeAt: -Infinity,
     };
+    if (!owner && session.ip) {
+      const until = this.muteIps.get(session.ip);
+      if (until !== undefined && until > this.host.now() && (this.mutes.get(m.clientId) ?? 0) < until) this.mutes.set(m.clientId, until);
+    }
     this.members.push(m);
     if (!this.build && session.build) this.build = session.build;
     if (!this.isPublic && this.hostMemberId < 0 && !m.spectator) this.hostMemberId = m.memberId;
@@ -490,12 +522,18 @@ export class Room {
     return left;
   }
 
-  /** Owner: mutes a member for `minutes` (0 = lifts it). */
+  /** Owner: mutes a member for `minutes` (0 = lifts it), by clientId and by the address it joined from. */
   muteMember(memberId: number, minutes: number): RoomError {
     const m = this.members.find((x) => x.memberId === memberId);
     if (!m) return err('notFound', 'No such player in that game');
-    if (minutes <= 0) this.mutes.delete(m.clientId);
-    else this.mutes.set(m.clientId, this.host.now() + minutes * 60_000);
+    if (minutes <= 0) {
+      this.mutes.delete(m.clientId);
+      if (m.ip) this.muteIps.delete(m.ip);
+    } else {
+      const until = this.host.now() + minutes * 60_000;
+      this.mutes.set(m.clientId, until);
+      if (m.ip) this.muteIps.set(m.ip, until);
+    }
     return null;
   }
 
@@ -509,6 +547,7 @@ export class Room {
     if (!m) return err('notFound', 'No such player in that game');
     if (m.clientId === ownerClientId) return err('notAllowed', 'You cannot remove yourself');
     this.kicked.add(m.clientId);
+    if (m.ip) this.kickedIps.add(m.ip);
     const s = m.session;
     if (s) {
       s.send({ type: 'kicked', reason: 'You were removed from this game' });
@@ -1111,6 +1150,20 @@ export class Room {
     }
   }
 
+  /** The room's chat limiter for this key (made on first use); idle ones of clients that left are forgotten. */
+  private limiter(map: Map<string, ChatLimiter>, key: string, burst: number): ChatLimiter {
+    let l = map.get(key);
+    if (l) return l;
+    if (map.size >= CHAT_LIMITERS_KEPT) {
+      const now = this.host.now();
+      const inUse = new Set(this.members.flatMap((x) => [x.chatLimit, x.addrLimit]));
+      for (const [k, v] of map) if (!inUse.has(v) && v.idle(now)) map.delete(k);
+    }
+    l = new ChatLimiter(burst, this.host.opts.chatWindowMs, this.host.opts.chatCooldownMs);
+    map.set(key, l);
+    return l;
+  }
+
   private chatNotice(m: Member, reason: ChatNoticeReason, text: string, retryMs?: number): void {
     const now = this.host.now();
     if (now - m.chatNoticeAt < CHAT_NOTICE_MS) return;
@@ -1139,7 +1192,9 @@ export class Room {
       this.chatNotice(m, 'notAllowed', this.phase === 'lobby' ? 'Team chat opens when the game starts.' : 'Team chat is for teams games.');
       return;
     }
-    const wait = m.chatLimit.take(this.host.now());
+    const now = this.host.now();
+    // per client first, then the address's shared budget (a watching owner shares no budget with anyone)
+    const wait = m.chatLimit.take(now) || (this.host.isOwner(m.clientId) ? 0 : m.addrLimit.take(now));
     if (wait > 0) {
       this.chatNotice(m, 'rateLimit', `Too many messages. You can chat again in ${Math.ceil(wait / 1000)} s.`, wait);
       return;
