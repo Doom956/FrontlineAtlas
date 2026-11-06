@@ -1,5 +1,6 @@
 // Mouse and keyboard handling on the map canvas.
 import { knownOwnerOf } from './fog/fogView';
+import { mapInputPaused, mapPointer } from './fx/prankView';
 import { buildingsOf } from '../sim/buildings';
 import { BUILDINGS, BUILDING_ORDER } from '../sim/config';
 import { areAllied } from '../sim/diplomacy';
@@ -179,10 +180,9 @@ export function setupInput(deps: InputDeps): () => void {
     if (s && s.humanId && s.phase === 'playing' && tile >= 0) ui.contextMenu = { x: clientX, y: clientY, tile };
   };
 
-  const local = (e: { clientX: number; clientY: number }) => {
-    const r = canvas.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
-  };
+  // (a screen prank may show the map turned or mirrored for a few seconds: the pointer is mapped back through that
+  // warp, so a click lands on the tile under it; while the map turns, input on the map waits: fx/prankView.ts)
+  const local = (e: { clientX: number; clientY: number }) => mapPointer(canvas, e.clientX, e.clientY);
   const tileAt = (sx: number, sy: number): number => {
     const s = getState();
     if (!s) return -1;
@@ -196,7 +196,7 @@ export function setupInput(deps: InputDeps): () => void {
   canvas.addEventListener(
     'pointerdown',
     (e) => {
-      if (press) return;
+      if (press || mapInputPaused()) return;
       // A left click that closes the radial menu only closes it (no attack on release).
       const closing = ui.contextMenu !== null && e.button === 0;
       ui.contextMenu = null;
@@ -252,6 +252,7 @@ export function setupInput(deps: InputDeps): () => void {
     if (!press || press.id !== e.pointerId) return;
     const pr = press;
     press = null;
+    if (mapInputPaused()) cancelled = true;
     clearTimeout(longTimer);
     canvas.classList.remove('dragging');
     if (pr.box && pr.dragging) {
@@ -296,7 +297,7 @@ export function setupInput(deps: InputDeps): () => void {
     'dblclick',
     (e) => {
       const s = getState();
-      if (!s || !s.humanId || ui.mode.kind !== 'none' || e.shiftKey) return;
+      if (!s || !s.humanId || ui.mode.kind !== 'none' || e.shiftKey || mapInputPaused()) return;
       const p = local(e);
       const unit = renderer.ownFleetAt(p.x, p.y)?.[0] ?? renderer.ownWarshipAt(p.x, p.y);
       if (unit < 0) return;
@@ -321,6 +322,7 @@ export function setupInput(deps: InputDeps): () => void {
     'wheel',
     (e) => {
       e.preventDefault();
+      if (mapInputPaused()) return;
       const p = local(e);
       const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY; // deltaMode 1 = lines
       camera.zoomAt(p.x, p.y, Math.exp(-Math.max(-300, Math.min(300, dy)) * 0.0015));

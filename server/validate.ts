@@ -15,9 +15,10 @@ import {
   BROADCAST_LABEL_MAX,
   BROADCAST_TEXT_MAX,
   BROADCAST_TITLE_MAX,
-  COUNTDOWN_SECONDS,
+  FLIP_MODES,
   MUTE_MAX_MINUTES,
   SPECTACLE_KINDS,
+  spectacleSecondsRange,
   cleanBroadcastText,
   BUILD_MAX_LENGTH,
   CHAT_MAX_LENGTH,
@@ -26,7 +27,7 @@ import {
   NAME_MAX_LENGTH,
   normalizeLobbyCode,
 } from '../src/net/protocol';
-import type { AdminClientMessage, AnnounceStyle, BroadcastScope, ClientMessage, LobbySettingsPatch, RGB, SpectacleKind } from '../src/net/protocol';
+import type { AdminClientMessage, AnnounceStyle, BroadcastScope, ClientMessage, LobbySettingsPatch, RGB, SpectacleKind, FlipMode } from '../src/net/protocol';
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 const ok = <T>(value: T): Result<T> => ({ ok: true, value });
@@ -450,10 +451,22 @@ export function validateAdminMessage(m: Obj): Result<AdminClientMessage> {
         if (kind !== 'ping' && kind !== 'countdown') return fail('adminSpectacle: this effect has no label');
         if (label) out.label = label;
       }
+      // every effect ends by itself: a countdown within COUNTDOWN_SECONDS, a prank within PRANK_SECONDS
+      const range = spectacleSecondsRange(kind);
       if (m.seconds !== undefined || kind === 'countdown') {
-        if (kind !== 'countdown') return fail('adminSpectacle: only a countdown has seconds');
-        if (!isInt(m.seconds, COUNTDOWN_SECONDS[0], COUNTDOWN_SECONDS[1])) return fail('adminSpectacle: bad seconds');
+        if (!range) return fail('adminSpectacle: this effect has no seconds');
+        if (!isInt(m.seconds, range[0], range[1])) return fail(`adminSpectacle: seconds must be ${range[0]}..${range[1]}`);
         out.seconds = m.seconds;
+      }
+      if (m.mode !== undefined) {
+        if (kind !== 'flip') return fail('adminSpectacle: only a flip has a mode');
+        if (typeof m.mode !== 'string' || !(FLIP_MODES as readonly string[]).includes(m.mode)) return fail('adminSpectacle: bad mode');
+        out.mode = m.mode as FlipMode;
+      }
+      if (m.memberId !== undefined) {
+        if (!isInt(m.memberId, 0, MAX_ID)) return fail('adminSpectacle: bad memberId');
+        if (sc !== 'room') return fail('adminSpectacle: one player is in one game');
+        out.memberId = m.memberId;
       }
       return withCode(out);
     }

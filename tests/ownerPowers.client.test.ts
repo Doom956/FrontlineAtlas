@@ -102,8 +102,8 @@ describe('announcement banner: text safety', () => {
     expect(v.style).toBe('info');
     expect(v.text.startsWith('Hi there z')).toBe(true);
     expect([...v.text].length).toBe(BROADCAST_TEXT_MAX);
-    expect(v.ms).toBe(60_000);
-    expect(announcementView({ text: 'x', seconds: 'soon' }).ms).toBe(8000);
+    expect(v.ms).toBe(15_000);
+    expect(announcementView({ text: 'x', seconds: 'soon' }).ms).toBe(6000);
     expect(announcementView({ text: { toString: () => 'object' } }).text).toBe('');
   });
 

@@ -6,7 +6,7 @@ import type { RawData } from 'ws';
 import { activeModifiers, landEstimate, mergeSetup, modifierSummary, MULTIPLAYER_NATIONS, rollModifiers, sizeClassForLand } from '../src/sim/setup';
 import type { MapChoice, MapSize } from '../src/sim/types';
 import { CloseCode, DEFAULT_LOBBY_SETTINGS, LOBBY_CODE_ALPHABET, LOBBY_CODE_LENGTH, PROTOCOL_VERSION } from '../src/net/protocol';
-import { ADMIN_ROOMS_MAX } from '../src/net/protocol';
+import { ADMIN_ROOMS_MAX, NOTICE_SECONDS } from '../src/net/protocol';
 import type { AdminClientMessage, ClientMessage, ErrorCode, LobbyKind, LobbySettings, LobbySummary, RGB, ServerMessage } from '../src/net/protocol';
 import type { ServerOptions } from './options';
 import { Room } from './room';
@@ -437,12 +437,18 @@ export class Hub implements RoomHost {
         return;
       }
       case 'adminSpectacle': {
+        if (msg.memberId !== undefined) {
+          // one player of the room (a prank for one, a ring only they see)
+          const ok = room.sendTo(msg.memberId, this.spectacleMsg(msg, room.code));
+          ack(ok, ok ? 'Sent' : 'That player is not connected', ok ? 1 : 0);
+          return;
+        }
         const n = room.broadcastAll(this.spectacleMsg(msg, room.code));
         ack(true, `Sent to ${n} in ${room.code}`, n);
         return;
       }
       case 'adminNotice': {
-        const ok = room.sendTo(msg.memberId, { type: 'notice', text: msg.text, style: msg.style, seconds: 8 });
+        const ok = room.sendTo(msg.memberId, { type: 'notice', text: msg.text, style: msg.style, seconds: NOTICE_SECONDS });
         ack(ok, ok ? 'Sent' : 'That player is not connected');
         return;
       }
@@ -468,6 +474,7 @@ export class Hub implements RoomHost {
     }
     if (msg.label) out.label = msg.label;
     if (msg.seconds !== undefined) out.seconds = msg.seconds;
+    if (msg.mode !== undefined) out.mode = msg.mode;
     return out;
   }
 

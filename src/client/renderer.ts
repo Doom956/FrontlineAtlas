@@ -35,6 +35,7 @@ import { UnitLayer } from './render/units';
 import { SelectionOverlay } from './render/selectionOverlay';
 import { PillarOverlay } from './render/pillarOverlay';
 import { BattleFx } from './fx/battleFx';
+import { hueShift, prankView } from './fx/prankView';
 import { fogFor, type FogView } from './fog/fogView';
 import type { UiState } from './uiState';
 
@@ -113,6 +114,8 @@ export class Renderer {
   private snapCache = new BuildTargetCache();
 
   private palSig = '';
+  /** the disco hue last applied (0 = none) */
+  private discoHue = 0;
   private hoverFlag = { owner: 0, v: 0 };
   // fort coverage (owner of the covering fort per tile)
   private fortOwner = new Uint16Array(0);
@@ -467,8 +470,16 @@ export class Renderer {
         hv = weak ? 2 : 1;
       }
     }
-    const hoverChanged = hover !== this.hoverFlag.owner || hv !== this.hoverFlag.v;
+    // disco (a screen prank, fx/prankView.ts): nation colours turned around the hue wheel for a few seconds
+    const hue = Math.round(prankView.hue / 6) * 6;
+    const hoverChanged = hover !== this.hoverFlag.owner || hv !== this.hoverFlag.v || hue !== this.discoHue;
     if (!hoverChanged && this.palSig !== '' && this.frame % PALETTE_FRAMES !== 0) return;
+    this.discoHue = hue;
+    if (!this.gl) {
+      // the 2D fallback repaints every tile for a palette change: a CSS hue turn of the canvas instead (whole map)
+      const f = hue ? `hue-rotate(${hue}deg)` : '';
+      if (this.canvas.style.filter !== f) this.canvas.style.filter = f;
+    }
     this.hoverFlag = { owner: hover, v: hv };
     let sig = `${hover}:${hv}`;
     const rel: number[] = [];
@@ -483,11 +494,13 @@ export class Renderer {
       if (r === 1 || r === 2 || tr) sig += `|${id}${r}${tr ? 't' : ''}`;
     }
     sig += `#${state.players.length}`;
+    if (this.gl && hue) sig += `~${hue}`;
     if (sig === this.palSig) return;
     this.palSig = sig;
     if (this.gl) {
       for (let id = 0; id < state.players.length; id++) {
-        this.gl.setPalette(id, this.colors[id] ?? [128, 128, 128], rel[id] ?? 0, trait[id] ?? false, id === hover ? hv : 0);
+        const c = this.colors[id] ?? [128, 128, 128];
+        this.gl.setPalette(id, hue && id > 0 ? hueShift(c, hue + id * 47) : c, rel[id] ?? 0, trait[id] ?? false, id === hover ? hv : 0);
       }
       this.gl.uploadPalette();
     } else if (this.map2d) {

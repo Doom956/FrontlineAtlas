@@ -46,7 +46,11 @@
 //   plain: `announcement {title, text, style, seconds}` (a banner), `notice {text, style, seconds}` (a small card for
 //   one player), `spectacle {kind, ...}` (a visual effect) and, for a kick, `kicked {reason}`. None of these change the
 //   game: they are not lockstep intents, are never hashed and can't desync. Clients show their text with textContent
-//   only, cut to the limits below (cleanBroadcastText). An owner watching a game as a spectator may send `admin`
+//   only, cut to the limits below (cleanBroadcastText). Every one of them ends by itself: a banner within
+//   ANNOUNCE_SECONDS (a new one replaces the old), a notice after NOTICE_SECONDS, a countdown within COUNTDOWN_SECONDS
+//   and each screen prank (PRANK_KINDS, protocol 18 still: an older client drops kinds it doesn't know) within
+//   PRANK_SECONDS; the server refuses longer ones and the client clamps again. An effect with `memberId` goes to that
+//   one member of the room. An owner watching a game as a spectator may send `admin`
 //   intents (stamped playerId 0; the sim then needs an explicit nation for every op) and no other intent.
 //   Mutes are kept per room by clientId; the chat reads them through Room.isMuted(memberId).
 // - Warship groups and tank divisions (protocol 7): intents `moveWarships {unitIds, tile}`, `buildTankDivision {tile}`,
@@ -115,17 +119,40 @@ export const CONTINUE_WINDOW_MS = 10 * 60_000;
 export const BROADCAST_TEXT_MAX = 200;
 export const BROADCAST_TITLE_MAX = 40;
 export const BROADCAST_LABEL_MAX = 40;
-/** Banner and notice time on screen (seconds, inclusive). */
-export const ANNOUNCE_SECONDS: readonly [number, number] = [3, 60];
+/** Banner time on screen (seconds, inclusive): short by rule, every owner message goes away by itself. */
+export const ANNOUNCE_SECONDS: readonly [number, number] = [3, 15];
+/** A banner's time when none is given. */
+export const ANNOUNCE_DEFAULT_SECONDS = 6;
+/** A message for one player stays this long (the server sets it). */
+export const NOTICE_SECONDS = 5;
 /** Countdown length (seconds, inclusive). */
-export const COUNTDOWN_SECONDS: readonly [number, number] = [3, 600];
+export const COUNTDOWN_SECONDS: readonly [number, number] = [3, 15];
+/** Screen pranks: how long one may run (seconds, inclusive), and how long when none is given. */
+export const PRANK_SECONDS: readonly [number, number] = [2, 10];
 /** Longest mute (minutes); 0 lifts a mute. */
 export const MUTE_MAX_MINUTES = 24 * 60;
 export const ANNOUNCE_STYLES = ['info', 'warning', 'celebration'] as const;
 export type AnnounceStyle = (typeof ANNOUNCE_STYLES)[number];
-/** Visual effects for everyone: a ring on a tile, a countdown, confetti, fireworks, a short screen shake. */
-export const SPECTACLE_KINDS = ['ping', 'countdown', 'confetti', 'fireworks', 'shake'] as const;
+/**
+ * Screen pranks (client-only drawing, each ends by itself within PRANK_SECONDS): the map upside down or mirrored, a
+ * gentle map wobble, rainbow nation colours, units drawn as rubber ducks, a pretend bomb countdown that ends in
+ * confetti, a cloud over the screen, the camera following one of the player's own units for a moment.
+ */
+export const PRANK_KINDS = ['flip', 'earthquake', 'disco', 'ducks', 'fakeBomb', 'fogPuff', 'chase'] as const;
+export type PrankKind = (typeof PRANK_KINDS)[number];
+/** Default length of each prank (seconds). */
+export const PRANK_DEFAULT_SECONDS: Record<PrankKind, number> = { flip: 5, earthquake: 4, disco: 6, ducks: 8, fakeBomb: 5, fogPuff: 4, chase: 6 };
+/** How a flip turns the map. */
+export const FLIP_MODES = ['upside', 'mirror'] as const;
+export type FlipMode = (typeof FLIP_MODES)[number];
+/** Visual effects: a ring on a tile, a countdown, confetti, fireworks, a short screen shake, and the pranks. */
+export const SPECTACLE_KINDS = ['ping', 'countdown', 'confetti', 'fireworks', 'shake', ...PRANK_KINDS] as const;
 export type SpectacleKind = (typeof SPECTACLE_KINDS)[number];
+/** Effects that take `seconds` (each kind within its own range). */
+export function spectacleSecondsRange(kind: SpectacleKind): readonly [number, number] | null {
+  if (kind === 'countdown') return COUNTDOWN_SECONDS;
+  return (PRANK_KINDS as readonly string[]).includes(kind) ? PRANK_SECONDS : null;
+}
 /** Where an announcement or effect goes: the room (the owner's own, or `code`), or every session on the server. */
 export type BroadcastScope = 'room' | 'all';
 /** WebSocket path on the server (same host that serves the client, or the one given by ?server=). */
@@ -410,10 +437,14 @@ export interface AdminSpectacleMsg {
   scope: BroadcastScope;
   code?: string;
   kind: SpectacleKind;
+  /** with scope 'room': only this member of the room sees it */
+  memberId?: number;
   tile?: number;
   label?: string;
-  /** countdown length */
+  /** countdown or prank length */
   seconds?: number;
+  /** flip only */
+  mode?: FlipMode;
 }
 /** Mute a member of a room for `minutes` (0 = lift the mute). Read by the chat through Room.isMuted. */
 export interface AdminMuteMsg {
@@ -672,6 +703,8 @@ export interface SpectacleMsg {
   tile?: number;
   label?: string;
   seconds?: number;
+  /** flip only */
+  mode?: FlipMode;
 }
 export const ADMIN_ROOMS_MAX = 150;
 /** One relayed chat message. The text is plain text: show it with textContent only. */

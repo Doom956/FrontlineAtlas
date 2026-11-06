@@ -98,6 +98,8 @@ const everyPower = (code: string, memberId: number): unknown[] => [
   { type: 'adminSpectacle', scope: 'room', code, kind: 'ping', tile: 5, label: 'Here' },
   { type: 'adminSpectacle', scope: 'all', kind: 'confetti' },
   { type: 'adminSpectacle', scope: 'room', code, kind: 'countdown', seconds: 10 },
+  { type: 'adminSpectacle', scope: 'room', code, memberId, kind: 'flip', mode: 'mirror', seconds: 5 },
+  { type: 'adminSpectacle', scope: 'all', kind: 'ducks' },
   { type: 'adminMute', code, memberId, minutes: 5 },
   { type: 'adminKick', code, memberId },
 ];

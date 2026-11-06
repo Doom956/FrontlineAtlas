@@ -291,11 +291,37 @@ async function startOnline(start: GameStartMsg): Promise<void> {
           tileToScreen: (x, y) => camera.tileToScreen(x, y),
           canvas,
           focus: (t) => camera.flyTo((t % state.map.width) + 0.5, Math.floor(t / state.map.width) + 0.5, Math.max(camera.zoom, 6), 600),
+          // screen pranks (broadcast.ts): what they turn, aim at and follow; all of it display only
+          mapLayers: () => [canvas, ...Array.from(app.querySelectorAll<HTMLElement>('canvas.map-gl'))],
+          capitalTile: () => state.players[state.humanId]?.capital ?? -1,
+          ownUnit: (id) => pickOwnUnit(state, id),
+          camera: {
+            get: () => ({ x: camera.x, y: camera.y, zoom: camera.zoom, flying: camera.flying }),
+            flyTo: (x, y, z, ms) => camera.flyTo(x, y, z, ms),
+            centerOn: (x, y) => camera.centerOn(x, y),
+          },
         }
       : null,
   );
   menu.hide();
   app.classList.remove('in-menu');
+}
+
+/**
+ * One of this player's units for the chase prank: that one by id, else a ship, plane or division picked at random
+ * (missiles fly too briefly). Its position as the sim has it; null when there is none (or it is gone).
+ */
+function pickOwnUnit(state: GameState, id?: number): { id: number; x: number; y: number } | null {
+  const me = state.humanId;
+  if (!me) return null;
+  if (id !== undefined) {
+    const u = state.units.find((x) => x.id === id && x.owner === me);
+    return u ? { id: u.id, x: u.x, y: u.y } : null;
+  }
+  const mine = state.units.filter((u) => u.owner === me && u.type !== 'rocket' && u.type !== 'atomBomb');
+  if (!mine.length) return null;
+  const u = mine[Math.floor(Math.random() * mine.length)];
+  return { id: u.id, x: u.x, y: u.y };
 }
 
 /** Leaves the online game (the seat stays on the server until it ends) and goes to the menu or the lobby list. */

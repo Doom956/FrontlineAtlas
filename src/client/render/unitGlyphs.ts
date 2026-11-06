@@ -8,6 +8,7 @@
 //   tank division = squat hull with two track lines, a round turret and a long barrel forward (no trail)
 // The detailed pictures live in icons.ts (HUD). Trails (contrails, wakes) are drawn here too so the glyph sheet can use them.
 import type { UnitType } from '../../sim/types';
+import { prankView } from '../fx/prankView';
 
 /**
  * poly: closed outline (also gets a faint fill), line: open polyline, dot: a point (round cap), ring: x, y, radius,
@@ -208,6 +209,14 @@ export interface Inst {
 
 /** All of one owner's glyphs: dark under-stroke, faint fill, solid blocks, dark pits, colour stroke (5 draw calls at most). */
 export function strokeGlyphs(ctx: CanvasRenderingContext2D, list: readonly Inst[], color: string, fill: string, under: string, lw: number): void {
+  if (prankView.ducks) {
+    // the ducks prank (fx/prankView.ts): every ship, plane and division is a rubber duck for a few seconds; missiles
+    // stay missiles (a strike must still read as one)
+    const ducks = list.filter((e) => GLYPHS[e.type].trail !== 'missile');
+    if (ducks.length) strokeDucks(ctx, ducks, color, under, lw);
+    if (ducks.length === list.length) return;
+    list = list.filter((e) => GLYPHS[e.type].trail === 'missile');
+  }
   let solid = false;
   let pits = false;
   for (const e of list) {
@@ -313,4 +322,54 @@ export function drawTrails(ctx: CanvasRenderingContext2D, list: readonly Inst[],
   ctx.lineCap = 'round';
   ctx.strokeStyle = 'rgba(235,245,255,0.32)';
   ctx.stroke();
+}
+
+const DUCK_BODY = '#f5d33b';
+const DUCK_BEAK = '#ee7d24';
+
+/**
+ * Rubber ducks in place of the glyphs (yellow, outlined in the owner's colour so the side still reads; they face the
+ * way the unit goes, left or right, and bob a little). Four fills and two strokes per owner.
+ */
+export function strokeDucks(ctx: CanvasRenderingContext2D, list: readonly Inst[], color: string, under: string, lw: number, nowMs = performance.now()): void {
+  const at = (e: Inst): { f: number; R: number; y: number } => ({ f: Math.cos(e.angle) >= 0 ? 1 : -1, R: Math.max(4, e.S * 0.95), y: e.y + Math.sin(nowMs / 240 + e.x * 0.05) * 0.8 });
+  ctx.beginPath();
+  for (const e of list) {
+    const { f, R, y } = at(e);
+    // body with a perky tail, then the head
+    ctx.moveTo(e.x - f * 0.95 * R, y - 0.2 * R);
+    ctx.quadraticCurveTo(e.x - f * 1.05 * R, y + 0.75 * R, e.x, y + 0.72 * R);
+    ctx.quadraticCurveTo(e.x + f * 0.95 * R, y + 0.7 * R, e.x + f * 0.75 * R, y + 0.05 * R);
+    ctx.lineTo(e.x - f * 0.55 * R, y + 0.02 * R);
+    ctx.closePath();
+    ctx.moveTo(e.x + f * 0.82 * R, y - 0.42 * R);
+    ctx.arc(e.x + f * 0.42 * R, y - 0.42 * R, 0.4 * R, 0, Math.PI * 2);
+  }
+  ctx.lineWidth = lw + 1.4;
+  ctx.strokeStyle = under;
+  ctx.stroke();
+  ctx.fillStyle = DUCK_BODY;
+  ctx.fill();
+  ctx.lineWidth = Math.max(1, lw * 0.8);
+  ctx.strokeStyle = color;
+  ctx.stroke();
+  ctx.beginPath();
+  for (const e of list) {
+    const { f, R, y } = at(e);
+    ctx.moveTo(e.x + f * 0.76 * R, y - 0.5 * R);
+    ctx.lineTo(e.x + f * 1.18 * R, y - 0.36 * R);
+    ctx.lineTo(e.x + f * 0.76 * R, y - 0.24 * R);
+    ctx.closePath();
+  }
+  ctx.fillStyle = DUCK_BEAK;
+  ctx.fill();
+  ctx.beginPath();
+  for (const e of list) {
+    const { f, R, y } = at(e);
+    const r = Math.max(0.8, 0.08 * R);
+    ctx.moveTo(e.x + f * 0.5 * R + r, y - 0.5 * R);
+    ctx.arc(e.x + f * 0.5 * R, y - 0.5 * R, r, 0, Math.PI * 2);
+  }
+  ctx.fillStyle = 'rgba(6,9,15,0.95)';
+  ctx.fill();
 }

@@ -5006,7 +5006,9 @@ strong {
 /* ---------------------------------------------------------------- broadcasts (broadcast.ts)
    Announcements arrive as a dispatch slip pinned under the top bar: a heavy rule in the style's colour, a stencil
    mark, the title in the label face and the message large enough to read mid-battle. A hairline runs down until it
-   goes. Notices for one player are the same slip, smaller. Effects draw on one canvas above everything. */
+   goes. Notices for one player are the same slip, smaller. Effects draw on one canvas above everything.
+   Size rule: the message is about twice the HUD's text (30 px, 21 px on phones), the slip at most 60% of the screen
+   wide (90% on phones) and 40% tall; only the slip takes clicks, the map around it stays live. */
 .bc {
   position: fixed;
   inset: 0;
@@ -5024,7 +5026,7 @@ strong {
   top: calc(env(safe-area-inset-top, 0px) + 64px);
   left: 50%;
   transform: translateX(-50%);
-  width: min(580px, calc(100vw - 32px));
+  width: min(60vw, 960px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -5046,8 +5048,9 @@ strong {
   width: 100%;
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 12px 40px 14px 14px;
+  gap: 14px;
+  padding: 14px 48px 16px 16px;
+  max-height: 40vh;
   background-color: rgba(17, 20, 23, 0.97);
   background-image: var(--grain);
   border: 1px solid var(--rule-hi);
@@ -5083,8 +5086,8 @@ strong {
 /* the stencil mark: a ring (info), a diamond (warning), a star (celebration) */
 .bc-ann-mark {
   flex: none;
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
   background: var(--bc-tint);
@@ -5135,12 +5138,28 @@ strong {
 .s-celebration .bc-note-title {
   color: var(--brass-hi);
 }
+.bc-ann-body {
+  max-height: calc(40vh - 32px);
+  overflow-y: auto;
+}
+.bc-ann-title {
+  font-size: 22px;
+  letter-spacing: 0.12em;
+  line-height: 1.1;
+}
 .bc-ann-text {
   margin: 6px 0 0;
   color: var(--text);
-  font: 500 17px/1.35 var(--f-ui);
+  font: 500 30px/1.25 var(--f-ui);
   overflow-wrap: anywhere;
   user-select: text;
+}
+.bc-ann .bc-x {
+  top: 10px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  font-size: 24px;
 }
 .bc-note {
   width: min(420px, 100%);
@@ -5218,6 +5237,69 @@ strong {
 .bc-count.done .bc-count-n {
   color: var(--olive);
   animation: bc-pop 400ms ease-out;
+}
+/* the pretend bomb: the same plate in signal red, then a brass "Gotcha!" */
+.bc-count.bomb {
+  border-color: rgba(212, 80, 58, 0.6);
+  border-bottom-color: var(--signal);
+}
+.bc-count.bomb .bc-count-l {
+  color: #f3a899;
+}
+.bc-count.bomb .bc-count-n {
+  color: #f3a899;
+}
+.bc-count.bomb.done {
+  border-color: var(--brass-lo);
+  border-bottom-color: var(--brass);
+}
+.bc-count.bomb.done .bc-count-l,
+.bc-count.bomb.done .bc-count-n {
+  color: var(--brass-hi);
+}
+/* fog puff: soft banks of cloud drift over and clear; clicks go through */
+.bc-fog {
+  position: absolute;
+  inset: -8%;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(38% 30% at 22% 30%, rgba(214, 220, 224, 0.95), rgba(214, 220, 224, 0) 70%),
+    radial-gradient(42% 34% at 70% 26%, rgba(200, 207, 212, 0.92), rgba(200, 207, 212, 0) 72%),
+    radial-gradient(46% 36% at 40% 68%, rgba(226, 230, 232, 0.95), rgba(226, 230, 232, 0) 70%),
+    radial-gradient(40% 32% at 82% 72%, rgba(206, 212, 217, 0.92), rgba(206, 212, 217, 0) 72%),
+    rgba(190, 198, 204, 0.55);
+}
+.bc-fog.on {
+  animation-name: bc-fog;
+  animation-timing-function: ease-in-out;
+  animation-fill-mode: forwards;
+}
+@keyframes bc-fog {
+  0% {
+    opacity: 0;
+    transform: translate3d(-3%, 0, 0) scale(1.06);
+  }
+  25% {
+    opacity: 0.96;
+  }
+  65% {
+    opacity: 0.92;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(3%, 0, 0) scale(1);
+  }
+}
+@keyframes bc-fog-calm {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  25%,
+  65% {
+    opacity: 0.92;
+  }
 }
 /* "Look here": a chip above the pinged tile; at the screen edge it is the way there */
 .bc-look {
@@ -5316,21 +5398,32 @@ strong {
   .bc-shake {
     animation: none;
   }
+  .bc-fog.on {
+    animation-name: bc-fog-calm;
+  }
 }
 @media (max-width: 640px) {
   .bc-stack {
     top: calc(env(safe-area-inset-top, 0px) + 52px);
+    width: 90vw;
   }
   .bc-ann {
     gap: 10px;
-    padding: 10px 36px 12px 10px;
+    padding: 10px 40px 12px 10px;
   }
   .bc-ann-mark {
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
+  }
+  .bc-ann-title {
+    font-size: 16px;
   }
   .bc-ann-text {
-    font-size: 15px;
+    font-size: 21px;
+  }
+  .bc-ann .bc-x {
+    top: 6px;
+    right: 6px;
   }
   .bc-count-n {
     font-size: 28px;
@@ -5338,6 +5431,15 @@ strong {
 }
 
 /* ---------------------------------------------------------------- owner console: online tabs (adminOnline.ts) */
+.adm-pranks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 6px;
+  padding: 4px 12px;
+}
+.adm-pranks .adm-btn {
+  width: 100%;
+}
 .adm-menu {
   position: fixed;
   inset: 0;

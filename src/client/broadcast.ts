@@ -6,18 +6,40 @@
 // Safety: every text from the server is cleaned again (clipBroadcastText: control and bidi characters out, length
 // capped) and only ever set with textContent. Nothing is a link. Styles and kinds outside the known lists are dropped.
 // Motion: with prefers-reduced-motion there is no shake, a tenth of the particles and no banner slide (CSS).
+//
+// Screen pranks (PRANK_KINDS) are the same kind of decoration, each over within PRANK_SECONDS by its own timer:
+//   flip        the map turns upside down (or mirrors) in half a second, stays, turns back. Clicks stay right: the
+//               map input maps the pointer back through the turn (fx/prankView.ts); only while it turns (half a second
+//               each way) does input on the map wait. HUD, minimap and chat are not turned.
+//   earthquake  a gentle wobble of the map (a few px, under a degree), eased in and out; clicks mapped the same way
+//   disco       nation colours run round the colour wheel (the renderer's palette; the 2D fallback turns the canvas)
+//   ducks       every ship, plane and division is drawn as a rubber duck (missiles stay missiles)
+//   fakeBomb    "Incoming!" counts down over a ring on the player's capital, then confetti and "Gotcha!"
+//   fogPuff     a cloud comes over the screen and clears (clicks go through it)
+//   chase       the camera glides to one of the player's units, follows it, then glides back; any pan or zoom by the
+//               player ends it at once and leaves the camera where they put it
+// With prefers-reduced-motion: no flip, no wobble, no chase (skipped: nothing shows), disco holds one turned palette
+// instead of cycling, the cloud only fades, ducks and the countdown are as usual (with a tenth of the confetti).
 import {
+  ANNOUNCE_DEFAULT_SECONDS,
   ANNOUNCE_SECONDS,
   ANNOUNCE_STYLES,
   BROADCAST_LABEL_MAX,
   BROADCAST_TEXT_MAX,
   BROADCAST_TITLE_MAX,
   COUNTDOWN_SECONDS,
+  FLIP_MODES,
+  NOTICE_SECONDS,
+  PRANK_DEFAULT_SECONDS,
+  PRANK_KINDS,
+  PRANK_SECONDS,
   SPECTACLE_KINDS,
   clipBroadcastText,
 } from '../net/protocol';
-import type { AnnounceStyle, ServerMessage, SpectacleKind } from '../net/protocol';
+import type { AnnounceStyle, FlipMode, PrankKind, ServerMessage, SpectacleKind } from '../net/protocol';
 import { el, setText } from './dom';
+import { mapPointOnPage, prankView, warpCss } from './fx/prankView';
+import type { MapWarp } from './fx/prankView';
 
 /** The map the layer can point at (null in the menu). */
 export interface BroadcastView {
@@ -31,6 +53,21 @@ export interface BroadcastView {
   canvas: HTMLElement;
   /** glide the camera to a tile (the "Look here" chip when the spot is off screen) */
   focus(tile: number): void;
+  /** the canvases a flip or a wobble turns (the map and its GL layer under it); none = no flip or wobble */
+  mapLayers?: () => HTMLElement[];
+  /** this player's capital, -1 = none (a spectator, no capital yet) */
+  capitalTile?: () => number;
+  /** one of this player's units (no id: any one, else that one), its tile position now; null = none or gone */
+  ownUnit?: (id?: number) => { id: number; x: number; y: number } | null;
+  /** the camera, for the chase */
+  camera?: PrankCamera;
+}
+
+/** The bits of the camera a chase moves (camera.ts fits). */
+export interface PrankCamera {
+  get(): { x: number; y: number; zoom: number; flying: boolean };
+  flyTo(x: number, y: number, zoom: number, ms: number): void;
+  centerOn(x: number, y: number): void;
 }
 
 /** What a style is called when the sender gave no title. */
@@ -39,7 +76,14 @@ export const STYLE_TITLE: Record<AnnounceStyle, string> = { info: 'Announcement'
 export const NOTICE_TITLE = 'Message';
 export const PING_MS = 6000;
 const MAX_NOTICES = 3;
-const NOTICE_SECONDS = 8;
+/** A flip turns in (and back out) over this long. */
+export const FLIP_TURN_MS = 500;
+/** The chase glides in and back over this long. */
+const CHASE_GLIDE_MS = 900;
+/** The fake bomb's "Gotcha!" stays this long (inside the prank's time). */
+const GOTCHA_MS = 2000;
+/** Countdown's "Now" stays this long after zero. */
+const COUNT_DONE_MS = 1600;
 
 const clampInt = (v: unknown, lo: number, hi: number, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : fallback);
 const styleOf = (v: unknown): AnnounceStyle => ((ANNOUNCE_STYLES as readonly unknown[]).includes(v) ? (v as AnnounceStyle) : 'info');
@@ -48,10 +92,21 @@ const styleOf = (v: unknown): AnnounceStyle => ((ANNOUNCE_STYLES as readonly unk
 export function announcementView(msg: { title?: unknown; text?: unknown; style?: unknown; seconds?: unknown }): { title: string; text: string; style: AnnounceStyle; ms: number } {
   const style = styleOf(msg.style);
   const title = clipBroadcastText(msg.title, BROADCAST_TITLE_MAX) || STYLE_TITLE[style];
-  return { title, text: clipBroadcastText(msg.text, BROADCAST_TEXT_MAX), style, ms: clampInt(msg.seconds, ANNOUNCE_SECONDS[0], ANNOUNCE_SECONDS[1], 8) * 1000 };
+  return { title, text: clipBroadcastText(msg.text, BROADCAST_TEXT_MAX), style, ms: clampInt(msg.seconds, ANNOUNCE_SECONDS[0], ANNOUNCE_SECONDS[1], ANNOUNCE_DEFAULT_SECONDS) * 1000 };
 }
 
-function reducedMotion(): boolean {
+/** How long a prank runs (ms): the sender's seconds clamped to PRANK_SECONDS, else the kind's default. */
+export function prankMs(kind: PrankKind, seconds: unknown): number {
+  return clampInt(seconds, PRANK_SECONDS[0], PRANK_SECONDS[1], PRANK_DEFAULT_SECONDS[kind]) * 1000;
+}
+
+/** Eased 0..1..0 of a turn that goes in over `turn` ms from `start` and back out before `end`. */
+export function turnAmount(now: number, start: number, end: number, turn = FLIP_TURN_MS): number {
+  const t = Math.max(0, Math.min(1, (now - start) / turn, (end - now) / turn));
+  return t < 0.5 ? 2 * t * t : 1 - 2 * (1 - t) * (1 - t);
+}
+
+export function reducedMotion(): boolean {
   try {
     return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   } catch {
@@ -84,6 +139,18 @@ interface Particle {
 interface Ring {
   tile: number;
   born: number;
+  /** how long it shows */
+  ms: number;
+}
+
+/** A running prank: when it started and ends (performance.now ms), its own end timer, and what it needs. */
+interface Prank {
+  start: number;
+  end: number;
+  timer: ReturnType<typeof setTimeout>;
+  mode?: FlipMode;
+  /** chase: the unit, where the camera was, the phase, and where the camera was put last frame */
+  chase?: { unit: number; from: { x: number; y: number; zoom: number }; phase: 'in' | 'follow' | 'out'; zoom: number; last: { x: number; y: number; zoom: number } | null };
 }
 
 /** The HUD's own colours (styles.css tokens), so the effects belong to the table. */
@@ -103,7 +170,12 @@ export class BroadcastLayer {
   private lookText: HTMLElement;
   private banner: { el: HTMLElement; until: number; timer: ReturnType<typeof setTimeout> } | null = null;
   private notices: { el: HTMLElement; timer: ReturnType<typeof setTimeout> }[] = [];
-  private countdown: { until: number; label: string; doneUntil: number } | null = null;
+  private countdown: { until: number; label: string; doneUntil: number; doneText: string; doneLabel: string; onDone?: () => void } | null = null;
+  private countTimer: ReturnType<typeof setTimeout> | null = null;
+  private pranks = new Map<PrankKind, Prank>();
+  private fogEl: HTMLElement;
+  /** the layers the last warp was written to (cleared when it ends) */
+  private warped: HTMLElement[] = [];
   private particles: Particle[] = [];
   private ring: Ring | null = null;
   private lookTile = -1;
@@ -142,12 +214,17 @@ export class BroadcastLayer {
       const v = this.view?.();
       if (v && this.lookTile >= 0) v.focus(this.lookTile);
     });
-    this.el.append(this.canvas, this.stack, this.look);
+    this.fogEl = el('div', 'bc-fog hidden');
+    this.fogEl.setAttribute('aria-hidden', 'true');
+    this.fogEl.dataset.test = 'bc-fog';
+    this.el.append(this.canvas, this.fogEl, this.stack, this.look);
     root.append(this.el);
   }
 
   /** The map on screen now (main.ts sets it per game; null in the menu). */
   setView(view: (() => BroadcastView | null) | null): void {
+    // a new game or the menu: no prank carries over (nothing turned, no ducks, no camera move)
+    this.endPranks();
     this.view = view;
   }
 
@@ -248,9 +325,14 @@ export class BroadcastLayer {
 
   // ---------------------------------------------------------------------------------------------- effects
 
-  spectacle(msg: { kind?: unknown; code?: unknown; tile?: unknown; label?: unknown; seconds?: unknown }): void {
+  spectacle(msg: { kind?: unknown; code?: unknown; tile?: unknown; label?: unknown; seconds?: unknown; mode?: unknown }): void {
+    // a kind this client doesn't know (a newer server) is dropped: effects are decoration only
     if (!(SPECTACLE_KINDS as readonly unknown[]).includes(msg.kind)) return;
     const kind = msg.kind as SpectacleKind;
+    if ((PRANK_KINDS as readonly string[]).includes(kind)) {
+      this.prank(kind as PrankKind, msg);
+      return;
+    }
     const label = clipBroadcastText(msg.label, BROADCAST_LABEL_MAX);
     const v = this.view?.() ?? null;
     // a tile only means something on that room's map
@@ -260,16 +342,14 @@ export class BroadcastLayer {
     switch (kind) {
       case 'ping':
         if (tile < 0) return;
-        this.ring = { tile, born: performance.now() };
+        this.ring = { tile, born: performance.now(), ms: PING_MS };
         this.lookTile = tile;
         setText(this.lookText, label || 'Look here');
         this.look.classList.remove('hidden');
         break;
       case 'countdown': {
         const s = clampInt(msg.seconds, COUNTDOWN_SECONDS[0], COUNTDOWN_SECONDS[1], 10);
-        this.countdown = { until: performance.now() + s * 1000, label: label || 'Starting in', doneUntil: 0 };
-        setText(this.countLabel, this.countdown.label);
-        this.countEl.classList.remove('hidden', 'done');
+        this.startCountdown(s * 1000, label || 'Starting in', 'Now', '');
         break;
       }
       case 'confetti': {
@@ -300,10 +380,47 @@ export class BroadcastLayer {
     setTimeout(() => t.classList.remove('bc-shake'), 700);
   }
 
+  /** A tile's centre on the page (through a flip or wobble, so rings and confetti sit where the tile shows). */
   private tilePoint(v: BroadcastView, tile: number): { x: number; y: number } {
     const p = v.tileToScreen((tile % v.mapWidth) + 0.5, Math.floor(tile / v.mapWidth) + 0.5);
-    const r = v.canvas.getBoundingClientRect();
-    return { x: p.x + r.left, y: p.y + r.top };
+    return mapPointOnPage(v.canvas, p.x, p.y);
+  }
+
+  /**
+   * One countdown plate (a new one replaces the old). It ends by itself: a timer, so it goes even when no frame runs
+   * (a hidden tab); the frames only draw the seconds.
+   */
+  private startCountdown(ms: number, label: string, doneText: string, doneLabel: string, doneMs = COUNT_DONE_MS, onDone?: () => void): void {
+    const now = performance.now();
+    if (this.countTimer) clearTimeout(this.countTimer);
+    this.countdown = { until: now + ms, label, doneUntil: 0, doneText, doneLabel, onDone };
+    setText(this.countLabel, label);
+    setText(this.countNum, String(Math.ceil(ms / 1000)));
+    this.countEl.classList.remove('hidden', 'done', 'bomb');
+    this.countTimer = setTimeout(() => {
+      this.countDone(performance.now());
+      this.countTimer = setTimeout(() => this.clearCountdown(), doneMs);
+    }, ms);
+  }
+
+  private countDone(now: number): void {
+    const c = this.countdown;
+    if (!c || c.doneUntil) return;
+    c.doneUntil = now + COUNT_DONE_MS;
+    setText(this.countNum, c.doneText);
+    if (c.doneLabel) setText(this.countLabel, c.doneLabel);
+    this.countEl.classList.add('done');
+    const fn = c.onDone;
+    c.onDone = undefined;
+    fn?.();
+  }
+
+  private clearCountdown(): void {
+    if (this.countTimer) clearTimeout(this.countTimer);
+    this.countTimer = null;
+    this.countdown = null;
+    this.countEl.classList.add('hidden');
+    this.countEl.classList.remove('done', 'bomb');
   }
 
   private scale(n: number): number {
@@ -375,10 +492,11 @@ export class BroadcastLayer {
     if (!g) return;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);
+    this.stepPranks(now);
     this.stepParticles(g, dt);
     this.drawRing(g, now);
     this.stepCountdown(now);
-    if (this.particles.length || this.ring || this.countdown) this.raf = requestAnimationFrame((t) => this.frame(t));
+    if (this.particles.length || this.ring || this.countdown || this.pranks.size) this.raf = requestAnimationFrame((t) => this.frame(t));
     else g.clearRect(0, 0, W, H);
   }
 
@@ -435,7 +553,7 @@ export class BroadcastLayer {
     if (!r) return;
     const age = now - r.born;
     const v = this.view?.() ?? null;
-    if (age > PING_MS || !v) {
+    if (age > r.ms || !v) {
       this.ring = null;
       this.lookTile = -1;
       this.look.classList.add('hidden');
@@ -444,7 +562,7 @@ export class BroadcastLayer {
     const p = this.tilePoint(v, r.tile);
     const W = window.innerWidth;
     const H = window.innerHeight;
-    const fade = Math.min(1, (PING_MS - age) / 800);
+    const fade = Math.min(1, (r.ms - age) / 800);
     // three rings, one every 600 ms, growing from the spot
     g.lineWidth = 2;
     for (let k = 0; k < 3; k++) {
@@ -475,26 +593,230 @@ export class BroadcastLayer {
 
   private stepCountdown(now: number): void {
     const c = this.countdown;
-    if (!c) return;
-    if (c.doneUntil) {
-      if (now > c.doneUntil) {
-        this.countdown = null;
-        this.countEl.classList.add('hidden');
-      }
-      return;
-    }
+    if (!c || c.doneUntil) return; // (its timers end it)
     const left = Math.ceil((c.until - now) / 1000);
-    if (left <= 0) {
-      c.doneUntil = now + 1600;
-      setText(this.countNum, 'Now');
-      this.countEl.classList.add('done');
-      return;
-    }
-    setText(this.countNum, left >= 60 ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : String(left));
+    if (left > 0) setText(this.countNum, String(left));
   }
 
   destroy(): void {
     if (this.raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.raf);
+    this.endPranks();
+    this.clearCountdown();
     this.el.remove();
+  }
+
+  // ---------------------------------------------------------------------------------------------- pranks
+
+  /** Which pranks run now (tests, the console's preview). */
+  activePranks(): PrankKind[] {
+    return [...this.pranks.keys()];
+  }
+
+  /** Starts (or restarts) a prank; it ends by its own timer within PRANK_SECONDS. */
+  prank(kind: PrankKind, msg: { seconds?: unknown; mode?: unknown } = {}): boolean {
+    const v = this.view?.() ?? null;
+    const ms = prankMs(kind, msg.seconds);
+    const now = performance.now();
+    const calm = reducedMotion();
+    // the map pranks need a map; the cloud also covers the menu
+    if (kind !== 'fogPuff' && !v) return false;
+    if (calm && (kind === 'flip' || kind === 'earthquake' || kind === 'chase')) return false;
+    const old = this.pranks.get(kind);
+    if (old) clearTimeout(old.timer);
+    const p: Prank = { start: now, end: now + ms, timer: setTimeout(() => this.endPrank(kind), ms) };
+    switch (kind) {
+      case 'flip': {
+        p.mode = (FLIP_MODES as readonly unknown[]).includes(msg.mode) ? (msg.mode as FlipMode) : 'upside';
+        if (!v?.mapLayers) return this.dropNew(kind, p);
+        // already turned the same way: it stays turned for the new time (no turning back and forth)
+        if (old && old.mode === p.mode && now - old.start > FLIP_TURN_MS) p.start = now - FLIP_TURN_MS;
+        break;
+      }
+      case 'earthquake':
+        if (!v?.mapLayers) return this.dropNew(kind, p);
+        if (old) p.start = Math.min(now, old.start);
+        break;
+      case 'disco':
+        prankView.hue = calm ? 150 : 6;
+        break;
+      case 'ducks':
+        prankView.ducks = true;
+        break;
+      case 'fakeBomb': {
+        const cap = v?.capitalTile?.() ?? -1;
+        const tile = v && cap >= 0 && cap < v.mapWidth * v.mapHeight ? cap : -1;
+        const count = Math.max(1000, ms - GOTCHA_MS);
+        if (tile >= 0) {
+          this.ring = { tile, born: now, ms: count };
+          this.lookTile = tile;
+          setText(this.lookText, 'Your capital');
+          this.look.classList.remove('hidden');
+        }
+        this.startCountdown(count, 'Incoming!', 'Gotcha!', 'Just confetti', Math.min(GOTCHA_MS, ms - count), () => {
+          const vv = this.view?.() ?? null;
+          const at = tile >= 0 && vv ? this.tilePoint(vv, tile) : null;
+          if (this.ring && this.ring.tile === tile) this.ring.ms = 0;
+          if (at) this.burst(at.x, at.y, 110, -Math.PI / 2, 1.15);
+          else this.rain(window.innerWidth, window.innerHeight);
+          this.kick();
+        });
+        this.countEl.classList.add('bomb');
+        break;
+      }
+      case 'fogPuff': {
+        const f = this.fogEl;
+        f.classList.remove('on');
+        void f.offsetWidth; // restart the animation
+        f.style.animationDuration = `${ms}ms`;
+        f.classList.remove('hidden');
+        f.classList.add('on');
+        break;
+      }
+      case 'chase': {
+        const cam = v?.camera;
+        const u = v?.ownUnit?.() ?? null;
+        if (!cam || !u) return this.dropNew(kind, p);
+        const c = cam.get();
+        const zoom = Math.min(24, Math.max(c.zoom * 1.6, 9));
+        cam.flyTo(u.x + 0.5, u.y + 0.5, zoom, Math.min(CHASE_GLIDE_MS, ms / 3));
+        p.chase = { unit: u.id, from: old?.chase?.from ?? { x: c.x, y: c.y, zoom: c.zoom }, phase: 'in', zoom, last: null };
+        break;
+      }
+    }
+    this.pranks.set(kind, p);
+    this.kick();
+    return true;
+  }
+
+  private dropNew(kind: PrankKind, p: Prank): boolean {
+    clearTimeout(p.timer);
+    this.endPrank(kind);
+    return false;
+  }
+
+  /** Ends a prank and puts back what it changed (its timer calls this; so do a new game and the menu). */
+  endPrank(kind: PrankKind): void {
+    const p = this.pranks.get(kind);
+    if (p) clearTimeout(p.timer);
+    this.pranks.delete(kind);
+    switch (kind) {
+      case 'flip':
+      case 'earthquake':
+        this.applyWarp(performance.now());
+        break;
+      case 'disco':
+        prankView.hue = 0;
+        break;
+      case 'ducks':
+        prankView.ducks = false;
+        break;
+      case 'fakeBomb':
+        if (this.countEl.classList.contains('bomb')) this.clearCountdown();
+        break;
+      case 'fogPuff':
+        this.fogEl.classList.remove('on');
+        this.fogEl.classList.add('hidden');
+        break;
+      case 'chase': {
+        // still gliding or following (its time ran out before the glide back): go back now
+        const c = p?.chase;
+        const cam = this.view?.()?.camera;
+        if (c && cam && c.phase !== 'out') cam.flyTo(c.from.x, c.from.y, c.from.zoom, 600);
+        break;
+      }
+    }
+  }
+
+  /** Every prank off at once. */
+  endPranks(): void {
+    for (const k of [...this.pranks.keys()]) this.endPrank(k);
+    prankView.hue = 0;
+    prankView.ducks = false;
+    this.writeWarp(null);
+  }
+
+  private stepPranks(now: number): void {
+    if (!this.pranks.size) return;
+    const disco = this.pranks.get('disco');
+    if (disco && !reducedMotion()) prankView.hue = 6 + (((now - disco.start) * 0.12) % 354); // once round in 3 s
+    this.applyWarp(now);
+    const chase = this.pranks.get('chase');
+    if (chase) this.stepChase(chase, now);
+  }
+
+  /** The map's warp from the flip and the wobble now (null = none) and onto the map layers. */
+  private applyWarp(now: number): void {
+    const flip = this.pranks.get('flip');
+    const quake = this.pranks.get('earthquake');
+    if (!flip && !quake) {
+      this.writeWarp(null);
+      return;
+    }
+    const w: MapWarp = { rot: 0, sx: 1, sy: 1, dx: 0, dy: 0, moving: false };
+    if (flip) {
+      const k = turnAmount(now, flip.start, flip.end);
+      if (flip.mode === 'mirror') w.sx = 1 - 2 * k;
+      else w.rot = Math.PI * k;
+      w.moving = k > 0.001 && k < 0.999;
+    }
+    if (quake) {
+      // a smooth wobble (two sines each way, not random jitter), eased in over 0.4 s and out over 0.6 s
+      const e = Math.max(0, Math.min(1, (now - quake.start) / 400, (quake.end - now) / 600));
+      const t = now - quake.start;
+      w.dx += e * 5 * (Math.sin(t * 0.021) + 0.5 * Math.sin(t * 0.047));
+      w.dy += e * 3.5 * (Math.sin(t * 0.026 + 1.3) + 0.5 * Math.sin(t * 0.053));
+      w.rot += e * 0.011 * Math.sin(t * 0.017);
+    }
+    this.writeWarp(w);
+  }
+
+  private writeWarp(w: MapWarp | null): void {
+    prankView.warp = w;
+    const layers = w ? this.view?.()?.mapLayers?.() ?? [] : [];
+    const css = warpCss(w);
+    for (const l of this.warped) if (!layers.includes(l)) l.style.transform = '';
+    for (const l of layers) {
+      l.style.transform = css;
+      l.style.transformOrigin = '50% 50%';
+    }
+    this.warped = layers;
+  }
+
+  /** Glide in, follow, glide back; a pan or zoom by the player ends it where they put the camera. */
+  private stepChase(p: Prank, now: number): void {
+    const c = p.chase!;
+    const cam = this.view?.()?.camera;
+    const v = this.view?.() ?? null;
+    if (!cam || !v) return this.endPrank('chase');
+    const at = cam.get();
+    const glide = Math.min(CHASE_GLIDE_MS, (p.end - p.start) / 3);
+    const u = v.ownUnit?.(c.unit) ?? null;
+    if (c.phase !== 'out' && (now >= p.end - glide || !u)) {
+      c.phase = 'out';
+      cam.flyTo(c.from.x, c.from.y, c.from.zoom, glide);
+      return;
+    }
+    if (c.phase === 'out') {
+      if (!at.flying) this.letGo(p); // back where it was (or the player took over on the way)
+      return;
+    }
+    if (c.phase === 'in') {
+      if (at.flying) return;
+      if (now - p.start < glide - 50) return this.letGo(p); // the player took the camera
+      c.phase = 'follow';
+      c.zoom = at.zoom;
+    } else if (c.last && (Math.abs(at.x - c.last.x) > 1e-3 || Math.abs(at.y - c.last.y) > 1e-3 || Math.abs(at.zoom - c.last.zoom) > 1e-3)) {
+      return this.letGo(p);
+    }
+    if (!u) return;
+    cam.centerOn(at.x + (u.x + 0.5 - at.x) * 0.18, at.y + (u.y + 0.5 - at.y) * 0.18);
+    const after = cam.get();
+    c.last = { x: after.x, y: after.y, zoom: after.zoom };
+  }
+
+  /** The player moved the camera during a chase: it ends there (no glide back). */
+  private letGo(p: Prank): void {
+    clearTimeout(p.timer);
+    this.pranks.delete('chase');
   }
 }

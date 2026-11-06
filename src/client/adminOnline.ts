@@ -2,18 +2,24 @@
 //   Games    every room on the server (adminRooms), Watch a running game as a spectator, pick a game as the target,
 //            its people with Message / Mute / Remove
 //   Announce a banner for one game or for every screen on the server, and a short message for one player
-//   Effects  a ring on a tile with a label, a countdown, confetti, fireworks, a screen shake
+//   Effects  a ring on a tile with a label, a countdown, confetti, fireworks, a screen shake, and the screen pranks
+//            (flip, earthquake, disco, rubber ducks, pretend bomb, fog puff, camera chase) for a game, every screen or
+//            one player. Each ends by itself: banners within 15 s, pranks within 10 s (the server refuses longer).
 // Everything here is a server message (protocol: admin*), never a game action: none of it changes the game, so it can't
 // desync. The server checks the session for every one and answers adminAck; the status line shows the answer.
 import {
+  ANNOUNCE_DEFAULT_SECONDS,
+  ANNOUNCE_SECONDS,
   ANNOUNCE_STYLES,
   BROADCAST_LABEL_MAX,
   BROADCAST_TEXT_MAX,
   BROADCAST_TITLE_MAX,
   COUNTDOWN_SECONDS,
+  PRANK_DEFAULT_SECONDS,
+  PRANK_SECONDS,
   cleanBroadcastText,
 } from '../net/protocol';
-import type { AdminRoomInfo, AnnounceStyle, ClientMessage, ServerMessage, SpectacleKind } from '../net/protocol';
+import type { AdminRoomInfo, AnnounceStyle, ClientMessage, FlipMode, PrankKind, ServerMessage, SpectacleKind } from '../net/protocol';
 import type { GameState } from '../sim/types';
 import { setUnlocked } from './admin';
 import { el, setText } from './dom';
@@ -55,7 +61,33 @@ export interface OnlinePowersDeps {
 }
 
 const STYLE_LABEL: Record<AnnounceStyle, string> = { info: 'Info', warning: 'Warning', celebration: 'Celebration' };
-const SECONDS = [5, 8, 12, 20, 30, 60];
+/** Banner times the form offers (all within ANNOUNCE_SECONDS). */
+const SECONDS = [3, 5, 6, 8, 10, 12, 15].filter((s) => s >= ANNOUNCE_SECONDS[0] && s <= ANNOUNCE_SECONDS[1]);
+/** The pranks, as the Effects tab lists them. */
+export const PRANK_BUTTONS: [PrankKind, string, string][] = [
+  ['earthquake', 'Earthquake', 'A gentle wobble of the map'],
+  ['disco', 'Disco', 'Nation colours run through the rainbow'],
+  ['ducks', 'Rubber ducks', 'Ships, planes and divisions drawn as ducks'],
+  ['fakeBomb', 'Pretend bomb', 'Counts down at their capital, then confetti and "Gotcha!"'],
+  ['fogPuff', 'Fog puff', 'A cloud covers the screen and clears'],
+  ['chase', 'Camera chase', 'Their camera follows one of their units, then comes back'],
+];
+
+/** The prank message the Effects tab sends (exported for tests); a string says why it can't be sent. */
+export function prankMessage(f: { where: Where; here: string | null; sel: string | null; memberId: number | null; kind: PrankKind; seconds: number | null; mode?: FlipMode }): ClientMessage | string {
+  const extra: { seconds?: number; mode?: FlipMode } = {};
+  if (f.seconds !== null) {
+    if (!(Number.isInteger(f.seconds) && f.seconds >= PRANK_SECONDS[0] && f.seconds <= PRANK_SECONDS[1])) return `Seconds: ${PRANK_SECONDS[0]} to ${PRANK_SECONDS[1]}`;
+    extra.seconds = f.seconds;
+  }
+  if (f.kind === 'flip') extra.mode = f.mode ?? 'upside';
+  if (f.where === 'all') return { type: 'adminSpectacle', scope: 'all', kind: f.kind, ...extra };
+  const code = f.where === 'sel' ? f.sel : f.here;
+  if (!code) return f.where === 'sel' ? 'Pick a game in Games first' : 'You are not in a game: pick one in Games';
+  const msg: Extract<ClientMessage, { type: 'adminSpectacle' }> = { type: 'adminSpectacle', scope: 'room', code, kind: f.kind, ...extra };
+  if (f.memberId !== null) msg.memberId = f.memberId;
+  return msg;
+}
 const MUTES: [number, string][] = [
   [5, '5 min'],
   [15, '15 min'],
@@ -77,7 +109,7 @@ function typingNow(): boolean {
 }
 
 /** 'here' = the game the owner is in, 'sel' = the game picked in Games, 'all' = every screen on the server. */
-type Where = 'here' | 'sel' | 'all';
+export type Where = 'here' | 'sel' | 'all';
 
 /** The announcement the form would send (exported for tests); null with a reason when it can't be sent. */
 export function announceMessage(f: { where: Where; here: string | null; sel: string | null; title: string; text: string; style: AnnounceStyle; seconds: number }): ClientMessage | string {
@@ -101,7 +133,11 @@ export class OnlinePowers {
   private selected: string | null = null;
   private expanded = new Set<string>();
   private where: Where = 'here';
-  private form = { title: '', text: '', style: 'info' as AnnounceStyle, seconds: 8 };
+  private form = { title: '', text: '', style: 'info' as AnnounceStyle, seconds: ANNOUNCE_DEFAULT_SECONDS };
+  /** Effects for one member of the target game (null = everyone there) */
+  private fxWho: { code: string; memberId: number } | null = null;
+  /** prank length (null = each prank's own default) */
+  private prankSeconds: number | null = null;
   private noteFor: { code: string; memberId: number } | null = null;
   private noteText = '';
   private noteStyle: AnnounceStyle = 'info';
@@ -153,7 +189,7 @@ export class OnlinePowers {
         this.listedAt = performance.now();
         if (this.selected && !m.rooms.some((r) => r.code === this.selected)) this.selected = null;
         // (not while the owner is typing in a form: the caret would be lost)
-        if (!same && (this.deps.openTab() === 'games' || (this.deps.openTab() === 'announce' && !typingNow()))) this.deps.rerender();
+        if (!same && (this.deps.openTab() === 'games' || ((this.deps.openTab() === 'announce' || this.deps.openTab() === 'effects') && !typingNow()))) this.deps.rerender();
         break;
       }
       case 'adminAck':
@@ -309,9 +345,9 @@ export class OnlinePowers {
     else this.renderEffects(body);
   }
 
-  /** Called when a tab opens: a fresh list for Games (and for the player picker in Announce). */
+  /** Called when a tab opens: a fresh list for Games (and for the player pickers in Announce and Effects). */
   opened(tab: OnlineTab): void {
-    if ((tab === 'games' || tab === 'announce') && performance.now() - this.listedAt > 1500) this.refresh(tab === 'games');
+    if (performance.now() - this.listedAt > 1500) this.refresh(tab === 'games');
   }
 
   private renderGames(body: HTMLElement): void {
@@ -472,15 +508,38 @@ export class OnlinePowers {
     );
   }
 
+  /** Who in the target game sees the effects: everyone there, or one connected member. null = everyone. */
+  private whoRow(body: HTMLElement): number | null {
+    const code = this.where === 'all' ? null : this.targetCode();
+    if (!code) {
+      this.fxWho = null;
+      return null;
+    }
+    const room = this.rooms.find((r) => r.code === code) ?? null;
+    if (!room && performance.now() - this.listedAt > 1500) this.refresh(false);
+    const people = room ? room.members.filter((m) => m.connected) : [];
+    if (this.fxWho && (this.fxWho.code !== code || !people.some((p) => p.memberId === this.fxWho!.memberId))) this.fxWho = null;
+    const opts: [number, string][] = [[-1, 'Everyone there'], ...people.map((p): [number, string] => [p.memberId, `${p.name}${p.spectator ? ' (spectator)' : ''}`])];
+    const who = this.select(opts, this.fxWho?.memberId ?? -1, (v) => {
+      this.fxWho = v < 0 ? null : { code, memberId: v };
+    });
+    who.setAttribute('aria-label', 'Who sees it');
+    who.dataset.test = 'adm-fx-who';
+    body.append(this.row('Who', who));
+    return this.fxWho?.memberId ?? null;
+  }
+
   private renderEffects(body: HTMLElement): void {
     this.sec(body, 'Effects');
     body.append(this.whereRow());
+    this.whoRow(body);
     const here = this.deps.roomCode();
     const onMap = !!this.deps.pickTile && !!this.deps.state() && this.where === 'here' && !!here;
     const fx = (kind: SpectacleKind, extra: { tile?: number; label?: string; seconds?: number } = {}): void => {
       const code = this.targetCode();
       if (this.where !== 'all' && !code) return this.deps.say('Pick a game in Games first', true);
       const msg: ClientMessage = this.where === 'all' ? { type: 'adminSpectacle', scope: 'all', kind, ...extra } : { type: 'adminSpectacle', scope: 'room', code: code!, kind, ...extra };
+      if (msg.scope === 'room' && this.fxWho && this.fxWho.code === code) msg.memberId = this.fxWho.memberId;
       this.send(msg);
     };
     const onTile = (kind: SpectacleKind, label: string, extra: () => { label?: string } = () => ({})): HTMLButtonElement => {
@@ -510,6 +569,7 @@ export class OnlinePowers {
     const cs = el('input', 'adm-num');
     cs.type = 'number';
     cs.min = String(COUNTDOWN_SECONDS[0]);
+    cs.dataset.test = 'adm-count-s';
     cs.max = String(COUNTDOWN_SECONDS[1]);
     cs.value = String(this.countSeconds);
     cs.style.width = '64px';
@@ -531,6 +591,29 @@ export class OnlinePowers {
       this.row('Fireworks', this.btn('Whole screen', () => fx('fireworks')), onTile('fireworks', 'On a tile')),
       this.row('Shake', this.btn('Shake screens', () => fx('shake'))),
     );
+
     this.note(body, 'Players who ask their system for less motion get no shake and fewer particles.');
+
+    // ---- pranks: screen only, each over by itself within PRANK_SECONDS
+    this.sec(body, 'Pranks');
+    const secs = this.select<number>([[0, 'Their own length'], ...Array.from({ length: PRANK_SECONDS[1] - PRANK_SECONDS[0] + 1 }, (_, i): [number, string] => [PRANK_SECONDS[0] + i, `${PRANK_SECONDS[0] + i} s`])], this.prankSeconds ?? 0, (v) => (this.prankSeconds = v || null));
+    secs.setAttribute('aria-label', 'Prank length');
+    body.append(this.row('Length', secs));
+    const prank = (kind: PrankKind, mode?: FlipMode): void => {
+      const m = prankMessage({ where: this.where, here: this.deps.roomCode(), sel: this.selected, memberId: this.fxWho && this.fxWho.code === this.targetCode() ? this.fxWho.memberId : null, kind, seconds: this.prankSeconds, mode });
+      if (typeof m === 'string') this.deps.say(m, true);
+      else this.send(m);
+    };
+    const pb = (kind: PrankKind, label: string, title: string, mode?: FlipMode): HTMLButtonElement => {
+      const b = this.btn(label, () => prank(kind, mode));
+      b.title = `${title} (${this.prankSeconds ?? PRANK_DEFAULT_SECONDS[kind]} s)`;
+      b.dataset.test = `adm-prank-${kind}${mode ? `-${mode}` : ''}`;
+      return b;
+    };
+    body.append(this.row('Flip map', pb('flip', 'Upside down', 'The map turns upside down', 'upside'), pb('flip', 'Mirrored', 'The map turns into its mirror image', 'mirror')));
+    const grid = el('div', 'adm-pranks');
+    for (const [kind, label, title] of PRANK_BUTTONS) grid.append(pb(kind, label, title));
+    body.append(grid);
+    this.note(body, `Screen only: nothing in the game changes and clicks still land where players see them. Each prank ends by itself within ${PRANK_SECONDS[1]} s. Players who ask their system for less motion get no flip, wobble or chase, a still colour change and a cloud that only fades.`);
   }
 }
