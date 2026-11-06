@@ -10,6 +10,7 @@ import { isChapterDone, type TutorialUi } from '../tutorial/engine';
 import { GuideBar } from './bar';
 import { GuideEngine, guideCovers, type GuideCtx, type GuideView } from './engine';
 import { guideTips, openingSteps } from './steps';
+import { mapPointOnPage } from '../fx/prankView';
 
 export interface GuideHooks {
   /** the open panels etc. for the steps' checks (tutorial/controller.ts tutorialUiFacts) */
@@ -80,11 +81,12 @@ export class GuideController {
         const s = ctx.state();
         if (!s || tile < 0 || tile >= s.map.owner.length) return null;
         const canvas = document.querySelector<HTMLCanvasElement>('canvas.map');
-        const cr = canvas?.getBoundingClientRect();
         const host = this.bar.el.getBoundingClientRect();
         const w = s.map.width;
-        const p = cam.tileToScreen((tile % w) + 0.5, Math.floor(tile / w) + 0.5);
-        return { x: p.x + (cr?.left ?? 0) - host.left, y: p.y + (cr?.top ?? 0) - host.top, r: Math.max(12, Math.min(40, cam.zoom * 1.5)) };
+        const t = cam.tileToScreen((tile % w) + 0.5, Math.floor(tile / w) + 0.5);
+        // on the page where the tile shows (a screen prank may show the map turned: fx/prankView.ts)
+        const p = canvas ? mapPointOnPage(canvas, t.x, t.y) : t;
+        return { x: p.x - host.left, y: p.y - host.top, r: Math.max(12, Math.min(40, cam.zoom * 1.5)) };
       },
     );
   }

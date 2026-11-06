@@ -5402,10 +5402,14 @@ strong {
     animation-name: bc-fog-calm;
   }
 }
-@media (max-width: 640px) {
+/* phones, upright or sideways (a phone on its side is wide but short: 844 x 390) */
+@media (max-width: 640px), (max-height: 500px) {
   .bc-stack {
     top: calc(env(safe-area-inset-top, 0px) + 52px);
     width: 90vw;
+  }
+  .bc-ann-body {
+    max-height: calc(40vh - 22px);
   }
   .bc-ann {
     gap: 10px;

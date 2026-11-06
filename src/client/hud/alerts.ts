@@ -10,6 +10,7 @@ import type { Camera } from '../camera';
 import { el, fmtTime, setClass, setText, type DrawerId } from './dom';
 import type { DrawerPage } from './drawers';
 import { iconSpan, lineIcon } from './glyph';
+import { mapShown } from '../fx/prankView';
 
 const MAX_CARDS = 3;
 /** ms on screen: a red (bad) alert a little longer */
@@ -166,7 +167,8 @@ export class MapPing {
       this.el.classList.add('hidden');
       return;
     }
-    const p = this.camera.tileToScreen(this.x, this.y);
+    const t = this.camera.tileToScreen(this.x, this.y);
+    const p = mapShown(t.x, t.y); // a screen prank may show the map turned (fx/prankView.ts)
     this.el.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y)}px)`;
   }
 }

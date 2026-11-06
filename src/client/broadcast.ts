@@ -38,7 +38,7 @@ import {
 } from '../net/protocol';
 import type { AnnounceStyle, FlipMode, PrankKind, ServerMessage, SpectacleKind } from '../net/protocol';
 import { el, setText } from './dom';
-import { mapPointOnPage, prankView, warpCss } from './fx/prankView';
+import { mapPointOnPage, prankView, setMapWarp, warpCss } from './fx/prankView';
 import type { MapWarp } from './fx/prankView';
 
 /** The map the layer can point at (null in the menu). */
@@ -771,7 +771,7 @@ export class BroadcastLayer {
   }
 
   private writeWarp(w: MapWarp | null): void {
-    prankView.warp = w;
+    setMapWarp(w);
     const layers = w ? this.view?.()?.mapLayers?.() ?? [] : [];
     const css = warpCss(w);
     for (const l of this.warped) if (!layers.includes(l)) l.style.transform = '';

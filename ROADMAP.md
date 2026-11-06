@@ -500,7 +500,7 @@ powers drops a kind it doesn't know (broadcast.ts checks it against its own list
 shows nothing. Nothing here changes a game: all of it is drawing on the player's own screen, never a lockstep action,
 never hashed, can't desync.
 Owner's time and size rules (for everything the owner sends):
-- Banner text about twice the HUD text: 30 px on desktop, 21 px on phones, title 22 / 16 px; the slip at most 60% of
+- Banner text about twice the HUD text: 30 px on desktop, 21 px on phones (upright or sideways), title 22 / 16 px; the slip at most 60% of
   the screen wide (90% on phones) and 40% tall, under the top bar. Only the slip takes clicks; the map around it stays live.
 - Everything goes by itself: banners 6 s by default and 15 s at most (a new one replaces the old, no pile), a message
   for one player 5 s, countdowns 3 to 15 s, rings 6 s, pranks 2 to 10 s. The server refuses longer times and the
@@ -533,6 +533,10 @@ earthquake, bomb, fog and chase gone by themselves, chase back to the same camer
 screen, no desync. Screenshots /tmp/borderfall-shots/prank-*.png.
 Not checked: real phones (a desktop browser at phone size only); frame time on a real GPU (only software GL here);
 the ducks are small at normal zoom (they take the glyph's size).
+Review fixes: a phone held sideways (844 x 390) got the desktop banner (30 px, text cut off): the phone sizes now also
+apply under 500 px tall. A drag held while a flip turns is let go (it jumped the camera thousands of px mid-turn), also
+when a slow machine misses the whole turn between two frames. The unit card, the alert ping and the guide's ring and
+arrow follow a flip or a wobble with the map.
 
 ## Queued next (owner, 2026-11-03)
 Later: anonymous real-match stats on the server for balance, rematch + quick chat, replays, in-game phone/touch HUD, real-GPU performance check, flaky scripted-player e2e fix.

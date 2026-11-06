@@ -10,6 +10,7 @@ import { unitAutoLine } from '../follow';
 import { iconDataUrl } from '../icons';
 import { el, setText, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon } from './glyph';
+import { mapShown } from '../fx/prankView';
 
 export class UnitCard {
   readonly el: HTMLElement;
@@ -98,9 +99,10 @@ export class UnitCard {
       setText(this.auto, auto);
       setVisible(this.auto, auto !== '');
     }
-    const p = this.ctx.probe()?.unitScreen(id);
-    setVisible(this.el, !!p);
-    if (!p) return;
+    const at = this.ctx.probe()?.unitScreen(id);
+    setVisible(this.el, !!at);
+    if (!at) return;
+    const p = mapShown(at.x, at.y); // a screen prank may show the map turned (fx/prankView.ts)
     // to the right of the ship, flipped left near the screen edge
     const w = this.el.offsetWidth || 200;
     const x = p.x + 22 + w > window.innerWidth - 8 ? p.x - 22 - w : p.x + 22;

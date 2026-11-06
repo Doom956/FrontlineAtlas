@@ -21,6 +21,8 @@ export const prankView = {
   ducks: false,
   /** the map canvases' warp, null = none */
   warp: null as MapWarp | null,
+  /** counts the frames a flip spent turning: a press held across a turn is let go (input.ts) */
+  turns: 0,
 };
 
 /** Smallest scale the inverse uses (a mirror flip passes through 0 for a moment; input waits then anyway). */
@@ -76,11 +78,40 @@ export function mapInputPaused(): boolean {
   return !!prankView.warp?.moving;
 }
 
+/** Sets the warp (broadcast.ts, every frame a prank warps the map). */
+export function setMapWarp(w: MapWarp | null): void {
+  prankView.warp = w;
+  if (w?.moving) prankView.turns++;
+}
+
+/**
+ * Which way round the map shows ('' = as usual, 'm' mirrored, 'u' upside down): a press held while this changes is let
+ * go (input.ts), also when the whole half-second turn fell between two frames on a slow machine.
+ */
+export function mapSide(): string {
+  const w = prankView.warp;
+  if (!w) return '';
+  return `${w.sx < 0 ? 'm' : ''}${Math.abs(Math.round(w.rot / Math.PI)) % 2 ? 'u' : ''}`;
+}
+
 /** Everything off (a new game, the menu). */
 export function resetPrankView(): void {
   prankView.hue = 0;
   prankView.ducks = false;
   prankView.warp = null;
+}
+
+/**
+ * A point of the drawn map in map-canvas CSS px to where it shows now, in the same frame (the canvas's unwarped box):
+ * HUD markers placed over the map in DOM (the unit card, the alert ping) follow a flip or a wobble with it.
+ */
+export function mapShown(x: number, y: number): { x: number; y: number } {
+  const w = prankView.warp;
+  if (!w || typeof document === 'undefined') return { x, y };
+  const c = document.querySelector<HTMLElement>('canvas.map');
+  const cw = c?.clientWidth || window.innerWidth;
+  const ch = c?.clientHeight || window.innerHeight;
+  return warpPoint(w, x, y, cw, ch);
 }
 
 /** A colour turned by `deg` degrees of hue (lightness and saturation kept): the disco palette. */

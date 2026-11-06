@@ -308,7 +308,7 @@ missiles), Pretend bomb ("Incoming!" counts down at the player's capital, then c
 cloud comes over the screen and clears; clicks go through it), Camera chase (the camera glides to one of their units,
 follows it, glides back; if they pan or zoom it stops there). Length: each prank's own (4 to 8 s) or 2 to 10 s.
 Everything ends by itself: banners within 15 s (6 s default; a new one replaces the old), messages after 5 s,
-countdowns within 15 s, pranks within 10 s. A banner's message is about twice the HUD text (30 px, 21 px on phones),
+countdowns within 15 s, pranks within 10 s. A banner's message is about twice the HUD text (30 px, 21 px on phones, upright or sideways),
 at most 60% of the screen wide (90% on phones) and 40% tall; the map around it keeps taking clicks.
 Players never see the words admin, console or owner: banners say "Announcement" or your title, messages
 "Message". With reduced motion on their system there is no shake and a tenth of the particles; flip, earthquake and

@@ -1,6 +1,6 @@
 // Mouse and keyboard handling on the map canvas.
 import { knownOwnerOf } from './fog/fogView';
-import { mapInputPaused, mapPointer } from './fx/prankView';
+import { mapInputPaused, mapPointer, mapSide, prankView } from './fx/prankView';
 import { buildingsOf } from '../sim/buildings';
 import { BUILDINGS, BUILDING_ORDER } from '../sim/config';
 import { areAllied } from '../sim/diplomacy';
@@ -162,7 +162,7 @@ export function setupInput(deps: InputDeps): () => void {
 
   // ---- pointer on the map ----
   // box: Shift+drag selects own units (selection.ts); brush: the owner console's paint tool paints while dragging
-  let press: { id: number; button: number; x0: number; y0: number; x: number; y: number; dragging: boolean; done: boolean; box?: boolean; brush?: boolean } | null = null;
+  let press: { id: number; button: number; x0: number; y0: number; x: number; y: number; dragging: boolean; done: boolean; box?: boolean; brush?: boolean; turns: number; side: string } | null = null;
   let brushTile = -1;
   let brushAt = 0;
   const paint = (tile: number, force: boolean): void => {
@@ -202,7 +202,7 @@ export function setupInput(deps: InputDeps): () => void {
       ui.contextMenu = null;
       const p = local(e);
       // Middle button pans right away; left and right become a pan only after moving DRAG_THRESHOLD px.
-      press = { id: e.pointerId, button: e.button, x0: p.x, y0: p.y, x: p.x, y: p.y, dragging: e.button === 1, done: closing };
+      press = { id: e.pointerId, button: e.button, x0: p.x, y0: p.y, x: p.x, y: p.y, dragging: e.button === 1, done: closing, turns: prankView.turns, side: mapSide() };
       if (e.button === 0 && !closing && e.shiftKey && ui.mode.kind === 'none' && e.pointerType !== 'touch') press.box = true;
       if (e.button === 0 && !closing && ui.mode.kind === 'adminTile' && ui.mode.brush) {
         press.brush = true;
@@ -229,12 +229,28 @@ export function setupInput(deps: InputDeps): () => void {
     },
     opts,
   );
+  // A flip that turns while a press is held lets the press go: mid-turn the pointer maps through a scale near zero
+  // (a 1 px move would pan thousands of px) and after it the map is drawn the other way round.
+  const letGoOnTurn = (): boolean => {
+    if (!press || (!mapInputPaused() && press.turns === prankView.turns && press.side === mapSide())) return false;
+    press = null;
+    clearTimeout(longTimer);
+    canvas.classList.remove('dragging');
+    ui.selectBox = null;
+    return true;
+  };
   canvas.addEventListener(
     'pointermove',
     (e) => {
+      if (mapInputPaused()) {
+        ui.hoverTile = -1;
+        letGoOnTurn();
+        return;
+      }
       const p = local(e);
       ui.hoverTile = tileAt(p.x, p.y);
       ui.hoverPx = { x: p.x, y: p.y };
+      if (letGoOnTurn()) return;
       if (!press || press.id !== e.pointerId) return;
       if (!press.dragging && Math.hypot(p.x - press.x0, p.y - press.y0) > DRAG_THRESHOLD) press.dragging = true;
       if (press.brush) paint(ui.hoverTile, false);
@@ -252,7 +268,7 @@ export function setupInput(deps: InputDeps): () => void {
     if (!press || press.id !== e.pointerId) return;
     const pr = press;
     press = null;
-    if (mapInputPaused()) cancelled = true;
+    if (mapInputPaused() || pr.turns !== prankView.turns || pr.side !== mapSide()) cancelled = true;
     clearTimeout(longTimer);
     canvas.classList.remove('dragging');
     if (pr.box && pr.dragging) {

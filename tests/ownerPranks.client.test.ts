@@ -7,7 +7,10 @@ import { PRANK_DEFAULT_SECONDS, PRANK_KINDS, PRANK_SECONDS } from '../src/net/pr
 import type { PrankKind } from '../src/net/protocol';
 import { BroadcastLayer, prankMs, turnAmount } from '../src/client/broadcast';
 import type { BroadcastView } from '../src/client/broadcast';
-import { mapPointer, prankView, unwarpPoint, warpPoint } from '../src/client/fx/prankView';
+import { mapPointer, mapShown, mapSide, prankView, setMapWarp, unwarpPoint, warpPoint } from '../src/client/fx/prankView';
+import { setupInput } from '../src/client/input';
+import type { InputDeps } from '../src/client/input';
+import { readFileSync } from 'node:fs';
 import { prankMessage } from '../src/client/adminOnline';
 
 /** A 2D context that accepts every call (the frame loop draws into it). */
@@ -334,5 +337,134 @@ describe('console: the prank form', () => {
   it('refuses lengths over 10 s and a missing game', () => {
     expect(prankMessage({ ...f, seconds: 11 })).toBe('Seconds: 2 to 10');
     expect(prankMessage({ ...f, here: null })).toBe('You are not in a game: pick one in Games');
+  });
+});
+
+describe('pranks: a press held across a flip', () => {
+  type H = (e: Record<string, unknown>) => void;
+  const setup = () => {
+    const on: Record<string, H> = {};
+    const canvas = {
+      clientWidth: 800,
+      clientHeight: 600,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
+      addEventListener: (t: string, h: H) => (on[t] = h),
+      setPointerCapture: () => {},
+      classList: { add: () => {}, remove: () => {} },
+    };
+    const minimap = { addEventListener: () => {} };
+    vi.stubGlobal('window', { addEventListener: () => {}, setTimeout, innerWidth: 800, innerHeight: 600 });
+    vi.stubGlobal('document', { addEventListener: () => {}, querySelector: () => canvas });
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    const camera = { pan: vi.fn(), screenToTile: (x: number, y: number) => ({ x, y }) };
+    const ui = { contextMenu: null, mode: { kind: 'none' }, hoverTile: -1, hoverPx: null, selectBox: null as unknown };
+    const stop = setupInput({ canvas, minimap, camera, renderer: {}, ui, getState: () => null, dispatch: () => {}, openResearch: () => {}, toggleHelp: () => {} } as unknown as InputDeps);
+    const ev = (x: number, y: number, more: Record<string, unknown> = {}) => ({ pointerId: 1, button: 0, clientX: x, clientY: y, pointerType: 'mouse', shiftKey: false, preventDefault: () => {}, ...more });
+    return { on, camera, ui, stop, ev };
+  };
+  afterEach(() => {
+    setMapWarp(null);
+    vi.unstubAllGlobals();
+  });
+
+  it('a drag that is still held when a mirror flip turns stops panning (no jump of thousands of px)', () => {
+    const { on, camera, stop, ev } = setup();
+    on.pointerdown(ev(540, 300));
+    on.pointermove(ev(560, 300));
+    expect(camera.pan).toHaveBeenCalledTimes(1);
+    // mid-turn the mirror is almost flat: a 1 px move would be a huge pan
+    setMapWarp({ rot: 0, sx: 0.02, sy: 1, dx: 0, dy: 0, moving: true });
+    on.pointermove(ev(561, 300));
+    setMapWarp({ rot: 0, sx: -1, sy: 1, dx: 0, dy: 0, moving: false });
+    on.pointermove(ev(562, 300));
+    on.pointermove(ev(580, 300));
+    expect(camera.pan).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it('a press held through a whole turn with no move in between is let go too', () => {
+    const { on, camera, stop, ev } = setup();
+    on.pointerdown(ev(540, 300));
+    setMapWarp({ rot: Math.PI / 2, sx: 1, sy: 1, dx: 0, dy: 0, moving: true });
+    setMapWarp({ rot: Math.PI, sx: 1, sy: 1, dx: 0, dy: 0, moving: false });
+    on.pointermove(ev(600, 300));
+    expect(camera.pan).not.toHaveBeenCalled();
+    // a new press after the turn pans as usual (through the flip)
+    on.pointerup(ev(600, 300));
+    on.pointerdown(ev(600, 300));
+    on.pointermove(ev(620, 300));
+    expect(camera.pan).toHaveBeenCalledTimes(1);
+    expect(camera.pan.mock.calls[0][0]).toBeCloseTo(-20, 6);
+    stop();
+  });
+
+  it('a slow machine that misses the whole turn between two frames lets the press go too', () => {
+    const { on, camera, stop, ev } = setup();
+    on.pointerdown(ev(1000, 400));
+    on.pointermove(ev(990, 400));
+    expect(camera.pan).toHaveBeenCalledTimes(1);
+    // no frame while it turned: the next frame already shows the map mirrored (the pointer maps 990 -> -190)
+    prankView.warp = { rot: 0, sx: -1, sy: 1, dx: 0, dy: 0, moving: false };
+    on.pointermove(ev(982, 400));
+    on.pointermove(ev(974, 400));
+    on.pointerup(ev(974, 400));
+    expect(camera.pan).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it('a Shift box being drawn is dropped when a flip turns', () => {
+    const { on, ui, stop, ev } = setup();
+    on.pointerdown(ev(100, 100, { shiftKey: true }));
+    on.pointermove(ev(200, 200, { shiftKey: true }));
+    expect(ui.selectBox).not.toBeNull();
+    setMapWarp({ rot: 1, sx: 1, sy: 1, dx: 0, dy: 0, moving: true });
+    on.pointermove(ev(210, 210, { shiftKey: true }));
+    expect(ui.selectBox).toBeNull();
+    stop();
+  });
+});
+
+describe('pranks: HUD markers over the map follow the flip', () => {
+  afterEach(() => {
+    setMapWarp(null);
+    vi.unstubAllGlobals();
+  });
+  it('mapShown: unchanged with no prank, mirrored through the centre when upside down', () => {
+    vi.stubGlobal('window', { innerWidth: 800, innerHeight: 600 });
+    vi.stubGlobal('document', { querySelector: () => ({ clientWidth: 800, clientHeight: 600 }) });
+    expect(mapShown(100, 50)).toEqual({ x: 100, y: 50 });
+    setMapWarp({ rot: Math.PI, sx: 1, sy: 1, dx: 0, dy: 0, moving: false });
+    const p = mapShown(100, 50);
+    expect(p.x).toBeCloseTo(700, 6);
+    expect(p.y).toBeCloseTo(550, 6);
+    setMapWarp({ rot: 0, sx: -1, sy: 1, dx: 0, dy: 0, moving: false });
+    expect(mapShown(100, 50).x).toBeCloseTo(700, 6);
+  });
+  it('mapSide: which way round the map shows (a wobble alone counts as the usual way)', () => {
+    expect(mapSide()).toBe('');
+    setMapWarp({ rot: 0.011, sx: 1, sy: 1, dx: 4, dy: -3, moving: false });
+    expect(mapSide()).toBe('');
+    setMapWarp({ rot: Math.PI + 0.01, sx: 1, sy: 1, dx: 0, dy: 0, moving: false });
+    expect(mapSide()).toBe('u');
+    setMapWarp({ rot: -0.01, sx: -1, sy: 1, dx: 0, dy: 0, moving: false });
+    expect(mapSide()).toBe('m');
+  });
+  it('the unit card, the alert ping and the guide ring are placed through the warp', () => {
+    const src = (f: string) => readFileSync(new URL(`../src/client/${f}`, import.meta.url), 'utf8');
+    expect(src('hud/unitCard.ts')).toMatch(/mapShown\(at\.x, at\.y\)/);
+    expect(src('hud/alerts.ts')).toMatch(/mapShown\(t\.x, t\.y\)/);
+    expect(src('guide/guide.ts')).toMatch(/mapPointOnPage\(canvas, t\.x, t\.y\)/);
+  });
+});
+
+describe('banners on a phone held sideways', () => {
+  it('the phone sizes (21 px text, 90% wide) also apply to short screens, not only narrow ones', () => {
+    const css = readFileSync(new URL('../src/client/styles.css', import.meta.url), 'utf8');
+    const at = css.indexOf('@media (max-width: 640px), (max-height: 500px) {\n  .bc-stack');
+    expect(at).toBeGreaterThan(0);
+    const block = css.slice(at, css.indexOf('\n}\n', at));
+    expect(block).toMatch(/\.bc-ann-text \{\s*font-size: 21px;/);
+    expect(block).toMatch(/width: 90vw;/);
   });
 });

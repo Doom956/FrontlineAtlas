@@ -1357,7 +1357,8 @@ the game state (src/client/broadcast.ts shows them; docs/MULTIPLAYER.md has the 
 Time and size rules: every owner effect ends by itself. Banner 6 s by default, 15 s at most (ANNOUNCE_SECONDS), a new
 one replaces the old; a message for one player 5 s (NOTICE_SECONDS); countdown 3 to 15 s; each prank 2 to 10 s
 (PRANK_SECONDS). The server refuses longer ones and the client clamps again. Banner text about twice the HUD text
-(30 px, 21 px under 640 px wide), at most 60% of the screen wide (90% on phones) and 40% tall, never a takeover;
+(30 px; 21 px under 640 px wide or 500 px tall, so a phone held sideways too), at most 60% of the screen wide (90% on
+phones) and 40% tall, never a takeover;
 only the slip takes clicks. Screen pranks (PRANK_KINDS, values of `spectacle`, for a game, every screen or one
 member): flip (upside down or mirrored), earthquake (wobble), disco (hue-shifted palette), ducks (unit glyphs as
 rubber ducks, missiles excepted), fakeBomb (countdown at the capital ending in confetti and "Gotcha!"), fogPuff (a
@@ -1365,7 +1366,9 @@ CSS cloud), chase (the camera follows one of the player's units, then returns; a
 src/client/fx/prankView.ts (a warp of the map canvases, a hue, a ducks flag) read by renderer.ts, unitGlyphs.ts and
 input.ts; nothing reaches the sim, the lockstep or the hash. Input during a flip or wobble: the pointer is mapped
 back through the CSS transform (mapPointer), so clicks land on the tile the player sees; during the half-second turns
-in and out map input is ignored (the map is mid-turn and a mirror passes through zero width). With
+in and out map input is ignored (the map is mid-turn and a mirror passes through zero width), and a press held
+while the map turns is let go (prankView.turns / mapSide). DOM markers over the map (unit card, alert ping, guide
+ring) go through mapShown / mapPointOnPage so they follow the warp. With
 prefers-reduced-motion: no flip, wobble or chase (skipped), disco holds one palette, the cloud only fades, ducks and
 the pretend bomb show as usual with a tenth of the confetti. Frame cost: one 2D overlay canvas that runs only while
 something moves, a CSS transform on the map canvases, a palette re-upload when the disco hue moves 6 degrees
