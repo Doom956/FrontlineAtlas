@@ -224,7 +224,8 @@ describe('chat input: typing is not a game key', () => {
     expect(active).toBe(input);
     for (const key of ['w', 'a', 's', 'd', ' ', 'm', 'Tab', '1']) {
       expect(input.fire('keydown', { key }).stopped, key).toBe(true);
-      expect(input.fire('keyup', { key }).stopped).toBe(true);
+      // a release still reaches the page: input.ts lets go of a held pan key on keyup
+      expect(input.fire('keyup', { key }).stopped).toBeFalsy();
       expect(input.fire('keypress', { key }).stopped).toBe(true);
     }
     input.value = '   attack   at dawn  ';
@@ -232,10 +233,16 @@ describe('chat input: typing is not a game key', () => {
     expect(form.fire('submit').prevented).toBe(true);
     expect(net.sent).toEqual([{ type: 'chat', channel: 'all', text: 'attack at dawn' }]);
     expect(input.value).toBe('');
+    // Send clicked with the mouse: the caret is back in the input, so the next letters are not game keys
+    input.value = 'second';
+    root.findTest('chat-send')!.focus();
+    form.fire('submit');
+    expect(active).toBe(input);
+    expect(net.sent.length).toBe(2);
     // an empty message is not sent
     input.value = '    ';
     form.fire('submit');
-    expect(net.sent.length).toBe(1);
+    expect(net.sent.length).toBe(2);
     const esc = input.fire('keydown', { key: 'Escape' });
     expect(esc.stopped && esc.prevented).toBe(true);
     expect(view.open).toBe(false);
@@ -249,8 +256,14 @@ describe('chat input: typing is not a game key', () => {
     view.setOpen(true);
     const quick = root.findTest('chat-quick')!.children as FakeEl[];
     expect(quick.map((b) => b.textContent)).toEqual(QUICK_CHAT.map((q) => q.label));
+    const input = root.findTest('chat-input')!;
+    // a click on a button moves focus to it; after the send the caret is back in the message box
+    quick[0].focus();
     quick[0].fire('click');
+    expect(active).toBe(input);
+    root.findTest('chat-attack-here')!.focus();
     root.findTest('chat-attack-here')!.fire('click');
+    expect(active).toBe(input);
     expect(net.sent).toEqual([
       { type: 'chat', channel: 'all', text: 'Good luck' },
       { type: 'chat', channel: 'team', text: 'Attack here', ping: 1234 },

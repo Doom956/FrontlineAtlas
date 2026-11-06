@@ -7,7 +7,7 @@ import type { ServerMessage } from '../src/net/protocol';
 import { ChatLimiter, cleanChatText, maskChatText } from '../server/chat';
 import { startServer } from '../server/server';
 import type { RunningServer } from '../server/server';
-import { validateClientMessage } from '../server/validate';
+import { cleanName, validateClientMessage } from '../server/validate';
 
 type Msg<T extends ServerMessage['type']> = Extract<ServerMessage, { type: T }>;
 
@@ -124,8 +124,19 @@ describe('chat text rules', () => {
       'the dike road and the cockpit',
       '455 troops at 1337 gold, 5h left',
       'https://example.com/a?b=c is a link, shown as text',
+      "there's a chink in their line, attack the dyke at the river and retard their advance",
     ];
     for (const t of normal) expect(maskChatText(t)).toBe(t);
+  });
+
+  it('names follow the chat text rules: no invisible characters, no piles of marks', () => {
+    expect(cleanName('Bob\u061c\u2061\u2062\u00ad\u180e')).toBe('Bob');
+    expect(cleanName('Aurora\u2060')).toBe('Aurora');
+    expect(cleanName('Au\u200brora')).toBe('Aurora');
+    expect(cleanName('\u202eArohtua\ufff9')).toBe('Arohtua');
+    expect(cleanName('Z' + '\u030d'.repeat(23))).toBe('Z\u030d\u030d');
+    expect(cleanName('Ren\u00e9e  du\tNord')).toBe('Ren\u00e9e du Nord');
+    expect(cleanName('\u2060\u200b')).toBeNull();
   });
 
   it('rate limit: 5 per window, then a cooldown', () => {
@@ -262,6 +273,40 @@ describe('chat on the relay server', () => {
     await b.take('chat', (m) => m.entry.text === 'back');
   });
 
+  it('leaving and joining again keeps the rate limit; new clientIds from one address share a budget', async () => {
+    const host = await client('Host');
+    const spam = await client('Spammer');
+    host.send({ type: 'createLobby' });
+    const { code } = await host.take('lobbyState');
+    let sent = 0;
+    for (let cycle = 0; cycle < 3; cycle++) {
+      spam.send({ type: 'joinLobby', code });
+      await spam.take('chatHistory');
+      for (let i = 0; i < 5; i++) spam.send({ type: 'chat', channel: 'all', text: `s${sent++}` });
+      spam.send({ type: 'leaveLobby' });
+      await spam.take('lobbyList');
+    }
+    await sleep(150);
+    // one budget of 5 for the whole window, however often it left and came back
+    expect(host.chats()).toEqual(['s0', 's1', 's2', 's3', 's4']);
+    expect(spam.inbox.some((m) => m.type === 'chatNotice' && m.reason === 'rateLimit')).toBe(true);
+
+    // fresh clientIds (a new socket each) from the same address: CHAT_BURST each, but the address's budget is shared
+    await sleep(opts.chatWindowMs + opts.chatCooldownMs);
+    host.chats();
+    const burst = srv.hub.opts.chatAddressBurst;
+    let n = 0;
+    for (let k = 0; n < burst + 5; k++) {
+      const c = await client(`Fresh${k}`);
+      c.send({ type: 'joinLobby', code });
+      await c.take('chatHistory');
+      for (let i = 0; i < 5; i++) c.send({ type: 'chat', channel: 'all', text: `f${n++}` });
+      await sleep(20);
+    }
+    await sleep(150);
+    expect(host.chats().length).toBe(burst);
+  });
+
   it('masks rude words for everyone and keeps only the last messages', async () => {
     const a = await client('Talker');
     const b = await client('Other');
@@ -275,6 +320,7 @@ describe('chat on the relay server', () => {
     const member = room.members.find((m) => m.name === 'Talker')!;
     // lift the rate limit for this check
     member.chatLimit = { take: () => 0 } as unknown as typeof member.chatLimit;
+    member.addrLimit = member.chatLimit;
     for (let i = 0; i < CHAT_HISTORY + 10; i++) a.send({ type: 'chat', channel: 'all', text: `n${i}` });
     await b.take('chat', (m) => m.entry.text === `n${CHAT_HISTORY + 9}`);
     const c = await client('Joiner');

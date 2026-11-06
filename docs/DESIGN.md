@@ -1245,8 +1245,9 @@ Code contract:
 
 ## 14. Owner console (src/sim/admin.ts)
 
-A hidden console for the owner. Single player: the client unlocks it with a SHA-256 hash of the code. Online: the
-relay server checks `adminAuth {code}` against its `ADMIN_CODE` env var (constant time, 5 wrong tries per address per
+A hidden console for the owner. One code everywhere, the relay server's `ADMIN_CODE` env var; no code or hash of it
+is in the repository. Single player: the client sends the typed code to the server's `POST /api/admin-check`. Online:
+the relay server checks `adminAuth {code}` against its `ADMIN_CODE` env var (constant time, 5 wrong tries per address per
 hour, unset = off) and relays `admin` actions only from authenticated sessions (server/admin.ts). Every op is an
 Action `{ type: 'admin', op, player?, other?, tile?, amount?, key?, flag?, troops? }` applied through applyAction on
 every client (lockstep holds); `ADMIN_OPS` lists the fields each op needs. Ops: resources (set / add), troops (set /
@@ -1264,4 +1265,16 @@ Online the console also has Games (every room on the server, Watch as a spectato
 Remove), Announce (a banner for one game or every screen, a message for one player) and Effects (a ring with a label
 on a tile, a countdown, confetti, fireworks, a screen shake). These are server messages, not actions: they never touch
 the game state (src/client/broadcast.ts shows them; docs/MULTIPLAYER.md has the messages). A watching owner's
-console actions come as player 0; the sim then needs an explicit nation for every op.
+console actions come as player 0; the sim then needs an explicit nation for every op. Mute and Remove hold per room
+for the member's clientId and for the address it joined from: a new clientId from that address (a private window)
+starts muted or is refused; members already in the room from the same address are not touched, and the owner never is.
+
+Chat (online lobbies and games, src/client/chat/, server/chat.ts) is not part of the game either: server messages,
+no actions, no hashes. Channels All, Team (running teams games, with an optional map mark) and Spectators; quick-chat
+buttons; a click on a name hides that player for the browser session; "Chat off" hides everything. The server cleans
+the text (control and invisible characters out, piles of combining marks cut, 160 characters), masks listed words and
+rate limits it: 5 messages per 10 s per clientId and 20 per address in each room, both kept for the room's life, so
+leaving and joining again resets nothing. Player names go through the same cleaning, so an invisible character can't
+make a second name look like the first. Clients render chat with textContent only. After a send by mouse or touch
+the caret returns to the message box; key presses in it never reach the game (key releases do, so a held pan key
+stops).

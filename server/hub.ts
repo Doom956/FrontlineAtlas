@@ -157,6 +157,9 @@ export class Hub implements RoomHost {
   makeSeed(): number {
     return this.opts.fixedSeed ?? randomInt(1, 0x7fffffff);
   }
+  isOwner(clientId: string): boolean {
+    return this.admin.isAdmin(clientId);
+  }
 
   // ---------------------------------------------------------------------------------------------- connections
 
