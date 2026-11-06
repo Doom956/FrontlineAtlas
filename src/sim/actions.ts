@@ -60,6 +60,8 @@ export function applyAction(state: GameState, playerId: number, action: Action):
   clearDefenseCache(state); // division defence (tanks.ts)
   clearLeaderCache(state); // runaway leader (allies.ts)
   clearNavyCache(state); // ships, wars, blockades (naval2.ts)
+  // Player 0 sends nothing but the owner console from a spectator seat (online, relayed only for a proven session).
+  if (playerId === 0 && action && typeof action === 'object' && action.type === 'admin') return applyAdmin(state, 0, action);
   const p = state.players[playerId];
   if (!p || playerId === 0) return FAIL('No such player');
   // Continuing a finished game and the owner console work for eliminated humans too (they keep watching).

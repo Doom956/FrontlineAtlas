@@ -50,7 +50,10 @@ import {
 } from './hud/drawers';
 import { gameOverCard } from './hud/gameOver';
 import { ContinueRow, VictoryChip, type ContinueRole } from './hud/gameOverContinue';
+import { ChatView } from './chat/view';
+import { chatEnabled, setChatEnabled, type ChatStore } from './chat/store';
 import { AdminConsole } from './adminConsole';
+import type { AdminConsoleDeps } from './adminConsole';
 import { pruneSelection, selectionChipText } from './selection';
 import { iconSpan, lineIcon } from './hud/glyph';
 import { Leaderboard } from './hud/leaderboard';
@@ -75,6 +78,8 @@ export { techNear };
 const SLOW_MS = 200; // ~5 Hz refresh of texts and lists
 /** the phone layout of styles.css ("phones" section) */
 const PHONE_MEDIA = '(max-width: 640px)';
+/** How far right of the chat button its panel reaches (panel width and a gap), for placeChat. */
+const CHAT_PANEL_REACH = 340;
 /** Zoom the camera glides to when your start is placed and when the game starts (your 9x9 start ~40 px wide). */
 const START_ZOOM = 4.5;
 const TOAST_KINDS: Partial<Record<GameEvent['kind'], 'info' | 'good' | 'bad' | 'warn'>> = {
@@ -115,10 +120,14 @@ export interface HudOptions {
   continueRole?: () => ContinueRole;
   /** online: owner console login through the server (adminAuth) */
   adminAuth?: (code: string) => Promise<boolean>;
+  /** online: the console's Games, Announce and Effects tabs (adminOnline.ts) */
+  adminPowers?: AdminConsoleDeps['powers'];
   /** a tutorial game (tutorial/controller.ts): the first-game steps and the advisor's hints stay quiet */
   tutorial?: boolean;
   /** single player with autosave (save/): the Menu drawer says the game is kept */
   saves?: boolean;
+  /** online: the room's chat (chat/store.ts); its button sits in the bottom-left corner */
+  chat?: ChatStore;
 }
 
 export class Hud {
@@ -170,6 +179,10 @@ export class Hud {
   /** the summary was reopened from the victory chip after a continued game (not the game-over card) */
   private reviewing = false;
   private admin: AdminConsole;
+  private chat: ChatView | null = null;
+  /** the chat button's lift above the command bar (px from the bottom), to skip unchanged writes */
+  private chatBottom = -1;
+  private chatLift = -1;
   private spawnBar: HTMLElement;
   private spawnText: HTMLElement;
   private startNowBtn: HTMLButtonElement;
@@ -304,6 +317,7 @@ export class Hud {
         },
         leave: () => this.onMenu(),
         saves: !!hudOpts.saves,
+        chat: hudOpts.chat ? { on: () => chatEnabled(), set: (on) => setChatEnabled(on) } : undefined,
       }),
     );
 
@@ -402,8 +416,30 @@ export class Hud {
       state: () => self.state,
       online: !!hudOpts.online,
       auth: hudOpts.adminAuth,
+      powers: hudOpts.adminPowers,
       toast: (text, kind) => self.toasts.show({ text, kind: kind ?? 'info' }),
     });
+
+    // online chat (chat/view.ts): pure social, never part of the game state
+    if (hudOpts.chat) {
+      this.chat = new ChatView(hudOpts.chat, {
+        mode: 'hud',
+        cameraTile: () => {
+          const s = self.state;
+          if (!s || self.watching) return null;
+          const x = Math.floor(camera.x);
+          const y = Math.floor(camera.y);
+          return x >= 0 && y >= 0 && x < s.map.width && y < s.map.height ? y * s.map.width + x : null;
+        },
+        showTile: (t) => self.focusTile(t, true),
+        onPing: (t) => {
+          const s = self.state;
+          if (s && t >= 0 && t < s.map.width * s.map.height) self.ping.ping(t, s.map.width, 'warn');
+        },
+        onLayout: () => self.placeChat(),
+      });
+      this.el.append(this.chat.el);
+    }
 
     const opts = { signal: this.ac.signal };
     // HUD size: 1 up to ~1500 px wide, then grows a little with the window (up to 1.15): readable on big screens
@@ -494,6 +530,10 @@ export class Hud {
       this.alertStack.update(now);
       if (!watching) this.tooltip.update(state, me, true);
       this.updateSpawn(state, me);
+      if (this.chat) {
+        this.chat.refresh();
+        this.placeChat();
+      }
       // units sunk or lost drop out of the selection (selection.ts)
       if (this.ui.selection.length) this.ui.selection = pruneSelection(state, state.humanId, this.ui.selection);
     }
@@ -584,6 +624,10 @@ export class Hud {
   /** Closes the topmost overlay (help, drawer, nation card); true if one was open. */
   closeOverlay(): boolean {
     if (this.admin.close()) return true;
+    if (this.chat?.open) {
+      this.chat.setOpen(false);
+      return true;
+    }
     if (!this.help.classList.contains('hidden')) {
       this.setHelp(false);
       return true;
@@ -639,6 +683,7 @@ export class Hud {
   destroy(): void {
     this.ac.abort();
     this.admin.destroy();
+    this.chat?.destroy();
     this.toasts.clear();
     this.alertStack.clear();
     this.el.remove();
@@ -694,6 +739,46 @@ export class Hud {
     const bottomTop = this.bottomEl?.getBoundingClientRect().top ?? cam.viewH;
     const free = bottomTop > top + 80 ? (top + bottomTop) / 2 : cam.viewH / 2;
     cam.flyTo(cx, cy + (cam.viewH / 2 - free) / z, z, 900);
+  }
+
+  /**
+   * The chat button sits in the bottom-left corner; when the command bar (or the bottom column) reaches that corner
+   * (narrow windows, phones) it goes just above the bar instead.
+   */
+  private placeChat(): void {
+    const c = this.chat;
+    const b = this.bottomEl;
+    if (!c || !b) return;
+    // the guide's root covers the whole HUD: only its bar counts
+    const guideBar = this.guide?.bar.el.querySelector<HTMLElement>('.guide-bar') ?? null;
+    const obstacles = [this.watching ? null : b, guideBar]
+      .map((o) => (o ? o.getBoundingClientRect() : null))
+      .filter((r): r is DOMRect => !!r && r.width > 0 && r.height > 0);
+    const btn = c.el.getBoundingClientRect();
+    const btnReach = Math.max(btn.width, 110) + 12 + 8;
+    const btnH = Math.max(btn.height, 32);
+    let bottom = 12;
+    // bottom column first, then the guide bar (it sits above the column)
+    for (const r of obstacles.sort((x, y) => y.top - x.top)) {
+      if (r.left < btnReach && r.bottom > window.innerHeight - bottom - btnH - 4) bottom = Math.round(window.innerHeight - r.top + 8);
+    }
+    if (bottom !== this.chatBottom) {
+      this.chatBottom = bottom;
+      c.el.style.bottom = `${bottom}px`;
+    }
+    // the open panel (and the message slip) rise above the command bar and the guide bar where they would cover them
+    let lift = 0;
+    if (c.open || !c.el.classList.contains('hidden')) {
+      const dockTop = window.innerHeight - bottom - btnH;
+      const reach = 12 + CHAT_PANEL_REACH;
+      for (const r of obstacles) if (r.left < reach) lift = Math.max(lift, Math.round(dockTop - r.top));
+      // never past the top of the screen (the panel keeps 60 px clear for the standings' head)
+      lift = Math.max(0, Math.min(lift, Math.round(dockTop - 8 - c.panelHeight() - 60)));
+    }
+    if (lift !== this.chatLift) {
+      this.chatLift = lift;
+      c.el.style.setProperty('--chat-lift', `${lift}px`);
+    }
   }
 
   private focusTile(tile: number, zoomIn = true): void {

@@ -449,6 +449,51 @@ Protocol 17 (the owner-chat round also bumps it: whichever merges second takes t
   out of sight can still fail with the sim's reason (like an attack); online fog is honour based (every client holds
   the full state).
 
+## Owner powers online and chat (2026-11-05, branch owner-chat, not merged yet)
+Protocol 18 after the merge with fog of war (the server and every client must be updated together). Nothing here changes a game: chat, banners,
+messages and effects are server messages, never lockstep actions, so they can't desync and aren't hashed. The
+console's own actions still go through the sim as before.
+For players:
+- Chat in online lobbies and games: a Chat button (unread count; the newest message shows over it for a moment), All
+  and Team tabs (Team in running teams games, with an "Attack here" map mark for teammates), spectators in their own
+  channel that players don't see, quick-chat buttons, Send or Enter. Click a name to hide that player for this visit;
+  "Chat off" in the Menu drawer or the lobby hides everything. Last 50 messages arrive on join and reconnect.
+- Safety: text cleaned on the server (control and invisible characters out, piles of accent marks cut, 160
+  characters), rude words and slurs masked with ***, shown as plain text only (no HTML, no links). 5 messages per
+  10 s per player and 20 per address in each lobby or game, kept for its whole life (leaving and joining again resets
+  nothing). Names are cleaned the same way, so nobody can copy a name with an invisible character.
+- After a send by mouse or touch the caret stays in the message box; typing there never fires game keys, and a pan
+  key held when the chat opened stops panning when let go.
+- What players may see from the owner: banners titled "Announcement" (or the owner's title), a "Message", rings with
+  a label on a tile, countdowns, confetti, fireworks, a short shake, "You can't send messages in this game for N more
+  minutes" and "You were removed from this game". Nothing says admin, console or owner.
+For the owner (how to use it): on the start page or in a game, press "|", type the code and press Enter. The console
+then has three more tabs online:
+- Games: every lobby and game on the server. Watch joins a running game as an anonymous spectator (console ops then
+  work on that game; pick the nation for each). Make target aims Announce and Effects at that game. People lists who
+  is in it, with Message (a short note to one player), Mute (minutes; 0 lifts it) and Remove (out of the game for
+  good; a player's nation stays, nobody controls it).
+- Announce: a banner for this game, the target game or every screen on the server (title, text up to 200
+  characters, Info / Warning / Celebration, time on screen; Preview shows it to you alone).
+- Effects: click a tile for a ring with a label, or a countdown, confetti, fireworks or a screen shake.
+- Mute and Remove also hold for the address the player joined from: a new browser identity from it (a private window)
+  starts muted or is refused. People already in that game from the same address are not touched, and you never are.
+  On a shared address (a school, one home network) someone joining later from it is caught too.
+Checks: tsc (client, server), build, full vitest 959 of 961 (the doctrines and trenches hash tests hit the 5 s
+timeout under load and pass alone, 39/39). Tests: chat.server, chat.client, ownerPowers, ownerPowers.client,
+admin.client, server (protocol 18 after the merge with fog). Playwright on the built app: the merge run (17/17: chat both ways in lobby and
+game, team chat and map mark, spectator channel, owner Games / Watch / switch, announcements for a game and every
+screen, ring and confetti, mute and unmute, remove, no owner words on player screens, no chat text as HTML) and the
+review-fix run (11/11: duplicate name with an invisible character gets " 2", focus after Send and quick chat, no
+minimap / resources key after a send, a held pan key stops). Multiplayer e2e on GitHub runners: mp-pillars and mp-arsenal
+passed on their default maps and a random map (4 of 4).
+Review fixes: chat rate limit kept per room (leave and rejoin gave a fresh budget), mute and remove by address too,
+names cleaned like chat, focus after send, key release reaches the page, "chink", "dyke" and "retard" no longer
+masked (a gap, an embankment, to slow down).
+Not checked: real phones (desktop browser at phone size only); a watching owner's seat shows as "Player" in People
+(no name set) and spectators would see that name if the owner chats while watching; a teammate's name can show in
+another lobby colour in chat; look-alike letters from other alphabets in names (a Cyrillic "a") still pass.
+
 ## Queued next (owner, 2026-11-03)
 Later: anonymous real-match stats on the server for balance, rematch + quick chat, replays, in-game phone/touch HUD, real-GPU performance check, flaky scripted-player e2e fix.
 

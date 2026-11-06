@@ -5002,3 +5002,485 @@ strong {
     height: 24px;
   }
 }
+
+/* ---------------------------------------------------------------- broadcasts (broadcast.ts)
+   Announcements arrive as a dispatch slip pinned under the top bar: a heavy rule in the style's colour, a stencil
+   mark, the title in the label face and the message large enough to read mid-battle. A hairline runs down until it
+   goes. Notices for one player are the same slip, smaller. Effects draw on one canvas above everything. */
+.bc {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 80;
+}
+.bc-fx {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.bc-stack {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 64px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(580px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.bc-slot,
+.bc-notes {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.bc-ann,
+.bc-note {
+  --bc: var(--steel);
+  --bc-tint: rgba(107, 149, 184, 0.16);
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 40px 14px 14px;
+  background-color: rgba(17, 20, 23, 0.97);
+  background-image: var(--grain);
+  border: 1px solid var(--rule-hi);
+  border-left: 5px solid var(--bc);
+  border-radius: var(--r);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  pointer-events: auto;
+  overflow: hidden;
+  animation: bc-in 260ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.bc-ann.out,
+.bc-note.out {
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+.s-warning {
+  --bc: var(--signal);
+  --bc-tint: rgba(212, 80, 58, 0.18);
+}
+.s-celebration {
+  --bc: var(--brass);
+  --bc-tint: rgba(201, 162, 39, 0.18);
+}
+.bc-ann.s-celebration {
+  border-left-color: transparent;
+  border-image: linear-gradient(180deg, var(--brass-hi), var(--brass-lo)) 0 0 0 5;
+  border-image-width: 0 0 0 5px;
+}
+.bc-ann.s-warning {
+  animation: bc-in 260ms cubic-bezier(0.2, 0.9, 0.3, 1.2), bc-alarm 900ms ease-out 260ms 1;
+}
+/* the stencil mark: a ring (info), a diamond (warning), a star (celebration) */
+.bc-ann-mark {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  background: var(--bc-tint);
+  border: 1px solid color-mix(in srgb, var(--bc) 55%, transparent);
+}
+.bc-ann-mark::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--bc);
+  border-radius: 50%;
+}
+.s-warning .bc-ann-mark::before {
+  border-radius: 0;
+  transform: rotate(45deg);
+  background: var(--bc);
+  width: 11px;
+  height: 11px;
+}
+.s-celebration .bc-ann-mark::before {
+  border: 0;
+  width: 18px;
+  height: 18px;
+  background: var(--brass-hi);
+  clip-path: polygon(50% 0, 61% 36%, 100% 38%, 69% 60%, 80% 100%, 50% 76%, 20% 100%, 31% 60%, 0 38%, 39% 36%);
+}
+.bc-ann-body,
+.bc-note-body {
+  min-width: 0;
+  flex: 1;
+}
+.bc-ann-title,
+.bc-note-title {
+  color: var(--bc);
+  font: 700 13px/1 var(--f-label);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.s-info .bc-ann-title,
+.s-info .bc-note-title {
+  color: #a9c6de;
+}
+.s-warning .bc-ann-title,
+.s-warning .bc-note-title {
+  color: #f3a899;
+}
+.s-celebration .bc-ann-title,
+.s-celebration .bc-note-title {
+  color: var(--brass-hi);
+}
+.bc-ann-text {
+  margin: 6px 0 0;
+  color: var(--text);
+  font: 500 17px/1.35 var(--f-ui);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.bc-note {
+  width: min(420px, 100%);
+  padding: 9px 36px 11px 12px;
+  border-left-width: 3px;
+}
+.bc-note-title {
+  font-size: 11px;
+}
+.bc-note-text {
+  margin: 4px 0 0;
+  font: 14px/1.35 var(--f-ui);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.bc-x {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--dim);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.bc-x:hover {
+  color: var(--text);
+  border-color: var(--rule);
+}
+.bc-life {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--bc);
+  opacity: 0.7;
+  transform-origin: left;
+  animation: bc-life linear forwards;
+}
+/* countdown: a plate with the label and a big number, under the top bar */
+.bc-count {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 18px 9px;
+  background-color: rgba(17, 20, 23, 0.97);
+  background-image: var(--grain);
+  border: 1px solid var(--brass-lo);
+  border-bottom: 3px solid var(--brass);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  pointer-events: auto;
+  max-width: 100%;
+}
+.bc-count-l {
+  min-width: 0;
+  color: var(--dim);
+  font: 700 14px/1 var(--f-label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bc-count-n {
+  min-width: 2ch;
+  color: var(--brass-hi);
+  font: 700 34px/1 var(--f-label);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.bc-count.done .bc-count-n {
+  color: var(--olive);
+  animation: bc-pop 400ms ease-out;
+}
+/* "Look here": a chip above the pinged tile; at the screen edge it is the way there */
+.bc-look {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  padding: 5px 10px;
+  background: rgba(17, 20, 23, 0.95);
+  border: 1px solid var(--brass);
+  color: var(--brass-hi);
+  font: 700 12px/1 var(--f-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.bc-look-t {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bc-look-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--brass-hi);
+}
+.bc-look.edge {
+  border-style: dashed;
+}
+.bc-look.edge::after {
+  content: 'Go';
+  color: var(--text);
+}
+.bc-shake {
+  animation: bc-shake 520ms cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+@keyframes bc-in {
+  from {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+}
+@keyframes bc-alarm {
+  0%,
+  100% {
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.55);
+  }
+  30% {
+    box-shadow: 0 0 0 3px rgba(212, 80, 58, 0.45), 0 14px 34px rgba(0, 0, 0, 0.55);
+  }
+}
+@keyframes bc-life {
+  to {
+    transform: scaleX(0);
+  }
+}
+@keyframes bc-pop {
+  from {
+    transform: scale(1.35);
+  }
+}
+@keyframes bc-shake {
+  10%,
+  90% {
+    transform: translate(-2px, 1px);
+  }
+  20%,
+  80% {
+    transform: translate(4px, -2px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translate(-6px, 2px);
+  }
+  40%,
+  60% {
+    transform: translate(6px, -1px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bc-ann,
+  .bc-note,
+  .bc-ann.s-warning,
+  .bc-count.done .bc-count-n {
+    animation: none;
+  }
+  .bc-life {
+    display: none;
+  }
+  .bc-shake {
+    animation: none;
+  }
+}
+@media (max-width: 640px) {
+  .bc-stack {
+    top: calc(env(safe-area-inset-top, 0px) + 52px);
+  }
+  .bc-ann {
+    gap: 10px;
+    padding: 10px 36px 12px 10px;
+  }
+  .bc-ann-mark {
+    width: 28px;
+    height: 28px;
+  }
+  .bc-ann-text {
+    font-size: 15px;
+  }
+  .bc-count-n {
+    font-size: 28px;
+  }
+}
+
+/* ---------------------------------------------------------------- owner console: online tabs (adminOnline.ts) */
+.adm-menu {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 75;
+}
+.adm-games {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 12px 8px;
+}
+.adm-game {
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--rule-hi);
+  background: rgba(8, 10, 12, 0.5);
+}
+.adm-game.running {
+  border-left-color: var(--olive);
+}
+.adm-game.lobby {
+  border-left-color: var(--steel);
+}
+.adm-game.sel {
+  border-color: var(--brass-lo);
+  border-left-color: var(--brass);
+}
+.adm-game-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px 2px;
+}
+.adm-code {
+  color: var(--brass-hi);
+  font: 700 15px/1 var(--f-label);
+  letter-spacing: 0.14em;
+}
+.adm-chip {
+  padding: 2px 5px;
+  border: 1px solid var(--rule);
+  color: var(--dim);
+  font: 600 10px/1.1 var(--f-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.adm-chip.on {
+  color: var(--olive);
+  border-color: var(--olive-d);
+}
+.adm-chip.warn {
+  color: #f3a899;
+  border-color: var(--signal-d);
+}
+.adm-game-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  padding: 2px 8px 4px;
+  color: var(--dim);
+}
+.adm-game-facts b {
+  color: var(--text);
+  font-weight: 600;
+}
+.adm-game-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 8px 8px;
+}
+.adm-members {
+  border-top: 1px solid var(--rule);
+  padding: 4px 0 6px;
+}
+.adm-member {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  padding: 4px 8px;
+}
+.adm-member + .adm-member {
+  border-top: 1px dashed rgba(86, 97, 108, 0.4);
+}
+.adm-member-name {
+  flex: 1 1 120px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.adm-text {
+  width: 100%;
+  min-height: 64px;
+  padding: 6px;
+  border: 1px solid var(--rule);
+  background: var(--ink);
+  color: var(--text);
+  font: 13px/1.35 var(--f-ui);
+  resize: vertical;
+  user-select: text;
+}
+.adm-wide-in {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.adm-count {
+  margin-left: auto;
+  color: var(--faint);
+  font-size: 11px;
+}
+.adm-note {
+  padding: 2px 12px 6px;
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.adm-btn.on {
+  color: var(--brass-ink);
+  background: var(--brass);
+  border-color: var(--brass);
+}
+.adm-btn.go {
+  border-color: var(--brass-lo);
+  color: var(--brass-hi);
+}
+@media (max-width: 640px) {
+  .adm-panel {
+    left: 8px;
+    right: 8px;
+    top: 8px;
+    bottom: 8px;
+    width: auto;
+    max-width: none;
+  }
+  .adm-btn {
+    min-height: 32px;
+  }
+  .adm-num,
+  .adm-sel {
+    height: 32px;
+  }
+}

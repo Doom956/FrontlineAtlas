@@ -12,9 +12,15 @@ import {
   NAME_MAX_LENGTH,
   PLAYER_COLORS,
   TEAM_NAMES,
+  CHAT_HISTORY,
   isHashTurn,
 } from '../src/net/protocol';
 import type {
+  AdminRoomInfo,
+  ChatEntry,
+  ChatHistoryMsg,
+  ChatNoticeReason,
+  ChatSendMsg,
   ErrorCode,
   GameOverReason,
   GameStartMsg,
@@ -30,10 +36,13 @@ import type {
   TeamsInfo,
 } from '../src/net/protocol';
 import type { ServerOptions } from './options';
+import { ChatLimiter, maskChatText } from './chat';
 
 /** What a room needs from a connection (implemented by the hub's Session). */
 export interface RoomSession {
   readonly clientId: string;
+  /** the connection's address (the owner's remove and mute also hold for a new clientId from it) */
+  readonly ip: string;
   readonly name: string;
   readonly color: RGB;
   readonly build: string;
@@ -57,6 +66,8 @@ export interface RoomHost {
   /** game seed (crypto random in production) */
   makeSeed(): number;
   now(): number;
+  /** whether this client proved the owner code (never refused by an address the owner removed or muted) */
+  isOwner(clientId: string): boolean;
 }
 
 export interface Member {
@@ -86,7 +97,30 @@ export interface Member {
   budgetWarnedAt: number;
   /** told once that the players' hashes disagree without a majority */
   disagreeWarned: boolean;
+  /** address of the session that joined (owner remove and mute record it) */
+  ip: string;
+  /**
+   * chat rate limit, kept by the room per clientId: a reconnect, leaving and joining again, or a new seat in the
+   * same room all get this same limiter back
+   */
+  chatLimit: ChatLimiter;
+  /** the room's chat limit for this member's address (several sockets with new clientIds share it) */
+  addrLimit: ChatLimiter;
+  /** last chat notice sent (a flood gets one notice now and then, not one per message) */
+  chatNoticeAt: number;
 }
+
+/** A chat message the room keeps (history for joiners): the entry and the team it was written to. */
+interface ChatRecord {
+  entry: ChatEntry;
+  /** team channel: the sender's team */
+  team: number;
+}
+
+/** Chat notices to one member at most this often. */
+const CHAT_NOTICE_MS = 1500;
+/** A room forgets idle chat limiters of clients that are gone once it holds more than this many. */
+const CHAT_LIMITERS_KEPT = 256;
 
 /** One catch-up message carries at most about this many bytes of turns, or this many non-empty turns. */
 export const CATCHUP_CHUNK_BYTES = 512 * 1024;
@@ -170,6 +204,17 @@ export class Room {
   private readonly host: RoomHost;
   private nextMemberId = 1;
   private kicked = new Set<string>();
+  /** owner mutes: clientId -> server time the mute ends (a rejoin keeps it) */
+  private readonly mutes = new Map<string, number>();
+  /**
+   * The owner's remove and mute also hold for the address they were made at: a new clientId from it (a private window,
+   * cleared site data) is refused, or starts muted. Members already in the room from that address are not touched.
+   */
+  private readonly kickedIps = new Set<string>();
+  private readonly muteIps = new Map<string, number>();
+  /** chat limiters per clientId and per address, kept for the room's life (leaving and joining again keeps them) */
+  private readonly chatLimits = new Map<string, ChatLimiter>();
+  private readonly addrLimits = new Map<string, ChatLimiter>();
 
   /** address that created this private lobby (per-address room limit); '' for public lobbies */
   creatorIp = '';
@@ -203,6 +248,9 @@ export class Room {
   continued = false;
   winner = 0;
   closed = false;
+  /** the last CHAT_HISTORY chat messages */
+  private chatLog: ChatRecord[] = [];
+  private nextChatId = 1;
 
   constructor(host: RoomHost, code: string, isPublic: boolean, settings: LobbySettings) {
     this.host = host;
@@ -234,12 +282,17 @@ export class Room {
   join(session: RoomSession, spectate: boolean, haveTurns = 0): RoomError {
     if (this.closed) return err('notFound', 'No lobby with that code');
     if (this.phase === 'over') return err('started', 'That game is over');
+    // Removed by the host (lobby) or the owner (also from a running game, where the seat stays): no way back in.
+    if (this.kicked.has(session.clientId)) return err('kicked', this.phase === 'lobby' ? 'You were removed from this lobby' : 'You were removed from this game');
     const existing = this.memberByClientId(session.clientId);
     if (existing) {
       this.attach(existing, session, haveTurns);
       return null;
     }
-    if (this.kicked.has(session.clientId)) return err('kicked', 'You were removed from this lobby');
+    const owner = this.host.isOwner(session.clientId);
+    if (!owner && session.ip && this.kickedIps.has(session.ip)) {
+      return err('kicked', this.phase === 'lobby' ? 'You were removed from this lobby' : 'You were removed from this game');
+    }
     if (this.build && session.build && this.build !== session.build) {
       return err('version', 'This lobby runs a different version of the game: reload the page');
     }
@@ -267,7 +320,15 @@ export class Room {
       intentRefill: this.host.now(),
       budgetWarnedAt: -Infinity,
       disagreeWarned: false,
+      ip: session.ip,
+      chatLimit: this.limiter(this.chatLimits, session.clientId, this.host.opts.chatBurst),
+      addrLimit: this.limiter(this.addrLimits, session.ip, this.host.opts.chatAddressBurst),
+      chatNoticeAt: -Infinity,
     };
+    if (!owner && session.ip) {
+      const until = this.muteIps.get(session.ip);
+      if (until !== undefined && until > this.host.now() && (this.mutes.get(m.clientId) ?? 0) < until) this.mutes.set(m.clientId, until);
+    }
     this.members.push(m);
     if (!this.build && session.build) this.build = session.build;
     if (!this.isPublic && this.hostMemberId < 0 && !m.spectator) this.hostMemberId = m.memberId;
@@ -302,6 +363,7 @@ export class Room {
       this.sendGameStart(m, haveTurns);
       this.broadcastPresence();
     }
+    this.sendChatHistory(m);
   }
 
   /** The session is already this member's (joinLobby for the room you are in): resend the lobby state only. */
@@ -439,6 +501,118 @@ export class Room {
     return null;
   }
 
+  // ---------------------------------------------------------------------------------------------- owner powers
+
+  /** Whether this member may not send chat now (owner mute). The chat reads this; unknown members are not muted. */
+  isMuted(memberId: number): boolean {
+    return this.muteLeftMs(memberId) > 0;
+  }
+
+  /** ms of mute left for this member (0 = not muted). */
+  muteLeftMs(memberId: number): number {
+    const m = this.members.find((x) => x.memberId === memberId);
+    if (!m) return 0;
+    const until = this.mutes.get(m.clientId);
+    if (until === undefined) return 0;
+    const left = until - this.host.now();
+    if (left <= 0) {
+      this.mutes.delete(m.clientId);
+      return 0;
+    }
+    return left;
+  }
+
+  /** Owner: mutes a member for `minutes` (0 = lifts it), by clientId and by the address it joined from. */
+  muteMember(memberId: number, minutes: number): RoomError {
+    const m = this.members.find((x) => x.memberId === memberId);
+    if (!m) return err('notFound', 'No such player in that game');
+    if (minutes <= 0) {
+      this.mutes.delete(m.clientId);
+      if (m.ip) this.muteIps.delete(m.ip);
+    } else {
+      const until = this.host.now() + minutes * 60_000;
+      this.mutes.set(m.clientId, until);
+      if (m.ip) this.muteIps.set(m.ip, until);
+    }
+    return null;
+  }
+
+  /**
+   * Owner: removes a member from the lobby or game for good (a plain `kicked` note; joining again is refused). In a
+   * running game a player's seat stays (the nation keeps its land, nobody controls it), like a player who left.
+   */
+  removeByOwner(memberId: number, ownerClientId: string): RoomError {
+    if (this.closed || this.phase === 'over') return err('notAllowed', 'That game is over');
+    const m = this.members.find((x) => x.memberId === memberId);
+    if (!m) return err('notFound', 'No such player in that game');
+    if (m.clientId === ownerClientId) return err('notAllowed', 'You cannot remove yourself');
+    this.kicked.add(m.clientId);
+    if (m.ip) this.kickedIps.add(m.ip);
+    const s = m.session;
+    if (s) {
+      s.send({ type: 'kicked', reason: 'You were removed from this game' });
+      this.leave(s);
+      return null;
+    }
+    if (this.phase === 'lobby' || m.spectator) this.removeMember(m);
+    else {
+      m.left = true;
+      this.broadcastPresence();
+      if (this.players.every((p) => p.left)) {
+        this.finish('abandoned', 0);
+        this.close('');
+      }
+    }
+    return null;
+  }
+
+  /** Sends one message to every connected member (players and spectators); returns how many got it. */
+  broadcastAll(msg: ServerMessage): number {
+    const text = JSON.stringify(msg);
+    let n = 0;
+    for (const m of this.members) {
+      if (!m.session) continue;
+      m.session.sendRaw(text);
+      n++;
+    }
+    return n;
+  }
+
+  /** Sends to one member; false when nobody is connected on that seat. */
+  sendTo(memberId: number, msg: ServerMessage): boolean {
+    const m = this.members.find((x) => x.memberId === memberId);
+    if (!m?.session) return false;
+    m.session.send(msg);
+    return true;
+  }
+
+  /** The room as the owner's Games list shows it. */
+  adminInfo(now: number): AdminRoomInfo {
+    const since = this.phase === 'lobby' ? this.createdAt : this.startedAt;
+    return {
+      code: this.code,
+      phase: this.phase,
+      isPublic: this.isPublic,
+      mode: this.settings.mode,
+      map: mapLabel(this.settings.map),
+      players: this.players.length,
+      connected: this.connectedPlayers(),
+      spectators: this.spectators.filter((m) => m.session).length,
+      minutes: Math.max(0, Math.floor((now - since) / 60_000)),
+      turn: this.turnCount,
+      paused: this.paused,
+      members: this.members.map((m) => ({
+        memberId: m.memberId,
+        name: m.name,
+        playerId: m.playerId,
+        spectator: m.spectator,
+        connected: m.session !== null,
+        left: m.left,
+        mutedMinutes: Math.ceil(this.muteLeftMs(m.memberId) / 60_000),
+      })),
+    };
+  }
+
   // ---------------------------------------------------------------------------------------------- start
 
   private refreshPublicSettings(): void {
@@ -497,6 +671,8 @@ export class Room {
     this.startedAt = now;
     for (const m of this.members) if (m.session) this.sendGameStart(m);
     this.broadcastPresence();
+    // team chat opens with the teams: everyone gets the channels they may use now
+    for (const m of this.members) this.sendChatHistory(m);
     this.loopStart = now + this.host.opts.firstTurnDelayMs;
     this.scheduleNext();
     this.host.opts.log(`game ${this.code} started: ${players.length} players, ${s.mode}, ${mapLabel(s.map)}`);
@@ -615,7 +791,8 @@ export class Room {
       if (this.phase === 'over') return this.continueAfterEnd(m, action);
     }
     if (this.phase !== 'running') return err('notAllowed', 'The game is not running');
-    if (m.spectator || m.playerId <= 0) return err('notAllowed', 'Spectators cannot act');
+    // The owner watching as a spectator may send console actions (stamped player 0) and nothing else.
+    if ((m.spectator || m.playerId <= 0) && !(action.type === 'admin' && isAdmin)) return err('notAllowed', 'Spectators cannot act');
     if (this.paused) return err('notAllowed', 'The game is paused');
     if (action.type === 'startNow' && (this.isPublic || m.memberId !== this.hostMemberId)) {
       return err('notAllowed', 'Only the host can end the spawn phase early');
@@ -952,6 +1129,107 @@ export class Room {
       this.host.sessionLeftRoom(s);
     }
     this.host.roomClosed(this);
+  }
+
+  // ---------------------------------------------------------------------------------------------- chat
+
+  /** Team chat is open to this member: a player in a running (or just finished) teams game. */
+  private teamChatOpen(m: Member): boolean {
+    return this.phase !== 'lobby' && this.settings.mode === 'teams' && !m.spectator && m.team > 0;
+  }
+
+  /** Whether a member may read a chat message. */
+  private canRead(m: Member, r: ChatRecord): boolean {
+    switch (r.entry.channel) {
+      case 'all':
+        return true;
+      case 'spectators':
+        return m.spectator;
+      case 'team':
+        return !m.spectator && r.team > 0 && m.team === r.team;
+    }
+  }
+
+  /** The room's chat limiter for this key (made on first use); idle ones of clients that left are forgotten. */
+  private limiter(map: Map<string, ChatLimiter>, key: string, burst: number): ChatLimiter {
+    let l = map.get(key);
+    if (l) return l;
+    if (map.size >= CHAT_LIMITERS_KEPT) {
+      const now = this.host.now();
+      const inUse = new Set(this.members.flatMap((x) => [x.chatLimit, x.addrLimit]));
+      for (const [k, v] of map) if (!inUse.has(v) && v.idle(now)) map.delete(k);
+    }
+    l = new ChatLimiter(burst, this.host.opts.chatWindowMs, this.host.opts.chatCooldownMs);
+    map.set(key, l);
+    return l;
+  }
+
+  private chatNotice(m: Member, reason: ChatNoticeReason, text: string, retryMs?: number): void {
+    const now = this.host.now();
+    if (now - m.chatNoticeAt < CHAT_NOTICE_MS) return;
+    m.chatNoticeAt = now;
+    const msg: ServerMessage = { type: 'chatNotice', reason, text };
+    if (retryMs !== undefined) msg.retryMs = retryMs;
+    m.session?.send(msg);
+  }
+
+  /**
+   * A chat message from a member (the text is already cleaned by validate.ts). Refusals go to the sender alone as a
+   * chatNotice; a message that passes is masked (chat.ts), kept for the history and sent to everyone who may read it.
+   * Chat is never part of the game: no turns, no hashes.
+   */
+  chat(m: Member, msg: ChatSendMsg): void {
+    if (this.closed) return;
+    if (this.isMuted(m.memberId)) {
+      // the owner's mute (adminMute): kept per room by clientId, so a reconnect doesn't lift it
+      const mutedMs = this.muteLeftMs(m.memberId);
+      const min = Math.max(1, Math.ceil(mutedMs / 60_000));
+      this.chatNotice(m, 'muted', `You can't send messages in this game for ${min} more minute${min === 1 ? '' : 's'}.`, mutedMs);
+      return;
+    }
+    const channel = m.spectator ? 'spectators' : msg.channel;
+    if (channel === 'team' && !this.teamChatOpen(m)) {
+      this.chatNotice(m, 'notAllowed', this.phase === 'lobby' ? 'Team chat opens when the game starts.' : 'Team chat is for teams games.');
+      return;
+    }
+    const now = this.host.now();
+    // per client first, then the address's shared budget (a watching owner shares no budget with anyone)
+    const wait = m.chatLimit.take(now) || (this.host.isOwner(m.clientId) ? 0 : m.addrLimit.take(now));
+    if (wait > 0) {
+      this.chatNotice(m, 'rateLimit', `Too many messages. You can chat again in ${Math.ceil(wait / 1000)} s.`, wait);
+      return;
+    }
+    const entry: ChatEntry = {
+      id: this.nextChatId++,
+      channel,
+      from: m.memberId,
+      name: m.name,
+      color: [...m.color] as RGB,
+      playerId: m.spectator ? 0 : m.playerId,
+      text: maskChatText(msg.text),
+      at: this.host.now(),
+    };
+    // a map mark only for teammates in a running game
+    if (msg.ping !== undefined && channel === 'team' && this.phase === 'running') entry.ping = msg.ping;
+    const rec: ChatRecord = { entry, team: channel === 'team' ? m.team : 0 };
+    this.chatLog.push(rec);
+    if (this.chatLog.length > CHAT_HISTORY) this.chatLog.splice(0, this.chatLog.length - CHAT_HISTORY);
+    const text = JSON.stringify({ type: 'chat', entry });
+    for (const x of this.members) if (x.session && this.canRead(x, rec)) x.session.sendRaw(text);
+  }
+
+  /** The recent chat this member may read, and the channels it may use (on every attach and at the start). */
+  private sendChatHistory(m: Member): void {
+    if (!m.session) return;
+    const msg: ChatHistoryMsg = {
+      type: 'chatHistory',
+      code: this.code,
+      you: m.memberId,
+      spectator: m.spectator,
+      team: this.teamChatOpen(m),
+      entries: this.chatLog.filter((r) => this.canRead(m, r)).map((r) => r.entry),
+    };
+    m.session.send(msg);
   }
 
   // ---------------------------------------------------------------------------------------------- messages

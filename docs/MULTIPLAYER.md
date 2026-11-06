@@ -47,6 +47,8 @@ turns follow the last one. Spectators join a running game by its code the same w
 | `src/net/client.ts` | browser connection: `hello`, persistent clientId, reconnects with backoff, ping / latency, server clock |
 | `src/client/mpgame.ts` | the lockstep runner: turn queue, catch-up, intents out, hashes out, desync / reload |
 | `src/client/lobby.ts` | the Multiplayer pages: public list, join by code, private lobby (the setup screen in lobby mode) |
+| `src/client/chat/` | chat: `store.ts` (messages, unread, mutes, chat off), `view.ts` (button, panel, quick chat) |
+| `server/chat.ts`, `server/chatWords.ts` | chat text cleaning, the word filter and its list, the chat rate limit |
 | `src/client/hud/mpStatus.ts` | in-game status line (connection, ping, players) and banners (reconnecting, catching up, out of sync) |
 | `server/server.ts` | `startServer(options)`: HTTP (static client, `/health`) + WebSocket upgrade on `/ws` |
 | `server/hub.ts` | connections, `hello`, rate limits, timeouts, lobby list, public lobby scheduler |
@@ -56,6 +58,7 @@ turns follow the last one. Spectators join a running game by its code the same w
 | `server/index.ts` | production entry (bundled to `server-dist/index.js`) |
 | `scripts/dev.mjs` | `npm run dev`: Vite + server together |
 | `tests/server.test.ts` | real WebSocket clients against an in-process server |
+| `tests/chat.server.test.ts`, `tests/chat.client.test.ts` | chat: cleaning, filter, rate limit, routing, history; text-only rendering |
 | `tests/multiplayer.test.ts` | several humans in the sim: seats, teams, victory, lockstep hashes whichever player a client controls |
 | `tests/mpclient.test.ts` | the lockstep runner with a fake connection: order, catch-up, gaps, hashes, intents |
 | `tests/e2e/mp.e2e.mjs` | browser end-to-end test (Playwright, run by hand after `npm run build`) |
@@ -145,6 +148,40 @@ read the hidden state.
 **Owner console (protocol 7).** `adminAuth {code}` -> `adminAuth {ok}` to the sender only (see section 5). Console
 intents have `type: 'admin'` with an `op` (src/sim/admin.ts ADMIN_OPS) and are relayed only from authenticated
 sessions.
+
+**Owner powers online (protocol 17).** An authenticated session may also send `adminRooms` (answer `adminRooms {rooms, total}`:
+every room with code, phase, players, spectators, minutes and its people), `adminAnnounce {scope, code?, title, text,
+style, seconds}`, `adminNotice {code?, memberId, text, style}`, `adminSpectacle {scope, code?, kind, tile?, label?,
+seconds?}` (kind: ping, countdown, confetti, fireworks, shake), `adminMute {code?, memberId, minutes}` (0 lifts it)
+and `adminKick {code?, memberId}`. `scope` is `room` (the room `code`, else the sender's own) or `all` (every session
+on the server, lobby list included); an effect on a tile goes to one room. The server answers each with
+`adminAck {what, ok, message, reached?}` to the sender alone; from anyone else they get error `notAllowed` and do
+nothing. Own rate limit per session: the list 4 at once then 1/s, what players see 5 at once then one every 2 s (a
+server-wide one costs 2), moderation 6 then 1/s. Players receive plain messages: `announcement {title, text, style,
+seconds}`, `notice {text, style, seconds}`, `spectacle {kind, code?, tile?, label?, seconds?}` and, when removed,
+`kicked {reason: 'You were removed from this game'}` (joining that room again is refused, also as a spectator).
+None of these are intents: they never change a game, are never hashed and can't desync. Text is cleaned on the server
+and again on the client (`cleanBroadcastText`: control, zero-width and bidi characters out, one line; text at most
+200 characters, title and labels 40) and shown with textContent only. Mutes and removals are kept per room by clientId
+(a rejoin keeps them) and by the address the member joined from: a new clientId from that address is refused
+(`kicked`) or starts muted for the rest of the mute. Members already in the room from that address keep chatting and
+playing, and an authenticated session is never refused, so on a shared address (a school, one home network) only
+people who join later are caught. The chat reads mutes with `Room.isMuted(memberId)`. Watching: the owner joins a running game with the
+normal `joinLobby {spectate: true}` and counts as one more anonymous spectator; from that seat the server relays
+`admin` intents (stamped player 0) and refuses every other intent. The sim needs an explicit nation for every op from
+player 0 ('Pick a nation' otherwise).
+
+**Chat (protocol 17).** Online lobbies and games only, never part of the game state (no lockstep, no hashes). `chat
+{channel, text, ping?}`: the server cleans the text (control and invisible characters out, spaces collapsed, 1..160
+characters), masks the words in `server/chatWords.ts` with `***` and relays `chat {entry}` to those who may read it:
+`all` reaches everyone, `team` only teammates in a running teams game (with an optional map mark, `ping`, a tile), and
+spectators always write in their own `spectators` channel that players don't see. 5 messages per 10 s per clientId
+and 20 per 10 s per address in each room (`chatAddressBurst`; the owner's session only has the first), then 10 s of
+quiet. The room keeps these limiters for its whole life, so leaving and joining again, or a reconnect, starts no new
+budget; refusals (too fast, muted with `adminMute`, team chat not open) come back as `chatNotice` to the sender
+alone. The room keeps the last 50 messages: every join, reconnect and the game start send `chatHistory` with the ones
+that member may read. Clients show chat with `textContent` only (no HTML, no links); a player hiding someone lasts the
+browser session and "Chat off" (Menu, or the switch in the lobby) hides everything.
 
 **Limits.** 16 KB per message, 30 messages/s per connection (bursts of 60; a long flood closes the socket), 10 intents
 per player per turn and 4 per second on average (bursts of 40; the client sends army-mix slider drags at most every
@@ -248,6 +285,16 @@ repository: `render.yaml` lists the variable `ADMIN_CODE` without a value (`sync
 
 The check endpoint allows calls from the GitHub Pages site (`https://doom956.github.io`) and from the server's own
 origin; with `ALLOWED_ORIGINS` set, that list replaces the Pages default (the server's own origin always works).
+
+Online the console also opens from the menu (`|` there too) with three more tabs. **Games** lists every room on the
+server; **Watch** joins a running game as a spectator (the console then works on that game, with every op aimed at a
+nation you pick), **Make target** aims Announce and Effects at that game, **People** shows who is in it with
+Message, Mute and Remove. **Announce** sends a banner to this game, the target game or every screen on the server
+(title, text up to 200 characters, Info / Warning / Celebration, time on screen; Preview shows it to you alone), and
+a short message to one player. **Effects**: a ring with a label on a tile you click ("Look here"; players can click
+it to go there when it is off screen), a countdown, confetti and fireworks over the screen or a tile, a short screen
+shake. Players never see the words admin, console or owner: banners say "Announcement" or your title, messages
+"Message". With reduced motion on their system there is no shake and a tenth of the particles.
 
 Without `ADMIN_CODE` the console is off everywhere (every code is refused). After 5 wrong codes from one address within
 an hour (websocket and HTTP tries count together) the server ignores further tries from it silently. Other hosts: set the `ADMIN_CODE` environment variable the

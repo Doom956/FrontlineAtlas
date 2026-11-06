@@ -39,9 +39,27 @@
 //   with its ADMIN_CODE env var (unset = no console online) and answers only the sender `adminAuth {ok}`; after 5
 //   wrong codes from one address in an hour it ignores further tries silently. An authenticated session (and its
 //   clientId on reconnect) may send `admin` intents; the server drops them from everyone else (error 'notAllowed').
+// - Owner powers (online): a session that passed adminAuth may also send `adminRooms` (answer: `adminRooms {rooms}`,
+//   every room on the server), `adminAnnounce`, `adminNotice`, `adminSpectacle`, `adminMute` and `adminKick`. The
+//   server answers each with `adminAck {what, ok, message}` to the sender alone; from any other session they get error
+//   'notAllowed' and nothing happens. They have their own rate limit (error 'rateLimit'). What players receive is
+//   plain: `announcement {title, text, style, seconds}` (a banner), `notice {text, style, seconds}` (a small card for
+//   one player), `spectacle {kind, ...}` (a visual effect) and, for a kick, `kicked {reason}`. None of these change the
+//   game: they are not lockstep intents, are never hashed and can't desync. Clients show their text with textContent
+//   only, cut to the limits below (cleanBroadcastText). An owner watching a game as a spectator may send `admin`
+//   intents (stamped playerId 0; the sim then needs an explicit nation for every op) and no other intent.
+//   Mutes are kept per room by clientId; the chat reads them through Room.isMuted(memberId).
 // - Warship groups and tank divisions (protocol 7): intents `moveWarships {unitIds, tile}`, `buildTankDivision {tile}`,
 //   `moveTankDivision {unitIds, tile}` (unitIds: 1..MAX_GROUP_UNITS distinct ids); `buildWarship {port, tile?}` (port
 //   -1 with a tile = the sim picks the port).
+// - Chat (online lobbies and games only): send `chat {channel, text, ping?}`. The server cleans the text (control
+//   characters out, spaces collapsed, 1..CHAT_MAX_LENGTH characters), masks rude words with ***, rate-limits it
+//   (CHAT_BURST messages per CHAT_WINDOW_MS, then a short cooldown) and relays it as `chat {entry}` to the members
+//   who may read it: 'all' reaches everyone (spectators too), 'team' only the sender's teammates in a running teams
+//   game, and a spectator always writes in the 'spectators' channel (spectators only). `ping` (a tile, team chat
+//   only) marks a spot on the teammates' maps. A refused message gets `chatNotice {reason, text}` for the sender
+//   alone. On every (re)join, and when the game starts, the server sends `chatHistory`: the last CHAT_HISTORY
+//   messages this member may read, plus the channels it may use. Chat never touches the game state (no lockstep).
 // - Send `ping` every PING_INTERVAL_MS; the server closes connections silent for longer than IDLE_TIMEOUT_MS.
 // - Keep `clientId` (random, from makeClientId()) in localStorage: it is your seat. Reconnecting with the same
 //   clientId (a new socket + `hello`) puts you back in your lobby or game: the server answers `welcome {resumed}`
@@ -80,11 +98,36 @@ export type { GameMode };
 // ------------------------------------------------------------------------------------------------ constants
 
 /** Bumped on any incompatible change to the messages below. `hello.protocol` must equal it. */
-export const PROTOCOL_VERSION = 17;
+export const PROTOCOL_VERSION = 18;
 /** Longest owner-console code a client may send (adminAuth). */
 export const ADMIN_CODE_MAX_LENGTH = 128;
+/** Longest chat message (characters, after cleaning). */
+export const CHAT_MAX_LENGTH = 160;
+/** Chat rate limit: at most CHAT_BURST messages per CHAT_WINDOW_MS, then CHAT_COOLDOWN_MS of quiet. */
+export const CHAT_BURST = 5;
+export const CHAT_WINDOW_MS = 10_000;
+export const CHAT_COOLDOWN_MS = 10_000;
+/** Messages a room keeps for members who join or reconnect. */
+export const CHAT_HISTORY = 50;
 /** A finished private game can be continued by its host for this long (then the room closes). */
 export const CONTINUE_WINDOW_MS = 10 * 60_000;
+/** Owner powers: longest announcement / notice text, title and effect label (characters, after cleaning). */
+export const BROADCAST_TEXT_MAX = 200;
+export const BROADCAST_TITLE_MAX = 40;
+export const BROADCAST_LABEL_MAX = 40;
+/** Banner and notice time on screen (seconds, inclusive). */
+export const ANNOUNCE_SECONDS: readonly [number, number] = [3, 60];
+/** Countdown length (seconds, inclusive). */
+export const COUNTDOWN_SECONDS: readonly [number, number] = [3, 600];
+/** Longest mute (minutes); 0 lifts a mute. */
+export const MUTE_MAX_MINUTES = 24 * 60;
+export const ANNOUNCE_STYLES = ['info', 'warning', 'celebration'] as const;
+export type AnnounceStyle = (typeof ANNOUNCE_STYLES)[number];
+/** Visual effects for everyone: a ring on a tile, a countdown, confetti, fireworks, a short screen shake. */
+export const SPECTACLE_KINDS = ['ping', 'countdown', 'confetti', 'fireworks', 'shake'] as const;
+export type SpectacleKind = (typeof SPECTACLE_KINDS)[number];
+/** Where an announcement or effect goes: the room (the owner's own, or `code`), or every session on the server. */
+export type BroadcastScope = 'room' | 'all';
 /** WebSocket path on the server (same host that serves the client, or the one given by ?server=). */
 export const WS_PATH = '/ws';
 /** One turn = one sim tick = 100 ms (config TICK_SECONDS). */
@@ -338,6 +381,65 @@ export interface AdminAuthMsg {
   type: 'adminAuth';
   code: string;
 }
+/** Owner powers (admin sessions only, see the rules above): list every room on the server. */
+export interface AdminRoomsMsg {
+  type: 'adminRooms';
+}
+/** A banner on every screen of one room (`code`, else the owner's own room) or of every session ('all'). */
+export interface AdminAnnounceMsg {
+  type: 'adminAnnounce';
+  scope: BroadcastScope;
+  code?: string;
+  /** '' = the default "Announcement" */
+  title: string;
+  text: string;
+  style: AnnounceStyle;
+  seconds: number;
+}
+/** A small card for one member of a room. */
+export interface AdminNoticeMsg {
+  type: 'adminNotice';
+  code?: string;
+  memberId: number;
+  text: string;
+  style: AnnounceStyle;
+}
+/** A visual effect. Effects on a tile (ping, confetti or fireworks with a tile) only go to one room. */
+export interface AdminSpectacleMsg {
+  type: 'adminSpectacle';
+  scope: BroadcastScope;
+  code?: string;
+  kind: SpectacleKind;
+  tile?: number;
+  label?: string;
+  /** countdown length */
+  seconds?: number;
+}
+/** Mute a member of a room for `minutes` (0 = lift the mute). Read by the chat through Room.isMuted. */
+export interface AdminMuteMsg {
+  type: 'adminMute';
+  code?: string;
+  memberId: number;
+  minutes: number;
+}
+/** Remove a member from a room (lobby or running game); they can't come back to it. */
+export interface AdminKickMsg {
+  type: 'adminKick';
+  code?: string;
+  memberId: number;
+}
+export type AdminClientMessage = AdminRoomsMsg | AdminAnnounceMsg | AdminNoticeMsg | AdminSpectacleMsg | AdminMuteMsg | AdminKickMsg;
+/** What a chat message is sent to: 'all', 'team' (teammates), or 'spectators' (only spectators write and read it). */
+export type ChatChannel = 'all' | 'team' | 'spectators';
+/** A chat message. Spectators may send any channel: the server puts it in 'spectators'. */
+export interface ChatSendMsg {
+  type: 'chat';
+  channel: 'all' | 'team';
+  /** 1..CHAT_MAX_LENGTH characters after the server's cleaning */
+  text: string;
+  /** team chat in a running game: a tile to mark on the teammates' maps */
+  ping?: number;
+}
 export interface PingMsg {
   type: 'ping';
   /** any number (e.g. performance.now()); echoed in pong */
@@ -358,6 +460,8 @@ export type ClientMessage =
   | GameOverReportMsg
   | SetPauseMsg
   | AdminAuthMsg
+  | AdminClientMessage
+  | ChatSendMsg
   | PingMsg;
 
 // ------------------------------------------------------------------------------------------------ server -> client
@@ -499,6 +603,121 @@ export interface AdminAuthResultMsg {
   ok: boolean;
 }
 
+/** One member of a room, as the owner's room list shows it. */
+export interface AdminMemberInfo {
+  memberId: number;
+  name: string;
+  /** 0 for spectators and before the start */
+  playerId: number;
+  spectator: boolean;
+  connected: boolean;
+  /** left the running game (or was removed) */
+  left: boolean;
+  /** minutes of mute left (rounded up), 0 = not muted */
+  mutedMinutes: number;
+}
+/** One room on the server, for the owner's Games list. */
+export interface AdminRoomInfo {
+  code: string;
+  phase: 'lobby' | 'running' | 'over';
+  isPublic: boolean;
+  mode: GameMode;
+  map: string;
+  /** seated players (connected or not) / connected players / connected spectators */
+  players: number;
+  connected: number;
+  spectators: number;
+  /** minutes since the start (running, over) or since the lobby opened */
+  minutes: number;
+  turn: number;
+  paused: boolean;
+  members: AdminMemberInfo[];
+}
+/** Answer to adminRooms (the sender alone). At most ADMIN_ROOMS_MAX rooms; `total` counts all. */
+export interface AdminRoomsResultMsg {
+  type: 'adminRooms';
+  serverTime: number;
+  rooms: AdminRoomInfo[];
+  total: number;
+}
+/** The server's answer to every owner power (the sender alone). `reached` = sessions that got it. */
+export interface AdminAckMsg {
+  type: 'adminAck';
+  what: AdminClientMessage['type'];
+  ok: boolean;
+  message: string;
+  reached?: number;
+}
+/** A banner for everyone in the room (or on the server). */
+export interface AnnouncementMsg {
+  type: 'announcement';
+  /** '' = show "Announcement" */
+  title: string;
+  text: string;
+  style: AnnounceStyle;
+  seconds: number;
+}
+/** A small card for this client only. */
+export interface NoticeMsg {
+  type: 'notice';
+  text: string;
+  style: AnnounceStyle;
+  seconds: number;
+}
+/** A visual effect. `code` (the room's) comes with tile effects: a client in another game ignores the tile. */
+export interface SpectacleMsg {
+  type: 'spectacle';
+  kind: SpectacleKind;
+  code?: string;
+  tile?: number;
+  label?: string;
+  seconds?: number;
+}
+export const ADMIN_ROOMS_MAX = 150;
+/** One relayed chat message. The text is plain text: show it with textContent only. */
+export interface ChatEntry {
+  /** increasing per room */
+  id: number;
+  channel: ChatChannel;
+  /** the sender's memberId in this room */
+  from: number;
+  name: string;
+  color: RGB;
+  /** the sender's player id in the game, 0 in the lobby and for spectators */
+  playerId: number;
+  text: string;
+  /** a tile marked on the map (team chat only) */
+  ping?: number;
+  /** server time (ms) */
+  at: number;
+}
+/** A new chat message for you. */
+export interface ChatRelayMsg {
+  type: 'chat';
+  entry: ChatEntry;
+}
+/** The recent chat of the room you are in (replaces what you have) and what you may send. */
+export interface ChatHistoryMsg {
+  type: 'chatHistory';
+  code: string;
+  /** your memberId */
+  you: number;
+  /** you are a spectator: your messages go to the 'spectators' channel */
+  spectator: boolean;
+  /** team chat is open to you (a player in a running teams game) */
+  team: boolean;
+  entries: ChatEntry[];
+}
+export type ChatNoticeReason = 'rateLimit' | 'muted' | 'notAllowed';
+/** Your chat message was not sent (only you see this). */
+export interface ChatNoticeMsg {
+  type: 'chatNotice';
+  reason: ChatNoticeReason;
+  text: string;
+  /** rateLimit: ms until you may chat again */
+  retryMs?: number;
+}
+
 export type ServerMessage =
   | WelcomeMsg
   | LobbyListMsg
@@ -514,7 +733,15 @@ export type ServerMessage =
   | PauseStateMsg
   | GameOverMsg
   | GameContinuedMsg
-  | AdminAuthResultMsg;
+  | AdminAuthResultMsg
+  | AdminRoomsResultMsg
+  | AdminAckMsg
+  | AnnouncementMsg
+  | NoticeMsg
+  | SpectacleMsg
+  | ChatRelayMsg
+  | ChatHistoryMsg
+  | ChatNoticeMsg;
 
 // ------------------------------------------------------------------------------------------------ helpers
 
@@ -570,6 +797,25 @@ export function resolveServerUrl(
   if (page.protocol !== 'http:' && page.protocol !== 'https:') return null;
   if (!page.host) return null;
   return (page.protocol === 'https:' ? 'wss://' : 'ws://') + page.host + WS_PATH;
+}
+
+/**
+ * Text for an announcement, notice or label, shared by the server (validation) and the client (display): control,
+ * zero-width and bidi-override characters removed, runs of white space made one space, trimmed. Null when it is not
+ * a string or longer than `max` afterwards (empty is allowed: the caller decides). Display it with textContent only.
+ */
+export function cleanBroadcastText(v: unknown, max: number): string | null {
+  if (typeof v !== 'string' || v.length > max * 4 + 64) return null;
+  // eslint-disable-next-line no-control-regex
+  const s = v.replace(/[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffb]/g, ' ').replace(/\s+/g, ' ').trim();
+  return [...s].length > max ? null : s;
+}
+
+/** The same, cut to `max` characters instead of refused (the client's display of what the server sent). */
+export function clipBroadcastText(v: unknown, max: number): string {
+  const s = cleanBroadcastText(typeof v === 'string' ? v.slice(0, max * 4 + 64) : '', Number.MAX_SAFE_INTEGER) ?? '';
+  const chars = [...s];
+  return chars.length > max ? chars.slice(0, max).join('').trimEnd() : s;
 }
 
 /** Expands a catchUp's sparse list into one Turn per number in [fromTurn, toTurn). */

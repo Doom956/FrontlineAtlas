@@ -272,7 +272,8 @@ export class MpGame {
    */
   dispatch(action: Action): ActionResult {
     if (!this.state) return { ok: false, reason: 'The game is still loading' };
-    if (this.spectator) return { ok: false, reason: 'You are watching this game' };
+    // a watching owner sends console actions only (the server relays nothing else from a spectator)
+    if (this.spectator && action.type !== 'admin') return { ok: false, reason: 'You are watching this game' };
     // continuing a finished game (the host; the server checks) and the owner console (an authenticated session; the
     // server drops it from anyone else) also work after the end / for an eliminated player
     if (action.type === 'continueGame' || action.type === 'admin') {

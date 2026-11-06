@@ -1,5 +1,5 @@
 // Server settings. Defaults are for production; tests pass short timers.
-import { CONTINUE_WINDOW_MS, IDLE_TIMEOUT_MS, MAX_LOBBY_PLAYERS, MAX_MESSAGE_BYTES, TURN_MS } from '../src/net/protocol';
+import { CHAT_BURST, CHAT_COOLDOWN_MS, CHAT_WINDOW_MS, CONTINUE_WINDOW_MS, IDLE_TIMEOUT_MS, MAX_LOBBY_PLAYERS, MAX_MESSAGE_BYTES, TURN_MS } from '../src/net/protocol';
 
 export interface ServerOptions {
   /** 0 = pick a free port (tests) */
@@ -73,6 +73,12 @@ export interface ServerOptions {
   continueWindowMs: number;
   /** allowed Origin headers for WebSockets; empty = any */
   allowedOrigins: string[];
+  /** chat: at most chatBurst messages per chatWindowMs per member, then chatCooldownMs of quiet */
+  chatBurst: number;
+  chatWindowMs: number;
+  chatCooldownMs: number;
+  /** chat: at most this many messages per chatWindowMs from one address in one room (several players may share it) */
+  chatAddressBurst: number;
   log: (msg: string) => void;
 }
 
@@ -113,6 +119,10 @@ export const DEFAULT_OPTIONS: ServerOptions = {
   adminCode: '',
   continueWindowMs: CONTINUE_WINDOW_MS,
   allowedOrigins: [],
+  chatBurst: CHAT_BURST,
+  chatWindowMs: CHAT_WINDOW_MS,
+  chatCooldownMs: CHAT_COOLDOWN_MS,
+  chatAddressBurst: CHAT_BURST * 4,
   log: (msg) => console.log(`[${new Date().toISOString()}] ${msg}`),
 };
 

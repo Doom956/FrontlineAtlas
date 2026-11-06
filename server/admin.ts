@@ -72,3 +72,43 @@ export class AdminGate {
     }
   }
 }
+
+// ------------------------------------------------------------------------------------------------ owner powers
+
+/** Kinds of owner power with their own budget: the room list, what players see (announce, notice, effect), moderation. */
+export type AdminPowerKind = 'list' | 'show' | 'moderate';
+/** Token buckets per kind: burst, then one more every `everyMs`. A server-wide broadcast costs SHOW_ALL_COST. */
+export const ADMIN_POWER_LIMITS: Record<AdminPowerKind, { burst: number; everyMs: number }> = {
+  list: { burst: 4, everyMs: 1000 },
+  show: { burst: 5, everyMs: 2000 },
+  moderate: { burst: 6, everyMs: 1000 },
+};
+export const SHOW_ALL_COST = 2;
+
+/**
+ * Rate limit for one session's owner powers (on top of the hub's general message budget): an announcement for every
+ * screen on the server can't be sent in a burst by a stuck key or a script.
+ */
+export class AdminLimiter {
+  private tokens: Record<AdminPowerKind, number>;
+  private at: number;
+
+  constructor(private readonly now: () => number) {
+    this.tokens = { list: ADMIN_POWER_LIMITS.list.burst, show: ADMIN_POWER_LIMITS.show.burst, moderate: ADMIN_POWER_LIMITS.moderate.burst };
+    this.at = now();
+  }
+
+  /** Takes `cost` tokens of `kind`; false (nothing taken) when there are not enough. */
+  take(kind: AdminPowerKind, cost = 1): boolean {
+    const now = this.now();
+    const dt = Math.max(0, now - this.at);
+    this.at = now;
+    for (const k of Object.keys(this.tokens) as AdminPowerKind[]) {
+      const l = ADMIN_POWER_LIMITS[k];
+      this.tokens[k] = Math.min(l.burst, this.tokens[k] + dt / l.everyMs);
+    }
+    if (this.tokens[kind] < cost) return false;
+    this.tokens[kind] -= cost;
+    return true;
+  }
+}

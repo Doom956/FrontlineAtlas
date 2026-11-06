@@ -926,6 +926,8 @@ export interface SettingsHooks {
   leave(): void;
   /** single player with autosave: a note under Leave says the game is kept */
   saves?: boolean;
+  /** online games: the chat on/off switch */
+  chat?: { on(): boolean; set(on: boolean): void };
 }
 
 export class SettingsPage implements DrawerPage {
@@ -981,6 +983,14 @@ export class SettingsPage implements DrawerPage {
     fx.el.dataset.test = 'fx-toggle';
     r.append(fx.el, el('p', 'note', 'Short flashes when land or a city changes hands, a ship sinks or a bomb lands. A nearby nuke shakes the view.'));
     this.sync.push(() => fx.set(fxEnabled()));
+    if (hooks.chat) {
+      const chat = hooks.chat;
+      r.append(sectionTitle('Chat'));
+      const sw = seg2('Chat on', 'Chat off', () => chat.set(true), () => chat.set(false));
+      sw.el.dataset.test = 'chat-toggle';
+      r.append(sw.el, el('p', 'note', 'Chat off hides messages and the Chat button. Turn it back on here.'));
+      this.sync.push(() => sw.set(chat.on()));
+    }
     r.append(sectionTitle('Game'));
     let confirmUntil = 0;
     const leave = btn('Leave to the main menu', 'danger wide', () => {

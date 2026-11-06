@@ -193,11 +193,16 @@ function ownSettings(state: GameState): void {
 
 /** Action 'admin' (actions.ts routes it here before the alive / phase checks). */
 export function applyAdmin(state: GameState, senderId: number, a: AdminAction): ActionResult {
+  // senderId 0: the owner watching an online game as a spectator (the relay server stamps player 0 and relays it only
+  // from a session that proved the code). It has no nation of its own, so every op that defaults to the sender needs
+  // an explicit nation.
+  const watcher = senderId === 0;
   const sender = state.players[senderId];
-  if (!sender || senderId === 0 || !sender.isHuman) return FAIL('Not allowed');
+  if (!watcher && (!sender || !sender.isHuman)) return FAIL('Not allowed');
   if (state.phase !== 'playing') return FAIL(state.phase === 'spawn' ? 'Wait for the spawn phase to end' : 'The game is over');
   const bad = validateAdmin(state, a);
   if (bad) return FAIL(bad);
+  if (watcher && ADMIN_OPS[a.op].includes('player?') && !(a.player && a.player > 0)) return FAIL('Pick a nation');
   const pid = a.player && a.player > 0 ? a.player : senderId;
   const p = state.players[pid];
   const amount = a.amount ?? 0;
