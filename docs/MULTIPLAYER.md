@@ -152,14 +152,21 @@ sessions.
 **Owner powers online (protocol 17).** An authenticated session may also send `adminRooms` (answer `adminRooms {rooms, total}`:
 every room with code, phase, players, spectators, minutes and its people), `adminAnnounce {scope, code?, title, text,
 style, seconds}`, `adminNotice {code?, memberId, text, style}`, `adminSpectacle {scope, code?, kind, tile?, label?,
-seconds?}` (kind: ping, countdown, confetti, fireworks, shake), `adminMute {code?, memberId, minutes}` (0 lifts it)
+seconds?, memberId?, mode?}` (kind: ping, countdown, confetti, fireworks, shake, and the screen pranks flip,
+earthquake, disco, ducks, fakeBomb, fogPuff, chase; `memberId` with scope `room` sends it to that one member; `mode`
+is `upside` or `mirror`, flip only), `adminMute {code?, memberId, minutes}` (0 lifts it)
 and `adminKick {code?, memberId}`. `scope` is `room` (the room `code`, else the sender's own) or `all` (every session
 on the server, lobby list included); an effect on a tile goes to one room. The server answers each with
 `adminAck {what, ok, message, reached?}` to the sender alone; from anyone else they get error `notAllowed` and do
 nothing. Own rate limit per session: the list 4 at once then 1/s, what players see 5 at once then one every 2 s (a
 server-wide one costs 2), moderation 6 then 1/s. Players receive plain messages: `announcement {title, text, style,
-seconds}`, `notice {text, style, seconds}`, `spectacle {kind, code?, tile?, label?, seconds?}` and, when removed,
+seconds}`, `notice {text, style, seconds}`, `spectacle {kind, code?, tile?, label?, seconds?, mode?}` and, when removed,
 `kicked {reason: 'You were removed from this game'}` (joining that room again is refused, also as a spectator).
+Time limits (server validation, and the client clamps again): a banner 3 to 15 s (6 s when none is given), a notice
+always 5 s (the server sets it), a countdown 3 to 15 s, a prank 2 to 10 s (each kind has its own default); kinds
+outside the allowlist, a `mode` off a flip, a tile or label on a prank and `memberId` with scope `all` are refused.
+The pranks are new values of the existing `spectacle` kind, so the protocol stays 18: an older client drops a kind it
+doesn't know (broadcast.ts checks the kind against its own list before doing anything).
 None of these are intents: they never change a game, are never hashed and can't desync. Text is cleaned on the server
 and again on the client (`cleanBroadcastText`: control, zero-width and bidi characters out, one line; text at most
 200 characters, title and labels 40) and shown with textContent only. Mutes and removals are kept per room by clientId
@@ -293,8 +300,19 @@ Message, Mute and Remove. **Announce** sends a banner to this game, the target g
 (title, text up to 200 characters, Info / Warning / Celebration, time on screen; Preview shows it to you alone), and
 a short message to one player. **Effects**: a ring with a label on a tile you click ("Look here"; players can click
 it to go there when it is off screen), a countdown, confetti and fireworks over the screen or a tile, a short screen
-shake. Players never see the words admin, console or owner: banners say "Announcement" or your title, messages
-"Message". With reduced motion on their system there is no shake and a tenth of the particles.
+shake. **Pranks** (Effects tab, for this game, the target game, every screen, or one player picked under Who):
+Upside down / Mirrored (the map flips over half a second, stays, flips back; clicks still land on the tile the player
+sees, and only during the half-second turns does map input wait), Earthquake (a gentle wobble of the map), Disco
+(nation colours run through the rainbow), Rubber ducks (ships, planes and divisions drawn as ducks; missiles stay
+missiles), Pretend bomb ("Incoming!" counts down at the player's capital, then confetti and "Gotcha!"), Fog puff (a
+cloud comes over the screen and clears; clicks go through it), Camera chase (the camera glides to one of their units,
+follows it, glides back; if they pan or zoom it stops there). Length: each prank's own (4 to 8 s) or 2 to 10 s.
+Everything ends by itself: banners within 15 s (6 s default; a new one replaces the old), messages after 5 s,
+countdowns within 15 s, pranks within 10 s. A banner's message is about twice the HUD text (30 px, 21 px on phones),
+at most 60% of the screen wide (90% on phones) and 40% tall; the map around it keeps taking clicks.
+Players never see the words admin, console or owner: banners say "Announcement" or your title, messages
+"Message". With reduced motion on their system there is no shake and a tenth of the particles; flip, earthquake and
+chase do not run at all (nothing shows), disco holds one still colour change, the fog puff only fades.
 
 Without `ADMIN_CODE` the console is off everywhere (every code is refused). After 5 wrong codes from one address within
 an hour (websocket and HTTP tries count together) the server ignores further tries from it silently. Other hosts: set the `ADMIN_CODE` environment variable the

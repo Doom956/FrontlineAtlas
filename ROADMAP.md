@@ -494,6 +494,46 @@ Not checked: real phones (desktop browser at phone size only); a watching owner'
 (no name set) and spectators would see that name if the owner chats while watching; a teammate's name can show in
 another lobby colour in chat; look-alike letters from other alphabets in names (a Cyrillic "a") still pass.
 
+## Screen pranks and announcement sizing (2026-11-06, branch pranks)
+Protocol stays 18: the pranks are new values of the existing `spectacle` kind, and every client since the owner
+powers drops a kind it doesn't know (broadcast.ts checks it against its own list first), so an older client simply
+shows nothing. Nothing here changes a game: all of it is drawing on the player's own screen, never a lockstep action,
+never hashed, can't desync.
+Owner's time and size rules (for everything the owner sends):
+- Banner text about twice the HUD text: 30 px on desktop, 21 px on phones, title 22 / 16 px; the slip at most 60% of
+  the screen wide (90% on phones) and 40% tall, under the top bar. Only the slip takes clicks; the map around it stays live.
+- Everything goes by itself: banners 6 s by default and 15 s at most (a new one replaces the old, no pile), a message
+  for one player 5 s, countdowns 3 to 15 s, rings 6 s, pranks 2 to 10 s. The server refuses longer times and the
+  client clamps them again. The console's banner times are 3 to 15 s.
+Pranks (owner console, Effects tab, "Pranks"; for this game, the target game, every screen, or one player under Who;
+Length: each prank's own or 2 to 10 s):
+- Upside down / Mirrored: the map turns over in half a second, stays, turns back. Clicks keep landing on the tile the
+  player sees (the pointer is mapped back through the turn); only during the two half-second turns is map input
+  ignored. HUD, minimap and chat are not turned.
+- Earthquake: a gentle wobble of the map (a few px, under a degree), eased in and out; clicks mapped the same way.
+- Disco: nation colours run through the rainbow (once round in 3 s).
+- Rubber ducks: ships, planes and divisions drawn as yellow ducks outlined in the owner's colour; missiles stay missiles.
+- Pretend bomb: "Incoming!" counts down in red over a ring on the player's capital, then confetti and "Gotcha!" with
+  "Just confetti". Nothing else happens.
+- Fog puff: a cloud comes over the screen and clears; clicks go through it.
+- Camera chase: the camera glides to one of the player's units, follows it, glides back to where it was. A pan or zoom
+  by the player ends it at once and leaves the camera where they put it.
+- Reduced motion (player's system setting): no flip, earthquake or chase (nothing shows), disco holds one still colour
+  change, the cloud only fades, ducks and the pretend bomb as usual with a tenth of the confetti.
+- Not added on purpose: anything that looks like another player's message, account or security warnings, fake win or
+  lose screens, anything that changes the game.
+Checks: tsc (client, server), build, full vitest 1024 of 1025 (the trenches hash test hit the 5 s timeout under load
+and passes alone with --testTimeout 60000, 18/18). New tests: ownerPranks (server: refused from a player, a spectator
+and a lobby-list session; time caps; allowlist; one player only; notice 5 s) and ownerPranks.client (each prank ends by
+itself on fake timers, clamps, a new game ends every prank, the bomb and the chase step by step, reduced motion,
+clicks through a flip, text only as text). Playwright on the built app (owner watching, 2 players, a reduced-motion
+spectator, a phone): flip for one player only (the other not turned), hover through the flip on the right tile, flip,
+earthquake, bomb, fog and chase gone by themselves, chase back to the same camera, banner 30 px / 60% on desktop and
+21 px / 90% on a phone with the page under it still clickable, gone after 6 s, no console words on a player's
+screen, no desync. Screenshots /tmp/borderfall-shots/prank-*.png.
+Not checked: real phones (a desktop browser at phone size only); frame time on a real GPU (only software GL here);
+the ducks are small at normal zoom (they take the glyph's size).
+
 ## Queued next (owner, 2026-11-03)
 Later: anonymous real-match stats on the server for balance, rematch + quick chat, replays, in-game phone/touch HUD, real-GPU performance check, flaky scripted-player e2e fix.
 

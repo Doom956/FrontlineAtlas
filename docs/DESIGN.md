@@ -1352,8 +1352,24 @@ through the `adminTile` target mode), a wrong code just clears the line. The unl
 (sessionStorage). Speed x8 / x16 and the debug overlay (fps, ms per tick, AI attacks) are client-only.
 Online the console also has Games (every room on the server, Watch as a spectator, People with Message, Mute and
 Remove), Announce (a banner for one game or every screen, a message for one player) and Effects (a ring with a label
-on a tile, a countdown, confetti, fireworks, a screen shake). These are server messages, not actions: they never touch
-the game state (src/client/broadcast.ts shows them; docs/MULTIPLAYER.md has the messages). A watching owner's
+on a tile, a countdown, confetti, fireworks, a screen shake, and screen pranks). These are server messages, not actions: they never touch
+the game state (src/client/broadcast.ts shows them; docs/MULTIPLAYER.md has the messages).
+Time and size rules: every owner effect ends by itself. Banner 6 s by default, 15 s at most (ANNOUNCE_SECONDS), a new
+one replaces the old; a message for one player 5 s (NOTICE_SECONDS); countdown 3 to 15 s; each prank 2 to 10 s
+(PRANK_SECONDS). The server refuses longer ones and the client clamps again. Banner text about twice the HUD text
+(30 px, 21 px under 640 px wide), at most 60% of the screen wide (90% on phones) and 40% tall, never a takeover;
+only the slip takes clicks. Screen pranks (PRANK_KINDS, values of `spectacle`, for a game, every screen or one
+member): flip (upside down or mirrored), earthquake (wobble), disco (hue-shifted palette), ducks (unit glyphs as
+rubber ducks, missiles excepted), fakeBomb (countdown at the capital ending in confetti and "Gotcha!"), fogPuff (a
+CSS cloud), chase (the camera follows one of the player's units, then returns; a pan or zoom ends it). They live in
+src/client/fx/prankView.ts (a warp of the map canvases, a hue, a ducks flag) read by renderer.ts, unitGlyphs.ts and
+input.ts; nothing reaches the sim, the lockstep or the hash. Input during a flip or wobble: the pointer is mapped
+back through the CSS transform (mapPointer), so clicks land on the tile the player sees; during the half-second turns
+in and out map input is ignored (the map is mid-turn and a mirror passes through zero width). With
+prefers-reduced-motion: no flip, wobble or chase (skipped), disco holds one palette, the cloud only fades, ducks and
+the pretend bomb show as usual with a tenth of the confetti. Frame cost: one 2D overlay canvas that runs only while
+something moves, a CSS transform on the map canvases, a palette re-upload when the disco hue moves 6 degrees
+(on the 2D fallback a CSS hue-rotate instead), and one path per owner for the ducks. A watching owner's
 console actions come as player 0; the sim then needs an explicit nation for every op. Mute and Remove hold per room
 for the member's clientId and for the address it joined from: a new clientId from that address (a private window)
 starts muted or is refused; members already in the room from the same address are not touched, and the owner never is.
