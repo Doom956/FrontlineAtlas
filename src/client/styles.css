@@ -1,40 +1,66 @@
-/* Frontline Atlas UI: "war room". A command table over the map: near-opaque gunmetal panels with a fine brushed grain,
-   thin steel rules and corner brackets instead of rounded cards, brass for actions and key numbers, muted status
-   colours. Labels in a condensed military sans (uppercase, tracked), values in a legible face with tabular figures.
-   Decoration stays minimal: colour, type and crisp lines carry the identity. */
+/* Frontline Atlas UI: "Pixel Clean". A calm, modern interface over a bright pixel-art world. Panels are near-black
+   glass with no borders, separated by space and one hairline. One warm accent (amber) marks the primary action, the
+   current selection and the current value; everything else is a neutral step. Type is a clean sans (DM Sans) with a
+   pixel display face (Pixelify Sans) for the logo, the clock and the big changing numbers. See docs/UI_DIRECTION.md. */
 :root {
-  --ink: #0d1013;
-  --metal: #191e23;
-  --metal-a: rgba(25, 30, 35, 0.95);
-  --metal-2: #222930;
-  --metal-3: #2c343c;
-  --metal-4: #36404a;
-  --rule: #39424b;
-  --rule-hi: #56616c;
-  --text: #e4dfd2;
-  --dim: #a3a49c;
-  --faint: #73766f;
-  --brass: #c9a227;
-  --brass-hi: #e3c04e;
-  --brass-lo: #7c6416;
-  --brass-ink: #1a1508;
-  --olive: #98a957;
-  --olive-d: #5d6a2c;
-  --signal: #d4503a;
-  --signal-d: #7f2a1d;
-  --steel: #6b95b8;
-  --steel-d: #34536d;
-  --grain: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0.08)),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 3px);
-  --f-label: 'Barlow Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif;
-  --f-ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --f-logo: 'Barlow Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif;
-  --r: 2px;
+  --ink: #0b0d11;
+
+  /* Panels are translucent glass; --metal is the opaque fallback. Old names kept so the whole sheet maps cleanly. */
+  --metal: #14161b;
+  --metal-a: rgba(18, 20, 26, 0.8);
+  --metal-2: #1b1e25; /* raised control inside a panel */
+  --metal-3: #262a33; /* hover */
+  --metal-4: #30353f; /* pressed / strong */
+
+  /* The single hairline, as a faint light line rather than a hard rule. */
+  --rule: rgba(255, 255, 255, 0.09);
+  --rule-hi: rgba(255, 255, 255, 0.16);
+  --line: rgba(255, 255, 255, 0.09);
+
+  --text: #edeff3;
+  --dim: #9aa0ac;
+  --faint: #656b77;
+
+  /* One accent. Old --brass names alias it so existing rules become "accent", not "gold everywhere". */
+  --accent: #f5b13d;
+  --accent-hi: #ffc658;
+  --accent-ink: #1a1304;
+  --brass: var(--accent);
+  --brass-hi: var(--accent-hi);
+  --brass-lo: #6f5519; /* muted amber for subtle edges */
+  --brass-ink: var(--accent-ink);
+
+  /* Semantic status only. */
+  --good: #74c365;
+  --danger: #f2543d;
+  --info: #7fa6d6;
+  --olive: var(--good);
+  --olive-d: #3f6a33;
+  --signal: var(--danger);
+  --signal-d: #7a2a1e;
+  --steel: var(--info);
+  --steel-d: #3a5572;
+
+  /* No decorative texture. */
+  --grain: none;
+
+  --f-label: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --f-ui: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --f-logo: 'Pixelify Sans', 'DM Sans', system-ui, sans-serif;
+  --f-pixel: 'Pixelify Sans', 'DM Sans', system-ui, sans-serif;
+
+  --r: 8px; /* controls */
+  --r-sm: 5px; /* chips */
+  --r-xs: 4px;
+  --r-lg: 12px; /* panels */
   --s1: 4px;
   --s2: 8px;
   --s3: 12px;
   --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
   --fast: 120ms;
+  --med: 200ms;
   color-scheme: dark;
 }
 
@@ -167,33 +193,19 @@ canvas.minimap {
 .modal-card,
 .menu-card {
   background-color: var(--metal-a);
-  background-image: var(--grain);
-  border: 1px solid var(--rule);
-  border-radius: var(--r);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 6px 18px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  border: 0;
+  border-radius: var(--r-lg);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 10px 30px rgba(0, 0, 0, 0.38);
 }
-/* corner brackets: two thin brass L shapes on the main panels */
+/* No corner brackets in Pixel Clean: panels are separated by space, not ornament. */
 .cmdbar,
 .lb,
 .drawer,
 .menu-card,
 .modal-card {
   position: relative;
-}
-.cmdbar::before,
-.lb::before,
-.drawer::before,
-.menu-card::before,
-.modal-card::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  pointer-events: none;
-  background:
-    linear-gradient(var(--brass-lo), var(--brass-lo)) top left / 10px 1px no-repeat,
-    linear-gradient(var(--brass-lo), var(--brass-lo)) top left / 1px 10px no-repeat,
-    linear-gradient(var(--brass-lo), var(--brass-lo)) bottom right / 10px 1px no-repeat,
-    linear-gradient(var(--brass-lo), var(--brass-lo)) bottom right / 1px 10px no-repeat;
 }
 
 /* buttons: obvious default, hover, pressed, disabled */
@@ -293,15 +305,25 @@ canvas.minimap {
   height: 34px;
   padding: 0;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--dim);
   cursor: pointer;
   transition: background var(--fast), color var(--fast);
 }
 .sq:hover {
-  background: var(--metal-3);
+  background: var(--panel-3, rgba(255, 255, 255, 0.09));
   color: var(--text);
+}
+/* Pixel Clean: hotkeys never show in the HUD. Every action keeps its labelled button. */
+.qb-k,
+.bm-c-k,
+.rp-tab-k,
+.qb-build .kc,
+.cmdbar kbd,
+.modechip kbd,
+.cb-build kbd {
+  display: none !important;
 }
 .sq:active {
   background: var(--metal);
@@ -514,7 +536,7 @@ canvas.minimap {
 .cb-lab {
   font: 600 11px/1 var(--f-label);
   text-transform: uppercase;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.07em;
   color: var(--faint);
 }
 .cb-read {
@@ -524,9 +546,9 @@ canvas.minimap {
   white-space: nowrap;
 }
 .cb-big {
-  font: 600 21px/1 var(--f-ui);
+  font: 600 19px/1 var(--f-pixel);
   color: var(--text);
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 .cb-big.gold {
   color: var(--brass-hi);
@@ -1310,10 +1332,10 @@ canvas.minimap {
   display: flex;
   align-items: center;
   padding: 0 9px;
-  min-width: 56px;
+  min-width: 58px;
   justify-content: center;
-  font: 600 14px/1 var(--f-ui);
-  letter-spacing: 0.02em;
+  font: 600 15px/1 var(--f-pixel);
+  letter-spacing: 0;
 }
 .clock.overtime {
   color: #f0b07a;
@@ -1414,8 +1436,8 @@ canvas.minimap {
   margin-bottom: 8px;
 }
 .big-v {
-  font: 600 26px/1.05 var(--f-ui);
-  color: var(--brass-hi);
+  font: 600 26px/1.05 var(--f-pixel);
+  color: var(--text);
 }
 .big-l {
   font-size: 12.5px;

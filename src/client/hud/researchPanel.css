@@ -434,7 +434,7 @@ aside.drawer[data-page='research'] .dr-body {
   background: var(--brass-hi);
 }
 .rp-card.next .rp-flag {
-  display: block;
+  display: none;
 }
 /* in progress: a bar along the bottom edge */
 .rp-bar {
@@ -501,9 +501,11 @@ aside.drawer[data-page='research'] .dr-body {
 .rp-card.avail {
   border-color: var(--brass);
 }
-.rp-card.avail .rp-n,
+.rp-card.avail .rp-n {
+  color: var(--text);
+}
 .rp-card.avail .rp-ic {
-  color: var(--brass-hi);
+  color: var(--accent-hi);
 }
 .rp-card.avail .rp-meta {
   color: var(--text);

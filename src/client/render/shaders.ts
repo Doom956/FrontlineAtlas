@@ -306,7 +306,7 @@ void main() {
     float d = texture(uDepth, uv).r * 25.5; // tiles to land, smooth
     float k = smoothstep(1.0, 11.0, d);
     vec3 wc = mix(uTerr[1], uTerr[0], k);
-    wc += vec3(0.05, 0.07, 0.07) * (1.0 - smoothstep(0.55, 1.5, d)); // light shore band
+    wc += vec3(0.03, 0.045, 0.045) * (1.0 - smoothstep(0.55, 1.5, d)); // quiet shore band
     if (detail > 0.0) {
       // faint wave dashes in open water
       vec2 q = t * vec2(1.0, 2.0) / 3.0;

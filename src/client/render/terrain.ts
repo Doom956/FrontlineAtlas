@@ -10,15 +10,15 @@ import type { RGB } from './common';
  * tundra pale grey-blue) without shouting over the nation colours.
  */
 export const TERRAIN_RGB: readonly RGB[] = [
-  [26, 50, 84], // deep water
-  [44, 88, 128], // shallow water
-  [138, 170, 98], // plains
-  [70, 114, 64], // forest
-  [160, 150, 102], // hills
-  [134, 130, 126], // mountains
-  [224, 204, 146], // desert
-  [94, 110, 78], // swamp
-  [208, 216, 216], // tundra
+  [30, 58, 94], // deep water (lifted navy, calmer)
+  [60, 112, 152], // shallow water (brighter, cleaner)
+  [152, 188, 106], // plains (fresh grass)
+  [76, 130, 78], // forest (richer green)
+  [196, 172, 118], // hills (warm tan)
+  [156, 152, 148], // mountains (light warm stone)
+  [234, 214, 152], // desert (bright sand)
+  [104, 126, 86], // swamp (lifted olive)
+  [216, 224, 224], // tundra (bright pale)
 ];
 /** Deposit colours (marker fills and the resource overlay). Index = ResourceId. */
 export const RESOURCE_RGB: readonly RGB[] = [
@@ -76,9 +76,10 @@ export function buildTerrain(map: MapData): TerrainData {
       let g = shallow[1] + (deep[1] - shallow[1]) * s;
       let b = shallow[2] + (deep[2] - shallow[2]) * s;
       if (d === 1) {
-        r += 14;
-        g += 18;
-        b += 18;
+        // a quiet shoreline band, not a bloom (Pixel Clean: muted map)
+        r += 6;
+        g += 9;
+        b += 9;
       }
       rgba[o] = r;
       rgba[o + 1] = g;
