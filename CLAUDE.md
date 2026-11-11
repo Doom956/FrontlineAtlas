@@ -6,7 +6,8 @@ doom956.github.io/FrontlineAtlas (Pages); both deploy from `main`.
 
 ## Owner rules (always)
 - Commits authored by Doom956 only. Never add a Co-Authored-By line or any "Claude" line to commits, PRs or files.
-- Never write the word "openfront" anywhere.
+- Never write the name of the other game the owner compares this one to (the word "open" joined to "front")
+  anywhere. Check with `git grep -i "open""front"` (split so this file stays clean).
 - No em dashes anywhere (code, docs, UI text, commits).
 - No new hotkeys, and no hotkey chips in the visible UI.
 - Everything must be obvious to a first-time player without hovering: icon plus a plain word on main controls,
