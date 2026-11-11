@@ -18,6 +18,15 @@ import { el, flash, setClass, setText, setTip, setVisible, type HudCtx } from '.
 /** The plain word under each strike picture (the full name and what it does are in the tooltip). */
 const STRIKE_WORD: Record<StrikeId, string> = { barrage: 'Barrage', bomb: 'Bombing', paradrop: 'Paradrop', rocket: 'Rocket', atomBomb: 'Atom bomb' };
 
+/** A blocked strike's reason in two or three words for the label under its picture. */
+function shortWhy(line: string): string {
+  if (/gold/i.test(line)) return 'Needs gold';
+  if (/infantry|troops/i.test(line)) return 'Needs troops';
+  if (/iron/i.test(line)) return 'Needs iron';
+  if (/oil/i.test(line)) return 'Needs oil';
+  return 'Not now';
+}
+
 interface Btn {
   root: HTMLButtonElement;
   ring: HTMLElement;
@@ -25,6 +34,8 @@ interface Btn {
   count: HTMLElement;
   /** salvo size badge (bomb, rocket, atom bomb) */
   size: HTMLElement;
+  /** the plain word under the picture: the strike's name, or in short why it cannot fire now */
+  word: HTMLElement;
   last: StrikeStatus | null;
   /** biggest cooldown seen since it last was ready (for a ring when the full reload time is not known) */
   peak: number;
@@ -64,7 +75,8 @@ export class StrikeBar {
       const label = el('span', 'sk-l');
       const count = el('span', 'sk-n');
       const size = el('span', 'sk-x');
-      root.append(ring, img, label, count, size, el('span', 'sk-w', STRIKE_WORD[id]));
+      const word = el('span', 'sk-w', STRIKE_WORD[id]);
+      root.append(ring, img, label, count, size, word);
       root.addEventListener('click', () => {
         // keep the keyboard on the map (Space pauses, letters aim) instead of on this button
         root.blur();
@@ -81,7 +93,7 @@ export class StrikeBar {
         });
       }
       row.append(root);
-      this.btns.set(id, { root, ring, label, count, size, last: null, peak: 0 });
+      this.btns.set(id, { root, ring, label, count, size, word, last: null, peak: 0 });
     }
   }
 
@@ -141,12 +153,14 @@ export class StrikeBar {
         const total = st.total > 0 ? st.total : b.peak;
         const p = total > 0 ? Math.max(0, Math.min(1, 1 - st.left / total)) : 0;
         b.ring.style.setProperty('--p', p.toFixed(3));
-        setText(b.label, `${Math.max(1, Math.ceil(st.left))}`);
+        setText(b.label, `${Math.max(1, Math.ceil(st.left))}s`);
       } else {
         b.peak = 0;
         setText(b.label, '');
       }
       setText(b.count, st.count > 0 && st.state !== 'locked' ? String(st.count) : '');
+      // blocked: say why under the picture, so it is clear without hovering (the name stays in the tooltip)
+      setText(b.word, st.state === 'blocked' ? shortWhy(st.line) : STRIKE_WORD[st.id]);
       const kind = salvoKindOf(st.id);
       const size = kind ? salvoOf(this.ctx.ui, kind) : 1;
       setText(b.size, kind && size !== 1 ? salvoLabel(size) : '');

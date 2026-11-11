@@ -961,7 +961,7 @@ canvas.minimap {
   padding-right: 8px;
   opacity: 0.85;
 }
-.advisor.mini:not(:hover):not(:focus-within) > :not(.adv-tag):not(.adv-ic) {
+.advisor.mini:not(:hover):not(:focus-within) > :not(.adv-tag):not(.adv-ic):not(.adv-do) {
   display: none;
 }
 .adv-x,
@@ -6029,4 +6029,15 @@ body .forces-sum,
     transform-origin: bottom center;
     flex-direction: column-reverse;
   }
+}
+
+/* a strike that cannot fire now says why in its word line (strikeBar.ts shortWhy), in the khaki heads-up colour */
+.sk.blocked .sk-w {
+  color: var(--brass);
+}
+
+/* the Forces drawer's group bars: a filled shape, not another box inside the drawer box */
+body .gbar {
+  border: 0;
+  background: var(--metal-2);
 }

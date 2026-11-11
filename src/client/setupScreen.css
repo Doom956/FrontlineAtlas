@@ -213,7 +213,8 @@
   align-items: center;
   justify-content: center;
   aspect-ratio: 17 / 10;
-  background: #1c3a66;
+  background: #16242a; /* the map's deep water (render/terrain.ts) */
+  image-rendering: pixelated;
   overflow: hidden;
 }
 .map-pic-wait {

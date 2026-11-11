@@ -3,7 +3,7 @@
 
 .app.in-menu canvas.map-gl,
 .app.in-menu canvas.map {
-  filter: saturate(0.45) brightness(0.6);
+  filter: saturate(0.7) brightness(0.72);
   transition: filter 400ms ease-out;
 }
 /* the overlay canvas (names, borders, units) a step quieter still, so city labels don't compete with the menu */
@@ -20,7 +20,7 @@
 .menu.at-title {
   justify-content: flex-start;
   align-items: stretch;
-  background: linear-gradient(90deg, rgba(13, 16, 19, 0.55) 0, rgba(13, 16, 19, 0.35) 40%, rgba(13, 16, 19, 0) 62%);
+  background: none;
 }
 
 /* the column: no boxed card, just a rail with a rule on its trailing edge */
@@ -34,11 +34,11 @@
   gap: 0;
   padding: 32px 40px 32px clamp(24px, 5vw, 96px);
   overflow-y: auto;
-  background: rgba(16, 20, 24, 0.86);
+  background: var(--metal);
   border: 0;
   border-inline-end: 1px solid var(--rule);
   border-radius: 0;
-  box-shadow: 12px 0 32px rgba(0, 0, 0, 0.35);
+  box-shadow: none;
 }
 .menu-card.title::before {
   display: none;
