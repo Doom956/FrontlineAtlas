@@ -5831,9 +5831,9 @@ strong {
 }
 .sk-l {
   bottom: 14px;
-  font: 600 13px/1 var(--f-pixel);
+  font: 600 12px/1 var(--f-ui);
   color: var(--text);
-  text-shadow: 1px 1px 0 #000;
+  text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
 }
 .sk-flash {
   animation: none;
