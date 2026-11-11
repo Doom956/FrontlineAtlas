@@ -346,7 +346,11 @@ void main() {
     vec3 calm = mix(under, col, ${UNDER_DETAIL.toFixed(3)});
     float cy = dot(calm, vec3(0.299, 0.587, 0.114));
     calm = vec3(${UNDER_MID.toFixed(3)} + (cy - ${UNDER_MID.toFixed(3)}) * ${UNDER_LUM.toFixed(3)}) + (calm - cy) * ${UNDER_CHROMA.toFixed(3)};
-    vec3 fill = mix(calm, oc, pc.a);
+    // close in (Pixel Ops) the tint thins and the real terrain comes back, so land stays the star and the nation
+    // reads from its border and its name; far out the calm fill is unchanged
+    float nz = smoothstep(3.0, 9.0, uZoom);
+    calm = mix(calm, col, nz * 0.6);
+    vec3 fill = mix(calm, oc, pc.a * (1.0 - 0.45 * nz));
     if (res > 0 && detail > 0.0) {
       // under a nation deposits only shade the colour faintly (no foreign hues, no dotted clusters), and only very
       // close: the deposit markers already say where the fields are

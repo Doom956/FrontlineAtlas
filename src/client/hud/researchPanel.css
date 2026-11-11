@@ -1130,3 +1130,91 @@ aside.drawer[data-page='research'] .dr-body {
     flex: none;
   }
 }
+
+/* ---- Pixel Ops: the tree reads as nodes on lines, not boxes in boxes. Owned techs are plain text with an olive
+   check (no plate, no stripe); what you can buy now is the only solid plate; the next pick gets the orange edge;
+   locked items are faint text with what they need; a choice is a bare "Choose one" caption, no frame. */
+.rp-card.done {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.rp-card.done .rp-n {
+  color: var(--dim);
+}
+.rp-card.done .rp-ic {
+  color: var(--faint);
+}
+.rp-card.done .rp-mark {
+  color: var(--olive);
+}
+.rp-card.done.sel {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.rp-card.avail {
+  border-color: var(--rule-hi);
+  background: var(--metal-3);
+}
+.rp-card.avail .rp-n {
+  color: var(--text);
+}
+.rp-card.avail .rp-ic {
+  color: var(--brass-hi);
+}
+.rp-card.avail:hover {
+  border-color: var(--text);
+}
+.rp-card.next {
+  border: 2px solid var(--accent);
+  background: var(--metal-3);
+}
+.rp-flag {
+  color: var(--accent-ink);
+  background: var(--accent);
+  font: 600 10px/13px var(--f-ui);
+}
+.rp-card.active {
+  border-color: var(--steel);
+  background: var(--metal-2);
+}
+.rp-card.locked {
+  border-color: transparent;
+  background: transparent;
+}
+.rp-card.sel {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.rp-fork,
+.rp-fork.decided {
+  border-color: transparent;
+}
+.rp-fork-l {
+  top: -6px;
+  left: 6px;
+  padding: 0 2px;
+  background: transparent;
+  font: 500 11px/13px var(--f-ui);
+  color: var(--dim);
+}
+.rp-fork.decided .rp-fork-l {
+  color: var(--faint);
+}
+.rp-lines path.done {
+  stroke: var(--olive-d);
+}
+.rp-row {
+  border-top-color: var(--rule);
+}
+.rp-tab.on {
+  color: var(--text);
+  background: var(--metal-3);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+.rp-cur.on .rp-cur-v {
+  color: var(--text);
+}
+.rp-detail {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  background: transparent;
+}

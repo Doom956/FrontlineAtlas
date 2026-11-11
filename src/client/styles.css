@@ -5861,3 +5861,111 @@ strong {
   height: 22px;
   font: 600 12px/1 var(--f-ui);
 }
+
+/* ---- phones (Pixel Ops): the top bar becomes two even rows of picture-over-word buttons across the width; the
+   command bar grows to fit its wrapped rows; standings, toasts and drawers start under the taller top bar */
+@media (max-width: 640px) {
+  .cluster {
+    left: 8px;
+    right: 8px;
+    top: 8px;
+    max-width: none;
+    flex-wrap: wrap;
+  }
+  .cluster > .cl-group {
+    display: contents;
+  }
+  .cluster > * + * {
+    border-left: 0;
+  }
+  .cluster .sq.sq-w,
+  .cluster .sq.txt,
+  .cluster .clock {
+    flex: 1 0 calc(100% / 7 - 1px);
+    min-width: 0;
+    height: 42px;
+    padding: 0 2px;
+  }
+  .cluster .sq-l {
+    font-size: 10px;
+  }
+  .hud-left {
+    top: 104px;
+  }
+  .hud-top {
+    top: 214px;
+  }
+  .drawer,
+  .drawer[data-page='forces'] {
+    top: 104px;
+    max-height: 50vh;
+  }
+  .cmdbar {
+    height: auto;
+    padding: 0;
+  }
+  .cmdbar > .cb-sec {
+    min-height: 56px;
+  }
+  .cb-troops,
+  .cb-attack,
+  .cb-gold {
+    width: auto;
+    min-width: 0;
+  }
+  .qb-slot.bb,
+  .sk {
+    min-width: 46px;
+  }
+}
+
+/* ---- standings: room for "Atlas (you)"; your row is a quiet fill, no side stripe */
+@media (min-width: 641px) {
+  .hud-left {
+    width: 252px;
+  }
+}
+.lb-row.me {
+  background: var(--metal-3);
+  box-shadow: none;
+}
+.lb-row.me .c-name {
+  color: var(--text);
+  font-weight: 600;
+}
+.c-name {
+  font-size: 13px;
+}
+
+/* ---- no side stripes: toasts, alerts, the unit card and the mode chip get one even 1px edge; the kind of news
+   is carried by the colour of its picture (red danger, olive good, khaki heads-up, steel info) */
+.toast,
+.toast.k-bad,
+.toast.k-good,
+.toast.k-warn,
+.alert,
+.ucard,
+.spawnbar,
+.modechip,
+.advisor,
+.status {
+  border-left: 1px solid var(--rule);
+}
+.alert,
+.ucard {
+  box-shadow: var(--drop);
+}
+.toast.k-bad .ico {
+  color: var(--signal);
+}
+.toast.k-good .ico {
+  color: var(--olive);
+}
+.toast.k-info .ico,
+.toast:not(.k-bad):not(.k-good):not(.k-warn) .ico {
+  color: var(--steel);
+}
+.alert .al-ic,
+.alert .ico {
+  color: var(--al);
+}

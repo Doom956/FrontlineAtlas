@@ -47,6 +47,37 @@ const SPRITES: Record<string, SpriteDef> = {
       R(2, 6, 17, 1, 'k'),
     ],
   },
+  // battleship: a longer, heavier hull, a tall bridge, three turrets (two forward, one aft)
+  battleship: {
+    w: 26,
+    h: 11,
+    rects: [
+      R(2, 4, 20, 4, 'h'),
+      R(22, 5, 3, 2, 'h'),
+      R(2, 5, 22, 1, 'H'),
+      R(10, 1, 5, 3, 's'),
+      R(12, 0, 1, 1, 'g'),
+      R(4, 3, 3, 1, 't'),
+      R(1, 3, 3, 1, 'g'),
+      R(16, 3, 2, 1, 't'),
+      R(18, 3, 3, 1, 'g'),
+      R(19, 2, 2, 1, 't'),
+      R(21, 2, 3, 1, 'g'),
+      R(2, 8, 21, 1, 'k'),
+    ],
+  },
+  // carrier: a long flat deck with a small island on one side and a painted deck line
+  carrier: {
+    w: 26,
+    h: 10,
+    rects: [
+      R(1, 2, 23, 6, 'h'),
+      R(24, 3, 1, 4, 'h'),
+      R(3, 4, 19, 1, 'w'),
+      R(14, 0, 3, 2, 's'),
+      R(1, 8, 23, 1, 'k'),
+    ],
+  },
   // submarine: long rounded hull sitting low, a conning tower and a periscope, a thin team band
   submarine: {
     w: 22,
@@ -147,6 +178,22 @@ const SPRITES: Record<string, SpriteDef> = {
       R(10, 5, 1, 2, 'c'),
     ],
   },
+  // recon plane: a slim body, long straight high wings, a camera pod and a twin tail
+  reconPlane: {
+    w: 16,
+    h: 16,
+    rects: [
+      R(4, 7, 10, 2, 'b'),
+      R(4, 7, 10, 1, 'B'),
+      R(14, 7, 1, 2, 'w'),
+      R(8, 1, 2, 14, 'b'),
+      R(8, 1, 1, 14, 'B'),
+      R(2, 5, 1, 6, 'k'),
+      R(3, 6, 2, 1, 'b'),
+      R(3, 9, 2, 1, 'b'),
+      R(11, 8, 1, 1, 'c'),
+    ],
+  },
   // rocket: slim missile body, nose cone, swept fins, a hot exhaust flame behind
   rocket: {
     w: 20,
@@ -228,7 +275,75 @@ function bake(key: string, owner: RGB): HTMLCanvasElement {
 
 /** True when this unit type / variant has a pixel sprite. */
 export function hasSprite(type: UnitType, variant?: string): boolean {
-  return (variant === 'submarine' && 'submarine' in SPRITES) || type in SPRITES;
+  return spriteKey(type, variant) in SPRITES;
+}
+
+/** The sprite for a unit: naval variants (submarine, battleship, carrier) have their own art, others the type's. */
+function spriteKey(type: UnitType, variant: string | undefined): string {
+  return type === 'warship' && variant && variant in SPRITES ? variant : type;
+}
+
+/** Below this length (CSS px) a unit is a simple marker, not a sprite: the zoomed-out map stays calm. */
+export const SPRITE_MIN_PX = 15;
+
+/** What kind of far marker a unit gets: ships a short bar, land a square, aircraft a dart, missiles a hot point. */
+function markerKind(type: UnitType): 'sea' | 'land' | 'air' | 'missile' {
+  if (type === 'tankDivision') return 'land';
+  if (type === 'rocket' || type === 'atomBomb') return 'missile';
+  if (type === 'bomber' || type === 'fighter' || type === 'transportPlane' || type === 'reconPlane') return 'air';
+  return 'sea';
+}
+
+/**
+ * Far zoom: one flat owner-coloured marker per unit with a 1px dark edge, pixel-snapped. Ships are a short bar along
+ * the heading, divisions a square, aircraft a small dart, missiles a bright point; no detail to clutter the map.
+ */
+function drawMarker(ctx: CanvasRenderingContext2D, type: UnitType, x: number, y: number, lenPx: number, angle: number, owner: RGB): void {
+  const fill = `rgb(${owner[0]},${owner[1]},${owner[2]})`;
+  const k = markerKind(type);
+  const px = Math.round(x);
+  const py = Math.round(y);
+  ctx.fillStyle = '#0b0d08';
+  if (k === 'land') {
+    const s = Math.max(4, Math.round(lenPx * 0.42));
+    ctx.fillRect(px - s / 2 - 1, py - s / 2 - 1, s + 2, s + 2);
+    ctx.fillStyle = fill;
+    ctx.fillRect(px - s / 2, py - s / 2, s, s);
+    return;
+  }
+  if (k === 'missile') {
+    ctx.fillRect(px - 2, py - 2, 4, 4);
+    ctx.fillStyle = '#ffe08a';
+    ctx.fillRect(px - 1, py - 1, 2, 2);
+    return;
+  }
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.rotate(Math.round(angle / (Math.PI / 4)) * (Math.PI / 4));
+  if (k === 'sea') {
+    const l = Math.max(7, Math.round(lenPx * 0.75));
+    ctx.fillRect(-l / 2 - 1, -2.5, l + 2, 5);
+    ctx.fillStyle = fill;
+    ctx.fillRect(-l / 2, -1.5, l, 3);
+  } else {
+    const l = Math.max(6, Math.round(lenPx * 0.6));
+    ctx.beginPath();
+    ctx.moveTo(l / 2 + 1, 0);
+    ctx.lineTo(-l / 2 - 1, -l / 2 - 1);
+    ctx.lineTo(-l / 4, 0);
+    ctx.lineTo(-l / 2 - 1, l / 2 + 1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.moveTo(l / 2 - 0.5, 0);
+    ctx.lineTo(-l / 2, -l / 2 + 0.5);
+    ctx.lineTo(-l / 4 + 0.5, 0);
+    ctx.lineTo(-l / 2, l / 2 - 0.5);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 /**
@@ -236,7 +351,14 @@ export function hasSprite(type: UnitType, variant?: string): boolean {
  * 16 directions). Nearest-neighbour, so it stays crisp when scaled up.
  */
 export function drawUnitSprite(ctx: CanvasRenderingContext2D, type: UnitType, variant: string | undefined, x: number, y: number, lenPx: number, angle: number, owner: RGB, alpha = 1): void {
-  const key = variant === 'submarine' && 'submarine' in SPRITES ? 'submarine' : type;
+  if (lenPx < SPRITE_MIN_PX) {
+    const prev = ctx.globalAlpha;
+    if (alpha !== 1) ctx.globalAlpha = prev * alpha;
+    drawMarker(ctx, type, x, y, lenPx, angle, owner);
+    ctx.globalAlpha = prev;
+    return;
+  }
+  const key = spriteKey(type, variant);
   const def = SPRITES[key];
   if (!def) return;
   const cv = bake(key, owner);

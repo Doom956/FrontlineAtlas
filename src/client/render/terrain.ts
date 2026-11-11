@@ -11,7 +11,7 @@ import type { RGB } from './common';
  */
 export const TERRAIN_RGB: readonly RGB[] = [
   [22, 36, 42], // deep water (muted slate teal, calmer than navy)
-  [38, 60, 68], // shallow water
+  [31, 49, 56], // shallow water (close to deep: no bright halo round the coasts)
   [138, 170, 98], // plains
   [70, 114, 64], // forest
   [160, 150, 102], // hills

@@ -334,7 +334,8 @@ export class NameLayer {
       if (size < minPx) continue;
       // Tribe names only once zoomed in (or the one under the cursor): far out they were just clutter.
       if (tribe && z < TRIBE_LABEL_ZOOM && l.id !== style.hoverOwner) continue;
-      const px = Math.min(size, tribe ? 14 : 28);
+      // Pixel Ops: nation names stay small crisp caps (capped at 20px) so the land, not the lettering, fills the view
+      const px = Math.min(size, tribe ? 14 : 20);
       const s = cam.tileToScreen(l.fx + (l.tx - l.fx) * g, l.fy + (l.ty - l.fy) * g);
       if (s.x < -200 || s.y < -60 || s.x > cam.viewW + 200 || s.y > cam.viewH + 60) continue;
       const icons: StatusIconId[] = [];
@@ -353,13 +354,13 @@ export class NameLayer {
       // a tribe far out: just its army number (the name on hover), so dozens of "Tribe of the ..." don't pile up
       const raw = tribe && z < TRIBE_NAME_ZOOM && l.id !== style.hoverOwner ? '' : p.name;
       const name = tribe ? raw : raw.toUpperCase();
-      let track = tribe ? px * 0.01 : px * 0.07;
+      let track = tribe ? px * 0.01 : px * 0.05;
       setTracking(ctx, track);
       let tw = name ? ctx.measureText(name).width : 0;
       if (!tribe && name.length > 1 && size > px) {
         // spare width the region offers at its fitted size (fitSize keeps this inside the territory)
         const budget = size * (name.length * LABEL_CHAR_W + 0.6) * 0.7;
-        const extra = clamp((budget - tw) / (name.length - 1), 0, px * 0.12);
+        const extra = clamp((budget - tw) / (name.length - 1), 0, px * 0.06);
         if (extra > 0.5) {
           track += extra;
           setTracking(ctx, track);
