@@ -99,7 +99,10 @@ export class QuickBar {
       row.append(b);
     }
     this.count = countSelector(ctx, 'qb-count');
-    this.el.append(this.buildBtn, row, this.count.el);
+    // the levels-per-click switch carries its word under it, like the quick slots beside it
+    const countWrap = el('div', 'qb-count-wrap');
+    countWrap.append(this.count.el, el('span', 'qb-k', 'Levels'));
+    this.el.append(this.buildBtn, row, countWrap);
 
     // Tab opens / closes the menu; Shift is tracked for x5 (the map's own key handler ignores Tab)
     const o = { signal: this.ac.signal };

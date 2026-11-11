@@ -37,11 +37,11 @@ Measured contrast (WCAG 2 ratio, text needs 4.5:1):
 | olive on paper | 6.22 |
 | steel on paper | 6.27 |
 | paper on ink (chosen option) | 15.39 |
-| ink on sea `#9ebcca` (map labels) | 8.59 |
+| ink on sea `#92b0bc` (map labels) | 7.49 |
 
 Map: paper land by terrain (plains `#eae3cb`, forest sage `#c8d2ac`, hills ochre `#dfcfa8`, mountains warm grey
-`#ccc0ae` with ink hachures, desert sand `#f2e5bd`, swamp `#ccd2ba`, tundra `#f0f1ec`), sea `#9ebcca` to
-`#acc8d3` near the coast with up to three thin coast lines, one ink coastline at every zoom. Nations: their own
+`#ccc0ae` with ink hachures, desert sand `#f2e5bd`, swamp `#ccd2ba`, tundra `#f0f1ec`), sea `#92b0bc` (a little grey, so a pastel blue nation never reads as sea) to
+`#a2bec7` near the coast with up to three thin coast lines, one ink coastline at every zoom. Nations: their own
 hue, chroma cut to 66% (yours 78%), lightness pulled to 0.8, laid at 55% over a warm paper copy of the terrain,
 bordered in a darker shade of the same hue; your border is ink. Tribes: near paper (30% wash), a light pencil
 border, so a coast full of tribes stays quiet.

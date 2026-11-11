@@ -65,7 +65,11 @@ export class Leaderboard {
     });
     const bar = el('div', 'lb-bar');
     bar.append(head, this.more);
-    this.el.append(bar, this.list);
+    // column words, so the two numbers on each row say what they are without hovering
+    const cols = el('div', 'lb-cols');
+    cols.setAttribute('aria-hidden', 'true');
+    cols.append(el('span'), el('span'), el('span', 'c-land', 'Land'), el('span', 'c-army', 'Army'));
+    this.el.append(bar, cols, this.list);
   }
 
   private makeRow(id: number): Row {

@@ -451,7 +451,7 @@ h3 {
   /* everything that hung under the one-row bar moves under the three rows */
   .hud-left {
     top: 136px;
-    width: 214px;
+    width: 232px;
   }
   .hud-top {
     top: 242px;
@@ -481,7 +481,7 @@ h3 {
 
 /* ---- standings: your row is bold ink on a faint wash (no stripe, no red); numbers keep their width */
 .lb-row {
-  grid-template-columns: 14px minmax(0, 1fr) max-content max-content;
+  grid-template-columns: 14px minmax(0, 1fr) 44px 40px;
   gap: 8px;
   height: 24px;
   font-size: 13px;
@@ -572,4 +572,44 @@ h3 {
 .gb-line,
 .gb-hand {
   font-size: 12px;
+}
+
+/* ---- levels per click (x1 / x3 / x5): one row of three keys with the word "Levels" under it */
+.qb-count-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 4px;
+}
+.qb-count {
+  flex-direction: row;
+  border-color: var(--rule-hi);
+}
+.qb-count .bm-cnt {
+  height: 24px;
+  min-width: 26px;
+  border-top: 0;
+  border-left: 1px solid var(--rule);
+  font: 600 12px/24px var(--f-ui);
+  font-variant-numeric: tabular-nums;
+}
+.qb-count .bm-cnt:first-child {
+  border-left: 0;
+}
+.bm-cnt.on {
+  background: var(--text);
+  color: var(--metal);
+}
+.lb-cols {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) 44px 40px;
+  gap: 8px;
+  padding: 0 10px 2px;
+  font: 500 12px/1.2 var(--f-ui);
+  color: var(--dim);
+}
+.lb.collapsed .lb-cols {
+  display: none;
 }
