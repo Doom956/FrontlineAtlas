@@ -10,15 +10,15 @@ import type { RGB } from './common';
  * tundra pale grey-blue) without shouting over the nation colours.
  */
 export const TERRAIN_RGB: readonly RGB[] = [
-  [26, 50, 84], // deep water
-  [44, 88, 128], // shallow water
-  [138, 170, 98], // plains
-  [70, 114, 64], // forest
-  [160, 150, 102], // hills
-  [134, 130, 126], // mountains
-  [224, 204, 146], // desert
-  [94, 110, 78], // swamp
-  [208, 216, 216], // tundra
+  [22, 33, 46], // deep water: slate, close to the UI ink so the land carries the picture
+  [38, 57, 76], // shallow water
+  [146, 162, 120], // plains
+  [100, 124, 92], // forest
+  [160, 152, 124], // hills
+  [138, 138, 136], // mountains
+  [204, 192, 156], // desert
+  [108, 118, 96], // swamp
+  [208, 214, 218], // tundra
 ];
 /** Deposit colours (marker fills and the resource overlay). Index = ResourceId. */
 export const RESOURCE_RGB: readonly RGB[] = [

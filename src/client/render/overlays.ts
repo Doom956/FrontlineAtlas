@@ -163,9 +163,9 @@ export class Overlays {
         ctx.font = tribe ? `500 12px ${MAP_LABEL_FAMILY}` : `600 12px ${MAP_LABEL_FAMILY}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        const track = tribe ? 0 : 0.8;
+        const track = 0;
         setTracking(ctx, track);
-        haloText(ctx, tribe ? p.name : p.name.toUpperCase(), sx + track / 2, sy - R - 2, tribe ? 'rgba(232,234,238,0.85)' : 'rgba(255,255,255,0.94)', 12);
+        haloText(ctx, p.name, sx + track / 2, sy - R - 2, tribe ? 'rgba(232,234,238,0.85)' : 'rgba(255,255,255,0.94)', 12);
         setTracking(ctx, 0);
       }
     }

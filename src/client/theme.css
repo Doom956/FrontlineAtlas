@@ -1,0 +1,619 @@
+/* Modern Flat layer (docs/UI_DIRECTION.md). Loaded after every other stylesheet, so it only states what differs:
+   flat charcoal sheets, 8px radii, one violet accent on the one primary action, icon plus word on every main control,
+   sentence case in one sans. No grain, no brackets, no stripes, no hotkey chips. */
+
+/* ------------------------------------------------------------------ base */
+html,
+body {
+  font: 400 13px/1.45 var(--f-ui);
+}
+:focus-visible {
+  outline: 2px solid var(--brass-hi);
+  outline-offset: 2px;
+}
+/* hotkey chips stay out of the HUD (keys are listed in How to play) */
+.app .kc,
+.rp-tab-k,
+.bm kbd,
+.bsel kbd {
+  display: none !important;
+}
+
+/* ------------------------------------------------------------------ surfaces */
+.cmdbar,
+.lb,
+.cluster,
+.drawer,
+.ncard,
+.mtip,
+.tip,
+.toast,
+.spawnbar,
+.modechip,
+.advisor,
+.modal-card,
+.bm,
+.sp {
+  background: var(--metal-a);
+  border: 0;
+  border-radius: var(--r);
+  box-shadow: var(--e1);
+}
+.wr-sec {
+  font: 600 13px/1.2 var(--f-ui);
+  color: var(--text);
+}
+
+/* ------------------------------------------------------------------ buttons */
+.wr-btn,
+.btn {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--r);
+  background: var(--metal-3);
+  font: 500 13px/1 var(--f-ui);
+}
+.wr-btn:hover:not(:disabled),
+.btn:hover:not(:disabled) {
+  background: var(--metal-4);
+  border-color: transparent;
+}
+.wr-btn:active:not(:disabled),
+.btn:active:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+  background: var(--metal-2);
+}
+.wr-btn.primary,
+.btn.primary {
+  background: var(--brass);
+  border-color: var(--brass);
+  color: #fff;
+  font-weight: 600;
+}
+.wr-btn.primary:hover:not(:disabled),
+.btn.primary:hover:not(:disabled) {
+  background: #7b69f5;
+  border-color: #7b69f5;
+}
+.wr-btn.ghost,
+.btn.ghost {
+  background: transparent;
+}
+.wr-btn.on,
+.btn.on {
+  background: rgba(124, 104, 255, 0.18);
+  border-color: transparent;
+  color: var(--brass-hi);
+}
+
+/* ------------------------------------------------------------------ top bar (cluster): icon over a word */
+.cluster {
+  top: 10px;
+  right: 10px;
+  padding: 4px;
+  gap: 2px;
+  align-items: center;
+}
+.cluster > * + * {
+  border-left: 0;
+  margin-left: 6px;
+  position: relative;
+}
+.cluster > * + *::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: var(--rule);
+}
+.cl-group {
+  gap: 2px;
+}
+.cluster .sq,
+.cluster .sq.sq-w {
+  flex-direction: column;
+  gap: 3px;
+  width: auto;
+  min-width: 50px;
+  height: 46px;
+  padding: 0 6px;
+  border-radius: var(--r-s);
+  color: var(--dim);
+}
+.cluster .sq.txt {
+  min-width: 40px;
+  width: 40px;
+  font: 600 14px/1 var(--f-ui);
+}
+.sq-l {
+  font: 500 11px/1 var(--f-ui);
+  white-space: nowrap;
+}
+.sq:hover {
+  background: var(--metal-3);
+  color: var(--text);
+}
+.sq.on {
+  background: rgba(124, 104, 255, 0.18);
+  color: #c9c1ff;
+  box-shadow: none;
+}
+.sq-prog {
+  left: 8px;
+  right: 8px;
+  bottom: 2px;
+  max-width: none;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--brass-hi);
+}
+.sq-badge {
+  top: 2px;
+  right: 4px;
+  border-radius: 7px;
+  padding: 0 4px;
+}
+.sq-dot {
+  border-radius: 50%;
+  top: 5px;
+  right: 10px;
+}
+.clock {
+  min-width: 64px;
+  font: 600 17px/1 var(--f-ui);
+}
+
+/* ------------------------------------------------------------------ bottom dock (command bar) */
+.cmdbar {
+  height: auto;
+  min-height: 64px;
+  padding: 6px;
+  gap: 2px;
+  align-items: center;
+}
+.cb-sec {
+  padding: 4px 12px;
+  gap: 4px;
+  border-radius: var(--r-s);
+}
+.cb-lab {
+  font: 500 12px/1 var(--f-ui);
+  color: var(--dim);
+}
+.cb-big {
+  font: 600 22px/1 var(--f-ui);
+}
+.cb-big.gold {
+  color: var(--gold);
+}
+.cb-share {
+  color: var(--text);
+}
+.cb-cap,
+.cb-rate,
+.cb-sub {
+  font-size: 12px;
+}
+.tbar {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.tbar-peak {
+  background: #fff;
+  box-shadow: none;
+}
+.stepper {
+  width: 26px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--r-s);
+  background: var(--metal-3);
+}
+.stepper:hover {
+  background: var(--metal-4);
+}
+.res {
+  height: 20px;
+  border-radius: 10px;
+  border-color: var(--rule-hi);
+}
+.qb-build {
+  height: 48px;
+  padding: 0 16px;
+  gap: 8px;
+  border: 0;
+  border-radius: var(--r);
+  background: var(--brass);
+  color: #fff;
+  font: 600 15px/1 var(--f-ui);
+}
+.qb-build:hover,
+.qb-build.on {
+  background: #7b69f5;
+  border: 0;
+}
+.qb-row {
+  gap: 2px;
+}
+.bb.qb-slot {
+  flex-direction: column;
+  gap: 3px;
+  width: 56px;
+  height: 48px;
+  border: 0;
+  border-radius: var(--r-s);
+  background: transparent;
+}
+.bb.qb-slot:hover {
+  background: var(--metal-3);
+}
+.bb.qb-slot.on {
+  background: rgba(124, 104, 255, 0.2);
+}
+.qb-slot .bb-ic {
+  line-height: 0;
+}
+.qb-k {
+  position: static;
+  max-width: 54px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 11px/1 var(--f-ui);
+  color: var(--dim);
+}
+.qb-slot.on .qb-k {
+  color: #c9c1ff;
+}
+.qb-slot.pinned::after {
+  left: 4px;
+  top: 4px;
+  background: var(--dim);
+}
+.bm-count {
+  border: 0;
+  border-radius: var(--r-s);
+  background: var(--metal-2);
+}
+.bm-cnt {
+  border-left: 0;
+  background: transparent;
+  font: 600 11px/22px var(--f-ui);
+}
+.bm-cnt.on {
+  background: var(--metal-4);
+  color: var(--text);
+}
+.qb-count .bm-cnt {
+  height: 15px;
+  line-height: 15px;
+  border-top: 0;
+}
+.skbar {
+  gap: 2px;
+  padding-left: 8px;
+  border-left: 1px solid var(--rule);
+}
+.sk {
+  flex-direction: column;
+  gap: 2px;
+  width: 60px;
+  height: 48px;
+  border: 0;
+  border-radius: var(--r-s);
+  background: transparent;
+}
+.sk:hover {
+  background: var(--metal-3);
+  border: 0;
+}
+.sk.ready {
+  background: rgba(79, 194, 138, 0.12);
+  box-shadow: none;
+}
+.sk-ic {
+  width: 24px;
+  height: 24px;
+}
+.sk-l {
+  inset: 0 0 16px 0;
+  color: #fff;
+}
+.sk-w {
+  font: 500 11px/1 var(--f-ui);
+  color: var(--dim);
+  white-space: nowrap;
+}
+.sk.ready .sk-w {
+  color: var(--text);
+}
+
+/* ------------------------------------------------------------------ standings */
+.lb {
+  padding: 4px 0 6px;
+}
+.lb-head {
+  height: 30px;
+  padding: 0 8px 0 12px;
+}
+.lb-head .wr-sec {
+  font: 600 13px/1 var(--f-ui);
+}
+.lb:not(.collapsed) .lb-sum {
+  font: 500 12px/1 var(--f-ui);
+  color: var(--dim);
+}
+.lb-row {
+  height: 26px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+.lb-row.me {
+  background: rgba(255, 255, 255, 0.06);
+}
+.lb-row.me .c-name {
+  color: var(--text);
+  font-weight: 600;
+}
+.lb-row .sw {
+  border-radius: 3px;
+}
+.lb-row.ally .c-name::after {
+  font: 500 11px/1 var(--f-ui);
+}
+
+/* ------------------------------------------------------------------ toasts and tips */
+.toast {
+  min-height: 40px;
+  padding: 4px 6px 4px 12px;
+  gap: 10px;
+}
+.toast .ico {
+  color: var(--dim);
+}
+.toast.k-bad .ico {
+  color: var(--signal);
+}
+.toast.k-good .ico {
+  color: var(--olive);
+}
+.toast.k-warn .ico {
+  color: var(--gold);
+}
+.toast-x,
+.sq.small {
+  border-radius: var(--r-s);
+}
+.mtip,
+.tip {
+  border-radius: var(--r);
+}
+.spawnbar,
+.modechip {
+  min-height: 44px;
+  padding: 4px 6px 4px 14px;
+  font: 500 13px/1.3 var(--f-ui);
+}
+
+/* ------------------------------------------------------------------ drawers as clean sheets */
+.drawer {
+  border-radius: var(--r);
+  padding-top: 4px;
+}
+
+/* ------------------------------------------------------------------ minimap */
+.minimap-wrap {
+  border: 0;
+  border-radius: var(--r);
+  box-shadow: var(--e1);
+}
+
+/* ------------------------------------------------------------------ segmented controls: a quiet track, the pick lifts */
+.seg,
+.segc {
+  gap: 2px;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--r);
+  background: var(--metal-2);
+}
+.seg .btn,
+.segc-b {
+  border: 0;
+  border-right: 0;
+  border-radius: var(--r-s);
+  background: transparent;
+  color: var(--dim);
+  font: 500 13px/1 var(--f-ui);
+}
+.seg .btn:hover:not(:disabled),
+.segc-b:hover {
+  background: var(--metal-3);
+  color: var(--text);
+}
+.seg .btn.on,
+.segc-b.on {
+  background: #4a515c;
+  color: #fff;
+  font-weight: 600;
+}
+.btn.step-btn {
+  padding: 0;
+}
+.ai-stepper {
+  border: 0;
+  background: var(--metal-2);
+}
+.step-val {
+  font: 600 16px/1 var(--f-ui);
+}
+
+/* ------------------------------------------------------------------ setup and menu */
+.setup-h {
+  font: 600 15px/1.2 var(--f-ui);
+  color: var(--text);
+}
+.map-thumb {
+  border-radius: var(--r);
+}
+.map-thumb.on {
+  border-color: #fff;
+  box-shadow: 0 0 0 1px #fff inset;
+}
+.map-thumb:hover {
+  border-color: var(--rule-hi);
+}
+.setup-fold.has-changes .fold-val,
+.sum-rules.has-mods,
+.type-custom {
+  color: #c9c1ff;
+}
+.app.in-menu canvas.map-gl,
+.app.in-menu canvas.map {
+  filter: saturate(0.7) brightness(0.72);
+}
+.btn.primary:focus-visible,
+.wr-btn.primary:focus-visible {
+  outline: 2px solid rgba(164, 151, 255, 0.55);
+  outline-offset: 3px;
+}
+
+/* ------------------------------------------------------------------ research and arsenal: a node graph, not boxes in boxes */
+.rp-tabs {
+  gap: 2px;
+  padding: 2px;
+  border: 0;
+  background: var(--metal-2);
+}
+.rp-tab {
+  height: 34px;
+  border-radius: var(--r-s);
+  font: 600 15px/1 var(--f-ui);
+}
+.rp-tab + .rp-tab {
+  border-left: 0;
+}
+.rp-tab.on {
+  background: #4a515c;
+  color: #fff;
+}
+.rp-tab-dot {
+  background: var(--brass-hi);
+}
+.rp-grid {
+  --rp-lab: 76px;
+}
+.rp-colhead-c {
+  font: 500 12px/14px var(--f-ui);
+  color: var(--dim);
+}
+.rp-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+.rp-rowlab {
+  writing-mode: horizontal-tb;
+  transform: none;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+}
+.rp-rowlab-t {
+  font: 600 14px/1 var(--f-ui);
+  color: var(--text);
+}
+.rp-rowlab-n {
+  font: 500 12px/1 var(--f-ui);
+  color: var(--dim);
+}
+.rp-lines path {
+  stroke: #3d434c;
+  stroke-width: 1.5;
+}
+.rp-lines path.done {
+  stroke: #707884;
+}
+.rp-fork,
+.rp-fork.decided {
+  border: 0;
+}
+.rp-fork-l {
+  top: -9px;
+  left: 9px;
+  padding: 0;
+  background: none;
+  font: 500 12px/14px var(--f-ui);
+  color: var(--dim);
+}
+.rp-fork.decided .rp-fork-l {
+  color: var(--faint);
+}
+.rp-card {
+  border: 1px solid transparent;
+  border-radius: var(--r);
+  background: var(--metal-2);
+  padding: 0 10px;
+}
+.rp-n {
+  font: 600 14px/17px var(--f-ui);
+}
+.rp-card.done {
+  background: rgba(255, 255, 255, 0.035);
+  border-color: transparent;
+}
+.rp-card.done .rp-n {
+  color: var(--dim);
+}
+.rp-card.done .rp-mark {
+  color: var(--olive);
+}
+.rp-card.avail {
+  background: var(--metal-3);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.rp-card.avail .rp-n,
+.rp-card.avail .rp-ic {
+  color: var(--text);
+}
+.rp-card.avail.poor {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.rp-card.next {
+  background: rgba(124, 104, 255, 0.2);
+  border-color: var(--brass-hi);
+}
+.rp-card.next .rp-n,
+.rp-card.next .rp-ic {
+  color: #fff;
+}
+.rp-flag {
+  top: -8px;
+  border-radius: 4px;
+  padding: 0 6px;
+  font: 600 10px/14px var(--f-ui);
+  color: #fff;
+  background: var(--brass);
+}
+.rp-card.active {
+  background: rgba(106, 166, 224, 0.14);
+  border-color: rgba(106, 166, 224, 0.6);
+}
+.rp-card.locked {
+  background: transparent;
+  border: 1px solid var(--rule);
+}
+.rp-card.needs-building .rp-meta {
+  color: var(--gold);
+}
+.rp-card.sel,
+.rp-card.done.sel {
+  box-shadow: 0 0 0 2px #fff;
+}
+.rp-card.hl-pre:not(.done):not(.off) {
+  border-color: var(--brass-hi);
+}

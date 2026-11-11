@@ -19,7 +19,7 @@ import { MAP_NUM_FAMILY } from './common';
 import { pocketPreview } from '../pillars';
 
 const AREA_MS = 1000;
-const BRASS = '#e3c04e';
+const BRASS = '#b4a8ff';
 const RED = '#ff6b5e';
 
 export class SelectionOverlay {
@@ -52,7 +52,7 @@ export class SelectionOverlay {
       const y = Math.min(b.y0, b.y1);
       const w = Math.abs(b.x1 - b.x0);
       const h = Math.abs(b.y1 - b.y0);
-      ctx.fillStyle = 'rgba(227,192,78,0.08)';
+      ctx.fillStyle = 'rgba(180,168,255,0.08)';
       ctx.fillRect(x, y, w, h);
       ctx.setLineDash([5, 4]);
       ctx.lineWidth = 1;
@@ -72,7 +72,7 @@ export class SelectionOverlay {
     const base = far ? Math.max(5, z * 2.2) : markerSize(z);
     ctx.save();
     ctx.lineWidth = far ? 1 : 1.5;
-    ctx.strokeStyle = 'rgba(227,192,78,0.9)';
+    ctx.strokeStyle = 'rgba(180,168,255,0.9)';
     ctx.shadowColor = 'rgba(0,0,0,0.6)';
     ctx.shadowBlur = 2;
     ctx.beginPath();
@@ -196,12 +196,12 @@ export class SelectionOverlay {
     ctx.strokeStyle = `rgba(10,13,21,${alpha * 0.6})`;
     ctx.stroke();
     ctx.lineWidth = 1.5;
-    ctx.strokeStyle = `rgba(227,192,78,${alpha})`;
+    ctx.strokeStyle = `rgba(180,168,255,${alpha})`;
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.beginPath();
     ctx.arc(e.x, e.y, Math.max(3, Math.min(6, cam.zoom)), 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(227,192,78,${alpha})`;
+    ctx.fillStyle = `rgba(180,168,255,${alpha})`;
     ctx.fill();
     ctx.restore();
     return e;
@@ -256,7 +256,7 @@ export class SelectionOverlay {
     const pocket = pocketPreview(state, me, p);
     if (pocket) {
       const z = cam.zoom;
-      ctx.fillStyle = `rgba(227,192,78,${pend >= 0 ? 0.26 : 0.16})`;
+      ctx.fillStyle = `rgba(180,168,255,${pend >= 0 ? 0.26 : 0.16})`;
       for (const t of pocket.tiles) {
         const q = cam.tileToScreen(t % w, (t / w) | 0);
         if (q.x < -z || q.y < -z || q.x > cam.viewW || q.y > cam.viewH) continue;
@@ -271,7 +271,7 @@ export class SelectionOverlay {
     ctx.moveTo(pts[0].x, pts[0].y);
     for (let k = 1; k <= deep; k++) ctx.lineTo(pts[k].x, pts[k].y);
     ctx.lineWidth = width;
-    ctx.strokeStyle = `rgba(227,192,78,${alpha})`;
+    ctx.strokeStyle = `rgba(180,168,255,${alpha})`;
     ctx.stroke();
     // dashed rest of the line
     if (deep < pts.length - 1) {
@@ -280,7 +280,7 @@ export class SelectionOverlay {
       for (let k = deep + 1; k < pts.length; k++) ctx.lineTo(pts[k].x, pts[k].y);
       ctx.setLineDash([4, 5]);
       ctx.lineWidth = 1.5;
-      ctx.strokeStyle = `rgba(227,192,78,${alpha + 0.15})`;
+      ctx.strokeStyle = `rgba(180,168,255,${alpha + 0.15})`;
       ctx.stroke();
       ctx.setLineDash([]);
     }
@@ -294,7 +294,7 @@ export class SelectionOverlay {
     ctx.lineTo(b.x + Math.cos(ang + 2.4) * hs, b.y + Math.sin(ang + 2.4) * hs);
     ctx.lineTo(b.x + Math.cos(ang - 2.4) * hs, b.y + Math.sin(ang - 2.4) * hs);
     ctx.closePath();
-    ctx.fillStyle = `rgba(227,192,78,${Math.min(0.9, alpha + 0.25)})`;
+    ctx.fillStyle = `rgba(180,168,255,${Math.min(0.9, alpha + 0.25)})`;
     ctx.fill();
     // label at the head
     const label = `~${p.expectedDepth} tiles`;

@@ -11,7 +11,8 @@ import { armyTotal } from '../../sim/economy';
 import type { GameState, Unit } from '../../sim/types';
 import type { Camera } from '../camera';
 import { clamp, css, formatCount, MAP_NUM_FAMILY, type RGB } from './common';
-import { drawTrails, GLYPHS, type Inst, strokeGlyphs } from './unitGlyphs';
+import { drawTrails, type Inst } from './unitGlyphs';
+import { ART, drawUnitArt } from './unitArt';
 import { isIncoming } from '../forces';
 import { unitVisibleTo } from '../../sim/techtree';
 import type { FogView } from '../fog/fogView';
@@ -21,10 +22,11 @@ const HIST = 3;
 /** Paratroopers drifting down where a cargo plane arrived (client-only effect). */
 const DROP_MS = 1800;
 const CHUTES = 6;
-const UNDER = 'rgba(6,9,15,0.6)';
+const UNDER = 'rgba(8,10,14,0.85)';
 
-/** Base glyph length on screen (CSS px) at a zoom level; each glyph scales it a little (unitGlyphs.ts). */
-const glyphPx = (z: number): number => clamp(7 + z * 1.2, 8, 10);
+/** Base unit length on screen (CSS px) at a zoom level; each unit scales it a little (unitArt.ts). Far out it stays a
+ * small solid marker; zoomed in it grows so the near details (unitArt.ts DETAIL_S) show. */
+const glyphPx = (z: number): number => clamp(4 + z * 1.6, 9, 26);
 const strokePx = (z: number): number => clamp(1.2 + z * 0.15, 1.25, 1.7);
 
 /** `fleet`: this entry is a fleet marker standing for these ships (the lead, u, is the lowest id). */
@@ -229,7 +231,7 @@ export class UnitLayer {
       const uy = t ? t.py + (t.cy - t.py) * frac : u.y;
       const x = ox + (ux + 0.5) * z;
       const y = oy + (uy + 0.5) * z;
-      const S = (base * GLYPHS[u.type].len) / 2;
+      const S = (base * ART[u.type].len) / 2;
       if (x < -40 || y < -40 || x > cam.viewW + 40 || y > cam.viewH + 40) continue;
       // enemy submarines stay hidden until close, sonar, recon or Early Warning shows them (techtree.unitVisibleTo)
       if (u.variant === 'submarine' && me > 0 && !unitVisibleTo(state, me, u)) continue;
@@ -295,7 +297,7 @@ export class UnitLayer {
     ctx.globalAlpha = 1;
     for (const [owner, list] of byOwner) {
       const c = colors[owner] ?? [200, 200, 200];
-      strokeGlyphs(ctx, list, css(c), css(c, 0.22), UNDER, lw);
+      drawUnitArt(ctx, list, css(c), UNDER, lw);
       this.drawn += list.length;
     }
     // own warships and tank divisions: a tiny white tick under the hull, a ring while hovered, picked or selected

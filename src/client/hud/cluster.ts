@@ -39,10 +39,11 @@ export class Cluster {
   constructor(private ctx: HudCtx, private hooks: ClusterHooks) {
     this.el = el('div', 'cluster');
     this.el.dataset.test = 'cluster';
-    const sq = (icon: string, tip: string, onClick: () => void, test?: string): HTMLButtonElement => {
-      const b = el('button', 'sq');
+    // every button: its icon over a plain word (no icon-only controls)
+    const sq = (icon: string, tip: string, onClick: () => void, test?: string, word?: string): HTMLButtonElement => {
+      const b = el('button', 'sq sq-w');
       b.type = 'button';
-      b.append(iconSpan(lineIcon(icon, 17)));
+      b.append(iconSpan(lineIcon(icon, 18)), el('span', 'sq-l', word ?? tip.split('\n')[0].replace(/\s*\(.*\)$/, '')));
       b.dataset.tip = tip;
       b.setAttribute('aria-label', tip.split('\n')[0]);
       if (test) b.dataset.test = test;
@@ -50,8 +51,8 @@ export class Cluster {
       return b;
     };
     const drawers = el('div', 'cl-group');
-    const dbtn = (id: DrawerId, icon: string, tip: string) => {
-      const b = sq(icon, tip, () => ctx.openDrawer(id, true), `open-${id}`);
+    const dbtn = (id: DrawerId, icon: string, tip: string, word?: string) => {
+      const b = sq(icon, tip, () => ctx.openDrawer(id, true), `open-${id}`, word);
       this.drawerBtns.set(id, b);
       drawers.append(b);
       return b;
@@ -81,7 +82,7 @@ export class Cluster {
     const bell = dbtn('alerts', 'bell', 'Alerts\nBig events. Click one to see it on the map');
     const bellBadge = el('span', 'sq-badge al-badge hidden');
     bell.append(bellBadge);
-    dbtn('legend', 'legend', 'Map key  (L)\nTerrain, resources and map symbols');
+    dbtn('legend', 'legend', 'Map key  (L)\nTerrain, resources and map symbols', 'Map key');
 
     const clock = el('div', 'clock');
     clock.dataset.test = 'clock';
@@ -106,9 +107,9 @@ export class Cluster {
     speed.append(this.speedBtn);
 
     const sys = el('div', 'cl-group');
-    this.soundBtn = sq('sound', 'Sound on/off\nVolumes are in the menu', () => hooks.toggleMute(), 'sound');
+    this.soundBtn = sq('sound', 'Sound on/off\nVolumes are in the menu', () => hooks.toggleMute(), 'sound', 'Sound');
     if (!hooks.hasAudio()) this.soundBtn.classList.add('hidden');
-    const help = sq('help', 'How to play  (?)', () => hooks.toggleHelp(), 'help');
+    const help = sq('help', 'How to play  (?)', () => hooks.toggleHelp(), 'help', 'Help');
     const menu = sq('menu', 'Menu\nSettings, sound, leave the game', () => ctx.openDrawer('settings', true), 'menu');
     this.drawerBtns.set('settings', menu);
     sys.append(this.soundBtn, help, menu);
@@ -139,7 +140,7 @@ export class Cluster {
         const ic = ds.id ? doctrineIcon(ds.id) : 'doctrine';
         if (ic !== docIcon) {
           docIcon = ic;
-          docB.querySelector('.ico')?.replaceWith(iconSpan(lineIcon(ic, 17)));
+          docB.querySelector('.ico')?.replaceWith(iconSpan(lineIcon(ic, 18)));
         }
         setClass(docDot, 'hidden', ds.phase !== 'none');
         setClass(docB, 'chosen', !!ds.id);
@@ -199,7 +200,8 @@ export class Cluster {
       setClass(this.pauseBtn, 'dis', pm === 'guest');
       if (pm === 'guest') this.pauseBtn.setAttribute('aria-disabled', 'true');
       else this.pauseBtn.removeAttribute('aria-disabled');
-      this.pauseBtn.replaceChildren(iconSpan(lineIcon(ui.paused ? 'play' : 'pause', 17)));
+      this.pauseBtn.querySelector('.ico')?.replaceWith(iconSpan(lineIcon(ui.paused ? 'play' : 'pause', 18)));
+      setText(this.pauseBtn.querySelector('.sq-l') as HTMLElement, ui.paused ? 'Resume' : 'Pause');
       const tip = pm === 'guest' ? 'Only the host can pause' : ui.paused ? 'Resume  (Space)' : 'Pause  (Space)';
       setTip(this.pauseBtn, tip);
       this.pauseBtn.setAttribute('aria-label', tip.split('  ')[0]);
@@ -207,7 +209,8 @@ export class Cluster {
     const m = this.hooks.muted();
     if (this.soundShown !== m) {
       this.soundShown = m;
-      this.soundBtn.replaceChildren(iconSpan(lineIcon(m ? 'mute' : 'sound', 17)));
+      this.soundBtn.querySelector('.ico')?.replaceWith(iconSpan(lineIcon(m ? 'mute' : 'sound', 18)));
+      setText(this.soundBtn.querySelector('.sq-l') as HTMLElement, m ? 'Muted' : 'Sound');
       setClass(this.soundBtn, 'off', m);
     }
     for (const [id, b] of this.drawerBtns) setClass(b, 'on', this.hooks.isOpen(id));

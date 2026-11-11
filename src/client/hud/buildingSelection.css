@@ -11,7 +11,7 @@
   background-color: var(--metal-a);
   background-image: var(--grain);
   border: 1px solid var(--rule);
-  border-left: 3px solid var(--steel);
+  border-left: 0;
   border-radius: var(--r);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 28px rgba(0, 0, 0, 0.5);
   color: var(--text);
@@ -35,8 +35,6 @@
   flex: 1;
   min-width: 0;
   font: 600 14px/1.1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
 }
 .bsel-x {
   width: 24px;
@@ -96,8 +94,6 @@
 }
 .bsel-l {
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--dim);
 }
 .bsel-lv {
@@ -129,7 +125,7 @@
   background: var(--metal-3);
 }
 .bsel-up.on {
-  background: rgba(201, 162, 39, 0.2);
+  background: rgba(124, 104, 255, 0.2);
   color: var(--brass-hi);
 }
 .bsel-up.no {
@@ -141,7 +137,6 @@
 }
 .bsel-up-n {
   font: 600 14px/1 var(--f-label);
-  letter-spacing: 0.04em;
 }
 .bsel-up-g {
   line-height: 0;

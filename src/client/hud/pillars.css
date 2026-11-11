@@ -9,7 +9,7 @@
   background-color: var(--metal-a);
   background-image: var(--grain);
   border: 1px solid var(--rule);
-  border-left: 2px solid #a0dcff;
+  border-left: 0;
   border-radius: var(--r);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
   animation: rise var(--fast) ease-out;
@@ -38,8 +38,6 @@
 }
 .ob-t {
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--dim);
   white-space: nowrap;
 }
@@ -55,7 +53,7 @@
   background: var(--metal-3);
   border-color: var(--brass);
   color: var(--brass-hi);
-  box-shadow: 0 0 0 1px rgba(227, 192, 78, 0.25) inset;
+  box-shadow: 0 0 0 1px rgba(164, 151, 255, 0.25) inset;
 }
 .ob-line {
   grid-area: line;
@@ -122,7 +120,7 @@
   margin: 6px 0 8px;
   padding: 6px 8px;
   border: 1px solid var(--rule);
-  border-left: 2px solid var(--steel);
+  border-left: 0;
   border-radius: var(--r);
   background: rgba(0, 0, 0, 0.14);
 }
@@ -151,7 +149,7 @@
   font: 400 12px/1.35 var(--f-ui);
   color: var(--dim);
   padding-left: 8px;
-  border-left: 2px solid var(--brass-lo);
+  border-left: 0;
 }
 .ap-last.hidden {
   display: none;
@@ -178,7 +176,7 @@
 }
 .forces-sum {
   color: var(--text);
-  border-left: 2px solid var(--brass-lo);
+  border-left: 0;
   padding-left: 8px;
 }
 
@@ -201,7 +199,6 @@
 }
 .airpanel.compact .ap-seg .wr-btn.mini {
   padding: 0 6px;
-  letter-spacing: 0.05em;
 }
 
 /* Follow my war row (hud/followRow.ts): status line + the toggle back from a fixed target */
@@ -247,7 +244,7 @@
   margin: 0 0 6px;
   padding: 6px 8px;
   border: 1px solid var(--rule);
-  border-left: 2px solid var(--brass-lo);
+  border-left: 0;
   border-radius: var(--r);
   background: rgba(0, 0, 0, 0.14);
 }
@@ -260,7 +257,6 @@
 }
 .gb-t {
   font: 600 13px/1.2 var(--f-label);
-  letter-spacing: 0.04em;
   color: var(--text);
 }
 .gb-n {

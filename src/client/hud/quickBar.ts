@@ -19,7 +19,7 @@ import {
   stableSlots,
 } from './buildMenu';
 import { BuildingSelectionBar } from './buildingSelection';
-import { el, keycap, setClass, setTip, setVisible, type HudCtx } from './dom';
+import { el, setClass, setTip, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon, worldGlyph } from './glyph';
 import { TECHS } from '../../sim/config';
 import { hasTech } from '../../sim/tech';
@@ -66,7 +66,7 @@ export class QuickBar {
     this.buildBtn.type = 'button';
     this.buildBtn.dataset.test = 'build-menu-btn';
     this.buildBtn.setAttribute('aria-haspopup', 'dialog');
-    this.buildBtn.append(iconSpan(lineIcon('build', 16, 2), 'qb-build-ic'), el('span', 'qb-build-l', 'Build'), keycap(BUILD_MENU_KEY));
+    this.buildBtn.append(iconSpan(lineIcon('build', 18, 2), 'qb-build-ic'), el('span', 'qb-build-l', 'Build'));
     this.buildBtn.dataset.tip = `Build menu (${BUILD_MENU_KEY}): every building with its cost and what it does, warships and tank divisions`;
     this.buildBtn.addEventListener('click', () => this.menu.toggle());
 
@@ -167,7 +167,7 @@ export class QuickBar {
       if (slot.type !== t) {
         slot.type = t;
         slot.ic.innerHTML = worldGlyph(t, 22);
-        slot.key.textContent = BUILDINGS[t].hotkey;
+        slot.key.textContent = BUILDINGS[t].name;
         slot.b.dataset.test = `build-${t}`;
         slot.b.dataset.building = t;
       }

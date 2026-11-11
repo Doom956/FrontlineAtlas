@@ -1,39 +1,41 @@
-/* Frontline Atlas UI: "war room". A command table over the map: near-opaque gunmetal panels with a fine brushed grain,
-   thin steel rules and corner brackets instead of rounded cards, brass for actions and key numbers, muted status
-   colours. Labels in a condensed military sans (uppercase, tracked), values in a legible face with tabular figures.
-   Decoration stays minimal: colour, type and crisp lines carry the identity. */
+/* Frontline Atlas UI: "Modern Flat" (docs/UI_DIRECTION.md). Neutral charcoal surfaces, one violet accent for the one
+   primary action, sentence case in one grotesque sans (IBM Plex Sans), 8px radii, no grain, brackets or stripes.
+   Separation comes from spacing and one surface step, not from boxes inside boxes. */
 :root {
-  --ink: #0d1013;
-  --metal: #191e23;
-  --metal-a: rgba(25, 30, 35, 0.95);
-  --metal-2: #222930;
-  --metal-3: #2c343c;
-  --metal-4: #36404a;
-  --rule: #39424b;
-  --rule-hi: #56616c;
-  --text: #e4dfd2;
-  --dim: #a3a49c;
-  --faint: #73766f;
-  --brass: #c9a227;
-  --brass-hi: #e3c04e;
-  --brass-lo: #7c6416;
-  --brass-ink: #1a1508;
-  --olive: #98a957;
-  --olive-d: #5d6a2c;
-  --signal: #d4503a;
-  --signal-d: #7f2a1d;
-  --steel: #6b95b8;
-  --steel-d: #34536d;
-  --grain: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0.08)),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 3px);
-  --f-label: 'Barlow Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif;
+  --ink: #111316;
+  --metal: #1a1d22;
+  --metal-a: rgba(26, 29, 34, 0.94);
+  --metal-2: #23272e;
+  --metal-3: #2c3139;
+  --metal-4: #373d46;
+  --rule: #2c3138;
+  --rule-hi: #434a54;
+  --text: #eef0f3;
+  --dim: #aab1bb;
+  --faint: #868e99;
+  --brass: #6b57f0;
+  --brass-hi: #a497ff;
+  --brass-lo: #4a3fa8;
+  --brass-ink: #ffffff;
+  --olive: #4fc28a;
+  --olive-d: #23573f;
+  --signal: #f0625a;
+  --signal-d: #6e2724;
+  --steel: #6aa6e0;
+  --steel-d: #284767;
+  --gold: #f2c65a;
+  --grain: none;
+  --f-label: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --f-ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --f-logo: 'Barlow Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif;
-  --r: 2px;
+  --f-logo: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --r: 8px;
+  --r-s: 6px;
   --s1: 4px;
   --s2: 8px;
   --s3: 12px;
   --s4: 16px;
+  --s5: 24px;
+  --e1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.28);
   --fast: 120ms;
   color-scheme: dark;
 }
@@ -88,7 +90,6 @@ kbd,
   color: var(--dim);
   font: 600 10px/13px var(--f-label);
   text-align: center;
-  letter-spacing: 0.04em;
 }
 .ico {
   display: inline-flex;
@@ -149,8 +150,6 @@ canvas.minimap {
 /* ---------------------------------------------------------------- shared atoms */
 .wr-sec {
   font: 600 12px/1 var(--f-label);
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
   color: var(--dim);
 }
 .cmdbar,
@@ -168,34 +167,10 @@ canvas.minimap {
 .menu-card {
   background-color: var(--metal-a);
   background-image: var(--grain);
-  border: 1px solid var(--rule);
+  border: 0;
   border-radius: var(--r);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 6px 18px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--e1);
 }
-/* corner brackets: two thin brass L shapes on the main panels */
-.cmdbar,
-.lb,
-.drawer,
-.menu-card,
-.modal-card {
-  position: relative;
-}
-.cmdbar::before,
-.lb::before,
-.drawer::before,
-.menu-card::before,
-.modal-card::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  pointer-events: none;
-  background:
-    linear-gradient(var(--brass-lo), var(--brass-lo)) top left / 10px 1px no-repeat,
-    linear-gradient(var(--brass-lo), var(--brass-lo)) top left / 1px 10px no-repeat,
-    linear-gradient(var(--brass-lo), var(--brass-lo)) bottom right / 10px 1px no-repeat,
-    linear-gradient(var(--brass-lo), var(--brass-lo)) bottom right / 1px 10px no-repeat;
-}
-
 /* buttons: obvious default, hover, pressed, disabled */
 .wr-btn,
 .btn {
@@ -210,11 +185,9 @@ canvas.minimap {
   background: var(--metal-2);
   color: var(--text);
   font: 600 13px/1 var(--f-label);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 1px 0 rgba(0, 0, 0, 0.5);
+  box-shadow: none;
   transition: background var(--fast), border-color var(--fast), color var(--fast);
 }
 .wr-btn:hover:not(:disabled),
@@ -242,7 +215,7 @@ canvas.minimap {
 .wr-btn.primary:hover:not(:disabled),
 .btn.primary:hover:not(:disabled) {
   background: var(--brass-hi);
-  border-color: #f1d77e;
+  border-color: #bdb3ff;
 }
 .wr-btn.danger,
 .btn.danger {
@@ -308,13 +281,12 @@ canvas.minimap {
 }
 .sq.on {
   color: var(--brass-hi);
-  background: rgba(201, 162, 39, 0.12);
+  background: rgba(124, 104, 255, 0.12);
   box-shadow: inset 0 -2px 0 var(--brass);
 }
 .sq.txt {
   width: 32px;
   font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.04em;
 }
 .sq.small {
   width: 26px;
@@ -340,8 +312,6 @@ canvas.minimap {
   background: var(--metal-2);
   color: var(--dim);
   font: 600 13px/1 var(--f-label);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   cursor: pointer;
   transition: background var(--fast), color var(--fast);
 }
@@ -513,8 +483,6 @@ canvas.minimap {
 }
 .cb-lab {
   font: 600 11px/1 var(--f-label);
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
   color: var(--faint);
 }
 .cb-read {
@@ -526,7 +494,6 @@ canvas.minimap {
 .cb-big {
   font: 600 21px/1 var(--f-ui);
   color: var(--text);
-  letter-spacing: -0.01em;
 }
 .cb-big.gold {
   color: var(--brass-hi);
@@ -731,7 +698,7 @@ canvas.minimap {
 }
 .tab.on {
   color: var(--brass-hi);
-  background: rgba(201, 162, 39, 0.16);
+  background: rgba(124, 104, 255, 0.16);
 }
 .bbar {
   display: flex;
@@ -763,7 +730,7 @@ canvas.minimap {
 }
 .bb.on {
   border-color: var(--brass);
-  background: rgba(201, 162, 39, 0.16);
+  background: rgba(124, 104, 255, 0.16);
   color: var(--brass-hi);
 }
 .bb.disabled {
@@ -910,17 +877,17 @@ canvas.minimap {
 /* aiming with it */
 .sk.on {
   border-color: var(--brass);
-  background: rgba(201, 162, 39, 0.16);
+  background: rgba(124, 104, 255, 0.16);
 }
 .sk-flash {
   animation: sk-flash 0.9s ease-out;
 }
 @keyframes sk-flash {
   0% {
-    box-shadow: 0 0 0 0 rgba(227, 192, 78, 0.8);
+    box-shadow: 0 0 0 0 rgba(164, 151, 255, 0.8);
   }
   100% {
-    box-shadow: 0 0 0 10px rgba(227, 192, 78, 0);
+    box-shadow: 0 0 0 10px rgba(164, 151, 255, 0);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -938,7 +905,7 @@ canvas.minimap {
   max-width: min(980px, calc(100vw - 24px));
   height: 28px;
   padding: 0 2px 0 0;
-  border-left: 2px solid var(--steel);
+  border-left: 0;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   animation: rise var(--fast) ease-out;
 }
@@ -947,8 +914,6 @@ canvas.minimap {
 }
 .adv-tag {
   font: 600 10.5px/1 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--steel);
   padding-left: 8px;
   white-space: nowrap;
@@ -1039,8 +1004,6 @@ canvas.minimap {
 }
 .lb:not(.collapsed) .lb-sum {
   font: 600 10.5px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .lb-chev {
@@ -1078,8 +1041,8 @@ canvas.minimap {
   background: rgba(255, 255, 255, 0.04);
 }
 .lb-row.me {
-  background: rgba(201, 162, 39, 0.1);
-  box-shadow: inset 2px 0 0 var(--brass);
+  background: rgba(124, 104, 255, 0.1);
+  box-shadow: none;
 }
 .lb-row.me .c-name {
   color: var(--brass-hi);
@@ -1090,8 +1053,6 @@ canvas.minimap {
 .lb-row.ally .c-name::after {
   content: ' ally';
   font: 600 10px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--olive);
 }
 .lb-row.traitor .c-name {
@@ -1128,7 +1089,6 @@ canvas.minimap {
   white-space: nowrap;
   /* condensed like the map labels: full nation names fit the small card */
   font: 500 14px/1 var(--f-label);
-  letter-spacing: 0.01em;
 }
 .sw {
   display: inline-block;
@@ -1155,8 +1115,6 @@ canvas.minimap {
   background: none;
   color: var(--faint);
   font: 600 10.5px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   cursor: pointer;
 }
 .lb-more:hover {
@@ -1167,7 +1125,7 @@ canvas.minimap {
 .ncard {
   --c: #888;
   padding: 10px 12px 12px;
-  border-left: 3px solid var(--c);
+  border-left: 0;
   animation: slide-l var(--fast) ease-out;
 }
 @keyframes slide-l {
@@ -1189,15 +1147,12 @@ canvas.minimap {
 }
 .nc-name {
   font: 600 20px/1.05 var(--f-label);
-  letter-spacing: 0.02em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .nc-rel {
   font: 600 11px/1.2 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--dim);
 }
 .nc-rel.ally {
@@ -1221,8 +1176,6 @@ canvas.minimap {
 }
 .nc-k {
   font: 600 10.5px/1.2 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .nc-v {
@@ -1313,7 +1266,6 @@ canvas.minimap {
   min-width: 56px;
   justify-content: center;
   font: 600 14px/1 var(--f-ui);
-  letter-spacing: 0.02em;
 }
 .clock.overtime {
   color: #f0b07a;
@@ -1334,7 +1286,7 @@ canvas.minimap {
 }
 @keyframes idle-pulse {
   50% {
-    background: rgba(201, 162, 39, 0.16);
+    background: rgba(124, 104, 255, 0.16);
   }
 }
 .sq-badge {
@@ -1390,8 +1342,6 @@ canvas.minimap {
 }
 .dr-title {
   font: 600 16px/1 var(--f-label);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
   color: var(--text);
 }
 .dr-body {
@@ -1448,12 +1398,12 @@ canvas.minimap {
   margin: 6px 0 0;
   padding: 6px 8px;
   font-size: 12px;
-  border-left: 2px solid var(--olive);
+  border-left: 0;
   background: rgba(152, 169, 87, 0.08);
 }
 .status.warn {
   border-left-color: var(--brass);
-  background: rgba(201, 162, 39, 0.08);
+  background: rgba(124, 104, 255, 0.08);
 }
 .status.bad {
   border-left-color: var(--signal);
@@ -1508,7 +1458,7 @@ canvas.minimap {
   color: var(--text);
 }
 .arow-t {
-  box-shadow: inset 3px 0 0 var(--c);
+  box-shadow: none;
   padding-left: 8px;
   min-width: 90px;
 }
@@ -1658,8 +1608,6 @@ canvas.minimap {
 .rt-tier {
   grid-row: 1;
   font: 600 10.5px/16px var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .rt-lines {
@@ -1756,7 +1704,6 @@ canvas.minimap {
 }
 .rt-n {
   font: 600 14px/1.1 var(--f-label);
-  letter-spacing: 0.03em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1842,13 +1789,12 @@ canvas.minimap {
   min-height: 52px;
   margin-top: 8px;
   padding: 7px 10px;
-  border-left: 2px solid var(--brass-lo);
+  border-left: 0;
   background: rgba(255, 255, 255, 0.03);
   font-size: 12px;
 }
 .rt-foot-t {
   font: 600 13.5px/1.2 var(--f-label);
-  letter-spacing: 0.04em;
   color: var(--text);
 }
 .rt-foot-d {
@@ -1873,7 +1819,6 @@ canvas.minimap {
 }
 .doc-head-t {
   font: 600 17px/1.15 var(--f-label);
-  letter-spacing: 0.03em;
   color: var(--text);
 }
 .doc-head-l {
@@ -1983,7 +1928,6 @@ canvas.minimap {
   flex: 1;
   min-width: 0;
   font: 600 15px/1.1 var(--f-label);
-  letter-spacing: 0.03em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1991,19 +1935,15 @@ canvas.minimap {
 .doc-s {
   flex: none;
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--dc);
 }
 .doc-tag {
   align-self: flex-start;
   padding: 2px 6px;
   border-radius: 1px;
-  background: rgba(201, 162, 39, 0.16);
+  background: rgba(124, 104, 255, 0.16);
   color: var(--brass-hi);
   font: 600 10.5px/1.2 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
 }
 .doc-short {
   font-size: 12px;
@@ -2073,7 +2013,7 @@ canvas.minimap {
   gap: 12px;
   margin-top: 10px;
   padding: 8px 10px;
-  border-left: 2px solid var(--brass-lo);
+  border-left: 0;
   background: var(--metal-2);
   font-size: 12px;
 }
@@ -2083,7 +2023,6 @@ canvas.minimap {
 }
 .doc-foot-t {
   font: 600 14px/1.2 var(--f-label);
-  letter-spacing: 0.04em;
 }
 .doc-foot-d {
   margin-top: 2px;
@@ -2153,8 +2092,6 @@ canvas.minimap {
   align-items: center;
   gap: 3px;
   font: 600 11px/1.2 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--dc);
   white-space: nowrap;
   cursor: help;
@@ -2213,7 +2150,6 @@ canvas.minimap {
   border: 0;
   background: none;
   font: 600 14px/1.2 var(--f-label);
-  letter-spacing: 0.04em;
   color: var(--text);
   text-align: left;
 }
@@ -2274,7 +2210,7 @@ button.fr-t:hover {
   border: 1px solid var(--rule-hi);
   border-radius: var(--r);
   background: var(--metal-2);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 1px 0 rgba(0, 0, 0, 0.5);
+  box-shadow: none;
   transition: border-color var(--fast), background var(--fast);
 }
 .ug-chip:hover {
@@ -2296,7 +2232,6 @@ button.fr-t:hover {
   padding: 0 10px;
   text-align: left;
   font: 600 14px/28px var(--f-label);
-  letter-spacing: 0.04em;
 }
 .ug-pick:hover,
 .ug-find:hover {
@@ -2338,7 +2273,6 @@ button.fr-t:hover {
   background: var(--ink);
   color: var(--text);
   font: 600 14px/24px var(--f-label);
-  letter-spacing: 0.04em;
   user-select: text;
 }
 .ug-edit:focus-visible {
@@ -2347,7 +2281,7 @@ button.fr-t:hover {
 .ug-row.on .ug-chip {
   border-color: var(--brass);
   background: var(--metal-3);
-  box-shadow: inset 3px 0 0 var(--brass);
+  box-shadow: none;
 }
 .ug-row.on .ug-name {
   color: var(--brass-hi);
@@ -2406,7 +2340,7 @@ button.fr-t:hover {
   background-color: var(--metal-a);
   background-image: var(--grain);
   border: 1px solid var(--rule);
-  border-left: 2px solid #a0dcff;
+  border-left: 0;
   border-radius: var(--r);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
   font-size: 12px;
@@ -2431,7 +2365,6 @@ button.fr-t:hover {
 }
 .uc-t {
   font: 600 14px/1.15 var(--f-label);
-  letter-spacing: 0.04em;
 }
 .uc-s {
   font-size: 11px;
@@ -2530,7 +2463,6 @@ button.ev:hover {
 }
 .lg-t b {
   font: 600 14px/1.2 var(--f-label);
-  letter-spacing: 0.04em;
   color: var(--text);
 }
 .lg-t .dim {
@@ -2564,7 +2496,7 @@ button.ev:hover {
   color: #f6e7a6;
 }
 .lg-sw.m-heart {
-  background: radial-gradient(circle at 70% 70%, rgba(227, 192, 78, 0.28) 0 45%, transparent 46%), #6f8f4e;
+  background: radial-gradient(circle at 70% 70%, rgba(164, 151, 255, 0.28) 0 45%, transparent 46%), #6f8f4e;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
 }
 .mt-row.core .mt-ic {
@@ -2597,8 +2529,6 @@ button.ev:hover {
 }
 .tbl th {
   font: 600 11px/1.2 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .tbl td.b {
@@ -2629,7 +2559,6 @@ button.ev:hover {
 }
 .bhead-t .big-v {
   font: 600 22px/1.1 var(--f-label);
-  letter-spacing: 0.04em;
   color: var(--text);
 }
 .desc {
@@ -2662,7 +2591,7 @@ button.ev:hover {
   max-width: 100%;
   min-height: 34px;
   padding: 3px 4px 3px 10px;
-  border-left: 3px solid var(--steel);
+  border-left: 0;
   animation: drop var(--fast) ease-out;
   transition: opacity 0.16s, transform 0.16s;
 }
@@ -2710,7 +2639,7 @@ button.toast-t:hover {
   gap: 12px;
   padding: 4px 4px 4px 12px;
   min-height: 40px;
-  border-left: 3px solid var(--brass);
+  border-left: 0;
 }
 .sb-text {
   flex: 1;
@@ -2719,8 +2648,6 @@ button.toast-t:hover {
 .modechip {
   min-height: 32px;
   font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
 }
 .modechip.paused {
   border-left-color: var(--steel);
@@ -2733,15 +2660,12 @@ button.toast-t:hover {
   padding-left: 10px;
   border-left: 1px solid var(--rule);
   text-transform: none;
-  letter-spacing: 0;
 }
 .salvo.hidden {
   display: none;
 }
 .salvo-l {
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--dim);
 }
 .salvo-n {
@@ -2788,8 +2712,6 @@ button.toast-t:hover {
 }
 .tip-h {
   font: 600 13px/1.2 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--brass-hi);
 }
 .tip-l {
@@ -2854,7 +2776,7 @@ button.toast-t:hover {
   color: #f0a597;
 }
 .mtip.build {
-  border-left: 3px solid var(--olive);
+  border-left: 0;
 }
 .mtip.build.up {
   border-left-color: var(--steel);
@@ -2891,7 +2813,7 @@ button.toast-t:hover {
 .mtip.price {
   width: auto;
   padding: 5px 10px;
-  border-left: 3px solid var(--olive);
+  border-left: 0;
 }
 .mtip.price.up {
   border-left-color: var(--steel);
@@ -2952,7 +2874,7 @@ button.toast-t:hover {
   z-index: 41;
   padding: 3px 8px;
   border: 1px solid var(--rule);
-  border-left: 3px solid var(--dim);
+  border-left: 0;
   border-radius: var(--r);
   background: var(--metal-a);
   font: 600 12px/1.3 var(--f-ui);
@@ -3031,7 +2953,7 @@ button.toast-t:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 3px 10px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--e1);
   transform: translate(0, 0) scale(0.5);
   opacity: 0;
   transition:
@@ -3119,8 +3041,6 @@ button.toast-t:hover {
   left: 50%;
   transform: translateX(-50%);
   font: 600 12px/1.1 var(--f-label);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   white-space: nowrap;
   color: var(--text);
   text-shadow: 0 1px 2px rgba(4, 6, 12, 0.7), 0 0 6px rgba(4, 6, 12, 0.45);
@@ -3142,15 +3062,13 @@ button.toast-t:hover {
   border-radius: var(--r);
   background: var(--metal-a);
   border: 1px solid var(--rule);
-  box-shadow: inset 3px 0 0 var(--c);
+  box-shadow: none;
   font: 600 15px/1 var(--f-label);
-  letter-spacing: 0.06em;
   pointer-events: none;
 }
 .rad-tsub {
   color: var(--dim);
   font: 400 12px/1 var(--f-ui);
-  letter-spacing: 0;
 }
 .rad-caption {
   position: absolute;
@@ -3171,8 +3089,6 @@ button.toast-t:hover {
 }
 .rad-cap-l {
   font: 600 13px/1.2 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 .rad-cap-l,
 .rad-cap-h {
@@ -3229,8 +3145,6 @@ button.toast-t:hover {
 .modal-head h2,
 .menu-head h2 {
   font: 600 18px/1 var(--f-label);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
 }
 .modal-scroll {
   overflow-y: auto;
@@ -3249,9 +3163,7 @@ button.toast-t:hover {
 }
 .over-t {
   font: 600 56px/1 var(--f-logo);
-  letter-spacing: 0.16em;
   margin-right: -0.16em;
-  text-transform: uppercase;
 }
 .over-t.win {
   color: var(--brass-hi);
@@ -3333,8 +3245,6 @@ button.toast-t:hover {
   min-width: 64px;
   text-align: right;
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .hw-quick {
@@ -3342,8 +3252,6 @@ button.toast-t:hover {
 }
 .hw-qh {
   font: 600 14px/1.2 var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
   color: var(--brass-hi);
   margin-bottom: 4px;
 }
@@ -3432,8 +3340,6 @@ button.toast-t:hover {
 }
 .hw-h {
   font: 600 15px/1.2 var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
   color: var(--text);
 }
 .hw-hint {
@@ -3452,8 +3358,6 @@ button.toast-t:hover {
 }
 .hw-sub {
   font: 600 12px/1.2 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--brass);
   margin: 6px 0 6px;
 }
@@ -3462,7 +3366,7 @@ button.toast-t:hover {
   color: var(--dim);
 }
 mark.hw-hit {
-  background: rgba(227, 192, 78, 0.35);
+  background: rgba(164, 151, 255, 0.35);
   color: var(--text);
   border-radius: 1px;
 }
@@ -3525,8 +3429,8 @@ mark.hw-hit {
   align-items: center;
   justify-content: center;
   background:
-    repeating-linear-gradient(0deg, rgba(201, 162, 39, 0.05) 0 1px, transparent 1px 64px),
-    repeating-linear-gradient(90deg, rgba(201, 162, 39, 0.05) 0 1px, transparent 1px 64px),
+    repeating-linear-gradient(0deg, rgba(124, 104, 255, 0.05) 0 1px, transparent 1px 64px),
+    repeating-linear-gradient(90deg, rgba(124, 104, 255, 0.05) 0 1px, transparent 1px 64px),
     radial-gradient(ellipse at center, rgba(13, 16, 19, 0.2) 0%, rgba(13, 16, 19, 0.85) 80%);
 }
 .menu-card {
@@ -3568,8 +3472,6 @@ mark.hw-hit {
 }
 .form-label {
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--dim);
 }
 .seg {
@@ -3647,11 +3549,9 @@ mark.hw-hit {
   transform: translateX(-50%);
   padding: 8px 16px;
   font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   background: var(--metal-a);
   border: 1px solid var(--rule);
-  border-left: 3px solid var(--brass);
+  border-left: 0;
 }
 
 .btn.mini-btn {
@@ -3715,8 +3615,6 @@ mark.hw-hit {
   border: 1px solid var(--rule);
   border-radius: var(--r);
   font: 600 11.5px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--dim);
   white-space: nowrap;
 }
@@ -3761,8 +3659,6 @@ mark.hw-hit {
   align-items: center;
   gap: 8px;
   font: 600 12.5px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--dim);
   white-space: nowrap;
 }
@@ -3849,8 +3745,6 @@ mark.hw-hit {
 }
 .lob-kind {
   font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--steel);
 }
 .lob-kind.teams {
@@ -3902,8 +3796,6 @@ mark.hw-hit {
   flex: 1;
   min-width: 0;
   font: 600 18px/1 var(--f-label);
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
   height: 40px;
 }
 .mp-join .btn {
@@ -3966,14 +3858,11 @@ mark.hw-hit {
 }
 .code-big {
   font: 600 30px/1 var(--f-logo);
-  letter-spacing: 0.12em;
   color: var(--brass-hi);
   user-select: all;
 }
 .lobby-when {
   font: 600 13px/1.3 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--dim);
   font-variant-numeric: tabular-nums;
 }
@@ -4018,8 +3907,6 @@ mark.hw-hit {
 }
 .lp-tag {
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--faint);
   padding: 3px 5px;
   border: 1px solid var(--rule);
@@ -4031,8 +3918,6 @@ mark.hw-hit {
 }
 .lp-team {
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--olive);
 }
 .team-seg {
@@ -4102,8 +3987,6 @@ mark.hw-hit {
   border: 1px solid var(--rule);
   border-radius: var(--r);
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--dim);
   white-space: nowrap;
 }
@@ -4327,7 +4210,7 @@ strong {
   gap: 2px;
   padding: 6px 8px 8px;
   border: 1px solid var(--rule);
-  border-left: 3px solid var(--brass);
+  border-left: 0;
   background: rgba(13, 16, 19, 0.55);
 }
 .ally-pick-top {
@@ -4337,8 +4220,6 @@ strong {
 }
 .ally-pick-h {
   font: 600 11px/1.2 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--brass-hi);
 }
 .ally-pick-x {
@@ -4362,8 +4243,6 @@ strong {
 .ally-target .tag {
   margin-left: auto;
   font: 600 10.5px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--signal);
 }
 .ally-target.no {
@@ -4408,13 +4287,11 @@ strong {
   padding: 10px 10px 10px 16px;
   transform: translateX(-50%);
   border: 1px solid var(--rule);
-  border-left: 3px solid var(--steel);
+  border-left: 0;
   background-color: var(--metal-a);
   background-image: var(--grain);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
   font: 600 16px/1.2 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   pointer-events: auto;
   animation: drop var(--fast) ease-out;
 }
@@ -4423,7 +4300,6 @@ strong {
 }
 .pause-banner .wr-btn {
   text-transform: none;
-  letter-spacing: 0;
 }
 
 /* ---------------------------------------------------------------- continue after the end (hud/gameOverContinue.ts) */
@@ -4434,16 +4310,12 @@ strong {
   align-self: center;
   color: var(--dim);
   font: 600 14px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 .cluster .vchip {
   align-items: center;
   gap: 6px;
   padding: 0 10px;
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--brass-hi);
   white-space: nowrap;
 }
@@ -4479,11 +4351,9 @@ strong {
   color: var(--text);
   caret-color: var(--brass-hi);
   font: inherit;
-  letter-spacing: 0.12em;
 }
 .adm-line .adm-wait {
   color: var(--faint);
-  letter-spacing: 0.1em;
 }
 .adm-line .adm-wait.hidden {
   display: none;
@@ -4500,7 +4370,7 @@ strong {
   background-color: rgba(17, 20, 23, 0.97);
   background-image: var(--grain);
   border: 1px solid var(--rule-hi);
-  border-left: 3px solid var(--signal);
+  border-left: 0;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   z-index: 40;
   font-size: 12px;
@@ -4514,8 +4384,6 @@ strong {
 }
 .adm-title {
   font: 700 15px/1 var(--f-label);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
   color: var(--signal);
 }
 .adm-x {
@@ -4544,8 +4412,6 @@ strong {
   min-width: 56px;
   color: var(--dim);
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
 }
 .adm-v {
   min-width: 64px;
@@ -4565,8 +4431,6 @@ strong {
   background: transparent;
   color: var(--dim);
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   cursor: pointer;
 }
 .adm-tab:hover {
@@ -4586,8 +4450,6 @@ strong {
   padding: 10px 12px 4px;
   color: var(--text);
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 .adm-btn {
   min-height: 26px;
@@ -4596,8 +4458,6 @@ strong {
   background: var(--metal-2);
   color: var(--text);
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   cursor: pointer;
 }
 .adm-btn:hover:not(:disabled) {
@@ -4702,7 +4562,7 @@ strong {
   background-color: var(--metal-a);
   background-image: var(--grain);
   border: 1px solid var(--rule);
-  border-left: 3px solid var(--al);
+  border-left: 0;
   border-radius: var(--r);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
   animation: al-in 180ms ease-out;
@@ -4710,7 +4570,7 @@ strong {
 }
 .alert.t-warn {
   --al: var(--brass);
-  --al-tint: rgba(201, 162, 39, 0.16);
+  --al-tint: rgba(124, 104, 255, 0.16);
   --al-ink: var(--brass-hi);
 }
 .alert.t-info {
@@ -4945,7 +4805,7 @@ strong {
 /* news since the log was last opened */
 .al-row.new {
   background: rgba(212, 80, 58, 0.08);
-  box-shadow: inset 2px 0 0 var(--signal);
+  box-shadow: none;
 }
 .al-row.new .al-tm {
   padding-left: 6px;
@@ -5054,7 +4914,7 @@ strong {
   background-color: rgba(17, 20, 23, 0.97);
   background-image: var(--grain);
   border: 1px solid var(--rule-hi);
-  border-left: 5px solid var(--bc);
+  border-left: 0;
   border-radius: var(--r);
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.04);
   pointer-events: auto;
@@ -5073,7 +4933,7 @@ strong {
 }
 .s-celebration {
   --bc: var(--brass);
-  --bc-tint: rgba(201, 162, 39, 0.18);
+  --bc-tint: rgba(124, 104, 255, 0.18);
 }
 .bc-ann.s-celebration {
   border-left-color: transparent;
@@ -5123,8 +4983,6 @@ strong {
 .bc-note-title {
   color: var(--bc);
   font: 700 13px/1 var(--f-label);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
 }
 .s-info .bc-ann-title,
 .s-info .bc-note-title {
@@ -5144,7 +5002,6 @@ strong {
 }
 .bc-ann-title {
   font-size: 22px;
-  letter-spacing: 0.12em;
   line-height: 1.1;
 }
 .bc-ann-text {
@@ -5164,7 +5021,7 @@ strong {
 .bc-note {
   width: min(420px, 100%);
   padding: 9px 36px 11px 12px;
-  border-left-width: 3px;
+  border-left-width: 0;
 }
 .bc-note-title {
   font-size: 11px;
@@ -5221,8 +5078,6 @@ strong {
   min-width: 0;
   color: var(--dim);
   font: 700 14px/1 var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5428,8 +5283,6 @@ strong {
   border: 1px solid var(--brass);
   color: var(--brass-hi);
   font: 700 12px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   white-space: nowrap;
   pointer-events: auto;
   cursor: pointer;
@@ -5571,7 +5424,7 @@ strong {
 }
 .adm-game {
   border: 1px solid var(--rule);
-  border-left: 3px solid var(--rule-hi);
+  border-left: 0;
   background: rgba(8, 10, 12, 0.5);
 }
 .adm-game.running {
@@ -5594,10 +5447,8 @@ strong {
 .adm-code {
   color: var(--brass-hi);
   font: 700 15px/1 var(--f-label);
-  letter-spacing: 0.14em;
 }
 .adm-code.adm-nation {
-  letter-spacing: 0.04em;
   overflow-wrap: anywhere;
 }
 .adm-chip {
@@ -5605,8 +5456,6 @@ strong {
   border: 1px solid var(--rule);
   color: var(--dim);
   font: 600 10px/1.1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 .adm-chip.on {
   color: var(--olive);

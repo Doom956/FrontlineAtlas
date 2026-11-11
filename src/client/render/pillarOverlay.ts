@@ -29,7 +29,7 @@ import { shipReach } from '../reach';
 import { navalReachMul } from '../../sim/variants';
 import { MAP_NUM_FAMILY } from './common';
 
-const BRASS = 'rgba(227,192,78,';
+const BRASS = 'rgba(180,168,255,';
 const STEEL = 'rgba(160,220,255,';
 const RED = 'rgba(255,107,94,';
 

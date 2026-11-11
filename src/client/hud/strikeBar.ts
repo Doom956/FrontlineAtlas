@@ -61,7 +61,7 @@ export class StrikeBar {
       const label = el('span', 'sk-l');
       const count = el('span', 'sk-n');
       const size = el('span', 'sk-x');
-      root.append(ring, img, label, count, size);
+      root.append(ring, img, label, count, size, el('span', 'sk-w', info.label));
       root.addEventListener('click', () => {
         // keep the keyboard on the map (Space pauses, letters aim) instead of on this button
         root.blur();
@@ -138,7 +138,7 @@ export class StrikeBar {
         const total = st.total > 0 ? st.total : b.peak;
         const p = total > 0 ? Math.max(0, Math.min(1, 1 - st.left / total)) : 0;
         b.ring.style.setProperty('--p', p.toFixed(3));
-        setText(b.label, `${Math.max(1, Math.ceil(st.left))}`);
+        setText(b.label, `${Math.max(1, Math.ceil(st.left))} s`);
       } else {
         b.peak = 0;
         setText(b.label, '');

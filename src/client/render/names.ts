@@ -334,7 +334,7 @@ export class NameLayer {
       if (size < minPx) continue;
       // Tribe names only once zoomed in (or the one under the cursor): far out they were just clutter.
       if (tribe && z < TRIBE_LABEL_ZOOM && l.id !== style.hoverOwner) continue;
-      const px = Math.min(size, tribe ? 14 : 28);
+      const px = Math.min(size, tribe ? 13 : 22);
       const s = cam.tileToScreen(l.fx + (l.tx - l.fx) * g, l.fy + (l.ty - l.fy) * g);
       if (s.x < -200 || s.y < -60 || s.x > cam.viewW + 200 || s.y > cam.viewH + 60) continue;
       const icons: StatusIconId[] = [];
@@ -346,17 +346,17 @@ export class NameLayer {
         else if (requests.has(p.id)) icons.push('envelope');
       }
       const iconPx = clamp(px * 0.85, 12, 20);
-      // Clean map type: nations in tracked uppercase Barlow Condensed 600, tribes in mixed-case 500. Big countries
-      // keep a capped size and spread their letters over the spare width instead of growing into giant letters.
+      // Modern Flat map type: nations in sentence-case Plex Sans 600, tribes in 500, no letter spacing. Big countries
+      // keep a capped size instead of growing into giant letters.
       ctx.font = tribe ? `500 ${Math.round(px * 1.04)}px ${MAP_LABEL_FAMILY}` : `600 ${Math.round(px)}px ${MAP_LABEL_FAMILY}`;
       const nameFont = ctx.font;
       // a tribe far out: just its army number (the name on hover), so dozens of "Tribe of the ..." don't pile up
       const raw = tribe && z < TRIBE_NAME_ZOOM && l.id !== style.hoverOwner ? '' : p.name;
-      const name = tribe ? raw : raw.toUpperCase();
-      let track = tribe ? px * 0.01 : px * 0.07;
+      const name = raw;
+      let track = 0;
       setTracking(ctx, track);
       let tw = name ? ctx.measureText(name).width : 0;
-      if (!tribe && name.length > 1 && size > px) {
+      if (track > 0 && !tribe && name.length > 1 && size > px) {
         // spare width the region offers at its fitted size (fitSize keeps this inside the territory)
         const budget = size * (name.length * LABEL_CHAR_W + 0.6) * 0.7;
         const extra = clamp((budget - tw) / (name.length - 1), 0, px * 0.12);
@@ -402,7 +402,7 @@ export class NameLayer {
       if (name) {
         ctx.font = nameFont;
         setTracking(ctx, track);
-        const fill = traitor ? '#ff9d92' : tribe ? 'rgba(240,241,244,0.94)' : p.id === me ? 'rgba(255,240,196,0.96)' : 'rgba(255,255,255,0.93)';
+        const fill = traitor ? '#ff9d92' : tribe ? 'rgba(240,241,244,0.94)' : 'rgba(255,255,255,0.96)';
         haloText(ctx, name, nameX, nameY, fill, px, tribe ? 1.25 : 1);
       }
       if (showArmy) {

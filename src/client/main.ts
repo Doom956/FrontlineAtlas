@@ -46,6 +46,8 @@ import { getUnitGroups, setUnitGroups } from './unitGroups';
 import { GameHistory } from './summary/history';
 import { gameSeconds } from '../sim/state';
 import { NAME_MAX_LENGTH } from '../net/protocol';
+// Modern Flat layer last, so it wins over every module's own stylesheet
+import './theme.css';
 
 const STEP_MS = 1000 / TICKS_PER_SECOND;
 /** Most ticks run in one frame per x1 of speed; beyond that the game slows down instead of spiralling. */
