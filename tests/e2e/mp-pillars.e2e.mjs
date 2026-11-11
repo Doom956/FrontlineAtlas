@@ -223,6 +223,18 @@ try {
     for (let j = 0; j < 16 && !(await hasShip(A.page)); j++) await sleep(500);
     units = await unitsOfA();
   }
+  // a division can still be forming, or (new divisions support the front by themselves) be spent or overrun before the
+  // orders below: then (only then) A builds another and waits for it
+  const hasDivision = (pg) => pg.evaluate(() => { const s = window.__borderfall.getState(); return s.units.some((u) => u.owner === s.humanId && u.type === 'tankDivision'); });
+  for (let k = 0; k < 3 && !units.mine.some((u) => u.type === 'tankDivision'); k++) {
+    for (let j = 0; j < 12 && !(await hasDivision(A.page)); j++) await sleep(500);
+    if (!(await hasDivision(A.page))) {
+      log('A has no tank division now; its last events:', JSON.stringify(await A.page.evaluate(() => { const s = window.__borderfall.getState(); return s.events.filter((e) => e.players?.includes(s.humanId)).slice(-4).map((e) => e.message); })));
+      log('A tank', JSON.stringify(await dispatch(A.page, { type: 'buildTankDivision', tile: result.A.factory })));
+      for (let j = 0; j < 24 && !(await hasDivision(A.page)); j++) await sleep(500);
+    }
+    units = await unitsOfA();
+  }
   log('A units', JSON.stringify(units));
   const ships = units.mine.filter((u) => u.type === 'warship').map((u) => u.id);
   const divs = units.mine.filter((u) => u.type === 'tankDivision').map((u) => u.id);
