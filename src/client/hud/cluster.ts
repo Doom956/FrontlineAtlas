@@ -1,6 +1,6 @@
 // Top-right cluster: drawer buttons (army, forces, research, diplomacy, events, legend), the clock, pause and one
-// speed button (click cycles x1 / x2 / x4), sound, help and the menu. One slim row of icon buttons in a single panel;
-// each names itself and its hotkey in the tooltip.
+// speed button (click cycles x1 / x2 / x4), sound, help and the menu. One slim row in a single panel; every button
+// shows its icon over a plain word, so nothing needs a hover to be understood (the tooltip adds the detail).
 import { DOCTRINES, TECHS } from '../../sim/config';
 import { gameSeconds } from '../../sim/state';
 import type { GameState, Player } from '../../sim/types';
@@ -28,6 +28,7 @@ export class Cluster {
   private upd: ((s: GameState, me: Player) => void)[] = [];
   private drawerBtns = new Map<DrawerId, HTMLButtonElement>();
   private speedBtn: HTMLButtonElement;
+  private speedVal: HTMLElement;
   private speedShown = -1;
   private pauseBtn: HTMLButtonElement;
   private pauseShown: boolean | null = null;
@@ -39,10 +40,10 @@ export class Cluster {
   constructor(private ctx: HudCtx, private hooks: ClusterHooks) {
     this.el = el('div', 'cluster');
     this.el.dataset.test = 'cluster';
-    const sq = (icon: string, tip: string, onClick: () => void, test?: string): HTMLButtonElement => {
-      const b = el('button', 'sq');
+    const sq = (icon: string, word: string, tip: string, onClick: () => void, test?: string): HTMLButtonElement => {
+      const b = el('button', 'sq sq-w');
       b.type = 'button';
-      b.append(iconSpan(lineIcon(icon, 17)));
+      b.append(iconSpan(lineIcon(icon, 17)), el('span', 'sq-l', word));
       b.dataset.tip = tip;
       b.setAttribute('aria-label', tip.split('\n')[0]);
       if (test) b.dataset.test = test;
@@ -50,20 +51,20 @@ export class Cluster {
       return b;
     };
     const drawers = el('div', 'cl-group');
-    const dbtn = (id: DrawerId, icon: string, tip: string) => {
-      const b = sq(icon, tip, () => ctx.openDrawer(id, true), `open-${id}`);
+    const dbtn = (id: DrawerId, icon: string, word: string, tip: string) => {
+      const b = sq(icon, word, tip, () => ctx.openDrawer(id, true), `open-${id}`);
       this.drawerBtns.set(id, b);
       drawers.append(b);
       return b;
     };
-    dbtn('army', 'army', 'Army  (U)\nTroop mix, artillery, active attacks');
-    dbtn('forces', 'warship', 'Forces  (Y)\nWarships, aircraft, missiles and artillery: buy, select, fire');
-    const rb = dbtn('research', 'science', 'Research  (T)\nPick technologies');
+    dbtn('army', 'army', 'Army', 'Army  (U)\nTroop mix, artillery, active attacks');
+    dbtn('forces', 'warship', 'Forces', 'Forces  (Y)\nWarships, aircraft, missiles and artillery: buy, select, fire');
+    const rb = dbtn('research', 'science', 'Research', 'Research  (T)\nPick technologies');
     const prog = el('span', 'sq-prog');
     rb.append(prog);
     // doctrine: hidden until doctrines unlock; then a brass dot until one is chosen, afterwards its picture with
     // three level pips (a ring fills around it while the nation adapts after a switch)
-    const docB = dbtn('doctrine', 'doctrine', `Doctrine  (${DOCTRINE_KEY})`);
+    const docB = dbtn('doctrine', 'doctrine', 'Doctrine', `Doctrine  (${DOCTRINE_KEY})`);
     docB.classList.add('sq-doc', 'hidden');
     const docRing = el('span', 'sq-ring');
     const docPips = el('span', 'sq-pips');
@@ -71,33 +72,35 @@ export class Cluster {
     const docDot = el('span', 'sq-dot brass hidden');
     docB.append(docRing, docPips, docDot);
     let docIcon = 'doctrine';
-    const db = dbtn('diplomacy', 'diplomacy', 'Diplomacy  (P)\nAlliances and requests');
+    const db = dbtn('diplomacy', 'diplomacy', 'Diplomacy', 'Diplomacy  (P)\nAlliances and requests');
     const badge = el('span', 'sq-badge hidden');
     db.append(badge);
-    const eb = dbtn('events', 'events', 'Events  (J)\nWhat happened so far');
+    const eb = dbtn('events', 'events', 'Events', 'Events  (J)\nWhat happened so far');
     const dot = el('span', 'sq-dot hidden');
     eb.append(dot);
     // the bell: the Alerts drawer (big events, click one to jump there); a red count of the ones not seen yet
-    const bell = dbtn('alerts', 'bell', 'Alerts\nBig events. Click one to see it on the map');
+    const bell = dbtn('alerts', 'bell', 'Alerts', 'Alerts\nBig events. Click one to see it on the map');
     const bellBadge = el('span', 'sq-badge al-badge hidden');
     bell.append(bellBadge);
-    dbtn('legend', 'legend', 'Map key  (L)\nTerrain, resources and map symbols');
+    dbtn('legend', 'legend', 'Map key', 'Map key  (L)\nTerrain, resources and map symbols');
 
     const clock = el('div', 'clock');
     clock.dataset.test = 'clock';
     const ct = el('span', 'clock-t');
-    clock.append(ct);
+    clock.append(ct, el('span', 'sq-l', 'Time'));
 
     const speed = el('div', 'cl-group seg cl-speed');
     this.speedGroup = speed;
-    this.pauseBtn = sq('pause', 'Pause  (Space)', () => {
+    this.pauseBtn = sq('pause', 'Pause', 'Pause  (Space)', () => {
       // a guest's button only explains (aria-disabled keeps its tooltip working)
       if (this.hooks.pauseMode() !== 'guest') ctx.ui.paused = !ctx.ui.paused;
     }, 'pause');
     speed.append(this.pauseBtn);
     // one button: shows the speed, a click goes to the next one (x1 -> x2 -> x4 -> x1)
-    this.speedBtn = el('button', 'sq txt cl-spd', 'x1');
+    this.speedBtn = el('button', 'sq sq-w txt cl-spd');
     this.speedBtn.type = 'button';
+    this.speedVal = el('span', 'sq-v', 'x1');
+    this.speedBtn.append(this.speedVal, el('span', 'sq-l', 'Speed'));
     this.speedBtn.dataset.test = 'speed';
     this.speedBtn.addEventListener('click', () => {
       ctx.ui.speed = SPEEDS[(SPEEDS.indexOf(ctx.ui.speed) + 1) % SPEEDS.length];
@@ -106,10 +109,10 @@ export class Cluster {
     speed.append(this.speedBtn);
 
     const sys = el('div', 'cl-group');
-    this.soundBtn = sq('sound', 'Sound on/off\nVolumes are in the menu', () => hooks.toggleMute(), 'sound');
+    this.soundBtn = sq('sound', 'Sound', 'Sound on/off\nVolumes are in the menu', () => hooks.toggleMute(), 'sound');
     if (!hooks.hasAudio()) this.soundBtn.classList.add('hidden');
-    const help = sq('help', 'How to play  (?)', () => hooks.toggleHelp(), 'help');
-    const menu = sq('menu', 'Menu\nSettings, sound, leave the game', () => ctx.openDrawer('settings', true), 'menu');
+    const help = sq('help', 'Help', 'How to play  (?)', () => hooks.toggleHelp(), 'help');
+    const menu = sq('menu', 'Menu', 'Menu\nSettings, sound, leave the game', () => ctx.openDrawer('settings', true), 'menu');
     this.drawerBtns.set('settings', menu);
     sys.append(this.soundBtn, help, menu);
     this.el.append(drawers, speed, clock, sys);
@@ -182,7 +185,7 @@ export class Cluster {
     const ui = this.ctx.ui;
     if (this.speedShown !== ui.speed) {
       this.speedShown = ui.speed;
-      setText(this.speedBtn, `x${ui.speed}`);
+      setText(this.speedVal, `x${ui.speed}`);
       const next = SPEEDS[(SPEEDS.indexOf(ui.speed) + 1) % SPEEDS.length];
       setTip(this.speedBtn, `Game speed x${ui.speed}: click for x${next}  (+ / -)`);
       this.speedBtn.setAttribute('aria-label', `Game speed x${ui.speed}, click for x${next}`);
@@ -199,7 +202,7 @@ export class Cluster {
       setClass(this.pauseBtn, 'dis', pm === 'guest');
       if (pm === 'guest') this.pauseBtn.setAttribute('aria-disabled', 'true');
       else this.pauseBtn.removeAttribute('aria-disabled');
-      this.pauseBtn.replaceChildren(iconSpan(lineIcon(ui.paused ? 'play' : 'pause', 17)));
+      this.pauseBtn.replaceChildren(iconSpan(lineIcon(ui.paused ? 'play' : 'pause', 17)), el('span', 'sq-l', ui.paused ? 'Resume' : 'Pause'));
       const tip = pm === 'guest' ? 'Only the host can pause' : ui.paused ? 'Resume  (Space)' : 'Pause  (Space)';
       setTip(this.pauseBtn, tip);
       this.pauseBtn.setAttribute('aria-label', tip.split('  ')[0]);
@@ -207,7 +210,7 @@ export class Cluster {
     const m = this.hooks.muted();
     if (this.soundShown !== m) {
       this.soundShown = m;
-      this.soundBtn.replaceChildren(iconSpan(lineIcon(m ? 'mute' : 'sound', 17)));
+      this.soundBtn.replaceChildren(iconSpan(lineIcon(m ? 'mute' : 'sound', 17)), el('span', 'sq-l', m ? 'Muted' : 'Sound'));
       setClass(this.soundBtn, 'off', m);
     }
     for (const [id, b] of this.drawerBtns) setClass(b, 'on', this.hooks.isOpen(id));

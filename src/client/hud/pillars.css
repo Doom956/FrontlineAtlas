@@ -7,10 +7,9 @@
   max-width: min(640px, calc(100vw - 24px));
   padding: 6px 8px 6px 10px;
   background-color: var(--metal-a);
-  background-image: var(--grain);
   border: 1px solid var(--rule);
   border-left: 2px solid #a0dcff;
-  border-radius: var(--r);
+  border-radius: 0;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
   animation: rise var(--fast) ease-out;
 }
@@ -38,8 +37,6 @@
 }
 .ob-t {
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--dim);
   white-space: nowrap;
 }
@@ -123,7 +120,7 @@
   padding: 6px 8px;
   border: 1px solid var(--rule);
   border-left: 2px solid var(--steel);
-  border-radius: var(--r);
+  border-radius: 0;
   background: rgba(0, 0, 0, 0.14);
 }
 .airpanel.compact {
@@ -201,7 +198,6 @@
 }
 .airpanel.compact .ap-seg .wr-btn.mini {
   padding: 0 6px;
-  letter-spacing: 0.05em;
 }
 
 /* Follow my war row (hud/followRow.ts): status line + the toggle back from a fixed target */
@@ -248,7 +244,7 @@
   padding: 6px 8px;
   border: 1px solid var(--rule);
   border-left: 2px solid var(--brass-lo);
-  border-radius: var(--r);
+  border-radius: 0;
   background: rgba(0, 0, 0, 0.14);
 }
 .gb-head {
@@ -260,7 +256,6 @@
 }
 .gb-t {
   font: 600 13px/1.2 var(--f-label);
-  letter-spacing: 0.04em;
   color: var(--text);
 }
 .gb-n {

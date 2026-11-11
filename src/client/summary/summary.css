@@ -84,7 +84,7 @@
 .sum-legend .sw {
   width: 12px;
   height: 3px;
-  border-radius: 1px;
+  border-radius: 0;
 }
 .sum-legend .lg.me {
   color: var(--text);
@@ -131,8 +131,6 @@
 .sum-win text {
   fill: var(--brass);
   font: 600 11px var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 .sum-lines polyline {
   fill: none;
@@ -203,7 +201,7 @@
   padding: 6px 9px;
   background: var(--metal-2);
   border: 1px solid var(--rule-hi);
-  border-radius: var(--r);
+  border-radius: 0;
   color: var(--text);
   font-size: 12px;
   line-height: 1.35;
@@ -230,7 +228,7 @@
   align-items: baseline;
   gap: 6px;
   padding: 3px 6px;
-  border-radius: var(--r);
+  border-radius: 0;
   color: var(--dim);
   outline: none;
 }
@@ -312,8 +310,6 @@
   display: block;
   margin-top: 3px;
   font: 600 10.5px/1.2 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .sum-tbl th.me .sum-tag {

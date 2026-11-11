@@ -1,41 +1,42 @@
-/* Frontline Atlas UI: "Pixel Ops". A flat gunmetal field console over a muted olive theatre. Hard 1px edges, no grain,
-   no glows, no corner brackets. One orange accent for the primary action and the current selection; khaki for titles
-   and numbers; red for danger, olive for good news, nothing else coloured. Titles and changing numbers in a pixel
-   display face (Silkscreen), everything a sentence is made of in a clean sans (Space Grotesk) with tabular figures. */
+/* Frontline Atlas UI: "Pixel Ops". A flat gunmetal field console over a muted olive theatre. Hard 1px edges, square
+   corners, no grain, no glows, no corner brackets. One signal-orange accent for the one primary action on a screen;
+   khaki marks what is chosen; red means danger, olive means good, nothing else is coloured. Titles and big changing
+   numbers in the pixel face (Pixelify Sans), everything a sentence is made of in IBM Plex Sans with tabular figures.
+   Sentence case everywhere: no tracked capitals. */
 :root {
   --ink: #0e110c;
   --metal: #171b14;
-  --metal-a: rgba(21, 25, 17, 0.97);
+  --metal-a: rgba(23, 27, 20, 0.97);
   --metal-2: #20261c;
   --metal-3: #2a3123;
   --metal-4: #353d2c;
   --rule: #39412f;
   --rule-hi: #525c40;
   --text: #e9e6d6;
-  --dim: #a7a994;
-  --faint: #76796a;
-  /* Primary accent: signal orange, spent on the one primary action and the current selection only. */
+  --dim: #a9ab96;
+  --faint: #8a8d7a;
+  /* Primary accent: signal orange, spent on the one primary action per screen. */
   --accent: #e8803a;
   --accent-hi: #f59a52;
   --accent-lo: #8a4a1e;
-  --accent-ink: #160a03;
-  /* "brass" is demoted to a quiet khaki (titles, numbers, minor marks); every old var(--brass*) use goes calm. */
+  --accent-ink: #1a0c03;
+  /* Khaki (the old "brass" names): what is chosen (selected segment, active tab) and small quiet marks. */
   --brass: #b9ab6a;
   --brass-hi: #d2c488;
   --brass-lo: #6f6433;
   --brass-ink: #171205;
   --olive: #8ba84e;
   --olive-d: #525f2a;
-  --signal: #d6513a;
+  --signal: #e0604a;
   --signal-d: #7f2a1d;
-  --steel: #6f93b4;
+  --steel: #7d9fbf;
   --steel-d: #34506a;
-  /* no texture: a flat fill stands in for the old grain so the 13 shared panels read as one calm surface */
   --grain: none;
-  --f-label: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --f-ui: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --f-pixel: 'Silkscreen', 'Space Grotesk', ui-monospace, monospace;
-  --f-logo: 'Silkscreen', 'Space Grotesk', ui-monospace, monospace;
+  --f-ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --f-label: var(--f-ui);
+  --f-pixel: 'Pixelify Sans', 'IBM Plex Sans', system-ui, sans-serif;
+  --f-logo: var(--f-pixel);
+  --drop: 2px 2px 0 rgba(0, 0, 0, 0.45);
   --r: 0px;
   --s1: 4px;
   --s2: 8px;
@@ -91,12 +92,11 @@ kbd,
   padding: 0 3px;
   border: 1px solid var(--rule-hi);
   border-bottom-width: 2px;
-  border-radius: 2px;
+  border-radius: 0;
   background: var(--metal);
   color: var(--dim);
   font: 600 10px/13px var(--f-label);
   text-align: center;
-  letter-spacing: 0.04em;
 }
 .ico {
   display: inline-flex;
@@ -137,7 +137,7 @@ canvas.map.dragging {
   padding: 4px;
   background: var(--metal);
   border: 1px solid var(--rule);
-  border-radius: var(--r);
+  border-radius: 0;
   line-height: 0;
   z-index: 5;
   display: none;
@@ -157,8 +157,6 @@ canvas.minimap {
 /* ---------------------------------------------------------------- shared atoms */
 .wr-sec {
   font: 600 12px/1 var(--f-label);
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
   color: var(--dim);
 }
 .cmdbar,
@@ -177,7 +175,7 @@ canvas.minimap {
   background-color: var(--metal-a);
   background-image: none;
   border: 1px solid var(--rule);
-  border-radius: var(--r);
+  border-radius: 0;
   box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
 }
 /* Pixel Ops: no decorative corner brackets. Keep position for children that anchor to the panel. */
@@ -199,7 +197,7 @@ canvas.minimap {
   min-height: 32px;
   padding: 0 12px;
   border: 1px solid var(--rule-hi);
-  border-radius: var(--r);
+  border-radius: 0;
   background: var(--metal-2);
   color: var(--text);
   font: 600 13px/1 var(--f-ui);
@@ -305,7 +303,6 @@ canvas.minimap {
 .sq.txt {
   width: 32px;
   font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.04em;
 }
 .sq.small {
   width: 26px;
@@ -319,7 +316,7 @@ canvas.minimap {
 .segc {
   display: flex;
   border: 1px solid var(--rule-hi);
-  border-radius: var(--r);
+  border-radius: 0;
   overflow: hidden;
   margin: var(--s2) 0;
 }
@@ -331,8 +328,6 @@ canvas.minimap {
   background: var(--metal-2);
   color: var(--dim);
   font: 600 13px/1 var(--f-label);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   cursor: pointer;
   transition: background var(--fast), color var(--fast);
 }
@@ -364,7 +359,7 @@ canvas.minimap {
   height: 4px;
   background: var(--metal-4);
   border: 1px solid var(--rule);
-  border-radius: 1px;
+  border-radius: 0;
 }
 .wr-range::-moz-range-track,
 .range::-moz-range-track {
@@ -378,7 +373,7 @@ canvas.minimap {
   width: 12px;
   height: 18px;
   margin-top: -8px;
-  border-radius: 1px;
+  border-radius: 0;
   background: var(--brass);
   border: 1px solid var(--brass-hi);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
@@ -387,7 +382,7 @@ canvas.minimap {
 .range::-moz-range-thumb {
   width: 12px;
   height: 18px;
-  border-radius: 1px;
+  border-radius: 0;
   background: var(--brass);
   border: 1px solid var(--brass-hi);
 }
@@ -504,8 +499,6 @@ canvas.minimap {
 }
 .cb-lab {
   font: 600 11px/1 var(--f-label);
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
   color: var(--faint);
 }
 .cb-read {
@@ -553,7 +546,7 @@ canvas.minimap {
   height: 6px;
   margin-top: 2px;
   background: var(--ink);
-  border-radius: 1px;
+  border-radius: 0;
   overflow: hidden;
 }
 .tbar-home {
@@ -610,7 +603,7 @@ canvas.minimap {
   align-items: center;
   justify-content: center;
   border: 1px solid var(--rule);
-  border-radius: var(--r);
+  border-radius: 0;
   background: var(--metal-2);
   color: var(--text);
   cursor: pointer;
@@ -640,7 +633,7 @@ canvas.minimap {
   margin-left: 2px;
   padding: 0 4px;
   border: 1px solid var(--rule);
-  border-radius: 9px;
+  border-radius: 0;
   background: transparent;
   color: var(--faint);
   cursor: pointer;
@@ -667,7 +660,7 @@ canvas.minimap {
   padding: 8px 10px;
   background: var(--metal-a);
   border: 1px solid var(--rule);
-  border-radius: var(--r);
+  border-radius: 0;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
   white-space: nowrap;
   text-align: left;
@@ -711,7 +704,7 @@ canvas.minimap {
   justify-content: center;
   padding: 0;
   border: 0;
-  border-radius: var(--r);
+  border-radius: 0;
   background: none;
   color: var(--faint);
   cursor: pointer;
@@ -739,7 +732,7 @@ canvas.minimap {
   align-items: center;
   justify-content: center;
   border: 1px solid transparent;
-  border-radius: var(--r);
+  border-radius: 0;
   background: var(--metal-2);
   color: var(--text);
   cursor: pointer;
@@ -815,7 +808,7 @@ canvas.minimap {
   align-items: center;
   justify-content: center;
   border: 1px solid var(--rule);
-  border-radius: var(--r);
+  border-radius: 0;
   background: var(--metal-2);
   color: var(--text);
   cursor: pointer;
@@ -938,8 +931,6 @@ canvas.minimap {
 }
 .adv-tag {
   font: 600 10.5px/1 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--steel);
   padding-left: 8px;
   white-space: nowrap;
@@ -1030,8 +1021,6 @@ canvas.minimap {
 }
 .lb:not(.collapsed) .lb-sum {
   font: 600 10.5px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .lb-chev {
@@ -1081,8 +1070,6 @@ canvas.minimap {
 .lb-row.ally .c-name::after {
   content: ' ally';
   font: 600 10px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--olive);
 }
 .lb-row.traitor .c-name {
@@ -1126,7 +1113,7 @@ canvas.minimap {
   flex: none;
   width: 9px;
   height: 9px;
-  border-radius: 1px;
+  border-radius: 0;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
 }
 .lb-bar {
@@ -1146,8 +1133,6 @@ canvas.minimap {
   background: none;
   color: var(--faint);
   font: 600 10.5px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   cursor: pointer;
 }
 .lb-more:hover {
@@ -1180,15 +1165,12 @@ canvas.minimap {
 }
 .nc-name {
   font: 600 20px/1.05 var(--f-label);
-  letter-spacing: 0.02em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .nc-rel {
   font: 600 11px/1.2 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--dim);
 }
 .nc-rel.ally {
@@ -1212,8 +1194,6 @@ canvas.minimap {
 }
 .nc-k {
   font: 600 10.5px/1.2 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .nc-v {
@@ -1304,7 +1284,6 @@ canvas.minimap {
   min-width: 56px;
   justify-content: center;
   font: 600 14px/1 var(--f-ui);
-  letter-spacing: 0.02em;
 }
 .clock.overtime {
   color: #f0b07a;
@@ -1335,7 +1314,7 @@ canvas.minimap {
   min-width: 14px;
   height: 14px;
   padding: 0 3px;
-  border-radius: 1px;
+  border-radius: 0;
   background: var(--brass);
   color: var(--brass-ink);
   font: 600 10px/14px var(--f-ui);
@@ -1381,8 +1360,6 @@ canvas.minimap {
 }
 .dr-title {
   font: 600 16px/1 var(--f-label);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
   color: var(--text);
 }
 .dr-body {
@@ -1649,8 +1626,6 @@ canvas.minimap {
 .rt-tier {
   grid-row: 1;
   font: 600 10.5px/16px var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .rt-lines {
@@ -1701,7 +1676,7 @@ canvas.minimap {
   min-height: 54px;
   padding: 6px 8px;
   border: 1px solid var(--rule);
-  border-radius: var(--r);
+  border-radius: 0;
   background: var(--metal-2);
   color: var(--text);
   text-align: left;
@@ -1747,7 +1722,6 @@ canvas.minimap {
 }
 .rt-n {
   font: 600 14px/1.1 var(--f-label);
-  letter-spacing: 0.03em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1839,7 +1813,6 @@ canvas.minimap {
 }
 .rt-foot-t {
   font: 600 13.5px/1.2 var(--f-label);
-  letter-spacing: 0.04em;
   color: var(--text);
 }
 .rt-foot-d {
@@ -1864,7 +1837,6 @@ canvas.minimap {
 }
 .doc-head-t {
   font: 600 17px/1.15 var(--f-label);
-  letter-spacing: 0.03em;
   color: var(--text);
 }
 .doc-head-l {
@@ -1891,7 +1863,7 @@ canvas.minimap {
   gap: 6px;
   padding: 9px 10px;
   border: 1px dashed var(--rule);
-  border-radius: var(--r);
+  border-radius: 0;
 }
 .doc-how .wr-sec {
   margin: 0 0 2px;
@@ -1913,7 +1885,7 @@ canvas.minimap {
   padding: 8px 9px 9px;
   border: 1px solid var(--rule);
   border-top: 2px solid color-mix(in srgb, var(--dc) 55%, var(--rule));
-  border-radius: var(--r);
+  border-radius: 0;
   background: var(--metal-2);
   color: var(--text);
   text-align: left;
@@ -1974,7 +1946,6 @@ canvas.minimap {
   flex: 1;
   min-width: 0;
   font: 600 15px/1.1 var(--f-label);
-  letter-spacing: 0.03em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1982,19 +1953,15 @@ canvas.minimap {
 .doc-s {
   flex: none;
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--dc);
 }
 .doc-tag {
   align-self: flex-start;
   padding: 2px 6px;
-  border-radius: 1px;
+  border-radius: 0;
   background: rgba(201, 162, 39, 0.16);
   color: var(--brass-hi);
   font: 600 10.5px/1.2 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
 }
 .doc-short {
   font-size: 12px;
@@ -2021,7 +1988,7 @@ canvas.minimap {
   width: 14px;
   height: 14px;
   border: 1px solid var(--rule-hi);
-  border-radius: 1px;
+  border-radius: 0;
   font: 600 10px/12px var(--f-ui);
   font-style: normal;
   text-align: center;
@@ -2074,7 +2041,6 @@ canvas.minimap {
 }
 .doc-foot-t {
   font: 600 14px/1.2 var(--f-label);
-  letter-spacing: 0.04em;
 }
 .doc-foot-d {
   margin-top: 2px;
@@ -2144,8 +2110,6 @@ canvas.minimap {
   align-items: center;
   gap: 3px;
   font: 600 11px/1.2 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--dc);
   white-space: nowrap;
   cursor: help;
@@ -2204,7 +2168,6 @@ canvas.minimap {
   border: 0;
   background: none;
   font: 600 14px/1.2 var(--f-label);
-  letter-spacing: 0.04em;
   color: var(--text);
   text-align: left;
 }
@@ -2263,7 +2226,7 @@ button.fr-t:hover {
   min-width: 0;
   min-height: 30px;
   border: 1px solid var(--rule-hi);
-  border-radius: var(--r);
+  border-radius: 0;
   background: var(--metal-2);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 1px 0 rgba(0, 0, 0, 0.5);
   transition: border-color var(--fast), background var(--fast);
@@ -2287,7 +2250,6 @@ button.fr-t:hover {
   padding: 0 10px;
   text-align: left;
   font: 600 14px/28px var(--f-label);
-  letter-spacing: 0.04em;
 }
 .ug-pick:hover,
 .ug-find:hover {
@@ -2325,11 +2287,10 @@ button.fr-t:hover {
   margin: 2px;
   padding: 0 8px;
   border: 1px solid var(--brass);
-  border-radius: var(--r);
+  border-radius: 0;
   background: var(--ink);
   color: var(--text);
   font: 600 14px/24px var(--f-label);
-  letter-spacing: 0.04em;
   user-select: text;
 }
 .ug-edit:focus-visible {
@@ -2377,7 +2338,7 @@ button.fr-t:hover {
   margin-top: 4px;
   padding: 2px 2px 2px 8px;
   border: 1px dashed var(--rule-hi);
-  border-radius: var(--r);
+  border-radius: 0;
   font-size: 12px;
   color: var(--dim);
 }
@@ -2395,10 +2356,9 @@ button.fr-t:hover {
   /* clicks go through to the map (a spearhead or move target can sit under the card); only the X takes them */
   pointer-events: none;
   background-color: var(--metal-a);
-  background-image: var(--grain);
   border: 1px solid var(--rule);
   border-left: 2px solid #a0dcff;
-  border-radius: var(--r);
+  border-radius: 0;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
   font-size: 12px;
 }
@@ -2422,7 +2382,6 @@ button.fr-t:hover {
 }
 .uc-t {
   font: 600 14px/1.15 var(--f-label);
-  letter-spacing: 0.04em;
 }
 .uc-s {
   font-size: 11px;
@@ -2504,7 +2463,7 @@ button.ev:hover {
   align-items: center;
   justify-content: center;
   border: 1px solid rgba(0, 0, 0, 0.5);
-  border-radius: 1px;
+  border-radius: 0;
   color: rgba(16, 18, 20, 0.62);
 }
 .lg-sw.plain {
@@ -2521,7 +2480,6 @@ button.ev:hover {
 }
 .lg-t b {
   font: 600 14px/1.2 var(--f-label);
-  letter-spacing: 0.04em;
   color: var(--text);
 }
 .lg-t .dim {
@@ -2588,8 +2546,6 @@ button.ev:hover {
 }
 .tbl th {
   font: 600 11px/1.2 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .tbl td.b {
@@ -2620,7 +2576,6 @@ button.ev:hover {
 }
 .bhead-t .big-v {
   font: 600 22px/1.1 var(--f-label);
-  letter-spacing: 0.04em;
   color: var(--text);
 }
 .desc {
@@ -2710,8 +2665,6 @@ button.toast-t:hover {
 .modechip {
   min-height: 32px;
   font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
 }
 .modechip.paused {
   border-left-color: var(--steel);
@@ -2731,8 +2684,6 @@ button.toast-t:hover {
 }
 .salvo-l {
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--dim);
 }
 .salvo-n {
@@ -2746,7 +2697,7 @@ button.toast-t:hover {
   bottom: 1px;
   left: 2px;
   padding: 0 2px;
-  border-radius: 2px;
+  border-radius: 0;
   background: rgba(0, 0, 0, 0.55);
   font: 600 9px/11px var(--f-label);
   color: var(--brass-hi);
@@ -2779,8 +2730,6 @@ button.toast-t:hover {
 }
 .tip-h {
   font: 600 13px/1.2 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--brass-hi);
 }
 .tip-l {
@@ -2944,7 +2893,7 @@ button.toast-t:hover {
   padding: 3px 8px;
   border: 1px solid var(--rule);
   border-left: 3px solid var(--dim);
-  border-radius: var(--r);
+  border-radius: 0;
   background: var(--metal-a);
   font: 600 12px/1.3 var(--f-ui);
   white-space: nowrap;
@@ -3110,8 +3059,6 @@ button.toast-t:hover {
   left: 50%;
   transform: translateX(-50%);
   font: 600 12px/1.1 var(--f-label);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   white-space: nowrap;
   color: var(--text);
   text-shadow: 0 1px 2px rgba(4, 6, 12, 0.7), 0 0 6px rgba(4, 6, 12, 0.45);
@@ -3130,12 +3077,11 @@ button.toast-t:hover {
   gap: 8px;
   padding: 5px 12px;
   white-space: nowrap;
-  border-radius: var(--r);
+  border-radius: 0;
   background: var(--metal-a);
   border: 1px solid var(--rule);
   box-shadow: inset 3px 0 0 var(--c);
   font: 600 15px/1 var(--f-label);
-  letter-spacing: 0.06em;
   pointer-events: none;
 }
 .rad-tsub {
@@ -3155,15 +3101,13 @@ button.toast-t:hover {
   min-width: 120px;
   max-width: 320px;
   text-align: center;
-  border-radius: var(--r);
+  border-radius: 0;
   background: var(--metal-a);
   border: 1px solid var(--rule);
   pointer-events: none;
 }
 .rad-cap-l {
   font: 600 13px/1.2 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 .rad-cap-l,
 .rad-cap-h {
@@ -3220,8 +3164,6 @@ button.toast-t:hover {
 .modal-head h2,
 .menu-head h2 {
   font: 600 18px/1 var(--f-label);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
 }
 .modal-scroll {
   overflow-y: auto;
@@ -3235,14 +3177,11 @@ button.toast-t:hover {
   flex-direction: column;
   gap: 8px;
   background-color: var(--metal-a);
-  background-image: var(--grain);
   border: 1px solid var(--rule);
 }
 .over-t {
   font: 600 56px/1 var(--f-logo);
-  letter-spacing: 0.16em;
   margin-right: -0.16em;
-  text-transform: uppercase;
 }
 .over-t.win {
   color: var(--brass-hi);
@@ -3311,7 +3250,7 @@ button.toast-t:hover {
   padding: 0 10px;
   background: var(--ink);
   border: 1px solid var(--rule-hi);
-  border-radius: var(--r);
+  border-radius: 0;
   color: var(--text);
   font: 13px var(--f-ui);
 }
@@ -3324,8 +3263,6 @@ button.toast-t:hover {
   min-width: 64px;
   text-align: right;
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .hw-quick {
@@ -3333,8 +3270,6 @@ button.toast-t:hover {
 }
 .hw-qh {
   font: 600 14px/1.2 var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
   color: var(--brass-hi);
   margin-bottom: 4px;
 }
@@ -3423,8 +3358,6 @@ button.toast-t:hover {
 }
 .hw-h {
   font: 600 15px/1.2 var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
   color: var(--text);
 }
 .hw-hint {
@@ -3443,8 +3376,6 @@ button.toast-t:hover {
 }
 .hw-sub {
   font: 600 12px/1.2 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--brass);
   margin: 6px 0 6px;
 }
@@ -3455,7 +3386,7 @@ button.toast-t:hover {
 mark.hw-hit {
   background: rgba(227, 192, 78, 0.35);
   color: var(--text);
-  border-radius: 1px;
+  border-radius: 0;
 }
 .hw-keys {
   display: inline-flex;
@@ -3559,14 +3490,12 @@ mark.hw-hit {
 }
 .form-label {
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--dim);
 }
 .seg {
   display: flex;
   border: 1px solid var(--rule-hi);
-  border-radius: var(--r);
+  border-radius: 0;
   overflow: hidden;
 }
 .seg .btn {
@@ -3594,7 +3523,7 @@ mark.hw-hit {
   height: 32px;
   padding: 0 10px;
   border: 1px solid var(--rule-hi);
-  border-radius: var(--r);
+  border-radius: 0;
   background: var(--ink);
   color: var(--text);
   font: 500 13px var(--f-ui);
@@ -3612,7 +3541,7 @@ mark.hw-hit {
 .swatch-btn {
   width: 26px;
   height: 26px;
-  border-radius: 1px;
+  border-radius: 0;
   border: 1px solid rgba(0, 0, 0, 0.6);
   cursor: pointer;
   padding: 0;
@@ -3638,8 +3567,6 @@ mark.hw-hit {
   transform: translateX(-50%);
   padding: 8px 16px;
   font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   background: var(--metal-a);
   border: 1px solid var(--rule);
   border-left: 3px solid var(--brass);
@@ -3660,7 +3587,7 @@ mark.hw-hit {
   height: 22px;
   padding: 0;
   border: 1px solid var(--rule-hi);
-  border-radius: var(--r);
+  border-radius: 0;
   background: var(--ink);
   cursor: pointer;
 }
@@ -3670,7 +3597,7 @@ mark.hw-hit {
   left: 3px;
   width: 14px;
   height: 14px;
-  border-radius: 1px;
+  border-radius: 0;
   background: var(--faint);
 }
 .switch.on {
@@ -3704,10 +3631,8 @@ mark.hw-hit {
   padding: 0 8px;
   background: var(--metal-a);
   border: 1px solid var(--rule);
-  border-radius: var(--r);
+  border-radius: 0;
   font: 600 11.5px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--dim);
   white-space: nowrap;
 }
@@ -3752,8 +3677,6 @@ mark.hw-hit {
   align-items: center;
   gap: 8px;
   font: 600 12.5px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--dim);
   white-space: nowrap;
 }
@@ -3817,7 +3740,7 @@ mark.hw-hit {
   background: var(--ink);
   border: 1px solid var(--rule);
   border-inline-start: 3px solid var(--steel);
-  border-radius: var(--r);
+  border-radius: 0;
 }
 .lob-row.kind-teams {
   border-inline-start-color: var(--olive);
@@ -3840,8 +3763,6 @@ mark.hw-hit {
 }
 .lob-kind {
   font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--steel);
 }
 .lob-kind.teams {
@@ -3893,8 +3814,6 @@ mark.hw-hit {
   flex: 1;
   min-width: 0;
   font: 600 18px/1 var(--f-label);
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
   height: 40px;
 }
 .mp-join .btn {
@@ -3957,14 +3876,11 @@ mark.hw-hit {
 }
 .code-big {
   font: 600 30px/1 var(--f-logo);
-  letter-spacing: 0.12em;
   color: var(--brass-hi);
   user-select: all;
 }
 .lobby-when {
   font: 600 13px/1.3 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--dim);
   font-variant-numeric: tabular-nums;
 }
@@ -3988,7 +3904,7 @@ mark.hw-hit {
   padding: 0 8px;
   background: var(--ink);
   border: 1px solid var(--rule);
-  border-radius: var(--r);
+  border-radius: 0;
 }
 .lobby-players .lp.away {
   opacity: 0.55;
@@ -3997,7 +3913,7 @@ mark.hw-hit {
   width: 12px;
   height: 12px;
   flex: none;
-  border-radius: 1px;
+  border-radius: 0;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
 }
 .lp-name {
@@ -4009,12 +3925,10 @@ mark.hw-hit {
 }
 .lp-tag {
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--faint);
   padding: 3px 5px;
   border: 1px solid var(--rule);
-  border-radius: var(--r);
+  border-radius: 0;
 }
 .lp-tag.you {
   color: var(--brass-hi);
@@ -4022,8 +3936,6 @@ mark.hw-hit {
 }
 .lp-team {
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--olive);
 }
 .team-seg {
@@ -4033,7 +3945,7 @@ mark.hw-hit {
   content: '';
   width: 9px;
   height: 9px;
-  border-radius: 1px;
+  border-radius: 0;
   background: var(--team);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
 }
@@ -4091,10 +4003,8 @@ mark.hw-hit {
   padding: 0 10px;
   background: var(--metal-a);
   border: 1px solid var(--rule);
-  border-radius: var(--r);
+  border-radius: 0;
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--dim);
   white-space: nowrap;
 }
@@ -4122,7 +4032,7 @@ mark.hw-hit {
   background: var(--metal-a);
   border: 1px solid var(--rule-hi);
   border-inline-start: 3px solid var(--brass);
-  border-radius: var(--r);
+  border-radius: 0;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
   font-size: 14px;
   pointer-events: auto;
@@ -4328,8 +4238,6 @@ strong {
 }
 .ally-pick-h {
   font: 600 11px/1.2 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--brass-hi);
 }
 .ally-pick-x {
@@ -4344,7 +4252,7 @@ strong {
 .ally-target {
   min-height: 28px;
   padding: 0 4px;
-  border-radius: var(--r);
+  border-radius: 0;
 }
 .ally-target:hover,
 .ally-target:focus-visible {
@@ -4353,8 +4261,6 @@ strong {
 .ally-target .tag {
   margin-left: auto;
   font: 600 10.5px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--signal);
 }
 .ally-target.no {
@@ -4401,11 +4307,8 @@ strong {
   border: 1px solid var(--rule);
   border-left: 3px solid var(--steel);
   background-color: var(--metal-a);
-  background-image: var(--grain);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
   font: 600 16px/1.2 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   pointer-events: auto;
   animation: drop var(--fast) ease-out;
 }
@@ -4425,16 +4328,12 @@ strong {
   align-self: center;
   color: var(--dim);
   font: 600 14px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 .cluster .vchip {
   align-items: center;
   gap: 6px;
   padding: 0 10px;
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--brass-hi);
   white-space: nowrap;
 }
@@ -4470,11 +4369,9 @@ strong {
   color: var(--text);
   caret-color: var(--brass-hi);
   font: inherit;
-  letter-spacing: 0.12em;
 }
 .adm-line .adm-wait {
   color: var(--faint);
-  letter-spacing: 0.1em;
 }
 .adm-line .adm-wait.hidden {
   display: none;
@@ -4489,7 +4386,6 @@ strong {
   display: flex;
   flex-direction: column;
   background-color: rgba(17, 20, 23, 0.97);
-  background-image: var(--grain);
   border: 1px solid var(--rule-hi);
   border-left: 3px solid var(--signal);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
@@ -4505,8 +4401,6 @@ strong {
 }
 .adm-title {
   font: 700 15px/1 var(--f-label);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
   color: var(--signal);
 }
 .adm-x {
@@ -4535,8 +4429,6 @@ strong {
   min-width: 56px;
   color: var(--dim);
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
 }
 .adm-v {
   min-width: 64px;
@@ -4556,8 +4448,6 @@ strong {
   background: transparent;
   color: var(--dim);
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   cursor: pointer;
 }
 .adm-tab:hover {
@@ -4577,8 +4467,6 @@ strong {
   padding: 10px 12px 4px;
   color: var(--text);
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 .adm-btn {
   min-height: 26px;
@@ -4587,8 +4475,6 @@ strong {
   background: var(--metal-2);
   color: var(--text);
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   cursor: pointer;
 }
 .adm-btn:hover:not(:disabled) {
@@ -4691,10 +4577,9 @@ strong {
   align-items: stretch;
   overflow: hidden;
   background-color: var(--metal-a);
-  background-image: var(--grain);
   border: 1px solid var(--rule);
   border-left: 3px solid var(--al);
-  border-radius: var(--r);
+  border-radius: 0;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
   animation: al-in 180ms ease-out;
   transition: opacity 0.2s, transform 0.2s;
@@ -5043,10 +4928,9 @@ strong {
   padding: 14px 48px 16px 16px;
   max-height: 40vh;
   background-color: rgba(17, 20, 23, 0.97);
-  background-image: var(--grain);
   border: 1px solid var(--rule-hi);
   border-left: 5px solid var(--bc);
-  border-radius: var(--r);
+  border-radius: 0;
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.04);
   pointer-events: auto;
   overflow: hidden;
@@ -5114,8 +4998,6 @@ strong {
 .bc-note-title {
   color: var(--bc);
   font: 700 13px/1 var(--f-label);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
 }
 .s-info .bc-ann-title,
 .s-info .bc-note-title {
@@ -5135,7 +5017,6 @@ strong {
 }
 .bc-ann-title {
   font-size: 22px;
-  letter-spacing: 0.12em;
   line-height: 1.1;
 }
 .bc-ann-text {
@@ -5201,7 +5082,6 @@ strong {
   gap: 12px;
   padding: 8px 18px 9px;
   background-color: rgba(17, 20, 23, 0.97);
-  background-image: var(--grain);
   border: 1px solid var(--brass-lo);
   border-bottom: 3px solid var(--brass);
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
@@ -5212,8 +5092,6 @@ strong {
   min-width: 0;
   color: var(--dim);
   font: 700 14px/1 var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5419,8 +5297,6 @@ strong {
   border: 1px solid var(--brass);
   color: var(--brass-hi);
   font: 700 12px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   white-space: nowrap;
   pointer-events: auto;
   cursor: pointer;
@@ -5585,10 +5461,8 @@ strong {
 .adm-code {
   color: var(--brass-hi);
   font: 700 15px/1 var(--f-label);
-  letter-spacing: 0.14em;
 }
 .adm-code.adm-nation {
-  letter-spacing: 0.04em;
   overflow-wrap: anywhere;
 }
 .adm-chip {
@@ -5596,8 +5470,6 @@ strong {
   border: 1px solid var(--rule);
   color: var(--dim);
   font: 600 10px/1.1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 .adm-chip.on {
   color: var(--olive);
@@ -5700,70 +5572,292 @@ strong {
 }
 
 /* ====================================================================================================
-   PIXEL OPS overrides. Pixel display face on identity/numbers, one orange accent, no HUD hotkey chips,
-   no idle pulsing. Appended last so it wins source-order ties without touching the rules above.
+   PIXEL OPS. Appended last so it wins source-order ties. The pixel face is for titles and big numbers only;
+   every control shows a picture and a plain word; hotkey chips are off the screen (keys stay in tooltips).
    ==================================================================================================== */
 
-/* Pixel display face (Silkscreen) for titles and changing numbers only; sentences stay Space Grotesk.
-   Silkscreen runs large and wide, so sizes are dialled down and tracking removed where it is set. */
+/* ---- type: pixel face on titles and big changing numbers */
 .cb-big,
 .clock .clock-t,
-.clock,
 .big-v,
 .over-title,
 .over-head .over-big-v,
 .vchip-n,
-.menu-title-head .logo {
+.logo {
   font-family: var(--f-pixel);
+  font-weight: 600;
   letter-spacing: 0;
 }
-.cb-big {
-  font-size: 18px;
-  letter-spacing: 0;
+.wr-sec {
+  font: 600 12px/1.2 var(--f-ui);
+  color: var(--dim);
 }
-.clock {
-  font-size: 13px;
-}
-.big-v {
-  font-size: 22px;
-  color: var(--brass-hi);
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
-/* One attention cue: kill idle pulsing, the bouncing guide arrow and the animated alert life bar. */
+/* ---- no hotkey chips anywhere on the HUD (the How to play page lists keys as plain text) */
+.qb-slot .qb-k,
+.bm-card .bm-c-k,
+.rp-tab .rp-tab-k,
+.qb-build kbd,
+.app kbd,
+.app .kc {
+  display: none !important;
+}
+
+/* ---- one attention cue at a time: no idle pulsing, no animated life bars */
 .sq.idle {
   animation: none;
+  color: var(--text);
 }
 .al-life,
 .alerts.held .al-life {
   animation: none;
 }
-.sq.on {
+
+/* ---- top-right cluster: picture over a plain word on every button */
+.cluster {
+  top: 10px;
+  right: 10px;
+}
+.cluster .sq.sq-w,
+.cluster .sq.txt {
+  flex-direction: column;
+  gap: 3px;
+  width: auto;
+  min-width: 46px;
+  height: 46px;
+  padding: 0 6px;
+  color: var(--dim);
+}
+.sq-l {
+  font: 500 11px/1 var(--f-ui);
+  white-space: nowrap;
+}
+.sq-v {
+  font: 600 15px/17px var(--f-pixel);
+}
+.cluster .sq.sq-w:hover {
+  color: var(--text);
+}
+.cluster .sq.on {
+  color: var(--text);
+  background: var(--metal-3);
+  box-shadow: inset 0 -2px 0 var(--brass);
+}
+.clock {
+  flex-direction: column;
+  gap: 3px;
+  min-width: 58px;
+  padding: 0 8px;
+}
+.clock .clock-t {
+  font-size: 15px;
+  line-height: 17px;
+}
+.clock .sq-l {
+  color: var(--dim);
+}
+.sq-prog {
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  max-width: none;
+  height: 2px;
+}
+.sq-badge {
+  top: 2px;
+  right: 2px;
+  background: var(--signal);
+  color: #fff;
+}
+.sq-dot {
+  top: 5px;
+  right: 8px;
+}
+.cl-spd.fast .sq-v {
   color: var(--accent-hi);
-  background: transparent;
-  box-shadow: inset 0 -2px 0 var(--accent);
+}
+/* drawers start under the taller cluster */
+.drawer {
+  top: 66px;
+  max-height: calc(100% - 66px - 104px);
 }
 
-/* New-player rule (owner): every action has a visible labelled button, so hotkey chips come off the HUD.
-   The markup and kbd / data-test nodes stay for tests; they are only hidden. Help, How-to and setup keep theirs. */
-.qb-slot .qb-k,
-.bm-card .bm-c-k,
-.rp-tab .rp-tab-k,
-.qb-build kbd,
-.cmdbar kbd,
-.skbar .kc,
-.modechip .kc {
-  display: none !important;
+/* ---- command bar: flat strip, readable numbers with units, words under every picture */
+.cmdbar {
+  height: 64px;
+  padding: 0 6px;
+  box-shadow: var(--drop);
 }
-
-/* The eyebrow is the one surviving tracked-caps label: quieter, khaki, less tracking. */
-.wr-sec {
-  letter-spacing: 0.12em;
+.cb-sec {
+  gap: 4px;
+}
+.cb-lab {
+  font: 600 12px/1 var(--f-ui);
+  color: var(--dim);
+}
+.cb-big {
+  font: 600 22px/1 var(--f-pixel);
+  color: var(--text);
+}
+.cb-big.gold,
+.cb-share {
+  color: var(--text);
+}
+.cb-cap,
+.cb-rate,
+.cb-sub {
+  font-size: 12px;
+  color: var(--dim);
+}
+.cb-trend {
+  font: 600 12px/1 var(--f-ui);
+}
+.cb-troops {
+  width: 184px;
+}
+.cb-attack {
+  width: 132px;
+}
+.cb-gold {
+  width: auto;
+  min-width: 150px;
+}
+.tbar {
+  height: 6px;
+  background: var(--ink);
+  outline: 1px solid var(--rule);
+}
+.tbar-peak {
+  background: var(--text);
+  box-shadow: none;
+}
+.stepper {
+  border-color: var(--rule-hi);
+}
+.stepper:hover {
+  border-color: var(--text);
+}
+/* iron / oil / science: always on show, one quiet line under the gold */
+.res {
+  align-self: flex-start;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dim);
+}
+.res-ics,
+.res .chip-t {
+  display: none;
+}
+.res .res-pop {
+  position: static;
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+.res .chip {
+  gap: 3px;
+  font: 500 12px/1 var(--f-ui);
+  color: var(--dim);
+}
+.res .chip-v {
+  min-width: 0;
+  color: var(--text);
+}
+.res:hover .chip-u {
+  color: var(--text);
+}
+/* quick build slots and strikes: picture over a word */
+.qb-slot.bb,
+.sk {
+  flex-direction: column;
+  gap: 2px;
+  width: auto;
+  min-width: 50px;
+  height: 50px;
+  padding: 3px 5px 4px;
+}
+.qb-w,
+.sk-w {
+  font: 500 11px/1 var(--f-ui);
+  color: var(--dim);
+  white-space: nowrap;
+}
+.qb-slot:hover .qb-w,
+.sk:hover .sk-w,
+.qb-slot.on .qb-w,
+.sk.on .sk-w {
+  color: var(--text);
+}
+.qb-slot.disabled .qb-w {
   color: var(--faint);
 }
-
-/* Selection / "on" states carry the accent as a flat edge, never a glow ring. */
-.wr-btn.on,
-.btn.on {
-  border-color: var(--accent);
-  color: var(--accent-hi);
+.sk-ic {
+  width: 24px;
+  height: 24px;
+}
+/* reloading: a flat bar fills along the bottom edge, seconds over the picture */
+.sk-ring {
+  top: auto;
+  left: 0;
+  bottom: 0;
+  width: calc(var(--p, 0) * 100%);
+  height: 3px;
+  margin: 0;
+  border-radius: 0;
+  background: var(--brass);
+  -webkit-mask: none;
+  mask: none;
+}
+.sk.cooldown .sk-ic {
+  transform: none;
+}
+.sk-l {
+  bottom: 14px;
+  font: 600 13px/1 var(--f-pixel);
+  color: var(--text);
+  text-shadow: 1px 1px 0 #000;
+}
+.sk-flash {
+  animation: none;
+}
+.sk.ready {
+  border-color: var(--rule-hi);
+}
+.sk.on,
+.qb-slot.on {
+  border-color: var(--brass);
+  background: var(--metal-3);
+  box-shadow: inset 0 -2px 0 var(--brass);
+}
+/* x1 / x3 / x5: a labelled row of three */
+.qb-count.bm-count {
+  display: grid;
+  grid-template-columns: repeat(3, 26px);
+  grid-template-rows: auto 22px;
+  gap: 0;
+  align-self: center;
+}
+.qb-count.bm-count::before {
+  content: 'Levels';
+  grid-column: 1 / -1;
+  margin-bottom: 4px;
+  font: 500 11px/1 var(--f-ui);
+  color: var(--dim);
+  text-align: center;
+}
+.qb-count .bm-cnt {
+  width: 26px;
+  height: 22px;
+  font: 600 12px/1 var(--f-ui);
 }

@@ -1,6 +1,6 @@
 // STRIKES: a compact icon row at the end of the command bar's build area (barrage, bombing run, paratroopers,
-// rocket, atom bomb). Only strikes you can use show up; each is a picture with its state at a glance (name, hotkey
-// and what it does are in the tooltip):
+// rocket, atom bomb). Only strikes you can use show up; each is a picture over a plain word with its state at a glance
+// (the full name and what it does are in the tooltip):
 //   ready     full colour, brass edge (a stored count where it has one: bombers, loaded silo slots)
 //   cooling   dimmed picture, a ring filling up and the seconds left
 //   blocked   ready but missing gold, infantry ...: hover or click says what is missing
@@ -14,6 +14,9 @@ import { aimStrike, allStrikes, salvoKindOf, salvoOf, STRIKE_ORDER, STRIKES, str
 import { salvoLabel } from '../salvoPrefs';
 import { cycleSalvo, salvoTip } from './salvoPicker';
 import { el, flash, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
+
+/** The plain word under each strike picture (the full name and what it does are in the tooltip). */
+const STRIKE_WORD: Record<StrikeId, string> = { barrage: 'Barrage', bomb: 'Bombing', paradrop: 'Paradrop', rocket: 'Rocket', atomBomb: 'Atom bomb' };
 
 interface Btn {
   root: HTMLButtonElement;
@@ -61,7 +64,7 @@ export class StrikeBar {
       const label = el('span', 'sk-l');
       const count = el('span', 'sk-n');
       const size = el('span', 'sk-x');
-      root.append(ring, img, label, count, size);
+      root.append(ring, img, label, count, size, el('span', 'sk-w', STRIKE_WORD[id]));
       root.addEventListener('click', () => {
         // keep the keyboard on the map (Space pauses, letters aim) instead of on this button
         root.blur();

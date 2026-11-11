@@ -30,10 +30,9 @@
   padding: 4px 4px 4px 10px;
   pointer-events: auto;
   background-color: var(--metal-a);
-  background-image: var(--grain);
   border: 1px solid var(--rule);
   border-left: 2px solid var(--brass);
-  border-radius: var(--r);
+  border-radius: 0;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 6px 18px rgba(0, 0, 0, 0.4);
 }
 .guide-bar.is-tip {
@@ -68,8 +67,6 @@
   align-items: center;
   gap: 5px;
   font: 600 10.5px/1 var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
   color: var(--brass-hi);
 }
 .guide-bar.is-tip .guide-tag {
@@ -77,12 +74,11 @@
 }
 .guide-count {
   font: 600 11.5px/1 var(--f-label);
-  letter-spacing: 0.06em;
   color: var(--dim);
   font-variant-numeric: tabular-nums;
   padding: 3px 5px;
   border: 1px solid var(--rule);
-  border-radius: var(--r);
+  border-radius: 0;
 }
 .guide-text {
   flex: 1 1 auto;

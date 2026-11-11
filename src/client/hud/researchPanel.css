@@ -66,7 +66,7 @@ aside.drawer[data-page='research'] .dr-body {
   flex: none;
   display: flex;
   border: 1px solid var(--rule);
-  border-radius: var(--r);
+  border-radius: 0;
   background: var(--ink);
 }
 .rp-tab {
@@ -80,8 +80,6 @@ aside.drawer[data-page='research'] .dr-body {
   background: transparent;
   color: var(--dim);
   font: 600 15px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   cursor: pointer;
 }
 .rp-tab + .rp-tab {
@@ -100,7 +98,7 @@ aside.drawer[data-page='research'] .dr-body {
   letter-spacing: 0;
   padding: 2px 4px;
   border: 1px solid currentColor;
-  border-radius: 2px;
+  border-radius: 0;
   opacity: 0.6;
 }
 .rp-tab-dot {
@@ -129,13 +127,10 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-cur-k {
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .rp-cur-v {
   font: 600 16px/1 var(--f-label);
-  letter-spacing: 0.03em;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -147,7 +142,7 @@ aside.drawer[data-page='research'] .dr-body {
   flex: none;
   width: 96px;
   height: 4px;
-  border-radius: 2px;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.1);
   overflow: hidden;
 }
@@ -226,8 +221,6 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-colhead-c {
   font: 600 11px/14px var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--faint);
   white-space: nowrap;
   overflow: hidden;
@@ -263,13 +256,10 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-rowlab-t {
   font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
   color: var(--dim);
 }
 .rp-rowlab-n {
   font: 500 11px/1 var(--f-label);
-  letter-spacing: 0.06em;
   color: var(--faint);
 }
 /* tier labels of the phone list */
@@ -319,7 +309,7 @@ aside.drawer[data-page='research'] .dr-body {
   margin: -10px -9px -6px;
   /* neutral: the cards inside say what can be taken (a brass box round locked cards was noise) */
   border: 1px solid var(--rule-hi);
-  border-radius: 3px;
+  border-radius: 0;
   pointer-events: none;
 }
 .rp-fork-l {
@@ -329,8 +319,6 @@ aside.drawer[data-page='research'] .dr-body {
   padding: 0 5px;
   background: var(--metal);
   font: 600 11px/13px var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--brass);
 }
 .rp-fork.decided {
@@ -352,7 +340,7 @@ aside.drawer[data-page='research'] .dr-body {
   height: var(--rp-ch);
   padding: 0 8px;
   border: 1px solid var(--rule);
-  border-radius: var(--r);
+  border-radius: 0;
   background: var(--metal-2);
   color: var(--text);
   text-align: left;
@@ -386,7 +374,6 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-n {
   font: 600 15px/17px var(--f-label);
-  letter-spacing: 0.02em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -426,10 +413,8 @@ aside.drawer[data-page='research'] .dr-body {
   /* right-hand end: the left end of a fork's top card sits under the fork's "Choose one" label */
   right: 10px;
   padding: 0 5px;
-  border-radius: 2px;
+  border-radius: 0;
   font: 700 9px/12px var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--brass-ink);
   background: var(--brass-hi);
 }
@@ -444,7 +429,7 @@ aside.drawer[data-page='research'] .dr-body {
   right: 0;
   bottom: 0;
   height: 3px;
-  border-radius: 0 0 var(--r) var(--r);
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
@@ -587,7 +572,7 @@ aside.drawer[data-page='research'] .dr-body {
   overflow: hidden;
   padding: 10px 14px;
   border: 1px solid var(--rule);
-  border-radius: var(--r);
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.025);
   font-size: 13px;
   line-height: 18px;
@@ -631,7 +616,6 @@ aside.drawer[data-page='research'] .dr-body {
   margin: 0;
   min-width: 0;
   font: 600 17px/20px var(--f-label);
-  letter-spacing: 0.02em;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -672,8 +656,6 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-d-k {
   font: 600 11px/18px var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .rp-d-v {
@@ -777,8 +759,6 @@ aside.drawer[data-page='research'] .dr-body {
 .rp-orders-l {
   flex: none;
   font: 600 11px/14px var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .rp-order {
@@ -790,7 +770,7 @@ aside.drawer[data-page='research'] .dr-body {
   height: 26px;
   padding: 0 9px 0 6px;
   border: 1px solid var(--steel-d);
-  border-radius: 13px;
+  border-radius: 0;
   white-space: nowrap;
 }
 .rp-order-ic {
@@ -803,11 +783,10 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-order-n {
   font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.03em;
 }
 .rp-order-bar {
   height: 4px;
-  border-radius: 2px;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.1);
   overflow: hidden;
 }
@@ -1001,7 +980,6 @@ aside.drawer[data-page='research'] .dr-body {
   }
   .rp-auto .segc-b {
     padding: 0 4px;
-    letter-spacing: 0.04em;
   }
   .rp-chips {
     flex: none;
@@ -1018,12 +996,10 @@ aside.drawer[data-page='research'] .dr-body {
     height: 34px;
     padding: 0 14px;
     border: 1px solid var(--rule);
-    border-radius: 17px;
+    border-radius: 0;
     background: transparent;
     color: var(--dim);
     font: 600 13px/32px var(--f-label);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
     cursor: pointer;
   }
   .rp-chip.on {
@@ -1048,8 +1024,6 @@ aside.drawer[data-page='research'] .dr-body {
     display: block;
     margin-top: 10px;
     font: 600 11.5px/14px var(--f-label);
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
     color: var(--faint);
   }
   .rp-tier.choose {
@@ -1085,7 +1059,7 @@ aside.drawer[data-page='research'] .dr-body {
     padding: 14px 16px 16px;
     border: 0;
     border-top: 2px solid var(--brass);
-    border-radius: 6px 6px 0 0;
+    border-radius: 0;
     background: var(--metal);
     box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.5);
   }

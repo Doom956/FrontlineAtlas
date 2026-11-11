@@ -25,6 +25,9 @@ import { TECHS } from '../../sim/config';
 import { hasTech } from '../../sim/tech';
 import { techComing } from './procure';
 
+/** The plain word under each quick-bar picture (the full name is in the tooltip and the build menu). */
+const SHORT_NAME: Partial<Record<BuildingType, string>> = { oilWell: 'Oil well', lab: 'Lab', sam: 'SAM site', silo: 'Silo', watchtower: 'Tower' };
+
 let shiftDown = false;
 /** True while Shift is held (x5 placement; the ghost preview reads it). */
 export function shiftHeld(): boolean {
@@ -48,7 +51,7 @@ export class QuickBar {
   readonly menu: BuildMenu;
   readonly sel: BuildingSelectionBar;
   readonly picks: QuickPicks;
-  private slots: { b: HTMLButtonElement; ic: HTMLElement; key: HTMLElement; type: BuildingType | null }[] = [];
+  private slots: { b: HTMLButtonElement; ic: HTMLElement; key: HTMLElement; word: HTMLElement; type: BuildingType | null }[] = [];
   private buildBtn: HTMLButtonElement;
   private count: { el: HTMLElement; sync: () => void };
   private lastMode = '';
@@ -77,8 +80,9 @@ export class QuickBar {
       b.type = 'button';
       const ic = el('span', 'bb-ic');
       const key = el('span', 'qb-k');
-      b.append(ic, key);
-      const slot = { b, ic, key, type: null as BuildingType | null };
+      const word = el('span', 'qb-w');
+      b.append(ic, word, key);
+      const slot = { b, ic, key, word, type: null as BuildingType | null };
       b.addEventListener('click', () => {
         const t = slot.type;
         if (!t) return;
@@ -168,6 +172,7 @@ export class QuickBar {
         slot.type = t;
         slot.ic.innerHTML = worldGlyph(t, 22);
         slot.key.textContent = BUILDINGS[t].hotkey;
+        slot.word.textContent = SHORT_NAME[t] ?? BUILDINGS[t].name;
         slot.b.dataset.test = `build-${t}`;
         slot.b.dataset.building = t;
       }

@@ -1,19 +1,20 @@
-// Pixel Ops fonts (bundled, no network): Silkscreen is the pixel display face for the logo, titles, big numbers and
-// map place-names (used only at fixed sizes so the pixels stay crisp); Space Grotesk is the clean sans for body,
-// labels, buttons and all dynamic text (tabular numbers on). Registered through the FontFace API so only the woff2
-// files we use end up in the build (the single-file build inlines them as data URLs).
-import silk400 from '@fontsource/silkscreen/files/silkscreen-latin-400-normal.woff2?url';
-import silk700 from '@fontsource/silkscreen/files/silkscreen-latin-700-normal.woff2?url';
-import grotesk400 from '@fontsource/space-grotesk/files/space-grotesk-latin-400-normal.woff2?url';
-import grotesk500 from '@fontsource/space-grotesk/files/space-grotesk-latin-500-normal.woff2?url';
-import grotesk600 from '@fontsource/space-grotesk/files/space-grotesk-latin-600-normal.woff2?url';
+// Pixel Ops fonts (bundled, no network). Pixelify Sans is the one pixel display face: the logo, panel titles, the big
+// changing numbers (troops, gold, clock, score) and the nation names on the map. IBM Plex Sans is the clean sans for
+// everything a sentence is made of: body, labels, buttons, tooltips and lists (tabular numbers on). Registered through
+// the FontFace API so only the woff2 files we use end up in the build (the single-file build inlines them as data
+// URLs).
+import pix500 from '@fontsource/pixelify-sans/files/pixelify-sans-latin-500-normal.woff2?url';
+import pix600 from '@fontsource/pixelify-sans/files/pixelify-sans-latin-600-normal.woff2?url';
+import plex400 from '@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2?url';
+import plex500 from '@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-500-normal.woff2?url';
+import plex600 from '@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-600-normal.woff2?url';
 
 const FACES: [string, string, string][] = [
-  ['Silkscreen', silk400, '400'],
-  ['Silkscreen', silk700, '700'],
-  ['Space Grotesk', grotesk400, '400'],
-  ['Space Grotesk', grotesk500, '500'],
-  ['Space Grotesk', grotesk600, '600'],
+  ['Pixelify Sans', pix500, '500'],
+  ['Pixelify Sans', pix600, '600'],
+  ['IBM Plex Sans', plex400, '400'],
+  ['IBM Plex Sans', plex500, '500'],
+  ['IBM Plex Sans', plex600, '600'],
 ];
 
 /** Registers the fonts; resolves when they are loaded (or failed: the CSS falls back to system fonts). */

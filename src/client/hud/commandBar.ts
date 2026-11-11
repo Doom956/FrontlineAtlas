@@ -1,7 +1,7 @@
 // Bottom command bar: the only control surface on the default screen, kept slim.
 //   TROOPS  one big readout (home troops / cap, growth trend) over a thin bar with the growth-peak marker
 //   ATTACK  the share of troops each attack sends: -/+ steppers around a big value, a thin slider ([ and ])
-//   GOLD    gold and its rate; iron, oil and science sit behind one small resources chip that opens on hover
+//   GOLD    gold and its rate; iron, oil and science on one small line under it (picture, amount, word)
 //   GOLD    also a small "Spend" button: mercenaries, funding an ally, war bonds (hud/spendPanel.ts)
 //   BUILD   a "Build" button (Tab) opening the build menu, a quick bar of six buildings (pinned / most used) and the
 //           x1 / x3 / x5 count (hud/quickBar.ts, hud/buildMenu.ts); warships, aircraft and tank divisions are in the
@@ -118,9 +118,9 @@ export class CommandBar {
       for (const a of s.attacks) if (a.attacker === me.id) out += armyTotal(a.troops);
       const capv = Math.max(1, me.maxPop);
       setText(big, formatCount(t));
-      setText(cap, `/ ${formatCount(me.maxPop)}`);
+      setText(cap, `of ${formatCount(me.maxPop)}`);
       const g = me.income.pop;
-      trend.replaceChildren(iconSpan(lineIcon(g >= 0 ? 'up' : 'down', 11, 2.2), 'ico'), el('span', '', `${fmtRate(g)}/s`));
+      trend.replaceChildren(iconSpan(lineIcon(g >= 0 ? 'up' : 'down', 11, 2.2), 'ico'), el('span', '', `${fmtRate(g)} troops/s`));
       trend.className = 'cb-trend ' + (g > 0.5 ? 'good' : g < -0.5 ? 'bad' : 'flat');
       const f = Math.min(1, t / capv);
       home.style.width = `${(f * 100).toFixed(1)}%`;
@@ -185,7 +185,7 @@ export class CommandBar {
       setText(val, `${v}%`);
       if (last >= 0 && v !== last) flash(val, 'flash-key');
       last = v;
-      setText(sub, formatCount(troopSum(troopsToSend(me, ui))));
+      setText(sub, `sends ${formatCount(troopSum(troopsToSend(me, ui)))}`);
     });
     return box;
   }
@@ -200,7 +200,7 @@ export class CommandBar {
     const read = el('div', 'cb-read');
     const big = el('span', 'cb-big gold');
     read.append(big);
-    // iron / oil / science: one small chip (their icons) that opens a little list on hover or focus
+    // iron / oil / science: one small line under the gold (click opens Research, where science is spent)
     const res = el('button', 'res hidden');
     res.type = 'button';
     res.dataset.test = 'resources';
@@ -220,20 +220,22 @@ export class CommandBar {
       c.dataset.test = `chip-${name}`;
       const v = el('span', 'chip-v');
       const t = el('span', 'chip-t', tip);
-      c.append(iconSpan(lineIcon(name, 13, 1.8)), v, t);
+      // always on show: picture, amount and the plain word (the long line stays for the tooltip)
+      c.append(iconSpan(lineIcon(name, 13, 1.8)), v, el('span', 'chip-u', name), t);
+      setTip(c, tip.charAt(0).toUpperCase() + tip.slice(1));
       pop.append(c);
       return { ic, c, v };
     };
     const iron = chip('iron', 'iron: armor, artillery, military buildings');
     const oil = chip('oil', 'oil: armor and aircraft');
     const sci = chip('science', 'science: research (click)');
-    read.append(res, this.spend.button);
-    box.append(head, read);
+    read.append(this.spend.button);
+    box.append(head, read, res);
     setTip(big, 'Gold: a base income plus land and cities; Markets add more. Buildings and research cost gold.');
     this.upd.push((s, me) => {
       const g = Math.floor(me.gold);
       setText(big, formatCount(g));
-      setText(rate, `${fmtRate(me.income.gold)}/s`);
+      setText(rate, `${fmtRate(me.income.gold)} gold/s`);
       if (this.lastGold >= 0 && g - this.lastGold > Math.max(150, this.lastGold * 0.2)) flash(big, 'flash-up');
       this.lastGold = g;
       // iron / oil appear once you can get some; science once research matters (a minute in, or a lab)

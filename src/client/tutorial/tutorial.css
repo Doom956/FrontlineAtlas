@@ -25,10 +25,9 @@
   gap: 10px;
   pointer-events: auto;
   background-color: var(--metal-a);
-  background-image: var(--grain);
   border: 1px solid var(--rule);
   border-left: 2px solid var(--brass);
-  border-radius: var(--r);
+  border-radius: 0;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 8px 24px rgba(0, 0, 0, 0.45);
   transform: scale(var(--ui, 1));
   transform-origin: bottom left;
@@ -53,8 +52,6 @@
 }
 .tut-kicker {
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
   color: var(--brass);
   white-space: nowrap;
   overflow: hidden;
@@ -62,7 +59,6 @@
 }
 .tut-count {
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.08em;
   color: var(--dim);
   font-variant-numeric: tabular-nums;
 }
@@ -111,8 +107,6 @@
   background: transparent;
   padding: 2px 0;
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--dim);
   cursor: pointer;
   white-space: nowrap;
@@ -214,7 +208,7 @@
   left: 0;
   top: 0;
   border: 2px solid var(--brass-hi);
-  border-radius: 3px;
+  border-radius: 0;
   box-shadow:
     0 0 0 1px rgba(13, 16, 19, 0.9),
     0 0 18px rgba(227, 192, 78, 0.45);
@@ -287,10 +281,9 @@
   align-items: flex-start;
   gap: 8px;
   background-color: var(--metal-a);
-  background-image: var(--grain);
   border: 1px solid var(--rule);
   border-top: 2px solid var(--olive);
-  border-radius: var(--r);
+  border-radius: 0;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
   animation: rise var(--fast) ease-out;
 }
@@ -306,8 +299,6 @@
 }
 .tut-done-t {
   font: 600 30px/1.05 var(--f-logo);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 .tut-done-l {
   margin: 0 0 10px;
