@@ -21,10 +21,10 @@
   gap: 8px;
   min-height: 32px;
   padding: 0 10px;
-  border-color: var(--rule);
+  border-color: var(--edge);
 }
 .btn.you-chip:hover:not(:disabled) {
-  border-color: var(--rule-hi);
+  border-color: var(--edge-hi);
 }
 .you-label {
   color: var(--faint);
@@ -42,7 +42,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   font: 500 13px/1 var(--f-ui);
-  letter-spacing: 0;
   text-transform: none;
 }
 .you-pop {
@@ -56,7 +55,7 @@
   gap: 8px;
   padding: 14px;
   background: var(--metal);
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   border-radius: var(--r);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
 }
@@ -160,8 +159,6 @@
 }
 .setup-h {
   font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
   color: var(--brass);
 }
 .setup-sec-head + .setup-sec-head {
@@ -194,7 +191,7 @@
   min-width: 0;
   padding: 5px 5px 6px;
   background: var(--metal-2);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--r);
   color: var(--text);
   text-align: start;
@@ -229,7 +226,6 @@
 }
 .map-name {
   font: 600 14px/1.15 var(--f-label);
-  letter-spacing: 0.03em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -260,7 +256,7 @@
 .setup-note {
   margin: 0;
   color: var(--dim);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.4;
 }
 .setup-note.field-note {
@@ -303,7 +299,7 @@
   display: flex;
   align-items: center;
   flex: none;
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   border-radius: var(--r);
 }
 .btn.step-btn {
@@ -326,7 +322,7 @@
   flex: 0 0 auto;
   min-height: 30px;
   padding: 0 10px;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 /* ---- rules: name and one line on the leading side, the control on the trailing side */
@@ -343,7 +339,7 @@
   padding: 5px 0;
 }
 .mod-name {
-  font: 600 13.5px/1.25 var(--f-ui);
+  font: 600 14px/1.25 var(--f-ui);
 }
 .mod-detail {
   font: 400 12px/1.35 var(--f-ui);
@@ -360,14 +356,12 @@
 .mod-group-h {
   margin: 0 0 2px;
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--dim);
 }
 
 /* ---- folded parts (map options, more rules): a row that reads as a control, the live value on the trailing side */
 .setup-fold {
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--r);
 }
 .fold-sum {
@@ -404,13 +398,11 @@
 }
 .fold-title {
   font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--text);
 }
 .fold-val {
   margin-inline-start: auto;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--dim);
   white-space: nowrap;
   overflow: hidden;

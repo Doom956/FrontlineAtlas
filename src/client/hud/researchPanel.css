@@ -65,7 +65,7 @@ aside.drawer[data-page='research'] .dr-body {
 .rp-tabs {
   flex: none;
   display: flex;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--r);
   background: var(--ink);
 }
@@ -80,8 +80,6 @@ aside.drawer[data-page='research'] .dr-body {
   background: transparent;
   color: var(--dim);
   font: 600 15px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   cursor: pointer;
 }
 .rp-tab + .rp-tab {
@@ -97,7 +95,6 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-tab-k {
   font: 600 10px/1 var(--f-ui);
-  letter-spacing: 0;
   padding: 2px 4px;
   border: 1px solid currentColor;
   border-radius: 2px;
@@ -129,13 +126,10 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-cur-k {
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .rp-cur-v {
   font: 600 16px/1 var(--f-label);
-  letter-spacing: 0.03em;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -163,7 +157,7 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-cur-l {
   min-width: 0;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--dim);
   font-variant-numeric: tabular-nums;
   overflow: hidden;
@@ -226,8 +220,6 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-colhead-c {
   font: 600 11px/14px var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--faint);
   white-space: nowrap;
   overflow: hidden;
@@ -263,13 +255,10 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-rowlab-t {
   font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
   color: var(--dim);
 }
 .rp-rowlab-n {
   font: 500 11px/1 var(--f-label);
-  letter-spacing: 0.06em;
   color: var(--faint);
 }
 /* tier labels of the phone list */
@@ -318,7 +307,7 @@ aside.drawer[data-page='research'] .dr-body {
   z-index: 0;
   margin: -10px -9px -6px;
   /* neutral: the cards inside say what can be taken (a brass box round locked cards was noise) */
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   border-radius: 3px;
   pointer-events: none;
 }
@@ -329,12 +318,10 @@ aside.drawer[data-page='research'] .dr-body {
   padding: 0 5px;
   background: var(--metal);
   font: 600 11px/13px var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--brass);
 }
 .rp-fork.decided {
-  border-color: var(--rule);
+  border-color: var(--edge);
 }
 .rp-fork.decided .rp-fork-l {
   color: var(--faint);
@@ -351,7 +338,7 @@ aside.drawer[data-page='research'] .dr-body {
   min-width: 0;
   height: var(--rp-ch);
   padding: 0 8px;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--r);
   background: var(--metal-2);
   color: var(--text);
@@ -386,7 +373,6 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-n {
   font: 600 15px/17px var(--f-label);
-  letter-spacing: 0.02em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -428,8 +414,6 @@ aside.drawer[data-page='research'] .dr-body {
   padding: 0 5px;
   border-radius: 2px;
   font: 700 9px/12px var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--brass-ink);
   background: var(--brass-hi);
 }
@@ -535,7 +519,7 @@ aside.drawer[data-page='research'] .dr-body {
 .rp-card.locked {
   background: transparent;
   border-style: dashed;
-  border-color: var(--rule-hi);
+  border-color: var(--edge-hi);
 }
 .rp-card.locked .rp-n {
   color: var(--dim);
@@ -588,7 +572,7 @@ aside.drawer[data-page='research'] .dr-body {
   height: 92px;
   overflow: hidden;
   padding: 10px 14px;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--r);
   background: rgba(255, 255, 255, 0.025);
   font-size: 13px;
@@ -633,7 +617,6 @@ aside.drawer[data-page='research'] .dr-body {
   margin: 0;
   min-width: 0;
   font: 600 17px/20px var(--f-label);
-  letter-spacing: 0.02em;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -642,7 +625,7 @@ aside.drawer[data-page='research'] .dr-body {
 .rp-d-state {
   flex: none;
   margin-left: auto;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--dim);
   font-variant-numeric: tabular-nums;
 }
@@ -674,8 +657,6 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-d-k {
   font: 600 11px/18px var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .rp-d-v {
@@ -724,7 +705,7 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-d-note {
   margin: 0;
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 16px;
   color: var(--dim);
   text-align: center;
@@ -770,7 +751,7 @@ aside.drawer[data-page='research'] .dr-body {
   display: none;
 }
 .rp-orders-none {
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--dim);
   white-space: nowrap;
   overflow: hidden;
@@ -779,8 +760,6 @@ aside.drawer[data-page='research'] .dr-body {
 .rp-orders-l {
   flex: none;
   font: 600 11px/14px var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .rp-order {
@@ -805,7 +784,6 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-order-n {
   font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.03em;
 }
 .rp-order-bar {
   height: 4px;
@@ -828,7 +806,7 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-orders-more {
   flex: none;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--steel);
 }
 
@@ -914,7 +892,7 @@ aside.drawer[data-page='research'] .dr-body {
     padding: 12px 0 4px;
   }
   .rp-n {
-    font-size: 14.5px;
+    font-size: 15px;
     line-height: 16px;
   }
   .rp-txt {
@@ -1003,7 +981,6 @@ aside.drawer[data-page='research'] .dr-body {
   }
   .rp-auto .segc-b {
     padding: 0 4px;
-    letter-spacing: 0.04em;
   }
   .rp-chips {
     flex: none;
@@ -1019,13 +996,11 @@ aside.drawer[data-page='research'] .dr-body {
     flex: none;
     height: 34px;
     padding: 0 14px;
-    border: 1px solid var(--rule);
+    border: 1px solid var(--edge);
     border-radius: 17px;
     background: transparent;
     color: var(--dim);
     font: 600 13px/32px var(--f-label);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
     cursor: pointer;
   }
   .rp-chip.on {
@@ -1049,9 +1024,7 @@ aside.drawer[data-page='research'] .dr-body {
   .rp-tier {
     display: block;
     margin-top: 10px;
-    font: 600 11.5px/14px var(--f-label);
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
+    font: 600 12px/14px var(--f-label);
     color: var(--faint);
   }
   .rp-tier.choose {
@@ -1144,7 +1117,7 @@ aside.drawer[data-page='research'] .dr-body {
   .hud.rp-open .guide-text {
     flex: 1 1 auto;
     min-width: 0;
-    font-size: 12.5px;
+    font-size: 13px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

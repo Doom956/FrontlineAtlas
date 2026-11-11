@@ -131,8 +131,6 @@
 .sum-win text {
   fill: var(--brass);
   font: 600 11px var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 .sum-lines polyline {
   fill: none;
@@ -202,7 +200,7 @@
   z-index: 2;
   padding: 6px 9px;
   background: var(--metal-2);
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   border-radius: var(--r);
   color: var(--text);
   font-size: 12px;
@@ -222,7 +220,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0 16px;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .sum-moments li {
   display: grid;
@@ -269,7 +267,7 @@
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .sum-tbl th,
 .sum-tbl td {
@@ -311,9 +309,7 @@
 .sum-tag {
   display: block;
   margin-top: 3px;
-  font: 600 10.5px/1.2 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font: 600 11px/1.2 var(--f-label);
   color: var(--faint);
 }
 .sum-tbl th.me .sum-tag {
