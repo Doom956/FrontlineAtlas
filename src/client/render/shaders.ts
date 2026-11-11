@@ -304,7 +304,7 @@ void main() {
   vec3 flat_ = texture(uTerrCol, uv).rgb;
   if (water) {
     float d = texture(uDepth, uv).r * 25.5; // tiles to land, smooth
-    float k = smoothstep(1.0, 11.0, d);
+    float k = smoothstep(1.0, 6.0, d); // a tight shelf, not a glow around every coast
     vec3 wc = mix(uTerr[1], uTerr[0], k);
     wc += vec3(0.03, 0.04, 0.05) * (1.0 - smoothstep(0.55, 1.5, d)); // light shore band
     if (detail > 0.0) {

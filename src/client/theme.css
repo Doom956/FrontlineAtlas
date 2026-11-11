@@ -739,3 +739,24 @@ body {
 .odds.bad {
   color: #f6b0a2;
 }
+
+/* ------------------------------------------------------------------ start page: the land is the picture */
+.app.in-menu:has(.menu.at-title:not(.hidden)) canvas.map-gl {
+  filter: saturate(0.9) brightness(0.88);
+}
+.menu-card.title {
+  background: rgba(17, 19, 22, 0.9);
+  border-inline-end: 0;
+}
+.menu-play-note {
+  font-weight: 400;
+  opacity: 1;
+}
+
+/* ------------------------------------------------------------------ forces: the group order bar is a tinted band, not a box in the sheet */
+.gbar {
+  border: 0;
+  border-radius: var(--r-s);
+  background: var(--metal-2);
+  padding: 8px 10px;
+}

@@ -53,7 +53,7 @@ Measured contrast (WCAG 2.x relative luminance):
 | focus `#a497ff` against metal | 6.80 | 3 |
 | accent fill against metal (non-text) | 3.42 | 3 |
 
-Map: deep water `#16212e`, shallow `#26394c`, plains `#92a278`, forest `#647c5c`, hills `#a0987c`, mountains
+Map: deep water `#16212e`, shallow `#203142` (a tight 6-tile shelf, no glow), plains `#92a278`, forest `#647c5c`, hills `#a0987c`, mountains
 `#8a8a88`, desert `#ccc09c`, swamp `#6c7660`, tundra `#d0d6da` (`render/terrain.ts`). Water sits close to the UI
 ink so land carries the picture; terrain is desaturated so nation fills (70% over a greyed land) read as flat
 political colour. Tribes get a 42% tint and a light hairline edge, not a dark outline, so the far map does not

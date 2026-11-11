@@ -11,7 +11,7 @@ import type { RGB } from './common';
  */
 export const TERRAIN_RGB: readonly RGB[] = [
   [22, 33, 46], // deep water: slate, close to the UI ink so the land carries the picture
-  [38, 57, 76], // shallow water
+  [32, 49, 66], // shallow water
   [146, 162, 120], // plains
   [100, 124, 92], // forest
   [160, 152, 124], // hills
@@ -70,15 +70,15 @@ export function buildTerrain(map: MapData): TerrainData {
     const o = i * 4;
     if (isWater(t)) {
       const d = depth[i];
-      const k = Math.min(1, (d - 1) / 10);
+      const k = Math.min(1, (d - 1) / 5); // a tight shelf: far out a 10-tile ramp blurred into a glow round every coast
       const s = k * k * (3 - 2 * k);
       let r = shallow[0] + (deep[0] - shallow[0]) * s;
       let g = shallow[1] + (deep[1] - shallow[1]) * s;
       let b = shallow[2] + (deep[2] - shallow[2]) * s;
       if (d === 1) {
-        r += 14;
-        g += 18;
-        b += 18;
+        r += 6;
+        g += 8;
+        b += 9;
       }
       rgba[o] = r;
       rgba[o + 1] = g;
