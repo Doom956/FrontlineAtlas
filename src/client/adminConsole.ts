@@ -51,7 +51,7 @@ export interface AdminConsoleDeps {
   auth?: (code: string) => Promise<boolean>;
   toast: (text: string, kind?: 'info' | 'good' | 'bad' | 'warn') => void;
   /** online: the Games, Announce and Effects tabs (adminOnline.ts); the console fills in the UI hooks */
-  powers?: Pick<OnlinePowersDeps, 'net' | 'roomCode' | 'preview'>;
+  powers?: Pick<OnlinePowersDeps, 'net' | 'roomCode' | 'preview' | 'watchSp'>;
   /** false while another console owns the "|" key (the menu's console while a game is on screen) */
   active?: () => boolean;
 }
@@ -227,6 +227,7 @@ export class AdminConsole {
     if (deps.online && deps.powers) {
       this.powers = new OnlinePowers({
         ...deps.powers,
+        watchSp: deps.powers.watchSp ?? null,
         state: () => this.deps.state(),
         pickTile: (label, pickFn) => {
           if (!this.deps.state()) return;

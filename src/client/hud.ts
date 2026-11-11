@@ -128,6 +128,8 @@ export interface HudOptions {
   saves?: boolean;
   /** online: the room's chat (chat/store.ts); its button sits in the bottom-left corner */
   chat?: ChatStore;
+  /** owner watching a single-player game live (watch-on-demand): always in watching mode, no player controls */
+  watch?: boolean;
 }
 
 export class Hud {
@@ -497,7 +499,7 @@ export class Hud {
     // Watching: a spectator, or an online player whose nation fell while the others play on. The neutral entry
     // (id 0) stands in for "me" then: nothing is ours, every action UI is hidden.
     // a continued game (Keep watching) is watched the same way in single player
-    const watching = !own || ((!!this.hudOpts.online || !!state.continued) && !own.alive && state.phase !== 'over');
+    const watching = !!this.hudOpts.watch || !own || ((!!this.hudOpts.online || !!state.continued) && !own.alive && state.phase !== 'over');
     if (watching !== this.watching) this.setWatching(watching);
     const me = own && !watching ? own : own ?? state.players[0];
     if (!me) return;

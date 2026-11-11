@@ -4,9 +4,10 @@
 // announcements, notices and effects on, which the existing broadcast layer shows. It never touches the game.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { CloseCode, PROTOCOL_VERSION, SP_STATUS_MS } from '../src/net/protocol';
-import { HIDDEN_STOP_MS, SP_RETRY_MAX_MS, SP_RETRY_MIN_MS, SpLink, spRetryMs, spShows } from '../src/client/spLink';
-import type { SpLinkEnv, SpStatusFields } from '../src/client/spLink';
+import { CloseCode, PROTOCOL_VERSION, SP_STATUS_MS, SP_STREAM_FLUSH_MS, SP_STREAM_MAX_BYTES, SP_WATCH_BATCH } from '../src/net/protocol';
+import { HIDDEN_STOP_MS, SP_RETRY_MAX_MS, SP_RETRY_MIN_MS, SpLink, packStreamEntries, spRetryMs, spShows } from '../src/client/spLink';
+import type { SpLinkEnv, SpStatusFields, SpWatchSource } from '../src/client/spLink';
+import type { WatchLogEntry } from '../src/net/protocol';
 import { BroadcastLayer } from '../src/client/broadcast';
 
 class FakeSocket {
@@ -371,5 +372,184 @@ describe('owner console: single-player targets', () => {
     for (const m of [announceMessage(f), announceMessage({ ...f, where: 'spAll' }), prankMessage(p), prankMessage({ ...p, where: 'spAll', kind: 'ducks', seconds: null })]) {
       expect(validateClientMessage(m).ok).toBe(true);
     }
+  });
+});
+
+describe('single-player link: watch-on-demand streaming (protocol 20)', () => {
+  const LOG: WatchLogEntry[] = [[0, { type: 'spawn', tile: 1 } as never], [2, { type: 'spawn', tile: 2 } as never]];
+  function watched(w: World, tickVal = { t: 5 }) {
+    const link = new SpLink(URL, () => STATUS, () => {}, w.env);
+    const source: SpWatchSource = {
+      snapshot: () => ({ settings: { seed: 1 } as never, log: LOG.slice() }),
+      tick: () => tickVal.t,
+    };
+    link.setWatchSource(source);
+    link.start();
+    const s = w.sockets[0];
+    s.open();
+    s.recv({ type: 'spWelcome', protocol: PROTOCOL_VERSION, spId: 1 });
+    return { link, s };
+  }
+
+  it('streams nothing until a watcher attaches, then sends the setup and the backlog', () => {
+    const w = world();
+    const { link, s } = watched(w);
+    expect(link.watching).toBe(false);
+    // only spHello + spStatus so far, never spSetup/spLog
+    expect(new Set(s.sent.map((m) => m.type))).toEqual(new Set(['spHello', 'spStatus']));
+    s.recv({ type: 'spWatch', on: true });
+    expect(link.watching).toBe(true);
+    const setup = s.sent.find((m) => m.type === 'spSetup');
+    expect(setup).toEqual({ type: 'spSetup', settings: { seed: 1 } });
+    const base = s.sent.find((m) => m.type === 'spLog');
+    expect(base).toEqual({ type: 'spLog', entries: LOG, tick: 5, base: true, final: true });
+  });
+
+  it('streams live orders and idle ticks while watched, and stops when detached', () => {
+    const w = world();
+    const tick = { t: 5 };
+    const { link, s } = watched(w, tick);
+    s.recv({ type: 'spWatch', on: true });
+    const before = s.sent.length;
+    // a new order comes in; it flushes with the current tick on the next interval
+    tick.t = 8;
+    link.pushEntries([[6, { type: 'spawn', tile: 3 } as never]]);
+    vi.advanceTimersByTime(SP_STREAM_FLUSH_MS + 5);
+    const live = s.sent.slice(before).filter((m) => m.type === 'spLog');
+    expect(live.at(-1)).toEqual({ type: 'spLog', entries: [[6, { type: 'spawn', tile: 3 }]], tick: 8 });
+    // an idle tick with no orders still advances the watcher
+    tick.t = 12;
+    const n2 = s.sent.length;
+    vi.advanceTimersByTime(SP_STREAM_FLUSH_MS + 5);
+    expect(s.sent.slice(n2).filter((m) => m.type === 'spLog').at(-1)).toEqual({ type: 'spLog', entries: [], tick: 12 });
+    // the owner detaches: streaming stops and new orders are not sent
+    s.recv({ type: 'spWatch', on: false });
+    expect(link.watching).toBe(false);
+    const n3 = s.sent.length;
+    tick.t = 20;
+    link.pushEntries([[15, { type: 'spawn', tile: 4 } as never]]);
+    vi.advanceTimersByTime(SP_STREAM_FLUSH_MS * 2);
+    expect(s.sent.slice(n3).some((m) => m.type === 'spLog')).toBe(false);
+  });
+
+  it('stop() ends streaming and leaves no timer behind', () => {
+    const w = world();
+    const { link, s } = watched(w);
+    s.recv({ type: 'spWatch', on: true });
+    expect(link.watching).toBe(true);
+    link.stop();
+    expect(link.watching).toBe(false);
+    expect(s.closed).toBe(1000);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  // ---- fixes for the streaming caps and the backlog tick (review findings)
+
+  const spawn = (tile: number): WatchLogEntry => [tile, { type: 'spawn', tile } as never];
+  /** A fat order (an upgrade over many tiles) so a few of them pass the entry-count cap but not the byte cap. */
+  const fat = (tick: number): WatchLogEntry => [tick, { type: 'upgradeBuildings', tiles: Array.from({ length: 180 }, (_, i) => i), levels: 1 } as never];
+  const frameBytes = (m: Record<string, unknown>): number => JSON.stringify(m).length;
+
+  function watchedWith(w: World, log: WatchLogEntry[], tickVal: { t: number }) {
+    const link = new SpLink(URL, () => STATUS, () => {}, w.env);
+    const source: SpWatchSource = { snapshot: () => ({ settings: { seed: 1 } as never, log: log.slice() }), tick: () => tickVal.t };
+    link.setWatchSource(source);
+    link.start();
+    const s = w.sockets[0];
+    s.open();
+    s.recv({ type: 'spWelcome', protocol: PROTOCOL_VERSION, spId: 1 });
+    s.recv({ type: 'spWatch', on: true });
+    return { link, s };
+  }
+  /** Keeps flushing until the whole backlog and queue are sent (or a cap on flushes). */
+  function drain(s: FakeSocket): void {
+    for (let i = 0; i < 50; i++) vi.advanceTimersByTime(SP_STREAM_FLUSH_MS + 1);
+    void s;
+  }
+  const spLogs = (s: FakeSocket) => s.sent.filter((m) => m.type === 'spLog') as { type: 'spLog'; entries: WatchLogEntry[]; tick: number; base?: boolean; final?: boolean }[];
+
+  it('packStreamEntries keeps every frame within both server caps (count and bytes), losing nothing', () => {
+    // small orders: cut by the count cap only
+    const small = Array.from({ length: 130 }, (_, i) => spawn(i));
+    const chunksS = packStreamEntries(small);
+    expect(chunksS.every((c) => c.length <= SP_WATCH_BATCH)).toBe(true);
+    expect(chunksS.flat()).toEqual(small); // nothing dropped or reordered
+    expect(chunksS.length).toBe(Math.ceil(130 / SP_WATCH_BATCH));
+    // fat orders: the byte cap splits them well before 48 would
+    const big = Array.from({ length: 40 }, (_, i) => fat(i));
+    const chunksB = packStreamEntries(big);
+    expect(chunksB.length).toBeGreaterThan(1); // byte cap forced a split although 40 < SP_WATCH_BATCH
+    expect(chunksB.every((c) => c.length >= 1 && frameBytes({ type: 'spLog', entries: c, tick: 0, base: true, final: true }) <= SP_STREAM_MAX_BYTES)).toBe(true);
+    expect(chunksB.flat()).toEqual(big);
+  });
+
+  it('streams the backlog in capped chunks, each tagged with its own last tick and only the last marked final', () => {
+    const w = world();
+    const log = Array.from({ length: 120 }, (_, i) => spawn(i)); // ticks 0..119 -> 3 chunks of 48/48/24
+    const { s } = watchedWith(w, log, { t: 500 });
+    drain(s);
+    const logs = spLogs(s);
+    expect(logs.length).toBe(3);
+    expect(logs.map((m) => m.entries.length)).toEqual([48, 48, 24]);
+    // each non-final chunk carries its own last order's tick (so the watcher catches up order by order, not all at once)
+    expect(logs[0].tick).toBe(47);
+    expect(logs[1].tick).toBe(95);
+    expect(logs[2].tick).toBe(500); // the final chunk carries the game's real current tick (idle tail included)
+    expect(logs.map((m) => m.base)).toEqual([true, true, true]);
+    expect(logs.map((m) => m.final === true)).toEqual([false, false, true]);
+    expect(logs.flatMap((m) => m.entries)).toEqual(log); // the whole history reached the watcher
+    expect(logs.every((m) => m.entries.length <= SP_WATCH_BATCH && frameBytes(m) <= SP_STREAM_MAX_BYTES)).toBe(true);
+  });
+
+  it('paces the backlog at STREAM_CHUNKS_PER_FLUSH frames per flush', () => {
+    const w = world();
+    const log = Array.from({ length: 48 * 13 }, (_, i) => spawn(i)); // 13 chunks
+    const { s } = watchedWith(w, log, { t: 9999 });
+    // the immediate flush sends at most 10 frames
+    expect(spLogs(s).length).toBeLessThanOrEqual(10);
+    expect(spLogs(s).length).toBe(10);
+    drain(s);
+    const logs = spLogs(s);
+    expect(logs.length).toBe(13);
+    expect(logs.at(-1)!.final).toBe(true);
+    expect(logs.at(-1)!.tick).toBe(9999);
+    expect(logs.flatMap((m) => m.entries)).toEqual(log);
+  });
+
+  it('chunks a big batch of live orders instead of one unbounded frame, and never exceeds a cap', () => {
+    const w = world();
+    const tick = { t: 5 };
+    const { link, s } = watchedWith(w, [], tick); // empty history: one base frame, then live
+    const before = spLogs(s).length;
+    const live = Array.from({ length: 110 }, (_, i) => spawn(1000 + i));
+    tick.t = 1200;
+    link.pushEntries(live);
+    drain(s);
+    const liveLogs = spLogs(s).slice(before).filter((m) => !m.base);
+    expect(liveLogs.length).toBeGreaterThan(1); // not one giant frame
+    expect(liveLogs.every((m) => m.entries.length <= SP_WATCH_BATCH && frameBytes(m) <= SP_STREAM_MAX_BYTES)).toBe(true);
+    expect(liveLogs.flatMap((m) => m.entries)).toEqual(live); // every live order delivered, none lost
+  });
+
+  it('does not lose live orders queued while the backlog is still draining', () => {
+    const w = world();
+    const tick = { t: 0 };
+    const log = Array.from({ length: 48 * 12 }, (_, i) => spawn(i)); // 12 chunks -> more than one flush
+    tick.t = 600;
+    const { link, s } = watchedWith(w, log, tick);
+    // the player keeps ordering while the history streams
+    const live = Array.from({ length: 30 }, (_, i) => spawn(700 + i));
+    tick.t = 800;
+    link.pushEntries(live);
+    drain(s);
+    const logs = spLogs(s);
+    // the backlog's final frame comes before any live frame, and all live orders arrive
+    const finalIdx = logs.findIndex((m) => m.final === true);
+    expect(finalIdx).toBeGreaterThanOrEqual(0);
+    const backlog = logs.slice(0, finalIdx + 1).flatMap((m) => m.entries);
+    const after = logs.slice(finalIdx + 1).flatMap((m) => m.entries);
+    expect(backlog).toEqual(log);
+    expect(after).toEqual(live);
+    expect(logs.every((m) => m.entries.length <= SP_WATCH_BATCH && frameBytes(m) <= SP_STREAM_MAX_BYTES)).toBe(true);
   });
 });

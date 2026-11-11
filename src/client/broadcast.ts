@@ -174,6 +174,7 @@ export class BroadcastLayer {
   private countTimer: ReturnType<typeof setTimeout> | null = null;
   private pranks = new Map<PrankKind, Prank>();
   private fogEl: HTMLElement;
+  private jumpEl: HTMLElement;
   /** the layers the last warp was written to (cleared when it ends) */
   private warped: HTMLElement[] = [];
   private particles: Particle[] = [];
@@ -217,8 +218,22 @@ export class BroadcastLayer {
     this.fogEl = el('div', 'bc-fog hidden');
     this.fogEl.setAttribute('aria-hidden', 'true');
     this.fogEl.dataset.test = 'bc-fog';
-    this.el.append(this.canvas, this.fogEl, this.stack, this.look);
+    this.jumpEl = this.buildJump();
+    this.el.append(this.canvas, this.fogEl, this.jumpEl, this.stack, this.look);
     root.append(this.el);
+  }
+
+  /** The jumpscare overlay: a full-screen flash with a scary face, drawn with plain elements (no bundled assets). */
+  private buildJump(): HTMLElement {
+    const wrap = el('div', 'bc-jump hidden');
+    wrap.setAttribute('aria-hidden', 'true');
+    wrap.dataset.test = 'bc-jump';
+    const face = el('div', 'bc-jump-face');
+    const eyes = el('div', 'bc-jump-eyes');
+    eyes.append(el('div', 'bc-jump-eye'), el('div', 'bc-jump-eye'));
+    face.append(eyes, el('div', 'bc-jump-mouth'));
+    wrap.append(face);
+    return wrap;
   }
 
   /** The map on screen now (main.ts sets it per game; null in the menu). */
@@ -618,8 +633,8 @@ export class BroadcastLayer {
     const ms = prankMs(kind, msg.seconds);
     const now = performance.now();
     const calm = reducedMotion();
-    // the map pranks need a map; the cloud also covers the menu
-    if (kind !== 'fogPuff' && !v) return false;
+    // the map pranks need a map; the cloud and the jumpscare also cover the menu
+    if (kind !== 'fogPuff' && kind !== 'jumpscare' && !v) return false;
     if (calm && (kind === 'flip' || kind === 'earthquake' || kind === 'chase')) return false;
     const old = this.pranks.get(kind);
     if (old) clearTimeout(old.timer);
@@ -672,6 +687,18 @@ export class BroadcastLayer {
         f.classList.add('on');
         break;
       }
+      case 'jumpscare': {
+        // a sudden full-screen scare: a scary face and a flash, with a sound sting. Reduced motion gets a mild,
+        // silent variant (a brief dim with a small still face, no harsh flash or sound).
+        const j = this.jumpEl;
+        j.classList.remove('on', 'calm');
+        void j.offsetWidth; // restart the animation
+        j.style.animationDuration = `${ms}ms`;
+        j.classList.remove('hidden');
+        j.classList.add(calm ? 'calm' : 'on');
+        if (!calm) this.playSting(ms);
+        break;
+      }
       case 'chase': {
         const cam = v?.camera;
         const u = v?.ownUnit?.() ?? null;
@@ -716,6 +743,10 @@ export class BroadcastLayer {
       case 'fogPuff':
         this.fogEl.classList.remove('on');
         this.fogEl.classList.add('hidden');
+        break;
+      case 'jumpscare':
+        this.jumpEl.classList.remove('on', 'calm');
+        this.jumpEl.classList.add('hidden');
         break;
       case 'chase': {
         // still gliding or following (its time ran out before the glide back): go back now
@@ -818,5 +849,53 @@ export class BroadcastLayer {
   private letGo(p: Prank): void {
     clearTimeout(p.timer);
     this.pranks.delete('chase');
+  }
+
+  // ---------------------------------------------------------------------------------------------- jumpscare sound
+
+  private jumpAudio: AudioContext | null = null;
+  /**
+   * A short dissonant sting for the jumpscare, made in the browser (no bundled audio). Best-effort: a context that
+   * cannot start (no WebAudio, or a page with no gesture yet) just stays quiet, and the scare still shows.
+   */
+  private playSting(ms: number): void {
+    try {
+      const AC = (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AC) return;
+      this.jumpAudio ??= new AC();
+      const ctx = this.jumpAudio;
+      if (ctx.state === 'suspended') void ctx.resume();
+      const now = ctx.currentTime;
+      const dur = Math.min(0.9, Math.max(0.3, ms / 1000));
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.55, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+      gain.connect(ctx.destination);
+      // a few detuned saws falling an octave: a screech
+      for (const f of [180, 186, 372]) {
+        const o = ctx.createOscillator();
+        o.type = 'sawtooth';
+        o.frequency.setValueAtTime(f * 2, now);
+        o.frequency.exponentialRampToValueAtTime(f, now + dur);
+        o.connect(gain);
+        o.start(now);
+        o.stop(now + dur);
+      }
+      // a short noise burst for the hit
+      const len = Math.max(1, Math.floor(ctx.sampleRate * 0.15));
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+      const noise = ctx.createBufferSource();
+      noise.buffer = buf;
+      const ng = ctx.createGain();
+      ng.gain.setValueAtTime(0.4, now);
+      noise.connect(ng);
+      ng.connect(ctx.destination);
+      noise.start(now);
+    } catch {
+      /* no audio: the scare is visual only */
+    }
   }
 }

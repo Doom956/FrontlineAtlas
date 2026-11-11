@@ -5301,6 +5301,119 @@ strong {
     opacity: 0.92;
   }
 }
+/* jumpscare: a sudden full-screen scare with a scary face; .calm (reduced motion) is a mild, silent dim */
+.bc-jump {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #050507;
+  overflow: hidden;
+}
+.bc-jump.on {
+  animation-name: bc-jump-flash;
+  animation-timing-function: steps(1, end);
+  animation-fill-mode: forwards;
+}
+.bc-jump.on .bc-jump-face {
+  animation: bc-jump-face 180ms ease-out 1 both;
+  transform: scale(1.35);
+}
+.bc-jump.calm {
+  opacity: 0.55;
+  background: #0a0a0c;
+}
+.bc-jump.calm .bc-jump-face {
+  transform: scale(0.55);
+  opacity: 0.85;
+}
+.bc-jump-face {
+  position: relative;
+  width: min(52vh, 52vw);
+  height: min(62vh, 62vw);
+  border-radius: 48% 48% 46% 46% / 54% 54% 46% 46%;
+  background: radial-gradient(60% 60% at 50% 40%, #d8cfc2, #8f8577 72%, #5c5349);
+  box-shadow: 0 0 60px rgba(0, 0, 0, 0.8) inset;
+}
+.bc-jump-eyes {
+  position: absolute;
+  top: 34%;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 16%;
+}
+.bc-jump-eye {
+  width: 14%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, #c81e1e 0 34%, #150404 36%, #000 70%);
+  box-shadow: 0 0 18px rgba(200, 30, 30, 0.9);
+}
+.bc-jump-mouth {
+  position: absolute;
+  bottom: 12%;
+  left: 50%;
+  width: 46%;
+  height: 26%;
+  transform: translateX(-50%);
+  border-radius: 46% 46% 50% 50%;
+  background: radial-gradient(70% 90% at 50% 10%, #3a0b0b, #120202 70%, #000);
+  box-shadow: 0 0 22px rgba(120, 10, 10, 0.8) inset;
+}
+@keyframes bc-jump-flash {
+  0% {
+    opacity: 1;
+    background: #ece7df;
+  }
+  8% {
+    opacity: 1;
+    background: #120003;
+  }
+  16% {
+    opacity: 1;
+    background: #7a0a10;
+  }
+  24% {
+    opacity: 1;
+    background: #050507;
+  }
+  90% {
+    opacity: 1;
+    background: #050507;
+  }
+  100% {
+    opacity: 0;
+    background: #050507;
+  }
+}
+@keyframes bc-jump-face {
+  0% {
+    transform: scale(0.6);
+  }
+  60% {
+    transform: scale(1.45);
+  }
+  100% {
+    transform: scale(1.35);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* belt and braces: never flash or lunge for reduced motion, even if .on slipped through */
+  .bc-jump.on {
+    animation: none;
+    opacity: 0.55;
+    background: #0a0a0c;
+  }
+  .bc-jump.on .bc-jump-face {
+    animation: none;
+    transform: scale(0.6);
+  }
+}
 /* "Look here": a chip above the pinged tile; at the screen edge it is the way there */
 .bc-look {
   position: absolute;

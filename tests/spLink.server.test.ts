@@ -4,11 +4,16 @@
 // screen), never from anyone else, and is forgotten when it closes. The code here is made up for the tests.
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import { CloseCode, PROTOCOL_VERSION, SP_MESSAGE_MAX_BYTES, makeClientId } from '../src/net/protocol';
+import { CloseCode, PROTOCOL_VERSION, SP_MESSAGE_MAX_BYTES, SP_STREAM_MAX_BYTES, makeClientId } from '../src/net/protocol';
 import type { ServerMessage } from '../src/net/protocol';
+import type { GameSettings } from '../src/sim/types';
 import { startServer } from '../server/server';
 import type { RunningServer } from '../server/server';
 import { validateClientMessage } from '../server/validate';
+import { cloneSetup, DEFAULT_SETUP } from '../src/sim/setup';
+
+/** A valid single-player game setup for spSetup (watch-on-demand). */
+const SETTINGS: GameSettings = { ...cloneSetup(DEFAULT_SETUP), seed: 12345, playerName: 'Aurora', playerColor: [10, 20, 30], humanPlayer: true };
 
 const TEST_CODE = 'made-up-sp-test-code';
 type Msg<T extends ServerMessage['type']> = Extract<ServerMessage, { type: T }>;
@@ -104,8 +109,8 @@ async function list(o: Client): Promise<Msg<'adminRooms'>> {
 }
 
 describe('single-player link: messages', () => {
-  it('protocol 19 has the link', () => {
-    expect(PROTOCOL_VERSION).toBe(19);
+  it('protocol 20 has the link', () => {
+    expect(PROTOCOL_VERSION).toBe(20);
   });
 
   it('validates spHello and spStatus and rebuilds them without extra fields', () => {
@@ -352,5 +357,126 @@ describe('single-player link: owner messages', () => {
     for (let i = 0; i < 2; i++) acks.push(await o.take('adminAck'));
     await o.take('error', (m) => m.code === 'rateLimit');
     expect(acks.every((a) => a.ok)).toBe(true);
+  });
+});
+
+describe('single-player link: watch-on-demand (protocol 20)', () => {
+  it('validates adminWatch, spSetup and spLog and rebuilds them without extra fields', () => {
+    expect(validateClientMessage({ type: 'adminWatch', spId: 4, on: true })).toEqual({ ok: true, value: { type: 'adminWatch', spId: 4, on: true } });
+    expect(validateClientMessage({ type: 'adminWatch', spId: 4, on: false, junk: 1 })).toEqual({ ok: true, value: { type: 'adminWatch', spId: 4, on: false } });
+    expect(validateClientMessage({ type: 'spSetup', settings: SETTINGS }).ok).toBe(true);
+    expect(validateClientMessage({ type: 'spLog', entries: [[0, { type: 'spawn', tile: 5 }]], tick: 3, base: true, final: true, junk: 1 })).toEqual({
+      ok: true,
+      value: { type: 'spLog', entries: [[0, { type: 'spawn', tile: 5 }]], tick: 3, base: true, final: true },
+    });
+    expect(validateClientMessage({ type: 'spLog', entries: [], tick: 9 })).toEqual({ ok: true, value: { type: 'spLog', entries: [], tick: 9 } });
+    for (const bad of [
+      { type: 'adminWatch', spId: 0, on: true },
+      { type: 'adminWatch', spId: 4 },
+      { type: 'adminWatch', spId: 4, on: 'yes' },
+      { type: 'spSetup' },
+      { type: 'spSetup', settings: { ...SETTINGS, humans: [] } },
+      { type: 'spSetup', settings: { ...SETTINGS, seed: -1 } },
+      { type: 'spSetup', settings: { ...SETTINGS, difficulty: 'nope' } },
+      { type: 'spLog', entries: [[0, { type: 'notAnAction' }]], tick: 3 },
+      { type: 'spLog', entries: [[-1, { type: 'spawn', tile: 5 }]], tick: 3 },
+      { type: 'spLog', tick: 3 },
+      { type: 'spLog', entries: [], tick: -1 },
+    ]) {
+      expect(validateClientMessage(bad).ok, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it('relays the setup and log from a watched game to the owner, and nothing to anyone else', async () => {
+    const s = await server();
+    const o = await owner(s);
+    const g = await spGame(s, 'Aurora');
+    const other = await owner(s); // a second owner who is not watching
+    o.send({ type: 'adminWatch', spId: g.spId, on: true });
+    expect(await g.c.take('spWatch')).toEqual({ type: 'spWatch', on: true });
+    // the game answers with its setup and a backlog chunk, then a live order
+    g.c.send({ type: 'spSetup', settings: SETTINGS });
+    g.c.send({ type: 'spLog', entries: [[0, { type: 'spawn', tile: 5 }]], tick: 2, base: true, final: true });
+    g.c.send({ type: 'spLog', entries: [[3, { type: 'build', building: 'city', tile: 9 }]], tick: 4 });
+    const setup = await o.take('watchSetup');
+    expect(setup).toMatchObject({ spId: g.spId, settings: { seed: 12345, playerName: 'Aurora' } });
+    expect(await o.take('watchLog', (m) => m.final === true)).toMatchObject({ spId: g.spId, entries: [[0, { type: 'spawn', tile: 5 }]], tick: 2, base: true });
+    expect(await o.take('watchLog', (m) => !m.base)).toMatchObject({ spId: g.spId, entries: [[3, { type: 'build', building: 'city', tile: 9 }]], tick: 4 });
+    await sleep(40);
+    // the second owner, who never watched, got none of it
+    expect(other.has('watchSetup')).toBe(false);
+    expect(other.has('watchLog')).toBe(false);
+  });
+
+  it('allows a larger frame while watched and still validates it', async () => {
+    const s = await server();
+    const o = await owner(s);
+    const g = await spGame(s);
+    o.send({ type: 'adminWatch', spId: g.spId, on: true });
+    await g.c.take('spWatch');
+    // a big backlog chunk (well over the control-frame limit, under the stream limit)
+    const entries = Array.from({ length: 120 }, (_, i): [number, unknown] => [i, { type: 'spawn', tile: i }]);
+    const frame = JSON.stringify({ type: 'spLog', entries, tick: 130, base: true, final: true });
+    expect(frame.length).toBeGreaterThan(SP_MESSAGE_MAX_BYTES);
+    expect(frame.length).toBeLessThan(SP_STREAM_MAX_BYTES);
+    g.c.send(frame);
+    expect((await o.take('watchLog')).entries.length).toBe(120);
+    expect(g.c.has('error')).toBe(false);
+  });
+
+  it('tells the owner when the watched game disconnects', async () => {
+    const s = await server();
+    const o = await owner(s);
+    const g = await spGame(s);
+    o.send({ type: 'adminWatch', spId: g.spId, on: true });
+    await g.c.take('spWatch');
+    g.c.close();
+    expect(await o.take('watchEnd')).toMatchObject({ spId: g.spId });
+  });
+
+  it('tells the game to stop when the owner stops or disconnects', async () => {
+    const s = await server();
+    const o = await owner(s);
+    const g = await spGame(s);
+    o.send({ type: 'adminWatch', spId: g.spId, on: true });
+    expect((await g.c.take('spWatch')).on).toBe(true);
+    o.send({ type: 'adminWatch', spId: g.spId, on: false });
+    expect((await g.c.take('spWatch')).on).toBe(false);
+    // watching again, then the owner drops: the game is told to stop
+    o.send({ type: 'adminWatch', spId: g.spId, on: true });
+    await g.c.take('spWatch', (m) => m.on === true);
+    o.close();
+    expect((await g.c.take('spWatch', (m) => m.on === false)).on).toBe(false);
+  });
+
+  it('reports a game that is not connected, and refuses adminWatch from anyone but the owner', async () => {
+    const s = await server();
+    const o = await owner(s);
+    o.send({ type: 'adminWatch', spId: 999, on: true });
+    expect(await o.take('watchEnd')).toMatchObject({ spId: 999 });
+    const g = await spGame(s);
+    const p = await player(s, 'Mallory');
+    p.send({ type: 'adminWatch', spId: g.spId, on: true });
+    await p.take('error', (m) => m.code === 'notAllowed');
+    await sleep(40);
+    expect(g.c.has('spWatch')).toBe(false);
+  });
+
+  it('moves one watcher to the newest game and only one watcher is kept per game', async () => {
+    const s = await server();
+    const o = await owner(s);
+    const a = await spGame(s, 'Aurora');
+    const b = await spGame(s, 'Borealis');
+    o.send({ type: 'adminWatch', spId: a.spId, on: true });
+    await a.c.take('spWatch', (m) => m.on === true);
+    // the same owner watches another game: the first is told to stop
+    o.send({ type: 'adminWatch', spId: b.spId, on: true });
+    await b.c.take('spWatch', (m) => m.on === true);
+    expect((await a.c.take('spWatch', (m) => m.on === false)).on).toBe(false);
+    // a second owner takes over game b: the first owner is told watching ended
+    const o2 = await owner(s);
+    o2.send({ type: 'adminWatch', spId: b.spId, on: true });
+    await b.c.take('spWatch', (m) => m.on === true);
+    expect(await o.take('watchEnd')).toMatchObject({ spId: b.spId });
   });
 });

@@ -12,7 +12,7 @@ describe('real-time clock (single player)', () => {
   });
 
   it('game time still advances with ticks (the online clock and the loaded-save seed use it)', () => {
-    const s = makeFlatGame();
+    const s = makeFlatGame(40, 30, 2, { human: true });
     s.phase = 'playing';
     s.playStartTick = s.tick;
     const before = gameSeconds(s);

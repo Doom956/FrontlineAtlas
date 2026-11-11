@@ -30,6 +30,8 @@ import { BroadcastLayer } from './broadcast';
 import type { BroadcastView } from './broadcast';
 import { SpLink } from './spLink';
 import type { SpStatusFields } from './spLink';
+import { WatchGame } from './watch';
+import type { WatchLogEntry } from '../net/protocol';
 import { chatFor } from './chat/store';
 import type { Dispatch, UiState } from './uiState';
 import { setupTutorial, tutorialMap, tutorialSettings } from '../sim/tutorialScenario';
@@ -71,6 +73,8 @@ interface Session {
   /** online game: the lockstep runner (turns from the server, intents out) */
   mp: MpGame | null;
   mpStatus: MpStatus | null;
+  /** owner watching a single-player game live (watch-on-demand): the rebuilt game, advanced from the stream */
+  watch?: WatchGame;
   /** online: ui.paused as the frame left it (a change since then is the host's pause click or Space) */
   mpPauseShown?: boolean;
   /** a tutorial chapter's game (single player only): its steps and overlay */
@@ -111,6 +115,8 @@ let session: Session | null = null;
 
 const dispatch: Dispatch = (action: Action): ActionResult => {
   const s = session;
+  // watching a single-player game is read-only: the owner can never change it (watch-on-demand is one-way)
+  if (s?.watch) return { ok: false, reason: 'You are watching this game' };
   const watchingOwner = !!s?.mp?.spectator && action.type === 'admin'; // the console while watching (the server checks)
   if (!s || !s.human || (!s.state.humanId && !watchingOwner)) return { ok: false, reason: s?.mp?.spectator ? 'You are watching this game' : 'No game running' };
   let r: ActionResult;
@@ -120,6 +126,8 @@ const dispatch: Dispatch = (action: Action): ActionResult => {
     else {
       // single player: noted for the save first (a replay applies it at this same tick)
       s.recorder?.record(s.state.tick, action);
+      // and streamed to the owner if they are watching this game (watch-on-demand; a no-op otherwise)
+      if (!s.tutorial) spLink.pushEntries([[s.state.tick, action] as WatchLogEntry]);
       r = applyAction(s.state, s.state.humanId, action);
     }
   } catch (err) {
@@ -144,12 +152,17 @@ let net: NetClient | null = null;
 let currentMp: MpGame | null = null;
 /** The online lobby this client is in (before a game starts), '' = none. */
 let lobbyCodeNow = '';
+/** The single-player game the owner is watching now (watch-on-demand), null = none. */
+let watchCtl: { spId: number; nation: string; game: WatchGame | null; noSetup: ReturnType<typeof setTimeout> | null; live: boolean } | null = null;
+/** No watchSetup this long after adminWatch: the game can't be watched (an old client, or it went away). */
+const WATCH_SETUP_TIMEOUT_MS = 12_000;
 
 /** What the owner console's online tabs need (adminOnline.ts). */
 const adminPowers: NonNullable<AdminConsoleDeps['powers']> = {
   net: () => getNet(),
   roomCode: () => (currentMp && !currentMp.serverOver ? currentMp.code : lobbyCodeNow || null),
   preview: (m) => broadcast.announce(m),
+  watchSp: (spId, nation) => startWatch(spId, nation),
 };
 
 /** Online login from anywhere: connects first (a sleeping free server takes a while to wake). */
@@ -179,6 +192,16 @@ function getNet(): NetClient {
 }
 
 function onNetMessage(msg: ServerMessage): void {
+  // owner watching a single-player game (watch-on-demand): the setup to rebuild from, the live log, and the end
+  if (msg.type === 'watchSetup') return void onWatchSetup(msg);
+  if (msg.type === 'watchLog') {
+    if (watchCtl && watchCtl.spId === msg.spId) watchCtl.game?.add(msg.entries, msg.tick, msg.base === true, msg.final === true);
+    return;
+  }
+  if (msg.type === 'watchEnd') {
+    if (watchCtl && watchCtl.spId === msg.spId) leaveWatch(msg.reason || 'Watching ended', false);
+    return;
+  }
   // a single-player game on screen gets its broadcasts through its own link (spLink): not twice
   if (!(spLink.online && session?.human && !session.mp)) broadcast.handle(msg);
   if (msg.type === 'lobbyState') lobbyCodeNow = msg.code;
@@ -358,6 +381,19 @@ const spLink = new SpLink(defaultServerUrl(), spStatusNow, (msg) => {
   const s = session;
   if (s && s.human && !s.mp) broadcast.handle(msg);
 });
+// Watch-on-demand (protocol 20): while the owner has a watcher attached, the link streams this single-player game's
+// setup and order log (one-way). The source reads plain recorded data from the save recorder, never the sim.
+spLink.setWatchSource({
+  snapshot: () => {
+    const s = session;
+    if (!s || !s.human || s.mp || s.tutorial || !s.recorder) return null;
+    return { settings: s.recorder.settings, log: s.recorder.log.slice() };
+  },
+  tick: () => {
+    const s = session;
+    return s && s.human && !s.mp && !s.tutorial ? s.state.tick : 0;
+  },
+});
 
 /** Leaves the online game (the seat stays on the server until it ends) and goes to the menu or the lobby list. */
 function leaveOnline(toMultiplayer: boolean): void {
@@ -366,6 +402,106 @@ function leaveOnline(toMultiplayer: boolean): void {
   currentMp = null;
   toMenu();
   if (toMultiplayer) menu.show('multiplayer');
+}
+
+// ------------------------------------------------------------------------------------------------ watch a single-player game
+
+/**
+ * Owner clicks Watch on a single-player game (adminOnline.ts): ask the server to stream it (adminWatch), leave whatever
+ * is on screen and wait for its setup. The owner only ever reads the stream; it cannot change the watched game.
+ */
+function startWatch(spId: number, nation: string): void {
+  const n = getNet();
+  n.connect();
+  leaveWatch(undefined, true); // end any game we were watching first
+  endSession();
+  rememberActiveLobby(null);
+  currentMp = null;
+  lobbyCodeNow = '';
+  menuConsole.hide();
+  app.classList.add('in-menu');
+  menu.setBusy(`Connecting to ${nation || 'the'} game…`);
+  watchCtl = { spId, nation, game: null, live: false, noSetup: setTimeout(() => leaveWatch("This game can't be watched (it may be an older version).", true), WATCH_SETUP_TIMEOUT_MS) };
+  n.send({ type: 'adminWatch', spId, on: true });
+}
+
+/** The watched game's setup arrived: rebuild it (the map may load) and show it, then follow the stream live. */
+async function onWatchSetup(msg: Extract<ServerMessage, { type: 'watchSetup' }>): Promise<void> {
+  if (!watchCtl || watchCtl.spId !== msg.spId || watchCtl.game) return;
+  const game = new WatchGame(msg.settings);
+  watchCtl.game = game;
+  if (watchCtl.noSetup) clearTimeout(watchCtl.noSetup);
+  watchCtl.noSetup = null;
+  menu.setBusy(`Rebuilding ${watchCtl.nation || 'the'} game…`);
+  await game.loading;
+  if (!watchCtl || watchCtl.game !== game) return; // cancelled meanwhile
+  if (!game.state) {
+    leaveWatch(game.loadError ?? "This game can't be watched.", true);
+    return;
+  }
+  beginWatchSession(game, watchCtl.nation);
+}
+
+/** Shows the rebuilt game with a read-only (watching) HUD; the frame loop advances it from the stream. */
+function beginWatchSession(game: WatchGame, nation: string): void {
+  endSession();
+  const state = game.state!;
+  const camera = newCamera(state);
+  const ui = defaultUiState();
+  const hud = new Hud(app, ui, dispatch, camera, audio, {
+    online: true,
+    watch: true,
+    againLabel: 'Stop watching',
+    adminAuth: (code) => requestAdminAuth(getNet(), code),
+    adminPowers,
+  });
+  hud.setUnitProbe(renderer);
+  hud.onMenu = () => stopWatch();
+  hud.onPlayAgain = () => stopWatch();
+  const cleanupInput = setupInput({
+    canvas,
+    minimap,
+    camera,
+    renderer,
+    ui,
+    getState: () => (session && session.human ? session.state : null),
+    dispatch,
+    openResearch: () => hud.openResearch(),
+    toggleHelp: () => hud.toggleHelp(),
+    closeOverlay: () => hud.closeOverlay(),
+    toggleDrawer: (id) => hud.toggleDrawer(id),
+    strike: (id) => hud.strike(id),
+    confirm: (text, label, run) => hud.confirm(text, label, run),
+  });
+  session = { state, camera, ui, hud, cleanupInput, human: true, settings: game.settings, mp: null, mpStatus: null, watch: game };
+  menuConsole.hide();
+  const view = broadcastView(state, camera, ''); // '' = single player (no tile effects aimed at the owner)
+  const own = session;
+  broadcast.setView(() => (session === own ? view : null));
+  menu.hide();
+  app.classList.remove('in-menu');
+  // the frame loop updates this: "Catching up… NN%" while the rebuild fast-forwards, then "Watching <nation>" once live
+  const live = game.caughtUp;
+  if (watchCtl) watchCtl.live = live;
+  session.ui.toast = live
+    ? { text: `Watching ${nation || 'a single-player game'}`, until: performance.now() + TOAST_MS }
+    : { text: `Catching up… ${Math.round(game.progress * 100)}%`, until: performance.now() + TOAST_MS };
+}
+
+/** Stop watching (the owner's button): tell the server and go back to the menu. */
+function stopWatch(): void {
+  leaveWatch('Stopped watching', true);
+}
+
+/** Ends watching: clears the state, optionally tells the server, and returns to the menu with a plain note. */
+function leaveWatch(note: string | undefined, tellServer: boolean): void {
+  const ctl = watchCtl;
+  if (!ctl) return;
+  watchCtl = null;
+  if (ctl.noSetup) clearTimeout(ctl.noSetup);
+  if (tellServer) net?.send({ type: 'adminWatch', spId: ctl.spId, on: false });
+  toMenu();
+  if (note) broadcast.notice(note, 'info');
 }
 
 /** Code of the private lobby this client hosted last (the host may end the spawn phase early and pause). */
@@ -801,6 +937,21 @@ function frame(now: number): void {
         s.hud?.skipEvents(s.state);
         audio?.skipTo(s.state);
       }
+    } else if (s.watch) {
+      // owner watching a single-player game: the stream drives the ticks (no local sim), catch up fast then follow live
+      s.watch.pump(s.watch.caughtUp ? 30 : 400);
+      s.ui.playRealMs = gameSeconds(s.state) * 1000; // the clock shows the watched game's time
+      if (!s.watch.caughtUp) {
+        // the history before we caught up is not news; show how far the rebuild has fast-forwarded (a long game)
+        s.hud?.skipEvents(s.state);
+        audio?.skipTo(s.state);
+        s.ui.toast = { text: `Catching up… ${Math.round(s.watch.progress * 100)}%`, until: now + 2 * STEP_MS };
+        if (watchCtl) watchCtl.live = false;
+      } else if (watchCtl && !watchCtl.live) {
+        // caught up to live for the first time: say so, then just follow
+        watchCtl.live = true;
+        s.ui.toast = { text: `Watching ${watchCtl.nation || 'a single-player game'}`, until: now + TOAST_MS };
+      }
     } else if (s.human || !loadJob) {
       // real-time clock: count real ms while the player's game is running and not paused, independent of the speed setting
       if (s.human && !s.ui.paused && s.state.phase === 'playing') s.ui.playRealMs += dt;
@@ -810,7 +961,7 @@ function frame(now: number): void {
       lastAutosave = now;
       autosave();
     }
-    if (s.human && audio && !s.mp?.replaying) {
+    if (s.human && audio && !s.mp?.replaying && !s.watch) {
       try {
         audio.update(s.state, s.camera);
       } catch (err) {

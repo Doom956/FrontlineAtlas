@@ -468,3 +468,39 @@ describe('banners on a phone held sideways', () => {
     expect(block).toMatch(/width: 90vw;/);
   });
 });
+
+describe('jumpscare', () => {
+  afterEach(() => {
+    calm = false;
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('is a full-screen scare that needs no map and clears itself', () => {
+    calm = false;
+    const { root, layer } = setup();
+    layer.setView(null); // no game on screen: the scare still works
+    expect(layer.prank('jumpscare')).toBe(true);
+    const jump = root.find('bc-jump')!;
+    expect(jump.classList.contains('on')).toBe(true);
+    expect(jump.classList.contains('hidden')).toBe(false);
+    vi.advanceTimersByTime(PRANK_SECONDS[1] * 1000 + 50);
+    expect(layer.activePranks()).toEqual([]);
+    expect(jump.classList.contains('hidden')).toBe(true);
+    expect(jump.classList.contains('on')).toBe(false);
+    layer.destroy();
+  });
+
+  it('is mild and silent for reduced motion (calm, not the harsh flash)', () => {
+    calm = true;
+    const { root, layer } = setup();
+    expect(layer.prank('jumpscare')).toBe(true);
+    const jump = root.find('bc-jump')!;
+    expect(jump.classList.contains('calm')).toBe(true);
+    expect(jump.classList.contains('on')).toBe(false);
+    expect(jump.classList.contains('hidden')).toBe(false);
+    vi.advanceTimersByTime(PRANK_SECONDS[1] * 1000 + 50);
+    expect(jump.classList.contains('hidden')).toBe(true);
+    layer.destroy();
+  });
+});
