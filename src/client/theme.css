@@ -704,7 +704,7 @@ body {
   }
   .hud-left {
     top: calc(var(--cl-h) + 6px);
-    width: 204px;
+    width: 228px;
   }
   .hud-top {
     top: calc(var(--cl-h) + 112px);
@@ -764,4 +764,33 @@ body {
 /* the research sheet covers the map's left edge: the standings step aside instead of peeking out from under it */
 .hud.rp-open > .hud-left {
   visibility: hidden;
+}
+/* ...and messages drop to just above the dock, so they never cover the sheet's heading and progress */
+@media (min-width: 641px) {
+  .hud.rp-open > .hud-top {
+    top: auto;
+    bottom: calc(104px * var(--ui, 1));
+  }
+}
+
+/* iron, oil and science: each amount beside its icon in the gold block (no hover needed) */
+.res {
+  height: 22px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--metal-2);
+}
+.res-ics {
+  align-items: center;
+  gap: 4px;
+}
+.res-v {
+  margin-right: 6px;
+  font: 500 12px/1 var(--f-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.res-v:last-child {
+  margin-right: 0;
 }

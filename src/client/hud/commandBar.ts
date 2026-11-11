@@ -215,14 +215,16 @@ export class CommandBar {
     });
     const chip = (name: 'iron' | 'oil' | 'science', tip: string) => {
       const ic = iconSpan(lineIcon(name, 12, 1.9), `ico res-i r-${name}`);
-      icons.append(ic);
+      // the amount sits beside its icon, so nobody has to hover to read it
+      const iv = el('span', 'res-v');
+      icons.append(ic, iv);
       const c = el('span', 'chip');
       c.dataset.test = `chip-${name}`;
       const v = el('span', 'chip-v');
       const t = el('span', 'chip-t', tip);
       c.append(iconSpan(lineIcon(name, 13, 1.8)), v, t);
       pop.append(c);
-      return { ic, c, v };
+      return { ic, iv, c, v };
     };
     const iron = chip('iron', 'iron: armor, artillery, military buildings');
     const oil = chip('oil', 'oil: armor and aircraft');
@@ -241,16 +243,22 @@ export class CommandBar {
       if (!this.revealed.oil && (me.oil > 0 || me.income.oil > 0 || depositCount(s, me.id, 2) > 0)) this.revealed.oil = true;
       if (!this.revealed.science && (me.researching || me.techs.length > 0 || countBuildings(s, me.id, 'lab', true) > 0 || me.science >= 60)) this.revealed.science = true;
       const showSci = this.revealed.science && researchRule(s) === null;
+      setVisible(iron.iv, this.revealed.iron);
       setVisible(iron.ic, this.revealed.iron);
       setVisible(iron.c, this.revealed.iron);
+      setVisible(oil.iv, this.revealed.oil);
       setVisible(oil.ic, this.revealed.oil);
       setVisible(oil.c, this.revealed.oil);
+      setVisible(sci.iv, showSci);
       setVisible(sci.ic, showSci);
       setVisible(sci.c, showSci);
       setVisible(res, this.revealed.iron || this.revealed.oil || showSci);
       setText(iron.v, formatCount(me.iron));
       setText(oil.v, formatCount(me.oil));
       setText(sci.v, me.researching ? `${Math.round((me.researchProgress / TECHS[me.researching].science) * 100)}%` : formatCount(me.science));
+      setText(iron.iv, iron.v.textContent ?? '');
+      setText(oil.iv, oil.v.textContent ?? '');
+      setText(sci.iv, sci.v.textContent ?? '');
       // a resource that runs dry gets a red icon even while the list is closed
       setClass(oil.ic, 'low', this.revealed.oil && me.oil < 1 && me.troops.armor > 0);
     });
