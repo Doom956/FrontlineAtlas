@@ -11,7 +11,8 @@ import { armyTotal } from '../../sim/economy';
 import type { GameState, Unit } from '../../sim/types';
 import type { Camera } from '../camera';
 import { clamp, css, formatCount, MAP_NUM_FAMILY, type RGB } from './common';
-import { drawTrails, GLYPHS, type Inst, strokeGlyphs } from './unitGlyphs';
+import { drawTrails, GLYPHS, type Inst } from './unitGlyphs';
+import { drawUnitMarker, drawUnitSprite } from './pixelSprites';
 import { isIncoming } from '../forces';
 import { unitVisibleTo } from '../../sim/techtree';
 import type { FogView } from '../fog/fogView';
@@ -23,9 +24,12 @@ const DROP_MS = 1800;
 const CHUTES = 6;
 const UNDER = 'rgba(6,9,15,0.6)';
 
-/** Base glyph length on screen (CSS px) at a zoom level; each glyph scales it a little (unitGlyphs.ts). */
-const glyphPx = (z: number): number => clamp(7 + z * 1.2, 8, 10);
-const strokePx = (z: number): number => clamp(1.2 + z * 0.15, 1.25, 1.7);
+/** Levels of detail (Pixel Clean): below NEAR_ZOOM every unit is a tiny solid marker (and warships merge into fleet
+ * markers with a count, fleets.ts); from NEAR_ZOOM on each unit is its pixel sprite (pixelSprites.ts), growing with
+ * the zoom. */
+const NEAR_ZOOM = 3;
+/** Base unit length on screen (CSS px) at a zoom level; each unit scales it a little (unitGlyphs.ts len). */
+const glyphPx = (z: number): number => (z < NEAR_ZOOM ? clamp(6 + z * 1.1, 7, 9) : clamp(12 + (z - NEAR_ZOOM) * 3.2, 14, 48));
 
 /** `fleet`: this entry is a fleet marker standing for these ships (the lead, u, is the lowest id). */
 type Vis = Inst & { u: Unit; fleet?: number[] };
@@ -281,23 +285,16 @@ export class UnitLayer {
       else this.allHits.push(e.u.id, e.x, e.y, r);
     }
     drawTrails(ctx, visible, z >= 0.45);
-    // glyphs: one dark under-stroke, one faint fill, one colour stroke (and solid cargo blocks) per owner
-    const lw = strokePx(z);
-    const byOwner = new Map<number, Vis[]>();
-    for (const e of visible) {
-      const l = byOwner.get(e.u.owner);
-      if (l) l.push(e);
-      else byOwner.set(e.u.owner, [e]);
-    }
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    // far: one small solid marker per unit; near: the unit's pixel sprite (heading snapped, nearest-neighbour)
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
-    for (const [owner, list] of byOwner) {
-      const c = colors[owner] ?? [200, 200, 200];
-      strokeGlyphs(ctx, list, css(c), css(c, 0.22), UNDER, lw);
-      this.drawn += list.length;
+    const near = z >= NEAR_ZOOM;
+    for (const e of visible) {
+      const c = colors[e.u.owner] ?? [200, 200, 200];
+      if (near && !e.fleet) drawUnitSprite(ctx, e.type, e.u.variant, e.x, e.y, e.S * 2, e.angle, c);
+      else drawUnitMarker(ctx, e.type, e.x, e.y, e.fleet ? e.S * 1.6 : e.S * 1.5, e.angle, css(c));
     }
+    this.drawn += visible.length;
     // own warships and tank divisions: a tiny white tick under the hull, a ring while hovered, picked or selected
     // (selection.ts); clickable (hit area larger than the drawing)
     if (me > 0) {

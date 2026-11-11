@@ -198,15 +198,16 @@ export class BuildingLayer {
     // The plate shows what the building does (category colour: economy gold, production orange, defence blue ...);
     // a frame in the owner's colour shows whose it is.
     const r = size * 0.5;
-    const fw = clamp(size * 0.09, 1.5, 3);
+    const fw = clamp(size * 0.1, 2, 4);
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = 'rgba(10,12,16,0.85)';
+    // Pixel Clean: a soft dark edge around the category plate, and the owner as a thin band under it (not a frame)
+    ctx.fillStyle = 'rgba(12,15,20,0.55)';
     ctx.beginPath();
-    ctx.roundRect(x - r - fw - 1, y - r - fw - 1, size + 2 * fw + 2, size + 2 * fw + 2, size * 0.3);
+    ctx.roundRect(x - r - 1, y - r - 1, size + 2, size + fw + 3, size * 0.26);
     ctx.fill();
     ctx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`;
     ctx.beginPath();
-    ctx.roundRect(x - r - fw, y - r - fw, size + 2 * fw, size + 2 * fw, size * 0.28);
+    ctx.roundRect(x - r + size * 0.12, y + r - 1, size * 0.76, fw + 1, Math.min(2, fw / 2));
     ctx.fill();
     ctx.globalAlpha = 1;
     const cat = ICON_INFO[id].category;
@@ -227,12 +228,12 @@ export class BuildingLayer {
       const by = y - r * 0.78;
       ctx.beginPath();
       ctx.arc(bx, by, br, 0, Math.PI * 2);
-      ctx.fillStyle = '#ffd866';
+      ctx.fillStyle = '#f4f5f1';
       ctx.fill();
       ctx.lineWidth = 1.2;
-      ctx.strokeStyle = '#2b2410';
+      ctx.strokeStyle = 'rgba(14,18,24,0.85)';
       ctx.stroke();
-      ctx.fillStyle = '#2b2410';
+      ctx.fillStyle = '#1a1f27';
       ctx.font = `600 ${Math.round(br * 1.3)}px ${MAP_NUM_FAMILY}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -257,18 +258,18 @@ export class BuildingLayer {
     if (b.hp > 0 && b.hp < 1) {
       const bw = size;
       ctx.fillStyle = 'rgba(0,0,0,0.65)';
-      ctx.fillRect(x - r, y + r + 2, bw, 3);
+      ctx.fillRect(x - r, y + r + fw + 2, bw, 3);
       ctx.fillStyle = b.hp > 0.5 ? '#e8c84a' : '#e0503c';
-      ctx.fillRect(x - r, y + r + 2, bw * b.hp, 3);
+      ctx.fillRect(x - r, y + r + fw + 2, bw * b.hp, 3);
     }
     if (size >= NAME_MARKER_PX) {
       // close up (zoom 8+): the building's name under its marker
-      ctx.font = `600 12px ${MAP_LABEL_FAMILY}`;
+      ctx.font = `500 11px ${MAP_LABEL_FAMILY}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      const ny = y + r + (b.hp > 0 && b.hp < 1 ? 7 : 4);
-      setTracking(ctx, 0.4);
-      haloText(ctx, BUILDINGS[b.type].name, x + 0.2, ny, 'rgba(244,245,247,0.95)', 12, 1.1);
+      const ny = y + r + fw + (b.hp > 0 && b.hp < 1 ? 7 : 4);
+      setTracking(ctx, 0);
+      haloText(ctx, BUILDINGS[b.type].name, x, ny, 'rgba(244,245,247,0.95)', 11, 0.9);
       setTracking(ctx, 0);
     }
   }
