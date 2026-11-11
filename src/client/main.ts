@@ -153,7 +153,7 @@ let currentMp: MpGame | null = null;
 /** The online lobby this client is in (before a game starts), '' = none. */
 let lobbyCodeNow = '';
 /** The single-player game the owner is watching now (watch-on-demand), null = none. */
-let watchCtl: { spId: number; nation: string; game: WatchGame | null; noSetup: ReturnType<typeof setTimeout> | null } | null = null;
+let watchCtl: { spId: number; nation: string; game: WatchGame | null; noSetup: ReturnType<typeof setTimeout> | null; live: boolean } | null = null;
 /** No watchSetup this long after adminWatch: the game can't be watched (an old client, or it went away). */
 const WATCH_SETUP_TIMEOUT_MS = 12_000;
 
@@ -421,7 +421,7 @@ function startWatch(spId: number, nation: string): void {
   menuConsole.hide();
   app.classList.add('in-menu');
   menu.setBusy(`Connecting to ${nation || 'the'} game…`);
-  watchCtl = { spId, nation, game: null, noSetup: setTimeout(() => leaveWatch("This game can't be watched (it may be an older version).", true), WATCH_SETUP_TIMEOUT_MS) };
+  watchCtl = { spId, nation, game: null, live: false, noSetup: setTimeout(() => leaveWatch("This game can't be watched (it may be an older version).", true), WATCH_SETUP_TIMEOUT_MS) };
   n.send({ type: 'adminWatch', spId, on: true });
 }
 
@@ -480,7 +480,12 @@ function beginWatchSession(game: WatchGame, nation: string): void {
   broadcast.setView(() => (session === own ? view : null));
   menu.hide();
   app.classList.remove('in-menu');
-  session.ui.toast = { text: `Watching ${nation || 'a single-player game'}`, until: performance.now() + TOAST_MS };
+  // the frame loop updates this: "Catching up… NN%" while the rebuild fast-forwards, then "Watching <nation>" once live
+  const live = game.caughtUp;
+  if (watchCtl) watchCtl.live = live;
+  session.ui.toast = live
+    ? { text: `Watching ${nation || 'a single-player game'}`, until: performance.now() + TOAST_MS }
+    : { text: `Catching up… ${Math.round(game.progress * 100)}%`, until: performance.now() + TOAST_MS };
 }
 
 /** Stop watching (the owner's button): tell the server and go back to the menu. */
@@ -934,9 +939,15 @@ function frame(now: number): void {
       // owner watching a single-player game: the stream drives the ticks (no local sim), catch up fast then follow live
       s.watch.pump(s.watch.caughtUp ? 30 : 400);
       if (!s.watch.caughtUp) {
-        // the history before we caught up is not news
+        // the history before we caught up is not news; show how far the rebuild has fast-forwarded (a long game)
         s.hud?.skipEvents(s.state);
         audio?.skipTo(s.state);
+        s.ui.toast = { text: `Catching up… ${Math.round(s.watch.progress * 100)}%`, until: now + 2 * STEP_MS };
+        if (watchCtl) watchCtl.live = false;
+      } else if (watchCtl && !watchCtl.live) {
+        // caught up to live for the first time: say so, then just follow
+        watchCtl.live = true;
+        s.ui.toast = { text: `Watching ${watchCtl.nation || 'a single-player game'}`, until: now + TOAST_MS };
       }
     } else if (s.human || !loadJob) runTicks(s, dt); // the menu's background game rests while a save loads
     if (s.recorder && (now - lastAutosave >= AUTOSAVE_MS || s.state.phase === 'over')) {

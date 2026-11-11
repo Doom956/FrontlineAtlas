@@ -564,6 +564,38 @@ Not checked: the live Render site, a GitHub Pages build and the claude.ai artifa
 path). A card shows the last status, so a game that just started shows 0 min and 0% until its next status. Open
 single-player pages count as visitors on the free Render server and may keep it awake longer.
 
+## Watch single-player games and jumpscare (2026-11-11, branch spectate)
+Protocol 20, on top of the single-player link. Two owner-console features, both invisible to the watched player:
+nothing player-facing names watching/admin/console/owner, and the How to play line from sp-live is kept as is.
+- Watch live: a "Watch" button on each Single player card. The owner sends `adminWatch {spId, on}`; the server
+  attaches that owner session as the link's one watcher and tells the link `spWatch {on: true}`. The link then streams
+  its own game, one-way (it only ever sends; the owner only reads, so the owner can never change or desync the watched
+  game): `spSetup {settings}` once (the save-shaped setup, seed included), then `spLog {entries, tick, base?, final?}`
+  frames, the whole backlog first (`base`, the last `final`) then live orders. The owner's client builds a fresh game
+  from the setup and runs the same deterministic replay as save/continue, in its OWN sim, and follows live. A
+  "Catching up… NN%" toast while the rebuild fast-forwards a long game, then "Watching <nation>". "Stop watching"
+  returns to the console. If the game ends or disconnects, watching ends with a plain note. Watch-on-demand: an idle
+  single-player link streams nothing and costs almost nothing; one watcher per game; only the owner can watch. An old
+  link that predates this never answers `spWatch`, so the owner sees "this game can't be watched" after a short wait.
+- Streaming caps (so a watched game can never be cut off): every `spLog` frame stays within both of the server's
+  limits, SP_WATCH_BATCH (48) entries and SP_STREAM_MAX_BYTES (12 KiB), for the backlog and for live orders alike
+  (packStreamEntries in spLink.ts); the live queue is chunked the same way, never sent as one unbounded frame. Each
+  backlog chunk carries its own last order's tick (not the game's final tick), so the owner's sim catches up order by
+  order instead of racing to the end and applying the rest too late. (These three were review fixes to the first cut.)
+- Jumpscare: a new screen-only prank (PRANK_KINDS), a short full-screen scary face over a stepped flash plus a brief
+  procedural WebAudio sting, clearing itself within PRANK_SECONDS (default 2 s). `prefers-reduced-motion` gets a mild,
+  silent variant (a brief dim with a small still face, no harsh flash, no sound). Drawn with plain DOM/CSS + WebAudio,
+  no bundled asset. Delivered like the other effects: one single-player game, all of them, or every screen.
+Checks: tsc (client, server), build, vitest (spLink.client, spLink.server, watch.client incl. a determinism-through-the-
+real-stream regression test, ownerPranks.client; full run green, two unrelated determinism tests pass alone with
+--testTimeout 60000). Playwright `tests/e2e/spectate.e2e.mjs`: one page plays single player and moves; the owner clicks
+Watch and sees the map rebuilt and advancing; sends a jumpscare and an announcement; the watched page shows both, its
+state hash is unchanged by the owner's actions, and nothing on it names watching/admin/console/owner. Multiplayer e2e
+on GitHub runners (scripts/remote-e2e.sh spectate).
+Not done / notes: the audio sting is best-effort (a WebAudio context on the watched page may be suspended without a
+user gesture; the visual scare always shows). If the watched game hits a sim tick error, the owner's rebuild stops
+advancing at that tick rather than reproducing it.
+
 ## Queued next (owner, 2026-11-03)
 Later: anonymous real-match stats on the server for balance, rematch + quick chat, replays, in-game phone/touch HUD, real-GPU performance check, flaky scripted-player e2e fix.
 
