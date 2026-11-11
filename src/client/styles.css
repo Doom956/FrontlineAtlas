@@ -536,7 +536,7 @@ canvas.minimap {
   white-space: nowrap;
 }
 .cb-big {
-  font: 600 19px/1 var(--f-pixel);
+  font: 400 22px/1 var(--f-pixel);
   color: var(--text);
 }
 .cb-big.gold {
@@ -1309,7 +1309,7 @@ canvas.minimap {
   padding: 0 9px;
   min-width: 58px;
   justify-content: center;
-  font: 600 15px/1 var(--f-pixel);
+  font: 400 18px/1 var(--f-pixel);
 }
 .clock.overtime {
   color: #f0b07a;
@@ -1408,7 +1408,7 @@ canvas.minimap {
   margin-bottom: 8px;
 }
 .big-v {
-  font: 600 26px/1.05 var(--f-pixel);
+  font: 400 28px/1.05 var(--f-pixel);
   color: var(--text);
 }
 .big-l {
@@ -3204,7 +3204,7 @@ button.toast-t:hover {
   border: 1px solid var(--edge);
 }
 .over-t {
-  font: 600 56px/1 var(--f-logo);
+  font: 400 56px/1 var(--f-logo);
   margin-right: -0.16em;
 }
 .over-t.win {
@@ -3899,7 +3899,7 @@ mark.hw-hit {
   gap: 8px;
 }
 .code-big {
-  font: 600 30px/1 var(--f-logo);
+  font: 400 30px/1 var(--f-logo);
   color: var(--brass-hi);
   user-select: all;
 }
@@ -5710,4 +5710,83 @@ strong {
 .skbar {
   border-left: 0;
   padding-left: 10px;
+}
+
+/* ---------------------------------------------------------------- Pixel Clean: concept pass */
+/* Selection is a light neutral fill with dark text; amber is kept for the one primary action of each view (Play,
+   Start game, Build) and the current value. Measured: --sel-ink on --sel-bg 14.9:1. */
+:root {
+  --sel-bg: #e6e9ef;
+  --sel-ink: #15171c;
+}
+.seg .btn.on,
+.segc-b.on,
+.rp-tab.on {
+  background: var(--sel-bg);
+  color: var(--sel-ink);
+}
+.seg .btn.on:hover:not(:disabled),
+.segc-b.on:hover,
+.rp-tab.on:hover {
+  background: #f4f6f9;
+  color: var(--sel-ink);
+}
+.map-thumb.on {
+  border-color: var(--sel-bg);
+  box-shadow: 0 0 0 1px var(--sel-bg) inset;
+}
+.map-thumb:hover {
+  border-color: var(--rule-hi);
+}
+/* section names are plain headings, not accent labels */
+.setup-h {
+  font: 600 15px/1.2 var(--f-label);
+  color: var(--text);
+}
+/* the focus ring on the primary button is the light ring, so it never reads as a second amber border */
+.btn.primary:focus-visible,
+.wr-btn.primary:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+}
+/* no leading accent stripes: "you" in the standings and the suggested tutorial row are a quiet fill */
+.lb-row.me {
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: none;
+}
+.lb-row.me .c-name {
+  color: var(--text);
+  font-weight: 600;
+}
+.btn.menu-row.suggested {
+  box-shadow: none;
+  background: rgba(255, 255, 255, 0.05);
+}
+.menu-row-hint {
+  color: var(--dim);
+}
+.bc-ann,
+.bc-note {
+  border-left: 0;
+}
+/* strike countdown reads "30 s": white on the dark ring, the amber stays for "ready" */
+.sk-l {
+  font: 600 11px/1 var(--f-ui);
+  color: var(--text);
+}
+/* toasts and drawers start below the labelled top bar (44px buttons) instead of touching it */
+.hud-top {
+  top: calc(70px * var(--ui, 1));
+}
+.drawer {
+  top: calc(70px * var(--ui, 1));
+}
+/* phones: the labelled top bar takes two rows; the standings and the toasts move down to clear it */
+@media (max-width: 640px) {
+  .hud-left {
+    top: 108px;
+  }
+  .hud-top {
+    top: 214px;
+  }
 }

@@ -1,7 +1,7 @@
 /* Research panel (hud/researchTree.ts, hud/arsenalPage.ts): two tabs of rows on a shared column grid, and a detail
-   pane. War-room style, kept plain: every card the same size with two lines; states told apart by shape and words
-   (owned: muted with a brass edge and a check; available: brass outline; in progress: steel outline and a bar;
-   locked: dashed, "Needs X"; not chosen: faded). One line style. Red only for what you can't pay. */
+   pane. Pixel Clean: every card the same size with two lines; states told apart by fill and words (owned: quiet fill
+   and a green check; available: the lightest fill and a hairline; in progress: a blue tint and a bar; locked: no fill,
+   faint text, "Needs X"; not chosen: faded). Row names read left to right. Red only for what you can't pay. */
 aside.drawer[data-page='research'] {
   /* opaque: the live map showing through the rows read as clutter */
   background-color: var(--metal);
@@ -202,7 +202,7 @@ aside.drawer[data-page='research'] .dr-body {
 
 /* the grid: a label column, then the tab's columns; each row lays its lanes on the same template */
 .rp-grid {
-  --rp-lab: 22px;
+  --rp-lab: 76px;
   display: flex;
   flex-direction: column;
 }
@@ -247,15 +247,15 @@ aside.drawer[data-page='research'] .dr-body {
   align-self: stretch;
   display: flex;
   align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   justify-content: center;
-  gap: 8px;
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
+  gap: 4px;
   white-space: nowrap;
 }
 .rp-rowlab-t {
-  font: 600 13px/1 var(--f-label);
-  color: var(--dim);
+  font: 600 14px/1.2 var(--f-label);
+  color: var(--text);
 }
 .rp-rowlab-n {
   font: 500 11px/1 var(--f-label);
@@ -317,8 +317,8 @@ aside.drawer[data-page='research'] .dr-body {
   left: 8px;
   padding: 0 5px;
   background: var(--metal);
-  font: 600 11px/13px var(--f-label);
-  color: var(--brass);
+  font: 500 12px/13px var(--f-label);
+  color: var(--dim);
 }
 .rp-fork.decided {
   border-color: var(--edge);
@@ -475,15 +475,18 @@ aside.drawer[data-page='research'] .dr-body {
 
 /* states */
 .rp-card.done {
-  background: var(--metal-3);
+  background: rgba(255, 255, 255, 0.035);
   border-color: transparent;
-  box-shadow: inset 2px 0 0 var(--brass);
+}
+.rp-card.done .rp-n {
+  color: var(--dim);
 }
 .rp-card.done .rp-mark {
-  color: var(--brass);
+  color: var(--good);
 }
 .rp-card.avail {
-  border-color: var(--brass);
+  background: var(--metal-3);
+  border-color: rgba(255, 255, 255, 0.14);
 }
 .rp-card.avail .rp-n {
   color: var(--text);
@@ -498,28 +501,28 @@ aside.drawer[data-page='research'] .dr-body {
   background: var(--metal-3);
 }
 .rp-card.avail.poor {
-  border-color: var(--brass-lo);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 .rp-card.avail.poor .rp-n,
 .rp-card.avail.poor .rp-ic {
   color: var(--text);
 }
 .rp-card.next {
-  border-color: var(--brass-hi);
-  background: linear-gradient(180deg, rgba(227, 192, 78, 0.12), rgba(227, 192, 78, 0.03)), var(--metal-2);
+  border-color: var(--accent);
+  background: var(--metal-3);
 }
 .rp-card.active {
-  border-color: var(--steel);
-  background: rgba(107, 149, 184, 0.1);
+  border-color: transparent;
+  background: rgba(127, 166, 214, 0.16);
 }
 .rp-card.active .rp-ic,
 .rp-card.active .rp-meta {
-  color: var(--steel);
+  color: var(--info);
 }
 .rp-card.locked {
   background: transparent;
-  border-style: dashed;
-  border-color: var(--edge-hi);
+  border-color: transparent;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 .rp-card.locked .rp-n {
   color: var(--dim);
@@ -544,10 +547,10 @@ aside.drawer[data-page='research'] .dr-body {
 }
 /* the card the detail pane is pinned to */
 .rp-card.sel {
-  box-shadow: 0 0 0 2px var(--brass-hi);
+  box-shadow: 0 0 0 2px var(--text);
 }
 .rp-card.done.sel {
-  box-shadow: inset 2px 0 0 var(--brass), 0 0 0 2px var(--brass-hi);
+  box-shadow: 0 0 0 2px var(--text);
 }
 
 /* hover / focus: the path lights up, the rest dims a little */
@@ -572,9 +575,9 @@ aside.drawer[data-page='research'] .dr-body {
   height: 92px;
   overflow: hidden;
   padding: 10px 14px;
-  border: 1px solid var(--edge);
+  border: 0;
   border-radius: var(--r);
-  background: rgba(255, 255, 255, 0.025);
+  background: rgba(255, 255, 255, 0.035);
   font-size: 13px;
   line-height: 18px;
 }

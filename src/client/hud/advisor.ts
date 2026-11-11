@@ -80,18 +80,18 @@ export function unitAdvice(s: GameState, me: Player): Suggestion[] {
     else if (!hasTech(me, 'navigation') && buildingsOf(s, me.id, 'port').length === 0) out.push({ key: 'unit-warship', text: 'Enemy warships off your coast: build a Port, then buy Navigation in the Arsenal for Warships', building: 'port' });
     else if (!hasTech(me, 'navigation')) out.push({ key: 'unit-warship', text: 'Enemy warships off your coast: buy Navigation in the Arsenal, then Warships at your Port', drawer: 'research' });
     else if (buildingsOf(s, me.id, 'port').length === 0) out.push({ key: 'unit-warship', text: 'Enemy warships off your coast: build a Port, then Warships', building: 'port' });
-    else out.push({ key: 'unit-warship', text: 'Enemy warships off your coast: open Forces (Y) for your fleet', drawer: 'forces' });
+    else out.push({ key: 'unit-warship', text: 'Enemy warships off your coast: open Forces in the top bar for your fleet', drawer: 'forces' });
   }
   return out;
 }
 
-/** First-use hint per strike: what is ready, the key to press and what to click. */
+/** First-use hint per strike: what is ready and what to click (the toast's own button starts the aim). */
 export const STRIKE_HINTS: Record<StrikeId, string> = {
-  barrage: `Artillery ready: press ${STRIKES.barrage.key} and click enemy land near your border`,
-  bomb: `Bombers ready: press ${STRIKES.bomb.key} and click an enemy building`,
-  paradrop: `Paratroopers ready: press ${STRIKES.paradrop.key} and click enemy land in an Airfield's range`,
-  rocket: `Rocket ready: press ${STRIKES.rocket.key} and click any enemy land on the map`,
-  atomBomb: `Atom bomb ready: press ${STRIKES.atomBomb.key} and click a target. It hits your land too`,
+  barrage: 'Artillery ready: pick Aim barrage, then click enemy land near your border',
+  bomb: 'Bombers ready: pick Aim bombers, then click an enemy building',
+  paradrop: "Paratroopers ready: pick Aim drop, then click enemy land in an Airfield's range",
+  rocket: 'Rocket ready: pick Aim rocket, then click any enemy land on the map',
+  atomBomb: 'Atom bomb ready: pick Aim atom bomb, then click a target. It hits your land too',
 };
 
 const AIM_LABEL: Record<StrikeId, string> = { barrage: 'Aim barrage', bomb: 'Aim bombers', paradrop: 'Aim drop', rocket: 'Aim rocket', atomBomb: 'Aim atom bomb' };

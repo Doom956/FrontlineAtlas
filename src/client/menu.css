@@ -49,7 +49,7 @@
 }
 .logo {
   margin: 0;
-  font: 600 54px/0.98 var(--f-logo);
+  font: 400 60px/0.98 var(--f-logo);
   color: var(--text);
 }
 .tagline {
