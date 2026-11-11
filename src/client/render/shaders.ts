@@ -428,6 +428,7 @@ void main() {
       vec3 bc = pal(o, 2).rgb; // darker, slightly more saturated shade of the nation colour (palette.ts)
       float ba = 1.0;
       if (rel == 1) bc = vec3(0.97);
+      else if (rel == 3) ba = 0.45; // Pixel Clean: tribe edges stay quiet, the nations' borders carry the map
       else if (rel == 2) {
         bc = mix(oc, vec3(1.0), 0.6);
         float period = max(1.5, 12.0 * px);

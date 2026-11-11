@@ -200,7 +200,8 @@ export class CommandBar {
     const read = el('div', 'cb-read');
     const big = el('span', 'cb-big gold');
     read.append(big);
-    // iron / oil / science: one small chip (their icons) that opens a little list on hover or focus
+    // iron / oil / science: each icon with its amount in sight (Pixel Clean: nothing only on hover); the chip still
+    // opens the little list with what each one is for on hover or focus
     const res = el('button', 'res hidden');
     res.type = 'button';
     res.dataset.test = 'resources';
@@ -214,7 +215,9 @@ export class CommandBar {
       this.ctx.openDrawer('research', true);
     });
     const chip = (name: 'iron' | 'oil' | 'science', tip: string) => {
-      const ic = iconSpan(lineIcon(name, 12, 1.9), `ico res-i r-${name}`);
+      const ic = el('span', `res-i r-${name}`);
+      const n = el('span', 'res-n');
+      ic.append(iconSpan(lineIcon(name, 12, 1.9)), n);
       icons.append(ic);
       const c = el('span', 'chip');
       c.dataset.test = `chip-${name}`;
@@ -222,7 +225,7 @@ export class CommandBar {
       const t = el('span', 'chip-t', tip);
       c.append(iconSpan(lineIcon(name, 13, 1.8)), v, t);
       pop.append(c);
-      return { ic, c, v };
+      return { ic, c, v, n };
     };
     const iron = chip('iron', 'iron: armor, artillery, military buildings');
     const oil = chip('oil', 'oil: armor and aircraft');
@@ -251,6 +254,9 @@ export class CommandBar {
       setText(iron.v, formatCount(me.iron));
       setText(oil.v, formatCount(me.oil));
       setText(sci.v, me.researching ? `${Math.round((me.researchProgress / TECHS[me.researching].science) * 100)}%` : formatCount(me.science));
+      setText(iron.n, formatCount(me.iron));
+      setText(oil.n, formatCount(me.oil));
+      setText(sci.n, formatCount(me.science));
       // a resource that runs dry gets a red icon even while the list is closed
       setClass(oil.ic, 'low', this.revealed.oil && me.oil < 1 && me.troops.armor > 0);
     });

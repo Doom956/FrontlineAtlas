@@ -633,9 +633,8 @@
    waits for a wider screen), so the bar is three short rows instead of five */
 @media (max-width: 640px) {
   .cmdbar > .cb-build.qb {
-    flex-wrap: nowrap;
-    gap: 4px;
-    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px 4px;
   }
   .qb-build {
     flex-direction: column;

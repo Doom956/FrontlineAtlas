@@ -19,7 +19,7 @@
 
   --text: #edeff3;
   --dim: #9aa0ac;
-  --faint: #656b77;
+  --faint: #7f8590; /* 4.9:1 on the panel: small labels stay AA */
 
   /* One accent. Old --brass names alias it so existing rules become "accent", not "gold everywhere". */
   --accent: #f5b13d;
@@ -5788,5 +5788,41 @@ strong {
   }
   .hud-top {
     top: 214px;
+  }
+}
+/* iron / oil / science stay in sight: icon plus amount, the list with what each is for opens on hover or focus */
+.cb-gold {
+  width: auto;
+  min-width: 122px;
+}
+.res {
+  height: 22px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--metal-2);
+  color: var(--dim);
+}
+.res-ics {
+  gap: 8px;
+}
+.res-i {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+.res-n {
+  font: 500 12px/1 var(--f-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.res-i.low .res-n {
+  color: var(--danger);
+}
+/* standings wide enough for "Atlas (you)" next to its share and army */
+@media (min-width: 641px) {
+  .hud-left {
+    width: 244px;
   }
 }

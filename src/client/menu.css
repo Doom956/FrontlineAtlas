@@ -193,10 +193,10 @@
   color: inherit;
   transform: none;
 }
-/* first visit: the tutorial row is the suggested next step (brass leading edge and a short note) */
+/* first visit: the tutorial row is the suggested next step (a quiet fill and a short note, no leading stripe) */
 .btn.menu-row.suggested {
-  box-shadow: inset 2px 0 0 var(--brass);
-  background: rgba(201, 162, 39, 0.05);
+  box-shadow: none;
+  background: rgba(255, 255, 255, 0.05);
 }
 .btn.menu-row.suggested:hover:not(:disabled) {
   background: var(--metal-3);
@@ -204,7 +204,7 @@
 .menu-row-hint {
   font: 500 13px/1 var(--f-ui);
   text-transform: none;
-  color: var(--brass-hi);
+  color: var(--dim);
 }
 
 @media (min-width: 1600px) and (min-height: 900px) {

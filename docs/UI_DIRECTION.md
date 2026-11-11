@@ -1,122 +1,84 @@
 # UI direction: Pixel Clean
 
-A modern, calm interface wrapped around a crisp pixel-art world. The map is the star:
-bright, friendly land on calm water, with original pixel sprites for every unit. The HUD is
-the quietest layer in the game: near-black glass panels with no borders, one warm accent,
-small clean type, and generous breathing room. The pixel feeling lives in the world and in a
-single display face, not in the chrome.
-
-Think "a pixel strategy game with a clean, confident app interface laid over it."
-
-## What this direction is NOT
-
-It is not the war-room look it replaces. We removed the devices that made the old HUD read as
-generated (see "Tells removed" below): the brushed-metal grain, the brass corner brackets, the
-one-border-fits-all card chrome, gold on every label, and the hotkey chips baked into the UI.
+A bright, friendly pixel world with the quietest possible interface over it. The land carries the colour; the HUD
+is near-black glass with no borders, one amber accent and small clean type. The pixel feeling lives in the map, the
+unit art and one display face for the logo, the clock and the big numbers. Nothing else in the chrome is "pixel".
 
 ## Palette
 
-### Chrome (HUD, menus, panels)
+Measured with the WCAG formula on the opaque panel `#14161b` (the glass `rgba(18,20,26,0.8)` sits over a dark map
+and renders at or below that lightness). AA needs 4.5:1 for text and 3:1 for control edges and state.
 
-Neutral and near-monochrome so the map carries all the colour. One accent only.
+| Token | Hex | Role | Contrast |
+|---|---|---|---|
+| `--ink` | `#0b0d11` | app base | |
+| `--metal` | `#14161b` | panel (opaque fallback of the glass) | |
+| `--metal-2` | `#1b1e25` | control inside a panel | |
+| `--metal-3` | `#262a33` | hover; available research card | |
+| `--rule` | `rgba(255,255,255,0.09)` | the one hairline | |
+| `--text` | `#edeff3` | primary text | 15.7:1 (12.5:1 on `--metal-3`) |
+| `--dim` | `#9aa0ac` | labels, secondary | 6.9:1 (5.5:1 on `--metal-3`) |
+| `--faint` | `#7f8590` | quiet labels, locked items | 4.9:1 |
+| `--accent` | `#f5b13d` | the primary action, the current value | 9.7:1 as text |
+| `--accent-ink` | `#1a1304` | text on amber | 9.9:1 on `--accent` |
+| `--sel-bg` / `--sel-ink` | `#e6e9ef` / `#15171c` | selected segment, tab, map | 14.7:1; fill vs `--metal-2` 13.7:1 |
+| `--good` | `#74c365` | owned, gains | 8.4:1 |
+| `--danger` | `#f2543d` | losses, under attack | 5.3:1 |
+| `--info` | `#7fa6d6` | in progress | 7.2:1 |
 
-| Token | Hex / value | Use |
-|---|---|---|
-| `--ink` | `#0b0d11` | app base, behind everything |
-| `--panel` | `rgba(18,20,26,0.80)` | every panel (glass, backdrop-blurred) |
-| `--panel-2` | `rgba(255,255,255,0.055)` | raised control inside a panel |
-| `--panel-3` | `rgba(255,255,255,0.09)` | hover / pressed control |
-| `--line` | `rgba(255,255,255,0.09)` | the one hairline (dividers, insets) |
-| `--text` | `#edeff3` | primary text (contrast on panel ~13:1) |
-| `--dim` | `#9aa0ac` | labels, secondary (contrast ~6.5:1) |
-| `--faint` | `#656b77` | de-emphasised, disabled hints (~3.4:1) |
-| `--accent` | `#f5b13d` | primary action, current selection, current value |
-| `--accent-hi` | `#ffc658` | accent hover / highlight |
-| `--accent-ink` | `#1a1304` | text on an accent fill (contrast ~10:1) |
-| `--danger` | `#f2543d` | losses, under attack, destructive actions |
-| `--good` | `#74c365` | positive events, affordable, allied |
-| `--info` | `#7fa6d6` | neutral status (steel) |
-
-Rules: `--accent` is the only saturated UI colour and appears at most once per view as the
-primary thing. `--danger` / `--good` / `--info` are semantic only (never decoration). Everything
-else is a step on the neutral ramp.
-
-### Map (brighter, friendlier)
-
-Tuned in `render/palette.ts`. Water moves from near-navy to a lighter, calmer blue so land reads
-as the figure and sea as the ground. Terrain is lifted out of the muddy khaki range into fresher
-greens and warmer tans; mountains are a warm neutral grey. Nation colours keep their hues but are
-evened in lightness/saturation so no single nation shouts. A thin dark outline on every sprite and
-a soft halo on every label keep things readable on any territory colour. The decorative coast glow
-is reduced to a quiet shoreline, not a bloom.
+Map (render/terrain.ts, render/palette.ts): calm mid blue water with deep and shallow close together (no glow round
+the coast), fresh greens and warm tans for land, light stone mountains. Nation fills are the nation hue at even
+lightness and 58% opacity; tribes are paler still (44%) so they read as background. Borders are a darker shade of
+the same hue, never black.
 
 ## Type
 
-Two families, clearly distinct.
+- **DM Sans** (400, 500, 600, 700) for every word: labels, body, buttons, values, map names. Tabular figures on
+  every changing number.
+- **Jersey 15** (400 only, the weight it ships; no synthetic bold) for the logo, the clock and the big HUD numbers
+  (troops, gold, attack share).
 
-- **Pixelify Sans** — the display + "pixel game" identity. Logo, the clock, and the big changing
-  numbers (troops, gold, attack) only. Legible pixel letterforms, kept at whole pixel sizes.
-- **DM Sans** — everything else: labels, body, controls, values. Clean, friendly, excellent at
-  small sizes. `font-variant-numeric: tabular-nums` on all changing values.
-
-Map canvas labels use DM Sans (names) and DM Sans tabular (numbers).
-
-Type scale (whole numbers only, ~6 sizes):
-
-| px | role |
+| Size | Role |
 |---|---|
-| 11 | micro label (one tracked-caps kind only: section eyebrows) |
-| 12 | small / secondary |
-| 13 | body, control text (14px on phone inputs) |
-| 16 | section heading |
-| 20 | panel title |
-| 26–28 | big number / logo (Pixelify Sans) |
+| 11px | captions under icons, small counts |
+| 12px | secondary lines |
+| 13px | body and control text |
+| 15px | section headings, research row names |
+| 17 to 20px | panel titles |
+| 22 to 28px | big numbers (Jersey 15) |
+| 60px | logo (Jersey 15) |
 
-One kind of uppercase: short section eyebrows at 11px, `letter-spacing: 0.08em`. Headings and
-body are sentence case. No `WORD — fragment`, no middle-dot meta strings, no gold on labels.
+Sentence case everywhere. No letter-spaced capitals, no eyebrow labels above headings. Map names are mixed case,
+600, with almost no tracking, sized by the territory and capped.
 
-## Spacing, radius, elevation
+## Space, radius, elevation
 
-- Spacing scale: `4 / 8 / 12 / 16 / 24 / 32`. Panels pad `16`; tight controls `8`.
-- Radius: `--r` 10px (panels), `--r-sm` 6px (controls), `--r-xs` 4px (chips/swatches). One set.
-- Elevation: no borders. A panel is glass (`--panel` + `backdrop-filter: blur(14px)`) with one
-  soft shadow `0 10px 30px rgba(0,0,0,0.38)` and a 1px top inset highlight. Separation between
-  elements is space and, where needed, a single `--line` hairline. The sharp pixel world and the
-  soft rounded chrome are a deliberate contrast.
+- Spacing: 4, 8, 12, 16, 24, 32. Inside a group 8, between groups 16 or more.
+- Radius: 12px panels, 8px controls, 4px chips.
+- Elevation: no borders on panels. Glass (`backdrop-filter: blur(14px)`), a 1px top inset highlight and one shadow
+  `0 10px 30px rgba(0,0,0,0.38)`. Separation inside a panel is space, then a single `--rule` hairline.
 
-## Icons
+## Icons and art
 
-Cluster and bar controls use the existing single-weight line icons, kept monochrome (they tint to
-`--accent` only when active). Map unit art is original pixel sprites (see `render/pixelSprites.ts`)
-sharing one density, a 1px dark outline, and a 2-tone owner ramp. Building markers are flattened:
-a calm category plate, a white glyph, a thin owner band instead of a heavy ring, a small level pip.
-Primary controls are never icon-only: an icon plus a plain word.
+- Interface: the existing single-weight line icons in `currentColor`, always with a plain word under or beside
+  them on primary controls (the top bar, the command bar, strikes).
+- Units (render/pixelSprites.ts): original pixel sprites drawn from rectangles in code, one density, a 1px dark
+  outline and a two-tone owner ramp. Far: a small solid marker per unit and fleet markers with a count. Near (zoom 3
+  and up): the full sprite for warships, transports, tank divisions, planes and missiles.
+- Buildings: a calm category plate with a white glyph and a thin owner band under it; the name appears close up.
 
 ## Motion
 
-Motion only answers an action: a panel fades/rises as it opens, a toast slides in, a value ticks.
-No idle pulsing or bouncing (the guide arrow bounce, the ring pulses, the per-card hover lift are
-gone). One attention cue at a time. `prefers-reduced-motion` disables all of it.
+Motion answers an action and nothing else: a drawer opens, a toast slides in, a pressed button scales to 0.96.
+No idle pulses or bounces. `prefers-reduced-motion` turns movement off.
 
-## The rules that keep it clean (and the tells they remove)
+## The rules that keep it clean
 
-1. **One panel chrome, borderless.** The shared `--grain` texture and the `border + corner
-   brackets` are deleted. Panels are glass separated by space. Removes tells: "every element its
-   own box with the same chrome", "decorative corner brackets", "scanline grain on every panel".
-2. **One accent.** Amber is the only saturated UI colour, used for the single primary action, the
-   current selection, and the current value. Section headings and chrome go neutral. Removes "brass
-   for everything, so nothing is primary" and "three border languages in one panel" (state is now
-   fill/opacity, not border style).
-3. **No hotkeys in the UI.** Every key chip (`kbd`, `.qb-k`, `.bm-c-k`, `.rp-tab-k`, the "Tab" on
-   Build, "(T)" in tooltips) is hidden; every action keeps its visible labelled button. Removes
-   "hotkeys baked into the visible UI" and fits the owner's "no reliance on hotkeys" rule.
-4. **Less furniture.** Eyebrow labels above headings, tag/badge clutter ("NEXT", "SUITS YOU",
-   "UNIT", "TIP"), and card-in-card framing are cut to the one case that carries real meaning.
-   Fractional type sizes and the scattered radius/spacing values collapse to the scales above.
-   Removes "eyebrow labels", "tag and badge clutter", "card inside card", "fractional type scale",
-   "radius and spacing are not a system".
-5. **Plain words, obvious state.** Primary controls read icon + word. Enabled / disabled / selected
-   / can't-afford look different and say why in plain language. Nothing a new player needs is behind
-   a hover or a key.
-</content>
-</invoke>
+1. **One amber thing per view.** Amber is the primary action (Play, Start game, Build) and the current value.
+   Selection is a light neutral fill, headings are plain text, state colours are semantic only.
+2. **No chrome, only space.** No borders, corner brackets, stripes, grain or gradient washes on panels. Cards in the
+   research tree differ by fill, not by outline style.
+3. **Icon plus word, numbers with units.** Every primary control names itself; every number says what it counts
+   (k troops, gold/s, 30 s). No hotkey chips and no hint that only names a key.
+4. **The map is the picture.** Calm water, pale tribes, mixed-case names on a soft halo, and units that collapse to
+   markers when zoomed out.
