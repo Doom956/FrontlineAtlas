@@ -352,10 +352,11 @@ void main() {
     // so changes between terrains shade the nation gently instead of cutting it into bands) and pulled towards grey,
     // so forest / hills / desert still show as light and dark without competing with the nation's hue.
     vec3 under = textureLod(uTerrCol, uv, 3.0).rgb;
-    vec3 calm = mix(under, col, ${UNDER_DETAIL.toFixed(3)});
+    // close up the paper terrain shows through more (an atlas tint is a wash, not paint)
+    vec3 calm = mix(under, col, mix(${UNDER_DETAIL.toFixed(3)}, 0.75, detail));
     float cy = dot(calm, vec3(0.299, 0.587, 0.114));
     calm = (vec3(${UNDER_MID.toFixed(3)} + (cy - ${UNDER_MID.toFixed(3)}) * ${UNDER_LUM.toFixed(3)}) + (calm - cy) * ${UNDER_CHROMA.toFixed(3)}) * vec3(${UNDER_PAPER.map((v) => v.toFixed(3)).join(', ')});
-    vec3 fill = mix(calm, oc, pc.a);
+    vec3 fill = mix(calm, oc, pc.a * (1.0 - 0.3 * detail));
     if (res > 0 && detail > 0.0) {
       // under a nation deposits only shade the colour faintly (no foreign hues, no dotted clusters), and only very
       // close: the deposit markers already say where the fields are

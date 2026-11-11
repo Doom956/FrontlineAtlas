@@ -306,7 +306,7 @@ export class UnitLayer {
     for (const [owner, list] of byOwner) {
       const c = colors[owner] ?? [200, 200, 200];
       const inkOf = css(mix(shade(c, 0.4), [29, 27, 24], 0.35));
-      const tint = css(mix(c, [251, 248, 241], nearArt ? 0.25 : 0.1), nearArt ? 0.95 : 0.85);
+      const tint = css(mix(c, [251, 248, 241], nearArt ? 0.5 : 0.1), nearArt ? 0.97 : 0.85);
       strokeGlyphs(ctx, list, inkOf, tint, UNDER, lwz, table, css(shade(c, 0.75)), INK);
       this.drawn += list.length;
     }

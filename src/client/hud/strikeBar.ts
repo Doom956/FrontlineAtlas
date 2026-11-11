@@ -140,7 +140,7 @@ export class StrikeBar {
         const total = st.total > 0 ? st.total : b.peak;
         const p = total > 0 ? Math.max(0, Math.min(1, 1 - st.left / total)) : 0;
         b.ring.style.setProperty('--p', p.toFixed(3));
-        setText(b.label, `${Math.max(1, Math.ceil(st.left))}`);
+        setText(b.label, `${Math.max(1, Math.ceil(st.left))}s`);
       } else {
         b.peak = 0;
         setText(b.label, '');
