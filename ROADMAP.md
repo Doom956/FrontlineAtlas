@@ -538,6 +538,32 @@ apply under 500 px tall. A drag held while a flip turns is let go (it jumped the
 when a slow machine misses the whole turn between two frames. The unit card, the alert ping and the guide's ring and
 arrow follow a flip or a wobble with the map.
 
+## Owner effects in single-player games (2026-11-11, branch sp-live)
+Protocol 19 (spHello, spWelcome, spStatus; adminRooms carries `sp` and `spTotal`; scope 'sp' with an optional spId on
+adminAnnounce / adminSpectacle; adminNotice with spId). Owner's scope: single-player games only receive what is drawn
+on the screen; nothing changes their game, no view of their map, nothing else read from their browser.
+- Link (src/client/spLink.ts): while online, a single-player game (never the tutorial) opens one socket to the same
+  server multiplayer uses (`?server=`, then VITE_SERVER_URL, then the page's own origin), sends spHello and then every
+  30 s spStatus {nation, map, minutes, landPct} read from plain fields (no sim reads per frame). It passes on only
+  announcement, notice and spectacle, through the existing broadcast view. No server, no sockets, another protocol or
+  an origin the server refuses: no link, nothing shown, the game plays as before. Retries 5 s doubling to 5 min, wait
+  for the browser to be online, none after the tab has been hidden 10 min (until it is shown again).
+- Server: a link counts against the per-address connection limit, at most 4 per address and MAX_SP_SESSIONS in all
+  (default 1000, 0 = off), no hello timeout, frames up to 512 bytes, one status kept per 5 s. Anything but spStatus
+  and ping is refused (chat, intents, lobbies, hello, owner messages), 20 refusals close it. Forgotten on disconnect.
+- Owner console: Games tab, "Single player" section (nation, map, minutes, land %, Make target, Message). Where:
+  "Single player: <nation>" or "All single-player games"; "Every screen" now includes them. Announce, Message,
+  countdown, confetti, fireworks, shake and every prank work there; tile effects and Who are off for them.
+- How to play (Multiplayer): "While online, single-player games connect to the game server so they can receive
+  announcements."
+Checks: tsc (client, server), build, vitest (spLink.server 15, spLink.client 15; full run 1066 of 1067, the trenches
+timeout passes alone with --testTimeout 60000). Playwright on the built app: an SP game listed and reached by an
+announcement, a message, a flip and the pretend bomb; a tutorial not listed; every screen reaches it; with the server
+stopped single player plays on with no page errors (Chromium still logs its own failed-socket line per retry).
+Not checked: the live Render site, a GitHub Pages build and the claude.ai artifact (it relies on the silent-failure
+path). A card shows the last status, so a game that just started shows 0 min and 0% until its next status. Open
+single-player pages count as visitors on the free Render server and may keep it awake longer.
+
 ## Queued next (owner, 2026-11-03)
 Later: anonymous real-match stats on the server for balance, rematch + quick chat, replays, in-game phone/touch HUD, real-GPU performance check, flaky scripted-player e2e fix.
 
