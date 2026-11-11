@@ -1,0 +1,28 @@
+# Keeps the free Render server awake by opening its /health address every 5 minutes.
+# Why: a free Render service sleeps after about 15 minutes without visitors. While it sleeps, Render itself answers
+# /robots.txt with "Disallow: /" (search engines then skip the site), and the first player waits for it to wake up.
+# GitHub may start scheduled runs late, so an outside monitor (for example UptimeRobot on the same address) is the
+# more reliable half; this job needs no account. A failed ping never fails the run (no failure emails).
+# If the Render service is renamed, change the address below.
+name: Keep server awake
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Open /health
+        run: |
+          curl -fsS -m 120 -o /dev/null -w "health %{http_code} in %{time_total}s\n" \
+            https://frontline-atlas.onrender.com/health || echo "ping failed (ignored)"
