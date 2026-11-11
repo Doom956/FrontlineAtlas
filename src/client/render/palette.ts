@@ -15,7 +15,7 @@ const LIGHT_MID = 0.68;
 const LIGHT_KEEP = 0.72;
 /** Opacity of the territory fill over the (calmed) terrain. */
 export const NATION_ALPHA = 0.7;
-export const TRIBE_ALPHA = 0.42;
+export const TRIBE_ALPHA = 0.26;
 /** How much of its own colour the terrain keeps under a nation (0 = grey of the same brightness, 1 = unchanged). */
 export const UNDER_CHROMA = 0.55;
 /** Brightness range the terrain keeps under a nation, around UNDER_MID (1 = unchanged): forest and desert barely stripe the land. */

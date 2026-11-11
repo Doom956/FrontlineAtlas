@@ -334,6 +334,9 @@ body {
 }
 
 /* ------------------------------------------------------------------ standings */
+.hud-left {
+  width: 244px;
+}
 .lb {
   padding: 4px 0 6px;
 }
@@ -616,4 +619,123 @@ body {
 }
 .rp-card.hl-pre:not(.done):not(.off) {
   border-color: var(--brass-hi);
+}
+
+/* ------------------------------------------------------------------ unit card: one flat sheet, readable sizes */
+.ucard {
+  width: 224px;
+  padding: 10px 12px;
+  border: 0;
+  box-shadow: var(--e1);
+  font-size: 13px;
+}
+.uc-head {
+  gap: 10px;
+}
+.uc-t {
+  font: 600 15px/1.2 var(--f-ui);
+}
+.uc-s,
+.uc-r {
+  font-size: 12px;
+}
+.uc-a {
+  font-size: 13px;
+}
+.uc-hp {
+  height: 4px;
+  margin: 8px 0;
+  border-radius: 2px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ------------------------------------------------------------------ phones: the top bar keeps its words
+   Three rows instead of one squeezed strip: the panels (Army, Forces, Research ...) in rows of four, then time
+   controls, clock and system buttons. Everything below the bar moves down by its height (--cl-h). */
+@media (max-width: 640px) {
+  .hud {
+    --cl-h: 142px;
+  }
+  .cluster {
+    left: 8px;
+    right: 8px;
+    top: 8px;
+    max-width: none;
+    flex-wrap: wrap;
+    row-gap: 2px;
+    padding: 4px;
+  }
+  .cluster > * + * {
+    margin-left: 0;
+  }
+  .cluster > * + *::before {
+    display: none;
+  }
+  .cluster > .cl-group:first-child {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    row-gap: 2px;
+    padding-bottom: 2px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .cluster > .cl-group:first-child > .sq {
+    flex: 1 1 22%;
+  }
+  .cluster > .cl-group,
+  .cluster > .clock {
+    flex: 1 1 auto;
+  }
+  .cluster .sq,
+  .cluster .sq.sq-w {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 42px;
+    padding: 0 2px;
+  }
+  .cluster .sq.txt {
+    flex: 0 0 40px;
+    width: 40px;
+  }
+  .cluster .clock {
+    min-width: 56px;
+    justify-content: center;
+    font-size: 16px;
+  }
+  .hud-left {
+    top: calc(var(--cl-h) + 6px);
+    width: 204px;
+  }
+  .hud-top {
+    top: calc(var(--cl-h) + 112px);
+  }
+  .drawer,
+  .drawer[data-page='forces'] {
+    top: calc(var(--cl-h) + 6px);
+    max-height: calc(100% - var(--cl-h) - 230px);
+  }
+  .mod-chips {
+    top: calc(var(--cl-h) + 6px);
+  }
+}
+
+/* ------------------------------------------------------------------ hover details: violet means action, so cautions are gold */
+.mt-row.warn .mt-main {
+  color: var(--gold);
+}
+.odds {
+  border: 0;
+  border-radius: var(--r-s);
+  background: var(--metal-a);
+  box-shadow: var(--e1);
+  font-weight: 500;
+}
+.odds.good {
+  color: var(--olive);
+}
+.odds.ok {
+  color: var(--gold);
+}
+.odds.bad {
+  color: #f6b0a2;
 }

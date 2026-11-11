@@ -426,10 +426,10 @@ function chute(ctx: CanvasRenderingContext2D, x: number, y: number, color: strin
 
 /** A fleet's ship count: a small round badge (a pill for 10+). */
 function countBadge(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, edge: string): void {
-  ctx.font = `600 9px ${MAP_NUM_FAMILY}`;
+  ctx.font = `600 10px ${MAP_NUM_FAMILY}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const bh = 12;
+  const bh = 14;
   const bw = Math.max(bh, ctx.measureText(text).width + 6);
   ctx.beginPath();
   ctx.roundRect(x - bw / 2, y - bh / 2, bw, bh, bh / 2);
@@ -444,15 +444,15 @@ function countBadge(ctx: CanvasRenderingContext2D, x: number, y: number, text: s
 
 /** Small rounded label with a coloured edge for troop counts; `arrow` marks your own push (up) / an incoming one (down). */
 function miniPill(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, edge: string, arrow: 'up' | 'down' | 'none'): void {
-  ctx.font = `500 9px ${MAP_NUM_FAMILY}`;
+  ctx.font = `600 10px ${MAP_NUM_FAMILY}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const ax = arrow === 'none' ? 0 : 6;
-  const bw = ctx.measureText(text).width + 6 + ax;
-  const bh = 11;
+  const bw = ctx.measureText(text).width + 8 + ax;
+  const bh = 13;
   const x0 = x - bw / 2;
   ctx.beginPath();
-  ctx.roundRect(x0, y - bh / 2, bw, bh, 5.5);
+  ctx.roundRect(x0, y - bh / 2, bw, bh, 6.5);
   ctx.fillStyle = 'rgba(10,13,21,0.8)';
   ctx.fill();
   ctx.lineWidth = 1;
