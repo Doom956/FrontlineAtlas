@@ -24,6 +24,9 @@
   --steel: #6aa6e0;
   --steel-d: #284767;
   --gold: #f2c65a;
+  --accent-hover: #5a46e0;
+  --accent-soft: rgba(124, 104, 255, 0.18);
+  --accent-text: #c9c1ff;
   --grain: none;
   --f-label: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --f-ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;

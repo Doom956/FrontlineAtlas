@@ -51,6 +51,7 @@
   margin: 0;
   font: 600 54px/0.98 var(--f-logo);
   color: var(--text);
+  letter-spacing: -0.02em;
 }
 .tagline {
   margin: 12px 0 0;
