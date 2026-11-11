@@ -84,7 +84,8 @@ export class MapTooltip {
     if (px + w > window.innerWidth - 8) px = Math.max(8, x - w - 32);
     // keep clear of the command bar at the bottom
     const bottom = window.innerHeight - 110;
-    if (py + h > bottom) py = Math.max(8, y - h - 34);
+    // flipped above the pointer: also clear the odds badge that sits just above it (no overlap)
+    if (py + h > bottom) py = Math.max(8, y - h - (this.odds.classList.contains('hidden') ? 34 : 62));
     e.style.transform = `translate(${Math.round(px)}px, ${Math.round(py)}px)`;
   }
 

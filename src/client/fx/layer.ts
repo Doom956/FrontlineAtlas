@@ -2,7 +2,7 @@
 // effect, no per-particle objects (the few particles of an effect are placed from its seed). Plain arcs and
 // rectangles only, no gradients or shadows, so a full pool costs a fraction of a millisecond.
 
-import { MAP_LABEL_FAMILY } from '../render/common';
+import { MAP_NUM_FAMILY } from '../render/common';
 import { FX_INFO, fxLabel, type FxKind } from './map';
 
 export const FX_CAP = 40;
@@ -119,12 +119,12 @@ function ring(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, wi
   ctx.stroke();
 }
 
+/** A puff or flash (Pixel Ops): a hard square snapped to whole pixels, the same area as a disc of radius r. */
 function disc(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, rgb: string, a: number): void {
   if (a <= 0.005 || r <= 0) return;
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, TAU);
+  const h = Math.max(1, Math.round(r * 0.886));
   ctx.fillStyle = `rgba(${rgb},${a.toFixed(3)})`;
-  ctx.fill();
+  ctx.fillRect(Math.round(x) - h, Math.round(y) - h, h * 2, h * 2);
 }
 
 function drawOne(ctx: CanvasRenderingContext2D, f: FxRec, x: number, y: number, t: number, z: number): void {
@@ -255,20 +255,16 @@ function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number
   const a = t < 0.1 ? t / 0.1 : t > 0.75 ? (1 - t) / 0.25 : 1;
   if (a <= 0.01) return;
   const yy = y - 8 * easeOut(Math.min(1, t * 2));
-  ctx.font = `600 ${big ? 14 : 12}px ${MAP_LABEL_FAMILY}`;
+  // Pixel Ops: a square dark chip, the words in sentence case, coloured by what happened (no side stripe)
+  ctx.font = `600 ${big ? 14 : 12}px ${MAP_NUM_FAMILY}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const up = text.toUpperCase();
-  const w = ctx.measureText(up).width + 12;
+  const w = Math.round(ctx.measureText(text).width + 12);
   const h = big ? 20 : 17;
   ctx.globalAlpha = a;
-  ctx.fillStyle = 'rgba(10,15,22,0.78)';
-  ctx.beginPath();
-  if (typeof ctx.roundRect === 'function') ctx.roundRect(x - w / 2, yy - h / 2, w, h, 3);
-  else ctx.rect(x - w / 2, yy - h / 2, w, h);
-  ctx.fill();
+  ctx.fillStyle = 'rgba(14,17,12,0.86)';
+  ctx.fillRect(Math.round(x - w / 2), Math.round(yy - h / 2), w, h);
   ctx.fillStyle = `rgb(${rgb})`;
-  ctx.fillRect(x - w / 2, yy - h / 2, 2, h);
-  ctx.fillText(up, x + 1, yy + 0.5);
+  ctx.fillText(text, x, yy + 0.5);
   ctx.globalAlpha = 1;
 }
