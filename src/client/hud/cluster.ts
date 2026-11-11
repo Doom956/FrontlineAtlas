@@ -115,7 +115,8 @@ export class Cluster {
     this.el.append(drawers, speed, clock, sys);
 
     this.upd.push((s, me) => {
-      const t = gameSeconds(s);
+      // single player: real seconds played (steady at any speed); online: the server's game clock
+      const t = this.hooks.pauseMode() === 'local' ? Math.floor(this.ctx.ui.playRealMs / 1000) : gameSeconds(s);
       const limit = s.settings.timeLimit;
       const base = s.phase === 'spawn' ? '0:00' : limit > 0 ? `${fmtTime(t)} / ${fmtTime(limit)}` : fmtTime(t);
       const need = Math.round(victoryShareNow(s) * 100);
