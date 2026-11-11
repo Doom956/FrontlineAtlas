@@ -22,6 +22,7 @@ import {
   spawnWarshipAction,
   splitSelection,
   tankDivisionClickAction,
+  nearestOwnBuilding,
   toggleInSelection,
   warshipSpawnArea,
   warshipSpawnCheck,
@@ -31,6 +32,7 @@ import {
   previewFor,
 } from '../src/client/selection';
 import { arrivalText, divisionSpeed, portSeas, railMove, shipReach } from '../src/client/reach';
+import { buildingPickTiles } from '../src/client/buildingPick';
 import { defaultUiState } from '../src/client/uiState';
 import { claimRect, makeFlatGame } from './helpers';
 
@@ -278,5 +280,44 @@ describe('tank division build click', () => {
     expect(tankDivisionClickAction(s, 1, at(s, 11, 21))).toEqual({ type: 'buildTankDivision', tile: f });
     expect(tankDivisionClickAction(s, 1, at(s, 2, 2))).toBe('Click one of your Factories');
     expect(tankDivisionClickAction(s, 2, f)).toBe('Click one of your Factories');
+  });
+  it('a bigger click area (zoomed out) still picks the factory; two factories split the area: the nearest wins', () => {
+    const s = game();
+    const f = at(s, 10, 20);
+    expect(tankDivisionClickAction(s, 1, at(s, 15, 20))).toBe('Click one of your Factories'); // 5 tiles: outside 2
+    expect(tankDivisionClickAction(s, 1, at(s, 15, 20), 8)).toEqual({ type: 'buildTankDivision', tile: f });
+    const g = addBuilding(s, 'factory', 1, at(s, 18, 20)).tile;
+    expect(tankDivisionClickAction(s, 1, at(s, 13, 20), 8)).toEqual({ type: 'buildTankDivision', tile: f });
+    expect(tankDivisionClickAction(s, 1, at(s, 15, 20), 8)).toEqual({ type: 'buildTankDivision', tile: g });
+  });
+});
+
+describe('clicking your buildings: bigger click areas that never overlap', () => {
+  it('picks the nearest own building within the radius, ignoring other players and other types when asked', () => {
+    const s = game();
+    const f = at(s, 10, 20);
+    const city = addBuilding(s, 'city', 1, at(s, 4, 20)).tile;
+    addBuilding(s, 'city', 2, at(s, 22, 20));
+    expect(nearestOwnBuilding(s, 1, at(s, 6, 20), 5)).toBe(city);
+    expect(nearestOwnBuilding(s, 1, at(s, 8, 20), 5)).toBe(f);
+    expect(nearestOwnBuilding(s, 1, at(s, 6, 20), 5, 'factory')).toBe(f);
+    expect(nearestOwnBuilding(s, 1, at(s, 19, 20), 5)).toBe(-1); // the other player's city is not yours
+    expect(nearestOwnBuilding(s, 1, at(s, 7, 20), 5)).toBe(city); // a tie (3 tiles each): the lower tile
+    expect(nearestOwnBuilding(s, 1, at(s, 11, 20), 0)).toBe(f); // never smaller than its own tile and a bit around
+  });
+  it('every point picks exactly one building: the areas split along the middle', () => {
+    const s = game();
+    const a = at(s, 10, 20);
+    const b = addBuilding(s, 'city', 1, at(s, 14, 20)).tile;
+    const picks = [10, 11, 12, 13, 14].map((x) => nearestOwnBuilding(s, 1, at(s, x, 20), 10));
+    expect(picks).toEqual([a, a, a, b, b]);
+  });
+  it('the click area stays about the same size on screen at every zoom, bigger for a finger', () => {
+    for (const z of [0.5, 1, 2, 4, 8, 16, 32]) {
+      const mouse = buildingPickTiles(z, false) * z;
+      expect(mouse).toBeGreaterThanOrEqual(10);
+      expect(mouse).toBeLessThanOrEqual(30);
+      expect(buildingPickTiles(z, true) * z).toBeGreaterThan(mouse);
+    }
   });
 });

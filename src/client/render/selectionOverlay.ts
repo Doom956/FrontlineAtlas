@@ -7,10 +7,11 @@
 //     get and dashed beyond, with the expected depth and the first warning at its head, and the drive to its launch
 //   - the rail move: hovering your own land with divisions selected, the route over your land and the arrival time
 // Cheap: the shaded area is an offscreen canvas (one pixel per tile) rebuilt only when your ports' seas change.
+import { buildingPickTiles } from '../buildingPick';
 import { buildingsOf } from '../../sim/buildings';
 import type { GameState } from '../../sim/types';
 import type { Camera } from '../camera';
-import { activeBuildings, previewFor, railPreviewFor, SPEARHEAD_CONFIRM_MS, splitSelection, warshipSpawnArea, warshipSpawnHint } from '../selection';
+import { activeBuildings, nearestOwnBuilding, previewFor, railPreviewFor, SPEARHEAD_CONFIRM_MS, splitSelection, warshipSpawnArea, warshipSpawnHint } from '../selection';
 import { arrivalText, portSeas, type RailMove } from '../reach';
 import { FAR_ZOOM, markerSize } from './buildings';
 import type { UiState } from '../uiState';
@@ -38,7 +39,7 @@ export class SelectionOverlay {
       this.area = null; // a whole-ocean canvas is not kept around between placements
       this.areaBox = null;
     }
-    if (ui.mode.kind === 'buildTankDivision') this.factories(ctx, state, cam);
+    if (ui.mode.kind === 'buildTankDivision') this.factories(ctx, state, cam, ui.hoverTile);
     if (ui.mode.kind === 'none' && ui.selection.length) {
       this.spearhead(ctx, state, cam, ui, nowMs);
       this.railMove(ctx, state, cam, ui, nowMs);
@@ -206,9 +207,19 @@ export class SelectionOverlay {
     return e;
   }
 
-  private factories(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera): void {
+  private factories(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, hover: number): void {
     const w = state.map.width;
     const r = Math.max(9, cam.zoom * 1.6);
+    // the factory a click here would pick (input.ts: the nearest one within its click area) gets a solid ring
+    const pick = hover >= 0 ? nearestOwnBuilding(state, state.humanId, hover, buildingPickTiles(cam.zoom, false), 'factory') : -1;
+    if (pick >= 0) {
+      const c = cam.tileToScreen((pick % w) + 0.5, ((pick / w) | 0) + 0.5);
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, r + 3, 0, Math.PI * 2);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = BRASS;
+      ctx.stroke();
+    }
     ctx.beginPath();
     for (const b of buildingsOf(state, state.humanId, 'factory')) {
       if (b.buildLeft > 0) continue;

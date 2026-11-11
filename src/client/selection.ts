@@ -13,7 +13,7 @@
 //   - the same Shift+drag box also picks your buildings in it (ui.buildingSel): filter chips by type, and the bar
 //     (hud/buildingSelection.ts) orders Upgrade x1 / x3 / x5 for them all (Action upgradeBuildings; U, Shift+U cycles)
 // Everything here reads the state and builds actions; nothing changes the game except through dispatch.
-import { buildingAt } from '../sim/buildings';
+import { buildingAt, buildingsOf } from '../sim/buildings';
 import { BUILDING_ORDER, MAX_GROUP_UNITS, TANK_LAUNCH_REACH, UPGRADE_SELECTION_MAX } from '../sim/config';
 import { waterComponents } from '../sim/grid';
 import { canOrderWarship } from '../sim/navy';
@@ -371,29 +371,39 @@ export function buildTankDivisionAuto(state: GameState, me: Player, dispatch: Di
   return r.ok ? '' : r.reason ?? 'Not possible now';
 }
 
-/** The buildTankDivision action for a click near one of your factories (within 2 tiles), or the reason. */
-export function tankDivisionClickAction(state: GameState, me: number, tile: number): Action | string {
-  const map = state.map;
-  const w = map.width;
+/** Smallest click radius around a building, in tiles (its own tile and a little around it at any zoom). */
+export const BUILDING_PICK_MIN_TILES = 1.5;
+
+/**
+ * The tile of `owner`'s building (of `type`, if given) nearest to `tile` within `radius` tiles, or -1. The nearest
+ * building wins (ties: the lower tile), so the click areas of two buildings never overlap, however big they are.
+ * Used for clicks on your buildings: the radius comes from the marker's size on screen (input.ts buildingPickTiles).
+ */
+export function nearestOwnBuilding(state: GameState, owner: number, tile: number, radius: number, type?: BuildingType): number {
+  const w = state.map.width;
   const x = tile % w;
   const y = (tile / w) | 0;
+  const r = Math.max(BUILDING_PICK_MIN_TILES, radius);
   let best = -1;
-  let bd = Infinity;
-  for (let dy = -2; dy <= 2; dy++) {
-    for (let dx = -2; dx <= 2; dx++) {
-      const xx = x + dx;
-      const yy = y + dy;
-      if (xx < 0 || yy < 0 || xx >= w || yy >= map.height) continue;
-      const t = yy * w + xx;
-      const b = buildingAt(state, t);
-      if (!b || b.type !== 'factory' || b.owner !== me) continue;
-      const d = dx * dx + dy * dy;
-      if (d < bd) {
-        bd = d;
-        best = t;
-      }
+  let bd = r * r;
+  for (const b of buildingsOf(state, owner, type)) {
+    const dx = (b.tile % w) - x;
+    const dy = ((b.tile / w) | 0) - y;
+    const d = dx * dx + dy * dy;
+    if (d < bd || (d === bd && best >= 0 && b.tile < best)) {
+      bd = d;
+      best = b.tile;
     }
   }
+  return best;
+}
+
+/**
+ * The buildTankDivision action for a click near one of your factories (the nearest within `radius` tiles: by default
+ * 2, from input.ts the factory marker's click area on screen), or the reason.
+ */
+export function tankDivisionClickAction(state: GameState, me: number, tile: number, radius = 2): Action | string {
+  const best = nearestOwnBuilding(state, me, tile, radius, 'factory');
   if (best < 0) return 'Click one of your Factories';
   const r = canBuildTankDivision(state, me, best);
   return r.ok ? { type: 'buildTankDivision', tile: best } : r.reason ?? 'Not possible here';

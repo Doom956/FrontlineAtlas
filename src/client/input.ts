@@ -2,6 +2,7 @@
 import { knownOwnerOf } from './fog/fogView';
 import { mapInputPaused, mapPointer, mapSide, prankView } from './fx/prankView';
 import { buildingsOf } from '../sim/buildings';
+import { buildingPickTiles } from './buildingPick';
 import { BUILDINGS, BUILDING_ORDER } from '../sim/config';
 import { areAllied } from '../sim/diplomacy';
 import { isWater, TROOP_TYPES } from '../sim/types';
@@ -20,6 +21,7 @@ import {
   nextUpgradeLevels,
   NO_BUILDING_SEL,
   fleetClickSelection,
+  nearestOwnBuilding,
   sameTypeInView,
   selectAllOf,
   selectionClick,
@@ -183,6 +185,9 @@ export function setupInput(deps: InputDeps): () => void {
   // (a screen prank may show the map turned or mirrored for a few seconds: the pointer is mapped back through that
   // warp, so a click lands on the tile under it; while the map turns, input on the map waits: fx/prankView.ts)
   const local = (e: { clientX: number; clientY: number }) => mapPointer(canvas, e.clientX, e.clientY);
+  /** the last press on the map was a finger (bigger click areas around buildings) */
+  let lastTouch = false;
+  const pickTiles = (): number => buildingPickTiles(camera.zoom, lastTouch);
   const tileAt = (sx: number, sy: number): number => {
     const s = getState();
     if (!s) return -1;
@@ -203,6 +208,7 @@ export function setupInput(deps: InputDeps): () => void {
       const p = local(e);
       // Middle button pans right away; left and right become a pan only after moving DRAG_THRESHOLD px.
       press = { id: e.pointerId, button: e.button, x0: p.x, y0: p.y, x: p.x, y: p.y, dragging: e.button === 1, done: closing, turns: prankView.turns, side: mapSide() };
+      lastTouch = e.pointerType === 'touch';
       if (e.button === 0 && !closing && e.shiftKey && ui.mode.kind === 'none' && e.pointerType !== 'touch') press.box = true;
       if (e.button === 0 && !closing && ui.mode.kind === 'adminTile' && ui.mode.brush) {
         press.brush = true;
@@ -414,7 +420,7 @@ export function setupInput(deps: InputDeps): () => void {
       case 'spawnWarship':
       case 'buildTankDivision': {
         // warship: the water tile where it appears; tank division: the factory that builds it (selection.ts)
-        const a = mode.kind === 'spawnWarship' ? spawnWarshipAction(s, h, tile, mode.variant) : tankDivisionClickAction(s, h, tile);
+        const a = mode.kind === 'spawnWarship' ? spawnWarshipAction(s, h, tile, mode.variant) : tankDivisionClickAction(s, h, tile, pickTiles());
         if (typeof a === 'string') {
           ui.toast = { text: a, until: performance.now() + TOAST_MS };
           ok = false;
@@ -443,7 +449,10 @@ export function setupInput(deps: InputDeps): () => void {
     }
     if (isWater(s.map.terrain[tile])) return;
     if (s.map.owner[tile] === h) {
-      ui.selectedTile = ui.selectedTile === tile ? -1 : tile;
+      // a click on your land near one of your buildings selects the nearest one (its marker is bigger than its tile)
+      const near = nearestOwnBuilding(s, h, tile, pickTiles());
+      const pick = near >= 0 ? near : tile;
+      ui.selectedTile = ui.selectedTile === pick ? -1 : pick;
       return;
     }
     dispatch({ type: 'attack', tile, troops: troopsToSend(me, ui) });
