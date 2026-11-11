@@ -5826,3 +5826,24 @@ strong {
     width: 244px;
   }
 }
+/* while the full-width research panel is open, messages sit in the gap above the command bar instead of on the
+   panel's header */
+@media (min-width: 641px) {
+  .hud:has(> aside.drawer[data-page='research']:not(.hidden)) > .hud-top {
+    top: auto;
+    bottom: calc(100px * var(--ui, 1));
+    flex-direction: column-reverse;
+    transform-origin: bottom center;
+  }
+}
+/* selected stance and filter buttons: the same light fill as every other selection */
+.wr-btn.on {
+  background: var(--sel-bg);
+  border-color: var(--sel-bg);
+  color: var(--sel-ink);
+}
+@media (max-width: 640px) {
+  .hud-left {
+    width: 228px;
+  }
+}

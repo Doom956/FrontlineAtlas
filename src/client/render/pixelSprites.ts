@@ -30,7 +30,7 @@ interface SpriteDef {
 const R = (x: number, y: number, w: number, h: number, c: Key): Rect => ({ x, y, w, h, c });
 
 const SPRITES: Record<string, SpriteDef> = {
-  // destroyer: slim hull with a pointed bow, a bridge, two small turrets, owner band along the side
+  // destroyer: slim hull with a pointed bow, a bridge in the owner colour, two small turrets, owner band along the side
   destroyer: {
     w: 24,
     h: 9,
@@ -39,7 +39,7 @@ const SPRITES: Record<string, SpriteDef> = {
       R(19, 4, 3, 1, 'h'),
       R(2, 3, 17, 1, 'H'),
       R(3, 5, 16, 1, 'k'),
-      R(10, 1, 4, 2, 's'),
+      R(10, 1, 4, 2, 'b'),
       R(11, 1, 2, 1, 'c'),
       R(5, 2, 2, 1, 'g'),
       R(7, 2, 3, 1, 'd'),
@@ -47,7 +47,7 @@ const SPRITES: Record<string, SpriteDef> = {
       R(17, 2, 3, 1, 'd'),
     ],
   },
-  // battleship: longer, wider hull, a tall stepped tower, three heavy turrets with barrels
+  // battleship: longer, wider hull, a tall stepped tower in the owner colour, three heavy turrets with barrels
   battleship: {
     w: 30,
     h: 11,
@@ -56,8 +56,8 @@ const SPRITES: Record<string, SpriteDef> = {
       R(25, 4, 3, 3, 'h'),
       R(2, 3, 23, 1, 'H'),
       R(3, 7, 22, 1, 'k'),
-      R(12, 1, 6, 3, 's'),
-      R(13, 0, 3, 1, 's'),
+      R(12, 1, 6, 3, 'b'),
+      R(13, 0, 3, 1, 'B'),
       R(14, 2, 2, 1, 'c'),
       R(4, 4, 3, 2, 'g'),
       R(7, 5, 3, 1, 'g'),
