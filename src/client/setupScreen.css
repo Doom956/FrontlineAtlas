@@ -158,8 +158,8 @@
   min-height: 32px;
 }
 .setup-h {
-  font: 600 13px/1 var(--f-label);
-  color: var(--brass);
+  font: 600 15px/1.2 var(--f-label);
+  color: var(--text);
 }
 .setup-sec-head + .setup-sec-head {
   margin-top: 8px;
@@ -199,12 +199,12 @@
   transition: border-color var(--fast), background-color var(--fast);
 }
 .map-thumb:hover {
-  border-color: var(--brass-lo);
+  border-color: var(--rule-hi);
   background: var(--metal-3);
 }
 .map-thumb.on {
-  border-color: var(--brass);
-  box-shadow: 0 0 0 1px var(--brass) inset;
+  border-color: var(--sel-bg);
+  box-shadow: 0 0 0 1px var(--sel-bg) inset;
   background: var(--metal-3);
 }
 .map-pic {

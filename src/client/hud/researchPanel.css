@@ -90,8 +90,8 @@ aside.drawer[data-page='research'] .dr-body {
   background: var(--metal-2);
 }
 .rp-tab.on {
-  color: var(--brass-ink);
-  background: var(--brass);
+  color: var(--sel-ink);
+  background: var(--sel-bg);
 }
 .rp-tab-k {
   font: 600 10px/1 var(--f-ui);

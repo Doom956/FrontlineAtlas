@@ -1,5 +1,5 @@
 /* Start page (menu.ts showTitle): a command column on the leading side over the live map. The map stays (it is the
-   game's identity) but is dimmed while any menu page shows, so the menu reads first. One brass action, quiet rows. */
+   game's identity) but is dimmed while any menu page shows, so the menu reads first. One amber action, quiet rows. */
 
 .app.in-menu canvas.map-gl,
 .app.in-menu canvas.map {
@@ -15,6 +15,13 @@
 .app.in-menu:has(.menu.at-title:not(.hidden)) canvas.map-gl,
 .app.in-menu:has(.menu.at-title:not(.hidden)) canvas.map {
   translate: calc((400px + clamp(24px, 5vw, 96px) + 40px) / 2) 0;
+}
+/* Pixel Clean: on the start page the bright map is the picture, so it is only a little quieter than in play */
+.app.in-menu:has(.menu.at-title:not(.hidden)) canvas.map-gl {
+  filter: saturate(0.85) brightness(0.85);
+}
+.app.in-menu:has(.menu.at-title:not(.hidden)) canvas.map {
+  opacity: 0.85;
 }
 
 .menu.at-title {
@@ -34,9 +41,9 @@
   gap: 0;
   padding: 32px 40px 32px clamp(24px, 5vw, 96px);
   overflow-y: auto;
-  background: rgba(16, 20, 24, 0.86);
+  background: rgba(14, 16, 21, 0.9);
   border: 0;
-  border-inline-end: 1px solid var(--rule);
+  border-inline-end: 0;
   border-radius: 0;
   box-shadow: 12px 0 32px rgba(0, 0, 0, 0.35);
 }

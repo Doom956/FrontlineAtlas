@@ -13,7 +13,7 @@ import { isTribe } from '../../sim/types';
 import type { GameState, Player } from '../../sim/types';
 import type { Camera } from '../camera';
 import { drawIcon, type StatusIconId } from '../icons';
-import { fitSize, LABEL_BLOCK_H, LABEL_CHAR_W } from '../labels';
+import { fitSize, LABEL_BLOCK_H } from '../labels';
 import { clamp, formatCount, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, setTracking } from './common';
 import { OWNER_MASK, type TileFeed } from './tiles';
 
@@ -346,26 +346,16 @@ export class NameLayer {
         else if (requests.has(p.id)) icons.push('envelope');
       }
       const iconPx = clamp(px * 0.85, 12, 20);
-      // Clean map type: nations in tracked uppercase Barlow Condensed 600, tribes in mixed-case 500. Big countries
-      // keep a capped size and spread their letters over the spare width instead of growing into giant letters.
+      // Pixel Clean map type: nations in their own mixed case at 600 with a hair of tracking, tribes at 500. No
+      // tracked capitals and no letters spread over a big country: a calm label, sized by the region, then capped.
       ctx.font = tribe ? `500 ${Math.round(px * 1.04)}px ${MAP_LABEL_FAMILY}` : `600 ${Math.round(px)}px ${MAP_LABEL_FAMILY}`;
       const nameFont = ctx.font;
       // a tribe far out: just its army number (the name on hover), so dozens of "Tribe of the ..." don't pile up
       const raw = tribe && z < TRIBE_NAME_ZOOM && l.id !== style.hoverOwner ? '' : p.name;
-      const name = tribe ? raw : raw.toUpperCase();
-      let track = tribe ? px * 0.01 : px * 0.07;
+      const name = raw;
+      const track = tribe ? px * 0.01 : px * 0.02;
       setTracking(ctx, track);
-      let tw = name ? ctx.measureText(name).width : 0;
-      if (!tribe && name.length > 1 && size > px) {
-        // spare width the region offers at its fitted size (fitSize keeps this inside the territory)
-        const budget = size * (name.length * LABEL_CHAR_W + 0.6) * 0.7;
-        const extra = clamp((budget - tw) / (name.length - 1), 0, px * 0.12);
-        if (extra > 0.5) {
-          track += extra;
-          setTracking(ctx, track);
-          tw = ctx.measureText(name).width;
-        }
-      }
+      const tw = name ? ctx.measureText(name).width : 0;
       const iconsW = icons.length ? icons.length * (iconPx + 2) + 2 : 0;
       const totalW = tw + iconsW;
       const small = clamp(px * (name ? 0.62 : 0.8), tribe ? 10.5 : 10, 14);

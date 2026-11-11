@@ -10,8 +10,8 @@ import type { RGB } from './common';
  * tundra pale grey-blue) without shouting over the nation colours.
  */
 export const TERRAIN_RGB: readonly RGB[] = [
-  [30, 58, 94], // deep water (lifted navy, calmer)
-  [60, 112, 152], // shallow water (brighter, cleaner)
+  [42, 80, 120], // deep water (lifted blue, calm)
+  [58, 104, 144], // shallow water (close to deep: no halo round the coast)
   [152, 188, 106], // plains (fresh grass)
   [76, 130, 78], // forest (richer green)
   [196, 172, 118], // hills (warm tan)
