@@ -10,8 +10,8 @@ import type { RGB } from './common';
  * tundra pale grey-blue) without shouting over the nation colours.
  */
 export const TERRAIN_RGB: readonly RGB[] = [
-  [26, 50, 84], // deep water
-  [44, 88, 128], // shallow water
+  [22, 36, 42], // deep water (muted slate teal, calmer than navy)
+  [38, 60, 68], // shallow water
   [138, 170, 98], // plains
   [70, 114, 64], // forest
   [160, 150, 102], // hills
@@ -76,9 +76,9 @@ export function buildTerrain(map: MapData): TerrainData {
       let g = shallow[1] + (deep[1] - shallow[1]) * s;
       let b = shallow[2] + (deep[2] - shallow[2]) * s;
       if (d === 1) {
-        r += 14;
-        g += 18;
-        b += 18;
+        r += 7;
+        g += 9;
+        b += 9;
       }
       rgba[o] = r;
       rgba[o + 1] = g;

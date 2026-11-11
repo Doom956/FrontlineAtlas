@@ -107,9 +107,9 @@ export function dashedLine(ctx: CanvasRenderingContext2D, x1: number, y1: number
   ctx.setLineDash([]);
 }
 
-/** Map type: Barlow Condensed for names and labels, IBM Plex Sans for numbers (both bundled in fonts.ts). */
-export const MAP_LABEL_FAMILY = "'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif";
-export const MAP_NUM_FAMILY = "'IBM Plex Sans', system-ui, sans-serif";
+/** Map type: Silkscreen (pixel caps) for place names, Space Grotesk for numbers / counts (both bundled in fonts.ts). */
+export const MAP_LABEL_FAMILY = "'Silkscreen', 'Space Grotesk', system-ui, sans-serif";
+export const MAP_NUM_FAMILY = "'Space Grotesk', system-ui, sans-serif";
 
 /** Canvas letter-spacing in CSS px (no-op where the browser lacks ctx.letterSpacing). */
 export function setTracking(ctx: CanvasRenderingContext2D, px: number): void {

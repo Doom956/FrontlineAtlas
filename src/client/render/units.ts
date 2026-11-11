@@ -11,7 +11,8 @@ import { armyTotal } from '../../sim/economy';
 import type { GameState, Unit } from '../../sim/types';
 import type { Camera } from '../camera';
 import { clamp, css, formatCount, MAP_NUM_FAMILY, type RGB } from './common';
-import { drawTrails, GLYPHS, type Inst, strokeGlyphs } from './unitGlyphs';
+import { drawTrails, GLYPHS, type Inst } from './unitGlyphs';
+import { drawUnitSprite } from './pixelSprites';
 import { isIncoming } from '../forces';
 import { unitVisibleTo } from '../../sim/techtree';
 import type { FogView } from '../fog/fogView';
@@ -23,9 +24,10 @@ const DROP_MS = 1800;
 const CHUTES = 6;
 const UNDER = 'rgba(6,9,15,0.6)';
 
-/** Base glyph length on screen (CSS px) at a zoom level; each glyph scales it a little (unitGlyphs.ts). */
-const glyphPx = (z: number): number => clamp(7 + z * 1.2, 8, 10);
-const strokePx = (z: number): number => clamp(1.2 + z * 0.15, 1.25, 1.7);
+/** Base sprite length on screen (CSS px) at a zoom level; each unit scales it by its glyph len. Pixel Ops: units
+ * stay small and calm when zoomed out (so the whole-map view does not clutter) and grow into readable pixel sprites
+ * as you zoom in (the near-zoom reward). */
+const glyphPx = (z: number): number => clamp(7 + Math.max(0, z - 3) * 3.4, 9, 44);
 
 /** `fleet`: this entry is a fleet marker standing for these ships (the lead, u, is the lowest id). */
 type Vis = Inst & { u: Unit; fleet?: number[] };
@@ -281,23 +283,15 @@ export class UnitLayer {
       else this.allHits.push(e.u.id, e.x, e.y, r);
     }
     drawTrails(ctx, visible, z >= 0.45);
-    // glyphs: one dark under-stroke, one faint fill, one colour stroke (and solid cargo blocks) per owner
-    const lw = strokePx(z);
-    const byOwner = new Map<number, Vis[]>();
-    for (const e of visible) {
-      const l = byOwner.get(e.u.owner);
-      if (l) l.push(e);
-      else byOwner.set(e.u.owner, [e]);
-    }
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    // Pixel sprites (pixelSprites.ts): a crisp original pixel unit, gunmetal hull / owner colour with a team band,
+    // nearest-neighbour scaled and the heading snapped to 16 directions so it reads and does not shimmer.
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
-    for (const [owner, list] of byOwner) {
-      const c = colors[owner] ?? [200, 200, 200];
-      strokeGlyphs(ctx, list, css(c), css(c, 0.22), UNDER, lw);
-      this.drawn += list.length;
+    for (const e of visible) {
+      const c = colors[e.u.owner] ?? [200, 200, 200];
+      drawUnitSprite(ctx, e.type, e.u.variant, e.x, e.y, e.S * 2, e.angle, c, 1);
     }
+    this.drawn += visible.length;
     // own warships and tank divisions: a tiny white tick under the hull, a ring while hovered, picked or selected
     // (selection.ts); clickable (hit area larger than the drawing)
     if (me > 0) {

@@ -1,39 +1,47 @@
-/* Frontline Atlas UI: "war room". A command table over the map: near-opaque gunmetal panels with a fine brushed grain,
-   thin steel rules and corner brackets instead of rounded cards, brass for actions and key numbers, muted status
-   colours. Labels in a condensed military sans (uppercase, tracked), values in a legible face with tabular figures.
-   Decoration stays minimal: colour, type and crisp lines carry the identity. */
+/* Frontline Atlas UI: "Pixel Ops". A flat gunmetal field console over a muted olive theatre. Hard 1px edges, no grain,
+   no glows, no corner brackets. One orange accent for the primary action and the current selection; khaki for titles
+   and numbers; red for danger, olive for good news, nothing else coloured. Titles and changing numbers in a pixel
+   display face (Silkscreen), everything a sentence is made of in a clean sans (Space Grotesk) with tabular figures. */
 :root {
-  --ink: #0d1013;
-  --metal: #191e23;
-  --metal-a: rgba(25, 30, 35, 0.95);
-  --metal-2: #222930;
-  --metal-3: #2c343c;
-  --metal-4: #36404a;
-  --rule: #39424b;
-  --rule-hi: #56616c;
-  --text: #e4dfd2;
-  --dim: #a3a49c;
-  --faint: #73766f;
-  --brass: #c9a227;
-  --brass-hi: #e3c04e;
-  --brass-lo: #7c6416;
-  --brass-ink: #1a1508;
-  --olive: #98a957;
-  --olive-d: #5d6a2c;
-  --signal: #d4503a;
+  --ink: #0e110c;
+  --metal: #171b14;
+  --metal-a: rgba(21, 25, 17, 0.97);
+  --metal-2: #20261c;
+  --metal-3: #2a3123;
+  --metal-4: #353d2c;
+  --rule: #39412f;
+  --rule-hi: #525c40;
+  --text: #e9e6d6;
+  --dim: #a7a994;
+  --faint: #76796a;
+  /* Primary accent: signal orange, spent on the one primary action and the current selection only. */
+  --accent: #e8803a;
+  --accent-hi: #f59a52;
+  --accent-lo: #8a4a1e;
+  --accent-ink: #160a03;
+  /* "brass" is demoted to a quiet khaki (titles, numbers, minor marks); every old var(--brass*) use goes calm. */
+  --brass: #b9ab6a;
+  --brass-hi: #d2c488;
+  --brass-lo: #6f6433;
+  --brass-ink: #171205;
+  --olive: #8ba84e;
+  --olive-d: #525f2a;
+  --signal: #d6513a;
   --signal-d: #7f2a1d;
-  --steel: #6b95b8;
-  --steel-d: #34536d;
-  --grain: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0.08)),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 3px);
-  --f-label: 'Barlow Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif;
-  --f-ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --f-logo: 'Barlow Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif;
-  --r: 2px;
+  --steel: #6f93b4;
+  --steel-d: #34506a;
+  /* no texture: a flat fill stands in for the old grain so the 13 shared panels read as one calm surface */
+  --grain: none;
+  --f-label: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --f-ui: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --f-pixel: 'Silkscreen', 'Space Grotesk', ui-monospace, monospace;
+  --f-logo: 'Silkscreen', 'Space Grotesk', ui-monospace, monospace;
+  --r: 0px;
   --s1: 4px;
   --s2: 8px;
   --s3: 12px;
   --s4: 16px;
+  --s5: 24px;
   --fast: 120ms;
   color-scheme: dark;
 }
@@ -167,33 +175,18 @@ canvas.minimap {
 .modal-card,
 .menu-card {
   background-color: var(--metal-a);
-  background-image: var(--grain);
+  background-image: none;
   border: 1px solid var(--rule);
   border-radius: var(--r);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 6px 18px rgba(0, 0, 0, 0.35);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
 }
-/* corner brackets: two thin brass L shapes on the main panels */
+/* Pixel Ops: no decorative corner brackets. Keep position for children that anchor to the panel. */
 .cmdbar,
 .lb,
 .drawer,
 .menu-card,
 .modal-card {
   position: relative;
-}
-.cmdbar::before,
-.lb::before,
-.drawer::before,
-.menu-card::before,
-.modal-card::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  pointer-events: none;
-  background:
-    linear-gradient(var(--brass-lo), var(--brass-lo)) top left / 10px 1px no-repeat,
-    linear-gradient(var(--brass-lo), var(--brass-lo)) top left / 1px 10px no-repeat,
-    linear-gradient(var(--brass-lo), var(--brass-lo)) bottom right / 10px 1px no-repeat,
-    linear-gradient(var(--brass-lo), var(--brass-lo)) bottom right / 1px 10px no-repeat;
 }
 
 /* buttons: obvious default, hover, pressed, disabled */
@@ -209,23 +202,21 @@ canvas.minimap {
   border-radius: var(--r);
   background: var(--metal-2);
   color: var(--text);
-  font: 600 13px/1 var(--f-label);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font: 600 13px/1 var(--f-ui);
+  letter-spacing: 0.01em;
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 1px 0 rgba(0, 0, 0, 0.5);
+  box-shadow: none;
   transition: background var(--fast), border-color var(--fast), color var(--fast);
 }
 .wr-btn:hover:not(:disabled),
 .btn:hover:not(:disabled) {
   background: var(--metal-3);
-  border-color: var(--brass-lo);
+  border-color: var(--rule-hi);
 }
 .wr-btn:active:not(:disabled),
 .btn:active:not(:disabled) {
   background: var(--metal);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6) inset;
   transform: translateY(1px);
 }
 .wr-btn:disabled,
@@ -235,14 +226,14 @@ canvas.minimap {
 }
 .wr-btn.primary,
 .btn.primary {
-  background: var(--brass);
-  border-color: var(--brass-hi);
-  color: var(--brass-ink);
+  background: var(--accent);
+  border-color: var(--accent-hi);
+  color: var(--accent-ink);
 }
 .wr-btn.primary:hover:not(:disabled),
 .btn.primary:hover:not(:disabled) {
-  background: var(--brass-hi);
-  border-color: #f1d77e;
+  background: var(--accent-hi);
+  border-color: #ffb978;
 }
 .wr-btn.danger,
 .btn.danger {
@@ -5706,4 +5697,73 @@ strong {
   .adm-sel {
     height: 32px;
   }
+}
+
+/* ====================================================================================================
+   PIXEL OPS overrides. Pixel display face on identity/numbers, one orange accent, no HUD hotkey chips,
+   no idle pulsing. Appended last so it wins source-order ties without touching the rules above.
+   ==================================================================================================== */
+
+/* Pixel display face (Silkscreen) for titles and changing numbers only; sentences stay Space Grotesk.
+   Silkscreen runs large and wide, so sizes are dialled down and tracking removed where it is set. */
+.cb-big,
+.clock .clock-t,
+.clock,
+.big-v,
+.over-title,
+.over-head .over-big-v,
+.vchip-n,
+.menu-title-head .logo {
+  font-family: var(--f-pixel);
+  letter-spacing: 0;
+}
+.cb-big {
+  font-size: 18px;
+  letter-spacing: 0;
+}
+.clock {
+  font-size: 13px;
+}
+.big-v {
+  font-size: 22px;
+  color: var(--brass-hi);
+}
+
+/* One attention cue: kill idle pulsing, the bouncing guide arrow and the animated alert life bar. */
+.sq.idle {
+  animation: none;
+}
+.al-life,
+.alerts.held .al-life {
+  animation: none;
+}
+.sq.on {
+  color: var(--accent-hi);
+  background: transparent;
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* New-player rule (owner): every action has a visible labelled button, so hotkey chips come off the HUD.
+   The markup and kbd / data-test nodes stay for tests; they are only hidden. Help, How-to and setup keep theirs. */
+.qb-slot .qb-k,
+.bm-card .bm-c-k,
+.rp-tab .rp-tab-k,
+.qb-build kbd,
+.cmdbar kbd,
+.skbar .kc,
+.modechip .kc {
+  display: none !important;
+}
+
+/* The eyebrow is the one surviving tracked-caps label: quieter, khaki, less tracking. */
+.wr-sec {
+  letter-spacing: 0.12em;
+  color: var(--faint);
+}
+
+/* Selection / "on" states carry the accent as a flat edge, never a glow ring. */
+.wr-btn.on,
+.btn.on {
+  border-color: var(--accent);
+  color: var(--accent-hi);
 }

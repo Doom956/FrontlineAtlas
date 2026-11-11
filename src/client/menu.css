@@ -49,15 +49,16 @@
 }
 .logo {
   margin: 0;
-  font: 600 54px/0.98 var(--f-logo);
-  letter-spacing: 0.18em;
+  font: 400 38px/1.05 var(--f-logo);
+  letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--text);
+  text-shadow: 3px 3px 0 var(--accent-lo);
 }
 .tagline {
-  margin: 12px 0 0;
+  margin: 16px 0 0;
   font-size: 14px;
-  line-height: 1.4;
+  line-height: 1.5;
   color: var(--dim);
 }
 
@@ -85,14 +86,25 @@
   letter-spacing: 0.04em;
 }
 
-/* the main action */
+/* the main action: the one orange control on the screen */
 .btn.menu-play {
   justify-content: space-between;
   width: 100%;
   min-height: 56px;
   padding: 0 20px;
-  font-size: 19px;
-  letter-spacing: 0.12em;
+  font-size: 18px;
+  letter-spacing: 0.01em;
+  background: var(--accent);
+  border-color: var(--accent-hi);
+  color: var(--accent-ink);
+}
+.btn.menu-play:hover:not(:disabled) {
+  background: var(--accent-hi);
+  border-color: #ffb978;
+}
+.menu-play .ico,
+.menu-play svg {
+  color: var(--accent-ink);
 }
 .menu-play-note {
   font: 500 13px/1 var(--f-ui);

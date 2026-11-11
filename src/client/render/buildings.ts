@@ -200,13 +200,13 @@ export class BuildingLayer {
     const r = size * 0.5;
     const fw = clamp(size * 0.09, 1.5, 3);
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = 'rgba(10,12,16,0.85)';
+    ctx.fillStyle = 'rgba(8,10,6,0.9)';
     ctx.beginPath();
-    ctx.roundRect(x - r - fw - 1, y - r - fw - 1, size + 2 * fw + 2, size + 2 * fw + 2, size * 0.3);
+    ctx.rect(x - r - fw - 1, y - r - fw - 1, size + 2 * fw + 2, size + 2 * fw + 2);
     ctx.fill();
     ctx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`;
     ctx.beginPath();
-    ctx.roundRect(x - r - fw, y - r - fw, size + 2 * fw, size + 2 * fw, size * 0.28);
+    ctx.rect(x - r - fw, y - r - fw, size + 2 * fw, size + 2 * fw);
     ctx.fill();
     ctx.globalAlpha = 1;
     const cat = ICON_INFO[id].category;

@@ -1593,7 +1593,7 @@ export function renderMarker(ctx: Ctx2D, id: MarkerId, sizeDev: number, opts: Pi
     const s = sizeDev - rimW;
     ctx.beginPath();
     if (opts.shape === 'disc') ctx.arc(sizeDev / 2, sizeDev / 2, s / 2, 0, Math.PI * 2);
-    else ctx.roundRect(rimW / 2, rimW / 2, s, s, s * 0.24);
+    else ctx.rect(rimW / 2, rimW / 2, s, s); // Pixel Ops: hard square plates, no rounding
     ctx.fillStyle = plateCol;
     ctx.fill();
     ctx.lineWidth = rimW;
