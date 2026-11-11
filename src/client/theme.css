@@ -760,3 +760,8 @@ body {
   background: var(--metal-2);
   padding: 8px 10px;
 }
+
+/* the research sheet covers the map's left edge: the standings step aside instead of peeking out from under it */
+.hud.rp-open > .hud-left {
+  visibility: hidden;
+}
