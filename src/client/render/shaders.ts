@@ -346,6 +346,8 @@ void main() {
     vec3 calm = mix(under, col, ${UNDER_DETAIL.toFixed(3)});
     float cy = dot(calm, vec3(0.299, 0.587, 0.114));
     calm = vec3(${UNDER_MID.toFixed(3)} + (cy - ${UNDER_MID.toFixed(3)}) * ${UNDER_LUM.toFixed(3)}) + (calm - cy) * ${UNDER_CHROMA.toFixed(3)};
+    // Pixel Clean: tribes keep most of the land's own colour (a light veil, not a grey slab), so the nations stand out
+    if (int(flags.r * 255.0 + 0.5) == 3) calm = mix(col, calm, 0.35);
     vec3 fill = mix(calm, oc, pc.a);
     if (res > 0 && detail > 0.0) {
       // under a nation deposits only shade the colour faintly (no foreign hues, no dotted clusters), and only very

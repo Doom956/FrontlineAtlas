@@ -49,10 +49,10 @@
 }
 .ob-b.on,
 .ap-b.on {
-  background: var(--metal-3);
-  border-color: var(--brass);
-  color: var(--brass-hi);
-  box-shadow: 0 0 0 1px rgba(227, 192, 78, 0.25) inset;
+  background: var(--sel-bg);
+  border-color: var(--sel-bg);
+  color: var(--sel-ink);
+  box-shadow: none;
 }
 .ob-line {
   grid-area: line;
