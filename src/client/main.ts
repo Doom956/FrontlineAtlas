@@ -468,6 +468,8 @@ function beginSession(state: GameState, settings: GameSettings, opts: { tutorial
   endSession();
   const camera = newCamera(state);
   const ui = defaultUiState();
+  // the top-right clock counts real seconds played (steady at any speed); seed it from game time so a loaded save keeps its clock
+  ui.playRealMs = gameSeconds(state) * 1000;
   const hud = new Hud(app, ui, dispatch, camera, audio, { tutorial, saves: !!opts.recorder });
   hud.setUnitProbe(renderer);
   if (opts.history) hud.adoptHistory(opts.history);
@@ -799,7 +801,11 @@ function frame(now: number): void {
         s.hud?.skipEvents(s.state);
         audio?.skipTo(s.state);
       }
-    } else if (s.human || !loadJob) runTicks(s, dt); // the menu's background game rests while a save loads
+    } else if (s.human || !loadJob) {
+      // real-time clock: count real ms while the player's game is running and not paused, independent of the speed setting
+      if (s.human && !s.ui.paused && s.state.phase === 'playing') s.ui.playRealMs += dt;
+      runTicks(s, dt); // the menu's background game rests while a save loads
+    }
     if (s.recorder && (now - lastAutosave >= AUTOSAVE_MS || s.state.phase === 'over')) {
       lastAutosave = now;
       autosave();

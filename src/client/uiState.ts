@@ -40,6 +40,9 @@ export interface UiState {
   paused: boolean;
   /** x8 / x16 only from the owner console (single player) */
   speed: 1 | 2 | 4 | 8 | 16;
+  /** real play time in ms (single player): counts real seconds while playing and not paused, so the top-right clock is
+   * steady whatever the x1/x2/x4 speed is. Client only (not sim state). Seeded from game time when a game starts or loads. */
+  playRealMs: number;
   showResources: boolean; // overlay toggle (V)
   showSupply: boolean; // overlay toggle (B)
   showMinimap: boolean; // minimap toggle (M), off by default: the map itself is the overview
@@ -100,6 +103,7 @@ export function defaultUiState(): UiState {
     selectedTile: -1,
     paused: false,
     speed: 1,
+    playRealMs: 0,
     showResources: false,
     showSupply: false,
     showMinimap: false,
