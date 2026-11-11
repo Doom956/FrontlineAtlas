@@ -185,7 +185,7 @@ export class CommandBar {
       setText(val, `${v}%`);
       if (last >= 0 && v !== last) flash(val, 'flash-key');
       last = v;
-      setText(sub, formatCount(troopSum(troopsToSend(me, ui))));
+      setText(sub, `${formatCount(troopSum(troopsToSend(me, ui)))} troops`);
     });
     return box;
   }

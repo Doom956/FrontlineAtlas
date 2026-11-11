@@ -100,7 +100,10 @@ export class QuickBar {
       row.append(b);
     }
     this.count = countSelector(ctx, 'qb-count');
-    this.el.append(this.buildBtn, row, this.count.el);
+    // Pixel Clean: the x1 / x3 / x5 choice carries a word, so a new player knows what the numbers count
+    const countWrap = el('div', 'qb-count-wrap');
+    countWrap.append(el('span', 'cb-lab', 'Levels'), this.count.el);
+    this.el.append(this.buildBtn, row, countWrap);
 
     // Tab opens / closes the menu; Shift is tracked for x5 (the map's own key handler ignores Tab)
     const o = { signal: this.ac.signal };
