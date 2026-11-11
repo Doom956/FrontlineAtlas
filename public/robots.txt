@@ -1,0 +1,5 @@
+# Frontline Atlas
+User-agent: *
+Allow: /
+
+Sitemap: https://frontline-atlas.onrender.com/sitemap.xml
