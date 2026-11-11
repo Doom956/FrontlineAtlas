@@ -79,7 +79,18 @@
 //   `teams` (teams mode only) gives the team of every human and AI nation: teammates are permanently allied, cannot
 //   break the alliance or attack each other, and win together. Tribes have no team.
 //
-// Single player never touches any of this: the client runs the sim locally (no server needed).
+// - Single-player link (protocol 19): a single-player game (never the tutorial) opens its own small socket while the
+//   page is online and sends `spHello {protocol}` instead of `hello`. The server answers `spWelcome {spId}` and keeps
+//   the session apart from rooms (it counts against the per-address connection limit; at most maxSpSessions are
+//   held). The client then sends `spStatus {nation, map, minutes, landPct}` about every SP_STATUS_MS (at most one
+//   per SP_STATUS_MIN_MS is kept) and nothing else but `ping`: any other message from it gets error 'notAllowed'.
+//   It only ever receives `announcement`, `notice` and `spectacle` (screen-only, as above) and `error`. The owner
+//   reaches it with scope 'sp' (`spId` = one game, none = every single-player game), `adminNotice {spId}`, and every
+//   'all' broadcast; `adminRooms` lists the links in `sp`. Tile effects and per-member effects never go to it. A link
+//   with another protocol is closed (CloseCode.Version) and the client stays quiet. The server forgets it on close.
+//
+// Single player never needs any of this: the client runs the sim locally (no server needed); the link above is
+// optional and the game plays the same without it.
 //
 // This file is shared by the server (server/) and the browser client: keep it free of DOM and Node APIs.
 
@@ -102,7 +113,7 @@ export type { GameMode };
 // ------------------------------------------------------------------------------------------------ constants
 
 /** Bumped on any incompatible change to the messages below. `hello.protocol` must equal it. */
-export const PROTOCOL_VERSION = 18;
+export const PROTOCOL_VERSION = 19;
 /** Longest owner-console code a client may send (adminAuth). */
 export const ADMIN_CODE_MAX_LENGTH = 128;
 /** Longest chat message (characters, after cleaning). */
@@ -153,8 +164,19 @@ export function spectacleSecondsRange(kind: SpectacleKind): readonly [number, nu
   if (kind === 'countdown') return COUNTDOWN_SECONDS;
   return (PRANK_KINDS as readonly string[]).includes(kind) ? PRANK_SECONDS : null;
 }
-/** Where an announcement or effect goes: the room (the owner's own, or `code`), or every session on the server. */
-export type BroadcastScope = 'room' | 'all';
+/**
+ * Where an announcement or effect goes: the room (the owner's own, or `code`), every session on the server (single
+ * player links too), or single-player games ('sp': the one `spId`, else all of them).
+ */
+export type BroadcastScope = 'room' | 'all' | 'sp';
+/** Single-player link: the client sends spStatus this often (ms). */
+export const SP_STATUS_MS = 30_000;
+/** The server keeps at most one spStatus per this long from one link (ms); the rest are dropped. */
+export const SP_STATUS_MIN_MS = 5_000;
+/** Longest text frame a single-player link may send (bytes). */
+export const SP_MESSAGE_MAX_BYTES = 512;
+/** Most single-player games the owner's list shows (the answer says how many there are). */
+export const ADMIN_SP_MAX = 150;
 /** WebSocket path on the server (same host that serves the client, or the one given by ?server=). */
 export const WS_PATH = '/ws';
 /** One turn = one sim tick = 100 ms (config TICK_SECONDS). */
@@ -408,6 +430,22 @@ export interface AdminAuthMsg {
   type: 'adminAuth';
   code: string;
 }
+/** Single-player link (protocol 19): sent instead of hello; nothing about the player but the game's protocol. */
+export interface SpHelloMsg {
+  type: 'spHello';
+  protocol: number;
+}
+/** Single-player link: what the owner's Games list shows of this game (plain fields, about every SP_STATUS_MS). */
+export interface SpStatusMsg {
+  type: 'spStatus';
+  /** the player's nation name */
+  nation: string;
+  map: MapChoice;
+  /** minutes of game time played */
+  minutes: number;
+  /** share of the land held, 0..100 */
+  landPct: number;
+}
 /** Owner powers (admin sessions only, see the rules above): list every room on the server. */
 export interface AdminRoomsMsg {
   type: 'adminRooms';
@@ -417,25 +455,36 @@ export interface AdminAnnounceMsg {
   type: 'adminAnnounce';
   scope: BroadcastScope;
   code?: string;
+  /** scope 'sp': this single-player game only (absent = every single-player game) */
+  spId?: number;
   /** '' = the default "Announcement" */
   title: string;
   text: string;
   style: AnnounceStyle;
   seconds: number;
 }
-/** A small card for one member of a room. */
-export interface AdminNoticeMsg {
-  type: 'adminNotice';
-  code?: string;
-  memberId: number;
-  text: string;
-  style: AnnounceStyle;
-}
+/** A small card for one member of a room, or (spId) for one single-player game. */
+export type AdminNoticeMsg =
+  | {
+      type: 'adminNotice';
+      code?: string;
+      memberId: number;
+      text: string;
+      style: AnnounceStyle;
+    }
+  | {
+      type: 'adminNotice';
+      spId: number;
+      text: string;
+      style: AnnounceStyle;
+    };
 /** A visual effect. Effects on a tile (ping, confetti or fireworks with a tile) only go to one room. */
 export interface AdminSpectacleMsg {
   type: 'adminSpectacle';
   scope: BroadcastScope;
   code?: string;
+  /** scope 'sp': this single-player game only (absent = every single-player game) */
+  spId?: number;
   kind: SpectacleKind;
   /** with scope 'room': only this member of the room sees it */
   memberId?: number;
@@ -493,7 +542,9 @@ export type ClientMessage =
   | AdminAuthMsg
   | AdminClientMessage
   | ChatSendMsg
-  | PingMsg;
+  | PingMsg
+  | SpHelloMsg
+  | SpStatusMsg;
 
 // ------------------------------------------------------------------------------------------------ server -> client
 
@@ -664,12 +715,27 @@ export interface AdminRoomInfo {
   paused: boolean;
   members: AdminMemberInfo[];
 }
+/** One single-player game linked to the server, for the owner's Games list (protocol 19). */
+export interface AdminSpInfo {
+  /** the link's id (scope 'sp' / adminNotice spId) */
+  spId: number;
+  /** '' until its first spStatus */
+  nation: string;
+  map: string;
+  minutes: number;
+  landPct: number;
+  /** minutes since the link connected */
+  linkedMinutes: number;
+}
 /** Answer to adminRooms (the sender alone). At most ADMIN_ROOMS_MAX rooms; `total` counts all. */
 export interface AdminRoomsResultMsg {
   type: 'adminRooms';
   serverTime: number;
   rooms: AdminRoomInfo[];
   total: number;
+  /** single-player games linked now (at most ADMIN_SP_MAX; spTotal counts all) */
+  sp: AdminSpInfo[];
+  spTotal: number;
 }
 /** The server's answer to every owner power (the sender alone). `reached` = sessions that got it. */
 export interface AdminAckMsg {
@@ -678,6 +744,12 @@ export interface AdminAckMsg {
   ok: boolean;
   message: string;
   reached?: number;
+}
+/** Answer to spHello: the link is up. */
+export interface SpWelcomeMsg {
+  type: 'spWelcome';
+  protocol: number;
+  spId: number;
 }
 /** A banner for everyone in the room (or on the server). */
 export interface AnnouncementMsg {
@@ -774,7 +846,8 @@ export type ServerMessage =
   | SpectacleMsg
   | ChatRelayMsg
   | ChatHistoryMsg
-  | ChatNoticeMsg;
+  | ChatNoticeMsg
+  | SpWelcomeMsg;
 
 // ------------------------------------------------------------------------------------------------ helpers
 

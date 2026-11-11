@@ -28,6 +28,10 @@ export interface ServerOptions {
   /** hashes for turn t are compared once turn t + this has been sent (or once every player reported) */
   hashGraceTurns: number;
   maxConnectionsPerIp: number;
+  /** single-player links held at once (server-wide); more are closed at spHello */
+  maxSpSessions: number;
+  /** single-player links per address (inside maxConnectionsPerIp, so they never take every place of an address) */
+  maxSpSessionsPerIp: number;
   maxMessageBytes: number;
   /** messages per second per connection (token bucket, burst x2); a long flood closes the socket */
   messagesPerSecond: number;
@@ -97,6 +101,8 @@ export const DEFAULT_OPTIONS: ServerOptions = {
   maxGameMs: 4 * 3600_000,
   hashGraceTurns: 30,
   maxConnectionsPerIp: 8,
+  maxSpSessions: 1000,
+  maxSpSessionsPerIp: 4,
   maxMessageBytes: MAX_MESSAGE_BYTES,
   messagesPerSecond: 30,
   helloTimeoutMs: 10_000,
@@ -143,6 +149,8 @@ export function optionsFromEnv(env: Record<string, string | undefined>): Partial
   if (env.PUBLIC_LOBBIES === '0') o.publicLobbies = false;
   const perIp = int('MAX_CONNECTIONS_PER_IP');
   if (perIp !== undefined && perIp > 0) o.maxConnectionsPerIp = perIp;
+  const maxSp = int('MAX_SP_SESSIONS');
+  if (maxSp !== undefined) o.maxSpSessions = maxSp;
   const maxRooms = int('MAX_ROOMS');
   if (maxRooms !== undefined && maxRooms > 0) o.maxRooms = maxRooms;
   const perIpRooms = int('MAX_ROOMS_PER_IP');

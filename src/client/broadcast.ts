@@ -43,7 +43,7 @@ import type { MapWarp } from './fx/prankView';
 
 /** The map the layer can point at (null in the menu). */
 export interface BroadcastView {
-  /** room code of the game on screen (tile effects for another room are ignored) */
+  /** room code of the game on screen (tile effects for another room are ignored); '' = single player (no tiles) */
   code: string;
   mapWidth: number;
   mapHeight: number;
@@ -336,7 +336,7 @@ export class BroadcastLayer {
     const label = clipBroadcastText(msg.label, BROADCAST_LABEL_MAX);
     const v = this.view?.() ?? null;
     // a tile only means something on that room's map
-    const tile = v && typeof msg.code === 'string' && msg.code === v.code && Number.isInteger(msg.tile) && (msg.tile as number) >= 0 && (msg.tile as number) < v.mapWidth * v.mapHeight ? (msg.tile as number) : -1;
+    const tile = v && v.code !== '' && typeof msg.code === 'string' && msg.code === v.code && Number.isInteger(msg.tile) && (msg.tile as number) >= 0 && (msg.tile as number) < v.mapWidth * v.mapHeight ? (msg.tile as number) : -1;
     const W = window.innerWidth;
     const H = window.innerHeight;
     switch (kind) {

@@ -221,6 +221,7 @@ Server environment variables:
 | `PUBLIC_START_SECONDS` | 60 (15 in `npm run dev`) | public lobby countdown |
 | `PUBLIC_LOBBIES` | 1 | `0` = no public lobbies |
 | `MAX_CONNECTIONS_PER_IP` | 8 | |
+| `MAX_SP_SESSIONS` | 1000 | single-player games linked at once (0 = none); at most 4 per address, inside `MAX_CONNECTIONS_PER_IP` |
 | `MAX_ROOMS` | 500 | lobbies + games at once |
 | `MAX_ROOMS_PER_IP` | 3 | private lobbies + games one address may have open |
 | `TRUST_PROXY` | auto (on with `RENDER` / `FLY_APP_NAME`) | take the client IP from the proxy's headers |
@@ -313,6 +314,19 @@ at most 60% of the screen wide (90% on phones) and 40% tall; the map around it k
 Players never see the words admin, console or owner: banners say "Announcement" or your title, messages
 "Message". With reduced motion on their system there is no shake and a tenth of the particles; flip, earthquake and
 chase do not run at all (nothing shows), disco holds one still colour change, the fog puff only fades.
+
+**Single-player games** (protocol 19). While the page is online, a single-player game (never the tutorial) opens a
+small socket of its own to the same server as multiplayer (`?server=`, `VITE_SERVER_URL`, else the page's origin, so
+the Render site and a GitHub Pages build made with `VITE_SERVER_URL` both reach it; `ALLOWED_ORIGINS` applies as for
+multiplayer). It sends `spHello {protocol}`, then about every 30 s `spStatus {nation, map, minutes, landPct}`, and
+nothing else; the server forgets it when it closes. No server, no network, a refused socket (a copy that can't open
+sockets) or a server of another version just means no link: the game plays the same and shows nothing. It retries 5 s
+doubling to 5 min and stops while the tab has been hidden for 10 minutes. The Games tab lists these games under
+**Single player** (nation, map, minutes played, land share; no view of their map) with **Make target** and
+**Message**; Announce and Effects then offer "Single player: <nation>" and "All single-player games", and "Every
+screen on the server" reaches them too. Everything that needs no tile works there: banners, messages, countdown,
+confetti, fireworks, shake and every prank. Their game never changes. How to play tells players in one line that
+single-player games connect while online so they can receive announcements.
 
 Without `ADMIN_CODE` the console is off everywhere (every code is refused). After 5 wrong codes from one address within
 an hour (websocket and HTTP tries count together) the server ignores further tries from it silently. Other hosts: set the `ADMIN_CODE` environment variable the

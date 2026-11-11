@@ -1,6 +1,7 @@
 // Owner console, online tabs (adminConsole.ts shows them after the server accepted the code):
 //   Games    every room on the server (adminRooms), Watch a running game as a spectator, pick a game as the target,
-//            its people with Message / Mute / Remove
+//            its people with Message / Mute / Remove; below them the single-player games linked to the server
+//            (nation, map, minutes played, land share: no view of their map) with Make target and Message
 //   Announce a banner for one game or for every screen on the server, and a short message for one player
 //   Effects  a ring on a tile with a label, a countdown, confetti, fireworks, a screen shake, and the screen pranks
 //            (flip, earthquake, disco, rubber ducks, pretend bomb, fog puff, camera chase) for a game, every screen or
@@ -19,7 +20,7 @@ import {
   PRANK_SECONDS,
   cleanBroadcastText,
 } from '../net/protocol';
-import type { AdminRoomInfo, AnnounceStyle, ClientMessage, FlipMode, PrankKind, ServerMessage, SpectacleKind } from '../net/protocol';
+import type { AdminRoomInfo, AdminSpInfo, AnnounceStyle, ClientMessage, FlipMode, PrankKind, ServerMessage, SpectacleKind } from '../net/protocol';
 import type { GameState } from '../sim/types';
 import { setUnlocked } from './admin';
 import { el, setText } from './dom';
@@ -74,7 +75,7 @@ export const PRANK_BUTTONS: [PrankKind, string, string][] = [
 ];
 
 /** The prank message the Effects tab sends (exported for tests); a string says why it can't be sent. */
-export function prankMessage(f: { where: Where; here: string | null; sel: string | null; memberId: number | null; kind: PrankKind; seconds: number | null; mode?: FlipMode }): ClientMessage | string {
+export function prankMessage(f: { where: Where; here: string | null; sel: string | null; spSel?: number | null; memberId: number | null; kind: PrankKind; seconds: number | null; mode?: FlipMode }): ClientMessage | string {
   const extra: { seconds?: number; mode?: FlipMode } = {};
   if (f.seconds !== null) {
     if (!(Number.isInteger(f.seconds) && f.seconds >= PRANK_SECONDS[0] && f.seconds <= PRANK_SECONDS[1])) return `Seconds: ${PRANK_SECONDS[0]} to ${PRANK_SECONDS[1]}`;
@@ -82,6 +83,8 @@ export function prankMessage(f: { where: Where; here: string | null; sel: string
   }
   if (f.kind === 'flip') extra.mode = f.mode ?? 'upside';
   if (f.where === 'all') return { type: 'adminSpectacle', scope: 'all', kind: f.kind, ...extra };
+  if (f.where === 'spAll') return { type: 'adminSpectacle', scope: 'sp', kind: f.kind, ...extra };
+  if (f.where === 'sp') return f.spSel ? { type: 'adminSpectacle', scope: 'sp', spId: f.spSel, kind: f.kind, ...extra } : 'Pick a single-player game in Games first';
   const code = f.where === 'sel' ? f.sel : f.here;
   if (!code) return f.where === 'sel' ? 'Pick a game in Games first' : 'You are not in a game: pick one in Games';
   const msg: Extract<ClientMessage, { type: 'adminSpectacle' }> = { type: 'adminSpectacle', scope: 'room', code, kind: f.kind, ...extra };
@@ -108,16 +111,21 @@ function typingNow(): boolean {
   return !!a && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && (a as HTMLInputElement).type === 'text'));
 }
 
-/** 'here' = the game the owner is in, 'sel' = the game picked in Games, 'all' = every screen on the server. */
-export type Where = 'here' | 'sel' | 'all';
+/**
+ * 'here' = the game the owner is in, 'sel' = the game picked in Games, 'all' = every screen on the server (single
+ * player too), 'sp' = the single-player game picked in Games, 'spAll' = every single-player game.
+ */
+export type Where = 'here' | 'sel' | 'all' | 'sp' | 'spAll';
 
 /** The announcement the form would send (exported for tests); null with a reason when it can't be sent. */
-export function announceMessage(f: { where: Where; here: string | null; sel: string | null; title: string; text: string; style: AnnounceStyle; seconds: number }): ClientMessage | string {
+export function announceMessage(f: { where: Where; here: string | null; sel: string | null; spSel?: number | null; title: string; text: string; style: AnnounceStyle; seconds: number }): ClientMessage | string {
   const text = cleanBroadcastText(f.text, BROADCAST_TEXT_MAX);
   if (!text) return f.text.trim() ? `At most ${BROADCAST_TEXT_MAX} characters` : 'Write the announcement first';
   const title = cleanBroadcastText(f.title, BROADCAST_TITLE_MAX);
   if (title === null) return `A title has at most ${BROADCAST_TITLE_MAX} characters`;
   if (f.where === 'all') return { type: 'adminAnnounce', scope: 'all', title, text, style: f.style, seconds: f.seconds };
+  if (f.where === 'spAll') return { type: 'adminAnnounce', scope: 'sp', title, text, style: f.style, seconds: f.seconds };
+  if (f.where === 'sp') return f.spSel ? { type: 'adminAnnounce', scope: 'sp', spId: f.spSel, title, text, style: f.style, seconds: f.seconds } : 'Pick a single-player game in Games first';
   const code = f.where === 'sel' ? f.sel : f.here;
   if (!code) return f.where === 'sel' ? 'Pick a game in Games first' : 'You are not in a game: pick one in Games';
   return { type: 'adminAnnounce', scope: 'room', code, title, text, style: f.style, seconds: f.seconds };
@@ -131,6 +139,10 @@ export class OnlinePowers {
   private total = 0;
   private listedAt = 0;
   private selected: string | null = null;
+  /** single-player games linked now, and the one picked as the target (spId) */
+  private sp: AdminSpInfo[] = [];
+  private spTotal = 0;
+  private selectedSp: number | null = null;
   private expanded = new Set<string>();
   private where: Where = 'here';
   private form = { title: '', text: '', style: 'info' as AnnounceStyle, seconds: ANNOUNCE_DEFAULT_SECONDS };
@@ -180,14 +192,21 @@ export class OnlinePowers {
       case 'adminRooms': {
         // the same list again (the 5 s refresh): leave the page alone, so a click in progress isn't lost
         // (turns, minutes and mute minutes tick on their own: they show on the next change or Refresh)
-        const key = JSON.stringify(m.rooms.map((r) => ({ ...r, turn: 0, minutes: 0, members: r.members.map((x) => ({ ...x, mutedMinutes: x.mutedMinutes > 0 })) }))) + m.total;
+        const sp = Array.isArray(m.sp) ? m.sp : [];
+        const key =
+          JSON.stringify(m.rooms.map((r) => ({ ...r, turn: 0, minutes: 0, members: r.members.map((x) => ({ ...x, mutedMinutes: x.mutedMinutes > 0 })) }))) +
+          m.total +
+          JSON.stringify(sp.map((x) => [x.spId, x.nation, x.map]));
         const same = key === this.roomsKey && this.listedAt > 0 && !this.loudRefresh;
         this.loudRefresh = false;
         this.roomsKey = key;
         this.rooms = m.rooms;
         this.total = m.total;
+        this.sp = sp;
+        this.spTotal = typeof m.spTotal === 'number' ? m.spTotal : sp.length;
         this.listedAt = performance.now();
         if (this.selected && !m.rooms.some((r) => r.code === this.selected)) this.selected = null;
+        if (this.selectedSp !== null && !sp.some((x) => x.spId === this.selectedSp)) this.selectedSp = null;
         // (not while the owner is typing in a form: the caret would be lost)
         if (!same && (this.deps.openTab() === 'games' || ((this.deps.openTab() === 'announce' || this.deps.openTab() === 'effects') && !typingNow()))) this.deps.rerender();
         break;
@@ -323,17 +342,32 @@ export class OnlinePowers {
     const opts: [Where, string][] = [];
     if (here) opts.push(['here', `This game (${here})`]);
     if (this.selected && this.selected !== here) opts.push(['sel', `Game ${this.selected}`]);
+    const spSel = this.spSelected();
+    if (spSel) opts.push(['sp', `Single player: ${spSel.nation || 'a game'}`]);
+    if (allowAll) opts.push(['spAll', 'All single-player games']);
     if (allowAll) opts.push(['all', 'Every screen on the server']);
     if (!opts.length) opts.push(['here', 'Pick a game in Games']);
     if (!opts.some(([v]) => v === this.where)) this.where = opts[0][0];
-    return this.row('Where', this.select(opts, this.where, (v) => {
+    const sel = this.select(opts, this.where, (v) => {
       this.where = v;
       this.deps.rerender();
-    }));
+    });
+    sel.dataset.test = 'adm-where';
+    return this.row('Where', sel);
   }
 
   private targetCode(): string | null {
     return this.where === 'sel' ? this.selected : this.where === 'here' ? this.deps.roomCode() : null;
+  }
+
+  /** The single-player game picked in Games, while it is still linked. */
+  private spSelected(): AdminSpInfo | null {
+    return this.selectedSp === null ? null : (this.sp.find((x) => x.spId === this.selectedSp) ?? null);
+  }
+
+  /** The target is single-player games (one or all): no map, no people. */
+  private spWhere(): boolean {
+    return this.where === 'sp' || this.where === 'spAll';
   }
 
   // ---------------------------------------------------------------------------------------------- tabs
@@ -362,6 +396,48 @@ export class OnlinePowers {
     body.append(list);
     if (this.total > this.rooms.length) this.note(body, `Showing the first ${this.rooms.length} of ${this.total}.`);
     this.note(body, 'Watch joins a running game as a spectator: players see one more spectator in the count, never who it is. From there the console works on that game.');
+
+    this.sec(body, 'Single player');
+    const spList = el('div', 'adm-games');
+    spList.dataset.test = 'adm-sp-games';
+    if (this.listedAt && !this.sp.length) spList.append(el('div', 'adm-note', 'No single-player games are linked right now.'));
+    for (const x of this.sp) spList.append(this.spCard(x));
+    body.append(spList);
+    if (this.spTotal > this.sp.length) this.note(body, `Showing the first ${this.sp.length} of ${this.spTotal}.`);
+    this.note(body, 'Single-player games that are online. They get announcements, messages and screen effects only: their game never changes and their map is not shown here.');
+  }
+
+  private spCard(x: AdminSpInfo): HTMLElement {
+    const on = x.spId === this.selectedSp;
+    const card = el('div', `adm-game running${on ? ' sel' : ''}`);
+    card.dataset.test = `adm-sp-${x.spId}`;
+    const head = el('div', 'adm-game-head');
+    head.append(el('span', 'adm-code adm-nation', x.nation || 'Starting…'), el('span', 'adm-chip on', 'Single player'));
+    const facts = el('div', 'adm-game-facts');
+    const fact = (k: string, v: string): HTMLElement => {
+      const f = el('span', '', `${k} `);
+      f.append(el('b', '', v));
+      return f;
+    };
+    facts.append(fact('Map', x.map || '?'), fact('Playing', `${x.minutes} min`), fact('Land', `${x.landPct}%`));
+    const acts = el('div', 'adm-game-acts');
+    const sel = this.btn(on ? 'Target' : 'Make target', () => {
+      this.selectedSp = on ? null : x.spId;
+      if (this.selectedSp !== null) this.where = 'sp';
+      else if (this.where === 'sp') this.where = 'here';
+      this.deps.rerender();
+    }, on ? 'on' : '');
+    sel.setAttribute('aria-pressed', String(on));
+    sel.dataset.test = `adm-sp-target-${x.spId}`;
+    const msg = this.btn('Message', () => {
+      this.selectedSp = x.spId;
+      this.where = 'sp';
+      this.deps.goTab('announce');
+    });
+    msg.dataset.test = `adm-sp-msg-${x.spId}`;
+    acts.append(sel, msg);
+    card.append(head, facts, acts);
+    return card;
   }
 
   private gameCard(r: AdminRoomInfo, here: string | null): HTMLElement {
@@ -453,7 +529,7 @@ export class OnlinePowers {
     tr.append(text);
     body.append(tr, this.row('Style', this.styleSeg(this.form.style, (v) => (this.form.style = v)), left));
     body.append(this.row('On screen', this.select(SECONDS.map((s): [number, string] => [s, `${s} s`]), this.form.seconds, (v) => (this.form.seconds = v))));
-    const build = (): ClientMessage | string => announceMessage({ where: this.where, here: this.deps.roomCode(), sel: this.selected, ...this.form });
+    const build = (): ClientMessage | string => announceMessage({ where: this.where, here: this.deps.roomCode(), sel: this.selected, spSel: this.spSelected()?.spId ?? null, ...this.form });
     body.append(
       this.row(
         '',
@@ -476,6 +552,10 @@ export class OnlinePowers {
 
     // ---- one player
     this.sec(body, 'Message to one player');
+    if (this.spWhere()) {
+      this.spNoteForm(body);
+      return;
+    }
     const code = this.noteFor?.code ?? this.targetCode() ?? this.deps.roomCode() ?? this.selected;
     const room = this.rooms.find((r) => r.code === code) ?? null;
     if (!room) {
@@ -508,9 +588,30 @@ export class OnlinePowers {
     );
   }
 
+  /** The message form for the single-player game picked in Games. */
+  private spNoteForm(body: HTMLElement): void {
+    const x = this.spSelected();
+    if (!x) {
+      this.note(body, 'Make a single-player game the target in Games to send it a message.');
+      return;
+    }
+    body.append(this.row('To', el('span', 'adm-v', `${x.nation || 'Single player'} (single player)`)));
+    const nt = this.textIn(this.noteText, BROADCAST_TEXT_MAX, 'A short message', (v) => (this.noteText = v));
+    nt.setAttribute('aria-label', 'Message text');
+    nt.dataset.test = 'adm-note-text';
+    body.append(this.row('Text', nt), this.row('Style', this.styleSeg(this.noteStyle, (v) => (this.noteStyle = v))));
+    const send = this.btn('Send message', () => {
+      const t = cleanBroadcastText(this.noteText, BROADCAST_TEXT_MAX);
+      if (!t) return this.deps.say('Write the message first', true);
+      this.send({ type: 'adminNotice', spId: x.spId, text: t, style: this.noteStyle });
+    }, 'go wide');
+    send.dataset.test = 'adm-note-send';
+    body.append(this.row('', send));
+  }
+
   /** Who in the target game sees the effects: everyone there, or one connected member. null = everyone. */
   private whoRow(body: HTMLElement): number | null {
-    const code = this.where === 'all' ? null : this.targetCode();
+    const code = this.where === 'all' || this.spWhere() ? null : this.targetCode();
     if (!code) {
       this.fxWho = null;
       return null;
@@ -536,6 +637,12 @@ export class OnlinePowers {
     const here = this.deps.roomCode();
     const onMap = !!this.deps.pickTile && !!this.deps.state() && this.where === 'here' && !!here;
     const fx = (kind: SpectacleKind, extra: { tile?: number; label?: string; seconds?: number } = {}): void => {
+      if (this.where === 'spAll') return void this.send({ type: 'adminSpectacle', scope: 'sp', kind, ...extra });
+      if (this.where === 'sp') {
+        const x = this.spSelected();
+        if (!x) return this.deps.say('Pick a single-player game in Games first', true);
+        return void this.send({ type: 'adminSpectacle', scope: 'sp', spId: x.spId, kind, ...extra });
+      }
       const code = this.targetCode();
       if (this.where !== 'all' && !code) return this.deps.say('Pick a game in Games first', true);
       const msg: ClientMessage = this.where === 'all' ? { type: 'adminSpectacle', scope: 'all', kind, ...extra } : { type: 'adminSpectacle', scope: 'room', code: code!, kind, ...extra };
@@ -600,7 +707,7 @@ export class OnlinePowers {
     secs.setAttribute('aria-label', 'Prank length');
     body.append(this.row('Length', secs));
     const prank = (kind: PrankKind, mode?: FlipMode): void => {
-      const m = prankMessage({ where: this.where, here: this.deps.roomCode(), sel: this.selected, memberId: this.fxWho && this.fxWho.code === this.targetCode() ? this.fxWho.memberId : null, kind, seconds: this.prankSeconds, mode });
+      const m = prankMessage({ where: this.where, here: this.deps.roomCode(), sel: this.selected, spSel: this.spSelected()?.spId ?? null, memberId: this.fxWho && this.fxWho.code === this.targetCode() ? this.fxWho.memberId : null, kind, seconds: this.prankSeconds, mode });
       if (typeof m === 'string') this.deps.say(m, true);
       else this.send(m);
     };

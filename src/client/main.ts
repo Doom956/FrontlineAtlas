@@ -13,7 +13,7 @@ import { loadWorldMap } from '../sim/worldmaps';
 import { Camera } from './camera';
 import { Hud } from './hud';
 import { MpStatus } from './hud/mpStatus';
-import { NetClient } from '../net/client';
+import { defaultServerUrl, NetClient } from '../net/client';
 import type { GameStartMsg, RGB, ServerMessage } from '../net/protocol';
 import { hashState } from '../sim/hash';
 import { activeLobby, rememberActiveLobby } from './lobby';
@@ -27,6 +27,9 @@ import { requestAdminAuth } from './admin';
 import { AdminConsole, adminPerf } from './adminConsole';
 import type { AdminConsoleDeps } from './adminConsole';
 import { BroadcastLayer } from './broadcast';
+import type { BroadcastView } from './broadcast';
+import { SpLink } from './spLink';
+import type { SpStatusFields } from './spLink';
 import { chatFor } from './chat/store';
 import type { Dispatch, UiState } from './uiState';
 import { setupTutorial, tutorialMap, tutorialSettings } from '../sim/tutorialScenario';
@@ -40,6 +43,7 @@ import { clearSave, readSave, writeSave } from './save/store';
 import { getUnitGroups, setUnitGroups } from './unitGroups';
 import { GameHistory } from './summary/history';
 import { gameSeconds } from '../sim/state';
+import { NAME_MAX_LENGTH } from '../net/protocol';
 
 const STEP_MS = 1000 / TICKS_PER_SECOND;
 /** Most ticks run in one frame per x1 of speed; beyond that the game slows down instead of spiralling. */
@@ -175,7 +179,8 @@ function getNet(): NetClient {
 }
 
 function onNetMessage(msg: ServerMessage): void {
-  broadcast.handle(msg);
+  // a single-player game on screen gets its broadcasts through its own link (spLink): not twice
+  if (!(spLink.online && session?.human && !session.mp)) broadcast.handle(msg);
   if (msg.type === 'lobbyState') lobbyCodeNow = msg.code;
   else if (msg.type === 'lobbyList' || msg.type === 'gameStart' || (msg.type === 'welcome' && !msg.resumed)) lobbyCodeNow = '';
   if (msg.type === 'kicked' && currentMp) {
@@ -282,27 +287,8 @@ async function startOnline(start: GameStartMsg): Promise<void> {
   });
   session = { state, camera, ui, hud, cleanupInput, human: true, settings: start.settings, mp, mpStatus: status };
   menuConsole.hide();
-  broadcast.setView(() =>
-    session?.mp === mp
-      ? {
-          code: mp.code,
-          mapWidth: state.map.width,
-          mapHeight: state.map.height,
-          tileToScreen: (x, y) => camera.tileToScreen(x, y),
-          canvas,
-          focus: (t) => camera.flyTo((t % state.map.width) + 0.5, Math.floor(t / state.map.width) + 0.5, Math.max(camera.zoom, 6), 600),
-          // screen pranks (broadcast.ts): what they turn, aim at and follow; all of it display only
-          mapLayers: () => [canvas, ...Array.from(app.querySelectorAll<HTMLElement>('canvas.map-gl'))],
-          capitalTile: () => state.players[state.humanId]?.capital ?? -1,
-          ownUnit: (id) => pickOwnUnit(state, id),
-          camera: {
-            get: () => ({ x: camera.x, y: camera.y, zoom: camera.zoom, flying: camera.flying }),
-            flyTo: (x, y, z, ms) => camera.flyTo(x, y, z, ms),
-            centerOn: (x, y) => camera.centerOn(x, y),
-          },
-        }
-      : null,
-  );
+  const view = broadcastView(state, camera, mp.code);
+  broadcast.setView(() => (session?.mp === mp ? view : null));
   menu.hide();
   app.classList.remove('in-menu');
 }
@@ -323,6 +309,55 @@ function pickOwnUnit(state: GameState, id?: number): { id: number; x: number; y:
   const u = mine[Math.floor(Math.random() * mine.length)];
   return { id: u.id, x: u.x, y: u.y };
 }
+
+/** What the screen effects need of a game on screen (online: the room's code; single player: '' = no tile effects). */
+function broadcastView(state: GameState, camera: Camera, code: string): BroadcastView {
+  return {
+    code,
+    mapWidth: state.map.width,
+    mapHeight: state.map.height,
+    tileToScreen: (x, y) => camera.tileToScreen(x, y),
+    canvas,
+    focus: (t) => camera.flyTo((t % state.map.width) + 0.5, Math.floor(t / state.map.width) + 0.5, Math.max(camera.zoom, 6), 600),
+    // screen pranks (broadcast.ts): what they turn, aim at and follow; all of it display only
+    mapLayers: () => [canvas, ...Array.from(app.querySelectorAll<HTMLElement>('canvas.map-gl'))],
+    capitalTile: () => state.players[state.humanId]?.capital ?? -1,
+    ownUnit: (id) => pickOwnUnit(state, id),
+    camera: {
+      get: () => ({ x: camera.x, y: camera.y, zoom: camera.zoom, flying: camera.flying }),
+      flyTo: (x, y, z, ms) => camera.flyTo(x, y, z, ms),
+      centerOn: (x, y) => camera.centerOn(x, y),
+    },
+  };
+}
+
+// ------------------------------------------------------------------------------------------------ single-player link
+
+/**
+ * What a single-player game tells the server about itself (spLink.ts): plain fields only (no sim helper that fills
+ * caches), read about every 30 s. null outside a single-player game (and in the tutorial, which never links).
+ */
+function spStatusNow(): SpStatusFields | null {
+  const s = session;
+  if (!s || !s.human || s.mp || s.tutorial) return null;
+  const st = s.state;
+  const me = st.players[st.humanId];
+  if (!me) return null;
+  const land = st.map.landTileCount;
+  const nation = [...(me.name || 'Player')].slice(0, NAME_MAX_LENGTH).join('').trim() || 'Player';
+  return {
+    nation,
+    map: st.settings.map.kind === 'world' ? { kind: 'world', id: st.settings.map.id } : { kind: 'generated', type: st.settings.map.type, size: st.settings.map.size },
+    minutes: Math.max(0, Math.floor(gameSeconds(st) / 60)),
+    landPct: land > 0 ? Math.max(0, Math.min(100, Math.round((me.tiles / land) * 1000) / 10)) : 0,
+  };
+}
+
+/** The single-player game's link to the server: announcements, messages and screen effects only (spLink.ts). */
+const spLink = new SpLink(defaultServerUrl(), spStatusNow, (msg) => {
+  const s = session;
+  if (s && s.human && !s.mp) broadcast.handle(msg);
+});
 
 /** Leaves the online game (the seat stays on the server until it ends) and goes to the menu or the lobby list. */
 function leaveOnline(toMultiplayer: boolean): void {
@@ -363,6 +398,7 @@ const menu = new Menu(app, {
 
 function endSession(): void {
   broadcast.setView(null);
+  spLink.stop();
   if (!session) return;
   session.cleanupInput();
   session.tutorial?.destroy();
@@ -467,6 +503,11 @@ function beginSession(state: GameState, settings: GameSettings, opts: { tutorial
     rememberActiveLobby(null);
     currentMp = null;
   }
+  // screen effects need the map; announcements reach the game through its link (never in the tutorial)
+  const view = broadcastView(state, camera, '');
+  const own = session;
+  broadcast.setView(() => (session === own ? view : null));
+  if (!tutorial) spLink.start();
   acc = 0;
   menu.hide();
   app.classList.remove('in-menu');

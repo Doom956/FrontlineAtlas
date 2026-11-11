@@ -5,9 +5,9 @@
 import { BUILDINGS, MAX_GROUP_UNITS, STRIKE, TECHS, UPGRADE_SELECTION_MAX } from '../src/sim/config';
 import { ADMIN_OP_LIST } from '../src/sim/admin';
 import { CONTROL, MARK_PILES, cleanChatText } from './chat';
-import { DEFAULT_MODIFIERS, validateSetup } from '../src/sim/setup';
+import { DEFAULT_MODIFIERS, mapError, validateSetup } from '../src/sim/setup';
 import { AIR_MISSIONS, DIVISION_MODES, DOCTRINE_IDS, NAVAL_VARIANTS, WARSHIP_STANCES } from '../src/sim/types';
-import type { Action, GameSetup, Modifiers } from '../src/sim/types';
+import type { Action, GameSetup, MapChoice, Modifiers } from '../src/sim/types';
 import {
   ADMIN_CODE_MAX_LENGTH,
   ANNOUNCE_SECONDS,
@@ -381,12 +381,28 @@ export function validateClientMessage(m: unknown): Result<ClientMessage> {
     case 'ping':
       if (m.t !== undefined && !isNum(m.t, -1e15, 1e15)) return fail('ping: bad t');
       return ok(m.t === undefined ? { type: 'ping' } : { type: 'ping', t: m.t });
+    case 'spHello':
+      if (!isInt(m.protocol, 0, 1e6)) return fail('spHello: bad protocol');
+      return ok({ type: 'spHello', protocol: m.protocol });
+    case 'spStatus': {
+      const nation = cleanName(m.nation);
+      if (!nation) return fail(`spStatus: nation must be 1..${NAME_MAX_LENGTH} characters`);
+      if (mapError(m.map)) return fail('spStatus: bad map');
+      const mp = m.map as MapChoice;
+      const map: MapChoice = mp.kind === 'world' ? { kind: 'world', id: mp.id } : { kind: 'generated', type: mp.type, size: mp.size };
+      if (!isInt(m.minutes, 0, SP_MAX_MINUTES)) return fail('spStatus: bad minutes');
+      if (!isNum(m.landPct, 0, 100)) return fail('spStatus: bad landPct (0..100)');
+      return ok({ type: 'spStatus', nation, map, minutes: m.minutes, landPct: Math.round(m.landPct * 10) / 10 });
+    }
     default:
       return fail('unknown message type');
   }
 }
 
 // ------------------------------------------------------------------------------------------------ owner powers
+
+/** Longest game a single-player status may report (minutes; a week of play). */
+const SP_MAX_MINUTES = 7 * 24 * 60;
 
 /** Optional room code of an owner power: absent = the owner's own room. */
 function optCode(v: unknown): Result<string | undefined> {
@@ -408,7 +424,15 @@ export function validateAdminMessage(m: Obj): Result<AdminClientMessage> {
     return ok(out);
   };
   const style = (v: unknown): AnnounceStyle | null => (typeof v === 'string' && (ANNOUNCE_STYLES as readonly string[]).includes(v) ? (v as AnnounceStyle) : null);
-  const scope = (v: unknown): BroadcastScope | null => (v === 'room' || v === 'all' ? v : null);
+  const scope = (v: unknown): BroadcastScope | null => (v === 'room' || v === 'all' || v === 'sp' ? v : null);
+  /** spId of a single-player game: only with scope 'sp' (and never with a room code) */
+  const spTarget = (sc: BroadcastScope, out: { spId?: number }): string | null => {
+    if (m.spId === undefined) return null;
+    if (sc !== 'sp') return 'spId goes with scope sp';
+    if (!isInt(m.spId, 1, MAX_ID)) return 'bad spId';
+    out.spId = m.spId;
+    return null;
+  };
   switch (t) {
     case 'adminRooms':
       return ok({ type: 'adminRooms' });
@@ -422,11 +446,23 @@ export function validateAdminMessage(m: Obj): Result<AdminClientMessage> {
       if (!text) return fail(`adminAnnounce: text must be 1..${BROADCAST_TEXT_MAX} characters`);
       if (title === null) return fail(`adminAnnounce: title must be at most ${BROADCAST_TITLE_MAX} characters`);
       if (!isInt(m.seconds, ANNOUNCE_SECONDS[0], ANNOUNCE_SECONDS[1])) return fail('adminAnnounce: bad seconds');
-      return withCode({ type: 'adminAnnounce', scope: sc, title, text, style: st, seconds: m.seconds });
+      const out: Extract<AdminClientMessage, { type: 'adminAnnounce' }> = { type: 'adminAnnounce', scope: sc, title, text, style: st, seconds: m.seconds };
+      const spBad = spTarget(sc, out);
+      if (spBad) return fail(`adminAnnounce: ${spBad}`);
+      if (sc === 'sp') return code.value ? fail('adminAnnounce: a single-player game has no code') : ok(out);
+      return withCode(out);
     }
     case 'adminNotice': {
       const st = style(m.style);
       const text = cleanBroadcastText(m.text, BROADCAST_TEXT_MAX);
+      if (m.spId !== undefined) {
+        // one single-player game: no room, no member
+        if (m.memberId !== undefined || code.value) return fail('adminNotice: spId goes alone (no code, no memberId)');
+        if (!isInt(m.spId, 1, MAX_ID)) return fail('adminNotice: bad spId');
+        if (!st) return fail('adminNotice: bad style');
+        if (!text) return fail(`adminNotice: text must be 1..${BROADCAST_TEXT_MAX} characters`);
+        return ok({ type: 'adminNotice', spId: m.spId, text, style: st });
+      }
       if (!isInt(m.memberId, 0, MAX_ID)) return fail('adminNotice: bad memberId');
       if (!st) return fail('adminNotice: bad style');
       if (!text) return fail(`adminNotice: text must be 1..${BROADCAST_TEXT_MAX} characters`);
@@ -468,6 +504,9 @@ export function validateAdminMessage(m: Obj): Result<AdminClientMessage> {
         if (sc !== 'room') return fail('adminSpectacle: one player is in one game');
         out.memberId = m.memberId;
       }
+      const spBad = spTarget(sc, out);
+      if (spBad) return fail(`adminSpectacle: ${spBad}`);
+      if (sc === 'sp') return code.value ? fail('adminSpectacle: a single-player game has no code') : ok(out);
       return withCode(out);
     }
     case 'adminMute':

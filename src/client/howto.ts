@@ -407,6 +407,7 @@ export function howToPlayContent(): HTMLElement {
     { title: 'Speed', text: 'No game speed online: the server sets the clock.' },
     { title: 'Watch', text: 'Joins as a spectator: the whole map, no actions. A player whose nation falls keeps watching.' },
     { title: 'Reconnect', text: 'If your connection drops, the game reconnects and catches up. Reload the page to get back into your game.' },
+    { title: 'Single player', text: 'While online, single-player games connect to the game server so they can receive announcements.' },
   ];
   const multiplayer = section('Multiplayer', 'public games, private lobbies, host pause', [group('', list(mpRows))]);
 

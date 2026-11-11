@@ -5483,6 +5483,10 @@ strong {
   font: 700 15px/1 var(--f-label);
   letter-spacing: 0.14em;
 }
+.adm-code.adm-nation {
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}
 .adm-chip {
   padding: 2px 5px;
   border: 1px solid var(--rule);
