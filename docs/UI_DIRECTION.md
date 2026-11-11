@@ -1,93 +1,85 @@
-# UI Direction: Pixel Ops
+# UI direction: Pixel Ops
 
-Original pixel-art, military field kit. The map is the star: a muted olive theatre where
-land, borders and nation names read calmly at any zoom, and crisp pixel units and building
-markers reward zooming in. The HUD is a flat gunmetal field console: hard 1 px edges, one
-orange accent for the primary action and the current selection, numbers and titles in a
-pixel display face, everything else in a clean sans with plain words.
-
-No glow, no texture, no decorative brackets, no icon-only controls, no hotkey chips on the
-HUD. One accent, one pixel face, one spacing step.
+A field console for a continent-sized war. The map is the star: quiet olive-slate water, real terrain on free land,
+calm nation colours with crisp borders, and nation names set in a pixel face. The HUD is flat gunmetal with hard
+1 px edges and square corners. One signal-orange fill marks the one primary action on a screen. Crisp pixel sprites
+for ships, tanks, planes and missiles appear only when you zoom in; far out every unit is a small flat marker.
 
 ## Palette
 
-Chrome is desaturated olive gunmetal so the map's colours stay the loudest thing on screen.
+The interface is olive-neutral so the world keeps the colour. Tokens live on `:root` in `src/client/styles.css`.
+Contrast was measured (WCAG 2 relative luminance) on the two surfaces text actually sits on.
 
-| Token | Hex | Use | Notes |
-|---|---|---|---|
-| `--ink` | `#0e110c` | page / behind map | olive-black |
-| `--metal` | `#171b14` | panel base | flat, no grain |
-| `--metal-2` | `#20261c` | buttons, insets | |
-| `--metal-3` | `#2a3123` | raised / hover | |
-| `--rule` | `#39412f` | hard 1 px edges | olive steel |
-| `--rule-hi` | `#525c40` | button edges, dividers | |
-| `--text` | `#e9e6d6` | body | bone, 11.8:1 on `--metal` |
-| `--dim` | `#a7a994` | secondary | 5.4:1 on `--metal` |
-| `--faint` | `#76796a` | captions | 3.0:1, labels only |
-| `--accent` | `#e8803a` | PRIMARY action + selection | signal orange, 5.6:1 on `--metal` |
-| `--accent-hi` | `#f59a52` | accent hover/active | |
-| `--brass` (khaki) | `#b9ab6a` | titles, numbers, quiet marks | demoted from "everywhere" to quiet |
-| `--good` | `#8ba84e` | good news only | olive |
-| `--signal` | `#d6513a` | danger only | red |
-| `--steel` | `#6f93b4` | info only | blue |
+| Token | Hex | Role | On `--metal` #171b14 | On `--metal-2` #20261c |
+|---|---|---|---|---|
+| `--ink` | `#0e110c` | page, behind the map | | |
+| `--metal` | `#171b14` | panel surface | | |
+| `--metal-2` | `#20261c` | buttons, insets | | |
+| `--metal-3` | `#2a3123` | hover, your own row | | |
+| `--rule` | `#39412f` | 1 px panel edge, dividers | 1.64 (decorative) | |
+| `--rule-hi` | `#636d4d` | control edges | 3.18 (passes 1.4.11) | 2.82 |
+| `--text` | `#e9e6d6` | body, labels | 13.92 | 12.36 |
+| `--dim` | `#a9ab96` | secondary lines | 7.44 | 6.60 |
+| `--faint` | `#9a9d89` | captions, ranks | 6.28 | 5.58 |
+| `--accent` | `#e8803a` | the primary action, the current tab | 6.30 | 5.59 |
+| `--accent-ink` | `#1a0c03` | text on an orange fill | 6.90 on `--accent` | |
+| `--brass` (khaki) | `#b9ab6a` | chosen segment, quiet numbers | 7.56 | 6.71 |
+| `--brass-ink` | `#171205` | text on a khaki fill | 8.08 on `--brass` | |
+| `--olive` | `#8ba84e` | good news only | 6.49 | 5.76 |
+| `--signal` | `#ee7a62` | danger only | 6.31 | 5.60 |
+| `--steel` | `#7d9fbf` | information only | 6.30 | 5.59 |
 
-Rule: saturation belongs to the world (terrain, nation colours, unit team bands). The UI
-palette is olive-neutral. Orange is spent on exactly one thing per screen: the main action,
-and the selected item. Red means danger, olive means good; nothing else is coloured.
+All text pairs pass AA 4.5:1. `--faint` (was `#8a8d7a`, 3.95 on `--metal-3`) and `--signal` (was `#e0604a`, 4.38 on
+`--metal-2`) were lightened to pass; `--rule-hi` (was `#525c40`, 2.46) now gives control edges 3:1 on panels.
+
+Map: water `#16242a` deep to `#1f3138` shallow, with no bright coast halo. Free and tribal land shows the real
+terrain, lightly calmed. Nations are a calm OKLCH version of their colour (lightness pulled toward 0.68, chroma x0.88,
+58 % over a greyed copy of the terrain) with a darker border of the same hue. Tribes are a thin 42 % wash over real
+terrain, so nations are the only flat colour on the map. Close in, the tint thins and the terrain comes back.
 
 ## Type
 
-Two families. A pixel display face for identity, titles and changing numbers; a clean sans
-for everything a sentence is made of.
+Two faces, both bundled offline (`@fontsource`, loaded in `src/client/fonts.ts`).
 
-- **Silkscreen** (`--f-pixel`, 400/700): logo, panel titles, big HUD numbers (troops, gold,
-  score, clock), map place-name plates. Used only at fixed sizes so the pixels stay crisp.
-- **Space Grotesk** (`--f-ui`, 400/500/600): body, labels, buttons, tooltips, lists, and all
-  dynamic text (unit counts, names) where length varies. Tabular numerals on.
+- **Pixelify Sans** 500/600 (`--f-pixel`): the logo, nation names on the map, and the big changing numbers (troops,
+  gold, attack %, the clock). Never for sentences or small labels.
+- **IBM Plex Sans** 400/500/600 (`--f-ui`): everything else, including building names on the map. Tabular numbers on.
 
-Scale (desktop): 11 / 12 / 13 (body) / 15 / 18 / 22 / 30. No fractional sizes. Phone inputs
-16 px. Labels are sentence case; uppercase is kept for one thing only, the short tracked
-eyebrow (`.wr-sec`), and buttons are no longer uppercase.
+Scale (px): 11 caption, 12 small and dense bars, 13 body, 14 list titles and section names, 18 panel titles, 22 big
+HUD numbers, 38 logo. Sentence case everywhere. No letter-spaced uppercase labels; nation names on the map are the one
+place caps are tracked, because they are place names.
 
 ## Space, radius, edges, elevation
 
-- Spacing: 4 / 8 / 12 / 16 / 24 only (`--s1`..`--s4`, `--s5`).
-- Radius: **0**. Hard pixel corners everywhere. (`--r: 0`.)
-- Edges: a single flat 1 px `--rule`. Buttons add a 1 px `--rule-hi`.
-- Elevation: no blur shadows, no insets. A floating panel gets one hard offset drop
-  `2px 2px 0 rgba(0,0,0,.45)` so it reads as a chip, not a glowing card.
-- Selection/primary: a 2 px `--accent` edge, never a glow ring.
+- Spacing steps 4 / 8 / 12 / 16 / 24 (`--s1` to `--s5`); the gap between groups is twice the gap inside one.
+- Radius 0 everywhere: panels, buttons, map markers and sprites have hard pixel corners.
+- Edges: one flat 1 px `--rule` per panel; controls add a 1 px `--rule-hi`. No side stripes, no double rings.
+- Elevation: one hard offset drop `2px 2px 0 rgba(0,0,0,.45)` (`--drop`) for floating cards. No blur, no glow.
+- Selection: a 2 px khaki or orange edge, never a glow.
 
 ## Icons and map art
 
-- One icon language: flat silhouettes. Building markers are hard square plates (category
-  colour) with a white silhouette and a thin owner band; no rounded "app icon" plates, no
-  progress halos replaced by a flat fill bar.
-- Units are original pixel sprites (`render/pixelSprites.ts`): small limited-palette grids
-  (hull, barrel, wings, fins, flame) with a 1 px dark outline and a team-colour band so the
-  owner reads without tinting the whole sprite. Nearest-neighbour, integer scaled, snapped to
-  device pixels. Far zoom keeps simple markers and fleet counts; the sprite is the near-zoom
-  reward.
+- Controls: 24 px line icons, always with a word under or beside them (top bar, command bar, strikes).
+- World things (buildings, deposits): flat filled silhouettes, the same shape in the build bar and on the map.
+- Building markers: square plates in the category colour with a white silhouette and a thin owner frame; close in,
+  the name sits under it in Plex 600 12 px.
+- Units (`render/pixelSprites.ts`): original sprites drawn as rectangle lists in code, 1 px dark outline, gunmetal
+  hulls with an owner-colour band (ships) or owner-colour bodies (tanks, planes, missiles), nearest-neighbour scaled,
+  heading snapped to 16 steps. Below 15 px long a unit is a flat marker instead: ships a short bar, divisions a
+  square, aircraft a dart, missiles a hot point. Far out a fleet stays one marker with a count (`render/fleets.ts`).
+- The same sprite is the unit's portrait on the unit card and in the Forces list.
 
 ## Motion
 
-Only in answer to an action: a panel opens, an order confirms, a toast slides in once. No
-idle pulsing, no bouncing arrow, no animated life bars. One attention cue at a time.
+Only in answer to something: a drawer opens, a toast drops in once (120 ms), an order confirms. No idle pulsing, no
+shimmer, no animated bars. Everything is cut to 1 ms under `prefers-reduced-motion: reduce`.
 
-## What was removed, and why (vs the scout's "tells")
+## The rules that keep it clean
 
-1. **The grain / scanline texture** on 13 shared panels, the **decorative brass corner
-   brackets**, and the **stock `0 6px 18px` glow shadow**: deleted. Flat gunmetal, hard
-   edges, one hard drop. This alone unifies the "every box is its own tactical card" look.
-2. **Brass everywhere (235 uses) so nothing was primary**: brass is demoted to a quiet khaki
-   for titles and numbers; a single orange `--accent` now marks the one primary action and
-   the current selection. Red and olive are kept strictly for danger and good news.
-3. **Uppercase + letter-spacing on everything**: buttons are sentence case; tracked caps
-   survive only as the one short eyebrow. Helper paragraphs under every control are trimmed to
-   one line.
-4. **Hotkey chips baked into the HUD** (build cards, quick-bar digits, tab chips, "ESC
-   clears"): hidden. Every action already has a visible labelled button; keys live in the
-   tooltip only, per the owner's new-player rule. (Markup and `data-test`/`kbd` nodes are
-   kept; they are hidden with CSS so tests still pass.)
-5. **Three border languages, double rings, fractional type scale, mismatched radii**: one
-   edge, one radius (0), one five-step scale.
+1. **Colour belongs to the world.** The HUD is olive-neutral; orange is spent on one primary action per screen, red
+   only means danger, olive only good news.
+2. **Every control says what it is.** Icon plus a plain word, numbers carry units (troops/s, gold/s, s), disabled
+   things say why. No hotkey chips; keys live in tooltips.
+3. **One edge, one corner, one drop.** 1 px rule, radius 0, one hard shadow. No brackets, grain, scanlines, stripes
+   or cards inside cards.
+4. **Far is calm, near is rich.** Far zoom shows names, borders and simple markers. Pixel detail only close in.

@@ -224,7 +224,7 @@ export class TechRowsView {
     for (const n of this.cards.values()) this.updateCard(s, me, n, next);
     for (const r of this.rows) {
       const done = r.r.cards.filter((c) => hasTech(me, c.tech)).length;
-      setText(r.count, `${done}/${r.r.cards.length}`);
+      setText(r.count, `${done} of ${r.r.cards.length}`);
       for (const f of r.forks) {
         const chosen = f.roots.find((t) => hasTech(me, t) || me.researching === t || (me.procuring ?? []).some((o) => o.tech === t));
         setClass(f.el, 'decided', !!chosen);

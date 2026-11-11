@@ -1,5 +1,5 @@
 // GLSL for the map layer (WebGL2). One fullscreen pass: terrain, nations, borders, overlays.
-import { UNDER_CHROMA, UNDER_DETAIL, UNDER_LUM, UNDER_MID } from './palette';
+import { NATION_ALPHA, TRIBE_ALPHA, UNDER_CHROMA, UNDER_DETAIL, UNDER_LUM, UNDER_MID } from './palette';
 import { FOG } from '../../sim/config';
 
 export const MAP_VS = /* glsl */ `#version 300 es
@@ -349,7 +349,10 @@ void main() {
     // close in (Pixel Ops) the tint thins and the real terrain comes back, so land stays the star and the nation
     // reads from its border and its name; far out the calm fill is unchanged
     float nz = smoothstep(3.0, 9.0, uZoom);
-    calm = mix(calm, col, nz * 0.6);
+    // tribes (the lighter fill alpha, palette.ts TRIBE_ALPHA) keep most of the real terrain at every zoom: free land
+    // reads as land, and the nations are the only flat colour on the map
+    float tribeLand = 1.0 - step(${((NATION_ALPHA + TRIBE_ALPHA) / 2).toFixed(3)}, pc.a);
+    calm = mix(calm, col, max(nz * 0.6, tribeLand * 0.7));
     vec3 fill = mix(calm, oc, pc.a * (1.0 - 0.45 * nz));
     if (res > 0 && detail > 0.0) {
       // under a nation deposits only shade the colour faintly (no foreign hues, no dotted clusters), and only very

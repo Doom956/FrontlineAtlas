@@ -18,6 +18,7 @@ import { unitCost } from '../../sim/units';
 import type { Building, GameState, Player, Unit } from '../../sim/types';
 import { aircraftAt, buildUnit, hpText, priceText, UNIT_TEXT, unitBuildStatus, unitDoing, unitName, type BuyableUnit } from '../forces';
 import { iconDataUrl, type IconId } from '../icons';
+import { spritePortraitUrl } from '../render/pixelSprites';
 import { formatCount } from '../render/common';
 import { aimStrike, STRIKES, strikeStatus, type StrikeId } from '../strikes';
 import { autoFireAction, autoFireAll, autoFireCount, siloAutoFire } from '../airSim';
@@ -42,7 +43,7 @@ interface Act {
 interface RowSpec {
   key: string;
   /** a unit picture (icons.ts) or a building glyph */
-  pic: { unit?: IconId; building?: Parameters<typeof worldGlyph>[0] };
+  pic: { unit?: IconId; building?: Parameters<typeof worldGlyph>[0]; sprite?: [Unit['type'], string | undefined, Player['color']] };
   title: string;
   status: string;
   /** clicking the title centres the map here (-1 = no) */
@@ -65,6 +66,14 @@ function pic(p: RowSpec['pic'], px: number): HTMLElement {
   img.width = px;
   img.height = px;
   img.draggable = false;
+  // Pixel Ops: warships and tank divisions show their own pixel sprite (owner colours), wider than tall
+  const sprite = p.sprite ? spritePortraitUrl(p.sprite[0], p.sprite[1], p.sprite[2], Math.round(px * 1.5), px) : '';
+  if (sprite) {
+    img.width = Math.round(px * 1.5);
+    img.classList.add('fr-sprite');
+    img.src = sprite;
+    return img;
+  }
   try {
     if (p.unit) img.src = iconDataUrl(p.unit, px);
   } catch {
@@ -311,7 +320,7 @@ export class ForcesPage implements DrawerPage {
         const sel = (ctx.ui.mode.kind === 'moveWarship' && ctx.ui.mode.unitId === u.id) || ctx.ui.selection.includes(u.id);
         rows.push({
           key: `w${u.id}`,
-          pic: { unit: 'warship' },
+          pic: { unit: 'warship', sprite: ['warship', u.variant, me.color] },
           title: `Warship ${k + 1}`,
           status: `${STANCE_INFO[warshipStance(u)].name}${(u.vet ?? 0) > 0 ? ` ${'★'.repeat(vetOf(u).level)}` : ''} · Hull ${hpText(u)} · ${warshipOrderLine(s, me.id, u) || unitDoing(s, me, u)}`,
           tile: this.tileOf(s, u),
@@ -359,7 +368,7 @@ export class ForcesPage implements DrawerPage {
         const sel = ctx.ui.selection.includes(u.id);
         rows.push({
           key: `d${u.id}`,
-          pic: { unit: 'armor' },
+          pic: { unit: 'armor', sprite: ['tankDivision', u.variant, me.color] },
           title: `Tank division ${k + 1}`,
           status: `${(u.vet ?? 0) > 0 ? `${'★'.repeat(vetOf(u).level)} · ` : ''}${divisionOrderLine(s, me.id, u)}`,
           tile: this.tileOf(s, u),

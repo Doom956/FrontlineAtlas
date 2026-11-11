@@ -11,10 +11,10 @@
   --metal-3: #2a3123;
   --metal-4: #353d2c;
   --rule: #39412f;
-  --rule-hi: #525c40;
+  --rule-hi: #636d4d;
   --text: #e9e6d6;
   --dim: #a9ab96;
-  --faint: #8a8d7a;
+  --faint: #9a9d89;
   /* Primary accent: signal orange, spent on the one primary action per screen. */
   --accent: #e8803a;
   --accent-hi: #f59a52;
@@ -27,7 +27,7 @@
   --brass-ink: #171205;
   --olive: #8ba84e;
   --olive-d: #525f2a;
-  --signal: #e0604a;
+  --signal: #ee7a62;
   --signal-d: #7f2a1d;
   --steel: #7d9fbf;
   --steel-d: #34506a;
@@ -2157,6 +2157,10 @@ canvas.minimap {
   line-height: 0;
   color: var(--dim);
 }
+.fr-ic.fr-sprite {
+  width: 39px;
+  image-rendering: pixelated;
+}
 .fr-txt {
   display: flex;
   flex-direction: column;
@@ -2371,8 +2375,11 @@ button.fr-t:hover {
   gap: 7px;
 }
 .uc-ic {
-  width: 26px;
+  width: 44px;
   height: 26px;
+  image-rendering: pixelated;
+  background: var(--metal-2);
+  border: 1px solid var(--rule);
 }
 .uc-tt {
   flex: 1;
@@ -5843,13 +5850,13 @@ strong {
 /* x1 / x3 / x5: a labelled row of three */
 .qb-count.bm-count {
   display: grid;
-  grid-template-columns: repeat(3, 26px);
+  grid-template-columns: repeat(3, 30px);
   grid-template-rows: auto 22px;
   gap: 0;
   align-self: center;
 }
 .qb-count.bm-count::before {
-  content: 'Levels';
+  content: 'Levels per click';
   grid-column: 1 / -1;
   margin-bottom: 4px;
   font: 500 11px/1 var(--f-ui);
@@ -5857,7 +5864,7 @@ strong {
   text-align: center;
 }
 .qb-count .bm-cnt {
-  width: 26px;
+  width: 30px;
   height: 22px;
   font: 600 12px/1 var(--f-ui);
 }
@@ -5968,4 +5975,58 @@ strong {
 .alert .al-ic,
 .alert .ico {
   color: var(--al);
+}
+
+/* ---- no side stripes anywhere on the HUD: one even 1px edge; the kind of thing is told by its picture and its words
+   (prefixed with body: pillars.css loads after this file) */
+body .orders-bar,
+body .airpanel,
+body .gbar,
+.odds,
+.pause-banner,
+.ally-pick,
+.menu-busy,
+.bc-note {
+  border-left: 1px solid var(--rule);
+}
+body .ap-last,
+body .forces-sum,
+.rt-foot,
+.doc-foot,
+.mtip.build,
+.mtip.price {
+  border-left: 0;
+}
+.ug-row.on .ug-chip,
+.al-row.new {
+  box-shadow: none;
+}
+.al-row.new {
+  background: var(--metal-3);
+}
+
+/* ---- phones: the standings show whole names (land share hidden, troops kept), wide enough for "Atlas (you)" */
+@media (max-width: 640px) {
+  .hud-left {
+    width: 196px;
+  }
+  .lb-row {
+    grid-template-columns: 12px minmax(0, 1fr) 44px;
+    gap: 6px;
+    padding: 0 8px;
+  }
+  .lb-row .c-land {
+    display: none;
+  }
+}
+
+/* ---- while the wide research / arsenal sheet is open, news drops to just above the command bar so it never covers
+   the sheet's tabs and what is being researched (the sheet's one-line footer is the least needed part) */
+@media (min-width: 641px) {
+  .hud:has(> .drawer[data-page='research']:not(.hidden)) > .hud-top {
+    top: auto;
+    bottom: calc(92px * var(--ui, 1));
+    transform-origin: bottom center;
+    flex-direction: column-reverse;
+  }
 }

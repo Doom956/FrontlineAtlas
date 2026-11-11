@@ -10,6 +10,7 @@ import { unitAutoLine } from '../follow';
 import { iconDataUrl } from '../icons';
 import { el, setText, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon } from './glyph';
+import { spritePortraitUrl } from '../render/pixelSprites';
 import { mapShown } from '../fx/prankView';
 
 export class UnitCard {
@@ -34,7 +35,7 @@ export class UnitCard {
     const img = el('img', 'uc-ic');
     this.img = img;
     img.alt = '';
-    img.width = 26;
+    img.width = 44;
     img.height = 26;
     try {
       img.src = iconDataUrl('warship', 26);
@@ -82,10 +83,13 @@ export class UnitCard {
       setText(this.title, `${tank ? 'Tank division' : 'Warship'} ${same.indexOf(u) + 1}`);
       const lvl = vetOf(u).level;
       setText(this.sub, `Yours · ${tank ? MODE_INFO[divisionMode(u)].name : STANCE_INFO[warshipStance(u)].name}${lvl ? ` · veteran ${lvl}` : ''}`);
-      if (this.imgType !== u.type) {
-        this.imgType = u.type;
+      const portrait = `${u.type}|${u.variant ?? ''}`;
+      if (this.imgType !== portrait) {
+        this.imgType = portrait;
+        // Pixel Ops: the unit's own pixel sprite as its portrait (the line icon if there is no canvas)
+        const url = spritePortraitUrl(u.type, u.variant, me.color, 44, 26);
         try {
-          this.img.src = iconDataUrl(tank ? 'armor' : 'warship', 26);
+          this.img.src = url || iconDataUrl(tank ? 'armor' : 'warship', 26);
         } catch {
           /* no canvas */
         }

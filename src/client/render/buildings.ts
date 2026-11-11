@@ -13,7 +13,7 @@ import type { Building, GameState } from '../../sim/types';
 import type { Camera } from '../camera';
 import { CATEGORY_COLORS, drawMarker, ICON_INFO, markerReady, type BuildingIconId } from '../icons';
 import type { FogView } from '../fog/fogView';
-import { buildingsKey, clamp, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, setTracking, type RGB, type View } from './common';
+import { buildingsKey, clamp, haloText, MAP_NUM_FAMILY, setTracking, type RGB, type View } from './common';
 
 export const FAR_ZOOM = 1.7;
 const CELL = 32;
@@ -263,11 +263,12 @@ export class BuildingLayer {
     }
     if (size >= NAME_MARKER_PX) {
       // close up (zoom 8+): the building's name under its marker
-      ctx.font = `600 12px ${MAP_LABEL_FAMILY}`;
+      // Pixel Ops: small labels in the clean sans (the pixel face is kept for nation names, where it is big enough)
+      ctx.font = `600 12px ${MAP_NUM_FAMILY}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       const ny = y + r + (b.hp > 0 && b.hp < 1 ? 7 : 4);
-      setTracking(ctx, 0.4);
+      setTracking(ctx, 0);
       haloText(ctx, BUILDINGS[b.type].name, x + 0.2, ny, 'rgba(244,245,247,0.95)', 12, 1.1);
       setTracking(ctx, 0);
     }

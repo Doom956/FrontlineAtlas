@@ -1,7 +1,7 @@
 // Small map previews for the setup screen, drawn from real map data: a generated map of each type (a compact small
 // one with a fixed seed: the shape of that type, not the exact map you will get) and every real-world map. Made
 // lazily one at a time so the menu stays responsive, and kept for the session as data URLs.
-import { TERRAIN } from '../sim/config';
+import { TERRAIN_RGB } from './render/terrain';
 import { generateMap } from '../sim/mapgen';
 import { makeRng } from '../sim/rng';
 import { cloneSetup, DEFAULT_SETUP } from '../sim/setup';
@@ -40,7 +40,7 @@ export function drawMapThumb(map: MapData, w: number, h: number): HTMLCanvasElem
         const v = map.terrain[my * map.width + mx];
         if (v >= 2 || v > t) t = v; // the first land sample wins; else shallow over deep
       }
-      const col = TERRAIN[t as TerrainId]?.color ?? [0, 0, 0];
+      const col = TERRAIN_RGB[t as TerrainId] ?? [0, 0, 0];
       const o = (y * cw + x) * 4;
       d[o] = col[0];
       d[o + 1] = col[1];

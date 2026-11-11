@@ -203,7 +203,7 @@ aside.drawer[data-page='research'] .dr-body {
 
 /* the grid: a label column, then the tab's columns; each row lays its lanes on the same template */
 .rp-grid {
-  --rp-lab: 22px;
+  --rp-lab: 76px;
   display: flex;
   flex-direction: column;
 }
@@ -247,16 +247,15 @@ aside.drawer[data-page='research'] .dr-body {
   grid-column: 1;
   align-self: stretch;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   justify-content: center;
-  gap: 8px;
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
+  gap: 4px;
   white-space: nowrap;
 }
 .rp-rowlab-t {
-  font: 600 13px/1 var(--f-label);
-  color: var(--dim);
+  font: 600 14px/1 var(--f-ui);
+  color: var(--text);
 }
 .rp-rowlab-n {
   font: 500 11px/1 var(--f-label);
@@ -478,7 +477,7 @@ aside.drawer[data-page='research'] .dr-body {
 .rp-card.done {
   background: var(--metal-3);
   border-color: transparent;
-  box-shadow: inset 2px 0 0 var(--brass);
+  box-shadow: none;
 }
 .rp-card.done .rp-mark {
   color: var(--brass);
@@ -546,7 +545,7 @@ aside.drawer[data-page='research'] .dr-body {
   box-shadow: 0 0 0 2px var(--brass-hi);
 }
 .rp-card.done.sel {
-  box-shadow: inset 2px 0 0 var(--brass), 0 0 0 2px var(--brass-hi);
+  box-shadow: 0 0 0 2px var(--brass-hi);
 }
 
 /* hover / focus: the path lights up, the rest dims a little */

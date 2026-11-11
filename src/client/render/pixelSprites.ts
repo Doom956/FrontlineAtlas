@@ -119,16 +119,31 @@ const SPRITES: Record<string, SpriteDef> = {
   },
   // tank division: hull, tracks top and bottom, round-ish turret, long barrel forward, team band on the hull side
   tankDivision: {
-    w: 18,
-    h: 10,
+    w: 21,
+    h: 12,
     rects: [
-      R(2, 2, 12, 1, 'd'),
-      R(2, 7, 12, 1, 'd'),
-      R(2, 3, 12, 4, 'b'),
-      R(2, 3, 12, 1, 'B'),
-      R(6, 1, 4, 2, 't'),
-      R(10, 1, 7, 1, 'g'),
-      R(3, 5, 10, 1, 'k'),
+      R(1, 0, 15, 2, 'd'),
+      R(1, 10, 15, 2, 'd'),
+      R(2, 1, 1, 1, 'h'),
+      R(5, 1, 1, 1, 'h'),
+      R(8, 1, 1, 1, 'h'),
+      R(11, 1, 1, 1, 'h'),
+      R(14, 1, 1, 1, 'h'),
+      R(2, 10, 1, 1, 'h'),
+      R(5, 10, 1, 1, 'h'),
+      R(8, 10, 1, 1, 'h'),
+      R(11, 10, 1, 1, 'h'),
+      R(14, 10, 1, 1, 'h'),
+      R(1, 2, 16, 8, 'b'),
+      R(1, 2, 16, 1, 'B'),
+      R(16, 3, 1, 6, 'B'),
+      R(2, 4, 1, 4, 'd'),
+      R(4, 4, 1, 4, 'd'),
+      R(7, 3, 6, 6, 'B'),
+      R(7, 8, 6, 1, 'b'),
+      R(8, 4, 2, 2, 't'),
+      R(13, 5, 6, 2, 'g'),
+      R(19, 4, 1, 4, 'g'),
     ],
   },
   // heavy bomber: long body, straight wings across the span, four engine nacelles, a tail plane
@@ -375,4 +390,36 @@ export function drawUnitSprite(ctx: CanvasRenderingContext2D, type: UnitType, va
   ctx.restore();
   ctx.imageSmoothingEnabled = prevSmooth;
   ctx.globalAlpha = prevAlpha;
+}
+
+/**
+ * A unit's pixel portrait for the HUD (the unit card): the sprite facing east, scaled by a whole number to fit a
+ * `w` x `h` box (CSS px, drawn at 2x for sharp screens), centred, nearest-neighbour. Returns a data URL, or '' when
+ * there is no canvas or no sprite.
+ */
+const portraits = new Map<string, string>();
+export function spritePortraitUrl(type: UnitType, variant: string | undefined, owner: RGB, w: number, h: number): string {
+  const key = spriteKey(type, variant);
+  const def = SPRITES[key];
+  if (!def || typeof document === 'undefined') return '';
+  const pk = `${key}|${owner.join(',')}|${w}x${h}`;
+  const hit = portraits.get(pk);
+  if (hit !== undefined) return hit;
+  const dpr = 2;
+  const cv = makeCanvas(w * dpr, h * dpr);
+  const ctx = cv.getContext('2d');
+  if (!ctx) return '';
+  const src = bake(key, owner);
+  const k = Math.max(1, Math.floor(Math.min((w * dpr) / (def.w + 2), (h * dpr) / (def.h + 2))));
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(src, Math.round((w * dpr - def.w * k) / 2), Math.round((h * dpr - def.h * k) / 2), def.w * k, def.h * k);
+  let url = '';
+  try {
+    url = cv.toDataURL();
+  } catch {
+    /* tainted or no canvas */
+  }
+  if (portraits.size > 200) portraits.clear();
+  portraits.set(pk, url);
+  return url;
 }
