@@ -6041,3 +6041,32 @@ body .gbar {
   border: 0;
   background: var(--metal-2);
 }
+
+/* ---- phones: Build, the level picker and the strikes share one row, the six quick slots sit under it, so the
+   command bar gives the map back a row */
+@media (max-width: 640px) {
+  .cmdbar > .cb-build {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      'build count strikes'
+      'slots slots slots';
+    align-items: center;
+    gap: 8px;
+  }
+  .cb-build > .qb-build {
+    grid-area: build;
+    width: 100%;
+    min-width: 0;
+  }
+  .cb-build > .qb-row {
+    grid-area: slots;
+    justify-content: space-between;
+  }
+  .cb-build > .qb-count {
+    grid-area: count;
+  }
+  .cb-build > .skbar {
+    grid-area: strikes;
+  }
+}
