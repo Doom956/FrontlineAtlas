@@ -59,6 +59,8 @@ export interface OnlinePowersDeps {
   openTab: () => OnlineTab | null;
   /** go to another tab */
   goTab: (tab: OnlineTab) => void;
+  /** start watching one single-player game live on the owner's own screen (watch-on-demand); null = not available */
+  watchSp: ((spId: number, nation: string) => void) | null;
 }
 
 const STYLE_LABEL: Record<AnnounceStyle, string> = { info: 'Info', warning: 'Warning', celebration: 'Celebration' };
@@ -72,6 +74,7 @@ export const PRANK_BUTTONS: [PrankKind, string, string][] = [
   ['fakeBomb', 'Pretend bomb', 'Counts down at their capital, then confetti and "Gotcha!"'],
   ['fogPuff', 'Fog puff', 'A cloud covers the screen and clears'],
   ['chase', 'Camera chase', 'Their camera follows one of their units, then comes back'],
+  ['jumpscare', 'Jumpscare', 'A sudden full-screen scare and sound sting, then it clears (mild for reduced motion)'],
 ];
 
 /** The prank message the Effects tab sends (exported for tests); a string says why it can't be sent. */
@@ -404,7 +407,7 @@ export class OnlinePowers {
     for (const x of this.sp) spList.append(this.spCard(x));
     body.append(spList);
     if (this.spTotal > this.sp.length) this.note(body, `Showing the first ${this.sp.length} of ${this.spTotal}.`);
-    this.note(body, 'Single-player games that are online. They get announcements, messages and screen effects only: their game never changes and their map is not shown here.');
+    this.note(body, 'Single-player games that are online. Watch rebuilds one on your screen from its own log and follows it live, read-only: the player sees nothing and their game never changes. Announcements, messages and screen effects reach them too.');
   }
 
   private spCard(x: AdminSpInfo): HTMLElement {
@@ -421,6 +424,11 @@ export class OnlinePowers {
     };
     facts.append(fact('Map', x.map || '?'), fact('Playing', `${x.minutes} min`), fact('Land', `${x.landPct}%`));
     const acts = el('div', 'adm-game-acts');
+    if (this.deps.watchSp) {
+      const watch = this.btn('Watch', () => this.deps.watchSp?.(x.spId, x.nation), 'go');
+      watch.dataset.test = `adm-sp-watch-${x.spId}`;
+      acts.append(watch);
+    }
     const sel = this.btn(on ? 'Target' : 'Make target', () => {
       this.selectedSp = on ? null : x.spId;
       if (this.selectedSp !== null) this.where = 'sp';

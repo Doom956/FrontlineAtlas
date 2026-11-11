@@ -89,6 +89,25 @@
 //   'all' broadcast; `adminRooms` lists the links in `sp`. Tile effects and per-member effects never go to it. A link
 //   with another protocol is closed (CloseCode.Version) and the client stays quiet. The server forgets it on close.
 //
+// - Watch a single-player game (protocol 20, watch-on-demand): the owner may watch one single-player game live on their
+//   own screen, rebuilt from its own order log. It is one-way: the link only ever sends its log; the owner only reads.
+//   The owner's authenticated session sends `adminWatch {spId, on}` (admin only, like the other owner powers). On
+//   `on: true` the server attaches that session as the link's single watcher and tells the link `spWatch {on: true}`.
+//   The link then sends `spSetup {settings}` (the game's full setup, seed included, the same shape a save stores) once
+//   and streams its recorded orders as `spLog {entries, tick, base?, final?}`: first the whole backlog in chunks
+//   (`base: true`, the last of them `final: true`), then new orders as they happen, each frame carrying the game's
+//   current tick so the watcher can advance the sim even across ticks with no orders. The server relays each to the
+//   watcher as `watchSetup {spId, settings}` and `watchLog {spId, ...}` (and validates their shape and bounds first,
+//   so a bad link can never feed the owner garbage). The owner's client builds a fresh game from the setup and runs
+//   the same deterministic replay the save/continue path uses, in its OWN sim, never on the server: a sudden desync is
+//   impossible because the owner cannot send anything into the watched game. `adminWatch {on: false}` (or the owner
+//   leaving) detaches the watcher and tells the link `spWatch {on: false}`; the link stops streaming and costs nothing
+//   again. When the watched game or the owner disconnects the other side gets `watchEnd {spId, reason}`. At most one
+//   watcher per link, and only the owner can watch (nothing is shown to the watched player). An old link that predates
+//   this never answers `spWatch`, so the owner sees "this game can't be watched" after a short wait and nothing breaks.
+//   Streaming frames (spSetup, spLog) may be up to SP_STREAM_MAX_BYTES; a link that still sends anything else, or more
+//   than SP_MAX_INVALID bad frames, is refused and closed as before.
+//
 // Single player never needs any of this: the client runs the sim locally (no server needed); the link above is
 // optional and the game plays the same without it.
 //
@@ -113,7 +132,7 @@ export type { GameMode };
 // ------------------------------------------------------------------------------------------------ constants
 
 /** Bumped on any incompatible change to the messages below. `hello.protocol` must equal it. */
-export const PROTOCOL_VERSION = 19;
+export const PROTOCOL_VERSION = 20;
 /** Longest owner-console code a client may send (adminAuth). */
 export const ADMIN_CODE_MAX_LENGTH = 128;
 /** Longest chat message (characters, after cleaning). */
@@ -147,12 +166,13 @@ export type AnnounceStyle = (typeof ANNOUNCE_STYLES)[number];
 /**
  * Screen pranks (client-only drawing, each ends by itself within PRANK_SECONDS): the map upside down or mirrored, a
  * gentle map wobble, rainbow nation colours, units drawn as rubber ducks, a pretend bomb countdown that ends in
- * confetti, a cloud over the screen, the camera following one of the player's own units for a moment.
+ * confetti, a cloud over the screen, the camera following one of the player's own units for a moment, and a short
+ * full-screen jumpscare (a scary face flash and a sound sting; a mild dim with no flash or sound for reduced motion).
  */
-export const PRANK_KINDS = ['flip', 'earthquake', 'disco', 'ducks', 'fakeBomb', 'fogPuff', 'chase'] as const;
+export const PRANK_KINDS = ['flip', 'earthquake', 'disco', 'ducks', 'fakeBomb', 'fogPuff', 'chase', 'jumpscare'] as const;
 export type PrankKind = (typeof PRANK_KINDS)[number];
 /** Default length of each prank (seconds). */
-export const PRANK_DEFAULT_SECONDS: Record<PrankKind, number> = { flip: 5, earthquake: 4, disco: 6, ducks: 8, fakeBomb: 5, fogPuff: 4, chase: 6 };
+export const PRANK_DEFAULT_SECONDS: Record<PrankKind, number> = { flip: 5, earthquake: 4, disco: 6, ducks: 8, fakeBomb: 5, fogPuff: 4, chase: 6, jumpscare: 2 };
 /** How a flip turns the map. */
 export const FLIP_MODES = ['upside', 'mirror'] as const;
 export type FlipMode = (typeof FLIP_MODES)[number];
@@ -173,8 +193,18 @@ export type BroadcastScope = 'room' | 'all' | 'sp';
 export const SP_STATUS_MS = 30_000;
 /** The server keeps at most one spStatus per this long from one link (ms); the rest are dropped. */
 export const SP_STATUS_MIN_MS = 5_000;
-/** Longest text frame a single-player link may send (bytes). */
+/** Longest control frame a single-player link may send (bytes): spHello, spStatus, ping. */
 export const SP_MESSAGE_MAX_BYTES = 512;
+/**
+ * Longest frame a single-player link may send while it is being watched (bytes): spSetup and the spLog chunks carry
+ * the game setup and batches of recorded orders, so they are larger than the control frames but still well under
+ * MAX_MESSAGE_BYTES. Watch-on-demand (protocol 20): a link streams nothing until the owner attaches a watcher.
+ */
+export const SP_STREAM_MAX_BYTES = 12 * 1024;
+/** Recorded orders per spLog chunk while streaming the backlog to a watcher (keeps each frame small). */
+export const SP_WATCH_BATCH = 48;
+/** The single-player link flushes queued stream frames about this often (ms) while a watcher is attached. */
+export const SP_STREAM_FLUSH_MS = 1000;
 /** Most single-player games the owner's list shows (the answer says how many there are). */
 export const ADMIN_SP_MAX = 150;
 /** WebSocket path on the server (same host that serves the client, or the one given by ?server=). */
@@ -446,9 +476,41 @@ export interface SpStatusMsg {
   /** share of the land held, 0..100 */
   landPct: number;
 }
+/** One recorded order while watching a single-player game: [state.tick it was applied at, the action]. */
+export type WatchLogEntry = [tick: number, action: Action];
+/**
+ * Single-player link, while a watcher is attached (protocol 20): the game's full setup, seed included (the same shape
+ * the save format stores). Sent once when the owner starts watching (and again if asked). The server relays it to the
+ * watcher as `watchSetup`.
+ */
+export interface SpSetupMsg {
+  type: 'spSetup';
+  settings: GameSettings;
+}
+/**
+ * Single-player link, while a watcher is attached: a batch of recorded orders and the game's current tick. `base`
+ * marks the initial backlog chunks (the last one `final`); without it the frame is a live update. An empty `entries`
+ * with a newer `tick` only advances the watcher. The server relays it to the watcher as `watchLog`.
+ */
+export interface SpLogMsg {
+  type: 'spLog';
+  entries: WatchLogEntry[];
+  /** the game's state.tick now (the watcher advances its sim up to here) */
+  tick: number;
+  /** part of the initial backlog (not a live order) */
+  base?: boolean;
+  /** the last backlog chunk: the watcher has the whole history to this tick */
+  final?: boolean;
+}
 /** Owner powers (admin sessions only, see the rules above): list every room on the server. */
 export interface AdminRoomsMsg {
   type: 'adminRooms';
+}
+/** Owner: start (`on: true`) or stop watching one single-player game live. Admin only; one watcher per game. */
+export interface AdminWatchMsg {
+  type: 'adminWatch';
+  spId: number;
+  on: boolean;
 }
 /** A banner on every screen of one room (`code`, else the owner's own room) or of every session ('all'). */
 export interface AdminAnnounceMsg {
@@ -508,7 +570,7 @@ export interface AdminKickMsg {
   code?: string;
   memberId: number;
 }
-export type AdminClientMessage = AdminRoomsMsg | AdminAnnounceMsg | AdminNoticeMsg | AdminSpectacleMsg | AdminMuteMsg | AdminKickMsg;
+export type AdminClientMessage = AdminRoomsMsg | AdminAnnounceMsg | AdminNoticeMsg | AdminSpectacleMsg | AdminMuteMsg | AdminKickMsg | AdminWatchMsg;
 /** What a chat message is sent to: 'all', 'team' (teammates), or 'spectators' (only spectators write and read it). */
 export type ChatChannel = 'all' | 'team' | 'spectators';
 /** A chat message. Spectators may send any channel: the server puts it in 'spectators'. */
@@ -544,7 +606,9 @@ export type ClientMessage =
   | ChatSendMsg
   | PingMsg
   | SpHelloMsg
-  | SpStatusMsg;
+  | SpStatusMsg
+  | SpSetupMsg
+  | SpLogMsg;
 
 // ------------------------------------------------------------------------------------------------ server -> client
 
@@ -751,6 +815,32 @@ export interface SpWelcomeMsg {
   protocol: number;
   spId: number;
 }
+/** To a single-player link: start (`on: true`) or stop streaming its log to a watcher (protocol 20, watch-on-demand). */
+export interface SpWatchMsg {
+  type: 'spWatch';
+  on: boolean;
+}
+/** To the owner watching a single-player game: the game's setup to rebuild from (relayed from the link's spSetup). */
+export interface WatchSetupMsg {
+  type: 'watchSetup';
+  spId: number;
+  settings: GameSettings;
+}
+/** To the owner watching: a batch of recorded orders and the game's current tick (relayed from the link's spLog). */
+export interface WatchLogMsg {
+  type: 'watchLog';
+  spId: number;
+  entries: WatchLogEntry[];
+  tick: number;
+  base?: boolean;
+  final?: boolean;
+}
+/** To the owner watching: watching ended (the game or the owner disconnected, it could not be watched, or it stopped). */
+export interface WatchEndMsg {
+  type: 'watchEnd';
+  spId: number;
+  reason: string;
+}
 /** A banner for everyone in the room (or on the server). */
 export interface AnnouncementMsg {
   type: 'announcement';
@@ -847,7 +937,11 @@ export type ServerMessage =
   | ChatRelayMsg
   | ChatHistoryMsg
   | ChatNoticeMsg
-  | SpWelcomeMsg;
+  | SpWelcomeMsg
+  | SpWatchMsg
+  | WatchSetupMsg
+  | WatchLogMsg
+  | WatchEndMsg;
 
 // ------------------------------------------------------------------------------------------------ helpers
 

@@ -11,8 +11,11 @@
 //
 // Reconnects: 5 s, doubling to 5 min (with a little jitter). A tab hidden for HIDDEN_STOP_MS closes the link and stops
 // trying until it is shown again. A server with another protocol ends the link for the rest of the page's life.
-import { CloseCode, PROTOCOL_VERSION, SP_STATUS_MS } from '../net/protocol';
-import type { ClientMessage, ServerMessage, SpStatusMsg } from '../net/protocol';
+import { CloseCode, PROTOCOL_VERSION, SP_STATUS_MS, SP_STREAM_FLUSH_MS, SP_WATCH_BATCH } from '../net/protocol';
+import type { ClientMessage, ServerMessage, SpLogMsg, SpSetupMsg, SpStatusMsg, WatchLogEntry } from '../net/protocol';
+
+/** Backlog chunks sent per flush while streaming the history to a watcher (paced under the server's message budget). */
+const STREAM_CHUNKS_PER_FLUSH = 10;
 
 /** First reconnect pause (ms); each failure doubles it up to SP_RETRY_MAX_MS. */
 export const SP_RETRY_MIN_MS = 5_000;
@@ -24,6 +27,18 @@ const WELCOME_TIMEOUT_MS = 10_000;
 
 /** What the status reads from the game on screen (plain fields only); null = nothing to report now. */
 export type SpStatusFields = Omit<SpStatusMsg, 'type'>;
+
+/**
+ * What a watched game lets the link stream (watch-on-demand, protocol 20). The link reads this only once a watcher is
+ * attached; the game pushes new orders through pushEntries(). It never touches or reads the sim: snapshot gives plain
+ * recorded data (settings + the order log) and tick a plain number. One-way: the link only sends; it gets nothing back.
+ */
+export interface SpWatchSource {
+  /** the game's full setup and whole order log now (plain recorded data), or null when there is nothing to stream */
+  snapshot(): { settings: SpSetupMsg['settings']; log: WatchLogEntry[] } | null;
+  /** the game's current state.tick (a plain field read) */
+  tick(): number;
+}
 
 /** The bits of the page the link uses (real ones by default; tests pass their own). */
 export interface SpLinkEnv {
@@ -91,6 +106,19 @@ export class SpLink {
   private unwatch: (() => void) | null = null;
   private readonly env: SpLinkEnv;
 
+  // ---- watch-on-demand (protocol 20): streaming the game's log to one watcher the owner attached
+  /** the owner is watching this game: the link streams its setup and log (one-way) */
+  watching = false;
+  private watchSource: SpWatchSource | null = null;
+  private streamTimer: unknown = null;
+  /** backlog chunks still to send (the game's history at the moment watching started), paced */
+  private backlog: WatchLogEntry[][] = [];
+  private backlogTick = 0;
+  /** new orders made since watching started, waiting to be flushed */
+  private liveQueue: WatchLogEntry[] = [];
+  /** the game tick in the last stream frame sent (so idle ticks still advance the watcher) */
+  private lastStreamTick = -1;
+
   constructor(
     private readonly url: string | null,
     /** the game's status now (plain fields); null = none (then nothing is sent) */
@@ -133,7 +161,22 @@ export class SpLink {
     this.unwatch = null;
     this.clear(this.hiddenTimer, 't');
     this.hiddenTimer = null;
-    this.drop();
+    this.drop(); // also stops any streaming; the watch source (a stable read of the game) is kept
+  }
+
+  /**
+   * The game on screen lets its log be watched (set once by main.ts). The link reads it only after the owner attaches
+   * a watcher; it never streams on its own. Clearing it (null) ends any streaming.
+   */
+  setWatchSource(src: SpWatchSource | null): void {
+    this.watchSource = src;
+    if (!src) this.stopStreaming();
+  }
+
+  /** The game made new orders (main.ts, on every recorded action): stream them if a watcher is attached. */
+  pushEntries(entries: WatchLogEntry[]): void {
+    if (!this.watching || !entries.length) return;
+    for (const e of entries) this.liveQueue.push(e);
   }
 
   // ---------------------------------------------------------------------------------------------- internals
@@ -150,6 +193,7 @@ export class SpLink {
 
   /** Closes the socket and every timer except the hidden-tab one. */
   private drop(): void {
+    this.stopStreaming();
     this.clear(this.retryTimer, 't');
     this.clear(this.statusTimer, 'i');
     this.clear(this.welcomeTimer, 't');
@@ -228,6 +272,14 @@ export class SpLink {
       this.outdated = true;
       return;
     }
+    if (m.type === 'spWatch') {
+      // the owner attached (or detached) a watcher: start or stop streaming the log (watch-on-demand)
+      if (this.welcomed) {
+        if ((m as { on?: unknown }).on === true) this.startStreaming();
+        else this.stopStreaming();
+      }
+      return;
+    }
     if (!this.welcomed || !spShows(msg)) return;
     try {
       this.onShow(msg);
@@ -245,6 +297,60 @@ export class SpLink {
       st = null;
     }
     if (st) this.sendRaw({ type: 'spStatus', ...st });
+  }
+
+  // ---------------------------------------------------------------------------------------------- watch streaming
+
+  /** The owner attached a watcher: send the setup and queue the whole history, then stream live orders. */
+  private startStreaming(): void {
+    this.stopStreaming();
+    const src = this.watchSource;
+    const snap = src ? src.snapshot() : null;
+    if (!src || !snap) {
+      // nothing to stream (should not happen: the game sets a source before it can be watched)
+      return;
+    }
+    this.watching = true;
+    this.sendRaw({ type: 'spSetup', settings: snap.settings });
+    this.backlogTick = src.tick();
+    for (let i = 0; i < snap.log.length; i += SP_WATCH_BATCH) this.backlog.push(snap.log.slice(i, i + SP_WATCH_BATCH));
+    // an empty history still needs one base frame so the watcher knows it is caught up
+    if (!this.backlog.length) this.backlog.push([]);
+    this.lastStreamTick = -1;
+    this.flushStream();
+    this.streamTimer = this.env.setInterval(() => this.flushStream(), SP_STREAM_FLUSH_MS);
+  }
+
+  /** Stops streaming and forgets the queue (the owner detached, or the link dropped). */
+  private stopStreaming(): void {
+    this.watching = false;
+    this.clear(this.streamTimer, 'i');
+    this.streamTimer = null;
+    this.backlog = [];
+    this.liveQueue = [];
+    this.backlogTick = 0;
+    this.lastStreamTick = -1;
+  }
+
+  /** Sends a bounded number of backlog chunks, then any live orders and the current tick (paced by the timer). */
+  private flushStream(): void {
+    if (!this.watching || !this.online) return;
+    const src = this.watchSource;
+    if (!src) return this.stopStreaming();
+    for (let n = 0; n < STREAM_CHUNKS_PER_FLUSH && this.backlog.length; n++) {
+      const chunk = this.backlog.shift()!;
+      const frame: SpLogMsg = { type: 'spLog', entries: chunk, tick: this.backlogTick, base: true };
+      if (!this.backlog.length) frame.final = true;
+      this.sendRaw(frame);
+      this.lastStreamTick = this.backlogTick;
+    }
+    if (this.backlog.length) return; // still sending the history; live orders wait their turn
+    const tick = src.tick();
+    if (!this.liveQueue.length && tick <= this.lastStreamTick) return;
+    const entries = this.liveQueue;
+    this.liveQueue = [];
+    this.sendRaw({ type: 'spLog', entries, tick });
+    this.lastStreamTick = tick;
   }
 
   private sendRaw(msg: ClientMessage): void {

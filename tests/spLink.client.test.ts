@@ -4,9 +4,10 @@
 // announcements, notices and effects on, which the existing broadcast layer shows. It never touches the game.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { CloseCode, PROTOCOL_VERSION, SP_STATUS_MS } from '../src/net/protocol';
+import { CloseCode, PROTOCOL_VERSION, SP_STATUS_MS, SP_STREAM_FLUSH_MS } from '../src/net/protocol';
 import { HIDDEN_STOP_MS, SP_RETRY_MAX_MS, SP_RETRY_MIN_MS, SpLink, spRetryMs, spShows } from '../src/client/spLink';
-import type { SpLinkEnv, SpStatusFields } from '../src/client/spLink';
+import type { SpLinkEnv, SpStatusFields, SpWatchSource } from '../src/client/spLink';
+import type { WatchLogEntry } from '../src/net/protocol';
 import { BroadcastLayer } from '../src/client/broadcast';
 
 class FakeSocket {
@@ -371,5 +372,74 @@ describe('owner console: single-player targets', () => {
     for (const m of [announceMessage(f), announceMessage({ ...f, where: 'spAll' }), prankMessage(p), prankMessage({ ...p, where: 'spAll', kind: 'ducks', seconds: null })]) {
       expect(validateClientMessage(m).ok).toBe(true);
     }
+  });
+});
+
+describe('single-player link: watch-on-demand streaming (protocol 20)', () => {
+  const LOG: WatchLogEntry[] = [[0, { type: 'spawn', tile: 1 } as never], [2, { type: 'spawn', tile: 2 } as never]];
+  function watched(w: World, tickVal = { t: 5 }) {
+    const link = new SpLink(URL, () => STATUS, () => {}, w.env);
+    const source: SpWatchSource = {
+      snapshot: () => ({ settings: { seed: 1 } as never, log: LOG.slice() }),
+      tick: () => tickVal.t,
+    };
+    link.setWatchSource(source);
+    link.start();
+    const s = w.sockets[0];
+    s.open();
+    s.recv({ type: 'spWelcome', protocol: PROTOCOL_VERSION, spId: 1 });
+    return { link, s };
+  }
+
+  it('streams nothing until a watcher attaches, then sends the setup and the backlog', () => {
+    const w = world();
+    const { link, s } = watched(w);
+    expect(link.watching).toBe(false);
+    // only spHello + spStatus so far, never spSetup/spLog
+    expect(new Set(s.sent.map((m) => m.type))).toEqual(new Set(['spHello', 'spStatus']));
+    s.recv({ type: 'spWatch', on: true });
+    expect(link.watching).toBe(true);
+    const setup = s.sent.find((m) => m.type === 'spSetup');
+    expect(setup).toEqual({ type: 'spSetup', settings: { seed: 1 } });
+    const base = s.sent.find((m) => m.type === 'spLog');
+    expect(base).toEqual({ type: 'spLog', entries: LOG, tick: 5, base: true, final: true });
+  });
+
+  it('streams live orders and idle ticks while watched, and stops when detached', () => {
+    const w = world();
+    const tick = { t: 5 };
+    const { link, s } = watched(w, tick);
+    s.recv({ type: 'spWatch', on: true });
+    const before = s.sent.length;
+    // a new order comes in; it flushes with the current tick on the next interval
+    tick.t = 8;
+    link.pushEntries([[6, { type: 'spawn', tile: 3 } as never]]);
+    vi.advanceTimersByTime(SP_STREAM_FLUSH_MS + 5);
+    const live = s.sent.slice(before).filter((m) => m.type === 'spLog');
+    expect(live.at(-1)).toEqual({ type: 'spLog', entries: [[6, { type: 'spawn', tile: 3 }]], tick: 8 });
+    // an idle tick with no orders still advances the watcher
+    tick.t = 12;
+    const n2 = s.sent.length;
+    vi.advanceTimersByTime(SP_STREAM_FLUSH_MS + 5);
+    expect(s.sent.slice(n2).filter((m) => m.type === 'spLog').at(-1)).toEqual({ type: 'spLog', entries: [], tick: 12 });
+    // the owner detaches: streaming stops and new orders are not sent
+    s.recv({ type: 'spWatch', on: false });
+    expect(link.watching).toBe(false);
+    const n3 = s.sent.length;
+    tick.t = 20;
+    link.pushEntries([[15, { type: 'spawn', tile: 4 } as never]]);
+    vi.advanceTimersByTime(SP_STREAM_FLUSH_MS * 2);
+    expect(s.sent.slice(n3).some((m) => m.type === 'spLog')).toBe(false);
+  });
+
+  it('stop() ends streaming and leaves no timer behind', () => {
+    const w = world();
+    const { link, s } = watched(w);
+    s.recv({ type: 'spWatch', on: true });
+    expect(link.watching).toBe(true);
+    link.stop();
+    expect(link.watching).toBe(false);
+    expect(s.closed).toBe(1000);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

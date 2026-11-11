@@ -7,7 +7,7 @@ import { ADMIN_OP_LIST } from '../src/sim/admin';
 import { CONTROL, MARK_PILES, cleanChatText } from './chat';
 import { DEFAULT_MODIFIERS, mapError, validateSetup } from '../src/sim/setup';
 import { AIR_MISSIONS, DIVISION_MODES, DOCTRINE_IDS, NAVAL_VARIANTS, WARSHIP_STANCES } from '../src/sim/types';
-import type { Action, GameSetup, MapChoice, Modifiers } from '../src/sim/types';
+import type { Action, GameSettings, GameSetup, MapChoice, Modifiers } from '../src/sim/types';
 import {
   ADMIN_CODE_MAX_LENGTH,
   ANNOUNCE_SECONDS,
@@ -274,6 +274,60 @@ export function validateLobbySettings(v: unknown): Result<LobbySettingsPatch> {
   return ok(out);
 }
 
+/**
+ * Validates a full GameSettings (watch-on-demand: the setup a single-player link streams so the owner can rebuild the
+ * game). The shared setup goes through validateSetup (every field present and valid), plus the single-player fields
+ * (seed, name, colour). `humans` is rejected: a single-player game has none, and the owner rebuilds locally anyway.
+ * Rebuilt field by field so nothing extra is relayed.
+ */
+export function validateGameSettings(v: unknown): Result<GameSettings> {
+  if (!isObj(v)) return fail('settings must be an object');
+  const { seed, playerName, playerColor, humanPlayer, humans, ...setup } = v;
+  if (humans !== undefined) return fail('settings: a single-player game has no humans list');
+  const bad = validateSetup(setup, false);
+  if (bad) return fail(bad.slice(0, 120));
+  if (!isInt(seed, 0, 0x7fffffff)) return fail('bad seed');
+  const name = cleanName(playerName);
+  if (!name) return fail('bad playerName');
+  const color = checkColor(playerColor);
+  if (!color) return fail('bad playerColor');
+  if (typeof humanPlayer !== 'boolean') return fail('bad humanPlayer');
+  const src = setup as unknown as GameSetup;
+  const map: MapChoice = src.map.kind === 'world' ? { kind: 'world', id: src.map.id } : { kind: 'generated', type: src.map.type, size: src.map.size };
+  const modifiers: Modifiers = { ...DEFAULT_MODIFIERS };
+  const srcMods = src.modifiers as unknown as Record<string, unknown>;
+  for (const k of Object.keys(DEFAULT_MODIFIERS) as (keyof Modifiers)[]) {
+    if (srcMods[k] !== undefined) (modifiers as unknown as Record<string, unknown>)[k] = srcMods[k];
+  }
+  return ok({
+    map,
+    aiCount: src.aiCount,
+    tribeCount: src.tribeCount,
+    difficulty: src.difficulty,
+    mode: src.mode,
+    teamCount: src.teamCount,
+    timeLimit: src.timeLimit,
+    victoryLandShare: src.victoryLandShare,
+    modifiers,
+    preset: src.preset,
+    seed,
+    playerName: name,
+    playerColor: color,
+    humanPlayer,
+  });
+}
+
+/** Validates one streamed order [tick, action] (watch-on-demand). */
+function checkWatchEntry(v: unknown): Result<[number, Action]> {
+  if (!Array.isArray(v) || v.length !== 2) return fail('bad log entry');
+  if (!isInt(v[0], 0, MAX_ID)) return fail('bad log entry tick');
+  const a = validateAction(v[1]);
+  if (!a.ok) return fail(`bad log entry: ${a.error}`);
+  return ok([v[0], a.value]);
+}
+/** Most orders in one spLog chunk (keeps a frame small; the client batches below this). */
+const MAX_WATCH_ENTRIES = 200;
+
 // ------------------------------------------------------------------------------------------------ messages
 
 /** Parses and validates one text frame. */
@@ -366,6 +420,7 @@ export function validateClientMessage(m: unknown): Result<ClientMessage> {
     case 'adminSpectacle':
     case 'adminMute':
     case 'adminKick':
+    case 'adminWatch':
       return validateAdminMessage(m);
     case 'chat': {
       if (m.channel !== 'all' && m.channel !== 'team') return fail('chat: channel must be all or team');
@@ -393,6 +448,25 @@ export function validateClientMessage(m: unknown): Result<ClientMessage> {
       if (!isInt(m.minutes, 0, SP_MAX_MINUTES)) return fail('spStatus: bad minutes');
       if (!isNum(m.landPct, 0, 100)) return fail('spStatus: bad landPct (0..100)');
       return ok({ type: 'spStatus', nation, map, minutes: m.minutes, landPct: Math.round(m.landPct * 10) / 10 });
+    }
+    case 'spSetup': {
+      const s = validateGameSettings(m.settings);
+      if (!s.ok) return fail(`spSetup: ${s.error}`);
+      return ok({ type: 'spSetup', settings: s.value });
+    }
+    case 'spLog': {
+      if (!isInt(m.tick, 0, MAX_ID)) return fail('spLog: bad tick');
+      if (!Array.isArray(m.entries) || m.entries.length > MAX_WATCH_ENTRIES) return fail('spLog: bad entries');
+      const entries: [number, Action][] = [];
+      for (const e of m.entries) {
+        const r = checkWatchEntry(e);
+        if (!r.ok) return fail(`spLog: ${r.error}`);
+        entries.push(r.value);
+      }
+      const out: ClientMessage = { type: 'spLog', entries, tick: m.tick };
+      if (m.base === true) out.base = true;
+      if (m.final === true) out.final = true;
+      return ok(out);
     }
     default:
       return fail('unknown message type');
@@ -516,6 +590,10 @@ export function validateAdminMessage(m: Obj): Result<AdminClientMessage> {
     case 'adminKick':
       if (!isInt(m.memberId, 0, MAX_ID)) return fail('adminKick: bad memberId');
       return withCode({ type: 'adminKick', memberId: m.memberId });
+    case 'adminWatch':
+      if (!isInt(m.spId, 1, MAX_ID)) return fail('adminWatch: bad spId');
+      if (typeof m.on !== 'boolean') return fail('adminWatch: bad on (boolean)');
+      return ok({ type: 'adminWatch', spId: m.spId, on: m.on });
     default:
       return fail('unknown message type');
   }

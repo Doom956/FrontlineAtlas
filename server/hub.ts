@@ -6,7 +6,7 @@ import type { RawData } from 'ws';
 import { activeModifiers, landEstimate, mapLabel, mergeSetup, modifierSummary, MULTIPLAYER_NATIONS, rollModifiers, sizeClassForLand } from '../src/sim/setup';
 import type { MapChoice, MapSize } from '../src/sim/types';
 import { CloseCode, DEFAULT_LOBBY_SETTINGS, LOBBY_CODE_ALPHABET, LOBBY_CODE_LENGTH, PROTOCOL_VERSION } from '../src/net/protocol';
-import { ADMIN_ROOMS_MAX, ADMIN_SP_MAX, NOTICE_SECONDS, SP_MESSAGE_MAX_BYTES, SP_STATUS_MIN_MS } from '../src/net/protocol';
+import { ADMIN_ROOMS_MAX, ADMIN_SP_MAX, NOTICE_SECONDS, SP_MESSAGE_MAX_BYTES, SP_STATUS_MIN_MS, SP_STREAM_MAX_BYTES } from '../src/net/protocol';
 import type { AdminClientMessage, AdminSpInfo, ClientMessage, ErrorCode, LobbyKind, LobbySettings, LobbySummary, RGB, ServerMessage } from '../src/net/protocol';
 import type { ServerOptions } from './options';
 import { Room } from './room';
@@ -84,6 +84,8 @@ export interface SpLink {
   landPct: number;
   /** when the last spStatus was kept (-Infinity = none yet) */
   statusAt: number;
+  /** the owner session watching this game live (protocol 20, watch-on-demand), null = nobody */
+  watcher: Session | null;
 }
 
 export class Session implements RoomSession {
@@ -107,6 +109,8 @@ export class Session implements RoomSession {
   adminLimiter: AdminLimiter | null = null;
   /** a single-player link (spHello) instead of a player session (hello) */
   sp: SpLink | null = null;
+  /** owner session: the single-player game (spId) it is watching live, null = none (protocol 20) */
+  watchingSp: number | null = null;
   closed = false;
 
   constructor(
@@ -208,6 +212,13 @@ export class Hub implements RoomHost {
     const n = (this.ipCounts.get(s.ip) ?? 1) - 1;
     if (n > 0) this.ipCounts.set(s.ip, n);
     else this.ipCounts.delete(s.ip);
+    // watch-on-demand (protocol 20): tell the other side when the watched game or the owner drops
+    if (s.sp?.watcher) this.stopWatching(s, 'The game disconnected', false);
+    if (s.watchingSp !== null) {
+      const link = this.spLink(s.watchingSp);
+      if (link) this.stopWatching(link, 'stopped');
+      s.watchingSp = null;
+    }
     this.spLinks.delete(s);
     if (s.clientId && this.byClientId.get(s.clientId) === s) this.byClientId.delete(s.clientId);
     if (s.room) s.room.disconnected(s);
@@ -244,7 +255,7 @@ export class Hub implements RoomHost {
       : Array.isArray(data)
         ? Buffer.concat(data).toString('utf8')
         : Buffer.from(data).toString('utf8');
-    if (s.sp && text.length > SP_MESSAGE_MAX_BYTES) {
+    if (s.sp && text.length > (s.sp.watcher ? SP_STREAM_MAX_BYTES : SP_MESSAGE_MAX_BYTES)) {
       this.invalidMessage(s, 'message too long');
       return;
     }
@@ -285,8 +296,10 @@ export class Hub implements RoomHost {
       return;
     }
     if (s.sp) {
-      // a single-player link says how its game goes and nothing else (no chat, intents, lobbies or owner powers)
+      // a single-player link says how its game goes and (while watched) streams its log; nothing else (no chat,
+      // intents, lobbies or owner powers)
       if (msg.type === 'spStatus') this.spStatus(s, msg);
+      else if (msg.type === 'spSetup' || msg.type === 'spLog') this.spStream(s, msg);
       else {
         s.invalid++;
         this.error(s, 'notAllowed', 'Not allowed');
@@ -329,6 +342,7 @@ export class Hub implements RoomHost {
       case 'adminSpectacle':
       case 'adminMute':
       case 'adminKick':
+      case 'adminWatch':
         this.adminPower(s, msg);
         return;
       case 'createLobby': {
@@ -430,7 +444,7 @@ export class Hub implements RoomHost {
       this.error(s, 'notAllowed', 'Not allowed');
       return;
     }
-    const kind: AdminPowerKind = msg.type === 'adminRooms' ? 'list' : msg.type === 'adminMute' || msg.type === 'adminKick' ? 'moderate' : 'show';
+    const kind: AdminPowerKind = msg.type === 'adminRooms' || msg.type === 'adminWatch' ? 'list' : msg.type === 'adminMute' || msg.type === 'adminKick' ? 'moderate' : 'show';
     const wide = (msg.type === 'adminAnnounce' || msg.type === 'adminSpectacle') && (msg.scope === 'all' || (msg.scope === 'sp' && msg.spId === undefined));
     s.adminLimiter ??= new AdminLimiter(() => this.now());
     if (!s.adminLimiter.take(kind, wide ? SHOW_ALL_COST : 1)) {
@@ -442,6 +456,10 @@ export class Hub implements RoomHost {
       if (reached !== undefined) a.reached = reached;
       s.send(a);
     };
+    if (msg.type === 'adminWatch') {
+      this.adminWatch(s, msg.spId, msg.on);
+      return;
+    }
     if (msg.type === 'adminRooms') {
       const now = this.now();
       const all = [...this.rooms.values()].filter((r) => !r.closed);
@@ -577,7 +595,7 @@ export class Hub implements RoomHost {
       s.close(CloseCode.TooManyConnections, 'too many single-player links');
       return;
     }
-    s.sp = { nation: '', map: '', minutes: 0, landPct: 0, statusAt: -Infinity };
+    s.sp = { nation: '', map: '', minutes: 0, landPct: 0, statusAt: -Infinity, watcher: null };
     this.spLinks.add(s);
     s.send({ type: 'spWelcome', protocol: PROTOCOL_VERSION, spId: s.id });
   }
@@ -592,6 +610,61 @@ export class Hub implements RoomHost {
     sp.map = mapLabel(msg.map);
     sp.minutes = msg.minutes;
     sp.landPct = msg.landPct;
+  }
+
+  /**
+   * A watched single-player link streams its setup and log (protocol 20). One-way: the server only relays it to the
+   * attached watcher, tagged with the link's spId; the watcher (the owner) rebuilds the game in its own sim. With no
+   * watcher the frames are dropped silently (a slow unsubscribe), not an error.
+   */
+  private spStream(s: Session, msg: Extract<ClientMessage, { type: 'spSetup' | 'spLog' }>): void {
+    const w = s.sp!.watcher;
+    if (!w || w.closed || w.watchingSp !== s.id) return;
+    if (msg.type === 'spSetup') w.send({ type: 'watchSetup', spId: s.id, settings: msg.settings });
+    else w.send({ type: 'watchLog', spId: s.id, entries: msg.entries, tick: msg.tick, ...(msg.base ? { base: true } : {}), ...(msg.final ? { final: true } : {}) });
+  }
+
+  /**
+   * Detaches the watcher from a single-player link. `tellLink` sends the link `spWatch {on:false}` so it stops
+   * streaming; `tellWatcher` sends the watcher `watchEnd` (skipped when the owner itself asked to stop or switch).
+   */
+  private stopWatching(link: Session, reason: string, tellLink = true, tellWatcher = true): void {
+    const w = link.sp?.watcher ?? null;
+    if (link.sp) link.sp.watcher = null;
+    if (tellLink && !link.closed) link.send({ type: 'spWatch', on: false });
+    if (w && w.watchingSp === link.id) {
+      w.watchingSp = null;
+      if (tellWatcher && !w.closed) w.send({ type: 'watchEnd', spId: link.id, reason });
+    }
+  }
+
+  /** Owner starts or stops watching one single-player game live (adminWatch). */
+  private adminWatch(s: Session, spId: number, on: boolean): void {
+    if (!on) {
+      if (s.watchingSp === spId) {
+        const link = this.spLink(spId);
+        if (link) this.stopWatching(link, 'stopped', true, false);
+        else s.watchingSp = null;
+      }
+      return;
+    }
+    // stop watching whatever this owner watched before (one at a time): the owner asked, so no watchEnd back to them
+    if (s.watchingSp !== null && s.watchingSp !== spId) {
+      const prev = this.spLink(s.watchingSp);
+      if (prev) this.stopWatching(prev, 'stopped', true, false);
+      else s.watchingSp = null;
+    }
+    const link = this.spLink(spId);
+    if (!link || !link.sp) {
+      s.send({ type: 'watchEnd', spId, reason: 'That single-player game is not connected' });
+      return;
+    }
+    // one watcher per link: boot any previous watcher of this game (they are told plainly)
+    if (link.sp.watcher && link.sp.watcher !== s) this.stopWatching(link, 'Someone else is watching this game', false);
+    link.sp.watcher = s;
+    s.watchingSp = spId;
+    link.send({ type: 'spWatch', on: true });
+    this.opts.log(`owner from ${s.ip} is watching single-player game ${spId}`);
   }
 
   private spectacleMsg(msg: Extract<AdminClientMessage, { type: 'adminSpectacle' }>, code: string): ServerMessage {
