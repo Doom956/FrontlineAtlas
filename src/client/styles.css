@@ -1,7 +1,7 @@
 /* Frontline Atlas UI: "Pixel Clean". A calm, modern interface over a bright pixel-art world. Panels are near-black
    glass with no borders, separated by space and one hairline. One warm accent (amber) marks the primary action, the
    current selection and the current value; everything else is a neutral step. Type is a clean sans (DM Sans) with a
-   pixel display face (Pixelify Sans) for the logo, the clock and the big changing numbers. See docs/UI_DIRECTION.md. */
+   pixel display face (Jersey 15) for the logo, the clock and the big changing numbers. See docs/UI_DIRECTION.md. */
 :root {
   --ink: #0b0d11;
 
@@ -46,8 +46,8 @@
 
   --f-label: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --f-ui: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --f-logo: 'Pixelify Sans', 'DM Sans', system-ui, sans-serif;
-  --f-pixel: 'Pixelify Sans', 'DM Sans', system-ui, sans-serif;
+  --f-logo: 'Jersey 15', 'DM Sans', system-ui, sans-serif;
+  --f-pixel: 'Jersey 15', 'DM Sans', system-ui, sans-serif;
 
   --r: 8px; /* controls */
   --r-sm: 5px; /* chips */
@@ -5592,4 +5592,122 @@ strong {
   .adm-sel {
     height: 32px;
   }
+}
+
+/* ---------------------------------------------------------------- Pixel Clean: icon plus word on primary controls */
+/* top-right cluster: each button is its icon over a plain word; no hairlines between groups, just space */
+.cluster {
+  gap: 2px;
+  padding: 3px;
+}
+.cluster > * + * {
+  border-left: 0;
+}
+.cluster .sq.lbl {
+  flex-direction: column;
+  gap: 3px;
+  width: auto;
+  min-width: 48px;
+  height: 44px;
+  padding: 0 6px;
+}
+.sq-w {
+  font: 500 11px/1 var(--f-ui);
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.sq-n {
+  font: 400 18px/1 var(--f-pixel);
+}
+.sq.lbl.on {
+  box-shadow: none;
+  background: rgba(245, 177, 61, 0.12);
+}
+.cluster .clock {
+  min-width: 64px;
+  font: 400 24px/1 var(--f-pixel);
+  color: var(--text);
+}
+.cluster .sq-prog {
+  left: 12px;
+  right: 12px;
+  bottom: 2px;
+  max-width: none;
+}
+.cluster .sq-badge {
+  top: 2px;
+  right: 6px;
+  border-radius: 7px;
+}
+.cluster .sq-dot {
+  top: 6px;
+  right: 12px;
+  border-radius: 50%;
+}
+@media (max-width: 640px) {
+  .cluster {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 2px;
+  }
+  .cluster .sq.lbl {
+    flex: 0 1 auto;
+    min-width: 40px;
+    height: 40px;
+    padding: 0 3px;
+  }
+  .sq-w {
+    font-size: 10px;
+  }
+}
+
+/* command bar: quick build slots and strikes get a word under the picture */
+.qb-slot.bb,
+.sk {
+  flex-direction: column;
+  gap: 2px;
+  width: auto;
+  min-width: 46px;
+  height: 46px;
+  padding: 3px 5px 4px;
+  border: 0;
+}
+.qb-w,
+.sk-w {
+  font: 500 11px/1 var(--f-ui);
+  color: var(--dim);
+  white-space: nowrap;
+}
+.qb-slot.bb .bb-ic {
+  height: 22px;
+}
+.qb-slot.bb.on .qb-w,
+.sk.on .sk-w {
+  color: var(--accent-hi);
+}
+.qb-slot.bb.disabled .qb-w {
+  color: var(--faint);
+}
+.sk-ic {
+  width: 22px;
+  height: 22px;
+}
+.sk-ring {
+  top: 15px;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+}
+.sk-l {
+  bottom: 14px;
+}
+.sk.ready {
+  box-shadow: inset 0 0 0 1px rgba(245, 177, 61, 0.45);
+}
+.sk.on {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.skbar {
+  border-left: 0;
+  padding-left: 10px;
 }

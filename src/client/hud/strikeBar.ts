@@ -27,6 +27,9 @@ interface Btn {
   peak: number;
 }
 
+/** Short plain words under the strike icons. */
+const STRIKE_WORDS: Partial<Record<StrikeId, string>> = { barrage: 'Barrage', bomb: 'Bomb', paradrop: 'Drop', rocket: 'Rocket', atomBomb: 'Atom' };
+
 export class StrikeBar {
   readonly el: HTMLElement;
   private btns = new Map<StrikeId, Btn>();
@@ -61,7 +64,8 @@ export class StrikeBar {
       const label = el('span', 'sk-l');
       const count = el('span', 'sk-n');
       const size = el('span', 'sk-x');
-      root.append(ring, img, label, count, size);
+      // Pixel Clean: a plain word under the icon (the cooldown seconds show in its place while reloading)
+      root.append(ring, img, el('span', 'sk-w', STRIKE_WORDS[id] ?? info.name), label, count, size);
       root.addEventListener('click', () => {
         // keep the keyboard on the map (Space pauses, letters aim) instead of on this button
         root.blur();
