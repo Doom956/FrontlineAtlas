@@ -410,9 +410,11 @@ void main() {
 
   // ---- coastline: one thin ink line where land meets water (paper atlas), at every zoom
   {
+    // distance to the 0.5 contour of the land / water depth field in screen px (its gradient per px), so the line
+    // is about 1.2 px wide at every zoom and absent inside land, where the field is flat
     float cd = texture(uDepth, uv).r * 25.5;
-    float cw = 0.6 * px;
-    float coast = 1.0 - smoothstep(cw, cw + px, abs(cd - 0.5));
+    float cg = max(fwidth(cd), 1e-4);
+    float coast = 1.0 - smoothstep(0.45, 1.25, abs(cd - 0.5) / cg);
     col = mix(col, vec3(0.2, 0.24, 0.27), coast * 0.85);
   }
 
