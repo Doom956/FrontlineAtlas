@@ -39,10 +39,12 @@ export class Cluster {
   constructor(private ctx: HudCtx, private hooks: ClusterHooks) {
     this.el = el('div', 'cluster');
     this.el.dataset.test = 'cluster';
-    const sq = (icon: string, tip: string, onClick: () => void, test?: string): HTMLButtonElement => {
-      const b = el('button', 'sq');
+    const sq = (icon: string, tip: string, onClick: () => void, test?: string, word?: string): HTMLButtonElement => {
+      const b = el('button', word ? 'sq has-w' : 'sq');
       b.type = 'button';
       b.append(iconSpan(lineIcon(icon, 17)));
+      // icon plus a plain word: the button names itself without hovering
+      if (word) b.append(el('span', 'sq-w', word));
       b.dataset.tip = tip;
       b.setAttribute('aria-label', tip.split('\n')[0]);
       if (test) b.dataset.test = test;
@@ -51,7 +53,7 @@ export class Cluster {
     };
     const drawers = el('div', 'cl-group');
     const dbtn = (id: DrawerId, icon: string, tip: string) => {
-      const b = sq(icon, tip, () => ctx.openDrawer(id, true), `open-${id}`);
+      const b = sq(icon, tip, () => ctx.openDrawer(id, true), `open-${id}`, tip.split(/\s\s|\n/)[0]);
       this.drawerBtns.set(id, b);
       drawers.append(b);
       return b;
@@ -106,10 +108,10 @@ export class Cluster {
     speed.append(this.speedBtn);
 
     const sys = el('div', 'cl-group');
-    this.soundBtn = sq('sound', 'Sound on/off\nVolumes are in the menu', () => hooks.toggleMute(), 'sound');
+    this.soundBtn = sq('sound', 'Sound on/off\nVolumes are in the menu', () => hooks.toggleMute(), 'sound', 'Sound');
     if (!hooks.hasAudio()) this.soundBtn.classList.add('hidden');
-    const help = sq('help', 'How to play  (?)', () => hooks.toggleHelp(), 'help');
-    const menu = sq('menu', 'Menu\nSettings, sound, leave the game', () => ctx.openDrawer('settings', true), 'menu');
+    const help = sq('help', 'How to play  (?)', () => hooks.toggleHelp(), 'help', 'Help');
+    const menu = sq('menu', 'Menu\nSettings, sound, leave the game', () => ctx.openDrawer('settings', true), 'menu', 'Menu');
     this.drawerBtns.set('settings', menu);
     sys.append(this.soundBtn, help, menu);
     this.el.append(drawers, speed, clock, sys);

@@ -10,8 +10,8 @@ import { TICKS_PER_SECOND } from '../../sim/config';
 import { armyTotal } from '../../sim/economy';
 import type { GameState, Unit } from '../../sim/types';
 import type { Camera } from '../camera';
-import { clamp, css, formatCount, MAP_NUM_FAMILY, type RGB } from './common';
-import { drawTrails, GLYPHS, type Inst, strokeGlyphs } from './unitGlyphs';
+import { clamp, css, formatCount, MAP_NUM_FAMILY, mix, shade, type RGB } from './common';
+import { drawTrails, GLYPHS, GLYPHS_NEAR, type Inst, strokeGlyphs } from './unitGlyphs';
 import { isIncoming } from '../forces';
 import { unitVisibleTo } from '../../sim/techtree';
 import type { FogView } from '../fog/fogView';
@@ -21,10 +21,15 @@ const HIST = 3;
 /** Paratroopers drifting down where a cargo plane arrived (client-only effect). */
 const DROP_MS = 1800;
 const CHUTES = 6;
-const UNDER = 'rgba(6,9,15,0.6)';
+/** Paper halo under every symbol, so the ink outline reads on any land or sea tone. */
+const UNDER = 'rgba(251,248,241,0.85)';
+/** The ink the symbols are engraved in. */
+const INK = 'rgba(29,27,24,0.92)';
+/** From this zoom on, units use the detailed engraved art (GLYPHS_NEAR), drawn bigger. */
+const NEAR_GLYPH_ZOOM = 6;
 
 /** Base glyph length on screen (CSS px) at a zoom level; each glyph scales it a little (unitGlyphs.ts). */
-const glyphPx = (z: number): number => clamp(7 + z * 1.2, 8, 10);
+const glyphPx = (z: number): number => (z >= NEAR_GLYPH_ZOOM ? clamp(12 + (z - NEAR_GLYPH_ZOOM) * 1.4, 12, 26) : clamp(7 + z * 1.2, 8, 10));
 const strokePx = (z: number): number => clamp(1.2 + z * 0.15, 1.25, 1.7);
 
 /** `fleet`: this entry is a fleet marker standing for these ships (the lead, u, is the lowest id). */
@@ -229,7 +234,7 @@ export class UnitLayer {
       const uy = t ? t.py + (t.cy - t.py) * frac : u.y;
       const x = ox + (ux + 0.5) * z;
       const y = oy + (uy + 0.5) * z;
-      const S = (base * GLYPHS[u.type].len) / 2;
+      const S = (base * (z >= NEAR_GLYPH_ZOOM ? GLYPHS_NEAR : GLYPHS)[u.type].len) / 2;
       if (x < -40 || y < -40 || x > cam.viewW + 40 || y > cam.viewH + 40) continue;
       // enemy submarines stay hidden until close, sonar, recon or Early Warning shows them (techtree.unitVisibleTo)
       if (u.variant === 'submarine' && me > 0 && !unitVisibleTo(state, me, u)) continue;
@@ -293,9 +298,16 @@ export class UnitLayer {
     ctx.lineJoin = 'round';
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
+    // engraved atlas symbols: an ink outline in a dark shade of the owner's colour, the body tinted with it, guns
+    // and tracks in ink, on a thin paper halo; close up the detailed art (GLYPHS_NEAR)
+    const nearArt = z >= NEAR_GLYPH_ZOOM;
+    const table = nearArt ? GLYPHS_NEAR : GLYPHS;
+    const lwz = nearArt ? clamp(lw * (base / 12), 1.4, 2.2) : lw;
     for (const [owner, list] of byOwner) {
       const c = colors[owner] ?? [200, 200, 200];
-      strokeGlyphs(ctx, list, css(c), css(c, 0.22), UNDER, lw);
+      const inkOf = css(mix(shade(c, 0.4), [29, 27, 24], 0.35));
+      const tint = css(mix(c, [251, 248, 241], nearArt ? 0.25 : 0.1), nearArt ? 0.95 : 0.85);
+      strokeGlyphs(ctx, list, inkOf, tint, UNDER, lwz, table, css(shade(c, 0.75)), INK);
       this.drawn += list.length;
     }
     // own warships and tank divisions: a tiny white tick under the hull, a ring while hovered, picked or selected
@@ -321,8 +333,8 @@ export class UnitLayer {
           this.fleetHits.push({ ids, x: e.x, y: e.y, r: Math.max(14, e.S + 6) });
         } else this.hits.push(e.u.id, e.x, e.y, Math.max(14, e.S + 6));
       }
-      ctx.lineWidth = ring ? 1.25 : 1.5;
-      ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+      ctx.lineWidth = ring ? 1.5 : 1.5;
+      ctx.strokeStyle = INK;
       ctx.stroke();
     }
     // hostile transports, bombers, cargo planes and missiles coming at you: a thin red ring that breathes a little
@@ -347,7 +359,7 @@ export class UnitLayer {
       for (const e of visible) {
         if (!e.fleet) continue;
         const c = colors[e.u.owner] ?? [200, 200, 200];
-        countBadge(ctx, e.x + e.S * 0.9, e.y - e.S * 0.9, String(e.fleet.length), me > 0 && e.u.owner === me ? '#ffe98a' : css(c));
+        countBadge(ctx, e.x + e.S * 0.9, e.y - e.S * 0.9, String(e.fleet.length), me > 0 && e.u.owner === me ? '#1d1b18' : css(shade(c, 0.6)));
       }
     }
     // transports: a small troop pill and, on cargo planes, a tiny parachute mark (mid and close zoom)
@@ -358,7 +370,7 @@ export class UnitLayer {
         // army sizes are public (only the troop mix needs intel)
         const n = formatCount(armyTotal(u.troops));
         const toMe = me > 0 && u.owner !== me && state.map.owner[u.target] === me;
-        const edge = u.owner === me ? '#ffe98a' : toMe ? '#ff6b5e' : css(colors[u.owner] ?? [200, 200, 200]);
+        const edge = u.owner === me ? '#1d1b18' : toMe ? '#a3301f' : css(shade(colors[u.owner] ?? [200, 200, 200], 0.6));
         miniPill(ctx, e.x, e.y - e.S - 7, n, edge, u.owner === me ? 'up' : toMe ? 'down' : 'none');
         if (e.type === 'transportPlane') chute(ctx, e.x + e.S + 4, e.y + e.S * 0.6 + 4, css(colors[u.owner] ?? [200, 200, 200]));
       }
@@ -431,12 +443,12 @@ function countBadge(ctx: CanvasRenderingContext2D, x: number, y: number, text: s
   const bw = Math.max(bh, ctx.measureText(text).width + 6);
   ctx.beginPath();
   ctx.roundRect(x - bw / 2, y - bh / 2, bw, bh, bh / 2);
-  ctx.fillStyle = 'rgba(10,13,21,0.88)';
+  ctx.fillStyle = 'rgba(251,248,241,0.96)';
   ctx.fill();
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 1.2;
   ctx.strokeStyle = edge;
   ctx.stroke();
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = '#1d1b18';
   ctx.fillText(text, x, y + 0.5);
 }
 
@@ -451,7 +463,7 @@ function miniPill(ctx: CanvasRenderingContext2D, x: number, y: number, text: str
   const x0 = x - bw / 2;
   ctx.beginPath();
   ctx.roundRect(x0, y - bh / 2, bw, bh, 5.5);
-  ctx.fillStyle = 'rgba(10,13,21,0.8)';
+  ctx.fillStyle = 'rgba(251,248,241,0.94)';
   ctx.fill();
   ctx.lineWidth = 1;
   ctx.strokeStyle = edge;
@@ -466,6 +478,6 @@ function miniPill(ctx: CanvasRenderingContext2D, x: number, y: number, text: str
     ctx.lineWidth = 1.3;
     ctx.stroke();
   }
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = '#1d1b18';
   ctx.fillText(text, x + ax / 2, y + 0.5);
 }

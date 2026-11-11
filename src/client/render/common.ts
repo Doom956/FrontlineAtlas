@@ -107,8 +107,8 @@ export function dashedLine(ctx: CanvasRenderingContext2D, x1: number, y1: number
   ctx.setLineDash([]);
 }
 
-/** Map type: Barlow Condensed for names and labels, IBM Plex Sans for numbers (both bundled in fonts.ts). */
-export const MAP_LABEL_FAMILY = "'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif";
+/** Map type: Source Serif 4 for place names and labels (atlas lettering), IBM Plex Sans for numbers (fonts.ts). */
+export const MAP_LABEL_FAMILY = "'Source Serif 4', Georgia, 'Times New Roman', serif";
 export const MAP_NUM_FAMILY = "'IBM Plex Sans', system-ui, sans-serif";
 
 /** Canvas letter-spacing in CSS px (no-op where the browser lacks ctx.letterSpacing). */
@@ -122,17 +122,19 @@ export function setTracking(ctx: CanvasRenderingContext2D, px: number): void {
  * blurred shadow, then the fill on top, so the letters stay crisp and readable over light and dark nation colours.
  * `strength` scales the halo (1 = the default over nation colours, more over pale land such as tribes).
  */
-export function haloText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, fill: string, size = 12, strength = 1): void {
+export function haloText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, fill: string, size = 12, strength = 1, paper = false): void {
   const m = ctx.getTransform();
   const scale = Math.hypot(m.a, m.b) || 1;
   ctx.lineJoin = 'round';
   const a = clamp(strength, 0, 1.4);
-  ctx.shadowColor = `rgba(4,6,12,${Math.min(0.95, 0.75 * a).toFixed(2)})`;
+  // paper: ink letters with a soft paper-coloured halo (atlas place names); else light letters on a dark halo
+  const halo = paper ? '247,242,231' : '4,6,12';
+  ctx.shadowColor = `rgba(${halo},${Math.min(0.95, 0.75 * a).toFixed(2)})`;
   ctx.shadowBlur = clamp(size * 0.2, 2, 6) * scale;
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 0;
-  ctx.lineWidth = clamp(size * 0.1, 1.2, 1.6);
-  ctx.strokeStyle = `rgba(4,6,12,${Math.min(0.85, 0.55 * a).toFixed(2)})`;
+  ctx.lineWidth = paper ? clamp(size * 0.16, 2, 3.2) : clamp(size * 0.1, 1.2, 1.6);
+  ctx.strokeStyle = `rgba(${halo},${Math.min(0.85, (paper ? 0.7 : 0.55) * a).toFixed(2)})`;
   ctx.strokeText(text, x, y);
   ctx.shadowColor = 'transparent';
   ctx.shadowBlur = 0;

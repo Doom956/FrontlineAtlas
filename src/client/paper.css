@@ -1,0 +1,288 @@
+/* Paper Atlas: the look. A printed atlas under the hand: paper cards, ink type, thin ink rules instead of boxes, one
+   stamp-red accent for the one action that matters. Loaded after every other stylesheet, so the tokens here win.
+   The token names are the old ones (--metal is now paper, --ink is the deepest paper well, --brass is the stamp red)
+   so every existing rule follows without a rename. See docs/UI_DIRECTION.md. */
+:root:root {
+  --ink: #e5ddcb;
+  --metal: #f7f2e7;
+  --metal-a: rgba(247, 242, 231, 0.97);
+  --metal-2: #efe8d9;
+  --metal-3: #e5ddcb;
+  --metal-4: #d7cdb8;
+  --rule: #d5cab3;
+  --rule-hi: #a99d85;
+  --text: #1d1b18;
+  --dim: #4f4a42;
+  --faint: #6b6457;
+  --brass: #b2382a;
+  --brass-hi: #a3301f;
+  --brass-lo: #c98c80;
+  --brass-ink: #fffaf0;
+  --olive: #3f6326;
+  --olive-d: #a8b98e;
+  --signal: #a3301f;
+  --signal-d: #f0d4cc;
+  --steel: #2f5d80;
+  --steel-d: #b9cad8;
+  --grain: none;
+  --f-label: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --f-ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --f-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --f-logo: var(--f-serif);
+  --r: 4px;
+  --lift: 0 1px 1px rgba(70, 52, 24, 0.1), 0 4px 14px rgba(70, 52, 24, 0.14);
+  --lift-hi: 0 1px 2px rgba(70, 52, 24, 0.14), 0 10px 28px rgba(70, 52, 24, 0.2);
+  color-scheme: light;
+}
+html,
+body {
+  background: #c9d6dc;
+}
+
+/* ---- surfaces: a paper card with a soft lift, no border box, no grain, no brackets */
+.cmdbar,
+.lb,
+.cluster,
+.drawer,
+.ncard,
+.mtip,
+.tip,
+.toast,
+.spawnbar,
+.modechip,
+.advisor,
+.modal-card,
+.menu-card,
+.bm,
+.sp {
+  background-color: var(--metal-a);
+  background-image: none;
+  border: 0;
+  box-shadow: var(--lift);
+}
+.drawer,
+.modal-card,
+.bm,
+.sp {
+  box-shadow: var(--lift-hi);
+}
+
+/* ---- type: section titles are serif words, not tracked caps */
+.wr-sec {
+  font: 600 15px/1.2 var(--f-serif);
+  color: var(--text);
+}
+h1,
+h2,
+h3 {
+  font-family: var(--f-serif);
+  font-weight: 600;
+}
+
+/* ---- buttons: a light paper key with an ink hairline; primary is the stamp red */
+.wr-btn,
+.btn {
+  border: 1px solid var(--rule-hi);
+  background: var(--metal);
+  color: var(--text);
+  font: 600 13px/1 var(--f-ui);
+  box-shadow: 0 1px 0 rgba(70, 52, 24, 0.12);
+}
+.wr-btn:hover:not(:disabled),
+.btn:hover:not(:disabled) {
+  background: var(--metal-2);
+  border-color: var(--text);
+}
+.wr-btn.primary,
+.btn.primary {
+  background: var(--brass);
+  border-color: var(--brass);
+  color: var(--brass-ink);
+}
+.wr-btn.primary:hover:not(:disabled),
+.btn.primary:hover:not(:disabled) {
+  background: #9a2c20;
+  border-color: #9a2c20;
+}
+.wr-btn.on {
+  border-color: var(--text);
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--brass);
+}
+.wr-btn.danger,
+.btn.danger {
+  color: var(--signal);
+  border-color: var(--brass-lo);
+}
+:focus-visible {
+  outline: 2px solid var(--steel);
+}
+
+/* hotkey chips never show in the HUD (the owner rule); keys live in How to play */
+.kc,
+.rp-tab-k {
+  display: none !important;
+}
+
+/* ---- top-right bar: icon plus a plain word on every drawer button */
+.cluster {
+  border-radius: 6px;
+}
+.cluster > * + * {
+  border-left: 1px solid var(--rule);
+}
+.cluster .sq {
+  color: var(--dim);
+}
+.cluster .sq.has-w {
+  width: auto;
+  height: 36px;
+  padding: 0 9px 0 8px;
+  gap: 5px;
+}
+.sq-w {
+  font: 500 12.5px/1 var(--f-ui);
+  color: inherit;
+  white-space: nowrap;
+}
+.sq:hover {
+  background: var(--metal-2);
+  color: var(--text);
+}
+.sq.on {
+  color: var(--text);
+  background: transparent;
+  box-shadow: inset 0 -2px 0 var(--brass);
+}
+.cluster .sq.txt,
+.cluster .clock {
+  height: 36px;
+}
+.clock {
+  font: 600 16px/1 var(--f-serif);
+  color: var(--text);
+}
+
+/* ---- command bar: three readouts and the build area, numbers in the serif, labels plain sans */
+.cmdbar {
+  height: 62px;
+  border-radius: 6px;
+}
+.cb-lab {
+  font: 500 12px/1 var(--f-ui);
+  color: var(--faint);
+}
+.cb-big {
+  font: 600 23px/1 var(--f-serif);
+  color: var(--text);
+}
+.cb-big.gold {
+  color: var(--text);
+}
+.cb-share {
+  color: var(--text);
+}
+.qb-build {
+  height: 44px;
+  padding: 0 14px 0 12px;
+  border: 1px solid var(--brass);
+  background: var(--brass);
+  color: var(--brass-ink);
+  font: 600 15px/1 var(--f-ui);
+  box-shadow: 0 1px 0 rgba(70, 52, 24, 0.2);
+}
+.qb-build:hover,
+.qb-build.on {
+  border-color: #9a2c20;
+  background: #9a2c20;
+}
+.bb,
+.sk {
+  background: transparent;
+  border: 1px solid transparent;
+}
+.bb:hover,
+.sk:hover {
+  background: var(--metal-2);
+  border-color: var(--rule-hi);
+}
+.bb.on {
+  background: var(--metal-2);
+  border-color: var(--text);
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--brass);
+}
+/* quick slots and strikes: picture with its name under it */
+.qb-slot.bb,
+.skbar .sk {
+  width: auto;
+  min-width: 46px;
+  height: 50px;
+  padding: 3px 4px 2px;
+  flex-direction: column;
+  gap: 2px;
+}
+.qb-k,
+.sk-w {
+  position: static;
+  font: 500 11px/1 var(--f-ui);
+  color: var(--dim);
+  white-space: nowrap;
+}
+.qb-slot.on .qb-k {
+  color: var(--text);
+}
+.sk-ring {
+  top: 3px;
+}
+.sk-l {
+  height: 32px;
+  bottom: auto;
+  color: var(--text);
+  text-shadow: 0 0 3px #fff, 0 0 2px #fff;
+}
+.sk-n {
+  color: var(--brass-hi);
+}
+.bm-cnt.on {
+  background: var(--text);
+  color: var(--metal);
+}
+
+/* ---- standings */
+.lb {
+  border-radius: 6px;
+}
+.lb .wr-sec {
+  font-size: 14px;
+}
+
+/* ---- toasts: paper slips, a small mark on the left (no stripe) */
+.toast {
+  border-radius: 6px;
+  color: var(--text);
+}
+
+/* ---- research and arsenal trees: cards without boxes inside boxes */
+.rp-card,
+.ap-card {
+  box-shadow: none;
+}
+
+/* ---- phone: words sit under the icons so the top bar still fits */
+@media (max-width: 640px) {
+  .cluster .sq.has-w {
+    flex-direction: column;
+    gap: 2px;
+    height: 44px;
+    padding: 0 4px;
+    min-width: 0;
+  }
+  .sq-w {
+    font-size: 10px;
+  }
+  .cluster .sq.txt,
+  .cluster .clock {
+    height: 44px;
+  }
+}

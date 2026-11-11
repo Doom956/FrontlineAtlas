@@ -61,7 +61,9 @@ export class StrikeBar {
       const label = el('span', 'sk-l');
       const count = el('span', 'sk-n');
       const size = el('span', 'sk-x');
-      root.append(ring, img, label, count, size);
+      // a plain word under the picture, so the button says what it is without hovering
+      const word = el('span', 'sk-w', info.name.split(' ')[0]);
+      root.append(ring, img, label, count, size, word);
       root.addEventListener('click', () => {
         // keep the keyboard on the map (Space pauses, letters aim) instead of on this button
         root.blur();

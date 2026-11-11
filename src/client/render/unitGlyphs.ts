@@ -145,7 +145,150 @@ export const GLYPHS: Record<UnitType, Glyph> = {
     ],
   },
 };
-for (const g of Object.values(GLYPHS)) {
+/** A closed outline symmetric about the centre line: the nose point, then the +y side from bow to stern. */
+const sym = (nose: [number, number], side: number[]): Shape => {
+  const back: number[] = [];
+  for (let i = side.length - 2; i >= 0; i -= 2) back.push(side[i], -side[i + 1]);
+  return { k: 'poly', p: [...nose, ...side, ...back] };
+};
+
+/**
+ * Close-up art (zoom NEAR_GLYPH_ZOOM and in): the same silhouettes engraved in more detail, like the symbols on a
+ * printed military map: tinted hull or body, ink outline, dark gun pits and tracks, the superstructure in the
+ * owner's colour. Drawn bigger than the far glyphs, never used zoomed out.
+ */
+export const GLYPHS_NEAR: Record<UnitType, Glyph> = {
+  warship: {
+    len: 1.2,
+    trail: 'wake',
+    trailLen: 0.5,
+    shapes: [
+      sym([1, 0], [0.5, 0.25, -0.2, 0.3, -0.92, 0.26, -1, 0.18]),
+      ...mirror([-0.88, 0.16, 0.42, 0.16]).map((p): Shape => ({ k: 'line', p })),
+      box(-0.12, 0, 0.17, 0.13),
+      { k: 'ring', p: [-0.4, 0, 0.08] },
+      box(0.34, 0, 0.09, 0.09, 'pit'),
+      { k: 'line', p: [0.34, 0, 0.78, 0] },
+      box(-0.66, 0, 0.09, 0.09, 'pit'),
+      { k: 'line', p: [-0.66, 0, -0.98, 0] },
+    ],
+  },
+  tankDivision: {
+    len: 1.15,
+    trail: 'none',
+    trailLen: 0.3,
+    shapes: [
+      box(-0.08, 0.62, 0.86, 0.12, 'pit'),
+      box(-0.08, -0.62, 0.86, 0.12, 'pit'),
+      sym([0.78, 0], [0.78, 0.34, 0.6, 0.48, -0.82, 0.48, -0.82, 0.3]),
+      { k: 'line', p: [-0.7, -0.3, -0.7, 0.3] },
+      { k: 'line', p: [-0.58, -0.3, -0.58, 0.3] },
+      sym([0.25, 0], [0.15, 0.27, -0.42, 0.27, -0.46, 0.2]),
+      { k: 'ring', p: [-0.2, 0.08, 0.07] },
+      { k: 'line', p: [0.22, 0, 1.02, 0] },
+      { k: 'line', p: [0.97, -0.06, 0.97, 0.06] },
+    ],
+  },
+  bomber: {
+    len: 1.3,
+    trail: 'air',
+    trailLen: 0.7,
+    shapes: [
+      ...mirror([0.28, 0.08, -0.02, 1.06, -0.3, 1.06, -0.2, 0.08]).map((p): Shape => ({ k: 'poly', p })),
+      ...mirror([-0.72, 0.07, -0.92, 0.4, -1, 0.4, -0.95, 0.07]).map((p): Shape => ({ k: 'poly', p })),
+      sym([1, 0], [0.86, 0.1, -0.8, 0.08, -1, 0.04]),
+      box(0.12, 0.4, 0.11, 0.05, 'pit'),
+      box(0.12, -0.4, 0.11, 0.05, 'pit'),
+      box(0.03, 0.74, 0.11, 0.05, 'pit'),
+      box(0.03, -0.74, 0.11, 0.05, 'pit'),
+      { k: 'dot', p: [0.8, 0] },
+    ],
+  },
+  fighter: {
+    len: 1.05,
+    trail: 'air',
+    trailLen: 1,
+    shapes: [
+      sym([1, 0], [0.55, 0.1, -0.12, 0.74, -0.4, 0.78, -0.36, 0.13, -0.74, 0.13, -0.92, 0.42, -1, 0.42, -0.96, 0.05]),
+      { k: 'ring', p: [0.42, 0, 0.09] },
+      { k: 'line', p: [0.28, 0, -0.85, 0] },
+    ],
+  },
+  rocket: {
+    len: 1.0,
+    trail: 'missile',
+    trailLen: 3.2,
+    shapes: [
+      ...mirror([-0.45, 0.12, -0.98, 0.46, -0.98, 0.12]).map((p): Shape => ({ k: 'poly', p })),
+      sym([1, 0], [0.68, 0.13, -0.98, 0.13]),
+      { k: 'line', p: [0.5, -0.13, 0.5, 0.13] },
+      { k: 'line', p: [-0.18, -0.13, -0.18, 0.13] },
+    ],
+  },
+  atomBomb: {
+    len: 1.15,
+    trail: 'missile',
+    trailLen: 2.4,
+    shapes: [
+      { k: 'line', p: [-0.82, -0.4, -0.82, 0.4] },
+      ...mirror([-0.5, 0.28, -0.82, 0.4]).map((p): Shape => ({ k: 'line', p })),
+      sym([1, 0], [0.62, 0.3, -0.5, 0.3, -0.82, 0.14]),
+      { k: 'ring', p: [0.02, 0, 0.17] },
+      { k: 'dot', p: [0.02, 0] },
+    ],
+  },
+  transport: {
+    len: 1.0,
+    trail: 'wake',
+    trailLen: 0.5,
+    shapes: [
+      { k: 'poly', p: [-1, -0.52, -1, 0.52, 0.7, 0.52, 1, 0.4, 1, -0.4, 0.7, -0.52] },
+      { k: 'line', p: [0.64, -0.52, 0.64, 0.52] },
+      { k: 'line', p: [0.82, -0.44, 0.82, 0.44] },
+      box(-0.12, 0.2, 0.18, 0.14),
+      box(-0.12, -0.2, 0.18, 0.14),
+      box(-0.78, 0, 0.12, 0.24, 'pit'),
+    ],
+  },
+  transportPlane: {
+    len: 1.15,
+    trail: 'air',
+    trailLen: 0.7,
+    shapes: [
+      ...mirror([0.45, 0.27, 0.45, 1, -0.05, 1, -0.05, 0.27]).map((p): Shape => ({ k: 'poly', p })),
+      { k: 'poly', p: [1, 0, 0.8, 0.27, -0.55, 0.27, -1, 0.14, -1, -0.14, -0.55, -0.27, 0.8, -0.27] },
+      { k: 'line', p: [-0.9, -0.58, -0.9, 0.58] },
+      box(0.3, 0.55, 0.1, 0.06, 'pit'),
+      box(0.3, -0.55, 0.1, 0.06, 'pit'),
+      { k: 'dot', p: [0.82, 0] },
+    ],
+  },
+  tradeShip: {
+    len: 1.05,
+    trail: 'wake',
+    trailLen: 0.5,
+    shapes: [
+      { k: 'poly', p: [-1, -0.4, -1, 0.4, 0.5, 0.4, 1, 0, 0.5, -0.4] },
+      box(-0.42, 0, 0.12, 0.24),
+      box(-0.12, 0, 0.12, 0.24),
+      box(0.18, 0, 0.12, 0.24),
+      box(-0.82, 0, 0.1, 0.26, 'pit'),
+    ],
+  },
+  reconPlane: {
+    len: 1.0,
+    trail: 'air',
+    trailLen: 0.6,
+    shapes: [
+      sym([1, 0], [0.8, 0.07, -0.95, 0.05]),
+      { k: 'poly', p: [0.25, -1.05, 0.25, 1.05, 0.05, 1.05, 0.05, -1.05] },
+      { k: 'line', p: [-0.85, -0.38, -0.85, 0.38] },
+      { k: 'ring', p: [0.72, 0, 0.16] },
+    ],
+  },
+};
+
+for (const g of [...Object.values(GLYPHS), ...Object.values(GLYPHS_NEAR)]) {
   g.solid = g.shapes.some((s) => s.k === 'block');
   g.pits = g.shapes.some((s) => s.k === 'pit');
 }
@@ -208,7 +351,7 @@ export interface Inst {
 }
 
 /** All of one owner's glyphs: dark under-stroke, faint fill, solid blocks, dark pits, colour stroke (5 draw calls at most). */
-export function strokeGlyphs(ctx: CanvasRenderingContext2D, list: readonly Inst[], color: string, fill: string, under: string, lw: number): void {
+export function strokeGlyphs(ctx: CanvasRenderingContext2D, list: readonly Inst[], color: string, fill: string, under: string, lw: number, table: Record<UnitType, Glyph> = GLYPHS, solidColor = color, pitColor = 'rgba(6,9,15,0.9)'): void {
   if (prankView.ducks) {
     // the ducks prank (fx/prankView.ts): every ship, plane and division is a rubber duck for a few seconds; missiles
     // stay missiles (a strike must still read as one)
@@ -220,14 +363,14 @@ export function strokeGlyphs(ctx: CanvasRenderingContext2D, list: readonly Inst[
   let solid = false;
   let pits = false;
   for (const e of list) {
-    const g = GLYPHS[e.type];
+    const g = table[e.type];
     if (g.solid) solid = true;
     if (g.pits) pits = true;
   }
   const path = (pass: 'stroke' | 'fill' | 'solid' | 'pit'): void => {
     ctx.beginPath();
     for (const e of list) {
-      const g = GLYPHS[e.type];
+      const g = table[e.type];
       if ((pass === 'solid' && !g.solid) || (pass === 'pit' && !g.pits)) continue;
       addGlyph(ctx, g, e.x, e.y, Math.cos(e.angle), Math.sin(e.angle), e.S, pass);
     }
@@ -241,12 +384,12 @@ export function strokeGlyphs(ctx: CanvasRenderingContext2D, list: readonly Inst[
   ctx.fill();
   if (solid) {
     path('solid');
-    ctx.fillStyle = color;
+    ctx.fillStyle = solidColor;
     ctx.fill();
   }
   if (pits) {
     path('pit');
-    ctx.fillStyle = 'rgba(6,9,15,0.9)';
+    ctx.fillStyle = pitColor;
     ctx.fill();
   }
   path('stroke');
@@ -294,7 +437,8 @@ export function drawTrails(ctx: CanvasRenderingContext2D, list: readonly Inst[],
         any = true;
       }
       if (!any) continue;
-      ctx.fillStyle = `rgba(255,255,255,${(kind === 'missile' ? MISSILE_ALPHA : AIR_ALPHA)[i]})`;
+      // pencil-grey trails on the paper map (missiles a warmer, darker smoke)
+      ctx.fillStyle = kind === 'missile' ? `rgba(92,62,44,${(MISSILE_ALPHA[i] * 0.7).toFixed(3)})` : `rgba(60,64,70,${(AIR_ALPHA[i] * 0.8).toFixed(3)})`;
       ctx.fill();
     }
   }
@@ -320,7 +464,7 @@ export function drawTrails(ctx: CanvasRenderingContext2D, list: readonly Inst[],
   if (!any) return;
   ctx.lineWidth = 1;
   ctx.lineCap = 'round';
-  ctx.strokeStyle = 'rgba(235,245,255,0.32)';
+  ctx.strokeStyle = 'rgba(40,70,90,0.35)';
   ctx.stroke();
 }
 

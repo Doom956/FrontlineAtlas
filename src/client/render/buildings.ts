@@ -1,7 +1,7 @@
-// Buildings on the map, as calm, minimal markers: a small plate in the owner's colour with a white silhouette
-// (icons.ts marker mode), one size per zoom, the same marker family at every zoom (no illustrated icons on the
-// map). Zoom tiers (zoom = CSS px per tile):
-//   far   (< FAR_ZOOM)      only cities (light squares, bigger per level) and forts (dark squares)
+// Buildings on the map, as small stamped atlas symbols: an ink seal with a paper-white silhouette (icons.ts marker
+// mode, disc shape) inside a thin ring in the owner's colour, one size per zoom, the same symbol family at every
+// zoom. Zoom tiers (zoom = CSS px per tile):
+//   far   (< FAR_ZOOM)      only cities (ringed paper dots, bigger per level) and forts (small ink squares)
 //   from FAR_ZOOM on        every building as a marker (at least 14 px, so it reads at normal play zoom)
 // The hovered or selected building is drawn as a bigger marker. Unfinished buildings are faded with a progress
 // ring; levels above 1 get a badge; damaged ones a health bar.
@@ -11,7 +11,7 @@
 import { BUILDINGS } from '../../sim/config';
 import type { Building, GameState } from '../../sim/types';
 import type { Camera } from '../camera';
-import { CATEGORY_COLORS, drawMarker, ICON_INFO, markerReady, type BuildingIconId } from '../icons';
+import { CATEGORY_COLORS, drawMarker, markerReady, type BuildingIconId } from '../icons';
 import type { FogView } from '../fog/fogView';
 import { buildingsKey, clamp, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, setTracking, type RGB, type View } from './common';
 
@@ -19,7 +19,9 @@ export const FAR_ZOOM = 1.7;
 const CELL = 32;
 /** New marker sprites rendered per frame at most (the rest use a neutral plate until their turn). */
 const SPRITE_BUDGET = 24;
-const NEUTRAL_PLATE = '#5d6573';
+const NEUTRAL_PLATE = '#5d5750';
+/** The seal every building symbol is stamped in (one ink for all: the owner shows in the ring). */
+const SEAL_INK = '#2b2622';
 /** Markers at least this big (zoom 8+, markerSize) get the building's name underneath. */
 const NAME_MARKER_PX = markerSize(8);
 /** Marker plates by building category: the legend's category colours, darkened so the white glyph reads. */
@@ -156,20 +158,24 @@ export class BuildingLayer {
     const ox = cam.viewW / 2 - cam.x * z;
     const oy = cam.viewH / 2 - cam.y * z;
     const base = clamp(1.5 + z * 0.7, 2, 4);
+    // atlas town symbol: a paper dot in an ink ring
     ctx.beginPath();
     for (const b of this.cities) {
       const tx = b.tile % w;
       const ty = (b.tile / w) | 0;
       if (tx < v.x0 - 2 || tx >= v.x1 + 2 || ty < v.y0 - 2 || ty >= v.y1 + 2) continue;
       const s = base + (b.level - 1) * 0.6;
-      ctx.rect(ox + (tx + 0.5) * z - s / 2, oy + (ty + 0.5) * z - s / 2, s, s);
+      const cx = ox + (tx + 0.5) * z;
+      const cy = oy + (ty + 0.5) * z;
+      ctx.moveTo(cx + s / 2 + 0.5, cy);
+      ctx.arc(cx, cy, s / 2 + 0.5, 0, Math.PI * 2);
       this.drawn++;
     }
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = 'rgba(16,18,24,0.85)';
-    ctx.stroke();
-    ctx.fillStyle = '#f6f3ea';
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = 'rgba(29,27,24,0.9)';
+    ctx.fillStyle = '#fbf8f1';
     ctx.fill();
+    ctx.stroke();
     if (z < 1.2) return;
     ctx.beginPath();
     for (const b of this.forts) {
@@ -180,9 +186,9 @@ export class BuildingLayer {
       ctx.rect(ox + (tx + 0.5) * z - s / 2, oy + (ty + 0.5) * z - s / 2, s, s);
       this.drawn++;
     }
-    ctx.strokeStyle = 'rgba(245,245,240,0.9)';
+    ctx.strokeStyle = 'rgba(247,242,231,0.9)';
     ctx.stroke();
-    ctx.fillStyle = '#2a2e36';
+    ctx.fillStyle = SEAL_INK;
     ctx.fill();
   }
 
@@ -195,30 +201,33 @@ export class BuildingLayer {
     const unfinished = progress < 1;
     const id = b.type as BuildingIconId;
     const alpha = ghost ? 0.5 : unfinished ? 0.55 : 1;
-    // The plate shows what the building does (category colour: economy gold, production orange, defence blue ...);
-    // a frame in the owner's colour shows whose it is.
+    // A stamped seal: paper margin, a ring in the owner's colour (whose it is), an ink seal with the white picture
+    // (what it is). One ink for every building keeps the map calm; the picture and the name tell them apart.
     const r = size * 0.5;
     const fw = clamp(size * 0.09, 1.5, 3);
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = 'rgba(10,12,16,0.85)';
+    ctx.fillStyle = 'rgba(251,248,241,0.96)';
     ctx.beginPath();
-    ctx.roundRect(x - r - fw - 1, y - r - fw - 1, size + 2 * fw + 2, size + 2 * fw + 2, size * 0.3);
+    ctx.arc(x, y, r + fw + 1.5, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`;
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(29,27,24,0.55)';
+    ctx.stroke();
     ctx.beginPath();
-    ctx.roundRect(x - r - fw, y - r - fw, size + 2 * fw, size + 2 * fw, size * 0.28);
-    ctx.fill();
+    ctx.arc(x, y, r + fw * 0.5, 0, Math.PI * 2);
+    ctx.lineWidth = fw;
+    ctx.strokeStyle = `rgb(${c[0]},${c[1]},${c[2]})`;
+    ctx.stroke();
     ctx.globalAlpha = 1;
-    const cat = ICON_INFO[id].category;
-    const opts = { plate: cat ? CATEGORY_PLATES[cat] : c, dpr };
+    const opts = { plate: ghost ? NEUTRAL_PLATE : SEAL_INK, shape: 'disc' as const, dpr };
     if (markerReady(id, size, opts) || this.budget-- > 0) drawMarker(ctx, id, x, y, size, { ...opts, alpha });
-    else drawMarker(ctx, id, x, y, size, { plate: NEUTRAL_PLATE, dpr, alpha });
+    else drawMarker(ctx, id, x, y, size, { plate: NEUTRAL_PLATE, shape: 'disc', dpr, alpha });
     this.drawn++;
     if (unfinished) {
       ctx.beginPath();
       ctx.arc(x, y, r + 2.5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
       ctx.lineWidth = 2;
-      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.strokeStyle = 'rgba(29,27,24,0.9)';
       ctx.stroke();
     }
     if (b.level > 1 && !ghost) {
@@ -227,12 +236,12 @@ export class BuildingLayer {
       const by = y - r * 0.78;
       ctx.beginPath();
       ctx.arc(bx, by, br, 0, Math.PI * 2);
-      ctx.fillStyle = '#ffd866';
+      ctx.fillStyle = '#fbf8f1';
       ctx.fill();
       ctx.lineWidth = 1.2;
-      ctx.strokeStyle = '#2b2410';
+      ctx.strokeStyle = '#1d1b18';
       ctx.stroke();
-      ctx.fillStyle = '#2b2410';
+      ctx.fillStyle = '#1d1b18';
       ctx.font = `600 ${Math.round(br * 1.3)}px ${MAP_NUM_FAMILY}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -247,10 +256,10 @@ export class BuildingLayer {
         const py = y - r + pr + k * (pr * 2 + 1.5);
         ctx.beginPath();
         ctx.arc(px, py, pr, 0, Math.PI * 2);
-        ctx.fillStyle = '#e3c04e';
+        ctx.fillStyle = '#b2382a';
         ctx.fill();
         ctx.lineWidth = 1;
-        ctx.strokeStyle = 'rgba(20,16,6,0.9)';
+        ctx.strokeStyle = 'rgba(251,248,241,0.9)';
         ctx.stroke();
       }
     }
@@ -263,12 +272,12 @@ export class BuildingLayer {
     }
     if (size >= NAME_MARKER_PX) {
       // close up (zoom 8+): the building's name under its marker
-      ctx.font = `600 12px ${MAP_LABEL_FAMILY}`;
+      ctx.font = `italic 400 13px ${MAP_LABEL_FAMILY}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      const ny = y + r + (b.hp > 0 && b.hp < 1 ? 7 : 4);
-      setTracking(ctx, 0.4);
-      haloText(ctx, BUILDINGS[b.type].name, x + 0.2, ny, 'rgba(244,245,247,0.95)', 12, 1.1);
+      const ny = y + r + fw + (b.hp > 0 && b.hp < 1 ? 8 : 4);
+      setTracking(ctx, 0);
+      haloText(ctx, BUILDINGS[b.type].name, x, ny, 'rgba(29,27,24,0.92)', 13, 1, true);
       setTracking(ctx, 0);
     }
   }

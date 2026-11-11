@@ -346,14 +346,14 @@ export class NameLayer {
         else if (requests.has(p.id)) icons.push('envelope');
       }
       const iconPx = clamp(px * 0.85, 12, 20);
-      // Clean map type: nations in tracked uppercase Barlow Condensed 600, tribes in mixed-case 500. Big countries
-      // keep a capped size and spread their letters over the spare width instead of growing into giant letters.
-      ctx.font = tribe ? `500 ${Math.round(px * 1.04)}px ${MAP_LABEL_FAMILY}` : `600 ${Math.round(px)}px ${MAP_LABEL_FAMILY}`;
+      // Atlas lettering: nations in spaced serif capitals, tribes in a serif italic. Big countries keep a capped
+      // size and spread their letters over the spare width instead of growing into giant letters.
+      ctx.font = tribe ? `italic 400 ${Math.round(px * 1.08)}px ${MAP_LABEL_FAMILY}` : `600 ${Math.round(px)}px ${MAP_LABEL_FAMILY}`;
       const nameFont = ctx.font;
       // a tribe far out: just its army number (the name on hover), so dozens of "Tribe of the ..." don't pile up
       const raw = tribe && z < TRIBE_NAME_ZOOM && l.id !== style.hoverOwner ? '' : p.name;
       const name = tribe ? raw : raw.toUpperCase();
-      let track = tribe ? px * 0.01 : px * 0.07;
+      let track = tribe ? px * 0.01 : px * 0.16;
       setTracking(ctx, track);
       let tw = name ? ctx.measureText(name).width : 0;
       if (!tribe && name.length > 1 && size > px) {
@@ -402,16 +402,16 @@ export class NameLayer {
       if (name) {
         ctx.font = nameFont;
         setTracking(ctx, track);
-        const fill = traitor ? '#ff9d92' : tribe ? 'rgba(240,241,244,0.94)' : p.id === me ? 'rgba(255,240,196,0.96)' : 'rgba(255,255,255,0.93)';
-        haloText(ctx, name, nameX, nameY, fill, px, tribe ? 1.25 : 1);
+        const fill = traitor ? '#a3301f' : tribe ? 'rgba(79,74,66,0.95)' : p.id === me ? '#14120f' : 'rgba(36,32,28,0.92)';
+        haloText(ctx, name, nameX, nameY, fill, px, tribe ? 1.1 : 0.9, true);
       }
       if (showArmy) {
         const army = formatCount(armyTotal(p.troops));
         ctx.font = `500 ${Math.round(small)}px ${MAP_NUM_FAMILY}`;
         setTracking(ctx, small * 0.02);
         const ay = nameY + px * 0.55 + small * 0.55;
-        const fill = tribe ? 'rgba(232,234,238,0.9)' : traitor ? 'rgba(255,196,189,0.9)' : 'rgba(238,241,246,0.86)';
-        haloText(ctx, army, s.x, ay, fill, small, tribe ? 1.25 : 1.05);
+        const fill = tribe ? 'rgba(79,74,66,0.9)' : traitor ? '#a3301f' : 'rgba(52,47,41,0.9)';
+        haloText(ctx, army, s.x, ay, fill, small, tribe ? 1.1 : 0.95, true);
         if (mixBar) this.mixBar(ctx, p, s.x, ay + small * 0.6 + 3, Math.max(28, Math.min(tw, 90)));
       }
     }

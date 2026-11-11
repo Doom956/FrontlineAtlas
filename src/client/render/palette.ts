@@ -1,4 +1,4 @@
-// Display palette for territory: the game's nation colours are bright and saturated (they have to be told apart in
+// Display palette for territory (Paper Atlas: light, muted tints on paper with dark ink borders): the game's nation colours are bright and saturated (they have to be told apart in
 // lists, chips and flags), but painted over the map they look cartoonish. Territory is drawn with a calmer version
 // of each colour (less chroma, narrower lightness range, OKLCH so the hue stays put), semi-transparent over a
 // quiet copy of the terrain, with crisp borders in a darker, slightly more saturated shade of the same colour.
@@ -9,24 +9,24 @@ export type DisplayRole = 'nation' | 'own' | 'tribe';
 
 // ---- tunables (see colors-*.png in /tmp/borderfall-shots for the before / after) ----
 /** Chroma kept (x the colour's own) per role: you keep more so you can find yourself; tribes are the calmest. */
-const CHROMA_KEEP: Record<DisplayRole, number> = { nation: 0.88, own: 1.0, tribe: 0.85 };
+const CHROMA_KEEP: Record<DisplayRole, number> = { nation: 0.62, own: 0.8, tribe: 0.3 };
 /** Lightness is pulled towards this by LIGHT_KEEP (1 = unchanged): bright yellows and dark navies meet in the middle. */
-const LIGHT_MID = 0.68;
-const LIGHT_KEEP = 0.72;
+const LIGHT_MID = 0.8;
+const LIGHT_KEEP = 0.45;
 /** Opacity of the territory fill over the (calmed) terrain. */
-export const NATION_ALPHA = 0.58;
-export const TRIBE_ALPHA = 0.62;
+export const NATION_ALPHA = 0.62;
+export const TRIBE_ALPHA = 0.45;
 /** How much of its own colour the terrain keeps under a nation (0 = grey of the same brightness, 1 = unchanged). */
-export const UNDER_CHROMA = 0.55;
+export const UNDER_CHROMA = 0.3;
 /** Brightness range the terrain keeps under a nation, around UNDER_MID (1 = unchanged): forest and desert barely stripe the land. */
-export const UNDER_LUM = 0.45;
-export const UNDER_MID = 0.42;
+export const UNDER_LUM = 0.3;
+export const UNDER_MID = 0.88;
 /** Terrain pattern strength under a nation (1 = as on free land): detail shows through softly, not as patches. */
-export const UNDER_DETAIL = 0.3;
+export const UNDER_DETAIL = 0.4;
 /** Border: lightness x, chroma x of the display colour, and the chroma ceiling (borders stay muted too). */
-const BORDER_LIGHT = 0.7;
+const BORDER_LIGHT = 0.52;
 const BORDER_CHROMA = 1.2;
-const BORDER_CHROMA_MAX = 0.1;
+const BORDER_CHROMA_MAX = 0.11;
 
 // ---- OKLab ----
 const lin = (c: number): number => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));

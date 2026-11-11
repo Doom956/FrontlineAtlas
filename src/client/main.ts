@@ -46,6 +46,8 @@ import { getUnitGroups, setUnitGroups } from './unitGroups';
 import { GameHistory } from './summary/history';
 import { gameSeconds } from '../sim/state';
 import { NAME_MAX_LENGTH } from '../net/protocol';
+// the Paper Atlas look: loaded after every other stylesheet so its tokens and overrides win
+import './paper.css';
 
 const STEP_MS = 1000 / TICKS_PER_SECOND;
 /** Most ticks run in one frame per x1 of speed; beyond that the game slows down instead of spiralling. */

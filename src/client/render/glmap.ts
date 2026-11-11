@@ -19,7 +19,7 @@ import type { TrenchFeed } from './trenchFeed';
 export const PALETTE_W = 1024;
 export const PALETTE_H = 12;
 const MAX_OWNERS = PALETTE_W * 4;
-const BG: RGB = [10, 17, 28];
+const BG: RGB = [214, 206, 188]; // the table around the printed map
 
 export interface MapUniforms {
   centerX: number;

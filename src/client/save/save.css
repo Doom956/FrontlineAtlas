@@ -10,12 +10,12 @@
   border: 1px solid var(--rule);
   border-inline-start: 2px solid var(--brass);
   border-radius: var(--r);
-  background: rgba(201, 162, 39, 0.05);
+  background: rgba(178, 56, 42, 0.03);
 }
 .menu-save.old,
 .menu-save.broken {
   border-inline-start-color: var(--rule-hi);
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(29, 27, 24, 0.02);
 }
 .menu-save-body {
   display: flex;
@@ -32,7 +32,6 @@
 }
 .menu-save-map {
   font: 600 17px/1.15 var(--f-label);
-  letter-spacing: 0.04em;
   color: var(--text);
   overflow-wrap: anywhere;
 }
@@ -106,7 +105,6 @@
 }
 .save-ask-title {
   font: 600 19px/1.2 var(--f-label);
-  letter-spacing: 0.04em;
 }
 .save-ask-text {
   margin: 0;
@@ -131,7 +129,6 @@
 }
 .save-load-title {
   font: 600 22px/1.15 var(--f-label);
-  letter-spacing: 0.06em;
 }
 .save-load-map {
   margin: 6px 0 20px;

@@ -209,8 +209,9 @@ vec3 terrainAt(int ter, ivec2 ti, vec2 t, vec2 f, float px, float detail, out fl
     float left = 1.0 - smoothstep(lw, lw + pq, seg(l, peak, bl));
     float right = 1.0 - smoothstep(lw, lw + pq, seg(l, peak, br));
     float snow = disc(length(l - peak - vec2(0.0, 0.06)), 0.09 * k, pq);
-    lum = (0.3 * max(left, snow) - 0.22 * right) * detail;
-    return mix(c * (1.0 + lum), vec3(0.94, 0.95, 0.97), snow * 0.75 * detail);
+    // atlas hachures: the ridge in ink, the shaded flank in a lighter ink, no snow cap
+    lum = (-0.06 * right) * detail;
+    return mix(c * (1.0 + lum), vec3(0.36, 0.3, 0.25), max(left * 0.62, right * 0.32) * detail);
   }
   if (ter == 6) {
     // desert: fine sand stipple on a 4 x 4 sub-grid
@@ -306,7 +307,15 @@ void main() {
     float d = texture(uDepth, uv).r * 25.5; // tiles to land, smooth
     float k = smoothstep(1.0, 11.0, d);
     vec3 wc = mix(uTerr[1], uTerr[0], k);
-    wc += vec3(0.05, 0.07, 0.07) * (1.0 - smoothstep(0.55, 1.5, d)); // light shore band
+    // atlas water lines: up to three thin ink-blue lines that follow the coast, fainter further out, spaced at
+    // least 7 screen px apart so they never turn into noise when zoomed out
+    {
+      float sp = max(1.1, 7.0 * px);
+      float k2 = (d - 0.5) / sp;
+      float n = floor(k2 + 0.5);
+      float ln = (1.0 - smoothstep(0.5 * px / sp, 1.5 * px / sp, abs(k2 - n))) * step(0.5, n) * step(n, 3.5);
+      wc = mix(wc, vec3(0.38, 0.52, 0.6), ln * (0.42 - 0.1 * n));
+    }
     if (detail > 0.0) {
       // faint wave dashes in open water
       vec2 q = t * vec2(1.0, 2.0) / 3.0;
@@ -321,7 +330,7 @@ void main() {
     vec3 tc = terrainAt(ter, ti, t, f, px, detail, lum);
     // soft sandy shore on land tiles next to water
     float shore = smoothstep(0.08, 0.45, texture(uDepth, uv).r * 25.5);
-    tc = mix(tc, vec3(0.86, 0.8, 0.62), shore * 0.5);
+    tc = mix(tc, vec3(0.93, 0.89, 0.78), shore * 0.35);
     col = mix(flat_, tc, near);
   }
 
@@ -361,7 +370,7 @@ void main() {
         float period = max(1.4, 9.0 * px);
         float s = fract((t.x + t.y) / period);
         float hatch = 1.0 - smoothstep(0.14, 0.14 + 1.5 * px / period, abs(s - 0.5) * 2.0 - 0.72);
-        col = mix(col, int(flags.r * 255.0 + 0.5) == 1 ? vec3(1.0) : oc * 0.55, hatch * 0.2);
+        col = mix(col, int(flags.r * 255.0 + 0.5) == 1 ? vec3(0.12, 0.11, 0.1) : oc * 0.55, hatch * 0.2);
       }
     }
     // trenches (dug-in borders): a faint earth hatch on dug tiles, a zig-zag line along each edge facing a nation
@@ -399,6 +408,14 @@ void main() {
     col = mix(col, fc, a * (kind == 3u ? 0.3 : 0.55));
   }
 
+  // ---- coastline: one thin ink line where land meets water (paper atlas), at every zoom
+  {
+    float cd = texture(uDepth, uv).r * 25.5;
+    float cw = 0.6 * px;
+    float coast = 1.0 - smoothstep(cw, cw + px, abs(cd - 0.5));
+    col = mix(col, vec3(0.2, 0.24, 0.27), coast * 0.85);
+  }
+
   // ---- borders: where a 4-neighbour (or a diagonal, for corners) has a different owner
   if (o != 0u) {
     bool edge = false;
@@ -427,11 +444,11 @@ void main() {
       int rel = int(flags.r * 255.0 + 0.5);
       vec3 bc = pal(o, 2).rgb; // darker, slightly more saturated shade of the nation colour (palette.ts)
       float ba = 1.0;
-      if (rel == 1) bc = vec3(0.97);
+      // yours: black ink; an ally: a dashed line in its own ink
+      if (rel == 1) bc = vec3(0.1, 0.09, 0.08);
       else if (rel == 2) {
-        bc = mix(oc, vec3(1.0), 0.6);
         float period = max(1.5, 12.0 * px);
-        if (fract((t.x + t.y) / period) > 0.6) bc = oc * 0.6;
+        if (fract((t.x + t.y) / period) > 0.6) bc = mix(oc, vec3(1.0), 0.5);
       }
       // far out the trench line can't be drawn: a level 2+ trench darkens the border to earth instead
       if (uTrenchOn == 1 && live && uZoom < 5.0) {

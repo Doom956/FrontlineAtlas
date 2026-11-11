@@ -7,10 +7,10 @@
   position: absolute;
   z-index: 30;
   background-color: var(--metal-a);
-  background-image: var(--grain);
+  background-image: none;
   border: 1px solid var(--rule);
   border-radius: var(--r);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 28px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 28px rgba(70, 52, 24, 0.225);
   color: var(--text);
 }
 
@@ -26,22 +26,19 @@
   padding: 0 10px 0 9px;
   border: 1px solid var(--brass-lo);
   border-radius: var(--r);
-  background: linear-gradient(180deg, rgba(201, 162, 39, 0.16), rgba(201, 162, 39, 0.06));
+  background: linear-gradient(180deg, rgba(178, 56, 42, 0.096), rgba(178, 56, 42, 0.036));
   color: var(--brass-hi);
   font: 600 15px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   cursor: pointer;
   white-space: nowrap;
 }
 .qb-build:hover,
 .qb-build.on {
   border-color: var(--brass);
-  background: rgba(201, 162, 39, 0.24);
+  background: rgba(178, 56, 42, 0.144);
 }
 .qb-build .kc {
   margin-left: 2px;
-  letter-spacing: 0;
   text-transform: none;
 }
 .qb-build-ic {
@@ -90,7 +87,6 @@
   background: var(--metal-2);
   color: var(--dim);
   font: 600 12px/22px var(--f-label);
-  letter-spacing: 0.04em;
   cursor: pointer;
 }
 .bm-cnt:first-child {
@@ -101,7 +97,7 @@
   color: var(--text);
 }
 .bm-cnt.on {
-  background: rgba(201, 162, 39, 0.22);
+  background: rgba(178, 56, 42, 0.132);
   color: var(--brass-hi);
 }
 .qb-count {
@@ -155,8 +151,6 @@
 }
 .bm-t {
   font: 600 18px/1 var(--f-label);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
 }
 .bm-count-wrap {
   display: flex;
@@ -166,8 +160,6 @@
 }
 .bm-count-l {
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--dim);
 }
 .bm-count-wrap .bm-cnt {
@@ -197,8 +189,6 @@
   padding-bottom: 3px;
   border-bottom: 1px solid var(--rule);
   font: 600 11.5px/1.2 var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
   color: var(--brass-hi);
 }
 .bm-grid {
@@ -266,7 +256,6 @@
 }
 .bm-c-n {
   font: 600 15px/1.1 var(--f-label);
-  letter-spacing: 0.03em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -281,8 +270,6 @@
   border: 1px solid var(--rule-hi);
   border-radius: 2px;
   font: 600 9.5px/13px var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--dim);
 }
 .bm-c-cost {
@@ -294,7 +281,7 @@
   overflow: hidden;
 }
 .bm-c-cost.bad {
-  color: #e6705a;
+  color: #a3301f;
 }
 .bm-c-l {
   font-size: 11.5px;
@@ -306,7 +293,7 @@
   overflow: hidden;
 }
 .bm-c-l.why {
-  color: #d9a08f;
+  color: #a3301f;
 }
 .bm-c-pin {
   position: absolute;
@@ -323,7 +310,7 @@
 /* locked: dim with the reason; far away (tech not next): dimmer */
 .bm-card.locked {
   border-style: dashed;
-  background: rgba(34, 41, 48, 0.55);
+  background: rgba(247, 242, 231, 0.9);
   cursor: help;
 }
 .bm-card.locked .bm-c-ic,
@@ -380,17 +367,15 @@
   padding: 0 6px;
   border: 1px solid var(--brass-lo);
   border-radius: var(--r);
-  background: rgba(201, 162, 39, 0.1);
+  background: rgba(178, 56, 42, 0.06);
   color: var(--brass-hi);
   font: 600 10.5px/16px var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   cursor: pointer;
   vertical-align: middle;
 }
 .sp-btn:hover,
 .sp-btn.on {
-  background: rgba(201, 162, 39, 0.24);
+  background: rgba(178, 56, 42, 0.144);
   border-color: var(--brass);
 }
 .sp {
@@ -414,8 +399,6 @@
 .sp-t {
   flex: 1;
   font: 600 14px/1 var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
 }
 .sp-x {
   width: 30px;
@@ -435,8 +418,6 @@
   align-items: center;
   gap: 6px;
   font: 600 12.5px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--brass-hi);
 }
 .sp-ic {
@@ -468,7 +449,7 @@
   font: 600 12.5px/1.3 var(--f-ui);
 }
 .sp-main.bad {
-  color: #e6a08f;
+  color: #a3301f;
 }
 .sp-main.run {
   color: var(--olive);
@@ -506,7 +487,6 @@
   border-radius: 2px;
   background: var(--ink);
   font: 700 9.5px/12px var(--f-label);
-  letter-spacing: 0.1em;
   color: var(--brass-hi);
   pointer-events: none;
 }
@@ -542,8 +522,6 @@
   top: -15px;
   left: 0;
   font: 600 9px/12px var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--faint);
   white-space: nowrap;
   pointer-events: none;
@@ -551,7 +529,7 @@
 /* the rival of a choice you made: crossed out, dim */
 .rt-node.chose-other {
   border-style: dashed;
-  background: repeating-linear-gradient(135deg, rgba(34, 41, 48, 0.75) 0 6px, rgba(28, 33, 39, 0.75) 6px 12px);
+  background: repeating-linear-gradient(135deg, rgba(247, 242, 231, 0.9) 0 6px, rgba(28, 33, 39, 0.75) 6px 12px);
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -560,14 +538,14 @@
   text-decoration-color: rgba(230, 112, 90, 0.8);
 }
 .rt-node.chose-other .rt-s {
-  color: #d9a08f;
+  color: #a3301f;
 }
 .rt-lines path.fork-cut {
   stroke: #8a4a3c;
   stroke-dasharray: 2 4;
 }
 .rt-lines path.cut-mark {
-  stroke: #e6705a;
+  stroke: #a3301f;
   stroke-width: 2;
   stroke-dasharray: 0;
 }
@@ -631,7 +609,7 @@
   white-space: nowrap;
 }
 .rt-node.done .rt-meta {
-  color: rgba(26, 21, 8, 0.78);
+  color: rgba(247, 242, 231, 0.9);
 }
 .rtree.forked .rt-fork .rt-node {
   gap: 2px;
