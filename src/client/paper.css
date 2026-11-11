@@ -10,10 +10,10 @@
   --metal-3: #e5ddcb;
   --metal-4: #d7cdb8;
   --rule: #d5cab3;
-  --rule-hi: #a99d85;
+  --rule-hi: #8a7f6a;
   --text: #1d1b18;
   --dim: #4f4a42;
-  --faint: #6b6457;
+  --faint: #625b4f;
   --brass: #b2382a;
   --brass-hi: #a3301f;
   --brass-lo: #c98c80;
@@ -158,6 +158,22 @@ h3 {
 .cluster .clock {
   height: 36px;
 }
+/* speed: "Speed x2", the word first so the number explains itself */
+.cluster .sq.txt {
+  width: auto;
+  padding: 0 9px;
+  gap: 4px;
+  display: inline-flex;
+  align-items: center;
+}
+.cl-spd-v {
+  font: 600 13px/1 var(--f-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.cl-spd.fast .cl-spd-v {
+  color: var(--brass-hi);
+}
 .clock {
   font: 600 16px/1 var(--f-serif);
   color: var(--text);
@@ -263,26 +279,262 @@ h3 {
   color: var(--text);
 }
 
-/* ---- research and arsenal trees: cards without boxes inside boxes */
+/* ---- research and arsenal trees, read like an atlas index: the pillar name in italic serif on the left, techs
+   in ink on paper, one red mark for the suggested next pick. No box around a choice (a soft paper wash groups it),
+   no stripe on owned techs, no red titles: red means "do this next", nothing else. */
+.rp-grid {
+  --rp-lab: 92px;
+}
+.rp-row {
+  border-top: 1px solid var(--rule);
+}
+.rp-rowlab {
+  writing-mode: horizontal-tb;
+  transform: none;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  white-space: normal;
+}
+.rp-rowlab-t {
+  font: italic 400 18px/1.15 var(--f-serif);
+  color: var(--text);
+}
+.rp-rowlab-n {
+  font: 500 12px/1 var(--f-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--dim);
+}
+.rp-colhead-c {
+  font: italic 400 14px/16px var(--f-serif);
+  color: var(--dim);
+}
+.rp-fork {
+  border: 0;
+  border-radius: 8px;
+  background: rgba(120, 100, 64, 0.07);
+}
+.rp-fork-l {
+  top: -9px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: var(--metal);
+  font: italic 400 13px/16px var(--f-serif);
+  color: var(--dim);
+}
+.rp-fork.decided {
+  background: transparent;
+}
 .rp-card,
 .ap-card {
   box-shadow: none;
 }
+.rp-card {
+  border: 1px solid var(--rule-hi);
+  background: var(--metal);
+  border-radius: 6px;
+}
+.rp-card.avail {
+  border-color: var(--text);
+}
+.rp-card.avail .rp-n,
+.rp-card.avail .rp-ic {
+  color: var(--text);
+}
+.rp-card.avail.poor {
+  border-color: var(--rule-hi);
+}
+.rp-card.next {
+  border: 2px solid var(--brass);
+  background: var(--metal);
+}
+.rp-card.next .rp-n {
+  color: var(--brass-hi);
+}
+.rp-flag {
+  font: 600 11px/14px var(--f-ui);
+  top: -8px;
+  border-radius: 3px;
+  background: var(--brass);
+}
+.rp-card.done {
+  background: var(--metal-3);
+  border-color: transparent;
+  box-shadow: none;
+}
+.rp-card.done .rp-mark {
+  color: var(--olive);
+}
+.rp-card.done.sel {
+  box-shadow: 0 0 0 2px var(--text);
+}
+.rp-card.sel {
+  box-shadow: 0 0 0 2px var(--text);
+}
+.rp-card.active {
+  border-color: var(--steel);
+  background: #eef2f4;
+}
+.rp-card.locked {
+  border: 1px solid transparent;
+  background: transparent;
+}
+.rp-card.locked .rp-n {
+  color: var(--dim);
+}
+.rp-lines path.done {
+  stroke: var(--text);
+  opacity: 0.55;
+}
 
-/* ---- phone: words sit under the icons so the top bar still fits */
+/* ---- phone (390px): the top bar becomes a small sheet of three rows, every button keeps its word.
+   Row 1 and 2: the eight drawers, four a row, icon beside the word. Row 3: pause, speed, clock, sound, help, menu. */
 @media (max-width: 640px) {
+  .cluster {
+    flex-wrap: wrap;
+    width: calc(100vw - 24px);
+    max-width: none;
+  }
+  .cluster > .cl-group:first-child {
+    flex: 1 1 100%;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border-bottom: 1px solid var(--rule);
+  }
+  .cluster > * + * {
+    border-left: 0;
+  }
+  .cluster > .cl-group + * ~ * {
+    border-left: 1px solid var(--rule);
+  }
+  .cluster > .cl-group:last-child {
+    margin-inline-start: auto;
+  }
   .cluster .sq.has-w {
-    flex-direction: column;
-    gap: 2px;
-    height: 44px;
-    padding: 0 4px;
+    flex: 0 0 auto;
+    justify-content: flex-start;
+    width: auto;
     min-width: 0;
+    height: 38px;
+    padding: 0 6px;
+    gap: 5px;
+  }
+  .cluster > .cl-group:first-child .sq.has-w {
+    width: 100%;
+    padding: 0 4px;
+    gap: 4px;
   }
   .sq-w {
-    font-size: 10px;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .cluster .sq.txt,
   .cluster .clock {
-    height: 44px;
+    height: 38px;
+  }
+  .cluster .sq:not(.has-w):not(.txt) {
+    flex: 0 0 34px;
+  }
+  /* everything that hung under the one-row bar moves under the three rows */
+  .hud-left {
+    top: 136px;
+    width: 214px;
+  }
+  .hud-top {
+    top: 242px;
+  }
+  .drawer {
+    top: 136px;
+    max-height: calc(100% - 136px - 150px);
+  }
+}
+
+/* ---- a chosen option is ink, not red: red stays for the one action per screen (Play, Start game, Build) */
+.segc-b.on,
+.seg .btn.on,
+.rp-tab.on {
+  background: var(--text);
+  color: var(--metal);
+}
+.segc-b:focus-visible,
+.seg .btn:focus-visible {
+  outline-color: var(--steel);
+}
+.menu-head h2 {
+  font: 600 24px/1.2 var(--f-serif);
+  letter-spacing: -0.01em;
+  text-transform: none;
+}
+
+/* ---- standings: your row is bold ink on a faint wash (no stripe, no red); numbers keep their width */
+.lb-row {
+  grid-template-columns: 14px minmax(0, 1fr) max-content max-content;
+  gap: 8px;
+  height: 24px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.lb-row.me {
+  background: rgba(29, 27, 24, 0.06);
+  box-shadow: none;
+}
+.lb-row.me .c-name {
+  color: var(--text);
+  font-weight: 600;
+}
+.c-rank {
+  font-size: 12px;
+  color: var(--dim);
+}
+.lb-row.ally .c-name::after {
+  font: 500 12px/1 var(--f-ui);
+}
+@media (min-width: 1101px) {
+  .hud-left {
+    width: 236px;
+  }
+}
+.adv-tag {
+  font: 600 12px/1 var(--f-ui);
+}
+
+/* ---- forces: the how-to folds away behind a labelled line; the units come first */
+.fp-how {
+  margin: 0 0 8px;
+  border-bottom: 1px solid var(--rule);
+}
+.fp-how-s {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  font: 600 13px/1 var(--f-ui);
+  color: var(--text);
+  cursor: pointer;
+  list-style: none;
+}
+.fp-how-s::-webkit-details-marker {
+  display: none;
+}
+.fp-how-s::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  rotate: -45deg;
+  transition: rotate 150ms ease-out;
+}
+.fp-how[open] > .fp-how-s::before {
+  rotate: 45deg;
+}
+.fp-how > .note {
+  margin: 0 0 10px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fp-how-s::before {
+    transition: none;
   }
 }

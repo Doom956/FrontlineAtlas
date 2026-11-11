@@ -158,8 +158,8 @@
   min-height: 32px;
 }
 .setup-h {
-  font: 600 13px/1 var(--f-label);
-  color: var(--brass);
+  font: italic 400 19px/1.1 var(--f-serif);
+  color: var(--text);
 }
 .setup-sec-head + .setup-sec-head {
   margin-top: 8px;
@@ -203,8 +203,8 @@
   background: var(--metal-3);
 }
 .map-thumb.on {
-  border-color: var(--brass);
-  box-shadow: 0 0 0 1px var(--brass) inset;
+  border-color: var(--text);
+  box-shadow: 0 0 0 1px var(--text) inset;
   background: var(--metal-3);
 }
 .map-pic {
@@ -212,7 +212,7 @@
   align-items: center;
   justify-content: center;
   aspect-ratio: 17 / 10;
-  background: #1c3a66;
+  background: #9ebcca;
   overflow: hidden;
 }
 .map-pic-wait {

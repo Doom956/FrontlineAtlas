@@ -268,7 +268,7 @@ export class MapGL {
     let d = this.shown.get(key);
     if (!d) {
       const fill = displayColor(c, { role });
-      d = { fill, border: borderColor(fill) };
+      d = { fill, border: borderColor(fill, role) };
       if (this.shown.size > 4096) this.shown.clear();
       this.shown.set(key, d);
     }

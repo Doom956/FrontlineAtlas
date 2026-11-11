@@ -216,7 +216,12 @@ export class ForcesPage implements DrawerPage {
     this.missiles = new Group('Missiles', 'missiles', say);
     this.artillery = new Group('Artillery', 'artillery', say);
     this.land = new Group('Land', 'land', say, this.tankBar.el);
-    const intro = el('p', 'note', 'Click a unit\'s name to find it. Select warships or tank divisions (click, Shift+click, Shift+drag a box; double-click one for all of its kind in view; Shift+W all warships, Shift+A all divisions), then click where they go. The bar at the top of a group orders all of them at once. Transports: click land across the sea. Esc cancels.');
+    // the how-to sits behind one labelled fold, so the list of units comes first
+    const intro = el('details', 'fp-how');
+    intro.append(
+      el('summary', 'fp-how-s', 'How to give orders'),
+      el('p', 'note', 'Click a unit\'s name to find it. Select warships or tank divisions (click, Shift+click, Shift+drag a box; double-click one for all of its kind in view; Shift+W all warships, Shift+A all divisions), then click where they go. The bar at the top of a group orders all of them at once. Transports: click land across the sea. Esc cancels.'),
+    );
     this.summary.dataset.test = 'forces-summary';
     this.groups = new GroupsStrip(ctx);
     this.root.append(intro, this.summary, this.groups.el, this.fleet.el, this.land.el, this.air.el, this.missiles.el, this.artillery.el);

@@ -29,7 +29,7 @@ const INK = 'rgba(29,27,24,0.92)';
 const NEAR_GLYPH_ZOOM = 6;
 
 /** Base glyph length on screen (CSS px) at a zoom level; each glyph scales it a little (unitGlyphs.ts). */
-const glyphPx = (z: number): number => (z >= NEAR_GLYPH_ZOOM ? clamp(12 + (z - NEAR_GLYPH_ZOOM) * 1.4, 12, 26) : clamp(7 + z * 1.2, 8, 10));
+const glyphPx = (z: number): number => (z >= NEAR_GLYPH_ZOOM ? clamp(15 + (z - NEAR_GLYPH_ZOOM) * 1.8, 15, 30) : clamp(7 + z * 1.2, 8, 10));
 const strokePx = (z: number): number => clamp(1.2 + z * 0.15, 1.25, 1.7);
 
 /** `fleet`: this entry is a fleet marker standing for these ships (the lead, u, is the lowest id). */

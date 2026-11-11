@@ -10,8 +10,8 @@ import type { RGB } from './common';
  * tundra pale grey-blue) without shouting over the nation colours.
  */
 export const TERRAIN_RGB: readonly RGB[] = [
-  [154, 186, 200], // deep water: printed sea blue
-  [186, 211, 219], // shallow water
+  [158, 188, 202], // deep water: printed sea blue
+  [172, 200, 211], // shallow water
   [234, 227, 203], // plains: paper cream
   [200, 210, 172], // forest: sage
   [223, 207, 168], // hills: light ochre
@@ -19,7 +19,7 @@ export const TERRAIN_RGB: readonly RGB[] = [
   [242, 229, 189], // desert: sand
   [204, 210, 186], // swamp: grey green
   [240, 241, 236], // tundra: near white
-]
+];
 /** Deposit colours (marker fills and the resource overlay). Index = ResourceId. */
 export const RESOURCE_RGB: readonly RGB[] = [
   [0, 0, 0],
@@ -76,9 +76,9 @@ export function buildTerrain(map: MapData): TerrainData {
       let g = shallow[1] + (deep[1] - shallow[1]) * s;
       let b = shallow[2] + (deep[2] - shallow[2]) * s;
       if (d === 1) {
-        r += 14;
-        g += 18;
-        b += 18;
+        r += 6;
+        g += 7;
+        b += 7;
       }
       rgba[o] = r;
       rgba[o + 1] = g;

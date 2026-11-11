@@ -95,10 +95,11 @@ export class Cluster {
     this.pauseBtn = sq('pause', 'Pause  (Space)', () => {
       // a guest's button only explains (aria-disabled keeps its tooltip working)
       if (this.hooks.pauseMode() !== 'guest') ctx.ui.paused = !ctx.ui.paused;
-    }, 'pause');
+    }, 'pause', 'Pause');
     speed.append(this.pauseBtn);
     // one button: shows the speed, a click goes to the next one (x1 -> x2 -> x4 -> x1)
-    this.speedBtn = el('button', 'sq txt cl-spd', 'x1');
+    this.speedBtn = el('button', 'sq txt cl-spd');
+    this.speedBtn.append(el('span', 'sq-w', 'Speed'), el('span', 'cl-spd-v', 'x1'));
     this.speedBtn.type = 'button';
     this.speedBtn.dataset.test = 'speed';
     this.speedBtn.addEventListener('click', () => {
@@ -184,7 +185,8 @@ export class Cluster {
     const ui = this.ctx.ui;
     if (this.speedShown !== ui.speed) {
       this.speedShown = ui.speed;
-      setText(this.speedBtn, `x${ui.speed}`);
+      // the word says what the number is: "Speed x2"
+      this.speedBtn.replaceChildren(el('span', 'sq-w', 'Speed'), el('span', 'cl-spd-v', `x${ui.speed}`));
       const next = SPEEDS[(SPEEDS.indexOf(ui.speed) + 1) % SPEEDS.length];
       setTip(this.speedBtn, `Game speed x${ui.speed}: click for x${next}  (+ / -)`);
       this.speedBtn.setAttribute('aria-label', `Game speed x${ui.speed}, click for x${next}`);
@@ -201,7 +203,7 @@ export class Cluster {
       setClass(this.pauseBtn, 'dis', pm === 'guest');
       if (pm === 'guest') this.pauseBtn.setAttribute('aria-disabled', 'true');
       else this.pauseBtn.removeAttribute('aria-disabled');
-      this.pauseBtn.replaceChildren(iconSpan(lineIcon(ui.paused ? 'play' : 'pause', 17)));
+      this.pauseBtn.replaceChildren(iconSpan(lineIcon(ui.paused ? 'play' : 'pause', 17)), el('span', 'sq-w', ui.paused ? 'Resume' : 'Pause'));
       const tip = pm === 'guest' ? 'Only the host can pause' : ui.paused ? 'Resume  (Space)' : 'Pause  (Space)';
       setTip(this.pauseBtn, tip);
       this.pauseBtn.setAttribute('aria-label', tip.split('  ')[0]);
@@ -209,7 +211,7 @@ export class Cluster {
     const m = this.hooks.muted();
     if (this.soundShown !== m) {
       this.soundShown = m;
-      this.soundBtn.replaceChildren(iconSpan(lineIcon(m ? 'mute' : 'sound', 17)));
+      this.soundBtn.replaceChildren(iconSpan(lineIcon(m ? 'mute' : 'sound', 17)), el('span', 'sq-w', m ? 'Muted' : 'Sound'));
       setClass(this.soundBtn, 'off', m);
     }
     for (const [id, b] of this.drawerBtns) setClass(b, 'on', this.hooks.isOpen(id));

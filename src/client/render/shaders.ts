@@ -1,5 +1,5 @@
 // GLSL for the map layer (WebGL2). One fullscreen pass: terrain, nations, borders, overlays.
-import { UNDER_CHROMA, UNDER_DETAIL, UNDER_LUM, UNDER_MID } from './palette';
+import { UNDER_CHROMA, UNDER_DETAIL, UNDER_LUM, UNDER_MID, UNDER_PAPER } from './palette';
 import { FOG } from '../../sim/config';
 
 export const MAP_VS = /* glsl */ `#version 300 es
@@ -354,7 +354,7 @@ void main() {
     vec3 under = textureLod(uTerrCol, uv, 3.0).rgb;
     vec3 calm = mix(under, col, ${UNDER_DETAIL.toFixed(3)});
     float cy = dot(calm, vec3(0.299, 0.587, 0.114));
-    calm = vec3(${UNDER_MID.toFixed(3)} + (cy - ${UNDER_MID.toFixed(3)}) * ${UNDER_LUM.toFixed(3)}) + (calm - cy) * ${UNDER_CHROMA.toFixed(3)};
+    calm = (vec3(${UNDER_MID.toFixed(3)} + (cy - ${UNDER_MID.toFixed(3)}) * ${UNDER_LUM.toFixed(3)}) + (calm - cy) * ${UNDER_CHROMA.toFixed(3)}) * vec3(${UNDER_PAPER.map((v) => v.toFixed(3)).join(', ')});
     vec3 fill = mix(calm, oc, pc.a);
     if (res > 0 && detail > 0.0) {
       // under a nation deposits only shade the colour faintly (no foreign hues, no dotted clusters), and only very

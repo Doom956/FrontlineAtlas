@@ -3,12 +3,12 @@
 
 .app.in-menu canvas.map-gl,
 .app.in-menu canvas.map {
-  filter: saturate(0.45) brightness(0.6);
+  filter: saturate(0.85);
   transition: filter 400ms ease-out;
 }
-/* the overlay canvas (names, borders, units) a step quieter still, so city labels don't compete with the menu */
+/* the overlay canvas (names, borders, units) a step quieter, so city labels don't compete with the menu */
 .app.in-menu canvas.map {
-  opacity: 0.6;
+  opacity: 0.8;
 }
 
 /* the start page: the map's middle sits in the free space beside the column (its far edge goes under the column) */
@@ -20,7 +20,7 @@
 .menu.at-title {
   justify-content: flex-start;
   align-items: stretch;
-  background: linear-gradient(90deg, rgba(247, 242, 231, 0.9) 0, rgba(247, 242, 231, 0.9) 40%, rgba(247, 242, 231, 0.9) 62%);
+  background: transparent;
 }
 
 /* the column: no boxed card, just a rail with a rule on its trailing edge */
@@ -34,11 +34,12 @@
   gap: 0;
   padding: 32px 40px 32px clamp(24px, 5vw, 96px);
   overflow-y: auto;
-  background: rgba(16, 20, 24, 0.86);
+  background: var(--metal);
   border: 0;
-  border-inline-end: 1px solid var(--rule);
+  /* the atlas neatline: a double ink rule where the sheet meets the map */
+  border-inline-end: 4px double var(--text);
   border-radius: 0;
-  box-shadow: 12px 0 32px rgba(70, 52, 24, 0.158);
+  box-shadow: 8px 0 24px rgba(70, 52, 24, 0.16);
 }
 .menu-card.title::before {
   display: none;
@@ -54,8 +55,7 @@
 }
 .tagline {
   margin: 12px 0 0;
-  font-size: 14px;
-  line-height: 1.4;
+  font: italic 400 18px/1.4 var(--f-serif);
   color: var(--dim);
 }
 
@@ -186,10 +186,10 @@
   color: inherit;
   transform: none;
 }
-/* first visit: the tutorial row is the suggested next step (brass leading edge and a short note) */
+/* first visit: the tutorial row is the suggested next step (a short red note says so, no stripe) */
 .btn.menu-row.suggested {
-  box-shadow: inset 2px 0 0 var(--brass);
-  background: rgba(178, 56, 42, 0.03);
+  box-shadow: none;
+  background: transparent;
 }
 .btn.menu-row.suggested:hover:not(:disabled) {
   background: var(--metal-3);
@@ -227,7 +227,7 @@
   }
   .menu.at-title {
     align-items: flex-end;
-    background: linear-gradient(180deg, rgba(247, 242, 231, 0.9) 0, rgba(247, 242, 231, 0.9) 30%, rgba(247, 242, 231, 0.9) 100%);
+    background: transparent;
   }
   .menu-card.title {
     width: 100%;
@@ -239,7 +239,9 @@
     border-top: 1px solid var(--rule);
     border-radius: var(--r) var(--r) 0 0;
     box-shadow: 0 -12px 32px rgba(70, 52, 24, 0.18);
-    background: rgba(18, 22, 26, 0.95);
+    background: var(--metal);
+    border-inline-end: 0;
+    border-top: 4px double var(--text);
   }
   .menu-title-head {
     margin-bottom: 24px;

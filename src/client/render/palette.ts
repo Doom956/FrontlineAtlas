@@ -9,24 +9,28 @@ export type DisplayRole = 'nation' | 'own' | 'tribe';
 
 // ---- tunables (see colors-*.png in /tmp/borderfall-shots for the before / after) ----
 /** Chroma kept (x the colour's own) per role: you keep more so you can find yourself; tribes are the calmest. */
-const CHROMA_KEEP: Record<DisplayRole, number> = { nation: 0.62, own: 0.8, tribe: 0.3 };
+const CHROMA_KEEP: Record<DisplayRole, number> = { nation: 0.66, own: 0.78, tribe: 0.22 };
 /** Lightness is pulled towards this by LIGHT_KEEP (1 = unchanged): bright yellows and dark navies meet in the middle. */
 const LIGHT_MID = 0.8;
 const LIGHT_KEEP = 0.45;
 /** Opacity of the territory fill over the (calmed) terrain. */
-export const NATION_ALPHA = 0.62;
-export const TRIBE_ALPHA = 0.45;
+export const NATION_ALPHA = 0.55;
+export const TRIBE_ALPHA = 0.3;
 /** How much of its own colour the terrain keeps under a nation (0 = grey of the same brightness, 1 = unchanged). */
 export const UNDER_CHROMA = 0.3;
 /** Brightness range the terrain keeps under a nation, around UNDER_MID (1 = unchanged): forest and desert barely stripe the land. */
 export const UNDER_LUM = 0.3;
-export const UNDER_MID = 0.88;
+export const UNDER_MID = 0.9;
+/** The calm layer is warm paper, not grey: its grey is multiplied by this. */
+export const UNDER_PAPER: readonly [number, number, number] = [1.0, 0.982, 0.94];
 /** Terrain pattern strength under a nation (1 = as on free land): detail shows through softly, not as patches. */
 export const UNDER_DETAIL = 0.4;
 /** Border: lightness x, chroma x of the display colour, and the chroma ceiling (borders stay muted too). */
 const BORDER_LIGHT = 0.52;
 const BORDER_CHROMA = 1.2;
 const BORDER_CHROMA_MAX = 0.11;
+/** Tribe border lightness x its (pale) fill: a soft pencil line, not ink. */
+const TRIBE_BORDER_LIGHT = 0.8;
 
 // ---- OKLab ----
 const lin = (c: number): number => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
@@ -77,13 +81,16 @@ export function fromOklch(L: number, C: number, h: number): Rgb {
 export function displayColor(rgb: readonly number[], opts: { role?: DisplayRole } = {}): Rgb {
   const role = opts.role ?? 'nation';
   const [L, C, h] = toOklch(rgb);
-  const L2 = LIGHT_MID + (L - LIGHT_MID) * LIGHT_KEEP;
+  // tribes are near paper (a faint wash with a pencil border); nations keep a clear tint
+  const L2 = role === 'tribe' ? 0.9 + (L - 0.6) * 0.2 : LIGHT_MID + (L - LIGHT_MID) * LIGHT_KEEP;
   return fromOklch(L2, C * CHROMA_KEEP[role], h);
 }
 
 /** Border colour for a display colour: darker and a little more saturated, still muted. */
-export function borderColor(display: readonly number[]): Rgb {
+export function borderColor(display: readonly number[], role: DisplayRole = 'nation'): Rgb {
   const [L, C, h] = toOklch(display);
+  // tribes get a light pencil line so a coast full of small tribes stays quiet; nations get the ink line
+  if (role === 'tribe') return fromOklch(L * TRIBE_BORDER_LIGHT, Math.min(0.03, C), h);
   return fromOklch(L * BORDER_LIGHT, Math.min(BORDER_CHROMA_MAX, Math.max(C * BORDER_CHROMA, C + 0.02)), h);
 }
 
@@ -97,7 +104,7 @@ const luma = (c: readonly number[]): number => 0.299 * c[0] + 0.587 * c[1] + 0.1
 export function calmTerrain(terr: readonly number[]): Rgb {
   const y = luma(terr);
   const y2 = (UNDER_MID + (y / 255 - UNDER_MID) * UNDER_LUM) * 255;
-  return [y2 + (terr[0] - y) * UNDER_CHROMA, y2 + (terr[1] - y) * UNDER_CHROMA, y2 + (terr[2] - y) * UNDER_CHROMA];
+  return [(y2 + (terr[0] - y) * UNDER_CHROMA) * UNDER_PAPER[0], (y2 + (terr[1] - y) * UNDER_CHROMA) * UNDER_PAPER[1], (y2 + (terr[2] - y) * UNDER_CHROMA) * UNDER_PAPER[2]];
 }
 
 /** Nation fill over terrain (minimap, 2D fallback): opaque result of the translucent fill. */
