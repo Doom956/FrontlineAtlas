@@ -368,6 +368,8 @@ function drawAtom(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams):
       }
     };
     ring(false);
+    // the body of the cap between its far and near rolls, so it reads as one rolling mass, not a hoop
+    drawBlob(ctx, 'smoke', Rc * 0.5 * (0.55 + 0.45 * grow), 7, x + dx * u, capY, g, fade);
     // the crown: a low dome over the middle, a little flattened
     for (let i = 0; i < 3; i++) {
       const off = (i - 1) * cw * 0.45;

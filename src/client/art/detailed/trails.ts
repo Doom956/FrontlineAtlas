@@ -238,15 +238,15 @@ class DetailedTrails implements TrailLayer {
         // a few plane lengths long whatever the plane's speed (a slow plane's trail lasts longer, a fast one's less),
         // never more, so a circling plane never closes a ring
         const v = this.speedOf(u.id, u.tx, u.ty, now);
-        const reachT = halfT * 2 * 3.5 * Math.sqrt(m.contrailLife);
-        const life = Math.min(5000 * m.contrailLife, Math.max(700, v > 1e-6 ? reachT / v : Infinity));
-        const drift = (cellT * 2.2) / (Math.max(200, life) / 1000);
+        const reachT = halfT * 2 * 4 * m.contrailLife ** 0.35;
+        const life = Math.min(6000 * m.contrailLife, Math.max(700, v > 1e-6 ? reachT / v : Infinity));
+        const drift = (cellT * 3.5) / (Math.max(200, life) / 1000);
         src.forEach((p, i) => {
           const du = (um.props.length ? p.u - 4 : p.u) * scaleT;
           const dv = p.v * scaleT;
           this.emit(u.id * 8 + i, u.tx + c * du - s * dv, u.ty + s * du + c * dv, Math.max(cellT, minT), now, (px, py, born) => {
             const k = r01(P.made, 21) - 0.5;
-            P.put(px, py, -s * k * drift * 2, c * k * drift * 2, born, life * (0.8 + 0.2 * r01(P.made, 22)), 1, 3.8, 0.9, TRAIL, r01(P.made, 23));
+            P.put(px, py, -s * k * drift * 2, c * k * drift * 2, born, life * (0.75 + 0.25 * r01(P.made, 22)), 1, 4.4, 0.9, TRAIL, r01(P.made, 23));
           });
         });
       }
@@ -361,9 +361,9 @@ class DetailedTrails implements TrailLayer {
       let tone: number;
       if (k === TRAIL) {
         // vapour: a bright thread a cell wide behind the engine, widening to 3 or 4 cells, breaking up as it ages
-        if (q > 0.3 && P.seed[i] < (q - 0.3) * 1.5) continue;
+        if (q > 0.45 && P.seed[i] < (q - 0.45) * 1.7) continue;
         r = (P.r0[i] + (P.r1[i] - P.r0[i]) * Math.sqrt(q)) * fine;
-        a = P.a0[i] * (1 - q) ** 1.3;
+        a = P.a0[i] * (1 - q) ** 1.1;
         tone = q < 0.1 ? 0 : q < 0.45 ? 1 : 2;
       } else if (k === ARM) {
         // a wake arm: bright only right at the stern, the outer (far-flung) specks dimmer, fraying early and fading
