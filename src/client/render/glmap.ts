@@ -13,6 +13,7 @@ import type { RGB } from './common';
 import { borderColor, displayColor, NATION_ALPHA, TRIBE_ALPHA, type DisplayRole, type Rgb } from './palette';
 import { MAP_FS, MAP_VS } from './shaders';
 import { TERRAIN_RGB, RESOURCE_RGB, type TerrainData } from './terrain';
+import { WATER_STYLE_ID } from '../uiVariant';
 import { dirtyRects, type TileFeed } from './tiles';
 import type { TrenchFeed } from './trenchFeed';
 
@@ -78,7 +79,7 @@ export class MapGL {
     this.gl = gl;
     this.prog = link(gl, MAP_VS, MAP_FS);
     gl.useProgram(this.prog);
-    for (const name of ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uView', 'uCenter', 'uZoom', 'uMap', 'uTime', 'uNowDs', 'uAuxMode', 'uShowRes', 'uFortOn', 'uTrenchOn', 'uTerr', 'uRes', 'uBg', 'uFog', 'uFogOn', 'uFogScale']) {
+    for (const name of ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uView', 'uCenter', 'uZoom', 'uMap', 'uTime', 'uNowDs', 'uAuxMode', 'uShowRes', 'uFortOn', 'uTrenchOn', 'uTerr', 'uRes', 'uBg', 'uFog', 'uFogOn', 'uFogScale', 'uWaterStyle']) {
       this.loc[name] = gl.getUniformLocation(this.prog, name);
     }
     const units = ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uFog'];
@@ -86,6 +87,7 @@ export class MapGL {
     gl.uniform3fv(this.loc.uTerr, new Float32Array(TERRAIN_RGB.flatMap((c) => c.map((v) => v / 255))));
     gl.uniform3fv(this.loc.uRes, new Float32Array(RESOURCE_RGB.flatMap((c) => c.map((v) => v / 255))));
     gl.uniform3f(this.loc.uBg, BG[0] / 255, BG[1] / 255, BG[2] / 255);
+    gl.uniform1i(this.loc.uWaterStyle, WATER_STYLE_ID); // UI comparison switch (uiVariant.ts)
     const mk = (): WebGLTexture => {
       const t = gl.createTexture();
       if (!t) throw new Error('createTexture failed');

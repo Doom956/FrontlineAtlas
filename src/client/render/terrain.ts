@@ -3,6 +3,7 @@
 import { isWater } from '../../sim/types';
 import type { MapData } from '../../sim/types';
 import type { RGB } from './common';
+import { WATER_STYLE } from '../uiVariant';
 
 /**
  * One calm, distinct colour per terrain (index = TerrainId). Water: deep, shallow. Chosen so the terrains stay
@@ -10,16 +11,47 @@ import type { RGB } from './common';
  * tundra pale grey-blue) without shouting over the nation colours.
  */
 export const TERRAIN_RGB: readonly RGB[] = [
-  [42, 80, 120], // deep water (lifted blue, calm)
-  [58, 104, 144], // shallow water (close to deep: no halo round the coast)
-  [152, 188, 106], // plains (fresh grass)
-  [76, 130, 78], // forest (richer green)
-  [196, 172, 118], // hills (warm tan)
-  [156, 152, 148], // mountains (light warm stone)
-  [234, 214, 152], // desert (bright sand)
-  [104, 126, 86], // swamp (lifted olive)
-  [216, 224, 224], // tundra (bright pale)
+  [23, 38, 52], // deep water: open sea, slate close to the UI ink so the land carries the picture
+  [38, 74, 91], // shallow water: the coastal shelf, a lighter steel blue (3:1 against a blue nation's fill)
+  [146, 162, 120], // plains
+  [100, 124, 92], // forest
+  [160, 152, 124], // hills
+  [138, 138, 136], // mountains
+  [204, 192, 156], // desert
+  [108, 118, 96], // swamp
+  [208, 214, 218], // tundra
 ];
+
+// ---- Water depth (UI comparison switch WATER_STYLE in uiVariant.ts; the shader has the same three styles).
+// One slate ramp in three steps, OKLCH lightness 0.39 / 0.33 / 0.26, hue 230 to 246 (bluer further out), so a
+// blue nation (lighter and more saturated) never blends into the sea.
+/** Middle band between the shelf (TERRAIN_RGB[1]) and the open sea (TERRAIN_RGB[0]). */
+export const WATER_MID: RGB = [31, 57, 73];
+/** Band edges in tiles from land: shelf up to WATER_EDGE_1, middle band up to WATER_EDGE_2, open sea beyond. */
+export const WATER_EDGE_1 = 3.5;
+export const WATER_EDGE_2 = 10.5;
+/** 'gradient': depth (tiles) where the smooth fade reaches the open sea colour. */
+export const WATER_FADE_END = 12;
+
+function mixRgb(a: RGB, b: RGB, k: number): RGB {
+  return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+}
+
+/**
+ * Flat water colour at `d` whole tiles from land (minimap, Canvas2D map, the far-zoom texture). 'bands' and 'chart'
+ * step, 'gradient' fades; chart contour lines are drawn by the shader only.
+ */
+export function waterRGB(d: number): RGB {
+  const shallow = TERRAIN_RGB[1];
+  const deep = TERRAIN_RGB[0];
+  if (WATER_STYLE === 'gradient') {
+    const k = Math.min(1, Math.max(0, (d - 1) / (WATER_FADE_END - 1)));
+    const s = k * k * (3 - 2 * k);
+    return s < 0.5 ? mixRgb(shallow, WATER_MID, s * 2) : mixRgb(WATER_MID, deep, s * 2 - 1);
+  }
+  return d < WATER_EDGE_1 ? shallow : d < WATER_EDGE_2 ? WATER_MID : deep;
+}
+
 /** Deposit colours (marker fills and the resource overlay). Index = ResourceId. */
 export const RESOURCE_RGB: readonly RGB[] = [
   [0, 0, 0],
@@ -63,22 +95,20 @@ export function buildTerrain(map: MapData): TerrainData {
   for (let i = 0; i < n; i++) if (depth[i] > MAX_DEPTH) depth[i] = MAX_DEPTH;
 
   const rgba = new Uint8ClampedArray(n * 4);
-  const shallow = TERRAIN_RGB[1];
-  const deep = TERRAIN_RGB[0];
+  const ramp: RGB[] = [];
+  for (let d = 0; d <= MAX_DEPTH; d++) ramp.push(waterRGB(d));
   for (let i = 0; i < n; i++) {
     const t = terrain[i];
     const o = i * 4;
     if (isWater(t)) {
-      const d = depth[i];
-      const k = Math.min(1, (d - 1) / 10);
-      const s = k * k * (3 - 2 * k);
-      let r = shallow[0] + (deep[0] - shallow[0]) * s;
-      let g = shallow[1] + (deep[1] - shallow[1]) * s;
-      let b = shallow[2] + (deep[2] - shallow[2]) * s;
-      if (d === 1) {
-        // a quiet shoreline band, not a bloom (Pixel Clean: muted map)
-        r += 6;
-        g += 9;
+      const c = ramp[depth[i]];
+      let r = c[0];
+      let g = c[1];
+      let b = c[2];
+      if (depth[i] === 1) {
+        // a quiet shoreline, so the coast reads at every zoom
+        r += 5;
+        g += 8;
         b += 9;
       }
       rgba[o] = r;
