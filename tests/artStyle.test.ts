@@ -105,7 +105,7 @@ describe('art switch', () => {
     for (const st of ART_STYLES) for (const k of BLAST_KINDS) expect(styleModule(st).explosions.durationMs(k, s)).toBeLessThan(styleModule(st).explosions.durationMs(k, c));
   });
 
-  it('gives every style every category, and the stubs draw the refined art for now', () => {
+  it('gives every style every category, each drawn by its own art', () => {
     for (const st of ART_STYLES) {
       const m = styleModule(st);
       expect(m.id).toBe(st);
@@ -117,9 +117,7 @@ describe('art switch', () => {
       expect(typeof m.paradrop.draw).toBe('function');
       expect(typeof m.paradrop.drawMark).toBe('function');
     }
-    expect(styleModule('detailed').paradrop).toBe(refined.paradrop);
-    expect(styleModule('detailed').ships).toBe(refined.ships);
-    expect(styleModule('realistic').explosions).toBe(refined.explosions);
+    for (const st of ART_STYLES) if (st !== 'refined') for (const c of ART_CATEGORIES) expect(styleModule(st)[c], `${st} ${c}`).not.toBe(refined[c]);
     expect(MOTION_CATEGORIES.length).toBe(7);
   });
 

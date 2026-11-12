@@ -19,7 +19,7 @@ small parachute mark next to a cargo plane in flight (mid and close zoom). The r
 | Lookup used by the game (`artFor`, `motionFor`) | `art/registry.ts` |
 | Shared helpers: sprite atlas with a per-frame bake budget, colour maths, noise, pixel discs, unit keys | `art/shared/` |
 | Refined pixel style (the game's art) | `art/refined/` |
-| Detailed pixel style, realistic painted style (stubs that draw the refined art until written) | `art/detailed/`, `art/realistic/` |
+| Detailed pixel style (twice the pixels, muted military colours), realistic painted top-down style | `art/detailed/`, `art/realistic/` |
 
 Rules for a style: draw only (never read or write the game state); deterministic for the same arguments (no
 `Math.random`); motion only from the clock and the `MotionParams` numbers, so all three presets work; the three style
