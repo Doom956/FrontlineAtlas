@@ -27,7 +27,8 @@
   --accent-ink: #1a1304; /* text on an accent fill */
   --accent-hover: #ffc658; /* an accent fill under the pointer (keeps --accent-ink readable) */
   --accent-rgb: 245 177 61; /* for tints: rgb(var(--accent-rgb) / 0.12) */
-  /* Caution (a missing building, short of a resource): amber in every palette, so it never reads as the accent. */
+  /* Caution (a missing building, short of a resource): its own token, so a panel that repoints --accent (research
+     and arsenal) keeps amber for warnings. */
   --caution: #f5b13d;
   --brass: var(--accent);
   --brass-hi: var(--accent-hi);

@@ -1,7 +1,7 @@
 // GLSL for the map layer (WebGL2). One fullscreen pass: terrain, nations, borders, overlays.
 import { UNDER_CHROMA, UNDER_DETAIL, UNDER_LUM, UNDER_MID } from './palette';
 import { FOG } from '../../sim/config';
-import { WATER_EDGE_1, WATER_EDGE_2, WATER_FADE_END, WATER_MID } from './terrain';
+import { WATER_FADE_END, WATER_MID } from './terrain';
 import type { RGB } from './common';
 
 const rgb = (c: RGB): string => c.map((v) => (v / 255).toFixed(4)).join(', ');
@@ -58,7 +58,6 @@ uniform int uTrenchOn;
 uniform vec3 uTerr[9];
 uniform vec3 uRes[4];
 uniform vec3 uBg;
-uniform int uWaterStyle;
 
 out vec4 outColor;
 
@@ -171,33 +170,17 @@ float seg(vec2 p, vec2 a, vec2 b) {
   return length(pa - ba * h);
 }
 
-// Water by depth d (tiles to land, smooth); aa = how much d changes over one device pixel. uWaterStyle is the UI
-// comparison switch (uiVariant.ts): 0 bands, 1 gradient, 2 chart. Colours and edges come from terrain.ts.
+// Water by depth d (tiles to land, smooth): one smooth fade from the shelf through the middle slate to the open sea.
+// Colours and the fade length come from terrain.ts (waterRGB is the same ramp for the minimap and the far texture).
 const vec3 WATER_MID = vec3(${rgb(WATER_MID)});
-// px = tiles per device pixel: zoomed far out the bands widen (up to 1.8x, so the open sea still starts within
+// px = tiles per device pixel: zoomed far out the fade widens (up to 1.8x, so the open sea still starts within
 // MAX_DEPTH) and the shelf never shrinks to a coast outline.
-vec3 waterAt(float d, float aa, float px) {
+vec3 waterAt(float d, float px) {
   vec3 shelf = uTerr[1];
   vec3 sea = uTerr[0];
-  float widen = clamp(px * 1.5, 1.0, 1.8);
-  d /= widen;
-  aa /= widen;
-  if (uWaterStyle == 1) {
-    float g = smoothstep(1.0, ${WATER_FADE_END.toFixed(1)}, d);
-    return g < 0.5 ? mix(shelf, WATER_MID, g * 2.0) : mix(WATER_MID, sea, g * 2.0 - 1.0);
-  }
-  // bands: crisp steps, anti-aliased over about one pixel
-  float e = max(aa, 0.02);
-  float b1 = smoothstep(${WATER_EDGE_1.toFixed(2)} - e * 0.5, ${WATER_EDGE_1.toFixed(2)} + e * 0.5, d);
-  float b2 = smoothstep(${WATER_EDGE_2.toFixed(2)} - e * 0.5, ${WATER_EDGE_2.toFixed(2)} + e * 0.5, d);
-  vec3 c = mix(mix(shelf, WATER_MID, b1), sea, b2);
-  if (uWaterStyle == 2) {
-    // chart: a thin, quiet contour line on each band edge (about 1 px at any zoom)
-    float l1 = 1.0 - smoothstep(0.3, 1.0, abs(d - ${WATER_EDGE_1.toFixed(2)}) / e);
-    float l2 = 1.0 - smoothstep(0.3, 1.0, abs(d - ${WATER_EDGE_2.toFixed(2)}) / e);
-    c = mix(c, vec3(0.52, 0.64, 0.70), max(l1 * 0.42, l2 * 0.3));
-  }
-  return c;
+  d /= clamp(px * 1.5, 1.0, 1.8);
+  float g = smoothstep(1.0, ${WATER_FADE_END.toFixed(1)}, d);
+  return g < 0.5 ? mix(shelf, WATER_MID, g * 2.0) : mix(WATER_MID, sea, g * 2.0 - 1.0);
 }
 
 // Terrain pattern: returns the terrain colour at t; lum = luminance change the pattern makes (nations show it faintly).
@@ -336,13 +319,12 @@ void main() {
   vec3 col;
   float near = smoothstep(1.2, 2.6, uZoom);
   vec3 flat_ = texture(uTerrCol, uv).rgb;
-  // tiles to land, smooth (0 on land); its screen-space change is taken here, outside the branch, where it is defined
+  // tiles to land, smooth (0 on land)
   float landDist = texture(uDepth, uv).r * 25.5;
-  float landDistAA = fwidth(landDist);
   if (water) {
     float d = landDist;
     float k = smoothstep(1.0, 6.0, d);
-    vec3 wc = waterAt(d, landDistAA, px);
+    vec3 wc = waterAt(d, px);
     wc += vec3(0.02, 0.03, 0.035) * (1.0 - smoothstep(0.55, 1.5, d)); // quiet shoreline
     if (detail > 0.0) {
       // faint wave dashes in open water

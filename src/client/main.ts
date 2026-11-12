@@ -1,8 +1,6 @@
 // Boot: main menu -> new game -> loop (fixed-step sim at 10 ticks/s x speed, render every frame). Online games run
 // the same sim in lockstep (mpgame.ts): turns from the server drive the ticks, actions go out as intents.
 import './styles.css';
-import './palettes.css';
-import { PALETTE } from './uiVariant';
 import { loadFonts } from './fonts';
 import { AudioManager } from './audio';
 import { applyAction } from '../sim/actions';
@@ -48,9 +46,6 @@ import { getUnitGroups, setUnitGroups } from './unitGroups';
 import { GameHistory } from './summary/history';
 import { gameSeconds } from '../sim/state';
 import { NAME_MAX_LENGTH } from '../net/protocol';
-
-// comparison switch (uiVariant.ts): the accent palette, read by palettes.css
-document.documentElement.dataset.palette = PALETTE;
 
 const STEP_MS = 1000 / TICKS_PER_SECOND;
 /** Most ticks run in one frame per x1 of speed; beyond that the game slows down instead of spiralling. */
