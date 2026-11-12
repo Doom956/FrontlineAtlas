@@ -94,8 +94,10 @@ function drawBlast(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams)
   const prev = ctx.globalAlpha;
 
   // dust rolling out along the ground (the shockwave as moving earth, never a drawn ring)
+  // at mid zoom (an art pixel a screen px) the skirt and crown use fewer, so a barrage stays cheap
+  const few = g.res < 1.5;
   if (s.skirt && fq > 0.05) {
-    const n = b.kind === 'missile' ? 9 : 6;
+    const n = (b.kind === 'missile' ? 9 : 6) >> (few ? 1 : 0);
     const reach = R * (1 + 1.7 * easeOut3(clamp01(age / (fT * 1.8)))) * m.shockwave;
     const a = 0.42 * (1 - clamp01((age - fT * 0.3) / (dur - fT * 0.3)));
     for (let i = 0; i < n; i++) {
@@ -106,7 +108,7 @@ function drawBlast(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams)
   }
   // the crown of earth thrown up and falling back
   if (s.dirt && ground) {
-    const n = s.dirt;
+    const n = few ? Math.ceil(s.dirt / 2) : s.dirt;
     for (let i = 0; i < n; i++) {
       const k = clamp01(age / (fT * 1.6 + 200));
       if (k >= 1) break;
@@ -131,9 +133,8 @@ function drawBlast(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams)
     const py = y - rise * u;
     const r = Rc * (0.45 + 0.35 * rnd(sd, i + 3)) * (0.7 + 0.7 * easeOut(k)) * (column ? 0.85 : 1);
     const a = (1 - k) * (b.kind === 'flak' ? 0.95 : 0.9);
-    const sootA = clamp01(1 - k * 1.8);
-    drawBlob(ctx, 'smoke', r, i, px, py, g, a * (1 - sootA));
-    drawBlob(ctx, 'soot', r, i + 2, px, py, g, a * sootA);
+    // oily soot over the fire, grey smoke once it has risen (one puff each, so a barrage stays cheap)
+    drawBlob(ctx, k < 0.35 + 0.1 * rnd(sd, i + 7) ? 'soot' : 'smoke', r, i, px, py, g, a);
   }
   // fires left burning on the ground, flickering through the smoke
   if (s.burn && m.fireLinger > 0 && ground && age > fT * 0.5) {
