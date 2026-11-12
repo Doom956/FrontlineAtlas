@@ -3,7 +3,7 @@
 A bright, friendly pixel world with the quietest possible interface over it. The land carries the colour; the HUD
 is cool steel glass with no borders, one amber accent and small clean type. The pixel feeling lives in the map, the
 unit art and one display face for the logo, the clock and the big numbers. Nothing else in the chrome is "pixel".
-These are the final picks: smooth gradient water, amber for the game and the setup screen, a case-hardened steel logo
+These are the final picks: smooth gradient water, amber for the game and the setup screen, a case-hardened logo
 and Play button on the main menu, and a research blue in the research and arsenal panel.
 
 ## Palette
@@ -42,44 +42,37 @@ light stone mountains. Nation fills are the nation hue at even lightness and 58%
 The in-game HUD, the setup screen and the unit card are amber. Two places repoint `--accent` (and its `--brass`
 aliases, which resolve where they are declared) on their own root element, so nothing else changes:
 
-**Main menu: case-hardened steel** (`.menu-card.title` in menu.css, drawn by `src/client/caseHardened.ts`). Only the
+**Main menu: case-hardened swirl** (`.menu-card.title` in menu.css, drawn by `src/client/caseHardened.ts`). Only the
 logo and the one main action (Play, or Continue / Rejoin when they lead) wear a heat-treated metal finish instead of
-a smooth gradient; the setup screen and the game never do. It is drawn once at startup in code (seeded, no image
-files, the same picture every load) and handed to the CSS as `--case-logo` and `--case-fill`. The owner picks in one
-line each: `CASE_STYLE` (`'steel'` default, or `'swirl'`) and `CASE_VARIANT` (`'A'` default).
+a smooth gradient; the setup screen and the game never do. It is drawn once at startup in code (seeded per balance,
+no image files) and handed to the CSS as `--case-logo` and `--case-fill`.
 
-- **steel**: classic colour case-hardened steel. A warm gold steel base (straw `#dcb664` to brass `#c09442` and
-  bronze `#9e7434`, hue 36 to 41, never toward 60 where it turns khaki) with soft mottling and fine grain along a
-  shallow slant. Light-blue islands (periwinkle `#7096de` to sky `#a4c8ee`, lighter clouds inside) sit on a jittered
-  grid of blobs of mixed size, warped and cut by a high-gain fbm so the edges break into fragments; small blue specks
-  near them and small gold pits inside. Box blurs of the blue mask give even rims on any edge: a thin navy `#262a64`
-  to purple `#4e2c70` rim right at the blue (magenta `#942e6c` in flecks), then a patchy orange-gold halo (brown
-  `#704628` and amber `#b06c2c` close in, `#ce983e` further out) and a few pale hot spots `#f0e2b6`.
-- **swirl**: fluid mottled swirls. Three-level domain-warped fbm cut by quantile into straw, bronze, purple, deep and
-  light blue patches with soft cloudy edges, bare grey steel showing through, a hue jitter field and brushed grain.
+The finish is fluid mottled swirls: three-level domain-warped fbm cut by quantile into straw, bronze, purple, deep and
+light blue patches with soft cloudy edges, bare grey steel showing through, a hue jitter field and brushed grain. The
+logo and the button are cut from different parts of the same field; the logo cut is shown at 0.6 so its thin pixel
+strokes cross several patches.
 
-The logo and the button are cut from different parts of the same field; the steel's cuts move to where the blue share
-matches the balance (overall and in each third), and the logo's cut is shown 1.2x larger so the patches inside the
-letters stay calm. The button uses a deep key of the same metal (amber gold `#865820` to `#986a28`, royal blue
-`#3454b8` to `#5c84d8`, navy rims `#141640`), since a darkened gold turns olive.
+The owner liked all four colour balances, so they take turns: each visit to the game shows the next one (A, B, C, D,
+then A again), remembered in the browser (`frontline.caseVariant.v1`); where storage is blocked, a random one. A
+menu shown again in the same visit keeps its balance.
 
-| Balance | steel | swirl |
-|---|---|---|
-| A balanced | 34% blue islands, navy rims | the draft the owner liked |
-| B mostly blue | 66% blue, larger islands, narrower halos | blue and purple, little gold |
-| C gold-heavy | 18% blue, small scattered islands | straw and bronze lead |
-| D purple-heavy | 38% blue leaning violet `#967ade`, wide purple rims, more magenta | purple leads |
+| Balance | Look |
+|---|---|
+| A balanced | blue, purple and gold in even swirls |
+| B mostly blue | blue and purple, little gold |
+| C gold-heavy | straw and bronze lead |
+| D purple-heavy | purple leads |
 
 | Part | Rule | Contrast |
 |---|---|---|
 | Logo (Jersey 15, 60px, clipped to the light key) | every texture pixel lifted to luminance 0.15 or more; a 1px dark drop edge | 3.3:1 or more per pixel on the column `#0e131b` (large-text floor 3:1); flat fallback `#a9bfe6` 10.0:1 |
-| Main action (deep key, white text) | every texture pixel softly capped at luminance 0.168 (the steel's deep key is amber gold and royal blue, since a darkened gold turns olive) | white text 4.8:1 or more on the brightest pixel; measured from the rendered page (worst pixel under "Play" and "Against AI") below; flat fallback `#34508f` 7.8:1 |
+| Main action (deep key, white text) | every texture pixel softly capped at luminance 0.168 | white text 4.8:1 or more on the brightest pixel; measured from the rendered page (worst pixel under "Play" and "Against AI") below; flat fallback `#34508f` 7.8:1 |
 | Button edge | 1px `#6a7d9c`; under the pointer `#a9bfe6` (the hover is that edge alone, no motion) | 4.5:1 and 10.0:1 on the column |
 | Small accents on the start page (Play again, row arrows) | `--accent` `#7ac8f5`, `--accent-ink` `#06192a` | 10.1:1 as text; ink on it 9.7:1 |
 
 Measured worst pixel under the button words (rendered at 2x in Chromium, white text against the darkest-to-lightest
-pixel under "Play" and "Against AI"): swirl A 4.79, B 6.80, C 4.79, D 4.85:1; steel A 4.85, B 4.86, C 4.86, D
-4.81:1. Every glyph pixel of the logo is 3.1:1 or more on the column in all eight.
+pixel under "Play" and "Against AI"): A 4.79, B 6.80, C 4.79, D 4.85:1. Every glyph pixel of the logo is 3.1:1 or
+more on the column in all four.
 
 Without a 2D canvas (jsdom, locked-down browsers) the logo is the flat `#a9bfe6` and the button `#34508f`. In forced
 colours the logo is plain CanvasText and the button gets a ButtonText border. Matte, no specular highlight, no
