@@ -521,11 +521,26 @@ function buildSteelField(rec: SteelRecipe) {
     );
   };
   // a coarse pass over the whole bar sets the island threshold, so the blue share is an exact area
-  const vals: number[] = [];
-  for (let cy = 0; cy <= 402; cy += 6) for (let cx = 0; cx <= 642; cx += 6) vals.push(islandAt(cx, cy));
-  vals.sort((a, b) => a - b);
-  const T = vals[Math.floor(vals.length * (1 - rec.blue))];
-  return { islandAt, T, cloud, mottle, halo, speckN, grainN, pickN, pixHash, flow, k };
+  const CS = 6;
+  const cols = Math.floor(642 / CS) + 1;
+  const rows = Math.floor(402 / CS) + 1;
+  const coarse = new Float32Array(cols * rows);
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) coarse[j * cols + i] = islandAt(i * CS, j * CS);
+  const sorted = Array.from(coarse).sort((a, b) => a - b);
+  const T = sorted[Math.floor(sorted.length * (1 - rec.blue))];
+  /** the blue share of a cut, from the coarse pass */
+  const shareOf = (x: number, y: number, w: number, h: number): number => {
+    let n = 0;
+    let b = 0;
+    for (let j = Math.ceil(y / CS); j * CS <= y + h && j < rows; j++) {
+      for (let i = Math.ceil(x / CS); i * CS <= x + w && i < cols; i++) {
+        n++;
+        if (coarse[j * cols + i] > T) b++;
+      }
+    }
+    return n ? b / n : 0;
+  };
+  return { islandAt, T, shareOf, cloud, mottle, halo, speckN, grainN, pickN, pixHash, flow, k };
 }
 
 /** Separable box blur, run twice (close to a gaussian), radius in pixels. */
@@ -744,6 +759,32 @@ export const CASE_CUTS: Record<CaseStyle, { logo: CaseRegion; fill: CaseRegion }
 };
 
 /**
+ * The cuts for one style and balance. The steel's are moved (logo in the top half of the bar, button in the bottom)
+ * to where the blue share is closest to the balance's own, so a small cut never lands on plain gold or plain blue.
+ */
+export function caseCuts(style: CaseStyle, variant: CaseVariant): { logo: CaseRegion; fill: CaseRegion } {
+  const base = CASE_CUTS[style];
+  if (style === 'swirl') return base;
+  const F = steelField(variant);
+  const target = STEEL_RECIPES[variant].blue;
+  const place = (r: CaseRegion, y0: number, y1: number): CaseRegion => {
+    let best = r;
+    let bestErr = Infinity;
+    for (let y = y0; y + r.h <= y1; y += 12) {
+      for (let x = 0; x + r.w <= 642; x += 24) {
+        const err = Math.abs(F.shareOf(x, y, r.w, r.h) - target);
+        if (err < bestErr - 1e-9) {
+          bestErr = err;
+          best = { ...r, x, y };
+        }
+      }
+    }
+    return best;
+  };
+  return { logo: place(base.logo, 0, 200), fill: place(base.fill, 200, 402) };
+}
+
+/**
  * Draws one region of a style's field at `dpr` device pixels per displayed CSS px (the region's zoom is applied on
  * top). Pure (no DOM), so tests and the scratch screenshot scripts can call it directly.
  */
@@ -796,7 +837,7 @@ export function applyCaseHardened(
   const root = target ?? document.documentElement;
   // two device pixels per CSS px on dense screens (the grain stays crisp), one elsewhere (a quarter of the work)
   const dpr = (typeof devicePixelRatio === 'number' ? devicePixelRatio : 1) > 1.25 ? 2 : 1;
-  const { logo: lc, fill: fc } = CASE_CUTS[style];
+  const { logo: lc, fill: fc } = caseCuts(style, variant);
   const logo = toDataUrl(drawCaseRegion(style, variant, lc, dpr));
   const fill = toDataUrl(drawCaseRegion(style, variant, fc, dpr));
   if (!logo || !fill) return false;

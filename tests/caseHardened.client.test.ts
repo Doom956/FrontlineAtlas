@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyCaseHardened,
-  CASE_CUTS,
+  caseCuts,
   CASE_STYLE,
   CASE_VARIANT,
   drawCaseRegion,
@@ -46,7 +46,7 @@ describe('case-hardened finish', () => {
   it('keeps white text at 4.5:1 on every button pixel and the logo light enough on the dark column', () => {
     for (const style of STYLES) {
       for (const v of VARIANTS) {
-        const { logo: lc, fill: fc } = CASE_CUTS[style];
+        const { logo: lc, fill: fc } = caseCuts(style, v);
         const fill = drawCaseRegion(style, v, { ...fc, w: 160, h: 48 }, 1);
         const logo = drawCaseRegion(style, v, { ...lc, w: 160, h: 48 }, 1);
         let maxFill = 0;
