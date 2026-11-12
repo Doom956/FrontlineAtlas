@@ -329,6 +329,7 @@ export class Renderer {
     this.overlays.telegraphs(ctx, state, camera, this.units, frac, me, nowMs, this.colors);
     this.overlays.barrages(ctx, state, camera, frac, me, nowMs, this.colors);
     tf = performance.now();
+    this.fronts.avoid = this.names.armyMarks;
     this.fronts.draw(ctx, state, camera, me, this.colors, ui);
     msFronts += performance.now() - tf;
     this.stats.msFronts = msFronts;

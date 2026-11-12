@@ -11,14 +11,14 @@ import type { Troops, TroopType } from '../../sim/types';
 import { formatCount, MAP_NUM_FAMILY, makeCanvas, type RGB } from './common';
 import { ownerRamp, OUTLINE } from './spriteBake';
 
-/** The troop symbol, or 'troops' for a mix the viewer does not know (a soldier with a small question mark). */
+/** The troop symbol, or 'troops' for a mix the viewer does not know (its own symbol: a bold question mark). */
 export type TroopIconKind = TroopType | 'troops';
 
 /**
  * Symbols, 12 px tall at most, side view facing right. a..d = light to dark tones of the symbol ramp, '.' = plate.
  * Infantry is a touch taller than wide, the vehicles wider than tall.
  */
-const SYMBOLS: Record<TroopType, readonly string[]> = {
+const SYMBOLS: Record<TroopIconKind, readonly string[]> = {
   infantry: [
     '...abbb.....',
     '..abbbbc..d.',
@@ -43,23 +43,38 @@ const SYMBOLS: Record<TroopType, readonly string[]> = {
     '.dcdcdcdcdcd..',
     '..dddddddddd..',
   ],
+  // a short field gun: the barrel up and right (ending inside the plate), a shield, a wheel with its hub, and the split
+  // trail down and left to the ground
   artillery: [
-    '............ab',
-    '..........abc.',
-    '........abbc..',
-    '......abbc....',
-    '....abbbc.....',
-    '...abbbbc.....',
-    '...bcdddc.....',
-    '..bd.c.d......',
-    '.bbdcacd......',
-    'bb.d.c.d......',
-    'b...ddd.......',
+    '.........aa.',
+    '.......abbc.',
+    '.....abbcc..',
+    '..aabbbcc...',
+    '..abbbbc....',
+    '.ab.bbbbc...',
+    'ab.bcccbc...',
+    'b..bcacbc...',
+    '...bcccbc...',
+    '....bbbc....',
+  ],
+  // an unknown mix: a bold question mark, never the soldier
+  troops: [
+    '..abbbbc..',
+    '.abbbbbbc.',
+    'abbc..abbc',
+    'bcd...abbc',
+    '.....abbc.',
+    '....abbc..',
+    '....bbcd..',
+    '....bbc...',
+    '..........',
+    '....abc...',
+    '....bbc...',
   ],
 };
 
 /** The same symbols at about 8 px, for the small plates (transports, nation army counts). */
-const SMALL: Record<TroopType, readonly string[]> = {
+const SMALL: Record<TroopIconKind, readonly string[]> = {
   infantry: [
     '..abb..d',
     '.abbbc.d',
@@ -79,19 +94,26 @@ const SMALL: Record<TroopType, readonly string[]> = {
     '.dcdcdcdd.',
   ],
   artillery: [
-    '.........a',
-    '.......abc',
-    '.....abbc.',
-    '...abbbc..',
-    '..abbbc...',
-    '.bcdddc...',
-    'bbd.a.d...',
-    'b..ddd....',
+    '......ab',
+    '....abbc',
+    '..abbcc.',
+    '.abbbc..',
+    'ab.bbbc.',
+    'b.bcacb.',
+    '..bcccb.',
+    '...bbb..',
+  ],
+  troops: [
+    '.abbbc.',
+    'abc.abc',
+    '....abc',
+    '...abc.',
+    '..abc..',
+    '..bc...',
+    '.......',
+    '..bc...',
   ],
 };
-
-/** A tiny question mark for an unknown mix (3 x 5, tone b). */
-const QUESTION = ['bb.', '..b', '.b.', '...', '.b.'];
 
 const LIGHT_SYMBOL: RGB[] = [
   [255, 255, 255],
@@ -156,13 +178,12 @@ export function bakeTroopIcon(kind: TroopIconKind, owner: RGB, size = PLATE): Ic
       } else if (inPlate(x - 1, y) || inPlate(x + 1, y) || inPlate(x, y - 1) || inPlate(x, y + 1)) set(x + 1, y + 1, OUTLINE);
     }
   }
-  const symKind: TroopType = kind === 'troops' ? 'infantry' : kind;
-  const rows = (size < 14 ? SMALL : SYMBOLS)[symKind];
+  const rows = (size < 14 ? SMALL : SYMBOLS)[kind];
   const sw = Math.max(...rows.map((r) => r.length));
   const sh = rows.length;
   const tones = darkSymbolOn(owner) ? DARK_SYMBOL : LIGHT_SYMBOL;
   const shadow = ramp[0];
-  const ox = 1 + Math.floor((size - sw) / 2) + (kind === 'troops' ? 1 : 0);
+  const ox = 1 + Math.floor((size - sw) / 2);
   const oy = 1 + Math.floor((size - sh) / 2);
   const at = (r: readonly string[], x: number, y: number): number => {
     const ch = r[y]?.[x];
@@ -175,11 +196,6 @@ export function bakeTroopIcon(kind: TroopIconKind, owner: RGB, size = PLATE): Ic
       const t = at(rows, x, y);
       if (t >= 0) set(ox + x, oy + y, tones[t]);
     }
-  if (kind === 'troops' && size >= 14) {
-    const qx = 2;
-    const qy = 2;
-    for (let y = 0; y < QUESTION.length; y++) for (let x = 0; x < 3; x++) if (QUESTION[y][x] === 'b') set(qx + x, qy + y, tones[0]);
-  }
   return { w: W, h: H, data };
 }
 
@@ -245,6 +261,25 @@ export interface TroopPillStyle {
   small?: boolean;
 }
 
+/** Sizes of a troop pill (sets the pill's font on ctx). */
+function pillLayout(ctx: CanvasRenderingContext2D, text: string, kinds: number, st: Pick<TroopPillStyle, 'arrow' | 'small'>): { w: number; h: number; tw: number; iconsW: number; ax: number } {
+  const plate = st.small ? 12 : PLATE;
+  ctx.font = `600 ${st.small ? 10 : 11}px ${MAP_NUM_FAMILY}`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  const tw = Math.ceil(ctx.measureText(text).width);
+  const n = Math.max(1, kinds);
+  const iconsW = plate + 2 + (n - 1) * (plate + 2 - STACK);
+  const ax = st.arrow === 'none' ? 0 : st.small ? 7 : 9;
+  return { w: iconsW + 4 + tw + 6 + ax, h: plate + 4, tw, iconsW, ax };
+}
+
+/** Width and height (px) a troop pill will take, without drawing it (to keep it clear of other marks). */
+export function troopPillSize(ctx: CanvasRenderingContext2D, troops: number, kinds: number, st: Pick<TroopPillStyle, 'arrow' | 'small'>): { w: number; h: number } {
+  const { w, h } = pillLayout(ctx, `${formatCount(troops)} troops`, kinds, st);
+  return { w, h };
+}
+
 /**
  * A troop pill centred at (x, y): the stacked troop markers on the left, then the count with its unit ("12.3k
  * troops") on a near-black plate with a 1 px dark outline, and the push arrow (yours up, an incoming attack down).
@@ -252,17 +287,9 @@ export interface TroopPillStyle {
  */
 export function troopPill(ctx: CanvasRenderingContext2D, x: number, y: number, troops: number, kinds: readonly TroopIconKind[], owner: RGB, st: TroopPillStyle): number {
   const plate = st.small ? 12 : PLATE;
-  const font = st.small ? 10 : 11;
   const text = `${formatCount(troops)} troops`;
-  ctx.font = `600 ${font}px ${MAP_NUM_FAMILY}`;
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  const tw = Math.ceil(ctx.measureText(text).width);
+  const { w, h, tw, iconsW, ax } = pillLayout(ctx, text, kinds.length, st);
   const n = Math.max(1, kinds.length);
-  const iconsW = plate + 2 + (n - 1) * (plate + 2 - STACK);
-  const ax = st.arrow === 'none' ? 0 : st.small ? 7 : 9;
-  const h = plate + 4;
-  const w = iconsW + 4 + tw + 6 + ax;
   const x0 = Math.round(x - w / 2);
   const y0 = Math.round(y - h / 2);
   // the plate behind the number, tucked under the markers: a 1 px outline (red when the attack is on you), a

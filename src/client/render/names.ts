@@ -15,7 +15,7 @@ import type { Camera } from '../camera';
 import { drawIcon, type StatusIconId } from '../icons';
 import { fitSize, LABEL_BLOCK_H } from '../labels';
 import { clamp, formatCount, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, setTracking, type RGB } from './common';
-import { drawTroopIcon } from './troopIcons';
+import { drawTroopIcon, PLATE } from './troopIcons';
 import { OWNER_MASK, type TileFeed } from './tiles';
 
 /** Tribe labels only from this zoom (device px per tile) on, except the hovered tribe. */
@@ -78,6 +78,8 @@ export class NameLayer {
   /** labels drawn last frame (stats) */
   drawn = 0;
   computed = 0;
+  /** screen boxes (x0, y0, x1, y1) of the army count marks drawn this frame: the front pills keep clear of them */
+  readonly armyMarks: number[] = [];
 
   setGame(state: GameState): void {
     const { width: w, height: h } = state.map;
@@ -302,6 +304,7 @@ export class NameLayer {
 
   draw(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, humanId: number, style: NameStyle, nowMs: number, dpr: number): void {
     this.drawn = 0;
+    this.armyMarks.length = 0;
     const fog = this.fog?.active ? this.fog : null;
     // during the spawn phase the capitals carry the names
     if (state.phase === 'spawn') return;
@@ -403,15 +406,18 @@ export class NameLayer {
         ctx.font = `500 ${Math.round(small)}px ${MAP_NUM_FAMILY}`;
         setTracking(ctx, small * 0.02);
         const ay = nameY + px * 0.55 + small * 0.55;
-        const fill = tribe ? 'rgba(232,234,238,0.9)' : traitor ? 'rgba(255,196,189,0.9)' : 'rgba(238,241,246,0.86)';
-        // a small soldier marker on the nation's colour plate (troopIcons.ts) says what the number counts
-        const plate = small >= 12 ? 12 : 10;
+        const fill = tribe ? 'rgba(236,238,241,0.94)' : traitor ? 'rgba(255,196,189,0.94)' : 'rgba(250,251,253,0.96)';
+        // the soldier marker on the nation's colour plate (a neutral grey plate for tribes), the same rounded-square
+        // plate as the front and transport pills (troopIcons.ts), says what the number counts
+        const plate = small >= 12 ? PLATE : 12;
         const aw = ctx.measureText(army).width;
-        const gx = s.x - (plate + 5 + aw) / 2;
-        drawTroopIcon(ctx, 'troops', Math.round(gx), Math.round(ay - plate / 2 - 1), tribe ? TRIBE_PLATE : (p.color as RGB), plate);
+        const gx = Math.round(s.x - (plate + 6 + aw) / 2);
+        const gy = Math.round(ay - plate / 2 - 1);
+        drawTroopIcon(ctx, 'infantry', gx, gy, tribe ? TRIBE_PLATE : (p.color as RGB), plate);
+        this.armyMarks.push(gx - 2, gy - 2, gx + plate + 6 + aw + 4, gy + plate + 4);
         ctx.font = `500 ${Math.round(small)}px ${MAP_NUM_FAMILY}`;
         ctx.textAlign = 'center';
-        haloText(ctx, army, gx + plate + 5 + aw / 2, ay, fill, small, tribe ? 1.25 : 1.05);
+        haloText(ctx, army, gx + plate + 6 + aw / 2, ay, fill, small, tribe ? 1.25 : 1.05);
         if (mixBar) this.mixBar(ctx, p, s.x, ay + small * 0.6 + 3, Math.max(28, Math.min(tw, 90)));
       }
     }

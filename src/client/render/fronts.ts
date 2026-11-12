@@ -26,7 +26,7 @@ import type { Attack, GameState } from '../../sim/types';
 import type { Camera } from '../camera';
 import type { UiState } from '../uiState';
 import { clamp, css, formatCount, MAP_NUM_FAMILY, mix, type RGB } from './common';
-import { troopKinds, troopPill } from './troopIcons';
+import { troopKinds, troopPill, troopPillSize } from './troopIcons';
 import { hasIntel } from '../../sim/buildings';
 import { OWNER_MASK, type TileFeed } from './tiles';
 import { coveringAirfields, dugInPct } from '../trench';
@@ -446,6 +446,8 @@ export class FrontLayer {
   private ownerAt = (i: number): number => (this.feed ? this.feed.mirror[i] & OWNER_MASK : 0);
   /** fog of war view (set by the renderer each frame; null or inactive = no fog) */
   fog: FogView | null = null;
+  /** screen boxes (x0, y0, x1, y1) the troop pills keep clear of: the nations' army count marks (set by the renderer) */
+  avoid: readonly number[] | null = null;
 
   /** Fog of war: wars between others show only where you see the fighting (yours and your allies' always). */
   private seenWar(state: GameState, a: Attack): boolean {
@@ -767,11 +769,22 @@ export class FrontLayer {
       if (tile < 0) continue;
       const s = cam.tileToScreen((tile % w) + 0.5, ((tile / w) | 0) + 0.5);
       if (s.x < -40 || s.y < -40 || s.x > cam.viewW + 40 || s.y > cam.viewH + 40) continue;
-      const py = s.y - Math.max(12, z * 0.9);
+      let py = s.y - Math.max(12, z * 0.9);
+      // keep clear of the nations' army count marks (names.ts armyMarks): lift the pill above one it would cover
+      const kinds = troopKinds(knows(a.attacker) ? a.troops : null);
+      const am = this.avoid;
+      if (am && am.length) {
+        const sz = troopPillSize(ctx, armyTotal(a.troops), kinds.length, { arrow: mine || ally || incoming ? 'up' : 'none' });
+        for (let k = 0; k < am.length; k += 4) {
+          const x0 = s.x - sz.w / 2;
+          const y0 = py - sz.h / 2;
+          if (x0 < am[k + 2] && x0 + sz.w > am[k] && y0 < am[k + 3] && y0 + sz.h > am[k + 1]) py = am[k + 1] - sz.h / 2 - 1;
+        }
+      }
       pills.push({ x: s.x, y: py });
       const edge = mine ? '#ffe98a' : incoming ? SIGNAL : css(colors[a.attacker] ?? [200, 200, 200]);
       const owner = (colors[a.attacker] ?? [200, 200, 200]) as RGB;
-      const pw = troopPill(ctx, s.x, py, armyTotal(a.troops), troopKinds(knows(a.attacker) ? a.troops : null), owner, { edge, arrow: mine || ally ? 'up' : incoming ? 'down' : 'none', alarm: incoming });
+      const pw = troopPill(ctx, s.x, py, armyTotal(a.troops), kinds, owner, { edge, arrow: mine || ally ? 'up' : incoming ? 'down' : 'none', alarm: incoming });
       if (coveringAirfields(state, a.attacker, a.target).length > 0) glyph(ctx, 'plane', s.x + pw / 2 + 9, py, 13, mine ? '#ffe98a' : '#e4dfd2');
       if (mine && a.focusTile >= 0) {
         const f = cam.tileToScreen((a.focusTile % w) + 0.5, ((a.focusTile / w) | 0) + 0.5);
