@@ -2,15 +2,18 @@
 // coordinates) and fades there, so a trail lingers and curves with the path the unit really took.
 //
 // Ships: a proper wake, sized by the ship's speed and beam. A bow wave folds out from the stem along both sides (drawn
-// with the ship each frame); behind it the two thin arms of the V spread out at the Kelvin angle (about 19 degrees,
-// MotionParams.wakeSpread), and down the middle a band of churned white water from the screws widens and fades
-// (foamLife). The submarine, low in the water, leaves only a thin line and a small ripple at its tower.
+// with the ship each frame); behind it the two arms of the V spread out at the Kelvin angle (about 19 degrees,
+// MotionParams.wakeSpread) as short broken foam dashes that widen and fade with age, no longer than about a ship length
+// (wakeLength); down the middle the churned water from the screws is one continuous taper, narrow and bright at the
+// stern, widening and fading behind (foamLife), filled as one strip per fade step, never a chain of round discs. The
+// submarine, low in the water, leaves only a thin line and a small ripple at its tower.
 // Planes: thin white contrails from the engines (four from a heavy bomber, two from a twin, faint wingtip trails from
-// a fighter or a low ground-attack plane), widening and fading out (contrailLife).
+// a fighter or a low ground-attack plane), widening, softening and drifting a little downwind with age, breaking up
+// toward the tail and fading out over their last third (contrailLife).
 // Missiles: puffs of smoke (white-hot at the engine, then light grey, tapering from about one missile width to two or
 // three, breaking up; missileTrailLife), one ring buffer of puffs per layer.
-// The lines of every ship or plane in a layer go into a fixed handful of paths (one per fade step), so a sea full of
-// ships costs a few strokes per frame, not a few per ship.
+// The lines and strips of every ship or plane in a layer go into a fixed handful of paths (one per fade step), so a sea
+// full of ships costs a few strokes and fills per frame, not a few per ship.
 
 import { GLYPHS, type Inst } from '../../render/unitGlyphs';
 import type { MotionParams } from '../motion';
@@ -206,7 +209,7 @@ export function drawTrails(ctx: CanvasRenderingContext2D, list: readonly TrailIn
       const big = e.type === 'atomBomb';
       const lm = e.motion?.missileTrailLife ?? 1;
       const life = (z < 3 ? 1100 : 600) * lm;
-      puffs.emit(e.id * 4, e.tx - cos * back, e.ty - sin * back, (2.5 * g) / z, now, life, 1, big ? 3.4 : 3, SMOKE, 1.2 / z, -2 / z, (1.2 * g) / z, ((5 * 2 * e.S) / z) * lm);
+      puffs.emit(e.id * 4, e.tx - cos * back, e.ty - sin * back, (2.5 * g) / z, now, big ? life * 1.25 : life, big ? 1.6 : 1, big ? 4.6 : 3, SMOKE, 1.2 / z, -2 / z, (1.2 * g) / z, ((5 * 2 * e.S) / z) * lm);
     }
     puffs.draw(ctx, view.ox, view.oy, z, g, now, view.viewW, view.viewH);
     // the hot core at each missile's nozzle: two near-white cells just behind the flame
@@ -216,10 +219,13 @@ export function drawTrails(ctx: CanvasRenderingContext2D, list: readonly TrailIn
       const cos = Math.cos(e.angle);
       const sin = Math.sin(e.angle);
       ctx.globalAlpha = pa * 0.9;
+      // the atom bomb's exhaust is longer and brighter: a two cell wide white core and a longer flame
+      const w = e.type === 'atomBomb' ? 2 * g : g;
+      const n = e.type === 'atomBomb' ? 2 : 1;
       ctx.fillStyle = FX.hot;
-      ctx.fillRect(Math.round((e.x - cos * (e.S + 0.5 * g)) / g) * g, Math.round((e.y - sin * (e.S + 0.5 * g)) / g) * g, g, g);
+      for (let k = 0; k < n; k++) ctx.fillRect(Math.round((e.x - cos * (e.S + (0.5 + k) * g)) / g) * g, Math.round((e.y - sin * (e.S + (0.5 + k) * g)) / g) * g, w, w);
       ctx.fillStyle = FX.flame;
-      ctx.fillRect(Math.round((e.x - cos * (e.S + 1.6 * g)) / g) * g, Math.round((e.y - sin * (e.S + 1.6 * g)) / g) * g, g, g);
+      for (let k = 0; k < n; k++) ctx.fillRect(Math.round((e.x - cos * (e.S + (1.6 + n - 1 + k * 1.1) * g)) / g) * g, Math.round((e.y - sin * (e.S + (1.6 + n - 1 + k * 1.1) * g)) / g) * g, w, w);
     }
     ctx.globalAlpha = pa;
     return;
@@ -252,18 +258,52 @@ export function drawTrails(ctx: CanvasRenderingContext2D, list: readonly TrailIn
 const CAP = 44;
 /** Fade steps: every line of a layer goes into one of these paths. */
 const STEPS = 4;
+/** Fade steps of the wake's centre taper (fine, so it reads as one smooth fade) and of its arms. */
+const WASH_STEPS = 10;
+const ARM_STEPS = 6;
+/** Fade steps of a contrail. */
+const TRAIL_STEPS = 6;
+/** Whether a trail sample starts a piece of foam or a gap: about three in five on, in short irregular runs. */
+function dashOn(seq: number): boolean {
+  const h = Math.imul(seq ^ 0x5bd1e995, 0x27d4eb2d) >>> 0;
+  return seq % 4 !== 3 && (h >>> 29) !== 0;
+}
 /** tan of the Kelvin wake's half angle (19.5 degrees) */
 const KELVIN = 0.354;
 
-/** A batch of paths, one per fade step, filled from many units and stroked once each. */
+/** A batch of paths, one per fade step, filled from many units and stroked (or filled) once each. */
 class Batch {
   paths: Path2D[] = [];
   used = 0;
+  constructor(readonly steps = STEPS) {}
   reset(): void {
     this.paths = [];
     this.used = 0;
     if (typeof Path2D === 'undefined') return;
-    for (let i = 0; i < STEPS; i++) this.paths.push(new Path2D());
+    for (let i = 0; i < this.steps; i++) this.paths.push(new Path2D());
+  }
+  /** A four-cornered piece of a strip (filled, so neighbouring pieces join without round caps or overlaps). */
+  quad(step: number, ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number): void {
+    const p = this.paths[step];
+    if (!p) return;
+    p.moveTo(ax, ay);
+    p.lineTo(bx, by);
+    p.lineTo(cx, cy);
+    p.lineTo(dx, dy);
+    p.closePath();
+    this.used++;
+  }
+  fill(ctx: CanvasRenderingContext2D, color: string, alpha: (i: number) => number): void {
+    if (!this.used) return;
+    const prev = ctx.globalAlpha;
+    ctx.fillStyle = color;
+    for (let i = 0; i < this.paths.length; i++) {
+      const a = alpha(i);
+      if (a <= 0.01) continue;
+      ctx.globalAlpha = prev * a;
+      ctx.fill(this.paths[i]);
+    }
+    ctx.globalAlpha = prev;
   }
   seg(step: number, x0: number, y0: number, x1: number, y1: number): void {
     const p = this.paths[step];
@@ -272,11 +312,12 @@ class Batch {
     p.lineTo(x1, y1);
     this.used++;
   }
-  stroke(ctx: CanvasRenderingContext2D, color: string, alpha: readonly number[], width: readonly number[]): void {
+  stroke(ctx: CanvasRenderingContext2D, color: string, alpha: readonly number[], width: readonly number[], cap: CanvasLineCap = 'round'): void {
     if (!this.used) return;
     const prev = ctx.globalAlpha;
     ctx.strokeStyle = color;
-    ctx.lineCap = 'round';
+    ctx.lineCap = cap;
+    ctx.lineJoin = 'round';
     for (let i = 0; i < this.paths.length; i++) {
       if (alpha[i] <= 0.01) continue;
       ctx.globalAlpha = prev * alpha[i];
@@ -298,6 +339,11 @@ class Track {
   /** half the ship's beam (tiles) and its speed (tiles/s) at each sample */
   readonly hw = new Float32Array(CAP);
   readonly sp = new Float32Array(CAP);
+  /** each sample's running number (stable while it lives: the broken dashes of a wake or contrail stay put) */
+  readonly seq = new Uint32Array(CAP);
+  private count = 0;
+  /** half the ship's length (tiles): its wake's arms reach a multiple of it */
+  half = 0;
   n = 0;
   head = 0;
   lx = 0;
@@ -321,6 +367,7 @@ class Track {
   push(born: number): number {
     const i = this.head;
     this.born[i] = born;
+    this.seq[i] = this.count++;
     this.head = (i + 1) % CAP;
     this.n = Math.min(CAP, this.n + 1);
     return i;
@@ -330,7 +377,7 @@ class Track {
 /** Contrail emitters of a plane (model units across the wing, + = starboard) and how strong they are. */
 const ENGINES: Partial<Record<SpriteKey, { v: readonly number[]; w: number }>> = {
   bomber: { v: [-5, 5], w: 0.85 },
-  heavyBomber: { v: [-11, -5.5, 5.5, 11], w: 1 },
+  heavyBomber: { v: [-11.4, -5.4, 5.4, 11.4], w: 1 },
   transportPlane: { v: [-6.5, 6.5], w: 0.8 },
   reconPlane: { v: [-3.4, 3.4], w: 0.7 },
   // wingtip vortices only: faint
@@ -342,9 +389,9 @@ const ENGINES: Partial<Record<SpriteKey, { v: readonly number[]; w: number }>> =
 class WakeLayer implements TrailLayer {
   private tracks = new Map<number, Track>();
   private frameNo = 0;
-  private arms = new Batch();
-  private washS = new Batch();
-  private washL = new Batch();
+  private arms = new Batch(ARM_STEPS);
+  private wash = new Batch(WASH_STEPS);
+  private core = new Batch(WASH_STEPS);
   private bow = new Batch();
 
   clear(): void {
@@ -368,6 +415,7 @@ class WakeLayer implements TrailLayer {
       t.seen = this.frameNo;
       if (!u.moving || !view.full || u.speed <= 0) continue;
       t.sub = u.key === 'submarine';
+      t.half = u.half / z;
       const c = Math.cos(u.angle);
       const s = Math.sin(u.angle);
       const back = (u.half * 0.92) / z;
@@ -391,12 +439,14 @@ class WakeLayer implements TrailLayer {
     }
     if (typeof Path2D === 'undefined') return;
     this.arms.reset();
-    this.washS.reset();
-    this.washL.reset();
+    this.wash.reset();
+    this.core.reset();
     this.bow.reset();
     const spread = m?.wakeSpread ?? 1;
     const life = this.lifeMs(m);
     const foamLife = 950 * (m?.foamLife ?? 1);
+    // the arms reach about a ship length (less in the subtle preset, a little more in the cinematic one)
+    const armReach = 0.55 + 0.4 * (m?.wakeLength ?? 1);
     const { ox, oy } = view;
     const W = view.viewW + 60;
     const H = view.viewH + 60;
@@ -405,12 +455,18 @@ class WakeLayer implements TrailLayer {
         this.tracks.delete(id);
         continue;
       }
+      const armCap = t.half * 2 * armReach;
+      let dist = 0;
       let px = 0;
       let py = 0;
       let pax = 0;
       let pay = 0;
       let pbx = 0;
       let pby = 0;
+      let pwo = 0;
+      let pwc = 0;
+      let pnx = 0;
+      let pny = 0;
       for (let k = 0; k < t.n; k++) {
         const i = t.at(k);
         const age = now - t.born[i];
@@ -420,22 +476,37 @@ class WakeLayer implements TrailLayer {
         const sf = Math.min(1.4, Math.max(0.2, sp / 5));
         const cx = ox + t.x[i] * z;
         const cy = oy + t.y[i] * z;
+        const nx = t.nx[i];
+        const ny = t.ny[i];
         // the V: both arms move out from the hull at the Kelvin angle as the wake ages
         const lat = (t.hw[i] + ((sp * age) / 1000) * KELVIN * spread) * z;
-        const ax = cx + t.nx[i] * lat;
-        const ay = cy + t.ny[i] * lat;
-        const bx = cx - t.nx[i] * lat;
-        const by = cy - t.ny[i] * lat;
-        if (k > 0 && cx > -60 && cy > -60 && cx < W && cy < H) {
-          // the arms fade sooner than the wake's length, so a turn leaves a short curve, not a ring
-          const qa = q / 0.65;
-          if (!t.sub && qa < 1) {
-            const step = Math.min(STEPS - 1, Math.floor(qa * STEPS) + (sf < 0.45 ? 1 : 0));
-            this.arms.seg(step, pax, pay, ax, ay);
-            this.arms.seg(step, pbx, pby, bx, by);
+        const ax = cx + nx * lat;
+        const ay = cy + ny * lat;
+        const bx = cx - nx * lat;
+        const by = cy - ny * lat;
+        // the churned water: one taper, narrow at the stern and widening behind; a brighter core near the stern
+        const qf = age / foamLife;
+        const hwpx = t.hw[i] * z;
+        const wo = Math.max(0.8 * g, hwpx * (0.45 + 0.85 * Math.min(1, qf)));
+        const wc = Math.max(0.5 * g, hwpx * 0.3 * (1 - 0.5 * Math.min(1, qf)));
+        if (k > 0) {
+          const j = t.at(k - 1);
+          dist += Math.hypot(t.x[i] - t.x[j], t.y[i] - t.y[j]);
+          if (cx > -60 && cy > -60 && cx < W && cy < H) {
+            // the arms: short broken foam dashes, fading and widening with age, no further back than armCap
+            const qa = Math.max(q / 0.65, armCap > 0 ? dist / armCap : 0);
+            if (!t.sub && qa < 1 && dashOn(t.seq[i])) {
+              const step = Math.min(ARM_STEPS - 1, Math.floor(qa * ARM_STEPS) + (sf < 0.45 ? 1 : 0));
+              this.arms.seg(step, pax, pay, ax, ay);
+              this.arms.seg(step, pbx, pby, bx, by);
+            }
+            if (qf < 1) {
+              const st = Math.min(WASH_STEPS - 1, Math.floor(qf * WASH_STEPS));
+              this.wash.quad(st, px + pnx * pwo, py + pny * pwo, cx + nx * wo, cy + ny * wo, cx - nx * wo, cy - ny * wo, px - pnx * pwo, py - pny * pwo);
+              const qc = qf / 0.55;
+              if (qc < 1) this.core.quad(Math.min(WASH_STEPS - 1, Math.floor(qc * WASH_STEPS)), px + pnx * pwc, py + pny * pwc, cx + nx * wc, cy + ny * wc, cx - nx * wc, cy - ny * wc, px - pnx * pwc, py - pny * pwc);
+            }
           }
-          const qf = age / foamLife;
-          if (qf < 1) (t.hw[i] * z > 3.2 * g ? this.washL : this.washS).seg(Math.min(STEPS - 1, Math.floor(qf * STEPS)), px, py, cx, cy);
         }
         px = cx;
         py = cy;
@@ -443,6 +514,10 @@ class WakeLayer implements TrailLayer {
         pay = ay;
         pbx = bx;
         pby = by;
+        pwo = wo;
+        pwc = wc;
+        pnx = nx;
+        pny = ny;
       }
     }
     // the bow waves of the ships under way, folded out from the stem along both sides (not far out)
@@ -474,11 +549,9 @@ class WakeLayer implements TrailLayer {
       }
     }
     const k = g;
-    this.washL.stroke(ctx, FX.foamDim, [0.42, 0.3, 0.18, 0.08], [3.2 * k, 4.2 * k, 5.2 * k, 6.2 * k]);
-    this.washS.stroke(ctx, FX.foamDim, [0.4, 0.28, 0.16, 0.07], [1.6 * k, 2.2 * k, 2.8 * k, 3.4 * k]);
-    this.washL.stroke(ctx, FX.foam, [0.5, 0.2, 0, 0], [1.6 * k, 1.8 * k, 1, 1]);
-    this.washS.stroke(ctx, FX.foam, [0.45, 0.16, 0, 0], [0.9 * k, 1.1 * k, 1, 1]);
-    this.arms.stroke(ctx, FX.foam, [0.42, 0.26, 0.13, 0.05], [0.9 * k, 1 * k, 1.1 * k, 1.2 * k]);
+    this.wash.fill(ctx, FX.foamDim, (i) => 0.4 * (1 - (i + 0.5) / WASH_STEPS) ** 1.3);
+    this.core.fill(ctx, FX.foam, (i) => 0.5 * (1 - (i + 0.5) / WASH_STEPS) ** 1.6);
+    this.arms.stroke(ctx, FX.foam, [0.5, 0.4, 0.3, 0.2, 0.12, 0.06], [0.9 * k, 1.1 * k, 1.3 * k, 1.5 * k, 1.8 * k, 2.1 * k], 'butt');
     this.bow.stroke(ctx, FX.foam, [0.85, 0.6, 0.35, 0.2], [1.2 * k, 1.1 * k, 1 * k, 1 * k]);
   }
 
@@ -493,7 +566,7 @@ class ContrailLayer implements TrailLayer {
   private list: TrailInst[] = [];
   private tracks = new Map<number, Track>();
   private frameNo = 0;
-  private lines = new Batch();
+  private lines = new Batch(TRAIL_STEPS);
 
   clear(): void {
     this.puffs.clear();
@@ -567,17 +640,44 @@ class ContrailLayer implements TrailLayer {
           const i = t.at(0);
           for (let e = 0; e < t.E; e++) this.lines.seg(fresh, ox + t.ex[e] * z, oy + t.ey[e] * z, ox + t.x[i * t.E + e] * z, oy + t.y[i * t.E + e] * z);
         }
+        // back along the samples: each point drifts a little downwind with its age, the trail widens and softens, breaks
+        // into pieces over its older half and fades out over its last third (no hard end)
+        let pAge = now - t.born[t.at(0)];
         for (let k = 1; k < t.n; k++) {
           const i = t.at(k);
           const j = t.at(k - 1);
           const age = now - t.born[i];
           if (age >= tl) break;
           const q = age / tl;
-          const step = Math.min(STEPS - 1, Math.floor(q * STEPS) + fresh);
-          for (let e = 0; e < t.E; e++) this.lines.seg(step, ox + t.x[j * t.E + e] * z, oy + t.y[j * t.E + e] * z, ox + t.x[i * t.E + e] * z, oy + t.y[i * t.E + e] * z);
+          const ja = pAge;
+          pAge = age;
+          if (q > 0.45 && !dashOn(t.seq[i])) continue;
+          const step = Math.min(TRAIL_STEPS - 1, Math.floor(q * TRAIL_STEPS) + fresh);
+          const wi = (age / 1000) * g;
+          const wj = (ja / 1000) * g;
+          // the trails of a plane's engines also spread apart a little as they age (not ruler-parallel lines)
+          let mxi = 0;
+          let myi = 0;
+          let mxj = 0;
+          let myj = 0;
+          for (let e = 0; e < t.E; e++) {
+            mxi += t.x[i * t.E + e] / t.E;
+            myi += t.y[i * t.E + e] / t.E;
+            mxj += t.x[j * t.E + e] / t.E;
+            myj += t.y[j * t.E + e] / t.E;
+          }
+          const si = 1 + (age / 1000) * 0.22;
+          const sj = 1 + (ja / 1000) * 0.22;
+          for (let e = 0; e < t.E; e++) {
+            const xj = mxj + (t.x[j * t.E + e] - mxj) * sj;
+            const yj = myj + (t.y[j * t.E + e] - myj) * sj;
+            const xi = mxi + (t.x[i * t.E + e] - mxi) * si;
+            const yi = myi + (t.y[i * t.E + e] - myi) * si;
+            this.lines.seg(step, ox + xj * z + wj * 0.9, oy + yj * z - wj * 0.5, ox + xi * z + wi * 0.9, oy + yi * z - wi * 0.5);
+          }
         }
       }
-      this.lines.stroke(ctx, FX.foam, [0.5, 0.34, 0.2, 0.08], [0.8 * g, 1.1 * g, 1.5 * g, 2 * g]);
+      this.lines.stroke(ctx, FX.foam, [0.5, 0.42, 0.32, 0.2, 0.1, 0.035], [0.8 * g, 1 * g, 1.3 * g, 1.6 * g, 2 * g, 2.4 * g], 'butt');
     }
     if (list.length || this.puffs.made) drawTrails(ctx, list, view.full, this.puffs, { ox: view.ox, oy: view.oy, z, g, now, viewW: view.viewW, viewH: view.viewH });
   }
