@@ -31,7 +31,7 @@ same screens, let the owner pick one, then roll the winner out fully.
 - No game rule / sim / protocol changes: look, layout and art only; every control keeps working.
 - Keep all test selectors (data-test, aria-label, role) and visible labels tests rely on; grep
   tests/ and tests/e2e before renaming; update tests in the same commit if you must change one.
-- No em dashes anywhere. No "openfront" anywhere. No new hotkeys. Commits authored by Doom956,
+- No em dashes anywhere. Never the competitor's name (the word "open" joined to "front"). No new hotkeys. Commits authored by Doom956,
   never any Co-Authored-By / Claude line. Keep the hidden owner console ("|" key) working.
 
 ## The four directions
