@@ -282,16 +282,41 @@ class Batch {
     if (typeof Path2D === 'undefined') return;
     for (let i = 0; i < this.steps; i++) this.paths.push(new Path2D());
   }
-  /** A four-cornered piece of a strip (filled, so neighbouring pieces join without round caps or overlaps). */
-  quad(step: number, ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number): void {
-    const p = this.paths[step];
-    if (!p) return;
-    p.moveTo(ax, ay);
-    p.lineTo(bx, by);
-    p.lineTo(cx, cy);
-    p.lineTo(dx, dy);
-    p.closePath();
-    this.used++;
+  // a strip being built: its left and right edge points while they stay in one fade step
+  private sl: number[] = [];
+  private sr: number[] = [];
+  private sStep = -1;
+  /**
+   * Adds the next pair of edge points of a strip (a taper along a path). Points in the same fade step become one filled
+   * polygon, so a strip is a handful of shapes with no seams between its pieces; a change of step starts a new shape
+   * sharing the last pair, so the steps join edge to edge.
+   */
+  stripPoint(step: number, lx: number, ly: number, rx: number, ry: number): void {
+    if (step !== this.sStep && this.sl.length) {
+      const [x0, y0] = [this.sl[this.sl.length - 2], this.sl[this.sl.length - 1]];
+      const [x1, y1] = [this.sr[this.sr.length - 2], this.sr[this.sr.length - 1]];
+      this.stripEnd();
+      this.sl.push(x0, y0);
+      this.sr.push(x1, y1);
+    }
+    this.sStep = step;
+    this.sl.push(lx, ly);
+    this.sr.push(rx, ry);
+  }
+  /** Ends the strip being built (fills its last shape). */
+  stripEnd(): void {
+    const p = this.paths[this.sStep];
+    const n = this.sl.length;
+    if (p && n >= 4) {
+      p.moveTo(this.sl[0], this.sl[1]);
+      for (let i = 2; i < n; i += 2) p.lineTo(this.sl[i], this.sl[i + 1]);
+      for (let i = n - 2; i >= 0; i -= 2) p.lineTo(this.sr[i], this.sr[i + 1]);
+      p.closePath();
+      this.used++;
+    }
+    this.sl.length = 0;
+    this.sr.length = 0;
+    this.sStep = -1;
   }
   fill(ctx: CanvasRenderingContext2D, color: string, alpha: (i: number) => number): void {
     if (!this.used) return;
@@ -487,7 +512,7 @@ class WakeLayer implements TrailLayer {
         // the churned water: one taper, narrow at the stern and widening behind; a brighter core near the stern
         const qf = age / foamLife;
         const hwpx = t.hw[i] * z;
-        const wo = Math.max(0.8 * g, hwpx * (0.45 + 0.85 * Math.min(1, qf)));
+        const wo = Math.max(0.8 * g, hwpx * (0.5 + 0.5 * Math.min(1, qf)));
         const wc = Math.max(0.5 * g, hwpx * 0.3 * (1 - 0.5 * Math.min(1, qf)));
         if (k > 0) {
           const j = t.at(k - 1);
@@ -495,16 +520,30 @@ class WakeLayer implements TrailLayer {
           if (cx > -60 && cy > -60 && cx < W && cy < H) {
             // the arms: short broken foam dashes, fading and widening with age, no further back than armCap
             const qa = Math.max(q / 0.65, armCap > 0 ? dist / armCap : 0);
-            if (!t.sub && qa < 1 && dashOn(t.seq[i])) {
-              const step = Math.min(ARM_STEPS - 1, Math.floor(qa * ARM_STEPS) + (sf < 0.45 ? 1 : 0));
-              this.arms.seg(step, pax, pay, ax, ay);
-              this.arms.seg(step, pbx, pby, bx, by);
+            if (!t.sub && qa < 1) {
+              // each arm broken on its own: pieces of foam of uneven strength, a little off the line
+              const sq = t.seq[i];
+              const base = Math.floor(qa * ARM_STEPS) + (sf < 0.45 ? 1 : 0);
+              for (let side = 0; side < 2; side++) {
+                const h = Math.imul((sq * 2 + side) ^ 0x2c1b3c6d, 0x297a2d39) >>> 0;
+                if ((h & 7) < 3) continue;
+                const step = Math.min(ARM_STEPS - 1, base + ((h >>> 4) % 3 === 0 ? 1 : 0));
+                const j = (((h >>> 8) & 255) / 255 - 0.5) * g;
+                // a fleck of foam: only part of the way between the two samples, starting and ending anywhere
+                const f0 = ((h >>> 16) & 255) / 640;
+                const f1 = f0 + 0.3 + ((h >>> 24) & 255) / 640;
+                const [x0, y0, x1, y1] = side === 0 ? [pax + nx * j, pay + ny * j, ax + nx * j, ay + ny * j] : [pbx - nx * j, pby - ny * j, bx - nx * j, by - ny * j];
+                this.arms.seg(step, x0 + (x1 - x0) * f0, y0 + (y1 - y0) * f0, x0 + (x1 - x0) * f1, y0 + (y1 - y0) * f1);
+              }
             }
             if (qf < 1) {
-              const st = Math.min(WASH_STEPS - 1, Math.floor(qf * WASH_STEPS));
-              this.wash.quad(st, px + pnx * pwo, py + pny * pwo, cx + nx * wo, cy + ny * wo, cx - nx * wo, cy - ny * wo, px - pnx * pwo, py - pny * pwo);
+              if (k === 1) this.wash.stripPoint(0, px + pnx * pwo, py + pny * pwo, px - pnx * pwo, py - pny * pwo);
+              this.wash.stripPoint(Math.min(WASH_STEPS - 1, Math.floor(qf * WASH_STEPS)), cx + nx * wo, cy + ny * wo, cx - nx * wo, cy - ny * wo);
               const qc = qf / 0.55;
-              if (qc < 1) this.core.quad(Math.min(WASH_STEPS - 1, Math.floor(qc * WASH_STEPS)), px + pnx * pwc, py + pny * pwc, cx + nx * wc, cy + ny * wc, cx - nx * wc, cy - ny * wc, px - pnx * pwc, py - pny * pwc);
+              if (qc < 1) {
+                if (k === 1) this.core.stripPoint(0, px + pnx * pwc, py + pny * pwc, px - pnx * pwc, py - pny * pwc);
+                this.core.stripPoint(Math.min(WASH_STEPS - 1, Math.floor(qc * WASH_STEPS)), cx + nx * wc, cy + ny * wc, cx - nx * wc, cy - ny * wc);
+              }
             }
           }
         }
@@ -519,6 +558,8 @@ class WakeLayer implements TrailLayer {
         pnx = nx;
         pny = ny;
       }
+      this.wash.stripEnd();
+      this.core.stripEnd();
     }
     // the bow waves of the ships under way, folded out from the stem along both sides (not far out)
     for (const u of view.full ? units : []) {
@@ -551,7 +592,7 @@ class WakeLayer implements TrailLayer {
     const k = g;
     this.wash.fill(ctx, FX.foamDim, (i) => 0.4 * (1 - (i + 0.5) / WASH_STEPS) ** 1.3);
     this.core.fill(ctx, FX.foam, (i) => 0.5 * (1 - (i + 0.5) / WASH_STEPS) ** 1.6);
-    this.arms.stroke(ctx, FX.foam, [0.5, 0.4, 0.3, 0.2, 0.12, 0.06], [0.9 * k, 1.1 * k, 1.3 * k, 1.5 * k, 1.8 * k, 2.1 * k], 'butt');
+    this.arms.stroke(ctx, FX.foam, [0.36, 0.29, 0.22, 0.15, 0.09, 0.04], [0.9 * k, 1.1 * k, 1.3 * k, 1.5 * k, 1.8 * k, 2.1 * k], 'butt');
     this.bow.stroke(ctx, FX.foam, [0.85, 0.6, 0.35, 0.2], [1.2 * k, 1.1 * k, 1 * k, 1 * k]);
   }
 
@@ -651,6 +692,8 @@ class ContrailLayer implements TrailLayer {
           const q = age / tl;
           const ja = pAge;
           pAge = age;
+          // over its older half the trail breaks into flecks of uneven length (never an even dashed line)
+          const hs = Math.imul(t.seq[i] ^ 0x51ed270b, 0x2c1b3c6d) >>> 0;
           if (q > 0.45 && !dashOn(t.seq[i])) continue;
           const step = Math.min(TRAIL_STEPS - 1, Math.floor(q * TRAIL_STEPS) + fresh);
           const wi = (age / 1000) * g;
@@ -666,14 +709,20 @@ class ContrailLayer implements TrailLayer {
             mxj += t.x[j * t.E + e] / t.E;
             myj += t.y[j * t.E + e] / t.E;
           }
-          const si = 1 + (age / 1000) * 0.22;
-          const sj = 1 + (ja / 1000) * 0.22;
+          const si = 1 + (age / 1000) * 0.35;
+          const sj = 1 + (ja / 1000) * 0.35;
           for (let e = 0; e < t.E; e++) {
             const xj = mxj + (t.x[j * t.E + e] - mxj) * sj;
             const yj = myj + (t.y[j * t.E + e] - myj) * sj;
             const xi = mxi + (t.x[i * t.E + e] - mxi) * si;
             const yi = myi + (t.y[i * t.E + e] - myi) * si;
-            this.lines.seg(step, ox + xj * z + wj * 0.9, oy + yj * z - wj * 0.5, ox + xi * z + wi * 0.9, oy + yi * z - wi * 0.5);
+            const ax = ox + xj * z + wj * 1.4;
+            const ay = oy + yj * z - wj * 0.7;
+            const bx = ox + xi * z + wi * 1.4;
+            const by = oy + yi * z - wi * 0.7;
+            // each engine's trail breaks on its own
+            const cut = q > 0.45 ? ((hs >>> (e * 5 + 6)) & 255) / 512 : 0;
+            this.lines.seg(step, ax + (bx - ax) * cut, ay + (by - ay) * cut, bx - (bx - ax) * cut * 0.5, by - (by - ay) * cut * 0.5);
           }
         }
       }

@@ -201,20 +201,21 @@ function burst(ctx: CanvasRenderingContext2D, b: BlastLike, age: number, main: n
     const grow = 0.75 + 0.35 * easeOut(Math.min(1, tf * 2));
     // a missile's big fireball stays hot at its heart longer: white and yellow inside, fire, a deep red rim and soot
     // at the edge, not a brown ball
-    const heat = b.kind === 'missile' ? 1 - tf * 0.6 : 1 - tf;
+    const heat = b.kind === 'missile' ? 1 - tf * 0.6 : 1 - tf * 0.7;
     const lift = R * 0.9 * tf * g;
     const balls = R > 6 ? 5 : 4;
     fireReset();
     for (let i = 0; i < balls; i++) {
       const a = rnd(seed, i + 60) * Math.PI * 2;
       const d = R * 0.45 * grow * (i === 0 ? 0 : 0.7 + 0.3 * rnd(seed, i + 70));
-      const r = R * (i === 0 ? 0.62 : 0.4 + 0.15 * rnd(seed, i + 80)) * grow * (1 - tf * 0.35);
+      // shrinking as it cools, so the last of the fire is a small glow inside the smoke, not a dull red ball
+      const r = R * (i === 0 ? 0.62 : 0.4 + 0.15 * rnd(seed, i + 80)) * grow * (1 - tf * 0.55);
       fireAdd(x + Math.cos(a) * d * g, y - lift - R * 0.25 * g + Math.sin(a) * d * 0.7 * g - i * 0.2 * R * tf * g, r, heat * (i === 0 ? 1 : 0.85), seed + i * 7);
     }
     fireDraw(ctx, g);
   } else if (t < 0.8) {
     // embers glowing at the foot of the smoke
-    fireBall(ctx, x, y - R * 0.3 * g, R * 0.35 * (1 - (t - 0.62) * 3), g, 0.25, seed + 9);
+    fireBall(ctx, x, y - R * 0.3 * g, R * 0.26 * (1 - (t - 0.62) * 3.5), g, 0.42, seed + 9);
   }
 }
 
