@@ -1,5 +1,6 @@
 // The detailed style's units on the map and in portraits (client only). Each model (models.ts) is rasterized per
-// heading (32 headings at near zoom, 16 at mid on a 1x screen), resolution, owner colour, upgrade set and, for planes,
+// heading (32 headings at near zoom, 16 at mid on a 1x screen; ships and planes twice as many, so a big hull turns
+// smoothly), resolution, owner colour, upgrade set and, for planes,
 // bank (bake.ts), never rotated as an image; each bake lands once in this style's atlas and is drawn with whole device
 // pixels per art pixel (grid.ts), so the pixels stay square and crisp. What moves is drawn from the clock and the
 // MotionParams numbers only:
@@ -139,7 +140,7 @@ function propBitmap(rp: number, th: number, roll: number, frame: number, strengt
 function propEntry(rp: number, facing: number, n: number, bank: number, frame: number, strength: number): AtlasEntry | null {
   const R = Math.max(1, Math.min(30, Math.round(rp)));
   const s = Math.max(0, Math.min(4, Math.round(strength * 4)));
-  const k = -((((((R * 64 + facing) * 2 + (n === 32 ? 1 : 0)) * 8 + bank) * 4 + frame) * 8 + s) + 1);
+  const k = -((((((R * 64 + facing) * 4 + (n >= 64 ? 3 : n >= 32 ? 2 : 1)) * 8 + bank) * 4 + frame) * 8 + s) + 1);
   const hit = atlas.peek(k);
   if (hit !== undefined) return hit;
   if (!canBake()) return null;
@@ -181,7 +182,7 @@ function drawAt(ctx: CanvasRenderingContext2D, u: UnitDraw, m: MotionParams, g: 
   const mods = u.mods & MOD_MASK[key];
   const um = unitModel(key, mods);
   const cat = unitCategoryOf(key);
-  const n = facingsFor(g.res);
+  const n = facingsFor(g.res, cat === 'ships' || cat === 'air');
   const facing = facingIndex(u.angle, n);
   const th = facing * ((Math.PI * 2) / n);
   const t = u.timeMs;
@@ -326,12 +327,21 @@ export const detailedUnits: UnitArt = {
    */
   drawPortrait(ctx: CanvasRenderingContext2D, p: PortraitDraw): boolean {
     const um = unitModel(p.key, p.mods & MOD_MASK[p.key]);
-    const fit = Math.max(modelLength(um), modelSpan(um) * FORE + 6 * LIFT);
+    const ship = unitCategoryOf(p.key) === 'ships';
+    // a ship is long and slim: turned a little toward the viewer (a 3/4 view) its deck, turrets and funnels show,
+    // fitted by what it covers that way (the box is about 0.7 as tall as it is wide)
+    const angle = ship ? p.angle - SHIP_PORTRAIT_TURN : p.angle;
+    const L = modelLength(um);
+    const B = modelSpan(um);
+    const fit = ship
+      ? Math.max(L * Math.cos(SHIP_PORTRAIT_TURN) + B * Math.sin(SHIP_PORTRAIT_TURN), ((L * Math.sin(SHIP_PORTRAIT_TURN) + B * Math.cos(SHIP_PORTRAIT_TURN)) * FORE + 6 * LIFT) / 0.7)
+      : Math.max(L, B * FORE + 6 * LIFT);
     const s = Math.max(0.5, p.boxPx / fit);
     const px = Math.max(1, Math.floor(s / 2 + 1e-6));
-    const res = Math.max(0.5, Math.floor((s / px) * 4) / 4);
+    // whole art pixels; two art pixels per model unit at most, so a portrait has the map's detail, not finer
+    const res = Math.max(0.5, Math.min(2, Math.floor((s / px) * 4) / 4));
     const g: Grid = { p: px, res, k: px, dpr: 1 };
-    const d: UnitDraw = { key: p.key, mods: p.mods, owner: p.owner, x: p.x, y: p.y, angle: p.angle, zoom: 1, scale: res * px, lod: 'near', dpr: 1, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 0, alpha: p.alpha, shadow: false };
+    const d: UnitDraw = { key: p.key, mods: p.mods, owner: p.owner, x: p.x, y: p.y, angle, zoom: 1, scale: res * px, lod: 'near', dpr: 1, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 0, alpha: p.alpha, shadow: false };
     const prev = bakeSpent;
     bakeSpent = 0;
     const ok = drawAt(ctx, d, PORTRAIT_MOTION, g);
@@ -343,12 +353,15 @@ export const detailedUnits: UnitArt = {
     const um = unitModel(key, 0);
     if (!um.guns.length) return { x, y };
     const gun = um.guns[Math.min(um.guns.length - 1, Math.max(0, index))];
-    const n = scale >= 2 ? 32 : 16;
+    const n = facingsFor(gridOf(scale, 1).res, true);
     const th = facingIndex(angle, n) * ((Math.PI * 2) / n);
     const [dx, dy] = project(gun[0], gun[1], gun[2], th, 0, scale, false);
     return { x: x + dx, y: y + dy };
   },
 };
+
+/** How far a ship's portrait is turned toward the viewer (radians), so its deck shows. */
+const SHIP_PORTRAIT_TURN = 0.35;
 
 /** Portraits stand still. */
 const PORTRAIT_MOTION: MotionParams = Object.freeze({
