@@ -1,14 +1,14 @@
-// The 'refined' art style (client only): the shaded pixel style the game shipped with, to be improved per the owner's
-// notes (less cartoonish, more detail, ships and planes easy to tell apart, wakes, banking planes with propellers,
-// less cartoonish explosions and craters). Pixel art drawn from rectangles in code: one top-left light, 4-tone
-// materials, a 1 px dark outline, whole-pixel scaling.
+// The 'refined' art style (client only): the shaded pixel style the game shipped with, reworked per the owner's notes:
+// muted military colours (palette.ts, built in OKLCH), a soft dark slate edge instead of a black ink line, every unit
+// told apart by size and silhouette, and all the motion of the presets (art/motion.ts): ships bob and rock back when
+// they fire and leave a proper V wake with a bow wave, tanks shake and kick up dust, planes bank into turns with
+// spinning propellers and a shadow that shows their height, explosions are fire, smoke, debris and dust (no drawn
+// rings) with fire and smoke that linger, fresh craters smoke. Pixel art drawn from parts in code: one top-left light,
+// 4-tone materials, whole-pixel scaling.
 //
-// Files: spriteArt.ts (the unit models), spriteBake.ts (the rasterizer), sprites.ts (units on the map and in
-// portraits), troopIcons.ts, trails.ts (wakes and contrails), explosions.ts, craters.ts, cannon.ts, paradrop.ts (paratroopers), fxCommon.ts.
-//
-// TODO(refined) motion presets (art/motion.ts): durations and lengths already scale (blastTime, craterLife,
-// flashTime, shellArc, wakeLength, wakeSpread, contrailLife, missileTrailLife); the idle motion is not drawn yet
-// (bob, banking, propellers, tread dust, turret sway, smoke linger, lingering fire, crater smoke, recoil).
+// Files: palette.ts (colours), spriteArt.ts (the unit models), spriteBake.ts (the rasterizer), sprites.ts (units on
+// the map and in portraits, their motion), recoil.ts (a ship's guns rocking it), troopIcons.ts, trails.ts (wakes and
+// contrails), explosions.ts, craters.ts, cannon.ts, paradrop.ts (paratroopers), fxCommon.ts (effect painters).
 import type { StyleModule } from '../types';
 import { refinedCannon } from './cannon';
 import { refinedCraters } from './craters';

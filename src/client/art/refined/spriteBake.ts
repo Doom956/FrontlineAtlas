@@ -1,20 +1,25 @@
 // The refined style's unit sprite rasterizer (client only). A unit is a small model: parts with a footprint (box,
-// ellipse, polygon or thick segment) in model units (1 unit = 1 art pixel at full size; nose at +u, starboard at +v), a base height and a
-// height. A model is rasterized per facing (16 headings) and size, never rotated as an image, so the pixels stay
-// square and crisp at every heading and the light stays where it belongs:
+// ellipse, polygon or thick segment) in model units (1 unit = 1 art pixel at full size; nose at +u, starboard at +v), a
+// base height and a height. A model is rasterized per facing (16 headings), size and bank, never rotated as an image, so
+// the pixels stay square and crisp at every heading and the light stays where it belongs:
 //   - one view for every unit: a slight 3/4 top-down angle (the ground is foreshortened by FORE, height lifts a part
 //     up by LIFT per unit), so the top of each part and a hint of its near (south) side show;
 //   - one light for every unit: from the top left. Tops get a light rim on their upper and left edges (flat parts) or
 //     a 4-tone curve (domes and cylinders: turrets, fuselages, barrels); sides are dark with a deep bottom row; a raised
 //     part casts a 1 px shadow down and right onto what is under it;
-//   - a 1 px near-black outline around the whole sprite (translucent water parts and flames get none);
+//   - a soft 1 px edge round the silhouette only: dark slate (not black) on the shadow side, the deep tone of the part it
+//     borders on the lit side (selective outline), so a unit reads on any ground without a cartoon ink line;
+//   - planes bank: a roll about the fuselage tilts the whole model (one wing dips and its paint turns toward or away
+//     from the light), baked in a few steps per side (sprites.ts picks the step from the turn rate);
 //   - missiles are drawn flat from straight above (Model.flat), so a slender body stays slender at every heading;
-//   - an owner plate (Shade 'plate') is a flat 2-tone slab: the owner colour with a darker lower and right rim.
-// Each material is a 4-tone ramp (deep, dark, base, light) holding one hue; the owner's colour is one more material
-// ('own') used only for small bands and plates, so the metal keeps its own tones.
+//   - an owner plate (Shade 'plate') is a flat 2-tone slab in the toned-down owner colour ('ownDim').
+// Materials are muted 4-tone ramps (palette.ts); the owner's colour is one more material ('own') used only for small
+// marks, so the metal keeps its own tones. Propellers are not part of a model: a model lists its propeller hubs
+// (Model.props) and sprites.ts draws spinning blur discs there.
 // The result is a plain RGBA buffer (no canvas): sprites.ts copies it into an atlas page once and draws it with
 // whole-number scaling. Pure and deterministic for the same input, so tests can check the art without a browser.
-import { hex, lerpRGB, ownerRamp, type RGB } from '../shared/colour';
+import { ownerRamp, type RGB } from '../shared/colour';
+import { EDGE, HELMET, ownerDim, PAINT, RAMPS, type BaseMat } from './palette';
 
 export { ownerRamp };
 
@@ -24,52 +29,17 @@ export const FORE = 0.84;
 export const LIFT = 0.55;
 /** Headings a model is baked at. */
 export const FACINGS = 16;
+/** The edge colour on the shadow side of every sprite (dark slate, not black). */
+export const OUTLINE: RGB = EDGE;
 
-/** A 4-tone ramp: deep, dark, base, light (hex). */
-type Ramp = readonly [string, string, string, string];
+/** Material ramps (deep, dark, base, light). */
+export const MATERIALS = RAMPS;
 
-/**
- * Materials. Painted steel and aluminium stay cool and light so units read on the bright map; olive and tan for the
- * tanks; dark steel for submarines; bright signal colours only on small parts (nose cones, hazard bands, flames).
- */
-export const MATERIALS = {
-  hull: ['#262d34', '#48525a', '#7a858c', '#a9b3b7'],
-  deck: ['#2b3136', '#3f464b', '#575f64', '#737b7f'],
-  turret: ['#394249', '#68737a', '#a2acb0', '#d4dadb'],
-  sup: ['#475055', '#7a858a', '#bcc4c4', '#eaeeea'],
-  gun: ['#101418', '#232930', '#3b434c', '#646e78'],
-  tread: ['#0f1215', '#20252b', '#343b42', '#545c64'],
-  olive: ['#272c1c', '#465030', '#6c7848', '#9aa76a'],
-  sand: ['#46371f', '#77613d', '#a58c5b', '#d2bc86'],
-  steel: ['#1f2522', '#3a4540', '#5c6b63', '#8a9a8f'],
-  camo: ['#1c2619', '#30412a', '#4b6240', '#769163'],
-  plane: ['#36404b', '#5a6774', '#8f9daa', '#c4d0d8'],
-  metal: ['#4a4f55', '#7c838a', '#b2b9bf', '#e2e7ea'],
-  night: ['#0b0e11', '#181d22', '#282f36', '#424b55'],
-  sub: ['#1b2228', '#2e3a42', '#44535c', '#6b7d88'],
-  tarmac: ['#1f2327', '#30353a', '#43494f', '#5f666d'],
-  rust: ['#37170f', '#5a281c', '#82402b', '#ad6448'],
-  glass: ['#1c4560', '#2c6a90', '#5ea7d4', '#c2e8fb'],
-  white: ['#646b71', '#9fa6ab', '#dde1e1', '#ffffff'],
-  red: ['#561510', '#8a261b', '#c6412d', '#ef7b5e'],
-  gold: ['#5a410d', '#967018', '#d4a82d', '#f7de7c'],
-  yellow: ['#665007', '#a3800f', '#e5bd1d', '#fbe77c'],
-  black: ['#06080a', '#101317', '#1d2228', '#363e46'],
-  teal: ['#123a3a', '#1f5c5a', '#2f8580', '#5fb6ab'],
-  mustard: ['#4f3a0c', '#7f5f16', '#b38a26', '#dcb85a'],
-  navy: ['#121c33', '#203056', '#36508a', '#6585c0'],
-  foam: ['#8fa7b8', '#b9cbd6', '#e3edf2', '#ffffff'],
-  sea: ['#24384a', '#24384a', '#2f4a60', '#3d5c74'],
-  flame: ['#b5341a', '#e8661f', '#ffb02f', '#fff2ab'],
-  skin: ['#5a3a26', '#8c5d3f', '#c08a62', '#e8b98f'],
-} as const satisfies Record<string, Ramp>;
-
-export type MatId = keyof typeof MATERIALS | 'own';
-export const OUTLINE: RGB = [17, 21, 27];
+export type MatId = BaseMat | 'own' | 'ownDim';
 
 /** 'plate': a flat 2-tone slab (the owner plate under a vehicle): base colour with a darker lower and right rim. */
 export type Shade = 'flat' | 'dome' | 'cyl' | 'plate';
-export type Pattern = 'tread' | 'grille' | 'deckline' | 'planks' | 'helmets' | 'rivets';
+export type Pattern = 'tread' | 'grille' | 'deckline' | 'planks' | 'helmets' | 'rivets' | 'hatch' | 'wheels' | 'tubes';
 
 /**
  * One part of a model. Footprints in model units: box [u0, v0, u1, v1], ell [u, v, ru, rv], poly [u, v, u, v, ...],
@@ -85,6 +55,12 @@ export interface Part {
   pat?: Pattern;
   /** translucent part (water around a submarine): drawn with this alpha, no outline */
   a?: number;
+  /**
+   * with `a`: water washing over what is under it (a submarine's decks awash): the pixels below keep their shape but take
+   * this material's colour by `a`, and lose their edge (a submerged part has no outline); where nothing is under it, it
+   * is drawn translucent like any `a` part
+   */
+  wash?: boolean;
   /** glowing part (flames): full colour, no outline around it */
   glow?: boolean;
   /** a recessed decal (a deck inside its bulwark, an open hold): its upper and left edges are in shadow */
@@ -96,12 +72,22 @@ export interface Part {
   clipPoly?: readonly number[];
 }
 
+/** A propeller hub: where sprites.ts draws a spinning disc (model units; r = blade length). */
+export interface Prop {
+  u: number;
+  v: number;
+  z: number;
+  r: number;
+}
+
 export interface Model {
   parts: readonly Part[];
   /** flies: drawn with a ground shadow */
   air?: boolean;
   /** drawn straight from above (missiles): no ground foreshortening and no height lift, so a slender body stays slender at every heading */
   flat?: boolean;
+  /** propeller hubs (planes without jets) */
+  props?: readonly Prop[];
 }
 
 export interface Baked {
@@ -114,12 +100,23 @@ export interface Baked {
   data: Uint8ClampedArray;
 }
 
-// ------------------------------------------------------------------------------------------------- colours
+// ------------------------------------------------------------------------------------------------ projection
 
-const RAMPS = new Map<string, RGB[]>();
-for (const [k, v] of Object.entries(MATERIALS)) RAMPS.set(k, (v as readonly string[]).map(hex));
-
-const lerp = lerpRGB;
+/**
+ * The screen offset (art px from the model origin) of a model point (u, v, height z) at `res` art px per model unit,
+ * heading `facing` and bank `roll` (radians, positive = starboard wing down): the same projection the rasterizer
+ * uses, for parts drawn over a sprite (propellers, muzzles).
+ */
+export function projector(res: number, facing: number, roll = 0, flat = false): (u: number, v: number, z: number) => [number, number] {
+  const th = (((facing % FACINGS) + FACINGS) % FACINGS) * ((Math.PI * 2) / FACINGS);
+  const cos = Math.cos(th);
+  const sin = Math.sin(th);
+  const fy = flat ? res : res * FORE;
+  const lift = flat ? 0 : res * LIFT;
+  const cr = Math.cos(roll);
+  const sr = Math.sin(roll);
+  return (u, v, z) => [(u * cos - v * cr * sin) * res, u * sin * fy + v * (cr * cos * fy + sr * lift) - z * lift];
+}
 
 // ------------------------------------------------------------------------------------------------ geometry
 
@@ -217,10 +214,8 @@ function curveTone(nx: number, ny: number, nz: number): number {
 // --------------------------------------------------------------------------------------------- rasterizer
 
 /** Special tones set by patterns: deck paint and troop helmets (fixed colours, not from the part's ramp). */
-const PAINT = 4;
-const HELMET = 5;
-const PAINT_RGB: RGB = [236, 238, 232];
-const HELMET_RGB: RGB = [122, 136, 82];
+const PAINT_T = 4;
+const HELMET_T = 5;
 
 interface Prep {
   part: Part;
@@ -240,14 +235,24 @@ interface Prep {
 
 /**
  * Rasterizes a model at `res` art px per model unit, heading `facing` (0 = east, clockwise in 16 steps on screen),
- * with the owner's colour for the 'own' parts.
+ * banked by `roll` radians (planes; positive = starboard wing down), with the owner's colour for the 'own' parts.
  */
-export function rasterize(model: Model, res: number, facing: number, owner: RGB): Baked {
+export function rasterize(model: Model, res: number, facing: number, owner: RGB, roll = 0): Baked {
   const th = (((facing % FACINGS) + FACINGS) % FACINGS) * ((Math.PI * 2) / FACINGS);
   const cos = Math.cos(th);
   const sin = Math.sin(th);
   const fy = model.flat ? res : res * FORE;
   const lift = model.flat ? 0 : res * LIFT;
+  const rl = model.flat ? 0 : roll;
+  const cr = Math.cos(rl);
+  const sr = Math.sin(rl);
+  // ground (u, v) to screen (X, Y): a rotation, the 3/4 foreshortening and the bank (a dipped wing is lower, so it
+  // sits lower on screen); and back
+  const ma = cos * res;
+  const mb = -sin * cr * res;
+  const mc = sin * fy;
+  const md = cos * cr * fy + sr * lift;
+  const det = ma * md - mb * mc || 1e-9;
   // screen bounds of everything (ground footprints and lifted tops)
   let minX = Infinity;
   let minY = Infinity;
@@ -266,8 +271,8 @@ export function rasterize(model: Model, res: number, facing: number, owner: RGB)
       [u0, v1],
       [u1, v1],
     ]) {
-      const x = (u * cos - v * sin) * res;
-      const y = (u * sin + v * cos) * fy;
+      const x = ma * u + mb * v;
+      const y = mc * u + md * v;
       bx0 = Math.min(bx0, x);
       bx1 = Math.max(bx1, x);
       by0 = Math.min(by0, y);
@@ -287,9 +292,20 @@ export function rasterize(model: Model, res: number, facing: number, owner: RGB)
   const H = Math.ceil(maxY) + oy + pad + 1;
   const n = W * H;
   const pid = new Int16Array(n).fill(-1);
+  const washOf = new Int16Array(n).fill(-1);
   const tone = new Uint8Array(n);
   const mat = new Array<RGB[] | undefined>(model.parts.length);
   const own = ownerRamp(owner);
+  const dim = ownerDim(own[2]);
+  /** model coordinates of a screen pixel's ground point */
+  const toModel = (x: number, y: number): [number, number] => {
+    const X = x + 0.5 - ox;
+    const Y = y + 0.5 - oy;
+    return [(md * X - mb * Y) / det, (-mc * X + ma * Y) / det];
+  };
+  // the bank turns flat tops toward or away from the light: a tone lighter or darker
+  const tilt = rl === 0 ? 0 : -sr * sin * LX + sr * cos * LY + cr * LZ - LZ;
+  const flatShift = tilt > 0.1 ? 1 : tilt < -0.12 ? -1 : 0;
 
   // ground masks
   const preps: Prep[] = [];
@@ -303,30 +319,21 @@ export function rasterize(model: Model, res: number, facing: number, owner: RGB)
     const gh = y1 - y0 + 1;
     const g = new Uint8Array(gw * gh);
     for (let y = y0; y <= y1; y++) {
-      const Y = (y + 0.5 - oy) / fy;
       for (let x = x0; x <= x1; x++) {
-        const X = (x + 0.5 - ox) / res;
-        const u = X * cos + Y * sin;
-        const v = -X * sin + Y * cos;
+        const [u, v] = toModel(x, y);
         if (contains(part, u, v)) g[(y - y0) * gw + (x - x0)] = 1;
       }
     }
     const B = Math.round(part.z * lift);
     const T = Math.max(B, Math.round((part.z + part.h) * lift));
     preps.push({ part, x0, y0, x1, y1, g, gw, B, T, top: part.z + part.h });
-    mat[i] = part.m === 'own' ? own : RAMPS.get(part.m);
+    mat[i] = part.m === 'own' ? own : part.m === 'ownDim' ? dim : RAMPS[part.m];
   });
   const G = (pp: Prep, x: number, y: number): boolean => x >= pp.x0 && x <= pp.x1 && y >= pp.y0 && y <= pp.y1 && pp.g[(y - pp.y0) * pp.gw + (x - pp.x0)] === 1;
   const isTop = (pp: Prep, x: number, y: number): boolean => G(pp, x, y + pp.T);
   const isSide = (pp: Prep, x: number, y: number): boolean => {
     for (let t = pp.B; t < pp.T; t++) if (G(pp, x, y + t)) return true;
     return false;
-  };
-  /** model coordinates of a screen pixel's ground point */
-  const toModel = (x: number, y: number): [number, number] => {
-    const X = (x + 0.5 - ox) / res;
-    const Y = (y + 0.5 - oy) / fy;
-    return [X * cos + Y * sin, -X * sin + Y * cos];
   };
 
   for (let i = 0; i < preps.length; i++) {
@@ -341,6 +348,10 @@ export function rasterize(model: Model, res: number, facing: number, owner: RGB)
         const side = !top && isSide(pp, x, y);
         if (!top && !side) continue;
         const idx = y * W + x;
+        if (part.wash && pid[idx] >= 0) {
+          if (top) washOf[idx] = i;
+          continue;
+        }
         let t: number;
         if (top) {
           const [u, v] = toModel(x, y + pp.T);
@@ -349,15 +360,16 @@ export function rasterize(model: Model, res: number, facing: number, owner: RGB)
           } else if (sh === 'flat') {
             const rim = !isTop(pp, x, y - 1) || !isTop(pp, x - 1, y);
             t = part.h > 0 ? (rim ? 3 : 2) : rim && part.inset ? 1 : 2;
+            if (flatShift) t = Math.max(0, Math.min(3, t + flatShift));
           } else {
-            t = curved(part, sh, u, v, cos, sin);
+            t = curved(part, sh, u, v, cos, sin, cr, sr);
           }
           t = pattern(part.pat, t, u, v, true);
         } else {
           t = isSide(pp, x, y + 1) || isTop(pp, x, y + 1) ? 1 : 0;
-          if (part.pat === 'tread') {
+          if (part.pat === 'tread' || part.pat === 'wheels') {
             const [u] = toModel(x, y + pp.B);
-            t = Math.floor(u / 1.5) % 2 === 0 ? Math.max(0, t - 1) : t;
+            t = Math.floor(u / (part.pat === 'wheels' ? 2.2 : 1.5)) % 2 === 0 ? Math.max(0, t - 1) : Math.min(2, t + (part.pat === 'wheels' ? 1 : 0));
           }
         }
         pid[idx] = i;
@@ -389,34 +401,50 @@ export function rasterize(model: Model, res: number, facing: number, owner: RGB)
     if (!ramp) continue;
     const t0 = tone[idx];
     const t = t0 >= 4 ? t0 : shadowed[idx] ? Math.max(0, t0 - 1) : t0;
-    const c = t === PAINT ? PAINT_RGB : t === HELMET ? HELMET_RGB : ramp[t];
+    let c: readonly number[] = t === PAINT_T ? PAINT : t === HELMET_T ? HELMET : ramp[t];
+    const w = washOf[idx];
+    const wa = w >= 0 ? (preps[w].part.a ?? 0.5) : 0;
+    if (w >= 0) {
+      const wc = mat[w]?.[2] ?? c;
+      c = [c[0] + (wc[0] - c[0]) * wa, c[1] + (wc[1] - c[1]) * wa, c[2] + (wc[2] - c[2]) * wa];
+    }
     const o = idx * 4;
     data[o] = c[0];
     data[o + 1] = c[1];
     data[o + 2] = c[2];
     const a = part.a ?? 1;
     data[o + 3] = Math.round(a * 255);
-    if (a >= 1 && !part.glow) solid[idx] = 1;
+    if (a >= 1 && !part.glow && w < 0) solid[idx] = 1;
   }
-  // outline: empty pixels next to a solid one (4-neighbours)
+  // the edge: empty pixels next to a solid one (4-neighbours). Below or right of the unit (the shadow side) dark slate;
+  // above or left of it (the lit side) the deep tone of the part it borders
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const idx = y * W + x;
       if (data[idx * 4 + 3] === 255) continue;
-      if ((x > 0 && solid[idx - 1]) || (x < W - 1 && solid[idx + 1]) || (y > 0 && solid[idx - W]) || (y < H - 1 && solid[idx + W])) {
-        const o = idx * 4;
-        data[o] = OUTLINE[0];
-        data[o + 1] = OUTLINE[1];
-        data[o + 2] = OUTLINE[2];
-        data[o + 3] = 255;
+      const left = x > 0 && solid[idx - 1];
+      const up = y > 0 && solid[idx - W];
+      const right = x < W - 1 && solid[idx + 1];
+      const down = y < H - 1 && solid[idx + W];
+      if (!left && !up && !right && !down) continue;
+      let c: readonly number[] = OUTLINE;
+      if (!left && !up) {
+        const j = pid[right ? idx + 1 : idx + W];
+        const r = j >= 0 ? mat[j] : undefined;
+        if (r) c = r[0];
       }
+      const o = idx * 4;
+      data[o] = c[0];
+      data[o + 1] = c[1];
+      data[o + 2] = c[2];
+      data[o + 3] = 255;
     }
   }
   return { w: W, h: H, ox, oy, data };
 }
 
 /** Tone of a dome or cylinder top at model point (u, v). */
-function curved(part: Part, sh: Shade, u: number, v: number, cos: number, sin: number): number {
+function curved(part: Part, sh: Shade, u: number, v: number, cos: number, sin: number, cr: number, sr: number): number {
   const p = part.p;
   let nu = 0;
   let nv = 0;
@@ -459,7 +487,13 @@ function curved(part: Part, sh: Shade, u: number, v: number, cos: number, sin: n
     nu *= s;
     nv *= s;
   }
-  const nz = Math.sqrt(Math.max(0, 1 - nu * nu - nv * nv));
+  let nz = Math.sqrt(Math.max(0, 1 - nu * nu - nv * nv));
+  // the bank rolls the normal about the fuselage
+  if (sr !== 0) {
+    const v2 = nv * cr + nz * sr;
+    nz = -nv * sr + nz * cr;
+    nv = v2;
+  }
   // model to screen (the ground's foreshortening barely changes a normal; ignored)
   const nx = nu * cos - nv * sin;
   const ny = nu * sin + nv * cos;
@@ -472,31 +506,39 @@ function pattern(pat: Pattern | undefined, t: number, u: number, v: number, top:
   switch (pat) {
     case 'tread':
       return Math.floor(u / 1.5) % 2 === 0 ? Math.max(0, t - 1) : t;
+    case 'wheels':
+      return t;
     case 'grille':
       return Math.floor(u) % 2 === 0 ? Math.max(0, t - 1) : t;
     case 'planks':
       return Math.floor(u * 1.2) % 2 === 0 ? Math.max(0, t - 1) : t;
+    case 'tubes':
+      // torpedo tubes side by side along the mount
+      return Math.floor((v + 20) * 1.5) % 2 === 0 ? Math.max(0, t - 1) : Math.min(3, t + 1);
+    case 'hatch':
+      // hatch boards across a cargo hatch
+      return Math.floor(u * 0.8) % 2 === 0 ? Math.max(0, t - 1) : t;
     case 'rivets':
       return Math.floor(u / 2) % 2 === 0 && Math.abs(((v % 2) + 2) % 2) < 0.9 ? Math.min(3, t + 1) : t;
     case 'deckline':
       // a dashed white centre line on a flight deck
-      return Math.abs(v) < 0.5 && Math.floor(u / 2.5) % 2 === 0 ? PAINT : t;
+      return Math.abs(v) < 0.5 && Math.floor(u / 2.5) % 2 === 0 ? PAINT_T : t;
     case 'helmets':
-      // rows of troops in a landing craft's open hold
-      return (((u * 0.62) % 1) + 1) % 1 < 0.5 && (((v * 0.62) % 1) + 1) % 1 < 0.5 ? HELMET : t;
+      // rows of troops in a landing ship's well deck
+      return (((u * 0.62) % 1) + 1) % 1 < 0.5 && (((v * 0.62) % 1) + 1) % 1 < 0.5 ? HELMET_T : t;
   }
   return t;
 }
 
 /** A dark translucent silhouette of a baked sprite (ground shadow of planes and missiles), same size. */
-export function shadowOf(b: Baked, alpha = 0.26): Baked {
+export function shadowOf(b: Baked, alpha = 0.24): Baked {
   const data = new Uint8ClampedArray(b.data.length);
   const a = Math.round(alpha * 255);
   for (let i = 3; i < data.length; i += 4) {
     if (b.data[i] === 0) continue;
-    data[i - 3] = 6;
-    data[i - 2] = 9;
-    data[i - 1] = 14;
+    data[i - 3] = 10;
+    data[i - 2] = 14;
+    data[i - 1] = 18;
     data[i] = a;
   }
   return { w: b.w, h: b.h, ox: b.ox, oy: b.oy, data };
