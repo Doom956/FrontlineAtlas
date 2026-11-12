@@ -28,27 +28,27 @@ function drawMuzzle(ctx: CanvasRenderingContext2D, f: MuzzleDraw, m: MotionParam
   const t = f.t;
   const size = m.flashSize;
   const sd = f.seed * 41;
-  // gun smoke: pushed out along the line of fire, slowing, swelling and drifting up and off
-  if (t > 0.08) {
-    const k = (t - 0.08) / 0.92;
-    const n = 3;
+  // gun smoke: a big grey puff pushed out along the line of fire, slowing, swelling and drifting up and off
+  if (t > 0.06) {
+    const k = (t - 0.06) / 0.94;
+    const n = 4;
     for (let i = 0; i < n; i++) {
-      const push = (2.4 + i * 1.6) * (1 - (1 - k) ** 3) * size;
-      const px = f.x + c * push * u + (rnd(sd, i) - 0.5) * 1.2 * u + k * 1.5 * u;
-      const py = f.y + s * push * u - k * 2.2 * u;
-      const r = (1 + 0.6 * i + 1.6 * k) * g.res * 0.6 * Math.sqrt(m.muzzleSmoke) * size;
-      drawBlob(ctx, 'smoke', Math.max(1, r), i, px, py, g, 0.75 * (1 - k) * Math.min(1, m.muzzleSmoke));
+      const push = (3 + i * 2) * (1 - (1 - k) ** 3) * size;
+      const px = f.x + c * push * u + (rnd(sd, i) - 0.5) * 1.6 * u + k * 1.5 * u;
+      const py = f.y + s * push * u - k * 2.6 * u;
+      const r = (1.6 + 0.7 * i + 2.2 * k) * g.res * 0.6 * Math.sqrt(m.muzzleSmoke) * size;
+      drawBlob(ctx, k < 0.25 && i < 2 ? 'soot' : 'smoke', Math.max(1, r), i, px, py, g, 0.8 * (1 - k) * Math.min(1, m.muzzleSmoke));
     }
   }
-  // the flash: flame thrown forward in a ragged tongue, gone in a moment
-  if (t < 0.32) {
-    const k = t / 0.32;
-    const len = (4.2 + 1.6 * rnd(sd, 9)) * size * (1 - k * 0.4);
-    for (let i = 3; i >= 0; i--) {
-      const d = (i / 3) * len;
-      const side = (rnd(sd, i + 3) - 0.5) * 0.8;
-      const r = Math.max(1, (1.4 - i * 0.24) * g.res * 0.95 * size * (1 - k * 0.5));
-      drawBlob(ctx, 'fire', r, i, f.x + (c * d - s * side) * u, f.y + (s * d + c * side) * u, g, 1 - k * 0.3, Math.min(4, i * 0.8 + k * 3));
+  // the flash: a big ball of flame at the muzzle and a ragged tongue thrown forward, gone in a moment
+  if (t < 0.3) {
+    const k = t / 0.3;
+    const len = (6 + 2.4 * rnd(sd, 9)) * size * (1 - k * 0.35);
+    for (let i = 4; i >= 0; i--) {
+      const d = (i / 4) * len;
+      const side = (rnd(sd, i + 3) - 0.5) * 1.2;
+      const r = Math.max(1, (3.1 - i * 0.5) * g.res * size * (1 - k * 0.55));
+      drawBlob(ctx, 'fire', r, i, f.x + (c * d - s * side) * u, f.y + (s * d + c * side) * u, g, 1 - k * 0.3, Math.min(4, i * 0.7 + k * 3));
     }
     // two side spurts on the first moment
     if (k < 0.4) {
@@ -125,20 +125,23 @@ function drawShell(ctx: CanvasRenderingContext2D, sh: ShellDraw, m: MotionParams
   ctx.globalAlpha = prev * 0.3;
   ctx.fillStyle = '#0a0d10';
   speck(ctx, x0 + dx * t + g.k, y0 + dy * t + g.k, g, 2);
-  for (let i = 5; i >= 1; i--) {
-    const q = t - i * 0.022;
-    if (q < 0) continue;
-    const [px, py] = at(q);
-    ctx.globalAlpha = prev * (0.75 - i * 0.13);
-    ctx.fillStyle = i <= 1 ? TRACER[1] : i <= 3 ? TRACER[2] : '#8d8a84';
-    speck(ctx, px, py, g);
-  }
+  // the tracer: a short, unbroken bright streak along the arc behind the shell, hottest at its head
   const [px, py] = at(t);
+  const [qx, qy] = at(Math.max(0, t - 0.01));
+  const dl = Math.hypot(px - qx, py - qy) || 1;
+  const ux = (px - qx) / dl;
+  const uy = (py - qy) / dl;
+  const cell = g.k;
+  const len = Math.max(4, Math.round(5 * g.res * 0.6 + 2));
+  for (let j = len; j >= 0; j--) {
+    const q = j / len;
+    ctx.globalAlpha = prev * (1 - q * 0.8);
+    ctx.fillStyle = q < 0.25 ? TRACER[0] : q < 0.6 ? TRACER[1] : TRACER[2];
+    speck(ctx, px - ux * j * cell, py - uy * j * cell, g);
+  }
   ctx.globalAlpha = prev;
-  ctx.fillStyle = DEBRIS[0];
-  speck(ctx, px, py, g, 2);
   ctx.fillStyle = TRACER[0];
-  speck(ctx, px, py, g);
+  speck(ctx, px - cell * 0.5, py - cell * 0.5, g, 2);
   ctx.globalAlpha = prev;
 }
 
