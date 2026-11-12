@@ -194,14 +194,45 @@ class DetailedTrails implements TrailLayer {
         src.forEach((p, i) => {
           const du = (um.props.length ? p.u - 4 : p.u) * scaleT;
           const dv = p.v * scaleT;
-          this.emit(u.id * 8 + i, u.tx + c * du - s * dv, u.ty + s * du + c * dv, cellT * 1.5, now, (px, py, born) => {
-            P.put(px, py, 0, 0, born, life, 0.5, 1.6, 0.5, TRAIL);
+          this.emit(u.id * 8 + i, u.tx + c * du - s * dv, u.ty + s * du + c * dv, cellT, now, (px, py, born) => {
+            P.put(px, py, 0, 0, born, life, 0.6, 2.2, 0.75, TRAIL);
           });
         });
       }
     }
+    this.used.length = 0;
+    if (this.wakes && view.full) for (const u of units) if (u.moving && unitCategoryOf(u.key) === 'ships') this.bowWave(u, g, view);
     this.draw(ctx, view, g, z);
-    if (this.wakes) for (const u of units) if (u.moving && view.full && unitCategoryOf(u.key) === 'ships') bowWave(ctx, u, g, view);
+  }
+
+  /** The bow wave of a moving ship: foam curling off both sides of the bow, longer the faster it goes (batched). */
+  private bowWave(u: TrailUnit, g: Grid, view: TrailView): void {
+    const sub = u.key === 'submarine';
+    const sp = Math.max(0.2, Math.min(1.6, u.speed / 2.4));
+    const c = Math.cos(u.angle);
+    const s = Math.sin(u.angle);
+    const bx = u.x + c * u.half * 0.98;
+    const by = u.y + s * u.half * 0.98;
+    if (bx < -40 || by < -40 || bx > view.viewW + 40 || by > view.viewH + 40) return;
+    const cell = g.p / g.dpr;
+    const n = Math.round((sub ? 2 : 3 + 5 * sp) * Math.min(1.6, u.motion.wakeLength));
+    const spread = (sub ? 0.45 : 0.62) * u.motion.wakeSpread;
+    for (const sd of [1, -1]) {
+      // the arm runs back from the bow at an angle
+      const ax = -c * Math.cos(spread) + s * Math.sin(spread) * sd;
+      const ay = -s * Math.cos(spread) - c * Math.sin(spread) * sd;
+      for (let j = 0; j < n; j++) {
+        const d = (j + 0.5) * cell * 1.4;
+        const a = (sub ? 0.45 : 0.85) * (1 - j / n) * (0.55 + 0.45 * Math.min(1, sp));
+        const level = Math.max(1, Math.min(BATCH_LEVELS, Math.round(a * BATCH_LEVELS)));
+        const path = this.batch(level, j < 2 ? 0 : 1);
+        if (!path) return;
+        const X = (Math.round(((bx + ax * d) * g.dpr) / g.p) * g.p) / g.dpr;
+        const Y = (Math.round(((by + ay * d) * g.dpr) / g.p) * g.p) / g.dpr;
+        path.rect(X, Y, cell, cell);
+        if (j < n / 2 && !sub) path.rect(X - ax * cell, Y + cell, cell, cell);
+      }
+    }
   }
 
   private batch(level: number, tone: number): Path2D | null {
@@ -220,7 +251,6 @@ class DetailedTrails implements TrailLayer {
     const cell = g.p / g.dpr;
     const W = view.viewW + 40;
     const H = view.viewH + 40;
-    this.used.length = 0;
     const smoke: number[] = [];
     for (let i = 0; i < P.cap; i++) {
       const life = P.life[i];
@@ -282,38 +312,6 @@ class DetailedTrails implements TrailLayer {
       else drawBlob(ctx, 'spray', r, v, sx, sy, g, P.a0[i] * (1 - q) * (1 - q * 0.4));
     }
   }
-}
-
-/** The bow wave of a moving ship: foam curling off both sides of the bow, longer the faster it goes. */
-function bowWave(ctx: CanvasRenderingContext2D, u: TrailUnit, g: Grid, view: TrailView): void {
-  const sub = u.key === 'submarine';
-  const sp = Math.max(0.2, Math.min(1.6, u.speed / 2.4));
-  const c = Math.cos(u.angle);
-  const s = Math.sin(u.angle);
-  const bx = u.x + c * u.half * 0.98;
-  const by = u.y + s * u.half * 0.98;
-  if (bx < -40 || by < -40 || bx > view.viewW + 40 || by > view.viewH + 40) return;
-  const cell = g.p / g.dpr;
-  const n = Math.round((sub ? 2 : 3 + 5 * sp) * Math.min(1.6, u.motion.wakeLength));
-  const spread = (sub ? 0.45 : 0.62) * u.motion.wakeSpread;
-  const prev = ctx.globalAlpha;
-  for (const sd of [1, -1]) {
-    // the arm runs back from the bow at an angle, a cell further out per step
-    const ax = -c * Math.cos(spread) - s * Math.sin(spread) * -sd;
-    const ay = -s * Math.cos(spread) + c * Math.sin(spread) * -sd;
-    for (let j = 0; j < n; j++) {
-      const d = (j + 0.5) * cell * 1.4;
-      const x = bx + ax * d;
-      const y = by + ay * d;
-      ctx.globalAlpha = prev * (sub ? 0.45 : 0.85) * (1 - j / n) * (0.55 + 0.45 * Math.min(1, sp));
-      ctx.fillStyle = j < 2 ? FOAM_TONES[0] : FOAM_TONES[1];
-      const X = (Math.round((x * g.dpr) / g.p) * g.p) / g.dpr;
-      const Y = (Math.round((y * g.dpr) / g.p) * g.p) / g.dpr;
-      ctx.fillRect(X, Y, cell, cell);
-      if (j < n / 2 && !sub) ctx.fillRect(X - ax * cell, Y + cell, cell, cell);
-    }
-  }
-  ctx.globalAlpha = prev;
 }
 
 export const detailedWakes: TrailArt = { createLayer: () => new DetailedTrails(true) };

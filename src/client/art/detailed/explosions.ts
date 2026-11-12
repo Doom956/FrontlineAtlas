@@ -43,7 +43,7 @@ const SPEC: Record<BlastKind, Spec> = {
   air: { r: 3.4, fire: 300, smoke: 700, puffs: 3, debris: 5, dirt: 0, skirt: false, burn: 0 },
   missile: { r: 9, fire: 520, smoke: 1100, puffs: 8, debris: 10, dirt: 10, skirt: true, burn: 4 },
   atom: { r: 26, fire: 1700, smoke: 2600, puffs: 0, debris: 12, dirt: 0, skirt: true, burn: 0 },
-  splash: { r: 3, fire: 520, smoke: 450, puffs: 0, debris: 0, dirt: 0, skirt: false, burn: 0 },
+  splash: { r: 3.8, fire: 520, smoke: 450, puffs: 0, debris: 0, dirt: 0, skirt: false, burn: 0 },
   flak: { r: 2.4, fire: 150, smoke: 650, puffs: 2, debris: 4, dirt: 0, skirt: false, burn: 0 },
 };
 
@@ -287,12 +287,12 @@ function drawAtom(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams):
   const capY = y - R * (0.4 + 2.2 * easeOut(clamp01((age - fT * 0.1) / (fT * 1.3)))) * u;
   // the stem: smoke and dust rising from the ground to the cap
   if (q > 0.18) {
-    const n = 7;
+    const n = 11;
     for (let i = 0; i < n; i++) {
       const f = i / (n - 1);
       const py = y + (capY - y) * f * 0.92;
       const wob = Math.sin(i * 1.7 + sd) * R * 0.08;
-      drawBlob(ctx, i < 2 ? 'dust' : 'smoke', Rc * (0.34 - f * 0.1), i, x + wob * u + late * R * 0.4 * f * u, py, g, fade * clamp01((q - 0.18) * 4));
+      drawBlob(ctx, i < 3 ? 'dust' : 'smoke', Rc * (0.36 - f * 0.12), i, x + wob * u + late * R * 0.4 * f * u, py, g, fade * clamp01((q - 0.18) * 4));
     }
   }
   // the cap: a ring of billows round a big crown, drifting a little downwind as it thins

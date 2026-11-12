@@ -220,7 +220,8 @@ function drawAt(ctx: CanvasRenderingContext2D, u: UnitDraw, m: MotionParams, g: 
     const j = Math.round(m.jiggle * u.scale * dpr * 0.6) / dpr;
     if ((Math.floor(t / 47 + u.seed) & 1) === 1) y -= j;
   }
-  if (tank && moving && !still && m.treadDust > 0 && um.dust.length) drawTreadDust(ctx, u, um, m, g, th);
+  // tread dust from near zoom in (at mid zoom it would be a speck or two for the cost of several draws)
+  if (tank && moving && !still && m.treadDust > 0 && um.dust.length && u.scale >= 2) drawTreadDust(ctx, u, um, m, g, th);
   if (shadow) {
     const alt = um.alt + (still ? 0 : m.altitudeBob * 1.6 * Math.sin(t / 1300 + u.seed * 0.9));
     blit(ctx, shadow, u.x + alt * 0.62 * u.scale, u.y + alt * 0.86 * u.scale, k, dpr);
@@ -291,10 +292,10 @@ function drawTreadDust(ctx: CanvasRenderingContext2D, u: UnitDraw, um: UnitModel
   for (let i = 0; i < 3; i++) {
     const age = (t / 520 + i / 3 + u.seed * 0.37) % 1;
     for (const [du, dv] of um.dust) {
-      const back = du - age * 5;
-      const [dx, dy] = project(back, dv * (1 + age * 0.4), 0.5 + age * 1.5, th, 0, u.scale, false);
-      const r = (0.8 + age * 1.8) * g.res * 0.8;
-      drawBlob(ctx, 'dust', r, (i + Math.round(u.seed)) & 3, u.x + dx, u.y + dy, g, m.treadDust * 0.5 * (1 - age) * (1 - age));
+      const back = du - age * 7;
+      const [dx, dy] = project(back, dv * (1 + age * 0.5), 0.5 + age * 2, th, 0, u.scale, false);
+      const r = (1.1 + age * 2.6) * g.res * 0.75;
+      drawBlob(ctx, 'dust', r, (i + Math.round(u.seed)) & 3, u.x + dx, u.y + dy, g, m.treadDust * 0.75 * (1 - age) * (1 - age * 0.6));
     }
   }
 }
