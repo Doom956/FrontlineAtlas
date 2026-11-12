@@ -87,8 +87,8 @@ describe('refined art: units', () => {
   it('gives every ship its own silhouette, the transport and the trade ship included', () => {
     const ships: SpriteKey[] = ['warship', 'destroyer', 'battleship', 'submarine', 'carrier', 'transport', 'tradeShip'];
     for (let i = 0; i < ships.length; i++) for (let j = i + 1; j < ships.length; j++) expect(silhouetteDiff(bake(ships[i]), bake(ships[j])), `${ships[i]} vs ${ships[j]}`).toBeGreaterThan(0.15);
-    // the plain warship is a cruiser with two turrets, the battleship has three
-    const turrets = (k: SpriteKey): number => buildModel(k, 0).parts.filter((p) => p.m === 'turret' && p.k === 'ell' && p.h > 1).length;
+    // the plain warship is a cruiser with two turrets, the battleship has three (gunhouses: raised polygons)
+    const turrets = (k: SpriteKey): number => buildModel(k, 0).parts.filter((p) => (p.m === 'turret' || p.m === 'turretDark') && p.k === 'poly' && p.h > 1).length;
     expect(turrets('battleship')).toBeGreaterThan(turrets('warship'));
   });
 
@@ -159,6 +159,7 @@ describe('refined art: motion presets', () => {
       lineTo(): void {
         this.n++;
       }
+      closePath(): void {}
     }
     const g = globalThis as unknown as { Path2D?: unknown };
     let had: unknown;
@@ -174,7 +175,7 @@ describe('refined art: motion presets', () => {
       let strokes = 0;
       let segs = 0;
       const ctx = new Proxy({ globalAlpha: 1 } as Record<string, unknown>, {
-        get: (o, k) => (k === 'stroke' ? (p: FakePath) => ((strokes++, (segs += p?.n ?? 0))) : k in o ? o[k as string] : () => undefined),
+        get: (o, k) => (k === 'stroke' || k === 'fill' ? (p: FakePath) => ((strokes++, (segs += p?.n ?? 0))) : k in o ? o[k as string] : () => undefined),
         set: (o, k, v) => ((o[k as string] = v), true),
       }) as unknown as CanvasRenderingContext2D;
       const layer = (key === 'warship' ? refined.wakes : refined.contrails).createLayer();
