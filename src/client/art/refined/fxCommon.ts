@@ -130,9 +130,9 @@ export function fireBall(ctx: CanvasRenderingContext2D, x: number, y: number, r:
   ctx.fillStyle = body;
   blob(ctx, x, y, r * 0.9, g, seed + 1);
   // a big ball is not one flat slab: it rolls in billows, each lit on its upper left and shaded on its lower right
-  // (small ones keep the plain core, which is all a few cells can show)
-  if (r >= 2.6) {
-    const n = r >= 7 ? 4 : 3;
+  // (small ones keep the plain core: a billow under a cell across shows nothing and only costs fills)
+  if (r >= 3.5) {
+    const n = r >= 8 ? 4 : 3;
     for (let i = 0; i < n; i++) {
       const a = Math.PI * (0.55 + 1.5 * (i / n)) + (hash(seed, i + 7) - 0.5) * 0.9;
       const d = r * (0.32 + 0.22 * hash(seed, i + 17));

@@ -150,17 +150,20 @@ export const refinedCraters: CraterArt = {
         const s = img.width * g;
         ctx.drawImage(img, Math.round(c.x - s / 2), Math.round(c.y - (img.height * g) / 2), s, img.height * g);
       }
-      // a fresh crater still smokes: thin wisps rising from the pit and thinning out
+      // a fresh crater still smokes: a thin column of wisps rising from the pit close enough to merge, leaning
+      // downwind as it climbs, so it reads as one drifting column and not a stack of beads
       const fresh = 1 - c.q / 0.35;
       if (m.craterSmoke > 0 && fresh > 0) {
+        const base = Math.max(1.2, cells * 0.6);
         smokeReset();
-        for (let i = 0; i < 3; i++) {
-          const p = (((c.q * 26 + i / 3 + c.seed) % 1) + 1) % 1;
-          const rise = (1 + p * 4.5) * Math.max(1.2, cells * 0.6);
+        for (let i = 0; i < 5; i++) {
+          const p = (((c.q * 26 + i / 5 + c.seed) % 1) + 1) % 1;
+          const rise = (0.8 + p * 4.8) * base;
+          const lean = p * p * 3.2 + Math.sin(p * 5 + i) * 0.5;
           // each wisp swells as it rises and thins away at the top, so the cycle never pops
-          smokeAdd(c.x + (rnd(c.seed * 50, i) - 0.5) * cells * g + p * 2 * g, c.y - rise * g, Math.max(0.8, cells * 0.28) * (0.5 + 1.1 * Math.sin(Math.PI * p)), c.seed * 40 + i);
+          smokeAdd(c.x + (rnd(c.seed * 50, i) - 0.5) * cells * 0.6 * g + lean * g, c.y - rise * g, Math.max(0.8, cells * 0.26) * (0.5 + 1.1 * Math.sin(Math.PI * p)), c.seed * 40 + i);
         }
-        smokeDraw(ctx, g, 0.55 * m.craterSmoke * fresh * f, FX.smokeDark, FX.smoke, FX.smokeLight);
+        smokeDraw(ctx, g, 0.5 * m.craterSmoke * fresh * f, FX.smokeDark, FX.smoke, FX.smokeLight);
       }
     }
     ctx.globalAlpha = prevA;
