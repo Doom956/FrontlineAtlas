@@ -169,7 +169,9 @@ function propBitmap(r: number, res: number, facing: number, bank: number, frame:
 
 function propEntry(r: number, res: number, facing: number, bank: number, frame: number): AtlasEntry | null {
   const rq = Math.round(r * 4);
-  return atlas.get(`p|${rq}|${res}|${facing}|${bank}|${frame}`, () => propBitmap(rq / 4, RES[res] ?? 1, facing, bank, frame));
+  // negative keys: never the same as a sprite's
+  const key = -1 - ((((rq * 8 + res) * 16 + facing) * 9 + bank + BANK_LEVELS) * PROP_FRAMES + frame);
+  return atlas.get(key, () => propBitmap(rq / 4, RES[res] ?? 1, facing, bank, frame));
 }
 
 /** Draws the propeller discs of a plane whose origin is drawn at (x, y). */

@@ -10,6 +10,14 @@ export { FX };
  * A lumpy pixel blob: a disc of `r` cells of `g` px whose edge wobbles row by row (the wobble is the same for the same
  * `seed`), snapped to the grid. Fire, smoke and foam are built from these, never from perfect circles.
  */
+/** A cheap repeatable 0..1 value for (seed, i): integer hashing, no trigonometry (blobs call it for every row). */
+function hash(seed: number, i: number): number {
+  let h = Math.imul((seed * 1013) | 0, 0x27d4eb2d) ^ Math.imul(i + 0x9e37, 0x165667b1);
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+  h ^= h >>> 13;
+  return (h >>> 0) / 4294967296;
+}
+
 export function blob(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, g: number, seed: number): void {
   const x0 = Math.round(cx / g) * g;
   const y0 = Math.round(cy / g) * g;
@@ -19,11 +27,11 @@ export function blob(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: n
     return;
   }
   for (let dy = -ri; dy <= ri; dy++) {
-    const w = Math.sqrt(Math.max(0, ri * ri - dy * dy)) * (0.86 + 0.26 * rnd(seed, dy + 11)) + 0.35;
+    const w = Math.sqrt(Math.max(0, ri * ri - dy * dy)) * (0.86 + 0.26 * hash(seed, dy + 11)) + 0.35;
     const half = Math.floor(w);
     if (half < 0) continue;
     // the row slides a little left or right, so the outline is ragged, not a stamp
-    const off = ri > 2 && Math.abs(dy) < ri - 1 ? Math.round((rnd(seed, dy + 31) - 0.5) * 1.2) : 0;
+    const off = ri > 2 && Math.abs(dy) < ri - 1 ? Math.round((hash(seed, dy + 31) - 0.5) * 1.2) : 0;
     ctx.fillRect(x0 + (off - half) * g, y0 + dy * g, (half * 2 + 1) * g, g);
   }
 }
@@ -45,16 +53,15 @@ export function foamPatch(ctx: CanvasRenderingContext2D, cx: number, cy: number,
 
 // Smoke is painted as one mass: the puffs of a group are collected (smokeAdd), then drawn in layered passes (all the
 // shadow blobs, then all the body blobs, then the lit tops), so overlapping puffs merge into one cloud with a top-left
-// light instead of a stack of separately outlined beads. A group drawn see-through goes through a scratch canvas
-// first, so the overlaps do not darken.
+// light instead of a stack of separately outlined beads. A see-through group is drawn straight onto the map at its
+// alpha (no scratch canvas: a copy between canvases per group costs far more than it shows); where its puffs overlap
+// the smoke is a little denser, as real smoke is.
 const SMOKE_MAX = 48;
 const smX = new Float32Array(SMOKE_MAX);
 const smY = new Float32Array(SMOKE_MAX);
 const smR = new Float32Array(SMOKE_MAX);
 const smS = new Float32Array(SMOKE_MAX);
 let smN = 0;
-let scratch: HTMLCanvasElement | null = null;
-let scratchCtx: CanvasRenderingContext2D | null = null;
 
 /** Starts a new smoke group (drops what was collected). */
 export function smokeReset(): void {
@@ -89,48 +96,12 @@ function smokePasses(ctx: CanvasRenderingContext2D, dx: number, dy: number, g: n
 /** Draws the smoke group built with smokeAdd at `alpha` and empties it. */
 export function smokeDraw(ctx: CanvasRenderingContext2D, g: number, alpha: number, dark: string = FX.soot, mid: string = FX.smokeDark, light: string = FX.smoke): void {
   if (smN === 0) return;
-  const prev = ctx.globalAlpha;
-  if (alpha >= 0.99 || typeof document === 'undefined') {
-    ctx.globalAlpha = prev * alpha;
+  if (alpha > 0.01) {
+    const prev = ctx.globalAlpha;
+    ctx.globalAlpha = prev * Math.min(1, alpha);
     smokePasses(ctx, 0, 0, g, dark, mid, light);
-  } else {
-    // the group's box, on the cell grid so the blobs snap to the same pixels as on the map
-    let x0 = Infinity;
-    let y0 = Infinity;
-    let x1 = -Infinity;
-    let y1 = -Infinity;
-    for (let i = 0; i < smN; i++) {
-      const r = (smR[i] * 1.2 + 3) * g;
-      x0 = Math.min(x0, smX[i] - r);
-      y0 = Math.min(y0, smY[i] - r);
-      x1 = Math.max(x1, smX[i] + r);
-      y1 = Math.max(y1, smY[i] + r);
-    }
-    x0 = Math.floor(x0 / g) * g;
-    y0 = Math.floor(y0 / g) * g;
-    const w = Math.ceil(x1 - x0);
-    const h = Math.ceil(y1 - y0);
-    if (!scratch) {
-      scratch = document.createElement('canvas');
-      scratchCtx = scratch.getContext('2d');
-    }
-    const sc = scratchCtx;
-    if (!sc || w <= 0 || h <= 0 || w > 2048 || h > 2048) {
-      ctx.globalAlpha = prev * alpha;
-      smokePasses(ctx, 0, 0, g, dark, mid, light);
-    } else {
-      if (scratch.width < w || scratch.height < h) {
-        scratch.width = Math.max(scratch.width, w);
-        scratch.height = Math.max(scratch.height, h);
-      }
-      sc.clearRect(0, 0, w, h);
-      sc.globalAlpha = 1;
-      smokePasses(sc, -x0, -y0, g, dark, mid, light);
-      ctx.globalAlpha = prev * alpha;
-      ctx.drawImage(scratch, 0, 0, w, h, x0, y0, w, h);
-    }
+    ctx.globalAlpha = prev;
   }
-  ctx.globalAlpha = prev;
   smN = 0;
 }
 
