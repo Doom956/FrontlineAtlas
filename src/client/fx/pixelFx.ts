@@ -149,6 +149,9 @@ const TURRETS: Record<string, readonly (readonly [number, number])[]> = {
   ],
 };
 
+/** Below this zoom small blasts are a blink and shells and muzzle flashes are not drawn. */
+const FAR_FX_ZOOM = 2;
+
 /** Screen px per art pixel at zoom z (the unit sprites' scale, render/units.ts spriteScale). */
 export function pixelSize(z: number): number {
   return z < 11 ? 1 : z < 22 ? 2 : z < 32 ? 3 : 4;
@@ -533,6 +536,9 @@ export class PixelFx {
     const ox = cam.viewW / 2 - cam.x * z;
     const oy = cam.viewH / 2 - cam.y * z;
     const prevA = ctx.globalAlpha;
+    // far out (whole regions on screen) shells and muzzle flashes would be single-pixel noise: skipped; small blasts
+    // are a two-pixel blink (drawBlastFar), only missiles and atom bombs keep their full flipbook
+    const far = z < FAR_FX_ZOOM;
     try {
       for (const s of this.shells) {
         if (!s.live) continue;
@@ -541,7 +547,7 @@ export class PixelFx {
           s.live = false;
           continue;
         }
-        if (t < 0 || t > 1) continue;
+        if (t < 0 || t > 1 || far) continue;
         drawShell(ctx, s, t, ox, oy, z, g);
       }
       for (const f of this.flashes) {
@@ -551,7 +557,7 @@ export class PixelFx {
           f.live = false;
           continue;
         }
-        if (t < 0) continue;
+        if (t < 0 || far) continue;
         let px = ox + f.x * z;
         let py = oy + f.y * z;
         const at = f.unit >= 0 && poses ? poses.screenOf(f.unit) : null;
@@ -576,7 +582,8 @@ export class PixelFx {
         const sy = oy + b.y * z;
         const reach = (b.kind === 'atom' ? Math.max(300, b.rt * z * 1.5) : 120) + 40;
         if (sx < -reach || sy < -reach || sx > cam.viewW + reach || sy > cam.viewH + reach) continue;
-        drawBlast(ctx, b, sx, sy, t, z, g, this.reduced);
+        if (far && b.kind !== 'missile' && b.kind !== 'atom') drawBlastFar(ctx, b, sx, sy, t);
+        else drawBlast(ctx, b, sx, sy, t, z, g, this.reduced);
       }
     } catch {
       /* ignore */
@@ -741,6 +748,27 @@ function drawBlast(ctx: CanvasRenderingContext2D, b: Blast, x: number, y: number
       ctx.globalAlpha = 1;
     }
   }
+}
+
+/**
+ * A small blast far out: a two-pixel blink in the same ramp (white, yellow, orange, red, smoke grey; a splash white
+ * then foam), two fills at most, so a hundred of them across a continent cost next to nothing. Flak is not drawn.
+ */
+function drawBlastFar(ctx: CanvasRenderingContext2D, b: Blast, x: number, y: number, t: number): void {
+  if (b.kind === 'flak') return;
+  const big = b.kind === 'bomb' || b.kind === 'hit' ? 3 : 2;
+  const X = Math.round(x) - (big >> 1);
+  const Y = Math.round(y) - (big >> 1);
+  if (b.kind === 'splash') ctx.fillStyle = t < 0.4 ? FOAM : FOAM_DIM;
+  else ctx.fillStyle = t < 0.2 ? WHITE : t < 0.45 ? YELLOW : t < 0.7 ? ORANGE : t < 0.85 ? RED : SMOKE;
+  ctx.globalAlpha = t < 0.85 ? 1 : 0.7;
+  ctx.fillRect(X, Y, big, big);
+  if (t >= 0.2 && t < 0.7 && b.kind !== 'splash') {
+    // the hot core toward the light
+    ctx.fillStyle = t < 0.45 ? WHITE : YELLOW;
+    ctx.fillRect(X, Y, 1, 1);
+  }
+  ctx.globalAlpha = 1;
 }
 
 /**
