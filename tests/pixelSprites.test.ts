@@ -1,10 +1,11 @@
-// Shaded pixel unit sprites (client/render/spriteArt.ts, spriteBake.ts, pixelSprites.ts): every unit and arsenal
+// Shaded pixel unit sprites of the refined art style (client/art/refined/spriteArt.ts, spriteBake.ts) and the sprite
+// routing (client/render/pixelSprites.ts): every unit and arsenal
 // variant has its own silhouette, upgrades add visible details, and reading a player's techs never writes the state.
 import { describe, expect, it } from 'vitest';
 import { UNITS } from '../src/sim/config';
 import { UNIT_VARIANTS, type UnitType, type UnitVariant } from '../src/sim/types';
-import { buildModel, M_JET, M_MASTERY, M_NIGHT, M_PATH3, M_SPECIAL, MOD_MASK, SPRITE_KEYS, type SpriteKey } from '../src/client/render/spriteArt';
-import { FACINGS, OUTLINE, rasterize, solidCount, type Baked } from '../src/client/render/spriteBake';
+import { buildModel, M_JET, M_MASTERY, M_NIGHT, M_PATH3, M_SPECIAL, MOD_MASK, SPRITE_KEYS, type SpriteKey } from '../src/client/art/refined/spriteArt';
+import { FACINGS, OUTLINE, rasterize, solidCount, type Baked } from '../src/client/art/refined/spriteBake';
 import { drawUnitSprite, facingOf, hasSprite, modsFor, spriteKey, spriteLength } from '../src/client/render/pixelSprites';
 import { hashState } from '../src/sim/hash';
 import { makeFlatGame } from './helpers';

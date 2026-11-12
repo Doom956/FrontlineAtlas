@@ -1,5 +1,5 @@
-// The unit sprite rasterizer (client only). A unit is a small model: parts with a footprint (box, ellipse, polygon or
-// thick segment) in model units (1 unit = 1 art pixel at full size; nose at +u, starboard at +v), a base height and a
+// The refined style's unit sprite rasterizer (client only). A unit is a small model: parts with a footprint (box,
+// ellipse, polygon or thick segment) in model units (1 unit = 1 art pixel at full size; nose at +u, starboard at +v), a base height and a
 // height. A model is rasterized per facing (16 headings) and size, never rotated as an image, so the pixels stay
 // square and crisp at every heading and the light stays where it belongs:
 //   - one view for every unit: a slight 3/4 top-down angle (the ground is foreshortened by FORE, height lifts a part
@@ -12,9 +12,11 @@
 //   - an owner plate (Shade 'plate') is a flat 2-tone slab: the owner colour with a darker lower and right rim.
 // Each material is a 4-tone ramp (deep, dark, base, light) holding one hue; the owner's colour is one more material
 // ('own') used only for small bands and plates, so the metal keeps its own tones.
-// The result is a plain RGBA buffer (no canvas): pixelSprites.ts copies it into an atlas page once and draws it with
+// The result is a plain RGBA buffer (no canvas): sprites.ts copies it into an atlas page once and draws it with
 // whole-number scaling. Pure and deterministic for the same input, so tests can check the art without a browser.
-import type { RGB } from './common';
+import { hex, lerpRGB, ownerRamp, type RGB } from '../shared/colour';
+
+export { ownerRamp };
 
 /** Ground foreshortening of the 3/4 view (screen y per model y). */
 export const FORE = 0.84;
@@ -114,26 +116,10 @@ export interface Baked {
 
 // ------------------------------------------------------------------------------------------------- colours
 
-function hex(h: string): RGB {
-  const n = parseInt(h.slice(1), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
 const RAMPS = new Map<string, RGB[]>();
 for (const [k, v] of Object.entries(MATERIALS)) RAMPS.set(k, (v as readonly string[]).map(hex));
 
-const lerp = (a: RGB, b: RGB, t: number): RGB => [Math.round(a[0] + (b[0] - a[0]) * t), Math.round(a[1] + (b[1] - a[1]) * t), Math.round(a[2] + (b[2] - a[2]) * t)];
-
-/**
- * The owner's colour as a 4-tone ramp: evened toward a mid lightness first (a very dark or very pale nation colour
- * still shows as a band), then darkened and lightened along its own hue.
- */
-export function ownerRamp(c: RGB): RGB[] {
-  const l = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
-  let base = c;
-  if (l < 70) base = lerp(c, [150, 150, 150], (70 - l) / 140);
-  else if (l > 205) base = lerp(c, [120, 120, 120], (l - 205) / 160);
-  return [lerp(base, [8, 10, 14], 0.62), lerp(base, [8, 10, 14], 0.36), base, lerp(base, [255, 255, 255], 0.42)];
-}
+const lerp = lerpRGB;
 
 // ------------------------------------------------------------------------------------------------ geometry
 

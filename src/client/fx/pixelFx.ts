@@ -1,26 +1,33 @@
-// Pixel battle effects (client only): explosions, ship cannon fire, shells, flak and scorch craters, in the same
-// chunky pixel style and top-left light as the unit sprites (render/pixelSprites.ts). Read-only like the rest of fx/:
-// each frame it reads the effects the sim already records (state.effects: 'explosion', 'nuke', 'barrage', 'shot') and
-// the units it sees, and never writes to the state, so the sim, its hash and multiplayer are untouched.
+// Battle effects (client only): explosions, ship cannon fire, shells, flak and craters. Read-only like the rest of
+// fx/: each frame it reads the effects the sim already records (state.effects: 'explosion', 'nuke', 'barrage', 'shot')
+// and the units it sees, and never writes to the state, so the sim, its hash and multiplayer are untouched. This file
+// decides WHAT happens where and when (the pools, the events, the timing); HOW it looks is the current art style of
+// each category (art/registry.ts: 'explosions', 'craters', 'cannonFire'; the refined pixel art is art/refined/).
 //
-// Explosions are short pixel flipbooks with one 5-step ramp (white, yellow, orange, red, smoke grey) for every size:
-// a near-white flash, a yellow to orange fireball with a hot rim, a thin bright ring running past it, the fireball
-// darkening to red, then a grey smoke puff, with a few dark debris specks flung out. Sizes by event: a shell (barrage
-// shells, a ship's shell on land), a bomb (a stick of them over a bomber's or air strike's disc), a missile (big, with
-// a ring and a short smoke column), the atom bomb (a flash, a huge fireball, two rings and a mushroom cloud that rises
-// and fades; fx/battleFx.ts adds its wave rings and the camera shake). Reduced motion: a still burst, no flipbook.
+// Explosions by event: a shell (barrage shells, a ship's shell on land), a stick of bombs over a bomber's or air
+// strike's disc, a missile (where a rocket was going), the atom bomb (fx/battleFx.ts adds its wave rings and the camera
+// shake), a ship or fort hit, a plane shot down, a splash on water, a flak burst. Far out (below zoom 2) small blasts
+// are a shared two-pixel blink and shells and muzzle flashes are not drawn.
 //
-// Ship cannon fire: when a warship fires (a 'shot' starting at a warship), its turrets flash in a ripple (one for a
-// destroyer, two for a plain warship, three for a battleship), shells arc to the target and land as a white splash
-// on water or a small explosion and a crater on land. Submarines send a torpedo wake; carriers, SAM sites and
-// airfields send tracer bursts that end in a flak puff.
+// Ship cannon fire: when a warship fires (a 'shot' starting at a warship), the guns of its salvo flash in a ripple
+// (SALVO: two for a plain warship, two for a destroyer's one turret, three for a battleship; the ship's art style says
+// where each gun is), shells arc to the target and land as a splash on water or a small explosion and a crater on
+// land. Submarines send a torpedo; carriers, SAM sites and airfields send tracer bursts that end in a flak puff.
 //
-// Craters: every blast on land leaves a scorch mark (a dark pit, a lighter rim, debris pixels) that fades out over
-// about a minute of game time (atom bombs bigger and longer). A capped ring buffer (CRATER_CAP); drawn under units;
-// hidden far out, a plain dark spot at the middle zooms. Every pool is fixed size, nothing is allocated per effect.
+// Craters: every blast on land leaves one that fades out over about a minute of game time (atom bombs bigger and
+// longer; the motion preset's craterLife scales it). None at the coast; one reaching water is clipped to the land
+// tiles. A capped ring buffer (CRATER_CAP); drawn under units; hidden far out. Every pool is fixed size, nothing is
+// allocated per effect.
 import type { Effect, GameState, Unit, UnitVariant } from '../../sim/types';
 import type { FogView } from '../fog/fogView';
+import { artFor, motionFor } from '../art/registry';
+import { spriteKey, type SpriteKey } from '../art/shared/keys';
+import { fract, rnd } from '../art/shared/noise';
+import type { BlastDraw, BlastKind, CraterDraw, MuzzleDraw, ShellDraw } from '../art/types';
 import { fxEnabled, prefersReducedMotion } from './settings';
+
+export type { BlastKind } from '../art/types';
+export { pixelDisc, pixelRing } from '../art/shared/pixel';
 
 export const CRATER_CAP = 200;
 /** Game ticks between a blast and its crater showing (the fireball hides the moment it appears). */
@@ -28,46 +35,18 @@ const CRATER_DELAY = 1.5;
 const BLAST_CAP = 72;
 const SHELL_CAP = 48;
 const FLASH_CAP = 48;
-/** A muzzle flash: flash, fire, smoke (ms). */
-const FLASH_MS = 300;
 /** Things older than this (ticks) are history, not news (as fx/battleFx.ts). */
 const FRESH_TICKS = 15;
 const JUMP_TICKS = 30;
 
-/** The explosion ramp, light to dark. */
+/** The far blink's ramp (the same light to dark steps as the pixel explosions). */
 const WHITE = '#fffbe8';
 const YELLOW = '#ffd84a';
 const ORANGE = '#ff8a1f';
 const RED = '#d4361c';
-const EMBER = '#7a2412';
-const SMOKE_DARK = '#3d3b3a';
 const SMOKE = '#6e6b68';
-const SMOKE_LIGHT = '#a19d98';
-const DEBRIS = '#241e1a';
 const FOAM = '#eef6fa';
 const FOAM_DIM = '#b9d2df';
-
-export type BlastKind = 'shell' | 'bomb' | 'hit' | 'air' | 'missile' | 'atom' | 'splash' | 'flak';
-
-interface BlastSpec {
-  /** fireball radius in art px at pixel size 1 */
-  r: number;
-  dur: number;
-  debris: number;
-  ring: boolean;
-  /** smoke puffs at the end */
-  smoke: number;
-}
-const SPEC: Record<BlastKind, BlastSpec> = {
-  shell: { r: 5, dur: 460, debris: 3, ring: true, smoke: 2 },
-  bomb: { r: 6, dur: 560, debris: 4, ring: true, smoke: 3 },
-  hit: { r: 6, dur: 560, debris: 5, ring: true, smoke: 3 },
-  air: { r: 4, dur: 480, debris: 5, ring: false, smoke: 2 },
-  missile: { r: 10, dur: 760, debris: 7, ring: true, smoke: 4 },
-  atom: { r: 26, dur: 2800, debris: 10, ring: true, smoke: 6 },
-  splash: { r: 4, dur: 560, debris: 0, ring: true, smoke: 0 },
-  flak: { r: 3, dur: 420, debris: 2, ring: false, smoke: 2 },
-};
 
 interface Blast {
   kind: BlastKind;
@@ -77,6 +56,8 @@ interface Blast {
   /** blast radius in tiles (missiles, atom bombs: the fireball grows with it) */
   rt: number;
   t0: number;
+  /** how long it lasts (ms; the explosions style and motion preset at the start) */
+  dur: number;
   seed: number;
   live: boolean;
 }
@@ -92,19 +73,22 @@ interface Shell {
   water: boolean;
   live: boolean;
   landed: boolean;
+  seed: number;
 }
 interface Flash {
   /** the firing ship (its pose is read from the unit layer each frame); -1 = a fixed point */
   unit: number;
-  /** turret position along / across the hull, art px */
-  u: number;
-  v: number;
+  /** the ship's picture and which gun of its salvo fires (the ships style says where that gun is) */
+  key: SpriteKey;
+  gun: number;
   /** fixed point (tile) when unit is -1, and the target (tile) for the direction */
   x: number;
   y: number;
   tx: number;
   ty: number;
   t0: number;
+  /** how long the flash lasts (ms; the cannon fire style and motion preset at the start) */
+  dur: number;
   live: boolean;
 }
 export interface Crater {
@@ -134,22 +118,8 @@ export interface FxCam {
   viewH: number;
 }
 
-/** Turret centres (art px along / across the hull) of the ships that fire, by variant. */
-const TURRETS: Record<string, readonly (readonly [number, number])[]> = {
-  warship: [
-    [7.6, 0],
-    [-10.2, 0],
-  ],
-  destroyer: [
-    [7.2, 0],
-    [7.2, 0],
-  ],
-  battleship: [
-    [11.6, 0],
-    [6, 0],
-    [-12.8, 0],
-  ],
-};
+/** How many guns fire in a ship's salvo (a destroyer's one turret fires twice). */
+const SALVO: Record<string, number> = { warship: 2, destroyer: 2, battleship: 3 };
 
 /** Below this zoom small blasts are a blink and shells and muzzle flashes are not drawn. */
 const FAR_FX_ZOOM = 2;
@@ -157,14 +127,6 @@ const FAR_FX_ZOOM = 2;
 /** Screen px per art pixel at zoom z (the unit sprites' scale, render/units.ts spriteScale). */
 export function pixelSize(z: number): number {
   return z < 11 ? 1 : z < 22 ? 2 : z < 32 ? 3 : 4;
-}
-
-function fract(v: number): number {
-  return v - Math.floor(v);
-}
-/** A repeatable 0..1 value for (seed, i). */
-function rnd(seed: number, i: number): number {
-  return fract(Math.sin(seed * 91.17 + i * 12.9898) * 43758.5453);
 }
 
 export class PixelFx {
@@ -192,9 +154,9 @@ export class PixelFx {
   private wasOn = true;
 
   constructor() {
-    for (let i = 0; i < BLAST_CAP; i++) this.blasts.push({ kind: 'shell', x: 0, y: 0, rt: 0, t0: 0, seed: 0, live: false });
-    for (let i = 0; i < SHELL_CAP; i++) this.shells.push({ kind: 'cannon', x0: 0, y0: 0, x1: 0, y1: 0, t0: 0, dur: 1, water: false, live: false, landed: false });
-    for (let i = 0; i < FLASH_CAP; i++) this.flashes.push({ unit: -1, u: 0, v: 0, x: 0, y: 0, tx: 0, ty: 0, t0: 0, live: false });
+    for (let i = 0; i < BLAST_CAP; i++) this.blasts.push({ kind: 'shell', x: 0, y: 0, rt: 0, t0: 0, dur: 1, seed: 0, live: false });
+    for (let i = 0; i < SHELL_CAP; i++) this.shells.push({ kind: 'cannon', x0: 0, y0: 0, x1: 0, y1: 0, t0: 0, dur: 1, water: false, live: false, landed: false, seed: 0 });
+    for (let i = 0; i < FLASH_CAP; i++) this.flashes.push({ unit: -1, key: 'warship', gun: 0, x: 0, y: 0, tx: 0, ty: 0, t0: 0, dur: 1, live: false });
   }
 
   // ------------------------------------------------------------------------------------------- reading the game
@@ -419,15 +381,16 @@ export class PixelFx {
       this.addShell('torpedo', e.x, e.y, e.x2, e.y2, now, 400 + Math.min(900, dist * 30), true);
       return;
     }
-    const turrets = TURRETS[ship.variant ?? 'warship'] ?? TURRETS.warship;
-    turrets.forEach(([u, v], i) => {
+    const key = spriteKey('warship', ship.variant);
+    const guns = SALVO[key] ?? SALVO.warship;
+    for (let i = 0; i < guns; i++) {
       const at = now + i * 80;
-      this.addFlash(ship.id, u, v, e.x, e.y, e.x2!, e.y2!, at);
+      this.addFlash(ship.id, key, i, e.x, e.y, e.x2!, e.y2!, at);
       // each turret's shell lands a little apart
       const sx = e.x2! + (rnd(e.x2! + i, ship.id) - 0.5) * 1.6;
       const sy = e.y2! + (rnd(e.y2! - i, ship.id) - 0.5) * 1.6;
       this.addShell('cannon', e.x, e.y, sx, sy, at + 30, 260 + Math.min(700, dist * 18), water && this.isWater(state, sx, sy));
-    });
+    }
   }
 
   /** Shells that arrived: a splash on water, a small blast and a crater on land. */
@@ -451,7 +414,7 @@ export class PixelFx {
     let slot: Blast | null = null;
     let oldest: Blast | null = null;
     for (const b of this.blasts) {
-      if (!b.live || t0 - b.t0 > SPEC[b.kind].dur * 1.2) {
+      if (!b.live || t0 - b.t0 > b.dur * 1.2) {
         slot = b;
         break;
       }
@@ -464,6 +427,7 @@ export class PixelFx {
     slot.y = y;
     slot.rt = rt;
     slot.t0 = t0;
+    slot.dur = Math.max(1, artFor('explosions').durationMs(kind, motionFor('explosions')));
     slot.seed = fract(Math.sin(x * 12.9898 + y * 78.233 + t0 * 0.001) * 43758.5453);
     slot.live = true;
     this.spawned++;
@@ -481,15 +445,15 @@ export class PixelFx {
     }
     slot = slot ?? oldest;
     if (!slot) return;
-    Object.assign(slot, { kind, x0, y0, x1, y1, t0, dur, water, live: true, landed: false });
+    Object.assign(slot, { kind, x0, y0, x1, y1, t0, dur, water, live: true, landed: false, seed: fract(Math.sin(x1 * 12.9898 + y1 * 78.233 + t0 * 0.001) * 43758.5453) });
     this.spawned++;
   }
 
-  private addFlash(unit: number, u: number, v: number, x: number, y: number, tx: number, ty: number, t0: number): void {
+  private addFlash(unit: number, key: SpriteKey, gun: number, x: number, y: number, tx: number, ty: number, t0: number): void {
     let slot: Flash | null = null;
     let oldest: Flash | null = null;
     for (const f of this.flashes) {
-      if (!f.live || t0 - f.t0 > FLASH_MS + 40) {
+      if (!f.live || t0 - f.t0 > f.dur + 40) {
         slot = f;
         break;
       }
@@ -497,7 +461,8 @@ export class PixelFx {
     }
     slot = slot ?? oldest;
     if (!slot) return;
-    Object.assign(slot, { unit, u, v, x, y, tx, ty, t0, live: true });
+    const dur = Math.max(1, artFor('cannonFire').flashMs(motionFor('cannonFire')));
+    Object.assign(slot, { unit, key, gun, x, y, tx, ty, t0, dur, live: true });
   }
 
   /** A scorch crater at (x, y) tiles, radius r tiles, made at game time `born` (ticks), lasting `life` ticks. */
@@ -515,7 +480,7 @@ export class PixelFx {
   // ------------------------------------------------------------------------------------------------ drawing
 
   /** Craters, under the units (overlay canvas in CSS px). `gameTime` = tick + fraction. */
-  drawGround(ctx: CanvasRenderingContext2D, cam: FxCam, gameTime: number): void {
+  drawGround(ctx: CanvasRenderingContext2D, cam: FxCam, gameTime: number, dpr = 1): void {
     if (!this.wasOn || this.craters.length === 0) return;
     const z = cam.zoom;
     if (z < 1.5) return; // far out: nothing (a crater is a fraction of a pixel)
@@ -525,36 +490,31 @@ export class PixelFx {
     const oy = cam.viewH / 2 - cam.y * z;
     const prevA = ctx.globalAlpha;
     const prevS = ctx.imageSmoothingEnabled;
-    ctx.imageSmoothingEnabled = false;
     const map = this.state?.map ?? null;
+    const art = artFor('craters');
+    const m = motionFor('craters');
+    const d = this.craterDraw;
+    d.zoom = z;
+    d.scale = g;
+    d.dpr = dpr;
     for (const c of this.craters) {
       const age = gameTime - c.born;
-      if (age < 0 || age > c.life) continue;
+      const life = c.life * m.craterLife;
+      if (age < 0 || age > life) continue;
       const R = c.r * z;
       const sx = ox + c.x * z;
       const sy = oy + c.y * z;
-      if (sx < -R - 8 || sy < -R - 8 || sx > cam.viewW + R + 8 || sy > cam.viewH + R + 8) continue;
-      // full for the first 60 % of its life, then fading out
-      const f = age < c.life * 0.6 ? 1 : 1 - (age - c.life * 0.6) / (c.life * 0.4);
-      if (f <= 0.02) continue;
+      const reach = R * 1.8 + 8;
+      if (sx < -reach || sy < -reach || sx > cam.viewW + reach || sy > cam.viewH + reach) continue;
       // at the coast: clipped to the land tiles, so no scorch lies on the water
       const clip = c.coast && map ? clipToLand(ctx, map.terrain, map.width, map.height, c, ox, oy, z) : false;
       if (c.coast && map && !clip) continue;
-      if (z < 3) {
-        // middle zooms: a plain dark spot
-        ctx.globalAlpha = prevA * 0.45 * f;
-        ctx.fillStyle = '#211b17';
-        const r = Math.max(1, Math.round(R));
-        ctx.fillRect(Math.round(sx - r), Math.round(sy - r * 0.8), r * 2, Math.max(1, Math.round(r * 1.6)));
-      } else {
-        const cells = Math.max(2, Math.min(40, Math.round(R / g)));
-        const img = craterSprite(cells, Math.floor(c.seed * 4));
-        if (img) {
-          ctx.globalAlpha = prevA * f;
-          const s = img.width * g;
-          ctx.drawImage(img, Math.round(sx - s / 2), Math.round(sy - (img.height * g) / 2), s, img.height * g);
-        }
-      }
+      d.x = sx;
+      d.y = sy;
+      d.radiusPx = R;
+      d.q = age / life;
+      d.seed = c.seed;
+      art.draw(ctx, d, m);
       if (clip) ctx.restore();
     }
     ctx.globalAlpha = prevA;
@@ -562,8 +522,13 @@ export class PixelFx {
     this.ms += performance.now() - t0;
   }
 
+  private craterDraw: CraterDraw = { x: 0, y: 0, radiusPx: 0, q: 0, zoom: 1, scale: 1, seed: 0, dpr: 1 };
+  private blastDraw: BlastDraw = { kind: 'shell', x: 0, y: 0, t: 0, ageMs: 0, durMs: 1, zoom: 1, scale: 1, rt: 0, seed: 0, reduced: false, dpr: 1 };
+  private muzzleDraw: MuzzleDraw = { x: 0, y: 0, aim: 0, t: 0, zoom: 1, scale: 1, seed: 0, dpr: 1 };
+  private shellDraw: ShellDraw = { kind: 'cannon', x0: 0, y0: 0, x1: 0, y1: 0, t: 0, zoom: 1, scale: 1, seed: 0, dpr: 1 };
+
   /** Shells, tracers, turret flashes and explosions, over the units. */
-  drawAir(ctx: CanvasRenderingContext2D, cam: FxCam, now: number, poses: UnitPoses | null): void {
+  drawAir(ctx: CanvasRenderingContext2D, cam: FxCam, now: number, poses: UnitPoses | null, dpr = 1): void {
     if (!this.wasOn) return;
     const t0 = performance.now();
     const z = cam.zoom;
@@ -575,6 +540,12 @@ export class PixelFx {
     // are a two-pixel blink (drawBlastFar), only missiles and atom bombs keep their full flipbook
     const far = z < FAR_FX_ZOOM;
     try {
+      const cannon = artFor('cannonFire');
+      const cm = motionFor('cannonFire');
+      const sd = this.shellDraw;
+      sd.zoom = z;
+      sd.scale = g;
+      sd.dpr = dpr;
       for (const s of this.shells) {
         if (!s.live) continue;
         const t = (now - s.t0) / s.dur;
@@ -583,11 +554,23 @@ export class PixelFx {
           continue;
         }
         if (t < 0 || t > 1 || far) continue;
-        drawShell(ctx, s, t, ox, oy, z, g);
+        sd.kind = s.kind;
+        sd.x0 = ox + s.x0 * z;
+        sd.y0 = oy + s.y0 * z;
+        sd.x1 = ox + s.x1 * z;
+        sd.y1 = oy + s.y1 * z;
+        sd.t = t;
+        sd.seed = s.seed;
+        cannon.drawShell(ctx, sd, cm);
       }
+      const ships = artFor('ships');
+      const md = this.muzzleDraw;
+      md.zoom = z;
+      md.scale = g;
+      md.dpr = dpr;
       for (const f of this.flashes) {
         if (!f.live) continue;
-        const t = (now - f.t0) / FLASH_MS;
+        const t = (now - f.t0) / f.dur;
         if (t > 1) {
           f.live = false;
           continue;
@@ -598,16 +581,27 @@ export class PixelFx {
         const at = f.unit >= 0 && poses ? poses.screenOf(f.unit) : null;
         const h = f.unit >= 0 && poses ? poses.headingOf(f.unit) : null;
         if (at && h !== null) {
-          px = at.x + (Math.cos(h) * f.u - Math.sin(h) * f.v) * g;
-          py = at.y + (Math.sin(h) * f.u + Math.cos(h) * f.v) * g * 0.84 - 2 * g;
+          const p = ships.turretPoint(f.key, 0, f.gun, at.x, at.y, h, g);
+          px = p.x;
+          py = p.y;
         }
-        const aim = Math.atan2(oy + f.ty * z - py, ox + f.tx * z - px);
-        drawMuzzle(ctx, px, py, aim, t, g);
+        md.x = px;
+        md.y = py;
+        md.aim = Math.atan2(oy + f.ty * z - py, ox + f.tx * z - px);
+        md.t = t;
+        md.seed = (f.unit * 7 + f.gun) % 97 / 97;
+        cannon.drawMuzzle(ctx, md, cm);
       }
+      const blasts = artFor('explosions');
+      const bm = motionFor('explosions');
+      const bd = this.blastDraw;
+      bd.zoom = z;
+      bd.scale = g;
+      bd.dpr = dpr;
+      bd.reduced = this.reduced;
       for (const b of this.blasts) {
         if (!b.live) continue;
-        const spec = SPEC[b.kind];
-        const t = (now - b.t0) / spec.dur;
+        const t = (now - b.t0) / b.dur;
         if (t > 1) {
           b.live = false;
           continue;
@@ -618,7 +612,17 @@ export class PixelFx {
         const reach = (b.kind === 'atom' ? Math.max(300, b.rt * z * 1.5) : 120) + 40;
         if (sx < -reach || sy < -reach || sx > cam.viewW + reach || sy > cam.viewH + reach) continue;
         if (far && b.kind !== 'missile' && b.kind !== 'atom') drawBlastFar(ctx, b, sx, sy, t);
-        else drawBlast(ctx, b, sx, sy, t, z, g, this.reduced);
+        else {
+          bd.kind = b.kind;
+          bd.x = sx;
+          bd.y = sy;
+          bd.t = t;
+          bd.ageMs = now - b.t0;
+          bd.durMs = b.dur;
+          bd.rt = b.rt;
+          bd.seed = b.seed;
+          blasts.draw(ctx, bd, bm);
+        }
       }
     } catch {
       /* ignore */
@@ -630,246 +634,6 @@ export class PixelFx {
   /** Live counts (tests, stats). */
   liveCounts(): { blasts: number; shells: number; flashes: number; craters: number } {
     return { blasts: this.blasts.filter((b) => b.live).length, shells: this.shells.filter((s) => s.live).length, flashes: this.flashes.filter((f) => f.live).length, craters: this.craters.length };
-  }
-}
-
-// ================================================================================================ pixel helpers
-
-/** A filled pixel disc of `r` cells of `g` px centred on (cx, cy) (snapped to the grid). */
-export function pixelDisc(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, g: number): void {
-  const x0 = Math.round(cx / g) * g;
-  const y0 = Math.round(cy / g) * g;
-  const ri = Math.max(0, Math.round(r));
-  if (ri === 0) {
-    ctx.fillRect(x0, y0, g, g);
-    return;
-  }
-  for (let dy = -ri; dy <= ri; dy++) {
-    const half = Math.floor(Math.sqrt(ri * ri - dy * dy) + 0.35);
-    ctx.fillRect(x0 - half * g, y0 + dy * g, (half * 2 + 1) * g, g);
-  }
-}
-
-/** A ring broken into dots: one cell in every `every` (a shockwave thinning out as it grows). */
-function sparseRing(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, g: number, every: number): void {
-  const x0 = Math.round(cx / g) * g;
-  const y0 = Math.round(cy / g) * g;
-  const ri = Math.max(1, Math.round(r));
-  const n = Math.max(8, Math.round(ri * 6.3));
-  for (let i = 0; i < n; i += every) {
-    const a = (i / n) * Math.PI * 2;
-    ctx.fillRect(x0 + Math.round(Math.cos(a) * ri) * g, y0 + Math.round(Math.sin(a) * ri) * g, g, g);
-  }
-}
-
-/** A 1-cell pixel ring of radius `r` cells (`dash`: every other cell, a ring breaking up as it fades). */
-export function pixelRing(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, g: number, dash = false): void {
-  const x0 = Math.round(cx / g) * g;
-  const y0 = Math.round(cy / g) * g;
-  const ri = Math.max(1, Math.round(r));
-  const n = Math.max(8, Math.round(ri * 6.3));
-  for (let i = 0; i < n; i++) {
-    if (dash && i % 2) continue;
-    const a = (i / n) * Math.PI * 2;
-    ctx.fillRect(x0 + Math.round(Math.cos(a) * ri) * g, y0 + Math.round(Math.sin(a) * ri) * g, g, g);
-  }
-}
-
-// Smoke is painted as one mass: the puffs of a group are collected (smokeAdd), then drawn in layered passes (all the
-// dark discs, then all the mid discs, then all the light highlights), so overlapping puffs merge into one outlined
-// cloud with a top-left light instead of a stack of separately outlined beads. A group drawn see-through goes through
-// a scratch canvas first, so the overlaps do not darken.
-const SMOKE_MAX = 40;
-const smX = new Float32Array(SMOKE_MAX);
-const smY = new Float32Array(SMOKE_MAX);
-const smR = new Float32Array(SMOKE_MAX);
-let smN = 0;
-let scratch: HTMLCanvasElement | null = null;
-let scratchCtx: CanvasRenderingContext2D | null = null;
-
-/** Adds a puff (centre in px, radius in cells) to the smoke group being built. */
-function smokeAdd(x: number, y: number, r: number): void {
-  if (smN < SMOKE_MAX) {
-    smX[smN] = x;
-    smY[smN] = y;
-    smR[smN] = r;
-    smN++;
-  }
-}
-
-function smokePasses(ctx: CanvasRenderingContext2D, dx: number, dy: number, g: number, dark: string, mid: string, light: string): void {
-  ctx.fillStyle = dark;
-  for (let i = 0; i < smN; i++) pixelDisc(ctx, smX[i] + dx + g * 0.5, smY[i] + dy + g * 0.5, smR[i], g);
-  ctx.fillStyle = mid;
-  for (let i = 0; i < smN; i++) pixelDisc(ctx, smX[i] + dx, smY[i] + dy, smR[i] - 0.6, g);
-  ctx.fillStyle = light;
-  for (let i = 0; i < smN; i++) if (smR[i] >= 2) pixelDisc(ctx, smX[i] + dx - smR[i] * 0.3 * g, smY[i] + dy - smR[i] * 0.3 * g, smR[i] * 0.45, g);
-}
-
-/** Draws the smoke group built with smokeAdd at `alpha` and empties it. */
-function smokeDraw(ctx: CanvasRenderingContext2D, g: number, alpha: number, dark = SMOKE_DARK, mid = SMOKE, light = SMOKE_LIGHT): void {
-  if (smN === 0) return;
-  const prev = ctx.globalAlpha;
-  if (alpha >= 0.99 || typeof document === 'undefined') {
-    ctx.globalAlpha = prev * alpha;
-    smokePasses(ctx, 0, 0, g, dark, mid, light);
-  } else {
-    // the group's box, on the cell grid so the discs snap to the same pixels as on the map
-    let x0 = Infinity;
-    let y0 = Infinity;
-    let x1 = -Infinity;
-    let y1 = -Infinity;
-    for (let i = 0; i < smN; i++) {
-      const r = (smR[i] + 2) * g;
-      x0 = Math.min(x0, smX[i] - r);
-      y0 = Math.min(y0, smY[i] - r);
-      x1 = Math.max(x1, smX[i] + r);
-      y1 = Math.max(y1, smY[i] + r);
-    }
-    x0 = Math.floor(x0 / g) * g;
-    y0 = Math.floor(y0 / g) * g;
-    const w = Math.ceil(x1 - x0);
-    const h = Math.ceil(y1 - y0);
-    if (!scratch) {
-      scratch = document.createElement('canvas');
-      scratchCtx = scratch.getContext('2d');
-    }
-    const sc = scratchCtx;
-    if (!sc || w <= 0 || h <= 0 || w > 2048 || h > 2048) {
-      ctx.globalAlpha = prev * alpha;
-      smokePasses(ctx, 0, 0, g, dark, mid, light);
-    } else {
-      if (scratch.width < w || scratch.height < h) {
-        scratch.width = Math.max(scratch.width, w);
-        scratch.height = Math.max(scratch.height, h);
-      }
-      sc.clearRect(0, 0, w, h);
-      sc.globalAlpha = 1;
-      smokePasses(sc, -x0, -y0, g, dark, mid, light);
-      ctx.globalAlpha = prev * alpha;
-      ctx.drawImage(scratch, 0, 0, w, h, x0, y0, w, h);
-    }
-  }
-  ctx.globalAlpha = prev;
-  smN = 0;
-}
-
-/** One shaded puff on its own (a group of one). */
-function puff(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, g: number, alpha = 1, dark = SMOKE_DARK, mid = SMOKE, light = SMOKE_LIGHT): void {
-  smN = 0;
-  smokeAdd(x, y, r);
-  smokeDraw(ctx, g, alpha, dark, mid, light);
-}
-
-/**
- * One explosion frame. Time `t` 0..1 is cut into a flipbook (6 frames; the atom bomb 14), so the motion steps like
- * pixel art. Sizes are in cells of `g` px (the sprites' pixel size); missiles and atom bombs also grow with the blast.
- */
-function drawBlast(ctx: CanvasRenderingContext2D, b: Blast, x: number, y: number, t: number, z: number, g: number, reduced: boolean): void {
-  if (b.kind === 'atom') {
-    drawAtom(ctx, b, x, y, t, z, g, reduced);
-    return;
-  }
-  if (b.kind === 'splash') {
-    drawSplash(ctx, b, x, y, t, g);
-    return;
-  }
-  const spec = SPEC[b.kind];
-  let R = spec.r;
-  if (b.kind === 'missile') R = Math.max(R, Math.min(26, (b.rt * z * 0.34) / g));
-  else if (b.kind === 'bomb') R = Math.max(R, Math.min(12, (1.4 * z) / g));
-  // planes burst in the air: a little above their shadow
-  const yy = b.kind === 'air' ? y - 4 * g : y;
-  const frames = 6;
-  let f = Math.min(frames - 1, Math.floor(t * frames));
-  if (reduced) f = t < 0.5 ? 1 : 4;
-  const s = b.seed;
-  const cell = (k: number): number => k * g;
-  ctx.globalAlpha = 1;
-  // debris: dark specks flung out (hot on the first frames), falling a little
-  if (spec.debris && f >= 1 && f <= 4 && !reduced) {
-    const d = R * (0.5 + f * 0.35);
-    ctx.fillStyle = f <= 1 ? ORANGE : DEBRIS;
-    for (let i = 0; i < spec.debris; i++) {
-      const a = rnd(s, i) * Math.PI * 2;
-      const dd = d * (0.7 + 0.5 * rnd(s, i + 9));
-      const fall = b.kind === 'air' ? f * f * 0.8 : f * f * 0.35;
-      // specks of 2 to 3 px, shrinking as they fly
-      const sz = (b.kind === 'missile' && f <= 2 ? 3 : f >= 4 ? 1 : 2) * g;
-      ctx.fillRect(Math.round((x + Math.cos(a) * cell(dd)) / g) * g, Math.round((yy + Math.sin(a) * cell(dd) * 0.8 + cell(fall)) / g) * g, sz, sz);
-    }
-  }
-  switch (f) {
-    case 0: {
-      // the flash: a near-white core with a yellow edge and four short rays
-      ctx.fillStyle = YELLOW;
-      pixelDisc(ctx, x, yy, R * 0.6, g);
-      ctx.fillStyle = WHITE;
-      pixelDisc(ctx, x, yy, R * 0.42, g);
-      const ray = Math.round(R * 0.9);
-      ctx.fillRect(Math.round(x / g) * g - ray * g, Math.round(yy / g) * g, (ray * 2 + 1) * g, g);
-      ctx.fillRect(Math.round(x / g) * g, Math.round(yy / g) * g - ray * g, g, (ray * 2 + 1) * g);
-      break;
-    }
-    case 1:
-    case 2: {
-      // the fireball: orange with a yellow and white core toward the light, a hot yellow rim on the top left
-      const r = R * (f === 1 ? 0.85 : 1);
-      ctx.fillStyle = f === 1 ? ORANGE : RED;
-      pixelDisc(ctx, x + g, yy + g, r, g);
-      ctx.fillStyle = ORANGE;
-      pixelDisc(ctx, x, yy, r, g);
-      ctx.fillStyle = YELLOW;
-      pixelDisc(ctx, x - cell(r * 0.18), yy - cell(r * 0.2), r * 0.62, g);
-      ctx.fillStyle = WHITE;
-      pixelDisc(ctx, x - cell(r * 0.25), yy - cell(r * 0.28), r * (f === 1 ? 0.34 : 0.2), g);
-      if (spec.ring) {
-        ctx.fillStyle = f === 1 ? WHITE : '#fff1b8';
-        pixelRing(ctx, x, yy, r * (f === 1 ? 1.25 : 1.7), g, f === 2);
-      }
-      break;
-    }
-    case 3: {
-      // darkening to red, the ring breaking up far out, first smoke on top
-      ctx.fillStyle = EMBER;
-      pixelDisc(ctx, x + g, yy + g, R * 0.85, g);
-      ctx.fillStyle = RED;
-      pixelDisc(ctx, x, yy, R * 0.85, g);
-      ctx.fillStyle = ORANGE;
-      pixelDisc(ctx, x - cell(R * 0.15), yy - cell(R * 0.15), R * 0.5, g);
-      if (spec.ring) {
-        ctx.globalAlpha = 0.6;
-        ctx.fillStyle = '#fff1b8';
-        pixelRing(ctx, x, yy, R * 2.1, g, true);
-        ctx.globalAlpha = 1;
-      }
-      puff(ctx, x + cell(R * 0.3), yy - cell(R * 0.6), R * 0.45, g);
-      break;
-    }
-    default: {
-      // smoke rising and drifting as one soft mass, embers underneath, then thinning out
-      const k = f - 4;
-      ctx.globalAlpha = 1;
-      if (k === 0) {
-        ctx.fillStyle = RED;
-        pixelDisc(ctx, x, yy, R * 0.35, g);
-      }
-      smN = 0;
-      const n = Math.max(1, spec.smoke);
-      for (let i = 0; i < n; i++) {
-        const a = rnd(s, i + 20) * Math.PI * 2;
-        const d = R * (0.15 + 0.3 * rnd(s, i + 30));
-        const px = x + Math.cos(a) * cell(d) + cell(k * 1.5);
-        const py = yy + Math.sin(a) * cell(d) * 0.6 - cell(R * (0.45 + 0.3 * k));
-        smokeAdd(px, py, R * (0.42 + 0.14 * k) * (0.85 + 0.3 * rnd(s, i + 40)));
-      }
-      if (b.kind === 'missile') {
-        // a short smoke column over the impact, its puffs overlapping so it reads as one rising plume
-        for (let i = 0; i < 4; i++) smokeAdd(x + cell(k + Math.sin(i * 2.1 + s * 6) * R * 0.08), yy - cell(R * (0.9 + i * 0.36 + k * 0.4)), R * (0.36 + 0.04 * i));
-      }
-      smokeDraw(ctx, g, k === 0 ? 1 : 0.7);
-      ctx.globalAlpha = 1;
-    }
   }
 }
 
@@ -892,230 +656,6 @@ function drawBlastFar(ctx: CanvasRenderingContext2D, b: Blast, x: number, y: num
     ctx.fillRect(X, Y, 1, 1);
   }
   ctx.globalAlpha = 1;
-}
-
-/**
- * A splash on water: a white column thrown up (lit on its left, shaded on its right), spray droplets falling back
- * out of it, and a foam ring spreading on the water and breaking up. Five frames.
- */
-function drawSplash(ctx: CanvasRenderingContext2D, b: Blast, x: number, y: number, t: number, g: number): void {
-  const f = Math.min(4, Math.floor(t * 5));
-  const X = Math.round(x / g) * g;
-  const Y = Math.round(y / g) * g;
-  // the foam ring on the water first (the column stands in front of it)
-  ctx.globalAlpha = f >= 3 ? 0.55 : 0.9;
-  ctx.fillStyle = f >= 2 ? FOAM_DIM : FOAM;
-  pixelRing(ctx, x, y, 1.6 + f * 1.15, g, f >= 3);
-  if (f <= 2) {
-    // the column: 3 cells wide, rising then falling back; a wider foot
-    const hgt = [4, 7, 4][f];
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = FOAM;
-    ctx.fillRect(X - g, Y - hgt * g, g * 3, hgt * g);
-    ctx.fillRect(X - 2 * g, Y - g, g * 5, g * 2);
-    ctx.fillStyle = FOAM_DIM;
-    ctx.fillRect(X + g, Y - hgt * g + g, g, hgt * g);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(X - g, Y - hgt * g, g, g);
-    if (f === 1) {
-      // the top breaking into two droplets
-      ctx.fillStyle = FOAM;
-      ctx.fillRect(X - 2 * g, Y - (hgt + 2) * g, g, g);
-      ctx.fillRect(X + 2 * g, Y - (hgt + 1) * g, g, g);
-    }
-  }
-  if (f >= 1) {
-    // spray: droplets thrown out and falling back
-    ctx.globalAlpha = f >= 3 ? 0.6 : 1;
-    ctx.fillStyle = FOAM;
-    for (let i = 0; i < 6; i++) {
-      const a = rnd(b.seed, i) * Math.PI * 2;
-      const d = 1.5 + f * 1.1 + rnd(b.seed, i + 7);
-      const up = f === 1 ? 4 : f === 2 ? 3 : f === 3 ? 1 : 0;
-      ctx.fillRect(Math.round((x + Math.cos(a) * d * g) / g) * g, Math.round((y + Math.sin(a) * d * g * 0.6 - up * g) / g) * g, g, g);
-    }
-  }
-  ctx.globalAlpha = 1;
-}
-
-/** The atom bomb: flash, fireball, two rings, then a mushroom cloud rising on its column and fading. */
-function drawAtom(ctx: CanvasRenderingContext2D, b: Blast, x: number, y: number, t: number, z: number, g0: number, reduced: boolean): void {
-  // the blast is big on screen: coarser cells keep it chunky and cheap
-  const R = Math.max(18, Math.min(220, b.rt * z * 0.45));
-  const g = Math.max(g0, Math.round(R / 22));
-  const r = R / g;
-  const n = 14;
-  let f = Math.min(n - 1, Math.floor(t * n));
-  if (reduced) f = t < 0.3 ? 2 : 8;
-  const cell = (k: number): number => k * g;
-  if (f <= 1) {
-    ctx.globalAlpha = f === 0 ? 0.9 : 0.6;
-    ctx.fillStyle = WHITE;
-    pixelDisc(ctx, x, y, r * (f === 0 ? 1.3 : 1.6), g);
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = '#ffffff';
-    pixelDisc(ctx, x, y, r * 0.7, g);
-    return;
-  }
-  // one white shockwave ring running out and breaking into dots as it grows, and one faint follow ring
-  if (f <= 7) {
-    const rr = r * (1.1 + (f - 2) * 0.5);
-    ctx.globalAlpha = 1 - (f - 2) / 7;
-    ctx.fillStyle = WHITE;
-    if (f <= 3) pixelRing(ctx, x, y, rr, g);
-    else sparseRing(ctx, x, y, rr, g, f <= 5 ? 2 : 3);
-    if (f >= 4) {
-      ctx.globalAlpha = 0.22 * (1 - (f - 4) / 4);
-      pixelRing(ctx, x, y, rr * 0.72, g, true);
-    }
-    ctx.globalAlpha = 1;
-  }
-  // the column and the cap rise from frame 4; the fireball shrinks into the cap
-  const rise = Math.max(0, f - 3) / (n - 4);
-  const fade = f >= n - 4 ? 1 - (f - (n - 4)) / 4 : 1;
-  ctx.globalAlpha = fade;
-  if (f >= 4) {
-    const top = r * (0.6 + 1.6 * rise);
-    // the column: close, overlapping puffs (one mass, a little wavy), narrowing toward the cap
-    smN = 0;
-    for (let i = 0; i < 7; i++) {
-      const h = (i / 6) * top;
-      smokeAdd(x + cell(Math.sin(i * 1.3 + b.seed * 5) * r * 0.05), y - cell(h), r * (0.3 - i * 0.012));
-    }
-    smokeDraw(ctx, g, fade);
-    // the cap glows on its underside early on: a red and orange crescent under the cap, its top hidden by the puffs
-    const cy = y - cell(top + r * 0.3);
-    if (f <= 8) {
-      ctx.globalAlpha = fade;
-      ctx.fillStyle = f <= 6 ? RED : EMBER;
-      pixelDisc(ctx, x, cy + cell(r * 0.62), r * 0.46, g);
-      ctx.fillStyle = f <= 6 ? ORANGE : RED;
-      pixelDisc(ctx, x - cell(r * 0.05), cy + cell(r * 0.52), r * 0.36, g);
-    }
-    // the cap: a ring of puffs round a big top puff, drawn as one mass
-    for (let i = 0; i < 7; i++) {
-      const a = (i / 7) * Math.PI * 2;
-      smokeAdd(x + Math.cos(a) * cell(r * 0.6), cy + Math.sin(a) * cell(r * 0.28), r * 0.42);
-    }
-    smokeAdd(x, cy - cell(r * 0.15), r * 0.5);
-    smokeDraw(ctx, g, fade);
-    ctx.globalAlpha = fade;
-  }
-  if (f <= 7) {
-    // the fireball: lumpy orange edge, a red rim on the lower right, orange body, the hot side yellow and white
-    // toward the light; it cools to red and sinks into the column
-    const fr = r * (f <= 3 ? 1 : 1 - (f - 3) * 0.16);
-    const hot = f <= 4;
-    ctx.fillStyle = hot ? ORANGE : RED;
-    for (let i = 0; i < 9; i++) {
-      const a = (i / 9) * Math.PI * 2 + b.seed * 6;
-      pixelDisc(ctx, x + Math.cos(a) * cell(fr * 0.92), y + Math.sin(a) * cell(fr * 0.92), fr * (0.2 + 0.08 * rnd(b.seed, i)), g);
-    }
-    ctx.fillStyle = hot ? RED : EMBER;
-    pixelDisc(ctx, x + g, y + g, fr, g);
-    ctx.fillStyle = hot ? ORANGE : RED;
-    pixelDisc(ctx, x, y, fr, g);
-    ctx.fillStyle = hot ? YELLOW : ORANGE;
-    pixelDisc(ctx, x - cell(fr * 0.14), y - cell(fr * 0.16), fr * 0.7, g);
-    if (f <= 5) {
-      ctx.fillStyle = f <= 3 ? WHITE : YELLOW;
-      pixelDisc(ctx, x - cell(fr * 0.3), y - cell(fr * 0.32), fr * 0.34, g);
-    }
-  }
-  ctx.globalAlpha = 1;
-}
-
-/**
- * A turret's muzzle flash, three frames: a white-hot star with a long tongue of fire toward the target, then a
- * smaller orange burst, then a grey smoke puff drifting off the muzzle.
- */
-function drawMuzzle(ctx: CanvasRenderingContext2D, x: number, y: number, aim: number, t: number, g: number): void {
-  const f = t < 0.3 ? 0 : t < 0.6 ? 1 : 2;
-  const c = Math.cos(aim);
-  const s = Math.sin(aim);
-  const at = (d: number, side = 0): [number, number] => [Math.round((x + (c * d - s * side) * g) / g) * g, Math.round((y + (s * d + c * side) * g) / g) * g];
-  if (f === 2) {
-    const k = (t - 0.6) / 0.4;
-    ctx.globalAlpha = 1;
-    puff(ctx, x + c * 3 * g + k * 2 * g, y + s * 3 * g - (1 + k * 3) * g, 1.6 + k, g, 0.8 * (1 - k), SMOKE, SMOKE_LIGHT, '#d2cec8');
-    return;
-  }
-  const len = f === 0 ? 8 : 5;
-  // the burst just out of the muzzle
-  const [bx, by] = at(f === 0 ? 3 : 2.5);
-  ctx.fillStyle = f === 0 ? YELLOW : ORANGE;
-  pixelDisc(ctx, bx, by, f === 0 ? 2.4 : 1.8, g);
-  // the tongue of fire, a cell wide, and two short side spikes on the first frame
-  ctx.fillStyle = f === 0 ? WHITE : YELLOW;
-  for (let i = 0; i <= len; i++) {
-    const [px, py] = at(i);
-    ctx.fillRect(px, py, g, g);
-  }
-  if (f === 0) {
-    for (const sd of [-2, 2]) {
-      const [px, py] = at(3, sd);
-      ctx.fillRect(px, py, g, g);
-    }
-    ctx.fillStyle = WHITE;
-    pixelDisc(ctx, bx, by, 1, g);
-  }
-}
-
-/** A shell in flight (an arc with a short tracer), a tracer burst at a plane, or a torpedo's wake. */
-function drawShell(ctx: CanvasRenderingContext2D, s: Shell, t: number, ox: number, oy: number, z: number, g: number): void {
-  const x0 = ox + s.x0 * z;
-  const y0 = oy + s.y0 * z;
-  const x1 = ox + s.x1 * z;
-  const y1 = oy + s.y1 * z;
-  const dist = Math.hypot(x1 - x0, y1 - y0);
-  if (s.kind === 'torpedo') {
-    // a white wake drawn out along the water
-    ctx.fillStyle = FOAM;
-    const n = Math.max(2, Math.floor((dist * t) / (2 * g)));
-    for (let i = 0; i < n; i++) {
-      const q = (i / Math.max(1, dist / (2 * g))) * 1;
-      const px = x0 + (x1 - x0) * Math.min(t, q);
-      const py = y0 + (y1 - y0) * Math.min(t, q);
-      ctx.globalAlpha = 0.25 + 0.6 * (i / n);
-      ctx.fillRect(Math.round(px / g) * g, Math.round(py / g) * g, g, g);
-    }
-    ctx.globalAlpha = 1;
-    return;
-  }
-  if (s.kind === 'tracer') {
-    // three bright dashes racing to the plane
-    ctx.fillStyle = '#ffe58a';
-    for (let i = 0; i < 3; i++) {
-      const q = t - i * 0.12;
-      if (q < 0 || q > 1) continue;
-      const px = x0 + (x1 - x0) * q;
-      const py = y0 + (y1 - y0) * q;
-      ctx.fillRect(Math.round(px / g) * g, Math.round(py / g) * g, g * 2, g);
-    }
-    return;
-  }
-  // a cannon shell: lobbed in an arc (up on screen), a hot core with a fading tracer behind it
-  const H = Math.min(60, dist * 0.22);
-  const at = (q: number): [number, number] => [x0 + (x1 - x0) * q, y0 + (y1 - y0) * q - 4 * H * q * (1 - q)];
-  for (let i = 4; i >= 1; i--) {
-    const q = t - i * 0.035;
-    if (q < 0) continue;
-    const [px, py] = at(q);
-    ctx.globalAlpha = 0.7 - i * 0.13;
-    ctx.fillStyle = i === 1 ? ORANGE : SMOKE_LIGHT;
-    ctx.fillRect(Math.round(px / g) * g, Math.round(py / g) * g, g * (i > 2 ? 2 : 1), g * (i > 2 ? 2 : 1));
-  }
-  ctx.globalAlpha = 1;
-  const [px, py] = at(t);
-  const X = Math.round(px / g) * g;
-  const Y = Math.round(py / g) * g;
-  // the shell: a hot 2 cell core lit from the top left, dark on its lower right edge so it shows on bright land
-  ctx.fillStyle = DEBRIS;
-  ctx.fillRect(X - g, Y - g, g * 3, g * 3);
-  ctx.fillStyle = YELLOW;
-  ctx.fillRect(X - g, Y - g, g * 2, g * 2);
-  ctx.fillStyle = WHITE;
-  ctx.fillRect(X - g, Y - g, g, g);
 }
 
 // ================================================================================================ craters
@@ -1147,86 +687,8 @@ function clipToLand(ctx: CanvasRenderingContext2D, T: ArrayLike<number>, w: numb
   return true;
 }
 
-/**
- * A crater as a small baked bitmap (cells across = 2 * radius + 4): a scorched disc, a darker pit lit on its lower
- * right inner wall (the light comes from the top left), a light earth rim on the top left of the raised edge, and a
- * few debris pixels around. Four shapes per size.
- */
-const craterCache = new Map<number, HTMLCanvasElement | null>();
-function craterSprite(r: number, variant: number): HTMLCanvasElement | null {
-  const key = r * 4 + variant;
-  const hit = craterCache.get(key);
-  if (hit !== undefined) return hit;
-  let cv: HTMLCanvasElement | null = null;
-  if (typeof document !== 'undefined') {
-    const bm = craterBitmap(r, variant);
-    cv = document.createElement('canvas');
-    cv.width = bm.w;
-    cv.height = bm.h;
-    const ctx = cv.getContext('2d');
-    if (ctx && typeof ImageData !== 'undefined') ctx.putImageData(new ImageData(bm.data, bm.w, bm.h), 0, 0);
-    else cv = null;
-  }
-  if (craterCache.size > 300) craterCache.clear();
-  craterCache.set(key, cv);
-  return cv;
-}
-
-/** The crater pixels (RGBA), testable without a canvas. */
-export function craterBitmap(r: number, variant: number): { w: number; h: number; data: Uint8ClampedArray } {
-  const pad = Math.max(2, Math.ceil(r * 0.6));
-  const w = r * 2 + 1 + pad * 2;
-  const h = Math.ceil(r * 1.7) + 1 + pad * 2;
-  const data = new Uint8ClampedArray(w * h * 4);
-  const cx = Math.floor(w / 2);
-  const cy = Math.floor(h / 2);
-  const set = (x: number, y: number, c: readonly number[], a: number): void => {
-    if (x < 0 || y < 0 || x >= w || y >= h) return;
-    const o = (y * w + x) * 4;
-    data[o] = c[0];
-    data[o + 1] = c[1];
-    data[o + 2] = c[2];
-    data[o + 3] = a;
-  };
-  const SCORCH = [40, 33, 28];
-  const PIT = [22, 18, 16];
-  const WALL = [92, 74, 58];
-  const RIM = [168, 146, 112];
-  const RIM_SHADE = [112, 94, 72];
-  const ry = r * 0.82;
-  const wob = (a: number): number => 1 + 0.12 * Math.sin(a * 3 + variant * 1.9) + 0.06 * Math.sin(a * 5 + variant);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const dx = x - cx;
-      const dy = y - cy;
-      const a = Math.atan2(dy, dx);
-      const d = Math.sqrt((dx / r) ** 2 + (dy / ry) ** 2) / wob(a);
-      if (d <= 0.5) {
-        // the pit: its lower right inner wall catches the light
-        const lit = dx + dy > r * 0.25 && d > 0.3;
-        set(x, y, lit ? WALL : PIT, 235);
-      } else if (d <= 0.92) set(x, y, SCORCH, 215);
-      else if (d <= 1.12) {
-        // the raised rim: light on the top left, shaded on the bottom right
-        set(x, y, dx + dy < 0 ? RIM : RIM_SHADE, 200);
-      } else if (d <= 1.45) {
-        // scorched ground fading out, broken up
-        if (rnd(x * 31 + y * 17, variant + 5) < 0.42 * (1.45 - d) * 2.2) set(x, y, SCORCH, 120);
-      }
-    }
-  }
-  // debris pixels thrown around
-  const n = 3 + (r >> 2);
-  for (let i = 0; i < n; i++) {
-    const a = rnd(variant + r, i) * Math.PI * 2;
-    const d = r * (1.25 + 0.45 * rnd(r, i + variant));
-    set(Math.round(cx + Math.cos(a) * d), Math.round(cy + Math.sin(a) * d * 0.82), i % 2 ? PIT : RIM_SHADE, 230);
-  }
-  return { w, h, data };
-}
-
-/** Which ship variant fires how many turrets (tests). */
+/** How many guns of a ship variant fire in a salvo (tests). */
 export function turretCount(variant: UnitVariant | undefined): number {
   if (variant === 'submarine' || variant === 'carrier') return 0;
-  return (TURRETS[variant ?? 'warship'] ?? TURRETS.warship).length;
+  return SALVO[spriteKey('warship', variant)] ?? SALVO.warship;
 }

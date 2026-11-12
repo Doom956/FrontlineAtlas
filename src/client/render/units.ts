@@ -1,11 +1,10 @@
 // Mobile units on the map (ships, tanks, planes, missiles), interpolated between ticks. From NEAR_ZOOM in, each unit
-// is its shaded pixel sprite (pixelSprites.ts, art in spriteArt.ts): a small model baked per heading (16 facings),
-// owner colour and upgrade set into an atlas, 3 to 4 tones per material with one top-left light, a 1 px dark outline,
-// drawn at whole-pixel scale. The owner's colour is a plate or band, never a tint: tanks stand on an owner-colour
-// plate and carry a band across the turret, ships carry it on the deckhouse (3+ art px), planes on the fuselage band
-// and wingtips; missiles have none. Planes and missiles cast a short ground shadow. Far out, every unit is a tiny solid
-// marker in the owner's colour. Missiles trail pixel smoke puffs, planes a faint short contrail and ships a V of foam
-// (unitGlyphs.ts drawTrails). A small troop pill on transports at mid/close zoom; your own warships carry a tiny tick (a
+// is drawn by the current art style of its category (art/registry.ts through pixelSprites.ts drawMapSprite; the
+// refined pixel sprites are art/refined/sprites.ts): the style gets the unit's heading, how fast it turns (planes
+// bank), its speed (wake size), the zoom and a clock for animation. The owner's colour is a plate or band, never a
+// tint. Planes and missiles cast a short ground shadow. Far out, every unit is a tiny solid marker in the owner's
+// colour (shared by every style). Missiles and planes leave contrails and moving ships a wake, drawn by the styles of
+// the 'contrails' and 'wakes' categories (one trail layer per style, anchored to the map). A small troop pill on transports at mid/close zoom; your own warships carry a tiny tick (a
 // ring only while one is hovered or picked, UnitLayer.focusId); they can be clicked to give orders, the hit area is
 // larger than the drawing. At far zoom units on the same pixel are drawn once and only missiles keep their trails.
 // Zoomed out (FLEET_ZOOM), warships of one owner within FLEET_RADIUS tiles (or 16 px on screen) draw as one fleet
@@ -15,9 +14,12 @@ import { armyTotal } from '../../sim/economy';
 import type { GameState, Unit } from '../../sim/types';
 import type { Camera } from '../camera';
 import { clamp, css, MAP_NUM_FAMILY, type RGB } from './common';
-import { drawTrails, GLYPHS, strokeDucks, TrailPuffs, type Inst } from './unitGlyphs';
-import { pixelRing } from '../fx/pixelFx';
-import { drawMapSprite, drawUnitMarker, isAirType, setSpriteBakeBudget, spriteLength, unitSpriteMods } from './pixelSprites';
+import { GLYPHS, strokeDucks, type Inst } from './unitGlyphs';
+import { drawMapSprite, drawUnitMarker, isAirType, setSpriteBakeBudget, spriteLength, unitSpriteMods, type MapSpriteState } from './pixelSprites';
+import { artStyleOf, type ArtStyle } from '../art/artStyle';
+import { motionFor, styleModule } from '../art/registry';
+import { spriteKey } from '../art/shared/keys';
+import type { TrailLayer, TrailUnit, TrailView } from '../art/types';
 import { prankView } from '../fx/prankView';
 import { isIncoming } from '../forces';
 import { troopKinds, troopPill } from './troopIcons';
@@ -47,7 +49,7 @@ const BAKES_PER_FRAME = 24;
 const glyphPx = (z: number): number => (z < NEAR_ZOOM ? clamp(6 + z * 1.1, 7, 9) : clamp(12 + (z - NEAR_ZOOM) * 3.2, 14, 48));
 
 /** `fleet`: this entry is a fleet marker standing for these ships (the lead, u, is the lowest id). */
-type Vis = Inst & { u: Unit; fleet?: number[] };
+type Vis = Inst & { u: Unit; fleet?: number[]; turn: number; speed: number };
 
 interface Track {
   px: number;
@@ -60,6 +62,9 @@ interface Track {
   hx: Float32Array;
   hy: Float32Array;
   hn: number;
+  /** how fast the drawn heading turns (rad/s, smoothed) and when it was last eased (ms) */
+  turn: number;
+  at: number;
 }
 
 export class UnitLayer {
@@ -83,8 +88,10 @@ export class UnitLayer {
   focusId = -1;
   /** Selected own units (warships, tank divisions) to ring; set by the renderer from ui.selection. */
   selected: ReadonlySet<number> = new Set();
-  /** smoke and foam puffs of the contrails and wakes (unitGlyphs.ts drawTrails) */
-  readonly puffs = new TrailPuffs();
+  /** live wakes and contrails, one layer per art style that drew them (art/types.ts TrailLayer) */
+  private trailLayers = new Map<string, TrailLayer>();
+  private wakeList: TrailUnit[] = [];
+  private contrailList: TrailUnit[] = [];
 
   reset(w: number): void {
     this.tracks.clear();
@@ -93,7 +100,15 @@ export class UnitLayer {
     this.hits = [];
     this.drops = [];
     this.planes.clear();
-    this.puffs.clear();
+    for (const l of this.trailLayers.values()) l.clear();
+  }
+
+  /** The trail layer of the current style of wakes or contrails (made on first use, kept while the game runs). */
+  private trailLayer(cat: 'wakes' | 'contrails', style: ArtStyle): TrailLayer {
+    const k = `${cat}|${style}`;
+    let l = this.trailLayers.get(k);
+    if (!l) this.trailLayers.set(k, (l = styleModule(style)[cat].createLayer()));
+    return l;
   }
 
   /** The heading a unit's sprite was drawn at last (snapped to its 16 baked facings), or null. */
@@ -133,7 +148,7 @@ export class UnitLayer {
         const tx = (u.target % w) + 0.5;
         const ty = ((u.target / w) | 0) + 0.5;
         const a = Math.atan2(ty - u.y - 0.5, tx - u.x - 0.5);
-        t = { px: u.x, py: u.y, cx: u.x, cy: u.y, angle: a, shown: a, seen: state.tick, hx: new Float32Array(HIST), hy: new Float32Array(HIST), hn: 0 };
+        t = { px: u.x, py: u.y, cx: u.x, cy: u.y, angle: a, shown: a, seen: state.tick, hx: new Float32Array(HIST), hy: new Float32Array(HIST), hn: 0, turn: 0, at: -1 };
         this.tracks.set(u.id, t);
       } else {
         const dx = u.x - t.cx;
@@ -262,7 +277,7 @@ export class UnitLayer {
       const x = ox + (ux + 0.5) * z;
       const y = oy + (uy + 0.5) * z;
       // half length on screen: the sprite's own length close up, the marker's size far out
-      const S = near ? Math.max(6, (spriteLength(u.type, u.variant) * k) / 2) : (base * GLYPHS[u.type].len) / 2;
+      const S = near ? Math.max(6, spriteLength(u.type, u.variant, 0, k) / 2) : (base * GLYPHS[u.type].len) / 2;
       const m = Math.max(40, S + 8);
       if (x < -m || y < -m || x > cam.viewW + m || y > cam.viewH + m) continue;
       // enemy submarines stay hidden until close, sonar, recon or Early Warning shows them (techtree.unitVisibleTo)
@@ -278,6 +293,8 @@ export class UnitLayer {
       }
       let angle = 0;
       let moving = false;
+      let turn = 0;
+      let speed = 0;
       if (t) {
         // ease the drawn heading toward the real one (no snapping on path corners)
         let d = t.angle - t.shown;
@@ -285,9 +302,16 @@ export class UnitLayer {
         while (d < -Math.PI) d += 2 * Math.PI;
         t.shown += d * 0.25;
         angle = t.shown;
+        // the turn rate the art sees (planes bank with it): the eased change per second, smoothed over a few frames
+        const dt = t.at >= 0 ? nowMs - t.at : 0;
+        if (dt > 0 && dt < 250) t.turn += ((d * 0.25 * 1000) / dt - t.turn) * 0.2;
+        else if (dt >= 250) t.turn = 0;
+        t.at = nowMs;
+        turn = t.turn;
         moving = t.hn >= 2 && Math.abs(t.hx[0] - t.hx[1]) + Math.abs(t.hy[0] - t.hy[1]) > 1e-4;
+        if (t.hn >= 2) speed = Math.hypot(t.hx[0] - t.hx[1], t.hy[0] - t.hy[1]) * TICKS_PER_SECOND;
       }
-      visible.push({ u, type: u.type, x, y, S, angle, moving, id: u.id, tx: ux + 0.5, ty: uy + 0.5 });
+      visible.push({ u, type: u.type, x, y, S, angle, moving, id: u.id, tx: ux + 0.5, ty: uy + 0.5, turn, speed });
     }
     // zoomed out: close warships of one owner become one marker (screen px, so the radius scales with the zoom)
     if (grouping) {
@@ -302,7 +326,7 @@ export class UnitLayer {
         for (const f of fleets) {
           const lead = byId.get(f.ids[0])!;
           for (const id of f.ids) gone.add(id);
-          marks.push({ u: lead.u, type: 'warship', x: f.x, y: f.y, S: lead.S * 1.25, angle: lead.angle, moving: false, fleet: f.ids });
+          marks.push({ u: lead.u, type: 'warship', x: f.x, y: f.y, S: lead.S * 1.25, angle: lead.angle, moving: false, fleet: f.ids, turn: 0, speed: 0 });
         }
         visible = visible.filter((e) => e.type !== 'warship' || !gone.has(e.u.id));
         visible.push(...marks);
@@ -314,9 +338,8 @@ export class UnitLayer {
       if (e.fleet) for (const id of e.fleet) this.allHits.push(id, e.x, e.y, r);
       else this.allHits.push(e.u.id, e.x, e.y, r);
     }
-    // contrails and wakes: pixel smoke and foam puffs left where the unit went (missiles at every zoom, planes and
-    // ships from the middle zooms on)
-    drawTrails(ctx, visible, z >= 2, this.puffs, { ox, oy, z, g: k, now: nowMs, viewW: cam.viewW, viewH: cam.viewH });
+    // contrails and wakes, left where the unit went (missiles at every zoom, planes and ships from the middle zooms on)
+    this.drawTrailLayers(ctx, visible, { ox, oy, zoom: z, scale: k, now: nowMs, viewW: cam.viewW, viewH: cam.viewH, dpr, full: z >= 2 });
     // far: one small solid marker per unit; mid and near: the unit's shaded pixel sprite (16 baked headings, whole
     // pixel scale): ships and tanks first, then planes, then missiles on top
     ctx.setLineDash([]);
@@ -324,6 +347,11 @@ export class UnitLayer {
     const drawList = prankView.ducks ? this.drawDucks(ctx, visible, colors, z) : visible;
     if (near) {
       setSpriteBakeBudget(BAKES_PER_FRAME);
+      const ss = this.spriteState;
+      ss.zoom = z;
+      ss.scale = k;
+      ss.dpr = dpr;
+      ss.timeMs = nowMs;
       try {
         for (const pass of [0, 1, 2]) {
           for (const e of drawList) {
@@ -331,15 +359,16 @@ export class UnitLayer {
             const missile = e.type === 'rocket' || e.type === 'atomBomb';
             if ((pass === 0 && air) || (pass === 1 && (!air || missile)) || (pass === 2 && !missile)) continue;
             const c = colors[e.u.owner] ?? [200, 200, 200];
-            if (e.fleet || !drawMapSprite(ctx, e.type, e.u.variant, e.x, e.y, k, e.angle, c, unitSpriteMods(state, e.u), nowMs)) drawUnitMarker(ctx, e.type, e.x, e.y, e.fleet ? e.S * 1.6 : Math.min(14, e.S * 1.5), e.angle, css(c));
+            ss.turnRate = e.turn;
+            ss.speed = e.speed;
+            ss.moving = !!e.moving;
+            ss.seed = e.u.id;
+            if (e.fleet || !drawMapSprite(ctx, e.type, e.u.variant, e.x, e.y, e.angle, c, unitSpriteMods(state, e.u), ss)) drawUnitMarker(ctx, e.type, e.x, e.y, e.fleet ? e.S * 1.6 : Math.min(14, e.S * 1.5), e.angle, css(c));
           }
         }
       } finally {
         setSpriteBakeBudget(Infinity);
       }
-      // the atom bomb: a faint pixel ring round it so it reads as the big one
-      ctx.fillStyle = 'rgba(255,214,120,0.4)';
-      for (const e of drawList) if (e.type === 'atomBomb') pixelRing(ctx, e.x, e.y, (e.S + 5) / k, k, true);
     } else {
       for (const e of drawList) {
         const c = colors[e.u.owner] ?? [200, 200, 200];
@@ -414,7 +443,35 @@ export class UnitLayer {
         if (e.type === 'transportPlane') chute(ctx, e.x + e.S + 4, e.y + e.S * 0.6 + 4, css(colors[u.owner] ?? [200, 200, 200]));
       }
     }
-    void dpr;
+  }
+
+  private spriteState: MapSpriteState = { zoom: 1, scale: 1, dpr: 1, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 0 };
+
+  /** Wakes behind moving ships, contrails behind planes and missiles, each drawn by its category's current style. */
+  private drawTrailLayers(ctx: CanvasRenderingContext2D, visible: readonly Vis[], view: TrailView): void {
+    const wakes = this.wakeList;
+    const trails = this.contrailList;
+    wakes.length = 0;
+    trails.length = 0;
+    const ships = motionFor('ships');
+    const air = motionFor('air');
+    const missiles = motionFor('missiles');
+    for (const e of visible) {
+      const tr = GLYPHS[e.type].trail;
+      if (tr === 'none' || e.fleet || e.id === undefined || e.tx === undefined || e.ty === undefined) continue;
+      const tu: TrailUnit = { id: e.id, key: spriteKey(e.u.type, e.u.variant), x: e.x, y: e.y, tx: e.tx, ty: e.ty, angle: e.angle, half: e.S, moving: !!e.moving, speed: e.speed, turnRate: e.turn, motion: tr === 'wake' ? ships : tr === 'missile' ? missiles : air };
+      (tr === 'wake' ? wakes : trails).push(tu);
+    }
+    // every layer that holds trails draws each frame (old ones fade out after a style change too)
+    const wakeStyle = artStyleOf('wakes');
+    const trailStyle = artStyleOf('contrails');
+    this.trailLayer('wakes', wakeStyle);
+    this.trailLayer('contrails', trailStyle);
+    for (const [k, l] of this.trailLayers) {
+      const [cat, style] = k.split('|');
+      const current = cat === 'wakes' ? style === wakeStyle : style === trailStyle;
+      l.frame(ctx, current ? (cat === 'wakes' ? wakes : trails) : [], view);
+    }
   }
 
   /**

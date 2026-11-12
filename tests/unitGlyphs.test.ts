@@ -1,7 +1,9 @@
-// Line glyphs of the mobile units on the map (client/render/unitGlyphs.ts).
+// Line glyphs of the mobile units on the map (client/render/unitGlyphs.ts) and the refined style's trails
+// (client/art/refined/trails.ts).
 import { describe, expect, it } from 'vitest';
 import { UNITS } from '../src/sim/config';
-import { addGlyph, drawTrails, GLYPHS, TrailPuffs, type Inst } from '../src/client/render/unitGlyphs';
+import { addGlyph, GLYPHS, type Inst } from '../src/client/render/unitGlyphs';
+import { drawTrails, TrailPuffs } from '../src/client/art/refined/trails';
 
 function fakeCtx() {
   const calls: string[] = [];

@@ -1,6 +1,6 @@
-// The unit art (client only): one small model per unit and arsenal variant, rasterized by spriteBake.ts. Model units
-// are art pixels at full size; the nose points at +u, the starboard side at +v. All art is original and lives here
-// as code.
+// The refined style's unit art (client only): one small model per unit and arsenal variant, rasterized by
+// spriteBake.ts. Model units are art pixels at full size; the nose points at +u, the starboard side at +v. All art is
+// original and lives here as code.
 //
 // Every vehicle has its own silhouette, not just its own colour:
 //   warship (before any arsenal pick)  a plain gunboat: a sharp bow, a full blunt stern, one gun fore, one aft
@@ -22,35 +22,10 @@
 // The owner's colour: an owner plate under each tank plus a turret band, the deckhouse of each ship, a fuselage band
 // and wingtips on planes; never the whole unit, so the metal keeps its own tones.
 import type { MatId, Model, Part, Pattern, Shade } from './spriteBake';
+import { M_JET, M_MASTERY, M_NIGHT, M_PATH3, M_SPECIAL, SPRITE_KEYS, type SpriteKey } from '../shared/keys';
 
-/** Upgrade details (bit mask). */
-export const M_MASTERY = 1;
-export const M_PATH3 = 2;
-export const M_JET = 4;
-export const M_SPECIAL = 8;
-export const M_NIGHT = 16;
-
-export type SpriteKey =
-  | 'warship'
-  | 'destroyer'
-  | 'battleship'
-  | 'submarine'
-  | 'carrier'
-  | 'transport'
-  | 'tradeShip'
-  | 'tankDivision'
-  | 'lightTank'
-  | 'heavyTank'
-  | 'bomber'
-  | 'groundAttack'
-  | 'heavyBomber'
-  | 'fighter'
-  | 'transportPlane'
-  | 'reconPlane'
-  | 'rocket'
-  | 'atomBomb';
-
-export const SPRITE_KEYS: readonly SpriteKey[] = ['warship', 'destroyer', 'battleship', 'submarine', 'carrier', 'transport', 'tradeShip', 'tankDivision', 'lightTank', 'heavyTank', 'bomber', 'groundAttack', 'heavyBomber', 'fighter', 'transportPlane', 'reconPlane', 'rocket', 'atomBomb'];
+// The unit keys and upgrade bits are shared by every style (art/shared/keys.ts); re-exported for the refined art.
+export { M_JET, M_MASTERY, M_NIGHT, M_PATH3, M_SPECIAL, SPRITE_KEYS, type SpriteKey };
 
 /** Which upgrade details each sprite can show (other bits are ignored, so the cache stays small). */
 export const MOD_MASK: Record<SpriteKey, number> = {

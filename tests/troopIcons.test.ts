@@ -1,7 +1,8 @@
-// Troop markers (client/render/troopIcons.ts): every kind has its own symbol on the owner plate; an unknown mix is a
+// Troop markers (client/render/troopIcons.ts, the refined art in client/art/refined/troopIcons.ts): every kind has its own symbol on the owner plate; an unknown mix is a
 // question mark, never the soldier.
 import { describe, expect, it } from 'vitest';
-import { bakeTroopIcon, PLATE } from '../src/client/render/troopIcons';
+import { PLATE } from '../src/client/render/troopIcons';
+import { bakeTroopIcon } from '../src/client/art/refined/troopIcons';
 
 const BLUE: [number, number, number] = [64, 160, 255];
 function diff(a: Uint8ClampedArray, b: Uint8ClampedArray): number {

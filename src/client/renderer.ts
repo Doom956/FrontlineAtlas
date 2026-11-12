@@ -304,7 +304,7 @@ export class Renderer {
     }
     const frac = this.units.subTick(nowMs, ui.paused, ui.speed);
     // scorch craters lie on the ground, under markers and units
-    this.pfx.drawGround(ctx, camera, state.tick + frac);
+    this.pfx.drawGround(ctx, camera, state.tick + frac, d);
     const b = ui.mode.kind === 'build' ? ui.mode.building : null;
     const depFocus = b === 'mine' ? 1 : b === 'oilWell' ? 2 : b === 'farm' ? 3 : 0;
     this.deposits.draw(ctx, state, camera, view, ui.showResources, me, depFocus, d);
@@ -321,7 +321,7 @@ export class Renderer {
     this.units.draw(ctx, state, camera, frac, this.colors, me, d, nowMs);
     this.overlays.effects(ctx, state, camera, frac);
     // shells, turret flashes and explosions over the units
-    this.pfx.drawAir(ctx, camera, nowMs, this.units);
+    this.pfx.drawAir(ctx, camera, nowMs, this.units, d);
     const hs = ui.hoverTile >= 0 ? camera.tileToScreen((ui.hoverTile % this.w) + 0.5, ((ui.hoverTile / this.w) | 0) + 0.5) : null;
     const hoverOwner = ui.hoverTile >= 0 && ui.hoverTile < state.map.owner.length ? this.knownOwner(state, ui.hoverTile) : 0;
     this.names.draw(ctx, state, camera, me, { hoverOwner, targeting: ui.mode.kind !== 'none', hover: hs }, nowMs, d);

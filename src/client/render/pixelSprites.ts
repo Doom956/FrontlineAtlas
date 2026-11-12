@@ -1,34 +1,23 @@
-// Shaded pixel sprites for the mobile units on the map, used from mid zoom in (render/units.ts picks the level of
-// detail: far = small calm markers and fleet counts, mid and near = these sprites), and for the HUD portraits (the unit
-// card and the Forces list call drawUnitSprite).
-//
-// The art is a small model per unit and arsenal variant (spriteArt.ts), rasterized per heading (16 facings), owner
-// colour and upgrade set by spriteBake.ts, never rotated as an image: every facing has square, crisp pixels and the
-// same top-left light. Each bake lands once in a shared atlas (a few 1024 px canvases, shelf-packed) and is drawn with
-// whole-number scaling and smoothing off. Planes and missiles also get a baked ground shadow. Baking is lazy and has a
-// per-frame budget on the map (a unit whose sprite is not baked yet shows its marker for a frame).
+// Unit sprites on the map and in the HUD, through the art switch (client only). render/units.ts picks the level of
+// detail (far = small calm markers and fleet counts, drawn here and shared by every style; mid and near = the sprite
+// of the current art style for the unit's category, art/registry.ts), and the HUD portraits (the unit card and the
+// Forces list call drawUnitSprite) draw the same art as the map.
 //
 // What a player owns shows on their units (unitSpriteMods reads the owner's techs, read-only): arsenal variants have
-// their own silhouettes and the upgrades add details (spriteArt.ts lists them). All art is original and drawn in code.
+// their own silhouettes and the upgrades add details (art/shared/keys.ts M_* bits). All art is original and drawn in
+// code (art/<style>/).
 import type { GameState, Player, Unit, UnitType, UnitVariant } from '../../sim/types';
-import { makeCanvas, type RGB } from './common';
-import { FORE, LIFT, rasterize, shadowOf, type Baked, type Model } from './spriteBake';
-import { ANIMATED, buildModel, M_JET, M_MASTERY, M_NIGHT, M_PATH3, M_SPECIAL, MOD_MASK, modelLength, SPRITE_KEYS, type SpriteKey } from './spriteArt';
+import { artFor, motionFor } from '../art/registry';
+import { setBakeBudget, atlasStats } from '../art/shared/atlas';
+import { facingOf, M_JET, M_MASTERY, M_NIGHT, M_PATH3, M_SPECIAL, spriteKey, SPRITE_KEYS, unitCategoryOf, type SpriteKey } from '../art/shared/keys';
+import type { UnitDraw, UnitLod } from '../art/types';
+import type { RGB } from './common';
 
-export { M_JET, M_MASTERY, M_NIGHT, M_PATH3, M_SPECIAL, SPRITE_KEYS, type SpriteKey };
+export { facingOf, M_JET, M_MASTERY, M_NIGHT, M_PATH3, M_SPECIAL, spriteKey, SPRITE_KEYS, type SpriteKey };
 
 const AIR_TYPES: ReadonlySet<UnitType> = new Set<UnitType>(['bomber', 'fighter', 'transportPlane', 'reconPlane', 'rocket', 'atomBomb']);
-const AIR_KEYS: ReadonlySet<SpriteKey> = new Set<SpriteKey>(['bomber', 'groundAttack', 'heavyBomber', 'fighter', 'transportPlane', 'reconPlane', 'rocket', 'atomBomb']);
 
-/** Sprite key of a unit: arsenal variants have their own art; the unit before any arsenal pick keeps its plain look. */
-export function spriteKey(type: UnitType, variant: UnitVariant | undefined): SpriteKey {
-  if (type === 'warship') return variant === 'destroyer' || variant === 'battleship' || variant === 'submarine' || variant === 'carrier' ? variant : 'warship';
-  if (type === 'tankDivision') return variant === 'lightTank' || variant === 'heavyTank' ? variant : 'tankDivision';
-  if (type === 'bomber') return variant === 'groundAttack' || variant === 'heavyBomber' ? variant : 'bomber';
-  return type;
-}
-
-/** True when the unit has pixel art (every unit type and variant does). */
+/** True when the unit has a sprite (every unit type and variant does). */
 export function hasSprite(type: UnitType, variant?: UnitVariant): boolean {
   return SPRITE_KEYS.includes(spriteKey(type, variant));
 }
@@ -38,212 +27,65 @@ export function isAirType(type: UnitType): boolean {
   return AIR_TYPES.has(type);
 }
 
-// ------------------------------------------------------------------------------------------------- models
-
-interface ModelInfo {
-  model: Model;
-  /** bow to stern / nose to tail, model units */
-  len: number;
-  /** the larger of the length and the foreshortened span: what must fit a portrait box */
-  fit: number;
-}
-const models = new Map<string, ModelInfo>();
-function modelInfo(key: SpriteKey, mods: number, frame: number): ModelInfo {
-  const m = mods & MOD_MASK[key];
-  const f = ANIMATED.has(key) ? frame & 1 : 0;
-  const k = `${key}|${m}|${f}`;
-  let info = models.get(k);
-  if (!info) {
-    const model = buildModel(key, m, f);
-    let v0 = Infinity;
-    let v1 = -Infinity;
-    for (const p of model.parts) {
-      const q = p.p;
-      if (p.k === 'ell') {
-        v0 = Math.min(v0, q[1] - q[3]);
-        v1 = Math.max(v1, q[1] + q[3]);
-      } else if (p.k === 'box') {
-        v0 = Math.min(v0, q[1]);
-        v1 = Math.max(v1, q[3]);
-      } else if (p.k === 'seg') {
-        v0 = Math.min(v0, q[1], q[3]);
-        v1 = Math.max(v1, q[1], q[3]);
-      } else
-        for (let i = 1; i < q.length; i += 2) {
-          v0 = Math.min(v0, q[i]);
-          v1 = Math.max(v1, q[i]);
-        }
-    }
-    const len = modelLength(model);
-    info = { model, len, fit: Math.max(len, (v1 - v0) * FORE + 6 * LIFT) };
-    models.set(k, info);
-  }
-  return info;
+/** Length of a unit's sprite along its heading in screen px at map scale `scale` (1 = mid zoom), in its current style. */
+export function spriteLength(type: UnitType, variant: UnitVariant | undefined, mods = 0, scale = 1): number {
+  const key = spriteKey(type, variant);
+  return artFor(unitCategoryOf(key)).lengthPx(key, mods, scale);
 }
 
-/** Length of a unit's sprite along its heading, in art pixels (screen px at scale 1). */
-export function spriteLength(type: UnitType, variant: UnitVariant | undefined, mods = 0): number {
-  return modelInfo(spriteKey(type, variant), mods, 0).len;
-}
-
-// ------------------------------------------------------------------------------------------------- atlas
-
-const PAGE = 1024;
-const MAX_PAGES = 6;
-interface Page {
-  c: HTMLCanvasElement;
-  ctx: CanvasRenderingContext2D;
-}
-interface Entry {
-  page: HTMLCanvasElement;
-  sx: number;
-  sy: number;
-  w: number;
-  h: number;
-  ox: number;
-  oy: number;
-}
-const pages: Page[] = [];
-let shelfX = 0;
-let shelfY = 0;
-let shelfH = 0;
-const entries = new Map<number, Entry | null>();
-/** bakes left this frame (the map sets it; portraits are not limited) */
-let budget = Infinity;
-/** sprites baked since the page loaded (stats) */
-export const spriteStats = { baked: 0, resets: 0 };
-
-function resetAtlas(): void {
-  for (const p of pages) p.ctx.clearRect(0, 0, PAGE, PAGE);
-  shelfX = 0;
-  shelfY = 0;
-  shelfH = 0;
-  entries.clear();
-  spriteStats.resets++;
-}
-
-function alloc(w: number, h: number): { page: Page; x: number; y: number } | null {
-  if (w + 1 > PAGE || h + 1 > PAGE) return null;
-  if (shelfX + w + 1 > PAGE) {
-    shelfX = 0;
-    shelfY += shelfH + 1;
-    shelfH = 0;
-  }
-  let pi = pages.length - 1;
-  if (pi < 0 || shelfY + h + 1 > PAGE) {
-    if (pages.length >= MAX_PAGES) {
-      // every page is full: start over (the visible sprites bake again over the next frames)
-      resetAtlas();
-      pi = 0;
-    } else {
-      const c = makeCanvas(PAGE, PAGE);
-      const ctx = c.getContext('2d');
-      if (!ctx) return null;
-      pages.push({ c, ctx });
-      pi = pages.length - 1;
-      shelfX = 0;
-      shelfY = 0;
-      shelfH = 0;
-    }
-  }
-  const x = shelfX;
-  const y = shelfY;
-  shelfX += w + 1;
-  shelfH = Math.max(shelfH, h);
-  return { page: pages[pi], x, y };
-}
-
-const KEY_INDEX = new Map<SpriteKey, number>(SPRITE_KEYS.map((k, i) => [k, i]));
-/**
- * Art resolutions (art px per model unit): the map always uses full size; small portraits may use less, and a
- * portrait between two whole scales a little more (so a battleship is not drawn smaller than a destroyer).
- */
-const RES = [1, 0.75, 0.5, 1.25, 1.5, 1.75];
-
-function entryKey(key: SpriteKey, mods: number, facing: number, frame: number, owner: RGB, res: number, shadow: boolean): number {
-  const o = shadow ? 0 : ((owner[0] & 255) << 16) | ((owner[1] & 255) << 8) | (owner[2] & 255);
-  return (((((o * 32 + (KEY_INDEX.get(key) ?? 0)) * 32 + mods) * 16 + facing) * 2 + frame) * 8 + res) * 2 + (shadow ? 1 : 0);
-}
-
-function entry(key: SpriteKey, mods: number, facing: number, frame: number, owner: RGB, res: number, shadow: boolean): Entry | null {
-  const m = mods & MOD_MASK[key];
-  const f = ANIMATED.has(key) ? frame & 1 : 0;
-  const ek = entryKey(key, m, facing, f, owner, res, shadow);
-  const hit = entries.get(ek);
-  if (hit !== undefined) return hit;
-  if (typeof document === 'undefined' || typeof ImageData === 'undefined') return null;
-  if (budget <= 0) return null;
-  budget--;
-  let b: Baked = rasterize(modelInfo(key, m, f).model, RES[res] ?? 1, facing, owner);
-  if (shadow) b = shadowOf(b);
-  const spot = alloc(b.w, b.h);
-  if (!spot) {
-    entries.set(ek, null);
-    return null;
-  }
-  spot.page.ctx.putImageData(new ImageData(b.data, b.w, b.h), spot.x, spot.y);
-  spriteStats.baked++;
-  const e: Entry = { page: spot.page.c, sx: spot.x, sy: spot.y, w: b.w, h: b.h, ox: b.ox, oy: b.oy };
-  entries.set(ek, e);
-  return e;
-}
+/** Sprites baked since the page loaded (stats). */
+export const spriteStats = atlasStats;
 
 /** The map limits how many sprites it bakes per frame (Infinity = no limit; the map sets it back after drawing). */
 export function setSpriteBakeBudget(n: number): void {
-  budget = n;
+  setBakeBudget(n);
 }
 
-// ------------------------------------------------------------------------------------------------- drawing
-
-const STEP = (Math.PI * 2) / 16;
-/** Heading in radians to one of the 16 baked facings (0 = east, clockwise on screen). */
-export function facingOf(angle: number): number {
-  return ((Math.round(angle / STEP) % 16) + 16) % 16;
+/** Everything about one unit on the map that the art needs this frame, besides the picture. */
+export interface MapSpriteState {
+  zoom: number;
+  scale: number;
+  dpr: number;
+  timeMs: number;
+  turnRate: number;
+  speed: number;
+  moving: boolean;
+  seed: number;
 }
+
+const draw: UnitDraw = { key: 'warship', mods: 0, owner: [0, 0, 0], x: 0, y: 0, angle: 0, zoom: 1, scale: 1, lod: 'mid', dpr: 1, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 0, alpha: 1, shadow: true };
 
 /**
- * Draws a sprite with its centre (the model origin) at (x, y), `k` screen px per art pixel, at the art resolution
- * index `res` into RES (0 = full, 1 = 3/4, 2 = half, 3 to 5 = 1.25 to 1.75 for portraits). Planes and missiles get
- * their ground shadow first (unless `shadow` is false). False when it could not be drawn (no canvas, or this frame's
- * bake budget is spent).
+ * A unit's sprite on the map in the current style of its category, centred at (x, y). False when it could not be drawn
+ * this frame (draw its marker instead).
  */
-export function drawSpriteKey(ctx: CanvasRenderingContext2D, key: SpriteKey, mods: number, x: number, y: number, k: number, angle: number, owner: RGB, frame = 0, res = 0, alpha = 1, shadow = true): boolean {
-  const facing = facingOf(angle);
-  const e = entry(key, mods, facing, frame, owner, res, false);
-  if (!e) return false;
-  const sh = AIR_KEYS.has(key) && shadow ? entry(key, mods, facing, frame, owner, res, true) : null;
-  const prevSmooth = ctx.imageSmoothingEnabled;
-  const prevAlpha = ctx.globalAlpha;
-  ctx.imageSmoothingEnabled = false;
-  if (alpha !== 1) ctx.globalAlpha = prevAlpha * alpha;
-  const dx = Math.round(x) - e.ox * k;
-  const dy = Math.round(y) - e.oy * k;
-  if (sh) {
-    // a short drop down and right (the light is top left), so the shadow stays one shape under the plane
-    const off = key === 'rocket' || key === 'atomBomb' ? 2 : 3;
-    ctx.drawImage(sh.page, sh.sx, sh.sy, sh.w, sh.h, dx + off * k, dy + off * k, sh.w * k, sh.h * k);
-  }
-  ctx.drawImage(e.page, e.sx, e.sy, e.w, e.h, dx, dy, e.w * k, e.h * k);
-  ctx.imageSmoothingEnabled = prevSmooth;
-  ctx.globalAlpha = prevAlpha;
-  return true;
-}
-
-/**
- * A unit's sprite on the map: full art resolution, `k` screen px per art pixel (the same for every unit at one zoom,
- * so they read as one set). False when it could not be drawn this frame (draw its marker instead).
- */
-export function drawMapSprite(ctx: CanvasRenderingContext2D, type: UnitType, variant: UnitVariant | undefined, x: number, y: number, k: number, angle: number, owner: RGB, mods: number, nowMs: number): boolean {
+export function drawMapSprite(ctx: CanvasRenderingContext2D, type: UnitType, variant: UnitVariant | undefined, x: number, y: number, angle: number, owner: RGB, mods: number, s: MapSpriteState): boolean {
   const key = spriteKey(type, variant);
-  const frame = ANIMATED.has(key) ? Math.floor(nowMs / 90) & 1 : 0;
-  return drawSpriteKey(ctx, key, mods, x, y, k, angle, owner, frame, 0);
+  const cat = unitCategoryOf(key);
+  const d = draw;
+  d.key = key;
+  d.mods = mods;
+  d.owner = owner;
+  d.x = x;
+  d.y = y;
+  d.angle = angle;
+  d.zoom = s.zoom;
+  d.scale = s.scale;
+  d.lod = (s.scale >= 2 ? 'near' : 'mid') as UnitLod;
+  d.dpr = s.dpr;
+  d.timeMs = s.timeMs;
+  d.turnRate = s.turnRate;
+  d.speed = s.speed;
+  d.moving = s.moving;
+  d.seed = s.seed;
+  d.alpha = 1;
+  d.shadow = true;
+  return artFor(cat).drawUnit(ctx, d, motionFor(cat));
 }
 
 /**
- * Draws a unit's pixel sprite centred at (x, y), fitting in `lenPx` px (its length, or its span for wide planes),
- * turned to `angle` (snapped to 16 headings). Used by the HUD portraits: the scale is a whole number so the pixels
- * stay crisp, and the art resolution fills the rest of the box in quarter steps (a smaller one when even the
- * whole-number scale 1 does not fit), so every unit fills its portrait about equally. `mods` are the upgrade details to show;
+ * Draws a unit's sprite centred at (x, y), fitting in `lenPx` px (its length, or its span for wide planes), turned to
+ * `angle`, in the current style of its category. Used by the HUD portraits. `mods` are the upgrade details to show;
  * without it, the details of the player whose colour `owner` is are used (in the game the map shows), and a tank
  * division without a variant gets that player's armor path.
  */
@@ -259,18 +101,13 @@ export function drawUnitSprite(ctx: CanvasRenderingContext2D, type: UnitType, va
     }
   }
   const key = spriteKey(type, v);
-  const info = modelInfo(key, m, 0);
-  const s = lenPx / info.fit;
-  let res = 0;
-  let k = 1;
-  if (s < 1) res = s >= 0.75 ? 1 : 2;
-  else {
-    k = Math.min(8, Math.floor(s));
-    // 1.25, 1.5 or 1.75 art px per model unit when the box has that much room left at this whole-number scale
-    const q = Math.min(3, Math.floor((s / k - 1) * 4));
-    res = q <= 0 ? 0 : 2 + q;
-  }
-  return drawSpriteKey(ctx, key, m, x, y, k, angle, owner, 0, res, alpha);
+  return artFor(unitCategoryOf(key)).drawPortrait(ctx, { key, mods: m, owner, x, y, boxPx: lenPx, angle, alpha });
+}
+
+/** Screen position of gun `index` of a ship's salvo, drawn at (x, y) with heading `angle` at map scale `scale`. */
+export function turretPoint(type: UnitType, variant: UnitVariant | undefined, index: number, x: number, y: number, angle: number, scale: number): { x: number; y: number } {
+  const key = spriteKey(type, variant);
+  return artFor(unitCategoryOf(key)).turretPoint(key, 0, index, x, y, angle, scale);
 }
 
 // ------------------------------------------------------------------------------------------------- upgrades

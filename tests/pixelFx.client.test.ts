@@ -1,7 +1,8 @@
 // Pixel battle effects (client/fx/pixelFx.ts): explosions by event, ship cannon fire, craters in a capped ring
 // buffer, and reading the game without writing to it. No DOM: drawing is not called here.
 import { describe, expect, it } from 'vitest';
-import { CRATER_CAP, craterBitmap, PixelFx, turretCount } from '../src/client/fx/pixelFx';
+import { CRATER_CAP, PixelFx, turretCount } from '../src/client/fx/pixelFx';
+import { craterBitmap } from '../src/client/art/refined/craters';
 import { hashState } from '../src/sim/hash';
 import type { Effect, Unit } from '../src/sim/types';
 import { makeFlatGame } from './helpers';

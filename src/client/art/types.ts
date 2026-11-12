@@ -1,0 +1,326 @@
+// The interface every art style implements (client only). A style is one module (art/<style>/index.ts) exporting a
+// StyleModule: one object per art category. The renderer, the HUD portraits, the troop pills and the battle effects
+// reach a style only through art/registry.ts (artFor), so styles can be mixed per category and swapped at run time.
+//
+// Rules for a style:
+//   - Draw only; never read or write the game state (everything needed is in the arguments).
+//   - Screen coordinates are CSS px on a canvas whose transform already maps CSS px to device px (`dpr` says how many
+//     device px one CSS px has, for styles that want to draw finer than one CSS px).
+//   - Restore what you change on the context (globalAlpha, imageSmoothingEnabled, fillStyle may stay changed).
+//   - Deterministic for the same arguments: use art/shared/noise.ts with the given seed, never Math.random.
+//   - Motion comes only from `timeMs` / `t` and the MotionParams numbers (art/motion.ts), so every style supports the
+//     subtle, lively and cinematic presets; honour `m.reduced` (no idle motion).
+//   - The far level of detail (unit markers, fleet markers with counts, the troop pills' count plates) is shared and not
+//     part of a style: a style draws from mid zoom in (UnitDraw.lod).
+//   - The three style folders never import each other (the detailed and realistic stubs delegate to refined until
+//     they are written). Shared helpers live in art/shared/.
+import type { TroopType } from '../../sim/types';
+import type { ArtStyle } from './artStyle';
+import type { MotionParams } from './motion';
+import type { RGB } from './shared/colour';
+import type { SpriteKey } from './shared/keys';
+
+export type { MotionParams } from './motion';
+export type { SpriteKey } from './shared/keys';
+export type { RGB } from './shared/colour';
+
+// ================================================================================================ units
+
+/**
+ * Level of detail of a unit sprite: 'mid' from zoom 3 to 11 (1 screen px per art pixel in the refined style), 'near'
+ * closer (2 to 4). Below zoom 3 the map draws the shared far markers instead (render/pixelSprites.ts drawUnitMarker).
+ */
+export type UnitLod = 'mid' | 'near';
+
+/** One unit on the map, as the renderer sees it this frame. */
+export interface UnitDraw {
+  /** which picture: the unit type and arsenal variant (art/shared/keys.ts spriteKey) */
+  key: SpriteKey;
+  /** upgrade details its owner has (art/shared/keys.ts M_* bits) */
+  mods: number;
+  /** the owner's colour (a band or plate, never a tint of the whole unit) */
+  owner: RGB;
+  /** the unit's centre on screen (CSS px) */
+  x: number;
+  y: number;
+  /** heading in radians, 0 = east, clockwise on screen; eased between path corners, never snapped */
+  angle: number;
+  /** camera zoom: screen px per map tile */
+  zoom: number;
+  /** the map's whole-number screen px per art pixel at this zoom: 1 at mid zoom, 2 to 4 close up (render/units.ts spriteScale) */
+  scale: number;
+  lod: UnitLod;
+  /** device px per CSS px */
+  dpr: number;
+  /** clock for animation (ms; propellers, flicker, bob, flames); it stands still while the art lab is paused */
+  timeMs: number;
+  /** how fast the heading turns (rad/s, positive = turning clockwise on screen, to starboard); planes bank with it */
+  turnRate: number;
+  /** speed over the ground in tiles per second of game time (0 = standing still); ships size their wake with it */
+  speed: number;
+  /** moved since the last tick */
+  moving: boolean;
+  /** stable per unit (its id), for phase offsets so a fleet does not bob in step */
+  seed: number;
+  /** opacity 0..1 */
+  alpha: number;
+  /** planes and missiles: draw their ground shadow */
+  shadow: boolean;
+}
+
+/** A unit's picture for the HUD (the unit card, the Forces list): the same art as the map, fitted to a box. */
+export interface PortraitDraw {
+  key: SpriteKey;
+  mods: number;
+  owner: RGB;
+  /** centre of the box (device px of the portrait canvas) */
+  x: number;
+  y: number;
+  /** what must fit: the unit's length (or its wingspan, whichever is larger) in px */
+  boxPx: number;
+  /** heading (radians; portraits face right, 0) */
+  angle: number;
+  alpha: number;
+}
+
+/** Draws one category of units: ships, land units, planes or missiles (the same object may serve all four). */
+export interface UnitArt {
+  /**
+   * The unit's length along its heading on screen (CSS px) at map scale `scale` (UnitDraw.scale). The renderer sizes
+   * hit areas, selection rings and culling from it, so keep it close to what drawUnit covers.
+   */
+  lengthPx(key: SpriteKey, mods: number, scale: number): number;
+  /**
+   * Draws a unit on the map centred at (u.x, u.y), with its ground shadow for planes and missiles when u.shadow.
+   * False when it could not be drawn this frame (no canvas, or the frame's bake budget is spent): the renderer then
+   * draws the unit's far marker for this frame.
+   */
+  drawUnit(ctx: CanvasRenderingContext2D, u: UnitDraw, m: MotionParams): boolean;
+  /** A HUD portrait. False when nothing could be drawn (no canvas). */
+  drawPortrait(ctx: CanvasRenderingContext2D, p: PortraitDraw): boolean;
+  /**
+   * Ships: where gun `index` of a salvo fires from on screen, for a ship drawn at (x, y) with heading `angle` at map
+   * scale `scale` (fx/pixelFx.ts puts the muzzle flash there). How many guns a salvo has is shared (fx/pixelFx.ts
+   * SALVO: a plain warship 2, a destroyer 2 from its one turret, a battleship 3). Other units: their centre.
+   */
+  turretPoint(key: SpriteKey, mods: number, index: number, x: number, y: number, angle: number, scale: number): { x: number; y: number };
+}
+
+// ================================================================================================ troop icons
+
+/** A troop marker's symbol, or 'troops' for a mix the viewer does not know (never drawn as the soldier). */
+export type TroopIconKind = TroopType | 'troops';
+
+export interface TroopIconArt {
+  /**
+   * Draws one troop marker with its top-left corner at (x, y): a `size` px plate in the owner's colour (16 normally, 12
+   * on transports and next to nation army counts) carrying the symbol, plus a 1 px edge round it, so it covers
+   * size + 2 px square (the troop pills lay their markers out on that footprint). Returns the width drawn, 0 when
+   * nothing could be drawn (no canvas).
+   */
+  draw(ctx: CanvasRenderingContext2D, kind: TroopIconKind, x: number, y: number, owner: RGB, size: number): number;
+}
+
+// ================================================================================================ wakes and contrails
+
+/** A unit that leaves a trail, this frame. */
+export interface TrailUnit {
+  /** stable emitter id (the unit's id) */
+  id: number;
+  key: SpriteKey;
+  /** centre on screen (CSS px) and on the map (tiles, float) */
+  x: number;
+  y: number;
+  tx: number;
+  ty: number;
+  /** heading (radians, 0 = east, clockwise on screen) */
+  angle: number;
+  /** half the unit's length on screen (CSS px): the stern or tail is about this far behind (x, y) */
+  half: number;
+  /** ships: moved since the last tick (a ship standing still leaves no wake) */
+  moving: boolean;
+  /** tiles per second of game time */
+  speed: number;
+  /** rad/s, positive = turning clockwise on screen */
+  turnRate: number;
+  /** the motion of the unit the trail follows (ships for wakes, planes or missiles for contrails) */
+  motion: MotionParams;
+}
+
+/** Where the camera is, for trails anchored to the map (they stay where they were laid while the unit moves on). */
+export interface TrailView {
+  /** screen position of tile (0, 0) and screen px per tile: a tile point (tx, ty) is at (ox + tx * zoom, oy + ty * zoom) */
+  ox: number;
+  oy: number;
+  zoom: number;
+  /** the map's whole-number px per art pixel (UnitDraw.scale) */
+  scale: number;
+  /** clock (ms) */
+  now: number;
+  viewW: number;
+  viewH: number;
+  dpr: number;
+  /** false far out: lay only missile trails (old wake foam and contrails still fade out) */
+  full: boolean;
+}
+
+/** One live set of trails (the map keeps one per art category; the art lab one per cell). */
+export interface TrailLayer {
+  /** Forgets every trail (a new game). */
+  clear(): void;
+  /**
+   * One frame: lays new trail behind `units` (only the units this layer draws: ships for wakes; planes and missiles
+   * for contrails) and draws every live trail, the old ones fading where they were laid.
+   */
+  frame(ctx: CanvasRenderingContext2D, units: readonly TrailUnit[], view: TrailView): void;
+}
+
+/** Wakes (ships) or contrails (planes, missiles). */
+export interface TrailArt {
+  createLayer(): TrailLayer;
+}
+
+// ================================================================================================ explosions
+
+/**
+ * shell: a shell landing (barrages, a ship's shell on land); bomb: one bomb of a bomber's or air strike's stick; hit: a
+ * ship or fort hit; air: a plane shot down (it bursts in the air); missile: a rocket's warhead; atom: the atom bomb;
+ * splash: a shell or bomb landing in water; flak: an anti-air burst at a plane.
+ */
+export type BlastKind = 'shell' | 'bomb' | 'hit' | 'air' | 'missile' | 'atom' | 'splash' | 'flak';
+export const BLAST_KINDS: readonly BlastKind[] = ['shell', 'bomb', 'hit', 'air', 'missile', 'atom', 'splash', 'flak'];
+
+/** One frame of a blast. */
+export interface BlastDraw {
+  kind: BlastKind;
+  /** the blast's centre on screen (CSS px); for 'air' where the plane was (a style draws it a little above) */
+  x: number;
+  y: number;
+  /** 0 at the first flash, 1 when it is over (age / duration) */
+  t: number;
+  ageMs: number;
+  durMs: number;
+  zoom: number;
+  /** the map's whole-number px per art pixel (UnitDraw.scale) */
+  scale: number;
+  /** the sim's blast radius in tiles for 'missile' and 'atom' (the fireball grows with it); 0 for the small ones */
+  rt: number;
+  /** 0..1, the blast's own look */
+  seed: number;
+  /** prefers-reduced-motion: show a still burst, no flipbook */
+  reduced: boolean;
+  dpr: number;
+}
+
+/**
+ * Aftermath effects of the map's event layer (fx/layer.ts): splash = a ship sinking (foam rings, spray, pieces going
+ * under), smoke = a plane going down (puffs rising and drifting), dust = earth thrown up after shells, fortDust = a
+ * fort coming down (a heavier ring of dust and debris).
+ */
+export type MapFxKind = 'splash' | 'smoke' | 'dust' | 'fortDust';
+export const MAP_FX_KINDS: readonly MapFxKind[] = ['splash', 'smoke', 'dust', 'fortDust'];
+
+export interface MapFxDraw {
+  kind: MapFxKind;
+  x: number;
+  y: number;
+  /** 0..1 of its life (fixed per kind, fx/map.ts FX_INFO) */
+  t: number;
+  zoom: number;
+  /** 0..1 */
+  seed: number;
+  /** spread in tiles (dust: the barrage radius); 0 otherwise */
+  rt: number;
+  dpr: number;
+}
+
+export interface ExplosionArt {
+  /** How long a blast of this kind lasts (ms). The pool frees it after; the far blink keeps the same length. */
+  durationMs(kind: BlastKind, m: MotionParams): number;
+  /** One frame of a blast (from zoom 2 in; farther out the shared far blink stands for the small ones). */
+  draw(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams): void;
+  /** One frame of a sinking ship, a falling plane's smoke or dust. */
+  drawMapFx(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionParams): void;
+}
+
+// ================================================================================================ craters
+
+export interface CraterDraw {
+  /** centre on screen (CSS px) and radius on screen (the crater's radius in tiles times the zoom) */
+  x: number;
+  y: number;
+  radiusPx: number;
+  /** 0 fresh .. 1 gone: its age over its life (the life already includes MotionParams.craterLife) */
+  q: number;
+  zoom: number;
+  scale: number;
+  /** 0..1, the crater's own shape */
+  seed: number;
+  dpr: number;
+}
+
+export interface CraterArt {
+  /**
+   * Draws a crater on the ground under the units (from zoom 1.5 in), fading out toward q = 1 by itself. At the coast
+   * the caller has already clipped the canvas to the land tiles.
+   */
+  draw(ctx: CanvasRenderingContext2D, c: CraterDraw, m: MotionParams): void;
+}
+
+// ================================================================================================ cannon fire
+
+/** cannon: a warship's shell; tracer: anti-air fire at a plane (SAM sites, airfields, carriers); torpedo: a submarine's. */
+export type ShellKind = 'cannon' | 'tracer' | 'torpedo';
+
+export interface MuzzleDraw {
+  /** the muzzle on screen (UnitArt.turretPoint of the firing ship) and the direction to the target (radians) */
+  x: number;
+  y: number;
+  aim: number;
+  /** 0..1 of the flash (CannonArt.flashMs) */
+  t: number;
+  zoom: number;
+  scale: number;
+  seed: number;
+  dpr: number;
+}
+
+export interface ShellDraw {
+  kind: ShellKind;
+  /** from the firing unit to where it lands (screen CSS px) */
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  /** 0..1 of its flight */
+  t: number;
+  zoom: number;
+  scale: number;
+  seed: number;
+  dpr: number;
+}
+
+export interface CannonArt {
+  /** How long one muzzle flash lasts (ms). */
+  flashMs(m: MotionParams): number;
+  drawMuzzle(ctx: CanvasRenderingContext2D, f: MuzzleDraw, m: MotionParams): void;
+  /** A shell, tracer burst or torpedo wake in flight (its landing is a blast: shell, splash or flak). */
+  drawShell(ctx: CanvasRenderingContext2D, s: ShellDraw, m: MotionParams): void;
+}
+
+// ================================================================================================ a style
+
+/** Everything one art style draws, one object per art category (art/artStyle.ts ArtCategory). */
+export interface StyleModule {
+  readonly id: ArtStyle;
+  readonly ships: UnitArt;
+  readonly land: UnitArt;
+  readonly air: UnitArt;
+  readonly missiles: UnitArt;
+  readonly troopIcons: TroopIconArt;
+  readonly wakes: TrailArt;
+  readonly contrails: TrailArt;
+  readonly explosions: ExplosionArt;
+  readonly craters: CraterArt;
+  readonly cannonFire: CannonArt;
+}
