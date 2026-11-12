@@ -104,6 +104,8 @@ interface Emitter {
   frame: number;
   /** clock of the last frame it was seen (ms) */
   t: number;
+  /** clock when it last laid a speck (ms) */
+  lt: number;
 }
 
 /** One live set of trails (wakes, or contrails and missile smoke). */
@@ -138,16 +140,21 @@ class DetailedTrails implements TrailLayer {
         e.y = y;
         e.frame = this.frameNo;
         e.t = now;
-      } else this.emitters.set(key, { x, y, frame: this.frameNo, t: now });
+        e.lt = now;
+      } else this.emitters.set(key, { x, y, frame: this.frameNo, t: now, lt: now });
       lay(x, y, now);
       return;
     }
+    // the time since the emitter last laid: specks along the way get their ages spread over it, so a long step (a
+    // slow frame, a fast game speed) leaves an aged trail, not a row of identical fresh dots
+    const span = Math.max(16, now - e.lt);
     e.frame = this.frameNo;
     e.t = now;
     const dx = x - e.x;
     const dy = y - e.y;
     const d = Math.hypot(dx, dy);
     if (d < spacing) return;
+    e.lt = now;
     if (d > spacing * 40) {
       e.x = x;
       e.y = y;
@@ -157,7 +164,7 @@ class DetailedTrails implements TrailLayer {
     const n = Math.min(40, Math.floor(d / spacing));
     for (let k = 1; k <= n; k++) {
       const q = (k * spacing) / d;
-      lay(e.x + dx * q, e.y + dy * q, now - (1 - q) * 16);
+      lay(e.x + dx * q, e.y + dy * q, now - (1 - q) * span);
     }
     e.x += (dx * n * spacing) / d;
     e.y += (dy * n * spacing) / d;
