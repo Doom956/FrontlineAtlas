@@ -223,6 +223,11 @@ const LINE: Record<string, string> = {
 };
 export type LineIconId = keyof typeof LINE;
 
+/** The SVG body of a line icon (24 x 24 units), for hud/pixelIcons.ts to trace. */
+export function lineIconBody(name: string): string | undefined {
+  return LINE[name];
+}
+
 export function hasLineIcon(name: string): boolean {
   return name in LINE;
 }

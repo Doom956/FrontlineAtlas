@@ -2933,8 +2933,8 @@ button.toast-t:hover {
   color: #d4e3a2;
 }
 .odds.ok {
-  --tone: var(--brass);
-  color: var(--brass-hi);
+  --tone: var(--caution);
+  color: var(--caution);
 }
 .odds.bad {
   --tone: var(--signal);
@@ -4688,8 +4688,8 @@ strong {
   padding: 0 4px;
   min-width: 22px;
   text-align: center;
-  background: var(--brass);
-  color: var(--brass-ink);
+  background: var(--metal-4);
+  color: var(--text);
   font: 700 11px/16px var(--f-ui);
 }
 .alert.bump .al-n,

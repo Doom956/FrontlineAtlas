@@ -9,7 +9,7 @@
 //     one cell per pixel, hard edged (no anti-aliasing). Without a canvas (tests) they fall back to the vector art.
 // Two tones: '#' full colour, '+' the same colour at half strength for the shaded side.
 import { MARKER_DETAIL_PX } from '../icons';
-import { glyphLayers, lineIcon, worldGlyph, type WorldGlyphId } from './glyph';
+import { glyphLayers, lineIcon, lineIconBody, worldGlyph, type WorldGlyphId } from './glyph';
 
 /** The icon colour families (one muted hue each; never the accent). */
 export type IconCat = 'navy' | 'armor' | 'air' | 'econ' | 'science' | 'strike';
@@ -368,7 +368,7 @@ export function hasPixelIcon(name: string): boolean {
 export function pixelIcon(name: string, px = 16): string {
   const small = px <= 13 && `${name}-s` in HAND ? `${name}-s` : name;
   const h = HAND[small];
-  if (!h) return lineIcon(name, px);
+  if (!h) return tracedLine(name, px);
   const k = Math.max(1, Math.round(px / h.n));
   const key = `${small}|${k}`;
   let s = cache.get(key);
@@ -378,6 +378,47 @@ export function pixelIcon(name: string, px = 16): string {
     s = toSvg(g, k);
     cache.set(key, s);
   }
+  return s;
+}
+
+/** Shapes of a line icon body as Path2D sources (paths, circles, rects), in 24 x 24 units. */
+function lineShapes(body: string): { d: string; fill: boolean }[] {
+  const out: { d: string; fill: boolean }[] = [];
+  const attr = (tag: string, k: string): number => Number(new RegExp(`\\b${k}="([-0-9.]+)"`).exec(tag)?.[1] ?? 0);
+  for (const m of body.matchAll(/<(path|circle|rect)\b[^>]*>/g)) {
+    const tag = m[0];
+    const fill = /fill="currentColor"/.test(tag);
+    if (m[1] === 'path') out.push({ d: /\bd="([^"]+)"/.exec(tag)?.[1] ?? '', fill });
+    else if (m[1] === 'circle') {
+      const cx = attr(tag, 'cx');
+      const cy = attr(tag, 'cy');
+      const r = attr(tag, 'r');
+      out.push({ d: `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`, fill });
+    } else out.push({ d: `M${attr(tag, 'x')} ${attr(tag, 'y')}h${attr(tag, 'width')}v${attr(tag, 'height')}h${-attr(tag, 'width')}Z`, fill });
+  }
+  return out;
+}
+
+/** A line icon without hand-made pixel art, traced onto a 16 x 16 grid with one-pixel strokes (vector fallback). */
+function tracedLine(name: string, px: number): string {
+  const body = lineIconBody(name);
+  const n = 16;
+  const key = `l:${name}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const ctx = body ? scratch(n) : null;
+  if (!ctx || !body || typeof Path2D === 'undefined') return lineIcon(name, px);
+  ctx.scale(n / 24, n / 24);
+  ctx.lineWidth = (1.15 * 24) / n;
+  ctx.lineCap = 'square';
+  ctx.lineJoin = 'miter';
+  for (const sh of lineShapes(body)) {
+    const p = new Path2D(sh.d);
+    if (sh.fill) ctx.fill(p);
+    else ctx.stroke(p);
+  }
+  const s = toSvg(threshold(ctx, n), 1);
+  cache.set(key, s);
   return s;
 }
 
@@ -443,7 +484,7 @@ function trace(layers: { d: string; mode?: string; width?: number; detail?: bool
       const p = new Path2D(l.d);
       if (l.mode === 'stroke' || l.mode === 'cutStroke') {
         // at least about one pixel wide, so a thin line comes out solid instead of broken
-        ctx.lineWidth = Math.max(l.width ?? 2, (1.3 * 64) / n);
+        ctx.lineWidth = Math.max(l.width ?? 2, (1.6 * 64) / n);
         ctx.stroke(p);
       } else ctx.fill(p);
     }
