@@ -215,8 +215,8 @@ function boat(u: number, v: number, z: number, len = 1.8): Part {
 function warship(mods: number): Part[] {
   // a mid-size cruiser: a turret fore and aft, a bridge, two funnels, a mast, a teak deck
   const out: Part[] = [
-    poly(hullShape(17, 3.5, 8, 4.5), 0, 2.8, 'hull'),
-    poly(hullShape(16.1, 2.85, 7.6, 4), 2.8, 0, 'deck', { inset: true }),
+    poly(hullShape(17, 3.3, 8.5, 4.5, 0.55), 0, 2.8, 'hull'),
+    poly(hullShape(16.1, 2.65, 8, 4, 0.55), 2.8, 0, 'deck', { inset: true }),
     ...turretAt(9.8, 2, 1.8, 2.8, 1, [-0.75, 0.75], 4.2),
     // the bridge: a two-deck block, its windows forward, the roof in the owner colour
     box(1.6, -2.5, 6.6, 2.5, 2.8, 2.4, 'sup'),
@@ -384,9 +384,10 @@ function tradeShip(): Part[] {
   // a merchant: a black hull with a red boot top, a red-brown deck, hatches with derricks, containers, a cream
   // superstructure aft and the funnel in the owner's colours; no guns
   const out: Part[] = [
-    poly(hullShape(18, 3.8, 7.5, 4, 0.66), 0, 0.9, 'rust'),
-    poly(hullShape(18, 3.8, 7.5, 4, 0.66), 0.9, 2.1, 'hullBlack'),
-    poly(hullShape(17.2, 3.15, 7, 3.6, 0.62), 3, 0, 'rust', { inset: true }),
+    // a full merchant hull: wide, a short blunt bow, a broad transom stern
+    poly(hullShape(18.5, 4.3, 5.2, 2.6, 0.86), 0, 0.9, 'rust'),
+    poly(hullShape(18.5, 4.3, 5.2, 2.6, 0.86), 0.9, 2.1, 'hullBlack'),
+    poly(hullShape(17.7, 3.6, 4.8, 2.3, 0.84), 3, 0, 'rust', { inset: true }),
     // the forecastle and two hatches with a derrick mast between them (buff masts and booms)
     box(13.4, -2.4, 15.6, 2.4, 3, 0.7, 'hullBlack'),
     box(8.6, -2.3, 12.6, 2.3, 3, 0.6, 'teal', { pat: 'hatch' }),
@@ -403,20 +404,20 @@ function tradeShip(): Part[] {
     [-1.2, 1.9],
   ];
   bays.forEach(([u0, u1], i) => {
-    out.push(box(u0, -2.7, u1, -0.15, 3, i === 1 ? 3 : 2.2, colors[i * 2], { pat: 'grille' }));
-    out.push(box(u0, 0.15, u1, 2.7, 3, i === 2 ? 3 : 2.2, colors[i * 2 + 1], { pat: 'grille' }));
+    out.push(box(u0, -3.1, u1, -0.15, 3, i === 1 ? 3 : 2.2, colors[i * 2], { pat: 'grille' }));
+    out.push(box(u0, 0.15, u1, 3.1, 3, i === 2 ? 3 : 2.2, colors[i * 2 + 1], { pat: 'grille' }));
   });
   out.push(
     ell(-10.2, 0, 0.55, 0.55, 3, 4.4, 'mustard'),
     seg(-10.2, 0, -6.6, 1.6, 0.5, 6.4, 0.3, 'mustard'),
     // the superstructure aft: cream, bridge wings, the funnel in the owner colour with a black top, the boats
-    box(-16.8, -3.2, -11, 3.2, 3, 3.4, 'white'),
-    box(-12.2, -3.9, -11.2, 3.9, 6.4, 0.5, 'white'),
+    box(-17.2, -3.6, -11, 3.6, 3, 3.4, 'white'),
+    box(-12.2, -4.4, -11.2, 4.4, 6.4, 0.5, 'white'),
     box(-11.6, -2.9, -11, 2.9, 6.4, 0, 'glass'),
     ell(-14.6, 0, 1.45, 1.25, 6.4, 2.4, 'own', { sh: 'cyl' }),
     ell(-14.6, 0, 1, 0.85, 8.8, 0, 'black'),
-    boat(-15, -3.6, 3.6, 1.5),
-    boat(-15, 3.6, 3.6, 1.5),
+    boat(-15, -4, 3.6, 1.5),
+    boat(-15, 4, 3.6, 1.5),
   );
   return out;
 }

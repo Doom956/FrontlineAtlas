@@ -362,6 +362,8 @@ class WakeLayer implements TrailLayer {
       if (unitCategoryOf(u.key) !== 'ships') continue;
       m = u.motion;
       let t = this.tracks.get(u.id);
+      // far out no new wake is laid (the old foam still fades out)
+      if (!t && !view.full) continue;
       if (!t) this.tracks.set(u.id, (t = new Track(1)));
       t.seen = this.frameNo;
       if (!u.moving || !view.full || u.speed <= 0) continue;
@@ -443,8 +445,8 @@ class WakeLayer implements TrailLayer {
         pby = by;
       }
     }
-    // the bow waves of the ships under way, folded out from the stem along both sides
-    for (const u of units) {
+    // the bow waves of the ships under way, folded out from the stem along both sides (not far out)
+    for (const u of view.full ? units : []) {
       if (!u.moving || unitCategoryOf(u.key) !== 'ships' || u.speed <= 0) continue;
       const sf = Math.min(1.4, Math.max(0.2, u.speed / 5));
       const c = Math.cos(u.angle);
@@ -517,6 +519,7 @@ class ContrailLayer implements TrailLayer {
       if (!eng) continue;
       m = u.motion;
       let t = this.tracks.get(u.id);
+      if (!t && !view.full) continue;
       if (!t || t.E !== eng.v.length) this.tracks.set(u.id, (t = new Track(eng.v.length)));
       t.seen = this.frameNo;
       t.weight = eng.w;

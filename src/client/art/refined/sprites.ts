@@ -26,6 +26,8 @@ import { FORE, LIFT, projector, rasterize, shadowOf, type Model, type Prop } fro
 
 // ------------------------------------------------------------------------------------------------- models
 
+const KEY_INDEX = new Map<SpriteKey, number>(SPRITE_KEYS.map((k, i) => [k, i]));
+
 interface ModelInfo {
   model: Model;
   /** bow to stern / nose to tail, model units */
@@ -35,11 +37,11 @@ interface ModelInfo {
   /** half the width across the heading, model units (ships: the wakes size their bow wave with it) */
   beam: number;
 }
-const models = new Map<string, ModelInfo>();
+const models = new Map<number, ModelInfo>();
 function modelInfo(key: SpriteKey, mods: number, frame: number): ModelInfo {
   const m = mods & MOD_MASK[key];
   const f = ANIMATED.has(key) ? frame & 1 : 0;
-  const k = `${key}|${m}|${f}`;
+  const k = ((KEY_INDEX.get(key) ?? 0) * 32 + m) * 2 + f;
   let info = models.get(k);
   if (!info) {
     const model = buildModel(key, m, f);
@@ -82,7 +84,6 @@ export function refinedBeam(key: SpriteKey): number {
 // ------------------------------------------------------------------------------------------------- atlas
 
 const atlas = new SpriteAtlas();
-const KEY_INDEX = new Map<SpriteKey, number>(SPRITE_KEYS.map((k, i) => [k, i]));
 /**
  * Art resolutions (art px per model unit): the map always uses full size; small portraits may use less, and a
  * portrait between two whole scales a little more (so a battleship is not drawn smaller than a destroyer).
