@@ -252,6 +252,7 @@ function drawProps(ctx: CanvasRenderingContext2D, u: UnitDraw, um: UnitModel, m:
 
 function drawNozzles(ctx: CanvasRenderingContext2D, u: UnitDraw, um: UnitModel, m: MotionParams, g: Grid, th: number, roll: number, x: number, y: number, missile: boolean): void {
   const t = u.timeMs;
+  const base = ctx.globalAlpha;
   const flick = m.reduced ? 0 : Math.floor(t / Math.max(20, m.flameMs) + u.seed) & 3;
   const c = Math.cos(th);
   const s = Math.sin(th);
@@ -269,19 +270,19 @@ function drawNozzles(ctx: CanvasRenderingContext2D, u: UnitDraw, um: UnitModel, 
         const wob = (flick & 2 ? 0.3 : -0.3) * q;
         const px = bx - c * d - s * wob * u.scale;
         const py = by - s * d + c * wob * u.scale;
-        ctx.globalAlpha = 1 - q * 0.35;
+        ctx.globalAlpha = base * (1 - q * 0.35);
         ctx.fillStyle = q < 0.2 ? '#fff6e0' : `rgb(${FIRE_RGB[Math.min(6, 1 + Math.floor(q * 4.5))].join(',')})`;
         const w = Math.max(1, Math.round((1 - q * 0.7) * z.r * 2 * g.res * 0.8));
         cell(ctx, px, py, g, w);
       }
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = base;
     } else {
       // a jet's nozzle glowing dull orange, brighter on alternate frames
       ctx.fillStyle = flick & 1 ? '#f6a53e' : '#dc7426';
-      ctx.globalAlpha = 0.85;
+      ctx.globalAlpha = base * 0.85;
       const d = 0.5 * u.scale;
       cell(ctx, bx - c * d, by - s * d, g, Math.max(1, Math.round(z.r * g.res * 0.9)));
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = base;
     }
   }
 }
