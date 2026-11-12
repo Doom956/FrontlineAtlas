@@ -92,7 +92,7 @@ class DetailedTrails implements TrailLayer {
   private used: boolean[] = [];
 
   constructor(private readonly wakes: boolean) {
-    this.parts = new Particles(wakes ? 5000 : 7000);
+    this.parts = new Particles(wakes ? 3500 : 5000);
   }
 
   clear(): void {
@@ -144,6 +144,9 @@ class DetailedTrails implements TrailLayer {
     const g = gridOf(view.scale, view.dpr);
     const z = Math.max(0.05, view.zoom);
     const cellT = g.k / z;
+    // at mid zoom (an art pixel a screen px) specks are laid at least 2 px apart: hundreds of ships stay cheap
+    const fine = g.res >= 1.5;
+    const minT = fine ? 0 : 2 / z;
     const now = view.now;
     const P = this.parts;
     for (const u of units) {
@@ -164,14 +167,14 @@ class DetailedTrails implements TrailLayer {
         const armLife = 1500 * m.wakeLength * (0.7 + 0.3 * sp);
         if (!sub) {
           for (const sd of [1, -1]) {
-            this.emit(u.id * 4 + (sd > 0 ? 1 : 2), sx - s * side * sd, sy + c * side * sd, cellT * 1.2, now, (px, py, born) => {
+            this.emit(u.id * 4 + (sd > 0 ? 1 : 2), sx - s * side * sd, sy + c * side * sd, Math.max(cellT * 1.2, minT * 1.1), now, (px, py, born) => {
               P.put(px, py, -s * sd * out, c * sd * out, born, armLife, 0.8, 2 + 0.6 * sp, 0.85, ARM);
               // a second, slower fleck inside the arm: the foam band has some width
-              P.put(px, py, -s * sd * out * 0.7, c * sd * out * 0.7, born, armLife * 0.8, 0.6, 1.4 + 0.4 * sp, 0.6, ARM);
+              if (fine) P.put(px, py, -s * sd * out * 0.7, c * sd * out * 0.7, born, armLife * 0.8, 0.6, 1.4 + 0.4 * sp, 0.6, ARM);
             });
           }
         }
-        this.emit(u.id * 4 + 3, sx, sy, cellT * 1.3, now, (px, py, born) => {
+        this.emit(u.id * 4 + 3, sx, sy, Math.max(cellT * 1.3, minT * 1.2), now, (px, py, born) => {
           const j = (Math.sin(P.made * 7.31) * 0.5) * side;
           P.put(px - s * j, py + c * j, -s * j * 0.4, c * j * 0.4, born, (sub ? 700 : 1100) * m.foamLife * (0.7 + 0.3 * sp), sub ? 0.5 : 0.9, sub ? 1 : 1.8 + 0.6 * sp, sub ? 0.5 : 0.8, WASH);
         });
@@ -180,7 +183,7 @@ class DetailedTrails implements TrailLayer {
           const big = u.key === 'atomBomb';
           const back = halfT * 1.05;
           const life = (view.zoom < 3 ? 1700 : 1200) * m.missileTrailLife;
-          this.emit(u.id * 4, u.tx - c * back, u.ty - s * back, cellT * (big ? 2.2 : 1.8), now, (px, py, born) => {
+          this.emit(u.id * 4, u.tx - c * back, u.ty - s * back, Math.max(cellT * (big ? 2.2 : 1.8), (fine ? 0 : 3) / z), now, (px, py, born) => {
             P.put(px, py, 0, -0.06 / Math.max(0.3, z * 0.05), born, life, big ? 1.1 : 0.8, big ? 4.2 : 3.2, 0.8, SMOKE);
           });
           continue;
@@ -194,7 +197,7 @@ class DetailedTrails implements TrailLayer {
         src.forEach((p, i) => {
           const du = (um.props.length ? p.u - 4 : p.u) * scaleT;
           const dv = p.v * scaleT;
-          this.emit(u.id * 8 + i, u.tx + c * du - s * dv, u.ty + s * du + c * dv, cellT, now, (px, py, born) => {
+          this.emit(u.id * 8 + i, u.tx + c * du - s * dv, u.ty + s * du + c * dv, Math.max(cellT, minT), now, (px, py, born) => {
             P.put(px, py, 0, 0, born, life, 0.6, 2.2, 0.75, TRAIL);
           });
         });
@@ -268,7 +271,18 @@ class DetailedTrails implements TrailLayer {
       if (sx < -40 || sy < -40 || sx > W || sy > H) continue;
       const k = P.kind[i];
       if (k === SMOKE) {
-        smoke.push(i);
+        const rs = P.r0[i] + (P.r1[i] - P.r0[i]) * Math.sqrt(q);
+        // small puffs (far and mid zoom) are plain specks in the batches; only big ones are drawn as shaded puffs
+        if (rs * g.k >= 2.5 && smoke.length < 600) {
+          smoke.push(i);
+          continue;
+        }
+        const a = P.a0[i] * (1 - q) * (1 - q * 0.4);
+        const path = this.batch(Math.max(1, Math.min(BATCH_LEVELS, Math.round(a * BATCH_LEVELS))), q < 0.3 ? 0 : q < 0.65 ? 1 : 2);
+        const n = Math.max(1, Math.round(rs));
+        const X = (Math.round((sx * g.dpr) / g.p - n / 2) * g.p) / g.dpr;
+        const Y = (Math.round((sy * g.dpr) / g.p - n / 2) * g.p) / g.dpr;
+        if (path) path.rect(X, Y, n * cell, n * cell);
         continue;
       }
       // foam breaks up as it ages: some specks drop out
@@ -285,7 +299,7 @@ class DetailedTrails implements TrailLayer {
       if (path) {
         path.rect(X, Y, n * cell, n * cell);
         // an older wash speck spreads into a ragged pair
-        if (k !== TRAIL && q > 0.3 && n >= 2) path.rect(X + (P.seed[i] > 0.5 ? cell : -cell), Y + cell, cell, cell);
+        if (k !== TRAIL && q > 0.3 && n >= 2 && g.res >= 1.5) path.rect(X + (P.seed[i] > 0.5 ? cell : -cell), Y + cell, cell, cell);
       } else {
         ctx.globalAlpha = level / BATCH_LEVELS;
         ctx.fillStyle = FOAM_TONES[tone];
