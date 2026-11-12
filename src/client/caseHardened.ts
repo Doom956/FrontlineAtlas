@@ -402,21 +402,23 @@ interface SteelRecipe {
   magenta: number;
   /** how many small blue fragments and specks (0..1) */
   speck: number;
+  /** how far the blue itself leans to violet (0..1) */
+  violet: number;
 }
 
 export const STEEL_RECIPES: Record<CaseVariant, SteelRecipe> = {
-  A: { seed: 0xc45e_57e1, blue: 0.34, size: 64, rim: 2.4, halo: 6, purple: 0.3, magenta: 0.35, speck: 0.6 },
-  B: { seed: 0xb1e6_e3a0, blue: 0.55, size: 76, rim: 1.6, halo: 5.5, purple: 0.2, magenta: 0.25, speck: 0.5 },
-  C: { seed: 0x60_1d5e, blue: 0.18, size: 44, rim: 1.6, halo: 6, purple: 0.25, magenta: 0.3, speck: 0.75 },
-  D: { seed: 0xd9e9_71e5, blue: 0.32, size: 64, rim: 3, halo: 5.5, purple: 0.9, magenta: 0.7, speck: 0.6 },
+  A: { seed: 0xc45e_57e1, blue: 0.34, size: 64, rim: 2.4, halo: 6, purple: 0.3, magenta: 0.35, speck: 0.6, violet: 0 },
+  B: { seed: 0xb1e6_e3a0, blue: 0.66, size: 90, rim: 1.6, halo: 5, purple: 0.2, magenta: 0.25, speck: 0.5, violet: 0 },
+  C: { seed: 0x60_1d5e, blue: 0.18, size: 44, rim: 1.6, halo: 6, purple: 0.25, magenta: 0.3, speck: 0.75, violet: 0 },
+  D: { seed: 0xd9e9_71e5, blue: 0.38, size: 64, rim: 3.2, halo: 5.5, purple: 1, magenta: 0.8, speck: 0.6, violet: 0.6 },
 };
 
 /** The steel's colours in sRGB 0..255, the light key (the logo). Gold steel stays at hue 35 to 50 (never toward 60,
  *  where it turns khaki or green). */
 const STEEL = {
-  bronze: [140, 106, 56] as Rgb, // hue 36
-  brass: [170, 136, 74] as Rgb, // hue 39
-  straw: [198, 166, 98] as Rgb, // hue 41
+  bronze: [158, 116, 52] as Rgb, // hue 36
+  brass: [192, 148, 66] as Rgb, // hue 39
+  straw: [220, 182, 100] as Rgb, // hue 41
   scorch: [112, 70, 40] as Rgb, // the dark brown just outside the rim, hue 25
   amber: [176, 108, 44] as Rgb, // the halo near the blue, hue 29
   goldHalo: [206, 152, 62] as Rgb, // the halo further out, hue 38
@@ -427,6 +429,7 @@ const STEEL = {
   navy: [38, 42, 100] as Rgb,
   purple: [78, 44, 112] as Rgb,
   magenta: [148, 46, 108] as Rgb,
+  violet: [150, 122, 222] as Rgb,
 };
 
 /** The deep key (the button, white text on every pixel): the same metal in deeper colours. A darkened gold turns
@@ -445,6 +448,7 @@ const STEEL_DEEP: typeof STEEL = {
   navy: [20, 22, 64],
   purple: [52, 24, 84],
   magenta: [110, 26, 80],
+  violet: [96, 62, 180],
 };
 
 const steelFields = new Map<CaseVariant, ReturnType<typeof buildSteelField>>();
@@ -688,6 +692,7 @@ function drawSteelRegion(variant: CaseVariant, region: CaseRegion, scale: number
         let bl = mix(C.periwinkle, C.sky, smooth(0.42, 0.72, cl));
         const depth = smooth(0.0, 0.035, isl[i] - F.T);
         bl = mix(C.blueDeep, bl, 0.35 + 0.65 * depth);
+        if (rec.violet > 0) bl = mix(bl, C.violet, rec.violet * (0.55 + 0.45 * (1 - smooth(0.42, 0.72, cl))));
         // the thin dark rim right at the blue: navy to purple, magenta in flecks
         const edge = smooth(0.985, 0.7, near[i]);
         if (edge > 0) {
@@ -760,7 +765,8 @@ export const CASE_CUTS: Record<CaseStyle, { logo: CaseRegion; fill: CaseRegion }
 
 /**
  * The cuts for one style and balance. The steel's are moved (logo in the top half of the bar, button in the bottom)
- * to where the blue share is closest to the balance's own, so a small cut never lands on plain gold or plain blue.
+ * to where the blue share is closest to the balance's own, across the whole cut and in each third of it, so a small
+ * cut never lands on plain gold or plain blue.
  */
 export function caseCuts(style: CaseStyle, variant: CaseVariant): { logo: CaseRegion; fill: CaseRegion } {
   const base = CASE_CUTS[style];
@@ -772,7 +778,10 @@ export function caseCuts(style: CaseStyle, variant: CaseVariant): { logo: CaseRe
     let bestErr = Infinity;
     for (let y = y0; y + r.h <= y1; y += 12) {
       for (let x = 0; x + r.w <= 642; x += 24) {
-        const err = Math.abs(F.shareOf(x, y, r.w, r.h) - target);
+        // the whole cut near the target share, and each third of it too (so no letter run is all one colour)
+        const t3 = r.w / 3;
+        let err = Math.abs(F.shareOf(x, y, r.w, r.h) - target);
+        for (let k = 0; k < 3; k++) err += Math.abs(F.shareOf(x + k * t3, y, t3, r.h) - target) / 3;
         if (err < bestErr - 1e-9) {
           bestErr = err;
           best = { ...r, x, y };
