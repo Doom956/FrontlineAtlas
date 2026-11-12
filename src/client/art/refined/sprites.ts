@@ -238,8 +238,9 @@ const TAU = Math.PI * 2;
 /**
  * Tread dust: behind each track of a moving tank a low streak of dust, many small puffs close enough to merge into one
  * shaded band (fxCommon.ts smoke painter: lit on top, darker underneath) that drifts back, widens and thins out. New
- * puffs start tiny, so the streak fades in from the track instead of popping; the far end is a fainter group of its
- * own. The dust colours sit between grass and sand, so the streak shows on both.
+ * puffs start tiny, so the streak fades in from the track instead of popping, and shrink away at its far end; both
+ * tracks are one group (one mask, one set of fills per tank). The dust colours sit between grass and sand, so the
+ * streak shows on both (a style gets no ground colour to match).
  */
 function drawDust(ctx: CanvasRenderingContext2D, u: UnitDraw, m: MotionParams, half: number): void {
   const amt = m.treadDust * (m.reduced ? 0.5 : 1);
@@ -248,32 +249,31 @@ function drawDust(ctx: CanvasRenderingContext2D, u: UnitDraw, m: MotionParams, h
   const c = Math.cos(u.angle);
   const s = Math.sin(u.angle);
   const speedPx = Math.min(60, u.speed * u.zoom);
-  const n = k >= 2 ? 7 : 5;
+  const n = k >= 2 ? 9 : 6;
   const life = 900 + 700 * amt;
   const side = half * 0.42;
   const base = fract(u.seed * 0.618);
-  for (let older = 0; older < 2; older++) {
-    smokeReset();
-    for (let tr = -1; tr <= 1; tr += 2) {
-      for (let i = 0; i < n; i++) {
-        const p = fract(u.timeMs / life + i / n + base + (tr > 0 ? 0.5 / n : 0));
-        if (p < 0.55 !== (older === 0)) continue;
-        const age = p * life;
-        const back = half * 0.8 + Math.min(half * 2.4, (speedPx * age) / 1000) + p * 3 * k;
-        const out = side + p * k * 1.6;
-        const x = u.x - c * back - s * out * tr;
-        const y = u.y - s * back * FORE + c * out * tr * FORE - p * k;
-        // small and low: from under a cell at the track to a couple of cells, never a round ball
-        const r = (0.5 + 2.1 * p) * (0.6 + 0.4 * amt) * Math.min(1, p * 5);
-        smokeAdd(x, y, r, u.seed * 13 + i * 3 + tr);
-      }
+  smokeReset();
+  for (let tr = -1; tr <= 1; tr += 2) {
+    for (let i = 0; i < n; i++) {
+      const p = fract(u.timeMs / life + i / n + base + (tr > 0 ? 0.5 / n : 0));
+      const age = p * life;
+      const back = half * 0.8 + Math.min(half * 1.4, (speedPx * age) / 1000) + p * 2 * k;
+      const out = side + p * k * 1.6;
+      const x = u.x - c * back - s * out * tr;
+      const y = u.y - s * back * FORE + c * out * tr * FORE - p * k;
+      // small and low: from under a cell at the track to a couple of cells, never a round ball; it swells in from
+      // nothing at the track and thins away again at the far end, so the streak neither pops in nor ends in a wall
+      const r = (1.2 + 1.8 * p) * (0.6 + 0.4 * amt) * Math.min(1, p * 5, (1 - p) * 3);
+      smokeAdd(x, y, r, u.seed * 13 + i * 3 + tr);
     }
-    smokeDraw(ctx, k, (older ? 0.28 : 0.5) * Math.min(1, 0.35 + amt * 0.65), FX.dustDark, FX.dust, DUST_NEAR);
   }
+  // a darker underside and one pale body (no lit spots: on a streak this low they would read as a row of beads)
+  smokeDraw(ctx, k, 0.42 * Math.min(1, 0.35 + amt * 0.65), FX.dustLight, DUST, DUST);
 }
 
-/** Fresh tread dust's lit top: a pale dry earth, lighter than any grass so it shows on the plains. */
-const DUST_NEAR = hexOf(oklch(0.8, 0.03, 85));
+/** Tread dust: a pale dry earth, lighter than any grass so it shows on the plains. */
+const DUST = hexOf(oklch(0.78, 0.03, 85));
 
 /** The refined units: one implementation for ships, land units, planes and missiles. */
 export const refinedUnits: UnitArt = {

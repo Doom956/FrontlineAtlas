@@ -183,24 +183,20 @@ export const refinedCraters: CraterArt = {
       }
       // a fresh crater still smokes: one plume rising from the pit, leaning downwind and widening as it climbs. Its
       // puffs overlap so closely that the smoke painter merges them into one continuous column (they scroll upward,
-      // so it rises without popping); the upper half is fainter, so the plume thins away at the top.
+      // so it rises without popping), and the top puffs shrink away, so the plume thins out at the top.
       const fresh = 1 - c.q / 0.35;
       if (m.craterSmoke > 0 && fresh > 0) {
         const base = Math.max(1, cells * 0.42);
-        const N = 9;
+        const N = 8;
         const flow = (((c.q * 30 + c.seed) % 1) + 1) % 1;
-        const a = 0.55 * m.craterSmoke * fresh * f;
-        for (let half = 0; half < 2; half++) {
-          smokeReset();
-          for (let i = 0; i < N; i++) {
-            const p = (i + flow) / N;
-            if (p < 0.5 !== (half === 0)) continue;
-            const rise = (0.6 + p * 5.5) * base;
-            const lean = p * p * 3.4 * base + Math.sin(p * 6 + c.seed * 9) * 0.4;
-            smokeAdd(c.x + lean * g, c.y - rise * g, base * (0.55 + 0.9 * p) * Math.min(1, (1 - p) * 5), c.seed * 40 + i);
-          }
-          smokeDraw(ctx, g, half === 0 ? a : a * 0.55, FX.smokeDark, FX.smoke, FX.smokeLight);
+        smokeReset();
+        for (let i = 0; i < N; i++) {
+          const p = (i + flow) / N;
+          const rise = (0.6 + p * 5.5) * base;
+          const lean = p * p * 3.4 * base + Math.sin(p * 6 + c.seed * 9) * 0.4;
+          smokeAdd(c.x + lean * g, c.y - rise * g, base * (0.55 + 0.9 * p) * Math.min(1, (1 - p) * 3.5), c.seed * 40 + i);
         }
+        smokeDraw(ctx, g, 0.5 * m.craterSmoke * fresh * f, FX.smokeDark, FX.smoke, FX.smokeLight);
       }
     }
     ctx.globalAlpha = prevA;
