@@ -7,7 +7,7 @@
 //              churned wash runs down the middle; a bow wave curls off both sides of the bow, bigger the faster the
 //              ship goes. A submarine leaves only a thin wash and a small bow ripple.
 //   contrails  vapour from each engine of a plane: a bright thread a cell wide right behind the engine that widens to
-//              3 or 4 cells, drifts a little sideways and breaks up as it ages, no longer than a few plane lengths (a
+//              5 or 6 cells, drifts sideways and breaks up as it ages, no longer than a few plane lengths (a
 //              circling plane never closes a ring); a missile leaves a billowing column of smoke puffs that swell
 //              fast, drift and fray, warm grey turning pale, with the hot glow of the motor at its head.
 // Motion: wakeLength, foamLife and wakeSpread (ships), contrailLife (planes), missileTrailLife (missiles).
@@ -238,15 +238,15 @@ class DetailedTrails implements TrailLayer {
         // a few plane lengths long whatever the plane's speed (a slow plane's trail lasts longer, a fast one's less),
         // never more, so a circling plane never closes a ring
         const v = this.speedOf(u.id, u.tx, u.ty, now);
-        const reachT = halfT * 2 * 4 * m.contrailLife ** 0.35;
+        const reachT = halfT * 2 * 3.6 * m.contrailLife ** 0.2;
         const life = Math.min(6000 * m.contrailLife, Math.max(700, v > 1e-6 ? reachT / v : Infinity));
-        const drift = (cellT * 3.5) / (Math.max(200, life) / 1000);
+        const drift = (cellT * 5) / (Math.max(200, life) / 1000);
         src.forEach((p, i) => {
           const du = (um.props.length ? p.u - 4 : p.u) * scaleT;
           const dv = p.v * scaleT;
           this.emit(u.id * 8 + i, u.tx + c * du - s * dv, u.ty + s * du + c * dv, Math.max(cellT, minT), now, (px, py, born) => {
             const k = r01(P.made, 21) - 0.5;
-            P.put(px, py, -s * k * drift * 2, c * k * drift * 2, born, life * (0.75 + 0.25 * r01(P.made, 22)), 1, 4.4, 0.9, TRAIL, r01(P.made, 23));
+            P.put(px, py, -s * k * drift * 2, c * k * drift * 2, born, life * (0.75 + 0.25 * r01(P.made, 22)), 1, 6, 0.9, TRAIL, r01(P.made, 23));
           });
         });
       }
@@ -361,9 +361,9 @@ class DetailedTrails implements TrailLayer {
       let tone: number;
       if (k === TRAIL) {
         // vapour: a bright thread a cell wide behind the engine, widening to 3 or 4 cells, breaking up as it ages
-        if (q > 0.45 && P.seed[i] < (q - 0.45) * 1.7) continue;
+        if (q > 0.3 && P.seed[i] < (q - 0.3) * 1.4) continue;
         r = (P.r0[i] + (P.r1[i] - P.r0[i]) * Math.sqrt(q)) * fine;
-        a = P.a0[i] * (1 - q) ** 1.1;
+        a = P.a0[i] * (1 - q) ** 1.2 * (0.7 + 0.3 * P.k2[i]);
         tone = q < 0.1 ? 0 : q < 0.45 ? 1 : 2;
       } else if (k === ARM) {
         // a wake arm: bright only right at the stern, the outer (far-flung) specks dimmer, fraying early and fading
@@ -386,8 +386,16 @@ class DetailedTrails implements TrailLayer {
       const X = (Math.round((sx * g.dpr) / g.p - n / 2) * g.p) / g.dpr;
       const Y = (Math.round((sy * g.dpr) / g.p - n / 2) * g.p) / g.dpr;
       if (path) {
-        if (k === TRAIL && n >= 3) {
-          // a wide puff of vapour is ragged: a corner bitten off, a cell spilling out on one side
+        if (k === TRAIL && n >= 4) {
+          // a wide puff of vapour is a loose cluster of three smaller ones, never a square block
+          const m = Math.ceil(n * 0.55);
+          const o1 = Math.floor(P.k2[i] * (n - m + 1));
+          const o2 = Math.floor(P.seed[i] * (n - m + 1));
+          path.rect(X + o1 * cell, Y, m * cell, m * cell);
+          path.rect(X + (n - m) * cell, Y + o2 * cell, m * cell, m * cell);
+          path.rect(X + o2 * cell, Y + (n - m) * cell, m * cell, m * cell);
+        } else if (k === TRAIL && n === 3) {
+          // a corner bitten off, a cell spilling out on one side
           const b = P.k2[i] > 0.5 ? 1 : 0;
           path.rect(X, Y + b * cell, n * cell, (n - 1) * cell);
           path.rect(X + (b ? cell : 0), Y + (b ? 0 : (n - 1) * cell), (n - 1) * cell, cell);
