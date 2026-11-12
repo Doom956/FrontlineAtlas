@@ -5,9 +5,9 @@
    page alone wears them, as the logo and the one main action; every other screen keeps amber. Contrast (WCAG
    formula, on the column #0e1015):
      logo stops   #f0d592 13.3:1, #dc9064 7.5:1, #b473d1 5.7:1, #5e8fed 6.0:1, #7ac8f5 10.3:1
-     button stops white text on #905326 6.1:1, #894b93 6.0:1, #5457bc 6.1:1, #375fb9 6.0:1, #1666aa 6.0:1
-                  (an equal-lightness ramp, OKLCH L 0.50 to 0.515); under the hover sheen at least 4.8:1;
-                  every stop against the column 3.1:1 or more (the control edge)
+     button stops white text on #8d5613 6.0:1, #894b93 6.0:1, #5457bc 6.1:1, #375fb9 6.0:1, #1666aa 6.0:1
+                  (an equal-lightness ramp, OKLCH L 0.50 to 0.515; the first stop a golden bronze at hue 65);
+                  under the hover sheen at least 4.8:1; every stop against the column 3.1:1 or more (the control edge)
      small accents #7ac8f5 as text 10.3:1; #06192a on it 9.7:1 */
 
 .app.in-menu canvas.map-gl,
@@ -72,7 +72,7 @@
   --brass-ink: var(--accent-ink);
   /* the heat-tint ramps: bright for the logo on the dark column, deep (white text) for the main action */
   --ti-logo: #f0d592 0%, #dc9064 24%, #b473d1 46%, #5e8fed 70%, #7ac8f5 100%;
-  --ti-fill: #905326 0%, #894b93 16%, #5457bc 42%, #375fb9 68%, #1666aa 100%;
+  --ti-fill: #8d5613 0%, #894b93 16%, #5457bc 42%, #375fb9 68%, #1666aa 100%;
 }
 
 .menu-title-head {
