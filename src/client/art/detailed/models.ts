@@ -22,7 +22,7 @@
 // (Armor Mastery), a snorkel (Amphibious Tanks), jerrycans and a fuel drum (Deep Raids), a dozer blade (Siege Tanks),
 // jet engines in place of propellers (Jet Engines), drop tanks (Drop Tanks), night paint with flame dampers (Night
 // Bombing), a chequered cowling (Air Mastery) and gun turrets (Strategic Bombing).
-import { M_JET, M_MASTERY, M_NIGHT, M_PATH3, M_SPECIAL, type SpriteKey } from '../shared/keys';
+import { M_JET, M_MASTERY, M_NIGHT, M_PATH3, M_SPECIAL, SPRITE_KEYS, type SpriteKey } from '../shared/keys';
 import type { MatId, Model, Part, Pattern, Shade } from './bake';
 
 /** Which upgrade details each sprite shows (other bits are ignored, so the cache stays small). */
@@ -858,13 +858,16 @@ function atomBomb(): UnitModel {
 
 // ------------------------------------------------------------------------------------------------- lookup
 
-const cache = new Map<string, UnitModel>();
+const KEY_INDEX = new Map<SpriteKey, number>(SPRITE_KEYS.map((k, i) => [k, i]));
+/** Models by sprite and upgrade set (a plain array: looked up for every unit every frame, so no string keys). */
+const cache: (UnitModel | undefined)[] = [];
+const lengths: number[] = [];
 
 /** The model of a sprite with the given upgrade details (masked to what it can show). */
 export function unitModel(key: SpriteKey, mods: number): UnitModel {
   const m = mods & MOD_MASK[key];
-  const k = `${key}|${m}`;
-  let um = cache.get(k);
+  const k = (KEY_INDEX.get(key) ?? 0) * 32 + m;
+  let um = cache[k];
   if (um) return um;
   switch (key) {
     case 'warship':
@@ -922,8 +925,17 @@ export function unitModel(key: SpriteKey, mods: number): UnitModel {
       um = atomBomb();
       break;
   }
-  cache.set(k, um);
+  cache[k] = um;
   return um;
+}
+
+/** A unit's length (modelLength), cached: the renderer asks for it for every unit on the map every frame. */
+export function unitLength(key: SpriteKey, mods: number): number {
+  const m = mods & MOD_MASK[key];
+  const k = (KEY_INDEX.get(key) ?? 0) * 32 + m;
+  let L = lengths[k];
+  if (L === undefined) lengths[k] = L = modelLength(unitModel(key, m));
+  return L;
 }
 
 /** Bow to stern / nose to tail (model units = screen px at mid zoom), counting the turret's gun on tanks. */

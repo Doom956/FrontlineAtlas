@@ -19,7 +19,7 @@ import type { PortraitDraw, UnitArt, UnitDraw } from '../types';
 import { FORE, LIFT, rasterize, shadowOf, type Baked } from './bake';
 import { drawBlob } from './blobs';
 import { facingIndex, facingsFor, gridOf, type Grid } from './grid';
-import { modelLength, modelSpan, MOD_MASK, unitModel, type UnitModel } from './models';
+import { modelLength, modelSpan, MOD_MASK, unitLength, unitModel, type UnitModel } from './models';
 import { FIRE } from './palette';
 
 const atlas = new SpriteAtlas(1024, 12);
@@ -308,7 +308,7 @@ function drawTreadDust(ctx: CanvasRenderingContext2D, u: UnitDraw, um: UnitModel
 
 /** Length of a unit along its heading in model units (screen px at mid zoom). */
 export function detailedLength(key: SpriteKey, mods = 0): number {
-  return modelLength(unitModel(key, mods & MOD_MASK[key]));
+  return unitLength(key, mods);
 }
 
 export const detailedUnits: UnitArt = {
