@@ -7,16 +7,17 @@
 import { canBake, SpriteAtlas, type AtlasEntry, type RGBABitmap } from '../shared/atlas';
 import { hex, type RGB } from '../shared/colour';
 import type { Grid } from './grid';
-import { DUST, FIRE, SMOKE, SOOT, SPRAY } from './palette';
+import { DUST, FIRE, SMOKE, SOOT, SPRAY, VAPOUR } from './palette';
 
-export type BlobKind = 'smoke' | 'soot' | 'dust' | 'spray' | 'fire';
-const KINDS: BlobKind[] = ['smoke', 'soot', 'dust', 'spray', 'fire'];
+export type BlobKind = 'smoke' | 'soot' | 'dust' | 'spray' | 'fire' | 'vapour';
+const KINDS: BlobKind[] = ['smoke', 'soot', 'dust', 'spray', 'fire', 'vapour'];
 
 const RAMP: Record<Exclude<BlobKind, 'fire'>, RGB[]> = {
   smoke: SMOKE.map(hex),
   soot: SOOT.map(hex),
   dust: DUST.map(hex),
   spray: SPRAY.map(hex),
+  vapour: VAPOUR.map(hex),
 };
 const FIRE_RGB: RGB[] = FIRE.map(hex);
 
@@ -75,7 +76,7 @@ export function blobBitmap(kind: BlobKind, r: number, variant: number, heat = 0)
         // a ball lit from the top left, billowing inside
         const lum = -0.55 * nx - 0.62 * ny + 0.55 * nz + grain * 0.5;
         // dust is soft (a narrow range of tones), smoke and soot billow with more contrast
-        const soft = kind === 'dust' ? 0.55 : kind === 'spray' ? 0.8 : 1;
+        const soft = kind === 'dust' ? 0.55 : kind === 'spray' || kind === 'vapour' ? 0.8 : 1;
         const tf = 1.6 + ((lum + 0.25) * 2.6 - 1.6) * soft;
         let t = Math.max(0, Math.min(3, Math.floor(tf + 0.5 + dith * 0.45)));
         // the lower right rim a tone deeper
