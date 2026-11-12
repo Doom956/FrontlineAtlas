@@ -116,7 +116,7 @@ const PROP_FRAMES = 4;
  * nose, seen in the 3/4 view, with three faint blade smears at the angle of `frame`. Sampled from the disc's plane,
  * so it is right at every heading and bank.
  */
-function propBitmap(r: number, res: number, facing: number, bank: number, frame: number): RGBABitmap {
+export function propBitmap(r: number, res: number, facing: number, bank: number, frame: number): RGBABitmap {
   const P = projector(res, facing, bank * BANK_STEP);
   const [cx, cy] = P(0, 0, 0);
   const [ax, ay] = P(0, 1, 0);
@@ -127,14 +127,17 @@ function propBitmap(r: number, res: number, facing: number, bank: number, frame:
   const R = Math.ceil(r * res * 1.2) + 2;
   const w = R * 2 + 1;
   const h = R * 2 + 1;
-  const level = new Uint8Array(w * h);
+  // samples per pixel of the disc (1), the rim (2) and the blades (3): seen edge-on many samples land on one pixel,
+  // and the pixel takes the look most of them have (a max would turn the whole edge-on disc into one dark blade)
+  const cnt = new Uint16Array(w * h * 4);
   const beta = (frame / PROP_FRAMES) * ((Math.PI * 2) / 3);
   const put = (x: number, y: number, l: number): void => {
     const X = Math.floor(x + R + 0.5);
     const Y = Math.floor(y + R + 0.5);
     if (X < 0 || Y < 0 || X >= w || Y >= h) return;
-    const i = Y * w + X;
-    if (l > level[i]) level[i] = l;
+    const i = (Y * w + X) * 4;
+    cnt[i]++;
+    cnt[i + l]++;
   };
   const steps = Math.max(8, Math.ceil(r * res * 5));
   for (let i = -steps; i <= steps; i++) {
@@ -152,18 +155,30 @@ function propBitmap(r: number, res: number, facing: number, bank: number, frame:
         near = Math.min(near, da);
       }
       const l = d2 > 0.72 ? 2 : near < 0.32 && d2 > 0.06 ? 3 : 1;
-      for (const k of [-0.2, 0.2]) put(s * r * A[0] + t * r * B[0] + k * D[0], s * r * A[1] + t * r * B[1] + k * D[1], l);
+      // the blur has some depth along the heading (the blades sweep a shallow cone, and the map is seen from above),
+      // so a plane flying east or west still shows a disc and not a one-pixel line seen edge-on
+      const e = 0.2 + 0.36 * r * Math.sqrt(1 - d2);
+      const kn = Math.max(1, Math.ceil(e * res * 1.5));
+      for (let q = -kn; q <= kn; q++) {
+        const k = (e * q) / kn;
+        put(s * r * A[0] + t * r * B[0] + k * D[0], s * r * A[1] + t * r * B[1] + k * D[1], l);
+      }
     }
   }
   const data = new Uint8ClampedArray(w * h * 4);
   // disc, rim, blade: a pale haze over whatever is behind, the blades a darker grey
   const col: number[][] = [
     [0, 0, 0, 0],
-    [214, 220, 222, 70],
-    [196, 202, 205, 120],
-    [70, 76, 80, 150],
+    [222, 226, 228, 124],
+    [206, 211, 214, 178],
+    [58, 64, 68, 205],
   ];
-  for (let i = 0; i < w * h; i++) data.set(col[level[i]], i * 4);
+  for (let i = 0; i < w * h; i++) {
+    const n = cnt[i * 4];
+    if (n === 0) continue;
+    const l = cnt[i * 4 + 3] >= n * 0.3 ? 3 : cnt[i * 4 + 2] >= n * 0.4 ? 2 : 1;
+    data.set(col[l], i * 4);
+  }
   return { w, h, ox: R, oy: R, data };
 }
 
