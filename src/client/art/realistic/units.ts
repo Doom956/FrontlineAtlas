@@ -499,12 +499,13 @@ function tankDust(ctx: CanvasRenderingContext2D, model: UnitModel, q: Pose, amou
   for (let side = -1; side <= 1; side += 2)
     for (let i = 0; i < n; i++) {
       const ph = (q.timeMs / 900 + i / n + q.seed * 0.37 + (side > 0 ? 0.17 : 0)) % 1;
-      const back = (d.x - 0.5 - ph * 7) * sc;
-      const across = side * (d.y + ph * 1.6) * sc;
+      // thrown up at the track, billowing out wider than the hull and settling behind it
+      const back = (d.x - 0.5 - ph * 9) * sc;
+      const across = side * (d.y + ph * 2.2) * sc;
       const px = q.x + ca * back - sa * across;
       const py = q.y + sa * back + ca * across;
-      const r = (1.1 + ph * 2.8) * sc * (0.7 + 0.3 * amount);
-      puff(ctx, Puff.DUST, i + (side > 0 ? 3 : 0), px, py, r, (1 - ph) * (1 - ph) * Math.min(1, ph * 6) * 0.48 * amount);
+      const r = (1.6 + ph * 4.6) * sc * (0.6 + 0.4 * amount);
+      puff(ctx, Puff.DUST, i + (side > 0 ? 3 : 0), px, py, r, (1 - ph) * (1 - ph) * Math.min(1, ph * 6) * 0.6 * amount);
     }
 }
 

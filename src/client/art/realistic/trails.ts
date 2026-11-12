@@ -296,18 +296,22 @@ class RealisticTrails implements TrailLayer {
     }
     // the Kelvin arms: foam lines opening out from the stern and fading (both arms in one stroke; close up the older
     // half wider)
+    // (bright for the first moments, then a faint line that is gone well before its end: a long wake reads as foam
+    // settling, not as a drawn line)
     const k1 = ageIndex(e, v.now, armLife, 0);
     if (k1 > 0) {
-      const kmid = ageIndex(e, v.now, armLife * 0.4, 0);
+      const kq = ageIndex(e, v.now, armLife * 0.15, 0);
+      const kmid = ageIndex(e, v.now, armLife * 0.4, kq);
       const w = Math.max(0.7, v.scale * 0.6);
       const a0 = strength * (sub ? 0.25 : 0.6);
-      const am = strength * (sub ? 0.12 : 0.3);
+      const aq = a0 * 0.6;
+      const am = strength * (sub ? 0.08 : 0.17);
       const off = beam * 0.9;
       if (!near || kmid <= 0 || kmid >= k1) {
-        ctx.strokeStyle = kmid > 0 && kmid < k1 ? fadeAlong(ctx, e, v, 0, [0, kmid, k1], FOAM, [a0, am, 0]) : fadeAlong(ctx, e, v, 0, [0, k1], FOAM, [a0, 0]);
+        ctx.strokeStyle = kmid > 0 && kmid < k1 ? fadeAlong(ctx, e, v, 0, [0, kq, kmid, k1], FOAM, [a0, aq, am, 0]) : fadeAlong(ctx, e, v, 0, [0, k1], FOAM, [a0, 0]);
         strokePair(ctx, e, 0, k1, v, off, spread, 0, w * 1.15);
       } else {
-        ctx.strokeStyle = fadeAlong(ctx, e, v, 0, [0, kmid], FOAM, [a0, am]);
+        ctx.strokeStyle = fadeAlong(ctx, e, v, 0, [0, kq, kmid], FOAM, [a0, aq, am]);
         strokePair(ctx, e, 0, kmid, v, off, spread, 0, w);
         ctx.strokeStyle = fadeAlong(ctx, e, v, 0, [kmid, k1], FOAM, [am, 0]);
         strokePair(ctx, e, kmid, k1, v, off, spread, 0, w * 1.4);
@@ -384,8 +388,12 @@ class RealisticTrails implements TrailLayer {
       return;
     }
     // billowing smoke: puffs from the oldest to the newest (the young ones over the old), at most ~32 per trail
+    // (each puff at least as wide as the gap to the one before it, so a long or fast trail stays one column of smoke,
+    // never a string of beads; the exhaust glows only for its first tenth of a second)
     const step = Math.max(1, Math.floor(e.n / 32));
     const size = (big ? 1.6 : 1.15) * k;
+    let lx = NaN;
+    let ly = NaN;
     for (let kk = e.n - 1; kk >= 0; kk -= step) {
       const i = e.at(kk);
       const age = v.now - e.t[i];
@@ -394,9 +402,13 @@ class RealisticTrails implements TrailLayer {
       const drift = (age / 1000) * 0.35;
       const x = v.ox + (e.x[i] + WIND_X * drift) * v.zoom;
       const y = v.oy + (e.y[i] + WIND_Y * drift) * v.zoom - age * 0.004 * k;
-      const r = size * (0.9 + 3.2 * Math.sqrt(q));
+      const gap = lx === lx ? Math.hypot(x - lx, y - ly) : 0;
+      lx = x;
+      ly = y;
+      const r = Math.max(size * (0.9 + 3.2 * Math.sqrt(q)), Math.min(gap * 0.75, size * 5));
       const a = 0.62 * (1 - q) * (1 - q) * Math.min(1, q * 30 + 0.3);
-      puff(ctx, q < 0.08 ? Puff.FIRE : q < 0.5 ? Puff.WHITE : Puff.GREY, (i + id) % 6, x, y, r, q < 0.08 ? a * 0.9 : a);
+      const hot = age < 110;
+      puff(ctx, hot ? Puff.FIRE : q < 0.5 ? Puff.WHITE : Puff.GREY, (i + id) % 6, x, y, r, hot ? a * 0.9 : a);
     }
     ctx.globalAlpha = 1;
   }
