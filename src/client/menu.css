@@ -1,5 +1,14 @@
 /* Start page (menu.ts showTitle): a command column on the leading side over the live map. The map stays (it is the
-   game's identity) but is dimmed while any menu page shows, so the menu reads first. One amber action, quiet rows. */
+   game's identity) but is dimmed while any menu page shows, so the menu reads first. One titanium action, quiet rows.
+
+   Titanium: the colours titanium takes when it is heated (straw, bronze, purple, deep blue, light blue). The start
+   page alone wears them, as the logo and the one main action; every other screen keeps amber. Contrast (WCAG
+   formula, on the column #0e1015):
+     logo stops   #f0d592 13.3:1, #dc9064 7.5:1, #b473d1 5.7:1, #5e8fed 6.0:1, #7ac8f5 10.3:1
+     button stops white text on #905326 6.1:1, #894b93 6.0:1, #5457bc 6.1:1, #375fb9 6.0:1, #1666aa 6.0:1
+                  (an equal-lightness ramp, OKLCH L 0.50 to 0.515); under the hover sheen at least 4.8:1;
+                  every stop against the column 3.1:1 or more (the control edge)
+     small accents #7ac8f5 as text 10.3:1; #06192a on it 9.7:1 */
 
 .app.in-menu canvas.map-gl,
 .app.in-menu canvas.map {
@@ -50,14 +59,40 @@
 .menu-card.title::before {
   display: none;
 }
+/* the start page's accent is titanium blue (the aliases are repointed too, they resolve where they are declared) */
+.menu-card.title {
+  --accent: #7ac8f5;
+  --accent-hi: #9ddbf8;
+  --accent-ink: #06192a;
+  --accent-hover: #9ddbf8;
+  --accent-rgb: 122 200 245;
+  --brass: var(--accent);
+  --brass-hi: var(--accent-hi);
+  --brass-lo: #375d76;
+  --brass-ink: var(--accent-ink);
+  /* the heat-tint ramps: bright for the logo on the dark column, deep (white text) for the main action */
+  --ti-logo: #f0d592 0%, #dc9064 24%, #b473d1 46%, #5e8fed 70%, #7ac8f5 100%;
+  --ti-fill: #905326 0%, #894b93 16%, #5457bc 42%, #375fb9 68%, #1666aa 100%;
+}
 
 .menu-title-head {
   margin-bottom: 32px;
 }
 .logo {
+  width: fit-content;
+  max-width: 100%;
   margin: 0;
   font: 400 60px/0.98 var(--f-logo);
   color: var(--text);
+}
+/* the logo in titanium: the gradient runs along the word like heat along a bar, straw at the cool end */
+@supports ((background-clip: text) or (-webkit-background-clip: text)) {
+  .menu-card.title .logo {
+    background-image: linear-gradient(100deg, var(--ti-logo));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
 }
 .tagline {
   margin: 12px 0 0;
@@ -76,7 +111,7 @@
   border: 1px solid var(--brass-lo);
   --tone: var(--brass);
   border-radius: var(--r);
-  background: rgba(201, 162, 39, 0.06);
+  background: rgb(var(--accent-rgb) / 0.06);
 }
 .menu-rejoin-text {
   flex: 1;
@@ -89,7 +124,74 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* the main action */
+/* the main action (Play, or Continue / Rejoin when they lead): a matte titanium fill, white text */
+.menu-card.title .btn.primary {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  border-color: transparent;
+  background-color: #5457bc;
+  background-image: linear-gradient(100deg, var(--ti-fill));
+  background-size: 130% 100%;
+  background-position: 0 0;
+  color: #ffffff;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.14) inset, 0 6px 18px rgba(22, 40, 90, 0.35);
+}
+.menu-card.title .btn.primary:hover:not(:disabled) {
+  border-color: transparent;
+  background-color: #5457bc;
+  background-position: 100% 0;
+}
+.menu-card.title .btn.primary:active:not(:disabled) {
+  background-color: #5457bc;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45) inset;
+}
+.menu-card.title .btn.primary .menu-play-note {
+  /* white like the label (size tells them apart): a tinted note dropped under 4.5:1 below the sheen */
+  opacity: 1;
+  color: #ffffff;
+}
+/* one slow sheen when the pointer arrives (hover devices only, and never under reduced motion) */
+.menu-card.title .btn.primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 35%, rgba(255, 255, 255, 0.1) 50%, transparent 65%);
+  transform: translateX(-100%);
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .menu-card.title .btn.primary {
+    transition: background-position 600ms ease-out, box-shadow var(--fast), transform var(--fast);
+  }
+  .menu-card.title .btn.primary:hover:not(:disabled)::after {
+    transform: translateX(100%);
+    transition: transform 900ms cubic-bezier(0.2, 0, 0, 1);
+  }
+}
+/* mixed in OKLab where the browser can (the steps between stops keep the even lightness); a var() inside an
+   unsupported gradient would drop the whole image, so this is a separate, guarded rule */
+@supports (background-image: linear-gradient(in oklab, red, blue)) and ((background-clip: text) or (-webkit-background-clip: text)) {
+  .menu-card.title .logo {
+    background-image: linear-gradient(100deg in oklab, var(--ti-logo));
+  }
+}
+@supports (background-image: linear-gradient(in oklab, red, blue)) {
+  .menu-card.title .btn.primary {
+    background-image: linear-gradient(100deg in oklab, var(--ti-fill));
+  }
+}
+@media (forced-colors: active) {
+  .menu-card.title .logo {
+    background: none;
+    color: CanvasText;
+  }
+  .menu-card.title .btn.primary {
+    border-color: ButtonText;
+  }
+}
+
 .btn.menu-play {
   justify-content: space-between;
   width: 100%;
@@ -265,7 +367,11 @@
 @media (prefers-reduced-motion: reduce) {
   .app.in-menu canvas.map-gl,
   .app.in-menu canvas.map,
-  .menu-row .ico {
+  .menu-row .ico,
+  .menu-card.title .btn.primary {
     transition: none;
+  }
+  .menu-card.title .btn.primary::after {
+    display: none;
   }
 }
