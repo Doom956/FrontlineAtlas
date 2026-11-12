@@ -23,15 +23,15 @@ export const TERRAIN_RGB: readonly RGB[] = [
 ];
 
 // ---- Water depth (UI comparison switch WATER_STYLE in uiVariant.ts; the shader has the same three styles).
-// One slate ramp in three steps, OKLCH lightness 0.39 / 0.33 / 0.26, hue 230 to 246 (bluer further out), so a
+// One slate ramp in three steps, OKLCH lightness 0.39 / 0.34 / 0.26, hue 230 to 246 (bluer further out), so a
 // blue nation (lighter and more saturated) never blends into the sea.
 /** Middle band between the shelf (TERRAIN_RGB[1]) and the open sea (TERRAIN_RGB[0]). */
-export const WATER_MID: RGB = [31, 57, 73];
+export const WATER_MID: RGB = [32, 59, 76];
 /** Band edges in tiles from land: shelf up to WATER_EDGE_1, middle band up to WATER_EDGE_2, open sea beyond. */
-export const WATER_EDGE_1 = 3.5;
-export const WATER_EDGE_2 = 10.5;
+export const WATER_EDGE_1 = 4.5;
+export const WATER_EDGE_2 = 12.5;
 /** 'gradient': depth (tiles) where the smooth fade reaches the open sea colour. */
-export const WATER_FADE_END = 12;
+export const WATER_FADE_END = 14;
 
 function mixRgb(a: RGB, b: RGB, k: number): RGB {
   return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];

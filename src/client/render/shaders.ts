@@ -174,9 +174,14 @@ float seg(vec2 p, vec2 a, vec2 b) {
 // Water by depth d (tiles to land, smooth); aa = how much d changes over one device pixel. uWaterStyle is the UI
 // comparison switch (uiVariant.ts): 0 bands, 1 gradient, 2 chart. Colours and edges come from terrain.ts.
 const vec3 WATER_MID = vec3(${rgb(WATER_MID)});
-vec3 waterAt(float d, float aa) {
+// px = tiles per device pixel: zoomed far out the bands widen (up to 1.8x, so the open sea still starts within
+// MAX_DEPTH) and the shelf never shrinks to a coast outline.
+vec3 waterAt(float d, float aa, float px) {
   vec3 shelf = uTerr[1];
   vec3 sea = uTerr[0];
+  float widen = clamp(px * 1.5, 1.0, 1.8);
+  d /= widen;
+  aa /= widen;
   if (uWaterStyle == 1) {
     float g = smoothstep(1.0, ${WATER_FADE_END.toFixed(1)}, d);
     return g < 0.5 ? mix(shelf, WATER_MID, g * 2.0) : mix(WATER_MID, sea, g * 2.0 - 1.0);
@@ -337,7 +342,7 @@ void main() {
   if (water) {
     float d = landDist;
     float k = smoothstep(1.0, 6.0, d);
-    vec3 wc = waterAt(d, landDistAA);
+    vec3 wc = waterAt(d, landDistAA, px);
     wc += vec3(0.02, 0.03, 0.035) * (1.0 - smoothstep(0.55, 1.5, d)); // quiet shoreline
     if (detail > 0.0) {
       // faint wave dashes in open water
