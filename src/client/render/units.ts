@@ -10,11 +10,13 @@ import { TICKS_PER_SECOND } from '../../sim/config';
 import { armyTotal } from '../../sim/economy';
 import type { GameState, Unit } from '../../sim/types';
 import type { Camera } from '../camera';
-import { clamp, css, formatCount, MAP_NUM_FAMILY, type RGB } from './common';
+import { clamp, css, MAP_NUM_FAMILY, type RGB } from './common';
 import { drawTrails, GLYPHS, strokeDucks, type Inst } from './unitGlyphs';
 import { drawMapSprite, drawUnitMarker, isAirType, setSpriteBakeBudget, spriteLength, unitSpriteMods } from './pixelSprites';
 import { prankView } from '../fx/prankView';
 import { isIncoming } from '../forces';
+import { troopKinds, troopPill } from './troopIcons';
+import { hasIntel } from '../../sim/buildings';
 import { unitVisibleTo } from '../../sim/techtree';
 import type { FogView } from '../fog/fogView';
 import { clusterFleets, FLEET_ZOOM, fleetRadiusPx, type FleetPoint } from './fleets';
@@ -376,16 +378,18 @@ export class UnitLayer {
         countBadge(ctx, e.x + e.S * 0.9, e.y - e.S * 0.9, String(e.fleet.length), me > 0 && e.u.owner === me ? '#ffe98a' : css(c));
       }
     }
-    // transports: a small troop pill and, on cargo planes, a tiny parachute mark (mid and close zoom)
+    // transports: a small troop pill (the troop markers of what it carries and the count) and, on cargo planes, a tiny
+    // parachute mark (mid and close zoom)
     if (z >= 2) {
       for (const e of visible) {
         const u = e.u;
         if (e.type !== 'transport' && e.type !== 'transportPlane') continue;
-        // army sizes are public (only the troop mix needs intel)
-        const n = formatCount(armyTotal(u.troops));
+        // army sizes are public; the troop mix needs intel (own, allies, recon, watchtowers; spectators see all)
         const toMe = me > 0 && u.owner !== me && state.map.owner[u.target] === me;
         const edge = u.owner === me ? '#ffe98a' : toMe ? '#ff6b5e' : css(colors[u.owner] ?? [200, 200, 200]);
-        miniPill(ctx, e.x, e.y - e.S - 7, n, edge, u.owner === me ? 'up' : toMe ? 'down' : 'none');
+        const known = me <= 0 || u.owner === me || hasIntel(state, me, u.owner);
+        const owner = (colors[u.owner] ?? [200, 200, 200]) as RGB;
+        troopPill(ctx, e.x, e.y - Math.max(e.S * 0.55, 8) - 12, armyTotal(u.troops), troopKinds(known ? u.troops : null), owner, { edge, arrow: u.owner === me ? 'up' : toMe ? 'down' : 'none', alarm: toMe, small: true });
         if (e.type === 'transportPlane') chute(ctx, e.x + e.S + 4, e.y + e.S * 0.6 + 4, css(colors[u.owner] ?? [200, 200, 200]));
       }
     }
@@ -486,32 +490,3 @@ function countBadge(ctx: CanvasRenderingContext2D, x: number, y: number, text: s
   ctx.fillText(text, x, y + 0.5);
 }
 
-/** Small rounded label with a coloured edge for troop counts; `arrow` marks your own push (up) / an incoming one (down). */
-function miniPill(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, edge: string, arrow: 'up' | 'down' | 'none'): void {
-  ctx.font = `500 9px ${MAP_NUM_FAMILY}`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  const ax = arrow === 'none' ? 0 : 6;
-  const bw = ctx.measureText(text).width + 6 + ax;
-  const bh = 11;
-  const x0 = x - bw / 2;
-  ctx.beginPath();
-  ctx.roundRect(x0, y - bh / 2, bw, bh, 5.5);
-  ctx.fillStyle = 'rgba(10,13,21,0.8)';
-  ctx.fill();
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = edge;
-  ctx.stroke();
-  if (arrow !== 'none') {
-    const cx = x0 + 6;
-    const d = arrow === 'up' ? -1 : 1;
-    ctx.beginPath();
-    ctx.moveTo(cx - 2, y - d * 1.2);
-    ctx.lineTo(cx, y + d * 1.2);
-    ctx.lineTo(cx + 2, y - d * 1.2);
-    ctx.lineWidth = 1.3;
-    ctx.stroke();
-  }
-  ctx.fillStyle = '#fff';
-  ctx.fillText(text, x + ax / 2, y + 0.5);
-}

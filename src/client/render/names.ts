@@ -14,7 +14,8 @@ import type { GameState, Player } from '../../sim/types';
 import type { Camera } from '../camera';
 import { drawIcon, type StatusIconId } from '../icons';
 import { fitSize, LABEL_BLOCK_H } from '../labels';
-import { clamp, formatCount, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, setTracking } from './common';
+import { clamp, formatCount, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, setTracking, type RGB } from './common';
+import { drawTroopIcon } from './troopIcons';
 import { OWNER_MASK, type TileFeed } from './tiles';
 
 /** Tribe labels only from this zoom (device px per tile) on, except the hovered tribe. */
@@ -30,6 +31,8 @@ const BBOX_MS = 1000;
 const REFRESH_MS = 2500;
 const GLIDE_MS = 600;
 const MIX_COLORS = ['#e4dccb', '#76b3ec', '#f0a15e'];
+/** Plate colour of the troop marker next to a tribe's army count (tribes have no nation colour of their own). */
+const TRIBE_PLATE: RGB = [132, 138, 132];
 void LABEL_BLOCK_H;
 
 interface Label {
@@ -401,7 +404,14 @@ export class NameLayer {
         setTracking(ctx, small * 0.02);
         const ay = nameY + px * 0.55 + small * 0.55;
         const fill = tribe ? 'rgba(232,234,238,0.9)' : traitor ? 'rgba(255,196,189,0.9)' : 'rgba(238,241,246,0.86)';
-        haloText(ctx, army, s.x, ay, fill, small, tribe ? 1.25 : 1.05);
+        // a small soldier marker on the nation's colour plate (troopIcons.ts) says what the number counts
+        const plate = small >= 12 ? 12 : 10;
+        const aw = ctx.measureText(army).width;
+        const gx = s.x - (plate + 5 + aw) / 2;
+        drawTroopIcon(ctx, 'troops', Math.round(gx), Math.round(ay - plate / 2 - 1), tribe ? TRIBE_PLATE : (p.color as RGB), plate);
+        ctx.font = `500 ${Math.round(small)}px ${MAP_NUM_FAMILY}`;
+        ctx.textAlign = 'center';
+        haloText(ctx, army, gx + plate + 5 + aw / 2, ay, fill, small, tribe ? 1.25 : 1.05);
         if (mixBar) this.mixBar(ctx, p, s.x, ay + small * 0.6 + 3, Math.max(28, Math.min(tw, 90)));
       }
     }

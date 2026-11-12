@@ -10,7 +10,9 @@
 //   nearby arrows merged, at most MAX_ARROWS on screen, others' fights only when zoomed in a little.
 // Troop pills: a count at each active front (your attacks with an up arrow, attacks on you with a down arrow, your
 //   allies' attacks on your enemies at any zoom, other nations' fights when zoomed in), on the most recent capture
-//   nearest to the attack's focus, learnt from the tile feed.
+//   nearest to the attack's focus, learnt from the tile feed. Each pill carries the attacker's troop markers
+//   (troopIcons.ts: a soldier, a tank, a field gun on an owner-colour plate) for the types in the attack, so its mix
+//   reads at a glance; another nation's mix only with intel (else one plain troops marker), like the HUD.
 // Hover a front: a small card "Your attack on X: +N tiles/s, troops left Y" next to the pointer, with a shovel line
 //   "Dug in: +30%" when the defender's side is dug in and a plane line when Air cover bombs it (trench.ts).
 // Air cover: a small plane glyph next to the troop pill of an attack that idle airfields cover by themselves.
@@ -23,7 +25,9 @@ import { isTribe } from '../../sim/types';
 import type { Attack, GameState } from '../../sim/types';
 import type { Camera } from '../camera';
 import type { UiState } from '../uiState';
-import { clamp, css, formatCount, MAP_NUM_FAMILY, mix, pill, type RGB } from './common';
+import { clamp, css, formatCount, MAP_NUM_FAMILY, mix, type RGB } from './common';
+import { troopKinds, troopPill } from './troopIcons';
+import { hasIntel } from '../../sim/buildings';
 import { OWNER_MASK, type TileFeed } from './tiles';
 import { coveringAirfields, dugInPct } from '../trench';
 
@@ -745,6 +749,13 @@ export class FrontLayer {
     const z = cam.zoom;
     const w = this.w;
     const pills: { x: number; y: number }[] = [];
+    // whose troop mix this viewer may see (own, allies, recon or watchtower intel; spectators see all), once a frame
+    const intel = new Map<number, boolean>();
+    const knows = (id: number): boolean => {
+      let k = intel.get(id);
+      if (k === undefined) intel.set(id, (k = me <= 0 || id === me || hasIntel(state, me, id)));
+      return k;
+    };
     for (const a of state.attacks) {
       const mine = me > 0 && a.attacker === me;
       const incoming = me > 0 && a.target === me;
@@ -759,7 +770,8 @@ export class FrontLayer {
       const py = s.y - Math.max(12, z * 0.9);
       pills.push({ x: s.x, y: py });
       const edge = mine ? '#ffe98a' : incoming ? SIGNAL : css(colors[a.attacker] ?? [200, 200, 200]);
-      const pw = pill(ctx, s.x, py, formatCount(armyTotal(a.troops)), edge, mine || ally ? 'up' : incoming ? 'down' : 'none');
+      const owner = (colors[a.attacker] ?? [200, 200, 200]) as RGB;
+      const pw = troopPill(ctx, s.x, py, armyTotal(a.troops), troopKinds(knows(a.attacker) ? a.troops : null), owner, { edge, arrow: mine || ally ? 'up' : incoming ? 'down' : 'none', alarm: incoming });
       if (coveringAirfields(state, a.attacker, a.target).length > 0) glyph(ctx, 'plane', s.x + pw / 2 + 9, py, 13, mine ? '#ffe98a' : '#e4dfd2');
       if (mine && a.focusTile >= 0) {
         const f = cam.tileToScreen((a.focusTile % w) + 0.5, ((a.focusTile / w) | 0) + 0.5);

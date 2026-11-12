@@ -558,39 +558,44 @@ function reconPlane(mods: number): Part[] {
 
 // ------------------------------------------------------------------------------------------------- missiles
 
-/** The exhaust: an orange flame with a white-hot core; frame 1 is a little longer (flicker). */
+/** The exhaust: a tiny white-yellow flame at the tail; frame 1 is a pixel longer (flicker). */
 function flame(u: number, r: number, len: number, z: number, frame: number): Part[] {
-  const L = len + (frame ? 1.6 : 0);
-  return [
-    poly([u, -r, u, r, u - L, frame ? 0.4 : -0.3], z, 1, 'flame', { glow: true, sh: 'cyl', sc: over(u - L / 2, 0, L / 2, r) }),
-    poly([u, -r * 0.5, u, r * 0.5, u - L * 0.55, 0], z + 0.2, 1, 'white', { glow: true }),
-  ];
+  const L = len + (frame ? 1 : 0);
+  return [poly([u, -r, u, r, u - L, 0], z, 1, 'flame', { glow: true, sh: 'cyl', sc: over(u - L / 2, 0, L / 2, r) }), ell(u - 0.4, 0, 0.9, 0.6, z + 0.3, 0.8, 'white', { glow: true })];
 }
 
+/**
+ * The rocket: a slender grey tube about six times longer than wide (light top stripe, mid, dark underside), a pointed
+ * nose with a light tip, small dark fins, a 1 px yellow warning band and a tiny flame. A projectile: no owner colour.
+ */
 function rocket(frame: number): Part[] {
+  const body = over(-1.4, 0, 6, 1.2);
   return [
-    ...flame(-7.6, 0.9, 4.2, 1.6, frame),
-    poly(sym([-3.8, -1.1, -6.4, -3.4, -7.4, -3.4, -6.8, -1.1]), 1.4, 0.4, 'gun'),
-    box(-7.6, -0.8, -6.8, 0.8, 1.6, 1.2, 'gun'),
-    box(-6.8, -1.15, 3.6, 1.15, 1.4, 1.6, 'white', { sh: 'cyl' }),
-    box(-2, -1.2, -0.6, 1.2, 1.4, 1.65, 'own', { sh: 'cyl', sc: over(-1.6, 0, 5.2, 1.15) }),
-    poly([7.6, 0, 6.2, -0.8, 3.6, -1.15, 3.6, 1.15, 6.2, 0.8], 1.4, 1.6, 'red', { sh: 'cyl', sc: over(5.6, 0, 2, 1.15) }),
-    seg(-7, 0, -4, 0, 0.6, 3, 1.3, 'gun'),
+    ...flame(-7.4, 0.7, 2.2, 1.6, frame),
+    poly(sym([-4.2, -1.1, -6.6, -3, -7.4, -3, -7, -1.1]), 1.4, 0.4, 'gun'),
+    box(-7.4, -0.7, -6.8, 0.7, 1.6, 1.1, 'gun'),
+    box(-6.8, -1.2, 4, 1.2, 1.4, 1.7, 'metal', { sh: 'cyl', sc: body }),
+    box(-1.6, -1.25, -0.6, 1.25, 1.4, 1.75, 'yellow', { sh: 'cyl', sc: body }),
+    poly([7.6, 0, 6.2, -0.75, 4, -1.2, 4, 1.2, 6.2, 0.75], 1.4, 1.7, 'metal', { sh: 'cyl', sc: over(5.8, 0, 1.8, 1.2) }),
+    ell(7.1, 0, 0.8, 0.6, 2.4, 0.6, 'white'),
+    seg(-7, 0, -4.4, 0, 1.1, 3, 1.2, 'gun'),
   ];
 }
 
+/** The atom bomb: larger and thicker, olive with a yellow and black hazard band, bigger fins, a light nose tip. */
 function atomBomb(frame: number): Part[] {
+  const body = over(-1.8, 0, 7, 1.9);
   return [
-    ...flame(-9.6, 1.2, 5.4, 1.8, frame),
-    poly(sym([-4.8, -1.8, -8.2, -4.6, -9.4, -4.6, -8.8, -1.8]), 1.4, 0.5, 'gun'),
-    box(-9.6, -1.1, -8.8, 1.1, 1.8, 1.4, 'gun'),
-    box(-8.8, -1.9, 4.6, 1.9, 1.4, 2.2, 'white', { sh: 'cyl' }),
-    box(-4.8, -1.95, -3.4, 1.95, 1.4, 2.25, 'yellow', { sh: 'cyl', sc: over(-2, 0, 6.7, 1.9) }),
-    box(-3.4, -1.95, -2.4, 1.95, 1.4, 2.25, 'black', { sh: 'cyl', sc: over(-2, 0, 6.7, 1.9) }),
-    box(-2.4, -1.95, -1, 1.95, 1.4, 2.25, 'yellow', { sh: 'cyl', sc: over(-2, 0, 6.7, 1.9) }),
-    box(1.4, -1.95, 2.6, 1.95, 1.4, 2.25, 'own', { sh: 'cyl', sc: over(-2, 0, 6.7, 1.9) }),
-    poly([9.8, 0, 8.4, -1.2, 4.6, -1.9, 4.6, 1.9, 8.4, 1.2], 1.4, 2.2, 'yellow', { sh: 'cyl', sc: over(7.2, 0, 2.6, 1.9) }),
-    seg(-9, 0, -5, 0, 0.8, 3.6, 1.8, 'gun'),
+    ...flame(-9.4, 0.9, 2.6, 1.8, frame),
+    poly(sym([-5, -1.8, -8.2, -4.4, -9.4, -4.4, -8.8, -1.8]), 1.4, 0.5, 'gun'),
+    box(-9.4, -1, -8.8, 1, 1.8, 1.4, 'gun'),
+    box(-8.8, -1.9, 4.6, 1.9, 1.4, 2.3, 'olive', { sh: 'cyl', sc: body }),
+    box(-3.6, -1.95, -2.4, 1.95, 1.4, 2.35, 'yellow', { sh: 'cyl', sc: body }),
+    box(-2.4, -1.95, -1.4, 1.95, 1.4, 2.35, 'black', { sh: 'cyl', sc: body }),
+    box(-1.4, -1.95, -0.2, 1.95, 1.4, 2.35, 'yellow', { sh: 'cyl', sc: body }),
+    poly([9.4, 0, 8, -1.2, 4.6, -1.9, 4.6, 1.9, 8, 1.2], 1.4, 2.3, 'olive', { sh: 'cyl', sc: over(7, 0, 2.4, 1.9) }),
+    ell(8.9, 0, 0.8, 0.7, 2.6, 0.8, 'sand'),
+    seg(-9, 0, -5.2, 0, 1.2, 3.7, 1.6, 'gun'),
   ];
 }
 
