@@ -401,8 +401,9 @@ export class Overlays {
     if (e.radius >= 4 && e.kind !== 'shot' && e.kind !== 'capture') {
       const f = t < 0.12 ? 1 : Math.max(0, 1 - (t - 0.12) / 0.88);
       const rgb = e.kind === 'nuke' ? '255,214,140' : '255,196,110';
-      this.blastDisc(ctx, x, y, e.radius, z, rgb, 0.06 * f * f, 0.8 * f, 1.25);
-      if (e.kind === 'nuke') this.blastDisc(ctx, x, y, ATOM_CORE_RADIUS, z, '255,150,80', 0.06 * f * f, 0.8 * f, 1.25);
+      // the atom bomb's own shockwave is the ring to watch: its blast area stays a faint outline under it
+      const k = e.kind === 'nuke' ? 0.25 : 1;
+      this.blastDisc(ctx, x, y, e.radius, z, rgb, 0.06 * f * f * k, 0.8 * f * k, 1.25);
     }
     if (e.kind === 'capture') {
       const r = Math.max(3, z * 0.8) * (0.5 + t);

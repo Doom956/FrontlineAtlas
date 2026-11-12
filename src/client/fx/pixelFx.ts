@@ -107,7 +107,7 @@ interface Flash {
   t0: number;
   live: boolean;
 }
-interface Crater {
+export interface Crater {
   x: number;
   y: number;
   /** radius in tiles */
@@ -116,6 +116,8 @@ interface Crater {
   born: number;
   life: number;
   seed: number;
+  /** the crater reaches water: it is drawn clipped to the land tiles */
+  coast: boolean;
 }
 
 /** What the effects need from the unit layer: where a ship was drawn and which way it faces. */
@@ -135,17 +137,17 @@ export interface FxCam {
 /** Turret centres (art px along / across the hull) of the ships that fire, by variant. */
 const TURRETS: Record<string, readonly (readonly [number, number])[]> = {
   warship: [
-    [7, 0],
-    [-10, 0],
+    [7.6, 0],
+    [-10.2, 0],
   ],
   destroyer: [
-    [6.4, 0],
-    [6.4, 0],
+    [7.2, 0],
+    [7.2, 0],
   ],
   battleship: [
-    [11.8, 0],
-    [7.2, 0],
-    [-12.4, 0],
+    [11.6, 0],
+    [6, 0],
+    [-12.8, 0],
   ],
 };
 
@@ -279,6 +281,32 @@ export class PixelFx {
     return state.map.terrain[ty * w + tx] <= 1;
   }
 
+  /** True when the tile under (x, y) and its four neighbours are all land: only there is a crater left. */
+  private landAround(state: GameState, x: number, y: number): boolean {
+    return !this.isWater(state, x, y) && !this.isWater(state, x + 1, y) && !this.isWater(state, x - 1, y) && !this.isWater(state, x, y + 1) && !this.isWater(state, x, y - 1);
+  }
+
+  /**
+   * A crater from a blast on land: none at the coast (the centre tile or one of its four neighbours is water), and
+   * one whose bitmap reaches water is drawn clipped to the land tiles. Water hits splash instead.
+   */
+  private scar(state: GameState, x: number, y: number, r: number, born: number, life: number): void {
+    if (!this.landAround(state, x, y)) return;
+    const c = this.crater(x, y, r, born, life);
+    const reach = Math.ceil(r * 1.8) + 1;
+    const w = state.map.width;
+    const h = state.map.height;
+    const T = state.map.terrain;
+    const cx = Math.floor(x);
+    const cy = Math.floor(y);
+    for (let ty = cy - reach; ty <= cy + reach && !c.coast; ty++)
+      for (let tx = cx - reach; tx <= cx + reach; tx++)
+        if (tx < 0 || ty < 0 || tx >= w || ty >= h || T[ty * w + tx] <= 1) {
+          c.coast = true;
+          break;
+        }
+  }
+
   /** The unit that died at (x, y) since last frame, or null. */
   private lostAt(x: number, y: number): Unit | null {
     let best: Unit | null = null;
@@ -300,7 +328,7 @@ export class PixelFx {
     switch (e.kind) {
       case 'nuke':
         this.blast('atom', e.x, e.y, e.radius, now);
-        this.crater(e.x, e.y, Math.max(4, e.radius * 0.32), tick, 1800);
+        this.scar(state, e.x, e.y, Math.max(4, e.radius * 0.32), tick, 1800);
         return;
       case 'barrage': {
         // shells land over the disc in a quick ripple, each with its own small crater
@@ -314,7 +342,7 @@ export class PixelFx {
           if (this.isWater(state, x, y)) this.blast('splash', x, y, 0, at);
           else {
             this.blast('shell', x, y, 0, at);
-            this.crater(x, y, 0.45 + rnd(e.x, i + 3) * 0.25, tick + (at - now) / 100, 450);
+            this.scar(state, x, y, 0.45 + rnd(e.x, i + 3) * 0.25, tick + (at - now) / 100, 450);
           }
         }
         return;
@@ -324,7 +352,7 @@ export class PixelFx {
         if (e.radius >= 4) {
           if (this.missileTargets.has(tile)) {
             this.blast('missile', e.x, e.y, e.radius, now);
-            if (!this.isWater(state, e.x, e.y)) this.crater(e.x, e.y, Math.max(1.6, e.radius * 0.3), tick, 650);
+            if (!this.isWater(state, e.x, e.y)) this.scar(state, e.x, e.y, Math.max(1.6, e.radius * 0.3), tick, 650);
             return;
           }
           // a bomber's or an air strike's run: a stick of bombs over the disc
@@ -338,7 +366,7 @@ export class PixelFx {
             if (this.isWater(state, x, y)) this.blast('splash', x, y, 0, at);
             else {
               this.blast('bomb', x, y, 0, at);
-              this.crater(x, y, 0.75 + rnd(e.x, i) * 0.35, tick + (at - now) / 100, 550);
+              this.scar(state, x, y, 0.75 + rnd(e.x, i) * 0.35, tick + (at - now) / 100, 550);
             }
           }
           return;
@@ -348,7 +376,7 @@ export class PixelFx {
         else if (this.isWater(state, e.x, e.y)) this.blast('hit', e.x, e.y, 0, now);
         else {
           this.blast('hit', e.x, e.y, 0, now);
-          this.crater(e.x, e.y, 0.7, tick, 500);
+          this.scar(state, e.x, e.y, 0.7, tick, 500);
         }
         return;
       }
@@ -411,7 +439,7 @@ export class PixelFx {
       else if (s.water || this.isWater(state, s.x1, s.y1)) this.blast('splash', s.x1, s.y1, 0, now);
       else {
         this.blast('shell', s.x1, s.y1, 0, now);
-        this.crater(s.x1, s.y1, 0.5, state.tick, 300);
+        this.scar(state, s.x1, s.y1, 0.5, state.tick, 300);
       }
     }
   }
@@ -473,14 +501,15 @@ export class PixelFx {
   }
 
   /** A scorch crater at (x, y) tiles, radius r tiles, made at game time `born` (ticks), lasting `life` ticks. */
-  crater(x: number, y: number, r: number, born: number, life: number): void {
+  crater(x: number, y: number, r: number, born: number, life: number): Crater {
     // it shows once the fireball covers the spot, not under the first flash
-    const c = { x, y, r, born: born + CRATER_DELAY, life, seed: fract(Math.sin(x * 7.13 + y * 3.71) * 9157.31) };
+    const c = { x, y, r, born: born + CRATER_DELAY, life, seed: fract(Math.sin(x * 7.13 + y * 3.71) * 9157.31), coast: false };
     if (this.craters.length < CRATER_CAP) this.craters.push(c);
     else {
       this.craters[this.craterNext] = c;
       this.craterNext = (this.craterNext + 1) % CRATER_CAP;
     }
+    return c;
   }
 
   // ------------------------------------------------------------------------------------------------ drawing
@@ -497,6 +526,7 @@ export class PixelFx {
     const prevA = ctx.globalAlpha;
     const prevS = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
+    const map = this.state?.map ?? null;
     for (const c of this.craters) {
       const age = gameTime - c.born;
       if (age < 0 || age > c.life) continue;
@@ -507,20 +537,25 @@ export class PixelFx {
       // full for the first 60 % of its life, then fading out
       const f = age < c.life * 0.6 ? 1 : 1 - (age - c.life * 0.6) / (c.life * 0.4);
       if (f <= 0.02) continue;
+      // at the coast: clipped to the land tiles, so no scorch lies on the water
+      const clip = c.coast && map ? clipToLand(ctx, map.terrain, map.width, map.height, c, ox, oy, z) : false;
+      if (c.coast && map && !clip) continue;
       if (z < 3) {
         // middle zooms: a plain dark spot
         ctx.globalAlpha = prevA * 0.45 * f;
         ctx.fillStyle = '#211b17';
         const r = Math.max(1, Math.round(R));
         ctx.fillRect(Math.round(sx - r), Math.round(sy - r * 0.8), r * 2, Math.max(1, Math.round(r * 1.6)));
-        continue;
+      } else {
+        const cells = Math.max(2, Math.min(40, Math.round(R / g)));
+        const img = craterSprite(cells, Math.floor(c.seed * 4));
+        if (img) {
+          ctx.globalAlpha = prevA * f;
+          const s = img.width * g;
+          ctx.drawImage(img, Math.round(sx - s / 2), Math.round(sy - (img.height * g) / 2), s, img.height * g);
+        }
       }
-      const cells = Math.max(2, Math.min(40, Math.round(R / g)));
-      const img = craterSprite(cells, Math.floor(c.seed * 4));
-      if (!img) continue;
-      ctx.globalAlpha = prevA * f;
-      const s = img.width * g;
-      ctx.drawImage(img, Math.round(sx - s / 2), Math.round(sy - (img.height * g) / 2), s, img.height * g);
+      if (clip) ctx.restore();
     }
     ctx.globalAlpha = prevA;
     ctx.imageSmoothingEnabled = prevS;
@@ -615,6 +650,18 @@ export function pixelDisc(ctx: CanvasRenderingContext2D, cx: number, cy: number,
   }
 }
 
+/** A ring broken into dots: one cell in every `every` (a shockwave thinning out as it grows). */
+function sparseRing(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, g: number, every: number): void {
+  const x0 = Math.round(cx / g) * g;
+  const y0 = Math.round(cy / g) * g;
+  const ri = Math.max(1, Math.round(r));
+  const n = Math.max(8, Math.round(ri * 6.3));
+  for (let i = 0; i < n; i += every) {
+    const a = (i / n) * Math.PI * 2;
+    ctx.fillRect(x0 + Math.round(Math.cos(a) * ri) * g, y0 + Math.round(Math.sin(a) * ri) * g, g, g);
+  }
+}
+
 /** A 1-cell pixel ring of radius `r` cells (`dash`: every other cell, a ring breaking up as it fades). */
 export function pixelRing(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, g: number, dash = false): void {
   const x0 = Math.round(cx / g) * g;
@@ -628,16 +675,90 @@ export function pixelRing(ctx: CanvasRenderingContext2D, cx: number, cy: number,
   }
 }
 
-/** A shaded puff: a disc with a lighter disc toward the top left (the light) and a darker rim below right. */
-function puff(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, g: number, dark: string, mid: string, light: string): void {
-  ctx.fillStyle = dark;
-  pixelDisc(ctx, x + g * 0.5, y + g * 0.5, r, g);
-  ctx.fillStyle = mid;
-  pixelDisc(ctx, x, y, r - 0.6, g);
-  if (r >= 2) {
-    ctx.fillStyle = light;
-    pixelDisc(ctx, x - r * 0.3 * g, y - r * 0.3 * g, r * 0.45, g);
+// Smoke is painted as one mass: the puffs of a group are collected (smokeAdd), then drawn in layered passes (all the
+// dark discs, then all the mid discs, then all the light highlights), so overlapping puffs merge into one outlined
+// cloud with a top-left light instead of a stack of separately outlined beads. A group drawn see-through goes through
+// a scratch canvas first, so the overlaps do not darken.
+const SMOKE_MAX = 40;
+const smX = new Float32Array(SMOKE_MAX);
+const smY = new Float32Array(SMOKE_MAX);
+const smR = new Float32Array(SMOKE_MAX);
+let smN = 0;
+let scratch: HTMLCanvasElement | null = null;
+let scratchCtx: CanvasRenderingContext2D | null = null;
+
+/** Adds a puff (centre in px, radius in cells) to the smoke group being built. */
+function smokeAdd(x: number, y: number, r: number): void {
+  if (smN < SMOKE_MAX) {
+    smX[smN] = x;
+    smY[smN] = y;
+    smR[smN] = r;
+    smN++;
   }
+}
+
+function smokePasses(ctx: CanvasRenderingContext2D, dx: number, dy: number, g: number, dark: string, mid: string, light: string): void {
+  ctx.fillStyle = dark;
+  for (let i = 0; i < smN; i++) pixelDisc(ctx, smX[i] + dx + g * 0.5, smY[i] + dy + g * 0.5, smR[i], g);
+  ctx.fillStyle = mid;
+  for (let i = 0; i < smN; i++) pixelDisc(ctx, smX[i] + dx, smY[i] + dy, smR[i] - 0.6, g);
+  ctx.fillStyle = light;
+  for (let i = 0; i < smN; i++) if (smR[i] >= 2) pixelDisc(ctx, smX[i] + dx - smR[i] * 0.3 * g, smY[i] + dy - smR[i] * 0.3 * g, smR[i] * 0.45, g);
+}
+
+/** Draws the smoke group built with smokeAdd at `alpha` and empties it. */
+function smokeDraw(ctx: CanvasRenderingContext2D, g: number, alpha: number, dark = SMOKE_DARK, mid = SMOKE, light = SMOKE_LIGHT): void {
+  if (smN === 0) return;
+  const prev = ctx.globalAlpha;
+  if (alpha >= 0.99 || typeof document === 'undefined') {
+    ctx.globalAlpha = prev * alpha;
+    smokePasses(ctx, 0, 0, g, dark, mid, light);
+  } else {
+    // the group's box, on the cell grid so the discs snap to the same pixels as on the map
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    for (let i = 0; i < smN; i++) {
+      const r = (smR[i] + 2) * g;
+      x0 = Math.min(x0, smX[i] - r);
+      y0 = Math.min(y0, smY[i] - r);
+      x1 = Math.max(x1, smX[i] + r);
+      y1 = Math.max(y1, smY[i] + r);
+    }
+    x0 = Math.floor(x0 / g) * g;
+    y0 = Math.floor(y0 / g) * g;
+    const w = Math.ceil(x1 - x0);
+    const h = Math.ceil(y1 - y0);
+    if (!scratch) {
+      scratch = document.createElement('canvas');
+      scratchCtx = scratch.getContext('2d');
+    }
+    const sc = scratchCtx;
+    if (!sc || w <= 0 || h <= 0 || w > 2048 || h > 2048) {
+      ctx.globalAlpha = prev * alpha;
+      smokePasses(ctx, 0, 0, g, dark, mid, light);
+    } else {
+      if (scratch.width < w || scratch.height < h) {
+        scratch.width = Math.max(scratch.width, w);
+        scratch.height = Math.max(scratch.height, h);
+      }
+      sc.clearRect(0, 0, w, h);
+      sc.globalAlpha = 1;
+      smokePasses(sc, -x0, -y0, g, dark, mid, light);
+      ctx.globalAlpha = prev * alpha;
+      ctx.drawImage(scratch, 0, 0, w, h, x0, y0, w, h);
+    }
+  }
+  ctx.globalAlpha = prev;
+  smN = 0;
+}
+
+/** One shaded puff on its own (a group of one). */
+function puff(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, g: number, alpha = 1, dark = SMOKE_DARK, mid = SMOKE, light = SMOKE_LIGHT): void {
+  smN = 0;
+  smokeAdd(x, y, r);
+  smokeDraw(ctx, g, alpha, dark, mid, light);
 }
 
 /**
@@ -722,29 +843,31 @@ function drawBlast(ctx: CanvasRenderingContext2D, b: Blast, x: number, y: number
         pixelRing(ctx, x, yy, R * 2.1, g, true);
         ctx.globalAlpha = 1;
       }
-      puff(ctx, x + cell(R * 0.3), yy - cell(R * 0.6), R * 0.45, g, SMOKE_DARK, SMOKE, SMOKE_LIGHT);
+      puff(ctx, x + cell(R * 0.3), yy - cell(R * 0.6), R * 0.45, g);
       break;
     }
     default: {
-      // smoke puffs rising and drifting, embers underneath, then thinning out
+      // smoke rising and drifting as one soft mass, embers underneath, then thinning out
       const k = f - 4;
-      ctx.globalAlpha = k === 0 ? 1 : 0.62;
+      ctx.globalAlpha = 1;
       if (k === 0) {
         ctx.fillStyle = RED;
         pixelDisc(ctx, x, yy, R * 0.35, g);
       }
+      smN = 0;
       const n = Math.max(1, spec.smoke);
       for (let i = 0; i < n; i++) {
         const a = rnd(s, i + 20) * Math.PI * 2;
-        const d = R * (0.2 + 0.4 * rnd(s, i + 30));
+        const d = R * (0.15 + 0.3 * rnd(s, i + 30));
         const px = x + Math.cos(a) * cell(d) + cell(k * 1.5);
-        const py = yy + Math.sin(a) * cell(d) * 0.6 - cell(R * (0.5 + 0.35 * k));
-        puff(ctx, px, py, R * (0.4 + 0.12 * k) * (0.8 + 0.4 * rnd(s, i + 40)), g, SMOKE_DARK, SMOKE, SMOKE_LIGHT);
+        const py = yy + Math.sin(a) * cell(d) * 0.6 - cell(R * (0.45 + 0.3 * k));
+        smokeAdd(px, py, R * (0.42 + 0.14 * k) * (0.85 + 0.3 * rnd(s, i + 40)));
       }
       if (b.kind === 'missile') {
-        // a short smoke column over the impact
-        for (let i = 0; i < 3; i++) puff(ctx, x + cell(k), yy - cell(R * (1 + i * 0.55 + k * 0.4)), R * (0.3 + 0.05 * i), g, SMOKE_DARK, SMOKE, SMOKE_LIGHT);
+        // a short smoke column over the impact, its puffs overlapping so it reads as one rising plume
+        for (let i = 0; i < 4; i++) smokeAdd(x + cell(k + Math.sin(i * 2.1 + s * 6) * R * 0.08), yy - cell(R * (0.9 + i * 0.36 + k * 0.4)), R * (0.36 + 0.04 * i));
       }
+      smokeDraw(ctx, g, k === 0 ? 1 : 0.7);
       ctx.globalAlpha = 1;
     }
   }
@@ -834,13 +957,17 @@ function drawAtom(ctx: CanvasRenderingContext2D, b: Blast, x: number, y: number,
     pixelDisc(ctx, x, y, r * 0.7, g);
     return;
   }
-  // rings: white then pale yellow, running out and breaking up
+  // one white shockwave ring running out and breaking into dots as it grows, and one faint follow ring
   if (f <= 7) {
+    const rr = r * (1.1 + (f - 2) * 0.5);
     ctx.globalAlpha = 1 - (f - 2) / 7;
     ctx.fillStyle = WHITE;
-    pixelRing(ctx, x, y, r * (1.1 + (f - 2) * 0.45), g, f > 4);
-    ctx.fillStyle = '#fff1b8';
-    if (f >= 3) pixelRing(ctx, x, y, r * (0.9 + (f - 3) * 0.32), g, f > 5);
+    if (f <= 3) pixelRing(ctx, x, y, rr, g);
+    else sparseRing(ctx, x, y, rr, g, f <= 5 ? 2 : 3);
+    if (f >= 4) {
+      ctx.globalAlpha = 0.22 * (1 - (f - 4) / 4);
+      pixelRing(ctx, x, y, rr * 0.72, g, true);
+    }
     ctx.globalAlpha = 1;
   }
   // the column and the cap rise from frame 4; the fireball shrinks into the cap
@@ -849,21 +976,30 @@ function drawAtom(ctx: CanvasRenderingContext2D, b: Blast, x: number, y: number,
   ctx.globalAlpha = fade;
   if (f >= 4) {
     const top = r * (0.6 + 1.6 * rise);
-    for (let i = 0; i < 5; i++) {
-      const h = (i / 4) * top;
-      puff(ctx, x + cell(Math.sin(i * 1.7 + b.seed) * 0.6), y - cell(h), r * (0.32 - i * 0.025), g, SMOKE_DARK, SMOKE, SMOKE_LIGHT);
+    // the column: close, overlapping puffs (one mass, a little wavy), narrowing toward the cap
+    smN = 0;
+    for (let i = 0; i < 7; i++) {
+      const h = (i / 6) * top;
+      smokeAdd(x + cell(Math.sin(i * 1.3 + b.seed * 5) * r * 0.05), y - cell(h), r * (0.3 - i * 0.012));
     }
-    // the cap: a ring of puffs with a glowing underside early on
+    smokeDraw(ctx, g, fade);
+    // the cap glows on its underside early on: a red and orange crescent under the cap, its top hidden by the puffs
     const cy = y - cell(top + r * 0.3);
+    if (f <= 8) {
+      ctx.globalAlpha = fade;
+      ctx.fillStyle = f <= 6 ? RED : EMBER;
+      pixelDisc(ctx, x, cy + cell(r * 0.62), r * 0.46, g);
+      ctx.fillStyle = f <= 6 ? ORANGE : RED;
+      pixelDisc(ctx, x - cell(r * 0.05), cy + cell(r * 0.52), r * 0.36, g);
+    }
+    // the cap: a ring of puffs round a big top puff, drawn as one mass
     for (let i = 0; i < 7; i++) {
       const a = (i / 7) * Math.PI * 2;
-      puff(ctx, x + Math.cos(a) * cell(r * 0.6), cy + Math.sin(a) * cell(r * 0.28), r * 0.42, g, SMOKE_DARK, SMOKE, SMOKE_LIGHT);
+      smokeAdd(x + Math.cos(a) * cell(r * 0.6), cy + Math.sin(a) * cell(r * 0.28), r * 0.42);
     }
-    puff(ctx, x, cy - cell(r * 0.15), r * 0.5, g, SMOKE_DARK, SMOKE, SMOKE_LIGHT);
-    if (f <= 8) {
-      ctx.fillStyle = f <= 6 ? ORANGE : RED;
-      pixelDisc(ctx, x, cy + cell(r * 0.3), r * 0.35, g);
-    }
+    smokeAdd(x, cy - cell(r * 0.15), r * 0.5);
+    smokeDraw(ctx, g, fade);
+    ctx.globalAlpha = fade;
   }
   if (f <= 7) {
     // the fireball: lumpy orange edge, a red rim on the lower right, orange body, the hot side yellow and white
@@ -900,9 +1036,8 @@ function drawMuzzle(ctx: CanvasRenderingContext2D, x: number, y: number, aim: nu
   const at = (d: number, side = 0): [number, number] => [Math.round((x + (c * d - s * side) * g) / g) * g, Math.round((y + (s * d + c * side) * g) / g) * g];
   if (f === 2) {
     const k = (t - 0.6) / 0.4;
-    ctx.globalAlpha = 0.8 * (1 - k);
-    puff(ctx, x + c * 3 * g + k * 2 * g, y + s * 3 * g - (1 + k * 3) * g, 1.6 + k, g, SMOKE, SMOKE_LIGHT, '#d2cec8');
     ctx.globalAlpha = 1;
+    puff(ctx, x + c * 3 * g + k * 2 * g, y + s * 3 * g - (1 + k * 3) * g, 1.6 + k, g, 0.8 * (1 - k), SMOKE, SMOKE_LIGHT, '#d2cec8');
     return;
   }
   const len = f === 0 ? 8 : 5;
@@ -984,6 +1119,33 @@ function drawShell(ctx: CanvasRenderingContext2D, s: Shell, t: number, ox: numbe
 }
 
 // ================================================================================================ craters
+
+/**
+ * Clips the canvas to the land tiles around a crater (its bitmap reaches about 1.8 radii, at least one tile). True
+ * when a clip was set (call ctx.restore() after drawing); false when no land tile is there.
+ */
+function clipToLand(ctx: CanvasRenderingContext2D, T: ArrayLike<number>, w: number, h: number, c: Crater, ox: number, oy: number, z: number): boolean {
+  const reach = Math.ceil(c.r * 1.8) + 1;
+  const cx = Math.floor(c.x);
+  const cy = Math.floor(c.y);
+  let any = false;
+  ctx.save();
+  ctx.beginPath();
+  for (let ty = Math.max(0, cy - reach); ty <= Math.min(h - 1, cy + reach); ty++)
+    for (let tx = Math.max(0, cx - reach); tx <= Math.min(w - 1, cx + reach); tx++) {
+      if (T[ty * w + tx] <= 1) continue;
+      const x0 = Math.round(ox + tx * z);
+      const y0 = Math.round(oy + ty * z);
+      ctx.rect(x0, y0, Math.round(ox + (tx + 1) * z) - x0, Math.round(oy + (ty + 1) * z) - y0);
+      any = true;
+    }
+  if (!any) {
+    ctx.restore();
+    return false;
+  }
+  ctx.clip();
+  return true;
+}
 
 /**
  * A crater as a small baked bitmap (cells across = 2 * radius + 4): a scorched disc, a darker pit lit on its lower

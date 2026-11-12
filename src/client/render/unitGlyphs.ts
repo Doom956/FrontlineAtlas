@@ -288,7 +288,7 @@ export class TrailPuffs {
   /** next slot (the oldest puff is overwritten when full) */
   private head = 0;
   /** where each emitter (unit id * 4 + side) dropped its last puff, and the frame it was seen */
-  private last = new Map<number, { x: number; y: number; frame: number }>();
+  private last = new Map<number, { x: number; y: number; frame: number; t: number; v: number }>();
   private frame = 0;
   /** puffs made since the start (tests, stats) */
   made = 0;
@@ -322,12 +322,13 @@ export class TrailPuffs {
 
   /**
    * Drops puffs every `spacing` tiles along the way emitter `key` went since last frame, ending at (x, y) (tiles).
-   * vx, vy: drift in tiles per second.
+   * vx, vy: drift in tiles per second. `maxLen` (tiles, 0 = none) caps the trail's length: a fast emitter's puffs
+   * live just long enough to reach that far behind it.
    */
-  emit(key: number, x: number, y: number, spacing: number, now: number, life: number, r0: number, r1: number, kind: number, vx: number, vy: number, jit = 0): void {
+  emit(key: number, x: number, y: number, spacing: number, now: number, life: number, r0: number, r1: number, kind: number, vx: number, vy: number, jit = 0, maxLen = 0): void {
     const l = this.last.get(key);
     if (!l || this.frame - l.frame > 3) {
-      this.last.set(key, { x, y, frame: this.frame });
+      this.last.set(key, { x, y, frame: this.frame, t: now, v: 0 });
       this.put(x, y, vx, vy, now, life, r0, r1, kind);
       return;
     }
@@ -336,6 +337,11 @@ export class TrailPuffs {
     const dy = y - l.y;
     const d = Math.hypot(dx, dy);
     if (d < spacing) return;
+    // speed (tiles per ms, smoothed) for the length cap
+    const dt = now - l.t;
+    if (dt > 0) l.v = l.v ? l.v * 0.6 + (d / dt) * 0.4 : d / dt;
+    l.t = now;
+    if (maxLen > 0 && l.v > 0) life = Math.max(120, Math.min(life, maxLen / l.v));
     // a jump (a teleport, a long pause) starts a fresh trail
     if (d > spacing * 60) {
       l.x = x;
@@ -377,8 +383,8 @@ export class TrailPuffs {
         ctx.globalAlpha = prev * 0.7 * (1 - q);
         ctx.fillStyle = q < 0.3 ? '#ffffff' : '#dcebf3';
       } else {
-        // white-hot at the engine, then a neutral light grey
-        ctx.globalAlpha = prev * (k === FAINT ? 0.45 : 0.72) * (1 - q);
+        // white-hot at the engine, then a neutral light grey; from 0.7 at the front to nothing at the tail
+        ctx.globalAlpha = prev * (k === FAINT ? 0.45 : 0.7) * (1 - q);
         ctx.fillStyle = q < 0.12 && k === SMOKE ? '#fffbe8' : q < 0.45 ? '#e6e6e1' : '#c6c6c0';
       }
       puffDisc(ctx, sx, sy, r, g);
@@ -443,10 +449,11 @@ export function drawTrails(ctx: CanvasRenderingContext2D, list: readonly Inst[],
       const sin = Math.sin(e.angle);
       const back = (e.S * 0.9) / z;
       if (gl.trail === 'missile') {
-        // narrow and white-hot at the engine, wider and broken up toward the back; a few missile lengths long
+        // narrow and white-hot at the engine, growing from one to three cells and broken up toward the back, about
+        // five missile lengths long
         const big = e.type === 'atomBomb';
-        const life = z < 3 ? 1100 : 300;
-        puffs.emit(e.id * 4, e.tx - cos * back, e.ty - sin * back, (2.5 * g) / z, now, life, big ? 1 : 0.8, big ? 3.4 : 2.8, SMOKE, 1.2 / z, -2 / z, (1.2 * g) / z);
+        const life = z < 3 ? 1100 : 600;
+        puffs.emit(e.id * 4, e.tx - cos * back, e.ty - sin * back, (2.5 * g) / z, now, life, 1, big ? 3.4 : 3, SMOKE, 1.2 / z, -2 / z, (1.2 * g) / z, (5 * 2 * e.S) / z);
       } else if (gl.trail === 'air') {
         puffs.emit(e.id * 4, e.tx - cos * back, e.ty - sin * back, (3.5 * g) / z, now, 300, 0.5, 1.6, FAINT, 0, 0, (0.8 * g) / z);
       } else if (e.moving) {
@@ -457,6 +464,19 @@ export function drawTrails(ctx: CanvasRenderingContext2D, list: readonly Inst[],
       }
     }
     puffs.draw(ctx, view.ox, view.oy, z, g, now, view.viewW, view.viewH);
+    // the white-hot core at each missile's nozzle: two near-white cells just behind the flame
+    const pa = ctx.globalAlpha;
+    for (const e of list) {
+      if (GLYPHS[e.type].trail !== 'missile') continue;
+      const cos = Math.cos(e.angle);
+      const sin = Math.sin(e.angle);
+      ctx.globalAlpha = pa * 0.95;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(Math.round((e.x - cos * (e.S + 0.5 * g)) / g) * g, Math.round((e.y - sin * (e.S + 0.5 * g)) / g) * g, g, g);
+      ctx.fillStyle = '#fff3c4';
+      ctx.fillRect(Math.round((e.x - cos * (e.S + 1.6 * g)) / g) * g, Math.round((e.y - sin * (e.S + 1.6 * g)) / g) * g, g, g);
+    }
+    ctx.globalAlpha = pa;
     return;
   }
   // no buffer: the puffs laid out along the heading (oldest and widest at the tail)

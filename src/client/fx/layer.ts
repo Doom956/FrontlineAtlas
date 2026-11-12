@@ -243,13 +243,9 @@ function drawOne(ctx: CanvasRenderingContext2D, f: FxRec, x: number, y: number, 
     case 'shockwave':
       // the rocket / bomb blasts draw their own pixel ring (fx/pixelFx.ts)
       break;
-    case 'nukeWave': {
-      const R = Math.max(40, f.r * z);
-      ring(ctx, x, y, R * (0.2 + 2.2 * easeOut(t)), 1 + 3.5 * (1 - t), WAVE, 0.75 * Math.pow(1 - t, 1.5));
-      const t2 = clamp01((t - 0.12) / 0.88);
-      if (t2 > 0) ring(ctx, x, y, R * (0.15 + 1.5 * easeOut(t2)), 1 + 2 * (1 - t2), '255,170,110', 0.5 * (1 - t2) * (1 - t2));
+    case 'nukeWave':
+      // the atom bomb draws its own single pixel shockwave ring (fx/pixelFx.ts); this kind keeps the camera shake
       break;
-    }
   }
 }
 
