@@ -1,8 +1,10 @@
 // The detailed style's cannon fire (client only), in the same puffs and palette as the explosions:
-//   muzzle flash  a ragged burst of flame thrown out along the line of fire (white hot at the muzzle, orange at its
-//                 tips), then a cloud of grey gun smoke pushed forward that slows, swells and drifts off (flashSize,
-//                 flashTime, muzzleSmoke)
-//   shell         a dark round with a faint hot glow and a short tracer streak, lobbed in an arc (shellArc), with its
+//   muzzle flash  a big ball of flame at the muzzle with a ragged tongue thrown out along the line of fire (white hot
+//                 at the muzzle, orange at its tips; about 6 cells across at map scale 2, more with flashSize), then a
+//                 cloud of sooty, then grey gun smoke pushed forward that slows, swells and drifts off (flashTime,
+//                 muzzleSmoke). The interface gives no target to a ship's drawing, so its turrets cannot train on it:
+//                 the flash comes from the gun's resting position (UnitArt.turretPoint)
+//   shell         a short, unbroken bright tracer streak, hottest at its head, lobbed in an arc (shellArc), with its
 //                 shadow running straight along the ground below it, so the height reads
 //   tracer        anti-air fire: bright streaks racing up to the plane, each with a fading tail
 //   torpedo       a dark torpedo running just under the surface, its thin bubbly wake drawn out behind it

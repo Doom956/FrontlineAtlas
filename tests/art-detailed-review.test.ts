@@ -85,10 +85,12 @@ describe('detailed art style after review', () => {
     expect(tones.size).toBeGreaterThanOrEqual(3);
   });
 
-  it('bakes ships and planes at twice the headings of tanks', () => {
-    expect(facingsFor(2, true)).toBe(64);
-    expect(facingsFor(1, true)).toBe(32);
+  it('bakes ships at twice the headings of tanks, planes at 32 at every zoom', () => {
+    expect(facingsFor(2, 'ship')).toBe(64);
+    expect(facingsFor(1, 'ship')).toBe(32);
+    expect(facingsFor(1, 'plane')).toBe(32);
     expect(facingsFor(2)).toBe(32);
+    expect(facingsFor(1)).toBe(16);
   });
 
   it('shapes every crater irregularly, heavier on one side, with no ring outline', () => {

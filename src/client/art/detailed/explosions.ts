@@ -44,7 +44,7 @@ const SPEC: Record<BlastKind, Spec> = {
   missile: { r: 9, fire: 520, smoke: 1100, puffs: 8, debris: 10, dirt: 10, skirt: true, burn: 4 },
   atom: { r: 26, fire: 1700, smoke: 2600, puffs: 0, debris: 12, dirt: 0, skirt: true, burn: 0 },
   splash: { r: 3.8, fire: 520, smoke: 450, puffs: 0, debris: 0, dirt: 0, skirt: false, burn: 0 },
-  flak: { r: 3.2, fire: 160, smoke: 700, puffs: 3, debris: 5, dirt: 0, skirt: false, burn: 0 },
+  flak: { r: 4.2, fire: 160, smoke: 700, puffs: 3, debris: 5, dirt: 0, skirt: false, burn: 0 },
 };
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -248,7 +248,7 @@ function drawSplash(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams
     for (let i = n - 1; i >= 0; i--) {
       const f = i / (n - 1);
       const spread = 1 + (k > 0.45 ? (k - 0.45) * 2.2 : 0);
-      const r = Rc * (0.42 - 0.24 * f) * spread * (0.8 + 0.2 * rnd(sd, i + 25));
+      const r = Rc * (0.62 - 0.3 * f) * spread * (0.8 + 0.2 * rnd(sd, i + 25));
       drawBlob(ctx, 'spray', r, i + 2, x + (rnd(sd, i + 20) - 0.5) * R * 0.35 * spread * u, y - h * f * u, g, (1 - k * 0.45) * (f > 0.85 ? 0.8 : 1));
     }
     // the white top of the column catching the light
@@ -325,22 +325,23 @@ function drawAtom(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams):
       const wob = Math.sin(i * 1.7 + sd) * R * 0.06 + late * R * 0.35 * f;
       const r = Rc * (0.2 + 0.08 * rnd(sd, i + 60) + 0.06 * (1 - f));
       const a = fade * clamp01((q - 0.16) * 4);
-      drawBlob(ctx, f < 0.3 ? 'dust' : 'smoke', r, i, x + wob * u, y - h * u, g, a);
+      drawBlob(ctx, 'smoke', r, i, x + wob * u, y - h * u, g, a * (f < 0.25 ? 0.6 : 1));
       if (glow > 0.05 && f > 0.25) drawBlob(ctx, 'fire', r * 0.45, i + 2, x + wob * u, y - h * u, g, glow * 0.75, 2 + (1 - glow) * 2);
     }
   }
   // the skirt: dust thrown up round the foot of the stem, widening down into the ground and the surge
   if (q > 0.08) {
     const k = easeOut(clamp01((age - fT * 0.08) / (fT * 1.2)));
-    for (let j = 0; j < 5; j++) {
-      const f = j / 4;
-      const h = R * 0.55 * f * k;
-      const half = R * (0.25 + 0.75 * (1 - f)) * (0.5 + 0.5 * k);
-      const cnt = 3 - (j >> 1);
+    for (let j = 0; j < 4; j++) {
+      const f = j / 3;
+      const h = R * 0.4 * f * k;
+      const half = R * (0.2 + 1.1 * (1 - f) * (1 - f)) * (0.5 + 0.5 * k);
+      const cnt = 5 - j;
       for (let i = 0; i < cnt; i++) {
         const side = cnt === 1 ? 0 : (i / (cnt - 1)) * 2 - 1;
-        const r = Rc * (0.2 + 0.1 * (1 - f) + 0.06 * rnd(sd, j * 7 + i + 300));
-        drawBlob(ctx, 'dust', r, j + i, x + (side * half + (rnd(sd, j * 5 + i + 310) - 0.5) * R * 0.2) * u, y - h * u, g, (0.5 - f * 0.2) * fade);
+        const r = Rc * (0.16 + 0.12 * (1 - f) + 0.06 * rnd(sd, j * 7 + i + 300));
+        const yy = y - h * u + Math.abs(side) * R * 0.12 * u;
+        drawBlob(ctx, rnd(sd, j * 3 + i + 320) < 0.3 ? 'smoke' : 'dust', r, j + i, x + (side * half + (rnd(sd, j * 5 + i + 310) - 0.5) * R * 0.2) * u, yy, g, (0.42 - f * 0.18) * fade);
       }
     }
   }
@@ -429,7 +430,8 @@ function drawMapFx(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionParams)
       for (let i = 0; i < 6; i++) {
         const ang = (i / 6) * Math.PI * 2 + rnd(sd, i);
         const d = (2 + 7 * easeOut(t)) * k;
-        drawBlob(ctx, 'spray', (0.8 + 0.9 * rnd(sd, i + 5)) * k * g.res, i, f.x + Math.cos(ang) * d * sc, f.y + Math.sin(ang) * d * sc * 0.6, g, 0.55 * end);
+        if (i % 2) continue;
+        drawBlob(ctx, 'spray', (0.7 + 0.6 * rnd(sd, i + 5)) * k * g.res, i, f.x + Math.cos(ang) * d * sc, f.y + Math.sin(ang) * d * sc * 0.6, g, 0.4 * end);
       }
       // the burning wreck's smoke: oily soot rising and turning grey as it drifts off
       for (let j = 0; j < 4; j++) {
@@ -451,7 +453,7 @@ function drawMapFx(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionParams)
         const d = (2 + 5 * easeOut(t)) * k;
         speck(ctx, f.x + Math.cos(ang) * d * sc, f.y + Math.sin(ang) * d * sc * 0.6, g, Math.max(1, Math.round((3 - i * 0.5) * sink * g.res * 0.6)), DEBRIS[1 + (i % 2)]);
       }
-      if (t < 0.35) drawBlob(ctx, 'spray', 3 * k * g.res, 2, f.x, f.y - (2 + t * 10) * sc, g, 0.6 * (1 - t / 0.35));
+      if (t < 0.35) drawBlob(ctx, 'spray', 3 * k * g.res, 2, f.x, f.y - (2 + t * 10) * sc, g, 0.35 * (1 - t / 0.35));
       break;
     }
     case 'smoke': {

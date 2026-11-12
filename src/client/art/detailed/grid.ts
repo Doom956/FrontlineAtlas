@@ -43,12 +43,15 @@ export function snapCell(v: number, g: Grid): number {
 }
 
 /**
- * Headings a unit is baked at for a resolution: 32 at about two art px per unit and more, 16 below; ships and planes
- * (`fine`), whose long hulls and wings would visibly step as they turn, twice as many (64 near, 32 at mid). The atlas
- * bakes them lazily under a per-frame budget, so only the headings on screen cost anything.
+ * Headings a unit is baked at for a resolution: 32 at about two art px per unit and more, 16 below. Ships (`kind`
+ * 'ship'), whose long hulls would visibly step as they turn, get 64 close up and 32 at mid; planes 32 at both (they are
+ * smaller, and each heading is baked at several banks, so more would crowd the atlas). The atlas bakes lazily under a
+ * per-frame budget, so only the headings on screen cost anything.
  */
-export function facingsFor(res: number, fine = false): number {
-  return (res >= 1.5 ? 32 : 16) * (fine ? 2 : 1);
+export function facingsFor(res: number, kind: 'ship' | 'plane' | 'other' = 'other'): number {
+  if (kind === 'ship') return res >= 1.5 ? 64 : 32;
+  if (kind === 'plane') return 32;
+  return res >= 1.5 ? 32 : 16;
 }
 
 /** Heading in radians to one of `n` facings (0 = east, clockwise on screen). */

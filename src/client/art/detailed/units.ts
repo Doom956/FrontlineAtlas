@@ -1,6 +1,6 @@
 // The detailed style's units on the map and in portraits (client only). Each model (models.ts) is rasterized per
-// heading (32 headings at near zoom, 16 at mid on a 1x screen; ships and planes twice as many, so a big hull turns
-// smoothly), resolution, owner colour, upgrade set and, for planes,
+// heading (32 headings at near zoom, 16 at mid on a 1x screen; ships twice as many, so a big hull turns smoothly,
+// planes 32 at both), resolution, owner colour, upgrade set and, for planes,
 // bank (bake.ts), never rotated as an image; each bake lands once in this style's atlas and is drawn with whole device
 // pixels per art pixel (grid.ts), so the pixels stay square and crisp. What moves is drawn from the clock and the
 // MotionParams numbers only:
@@ -182,7 +182,7 @@ function drawAt(ctx: CanvasRenderingContext2D, u: UnitDraw, m: MotionParams, g: 
   const mods = u.mods & MOD_MASK[key];
   const um = unitModel(key, mods);
   const cat = unitCategoryOf(key);
-  const n = facingsFor(g.res, cat === 'ships' || cat === 'air');
+  const n = facingsFor(g.res, cat === 'ships' ? 'ship' : cat === 'air' ? 'plane' : 'other');
   const facing = facingIndex(u.angle, n);
   const th = facing * ((Math.PI * 2) / n);
   const t = u.timeMs;
@@ -353,7 +353,7 @@ export const detailedUnits: UnitArt = {
     const um = unitModel(key, 0);
     if (!um.guns.length) return { x, y };
     const gun = um.guns[Math.min(um.guns.length - 1, Math.max(0, index))];
-    const n = facingsFor(gridOf(scale, 1).res, true);
+    const n = facingsFor(gridOf(scale, 1).res, 'ship');
     const th = facingIndex(angle, n) * ((Math.PI * 2) / n);
     const [dx, dy] = project(gun[0], gun[1], gun[2], th, 0, scale, false);
     return { x: x + dx, y: y + dy };

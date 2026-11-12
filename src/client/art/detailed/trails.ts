@@ -235,10 +235,11 @@ class DetailedTrails implements TrailLayer {
         const um = unitModel(u.key, 0);
         const src = um.props.length ? um.props : um.nozzles;
         const scaleT = view.scale / z;
-        // never longer than a few plane lengths, so a circling plane never closes a ring
+        // a few plane lengths long whatever the plane's speed (a slow plane's trail lasts longer, a fast one's less),
+        // never more, so a circling plane never closes a ring
         const v = this.speedOf(u.id, u.tx, u.ty, now);
-        const reachT = halfT * 2 * 3.2 * Math.sqrt(m.contrailLife);
-        const life = Math.min(1700 * m.contrailLife, v > 1e-6 ? reachT / v : Infinity);
+        const reachT = halfT * 2 * 3.5 * Math.sqrt(m.contrailLife);
+        const life = Math.min(5000 * m.contrailLife, Math.max(700, v > 1e-6 ? reachT / v : Infinity));
         const drift = (cellT * 2.2) / (Math.max(200, life) / 1000);
         src.forEach((p, i) => {
           const du = (um.props.length ? p.u - 4 : p.u) * scaleT;

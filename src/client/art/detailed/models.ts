@@ -149,7 +149,8 @@ function shipBase(L: number, b: number, bow: number, H: number, deck: MatId, tra
     // a darker band along the waterline: the hull's lowest strake
     poly(hullShape(L + 0.05, b + 0.05, bow, transom), 0, 0.55, 'hullDark'),
     poly(inner, H, 0, deck, { inset: true, pat: deck === 'teak' ? 'planks' : undefined }),
-    poly(inner, H, 0.32, 'sup', { edge: true }),
+    // the railing only close up: at mid zoom it would outline the whole hull
+    poly(inner, H, 0.32, 'sup', { edge: true, minRes: 1.5 }),
   ];
 }
 
@@ -307,11 +308,11 @@ function battleship(mods: number): UnitModel {
   const tl = 3.6;
   const tw = 3;
   const th = 1.9;
-  const tb = 7.4;
+  const tb = 7;
   const tbw = 1;
   const out: Part[] = [...shipBase(L, B, 9, H, 'bbdeck')];
   out.push(ell(L - 2.6, -0.8, 0.45, 0.45, H, 0.2, 'gun'), ell(L - 2.6, 0.8, 0.45, 0.45, H, 0.2, 'gun'));
-  out.push(...turret(12.8, H, 1, tl, tw, th, 3, tb, tbw, 'own'));
+  out.push(...turret(12.2, H, 1, tl, tw, th, 3, tb, tbw, 'own'));
   out.push(ell(5.8, 0, 4.4, 3.5, H, 1.4, 'hull'), ...turret(5.8, H + 1.4, 1, tl, tw, th, 3, tb, tbw, 'own'));
   // the tower: a broad armoured base, three stepped decks, the bridge windows, the fire control top
   out.push(box(-5.2, -3.9, 1.2, 3.9, H, 1.6, 'sup'));
@@ -320,18 +321,17 @@ function battleship(mods: number): UnitModel {
   out.push(box(-0.1, -2, 0.3, 2, H + 4.6, 0, 'glass'));
   out.push(box(-3.4, -1.4, -0.8, 1.4, H + 4.6, 1.2, 'sup'), ell(-2.1, 0, 0.8, 1.6, H + 5.8, 0.5, 'gun'));
   out.push(...mast(-3.9, H + 4.6, 3.2, 2.4, !!(mods & M_MASTERY)));
-  out.push(...funnel(-7.4, 2, 1.7, H + 1.2, 3.4, 0.6));
-  out.push(box(-10.6, -2.4, -9, 2.4, H, 1.4, 'sup'), ...mast(-9.8, H + 1.4, 3, 1.6));
+  out.push(...funnel(-6.9, 2, 1.7, H + 1.2, 3.4, 0.6));
   for (const s of [-1, 1]) {
     for (const u of [0.2, -2.8, -5.8]) out.push(...smallGun(u, s * 4.4, H, s * 1.35, 0.95, 2.2));
     out.push(...boat(-8.6, s * 4.4, H + 0.2, 1.8));
   }
-  out.push(...turret(-13.4, H, -1, tl, tw, th, 3, tb, tbw));
-  if (mods & M_MASTERY) out.push(...aa(-11.4, -3.6, H), ...aa(-11.4, 3.6, H), ...aa(2.6, -4.4, H), ...aa(2.6, 4.4, H));
+  out.push(...turret(-12.4, H, -1, tl, tw, th, 3, tb, tbw));
+  if (mods & M_MASTERY) out.push(...aa(-9.4, -4.3, H), ...aa(-9.4, 4.3, H), ...aa(2.6, -4.4, H), ...aa(2.6, 4.4, H));
   if (mods & M_SPECIAL) out.push(...mineRails(-L + 1.4, H, 2.6));
-  const m1 = muzzles(12.8, H, 1, tl, tw, th, 3, tb, tbw);
+  const m1 = muzzles(12.2, H, 1, tl, tw, th, 3, tb, tbw);
   const m2 = muzzles(5.8, H + 1.4, 1, tl, tw, th, 3, tb, tbw);
-  const m3 = muzzles(-13.4, H, -1, tl, tw, th, 3, tb, tbw);
+  const m3 = muzzles(-12.4, H, -1, tl, tw, th, 3, tb, tbw);
   return ship(out, [m1[1], m2[1], m3[1]]);
 }
 
