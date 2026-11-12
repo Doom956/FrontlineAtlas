@@ -23,6 +23,8 @@ import type { FogView } from '../fog/fogView';
 import { fxEnabled, prefersReducedMotion } from './settings';
 
 export const CRATER_CAP = 200;
+/** Game ticks between a blast and its crater showing (the fireball hides the moment it appears). */
+const CRATER_DELAY = 1.5;
 const BLAST_CAP = 72;
 const SHELL_CAP = 48;
 const FLASH_CAP = 48;
@@ -309,7 +311,7 @@ export class PixelFx {
           if (this.isWater(state, x, y)) this.blast('splash', x, y, 0, at);
           else {
             this.blast('shell', x, y, 0, at);
-            this.crater(x, y, 0.7 + rnd(e.x, i + 3) * 0.4, tick + (at - now) / 100, 450);
+            this.crater(x, y, 0.45 + rnd(e.x, i + 3) * 0.25, tick + (at - now) / 100, 450);
           }
         }
         return;
@@ -333,7 +335,7 @@ export class PixelFx {
             if (this.isWater(state, x, y)) this.blast('splash', x, y, 0, at);
             else {
               this.blast('bomb', x, y, 0, at);
-              this.crater(x, y, 1 + rnd(e.x, i) * 0.5, tick + (at - now) / 100, 550);
+              this.crater(x, y, 0.75 + rnd(e.x, i) * 0.35, tick + (at - now) / 100, 550);
             }
           }
           return;
@@ -343,7 +345,7 @@ export class PixelFx {
         else if (this.isWater(state, e.x, e.y)) this.blast('hit', e.x, e.y, 0, now);
         else {
           this.blast('hit', e.x, e.y, 0, now);
-          this.crater(e.x, e.y, 0.9, tick, 500);
+          this.crater(e.x, e.y, 0.7, tick, 500);
         }
         return;
       }
@@ -406,7 +408,7 @@ export class PixelFx {
       else if (s.water || this.isWater(state, s.x1, s.y1)) this.blast('splash', s.x1, s.y1, 0, now);
       else {
         this.blast('shell', s.x1, s.y1, 0, now);
-        this.crater(s.x1, s.y1, 0.6, state.tick, 300);
+        this.crater(s.x1, s.y1, 0.5, state.tick, 300);
       }
     }
   }
@@ -469,7 +471,8 @@ export class PixelFx {
 
   /** A scorch crater at (x, y) tiles, radius r tiles, made at game time `born` (ticks), lasting `life` ticks. */
   crater(x: number, y: number, r: number, born: number, life: number): void {
-    const c = { x, y, r, born, life, seed: fract(Math.sin(x * 7.13 + y * 3.71) * 9157.31) };
+    // it shows once the fireball covers the spot, not under the first flash
+    const c = { x, y, r, born: born + CRATER_DELAY, life, seed: fract(Math.sin(x * 7.13 + y * 3.71) * 9157.31) };
     if (this.craters.length < CRATER_CAP) this.craters.push(c);
     else {
       this.craters[this.craterNext] = c;
@@ -835,13 +838,25 @@ function drawAtom(ctx: CanvasRenderingContext2D, b: Blast, x: number, y: number,
     }
   }
   if (f <= 7) {
+    // the fireball: lumpy orange edge, a red rim on the lower right, orange body, the hot side yellow and white
+    // toward the light; it cools to red and sinks into the column
     const fr = r * (f <= 3 ? 1 : 1 - (f - 3) * 0.16);
-    ctx.fillStyle = f <= 4 ? ORANGE : RED;
+    const hot = f <= 4;
+    ctx.fillStyle = hot ? ORANGE : RED;
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2 + b.seed * 6;
+      pixelDisc(ctx, x + Math.cos(a) * cell(fr * 0.92), y + Math.sin(a) * cell(fr * 0.92), fr * (0.2 + 0.08 * rnd(b.seed, i)), g);
+    }
+    ctx.fillStyle = hot ? RED : EMBER;
     pixelDisc(ctx, x + g, y + g, fr, g);
-    ctx.fillStyle = f <= 4 ? YELLOW : ORANGE;
+    ctx.fillStyle = hot ? ORANGE : RED;
     pixelDisc(ctx, x, y, fr, g);
-    ctx.fillStyle = f <= 3 ? WHITE : YELLOW;
-    pixelDisc(ctx, x - cell(fr * 0.2), y - cell(fr * 0.22), fr * 0.55, g);
+    ctx.fillStyle = hot ? YELLOW : ORANGE;
+    pixelDisc(ctx, x - cell(fr * 0.14), y - cell(fr * 0.16), fr * 0.7, g);
+    if (f <= 5) {
+      ctx.fillStyle = f <= 3 ? WHITE : YELLOW;
+      pixelDisc(ctx, x - cell(fr * 0.3), y - cell(fr * 0.32), fr * 0.34, g);
+    }
   }
   ctx.globalAlpha = 1;
 }
