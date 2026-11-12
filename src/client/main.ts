@@ -1,5 +1,7 @@
 // Boot: main menu -> new game -> loop (fixed-step sim at 10 ticks/s x speed, render every frame). Online games run
 // the same sim in lockstep (mpgame.ts): turns from the server drive the ticks, actions go out as intents.
+// First the art lab gate: an art lab build opened at #artlab shows the lab and never starts the game (artlab/gate.ts).
+import './artlab/gate';
 import './styles.css';
 import { loadFonts } from './fonts';
 import { AudioManager } from './audio';

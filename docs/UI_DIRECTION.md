@@ -132,8 +132,8 @@ Sentence case everywhere. No letter-spaced capitals, no eyebrow labels above hea
   these tokens, with the research blue accent.
 - Accent: amber everywhere except the main menu (case-hardened steel) and the research panel (research blue), see "Where the
   accent changes".
-- Units (render/pixelSprites.ts): original pixel sprites drawn from rectangles in code, one density, a 1px dark
-  outline and a two-tone owner ramp. Far: a small solid marker per unit and fleet markers with a count. Near (zoom 3
+- Units (render/pixelSprites.ts through the art switch, docs/ART_STYLES.md; the refined style in src/client/art/refined):
+  original pixel sprites drawn from rectangles in code, one density, a 1px dark outline and a two-tone owner ramp. Far: a small solid marker per unit and fleet markers with a count. Near (zoom 3
   and up): the full sprite for warships, transports, tank divisions, planes and missiles.
 - Buildings: a calm category plate with a white glyph and a thin owner band under it; the name appears close up.
 
