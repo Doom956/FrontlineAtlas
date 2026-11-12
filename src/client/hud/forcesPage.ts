@@ -15,7 +15,7 @@ import { buildingAllowed, unitAllowed } from '../../sim/rules';
 import { hasTech } from '../../sim/tech';
 import { techFirst } from './procure';
 import { unitCost } from '../../sim/units';
-import type { Building, GameState, Player, Unit } from '../../sim/types';
+import type { Building, GameState, Player, Unit, UnitType, UnitVariant } from '../../sim/types';
 import { aircraftAt, buildUnit, hpText, priceText, UNIT_TEXT, unitBuildStatus, unitDoing, unitName, type BuyableUnit } from '../forces';
 import { iconDataUrl, type IconId } from '../icons';
 import { formatCount } from '../render/common';
@@ -29,6 +29,8 @@ import { GroupsStrip } from './groupsStrip';
 import { el, sectionTitle, setText, setTip, setVisible, type DrawerId, type HudCtx } from './dom';
 import type { DrawerPage } from './drawers';
 import { iconSpan, lineIcon, worldGlyph } from './glyph';
+import { catSpan, pixelGlyph, pixelStrike, type IconCat } from './pixelIcons';
+import { unitPortrait } from './portrait';
 
 interface Act {
   label: string;
@@ -41,8 +43,9 @@ interface Act {
 }
 interface RowSpec {
   key: string;
-  /** a unit picture (icons.ts) or a building glyph */
-  pic: { unit?: IconId; building?: Parameters<typeof worldGlyph>[0] };
+  /** the unit's own sprite as a portrait (hud/portrait.ts), else a unit picture (icons.ts) or a building glyph in its
+   * colour family (hud/pixelIcons.ts) */
+  pic: { unit?: IconId; building?: Parameters<typeof worldGlyph>[0]; cat?: IconCat; sprite?: { type: UnitType; variant?: UnitVariant; owner: readonly number[] } };
   title: string;
   status: string;
   /** clicking the title centres the map here (-1 = no) */
@@ -59,7 +62,15 @@ const AUTO_FIRE_HELP = 'fires rockets by itself as soon as one is loaded, at the
 const FOLD_AT = 6;
 
 function pic(p: RowSpec['pic'], px: number): HTMLElement {
-  if (p.building) return iconSpan(worldGlyph(p.building, px), 'fr-ic');
+  if (p.sprite) {
+    const c = unitPortrait(p.sprite.type, p.sprite.variant, p.sprite.owner, 40, 26, 'fr-ic fr-pic');
+    if (c) return c;
+  }
+  if (p.building) return catSpan(pixelGlyph(p.building, px), p.cat ?? 'econ', 'fr-ic');
+  if (p.unit === 'artillery') {
+    const art = pixelStrike('artillery', px);
+    if (art) return catSpan(art, 'armor', 'fr-ic');
+  }
   const img = el('img', 'fr-ic');
   img.alt = '';
   img.width = px;
@@ -308,8 +319,8 @@ export class ForcesPage implements DrawerPage {
       ships.forEach((u, k) => {
         const sel = (ctx.ui.mode.kind === 'moveWarship' && ctx.ui.mode.unitId === u.id) || ctx.ui.selection.includes(u.id);
         rows.push({
-          key: `w${u.id}`,
-          pic: { unit: 'warship' },
+          key: `w${u.id}${u.variant ?? ''}`,
+          pic: { unit: 'warship', sprite: { type: u.type, variant: u.variant, owner: me.color } },
           title: `Warship ${k + 1}`,
           status: `${STANCE_INFO[warshipStance(u)].name}${(u.vet ?? 0) > 0 ? ` ${'★'.repeat(vetOf(u).level)}` : ''} · Hull ${hpText(u)} · ${warshipOrderLine(s, me.id, u) || unitDoing(s, me, u)}`,
           tile: this.tileOf(s, u),
@@ -333,7 +344,7 @@ export class ForcesPage implements DrawerPage {
         });
       });
       for (const u of mine.filter((q) => q.type === 'transport')) {
-        rows.push({ key: `t${u.id}`, pic: { unit: 'transport' }, title: 'Transport', status: unitDoing(s, me, u), tile: this.tileOf(s, u), acts: [] });
+        rows.push({ key: `t${u.id}`, pic: { unit: 'transport', sprite: { type: u.type, owner: me.color } }, title: 'Transport', status: unitDoing(s, me, u), tile: this.tileOf(s, u), acts: [] });
       }
       const st = unitBuildStatus(s, me, 'warship', this.near());
       const head = st.allowed ? [this.buyAct(s, me, 'warship', 'Warship')] : [];
@@ -356,8 +367,8 @@ export class ForcesPage implements DrawerPage {
       tanks.forEach((u, k) => {
         const sel = ctx.ui.selection.includes(u.id);
         rows.push({
-          key: `d${u.id}`,
-          pic: { unit: 'armor' },
+          key: `d${u.id}${u.variant ?? ''}`,
+          pic: { unit: 'armor', sprite: { type: u.type, variant: u.variant, owner: me.color } },
           title: `Tank division ${k + 1}`,
           status: `${(u.vet ?? 0) > 0 ? `${'★'.repeat(vetOf(u).level)} · ` : ''}${divisionOrderLine(s, me.id, u)}`,
           tile: this.tileOf(s, u),
@@ -381,7 +392,7 @@ export class ForcesPage implements DrawerPage {
       });
       const building = (s.unitQueue ?? []).filter((q) => q.type === 'tankDivision' && q.owner === me.id);
       building.forEach((q) => {
-        rows.push({ key: `q${q.id}`, pic: { unit: 'armor' }, title: 'Tank division', status: `Being built: ${Math.max(0, Math.ceil((q.readyTick - s.tick) / TICKS_PER_SECOND))} s`, tile: q.site, acts: [] });
+        rows.push({ key: `q${q.id}`, pic: { unit: 'armor', sprite: { type: 'tankDivision', owner: me.color } }, title: 'Tank division', status: `Being built: ${Math.max(0, Math.ceil((q.readyTick - s.tick) / TICKS_PER_SECOND))} s`, tile: q.site, acts: [] });
       });
       const c = tankDivisionCost(s, me.id);
       const limit = tankDivisionLimit(s, me.id);
@@ -430,7 +441,7 @@ export class ForcesPage implements DrawerPage {
         panel.update(s, me, b);
         rows.push({
           key: `a${b.id}:${built}`,
-          pic: { building: 'airfield' },
+          pic: { building: 'airfield', cat: 'air' },
           title: `Airfield ${k + 1}${b.level > 1 ? ` (level ${b.level})` : ''}`,
           status: built ? `${b.bombers} bomber${b.bombers === 1 ? '' : 's'}, ${b.fighters} fighter${b.fighters === 1 ? '' : 's'} · room for ${Math.max(0, room)} more` : `Being built: ${Math.ceil(b.buildLeft)} s`,
           tile: b.tile,
@@ -439,7 +450,7 @@ export class ForcesPage implements DrawerPage {
         });
       });
       for (const u of mine.filter((q) => q.type === 'bomber' || q.type === 'transportPlane')) {
-        rows.push({ key: `p${u.id}`, pic: { unit: u.type === 'bomber' ? 'bomber' : 'transportPlane' }, title: unitName(u), status: unitDoing(s, me, u), tile: this.tileOf(s, u), acts: [] });
+        rows.push({ key: `p${u.id}`, pic: { unit: u.type === 'bomber' ? 'bomber' : 'transportPlane', sprite: { type: u.type, variant: u.variant, owner: me.color } }, title: unitName(u), status: unitDoing(s, me, u), tile: this.tileOf(s, u), acts: [] });
       }
       const empty = !allowed ? 'Aircraft are off in this game.' : fields.length ? '' : hasTech(me, 'flight') ? 'Bombers and fighters: build an Airfield (Build menu, F).' : `Bombers and fighters: ${UNIT_TEXT.bomber.unlock.toLowerCase()}.`;
       for (const t of [...this.airPanels.keys()]) if (!fields.some((b) => b.tile === t)) this.airPanels.delete(t);
@@ -492,7 +503,7 @@ export class ForcesPage implements DrawerPage {
         const auto = built && siloAutoFire(s, b) ? ' · auto-fire on' : '';
         rows.push({
           key: `s${b.id}:${built}`,
-          pic: { building: 'silo' },
+          pic: { building: 'silo', cat: 'strike' },
           title: `Missile Silo ${k + 1}${b.level > 1 ? ` (level ${b.level})` : ''}`,
           status: (!built ? `Being built: ${Math.ceil(b.buildLeft)} s` : ready > 0 ? `${ready} of ${Math.max(1, b.level)} launch${b.level > 1 ? 'es' : ''} loaded` : `Reloading: ${Math.ceil(nextChargeIn(b))} s`) + auto,
           tile: b.tile,
@@ -500,7 +511,7 @@ export class ForcesPage implements DrawerPage {
         });
       });
       for (const u of mine.filter((q) => q.type === 'rocket' || q.type === 'atomBomb')) {
-        rows.push({ key: `m${u.id}`, pic: { unit: u.type === 'rocket' ? 'rocket' : 'atomBomb' }, title: unitName(u), status: unitDoing(s, me, u), tile: this.tileOf(s, u), acts: [] });
+        rows.push({ key: `m${u.id}`, pic: { unit: u.type === 'rocket' ? 'rocket' : 'atomBomb', sprite: { type: u.type, owner: me.color } }, title: unitName(u), status: unitDoing(s, me, u), tile: this.tileOf(s, u), acts: [] });
       }
       const empty = !allowed ? 'Missiles are off in this game.' : silos.length ? '' : hasTech(me, 'rocketry') ? 'Rockets: build a Missile Silo (Build menu, N).' : `Rockets: ${UNIT_TEXT.rocket.unlock.toLowerCase()}.`;
       // one switch for every silo (later ones too): rockets fire by themselves at your war target, never atom bombs

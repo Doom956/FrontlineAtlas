@@ -10,6 +10,7 @@
 // say why not. Strikes the game's modifiers switch off are hidden for good.
 import type { GameState, Player } from '../../sim/types';
 import { iconDataUrl } from '../icons';
+import { catSpan, pixelStrike } from './pixelIcons';
 import { aimStrike, allStrikes, salvoKindOf, salvoOf, STRIKE_ORDER, STRIKES, strikeOfMode, strikesRevealed, type StrikeId, type StrikeStatus } from '../strikes';
 import { salvoLabel } from '../salvoPrefs';
 import { cycleSalvo, salvoTip } from './salvoPicker';
@@ -51,15 +52,22 @@ export class StrikeBar {
       root.dataset.test = `strike-${id}`;
       root.setAttribute('aria-label', `${info.name} (${info.key})`);
       const ring = el('span', 'sk-ring');
-      const img = el('img', 'sk-ic');
-      img.alt = '';
-      img.width = 26;
-      img.height = 26;
-      img.draggable = false;
-      try {
-        img.src = iconDataUrl(info.icon, 26);
-      } catch {
-        /* no canvas (tests): the label still names it */
+      // a pixel picture in the strikes colour; the painted icon only where there is no canvas to trace it
+      const art = pixelStrike(info.icon, 26);
+      let img: HTMLElement;
+      if (art) img = catSpan(art, 'strike', 'sk-ic');
+      else {
+        const im = el('img', 'sk-ic');
+        im.alt = '';
+        im.width = 26;
+        im.height = 26;
+        im.draggable = false;
+        try {
+          im.src = iconDataUrl(info.icon, 26);
+        } catch {
+          /* no canvas (tests): the label still names it */
+        }
+        img = im;
       }
       const label = el('span', 'sk-l');
       const count = el('span', 'sk-n');

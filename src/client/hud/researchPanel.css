@@ -1,7 +1,9 @@
 /* Research panel (hud/researchTree.ts, hud/arsenalPage.ts): two tabs of rows on a shared column grid, and a detail
-   pane. Pixel Clean: every card the same size with two lines; states told apart by fill and words (owned: quiet fill
-   and a green check; available: the lightest fill and a hairline; in progress: a blue tint and a bar; locked: no fill,
-   faint text, "Needs X"; not chosen: faded). Row names read left to right. Red only for what you can't pay. */
+   pane. Layout from the Modern Flat concept (a node graph, not boxes in boxes: no fork frames, thin neutral lines,
+   tabs on a quiet track), in the Pixel Clean tokens and type. Every card the same size with two lines; states told
+   apart by fill and words (owned: quiet fill and a green check; available: the lightest fill and a hairline; next: an
+   accent tint and a "Next" flag; in progress: a blue tint and a bar; locked: a hairline only, "Needs X"; not chosen:
+   faded). Row names read left to right. Red only for what you can't pay. */
 aside.drawer[data-page='research'] {
   /* opaque: the live map showing through the rows read as clutter */
   background-color: var(--metal);
@@ -65,29 +67,32 @@ aside.drawer[data-page='research'] .dr-body {
 .rp-tabs {
   flex: none;
   display: flex;
-  border: 1px solid var(--edge);
+  gap: 2px;
+  padding: 2px;
+  border: 0;
   border-radius: var(--r);
-  background: var(--ink);
+  background: var(--metal-2);
 }
 .rp-tab {
   position: relative;
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  height: 32px;
+  height: 34px;
   padding: 0 14px;
   border: 0;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--dim);
   font: 600 15px/1 var(--f-label);
   cursor: pointer;
 }
 .rp-tab + .rp-tab {
-  border-left: 1px solid var(--rule);
+  border-left: 0;
 }
 .rp-tab:hover {
   color: var(--text);
-  background: var(--metal-2);
+  background: var(--metal-3);
 }
 .rp-tab.on {
   color: var(--sel-ink);
@@ -219,8 +224,8 @@ aside.drawer[data-page='research'] .dr-body {
   padding-bottom: 4px;
 }
 .rp-colhead-c {
-  font: 600 11px/14px var(--f-label);
-  color: var(--faint);
+  font: 500 12px/14px var(--f-label);
+  color: var(--dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -237,7 +242,7 @@ aside.drawer[data-page='research'] .dr-body {
   grid-template-rows: repeat(var(--lanes, 2), auto);
   row-gap: 10px;
   padding: 18px 0 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 .rp-row.hidden {
   display: none;
@@ -258,8 +263,8 @@ aside.drawer[data-page='research'] .dr-body {
   color: var(--text);
 }
 .rp-rowlab-n {
-  font: 500 11px/1 var(--f-label);
-  color: var(--faint);
+  font: 500 12px/1 var(--f-label);
+  color: var(--dim);
 }
 /* tier labels of the phone list */
 .rp-tier {
@@ -276,12 +281,12 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-lines path {
   fill: none;
-  stroke: var(--rule-hi);
-  stroke-width: 1;
+  stroke: #3d434c;
+  stroke-width: 1.5;
   transition: stroke var(--fast), opacity var(--fast);
 }
 .rp-lines path.done {
-  stroke: var(--brass-lo);
+  stroke: #707884;
 }
 .rp-lines path.off {
   opacity: 0.35;
@@ -306,22 +311,22 @@ aside.drawer[data-page='research'] .dr-body {
   position: relative;
   z-index: 0;
   margin: -10px -9px -6px;
-  /* neutral: the cards inside say what can be taken (a brass box round locked cards was noise) */
-  border: 1px solid var(--edge-hi);
+  /* no frame: the "Choose one" label over the pair says it (a box round the cards was noise) */
+  border: 0;
   border-radius: 3px;
   pointer-events: none;
 }
 .rp-fork-l {
   position: absolute;
-  top: -7px;
-  left: 8px;
-  padding: 0 5px;
-  background: var(--metal);
+  top: -9px;
+  left: 9px;
+  padding: 0;
+  background: none;
   font: 500 12px/13px var(--f-label);
   color: var(--dim);
 }
 .rp-fork.decided {
-  border-color: var(--edge);
+  border: 0;
 }
 .rp-fork.decided .rp-fork-l {
   color: var(--faint);
@@ -337,8 +342,8 @@ aside.drawer[data-page='research'] .dr-body {
   gap: 8px;
   min-width: 0;
   height: var(--rp-ch);
-  padding: 0 8px;
-  border: 1px solid var(--edge);
+  padding: 0 10px;
+  border: 1px solid transparent;
   border-radius: var(--r);
   background: var(--metal-2);
   color: var(--text);
@@ -372,7 +377,7 @@ aside.drawer[data-page='research'] .dr-body {
   gap: 3px;
 }
 .rp-n {
-  font: 600 15px/17px var(--f-label);
+  font: 600 14px/17px var(--f-label);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -408,17 +413,17 @@ aside.drawer[data-page='research'] .dr-body {
 .rp-flag {
   display: none;
   position: absolute;
-  top: -7px;
+  top: -8px;
   /* right-hand end: the left end of a fork's top card sits under the fork's "Choose one" label */
   right: 10px;
-  padding: 0 5px;
-  border-radius: 2px;
-  font: 700 9px/12px var(--f-label);
-  color: var(--brass-ink);
-  background: var(--brass-hi);
+  padding: 0 6px;
+  border-radius: var(--r-xs);
+  font: 600 10px/14px var(--f-label);
+  color: var(--accent-ink);
+  background: var(--accent);
 }
 .rp-card.next .rp-flag {
-  display: none;
+  display: block;
 }
 /* in progress: a bar along the bottom edge */
 .rp-bar {
@@ -486,13 +491,13 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-card.avail {
   background: var(--metal-3);
-  border-color: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.16);
 }
 .rp-card.avail .rp-n {
   color: var(--text);
 }
 .rp-card.avail .rp-ic {
-  color: var(--accent-hi);
+  color: var(--text);
 }
 .rp-card.avail .rp-meta {
   color: var(--text);
@@ -508,12 +513,16 @@ aside.drawer[data-page='research'] .dr-body {
   color: var(--text);
 }
 .rp-card.next {
-  border-color: var(--accent);
-  background: var(--metal-3);
+  border-color: var(--accent-hi);
+  background: rgb(var(--accent-rgb) / 0.2);
+}
+.rp-card.next .rp-n,
+.rp-card.next .rp-ic {
+  color: var(--text);
 }
 .rp-card.active {
-  border-color: transparent;
-  background: rgba(127, 166, 214, 0.16);
+  border-color: rgba(127, 166, 214, 0.6);
+  background: rgba(127, 166, 214, 0.14);
 }
 .rp-card.active .rp-ic,
 .rp-card.active .rp-meta {
@@ -521,8 +530,7 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-card.locked {
   background: transparent;
-  border-color: transparent;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  border-color: var(--rule);
 }
 .rp-card.locked .rp-n {
   color: var(--dim);
@@ -534,7 +542,7 @@ aside.drawer[data-page='research'] .dr-body {
 }
 /* the building it needs is missing: a to-do, not an error */
 .rp-card.needs-building .rp-meta {
-  color: var(--brass);
+  color: var(--caution);
 }
 .rp-card.off {
   opacity: 0.45;
@@ -561,7 +569,7 @@ aside.drawer[data-page='research'] .dr-body {
   opacity: 0.3;
 }
 .rp-card.hl-pre:not(.done):not(.off) {
-  border-color: var(--brass-hi);
+  border-color: var(--accent-hi);
 }
 .rp-card.hl-next:not(.off) {
   border-color: var(--steel);
@@ -717,7 +725,7 @@ aside.drawer[data-page='research'] .dr-body {
   display: none;
 }
 .rp-d-note.warn {
-  color: var(--brass-hi);
+  color: var(--caution);
 }
 .rp-d-act {
   grid-area: act;
@@ -1009,7 +1017,7 @@ aside.drawer[data-page='research'] .dr-body {
   .rp-chip.on {
     color: var(--brass-hi);
     border-color: var(--brass);
-    background: rgba(201, 162, 39, 0.12);
+    background: rgb(var(--accent-rgb) / 0.12);
   }
   .rp-colhead,
   .rp-rowlab,
@@ -1133,4 +1141,9 @@ aside.drawer[data-page='research'] .dr-body {
     width: auto;
     flex: none;
   }
+}
+
+/* the research sheet covers the map's left edge: the standings step aside instead of peeking out from under it */
+.hud.rp-open > .hud-left {
+  visibility: hidden;
 }

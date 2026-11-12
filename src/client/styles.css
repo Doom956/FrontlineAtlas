@@ -23,8 +23,12 @@
 
   /* One accent. Old --brass names alias it so existing rules become "accent", not "gold everywhere". */
   --accent: #f5b13d;
-  --accent-hi: #ffc658;
-  --accent-ink: #1a1304;
+  --accent-hi: #ffc658; /* the accent as text and marks on a panel */
+  --accent-ink: #1a1304; /* text on an accent fill */
+  --accent-hover: #ffc658; /* an accent fill under the pointer (keeps --accent-ink readable) */
+  --accent-rgb: 245 177 61; /* for tints: rgb(var(--accent-rgb) / 0.12) */
+  /* Caution (a missing building, short of a resource): amber in every palette, so it never reads as the accent. */
+  --caution: #f5b13d;
   --brass: var(--accent);
   --brass-hi: var(--accent-hi);
   --brass-lo: #6f5519; /* muted amber for subtle edges */
@@ -248,8 +252,8 @@ canvas.minimap {
 }
 .wr-btn.primary:hover:not(:disabled),
 .btn.primary:hover:not(:disabled) {
-  background: var(--brass-hi);
-  border-color: #f1d77e;
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 .wr-btn.danger,
 .btn.danger {
@@ -325,7 +329,7 @@ canvas.minimap {
 }
 .sq.on {
   color: var(--brass-hi);
-  background: rgba(201, 162, 39, 0.12);
+  background: rgb(var(--accent-rgb) / 0.12);
   box-shadow: inset 0 -2px 0 var(--brass);
 }
 .sq.txt {
@@ -742,7 +746,7 @@ canvas.minimap {
 }
 .tab.on {
   color: var(--brass-hi);
-  background: rgba(201, 162, 39, 0.16);
+  background: rgb(var(--accent-rgb) / 0.16);
 }
 .bbar {
   display: flex;
@@ -774,7 +778,7 @@ canvas.minimap {
 }
 .bb.on {
   border-color: var(--brass);
-  background: rgba(201, 162, 39, 0.16);
+  background: rgb(var(--accent-rgb) / 0.16);
   color: var(--brass-hi);
 }
 .bb.disabled {
@@ -921,7 +925,7 @@ canvas.minimap {
 /* aiming with it */
 .sk.on {
   border-color: var(--brass);
-  background: rgba(201, 162, 39, 0.16);
+  background: rgb(var(--accent-rgb) / 0.16);
 }
 .sk-flash {
   animation: sk-flash 0.9s ease-out;
@@ -1446,7 +1450,7 @@ canvas.minimap {
   background: rgba(152, 169, 87, 0.08);
 }
 .status.warn {
-  --tone: var(--brass);
+  --tone: var(--caution);
   background: rgba(201, 162, 39, 0.08);
 }
 .status.bad {
@@ -1985,7 +1989,7 @@ canvas.minimap {
   align-self: flex-start;
   padding: 2px 6px;
   border-radius: 1px;
-  background: rgba(201, 162, 39, 0.16);
+  background: rgb(var(--accent-rgb) / 0.16);
   color: var(--brass-hi);
   font: 600 11px/1.2 var(--f-label);
 }
@@ -2813,7 +2817,7 @@ button.toast-t:hover {
   color: var(--dim);
 }
 .mt-row.warn .mt-main {
-  color: var(--brass-hi);
+  color: var(--caution);
 }
 .mt-row.bad .mt-main {
   color: #f0a597;
@@ -2929,8 +2933,8 @@ button.toast-t:hover {
   color: #d4e3a2;
 }
 .odds.ok {
-  --tone: var(--brass);
-  color: var(--brass-hi);
+  --tone: var(--caution);
+  color: var(--caution);
 }
 .odds.bad {
   --tone: var(--signal);
@@ -3059,7 +3063,7 @@ button.toast-t:hover {
 }
 .rad-centre.primary:hover,
 .rad-centre.primary:focus-visible {
-  background: var(--brass-hi);
+  background: var(--accent-hover);
   color: var(--brass-ink);
 }
 .rad-ic {
@@ -3408,7 +3412,7 @@ button.toast-t:hover {
   color: var(--dim);
 }
 mark.hw-hit {
-  background: rgba(227, 192, 78, 0.35);
+  background: rgb(var(--accent-rgb) / 0.35);
   color: var(--text);
   border-radius: 1px;
 }
@@ -3716,7 +3720,7 @@ mark.hw-hit {
   box-shadow: 0 0 6px rgba(152, 169, 87, 0.7);
 }
 .net-status.warn::before {
-  background: var(--brass);
+  background: var(--caution);
 }
 .net-status.bad {
   color: #f0a597;
@@ -4608,9 +4612,9 @@ strong {
   transition: opacity 0.2s, transform 0.2s;
 }
 .alert.t-warn {
-  --al: var(--brass);
+  --al: var(--caution);
   --al-tint: rgba(201, 162, 39, 0.16);
-  --al-ink: var(--brass-hi);
+  --al-ink: var(--caution);
 }
 .alert.t-info {
   --al: var(--steel);
@@ -4684,8 +4688,8 @@ strong {
   padding: 0 4px;
   min-width: 22px;
   text-align: center;
-  background: var(--brass);
-  color: var(--brass-ink);
+  background: var(--metal-4);
+  color: var(--text);
   font: 700 11px/16px var(--f-ui);
 }
 .alert.bump .al-n,
@@ -5621,7 +5625,7 @@ strong {
 }
 .sq.lbl.on {
   box-shadow: none;
-  background: rgba(245, 177, 61, 0.12);
+  background: rgb(var(--accent-rgb) / 0.12);
 }
 .cluster .clock {
   min-width: 64px;
@@ -5702,7 +5706,7 @@ strong {
   bottom: 14px;
 }
 .sk.ready {
-  box-shadow: inset 0 0 0 1px rgba(245, 177, 61, 0.45);
+  box-shadow: inset 0 0 0 1px rgb(var(--accent-rgb) / 0.45);
 }
 .sk.on {
   box-shadow: inset 0 0 0 1px var(--accent);
@@ -5846,4 +5850,159 @@ strong {
   .hud-left {
     width: 228px;
   }
+}
+
+/* ---------------------------------------------------------------- Hybrid: pixel icons in colour families */
+/* Icons are small pixel pictures (hud/pixelIcons.ts) at the size the line icons had, kept quiet: a muted hue per
+   family at about the lightness of --dim, slightly see-through like before. Measured on --metal (#14161b), every
+   family is 7.9:1 or more, on --metal-3 6.3:1 or more (icons need 3:1). One hue each, never the accent:
+   navy blue, armor olive, air sky, buildings and economy sage, research lavender, strikes rose. */
+:root {
+  --cat-navy: #85b4d6;
+  --cat-armor: #acb481;
+  --cat-air: #77bcbf;
+  --cat-econ: #87bc9f;
+  --cat-science: #b8a3d2;
+  --cat-strike: #d39cb0;
+}
+svg.pi {
+  display: block;
+  shape-rendering: crispEdges;
+}
+.pi-c {
+  opacity: 0.9;
+}
+.pi-navy {
+  color: var(--cat-navy);
+}
+.pi-armor {
+  color: var(--cat-armor);
+}
+.pi-air {
+  color: var(--cat-air);
+}
+.pi-econ {
+  color: var(--cat-econ);
+}
+.pi-science {
+  color: var(--cat-science);
+}
+.pi-strike {
+  color: var(--cat-strike);
+}
+/* the family colour gives way to the state: an open panel's icon lights up, a locked or empty one goes faint */
+.sq.on .pi-c,
+.sq:hover .pi-c {
+  opacity: 1;
+}
+.bb.disabled .pi-c,
+.sq.off .pi-c,
+.sk.locked .pi-c {
+  color: var(--faint);
+}
+.res-i.low .pi-c {
+  color: var(--danger);
+}
+.qb-slot.bb .bb-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+span.sk-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---------------------------------------------------------------- Hybrid: unit card and Forces portraits */
+/* The card reads top to bottom: the unit's sprite, its name and owner; one strength line (word, bar, number); then
+   its order, what it does by itself and its reach. */
+.ucard {
+  width: 232px;
+  padding: 10px 12px 11px;
+  border: 0;
+  border-radius: var(--r-lg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 10px 30px rgba(0, 0, 0, 0.38);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  font-size: 12px;
+  line-height: 16px;
+}
+.uc-head {
+  gap: 10px;
+}
+.uc-pic {
+  flex: none;
+  image-rendering: pixelated;
+  border-radius: var(--r-xs);
+  background: rgba(255, 255, 255, 0.05);
+}
+.uc-t {
+  font: 600 15px/1.2 var(--f-label);
+  color: var(--text);
+}
+.uc-s {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dim);
+}
+.uc-str {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 8px;
+}
+.uc-k {
+  flex: none;
+  font: 500 12px/1 var(--f-label);
+  color: var(--dim);
+}
+.ucard .uc-hp {
+  flex: 1;
+  height: 4px;
+  margin: 0;
+  border-radius: 2px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.1);
+}
+.uc-hp > i {
+  border-radius: 2px;
+  background: var(--good);
+}
+.uc-v {
+  flex: none;
+  font: 600 12px/1 var(--f-label);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.uc-o {
+  padding-top: 8px;
+  border-top: 1px solid var(--rule);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text);
+}
+.uc-a {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text);
+}
+.uc-r {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dim);
+}
+.frow2 {
+  grid-template-columns: 40px 1fr;
+  column-gap: 10px;
+}
+.fr-ic {
+  justify-self: center;
+}
+canvas.fr-pic {
+  width: 40px;
+  height: 26px;
+  image-rendering: pixelated;
 }

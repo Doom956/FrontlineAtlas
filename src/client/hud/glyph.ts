@@ -100,6 +100,11 @@ const EXTRA: Record<ExtraGlyphId, GLayer[]> = {
 
 let maskSeq = 0;
 
+/** The vector layers of a filled pictogram in 64 x 64 units (hud/pixelIcons.ts traces them onto a pixel grid). */
+export function glyphLayers(id: WorldGlyphId): { d: string; mode?: string; width?: number; detail?: boolean }[] {
+  return (MARKER_DATA as Record<string, GLayer[]>)[id] ?? EXTRA[id as ExtraGlyphId] ?? [];
+}
+
 /** A filled pictogram as an inline SVG string, `px` CSS pixels square, in currentColor. */
 export function worldGlyph(id: WorldGlyphId, px = 24): string {
   const markerLayers = (MARKER_DATA as Record<string, { d: string; mode?: string; width?: number; ring?: boolean; detail?: boolean }[]>)[id];
@@ -217,6 +222,11 @@ const LINE: Record<string, string> = {
   tank: '<path d="M3.5 14h17l-2 5h-13z"/><path d="M6.5 14v-3.5h8l1.5 3.5M10.5 10.5V8.5h9"/><circle cx="7.5" cy="16.5" r=".6"/><circle cx="16.5" cy="16.5" r=".6"/>',
 };
 export type LineIconId = keyof typeof LINE;
+
+/** The SVG body of a line icon (24 x 24 units), for hud/pixelIcons.ts to trace. */
+export function lineIconBody(name: string): string | undefined {
+  return LINE[name];
+}
 
 export function hasLineIcon(name: string): boolean {
   return name in LINE;

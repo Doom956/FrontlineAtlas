@@ -35,7 +35,7 @@
 }
 .qb-build:hover,
 .qb-build.on {
-  background: var(--accent-hi);
+  background: var(--accent-hover);
 }
 .qb-build:active {
   scale: 0.96;
@@ -366,7 +366,7 @@
   padding: 0 6px;
   border: 1px solid var(--brass-lo);
   border-radius: var(--r);
-  background: rgba(201, 162, 39, 0.1);
+  background: rgb(var(--accent-rgb) / 0.1);
   color: var(--brass-hi);
   font: 600 11px/16px var(--f-label);
   cursor: pointer;
@@ -374,7 +374,7 @@
 }
 .sp-btn:hover,
 .sp-btn.on {
-  background: rgba(201, 162, 39, 0.24);
+  background: rgb(var(--accent-rgb) / 0.24);
   border-color: var(--brass);
 }
 .sp {
