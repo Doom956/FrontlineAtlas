@@ -80,6 +80,33 @@ describe('pixel effects', () => {
     expect(atom.life).toBeGreaterThan(p.craters[0].life);
   });
 
+  it('leaves craters only inland: none at the water line, and those reaching water are marked to clip to land', () => {
+    const s = game();
+    const p = new PixelFx();
+    p.update(s, 0);
+    // a ship and fort hit right at the coast (x 19 is the last land column): a blast, no crater
+    s.tick += 1;
+    s.effects.push(fx('explosion', 19.5, 10.5, 0.5, s.tick));
+    p.update(s, 100);
+    expect(p.liveCounts().craters).toBe(0);
+    // two tiles in: a crater whose scorch would reach the sea, drawn clipped to the land tiles
+    s.tick += 1;
+    s.effects.push(fx('explosion', 18.5, 10.5, 0.5, s.tick));
+    p.update(s, 200);
+    expect(p.liveCounts().craters).toBe(1);
+    expect(p.craters[0].coast).toBe(true);
+    // far inland: no clipping needed
+    s.tick += 1;
+    s.effects.push(fx('explosion', 6.5, 10.5, 0.5, s.tick));
+    p.update(s, 300);
+    expect(p.craters[1].coast).toBe(false);
+    // an atom bomb on the sea leaves no crater
+    s.tick += 1;
+    s.effects.push(fx('nuke', 30.5, 10.5, 35, s.tick));
+    p.update(s, 400);
+    expect(p.liveCounts().craters).toBe(2);
+  });
+
   it('keeps at most CRATER_CAP craters, the newest replacing the oldest', () => {
     const p = new PixelFx();
     for (let i = 0; i < CRATER_CAP + 50; i++) p.crater(i, 0, 1, i, 600);
