@@ -308,12 +308,14 @@ function submarine(mods: number): UnitModel {
     // a pale wash of foam round the casing where it breaks the surface, a curl at the bow
     ell(0.6, 0, 14.8, 2.55, 0, 0, 'foam', { a: 0.55 }),
     poly(sym([15.6, 0, 13.4, -1.5, 11.8, -2.2, 12.6, 0]), 0, 0, 'foam', { a: 0.8 }),
-    ell(0, 0, 14, 1.75, 0, 0.6, 'hullDark', { sh: 'cyl' }),
+    ell(0, 0, 14, 1.95, 0, 0.6, 'hullDark', { sh: 'cyl' }),
     // the flat deck casing along the top, a shade lighter
     seg(-9, 0, 10, 0, 1.1, 0.6, 0.1, 'hullDark', { tone: 1 }),
-    // the bow and stern under the surface: the sea over them
-    poly(sym([14.4, 0, 13.8, -1.5, 9.4, -1.95, 8.4, 0]), 0.75, 0, 'sea', { a: 0.45 }),
-    poly(sym([-7.4, 0, -8.4, -1.95, -13.8, -1.5, -14.4, 0]), 0.75, 0, 'sea', { a: 0.45 }),
+    // the bow and stern awash: the sea running over them, foam where it breaks
+    poly(sym([14.4, 0, 13.8, -1.5, 9.4, -1.95, 8.4, 0]), 0.75, 0, 'sea', { a: 0.3 }),
+    poly(sym([-7.4, 0, -8.4, -1.95, -13.8, -1.5, -14.4, 0]), 0.75, 0, 'sea', { a: 0.3 }),
+    seg(9.4, -1.7, 8.2, 0, 0.5, 0.75, 0, 'foam', { a: 0.75 }),
+    seg(9.4, 1.7, 8.2, 0, 0.5, 0.75, 0, 'foam', { a: 0.75 }),
     // stern planes
     seg(-12.4, -2.2, -12.4, 2.2, 0.55, 0.3, 0.15, 'hullDark'),
     ...smallGun(5.6, 0, 0.67, 0, 0.7, 2.2),
