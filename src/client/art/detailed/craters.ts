@@ -37,8 +37,7 @@ export function craterBitmap(r: number, variant: number): RGBABitmap {
   const rayAt = (a: number): number => {
     let v = 0;
     for (const [ra, len] of rays) {
-      let d = Math.abs(a - ra);
-      if (d > Math.PI) d = Math.PI * 2 - d;
+      const d = Math.abs((((a - ra) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2) - Math.PI);
       v = Math.max(v, len * Math.max(0, 1 - d / 0.32));
     }
     return v;

@@ -79,6 +79,8 @@ interface Emitter {
   x: number;
   y: number;
   frame: number;
+  /** clock of the last frame it was seen (ms) */
+  t: number;
 }
 
 /** One live set of trails (wakes, or contrails and missile smoke). */
@@ -104,17 +106,24 @@ class DetailedTrails implements TrailLayer {
    */
   private emit(key: number, x: number, y: number, spacing: number, now: number, lay: (px: number, py: number, born: number) => void): void {
     const e = this.emitters.get(key);
-    if (!e || this.frameNo - e.frame > 3) {
-      this.emitters.set(key, { x, y, frame: this.frameNo });
+    // not seen last frame, or the clock jumped (a hidden view, a pause): start afresh instead of drawing a streak
+    if (!e || this.frameNo - e.frame > 3 || Math.abs(now - e.t) > 250) {
+      if (e) {
+        e.x = x;
+        e.y = y;
+        e.frame = this.frameNo;
+        e.t = now;
+      } else this.emitters.set(key, { x, y, frame: this.frameNo, t: now });
       lay(x, y, now);
       return;
     }
     e.frame = this.frameNo;
+    e.t = now;
     const dx = x - e.x;
     const dy = y - e.y;
     const d = Math.hypot(dx, dy);
     if (d < spacing) return;
-    if (d > spacing * 80) {
+    if (d > spacing * 40) {
       e.x = x;
       e.y = y;
       lay(x, y, now);
@@ -155,8 +164,10 @@ class DetailedTrails implements TrailLayer {
         const armLife = 1500 * m.wakeLength * (0.7 + 0.3 * sp);
         if (!sub) {
           for (const sd of [1, -1]) {
-            this.emit(u.id * 4 + (sd > 0 ? 1 : 2), sx - s * side * sd, sy + c * side * sd, cellT * 1.6, now, (px, py, born) => {
-              P.put(px, py, -s * sd * out, c * sd * out, born, armLife, 0.6, 1.4 + 0.4 * sp, 0.85, ARM);
+            this.emit(u.id * 4 + (sd > 0 ? 1 : 2), sx - s * side * sd, sy + c * side * sd, cellT * 1.2, now, (px, py, born) => {
+              P.put(px, py, -s * sd * out, c * sd * out, born, armLife, 0.8, 2 + 0.6 * sp, 0.85, ARM);
+              // a second, slower fleck inside the arm: the foam band has some width
+              P.put(px, py, -s * sd * out * 0.7, c * sd * out * 0.7, born, armLife * 0.8, 0.6, 1.4 + 0.4 * sp, 0.6, ARM);
             });
           }
         }

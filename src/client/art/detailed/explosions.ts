@@ -95,13 +95,13 @@ function drawBlast(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams)
 
   // dust rolling out along the ground (the shockwave as moving earth, never a drawn ring)
   if (s.skirt && fq > 0.05) {
-    const n = b.kind === 'missile' ? 12 : 8;
-    const reach = R * (1.2 + 1.9 * easeOut3(clamp01(age / (fT * 1.8)))) * m.shockwave;
-    const a = 0.55 * (1 - clamp01((age - fT * 0.4) / (dur - fT * 0.4)));
+    const n = b.kind === 'missile' ? 9 : 6;
+    const reach = R * (1 + 1.7 * easeOut3(clamp01(age / (fT * 1.8)))) * m.shockwave;
+    const a = 0.42 * (1 - clamp01((age - fT * 0.3) / (dur - fT * 0.3)));
     for (let i = 0; i < n; i++) {
-      const ang = (i / n) * Math.PI * 2 + rnd(sd, i) * 0.5;
-      const d = reach * (0.8 + 0.3 * rnd(sd, i + 40));
-      drawBlob(ctx, 'dust', Rc * (0.35 + 0.25 * fq), i, x + Math.cos(ang) * d * u, y + Math.sin(ang) * d * u * 0.62, g, a);
+      const ang = (i / n) * Math.PI * 2 + rnd(sd, i) * 0.6;
+      const d = reach * (0.75 + 0.35 * rnd(sd, i + 40));
+      drawBlob(ctx, 'dust', Rc * (0.42 + 0.3 * fq), i, x + Math.cos(ang) * d * u, y + Math.sin(ang) * d * u * 0.5, g, a);
     }
   }
   // the crown of earth thrown up and falling back
@@ -272,13 +272,16 @@ function drawAtom(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams):
   const late = clamp01((age - fT) / Math.max(1, dur - fT));
   const fade = 1 - late * late;
   const prev = ctx.globalAlpha;
-  // the base surge
+  // the base surge: a low wall of dust rolling outward, two rows of overlapping billows
   if (q > 0.04) {
     const reach = R * (0.9 + 2.6 * easeOut3(clamp01(age / (fT * 1.4)))) * m.shockwave;
-    for (let i = 0; i < 16; i++) {
-      const ang = (i / 16) * Math.PI * 2 + rnd(sd, i) * 0.3;
-      const d = reach * (0.85 + 0.25 * rnd(sd, i + 30));
-      drawBlob(ctx, 'dust', Rc * (0.22 + 0.16 * q), i, x + Math.cos(ang) * d * u, y + Math.sin(ang) * d * u * 0.6, g, 0.7 * fade * (1 - late * 0.6));
+    for (let row = 1; row >= 0; row--) {
+      const n = 22;
+      for (let i = 0; i < n; i++) {
+        const ang = ((i + row * 0.5) / n) * Math.PI * 2 + rnd(sd, i) * 0.2;
+        const d = reach * (row ? 0.72 : 1) * (0.9 + 0.18 * rnd(sd, i + 30));
+        drawBlob(ctx, 'dust', Rc * (0.26 + 0.2 * q) * (row ? 1.15 : 1), i + row, x + Math.cos(ang) * d * u, y + Math.sin(ang) * d * u * 0.55, g, (row ? 0.35 : 0.5) * fade * (1 - late * 0.7));
+      }
     }
   }
   const capY = y - R * (0.4 + 2.2 * easeOut(clamp01((age - fT * 0.1) / (fT * 1.3)))) * u;

@@ -61,7 +61,7 @@ export function blobBitmap(kind: BlobKind, r: number, variant: number, heat = 0)
       let e = R * (0.9 + 0.11 * Math.sin(3 * a + ph) + 0.07 * Math.sin(5 * a + ph * 2.3) + 0.04 * Math.sin(8 * a + ph * 3.1));
       if (R >= 3) e *= 1 + 0.06 * Math.max(0, -Math.sin(a));
       if (R <= 1) e = 1.15;
-      else if (R === 2) e = 2.1 + 0.25 * Math.sin(3 * a + ph);
+      else if (R === 2) e = 2.05 + 0.18 * Math.sin(2 * a + ph);
       const d = Math.hypot(dx, dy);
       if (d > e) continue;
       const o = (y * W + x) * 4;
@@ -74,10 +74,12 @@ export function blobBitmap(kind: BlobKind, r: number, variant: number, heat = 0)
       if (ramp) {
         // a ball lit from the top left, billowing inside
         const lum = -0.55 * nx - 0.62 * ny + 0.55 * nz + grain * 0.5;
-        const tf = (lum + 0.25) * 2.6;
-        let t = Math.max(0, Math.min(3, Math.floor(tf + 0.5 + dith * 0.7)));
-        // the lower right rim in the deepest tone
-        if (d > e - 1.05 && dx + dy > 0) t = Math.min(t, 1);
+        // dust is soft (a narrow range of tones), smoke and soot billow with more contrast
+        const soft = kind === 'dust' ? 0.55 : kind === 'spray' ? 0.8 : 1;
+        const tf = 1.6 + ((lum + 0.25) * 2.6 - 1.6) * soft;
+        let t = Math.max(0, Math.min(3, Math.floor(tf + 0.5 + dith * 0.45)));
+        // the lower right rim a tone deeper
+        if (d > e - 1.05 && dx + dy > 0 && kind !== 'dust') t = Math.min(t, 1);
         c = ramp[t];
       } else {
         // fire by temperature: hot core (a little up and left), cooling outward, flickering grain
