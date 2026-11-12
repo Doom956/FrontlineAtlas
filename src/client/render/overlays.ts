@@ -359,12 +359,16 @@ export class Overlays {
         if (q <= 0) continue;
         const sx = tx - (1 - q) * (60 + span);
         const sy = ty - (1 - q) * (90 + span) + (1 - q) * (1 - q) * 30;
-        ctx.beginPath();
-        ctx.moveTo(sx - 6, sy - 9);
-        ctx.lineTo(sx, sy);
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = 'rgba(255,236,190,0.8)';
-        ctx.stroke();
+        // a pixel shell with a short fading smoke tracer behind it (fx/pixelFx.ts style)
+        const g = z < 11 ? 1 : 2;
+        ctx.fillStyle = 'rgba(196,196,190,0.35)';
+        ctx.fillRect(Math.round(sx - 6), Math.round(sy - 9), g * 2, g * 2);
+        ctx.fillStyle = 'rgba(214,214,208,0.6)';
+        ctx.fillRect(Math.round(sx - 3), Math.round(sy - 4.5), g * 2, g * 2);
+        ctx.fillStyle = '#ffd84a';
+        ctx.fillRect(Math.round(sx) - g, Math.round(sy) - g, g * 2, g * 2);
+        ctx.fillStyle = '#fffbe8';
+        ctx.fillRect(Math.round(sx) - g, Math.round(sy) - g, g, g);
       }
     }
   }
@@ -387,102 +391,32 @@ export class Overlays {
     ctx.globalAlpha = 1;
   }
 
+  /**
+   * A sim effect's map marks. The explosions themselves, shells, tracers and craters are pixel art in fx/pixelFx.ts;
+   * here only the exact blast area of a rocket, bomb run, barrage or atom bomb (a thin outline that fades) and the
+   * small burst of a tile capture.
+   */
   private effect(ctx: CanvasRenderingContext2D, e: Effect, x: number, y: number, t: number, cam: Camera): void {
     const z = cam.zoom;
-    const R = Math.max(e.radius, 0.5) * z;
-    // the blast disc flashes at its exact radius, then fades (rocket, bombs, atom bomb, barrage; not the small blasts)
     if (e.radius >= 4 && e.kind !== 'shot' && e.kind !== 'capture') {
       const f = t < 0.12 ? 1 : Math.max(0, 1 - (t - 0.12) / 0.88);
       const rgb = e.kind === 'nuke' ? '255,214,140' : '255,196,110';
-      this.blastDisc(ctx, x, y, e.radius, z, rgb, 0.3 * f * f, 0.95 * f, 1.5);
-      if (e.kind === 'nuke') this.blastDisc(ctx, x, y, ATOM_CORE_RADIUS, z, '255,150,80', 0.3 * f * f, 0.95 * f, 1.5);
+      // the atom bomb's own shockwave is the ring to watch: its blast area stays a faint outline under it
+      const k = e.kind === 'nuke' ? 0.25 : 1;
+      this.blastDisc(ctx, x, y, e.radius, z, rgb, 0.06 * f * f * k, 0.8 * f * k, 1.25);
     }
-    switch (e.kind) {
-      case 'explosion': {
-        const r = Math.max(6, R) * (0.3 + 0.7 * t);
-        ctx.globalAlpha = 1 - t;
-        ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255,150,50,0.4)';
-        ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = 'rgba(255,230,160,0.9)';
-        ctx.stroke();
-        break;
+    if (e.kind === 'capture') {
+      const r = Math.max(3, z * 0.8) * (0.5 + t);
+      ctx.globalAlpha = 1 - t;
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(255,255,220,1)';
+      ctx.beginPath();
+      for (let k = 0; k < 4; k++) {
+        const a = (k * Math.PI) / 2 + t * 2;
+        ctx.moveTo(x + Math.cos(a) * r * 0.3, y + Math.sin(a) * r * 0.3);
+        ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
       }
-      case 'nuke': {
-        const big = Math.max(20, R);
-        if (t < 0.3) {
-          ctx.globalAlpha = 1 - t / 0.3;
-          ctx.beginPath();
-          ctx.arc(x, y, big * 1.5, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(255,255,240,0.85)';
-          ctx.fill();
-        }
-        ctx.globalAlpha = 1 - t;
-        const g = ctx.createRadialGradient(x, y, 0, x, y, big * (0.5 + 0.5 * t));
-        g.addColorStop(0, 'rgba(255,250,210,0.95)');
-        g.addColorStop(0.4, 'rgba(255,160,40,0.8)');
-        g.addColorStop(1, 'rgba(200,60,20,0)');
-        ctx.beginPath();
-        ctx.arc(x, y, big * (0.5 + 0.5 * t), 0, Math.PI * 2);
-        ctx.fillStyle = g;
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(x, y, big * (0.4 + 1.3 * t), 0, Math.PI * 2);
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = 'rgba(255,200,120,0.9)';
-        ctx.stroke();
-        break;
-      }
-      case 'shot': {
-        if (e.x2 === undefined || e.y2 === undefined) break;
-        const s2 = cam.tileToScreen(e.x2, e.y2);
-        ctx.globalAlpha = Math.max(0, 1 - t * 2);
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(s2.x, s2.y);
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = 'rgba(255,240,150,1)';
-        ctx.stroke();
-        break;
-      }
-      case 'barrage': {
-        // a ripple of small bursts over the disc (at least ~18 px across so it reads when zoomed out)
-        const RB = Math.max(18, R);
-        for (let k = 0; k < 7; k++) {
-          const tk = t * 1.4 - k * 0.07;
-          if (tk <= 0 || tk >= 1) continue;
-          const a = k * 2.1 + e.x;
-          const rr = RB * (0.15 + 0.8 * ((k * 37) % 10) / 10);
-          const bx = x + Math.cos(a) * rr;
-          const by = y + Math.sin(a) * rr;
-          const br = Math.max(7, z * 1.4) * (0.5 + 0.8 * tk);
-          ctx.globalAlpha = 1 - tk;
-          ctx.beginPath();
-          ctx.arc(bx, by, br, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(255,170,70,0.7)';
-          ctx.fill();
-          ctx.lineWidth = 1.5;
-          ctx.strokeStyle = 'rgba(255,236,190,0.9)';
-          ctx.stroke();
-        }
-        break;
-      }
-      case 'capture': {
-        const r = Math.max(3, z * 0.8) * (0.5 + t);
-        ctx.globalAlpha = 1 - t;
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = 'rgba(255,255,220,1)';
-        ctx.beginPath();
-        for (let k = 0; k < 4; k++) {
-          const a = (k * Math.PI) / 2 + t * 2;
-          ctx.moveTo(x + Math.cos(a) * r * 0.3, y + Math.sin(a) * r * 0.3);
-          ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
-        }
-        ctx.stroke();
-        break;
-      }
+      ctx.stroke();
     }
     ctx.globalAlpha = 1;
   }
