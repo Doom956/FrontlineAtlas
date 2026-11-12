@@ -9,7 +9,11 @@ import { unreadBadge } from '../alerts';
 import { SPEEDS } from '../input';
 import { DOCTRINE_KEY, doctrineIcon, doctrineStatus, fmtDuration } from '../doctrineView';
 import { el, fmtTime, setClass, setText, setTip, type DrawerId, type HudCtx } from './dom';
-import { iconSpan, lineIcon } from './glyph';
+import { catSpan, pixelIcon, type IconCat } from './pixelIcons';
+
+/** Top bar icons that belong to a colour family (the rest stay neutral grey). */
+const ICON_CAT: Record<string, IconCat> = { army: 'armor', warship: 'navy', science: 'science' };
+const topIcon = (name: string): HTMLSpanElement => catSpan(pixelIcon(name, 16), ICON_CAT[name] ?? null);
 
 export interface ClusterHooks {
   isOpen(id: DrawerId): boolean;
@@ -43,7 +47,7 @@ export class Cluster {
     const sq = (icon: string, tip: string, onClick: () => void, test?: string, word?: string): HTMLButtonElement => {
       const b = el('button', word ? 'sq lbl' : 'sq');
       b.type = 'button';
-      b.append(iconSpan(lineIcon(icon, 17)));
+      b.append(topIcon(icon));
       if (word) b.append(el('span', 'sq-w', word));
       b.dataset.tip = tip;
       b.setAttribute('aria-label', tip.split('\n')[0]);
@@ -143,7 +147,7 @@ export class Cluster {
         const ic = ds.id ? doctrineIcon(ds.id) : 'doctrine';
         if (ic !== docIcon) {
           docIcon = ic;
-          docB.querySelector('.ico')?.replaceWith(iconSpan(lineIcon(ic, 17)));
+          docB.querySelector('.ico')?.replaceWith(topIcon(ic));
         }
         setClass(docDot, 'hidden', ds.phase !== 'none');
         setClass(docB, 'chosen', !!ds.id);
@@ -203,7 +207,7 @@ export class Cluster {
       setClass(this.pauseBtn, 'dis', pm === 'guest');
       if (pm === 'guest') this.pauseBtn.setAttribute('aria-disabled', 'true');
       else this.pauseBtn.removeAttribute('aria-disabled');
-      this.pauseBtn.replaceChildren(iconSpan(lineIcon(ui.paused ? 'play' : 'pause', 17)), el('span', 'sq-w', ui.paused ? 'Resume' : 'Pause'));
+      this.pauseBtn.replaceChildren(topIcon(ui.paused ? 'play' : 'pause'), el('span', 'sq-w', ui.paused ? 'Resume' : 'Pause'));
       const tip = pm === 'guest' ? 'Only the host can pause' : ui.paused ? 'Resume  (Space)' : 'Pause  (Space)';
       setTip(this.pauseBtn, tip);
       this.pauseBtn.setAttribute('aria-label', tip.split('  ')[0]);
@@ -211,7 +215,7 @@ export class Cluster {
     const m = this.hooks.muted();
     if (this.soundShown !== m) {
       this.soundShown = m;
-      this.soundBtn.replaceChildren(iconSpan(lineIcon(m ? 'mute' : 'sound', 17)), el('span', 'sq-w', m ? 'Muted' : 'Sound'));
+      this.soundBtn.replaceChildren(topIcon(m ? 'mute' : 'sound'), el('span', 'sq-w', m ? 'Muted' : 'Sound'));
       setClass(this.soundBtn, 'off', m);
     }
     for (const [id, b] of this.drawerBtns) setClass(b, 'on', this.hooks.isOpen(id));

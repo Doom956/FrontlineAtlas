@@ -100,6 +100,11 @@ const EXTRA: Record<ExtraGlyphId, GLayer[]> = {
 
 let maskSeq = 0;
 
+/** The vector layers of a filled pictogram in 64 x 64 units (hud/pixelIcons.ts traces them onto a pixel grid). */
+export function glyphLayers(id: WorldGlyphId): { d: string; mode?: string; width?: number; detail?: boolean }[] {
+  return (MARKER_DATA as Record<string, GLayer[]>)[id] ?? EXTRA[id as ExtraGlyphId] ?? [];
+}
+
 /** A filled pictogram as an inline SVG string, `px` CSS pixels square, in currentColor. */
 export function worldGlyph(id: WorldGlyphId, px = 24): string {
   const markerLayers = (MARKER_DATA as Record<string, { d: string; mode?: string; width?: number; ring?: boolean; detail?: boolean }[]>)[id];

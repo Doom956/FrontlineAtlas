@@ -20,6 +20,7 @@ import { formatCount } from '../render/common';
 import { troopsToSend, troopSum } from '../input';
 import { el, flash, fmtRate, setClass, setText, setTip, setVisible, slider, syncSlider, type HudCtx } from './dom';
 import { iconSpan, lineIcon } from './glyph';
+import { catSpan, pixelIcon } from './pixelIcons';
 import { StrikeBar } from './strikeBar';
 import { QuickBar } from './quickBar';
 import { SpendPanel } from './spendPanel';
@@ -217,13 +218,15 @@ export class CommandBar {
     const chip = (name: 'iron' | 'oil' | 'science', tip: string) => {
       const ic = el('span', `res-i r-${name}`);
       const n = el('span', 'res-n');
-      ic.append(iconSpan(lineIcon(name, 12, 1.9)), n);
+      // pixel icon in its colour family: iron and oil are economy, science is research
+      const cat = name === 'science' ? 'science' : 'econ';
+      ic.append(catSpan(pixelIcon(name, 12), cat), n);
       icons.append(ic);
       const c = el('span', 'chip');
       c.dataset.test = `chip-${name}`;
       const v = el('span', 'chip-v');
       const t = el('span', 'chip-t', tip);
-      c.append(iconSpan(lineIcon(name, 13, 1.8)), v, t);
+      c.append(catSpan(pixelIcon(name, 12), cat), v, t);
       pop.append(c);
       return { ic, c, v, n };
     };
