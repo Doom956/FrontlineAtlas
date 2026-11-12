@@ -233,7 +233,7 @@ export function troopKinds(t: Troops | null): TroopIconKind[] {
 }
 
 /** Overlap of stacked markers in a pill (px). */
-const STACK = 6;
+const STACK = 2;
 
 export interface TroopPillStyle {
   /** coloured accent: the arrow and, for an attack on you, the outline */

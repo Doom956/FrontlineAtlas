@@ -6,7 +6,8 @@
 //   landing craft = short square-fronted hull + ramp       trade ship = pointed hull with container blocks
 //   rocket / atom bomb = one missile shape (the bomb bigger, with a ring), both with a long fading contrail
 //   tank division = squat hull with two track lines, a round turret and a long barrel forward (no trail)
-// The detailed pictures live in icons.ts (HUD). Trails (contrails, wakes) are drawn here too so the glyph sheet can use them.
+// The detailed pictures live in icons.ts (HUD) and the map sprites in pixelSprites.ts. Trails (contrails of pixel
+// smoke puffs, foam wakes) are drawn here too, see drawTrails.
 import type { UnitType } from '../../sim/types';
 import { prankView } from '../fx/prankView';
 
@@ -205,6 +206,10 @@ export interface Inst {
   S: number;
   /** ships only: drawn a wake while true */
   moving?: boolean;
+  /** world-anchored trails (TrailPuffs): the unit's id and position in tiles */
+  id?: number;
+  tx?: number;
+  ty?: number;
 }
 
 /** All of one owner's glyphs: dark under-stroke, faint fill, solid blocks, dark pits, colour stroke (5 draw calls at most). */
@@ -255,73 +260,219 @@ export function strokeGlyphs(ctx: CanvasRenderingContext2D, list: readonly Inst[
   ctx.stroke();
 }
 
-const TIERS = 3;
-const AIR_ALPHA = [0.34, 0.2, 0.09];
-const MISSILE_ALPHA = [0.75, 0.45, 0.2];
+// ------------------------------------------------------------------------------------------------- trails
+// Contrails and wakes are short lines of small pixel PUFFS, not lines: smoke behind missiles (white-hot at the engine,
+// then light grey, tapering from about one missile width to two or three, fading out within a second), faint smoke
+// behind planes, and foam puffs at both sides of a moving ship's stern that drift apart into a V. Puffs stay where
+// they were made (world coordinates) and fade there, so a trail lingers and breaks up behind the unit. One small ring
+// buffer of puffs (TrailPuffs) per unit layer; drawn as whole-pixel discs on the sprites' pixel grid. Without a
+// buffer (tests, previews) the same puffs are laid out along the heading instead.
 
-/** Tier i of a tapering contrail behind (x, y): a trapezoid from distance d0 to d1 behind, half-width w0 * (1 - t) at t. */
-function addTier(ctx: CanvasRenderingContext2D, x: number, y: number, cos: number, sin: number, from: number, len: number, w0: number, i: number): void {
-  const t0 = i / TIERS;
-  const t1 = (i + 1) / TIERS;
-  const d0 = from + len * t0;
-  const d1 = from + len * t1;
-  const h0 = (w0 * (1 - t0)) / 2;
-  const h1 = (w0 * (1 - t1)) / 2;
-  ctx.moveTo(x - cos * d0 - sin * h0, y - sin * d0 + cos * h0);
-  ctx.lineTo(x - cos * d1 - sin * h1, y - sin * d1 + cos * h1);
-  ctx.lineTo(x - cos * d1 + sin * h1, y - sin * d1 - cos * h1);
-  ctx.lineTo(x - cos * d0 + sin * h0, y - sin * d0 - cos * h0);
-  ctx.closePath();
+/** Puff kinds. */
+const SMOKE = 0;
+const FAINT = 1;
+const FOAM = 2;
+const PUFF_CAP = 1800;
+
+/** World-anchored puffs (tile coordinates), a fixed ring buffer: nothing is allocated per puff. */
+export class TrailPuffs {
+  readonly x = new Float32Array(PUFF_CAP);
+  readonly y = new Float32Array(PUFF_CAP);
+  readonly vx = new Float32Array(PUFF_CAP);
+  readonly vy = new Float32Array(PUFF_CAP);
+  readonly born = new Float64Array(PUFF_CAP);
+  readonly life = new Float32Array(PUFF_CAP);
+  readonly r0 = new Float32Array(PUFF_CAP);
+  readonly r1 = new Float32Array(PUFF_CAP);
+  readonly kind = new Uint8Array(PUFF_CAP);
+  /** next slot (the oldest puff is overwritten when full) */
+  private head = 0;
+  /** where each emitter (unit id * 4 + side) dropped its last puff, and the frame it was seen */
+  private last = new Map<number, { x: number; y: number; frame: number }>();
+  private frame = 0;
+  /** puffs made since the start (tests, stats) */
+  made = 0;
+
+  clear(): void {
+    this.life.fill(0);
+    this.last.clear();
+    this.head = 0;
+  }
+
+  /** Starts a frame: forgets emitters not seen for a while. */
+  begin(): void {
+    this.frame++;
+    if (this.frame % 60 === 0) for (const [k, v] of this.last) if (this.frame - v.frame > 30) this.last.delete(k);
+  }
+
+  private put(x: number, y: number, vx: number, vy: number, now: number, life: number, r0: number, r1: number, kind: number): void {
+    const i = this.head;
+    this.x[i] = x;
+    this.y[i] = y;
+    this.vx[i] = vx;
+    this.vy[i] = vy;
+    this.born[i] = now;
+    this.life[i] = life;
+    this.r0[i] = r0;
+    this.r1[i] = r1;
+    this.kind[i] = kind;
+    this.head = (i + 1) % PUFF_CAP;
+    this.made++;
+  }
+
+  /**
+   * Drops puffs every `spacing` tiles along the way emitter `key` went since last frame, ending at (x, y) (tiles).
+   * vx, vy: drift in tiles per second.
+   */
+  emit(key: number, x: number, y: number, spacing: number, now: number, life: number, r0: number, r1: number, kind: number, vx: number, vy: number, jit = 0): void {
+    const l = this.last.get(key);
+    if (!l || this.frame - l.frame > 3) {
+      this.last.set(key, { x, y, frame: this.frame });
+      this.put(x, y, vx, vy, now, life, r0, r1, kind);
+      return;
+    }
+    l.frame = this.frame;
+    const dx = x - l.x;
+    const dy = y - l.y;
+    const d = Math.hypot(dx, dy);
+    if (d < spacing) return;
+    // a jump (a teleport, a long pause) starts a fresh trail
+    if (d > spacing * 60) {
+      l.x = x;
+      l.y = y;
+      this.put(x, y, vx, vy, now, life, r0, r1, kind);
+      return;
+    }
+    const n = Math.floor(d / spacing);
+    for (let k = 1; k <= n; k++) {
+      const q = (k * spacing) / d;
+      // a little off the line, so the smoke looks irregular; the puff dropped earlier along the way is older
+      const j = jit ? (Math.sin(this.made * 12.9898) * 43758.5453) % 1 : 0;
+      this.put(l.x + dx * q - (dy / d) * j * jit, l.y + dy * q + (dx / d) * j * jit, vx, vy, now - (1 - q) * 16, life * (0.85 + 0.3 * Math.abs(j)), r0, r1 * (0.8 + 0.4 * Math.abs(j)), kind);
+    }
+    l.x += (dx * n * spacing) / d;
+    l.y += (dy * n * spacing) / d;
+  }
+
+  /** Draws the live puffs: (ox, oy) = screen position of tile (0, 0), z px per tile, g px per art pixel. */
+  draw(ctx: CanvasRenderingContext2D, ox: number, oy: number, z: number, g: number, now: number, viewW: number, viewH: number): number {
+    const prev = ctx.globalAlpha;
+    let drawn = 0;
+    for (let i = 0; i < PUFF_CAP; i++) {
+      const life = this.life[i];
+      if (life <= 0) continue;
+      const age = now - this.born[i];
+      if (age >= life) {
+        this.life[i] = 0;
+        continue;
+      }
+      if (age < 0) continue;
+      const q = age / life;
+      const sx = ox + (this.x[i] + (this.vx[i] * age) / 1000) * z;
+      const sy = oy + (this.y[i] + (this.vy[i] * age) / 1000) * z;
+      if (sx < -20 || sy < -20 || sx > viewW + 20 || sy > viewH + 20) continue;
+      const r = this.r0[i] + (this.r1[i] - this.r0[i]) * Math.sqrt(q);
+      const k = this.kind[i];
+      if (k === FOAM) {
+        ctx.globalAlpha = prev * 0.7 * (1 - q);
+        ctx.fillStyle = q < 0.3 ? '#ffffff' : '#dcebf3';
+      } else {
+        // white-hot at the engine, then a neutral light grey
+        ctx.globalAlpha = prev * (k === FAINT ? 0.45 : 0.72) * (1 - q);
+        ctx.fillStyle = q < 0.12 && k === SMOKE ? '#fffbe8' : q < 0.45 ? '#e6e6e1' : '#c6c6c0';
+      }
+      puffDisc(ctx, sx, sy, r, g);
+      drawn++;
+    }
+    ctx.globalAlpha = prev;
+    return drawn;
+  }
+}
+
+/** A whole-pixel disc of radius r cells (g px each): a square, a plus, or a round blob. */
+function puffDisc(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, g: number): void {
+  const X = Math.round(x / g) * g;
+  const Y = Math.round(y / g) * g;
+  if (r < 0.75) {
+    ctx.fillRect(X, Y, g, g);
+    return;
+  }
+  if (r < 1.5) {
+    ctx.fillRect(X - g, Y, g * 3, g);
+    ctx.fillRect(X, Y - g, g, g * 3);
+    return;
+  }
+  const ri = Math.round(r);
+  for (let dy = -ri; dy <= ri; dy++) {
+    const half = Math.floor(Math.sqrt(ri * ri - dy * dy) + 0.3);
+    ctx.fillRect(X - half * g, Y + dy * g, (half * 2 + 1) * g, g);
+  }
+}
+
+/** Where the camera puts tile (0, 0), the zoom, the sprites' pixel size and the time, for world-anchored trails. */
+export interface TrailView {
+  ox: number;
+  oy: number;
+  z: number;
+  g: number;
+  now: number;
+  viewW: number;
+  viewH: number;
 }
 
 /**
- * Contrails (missiles: long, tapering, fading; planes: short and faint) and ship wakes (a faint V) behind the glyphs.
- * `wakes`: also the ships' wakes and the planes' contrails (off at far zoom, where only missiles keep theirs).
- * Per frame 3 fills per trail class and one stroke for all wakes.
+ * Contrails (missiles at every zoom; planes and ship wakes only with `wakes`, i.e. not far out) behind the units.
+ * With a puff buffer and a view, puffs are dropped along the way each unit went (Inst.id, tx, ty needed) and drawn
+ * where they were dropped; without, the same puffs are laid out along each unit's heading.
  */
-export function drawTrails(ctx: CanvasRenderingContext2D, list: readonly Inst[], wakes: boolean): void {
-  for (const kind of ['air', 'missile'] as const) {
-    if (kind === 'air' && !wakes) continue;
-    for (let i = 0; i < TIERS; i++) {
-      ctx.beginPath();
-      let any = false;
-      for (const e of list) {
-        const g = GLYPHS[e.type];
-        if (g.trail !== kind) continue;
-        const L = e.S * 2 * g.trailLen;
-        const w0 = kind === 'missile' ? (e.type === 'atomBomb' ? 3.4 : 2.4) : 1.5;
-        addTier(ctx, e.x, e.y, Math.cos(e.angle), Math.sin(e.angle), e.S * 0.85, L, w0, i);
-        any = true;
+export function drawTrails(ctx: CanvasRenderingContext2D, list: readonly Inst[], wakes: boolean, puffs?: TrailPuffs, view?: TrailView): void {
+  if (puffs && view) {
+    const { z, g, now } = view;
+    puffs.begin();
+    for (const e of list) {
+      const gl = GLYPHS[e.type];
+      if (gl.trail === 'none' || e.id === undefined || e.tx === undefined || e.ty === undefined) continue;
+      if (gl.trail !== 'missile' && !wakes) continue;
+      const cos = Math.cos(e.angle);
+      const sin = Math.sin(e.angle);
+      const back = (e.S * 0.9) / z;
+      if (gl.trail === 'missile') {
+        // narrow and white-hot at the engine, wider and broken up toward the back; a few missile lengths long
+        const big = e.type === 'atomBomb';
+        const life = z < 3 ? 1100 : 300;
+        puffs.emit(e.id * 4, e.tx - cos * back, e.ty - sin * back, (2.5 * g) / z, now, life, big ? 1 : 0.8, big ? 3.4 : 2.8, SMOKE, 1.2 / z, -2 / z, (1.2 * g) / z);
+      } else if (gl.trail === 'air') {
+        puffs.emit(e.id * 4, e.tx - cos * back, e.ty - sin * back, (3.5 * g) / z, now, 300, 0.5, 1.6, FAINT, 0, 0, (0.8 * g) / z);
+      } else if (e.moving) {
+        // foam at both sides of the stern, drifting outward: a V behind the ship
+        const side = (e.S * 0.22) / z;
+        const spread = 0.9 / Math.max(1, z * 0.15);
+        for (const sd of [1, -1]) puffs.emit(e.id * 4 + (sd > 0 ? 1 : 2), e.tx - cos * back * 0.95 - sin * side * sd, e.ty - sin * back * 0.95 + cos * side * sd, (3 * g) / z, now, 1100, 0.4, 1.1, FOAM, -sin * sd * spread, cos * sd * spread);
       }
-      if (!any) continue;
-      ctx.fillStyle = `rgba(255,255,255,${(kind === 'missile' ? MISSILE_ALPHA : AIR_ALPHA)[i]})`;
-      ctx.fill();
     }
+    puffs.draw(ctx, view.ox, view.oy, z, g, now, view.viewW, view.viewH);
+    return;
   }
-  if (!wakes) return;
-  ctx.beginPath();
-  let any = false;
+  // no buffer: the puffs laid out along the heading (oldest and widest at the tail)
+  const prev = ctx.globalAlpha;
   for (const e of list) {
-    const g = GLYPHS[e.type];
-    if (g.trail !== 'wake' || !e.moving) continue;
+    const gl = GLYPHS[e.type];
+    if (gl.trail === 'none' || (gl.trail !== 'missile' && !wakes)) continue;
+    if (gl.trail === 'wake' && !e.moving) continue;
     const cos = Math.cos(e.angle);
     const sin = Math.sin(e.angle);
-    const sx = -e.S * 0.9;
-    const L = e.S * 2 * g.trailLen;
-    for (const side of [1, -1]) {
-      const y0 = side * e.S * 0.18;
-      const bx = sx - L;
-      const by = side * (e.S * 0.18 + L * 0.3);
-      ctx.moveTo(e.x + sx * cos - y0 * sin, e.y + sx * sin + y0 * cos);
-      ctx.lineTo(e.x + bx * cos - by * sin, e.y + bx * sin + by * cos);
+    const L = e.S * 2 * gl.trailLen;
+    const n = gl.trail === 'missile' ? 7 : 4;
+    for (let i = 0; i < n; i++) {
+      const q = i / (n - 1);
+      const d = e.S * 0.85 + L * q;
+      ctx.globalAlpha = prev * (gl.trail === 'missile' ? 0.72 : 0.45) * (1 - q * 0.85);
+      ctx.fillStyle = gl.trail === 'wake' ? '#ffffff' : q < 0.15 ? '#fffbe8' : '#e0e0db';
+      if (gl.trail === 'wake') for (const sd of [1, -1]) puffDisc(ctx, e.x - cos * d - sin * sd * (e.S * 0.2 + L * 0.3 * q), e.y - sin * d + cos * sd * (e.S * 0.2 + L * 0.3 * q), 0.5 + q, 1);
+      else puffDisc(ctx, e.x - cos * d, e.y - sin * d, 0.5 + q * 1.7, 1);
     }
-    any = true;
   }
-  if (!any) return;
-  ctx.lineWidth = 1;
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = 'rgba(235,245,255,0.32)';
-  ctx.stroke();
+  ctx.globalAlpha = prev;
 }
 
 const DUCK_BODY = '#f5d33b';

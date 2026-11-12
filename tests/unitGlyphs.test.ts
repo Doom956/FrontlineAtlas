@@ -1,7 +1,7 @@
 // Line glyphs of the mobile units on the map (client/render/unitGlyphs.ts).
 import { describe, expect, it } from 'vitest';
 import { UNITS } from '../src/sim/config';
-import { addGlyph, drawTrails, GLYPHS, type Inst } from '../src/client/render/unitGlyphs';
+import { addGlyph, drawTrails, GLYPHS, TrailPuffs, type Inst } from '../src/client/render/unitGlyphs';
 
 function fakeCtx() {
   const calls: string[] = [];
@@ -14,6 +14,9 @@ function fakeCtx() {
     arc: () => calls.push('a'),
     fill: () => calls.push('fill'),
     stroke: () => calls.push('stroke'),
+    fillRect: (x: number, y: number) => (calls.push('rect'), pts.push([x, y])),
+    globalAlpha: 1,
+    fillStyle: '',
   } as unknown as CanvasRenderingContext2D;
   return { ctx, calls, pts };
 }
@@ -89,21 +92,36 @@ describe('unit glyphs', () => {
     expect(calls.includes('a')).toBe(true);
   });
 
-  it('draws the trails behind the unit: missile contrail points opposite the heading, ships only while moving, far zoom only missiles', () => {
+  it('draws the trails as pixel puffs behind the unit: missile smoke opposite the heading, ships only while moving, far zoom only missiles', () => {
     const { ctx, calls, pts } = fakeCtx();
     const rocket: Inst = { type: 'rocket', x: 100, y: 100, angle: 0, S: 4, moving: true };
     drawTrails(ctx, [rocket], true);
     expect(Math.min(...pts.map((p) => p[0]))).toBeLessThan(100 - 4 * 2 * 3); // tail reaches back (heading +x)
     expect(Math.max(...pts.map((p) => p[0]))).toBeLessThan(100);
-    expect(calls.filter((c) => c === 'fill').length).toBe(3); // three fading tiers
+    expect(calls.filter((c) => c === 'rect').length).toBeGreaterThanOrEqual(7); // a line of puffs, not one stroke
+    expect(calls.includes('stroke')).toBe(false);
     calls.length = 0;
     const ship: Inst = { type: 'warship', x: 0, y: 0, angle: 0, S: 5, moving: false };
     drawTrails(ctx, [ship], true);
-    expect(calls.includes('stroke')).toBe(false); // standing still: no wake
+    expect(calls.includes('rect')).toBe(false); // standing still: no wake
     drawTrails(ctx, [{ ...ship, moving: true }], true);
-    expect(calls.includes('stroke')).toBe(true);
+    expect(calls.includes('rect')).toBe(true);
     calls.length = 0;
     drawTrails(ctx, [{ ...ship, moving: true }, { type: 'fighter', x: 0, y: 0, angle: 0, S: 4 }], false); // far zoom
-    expect(calls.includes('fill') || calls.includes('stroke')).toBe(false);
+    expect(calls.includes('rect')).toBe(false);
+  });
+
+  it('leaves world-anchored puffs where a missile went, which fade out and never pile up', () => {
+    const { ctx, calls } = fakeCtx();
+    const puffs = new TrailPuffs();
+    const view = (now: number) => ({ ox: 0, oy: 0, z: 8, g: 1, now, viewW: 800, viewH: 600 });
+    for (let f = 0; f < 30; f++) drawTrails(ctx, [{ type: 'rocket', x: 8 * (10 + f), y: 80, angle: 0, S: 6, id: 1, tx: 10 + f, ty: 10 }], true, puffs, view(f * 16));
+    expect(puffs.made).toBeGreaterThan(30); // spaced along the way, several per frame at this speed
+    calls.length = 0;
+    drawTrails(ctx, [], true, puffs, view(30 * 16 + 5000)); // long after: all faded
+    expect(calls.includes('rect')).toBe(false);
+    // a burst far bigger than the buffer only ever keeps the newest
+    for (let f = 0; f < 400; f++) drawTrails(ctx, [{ type: 'rocket', x: 0, y: 0, angle: 0, S: 6, id: 2, tx: f * 3, ty: 0 }], true, puffs, view(6000 + f));
+    expect(puffs.life.length).toBeLessThanOrEqual(2000);
   });
 });

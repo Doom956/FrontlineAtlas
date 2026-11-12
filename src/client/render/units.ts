@@ -11,7 +11,8 @@ import { armyTotal } from '../../sim/economy';
 import type { GameState, Unit } from '../../sim/types';
 import type { Camera } from '../camera';
 import { clamp, css, MAP_NUM_FAMILY, type RGB } from './common';
-import { drawTrails, GLYPHS, strokeDucks, type Inst } from './unitGlyphs';
+import { drawTrails, GLYPHS, strokeDucks, TrailPuffs, type Inst } from './unitGlyphs';
+import { pixelRing } from '../fx/pixelFx';
 import { drawMapSprite, drawUnitMarker, isAirType, setSpriteBakeBudget, spriteLength, unitSpriteMods } from './pixelSprites';
 import { prankView } from '../fx/prankView';
 import { isIncoming } from '../forces';
@@ -78,6 +79,8 @@ export class UnitLayer {
   focusId = -1;
   /** Selected own units (warships, tank divisions) to ring; set by the renderer from ui.selection. */
   selected: ReadonlySet<number> = new Set();
+  /** smoke and foam puffs of the contrails and wakes (unitGlyphs.ts drawTrails) */
+  readonly puffs = new TrailPuffs();
 
   reset(w: number): void {
     this.tracks.clear();
@@ -86,6 +89,15 @@ export class UnitLayer {
     this.hits = [];
     this.drops = [];
     this.planes.clear();
+    this.puffs.clear();
+  }
+
+  /** The heading a unit's sprite was drawn at last (snapped to its 16 baked facings), or null. */
+  headingOf(id: number): number | null {
+    const t = this.tracks.get(id);
+    if (!t) return null;
+    const step = Math.PI / 8;
+    return Math.round(t.shown / step) * step;
   }
 
   /** Interpolated position of a unit (tile coords, unit origin at the tile corner like Unit.x/y). */
@@ -271,7 +283,7 @@ export class UnitLayer {
         angle = t.shown;
         moving = t.hn >= 2 && Math.abs(t.hx[0] - t.hx[1]) + Math.abs(t.hy[0] - t.hy[1]) > 1e-4;
       }
-      visible.push({ u, type: u.type, x, y, S, angle, moving });
+      visible.push({ u, type: u.type, x, y, S, angle, moving, id: u.id, tx: ux + 0.5, ty: uy + 0.5 });
     }
     // zoomed out: close warships of one owner become one marker (screen px, so the radius scales with the zoom)
     if (grouping) {
@@ -298,7 +310,9 @@ export class UnitLayer {
       if (e.fleet) for (const id of e.fleet) this.allHits.push(id, e.x, e.y, r);
       else this.allHits.push(e.u.id, e.x, e.y, r);
     }
-    drawTrails(ctx, visible, z >= 0.45);
+    // contrails and wakes: pixel smoke and foam puffs left where the unit went (missiles at every zoom, planes and
+    // ships from the middle zooms on)
+    drawTrails(ctx, visible, z >= 2, this.puffs, { ox, oy, z, g: k, now: nowMs, viewW: cam.viewW, viewH: cam.viewH });
     // far: one small solid marker per unit; mid and near: the unit's shaded pixel sprite (16 baked headings, whole
     // pixel scale): ships and tanks first, then planes, then missiles on top
     ctx.setLineDash([]);
@@ -319,6 +333,9 @@ export class UnitLayer {
       } finally {
         setSpriteBakeBudget(Infinity);
       }
+      // the atom bomb: a faint pixel ring round it so it reads as the big one
+      ctx.fillStyle = 'rgba(255,214,120,0.4)';
+      for (const e of drawList) if (e.type === 'atomBomb') pixelRing(ctx, e.x, e.y, (e.S + 5) / k, k, true);
     } else {
       for (const e of drawList) {
         const c = colors[e.u.owner] ?? [200, 200, 200];
