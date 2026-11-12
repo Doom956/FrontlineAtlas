@@ -26,6 +26,8 @@ export const CRATER_CAP = 200;
 const BLAST_CAP = 72;
 const SHELL_CAP = 48;
 const FLASH_CAP = 48;
+/** A muzzle flash: flash, fire, smoke (ms). */
+const FLASH_MS = 300;
 /** Things older than this (ticks) are history, not news (as fx/battleFx.ts). */
 const FRESH_TICKS = 15;
 const JUMP_TICKS = 30;
@@ -454,7 +456,7 @@ export class PixelFx {
     let slot: Flash | null = null;
     let oldest: Flash | null = null;
     for (const f of this.flashes) {
-      if (!f.live || t0 - f.t0 > 400) {
+      if (!f.live || t0 - f.t0 > FLASH_MS + 40) {
         slot = f;
         break;
       }
@@ -541,7 +543,7 @@ export class PixelFx {
       }
       for (const f of this.flashes) {
         if (!f.live) continue;
-        const t = (now - f.t0) / 160;
+        const t = (now - f.t0) / FLASH_MS;
         if (t > 1) {
           f.live = false;
           continue;
@@ -549,16 +551,13 @@ export class PixelFx {
         if (t < 0) continue;
         let px = ox + f.x * z;
         let py = oy + f.y * z;
-        let ang = 0;
         const at = f.unit >= 0 && poses ? poses.screenOf(f.unit) : null;
         const h = f.unit >= 0 && poses ? poses.headingOf(f.unit) : null;
         if (at && h !== null) {
           px = at.x + (Math.cos(h) * f.u - Math.sin(h) * f.v) * g;
           py = at.y + (Math.sin(h) * f.u + Math.cos(h) * f.v) * g * 0.84 - 2 * g;
-          ang = h;
         }
         const aim = Math.atan2(oy + f.ty * z - py, ox + f.tx * z - px);
-        void ang;
         drawMuzzle(ctx, px, py, aim, t, g);
       }
       for (const b of this.blasts) {
@@ -741,30 +740,47 @@ function drawBlast(ctx: CanvasRenderingContext2D, b: Blast, x: number, y: number
   }
 }
 
-/** A splash on water: a white column, spray and a foam ring spreading out. */
+/**
+ * A splash on water: a white column thrown up (lit on its left, shaded on its right), spray droplets falling back
+ * out of it, and a foam ring spreading on the water and breaking up. Five frames.
+ */
 function drawSplash(ctx: CanvasRenderingContext2D, b: Blast, x: number, y: number, t: number, g: number): void {
   const f = Math.min(4, Math.floor(t * 5));
-  const R = SPEC.splash.r;
   const X = Math.round(x / g) * g;
   const Y = Math.round(y / g) * g;
-  ctx.globalAlpha = f >= 3 ? 0.6 : 1;
-  ctx.fillStyle = FOAM;
-  if (f <= 1) {
-    const hgt = f === 0 ? 3 : 5;
-    ctx.fillRect(X - g, Y - hgt * g, g * 3, hgt * g);
-    ctx.fillStyle = FOAM_DIM;
-    ctx.fillRect(X + g, Y - hgt * g + g, g, hgt * g - g);
+  // the foam ring on the water first (the column stands in front of it)
+  ctx.globalAlpha = f >= 3 ? 0.55 : 0.9;
+  ctx.fillStyle = f >= 2 ? FOAM_DIM : FOAM;
+  pixelRing(ctx, x, y, 1.6 + f * 1.15, g, f >= 3);
+  if (f <= 2) {
+    // the column: 3 cells wide, rising then falling back; a wider foot
+    const hgt = [4, 7, 4][f];
+    ctx.globalAlpha = 1;
     ctx.fillStyle = FOAM;
-  }
-  if (f >= 1 && f <= 3) {
-    for (let i = 0; i < 6; i++) {
-      const a = rnd(b.seed, i) * Math.PI * 2;
-      const d = R * (0.4 + f * 0.3);
-      ctx.fillRect(Math.round((x + Math.cos(a) * d * g) / g) * g, Math.round((y + Math.sin(a) * d * g * 0.6 - (f === 2 ? 2 : 0) * g) / g) * g, g, g);
+    ctx.fillRect(X - g, Y - hgt * g, g * 3, hgt * g);
+    ctx.fillRect(X - 2 * g, Y - g, g * 5, g * 2);
+    ctx.fillStyle = FOAM_DIM;
+    ctx.fillRect(X + g, Y - hgt * g + g, g, hgt * g);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(X - g, Y - hgt * g, g, g);
+    if (f === 1) {
+      // the top breaking into two droplets
+      ctx.fillStyle = FOAM;
+      ctx.fillRect(X - 2 * g, Y - (hgt + 2) * g, g, g);
+      ctx.fillRect(X + 2 * g, Y - (hgt + 1) * g, g, g);
     }
   }
-  ctx.fillStyle = f >= 2 ? FOAM_DIM : FOAM;
-  pixelRing(ctx, x, y, 1.5 + f * 1.1, g, f >= 3);
+  if (f >= 1) {
+    // spray: droplets thrown out and falling back
+    ctx.globalAlpha = f >= 3 ? 0.6 : 1;
+    ctx.fillStyle = FOAM;
+    for (let i = 0; i < 6; i++) {
+      const a = rnd(b.seed, i) * Math.PI * 2;
+      const d = 1.5 + f * 1.1 + rnd(b.seed, i + 7);
+      const up = f === 1 ? 4 : f === 2 ? 3 : f === 3 ? 1 : 0;
+      ctx.fillRect(Math.round((x + Math.cos(a) * d * g) / g) * g, Math.round((y + Math.sin(a) * d * g * 0.6 - up * g) / g) * g, g, g);
+    }
+  }
   ctx.globalAlpha = 1;
 }
 
@@ -828,30 +844,42 @@ function drawAtom(ctx: CanvasRenderingContext2D, b: Blast, x: number, y: number,
     pixelDisc(ctx, x - cell(fr * 0.2), y - cell(fr * 0.22), fr * 0.55, g);
   }
   ctx.globalAlpha = 1;
-  void z;
 }
 
-/** A turret's muzzle flash: a bright pixel star pushed out toward the target, two frames. */
+/**
+ * A turret's muzzle flash, three frames: a white-hot star with a long tongue of fire toward the target, then a
+ * smaller orange burst, then a grey smoke puff drifting off the muzzle.
+ */
 function drawMuzzle(ctx: CanvasRenderingContext2D, x: number, y: number, aim: number, t: number, g: number): void {
-  const f = t < 0.5 ? 0 : 1;
+  const f = t < 0.3 ? 0 : t < 0.6 ? 1 : 2;
   const c = Math.cos(aim);
   const s = Math.sin(aim);
-  const len = f === 0 ? 7 : 4;
-  // a tongue of fire toward the target, widest a little out from the muzzle
-  ctx.fillStyle = f === 0 ? YELLOW : ORANGE;
-  const mx = x + c * 3 * g;
-  const my = y + s * 3 * g;
-  pixelDisc(ctx, mx, my, f === 0 ? 2.2 : 1.5, g);
-  ctx.fillStyle = f === 0 ? WHITE : YELLOW;
-  for (let i = 0; i <= len; i++) ctx.fillRect(Math.round((x + c * i * g) / g) * g, Math.round((y + s * i * g) / g) * g, g, g);
-  if (f === 0) {
-    ctx.fillStyle = WHITE;
-    ctx.fillRect(Math.round(mx / g) * g, Math.round(my / g) * g, g, g);
-  } else {
-    ctx.globalAlpha = 0.7;
-    ctx.fillStyle = SMOKE_LIGHT;
-    pixelDisc(ctx, x + c * 4 * g, y + s * 4 * g - g, 1.2, g);
+  const at = (d: number, side = 0): [number, number] => [Math.round((x + (c * d - s * side) * g) / g) * g, Math.round((y + (s * d + c * side) * g) / g) * g];
+  if (f === 2) {
+    const k = (t - 0.6) / 0.4;
+    ctx.globalAlpha = 0.8 * (1 - k);
+    puff(ctx, x + c * 3 * g + k * 2 * g, y + s * 3 * g - (1 + k * 3) * g, 1.6 + k, g, SMOKE, SMOKE_LIGHT, '#d2cec8');
     ctx.globalAlpha = 1;
+    return;
+  }
+  const len = f === 0 ? 8 : 5;
+  // the burst just out of the muzzle
+  const [bx, by] = at(f === 0 ? 3 : 2.5);
+  ctx.fillStyle = f === 0 ? YELLOW : ORANGE;
+  pixelDisc(ctx, bx, by, f === 0 ? 2.4 : 1.8, g);
+  // the tongue of fire, a cell wide, and two short side spikes on the first frame
+  ctx.fillStyle = f === 0 ? WHITE : YELLOW;
+  for (let i = 0; i <= len; i++) {
+    const [px, py] = at(i);
+    ctx.fillRect(px, py, g, g);
+  }
+  if (f === 0) {
+    for (const sd of [-2, 2]) {
+      const [px, py] = at(3, sd);
+      ctx.fillRect(px, py, g, g);
+    }
+    ctx.fillStyle = WHITE;
+    pixelDisc(ctx, bx, by, 1, g);
   }
 }
 
@@ -903,13 +931,13 @@ function drawShell(ctx: CanvasRenderingContext2D, s: Shell, t: number, ox: numbe
   const [px, py] = at(t);
   const X = Math.round(px / g) * g;
   const Y = Math.round(py / g) * g;
+  // the shell: a hot 2 cell core lit from the top left, dark on its lower right edge so it shows on bright land
   ctx.fillStyle = DEBRIS;
   ctx.fillRect(X - g, Y - g, g * 3, g * 3);
   ctx.fillStyle = YELLOW;
-  ctx.fillRect(X - g, Y, g * 2, g);
-  ctx.fillRect(X, Y - g, g, g * 2);
+  ctx.fillRect(X - g, Y - g, g * 2, g * 2);
   ctx.fillStyle = WHITE;
-  ctx.fillRect(X, Y, g, g);
+  ctx.fillRect(X - g, Y - g, g, g);
 }
 
 // ================================================================================================ craters
@@ -978,7 +1006,7 @@ export function craterBitmap(r: number, variant: number): { w: number; h: number
         set(x, y, dx + dy < 0 ? RIM : RIM_SHADE, 200);
       } else if (d <= 1.45) {
         // scorched ground fading out, broken up
-        if ((x * 7 + y * 13 + variant) % 3 === 0) set(x, y, SCORCH, 110);
+        if (rnd(x * 31 + y * 17, variant + 5) < 0.42 * (1.45 - d) * 2.2) set(x, y, SCORCH, 120);
       }
     }
   }

@@ -389,7 +389,7 @@ export class TrailPuffs {
   }
 }
 
-/** A whole-pixel disc of radius r cells (g px each): a square, a plus, or a round blob. */
+/** A whole-pixel puff of radius r cells (g px each): one cell, a 2 cell square, a 3 cell blob or a round disc. */
 function puffDisc(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, g: number): void {
   const X = Math.round(x / g) * g;
   const Y = Math.round(y / g) * g;
@@ -397,9 +397,15 @@ function puffDisc(ctx: CanvasRenderingContext2D, x: number, y: number, r: number
     ctx.fillRect(X, Y, g, g);
     return;
   }
+  if (r < 1.15) {
+    // a 2 px puff (a plus would read as a sparkle)
+    ctx.fillRect(X - g, Y - g, g * 2, g * 2);
+    return;
+  }
   if (r < 1.5) {
-    ctx.fillRect(X - g, Y, g * 3, g);
-    ctx.fillRect(X, Y - g, g, g * 3);
+    // two overlapping 2 px squares: a round 3 px blob without its top right and bottom left corners
+    ctx.fillRect(X - g, Y - g, g * 2, g * 2);
+    ctx.fillRect(X, Y, g * 2, g * 2);
     return;
   }
   const ri = Math.round(r);
