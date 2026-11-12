@@ -2,9 +2,30 @@
    pane. Layout from the Modern Flat concept (a node graph, not boxes in boxes: no fork frames, thin neutral lines,
    tabs on a quiet track), in the Pixel Clean tokens and type. Every card the same size with two lines; states told
    apart by fill and words (owned: quiet fill and a green check; available: the lightest fill and a hairline; next: an
-   accent tint and a "Next" flag; in progress: a blue tint and a bar; locked: a hairline only, "Needs X"; not chosen:
-   faded). Row names read left to right. Red only for what you can't pay. */
+   accent tint and a "Next" flag; in progress: a cyan edge, a cyan bar and "97%, 15 s left"; locked: a hairline
+   only, "Needs X"; not chosen: faded). Row names read left to right. Red only for what you can't pay.
+
+   This panel's accent is research blue, not amber (scoped here; the aliases are repointed too, they resolve where
+   they are declared). One colour, one meaning: blue = the suggestion and the main action ("Next", Start), cyan =
+   researching or on order now. Cobalt sits at OKLCH hue 266, cyan at 205. Contrast (WCAG, panel #14161b):
+     #3d66df fill: white text 5.0:1, edge 3.6:1; hover #375fd3 white 5.6:1, edge 3.2:1
+     #93aef8 text and marks 8.3:1 (6.6:1 on #262a33); on the Next tint #222e4e: --text 11.6:1, --dim 5.1:1
+     #4fccd9 cyan text 9.5:1 (7.2:1 on its own tint #202f37) */
 aside.drawer[data-page='research'] {
+  --accent: #3d66df;
+  --accent-hi: #93aef8;
+  --accent-ink: #ffffff;
+  --accent-hover: #375fd3;
+  --accent-rgb: 61 102 223;
+  --brass: var(--accent);
+  --brass-hi: var(--accent-hi);
+  --brass-lo: #334a83;
+  --brass-ink: var(--accent-ink);
+  /* in progress, on order */
+  --info: #4fccd9;
+  --info-rgb: 79 204 217;
+  --steel: var(--info);
+  --steel-d: #05585f;
   /* opaque: the live map showing through the rows read as clutter */
   background-color: var(--metal);
   width: min(1320px, calc((100vw - 24px) / var(--ui, 1)));
@@ -271,7 +292,8 @@ aside.drawer[data-page='research'] .dr-body {
   display: none;
 }
 
-/* lines: one plain style; brass between owned techs; the hovered card's path lights up */
+/* lines: one plain style; the hovered card's path lights up in neutral light (what it needs) and grey (what it opens),
+   so the path never borrows the blue of "Next" or the cyan of "researching" */
 .rp-lines {
   position: absolute;
   left: 0;
@@ -300,10 +322,10 @@ aside.drawer[data-page='research'] .dr-body {
   stroke-width: 1.5;
 }
 .rp-grid.hovering .rp-lines path.hl-pre {
-  stroke: var(--brass-hi);
+  stroke: var(--text);
 }
 .rp-grid.hovering .rp-lines path.hl-next {
-  stroke: var(--steel);
+  stroke: var(--dim);
 }
 
 /* a choice: both branches in one bracket, "Choose one" on its top edge */
@@ -514,15 +536,15 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-card.next {
   border-color: var(--accent-hi);
-  background: rgb(var(--accent-rgb) / 0.2);
+  background: rgb(var(--accent-rgb) / 0.26);
 }
 .rp-card.next .rp-n,
 .rp-card.next .rp-ic {
   color: var(--text);
 }
 .rp-card.active {
-  border-color: rgba(127, 166, 214, 0.6);
-  background: rgba(127, 166, 214, 0.14);
+  border-color: rgb(var(--info-rgb) / 0.7);
+  background: rgb(var(--info-rgb) / 0.1);
 }
 .rp-card.active .rp-ic,
 .rp-card.active .rp-meta {
@@ -569,10 +591,10 @@ aside.drawer[data-page='research'] .dr-body {
   opacity: 0.3;
 }
 .rp-card.hl-pre:not(.done):not(.off) {
-  border-color: var(--accent-hi);
+  border-color: var(--text);
 }
 .rp-card.hl-next:not(.off) {
-  border-color: var(--steel);
+  border-color: var(--dim);
 }
 
 /* ---- the detail pane */
@@ -1039,7 +1061,7 @@ aside.drawer[data-page='research'] .dr-body {
     color: var(--faint);
   }
   .rp-tier.choose {
-    color: var(--brass);
+    color: var(--brass-hi);
   }
   .rp-card {
     flex: none;
