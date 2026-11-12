@@ -1,31 +1,33 @@
-// The 'realistic' art style (client only): realistic painted top-down art, like model miniatures seen from above.
-// STUB: until it is written, every category delegates to the refined style, so the game and the art lab show the
-// refined art in this column.
+// The 'realistic' art style (client only): painted top-down art, like model miniatures seen from directly above, lit
+// from the top left. No pixel look: every picture is painted with canvas paths and gradients (soft light, ambient
+// occlusion along inner edges, soft cast shadows) into an atlas at the device pixel ratio, once per heading bucket and
+// owner colour, then drawn with a few blits per unit (units.ts). Real military colours (haze grey, teak, olive drab,
+// natural metal); the owner's colour is a recognition panel, a roundel, a funnel or a band, never a tint. Effects are
+// physical: billowing fire and smoke, dust, debris, scorch, foam and vapour, from one palette (puffs.ts).
 //
-// TODO(realistic): implement every category of StyleModule (art/types.ts) in this folder:
-//   - Look: no pixel look; smooth shading (gradients, soft highlights, ambient occlusion), true proportions, painted
-//     detail (deck planking, panel lines, weathering), real military colours; smooth rotation at any heading (bake a
-//     fine set of headings into a SpriteAtlas with getPainted, or draw with paths); the owner colour as a band, flag
-//     or plate, never a tint of the whole unit; draw finer than one CSS px where UnitDraw.dpr allows.
-//   - ships (UnitArt): warship, destroyer, battleship, submarine, carrier, transport, trade ship, each easy to tell
-//     apart at mid zoom; upgrade details (art/shared/keys.ts M_* bits); turretPoint for the salvo guns.
-//   - land (UnitArt): tank division, light tank, heavy tank, plain and upgraded.
-//   - air (UnitArt): bomber, ground attack, heavy bomber, fighter, transport plane, recon plane, plain and upgraded;
-//     propeller discs (UnitDraw.timeMs), banking (UnitDraw.turnRate), a soft ground shadow (UnitDraw.shadow).
-//   - missiles (UnitArt): rocket and atom bomb with an exhaust flame.
-//   - troopIcons (TroopIconArt): infantry, armor, artillery and the unknown mix on an owner plate, size + 2 px square.
-//   - wakes and contrails (TrailArt): soft foam wakes sized by speed, realistic vapour and smoke trails.
-//   - explosions (ExplosionArt): realistic fire and smoke for every BlastKind and MapFxKind; craters (CraterArt):
-//     scorched earth that weathers away; cannonFire (CannonArt): muzzle flash, smoke, shell arcs, tracers, torpedoes.
-//   - paradrop (ParadropArt): real round canopies with rigging and a hanging soldier in the owner's colour, swaying
-//     down onto the drop point, landing and collapsing, at every zoom; the small parachute mark on a cargo plane.
-//   - lengthPx must match what drawUnit covers (the renderer sizes hit areas and rings from it).
-//   - Motion: read only the MotionParams numbers (art/motion.ts), so subtle, lively and cinematic all work.
-//   - Keep it fast: hundreds of units and dozens of blasts per frame; cache painted pictures (art/shared/atlas.ts).
-// Rules: never import from art/refined or art/detailed (copying a file as a starting point is fine); shared helpers
-// are in art/shared. Check it in the art lab (an art lab build, VITE_ART_LAB=1, opened at #artlab) and in the game
-// (VITE_ART_STYLE=realistic).
-import { refined } from '../refined';
+// Files: paint.ts (brushes), model.ts (the layers of a unit), ships.ts, land.ts, air.ts (the models), units.ts (the
+// atlas and the map), puffs.ts (smoke, fire, dust and spray sprites, debris, sparks), trails.ts (wakes, contrails,
+// missile smoke), explosions.ts, craters.ts, cannon.ts, paradrop.ts, troopIcons.ts.
 import type { StyleModule } from '../types';
+import { realisticCannon } from './cannon';
+import { realisticCraters } from './craters';
+import { realisticExplosions } from './explosions';
+import { realisticParadrop } from './paradrop';
+import { realisticContrails, realisticWakes } from './trails';
+import { realisticTroopIcons } from './troopIcons';
+import { realisticUnits } from './units';
 
-export const realistic: StyleModule = { ...refined, id: 'realistic' };
+export const realistic: StyleModule = {
+  id: 'realistic',
+  ships: realisticUnits,
+  land: realisticUnits,
+  air: realisticUnits,
+  missiles: realisticUnits,
+  troopIcons: realisticTroopIcons,
+  wakes: realisticWakes,
+  contrails: realisticContrails,
+  explosions: realisticExplosions,
+  craters: realisticCraters,
+  cannonFire: realisticCannon,
+  paradrop: realisticParadrop,
+};
