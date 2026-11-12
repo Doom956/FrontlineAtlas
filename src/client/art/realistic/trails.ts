@@ -304,8 +304,8 @@ class RealisticTrails implements TrailLayer {
       const kmid = ageIndex(e, v.now, armLife * 0.4, kq);
       const w = Math.max(0.7, v.scale * 0.6);
       const a0 = strength * (sub ? 0.25 : 0.6);
-      const aq = a0 * 0.6;
-      const am = strength * (sub ? 0.08 : 0.17);
+      const aq = a0 * 0.45;
+      const am = strength * (sub ? 0.05 : 0.1);
       const off = beam * 0.9;
       if (!near || kmid <= 0 || kmid >= k1) {
         ctx.strokeStyle = kmid > 0 && kmid < k1 ? fadeAlong(ctx, e, v, 0, [0, kq, kmid, k1], FOAM, [a0, aq, am, 0]) : fadeAlong(ctx, e, v, 0, [0, k1], FOAM, [a0, 0]);
