@@ -209,31 +209,33 @@ function splash(ctx: CanvasRenderingContext2D, b: BlastDraw, tt: number, R: numb
   // the foam patch: lumps of white water at uneven distances, spreading and thinning (drawn first, under the column)
   const fq = ramp(q, 0.04, 1);
   if (fq > 0) {
-    const n = 10;
+    const n = 14;
     for (let i = 0; i < n; i++) {
       const a = rnd(seed, i) * Math.PI * 2;
-      const d = R * (0.2 + 2.2 * easeOut3(fq)) * Math.sqrt(rnd(seed, i + 7));
-      const r = R * (0.45 + 0.75 * fq) * (0.55 + rnd(seed, i + 9) * 0.9);
-      puff(ctx, Puff.SPRAY, i, x + Math.cos(a) * d, y + Math.sin(a) * d * 0.75, r, 0.5 * ramp(fq, 0, 0.1) * (1 - fq) * (0.6 + 0.4 * rnd(seed, i + 11)));
+      const d = R * (0.25 + 2.4 * easeOut3(fq)) * (0.35 + 0.65 * Math.sqrt(rnd(seed, i + 7)));
+      const r = R * (0.3 + 0.35 * fq) * (0.5 + rnd(seed, i + 9) * 0.9);
+      puff(ctx, Puff.SPRAY, i, x + Math.cos(a) * d, y + Math.sin(a) * d * 0.75, r, 0.6 * ramp(fq, 0, 0.1) * Math.pow(1 - fq, 1.5) * (0.6 + 0.4 * rnd(seed, i + 11)));
     }
   }
   // the column: shoots up fast, hangs, then falls back and spreads outward
   const up = easeOut(ramp(q, 0, 0.28));
   const fall = ramp(q, 0.3, 0.95);
-  const colA = ramp(q, 0, 0.03) * (1 - fall) * (1 - fall * 0.3);
+  // (gone as it falls back: what is left on the water is the foam, never a grey cloud)
+  const colA = ramp(q, 0, 0.03) * (1 - fall) * (1 - fall);
   if (colA > 0.01) {
-    const n = 7;
+    // overlapping puffs, each wider than the step to the next, the top ones bigger (the column's crown spreading)
+    const n = 9;
     for (let j = 0; j < n; j++) {
       const h = j / (n - 1);
       const a = rnd(seed, j + 20) * Math.PI * 2;
-      const out = R * 1.8 * fall * (0.5 + h * 0.8);
-      const px = x + (rnd(seed, j + 30) - 0.5) * R * 0.35 + Math.cos(a) * out;
-      const py = y - R * 3.0 * h * up * (1 - fall * 0.8) + Math.sin(a) * out * 0.6;
-      const r = R * (0.4 + 0.45 * h) * (1 + fall * 0.9) * (0.85 + rnd(seed, j + 40) * 0.3);
-      puff(ctx, Puff.SPRAY, j + 2, px, py, r, 0.95 * colA);
+      const out = R * 1.8 * fall * (0.4 + h * 0.9);
+      const px = x + (rnd(seed, j + 30) - 0.5) * R * 0.4 + Math.cos(a) * out;
+      const py = y - R * 2.8 * h * up * (1 - fall * 0.8) + Math.sin(a) * out * 0.6;
+      const r = R * (0.55 + 0.6 * h * h) * (1 + fall * 0.5) * (0.85 + rnd(seed, j + 40) * 0.3);
+      puff(ctx, Puff.SPRAY, j + 2, px, py, r, 0.9 * colA);
     }
     // the white of the column's heart, brightest while it rises
-    puff(ctx, Puff.WHITE, 3, x, y - R * 1.2 * up * (1 - fall), R * 0.7 * (1 + fall), 0.6 * colA * (1 - fall));
+    puff(ctx, Puff.WHITE, 3, x, y - R * 1.3 * up * (1 - fall), R * 0.85 * (1 + fall), 0.55 * colA * (1 - fall));
   }
   // droplets thrown out on arcs, falling back
   if (q < 0.75) {
@@ -292,12 +294,12 @@ function atomCloud(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams,
     const rise = W * 0.18 * easeOut(q);
     const drift = W * 0.12 * q * q;
     const capR = R * (0.8 + 0.9 * easeOut(q));
-    // dark rolling folds round the cap's edge, under it
+    // dark rolling folds round the cap's edge, under it and overlapping it (merging into one shaded underside)
     const al = ramp(q, 0, 0.1) * (1 - ramp(q, 0.55, 1));
-    for (let i = 0; i < 10; i++) {
-      const a = (i / 10) * Math.PI * 2 + rnd(seed, i + 740) * 0.5;
-      const d = capR * (0.78 + rnd(seed, i + 745) * 0.25);
-      puff(ctx, Puff.DARK, i, x + Math.cos(a) * d + WIND_X * drift, y + Math.sin(a) * d * 0.85 - rise + WIND_Y * drift + capR * 0.06, capR * (0.2 + rnd(seed, i + 750) * 0.22), 0.55 * al);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + rnd(seed, i + 740) * 0.6;
+      const d = capR * (0.55 + rnd(seed, i + 745) * 0.2);
+      puff(ctx, Puff.GREY, i, x + Math.cos(a) * d + WIND_X * drift + capR * 0.05, y + Math.sin(a) * d * 0.85 - rise + WIND_Y * drift + capR * 0.08, capR * (0.38 + rnd(seed, i + 750) * 0.2), 0.5 * al);
     }
     // the cap: billows of very different sizes (a few big, many small), so it rolls rather than reading as round lobes
     for (let i = 0; i < s.nSmoke; i++) {
@@ -307,7 +309,7 @@ function atomCloud(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams,
       const px = x + Math.cos(a) * d + WIND_X * drift;
       const py = y + Math.sin(a) * d * 0.85 - rise + WIND_Y * drift;
       const r = capR * (0.2 + 0.5 * big);
-      puff(ctx, i % 5 === 3 ? Puff.DARK : Puff.GREY, i, px, py, r, (i % 5 === 3 ? 0.6 : 0.88) * al);
+      puff(ctx, Puff.GREY, i, px, py, r, 0.88 * al);
       if (q < 0.45) puff(ctx, Puff.EMBER, i + 2, px, py + r * 0.2, r * 0.8, 0.5 * (1 - q / 0.45) * al);
     }
     // the top of the cap catches the sun
@@ -341,8 +343,8 @@ function atomCloud(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams,
       const nr = 12;
       for (let i = 0; i < nr; i++) {
         const a = (i / nr) * Math.PI * 2 + rnd(seed, i + 840) * 0.4;
-        const d = R * (1.05 - 0.55 * roll) * (0.85 + rnd(seed, i + 850) * 0.3);
-        puff(ctx, Puff.DARK, i, x + Math.cos(a) * d, y + Math.sin(a) * d * 0.85 - W * 0.05 * q, R * (0.3 + 0.25 * rnd(seed, i + 860)) * (0.8 + roll * 0.6), 0.7 * roll * (1 - ramp(q, 0.85, 1) * 0.5));
+        const d = R * (0.95 - 0.45 * roll) * (0.85 + rnd(seed, i + 850) * 0.3);
+        puff(ctx, Puff.DARK, i, x + Math.cos(a) * d, y + Math.sin(a) * d * 0.85 - W * 0.05 * q, R * (0.42 + 0.25 * rnd(seed, i + 860)) * (0.8 + roll * 0.6), 0.42 * roll * (1 - ramp(q, 0.85, 1) * 0.5));
       }
     }
     glow(ctx, x, y, R * 3.2, 0.8 * (1 - q) * (1 - q));

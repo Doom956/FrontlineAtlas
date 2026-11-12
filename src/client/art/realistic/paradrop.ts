@@ -53,8 +53,8 @@ function canopy(owner: readonly number[], r: number, cl = 0): HTMLCanvasElement 
     c.lineTo(cx + Math.cos(a0) * r, cy + Math.sin(a0) * r);
     c.quadraticCurveTo(cx + Math.cos(am) * r * 1.08, cy + Math.sin(am) * r * 1.08, cx + Math.cos(a1) * r, cy + Math.sin(a1) * r);
     c.closePath();
-    // the cloth's own two tones; two opposite gores in the owner's colour
-    const own = i === 0 || i === 5;
+    // the cloth's own two tones; two neighbouring gores in the owner's colour (a panel, never a stripe across)
+    const own = i === 0 || i === 1;
     c.fillStyle = own ? css(i % 2 ? t.base : lighten(t.base, 0.1)) : css(i % 2 ? cloth : lighten(cloth, 0.1));
     c.fill();
   }

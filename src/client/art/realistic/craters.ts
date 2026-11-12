@@ -142,7 +142,7 @@ function paintPit(c: CanvasRenderingContext2D, r: number, v: number): void {
     chunk(c, x, y, sz, seed * 7 + i);
     c.fill();
   }
-  const ex = 1 + rnd(seed, 901) * 0.3;
+  const ex = 1 + rnd(seed, 901) * 0.42;
   const rot = rnd(seed, 900) * Math.PI;
   c.save();
   c.rotate(rot);
@@ -155,23 +155,33 @@ function paintPit(c: CanvasRenderingContext2D, r: number, v: number): void {
   const ll = Math.hypot(lx, ly) || 1;
   lx /= ll;
   ly /= ll;
-  // the raised rim of thrown earth: a broken ring of lumps, thick in places and thin in others, each its own tone
-  const lumps = 16;
+  // the raised rim of thrown earth: a low ring thinning out into the ground, then lumps along it of uneven size and
+  // tone (thick and light in places, thin and dark in others), so it never reads as a smooth donut
+  const ring = c.createRadialGradient(0, 0, r * 0.72, 0, 0, r * 1.32);
+  ring.addColorStop(0, 'rgba(112,94,70,0.95)');
+  ring.addColorStop(0.35, 'rgba(108,90,68,0.85)');
+  ring.addColorStop(0.7, 'rgba(98,82,62,0.4)');
+  ring.addColorStop(1, 'rgba(92,77,58,0)');
+  c.fillStyle = ring;
+  c.beginPath();
+  ragged(c, 0, 0, r * 1.32, 0.16, seed + 5, 22);
+  c.fill();
+  const lumps = 18;
   for (let i = 0; i < lumps; i++) {
     const a = (i / lumps) * TAU + (rnd(seed, i + 600) - 0.5) * 0.35;
-    const th = 0.16 + Math.pow(rnd(seed, i + 610), 1.3) * 0.32;
-    const d = r * (0.98 + (rnd(seed, i + 620) - 0.5) * 0.12);
-    const tone = 0.82 + rnd(seed, i + 630) * 0.32;
-    const g = c.createRadialGradient(Math.cos(a) * d, Math.sin(a) * d, 0, Math.cos(a) * d, Math.sin(a) * d, r * th * 1.4);
-    const R0 = Math.round(98 * tone);
-    const G0 = Math.round(82 * tone);
-    const B0 = Math.round(62 * tone);
-    g.addColorStop(0, `rgba(${R0},${G0},${B0},0.95)`);
-    g.addColorStop(0.55, `rgba(${R0},${G0},${B0},0.6)`);
-    g.addColorStop(1, `rgba(${R0},${G0},${B0},0)`);
+    const th = 0.1 + Math.pow(rnd(seed, i + 610), 1.4) * 0.3;
+    const d = r * (1.0 + (rnd(seed, i + 620) - 0.5) * 0.14);
+    const tone = 0.78 + rnd(seed, i + 630) * 0.5;
+    const x = Math.cos(a) * d;
+    const y = Math.sin(a) * d;
+    const g = c.createRadialGradient(x, y, 0, x, y, r * th * 1.3);
+    const col = `${Math.round(Math.min(255, 104 * tone))},${Math.round(Math.min(255, 88 * tone))},${Math.round(Math.min(255, 66 * tone))}`;
+    g.addColorStop(0, `rgba(${col},0.9)`);
+    g.addColorStop(0.6, `rgba(${col},0.5)`);
+    g.addColorStop(1, `rgba(${col},0)`);
     c.fillStyle = g;
     c.beginPath();
-    c.ellipse(Math.cos(a) * d, Math.sin(a) * d, r * th * 1.4, r * th * 1.0, a, 0, TAU);
+    c.ellipse(x, y, r * th * 1.3, r * th * 0.9, a, 0, TAU);
     c.fill();
   }
   // lit on its upper left outer slope, in shade on the lower right (only over the earth just painted)
@@ -194,17 +204,17 @@ function paintPit(c: CanvasRenderingContext2D, r: number, v: number): void {
   c.restore();
   // the bowl: shade on the upper left inner wall, light on the lower right
   const bowl = c.createRadialGradient(-lx * r * 0.32, -ly * r * 0.32, r * 0.05, 0, 0, r * 0.9);
-  bowl.addColorStop(0, '#5a4a39');
-  bowl.addColorStop(0.5, '#382d23');
-  bowl.addColorStop(1, '#1a140f');
+  bowl.addColorStop(0, '#665440');
+  bowl.addColorStop(0.55, '#43362a');
+  bowl.addColorStop(1, '#251c15');
   c.fillStyle = bowl;
   c.beginPath();
-  ragged(c, 0, 0, r * 0.86, 0.1, seed + 9, 18);
+  ragged(c, 0, 0, r * 0.86, 0.05, seed + 9, 24);
   c.fill();
   // the shadow the lip throws into the bowl, soft
   c.save();
   c.beginPath();
-  ragged(c, 0, 0, r * 0.86, 0.1, seed + 9, 18);
+  ragged(c, 0, 0, r * 0.86, 0.05, seed + 9, 24);
   c.clip();
   const sh = c.createRadialGradient(lx * r * 0.9, ly * r * 0.9, r * 0.2, lx * r * 0.9, ly * r * 0.9, r * 1.15);
   sh.addColorStop(0, 'rgba(6,4,3,0.55)');
@@ -229,7 +239,7 @@ function sprite(layer: 0 | 1 | 2, v: number, b: number, r: number): AtlasEntry |
   const id = (b * VARIANTS + v) * 3 + layer;
   const hit = atlas.peek(id);
   if (hit !== undefined) return hit;
-  const half = Math.ceil(r * (layer === 1 ? 2.4 : REACH)) + 2;
+  const half = Math.ceil(r * (layer === 1 ? 2.6 : REACH)) + 2;
   return atlas.getPainted(id, half * 2, half * 2, half, half, (c) => {
     c.translate(half, half);
     if (layer !== 1) paintScorch(c, r, v);
@@ -252,7 +262,7 @@ function draw(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams): vo
   const v = Math.floor(rnd(d.seed * 997, 3) * VARIANTS) % VARIANTS;
   const dpr = Math.max(1, d.dpr);
   const { b, r } = bucketR(d.radiusPx * dpr);
-  const k = (d.radiusPx / r) * (0.86 + 0.28 * rnd(d.seed * 997, 4));
+  const k = (d.radiusPx / r) * (0.82 + 0.36 * rnd(d.seed * 997, 4));
   const prevA = ctx.globalAlpha;
   const prevS = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = true;

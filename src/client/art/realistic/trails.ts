@@ -163,6 +163,8 @@ const SQ = new Float32Array(N);
 const SD = new Float32Array(N);
 const ST = new Float32Array(N);
 const SR = new Float32Array(N);
+/** each point's own laying time (ms, kept small), for slow noise along a trail */
+const AT = new Float32Array(N);
 
 const wrapPi = (a: number): number => {
   let d = a % TAU;
@@ -179,8 +181,9 @@ interface GatherOpts {
   /** wind drift (tiles per second of age) and rising smoke (screen px per second of age) */
   drift: number;
   rise: number;
-  /** a slow sideways waver growing with age (tiles at the oldest point) */
+  /** a slow sideways waver growing with age (tiles at the oldest point) and its phase */
   wave: number;
+  phase?: number;
   /** stop at this age (ms) or this distance along the trail (tiles) */
   life: number;
   maxDist: number;
@@ -199,7 +202,7 @@ function gather(e: Emitter, v: TrailView, o: GatherOpts): number {
   const add = (x: number, y: number, a: number, age: number, d: number, r: number): void => {
     const q = Math.min(1, age / o.life);
     const ag = age / 1000;
-    const w = o.wave * q * Math.sin(r * 6.283 + age * 0.0021);
+    const w = o.wave * q * Math.sin((v.now - age) * 0.0023 + (o.phase ?? 0));
     const sn = Math.sin(a);
     const cs = Math.cos(a);
     SX[n] = v.ox + (x - sn * w + WIND_X * o.drift * ag) * z;
@@ -211,6 +214,7 @@ function gather(e: Emitter, v: TrailView, o: GatherOpts): number {
     SD[n] = d;
     ST[n] = Math.abs(wrapPi(a - e.ha));
     SR[n] = r;
+    AT[n] = (v.now - age) % 1e6;
     n++;
   };
   if (e.hv) add(e.hx, e.hy, e.ha, 0, 0, 0.5);
@@ -407,36 +411,29 @@ class RealisticTrails implements TrailLayer {
       }
       ctx.beginPath();
       ribbonPath(ctx, 0, n - 1, 0, hw);
-      ctx.fillStyle = gradAlong(ctx, 0, n - 1, WASH[0], [0, 0.05, 0.18, 0.5, 1], [core * 0.3, core, core * 0.62, core * 0.22, 0]);
+      ctx.fillStyle = gradAlong(ctx, 0, n - 1, WASH[0], [0, 0.05, 0.18, 0.5, 1], [core * 0.25, core * 0.8, core * 0.45, core * 0.14, 0]);
       ctx.fill();
       if (!sub) {
-        // spray along the first third, off both edges (uneven: a broken, foaming edge)
+        // the foam itself: spray lumps along the first third, off both edges and across (uneven: a broken, foaming
+        // strip), then fewer, fainter turbulent patches settling further back
         let c = 0;
-        for (let i = 1; i < n && c < (near ? 10 : 4); i++) {
-          if (SQ[i] > 0.33) break;
-          if (SR[i] < 0.3) continue;
-          const side = SR[i] > 0.65 ? 1 : -1;
-          const h = hw(i) * (0.55 + 0.5 * SR[i]);
-          puff(ctx, Puff.SPRAY, i, SX[i] + side * NX[i] * h, SY[i] + side * NY[i] * h, hw(i) * (0.55 + 0.6 * SR[i]), 0.26 * strength * (1 - SQ[i] / 0.33));
+        const cap = near ? 16 : 4;
+        for (let i = 1; i < n && c < cap; i++) {
+          const q = SQ[i];
+          if (q > 0.85) break;
+          if (SR[i] < (q < 0.33 ? 0.25 : 0.6)) continue;
+          const off = (SR[i] * 2 - 1) * hw(i) * (q < 0.33 ? 0.85 : 0.6);
+          const fade = q < 0.33 ? 0.3 * (1 - q * 1.2) : 0.14 * (1 - q);
+          puff(ctx, Puff.SPRAY, i, SX[i] + NX[i] * off, SY[i] + NY[i] * off, hw(i) * (0.5 + 0.7 * SR[i]), fade * strength);
           c++;
-        }
-        // turbulent patches settling further back
-        if (near) {
-          c = 0;
-          for (let i = 2; i < n && c < 6; i += 2) {
-            if (SQ[i] < 0.3) continue;
-            if (SQ[i] > 0.9) break;
-            const off = (SR[i] - 0.5) * hw(i) * 1.3;
-            puff(ctx, Puff.SPRAY, i + 3, SX[i] + NX[i] * off, SY[i] + NY[i] * off, hw(i) * (0.6 + 0.7 * SR[i]), 0.13 * strength * (1 - SQ[i]));
-            c++;
-          }
         }
       }
     }
     // ---- the Kelvin arms: a few hull lengths long (by distance), opening at their fixed angle; a narrow bright core
     // breaking into dashes and foam as it ages over a faint wide band; on a turn they fade and break up
     const wl = m?.wakeLength ?? 1;
-    const maxDist = hullT * (2.2 + 1.3 * Math.min(1, sp / 3)) * (0.75 + 0.25 * wl);
+    // (a little shorter and fainter at mid zoom, where a whole fleet's wakes share the screen)
+    const maxDist = hullT * (2.2 + 1.3 * Math.min(1, sp / 3)) * (0.75 + 0.25 * wl) * (near ? 1 : 0.8);
     const kel = 0.35 * (m?.wakeSpread ?? 1);
     n = gather(e, v, { side: beam * 0.9, grow: kel, spread: 0, drift: 0, rise: 0, wave: 0, life: 4000 * wl, maxDist });
     // (cut where the ship had turned well away: older foam from round a bend is left to the wash)
@@ -450,7 +447,9 @@ class RealisticTrails implements TrailLayer {
     }
     if (n >= 2) {
       const qd = (i: number): number => Math.min(1, SD[i] / maxDist);
-      const a0 = strength * (sub ? 0.25 : 0.55);
+      const a0 = strength * (sub ? 0.25 : 0.55) * (near ? 1 : 0.65);
+      // the foam wanders a little off the ideal line, more as it ages (a slow noise along the arm)
+      for (let i = 1; i < n; i++) OF[i] += Math.sin(AT[i] * 0.017 + 0.7) * k * 0.9 * qd(i);
       const calm = Math.max(0, 1 - turn / 0.5);
       // the faint wide band under it (straight runs only: on a turn it would draw an arc)
       if (calm > 0.05) {
@@ -463,22 +462,32 @@ class RealisticTrails implements TrailLayer {
         ctx.strokeStyle = gradAlong(ctx, 0, n - 1, FOAM[0], [0, 0.4, 1], [a0 * 0.16 * calm, a0 * 0.09 * calm, 0], SD, maxDist);
         ctx.stroke();
       }
-      // the core: whole near the stern, then broken into ever shorter dashes (more gaps when turning), wider when older
+      // the arm itself: whole for a moment at the stern, then broken into dashes of uneven length (a slow noise along
+      // the arm, so the gaps grow as the foam ages and more open on a turn), wider and fainter when older; on a turn it
+      // fades out (the curve of an arm is the arc the brief bans)
+      const lit = (i: number): boolean => {
+        const t = AT[i] * 0.011;
+        const nz = 0.5 + 0.3 * Math.sin(t) + 0.2 * Math.sin(t * 2.7 + 1.3);
+        return qd(i) < 0.1 || nz > 0.3 + 0.45 * qd(i) + 0.5 * Math.min(1, ST[i] / 0.4);
+      };
       let iy = 0;
-      while (iy < n - 1 && qd(iy) < 0.35) iy++;
-      const keep = (i: number): boolean => qd(i) < 0.06 || SR[i] > 0.1 + 0.6 * qd(i) + 0.7 * Math.min(1, ST[i] / 0.5);
+      while (iy < n - 1 && qd(iy) < 0.4) iy++;
       for (const [i0, i1, w, al0, al1] of [
-        [0, iy, Math.max(0.8, k * 0.45), a0, a0 * 0.55],
-        [iy, n - 1, Math.max(1.2, k * 0.85), a0 * 0.4, 0],
+        [0, iy, Math.max(0.8, k * 0.42), a0 * (0.35 + 0.55 * calm), a0 * 0.4 * calm],
+        [iy, n - 1, Math.max(1.1, k * 0.8), a0 * 0.3 * calm, 0],
       ] as const) {
-        if (i1 <= i0) continue;
+        if (i1 <= i0 || al0 < 0.01) continue;
         ctx.beginPath();
-        for (const sd of [-1, 1])
-          for (let i = i0; i < i1; i++) {
-            if (!keep(i)) continue;
-            ctx.moveTo(sx(i, sd), sy(i, sd));
-            ctx.lineTo(sx(i + 1, sd), sy(i + 1, sd));
+        for (const sd of [-1, 1]) {
+          let on = false;
+          for (let i = i0; i <= i1; i++) {
+            if (lit(i) && i < i1) {
+              if (!on) ctx.moveTo(sx(i, sd), sy(i, sd));
+              ctx.lineTo(sx(i + 1, sd), sy(i + 1, sd));
+              on = true;
+            } else on = false;
           }
+        }
         ctx.lineWidth = w;
         ctx.strokeStyle = gradAlong(ctx, i0, i1, FOAM[0], [0, 1], [al0, al1]);
         ctx.stroke();
@@ -487,12 +496,12 @@ class RealisticTrails implements TrailLayer {
       if (near && !sub) {
         for (const sd of [-1, 1]) {
           let c = 0;
-          for (let i = 1; i < n && c < 12; i++) {
-            if (SR[i] < 0.4) continue;
+          for (let i = 1; i < n && c < 8; i++) {
+            if (SR[i] < 0.55) continue;
             const q = qd(i);
             const j = (SR[i] * 2 - 1) * k * (0.6 + 1.6 * q);
             const tw = Math.max(0, 1 - ST[i] / 0.7);
-            puff(ctx, Puff.SPRAY, i + (sd > 0 ? 2 : 0), sx(i, sd) + NX[i] * j * sd, sy(i, sd) + NY[i] * j * sd, k * (0.7 + 2.2 * q) * (0.7 + 0.6 * SR[i]), a0 * 0.32 * Math.pow(1 - q, 1.4) * tw);
+            puff(ctx, Puff.SPRAY, i + (sd > 0 ? 2 : 0), sx(i, sd) + NX[i] * j * sd, sy(i, sd) + NY[i] * j * sd, k * (0.7 + 2.2 * q) * (0.7 + 0.6 * SR[i]), a0 * 0.26 * Math.pow(1 - q, 1.4) * tw);
             c++;
           }
         }
@@ -518,20 +527,20 @@ class RealisticTrails implements TrailLayer {
     const a2t = k / v.zoom;
     // vapour from the engines (or the wing tips) a few px behind them: a narrow core over a wide faint band, growing
     // from 1 to 4 times its width with age, drifting with the wind, spreading apart and wavering a little
-    const n = gather(e, v, { side: g.side * a2t, grow: 0, spread: 0.7 * a2t, drift: 0.3, rise: 0, wave: 1.2 * a2t, life, maxDist: 1e9 });
+    const n = gather(e, v, { side: g.side * a2t, grow: 0, spread: 0.9 * a2t, drift: 0.3, rise: 0, wave: 0.7 * a2t, phase: e.key.length, life, maxDist: 1e9 });
     if (n < 2) return;
     const gap = (2.5 + k) / v.zoom;
     let i0 = 0;
     while (i0 < n - 2 && SD[i0] < gap) i0++;
-    const w0 = Math.max(0.45, k * 0.32);
+    const w0 = Math.max(0.55, k * 0.4);
     const hw = (i: number): number => w0 * (1 + 3 * SQ[i]);
     ctx.beginPath();
     for (const sd of [-1, 1]) ribbonPath(ctx, i0, n - 1, sd, (i) => hw(i) * 2.6);
-    ctx.fillStyle = gradAlong(ctx, i0, n - 1, VAPOUR[0], [0, 0.04, 0.3, 0.7, 1], [0.04, 0.13, 0.11, 0.05, 0]);
+    ctx.fillStyle = gradAlong(ctx, i0, n - 1, VAPOUR[0], [0, 0.04, 0.3, 0.7, 1], [0.06, 0.16, 0.13, 0.06, 0]);
     ctx.fill();
     ctx.beginPath();
     for (const sd of [-1, 1]) ribbonPath(ctx, i0, n - 1, sd, hw);
-    ctx.fillStyle = gradAlong(ctx, i0, n - 1, VAPOUR[0], [0, 0.03, 0.2, 0.6, 1], [0.15, 0.55, 0.36, 0.12, 0]);
+    ctx.fillStyle = gradAlong(ctx, i0, n - 1, VAPOUR[0], [0, 0.03, 0.2, 0.6, 1], [0.4, 0.62, 0.38, 0.12, 0]);
     ctx.fill();
     ctx.globalAlpha = 1;
   }
@@ -560,10 +569,15 @@ class RealisticTrails implements TrailLayer {
     if (n < 2) return;
     const size = (big ? 1.6 : 1.15) * k;
     const rad = (i: number): number => size * (0.8 + 2.8 * Math.sqrt(SQ[i]));
-    // the smoke column first: one soft ribbon widening with age (so the puffs on it never read as separate beads)
+    // the smoke column first: a soft ribbon widening with age, its edge uneven, a wider fainter one under it (so the
+    // puffs on it never read as separate beads)
     ctx.beginPath();
-    ribbonPath(ctx, 0, n - 1, 0, (i) => rad(i) * 0.75);
-    ctx.fillStyle = gradAlong(ctx, 0, n - 1, SMOKE_OLD[0], [0, 0.04, 0.3, 0.7, 1], [0.2, 0.42, 0.3, 0.1, 0]);
+    ribbonPath(ctx, 0, n - 1, 0, (i) => rad(i) * (1 + 0.2 * Math.sin(AT[i] * 0.009)));
+    ctx.fillStyle = gradAlong(ctx, 0, n - 1, SMOKE_OLD[0], [0, 0.04, 0.3, 0.7, 1], [0.05, 0.12, 0.09, 0.04, 0]);
+    ctx.fill();
+    ctx.beginPath();
+    ribbonPath(ctx, 0, n - 1, 0, (i) => rad(i) * (0.6 + 0.15 * Math.sin(AT[i] * 0.013 + 1)));
+    ctx.fillStyle = gradAlong(ctx, 0, n - 1, SMOKE_OLD[0], [0, 0.04, 0.3, 0.7, 1], [0.2, 0.36, 0.24, 0.08, 0]);
     ctx.fill();
     // then billowing puffs packed along it, newest last (on top): one every 0.35 to 0.5 of its radius, each its own
     // size, turn, variant and place across the column; capped in number, so a long trail ends in the ribbon alone
@@ -572,7 +586,7 @@ class RealisticTrails implements TrailLayer {
       const L = Math.hypot(SX[i + 1] - SX[i], SY[i + 1] - SY[i]);
       // (evenly within each segment between two laid points, so a puff stays where it was laid as the trail grows)
       const rm = (rad(i) + rad(i + 1)) * 0.5;
-      const m = Math.max(1, Math.ceil(L / (rm * 0.42)));
+      const m = Math.max(1, Math.ceil(L / (rm * 0.45)));
       const base = Math.floor(SR[i + 1] * 99991);
       for (let j = 0; j < m && cnt < PUFF_CAP; j++) {
         const f = (j + 0.5) / m;
@@ -602,7 +616,7 @@ class RealisticTrails implements TrailLayer {
 }
 
 /** Most puffs on one missile trail, and their scratch positions. */
-const PUFF_CAP = 44;
+const PUFF_CAP = 90;
 const PX = new Float32Array(PUFF_CAP);
 const PY = new Float32Array(PUFF_CAP);
 const PR = new Float32Array(PUFF_CAP);
