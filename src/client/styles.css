@@ -1,16 +1,17 @@
-/* Frontline Atlas UI: "Pixel Clean". A calm, modern interface over a bright pixel-art world. Panels are near-black
+/* Frontline Atlas UI: "Pixel Clean". A calm, modern interface over a bright pixel-art world. Panels are cool steel
    glass with no borders, separated by space and one hairline. One warm accent (amber) marks the primary action, the
    current selection and the current value; everything else is a neutral step. Type is a clean sans (DM Sans) with a
    pixel display face (Jersey 15) for the logo, the clock and the big changing numbers. See docs/UI_DIRECTION.md. */
 :root {
-  --ink: #0b0d11;
+  --ink: #0a0e14;
 
-  /* Panels are translucent glass; --metal is the opaque fallback. Old names kept so the whole sheet maps cleanly. */
-  --metal: #14161b;
-  --metal-a: rgba(18, 20, 26, 0.8);
-  --metal-2: #1b1e25; /* raised control inside a panel */
-  --metal-3: #262a33; /* hover */
-  --metal-4: #30353f; /* pressed / strong */
+  /* Panels are cool steel glass (a dark blue-grey, hue about 215); --metal is the opaque fallback. Old names kept so
+     the whole sheet maps cleanly. */
+  --metal: #121821;
+  --metal-a: rgba(18, 24, 33, 0.8);
+  --metal-2: #1c2531; /* raised control / inset inside a panel */
+  --metal-3: #27313f; /* hover, available card */
+  --metal-4: #313d4c; /* pressed / strong */
 
   /* The single hairline, as a faint light line rather than a hard rule. */
   --rule: rgba(255, 255, 255, 0.09);
@@ -18,8 +19,8 @@
   --line: rgba(255, 255, 255, 0.09);
 
   --text: #edeff3;
-  --dim: #9aa0ac;
-  --faint: #7f8590; /* 4.9:1 on the panel: small labels stay AA */
+  --dim: #a0a8b5; /* 7.4:1 on the panel, 5.5:1 on hover */
+  --faint: #8f98a7; /* 6.1:1 on the panel, 5.3:1 on a control, 4.5:1 on hover: small labels stay AA */
 
   /* One accent. Old --brass names alias it so existing rules become "accent", not "gold everywhere". */
   --accent: #f5b13d;
@@ -2974,7 +2975,7 @@ button.toast-t:hover {
   left: 0;
   top: 0;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(13, 16, 19, 0.3) 0 30%, rgba(13, 16, 19, 0.78) 31% 100%);
+  background: radial-gradient(circle, rgba(11, 15, 21, 0.3) 0 30%, rgba(11, 15, 21, 0.78) 31% 100%);
   border: 1px solid var(--edge-hi);
   opacity: 0;
   transition: opacity var(--fast) ease-out;
@@ -3478,7 +3479,7 @@ mark.hw-hit {
   background:
     repeating-linear-gradient(0deg, rgba(201, 162, 39, 0.05) 0 1px, transparent 1px 64px),
     repeating-linear-gradient(90deg, rgba(201, 162, 39, 0.05) 0 1px, transparent 1px 64px),
-    radial-gradient(ellipse at center, rgba(13, 16, 19, 0.2) 0%, rgba(13, 16, 19, 0.85) 80%);
+    radial-gradient(ellipse at center, rgba(11, 15, 21, 0.2) 0%, rgba(11, 15, 21, 0.85) 80%);
 }
 .menu-card {
   padding: 28px 32px;
@@ -4258,7 +4259,7 @@ strong {
   padding: 6px 8px 8px;
   border: 1px solid var(--edge);
   --tone: var(--brass);
-  background: rgba(13, 16, 19, 0.55);
+  background: rgba(11, 15, 21, 0.55);
 }
 .ally-pick-top {
   display: flex;
@@ -4413,7 +4414,7 @@ strong {
   max-width: calc(100vw - 24px);
   display: flex;
   flex-direction: column;
-  background-color: rgba(17, 20, 23, 0.97);
+  background-color: rgba(18, 24, 33, 0.97);
   border: 1px solid var(--edge-hi);
   --tone: var(--signal);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
@@ -4955,7 +4956,7 @@ strong {
   gap: 14px;
   padding: 14px 48px 16px 16px;
   max-height: 40vh;
-  background-color: rgba(17, 20, 23, 0.97);
+  background-color: rgba(18, 24, 33, 0.97);
   border: 1px solid var(--edge-hi);
   border-left: 5px solid var(--bc);
   border-radius: var(--r);
@@ -5109,7 +5110,7 @@ strong {
   align-items: baseline;
   gap: 12px;
   padding: 8px 18px 9px;
-  background-color: rgba(17, 20, 23, 0.97);
+  background-color: rgba(18, 24, 33, 0.97);
   border: 1px solid var(--brass-lo);
   border-bottom: 3px solid var(--brass);
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
@@ -5321,7 +5322,7 @@ strong {
   gap: 6px;
   max-width: 220px;
   padding: 5px 10px;
-  background: rgba(17, 20, 23, 0.95);
+  background: rgba(18, 24, 33, 0.95);
   border: 1px solid var(--brass);
   color: var(--brass-hi);
   font: 700 12px/1 var(--f-label);
@@ -5855,8 +5856,8 @@ strong {
 
 /* ---------------------------------------------------------------- Hybrid: pixel icons in colour families */
 /* Icons are small pixel pictures (hud/pixelIcons.ts) at the size the line icons had, kept quiet: a muted hue per
-   family at about the lightness of --dim, slightly see-through like before. Measured on --metal (#14161b), every
-   family is 7.9:1 or more, on --metal-3 6.3:1 or more (icons need 3:1). One hue each, never the accent:
+   family at about the lightness of --dim, slightly see-through like before. Measured at their 0.9 opacity on --metal
+   (#121821), every family is 6.5:1 or more, on --metal-3 (#27313f) 4.9:1 or more (icons need 3:1). One hue each, never the accent:
    navy blue, armor olive, air sky, buildings and economy sage, research lavender, strikes rose. */
 :root {
   --cat-navy: #85b4d6;
