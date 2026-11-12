@@ -585,7 +585,8 @@ function shadowLayer(shapes: Shape[], hl: number, hs: number, alt: number): Laye
   const blur = 0.5 + alt * 0.14;
   const a = Math.max(0.18, Math.min(0.26, 0.31 - alt * 0.012));
   return {
-    b: bounds(-hl - 2 - blur * 3, -hs - 2 - blur * 3, hl + 2 + blur * 3, hs + 2 + blur * 3),
+    // (as tight as the blur allows: a shadow is drawn for every plane on screen, so its picture's area is its cost)
+    b: bounds(-hl - 1 - blur * 1.8, -hs - 1 - blur * 1.8, hl + 1 + blur * 1.8, hs + 1 + blur * 1.8),
     paint: (p) => {
       const c = p.ctx;
       const canBlur = 'filter' in c;

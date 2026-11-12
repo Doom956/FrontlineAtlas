@@ -490,7 +490,7 @@ function props(ctx: CanvasRenderingContext2D, model: UnitModel, q: Pose, m: Moti
     const r = Math.max(3, pr.r * sc);
     ctx.globalAlpha = prev * Math.min(1, a * 1.15);
     ctx.drawImage(img, px - r * 0.45, py - r, r * 0.9, r * 2);
-    if (!still && r >= 3.5) {
+    if (!still && q.near) {
       // one blade caught by the eye as it turns: a thin dark streak across the disc, changing length every frame
       const f = Math.floor((q.timeMs * m.propFps) / 1000 + q.seed * 3 + i * 1.7);
       const len = r * (0.3 + 0.65 * Math.abs(Math.cos(f * 2.39996)));
@@ -513,8 +513,8 @@ function tankDust(ctx: CanvasRenderingContext2D, model: UnitModel, q: Pose, amou
   const d = model.dust;
   if (!d) return;
   const sc = q.sc;
-  // (three puffs a side at mid zoom, where they are a few px across)
-  const n = q.near ? 5 : 3;
+  // (two puffs a side at mid zoom, where they are a few px across and a whole army may be on screen)
+  const n = q.near ? 5 : 2;
   for (let side = -1; side <= 1; side += 2)
     for (let i = 0; i < n; i++) {
       const j = i + (side > 0 ? 7 : 0);
