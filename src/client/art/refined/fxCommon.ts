@@ -27,11 +27,14 @@ export function blob(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: n
     return;
   }
   for (let dy = -ri; dy <= ri; dy++) {
-    const w = Math.sqrt(Math.max(0, ri * ri - dy * dy)) * (0.86 + 0.26 * hash(seed, dy + 11)) + 0.35;
+    // the edge swells and dents smoothly over a few rows (lumps), with a little row-to-row grain on small blobs only
+    const lump = 0.5 + 0.5 * Math.sin(dy * (2.4 / Math.max(2, ri * 0.5)) + seed * 2.1);
+    const grain = ri > 6 ? 0.03 : 0.12;
+    const w = Math.sqrt(Math.max(0, ri * ri - dy * dy)) * (0.86 + 0.18 * lump + grain * (hash(seed, dy + 11) - 0.5)) + 0.35;
     const half = Math.floor(w);
     if (half < 0) continue;
-    // the row slides a little left or right, so the outline is ragged, not a stamp
-    const off = ri > 2 && Math.abs(dy) < ri - 1 ? Math.round((hash(seed, dy + 31) - 0.5) * 1.2) : 0;
+    // the rows lean a little left or right, so the outline is ragged, not a stamp
+    const off = ri > 2 && Math.abs(dy) < ri - 1 ? Math.round(Math.sin(dy * (1.7 / Math.max(2, ri * 0.4)) + seed * 1.3) * Math.min(2, ri * 0.12 + 0.4)) : 0;
     ctx.fillRect(x0 + (off - half) * g, y0 + dy * g, (half * 2 + 1) * g, g);
   }
 }

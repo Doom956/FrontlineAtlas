@@ -537,7 +537,7 @@ class ContrailLayer implements TrailLayer {
       }
       t.live = view.full;
       // a fast plane's trail is capped at a few plane lengths (its samples age out sooner)
-      t.life = Math.min(life, ((u.half * 14) / Math.max(1e-3, u.speed * z)) * 1000);
+      t.life = Math.min(life, ((u.half * 9) / Math.max(1e-3, u.speed * z)) * 1000);
       if (!view.full) continue;
       const spacing = Math.max((1.5 * g) / z, (Math.max(0.5, u.speed) * t.life) / 1000 / (CAP - 4));
       const d = Math.hypot(cx - t.lx, cy - t.ly);
