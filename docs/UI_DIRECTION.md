@@ -47,7 +47,7 @@ wear the gradient; the setup screen and the game never do.
 | Part | Stops | Contrast |
 |---|---|---|
 | Logo (Jersey 15 clipped to the gradient, 100deg, mixed in OKLab) | `#f0d592` 0%, `#dc9064` 24%, `#b473d1` 46%, `#5e8fed` 70%, `#7ac8f5` 100% | on the column `#0e1015`: 13.3, 7.5, 5.7, 6.0, 10.3:1; lowest measured on the rendered logo 5.7:1 |
-| Main action fill (an equal-lightness ramp, OKLCH L 0.50 to 0.515) | `#905326` 0%, `#894b93` 16%, `#5457bc` 42%, `#375fb9` 68%, `#1666aa` 100% | white text 6.1, 6.0, 6.1, 6.0, 6.0:1 (measured on the button 6.0 to 6.1:1); every stop against the column 3.1:1 or more |
+| Main action fill (an equal-lightness ramp, OKLCH L 0.50 to 0.515) | `#8d5613` 0% (golden bronze, hue 65), `#894b93` 16%, `#5457bc` 42%, `#375fb9` 68%, `#1666aa` 100% | white text 6.0, 6.0, 6.1, 6.0, 6.0:1 (measured on the button 6.0 to 6.1:1); every stop against the column 3.1:1 or more |
 | Small accents on the start page (Play again, row arrows) | `--accent` `#7ac8f5`, `--accent-ink` `#06192a` | 10.3:1 as text; ink on it 9.7:1 |
 
 The fill is 130% wide; hovering slides it to the blue end and one soft light band (white at 10%) sweeps across once,
@@ -62,7 +62,7 @@ meaning inside the panel: blue is the suggestion and the main action, cyan is wh
 | `--accent` | `#3d66df` | the "Next" flag, the panel's primary button | white text 5.0:1; edge 3.6:1 |
 | `--accent-hover` | `#375fd3` | the primary button under the pointer | white text 5.6:1; edge 3.2:1 |
 | `--accent-hi` | `#93aef8` | the Next card's edge, "Available", the tab dot | 8.3:1 (6.6:1 on `#262a33`) |
-| Next card fill | `--accent` at 26% (`#243155`) | the suggested card | `--text` 11.1:1, edge `#93aef8` 5.9:1 |
+| Next card fill | `--accent` at 26% over the panel (renders `#1e2a4e`) | the suggested card | `--text` 12.2:1, `--dim` 5.3:1, edge `#93aef8` 6.5:1 |
 | `--info` | `#4fccd9` | researching / on order: the card edge, its bar, "97% and 14 s left", the header's "Researching" | 9.5:1; 7.2:1 on its own tint `#202f37` |
 
 Cobalt sits at OKLCH hue 266 and cyan at 205, so the two never read as one colour; each also has its own words

@@ -9,7 +9,8 @@
    they are declared). One colour, one meaning: blue = the suggestion and the main action ("Next", Start), cyan =
    researching or on order now. Cobalt sits at OKLCH hue 266, cyan at 205. Contrast (WCAG, panel #14161b):
      #3d66df fill: white text 5.0:1, edge 3.6:1; hover #375fd3 white 5.6:1, edge 3.2:1
-     #93aef8 text and marks 8.3:1 (6.6:1 on #262a33); on the Next tint #222e4e: --text 11.6:1, --dim 5.1:1
+     #93aef8 text and marks 8.3:1 (6.6:1 on #262a33); on the Next tint (renders #1e2a4e): --text 12.2:1, --dim 5.3:1,
+     edge #93aef8 6.5:1
      #4fccd9 cyan text 9.5:1 (7.2:1 on its own tint #202f37) */
 aside.drawer[data-page='research'] {
   --accent: #3d66df;
