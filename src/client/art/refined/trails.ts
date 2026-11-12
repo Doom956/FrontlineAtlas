@@ -425,8 +425,10 @@ class WakeLayer implements TrailLayer {
         const bx = cx - t.nx[i] * lat;
         const by = cy - t.ny[i] * lat;
         if (k > 0 && cx > -60 && cy > -60 && cx < W && cy < H) {
-          if (!t.sub) {
-            const step = Math.min(STEPS - 1, Math.floor(q * STEPS) + (sf < 0.45 ? 1 : 0));
+          // the arms fade sooner than the wake's length, so a turn leaves a short curve, not a ring
+          const qa = q / 0.65;
+          if (!t.sub && qa < 1) {
+            const step = Math.min(STEPS - 1, Math.floor(qa * STEPS) + (sf < 0.45 ? 1 : 0));
             this.arms.seg(step, pax, pay, ax, ay);
             this.arms.seg(step, pbx, pby, bx, by);
           }

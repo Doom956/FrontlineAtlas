@@ -77,8 +77,13 @@ function smokePasses(ctx: CanvasRenderingContext2D, dx: number, dy: number, g: n
   for (let i = 0; i < smN; i++) blob(ctx, smX[i] + dx + g * 0.6, smY[i] + dy + g * 0.8, smR[i], g, smS[i]);
   ctx.fillStyle = mid;
   for (let i = 0; i < smN; i++) blob(ctx, smX[i] + dx, smY[i] + dy, smR[i] - 0.5, g, smS[i] + 3);
+  // the lit tops: only the puffs on the upper side of the mass catch the light, so it reads as one cloud, not a stack
+  // of spotted beads
+  let my = 0;
+  for (let i = 0; i < smN; i++) my += smY[i];
+  my /= Math.max(1, smN);
   ctx.fillStyle = light;
-  for (let i = 0; i < smN; i++) if (smR[i] >= 1.6) blob(ctx, smX[i] + dx - smR[i] * 0.32 * g, smY[i] + dy - smR[i] * 0.36 * g, smR[i] * 0.42, g, smS[i] + 5);
+  for (let i = 0; i < smN; i++) if (smR[i] >= 1.6 && (smN < 3 || smY[i] <= my + smR[i] * g * 0.2)) blob(ctx, smX[i] + dx - smR[i] * 0.3 * g, smY[i] + dy - smR[i] * 0.38 * g, smR[i] * 0.48, g, smS[i] + 5);
 }
 
 /** Draws the smoke group built with smokeAdd at `alpha` and empties it. */

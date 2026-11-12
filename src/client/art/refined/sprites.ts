@@ -19,7 +19,7 @@ import { facingOf, isAirKey, unitCategoryOf, type SpriteKey } from '../shared/ke
 import { fract } from '../shared/noise';
 import { pixelRing } from '../shared/pixel';
 import type { PortraitDraw, UnitArt, UnitDraw } from '../types';
-import { FX } from './palette';
+import { FX, hexOf, oklch } from './palette';
 import { recoilAt, seeClock } from './recoil';
 import { ALTITUDE, ANIMATED, buildModel, GUNS, MOD_MASK, modelLength, SPRITE_KEYS } from './spriteArt';
 import { FORE, LIFT, projector, rasterize, shadowOf, type Model, type Prop } from './spriteBake';
@@ -215,6 +215,8 @@ export function drawSpriteKey(ctx: CanvasRenderingContext2D, key: SpriteKey, mod
 }
 
 const TAU = Math.PI * 2;
+/** Fresh tread dust: a pale dry earth, lighter than any grass so it shows on the plains. */
+const DUST_NEAR = hexOf(oklch(0.84, 0.03, 85));
 
 /** Tread dust: tan puffs thrown up behind both tracks of a moving tank, drifting back, growing and thinning out. */
 function drawDust(ctx: CanvasRenderingContext2D, u: UnitDraw, m: MotionParams, half: number): void {
@@ -232,15 +234,15 @@ function drawDust(ctx: CanvasRenderingContext2D, u: UnitDraw, m: MotionParams, h
     for (let i = 0; i < n; i++) {
       const p = fract(u.timeMs / life + i / n + fract(u.seed * 0.618) + (tr > 0 ? 0.5 / n : 0));
       const age = p * life;
-      const back = half * 0.85 + Math.min(half * 2.2, (speedPx * age) / 1000) + p * 2 * k;
+      const back = half * 0.85 + Math.min(half * 2.2, (speedPx * age) / 1000) + p * 4 * k;
       const out = side + p * k * 2.2;
       const x = u.x - c * back - s * out * tr;
       const y = u.y - s * back * FORE + c * out * tr * FORE - p * k * 1.5;
-      const r = (0.6 + 1.9 * p) * k * (0.7 + 0.3 * amt);
-      const a = amt * 0.42 * (1 - p) * (1 - p) * Math.min(1, p * 8);
+      const r = (1.1 + 3 * p) * k * (0.65 + 0.35 * amt);
+      const a = Math.min(0.8, 0.25 + amt * 0.7) * (1 - p) * (1 - p * 0.4) * Math.min(1, p * 6);
       if (a < 0.02) continue;
       ctx.globalAlpha = prev * a;
-      ctx.fillStyle = p < 0.35 ? FX.dustLight : FX.dust;
+      ctx.fillStyle = p < 0.4 ? DUST_NEAR : FX.dustLight;
       const R = Math.max(k, Math.round(r / k) * k);
       const X = Math.round(x / k) * k;
       const Y = Math.round(y / k) * k;

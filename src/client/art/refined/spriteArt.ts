@@ -440,7 +440,7 @@ function tracks(u0: number, u1: number, vIn: number, vOut: number, h: number): P
 
 function tank(mods: number): Part[] {
   const out: Part[] = [
-    plate(-12, 11, 7.8, 2.4),
+    plate(-11, 10, 7.1, 2),
     ...tracks(-9.5, 8.5, 3.6, 6, 2.2),
     // the hull with a sloped glacis, the engine deck grille, a tool box
     poly(sym([9.6, -2.6, 8, -3.8, -9.5, -3.8, -9.5, -3]), 0.5, 2.3, 'olive'),
@@ -470,7 +470,7 @@ function lightTank(mods: number): Part[] {
 function lightTankParts(mods: number): Part[] {
   const out: Part[] = [
     // a round plate: the small quick tank's outline differs from the medium's slab, not only its size
-    ell(-0.2, 0, 10.4, 7.2, 0, 0.3, 'ownDim', { sh: 'plate' }),
+    ell(-0.2, 0, 9.4, 6.3, 0, 0.3, 'ownDim', { sh: 'plate' }),
     ...tracks(-7.5, 6.5, 3, 4.8, 1.7),
     poly(sym([7.5, -2, 6, -3.1, -7.5, -3.1, -8, -2.4]), 0.4, 1.8, 'sand'),
     box(-7.6, -2, -5.6, 2, 2.2, 0.6, 'sand'),
@@ -495,7 +495,7 @@ function lightTankParts(mods: number): Part[] {
 
 function heavyTank(mods: number): Part[] {
   const out: Part[] = [
-    plate(-14, 13, 9, 2.6),
+    plate(-13, 12, 8.3, 2.2),
     ...tracks(-11.5, 10.5, 4.4, 7, 2.8),
     // fixed side skirts along the upper run of the tracks (a heavy tank's flat flanks)
     box(-11, -7.2, 10, -6.2, 2, 0.8, 'steel'),

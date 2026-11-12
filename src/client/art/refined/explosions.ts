@@ -81,6 +81,30 @@ function drawBlast(ctx: CanvasRenderingContext2D, b: BlastLike, m: MotionParams)
 /** The flipbook step of a 0..1 time: `n` frames, so the motion steps like pixel art. */
 const step = (t: number, n: number): number => (Math.min(n - 1, Math.floor(t * n)) + 0.5) / n;
 
+/**
+ * A flame `r` cells wide at its foot (x, y): an ember bed, then tongues of fire narrowing upward and leaning a little,
+ * yellow at the heart, never a ball.
+ */
+function flame(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, g: number, seed: number): void {
+  if (r < 0.35) return;
+  const hgt = Math.max(2, Math.round(r * 2.4));
+  const lean = (rnd(seed, 1) - 0.5) * 0.6;
+  ctx.fillStyle = FX.ember;
+  blob(ctx, x, y, Math.max(0.5, r * 0.8), g, seed);
+  for (let k = 0; k < hgt; k++) {
+    const f = k / hgt;
+    const w = Math.max(0, Math.round(r * (1 - f) * (0.9 + 0.3 * rnd(seed, k + 3))));
+    const cx = Math.round((x + lean * k * g) / g) * g;
+    const cy = Math.round((y - (k + 0.5) * g) / g) * g;
+    ctx.fillStyle = f < 0.35 ? FX.fireDeep : FX.fire;
+    ctx.fillRect(cx - w * g, cy, (w * 2 + 1) * g, g);
+    if (w >= 1 && f < 0.7) {
+      ctx.fillStyle = f < 0.3 ? FX.flame : FX.fire;
+      ctx.fillRect(cx - Math.max(0, w - 1) * g, cy, (Math.max(0, w - 1) * 2 + 1) * g, g);
+    }
+  }
+}
+
 /** A shell, bomb, missile, ship or fort hit, or a plane bursting in the air. */
 function burst(ctx: CanvasRenderingContext2D, b: BlastLike, age: number, main: number, m: MotionParams): void {
   const s = SPEC[b.kind];
@@ -124,20 +148,19 @@ function burst(ctx: CanvasRenderingContext2D, b: BlastLike, age: number, main: n
     const light = s.black ? FX.smoke : FX.smokeLight;
     smokeDraw(ctx, g, (linger >= 0 ? 0.8 : 0.92) * fadeIn * fadeOut, dark, mid, light);
   }
-  // fire left burning at the spot: a few small flames flickering lower and lower
+  // fire left burning at the spot: a few small flames scattered over it, each flickering on its own and dying down
   if (linger >= 0 && s.burns && m.fireLinger > 0) {
-    const fl = Math.floor(age / 90);
-    const n = R > 6 ? 3 : 2;
+    const n = R > 6 ? 4 : 3;
     for (let i = 0; i < n; i++) {
-      const life = 1 - linger * (0.8 + 0.2 * i);
+      const life = 1 - linger * (0.7 + 0.5 * rnd(seed, i + 90));
       if (life <= 0.05) continue;
-      const fx = x + (i - (n - 1) / 2) * R * 0.55 * g;
-      const flick = 0.75 + 0.35 * rnd(seed + fl, i);
-      const fr = R * 0.32 * life * flick;
-      fireBall(ctx, fx, y + R * 0.15 * g, fr, g, 0.55 + 0.2 * flick, seed + i + fl * 0.1);
-      // the tongue licking up
-      ctx.fillStyle = FX.flame;
-      if (fr > 0.6) ctx.fillRect(Math.round(fx / g) * g - g * (fl % 2), Math.round((y - fr * 1.6 * g) / g) * g, g, Math.max(g, Math.round(fr) * g));
+      const a = rnd(seed, i + 100) * Math.PI * 2;
+      const d = R * 0.55 * Math.sqrt(rnd(seed, i + 110));
+      const fx = x + Math.cos(a) * d * g;
+      const fy = y + Math.sin(a) * d * 0.55 * g + R * 0.1 * g;
+      const fl = Math.floor(age / (70 + 30 * rnd(seed, i + 120)));
+      const flick = 0.7 + 0.45 * rnd(seed + fl, i);
+      flame(ctx, fx, fy, R * (0.22 + 0.18 * rnd(seed, i + 130)) * life * flick, g, seed + i * 3 + (fl % 3));
     }
   }
   if (linger >= 0) return;
@@ -269,9 +292,9 @@ function atom(ctx: CanvasRenderingContext2D, b: BlastLike, age: number, main: nu
     const rise = clamp01((t - 0.18) / 0.7);
     const top = r * (0.7 + 1.9 * easeOut(rise) + 0.3 * linger);
     smokeReset();
-    for (let i = 0; i < 7; i++) {
-      const h = (i / 6) * top;
-      smokeAdd(x + cell(Math.sin(i * 1.3 + b.seed * 5) * r * 0.05 + linger * r * 0.2 * (i / 6)), y - cell(h), r * (0.3 - i * 0.014), seed + i);
+    for (let i = 0; i < 11; i++) {
+      const h = (i / 10) * top;
+      smokeAdd(x + cell(Math.sin(i * 1.1 + b.seed * 5) * r * 0.06 + linger * r * 0.2 * (i / 10)), y - cell(h), r * (0.3 - i * 0.011), seed + i);
     }
     smokeDraw(ctx, g, fade, FX.smokeDark, FX.smoke, FX.smokeLight);
     const cy = y - cell(top + r * 0.3);

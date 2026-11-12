@@ -20,19 +20,20 @@ const PLATE = 16;
  * Infantry is a touch taller than wide, the vehicles wider than tall.
  */
 const SYMBOLS: Record<TroopIconKind, readonly string[]> = {
+  // a soldier in a steel helmet, walking, his rifle held across his chest
   infantry: [
-    '...abbb.....',
-    '..abbbbc..d.',
-    '..abbbbc..d.',
-    '.abbbbbbc.d.',
-    '...cbbbc..d.',
-    '...cbbbc..d.',
-    '....ccc...d.',
-    '..abbbbbcbd.',
-    '.abbbbbbbbc.',
-    'abbbbbbbbbbc',
-    'abbbbbbbbbbc',
-    'bccccccccccd',
+    '....abbc....',
+    '...abbbbc...',
+    '..abbbbbbc..',
+    '....cbbc....',
+    '...abbbbc.d.',
+    '..abbbbbbcd.',
+    '..abbbbbcd..',
+    '...abbbcd...',
+    '...abbbd....',
+    '...bbcbb....',
+    '..abb..bbc..',
+    '..bc....bc..',
   ],
   armor: [
     '....abbb......',
@@ -77,14 +78,14 @@ const SYMBOLS: Record<TroopIconKind, readonly string[]> = {
 /** The same symbols at about 8 px, for the small plates (transports, nation army counts). */
 const SMALL: Record<TroopIconKind, readonly string[]> = {
   infantry: [
-    '..abb..d',
-    '.abbbc.d',
-    'abbbbbcd',
-    '..cbc..d',
-    '.abbbcbd',
-    'abbbbbbc',
-    'abbbbbbc',
-    'bccccccd',
+    '..abc...',
+    '.abbbc..',
+    '..cbc.d.',
+    '.abbbcd.',
+    '.abbbd..',
+    '..bbd...',
+    '.ab.bc..',
+    '.bc..bc.',
   ],
   armor: [
     '...abb....',
@@ -123,7 +124,7 @@ const DARK_SYMBOL: RGB[] = [oklch(0.42, 0.01, 245), oklch(0.33, 0.01, 245), oklc
 /** The plate colour: the owner's, a little greyer (paint, not neon). */
 function plateTone(c: RGB): RGB {
   const l = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
-  return [Math.round(c[0] * 0.85 + l * 0.15), Math.round(c[1] * 0.85 + l * 0.15), Math.round(c[2] * 0.85 + l * 0.15)];
+  return [Math.round((c[0] * 0.8 + l * 0.2) * 0.94), Math.round((c[1] * 0.8 + l * 0.2) * 0.94), Math.round((c[2] * 0.8 + l * 0.2) * 0.94)];
 }
 
 export interface IconBitmap {
