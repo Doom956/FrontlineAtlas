@@ -1,13 +1,14 @@
 // The realistic style's troop icons (client only): the same meaning as every style (infantry, armor, artillery, and a
-// question mark for a mix the viewer does not know, on a plate in the owner's colour), painted like a small enamel
-// badge rather than a cartoon: a rounded plate with a soft top-left light, a bevelled rim and a thin dark edge, and a
-// true-proportioned silhouette in ivory (dark on a pale plate) with a soft shadow: a soldier advancing with his rifle,
-// a tank in side view (track run, road wheels, turret and gun), a field gun (barrel, shield, spoked wheel, trail).
+// question mark for a mix the viewer does not know, on a plate in the owner's colour), painted like a small matte
+// enamelled steel tag rather than a glossy button: the owner's colour muted (model.ts tonesOf), a faint top-left light,
+// almost no gloss, a thin engraved darker border and a darker plate edge; the silhouette stencilled in ivory (dark on a
+// pale plate) with a faint inset shadow: a soldier advancing with his rifle, a tank in side view (track run, road
+// wheels, turret and gun), a field gun (barrel, shield, spoked wheel, trail).
 // Baked once per kind, owner colour and size at twice the CSS size (or the screen's ratio), drawn smoothly.
 import { makeCanvas } from '../../render/common';
 import { luma } from '../shared/colour';
 import type { TroopIconArt, TroopIconKind } from '../types';
-import { tonesOf } from './model';
+import { NEUTRAL, tonesOf } from './model';
 import { css, darken, lighten, TAU } from './paint';
 
 const KINDS: Record<TroopIconKind, number> = { infantry: 0, armor: 1, artillery: 2, troops: 3 };
@@ -160,54 +161,51 @@ function bake(kind: TroopIconKind, owner: readonly number[], size: number, K: nu
   const c = cv.getContext('2d');
   if (!c) return null;
   c.scale(K, K);
-  const t = tonesOf(owner);
-  const r = Math.max(2, size * 0.2);
-  // the dark edge, then the enamel plate inside it with its light
-  c.fillStyle = 'rgba(10,12,16,0.92)';
+  // a touch more chroma than a unit's mark (a plate is the whole marker), still matte paint
+  const t = tonesOf(owner, NEUTRAL, 0.3, 0.4, 0.58);
+  const r = Math.max(1.5, size * 0.14);
+  // the plate's dark edge (the steel under the enamel)
+  c.fillStyle = css(darken(t.deep, 0.35), 0.95);
   c.beginPath();
   c.roundRect(0, 0, W, W, r + 1);
   c.fill();
+  // the enamel: flat colour with only a faint light from the top left
   const g = c.createLinearGradient(1, 1, 1 + size, 1 + size);
-  g.addColorStop(0, css(lighten(t.base, 0.22)));
-  g.addColorStop(0.5, css(t.base));
-  g.addColorStop(1, css(darken(t.base, 0.3)));
+  g.addColorStop(0, css(lighten(t.base, 0.08)));
+  g.addColorStop(0.55, css(t.base));
+  g.addColorStop(1, css(darken(t.base, 0.14)));
   c.fillStyle = g;
   c.beginPath();
   c.roundRect(1, 1, size, size, r);
   c.fill();
-  // the bevel: light along the top, shade along the bottom
-  const bv = c.createLinearGradient(0, 1, 0, 1 + size);
-  bv.addColorStop(0, 'rgba(255,255,255,0.55)');
-  bv.addColorStop(0.45, 'rgba(255,255,255,0)');
-  bv.addColorStop(0.6, 'rgba(0,0,0,0)');
-  bv.addColorStop(1, 'rgba(0,0,0,0.4)');
-  c.strokeStyle = bv;
-  c.lineWidth = 1;
+  // a thin engraved border just inside the edge: a dark groove with a faint lit lip under it
+  c.lineWidth = 0.6;
+  c.strokeStyle = css(t.deep, 0.55);
   c.beginPath();
-  c.roundRect(1.5, 1.5, size - 1, size - 1, r - 0.5);
+  c.roundRect(2.2, 2.2, size - 2.4, size - 2.4, Math.max(0.8, r - 1));
   c.stroke();
-  // the symbol: a soft shadow, then ivory (near black on a pale plate)
-  const dark = luma(t.base) > 172;
-  const ink = dark ? '#1c2024' : '#f4f0e4';
-  const pad = size * 0.14;
+  c.strokeStyle = css(lighten(t.base, 0.2), 0.22);
+  c.beginPath();
+  c.roundRect(2.8, 2.8, size - 3.6, size - 3.6, Math.max(0.6, r - 1.4));
+  c.stroke();
+  // the stencilled silhouette: a faint inset shadow (offset up and left, as paint sits in a shallow recess), then ivory
+  // (near black on a pale plate)
+  const dark = luma(t.base) > 160;
+  const ink = dark ? '#262a2c' : '#e6e0cc';
+  const pad = size * 0.16;
   const s = size - pad * 2;
   const sym = SYMBOLS[kind];
   c.save();
   c.translate(1 + pad, 1 + pad);
   c.scale(s, s);
-  if (!dark) {
-    c.save();
-    c.translate(0.6 / s, 0.8 / s);
-    c.fillStyle = 'rgba(0,0,0,0.45)';
-    c.strokeStyle = 'rgba(0,0,0,0.45)';
-    sym(c);
-    c.restore();
-  }
-  const ig = c.createLinearGradient(0, 0, 1, 1);
-  ig.addColorStop(0, dark ? '#2a2f34' : '#ffffff');
-  ig.addColorStop(1, ink);
-  c.fillStyle = ig;
-  c.strokeStyle = ig;
+  c.save();
+  c.translate(-0.45 / s, -0.45 / s);
+  c.fillStyle = css(t.deep, 0.55);
+  c.strokeStyle = css(t.deep, 0.55);
+  sym(c);
+  c.restore();
+  c.fillStyle = ink;
+  c.strokeStyle = ink;
   sym(c);
   c.fillStyle = css(t.base);
   cutouts(c, kind);

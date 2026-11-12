@@ -48,8 +48,8 @@ const SPEC: Record<BlastKind, Spec> = {
   hit: { r: 1.5, fire: 520, smoke: 1300, nFire: 5, nSmoke: 5, nDebris: 6, nSparks: 9, dust: false, ring: false, smokeKind: Puff.DARK },
   air: { r: 1.2, fire: 380, smoke: 950, nFire: 4, nSmoke: 4, nDebris: 6, nSparks: 4, dust: false, ring: false, smokeKind: Puff.DARK },
   missile: { r: 2.4, fire: 900, smoke: 2100, nFire: 7, nSmoke: 8, nDebris: 16, nSparks: 0, dust: true, ring: true, smokeKind: Puff.DARK },
-  atom: { r: 4, fire: 1900, smoke: 3200, nFire: 14, nSmoke: 14, nDebris: 0, nSparks: 0, dust: true, ring: true, smokeKind: Puff.GREY },
-  splash: { r: 1.1, fire: 0, smoke: 800, nFire: 0, nSmoke: 6, nDebris: 0, nSparks: 0, dust: false, ring: false, smokeKind: Puff.SPRAY },
+  atom: { r: 4, fire: 1900, smoke: 3200, nFire: 16, nSmoke: 18, nDebris: 0, nSparks: 0, dust: true, ring: true, smokeKind: Puff.GREY },
+  splash: { r: 1.45, fire: 0, smoke: 1100, nFire: 0, nSmoke: 6, nDebris: 0, nSparks: 0, dust: false, ring: false, smokeKind: Puff.SPRAY },
   flak: { r: 0.9, fire: 160, smoke: 1000, nFire: 2, nSmoke: 3, nDebris: 0, nSparks: 3, dust: false, ring: false, smokeKind: Puff.SOOT },
 };
 
@@ -137,6 +137,9 @@ function blast(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams): vo
         puff(ctx, i % 3 === 2 && s.smokeKind === Puff.GREY ? Puff.DARK : i % 3 === 1 && s.smokeKind === Puff.DARK ? Puff.GREY : s.smokeKind, i, x + Math.cos(a) * d + WIND_X * drift, y + Math.sin(a) * d * 0.7 - rise + WIND_Y * drift, r, al);
       }
     }
+    // debris flung out (under the fire while it is bright: the fire hides the chunks at its heart)
+    const nd = Math.round(s.nDebris * m.debris);
+    if (nd > 0) debris(ctx, x, y, nd, R * (b.kind === 'missile' ? 3.4 : 2.8), tt / (s.fire * 1.8), seed, Math.max(0.8, R * 0.09), true);
     // the fireball: swelling, then cooling into embers and sinking into the smoke
     if (tt < s.fire) {
       const q = tt / s.fire;
@@ -164,9 +167,7 @@ function blast(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams): vo
       }
       glow(ctx, x, y, R * 1.4, 0.25 * (1 - q));
     }
-    // debris and sparks
-    const nd = Math.round(s.nDebris * m.debris);
-    if (nd > 0) debris(ctx, x, y, nd, R * (b.kind === 'missile' ? 3.4 : 2.8), tt / (s.fire * 1.8), seed, Math.max(0.8, R * 0.09), true);
+    // sparks
     if (s.nSparks) sparks(ctx, x, y, Math.round(s.nSparks * Math.max(0.5, m.debris)), R * 2.2, tt / (s.fire * 1.2), seed, Math.max(0.6, R * 0.05));
     if (b.kind === 'air' && tt < s.fire * 3) fallingPieces(ctx, x, y, b.y, tt / (s.fire * 3), seed, R);
     // the flash: a blink of white-hot light, gone in a few frames
@@ -196,39 +197,61 @@ function fallingPieces(ctx: CanvasRenderingContext2D, x: number, y: number, grou
   }
 }
 
-/** A shell or bomb landing in water: a white column of spray falling back, foam spreading, droplets. */
+/**
+ * A shell or bomb landing in water: a bright white column of spray shooting up (stacked puffs, the top ones bigger), then
+ * collapsing outward; a broken patch of foam spreading round it to two or three times the column's width (lumps of
+ * white water, never a ring); droplets thrown out on arcs. As big as a shell's burst on land.
+ */
 function splash(ctx: CanvasRenderingContext2D, b: BlastDraw, tt: number, R: number, seed: number, x: number, y: number, m: MotionParams): void {
+  void b;
   const total = SPEC.splash.smoke * m.smokeLinger;
   const q = clamp01(tt / total);
-  // foam spreading on the water: a ragged patch of white water, thinning out as it grows
-  const n = 7;
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2 + rnd(seed, i) * 0.9;
-    const d = R * (0.3 + 1.2 * easeOut3(q)) * (0.6 + rnd(seed, i + 7) * 0.7);
-    puff(ctx, Puff.SPRAY, i, x + Math.cos(a) * d, y + Math.sin(a) * d * 0.8, R * (0.6 + 0.6 * q) * (0.7 + rnd(seed, i + 9) * 0.6), 0.42 * (1 - q) * (1 - q));
+  // the foam patch: lumps of white water at uneven distances, spreading and thinning (drawn first, under the column)
+  const fq = ramp(q, 0.04, 1);
+  if (fq > 0) {
+    const n = 10;
+    for (let i = 0; i < n; i++) {
+      const a = rnd(seed, i) * Math.PI * 2;
+      const d = R * (0.2 + 2.2 * easeOut3(fq)) * Math.sqrt(rnd(seed, i + 7));
+      const r = R * (0.45 + 0.75 * fq) * (0.55 + rnd(seed, i + 9) * 0.9);
+      puff(ctx, Puff.SPRAY, i, x + Math.cos(a) * d, y + Math.sin(a) * d * 0.75, r, 0.5 * ramp(fq, 0, 0.1) * (1 - fq) * (0.6 + 0.4 * rnd(seed, i + 11)));
+    }
   }
-  // the column: rising fast, then falling back and spreading
-  const up = Math.sin(Math.PI * Math.min(1, q * 1.6));
-  for (let i = 0; i < 5; i++) {
-    const a = rnd(seed, i + 20) * Math.PI * 2;
-    const d = R * 0.35 * rnd(seed, i + 30) * (1 + q * 2);
-    puff(ctx, Puff.SPRAY, i + 3, x + Math.cos(a) * d, y + Math.sin(a) * d * 0.7 - R * 1.6 * up * (0.6 + rnd(seed, i + 40) * 0.6), R * (0.45 + 0.5 * q), 0.9 * (1 - q * q));
+  // the column: shoots up fast, hangs, then falls back and spreads outward
+  const up = easeOut(ramp(q, 0, 0.28));
+  const fall = ramp(q, 0.3, 0.95);
+  const colA = ramp(q, 0, 0.03) * (1 - fall) * (1 - fall * 0.3);
+  if (colA > 0.01) {
+    const n = 7;
+    for (let j = 0; j < n; j++) {
+      const h = j / (n - 1);
+      const a = rnd(seed, j + 20) * Math.PI * 2;
+      const out = R * 1.8 * fall * (0.5 + h * 0.8);
+      const px = x + (rnd(seed, j + 30) - 0.5) * R * 0.35 + Math.cos(a) * out;
+      const py = y - R * 3.0 * h * up * (1 - fall * 0.8) + Math.sin(a) * out * 0.6;
+      const r = R * (0.4 + 0.45 * h) * (1 + fall * 0.9) * (0.85 + rnd(seed, j + 40) * 0.3);
+      puff(ctx, Puff.SPRAY, j + 2, px, py, r, 0.95 * colA);
+    }
+    // the white of the column's heart, brightest while it rises
+    puff(ctx, Puff.WHITE, 3, x, y - R * 1.2 * up * (1 - fall), R * 0.7 * (1 + fall), 0.6 * colA * (1 - fall));
   }
-  // droplets
-  if (q < 0.7) {
-    ctx.fillStyle = '#eef6f9';
+  // droplets thrown out on arcs, falling back
+  if (q < 0.75) {
+    const qq = q / 0.75;
+    ctx.fillStyle = '#f2f8fa';
     const prev = ctx.globalAlpha;
-    ctx.globalAlpha = prev * (1 - q / 0.7);
-    for (let i = 0; i < 10; i++) {
+    ctx.globalAlpha = prev * (1 - qq) * ramp(q, 0, 0.04);
+    for (let i = 0; i < 9; i++) {
       const a = rnd(seed, i + 60) * Math.PI * 2;
-      const d = R * (0.8 + 1.8 * rnd(seed, i + 70)) * easeOut(q / 0.7);
-      const h = R * 1.4 * Math.sin(Math.PI * Math.min(1, q / 0.7));
-      const s = Math.max(0.7, R * 0.07);
-      ctx.fillRect(x + Math.cos(a) * d - s / 2, y + Math.sin(a) * d * 0.7 - h * rnd(seed, i + 80) - s / 2, s, s);
+      const d = R * (1 + 2.2 * rnd(seed, i + 70)) * easeOut(qq);
+      const h = R * (1.4 + 1.6 * rnd(seed, i + 80)) * Math.sin(Math.PI * qq);
+      const s = Math.max(0.8, R * (0.07 + rnd(seed, i + 90) * 0.06));
+      ctx.beginPath();
+      ctx.arc(x + Math.cos(a) * d, y + Math.sin(a) * d * 0.7 - h, s, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.globalAlpha = prev;
   }
-  void b;
 }
 
 /**
@@ -269,29 +292,58 @@ function atomCloud(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams,
     const rise = W * 0.18 * easeOut(q);
     const drift = W * 0.12 * q * q;
     const capR = R * (0.8 + 0.9 * easeOut(q));
+    // dark rolling folds round the cap's edge, under it
+    const al = ramp(q, 0, 0.1) * (1 - ramp(q, 0.55, 1));
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2 + rnd(seed, i + 740) * 0.5;
+      const d = capR * (0.78 + rnd(seed, i + 745) * 0.25);
+      puff(ctx, Puff.DARK, i, x + Math.cos(a) * d + WIND_X * drift, y + Math.sin(a) * d * 0.85 - rise + WIND_Y * drift + capR * 0.06, capR * (0.2 + rnd(seed, i + 750) * 0.22), 0.55 * al);
+    }
+    // the cap: billows of very different sizes (a few big, many small), so it rolls rather than reading as round lobes
     for (let i = 0; i < s.nSmoke; i++) {
-      const a = (i / s.nSmoke) * Math.PI * 2 + rnd(seed, i + 700) * 0.5;
-      const d = capR * (i % 3 === 0 ? 0.15 : 0.62) * (0.8 + rnd(seed, i + 710) * 0.4);
+      const a = (i / s.nSmoke) * Math.PI * 2 + rnd(seed, i + 700) * 0.9;
+      const big = Math.pow(rnd(seed, i + 720), 2);
+      const d = capR * (i % 4 === 0 ? 0.12 : 0.3 + 0.42 * rnd(seed, i + 710));
       const px = x + Math.cos(a) * d + WIND_X * drift;
       const py = y + Math.sin(a) * d * 0.85 - rise + WIND_Y * drift;
-      const r = capR * (0.42 + rnd(seed, i + 720) * 0.2);
-      const al = ramp(q, 0, 0.1) * (1 - ramp(q, 0.55, 1));
-      puff(ctx, Puff.GREY, i, px, py, r, 0.9 * al);
-      if (q < 0.45) puff(ctx, Puff.EMBER, i + 2, px, py + r * 0.2, r * 0.8, 0.55 * (1 - q / 0.45) * al);
+      const r = capR * (0.2 + 0.5 * big);
+      puff(ctx, i % 5 === 3 ? Puff.DARK : Puff.GREY, i, px, py, r, (i % 5 === 3 ? 0.6 : 0.88) * al);
+      if (q < 0.45) puff(ctx, Puff.EMBER, i + 2, px, py + r * 0.2, r * 0.8, 0.5 * (1 - q / 0.45) * al);
     }
     // the top of the cap catches the sun
     puff(ctx, Puff.WHITE, 4, x + WIND_X * drift - capR * 0.15, y - rise + WIND_Y * drift - capR * 0.2, capR * 0.6, 0.4 * ramp(q, 0.05, 0.2) * (1 - ramp(q, 0.5, 1)));
   }
-  // the fireball: swelling, white-hot, then orange and red as it cools and is swallowed by the cap
+  // the fireball: layered from many fire puffs of very different sizes, a white-hot heart, its rim cooling first to deep
+  // orange and red, and dark smoke rolling in over the rim as it is swallowed by the cap
   if (tt < s.fire) {
     const q = tt / s.fire;
-    for (let i = 0; i < s.nFire; i++) {
+    const grow = easeOut(Math.min(1, q * 1.8));
+    const hot = 1 - q;
+    const n = s.nFire;
+    // the cooling rim first (under), then the hotter inner puffs over it
+    for (let i = n - 1; i >= 0; i--) {
+      const ring = i / (n - 1);
       const a = rnd(seed, i + 800) * Math.PI * 2;
-      const d = R * 0.55 * rnd(seed, i + 810) * easeOut(Math.min(1, q * 2));
-      const r = R * (0.45 + 0.6 * easeOut(Math.min(1, q * 1.6))) * (0.8 + rnd(seed, i + 820) * 0.4);
-      const hot = 1 - q;
-      puff(ctx, Puff.EMBER, i, x + Math.cos(a) * d, y + Math.sin(a) * d * 0.85 - W * 0.05 * q, r * 1.05, 0.95 * (1 - ramp(q, 0.6, 1)));
-      puff(ctx, Puff.FIRE, i + 1, x + Math.cos(a) * d, y + Math.sin(a) * d * 0.85 - W * 0.05 * q, r * (0.55 + 0.45 * hot), Math.min(1, hot * 1.3));
+      const d = R * (0.08 + 0.78 * ring) * (0.75 + rnd(seed, i + 810) * 0.4) * grow;
+      const r = R * (0.22 + 0.5 * Math.pow(rnd(seed, i + 820), 1.5) + 0.25 * (1 - ring)) * (0.45 + 0.55 * grow);
+      const px = x + Math.cos(a) * d;
+      const py = y + Math.sin(a) * d * 0.85 - W * 0.05 * q;
+      // outer puffs cool sooner: deep red embers, the inner ones stay white-hot longer
+      const cool = clamp01(q * 1.6 + ring * 0.6);
+      puff(ctx, Puff.EMBER, i, px, py, r * 1.08, 0.95 * (1 - ramp(q, 0.65, 1)) * (0.5 + 0.5 * ring));
+      puff(ctx, Puff.FIRE, i + 1, px, py, r * (0.5 + 0.5 * (1 - cool)), Math.min(1, (1 - cool) * 1.4) * (1 - ring * 0.35));
+    }
+    // the white-hot heart
+    puff(ctx, Puff.FIRE, 2, x, y - W * 0.05 * q, R * 0.42 * grow, Math.min(1, hot * 1.5));
+    // dark smoke rolling in from the rim
+    const roll = ramp(q, 0.35, 1);
+    if (roll > 0) {
+      const nr = 12;
+      for (let i = 0; i < nr; i++) {
+        const a = (i / nr) * Math.PI * 2 + rnd(seed, i + 840) * 0.4;
+        const d = R * (1.05 - 0.55 * roll) * (0.85 + rnd(seed, i + 850) * 0.3);
+        puff(ctx, Puff.DARK, i, x + Math.cos(a) * d, y + Math.sin(a) * d * 0.85 - W * 0.05 * q, R * (0.3 + 0.25 * rnd(seed, i + 860)) * (0.8 + roll * 0.6), 0.7 * roll * (1 - ramp(q, 0.85, 1) * 0.5));
+      }
     }
     glow(ctx, x, y, R * 3.2, 0.8 * (1 - q) * (1 - q));
   }
@@ -314,19 +366,22 @@ function mapFx(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionParams): vo
   const prev = ctx.globalAlpha;
   switch (f.kind) {
     case 'splash': {
-      // a ship going down: an oil slick spreading, boiling foam, wreckage going under
+      // a ship going down: a feathered sheen of oil and soot spreading on the water (never a flat dark disc), white
+      // water boiling up in uneven patches, wreckage going under
       const R = u * 2.2;
-      ctx.globalAlpha = prev * 0.45 * (1 - t);
-      ctx.fillStyle = 'rgba(14,16,20,0.6)';
-      ctx.beginPath();
-      ctx.ellipse(x + WIND_X * R * t, y + WIND_Y * R * t * 0.5, R * (0.8 + 1.2 * easeOut(t)), R * (0.5 + 0.8 * easeOut(t)), 0.4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = prev;
-      for (let i = 0; i < 9; i++) {
+      const sp = easeOut(t);
+      for (let i = 0; i < 6; i++) {
+        const a = rnd(seed, i + 60) * Math.PI * 2;
+        const d = R * (0.2 + 0.9 * sp) * rnd(seed, i + 61);
+        const r = R * (0.6 + 0.9 * sp) * (0.6 + 0.6 * rnd(seed, i + 62));
+        puff(ctx, Puff.SOOT, i, x + Math.cos(a) * d + WIND_X * R * t * 0.6, y + Math.sin(a) * d * 0.7 + WIND_Y * R * t * 0.3, r, 0.12 * (1 - t) * ramp(t, 0, 0.08));
+      }
+      for (let i = 0; i < 7; i++) {
         const a = rnd(seed, i) * Math.PI * 2;
-        const d = R * (0.3 + 1.2 * rnd(seed, i + 10)) * (0.5 + t);
-        const ph = (t * 3 + rnd(seed, i + 20)) % 1;
-        puff(ctx, Puff.SPRAY, i, x + Math.cos(a) * d, y + Math.sin(a) * d * 0.75, u * (0.4 + ph * 0.6), 0.55 * (1 - ph) * (1 - t));
+        const d = R * (0.2 + 1.1 * rnd(seed, i + 10)) * (0.5 + t);
+        const ph = (t * 2.2 + rnd(seed, i + 20)) % 1;
+        const r = u * (0.35 + ph * 0.7) * (0.6 + 0.8 * rnd(seed, i + 30));
+        puff(ctx, Puff.SPRAY, i, x + Math.cos(a) * d, y + Math.sin(a) * d * 0.75, r, 0.32 * Math.sin(Math.PI * ph) * (1 - t));
       }
       const sink = 1 - easeOut(t);
       if (sink > 0.05) {
@@ -334,14 +389,21 @@ function mapFx(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionParams): vo
         for (let i = 0; i < 4; i++) {
           const a = rnd(seed, i + 40) * Math.PI * 2;
           const d = R * (0.3 + 0.9 * t) * (0.6 + rnd(seed, i + 50));
-          const w = u * (0.9 - i * 0.15) * sink;
-          ctx.globalAlpha = prev * 0.9 * sink;
+          const w = u * (0.7 - i * 0.12) * sink;
+          ctx.globalAlpha = prev * 0.85 * sink;
           ctx.save();
           ctx.translate(x + Math.cos(a) * d, y + Math.sin(a) * d * 0.7);
           ctx.rotate(a * 2);
-          ctx.fillRect(-w, -w * 0.35, w * 2, w * 0.7);
+          ctx.beginPath();
+          ctx.moveTo(-w, -w * 0.3);
+          ctx.lineTo(w * 0.8, -w * 0.38);
+          ctx.lineTo(w, w * 0.25);
+          ctx.lineTo(-w * 0.7, w * 0.35);
+          ctx.closePath();
+          ctx.fill();
           ctx.restore();
         }
+        ctx.globalAlpha = prev;
       }
       break;
     }

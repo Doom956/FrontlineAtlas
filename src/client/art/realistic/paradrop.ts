@@ -1,15 +1,16 @@
-// The realistic style's paratroopers (client only): round canopies seen from above (gores in two tones of the owner's
-// colour, a vent at the crown, a soft dome light from the top left), the rigging lines running down to a small soldier
+// The realistic style's paratroopers (client only): round canopies seen from above in period cloth (olive drab, khaki
+// or off-white silk, gores in two tones of it, a soft dome light from the top left), the owner's colour only on two
+// gores and the crown vent, muted (model.ts tonesOf), the rigging lines running down to a small soldier
 // hanging under each, and each one's shadow on the ground, small and sharp as it lands. A drop: the canopies snap open
 // one after another (a quick bloom), drift down swaying (the planes' motion: more sway when they bank harder), touch
 // down round the drop point, collapse into a crumpled heap of cloth beside the soldier and fade.
-// Far out a drop is a few small round canopies in the owner's colour (cheap); the canopy pictures are baked once per
-// owner colour and size.
+// Far out a drop is a few small round cloth canopies with the owner's vent (cheap); the canopy pictures are baked once
+// per owner colour, cloth and size.
 import { makeCanvas } from '../../render/common';
 import type { MotionParams } from '../motion';
 import type { ParachuteMarkDraw, ParadropArt, ParadropDraw } from '../types';
 import { tonesOf } from './model';
-import { css, darken, lighten, TAU } from './paint';
+import { type Col, css, darken, hexCol, lighten, TAU } from './paint';
 import { clamp01, ramp } from './puffs';
 
 const DROP_MS = 2600;
@@ -17,9 +18,15 @@ const spreadOf = (zoom: number): number => Math.max(10, zoom * 2.4);
 
 const canopies = new Map<number, HTMLCanvasElement | null>();
 
-/** A canopy seen from above, radius r device px (the picture is 2r + 4 square). */
-function canopy(owner: readonly number[], r: number): HTMLCanvasElement | null {
-  const key = ((owner[0] & 255) << 16 | (owner[1] & 255) << 8 | (owner[2] & 255)) * 64 + Math.min(63, r);
+/** Parachute cloth: olive drab, khaki, off-white silk. */
+const CLOTH: readonly Col[] = [hexCol('#6c6c4a'), hexCol('#9c8f66'), hexCol('#cfc9b4')];
+const clothOf = (k: number): number => (k * 7 + 3) % 5 === 0 ? 2 : k % 2;
+/** The owner's tones on cloth: muted toward the canopy's own colour. */
+const ownerOnCloth = (owner: readonly number[], cloth: Col): ReturnType<typeof tonesOf> => tonesOf(owner, cloth, 0.38, 0.44, 0.6);
+
+/** A canopy seen from above, radius r device px (the picture is 2r + 4 square), in cloth `cl` (CLOTH index). */
+function canopy(owner: readonly number[], r: number, cl = 0): HTMLCanvasElement | null {
+  const key = ((((owner[0] & 255) << 16) | ((owner[1] & 255) << 8) | (owner[2] & 255)) * 64 + Math.min(63, r)) * 4 + cl;
   const hit = canopies.get(key);
   if (hit !== undefined) return hit;
   if (typeof document === 'undefined') return null;
@@ -31,7 +38,8 @@ function canopy(owner: readonly number[], r: number): HTMLCanvasElement | null {
     canopies.set(key, null);
     return null;
   }
-  const t = tonesOf(owner);
+  const cloth = CLOTH[cl] ?? CLOTH[0];
+  const t = ownerOnCloth(owner, cloth);
   const cx = S / 2;
   const cy = S / 2;
   const gores = 10;
@@ -45,7 +53,9 @@ function canopy(owner: readonly number[], r: number): HTMLCanvasElement | null {
     c.lineTo(cx + Math.cos(a0) * r, cy + Math.sin(a0) * r);
     c.quadraticCurveTo(cx + Math.cos(am) * r * 1.08, cy + Math.sin(am) * r * 1.08, cx + Math.cos(a1) * r, cy + Math.sin(a1) * r);
     c.closePath();
-    c.fillStyle = css(i % 2 ? t.base : lighten(t.base, 0.22));
+    // the cloth's own two tones; two opposite gores in the owner's colour
+    const own = i === 0 || i === 5;
+    c.fillStyle = own ? css(i % 2 ? t.base : lighten(t.base, 0.1)) : css(i % 2 ? cloth : lighten(cloth, 0.1));
     c.fill();
   }
   // the dome's light: bright toward the top left, the far rim in shade
@@ -60,7 +70,7 @@ function canopy(owner: readonly number[], r: number): HTMLCanvasElement | null {
   c.fill();
   // seams, the vent at the crown, the hem
   if (r >= 5) {
-    c.strokeStyle = css(darken(t.base, 0.4), 0.45);
+    c.strokeStyle = css(darken(cloth, 0.4), 0.45);
     c.lineWidth = 0.6;
     c.beginPath();
     for (let i = 0; i < gores; i++) {
@@ -70,11 +80,16 @@ function canopy(owner: readonly number[], r: number): HTMLCanvasElement | null {
     }
     c.stroke();
   }
-  c.fillStyle = css(darken(t.base, 0.55));
+  // the crown: a small ring of the owner's colour round the dark vent
+  c.fillStyle = css(t.base);
   c.beginPath();
-  c.arc(cx, cy, Math.max(0.8, r * 0.14), 0, TAU);
+  c.arc(cx, cy, Math.max(1.1, r * 0.22), 0, TAU);
   c.fill();
-  c.strokeStyle = css(darken(t.base, 0.5), 0.8);
+  c.fillStyle = css(darken(cloth, 0.6));
+  c.beginPath();
+  c.arc(cx, cy, Math.max(0.6, r * 0.1), 0, TAU);
+  c.fill();
+  c.strokeStyle = css(darken(cloth, 0.45), 0.7);
   c.lineWidth = Math.max(0.8, r * 0.08);
   c.beginPath();
   c.arc(cx, cy, r * 1.0, 0, TAU);
@@ -127,16 +142,21 @@ function draw(ctx: CanvasRenderingContext2D, d: ParadropDraw, m: MotionParams): 
       ctx.beginPath();
       ctx.arc(px, py, size * 0.75 + 0.8, 0, TAU);
       ctx.fill();
-      ctx.fillStyle = css(tonesOf(d.owner).base);
+      const cloth = CLOTH[clothOf(k)];
+      ctx.fillStyle = css(cloth);
       ctx.beginPath();
       ctx.arc(px, py, size * 0.75, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = css(ownerOnCloth(d.owner, cloth).base);
+      ctx.beginPath();
+      ctx.arc(px, py, size * 0.36, 0, TAU);
       ctx.fill();
       continue;
     }
     if (landed) {
       // the canopy settles into a heap of cloth beside the soldier, pushed out by the wind: a few folds of it
       const q = ramp(t, land, land + 0.1);
-      const t0 = tonesOf(d.owner);
+      const cloth = CLOTH[clothOf(k)];
       const hx = gx + size * 0.7 * q;
       const hy = gy - size * 0.25 * q;
       ctx.globalAlpha = prev * fadeOut * 0.35;
@@ -148,7 +168,7 @@ function draw(ctx: CanvasRenderingContext2D, d: ParadropDraw, m: MotionParams): 
       for (let f = 0; f < 3; f++) {
         const fx = hx + (f - 1) * size * 0.45 * q;
         const fy = hy + (f % 2 ? -1 : 1) * size * 0.18 * q;
-        ctx.fillStyle = css(f === 1 ? lighten(t0.base, 0.18) : darken(t0.base, 0.12 + f * 0.05));
+        ctx.fillStyle = css(f === 1 ? lighten(cloth, 0.12) : darken(cloth, 0.12 + f * 0.05));
         ctx.beginPath();
         ctx.ellipse(fx, fy, size * (1 - 0.35 * q) * (f === 1 ? 0.8 : 0.65), size * (1 - 0.45 * q) * 0.6, 0.5 + f * 0.3, 0, TAU);
         ctx.fill();
@@ -182,7 +202,7 @@ function draw(ctx: CanvasRenderingContext2D, d: ParadropDraw, m: MotionParams): 
     ctx.globalAlpha = prev * fadeOut;
     soldier(ctx, sx, sy, size * 0.62);
     const dpr = Math.max(1, d.dpr);
-    const img = canopy(d.owner, Math.max(3, Math.round(cs * dpr)));
+    const img = canopy(d.owner, Math.max(3, Math.round(cs * dpr)), clothOf(k));
     if (img) {
       const w = (img.width / dpr) * (cs * dpr) / Math.max(3, Math.round(cs * dpr));
       // a swaying canopy tips over a little: narrower across its swing
@@ -211,7 +231,7 @@ function drawMark(ctx: CanvasRenderingContext2D, p: ParachuteMarkDraw, m: Motion
   ctx.lineTo(x + r * 0.85, y + r * 0.2);
   ctx.stroke();
   soldier(ctx, x, y + r * 1.6, r * 0.75);
-  const img = canopy(p.owner, Math.round(r * dpr));
+  const img = canopy(p.owner, Math.round(r * dpr), 2);
   if (img) {
     const w = img.width / dpr;
     const prevS = ctx.imageSmoothingEnabled;

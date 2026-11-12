@@ -1,18 +1,22 @@
 // The realistic style's planes and missiles (client only): painted top-down miniatures, each with its own planform:
-//   bomber          twin engines on straight wings, a glazed nose, an H tail with twin fins (olive drab)
+//   bomber          slim: a long glazed nose well ahead of the engines, the engines hung far forward of a straight
+//                   wing, a wide H tail with end plate fins (olive drab)
 //   groundAttack    a stubby single-engine plane, a big engine cowl, rockets on rails under its wings showing ahead of
 //                   the leading edge, a bubble canopy, disruptive green and brown camouflage
 //   heavyBomber     four engines on long wings, a big single fin, natural metal with an olive anti-glare panel, a top
 //                   turret (Strategic Bombing adds a chin turret and a dorsal one)
 //   fighter         small and fast: elliptical wings, a long engine nose, a bubble canopy (jets: swept wings, a nose
 //                   intake, no propeller)
-//   transportPlane  a fat fuselage under a high wing (the wing passes over it), twin engines, cabin windows, the open
-//                   jump door, black and white recognition stripes: it carries the paratroopers
+//   transportPlane  fat and blunt: a wide fuselage (about 1.7 times the bomber's) with a round solid nose, a straight
+//                   high wing set well forward (it passes over the fuselage), twin engines, one tall fin over a broad
+//                   tailplane, cabin windows, the open jump door, recognition stripes: it carries the paratroopers
 //   reconPlane      twin booms with an engine each, a central pod with a long glazed nose, photo recon blue
 //   rocket          a slender finned rocket; atomBomb a fat white one with black and yellow hazard bands
 // Upgrades: Jet Engines swap the propellers for jet pods (or a nose intake), Night Bombing is matte black paint with
 // flame dampers, Drop Tanks hang silver tanks under the wings, Air Mastery a checkered cowl or a yellow tail band,
-// Strategic Bombing more gun turrets. The owner's colour is the roundels on the wings, never the whole plane.
+// Strategic Bombing more gun turrets. The owner's colour is a muted roundel inboard on each wing (a small brighter
+// centre), never the whole plane. Every plane has a tight soft contact shadow under it and a faint light rim on its
+// sunlit edges, so olive and camouflage paint still separate from olive ground without outlines.
 import { M_JET, M_MASTERY, M_NIGHT, M_PATH3, M_SPECIAL, type SpriteKey } from '../shared/keys';
 import { bounds, type Layer, type OwnerLayer, type Prop, type Tones, type UnitModel } from './model';
 import { castShadow, type Col, css, cylGrad, darken, domeGrad, edge, fillShape, fine, grime, hair, hexCol, lighten, litGrad, oval, type Paint, rim, rod, type Shape, softShadow, strokeShape, turn } from './paint';
@@ -225,13 +229,17 @@ function camo(p: Paint, s: Shape, x0: number, x1: number, y0: number, y1: number
   c.restore();
 }
 
-/** A roundel: a white ring round the owner's colour, as painted on a wing. */
+/**
+ * A roundel as painted on a wing: a dull off-white ring (dark grey at night) round the owner's muted tone, a small
+ * brighter centre, a little wear; matte, like the rest of the paint.
+ */
 function roundel(p: Paint, x: number, y: number, r: number, t: Tones, white = true): void {
   const c = p.ctx;
-  if (white) fillShape(c, oval(x, y, r, r), 'rgba(236,236,228,0.92)');
-  const ir = white ? r * 0.74 : r;
-  fillShape(c, oval(x, y, ir, ir), litGrad(p, t.base, x, y, ir, 0.2));
-  strokeShape(c, oval(x, y, r, r), css(t.deep, 0.45), hair(p, 0.6));
+  fillShape(c, oval(x, y, r, r), white ? 'rgba(206,204,192,0.72)' : 'rgba(70,72,74,0.8)');
+  const ir = r * 0.74;
+  fillShape(c, oval(x, y, ir, ir), litGrad(p, t.base, x, y, ir, 0.12));
+  fillShape(c, oval(x, y, ir * 0.36, ir * 0.36), css(t.accent, 0.85));
+  strokeShape(c, oval(x, y, r, r), css(t.deep, 0.3), hair(p, 0.6));
 }
 
 // ------------------------------------------------------------------------------------------------- planes
@@ -250,41 +258,43 @@ interface PlanePlan {
 
 const merge = (...shapes: Shape[]): Shape[] => shapes;
 
-// ---- bomber: twin engines, glazed nose, H tail
-const BW = { le0: 2.8, c0: 4.6, le1: 1.6, c1: 2.2, s: 14 };
-const bomberBody = bodyShape(-10, 10, 1.35, 1.5, 0.75, 0.25);
+// ---- bomber: slim, a long glazed nose ahead of the engines, engines far forward of the wing, a wide H tail
+const BW = { le0: 2.0, c0: 4.2, le1: 1.0, c1: 2.0, s: 14 };
+const bomberBody = bodyShape(-10.2, 11.6, 1.05, 1.2, 0.62, 0.3);
 const bomberWings = wingsShape(BW.le0, BW.c0, BW.le1, BW.c1, BW.s);
-const bomberTail = wingsShape(-7.4, 2.6, -7.9, 1.6, 4.9);
+const bomberTail = wingsShape(-7.3, 2.3, -7.5, 1.9, 6.3);
 
 const bomber: PlanePlan = {
-  len: 20,
+  len: 22,
   span: 28,
   alt: 9,
   paint(p, mods) {
     const night = !!(mods & M_NIGHT);
     const jet = !!(mods & M_JET);
     const col = night ? NIGHT : OLIVE_DRAB;
-    if (mods & M_SPECIAL) for (const y of [-8.4, 8.4]) dropTank(p, 2.4, y, 2.1, 0.55);
-    wingPaint(p, bomberTail, col, -7.4, -10, 4.9, 501);
-    for (const y of [-4.9, 4.9]) fin(p, -10.2, -7.2, y, 0.55, 2.4, col, mods & M_MASTERY ? hexCol('#d8b23a') : undefined);
+    if (mods & M_SPECIAL) for (const y of [-8.8, 8.8]) dropTank(p, 1.6, y, 2.0, 0.55);
+    wingPaint(p, bomberTail, col, -7.3, -9.6, 6.3, 501);
+    // the end plate fins at the tailplane's tips: what makes the H
+    for (const y of [-6.3, 6.3]) fin(p, -10.4, -6.9, y, 0.62, 2.6, col, mods & M_MASTERY ? hexCol('#d8b23a') : undefined);
     wingPaint(p, bomberWings, col, BW.le0, BW.le0 - BW.c0, BW.s, 503);
-    fuselagePaint(p, bomberBody, col, 1.5, 1.35);
-    glazedNose(p, bomberBody, 8.2, 10, 1.35);
-    canopy(p, 4.6, 6.6, 0.85);
-    if (fine(p)) gunDome(p, -2.0, 0, 0.6);
-    for (const y of [-4.6, 4.6]) nacelle(p, jet ? -3.5 : -2.6, jet ? 6.4 : 5.2, y, jet ? 0.9 : 1.05, col, jet, night);
+    fuselagePaint(p, bomberBody, col, 1.2, 1.05);
+    glazedNose(p, bomberBody, 9.0, 11.6, 1.05);
+    canopy(p, 5.0, 7.0, 0.72);
+    if (fine(p)) gunDome(p, -2.4, 0, 0.55);
+    // the engines hung far forward of the wing
+    for (const y of [-4.5, 4.5]) nacelle(p, jet ? -3.0 : -2.4, jet ? 7.6 : 7.4, y, jet ? 0.85 : 0.98, col, jet, night);
   },
   silhouette: () => merge(bomberWings, bomberBody, bomberTail),
   roundels: () => [
-    [BW.le0 - 2.3 - (BW.le0 - BW.le1) * 0.7, 9.6, 1.25],
-    [BW.le0 - 2.3 - (BW.le0 - BW.le1) * 0.7, -9.6, 1.25],
+    [0.3, 8.4, 1.15],
+    [0.3, -8.4, 1.15],
   ],
   props: (mods) =>
     mods & M_JET
       ? []
       : [
-          { x: 5.5, y: -4.6, r: 2.4 },
-          { x: 5.5, y: 4.6, r: 2.4 },
+          { x: 7.7, y: -4.5, r: 2.4 },
+          { x: 7.7, y: 4.5, r: 2.4 },
         ],
 };
 
@@ -330,8 +340,8 @@ const groundAttack: PlanePlan = {
   },
   silhouette: () => merge(gaWings, gaBody, gaTail),
   roundels: () => [
-    [GW.le0 - 1.6 - (GW.le0 - GW.le1) * 0.75, 7.1, 0.95],
-    [GW.le0 - 1.6 - (GW.le0 - GW.le1) * 0.75, -7.1, 0.95],
+    [GW.le0 - 1.9 - (GW.le0 - GW.le1) * 0.55, 5.6, 0.9],
+    [GW.le0 - 1.9 - (GW.le0 - GW.le1) * 0.55, -5.6, 0.9],
   ],
   props: (mods) => (mods & M_JET ? [] : [{ x: 8.5, y: 0, r: 2.6 }]),
 };
@@ -389,8 +399,8 @@ const heavyBomber: PlanePlan = {
   },
   silhouette: () => merge(hbWings, hbBody, hbTail),
   roundels: () => [
-    [HW.le0 - 2.6 - (HW.le0 - HW.le1) * 0.78, 15.8, 1.5],
-    [HW.le0 - 2.6 - (HW.le0 - HW.le1) * 0.78, -15.8, 1.5],
+    [0.6, 8.5, 1.3],
+    [0.6, -8.5, 1.3],
   ],
   props: () => [
     { x: 6.9, y: -5.8, r: 2.5 },
@@ -440,61 +450,67 @@ const fighter: PlanePlan = {
   roundels: (mods) =>
     mods & M_JET
       ? [
-          [-1.9, 4.9, 0.8],
-          [-1.9, -4.9, 0.8],
+          [-1.2, 4.2, 0.75],
+          [-1.2, -4.2, 0.75],
         ]
       : [
-          [0.3, 5.0, 0.85],
-          [0.3, -5.0, 0.85],
+          [0.4, 4.3, 0.8],
+          [0.4, -4.3, 0.8],
         ],
   props: (mods) => (mods & M_JET ? [] : [{ x: 6.8, y: 0, r: 2.1 }]),
 };
 
-// ---- transport: fat fuselage, high wing, twin engines, recognition stripes
-const TW = { le0: 3.4, c0: 4.6, le1: 2.2, c1: 2.2, s: 15 };
-const trBody = bodyShape(-11, 11, 1.95, 2.6, 0.9, 0.22);
+// ---- transport: a fat blunt fuselage, a straight high wing set well forward, one tall fin, a broad tailplane
+const TW = { le0: 5.6, c0: 4.0, le1: 5.1, c1: 2.8, s: 15 };
+const trBody = bodyShape(-12.6, 11.4, 1.85, 2.4, 1.0, 0.3);
 const trWings = wingsShape(TW.le0, TW.c0, TW.le1, TW.c1, TW.s);
-const trTail = wingsShape(-7.8, 2.8, -8.4, 1.6, 5.2);
+const trTail = wingsShape(-8.4, 3.4, -9.0, 2.4, 6.6);
 
 const transportPlane: PlanePlan = {
-  len: 22,
+  len: 24,
   span: 30,
   alt: 8,
   paint(p, mods) {
     const c = p.ctx;
     const jet = !!(mods & M_JET);
     const col = OLIVE_DRAB;
-    if (mods & M_SPECIAL) for (const y of [-8.6, 8.6]) dropTank(p, 2.8, y, 2.2, 0.6);
-    wingPaint(p, trTail, col, -7.8, -10.6, 5.2, 541);
-    fuselagePaint(p, trBody, col, 2.6, 1.95, 1.2);
+    if (mods & M_SPECIAL) for (const y of [-9.4, 9.4]) dropTank(p, 4.6, y, 2.2, 0.6);
+    wingPaint(p, trTail, col, -8.4, -11.8, 6.6, 541);
+    fuselagePaint(p, trBody, col, 2.4, 1.85, 1.2);
     // black and white recognition stripes round the rear fuselage
-    stripes(p, trBody, -6.4, 0.42);
-    fin(p, -11.2, -7.6, 0, 0.6, 2.8, col);
+    stripes(p, trBody, -8.0, 0.42);
+    // one tall fin on the centre line
+    fin(p, -12.9, -7.6, 0, 0.75, 3.8, col);
     // cabin windows down both sides and the open jump door at the back on the left
-    if (fine(p, 1.3)) for (let x = -4.2; x < 4; x += 1.2) for (const sd of [-1, 1]) fillShape(c, (k) => k.rect(x, sd * 1.62 - 0.17, 0.48, 0.34), 'rgba(18,24,28,0.85)');
-    fillShape(c, (k) => k.rect(-5.6, -1.98, 1.2, 0.7), css(hexCol('#0f1112')));
-    canopy(p, 8.0, 9.9, 1.1);
+    if (fine(p, 1.3)) for (let x = -6.4; x < 0.8; x += 1.2) for (const sd of [-1, 1]) fillShape(c, (k) => k.rect(x, sd * 1.5 - 0.16, 0.46, 0.32), 'rgba(18,24,28,0.85)');
+    fillShape(c, (k) => k.rect(-7.0, -1.86, 1.2, 0.66), css(hexCol('#0f1112')));
+    // the round solid nose: the cockpit's small flat windscreen panes (no glazing)
+    fillShape(c, (k) => k.rect(9.3, -0.95, 0.75, 1.9), cylGrad(p, GLASS, 9.7, 0, 1, 0, 0.95, 0.5));
+    if (fine(p, 1.4)) strokeShape(c, (k) => {
+      k.moveTo(9.3, 0);
+      k.lineTo(10.05, 0);
+    }, 'rgba(30,32,30,0.7)', hair(p, 0.6));
     // the high wing passes over the fuselage, its own stripes outboard
     wingPaint(p, trWings, col, TW.le0, TW.le0 - TW.c0, TW.s, 543);
     c.save();
     c.beginPath();
     trWings(c);
     c.clip();
-    for (const sd of [-1, 1]) stripes(p, (k) => k.rect(-4, sd > 0 ? 7 : -9.6, 9, 2.6), -2.0, 0.42, true, sd * 8.3);
+    for (const sd of [-1, 1]) stripes(p, (k) => k.rect(-4, sd > 0 ? 9.9 : -12.5, 12, 2.6), -2.0, 0.42, true, sd * 11.2);
     c.restore();
-    for (const y of [-5.0, 5.0]) nacelle(p, jet ? -2.4 : -1.2, jet ? 6.8 : 5.9, y, jet ? 0.95 : 1.15, col, jet, false);
+    for (const y of [-5.2, 5.2]) nacelle(p, jet ? 0.6 : 1.4, jet ? 9.6 : 8.9, y, jet ? 0.95 : 1.15, col, jet, false);
   },
   silhouette: () => merge(trWings, trBody, trTail),
   roundels: () => [
-    [TW.le0 - 2.2 - (TW.le0 - TW.le1) * 0.75, 11.6, 1.35],
-    [TW.le0 - 2.2 - (TW.le0 - TW.le1) * 0.75, -11.6, 1.35],
+    [3.6, 8.2, 1.1],
+    [3.6, -8.2, 1.1],
   ],
   props: (mods) =>
     mods & M_JET
       ? []
       : [
-          { x: 6.3, y: -5.0, r: 2.6 },
-          { x: 6.3, y: 5.0, r: 2.6 },
+          { x: 9.3, y: -5.2, r: 2.6 },
+          { x: 9.3, y: 5.2, r: 2.6 },
         ],
 };
 
@@ -550,8 +566,8 @@ const reconPlane: PlanePlan = {
   },
   silhouette: () => merge(rcWings, rcPod, rcBoom(-3.4), rcBoom(3.4), rcTail),
   roundels: () => [
-    [RW.le0 - 1.5 - (RW.le0 - RW.le1) * 0.75, 7.9, 1.05],
-    [RW.le0 - 1.5 - (RW.le0 - RW.le1) * 0.75, -7.9, 1.05],
+    [RW.le0 - 1.6 - (RW.le0 - RW.le1) * 0.6, 6.7, 1.0],
+    [RW.le0 - 1.6 - (RW.le0 - RW.le1) * 0.6, -6.7, 1.0],
   ],
   props: () => [
     { x: 6.1, y: -3.4, r: 2.1 },
@@ -561,13 +577,47 @@ const reconPlane: PlanePlan = {
 
 const PLANES: Partial<Record<SpriteKey, PlanePlan>> = { bomber, groundAttack, heavyBomber, fighter, transportPlane, reconPlane };
 
-function shadowLayer(shapes: Shape[], hl: number, hs: number, a: number): Layer {
+/**
+ * The ground shadow far below: soft, and softer and fainter the higher the plane flies (`alt` art units), as a real
+ * shadow's penumbra widens with height. Blurred with the canvas filter where there is one (painted once per bake).
+ */
+function shadowLayer(shapes: Shape[], hl: number, hs: number, alt: number): Layer {
+  const blur = 0.5 + alt * 0.14;
+  const a = Math.max(0.18, Math.min(0.26, 0.31 - alt * 0.012));
   return {
-    b: bounds(-hl - 2, -hs - 2, hl + 2, hs + 2),
+    b: bounds(-hl - 2 - blur * 3, -hs - 2 - blur * 3, hl + 2 + blur * 3, hs + 2 + blur * 3),
     paint: (p) => {
-      for (const s of shapes) softShadow(p, s, 0, 0, a, 0.5);
+      const c = p.ctx;
+      const canBlur = 'filter' in c;
+      if (canBlur) c.filter = `blur(${(blur * p.R * 0.8).toFixed(2)}px)`;
+      for (const s of shapes) softShadow(p, s, 0, 0, a * (canBlur ? 1.25 : 1), canBlur ? 0.3 : blur);
+      if (canBlur) c.filter = 'none';
     },
   };
+}
+
+/** A tight soft shade just under a plane (its silhouette barely offset), so it separates from the ground below it. */
+function contactShadow(p: Paint, shapes: Shape[]): void {
+  for (const s of shapes) softShadow(p, s, -p.lx * 0.35, -p.ly * 0.35, 0.3, 0.32);
+}
+
+/** A faint light rim on the sunlit edges of the whole silhouette (no outline anywhere else). */
+function sunRim(p: Paint, shapes: Shape[]): void {
+  const c = p.ctx;
+  const d = hair(p, 1.1);
+  for (const s of shapes) {
+    c.save();
+    c.beginPath();
+    s(c);
+    c.clip();
+    c.translate(-p.lx * d, -p.ly * d);
+    c.beginPath();
+    s(c);
+    c.lineWidth = hair(p, 1.4);
+    c.strokeStyle = 'rgba(236,238,226,0.32)';
+    c.stroke();
+    c.restore();
+  }
 }
 
 /** A plane's model: its painted body, the roundels, its ground shadow and propellers. */
@@ -576,9 +626,16 @@ export function planeModel(key: SpriteKey, mods: number): UnitModel {
   const hl = plan.len / 2 + 1.5;
   const hs = plan.span / 2 + 1.5;
   const b = bounds(-hl - 1, -hs - 1, hl + 3, hs + 1);
-  const body: Layer = { b, paint: (p) => plan.paint(p, mods) };
-  const owners: OwnerLayer[] = plan.roundels(mods).map(([x, y, r]) => ({ b: bounds(x - r - 0.6, y - r - 0.6, x + r + 0.6, y + r + 0.6), paint: (p, t) => roundel(p, x, y, r, t, !(mods & M_NIGHT)) }));
   const shapes = plan.silhouette(mods);
+  const body: Layer = {
+    b,
+    paint: (p) => {
+      contactShadow(p, shapes);
+      plan.paint(p, mods);
+      sunRim(p, shapes);
+    },
+  };
+  const owners: OwnerLayer[] = plan.roundels(mods).map(([x, y, r]) => ({ b: bounds(x - r - 0.6, y - r - 0.6, x + r + 0.6, y + r + 0.6), paint: (p, t) => roundel(p, x, y, r, t, !(mods & M_NIGHT)) }));
   const wingShade: Layer = {
     b,
     paint: (p) => {
@@ -600,7 +657,7 @@ export function planeModel(key: SpriteKey, mods: number): UnitModel {
     fit: Math.max(plan.len, plan.span),
     body,
     owners,
-    shadow: shadowLayer(shapes, hl, hs, 0.3),
+    shadow: shadowLayer(shapes, hl, hs, plan.alt * 0.7),
     wingShade,
     alt: plan.alt * 0.7,
     props: plan.props(mods),
@@ -692,7 +749,7 @@ export function missileModel(key: SpriteKey): UnitModel {
     len: m.xn - m.xt,
     fit: m.xn - m.xt,
     body,
-    shadow: shadowLayer([shape, finShape], (m.xn - m.xt) / 2 + 1, m.finS + 1, 0.36),
+    shadow: shadowLayer([shape, finShape], (m.xn - m.xt) / 2 + 1, m.finS + 1, atom ? 10 : 9),
     alt: atom ? 10 : 9,
     flame: { x: m.xt - 0.2, r: atom ? 1.9 : 1.25 },
   };

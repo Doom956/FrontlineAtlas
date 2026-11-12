@@ -6,10 +6,11 @@
 //                 brake
 // Upgrades are real details: Armor Mastery hangs armour skirts over the tracks, Amphibious Tanks add a snorkel and
 // wading trunks, Deep Raids (light tank) jerrycans and fuel drums, Siege Tanks (heavy tank) a dozer blade.
-// The owner's colour is an air recognition panel across the turret roof, so it turns with the turret (turret sway);
-// the hull and the tracks keep their own paint.
+// The owner's colour is an air recognition panel: a clean cloth rectangle tied flat on the turret roof (clear of the
+// cupola and hatches, so nothing cuts it), muted toward the tank's own paint (model.ts tonesOf), turning with the turret
+// (turret sway); the hull and the tracks keep their own paint.
 import { M_MASTERY, M_PATH3, M_SPECIAL, type SpriteKey } from '../shared/keys';
-import { bounds, type Layer, type OwnerLayer, type Tones, type UnitModel } from './model';
+import { bounds, type Layer, type OwnerLayer, type Tones, toward, type UnitModel } from './model';
 import { block, box, castShadow, type Col, css, cylGrad, darken, domeGrad, edge, fillShape, fine, grime, hair, hexCol, innerShade, lighten, linesY, litGrad, mirrored, oval, type Paint, polyShape, rim, rod, type Shape, softShadow, strokeShape } from './paint';
 
 const OLIVE = hexCol('#5f6638');
@@ -40,6 +41,34 @@ interface TankPlan {
   turretH: number;
   hullDetail: (p: Paint, mods: number) => void;
   seed: number;
+}
+
+/**
+ * A gun barrel along +x from x0 to x1 at height h over the hull: its shadow soft and short (a wide faint band that
+ * fades out toward the muzzle, falling close under the barrel), so it never reads as a second barrel.
+ */
+function barrel(p: Paint, x0: number, x1: number, w: number, col: Col, h: number): void {
+  const c = p.ctx;
+  const sx = -p.lx * h * 0.45;
+  const sy = -p.ly * h * 0.45;
+  const g = c.createLinearGradient(x0, 0, x1, 0);
+  g.addColorStop(0, 'rgba(8,10,12,0.2)');
+  g.addColorStop(0.6, 'rgba(8,10,12,0.1)');
+  g.addColorStop(1, 'rgba(8,10,12,0)');
+  c.lineCap = 'round';
+  for (const [k, ww] of [
+    [0.6, w * 2.2],
+    [1, w * 1.3],
+  ] as const) {
+    c.beginPath();
+    c.moveTo(x0 + sx * 0.5 * k, sy * 0.5 * k);
+    c.lineTo(x1 + sx * k, sy * k);
+    c.lineWidth = ww;
+    c.strokeStyle = g;
+    c.stroke();
+  }
+  c.lineCap = 'butt';
+  rod(p, x0, 0, x1, 0, w, col, 0);
 }
 
 /** A track run: a long rounded band with its links, the sprocket and idler showing at both ends. */
@@ -79,6 +108,25 @@ function hatch(p: Paint, x: number, y: number, r: number, col: Col): void {
   fillShape(p.ctx, s, domeGrad(p, col, x, y, r, 0.22));
   edge(p, s, col, 0.8);
   if (fine(p, 2)) fillShape(p.ctx, box(x - r * 0.6, y, r * 0.18, r * 0.5, 0.05), css(darken(col, 0.4)));
+}
+
+/**
+ * The air recognition panel: a cloth rectangle from (x0, y0) to (x1, y1) lying flat on the turret roof, in the owner's
+ * tone mixed toward the tank's paint, a soft fold across it, its tie-down corners and a faint shadow at its edge.
+ */
+function panel(p: Paint, x0: number, y0: number, x1: number, y1: number, t0: Tones, paint: Col): void {
+  const c = p.ctx;
+  const t = toward(t0, paint, 0.4, 0.42, 0.56);
+  const s = box((x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0) / 2, (y1 - y0) / 2, 0.12);
+  castShadow(p, s, 0.12, 0.3);
+  fillShape(c, s, litGrad(p, t.base, (x0 + x1) / 2, (y0 + y1) / 2, Math.max(x1 - x0, y1 - y0) / 2, 0.1));
+  // a fold across the cloth
+  if (fine(p, 1.5)) strokeShape(c, (k) => {
+    k.moveTo((x0 + x1) / 2, y0 + 0.1);
+    k.lineTo((x0 + x1) / 2 + 0.1, y1 - 0.1);
+  }, css(t.dark, 0.35), hair(p, 0.8));
+  strokeShape(c, s, css(t.deep, 0.55), hair(p, 0.7));
+  if (fine(p, 1.8)) for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]] as const) fillShape(c, oval(x, y, 0.13, 0.13), css(t.deep, 0.7));
 }
 
 /** A snorkel and wading trunks (Amphibious Tanks). */
@@ -150,7 +198,7 @@ const medium: TankPlan = {
   turret(p) {
     const c = p.ctx;
     castShadow(p, medTurretShape, 1.6, 0.36);
-    rod(p, 2.6, 0, 14.3, 0, 0.62, darken(OLIVE, BARREL_DARK), 1.8);
+    barrel(p, 2.6, 14.3, 0.62, darken(OLIVE, BARREL_DARK), 1.8);
     if (fine(p, 2)) fillShape(c, oval(14.2, 0, 0.18, 0.34), css(hexCol('#151510')));
     fillShape(c, box(3.2, 0, 0.75, 1.25, 0.4), domeGrad(p, OLIVE, 3.2, 0, 1.25, 0.3));
     fillShape(c, medTurretShape, domeGrad(p, OLIVE, -0.4, 0, 3.6, 0.3));
@@ -160,13 +208,8 @@ const medium: TankPlan = {
   },
   roof(p, t) {
     const c = p.ctx;
-    c.save();
-    c.beginPath();
-    medTurretShape(c);
-    c.clip();
-    fillShape(c, box(-2.35, 0, 0.95, 3.6, 0), litGrad(p, t.base, -2.3, 0, 2, 0.24));
-    c.restore();
-    // the cupola with its vision blocks and the loader's hatch sit over the panel
+    panel(p, 0.25, -1.75, 2.35, 1.75, t, OLIVE);
+    // the cupola with its vision blocks and the loader's hatch, behind the panel
     const cx = -1.5;
     const cy = 1.35;
     fillShape(c, oval(cx, cy, 1.25, 1.25), domeGrad(p, OLIVE, cx, cy, 1.25, 0.3));
@@ -224,7 +267,7 @@ const light: TankPlan = {
   turret(p) {
     const c = p.ctx;
     castShadow(p, ltTurretShape, 1.2, 0.36);
-    rod(p, 1.6, 0, 9.6, 0, 0.38, darken(SAND, 0.45), 1.3);
+    barrel(p, 1.6, 9.6, 0.38, darken(SAND, 0.45), 1.3);
     fillShape(c, box(2.1, 0, 0.5, 0.75, 0.3), domeGrad(p, SAND, 2.1, 0, 0.8, 0.3));
     fillShape(c, ltTurretShape, domeGrad(p, SAND, -0.3, 0, 2.4, 0.3));
     edge(p, ltTurretShape, SAND, 1.1);
@@ -233,12 +276,7 @@ const light: TankPlan = {
   },
   roof(p, t) {
     const c = p.ctx;
-    c.save();
-    c.beginPath();
-    ltTurretShape(c);
-    c.clip();
-    fillShape(c, box(-1.55, 0, 0.7, 2.5, 0), litGrad(p, t.base, -1.5, 0, 1.5, 0.24));
-    c.restore();
+    panel(p, 0.15, -1.25, 1.55, 1.25, t, SAND);
     hatch(p, -0.7, 0.75, 0.68, darken(SAND, 0.06));
     // the whip aerial at the turret's back
     fillShape(c, oval(-1.9, -1.2, 0.22, 0.22), css(hexCol('#2d2b26')));
@@ -291,7 +329,7 @@ const heavy: TankPlan = {
   turret(p) {
     const c = p.ctx;
     castShadow(p, hvTurret, 2.1, 0.38);
-    rod(p, 3.0, 0, 20.0, 0, 0.92, darken(GREY_GREEN, BARREL_DARK), 2.4);
+    barrel(p, 3.0, 20.0, 0.92, darken(GREY_GREEN, BARREL_DARK), 2.4);
     // the muzzle brake
     const mb = box(20.4, 0, 0.75, 0.8, 0.2);
     fillShape(c, mb, cylGrad(p, darken(GREY_GREEN, 0.18), 20.4, 0, 1, 0, 0.8));
@@ -309,19 +347,14 @@ const heavy: TankPlan = {
   },
   roof(p, t) {
     const c = p.ctx;
-    c.save();
-    c.beginPath();
-    hvTurret(c);
-    c.clip();
-    fillShape(c, box(-3.5, 0, 1.2, 4.2, 0), litGrad(p, t.base, -3.5, 0, 2.5, 0.24));
-    c.restore();
+    panel(p, 0.0, -1.35, 2.15, 1.35, t, GREY_GREEN);
     const cx = -2.6;
     const cy = 1.8;
     fillShape(c, oval(cx, cy, 1.35, 1.35), domeGrad(p, GREY_GREEN, cx, cy, 1.35, 0.3));
     edge(p, oval(cx, cy, 1.35, 1.35), GREY_GREEN);
     hatch(p, cx, cy, 0.85, darken(GREY_GREEN, 0.06));
     hatch(p, -1.6, -1.8, 0.95, darken(GREY_GREEN, 0.05));
-    fillShape(c, oval(0.8, -1.8, 0.35, 0.35), css(darken(GREY_GREEN, 0.45)));
+    fillShape(c, oval(0.9, -2.35, 0.32, 0.32), css(darken(GREY_GREEN, 0.45)));
   },
   hullDetail(p, mods) {
     const c = p.ctx;

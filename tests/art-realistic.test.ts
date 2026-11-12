@@ -138,11 +138,13 @@ describe('realistic art style', () => {
     for (const kind of ['cannon', 'tracer', 'torpedo'] as const) for (const t of [0, 0.5, 1]) realistic.cannonFire.drawShell(ctx, { kind, x0: 0, y0: 0, x1: 100, y1: 40, t, zoom: 14, scale: 2, seed: 0.5, dpr: 1 }, lively);
     for (const t of [0, 0.1, 0.6]) realistic.cannonFire.drawMuzzle(ctx, { x: 5, y: 5, aim: 1, t, zoom: 14, scale: 2, seed: 0.3, dpr: 1 }, cinematic);
     expect(ctx.globalAlpha).toBeCloseTo(1, 6);
-    // far out a drop is small canopies in the owner's colour; at the end nothing is drawn
+    // far out a drop is small cloth canopies with the owner's muted colour at the crown (never the raw colour); at the
+    // end nothing is drawn
     const dur = realistic.paradrop.durationMs(lively);
     const far = recorder();
     realistic.paradrop.draw(far.ctx, { x: 50, y: 50, owner: [226, 74, 60], ageMs: dur * 0.4, durMs: dur, t: 0.4, count: 6, zoom: 2, scale: 1, seed: 0.3, dpr: 1 }, lively);
-    expect(far.log.some((l) => l.startsWith('fillStyle=rgb(226,74,60)'))).toBe(true);
+    expect(far.log.some((l) => l.startsWith('fillStyle=rgb(226,74,60)'))).toBe(false);
+    expect(far.log.filter((l) => l.startsWith('fill(')).length).toBeGreaterThan(6);
     expect(far.ctx.globalAlpha).toBe(1);
     const done = recorder();
     realistic.paradrop.draw(done.ctx, { x: 50, y: 50, owner: [226, 74, 60], ageMs: dur, durMs: dur, t: 1, count: 6, zoom: 14, scale: 2, seed: 0.3, dpr: 1 }, lively);
@@ -179,15 +181,16 @@ describe('realistic art style', () => {
       last = recorder();
       wakes.frame(last.ctx, [{ id: 3, key: 'battleship', x: 60 + f * 0.6, y: 120, tx: 10 + f * 0.1, ty: 20, angle: 0, half: 20, moving: true, speed: 3, turnRate: 0, motion: cinematic }], { ...view, now: f * 16 });
     }
-    // the churned water, both Kelvin arms and both sides of the bow wave: one call each
+    // the churned water; the Kelvin arms' faint band, young core and old broken foam (both arms in one call each); both
+    // sides of the bow wave
     expect(calls(last.log)).toBeGreaterThan(0);
-    expect(calls(last.log)).toBeLessThanOrEqual(3);
+    expect(calls(last.log)).toBeLessThanOrEqual(5);
     const con = realistic.contrails.createLayer();
     for (let f = 0; f < 150; f++) {
       last = recorder();
       con.frame(last.ctx, [{ id: 4, key: 'heavyBomber', x: 60 + f, y: 80, tx: 10 + f * 0.15, ty: 13, angle: 0, half: 14, moving: true, speed: 3, turnRate: 0, motion: cinematic }], { ...view, now: f * 16 });
     }
-    // the young vapour and the old haze, both engines' lines in one stroke each
+    // the wide faint band and the narrow core, both engines' trails in one fill each
     expect(calls(last.log)).toBeGreaterThan(0);
     expect(calls(last.log)).toBeLessThanOrEqual(2);
   });

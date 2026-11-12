@@ -1,20 +1,25 @@
 // The realistic style's wakes and contrails (client only). Trails stay where they were laid (map tiles) and fade there.
 //
-// Wakes (ships): the churned white water right behind the stern turning into a pale strip as it spreads, the two arms
-// of the Kelvin V running out from the stern at about 19 degrees and fading, and the bow wave curling off both sides
-// of a moving bow; all sized by speed and the MotionParams (wakeLength: how long the arms last, foamLife: the white
-// wash, wakeSpread: how wide the V opens). A submarine leaves a thin, faint wake and no bow wave.
-// Contrails (planes): thin white vapour lines behind the engines (the wing tips for single-engine planes), starting a
-// little behind the plane, widening, drifting with the wind and thinning out (contrailLife).
-// Missile trails: billowing white smoke puffs from a hot exhaust, growing and drifting as they age (missileTrailLife);
+// Wakes (ships): the churned white water right behind the stern spreading into a pale strip with a ragged edge that
+// breaks into turbulent patches, the two arms of the Kelvin V opening at its fixed angle (about 19 degrees, wakeSpread)
+// and the bow wave curling off both sides of a moving bow. The arms are as long as a few hull lengths (by distance, not
+// time: longer with speed and wakeLength), narrow and bright at the stern, widening and breaking into foam (broken
+// dashes and spray over a faint wide band) as they age; on a turn they fade and break up, never leaving clean arcs.
+// A submarine leaves a thin, faint wake and no bow wave.
+// Contrails (planes): vapour from the engines (the wing tips for single-engine planes), a few px behind them: a narrow
+// core over a wide faint band, growing from 1 to about 4 times its width as it ages, thinning out, drifting with the
+// wind, spreading and wavering a little (contrailLife). The same code at every zoom.
+// Missile trails: a continuous soft smoke ribbon widening with age, with billowing puffs packed along it (each at
+// under half its radius from the next, uneven in size, turn and lateral place), from a hot exhaust (missileTrailLife);
 // far out (TrailView.full false) a cheap soft line instead.
 //
-// Cheap: each trail is a short ring of points; a frame strokes or fills a handful of soft bands per trail (a few
-// draw calls per ship or plane), never one call per point, and skips trails off screen.
+// Cheap: each trail is a short ring of points; a frame fills or strokes a handful of soft bands per trail (a few draw
+// calls per ship or plane, never one per point) plus a capped number of puffs close up, and skips trails off screen.
 import { unitCategoryOf, type SpriteKey } from '../shared/keys';
 import type { MotionParams } from '../motion';
 import type { TrailArt, TrailLayer, TrailUnit, TrailView } from '../types';
-import { Puff, puff, WIND_X, WIND_Y } from './puffs';
+import { rnd } from '../shared/noise';
+import { Puff, puff, puffTurned, WIND_X, WIND_Y } from './puffs';
 import { modelOf } from './units';
 
 const CAP = 96;
@@ -34,6 +39,12 @@ class Emitter {
   seen = 0;
   /** the motion of the unit the trail follows (last seen) */
   motion: MotionParams | null = null;
+  /** where the trail starts this frame (the stern or the engines now, tiles), its heading and speed; hv: valid */
+  hx = 0;
+  hy = 0;
+  ha = 0;
+  hs = 0;
+  hv = false;
   constructor(
     readonly kind: number,
     public key: SpriteKey,
@@ -66,7 +77,8 @@ function trailGeom(key: SpriteKey): { back: number; side: number; beam: number }
   let side = 0;
   for (const p of m.props ?? []) side = Math.max(side, Math.abs(p.y));
   if (side < 1) side = m.fit * 0.36;
-  return { back: m.len * 0.38, side, beam: 1 };
+  // the engines' exhaust (just behind the wing), a little out from them
+  return { back: m.len * 0.22, side, beam: 1 };
 }
 
 const geomCache = new Map<SpriteKey, { back: number; side: number; beam: number }>();
@@ -121,24 +133,6 @@ function fadeAlong(ctx: CanvasRenderingContext2D, e: Emitter, v: TrailView, drif
   return g;
 }
 
-/**
- * Strokes points k0..k1 twice, `side` tiles to each side of the track (both lines in one path, one draw call), opening
- * by `spread` per tile travelled and drifting with the wind, with the stroke style already set.
- */
-function strokePair(ctx: CanvasRenderingContext2D, e: Emitter, k0: number, k1: number, v: TrailView, side: number, spread: number, drift: number, w: number): void {
-  ctx.lineWidth = w;
-  ctx.beginPath();
-  for (const sd of [-1, 1]) {
-    screenAt(e, k0, v, sd * side, spread, drift, P0);
-    ctx.moveTo(P0[0], P0[1]);
-    for (let k = k0 + 1; k <= k1; k++) {
-      screenAt(e, k, v, sd * side, spread, drift, P1);
-      ctx.lineTo(P1[0], P1[1]);
-    }
-  }
-  ctx.stroke();
-}
-
 /** Strokes points k0..k1 along the track (drifting with the wind), with the stroke style already set. */
 function strokeLine(ctx: CanvasRenderingContext2D, e: Emitter, k0: number, k1: number, v: TrailView, drift: number, w: number): void {
   ctx.lineWidth = w;
@@ -152,41 +146,148 @@ function strokeLine(ctx: CanvasRenderingContext2D, e: Emitter, k0: number, k1: n
   ctx.stroke();
 }
 
+// ------------------------------------------------------------------------------------------------- screen polylines
+
+const TAU = Math.PI * 2;
+const N = CAP + 2;
+// A trail gathered into screen space this frame, newest first: its centre line (SX, SY), the offset of its side lines
+// (OF px, along the normal NX, NY of each point's own heading), age 0..1 of the life asked for (SQ), distance along it
+// from the head (SD, tiles), how far each point's heading has turned from the head's (ST, radians: a turning ship's
+// old foam fades and breaks) and a stable 0..1 value per point (SR, so dashes and puffs stay where they were laid).
+const SX = new Float32Array(N);
+const SY = new Float32Array(N);
+const OF = new Float32Array(N);
+const NX = new Float32Array(N);
+const NY = new Float32Array(N);
+const SQ = new Float32Array(N);
+const SD = new Float32Array(N);
+const ST = new Float32Array(N);
+const SR = new Float32Array(N);
+
+const wrapPi = (a: number): number => {
+  let d = a % TAU;
+  if (d > Math.PI) d -= TAU;
+  if (d < -Math.PI) d += TAU;
+  return d;
+};
+
+interface GatherOpts {
+  /** offset of the side lines across the track (tiles) at the start, growing per tile travelled and per second of age */
+  side: number;
+  grow: number;
+  spread: number;
+  /** wind drift (tiles per second of age) and rising smoke (screen px per second of age) */
+  drift: number;
+  rise: number;
+  /** a slow sideways waver growing with age (tiles at the oldest point) */
+  wave: number;
+  /** stop at this age (ms) or this distance along the trail (tiles) */
+  life: number;
+  maxDist: number;
+}
+
+/**
+ * Gathers a trail into the S* buffers, newest first, starting at the live head (the stern or the engines this frame),
+ * up to its life or a distance along it. Returns how many points there are.
+ */
+function gather(e: Emitter, v: TrailView, o: GatherOpts): number {
+  let n = 0;
+  let dist = 0;
+  let px = e.hx;
+  let py = e.hy;
+  const z = v.zoom;
+  const add = (x: number, y: number, a: number, age: number, d: number, r: number): void => {
+    const q = Math.min(1, age / o.life);
+    const ag = age / 1000;
+    const w = o.wave * q * Math.sin(r * 6.283 + age * 0.0021);
+    const sn = Math.sin(a);
+    const cs = Math.cos(a);
+    SX[n] = v.ox + (x - sn * w + WIND_X * o.drift * ag) * z;
+    SY[n] = v.oy + (y + cs * w + WIND_Y * o.drift * ag) * z - o.rise * ag;
+    OF[n] = (o.side + o.grow * d + o.spread * ag) * z;
+    NX[n] = -sn;
+    NY[n] = cs;
+    SQ[n] = q;
+    SD[n] = d;
+    ST[n] = Math.abs(wrapPi(a - e.ha));
+    SR[n] = r;
+    n++;
+  };
+  if (e.hv) add(e.hx, e.hy, e.ha, 0, 0, 0.5);
+  else if (e.n > 0) {
+    const i = e.at(0);
+    px = e.x[i];
+    py = e.y[i];
+  }
+  for (let k = 0; k < e.n; k++) {
+    const i = e.at(k);
+    const age = v.now - e.t[i];
+    if (age > o.life || age < 0) break;
+    dist += Math.hypot(e.x[i] - px, e.y[i] - py);
+    if (dist > o.maxDist) break;
+    // (a point sitting right on the head adds nothing: the first segment needs a direction)
+    if (n > 0 && Math.abs(e.x[i] - px) + Math.abs(e.y[i] - py) < 1e-4) continue;
+    px = e.x[i];
+    py = e.y[i];
+    add(e.x[i], e.y[i], e.a[i], age, dist, rnd(e.t[i] % 100003, 7));
+  }
+  return n;
+}
+
+/** Screen x, y of gathered point i on side sd (-1 port, 0 the centre, 1 starboard). */
+const sx = (i: number, sd: number): number => SX[i] + sd * NX[i] * OF[i];
+const sy = (i: number, sd: number): number => SY[i] + sd * NY[i] * OF[i];
+
+/**
+ * A gradient along the gathered points i0..i1 (projected on the line between them): alpha as[j] where `key` (SQ or SD
+ * scaled by `total`) first reaches qs[j].
+ */
+function gradAlong(ctx: CanvasRenderingContext2D, i0: number, i1: number, rgb: string, qs: readonly number[], as: readonly number[], key: Float32Array = SQ, total = 1): CanvasGradient {
+  const x0 = SX[i0];
+  const y0 = SY[i0];
+  const dx = SX[i1] - x0;
+  const dy = SY[i1] - y0;
+  const d2 = dx * dx + dy * dy;
+  const g = ctx.createLinearGradient(x0, y0, SX[i1], SY[i1]);
+  let at = 0;
+  let j = i0;
+  for (let s = 0; s < qs.length; s++) {
+    while (j < i1 && key[j] / total < qs[s]) j++;
+    const t = d2 > 1e-6 ? ((SX[j] - x0) * dx + (SY[j] - y0) * dy) / d2 : s / Math.max(1, qs.length - 1);
+    at = s === 0 ? 0 : s === qs.length - 1 ? 1 : Math.max(at, Math.min(1, t));
+    g.addColorStop(at, `rgba(${rgb},${Math.max(0, as[s]).toFixed(3)})`);
+  }
+  return g;
+}
+
+/** Adds a ribbon round side sd of gathered points i0..i1 to the current path, half width hw(i) px. */
+function ribbonPath(ctx: CanvasRenderingContext2D, i0: number, i1: number, sd: number, hw: (i: number) => number): void {
+  if (i1 - i0 < 1) return;
+  for (let pass = 0; pass < 2; pass++) {
+    for (let k = 0; k <= i1 - i0; k++) {
+      const i = pass === 0 ? i0 + k : i1 - k;
+      const a = Math.max(i0, i - 1);
+      const b = Math.min(i1, i + 1);
+      let nx = -(sy(b, sd) - sy(a, sd));
+      let ny = sx(b, sd) - sx(a, sd);
+      const l = Math.hypot(nx, ny) || 1;
+      const h = (pass === 0 ? 1 : -1) * hw(i);
+      nx = (nx / l) * h;
+      ny = (ny / l) * h;
+      if (k === 0 && pass === 0) ctx.moveTo(sx(i, sd) + nx, sy(i, sd) + ny);
+      else ctx.lineTo(sx(i, sd) + nx, sy(i, sd) + ny);
+    }
+  }
+  ctx.closePath();
+}
+
 // trail colours (r,g,b) along their age bands
-const WASH = ['246,250,252', '234,244,247', '222,238,243', '222,238,243'];
+const WASH = ['234,244,247'];
 const WASH_EDGE = ['214,232,238'];
 const FOAM = ['236,244,247'];
 const VAPOUR = ['252,253,253'];
 const SMOKE_YOUNG = ['246,242,230'];
 const SMOKE_OLD = ['214,212,206'];
-
-/**
- * Fills a ribbon along points k0..k1 whose half width grows from h0 to h1 tiles (by age, over `life` ms), with `style`
- * (a fade along it): churned water that spreads out and settles.
- */
-function ribbonFade(ctx: CanvasRenderingContext2D, e: Emitter, k0: number, k1: number, v: TrailView, h0: number, h1: number, life: number, style: CanvasGradient): void {
-  const half = (k: number): number => {
-    const q = Math.min(1, (v.now - e.t[e.at(k)]) / life);
-    return h0 + (h1 - h0) * q;
-  };
-  ctx.beginPath();
-  for (let k = k0; k <= k1; k++) {
-    const i = e.at(k);
-    const h = half(k);
-    const x = v.ox + (e.x[i] - Math.sin(e.a[i]) * h) * v.zoom;
-    const y = v.oy + (e.y[i] + Math.cos(e.a[i]) * h) * v.zoom;
-    if (k === k0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  for (let k = k1; k >= k0; k--) {
-    const i = e.at(k);
-    const h = half(k);
-    ctx.lineTo(v.ox + (e.x[i] + Math.sin(e.a[i]) * h) * v.zoom, v.oy + (e.y[i] - Math.cos(e.a[i]) * h) * v.zoom);
-  }
-  ctx.closePath();
-  ctx.fillStyle = style;
-  ctx.fill();
-}
 
 /** The newest point index with an age of at most `ms` (the band edges), at least k0. */
 function ageIndex(e: Emitter, now: number, ms: number, k0: number): number {
@@ -228,6 +329,7 @@ class RealisticTrails implements TrailLayer {
       e.key = u.key;
       e.seen = this.frameNo;
       e.motion = u.motion;
+      e.hv = false;
       if (kind === WAKE && (!u.moving || u.speed <= 0.01)) continue;
       const g = geomOf(u.key);
       const back = (g.back * view.scale) / view.zoom;
@@ -235,6 +337,11 @@ class RealisticTrails implements TrailLayer {
       const s = Math.sin(u.angle);
       const x = u.tx - c * back;
       const y = u.ty - s * back;
+      e.hx = x;
+      e.hy = y;
+      e.ha = u.angle;
+      e.hs = Math.max(0.2, u.speed);
+      e.hv = true;
       const spacing = Math.max(0.04, (kind === MISSILE ? 2.5 : kind === WAKE ? 3 : 4) / view.zoom);
       if (e.n > 0) {
         const i = e.at(0);
@@ -263,111 +370,173 @@ class RealisticTrails implements TrailLayer {
       if ((ax < -m && bx < -m) || (ay < -m && by < -m) || (ax > view.viewW + m && bx > view.viewW + m) || (ay > view.viewH + m && by > view.viewH + m)) continue;
       if (e.kind === WAKE) this.drawWake(ctx, e, view, life);
       else if (e.kind === CONTRAIL) this.drawContrail(ctx, e, view, life);
-      else this.drawMissile(ctx, e, view, life, id);
+      else this.drawMissile(ctx, e, view, life);
     }
     if (this.wakes && view.full) for (const u of units) if (unitCategoryOf(u.key) === 'ships' && u.moving && u.speed > 0.05) bowWave(ctx, u, view);
     ctx.globalAlpha = 1;
   }
 
   private drawWake(ctx: CanvasRenderingContext2D, e: Emitter, v: TrailView, life: number): void {
+    void life;
     const m = e.motion;
     const sub = e.key === 'submarine';
     const g = geomOf(e.key);
-    const beam = (g.beam * v.scale) / v.zoom;
-    const spread = 0.34 * (m?.wakeSpread ?? 1);
-    const armLife = 1500 * (m?.wakeLength ?? 1);
-    const washLife = 1900 * (m?.foamLife ?? 1);
-    const sp = e.s[e.at(0)];
+    const k = v.scale;
+    const beam = (g.beam * k) / v.zoom;
+    const hullT = (modelOf(e.key, 0).len * k) / v.zoom;
+    const sp = e.hv ? e.hs : e.s[e.at(0)];
     const strength = Math.min(1, 0.45 + sp / 4) * (sub ? 0.5 : 1);
+    const near = k >= 2;
     ctx.lineJoin = 'round';
-    ctx.lineCap = 'butt';
-    const near = v.scale >= 2;
-    // the churned water: a white ribbon at the stern spreading into a pale strip and settling (one fill through its age
-    // bands), with a soft wide edge close up
-    const kw = [0, 0, 0, 0];
-    const edges = [0, 0.18, 0.5, 1];
-    for (let b = 1; b < 4; b++) kw[b] = ageIndex(e, v.now, washLife * edges[b], kw[b - 1]);
-    if (kw[3] > 0) {
-      const w0 = sub ? 0.28 : 0.42;
-      const fade = [1, 0.67, 0.25, 0];
-      const core = strength * (sub ? 0.26 : 0.42);
-      if (near) ribbonFade(ctx, e, 0, kw[3], v, beam * w0 * 1.45, beam * (w0 + 0.35) * 1.3, washLife, fadeAlong(ctx, e, v, 0, kw, WASH_EDGE, fade.map((f) => strength * 0.1 * f)));
-      ribbonFade(ctx, e, 0, kw[3], v, beam * w0, beam * (w0 + 0.3), washLife, fadeAlong(ctx, e, v, 0, kw, WASH, fade.map((f) => core * f)));
+    ctx.lineCap = 'round';
+    // ---- the churned water: a ribbon from the stern, its edge ragged (each point its own width), soft where it starts,
+    // spreading and settling; close up broken by spray along its first third and turbulent patches further back
+    const washLife = 1900 * (m?.foamLife ?? 1);
+    let n = gather(e, v, { side: 0, grow: 0, spread: 0, drift: 0, rise: 0, wave: 0, life: washLife, maxDist: hullT * 6 });
+    if (n >= 2) {
+      const z = v.zoom;
+      const w0 = beam * (sub ? 0.28 : 0.42) * z;
+      const w1 = beam * (sub ? 0.5 : 0.75) * z;
+      const hw = (i: number): number => (w0 + (w1 - w0) * SQ[i]) * (0.78 + 0.44 * SR[i]);
+      const core = strength * (sub ? 0.26 : 0.4);
+      if (near) {
+        ctx.beginPath();
+        ribbonPath(ctx, 0, n - 1, 0, (i) => hw(i) * 1.5);
+        ctx.fillStyle = gradAlong(ctx, 0, n - 1, WASH_EDGE[0], [0, 0.06, 0.4, 1], [0, strength * 0.1, strength * 0.05, 0]);
+        ctx.fill();
+      }
+      ctx.beginPath();
+      ribbonPath(ctx, 0, n - 1, 0, hw);
+      ctx.fillStyle = gradAlong(ctx, 0, n - 1, WASH[0], [0, 0.05, 0.18, 0.5, 1], [core * 0.3, core, core * 0.62, core * 0.22, 0]);
+      ctx.fill();
+      if (!sub) {
+        // spray along the first third, off both edges (uneven: a broken, foaming edge)
+        let c = 0;
+        for (let i = 1; i < n && c < (near ? 10 : 4); i++) {
+          if (SQ[i] > 0.33) break;
+          if (SR[i] < 0.3) continue;
+          const side = SR[i] > 0.65 ? 1 : -1;
+          const h = hw(i) * (0.55 + 0.5 * SR[i]);
+          puff(ctx, Puff.SPRAY, i, SX[i] + side * NX[i] * h, SY[i] + side * NY[i] * h, hw(i) * (0.55 + 0.6 * SR[i]), 0.26 * strength * (1 - SQ[i] / 0.33));
+          c++;
+        }
+        // turbulent patches settling further back
+        if (near) {
+          c = 0;
+          for (let i = 2; i < n && c < 6; i += 2) {
+            if (SQ[i] < 0.3) continue;
+            if (SQ[i] > 0.9) break;
+            const off = (SR[i] - 0.5) * hw(i) * 1.3;
+            puff(ctx, Puff.SPRAY, i + 3, SX[i] + NX[i] * off, SY[i] + NY[i] * off, hw(i) * (0.6 + 0.7 * SR[i]), 0.13 * strength * (1 - SQ[i]));
+            c++;
+          }
+        }
+      }
     }
-    // the Kelvin arms: foam lines opening out from the stern and fading (both arms in one stroke; close up the older
-    // half wider)
-    // (bright for the first moments, then a faint line that is gone well before its end: a long wake reads as foam
-    // settling, not as a drawn line)
-    const k1 = ageIndex(e, v.now, armLife, 0);
-    if (k1 > 0) {
-      const kq = ageIndex(e, v.now, armLife * 0.15, 0);
-      const kmid = ageIndex(e, v.now, armLife * 0.4, kq);
-      const w = Math.max(0.7, v.scale * 0.6);
-      const a0 = strength * (sub ? 0.25 : 0.6);
-      const aq = a0 * 0.45;
-      const am = strength * (sub ? 0.05 : 0.1);
-      const off = beam * 0.9;
-      if (!near || kmid <= 0 || kmid >= k1) {
-        ctx.strokeStyle = kmid > 0 && kmid < k1 ? fadeAlong(ctx, e, v, 0, [0, kq, kmid, k1], FOAM, [a0, aq, am, 0]) : fadeAlong(ctx, e, v, 0, [0, k1], FOAM, [a0, 0]);
-        strokePair(ctx, e, 0, k1, v, off, spread, 0, w * 1.15);
-      } else {
-        ctx.strokeStyle = fadeAlong(ctx, e, v, 0, [0, kq, kmid], FOAM, [a0, aq, am]);
-        strokePair(ctx, e, 0, kmid, v, off, spread, 0, w);
-        ctx.strokeStyle = fadeAlong(ctx, e, v, 0, [kmid, k1], FOAM, [am, 0]);
-        strokePair(ctx, e, kmid, k1, v, off, spread, 0, w * 1.4);
+    // ---- the Kelvin arms: a few hull lengths long (by distance), opening at their fixed angle; a narrow bright core
+    // breaking into dashes and foam as it ages over a faint wide band; on a turn they fade and break up
+    const wl = m?.wakeLength ?? 1;
+    const maxDist = hullT * (2.2 + 1.3 * Math.min(1, sp / 3)) * (0.75 + 0.25 * wl);
+    const kel = 0.35 * (m?.wakeSpread ?? 1);
+    n = gather(e, v, { side: beam * 0.9, grow: kel, spread: 0, drift: 0, rise: 0, wave: 0, life: 4000 * wl, maxDist });
+    // (cut where the ship had turned well away: older foam from round a bend is left to the wash)
+    let turn = 0;
+    for (let i = 0; i < n; i++) {
+      if (ST[i] > 0.9) {
+        n = i;
+        break;
+      }
+      turn = Math.max(turn, ST[i]);
+    }
+    if (n >= 2) {
+      const qd = (i: number): number => Math.min(1, SD[i] / maxDist);
+      const a0 = strength * (sub ? 0.25 : 0.55);
+      const calm = Math.max(0, 1 - turn / 0.5);
+      // the faint wide band under it (straight runs only: on a turn it would draw an arc)
+      if (calm > 0.05) {
+        ctx.beginPath();
+        for (const sd of [-1, 1]) {
+          ctx.moveTo(sx(0, sd), sy(0, sd));
+          for (let i = 1; i < n; i++) ctx.lineTo(sx(i, sd), sy(i, sd));
+        }
+        ctx.lineWidth = Math.max(2, k * 2.4);
+        ctx.strokeStyle = gradAlong(ctx, 0, n - 1, FOAM[0], [0, 0.4, 1], [a0 * 0.16 * calm, a0 * 0.09 * calm, 0], SD, maxDist);
+        ctx.stroke();
+      }
+      // the core: whole near the stern, then broken into ever shorter dashes (more gaps when turning), wider when older
+      let iy = 0;
+      while (iy < n - 1 && qd(iy) < 0.35) iy++;
+      const keep = (i: number): boolean => qd(i) < 0.06 || SR[i] > 0.1 + 0.6 * qd(i) + 0.7 * Math.min(1, ST[i] / 0.5);
+      for (const [i0, i1, w, al0, al1] of [
+        [0, iy, Math.max(0.8, k * 0.45), a0, a0 * 0.55],
+        [iy, n - 1, Math.max(1.2, k * 0.85), a0 * 0.4, 0],
+      ] as const) {
+        if (i1 <= i0) continue;
+        ctx.beginPath();
+        for (const sd of [-1, 1])
+          for (let i = i0; i < i1; i++) {
+            if (!keep(i)) continue;
+            ctx.moveTo(sx(i, sd), sy(i, sd));
+            ctx.lineTo(sx(i + 1, sd), sy(i + 1, sd));
+          }
+        ctx.lineWidth = w;
+        ctx.strokeStyle = gradAlong(ctx, i0, i1, FOAM[0], [0, 1], [al0, al1]);
+        ctx.stroke();
+      }
+      // close up the arms break into foam: spray puffs jittered along them, growing and fading
+      if (near && !sub) {
+        for (const sd of [-1, 1]) {
+          let c = 0;
+          for (let i = 1; i < n && c < 12; i++) {
+            if (SR[i] < 0.4) continue;
+            const q = qd(i);
+            const j = (SR[i] * 2 - 1) * k * (0.6 + 1.6 * q);
+            const tw = Math.max(0, 1 - ST[i] / 0.7);
+            puff(ctx, Puff.SPRAY, i + (sd > 0 ? 2 : 0), sx(i, sd) + NX[i] * j * sd, sy(i, sd) + NY[i] * j * sd, k * (0.7 + 2.2 * q) * (0.7 + 0.6 * SR[i]), a0 * 0.32 * Math.pow(1 - q, 1.4) * tw);
+            c++;
+          }
+        }
       }
     }
     // churning foam boiling up at the stern while under way
-    if (v.scale >= 2 && v.now - e.t[e.at(0)] < 300 && !sub) {
-      const i = e.at(0);
-      const x = v.ox + e.x[i] * v.zoom;
-      const y = v.oy + e.y[i] * v.zoom;
+    if (near && e.hv && !sub) {
+      const x = v.ox + e.hx * v.zoom;
+      const y = v.oy + e.hy * v.zoom;
       const r = beam * v.zoom * 0.9;
       for (let j = 0; j < 2; j++) {
         const ph = (v.now / 420 + j * 0.5) % 1;
-        puff(ctx, Puff.SPRAY, j + 2, x - Math.cos(e.a[i]) * r * ph * 1.6, y - Math.sin(e.a[i]) * r * ph * 1.6, r * (0.7 + ph * 0.5), 0.3 * (1 - ph) * strength);
+        puff(ctx, Puff.SPRAY, j + 2, x - Math.cos(e.ha) * r * ph * 1.6, y - Math.sin(e.ha) * r * ph * 1.6, r * (0.7 + ph * 0.5), 0.3 * (1 - ph) * strength);
       }
     }
+    ctx.lineCap = 'butt';
     ctx.globalAlpha = 1;
-    void life;
   }
 
   private drawContrail(ctx: CanvasRenderingContext2D, e: Emitter, v: TrailView, life: number): void {
     const g = geomOf(e.key);
-    const side = (g.side * v.scale) / v.zoom;
     const k = v.scale;
-    ctx.lineCap = 'butt';
-    ctx.lineJoin = 'round';
-    // the vapour forms a little behind the plane, then widens, drifts with the wind, spreads apart and thins out
-    const edges = [0.03, 0.14, 0.42, 1];
-    const kb = [0, 0, 0, 0];
-    kb[0] = ageIndex(e, v.now, life * edges[0], 0);
-    for (let b = 1; b < 4; b++) kb[b] = ageIndex(e, v.now, life * edges[b], kb[b - 1]);
-    // the young vapour, both lines in one stroke: fading in, then thinning
-    if (kb[2] > kb[0]) {
-      ctx.strokeStyle = kb[1] > kb[0] && kb[1] < kb[2] ? fadeAlong(ctx, e, v, 0.3, [kb[0], kb[1], kb[2]], VAPOUR, [0, 0.5, 0.3]) : fadeAlong(ctx, e, v, 0.3, [kb[0], kb[2]], VAPOUR, [0.25, 0.3]);
-      strokePair(ctx, e, kb[0], kb[2], v, side, 0.03, 0.3, Math.max(0.7, k * 0.6));
-    }
-    if (kb[3] > kb[2]) {
-      if (k >= 2) {
-        // close up the old vapour breaks up into soft wisps drifting apart
-        for (const sd of [-1, 1])
-          for (let kk = kb[2]; kk <= kb[3]; kk += 3) {
-            const i = e.at(kk);
-            const q = Math.min(1, (v.now - e.t[i]) / life);
-            screenAt(e, kk, v, sd * side, 0.05, 0.3, P0);
-            puff(ctx, Puff.WHITE, (kk + sd) & 7, P0[0], P0[1], k * (1 + 2.2 * q), 0.28 * (1 - q) * (1 - q));
-          }
-      } else {
-        // the old vapour spread into a wider, fainter haze
-        ctx.strokeStyle = fadeAlong(ctx, e, v, 0.3, [kb[2], kb[3]], VAPOUR, [0.24, 0]);
-        strokePair(ctx, e, kb[2], kb[3], v, side, 0.03, 0.3, Math.max(1.3, k * 1.8));
-      }
-    }
+    const a2t = k / v.zoom;
+    // vapour from the engines (or the wing tips) a few px behind them: a narrow core over a wide faint band, growing
+    // from 1 to 4 times its width with age, drifting with the wind, spreading apart and wavering a little
+    const n = gather(e, v, { side: g.side * a2t, grow: 0, spread: 0.7 * a2t, drift: 0.3, rise: 0, wave: 1.2 * a2t, life, maxDist: 1e9 });
+    if (n < 2) return;
+    const gap = (2.5 + k) / v.zoom;
+    let i0 = 0;
+    while (i0 < n - 2 && SD[i0] < gap) i0++;
+    const w0 = Math.max(0.45, k * 0.32);
+    const hw = (i: number): number => w0 * (1 + 3 * SQ[i]);
+    ctx.beginPath();
+    for (const sd of [-1, 1]) ribbonPath(ctx, i0, n - 1, sd, (i) => hw(i) * 2.6);
+    ctx.fillStyle = gradAlong(ctx, i0, n - 1, VAPOUR[0], [0, 0.04, 0.3, 0.7, 1], [0.04, 0.13, 0.11, 0.05, 0]);
+    ctx.fill();
+    ctx.beginPath();
+    for (const sd of [-1, 1]) ribbonPath(ctx, i0, n - 1, sd, hw);
+    ctx.fillStyle = gradAlong(ctx, i0, n - 1, VAPOUR[0], [0, 0.03, 0.2, 0.6, 1], [0.15, 0.55, 0.36, 0.12, 0]);
+    ctx.fill();
     ctx.globalAlpha = 1;
   }
 
-  private drawMissile(ctx: CanvasRenderingContext2D, e: Emitter, v: TrailView, life: number, id: number): void {
+  private drawMissile(ctx: CanvasRenderingContext2D, e: Emitter, v: TrailView, life: number): void {
     const big = e.key === 'atomBomb';
     const k = v.scale;
     if (!v.full) {
@@ -387,32 +556,58 @@ class RealisticTrails implements TrailLayer {
       ctx.globalAlpha = 1;
       return;
     }
-    // billowing smoke: puffs from the oldest to the newest (the young ones over the old), at most ~32 per trail
-    // (each puff at least as wide as the gap to the one before it, so a long or fast trail stays one column of smoke,
-    // never a string of beads; the exhaust glows only for its first tenth of a second)
-    const step = Math.max(1, Math.floor(e.n / 32));
+    const n = gather(e, v, { side: 0, grow: 0, spread: 0, drift: 0.35, rise: 4 * k, wave: 0, life, maxDist: 1e9 });
+    if (n < 2) return;
     const size = (big ? 1.6 : 1.15) * k;
-    let lx = NaN;
-    let ly = NaN;
-    for (let kk = e.n - 1; kk >= 0; kk -= step) {
-      const i = e.at(kk);
-      const age = v.now - e.t[i];
-      const q = age / life;
-      if (q >= 1 || q < 0) continue;
-      const drift = (age / 1000) * 0.35;
-      const x = v.ox + (e.x[i] + WIND_X * drift) * v.zoom;
-      const y = v.oy + (e.y[i] + WIND_Y * drift) * v.zoom - age * 0.004 * k;
-      const gap = lx === lx ? Math.hypot(x - lx, y - ly) : 0;
-      lx = x;
-      ly = y;
-      const r = Math.max(size * (0.9 + 3.2 * Math.sqrt(q)), Math.min(gap * 0.75, size * 5));
-      const a = 0.62 * (1 - q) * (1 - q) * Math.min(1, q * 30 + 0.3);
+    const rad = (i: number): number => size * (0.8 + 2.8 * Math.sqrt(SQ[i]));
+    // the smoke column first: one soft ribbon widening with age (so the puffs on it never read as separate beads)
+    ctx.beginPath();
+    ribbonPath(ctx, 0, n - 1, 0, (i) => rad(i) * 0.75);
+    ctx.fillStyle = gradAlong(ctx, 0, n - 1, SMOKE_OLD[0], [0, 0.04, 0.3, 0.7, 1], [0.2, 0.42, 0.3, 0.1, 0]);
+    ctx.fill();
+    // then billowing puffs packed along it, newest last (on top): one every 0.35 to 0.5 of its radius, each its own
+    // size, turn, variant and place across the column; capped in number, so a long trail ends in the ribbon alone
+    let cnt = 0;
+    for (let i = 0; i < n - 1 && cnt < PUFF_CAP; i++) {
+      const L = Math.hypot(SX[i + 1] - SX[i], SY[i + 1] - SY[i]);
+      // (evenly within each segment between two laid points, so a puff stays where it was laid as the trail grows)
+      const rm = (rad(i) + rad(i + 1)) * 0.5;
+      const m = Math.max(1, Math.ceil(L / (rm * 0.42)));
+      const base = Math.floor(SR[i + 1] * 99991);
+      for (let j = 0; j < m && cnt < PUFF_CAP; j++) {
+        const f = (j + 0.5) / m;
+        const q = SQ[i] + (SQ[i + 1] - SQ[i]) * f;
+        const seed = (base + j * 17) % 100003;
+        const r = size * (0.8 + 2.8 * Math.sqrt(q)) * (0.7 + 0.6 * rnd(seed, 1));
+        const off = (rnd(seed, 2) - 0.5) * r * 0.5;
+        PX[cnt] = SX[i] + (SX[i + 1] - SX[i]) * f + NX[i] * off;
+        PY[cnt] = SY[i] + (SY[i + 1] - SY[i]) * f + NY[i] * off;
+        PR[cnt] = r;
+        PQ[cnt] = q;
+        PS[cnt] = seed;
+        cnt++;
+      }
+    }
+    for (let c = cnt - 1; c >= 0; c--) {
+      const q = PQ[c];
+      if (q >= 1) continue;
+      const age = q * life;
+      const a = 0.5 * (1 - q) * (1 - q) * Math.min(1, q * 30 + 0.3);
       const hot = age < 110;
-      puff(ctx, hot ? Puff.FIRE : q < 0.5 ? Puff.WHITE : Puff.GREY, (i + id) % 6, x, y, r, hot ? a * 0.9 : a);
+      const kind = hot ? Puff.FIRE : q < 0.45 ? Puff.WHITE : Puff.GREY;
+      puffTurned(ctx, kind, Math.floor(rnd(PS[c], 4) * 6), PX[c], PY[c], PR[c], hot ? a * 0.9 : a, (rnd(PS[c], 5) - 0.5) * 1.2);
     }
     ctx.globalAlpha = 1;
   }
 }
+
+/** Most puffs on one missile trail, and their scratch positions. */
+const PUFF_CAP = 44;
+const PX = new Float32Array(PUFF_CAP);
+const PY = new Float32Array(PUFF_CAP);
+const PR = new Float32Array(PUFF_CAP);
+const PQ = new Float32Array(PUFF_CAP);
+const PS = new Float32Array(PUFF_CAP);
 
 /** The bow wave: white water curling off both sides of a moving bow, longer and brighter with speed. */
 function bowWave(ctx: CanvasRenderingContext2D, u: TrailUnit, v: TrailView): void {

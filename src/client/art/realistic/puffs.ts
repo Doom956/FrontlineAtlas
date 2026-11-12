@@ -175,6 +175,21 @@ export function puff(ctx: CanvasRenderingContext2D, kind: Puff, v: number, x: nu
   ctx.globalAlpha = prev;
 }
 
+/** A puff turned by `rot` radians (so neighbouring puffs of one variant never look stamped). */
+export function puffTurned(ctx: CanvasRenderingContext2D, kind: Puff, v: number, x: number, y: number, r: number, alpha: number, rot: number): void {
+  if (alpha <= 0.004 || r <= 0.2 || !init()) return;
+  const s = sprites[kind * VARIANTS + (((v % VARIANTS) + VARIANTS) % VARIANTS)];
+  if (!s) return;
+  const prev = ctx.globalAlpha;
+  ctx.globalAlpha = prev * Math.min(1, alpha);
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.drawImage(s, -r, -r, r * 2, r * 2);
+  ctx.rotate(-rot);
+  ctx.translate(-x, -y);
+  ctx.globalAlpha = prev;
+}
+
 /** A soft light: the glow of a flash or of fire, added to what is under it. */
 export function glow(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, alpha: number): void {
   if (alpha <= 0.004 || r <= 0.2 || !init() || !flashSprite) return;

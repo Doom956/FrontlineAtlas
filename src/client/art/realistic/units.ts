@@ -27,6 +27,7 @@ import { tankModel } from './land';
 import { type Bounds, type Layer, type OwnerLayer, tonesOf, type UnitModel } from './model';
 import { LIGHT_X, LIGHT_Y, painter, TAU } from './paint';
 import { Puff, puff } from './puffs';
+import { rnd } from '../shared/noise';
 import { shipModel } from './ships';
 import { makeCanvas } from '../../render/common';
 
@@ -215,24 +216,26 @@ function wholeEntry(id: number, body: AtlasEntry, own: readonly AtlasEntry[], sh
 let propSprite: HTMLCanvasElement | null = null;
 const flameSprites: HTMLCanvasElement[] = [];
 
-/** A spinning propeller seen from above, nearly edge on: a soft pale bar across the nose with darker tips. */
+/**
+ * A spinning propeller's blur disc, seen from above and very slightly ahead: an ellipse (the disc's height across, a
+ * little less than half of it along the heading), pale and almost clear in the middle, a slightly darker band where the
+ * blade tips run, no outline.
+ */
 function propImage(): HTMLCanvasElement | null {
   if (propSprite || typeof document === 'undefined') return propSprite;
-  const cv = makeCanvas(16, 64);
+  const cv = makeCanvas(64, 64);
   const c = cv.getContext('2d');
   if (!c) return null;
-  c.save();
-  c.scale(0.25, 1);
   const g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
-  g.addColorStop(0, 'rgba(210,214,212,0.55)');
-  g.addColorStop(0.75, 'rgba(160,166,166,0.42)');
-  g.addColorStop(0.9, 'rgba(60,62,62,0.5)');
+  g.addColorStop(0, 'rgba(226,230,226,0.2)');
+  g.addColorStop(0.55, 'rgba(206,210,206,0.15)');
+  g.addColorStop(0.78, 'rgba(120,124,122,0.24)');
+  g.addColorStop(0.9, 'rgba(48,50,50,0.32)');
   g.addColorStop(1, 'rgba(40,42,42,0)');
   c.fillStyle = g;
   c.beginPath();
   c.arc(32, 32, 32, 0, TAU);
   c.fill();
-  c.restore();
   propSprite = cv;
   return cv;
 }
@@ -389,18 +392,25 @@ function compose(ctx: CanvasRenderingContext2D, q: Pose, m: MotionParams): boole
   } else if (cat === 'air') {
     const bank = still ? 0 : Math.max(-m.bankMax, Math.min(m.bankMax, q.turnRate * m.bankPerTurn));
     const cb = Math.cos(bank);
+    const sb = Math.sin(bank);
     const bob = still ? 0 : Math.sin(t / 1700 + q.seed * 2.3) * m.altitudeBob;
-    // (a portrait keeps the shadow close, so it stays in its box)
-    const alt = (q.still ? Math.min(2.5, model.alt) : model.alt + bob) * sc;
+    // (a portrait keeps the shadow close, so it stays in its box; never more than about 1.5 lengths off on the map)
+    const alt = Math.min(q.still ? Math.min(2.5, model.alt) : model.alt + bob, model.len * 1.5) * sc;
+    // a banking plane slips a little sideways over its shadow, toward the lower wing (the harder the preset banks, the
+    // more), and its shadow swings out the other way as the wings tilt
+    const slip = sb * m.bankMax * 1.6 * sc;
+    const swing = -sb * alt * 0.35;
     if (sh) {
       ctx.save();
-      ctx.globalAlpha *= 0.85;
-      ctx.translate(x - LIGHT_X * alt, y - LIGHT_Y * alt);
+      ctx.globalAlpha *= 0.9;
+      ctx.translate(x - LIGHT_X * alt - sa * swing, y - LIGHT_Y * alt + ca * swing);
       ctx.rotate(q.angle);
       ctx.scale(1, cb);
       blit(ctx, sh, k);
       ctx.restore();
     }
+    x -= sa * slip;
+    y += ca * slip;
     ctx.translate(x, y);
     ctx.rotate(q.angle);
     if (cb !== 1) ctx.scale(1, cb);
@@ -417,7 +427,7 @@ function compose(ctx: CanvasRenderingContext2D, q: Pose, m: MotionParams): boole
       const ws = entry(atlas, layerId(L_BANK, ki, mods, bucket, R, 0), model.wingShade.b, ba, R, model.wingShade, null);
       if (ws) {
         const prev = ctx.globalAlpha;
-        ctx.globalAlpha = prev * Math.min(0.4, Math.abs(bank) * 0.6);
+        ctx.globalAlpha = prev * Math.min(0.55, Math.abs(bank) * 0.75);
         if (bank < 0) {
           ctx.rotate(ba);
           ctx.scale(1, -1);
@@ -463,49 +473,63 @@ function compose(ctx: CanvasRenderingContext2D, q: Pose, m: MotionParams): boole
   return true;
 }
 
-/** Propellers: a pale blurred bar across each engine's nose and, close up, one blade flickering as it turns. */
+/**
+ * Propellers: a blur disc in front of each engine (bolder with the preset's `propellers`, never smaller than about 3 CSS
+ * px so it still shows at mid zoom) and one blade streak flickering across it at propFps.
+ */
 function props(ctx: CanvasRenderingContext2D, model: UnitModel, q: Pose, m: MotionParams, sc: number, still: boolean): void {
   const img = propImage();
   if (!img || !model.props) return;
-  const a = q.still ? 0.5 : m.propellers;
+  const a = q.still ? 0.6 : m.propellers;
   if (a <= 0.02) return;
   const prev = ctx.globalAlpha;
   let i = 0;
   for (const pr of model.props) {
     const px = pr.x * sc;
     const py = pr.y * sc;
-    const r = pr.r * sc;
-    ctx.globalAlpha = prev * Math.min(1, a * 0.9);
-    ctx.drawImage(img, px - r * 0.2, py - r, r * 0.4, r * 2);
-    if (q.near && !still) {
+    const r = Math.max(3, pr.r * sc);
+    ctx.globalAlpha = prev * Math.min(1, a * 1.15);
+    ctx.drawImage(img, px - r * 0.45, py - r, r * 0.9, r * 2);
+    if (!still && r >= 3.5) {
+      // one blade caught by the eye as it turns: a thin dark streak across the disc, changing length every frame
       const f = Math.floor((q.timeMs * m.propFps) / 1000 + q.seed * 3 + i * 1.7);
-      const len = r * (0.25 + 0.75 * Math.abs(Math.cos(f * 2.39996)));
-      ctx.globalAlpha = prev * Math.min(0.85, a * 0.8);
+      const len = r * (0.3 + 0.65 * Math.abs(Math.cos(f * 2.39996)));
+      const off = Math.sin(f * 1.3) * r * 0.12;
+      ctx.globalAlpha = prev * Math.min(0.7, a * 0.6);
       ctx.fillStyle = '#25282a';
-      ctx.fillRect(px - 0.14 * sc, py - len, 0.28 * sc, len * 2);
+      const w = Math.max(0.6, 0.22 * sc);
+      ctx.fillRect(px + off - w / 2, py - len, w, len * 2);
     }
     i++;
   }
   ctx.globalAlpha = prev;
 }
 
-/** Dust kicked up behind a moving tank's tracks: puffs that drift back, grow and thin out. */
+/**
+ * Dust kicked up behind a moving tank's tracks: many faint puffs of uneven size that drift back, grow and thin out, so
+ * they merge into a haze and no single puff shows its edge.
+ */
 function tankDust(ctx: CanvasRenderingContext2D, model: UnitModel, q: Pose, amount: number, ca: number, sa: number): void {
   const d = model.dust;
   if (!d) return;
   const sc = q.sc;
-  // (two puffs a side at mid zoom, where they are a few px across)
-  const n = q.near ? 3 : 2;
+  // (three puffs a side at mid zoom, where they are a few px across)
+  const n = q.near ? 5 : 3;
   for (let side = -1; side <= 1; side += 2)
     for (let i = 0; i < n; i++) {
+      const j = i + (side > 0 ? 7 : 0);
       const ph = (q.timeMs / 900 + i / n + q.seed * 0.37 + (side > 0 ? 0.17 : 0)) % 1;
+      // the puff's own size and track: fixed for its whole life (a new one each cycle)
+      const cyc = Math.floor(q.timeMs / 900 + i / n + q.seed * 0.37 + (side > 0 ? 0.17 : 0));
+      const k = 0.6 + 0.8 * rnd(cyc * 13 + j, 5);
+      const wob = (rnd(cyc * 13 + j, 6) - 0.5) * 2.2;
       // thrown up at the track, billowing out wider than the hull and settling behind it
       const back = (d.x - 1 - ph * 12) * sc;
-      const across = side * (d.y + ph * 3) * sc;
+      const across = (side * (d.y + ph * 3) + wob * ph) * sc;
       const px = q.x + ca * back - sa * across;
       const py = q.y + sa * back + ca * across;
-      const r = (2.6 + ph * 7) * sc * (0.6 + 0.4 * amount);
-      puff(ctx, Puff.DUST, i + (side > 0 ? 3 : 0), px, py, r, (1 - ph) * (1 - ph) * Math.min(1, ph * 6) * 0.62 * amount);
+      const r = (2.4 + ph * 7.5) * k * sc * (0.6 + 0.4 * amount);
+      puff(ctx, Puff.DUST, j, px, py, r, (1 - ph) * (1 - ph) * Math.min(1, ph * 5) * 0.36 * amount);
     }
 }
 

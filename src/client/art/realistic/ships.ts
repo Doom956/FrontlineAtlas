@@ -14,12 +14,13 @@
 //   tradeShip    a merchant: a black hull with red-oxide decks, cargo hatches and container stacks, yellow derricks,
 //                a white bridge block aft with lifeboats and the funnel in the owner's colours
 // Upgrades are real details: Naval Mastery adds quad anti-aircraft mounts and a radar array, Naval Mines a pair of
-// mine rails at the stern with their mines. The owner's colour is a recognition panel (the roof of a turret, the
-// carrier's deck roundel, a band on a conning tower or a bow ramp) or a merchant's funnel: never the whole ship.
+// mine rails at the stern with their mines. The owner's colour is muted paint (model.ts tonesOf: mixed toward the haze
+// grey, its chroma capped) on one recognition band across the bow deck and a ring round the funnel top (the carrier's
+// deck roundel, a band on a conning tower or a bow ramp, a merchant's funnel): never a turret roof, never the whole ship.
 import { M_MASTERY, M_SPECIAL, type SpriteKey } from '../shared/keys';
 import { rnd } from '../shared/noise';
-import { type Bounds, bounds, type Layer, type OwnerLayer, type Tones, type UnitModel } from './model';
-import { block, box, castShadow, type Col, css, cylGrad, darken, domeGrad, edge, fillShape, fine, grime, hair, hexCol, innerShade, lighten, linesX, linesY, litGrad, oval, type Paint, polyShape, rim, rod, type Shape, shadowAt, softShadow, strokeShape, turn } from './paint';
+import { type Bounds, bounds, type Layer, type OwnerLayer, type Tones, toward, type UnitModel } from './model';
+import { block, box, castShadow, type Col, css, cylGrad, darken, domeGrad, edge, fillShape, fine, grime, hair, hexCol, innerShade, lighten, linesX, linesY, litGrad, mix, oval, type Paint, polyShape, rim, rod, type Shape, shadowAt, softShadow, strokeShape, turn } from './paint';
 
 // ------------------------------------------------------------------------------------------------- paint
 
@@ -119,8 +120,8 @@ interface Gun {
   /** barrel length and width */
   bl: number;
   bw: number;
-  /** its roof is the owner's recognition panel */
-  own?: boolean;
+  /** a main turret: a darker barbette ring round it and a stronger cast shadow, so each one stands out on the deck */
+  main?: boolean;
   /** a rangefinder across the roof (main turrets) */
   range?: boolean;
 }
@@ -148,6 +149,13 @@ function gunTurret(p: Paint, g: Gun): void {
     const c = q.ctx;
     const L2 = g.L / 2;
     const W2 = g.W / 2;
+    if (g.main) {
+      // the barbette: a dark steel ring the gun house turns on, showing round its sides
+      const br = W2 * 1.14;
+      castShadow(q, oval(-L2 * 0.08, 0, br, br), g.h * 0.55, 0.3);
+      fillShape(c, oval(-L2 * 0.08, 0, br, br), domeGrad(q, darken(GUNHOUSE, 0.42), -L2 * 0.08, 0, br, 0.18));
+      strokeShape(c, oval(-L2 * 0.08, 0, br, br), css(darken(GUNHOUSE, 0.7), 0.8), hair(q, 0.9));
+    }
     const gap = g.n === 1 ? 0 : Math.min((g.W * 0.62) / (g.n - 1), g.bw * 2.5);
     for (let i = 0; i < g.n; i++) {
       const y = (i - (g.n - 1) / 2) * gap;
@@ -157,7 +165,7 @@ function gunTurret(p: Paint, g: Gun): void {
     }
     if (fine(q, 1.4)) for (let i = 0; i < g.n; i++) fillShape(c, box(L2 * 1.02, (i - (g.n - 1) / 2) * gap, g.bw * 0.7, g.bw * 0.72, g.bw * 0.35), css(hexCol('#5a5446')));
     const house = houseShape(g.L, g.W);
-    block(q, house, GUNHOUSE, g.h, 0, 0, Math.max(L2, W2), { k: 0.26 });
+    block(q, house, GUNHOUSE, g.h, 0, 0, Math.max(L2, W2), { k: 0.26, shadow: g.main ? 0.5 : 0.32 });
     rim(q, house, GUNHOUSE, 0.55);
     if (g.range) rod(q, -L2 * 0.42, -W2 - 0.55, -L2 * 0.42, W2 + 0.55, Math.max(0.42, g.W * 0.11), darken(GUNHOUSE, 0.12), 0.35);
     if (fine(q, 1.6)) {
@@ -167,14 +175,52 @@ function gunTurret(p: Paint, g: Gun): void {
   });
 }
 
-/** The owner's colour on a gun house roof (inside its edge, so the edge and its shading stay). */
-function turretRoof(p: Paint, g: Gun, t: Tones): void {
-  turn(p, g.x, 0, g.rot, (q) => {
-    const s = houseShape(g.L * 0.84, g.W * 0.8, -g.L * 0.03);
-    fillShape(q.ctx, s, litGrad(q, t.base, 0, 0, Math.max(g.L, g.W) * 0.5, 0.24));
-    strokeShape(q.ctx, s, css(t.deep, 0.55), hair(q, 0.8));
-    if (g.range) rod(q, -g.L * 0.21, -g.W / 2 - 0.55, -g.L * 0.21, g.W / 2 + 0.55, Math.max(0.42, g.W * 0.11), darken(GUNHOUSE, 0.12), 0);
-  });
+/** The owner's tones on a warship: mixed toward the haze grey and kept dark, like a painted deck panel. */
+const deckTones = (t: Tones): Tones => toward(t, HAZE, 0.4, 0.4, 0.5);
+
+/**
+ * A recognition band painted across the deck from x0 to x1 (clipped to the hull), the guns that cross it painted
+ * again over it (so their barrels and shadows stay on top), lightly worn.
+ */
+function deckBand(p: Paint, h: Hull, x0: number, x1: number, t: Tones, over: readonly Gun[], seed: number): void {
+  const c = p.ctx;
+  const tt = deckTones(t);
+  const hull = hullShape(h);
+  const band = box((x0 + x1) / 2, 0, (x1 - x0) / 2, h.hb + 1, 0);
+  c.save();
+  c.beginPath();
+  hull(c);
+  c.clip();
+  c.globalAlpha = 0.92;
+  fillShape(c, band, litGrad(p, tt.base, (x0 + x1) / 2, 0, h.hb, 0.12));
+  c.globalAlpha = 1;
+  // a thin darker line where the paint ends (masking tape edge), a little wear
+  for (const x of [x0, x1]) strokeShape(c, (k) => {
+    k.moveTo(x, -h.hb - 1);
+    k.lineTo(x, h.hb + 1);
+  }, css(tt.deep, 0.35), hair(p, 0.7));
+  grime(p, band, x0, -h.hb, x1, h.hb, seed, 6, tt.dark, 0.22, 0.35);
+  innerShade(p, hull, 0.32, 0.3);
+  c.beginPath();
+  band(c);
+  c.clip();
+  for (const g of over) gunTurret(p, g);
+  c.restore();
+}
+
+/** The owner's ring round a funnel's top, round its soot (a funnel band seen from above). */
+function funnelBand(p: Paint, x: number, y: number, rx: number, ry: number, rake: number, t: Tones): void {
+  const c = p.ctx;
+  const tt = toward(t, HAZE, 0.35, 0.45, 0.56);
+  const tx = x - rake;
+  c.save();
+  c.beginPath();
+  c.ellipse(tx, y, rx * 0.98, ry * 0.98, 0, 0, Math.PI * 2);
+  c.ellipse(tx, y, rx * 0.74, ry * 0.7, 0, 0, Math.PI * 2);
+  c.fillStyle = cylGrad(p, tt.base, tx, y, 1, 0, ry, 0.25);
+  c.fill('evenodd');
+  c.restore();
+  strokeShape(c, oval(tx, y, rx * 0.98, ry * 0.98), css(tt.deep, 0.5), hair(p, 0.7));
 }
 
 /** A deckhouse, bridge or superstructure tier: a raised block with a lit roof, its edge and windows forward. */
@@ -290,17 +336,16 @@ interface ShipPlan {
   hull: Hull;
   guns: Gun[];
   paint(p: Paint, mods: number): void;
-  /** owner marks beyond the turret roofs, inside ownerBox [x0, y0, x1, y1] */
-  ownerPaint?(p: Paint, t: Tones): void;
-  ownerBox?: readonly [number, number, number, number];
+  /** the owner's marks: up to four small pictures, each painted inside its box [x0, y0, x1, y1] */
+  marks: { box: readonly [number, number, number, number]; paint(p: Paint, t: Tones): void }[];
   /** salvo guns (fx) as turret positions */
   salvo: (readonly [number, number])[];
 }
 
 const BB_GUNS: Gun[] = [
-  { x: 10.6, rot: 0, L: 5, W: 4.2, h: 1.5, n: 3, bl: 4.8, bw: 0.48, range: true },
-  { x: 5.6, rot: 0, L: 5, W: 4.2, h: 2.7, n: 3, bl: 5.3, bw: 0.48, own: true, range: true },
-  { x: -12, rot: Math.PI, L: 5, W: 4.2, h: 1.6, n: 3, bl: 4.8, bw: 0.48, own: true, range: true },
+  { x: 10.6, rot: 0, L: 5, W: 4.2, h: 1.7, n: 3, bl: 5.6, bw: 0.5, range: true, main: true },
+  { x: 5.6, rot: 0, L: 5, W: 4.2, h: 2.9, n: 3, bl: 6.0, bw: 0.5, range: true, main: true },
+  { x: -12, rot: Math.PI, L: 5, W: 4.2, h: 1.8, n: 3, bl: 5.6, bw: 0.5, range: true, main: true },
 ];
 
 /** Twin secondary mounts down both sides, trained out a little forward of the beam. */
@@ -318,6 +363,10 @@ const BB_SECONDARY = [1.6, -1, -3.6, -6.2];
 const battleship: ShipPlan = {
   hull: { hl: 20, hb: 4.3, bow: 9.5, stern: 4.5, sb: 0 },
   guns: BB_GUNS,
+  marks: [
+    { box: [14, -4.6, 17.2, 4.6], paint: (p, t) => deckBand(p, battleship.hull, 14.4, 16.8, t, [BB_GUNS[0]], 12) },
+    { box: [-5.6, -1.6, -2, 1.6], paint: (p, t) => funnelBand(p, -3.4, 0, 1.55, 1.25, 0.45, t) },
+  ],
   salvo: [
     [10.6, 0],
     [5.6, 0],
@@ -372,13 +421,17 @@ const battleship: ShipPlan = {
 };
 
 const CR_GUNS: Gun[] = [
-  { x: 8.2, rot: 0, L: 3.7, W: 3.1, h: 1.3, n: 2, bl: 3.6, bw: 0.38, own: true, range: true },
-  { x: -9.4, rot: Math.PI, L: 3.7, W: 3.1, h: 1.3, n: 2, bl: 3.6, bw: 0.38, own: true, range: true },
+  { x: 8.2, rot: 0, L: 3.9, W: 3.3, h: 1.4, n: 2, bl: 3.9, bw: 0.4, range: true, main: true },
+  { x: -9.4, rot: Math.PI, L: 3.9, W: 3.3, h: 1.4, n: 2, bl: 3.9, bw: 0.4, range: true, main: true },
 ];
 
 const cruiser: ShipPlan = {
-  hull: { hl: 15, hb: 3.15, bow: 7, stern: 3.4, sb: 0 },
+  hull: { hl: 15, hb: 3.4, bow: 7, stern: 3.4, sb: 0 },
   guns: CR_GUNS,
+  marks: [
+    { box: [10.6, -3.6, 13, 3.6], paint: (p, t) => deckBand(p, cruiser.hull, 10.9, 12.6, t, [CR_GUNS[0]], 24) },
+    { box: [-1.4, -1.3, 1.8, 1.3], paint: (p, t) => funnelBand(p, 0.4, 0, 1.15, 0.95, 0.3, t) },
+  ],
   salvo: [
     [8.2, 0],
     [-9.4, 0],
@@ -418,41 +471,48 @@ const cruiser: ShipPlan = {
   },
 };
 
-const DD_GUN: Gun = { x: 7.4, rot: 0, L: 2.5, W: 2.1, h: 1.1, n: 1, bl: 2.6, bw: 0.34, own: true };
+// (small and slim: clearly shorter and narrower than the cruiser at mid zoom)
+const DD_GUN: Gun = { x: 6.4, rot: 0, L: 2.3, W: 1.95, h: 1.1, n: 1, bl: 2.5, bw: 0.34 };
+const DD_HULL: Hull = { hl: 10.5, hb: 1.75, bow: 5.2, stern: 1.4, sb: 1.05 };
 
 const destroyer: ShipPlan = {
-  hull: { hl: 12, hb: 2.05, bow: 6, stern: 1.6, sb: 1.25 },
+  hull: DD_HULL,
   guns: [DD_GUN],
+  marks: [
+    { box: [7.6, -2, 9.4, 2], paint: (p, t) => deckBand(p, DD_HULL, 7.8, 9.0, t, [DD_GUN], 38) },
+    { box: [-1.4, -1.1, 1.4, 1.1], paint: (p, t) => funnelBand(p, 0.5, 0, 1.12, 0.74, 1.0, t) },
+  ],
   salvo: [
-    [7.4, 0],
-    [7.4, 0],
+    [6.4, 0],
+    [6.4, 0],
   ],
   paint(p, mods) {
     const c = p.ctx;
     paintHull(p, this.hull, hexCol('#646b70'), darken(HAZE, 0.32), 37, { planks: 'rgba(30,34,38,0.2)' });
-    rod(p, 11.3, 0, 9.8, 0, 0.16, hexCol('#2d3134'));
-    house(p, 3.9, 0, 1.6, 1.45, 2.2, HAZE, 0.55, true);
-    fillShape(c, oval(3.6, 0, 0.55, 0.55), domeGrad(p, GUNHOUSE, 3.6, 0, 0.55));
-    mast(p, 2.2, 0, 4.4, 1.0);
-    // the raked funnel and the two sets of torpedo tubes trained a little off the centre line
-    funnel(p, 0.6, 0, 1.25, 0.82, 3.2, HAZE, 1.1);
-    for (const tx of [-3.5, -6.7]) {
+    rod(p, 9.9, 0, 8.6, 0, 0.16, hexCol('#2d3134'));
+    house(p, 3.4, 0, 1.4, 1.25, 2.2, HAZE, 0.5, true);
+    fillShape(c, oval(3.15, 0, 0.5, 0.5), domeGrad(p, GUNHOUSE, 3.15, 0, 0.5));
+    mast(p, 1.95, 0, 4.4, 0.9);
+    // the raked funnel (a black cap) and the two sets of torpedo tubes, dark on their pale mounts, trained a little
+    // off the centre line: high contrast, so the slim hull reads as a destroyer even small
+    funnel(p, 0.5, 0, 1.12, 0.74, 3.2, HAZE, 1.0, hexCol('#141618'));
+    for (const tx of [-3.1, -5.9]) {
       turn(p, tx, 0, tx < -5 ? -0.2 : 0.2, (q) => {
-        fillShape(q.ctx, oval(0, 0, 0.8, 0.8), domeGrad(q, darken(HAZE, 0.15), 0, 0, 0.8));
-        for (const off of [-0.5, -0.17, 0.17, 0.5]) rod(q, -1.45, off, 1.55, off, 0.28, hexCol('#5b6368'), 0.7);
+        fillShape(q.ctx, oval(0, 0, 0.72, 0.72), domeGrad(q, lighten(HAZE, 0.12), 0, 0, 0.72));
+        for (const off of [-0.45, -0.15, 0.15, 0.45]) rod(q, -1.35, off, 1.45, off, 0.26, hexCol('#33393d'), 0.7);
       });
     }
-    if (mods & M_SPECIAL) mineRails(p, -9.8, 0.9);
+    if (mods & M_SPECIAL) mineRails(p, -8.6, 0.78);
     else
       // depth charge racks at the stern
-      for (const y of [-0.85, 0.85]) {
-        rod(p, -9.2, y, -11.5, y, 0.32, darken(HAZE, 0.3), 0.3);
-        if (fine(p, 1.5)) for (let k = 0; k < 4; k++) fillShape(c, oval(-9.5 - k * 0.6, y, 0.25, 0.25), domeGrad(p, hexCol('#3d4245'), -9.5 - k * 0.6, y, 0.25));
+      for (const y of [-0.74, 0.74]) {
+        rod(p, -8.0, y, -10.1, y, 0.3, darken(HAZE, 0.3), 0.3);
+        if (fine(p, 1.5)) for (let k = 0; k < 4; k++) fillShape(c, oval(-8.3 - k * 0.52, y, 0.22, 0.22), domeGrad(p, hexCol('#3d4245'), -8.3 - k * 0.52, y, 0.22));
       }
     if (mods & M_MASTERY) {
-      aaMount(p, -0.9, -1.6, -1.3);
-      aaMount(p, -0.9, 1.6, 1.3);
-      radar(p, 2.2, 0, 0.9, 4.6);
+      aaMount(p, -0.9, -1.4, -1.3);
+      aaMount(p, -0.9, 1.4, 1.3);
+      radar(p, 1.95, 0, 0.8, 4.6);
     }
     gunTurret(p, DD_GUN);
   },
@@ -460,7 +520,7 @@ const destroyer: ShipPlan = {
 
 const submarine: ShipPlan = {
   hull: { hl: 13, hb: 1.85, bow: 6.5, stern: 5.5, sb: 0 },
-  ownerBox: [-0.6, -1.2, 3.8, 1.2],
+  marks: [{ box: [-0.6, -1.2, 3.8, 1.2], paint: (p, t) => subMark(p, t) }],
   guns: [],
   salvo: [
     [1.6, 0],
@@ -515,25 +575,28 @@ const submarine: ShipPlan = {
       seaMine(p, -7.7, 0, 0.5);
     }
   },
-  ownerPaint(p, t) {
-    const c = p.ctx;
-    const band = box(1.0, 0, 0.62, 0.82, 0.2);
-    c.save();
-    c.beginPath();
-    c.moveTo(4.1, 0);
-    c.bezierCurveTo(3.6, -0.95, 0.6, -1.0, -1.1, -0.72);
-    c.bezierCurveTo(-1.8, -0.5, -1.8, 0.5, -1.1, 0.72);
-    c.bezierCurveTo(0.6, 1.0, 3.6, 0.95, 4.1, 0);
-    c.clip();
-    fillShape(c, band, litGrad(p, t.base, 1, 0, 1, 0.2));
-    fillShape(c, box(3.0, 0, 0.42, 0.9, 0.15), litGrad(p, t.base, 3, 0, 1, 0.2));
-    c.restore();
-  },
 };
+
+/** The owner's band round the submarine's sail (dark, toward the hull's black). */
+function subMark(p: Paint, t0: Tones): void {
+  const t = toward(t0, SUB_HULL, 0.35, 0.36, 0.46);
+  const c = p.ctx;
+  const band = box(1.0, 0, 0.62, 0.82, 0.2);
+  c.save();
+  c.beginPath();
+  c.moveTo(4.1, 0);
+  c.bezierCurveTo(3.6, -0.95, 0.6, -1.0, -1.1, -0.72);
+  c.bezierCurveTo(-1.8, -0.5, -1.8, 0.5, -1.1, 0.72);
+  c.bezierCurveTo(0.6, 1.0, 3.6, 0.95, 4.1, 0);
+  c.clip();
+  fillShape(c, band, litGrad(p, t.base, 1, 0, 1, 0.2));
+  fillShape(c, box(3.0, 0, 0.42, 0.9, 0.15), litGrad(p, t.base, 3, 0, 1, 0.2));
+  c.restore();
+}
 
 const carrier: ShipPlan = {
   hull: { hl: 23, hb: 3.7, bow: 8.5, stern: 3, sb: 2.6 },
-  ownerBox: [12.4, -2.6, 18, 2.6],
+  marks: [{ box: [3.8, -2.7, 9.2, 2.7], paint: (p, t) => carrierRoundel(p, t) }],
   guns: [],
   salvo: [
     [0, 4.4],
@@ -591,10 +654,11 @@ const carrier: ShipPlan = {
     house(p, 0.6, 4.9, 1.4, 0.7, 5, HAZE, 0.4);
     funnel(p, -2.4, 5.0, 1.15, 0.72, 5.2, HAZE, 0.5);
     mast(p, 0.9, 4.9, 6.4, 0.9);
-    // AA galleries along both sides
-    for (const x of [15, 8, -8, -16]) {
-      fillShape(c, box(x, -4.75, 1.2, 0.32, 0.1), css(darken(HAZE, 0.1)));
-      if (fine(p, 1.4)) for (const d of [-0.6, 0, 0.6]) rod(p, x + d, -4.8, x + d + 0.3, -5.3, 0.14, BARREL, 0.3);
+    // a few low gun tubs on the port edge, rounded and close to the deck's own grey (not spikes)
+    for (const x of [13, 1, -13]) {
+      const tub = oval(x, -4.72, 1.05, 0.46);
+      block(p, tub, mix(CARRIER_DECK, HAZE, 0.45), 0.35, x, -4.72, 1, { edge: 0.6, shadow: 0.22 });
+      if (fine(p, 1.4)) for (const d of [-0.42, 0, 0.42]) rod(p, x + d, -4.7, x + d + 0.22, -4.98, 0.12, darken(HAZE, 0.3));
     }
     if (mods & M_MASTERY) {
       for (const [x, y] of [
@@ -608,50 +672,51 @@ const carrier: ShipPlan = {
       radar(p, 0.9, 4.9, 1.0, 6.6);
     }
     if (mods & M_SPECIAL) mineRails(p, -19.6, 1.2);
-    // the planes parked aft, wings folded, in two rows (and two more forward when the air group is stronger)
-    const spots: [number, number][] = [
-      [-10.2, -2.3],
-      [-10.2, 0],
-      [-10.2, 2.3],
-      [-13.4, -2.3],
-      [-13.4, 0],
-      [-13.4, 2.3],
-      [-16.6, -1.2],
-      [-16.6, 1.2],
-    ];
-    if (mods & M_MASTERY) spots.push([6.6, -2.4], [6.6, 0]);
-    for (const [x, y] of spots) parkedPlane(p, x, y);
-  },
-  ownerPaint(p, t) {
-    // the recognition roundel near the bow end of the flight deck
-    const c = p.ctx;
-    fillShape(c, oval(15.2, 0, 2.3, 2.3), css(hexCol('#e9e9e2'), 0.9));
-    fillShape(c, oval(15.2, 0, 1.9, 1.9), litGrad(p, t.base, 15.2, 0, 1.9, 0.2));
-    strokeShape(c, oval(15.2, 0, 1.9, 1.9), css(t.deep, 0.5), hair(p, 0.7));
+    // the air group: two neat rows parked aft with their wings spread, a row folded at the stern, two on the bow
+    // catapults ready to launch (and two more amidships when the air group is stronger)
+    for (const x of [-9.8, -13.8]) for (const y of [-2.25, 2.25]) parkedPlane(p, x, y, false);
+    for (const y of [-2.6, 0, 2.6]) parkedPlane(p, -17.8, y, true);
+    for (const y of [-1.9, 1.9]) parkedPlane(p, 16.8, y, false);
+    if (mods & M_MASTERY) for (const y of [-2.3, 2.3]) parkedPlane(p, -6.2, y, true);
   },
 };
 
-/** A small carrier plane parked with its wings folded up (top view). */
-function parkedPlane(p: Paint, x: number, y: number): void {
-  const col = hexCol('#55697a');
+/** The carrier's recognition roundel on the flight deck, ahead of the island: muted, with a small brighter centre. */
+function carrierRoundel(p: Paint, t0: Tones): void {
+  const c = p.ctx;
+  const t = toward(t0, CARRIER_DECK, 0.35, 0.4, 0.52);
+  const x = 6.5;
+  fillShape(c, oval(x, 0, 2.15, 2.15), css(hexCol('#c9c8bd'), 0.7));
+  fillShape(c, oval(x, 0, 1.75, 1.75), litGrad(p, t.base, x, 0, 1.75, 0.14));
+  fillShape(c, oval(x, 0, 0.62, 0.62), css(t.accent, 0.9));
+  strokeShape(c, oval(x, 0, 2.15, 2.15), css(t.deep, 0.35), hair(p, 0.7));
+}
+
+/** A small carrier plane parked on deck (top view), wings spread or folded back, in a pale sea blue that shows on the dark deck. */
+function parkedPlane(p: Paint, x: number, y: number, folded: boolean): void {
+  const col = hexCol('#7f97ac');
   const c = p.ctx;
   const body: Shape = (k) => {
-    k.moveTo(x + 1.3, y);
-    k.bezierCurveTo(x + 1.2, y - 0.42, x - 1.1, y - 0.3, x - 1.3, y);
-    k.bezierCurveTo(x - 1.1, y + 0.3, x + 1.2, y + 0.42, x + 1.3, y);
+    k.moveTo(x + 1.7, y);
+    k.bezierCurveTo(x + 1.6, y - 0.5, x - 1.3, y - 0.36, x - 1.7, y);
+    k.bezierCurveTo(x - 1.3, y + 0.36, x + 1.6, y + 0.5, x + 1.7, y);
     k.closePath();
   };
-  // folded wings: two short stubs and the folded panels lying back along the body
-  const wings = polyShape([x + 0.5, y - 1.1, x + 0.9, y - 1.1, x + 0.9, y + 1.1, x + 0.5, y + 1.1]);
-  block(p, wings, col, 0.4, x + 0.7, y, 1);
-  block(p, body, col, 0.5, x, y, 1.2, { k: 0.3 });
-  rod(p, x - 1.1, y - 0.55, x - 1.1, y + 0.55, 0.2, col, 0.3);
-  if (fine(p, 2)) fillShape(c, oval(x + 0.25, y, 0.3, 0.18), css(hexCol('#1f2a33')));
+  const wings = folded
+    ? polyShape([x + 0.5, y - 0.95, x + 0.95, y - 0.95, x + 0.95, y + 0.95, x + 0.5, y + 0.95])
+    : polyShape([x + 0.85, y - 0.4, x + 0.55, y - 2.05, x - 0.05, y - 2.05, x - 0.35, y - 0.4, x - 0.35, y + 0.4, x - 0.05, y + 2.05, x + 0.55, y + 2.05, x + 0.85, y + 0.4]);
+  block(p, wings, col, 0.45, x + 0.3, y, 1.4, { shadow: 0.4 });
+  // folded panels lie back along the body
+  if (folded) for (const sd of [-1, 1]) block(p, box(x - 0.25, y + sd * 0.82, 0.75, 0.2, 0.08), darken(col, 0.06), 0.6, x - 0.25, y + sd * 0.82, 0.8, { shadow: 0.35 });
+  block(p, body, col, 0.6, x, y, 1.4, { k: 0.3, shadow: 0.4 });
+  rod(p, x - 1.4, y - 0.7, x - 1.4, y + 0.7, 0.24, col, 0.35);
+  fillShape(c, oval(x + 1.62, y, 0.14, 0.42), css(hexCol('#2b2f33')));
+  if (fine(p, 1.6)) fillShape(c, oval(x + 0.35, y, 0.36, 0.2), css(hexCol('#1f2a33')));
 }
 
 const transport: ShipPlan = {
   hull: { hl: 12, hb: 3.4, bow: 3.2, stern: 1.4, sb: 2.9, blunt: true },
-  ownerBox: [9.4, -2.5, 11.6, 2.5],
+  marks: [{ box: [9.4, -2.5, 11.6, 2.5], paint: (p, t) => rampBand(p, t) }],
   guns: [],
   salvo: [
     [0, 0],
@@ -703,19 +768,22 @@ const transport: ShipPlan = {
     boat(p, -9.6, 2.95, 0.95, 0.38, BOAT, 0.4);
     for (const y of [-3.05, 3.05]) fillShape(c, box(-5.2, y, 0.7, 0.25, 0.1), css(RAFT));
   },
-  ownerPaint(p, t) {
-    const c = p.ctx;
-    const band = box(10.5, 0, 0.62, 2.0, 0.2);
-    fillShape(c, band, litGrad(p, t.base, 10.5, 0, 1.5, 0.22));
-    strokeShape(c, band, css(t.deep, 0.5), hair(p, 0.7));
-  },
 };
+
+/** The owner's band across the landing ship's bow ramp. */
+function rampBand(p: Paint, t0: Tones): void {
+  const c = p.ctx;
+  const t = toward(t0, LST, 0.4, 0.4, 0.52);
+  const band = box(10.5, 0, 0.62, 2.0, 0.2);
+  fillShape(c, band, litGrad(p, t.base, 10.5, 0, 1.5, 0.16));
+  strokeShape(c, band, css(t.deep, 0.45), hair(p, 0.7));
+}
 
 const HOLDS = [9.4, 5.0, 0.6, -3.8];
 
 const tradeShip: ShipPlan = {
   hull: { hl: 16, hb: 2.95, bow: 6.2, stern: 2.6, sb: 1.4 },
-  ownerBox: [-13.4, -1.6, -9.0, 1.6],
+  marks: [{ box: [-13.4, -1.6, -9.0, 1.6], paint: (p, t) => merchantFunnel(p, t) }],
   guns: [],
   salvo: [
     [0, 0],
@@ -779,29 +847,31 @@ const tradeShip: ShipPlan = {
     // the funnel's shadow (the funnel itself is the owner's livery)
     castShadow(p, oval(-11.1, 0, 1.35, 1.15), 5, 0.38);
   },
-  ownerPaint(p, t) {
-    // the funnel in the owner's colours with a black top
-    const c = p.ctx;
-    const x = -10.7;
-    const rx = 1.35;
-    const ry = 1.15;
-    const rake = 1.1;
-    const body: Shape = (k) => {
-      k.moveTo(x, -ry);
-      k.ellipse(x, 0, rx, ry, 0, -Math.PI / 2, Math.PI / 2);
-      k.lineTo(x - rake, ry);
-      k.ellipse(x - rake, 0, rx, ry, 0, Math.PI / 2, (Math.PI * 3) / 2);
-      k.closePath();
-    };
-    fillShape(c, body, cylGrad(p, t.base, x, 0, 1, 0, ry, 0.3));
-    edge(p, body, t.dark);
-    // a band of the owner's lighter tone, then the black top with its soot
-    fillShape(c, oval(x - rake * 0.55, 0, rx, ry), cylGrad(p, t.light, x, 0, 1, 0, ry, 0.2));
-    fillShape(c, oval(x - rake * 0.7, 0, rx, ry), cylGrad(p, t.base, x, 0, 1, 0, ry, 0.3));
-    fillShape(c, oval(x - rake, 0, rx, ry), css(hexCol('#26272a')));
-    fillShape(c, oval(x - rake, 0, rx * 0.68, ry * 0.62), css(hexCol('#0e0f10')));
-  },
 };
+
+/** The merchant's funnel in the owner's colours (a shipping line's livery, muted like old paint) with a black top. */
+function merchantFunnel(p: Paint, t0: Tones): void {
+  const t = toward(t0, [150, 146, 136], 0.3, 0.44, 0.6);
+  const c = p.ctx;
+  const x = -10.7;
+  const rx = 1.35;
+  const ry = 1.15;
+  const rake = 1.1;
+  const body: Shape = (k) => {
+    k.moveTo(x, -ry);
+    k.ellipse(x, 0, rx, ry, 0, -Math.PI / 2, Math.PI / 2);
+    k.lineTo(x - rake, ry);
+    k.ellipse(x - rake, 0, rx, ry, 0, Math.PI / 2, (Math.PI * 3) / 2);
+    k.closePath();
+  };
+  fillShape(c, body, cylGrad(p, t.base, x, 0, 1, 0, ry, 0.3));
+  edge(p, body, t.dark);
+  // a band of the owner's lighter tone, then the black top with its soot
+  fillShape(c, oval(x - rake * 0.55, 0, rx, ry), cylGrad(p, t.light, x, 0, 1, 0, ry, 0.2));
+  fillShape(c, oval(x - rake * 0.7, 0, rx, ry), cylGrad(p, t.base, x, 0, 1, 0, ry, 0.3));
+  fillShape(c, oval(x - rake, 0, rx, ry), css(hexCol('#26272a')));
+  fillShape(c, oval(x - rake, 0, rx * 0.68, ry * 0.62), css(hexCol('#0e0f10')));
+}
 
 const PLANS: Partial<Record<SpriteKey, ShipPlan>> = { warship: cruiser, destroyer, battleship, submarine, carrier, transport, tradeShip };
 
@@ -834,14 +904,10 @@ export function shipModel(key: SpriteKey, mods: number): UnitModel {
   const wide = key === 'carrier' ? 5.6 : h.hb + 1.2;
   const b = scaleB(bounds(-h.hl - 1.5, -wide - 1.8, h.hl + 1.5, wide + 1.8));
   const body: Layer = { b, paint: (p) => widened(p, (q) => plan.paint(q, mods)) };
-  const owners: OwnerLayer[] = [];
-  for (const g of plan.guns)
-    if (g.own) owners.push({ b: scaleB(bounds(g.x - g.L / 2 - 0.4, -g.W / 2 - 1, g.x + g.L / 2 + 0.4, g.W / 2 + 1)), paint: (p, t) => widened(p, (q) => turretRoof(q, g, t)) });
-  if (plan.ownerPaint && plan.ownerBox) {
-    const ob = plan.ownerBox;
-    const op = plan.ownerPaint;
-    owners.push({ b: scaleB(bounds(ob[0], ob[1], ob[2], ob[3])), paint: (p, t) => widened(p, (q) => op.call(plan, q, t)) });
-  }
+  const owners: OwnerLayer[] = plan.marks.map((mk) => ({
+    b: scaleB(bounds(mk.box[0], mk.box[1], mk.box[2], mk.box[3])),
+    paint: (p: Paint, t: Tones) => widened(p, (q) => mk.paint(q, t)),
+  }));
   const shape = key === 'carrier' ? box(-0.3, 0, 22, 4.6, 1.2) : hullShape(h);
   const shadow: Layer = {
     b: scaleB(bounds(-h.hl - 3, -wide - 3, h.hl + 3, wide + 3)),

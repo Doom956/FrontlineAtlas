@@ -5,6 +5,9 @@
 //   pit      the bowl (its upper left inner wall in shade, its lower right wall lit, since the light comes from the
 //            top left), the raised rim of thrown earth (lit on its upper left outer slope) and clods scattered round it;
 //            it stays longest
+// No two look stamped: ten shapes, each pit a little elliptical and turned its own way (the light baked in stays from
+// the top left), each crater drawn a little bigger or smaller by its seed; the rim is a broken ring of lumps of uneven
+// size and tone, the clods are irregular chunks, the soot streaks feathered.
 // A fresh crater still glows red in the bottom of the pit and, with craterSmoke, lets thin smoke wisps rise and drift.
 import type { MotionParams } from '../motion';
 import { SpriteAtlas, type AtlasEntry } from '../shared/atlas';
@@ -13,8 +16,8 @@ import type { CraterArt, CraterDraw } from '../types';
 import { LIGHT_X, LIGHT_Y, TAU } from './paint';
 import { clamp01, glow, Puff, puff, ramp, WIND_X, WIND_Y } from './puffs';
 
-const atlas = new SpriteAtlas(1024, 3);
-const VARIANTS = 6;
+const atlas = new SpriteAtlas(1024, 4);
+const VARIANTS = 10;
 /** The biggest crater radius baked (device px); bigger ones are drawn enlarged (soft paint stays soft). */
 const MAX_R = 64;
 /** A crater's sprite reaches this many radii from its centre (the longest streaks). */
@@ -58,7 +61,9 @@ function paintScorch(c: CanvasRenderingContext2D, r: number, v: number): void {
   ragged(c, 0, 0, r * 2, 0.18, seed, 22);
   c.fill();
   // radial streaks of soot thrown out: feathered plumes of uneven length and width, bowed a little (blast soot, not a
-  // drawn star), fading out along their length
+  // drawn star), fading out along their length, their sides blurred (painted once, so the blur costs nothing later)
+  const soft = 'filter' in c;
+  if (soft) c.filter = `blur(${Math.max(0.6, r * 0.07).toFixed(2)}px)`;
   const n = 14 + (v % 3) * 3;
   for (let i = 0; i < n; i++) {
     const a = (i / n) * TAU + (rnd(seed, i + 30) - 0.5) * 0.35;
@@ -88,6 +93,7 @@ function paintScorch(c: CanvasRenderingContext2D, r: number, v: number): void {
     c.closePath();
     c.fill();
   }
+  if (soft) c.filter = 'none';
   // burnt specks
   for (let i = 0; i < 26; i++) {
     const a = rnd(seed, i + 200) * TAU;
@@ -99,39 +105,80 @@ function paintScorch(c: CanvasRenderingContext2D, r: number, v: number): void {
   }
 }
 
+/** An irregular chunk of earth: a lumpy polygon of 5 to 7 corners round (x, y), about s across. */
+function chunk(c: CanvasRenderingContext2D, x: number, y: number, s: number, seed: number): void {
+  const n = 5 + Math.floor(rnd(seed, 1) * 3);
+  const rot = rnd(seed, 2) * TAU;
+  c.beginPath();
+  for (let j = 0; j < n; j++) {
+    const a = rot + (j / n) * TAU + (rnd(seed, j + 10) - 0.5) * 0.8;
+    const rr = s * (0.5 + rnd(seed, j + 20) * 0.6) * (j === 0 ? 1.25 : 1);
+    if (j === 0) c.moveTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr * 0.85);
+    else c.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr * 0.85);
+  }
+  c.closePath();
+}
+
+const CLODS = ['#8a7659', '#4d3e2f', '#65533f', '#3d3126', '#776448', '#2e251d'];
+
+/**
+ * The pit of variant v, radius r: clods round it, then the rim and the bowl in their own ellipse and turn (`ex`, `rot`
+ * from the variant), with the light given in that turned and stretched frame so the shading still falls from the top
+ * left on screen.
+ */
 function paintPit(c: CanvasRenderingContext2D, r: number, v: number): void {
   const seed = 97 + v * 23;
-  // fine clods of earth thrown out round the rim, darker and smaller further out
-  for (let i = 0; i < 28; i++) {
+  // fine clods of earth thrown out round the rim: irregular chunks, uneven in size and tone, smaller further out
+  for (let i = 0; i < 30; i++) {
     const a = rnd(seed, i) * TAU;
     const d = r * (1.1 + Math.pow(rnd(seed, i + 20), 1.6) * 0.95);
-    const s = Math.max(0.45, r * (0.03 + rnd(seed, i + 40) * 0.05) * (1.6 - (d / r - 1.1)));
+    const sz = Math.max(0.5, r * (0.025 + Math.pow(rnd(seed, i + 40), 2) * 0.09) * (1.6 - (d / r - 1.1)));
     const x = Math.cos(a) * d;
     const y = Math.sin(a) * d * 0.9;
-    c.fillStyle = 'rgba(10,8,6,0.35)';
-    c.beginPath();
-    c.ellipse(x - LIGHT_X * s * 0.5, y - LIGHT_Y * s * 0.5, s * 1.2, s * 0.9, a, 0, TAU);
+    c.fillStyle = 'rgba(10,8,6,0.32)';
+    chunk(c, x - LIGHT_X * sz * 0.5, y - LIGHT_Y * sz * 0.5, sz, seed * 7 + i);
     c.fill();
-    c.fillStyle = i % 4 === 0 ? '#8a7659' : i % 2 ? '#4d3e2f' : '#65533f';
-    c.beginPath();
-    c.ellipse(x, y, s * 1.2, s * 0.9, a, 0, TAU);
+    c.fillStyle = CLODS[Math.floor(rnd(seed, i + 60) * CLODS.length)];
+    chunk(c, x, y, sz, seed * 7 + i);
     c.fill();
   }
-  // the raised rim of thrown earth: solid at the lip, thinning out into the ground
-  const rim = c.createRadialGradient(0, 0, r * 0.7, 0, 0, r * 1.3);
-  rim.addColorStop(0, 'rgba(98,82,62,1)');
-  rim.addColorStop(0.35, 'rgba(98,82,62,1)');
-  rim.addColorStop(0.62, 'rgba(92,77,58,0.75)');
-  rim.addColorStop(1, 'rgba(88,74,56,0)');
-  c.fillStyle = rim;
-  c.beginPath();
-  ragged(c, 0, 0, r * 1.3, 0.12, seed + 5, 22);
-  c.fill();
+  const ex = 1 + rnd(seed, 901) * 0.3;
+  const rot = rnd(seed, 900) * Math.PI;
+  c.save();
+  c.rotate(rot);
+  c.scale(ex, 1 / ex);
+  // the light in this frame: turned back, then stretched the other way (and made a unit again)
+  const cr = Math.cos(-rot);
+  const sr = Math.sin(-rot);
+  let lx = (LIGHT_X * cr - LIGHT_Y * sr) / ex;
+  let ly = (LIGHT_X * sr + LIGHT_Y * cr) * ex;
+  const ll = Math.hypot(lx, ly) || 1;
+  lx /= ll;
+  ly /= ll;
+  // the raised rim of thrown earth: a broken ring of lumps, thick in places and thin in others, each its own tone
+  const lumps = 16;
+  for (let i = 0; i < lumps; i++) {
+    const a = (i / lumps) * TAU + (rnd(seed, i + 600) - 0.5) * 0.35;
+    const th = 0.16 + Math.pow(rnd(seed, i + 610), 1.3) * 0.32;
+    const d = r * (0.98 + (rnd(seed, i + 620) - 0.5) * 0.12);
+    const tone = 0.82 + rnd(seed, i + 630) * 0.32;
+    const g = c.createRadialGradient(Math.cos(a) * d, Math.sin(a) * d, 0, Math.cos(a) * d, Math.sin(a) * d, r * th * 1.4);
+    const R0 = Math.round(98 * tone);
+    const G0 = Math.round(82 * tone);
+    const B0 = Math.round(62 * tone);
+    g.addColorStop(0, `rgba(${R0},${G0},${B0},0.95)`);
+    g.addColorStop(0.55, `rgba(${R0},${G0},${B0},0.6)`);
+    g.addColorStop(1, `rgba(${R0},${G0},${B0},0)`);
+    c.fillStyle = g;
+    c.beginPath();
+    c.ellipse(Math.cos(a) * d, Math.sin(a) * d, r * th * 1.4, r * th * 1.0, a, 0, TAU);
+    c.fill();
+  }
   // lit on its upper left outer slope, in shade on the lower right (only over the earth just painted)
   c.save();
   c.globalCompositeOperation = 'source-atop';
-  const lit = c.createLinearGradient(LIGHT_X * r * 1.3, LIGHT_Y * r * 1.3, -LIGHT_X * r * 1.3, -LIGHT_Y * r * 1.3);
-  lit.addColorStop(0, 'rgba(200,182,150,0.55)');
+  const lit = c.createLinearGradient(lx * r * 1.3, ly * r * 1.3, -lx * r * 1.3, -ly * r * 1.3);
+  lit.addColorStop(0, 'rgba(200,182,150,0.5)');
   lit.addColorStop(0.45, 'rgba(200,182,150,0)');
   lit.addColorStop(0.6, 'rgba(20,14,10,0)');
   lit.addColorStop(1, 'rgba(20,14,10,0.5)');
@@ -141,26 +188,25 @@ function paintPit(c: CanvasRenderingContext2D, r: number, v: number): void {
     const a = rnd(seed, i + 300) * TAU;
     const d = r * (0.85 + rnd(seed, i + 320) * 0.4);
     c.fillStyle = i % 2 ? 'rgba(30,22,16,0.3)' : 'rgba(170,150,120,0.25)';
-    c.beginPath();
-    c.arc(Math.cos(a) * d, Math.sin(a) * d * 0.9, Math.max(0.4, r * 0.035), 0, TAU);
+    chunk(c, Math.cos(a) * d, Math.sin(a) * d * 0.9, Math.max(0.4, r * (0.02 + rnd(seed, i + 340) * 0.03)), seed * 3 + i);
     c.fill();
   }
   c.restore();
   // the bowl: shade on the upper left inner wall, light on the lower right
-  const bowl = c.createRadialGradient(-LIGHT_X * r * 0.32, -LIGHT_Y * r * 0.32, r * 0.05, 0, 0, r * 0.9);
+  const bowl = c.createRadialGradient(-lx * r * 0.32, -ly * r * 0.32, r * 0.05, 0, 0, r * 0.9);
   bowl.addColorStop(0, '#5a4a39');
   bowl.addColorStop(0.5, '#382d23');
   bowl.addColorStop(1, '#1a140f');
   c.fillStyle = bowl;
   c.beginPath();
-  ragged(c, 0, 0, r * 0.86, 0.07, seed + 9, 18);
+  ragged(c, 0, 0, r * 0.86, 0.1, seed + 9, 18);
   c.fill();
   // the shadow the lip throws into the bowl, soft
   c.save();
   c.beginPath();
-  ragged(c, 0, 0, r * 0.86, 0.07, seed + 9, 18);
+  ragged(c, 0, 0, r * 0.86, 0.1, seed + 9, 18);
   c.clip();
-  const sh = c.createRadialGradient(LIGHT_X * r * 0.9, LIGHT_Y * r * 0.9, r * 0.2, LIGHT_X * r * 0.9, LIGHT_Y * r * 0.9, r * 1.15);
+  const sh = c.createRadialGradient(lx * r * 0.9, ly * r * 0.9, r * 0.2, lx * r * 0.9, ly * r * 0.9, r * 1.15);
   sh.addColorStop(0, 'rgba(6,4,3,0.55)');
   sh.addColorStop(0.7, 'rgba(6,4,3,0.3)');
   sh.addColorStop(1, 'rgba(6,4,3,0)');
@@ -171,10 +217,10 @@ function paintPit(c: CanvasRenderingContext2D, r: number, v: number): void {
     const a = rnd(seed, i + 60) * TAU;
     const d = r * 0.6 * Math.sqrt(rnd(seed, i + 70));
     c.fillStyle = i % 2 ? 'rgba(20,15,11,0.4)' : 'rgba(120,100,76,0.3)';
-    c.beginPath();
-    c.arc(Math.cos(a) * d, Math.sin(a) * d, Math.max(0.35, r * 0.03), 0, TAU);
+    chunk(c, Math.cos(a) * d, Math.sin(a) * d, Math.max(0.35, r * (0.02 + rnd(seed, i + 80) * 0.03)), seed * 5 + i);
     c.fill();
   }
+  c.restore();
   c.restore();
 }
 
@@ -183,7 +229,7 @@ function sprite(layer: 0 | 1 | 2, v: number, b: number, r: number): AtlasEntry |
   const id = (b * VARIANTS + v) * 3 + layer;
   const hit = atlas.peek(id);
   if (hit !== undefined) return hit;
-  const half = Math.ceil(r * (layer === 1 ? 2.1 : REACH)) + 2;
+  const half = Math.ceil(r * (layer === 1 ? 2.4 : REACH)) + 2;
   return atlas.getPainted(id, half * 2, half * 2, half, half, (c) => {
     c.translate(half, half);
     if (layer !== 1) paintScorch(c, r, v);
@@ -201,10 +247,12 @@ function blit(ctx: CanvasRenderingContext2D, e: AtlasEntry, x: number, y: number
 function draw(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams): void {
   const q = d.q;
   if (q < 0 || q >= 1 || d.radiusPx <= 0.3) return;
-  const v = Math.floor(d.seed * VARIANTS) % VARIANTS;
+  // (the shape from a hash of the seed, so craters laid together with close seeds still differ; a little bigger or
+  // smaller each)
+  const v = Math.floor(rnd(d.seed * 997, 3) * VARIANTS) % VARIANTS;
   const dpr = Math.max(1, d.dpr);
   const { b, r } = bucketR(d.radiusPx * dpr);
-  const k = d.radiusPx / r;
+  const k = (d.radiusPx / r) * (0.86 + 0.28 * rnd(d.seed * 997, 4));
   const prevA = ctx.globalAlpha;
   const prevS = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = true;
