@@ -43,11 +43,11 @@ function drawMuzzle(ctx: CanvasRenderingContext2D, f: MuzzleDraw, m: MotionParam
   // the flash: flame thrown forward in a ragged tongue, gone in a moment
   if (t < 0.32) {
     const k = t / 0.32;
-    const len = (3.2 + 1.4 * rnd(sd, 9)) * size * (1 - k * 0.4);
+    const len = (4.2 + 1.6 * rnd(sd, 9)) * size * (1 - k * 0.4);
     for (let i = 3; i >= 0; i--) {
       const d = (i / 3) * len;
       const side = (rnd(sd, i + 3) - 0.5) * 0.8;
-      const r = Math.max(1, (1.25 - i * 0.22) * g.res * 0.7 * size * (1 - k * 0.5));
+      const r = Math.max(1, (1.4 - i * 0.24) * g.res * 0.95 * size * (1 - k * 0.5));
       drawBlob(ctx, 'fire', r, i, f.x + (c * d - s * side) * u, f.y + (s * d + c * side) * u, g, 1 - k * 0.3, Math.min(4, i * 0.8 + k * 3));
     }
     // two side spurts on the first moment
