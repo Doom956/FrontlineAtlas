@@ -715,7 +715,7 @@ const HOLDS = [9.4, 5.0, 0.6, -3.8];
 
 const tradeShip: ShipPlan = {
   hull: { hl: 16, hb: 2.95, bow: 6.2, stern: 2.6, sb: 1.4 },
-  ownerBox: [-13.2, -1.5, -9.6, 1.5],
+  ownerBox: [-13.4, -1.6, -9.0, 1.6],
   guns: [],
   salvo: [
     [0, 0],
@@ -777,15 +777,15 @@ const tradeShip: ShipPlan = {
     mast(p, 12.6, 0, 5, 1.1);
     mast(p, -13.6, 0, 4.4, 0.8);
     // the funnel's shadow (the funnel itself is the owner's livery)
-    castShadow(p, oval(-11.1, 0, 1.2, 1.0), 5, 0.38);
+    castShadow(p, oval(-11.1, 0, 1.35, 1.15), 5, 0.38);
   },
   ownerPaint(p, t) {
     // the funnel in the owner's colours with a black top
     const c = p.ctx;
-    const x = -11.1;
-    const rx = 1.2;
-    const ry = 1.0;
-    const rake = 0.55;
+    const x = -10.7;
+    const rx = 1.35;
+    const ry = 1.15;
+    const rake = 1.1;
     const body: Shape = (k) => {
       k.moveTo(x, -ry);
       k.ellipse(x, 0, rx, ry, 0, -Math.PI / 2, Math.PI / 2);
@@ -795,8 +795,11 @@ const tradeShip: ShipPlan = {
     };
     fillShape(c, body, cylGrad(p, t.base, x, 0, 1, 0, ry, 0.3));
     edge(p, body, t.dark);
+    // a band of the owner's lighter tone, then the black top with its soot
+    fillShape(c, oval(x - rake * 0.55, 0, rx, ry), cylGrad(p, t.light, x, 0, 1, 0, ry, 0.2));
+    fillShape(c, oval(x - rake * 0.7, 0, rx, ry), cylGrad(p, t.base, x, 0, 1, 0, ry, 0.3));
     fillShape(c, oval(x - rake, 0, rx, ry), css(hexCol('#26272a')));
-    fillShape(c, oval(x - rake, 0, rx * 0.72, ry * 0.68), css(hexCol('#0e0f10')));
+    fillShape(c, oval(x - rake, 0, rx * 0.68, ry * 0.62), css(hexCol('#0e0f10')));
   },
 };
 

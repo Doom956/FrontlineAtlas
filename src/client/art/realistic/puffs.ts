@@ -48,47 +48,80 @@ function paintPuff(c: CanvasRenderingContext2D, kind: number, v: number): void {
   const R = SIZE / 2;
   const fire = kind === Puff.FIRE || kind === Puff.EMBER;
   const seed = kind * 31 + v * 7 + 3;
-  // lobes: a big central one and a ring of smaller ones, drawn from the shaded side to the lit side
-  const lobes: [number, number, number][] = [[0, 0, 0.62]];
-  const n = 6 + (v % 3);
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * TAU + rnd(seed, i) * 0.8;
-    const d = 0.3 + rnd(seed, i + 20) * 0.22;
-    lobes.push([Math.cos(a) * d, Math.sin(a) * d, 0.3 + rnd(seed, i + 40) * 0.2]);
-  }
-  lobes.sort((a, b) => -(a[0] * LIGHT_X + a[1] * LIGHT_Y) + (b[0] * LIGHT_X + b[1] * LIGHT_Y));
-  for (const [lx, ly, lr] of lobes) {
-    const cx = R + lx * R * 0.92;
-    const cy = R + ly * R * 0.92;
-    const r = lr * R;
-    const g = fire ? c.createRadialGradient(cx, cy, 0, cx, cy, r) : c.createRadialGradient(cx + LIGHT_X * r * 0.38, cy + LIGHT_Y * r * 0.38, r * 0.05, cx, cy, r);
-    if (fire) {
-      g.addColorStop(0, css(light, 1));
-      g.addColorStop(0.45, css(mid, 0.95));
-      g.addColorStop(0.8, css(dark, 0.6));
-      g.addColorStop(1, css(dark, 0));
-    } else {
-      g.addColorStop(0, css(light, 0.98));
-      g.addColorStop(0.5, css(mid, 0.95));
-      g.addColorStop(0.82, css(dark, 0.7));
-      g.addColorStop(1, css(dark, 0));
-    }
+  // the body: one big soft blob and many smaller soft lobes packed round it (bigger toward the middle), all one tone,
+  // their edges fading out so they merge into one mass
+  const blob = (x: number, y: number, r: number, a: number): void => {
+    const g = c.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, css(mid, a));
+    g.addColorStop(0.55, css(mid, a * 0.92));
+    g.addColorStop(0.8, css(mid, a * 0.45));
+    g.addColorStop(1, css(mid, 0));
     c.fillStyle = g;
     c.beginPath();
-    c.arc(cx, cy, r, 0, TAU);
+    c.arc(x, y, r, 0, TAU);
     c.fill();
+  };
+  blob(R, R, R * 0.66, 0.9);
+  const lobes: [number, number, number][] = [];
+  const n = 13 + (v % 3) * 2;
+  for (let i = 0; i < n; i++) {
+    const a = rnd(seed, i) * TAU;
+    const d = Math.sqrt(rnd(seed, i + 20)) * 0.5;
+    const r = (0.2 + rnd(seed, i + 40) * 0.2) * (1 - d * 0.5);
+    lobes.push([Math.cos(a) * d, Math.sin(a) * d * 0.92, r]);
+    blob(R + Math.cos(a) * d * R, R + Math.sin(a) * d * 0.92 * R, r * R, 0.85);
   }
-  // a fine speckle: the grain of real smoke (and the flicker of flames)
   c.save();
   c.globalCompositeOperation = 'source-atop';
-  for (let i = 0; i < 70; i++) {
+  if (fire) {
+    // a hot core fading to deep orange and red at the edge
+    const g = c.createRadialGradient(R, R, 0, R, R, R);
+    g.addColorStop(0, css(light, 0.95));
+    g.addColorStop(0.32, css(light, 0.55));
+    g.addColorStop(0.6, css(mid, 0.2));
+    g.addColorStop(0.85, css(dark, 0.7));
+    g.addColorStop(1, css(dark, 0.9));
+    c.fillStyle = g;
+    c.fillRect(0, 0, SIZE, SIZE);
+  } else {
+    // the whole cloud lit from the top left: its own shade on the lower right
+    const g = c.createLinearGradient(R + LIGHT_X * R, R + LIGHT_Y * R, R - LIGHT_X * R, R - LIGHT_Y * R);
+    g.addColorStop(0, css(light, 0.8));
+    g.addColorStop(0.42, css(light, 0.12));
+    g.addColorStop(0.58, css(dark, 0.12));
+    g.addColorStop(1, css(dark, 0.85));
+    c.fillStyle = g;
+    c.fillRect(0, 0, SIZE, SIZE);
+  }
+  // each billow catches the light on its upper left and has a soft shade under its lower right
+  for (const [lx, ly, lr] of lobes) {
+    const x = R + lx * R;
+    const y = R + ly * R;
+    const r = lr * R;
+    const h = c.createRadialGradient(x + LIGHT_X * r * 0.45, y + LIGHT_Y * r * 0.45, 0, x + LIGHT_X * r * 0.45, y + LIGHT_Y * r * 0.45, r * 0.75);
+    h.addColorStop(0, css(light, fire ? 0.35 : 0.42));
+    h.addColorStop(1, css(light, 0));
+    c.fillStyle = h;
+    c.beginPath();
+    c.arc(x, y, r, 0, TAU);
+    c.fill();
+    const sh = c.createRadialGradient(x - LIGHT_X * r * 0.5, y - LIGHT_Y * r * 0.5, 0, x - LIGHT_X * r * 0.5, y - LIGHT_Y * r * 0.5, r * 0.7);
+    sh.addColorStop(0, css(dark, fire ? 0.18 : 0.3));
+    sh.addColorStop(1, css(dark, 0));
+    c.fillStyle = sh;
+    c.beginPath();
+    c.arc(x, y, r, 0, TAU);
+    c.fill();
+  }
+  // a fine grain
+  for (let i = 0; i < 90; i++) {
     const a = rnd(seed, i + 90) * TAU;
-    const d = Math.sqrt(rnd(seed, i + 190)) * R * 0.8;
+    const d = Math.sqrt(rnd(seed, i + 190)) * R * 0.85;
     const x = R + Math.cos(a) * d;
     const y = R + Math.sin(a) * d;
-    const r = 1.5 + rnd(seed, i + 290) * 3.5;
+    const r = 1 + rnd(seed, i + 290) * 2.5;
     const lit = (x - R) * LIGHT_X + (y - R) * LIGHT_Y > 0;
-    c.fillStyle = fire ? (lit ? 'rgba(255,250,220,0.25)' : 'rgba(120,30,8,0.22)') : lit ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.12)';
+    c.fillStyle = fire ? (lit ? 'rgba(255,250,220,0.2)' : 'rgba(120,30,8,0.18)') : lit ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)';
     c.beginPath();
     c.arc(x, y, r, 0, TAU);
     c.fill();
