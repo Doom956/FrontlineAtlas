@@ -110,6 +110,27 @@ function scaled(parts: Part[], k: number): Part[] {
     clipPoly: sc(p.clipPoly, true),
   }));
 }
+/**
+ * A thin model moved half a pixel row to the side (+v), so its centre line runs through the middle of a pixel row
+ * when it flies east or west and through a pixel column going north or south: a pointed nose then ends in one
+ * pixel and the body is an odd number of pixels tall, instead of the tip falling between two rows and vanishing.
+ */
+function centred(parts: Part[], dv = 0.6): Part[] {
+  const mv = (q: readonly number[] | undefined, k: 'box' | 'ell' | 'poly' | 'seg' | 'clip'): number[] | undefined => {
+    if (!q) return undefined;
+    if (k === 'poly') return q.map((x, i) => (i % 2 ? x + dv : x));
+    if (k === 'box') return [q[0], q[1] + dv, q[2], q[3] + dv];
+    if (k === 'seg') return [q[0], q[1] + dv, q[2], q[3] + dv, q[4]];
+    return q.map((x, i) => (i === 1 ? x + dv : x));
+  };
+  return parts.map((p) => ({
+    ...p,
+    p: mv(p.p, p.k)!,
+    sc: p.sc ? ([p.sc[0], p.sc[1] + dv, p.sc[2], p.sc[3]] as const) : undefined,
+    clip: mv(p.clip, 'clip'),
+    clipPoly: mv(p.clipPoly, 'poly'),
+  }));
+}
 /** A dome / cylinder shading frame for a band laid over an ellipse. */
 const over = (u: number, v: number, ru: number, rv: number): readonly [number, number, number, number] => [u, v, ru, rv];
 
@@ -558,44 +579,54 @@ function reconPlane(mods: number): Part[] {
 
 // ------------------------------------------------------------------------------------------------- missiles
 
-/** The exhaust: a tiny white-yellow flame at the tail; frame 1 is a pixel longer (flicker). */
+/**
+ * The exhaust: a small white-yellow flame at the nozzle (flat shaded, so it stays light: a pale yellow rim, yellow
+ * inside) with a white-hot core; frame 1 is a pixel longer (flicker).
+ */
 function flame(u: number, r: number, len: number, z: number, frame: number): Part[] {
-  const L = len + (frame ? 1 : 0);
-  return [poly([u, -r, u, r, u - L, 0], z, 1, 'flame', { glow: true, sh: 'cyl', sc: over(u - L / 2, 0, L / 2, r) }), ell(u - 0.4, 0, 0.9, 0.6, z + 0.3, 0.8, 'white', { glow: true })];
+  const L = len + (frame ? 1.2 : 0);
+  return [poly([u, -r, u, r, u - L, 0], z, 0.6, 'flame', { glow: true }), ell(u - 0.5, 0, 1, 0.55, z + 0.2, 0.6, 'white', { glow: true })];
 }
 
 /**
- * The rocket: a slender grey tube about six times longer than wide (light top stripe, mid, dark underside), a pointed
- * nose with a light tip, small dark fins, a 1 px yellow warning band and a tiny flame. A projectile: no owner colour.
+ * The rocket: a slender grey body about five times longer than wide (light top stripe, mid, dark underside), a long
+ * tapering nose that still ends in a point at one art pixel, with a white tip, a yellow warning band, swept tail fins
+ * sticking out past the body on both sides, a short top fin, a dark nozzle and a small bright flame. A projectile:
+ * no owner colour.
  */
 function rocket(frame: number): Part[] {
-  const body = over(-1.4, 0, 6, 1.2);
+  const body = over(-1.2, 0, 6, 1.5);
   return [
-    ...flame(-7.4, 0.7, 2.2, 1.6, frame),
-    poly(sym([-4.2, -1.1, -6.6, -3, -7.4, -3, -7, -1.1]), 1.4, 0.4, 'gun'),
-    box(-7.4, -0.7, -6.8, 0.7, 1.6, 1.1, 'gun'),
-    box(-6.8, -1.2, 4, 1.2, 1.4, 1.7, 'metal', { sh: 'cyl', sc: body }),
-    box(-1.6, -1.25, -0.6, 1.25, 1.4, 1.75, 'yellow', { sh: 'cyl', sc: body }),
-    poly([7.6, 0, 6.2, -0.75, 4, -1.2, 4, 1.2, 6.2, 0.75], 1.4, 1.7, 'metal', { sh: 'cyl', sc: over(5.8, 0, 1.8, 1.2) }),
-    ell(7.1, 0, 0.8, 0.6, 2.4, 0.6, 'white'),
-    seg(-7, 0, -4.4, 0, 1.1, 3, 1.2, 'gun'),
+    ...flame(-7.2, 0.8, 2.4, 1.6, frame),
+    // side fins: swept back, mid grey so they read against the outline
+    poly(sym([-2.6, -1.4, -6.2, -3.6, -7.6, -3.6, -6.6, -1.4]), 1.5, 0.5, 'hull'),
+    box(-7.2, -0.9, -6.2, 0.9, 1.7, 1.2, 'gun'),
+    box(-6.4, -1.5, 3, 1.5, 1.4, 1.8, 'metal', { sh: 'cyl', sc: body }),
+    box(-1.4, -1.55, -0.4, 1.55, 1.4, 1.85, 'yellow', { sh: 'cyl', sc: body }),
+    poly([9.2, 0, 6.6, -1, 3, -1.5, 3, 1.5, 6.6, 1], 1.4, 1.8, 'metal', { sh: 'cyl', sc: over(5, 0, 3, 1.5) }),
+    ell(8.4, 0, 1.1, 0.62, 1.9, 1, 'white'),
+    // the top fin, seen from above as a short spine at the tail
+    seg(-6.8, 0, -3.8, 0, 1, 3.1, 1, 'hull'),
   ];
 }
 
-/** The atom bomb: larger and thicker, olive with a yellow and black hazard band, bigger fins, a light nose tip. */
+/**
+ * The atom bomb: larger and thicker, olive with a yellow and black hazard band, bigger swept fins, a long nose with a
+ * sand tip. The map draws a faint ring round it (render/units.ts).
+ */
 function atomBomb(frame: number): Part[] {
-  const body = over(-1.8, 0, 7, 1.9);
+  const body = over(-1.6, 0, 7, 2.1);
   return [
-    ...flame(-9.4, 0.9, 2.6, 1.8, frame),
-    poly(sym([-5, -1.8, -8.2, -4.4, -9.4, -4.4, -8.8, -1.8]), 1.4, 0.5, 'gun'),
-    box(-9.4, -1, -8.8, 1, 1.8, 1.4, 'gun'),
-    box(-8.8, -1.9, 4.6, 1.9, 1.4, 2.3, 'olive', { sh: 'cyl', sc: body }),
-    box(-3.6, -1.95, -2.4, 1.95, 1.4, 2.35, 'yellow', { sh: 'cyl', sc: body }),
-    box(-2.4, -1.95, -1.4, 1.95, 1.4, 2.35, 'black', { sh: 'cyl', sc: body }),
-    box(-1.4, -1.95, -0.2, 1.95, 1.4, 2.35, 'yellow', { sh: 'cyl', sc: body }),
-    poly([9.4, 0, 8, -1.2, 4.6, -1.9, 4.6, 1.9, 8, 1.2], 1.4, 2.3, 'olive', { sh: 'cyl', sc: over(7, 0, 2.4, 1.9) }),
-    ell(8.9, 0, 0.8, 0.7, 2.6, 0.8, 'sand'),
-    seg(-9, 0, -5.2, 0, 1.2, 3.7, 1.6, 'gun'),
+    ...flame(-9.2, 1, 2.8, 1.8, frame),
+    poly(sym([-4, -1.9, -8, -4.8, -9.8, -4.8, -8.6, -1.9]), 1.5, 0.6, 'steel'),
+    box(-9.2, -1.1, -8.2, 1.1, 1.8, 1.5, 'gun'),
+    box(-8.4, -2.1, 4, 2.1, 1.4, 2.4, 'olive', { sh: 'cyl', sc: body }),
+    box(-3.4, -2.15, -2.2, 2.15, 1.4, 2.45, 'yellow', { sh: 'cyl', sc: body }),
+    box(-2.2, -2.15, -1.2, 2.15, 1.4, 2.45, 'black', { sh: 'cyl', sc: body }),
+    box(-1.2, -2.15, 0, 2.15, 1.4, 2.45, 'yellow', { sh: 'cyl', sc: body }),
+    poly([11, 0, 8, -1.3, 4, -2.1, 4, 2.1, 8, 1.3], 1.4, 2.4, 'olive', { sh: 'cyl', sc: over(7, 0, 4, 2.1) }),
+    ell(10, 0, 1.2, 0.7, 2.2, 1.2, 'sand'),
+    seg(-9, 0, -5, 0, 1.2, 3.8, 1.4, 'steel'),
   ];
 }
 
@@ -657,10 +688,10 @@ export function buildModel(key: SpriteKey, mods: number, frame = 0): Model {
       parts = reconPlane(m);
       break;
     case 'rocket':
-      parts = rocket(frame & 1);
+      parts = centred(rocket(frame & 1));
       break;
     case 'atomBomb':
-      parts = atomBomb(frame & 1);
+      parts = centred(atomBomb(frame & 1));
       break;
   }
   return { parts: parts.map(minSize), air: AIR.has(key) };
