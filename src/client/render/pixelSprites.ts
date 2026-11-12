@@ -154,12 +154,15 @@ function alloc(w: number, h: number): { page: Page; x: number; y: number } | nul
 }
 
 const KEY_INDEX = new Map<SpriteKey, number>(SPRITE_KEYS.map((k, i) => [k, i]));
-/** Art resolutions (art px per model unit): the map always uses full size; small portraits may use less. */
-const RES = [1, 0.75, 0.5];
+/**
+ * Art resolutions (art px per model unit): the map always uses full size; small portraits may use less, and a
+ * portrait between two whole scales a little more (so a battleship is not drawn smaller than a destroyer).
+ */
+const RES = [1, 0.75, 0.5, 1.25, 1.5, 1.75];
 
 function entryKey(key: SpriteKey, mods: number, facing: number, frame: number, owner: RGB, res: number, shadow: boolean): number {
   const o = shadow ? 0 : ((owner[0] & 255) << 16) | ((owner[1] & 255) << 8) | (owner[2] & 255);
-  return (((((o * 32 + (KEY_INDEX.get(key) ?? 0)) * 32 + mods) * 16 + facing) * 2 + frame) * 4 + res) * 2 + (shadow ? 1 : 0);
+  return (((((o * 32 + (KEY_INDEX.get(key) ?? 0)) * 32 + mods) * 16 + facing) * 2 + frame) * 8 + res) * 2 + (shadow ? 1 : 0);
 }
 
 function entry(key: SpriteKey, mods: number, facing: number, frame: number, owner: RGB, res: number, shadow: boolean): Entry | null {
@@ -200,8 +203,9 @@ export function facingOf(angle: number): number {
 
 /**
  * Draws a sprite with its centre (the model origin) at (x, y), `k` screen px per art pixel, at the art resolution
- * index `res` (0 = full, 1 = 3/4, 2 = half). Planes and missiles get their ground shadow first (unless `shadow` is
- * false). False when it could not be drawn (no canvas, or this frame's bake budget is spent).
+ * index `res` into RES (0 = full, 1 = 3/4, 2 = half, 3 to 5 = 1.25 to 1.75 for portraits). Planes and missiles get
+ * their ground shadow first (unless `shadow` is false). False when it could not be drawn (no canvas, or this frame's
+ * bake budget is spent).
  */
 export function drawSpriteKey(ctx: CanvasRenderingContext2D, key: SpriteKey, mods: number, x: number, y: number, k: number, angle: number, owner: RGB, frame = 0, res = 0, alpha = 1, shadow = true): boolean {
   const facing = facingOf(angle);
@@ -237,8 +241,9 @@ export function drawMapSprite(ctx: CanvasRenderingContext2D, type: UnitType, var
 
 /**
  * Draws a unit's pixel sprite centred at (x, y), fitting in `lenPx` px (its length, or its span for wide planes),
- * turned to `angle` (snapped to 16 headings). Used by the HUD portraits: the scale is a whole number (at full art
- * resolution when it fits, else at a smaller one) so the pixels stay crisp. `mods` are the upgrade details to show;
+ * turned to `angle` (snapped to 16 headings). Used by the HUD portraits: the scale is a whole number so the pixels
+ * stay crisp, and the art resolution fills the rest of the box in quarter steps (a smaller one when even the
+ * whole-number scale 1 does not fit), so every unit fills its portrait about equally. `mods` are the upgrade details to show;
  * without it, the details of the player whose colour `owner` is are used (in the game the map shows), and a tank
  * division without a variant gets that player's armor path.
  */
@@ -255,13 +260,17 @@ export function drawUnitSprite(ctx: CanvasRenderingContext2D, type: UnitType, va
   }
   const key = spriteKey(type, v);
   const info = modelInfo(key, m, 0);
+  const s = lenPx / info.fit;
   let res = 0;
-  let k = Math.floor(lenPx / info.fit);
-  if (k < 1) {
-    res = lenPx >= info.fit * 0.75 ? 1 : 2;
-    k = 1;
+  let k = 1;
+  if (s < 1) res = s >= 0.75 ? 1 : 2;
+  else {
+    k = Math.min(8, Math.floor(s));
+    // 1.25, 1.5 or 1.75 art px per model unit when the box has that much room left at this whole-number scale
+    const q = Math.min(3, Math.floor((s / k - 1) * 4));
+    res = q <= 0 ? 0 : 2 + q;
   }
-  return drawSpriteKey(ctx, key, m, x, y, Math.min(8, k), angle, owner, 0, res, alpha);
+  return drawSpriteKey(ctx, key, m, x, y, k, angle, owner, 0, res, alpha);
 }
 
 // ------------------------------------------------------------------------------------------------- upgrades
