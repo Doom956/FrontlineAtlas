@@ -85,8 +85,17 @@ export function realisticLength(key: SpriteKey, mods = 0): number {
 
 // ------------------------------------------------------------------------------------------------- atlas
 
-/** One atlas per kind of unit, so a screen full of ships never evicts the planes (pages are made as needed). */
-const atlases: Record<string, SpriteAtlas> = { ships: new SpriteAtlas(1024, 6), land: new SpriteAtlas(1024, 4), air: new SpriteAtlas(1024, 6), missiles: new SpriteAtlas(512, 2) };
+/**
+ * One atlas per kind of unit, so a screen full of ships never evicts the planes (pages are made as needed). 'whole' holds
+ * the mid zoom pictures put together from those layers (see wholeEntry), so it never evicts the layers it copies from.
+ */
+const atlases: Record<string, SpriteAtlas> = {
+  ships: new SpriteAtlas(1024, 6),
+  land: new SpriteAtlas(1024, 4),
+  air: new SpriteAtlas(1024, 6),
+  missiles: new SpriteAtlas(512, 2),
+  whole: new SpriteAtlas(1024, 6),
+};
 
 const L_BODY = 0;
 const L_SHADOW = 2;
@@ -146,6 +155,59 @@ function entry(atlas: SpriteAtlas, id: number, b: Bounds, angle: number, R: numb
 /** Draws an entry with its origin at (0, 0) of the current transform, `k` entry px per current unit. */
 function blit(ctx: CanvasRenderingContext2D, e: AtlasEntry, k: number): void {
   ctx.drawImage(e.page, e.sx, e.sy, e.w, e.h, -e.ox / k, -e.oy / k, e.w / k, e.h / k);
+}
+
+/**
+ * Mid zoom: the body, the owner's marks and (ships) the water shadow of one heading bucket put together into one
+ * picture, copied from their baked layers (a few blits, no painting), so a screen full of ships and planes costs one
+ * drawImage each instead of up to six. Baked per owner colour like the marks; null when it is not baked yet (the
+ * frame's bake budget is spent): the caller then draws the layers one by one.
+ */
+function wholeEntry(id: number, body: AtlasEntry, own: readonly AtlasEntry[], sh: AtlasEntry | null, shX: number, shY: number, ba: number): AtlasEntry | null {
+  const atlas = atlases.whole;
+  const hit = atlas.peek(id);
+  if (hit !== undefined) return hit;
+  let x0 = -body.ox;
+  let y0 = -body.oy;
+  let x1 = body.w - body.ox;
+  let y1 = body.h - body.oy;
+  for (const e of own) {
+    x0 = Math.min(x0, -e.ox);
+    y0 = Math.min(y0, -e.oy);
+    x1 = Math.max(x1, e.w - e.ox);
+    y1 = Math.max(y1, e.h - e.oy);
+  }
+  const c = Math.cos(ba);
+  const s = Math.sin(ba);
+  if (sh)
+    for (const [u, v] of [
+      [-sh.ox, -sh.oy],
+      [sh.w - sh.ox, -sh.oy],
+      [-sh.ox, sh.h - sh.oy],
+      [sh.w - sh.ox, sh.h - sh.oy],
+    ]) {
+      const X = shX + u * c - v * s;
+      const Y = shY + u * s + v * c;
+      x0 = Math.min(x0, X);
+      y0 = Math.min(y0, Y);
+      x1 = Math.max(x1, X);
+      y1 = Math.max(y1, Y);
+    }
+  const ox = Math.ceil(-x0) + 1;
+  const oy = Math.ceil(-y0) + 1;
+  return atlas.getPainted(id, ox + Math.ceil(x1) + 1, oy + Math.ceil(y1) + 1, ox, oy, (ctx) => {
+    ctx.translate(ox, oy);
+    ctx.imageSmoothingEnabled = true;
+    if (sh) {
+      ctx.save();
+      ctx.translate(shX, shY);
+      ctx.rotate(ba);
+      blit(ctx, sh, 1);
+      ctx.restore();
+    }
+    blit(ctx, body, 1);
+    for (const e of own) blit(ctx, e, 1);
+  });
 }
 
 // ------------------------------------------------------------------------------------------------- moving parts
@@ -260,6 +322,8 @@ function compose(ctx: CanvasRenderingContext2D, q: Pose, m: MotionParams): boole
   if (model.turret && !tur) return false;
   // a bake above filled the atlas and it started over: the pictures fetched before it are gone (next frame)
   if (atlasStats.resets !== resets) return false;
+  // every mark is baked (a picture put together from fewer would keep the missing ones out for good)
+  const allOwn = own.length === (owners ? Math.min(owners.length, L_OWNERS.length) : 0);
   const still = q.still || m.reduced;
   const t = q.timeMs;
   const sc = q.sc;
@@ -271,7 +335,9 @@ function compose(ctx: CanvasRenderingContext2D, q: Pose, m: MotionParams): boole
   ctx.save();
   ctx.imageSmoothingEnabled = true;
   if (cat === 'ships') {
-    if (sh) {
+    // mid zoom: shadow, hull and marks as one picture (the roll then sways the ship with its shadow, under a pixel)
+    const whole = !q.near && !q.still && sh && allOwn ? wholeEntry(layerId(0, ki, mods, bucket, R, rgb), body, own, sh, -LIGHT_X * model.alt * R, -LIGHT_Y * model.alt * R, ba) : null;
+    if (sh && !whole) {
       ctx.save();
       ctx.translate(x - LIGHT_X * model.alt * sc, y - LIGHT_Y * model.alt * sc);
       ctx.rotate(q.angle);
@@ -289,8 +355,11 @@ function compose(ctx: CanvasRenderingContext2D, q: Pose, m: MotionParams): boole
     }
     ctx.translate(x, y);
     ctx.rotate(rot);
-    blit(ctx, body, k);
-    for (const e of own) blit(ctx, e, k);
+    if (whole) blit(ctx, whole, k);
+    else {
+      blit(ctx, body, k);
+      for (const e of own) blit(ctx, e, k);
+    }
     if (!q.still) {
       if (t !== shipAnglesAt) {
         shipAngles.clear();
@@ -336,8 +405,13 @@ function compose(ctx: CanvasRenderingContext2D, q: Pose, m: MotionParams): boole
     ctx.rotate(q.angle);
     if (cb !== 1) ctx.scale(1, cb);
     ctx.rotate(-ba);
-    blit(ctx, body, k);
-    for (const e of own) blit(ctx, e, k);
+    // mid zoom: the plane and its marks as one picture
+    const whole = !q.near && !q.still && own.length && allOwn ? wholeEntry(layerId(0, ki, mods, bucket, R, rgb), body, own, null, 0, 0, ba) : null;
+    if (whole) blit(ctx, whole, k);
+    else {
+      blit(ctx, body, k);
+      for (const e of own) blit(ctx, e, k);
+    }
     // the lower wing of a banking plane goes into shade (turning to starboard, +y, the starboard wing dips)
     if (Math.abs(bank) > 0.04 && model.wingShade) {
       const ws = entry(atlas, layerId(L_BANK, ki, mods, bucket, R, 0), model.wingShade.b, ba, R, model.wingShade, null);
@@ -420,7 +494,8 @@ function tankDust(ctx: CanvasRenderingContext2D, model: UnitModel, q: Pose, amou
   const d = model.dust;
   if (!d) return;
   const sc = q.sc;
-  const n = 3;
+  // (two puffs a side at mid zoom, where they are a few px across)
+  const n = q.near ? 3 : 2;
   for (let side = -1; side <= 1; side += 2)
     for (let i = 0; i < n; i++) {
       const ph = (q.timeMs / 900 + i / n + q.seed * 0.37 + (side > 0 ? 0.17 : 0)) % 1;
@@ -429,7 +504,7 @@ function tankDust(ctx: CanvasRenderingContext2D, model: UnitModel, q: Pose, amou
       const px = q.x + ca * back - sa * across;
       const py = q.y + sa * back + ca * across;
       const r = (1.1 + ph * 2.8) * sc * (0.7 + 0.3 * amount);
-      puff(ctx, Puff.DUST, i + (side > 0 ? 3 : 0), px, py, r, (1 - ph) * (1 - ph) * 0.42 * amount);
+      puff(ctx, Puff.DUST, i + (side > 0 ? 3 : 0), px, py, r, (1 - ph) * (1 - ph) * Math.min(1, ph * 6) * 0.48 * amount);
     }
 }
 

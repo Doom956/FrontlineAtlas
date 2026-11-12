@@ -89,30 +89,82 @@ function screenAt(e: Emitter, k: number, v: TrailView, side: number, spread: num
 
 const P0 = [0, 0];
 const P1 = [0, 0];
+const PB = [0, 0];
 
-/** Strokes points k0..k1 as one line whose colour fades from alpha a0 (newest end) to a1 along it. */
-function strokeFade(ctx: CanvasRenderingContext2D, e: Emitter, k0: number, k1: number, v: TrailView, side: number, spread: number, drift: number, rgb: string, a0: number, a1: number, w: number): void {
-  screenAt(e, k0, v, side, spread, drift, P0);
-  screenAt(e, k1, v, side, spread, drift, P1);
+/** Where point kb lies along the line from point k0 to point k1 (0..1, never before `min`): a gradient stop's offset. */
+function along(e: Emitter, kb: number, k0: number, k1: number, v: TrailView, drift: number, min: number): number {
+  screenAt(e, k0, v, 0, 0, drift, P0);
+  screenAt(e, k1, v, 0, 0, drift, P1);
+  screenAt(e, kb, v, 0, 0, drift, PB);
+  const dx = P1[0] - P0[0];
+  const dy = P1[1] - P0[1];
+  const d2 = dx * dx + dy * dy;
+  const t = d2 > 1e-6 ? ((PB[0] - P0[0]) * dx + (PB[1] - P0[1]) * dy) / d2 : 0;
+  return Math.max(min, Math.min(1, t));
+}
+
+/**
+ * A gradient along the trail from point ks[0] to the last of ks, its colour `rgb[i]` at alpha `as[i]` at point ks[i]
+ * (so one stroke or fill fades through several age bands).
+ */
+function fadeAlong(ctx: CanvasRenderingContext2D, e: Emitter, v: TrailView, drift: number, ks: readonly number[], rgb: readonly string[], as: readonly number[]): CanvasGradient {
+  const k0 = ks[0];
+  const k1 = ks[ks.length - 1];
+  screenAt(e, k0, v, 0, 0, drift, P0);
+  screenAt(e, k1, v, 0, 0, drift, P1);
   const g = ctx.createLinearGradient(P0[0], P0[1], P1[0], P1[1]);
-  g.addColorStop(0, `rgba(${rgb},${a0.toFixed(3)})`);
-  g.addColorStop(1, `rgba(${rgb},${a1.toFixed(3)})`);
-  ctx.strokeStyle = g;
+  let at = 0;
+  for (let i = 0; i < ks.length; i++) {
+    at = i === 0 ? 0 : i === ks.length - 1 ? 1 : along(e, ks[i], k0, k1, v, drift, at);
+    g.addColorStop(at, `rgba(${rgb[Math.min(i, rgb.length - 1)]},${Math.max(0, as[i]).toFixed(3)})`);
+  }
+  return g;
+}
+
+/**
+ * Strokes points k0..k1 twice, `side` tiles to each side of the track (both lines in one path, one draw call), opening
+ * by `spread` per tile travelled and drifting with the wind, with the stroke style already set.
+ */
+function strokePair(ctx: CanvasRenderingContext2D, e: Emitter, k0: number, k1: number, v: TrailView, side: number, spread: number, drift: number, w: number): void {
   ctx.lineWidth = w;
   ctx.beginPath();
+  for (const sd of [-1, 1]) {
+    screenAt(e, k0, v, sd * side, spread, drift, P0);
+    ctx.moveTo(P0[0], P0[1]);
+    for (let k = k0 + 1; k <= k1; k++) {
+      screenAt(e, k, v, sd * side, spread, drift, P1);
+      ctx.lineTo(P1[0], P1[1]);
+    }
+  }
+  ctx.stroke();
+}
+
+/** Strokes points k0..k1 along the track (drifting with the wind), with the stroke style already set. */
+function strokeLine(ctx: CanvasRenderingContext2D, e: Emitter, k0: number, k1: number, v: TrailView, drift: number, w: number): void {
+  ctx.lineWidth = w;
+  ctx.beginPath();
+  screenAt(e, k0, v, 0, 0, drift, P0);
   ctx.moveTo(P0[0], P0[1]);
   for (let k = k0 + 1; k <= k1; k++) {
-    screenAt(e, k, v, side, spread, drift, P1);
+    screenAt(e, k, v, 0, 0, drift, P1);
     ctx.lineTo(P1[0], P1[1]);
   }
   ctx.stroke();
 }
 
+// trail colours (r,g,b) along their age bands
+const WASH = ['246,250,252', '234,244,247', '222,238,243', '222,238,243'];
+const WASH_EDGE = ['214,232,238'];
+const FOAM = ['236,244,247'];
+const VAPOUR = ['252,253,253'];
+const SMOKE_YOUNG = ['246,242,230'];
+const SMOKE_OLD = ['214,212,206'];
+
 /**
- * Fills a ribbon along points k0..k1 whose half width grows from h0 to h1 tiles (by age, over `life` ms), fading from
- * alpha a0 to a1 along it: churned water that spreads out and settles.
+ * Fills a ribbon along points k0..k1 whose half width grows from h0 to h1 tiles (by age, over `life` ms), with `style`
+ * (a fade along it): churned water that spreads out and settles.
  */
-function ribbonFade(ctx: CanvasRenderingContext2D, e: Emitter, k0: number, k1: number, v: TrailView, h0: number, h1: number, life: number, rgb: string, a0: number, a1: number): void {
+function ribbonFade(ctx: CanvasRenderingContext2D, e: Emitter, k0: number, k1: number, v: TrailView, h0: number, h1: number, life: number, style: CanvasGradient): void {
   const half = (k: number): number => {
     const q = Math.min(1, (v.now - e.t[e.at(k)]) / life);
     return h0 + (h1 - h0) * q;
@@ -132,12 +184,7 @@ function ribbonFade(ctx: CanvasRenderingContext2D, e: Emitter, k0: number, k1: n
     ctx.lineTo(v.ox + (e.x[i] + Math.sin(e.a[i]) * h) * v.zoom, v.oy + (e.y[i] - Math.cos(e.a[i]) * h) * v.zoom);
   }
   ctx.closePath();
-  screenAt(e, k0, v, 0, 0, 0, P0);
-  screenAt(e, k1, v, 0, 0, 0, P1);
-  const g = ctx.createLinearGradient(P0[0], P0[1], P1[0], P1[1]);
-  g.addColorStop(0, `rgba(${rgb},${a0.toFixed(3)})`);
-  g.addColorStop(1, `rgba(${rgb},${a1.toFixed(3)})`);
-  ctx.fillStyle = g;
+  ctx.fillStyle = style;
   ctx.fill();
 }
 
@@ -152,7 +199,7 @@ function ageIndex(e: Emitter, now: number, ms: number, k0: number): number {
 function lifeOf(e: Emitter): number {
   const m = e.motion;
   if (e.kind === WAKE) return Math.max(1500 * (m?.wakeLength ?? 1), 1900 * (m?.foamLife ?? 1));
-  if (e.kind === CONTRAIL) return 2200 * (m?.contrailLife ?? 1);
+  if (e.kind === CONTRAIL) return 2800 * (m?.contrailLife ?? 1);
   return 1500 * (m?.missileTrailLife ?? 1);
 }
 
@@ -234,28 +281,38 @@ class RealisticTrails implements TrailLayer {
     const strength = Math.min(1, 0.45 + sp / 4) * (sub ? 0.5 : 1);
     ctx.lineJoin = 'round';
     ctx.lineCap = 'butt';
-    // the churned water: a white ribbon at the stern spreading into a pale strip and settling, with a soft wide edge
+    const near = v.scale >= 2;
+    // the churned water: a white ribbon at the stern spreading into a pale strip and settling (one fill through its age
+    // bands), with a soft wide edge close up
+    const kw = [0, 0, 0, 0];
     const edges = [0, 0.18, 0.5, 1];
-    for (let b = 0; b < 3; b++) {
-      const k0 = ageIndex(e, v.now, washLife * edges[b], 0);
-      const k1 = ageIndex(e, v.now, washLife * edges[b + 1], k0);
-      if (k1 <= k0) continue;
-      const a0 = (1 - edges[b]) * (1 - edges[b]);
-      const a1 = (1 - edges[b + 1]) * (1 - edges[b + 1]);
+    for (let b = 1; b < 4; b++) kw[b] = ageIndex(e, v.now, washLife * edges[b], kw[b - 1]);
+    if (kw[3] > 0) {
       const w0 = sub ? 0.28 : 0.42;
-      // (a soft edge only close up: the middle zooms draw one ribbon per band)
-      if (v.scale >= 2) ribbonFade(ctx, e, k0, k1, v, beam * w0 * 1.45, beam * (w0 + 0.35) * 1.3, washLife, '214,232,238', strength * 0.1 * a0, strength * 0.1 * a1);
-      ribbonFade(ctx, e, k0, k1, v, beam * w0, beam * (w0 + 0.3), washLife, b === 0 ? '246,250,252' : '222,238,243', strength * (sub ? 0.26 : 0.42) * a0, strength * (sub ? 0.26 : 0.42) * a1);
+      const fade = [1, 0.67, 0.25, 0];
+      const core = strength * (sub ? 0.26 : 0.42);
+      if (near) ribbonFade(ctx, e, 0, kw[3], v, beam * w0 * 1.45, beam * (w0 + 0.35) * 1.3, washLife, fadeAlong(ctx, e, v, 0, kw, WASH_EDGE, fade.map((f) => strength * 0.1 * f)));
+      ribbonFade(ctx, e, 0, kw[3], v, beam * w0, beam * (w0 + 0.3), washLife, fadeAlong(ctx, e, v, 0, kw, WASH, fade.map((f) => core * f)));
     }
-    // the Kelvin arms: foam lines opening out from the stern and fading
+    // the Kelvin arms: foam lines opening out from the stern and fading (both arms in one stroke; close up the older
+    // half wider)
     const k1 = ageIndex(e, v.now, armLife, 0);
-    if (k1 > 0)
-      for (const side of [-1, 1]) {
-        const kmid = ageIndex(e, v.now, armLife * 0.4, 0);
-        const w = Math.max(0.7, v.scale * 0.6);
-        if (kmid > 0) strokeFade(ctx, e, 0, kmid, v, side * beam * 0.9, spread, 0, '236,244,247', strength * (sub ? 0.25 : 0.6), strength * (sub ? 0.12 : 0.3), w);
-        if (k1 > kmid) strokeFade(ctx, e, kmid, k1, v, side * beam * 0.9, spread, 0, '236,244,247', strength * (sub ? 0.12 : 0.3), 0, w * 1.4);
+    if (k1 > 0) {
+      const kmid = ageIndex(e, v.now, armLife * 0.4, 0);
+      const w = Math.max(0.7, v.scale * 0.6);
+      const a0 = strength * (sub ? 0.25 : 0.6);
+      const am = strength * (sub ? 0.12 : 0.3);
+      const off = beam * 0.9;
+      if (!near || kmid <= 0 || kmid >= k1) {
+        ctx.strokeStyle = kmid > 0 && kmid < k1 ? fadeAlong(ctx, e, v, 0, [0, kmid, k1], FOAM, [a0, am, 0]) : fadeAlong(ctx, e, v, 0, [0, k1], FOAM, [a0, 0]);
+        strokePair(ctx, e, 0, k1, v, off, spread, 0, w * 1.15);
+      } else {
+        ctx.strokeStyle = fadeAlong(ctx, e, v, 0, [0, kmid], FOAM, [a0, am]);
+        strokePair(ctx, e, 0, kmid, v, off, spread, 0, w);
+        ctx.strokeStyle = fadeAlong(ctx, e, v, 0, [kmid, k1], FOAM, [am, 0]);
+        strokePair(ctx, e, kmid, k1, v, off, spread, 0, w * 1.4);
       }
+    }
     // churning foam boiling up at the stern while under way
     if (v.scale >= 2 && v.now - e.t[e.at(0)] < 300 && !sub) {
       const i = e.at(0);
@@ -279,24 +336,28 @@ class RealisticTrails implements TrailLayer {
     ctx.lineJoin = 'round';
     // the vapour forms a little behind the plane, then widens, drifts with the wind, spreads apart and thins out
     const edges = [0.03, 0.14, 0.42, 1];
-    const alpha = [0, 0.5, 0.3, 0];
-    const width = [0.4, 0.7, 1.2];
-    for (const sd of [-1, 1]) {
-      for (let b = 0; b < 3; b++) {
-        const k0 = ageIndex(e, v.now, life * edges[b], 0);
-        const k1 = ageIndex(e, v.now, life * edges[b + 1], k0);
-        if (k1 <= k0) continue;
-        if (b === 2 && k >= 2) {
-          // close up the old vapour breaks up into soft wisps drifting apart
-          for (let kk = k0; kk <= k1; kk += 3) {
+    const kb = [0, 0, 0, 0];
+    kb[0] = ageIndex(e, v.now, life * edges[0], 0);
+    for (let b = 1; b < 4; b++) kb[b] = ageIndex(e, v.now, life * edges[b], kb[b - 1]);
+    // the young vapour, both lines in one stroke: fading in, then thinning
+    if (kb[2] > kb[0]) {
+      ctx.strokeStyle = kb[1] > kb[0] && kb[1] < kb[2] ? fadeAlong(ctx, e, v, 0.3, [kb[0], kb[1], kb[2]], VAPOUR, [0, 0.5, 0.3]) : fadeAlong(ctx, e, v, 0.3, [kb[0], kb[2]], VAPOUR, [0.25, 0.3]);
+      strokePair(ctx, e, kb[0], kb[2], v, side, 0.03, 0.3, Math.max(0.7, k * 0.6));
+    }
+    if (kb[3] > kb[2]) {
+      if (k >= 2) {
+        // close up the old vapour breaks up into soft wisps drifting apart
+        for (const sd of [-1, 1])
+          for (let kk = kb[2]; kk <= kb[3]; kk += 3) {
             const i = e.at(kk);
             const q = Math.min(1, (v.now - e.t[i]) / life);
             screenAt(e, kk, v, sd * side, 0.05, 0.3, P0);
             puff(ctx, Puff.WHITE, (kk + sd) & 7, P0[0], P0[1], k * (1 + 2.2 * q), 0.28 * (1 - q) * (1 - q));
           }
-          continue;
-        }
-        strokeFade(ctx, e, k0, k1, v, sd * side, 0.03, 0.3, '252,253,253', alpha[b], alpha[b + 1], Math.max(0.6, k * width[b]));
+      } else {
+        // the old vapour spread into a wider, fainter haze
+        ctx.strokeStyle = fadeAlong(ctx, e, v, 0.3, [kb[2], kb[3]], VAPOUR, [0.24, 0]);
+        strokePair(ctx, e, kb[2], kb[3], v, side, 0.03, 0.3, Math.max(1.3, k * 1.8));
       }
     }
     ctx.globalAlpha = 1;
@@ -311,8 +372,14 @@ class RealisticTrails implements TrailLayer {
       ctx.lineJoin = 'round';
       const kMid = ageIndex(e, v.now, life * 0.3, 0);
       const kEnd = ageIndex(e, v.now, life, kMid);
-      if (kMid > 0) strokeFade(ctx, e, 0, kMid, v, 0, 0, 0.2, '246,242,230', 0.75, 0.45, big ? 2.2 : 1.6);
-      if (kEnd > kMid) strokeFade(ctx, e, kMid, kEnd, v, 0, 0, 0.2, '214,212,206', 0.45, 0, big ? 3.6 : 2.6);
+      if (kMid > 0) {
+        ctx.strokeStyle = fadeAlong(ctx, e, v, 0.2, [0, kMid], SMOKE_YOUNG, [0.75, 0.45]);
+        strokeLine(ctx, e, 0, kMid, v, 0.2, big ? 2.2 : 1.6);
+      }
+      if (kEnd > kMid) {
+        ctx.strokeStyle = fadeAlong(ctx, e, v, 0.2, [kMid, kEnd], SMOKE_OLD, [0.45, 0]);
+        strokeLine(ctx, e, kMid, kEnd, v, 0.2, big ? 3.6 : 2.6);
+      }
       ctx.globalAlpha = 1;
       return;
     }
@@ -348,19 +415,24 @@ function bowWave(ctx: CanvasRenderingContext2D, u: TrailUnit, v: TrailView): voi
   const out = 1.15 + 0.35 * strength * (u.motion.wakeSpread ?? 1);
   const at = (fx: number, fy: number): [number, number] => [u.x + c * fx - s * fy, u.y + s * fx + c * fy];
   ctx.lineCap = 'round';
+  // both sides in one path, fading from the stem aft along the hull
+  const [x0, y0] = at(L * 0.9, 0);
+  const [xe, ye] = at(L * 0.3, 0);
+  const gr = ctx.createLinearGradient(x0, y0, xe, ye);
+  gr.addColorStop(0, `rgba(246,250,252,${(0.6 * strength).toFixed(3)})`);
+  gr.addColorStop(1, 'rgba(246,250,252,0)');
+  ctx.strokeStyle = gr;
+  ctx.beginPath();
   for (const sd of [-1, 1]) {
-    const [x0, y0] = at(L * 0.9, 0);
     const [x1, y1] = at(L * 0.62, sd * b * 1.05);
     const [x2, y2] = at(L * 0.3, sd * b * out);
-    const gr = ctx.createLinearGradient(x0, y0, x2, y2);
-    gr.addColorStop(0, `rgba(246,250,252,${(0.6 * strength).toFixed(3)})`);
-    gr.addColorStop(1, 'rgba(246,250,252,0)');
-    ctx.strokeStyle = gr;
-    ctx.beginPath();
     ctx.moveTo(x0, y0);
     ctx.quadraticCurveTo(x1, y1, x2, y2);
-    ctx.lineWidth = Math.max(0.8, k * 0.6);
-    ctx.stroke();
+  }
+  ctx.lineWidth = Math.max(0.8, k * 0.6);
+  ctx.stroke();
+  // close up a soft wider spray under it
+  if (k >= 2) {
     ctx.lineWidth = Math.max(1.6, k * 1.6);
     ctx.globalAlpha = 0.35;
     ctx.stroke();

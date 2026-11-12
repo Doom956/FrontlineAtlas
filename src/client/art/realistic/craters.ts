@@ -25,15 +25,24 @@ function bucketR(rd: number): { b: number; r: number } {
   return { b, r: Math.pow(1.25, b) };
 }
 
-/** A ragged closed outline round (cx, cy): radius r with a wobble of `w` (0..1). */
+const RX: number[] = [];
+const RY: number[] = [];
+
+/**
+ * A ragged closed outline round (cx, cy): radius r with a wobble of `w` (0..1), drawn as one smooth curve through the
+ * midpoints of its corners (an uneven lump of earth, never a polygon with straight facets).
+ */
 function ragged(c: CanvasRenderingContext2D, cx: number, cy: number, r: number, w: number, seed: number, n = 18): void {
-  for (let i = 0; i <= n; i++) {
-    const a = (i / n) * TAU;
-    const k = 1 + (rnd(seed, i % n) - 0.5) * 2 * w;
-    const x = cx + Math.cos(a) * r * k;
-    const y = cy + Math.sin(a) * r * k * 0.9;
-    if (i === 0) c.moveTo(x, y);
-    else c.lineTo(x, y);
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU + (rnd(seed, i + 500) - 0.5) * (TAU / n) * 0.5;
+    const k = 1 + (rnd(seed, i) - 0.5) * 2 * w;
+    RX[i] = cx + Math.cos(a) * r * k;
+    RY[i] = cy + Math.sin(a) * r * k * 0.9;
+  }
+  c.moveTo((RX[n - 1] + RX[0]) / 2, (RY[n - 1] + RY[0]) / 2);
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    c.quadraticCurveTo(RX[i], RY[i], (RX[i] + RX[j]) / 2, (RY[i] + RY[j]) / 2);
   }
   c.closePath();
 }
@@ -48,26 +57,34 @@ function paintScorch(c: CanvasRenderingContext2D, r: number, v: number): void {
   c.beginPath();
   ragged(c, 0, 0, r * 2, 0.18, seed, 22);
   c.fill();
-  // radial streaks of soot: tapered wedges of uneven length
+  // radial streaks of soot thrown out: feathered plumes of uneven length and width, bowed a little (blast soot, not a
+  // drawn star), fading out along their length
   const n = 14 + (v % 3) * 3;
   for (let i = 0; i < n; i++) {
     const a = (i / n) * TAU + (rnd(seed, i + 30) - 0.5) * 0.35;
-    const len = r * (1.3 + rnd(seed, i + 50) * (REACH - 1.4));
-    const w = r * (0.07 + rnd(seed, i + 70) * 0.12);
+    const len = r * (1.25 + Math.pow(rnd(seed, i + 50), 1.4) * (REACH - 1.35));
+    const w = r * (0.08 + rnd(seed, i + 70) * 0.14);
+    const bow = (rnd(seed, i + 110) - 0.5) * w * 1.6;
     const c0 = Math.cos(a);
     const s0 = Math.sin(a);
     const x0 = c0 * r * 0.6;
     const y0 = s0 * r * 0.6 * 0.9;
     const x1 = c0 * len;
     const y1 = s0 * len * 0.9;
+    // the plume's widest point a third of the way out, its tip rounded off
+    const xm = c0 * (r * 0.6 + (len - r * 0.6) * 0.38) - s0 * bow;
+    const ym = (s0 * (r * 0.6 + (len - r * 0.6) * 0.38)) * 0.9 + c0 * bow;
     const sg = c.createLinearGradient(x0, y0, x1, y1);
-    sg.addColorStop(0, `rgba(18,14,11,${(0.4 + rnd(seed, i + 90) * 0.25).toFixed(3)})`);
+    const a0 = 0.3 + rnd(seed, i + 90) * 0.22;
+    sg.addColorStop(0, `rgba(18,14,11,${a0.toFixed(3)})`);
+    sg.addColorStop(0.55, `rgba(18,14,11,${(a0 * 0.4).toFixed(3)})`);
     sg.addColorStop(1, 'rgba(18,14,11,0)');
     c.fillStyle = sg;
     c.beginPath();
-    c.moveTo(x0 - s0 * w, y0 + c0 * w);
-    c.lineTo(x1, y1);
-    c.lineTo(x0 + s0 * w, y0 - c0 * w);
+    c.moveTo(x0 - s0 * w * 0.7, y0 + c0 * w * 0.7);
+    c.quadraticCurveTo(xm - s0 * w * 1.1, ym + c0 * w * 1.1, x1 - s0 * w * 0.15, y1 + c0 * w * 0.15);
+    c.quadraticCurveTo(x1 + c0 * w * 0.3, y1 + s0 * w * 0.3, x1 + s0 * w * 0.15, y1 - c0 * w * 0.15);
+    c.quadraticCurveTo(xm + s0 * w * 1.1, ym - c0 * w * 1.1, x0 + s0 * w * 0.7, y0 - c0 * w * 0.7);
     c.closePath();
     c.fill();
   }

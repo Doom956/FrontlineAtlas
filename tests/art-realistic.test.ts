@@ -164,4 +164,26 @@ describe('realistic art style', () => {
     for (let f = 0; f < 30; f++) con.frame(farLog.ctx, [{ id: 9, key: 'bomber', x: f * 3, y: 50, tx: f * 0.2, ty: 4, angle: 0, half: 12, moving: true, speed: 4, turnRate: 0, motion: lively }], { ...view, zoom: 1.5, full: false, now: f * 16 });
     expect(farLog.log.filter((l) => l.startsWith('stroke('))).toEqual([]);
   });
+
+  it('keeps a wake and a contrail to a few draw calls at mid zoom (hundreds of ships and planes on screen)', () => {
+    const view = { ox: 0, oy: 0, zoom: 6, scale: 1, now: 0, viewW: 800, viewH: 600, dpr: 1, full: true };
+    const calls = (log: string[]): number => log.filter((l) => l.startsWith('fill(') || l.startsWith('stroke(')).length;
+    const wakes = realistic.wakes.createLayer();
+    let last = recorder();
+    for (let f = 0; f < 150; f++) {
+      last = recorder();
+      wakes.frame(last.ctx, [{ id: 3, key: 'battleship', x: 60 + f * 0.6, y: 120, tx: 10 + f * 0.1, ty: 20, angle: 0, half: 20, moving: true, speed: 3, turnRate: 0, motion: cinematic }], { ...view, now: f * 16 });
+    }
+    // the churned water, both Kelvin arms and both sides of the bow wave: one call each
+    expect(calls(last.log)).toBeGreaterThan(0);
+    expect(calls(last.log)).toBeLessThanOrEqual(3);
+    const con = realistic.contrails.createLayer();
+    for (let f = 0; f < 150; f++) {
+      last = recorder();
+      con.frame(last.ctx, [{ id: 4, key: 'heavyBomber', x: 60 + f, y: 80, tx: 10 + f * 0.15, ty: 13, angle: 0, half: 14, moving: true, speed: 3, turnRate: 0, motion: cinematic }], { ...view, now: f * 16 });
+    }
+    // the young vapour and the old haze, both engines' lines in one stroke each
+    expect(calls(last.log)).toBeGreaterThan(0);
+    expect(calls(last.log)).toBeLessThanOrEqual(2);
+  });
 });

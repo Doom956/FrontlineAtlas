@@ -120,7 +120,8 @@ function blast(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams): vo
   if (b.kind === 'atom') atomCloud(ctx, b, m, tt, R, seed, x, y);
   else if (b.kind === 'splash') splash(ctx, b, tt, R, seed, x, y, m);
   else {
-    // smoke rolling up out of the fire: the old puffs under the young ones
+    // smoke rolling up out of the fire: the old puffs under the young ones (black smoke has lighter, sunlit billows in
+    // it, so it still reads over dark water)
     if (tt > s.fire * 0.25 && tt < smokeEnd) {
       const sd = s.smoke * m.smokeLinger;
       for (let i = s.nSmoke - 1; i >= 0; i--) {
@@ -133,7 +134,7 @@ function blast(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams): vo
         const drift = R * 1.3 * q * q;
         const r = R * (0.55 + 1.05 * easeOut(q)) * (0.8 + rnd(seed, i + 130) * 0.4);
         const al = 0.85 * ramp(q, 0, 0.12) * (1 - q) * (1 - q * 0.3);
-        puff(ctx, i % 3 === 2 && s.smokeKind === Puff.GREY ? Puff.DARK : s.smokeKind, i, x + Math.cos(a) * d + WIND_X * drift, y + Math.sin(a) * d * 0.7 - rise + WIND_Y * drift, r, al);
+        puff(ctx, i % 3 === 2 && s.smokeKind === Puff.GREY ? Puff.DARK : i % 3 === 1 && s.smokeKind === Puff.DARK ? Puff.GREY : s.smokeKind, i, x + Math.cos(a) * d + WIND_X * drift, y + Math.sin(a) * d * 0.7 - rise + WIND_Y * drift, r, al);
       }
     }
     // the fireball: swelling, then cooling into embers and sinking into the smoke
@@ -242,11 +243,14 @@ function atomCloud(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams,
   if (tt < 1100 && m.shockwave > 0) {
     const q = tt / 1100;
     const rr = W * 1.25 * easeOut3(q) * m.shockwave;
-    const n = 40;
+    // a broken band of vapour, thick in places and missing in others (never an even string of puffs)
+    const n = 46;
     for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2 + rnd(seed, i + 900) * 0.4;
-      const jr = rr * (0.88 + rnd(seed, i + 905) * 0.24);
-      puff(ctx, Puff.WHITE, i, x + Math.cos(a) * jr, y + Math.sin(a) * jr * 0.85, Math.max(3, W * 0.15) * (0.5 + q) * (0.7 + rnd(seed, i + 910) * 0.6), 0.32 * (1 - q) * (1 - q));
+      if (rnd(seed, i + 915) < 0.2) continue;
+      const a = (i / n) * Math.PI * 2 + rnd(seed, i + 900) * 0.5;
+      const jr = rr * (0.76 + rnd(seed, i + 905) * 0.42);
+      const big = 0.45 + Math.pow(rnd(seed, i + 910), 1.5) * 1.1;
+      puff(ctx, Puff.WHITE, i, x + Math.cos(a) * jr, y + Math.sin(a) * jr * 0.85, Math.max(3, W * 0.16) * (0.5 + q) * big, 0.27 * (1 - q) * (1 - q));
     }
   }
   // the base surge: a low, wide skirt of dust rolling out

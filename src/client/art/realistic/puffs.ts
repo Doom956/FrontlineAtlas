@@ -203,6 +203,9 @@ export const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 /** 0 before a, rising to 1 at b. */
 export const ramp = (t: number, a: number, b: number): number => clamp01((t - a) / (b - a));
 
+/** Debris tones: dark soil, soot, scorched wood, a pale lump of earth. */
+const DEBRIS_TONES = ['#2e261f', '#463829', '#211c18', '#5a4834', '#3a2e23', '#6b5a44'];
+
 /**
  * Debris: dark chunks thrown out from (x, y) along ballistic paths (top-down: out and slowing, a hint of rising and
  * falling back on screen), with a short hot streak while they are fresh. `n` chunks, out to `reach` px over time 0..1.
@@ -230,16 +233,18 @@ export function debris(ctx: CanvasRenderingContext2D, x: number, y: number, n: n
       ctx.lineTo(px, py);
       ctx.stroke();
     }
-    ctx.globalAlpha = prev * fade;
-    ctx.fillStyle = i % 3 === 0 ? '#3b2f25' : '#1d1915';
+    // an irregular clod or splinter in earth and soot tones, tumbling (five uneven corners, never a clean diamond)
+    ctx.globalAlpha = prev * fade * 0.9;
+    ctx.fillStyle = DEBRIS_TONES[i % DEBRIS_TONES.length];
     const rot = rnd(seed, i * 5 + 3) * TAU + t * 6 * (i % 2 ? 1 : -1);
-    const c = Math.cos(rot) * s;
-    const sn = Math.sin(rot) * s;
+    const ss = s * (i % 4 === 3 ? 0.55 : 0.8);
     ctx.beginPath();
-    ctx.moveTo(px + c, py + sn);
-    ctx.lineTo(px - sn * 0.6, py + c * 0.6);
-    ctx.lineTo(px - c * 0.8, py - sn * 0.8);
-    ctx.lineTo(px + sn * 0.5, py - c * 0.5);
+    for (let j = 0; j < 5; j++) {
+      const a2 = rot + (j / 5) * TAU + (rnd(seed, i * 7 + j + 400) - 0.5) * 0.9;
+      const r2 = ss * (0.45 + rnd(seed, i * 7 + j + 450) * 0.6) * (j === 0 ? 1.3 : 1);
+      if (j === 0) ctx.moveTo(px + Math.cos(a2) * r2, py + Math.sin(a2) * r2);
+      else ctx.lineTo(px + Math.cos(a2) * r2, py + Math.sin(a2) * r2);
+    }
     ctx.closePath();
     ctx.fill();
   }
