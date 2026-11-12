@@ -19,7 +19,7 @@
 import { M_MASTERY, M_SPECIAL, type SpriteKey } from '../shared/keys';
 import { rnd } from '../shared/noise';
 import { type Bounds, bounds, type Layer, type OwnerLayer, type Tones, type UnitModel } from './model';
-import { block, box, castShadow, type Col, css, cylGrad, darken, domeGrad, edge, fillShape, fine, grime, hair, hexCol, innerShade, lighten, linesX, linesY, litGrad, mirrored, oval, type Paint, polyShape, rim, rod, type Shape, shadowAt, softShadow, strokeShape, turn } from './paint';
+import { block, box, castShadow, type Col, css, cylGrad, darken, domeGrad, edge, fillShape, fine, grime, hair, hexCol, innerShade, lighten, linesX, linesY, litGrad, oval, type Paint, polyShape, rim, rod, type Shape, shadowAt, softShadow, strokeShape, turn } from './paint';
 
 // ------------------------------------------------------------------------------------------------- paint
 

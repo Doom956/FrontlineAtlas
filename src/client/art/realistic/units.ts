@@ -321,7 +321,8 @@ function compose(ctx: CanvasRenderingContext2D, q: Pose, m: MotionParams): boole
     const bank = still ? 0 : Math.max(-m.bankMax, Math.min(m.bankMax, q.turnRate * m.bankPerTurn));
     const cb = Math.cos(bank);
     const bob = still ? 0 : Math.sin(t / 1700 + q.seed * 2.3) * m.altitudeBob;
-    const alt = (model.alt + bob) * sc;
+    // (a portrait keeps the shadow close, so it stays in its box)
+    const alt = (q.still ? Math.min(2.5, model.alt) : model.alt + bob) * sc;
     if (sh) {
       ctx.save();
       ctx.globalAlpha *= 0.85;
@@ -364,7 +365,8 @@ function compose(ctx: CanvasRenderingContext2D, q: Pose, m: MotionParams): boole
     if (sh) {
       ctx.save();
       ctx.globalAlpha *= 0.7;
-      ctx.translate(x - LIGHT_X * model.alt * sc, y - LIGHT_Y * model.alt * sc);
+      const malt = (q.still ? 2.5 : model.alt) * sc;
+      ctx.translate(x - LIGHT_X * malt, y - LIGHT_Y * malt);
       ctx.rotate(q.angle);
       blit(ctx, sh, k);
       ctx.restore();

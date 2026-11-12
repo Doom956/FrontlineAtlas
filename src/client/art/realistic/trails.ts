@@ -242,10 +242,10 @@ class RealisticTrails implements TrailLayer {
       if (k1 <= k0) continue;
       const a0 = (1 - edges[b]) * (1 - edges[b]);
       const a1 = (1 - edges[b + 1]) * (1 - edges[b + 1]);
-      const w0 = sub ? 0.35 : 0.6;
-      // (a soft wide edge only close up: the middle zooms draw one ribbon per band)
-      if (v.scale >= 2) ribbonFade(ctx, e, k0, k1, v, beam * w0 * 1.7, beam * (w0 + 1.3) * 1.5, washLife, '214,232,238', strength * 0.18 * a0, strength * 0.18 * a1);
-      ribbonFade(ctx, e, k0, k1, v, beam * w0, beam * (w0 + 1.1), washLife, b === 0 ? '246,250,252' : '222,238,243', strength * (sub ? 0.3 : 0.55) * a0, strength * (sub ? 0.3 : 0.55) * a1);
+      const w0 = sub ? 0.28 : 0.42;
+      // (a soft edge only close up: the middle zooms draw one ribbon per band)
+      if (v.scale >= 2) ribbonFade(ctx, e, k0, k1, v, beam * w0 * 1.45, beam * (w0 + 0.35) * 1.3, washLife, '214,232,238', strength * 0.1 * a0, strength * 0.1 * a1);
+      ribbonFade(ctx, e, k0, k1, v, beam * w0, beam * (w0 + 0.3), washLife, b === 0 ? '246,250,252' : '222,238,243', strength * (sub ? 0.26 : 0.42) * a0, strength * (sub ? 0.26 : 0.42) * a1);
     }
     // the Kelvin arms: foam lines opening out from the stern and fading
     const k1 = ageIndex(e, v.now, armLife, 0);
@@ -278,16 +278,25 @@ class RealisticTrails implements TrailLayer {
     ctx.lineCap = 'butt';
     ctx.lineJoin = 'round';
     // the vapour forms a little behind the plane, then widens, drifts with the wind, spreads apart and thins out
-    const edges = [0.04, 0.2, 0.55, 1];
-    const alpha = [0, 0.34, 0.2, 0];
+    const edges = [0.03, 0.14, 0.42, 1];
+    const alpha = [0, 0.5, 0.3, 0];
+    const width = [0.4, 0.7, 1.2];
     for (const sd of [-1, 1]) {
       for (let b = 0; b < 3; b++) {
         const k0 = ageIndex(e, v.now, life * edges[b], 0);
         const k1 = ageIndex(e, v.now, life * edges[b + 1], k0);
         if (k1 <= k0) continue;
-        const w = k * (0.6 + b * 1.1);
-        if (k >= 2) strokeFade(ctx, e, k0, k1, v, sd * side, 0.02, 0.3, '250,251,252', alpha[b] * 0.45, alpha[b + 1] * 0.45, w * 2.6);
-        strokeFade(ctx, e, k0, k1, v, sd * side, 0.02, 0.3, '252,253,253', alpha[b], alpha[b + 1], w);
+        if (b === 2 && k >= 2) {
+          // close up the old vapour breaks up into soft wisps drifting apart
+          for (let kk = k0; kk <= k1; kk += 3) {
+            const i = e.at(kk);
+            const q = Math.min(1, (v.now - e.t[i]) / life);
+            screenAt(e, kk, v, sd * side, 0.05, 0.3, P0);
+            puff(ctx, Puff.WHITE, (kk + sd) & 7, P0[0], P0[1], k * (1 + 2.2 * q), 0.28 * (1 - q) * (1 - q));
+          }
+          continue;
+        }
+        strokeFade(ctx, e, k0, k1, v, sd * side, 0.03, 0.3, '252,253,253', alpha[b], alpha[b + 1], Math.max(0.6, k * width[b]));
       }
     }
     ctx.globalAlpha = 1;

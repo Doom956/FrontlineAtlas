@@ -30,7 +30,7 @@ const TONES: readonly (readonly [Col, Col, Col])[] = [
   [hexCol('#c4b08c'), hexCol('#957f60'), hexCol('#63523c')],
   [hexCol('#fff6d6'), hexCol('#ffb84f'), hexCol('#d9581f')],
   [hexCol('#ffb46b'), hexCol('#c9471c'), hexCol('#5e1c0b')],
-  [hexCol('#ffffff'), hexCol('#e0edf2'), hexCol('#a6c0cd')],
+  [hexCol('#ffffff'), hexCol('#f0f7fa'), hexCol('#c6d8e0')],
   [hexCol('#3a3530'), hexCol('#1f1c1a'), hexCol('#0d0c0b')],
 ];
 

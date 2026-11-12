@@ -107,12 +107,13 @@ function blast(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams): vo
     if (q > 0 && q < 1) {
       const maxR = (b.kind === 'atom' ? b.rt * b.zoom * 1.05 : b.kind === 'missile' ? Math.max(R * 2.6, b.rt * b.zoom * 0.8) : R * 2.6) * m.shockwave;
       const rr = maxR * easeOut3(q);
-      const n = b.kind === 'atom' ? 26 : b.kind === 'missile' ? 18 : 12;
-      const pr = Math.max(2, maxR * (b.kind === 'atom' ? 0.07 : 0.11)) * (0.6 + q * 0.8);
+      // overlapping puffs at uneven distances: a ragged wall of dust, never a clean ring
+      const n = b.kind === 'atom' ? 34 : b.kind === 'missile' ? 24 : 16;
+      const pr = Math.max(2, maxR * (b.kind === 'atom' ? 0.12 : 0.17)) * (0.6 + q * 0.8);
       for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2 + rnd(seed, i + 70) * 0.3;
-        const jr = rr * (0.92 + rnd(seed, i + 80) * 0.16);
-        puff(ctx, Puff.DUST, i + 2, x + Math.cos(a) * jr, y + Math.sin(a) * jr * 0.8, pr * (0.7 + rnd(seed, i + 90) * 0.6), 0.5 * (1 - q) * (1 - q));
+        const a = (i / n) * Math.PI * 2 + rnd(seed, i + 70) * 0.5;
+        const jr = rr * (0.8 + rnd(seed, i + 80) * 0.35);
+        puff(ctx, Puff.DUST, i + 2, x + Math.cos(a) * jr, y + Math.sin(a) * jr * 0.8, pr * (0.6 + rnd(seed, i + 90) * 0.8), 0.36 * (1 - q) * (1 - q));
       }
     }
   }
@@ -167,11 +168,11 @@ function blast(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams): vo
     if (nd > 0) debris(ctx, x, y, nd, R * (b.kind === 'missile' ? 3.4 : 2.8), tt / (s.fire * 1.8), seed, Math.max(0.8, R * 0.09), true);
     if (s.nSparks) sparks(ctx, x, y, Math.round(s.nSparks * Math.max(0.5, m.debris)), R * 2.2, tt / (s.fire * 1.2), seed, Math.max(0.6, R * 0.05));
     if (b.kind === 'air' && tt < s.fire * 3) fallingPieces(ctx, x, y, b.y, tt / (s.fire * 3), seed, R);
-    // the flash
-    if (tt < 110) {
-      const q = tt / 110;
-      glow(ctx, x, y, R * (2.2 + q), 1 - q);
-      flashOver(ctx, x, y, R * (0.9 + q * 0.5), (1 - q) * 0.9);
+    // the flash: a blink of white-hot light, gone in a few frames
+    if (tt < 80) {
+      const q = tt / 80;
+      glow(ctx, x, y, R * (1.6 + q * 0.6), 0.75 * (1 - q));
+      flashOver(ctx, x, y, R * (0.7 + q * 0.4), (1 - q) * 0.8);
     }
   }
   ctx.globalAlpha = prev;
@@ -198,12 +199,12 @@ function fallingPieces(ctx: CanvasRenderingContext2D, x: number, y: number, grou
 function splash(ctx: CanvasRenderingContext2D, b: BlastDraw, tt: number, R: number, seed: number, x: number, y: number, m: MotionParams): void {
   const total = SPEC.splash.smoke * m.smokeLinger;
   const q = clamp01(tt / total);
-  // the foam ring spreading on the water
-  const n = 10;
+  // foam spreading on the water: a ragged patch of white water, thinning out as it grows
+  const n = 7;
   for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2 + rnd(seed, i) * 0.4;
-    const d = R * (0.6 + 1.7 * easeOut3(q));
-    puff(ctx, Puff.SPRAY, i, x + Math.cos(a) * d, y + Math.sin(a) * d * 0.8, R * (0.35 + 0.35 * q), 0.55 * (1 - q));
+    const a = (i / n) * Math.PI * 2 + rnd(seed, i) * 0.9;
+    const d = R * (0.3 + 1.2 * easeOut3(q)) * (0.6 + rnd(seed, i + 7) * 0.7);
+    puff(ctx, Puff.SPRAY, i, x + Math.cos(a) * d, y + Math.sin(a) * d * 0.8, R * (0.6 + 0.6 * q) * (0.7 + rnd(seed, i + 9) * 0.6), 0.42 * (1 - q) * (1 - q));
   }
   // the column: rising fast, then falling back and spreading
   const up = Math.sin(Math.PI * Math.min(1, q * 1.6));
@@ -241,20 +242,21 @@ function atomCloud(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams,
   if (tt < 1100 && m.shockwave > 0) {
     const q = tt / 1100;
     const rr = W * 1.25 * easeOut3(q) * m.shockwave;
-    const n = 30;
+    const n = 40;
     for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2 + rnd(seed, i + 900) * 0.2;
-      puff(ctx, Puff.WHITE, i, x + Math.cos(a) * rr, y + Math.sin(a) * rr * 0.85, Math.max(3, W * 0.09) * (0.6 + q), 0.45 * (1 - q) * (1 - q));
+      const a = (i / n) * Math.PI * 2 + rnd(seed, i + 900) * 0.4;
+      const jr = rr * (0.88 + rnd(seed, i + 905) * 0.24);
+      puff(ctx, Puff.WHITE, i, x + Math.cos(a) * jr, y + Math.sin(a) * jr * 0.85, Math.max(3, W * 0.15) * (0.5 + q) * (0.7 + rnd(seed, i + 910) * 0.6), 0.32 * (1 - q) * (1 - q));
     }
   }
   // the base surge: a low, wide skirt of dust rolling out
   if (tt > 250 && tt < smokeEnd) {
     const q = (tt - 250) / (smokeEnd - 250);
-    const n = 16;
+    const n = 26;
     for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2 + rnd(seed, i + 950) * 0.35;
-      const d = W * (0.35 + 0.55 * easeOut(q)) * (0.85 + rnd(seed, i + 960) * 0.3);
-      puff(ctx, Puff.DUST, i, x + Math.cos(a) * d, y + Math.sin(a) * d * 0.8, W * (0.16 + 0.12 * q), 0.75 * ramp(q, 0, 0.08) * (1 - q));
+      const a = (i / n) * Math.PI * 2 + rnd(seed, i + 950) * 0.6;
+      const d = W * (0.3 + 0.6 * easeOut(q)) * (0.6 + rnd(seed, i + 960) * 0.55);
+      puff(ctx, Puff.DUST, i, x + Math.cos(a) * d, y + Math.sin(a) * d * 0.8, W * (0.18 + 0.14 * q) * (0.7 + rnd(seed, i + 970) * 0.6), 0.6 * ramp(q, 0, 0.08) * (1 - q));
     }
   }
   // the cap: grey rolling cloud over the centre, rising (up the screen) and drifting, lit orange from below early on
