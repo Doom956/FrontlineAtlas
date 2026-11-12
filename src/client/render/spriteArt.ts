@@ -357,11 +357,13 @@ function tank(mods: number): Part[] {
 }
 
 function lightTank(mods: number): Part[] {
-  return scaled(lightTankParts(mods), 1.12);
+  // half a pixel row off the centre line, so the thin gun is one clean pixel row side on (not two)
+  return centred(scaled(lightTankParts(mods), 1.12));
 }
 function lightTankParts(mods: number): Part[] {
   const out: Part[] = [
-    plate(-9.6, 9, 6.8, 2),
+    // a round plate: the small quick tank's outline differs from the medium's slab, not only its size
+    ell(-0.2, 0, 10.6, 7.4, 0, 0.3, 'own', { sh: 'plate' }),
     box(-7.5, -4.8, 6.5, -3, 0, 1.7, 'tread', { pat: 'tread' }),
     box(-7.5, 3, 6.5, 4.8, 0, 1.7, 'tread', { pat: 'tread' }),
     poly(sym([7.5, -2, 6, -3.1, -7.5, -3.1, -8, -2.4]), 0.4, 1.8, 'sand'),
@@ -378,7 +380,7 @@ function lightTankParts(mods: number): Part[] {
     box(-1.6, -2.3, 1, 2.3, 2.2, 1.55, 'own', { sh: 'dome', sc: over(1.2, 0, 2.7, 2.2), clip: [1.2, 0, 2.7, 2.2] }),
     // a thin short gun in light steel: it reaches about 5 art px past the nose (the medium and heavy guns are longer
     // and thicker)
-    seg(3, 0, 12.2, 0, 1, 3, 0.7, 'steel', { sh: 'cyl' }),
+    seg(3, 0, 12.4, 0, 1, 3, 0.7, 'steel', { sh: 'cyl' }),
     ell(-1.4, -1.5, 0.5, 0.5, 3.7, 3.6, 'gun'),
   );
   return out;
@@ -730,9 +732,13 @@ export function buildModel(key: SpriteKey, mods: number, frame = 0): Model {
   return { parts: parts.map(minSize), air: AIR.has(key), flat: key === 'rocket' || key === 'atomBomb' };
 }
 
-/** Lines and posts at least one art pixel wide, so barrels, masts and propellers never break up. */
+/**
+ * Lines and posts at least one art pixel wide, so barrels, masts and propellers never break up: a line on the centre
+ * line seen side on must still cover the middle of one foreshortened pixel row (half a row is 0.5 / FORE = 0.6 model
+ * units away), so lines are at least 1.25 wide.
+ */
 function minSize(p: Part): Part {
-  if (p.k === 'seg' && p.p[4] < 1.1) return { ...p, p: [p.p[0], p.p[1], p.p[2], p.p[3], 1.1] };
+  if (p.k === 'seg' && p.p[4] < 1.25) return { ...p, p: [p.p[0], p.p[1], p.p[2], p.p[3], 1.25] };
   if (p.k === 'ell' && (p.p[2] < 0.6 || p.p[3] < 0.6)) return { ...p, p: [p.p[0], p.p[1], Math.max(0.6, p.p[2]), Math.max(0.6, p.p[3])] };
   return p;
 }
