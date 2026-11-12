@@ -108,10 +108,10 @@ export function ownerDim(base: readonly number[]): RGB[] {
  */
 export const FX = {
   hot: hexOf(oklch(0.96, 0.04, 95)),
-  flame: hexOf(oklch(0.86, 0.12, 82)),
-  fire: hexOf(oklch(0.74, 0.15, 60)),
-  fireDeep: hexOf(oklch(0.6, 0.15, 42)),
-  ember: hexOf(oklch(0.44, 0.11, 35)),
+  flame: hexOf(oklch(0.86, 0.11, 82)),
+  fire: hexOf(oklch(0.73, 0.135, 60)),
+  fireDeep: hexOf(oklch(0.58, 0.13, 42)),
+  ember: hexOf(oklch(0.42, 0.095, 35)),
   soot: hexOf(oklch(0.27, 0.008, 60)),
   smokeDark: hexOf(oklch(0.36, 0.008, 60)),
   smoke: hexOf(oklch(0.48, 0.008, 70)),

@@ -121,17 +121,49 @@ export function puff(ctx: CanvasRenderingContext2D, x: number, y: number, r: num
  */
 export function fireBall(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, g: number, heat: number, seed: number): void {
   if (r < 0.4) return;
-  ctx.fillStyle = heat > 0.55 ? FX.fireDeep : FX.ember;
+  // the fire's tones from the cool rim inward at this heat: rim, body, billow light
+  const rim = heat > 0.55 ? FX.fireDeep : FX.ember;
+  const body = heat > 0.75 ? FX.fire : heat > 0.35 ? FX.fireDeep : FX.ember;
+  const lit = heat > 0.6 ? FX.flame : heat > 0.3 ? FX.fire : FX.fireDeep;
+  ctx.fillStyle = rim;
   blob(ctx, x + g * 0.7, y + g * 0.8, r, g, seed);
-  ctx.fillStyle = heat > 0.75 ? FX.fire : heat > 0.35 ? FX.fireDeep : FX.ember;
+  ctx.fillStyle = body;
   blob(ctx, x, y, r * 0.9, g, seed + 1);
+  // a big ball is not one flat slab: it rolls in billows, each lit on its upper left and shaded on its lower right
+  // (small ones keep the plain core, which is all a few cells can show)
+  if (r >= 2.6) {
+    const n = r >= 7 ? 4 : 3;
+    for (let i = 0; i < n; i++) {
+      const a = Math.PI * (0.55 + 1.5 * (i / n)) + (hash(seed, i + 7) - 0.5) * 0.9;
+      const d = r * (0.32 + 0.22 * hash(seed, i + 17));
+      const bx = x + Math.cos(a) * d * g;
+      const by = y + Math.sin(a) * d * 0.85 * g;
+      const br = r * (0.26 + 0.12 * hash(seed, i + 27));
+      ctx.fillStyle = rim;
+      blob(ctx, bx + g * 0.6, by + g * 0.7, br, g, seed + 11 + i);
+      ctx.fillStyle = i === 0 || heat > 0.5 ? lit : body;
+      blob(ctx, bx - br * 0.15 * g, by - br * 0.2 * g, br * 0.72, g, seed + 21 + i);
+    }
+  }
   if (heat > 0.3) {
     ctx.fillStyle = heat > 0.7 ? FX.flame : FX.fire;
-    blob(ctx, x - r * 0.22 * g, y - r * 0.26 * g, r * 0.55 * Math.min(1, heat + 0.2), g, seed + 2);
+    blob(ctx, x - r * 0.22 * g, y - r * 0.26 * g, r * 0.48 * Math.min(1, heat + 0.2), g, seed + 2);
   }
   if (heat > 0.78) {
     ctx.fillStyle = FX.hot;
-    blob(ctx, x - r * 0.3 * g, y - r * 0.32 * g, r * 0.28 * heat, g, seed + 3);
+    blob(ctx, x - r * 0.3 * g, y - r * 0.32 * g, r * 0.24 * heat, g, seed + 3);
+  }
+  // cooling: soot rolls in over the top and the far side, the fire turning into smoke from its edges
+  if (heat < 0.62 && r >= 1.8) {
+    const k = Math.min(1, (0.62 - heat) / 0.45);
+    ctx.fillStyle = FX.smokeDark;
+    blob(ctx, x + r * 0.35 * g, y - r * 0.55 * g, r * (0.22 + 0.3 * k), g, seed + 31);
+    ctx.fillStyle = FX.soot;
+    blob(ctx, x + r * 0.58 * g, y - r * 0.12 * g, r * (0.14 + 0.24 * k), g, seed + 32);
+    if (k > 0.4) {
+      ctx.fillStyle = FX.smokeDark;
+      blob(ctx, x - r * 0.45 * g, y - r * 0.5 * g, r * 0.3 * k, g, seed + 33);
+    }
   }
 }
 

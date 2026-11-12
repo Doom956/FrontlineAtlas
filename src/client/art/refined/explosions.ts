@@ -78,6 +78,27 @@ function drawBlast(ctx: CanvasRenderingContext2D, b: BlastLike, m: MotionParams)
   ctx.globalAlpha = prev;
 }
 
+/**
+ * Adds a skirt of dust rolling out over the ground from (x, y) to the smoke group: `n` puffs that start `r0` cells out
+ * and have rolled up to `reach` cells further, each at its own pace, with gaps and a few heavier billows lagging inside,
+ * so it reads as a cloud spreading unevenly and never as a ring of beads. `puffR` cells is a puff's typical size and
+ * `flat` how much the ground plane is foreshortened.
+ */
+function dustSkirt(x: number, y: number, n: number, r0: number, reach: number, puffR: number, flat: number, g: number, seed: number): void {
+  for (let i = 0; i < n; i++) {
+    if (rnd(seed, i + 70) < 0.16) continue;
+    const a = ((i + (rnd(seed, i + 50) - 0.5) * 0.85) / n) * Math.PI * 2 + rnd(seed, 3) * Math.PI * 2;
+    const d = r0 * (0.8 + 0.4 * rnd(seed, i)) + reach * (0.5 + 0.65 * rnd(seed, i + 60));
+    smokeAdd(x + Math.cos(a) * d * g, y + Math.sin(a) * d * flat * g, puffR * (0.6 + 0.8 * rnd(seed, i + 5)), seed + i);
+  }
+  const inner = Math.ceil(n / 3);
+  for (let i = 0; i < inner; i++) {
+    const a = rnd(seed, i + 80) * Math.PI * 2;
+    const d = r0 * 0.6 + reach * (0.2 + 0.3 * rnd(seed, i + 90));
+    smokeAdd(x + Math.cos(a) * d * g, y + Math.sin(a) * d * flat * g, puffR * (0.95 + 0.5 * rnd(seed, i + 95)), seed + 40 + i);
+  }
+}
+
 /** The flipbook step of a 0..1 time: `n` frames, so the motion steps like pixel art. */
 const step = (t: number, n: number): number => (Math.min(n - 1, Math.floor(t * n)) + 0.5) / n;
 
@@ -125,11 +146,7 @@ function burst(ctx: CanvasRenderingContext2D, b: BlastLike, age: number, main: n
   if (s.dust && t < 0.95) {
     const k = easeOut(t);
     smokeReset();
-    for (let i = 0; i < s.dust; i++) {
-      const a = (i / s.dust) * Math.PI * 2 + b.seed * 5;
-      const d = R * (0.5 + 1.5 * k * m.shockwave) * (0.85 + 0.3 * rnd(seed, i));
-      smokeAdd(x + Math.cos(a) * d * g, y + Math.sin(a) * d * 0.5 * g + R * 0.2 * g, R * (0.25 + 0.3 * k) * (0.8 + 0.4 * rnd(seed, i + 5)), seed + i);
-    }
+    dustSkirt(x, y + R * 0.2 * g, s.dust, R * 0.5, R * 1.5 * k * m.shockwave, R * (0.25 + 0.3 * k), 0.5, g, seed);
     smokeDraw(ctx, g, 0.75 * (1 - t) * (1 - t * 0.5), FX.dustDark, FX.dust, FX.dustLight);
   }
   // smoke: from a third of the way through it rises and drifts as one mass; it stays on through the linger
@@ -278,12 +295,7 @@ function atom(ctx: CanvasRenderingContext2D, b: BlastLike, age: number, main: nu
   if (t < 0.85) {
     const k = easeOut((t - 0.05) / 0.8);
     smokeReset();
-    const n = 14;
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2 + b.seed * 3;
-      const d = r * (0.9 + 2.3 * k * m.shockwave) * (0.9 + 0.2 * rnd(seed, i));
-      smokeAdd(x + Math.cos(a) * cell(d), y + Math.sin(a) * cell(d) * 0.42, r * (0.22 + 0.2 * k), seed + i);
-    }
+    dustSkirt(x, y, 16, r * 0.9, r * 2.3 * k * m.shockwave, r * (0.22 + 0.2 * k), 0.42, g, seed);
     smokeDraw(ctx, g, 0.7 * (1 - k), FX.dust, FX.dustLight, FX.ash);
   }
   // the stem and the cap rise from a fifth of the way through; the cloud thins at the end and through the linger
