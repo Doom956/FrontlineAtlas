@@ -586,7 +586,8 @@ class RealisticTrails implements TrailLayer {
     const n = gather(e, v, { side: 0, grow: 0, spread: 0, drift: 0.35, rise: 4 * k, wave: 0, life, maxDist: 1e9 });
     if (n < 2) return;
     const size = (big ? 1.6 : 1.15) * k;
-    const rad = (i: number): number => size * (0.8 + 2.8 * Math.sqrt(SQ[i]));
+    // (the column's last two points taper in, so a young trail never ends in a flat cut)
+    const rad = (i: number): number => size * (0.8 + 2.8 * Math.sqrt(SQ[i])) * (i === n - 1 ? 0.35 : i === n - 2 ? 0.75 : 1);
     // the smoke column first: a soft ribbon widening with age, its edge uneven, a wider fainter one under it (so the
     // puffs on it never read as separate beads)
     ctx.beginPath();
