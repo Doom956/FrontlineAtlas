@@ -11,8 +11,9 @@ import { armyTotal } from '../../sim/economy';
 import type { GameState, Unit } from '../../sim/types';
 import type { Camera } from '../camera';
 import { clamp, css, formatCount, MAP_NUM_FAMILY, type RGB } from './common';
-import { drawTrails, GLYPHS, type Inst } from './unitGlyphs';
-import { drawUnitMarker, drawUnitSprite } from './pixelSprites';
+import { drawTrails, GLYPHS, strokeDucks, type Inst } from './unitGlyphs';
+import { drawMapSprite, drawUnitMarker, isAirType, setSpriteBakeBudget, spriteLength, unitSpriteMods } from './pixelSprites';
+import { prankView } from '../fx/prankView';
 import { isIncoming } from '../forces';
 import { unitVisibleTo } from '../../sim/techtree';
 import type { FogView } from '../fog/fogView';
@@ -24,10 +25,17 @@ const DROP_MS = 1800;
 const CHUTES = 6;
 const UNDER = 'rgba(6,9,15,0.6)';
 
-/** Levels of detail (Pixel Clean): below NEAR_ZOOM every unit is a tiny solid marker (and warships merge into fleet
- * markers with a count, fleets.ts); from NEAR_ZOOM on each unit is its pixel sprite (pixelSprites.ts), growing with
- * the zoom. */
+/** Levels of detail: below NEAR_ZOOM every unit is a tiny solid marker (and warships merge into fleet markers with a
+ * count, fleets.ts); from NEAR_ZOOM on each unit is its shaded pixel sprite (pixelSprites.ts), one art pixel per screen
+ * px at mid zoom, then 2, 3 and 4 px per art pixel as the camera comes closer (whole numbers keep the pixels crisp,
+ * and every unit on screen shares the same pixel size). */
 const NEAR_ZOOM = 3;
+/** Screen px per art pixel of the unit sprites at zoom z. */
+export function spriteScale(z: number): number {
+  return z < 11 ? 1 : z < 22 ? 2 : z < 32 ? 3 : 4;
+}
+/** Sprites baked per frame at most (the rest show their marker for a frame or two). */
+const BAKES_PER_FRAME = 24;
 /** Base unit length on screen (CSS px) at a zoom level; each unit scales it a little (unitGlyphs.ts len). */
 const glyphPx = (z: number): number => (z < NEAR_ZOOM ? clamp(6 + z * 1.1, 7, 9) : clamp(12 + (z - NEAR_ZOOM) * 3.2, 14, 48));
 
@@ -224,6 +232,8 @@ export class UnitLayer {
     const me = humanId;
     const fog = this.fog?.active ? this.fog : null;
     const base = glyphPx(z);
+    const near = z >= NEAR_ZOOM;
+    const k = spriteScale(z);
     let visible: Vis[] = [];
     const taken = new Set<number>();
     const grouping = z < FLEET_ZOOM;
@@ -233,8 +243,10 @@ export class UnitLayer {
       const uy = t ? t.py + (t.cy - t.py) * frac : u.y;
       const x = ox + (ux + 0.5) * z;
       const y = oy + (uy + 0.5) * z;
-      const S = (base * GLYPHS[u.type].len) / 2;
-      if (x < -40 || y < -40 || x > cam.viewW + 40 || y > cam.viewH + 40) continue;
+      // half length on screen: the sprite's own length close up, the marker's size far out
+      const S = near ? Math.max(6, (spriteLength(u.type, u.variant) * k) / 2) : (base * GLYPHS[u.type].len) / 2;
+      const m = Math.max(40, S + 8);
+      if (x < -m || y < -m || x > cam.viewW + m || y > cam.viewH + m) continue;
       // enemy submarines stay hidden until close, sonar, recon or Early Warning shows them (techtree.unitVisibleTo)
       if (u.variant === 'submarine' && me > 0 && !unitVisibleTo(state, me, u)) continue;
       // fog of war: other nations' units only where you see them (fog/fogView.ts); hit tests follow
@@ -285,14 +297,31 @@ export class UnitLayer {
       else this.allHits.push(e.u.id, e.x, e.y, r);
     }
     drawTrails(ctx, visible, z >= 0.45);
-    // far: one small solid marker per unit; near: the unit's pixel sprite (heading snapped, nearest-neighbour)
+    // far: one small solid marker per unit; mid and near: the unit's shaded pixel sprite (16 baked headings, whole
+    // pixel scale): ships and tanks first, then planes, then missiles on top
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
-    const near = z >= NEAR_ZOOM;
-    for (const e of visible) {
-      const c = colors[e.u.owner] ?? [200, 200, 200];
-      if (near && !e.fleet) drawUnitSprite(ctx, e.type, e.u.variant, e.x, e.y, e.S * 2, e.angle, c);
-      else drawUnitMarker(ctx, e.type, e.x, e.y, e.fleet ? e.S * 1.6 : e.S * 1.5, e.angle, css(c));
+    const drawList = prankView.ducks ? this.drawDucks(ctx, visible, colors, z) : visible;
+    if (near) {
+      setSpriteBakeBudget(BAKES_PER_FRAME);
+      try {
+        for (const pass of [0, 1, 2]) {
+          for (const e of drawList) {
+            const air = isAirType(e.type);
+            const missile = e.type === 'rocket' || e.type === 'atomBomb';
+            if ((pass === 0 && air) || (pass === 1 && (!air || missile)) || (pass === 2 && !missile)) continue;
+            const c = colors[e.u.owner] ?? [200, 200, 200];
+            if (e.fleet || !drawMapSprite(ctx, e.type, e.u.variant, e.x, e.y, k, e.angle, c, unitSpriteMods(state, e.u), nowMs)) drawUnitMarker(ctx, e.type, e.x, e.y, e.fleet ? e.S * 1.6 : Math.min(14, e.S * 1.5), e.angle, css(c));
+          }
+        }
+      } finally {
+        setSpriteBakeBudget(Infinity);
+      }
+    } else {
+      for (const e of drawList) {
+        const c = colors[e.u.owner] ?? [200, 200, 200];
+        drawUnitMarker(ctx, e.type, e.x, e.y, e.fleet ? e.S * 1.6 : e.S * 1.5, e.angle, css(c));
+      }
     }
     this.drawn += visible.length;
     // own warships and tank divisions: a tiny white tick under the hull, a ring while hovered, picked or selected
@@ -361,6 +390,26 @@ export class UnitLayer {
       }
     }
     void dpr;
+  }
+
+  /**
+   * The ducks prank (fx/prankView.ts, owner console): every ship, plane and division is a rubber duck for a few
+   * seconds, missiles stay missiles. Returns what is left to draw as usual.
+   */
+  private drawDucks(ctx: CanvasRenderingContext2D, visible: Vis[], colors: readonly RGB[], z: number): Vis[] {
+    const byOwner = new Map<number, Vis[]>();
+    const rest: Vis[] = [];
+    for (const e of visible) {
+      if (e.type === 'rocket' || e.type === 'atomBomb') {
+        rest.push(e);
+        continue;
+      }
+      let l = byOwner.get(e.u.owner);
+      if (!l) byOwner.set(e.u.owner, (l = []));
+      l.push(e);
+    }
+    for (const [owner, list] of byOwner) strokeDucks(ctx, list, css(colors[owner] ?? [200, 200, 200]), UNDER, z >= NEAR_ZOOM ? 1.6 : 1.2);
+    return rest;
   }
 
   /** Parachutes drifting down around a drop point: line canopies in the owner's colour. */

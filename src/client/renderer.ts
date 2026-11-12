@@ -35,6 +35,7 @@ import { UnitLayer } from './render/units';
 import { SelectionOverlay } from './render/selectionOverlay';
 import { PillarOverlay } from './render/pillarOverlay';
 import { BattleFx } from './fx/battleFx';
+import { setSpriteState } from './render/pixelSprites';
 import { hueShift, prankView } from './fx/prankView';
 import { fogFor, type FogView } from './fog/fogView';
 import type { UiState } from './uiState';
@@ -193,6 +194,8 @@ export class Renderer {
   /** Draws a frame. */
   render(state: GameState, camera: Camera, ui: UiState, nowMs: number): void {
     if (state !== this.state) this.setGame(state);
+    // HUD portraits show the upgrades of the player whose colour they are drawn in (render/pixelSprites.ts)
+    setSpriteState(state);
     if (this.gl && this.gl.lost) this.dropGl();
     this.frame++;
     if (this.lastFrameMs > 0) this.frameMs = this.frameMs * 0.9 + clamp(nowMs - this.lastFrameMs, 4, 100) * 0.1;
