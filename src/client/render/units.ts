@@ -4,8 +4,10 @@
 // bank), its speed (wake size), the zoom and a clock for animation. The owner's colour is a plate or band, never a
 // tint. Planes and missiles cast a short ground shadow. Far out, every unit is a tiny solid marker in the owner's
 // colour (shared by every style). Missiles and planes leave contrails and moving ships a wake, drawn by the styles of
-// the 'contrails' and 'wakes' categories (one trail layer per style, anchored to the map). A small troop pill on transports at mid/close zoom; your own warships carry a tiny tick (a
-// ring only while one is hovered or picked, UnitLayer.focusId); they can be clicked to give orders, the hit area is
+// the 'contrails' and 'wakes' categories (one trail layer per style, anchored to the map). Paratroopers coming down
+// where a cargo plane dropped its troops, and the parachute mark on cargo planes, are drawn by the 'paradrop' style.
+// A small troop pill on transports at mid/close zoom; your own warships carry a tiny tick (a ring only while one is
+// hovered or picked, UnitLayer.focusId); they can be clicked to give orders, the hit area is
 // larger than the drawing. At far zoom units on the same pixel are drawn once and only missiles keep their trails.
 // Zoomed out (FLEET_ZOOM), warships of one owner within FLEET_RADIUS tiles (or 16 px on screen) draw as one fleet
 // marker with a count badge (render/fleets.ts); a click on your own marker selects that fleet (ownFleetAt).
@@ -17,9 +19,9 @@ import { clamp, css, MAP_NUM_FAMILY, type RGB } from './common';
 import { GLYPHS, strokeDucks, type Inst } from './unitGlyphs';
 import { drawMapSprite, drawUnitMarker, isAirType, setSpriteBakeBudget, spriteLength, unitSpriteMods, type MapSpriteState } from './pixelSprites';
 import { artStyleOf, type ArtStyle } from '../art/artStyle';
-import { motionFor, styleModule } from '../art/registry';
+import { artFor, motionFor, styleModule } from '../art/registry';
 import { spriteKey } from '../art/shared/keys';
-import type { TrailLayer, TrailUnit, TrailView } from '../art/types';
+import type { ParachuteMarkDraw, ParadropDraw, TrailLayer, TrailUnit, TrailView } from '../art/types';
 import { prankView } from '../fx/prankView';
 import { isIncoming } from '../forces';
 import { troopKinds, troopPill } from './troopIcons';
@@ -29,8 +31,7 @@ import type { FogView } from '../fog/fogView';
 import { clusterFleets, FLEET_ZOOM, fleetRadiusPx, type FleetPoint } from './fleets';
 
 const HIST = 3;
-/** Paratroopers drifting down where a cargo plane arrived (client-only effect). */
-const DROP_MS = 1800;
+/** Paratroopers drifting down where a cargo plane arrived (client-only effect, drawn by the 'paradrop' art style). */
 const CHUTES = 6;
 const UNDER = 'rgba(6,9,15,0.6)';
 
@@ -257,7 +258,7 @@ export class UnitLayer {
     this.allHits.length = 0;
     this.fleetHits.length = 0;
     this.fleets = 0;
-    if (this.drops.length) this.drawDrops(ctx, cam, colors, nowMs);
+    if (this.drops.length) this.drawDrops(ctx, cam, colors, dpr, nowMs);
     if (state.units.length === 0) return;
     const z = cam.zoom;
     const ox = cam.viewW / 2 - cam.x * z;
@@ -440,11 +441,22 @@ export class UnitLayer {
         const known = me <= 0 || u.owner === me || hasIntel(state, me, u.owner);
         const owner = (colors[u.owner] ?? [200, 200, 200]) as RGB;
         troopPill(ctx, e.x, e.y - Math.max(e.S * 0.55, 8) - 12, armyTotal(u.troops), troopKinds(known ? u.troops : null), owner, { edge, arrow: u.owner === me ? 'up' : toMe ? 'down' : 'none', alarm: toMe, small: true });
-        if (e.type === 'transportPlane') chute(ctx, e.x + e.S + 4, e.y + e.S * 0.6 + 4, css(colors[u.owner] ?? [200, 200, 200]));
+        if (e.type === 'transportPlane') {
+          const mk = this.markArgs;
+          mk.x = e.x;
+          mk.y = e.y;
+          mk.half = e.S;
+          mk.owner = owner;
+          mk.zoom = z;
+          mk.dpr = dpr;
+          artFor('paradrop').drawMark(ctx, mk, motionFor('air'));
+        }
       }
     }
   }
 
+  private markArgs: ParachuteMarkDraw = { x: 0, y: 0, half: 0, owner: [200, 200, 200], zoom: 1, dpr: 1 };
+  private dropArgs: ParadropDraw = { x: 0, y: 0, owner: [220, 220, 220], ageMs: 0, durMs: 1, t: 0, count: CHUTES, zoom: 1, scale: 1, seed: 0, dpr: 1 };
   private spriteState: MapSpriteState = { zoom: 1, scale: 1, dpr: 1, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 0 };
 
   /** Wakes behind moving ships, contrails behind planes and missiles, each drawn by its category's current style. */
@@ -494,59 +506,38 @@ export class UnitLayer {
     return rest;
   }
 
-  /** Parachutes drifting down around a drop point: line canopies in the owner's colour. */
-  private drawDrops(ctx: CanvasRenderingContext2D, cam: Camera, colors: readonly RGB[], nowMs: number): void {
+  /** Parachutes drifting down around a drop point, in the owner's colour (the 'paradrop' art style draws them). */
+  private drawDrops(ctx: CanvasRenderingContext2D, cam: Camera, colors: readonly RGB[], dpr: number, nowMs: number): void {
     const z = cam.zoom;
+    const art = artFor('paradrop');
+    const m = motionFor('air');
+    const dur = art.durationMs(m);
+    const reach = art.reachPx(z);
+    const d0 = this.dropArgs;
     let keep = 0;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
     for (const d of this.drops) {
-      const t = (nowMs - d.born) / DROP_MS;
+      const age = nowMs - d.born;
+      const t = age / dur;
       if (t >= 1) continue;
       this.drops[keep++] = d;
       const c = cam.tileToScreen(d.x, d.y);
-      const spread = Math.max(10, z * 2.4);
-      if (c.x < -spread * 3 || c.y < -spread * 3 || c.x > cam.viewW + spread * 3 || c.y > cam.viewH + spread * 3) continue;
-      const col = colors[d.owner] ?? [220, 220, 220];
-      const size = clamp(z * 0.6, 5, 9);
-      ctx.globalAlpha = t < 0.75 ? 1 : 1 - (t - 0.75) / 0.25;
-      for (const pass of [0, 1]) {
-        ctx.beginPath();
-        for (let k = 0; k < CHUTES; k++) {
-          const a = (k / CHUTES) * Math.PI * 2 + d.born * 0.001;
-          const r = spread * (0.35 + 0.65 * ((k * 37) % 10) / 10);
-          // fall from above onto the ground, swaying a little
-          const x = c.x + Math.cos(a) * r + Math.sin(t * 6 + k) * size * 0.25;
-          const y = c.y + Math.sin(a) * r * 0.6 - (1 - t) * spread * 1.6;
-          const s = size * (1 - 0.3 * t);
-          ctx.moveTo(x + s * 0.6, y - s * 0.5);
-          ctx.arc(x, y - s * 0.5, s * 0.6, 0, Math.PI, true);
-          ctx.moveTo(x - s * 0.6, y - s * 0.5);
-          ctx.lineTo(x, y + s * 0.4);
-          ctx.lineTo(x + s * 0.6, y - s * 0.5);
-        }
-        ctx.lineWidth = pass === 0 ? 3 : 1.4;
-        ctx.strokeStyle = pass === 0 ? UNDER : css(col);
-        ctx.stroke();
-      }
+      if (c.x < -reach || c.y < -reach || c.x > cam.viewW + reach || c.y > cam.viewH + reach) continue;
+      d0.x = c.x;
+      d0.y = c.y;
+      d0.owner = (colors[d.owner] ?? [220, 220, 220]) as RGB;
+      d0.ageMs = age;
+      d0.durMs = dur;
+      d0.t = t;
+      d0.count = CHUTES;
+      d0.zoom = z;
+      d0.scale = spriteScale(z);
+      // the drop's own turn of the ring of parachutes (born in ms: the look before the art switch)
+      d0.seed = (((d.born * 0.001) / (Math.PI * 2)) % 1 + 1) % 1;
+      d0.dpr = dpr;
+      art.draw(ctx, d0, m);
     }
     this.drops.length = keep;
     ctx.globalAlpha = 1;
-  }
-}
-
-/** Tiny parachute (canopy arc + two strings) marking a cargo plane. */
-function chute(ctx: CanvasRenderingContext2D, x: number, y: number, color: string): void {
-  for (const pass of [0, 1]) {
-    ctx.beginPath();
-    ctx.moveTo(x - 3, y);
-    ctx.arc(x, y, 3, Math.PI, 0);
-    ctx.moveTo(x - 3, y);
-    ctx.lineTo(x, y + 4.5);
-    ctx.lineTo(x + 3, y);
-    ctx.lineWidth = pass === 0 ? 2.8 : 1.2;
-    ctx.strokeStyle = pass === 0 ? UNDER : color;
-    ctx.stroke();
   }
 }
 

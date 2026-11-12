@@ -308,6 +308,56 @@ export interface CannonArt {
   drawShell(ctx: CanvasRenderingContext2D, s: ShellDraw, m: MotionParams): void;
 }
 
+// ================================================================================================ paratroopers
+
+/**
+ * One frame of a paratrooper drop: the troops of a cargo plane that reached its drop point, coming down under
+ * parachutes round it and landing. The map draws drops at every zoom (far out too), under the units.
+ */
+export interface ParadropDraw {
+  /** the drop point on screen (CSS px): where the troops land */
+  x: number;
+  y: number;
+  /** the owner's colour (the canopies) */
+  owner: RGB;
+  /** ms since the plane arrived, the drop's whole length (ParadropArt.durationMs) and 0..1 of it (ageMs / durMs) */
+  ageMs: number;
+  durMs: number;
+  t: number;
+  /** how many parachutes (6 on the map) */
+  count: number;
+  /** camera zoom (screen px per tile) and the map's whole-number px per art pixel at it (UnitDraw.scale) */
+  zoom: number;
+  scale: number;
+  /** 0..1, the drop's own scatter (where each parachute comes down) */
+  seed: number;
+  dpr: number;
+}
+
+/** The small parachute mark next to a cargo plane in flight (mid and close zoom, beside its troop pill). */
+export interface ParachuteMarkDraw {
+  /** the plane's centre on screen (CSS px) and about half its drawn size (px); the refined mark sits off its lower right */
+  x: number;
+  y: number;
+  half: number;
+  /** the owner's colour */
+  owner: RGB;
+  zoom: number;
+  dpr: number;
+}
+
+/** Paratroopers: the drop round a drop point and the parachute mark on a cargo plane. Motion: the planes' (air). */
+export interface ParadropArt {
+  /** How long a drop shows, from the plane arriving to the last parachute faded out on the ground (ms). */
+  durationMs(m: MotionParams): number;
+  /** How far from the drop point a drop's drawing reaches at a zoom (CSS px); the map skips drops farther off screen. */
+  reachPx(zoom: number): number;
+  /** One frame of a drop (t from 0 to 1): parachutes open, drift down with a little sway, land and fade out. */
+  draw(ctx: CanvasRenderingContext2D, d: ParadropDraw, m: MotionParams): void;
+  /** The parachute mark on a cargo plane in flight. */
+  drawMark(ctx: CanvasRenderingContext2D, p: ParachuteMarkDraw, m: MotionParams): void;
+}
+
 // ================================================================================================ a style
 
 /** Everything one art style draws, one object per art category (art/artStyle.ts ArtCategory). */
@@ -323,4 +373,5 @@ export interface StyleModule {
   readonly explosions: ExplosionArt;
   readonly craters: CraterArt;
   readonly cannonFire: CannonArt;
+  readonly paradrop: ParadropArt;
 }

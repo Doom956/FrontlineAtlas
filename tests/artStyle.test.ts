@@ -3,7 +3,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { applyPicks, ART_CATEGORIES, ART_STYLES, artStyleOf, defaultMotionPicks, defaultStylePicks, MOTION_CATEGORIES, MOTION_PRESETS, motionPresetFor, parseMotionPicks, parseStylePicks, picksLine, setArtStyle, setMotionPreset } from '../src/client/art/artStyle';
+import { applyPicks, ART_CATEGORIES, ART_STYLES, artStyleOf, CATEGORY_LABEL, defaultMotionPicks, defaultStylePicks, MOTION_CATEGORIES, MOTION_PRESETS, motionCategoryOf, motionPresetFor, parseMotionPicks, parseStylePicks, picksLine, setArtStyle, setMotionPreset } from '../src/client/art/artStyle';
 import { motionParams } from '../src/client/art/motion';
 import { artFor, motionFor, styleModule } from '../src/client/art/registry';
 import { refined } from '../src/client/art/refined';
@@ -40,6 +40,46 @@ describe('art switch', () => {
     expect(parseMotionPicks(line)).toEqual(motions);
   });
 
+  it('has a paradrop category that moves with the planes and round-trips through the picks line', () => {
+    expect(ART_CATEGORIES).toContain('paradrop');
+    expect(CATEGORY_LABEL.paradrop).toBe('Paratroopers');
+    expect(motionCategoryOf('paradrop')).toBe('air');
+    expect(parseStylePicks('paradrop: realistic').paradrop).toBe('realistic');
+    const styles = { ...defaultStylePicks(), paradrop: 'detailed', air: 'realistic' } as const;
+    const motions = { ...defaultMotionPicks(), air: 'cinematic' } as const;
+    const line = picksLine(styles, motions);
+    expect(line).toContain('paradrop: detailed (cinematic motion)');
+    expect(parseStylePicks(line)).toEqual(styles);
+    expect(parseMotionPicks(line)).toEqual(motions);
+    // alone, a paradrop entry sets the planes' motion; next to an air entry the air entry wins
+    expect(parseMotionPicks('paradrop: refined (subtle motion)').air).toBe('subtle');
+    expect(parseMotionPicks('paradrop: refined (subtle motion), air: refined (cinematic motion)').air).toBe('cinematic');
+    setArtStyle('paradrop', 'realistic');
+    expect(artFor('paradrop')).toBe(styleModule('realistic').paradrop);
+    expect(motionPresetFor('paradrop')).toBe('lively');
+    setMotionPreset('air', 'subtle');
+    expect(motionPresetFor('paradrop')).toBe('subtle');
+  });
+
+  it('draws the refined paratroopers in the owner colour, over at the end of the drop', () => {
+    const strokes: string[] = [];
+    const ctx = new Proxy({ globalAlpha: 1, strokeStyle: '', stroke: () => strokes.push(String(ctx.strokeStyle)) } as Record<string, unknown>, {
+      get: (o, k) => (k in o ? o[k as string] : () => undefined),
+      set: (o, k, v) => ((o[k as string] = v), true),
+    }) as unknown as CanvasRenderingContext2D;
+    const m = motionParams('lively', false);
+    const dur = refined.paradrop.durationMs(m);
+    const d = { x: 50, y: 50, owner: [64, 160, 255] as [number, number, number], ageMs: dur / 2, durMs: dur, t: 0.5, count: 6, zoom: 14, scale: 2, seed: 0.3, dpr: 1 };
+    refined.paradrop.draw(ctx, d, m);
+    expect(strokes).toContain('rgb(64,160,255)');
+    expect(ctx.globalAlpha).toBe(1);
+    strokes.length = 0;
+    refined.paradrop.draw(ctx, { ...d, ageMs: dur, t: 1 }, m);
+    expect(strokes).toEqual([]);
+    refined.paradrop.drawMark(ctx, { x: 10, y: 10, half: 12, owner: [226, 74, 60], zoom: 6, dpr: 1 }, m);
+    expect(strokes).toContain('rgb(226,74,60)');
+  });
+
   it('switches what draws a category at run time', () => {
     setArtStyle('ships', 'realistic');
     expect(artFor('ships')).toBe(styleModule('realistic').ships);
@@ -72,7 +112,12 @@ describe('art switch', () => {
       for (const c of ART_CATEGORIES) expect(m[c], `${st} ${c}`).toBeTruthy();
       for (const key of SPRITE_KEYS) expect(m[unitCategoryOf(key)].lengthPx(key, 0, 1), `${st} ${key}`).toBeGreaterThan(4);
       expect(typeof m.wakes.createLayer().frame).toBe('function');
+      expect(m.paradrop.durationMs(motionParams('lively', false)), `${st} paradrop`).toBeGreaterThan(0);
+      expect(m.paradrop.reachPx(6), `${st} paradrop`).toBeGreaterThan(0);
+      expect(typeof m.paradrop.draw).toBe('function');
+      expect(typeof m.paradrop.drawMark).toBe('function');
     }
+    expect(styleModule('detailed').paradrop).toBe(refined.paradrop);
     expect(styleModule('detailed').ships).toBe(refined.ships);
     expect(styleModule('realistic').explosions).toBe(refined.explosions);
     expect(MOTION_CATEGORIES.length).toBe(7);

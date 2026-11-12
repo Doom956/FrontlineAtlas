@@ -4,7 +4,7 @@
 // materials, a 1 px dark outline, whole-pixel scaling.
 //
 // Files: spriteArt.ts (the unit models), spriteBake.ts (the rasterizer), sprites.ts (units on the map and in
-// portraits), troopIcons.ts, trails.ts (wakes and contrails), explosions.ts, craters.ts, cannon.ts, fxCommon.ts.
+// portraits), troopIcons.ts, trails.ts (wakes and contrails), explosions.ts, craters.ts, cannon.ts, paradrop.ts (paratroopers), fxCommon.ts.
 //
 // TODO(refined) motion presets (art/motion.ts): durations and lengths already scale (blastTime, craterLife,
 // flashTime, shellArc, wakeLength, wakeSpread, contrailLife, missileTrailLife); the idle motion is not drawn yet
@@ -13,6 +13,7 @@ import type { StyleModule } from '../types';
 import { refinedCannon } from './cannon';
 import { refinedCraters } from './craters';
 import { refinedExplosions } from './explosions';
+import { refinedParadrop } from './paradrop';
 import { refinedUnits } from './sprites';
 import { refinedContrails, refinedWakes } from './trails';
 import { refinedTroopIcons } from './troopIcons';
@@ -29,4 +30,5 @@ export const refined: StyleModule = {
   explosions: refinedExplosions,
   craters: refinedCraters,
   cannonFire: refinedCannon,
+  paradrop: refinedParadrop,
 };

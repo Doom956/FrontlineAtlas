@@ -6,14 +6,14 @@
 import type { ArtCategory, ArtStyle, MotionCategory } from '../art/artStyle';
 import type { MotionParams } from '../art/motion';
 import { ALL_MODS, unitCategoryOf, type SpriteKey } from '../art/shared/keys';
-import type { BlastKind, MapFxKind, StyleModule, TrailLayer, TrailUnit, TrailView, UnitDraw } from '../art/types';
+import type { BlastKind, MapFxKind, ParachuteMarkDraw, ParadropDraw, StyleModule, TrailLayer, TrailUnit, TrailView, UnitDraw } from '../art/types';
 import { FX_INFO } from '../fx/map';
-import type { RGB } from '../render/common';
+import { css, type RGB } from '../render/common';
 import { troopKinds, troopPill } from '../render/troopIcons';
 import { spriteScale } from '../render/units';
 import { backdrop, type Ground } from './backdrop';
 
-export type RowId = 'ships' | 'land' | 'air' | 'missiles' | 'troopIcons' | 'explosions' | 'craters' | 'cannonFire';
+export type RowId = 'ships' | 'land' | 'air' | 'missiles' | 'troopIcons' | 'explosions' | 'craters' | 'cannonFire' | 'paradrop';
 
 /** What a scene draws with, this frame. */
 export interface SceneEnv {
@@ -575,6 +575,106 @@ function cannonScene(env: SceneEnv): void {
   ctx.globalAlpha = 1;
 }
 
+// ------------------------------------------------------------------------------------------------- paratroopers
+
+/** How far the drop's parachutes scatter round the drop point at a zoom (the map's own spread, render/units.ts). */
+const dropSpread = (z: number): number => Math.max(10, z * 2.4);
+/**
+ * The loop's layout at a zoom: the top straight (room above it for a loaded plane's troop pill) and the turn radius
+ * (the parachutes come down inside the loop onto the bottom straight, so it is as tall as their fall).
+ */
+const dropTrack = (z: number): { top: number; r: number } => {
+  const sp = dropSpread(z);
+  return { top: Math.round(dropPlaneRoom(z) * 0.5 + 30), r: Math.max(30, sp * 1.15 + 6) };
+};
+/** About the size of a cargo plane, wings included, at a zoom (CSS px): room at the edges of the cell. */
+const dropPlaneRoom = (z: number): number => 30 * px(z);
+const dropHeight = (z: number): number => {
+  const { top, r } = dropTrack(z);
+  return Math.round(top + 2 * r + dropSpread(z) * 0.6 + 52);
+};
+/** One lap of the loop (ms), the same at every zoom so a drop comes round every few seconds. */
+const DROP_LAP_MS = 7000;
+
+const dropArgs: ParadropDraw = { x: 0, y: 0, owner: OWNER, ageMs: 0, durMs: 1, t: 0, count: 6, zoom: 1, scale: 1, seed: 0, dpr: 1 };
+const markArgs: ParachuteMarkDraw = { x: 0, y: 0, half: 0, owner: OWNER, zoom: 1, dpr: 1 };
+
+/**
+ * Two cargo planes (yours and another nation's) flying a loop over land, half a lap apart; each drops its troops once a
+ * lap at its own drop point on the bottom straight: the parachutes open, come down swaying inside the loop, land round
+ * the point and fade. While loaded a plane carries its troop pill and parachute mark, as on the map.
+ */
+function paradropScene(env: SceneEnv): void {
+  ground(env, 'land');
+  const { ctx } = env;
+  const z = env.zoom;
+  const art = env.style.paradrop;
+  const m = env.motion;
+  const dur = art.durationMs(m);
+  const key: SpriteKey = 'transportPlane';
+  const len = unitLength(env, key);
+  const half = Math.max(6, len / 2);
+  const { top, r } = dropTrack(z);
+  const yc = top + r;
+  const margin = r + Math.max(len, dropPlaneRoom(z)) * 0.6 + 8;
+  const x0 = margin;
+  const x1 = env.w - margin;
+  const L = Math.max(1, x1 - x0);
+  const P = stadiumLength(x0, x1, r);
+  const speedPx = P / (DROP_LAP_MS / 1000);
+  const tilesPerSec = speedPx / z;
+  const planes = [
+    { owner: OWNERS[0], offset: 0, drop: L + Math.PI * r + L * 0.25, mine: true, id: 300 },
+    { owner: OWNERS[1], offset: P / 2, drop: L + Math.PI * r + L * 0.75, mine: false, id: 301 },
+  ];
+  const units: TrailUnit[] = [];
+  const poses: { p: Pose; owner: RGB; loaded: boolean; mine: boolean; seed: number }[] = [];
+  for (const pl of planes) {
+    const s = (env.time / 1000) * speedPx + pl.offset;
+    const p = stadium(s, x0, x1, yc, r, speedPx);
+    // distance flown since the plane last passed its drop point, and which lap that drop was
+    const since = s - pl.drop;
+    const lap = Math.floor(since / P);
+    const d = since - lap * P;
+    const pt = stadium(pl.drop, x0, x1, yc, r, speedPx);
+    // the drop under the planes (the map draws drops before the units)
+    const age = (d / speedPx) * 1000;
+    if (lap >= 0 && age < dur) {
+      dropArgs.x = pt.x;
+      dropArgs.y = pt.y;
+      dropArgs.owner = pl.owner;
+      dropArgs.ageMs = age;
+      dropArgs.durMs = dur;
+      dropArgs.t = age / dur;
+      dropArgs.count = 6;
+      dropArgs.zoom = z;
+      dropArgs.scale = env.scale;
+      dropArgs.seed = rnd(lap + 1, pl.id);
+      dropArgs.dpr = env.dpr;
+      art.draw(ctx, dropArgs, m);
+      ctx.globalAlpha = 1;
+    }
+    // the two names one above the other, so they never overlap when the loop is short (close zoom)
+    label(ctx, pl.mine ? 'Your drop point' : 'Their drop point', pt.x, pt.y + dropSpread(z) * 0.6 + (pl.mine ? 16 : 34), 'center', true);
+    poses.push({ p, owner: pl.owner, loaded: d > P * 0.45, mine: pl.mine, seed: pl.id });
+    units.push({ id: pl.id, key, x: p.x, y: p.y, tx: p.x / z, ty: p.y / z, angle: p.angle, half, moving: true, speed: tilesPerSec, turnRate: p.turn, motion: m });
+  }
+  trailLayer(env, 'contrails').frame(ctx, units, trailView(env));
+  for (const q of poses) drawUnit(env, key, 0, q.p.x, q.p.y, q.p.angle, q.p.turn, tilesPerSec, q.seed, z, q.owner);
+  // loaded planes: the troop pill above and the parachute mark (mid and close zoom on the map)
+  for (const q of poses) {
+    if (!q.loaded) continue;
+    env.pill(() => troopPill(ctx, q.p.x, q.p.y - Math.max(half * 0.55, 8) - 12, 1800, ['infantry'], q.owner, { edge: q.mine ? '#ffe98a' : css(q.owner), arrow: q.mine ? 'up' : 'none', small: true }));
+    markArgs.x = q.p.x;
+    markArgs.y = q.p.y;
+    markArgs.half = half;
+    markArgs.owner = q.owner;
+    markArgs.zoom = z;
+    markArgs.dpr = env.dpr;
+    art.drawMark(ctx, markArgs, m);
+  }
+}
+
 // ------------------------------------------------------------------------------------------------- rows
 
 export function rowSpecs(): RowSpec[] {
@@ -658,6 +758,16 @@ export function rowSpecs(): RowSpec[] {
       motion: 'cannonFire',
       height: (z) => 140 + 80 * px(z),
       draw: cannonScene,
+    },
+    {
+      id: 'paradrop',
+      title: 'Paratroopers',
+      note: 'Cargo planes fly a loop over land and drop their troops at a drop point: the parachutes open, drift down, land and fade.',
+      pick: 'paradrop',
+      also: [],
+      motion: 'air',
+      height: (z) => Math.max(140, dropHeight(z)),
+      draw: paradropScene,
     },
   ];
 }

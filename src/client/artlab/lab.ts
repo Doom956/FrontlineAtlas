@@ -36,7 +36,7 @@ interface Cell {
 type Zoom = 'close' | 'near' | 'mid';
 const ZOOMS: Record<Zoom, number> = { close: CLOSE_ZOOM, near: NEAR_ZOOM, mid: MID_ZOOM };
 /** The picks panel, read row by row in two columns: units on the left, effects on the right. */
-const PICK_ORDER: ArtCategory[] = ['ships', 'missiles', 'wakes', 'troopIcons', 'land', 'explosions', 'air', 'craters', 'contrails', 'cannonFire'];
+const PICK_ORDER: ArtCategory[] = ['ships', 'missiles', 'wakes', 'troopIcons', 'land', 'explosions', 'air', 'craters', 'contrails', 'cannonFire', 'paradrop'];
 
 interface LabState {
   styles: StylePicks;

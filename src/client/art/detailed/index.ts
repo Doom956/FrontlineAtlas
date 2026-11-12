@@ -16,6 +16,8 @@
 //   - troopIcons (TroopIconArt): infantry, armor, artillery and the unknown mix on an owner plate, size + 2 px square.
 //   - wakes and contrails (TrailArt): world-anchored trails (TrailView maps tiles to screen), wake size from speed.
 //   - explosions (ExplosionArt): every BlastKind and MapFxKind; craters (CraterArt); cannonFire (CannonArt).
+//   - paradrop (ParadropArt): parachutes coming down round a drop point in the owner's colour, landing and fading out,
+//     at every zoom; the small parachute mark on a cargo plane.
 //   - lengthPx must match what drawUnit covers (the renderer sizes hit areas and rings from it).
 //   - Motion: read only the MotionParams numbers (art/motion.ts), so subtle, lively and cinematic all work.
 // Rules: never import from art/refined or art/realistic (copying a file from refined as a starting point is fine);

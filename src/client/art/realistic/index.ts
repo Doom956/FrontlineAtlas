@@ -17,6 +17,8 @@
 //   - wakes and contrails (TrailArt): soft foam wakes sized by speed, realistic vapour and smoke trails.
 //   - explosions (ExplosionArt): realistic fire and smoke for every BlastKind and MapFxKind; craters (CraterArt):
 //     scorched earth that weathers away; cannonFire (CannonArt): muzzle flash, smoke, shell arcs, tracers, torpedoes.
+//   - paradrop (ParadropArt): real round canopies with rigging and a hanging soldier in the owner's colour, swaying
+//     down onto the drop point, landing and collapsing, at every zoom; the small parachute mark on a cargo plane.
 //   - lengthPx must match what drawUnit covers (the renderer sizes hit areas and rings from it).
 //   - Motion: read only the MotionParams numbers (art/motion.ts), so subtle, lively and cinematic all work.
 //   - Keep it fast: hundreds of units and dozens of blasts per frame; cache painted pictures (art/shared/atlas.ts).

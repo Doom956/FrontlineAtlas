@@ -19,26 +19,30 @@
 export type ArtStyle = 'refined' | 'detailed' | 'realistic';
 export const ART_STYLES: readonly ArtStyle[] = ['refined', 'detailed', 'realistic'];
 
-/** What a style draws, one switch each. Wakes and contrails can be mixed with any ship or plane style. */
-export type ArtCategory = 'ships' | 'land' | 'air' | 'missiles' | 'troopIcons' | 'explosions' | 'craters' | 'wakes' | 'contrails' | 'cannonFire';
-export const ART_CATEGORIES: readonly ArtCategory[] = ['ships', 'land', 'air', 'missiles', 'troopIcons', 'explosions', 'craters', 'wakes', 'contrails', 'cannonFire'];
+/**
+ * What a style draws, one switch each. Wakes and contrails can be mixed with any ship or plane style; 'paradrop' is the
+ * paratroopers (parachutes coming down round a drop point, the parachute mark on a cargo plane).
+ */
+export type ArtCategory = 'ships' | 'land' | 'air' | 'missiles' | 'troopIcons' | 'explosions' | 'craters' | 'wakes' | 'contrails' | 'cannonFire' | 'paradrop';
+export const ART_CATEGORIES: readonly ArtCategory[] = ['ships', 'land', 'air', 'missiles', 'troopIcons', 'explosions', 'craters', 'wakes', 'contrails', 'cannonFire', 'paradrop'];
 
 export type MotionPreset = 'subtle' | 'lively' | 'cinematic';
 export const MOTION_PRESETS: readonly MotionPreset[] = ['subtle', 'lively', 'cinematic'];
 
 /**
- * What a motion preset is chosen for. 'ships' animates the ships and their wakes, 'air' the planes and their
- * contrails, 'missiles' the missiles and their smoke trails; troop icons do not move.
+ * What a motion preset is chosen for. 'ships' animates the ships and their wakes, 'air' the planes, their contrails
+ * and the paratroopers they drop, 'missiles' the missiles and their smoke trails; troop icons do not move.
  */
 export type MotionCategory = 'ships' | 'land' | 'air' | 'missiles' | 'explosions' | 'craters' | 'cannonFire';
 export const MOTION_CATEGORIES: readonly MotionCategory[] = ['ships', 'land', 'air', 'missiles', 'explosions', 'craters', 'cannonFire'];
 
-/** The motion category that animates an art category (null: troop icons stand still). */
+/** The motion category that animates an art category (wakes: ships; contrails, paradrop: air; null: troop icons stand still). */
 export function motionCategoryOf(c: ArtCategory): MotionCategory | null {
   switch (c) {
     case 'wakes':
       return 'ships';
     case 'contrails':
+    case 'paradrop':
       return 'air';
     case 'troopIcons':
       return null;
@@ -59,6 +63,7 @@ export const CATEGORY_LABEL: Record<ArtCategory, string> = {
   wakes: 'Wakes',
   contrails: 'Contrails',
   cannonFire: 'Cannon fire',
+  paradrop: 'Paratroopers',
 };
 export const STYLE_LABEL: Record<ArtStyle, string> = { refined: 'Refined pixel', detailed: 'Detailed pixel', realistic: 'Realistic' };
 export const MOTION_LABEL: Record<MotionPreset, string> = { subtle: 'Subtle', lively: 'Lively', cinematic: 'Cinematic' };
@@ -102,8 +107,8 @@ export function parseStylePicks(text: string | undefined | null, base: StylePick
 
 /**
  * Reads motion picks from text: one preset for every category ("cinematic"), "category: preset" pairs, or the art lab's
- * picks line ("ships: realistic (subtle motion), ..."): a wakes or contrails entry sets the motion of the ships or
- * planes it follows only when they are not listed themselves.
+ * picks line ("ships: realistic (subtle motion), ..."): a wakes, contrails or paradrop entry sets the motion of the
+ * ships or planes it follows only when they are not listed themselves.
  */
 export function parseMotionPicks(text: string | undefined | null, base: MotionPicks = defaultMotionPicks()): MotionPicks {
   const out = { ...base };
@@ -137,7 +142,7 @@ function lookupCategory(word: string): ArtCategory | null {
 
 /**
  * The picks as one line, e.g. "ships: realistic (subtle motion), land: detailed (lively motion), troopIcons: refined,
- * ...". Wakes and contrails carry the motion of what they follow. parseStylePicks and parseMotionPicks read it back.
+ * ...". Wakes, contrails and paradrop carry the motion of what they follow. parseStylePicks and parseMotionPicks read it back.
  */
 export function picksLine(styles: StylePicks, motions: MotionPicks): string {
   return ART_CATEGORIES.map((c) => {
