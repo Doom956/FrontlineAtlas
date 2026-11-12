@@ -1,32 +1,34 @@
 # UI direction: Pixel Clean
 
 A bright, friendly pixel world with the quietest possible interface over it. The land carries the colour; the HUD
-is near-black glass with no borders, one amber accent and small clean type. The pixel feeling lives in the map, the
+is cool steel glass with no borders, one amber accent and small clean type. The pixel feeling lives in the map, the
 unit art and one display face for the logo, the clock and the big numbers. Nothing else in the chrome is "pixel".
-These are the final picks: smooth gradient water, amber for the game and the setup screen, a heated-titanium logo
+These are the final picks: smooth gradient water, amber for the game and the setup screen, a case-hardened steel logo
 and Play button on the main menu, and a research blue in the research and arsenal panel.
 
 ## Palette
 
-Measured with the WCAG formula on the opaque panel `#14161b` (the glass `rgba(18,20,26,0.8)` sits over a dark map
-and renders at or below that lightness). AA needs 4.5:1 for text and 3:1 for control edges and state.
+Measured with the WCAG formula on the opaque panel `#121821` (the glass `rgba(18,24,33,0.8)` sits over a dark map
+and renders at or below that lightness). AA needs 4.5:1 for text and 3:1 for control edges and state. The panels are
+cool steel: a dark blue-grey at hue 213 to 216, every step on the same hue.
 
 | Token | Hex | Role | Contrast |
 |---|---|---|---|
-| `--ink` | `#0b0d11` | app base | |
-| `--metal` | `#14161b` | panel (opaque fallback of the glass) | |
-| `--metal-2` | `#1b1e25` | control inside a panel | |
-| `--metal-3` | `#262a33` | hover; available research card | |
+| `--ink` | `#0a0e14` | app base | `--text` 16.8:1 |
+| `--metal` | `#121821` | panel (opaque fallback of the glass) | |
+| `--metal-2` | `#1c2531` | control, inset inside a panel | `--text` 13.4:1, `--dim` 6.5:1, `--faint` 5.3:1 |
+| `--metal-3` | `#27313f` | hover; available research card | `--text` 11.4:1, `--dim` 5.5:1, `--faint` 4.5:1 |
+| `--metal-4` | `#313d4c` | pressed, strong | `--text` 9.6:1 (no faint text on it) |
 | `--rule` | `rgba(255,255,255,0.09)` | the one hairline | |
-| `--text` | `#edeff3` | primary text | 15.7:1 (12.5:1 on `--metal-3`) |
-| `--dim` | `#9aa0ac` | labels, secondary | 6.9:1 (5.5:1 on `--metal-3`) |
-| `--faint` | `#7f8590` | quiet labels, locked items | 4.9:1 |
-| `--accent` | `#f5b13d` | the primary action, the current value | 9.7:1 as text |
+| `--text` | `#edeff3` | primary text | 15.5:1 (11.4:1 on `--metal-3`) |
+| `--dim` | `#a0a8b5` | labels, secondary | 7.4:1 (5.5:1 on `--metal-3`) |
+| `--faint` | `#8f98a7` | quiet labels, locked items (lifted from `#7f8590` for the bluer panels) | 6.1:1 (4.5:1 on `--metal-3`) |
+| `--accent` | `#f5b13d` | the primary action, the current value | 9.5:1 as text |
 | `--accent-ink` | `#1a1304` | text on amber | 9.9:1 on `--accent` |
-| `--sel-bg` / `--sel-ink` | `#e6e9ef` / `#15171c` | selected segment, tab, map | 14.7:1; fill vs `--metal-2` 13.7:1 |
-| `--good` | `#74c365` | owned, gains | 8.4:1 |
-| `--danger` | `#f2543d` | losses, under attack | 5.3:1 |
-| `--info` | `#7fa6d6` | in progress | 7.2:1 |
+| `--sel-bg` / `--sel-ink` | `#e6e9ef` / `#15171c` | selected segment, tab, map | 14.7:1; fill vs `--metal-2` 12.7:1 |
+| `--good` | `#74c365` | owned, gains | 8.3:1 |
+| `--danger` | `#f2543d` | losses, under attack | 5.2:1 |
+| `--info` | `#7fa6d6` | in progress | 7.1:1 |
 
 Map (render/terrain.ts, render/palette.ts): water is one smooth slate gradient by distance to land, no steps or
 contour lines: the shelf `#264a5b` near the coast, `#203b4c` in the middle and `#172634` in the open sea (OKLCH
@@ -40,30 +42,52 @@ light stone mountains. Nation fills are the nation hue at even lightness and 58%
 The in-game HUD, the setup screen and the unit card are amber. Two places repoint `--accent` (and its `--brass`
 aliases, which resolve where they are declared) on their own root element, so nothing else changes:
 
-**Main menu: titanium** (`.menu-card.title` in menu.css). The colours titanium takes when it is heated: straw, bronze,
-purple, deep blue, light blue. Only the logo and the one main action (Play, or Continue / Rejoin when they lead)
-wear the gradient; the setup screen and the game never do.
+**Main menu: case-hardened steel** (`.menu-card.title` in menu.css, drawn by `src/client/caseHardened.ts`). Only the
+logo and the one main action (Play, or Continue / Rejoin when they lead) wear a heat-treated metal finish instead of
+a smooth gradient; the setup screen and the game never do. It is drawn once at startup in code (seeded, no image
+files, the same picture every load) and handed to the CSS as `--case-logo` and `--case-fill`. The owner picks in one
+line each: `CASE_STYLE` (`'steel'` default, or `'swirl'`) and `CASE_VARIANT` (`'A'` default).
 
-| Part | Stops | Contrast |
+- **steel**: classic colour case-hardened steel. A warm gold steel base (straw `#c6a662` to brass `#aa884a` and
+  bronze `#8c6a38`, hue 36 to 41, never toward 60 where it turns khaki) with soft mottling and fine grain along a
+  shallow slant. Light-blue islands (periwinkle `#7096de` to sky `#a4c8ee`, lighter clouds inside) sit on a jittered
+  grid of blobs of mixed size, warped and cut by a high-gain fbm so the edges break into fragments; small blue specks
+  near them and small gold pits inside. Box blurs of the blue mask give even rims on any edge: a thin navy `#262a64`
+  to purple `#4e2c70` rim right at the blue (magenta `#942e6c` in flecks), then a patchy orange-gold halo (brown
+  `#704628` and amber `#b06c2c` close in, `#ce983e` further out) and a few pale hot spots `#f0e2b6`.
+- **swirl**: fluid mottled swirls. Three-level domain-warped fbm cut by quantile into straw, bronze, purple, deep and
+  light blue patches with soft cloudy edges, bare grey steel showing through, a hue jitter field and brushed grain.
+
+| Balance | steel | swirl |
 |---|---|---|
-| Logo (Jersey 15 clipped to the gradient, 100deg, mixed in OKLab) | `#f0d592` 0%, `#dc9064` 24%, `#b473d1` 46%, `#5e8fed` 70%, `#7ac8f5` 100% | on the column `#0e1015`: 13.3, 7.5, 5.7, 6.0, 10.3:1; lowest measured on the rendered logo 5.7:1 |
-| Main action fill (an equal-lightness ramp, OKLCH L 0.50 to 0.515) | `#8d5613` 0% (golden bronze, hue 65), `#894b93` 16%, `#5457bc` 42%, `#375fb9` 68%, `#1666aa` 100% | white text 6.0, 6.0, 6.1, 6.0, 6.0:1 (measured on the button 6.0 to 6.1:1); every stop against the column 3.1:1 or more |
-| Small accents on the start page (Play again, row arrows) | `--accent` `#7ac8f5`, `--accent-ink` `#06192a` | 10.3:1 as text; ink on it 9.7:1 |
+| A balanced | 34% blue islands, navy rims | the draft the owner liked |
+| B mostly blue | 55% blue, larger islands | blue and purple, little gold |
+| C gold-heavy | 18% blue, small scattered islands | straw and bronze lead |
+| D purple-heavy | 32% blue, wide purple rims, more magenta | purple leads |
 
-The fill is 130% wide; hovering slides it to the blue end and one soft light band (white at 10%) sweeps across once,
-on hover-capable pointers only and never under `prefers-reduced-motion`. Under the band the white text keeps at least
-4.8:1. Matte, no specular highlight. In forced colours the logo is plain CanvasText and the button gets a border.
+| Part | Rule | Contrast |
+|---|---|---|
+| Logo (Jersey 15, 60px, clipped to the light key) | every texture pixel lifted to luminance 0.15 or more; a 1px dark drop edge | 3.3:1 or more per pixel on the column `#0e131b` (large-text floor 3:1); flat fallback `#a9bfe6` 10.0:1 |
+| Main action (deep key, white text) | every texture pixel softly capped at luminance 0.168 (the steel's deep key is amber gold and royal blue, since a darkened gold turns olive) | white text 4.8:1 or more on the brightest pixel; measured from the rendered page (worst pixel under "Play" and "Against AI") below; flat fallback `#34508f` 7.8:1 |
+| Button edge | 1px `#6a7d9c`; under the pointer `#a9bfe6` (the hover is that edge alone, no motion) | 4.5:1 and 10.0:1 on the column |
+| Small accents on the start page (Play again, row arrows) | `--accent` `#7ac8f5`, `--accent-ink` `#06192a` | 10.1:1 as text; ink on it 9.7:1 |
+
+Measured worst pixel under the button words (rendered at 2x, every style and balance): @@MEASURED@@
+
+Without a 2D canvas (jsdom, locked-down browsers) the logo is the flat `#a9bfe6` and the button `#34508f`. In forced
+colours the logo is plain CanvasText and the button gets a ButtonText border. Matte, no specular highlight, no
+motion, so reduced motion needs nothing more.
 
 **Research and Arsenal: research blue** (`aside.drawer[data-page='research']` in researchPanel.css). One colour, one
 meaning inside the panel: blue is the suggestion and the main action, cyan is what is running now.
 
-| Token | Hex | Role | Contrast on `#14161b` |
+| Token | Hex | Role | Contrast on `#121821` |
 |---|---|---|---|
-| `--accent` | `#3d66df` | the "Next" flag, the panel's primary button | white text 5.0:1; edge 3.6:1 |
-| `--accent-hover` | `#375fd3` | the primary button under the pointer | white text 5.6:1; edge 3.2:1 |
-| `--accent-hi` | `#93aef8` | the Next card's edge, "Available", the tab dot | 8.3:1 (6.6:1 on `#262a33`) |
-| Next card fill | `--accent` at 26% over the panel (renders `#1e2a4e`) | the suggested card | `--text` 12.2:1, `--dim` 5.3:1, edge `#93aef8` 6.5:1 |
-| `--info` | `#4fccd9` | researching / on order: the card edge, its bar, "97% and 14 s left", the header's "Researching" | 9.5:1; 7.2:1 on its own tint `#202f37` |
+| `--accent` | `#3b69fa` | the "Next" flag, the panel's primary button (the owner's cobalt `#3d6bff` gives white text only 4.43:1, so the same hue one step darker) | white text 4.6:1; edge 3.9:1 |
+| `--accent-hover` | `#3560e6` | the primary button under the pointer | white text 5.3:1; edge 3.4:1 |
+| `--accent-hi` | `#93aef8` | the Next card's edge, "Available", the tab dot | 8.2:1 (6.0:1 on `#27313f`) |
+| Next card fill | `--accent` at 26% over the panel (renders `#1d2d59`) | the suggested card | `--text` 11.6:1, `--dim` 5.6:1, `--faint` 4.6:1, edge `#93aef8` 6.1:1 |
+| `--info` | `#4fccd9` | researching / on order: the card edge, its bar, "97% and 14 s left", the header's "Researching" | 9.3:1; 7.7:1 on its own tint `#182a33` |
 
 Cobalt sits at OKLCH hue 266 and cyan at 205, so the two never read as one colour; each also has its own words
 ("Next" on a flag, a percentage and time left with a bar). Hovering a card lights its path in neutral light (what it
@@ -106,7 +130,7 @@ Sentence case everywhere. No letter-spaced capitals, no eyebrow labels above hea
 - Unit card and Forces list: the unit's own map sprite as a portrait (hud/portrait.ts calls drawUnitSprite).
 - Research and Arsenal: the Modern Flat layout (tabs on a track, no fork frames, neutral lines, a Next flag) in
   these tokens, with the research blue accent.
-- Accent: amber everywhere except the main menu (titanium) and the research panel (research blue), see "Where the
+- Accent: amber everywhere except the main menu (case-hardened steel) and the research panel (research blue), see "Where the
   accent changes".
 - Units (render/pixelSprites.ts): original pixel sprites drawn from rectangles in code, one density, a 1px dark
   outline and a two-tone owner ramp. Far: a small solid marker per unit and fleet markers with a count. Near (zoom 3
@@ -121,7 +145,7 @@ No idle pulses or bounces. `prefers-reduced-motion` turns movement off.
 ## The rules that keep it clean
 
 1. **One accent thing per view.** The accent is the primary action (Start game, Build) and the current value: amber
-   in the game and on the setup screen, titanium on the main menu (Play), research blue in the research panel.
+   in the game and on the setup screen, case-hardened steel on the main menu (Play), research blue in the research panel.
    Selection is a light neutral fill, headings are plain text, state colours are semantic only.
 2. **No chrome, only space.** No borders, corner brackets, stripes, grain or gradient washes on panels. Cards in the
    research tree differ by fill, not by outline style.

@@ -2,9 +2,10 @@
    game's identity) but is dimmed while any menu page shows, so the menu reads first. One case-hardened action, quiet
    rows.
 
-   Case-hardened steel: the logo and the one main action wear a mottled heat-tint finish (deep blue, purple, straw
-   gold and bronze clouded over grey steel), drawn once at startup by caseHardened.ts and handed in as --case-logo and
-   --case-fill. The start page alone wears it; every other screen keeps amber. Contrast (WCAG formula):
+   Case-hardened steel: the logo and the one main action wear a heat-treated metal finish, drawn once at startup by
+   caseHardened.ts (CASE_STYLE "steel": blotchy light-blue islands with navy rims and orange-gold halos on warm gold
+   steel; or "swirl": fluid blue, purple and gold swirls) and handed in as --case-logo and --case-fill. The start
+   page alone wears it; every other screen keeps amber. Contrast (WCAG formula, both styles):
      logo   every texture pixel 3.3:1 or more on the column (about #0e131b; 60px display type, so the large-text
             floor of 3:1 applies), plus a 1px dark edge; the flat fallback #a9bfe6 is 10.0:1
      button white text on the brightest texture pixel 4.8:1 or more (the texture is capped at luminance 0.168); the
