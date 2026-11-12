@@ -3,33 +3,37 @@
 // original and lives here as code.
 //
 // Every unit is told apart by SIZE and SILHOUETTE first, colour second (lengths in art px at mid zoom):
-//   carrier (50)      the biggest: a long flat flight deck overhanging the hull, painted edge and centre lines,
-//                     elevators, the island on the starboard side, small planes parked fore and aft
-//   battleship (44)   long, broad and heavy: three big twin turrets (two forward, the second raised), a tall tower
-//                     superstructure, one big funnel, secondary guns along the sides, a teak deck
-//   warship (34)      the plain warship (before an arsenal pick) is a mid-size cruiser: a turret fore and aft, a bridge,
-//                     two funnels, a mast, a teak deck
+//   carrier (50)      the biggest: a flight deck squared off and overhanging at the bow and the stern, the angled
+//                     landing deck jutting to port with its centre line, elevators, the island hard to starboard,
+//                     light T-shaped planes parked aft and forward
+//   battleship (49)   long and broad (twice the cruiser's beam): three large dark gunhouses with long twin barrels (two
+//                     forward, the second raised), a tall stepped tower, one big funnel, secondary guns, a teak deck
+//   warship (30)      the plain warship (before an arsenal pick) is a slim cruiser: two small turrets, a bridge, two
+//                     funnels, a mast, a teak deck
 //   destroyer (26)    small and slim: a single gun fore and aft, two torpedo tube mounts, one raked funnel, grey deck
 //   submarine (30)    long, low and dark, the bow and stern awash under the sea, the conning tower its only raised part
-//   transport (25)    a boxy landing ship: a bow ramp, an open well deck full of troops and two trucks, the bridge aft
-//   trade ship (36)   a merchant hull (black with a red boot top), cargo hatches and derrick cranes, containers, a cream
+//   transport (25)    a boxy landing ship: a raised bow ramp, high sides round a light well deck packed with rows of
+//                     helmeted troops and two trucks, the bridge aft
+//   trade ship (37)   a merchant hull (dark blue-grey with a red boot top), cargo hatches and derrick cranes, containers, a cream
 //                     superstructure aft with the funnel in the owner's colours: no guns
 //   tank division (24)  a medium tank: tracks, a round turret, a medium gun (olive drab)
 //   light tank (20)   small and quick: narrow tracks, a little turret, a thin short gun, an aerial (dark yellow)
 //   heavy tank (35)   wide and long: broad tracks under side skirts, an angular turret, a long gun with a muzzle brake
-//   bomber            twin engines, straight wings, glazed nose
+//   bomber            twin dark engines, straight wings, a big glazed nose
 //   ground attack     single engine, stubby wings with rows of rockets under them (green)
-//   heavy bomber      four engines on long wings, twin tail fins, natural metal (the biggest plane)
+//   heavy bomber      four separate dark engines on wings 1.4 times the bomber's span, twin fins, natural metal
 //   fighter           small: one engine, short wings, a bubble canopy (the smallest plane)
-//   transport plane   a fat fuselage under a high wing, two engines, a tall tail (it carries the paratroopers)
+//   transport plane   a fat light fuselage under a high wing, engines hung under it, a tall tail (paratroopers)
 //   recon plane       twin booms, a short glazed central nacelle
 // Planes have no propeller blades in the model: Model.props lists the hubs and sprites.ts draws spinning discs.
 // Upgrades a player owns add real details, never an owner hue: radar and extra anti-aircraft guns (Naval Mastery),
 // mines on stern rails (Naval Mines), armour skirts (Armor Mastery), jerrycans and a fuel drum (Deep Raids), a dozer
 // ram (Siege Tanks), a snorkel (Amphibious Tanks), jet pods with a hot exhaust and swept wings (Jet Engines), gun
-// turrets (Strategic Bombing), drop tanks (Drop Tanks), black night paint (Night Bombing), a brass tail (Air Mastery).
-// The owner's colour: the bridge roof and turret roofs of warships (air recognition paint), the funnel of a trade ship,
-// a toned-down plate under each tank plus a turret band, a fuselage band and wingtips on planes.
+// turrets (Strategic Bombing), drop tanks (Drop Tanks), black night paint (Night Bombing), a natural metal rudder with a
+// thin brass trim (Air Mastery).
+// The owner's colour: one thin band across the bridge roof of a warship (a submarine: across its after deck; turret roofs
+// stay the ship's grey, so a ship reads by its outline), the funnel of a trade ship, a toned-down plate under each tank
+// plus a toned-down turret band, a fuselage band and wingtips on planes.
 import type { MatId, Model, Part, Pattern, Prop, Shade } from './spriteBake';
 import { M_JET, M_MASTERY, M_NIGHT, M_PATH3, M_SPECIAL, SPRITE_KEYS, type SpriteKey } from '../shared/keys';
 
@@ -68,18 +72,18 @@ export const ANIMATED: ReadonlySet<SpriteKey> = new Set<SpriteKey>(['rocket', 'a
  */
 export const GUNS: Partial<Record<SpriteKey, readonly (readonly [number, number])[]>> = {
   warship: [
-    [9.8, 4.1],
-    [-12.2, 4.1],
+    [8.6, 3.8],
+    [-10.6, 3.8],
   ],
   // a single gun fore and one aft
   destroyer: [
     [7.6, 3.5],
-    [-10, 3.5],
+    [-9.6, 3.5],
   ],
   battleship: [
-    [13.6, 4.5],
-    [8, 5.6],
-    [-14.6, 4.5],
+    [15, 5.1],
+    [9, 6.3],
+    [-16, 5.1],
   ],
 };
 
@@ -107,6 +111,7 @@ interface Opt {
   sc?: readonly [number, number, number, number];
   clip?: readonly number[];
   clipPoly?: readonly number[];
+  keep?: boolean;
 }
 const box = (u0: number, v0: number, u1: number, v1: number, z: number, h: number, m: MatId, o: Opt = {}): Part => ({ k: 'box', p: [u0, v0, u1, v1], z, h, m, ...o });
 const ell = (u: number, v: number, ru: number, rv: number, z: number, h: number, m: MatId, o: Opt = {}): Part => ({ k: 'ell', p: [u, v, ru, rv], z, h, m, ...o });
@@ -171,13 +176,18 @@ const over = (u: number, v: number, ru: number, rv: number): readonly [number, n
 
 // ------------------------------------------------------------------------------------------------- navy
 
-/** A sea mine on a stern rail: a dark sphere with a brass horn on top (never an owner hue). */
-function mine(u: number, v: number, z: number): Part[] {
-  return [ell(u, v, 1.1, 1.1, z, 0.9, 'black', { sh: 'dome' }), ell(u - 0.1, v - 0.1, 0.5, 0.5, z + 0.9, 0, 'gold')];
+/** A sea mine on a stern rail: a small dark-grey ball with its brass horn as one highlight pixel (never an owner hue). */
+function mine(u: number, v: number, z: number, r = 0.7): Part[] {
+  return [ell(u, v, r, r, z, 0.5, 'gun', { sh: 'dome' }), ell(u - 0.1, v - 0.1, 0.42, 0.42, z + 0.5, 0, 'gold', { keep: true })];
 }
-/** A pair of mine rails at the stern, two mines each (Naval Mines). */
-function mines(u: number, v: number, z: number): Part[] {
-  return [box(u - 3.4, -v - 0.4, u + 0.6, -v + 0.4, z, 0, 'gun'), box(u - 3.4, v - 0.4, u + 0.6, v + 0.4, z, 0, 'gun'), ...mine(u, -v, z), ...mine(u - 2.4, -v, z), ...mine(u, v, z), ...mine(u - 2.4, v, z)];
+/**
+ * Mines on two short light rails on the stern deck (Naval Mines): `u` the aft end of the rails, `v` the rails' distance
+ * off the centre line, two mines each, all inside the hull outline.
+ */
+function mines(u: number, v: number, z: number, len = 3): Part[] {
+  const out: Part[] = [box(u, -v - 0.75, u + len, -v + 0.75, z, 0, 'metal'), box(u, v - 0.75, u + len, v + 0.75, z, 0, 'metal')];
+  for (const s of [-1, 1]) out.push(...mine(u + 0.7, s * v, z), ...mine(u + len - 0.7, s * v, z));
+  return out;
 }
 /** A small twin anti-aircraft mount in a round tub (Naval Mastery): two thin barrels pointing up and out. */
 function aaMount(u: number, v: number, z: number, dir = 1): Part[] {
@@ -185,23 +195,25 @@ function aaMount(u: number, v: number, z: number, dir = 1): Part[] {
 }
 /** A radar on a mast top: a pale lattice bar across the ship (Naval Mastery). */
 function radar(u: number, z: number, w: number): Part[] {
-  return [box(u - 0.6, -w, u + 0.6, w, z, 0.8, 'white', { pat: 'grille' }), ell(u, 0, 0.6, 0.6, z - 1.6, 1.6, 'gun')];
+  return [box(u - 0.75, -w, u + 0.75, w, z, 0.8, 'white', { pat: 'grille' }), ell(u, 0, 0.6, 0.6, z - 1.6, 1.6, 'gun')];
 }
 /**
- * A gun turret: a dark ring at deck level round a flat-topped turret with its roof in the owner's colour (air
- * recognition paint), and one to three barrels toward `dir` (1 forward, -1 aft) reaching past it.
+ * A gun turret: a dark ring at deck level round a gunhouse with a rounded face toward `dir` (1 forward, -1 aft) and a
+ * flat back, in the ship's own grey (no owner paint: a ship reads by its outline), and one to three barrels reaching
+ * past it. `m` the gunhouse material, `h` its height.
  */
-function turretAt(u: number, ru: number, rv: number, z: number, dir: 1 | -1, barrels: number[], len: number, w = 0.9): Part[] {
-  const out: Part[] = [ell(u, 0, ru + 0.7, rv + 0.7, z, 0, 'gun'), ell(u, 0, ru, rv, z, 1.3, 'turret')];
-  // the roof: a recognition panel set in from the turret's edge
-  out.push(ell(u - dir * 0.15, 0, Math.max(0.6, ru - 0.75), Math.max(0.6, rv - 0.75), z + 1.3, 0, 'own'));
-  for (const v of barrels) out.push(seg(u + dir * (ru - 0.5), v, u + dir * (ru + len), v, w, z + 0.7, 0.5, 'gun', { sh: 'cyl' }));
+function turretAt(u: number, ru: number, rv: number, z: number, dir: 1 | -1, barrels: number[], len: number, w = 0.9, m: MatId = 'turret', h = 1.3): Part[] {
+  const f = u + dir * ru;
+  const b = u - dir * ru;
+  const house = [f, -rv * 0.5, u + dir * ru * 0.55, -rv, b, -rv, b, rv, u + dir * ru * 0.55, rv, f, rv * 0.5];
+  const out: Part[] = [ell(u, 0, ru + 0.6, rv + 0.6, z, 0, 'gun'), poly(house, z, h, m)];
+  for (const v of barrels) out.push(seg(u + dir * (ru - 0.4), v, u + dir * (ru + len), v, w, z + h * 0.45, 0.5, 'gun', { sh: 'cyl' }));
   return out;
 }
 /** A funnel: haze grey with a dark cap; `rake` moves the top aft (a raked funnel). */
 function funnel(u: number, ru: number, rv: number, z: number, h: number, rake = 0, m: MatId = 'sup'): Part[] {
-  if (!rake) return [ell(u, 0, ru, rv, z, h, m, { sh: 'cyl' }), ell(u, 0, ru * 0.62, rv * 0.62, z + h, 0, 'black')];
-  return [ell(u, 0, ru, rv, z, h * 0.5, m, { sh: 'cyl' }), ell(u - rake, 0, ru, rv, z + h * 0.5, h * 0.5, m, { sh: 'cyl' }), ell(u - rake, 0, ru * 0.62, rv * 0.62, z + h, 0, 'black')];
+  if (!rake) return [ell(u, 0, ru, rv, z, h, m, { sh: 'cyl' }), ell(u, 0, ru * 0.62, rv * 0.62, z + h, 0, 'gun')];
+  return [ell(u, 0, ru, rv, z, h * 0.5, m, { sh: 'cyl' }), ell(u - rake, 0, ru, rv, z + h * 0.5, h * 0.5, m, { sh: 'cyl' }), ell(u - rake, 0, ru * 0.62, rv * 0.62, z + h, 0, 'gun')];
 }
 /** A mast: a thin dark post with a yard across it. */
 function mast(u: number, z: number, h: number, yard: number): Part[] {
@@ -211,84 +223,95 @@ function mast(u: number, z: number, h: number, yard: number): Part[] {
 function boat(u: number, v: number, z: number, len = 1.8): Part {
   return ell(u, v, len, 0.75, z, 0.7, 'white', { sh: 'cyl' });
 }
+/**
+ * The owner's mark on a ship: one thin band across the bridge roof from u0 (`w` model units, one or two art pixels
+ * wide: wide enough that the mast never hides all of it), the only owner colour on a warship, so a ship reads by its
+ * silhouette and the band tells whose it is.
+ */
+function bridgeBand(u0: number, v: number, z: number, w = 1.5): Part {
+  return box(u0, -v, u0 + w, v, z, 0, 'own');
+}
 
 function warship(mods: number): Part[] {
-  // a mid-size cruiser: a turret fore and aft, a bridge, two funnels, a mast, a teak deck
+  // a slim cruiser (30 px): two small twin turrets, a bridge, two funnels, a mast, a teak deck
   const out: Part[] = [
-    poly(hullShape(17, 3.3, 8.5, 4.5, 0.55), 0, 2.8, 'hull'),
-    poly(hullShape(16.1, 2.65, 8, 4, 0.55), 2.8, 0, 'deck', { inset: true }),
-    ...turretAt(9.8, 2, 1.8, 2.8, 1, [-0.75, 0.75], 4.2),
-    // the bridge: a two-deck block, its windows forward, the roof in the owner colour
-    box(1.6, -2.5, 6.6, 2.5, 2.8, 2.4, 'sup'),
-    box(3.4, -1.8, 6.2, 1.8, 5.2, 1.7, 'sup'),
-    box(5.7, -1.6, 6.2, 1.6, 6.9, 0, 'glass'),
-    box(3.6, -1.6, 5.7, 1.6, 6.9, 0, 'own'),
-    ...mast(2.6, 5.2, 4.2, 2),
+    poly(hullShape(15, 3, 7.5, 3.8, 0.55), 0, 2.6, 'hull'),
+    poly(hullShape(14.2, 2.4, 7, 3.4, 0.55), 2.6, 0, 'deck', { inset: true }),
+    ...turretAt(8.6, 1.5, 1.3, 2.6, 1, [-0.55, 0.55], 3, 0.9, 'turret', 1.2),
+    // the bridge: a two-deck block, its windows forward, the owner band across its roof
+    box(1.2, -2.1, 5.6, 2.1, 2.6, 2.2, 'sup'),
+    box(2.6, -1.5, 5.2, 1.5, 4.8, 1.6, 'sup'),
+    box(3.7, -1.3, 5.2, 1.3, 6.4, 0, 'glass'),
+    bridgeBand(2.6, 1.3, 6.4, 1.9),
+    ...mast(1.8, 4.8, 4, 1.8),
     // two funnels and the boats between them
-    ...funnel(-0.8, 1.35, 1.2, 2.8, 3.8),
-    ...funnel(-4.6, 1.35, 1.2, 2.8, 3.8),
-    boat(-2.7, -2.4, 2.8),
-    boat(-2.7, 2.4, 2.8),
+    ...funnel(-1, 1.15, 1.05, 2.6, 3.4),
+    ...funnel(-4.2, 1.15, 1.05, 2.6, 3.4),
+    boat(-2.6, -2.1, 2.6, 1.5),
+    boat(-2.6, 2.1, 2.6, 1.5),
     // the aft deckhouse with a small mast
-    box(-9.6, -2.1, -6.6, 2.1, 2.8, 1.6, 'sup'),
-    ell(-7.8, 0, 0.45, 0.45, 4.4, 2.2, 'gun'),
-    ...turretAt(-12.2, 2, 1.8, 2.8, -1, [-0.75, 0.75], 3.8),
+    box(-8.4, -1.8, -6, 1.8, 2.6, 1.5, 'sup'),
+    ell(-7, 0, 0.45, 0.45, 4.1, 2, 'gun'),
+    ...turretAt(-10.6, 1.5, 1.3, 2.6, -1, [-0.55, 0.55], 2.6, 0.9, 'turret', 1.2),
   ];
-  if (mods & M_MASTERY) out.push(...radar(2.6, 9.8, 1.8), ...aaMount(-8.1, -1.1, 4.4, -1), ...aaMount(-8.1, 1.1, 4.4, -1), ...aaMount(0.6, -3, 2.8), ...aaMount(0.6, 3, 2.8));
-  if (mods & M_SPECIAL) out.push(...mines(-14.4, 1.5, 2.8));
+  if (mods & M_MASTERY) out.push(...radar(1.8, 8.8, 1.6), ...aaMount(-7.3, -1, 4.1, -1), ...aaMount(-7.3, 1, 4.1, -1), ...aaMount(0.4, -2.4, 2.6), ...aaMount(0.4, 2.4, 2.6));
+  if (mods & M_SPECIAL) out.push(...mines(-14.2, 1, 2.6, 2.6));
   return out;
 }
 
 function destroyer(mods: number): Part[] {
   // small and slim: one gun fore and aft, torpedo tubes amidships, a raked funnel, a grey steel deck
   const out: Part[] = [
-    poly(hullShape(13, 2.5, 6.5, 2.6, 0.55), 0, 2.2, 'hull'),
-    poly(hullShape(12.2, 1.9, 6.1, 2.3, 0.55), 2.2, 0, 'deckGrey', { inset: true }),
+    poly(hullShape(13, 2.3, 6.5, 2.6, 0.55), 0, 2.2, 'hull'),
+    poly(hullShape(12.2, 1.75, 6.1, 2.3, 0.55), 2.2, 0, 'deckGrey', { inset: true }),
     ...turretAt(7.6, 1.35, 1.2, 2.2, 1, [0], 3.4, 0.9),
-    box(2.6, -1.75, 5.4, 1.75, 2.2, 2.1, 'sup'),
-    box(5, -1.4, 5.4, 1.4, 4.3, 0, 'glass'),
-    box(2.8, -1.3, 4.9, 1.3, 4.3, 0, 'own'),
-    ...mast(2.2, 4.3, 3, 1.4),
+    box(2.6, -1.6, 5.4, 1.6, 2.2, 2.1, 'sup'),
+    // the owner band forward on the bridge roof (the raked funnel would hide one further aft when it heads north)
+    box(2.6, -1.4, 4.1, 1.4, 4.3, 0, 'glass'),
+    bridgeBand(3.5, 1.3, 4.3, 1.9),
+    ...mast(1.6, 4.3, 2.4, 1.4),
     ...funnel(-0.4, 1.2, 1.05, 2.2, 3.6, 1.1),
     // two torpedo tube mounts on the centre line
-    ell(-3.7, 0, 1.05, 1.05, 2.2, 0.4, 'gun'),
-    box(-5.4, -1.05, -2, 1.05, 2.6, 0.6, 'turret', { pat: 'tubes' }),
-    ell(-7.3, 0, 1.05, 1.05, 2.2, 0.4, 'gun'),
-    box(-9, -1.05, -5.6, 1.05, 2.6, 0.6, 'turret', { pat: 'tubes' }),
-    ...turretAt(-10, 1.2, 1.05, 2.2, -1, [0], 2.6, 0.8),
-    // depth charge racks on the stern
-    box(-12.4, -1.4, -11.4, -0.6, 2.2, 0.5, 'gun'),
-    box(-12.4, 0.6, -11.4, 1.4, 2.2, 0.5, 'gun'),
+    ell(-3.2, 0, 1.05, 1.05, 2.2, 0.4, 'gun'),
+    box(-4.8, -1.05, -1.6, 1.05, 2.6, 0.6, 'turret', { pat: 'tubes' }),
+    ell(-6.4, 0, 1.05, 1.05, 2.2, 0.4, 'gun'),
+    box(-7.9, -1.05, -4.9, 1.05, 2.6, 0.6, 'turret', { pat: 'tubes' }),
+    ...turretAt(-9.6, 1.2, 1.05, 2.2, -1, [0], 2.4, 0.8),
   ];
-  if (mods & M_MASTERY) out.push(...radar(2.2, 7.3, 1.3), ...aaMount(1.2, -1.9, 2.2), ...aaMount(1.2, 1.9, 2.2));
-  if (mods & M_SPECIAL) out.push(...mines(-10.6, 1.2, 2.2).map((p) => ({ ...p, z: p.z + 0.1 })));
+  // depth charge racks on the stern, or the mine rails in their place (Naval Mines)
+  if (mods & M_SPECIAL) out.push(...mines(-12.6, 0.8, 2.2, 1.9).map((p) => ({ ...p, z: p.z + 0.05 })));
+  else out.push(box(-12.4, -1.4, -11.4, -0.6, 2.2, 0.5, 'gun'), box(-12.4, 0.6, -11.4, 1.4, 2.2, 0.5, 'gun'));
+  if (mods & M_MASTERY) out.push(...radar(1.6, 6.7, 1.3), ...aaMount(1.2, -1.9, 2.2), ...aaMount(1.2, 1.9, 2.2));
   return out;
 }
 
 function battleship(mods: number): Part[] {
-  // long, broad and heavy: two big turrets forward (the second raised), a tower, one big funnel, one turret aft
+  // long, broad and heavy (48 px): three large dark gunhouses with long twin barrels (two forward, the second raised
+  // on its barbette), a tall stepped tower, one big funnel, secondary guns along the sides, a teak deck
+  const deck = 3.4;
   const out: Part[] = [
-    poly(hullShape(22, 4.8, 10, 5.5, 0.7), 0, 3.2, 'hull'),
-    poly(hullShape(21, 4.05, 9.6, 5, 0.7), 3.2, 0, 'deck', { inset: true }),
-    ...turretAt(13.6, 2.8, 2.5, 3.2, 1, [-1, 1], 5, 1),
-    ell(8, 0, 3.5, 3.1, 3.2, 1.1, 'hull'),
-    ...turretAt(8, 2.8, 2.5, 4.3, 1, [-1, 1], 4.6, 1),
-    // the superstructure: a wide base, a second deck, the tall tower with the bridge at the top
-    box(-5, -3.5, 4.2, 3.5, 3.2, 1.7, 'sup'),
-    box(-2, -2.6, 3.4, 2.6, 4.9, 1.9, 'sup'),
-    box(0.4, -1.7, 2.9, 1.7, 6.8, 3.6, 'sup'),
-    box(2.4, -1.5, 2.9, 1.5, 10.4, 0, 'glass'),
-    box(0.6, -1.3, 2.4, 1.3, 10.4, 0, 'own'),
-    ...mast(-0.6, 6.8, 5.4, 2.4),
-    ...funnel(-6.4, 2, 1.8, 3.2, 4.4),
+    poly(hullShape(24, 5.8, 11, 6, 0.7), 0, deck, 'hull'),
+    poly(hullShape(23, 5, 10.5, 5.5, 0.7), deck, 0, 'deck', { inset: true }),
+    ...turretAt(15, 3.3, 3, deck, 1, [-1.15, 1.15], 7, 1.2, 'turretDark', 1.7),
+    ell(9, 0, 3.9, 3.5, deck, 1.2, 'hull'),
+    ...turretAt(9, 3.3, 3, deck + 1.2, 1, [-1.15, 1.15], 6.4, 1.2, 'turretDark', 1.7),
+    // the superstructure: a wide base, a second deck, the tower and the bridge at its top, stepping up
+    box(-5.4, -4.2, 4.6, 4.2, deck, 1.8, 'sup'),
+    box(-2.8, -3.2, 4, 3.2, deck + 1.8, 1.8, 'sup'),
+    box(-0.4, -2.3, 3.4, 2.3, deck + 3.6, 2.4, 'sup'),
+    box(0.4, -1.7, 3.2, 1.7, deck + 6, 2, 'sup'),
+    box(1.7, -1.5, 3.2, 1.5, deck + 8, 0, 'glass'),
+    bridgeBand(0.2, 1.5, deck + 8, 1.9),
+    ...mast(-0.9, deck + 6, 4.6, 2.6),
+    ...funnel(-6.8, 2.2, 1.9, deck, 4.8),
     // the aft deckhouse
-    box(-10.6, -2.5, -8.2, 2.5, 3.2, 1.4, 'sup'),
-    ...turretAt(-14.6, 2.8, 2.5, 3.2, -1, [-1, 1], 5, 1),
+    box(-11.6, -2.7, -9, 2.7, deck, 1.5, 'sup'),
+    ...turretAt(-16, 3.3, 3, deck, -1, [-1.15, 1.15], 4.8, 1.2, 'turretDark', 1.7),
   ];
   // secondary guns along both sides
-  for (const u of [3.4, -0.8, -5]) out.push(...both((s) => [ell(u, s * 4, 0.95, 0.85, 3.2, 0.8, 'turret'), seg(u + 0.3, s * 4, u + 2.2, s * 4.3, 0.5, 3.6, 0.3, 'gun')]));
-  if (mods & M_MASTERY) out.push(...radar(-0.6, 12.4, 2.2), ...aaMount(-9.4, -1.3, 4.6, -1), ...aaMount(-9.4, 1.3, 4.6, -1), ...aaMount(5.8, -3.4, 3.2), ...aaMount(5.8, 3.4, 3.2));
-  if (mods & M_SPECIAL) out.push(...mines(-18.4, 1.8, 3.2));
+  for (const u of [3.6, -0.8, -5.2]) out.push(...both((s) => [ell(u, s * 4.8, 1, 0.9, deck, 0.8, 'turret'), seg(u + 0.3, s * 4.8, u + 2.4, s * 5.1, 0.5, deck + 0.4, 0.3, 'gun')]));
+  if (mods & M_MASTERY) out.push(...radar(-0.9, deck + 10.6, 2.4), ...aaMount(-10.3, -1.4, deck + 1.5, -1), ...aaMount(-10.3, 1.4, deck + 1.5, -1), ...aaMount(6, -4.4, deck), ...aaMount(6, 4.4, deck));
+  if (mods & M_SPECIAL) out.push(...mines(-23, 1.8, deck, 3));
   return out;
 }
 
@@ -297,15 +320,17 @@ function submarine(mods: number): Part[] {
     // the long dark hull, low on the water: a light deck casing on top, a darker keel side
     ell(0, 0, 15, 2.1, 0, 0.6, 'sub', { sh: 'cyl' }),
     seg(-11, 0, 10.5, 0, 1.3, 0.6, 0, 'deckGrey'),
+    // the owner's mark: a short band across the after deck casing (the tower stays the boat's own dark grey)
+    box(-7.4, -0.7, -5.9, 0.7, 0.6, 0, 'own'),
     // the stern planes and rudder, under the water
     poly(sym([-13.2, 0, -14.6, -2.2, -15.4, -2.2, -15.2, 0]), 0, 0.4, 'sub'),
     // the deck gun forward of the tower
     ell(6.2, 0, 0.8, 0.8, 0.6, 0.5, 'sub'),
     seg(6.4, 0, 9, 0, 0.6, 1, 0.4, 'gun', { sh: 'cyl' }),
-    // the conning tower: the bridge well on top (the owner colour on its rim), periscopes and a mast
+    // the conning tower: the bridge well on top, periscopes and a mast
     poly([5.2, 0, 4, -1.25, 0, -1.3, -1.6, -0.8, -1.6, 0.8, 0, 1.3, 4, 1.25], 0.6, 2.6, 'sub'),
-    poly([4.4, 0, 3.6, -0.95, 0.2, -1, -1, -0.5, -1, 0.5, 0.2, 1, 3.6, 0.95], 3.2, 0, 'own'),
-    ell(2, 0, 1.1, 0.55, 3.2, 0, 'black'),
+    poly([4.4, 0, 3.6, -0.95, 0.2, -1, -1, -0.5, -1, 0.5, 0.2, 1, 3.6, 0.95], 3.2, 0, 'deckGrey'),
+    ell(2, 0, 1.1, 0.6, 3.2, 0, 'gun'),
     ell(0.6, 0, 0.45, 0.45, 3.2, 2, 'gun'),
     ell(-0.4, 0, 0.4, 0.4, 3.2, 1.4, 'gun'),
     // awash: the sea over the bow and the stern (the hull shows dimly through it), foam along the bow
@@ -314,70 +339,89 @@ function submarine(mods: number): Part[] {
     poly(sym([16.2, 0, 14.6, -1.5, 13.4, -2.2, 13.8, -0.6]), 0.6, 0, 'foam', { a: 0.55 }),
   ];
   if (mods & M_MASTERY) out.push(ell(-2.6, 0, 1.4, 1.1, 0.6, 2, 'sub'), seg(-2.4, -0.4, -4.4, -0.4, 0.5, 2.4, 0.3, 'gun'), seg(-2.4, 0.4, -4.4, 0.4, 0.5, 2.4, 0.3, 'gun'), ell(-0.4, 0, 0.6, 0.6, 4.6, 0.6, 'white'));
-  if (mods & M_SPECIAL) out.push(...mine(-5.6, 0, 0.6), ...mine(-7.8, 0, 0.6));
+  if (mods & M_SPECIAL) out.push(...mine(-4.4, 0, 0.6), ...mine(-8.6, 0, 0.6));
   return out;
 }
 
-/** A small plane parked on a flight deck, nose toward +u. */
+/**
+ * A plane parked on a flight deck, nose toward +u: a light T (fuselage and wings, about five art px each way) on a dark
+ * edge, so it reads as a plane at a glance and not as a fan.
+ */
 function parked(u: number, v: number, z: number): Part[] {
-  return [seg(u + 1.5, v, u - 1.5, v, 0.85, z, 0.45, 'plane', { sh: 'cyl' }), seg(u + 0.4, v - 1.8, u + 0.4, v + 1.8, 0.8, z, 0.35, 'plane'), seg(u - 1.3, v - 0.8, u - 1.3, v + 0.8, 0.6, z, 0.35, 'plane')];
+  return [
+    seg(u - 2.4, v, u + 2.2, v, 2.6, z, 0, 'black'),
+    seg(u + 1.1, v - 2.5, u + 1.1, v + 2.5, 2.4, z, 0, 'black'),
+    seg(u - 2, v, u + 1.9, v, 1.3, z, 0.3, 'white'),
+    seg(u + 1.1, v - 2.1, u + 1.1, v + 2.1, 1.3, z, 0.3, 'white'),
+  ];
 }
 
 function carrier(mods: number): Part[] {
   const deckZ = 3.6;
   const out: Part[] = [
-    poly(hullShape(24, 4.6, 10, 4, 0.7), 0, 2.6, 'hull'),
-    // the flight deck: a dark slab wider than the hull, overhanging both sides
-    poly(sym([25, -2.4, 22.6, -5, 19, -5.9, -23.4, -5.9, -25, -5.1]), 2.6, 1, 'tarmac', { pat: 'deckline' }),
-    // painted edge lines, three elevators, the aft landing marks
-    box(-23, -5.4, 21, -4.95, deckZ, 0, 'white'),
-    box(-23, 4.95, 21, 5.4, deckZ, 0, 'white'),
-    box(12, -3.6, 15.4, 0.4, deckZ, 0, 'deckGrey', { inset: true }),
-    box(-4, -3.9, -0.6, 0.1, deckZ, 0, 'deckGrey', { inset: true }),
-    box(-17, -2.2, -13.6, 1.8, deckZ, 0, 'deckGrey', { inset: true }),
-    box(-23.4, -2.6, -22.6, 2.6, deckZ, 0, 'white'),
-    ...parked(19, -2.6, deckZ),
-    ...parked(19, 1.4, deckZ),
-    ...parked(-19.6, -3, deckZ),
-    ...parked(-19.6, 0.6, deckZ),
-    ...parked(-8.4, -3, deckZ),
-    // the island on the starboard side: a long block, the bridge on top with the owner colour on its roof, the funnel,
-    // the mast
-    box(-6.4, 3.4, 3, 6.3, deckZ, 2.8, 'sup'),
-    box(-3.4, 3.9, 1.8, 5.9, deckZ + 2.8, 1.5, 'sup'),
-    box(1.3, 4.1, 1.8, 5.7, deckZ + 4.3, 0, 'glass'),
-    box(-3.2, 4.1, 1.3, 5.7, deckZ + 4.3, 0, 'own'),
-    box(-6, 3.9, -4, 5.9, deckZ + 2.8, 1.8, 'sup'),
-    box(-5.7, 4.2, -4.3, 5.6, deckZ + 4.6, 0, 'black'),
-    ell(-1, 4.9, 0.55, 0.55, deckZ + 4.3, 3.6, 'gun'),
+    poly(hullShape(24, 4.8, 10, 4, 0.75), 0, 2.6, 'hull'),
+    // the flight deck: a dark slab squared off at the bow and the stern, overhanging the hull at both ends, with the
+    // angled landing deck jutting out to port
+    poly([26.5, -4.6, 26.5, 5, -25.5, 5, -25.5, -5.2, -6, -5.4, 2, -7.4, 10, -7.4, 13, -4.6], 2.6, 1, 'tarmac'),
+    // painted lines (a quiet grey, below the parked planes): the angled deck's centre line and the bow's, two
+    // elevators on the starboard side
+    seg(-23.4, 0, 8.6, -6, 1.5, deckZ, 0, 'turret'),
+    seg(12.5, 0.4, 25.6, 0.4, 1.5, deckZ, 0, 'turret'),
+    box(5.6, 1.4, 9, 4.6, deckZ, 0, 'deckGrey', { inset: true }),
+    box(-12.4, 1.6, -9, 4.6, deckZ, 0, 'deckGrey', { inset: true }),
+    // planes parked in a staggered row aft on the starboard side and one forward
+    ...parked(-22, 2.8, deckZ),
+    ...parked(-16.4, 2, deckZ),
+    ...parked(-20.6, -3.2, deckZ),
+    ...parked(19.8, -2.2, deckZ),
+    // the island hard to starboard, flush with the deck edge: hull grey, tall, the bridge at the top with the owner's
+    // thin band, the funnel aft of it, the mast
+    box(-4.6, 2.2, 3.4, 5.2, deckZ, 4.2, 'sup'),
+    box(-1.4, 2.6, 3, 5, deckZ + 4.2, 1.8, 'sup'),
+    box(1.5, 2.7, 3, 4.9, deckZ + 6, 0, 'glass'),
+    box(-0.2, 2.7, 1.3, 4.9, deckZ + 6, 0, 'own'),
+    box(-4.2, 2.7, -2.2, 4.8, deckZ + 4.2, 1.8, 'sup'),
+    box(-3.95, 2.95, -2.45, 4.55, deckZ + 6, 0, 'gun'),
+    ell(-0.9, 3.8, 0.55, 0.55, deckZ + 6, 3.4, 'gun'),
   ];
-  if (mods & M_MASTERY) out.push(ell(-1, 4.9, 0.6, 0.6, deckZ + 7.9, 0.2, 'gun'), box(-1.6, 3.4, -0.4, 6.4, deckZ + 7.9, 0.7, 'white', { pat: 'grille' }), ...[16, 6, -6, -16].flatMap((u) => aaMount(u, -6.6, 2.6)));
-  if (mods & M_SPECIAL) out.push(...mines(-18.6, 3.6, deckZ).slice(0, 2), ...mine(-18.6, 3.6, deckZ), ...mine(-18.6, -3.6, deckZ), ...mine(-21, 3.6, deckZ), ...mine(-21, -3.6, deckZ));
+  if (mods & M_MASTERY) out.push(ell(-0.9, 3.8, 0.6, 0.6, deckZ + 9.4, 0.2, 'gun'), box(-1.65, 2.4, -0.15, 5.2, deckZ + 9.4, 0.7, 'white', { pat: 'grille' }), ...[16, 6, -6, -16].flatMap((u) => aaMount(u, -5.8, 2.6)));
+  if (mods & M_SPECIAL) out.push(...mines(-24.6, 2.8, deckZ, 2.4));
   return out;
 }
 
 function transport(): Part[] {
-  // a boxy landing ship: a blunt bow with its ramp, a well deck full of troops and two trucks, the bridge aft
-  return [
-    poly(sym([12.5, -2.6, 11.7, -3.8, -12, -3.8, -12.5, -3.3]), 0, 2.6, 'hull'),
-    box(10, -3.1, 12.2, 3.1, 2.6, 0.4, 'deckGrey', { pat: 'planks' }),
-    box(-4.6, -3.2, 9.8, 3.2, 2.6, 0, 'deckGrey', { inset: true }),
-    box(-4.2, -2.8, 4.6, 2.8, 2.6, 0, 'deckGrey', { pat: 'helmets' }),
-    // two trucks: a canvas-covered load and a cab
-    box(5.4, -2.7, 8.6, -0.5, 2.6, 1.4, 'canvas'),
-    box(8.6, -2.4, 9.6, -0.8, 2.6, 1.1, 'olive'),
-    box(5.4, 0.5, 8.6, 2.7, 2.6, 1.4, 'canvas'),
-    box(8.6, 0.8, 9.6, 2.4, 2.6, 1.1, 'olive'),
-    // the superstructure aft, the bridge with the owner colour on its roof, a small funnel, a mast
-    box(-11.8, -3.3, -5, 3.3, 2.6, 2.3, 'sup'),
-    box(-9.4, -2.3, -6, 2.3, 4.9, 1.4, 'sup'),
-    box(-6.4, -2.1, -6, 2.1, 6.3, 0, 'glass'),
-    box(-8.8, -1.7, -6.6, 1.7, 6.3, 0, 'own'),
-    ...funnel(-10.6, 0.95, 0.85, 4.9, 1.6),
-    ell(-7.6, 0, 0.45, 0.45, 6.3, 2.6, 'gun'),
-    boat(-8.2, -3.7, 2.8, 1.4),
-    boat(-8.2, 3.7, 2.8, 1.4),
+  // a boxy landing ship: a blunt bow with its ramp, high box sides round an open well deck packed with troops and two
+  // trucks, the bridge aft
+  const z = 3;
+  const out: Part[] = [
+    poly(sym([12.5, -2.6, 11.7, -3.8, -12, -3.8, -12.5, -3.3]), 0, z, 'hull'),
+    // the well deck: a light floor between the high sides
+    box(-4.8, -2.9, 10, 2.9, z, 0, 'wellDeck', { inset: true }),
+    box(-4.8, -3.8, 10.2, -2.9, z, 1.2, 'hull'),
+    box(-4.8, 2.9, 10.2, 3.8, z, 1.2, 'hull'),
+    // the bow ramp, raised, its hinge line dark across the deck
+    box(10.2, -3.4, 12.4, 3.4, z, 1.1, 'deckGrey', { pat: 'planks' }),
+    seg(10.25, -3.2, 10.25, 3.2, 1.3, z + 1.1, 0, 'gun'),
+    // two trucks forward: a canvas-covered load and a cab
+    box(5.2, -2.6, 8.2, -0.4, z, 1.3, 'canvas'),
+    box(8.2, -2.3, 9.4, -0.7, z, 1, 'olive'),
+    box(5.2, 0.4, 8.2, 2.6, z, 1.3, 'canvas'),
+    box(8.2, 0.7, 9.4, 2.3, z, 1, 'olive'),
   ];
+  // the troops: rows of olive helmets on khaki, staggered
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) out.push(ell(-3.6 + c * 2.1 + (r % 2) * 1, -1.9 + r * 1.9, 0.95, 0.85, z, 0.5, 'olive', { sh: 'dome' }));
+  out.push(
+    // the superstructure aft, the bridge with the owner's band, a small funnel, a mast
+    box(-11.8, -3.3, -5, 3.3, z, 2.3, 'sup'),
+    box(-9.4, -2.3, -6, 2.3, z + 2.3, 1.4, 'sup'),
+    box(-7.5, -2.1, -6, 2.1, z + 3.7, 0, 'glass'),
+    bridgeBand(-9.2, 1.7, z + 3.7),
+    ...funnel(-10.6, 0.95, 0.85, z + 2.3, 1.6),
+    ell(-7.9, 0, 0.45, 0.45, z + 3.7, 2.6, 'gun'),
+    boat(-8.2, -3.7, z, 1.4),
+    boat(-8.2, 3.7, z, 1.4),
+  );
+  return out;
 }
 
 function tradeShip(): Part[] {
@@ -453,8 +497,8 @@ function tank(mods: number): Part[] {
   if (mods & M_SPECIAL) out.push(...snorkel(-7.4, 2.6, 2.8));
   out.push(
     ell(0.5, 0, 4.2, 3.4, 2.8, 2, 'olive', { sh: 'dome' }),
-    // the owner band across the turret
-    box(-3.7, -3.4, -0.9, 3.4, 2.8, 2.05, 'own', { sh: 'dome', sc: over(0.5, 0, 4.2, 3.4), clip: [0.5, 0, 4.2, 3.4] }),
+    // the owner band across the turret, in the toned-down owner colour (it marks the tank, it does not outshine it)
+    box(-3, -3.4, -1, 3.4, 2.8, 2.05, 'ownDim', { sh: 'dome', sc: over(0.5, 0, 4.2, 3.4), clip: [0.5, 0, 4.2, 3.4] }),
     ell(-1.2, -1.4, 1.1, 1.1, 4.8, 0.4, 'olive', { sh: 'dome' }),
     ell(0.8, 1.6, 0.8, 0.7, 4.8, 0, 'black'),
     box(3.6, -1.2, 4.8, 1.2, 3.4, 1.2, 'olive'),
@@ -485,7 +529,7 @@ function lightTankParts(mods: number): Part[] {
   if (mods & M_SPECIAL) out.push(...snorkel(-6.6, -2.2, 2.2));
   out.push(
     ell(1.2, 0, 2.7, 2.2, 2.2, 1.5, 'sand', { sh: 'dome' }),
-    box(-1.6, -2.3, 0.8, 2.3, 2.2, 1.55, 'own', { sh: 'dome', sc: over(1.2, 0, 2.7, 2.2), clip: [1.2, 0, 2.7, 2.2] }),
+    box(-1.2, -2.3, 0.6, 2.3, 2.2, 1.55, 'ownDim', { sh: 'dome', sc: over(1.2, 0, 2.7, 2.2), clip: [1.2, 0, 2.7, 2.2] }),
     // a thin short gun in light steel: about 5 art px past the nose (the medium and heavy guns are longer and thicker)
     seg(3, 0, 12.2, 0, 1, 3, 0.7, 'steel', { sh: 'cyl' }),
     // the aerial
@@ -515,7 +559,7 @@ function heavyTank(mods: number): Part[] {
   const turret = sym([6, -2.6, 3.6, -4.2, -5.5, -4.2, -6.5, -3]);
   out.push(
     poly(turret, 3.6, 2.6, 'steel'),
-    box(-4.6, -4.3, -2.8, 4.3, 3.6, 2.65, 'own', { clipPoly: turret }),
+    box(-4.6, -4.3, -2.6, 4.3, 3.6, 2.65, 'ownDim', { clipPoly: turret }),
     ell(-1.4, -1.8, 1.3, 1.3, 6.2, 0.9, 'steel', { sh: 'dome' }),
     ell(1, 2, 0.9, 0.8, 6.2, 0, 'black'),
     box(4.8, -1.6, 6.4, 1.6, 4.4, 1.6, 'steel'),
@@ -547,6 +591,15 @@ function jetPod(u: number, v: number, z: number, len = 2.4, r = 0.9): Part[] {
 function nacelle(u: number, v: number, z: number, len: number, r: number, m: MatId): Part[] {
   return [ell(u, v, len, r, z, 1.3, m, { sh: 'cyl' }), ell(u + len - 0.2, v, 0.6, 0.6, z + 0.4, 0.8, 'gun', { sh: 'dome' })];
 }
+/**
+ * A tail fin from u0 back to u1 (u0 > u1) at side v, `h` tall: in the plane's paint, or with Air Mastery a natural
+ * metal rudder topped by a thin brass trim line (a darker steel rudder on a night-painted plane, so the detail stays in
+ * the plane's own value range).
+ */
+function fin(u0: number, v: number, u1: number, w: number, z: number, h: number, m: MatId, mods: number): Part[] {
+  if (!(mods & M_MASTERY)) return [seg(u0, v, u1, v, w, z, h, m)];
+  return [seg(u0, v, u1, v, w, z, h - 0.5, mods & M_NIGHT ? 'steel' : 'metal'), seg(u0, v, u1 + 0.4, v, w, z + h - 0.5, 0.5, 'gold')];
+}
 
 interface Plane {
   parts: Part[];
@@ -555,7 +608,7 @@ interface Plane {
 
 function bomber(mods: number): Plane {
   const m: MatId = mods & M_NIGHT ? 'night' : 'plane';
-  const tail: MatId = mods & M_MASTERY ? 'gold' : m;
+  const tail: MatId = m;
   const out: Part[] = [];
   const props: Prop[] = [];
   const jet = !!(mods & M_JET);
@@ -564,16 +617,18 @@ function bomber(mods: number): Plane {
     // Jet Engines: the same twin-engine bomber with wings swept back and a jet pod under each wing, no propellers
     out.push(poly(sym([4.5, -1.6, -0.6, -13, -2.8, -13, -0.6, -1.6]), 2.6, 0.6, m), ...tips(-2.8, -0.4, 11.4, 13, 3.2), ...jetPod(2.8, -5.2, 2.2), ...jetPod(2.8, 5.2, 2.2));
   } else {
-    out.push(poly(sym([4.5, -1.6, 3.4, -13, 1.2, -13, -0.6, -1.6]), 2.6, 0.6, m), ...tips(1, 3.6, 11.4, 13, 3.2), ...nacelle(4, -5, 2.8, 3, 1.15, m), ...nacelle(4, 5, 2.8, 3, 1.15, m));
-    props.push({ u: 7.4, v: -5, z: 3.5, r: 2.5 }, { u: 7.4, v: 5, z: 3.5, r: 2.5 });
+    out.push(poly(sym([4.5, -1.6, 3.4, -13, 1.2, -13, -0.6, -1.6]), 2.6, 0.6, m), ...tips(1, 3.6, 11.4, 13, 3.2), ...nacelle(4, -5, 2.8, 3.2, 1.3, 'gun'), ...nacelle(4, 5, 2.8, 3.2, 1.3, 'gun'));
+    props.push({ u: 7.6, v: -5, z: 3.5, r: 2.5 }, { u: 7.6, v: 5, z: 3.5, r: 2.5 });
   }
   out.push(
     ell(0, 0, 10.5, 1.9, 2.4, 1.8, m, { sh: 'cyl' }),
     box(-5, -2, -3.8, 2, 2.4, 1.85, 'own', { sh: 'cyl', sc: over(0, 0, 10.5, 1.9), clip: [0, 0, 10.5, 1.9] }),
-    ell(9, 0, 1.6, 1.3, 2.8, 1.2, 'glass', { sh: 'dome' }),
+    // the glazed nose: a big framed glasshouse ahead of the cockpit
+    ell(9.6, 0, 2, 1.55, 2.6, 1.5, 'glass', { sh: 'dome' }),
+    seg(8.2, 0, 11.2, 0, 0.6, 4.1, 0, 'metal'),
     box(5, -0.9, 6.6, 0.9, 4.1, 0, 'glass'),
     poly(sym([-7.2, -1, -8.2, -5, -9.8, -5, -10, -1]), 2.6, 0.5, tail),
-    seg(-10.2, 0, -6.5, 0, 0.8, 4, 2, tail),
+    ...fin(-6.5, 0, -10.2, 0.8, 4, 2, tail, mods),
   );
   return { parts: out, props };
 }
@@ -592,7 +647,7 @@ function wingRockets(spans: { v: number; le: number }[], z: number): Part[] {
 
 function groundAttack(mods: number): Plane {
   const m: MatId = mods & M_NIGHT ? 'night' : 'camo';
-  const tail: MatId = mods & M_MASTERY ? 'gold' : m;
+  const tail: MatId = m;
   const out: Part[] = [];
   if (mods & M_JET) {
     // Jet Engines: the same stubby straight wings with their rockets (swept back a little), a pointed nose instead of
@@ -609,7 +664,7 @@ function groundAttack(mods: number): Plane {
       box(-3.6, -1.8, -2.4, 1.8, 2.4, 1.75, 'own', { sh: 'cyl', sc: over(0, 0, 8.4, 1.7), clip: [0, 0, 8.4, 1.7] }),
       ell(3.4, 0, 1.8, 0.95, 4, 0.6, 'glass', { sh: 'dome' }),
       poly(sym([-6.2, -0.8, -7.4, -3.8, -8.8, -3.8, -8.6, -0.8]), 2.6, 0.5, tail),
-      seg(-8.8, 0, -6, 0, 0.7, 3.8, 1.6, tail),
+      ...fin(-6, 0, -8.8, 0.7, 3.8, 1.6, tail, mods),
     );
     return { parts: out, props: [] };
   }
@@ -625,41 +680,42 @@ function groundAttack(mods: number): Plane {
     ell(8.6, 0, 0.7, 0.7, 2.9, 0.9, 'gun', { sh: 'dome' }),
     ell(1.6, 0, 1.7, 1, 4.1, 0.6, 'glass', { sh: 'dome' }),
     poly(sym([-6.2, -0.8, -7, -3.8, -8.4, -3.8, -8.6, -0.8]), 2.6, 0.5, tail),
-    seg(-8.8, 0, -6, 0, 0.7, 3.8, 1.6, tail),
+    ...fin(-6, 0, -8.8, 0.7, 3.8, 1.6, tail, mods),
   );
   return { parts: out, props: [{ u: 9.2, v: 0, z: 3.3, r: 3 }] };
 }
 
 function heavyBomber(mods: number): Plane {
   const m: MatId = mods & M_NIGHT ? 'night' : 'metal';
-  const tail: MatId = mods & M_MASTERY ? 'gold' : m;
+  const tail: MatId = m;
   const out: Part[] = [];
   const props: Prop[] = [];
   if (mods & M_SPECIAL) out.push(...dropTanks(6.6, 8.2, 2.3));
+  // long wings (about 1.4 times the bomber's span) with four separate dark engines, each with its own propeller
   out.push(poly(sym([5, -2, 3.4, -18, 0.6, -18, -2, -2]), 2.8, 0.7, m), ...tips(0.6, 3.4, 16.4, 18, 3.5));
-  for (const v of [-11, -5.5, 5.5, 11]) {
-    out.push(...nacelle(4.2, v, 3, 2.8, 1.1, m));
-    props.push({ u: 7.3, v, z: 3.7, r: 2.3 });
+  for (const v of [-11.4, -5.4, 5.4, 11.4]) {
+    out.push(...nacelle(4.4, v, 3, 3, 1.25, 'gun'));
+    props.push({ u: 7.7, v, z: 3.7, r: 2.3 });
   }
   out.push(
-    ell(0, 0, 13, 2.2, 2.6, 2.2, m, { sh: 'cyl' }),
-    box(-6.4, -2.3, -5, 2.3, 2.6, 2.25, 'own', { sh: 'cyl', sc: over(0, 0, 13, 2.2), clip: [0, 0, 13, 2.2] }),
-    ell(11.6, 0, 1.6, 1.6, 3, 1.4, 'glass', { sh: 'dome' }),
-    box(8, -1, 9.6, 1, 4.8, 0, 'glass'),
-    poly(sym([-9.5, -1.4, -10.5, -7, -12.8, -7, -13, -1.4]), 2.8, 0.5, tail),
-    seg(-13, -6.6, -10, -6.6, 0.9, 3.3, 2.4, tail),
-    seg(-13, 6.6, -10, 6.6, 0.9, 3.3, 2.4, tail),
+    ell(0, 0, 14, 2.3, 2.6, 2.2, m, { sh: 'cyl' }),
+    box(-6.9, -2.4, -5.4, 2.4, 2.6, 2.25, 'own', { sh: 'cyl', sc: over(0, 0, 14, 2.3), clip: [0, 0, 14, 2.3] }),
+    ell(12.6, 0, 1.7, 1.6, 3, 1.4, 'glass', { sh: 'dome' }),
+    box(8.4, -1, 10, 1, 4.8, 0, 'glass'),
+    poly(sym([-10.4, -1.4, -11.4, -7, -13.8, -7, -14, -1.4]), 2.8, 0.5, tail),
+    ...fin(-11, -6.6, -14, 0.9, 3.3, 2.4, tail, mods),
+    ...fin(-11, 6.6, -14, 0.9, 3.3, 2.4, tail, mods),
   );
   if (mods & M_PATH3) {
     // Strategic Bombing: dorsal and tail gun turrets
-    out.push(ell(3.6, 0, 1.4, 1.2, 4.8, 0.9, 'glass', { sh: 'dome' }), ell(-3.4, 0, 1.2, 1.1, 4.8, 0.8, 'glass', { sh: 'dome' }), ell(-13.4, 0, 1.1, 1, 2.8, 1.3, 'glass', { sh: 'dome' }));
+    out.push(ell(3.6, 0, 1.4, 1.2, 4.8, 0.9, 'glass', { sh: 'dome' }), ell(-3.4, 0, 1.2, 1.1, 4.8, 0.8, 'glass', { sh: 'dome' }), ell(-14.4, 0, 1.1, 1, 2.8, 1.3, 'glass', { sh: 'dome' }));
   }
   return { parts: out, props };
 }
 
 function fighter(mods: number): Plane {
   const m: MatId = 'plane';
-  const tail: MatId = mods & M_MASTERY ? 'gold' : m;
+  const tail: MatId = m;
   const out: Part[] = [];
   if (mods & M_JET) {
     if (mods & M_SPECIAL) out.push(...dropTanks(1.4, 3, 2.1));
@@ -672,7 +728,7 @@ function fighter(mods: number): Plane {
       ...jetPod(0, 1.6, 2.7, 2, 0.7),
       ell(2.4, 0, 1.6, 0.75, 3.9, 0.5, 'glass', { sh: 'dome' }),
       poly(sym([-5.2, -0.6, -6.4, -2.6, -7.6, -2.6, -7.4, -0.6]), 2.7, 0.4, tail),
-      seg(-7.6, 0, -5, 0, 0.6, 3.6, 1.4, tail),
+      ...fin(-5, 0, -7.6, 0.6, 3.6, 1.4, tail, mods),
     );
     return { parts: out, props: [] };
   }
@@ -684,7 +740,7 @@ function fighter(mods: number): Plane {
     ell(7, 0, 0.8, 0.8, 2.8, 1, 'own', { sh: 'dome' }),
     ell(0.8, 0, 1.4, 0.75, 3.9, 0.5, 'glass', { sh: 'dome' }),
     poly(sym([-5, -0.6, -5.6, -2.8, -6.8, -2.8, -7, -0.6]), 2.7, 0.4, tail),
-    seg(-7, 0, -4.8, 0, 0.6, 3.6, 1.4, tail),
+    ...fin(-4.8, 0, -7, 0.6, 3.6, 1.4, tail, mods),
   );
   return { parts: out, props: [{ u: 7.8, v: 0, z: 3.3, r: 2.4 }] };
 }
@@ -695,27 +751,29 @@ function transportPlane(mods: number): Plane {
   const props: Prop[] = [];
   const jet = !!(mods & M_JET);
   if (mods & M_SPECIAL) out.push(...dropTanks(jet ? 1.6 : 4.4, 10.5, 3.6));
-  // the fat fuselage first: the high wing lies over it
-  out.push(ell(0, 0, 12, 2.7, 2.2, 2.6, m, { sh: 'cyl' }), box(-4.2, -2.8, -2.8, 2.8, 2.2, 2.65, 'own', { sh: 'cyl', sc: over(0, 0, 12, 2.7), clip: [0, 0, 12, 2.7] }));
+  // a fat fuselage in a lighter grey than the wing, so the body reads under the high wing laid over it; the engines
+  // hang under the wing, their noses out ahead of it
+  out.push(ell(0, 0, 12.5, 3.3, 2, 3.2, 'sup', { sh: 'cyl' }), box(-4.4, -3.4, -2.9, 3.4, 2, 3.25, 'own', { sh: 'cyl', sc: over(0, 0, 12.5, 3.3), clip: [0, 0, 12.5, 3.3] }));
+  out.push(ell(10.6, 0, 1.4, 2, 3.6, 1.2, 'glass', { sh: 'dome' }));
+  const wingZ = 5.4;
   if (jet) {
-    out.push(poly(sym([3, -2, -3.4, -15, -5.4, -15, -1.4, -2]), 4.8, 0.5, m), ...tips(-5.2, -3.4, 13.6, 15, 5.3));
-    for (const v of [-6.5, 6.5]) out.push(...jetPod(2.6, v, 3.8, 2.6, 1));
+    for (const v of [-6.5, 6.5]) out.push(...jetPod(2.6, v, 3.6, 2.6, 1));
+    out.push(poly(sym([3, -2, -3.4, -15, -5.4, -15, -1.4, -2]), wingZ, 0.5, m), ...tips(-5.2, -3.4, 13.6, 15, wingZ + 0.5));
   } else {
-    out.push(poly(sym([3, -2, 2.2, -15, 0, -15, -1, -2]), 4.8, 0.5, m), ...tips(0, 2.2, 13.6, 15, 5.3));
     for (const v of [-6.5, 6.5]) {
-      out.push(...nacelle(3.2, v, 4.2, 2.6, 1.1, m));
-      props.push({ u: 6.2, v, z: 4.9, r: 2.4 });
+      out.push(...nacelle(3.4, v, 3.6, 2.8, 1.2, 'gun'));
+      props.push({ u: 6.6, v, z: 4.3, r: 2.4 });
     }
+    out.push(poly(sym([3, -2, 2.2, -15, 0, -15, -1, -2]), wingZ, 0.5, m), ...tips(0, 2.2, 13.6, 15, wingZ + 0.5));
   }
   out.push(
-    ell(10.4, 0, 1.2, 1.6, 4, 0.6, 'glass', { sh: 'dome' }),
-    // the tall tail and the wide stabilizer
-    seg(-12.4, 0, -8.6, 0, 0.9, 4.6, 3.2, m),
-    box(-12.6, -5.6, -10.4, 5.6, 7.6, 0.4, m),
-    box(-12.6, -5.6, -10.4, -4.4, 8, 0, 'own'),
-    box(-12.6, 4.4, -10.4, 5.6, 8, 0, 'own'),
+    // the tall tail fin and the wide stabilizer on top of it
+    seg(-12.6, 0, -8.4, 0, 1, 4.8, 4.2, m),
+    box(-12.8, -5.6, -10.6, 5.6, 9, 0.4, m),
+    box(-12.8, -5.6, -10.6, -4.4, 9.4, 0, 'own'),
+    box(-12.8, 4.4, -10.6, 5.6, 9.4, 0, 'own'),
     // the paratroop door on the port side
-    box(-6.4, -2.5, -5.2, -1.6, 4.6, 0, 'black'),
+    box(-6.6, -2.9, -5.2, -1.9, 5.2, 0, 'black'),
   );
   return { parts: out, props };
 }
@@ -772,21 +830,24 @@ function rocket(frame: number): Part[] {
 }
 
 /**
- * The atom bomb: larger and thicker, olive drab with a yellow and black hazard band, bigger swept fins, a long nose. The
- * map draws a faint ring round it (sprites.ts).
+ * The atom bomb: half again as long as the rocket and twice as fat, olive drab with a yellow and black hazard band, a
+ * pale rounded nose cap, big swept fins, and a longer, brighter exhaust (its trail is thicker too, trails.ts): it reads
+ * as the big one by its shape, with nothing drawn round it.
  */
 function atomBomb(frame: number): Part[] {
-  const body = over(-1.6, 0, 7, 2.1);
+  const body = over(-1.6, 0, 8, 2.7);
   return [
-    ...flame(-9.2, 1, 2.8, 1.8, frame),
-    poly(sym([-4, -1.9, -8, -4.2, -9.8, -4.2, -8.6, -1.9]), 1.5, 0.6, 'steel'),
-    box(-9.2, -1.1, -8.2, 1.1, 1.8, 1.5, 'gun'),
-    box(-8.4, -2.1, 4, 2.1, 1.4, 2.4, 'olive', { sh: 'cyl', sc: body }),
-    box(-3.4, -2.15, -2.2, 2.15, 1.4, 2.45, 'yellow', { sh: 'cyl', sc: body }),
-    box(-2.2, -2.15, -1.2, 2.15, 1.4, 2.45, 'black', { sh: 'cyl', sc: body }),
-    box(-1.2, -2.15, 0, 2.15, 1.4, 2.45, 'yellow', { sh: 'cyl', sc: body }),
-    poly([11, 0, 8, -1.3, 4, -2.1, 4, 2.1, 8, 1.3], 1.4, 2.4, 'olive', { sh: 'cyl', sc: over(7, 0, 4, 2.1) }),
-    ell(10, 0, 1.2, 0.7, 2.2, 1.2, 'sand'),
+    ...flame(-10, 1.4, 4.4, 1.8, frame),
+    ell(-10.6, 0, 1.6, 0.9, 2, 0.6, 'white', { glow: true }),
+    poly(sym([-4.4, -2.4, -8.6, -5, -10.4, -5, -9.4, -2.4]), 1.5, 0.6, 'steel'),
+    box(-10, -1.4, -8.8, 1.4, 1.8, 1.8, 'gun'),
+    box(-9.2, -2.7, 4.4, 2.7, 1.4, 2.9, 'olive', { sh: 'cyl', sc: body }),
+    box(-3.8, -2.75, -2.4, 2.75, 1.4, 2.95, 'yellow', { sh: 'cyl', sc: body }),
+    box(-2.4, -2.75, -1.1, 2.75, 1.4, 2.95, 'black', { sh: 'cyl', sc: body }),
+    box(-1.1, -2.75, 0.3, 2.75, 1.4, 2.95, 'yellow', { sh: 'cyl', sc: body }),
+    poly([10.6, 0, 8.6, -1.9, 4.4, -2.7, 4.4, 2.7, 8.6, 1.9], 1.4, 2.9, 'olive', { sh: 'cyl', sc: over(7.4, 0, 4, 2.7) }),
+    // the pale nose cap
+    poly([12.4, 0, 11.6, -1.4, 9.6, -2.1, 9.6, 2.1, 11.6, 1.4], 1.5, 2.6, 'white', { sh: 'cyl', sc: over(10.6, 0, 2, 2.1) }),
   ];
 }
 
@@ -869,7 +930,16 @@ export function buildModel(key: SpriteKey, mods: number, frame = 0): Model {
  * away), so lines are at least 1.25 wide.
  */
 function minSize(p: Part): Part {
-  if (p.k === 'seg' && p.p[4] < 1.25) return { ...p, p: [p.p[0], p.p[1], p.p[2], p.p[3], 1.25] };
+  if (p.keep) return p;
+  // painted decals (deck lines, bands, rails) at least 1.5 wide, so they stay one unbroken line at oblique headings
+  const minW = p.h === 0 && !p.glow ? 1.5 : 1.25;
+  if (p.k === 'seg' && p.p[4] < minW) return { ...p, p: [p.p[0], p.p[1], p.p[2], p.p[3], minW] };
+  if (p.k === 'box' && p.h === 0 && !p.glow && (p.p[2] - p.p[0] < 1.5 || p.p[3] - p.p[1] < 1.5)) {
+    const [u0, v0, u1, v1] = p.p;
+    const du = Math.max(0, 1.5 - (u1 - u0)) / 2;
+    const dv = Math.max(0, 1.5 - (v1 - v0)) / 2;
+    return { ...p, p: [u0 - du, v0 - dv, u1 + du, v1 + dv] };
+  }
   if (p.k === 'ell' && (p.p[2] < 0.6 || p.p[3] < 0.6)) return { ...p, p: [p.p[0], p.p[1], Math.max(0.6, p.p[2]), Math.max(0.6, p.p[3])] };
   return p;
 }

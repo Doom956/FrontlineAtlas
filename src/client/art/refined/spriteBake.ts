@@ -19,7 +19,7 @@
 // The result is a plain RGBA buffer (no canvas): sprites.ts copies it into an atlas page once and draws it with
 // whole-number scaling. Pure and deterministic for the same input, so tests can check the art without a browser.
 import { ownerRamp, type RGB } from '../shared/colour';
-import { EDGE, HELMET, ownerDim, PAINT, RAMPS, type BaseMat } from './palette';
+import { AIR_EDGE, EDGE, HELMET, ownerDim, PAINT, RAMPS, type BaseMat } from './palette';
 
 export { ownerRamp };
 
@@ -31,6 +31,11 @@ export const LIFT = 0.55;
 export const FACINGS = 16;
 /** The edge colour on the shadow side of every sprite (dark slate, not black). */
 export const OUTLINE: RGB = EDGE;
+/**
+ * The edge on the shadow side of planes and missiles: a step darker than OUTLINE, so a grey plane over the owner's
+ * light territory, or over another plane, keeps its silhouette.
+ */
+export const AIR_OUTLINE: RGB = AIR_EDGE;
 
 /** Material ramps (deep, dark, base, light). */
 export const MATERIALS = RAMPS;
@@ -70,6 +75,8 @@ export interface Part {
   /** the footprint is also cut to this ellipse (u, v, ru, rv) or polygon: a band laid over a turret or fuselage */
   clip?: readonly number[];
   clipPoly?: readonly number[];
+  /** a one-pixel highlight on purpose (a mine's brass horn): the model's minimum sizes leave it as it is */
+  keep?: boolean;
 }
 
 /** A propeller hub: where sprites.ts draws a spinning disc (model units; r = blade length). */
@@ -238,9 +245,12 @@ interface Prep {
  * banked by `roll` radians (planes; positive = starboard wing down), with the owner's colour for the 'own' parts.
  */
 export function rasterize(model: Model, res: number, facing: number, owner: RGB, roll = 0): Baked {
-  const th = (((facing % FACINGS) + FACINGS) % FACINGS) * ((Math.PI * 2) / FACINGS);
+  const fi = ((facing % FACINGS) + FACINGS) % FACINGS;
+  const th = fi * ((Math.PI * 2) / FACINGS);
   const cos = Math.cos(th);
   const sin = Math.sin(th);
+  // off the four axis headings fine surface patterns alias into salt-and-pepper speckle: leave the faces plain there
+  const plain = fi % 4 !== 0;
   const fy = model.flat ? res : res * FORE;
   const lift = model.flat ? 0 : res * LIFT;
   const rl = model.flat ? 0 : roll;
@@ -364,7 +374,7 @@ export function rasterize(model: Model, res: number, facing: number, owner: RGB,
           } else {
             t = curved(part, sh, u, v, cos, sin, cr, sr);
           }
-          t = pattern(part.pat, t, u, v, true);
+          t = pattern(plain && part.pat !== 'tread' ? undefined : part.pat, t, u, v, true);
         } else {
           t = isSide(pp, x, y + 1) || isTop(pp, x, y + 1) ? 1 : 0;
           if (part.pat === 'tread' || part.pat === 'wheels') {
@@ -376,6 +386,41 @@ export function rasterize(model: Model, res: number, facing: number, owner: RGB,
         tone[idx] = t;
       }
     }
+  }
+
+  // no stray pixels: a pixel of a painted decal (deck lines, marks) that has no neighbour of its own part is a sampling
+  // accident at an oblique heading, so it takes the part most of its neighbours belong to (decals of three pixels or
+  // fewer are details on purpose, a mine's brass horn, and stay; so does the owner's mark)
+  const area = new Int32Array(model.parts.length);
+  for (let idx = 0; idx < n; idx++) if (pid[idx] >= 0) area[pid[idx]]++;
+  const fixes: number[] = [];
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      const idx = y * W + x;
+      const me = pid[idx];
+      if (me < 0) continue;
+      const part = preps[me].part;
+      if (part.h > 0 || part.glow || part.a !== undefined || part.m === 'own' || area[me] <= 3) continue;
+      const nb = [idx - 1, idx + 1, idx - W, idx + W];
+      if (nb.some((j) => pid[j] === me)) continue;
+      let best = -1;
+      let bestN = 0;
+      for (const j of nb) {
+        const c = pid[j];
+        if (c < 0) continue;
+        let k = 0;
+        for (const q of nb) if (pid[q] === c) k++;
+        if (k > bestN) {
+          bestN = k;
+          best = j;
+        }
+      }
+      if (best >= 0) fixes.push(idx, best);
+    }
+  }
+  for (let f = 0; f < fixes.length; f += 2) {
+    pid[fixes[f]] = pid[fixes[f + 1]];
+    tone[fixes[f]] = tone[fixes[f + 1]];
   }
 
   // cast shadow: a pixel whose left, upper-left or upper neighbour belongs to a higher part is a tone darker (the
@@ -416,6 +461,32 @@ export function rasterize(model: Model, res: number, facing: number, owner: RGB,
     data[o + 3] = Math.round(a * 255);
     if (a >= 1 && !part.glow && w < 0) solid[idx] = 1;
   }
+  // at oblique headings, stepped edges of overlapping parts can leave a lone pixel much lighter or darker than all four
+  // of its neighbours (salt and pepper); it takes the middle tone of its neighbours. Pixels of the owner's mark and
+  // glowing parts are details on purpose and stay.
+  if (plain) {
+    const src = data.slice();
+    const lum = (i: number): number => 0.3 * src[i * 4] + 0.59 * src[i * 4 + 1] + 0.11 * src[i * 4 + 2];
+    for (let y = 1; y < H - 1; y++) {
+      for (let x = 1; x < W - 1; x++) {
+        const idx = y * W + x;
+        if (!solid[idx]) continue;
+        const me = pid[idx];
+        if (me < 0 || model.parts[me].m === 'own' || model.parts[me].glow || model.parts[me].keep) continue;
+        const nb = [idx - 1, idx + 1, idx - W, idx + W];
+        if (!nb.every((j) => solid[j])) continue;
+        const c = lum(idx);
+        const ls = nb.map(lum);
+        if (!ls.every((l) => l < c - 30) && !ls.every((l) => l > c + 30)) continue;
+        // the neighbour with the second-nearest tone to the middle of the four
+        const order = [0, 1, 2, 3].sort((a, b) => ls[a] - ls[b]);
+        const j = nb[order[c > ls[order[3]] ? 2 : 1]];
+        data[idx * 4] = src[j * 4];
+        data[idx * 4 + 1] = src[j * 4 + 1];
+        data[idx * 4 + 2] = src[j * 4 + 2];
+      }
+    }
+  }
   // the edge: empty pixels next to a solid one (4-neighbours). Below or right of the unit (the shadow side) dark slate;
   // above or left of it (the lit side) the deep tone of the part it borders
   for (let y = 0; y < H; y++) {
@@ -427,7 +498,7 @@ export function rasterize(model: Model, res: number, facing: number, owner: RGB,
       const right = x < W - 1 && solid[idx + 1];
       const down = y < H - 1 && solid[idx + W];
       if (!left && !up && !right && !down) continue;
-      let c: readonly number[] = OUTLINE;
+      let c: readonly number[] = model.air ? AIR_OUTLINE : OUTLINE;
       if (!left && !up) {
         const j = pid[right ? idx + 1 : idx + W];
         const r = j >= 0 ? mat[j] : undefined;

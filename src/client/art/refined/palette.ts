@@ -38,6 +38,8 @@ const BASES = {
   // ships: haze grey hull and turrets, a lighter superstructure, dark steel guns, a teak or steel deck
   hull: [0.6, 0.014, 245],
   turret: [0.64, 0.012, 245],
+  // the battleship's big gunhouses: dark gun grey, heavier than the hull
+  turretDark: [0.49, 0.01, 245, 0.09],
   sup: [0.73, 0.011, 245, 0.085],
   deck: [0.53, 0.036, 68, 0.08],
   deckGrey: [0.47, 0.01, 245, 0.08],
@@ -57,7 +59,8 @@ const BASES = {
   // navy odds and ends
   sub: [0.38, 0.012, 232, 0.08],
   tarmac: [0.42, 0.008, 245, 0.07],
-  hullBlack: [0.33, 0.008, 250, 0.08],
+  // a merchant's 'black' hull, lifted to a dark blue-grey so it reads as paint and not as an ink outline
+  hullBlack: [0.38, 0.02, 250, 0.08],
   rust: [0.44, 0.075, 35],
   glass: [0.48, 0.035, 225, 0.09],
   white: [0.85, 0.012, 95, 0.075],
@@ -71,6 +74,8 @@ const BASES = {
   brick: [0.48, 0.07, 38],
   khaki: [0.54, 0.04, 108, 0.085],
   canvas: [0.58, 0.035, 98, 0.085],
+  // a landing ship's well deck: light khaki, so the troops' helmets stand out on it
+  wellDeck: [0.68, 0.035, 92, 0.08],
   foam: [0.92, 0.008, 230, 0.05],
   // the map's sea is OKLCH L 0.26 (open) to 0.39 (shelf), hue 230 to 246
   sea: [0.31, 0.035, 238, 0.04],
@@ -85,6 +90,8 @@ export const RAMPS: Record<BaseMat, RGB[]> = Object.fromEntries(Object.entries(B
 
 /** The 1 px edge round a sprite on its shadow side: dark slate, not black. */
 export const EDGE: RGB = oklch(0.3, 0.012, 245);
+/** The shadow-side edge of planes and missiles: a step darker, so they hold their outline over light ground. */
+export const AIR_EDGE: RGB = oklch(0.245, 0.012, 245);
 
 /** Painted marks (flight deck lines) and troop helmets: fixed colours, not from a part's ramp. */
 export const PAINT: RGB = oklch(0.86, 0.01, 95);

@@ -10,15 +10,15 @@
 //   planes    bank into turns (u.turnRate times m.bankPerTurn, at most m.bankMax, baked in steps), spin their
 //             propellers as blur discs with a blade sweeping round (m.propellers, m.propFps), and fly over a shadow set
 //             off by their height (low attackers, high bombers) that rises and falls a little (m.altitudeBob)
-//   missiles  flicker their exhaust (m.flameMs); the atom bomb carries a faint ring so it reads as the big one
+//   missiles  flicker their exhaust (m.flameMs); the atom bomb reads as the big one by its shape alone
 // Reduced motion keeps the pictures and drops the idle motion (no bob, bank, blade sweep or flicker).
 import type { MotionParams } from '../motion';
 import { drawEntry, SpriteAtlas, type AtlasEntry, type RGBABitmap } from '../shared/atlas';
 import type { RGB } from '../shared/colour';
 import { facingOf, isAirKey, unitCategoryOf, type SpriteKey } from '../shared/keys';
 import { fract } from '../shared/noise';
-import { pixelRing } from '../shared/pixel';
 import type { PortraitDraw, UnitArt, UnitDraw } from '../types';
+import { smokeAdd, smokeDraw, smokeReset } from './fxCommon';
 import { FX, hexOf, oklch } from './palette';
 import { recoilAt, seeClock } from './recoil';
 import { ALTITUDE, ANIMATED, buildModel, GUNS, MOD_MASK, modelLength, SPRITE_KEYS } from './spriteArt';
@@ -103,7 +103,7 @@ function entry(key: SpriteKey, mods: number, facing: number, frame: number, owne
   const f = ANIMATED.has(key) ? frame & 1 : 0;
   return atlas.get(entryKey(key, m, facing, f, owner, res, shadow, bank), () => {
     const b = rasterize(modelInfo(key, m, f).model, RES[res] ?? 1, facing, owner, bank * BANK_STEP);
-    return shadow ? shadowOf(b) : b;
+    return shadow ? shadowOf(b, 0.32) : b;
   });
 }
 
@@ -157,7 +157,8 @@ export function propBitmap(r: number, res: number, facing: number, bank: number,
       const l = d2 > 0.72 ? 2 : near < 0.32 && d2 > 0.06 ? 3 : 1;
       // the blur has some depth along the heading (the blades sweep a shallow cone, and the map is seen from above),
       // so a plane flying east or west still shows a disc and not a one-pixel line seen edge-on
-      const e = 0.2 + 0.36 * r * Math.sqrt(1 - d2);
+      // (at least 0.75 each way: two art px across even at mid zoom, so the disc never thins to nothing)
+      const e = 0.75 + 0.3 * r * Math.sqrt(1 - d2);
       const kn = Math.max(1, Math.ceil(e * res * 1.5));
       for (let q = -kn; q <= kn; q++) {
         const k = (e * q) / kn;
@@ -169,8 +170,8 @@ export function propBitmap(r: number, res: number, facing: number, bank: number,
   // disc, rim, blade: a pale haze over whatever is behind, the blades a darker grey
   const col: number[][] = [
     [0, 0, 0, 0],
-    [222, 226, 228, 124],
-    [206, 211, 214, 178],
+    [222, 226, 228, 150],
+    [206, 211, 214, 200],
     [58, 64, 68, 205],
   ];
   for (let i = 0; i < w * h; i++) {
@@ -225,7 +226,7 @@ export function drawSpriteKey(ctx: CanvasRenderingContext2D, key: SpriteKey, mod
   if (sh) {
     // the light is top left, so the shadow falls down and right, as far off as the plane flies high
     const alt = ALTITUDE[key] ?? 3;
-    drawEntry(ctx, sh, Math.round(x) + Math.round(alt * 0.6) * k, Math.round(y) + Math.round(alt * 0.8) * k, k);
+    drawEntry(ctx, sh, Math.round(x) + Math.max(2, Math.round(alt * 0.6)) * k, Math.round(y) + Math.max(2, Math.round(alt * 0.8)) * k, k);
   }
   drawEntry(ctx, e, x, y - bob, k);
   ctx.globalAlpha = prevAlpha;
@@ -233,10 +234,13 @@ export function drawSpriteKey(ctx: CanvasRenderingContext2D, key: SpriteKey, mod
 }
 
 const TAU = Math.PI * 2;
-/** Fresh tread dust: a pale dry earth, lighter than any grass so it shows on the plains. */
-const DUST_NEAR = hexOf(oklch(0.84, 0.03, 85));
 
-/** Tread dust: tan puffs thrown up behind both tracks of a moving tank, drifting back, growing and thinning out. */
+/**
+ * Tread dust: behind each track of a moving tank a low streak of dust, many small puffs close enough to merge into one
+ * shaded band (fxCommon.ts smoke painter: lit on top, darker underneath) that drifts back, widens and thins out. New
+ * puffs start tiny, so the streak fades in from the track instead of popping; the far end is a fainter group of its
+ * own. The dust colours sit between grass and sand, so the streak shows on both.
+ */
 function drawDust(ctx: CanvasRenderingContext2D, u: UnitDraw, m: MotionParams, half: number): void {
   const amt = m.treadDust * (m.reduced ? 0.5 : 1);
   if (amt <= 0.01) return;
@@ -244,33 +248,32 @@ function drawDust(ctx: CanvasRenderingContext2D, u: UnitDraw, m: MotionParams, h
   const c = Math.cos(u.angle);
   const s = Math.sin(u.angle);
   const speedPx = Math.min(60, u.speed * u.zoom);
-  const n = k >= 2 ? 4 : 3;
-  const life = 700 + 500 * amt;
-  const prev = ctx.globalAlpha;
+  const n = k >= 2 ? 7 : 5;
+  const life = 900 + 700 * amt;
   const side = half * 0.42;
-  for (let tr = -1; tr <= 1; tr += 2) {
-    for (let i = 0; i < n; i++) {
-      const p = fract(u.timeMs / life + i / n + fract(u.seed * 0.618) + (tr > 0 ? 0.5 / n : 0));
-      const age = p * life;
-      const back = half * 0.85 + Math.min(half * 2.2, (speedPx * age) / 1000) + p * 4 * k;
-      const out = side + p * k * 2.2;
-      const x = u.x - c * back - s * out * tr;
-      const y = u.y - s * back * FORE + c * out * tr * FORE - p * k * 1.5;
-      const r = (1.1 + 3 * p) * k * (0.65 + 0.35 * amt);
-      const a = Math.min(0.8, 0.25 + amt * 0.7) * (1 - p) * (1 - p * 0.4) * Math.min(1, p * 6);
-      if (a < 0.02) continue;
-      ctx.globalAlpha = prev * a;
-      ctx.fillStyle = p < 0.4 ? DUST_NEAR : FX.dustLight;
-      const R = Math.max(k, Math.round(r / k) * k);
-      const X = Math.round(x / k) * k;
-      const Y = Math.round(y / k) * k;
-      // a rounded puff: a wide bar and a tall bar
-      ctx.fillRect(X - R, Y - R + k, R * 2, Math.max(k, R * 2 - 2 * k));
-      ctx.fillRect(X - R + k, Y - R, Math.max(k, R * 2 - 2 * k), R * 2);
+  const base = fract(u.seed * 0.618);
+  for (let older = 0; older < 2; older++) {
+    smokeReset();
+    for (let tr = -1; tr <= 1; tr += 2) {
+      for (let i = 0; i < n; i++) {
+        const p = fract(u.timeMs / life + i / n + base + (tr > 0 ? 0.5 / n : 0));
+        if (p < 0.55 !== (older === 0)) continue;
+        const age = p * life;
+        const back = half * 0.8 + Math.min(half * 2.4, (speedPx * age) / 1000) + p * 3 * k;
+        const out = side + p * k * 1.6;
+        const x = u.x - c * back - s * out * tr;
+        const y = u.y - s * back * FORE + c * out * tr * FORE - p * k;
+        // small and low: from under a cell at the track to a couple of cells, never a round ball
+        const r = (0.5 + 2.1 * p) * (0.6 + 0.4 * amt) * Math.min(1, p * 5);
+        smokeAdd(x, y, r, u.seed * 13 + i * 3 + tr);
+      }
     }
+    smokeDraw(ctx, k, (older ? 0.28 : 0.5) * Math.min(1, 0.35 + amt * 0.65), FX.dustDark, FX.dust, DUST_NEAR);
   }
-  ctx.globalAlpha = prev;
 }
+
+/** Fresh tread dust's lit top: a pale dry earth, lighter than any grass so it shows on the plains. */
+const DUST_NEAR = hexOf(oklch(0.8, 0.03, 85));
 
 /** The refined units: one implementation for ships, land units, planes and missiles. */
 export const refinedUnits: UnitArt = {
@@ -312,14 +315,9 @@ export const refinedUnits: UnitArt = {
     }
     if (cat === 'missiles') {
       const frame = still ? 0 : Math.floor(u.timeMs / Math.max(16, m.flameMs)) & 1;
-      const ok = drawSpriteKey(ctx, key, u.mods, x, y, k, u.angle, u.owner, frame, 0, u.alpha, u.shadow);
-      if (ok && key === 'atomBomb') {
-        // a faint broken ring round it so it reads as the big one
-        const half = Math.max(6, (refinedLength(key, 0) * k) / 2);
-        ctx.fillStyle = 'rgba(232,206,140,0.3)';
-        pixelRing(ctx, x, y, (half + 5) / k, k, true);
-      }
-      return ok;
+      // the atom bomb is told from a rocket by its own shape (bigger, fatter, a pale nose cap, a hazard band, a longer
+      // exhaust and a thicker trail), never by a marker drawn round it
+      return drawSpriteKey(ctx, key, u.mods, x, y, k, u.angle, u.owner, frame, 0, u.alpha, u.shadow);
     }
     // planes: bank into the turn, fly over a shadow that shows the height, spin the propellers
     let bank = 0;
