@@ -1,12 +1,14 @@
-// The refined style's troop icons (client only): infantry, armor and artillery as small chunky pixel markers, in the
-// same style as the unit sprites. Each marker is a rounded-square PLATE in the owner's colour (two tones: the colour and
-// a darker shade on its lower and right edge) carrying a SYMBOL: a soldier, a tank or a field gun in side view, near
-// white on a dark or mid plate and near black on a pale one, shaded in 4 tones with the light from the top left. A
-// 1 px dark outline goes round the whole marker. The team colour is only ever the plate, never the symbol. Baked once
-// per (kind, owner colour, size) into a small canvas and drawn at whole pixels. Pure data + a pure baker (testable in
-// node). The pills that carry these markers are shared (render/troopIcons.ts).
+// The refined style's troop icons (client only): infantry, armor and artillery as small pixel markers, in the same
+// style as the unit sprites. Each marker is a rounded-square PLATE in the owner's colour, a touch toned down (a darker
+// shade on its lower and right edge, a soft lit row along the top), carrying a SYMBOL: a soldier, a tank or a field gun
+// in side view, a stencilled light grey on a dark or mid plate and a dark slate on a pale one, shaded in 4 tones with
+// the light from the top left and a soft drop shadow. A 1 px dark slate edge (not black) goes round the whole marker.
+// The team colour is only ever the plate, never the symbol. Baked once per (kind, owner colour, size) into a small
+// canvas and drawn at whole pixels. Pure data + a pure baker (testable in node). The pills that carry these markers
+// are shared (render/troopIcons.ts).
 import { makeCanvas } from '../../render/common';
 import { ownerRamp, type RGB } from '../shared/colour';
+import { oklch } from './palette';
 import type { TroopIconArt, TroopIconKind } from '../types';
 import { OUTLINE } from './spriteBake';
 
@@ -114,18 +116,15 @@ const SMALL: Record<TroopIconKind, readonly string[]> = {
   ],
 };
 
-const LIGHT_SYMBOL: RGB[] = [
-  [255, 255, 255],
-  [226, 230, 229],
-  [176, 184, 188],
-  [118, 127, 134],
-];
-const DARK_SYMBOL: RGB[] = [
-  [74, 82, 90],
-  [46, 53, 60],
-  [30, 35, 41],
-  [14, 17, 21],
-];
+/** The symbol's tones (light to dark): stencil paint, never pure white or pure black. */
+const LIGHT_SYMBOL: RGB[] = [oklch(0.94, 0.008, 95), oklch(0.87, 0.008, 95), oklch(0.74, 0.008, 240), oklch(0.56, 0.01, 240)];
+const DARK_SYMBOL: RGB[] = [oklch(0.42, 0.01, 245), oklch(0.33, 0.01, 245), oklch(0.27, 0.01, 245), oklch(0.21, 0.01, 245)];
+
+/** The plate colour: the owner's, a little greyer (paint, not neon). */
+function plateTone(c: RGB): RGB {
+  const l = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
+  return [Math.round(c[0] * 0.85 + l * 0.15), Math.round(c[1] * 0.85 + l * 0.15), Math.round(c[2] * 0.85 + l * 0.15)];
+}
 
 export interface IconBitmap {
   w: number;
@@ -148,8 +147,9 @@ export function bakeTroopIcon(kind: TroopIconKind, owner: RGB, size = PLATE): Ic
   const H = size + 2;
   const data = new Uint8ClampedArray(W * H * 4);
   const ramp = ownerRamp(owner);
-  const plate = ramp[2];
-  const edge = ramp[1];
+  const plate = plateTone(ramp[2]);
+  const edge = plateTone(ramp[1]);
+  const rim: RGB = [Math.round((plate[0] + ramp[3][0]) / 2), Math.round((plate[1] + ramp[3][1]) / 2), Math.round((plate[2] + ramp[3][2]) / 2)];
   const set = (x: number, y: number, c: RGB): void => {
     if (x < 0 || y < 0 || x >= W || y >= H) return;
     const o = (y * W + x) * 4;
@@ -170,7 +170,7 @@ export function bakeTroopIcon(kind: TroopIconKind, owner: RGB, size = PLATE): Ic
       if (inPlate(x, y)) {
         // two tones: the lower and right edge in the darker shade, a light pixel row along the top
         const lowRight = !inPlate(x + 1, y) || !inPlate(x, y + 1) || !inPlate(x + 1, y + 1) || !inPlate(x + 2, y) || !inPlate(x, y + 2);
-        set(x + 1, y + 1, lowRight ? edge : !inPlate(x, y - 1) ? ramp[3] : plate);
+        set(x + 1, y + 1, lowRight ? edge : !inPlate(x, y - 1) ? rim : plate);
       } else if (inPlate(x - 1, y) || inPlate(x + 1, y) || inPlate(x, y - 1) || inPlate(x, y + 1)) set(x + 1, y + 1, OUTLINE);
     }
   }
