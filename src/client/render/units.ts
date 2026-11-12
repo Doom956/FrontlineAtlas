@@ -1,11 +1,15 @@
-// Mobile units on the map (ships, planes, missiles) as minimal line glyphs (unitGlyphs.ts): a thin stroke in the
-// owner's colour over a dark under-stroke, rotated to the heading and interpolated between ticks. Small (7-11 px) so
-// many units in one area stay readable; missiles trail a long fading contrail, planes a faint short one and ships a
-// short V wake. A small troop pill on transports at mid/close zoom; your own warships carry a tiny tick (a ring only
-// while one is hovered or picked, UnitLayer.focusId); they can be clicked to give orders, the hit area is larger than
-// the drawing. At far zoom units on the same pixel are drawn once and only missiles keep their trails. Zoomed out
-// (FLEET_ZOOM), warships of one owner within FLEET_RADIUS tiles (or 16 px on screen) draw as one fleet marker with a count badge
-// (render/fleets.ts); a click on your own marker selects that fleet (ownFleetAt).
+// Mobile units on the map (ships, tanks, planes, missiles), interpolated between ticks. From NEAR_ZOOM in, each unit
+// is its shaded pixel sprite (pixelSprites.ts, art in spriteArt.ts): a small model baked per heading (16 facings),
+// owner colour and upgrade set into an atlas, 3 to 4 tones per material with one top-left light, a 1 px dark outline,
+// drawn at whole-pixel scale. The owner's colour is a plate or band, never a tint: tanks stand on an owner-colour
+// plate and carry a band across the turret, ships carry it on the deckhouse (3+ art px), planes on the fuselage band
+// and wingtips; missiles have none. Planes and missiles cast a short ground shadow. Far out, every unit is a tiny solid
+// marker in the owner's colour. Missiles trail pixel smoke puffs, planes a faint short contrail and ships a V of foam
+// (unitGlyphs.ts drawTrails). A small troop pill on transports at mid/close zoom; your own warships carry a tiny tick (a
+// ring only while one is hovered or picked, UnitLayer.focusId); they can be clicked to give orders, the hit area is
+// larger than the drawing. At far zoom units on the same pixel are drawn once and only missiles keep their trails.
+// Zoomed out (FLEET_ZOOM), warships of one owner within FLEET_RADIUS tiles (or 16 px on screen) draw as one fleet
+// marker with a count badge (render/fleets.ts); a click on your own marker selects that fleet (ownFleetAt).
 import { TICKS_PER_SECOND } from '../../sim/config';
 import { armyTotal } from '../../sim/economy';
 import type { GameState, Unit } from '../../sim/types';

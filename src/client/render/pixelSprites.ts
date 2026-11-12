@@ -219,9 +219,9 @@ export function drawSpriteKey(ctx: CanvasRenderingContext2D, key: SpriteKey, mod
   const dx = Math.round(x) - e.ox * k;
   const dy = Math.round(y) - e.oy * k;
   if (sh) {
-    // planes fly higher than missiles: their shadow falls further down and right (the light is top left)
-    const off = key === 'rocket' || key === 'atomBomb' ? 3 : 5;
-    ctx.drawImage(sh.page, sh.sx, sh.sy, sh.w, sh.h, dx + off * k, dy + Math.round(off * 1.4) * k, sh.w * k, sh.h * k);
+    // a short drop down and right (the light is top left), so the shadow stays one shape under the plane
+    const off = key === 'rocket' || key === 'atomBomb' ? 2 : 3;
+    ctx.drawImage(sh.page, sh.sx, sh.sy, sh.w, sh.h, dx + off * k, dy + off * k, sh.w * k, sh.h * k);
   }
   ctx.drawImage(e.page, e.sx, e.sy, e.w, e.h, dx, dy, e.w * k, e.h * k);
   ctx.imageSmoothingEnabled = prevSmooth;

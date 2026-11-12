@@ -7,7 +7,9 @@
 //   - one light for every unit: from the top left. Tops get a light rim on their upper and left edges (flat parts) or
 //     a 4-tone curve (domes and cylinders: turrets, fuselages, barrels); sides are dark with a deep bottom row; a raised
 //     part casts a 1 px shadow down and right onto what is under it;
-//   - a 1 px near-black outline around the whole sprite (translucent water parts and flames get none).
+//   - a 1 px near-black outline around the whole sprite (translucent water parts and flames get none);
+//   - missiles are drawn flat from straight above (Model.flat), so a slender body stays slender at every heading;
+//   - an owner plate (Shade 'plate') is a flat 2-tone slab: the owner colour with a darker lower and right rim.
 // Each material is a 4-tone ramp (deep, dark, base, light) holding one hue; the owner's colour is one more material
 // ('own') used only for small bands and plates, so the metal keeps its own tones.
 // The result is a plain RGBA buffer (no canvas): pixelSprites.ts copies it into an atlas page once and draws it with
@@ -42,7 +44,7 @@ export const MATERIALS = {
   plane: ['#36404b', '#5a6774', '#8f9daa', '#c4d0d8'],
   metal: ['#4a4f55', '#7c838a', '#b2b9bf', '#e2e7ea'],
   night: ['#0b0e11', '#181d22', '#282f36', '#424b55'],
-  sub: ['#0c0f12', '#181d22', '#2a3138', '#48525b'],
+  sub: ['#1b2228', '#2e3a42', '#44535c', '#6b7d88'],
   tarmac: ['#1f2327', '#30353a', '#43494f', '#5f666d'],
   rust: ['#37170f', '#5a281c', '#82402b', '#ad6448'],
   glass: ['#1c4560', '#2c6a90', '#5ea7d4', '#c2e8fb'],
@@ -63,7 +65,8 @@ export const MATERIALS = {
 export type MatId = keyof typeof MATERIALS | 'own';
 export const OUTLINE: RGB = [17, 21, 27];
 
-export type Shade = 'flat' | 'dome' | 'cyl';
+/** 'plate': a flat 2-tone slab (the owner plate under a vehicle): base colour with a darker lower and right rim. */
+export type Shade = 'flat' | 'dome' | 'cyl' | 'plate';
 export type Pattern = 'tread' | 'grille' | 'deckline' | 'planks' | 'helmets' | 'rivets';
 
 /**
@@ -95,6 +98,8 @@ export interface Model {
   parts: readonly Part[];
   /** flies: drawn with a ground shadow */
   air?: boolean;
+  /** drawn straight from above (missiles): no ground foreshortening and no height lift, so a slender body stays slender at every heading */
+  flat?: boolean;
 }
 
 export interface Baked {
@@ -255,8 +260,8 @@ export function rasterize(model: Model, res: number, facing: number, owner: RGB)
   const th = (((facing % FACINGS) + FACINGS) % FACINGS) * ((Math.PI * 2) / FACINGS);
   const cos = Math.cos(th);
   const sin = Math.sin(th);
-  const fy = res * FORE;
-  const lift = res * LIFT;
+  const fy = model.flat ? res : res * FORE;
+  const lift = model.flat ? 0 : res * LIFT;
   // screen bounds of everything (ground footprints and lifted tops)
   let minX = Infinity;
   let minY = Infinity;
@@ -353,7 +358,9 @@ export function rasterize(model: Model, res: number, facing: number, owner: RGB)
         let t: number;
         if (top) {
           const [u, v] = toModel(x, y + pp.T);
-          if (sh === 'flat') {
+          if (sh === 'plate') {
+            t = !isTop(pp, x + 1, y) || !isTop(pp, x, y + 1) ? 1 : 2;
+          } else if (sh === 'flat') {
             const rim = !isTop(pp, x, y - 1) || !isTop(pp, x - 1, y);
             t = part.h > 0 ? (rim ? 3 : 2) : rim && part.inset ? 1 : 2;
           } else {

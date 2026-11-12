@@ -3,22 +3,24 @@
 // as code.
 //
 // Every vehicle has its own silhouette, not just its own colour:
-//   warship (before any arsenal pick)  a plain gunboat: one gun fore, one aft, a small bridge and funnel
-//   destroyer    long and slim, a sharp bow, ONE turret, torpedo tubes, a raked funnel
-//   battleship   the longest and widest hull, THREE big twin turrets (two forward, one superfiring), a tall tower
-//   submarine    a low dark cigar, half under water (translucent sea around it), a conning tower, bow foam
+//   warship (before any arsenal pick)  a plain gunboat: a sharp bow, a full blunt stern, one gun fore, one aft
+//   destroyer    long and slim, a sharp bow and a tapered stern, ONE turret, a tall raked funnel, light torpedo tubes
+//   battleship   the longest and widest hull, THREE big twin turrets read as turret, turret, tower, turret
+//   submarine    a low steel cigar awash (a pale foam band round it), the conning tower its only raised part
 //   carrier      a flat dark flight deck with a dashed centre line, an island on the starboard side, parked planes
 //   tank division  a medium tank: tracks, a round turret, a medium gun (olive)
-//   light tank   small and quick: narrow tracks, a little turret set forward, a thin short gun, an aerial (tan)
+//   light tank   small and quick: narrow tracks, a little turret, a thin short light gun, an aerial (tan)
 //   heavy tank   wide and long: broad tracks, an angular turret, a long thick gun with a muzzle brake (dark steel)
 //   bomber       twin engines, straight wings, glazed nose
 //   ground-attack  a stubby single-engine plane with rows of red-tipped rockets under its wings (camouflage green)
 //   heavy bomber   four engines on long wings, twin tail fins, natural metal
-// Upgrades a player owns add small details (mods): a gold bow chevron and an AA mount (Naval Mastery), mines at the
-// stern (Naval Mines), armour skirts over the tracks (Armor Mastery), jerrycans (Deep Raids), a dozer ram (Siege
-// Tanks), a snorkel (Amphibious Tanks), jet engines and swept wings (Jet Engines), gun turrets (Strategic Bombing),
-// drop tanks (Drop Tanks), dark night paint (Night Bombing) and a gold tail (Air Mastery). The owner's colour is a
-// small band or plate on each one (funnel, turret band, wingtips), never the whole unit.
+// Upgrades a player owns add details of at least 2 x 2 art px in colours that are never an owner hue: a gold bow
+// chevron and an AA mount (Naval Mastery), dark mines with a yellow dot (Naval Mines), armour skirts that widen the
+// tracks (Armor Mastery), jerrycans (Deep Raids), a dozer ram (Siege Tanks), a snorkel (Amphibious Tanks), pale jet
+// pods with an orange exhaust on every plane that has them, each keeping its own outline (Jet Engines), gun turrets
+// (Strategic Bombing), drop tanks (Drop Tanks), dark night paint (Night Bombing) and a gold tail (Air Mastery).
+// The owner's colour: an owner plate under each tank plus a turret band, the deckhouse of each ship, a fuselage band
+// and wingtips on planes; never the whole unit, so the metal keeps its own tones.
 import type { MatId, Model, Part, Pattern, Shade } from './spriteBake';
 
 /** Upgrade details (bit mask). */
@@ -62,7 +64,7 @@ export const MOD_MASK: Record<SpriteKey, number> = {
   tankDivision: M_MASTERY | M_SPECIAL,
   lightTank: M_MASTERY | M_PATH3 | M_SPECIAL,
   heavyTank: M_MASTERY | M_PATH3 | M_SPECIAL,
-  bomber: M_MASTERY | M_SPECIAL | M_NIGHT,
+  bomber: M_MASTERY | M_JET | M_SPECIAL | M_NIGHT,
   groundAttack: M_MASTERY | M_JET | M_SPECIAL | M_NIGHT,
   heavyBomber: M_MASTERY | M_PATH3 | M_SPECIAL | M_NIGHT,
   fighter: M_MASTERY | M_JET | M_SPECIAL,
@@ -97,8 +99,17 @@ function sym(half: number[]): number[] {
   for (let i = half.length - 2; i >= 0; i -= 2) if (half[i + 1] !== 0) out.push(half[i], -half[i + 1]);
   return out;
 }
-/** A ship hull: bow point at +L, shoulders `bow` back, a square stern with cut corners. */
-const hull = (L: number, b: number, bow: number): number[] => sym([L, 0, L - bow, -b, -L + 1, -b, -L, -b + 1]);
+/**
+ * A ship hull: a sharp bow point at +L that widens to the full beam `b` over `bow` art px (a narrow point first, then
+ * the shoulders flare, so the bow ends in a clear spike at one art pixel), straight sides, and a stern with corners
+ * cut by `cut` (small = a full, blunt stern).
+ */
+const hull = (L: number, b: number, bow: number, cut = 1): number[] => sym([L, 0, L - bow * 0.5, -b * 0.3, L - bow, -b, -L + cut, -b, -L, -b + cut]);
+/**
+ * The owner plate under a vehicle: a flat slab in the owner's colour (base tone, a darker lower and right rim, the dark
+ * outline round the sprite), a little larger than the vehicle, so who it belongs to reads at a glance on the map.
+ */
+const plate = (u0: number, u1: number, v: number, c: number): Part => poly(sym([u1, -v + c, u1 - c, -v, u0 + c, -v, u0, -v + c]), 0, 0.3, 'own', { sh: 'plate' });
 /** A part list scaled about the origin (footprints, heights stay). */
 function scaled(parts: Part[], k: number): Part[] {
   const sc = (q: readonly number[] | undefined, all: boolean): number[] | undefined => q && q.map((x, i) => (all || i < 2 || i === 2 || i === 3 ? x * k : x));
@@ -136,118 +147,120 @@ const over = (u: number, v: number, ru: number, rv: number): readonly [number, n
 
 // ------------------------------------------------------------------------------------------------- navy
 
-/** Gold chevron on the bow deck (Naval Mastery). */
-function chevron(L: number, b: number, z: number): Part {
-  return poly([L - 2.4, 0, L - 5.2, -b, L - 6.4, -b, L - 3.8, 0, L - 6.4, b, L - 5.2, b], z, 0, 'gold');
+/** A gold chevron on the bow deck, two art px thick, its tip at `u` (Naval Mastery). */
+function chevron(u: number, b: number, z: number): Part {
+  return poly([u, 0, u - 2.6, -b, u - 4.6, -b, u - 2, 0, u - 4.6, b, u - 2.6, b], z, 0.3, 'gold');
 }
-/** Two pairs of mines on rails at the stern (Naval Mines). */
+/** A sea mine: a dark sphere with a yellow detonator dot on top (never an owner hue). */
+function mine(u: number, v: number, z: number): Part[] {
+  return [ell(u, v, 1.15, 1.15, z, 0.9, 'black', { sh: 'dome' }), ell(u + 0.1, v - 0.1, 0.55, 0.55, z + 0.9, 0, 'yellow')];
+}
+/** A pair of mines on rails at the stern (Naval Mines). */
 function mines(L: number, z: number): Part[] {
-  return [ell(-L + 2.6, -1.1, 0.85, 0.85, z, 0.9, 'rust', { sh: 'dome' }), ell(-L + 2.6, 1.1, 0.85, 0.85, z, 0.9, 'rust', { sh: 'dome' }), ell(-L + 4.6, -1.1, 0.85, 0.85, z, 0.9, 'rust', { sh: 'dome' }), ell(-L + 4.6, 1.1, 0.85, 0.85, z, 0.9, 'rust', { sh: 'dome' })];
+  return [...mine(-L + 2.8, -1.3, z), ...mine(-L + 2.8, 1.3, z)];
 }
 /** A small twin AA mount (Naval Mastery). */
 function aaMount(u: number, z: number): Part[] {
-  return [ell(u, 0, 1.2, 1.1, z, 0.9, 'turret', { sh: 'dome' }), seg(u + 0.4, -0.45, u + 2.6, -0.45, 0.5, z + 0.6, 0.3, 'gun'), seg(u + 0.4, 0.45, u + 2.6, 0.45, 0.5, z + 0.6, 0.3, 'gun')];
+  return [ell(u, 0, 1.3, 1.2, z, 0.9, 'white', { sh: 'dome' }), seg(u + 0.4, -0.5, u + 2.8, -0.5, 0.5, z + 0.6, 0.3, 'gun'), seg(u + 0.4, 0.5, u + 2.8, 0.5, 0.5, z + 0.6, 0.3, 'gun')];
 }
+/**
+ * A gun turret: a dark ring at deck level round a light flat-topped turret, so it stands out from the deck as one
+ * block, with one or two short barrels toward `dir` (1 forward, -1 aft) that reach past the turret.
+ */
+function turretAt(u: number, ru: number, rv: number, z: number, dir: 1 | -1, barrels: number[], len: number, w = 0.9): Part[] {
+  const out: Part[] = [ell(u, 0, ru + 0.8, rv + 0.8, z, 0, 'gun'), ell(u, 0, ru, rv, z, 1.4, 'turret')];
+  for (const v of barrels) out.push(seg(u + dir * (ru - 0.4), v, u + dir * (ru + len), v, w, z + 0.8, 0.5, 'gun', { sh: 'cyl' }));
+  return out;
+}
+/** A funnel: light grey with a black top; `rake` moves the top aft (a raked funnel). */
+function funnel(u: number, ru: number, rv: number, z: number, h: number, rake = 0): Part[] {
+  if (!rake) return [ell(u, 0, ru, rv, z, h, 'sup', { sh: 'cyl' }), ell(u, 0, ru * 0.55, rv * 0.55, z + h, 0, 'black')];
+  return [ell(u, 0, ru, rv, z, h * 0.5, 'sup', { sh: 'cyl' }), ell(u - rake, 0, ru, rv, z + h * 0.5, h * 0.5, 'sup', { sh: 'cyl' }), ell(u - rake, 0, ru * 0.55, rv * 0.55, z + h, 0, 'black')];
+}
+
+// The owner colour on ships is the deckhouse (bridge block) under the light tower: wide enough (3+ art px) to read at
+// map zoom, while the hull and deck keep their metal tones.
 
 function warship(mods: number): Part[] {
   const L = 15;
   const out: Part[] = [
-    poly(hull(L, 3.5, 6), 0, 3, 'hull'),
-    poly(hull(L - 1.2, 2.6, 5.4), 3, 0, 'deck', { inset: true }),
-    // gun forward
-    ell(7, 0, 1.9, 1.7, 3, 1.4, 'turret', { sh: 'dome' }),
-    seg(7.6, 0, 12.6, 0, 0.9, 3.8, 0.6, 'gun', { sh: 'cyl' }),
-    // bridge, its windows, the mast
-    box(-2.5, -2.2, 3, 2.2, 3, 3, 'sup'),
-    box(2.2, -1.8, 3, 1.8, 6, 0, 'glass'),
-    ell(0.2, 0, 0.55, 0.55, 6, 3.4, 'gun'),
-    // funnel: the owner band
-    ell(-5.6, 0, 1.7, 1.5, 3, 3.4, 'own', { sh: 'dome' }),
-    ell(-5.6, 0, 0.9, 0.8, 6.4, 0, 'black'),
-    // small gun aft
-    ell(-10, 0, 1.3, 1.2, 3, 1, 'turret', { sh: 'dome' }),
-    seg(-10.5, 0, -13.6, 0, 0.7, 3.6, 0.5, 'gun', { sh: 'cyl' }),
+    // a full blunt stern, a sharp bow
+    poly(hull(L, 3.6, 4.5, 0.5), 0, 3, 'hull'),
+    poly(hull(L - 1.2, 2.7, 4, 0.5), 3, 0, 'deck', { inset: true }),
+    ...turretAt(7.6, 1.8, 1.6, 3, 1, [0], 4.4, 1),
+    // the deckhouse in the owner colour, its windows, the mast
+    box(-3, -2.6, 3.2, 2.6, 3, 2.6, 'own'),
+    box(2.4, -1.8, 3.2, 1.8, 5.6, 0, 'glass'),
+    ell(0, 0, 0.6, 0.6, 5.6, 3.4, 'gun'),
+    ...funnel(-5.6, 1.5, 1.3, 3, 3.4),
+    ...turretAt(-10.2, 1.4, 1.3, 3, -1, [0], 3.2, 0.8),
   ];
-  if (mods & M_MASTERY) out.push(chevron(L, 1.6, 3), ...aaMount(-7.8, 3));
-  if (mods & M_SPECIAL) out.push(...mines(L, 3).slice(0, 2));
+  if (mods & M_MASTERY) out.push(chevron(L - 3, 1.8, 3), ...aaMount(-7.9, 3));
+  if (mods & M_SPECIAL) out.push(...mines(L, 3));
   return out;
 }
 
 function destroyer(mods: number): Part[] {
   const L = 14;
   const out: Part[] = [
-    poly(hull(L, 2.6, 8), 0, 2.6, 'hull'),
-    poly(hull(L - 1.1, 1.8, 7.4), 2.6, 0, 'deck', { inset: true }),
-    // the one turret
-    ell(6.4, 0, 1.6, 1.4, 2.6, 1.3, 'turret', { sh: 'dome' }),
-    seg(7, 0, 11.6, 0, 0.8, 3.4, 0.5, 'gun', { sh: 'cyl' }),
-    // low bridge
-    box(1, -1.7, 4, 1.7, 2.6, 2.6, 'sup'),
-    box(3.3, -1.3, 4, 1.3, 5.2, 0, 'glass'),
-    ell(1.6, 0, 0.5, 0.5, 5.2, 3, 'gun'),
-    // raked funnel in the owner colour
-    poly([-1, -1.1, -1.6, 1.1, -3.8, 1.1, -3.2, -1.1], 2.6, 2.8, 'own'),
-    box(-3.2, -0.7, -1.9, 0.7, 5.4, 0, 'black'),
-    // torpedo tubes and depth charges
-    seg(-9, -0.55, -5.2, -0.55, 0.8, 2.6, 0.7, 'gun', { sh: 'cyl' }),
-    seg(-9, 0.55, -5.2, 0.55, 0.8, 2.6, 0.7, 'gun', { sh: 'cyl' }),
-    box(-13, -1, -11.4, 1, 2.6, 0.6, 'gun'),
+    // long and slim: a sharp bow, a narrow tapered stern
+    poly(hull(L, 2.7, 4, 1.8), 0, 2.6, 'hull'),
+    poly(hull(L - 1.1, 1.9, 3.6, 1.6), 2.6, 0, 'deck', { inset: true }),
+    ...turretAt(7.2, 1.5, 1.3, 2.6, 1, [0], 3.8, 0.9),
+    // low deckhouse in the owner colour
+    box(1.2, -2, 4.6, 2, 2.6, 2.4, 'own'),
+    box(3.9, -1.4, 4.6, 1.4, 5, 0, 'glass'),
+    ell(2, 0, 0.5, 0.5, 5, 3, 'gun'),
+    // a tall raked funnel
+    ...funnel(-1, 1.3, 1.2, 2.6, 4, 1.4),
+    // light torpedo tubes midships, depth charges at the stern
+    seg(-8.6, -0.8, -4.6, -0.8, 1.1, 2.6, 0.8, 'white', { sh: 'cyl' }),
+    seg(-8.6, 0.8, -4.6, 0.8, 1.1, 2.6, 0.8, 'white', { sh: 'cyl' }),
+    box(-12.4, -0.9, -10.8, 0.9, 2.6, 0.6, 'gun'),
   ];
-  if (mods & M_MASTERY) out.push(chevron(L, 1.2, 2.6), ...aaMount(-3.8 - 2.6, 2.6).map((p) => ({ ...p, z: p.z + 0.2 })));
-  if (mods & M_SPECIAL) out.push(...mines(L, 2.6).slice(0, 2));
+  if (mods & M_MASTERY) out.push(chevron(L - 2.6, 1.3, 2.6), ...aaMount(-2.6, 2.6).map((p) => ({ ...p, z: p.z + 0.2 })));
+  if (mods & M_SPECIAL) out.push(...mines(L - 0.6, 2.6));
   return out;
-}
-
-/** A big twin turret at u facing forward (dir 1) or aft (-1). */
-function bigTurret(u: number, z: number, dir: 1 | -1): Part[] {
-  return [ell(u, 0, 2.6, 2.2, z, 1.8, 'turret', { sh: 'dome' }), seg(u + dir * 0.6, -0.75, u + dir * 7, -0.75, 0.7, z + 1, 0.5, 'gun', { sh: 'cyl' }), seg(u + dir * 0.6, 0.75, u + dir * 7, 0.75, 0.7, z + 1, 0.5, 'gun', { sh: 'cyl' })];
 }
 
 function battleship(mods: number): Part[] {
   const L = 20;
   const out: Part[] = [
-    poly(hull(L, 4.2, 9), 0, 3.6, 'hull'),
-    poly(hull(L - 1.2, 3.2, 8.4), 3.6, 0, 'deck', { inset: true }),
-    ...bigTurret(11.8, 3.6, 1),
-    // the superfiring turret on its barbette
-    ell(7.2, 0, 2.2, 2, 3.6, 1, 'hull', { sh: 'dome' }),
-    ...bigTurret(7.2, 4.6, 1),
-    // superstructure and the tall tower
-    box(-6, -2.8, 4, 2.8, 3.6, 2.2, 'sup'),
-    box(-1, -1.8, 3, 1.8, 5.8, 3.2, 'sup'),
-    box(2.3, -1.4, 3, 1.4, 9, 0, 'glass'),
-    ell(1, 0, 1.1, 1.1, 9, 1.4, 'gun', { sh: 'dome' }),
-    // funnel (owner) and secondary guns
-    ell(-4, 0, 1.8, 1.5, 5.8, 2.4, 'own', { sh: 'dome' }),
-    ell(-4, 0, 1, 0.8, 8.2, 0, 'black'),
-    ell(-2, -3.5, 0.9, 0.8, 3.6, 0.9, 'turret', { sh: 'dome' }),
-    ell(-2, 3.5, 0.9, 0.8, 3.6, 0.9, 'turret', { sh: 'dome' }),
-    ell(1.8, -3.5, 0.9, 0.8, 3.6, 0.9, 'turret', { sh: 'dome' }),
-    ell(1.8, 3.5, 0.9, 0.8, 3.6, 0.9, 'turret', { sh: 'dome' }),
-    ...bigTurret(-12.4, 3.6, -1),
+    poly(hull(L, 4.4, 6.5, 1.4), 0, 3.6, 'hull'),
+    poly(hull(L - 1.3, 3.4, 5.8, 1.2), 3.6, 0, 'deck', { inset: true }),
+    // turret, turret, tower, turret: two forward (the second raised on its barbette), one aft
+    ...turretAt(11.6, 2.4, 2, 3.6, 1, [-0.9, 0.9], 4),
+    ell(6, 0, 3.2, 2.8, 3.6, 1.1, 'hull'),
+    ...turretAt(6, 2.4, 2, 4.7, 1, [-0.9, 0.9], 3.6),
+    // the deckhouse in the owner colour, the tall light tower on it, the funnel behind
+    box(-7.6, -3, 2.8, 3, 3.6, 2, 'own'),
+    box(-1.6, -1.9, 2.2, 1.9, 5.6, 3.4, 'sup'),
+    box(1.5, -1.4, 2.2, 1.4, 9, 0, 'glass'),
+    ...funnel(-5, 1.6, 1.5, 5.6, 2.6),
+    ...turretAt(-12.8, 2.4, 2, 3.6, -1, [-0.9, 0.9], 4.4),
   ];
-  if (mods & M_MASTERY) out.push(chevron(L, 2.2, 3.6), ...aaMount(-8.2, 3.6));
-  if (mods & M_SPECIAL) out.push(...mines(L, 3.6).slice(0, 2));
+  if (mods & M_MASTERY) out.push(chevron(L - 2.4, 2.4, 3.6), ...aaMount(-8.4, 5.6));
+  if (mods & M_SPECIAL) out.push(...mines(L - 0.6, 3.6));
   return out;
 }
 
 function submarine(mods: number): Part[] {
   const out: Part[] = [
-    // the sea over the hull: a darker translucent cigar, foam at the bow
-    ell(0, 0, 15.6, 3.1, 0, 0, 'sea', { a: 0.5 }),
-    poly(sym([16.4, 0, 13, -2.7, 12.4, -2.4, 14.9, 0]), 0, 0, 'foam', { a: 0.75 }),
-    // the low hull, its deck strip, the stern fins
-    ell(0, 0, 14.4, 2.1, 0, 1.1, 'sub', { sh: 'cyl' }),
-    box(-7, -0.55, 9.5, 0.55, 1.1, 0, 'black'),
-    poly(sym([-13, 0, -15.6, -2.6, -16.2, -2.6, -15.2, 0]), 0.5, 0.4, 'sub'),
-    // conning tower with dive planes, the owner band on top, a periscope
-    ell(3, 0, 3, 1.25, 1.1, 2.4, 'sub'),
-    seg(4, -2.5, 4, 2.5, 0.8, 2.4, 0.3, 'sub'),
-    ell(3, 0, 3, 1.25, 3.5, 0.5, 'own'),
-    ell(2, 0, 0.45, 0.45, 4, 1.8, 'gun'),
+    // awash: a pale translucent band of foam round the hull at the waterline, more at the bow
+    ell(0, 0, 16.6, 4.2, 0, 0, 'foam', { a: 0.5 }),
+    poly(sym([17, 0, 13, -3.4, 12, -3, 14.9, 0]), 0, 0, 'foam', { a: 0.8 }),
+    // the low steel hull, flush with the sea (only the tower stands up): a light top ridge, mid sides, a dark keel side
+    ell(0, 0, 14.4, 2.4, 0, 0.6, 'sub', { sh: 'cyl' }),
+    seg(-10.5, -0.9, 10, -0.9, 0.9, 0.6, 0, 'hull'),
+    poly(sym([-13, 0, -15.6, -2.8, -16.2, -2.8, -15.2, 0]), 0, 0.4, 'sub'),
+    // the conning tower with dive planes, the owner colour on top, a periscope
+    ell(3, 0, 3.2, 1.6, 0.6, 2.4, 'sub'),
+    seg(4.2, -2.8, 4.2, 2.8, 0.8, 0.6, 0.3, 'sub'),
+    ell(3, 0, 3.2, 1.6, 3, 0.5, 'own'),
+    ell(2, 0, 0.45, 0.45, 3.5, 1.8, 'gun'),
   ];
-  if (mods & M_MASTERY) out.push(box(-1.8, -0.6, 0.2, 0.6, 1.1, 0, 'gold'), box(-4.6, -0.6, -2.6, 0.6, 1.1, 0, 'gold'));
-  if (mods & M_SPECIAL) out.push(ell(-8.6, 0, 0.9, 0.9, 1.1, 0.8, 'rust', { sh: 'dome' }), ell(-10.6, 0, 0.9, 0.9, 1.1, 0.8, 'rust', { sh: 'dome' }), ell(-12.4, 0, 0.8, 0.8, 1.1, 0.7, 'rust', { sh: 'dome' }));
+  if (mods & M_MASTERY) out.push(box(-2, -0.9, 0, 0.9, 0.6, 0.2, 'gold'), box(-4.8, -0.9, -2.8, 0.9, 0.6, 0.2, 'gold'));
+  if (mods & M_SPECIAL) out.push(...mine(-8.4, 0, 0.6), ...mine(-11, 0, 0.6));
   return out;
 }
 
@@ -264,14 +277,15 @@ function carrier(mods: number): Part[] {
     ...parked(9.5, -2.8, 3.8),
     ...parked(-12.5, -2.6, 3.8),
     ...parked(-16.5, -2.6, 3.8),
-    // the island on the starboard side: bridge, owner funnel, mast
-    box(-8, 3.2, -1, 5.8, 3.8, 4, 'sup'),
-    box(-1.8, 3.5, -1, 5.5, 7.8, 0, 'glass'),
-    box(-6.4, 3.7, -4, 5.3, 7.8, 1.4, 'own'),
-    ell(-2.8, 4.5, 0.6, 0.6, 7.8, 3, 'gun'),
+    // the island on the starboard side in the owner colour: bridge windows, a light funnel, the mast
+    box(-8, 3, -1, 6, 3.8, 3.4, 'own'),
+    box(-1.8, 3.4, -1, 5.6, 7.2, 0, 'glass'),
+    box(-6.2, 3.7, -4.2, 5.3, 7.2, 1.2, 'sup'),
+    box(-5.8, 4.1, -4.6, 4.9, 8.4, 0, 'black'),
+    ell(-2.8, 4.5, 0.6, 0.6, 7.2, 3, 'gun'),
   ];
-  if (mods & M_MASTERY) out.push(chevron(21, 2.4, 3.8), ...aaMount(-18, 3.8));
-  if (mods & M_SPECIAL) out.push(...mines(20, 3.8).slice(0, 2).map((p) => ({ ...p, p: [p.p[0] - 1, p.p[1] + 3.4, p.p[2], p.p[3]] })));
+  if (mods & M_MASTERY) out.push(chevron(19.4, 2.4, 3.8), ...aaMount(-18, 3.8));
+  if (mods & M_SPECIAL) out.push(...mine(-18.4, 3.6, 3.8), ...mine(-15.8, 3.6, 3.8));
   return out;
 }
 
@@ -310,17 +324,20 @@ function tradeShip(): Part[] {
 
 // ------------------------------------------------------------------------------------------------- armor
 
-/** Armour skirts over both tracks (Armor Mastery). */
+/** Armour skirts over both tracks, reaching out past them so the outline grows (Armor Mastery). */
 function skirts(u0: number, u1: number, vIn: number, vOut: number, z: number, m: MatId): Part[] {
-  return [box(u0, -vOut - 0.2, u1, -vIn, z, 0.6, m, { pat: 'rivets' }), box(u0, vIn, u1, vOut + 0.2, z, 0.6, m, { pat: 'rivets' })];
+  return [box(u0, -vOut - 0.9, u1, -vIn, z, 0.7, m, { pat: 'rivets' }), box(u0, vIn, u1, vOut + 0.9, z, 0.7, m, { pat: 'rivets' })];
 }
 /** A snorkel pipe at the rear (Amphibious Tanks). */
 function snorkel(u: number, v: number, z: number): Part[] {
-  return [ell(u, v, 0.7, 0.7, z, 5, 'gun', { sh: 'dome' }), ell(u, v, 1, 1, z + 5, 0.4, 'gun')];
+  return [ell(u, v, 0.8, 0.8, z, 5, 'gun', { sh: 'dome' }), ell(u, v, 1.1, 1.1, z + 5, 0.4, 'gun')];
 }
+
+// Tanks stand on the owner plate (plate()), and carry an owner band 3 art px wide across the turret.
 
 function tank(mods: number): Part[] {
   const out: Part[] = [
+    plate(-12, 11, 8, 2.4),
     box(-9.5, -6, 8.5, -3.6, 0, 2.2, 'tread', { pat: 'tread' }),
     box(-9.5, 3.6, 8.5, 6, 0, 2.2, 'tread', { pat: 'tread' }),
     poly(sym([9.5, -2.8, 8, -3.8, -9.5, -3.8]), 0.5, 2.3, 'olive'),
@@ -331,8 +348,8 @@ function tank(mods: number): Part[] {
   out.push(
     ell(0.5, 0, 4.2, 3.4, 2.8, 2, 'olive', { sh: 'dome' }),
     // the owner band across the turret
-    box(-3.2, -3.4, -1.2, 3.4, 2.8, 2.05, 'own', { sh: 'dome', sc: over(0.5, 0, 4.2, 3.4), clip: [0.5, 0, 4.2, 3.4] }),
-    ell(-0.8, -1.2, 1.1, 1.1, 4.8, 0.4, 'olive', { sh: 'dome' }),
+    box(-3.7, -3.4, -0.7, 3.4, 2.8, 2.05, 'own', { sh: 'dome', sc: over(0.5, 0, 4.2, 3.4), clip: [0.5, 0, 4.2, 3.4] }),
+    ell(-1.2, -1.4, 1.1, 1.1, 4.8, 0.4, 'olive', { sh: 'dome' }),
     seg(3.6, 0, 14, 0, 1.2, 3.8, 1, 'gun', { sh: 'cyl' }),
     box(13.2, -0.9, 14.8, 0.9, 3.7, 1.2, 'gun'),
   );
@@ -344,6 +361,7 @@ function lightTank(mods: number): Part[] {
 }
 function lightTankParts(mods: number): Part[] {
   const out: Part[] = [
+    plate(-9.6, 9, 6.8, 2),
     box(-7.5, -4.8, 6.5, -3, 0, 1.7, 'tread', { pat: 'tread' }),
     box(-7.5, 3, 6.5, 4.8, 0, 1.7, 'tread', { pat: 'tread' }),
     poly(sym([7.5, -2, 6, -3.1, -7.5, -3.1, -8, -2.4]), 0.4, 1.8, 'sand'),
@@ -352,13 +370,15 @@ function lightTankParts(mods: number): Part[] {
   if (mods & M_MASTERY) out.push(...skirts(-7.2, 6.2, 3, 4.8, 1.7, 'sand'));
   if (mods & M_PATH3) {
     // Deep Raids: jerrycans and a spare fuel drum on the rear deck
-    out.push(box(-5.4, -2.9, -4.2, -1.5, 2.2, 1, 'olive'), box(-5.4, -1.3, -4.2, 0.1, 2.2, 1, 'olive'), box(-5.4, 0.3, -4.2, 1.7, 2.2, 1, 'olive'), ell(-6.8, 2.4, 0.9, 0.9, 2.2, 1.1, 'red', { sh: 'dome' }));
+    out.push(box(-5.6, -3, -4, -1.5, 2.2, 1, 'olive'), box(-5.6, -1.2, -4, 0.3, 2.2, 1, 'olive'), box(-5.6, 0.6, -4, 2.1, 2.2, 1, 'olive'), ell(-7, 2.4, 1, 1, 2.2, 1.1, 'red', { sh: 'dome' }));
   }
   if (mods & M_SPECIAL) out.push(...snorkel(-6.6, -2.2, 2.2));
   out.push(
     ell(1.2, 0, 2.7, 2.2, 2.2, 1.5, 'sand', { sh: 'dome' }),
-    box(-1.1, -2.3, 0.5, 2.3, 2.2, 1.55, 'own', { sh: 'dome', sc: over(1.2, 0, 2.7, 2.2), clip: [1.2, 0, 2.7, 2.2] }),
-    seg(3, 0, 9.6, 0, 1, 3, 0.7, 'gun', { sh: 'cyl' }),
+    box(-1.6, -2.3, 1, 2.3, 2.2, 1.55, 'own', { sh: 'dome', sc: over(1.2, 0, 2.7, 2.2), clip: [1.2, 0, 2.7, 2.2] }),
+    // a thin short gun in light steel: it reaches about 5 art px past the nose (the medium and heavy guns are longer
+    // and thicker)
+    seg(3, 0, 12.2, 0, 1, 3, 0.7, 'steel', { sh: 'cyl' }),
     ell(-1.4, -1.5, 0.5, 0.5, 3.7, 3.6, 'gun'),
   );
   return out;
@@ -366,6 +386,7 @@ function lightTankParts(mods: number): Part[] {
 
 function heavyTank(mods: number): Part[] {
   const out: Part[] = [
+    plate(-14, 13, 9.2, 2.6),
     box(-11.5, -7, 10.5, -4.4, 0, 2.8, 'tread', { pat: 'tread' }),
     box(-11.5, 4.4, 10.5, 7, 0, 2.8, 'tread', { pat: 'tread' }),
     poly(sym([11.5, -3.4, 9.5, -4.7, -11.5, -4.7]), 0.6, 3, 'steel'),
@@ -380,8 +401,8 @@ function heavyTank(mods: number): Part[] {
   const turret = sym([6, -2.6, 3.6, -4.2, -5.5, -4.2, -6.5, -3]);
   out.push(
     poly(turret, 3.6, 2.6, 'steel'),
-    box(-5.4, -4.3, -3.4, 4.3, 3.6, 2.65, 'own', { clipPoly: turret }),
-    ell(-3, -1.8, 1.3, 1.3, 6.2, 0.9, 'steel', { sh: 'dome' }),
+    box(-5.6, -4.3, -2.6, 4.3, 3.6, 2.65, 'own', { clipPoly: turret }),
+    ell(-1.4, -1.8, 1.3, 1.3, 6.2, 0.9, 'steel', { sh: 'dome' }),
     seg(4.5, 0, 20, 0, 1.6, 5, 1.2, 'gun', { sh: 'cyl' }),
     box(19, -1.3, 21, 1.3, 4.9, 1.4, 'gun'),
   );
@@ -399,18 +420,34 @@ function tips(u0: number, u1: number, v0: number, v1: number, z: number): Part[]
   return [box(u0, -v1, u1, -v0, z, 0, 'own'), box(u0, v0, u1, v1, z, 0, 'own')];
 }
 
+/**
+ * A jet engine pod (Jet Engines): the same mark on every plane that has jets, a pale pod with a dark intake at the
+ * front and a small orange exhaust glow at the back.
+ */
+function jetPod(u: number, v: number, z: number, len = 2.4, r = 0.9): Part[] {
+  return [ell(u, v, len, r, z, 1, 'white', { sh: 'cyl' }), ell(u + len - 0.5, v, 0.6, Math.max(0.6, r - 0.3), z + 0.2, 0.9, 'black'), ell(u - len - 0.3, v, 0.6, 0.6, z, 0.6, 'flame', { glow: true })];
+}
+
 function bomber(mods: number): Part[] {
   const m: MatId = mods & M_NIGHT ? 'night' : 'plane';
   const tail: MatId = mods & M_MASTERY ? 'gold' : m;
   const out: Part[] = [];
-  if (mods & M_SPECIAL) out.push(...dropTanks(5.4, 2.9, 2.1));
+  const jet = !!(mods & M_JET);
+  if (mods & M_SPECIAL) out.push(...dropTanks(jet ? 3.4 : 5.4, 2.9, 2.1));
+  if (jet) {
+    // Jet Engines: the same twin-engine bomber with wings swept back and a jet pod under each wing, no propellers
+    out.push(poly(sym([4.5, -1.6, -0.6, -13, -2.8, -13, -0.6, -1.6]), 2.6, 0.6, m), ...tips(-2.8, -0.4, 11.4, 13, 3.2), ...jetPod(2.8, -5.2, 2.2), ...jetPod(2.8, 5.2, 2.2));
+  } else {
+    out.push(
+      poly(sym([4.5, -1.6, 3.4, -13, 1.2, -13, -0.6, -1.6]), 2.6, 0.6, m),
+      ...tips(1, 3.6, 11.4, 13, 3.2),
+      ell(4, -5, 3, 1.15, 2.8, 1.3, m, { sh: 'cyl' }),
+      ell(4, 5, 3, 1.15, 2.8, 1.3, m, { sh: 'cyl' }),
+      seg(7.4, -7.4, 7.4, -2.6, 0.5, 3.2, 0.3, 'gun'),
+      seg(7.4, 2.6, 7.4, 7.4, 0.5, 3.2, 0.3, 'gun'),
+    );
+  }
   out.push(
-    poly(sym([4.5, -1.6, 3.4, -13, 1.2, -13, -0.6, -1.6]), 2.6, 0.6, m),
-    ...tips(1, 3.6, 11.4, 13, 3.2),
-    ell(4, -5, 3, 1.15, 2.8, 1.3, m, { sh: 'cyl' }),
-    ell(4, 5, 3, 1.15, 2.8, 1.3, m, { sh: 'cyl' }),
-    seg(7.4, -7.4, 7.4, -2.6, 0.5, 3.2, 0.3, 'gun'),
-    seg(7.4, 2.6, 7.4, 7.4, 0.5, 3.2, 0.3, 'gun'),
     ell(0, 0, 10.5, 1.9, 2.4, 1.8, m, { sh: 'cyl' }),
     box(-5, -2, -3.8, 2, 2.4, 1.85, 'own', { sh: 'cyl', sc: over(0, 0, 10.5, 1.9), clip: [0, 0, 10.5, 1.9] }),
     ell(9, 0, 1.6, 1.3, 2.8, 1.2, 'glass', { sh: 'dome' }),
@@ -438,22 +475,21 @@ function groundAttack(mods: number): Part[] {
   const tail: MatId = mods & M_MASTERY ? 'gold' : m;
   const out: Part[] = [];
   if (mods & M_JET) {
-    // Jet Engines: swept wings, a pointed nose, intakes and a jet pipe, no propeller
-    const le = (v: number): number => 3 - ((v - 1.6) * 5.6) / 7.8;
-    if (mods & M_SPECIAL) out.push(...dropTanks(le(2.9) + 1.2, 2.9, 2.1));
-    out.push(...wingRockets([{ v: 4.2, le: le(4.2) }, { v: 6, le: le(6) }], 2.1));
+    // Jet Engines: the same stubby straight wings with their rockets (swept back a little), a pointed nose instead of
+    // the propeller, a jet pod on each side of the fuselage
+    if (mods & M_SPECIAL) out.push(...dropTanks(3.8, 2.6, 2.1));
+    out.push(...wingRockets([{ v: 4.4, le: 3.1 }, { v: 6, le: 2.7 }, { v: 7.6, le: 2.3 }], 2.1));
     out.push(
-      poly(sym([3, -1.6, -2.6, -9.4, -4.6, -9.4, -3.4, -1.6]), 2.6, 0.6, m),
-      ...tips(-4.4, -2.8, 8.2, 9.4, 3.2),
-      ell(0, 0, 8.6, 1.6, 2.4, 1.7, m, { sh: 'cyl' }),
-      poly([11, 0, 8, -1.1, 8, 1.1], 2.6, 1.3, m, { sh: 'cyl', sc: over(9.5, 0, 1.5, 1.1) }),
-      ell(1.6, -1.9, 1.5, 0.75, 2.6, 1.1, 'gun', { sh: 'cyl' }),
-      ell(1.6, 1.9, 1.5, 0.75, 2.6, 1.1, 'gun', { sh: 'cyl' }),
-      box(-9.4, -0.8, -8.4, 0.8, 2.6, 1.3, 'gun'),
-      box(-3.8, -1.7, -2.6, 1.7, 2.4, 1.75, 'own', { sh: 'cyl', sc: over(0, 0, 8.6, 1.6), clip: [0, 0, 8.6, 1.6] }),
+      poly(sym([4, -1.4, 2.2, -10, -0.8, -10, -2, -1.4]), 2.6, 0.6, m),
+      ...tips(-0.8, 2.2, 8.8, 10, 3.2),
+      ...jetPod(0.4, -2.3, 2.3, 2.2, 0.8),
+      ...jetPod(0.4, 2.3, 2.3, 2.2, 0.8),
+      ell(0, 0, 8.4, 1.7, 2.4, 1.7, m, { sh: 'cyl' }),
+      poly([10.8, 0, 8, -1.2, 8, 1.2], 2.6, 1.3, m, { sh: 'cyl', sc: over(9.4, 0, 1.4, 1.2) }),
+      box(-3.6, -1.8, -2.4, 1.8, 2.4, 1.75, 'own', { sh: 'cyl', sc: over(0, 0, 8.4, 1.7), clip: [0, 0, 8.4, 1.7] }),
       ell(3.4, 0, 1.8, 0.95, 4, 0.6, 'glass', { sh: 'dome' }),
-      poly(sym([-6, -0.8, -7.6, -3.6, -8.8, -3.6, -8.6, -0.8]), 2.6, 0.5, tail),
-      seg(-8.8, 0, -5.6, 0, 0.7, 3.8, 1.8, tail),
+      poly(sym([-6.2, -0.8, -7.4, -3.8, -8.8, -3.8, -8.6, -0.8]), 2.6, 0.5, tail),
+      seg(-8.8, 0, -6, 0, 0.7, 3.8, 1.6, tail),
     );
     return out;
   }
@@ -507,9 +543,8 @@ function fighter(mods: number): Part[] {
       ...tips(-5.1, -3.8, 5.8, 6.8, 3.2),
       ell(0, 0, 7.4, 1.15, 2.6, 1.3, m, { sh: 'cyl' }),
       poly([9.6, 0, 6.4, -0.9, 6.4, 0.9], 2.7, 1.1, m, { sh: 'cyl', sc: over(8, 0, 1.6, 0.9) }),
-      ell(1, -1.4, 1.2, 0.6, 2.7, 1, 'gun', { sh: 'cyl' }),
-      ell(1, 1.4, 1.2, 0.6, 2.7, 1, 'gun', { sh: 'cyl' }),
-      box(-8.2, -0.6, -7.3, 0.6, 2.7, 1, 'gun'),
+      ...jetPod(0, -1.6, 2.7, 2, 0.7),
+      ...jetPod(0, 1.6, 2.7, 2, 0.7),
       ell(2.4, 0, 1.6, 0.75, 3.9, 0.5, 'glass', { sh: 'dome' }),
       poly(sym([-5.2, -0.6, -6.4, -2.6, -7.6, -2.6, -7.4, -0.6]), 2.7, 0.4, tail),
       seg(-7.6, 0, -5, 0, 0.6, 3.6, 1.4, tail),
@@ -537,7 +572,7 @@ function transportPlane(mods: number): Part[] {
   if (mods & M_SPECIAL) out.push(...dropTanks(jet ? 1.6 : 4.4, 10.5, 3.6));
   if (jet) {
     out.push(poly(sym([3, -2, -3.4, -15, -5.4, -15, -1.4, -2]), 4.6, 0.5, m), ...tips(-5.2, -3.4, 13.6, 15, 5.1));
-    for (const v of [-6.5, 6.5]) out.push(ell(3, v, 2.6, 0.95, 3.6, 1, 'metal', { sh: 'cyl' }), ell(5.4, v, 0.55, 0.7, 3.6, 1, 'black'));
+    for (const v of [-6.5, 6.5]) out.push(...jetPod(2.6, v, 3.6, 2.6, 1));
   } else {
     out.push(poly(sym([3, -2, 2.2, -15, 0, -15, -1, -2]), 4.6, 0.5, m), ...tips(0, 2.2, 13.6, 15, 5.1));
     for (const v of [-6.5, 6.5]) out.push(ell(3.2, v, 2.6, 1.1, 4.2, 1.2, m, { sh: 'cyl' }), seg(5.9, v - 2.3, 5.9, v + 2.3, 0.5, 4.8, 0.3, 'gun'));
@@ -598,15 +633,13 @@ function rocket(frame: number): Part[] {
   const body = over(-1.2, 0, 6, 1.5);
   return [
     ...flame(-7.2, 0.8, 2.4, 1.6, frame),
-    // side fins: swept back, mid grey so they read against the outline
-    poly(sym([-2.6, -1.4, -6.2, -3.6, -7.6, -3.6, -6.6, -1.4]), 1.5, 0.5, 'hull'),
+    // side fins: swept back, mid grey so they read against the outline; their span is twice the body's width
+    poly(sym([-2.8, -1.4, -6.2, -3, -7.6, -3, -6.6, -1.4]), 1.5, 0.5, 'hull'),
     box(-7.2, -0.9, -6.2, 0.9, 1.7, 1.2, 'gun'),
     box(-6.4, -1.5, 3, 1.5, 1.4, 1.8, 'metal', { sh: 'cyl', sc: body }),
     box(-1.4, -1.55, -0.4, 1.55, 1.4, 1.85, 'yellow', { sh: 'cyl', sc: body }),
     poly([9.2, 0, 6.6, -1, 3, -1.5, 3, 1.5, 6.6, 1], 1.4, 1.8, 'metal', { sh: 'cyl', sc: over(5, 0, 3, 1.5) }),
     ell(8.4, 0, 1.1, 0.62, 1.9, 1, 'white'),
-    // the top fin, seen from above as a short spine at the tail
-    seg(-6.8, 0, -3.8, 0, 1, 3.1, 1, 'hull'),
   ];
 }
 
@@ -618,7 +651,7 @@ function atomBomb(frame: number): Part[] {
   const body = over(-1.6, 0, 7, 2.1);
   return [
     ...flame(-9.2, 1, 2.8, 1.8, frame),
-    poly(sym([-4, -1.9, -8, -4.8, -9.8, -4.8, -8.6, -1.9]), 1.5, 0.6, 'steel'),
+    poly(sym([-4, -1.9, -8, -4.2, -9.8, -4.2, -8.6, -1.9]), 1.5, 0.6, 'steel'),
     box(-9.2, -1.1, -8.2, 1.1, 1.8, 1.5, 'gun'),
     box(-8.4, -2.1, 4, 2.1, 1.4, 2.4, 'olive', { sh: 'cyl', sc: body }),
     box(-3.4, -2.15, -2.2, 2.15, 1.4, 2.45, 'yellow', { sh: 'cyl', sc: body }),
@@ -626,7 +659,6 @@ function atomBomb(frame: number): Part[] {
     box(-1.2, -2.15, 0, 2.15, 1.4, 2.45, 'yellow', { sh: 'cyl', sc: body }),
     poly([11, 0, 8, -1.3, 4, -2.1, 4, 2.1, 8, 1.3], 1.4, 2.4, 'olive', { sh: 'cyl', sc: over(7, 0, 4, 2.1) }),
     ell(10, 0, 1.2, 0.7, 2.2, 1.2, 'sand'),
-    seg(-9, 0, -5, 0, 1.2, 3.8, 1.4, 'steel'),
   ];
 }
 
@@ -694,7 +726,8 @@ export function buildModel(key: SpriteKey, mods: number, frame = 0): Model {
       parts = centred(atomBomb(frame & 1));
       break;
   }
-  return { parts: parts.map(minSize), air: AIR.has(key) };
+  // missiles fly: drawn flat from straight above, so the slender body stays slender at every heading
+  return { parts: parts.map(minSize), air: AIR.has(key), flat: key === 'rocket' || key === 'atomBomb' };
 }
 
 /** Lines and posts at least one art pixel wide, so barrels, masts and propellers never break up. */
