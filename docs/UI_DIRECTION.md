@@ -60,8 +60,16 @@ Sentence case everywhere. No letter-spaced capitals, no eyebrow labels above hea
 
 ## Icons and art
 
-- Interface: the existing single-weight line icons in `currentColor`, always with a plain word under or beside
-  them on primary controls (the top bar, the command bar, strikes).
+- Interface (hybrid): small pixel icons drawn in code (hud/pixelIcons.ts), one grid cell per CSS pixel, at the
+  size the line icons had, always with a plain word under or beside them on primary controls (the top bar, the
+  command bar, strikes). Hand-made art for the top bar, Build and the resource chips; building and strike pictures
+  traced from the existing art. Each icon takes the muted hue of its family (--cat-navy, --cat-armor, --cat-air,
+  --cat-econ, --cat-science, --cat-strike in styles.css), never the accent.
+- Unit card and Forces list: the unit's own map sprite as a portrait (hud/portrait.ts calls drawUnitSprite).
+- Research and Arsenal: the Modern Flat layout (tabs on a track, no fork frames, neutral lines, a Next flag) in
+  these tokens.
+- Palettes (comparison switch, VITE_UI_PALETTE): amber (base), violet, teal, coral in src/client/palettes.css; caution
+  stays amber (--caution) in all of them.
 - Units (render/pixelSprites.ts): original pixel sprites drawn from rectangles in code, one density, a 1px dark
   outline and a two-tone owner ramp. Far: a small solid marker per unit and fleet markers with a count. Near (zoom 3
   and up): the full sprite for warships, transports, tank divisions, planes and missiles.
