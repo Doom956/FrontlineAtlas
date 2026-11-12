@@ -251,6 +251,7 @@ class DetailedTrails implements TrailLayer {
     const cell = g.p / g.dpr;
     const W = view.viewW + 40;
     const H = view.viewH + 40;
+    const fine = Math.max(0.55, Math.min(1, g.res / 2));
     const smoke: number[] = [];
     for (let i = 0; i < P.cap; i++) {
       const life = P.life[i];
@@ -272,7 +273,8 @@ class DetailedTrails implements TrailLayer {
       }
       // foam breaks up as it ages: some specks drop out
       if (q > 0.45 && P.seed[i] < (q - 0.45) * 1.3) continue;
-      const r = P.r0[i] + (P.r1[i] - P.r0[i]) * Math.sqrt(q);
+      // at mid zoom (about one art pixel per model unit) the foam stays finer, so a wake does not swamp its ship
+      const r = (P.r0[i] + (P.r1[i] - P.r0[i]) * Math.sqrt(q)) * fine;
       const a = P.a0[i] * (1 - q) * (k === TRAIL ? 1 - q * 0.3 : 1);
       const level = Math.max(1, Math.min(BATCH_LEVELS, Math.round(a * BATCH_LEVELS)));
       const tone = k === TRAIL ? (q < 0.4 ? 0 : 1) : q < 0.25 ? 0 : q < 0.6 ? 1 : 2;

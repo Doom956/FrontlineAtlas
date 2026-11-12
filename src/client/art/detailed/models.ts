@@ -221,13 +221,13 @@ function mineRails(u: number, z: number, spread: number): Part[] {
 // ------------------------------------------------------------------------------------------------- ships
 
 function warship(mods: number): UnitModel {
-  // a cruiser: 32 long, two twin turrets forward (B raised, its roof the owner panel), the bridge tower, two funnels,
+  // a cruiser: 32 long, two twin turrets forward (B raised; their roofs the owner's recognition panels), the bridge tower, two funnels,
   // boats and a catapult midships, one turret aft
   const L = 16;
   const H = 2.2;
   const out: Part[] = [...shipBase(L, 3.3, 6, H, 'teak')];
   out.push(ell(L - 2.2, -0.5, 0.3, 0.3, H, 0.2, 'gun'), ell(L - 2.2, 0.5, 0.3, 0.3, H, 0.2, 'gun'));
-  out.push(...turret(9.2, H, 1, 2.4, 1.55, 1.15, 2, 3.4, 0.55));
+  out.push(...turret(9.2, H, 1, 2.4, 1.55, 1.15, 2, 3.4, 0.55, 'own'));
   out.push(ell(5.6, 0, 2.3, 1.9, H, 0.7, 'hull'), ...turret(5.6, H + 0.7, 1, 2.4, 1.55, 1.15, 2, 3.4, 0.55, 'own'));
   // the bridge: a deckhouse, the tower with its windows, the fire control top
   out.push(box(0.2, -2.1, 3.6, 2.1, H, 1.4, 'sup'));
@@ -253,7 +253,7 @@ function destroyer(mods: number): UnitModel {
   const L = 12;
   const H = 1.8;
   const out: Part[] = [...shipBase(L, 2.2, 5, H, 'deck', true)];
-  out.push(...turret(7.2, H, 1, 1.7, 1.1, 1, 2, 2.6, 0.45));
+  out.push(...turret(7.2, H, 1, 1.7, 1.1, 1, 2, 2.6, 0.45, 'own'));
   out.push(box(3, -1.45, 5.6, 1.45, H, 1.3, 'sup'), box(4.1, -1.1, 5.2, 1.1, H + 1.3, 0.8, 'sup'), box(4.9, -1.1, 5.2, 1.1, H + 2.1, 0, 'glass'));
   // the owner panel on the bridge roof
   out.push(box(3.2, -1.2, 4.1, 1.2, H + 1.3, 0, 'own'));
@@ -271,13 +271,14 @@ function destroyer(mods: number): UnitModel {
 }
 
 function battleship(mods: number): UnitModel {
-  // long and heavy: 44 long and wide, three big triple turrets (A and raised B forward, X aft), the tall stepped tower,
+  // long and heavy: 44 long and wide, three big triple turrets (A and raised B forward with the owner's colour on their
+  // roofs, X aft), the tall stepped tower,
   // one big funnel, secondary turrets along both sides, a teak deck
   const L = 22;
   const H = 2.6;
   const out: Part[] = [...shipBase(L, 4.6, 8, H, 'teak')];
   out.push(ell(L - 2.8, -0.7, 0.4, 0.4, H, 0.2, 'gun'), ell(L - 2.8, 0.7, 0.4, 0.4, H, 0.2, 'gun'));
-  out.push(...turret(13.4, H, 1, 3.3, 2.4, 1.5, 3, 5.4, 0.72));
+  out.push(...turret(13.4, H, 1, 3.3, 2.4, 1.5, 3, 5.4, 0.72, 'own'));
   out.push(ell(8.8, 0, 3.4, 2.8, H, 1, 'hull'), ...turret(8.8, H + 1, 1, 3.3, 2.4, 1.5, 3, 5.4, 0.72, 'own'));
   // the tower: a wide base, two decks, the bridge windows, the fire control top
   out.push(box(-1.6, -3, 5.4, 3, H, 1.4, 'sup'));
