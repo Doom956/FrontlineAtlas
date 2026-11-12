@@ -1,14 +1,14 @@
 // The refined style's troop icons (client only): infantry, armor and artillery as small pixel markers, in the same
-// style as the unit sprites. Each marker is a rounded-square PLATE in the owner's colour, a touch toned down (a darker
-// shade on its lower and right edge, a soft lit row along the top), carrying a SYMBOL: a soldier, a tank or a field gun
-// in side view, a stencilled light grey on a dark or mid plate and a dark slate on a pale one, shaded in 4 tones with
-// the light from the top left and a soft drop shadow. A 1 px dark slate edge (not black) goes round the whole marker.
-// The team colour is only ever the plate, never the symbol. Baked once per (kind, owner colour, size) into a small
+// style as the unit sprites. Each marker is a rounded-square PLATE: its face in the owner's colour toned down (darker
+// and greyer, palette.ts ownerDim) with a slight top-lit bevel, the owner's full colour only on its 1 px rim; it carries
+// a SYMBOL: a helmeted soldier with his rifle, a tank or a field gun in side view, a stencilled light grey, shaded in 4
+// tones with the light from the top left and a soft drop shadow (on the small plates only the helmet and the rifle). A
+// 1 px dark slate edge (not black) goes round the whole marker. The team colour is only ever the plate, never the symbol. Baked once per (kind, owner colour, size) into a small
 // canvas and drawn at whole pixels. Pure data + a pure baker (testable in node). The pills that carry these markers
 // are shared (render/troopIcons.ts).
 import { makeCanvas } from '../../render/common';
 import { ownerRamp, type RGB } from '../shared/colour';
-import { oklch } from './palette';
+import { oklch, ownerDim } from './palette';
 import type { TroopIconArt, TroopIconKind } from '../types';
 import { OUTLINE } from './spriteBake';
 
@@ -20,20 +20,21 @@ const PLATE = 16;
  * Infantry is a touch taller than wide, the vehicles wider than tall.
  */
 const SYMBOLS: Record<TroopIconKind, readonly string[]> = {
-  // a soldier in a steel helmet, walking, his rifle held across his chest
+  // a soldier in side view facing right: a steel helmet with its brim, the face under it, the rifle held up across
+  // the body (its muzzle up by the helmet, its stock at the hip), a belt, two legs
   infantry: [
-    '....abbc....',
-    '...abbbbc...',
-    '..abbbbbbc..',
-    '....cbbc....',
-    '...abbbbc.d.',
-    '..abbbbbbcd.',
-    '..abbbbbcd..',
-    '...abbbcd...',
-    '...abbbd....',
-    '...bbcbb....',
-    '..abb..bbc..',
-    '..bc....bc..',
+    '..abbc....',
+    '.abbbbc..b',
+    '.cccccc.b.',
+    '...bc..c..',
+    '..abbcdc..',
+    '.abbbdbc..',
+    '.abbdbbc..',
+    '..bdccc...',
+    '..bbbbc...',
+    '..bb.bc...',
+    '..bc..bc..',
+    '.bbc..bbc.',
   ],
   armor: [
     '....abbb......',
@@ -77,15 +78,15 @@ const SYMBOLS: Record<TroopIconKind, readonly string[]> = {
 
 /** The same symbols at about 8 px, for the small plates (transports, nation army counts). */
 const SMALL: Record<TroopIconKind, readonly string[]> = {
+  // only the helmet and the rifle: what still reads at this size (the rifle slung behind the helmet)
   infantry: [
-    '..abc...',
-    '.abbbc..',
-    '..cbc.d.',
-    '.abbbcd.',
-    '.abbbd..',
-    '..bbd...',
-    '.ab.bc..',
-    '.bc..bc.',
+    '.......b',
+    '..abbcb.',
+    '.abbbbc.',
+    'ccccccc.',
+    '..cb....',
+    '.b......',
+    'b.......',
   ],
   armor: [
     '...abb....',
@@ -121,10 +122,15 @@ const SMALL: Record<TroopIconKind, readonly string[]> = {
 const LIGHT_SYMBOL: RGB[] = [oklch(0.94, 0.008, 95), oklch(0.87, 0.008, 95), oklch(0.74, 0.008, 240), oklch(0.56, 0.01, 240)];
 const DARK_SYMBOL: RGB[] = [oklch(0.42, 0.01, 245), oklch(0.33, 0.01, 245), oklch(0.27, 0.01, 245), oklch(0.21, 0.01, 245)];
 
-/** The plate colour: the owner's, a little greyer (paint, not neon). */
-function plateTone(c: RGB): RGB {
-  const l = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
-  return [Math.round((c[0] * 0.8 + l * 0.2) * 0.94), Math.round((c[1] * 0.8 + l * 0.2) * 0.94), Math.round((c[2] * 0.8 + l * 0.2) * 0.94)];
+/**
+ * The plate's tones: its face in toned-down owner colours (palette.ts ownerDim: the same hue, darker and greyer, so a
+ * row of markers is not a row of candy-coloured tiles), a lit top row and a shaded bottom row for a slight bevel, and
+ * the owner's full colour kept for the 1 px rim round it, where it says whose troops these are.
+ */
+function plateTones(owner: RGB): { rim: RGB; face: RGB; top: RGB; low: RGB } {
+  const base = ownerRamp(owner)[2];
+  const dim = ownerDim(base);
+  return { rim: base, face: dim[1], top: dim[2], low: dim[0] };
 }
 
 export interface IconBitmap {
@@ -133,10 +139,10 @@ export interface IconBitmap {
   data: Uint8ClampedArray;
 }
 
-/** True when a symbol on this plate colour should be dark (a pale plate). */
+/** True when a symbol on this owner's plate should be dark (a pale plate face). */
 export function darkSymbolOn(owner: RGB): boolean {
-  const base = ownerRamp(owner)[2];
-  return 0.299 * base[0] + 0.587 * base[1] + 0.114 * base[2] > 168;
+  const face = plateTones(owner).face;
+  return 0.299 * face[0] + 0.587 * face[1] + 0.114 * face[2] > 150;
 }
 
 /**
@@ -147,10 +153,7 @@ export function bakeTroopIcon(kind: TroopIconKind, owner: RGB, size = PLATE): Ic
   const W = size + 2;
   const H = size + 2;
   const data = new Uint8ClampedArray(W * H * 4);
-  const ramp = ownerRamp(owner);
-  const plate = plateTone(ramp[2]);
-  const edge = plateTone(ramp[1]);
-  const rim: RGB = [Math.round((plate[0] + ramp[3][0]) / 2), Math.round((plate[1] + ramp[3][1]) / 2), Math.round((plate[2] + ramp[3][2]) / 2)];
+  const tones = plateTones(owner);
   const set = (x: number, y: number, c: RGB): void => {
     if (x < 0 || y < 0 || x >= W || y >= H) return;
     const o = (y * W + x) * 4;
@@ -166,20 +169,25 @@ export function bakeTroopIcon(kind: TroopIconKind, owner: RGB, size = PLATE): Ic
     const cy = y < 2 ? 2 - y : y > size - 3 ? y - (size - 3) : 0;
     return cx + cy <= 2;
   };
+  const edgeOf = (x: number, y: number): boolean => !inPlate(x + 1, y) || !inPlate(x - 1, y) || !inPlate(x, y + 1) || !inPlate(x, y - 1);
   for (let y = -1; y <= size; y++) {
     for (let x = -1; x <= size; x++) {
       if (inPlate(x, y)) {
-        // two tones: the lower and right edge in the darker shade, a light pixel row along the top
-        const lowRight = !inPlate(x + 1, y) || !inPlate(x, y + 1) || !inPlate(x + 1, y + 1) || !inPlate(x + 2, y) || !inPlate(x, y + 2);
-        set(x + 1, y + 1, lowRight ? edge : !inPlate(x, y - 1) ? rim : plate);
+        // the owner's colour on the 1 px rim; inside it the dim face, a lighter row under the top rim, a darker one
+        // over the bottom rim
+        let c = tones.face;
+        if (edgeOf(x, y)) c = tones.rim;
+        else if (edgeOf(x, y - 1) && !edgeOf(x, y + 1)) c = tones.top;
+        else if (edgeOf(x, y + 1) || edgeOf(x + 1, y)) c = tones.low;
+        set(x + 1, y + 1, c);
       } else if (inPlate(x - 1, y) || inPlate(x + 1, y) || inPlate(x, y - 1) || inPlate(x, y + 1)) set(x + 1, y + 1, OUTLINE);
     }
   }
   const rows = (size < 14 ? SMALL : SYMBOLS)[kind];
   const sw = Math.max(...rows.map((r) => r.length));
   const sh = rows.length;
-  const tones = darkSymbolOn(owner) ? DARK_SYMBOL : LIGHT_SYMBOL;
-  const shadow = ramp[0];
+  const sym = darkSymbolOn(owner) ? DARK_SYMBOL : LIGHT_SYMBOL;
+  const shadow = ownerDim(tones.rim)[0];
   const ox = 1 + Math.floor((size - sw) / 2);
   const oy = 1 + Math.floor((size - sh) / 2);
   const at = (r: readonly string[], x: number, y: number): number => {
@@ -191,7 +199,7 @@ export function bakeTroopIcon(kind: TroopIconKind, owner: RGB, size = PLATE): Ic
   for (let y = 0; y < sh; y++)
     for (let x = 0; x < sw; x++) {
       const t = at(rows, x, y);
-      if (t >= 0) set(ox + x, oy + y, tones[t]);
+      if (t >= 0) set(ox + x, oy + y, sym[t]);
     }
   return { w: W, h: H, data };
 }
