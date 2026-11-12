@@ -178,17 +178,21 @@ function paintPit(c: CanvasRenderingContext2D, r: number, v: number): void {
   c.restore();
 }
 
-function sprite(layer: 0 | 1, v: number, b: number, r: number): AtlasEntry | null {
-  const id = (b * VARIANTS + v) * 2 + layer;
+/** A crater's picture: 0 the scorch, 1 the pit, 2 both together (far out, where a crater is a few px). */
+function sprite(layer: 0 | 1 | 2, v: number, b: number, r: number): AtlasEntry | null {
+  const id = (b * VARIANTS + v) * 3 + layer;
   const hit = atlas.peek(id);
   if (hit !== undefined) return hit;
-  const half = Math.ceil(r * (layer === 0 ? REACH : 2.1)) + 2;
+  const half = Math.ceil(r * (layer === 1 ? 2.1 : REACH)) + 2;
   return atlas.getPainted(id, half * 2, half * 2, half, half, (c) => {
     c.translate(half, half);
-    if (layer === 0) paintScorch(c, r, v);
-    else paintPit(c, r, v);
+    if (layer !== 1) paintScorch(c, r, v);
+    if (layer !== 0) paintPit(c, r, v);
   });
 }
+
+/** Below this radius (device px) a crater is one picture with no glow or smoke: a field of hundreds stays cheap. */
+const SMALL_R = 5;
 
 function blit(ctx: CanvasRenderingContext2D, e: AtlasEntry, x: number, y: number, k: number): void {
   ctx.drawImage(e.page, e.sx, e.sy, e.w, e.h, x - e.ox * k, y - e.oy * k, e.w * k, e.h * k);
@@ -201,14 +205,25 @@ function draw(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams): vo
   const dpr = Math.max(1, d.dpr);
   const { b, r } = bucketR(d.radiusPx * dpr);
   const k = d.radiusPx / r;
-  const scorch = sprite(0, v, b, r);
-  const pit = sprite(1, v, b, r);
   const prevA = ctx.globalAlpha;
   const prevS = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = true;
   // the soot washes out first, the hole and its rim last
   const a0 = 1 - ramp(q, 0.3, 0.85);
   const a1 = 1 - ramp(q, 0.55, 1);
+  if (d.radiusPx * dpr < SMALL_R) {
+    // far out: soot and pit as one picture, fading between the two
+    const both = sprite(2, v, b, r);
+    if (both) {
+      ctx.globalAlpha = prevA * (a0 + a1) * 0.5;
+      blit(ctx, both, d.x, d.y, k);
+    }
+    ctx.globalAlpha = prevA;
+    ctx.imageSmoothingEnabled = prevS;
+    return;
+  }
+  const scorch = sprite(0, v, b, r);
+  const pit = sprite(1, v, b, r);
   if (scorch && a0 > 0) {
     ctx.globalAlpha = prevA * a0;
     blit(ctx, scorch, d.x, d.y, k);

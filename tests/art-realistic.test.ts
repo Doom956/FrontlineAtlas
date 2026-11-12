@@ -129,6 +129,11 @@ describe('realistic art style', () => {
   it('draws craters, cannon fire and paratroopers, and nothing once they are over', () => {
     const { ctx } = recorder();
     for (const q of [0, 0.5, 0.95]) realistic.craters.draw(ctx, { x: 10, y: 10, radiusPx: 7, q, zoom: 14, scale: 2, seed: 0.2, dpr: 1 }, cinematic);
+    // far out a crater is one small picture (no smoke wisps or glow)
+    const small = recorder();
+    for (const q of [0, 0.05, 0.5]) realistic.craters.draw(small.ctx, { x: 10, y: 10, radiusPx: 1.6, q, zoom: 1.6, scale: 1, seed: 0.2, dpr: 1 }, cinematic);
+    expect(small.log.filter((l) => l.startsWith('drawImage'))).toEqual([]);
+    expect(small.ctx.globalAlpha).toBe(1);
     expect(ctx.globalAlpha).toBeCloseTo(1, 6);
     for (const kind of ['cannon', 'tracer', 'torpedo'] as const) for (const t of [0, 0.5, 1]) realistic.cannonFire.drawShell(ctx, { kind, x0: 0, y0: 0, x1: 100, y1: 40, t, zoom: 14, scale: 2, seed: 0.5, dpr: 1 }, lively);
     for (const t of [0, 0.1, 0.6]) realistic.cannonFire.drawMuzzle(ctx, { x: 5, y: 5, aim: 1, t, zoom: 14, scale: 2, seed: 0.3, dpr: 1 }, cinematic);
