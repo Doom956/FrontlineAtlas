@@ -29,12 +29,15 @@ export const MATERIALS = {
   merchant: ['#1b1413', '#2a2220', '#3d3231', '#534745'],
   /** a merchant's cream superstructure */
   cream: ['#7e7a72', '#a6a197', '#c9c4b9', '#e5e1d7'],
+  /** a battleship's dark steel deck */
+  bbdeck: ['#14191c', '#22272b', '#31363a', '#43494d'],
   /** flight deck */
   flightdeck: ['#1e2225', '#2c3134', '#3b4145', '#4b5155'],
   /** window and canopy glass */
   glass: ['#0a1820', '#1a2b36', '#354b58', '#758996'],
   // ---- land
-  olive: ['#272814', '#3d3f25', '#565839', '#727556'],
+  /** olive drab: the deep tone a step darker and the light tone lifted, so a tank separates from green ground by value */
+  olive: ['#171707', '#36371f', '#57583a', '#7c7d5e'],
   tan: ['#54452f', '#796648', '#9c8563', '#b9a485'],
   fieldgrey: ['#1f2527', '#313a3c', '#495254', '#646e70'],
   track: ['#0e0a08', '#1c1714', '#2d2824', '#413c38'],
@@ -44,7 +47,11 @@ export const MATERIALS = {
   camo: ['#1c281a', '#2e3d2b', '#445540', '#5e6f5a'],
   seagrey: ['#363e44', '#525c64', '#707c85', '#929da6'],
   prublue: ['#334551', '#4b6475', '#678598', '#8ba6b8'],
-  night: ['#0e1217', '#1a2026', '#2a3138', '#414950'],
+  /** night paint (Night Bombing): an anthracite dark sea grey, light enough to keep its shape over the dark sea */
+  night: ['#20282c', '#394146', '#545c62', '#737c82'],
+  /** the cargo plane's two-tone grey (with invasion stripes) */
+  cargo: ['#3b4445', '#596363', '#788283', '#99a4a4'],
+  cargoDark: ['#263031', '#3a4545', '#525d5e', '#6b7778'],
   // ---- cargo and small parts
   rust: ['#422518', '#623927', '#7c4e39', '#956854'],
   fadedBlue: ['#263541', '#384d5f', '#4e667c', '#6a8094'],
@@ -84,11 +91,13 @@ export function rampOf(m: MaterialId): RGB[] {
  * The owner's colour as a ramp for the small plates, bands and roundels: the shared ramp (evened toward a mid
  * lightness so very dark or pale nations still show), a little quieter so it sits on the muted metal.
  */
-export function ownerTones(owner: readonly number[]): RGB[] {
+export function ownerTones(owner: readonly number[], quiet = 0.1): RGB[] {
   const l = luma(owner);
-  const quiet = lerpRGB(owner, [l, l, l], 0.1);
-  return ownerRamp(quiet);
+  return ownerRamp(lerpRGB(owner, [l, l, l], quiet));
 }
+
+/** How far the owner's colour is pulled toward its own grey on unit parts (bands and stripes on the muted metal). */
+export const UNIT_OWNER_QUIET = 0.24;
 
 // ------------------------------------------------------------------------------------------------- effects
 
@@ -98,6 +107,8 @@ export const FIRE: readonly string[] = ['#fff4d6', '#ffd98a', '#f6a53e', '#dc742
 export const SOOT: Ramp = ['#17151a', '#28252a', '#3b3739', '#55504f'];
 /** Smoke as it thins and drifts: warm greys (deep, dark, base, light). */
 export const SMOKE: Ramp = ['#3a3836', '#55524e', '#75716b', '#99958e'];
+/** Rocket exhaust smoke as it thins: pale warm greys (deep, dark, base, light). */
+export const VAPOUR: Ramp = ['#898581', '#a5a19c', '#c1bdb8', '#dbd7d2'];
 /** Dust and thrown earth (deep, dark, base, light). */
 export const DUST: Ramp = ['#4b3d2d', '#6a5843', '#8a775c', '#a89679'];
 /** Spray, foam and steam (deep, dark, base, light). */

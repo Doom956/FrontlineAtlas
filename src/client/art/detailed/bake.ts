@@ -16,7 +16,7 @@
 // Patterns (planking, grilles, track links, container ribs, panel lines, camouflage blotches) live in model space so
 // they turn with the unit, and only draw where the resolution has room for them.
 import type { RGB } from '../shared/colour';
-import { rampOf, ownerTones, type MaterialId } from './palette';
+import { rampOf, ownerTones, UNIT_OWNER_QUIET, type MaterialId } from './palette';
 
 /** Ground foreshortening of the 3/4 view (screen y per model y). */
 export const FORE = 0.84;
@@ -56,6 +56,8 @@ export interface Part {
   /** the footprint is also cut to this ellipse (u, v, ru, rv) or polygon */
   clip?: readonly number[];
   clipPoly?: readonly number[];
+  /** only drawn at this resolution and finer (a fine line that would outline the whole unit at mid zoom) */
+  minRes?: number;
 }
 
 export interface Model {
@@ -264,7 +266,7 @@ export function rasterize(model: Model, res: number, facing: number, o: BakeOpts
   const sin = Math.sin(th);
   const roll = o.roll ?? 0;
   const tread = o.tread ?? 0;
-  const parts = (roll ? rolled(model.parts, roll) : model.parts).map((p) => minSize(p, res));
+  const parts = (roll ? rolled(model.parts, roll) : model.parts).filter((p) => !p.minRes || res >= p.minRes).map((p) => minSize(p, res));
   const fy = model.flat ? res : res * FORE;
   const lift = model.flat ? 0 : res * LIFT;
   // the bank tilts every surface: its normal leans toward the low wing (model v), seen on screen
@@ -315,7 +317,7 @@ export function rasterize(model: Model, res: number, facing: number, o: BakeOpts
   const pid = new Int16Array(n).fill(-1);
   const zb = new Int16Array(n).fill(-1);
   const tone = new Uint8Array(n);
-  const own = ownerTones(o.owner);
+  const own = ownerTones(o.owner, UNIT_OWNER_QUIET);
   const ramps: (RGB[] | null)[] = [];
   const alts: (RGB[] | null)[] = [];
 
@@ -384,6 +386,10 @@ export function rasterize(model: Model, res: number, facing: number, o: BakeOpts
           let tf: number;
           if (sh === 'plate') {
             tf = !isTop(pp, x + 1, y) || !isTop(pp, x, y + 1) ? 1 : !isTop(pp, x - 1, y) || !isTop(pp, x, y - 1) ? 3 : 2;
+          } else if (sh === 'flat' && part.m === 'own') {
+            // the owner's stripes and bands: always in all their tones, a lit top and left edge, a dark lower right
+            tf = !isTop(pp, x, y - 1) || !isTop(pp, x - 1, y) ? 3 : !isTop(pp, x, y + 1) || !isTop(pp, x + 1, y) ? 1 : 2;
+            tf += flatShift;
           } else if (sh === 'flat') {
             const rim = !isTop(pp, x, y - 1) || !isTop(pp, x - 1, y);
             tf = part.h > 0 ? (rim ? 3 : 2) : rim && part.inset ? 1 : 2;
@@ -393,7 +399,7 @@ export function rasterize(model: Model, res: number, facing: number, o: BakeOpts
           tf += shift;
           t = Math.floor(tf + 0.5 + bayer(x, y) * (sh === 'flat' || sh === 'plate' ? 0.5 : 0.8));
           t = t < 0 ? 0 : t > 3 ? 3 : t;
-          const r = pattern(part, t, part.pat === 'tread' ? u + tread : u, v, res, x, y);
+          const r = pattern(part, t, part.pat === 'tread' ? u + tread : u, v, res, x, y, cos, sin);
           t = r & 7;
           alt = (r & ALT) !== 0;
         } else {
@@ -549,7 +555,7 @@ function curved(part: Part, sh: Shade, u: number, v: number, cos: number, sin: n
 }
 
 /** Surface patterns in model space (they turn with the unit); fine ones only where the resolution has room. */
-function pattern(part: Part, t: number, u: number, v: number, res: number, x: number, y: number): number {
+function pattern(part: Part, t: number, u: number, v: number, res: number, x: number, y: number, cos: number, sin: number): number {
   const pat = part.pat;
   if (!pat) return t;
   const fine = res >= 1.6;
@@ -603,11 +609,27 @@ function pattern(part: Part, t: number, u: number, v: number, res: number, x: nu
       return n > 0.56 ? t | ALT : t;
     }
     case 'helmets': {
-      // rows of helmeted troops in a well deck: a lit helmet, a darker shoulder under it
-      const cu = u / 1.25 - Math.floor(u / 1.25);
-      const cv = v / 1.25 - Math.floor(v / 1.25);
-      if (cu < 0.55 && cv < 0.55) return t | ALT;
-      return cu < 0.55 && cv < 0.85 ? (Math.max(0, t - 1) | ALT) : Math.max(0, t - 1);
+      // troops packed in a well deck: helmets as lit dots (lit on the top left as seen on screen, dark lower right,
+      // a shadow under each) in loose, slightly uneven rows with a gap here and there, on the lighter deck
+      const SU = 1.45;
+      const SV = 1.35;
+      const row = Math.floor(v / SV);
+      const off = hash2(row, 7, 2) * SU;
+      const col = Math.floor((u + off) / SU);
+      // a gap in the ranks now and then
+      if (hash2(col, row, 9) < 0.12) return t;
+      const cu = (col + 0.5) * SU - off + (hash2(col, row, 4) - 0.5) * 0.4;
+      const cv = (row + 0.5) * SV + (hash2(col, row, 6) - 0.5) * 0.3;
+      const du = u - cu;
+      const dv = v - cv;
+      const r = 0.56;
+      // the offset as seen on screen (the light comes from the screen's top left whatever the heading)
+      const sx = du * cos - dv * sin;
+      const sy = du * sin + dv * cos;
+      const d = Math.hypot(du, dv);
+      if (d <= r) return (sx + sy < -r * 0.25 ? 3 : sx + sy > r * 0.45 ? 1 : 2) | ALT;
+      if (d <= r + 0.5 && sx + sy > 0) return Math.max(0, t - 1);
+      return t;
     }
     case 'rivets': {
       if (!fine) return t;
