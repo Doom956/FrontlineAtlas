@@ -228,8 +228,11 @@ function drawAt(ctx: CanvasRenderingContext2D, u: UnitDraw, m: MotionParams, g: 
   }
   blit(ctx, body, x, y, k, dpr);
   if (turret && um.turret) {
-    const [px, py] = project(um.turret.u, um.turret.v, 0, th, 0, 1, false);
-    blit(ctx, turret, x + px * u.scale, y + py * u.scale, k, dpr);
+    // the turret sits on whole art pixels from the hull's own origin, so it never shifts against the hull as it drives
+    const [px, py] = project(um.turret.u, um.turret.v, 0, th, 0, u.scale, false);
+    const ox = (Math.round((px * dpr) / g.p) * g.p) / dpr;
+    const oy = (Math.round((py * dpr) / g.p) * g.p) / dpr;
+    blit(ctx, turret, Math.round(x * dpr) / dpr + ox, Math.round(y * dpr) / dpr + oy, k, dpr);
   }
   if (um.props.length) drawProps(ctx, u, um, m, g, facing, n, bank, th, roll, x, y);
   if (um.nozzles.length) drawNozzles(ctx, u, um, m, g, th, roll, x, y, cat === 'missiles');
