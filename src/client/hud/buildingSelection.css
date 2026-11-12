@@ -124,7 +124,7 @@
   background: var(--metal-3);
 }
 .bsel-up.on {
-  background: rgba(201, 162, 39, 0.2);
+  background: rgb(var(--accent-rgb) / 0.2);
   color: var(--brass-hi);
 }
 .bsel-up.no {
@@ -151,7 +151,7 @@
   color: var(--dim);
 }
 .bsel-up.short .bsel-up-c {
-  color: var(--brass-hi);
+  color: var(--caution);
 }
 .bsel-k {
   font-size: 10px;
@@ -165,7 +165,7 @@
   color: #e6705a;
 }
 .bsel[data-tone='short'] .bsel-line {
-  color: var(--brass-hi);
+  color: var(--caution);
 }
 .bsel-hint {
   margin-top: 2px;
