@@ -593,12 +593,13 @@ function nacelle(u: number, v: number, z: number, len: number, r: number, m: Mat
 }
 /**
  * A tail fin from u0 back to u1 (u0 > u1) at side v, `h` tall: in the plane's paint, or with Air Mastery a natural
- * metal rudder topped by a thin brass trim line (a darker steel rudder on a night-painted plane, so the detail stays in
- * the plane's own value range).
+ * metal rudder topped by a thin brass trim line (a darker steel rudder and a dulled trim on a night-painted plane, so
+ * the detail stays in the plane's own value range).
  */
 function fin(u0: number, v: number, u1: number, w: number, z: number, h: number, m: MatId, mods: number): Part[] {
   if (!(mods & M_MASTERY)) return [seg(u0, v, u1, v, w, z, h, m)];
-  return [seg(u0, v, u1, v, w, z, h - 0.5, mods & M_NIGHT ? 'steel' : 'metal'), seg(u0, v, u1 + 0.4, v, w, z + h - 0.5, 0.5, 'gold')];
+  const night = !!(mods & M_NIGHT);
+  return [seg(u0, v, u1, v, w, z, h - 0.5, night ? 'steel' : 'metal'), seg(u0, v, u1 + 0.4, v, w, z + h - 0.5, 0.5, night ? 'rust' : 'gold')];
 }
 
 interface Plane {

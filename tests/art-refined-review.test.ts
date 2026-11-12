@@ -8,7 +8,7 @@ import { refined } from '../src/client/art/refined';
 import { craterBitmap } from '../src/client/art/refined/craters';
 import { FX } from '../src/client/art/refined/fxCommon';
 import { ownerDim } from '../src/client/art/refined/palette';
-import { buildModel, M_MASTERY, M_NIGHT, M_SPECIAL, type SpriteKey } from '../src/client/art/refined/spriteArt';
+import { buildModel, M_MASTERY, M_NIGHT, M_SPECIAL, MOD_MASK, type SpriteKey } from '../src/client/art/refined/spriteArt';
 import { rasterize, solidCount, type Baked } from '../src/client/art/refined/spriteBake';
 import { refinedLength } from '../src/client/art/refined/sprites';
 import { bakeTroopIcon } from '../src/client/art/refined/troopIcons';
@@ -113,7 +113,9 @@ describe('refined review: planes', () => {
   it('shows Air Mastery as a natural metal rudder with a thin brass trim, not a brass tail', () => {
     for (const k of ['bomber', 'heavyBomber', 'groundAttack', 'fighter'] as const) {
       for (const night of [0, M_NIGHT]) {
-        const gold = buildModel(k, M_MASTERY | night).parts.filter((p) => p.m === 'gold');
+        // (a fighter has no night paint: its trim stays brass)
+        const dull = night & MOD_MASK[k];
+        const gold = buildModel(k, M_MASTERY | night).parts.filter((p) => p.m === (dull ? 'rust' : 'gold'));
         expect(gold.length, k).toBeGreaterThan(0);
         // only thin trim lines on the fins
         for (const p of gold) expect(p.k === 'seg' && p.h <= 0.5, k).toBe(true);

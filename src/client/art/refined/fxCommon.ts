@@ -73,6 +73,11 @@ const smR = new Float32Array(SMOKE_MAX);
 const smS = new Float32Array(SMOKE_MAX);
 let smN = 0;
 let mask = new Uint8Array(4096);
+/** Runs of the mask: layer, first cell, length, row. */
+let runs = new Int32Array(4096);
+/** The touched span of each mask row (first cell, one past the last). */
+let rowLo = new Int32Array(256);
+let rowHi = new Int32Array(256);
 
 /** Starts a new smoke group (drops what was collected). */
 export function smokeReset(): void {
@@ -93,6 +98,36 @@ export function smokeAdd(x: number, y: number, r: number, seed = 0): void {
 /** Puffs at least this big (cells) catch the light on their upper left. */
 const LIT_MIN = 1.1;
 
+/**
+ * Stamps a blob (the same rows as blobRows) onto the smoke mask at cell (cx, cy), in a mask W cells wide and H tall,
+ * keeping each row's touched span. A plain function with no callback: it runs for every puff of every smoke group.
+ */
+function stampBlob(layer: number, cx: number, cy: number, r: number, seed: number, W: number, H: number): void {
+  const ri = Math.max(0, Math.round(r));
+  for (let dy = -ri; dy <= ri; dy++) {
+    const y = cy + dy;
+    if (y < 0 || y >= H) continue;
+    let left = 0;
+    let len = 1;
+    if (ri > 0) {
+      const lump = 0.5 + 0.5 * Math.sin(dy * (2.4 / Math.max(2, ri * 0.5)) + seed * 2.1);
+      const grain = ri > 6 ? 0.03 : 0.12;
+      const w = Math.sqrt(Math.max(0, ri * ri - dy * dy)) * (0.86 + 0.18 * lump + grain * (hash(seed, dy + 11) - 0.5)) + 0.35;
+      const half = Math.floor(w);
+      const off = ri > 2 && Math.abs(dy) < ri - 1 ? Math.round(Math.sin(dy * (1.7 / Math.max(2, ri * 0.4)) + seed * 1.3) * Math.min(2, ri * 0.12 + 0.4)) : 0;
+      left = off - half;
+      len = half * 2 + 1;
+    }
+    const a = Math.max(0, cx + left);
+    const b = Math.min(W, cx + left + len);
+    if (b <= a) continue;
+    const o = y * W;
+    for (let i = o + a; i < o + b; i++) mask[i] = layer;
+    if (a < rowLo[y]) rowLo[y] = a;
+    if (b > rowHi[y]) rowHi[y] = b;
+  }
+}
+
 function smokePasses(ctx: CanvasRenderingContext2D, g: number, dark: string, mid: string, light: string): void {
   // the mask's extent in cells (every blob is centred on a whole cell: round(px / g))
   let x0 = Infinity;
@@ -100,7 +135,8 @@ function smokePasses(ctx: CanvasRenderingContext2D, g: number, dark: string, mid
   let x1 = -Infinity;
   let y1 = -Infinity;
   for (let i = 0; i < smN; i++) {
-    const R = Math.round(smR[i]) * 1.25 + 4;
+    // a blob reaches at most its radius plus a cell and its two-cell lean; the shadow pass sits a cell further
+    const R = Math.round(smR[i]) + 4;
     const cx = smX[i] / g;
     const cy = smY[i] / g;
     if (cx - R < x0) x0 = cx - R;
@@ -113,19 +149,15 @@ function smokePasses(ctx: CanvasRenderingContext2D, g: number, dark: string, mid
   const W = Math.ceil(x1) - x0 + 1;
   const H = Math.ceil(y1) - y0 + 1;
   if (W <= 0 || H <= 0 || W * H > 1 << 20) return;
+  // the mask is all zero between groups: only the touched span of each row is scanned and cleared again
   if (mask.length < W * H) mask = new Uint8Array(W * H * 2);
-  else mask.fill(0, 0, W * H);
-  const stamp = (layer: number, px: number, py: number, r: number, seed: number): void => {
-    const cx = Math.round(px / g) - x0;
-    const cy = Math.round(py / g) - y0;
-    blobRows(r, seed, (dy, left, len) => {
-      const y = cy + dy;
-      if (y < 0 || y >= H) return;
-      const a = Math.max(0, cx + left);
-      const b = Math.min(W, cx + left + len);
-      if (b > a) mask.fill(layer, y * W + a, y * W + b);
-    });
-  };
+  if (rowLo.length < H) {
+    rowLo = new Int32Array(H * 2);
+    rowHi = new Int32Array(H * 2);
+  }
+  rowLo.fill(W, 0, H);
+  rowHi.fill(0, 0, H);
+  const stamp = (layer: number, px: number, py: number, r: number, seed: number): void => stampBlob(layer, Math.round(px / g) - x0, Math.round(py / g) - y0, r, seed, W, H);
   for (let i = 0; i < smN; i++) stamp(1, smX[i] + g * 0.6, smY[i] + g * 0.8, smR[i], smS[i]);
   for (let i = 0; i < smN; i++) stamp(2, smX[i], smY[i], smR[i] - 0.5, smS[i] + 3);
   // the lit tops: only the puffs on the upper side of the mass catch the light, so it reads as one cloud, not a stack
@@ -134,23 +166,38 @@ function smokePasses(ctx: CanvasRenderingContext2D, g: number, dark: string, mid
   for (let i = 0; i < smN; i++) my += smY[i];
   my /= Math.max(1, smN);
   for (let i = 0; i < smN; i++) if (smR[i] >= LIT_MIN && (smN < 3 || smY[i] <= my + smR[i] * g * 0.2)) stamp(3, smX[i] - smR[i] * 0.3 * g, smY[i] - smR[i] * 0.38 * g, smR[i] * 0.48, smS[i] + 5);
-  // fill the runs, one colour at a time
+  // one scan for the runs of all three layers, then one colour at a time
+  let nr = 0;
+  for (let y = 0; y < H; y++) {
+    const hi = rowHi[y];
+    if (hi === 0) continue;
+    const row = y * W;
+    let x = rowLo[y];
+    while (x < hi) {
+      const layer = mask[row + x];
+      if (layer === 0) {
+        x++;
+        continue;
+      }
+      const s0 = x;
+      while (x < hi && mask[row + x] === layer) x++;
+      if (nr * 4 + 4 > runs.length) {
+        const bigger = new Int32Array(runs.length * 2);
+        bigger.set(runs);
+        runs = bigger;
+      }
+      runs[nr * 4] = layer;
+      runs[nr * 4 + 1] = s0;
+      runs[nr * 4 + 2] = x - s0;
+      runs[nr * 4 + 3] = y;
+      nr++;
+    }
+    for (let i = row + rowLo[y]; i < row + hi; i++) mask[i] = 0;
+  }
   const cols = [dark, mid, light];
   for (let layer = 1; layer <= 3; layer++) {
     ctx.fillStyle = cols[layer - 1];
-    for (let y = 0; y < H; y++) {
-      const row = y * W;
-      let x = 0;
-      while (x < W) {
-        if (mask[row + x] !== layer) {
-          x++;
-          continue;
-        }
-        const s0 = x;
-        while (x < W && mask[row + x] === layer) x++;
-        ctx.fillRect((x0 + s0) * g, (y0 + y) * g, (x - s0) * g, g);
-      }
-    }
+    for (let r = 0; r < nr; r++) if (runs[r * 4] === layer) ctx.fillRect((x0 + runs[r * 4 + 1]) * g, (y0 + runs[r * 4 + 3]) * g, runs[r * 4 + 2] * g, g);
   }
 }
 
@@ -160,7 +207,17 @@ export function smokeDraw(ctx: CanvasRenderingContext2D, g: number, alpha: numbe
   if (alpha > 0.01) {
     const prev = ctx.globalAlpha;
     ctx.globalAlpha = prev * Math.min(1, alpha);
-    smokePasses(ctx, g, dark, mid, light);
+    if (smN === 1) {
+      // a lone puff overlaps nothing: its three blobs straight onto the map
+      ctx.fillStyle = dark;
+      blob(ctx, smX[0] + g * 0.6, smY[0] + g * 0.8, smR[0], g, smS[0]);
+      ctx.fillStyle = mid;
+      blob(ctx, smX[0], smY[0], smR[0] - 0.5, g, smS[0] + 3);
+      if (smR[0] >= LIT_MIN) {
+        ctx.fillStyle = light;
+        blob(ctx, smX[0] - smR[0] * 0.3 * g, smY[0] - smR[0] * 0.38 * g, smR[0] * 0.48, g, smS[0] + 5);
+      }
+    } else smokePasses(ctx, g, dark, mid, light);
     ctx.globalAlpha = prev;
   }
   smN = 0;
@@ -202,12 +259,9 @@ export function fireAdd(x: number, y: number, r: number, heat: number, seed: num
 }
 
 /** The tones of a ball at a heat: its rim, body and billow light (the fire cooling from the outside in). */
-function fireTones(heat: number): [string, string, string] {
-  const rim = heat > 0.55 ? FX.fireDeep : FX.ember;
-  const body = heat > 0.6 ? FX.fire : heat > 0.32 ? FX.fireDeep : FX.ember;
-  const lit = heat > 0.55 ? FX.flame : heat > 0.3 ? FX.fire : FX.fireDeep;
-  return [rim, body, lit];
-}
+const fireRim = (heat: number): string => (heat > 0.55 ? FX.fireDeep : FX.ember);
+const fireBody = (heat: number): string => (heat > 0.6 ? FX.fire : heat > 0.32 ? FX.fireDeep : FX.ember);
+const fireLit = (heat: number): string => (heat > 0.55 ? FX.flame : heat > 0.3 ? FX.fire : FX.fireDeep);
 
 /**
  * Draws the fire cluster built with fireAdd and empties it. Each ball at its heat (1 = just burst, white-hot inside; 0
@@ -237,11 +291,11 @@ export function fireDraw(ctx: CanvasRenderingContext2D, g: number): void {
     }
   }
   for (let i = 0; i < n; i++) {
-    ctx.fillStyle = fireTones(fiH[i])[0];
+    ctx.fillStyle = fireRim(fiH[i]);
     blob(ctx, fiX[i] + g * 0.7, fiY[i] + g * 0.8, fiR[i], g, fiS[i]);
   }
   for (let i = 0; i < n; i++) {
-    ctx.fillStyle = fireTones(fiH[i])[1];
+    ctx.fillStyle = fireBody(fiH[i]);
     blob(ctx, fiX[i], fiY[i], fiR[i] * 0.9, g, fiS[i] + 1);
   }
   // a big ball is not one flat slab: it rolls in billows, each lit on its upper left and shaded on its lower right
@@ -249,7 +303,9 @@ export function fireDraw(ctx: CanvasRenderingContext2D, g: number): void {
   for (let i = 0; i < n; i++) {
     const r = fiR[i];
     if (r < 3.5) continue;
-    const [rim, body, lit] = fireTones(fiH[i]);
+    const rim = fireRim(fiH[i]);
+    const body = fireBody(fiH[i]);
+    const lit = fireLit(fiH[i]);
     const seed = fiS[i];
     const m = r >= 8 ? 4 : 3;
     for (let j = 0; j < m; j++) {
