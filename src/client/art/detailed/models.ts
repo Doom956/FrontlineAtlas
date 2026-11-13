@@ -3,8 +3,8 @@
 // starboard side at +v. All art is original and lives here as code.
 //
 // Told apart by size and silhouette first, colour second:
-//   carrier      the biggest: a long flat flight deck with its markings, the island on the starboard side, planes
-//                parked aft
+//   carrier      the biggest: a broad flight deck with an angled landing deck to port, the island on the starboard
+//                side, planes parked along the starboard edge
 //   battleship   long and heavy: three big turret groups (two forward, one aft), a tall stepped tower, one big funnel
 //   warship      (no arsenal pick) a mid-size cruiser: two twin turrets forward, one aft, two funnels
 //   destroyer    small and slim: a twin gun forward, a single aft, torpedo tubes midships, a raked funnel
@@ -24,6 +24,7 @@
 // Bombing), a chequered cowling (Air Mastery) and gun turrets (Strategic Bombing).
 import { M_JET, M_MASTERY, M_NIGHT, M_PATH3, M_SPECIAL, SPRITE_KEYS, type SpriteKey } from '../shared/keys';
 import type { MatId, Model, Part, Pattern, Shade } from './bake';
+import { CL } from './carrierDeck';
 
 /** Which upgrade details each sprite shows (other bits are ignored, so the cache stays small). */
 export const MOD_MASK: Record<SpriteKey, number> = {
@@ -366,49 +367,66 @@ function submarine(mods: number): UnitModel {
   return ship(stretchU(out, 0.8), [[10.4, 0, 0.3], [10.4, 0, 0.3]]);
 }
 
-/** A small plane parked on a flight deck, wings spread. */
-function parked(u: number, v: number, z: number, m: MatId = 'seagrey'): Part[] {
-  return [seg(u + 1.8, v, u - 1.8, v, 0.85, z, 0.55, m, { sh: 'cyl' }), poly([u + 1, v - 2.1, u + 1, v + 2.1, u - 0.1, v + 2.1, u - 0.1, v - 2.1], z + 0.2, 0.25, m), seg(u - 1.5, v - 0.9, u - 1.5, v + 0.9, 0.6, z + 0.2, 0.25, m), ell(u + 0.5, v, 0.45, 0.35, z + 0.55, 0, 'glass')];
+/**
+ * A small plane parked on a flight deck at (u, v), its nose turned `ang` radians from the bow (toward starboard), its
+ * wings spread `span` units each side (less with the wings folded).
+ */
+function parked(u: number, v: number, z: number, ang: number, span = 2, m: MatId = 'seagrey'): Part[] {
+  const c = Math.cos(ang);
+  const s = Math.sin(ang);
+  const P = (a: number, b: number): [number, number] => [u + a * c - b * s, v + a * s + b * c];
+  return [
+    seg(...P(1.8, 0), ...P(-1.8, 0), 0.85, z, 0.55, m, { sh: 'cyl' }),
+    poly([...P(1, -span), ...P(1, span), ...P(-0.1, span), ...P(-0.1, -span)], z + 0.2, 0.25, m),
+    seg(...P(-1.5, -0.9), ...P(-1.5, 0.9), 0.6, z + 0.2, 0.25, m),
+    ell(...P(0.5, 0), 0.4, 0.4, z + 0.55, 0, 'glass'),
+  ];
 }
 
 function carrier(mods: number): UnitModel {
-  // the biggest: 55 long, a dark flight deck overhanging the hull with edge lines, a dashed centre line, elevators and
-  // the owner's deck band near the bow; the island on the starboard side; planes parked aft
-  const L = 27.5;
+  // the biggest: 54 long on a broad flight deck (about four times as long as wide) in dark weathered steel, the
+  // angled landing deck reaching out over a sponson to port, the island on the starboard side (its funnel band and a
+  // small panel on its roof the only owner colour), planes parked along the starboard edge clear of the landing area
+  // and one on the bow catapult, gun tubs and catwalks round the edges. The deck's plates, tyre marks and sparse worn
+  // markings are its pattern (carrierDeck.ts).
+  const L = CL;
   const H = 2.4;
-  const out: Part[] = [poly(hullShape(L - 0.5, 4.1, 9, true), 0, H, 'hull'), poly(hullShape(L - 0.45, 4.15, 9, true), 0, 0.55, 'hullDark')];
-  const deck = sym([L, -1.6, L - 1.6, -4.6, L - 4, -5.3, -L + 0.6, -5.3, -L, -4.8]);
-  out.push(poly(deck, H, 0.8, 'flightdeck', { pat: 'deckLines', alt: 'paint' }));
-  const D = H + 0.8;
-  // the painted deck edge only close up (at mid zoom it would outline the whole ship like a selection box)
-  out.push(poly(sym([L - 0.6, -1.4, L - 2, -4.2, L - 4.2, -4.85, -L + 1, -4.85, -L + 0.5, -4.4]), D, 0, 'paint', { edge: true, tone: -1, minRes: 1.5 }));
-  out.push(box(L - 6.6, -4.2, L - 5.6, 4.2, D, 0, 'own'));
-  out.push(box(7.4, -2, 11, 2, D, 0, 'flightdeck', { tone: -1 }), box(-13.6, -2, -10, 2, D, 0, 'flightdeck', { tone: -1 }));
-  // the island: base, bridge with windows, a big raked funnel, the mast
-  out.push(box(-6.4, 3.8, 3.4, 5.9, D, 2.2, 'sup'), box(0.4, 4, 3.2, 5.7, D + 2.2, 1.4, 'sup'), box(2.85, 4.1, 3.2, 5.6, D + 3.6, 0, 'glass'));
-  out.push(...moved(funnel(-3.2, 1.7, 0.95, D + 2.2, 2.8, 1.2, true), 0, 4.85));
-  out.push(...moved(mast(1.2, D + 3.6, 3.4, 1.4, !!(mods & M_MASTERY)), 0, 4.85));
-  for (const [u, v] of [
-    [-16.2, -2.6],
-    [-16.2, 1.2],
-    [-20, -2.6],
-    [-20, 1.2],
-    [-23.8, -2.6],
-    [-23.8, 1.2],
-    [-11.6, -3],
+  const out: Part[] = [poly(hullShape(L - 1, 4.4, 10, true), 0, H, 'hull'), poly(hullShape(L - 0.95, 4.45, 10, true), 0, 0.55, 'hullDark')];
+  // catwalks and sponsons just under the deck edge, so the edge reads as a ship's, not a straight kerb
+  for (const [u0, v0, u1, v1] of [
+    [14, 4.9, 17.6, 5.9],
+    [-20.4, 4.8, -16.8, 5.8],
+    [15.4, -6.1, 19, -5],
+    [-20.6, -6.2, -16.4, -5],
   ] as const)
-    out.push(...parked(u, v, D));
-  // gun tubs along the edges
+    out.push(box(u0, v0, u1, v1, H - 0.1, 0.55, 'deck'));
+  const deck = [L, -1.5, L - 1.5, -3.6, L - 4.4, -4.9, 13.4, -5.4, 10.2, -6.1, 7.2, -7.5, 4.2, -7.7, -L + 1, -4.8, -L, -3.9, -L, 3.9, -L + 1, 5, L - 6.5, 5.2, L - 3.4, 4.5, L - 1.3, 3.2, L, 1.5];
+  out.push(poly(deck, H, 0.8, 'flightdeck', { pat: 'flightDeck', alt: 'paint' }));
+  const D = H + 0.8;
+  // the island on the starboard side: a long base, a second level, the bridge with its windows, a big raked funnel
+  // with the owner band, the owner panel on the base roof, the mast
+  out.push(box(-7.2, 3.9, 2.6, 6.3, D, 2, 'sup'), box(-4.6, 4.1, 2.2, 6.1, D + 2, 1.5, 'sup'), box(1.85, 4.15, 2.2, 6.05, D + 2, 0, 'glass'));
+  out.push(box(-0.4, 4.25, 1.9, 5.95, D + 3.5, 1, 'sup'), box(1.55, 4.3, 1.9, 5.9, D + 4.5, 0, 'glass'));
+  out.push(box(-6.8, 4.3, -5.1, 5.9, D + 2, 0, 'own'));
+  out.push(...moved(funnel(-2.8, 1.35, 0.9, D + 2, 2.8, 0.9, true), 0, 5.1));
+  out.push(...moved(mast(0.6, D + 4.5, 3, 1.3, !!(mods & M_MASTERY)), 0, 5.1));
+  // planes: one on the bow catapult with its wings spread, three parked on the starboard bow and two aft of the
+  // island (tails toward the edge, noses inboard, wings folded), one on the aft elevator
+  out.push(...parked(L - 4.6, -1.3, D, -0.05));
+  for (const u of [21.4, 17.8, 14.2]) out.push(...parked(u, 3.1, D, -1.1, 1.15));
+  for (const u of [-14.8, -18.4]) out.push(...parked(u, 3.5, D, -1, 1.15));
+  out.push(...parked(-10.6, 4.4, D, 0, 1.15));
+  // gun tubs at the corners
   for (const [u, v] of [
-    [L - 6, -5.4],
-    [L - 6, 5.4],
-    [-L + 3, -5.4],
+    [L - 5.4, -5.4],
+    [L - 6.4, 5.5],
+    [-L + 3, -5.1],
     [-L + 3, 5.4],
   ] as const)
     out.push(...smallGun(u, v, H + 0.2, v < 0 ? -1.4 : 1.4, 0.75, 1.6));
-  if (mods & M_MASTERY) out.push(...aa(9, -5.6, H + 0.2), ...aa(-7, -5.6, H + 0.2), ...aa(-10, 5.8, H + 0.2));
+  if (mods & M_MASTERY) out.push(...aa(17.4, -6, H + 0.2), ...aa(-9, -6.7, H + 0.2), ...aa(-21.6, 5.7, H + 0.2), ...aa(10.2, 5.8, H + 0.2));
   if (mods & M_SPECIAL) out.push(...mineRails(-L + 1.5, D, 3.2));
-  return ship(out, [[L - 6, -5.4, H + 1], [L - 6, 5.4, H + 1]]);
+  return ship(out, [[L - 5.4, -5.4, H + 1], [L - 6.4, 5.5, H + 1]]);
 }
 
 function transport(): UnitModel {

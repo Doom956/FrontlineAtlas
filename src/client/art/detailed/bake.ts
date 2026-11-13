@@ -16,6 +16,7 @@
 // Patterns (planking, grilles, track links, container ribs, panel lines, camouflage blotches) live in model space so
 // they turn with the unit, and only draw where the resolution has room for them.
 import type { RGB } from '../shared/colour';
+import { DECK_PAINT, flightDeckTone } from './carrierDeck';
 import { rampOf, ownerTones, UNIT_OWNER_QUIET, type MaterialId } from './palette';
 
 /** Ground foreshortening of the 3/4 view (screen y per model y). */
@@ -25,7 +26,7 @@ export const LIFT = 0.55;
 
 export type MatId = MaterialId | 'own';
 export type Shade = 'flat' | 'dome' | 'cyl' | 'plate';
-export type Pattern = 'planks' | 'grille' | 'tread' | 'ribs' | 'panels' | 'blotch' | 'frames' | 'helmets' | 'hatches' | 'rivets' | 'deckLines';
+export type Pattern = 'planks' | 'grille' | 'tread' | 'ribs' | 'panels' | 'blotch' | 'frames' | 'helmets' | 'hatches' | 'rivets' | 'flightDeck';
 
 /**
  * One part. Footprints in model units: box [u0, v0, u1, v1], ell [u, v, ru, rv], poly [u, v, u, v, ...],
@@ -636,12 +637,10 @@ function pattern(part: Part, t: number, u: number, v: number, res: number, x: nu
       const f = u / 1.6 - Math.floor(u / 1.6);
       return f < 0.3 && (x + y) % 2 === 0 ? Math.min(3, t + 1) : t;
     }
-    case 'deckLines': {
-      // a flight deck: the dashed centre line in paint (alt), joints between deck plates
-      if (Math.abs(v) < Math.max(0.3, px * 0.6) && Math.floor(u / 2.6) % 2 === 0) return 3 | ALT;
-      if (!fine) return t;
-      const f = u / 3 - Math.floor(u / 3);
-      return f * 3 < px * 0.9 ? Math.max(0, t - 1) : t;
+    case 'flightDeck': {
+      // the carrier's flight deck (carrierDeck.ts): plates, wear, tyre marks and sparse worn markings in paint (alt)
+      const r = flightDeckTone(t, u, v, res, x, y);
+      return r >= DECK_PAINT ? (r - DECK_PAINT) | ALT : r;
     }
   }
   return t;
