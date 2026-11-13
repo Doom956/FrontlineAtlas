@@ -1,10 +1,14 @@
 // Pooled map effects drawn on the overlay canvas (CSS px). A fixed set of records is reused: no allocation per
-// effect, no per-particle objects (the few particles of an effect are placed from its seed). Plain arcs and
-// rectangles only, no gradients or shadows, so a full pool costs a fraction of a millisecond.
+// effect, no per-particle objects (the few particles of an effect are placed from its seed). The rings and labels of
+// captured cities are drawn here (plain arcs, no gradients or shadows); a sinking ship, a falling plane's smoke and
+// dust are drawn by the current explosions art style (art/registry.ts).
 
 import { MAP_LABEL_FAMILY } from '../render/common';
+import { artFor, motionFor } from '../art/registry';
+import type { MapFxDraw } from '../art/types';
 import { FX_INFO, fxLabel, type FxKind } from './map';
-import { pixelDisc, pixelRing } from './pixelFx';
+
+const mapFxDraw: MapFxDraw = { kind: 'splash', x: 0, y: 0, t: 0, zoom: 1, seed: 0, rt: 0, dpr: 1 };
 
 export const FX_CAP = 40;
 
@@ -110,10 +114,6 @@ export class FxPool {
 function fract(v: number): number {
   return v - Math.floor(v);
 }
-/** A repeatable 0..1 spray direction for frame f, droplet j of the effect at x. */
-function fx(f: number, j: number, x: number): number {
-  return fract(Math.sin(f * 3.1 + j * 12.9898 + x * 0.37) * 43758.5453);
-}
 
 function ring(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, width: number, rgb: string, a: number): void {
   if (a <= 0.005 || r <= 0) return;
@@ -159,85 +159,21 @@ function drawOne(ctx: CanvasRenderingContext2D, f: FxRec, x: number, y: number, 
       label(ctx, fxLabel(f.kind) ?? '', x, y - (capital ? 36 : 30), t, rgb, capital);
       break;
     }
-    case 'splash': {
-      // a ship sinking (pixel style, fx/pixelFx.ts): foam rings spreading, spray, dark hull pieces going under
-      const g = z < 11 ? 1 : 2;
-      const fr = Math.min(5, Math.floor(t * 6));
-      ctx.globalAlpha = 0.85 * (1 - t);
-      ctx.fillStyle = fr < 2 ? '#ffffff' : '#dcebf3';
-      pixelRing(ctx, x, y, (3 + fr * 2.2) * k, g, fr >= 3);
-      if (fr >= 1) pixelRing(ctx, x, y, (1.5 + fr * 1.2) * k, g, fr >= 4);
-      if (fr <= 2) {
-        for (let j = 0; j < 5; j++) {
-          const a = j * 1.26 + 6.283 * fx(fr, j, x);
-          const d = (3 + fr * 3) * k;
-          ctx.fillRect(Math.round((x + Math.cos(a) * d) / g) * g, Math.round((y + Math.sin(a) * d * 0.6 - (fr === 1 ? 3 : 1) * g) / g) * g, g, g);
-        }
-      }
-      const sink = 1 - easeOut(t);
-      if (sink > 0.08) {
-        ctx.globalAlpha = 0.9 * sink;
-        ctx.fillStyle = '#343a42';
-        for (let j = 0; j < 3; j++) {
-          const a = j * 2.1 + x * 0.1;
-          const d = (3 + 6 * easeOut(t)) * k;
-          const w = Math.max(1, Math.round((3 - j) * sink * k));
-          ctx.fillRect(Math.round(x + Math.cos(a) * d) - w * g, Math.round(y + Math.sin(a) * d * 0.7), w * 2 * g, g);
-        }
-      }
-      ctx.globalAlpha = 1;
-      break;
-    }
-    case 'smoke': {
-      // a plane going down: grey pixel puffs rising and drifting off (the burst itself is fx/pixelFx.ts)
-      const g = z < 11 ? 1 : 2;
-      for (let j = 0; j < 4; j++) {
-        const tj = clamp01((t - j * 0.08) / 0.92);
-        if (tj <= 0) continue;
-        const a = j * 1.7 + x * 0.05;
-        const r = (1.5 + 2.5 * easeOut(tj)) * k;
-        const px = x + Math.cos(a) * 4 * k + tj * 8 * k;
-        const py = y + Math.sin(a) * 3 * k - tj * 12 * k;
-        ctx.globalAlpha = 0.6 * (1 - tj);
-        ctx.fillStyle = '#5f5c59';
-        pixelDisc(ctx, px + g, py + g, r, g);
-        ctx.fillStyle = '#8f8b86';
-        pixelDisc(ctx, px, py, r - 0.6, g);
-      }
-      ctx.globalAlpha = 1;
-      break;
-    }
+    case 'splash':
+    case 'smoke':
     case 'dust':
     case 'fortDust': {
-      // earth thrown up after shells or a fort coming down: brown pixel puffs settling
-      const fort = f.kind === 'fortDust';
-      const g = z < 11 ? 1 : 2;
-      const n = fort ? 7 : 4;
-      const spread = fort ? Math.max(10, z * 1.2) : Math.max(10, f.r * z * 0.55);
-      for (let j = 0; j < n; j++) {
-        const tj = clamp01((t - (fort ? 0 : 0.25 + j * 0.06)) / (fort ? 1 : 0.7));
-        if (tj <= 0) continue;
-        const a = f.seed * TAU + (j * TAU) / n;
-        const d = fort ? spread * (0.4 + 0.9 * easeOut(tj)) : spread * (0.3 + 0.6 * fract(f.seed * 7 + j * 0.37));
-        const r = (fort ? 2 + 3 * easeOut(tj) : 1.5 + 2.5 * easeOut(tj)) * k;
-        const px = x + Math.cos(a) * d;
-        const py = y + Math.sin(a) * d * 0.75 - tj * 3 * k;
-        ctx.globalAlpha = (fort ? 0.55 : 0.4) * (1 - tj) * (1 - tj);
-        ctx.fillStyle = '#7d6a52';
-        pixelDisc(ctx, px + g, py + g, r, g);
-        ctx.fillStyle = '#b09c7c';
-        pixelDisc(ctx, px, py, r - 0.6, g);
-      }
+      // a ship sinking, a plane going down, dust after shells or a fort coming down: drawn by the explosions art style
+      const d = mapFxDraw;
+      d.kind = f.kind;
+      d.x = x;
+      d.y = y;
+      d.t = t;
+      d.zoom = z;
+      d.seed = f.seed;
+      d.rt = f.r;
+      artFor('explosions').drawMapFx(ctx, d, motionFor('explosions'));
       ctx.globalAlpha = 1;
-      if (fort && t < 0.4) {
-        const td = t / 0.4;
-        ctx.fillStyle = `rgba(90,80,66,${(0.9 * (1 - td)).toFixed(3)})`;
-        for (let j = 0; j < 6; j++) {
-          const a = f.seed * 3 + j * 1.05;
-          const d = 4 * k + 14 * k * td;
-          ctx.fillRect(Math.round(x + Math.cos(a) * d) - 1, Math.round(y + Math.sin(a) * d - 8 * k * td * (1 - td)) - 1, 2, 2);
-        }
-      }
       break;
     }
     case 'shockwave':

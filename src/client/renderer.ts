@@ -219,7 +219,7 @@ export class Renderer {
     // battle effects: read what is new, then shake the view a few px after a nearby nuke (undone after drawing)
     if (this.shookBy.x !== 0 || this.shookBy.y !== 0) this.unshake(camera);
     this.fx.update(state, camera, nowMs);
-    this.pfx.update(state, nowMs);
+    this.pfx.update(state, nowMs, this.units);
     const sh = this.fx.shake(nowMs);
     if (sh.x !== 0 || sh.y !== 0) {
       this.shookBy.x = sh.x / camera.zoom;
@@ -303,8 +303,8 @@ export class Renderer {
       this.units.selected = this.selectedSet;
     }
     const frac = this.units.subTick(nowMs, ui.paused, ui.speed);
-    // scorch craters lie on the ground, under markers and units
-    this.pfx.drawGround(ctx, camera, state.tick + frac);
+    // scorch craters and what of a death lies on the ground or the sea (an oil slick, a burnt hull), under the units
+    this.pfx.drawGround(ctx, camera, state.tick + frac, d, nowMs, this.colors);
     const b = ui.mode.kind === 'build' ? ui.mode.building : null;
     const depFocus = b === 'mine' ? 1 : b === 'oilWell' ? 2 : b === 'farm' ? 3 : 0;
     this.deposits.draw(ctx, state, camera, view, ui.showResources, me, depFocus, d);
@@ -321,7 +321,7 @@ export class Renderer {
     this.units.draw(ctx, state, camera, frac, this.colors, me, d, nowMs);
     this.overlays.effects(ctx, state, camera, frac);
     // shells, turret flashes and explosions over the units
-    this.pfx.drawAir(ctx, camera, nowMs, this.units);
+    this.pfx.drawAir(ctx, camera, nowMs, this.units, d, this.colors);
     const hs = ui.hoverTile >= 0 ? camera.tileToScreen((ui.hoverTile % this.w) + 0.5, ((ui.hoverTile / this.w) | 0) + 0.5) : null;
     const hoverOwner = ui.hoverTile >= 0 && ui.hoverTile < state.map.owner.length ? this.knownOwner(state, ui.hoverTile) : 0;
     this.names.draw(ctx, state, camera, me, { hoverOwner, targeting: ui.mode.kind !== 'none', hover: hs }, nowMs, d);
