@@ -9,14 +9,17 @@
 // arresting wires, the catapult tracks at the bow, the elevators as dark seams and the hull number at the bow.
 
 /** Half the carrier's length (its bow at +CL, its stern at -CL). */
-export const CL = 27;
+export const CL = 30;
+/** The deck was laid out 54 long and 12.9 wide; it is drawn this much longer (KU) and wider (KV). */
+const KU = CL / 27;
+const KV = 1.1;
 
 /** The angled landing deck: from its stern end (AU, AV) for ALEN units at ANG radians to port, AHALF units each side. */
 export const ANG = 0.16;
-export const AU = -25.2;
-export const AV = -0.2;
-export const ALEN = 31;
-export const AHALF = 2.6;
+export const AU = -25.2 * KU;
+export const AV = -0.2 * KV;
+export const ALEN = 31 * KU;
+export const AHALF = 2.6 * KV;
 const DU = Math.cos(ANG);
 const DV = -Math.sin(ANG);
 const NU = Math.sin(ANG);
@@ -29,19 +32,19 @@ export function onAngled(s: number, w: number): [number, number] {
 
 /** Elevators on the starboard edge (u0, v0, u1, v1; v1 is the deck edge). */
 export const ELEVATORS: readonly (readonly [number, number, number, number])[] = [
-  [3.6, 3.5, 7.2, 5.4],
-  [-12.4, 3.5, -8.8, 5.4],
+  [3.6 * KU, 3.5 * KV, 7.2 * KU, 5.4 * KV],
+  [-12.4 * KU, 3.5 * KV, -8.8 * KU, 5.4 * KV],
 ];
 
 /** The bow catapults: from the bow end (u0, v0) aft to (u1, v1). */
 const CATS: readonly (readonly [number, number, number, number])[] = [
-  [CL - 1.6, -1.15, 13.2, -1.85],
-  [CL - 1.6, 1.15, 13.2, 1.85],
+  [CL - 1.6, -1.15 * KV, 13.2 * KU, -1.85 * KV],
+  [CL - 1.6, 1.15 * KV, 13.2 * KU, 1.85 * KV],
 ];
 
 /** The hull number painted at the bow, read from the stern: two 3 x 5 digits. */
 const DIGITS = ['010110010010111', '111101111101111'];
-const NUM_U = 9.6;
+const NUM_U = 9.6 * KU;
 const NUM_CELL = 0.52;
 
 function hash2(x: number, y: number, s: number): number {
