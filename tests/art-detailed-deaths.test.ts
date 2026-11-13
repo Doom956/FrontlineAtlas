@@ -11,8 +11,8 @@ import { rasterize, solidCount } from '../src/client/art/detailed/bake';
 import { deathTimesOf } from '../src/client/art/detailed/deaths';
 import { flashAt } from '../src/client/art/detailed/explosions';
 import { unitModel } from '../src/client/art/detailed/models';
-import { CHAR_STEPS, charOf, SINK_STEPS, sinkOf } from '../src/client/art/detailed/wrecks';
-import { DEATH_KINDS, type DeathDraw, type DeathKind } from '../src/client/art/types';
+import { CHAR_STEPS, charOf, heelOf, SINK_STEPS, sinkOf } from '../src/client/art/detailed/wrecks';
+import { DEATH_KINDS, type DeathDraw, type DeathKind, type DeathLayer } from '../src/client/art/types';
 import type { SpriteKey } from '../src/client/art/shared/keys';
 import { BattleFx } from '../src/client/fx/battleFx';
 import { DeathWatch, deathKindOf } from '../src/client/fx/deaths';
@@ -315,6 +315,72 @@ describe('deaths: telling a destroyed unit from one that arrived', () => {
     expect(w.scan(s2, out)).toBe(2);
     expect(new Set(out.map((u) => u.id)).size).toBe(2);
   });
+
+  it('gives a kill blast only to the unit that died on that spot, not a neighbour arriving in the same tick', () => {
+    // a transport landing its troops right beside its escort as the escort is sunk 0.5 tiles away, the transport
+    // first in the list: only the escort plays a death
+    const w = new DeathWatch();
+    const s = seaGame();
+    const transport = { id: 901, type: 'transport', owner: 1, x: 40, y: 20, hp: 1, troops: { infantry: 500, armor: 0, artillery: 0 } } as unknown as Unit;
+    const escort = { id: 902, type: 'warship', owner: 1, x: 40.5, y: 20, hp: 1, troops: { infantry: 0, armor: 0, artillery: 0 } } as unknown as Unit;
+    s.units.push(transport, escort);
+    w.reset(s);
+    s.tick += 1;
+    transport.hp = 0;
+    escort.hp = 0;
+    s.units = s.units.filter((u) => u !== transport && u !== escort);
+    w.blast(escort.x + 0.5, escort.y + 0.5);
+    const out: Unit[] = [];
+    expect(w.scan(s, out)).toBe(1);
+    expect(out[0].id).toBe(902);
+    expect(w.wasDeath(0)).toBe(true);
+    w.endTick();
+    // a blast of a unit that came and went between two looks (not in the last list) is nobody's: no false death
+    const s2 = seaGame();
+    const arrive = { id: 903, type: 'tradeShip', owner: 1, x: 50, y: 10, hp: 1, troops: { infantry: 0, armor: 0, artillery: 0 } } as unknown as Unit;
+    s2.units.push(arrive);
+    w.reset(s2);
+    arrive.hp = 0;
+    s2.units = [];
+    w.blast(50.2, 10.6);
+    expect(w.scan(s2, out)).toBe(0);
+    expect(w.wasDeath(0)).toBe(false);
+  });
+
+  it('keeps the parachutes of a cargo plane that drops beside another shot down over the same drop tile', () => {
+    const drops = (l: UnitLayer): { x: number; y: number }[] => (l as unknown as { drops: { x: number; y: number }[] }).drops;
+    const s = landGame();
+    const mk = (id: number, x: number, y: number): Unit => ({ id, type: 'transportPlane', owner: 1, x, y, target: at(s, 32, 15), home: at(s, 10, 15), state: 0, hp: 1, path: [], pathPos: 0, cargo: 0, targetOwner: 2, troops: { infantry: 500, armor: 0, artillery: 0 } }) as unknown as Unit;
+    const shot = mk(81, 31.2, 15.1);
+    const dropper = mk(82, 31.6, 14.8);
+    s.units.push(shot, dropper);
+    const layer = new UnitLayer();
+    layer.reset(s.map.width);
+    layer.track(s, 0);
+    // the sim's tick: the one shot down gets its kill blast where it is, both leave the map
+    s.effects.push({ kind: 'explosion', x: shot.x + 0.5, y: shot.y + 0.5, radius: 1.5, tick: s.tick });
+    shot.hp = 0;
+    dropper.hp = 0;
+    s.units = [];
+    s.tick += 1;
+    layer.track(s, 100);
+    expect(drops(layer).length).toBe(1);
+    expect(drops(layer)[0].x).toBeCloseTo(32.5);
+    // a kill blast left over from an earlier tick on the dropper's spot is not its own either
+    const s2 = landGame();
+    const d2 = mk(83, 31.6, 14.8);
+    s2.units.push(d2);
+    const l2 = new UnitLayer();
+    l2.reset(s2.map.width);
+    s2.effects.push({ kind: 'explosion', x: 32.1, y: 15.3, radius: 1.5, tick: s2.tick });
+    s2.tick += 1;
+    l2.track(s2, 0);
+    d2.hp = 0;
+    s2.units = [];
+    s2.tick += 1;
+    l2.track(s2, 100);
+    expect(drops(l2).length).toBe(1);
+  });
 });
 
 // ------------------------------------------------------------------------------------------------- drawing
@@ -395,6 +461,56 @@ describe('detailed deaths: drawing', () => {
     expect(flashAt('bomb', 10, m).coreA).toBeGreaterThan(0);
   });
 
+  it('draws what lies on the ground under the units and the rest over them: two layers, one pass each', () => {
+    const art = styleModule('detailed').explosions;
+    const real = art.drawDeath!;
+    const seen: (DeathLayer | undefined)[] = [];
+    art.drawDeath = (_ctx, d) => void seen.push(d.layer);
+    try {
+      const s = landGame();
+      const af = addBuilding(s, 'airfield', 1, at(s, 10, 15));
+      af.bombers = 1;
+      const p = new PixelFx();
+      const clock = { now: 0 };
+      p.update(s, 0);
+      expect(launchBomber(s, 1, af.tile, at(s, 34, 15)).ok).toBe(true);
+      const b = s.units.find((u) => u.type === 'bomber')!;
+      play(s, p, clock, () => b.x > 20, 400);
+      shotDown(s, b, 2, 'SAM site');
+      play(s, p, clock, () => !s.units.includes(b), 5);
+      expect(live(p).length).toBe(1);
+      const cam = { zoom: 20, x: b.x, y: b.y, viewW: 1200, viewH: 800 };
+      const ctx = nullCtx();
+      p.drawGround(ctx, cam, s.tick, 1, clock.now, null);
+      expect(seen).toEqual(['ground']);
+      p.drawAir(ctx, cam, clock.now, null, 1, null);
+      expect(seen).toEqual(['ground', 'air']);
+      // without the clock (an older caller) the ground pass draws the craters only
+      p.drawGround(ctx, cam, s.tick, 1);
+      expect(seen.length).toBe(2);
+      // far out only the blink, in the air pass
+      seen.length = 0;
+      p.drawGround(ctx, { ...cam, zoom: 1.7 }, s.tick, 1, clock.now, null);
+      p.drawAir(ctx, { ...cam, zoom: 1.7 }, clock.now, null, 1, null);
+      expect(seen.length).toBe(0);
+    } finally {
+      art.drawDeath = real;
+    }
+    // every death draws in either layer alone without throwing
+    const ctx = nullCtx();
+    const m = motionParams('lively', false);
+    for (const [kind, key, water] of CASES) {
+      const T = art.deathTimes!(kind, m);
+      for (const layer of ['ground', 'air'] as const) {
+        for (let i = 0; i <= 12; i++) {
+          const d: DeathDraw = { kind, key, mods: 0, owner: [226, 74, 60], x: 300, y: 200, angle: 0.3, water, t: i / 12, ageMs: (i / 12) * T.durMs, durMs: T.durMs, zoom: 26, scale: 3, seed: 0.4, reduced: false, dpr: 1, layer };
+          expect(() => real(ctx, d, m)).not.toThrow();
+          expect(ctx.globalAlpha).toBe(1);
+        }
+      }
+    }
+  });
+
   it('only the detailed style animates deaths; the others keep their small blasts', () => {
     for (const st of ART_STYLES) {
       const e = styleModule(st).explosions;
@@ -430,6 +546,63 @@ describe('detailed wrecks', () => {
     }
     // burnt through: near black all over
     expect(last).toBeLessThan(50);
+  });
+
+  it('a burnt light tank keeps its shape readable: several tones, its outline lighter than its plates', () => {
+    for (const key of ['lightTank', 'tankDivision'] as const) {
+      const b = rasterize(unitModel(key, 0).model, 2, 3, { facings: 32, owner: [64, 160, 255] });
+      const c = charOf(b, CHAR_STEPS);
+      const tones = new Set<number>();
+      let edge = 0;
+      let ne = 0;
+      let inner = 0;
+      let ni = 0;
+      const solid = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < c.w && y < c.h && c.data[(y * c.w + x) * 4 + 3] >= 250;
+      for (let y = 0; y < c.h; y++)
+        for (let x = 0; x < c.w; x++) {
+          if (!solid(x, y)) continue;
+          const o = (y * c.w + x) * 4;
+          tones.add((c.data[o] << 16) | (c.data[o + 1] << 8) | c.data[o + 2]);
+          const l = c.data[o] * 0.3 + c.data[o + 1] * 0.59 + c.data[o + 2] * 0.11;
+          if (!solid(x - 1, y) || !solid(x + 1, y) || !solid(x, y - 1) || !solid(x, y + 1)) {
+            edge += l;
+            ne++;
+          } else {
+            inner += l;
+            ni++;
+          }
+        }
+      expect(tones.size, key).toBeGreaterThanOrEqual(4);
+      expect(edge / ne, key).toBeGreaterThan(inner / ni);
+    }
+  });
+
+  it('a listing ship shows it: its low side darker and narrower than its high side', () => {
+    const b = ship();
+    const h = heelOf(b, 0, 2, 1, 2);
+    // heading east, right side down: the low side is the lower half on screen. It loses pixels at its edge, and what
+    // stays of it is darker; the high side is not darker
+    const count = (bb: typeof b, low: boolean): number => {
+      let n = 0;
+      for (let y = 0; y < bb.h; y++) for (let x = 0; x < bb.w; x++) if (bb.data[(y * bb.w + x) * 4 + 3] >= 250 && y >= bb.oy === low) n++;
+      return n;
+    };
+    const ratio = (low: boolean): number => {
+      let l0 = 0;
+      let l1 = 0;
+      for (let y = 0; y < b.h; y++)
+        for (let x = 0; x < b.w; x++) {
+          const o = (y * b.w + x) * 4;
+          // the low half below the origin, the high side well above it (the hull's middle line lies a little above)
+          if (b.data[o + 3] < 250 || h.data[o + 3] < 250 || (low ? y < b.oy : y >= b.oy - 4)) continue;
+          l0 += b.data[o] * 0.3 + b.data[o + 1] * 0.59 + b.data[o + 2] * 0.11;
+          l1 += h.data[o] * 0.3 + h.data[o + 1] * 0.59 + h.data[o + 2] * 0.11;
+        }
+      return l1 / Math.max(1, l0);
+    };
+    expect(count(h, true)).toBeLessThan(count(b, true));
+    expect(ratio(true)).toBeLessThan(0.85);
+    expect(ratio(false)).toBeGreaterThanOrEqual(1);
   });
 
   it('takes a ship under from one end: afloat at 0, see-through under the surface, gone at the last step', () => {

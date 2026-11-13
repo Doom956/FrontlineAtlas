@@ -5,8 +5,10 @@
 //   - a tank's hull and its turret on their own, burnt black in steps (charOf: patchy at first, then all of it);
 //   - a ship listing and going under (sinkOf): the part under the water dark and see-through, deeper parts gone, a
 //     ragged line of foam where the sea meets the hull.
-// Their own atlas, so a big battle's deaths never push the units' bakes out, and a small bake budget per frame; a
-// pose that cannot be baked this frame borrows the nearest one already baked (a neighbouring heading or step).
+// Their own atlas, so a big battle's deaths never push the units' bakes out, and a small bake budget per frame (about
+// 2 ms); a death warms the poses it is about to need (warmWreck) and a pose that cannot be baked this frame borrows the
+// nearest one already baked (a neighbouring heading or an earlier step; deaths.ts draws the live unit when there is
+// none at all).
 import { canBake, SpriteAtlas, type AtlasEntry } from '../shared/atlas';
 import { hex, type RGB } from '../shared/colour';
 import { SPRITE_KEYS, unitCategoryOf, type SpriteKey } from '../shared/keys';
@@ -51,14 +53,19 @@ function ownerIndex(o: readonly number[]): number {
   const k = ((o[0] & 255) << 16) | ((o[1] & 255) << 8) | (o[2] & 255);
   let i = owners.get(k);
   if (i === undefined) {
-    if (owners.size >= 250) owners.clear();
+    if (owners.size >= 250) {
+      // the colours' numbers start over: every bake keyed by the old ones goes too, so none comes back in the wrong colour
+      owners.clear();
+      atlas.clear();
+      raws.clear();
+    }
     owners.set(k, (i = owners.size));
   }
   return i;
 }
 
-/** Bake time per 16 ms of wall clock (ms): a death's poses bake over a few frames. */
-const BAKE_MS = 5;
+/** Bake time per 16 ms of wall clock (ms): a death's poses bake over a few frames, never more than an eighth of one. */
+const BAKE_MS = 2;
 let bakeWindow = -1;
 let bakeSpent = 0;
 function bakeAllowed(): boolean {
@@ -104,13 +111,18 @@ function bake(p: WreckPose, facing: number, n: number, res: number, char: number
   let raw = raws.get(rk);
   if (!raw) {
     const model = turret ? um.turret!.model : um.model;
-    const roll = turret ? 0 : rollOf(p.roll);
-    raw = rasterize(model, res, facing, { facings: n, owner: p.owner, roll, list: roll !== 0 && unitCategoryOf(p.key) === 'ships' });
+    const ship = unitCategoryOf(p.key) === 'ships';
+    // a ship lists further than a plane banks at the same level, so its lean shows at a glance (the deck and the
+    // funnels shifted toward the low side)
+    const roll = turret ? 0 : rollOf(p.roll) * (ship ? 1.45 : 1);
+    raw = rasterize(model, res, facing, { facings: n, owner: p.owner, roll, list: roll !== 0 && ship });
     if (raws.size >= RAW_KEEP) raws.delete(raws.keys().next().value as number);
     raws.set(rk, raw);
   }
   if (p.layer === 'shadow' || p.layer === 'turretShadow') return shadowOf(raw);
   let b = raw;
+  // a listing ship: its low side darker and narrower (the hull turned away from the light, under the water's edge)
+  if (!turret && p.roll !== 0 && unitCategoryOf(p.key) === 'ships') b = heelOf(b, facing * ((Math.PI * 2) / n), res, Math.sign(p.roll), Math.abs(Math.round(p.roll)));
   if (char > 0) b = charOf(b, char);
   if (sink > 0) b = sinkOf(b, sink, facing * ((Math.PI * 2) / n), res, p.sinkDir, Math.sign(p.roll));
   return b;
@@ -127,9 +139,12 @@ function entryAt(p: WreckPose, facing: number, n: number, res: number, char: num
   return e;
 }
 
+/** The neighbouring headings a pose borrows when its own is not baked yet. */
+const NEAR_FACINGS = [1, -1, 2, -2] as const;
+
 /**
- * The baked picture of a pose, or the nearest one already baked (a neighbouring heading, the step before) when this
- * one cannot be baked this frame; null when there is none (no canvas, nothing baked yet).
+ * The baked picture of a pose, or the nearest one already baked (a neighbouring heading, then the steps before it)
+ * when this one cannot be baked this frame; null when there is none (no canvas, nothing baked yet).
  */
 export function wreckEntry(p: WreckPose): AtlasEntry | null {
   const res = quarter(p.res);
@@ -139,12 +154,28 @@ export function wreckEntry(p: WreckPose): AtlasEntry | null {
   const sink = Math.max(0, Math.min(SINK_STEPS, Math.round(p.sink)));
   const e = entryAt(p, f, n, res, char, sink, true);
   if (e) return e;
-  for (const d of [1, -1, 2, -2]) {
-    const near = entryAt(p, (f + d + n) % n, n, res, char, sink, false);
+  for (let i = 0; i < NEAR_FACINGS.length; i++) {
+    const near = entryAt(p, (f + NEAR_FACINGS[i] + n) % n, n, res, char, sink, false);
     if (near) return near;
   }
-  if (sink > 0 || char > 0) return entryAt(p, f, n, res, Math.max(0, char - 1), Math.max(0, sink - 1), false);
+  // an earlier step of the same heading (less burnt, less far under)
+  for (let c = char, k = sink; c > 0 || k > 0; ) {
+    if (c > 0) c--;
+    if (k > 0) k--;
+    const back = entryAt(p, f, n, res, c, k, false);
+    if (back) return back;
+  }
   return null;
+}
+
+/**
+ * Bakes a pose a death is about to need (the next step of its burning or sinking, its next heading as it turns),
+ * if this frame's budget allows, so it is ready when it is drawn instead of borrowed. Draws nothing.
+ */
+export function warmWreck(p: WreckPose): void {
+  const res = quarter(p.res);
+  const n = facingsOf(p.key, res, p.layer);
+  entryAt(p, facingIndex(p.angle, n), n, res, Math.max(0, Math.min(CHAR_STEPS, Math.round(p.char))), Math.max(0, Math.min(SINK_STEPS, Math.round(p.sink))), true);
 }
 
 /** Draws a pose with its origin at (x, y) CSS px on the art grid `g`, at `alpha`. False when nothing could be drawn. */
@@ -191,24 +222,42 @@ function vnoise(x: number, y: number, s: number): number {
   return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
 }
 
+/** Rust and burnt paint at the edges of a burnt hull: a few warm pixels so the outline still reads as a vehicle. */
+const RUST: RGB[] = ['#4a2e1d', '#5e3b23'].map(hex);
+
 /**
- * A baked unit burnt `level` of CHAR_STEPS (pure): patches of it burnt black (each pixel to the burnt tone of its own
- * lightness, so the shading stays), more of them each step, all of it at the last; what is not burnt yet a little
- * darker. Its rim and shadow are kept.
+ * A baked unit burnt `level` of CHAR_STEPS (pure): patches of it burnt black, more of them each step, all of it at the
+ * last; what is not burnt yet a little darker. Each burnt pixel takes the burnt tone of its place in the unit's own
+ * range of lightness (not of its lightness as such), so a hull painted in one narrow band of tones (a light tank, a
+ * tank division) keeps its tracks, deck lines and plates apart instead of turning into one flat slab; its outline stays
+ * a shade lighter than the plates inside it, with a few rusty pixels along it. Its rim and shadow are kept.
  */
 export function charOf(b: Baked, level: number): Baked {
   const k = Math.max(0, Math.min(1, level / CHAR_STEPS));
-  const data = new Uint8ClampedArray(b.data);
+  const src = b.data;
+  const data = new Uint8ClampedArray(src);
+  const lumAt = (o: number): number => (0.299 * src[o] + 0.587 * src[o + 1] + 0.114 * src[o + 2]) / 255;
+  let lo = 1;
+  let hi = 0;
+  for (let o = 0; o < src.length; o += 4) {
+    if (src[o + 3] < 250) continue;
+    const l = lumAt(o);
+    if (l < lo) lo = l;
+    if (l > hi) hi = l;
+  }
+  const span = Math.max(0.08, hi - lo);
+  const solid = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < b.w && y < b.h && src[(y * b.w + x) * 4 + 3] >= 250;
   for (let y = 0; y < b.h; y++) {
     for (let x = 0; x < b.w; x++) {
       const o = (y * b.w + x) * 4;
-      if (data[o + 3] < 250) continue;
-      const l = (0.299 * data[o] + 0.587 * data[o + 1] + 0.114 * data[o + 2]) / 255;
-      const t = l < 0.17 ? 0 : l < 0.3 ? 1 : l < 0.45 ? 2 : 3;
+      if (src[o + 3] < 250) continue;
+      const rel = (lumAt(o) - lo) / span;
+      const edge = !solid(x - 1, y) || !solid(x + 1, y) || !solid(x, y - 1) || !solid(x, y + 1);
+      const t = Math.min(3, (rel < 0.3 ? 0 : rel < 0.55 ? 1 : rel < 0.8 ? 2 : 3) + (edge ? 1 : 0));
       const n = vnoise(x * 0.32, y * 0.32, 5.1) * 0.75 + hash2(x, y, 2.3) * 0.25;
       const burnt = k >= 1 || n < k * 1.05 - 0.04;
-      const c = burnt ? CHAR[t] : null;
-      if (c) {
+      if (burnt) {
+        const c = edge && hash2(x, y, 6.1) < 0.16 ? RUST[(x + y) & 1] : CHAR[t];
         data[o] = c[0];
         data[o + 1] = c[1];
         data[o + 2] = c[2];
@@ -218,6 +267,49 @@ export function charOf(b: Baked, level: number): Baked {
         data[o + 1] *= d;
         data[o + 2] *= d;
       }
+    }
+  }
+  return { w: b.w, h: b.h, ox: b.ox, oy: b.oy, data };
+}
+
+/**
+ * A baked ship listing to `side` (1 its right side down, -1 its left) at roll level `level` 1..3 (pure): its low side
+ * shaded darker toward its edge, which loses a pixel or two (the hull turned away and narrower there), and its high
+ * side's edge a little lighter, so a first-time viewer sees it lean before it goes. `th` its baked heading.
+ */
+export function heelOf(b: Baked, th: number, res: number, side: number, level: number): Baked {
+  const data = new Uint8ClampedArray(b.data);
+  const c = Math.cos(th);
+  const s = Math.sin(th);
+  const across = (x: number, y: number): number => (-(x + 0.5 - b.ox) * s + ((y + 0.5 - b.oy) / FORE) * c) / res;
+  let v0 = Infinity;
+  let v1 = -Infinity;
+  for (let y = 0; y < b.h; y++)
+    for (let x = 0; x < b.w; x++) {
+      if (data[(y * b.w + x) * 4 + 3] < 250) continue;
+      const v = across(x, y);
+      if (v < v0) v0 = v;
+      if (v > v1) v1 = v;
+    }
+  if (!(v1 > v0)) return { w: b.w, h: b.h, ox: b.ox, oy: b.oy, data };
+  const half = (v1 - v0) / 2;
+  const mid = (v0 + v1) / 2;
+  const lk = Math.max(1, Math.min(3, level)) / 3;
+  // the outermost pixels of the low side that go (one at a slight list, two at a heavy one), as a share of half the beam
+  const trim = Math.min(0.3, (level >= 3 ? 1.6 : level >= 2 ? 1.1 : 0.5) / Math.max(1, half * res));
+  for (let y = 0; y < b.h; y++) {
+    for (let x = 0; x < b.w; x++) {
+      const o = (y * b.w + x) * 4;
+      if (data[o + 3] === 0) continue;
+      const low = ((across(x, y) - mid) / half) * side;
+      if (low > 1 - trim) {
+        data[o + 3] = 0;
+        continue;
+      }
+      const f = low > 0 ? 1 - (0.14 + 0.32 * low) * (0.5 + 0.5 * lk) : low < -0.55 ? 1 + 0.16 * lk * ((-low - 0.55) / 0.45) : 1;
+      data[o] = data[o] * f;
+      data[o + 1] = data[o + 1] * f;
+      data[o + 2] = data[o + 2] * f;
     }
   }
   return { w: b.w, h: b.h, ox: b.ox, oy: b.oy, data };
@@ -258,6 +350,8 @@ export function sinkOf(b: Baked, level: number, th: number, res: number, dir: nu
   const span = u1 - u0;
   const spanV = Math.max(1, v1 - v0);
   const p = sinkReach(level);
+  // one art pixel along the hull, as a share of its length (the waterline is 1 to 2 of them wide)
+  const px1 = 1 / Math.max(1, span * res);
   for (let y = 0; y < b.h; y++) {
     for (let x = 0; x < b.w; x++) {
       const o = (y * b.w + x) * 4;
@@ -266,11 +360,16 @@ export function sinkOf(b: Baked, level: number, th: number, res: number, dir: nu
       const v = across(x, y);
       // how far up the hull the water has to climb to reach this pixel: from the sinking end, the low side first
       const e = (dir < 0 ? (a - u0) / span : (u1 - a) / span) + (side ? -side * ((v - (v0 + v1) / 2) / spanV) * 0.18 : 0);
-      const d = p - e + (hash2(x, y, 9.7) - 0.5) * 0.03;
-      if (d < -0.035) continue;
+      // the sea's edge wanders across the deck (never a ruler-straight wipe) and bunches up where it meets a side
+      const wav = (vnoise((v - v0) * res * 0.22 + 2.7, a * 0.05, 4.4) - 0.5) * 7 * px1;
+      const side01 = Math.min(v - v0, v1 - v) / spanV;
+      const bunch = side01 < 0.2 ? 1 - side01 / 0.2 : 0;
+      const d = p - e + wav + (hash2(x, y, 9.7) - 0.5) * 1.2 * px1;
+      const band = px1 * (1.1 + 1.6 * bunch + 0.6 * hash2(x, y, 1.9));
+      if (d < -band) continue;
       if (d < 0) {
-        // the waterline: foam breaking on the hull, ragged
-        if (data[o + 3] >= 250 && hash2(x, y, 3.3) < 0.7) {
+        // the waterline: foam breaking on the hull, 1 or 2 pixels with gaps, thicker at the sides
+        if (data[o + 3] >= 250 && hash2(x, y, 3.3) < 0.5 + 0.35 * bunch) {
           data[o] = FOAM[0];
           data[o + 1] = FOAM[1];
           data[o + 2] = FOAM[2];

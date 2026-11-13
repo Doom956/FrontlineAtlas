@@ -418,14 +418,17 @@ export function scorchBitmap(r: number, variant: number): RGBABitmap {
   return { w: W, h: Hh, ox: half, oy: hy, data };
 }
 
-/** Oil on the sea, darkest first, and its dull sheen (a muted olive and a muted violet grey, never bright). */
-const OIL: RGB[] = ['#090c0f', '#10151a', '#182026', '#20292f'].map(hex);
-const SHEEN: RGB[] = ['#3b4135', '#3f3b47'].map(hex);
+/**
+ * Oil on the sea, darkest first: near black with a little brown in it, laid on see-through so it reads as the sea a
+ * shade darker, never a grey patch; and its sheen (a few faint flecks a step lighter, a muted olive and a dull violet).
+ */
+const OIL: RGB[] = ['#0a0908', '#0d0b0a', '#110e0c', '#15110e'].map(hex);
+const SHEEN: RGB[] = ['#262620', '#27242b'].map(hex);
 
 /**
- * A slick of oil on the sea: flat (the 3/4 view), its edge in big uneven lobes thinning out in dithered steps, near
- * black with darker and lighter swirls inside and a dull sheen in a few streaks; `age` 0..3 thins it, opening holes
- * of open water in it. Radius `r` cells (1..48).
+ * A slick of oil on the sea: flat (the 3/4 view), its edge in big uneven lobes, ragged where it thins out (loose
+ * pixels, never a checkerboard), near black and slightly brown with darker and lighter swirls inside and a few faint
+ * flecks of sheen; `age` 0..3 thins it, opening holes of open water in it. Radius `r` cells (1..48).
  */
 export function oilBitmap(r: number, variant: number, age: number): RGBABitmap {
   const R = Math.max(1, Math.min(48, Math.round(r)));
@@ -447,23 +450,22 @@ export function oilBitmap(r: number, variant: number, age: number): RGBABitmap {
       const e = R * (0.86 + 0.15 * Math.sin(3 * a + ph) + 0.1 * Math.sin(5 * a + ph * 1.9) + 0.06 * Math.sin(8 * a + ph * 2.7));
       const d = Math.hypot(dx, dy) / e;
       if (d >= 1) continue;
-      const dith = BAYER[(x & 1) + ((y & 1) << 1)];
       const n = vnoise(x * fs + variant * 2.1, y * fs * 1.6, s);
-      // holes of open water as it thins, and its edge breaking into dither
+      // holes of open water as it thins
       if (n < A * 0.12 - 0.05 + d * 0.15 * A) continue;
-      if (d + dith * 0.25 > 0.82 + 0.1 * n) {
-        if (((x + y) & 1) === 0) continue;
-      }
+      // the edge: ragged, loose pixels thinning out (by noise, not a regular dither)
+      const edge = (d - 0.72 - 0.12 * n) / 0.28;
+      if (edge > 0 && hash2(x, y, s + 2) < 0.25 + 0.75 * edge) continue;
       const swirl = vnoise(x * fs * 0.6 + 7.3, y * fs, s + 3);
-      const t = Math.max(0, Math.min(3, Math.floor(swirl * 3.4 + dith * 0.7 + d * 0.6)));
-      // the sheen: a few thin streaks where a ridge of the swirl noise runs
+      const t = Math.max(0, Math.min(3, Math.floor(swirl * 3.4 + (hash2(x, y, s + 4) - 0.5) * 0.6 + d * 0.6)));
+      // the sheen: a few faint flecks where a ridge of the swirl noise runs
       const ridge = 1 - Math.abs(2 * vnoise(x * fs * 0.9 + 1.7, y * fs * 2.2, s + 7) - 1);
-      const c = ridge > 0.965 && d < 0.8 && hash2(x, y, s) < 0.6 ? SHEEN[(x + variant) & 1] : OIL[t];
+      const c = ridge > 0.975 && d < 0.75 && hash2(x, y, s) < 0.35 ? SHEEN[(x + variant) & 1] : OIL[t];
       const o = (y * W + x) * 4;
       data[o] = c[0];
       data[o + 1] = c[1];
       data[o + 2] = c[2];
-      data[o + 3] = d > 0.8 ? 150 : 215 - A * 25;
+      data[o + 3] = d > 0.8 ? 120 : 175 - A * 22;
     }
   }
   return { w: W, h: Hh, ox: half, oy: hy, data };

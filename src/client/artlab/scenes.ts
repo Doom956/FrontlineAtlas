@@ -487,12 +487,12 @@ interface DeathCell {
 
 /** Each death once: planes over land and the sea, a rocket and an atom bomb, three tanks, three ships. */
 const DEATH_CELLS: DeathCell[] = [
-  { name: 'Fighter shot down', kind: 'plane', key: 'fighter', ground: 'land', angle: 0.35 },
-  { name: 'Bomber shot down', kind: 'plane', key: 'bomber', ground: 'land', angle: -0.25 },
-  { name: 'Transport plane shot down, sea', kind: 'plane', key: 'transportPlane', ground: 'sea', angle: 0.2 },
-  { name: 'Recon plane shot down, sea', kind: 'plane', key: 'reconPlane', ground: 'sea', angle: -0.35 },
+  { name: 'Fighter shot down', kind: 'plane', key: 'fighter', ground: 'land', angle: 0.6 },
+  { name: 'Bomber shot down', kind: 'plane', key: 'bomber', ground: 'land', angle: 0.45 },
+  { name: 'Cargo plane down, sea', kind: 'plane', key: 'transportPlane', ground: 'sea', angle: 0.55 },
+  { name: 'Recon plane down, sea', kind: 'plane', key: 'reconPlane', ground: 'sea', angle: 0.7 },
   { name: 'Rocket shot down', kind: 'missile', key: 'rocket', ground: 'land', angle: -0.5 },
-  { name: 'Atom bomb shot down, sea', kind: 'missile', key: 'atomBomb', ground: 'sea', angle: -0.45 },
+  { name: 'Atom bomb down, sea', kind: 'missile', key: 'atomBomb', ground: 'sea', angle: -0.45 },
   { name: 'Tank division destroyed', kind: 'tank', key: 'tankDivision', ground: 'land', angle: 0.4 },
   { name: 'Heavy tank destroyed', kind: 'tank', key: 'heavyTank', ground: 'land', angle: -0.3 },
   { name: 'Light tank destroyed', kind: 'tank', key: 'lightTank', ground: 'land', angle: Math.PI - 0.3 },
@@ -505,9 +505,13 @@ const DEATH_COLS = 3;
 const deathRow = (z: number): number => 70 + 50 * px(z);
 const deathArgs: DeathDraw = { kind: 'plane', key: 'bomber', mods: 0, owner: OWNER, x: 0, y: 0, angle: 0, water: false, t: 0, ageMs: 0, durMs: 1, zoom: 1, scale: 1, seed: 0, reduced: false, dpr: 1 };
 
-/** Where in its cell a death starts (0..1 of the cell): planes high and left (they fall down and on), the rest lower. */
+/**
+ * Where in its cell a death happens (0..1 of the cell): for planes the middle of their glide (hit up and left of the
+ * middle, heading down and right, so the crash lands in the lower middle and the whole plane stays in the cell), the
+ * rest lower.
+ */
 function deathSpot(c: DeathCell): [number, number] {
-  if (c.kind === 'plane') return [0.4, 0.42];
+  if (c.kind === 'plane') return [0.5, 0.42];
   if (c.kind === 'missile') return [0.42, 0.4];
   if (c.kind === 'tank') return [0.5, 0.64];
   return [0.5, 0.62];
