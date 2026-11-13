@@ -8,11 +8,14 @@
 // No two look stamped: ten shapes, each pit a little elliptical and turned its own way (the light baked in stays from
 // the top left), each crater drawn a little bigger or smaller by its seed; the rim is a broken ring of lumps of uneven
 // size and tone, the clods are irregular chunks, the soot streaks feathered.
-// A fresh crater still glows red in the bottom of the pit and, with craterSmoke, lets thin smoke wisps rise and drift.
+// A fresh crater burns (drawFire): small fires in the pit, on the rim and on clods thrown out, flames licking up and
+// leaning with the wind, embers and smoke, dying down over the first part of its life (longer and bigger after a bigger
+// blast), then a little grey smoke from the pit before only the scorched crater is left to fade.
 import type { MotionParams } from '../motion';
 import { SpriteAtlas, type AtlasEntry } from '../shared/atlas';
 import { rnd } from '../shared/noise';
 import type { CraterArt, CraterDraw } from '../types';
+import { fireLight, Flame, flame } from './fire';
 import { LIGHT_X, LIGHT_Y, TAU } from './paint';
 import { clamp01, glow, Puff, puff, ramp, WIND_X, WIND_Y } from './puffs';
 
@@ -254,6 +257,187 @@ function blit(ctx: CanvasRenderingContext2D, e: AtlasEntry, x: number, y: number
   ctx.drawImage(e.page, e.sx, e.sy, e.w, e.h, x - e.ox * k, y - e.oy * k, e.w * k, e.h * k);
 }
 
+// ------------------------------------------------------------------------------------------------- fires
+
+/** The most fire spots a crater has (an atom bomb's), and what is kept of each spot this frame. */
+const MAX_SPOTS = 14;
+const SX = new Float64Array(MAX_SPOTS);
+const SY = new Float64Array(MAX_SPOTS);
+/** size (0..1.2), flame intensity, ember glow, smoke (0..1 each) */
+const SB = new Float64Array(MAX_SPOTS);
+const SI = new Float64Array(MAX_SPOTS);
+const SE = new Float64Array(MAX_SPOTS);
+const SS = new Float64Array(MAX_SPOTS);
+const ORDER = new Int8Array(MAX_SPOTS);
+
+/**
+ * How big a blast left the crater, from its radius in tiles: 0 a shell (0.5), about 0.2 a bomb (0.9), about 0.45 a
+ * missile (2), 0.7 to 1 an atom bomb (4 to 11), on a log scale.
+ */
+const sizeClass = (rt: number): number => clamp01(Math.log(Math.max(0.5, rt) / 0.5) / Math.log(22));
+
+/**
+ * The fires' clock (ms). A crater is given only its age over its life (q), and lives differ: the art lab gives every
+ * crater 9 s (at craterLife 1), the game 30 s (a shell's) to 3 minutes (an atom bomb's). The flames run on a clock
+ * between the two (16 s a life for a shell's crater up to 40 s for an atom bomb's), so they neither race in the lab
+ * nor crawl in the game; a fine shimmer laid over them changes every frame either way.
+ */
+const fireClock = (q: number, k: number, m: MotionParams): number => q * m.craterLife * (16000 + 24000 * k);
+
+/** Smooth 0..1 (smoothstep). */
+const smooth = (t: number): number => {
+  const c = clamp01(t);
+  return c * c * (3 - 2 * c);
+};
+
+/**
+ * Fires burning in and round a fresh crater: a few spots of fire (in the pit, on the rim, on clods thrown out), each a
+ * glow on the ground, two or three flame tongues licking up and leaning with the wind, embers, and smoke rising off
+ * them, dark while they burn hot and grey as they die. They catch at once, burn, shrink and cool to embers, the embers
+ * go dull, and a little grey smoke goes on rising from the pit a while after. A shell leaves a small brief fire; a
+ * bomb, a missile and an atom bomb more spots, bigger flames and longer fires. MotionParams: fireLinger sets the size
+ * and how long they burn (subtle small and short, cinematic big and long), craterSmoke the smoke; reduced motion
+ * keeps them still.
+ */
+function drawFire(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams, small: boolean): void {
+  const q = d.q;
+  const k = sizeClass(d.radiusPx / Math.max(0.01, d.zoom));
+  const fd = 0.6 + 0.8 * m.fireLinger;
+  const burn = (0.15 + 0.35 * k) * fd;
+  // past every ember and every wisp of smoke: nothing to draw
+  if (q >= burn * 3) return;
+  const fs = 0.65 + 0.5 * m.fireLinger;
+  const smokeK = 0.5 + 0.5 * m.craterSmoke;
+  const R = d.radiusPx;
+  /** a flame's height (CSS px): about half a tile for a shell's, a tile for an atom bomb's, more on a big crater */
+  const fh = (d.zoom * (0.8 + 0.6 * k) + R * 0.16 * k * k) * fs;
+  const ign = clamp01(q / 0.008);
+  const sd = d.seed * 977 + 13;
+  const still = m.reduced;
+  const tc = still ? 0 : fireClock(q, k, m) / 1000;
+  // the fine shimmer: a new value every frame (q moves every frame), none when still
+  const fr = still ? 0 : Math.floor(q * 60000);
+  const prevA = ctx.globalAlpha;
+  if (small) {
+    // far out: the fire is a warm glow and a bright point
+    const I = ign * (1 - smooth((q - burn * 0.3) / (burn * 0.7)));
+    if (I <= 0.02) return;
+    const flick = 1 + (still ? 0 : 0.18 * Math.sin(TAU * (tc * 1.7 + d.seed)) + 0.12 * (rnd(fr, 3) - 0.5));
+    fireLight(ctx, d.x, d.y - fh * 0.15, Math.max(2, fh * 1.6), 0.8 * I * flick);
+    if (fh * d.dpr >= 2.5) flame(ctx, Flame.TONGUE, I > 0.45, Math.floor(sd), d.x, d.y + fh * 0.1, -Math.PI / 2 + 0.3, fh * I * flick, fh * 0.65 * I, Math.min(1, I * 2));
+    else {
+      ctx.globalAlpha = prevA * Math.min(1, I * 1.5);
+      ctx.fillStyle = I > 0.5 ? '#ffd98a' : '#f6a53e';
+      const p = Math.max(1, Math.round(fh * 0.6 * d.dpr)) / d.dpr;
+      ctx.fillRect(d.x - p / 2, d.y - p, p, p);
+      ctx.globalAlpha = prevA;
+    }
+    return;
+  }
+  // the spots: where, how big, how fierce now
+  const n = Math.min(MAX_SPOTS, Math.round(1.6 + 12 * Math.pow(k, 1.15)));
+  let ic = 0;
+  for (let i = 0; i < n; i++) {
+    const s = sd + i * 17;
+    // the first in the pit, then about a third in the pit, a third on the rim, a third on clods thrown out
+    const zone = i === 0 ? 0 : rnd(s, 1);
+    const a = rnd(s, 2) * TAU;
+    const dist = zone < 0.3 ? 0.12 + 0.45 * rnd(s, 3) : zone < 0.68 ? 0.82 + 0.3 * rnd(s, 3) : 1.25 + 0.55 * rnd(s, 3);
+    SX[i] = d.x + Math.cos(a) * dist * R;
+    SY[i] = d.y + Math.sin(a) * dist * R * 0.9;
+    SB[i] = (zone < 0.3 ? 1 : zone < 0.68 ? 0.85 : 0.6) * (0.75 + 0.45 * rnd(s, 4));
+    // each catches a moment apart and burns out at its own time (thrown-out clods first)
+    const q0 = rnd(s, 5) * 0.01;
+    const qEnd = burn * (zone < 0.68 ? 0.6 + 0.4 * rnd(s, 6) : 0.35 + 0.3 * rnd(s, 6));
+    const on = clamp01((q - q0) / 0.008);
+    SI[i] = on * (1 - smooth((q - qEnd * 0.4) / (qEnd * 0.6)));
+    SE[i] = on * (1 - smooth((q - qEnd * 0.7) / (qEnd * 1.1)));
+    // smoke goes on longest, from the pit longest of all
+    SS[i] = on * (1 - smooth((q - qEnd * 0.3) / (qEnd * (i === 0 ? 2.7 : 1.9))));
+    ic = Math.max(ic, SE[i]);
+    // flames drawn top to bottom, so a nearer one stands in front
+    let j = i;
+    while (j > 0 && SY[ORDER[j - 1]] > SY[i]) {
+      ORDER[j] = ORDER[j - 1];
+      j--;
+    }
+    ORDER[j] = i;
+  }
+  // the pit still glowing red, and on a big crater the whole bowl lit by its fires
+  if (ic > 0.02) fireLight(ctx, d.x, d.y, R * (0.8 + 0.3 * k), (0.3 + 0.12 * k) * ic * ign);
+  for (let i = 0; i < n; i++) {
+    const I = SI[i];
+    const E = SE[i];
+    if (I <= 0.01 && E <= 0.01) continue;
+    const flick = 1 + (still ? 0 : 0.2 * Math.sin(TAU * (tc * 1.3 + i * 0.37)) + 0.1 * (rnd(fr, i) - 0.5));
+    fireLight(ctx, SX[i], SY[i] - fh * 0.2, fh * 1.5 * SB[i], (0.6 * I + 0.25 * E) * flick);
+  }
+  // embers: specks glowing in the ashes, twinkling, dull red as they die
+  const ep = Math.max(1, Math.round(Math.max(0.6, fh * 0.11) * d.dpr)) / d.dpr;
+  for (let i = 0; i < n; i++) {
+    const E = SE[i];
+    if (E <= 0.02) continue;
+    const s = sd + i * 17;
+    for (let e = 0; e < 4; e++) {
+      const tw = still ? 0.7 : 0.45 + 0.55 * rnd(Math.floor(tc * 6 + e * 0.3), s + e);
+      ctx.globalAlpha = prevA * E * tw;
+      ctx.fillStyle = E > 0.6 && e % 2 === 0 ? '#ffb46b' : E > 0.3 ? '#dc7426' : '#9c3a16';
+      const ea = rnd(s, e + 20) * TAU;
+      const er = fh * 0.55 * SB[i] * Math.sqrt(rnd(s, e + 24));
+      ctx.fillRect(SX[i] + Math.cos(ea) * er - ep / 2, SY[i] + Math.sin(ea) * er * 0.8 - ep / 2, ep, ep);
+    }
+  }
+  ctx.globalAlpha = prevA;
+  // the flames: two or three tongues a spot grown together into one fire, leaning with the wind, licking up and down
+  for (let o = 0; o < n; o++) {
+    const i = ORDER[o];
+    const I = SI[i];
+    if (I <= 0.01) continue;
+    const s = sd + i * 17;
+    const big = SB[i];
+    const nt = fh * big * d.dpr > 9 ? 3 : 2;
+    const hotA = clamp01((I - 0.35) / 0.45);
+    const grow = Math.pow(I, 0.6);
+    // the bed of the fire: a hot glow the tongues rise out of
+    puff(ctx, Puff.FIRE, i, SX[i], SY[i] + fh * 0.05 * big, fh * 0.32 * big * grow, 0.75 * Math.min(1, I * 2));
+    for (let t = nt - 1; t >= 0; t--) {
+      const ph = rnd(s, t + 30);
+      const f1 = 1.1 + 0.6 * rnd(s, t + 33);
+      const flick = still ? 1 : 1 + 0.17 * Math.sin(TAU * (tc * f1 + ph)) + 0.09 * Math.sin(TAU * (tc * f1 * 2.3 + ph * 3)) + 0.1 * (rnd(fr, i * 3 + t) - 0.5);
+      const h = fh * big * (t === 0 ? 1 : t === 1 ? 0.7 : 0.6) * grow * flick;
+      const w = fh * big * (t === 0 ? 0.68 : 0.58) * grow;
+      const side = t === 0 ? 0 : t === 1 ? -1 : 1;
+      const ox = side * 0.2 * fh * big;
+      const lean = -Math.PI / 2 + 0.26 + (still ? 0 : 0.09 * Math.sin(TAU * (tc * 0.6 + ph))) + side * 0.16;
+      const v = Math.floor(s) + t;
+      const x = SX[i] + ox;
+      const y = SY[i] + fh * (0.12 + 0.06 * Math.abs(side)) * big;
+      if (hotA < 0.98) flame(ctx, Flame.TONGUE, false, v, x, y, lean, h, w, Math.min(1, I * 2.5));
+      if (hotA > 0.02) flame(ctx, Flame.TONGUE, true, v, x, y, lean, h, w, hotA);
+    }
+  }
+  // smoke off the fires: a column of puffs, dark while they burn hot, grey as they die, rising, swelling and drifting
+  // off with the wind
+  if (smokeK > 0) {
+    for (let i = 0; i < n; i++) {
+      const S = SS[i] * smokeK;
+      if (S <= 0.02) continue;
+      const s = sd + i * 17;
+      const big = SB[i];
+      const np = fh * d.dpr > 6 ? 3 : 1;
+      for (let j = 0; j < np; j++) {
+        const ph = still ? (j / np + rnd(s, 40)) % 1 : (tc / 2.6 + j / np + rnd(s, 40)) % 1;
+        const rise = fh * big * (0.7 + 3.6 * ph);
+        const drift = fh * 2.8 * ph * ph;
+        const r = fh * (0.4 + 1.3 * ph) * (0.7 + 0.5 * big);
+        const kind = SI[i] > 0.3 ? (ph < 0.45 ? Puff.DARK : Puff.GREY) : Puff.GREY;
+        puff(ctx, kind, i * 3 + j, SX[i] + WIND_X * drift, SY[i] - rise + WIND_Y * drift, r, S * ramp(ph, 0, 0.12) * Math.pow(1 - ph, 1.2));
+      }
+    }
+  }
+  ctx.globalAlpha = prevA;
+}
+
 function draw(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams): void {
   const q = d.q;
   if (q < 0 || q >= 1 || d.radiusPx <= 0.3) return;
@@ -269,43 +453,30 @@ function draw(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams): vo
   // the soot washes out first, the hole and its rim last
   const a0 = 1 - ramp(q, 0.3, 0.85);
   const a1 = 1 - ramp(q, 0.55, 1);
-  if (d.radiusPx * dpr < SMALL_R) {
+  const small = d.radiusPx * dpr < SMALL_R;
+  if (small) {
     // far out: soot and pit as one picture, fading between the two
     const both = sprite(2, v, b, r);
     if (both) {
       ctx.globalAlpha = prevA * (a0 + a1) * 0.5;
       blit(ctx, both, d.x, d.y, k);
     }
-    ctx.globalAlpha = prevA;
-    ctx.imageSmoothingEnabled = prevS;
-    return;
-  }
-  const scorch = sprite(0, v, b, r);
-  const pit = sprite(1, v, b, r);
-  if (scorch && a0 > 0) {
-    ctx.globalAlpha = prevA * a0;
-    blit(ctx, scorch, d.x, d.y, k);
-  }
-  if (pit && a1 > 0) {
-    ctx.globalAlpha = prevA * a1 * (0.85 + 0.15 * (1 - q));
-    blit(ctx, pit, d.x, d.y, k);
-  }
-  ctx.globalAlpha = prevA;
-  ctx.imageSmoothingEnabled = prevS;
-  // fresh: embers glowing in the bottom of the pit
-  if (q < 0.1) glow(ctx, d.x, d.y, d.radiusPx * 1.1, 0.45 * (1 - q / 0.1));
-  // thin smoke wisps rising from a fresh crater and leaning with the wind (craterSmoke)
-  const smoke = m.craterSmoke * (1 - ramp(q, 0.04, 0.4));
-  if (smoke > 0.01 && !m.reduced) {
-    const tMs = q * 9000 * m.craterLife;
-    const R = Math.max(2, d.radiusPx);
-    for (let i = 0; i < 3; i++) {
-      const ph = (tMs / 1500 + i / 3 + d.seed) % 1;
-      const rise = R * 2.2 * ph;
-      const drift = R * 1.4 * ph * ph;
-      puff(ctx, i === 1 ? Puff.WHITE : Puff.GREY, i + v, d.x + WIND_X * drift, d.y - rise + WIND_Y * drift, R * (0.4 + ph * 0.9), 0.4 * smoke * clamp01(ph * 6) * (1 - ph));
+  } else {
+    const scorch = sprite(0, v, b, r);
+    const pit = sprite(1, v, b, r);
+    if (scorch && a0 > 0) {
+      ctx.globalAlpha = prevA * a0;
+      blit(ctx, scorch, d.x, d.y, k);
+    }
+    if (pit && a1 > 0) {
+      ctx.globalAlpha = prevA * a1 * (0.85 + 0.15 * (1 - q));
+      blit(ctx, pit, d.x, d.y, k);
     }
   }
+  ctx.globalAlpha = prevA;
+  drawFire(ctx, d, m, small);
+  ctx.globalAlpha = prevA;
+  ctx.imageSmoothingEnabled = prevS;
 }
 
 export const realisticCraters: CraterArt = { draw };
