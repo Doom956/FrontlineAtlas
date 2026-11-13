@@ -14,7 +14,8 @@ import { rampOf } from './palette';
 
 // Sprite letters: owner colour 1 deep, 2 dark, 3 base, 4 light; helmet H light, h base, j dark; gun metal G light,
 // g base, q dark; rubber and tracks r light, t dark, k deep; skin s, S shade; pack and webbing P light, p base, b dark;
-// the unknown figure m light, n base, o dark; the question mark Q; '.' empty. The outline is added round the sprite.
+// the unknown figure m light, n base, o dark; the question mark Q; '.' empty. The outline is added round the sprite,
+// and a dark nation's rim tone (5) by the baker.
 
 /** Normal size (a 16 px icon, an 18 px footprint): every sprite fits 16 x 16 inside its outline. */
 const SPRITES: Record<TroopIconKind, readonly string[]> = {

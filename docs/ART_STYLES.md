@@ -7,6 +7,13 @@ Categories: `ships`, `land`, `air`, `missiles`, `troopIcons`, `explosions`, `cra
 `cannonFire`, `paradrop`. Motion categories: `ships` (also the wakes), `land`, `air` (also the contrails and the
 paratroopers), `missiles`, `explosions`, `craters`, `cannonFire`; troop icons do not move.
 
+`troopIcons` (`TroopIconArt` in `art/types.ts`) draws one troop marker (infantry, armor, artillery, or an unknown mix)
+in a size + 2 px footprint. The refined and realistic markers are a symbol on an owner-colour plate. The detailed ones
+are bare mini units with no plate (`art/detailed/troopIcons.ts`): a rifleman, a tank, a towed field gun and a grey
+figure with a question mark, the nation colour on the uniform, hull and shield, a dark 1 px outline, and a lighter rim
+on a near-black nation. A style with bare markers sets `bare: true`; the shared troop pills (`render/troopIcons.ts`)
+then run their dark plate under the markers and set them side by side.
+
 `paradrop` (`ParadropArt` in `art/types.ts`) is the paratroopers: the parachutes coming down round the point a cargo
 plane dropped its troops on (owner colour, age, parachute count, zoom, seed; drawn at every zoom, far out too) and the
 small parachute mark next to a cargo plane in flight (mid and close zoom). The refined art is `art/refined/paradrop.ts`.
