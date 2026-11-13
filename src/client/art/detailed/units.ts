@@ -185,8 +185,9 @@ function drawAt(ctx: CanvasRenderingContext2D, u: UnitDraw, m: MotionParams, g: 
   const t = u.timeMs;
   const still = m.reduced;
   const air = cat === 'air';
-  // a plane banks into its turns; a badly hurt ship lists a little to one side (bank levels 2 and 4)
-  const bank = air ? bankLevel(u.turnRate, m) : cat === 'ships' ? 3 + listOf(u.damage, u.seed) : 3;
+  // a plane banks into its turns; a badly hurt ship lists a little to one side (bank levels 2 and 4), from near zoom
+  // in (at mid zoom the lean is under a pixel, and every listing ship would bake its headings again)
+  const bank = air ? bankLevel(u.turnRate, m) : cat === 'ships' && g.res >= 1.5 ? 3 + listOf(u.damage, u.seed) : 3;
   const roll = bankRoll(bank);
   const moving = u.moving || u.speed > 0;
   const tank = cat === 'land';
