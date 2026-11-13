@@ -207,10 +207,10 @@ export function buildingTip(state: GameState, me: Player, type: BuildingType): s
   const lv = maxLevel(type);
   const why = lockReason(state, me, type);
   return (
-    `${info.name}  [${info.hotkey}]  ${formatCount(c.gold)} gold${c.iron ? ` + ${formatCount(c.iron)} iron` : ''}\n${tx.description}` +
+    `${info.name}  ${formatCount(c.gold)} gold${c.iron ? ` + ${formatCount(c.iron)} iron` : ''}\n${tx.description}` +
     `\nBuilds in ${fmtSeconds(buildSeconds(state, info.buildTime))}` +
     (owned ? `. You have ${owned}` : '') +
-    (lv > 1 ? `. Up to level ${lv}: x3 / x5 (or Shift) queues levels in one click` : '') +
+    (lv > 1 ? `. Up to level ${lv}: Levels x3 / x5 queue that many in one click` : '') +
     (why ? `\n${why}` : '')
   );
 }
@@ -283,7 +283,7 @@ export function countSelector(ctx: HudCtx, cls = ''): { el: HTMLElement; sync: (
     b.dataset.test = `count-${n}`;
     b.setAttribute('role', 'radio');
     b.dataset.tip =
-      n === 1 ? 'x1: one click builds one level' : `x${n}: one click places the building and queues it up to ${n} levels (or adds ${n} levels to one of yours). Each level still takes its build time; only what you can pay is queued. Shift = x5.`;
+      n === 1 ? 'x1: one click builds one level' : `x${n}: one click places the building and queues it up to ${n} levels (or adds ${n} levels to one of yours). Each level still takes its build time; only what you can pay is queued.`;
     b.addEventListener('click', (e) => {
       e.stopPropagation();
       ctx.ui.buildCount = n;
@@ -326,7 +326,7 @@ export class BuildMenu {
     countWrap.append(el('span', 'bm-count-l', 'Levels per click'), this.count.el);
     const close = el('button', 'sq bm-x');
     close.type = 'button';
-    close.setAttribute('aria-label', 'Close (Esc)');
+    close.setAttribute('aria-label', 'Close');
     close.append(iconSpan(lineIcon('close', 16)));
     close.addEventListener('click', () => this.close());
     head.append(title, countWrap, close);
@@ -356,11 +356,10 @@ export class BuildMenu {
     tg.append(this.areaCard());
     tools.append(tg);
     colB.append(tools);
-    // the pin hint only where there is a right button (a phone has none)
+    // how the menu works, and what Pin on a card does
     const foot = el('div', 'bm-foot');
     foot.append(
-      el('span', '', 'Click a card, then click your land to place it. x3 and x5 queue more levels with one click.'),
-      el('span', 'bm-foot-pin', ' Right-click a card to pin it to the quick bar.'),
+      el('span', '', 'Click a card, then click your land to place it. x3 and x5 queue more levels with one click. Pin keeps a building on the quick bar.'),
     );
     this.el.append(head, body, foot);
 
@@ -506,18 +505,42 @@ export class BuildMenu {
       this.hooks.picked(type);
       this.close();
     });
-    b.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
+    // Pin / Unpin: a visible control on the card (right-click on the card does the same)
+    const pin = el('button', 'bm-pin');
+    pin.type = 'button';
+    pin.dataset.test = `bm-pin-${type}`;
+    const pinWord = el('span', 'bm-pin-l', 'Pin');
+    pin.append(catSpan(pixelIcon('pin-s', 12), null, 'bm-pin-ic'), pinWord);
+    const togglePin = (): void => {
       const on = this.hooks.picks.togglePin(type);
       this.ctx.toast(on ? `${info.name} pinned to the quick bar` : `${info.name} unpinned`, 'info');
       this.hooks.picked(type);
       setClass(b, 'pinned', on);
+      showPin(on);
+    };
+    const showPin = (on: boolean): void => {
+      setText(pinWord, on ? 'Unpin' : 'Pin');
+      setClass(pin, 'on', on);
+      pin.setAttribute('aria-pressed', String(on));
+      pin.setAttribute('aria-label', on ? `Unpin ${info.name} from the quick bar` : `Pin ${info.name} to the quick bar`);
+      setTip(pin, on ? 'On the quick bar for good: click to unpin' : 'Keep it on the quick bar next to Build');
+    };
+    pin.addEventListener('click', (e) => {
+      e.stopPropagation();
+      togglePin();
     });
+    b.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      togglePin();
+    });
+    const wrap = el('div', 'bm-cardw');
+    wrap.append(b, pin);
     this.cards.push({
       btn: b,
       update: (s, me) => {
         const allowed = buildingAllowed(s, type);
         setVisible(b, allowed);
+        setVisible(wrap, allowed);
         if (!allowed) return;
         const c = buildingCost(s, me.id, type);
         setText(cost, `${formatCount(c.gold)} gold${c.iron ? ` + ${formatCount(c.iron)} iron` : ''}`);
@@ -534,15 +557,16 @@ export class BuildMenu {
         setClass(line, 'why', locked);
         setClass(cost, 'bad', short);
         setClass(b, 'pinned', pinned);
-        // the tag says what is missing; otherwise that the card is on the quick bar
-        setText(tag, short ? shortText(me, c) || withoutKeys(why) : pinned ? 'Pinned' : '');
+        showPin(pinned);
+        // the tag says what is missing (Pin / Unpin beside the card says whether it is on the quick bar)
+        setText(tag, short ? shortText(me, c) || withoutKeys(why) : '');
         setClass(tag, 'bad', short);
         setClass(b, 'far', locked && !techClose(me, info.tech));
-        setTip(b, buildingTip(s, me, type) + '\nRight-click: pin to the quick bar');
-        b.setAttribute('aria-label', `${info.name}, ${formatCount(c.gold)} gold${c.iron ? ` and ${formatCount(c.iron)} iron` : ''}, hotkey ${info.hotkey}. ${locked ? why : short ? `${shortText(me, c)}. ${tx.short}` : tx.short}`);
+        setTip(b, buildingTip(s, me, type));
+        b.setAttribute('aria-label', `${info.name}, ${formatCount(c.gold)} gold${c.iron ? ` and ${formatCount(c.iron)} iron` : ''}. ${locked ? why : short ? `${shortText(me, c)}. ${tx.short}` : tx.short}`);
       },
     });
-    return b;
+    return wrap;
   }
 
   private unitCard(kind: MenuUnit): HTMLElement {
@@ -618,13 +642,15 @@ export class BuildMenu {
 
   private areaCard(): HTMLElement {
     const { b, cost, line } = this.shell('bm-upgrade-sel', catSpan(pixelIcon('upgrade', 16), 'econ', 'bm-c-ic tool'), 'Upgrade many');
-    setText(cost, 'Hold Shift and drag a box on the map');
+    setText(cost, 'Click, then drag a box on the map');
     setText(line, 'Selects your buildings in it; then Upgrade x1, x3 or x5 for all of them');
     b.addEventListener('click', () => {
+      // the next drag on the map draws the box (mouse or finger); the chip at the top says so and has Cancel
       this.close();
-      this.ctx.toast('Hold Shift and drag a box over your buildings, then click Upgrade x1, x3 or x5 in the bar that opens', 'info');
+      this.ctx.ui.selection = [];
+      this.ctx.ui.mode = { kind: 'boxSelect' };
     });
-    setTip(b, 'Upgrade many buildings: hold Shift and drag a box on the map. Your buildings inside are selected (filter them by type); the bar then orders Upgrade x1 / x3 / x5 for all of them, cheapest first, as far as your gold and iron go. Each level still takes its build time.');
+    setTip(b, 'Upgrade many buildings: click this, then drag a box on the map. Your buildings inside are selected (filter them by type); the bar then orders Upgrade x1 / x3 / x5 for all of them, cheapest first, as far as your gold and iron go. Each level still takes its build time.');
     this.cards.push({ btn: b, update: () => {} });
     return b;
   }

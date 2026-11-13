@@ -1,6 +1,6 @@
 // Orders for a whole type at once (the Forces drawer's group bars, hud/groupBar.ts): every warship, every airfield or
 // every tank division of the player gets the same order in as few actions as the sim allows.
-//   warships   Follow my war (Auto, following) · Hold · Hunt · Escort · Bombard · Blockade  -> setUnitStance, 64 ids each
+//   warships   Auto (follows your war) · Hold · Hunt · Escort · Bombard · Blockade  -> setUnitStance, 64 ids each
 //   airfields  Support · Strategic · Superiority · Idle (following)                        -> one setAirMission, airfield -1
 //              + Auto-refill all (one setAirMission -1 when they share a mission, else one per airfield)
 //              + Auto recon all                                                           -> one setAutoRecon, airfield -1
@@ -29,7 +29,7 @@ export interface GroupChoiceInfo {
 
 export const GROUP_CHOICES: Record<GroupKind, readonly GroupChoiceInfo[]> = {
   warship: [
-    { v: 'follow', name: 'Follow my war', icon: 'signal', help: 'Auto for all: they guard their posts and shell the coast of the nation you are attacking.' },
+    { v: 'follow', name: 'Auto', icon: 'shield', help: 'Follows your war: all guard their posts and shell the coast of the nation you are attacking.' },
     { v: 'hold', name: 'Hold', icon: 'stop', help: 'All stay at their posts and sink enemy ships that come near; none sails off to shell a coast.' },
     { v: 'hunt', name: 'Hunt', icon: 'target', help: 'All chase enemy ships over a wide area.' },
     { v: 'escort', name: 'Escort', icon: 'transport', help: 'All stick to your transports and trade ships.' },

@@ -7,7 +7,7 @@ import type { GameState, Player } from '../../sim/types';
 import { inOvertime, victoryShareNow } from '../../sim/victory';
 import { unreadBadge } from '../alerts';
 import { SPEEDS } from '../input';
-import { DOCTRINE_KEY, doctrineIcon, doctrineStatus, fmtDuration } from '../doctrineView';
+import { doctrineIcon, doctrineStatus, fmtDuration } from '../doctrineView';
 import { el, fmtTime, setClass, setText, setTip, type DrawerId, type HudCtx } from './dom';
 import { catSpan, pixelIcon, type IconCat } from './pixelIcons';
 
@@ -62,14 +62,14 @@ export class Cluster {
       drawers.append(b);
       return b;
     };
-    dbtn('army', 'army', 'Army  (U)\nTroop mix, artillery, active attacks', 'Army');
-    dbtn('forces', 'warship', 'Forces  (Y)\nWarships, aircraft, missiles and artillery: buy, select, fire', 'Forces');
-    const rb = dbtn('research', 'science', 'Research  (T)\nPick technologies', 'Research');
+    dbtn('army', 'army', 'Army\nTroop mix, artillery, active attacks', 'Army');
+    dbtn('forces', 'warship', 'Forces\nWarships, aircraft, missiles and artillery: buy, select, fire', 'Forces');
+    const rb = dbtn('research', 'science', 'Research\nPick technologies', 'Research');
     const prog = el('span', 'sq-prog');
     rb.append(prog);
     // doctrine: hidden until doctrines unlock; then a brass dot until one is chosen, afterwards its picture with
     // three level pips (a ring fills around it while the nation adapts after a switch)
-    const docB = dbtn('doctrine', 'doctrine', `Doctrine  (${DOCTRINE_KEY})`, 'Doctrine');
+    const docB = dbtn('doctrine', 'doctrine', 'Doctrine', 'Doctrine');
     docB.classList.add('sq-doc', 'hidden');
     const docRing = el('span', 'sq-ring');
     const docPips = el('span', 'sq-pips');
@@ -77,17 +77,17 @@ export class Cluster {
     const docDot = el('span', 'sq-dot brass hidden');
     docB.append(docRing, docPips, docDot);
     let docIcon = 'doctrine';
-    const db = dbtn('diplomacy', 'diplomacy', 'Diplomacy  (P)\nAlliances and requests', 'Diplomacy');
+    const db = dbtn('diplomacy', 'diplomacy', 'Diplomacy\nAlliances and requests', 'Diplomacy');
     const badge = el('span', 'sq-badge hidden');
     db.append(badge);
-    const eb = dbtn('events', 'events', 'Events  (J)\nWhat happened so far', 'Events');
+    const eb = dbtn('events', 'events', 'Events\nWhat happened so far', 'Events');
     const dot = el('span', 'sq-dot hidden');
     eb.append(dot);
     // the bell: the Alerts drawer (big events, click one to jump there); a red count of the ones not seen yet
     const bell = dbtn('alerts', 'bell', 'Alerts\nBig events. Click one to see it on the map', 'Alerts');
     const bellBadge = el('span', 'sq-badge al-badge hidden');
     bell.append(bellBadge);
-    dbtn('legend', 'legend', 'Map key  (L)\nTerrain, resources and map symbols', 'Map key');
+    dbtn('legend', 'legend', 'Map key\nTerrain, resources, overlays and map symbols', 'Map key');
 
     const clock = el('div', 'clock');
     clock.dataset.test = 'clock';
@@ -96,7 +96,7 @@ export class Cluster {
 
     const speed = el('div', 'cl-group seg cl-speed');
     this.speedGroup = speed;
-    this.pauseBtn = sq('pause', 'Pause  (Space)', () => {
+    this.pauseBtn = sq('pause', 'Pause', () => {
       // a guest's button only explains (aria-disabled keeps its tooltip working)
       if (this.hooks.pauseMode() !== 'guest') ctx.ui.paused = !ctx.ui.paused;
     }, 'pause', 'Pause');
@@ -116,7 +116,7 @@ export class Cluster {
     const sys = el('div', 'cl-group');
     this.soundBtn = sq('sound', 'Sound on/off\nVolumes are in the menu', () => hooks.toggleMute(), 'sound', 'Sound');
     if (!hooks.hasAudio()) this.soundBtn.classList.add('hidden');
-    const help = sq('help', 'How to play  (?)', () => hooks.toggleHelp(), 'help', 'Help');
+    const help = sq('help', 'How to play', () => hooks.toggleHelp(), 'help', 'Help');
     const menu = sq('menu', 'Menu\nSettings, sound, leave the game', () => ctx.openDrawer('settings', true), 'menu', 'Menu');
     this.drawerBtns.set('settings', menu);
     sys.append(this.soundBtn, help, menu);
@@ -134,10 +134,10 @@ export class Cluster {
       setTip(clock, ot ? `Overtime: the land needed to win is falling, now ${need}%` : `Game time. Own ${need}% of the land to win.`);
       if (me.researching) {
         prog.style.width = `${Math.round(Math.min(1, me.researchProgress / TECHS[me.researching].science) * 100)}%`;
-        setTip(rb, `Research  (T)\nResearching ${TECHS[me.researching].name}`);
+        setTip(rb, `Research\nResearching ${TECHS[me.researching].name}`);
       } else {
         prog.style.width = '0%';
-        setTip(rb, me.auto.research ? 'Research  (T)\nAuto research is on' : 'Research  (T)\nNothing is being researched');
+        setTip(rb, me.auto.research ? 'Research\nAuto research is on' : 'Research\nNothing is being researched');
       }
       setClass(rb, 'idle', s.phase === 'playing' && !me.researching && !me.auto.research && gameSeconds(s) > 60);
       // doctrine button
@@ -157,14 +157,14 @@ export class Cluster {
         const lit = ds.phase === 'active' ? ds.level : 0;
         [...docPips.children].forEach((p, k) => setClass(p as HTMLElement, 'on', k < lit));
         const name = ds.id ? DOCTRINES[ds.id].name : '';
-        let tip = `Doctrine  (${DOCTRINE_KEY})\nChoose one: a bonus for your style of play`;
-        if (ds.phase === 'adapting') tip = `Doctrine: adapting to ${name}  (${DOCTRINE_KEY})\nNo doctrine bonus for ${fmtDuration(ds.adaptLeft)}`;
+        let tip = 'Doctrine\nChoose one: a bonus for your style of play';
+        if (ds.phase === 'adapting') tip = `Doctrine: adapting to ${name}\nNo doctrine bonus for ${fmtDuration(ds.adaptLeft)}`;
         else if (ds.id) {
-          tip = `Doctrine: ${name}, level ${ds.level}  (${DOCTRINE_KEY})\n${DOCTRINES[ds.id].levels[Math.max(0, ds.level - 1)]}`;
+          tip = `Doctrine: ${name}, level ${ds.level}\n${DOCTRINES[ds.id].levels[Math.max(0, ds.level - 1)]}`;
           if (ds.level < 3) tip += `\nLevel ${ds.level + 1} in ${fmtDuration(ds.nextLevelIn)}`;
         }
         setTip(docB, tip);
-        docB.setAttribute('aria-label', tip.split('\n')[0].replace(/\s+\(.*\)$/, ''));
+        docB.setAttribute('aria-label', tip.split('\n')[0]);
       }
       const req = s.allianceRequests.filter((r) => r.to === me.id).length;
       setText(badge, String(req));
@@ -208,9 +208,9 @@ export class Cluster {
       if (pm === 'guest') this.pauseBtn.setAttribute('aria-disabled', 'true');
       else this.pauseBtn.removeAttribute('aria-disabled');
       this.pauseBtn.replaceChildren(topIcon(ui.paused ? 'play' : 'pause'), el('span', 'sq-w', ui.paused ? 'Resume' : 'Pause'));
-      const tip = pm === 'guest' ? 'Only the host can pause' : ui.paused ? 'Resume  (Space)' : 'Pause  (Space)';
+      const tip = pm === 'guest' ? 'Only the host can pause' : ui.paused ? 'Resume' : 'Pause';
       setTip(this.pauseBtn, tip);
-      this.pauseBtn.setAttribute('aria-label', tip.split('  ')[0]);
+      this.pauseBtn.setAttribute('aria-label', tip);
     }
     const m = this.hooks.muted();
     if (this.soundShown !== m) {

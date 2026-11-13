@@ -387,7 +387,9 @@ export class NameLayer {
       const hs = style.hover;
       const under = !!hs && hs.x > x0 - 6 && hs.x < x1 + 6 && hs.y > y0 - 6 && hs.y < y1 + 6;
       const overIcons = z >= ICON_ZOOM && coversBuilding(state, cam, x0, y0, x1, y1);
-      ctx.globalAlpha = style.targeting ? (under ? 0.15 : 0.45) : under && px > 14 ? 0.35 : overIcons ? 0.65 : 1;
+      // over building plates (mid zoom) the name stays solid, drawn above them with a stronger dark halo, so the plates
+      // never cross its letters; the cursor over it or aiming still fades it
+      ctx.globalAlpha = style.targeting ? (under ? 0.15 : 0.45) : under && px > 14 ? 0.35 : 1;
       const nameY = showArmy ? s.y - small * 0.45 : s.y;
       const left = s.x - totalW / 2;
       for (let k = 0; k < icons.length; k++) {
@@ -399,7 +401,7 @@ export class NameLayer {
         ctx.font = nameFont;
         setTracking(ctx, track);
         const fill = traitor ? '#ff9d92' : tribe ? 'rgba(240,241,244,0.94)' : p.id === me ? 'rgba(220,230,254,0.97)' : 'rgba(255,255,255,0.93)';
-        haloText(ctx, name, nameX, nameY, fill, px, tribe ? 1.25 : 1);
+        haloText(ctx, name, nameX, nameY, fill, px, overIcons ? 1.4 : tribe ? 1.25 : 1);
       }
       if (showArmy) {
         const army = formatCount(armyTotal(p.troops));

@@ -30,7 +30,7 @@ import { CATEGORY_COLORS, ICON_INFO, iconDataUrl, markerDataUrl } from '../icons
 import { CATEGORY_PLATES } from '../render/buildings';
 import { rgbCss } from '../menu';
 import { swatchCss } from './swatch';
-import { formatCount } from '../render/common';
+import { compactNumbers, formatCount } from '../render/common';
 import { fieldArmy, maxLevel } from '../simx';
 import { aimStrike, STRIKE_ORDER, STRIKES, strikeStatus } from '../strikes';
 import { artilleryOf } from '../../sim/barrage';
@@ -52,6 +52,7 @@ import {
   type HudCtx,
 } from './dom';
 import { iconSpan, lineIcon, worldGlyph } from './glyph';
+import { catSpan, pixelIcon } from './pixelIcons';
 import { AllyHelp } from './allyHelp';
 import { heartlandBonus, lastStandBonus } from '../allies';
 import { ABILITY_TEXT, article, buildingTexts, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect, terrainNote } from './text';
@@ -343,14 +344,14 @@ export class ArmyPage implements DrawerPage {
     this.upd.push((s, me) => {
       const art = artilleryOf(s, me.id);
       setText(artCount, formatCount(art));
-      setText(artOf, art >= BARRAGE_MIN_ARTILLERY ? 'artillery: enough for a barrage (Z)' : `artillery: a barrage needs ${formatCount(BARRAGE_MIN_ARTILLERY)}`);
+      setText(artOf, art >= BARRAGE_MIN_ARTILLERY ? 'artillery: enough for a barrage' : `artillery: a barrage needs ${formatCount(BARRAGE_MIN_ARTILLERY)}`);
       artFill.style.width = pct(Math.min(1, art / BARRAGE_MIN_ARTILLERY));
       setClass(artBar, 'full', art >= BARRAGE_MIN_ARTILLERY);
       const ars = countBuildings(s, me.id, 'arsenal', true);
       setText(
         artHow,
         ars === 0
-          ? `To get it: build an Arsenal (Build menu, key ${BUILDINGS.arsenal.hotkey}), then raise the Artillery slider above.`
+          ? 'To get it: build an Arsenal (Build menu), then raise the Artillery slider above.'
           : me.auto.mix
             ? 'Your Arsenals make it as the auto mix needs. To make more now, raise the Artillery slider above.'
             : me.armyMix.artillery < 0.05
@@ -360,7 +361,7 @@ export class ArmyPage implements DrawerPage {
     });
 
     // special units (warships, aircraft, missiles) and their strikes are in the Forces drawer (Y)
-    const fwd = btn('Warships, aircraft, missiles: Forces (Y)', 'wide ghost', () => ctx.openDrawer('forces'), 'forces');
+    const fwd = btn('Warships, aircraft, missiles: Forces', 'wide ghost', () => ctx.openDrawer('forces'), 'forces');
     fwd.dataset.test = 'army-to-forces';
     this.root.append(fwd);
   }
@@ -470,7 +471,7 @@ export class DiplomacyPage implements DrawerPage {
       }
     }
     b.append(sectionTitle('Allies'));
-    if (!allies.length) b.append(el('p', 'note', 'No allies. Right-click a nation or open its card from the standings to ask. Allies cannot attack each other, share what they see, and you can ask them to attack your enemies or send troops.'));
+    if (!allies.length) b.append(el('p', 'note', 'No allies. Open a nation\'s card from the standings, then Ally. Allies cannot attack each other, share what they see, and you can ask them to attack your enemies or send troops.'));
     for (const a of allies) {
       const other = a.a === me.id ? a.b : a.a;
       const brk = btn('Break', 'mini danger', () => this.ctx.act({ type: 'breakAlliance', with: other }), 'breakAlly');
@@ -524,7 +525,7 @@ export class EventsPage implements DrawerPage {
       row.addEventListener('click', () => this.ctx.focusTile(focus, true));
       row.dataset.tip = 'Show on the map';
     }
-    row.append(el('span', 'ev-t', fmtTime(gameSecondsAt(state, e.tick))), el('span', 'ev-m', e.message));
+    row.append(el('span', 'ev-t', fmtTime(gameSecondsAt(state, e.tick))), el('span', 'ev-m', compactNumbers(e.message)));
     this.list.prepend(row);
     while (this.list.childElementCount > 80) this.list.lastElementChild?.remove();
   }
@@ -538,10 +539,33 @@ export class LegendPage implements DrawerPage {
   id: DrawerId = 'legend';
   title = 'Map key';
   root = el('div', 'page legend');
+  private overlays: { b: HTMLButtonElement; on: () => boolean }[] = [];
 
-  constructor() {
+  constructor(private ctx?: HudCtx) {
     const r = this.root;
     r.append(el('p', 'note', 'What you see on the map and what it does. Hover any tile for the same in short.'));
+    if (ctx) {
+      // the two map overlays, each a labelled switch (they had only keys before)
+      r.append(sectionTitle('Overlays'));
+      const row = el('div', 'lg-ovl');
+      const tog = (test: string, icon: string, word: string, tip: string, get: () => boolean, set: (on: boolean) => void): void => {
+        const b = el('button', 'wr-btn lg-ovl-b');
+        b.type = 'button';
+        b.dataset.test = test;
+        b.append(catSpan(pixelIcon(icon, 16), 'econ', 'ico'), el('span', 'wr-btn-l', word), el('span', 'lg-ovl-s'));
+        setTip(b, tip);
+        b.addEventListener('click', () => {
+          set(!get());
+          this.syncOverlays();
+        });
+        this.overlays.push({ b, on: get });
+        row.append(b);
+      };
+      tog('overlay-supply', 'signal', 'Supply', 'Shades your land by supply: fronts far from your capital, cities and forts fight weaker', () => ctx.ui.showSupply, (on) => (ctx.ui.showSupply = on));
+      tog('overlay-resources', 'iron', 'Resources', 'Marks iron, oil and fertile land on the map', () => ctx.ui.showResources, (on) => (ctx.ui.showResources = on));
+      r.append(row);
+      this.syncOverlays();
+    }
     r.append(sectionTitle('Terrain'));
     for (const id of LAND_TERRAINS as TerrainId[]) {
       const t = TERRAIN[id];
@@ -637,7 +661,7 @@ export class LegendPage implements DrawerPage {
       }
       sw.append(img);
       const txt = el('div', 'lg-t');
-      txt.append(el('b', '', `${info.name} (${info.hotkey})`), el('span', '', info.description));
+      txt.append(el('b', '', info.name), el('span', '', info.description));
       row.append(sw, txt);
       r.append(row);
     }
@@ -680,7 +704,18 @@ export class LegendPage implements DrawerPage {
     r.append(t);
   }
 
-  update(): void {}
+  private syncOverlays(): void {
+    for (const o of this.overlays) {
+      const on = o.on();
+      setClass(o.b, 'on', on);
+      o.b.setAttribute('aria-pressed', String(on));
+      setText(o.b.querySelector('.lg-ovl-s') as HTMLElement, on ? 'On' : 'Off');
+    }
+  }
+
+  update(): void {
+    this.syncOverlays();
+  }
 }
 
 // ================================================================================================ selected building
@@ -750,13 +785,17 @@ export class BuildingPage implements DrawerPage {
     });
     const actions = el('div', 'bacts');
     r.append(actions);
+    // each action button with, when it cannot be pressed, the reason on its own line right under it
     const add = (label: string, cls: string, icon: string, run: () => void, check: (s: GameState, me: Player, bb: Building) => string) => {
       const x = btn(label, cls, run, icon);
-      actions.append(x);
+      const whyLine = el('p', 'note bact-why hidden');
+      actions.append(x, whyLine);
       this.upd.push((ss, m, bb) => {
         const why = check(ss, m, bb);
         setDisabled(x, why !== '');
         setTip(x, why);
+        setText(whyLine, why);
+        setVisible(whyLine, why !== '');
       });
       return x;
     };
@@ -847,7 +886,10 @@ export class BuildingPage implements DrawerPage {
       add(`Tank division (${price} gold)`, '', 'plus', () => ctx.act({ type: 'buildTankDivision', tile }), (ss, m, bb) => {
         if (bb.buildLeft > 0) return 'Still being built';
         const r = canBuildTankDivision(ss, m.id, tile);
-        return r.ok ? '' : r.reason ?? 'Not possible now';
+        if (r.ok) return '';
+        // the cap in words a new player can act on
+        if (/^At most /.test(r.reason ?? '')) return `Limit reached: ${tankDivisionLimit(ss, m.id)} now, one per Factory level. Upgrade a Factory for more`;
+        return r.reason ?? 'Not possible now';
       }).dataset.test = 'order-tank-division';
     }
     if (b.type === 'silo') {
@@ -880,7 +922,7 @@ export class BuildingPage implements DrawerPage {
         if (lab && lab.textContent !== text) lab.textContent = text;
         setClass(auto, 'on', on);
         auto.setAttribute('aria-pressed', String(on));
-        if (hasTech(m, 'rocketry')) setTip(auto, on ? 'On: fires a rocket by itself whenever one is loaded, at the nation you fight. Click to stop.' : 'Fires rockets by itself whenever one is loaded, at the nation you fight: forts and SAM sites near your front first, then cities near it, keeping some gold in reserve. Never atom bombs. Forces (Y) switches every silo at once.');
+        if (hasTech(m, 'rocketry')) setTip(auto, on ? 'On: fires a rocket by itself whenever one is loaded, at the nation you fight. Click to stop.' : 'Fires rockets by itself whenever one is loaded, at the nation you fight: forts and SAM sites near your front first, then cities near it, keeping some gold in reserve. Never atom bombs. Forces switches every silo at once.');
       });
     }
     if (b.type === 'port') {
@@ -996,8 +1038,15 @@ export class SettingsPage implements DrawerPage {
     r.append(restart);
     r.append(sectionTitle('Map'));
     const mm = seg2('Minimap shown', 'Minimap hidden', () => (ctx.ui.showMinimap = true), () => (ctx.ui.showMinimap = false));
-    r.append(mm.el, el('p', 'note', 'Key M. Overlays: B shows supply, V shows resources.'));
+    r.append(mm.el);
     this.sync.push(() => mm.set(ctx.ui.showMinimap));
+    const sup = seg2('Supply shown', 'Supply hidden', () => (ctx.ui.showSupply = true), () => (ctx.ui.showSupply = false));
+    sup.el.dataset.test = 'supply-toggle';
+    const res = seg2('Resources shown', 'Resources hidden', () => (ctx.ui.showResources = true), () => (ctx.ui.showResources = false));
+    res.el.dataset.test = 'resources-toggle';
+    r.append(sup.el, res.el, el('p', 'note', 'Supply shades how well your fronts are supplied; Resources marks iron, oil and fertile land. Both are in the Map key too.'));
+    this.sync.push(() => sup.set(ctx.ui.showSupply));
+    this.sync.push(() => res.set(ctx.ui.showResources));
     const fx = seg2('Map effects on', 'Map effects off', () => setFxEnabled(true), () => setFxEnabled(false));
     fx.el.dataset.test = 'fx-toggle';
     r.append(fx.el, el('p', 'note', 'Short flashes when land or a city changes hands, a ship sinks or a bomb lands. A nearby nuke shakes the view.'));
@@ -1050,8 +1099,8 @@ export class Drawer {
     this.title = el('h2', 'dr-title');
     const close = el('button', 'sq dr-close');
     close.type = 'button';
-    close.setAttribute('aria-label', 'Close (Esc)');
-    close.dataset.tip = 'Close  (Esc)';
+    close.setAttribute('aria-label', 'Close');
+    close.dataset.tip = 'Close';
     close.append(iconSpan(lineIcon('close', 16)));
     close.addEventListener('click', () => ctx.closeDrawer());
     head.append(this.title, close);
@@ -1129,5 +1178,5 @@ function warshipClickMode(ctx: HudCtx, variant?: NavalVariant): void {
   if (!g || !m) return;
   const why = enterWarshipSpawnMode(ctx.ui, g, m, variant);
   const name = variant ? VARIANT_NAMES[variant] : 'Warship';
-  ctx.toast(why ? `${name}: ${why}` : `${name}: click any water your ports reach (shaded). Esc cancels.`, why ? 'bad' : 'info');
+  ctx.toast(why ? `${name}: ${why}` : `${name}: click any water your ports reach (shaded)`, why ? 'bad' : 'info');
 }

@@ -54,7 +54,7 @@ export class UnitCard {
     tt.append(this.title, this.sub);
     const x = el('button', 'mc-x');
     x.type = 'button';
-    x.setAttribute('aria-label', 'Deselect (Esc)');
+    x.setAttribute('aria-label', 'Deselect');
     x.append(iconSpan(lineIcon('close', 12, 2)));
     x.addEventListener('click', () => {
       ctx.ui.mode = { kind: 'none' };

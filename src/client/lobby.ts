@@ -8,7 +8,7 @@ import type { LobbyChip, LobbyStateMsg, LobbySummary, RGB, ServerMessage } from 
 import { cloneSetup, DEFAULT_SETUP, mapLabel, MULTIPLAYER_NATIONS } from '../sim/setup';
 import { TEAM_COLORS } from '../sim/state';
 import type { GameSetup } from '../sim/types';
-import { button, el, rgbCss, setText } from './dom';
+import { backButton, button, el, rgbCss, setText } from './dom';
 import { iconSpan, lineIcon } from './hud/glyph';
 import { ChatView } from './chat/view';
 import { chatEnabled, chatFor, setChatEnabled } from './chat/store';
@@ -270,7 +270,7 @@ export class MultiplayerScreen {
     const top = el('div', 'menu-head');
     this.statusEl = el('span', 'net-status');
     this.statusEl.dataset.test = 'net-status';
-    top.append(button('Back', 'ghost', () => this.hooks.onBack()), el('h2', '', 'Multiplayer'), this.statusEl);
+    top.append(backButton(() => this.hooks.onBack()), el('h2', '', 'Multiplayer'), this.statusEl);
 
     // identity: name and colour
     const you = el('div', 'mp-you');
@@ -426,17 +426,22 @@ export class MultiplayerScreen {
     this.chat?.destroy();
     this.chat = new ChatView(chatFor(this.hooks.net()), { mode: 'lobby' });
     const chatSec = el('div', 'lobby-chat');
+    // one labelled rule ("Lobby chat: On / Off") above the Chat button, so the two never read as twin chat controls
     this.chatSwitch = el('div', 'seg setup-seg chat-switch');
     this.chatSwitch.dataset.test = 'chat-toggle';
+    this.chatSwitch.setAttribute('role', 'group');
+    this.chatSwitch.setAttribute('aria-label', 'Lobby chat');
     for (const on of [true, false]) {
-      const b = button(on ? 'Chat on' : 'Chat off', '', () => {
+      const b = button(on ? 'On' : 'Off', '', () => {
         setChatEnabled(on);
         this.renderChatSwitch();
       });
       b.dataset.on = String(on);
       this.chatSwitch.append(b);
     }
-    chatSec.append(this.chat.el, this.chatSwitch);
+    const chatRule = el('div', 'lobby-chat-rule');
+    chatRule.append(el('span', 'form-label', 'Lobby chat'), this.chatSwitch);
+    chatSec.append(chatRule, this.chat.el);
     // the upper part scrolls on its own; Start and Leave stay at the foot of the column
     const scroll = el('div', 'lobby-scroll');
     scroll.append(this.sideTop, chatSec);

@@ -75,30 +75,30 @@ export const UNIT_TEXT: Record<SpecialId, UnitText> = {
   transportPlane: {
     name: 'Paratroopers',
     icon: 'transportPlane',
-    what: 'A cargo plane drops infantry behind the lines (K): they take the tile and attack from there.',
+    what: 'A cargo plane drops infantry behind the lines: they take the tile and attack from there.',
     counter: 'SAM sites and enemy fighters can down the plane with everyone aboard.',
     unlock: 'Buy Flight (Arsenal), then build an Airfield',
   },
   rocket: {
     name: 'Rocket',
     icon: 'rocket',
-    what: 'Fired from a Missile Silo (I): hits anywhere on the map and destroys the buildings around the target.',
+    what: 'Fired from a Missile Silo: hits anywhere on the map and destroys the buildings around the target.',
     counter: 'SAM sites shoot rockets down.',
     unlock: 'Research Rocketry and build a Missile Silo',
   },
   atomBomb: {
     name: 'Atom bomb',
     icon: 'atomBomb',
-    what: 'Fired from a Missile Silo (O): wipes out a wide area, your own land too, and leaves fallout.',
+    what: 'Fired from a Missile Silo: wipes out a wide area, your own land too, and leaves fallout.',
     counter: 'SAM sites need two hits to stop it.',
     unlock: 'Research Nuclear Fission and build a Missile Silo',
   },
   artillery: {
     name: 'Artillery',
     icon: 'artillery',
-    what: 'A troop type: breaks forts and hills, and fires the artillery barrage (Z).',
+    what: 'A troop type: breaks forts and hills, and fires the artillery barrage.',
     counter: 'Weak on its own: keep infantry and armor with it.',
-    unlock: 'Build an Arsenal and raise Artillery in the Army drawer (U)',
+    unlock: 'Build an Arsenal and raise Artillery in the Army drawer',
   },
 };
 

@@ -207,13 +207,13 @@ export function orderForClick(state: GameState, me: number, sel: readonly number
   const c = splitSelection(state, me, sel);
   if (!c.warships.length && !c.tanks.length) return { kind: 'pass' };
   if (isWater(state.map.terrain[tile])) {
-    if (!c.warships.length) return { kind: 'refuse', reason: 'Tank divisions move on land. Esc clears the selection' };
+    if (!c.warships.length) return { kind: 'refuse', reason: 'Tank divisions move on land. Cancel at the top clears the selection' };
     return { kind: 'act', actions: [{ type: 'moveWarships', unitIds: c.warships.slice(0, MAX_GROUP_UNITS), tile }], spearhead: false };
   }
   if (!c.tanks.length) {
     // ships only: a click on your own land just drops the selection; on foreign land it says why nothing happens
     if (state.map.owner[tile] === me) return { kind: 'pass' };
-    return { kind: 'refuse', reason: 'Warships move on water. Esc clears the selection' };
+    return { kind: 'refuse', reason: 'Warships move on water. Cancel at the top clears the selection' };
   }
   const ids = c.tanks.slice(0, MAX_GROUP_UNITS);
   if (state.map.owner[tile] === me) return { kind: 'act', actions: [{ type: 'moveTankDivision', unitIds: ids, tile }], spearhead: false };
@@ -263,7 +263,7 @@ export function selectionChipText(state: GameState, ui: UiState, now = performan
     const p = previewFor(state, me, ui.selection, pend.tile);
     if (p && !p.reason) {
       const pocket = pocketLine(state, pocketPreview(state, me, p));
-      return `${spearheadLine(p)}${pocket ? `. ${pocket}` : ''}. Click again to launch, Esc to cancel.`;
+      return `${spearheadLine(p)}${pocket ? `. ${pocket}` : ''}. Click again to launch.`;
     }
   }
   const what = c.warships.length && c.tanks.length
@@ -271,7 +271,7 @@ export function selectionChipText(state: GameState, ui: UiState, now = performan
     : c.warships.length
       ? 'click water to move, or pick a stance below'
       : `click your land to drive there fast, enemy land up to ${TANK_LAUNCH_REACH} tiles past your border to spearhead, or pick a mode below`;
-  return `${head}: ${what}. Esc clears.`;
+  return `${head}: ${what}.`;
 }
 
 // ------------------------------------------------------------------------------------------------ warship orders

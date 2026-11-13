@@ -35,7 +35,7 @@ import { CommandBar, techNear } from './hud/commandBar';
 import { el, setText, setVisible, type DrawerId, type HudCtx, type UnitProbe } from './hud/dom';
 import { ForcesPage } from './hud/forcesPage';
 import { DoctrinePage } from './hud/doctrinePage';
-import { DOCTRINE_KEY, doctrineIcon, fmtDuration, levelUpText } from './doctrineView';
+import { doctrineIcon, fmtDuration, levelUpText } from './doctrineView';
 import { UnitCard } from './hud/unitCard';
 import { OrdersBar } from './hud/ordersBar';
 import {
@@ -54,7 +54,8 @@ import { ChatView } from './chat/view';
 import { chatEnabled, setChatEnabled, type ChatStore } from './chat/store';
 import { AdminConsole } from './adminConsole';
 import type { AdminConsoleDeps } from './adminConsole';
-import { pruneSelection, selectionChipText } from './selection';
+import { pruneSelection, selectionChipText, splitSelection } from './selection';
+import { compactNumbers } from './render/common';
 import { iconSpan, lineIcon } from './hud/glyph';
 import { Leaderboard } from './hud/leaderboard';
 import { NationCard } from './hud/nationCard';
@@ -78,6 +79,8 @@ export { techNear };
 const SLOW_MS = 200; // ~5 Hz refresh of texts and lists
 /** the phone layout of styles.css ("phones" section) */
 const PHONE_MEDIA = '(max-width: 640px)';
+/** A phone-width window (the HUD's one-panel-at-a-time layout). */
+const isPhone = (): boolean => typeof matchMedia === 'function' && matchMedia(PHONE_MEDIA).matches;
 /** How far right of the chat button its panel reaches (panel width and a gap), for placeChat. */
 const CHAT_PANEL_REACH = 340;
 /** Zoom the camera glides to when your start is placed and when the game starts (your 9x9 start ~40 px wide). */
@@ -205,6 +208,8 @@ export class Hud {
   private helpPaused = false;
   private lastSelected = -1;
   private lastToast: UiState['toast'] = null;
+  /** the unit selection seen last frame (phones: a new selection closes the open drawer, see updateFast) */
+  private lastSel: readonly number[] = [];
   /** own bombers already announced ("Bomber on its way"); null until the first look (no toasts for old ones) */
   private seenBombers: Set<number> | null = null;
   private coalitionSeen = 0;
@@ -286,7 +291,7 @@ export class Hud {
     this.events = new EventsPage(this.ctx);
     this.drawer.add(this.events);
     this.drawer.add(new AlertsPage(this.alertFeed, (e) => this.jumpTo(e)));
-    this.drawer.add(new LegendPage());
+    this.drawer.add(new LegendPage(this.ctx));
     this.building = new BuildingPage(this.ctx);
     this.drawer.add(this.building);
     this.advisor = new AdvisorStrip(this.ctx);
@@ -350,10 +355,11 @@ export class Hud {
     this.modeChip = el('div', 'modechip hidden');
     this.modeChip.dataset.test = 'mode-chip';
     this.modeText = el('span', 'mc-t');
-    const cancel = el('button', 'mc-x');
+    // a labelled Cancel: the one visible way out of a target mode or a selection (Esc does the same)
+    const cancel = el('button', 'mc-x mc-cancel');
     cancel.type = 'button';
-    cancel.append(iconSpan(lineIcon('close', 12, 2)));
-    cancel.setAttribute('aria-label', 'Cancel (Esc)');
+    cancel.dataset.test = 'mode-cancel';
+    cancel.append(iconSpan(lineIcon('close', 12, 2)), el('span', 'mc-x-l', 'Cancel'));
     cancel.addEventListener('click', () => {
       if (this.ui.mode.kind !== 'none') this.ui.mode = { kind: 'none' };
       else if (this.ui.selection.length) {
@@ -602,6 +608,8 @@ export class Hud {
       this.cluster.setUnread(false);
     }
     this.setHelp(false);
+    // phones: a drawer and the nation card both span the width; one at a time, so neither hides the other's name
+    if (isPhone()) this.card.close();
     this.drawer.show(id);
     this.refreshSoon();
   }
@@ -712,8 +720,14 @@ export class Hud {
     const cap = fog ? fog.knownCapital(s, id) : p.capital;
     if (cap >= 0) this.camera.centerOn((cap % s.map.width) + 0.5, ((cap / s.map.width) | 0) + 0.5);
     if (this.watching) return;
-    if (id !== s.humanId) this.card.open(id);
-    else this.card.close();
+    if (id !== s.humanId) {
+      // phones: the card would open under the drawer, its name hidden above its buttons
+      if (isPhone() && this.drawer.open) {
+        if (this.drawer.open === 'building') this.ui.selectedTile = -1;
+        this.drawer.hide();
+      }
+      this.card.open(id);
+    } else this.card.close();
   }
 
   /**
@@ -826,16 +840,28 @@ export class Hud {
       this.toasts.show({ text: ui.toast.text, kind: 'bad', ms: Math.max(1500, ui.toast.until - performance.now()) });
     }
     this.root.classList.toggle('mm-on', ui.showMinimap);
+    // phones: selecting a warship or division (its Select button in Forces, or on the map) closes the drawer, so the
+    // orders bar and the map are in view instead of two panels on the same pixels
+    if (ui.selection !== this.lastSel) {
+      const before = new Set(this.lastSel);
+      const fresh = ui.selection.some((id) => !before.has(id));
+      this.lastSel = ui.selection;
+      if (fresh && this.drawer.open && this.drawer.open !== 'building' && isPhone()) {
+        const c = splitSelection(state, me.id, ui.selection);
+        if (c.warships.length || c.tanks.length) this.drawer.hide();
+      }
+    }
     // target mode chip
     let chip = '';
     if (state.phase === 'playing') {
       const m = ui.mode;
-      if (m.kind === 'build') chip = `Build ${BUILDINGS[m.building].name}: click your land. Esc to cancel.`;
-      else if (m.kind === 'transport') chip = 'Transport: click a coast to land on. Esc to cancel.';
-      else if (m.kind === 'moveWarship') chip = 'Warship selected: click water to move it. Esc to cancel.';
-      else if (m.kind === 'spawnWarship') chip = `${m.variant ? VARIANT_NAMES[m.variant] : 'Warship'}: click any water your ports reach (shaded) where it should appear. Esc to cancel.`;
+      if (m.kind === 'build') chip = `Build ${BUILDINGS[m.building].name}: click your land.`;
+      else if (m.kind === 'transport') chip = 'Transport: click a coast to land on.';
+      else if (m.kind === 'moveWarship') chip = 'Warship selected: click water to move it.';
+      else if (m.kind === 'spawnWarship') chip = `${m.variant ? VARIANT_NAMES[m.variant] : 'Warship'}: click any water your ports reach (shaded) where it should appear.`;
       else if (m.kind === 'recon') chip = reconHint();
-      else if (m.kind === 'buildTankDivision') chip = 'Tank division: click one of your factories. Esc to cancel.';
+      else if (m.kind === 'buildTankDivision') chip = 'Tank division: click one of your factories.';
+      else if (m.kind === 'boxSelect') chip = 'Upgrade many: drag a box over your buildings on the map.';
       else if (m.kind === 'adminTile') chip = m.label;
       else if (m.kind === 'pillarPick') chip = m.label;
       else if (m.kind !== 'none') chip = instruction(state, me, m, ui);
@@ -1005,7 +1031,7 @@ export class Hud {
       (e.kind !== 'surrounded' || e.players[0] === me.id);
     if (e.kind === 'underAttack' && gameSeconds(state) < 5) return;
     // "<you> is under attack by X" reads better as "You are under attack by X"
-    const text = e.message.startsWith(`${me.name} is under attack`) ? `You are${e.message.slice(me.name.length + 3)}` : e.message;
+    const text = compactNumbers(e.message.startsWith(`${me.name} is under attack`) ? `You are${e.message.slice(me.name.length + 3)}` : e.message);
     if (show) this.toasts.show({ text, kind, onClick: go, ms: kind === 'bad' ? 5000 : 4000, key: e.kind === 'underAttack' ? `ua${e.message}` : undefined });
   }
 
@@ -1019,7 +1045,7 @@ export class Hud {
     const d = me.doctrine;
     if (e.kind === 'doctrineUnlocked') {
       // the guide's doctrine tip says the same, with an arrow: no toast while it is due
-      if (!d?.id && !this.tutorialGame && !this.guide?.due('doctrine')) this.toasts.show({ text: `Choose a doctrine  (${DOCTRINE_KEY})`, kind: 'info', icon: 'doctrine', ms: 7000, key: 'doctrine', onClick: open });
+      if (!d?.id && !this.tutorialGame && !this.guide?.due('doctrine')) this.toasts.show({ text: 'Choose a doctrine: Doctrine in the top bar', kind: 'info', icon: 'doctrine', ms: 7000, key: 'doctrine', onClick: open });
     } else if (e.kind === 'doctrineChosen') {
       // ours: made this tick, at our capital (the news about others carries their capital)
       if (d?.id && e.tick === d.chosenTick && e.tile === me.capital && this.drawer.open !== 'doctrine') {
@@ -1048,7 +1074,7 @@ export class Hud {
       const other = e.players.find((id) => id > 0 && id !== me.id) ?? 0;
       const p = other ? state.players[other] : undefined;
       this.toasts.show({
-        text: e.message,
+        text: compactNumbers(e.message),
         kind: ak === 'allyRefused' ? 'warn' : 'good',
         icon: ak === 'allyAid' ? 'troops' : ak === 'allyJoined' ? 'attack' : 'diplomacy',
         swatch: p ? swatchCss(p, me.id) : undefined,

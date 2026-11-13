@@ -9,7 +9,6 @@ import { formatCount } from '../render/common';
 import { buildingCost } from '../../sim/buildings';
 import {
   browserStore,
-  BUILD_MENU_KEY,
   BuildMenu,
   buildingTip,
   countSelector,
@@ -19,7 +18,7 @@ import {
   stableSlots,
 } from './buildMenu';
 import { BuildingSelectionBar } from './buildingSelection';
-import { el, keycap, setClass, setTip, setVisible, type HudCtx } from './dom';
+import { el, setClass, setTip, setVisible, type HudCtx } from './dom';
 import { iconSpan } from './glyph';
 import { pixelGlyph, pixelIcon } from './pixelIcons';
 import { TECHS } from '../../sim/config';
@@ -67,8 +66,8 @@ export class QuickBar {
     this.buildBtn.type = 'button';
     this.buildBtn.dataset.test = 'build-menu-btn';
     this.buildBtn.setAttribute('aria-haspopup', 'dialog');
-    this.buildBtn.append(iconSpan(pixelIcon('build', 16), 'qb-build-ic'), el('span', 'qb-build-l', 'Build'), keycap(BUILD_MENU_KEY));
-    this.buildBtn.dataset.tip = `Build menu (${BUILD_MENU_KEY}): every building with its cost and what it does, warships and tank divisions`;
+    this.buildBtn.append(iconSpan(pixelIcon('build', 16), 'qb-build-ic'), el('span', 'qb-build-l', 'Build'));
+    this.buildBtn.dataset.tip = 'Build menu: every building with its cost and what it does, warships and tank divisions';
     this.buildBtn.addEventListener('click', () => this.menu.toggle());
 
     // six quick slots
@@ -182,8 +181,8 @@ export class QuickBar {
       setClass(slot.b, 'disabled', why !== '');
       setClass(slot.b, 'pinned', this.picks.isPinned(t));
       const c = buildingCost(s, me.id, t);
-      slot.b.setAttribute('aria-label', `${BUILDINGS[t].name}, ${formatCount(c.gold)} gold (${BUILDINGS[t].hotkey})`);
-      setTip(slot.b, buildingTip(s, me, t) + `\nRight-click: ${this.picks.isPinned(t) ? 'unpin' : 'pin'}`);
+      slot.b.setAttribute('aria-label', `${BUILDINGS[t].name}, ${formatCount(c.gold)} gold`);
+      setTip(slot.b, buildingTip(s, me, t) + `\n${this.picks.isPinned(t) ? 'Pinned here: Unpin on its card in the Build menu' : 'Pin it here with Pin on its card in the Build menu'}`);
     });
     this.menu.update(s, me);
   }

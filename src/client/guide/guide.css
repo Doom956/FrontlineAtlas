@@ -123,3 +123,33 @@
     justify-content: flex-end;
   }
 }
+
+/* phones while a drawer or a nation card is open (bar.ts `fold`): one line just above the command bar, the drawer
+   ends above it; while the build menu, Spend or the building selection is open (`tucked`) the bar steps aside */
+.guide.tucked .guide-bar {
+  visibility: hidden;
+}
+@media (max-width: 640px) {
+  .guide.fold .guide-bar {
+    flex-wrap: nowrap;
+    gap: 8px;
+    min-height: 36px;
+    padding: 3px 3px 3px 8px;
+  }
+  .guide.fold .guide-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .guide.fold .guide-count,
+  .guide.fold .guide-hide {
+    display: none;
+  }
+  .guide.fold .guide-acts {
+    width: auto;
+    flex: none;
+  }
+}

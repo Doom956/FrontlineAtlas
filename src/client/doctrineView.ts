@@ -19,8 +19,6 @@ import { hasLineIcon } from './hud/glyph';
 import { formatCount } from './render/common';
 
 export const DOCTRINE_ORDER: readonly DoctrineId[] = DOCTRINE_IDS;
-/** The hotkey that opens the picker (all single letters are taken: WASD pan, the rest build, strike or open drawers). */
-export const DOCTRINE_KEY = 'Shift+D';
 
 /** Line icon name for a doctrine (the config's icon when it is a HUD line icon, else our 'doctrine-<id>'). */
 export function doctrineIcon(id: DoctrineId): string {

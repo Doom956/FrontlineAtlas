@@ -383,8 +383,13 @@ button.chat-name:hover {
 .lobby-chat > .chat.open {
   flex-basis: 100%;
 }
-.lobby-chat > .chat-switch {
-  margin-left: auto;
+/* the rule row: "Lobby chat" with On / Off, the full width above the Chat button */
+.lobby-chat-rule {
+  flex: 1 1 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 .chat-switch .btn {
   flex: none;

@@ -355,7 +355,7 @@ export class ForcesPage implements DrawerPage {
           : st.locked
             ? `Warships: ${UNIT_TEXT.warship.unlock.toLowerCase()}.`
             : 'No warships yet: + Warship, then click any water your ports reach.';
-      if (ships.length > 1) head.push({ label: 'All', tip: 'Select every warship (Shift+W)', run: () => this.selectAll(s, me, 'warship') });
+      if (ships.length > 1) head.push({ label: 'All', tip: 'Select every warship', run: () => this.selectAll(s, me, 'warship') });
       this.shipBar.update(s, me, 2);
       this.fleet.set(head, rows, empty, focus);
     }
@@ -408,9 +408,9 @@ export class ForcesPage implements DrawerPage {
           run: () => this.tankMode(),
         },
       ];
-      if (tanks.length > 1) head.push({ label: 'All', tip: 'Select every tank division (Shift+A)', run: () => this.selectAll(s, me, 'tankDivision') });
+      if (tanks.length > 1) head.push({ label: 'All', tip: 'Select every tank division', run: () => this.selectAll(s, me, 'tankDivision') });
       this.tankBar.update(s, me, 2);
-      const empty = tanks.length || building.length ? '' : hasTech(me, 'mechanization') ? 'No tank divisions yet: + Tank division, then click one of your factories.' : 'Tank divisions: build a Factory, then buy Mechanization in the Arsenal (T).';
+      const empty = tanks.length || building.length ? '' : hasTech(me, 'mechanization') ? 'No tank divisions yet: + Tank division, then click one of your factories.' : 'Tank divisions: build a Factory, then buy Mechanization in the Arsenal.';
       this.land.set(head, rows, empty, focus);
     }
 
@@ -541,7 +541,7 @@ export class ForcesPage implements DrawerPage {
           key: 'art',
           pic: { unit: 'artillery' },
           title: `${formatCount(art)} artillery`,
-          status: art >= BARRAGE_MIN_ARTILLERY ? st.line : `A barrage needs ${formatCount(BARRAGE_MIN_ARTILLERY)}: raise Artillery in the Army drawer (U)`,
+          status: art >= BARRAGE_MIN_ARTILLERY ? st.line : `A barrage needs ${formatCount(BARRAGE_MIN_ARTILLERY)}: raise Artillery in the Army drawer`,
           tile: -1,
           acts: [
             { label: 'Barrage', icon: 'barrage', cls: 'danger', off: st.state === 'ready' ? '' : st.line, tip: STRIKES.barrage.what, run: () => this.aim('barrage') },

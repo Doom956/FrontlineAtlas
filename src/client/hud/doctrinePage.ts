@@ -100,7 +100,9 @@ export class DoctrinePage implements DrawerPage {
     const name = el('span', 'doc-n', d.name);
     const state = el('span', 'doc-s');
     top.append(ic, name, state);
-    const tag = el('span', 'doc-tag hidden', 'Suits you');
+    // a neutral flag with a check: amber stays for the one Choose button of the view
+    const tag = el('span', 'doc-tag hidden');
+    tag.append(catSpan(pixelIcon('accept-s', 12), null, 'doc-tag-ic'), el('span', '', 'Suits you'));
     const short = el('span', 'doc-short', d.short);
     const lv = el('span', 'doc-lv');
     const levels = d.levels.map((t, k) => {
@@ -120,6 +122,8 @@ export class DoctrinePage implements DrawerPage {
   private select(id: DoctrineId, refresh: boolean): void {
     this.sel = id;
     this.armed = null;
+    // a picked card scrolls fully clear of the sticky footer (scroll-margin-bottom in the stylesheet)
+    if (refresh) this.cards.get(id)?.btn.scrollIntoView({ block: 'nearest' });
     for (const c of this.cards.values()) {
       setClass(c.btn, 'sel', c.id === id);
       c.btn.setAttribute('aria-checked', String(c.id === id));

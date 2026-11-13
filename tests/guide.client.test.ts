@@ -460,7 +460,7 @@ describe('guide: getting ships, tanks and planes', () => {
     expect(navyTech.when(at(s, 150))).toBe(true); // no land border: the sea is the way
     // Navigation is bought in the Arsenal and needs a Port (procurement.ts): the Port first, then the card
     expect(target(navyTech, at(s, 150))).toBe('bm-port || build-port || build-menu-btn');
-    expect(text(navyTech, at(s, 150))).toMatch(/Build a Port \(E\) on your coast, then buy Navigation in the Arsenal/);
+    expect(text(navyTech, at(s, 150))).toMatch(/Build a Port on your coast, then buy Navigation in the Arsenal/);
     expect(navyTech.tile!(at(s, 150, { buildMode: 'port' }))).toBeGreaterThanOrEqual(0);
     const withPort = game();
     expect(build(withPort, 'port', (i) => withPort.map.coastal[i] === 1)).toBe(true);
@@ -527,7 +527,7 @@ describe('guide: getting ships, tanks and planes', () => {
     expect(tip('armorTech').when(at(s, 400))).toBe(true);
     // Mechanization needs a Factory (procurement.ts): the Factory first
     expect(target(tip('armorTech'), at(s, 400))).toBe('bm-factory || build-factory || build-menu-btn');
-    expect(text(tip('armorTech'), at(s, 400))).toMatch(/Build a Factory \(7\), then buy Mechanization in the Arsenal/);
+    expect(text(tip('armorTech'), at(s, 400))).toMatch(/Build a Factory, then buy Mechanization in the Arsenal/);
     me.procuring = [{ tech: 'mechanization', readyTick: 1e6 }];
     expect(tip('armorTech').done!(at(s, 400))).toBe(true);
     me.procuring = [];
@@ -574,7 +574,7 @@ describe('guide: getting ships, tanks and planes', () => {
     expect(text(air, at(s, 400))).toMatch(/Buy Flight in the Arsenal/);
     expect(target(air, at(s, 400))).toBe('tech-flight || tab-arsenal || open-research');
     me.techs.push('logistics', 'flight', 'radar');
-    expect(text(air, at(s, 400))).toMatch(/SAM sites \(G\)/);
+    expect(text(air, at(s, 400))).toMatch(/SAM sites shoot them down/);
     expect(target(air, at(s, 400))).toBe('bm-sam || build-sam || build-menu-btn');
     expect(air.done!(at(s, 400, { buildMode: 'sam' }))).toBe(true);
     // a bomber on its way home: nothing

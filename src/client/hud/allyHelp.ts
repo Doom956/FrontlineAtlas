@@ -98,7 +98,7 @@ export class AllyHelp {
     setText(this.pickHead, `Ask ${s.players[ally]?.name ?? 'them'} to attack:`);
     this.pickList.replaceChildren();
     if (!targets.length) {
-      this.pickList.append(el('p', 'note', 'No enemies or neighbours to name. Right-click enemy land to ask your allies to attack there.'));
+      this.pickList.append(el('p', 'note', 'No enemies or neighbours to name yet.'));
       return;
     }
     for (const [k, id] of targets.entries()) {

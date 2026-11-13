@@ -55,16 +55,16 @@ describe('strike status', () => {
     const me = s.players[1];
     const lines = Object.fromEntries(allStrikes(s, me).map((x) => [x.id, x]));
     for (const id of STRIKE_ORDER) expect(lines[id].state).toBe('locked');
-    expect(lines.barrage.line).toBe('Build an Arsenal, then raise Artillery in the Army drawer (U)');
-    expect(lines.bomb.line).toBe('Buy Flight in the Arsenal (T), then build an Airfield, then build a bomber there');
-    expect(lines.paradrop.line).toBe('Buy Flight in the Arsenal (T), then build an Airfield');
+    expect(lines.barrage.line).toBe('Build an Arsenal, then raise Artillery in the Army drawer');
+    expect(lines.bomb.line).toBe('Buy Flight in the Arsenal, then build an Airfield, then build a bomber there');
+    expect(lines.paradrop.line).toBe('Buy Flight in the Arsenal, then build an Airfield');
     expect(lines.rocket.line).toBe('Research Rocketry and build a Missile Silo');
     expect(lines.atomBomb.line).toBe('Research Nuclear Fission and build a Missile Silo');
     // nothing started and early in the game: the group stays hidden
     expect(strikesRevealed(s, allStrikes(s, me))).toBe(false);
     addBuilding(s, 'arsenal', 1, at(s, 10, 10));
     const st = strikeStatus(s, me, 'barrage');
-    expect(st.line).toMatch(/artillery, you have 0: raise Artillery in the Army drawer \(U\)$/);
+    expect(st.line).toMatch(/artillery, you have 0: raise Artillery in the Army drawer$/);
     expect(strikesRevealed(s, allStrikes(s, me))).toBe(true);
   });
 
@@ -76,7 +76,7 @@ describe('strike status', () => {
     const ui = defaultUiState();
     expect(aimStrike(s, me, ui, 'barrage')).toBe('');
     expect(ui.mode).toEqual({ kind: 'barrage' });
-    expect(instruction(s, me, ui.mode)).toBe(`Barrage: click enemy land within ${BARRAGE_RANGE} tiles of your border. Esc to cancel.`);
+    expect(instruction(s, me, ui.mode)).toBe(`Barrage: click enemy land within ${BARRAGE_RANGE} tiles of your border.`);
     expect(aimStrike(s, me, ui, 'barrage')).toBe(''); // same key again: stop aiming
     expect(ui.mode.kind).toBe('none');
     expect(applyAction(s, 1, { type: 'barrage', tile: at(s, 65, 20) }).ok).toBe(true);

@@ -14,7 +14,7 @@ import './menu.css';
 
 // DOM helpers live in dom.ts (re-exported here for older imports).
 export { button, el, rgbCss, setText } from './dom';
-import { button, el, rgbCss } from './dom';
+import { backButton, button, el, rgbCss } from './dom';
 
 // ------------------------------------------------------------------------------------------------ settings
 
@@ -203,7 +203,7 @@ export class Menu {
   private showHelp(): void {
     this.reset('wide');
     const top = el('div', 'menu-head');
-    top.append(button('Back', 'ghost', () => this.showTitle()), el('h2', '', 'How to play'));
+    top.append(backButton(() => this.showTitle()), el('h2', '', 'How to play'));
     const body = el('div', 'menu-scroll');
     body.append(howToPlayContent());
     this.card.append(top, body);

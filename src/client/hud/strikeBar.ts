@@ -47,7 +47,7 @@ export class StrikeBar {
       const root = el('button', 'sk locked');
       root.type = 'button';
       root.dataset.test = `strike-${id}`;
-      root.setAttribute('aria-label', `${info.name} (${info.key})`);
+      root.setAttribute('aria-label', info.name);
       const ring = el('span', 'sk-ring');
       // a pixel picture in the strikes colour; the painted icon only where there is no canvas to trace it
       const art = pixelStrike(info.icon, 26);
@@ -157,8 +157,8 @@ export class StrikeBar {
       const size = kind ? salvoOf(this.ctx.ui, kind) : 1;
       setText(b.size, kind && size !== 1 ? salvoLabel(size) : '');
       const head = st.state === 'ready' ? 'Ready' : st.state === 'cooldown' ? 'Reloading' : st.state === 'locked' ? 'Locked' : 'Not now';
-      const salvo = kind ? `\nSalvo ${salvoTip(kind, size)}. Right-click: x1 / x3 / x5 / All.` : '';
-      setTip(b.root, `${info.name}  [${info.key}]\n${head}: ${st.line}${salvo}\n${info.what}\n${info.counter}`);
+      const salvo = kind ? `\nSalvo ${salvoTip(kind, size)}. Change it at the top while you aim.` : '';
+      setTip(b.root, `${info.name}\n${head}: ${st.line}${salvo}\n${info.what}\n${info.counter}`);
     }
   }
 }

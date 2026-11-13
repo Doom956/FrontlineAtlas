@@ -23,6 +23,7 @@ import { MpGame } from './mpgame';
 import { loadSetupPrefs } from './setupScreen';
 import { setupInput } from './input';
 import { button, confirmReplaceSave, el, Menu, PLAYER_PALETTE } from './menu';
+import { backButton } from './dom';
 import { Renderer } from './renderer';
 import { defaultUiState } from './uiState';
 import { requestAdminAuth } from './admin';
@@ -746,7 +747,7 @@ async function continueSaved(): Promise<void> {
       menu.show('title');
     });
     del.dataset.test = 'save-load-delete';
-    const back = button('Back', 'ghost', () => menu.show('title'));
+    const back = backButton(() => menu.show('title'));
     page.problem(title, text, [del, back, ...extra]);
   };
 

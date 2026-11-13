@@ -169,7 +169,7 @@ function bomberBackIn(state: GameState, me: Player): number {
   return best;
 }
 
-const lockedFlight = 'Buy Flight in the Arsenal (T), then build an Airfield';
+const lockedFlight = 'Buy Flight in the Arsenal, then build an Airfield';
 
 /** A radius for text: whole tiles, one decimal when it has one (Night Bombing 4.3). */
 export function fmtR(r: number): string {
@@ -199,8 +199,8 @@ export function strikeStatus(state: GameState, me: Player, id: StrikeId): Strike
       const art = artilleryOf(state, me.id);
       st.started = art > 0 || building(state, me, 'arsenal');
       if (art < BARRAGE_MIN_ARTILLERY) {
-        if (!building(state, me, 'arsenal')) return lock('Build an Arsenal, then raise Artillery in the Army drawer (U)');
-        return lock(`Needs ${formatCount(BARRAGE_MIN_ARTILLERY)} artillery, you have ${formatCount(art)}: raise Artillery in the Army drawer (U)`);
+        if (!building(state, me, 'arsenal')) return lock('Build an Arsenal, then raise Artillery in the Army drawer');
+        return lock(`Needs ${formatCount(BARRAGE_MIN_ARTILLERY)} artillery, you have ${formatCount(art)}: raise Artillery in the Army drawer`);
       }
       const left = barrageReadyIn(state, me.id);
       if (left > 0) return cool(left, barrageCooldown(me, state), `Guns reloading: ready in ${Math.ceil(left)} s`);
@@ -219,7 +219,7 @@ export function strikeStatus(state: GameState, me: Player, id: StrikeId): Strike
       if (stored > 0) return { ...st, line: `${stored} bomber${stored === 1 ? '' : 's'} ready. Click enemy land: bombs hit ${fmtR(bomberRadiusOf(state, me.id))} tiles around.` };
       const back = bomberBackIn(state, me);
       if (back >= 0) return cool(back, 0, `Your bombers are flying: the next is home in about ${Math.max(1, Math.ceil(back))} s`);
-      return lock('Build a bomber at your Airfield: Build menu (Tab), the Airfield, or the Forces drawer (Y)');
+      return lock('Build a bomber at your Airfield: Build menu, the Airfield, or the Forces drawer');
     }
     case 'paradrop': {
       st.allowed = unitAllowed(state, 'paradrop') && buildingAllowed(state, 'airfield');
@@ -304,22 +304,21 @@ export function strikeOfMode(m: TargetMode): StrikeId | null {
   return null;
 }
 
-/** The line at the top of the screen while aiming (ends with how to cancel). */
+/** The line at the top of the screen while aiming (the chip's Cancel button stops it). */
 export function instruction(state: GameState, me: Player, m: TargetMode, ui?: Pick<UiState, 'salvo'>): string {
   const id = strikeOfMode(m);
   if (!id) return '';
-  const tail = ' Esc to cancel.';
   switch (id) {
     case 'barrage':
-      return `Barrage: click enemy land within ${barrageRange(me)} tiles of your border.${tail}`;
+      return `Barrage: click enemy land within ${barrageRange(me)} tiles of your border.`;
     case 'bomb':
-      return `Bombing run ${salvoLabel(salvoOf(ui, 'bomb'))}: click enemy land.${tail}`;
+      return `Bombing run ${salvoLabel(salvoOf(ui, 'bomb'))}: click enemy land.`;
     case 'paradrop':
-      return `Paratroopers: click enemy or empty land inside a blue ring.${tail}`;
+      return 'Paratroopers: click enemy or empty land inside a blue ring.';
     case 'rocket':
-      return `Rocket ${salvoLabel(salvoOf(ui, 'rocket'))}: click enemy land anywhere on the map.${tail}`;
+      return `Rocket ${salvoLabel(salvoOf(ui, 'rocket'))}: click enemy land anywhere on the map.`;
     case 'atomBomb':
-      return `Atom bomb ${salvoLabel(salvoOf(ui, 'atomBomb'))}: click a target. It hits all within ${ATOM_RADIUS} tiles, yours too.${tail}`;
+      return `Atom bomb ${salvoLabel(salvoOf(ui, 'atomBomb'))}: click a target. It hits all within ${ATOM_RADIUS} tiles, yours too.`;
   }
 }
 

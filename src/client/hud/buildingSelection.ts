@@ -65,8 +65,8 @@ export class BuildingSelectionBar {
     this.head.setAttribute('aria-live', 'polite');
     const x = el('button', 'sq bsel-x');
     x.type = 'button';
-    x.setAttribute('aria-label', 'Clear the selection (Esc)');
-    x.dataset.tip = 'Clear the selection (Esc)';
+    x.setAttribute('aria-label', 'Clear the selection');
+    x.dataset.tip = 'Clear the selection';
     x.append(iconSpan(lineIcon('close', 14)));
     x.addEventListener('click', () => (this.ctx.ui.buildingSel = { ...NO_BUILDING_SEL, levels: this.ctx.ui.buildingSel.levels }));
     top.append(iconSpan(lineIcon('upgrade', 16), 'bsel-ic'), this.head, x);
@@ -95,7 +95,7 @@ export class BuildingSelectionBar {
     }
     row.append(label, lvs);
     this.line = el('div', 'bsel-line');
-    this.hint = el('div', 'bsel-hint', 'U upgrade · Shift+U x1 / x3 / x5 · Esc clear · Shift+drag a new box to change');
+    this.hint = el('div', 'bsel-hint', 'Pick Upgrade x1, x3 or x5 · the X clears · Upgrade many in the Build menu for a new box');
     this.el.append(top, this.chips, row, this.line, this.hint);
   }
 
@@ -131,7 +131,7 @@ export class BuildingSelectionBar {
       setClass(x.b, 'no', t.tone === 'no');
       setClass(x.b, 'short', t.tone === 'short');
       x.b.setAttribute('aria-disabled', String(t.tone === 'no'));
-      x.b.setAttribute('aria-label', `Upgrade x${lv}${cur ? ' (U)' : ''}: ${t.text}`);
+      x.b.setAttribute('aria-label', `Upgrade x${lv}: ${t.text}`);
       setVisible(x.key, cur);
       const priced = !!pv && !pv.error;
       setVisible(x.coin, priced);

@@ -136,7 +136,7 @@ export class CommandBar {
         `Troops at home ${formatCount(t)} of ${formatCount(me.maxPop)}` +
           (out > 0 ? `, ${formatCount(out)} attacking` : '') +
           `.\nThey regrow fastest at the marker (about ${Math.round(pk * 100)}% of the cap); a full bar barely grows, so keep spending.` +
-          `\nMore land, Cities and Farms raise the cap. Click for your army (U).`,
+          `\nMore land, Cities and Farms raise the cap. Click for your army.`,
       );
       if (this.lastTroops >= 0 && Math.abs(t - this.lastTroops) > Math.max(400, this.lastTroops * 0.1)) flash(big, t > this.lastTroops ? 'flash-up' : 'flash-down');
       this.lastTroops = t;
@@ -178,7 +178,7 @@ export class CommandBar {
       setText(val, `${range.value}%`);
     });
     box.append(head, row, range);
-    setTip(box, 'Attack: the share of your troops each click sends ( [ and ] ).\nSending more than the defender has at home loses fewer troops per tile.');
+    setTip(box, 'Attack: the share of your troops each click sends. Drag the bar or press minus and plus.\nSending more than the defender has at home loses fewer troops per tile.');
     let last = -1;
     this.upd.push((_s, me) => {
       const v = Math.round(ui.attackShare * 100);

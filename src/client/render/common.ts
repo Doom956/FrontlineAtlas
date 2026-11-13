@@ -77,6 +77,14 @@ export function formatCount(n: number): string {
   return (v / 1e6).toFixed(v < 9_995_000 ? 2 : 1) + 'M';
 }
 
+/**
+ * A sim message with its big numbers in the HUD's compact form, the unit kept: "an enemy transport (20456 troops)"
+ * reads "an enemy transport (20k troops)". Only numbers of four digits or more that a word follows change.
+ */
+export function compactNumbers(text: string): string {
+  return text.replace(/\b\d{4,}(?=\s+[a-z])/g, (m) => formatCount(Number(m)));
+}
+
 /** Cache key that changes whenever a building is added, removed, upgraded, finished or changes owner. */
 export function buildingsKey(state: GameState): number {
   const v = (state as { buildingsVersion?: number }).buildingsVersion;

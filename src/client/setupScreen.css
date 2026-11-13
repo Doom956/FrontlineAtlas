@@ -713,13 +713,17 @@
     gap: 8px;
     width: 100%;
   }
+  /* five game types do not fit one row at phone width: they wrap onto two rows inside the card's padding, split by
+     the control's own hairlines (the 1px gaps show the track colour) */
   .preset-chips {
-    overflow-x: auto;
-    scrollbar-width: none;
-    margin-inline-end: -16px;
+    flex-wrap: wrap;
+    gap: 1px;
+    background: var(--rule-hi);
   }
   .preset-chips .btn {
-    flex: none;
+    flex: 1 1 auto;
+    min-width: 30%;
+    border-right: 0;
   }
   .map-grid,
   .map-grid.world {
@@ -770,7 +774,7 @@
   }
   .mod-row:has(> .switch) {
     position: relative;
-    padding-inline-end: 56px;
+    padding-inline-end: 92px;
   }
   .setup-foot {
     flex-direction: column;

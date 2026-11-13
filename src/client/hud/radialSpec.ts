@@ -119,7 +119,7 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
           disabled: !hasTech(me, 'navigation') ? techFirst('navigation') : me.gold < u.gold ? 'Not enough gold' : me.iron < u.iron ? 'Not enough iron' : undefined,
           run: () => {
             const why = enterWarshipSpawnMode(ui, state, me);
-            ctx.toast(why ? `Warship: ${why}` : 'Warship: click any water your ports reach (shaded). Esc cancels.', why ? 'bad' : 'info');
+            ctx.toast(why ? `Warship: ${why}` : 'Warship: click any water your ports reach (shaded)', why ? 'bad' : 'info');
           },
         });
       }

@@ -157,8 +157,8 @@ export function howToGet(s: GameState, me: Player, t: TechId): string {
   if (isArsenalTech(t)) {
     const b = missingBuilding(s, me, t);
     if (b) steps.push(`build ${aBuilding(b)}`);
-    steps.push(`buy ${TECHS[t].name} in the Arsenal (T)`);
-  } else steps.push(`research ${TECHS[t].name} (T)`);
+    steps.push(`buy ${TECHS[t].name} in the Arsenal`);
+  } else steps.push(`research ${TECHS[t].name}`);
   const txt = steps.join(', then ');
   return txt.charAt(0).toUpperCase() + txt.slice(1);
 }

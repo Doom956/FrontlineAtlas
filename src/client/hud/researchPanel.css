@@ -956,7 +956,7 @@ aside.drawer[data-page='research'] .dr-body {
 /* ---- phones: one row at a time as a list grouped by tier, no lines; the detail is a bottom sheet with the button */
 @media (max-width: 640px) {
   aside.drawer[data-page='research'] {
-    max-height: calc(100% - 58px - 236px);
+    max-height: calc(100% - 108px - 236px - 8px);
   }
   aside.drawer[data-page='research'] .dr-body {
     padding: 6px 10px 10px;
@@ -1139,8 +1139,8 @@ aside.drawer[data-page='research'] .dr-body {
 /* phones: while the panel is open the guide folds to one line just above the command bar and the panel ends above
    it, so neither covers the other (hud/researchTree.ts sets .rp-open) */
 @media (max-width: 640px) {
-  .hud.rp-open:has(> .guide:not(.hidden):not(.covered)) aside.drawer[data-page='research'] {
-    max-height: calc(100% - 58px - 236px - 84px);
+  .hud.rp-open:has(> .guide:not(.hidden):not(.covered):not(.tucked)) aside.drawer[data-page='research'] {
+    max-height: calc(100% - 108px - 236px - 84px);
   }
   .hud.rp-open .guide-bar {
     flex-wrap: nowrap;

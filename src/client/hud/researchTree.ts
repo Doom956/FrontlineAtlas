@@ -182,8 +182,8 @@ export class ResearchPage implements DrawerPage {
       b.dataset.test = `tab-${t.id}`;
       b.setAttribute('role', 'tab');
       const dot = el('span', 'rp-tab-dot');
-      b.append(el('span', 'rp-tab-l', t.label), dot, el('kbd', 'rp-tab-k', t.key));
-      b.dataset.tip = `${t.label}  (${t.key} or Tab)`;
+      b.append(el('span', 'rp-tab-l', t.label), dot);
+      b.dataset.tip = t.label;
       b.addEventListener('click', () => this.setTab(t.id));
       tabs.append(b);
       this.tabBtns.set(t.id, { b, dot });

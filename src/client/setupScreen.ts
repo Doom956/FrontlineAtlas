@@ -33,7 +33,7 @@ import {
 } from '../sim/setup';
 import type { BuildSpeed, Difficulty, GameMode, GameSettings, GameSetup, MapSize, MapType, Modifiers, PresetId, ResearchRule, StartingGold } from '../sim/types';
 import { getWorldMap, listWorldMaps } from '../sim/worldmaps';
-import { button, el, rgbCss, setText } from './dom';
+import { backButton, button, el, rgbCss, setText } from './dom';
 import { lineIcon } from './hud/glyph';
 import { requestThumb, type ThumbKey } from './mapThumbs';
 
@@ -297,11 +297,15 @@ export class SetupScreen {
   }
 
   private toggle(name: string, get: () => boolean, set: (v: boolean) => void): HTMLButtonElement {
+    // a real switch: the state as a word ("Off" / "On") beside a round-knobbed track
     const b = el('button', 'switch');
     b.type = 'button';
     b.setAttribute('role', 'switch');
     b.setAttribute('aria-label', name);
-    b.append(el('span', 'switch-knob'));
+    const word = el('span', 'switch-w', 'Off');
+    const track = el('span', 'switch-track');
+    track.append(el('span', 'switch-knob'));
+    b.append(word, track);
     b.addEventListener('click', () => {
       set(!get());
       this.changed();
@@ -310,6 +314,7 @@ export class SetupScreen {
       const on = get();
       b.setAttribute('aria-checked', String(on));
       b.classList.toggle('on', on);
+      setText(word, on ? 'On' : 'Off');
     });
     return b;
   }
@@ -392,7 +397,7 @@ export class SetupScreen {
 
     // Head: back, title, and (single player) who you play as.
     const top = el('div', 'menu-head setup-head');
-    const back = button('Back', 'ghost', () => this.cb.onBack());
+    const back = backButton(() => this.cb.onBack());
     top.append(back, el('h2', '', this.lobby?.title ?? 'New game'));
     if (!this.lobby) top.append(this.youChip());
 
@@ -448,6 +453,9 @@ export class SetupScreen {
     foot.append(start);
     card.append(top, this.typeRow(), body, foot);
     this.changed(true);
+    // focused so Enter starts the game, but without the keyboard ring until the player uses the keyboard
+    start.dataset.quiet = '1';
+    start.addEventListener('blur', () => delete start.dataset.quiet, { once: true });
     start.focus({ preventScroll: true });
   }
 

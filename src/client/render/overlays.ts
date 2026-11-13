@@ -166,12 +166,13 @@ export class Overlays {
       }
       this.star(ctx, sx, sy, R, css(colors[p.id] ?? p.color), p.id === me ? '#ffffff' : '#141414');
       if (spawn && p.id !== me && (!tribe || cam.zoom >= 3)) {
-        ctx.font = tribe ? `500 12px ${MAP_LABEL_FAMILY}` : `600 12px ${MAP_LABEL_FAMILY}`;
+        // the nation's own mixed case at 600 with a hair of tracking, as the names on the map (no spaced capitals)
+        ctx.font = tribe ? `500 12px ${MAP_LABEL_FAMILY}` : `600 13px ${MAP_LABEL_FAMILY}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        const track = tribe ? 0 : 0.8;
+        const track = tribe ? 0 : 0.26;
         setTracking(ctx, track);
-        haloText(ctx, tribe ? p.name : p.name.toUpperCase(), sx + track / 2, sy - R - 2, tribe ? 'rgba(232,234,238,0.85)' : 'rgba(255,255,255,0.94)', 12);
+        haloText(ctx, p.name, sx + track / 2, sy - R - 2, tribe ? 'rgba(232,234,238,0.85)' : 'rgba(255,255,255,0.94)', 12);
         setTracking(ctx, 0);
       }
     }
