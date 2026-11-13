@@ -6,14 +6,14 @@
 import type { ArtCategory, ArtStyle, MotionCategory } from '../art/artStyle';
 import type { MotionParams } from '../art/motion';
 import { ALL_MODS, unitCategoryOf, type SpriteKey } from '../art/shared/keys';
-import { CRATER_ATOM_REACH, type BlastKind, type MapFxKind, type ParachuteMarkDraw, type ParadropDraw, type StyleModule, type TrailLayer, type TrailUnit, type TrailView, type UnitDraw } from '../art/types';
+import { CRATER_ATOM_REACH, DEATH_GLIDE_TILES, type BlastKind, type DeathDraw, type DeathKind, type MapFxKind, type ParachuteMarkDraw, type ParadropDraw, type StyleModule, type TrailLayer, type TrailUnit, type TrailView, type UnitDraw } from '../art/types';
 import { FX_INFO } from '../fx/map';
 import { css, type RGB } from '../render/common';
 import { troopKinds, troopPill } from '../render/troopIcons';
 import { spriteScale } from '../render/units';
 import { backdrop, type Ground } from './backdrop';
 
-export type RowId = 'ships' | 'land' | 'air' | 'missiles' | 'troopIcons' | 'explosions' | 'craters' | 'cannonFire' | 'paradrop';
+export type RowId = 'ships' | 'land' | 'air' | 'missiles' | 'troopIcons' | 'explosions' | 'deaths' | 'craters' | 'cannonFire' | 'paradrop';
 
 /** What a scene draws with, this frame. */
 export interface SceneEnv {
@@ -474,6 +474,133 @@ function explosionsScene(env: SceneEnv): void {
   env.ctx.fillRect(0, 2 * ch, env.w, 1);
 }
 
+// ------------------------------------------------------------------------------------------------- deaths
+
+interface DeathCell {
+  name: string;
+  kind: DeathKind;
+  key: SpriteKey;
+  ground: Ground;
+  /** heading at the hit (planes fall on along it) */
+  angle: number;
+}
+
+/** Each death once: planes over land and the sea, a rocket and an atom bomb, three tanks, three ships. */
+const DEATH_CELLS: DeathCell[] = [
+  { name: 'Fighter shot down', kind: 'plane', key: 'fighter', ground: 'land', angle: 0.35 },
+  { name: 'Bomber shot down', kind: 'plane', key: 'bomber', ground: 'land', angle: -0.25 },
+  { name: 'Transport plane shot down, sea', kind: 'plane', key: 'transportPlane', ground: 'sea', angle: 0.2 },
+  { name: 'Recon plane shot down, sea', kind: 'plane', key: 'reconPlane', ground: 'sea', angle: -0.35 },
+  { name: 'Rocket shot down', kind: 'missile', key: 'rocket', ground: 'land', angle: -0.5 },
+  { name: 'Atom bomb shot down, sea', kind: 'missile', key: 'atomBomb', ground: 'sea', angle: -0.45 },
+  { name: 'Tank division destroyed', kind: 'tank', key: 'tankDivision', ground: 'land', angle: 0.4 },
+  { name: 'Heavy tank destroyed', kind: 'tank', key: 'heavyTank', ground: 'land', angle: -0.3 },
+  { name: 'Light tank destroyed', kind: 'tank', key: 'lightTank', ground: 'land', angle: Math.PI - 0.3 },
+  { name: 'Warship sunk', kind: 'ship', key: 'warship', ground: 'sea', angle: 0.12 },
+  { name: 'Transport sunk', kind: 'ship', key: 'transport', ground: 'sea', angle: Math.PI - 0.15 },
+  { name: 'Trade ship sunk', kind: 'ship', key: 'tradeShip', ground: 'sea', angle: -0.1 },
+];
+const DEATH_COLS = 3;
+/** One row of death cells at a zoom (deaths keep the lab's zoom, so close up shows the whole sequence big). */
+const deathRow = (z: number): number => 70 + 50 * px(z);
+const deathArgs: DeathDraw = { kind: 'plane', key: 'bomber', mods: 0, owner: OWNER, x: 0, y: 0, angle: 0, water: false, t: 0, ageMs: 0, durMs: 1, zoom: 1, scale: 1, seed: 0, reduced: false, dpr: 1 };
+
+/** Where in its cell a death starts (0..1 of the cell): planes high and left (they fall down and on), the rest lower. */
+function deathSpot(c: DeathCell): [number, number] {
+  if (c.kind === 'plane') return [0.4, 0.42];
+  if (c.kind === 'missile') return [0.42, 0.4];
+  if (c.kind === 'tank') return [0.5, 0.64];
+  return [0.5, 0.62];
+}
+
+function deathCell(env: SceneEnv, c: DeathCell, x: number, y: number, w: number, h: number, n: number): void {
+  const { ctx } = env;
+  const zoom = env.zoom;
+  const scale = spriteScale(zoom);
+  ground(env, c.ground, x, y, w, h, zoom);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  const art = env.style.explosions;
+  const m = env.motion;
+  const water = c.ground === 'sea';
+  const [fx, fy] = deathSpot(c);
+  const X = x + w * fx - (c.kind === 'plane' ? Math.cos(c.angle) * DEATH_GLIDE_TILES * zoom * 0.5 : 0);
+  const Y = y + h * fy - (c.kind === 'plane' ? Math.sin(c.angle) * DEATH_GLIDE_TILES * zoom * 0.5 : 0);
+  if (art.drawDeath && art.deathTimes) {
+    const tm = art.deathTimes(c.kind, m);
+    const dur = tm.durMs;
+    const impact = tm.impactMs;
+    // the unit flying, sailing or driving for a moment before it is hit, so the loop reads as a death
+    const pre = 900;
+    const period = pre + dur + 400;
+    const t = (env.time + n * 523) % period;
+    const loop = Math.floor((env.time + n * 523) / period);
+    const age = t - pre;
+    if (age < 0) {
+      const speed = c.kind === 'plane' ? 4.5 : c.kind === 'missile' ? 9 : c.kind === 'ship' ? 1.6 : 0.9;
+      const back = ((-age / 1000) * speed * zoom) * (c.kind === 'tank' || c.kind === 'ship' ? 0.6 : 1);
+      drawUnit(env, c.key, 0, X - Math.cos(c.angle) * back, Y - Math.sin(c.angle) * back, c.angle, 0, speed, 7 + n, zoom, OWNERS[n % 3], c.kind === 'ship' || c.kind === 'tank' ? 0.5 : 0);
+    } else {
+      // the crash crater a plane leaves on land (the map's craters, drawn by this cell's crater style)
+      if (c.kind === 'plane' && !water && age > impact) {
+        const cx = X + Math.cos(c.angle) * DEATH_GLIDE_TILES * zoom;
+        const cy = Y + Math.sin(c.angle) * DEATH_GLIDE_TILES * zoom;
+        env.style.craters.draw(ctx, { x: cx, y: cy, radiusPx: 0.55 * zoom, q: Math.min(0.5, ((age - impact) / 9000) * env.motion.craterLife), zoom, scale, seed: rnd(loop, n + 40), dpr: env.dpr }, m);
+        ctx.globalAlpha = 1;
+      }
+      const d = deathArgs;
+      d.kind = c.kind;
+      d.key = c.key;
+      d.mods = 0;
+      d.owner = OWNERS[n % 3];
+      d.x = X;
+      d.y = Y;
+      d.angle = c.angle;
+      d.water = water;
+      d.t = age / dur;
+      d.ageMs = age;
+      d.durMs = dur;
+      d.zoom = zoom;
+      d.scale = scale;
+      d.seed = rnd(loop * 7 + n, 3);
+      d.reduced = false;
+      d.dpr = env.dpr;
+      art.drawDeath(ctx, d, m);
+      ctx.globalAlpha = 1;
+    }
+  } else {
+    // a style without death animations: its small blast where the unit was hit, as on the map
+    const kind: BlastKind = c.kind === 'plane' || c.kind === 'missile' ? 'air' : 'hit';
+    const fxk: MapFxKind | null = c.kind === 'plane' ? 'smoke' : c.kind === 'ship' ? 'splash' : null;
+    const dur = Math.max(art.durationMs(kind, m), fxk ? FX_INFO[fxk].dur : 0);
+    const period = dur + 900;
+    const t = (env.time + n * 523) % period;
+    const loop = Math.floor((env.time + n * 523) / period);
+    if (fxk && t < FX_INFO[fxk].dur) art.drawMapFx(ctx, { kind: fxk, x: X, y: Y, t: t / FX_INFO[fxk].dur, zoom, seed: rnd(loop, n), rt: 0, dpr: env.dpr }, m);
+    const bd = art.durationMs(kind, m);
+    if (t < bd) art.draw(ctx, { kind, x: X, y: Y, t: t / bd, ageMs: t, durMs: bd, zoom, scale, rt: 0, seed: rnd(loop * 7 + n, 3), reduced: false, dpr: env.dpr }, m);
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+  label(ctx, c.name, x + 4, y + 10, 'left', true);
+}
+
+function deathsScene(env: SceneEnv): void {
+  const cw = env.w / DEATH_COLS;
+  const ch = deathRow(env.zoom);
+  DEATH_CELLS.forEach((c, i) => {
+    const col = i % DEATH_COLS;
+    const row = Math.floor(i / DEATH_COLS);
+    deathCell(env, c, Math.round(col * cw), row * ch, Math.round((col + 1) * cw) - Math.round(col * cw), ch, i);
+  });
+  const rows = Math.ceil(DEATH_CELLS.length / DEATH_COLS);
+  env.ctx.fillStyle = 'rgba(10,14,20,0.6)';
+  for (let col = 1; col < DEATH_COLS; col++) env.ctx.fillRect(Math.round(col * cw), 0, 1, rows * ch);
+  for (let r = 1; r < rows; r++) env.ctx.fillRect(0, r * ch, env.w, 1);
+}
+
 // ------------------------------------------------------------------------------------------------- craters
 
 const CRATER_ROWS: { name: string; r: number; zoom?: number; atom?: boolean }[] = [
@@ -872,6 +999,16 @@ export function rowSpecs(): RowSpec[] {
       motion: 'explosions',
       height: (z) => 2 * blastRow(z) + 230,
       draw: explosionsScene,
+    },
+    {
+      id: 'deaths',
+      title: 'Destroyed',
+      note: 'Each death loops after the unit is seen for a moment: planes shot down over land and sea, a rocket and an atom bomb shot down, tanks destroyed, ships sunk.',
+      pick: 'explosions',
+      also: [],
+      motion: 'explosions',
+      height: (z) => Math.ceil(DEATH_CELLS.length / DEATH_COLS) * deathRow(z),
+      draw: deathsScene,
     },
     {
       id: 'craters',
