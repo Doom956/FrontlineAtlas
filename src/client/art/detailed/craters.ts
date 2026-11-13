@@ -509,7 +509,10 @@ function drawZone(ctx: CanvasRenderingContext2D, c: CraterDraw, m: MotionParams)
     // its hottest middle stays orange and yellow a while longer
     drawBlob(ctx, 'glow', pan * (0.4 + 0.35 * red), (Math.floor(sd) + 2) & 3, c.x, c.y, g, Math.min(1, 1.1 * red ** 1.4) * breathe * fade);
   }
-  if (white > 0) for (const [f, v] of [[1.3, 1], [0.85, 3], [0.5, 2]] as const) drawBlob(ctx, 'glow', pan * f, (Math.floor(sd) + v) & 3, c.x, c.y, g, white);
+  if (white > 0) {
+    drawBlob(ctx, 'glow', pan * 1.45, (Math.floor(sd) + 1) & 3, c.x, c.y, g, white);
+    drawBlob(ctx, 'whiteHot', pan * 1.05, (Math.floor(sd) + 3) & 3, c.x, c.y, g, white);
+  }
   // the fires: clumps of two to four (one bigger, the rest small) out over the zone; the outer clumps burn longest
   const nC = mid ? 4 : CLUMPS;
   const burn = (0.16 + 0.3 * 1) * (0.75 + 0.5 * m.craterSmoke);
