@@ -23,6 +23,7 @@ import { artFor, motionFor, styleModule } from '../art/registry';
 import { spriteKey } from '../art/shared/keys';
 import type { ParachuteMarkDraw, ParadropDraw, TrailLayer, TrailUnit, TrailView } from '../art/types';
 import { prankView } from '../fx/prankView';
+import { isKillBlast } from '../fx/deaths';
 import { isIncoming } from '../forces';
 import { troopKinds, troopPill } from './troopIcons';
 import { hasIntel } from '../../sim/buildings';
@@ -66,6 +67,17 @@ interface Track {
   /** how fast the drawn heading turns (rad/s, smoothed) and when it was last eased (ms) */
   turn: number;
   at: number;
+}
+
+/** True when the sim's kill blast (fx/deaths.ts) of the last few ticks lies within 2.5 tiles of (x, y) (read-only). */
+function killBlastNear(state: GameState, x: number, y: number): boolean {
+  const fx = state.effects;
+  for (let i = fx.length - 1, n = 0; i >= 0 && n < 400; i--, n++) {
+    const e = fx[i];
+    if (e.tick < state.tick - 30) break;
+    if (e.kind === 'explosion' && isKillBlast(e.radius) && Math.abs(e.x - x) + Math.abs(e.y - y) < 2.5) return true;
+  }
+  return false;
 }
 
 export class UnitLayer {
@@ -178,9 +190,10 @@ export class UnitLayer {
     }
     for (const [id, t] of this.tracks) {
       if (t.seen === state.tick) continue;
-      // a cargo plane that vanished close to its target dropped its troops: parachutes there
+      // a cargo plane that vanished close to its target dropped its troops: parachutes there (unless it was shot down
+      // there: the sim's kill blast where it was; its paratroopers went down with it)
       const pl = this.planes.get(id);
-      if (pl && Math.abs(t.cx + 0.5 - pl.tx) + Math.abs(t.cy + 0.5 - pl.ty) < 6) this.drops.push({ x: pl.tx, y: pl.ty, owner: pl.owner, born: nowMs });
+      if (pl && Math.abs(t.cx + 0.5 - pl.tx) + Math.abs(t.cy + 0.5 - pl.ty) < 6 && !killBlastNear(state, t.cx + 0.5, t.cy + 0.5)) this.drops.push({ x: pl.tx, y: pl.ty, owner: pl.owner, born: nowMs });
       this.planes.delete(id);
       this.tracks.delete(id);
     }

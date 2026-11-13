@@ -16,6 +16,7 @@ import type { SpriteKey } from '../src/client/art/shared/keys';
 import { BattleFx } from '../src/client/fx/battleFx';
 import { DeathWatch, deathKindOf } from '../src/client/fx/deaths';
 import { PixelFx } from '../src/client/fx/pixelFx';
+import { UnitLayer } from '../src/client/render/units';
 import { markBuildingsChanged } from '../src/sim/buildings';
 import { TANK_DIVISION_TROOPS } from '../src/sim/config';
 import { hashState } from '../src/sim/hash';
@@ -265,6 +266,24 @@ describe('deaths: telling a destroyed unit from one that arrived', () => {
     s.effects.push({ kind: 'explosion', x: ship.x + 0.5, y: ship.y + 0.5, radius: 1.5, tick: s.tick });
     b.update(s, cam, 200);
     expect(b.pool.countOf('splash')).toBe(0);
+  });
+
+  it('drops no paratroopers where a cargo plane was shot down near its drop point, only where it got there', () => {
+    const drops = (l: UnitLayer): number => (l as unknown as { drops: unknown[] }).drops.length;
+    for (const shot of [true, false]) {
+      const s = landGame();
+      const plane = { id: 77, type: 'transportPlane', owner: 1, x: 30, y: 15, target: at(s, 32, 15), home: at(s, 10, 15), state: 0, hp: 1, path: [], pathPos: 0, cargo: 0, targetOwner: 2, troops: { infantry: 500, armor: 0, artillery: 0 } } as unknown as Unit;
+      s.units.push(plane);
+      const layer = new UnitLayer();
+      layer.reset(s.map.width);
+      layer.track(s, 0);
+      s.tick += 1;
+      plane.hp = 0;
+      s.units = [];
+      if (shot) s.effects.push({ kind: 'explosion', x: 30.5, y: 15.5, radius: 1.5, tick: s.tick });
+      layer.track(s, 100);
+      expect(drops(layer), shot ? 'shot down' : 'dropped').toBe(shot ? 0 : 1);
+    }
   });
 
   it('matches each kill blast to one unit only: two ships sunk side by side are two deaths', () => {
