@@ -572,7 +572,7 @@ function drawMissile(ctx: CanvasRenderingContext2D, d: DeathDraw, m: MotionParam
         continue;
       }
       if (d.water) {
-        blastAt(ctx, 'splash', gx, gy, la, d.zoom, d.scale, d.dpr, (d.seed + i * 0.137) % 1, m, d.reduced, atom ? 0.42 : 0.34);
+        blastAt(ctx, 'splash', gx, gy, la, d.zoom, d.scale, d.dpr, (d.seed + i * 0.137) % 1, m, d.reduced, (atom ? 0.36 : 0.3) * (0.8 + 0.4 * rnd(sd, i + 47)));
         continue;
       }
       if (la >= landMs + 900 * lin) continue;
@@ -618,7 +618,6 @@ function drawTank(ctx: CanvasRenderingContext2D, d: DeathDraw, m: MotionParams):
   const blastT = tankBlast(m);
   const burn = tankBurn(m);
   const endBurn = blastT + burn;
-  const dur = Math.max(1, d.durMs);
   let age = d.ageMs;
   if (d.reduced) age = d.t < 0.3 ? 260 : d.t < 0.7 ? blastT + burn * 0.4 : endBurn + TANK_FADE * 0.3;
   const sd = d.seed * 67.9 + 7;
@@ -697,7 +696,6 @@ function drawTank(ctx: CanvasRenderingContext2D, d: DeathDraw, m: MotionParams):
   if (!d.reduced || d.t < 0.3) blastAt(ctx, 'hit', px, py, d.reduced ? 150 : age, d.zoom, d.scale, d.dpr, d.seed, m, d.reduced);
   fireball(ctx, px, py, R, age - 20, 420 * m.blastTime, g, u, sd, mid ? 3 : 5);
   if (!d.reduced) flashCore(ctx, 'bomb', px, py, R * g.res, age, g, m, sd);
-  void dur;
   ctx.globalAlpha = prev;
 }
 
