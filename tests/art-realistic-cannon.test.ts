@@ -1,12 +1,14 @@
 // The realistic cannon fire (client/art/realistic/cannon.ts), drawn in the game over the detailed pixel ships: the
-// muzzle flash is big enough to read at mid zoom, holds its blast at full strength for a few frames (longer at
-// Cinematic), is thrown out along the line of fire and is gone by its end; a shell in flight is a bright head with a
-// trail of fire, lifted along its arc, hidden while it is still over the firing ship; every call is deterministic,
-// safe without a canvas (node) and restores the context. Pictures are checked in the art lab, not here.
+// muzzle flash reads at mid zoom without swallowing the ship (about a beam wide there, no light round it over the hull),
+// holds its blast at full strength for a few frames (longer at Cinematic) while its shape flickers, is thrown out along
+// the line of fire and is gone by its end; a shell in flight is a small bright head with a trail of fire tapering to
+// nothing, lifted along its arc, hidden until it is out past the flash and never reaching back behind that point;
+// every call is deterministic, safe without a canvas (node) and restores the context. Pictures are checked in the art
+// lab, not here.
 import { describe, expect, it } from 'vitest';
 import { motionParams } from '../src/client/art/motion';
 import { realistic } from '../src/client/art/realistic';
-import { flashState, muzzleFlash, muzzleTiming, shellClear, shellLook } from '../src/client/art/realistic/cannon';
+import { flashState, muzzleFlash, muzzleReach, muzzleTiming, shellClear, shellLook } from '../src/client/art/realistic/cannon';
 import type { MuzzleDraw, ShellDraw } from '../src/client/art/types';
 
 /** A 2D context that records what is called and set, and draws nothing. */
@@ -42,7 +44,7 @@ const FRAME = 1000 / 60;
 describe('realistic muzzle flash', () => {
   const muzzle = (t: number, over: Partial<MuzzleDraw> = {}): MuzzleDraw => ({ x: 100, y: 100, aim: 0.6, t, zoom: 14, scale: 2, seed: 0.3, dpr: 1, ...over });
 
-  it('is a flash out of every barrel of a turret, longer than it is wide, big enough to read at mid zoom', () => {
+  it('is a flash out of every barrel of a turret, longer than it is wide, about a ship\'s beam at mid zoom', () => {
     const f = [subtle, lively, cinematic].map((m) => muzzleFlash(2, m));
     expect(f[1].barrels).toBe(3);
     for (const x of f) {
@@ -52,10 +54,15 @@ describe('realistic muzzle flash', () => {
     expect(f[0].length).toBeLessThan(f[1].length);
     expect(f[1].length).toBeLessThan(f[2].length);
     expect(muzzleFlash(4, lively).length).toBeGreaterThan(muzzleFlash(2, lively).length);
-    // at mid zoom (map scale 1, a battleship about 37 px long) the blast is about half a ship long
-    expect(muzzleFlash(1, lively).length).toBeGreaterThan(15);
-    expect(muzzleFlash(1, lively).width).toBeGreaterThan(10);
-    expect(muzzleFlash(1, subtle).length).toBeGreaterThan(12);
+    // at mid zoom (map scale 1, a battleship about 37 px long and 8 px across) the blast is a short cone out of the
+    // bow: long enough to see, about a beam wide, never bigger than the ship firing it
+    expect(muzzleFlash(1, lively).length).toBeGreaterThan(9);
+    expect(muzzleFlash(1, lively).length).toBeLessThan(14);
+    expect(muzzleFlash(1, lively).width).toBeLessThan(8.5);
+    expect(muzzleFlash(1, subtle).length).toBeGreaterThan(7);
+    // one turret's flash close up stays a gun going off (the ripple of a battleship's turrets builds the big mass)
+    expect(muzzleFlash(2, lively).length).toBeLessThan(18);
+    expect(muzzleReach(2, lively, 14)).toBeLessThan(28);
     // below zoom 3 the ships are small far markers: the flash shrinks with them
     expect(muzzleFlash(1, lively, 2).length).toBeLessThan(muzzleFlash(1, lively, 3).length * 0.6);
     expect(muzzleFlash(1, lively, 3).length).toBeCloseTo(muzzleFlash(1, lively, 10).length, 6);
@@ -108,6 +115,25 @@ describe('realistic muzzle flash', () => {
     // a bigger flash at Cinematic
     expect(flashState(0, cinematic).ballR).toBeGreaterThan(flashState(0, lively).ballR);
     expect(flashState(0, lively).ballR).toBeGreaterThan(flashState(0, subtle).ballR);
+  });
+
+  it('flickers while the blast holds: the same strength, never the same shape two frames running', () => {
+    const at = (ms: number): string[] => {
+      const r = recorder();
+      realistic.cannonFire.drawMuzzle(r.ctx, muzzle(ms / realistic.cannonFire.flashMs(lively)), lively);
+      return r.log;
+    };
+    expect(flashState(8, lively).blast).toBe(flashState(25, lively).blast);
+    expect(at(8)).not.toEqual(at(25));
+    expect(at(25)).not.toEqual(at(42));
+  });
+
+  it('puts no light round the gun over the hull at mid zoom', () => {
+    for (const ms of [0, 10, 40, 90]) {
+      const r = recorder();
+      realistic.cannonFire.drawMuzzle(r.ctx, muzzle(ms / realistic.cannonFire.flashMs(lively), { scale: 1, zoom: 6 }), lively);
+      expect(r.sets.filter((x) => x.name === 'globalCompositeOperation' && x.value === 'lighter'), `${ms}`).toEqual([]);
+    }
   });
 
   it('throws the flash out along the line of fire', () => {
@@ -165,19 +191,28 @@ describe('realistic shells', () => {
     // lifted up the screen with height at the top of its arc
     expect(py).toBeLessThan(200 - 20);
     expect(px).toBeCloseTo(150, 0);
-    // the trail of fire is wide enough to read, and lies behind the head (toward the gun)
-    const widths = r.sets.filter((s) => s.name === 'lineWidth').map((s) => s.value as number);
-    expect(Math.max(...widths)).toBeGreaterThanOrEqual(2.5);
+    // the trail of fire is a wedge wide enough to read at the head, tapering to nothing behind it (toward the gun)
+    const pts = r.calls.filter((c) => c.name === 'moveTo' || c.name === 'lineTo').map((c) => c.args as number[]);
     const moves = r.calls.filter((c) => c.name === 'moveTo').map((c) => c.args as number[]);
     expect(moves.length).toBeGreaterThanOrEqual(2);
     for (const [mx] of moves) expect(mx).toBeLessThan(px);
+    const across = (x0: number, x1: number): number => {
+      const ys = pts.filter(([x]) => x >= x0 && x <= x1).map(([, y]) => y);
+      return Math.max(...ys) - Math.min(...ys);
+    };
+    expect(across(px - 0.5, px + 0.5)).toBeGreaterThanOrEqual(2.5);
+    const tail = Math.min(...pts.map(([x]) => x));
+    expect(across(tail - 0.01, tail + 0.01)).toBeLessThan(0.01);
+    for (const [x] of pts) expect(x).toBeLessThanOrEqual(px + 3);
     // a glow round the head: a light added to what is under it
     expect(r.ctx.globalCompositeOperation).toBe('source-over');
   });
 
   it('stays hidden while it is still over the firing ship, on long and short shots alike', () => {
-    const qc = shellClear(1, 300);
+    const qc = shellClear(1, 300, lively);
     expect(qc).toBeGreaterThan(0);
+    // out past the far edge of the flash's ball of fire
+    expect(qc * 300).toBeGreaterThan(muzzleReach(1, lively));
     expect(qc).toBeLessThan(0.2);
     const early = recorder();
     realistic.cannonFire.drawShell(early.ctx, shell(qc * 0.8), lively);
@@ -192,6 +227,24 @@ describe('realistic shells', () => {
     const b = recorder();
     realistic.cannonFire.drawShell(b.ctx, shell(0.8, near), lively);
     expect(heads(b).length).toBe(1);
+  });
+
+  it('never reaches back behind where it shows, and its shadow is gone high up', () => {
+    for (const scale of [1, 2]) {
+      const zoom = scale === 1 ? 6 : 14;
+      const qc = shellClear(scale, 300, lively, zoom);
+      for (const dt of [0.005, 0.02, 0.06, 0.3]) {
+        const r = recorder();
+        realistic.cannonFire.drawShell(r.ctx, shell(qc + dt, { scale, zoom }), lively);
+        const xs = r.calls.filter((c) => c.name === 'moveTo' || c.name === 'lineTo' || c.name === 'arc').map((c) => (c.args as number[])[0]);
+        // puffs of smoke (drawImage) too: their centre is half their size in from their corner
+        for (const c of r.calls.filter((c) => c.name === 'drawImage')) xs.push((c.args[1] as number) + (c.args[3] as number) / 2);
+        for (const x of xs) expect(x, `scale ${scale} +${dt}`).toBeGreaterThanOrEqual(qc * 300 - 3.5);
+      }
+    }
+    const top = recorder();
+    realistic.cannonFire.drawShell(top.ctx, shell(0.5, { scale: 2, zoom: 14 }), lively);
+    expect(top.calls.filter((c) => c.name === 'stroke')).toEqual([]);
   });
 
   it('flies higher with shellArc, and every kind is deterministic and restores the context', () => {
