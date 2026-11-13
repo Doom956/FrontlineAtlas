@@ -1,0 +1,473 @@
+/* Multiplayer pages (lobby.ts): the public game list with join by code, and the lobby's own column beside the setup
+   screen (setupScreen.css lays the lobby out). Same cool steel as the setup screen: rows and players are calm
+   filled bars (--metal-2) on the panel, separated by space; chips and row buttons a step lighter. No stripes and no
+   coloured words: a public game's kind is a small icon and its name, a team is a small colour square and its name.
+   One accent per page: the Join of the suggested public game (or Create private lobby when none can be joined) on
+   the list, Start game in the lobby.
+
+   Contrast (WCAG formula):
+     on a row #1c2531   --text 13.4:1, --dim 6.5:1, --faint 5.3:1
+     on a chip #27313f  --text 11.4:1, --dim 5.5:1; danger text #f0a597 6.5:1
+     row button #313d4c --text 9.6:1; under the pointer #3a4757 --text 8.4:1 */
+
+/* ---------------------------------------------------------------- the list page */
+.menu-card.mp {
+  width: min(1040px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 18px 24px 16px;
+}
+.menu-card.mp .menu-head .net-status {
+  margin-inline-start: auto;
+}
+.net-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 500 13px/1 var(--f-label);
+  color: var(--dim);
+  white-space: nowrap;
+}
+.net-status::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.net-status.ok::before {
+  background: var(--good);
+}
+.net-status.warn::before {
+  background: var(--caution);
+}
+.net-status.bad {
+  color: #f0a597;
+}
+.net-status.bad::before {
+  background: var(--danger);
+}
+.mp-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: 32px;
+}
+.mp-col {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+/* the two ways in sit side by side, split by the one hairline (as the lobby's own column is) */
+.mp-private {
+  padding-inline-start: 32px;
+  border-inline-start: 1px solid var(--rule);
+}
+.mp-note {
+  color: var(--dim);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+}
+.lob-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  min-height: 120px;
+}
+.lob-empty {
+  padding: 20px 16px;
+  border-radius: var(--r);
+  background: var(--metal-2);
+  color: var(--dim);
+  text-align: center;
+  line-height: 1.45;
+}
+.lob-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 12px 12px 14px;
+  border-radius: var(--r);
+  background: var(--metal-2);
+}
+.lob-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lob-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.lob-ic {
+  flex: none;
+  color: var(--faint);
+}
+.lob-kind {
+  flex: none;
+  font: 600 15px/1.2 var(--f-label);
+  color: var(--text);
+}
+.lob-map {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: var(--dim);
+}
+.lob-map::before {
+  content: '·';
+  margin-inline-end: 8px;
+  color: var(--faint);
+}
+.lob-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding-inline-start: 24px;
+  font-size: 13px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+.lob-when[data-starts] {
+  color: var(--text);
+  font-weight: 600;
+}
+.lob-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-inline-start: 24px;
+}
+.lob-chips .mod-chip {
+  height: 22px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: var(--metal-3);
+  font: 500 12px/1 var(--f-ui);
+  color: var(--text);
+}
+.lob-rules {
+  padding-inline-start: 24px;
+  font-size: 13px;
+  color: var(--faint);
+}
+/* a row's Join: a step lighter than the row, so it reads as a button; the suggested one is the accent */
+.lob-row .btn {
+  flex: none;
+  min-width: 88px;
+  min-height: 36px;
+  padding: 0 18px;
+  font-size: 14px;
+}
+.lob-row .btn:not(.primary) {
+  background: var(--metal-4);
+}
+.lob-row .btn:not(.primary):hover:not(:disabled) {
+  background: #3a4757;
+}
+.mp-private .btn.big {
+  align-self: stretch;
+}
+.mp-private .btn.big:not(.primary) {
+  background: var(--metal-3);
+}
+.mp-private .btn.big:not(.primary):hover:not(:disabled) {
+  background: var(--metal-4);
+}
+.mp-or {
+  margin-top: 12px;
+}
+.mp-join {
+  display: flex;
+  gap: 8px;
+}
+.code-in {
+  flex: 1;
+  min-width: 0;
+  font: 600 18px/1 var(--f-label);
+  height: 40px;
+}
+.mp-join .btn {
+  min-height: 40px;
+}
+.mp-join .btn:not(.ghost) {
+  min-width: 72px;
+}
+.mp-join .ico,
+.lobby-actions .ico,
+.lobby-copy .ico {
+  color: var(--dim);
+}
+.mp-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+}
+.mp-you {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.mp-you .input {
+  width: 150px;
+}
+.mp-you .palette {
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+.mp-you .swatch-btn {
+  width: 20px;
+  height: 20px;
+}
+/* phone: the colours take their own line (twelve don't fit beside the name) */
+@media (max-width: 640px) {
+  .mp-you {
+    flex-wrap: wrap;
+  }
+  .mp-you .input {
+    flex: 1;
+    width: auto;
+  }
+  .mp-you .palette {
+    flex-basis: 100%;
+    flex-wrap: wrap;
+  }
+}
+.mp-msg {
+  color: var(--dim);
+  font-size: 13px;
+  text-align: end;
+}
+.mp-msg.bad {
+  color: #f0a597;
+}
+
+/* ---------------------------------------------------------------- the lobby's column (layout: setupScreen.css) */
+.lobby-code {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+/* the code in the display face, like the clock and the big numbers: plain light text, the accent stays on Start */
+.code-big {
+  font: 400 34px/1 var(--f-pixel);
+  color: var(--text);
+  user-select: all;
+}
+.lobby-copy {
+  display: flex;
+  gap: 6px;
+}
+.lobby-copy .btn {
+  min-height: 30px;
+  padding: 0 10px;
+  background: var(--metal-2);
+}
+.lobby-copy .btn:hover:not(:disabled) {
+  background: var(--metal-3);
+}
+.lobby-copy .ico svg {
+  width: 14px;
+  height: 14px;
+}
+.lobby-when {
+  font: 500 13px/1.3 var(--f-label);
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+.lobby-when.counting {
+  font-weight: 600;
+  color: var(--text);
+}
+.seats-in {
+  height: 30px;
+  padding: 0 6px;
+}
+.lobby-players {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lobby-players .lp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 6px 0 10px;
+  border-radius: var(--r);
+  background: var(--metal-2);
+}
+/* you: the same quiet lighter fill as "you" in the standings */
+.lobby-players .lp.me {
+  background: var(--metal-3);
+}
+.lobby-players .lp.me .lp-name {
+  font-weight: 600;
+}
+.lobby-players .lp.away {
+  opacity: 0.55;
+}
+.lobby-players .sw {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+.lp-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lp-tag {
+  flex: none;
+  padding: 4px 6px;
+  border-radius: var(--r-xs);
+  background: var(--metal-3);
+  font: 500 11px/1 var(--f-ui);
+  color: var(--dim);
+}
+.lp.me .lp-tag {
+  background: var(--metal-4);
+}
+.lp-tag.you {
+  color: var(--text);
+}
+.lp-team {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 44px;
+  font: 500 12px/1 var(--f-ui);
+  color: var(--dim);
+}
+.lp-team[style*='--team']::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--team);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+/* Kick: a small filled button on the row, its word in the danger tint */
+.lobby-players .btn.mini-btn {
+  flex: none;
+  min-height: 26px;
+  background: var(--metal-3);
+}
+.lp.me .btn.mini-btn {
+  background: var(--metal-4);
+}
+.team-seg {
+  flex-wrap: wrap;
+}
+.team-seg .btn[style*='--team']::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--team);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+.lobby-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 12px;
+}
+.lobby-actions .btn:not(.primary) {
+  min-height: 40px;
+}
+/* the chat panel in the lobby column: no corner marks (the HUD chat keeps its own look for now) */
+.lobby-chat .chat-panel::before {
+  display: none;
+}
+.lobby-wait {
+  padding: 4px 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--dim);
+  text-align: center;
+}
+.lobby-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+}
+
+@media (max-width: 1100px) {
+  /* one column: the page scrolls as a whole (no list scrolling inside it) */
+  .mp-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+    overflow-y: auto;
+  }
+  .mp-col {
+    min-height: auto;
+  }
+  .lob-list {
+    min-height: 0;
+    overflow: visible;
+  }
+  .mp-private {
+    padding-inline-start: 0;
+    padding-top: 20px;
+    border-inline-start: 0;
+    border-top: 1px solid var(--rule);
+  }
+  .mp-foot {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 640px) {
+  .lob-row {
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .lob-row .btn {
+    min-width: 72px;
+    padding: 0 14px;
+  }
+  .lob-meta,
+  .lob-chips,
+  .lob-rules {
+    padding-inline-start: 0;
+  }
+  .lob-head {
+    flex-wrap: wrap;
+  }
+  .lob-map {
+    flex-basis: 100%;
+    white-space: normal;
+  }
+  .lob-map::before {
+    display: none;
+  }
+}
