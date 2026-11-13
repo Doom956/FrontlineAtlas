@@ -245,8 +245,12 @@ function drawShell(ctx: CanvasRenderingContext2D, sh: ShellDraw, m: MotionParams
   const at = (q: number): [number, number] => [x0 + (x1 - x0) * q, y0 + (y1 - y0) * q - 4 * H * q * (1 - q)];
   const [px, py] = at(t);
   const [bx, by] = at(Math.max(0, t - 0.07));
+  // the flight starts at the ship's middle while the flash and the slug leave the turret: the shell shows only once it
+  // has cleared the hull (on a short shot, after the first part of its flight)
+  const show = dist > u * 6 ? clamp01((dist * t - u * 1.4) / (u * 1.6)) : ramp(t, 0.1, 0.3);
+  if (show <= 0) return;
   // the shadow on the ground or the water
-  ctx.globalAlpha = prev * 0.3 * (1 - Math.abs(0.5 - t));
+  ctx.globalAlpha = prev * 0.3 * (1 - Math.abs(0.5 - t)) * show;
   ctx.fillStyle = '#0a0c0e';
   ctx.beginPath();
   ctx.ellipse(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, Math.max(0.8, u * 0.18), Math.max(0.5, u * 0.11), 0, 0, Math.PI * 2);
@@ -255,7 +259,7 @@ function drawShell(ctx: CanvasRenderingContext2D, sh: ShellDraw, m: MotionParams
   const g = ctx.createLinearGradient(bx, by, px, py);
   g.addColorStop(0, 'rgba(255,150,60,0)');
   g.addColorStop(1, 'rgba(255,190,100,0.85)');
-  ctx.globalAlpha = prev;
+  ctx.globalAlpha = prev * show;
   ctx.strokeStyle = g;
   ctx.lineWidth = Math.max(1.1, u * 0.22);
   ctx.beginPath();
@@ -266,7 +270,7 @@ function drawShell(ctx: CanvasRenderingContext2D, sh: ShellDraw, m: MotionParams
   ctx.beginPath();
   ctx.arc(px, py, Math.max(0.8, u * 0.13), 0, Math.PI * 2);
   ctx.fill();
-  glow(ctx, px, py, Math.max(2.5, u * 0.6), 0.5);
+  glow(ctx, px, py, Math.max(2.5, u * 0.6), 0.5 * show);
   ctx.globalAlpha = prev;
   ctx.lineCap = 'butt';
 }
