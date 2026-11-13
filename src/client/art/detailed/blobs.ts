@@ -216,8 +216,14 @@ export function blobBitmap(kind: BlobKind, r: number, variant: number, heat = 0)
 
 const atlas = new SpriteAtlas(1024, 6);
 
-function entry(kind: BlobKind, r: number, variant: number, heat: number): AtlasEntry | null {
+/** A blob's radius in whole cells; big ones in steps of two and four cells, so a growing cloud bakes far fewer sizes. */
+export function cellsOf(r: number): number {
   const R = Math.max(1, Math.min(48, Math.round(r)));
+  return R > 32 ? Math.round(R / 4) * 4 : R > 16 ? Math.round(R / 2) * 2 : R;
+}
+
+function entry(kind: BlobKind, r: number, variant: number, heat: number): AtlasEntry | null {
+  const R = cellsOf(r);
   const v = variant & 3;
   const h = kind === 'fire' ? Math.max(0, Math.min(4, Math.round(heat))) : 0;
   const key = ((KINDS.indexOf(kind) * 64 + R) * 4 + v) * 8 + h;

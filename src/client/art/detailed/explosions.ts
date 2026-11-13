@@ -449,28 +449,35 @@ let layerX = 0;
 let layerY = 0;
 let layerW = 0;
 let layerH = 0;
+let layerP = 1;
 
 /**
- * Opens the layer over the CSS box (x0, y0)-(x1, y1) of `ctx` (clipped to its canvas): the context to draw the cloud
- * into, `ctx` itself where there is no layer (no DOM, a rotated or odd transform), or null when the box is off screen.
+ * Opens the layer over the CSS box (x0, y0)-(x1, y1) of `ctx` (clipped to its canvas), one layer pixel per art pixel of
+ * grid `g` (so it costs p * p times fewer pixels than the screen, and every blob lands on the same cells): the context
+ * to draw into, `ctx` itself where there is no layer (no DOM, a rotated or odd transform), or null when the box is off
+ * screen.
  */
-function openLayer(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number): CanvasRenderingContext2D | null {
+function openLayer(ctx: CanvasRenderingContext2D, g: Grid, x0: number, y0: number, x1: number, y1: number): CanvasRenderingContext2D | null {
   layerOn = false;
   if (typeof document === 'undefined' || typeof ctx.getTransform !== 'function' || !ctx.canvas) return ctx;
   const T = ctx.getTransform();
   if (T.b !== 0 || T.c !== 0 || !(T.a > 0) || !(T.d > 0)) return ctx;
-  const dx0 = Math.max(0, Math.floor(T.a * x0 + T.e));
-  const dy0 = Math.max(0, Math.floor(T.d * y0 + T.f));
-  const dx1 = Math.min(ctx.canvas.width, Math.ceil(T.a * x1 + T.e));
-  const dy1 = Math.min(ctx.canvas.height, Math.ceil(T.d * y1 + T.f));
-  if (dx1 <= dx0 || dy1 <= dy0) return null;
+  const p = g.p;
+  const ex0 = Math.max(0, T.a * x0 + T.e);
+  const ey0 = Math.max(0, T.d * y0 + T.f);
+  const ex1 = Math.min(ctx.canvas.width, T.a * x1 + T.e);
+  const ey1 = Math.min(ctx.canvas.height, T.d * y1 + T.f);
+  if (ex1 <= ex0 || ey1 <= ey0) return null;
+  // the layer's corner on the cell grid the blobs snap to (whole cells from the canvas origin)
+  const dx0 = T.e - p * Math.ceil((T.e - ex0) / p);
+  const dy0 = T.f - p * Math.ceil((T.f - ey0) / p);
+  const w = Math.ceil((ex1 - dx0) / p);
+  const h = Math.ceil((ey1 - dy0) / p);
   if (!layerCv) {
     layerCv = document.createElement('canvas');
     layerCx = layerCv.getContext('2d');
   }
   if (!layerCx) return ctx;
-  const w = dx1 - dx0;
-  const h = dy1 - dy0;
   // it only grows (a resize reallocates), and only to what the cloud covers on screen
   if (layerCv.width < w || layerCv.height < h) {
     layerCv.width = Math.max(layerCv.width, w);
@@ -480,18 +487,18 @@ function openLayer(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: nu
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.globalAlpha = 1;
   c.clearRect(0, 0, w, h);
-  // the same device pixel grid as the map (whole device px shifted), so every blob lands on the same cells
-  c.setTransform(T.a, 0, 0, T.d, T.e - dx0, T.f - dy0);
+  c.setTransform(T.a / p, 0, 0, T.d / p, (T.e - dx0) / p, (T.f - dy0) / p);
   c.imageSmoothingEnabled = false;
   layerOn = true;
   layerX = dx0;
   layerY = dy0;
   layerW = w;
   layerH = h;
+  layerP = p;
   return c;
 }
 
-/** Lays the layer onto the map at `alpha`. */
+/** Lays the layer onto the map at `alpha` (each layer pixel one art pixel, crisp). */
 function closeLayer(ctx: CanvasRenderingContext2D, alpha: number): void {
   if (!layerOn || !layerCv) return;
   layerOn = false;
@@ -500,7 +507,7 @@ function closeLayer(ctx: CanvasRenderingContext2D, alpha: number): void {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = alpha;
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(layerCv, 0, 0, layerW, layerH, layerX, layerY, layerW, layerH);
+  ctx.drawImage(layerCv, 0, 0, layerW, layerH, layerX, layerY, layerW * layerP, layerH * layerP);
   ctx.restore();
 }
 
@@ -566,7 +573,7 @@ function drawAtom(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams):
     const reach = R * (0.7 + 2.5 * k) * m.shockwave + R * 0.5 * late;
     const fin = clamp01((q - 0.015) / 0.05);
     const a0 = fin * (1 - late) * (1 - late * 0.4);
-    const S = a0 > 0.01 ? openLayer(ctx, x - (reach * 1.3 + R * 0.4) * u - 8, y - (reach * 0.7 + R * 0.4) * u - 8, x + (reach * 1.3 + R * 0.4) * u + 8, y + (reach * 0.7 + R * 0.2) * u + 8) : null;
+    const S = a0 > 0.01 ? openLayer(ctx, g, x - (reach * 1.3 + R * 0.4) * u - 8, y - (reach * 0.7 + R * 0.4) * u - 8, x + (reach * 1.3 + R * 0.4) * u + 8, y + (reach * 0.7 + R * 0.2) * u + 8) : null;
     if (S) {
       const sa = layerOn ? 1 : a0 * 0.75;
       drawBlob(S, 'haze', reach * 0.95 * g.res, Math.floor(sd) & 3, x, y, g, sa);
@@ -594,7 +601,7 @@ function drawAtom(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams):
   const grow = 1 + 0.35 * late;
   const ext = Math.max((Rm + 2.4 * rm) * grow + R * 0.2, R * 1.3) * u;
   const top = cy - Math.max((2.6 * rm + 0.9 * Rm) * grow, R * 1.3) * u - 8;
-  const L = openLayer(ctx, Math.min(x - R * 1.5 * u, cx - ext) - 8, top, Math.max(x + R * 1.5 * u, cx + ext) + 8, y + R * 1.2 * u + 8);
+  const L = openLayer(ctx, g, Math.min(x - R * 1.5 * u, cx - ext) - 8, top, Math.max(x + R * 1.5 * u, cx + ext) + 8, y + R * 1.2 * u + 8);
   if (L) drawAtomCloud(L, m, A, g, u, R, Rc, age, sd, x, y, cx, cy, Rm, rm, wind, roll, grow, layerOn ? 1 : fade);
   closeLayer(ctx, prev * fade);
 
@@ -720,10 +727,15 @@ function drawAtomCloud(ctx: CanvasRenderingContext2D, m: MotionParams, A: AtomSh
     const a = capIn * ca * (gone > 0.7 ? (1 - gone) / 0.3 : 1);
     if (a <= 0.01) return;
     const r = capR[n] * (1 - 0.55 * gone);
+    // the young cap burns as one mass of fire, then goes out billow by billow under its soot (each on its own time,
+    // so it never reads as a heap of dark pebbles with a fire spot in each)
+    if (young > 0.12 + 0.75 * rnd(sd, n + 185)) {
+      drawBlob(ctx, 'fire', r, n + 2, capX[n], capY[n], g, a, 2.3 + (1 - young) * 1.7);
+      return;
+    }
     drawBlob(ctx, cloudKind(capLum[n], capSin[n], n), r, n, capX[n], capY[n], g, a);
-    // the young cap is still burning; then the fire glows through its soot and under the rim while it is hot
-    if (young > 0.02) drawBlob(ctx, 'fire', r * 0.85, n + 2, capX[n], capY[n], g, Math.min(1, young * 1.2) * a, 2.6 + (1 - young) * 1.4);
-    else if (glow > 0.04) {
+    // then the fire glows through its soot and under the rim while it is hot
+    if (glow > 0.04) {
       // dull red light under the rim and, while it is still dark, a little through the soot on the sides: patches of
       // uneven size and heat on some billows only, so it never reads as an evenly spaced string of lights
       const pick = rnd(sd, n + 190);
@@ -775,9 +787,9 @@ function drawAtomCloud(ctx: CanvasRenderingContext2D, m: MotionParams, A: AtomSh
         const px = cx + ox * Rm * u;
         const py = cy - rm * zz * u + oy * Rm * CAP_FLAT * u;
         const r = Rm * rr * g.res * grow * (1 - 0.55 * gone);
-        drawBlob(ctx, cloudKind(lum, 1, i + 60), r, i + 11, px, py, g, a);
-        if (young > 0.02) drawBlob(ctx, 'fire', r * 0.8, i + 12, px, py, g, Math.min(1, young * 1.2) * a, 2.8 + (1 - young) * 1.2);
-        else if (glow > 0.04 && cool < 0.35) drawBlob(ctx, 'fire', r * 0.4, i + 13, px, py + r * g.k * 0.2, g, glow * 0.5 * a, 2.4 + (1 - glow) * 1.6);
+        if (young > 0.12 + 0.75 * rnd(sd, i + 186)) drawBlob(ctx, 'fire', r, i + 12, px, py, g, a, 2.5 + (1 - young) * 1.5);
+        else drawBlob(ctx, cloudKind(lum, 1, i + 60), r, i + 11, px, py, g, a);
+        if (glow > 0.04 && cool < 0.35) drawBlob(ctx, 'fire', r * 0.4, i + 13, px, py + r * g.k * 0.2, g, glow * 0.5 * a, 2.4 + (1 - glow) * 1.6);
       }
     }
   }

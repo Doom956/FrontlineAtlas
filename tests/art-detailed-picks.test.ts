@@ -4,7 +4,7 @@
 // surge, slow dissipation).
 import { describe, expect, it } from 'vitest';
 import { rasterize, type Part } from '../src/client/art/detailed/bake';
-import { blobBitmap, glowBitmap } from '../src/client/art/detailed/blobs';
+import { blobBitmap, cellsOf, glowBitmap } from '../src/client/art/detailed/blobs';
 import { AHALF, ALEN, DECK_PAINT, flightDeckTone, onAngled } from '../src/client/art/detailed/carrierDeck';
 import { atomShape, flashAt } from '../src/client/art/detailed/explosions';
 import { modelLength, unitModel } from '../src/client/art/detailed/models';
@@ -289,6 +289,12 @@ describe('detailed atom bomb', () => {
     }
     const roll = blobBitmap('roll', 14, 1);
     expect(roll.h).toBeLessThan(roll.w * 0.8);
+    // a growing cloud bakes few sizes: whole cells up to 16, then steps of two and four
+    const sizes = new Set<number>();
+    for (let r = 0.5; r <= 60; r += 0.25) sizes.add(cellsOf(r));
+    expect(sizes.size).toBeLessThan(32);
+    expect(cellsOf(9.4)).toBe(9);
+    expect(Math.abs(cellsOf(37) - 37)).toBeLessThanOrEqual(2);
     // the tops stay below white (only the flash and the fire glare)
     const top = blobBitmap('cloudTop', 14, 1);
     for (let i = 0; i < top.data.length; i += 4) if (top.data[i + 3]) expect(top.data[i] + top.data[i + 1] + top.data[i + 2]).toBeLessThan(3 * 215);
