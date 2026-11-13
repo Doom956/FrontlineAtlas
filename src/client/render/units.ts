@@ -23,7 +23,7 @@ import { artFor, motionFor, styleModule } from '../art/registry';
 import { spriteKey } from '../art/shared/keys';
 import type { ParachuteMarkDraw, ParadropDraw, TrailLayer, TrailUnit, TrailView } from '../art/types';
 import { prankView } from '../fx/prankView';
-import { isKillBlast } from '../fx/deaths';
+import { isKillBlast, KILL_EXACT } from '../fx/deaths';
 import { isIncoming } from '../forces';
 import { troopKinds, troopPill } from './troopIcons';
 import { hasIntel } from '../../sim/buildings';
@@ -69,13 +69,17 @@ interface Track {
   at: number;
 }
 
-/** True when the sim's kill blast (fx/deaths.ts) of the last few ticks lies within 2.5 tiles of (x, y) (read-only). */
-function killBlastNear(state: GameState, x: number, y: number): boolean {
+/**
+ * True when the sim's kill blast (fx/deaths.ts) lies exactly at (x, y), stamped `fromTick` or later (read-only): the
+ * sim puts it at the centre of the unit it destroyed, stamped with the tick that removed it (the last tick the unit was
+ * seen), so only a blast on that very spot, in the tick it vanished, means this plane was shot down. Another plane shot down beside it, or near its drop point, is not this plane's.
+ */
+function killBlastAt(state: GameState, x: number, y: number, fromTick: number): boolean {
   const fx = state.effects;
   for (let i = fx.length - 1, n = 0; i >= 0 && n < 400; i--, n++) {
     const e = fx[i];
-    if (e.tick < state.tick - 30) break;
-    if (e.kind === 'explosion' && isKillBlast(e.radius) && Math.abs(e.x - x) + Math.abs(e.y - y) < 2.5) return true;
+    if (e.tick < fromTick) break;
+    if (e.kind === 'explosion' && isKillBlast(e.radius) && Math.abs(e.x - x) < KILL_EXACT && Math.abs(e.y - y) < KILL_EXACT) return true;
   }
   return false;
 }
@@ -95,7 +99,7 @@ export class UnitLayer {
   fleets = 0;
   /** cargo planes that reached their drop tile: where and when, for the parachutes */
   private drops: { x: number; y: number; owner: number; born: number }[] = [];
-  private planes = new Map<number, { tx: number; ty: number; owner: number }>();
+  private planes = new Map<number, { tx: number; ty: number; owner: number; unit: Unit }>();
   drawn = 0;
   /** Own warship to ring (hovered or picked); set by the renderer, -1 for none. */
   focusId = -1;
@@ -190,15 +194,20 @@ export class UnitLayer {
     }
     for (const [id, t] of this.tracks) {
       if (t.seen === state.tick) continue;
-      // a cargo plane that vanished close to its target dropped its troops: parachutes there (unless it was shot down
-      // there: the sim's kill blast where it was; its paratroopers went down with it)
+      // a cargo plane that vanished close to its target dropped its troops: parachutes there, unless it was shot down:
+      // the sim's kill blast exactly where it was when it vanished (the unit keeps that last position), in the tick
+      // it vanished; its paratroopers went down with it
       const pl = this.planes.get(id);
-      if (pl && Math.abs(t.cx + 0.5 - pl.tx) + Math.abs(t.cy + 0.5 - pl.ty) < 6 && !killBlastNear(state, t.cx + 0.5, t.cy + 0.5)) this.drops.push({ x: pl.tx, y: pl.ty, owner: pl.owner, born: nowMs });
+      if (pl) {
+        const lx = pl.unit.x + 0.5;
+        const ly = pl.unit.y + 0.5;
+        if (Math.abs(lx - pl.tx) + Math.abs(ly - pl.ty) < 6 && !killBlastAt(state, lx, ly, t.seen)) this.drops.push({ x: pl.tx, y: pl.ty, owner: pl.owner, born: nowMs });
+      }
       this.planes.delete(id);
       this.tracks.delete(id);
     }
     for (const u of state.units) {
-      if (u.type === 'transportPlane' && u.state === 0 && (!this.fog?.active || this.fog.unitShown(state, u))) this.planes.set(u.id, { tx: (u.target % w) + 0.5, ty: ((u.target / w) | 0) + 0.5, owner: u.owner });
+      if (u.type === 'transportPlane' && u.state === 0 && (!this.fog?.active || this.fog.unitShown(state, u))) this.planes.set(u.id, { tx: (u.target % w) + 0.5, ty: ((u.target / w) | 0) + 0.5, owner: u.owner, unit: u });
     }
     if (this.drops.length > 24) this.drops.splice(0, this.drops.length - 24);
   }

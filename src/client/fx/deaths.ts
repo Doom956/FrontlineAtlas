@@ -46,8 +46,13 @@ export function isKillBlast(radius: number): boolean {
   return radius < SHOCKWAVE_MIN_RADIUS;
 }
 
-/** How far (tiles, each way) the kill blast may lie from the unit's centre: the sim puts it right there. */
-const KILL_REACH = 0.75;
+/**
+ * How far (tiles, each way) the kill blast may lie from the unit's centre: the sim puts it exactly there (u.x + 0.5,
+ * u.y + 0.5, the position the dead unit keeps), so only a blast on that very spot is its own. A wider reach let a unit
+ * that arrived next to a sunk one in the same tick (a transport landing beside its sunk escort) take that blast and
+ * play a false death while the ship that really died played none.
+ */
+export const KILL_EXACT = 0.01;
 
 const troopsOf = (u: Unit): number => {
   const t = u.troops;
@@ -112,19 +117,15 @@ export class DeathWatch {
         if (troopsOf(u) > 0) out[n++] = u;
         continue;
       }
-      // the kill blast at its centre: the nearest one not taken by another death
+      // the kill blast exactly at its centre, not taken by another death (two units killed on one spot: one each)
       const cx = u.x + 0.5;
       const cy = u.y + 0.5;
       let best = -1;
-      let bd = Infinity;
       for (let i = 0; i < this.nb; i++) {
         if (this.taken[i]) continue;
-        const dx = Math.abs(this.bx[i] - cx);
-        const dy = Math.abs(this.by[i] - cy);
-        if (dx > KILL_REACH || dy > KILL_REACH) continue;
-        if (dx + dy < bd) {
-          bd = dx + dy;
+        if (Math.abs(this.bx[i] - cx) < KILL_EXACT && Math.abs(this.by[i] - cy) < KILL_EXACT) {
           best = i;
+          break;
         }
       }
       if (best < 0) continue;
