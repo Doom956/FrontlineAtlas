@@ -17,9 +17,10 @@ it: the soldier's uniform, the tank's turret and a band on its olive hull, the g
 each one readable on any ground, a near-black nation stays dark with a lighter rim, and every kind stands on one ground
 row. On a 2x screen a second set at twice the pixels is drawn (edges redrawn smooth, the small parts drawn again
 finer). A style with bare markers sets `bare: true` and gives each marker's real width (`span`); the shared troop pills
-(`render/troopIcons.ts`) then run their dark plate under the markers and set them side by side by those widths. On
-bare markers the soldier next to a nation's army count wears a plain field uniform (olive, khaki or field grey), since
-it stands on the nation's own land.
+(`render/troopIcons.ts`) then run their dark plate under the markers and set them side by side by those widths. The
+game shows no infantry marker (the owner's call): the pills show armor and artillery only (a plain infantry army is
+the count alone), and a nation's army count is the number with its unit ("50k troops"). The infantry art stays for the
+art lab.
 
 `paradrop` (`ParadropArt` in `art/types.ts`) is the paratroopers: the parachutes coming down round the point a cargo
 plane dropped its troops on (owner colour, age, parachute count, zoom, seed; drawn at every zoom, far out too) and the

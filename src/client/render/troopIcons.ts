@@ -3,9 +3,9 @@
 // tank, a field gun, or a mark for a mix the viewer does not know, in the owner's colour: a symbol on an owner-colour
 // plate, or (the detailed style, TroopIconArt.bare) a tiny unit painted in the owner's colour with no plate round it.
 //
-// Used by the troop pills (front pills in fronts.ts, transports in units.ts: a count with the icons of the troop
-// types in it, so the mix of an army reads at a glance) and next to each nation's army count (names.ts). The pills
-// themselves (layout, count plate, arrow) are shared by every style and stay here.
+// Used by the troop pills (front pills in fronts.ts, transports in units.ts: a count with the icons of the armor and
+// artillery in it, so the mix of an army reads at a glance; infantry has no icon in the game, the owner's call). The
+// pills themselves (layout, count plate, arrow) are shared by every style and stay here.
 import type { Troops, TroopType } from '../../sim/types';
 import { artFor } from '../art/registry';
 import type { TroopIconKind } from '../art/types';
@@ -21,33 +21,6 @@ export function drawTroopIcon(ctx: CanvasRenderingContext2D, kind: TroopIconKind
   return artFor('troopIcons').draw(ctx, kind, x, y, owner, size);
 }
 
-/** Plain field uniforms for the army-count soldier on bare markers: olive drab, khaki, field grey. */
-const PLAIN_UNIFORMS: readonly RGB[] = [
-  [96, 100, 58],
-  [172, 150, 106],
-  [98, 108, 110],
-];
-
-/**
- * The colour of the soldier next to a nation's army count (names.ts). Plated markers keep the nation's colour (the
- * plate parts it from the land). Bare markers stand right on the nation's own land, where its colour would melt in, so
- * the soldier wears a plain field uniform instead: olive, khaki or field grey, whichever stands out most from it.
- */
-export function armyCountColour(nation: RGB): RGB {
-  if (artFor('troopIcons').bare !== true) return nation;
-  const lum = (c: readonly number[]): number => 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
-  let best = PLAIN_UNIFORMS[0];
-  let bd = -1;
-  for (const u of PLAIN_UNIFORMS) {
-    const d = Math.hypot(u[0] - nation[0], u[1] - nation[1], u[2] - nation[2]) + 2 * Math.abs(lum(u) - lum(nation));
-    if (d > bd) {
-      bd = d;
-      best = u;
-    }
-  }
-  return best;
-}
-
 /**
  * A marker's visible extent across its size + 2 px footprint (x px from its left edge, w px wide): a bare unit's own
  * width (TroopIconArt.span), else the whole footprint (a plate fills it).
@@ -57,21 +30,22 @@ export function troopMarkerSpan(kind: TroopIconKind, size = PLATE): { x: number;
 }
 
 /**
- * The troop types to show for an army: every type with at least 12% of it, the biggest first (at least one); a mix
- * the viewer may not see (another nation's, without intel) is one 'troops' marker.
+ * The troop types to show for an army: armor and artillery when they are the biggest share or at least 12% of it,
+ * the biggest first. Infantry has no marker (the owner's call: every army is mostly infantry, so the count alone says
+ * it), so a plain infantry army shows no marker at all. A mix the viewer may not see (another nation's, without
+ * intel) is one 'troops' marker.
  */
 export function troopKinds(t: Troops | null): TroopIconKind[] {
   if (!t) return ['troops'];
   const total = t.infantry + t.armor + t.artillery;
-  if (total <= 0) return ['infantry'];
+  if (total <= 0) return [];
   const parts: [TroopType, number][] = [
     ['infantry', t.infantry],
     ['armor', t.armor],
     ['artillery', t.artillery],
   ];
   parts.sort((a, b) => b[1] - a[1]);
-  const out = parts.filter(([, n], i) => i === 0 || n / total >= 0.12).map(([k]) => k);
-  return out;
+  return parts.filter(([k, n], i) => k !== 'infantry' && (i === 0 || n / total >= 0.12)).map(([k]) => k);
 }
 
 /** Overlap of stacked markers in a pill (px). */
@@ -109,14 +83,18 @@ function pillLayout(ctx: CanvasRenderingContext2D, text: string, kinds: readonly
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   const tw = Math.ceil(ctx.measureText(text).width);
-  const list: readonly TroopIconKind[] = kinds.length ? kinds : ['troops'];
   const at: number[] = [];
   let iconsW: number;
+  if (!kinds.length) {
+    // no markers (a plain infantry army): the count alone, with even padding on both sides
+    const ax0 = st.arrow === 'none' ? 0 : st.small ? 7 : 9;
+    return { w: 6 + tw + 6 + ax0, h: plate + 4, tw, ax: ax0, bare: true, at, iconsW: 3 };
+  }
   if (bare) {
     // bare units sit on the pill's own plate side by side, each by its real width (its outline included), with the
     // same air between them and before the first; the footprint's empty margin is left out
     let x = GAP;
-    for (const k of list) {
+    for (const k of kinds) {
       const sp = troopMarkerSpan(k, plate);
       at.push(x - sp.x);
       x += sp.w + GAP;
@@ -125,8 +103,8 @@ function pillLayout(ctx: CanvasRenderingContext2D, text: string, kinds: readonly
   } else {
     // plated markers overlap a little
     const step = plate + 2 - STACK;
-    list.forEach((_, i) => at.push(i * step));
-    iconsW = plate + 2 + (list.length - 1) * step;
+    kinds.forEach((_, i) => at.push(i * step));
+    iconsW = plate + 2 + (kinds.length - 1) * step;
   }
   const ax = st.arrow === 'none' ? 0 : st.small ? 7 : 9;
   const w = bare ? iconsW + GAP + tw + 6 + ax : iconsW + 4 + tw + 6 + ax;
@@ -148,7 +126,6 @@ export function troopPill(ctx: CanvasRenderingContext2D, x: number, y: number, t
   const plate = st.small ? 12 : PLATE;
   const text = `${formatCount(troops)} troops`;
   const { w, h, tw, iconsW, ax, bare, at } = pillLayout(ctx, text, kinds, st);
-  const list: readonly TroopIconKind[] = kinds.length ? kinds : ['troops'];
   const x0 = Math.round(x - w / 2);
   const y0 = Math.round(y - h / 2);
   // the plate behind the number (and, for bare units, behind the markers too): a 1 px outline (red when the attack is
@@ -162,7 +139,7 @@ export function troopPill(ctx: CanvasRenderingContext2D, x: number, y: number, t
   ctx.fillStyle = 'rgba(255,255,255,0.08)';
   ctx.fillRect(bx + 1, y0 + 1, bw - 2, 1);
   // troop markers, the biggest share in front (drawn last)
-  for (let i = list.length - 1; i >= 0; i--) drawTroopIcon(ctx, list[i], x0 + at[i], y0 + 1, owner, plate);
+  for (let i = kinds.length - 1; i >= 0; i--) drawTroopIcon(ctx, kinds[i], x0 + at[i], y0 + 1, owner, plate);
   const tx = x0 + iconsW + 3;
   ctx.fillStyle = '#ffffff';
   ctx.fillText(text, tx, y0 + h / 2 + 0.5);

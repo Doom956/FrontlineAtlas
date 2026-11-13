@@ -11,7 +11,7 @@ import { bakeTroopIcon, iconTones, lightRimFor, OUTLINE, troopIconSpan, UNKNOWN_
 import { styleModule } from '../src/client/art/registry';
 import { luma } from '../src/client/art/shared/colour';
 import { formatCount } from '../src/client/render/common';
-import { armyCountColour, troopPill, troopPillSize, type TroopIconKind } from '../src/client/render/troopIcons';
+import { troopKinds, troopPill, troopPillSize, type TroopIconKind } from '../src/client/render/troopIcons';
 
 const KINDS = ['infantry', 'armor', 'artillery', 'troops'] as const;
 const SIZES = [16, 12];
@@ -335,17 +335,6 @@ describe('troop pills with bare units', () => {
     }
   });
 
-  it('dresses the army-count soldier in a plain uniform on bare markers, the nation colour on plated ones', () => {
-    setArtStyle('troopIcons', 'detailed');
-    for (const nation of NATIONS) {
-      const c = armyCountColour(nation);
-      // a plain field uniform that stands out from the nation's own land
-      expect(Math.hypot(c[0] - nation[0], c[1] - nation[1], c[2] - nation[2]), `${nation}`).toBeGreaterThan(45);
-    }
-    setArtStyle('troopIcons', 'refined');
-    expect(armyCountColour([64, 160, 255])).toEqual([64, 160, 255]);
-  });
-
   it('keeps the plated layout for the refined style', () => {
     setArtStyle('troopIcons', 'refined');
     const rects: [number, number, number, number][] = [];
@@ -355,5 +344,26 @@ describe('troop pills with bare units', () => {
     const x0 = Math.round(200 - w / 2);
     // the plate starts under the markers' right end, not at the pill's left edge
     expect(rects[0][0]).toBeGreaterThan(x0 + 16);
+  });
+
+  it('shows no infantry marker: armor and artillery only, a plain infantry army is the count alone', () => {
+    expect(troopKinds({ infantry: 1000, armor: 0, artillery: 0 })).toEqual([]);
+    expect(troopKinds({ infantry: 0, armor: 0, artillery: 0 })).toEqual([]);
+    expect(troopKinds({ infantry: 700, armor: 200, artillery: 100 })).toEqual(['armor']);
+    expect(troopKinds({ infantry: 500, armor: 300, artillery: 200 })).toEqual(['armor', 'artillery']);
+    expect(troopKinds({ infantry: 950, armor: 50, artillery: 0 })).toEqual([]);
+    expect(troopKinds({ infantry: 100, armor: 50, artillery: 850 })).toEqual(['artillery']);
+    expect(troopKinds(null)).toEqual(['troops']);
+    for (const style of ['refined', 'detailed', 'realistic'] as const) {
+      setArtStyle('troopIcons', style);
+      const rects: [number, number, number, number][] = [];
+      const ctx = fakeCtx(rects);
+      const w = troopPill(ctx, 200, 100, 5400, [], [64, 160, 255], { edge: '#ffe98a', arrow: 'up' });
+      expect(w, style).toBe(troopPillSize(ctx, 5400, [], { arrow: 'up' }).w);
+      // the plate covers the whole pill (no marker room on its left), with even padding round the count
+      expect(rects[0][0], style).toBe(Math.round(200 - w / 2));
+      expect(rects[0][2], style).toBe(w);
+      expect(w, style).toBe(6 + '5.4k troops'.length * 6 + 6 + 9);
+    }
   });
 });
