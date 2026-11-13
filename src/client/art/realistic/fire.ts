@@ -8,14 +8,15 @@
 //
 // Shapes: TONGUE a fire burning on the ground (a wide rounded base, two or three tongues licking up from it); CONE a
 // gun's muzzle flash (narrow at the muzzle, a bulb of fire, then ragged fingers); JET a thin side jet of a muzzle
-// blast. Each shape in two heats: HOT (with its white core) and COOL (a dying fire: orange, red and dark red only), so
+// blast; BOLT a single barrel's tongue of fire (the cone's body with no fingers, so three barrels side by side never
+// stack up into a comb of parallel tips). Each shape in two heats: HOT (with its white core) and COOL (a dying fire: orange, red and dark red only), so
 // a fire cools by fading from one to the other. Three variants of each.
 import { makeCanvas } from '../../render/common';
 import { rnd } from '../shared/noise';
 
-export const Flame = { TONGUE: 0, CONE: 1, JET: 2 } as const;
+export const Flame = { TONGUE: 0, CONE: 1, JET: 2, BOLT: 3 } as const;
 export type Flame = (typeof Flame)[keyof typeof Flame];
-const SHAPES = 3;
+const SHAPES = 4;
 const VARIANTS = 3;
 /** Picture size (device px): long enough for the biggest muzzle cone drawn close up. */
 const LEN = 128;
@@ -38,6 +39,7 @@ const PROFILES: readonly Profile[] = [
   { b0: 0.78, pk: 0.3, tp: 1.35, fingers: 1 },
   { b0: 0.3, pk: 0.34, tp: 1.05, fingers: 2 },
   { b0: 0.42, pk: 0.14, tp: 1.7, fingers: 0 },
+  { b0: 0.3, pk: 0.3, tp: 1.25, fingers: 0 },
 ];
 
 /** The bands of a flame, outer first: length and width (0..1 of the flame), base colour, tip colour, tip alpha. */
@@ -213,8 +215,11 @@ export function fireLight(ctx: CanvasRenderingContext2D, x: number, y: number, r
   ctx.globalCompositeOperation = prevOp;
 }
 
-/** Many fire lights in one go (one change of the blend mode): `n` of them at (X, Y), radius R, alpha A. */
-export function fireLights(ctx: CanvasRenderingContext2D, n: number, X: ArrayLike<number>, Y: ArrayLike<number>, R: ArrayLike<number>, A: ArrayLike<number>): void {
+/**
+ * Many fire lights in one go (one change of the blend mode): `n` of them at (X, Y), radius R across, alpha A, each
+ * `flat` times lower than it is wide (a light lying low on the ground, never a round lamp).
+ */
+export function fireLights(ctx: CanvasRenderingContext2D, n: number, X: ArrayLike<number>, Y: ArrayLike<number>, R: ArrayLike<number>, A: ArrayLike<number>, flat = 1): void {
   if (n <= 0 || !init() || !lightSprite) return;
   const prevA = ctx.globalAlpha;
   const prevOp = ctx.globalCompositeOperation;
@@ -222,7 +227,8 @@ export function fireLights(ctx: CanvasRenderingContext2D, n: number, X: ArrayLik
   for (let i = 0; i < n; i++) {
     if (A[i] <= 0.01 || R[i] <= 0.3) continue;
     ctx.globalAlpha = prevA * Math.min(1, A[i]);
-    ctx.drawImage(lightSprite, X[i] - R[i], Y[i] - R[i], R[i] * 2, R[i] * 2);
+    const ry = R[i] / flat;
+    ctx.drawImage(lightSprite, X[i] - R[i], Y[i] - ry, R[i] * 2, ry * 2);
   }
   ctx.globalAlpha = prevA;
   ctx.globalCompositeOperation = prevOp;

@@ -19,6 +19,12 @@ import { unitPx } from './explosions';
 import { Flame, flame } from './fire';
 import { clamp01, easeOut, easeOut3, flashOver, glow, Puff, puff, ramp, WIND_X, WIND_Y } from './puffs';
 
+/** Smooth 0..1 (smoothstep). */
+const smooth = (t: number): number => {
+  const k = clamp01(t);
+  return k * k * (3 - 2 * k);
+};
+
 /** The fire of the flash at flashTime 1 (ms); the smoke takes the rest of flashMs. */
 const FLASH = 130;
 const SMOKE = 620;
@@ -63,14 +69,28 @@ function drawMuzzle(ctx: CanvasRenderingContext2D, f: MuzzleDraw, m: MotionParam
   const mx = f.x + c * U * 1.1;
   const my = f.y + s * U * 1.1;
 
-  // the blast slapping the water round the gun: a ring of spray thrown out on the firing side
+  // the blast slapping the water round the gun: an uneven ring of spray thrown out, most of it on the firing side,
+  // each puff flattened along the water (low sheets of spray, never a tidy fan of balls)
   if (m.recoil > 0 && tt < 420) {
     const q = tt / 420;
-    const n = 5;
+    const n = 7 + (seed % 3);
+    const ql = easeOut(q);
+    const fade = 0.42 * m.recoil * (1 - q) * (1 - q);
     for (let i = 0; i < n; i++) {
-      const a = f.aim + (i / (n - 1) - 0.5) * 2.4;
-      const d = U * (1.8 + 4.5 * easeOut(q)) * (0.8 + 0.2 * fz);
-      puff(ctx, Puff.SPRAY, i, mx + Math.cos(a) * d, my + Math.sin(a) * d, U * (1 + 1.3 * q), 0.42 * m.recoil * (1 - q) * (1 - q));
+      // spread round the gun, bunched toward the line of fire, each a little off its place
+      const u = i / (n - 1) - 0.5;
+      const a = f.aim + u * Math.abs(u) * 5.2 + (rnd(seed, i + 70) - 0.5) * 0.4;
+      const reach = 0.55 + 0.75 * rnd(seed, i + 80) * (1 - Math.abs(u));
+      const d = U * (1.6 + 4.8 * reach * ql) * (0.8 + 0.2 * fz);
+      const r = U * (0.8 + 0.7 * rnd(seed, i + 90)) * (1 + 1.3 * q);
+      const x = mx + Math.cos(a) * d;
+      const y = my + Math.sin(a) * d;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(a);
+      ctx.scale(0.55, 1);
+      puff(ctx, Puff.SPRAY, i, 0, 0, r, fade * (0.6 + 0.4 * rnd(seed, i + 100)));
+      ctx.restore();
     }
   }
 
@@ -96,52 +116,77 @@ function drawMuzzle(ctx: CanvasRenderingContext2D, f: MuzzleDraw, m: MotionParam
     }
   }
 
-  // the flash
+  // the flash: longest and sharpest in its first frame (the blast thrown straight out of the barrels), then drawn
+  // back into one ragged ball of fire rolling out along the line of fire into the smoke
   if (tt < FLASH) {
     const q = tt / FLASH;
-    // the light of it on the deck and the water round the gun, strong and gone at once
-    glow(ctx, mx + c * U * 2.5, my + s * U * 2.5, U * 12 * fz * (0.85 + 0.3 * q), 0.85 * Math.exp(-tt / 38));
-    const grow0 = clamp01(tt / 16);
-    // the fireball the barrels' blasts merge into: a broad bulb of fire thrown out along the line of fire
+    // the light of it on the deck and the water, lying out ahead of the muzzles along the line of fire, strong and
+    // gone at once
+    const lr = U * 8 * fz * (0.85 + 0.3 * q);
+    ctx.save();
+    ctx.translate(mx + c * U * 3, my + s * U * 3);
+    ctx.rotate(f.aim);
+    ctx.scale(1.6, 1);
+    glow(ctx, 0, 0, lr, 0.6 * Math.exp(-tt / 34));
+    ctx.restore();
+    // the fused blast in front of the barrels: long at once, shrinking and fading by about 60 ms as the ball takes over
     {
-      const L = U * 8.5 * fz * (0.4 + 0.6 * grow0) * (1 - 0.35 * q);
-      const W = U * 6 * fz * (0.7 + 0.6 * q);
-      flame(ctx, Flame.CONE, false, seed + 5, mx, my, f.aim, L, W, Math.min(1, (1 - q) * 1.5));
-      flame(ctx, Flame.CONE, true, seed + 5, mx, my, f.aim, L, W, clamp01(1 - q * 1.9));
+      const L = U * 8.5 * fz * (1 - 0.6 * easeOut(clamp01(q / 0.5)));
+      const W = U * 5.4 * fz * (0.75 + 0.5 * q);
+      const A = 1 - smooth(q / 0.45);
+      flame(ctx, Flame.CONE, false, seed + 5, mx, my, f.aim, L, W, A);
+      flame(ctx, Flame.CONE, true, seed + 5, mx, my, f.aim, L, W, A * (1 - smooth(q / 0.25)));
     }
     for (let b = 0; b < BARRELS; b++) {
       // the barrels go off a few ms apart, in their own order each turret
-      const delay = ((b + seed) % BARRELS) * 12;
+      const delay = ((b + seed) % BARRELS) * 4;
       const tb = tt - delay;
       if (tb < 0) continue;
-      const qb = clamp01(tb / (FLASH - delay));
+      const qb = tb / FLASH;
+      // out by about 28 ms: the comb of tongues never outlives the first frames
+      const A = 1 - smooth(qb / 0.22);
+      if (A <= 0.01) continue;
       const lane = (b - 1) * GAP_FIRE * U;
       const main = b === 1 ? 1 : 0.85;
-      const grow = clamp01(tb / 14);
-      // long for an instant, then drawn back into the fireball
-      const L = U * 9 * fz * main * (0.35 + 0.65 * grow) * (1 - 0.6 * qb);
-      const W = U * 2.6 * fz * main * (0.75 + 0.7 * qb);
+      const grow = clamp01(tb / 4);
+      const L = U * 9.5 * fz * main * (0.8 + 0.2 * grow) * (1 - 0.85 * easeOut(qb));
+      const W = U * 2.4 * fz * main * (0.8 + 0.6 * qb);
+      // each barrel's tongue a little off the others' line (they splay; never parallel)
+      const ba = f.aim + (b - 1) * 0.1 + (rnd(seed, b + 7) - 0.5) * 0.1;
       const bx = mx + nx * lane;
       const by = my + ny * lane;
       const v = seed + b;
       // a tongue of fire out of each barrel, white hot, cooling to orange and red as it dies
-      flame(ctx, Flame.CONE, false, v, bx, by, f.aim, L, W, Math.min(1, (1 - qb) * 1.6));
-      flame(ctx, Flame.CONE, true, v, bx, by, f.aim, L, W, clamp01(1 - qb * 1.7));
+      flame(ctx, Flame.BOLT, false, v, bx, by, ba, L, W, A);
+      flame(ctx, Flame.BOLT, true, v, bx, by, ba, L, W, A * (1 - smooth(qb / 0.15)));
       // a side jet out of each outer barrel
-      if (b !== 1 && qb < 0.55) {
+      if (b !== 1 && qb < 0.3) {
         const side = b === 0 ? -1 : 1;
         const ja = f.aim + side * 1.15;
-        flame(ctx, Flame.CONE, qb < 0.25, v + 1, bx + c * U * 0.6, by + s * U * 0.6, ja, U * 3.8 * fz * (0.5 + 0.5 * grow) * (1 - qb * 0.6), U * 2.2 * fz, 1 - qb / 0.55);
+        flame(ctx, Flame.CONE, qb < 0.12, v + 1, bx + c * U * 0.6, by + s * U * 0.6, ja, U * 3.8 * fz * (1 - qb * 1.4), U * 2.2 * fz, 1 - qb / 0.3);
       }
     }
-    // the barrels' blasts fused into one ball of fire rolling out along the line of fire, cooling as the smoke takes
-    // over (it covers the gaps between the tongues once the first instant is past, so they never read as a comb)
-    const fuse = ramp(q, 0.08, 0.26) * Math.pow(1 - q, 1.1);
-    if (fuse > 0.01) puff(ctx, Puff.FIRE, seed, mx + c * U * (2.4 + 1.6 * q) * fz, my + s * U * (2.4 + 1.6 * q) * fz, U * 2.7 * fz * (0.8 + 0.45 * q), 0.95 * fuse);
-    // the white-hot core at the muzzles
-    const core = (1 - q) * (1 - q);
-    flashOver(ctx, mx + c * U * 0.9, my + s * U * 0.9, U * 3.4 * fz * (1 - 0.5 * q), core);
-    flashOver(ctx, mx + c * U * 3, my + s * U * 3, U * 2.6 * fz * (1 - 0.5 * q), core * 0.85);
+    // the barrels' blasts fused into one ragged ball of fire rolling out along the line of fire, cooling as the smoke
+    // takes over: two lobes of fire off each other's centre, so it is never a clean round ball
+    const fuse = ramp(q, 0.04, 0.16) * Math.pow(1 - q, 1.1);
+    if (fuse > 0.01) {
+      const d = U * (2.6 + 2 * q) * fz;
+      const r = U * 3.6 * fz * (0.75 + 0.4 * q);
+      const off = (rnd(seed, 3) - 0.5) * 1.4 * U * fz;
+      puff(ctx, Puff.FIRE, seed, mx + c * d + nx * off, my + s * d + ny * off, r, 0.95 * fuse);
+      puff(ctx, Puff.FIRE, seed + 1, mx + c * (d + r * 0.55) - nx * off * 0.8, my + s * (d + r * 0.55) - ny * off * 0.8, r * 0.7, 0.8 * fuse);
+    }
+    // the white-hot core at the muzzles, drawn out along the line of fire
+    const core = Math.exp(-tt / 22);
+    if (core > 0.02) {
+      ctx.save();
+      ctx.translate(mx + c * U * 1.6, my + s * U * 1.6);
+      ctx.rotate(f.aim);
+      ctx.scale(1.8, 0.7);
+      flashOver(ctx, 0, 0, U * 2.6 * fz, core);
+      flashOver(ctx, U * 1.6, 0, U * 1.8 * fz, core * 0.8);
+      ctx.restore();
+    }
   }
 
   // the shell leaving: a bright slug racing out through the flash, gone before the map's own shell is far out
