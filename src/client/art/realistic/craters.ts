@@ -8,9 +8,11 @@
 // No two look stamped: ten shapes, each pit a little elliptical and turned its own way (the light baked in stays from
 // the top left), each crater drawn a little bigger or smaller by its seed; the rim is a broken ring of lumps of uneven
 // size and tone, the clods are irregular chunks, the soot streaks feathered.
-// A fresh crater burns (drawFire): small fires in the pit, on the rim and on clods thrown out, flames licking up and
-// leaning with the wind, embers and smoke, dying down over the first part of its life (longer and bigger after a bigger
-// blast), then a little grey smoke from the pit before only the scorched crater is left to fade.
+// A fresh crater burns (drawFire): a few patches of fire bunched on the rim and the pit floor, each a knot of flames of
+// uneven height licking up and leaning with the wind over one low warm light, embers and smoke, dying down over the
+// first part of its life (more, longer and bigger after a bigger blast), then a little grey smoke from the pit before
+// only the scorched crater is left to fade. The bowl is charcoal brown with a crisp torn lip, so it sits well next to
+// pixel art drawn on top of it.
 import type { MotionParams } from '../motion';
 import { SpriteAtlas, type AtlasEntry } from '../shared/atlas';
 import { rnd } from '../shared/noise';
@@ -59,10 +61,14 @@ function paintScorch(c: CanvasRenderingContext2D, r: number, v: number): void {
   g.addColorStop(0, 'rgba(22,17,13,0.75)');
   g.addColorStop(0.45, 'rgba(28,22,17,0.45)');
   g.addColorStop(1, 'rgba(30,24,18,0)');
+  // its outline torn (never a round disc), its edge a little soft
+  const soft0 = 'filter' in c;
+  if (soft0) c.filter = `blur(${Math.max(0.6, r * 0.1).toFixed(2)}px)`;
   c.fillStyle = g;
   c.beginPath();
-  ragged(c, 0, 0, r * 2, 0.18, seed, 22);
+  ragged(c, 0, 0, r * 1.85, 0.25, seed, 28);
   c.fill();
+  if (soft0) c.filter = 'none';
   // radial streaks of soot thrown out: feathered plumes of uneven length and width, bowed a little (blast soot, not a
   // drawn star), fading out along their length, their sides blurred (painted once, so the blur costs nothing later)
   const soft = 'filter' in c;
@@ -102,27 +108,44 @@ function paintScorch(c: CanvasRenderingContext2D, r: number, v: number): void {
     const a = rnd(seed, i + 200) * TAU;
     const d = r * (0.8 + rnd(seed, i + 220) * 1.3);
     c.fillStyle = `rgba(14,11,9,${(0.25 + rnd(seed, i + 240) * 0.35).toFixed(3)})`;
-    c.beginPath();
-    c.arc(Math.cos(a) * d, Math.sin(a) * d * 0.9, Math.max(0.5, r * 0.05 * (0.5 + rnd(seed, i + 260))), 0, TAU);
+    chunk(c, Math.cos(a) * d, Math.sin(a) * d * 0.9, Math.max(0.6, r * 0.05 * (0.5 + rnd(seed, i + 260))), seed * 11 + i);
     c.fill();
   }
 }
 
-/** An irregular chunk of earth: a lumpy polygon of 5 to 7 corners round (x, y), about s across. */
+/** An angular chunk of earth: a polygon of 3 to 5 corners round (x, y), about s across. */
 function chunk(c: CanvasRenderingContext2D, x: number, y: number, s: number, seed: number): void {
-  const n = 5 + Math.floor(rnd(seed, 1) * 3);
+  const n = 3 + Math.floor(rnd(seed, 1) * 3);
   const rot = rnd(seed, 2) * TAU;
   c.beginPath();
   for (let j = 0; j < n; j++) {
     const a = rot + (j / n) * TAU + (rnd(seed, j + 10) - 0.5) * 0.8;
-    const rr = s * (0.5 + rnd(seed, j + 20) * 0.6) * (j === 0 ? 1.25 : 1);
+    const rr = s * (0.6 + rnd(seed, j + 20) * 0.6) * (j === 0 ? 1.25 : 1);
     if (j === 0) c.moveTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr * 0.85);
     else c.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr * 0.85);
   }
   c.closePath();
 }
 
-const CLODS = ['#8a7659', '#4d3e2f', '#65533f', '#3d3126', '#776448', '#2e251d'];
+const CLODS = ['#6b5b47', '#3e3227', '#54463a', '#30271f', '#5f503e', '#261f19'];
+
+/**
+ * A clod of earth thrown out: an angular chunk with its shadow on the lower right, its top-left face catching the
+ * light (a lighter wedge from its middle to the corners facing the light), so it reads as a lump, never a dot.
+ */
+function clod(c: CanvasRenderingContext2D, x: number, y: number, s: number, seed: number, tone: string): void {
+  c.fillStyle = 'rgba(10,8,6,0.32)';
+  chunk(c, x - LIGHT_X * s * 0.5, y - LIGHT_Y * s * 0.5, s, seed);
+  c.fill();
+  c.fillStyle = tone;
+  chunk(c, x, y, s, seed);
+  c.fill();
+  if (s < 0.9) return;
+  // the lit face: the chunk shrunk toward its top-left corner, lighter
+  c.fillStyle = 'rgba(176,156,124,0.45)';
+  chunk(c, x + LIGHT_X * s * 0.28, y + LIGHT_Y * s * 0.28, s * 0.55, seed);
+  c.fill();
+}
 
 /**
  * The pit of variant v, radius r: clods round it, then the rim and the bowl in their own ellipse and turn (`ex`, `rot`
@@ -135,17 +158,11 @@ function paintPit(c: CanvasRenderingContext2D, r: number, v: number): void {
   for (let i = 0; i < 30; i++) {
     const a = rnd(seed, i) * TAU;
     const d = r * (1.1 + Math.pow(rnd(seed, i + 20), 1.6) * 0.95);
-    const sz = Math.max(0.5, r * (0.025 + Math.pow(rnd(seed, i + 40), 2) * 0.09) * (1.6 - (d / r - 1.1)));
-    const x = Math.cos(a) * d;
-    const y = Math.sin(a) * d * 0.9;
-    c.fillStyle = 'rgba(10,8,6,0.32)';
-    chunk(c, x - LIGHT_X * sz * 0.5, y - LIGHT_Y * sz * 0.5, sz, seed * 7 + i);
-    c.fill();
-    c.fillStyle = CLODS[Math.floor(rnd(seed, i + 60) * CLODS.length)];
-    chunk(c, x, y, sz, seed * 7 + i);
-    c.fill();
+    const sz = Math.max(0.8, r * (0.03 + Math.pow(rnd(seed, i + 40), 2) * 0.09) * (1.6 - (d / r - 1.1)));
+    clod(c, Math.cos(a) * d, Math.sin(a) * d * 0.9, sz, seed * 7 + i, CLODS[Math.floor(rnd(seed, i + 60) * CLODS.length)]);
   }
-  const ex = 1 + rnd(seed, 901) * 0.42;
+  // (barely out of round: at most 1.2 times longer than wide, never an egg or a bean)
+  const ex = 1 + rnd(seed, 901) * 0.1;
   const rot = rnd(seed, 900) * Math.PI;
   c.save();
   c.rotate(rot);
@@ -161,10 +178,10 @@ function paintPit(c: CanvasRenderingContext2D, r: number, v: number): void {
   // the raised rim of thrown earth: a low ring thinning out into the ground, then lumps along it of uneven size and
   // tone (thick and light in places, thin and dark in others), so it never reads as a smooth donut
   const ring = c.createRadialGradient(0, 0, r * 0.72, 0, 0, r * 1.32);
-  ring.addColorStop(0, 'rgba(112,94,70,0.95)');
-  ring.addColorStop(0.35, 'rgba(108,90,68,0.85)');
-  ring.addColorStop(0.7, 'rgba(98,82,62,0.4)');
-  ring.addColorStop(1, 'rgba(92,77,58,0)');
+  ring.addColorStop(0, 'rgba(86,72,56,0.7)');
+  ring.addColorStop(0.35, 'rgba(82,69,54,0.62)');
+  ring.addColorStop(0.7, 'rgba(76,64,50,0.3)');
+  ring.addColorStop(1, 'rgba(72,60,47,0)');
   c.fillStyle = ring;
   c.beginPath();
   ragged(c, 0, 0, r * 1.32, 0.16, seed + 5, 22);
@@ -178,9 +195,9 @@ function paintPit(c: CanvasRenderingContext2D, r: number, v: number): void {
     const x = Math.cos(a) * d;
     const y = Math.sin(a) * d;
     const g = c.createRadialGradient(x, y, 0, x, y, r * th * 1.3);
-    const col = `${Math.round(Math.min(255, 104 * tone))},${Math.round(Math.min(255, 88 * tone))},${Math.round(Math.min(255, 66 * tone))}`;
-    g.addColorStop(0, `rgba(${col},0.9)`);
-    g.addColorStop(0.6, `rgba(${col},0.5)`);
+    const col = `${Math.round(Math.min(255, 84 * tone))},${Math.round(Math.min(255, 71 * tone))},${Math.round(Math.min(255, 55 * tone))}`;
+    g.addColorStop(0, `rgba(${col},0.72)`);
+    g.addColorStop(0.6, `rgba(${col},0.4)`);
     g.addColorStop(1, `rgba(${col},0)`);
     c.fillStyle = g;
     c.beginPath();
@@ -191,8 +208,8 @@ function paintPit(c: CanvasRenderingContext2D, r: number, v: number): void {
   c.save();
   c.globalCompositeOperation = 'source-atop';
   const lit = c.createLinearGradient(lx * r * 1.3, ly * r * 1.3, -lx * r * 1.3, -ly * r * 1.3);
-  lit.addColorStop(0, 'rgba(200,182,150,0.5)');
-  lit.addColorStop(0.45, 'rgba(200,182,150,0)');
+  lit.addColorStop(0, 'rgba(176,160,132,0.38)');
+  lit.addColorStop(0.45, 'rgba(176,160,132,0)');
   lit.addColorStop(0.6, 'rgba(20,14,10,0)');
   lit.addColorStop(1, 'rgba(20,14,10,0.5)');
   c.fillStyle = lit;
@@ -200,24 +217,37 @@ function paintPit(c: CanvasRenderingContext2D, r: number, v: number): void {
   for (let i = 0; i < 40; i++) {
     const a = rnd(seed, i + 300) * TAU;
     const d = r * (0.85 + rnd(seed, i + 320) * 0.4);
-    c.fillStyle = i % 2 ? 'rgba(30,22,16,0.3)' : 'rgba(170,150,120,0.25)';
+    c.fillStyle = i % 2 ? 'rgba(30,22,16,0.35)' : 'rgba(150,132,106,0.22)';
     chunk(c, Math.cos(a) * d, Math.sin(a) * d * 0.9, Math.max(0.4, r * (0.02 + rnd(seed, i + 340) * 0.03)), seed * 3 + i);
     c.fill();
   }
   c.restore();
-  // the bowl: shade on the upper left inner wall, light on the lower right
+  // the bowl, charcoal brown: shade on the upper left inner wall, light on the lower right; its edge torn (a ragged
+  // line, never a clean ellipse), with dark notches bitten into the shaded lip
   const bowl = c.createRadialGradient(-lx * r * 0.32, -ly * r * 0.32, r * 0.05, 0, 0, r * 0.9);
-  bowl.addColorStop(0, '#665440');
-  bowl.addColorStop(0.55, '#43362a');
-  bowl.addColorStop(1, '#251c15');
+  bowl.addColorStop(0, '#4a3d30');
+  bowl.addColorStop(0.55, '#2a211a');
+  bowl.addColorStop(1, '#17120e');
+  const edge = (): void => {
+    c.beginPath();
+    ragged(c, 0, 0, r * 0.84, 0.14, seed + 9, 34);
+  };
   c.fillStyle = bowl;
-  c.beginPath();
-  ragged(c, 0, 0, r * 0.86, 0.05, seed + 9, 24);
+  edge();
   c.fill();
+  const la = Math.atan2(ly, lx);
+  const notches = 3 + Math.floor(rnd(seed, 950) * 3);
+  c.fillStyle = '#17120e';
+  for (let i = 0; i < notches; i++) {
+    // blunt bites of the dark pit into the lip (a chunk of the rim fallen in), never thorns sticking out
+    const a = la + (rnd(seed, i + 951) - 0.5) * 2.2;
+    const o = r * (0.74 + 0.06 * rnd(seed, i + 970));
+    chunk(c, Math.cos(a) * o, Math.sin(a) * o, r * (0.08 + 0.05 * rnd(seed, i + 960)), seed * 13 + i);
+    c.fill();
+  }
   // the shadow the lip throws into the bowl, soft
   c.save();
-  c.beginPath();
-  ragged(c, 0, 0, r * 0.86, 0.05, seed + 9, 24);
+  edge();
   c.clip();
   const sh = c.createRadialGradient(lx * r * 0.9, ly * r * 0.9, r * 0.2, lx * r * 0.9, ly * r * 0.9, r * 1.15);
   sh.addColorStop(0, 'rgba(6,4,3,0.55)');
@@ -225,11 +255,22 @@ function paintPit(c: CanvasRenderingContext2D, r: number, v: number): void {
   sh.addColorStop(1, 'rgba(6,4,3,0)');
   c.fillStyle = sh;
   c.fillRect(-r, -r, r * 2, r * 2);
+  // a crisp 1 px edge just inside the lip: dark on the shaded upper left, lit on the lower right inner wall (the
+  // line is drawn 2 px wide on the edge, the clip keeps its inner pixel)
+  const lip = c.createLinearGradient(lx * r * 0.85, ly * r * 0.85, -lx * r * 0.85, -ly * r * 0.85);
+  lip.addColorStop(0, 'rgba(10,7,5,0.95)');
+  lip.addColorStop(0.42, 'rgba(10,7,5,0)');
+  lip.addColorStop(0.6, 'rgba(140,118,90,0)');
+  lip.addColorStop(1, 'rgba(140,118,90,0.85)');
+  c.strokeStyle = lip;
+  c.lineWidth = 2;
+  edge();
+  c.stroke();
   // loose earth in the bottom
   for (let i = 0; i < 14; i++) {
     const a = rnd(seed, i + 60) * TAU;
     const d = r * 0.6 * Math.sqrt(rnd(seed, i + 70));
-    c.fillStyle = i % 2 ? 'rgba(20,15,11,0.4)' : 'rgba(120,100,76,0.3)';
+    c.fillStyle = i % 2 ? 'rgba(14,10,8,0.45)' : 'rgba(96,82,64,0.3)';
     chunk(c, Math.cos(a) * d, Math.sin(a) * d, Math.max(0.35, r * (0.02 + rnd(seed, i + 80) * 0.03)), seed * 5 + i);
     c.fill();
   }
@@ -259,21 +300,28 @@ function blit(ctx: CanvasRenderingContext2D, e: AtlasEntry, x: number, y: number
 
 // ------------------------------------------------------------------------------------------------- fires
 
-/** The most fire spots a crater has (an atom bomb's), and what is kept of each spot this frame. */
-const MAX_SPOTS = 14;
-const SX = new Float64Array(MAX_SPOTS);
-const SY = new Float64Array(MAX_SPOTS);
+/** The most fire patches a crater has (an atom bomb's), and what is kept of each patch this frame. */
+const MAX_CL = 5;
+/** centre of the patch, the way along the rim it lies (radians), how wide it is spread (px) */
+const SX = new Float64Array(MAX_CL);
+const SY = new Float64Array(MAX_CL);
+const SA = new Float64Array(MAX_CL);
+const SW = new Float64Array(MAX_CL);
 /** size (0..1.2), flame intensity, ember glow, smoke (0..1 each) */
-const SB = new Float64Array(MAX_SPOTS);
-const SI = new Float64Array(MAX_SPOTS);
-const SE = new Float64Array(MAX_SPOTS);
-const SS = new Float64Array(MAX_SPOTS);
-const ORDER = new Int8Array(MAX_SPOTS);
-/** the lights of this frame's spots (and the pit), drawn together */
-const LX = new Float64Array(MAX_SPOTS + 1);
-const LY = new Float64Array(MAX_SPOTS + 1);
-const LR = new Float64Array(MAX_SPOTS + 1);
-const LA = new Float64Array(MAX_SPOTS + 1);
+const SB = new Float64Array(MAX_CL);
+const SI = new Float64Array(MAX_CL);
+const SE = new Float64Array(MAX_CL);
+const SS = new Float64Array(MAX_CL);
+/** how many tongues of flame the patch has (one tall and two to four short ones) */
+const SN = new Int8Array(MAX_CL);
+const ORDER = new Int8Array(MAX_CL);
+/** the lights of this frame's patches (and the pit), drawn together */
+const LX = new Float64Array(MAX_CL + 1);
+const LY = new Float64Array(MAX_CL + 1);
+const LR = new Float64Array(MAX_CL + 1);
+const LA = new Float64Array(MAX_CL + 1);
+/** A fire's light lies low on the ground: this many times wider than it is deep. */
+const LIGHT_FLAT = 1.6;
 
 /**
  * How big a blast left the crater, from its radius in tiles: 0 a shell (0.5), about 0.2 a bomb (0.9), about 0.45 a
@@ -299,28 +347,30 @@ const smooth = (t: number): number => {
 const BURN_MAX = 0.34;
 
 /**
- * Fires burning in and round a fresh crater: a few spots of fire (in the pit, on the rim, on clods thrown out), each a
- * glow on the ground, two or three flame tongues licking up and leaning with the wind, embers, and smoke rising off
- * them, dark while they burn hot and grey as they die. They catch at once, burn, shrink and cool to embers, the embers
- * go dull, and a little grey smoke goes on rising from the pit a while after. A shell leaves a small brief fire; a
- * bomb, a missile and an atom bomb more spots, bigger flames and longer fires. MotionParams: fireLinger sets the size
- * and how long they burn (subtle small and short, cinematic big and long), craterSmoke the smoke; reduced motion
- * keeps them still.
+ * Fires burning in and round a fresh crater: a few patches of fire, each a knot of flames grown together (one tall
+ * tongue and two to four short ones of clearly uneven height) on an arc of the rim or the pit floor, bunched on the
+ * downwind and lower side and never evenly spaced, each with one low warm light lying on the ground under it, embers,
+ * and smoke rising off it, dark while it burns hot and grey as it dies. They catch at once, burn, shrink and cool to
+ * embers (specks with no glow round them), the embers go dull, and a little grey smoke goes on rising from the pit a
+ * while after. A shell leaves one small brief patch; a bomb two, a missile three and an atom bomb four or five,
+ * bigger and longer. MotionParams: fireLinger sets the size and how long they burn (subtle small and short, cinematic
+ * big and long), craterSmoke the smoke; reduced motion keeps them still.
  */
 export interface CraterFire {
   /** how big a blast left the crater (0 a shell .. 1 an atom bomb) */
   k: number;
   /** when (q) the fires are out; embers glow to about 1.8 times that, smoke rises to 2.5 times that */
   burn: number;
-  /** a flame's height (CSS px) */
+  /** the tallest flame's height (CSS px) */
   flameH: number;
-  /** how many spots burn */
-  spots: number;
+  /** how many patches of fire burn */
+  clusters: number;
 }
 
 /**
- * The fire a crater of radius `radiusPx` at `zoom` gets: more spots, taller flames and a longer burn after a bigger
- * blast; fireLinger makes them smaller and shorter (subtle) or bigger and longer (cinematic).
+ * The fire a crater of radius `radiusPx` at `zoom` gets: more patches, taller flames (with the crater's size too) and
+ * a longer burn after a bigger blast; fireLinger makes them smaller and shorter (subtle) or bigger and longer
+ * (cinematic).
  */
 export function craterFire(radiusPx: number, zoom: number, m: MotionParams): CraterFire {
   const k = sizeClass(radiusPx / Math.max(0.01, zoom));
@@ -328,17 +378,18 @@ export function craterFire(radiusPx: number, zoom: number, m: MotionParams): Cra
   const fs = 0.65 + 0.5 * m.fireLinger;
   return {
     k,
-    // eased toward a third of the life at most, so even a cinematic atom bomb's embers are out before the crater fades
-    burn: BURN_MAX * (1 - Math.exp((-(0.15 + 0.35 * k) * fd) / BURN_MAX)),
-    // about 0.8 of a tile for a shell's, 1.4 for an atom bomb's, more on a big crater
-    flameH: (zoom * (0.8 + 0.6 * k) + radiusPx * 0.16 * k * k) * fs,
-    spots: Math.min(MAX_SPOTS, Math.round(1 + 12 * Math.pow(k, 1.15))),
+    // a shell's brief (about 0.06 of the life), an atom bomb's long (about a third at most), so even a cinematic atom
+    // bomb's embers are out before the crater fades
+    burn: BURN_MAX * (1 - Math.exp((-(0.08 + 0.6 * k) * fd) / BURN_MAX)),
+    // about 0.8 of a tile for a shell's, 1.4 for an atom bomb's, and a share of the crater's own size
+    flameH: (zoom * (0.8 + 0.6 * k) + radiusPx * (0.1 + 0.25 * k)) * fs,
+    clusters: k < 0.1 ? 1 : k < 0.32 ? 2 : k < 0.6 ? 3 : k < 0.85 ? 4 : 5,
   };
 }
 
 function drawFire(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams, small: boolean): void {
   const q = d.q;
-  const { k, burn, flameH: fh, spots: n } = craterFire(d.radiusPx, d.zoom, m);
+  const { k, burn, flameH: fh, clusters: n } = craterFire(d.radiusPx, d.zoom, m);
   // past every ember and every wisp of smoke: nothing to draw
   if (q >= burn * 2.5) return;
   const smokeK = 0.5 + 0.5 * m.craterSmoke;
@@ -356,7 +407,7 @@ function drawFire(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams,
     if (I <= 0.02) return;
     const flick = 1 + (still ? 0 : 0.18 * Math.sin(TAU * (tc * 1.7 + d.seed)) + 0.12 * (rnd(fr, 3) - 0.5));
     if (fh * d.dpr >= 6) {
-      fireLight(ctx, d.x, d.y - fh * 0.15, fh * 1.6, 0.8 * I * flick);
+      fireLight(ctx, d.x, d.y - fh * 0.15, fh * 1.6, 0.6 * I * flick);
       flame(ctx, Flame.TONGUE, I > 0.45, Math.floor(sd), d.x, d.y + fh * 0.1, -Math.PI / 2 + 0.3, fh * I * flick, fh * 0.65 * I, Math.min(1, I * 2));
     } else {
       const p = Math.max(1, Math.round(fh * 0.45 * d.dpr)) / d.dpr;
@@ -370,27 +421,40 @@ function drawFire(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams,
     }
     return;
   }
-  // the spots: where, how big, how fierce now
-  let ic = 0;
+  // the patches: where (an arc of the rim or the pit floor, bunched on the downwind and lower side, unevenly apart),
+  // how big, how fierce now
+  const a0 = 0.45 + (rnd(sd, 1) - 0.5) * 1.4;
+  let aL = a0;
+  let aR = a0;
+  let maxI = 0;
   for (let i = 0; i < n; i++) {
     const s = sd + i * 17;
-    // the first in the pit, then about a third in the pit, a third on the rim, a third on clods thrown out
-    const zone = i === 0 ? 0 : rnd(s, 1);
-    const a = rnd(s, 2) * TAU;
-    const dist = zone < 0.3 ? 0.12 + 0.45 * rnd(s, 3) : zone < 0.68 ? 0.82 + 0.3 * rnd(s, 3) : 1.25 + 0.55 * rnd(s, 3);
+    let a = a0;
+    if (i > 0) {
+      // the next patch along the arc to one side or the other, an uneven step away
+      const step = 0.5 + 0.85 * rnd(s, 2);
+      if (rnd(s, 7) < 0.5 === (i % 2 === 0)) a = aL -= step;
+      else a = aR += step;
+    }
+    // the first in the pit floor (a shell's is all in its hole); the others on the rim or the floor
+    const rim = i > 0 && rnd(s, 1) < 0.6;
+    const dist = n === 1 ? 0.12 + 0.3 * rnd(s, 3) : rim ? 0.78 + 0.2 * rnd(s, 3) : 0.22 + 0.33 * rnd(s, 3);
     SX[i] = d.x + Math.cos(a) * dist * R;
     SY[i] = d.y + Math.sin(a) * dist * R * 0.9;
-    SB[i] = (zone < 0.3 ? 1 : zone < 0.68 ? 0.85 : 0.6) * (0.6 + 0.65 * rnd(s, 4));
-    // each catches a moment apart and burns out at its own time (thrown-out clods first)
+    SA[i] = a;
+    SB[i] = (rim ? 0.85 : 1) * (0.75 + 0.45 * rnd(s, 4)) * (i === 0 ? 1.1 : 1);
+    SW[i] = Math.max(R * 0.15, fh * 0.28);
+    SN[i] = 3 + Math.floor(rnd(s, 8) * (n === 1 ? 1.99 : 2.99));
+    // each catches a moment apart and burns out at its own time (the first, in the pit, last)
     const q0 = rnd(s, 5) * 0.01;
-    const qEnd = burn * (zone < 0.68 ? 0.6 + 0.4 * rnd(s, 6) : 0.35 + 0.3 * rnd(s, 6));
+    const qEnd = burn * (i === 0 ? 0.8 + 0.2 * rnd(s, 6) : 0.5 + 0.45 * rnd(s, 6));
     const on = clamp01((q - q0) / 0.008);
     SI[i] = on * (1 - smooth((q - qEnd * 0.4) / (qEnd * 0.6)));
     SE[i] = on * (1 - smooth((q - qEnd * 0.7) / (qEnd * 1.1)));
     // smoke goes on longest, from the pit longest of all
     SS[i] = on * (1 - smooth((q - qEnd * 0.3) / (qEnd * (i === 0 ? 2.2 : 1.6))));
-    ic = Math.max(ic, SE[i]);
-    // flames drawn top to bottom, so a nearer one stands in front
+    maxI = Math.max(maxI, SI[i]);
+    // patches drawn top to bottom, so a nearer one stands in front
     let j = i;
     while (j > 0 && SY[ORDER[j - 1]] > SY[i]) {
       ORDER[j] = ORDER[j - 1];
@@ -398,68 +462,108 @@ function drawFire(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams,
     }
     ORDER[j] = i;
   }
-  // the light of the fires on the ground round them; after a bomb or bigger, the whole bowl lit red by its embers
+  // the light of the flames on the ground under them, low and flat (one a patch); after a bomb or bigger the bowl lit
+  // red while the flames burn (none once only embers are left)
   let nl = 0;
-  if (k > 0.12 && ic > 0.02) {
+  if (k > 0.12 && maxI > 0.02) {
     LX[nl] = d.x;
     LY[nl] = d.y;
-    LR[nl] = R * (0.8 + 0.3 * k);
-    LA[nl++] = (0.3 + 0.12 * k) * ic * ign;
+    LR[nl] = R * (0.7 + 0.2 * k);
+    LA[nl++] = (0.2 + 0.1 * k) * maxI * ign;
   }
   for (let i = 0; i < n; i++) {
     const I = SI[i];
-    const E = SE[i];
-    if (I <= 0.01 && E <= 0.01) continue;
-    const flick = 1 + (still ? 0 : 0.2 * Math.sin(TAU * (tc * 1.3 + i * 0.37)) + 0.1 * (rnd(fr, i) - 0.5));
+    if (I <= 0.01) continue;
+    const flick = 1 + (still ? 0 : 0.15 * Math.sin(TAU * (tc * 1.3 + i * 0.37)) + 0.08 * (rnd(fr, i) - 0.5));
     LX[nl] = SX[i];
-    LY[nl] = SY[i] - fh * 0.2;
-    LR[nl] = fh * 1.5 * SB[i];
-    LA[nl++] = (0.6 * I + 0.25 * E) * flick;
+    LY[nl] = SY[i] - fh * 0.1;
+    LR[nl] = fh * 1.2 * SB[i] + SW[i];
+    LA[nl++] = Math.min(0.45, 0.42 * I * flick);
   }
-  fireLights(ctx, nl, LX, LY, LR, LA);
-  // embers: specks glowing in the ashes, twinkling, dull red as they die
-  const ep = Math.max(1, Math.round(Math.max(0.6, fh * 0.11) * d.dpr)) / d.dpr;
-  for (let i = 0; i < n; i++) {
-    const E = SE[i];
-    if (E <= 0.02) continue;
-    const s = sd + i * 17;
-    for (let e = i === 0 ? 3 : 2; e > 0; e--) {
-      const tw = still ? 0.7 : 0.45 + 0.55 * rnd(Math.floor(tc * 6 + e * 0.3), s + e);
-      ctx.globalAlpha = prevA * E * tw;
-      ctx.fillStyle = E > 0.6 && e % 2 === 0 ? '#ffb46b' : E > 0.3 ? '#dc7426' : '#9c3a16';
-      const ea = rnd(s, e + 20) * TAU;
-      const er = fh * 0.55 * SB[i] * Math.sqrt(rnd(s, e + 24));
-      ctx.fillRect(SX[i] + Math.cos(ea) * er - ep / 2, SY[i] + Math.sin(ea) * er * 0.8 - ep / 2, ep, ep);
+  fireLights(ctx, nl, LX, LY, LR, LA, LIGHT_FLAT);
+  // embers: specks of 1 or 2 px in the ashes of each patch, twinkling, dull red as they die, each with a faint 3 px
+  // halo (drawn first, all together), and a speck or two out on the clods thrown out after a bomb or bigger
+  const px = 1 / d.dpr;
+  const clods = k > 0.15 ? (k > 0.5 ? 2 : 1) : 0;
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < n + clods; i++) {
+      const out = i >= n;
+      const E = out ? SE[0] * 0.8 * (1 - smooth(q / (burn * 0.9))) : SE[i];
+      if (E <= 0.02) continue;
+      const s = sd + i * 17;
+      const ne = out ? 1 : i === 0 ? 4 : 3;
+      for (let e = ne; e > 0; e--) {
+        const tw = still ? 0.7 : 0.45 + 0.55 * rnd(Math.floor(tc * 6 + e * 0.3), s + e);
+        const ea = rnd(s, e + 20) * TAU;
+        let ex: number;
+        let ey: number;
+        if (out) {
+          const od = R * (1.25 + 0.55 * rnd(s, e + 26));
+          ex = d.x + Math.cos(ea) * od;
+          ey = d.y + Math.sin(ea) * od * 0.9;
+        } else {
+          const er = (SW[i] + fh * 0.3 * SB[i]) * Math.sqrt(rnd(s, e + 24));
+          ex = SX[i] + Math.cos(ea) * er;
+          ey = SY[i] + Math.sin(ea) * er * 0.6;
+        }
+        if (pass === 0) {
+          ctx.globalAlpha = prevA * Math.min(0.25, 0.32 * E * tw);
+          ctx.fillStyle = '#7a2c14';
+          ctx.fillRect(Math.round(ex * d.dpr - 1.5) / d.dpr, Math.round(ey * d.dpr - 1.5) / d.dpr, 3 * px, 3 * px);
+        } else {
+          const ep = (E > 0.55 && e % 2 === 0 ? 2 : 1) * px;
+          ctx.globalAlpha = prevA * E * tw;
+          ctx.fillStyle = E > 0.6 && e % 2 === 0 ? '#ffb46b' : E > 0.3 ? '#dc7426' : '#9c3a16';
+          ctx.fillRect(Math.round(ex * d.dpr - ep * d.dpr * 0.5) / d.dpr, Math.round(ey * d.dpr - ep * d.dpr * 0.5) / d.dpr, ep, ep);
+        }
+      }
     }
   }
   ctx.globalAlpha = prevA;
-  // the flames: two or three tongues a spot grown together into one fire, leaning with the wind, licking up and down
+  // the flames: each patch a knot of tongues grown together, one tall and the others short and each its own height,
+  // leaning downwind together, licking up and down
   for (let o = 0; o < n; o++) {
     const i = ORDER[o];
     const I = SI[i];
     if (I <= 0.01) continue;
     const s = sd + i * 17;
     const big = SB[i];
-    const nt = fh * big * d.dpr > 9 ? 3 : 2;
     const hotA = clamp01((I - 0.35) / 0.45);
     const grow = Math.pow(I, 0.6);
-    // the bed of the fire, a hot glow the tongues rise out of (close up, where it shows)
-    if (fh * big * d.dpr > 10) puff(ctx, Puff.FIRE, i, SX[i], SY[i] + fh * 0.05 * big, fh * 0.32 * big * grow, 0.75 * Math.min(1, I * 2));
-    for (let t = nt - 1; t >= 0; t--) {
+    const ta = SA[i] + Math.PI / 2;
+    const tx = Math.cos(ta);
+    const ty = Math.sin(ta) * 0.9;
+    // the bed of the fire: low, wide, dying flames along the patch the tongues rise out of, so the knot reads as one
+    // ragged burning patch (close up, where it shows)
+    if (fh * big * d.dpr > 8) {
+      for (let b = 0; b < 2; b++) {
+        const along = (b === 0 ? -0.45 : 0.4) * SW[i] * (0.8 + 0.4 * rnd(s, b + 60));
+        flame(ctx, Flame.TONGUE, false, Math.floor(s) + 5 + b, SX[i] + tx * along, SY[i] + ty * along + fh * 0.1 * big, -Math.PI / 2 + 0.25, fh * big * (0.3 + 0.12 * rnd(s, b + 62)) * grow, (SW[i] * 1.3 + fh * 0.35 * big) * grow, Math.min(1, I * 2));
+      }
+    }
+    const nt = fh * big * d.dpr > 7 ? SN[i] : 2;
+    // where the tall one stands in the knot
+    const tallAt = rnd(s, 50) - 0.5;
+    for (let t = 0; t < nt; t++) {
       const ph = rnd(s, t + 30);
       const f1 = 1.1 + 0.6 * rnd(s, t + 33);
-      const flick = still ? 1 : 1 + 0.17 * Math.sin(TAU * (tc * f1 + ph)) + 0.09 * Math.sin(TAU * (tc * f1 * 2.3 + ph * 3)) + 0.1 * (rnd(fr, i * 3 + t) - 0.5);
-      // one tall tongue and shorter ones of uneven height set off to either side at random (never a tidy fan), all
-      // taller than they are wide and leaning downwind together, each swaying on its own
-      const h = fh * big * (t === 0 ? 1 : 0.4 + 0.38 * rnd(s, t + 43)) * grow * flick;
-      const w = fh * big * (t === 0 ? 0.56 : 0.44) * grow;
-      const ox = (t === 0 ? (rnd(s, 39) - 0.5) * 0.12 : (t === 1 ? -1 : 1) * (0.07 + 0.14 * rnd(s, t + 40))) * fh * big;
+      const flick = still ? 1 : 1 + 0.17 * Math.sin(TAU * (tc * f1 + ph)) + 0.09 * Math.sin(TAU * (tc * f1 * 2.3 + ph * 3)) + 0.1 * (rnd(fr, i * 5 + t) - 0.5);
+      // the short ones: clearly uneven, from a quarter to 0.7 of the tall one, dying back a little sooner
+      const frac = t === 0 ? 1 : (t - 1 + 0.25 + 0.5 * rnd(s, t + 43)) / Math.max(1, nt - 1);
+      const hk = t === 0 ? 0.92 + 0.16 * rnd(s, 43) : 0.25 + 0.45 * frac;
+      const It = t === 0 ? grow : Math.pow(clamp01(I * 1.2 - 0.2 * rnd(s, t + 52)), 0.6);
+      if (It <= 0.02) continue;
+      const h = fh * big * hk * It * flick;
+      const w = fh * big * (t === 0 ? 0.7 : 0.3 + 0.5 * hk) * It;
+      // spread along the arc of the patch (within about 0.15 of the crater's radius), a little in and out
+      const along = (t === 0 ? tallAt : rnd(s, t + 40) - 0.5) * 2 * SW[i];
+      const across = (rnd(s, t + 41) - 0.5) * SW[i] * 0.5;
       const lean = -Math.PI / 2 + 0.2 + 0.16 * rnd(s, t + 46) + (still ? 0 : 0.09 * Math.sin(TAU * (tc * 0.6 + ph)));
       const v = Math.floor(s) + t;
-      const x = SX[i] + ox;
-      const y = SY[i] + fh * (0.1 + 0.08 * rnd(s, t + 49)) * big;
+      const x = SX[i] + tx * along + ty * across * 0.3;
+      const y = SY[i] + ty * along + across * 0.4 + fh * 0.08 * big;
       // white hot while it burns fiercely, then the dying picture (one picture each, the flicker hides the change)
-      flame(ctx, Flame.TONGUE, hotA > 0.5, v, x, y, lean, h, w, Math.min(1, I * 2.5));
+      flame(ctx, Flame.TONGUE, hotA > 0.5 && t < 2, v, x, y, lean, h, w, Math.min(1, I * 2.5));
     }
   }
   // smoke off the fires: a column of puffs, dark while they burn hot, grey as they die, rising, swelling and drifting
@@ -475,7 +579,7 @@ function drawFire(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams,
         const ph = still ? (j / np + rnd(s, 40)) % 1 : (tc / 2.6 + j / np + rnd(s, 40)) % 1;
         const rise = fh * big * (0.7 + 3.6 * ph);
         const drift = fh * 2.8 * ph * ph;
-        const r = fh * (0.55 + 1.6 * ph) * (0.75 + 0.45 * big);
+        const r = (fh * (0.55 + 1.6 * ph) + SW[i] * 0.6) * (0.75 + 0.45 * big);
         // (dark smoke thinner and softer than grey, so a young puff over the fire never reads as a lump)
         const dark = SI[i] > 0.3 && ph < 0.3;
         puff(ctx, dark ? Puff.DARK : Puff.GREY, i * 3 + j, SX[i] + WIND_X * drift, SY[i] - rise + WIND_Y * drift, r * (dark ? 1.15 : 1), (dark ? 0.6 : 0.8) * S * ramp(ph, 0, 0.12) * Math.pow(1 - ph, 1.2));

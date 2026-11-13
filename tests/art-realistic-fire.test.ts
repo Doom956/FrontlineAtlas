@@ -44,16 +44,20 @@ const ATOM = 11.2;
 const crater = (rt: number, q: number, zoom = 14, over: Partial<CraterDraw> = {}): CraterDraw => ({ x: 200, y: 150, radiusPx: rt * zoom, q, zoom, scale: 2, seed: 0.37, dpr: 1, ...over });
 
 describe('realistic crater fires', () => {
-  it('leaves more spots, taller flames and a longer fire after a bigger blast', () => {
+  it('leaves more patches of fire, taller flames and a longer fire after a bigger blast', () => {
     const f = [SHELL, BOMB, MISSILE, ATOM].map((rt) => craterFire(rt * 8, 8, lively));
     for (let i = 1; i < f.length; i++) {
-      expect(f[i].spots, `spots ${i}`).toBeGreaterThan(f[i - 1].spots);
+      expect(f[i].clusters, `patches ${i}`).toBeGreaterThan(f[i - 1].clusters);
       expect(f[i].burn, `burn ${i}`).toBeGreaterThan(f[i - 1].burn);
       expect(f[i].flameH, `flame ${i}`).toBeGreaterThan(f[i - 1].flameH);
     }
-    // a shell's fire is small and brief: one spot, out within the first sixth of the crater's life
-    expect(f[0].spots).toBe(1);
-    expect(f[0].burn).toBeLessThan(1 / 6);
+    // a shell's fire is small and brief: one patch, out within the first tenth of the crater's life; an atom bomb's
+    // four or five
+    expect(f[0].clusters).toBe(1);
+    expect(f[0].burn).toBeLessThan(0.1);
+    expect(f[3].clusters).toBeGreaterThanOrEqual(4);
+    // an atom bomb's fire clearly outlasts a missile's (still burning when the missile's is down to embers)
+    expect(f[3].burn).toBeGreaterThan(f[2].burn * 1.25);
     // an atom bomb's burns through a good part of it, and every fire's embers are out before the crater fades
     expect(f[3].burn).toBeGreaterThan(0.2);
     for (const m of [subtle, lively, cinematic]) expect(craterFire(ATOM * 3, 3, m).burn * 1.8).toBeLessThan(0.62);
