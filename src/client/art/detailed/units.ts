@@ -11,14 +11,19 @@
 //             flickering blade (propellers, propFps), jets glow at the nozzle, the ground shadow lies off by the
 //             altitude and breathes with altitudeBob
 //   missiles  a flickering exhaust flame (flameMs)
+// Damage (UnitDraw.damage) shows as burning, drawn with the unit so it goes where the unit goes (damage.ts): a ship
+// trails a wisp of smoke from about a quarter, burns on deck from about half, and from 0.8 burns in several places
+// under a heavy black column with a slight list; a damaged tank smokes and burns from its engine deck, a damaged
+// plane trails smoke (and fire) from an engine.
 // Reduced motion keeps every unit still (no bob, sway, shake, bank or spin).
 import type { MotionParams } from '../motion';
 import { canBake, SpriteAtlas, type AtlasEntry } from '../shared/atlas';
 import { hex } from '../shared/colour';
 import { isAirKey, SPRITE_KEYS, unitCategoryOf, type SpriteKey } from '../shared/keys';
 import type { PortraitDraw, UnitArt, UnitDraw } from '../types';
-import { FORE, LIFT, rasterize, shadowOf, type Baked } from './bake';
+import { FORE, LIFT, project, rasterize, shadowOf, type Baked } from './bake';
 import { drawBlob } from './blobs';
+import { drawDamage, listOf } from './damage';
 import { facingIndex, facingsFor, gridOf, type Grid } from './grid';
 import { modelLength, modelSpan, MOD_MASK, unitLength, unitModel, type UnitModel } from './models';
 import { FIRE } from './palette';
@@ -77,7 +82,7 @@ function entry(um: UnitModel, key: SpriteKey, mods: number, facing: number, n: n
   return atlas.get(k, () =>
     timed(() => {
       if (layer === TURRET && um.turret) return rasterize(um.turret.model, res, facing, { facings: n, owner });
-      const b = rasterize(um.model, res, facing, { facings: n, owner: layer === SHADOW ? [0, 0, 0] : owner, roll: layer === SHADOW ? 0 : roll, tread: frame ? 0.7 : 0 });
+      const b = rasterize(um.model, res, facing, { facings: n, owner: layer === SHADOW ? [0, 0, 0] : owner, roll: layer === SHADOW ? 0 : roll, list: roll !== 0 && unitCategoryOf(key) === 'ships', tread: frame ? 0.7 : 0 });
       return layer === SHADOW ? shadowOf(b) : b;
     }),
   );
@@ -152,14 +157,6 @@ function propEntry(rp: number, facing: number, n: number, bank: number, frame: n
 
 const FIRE_RGB = FIRE.map(hex);
 
-/** Screen offset (CSS px) of a model point at a baked heading and bank, at map scale `scale`. */
-function project(u: number, v: number, z: number, th: number, roll: number, scale: number, flat: boolean): [number, number] {
-  const vv = v * Math.cos(roll);
-  const zz = z - v * Math.sin(roll) * 0.9;
-  const c = Math.cos(th);
-  const s = Math.sin(th);
-  return [(u * c - vv * s) * scale, ((u * s + vv * c) * (flat ? 1 : FORE) - (flat ? 0 : zz * LIFT)) * scale];
-}
 
 /** The bank level (0..6, 3 = level) of a plane turning at `turnRate` rad/s. */
 function bankLevel(turnRate: number, m: MotionParams): number {
@@ -188,7 +185,8 @@ function drawAt(ctx: CanvasRenderingContext2D, u: UnitDraw, m: MotionParams, g: 
   const t = u.timeMs;
   const still = m.reduced;
   const air = cat === 'air';
-  const bank = air ? bankLevel(u.turnRate, m) : 3;
+  // a plane banks into its turns; a badly hurt ship lists a little to one side (bank levels 2 and 4)
+  const bank = air ? bankLevel(u.turnRate, m) : cat === 'ships' ? 3 + listOf(u.damage, u.seed) : 3;
   const roll = bankRoll(bank);
   const moving = u.moving || u.speed > 0;
   const tank = cat === 'land';
@@ -237,6 +235,8 @@ function drawAt(ctx: CanvasRenderingContext2D, u: UnitDraw, m: MotionParams, g: 
   }
   if (um.props.length) drawProps(ctx, u, um, m, g, facing, n, bank, th, roll, x, y);
   if (um.nozzles.length) drawNozzles(ctx, u, um, m, g, th, roll, x, y, cat === 'missiles');
+  // burning: fires on the unit and the smoke streaming off it, drawn with it so they follow it
+  if (u.damage > 0 && cat !== 'missiles') drawDamage(ctx, u, um, m, g, th, roll, x, y, cat);
   ctx.globalAlpha = prevA;
   ctx.imageSmoothingEnabled = prevS;
   return true;

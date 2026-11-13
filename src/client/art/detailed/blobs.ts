@@ -14,12 +14,14 @@ import { CLOUD, CLOUD_SHADE, CLOUD_TOP, DUST, FIRE, SHADE, SMOKE, SOOT, SPRAY, V
  * lights ('glow' on the ground, 'halo' in the air), the 'haze' dust sheet, and the big cloud's soft billows: 'cloudTop'
  * (lit tops), 'cloud' (warm grey sides), 'cloudUnder' (the shaded underside) and 'roll' (a low flattened billow of dust
  * rolling along the ground). The soft ones have a gentle tone range and no darker rim, so many of them overlapping read
- * as one billowing mass, not a heap of separate stones.
+ * as one billowing mass, not a heap of separate stones. Then the burning and the sea: 'flame' (a flickering tongue of
+ * fire standing on its base, four flicker frames, leaning with the wind), 'foam' (a flat lacy patch of foam on the
+ * water that breaks up as it ages) and 'heat' (ground glowing red hot and cooling, like 'glow' in deep reds).
  */
-export type BlobKind = 'smoke' | 'soot' | 'dust' | 'spray' | 'fire' | 'vapour' | 'flash' | 'glow' | 'halo' | 'shade' | 'haze' | 'cloudTop' | 'cloud' | 'cloudUnder' | 'roll';
-const KINDS: BlobKind[] = ['smoke', 'soot', 'dust', 'spray', 'fire', 'vapour', 'flash', 'glow', 'halo', 'shade', 'haze', 'cloudTop', 'cloud', 'cloudUnder', 'roll'];
+export type BlobKind = 'smoke' | 'soot' | 'dust' | 'spray' | 'fire' | 'vapour' | 'flash' | 'glow' | 'halo' | 'shade' | 'haze' | 'cloudTop' | 'cloud' | 'cloudUnder' | 'roll' | 'flame' | 'foam' | 'heat';
+const KINDS: BlobKind[] = ['smoke', 'soot', 'dust', 'spray', 'fire', 'vapour', 'flash', 'glow', 'halo', 'shade', 'haze', 'cloudTop', 'cloud', 'cloudUnder', 'roll', 'flame', 'foam', 'heat'];
 
-const RAMP: Record<Exclude<BlobKind, 'fire' | 'flash' | 'glow' | 'halo' | 'haze'>, RGB[]> = {
+const RAMP: Record<Exclude<BlobKind, 'fire' | 'flash' | 'glow' | 'halo' | 'haze' | 'flame' | 'foam' | 'heat'>, RGB[]> = {
   smoke: SMOKE.map(hex),
   soot: SOOT.map(hex),
   dust: DUST.map(hex),
@@ -63,9 +65,9 @@ function vnoise(x: number, y: number, s: number): number {
  * seven dithered steps (no smooth gradient and no ring), white hot in the middle through yellow to an orange edge.
  * 'glow' lies on the ground (squashed by the 3/4 view), 'halo' hangs in the air (round). Radius `r` cells (1..48).
  */
-export function glowBitmap(kind: 'glow' | 'halo', r: number, variant: number): RGBABitmap {
+export function glowBitmap(kind: 'glow' | 'halo' | 'heat', r: number, variant: number): RGBABitmap {
   const R = Math.max(1, Math.min(48, Math.round(r)));
-  const sq = kind === 'glow' ? 0.6 : 1;
+  const sq = kind === 'halo' ? 1 : 0.6;
   const half = Math.ceil(R * 1.15) + 1;
   const hy = Math.ceil(R * sq * 1.15) + 1;
   const W = half * 2 + 1;
@@ -76,7 +78,11 @@ export function glowBitmap(kind: 'glow' | 'halo', r: number, variant: number): R
   // seven alpha steps a little apart: the dither between two of them stays quiet even when a big light is drawn
   // with coarse cells
   const ALPHA = [0, 30, 60, 92, 124, 158, 192, 226];
-  const COL = [FIRE_RGB[2], FIRE_RGB[2], FIRE_RGB[2], FIRE_RGB[1], FIRE_RGB[1], FIRE_RGB[1], FIRE_RGB[0], FIRE_RGB[0]];
+  // 'heat': ground glowing red hot, from a dull ember brown at its edge to orange in the middle (never white)
+  const COL =
+    kind === 'heat'
+      ? [FIRE_RGB[6], FIRE_RGB[6], FIRE_RGB[5], FIRE_RGB[5], FIRE_RGB[4], FIRE_RGB[4], FIRE_RGB[3], FIRE_RGB[3]]
+      : [FIRE_RGB[2], FIRE_RGB[2], FIRE_RGB[2], FIRE_RGB[1], FIRE_RGB[1], FIRE_RGB[1], FIRE_RGB[0], FIRE_RGB[0]];
   for (let y = 0; y < Hh; y++) {
     for (let x = 0; x < W; x++) {
       const dx = x - half;
@@ -148,8 +154,10 @@ export function hazeBitmap(r: number, variant: number): RGBABitmap {
  * rim, never red. The origin (ox, oy) is the blob's centre.
  */
 export function blobBitmap(kind: BlobKind, r: number, variant: number, heat = 0): RGBABitmap {
-  if (kind === 'glow' || kind === 'halo') return glowBitmap(kind, r, variant);
+  if (kind === 'glow' || kind === 'halo' || kind === 'heat') return glowBitmap(kind, r, variant);
   if (kind === 'haze') return hazeBitmap(r, variant);
+  if (kind === 'flame') return flameBitmap(r, variant, heat & 3, (heat >> 2) - 2);
+  if (kind === 'foam') return foamBitmap(r, variant, heat);
   const R = Math.max(1, Math.min(48, Math.round(r)));
   const half = Math.ceil(R * 1.22) + 1;
   const W = half * 2 + 1;
@@ -212,6 +220,128 @@ export function blobBitmap(kind: BlobKind, r: number, variant: number, heat = 0)
   return { w: W, h: Hh, ox: half, oy: hy, data };
 }
 
+/** A flame's `heat` code for drawBlob: flicker frame 0..3 and a lean -2..2 (screen px of the tip per cell of base, halves). */
+export function flameCode(frame: number, lean: number): number {
+  return (frame & 3) + 4 * (Math.max(-2, Math.min(2, Math.round(lean))) + 2);
+}
+
+/**
+ * A tongue of fire standing on its base: `r` cells half-wide at the base (1..16), about 2.8 times as tall, tapering to
+ * a ragged tip that sways a little each flicker `frame` (0..3) and leans `lean` (-2..2) to the side the wind blows;
+ * white hot low in its middle, yellow and orange up its body, red at the tips, with a lick of flame torn off above it
+ * on some frames. The origin is the middle of its base.
+ */
+export function flameBitmap(r: number, variant: number, frame: number, lean: number): RGBABitmap {
+  const R = Math.max(1, Math.min(16, Math.round(r)));
+  const H = Math.round(R * 2.8 + 1);
+  const tip = lean * R * 0.45;
+  const half = R + Math.ceil(Math.abs(tip)) + 2;
+  const W = half * 2 + 1;
+  const below = Math.max(1, Math.ceil(R * 0.55));
+  const top = Math.ceil(H * 1.3) + 1;
+  const Hh = top + below + 1;
+  const data = new Uint8ClampedArray(W * Hh * 4);
+  const s = variant * 31 + R * 7 + 11;
+  const ph = variant * 1.9 + frame * 1.7;
+  const put = (x: number, y: number, c: RGB): void => {
+    if (x < 0 || y < 0 || x >= W || y >= Hh) return;
+    const o = (y * W + x) * 4;
+    data[o] = c[0];
+    data[o + 1] = c[1];
+    data[o + 2] = c[2];
+    data[o + 3] = 255;
+  };
+  for (let y = 0; y < Hh; y++) {
+    for (let x = 0; x < W; x++) {
+      const dx = x - half;
+      const up = top - y;
+      const dith = BAYER[(x & 1) + ((y & 1) << 1)];
+      if (up < 0) {
+        // the rounded foot of the fire, glowing
+        if ((dx * dx) / (R * R) + (up * up) / (below * below) > 1) continue;
+        put(x, y, FIRE_RGB[Math.abs(dx) < R * 0.45 ? 1 : 2]);
+        continue;
+      }
+      const n = vnoise(x * 0.55 + variant * 3.1, (y + frame * 2.7) * 0.42, s);
+      // the main tongue: it sways and leans more toward its tip, narrowing with a flickering bulge or two along it
+      const k = up / H;
+      let temp = -9;
+      if (k <= 1.05) {
+        const cx = tip * k ** 1.5 + Math.sin(k * 3.4 + ph) * R * 0.28 * k;
+        const hw = R * (1 - Math.min(1, k)) ** 0.75 * (1 + 0.2 * Math.sin(k * 7 + ph * 1.3)) + 0.35;
+        const edge = hw * (0.72 + 0.62 * n);
+        const ad = Math.abs(dx - cx);
+        if (ad <= edge) temp = 1 - (ad / Math.max(0.5, edge)) * 0.5 - k * 1.05 + (n - 0.5) * 0.4;
+      }
+      // a second, shorter lick of flame off to one side (each shape its side), so a fire is never one tidy drop
+      if (R >= 2) {
+        const k2 = up / (H * (0.5 + 0.12 * ((frame + variant) & 1)));
+        if (k2 <= 1) {
+          const side = variant & 1 ? 1 : -1;
+          const cx2 = side * R * 0.62 + tip * 0.8 * k2 ** 1.6 + Math.sin(k2 * 3 + ph * 1.7) * R * 0.2 * k2;
+          const hw2 = R * 0.55 * (1 - k2) ** 0.8 + 0.3;
+          const ad2 = Math.abs(dx - cx2);
+          if (ad2 <= hw2 * (0.7 + 0.6 * n)) temp = Math.max(temp, 0.9 - (ad2 / Math.max(0.5, hw2)) * 0.5 - k2 * 1.1 + (n - 0.5) * 0.4);
+        }
+      }
+      if (temp === -9) continue;
+      const idx = Math.max(0, Math.min(5, Math.floor((1 - temp) * 4.6 + dith * 0.8)));
+      put(x, y, FIRE_RGB[idx]);
+    }
+  }
+  // a lick of flame torn off above the tip on two of the four frames
+  if ((frame + variant) & 1) {
+    const lx = half + Math.round(tip * 1.1 + Math.sin(ph) * R * 0.3);
+    const ly = top - Math.round(H * (1.1 + 0.12 * ((frame >> 1) & 1)));
+    put(lx, ly, FIRE_RGB[3]);
+    if (R >= 2) put(lx, ly - 1, FIRE_RGB[4]);
+    if (R >= 3) put(lx + 1, ly, FIRE_RGB[4]);
+  }
+  return { w: W, h: Hh, ox: half, oy: top, data };
+}
+
+/**
+ * A patch of foam on the water: flat (the sea seen at the 3/4 angle), lacy, densest in its middle and thinning out
+ * to the edge in dithered steps (never a ring), white where it froths and blue grey where it thins; `age` 0..3 opens
+ * more and bigger holes in it as it breaks up. Radius `r` cells (1..48).
+ */
+export function foamBitmap(r: number, variant: number, age: number): RGBABitmap {
+  const R = Math.max(1, Math.min(48, Math.round(r)));
+  const sq = 0.55;
+  const half = Math.ceil(R * 1.2) + 1;
+  const hy = Math.ceil(R * sq * 1.2) + 1;
+  const W = half * 2 + 1;
+  const Hh = hy * 2 + 1;
+  const data = new Uint8ClampedArray(W * Hh * 4);
+  const ph = variant * 1.37 + 0.2;
+  const s = variant * 23 + R + 3;
+  const A = Math.max(0, Math.min(3, age | 0));
+  const fs = Math.max(0.22, Math.min(0.7, 3.5 / R));
+  for (let y = 0; y < Hh; y++) {
+    for (let x = 0; x < W; x++) {
+      const dx = x - half;
+      const dy = (y - hy) / sq;
+      const a = Math.atan2(dy, dx);
+      const e = R * (0.86 + 0.12 * Math.sin(3 * a + ph) + 0.08 * Math.sin(5 * a + ph * 2.1) + 0.05 * Math.sin(9 * a + ph * 1.3));
+      const d = Math.hypot(dx, dy) / e;
+      if (d >= 1) continue;
+      const dith = BAYER[(x & 1) + ((y & 1) << 1)];
+      // streaky lace: coarse froth with finer bubbles in it, stretched a little across the screen
+      const n = vnoise(x * fs * 0.8 + variant * 2.3, y * fs * 1.3, s) * 0.65 + vnoise(x * fs * 2.2, y * fs * 3, s + 1) * 0.35;
+      const thr = 0.16 + A * 0.1 + d * d * 0.45;
+      if (n + dith * 0.14 < thr) continue;
+      const f = n - thr;
+      const c = f > 0.2 ? RAMP.spray[3] : f > 0.08 ? RAMP.spray[2] : RAMP.spray[1];
+      const o = (y * W + x) * 4;
+      data[o] = c[0];
+      data[o + 1] = c[1];
+      data[o + 2] = c[2];
+      data[o + 3] = f > 0.12 ? 235 : 170;
+    }
+  }
+  return { w: W, h: Hh, ox: half, oy: hy, data };
+}
+
 // ------------------------------------------------------------------------------------------------- drawing
 
 const atlas = new SpriteAtlas(1024, 6);
@@ -223,21 +353,23 @@ export function cellsOf(r: number): number {
 }
 
 function entry(kind: BlobKind, r: number, variant: number, heat: number): AtlasEntry | null {
-  const R = cellsOf(r);
+  const R = kind === 'flame' ? Math.max(1, Math.min(16, Math.round(r))) : cellsOf(r);
   const v = variant & 3;
-  const h = kind === 'fire' ? Math.max(0, Math.min(4, Math.round(heat))) : 0;
-  const key = ((KINDS.indexOf(kind) * 64 + R) * 4 + v) * 8 + h;
+  const h = kind === 'fire' ? Math.max(0, Math.min(4, Math.round(heat))) : kind === 'flame' ? Math.max(0, Math.min(19, heat | 0)) : kind === 'foam' ? Math.max(0, Math.min(3, heat | 0)) : 0;
+  const key = ((KINDS.indexOf(kind) * 64 + R) * 4 + v) * 32 + h;
   return atlas.get(key, () => blobBitmap(kind, R, v, h));
 }
 
 /**
  * Draws a blob centred at (x, y) CSS px, `r` cells of grid `g` (bigger than 48 cells: drawn with coarser cells),
- * at `alpha`. Fire heat 0..4. Returns false when it could not be drawn (no canvas).
+ * at `alpha`. Fire heat 0..4; a flame's `heat` is its frame (0..3) plus four times its lean plus two (flameCode), and
+ * its origin is the middle of its base; a foam patch's `heat` is its age (0 fresh .. 3 breaking up). Returns false
+ * when it could not be drawn (no canvas).
  */
 export function drawBlob(ctx: CanvasRenderingContext2D, kind: BlobKind, r: number, variant: number, x: number, y: number, g: Grid, alpha = 1, heat = 0): boolean {
   if (alpha <= 0.01 || r < 0.5) return true;
   let f = 1;
-  while (r / f > 40) f *= 2;
+  while (r / f > (kind === 'flame' ? 16 : 40)) f *= 2;
   const e = entry(kind, r / f, variant, heat);
   if (!e) return false;
   const k = g.k * f;
@@ -247,7 +379,7 @@ export function drawBlob(ctx: CanvasRenderingContext2D, kind: BlobKind, r: numbe
   const sm = ctx.imageSmoothingEnabled;
   // a soft light or dust sheet drawn with coarse cells (a big one) is smoothed, so its dither never shows as a
   // checkerboard of big squares; every other blob keeps crisp pixels
-  ctx.imageSmoothingEnabled = f >= 4 && (kind === 'glow' || kind === 'halo' || kind === 'haze');
+  ctx.imageSmoothingEnabled = f >= 4 && (kind === 'glow' || kind === 'halo' || kind === 'haze' || kind === 'heat');
   ctx.globalAlpha = prev * Math.min(1, alpha);
   ctx.drawImage(e.page, e.sx, e.sy, e.w, e.h, cx - e.ox * k, cy - e.oy * k, e.w * k, e.h * k);
   ctx.globalAlpha = prev;

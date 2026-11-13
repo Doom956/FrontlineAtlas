@@ -81,8 +81,10 @@ export interface Baked {
 export interface BakeOpts {
   /** headings in a full turn (facing is 0..facings-1, 0 = east, clockwise on screen) */
   facings: number;
-  /** bank angle in radians (planes; positive = right wing down) */
+  /** bank angle in radians (planes; positive = right wing down), or a ship's list */
   roll?: number;
+  /** the roll is a ship's list: tall parts (masts, funnels, the bridge) lean over toward the low side too */
+  list?: boolean;
   /** owner colour for the 'own' parts */
   owner: readonly number[];
   /** moves the track links along by this many model units (a moving tank's tracks turn) */
@@ -172,26 +174,28 @@ export function partBox(part: Part): [number, number, number, number] {
  * A model banked by `roll` radians about its nose axis (positive = right wing down): every across-coordinate shrinks
  * by cos(roll) and each part sinks or rises by its centre's distance from the axis times sin(roll).
  */
-export function rolled(parts: readonly Part[], roll: number): Part[] {
+export function rolled(parts: readonly Part[], roll: number, list = false): Part[] {
   if (!roll) return parts.slice();
   const c = Math.cos(roll);
   const s = Math.sin(roll);
-  const sv = (q: readonly number[] | undefined, k: Part['k'] | 'clip'): number[] | undefined => {
-    if (!q) return undefined;
-    if (k === 'poly') return q.map((x, i) => (i % 2 ? x * c : x));
-    if (k === 'box') return [q[0], q[1] * c, q[2], q[3] * c];
-    if (k === 'seg') return [q[0], q[1] * c, q[2], q[3] * c, q[4]];
-    // ellipse and clip ellipse: centre v and v radius
-    return [q[0], q[1] * c, q[2], q[3] * c];
-  };
   return parts.map((p) => {
     const b = partBox(p);
     const vc = (b[1] + b[3]) / 2;
+    // a listing ship: what stands high over the deck leans over toward the low side with it
+    const lean = list ? (p.z + p.h * 0.5) * s : 0;
+    const sv = (q: readonly number[] | undefined, k: Part['k'] | 'clip'): number[] | undefined => {
+      if (!q) return undefined;
+      if (k === 'poly') return q.map((x, i) => (i % 2 ? x * c + lean : x));
+      if (k === 'box') return [q[0], q[1] * c + lean, q[2], q[3] * c + lean];
+      if (k === 'seg') return [q[0], q[1] * c + lean, q[2], q[3] * c + lean, q[4]];
+      // ellipse and clip ellipse: centre v and v radius
+      return [q[0], q[1] * c + lean, q[2], q[3] * c];
+    };
     return {
       ...p,
       p: sv(p.p, p.k)!,
       z: Math.max(0, p.z - vc * s * 0.9),
-      sc: p.sc ? ([p.sc[0], p.sc[1] * c, p.sc[2], p.sc[3] * c] as const) : undefined,
+      sc: p.sc ? ([p.sc[0], p.sc[1] * c + lean, p.sc[2], p.sc[3] * c] as const) : undefined,
       clip: sv(p.clip, 'clip'),
       clipPoly: sv(p.clipPoly, 'poly'),
     };
@@ -267,7 +271,7 @@ export function rasterize(model: Model, res: number, facing: number, o: BakeOpts
   const sin = Math.sin(th);
   const roll = o.roll ?? 0;
   const tread = o.tread ?? 0;
-  const parts = (roll ? rolled(model.parts, roll) : model.parts).filter((p) => !p.minRes || res >= p.minRes).map((p) => minSize(p, res));
+  const parts = (roll ? rolled(model.parts, roll, o.list) : model.parts).filter((p) => !p.minRes || res >= p.minRes).map((p) => minSize(p, res));
   const fy = model.flat ? res : res * FORE;
   const lift = model.flat ? 0 : res * LIFT;
   // the bank tilts every surface: its normal leans toward the low wing (model v), seen on screen
@@ -666,4 +670,13 @@ export function solidCount(b: Baked): number {
   let c = 0;
   for (let i = 3; i < b.data.length; i += 4) if (b.data[i] === 255) c++;
   return c;
+}
+
+/** Screen offset (CSS px) of a model point at a baked heading and bank, at map scale `scale`. */
+export function project(u: number, v: number, z: number, th: number, roll: number, scale: number, flat: boolean): [number, number] {
+  const vv = v * Math.cos(roll);
+  const zz = z - v * Math.sin(roll) * 0.9;
+  const c = Math.cos(th);
+  const s = Math.sin(th);
+  return [(u * c - vv * s) * scale, ((u * s + vv * c) * (flat ? 1 : FORE) - (flat ? 0 : zz * LIFT)) * scale];
 }
