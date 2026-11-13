@@ -1,22 +1,36 @@
-// The realistic style's cannon fire (client only):
-//   muzzle   each barrel of the turret flashes along the line of fire: a white-hot core at the muzzles, a cone of fire
-//            out of every barrel (the middle one longest; a triple turret's barrels go off a few ms apart), a side jet
-//            out of the outer barrels, all merging into a bulb of fire, the shell leaving as a bright slug racing out
-//            through the flash, a brief strong light on the deck and the water round the gun, the blast slapping the
-//            water flat into a ring of spray
-//            (recoil), then a puff of brown-grey gun smoke shoved out along the line of fire from each barrel, lit by
-//            the flash for a moment, slowing, swelling and drifting off with the wind as it thins (muzzleSmoke). The
-//            flash grows with flashSize and lasts with flashTime; the ship's salvo ripples from turret to turret (the
-//            map starts each gun's flash a little after the last)
-//   shell    a glowing tracer streaking along its arc (lifted up the screen with height, shellArc), its faint shadow
-//            running straight along the water or ground below it
+// The realistic style's cannon fire (client only). It is drawn over the ships of whatever style draws them (the game's
+// ships are detailed pixel art), so it is sized from the map scale and painted bold enough to read at mid zoom, in the
+// fire ramp every style shares (white hot #fff4d6, yellow #ffd98a, orange #f6a53e, deep orange #dc7426, red #b04a1c)
+// and lit from the same top left.
+//
+//   muzzle   one gun of a salvo going off (the map starts each gun of a ship a little after the last, so a battleship's
+//            salvo ripples from turret to turret). In order:
+//              the blast   HOLD ms at full strength (three frames at 60 fps at Lively, more with flashTime): a
+//                          white-hot core drawn out along the line of fire, a tongue of fire out of each of the turret's
+//                          three barrels (close together, a few ms apart), a wide orange cone over them fusing them
+//                          into one flash, a side jet out of each outer barrel
+//              the light   a strong warm light on the deck and the water round the gun, lying out ahead of it
+//              the water   the blast slapping the water: a ring of low spray, most of it on the firing side
+//                          (recoil; none at Subtle)
+//              the ball    the blast drawn back into a ragged ball of fire rolling out along the line of fire, cooling
+//                          from yellow through orange to a dull red glow inside the smoke (FLASH ms in all)
+//              the smoke   brown-grey gun smoke shoved out of the ball along the line of fire, sooty and lit from
+//                          inside at first, slowing, swelling, rising and drifting off with the wind as it thins
+//                          (muzzleSmoke)
+//            flashSize scales it; flashTime plays it slower (Cinematic) or quicker (Subtle)
+//   shell    a burning shell lobbed in an arc (lifted up the screen with height, shellArc): a white-hot head with a glow
+//            round it and a short tapering trail of fire behind it along its arc, a thin thread of smoke behind that,
+//            a little bigger at the top of its arc, its shadow running straight along the water or the ground below.
+//            Its flight starts at the firing ship's middle: it shows from about the far end of the flash on (shellClear)
 //   tracer   anti-aircraft fire: bursts of short red-orange streaks racing up at the plane, a little scattered
 //   torpedo  a dark shape under the surface pulling a line of white bubbles behind it
+// Where a shell lands (a splash, a hit on a ship, a shell on land) is a blast of the explosions style: the cannon fire
+// interface ends with the flight.
 import type { MotionParams } from '../motion';
 import { rnd } from '../shared/noise';
 import type { CannonArt, MuzzleDraw, ShellDraw } from '../types';
 import { unitPx } from './explosions';
-import { Flame, flame } from './fire';
+import { fireLight, Flame, flame } from './fire';
 import { clamp01, easeOut, easeOut3, flashOver, glow, Puff, puff, ramp, WIND_X, WIND_Y } from './puffs';
 
 /** Smooth 0..1 (smoothstep). */
@@ -25,38 +39,101 @@ const smooth = (t: number): number => {
   return k * k * (3 - 2 * k);
 };
 
-/** The fire of the flash at flashTime 1 (ms); the smoke takes the rest of flashMs. */
-const FLASH = 130;
-const SMOKE = 620;
+/** The fire of the flash at flashTime 1 (ms): the blast, then the ball of fire cooling; the smoke takes the rest. */
+const FLASH = 220;
+const SMOKE = 760;
+/** How long the blast stays at full strength at flashTime 1 (ms): three frames at 60 fps. */
+const HOLD = 50;
+/** The blast's cone and tongues are gone by then (ms): the ball of fire has taken over. */
+const BLAST = 125;
 /** The barrels a flash comes out of (a turret's guns side by side) and how far apart they are (art units). */
 const BARRELS = 3;
 const GAP = 1.05;
 /** How far apart the barrels' tongues of fire start (art units): closer than the smoke, so they fuse into one blast. */
-const GAP_FIRE = 0.75;
-/** The shell leaving the muzzle (ms), before the map's own shell takes over. */
-const SLUG = 60;
+const GAP_FIRE = 0.55;
+/** The spray on the water (ms). */
+const WATER = 440;
 
 function flashMs(m: MotionParams): number {
   return (FLASH + SMOKE * m.muzzleSmoke) * m.flashTime;
 }
 
-/** An art unit of the flash on screen (px) at map scale `scale`: a little over the ship's own, so it reads at mid zoom. */
-const flashUnit = (scale: number): number => Math.max(1.6, scale * 1.4);
+/** An art unit of the flash on screen (px) at map scale `scale`: bolder than the ship's own, so it reads at mid zoom. */
+const flashUnit = (scale: number): number => Math.max(2.1, scale * 1.5);
 
 /**
- * The size of a flash at map scale `scale` (CSS px): the fireball's length along the line of fire and its width, how
- * far the barrels' tongues reach, and how many barrels flash (flashSize scales them).
+ * The size of a flash at map scale `scale` (CSS px): the blast's length along the line of fire and its width, how far
+ * the barrels' tongues reach, and how many barrels flash (flashSize scales them).
  */
 export function muzzleFlash(scale: number, m: MotionParams): { length: number; width: number; tongue: number; barrels: number } {
   const U = flashUnit(scale);
-  return { length: U * 8.5 * m.flashSize, width: U * 6 * m.flashSize, tongue: U * 9 * m.flashSize, barrels: BARRELS };
+  return { length: U * 8.5 * m.flashSize, width: U * 6 * m.flashSize, tongue: U * 8 * m.flashSize, barrels: BARRELS };
+}
+
+/**
+ * How long the parts of a flash show (real ms, after flashTime): the blast at full strength, the fire (blast and ball)
+ * in all, and the whole flash with its smoke (CannonArt.flashMs).
+ */
+export function muzzleTiming(m: MotionParams): { hold: number; fire: number; total: number } {
+  return { hold: HOLD * m.flashTime, fire: FLASH * m.flashTime, total: flashMs(m) };
+}
+
+/** The look of a shell in flight at map scale `scale` (CSS px): its head's radius and the length of its trail of fire. */
+export function shellLook(scale: number): { head: number; trail: number } {
+  const sc = Math.max(1, scale);
+  return { head: 0.85 + 0.45 * sc, trail: 10 + 5 * sc };
+}
+
+/**
+ * The part of a shell's flight (0..1) hidden under the firing ship and its flash: the flight starts at the ship's
+ * middle, the shell shows from about the far end of the flash (`dist` the flight's length on screen, CSS px).
+ */
+export function shellClear(scale: number, dist: number): number {
+  const clear = 8 + 6 * Math.max(1, scale);
+  return dist > clear * 1.6 ? clear / dist : 0.3;
+}
+
+/** A flash at one moment (its parts' strengths 0..1 and where its ball of fire is). */
+export interface FlashState {
+  /** the neck of the blast (the barrels' tongues and the cone over them): 1 while it holds */
+  blast: number;
+  /** the white-hot core at the muzzles */
+  core: number;
+  /** the light on the deck and the water */
+  light: number;
+  /** the ball of fire and how far it has cooled (0 yellow, 1 a dull red) */
+  ball: number;
+  cool: number;
+  /** the ball's centre ahead of the muzzles along the line of fire and its radius (art units of the flash) */
+  ballD: number;
+  ballR: number;
+}
+
+const flashNow: FlashState = { blast: 0, core: 0, light: 0, ball: 0, cool: 0, ballD: 0, ballR: 0 };
+
+/**
+ * A flash `tt` ms after the gun went off, on its flashTime-1 clock (a longer flashTime plays the same flash slower).
+ * Fills and returns `out` (one shared object by default: nothing is allocated per frame).
+ */
+export function flashState(tt: number, m: MotionParams, out: FlashState = flashNow): FlashState {
+  const fz = m.flashSize;
+  const e = easeOut(clamp01(tt / FLASH));
+  const on = tt >= 0;
+  out.blast = !on || tt >= BLAST ? 0 : tt < HOLD ? 1 : 1 - smooth((tt - HOLD) / (BLAST - HOLD));
+  const core = !on ? 0 : tt < HOLD * 0.8 ? 1 : Math.exp(-(tt - HOLD * 0.8) / 26);
+  out.core = core > 0.02 ? core : 0;
+  out.light = !on || tt >= FLASH ? 0 : tt < HOLD ? 1 : Math.exp(-(tt - HOLD) / 45);
+  out.ball = !on || tt >= FLASH ? 0 : 1 - smooth(ramp(tt, FLASH * 0.55, FLASH));
+  out.cool = ramp(tt, BLAST * 0.8, FLASH);
+  out.ballD = (4.6 + 2.4 * e) * fz;
+  out.ballR = (3.3 + 1.3 * e) * fz;
+  return out;
 }
 
 function drawMuzzle(ctx: CanvasRenderingContext2D, f: MuzzleDraw, m: MotionParams): void {
-  const total = flashMs(m);
   // ms on a flashTime-1 clock, so a longer flashTime plays the same flash slower
-  const tt = (f.t * total) / Math.max(0.2, m.flashTime);
-  if (tt < 0) return;
+  const tt = f.t * (FLASH + SMOKE * m.muzzleSmoke);
+  if (tt < 0 || f.t >= 1) return;
   const U = flashUnit(f.scale);
   const fz = m.flashSize;
   const c = Math.cos(f.aim);
@@ -64,153 +141,165 @@ function drawMuzzle(ctx: CanvasRenderingContext2D, f: MuzzleDraw, m: MotionParam
   const nx = -s;
   const ny = c;
   const seed = Math.floor(f.seed * 613) + 3;
+  const fs = flashState(tt, m);
   const prev = ctx.globalAlpha;
+  const prevS = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = true;
   // the muzzles, a little out from the gun along the line of fire
   const mx = f.x + c * U * 1.1;
   const my = f.y + s * U * 1.1;
 
-  // the blast slapping the water round the gun: an uneven ring of spray thrown out, most of it on the firing side,
-  // each puff flattened along the water (low sheets of spray, never a tidy fan of balls)
-  if (m.recoil > 0 && tt < 420) {
-    const q = tt / 420;
-    const n = 7 + (seed % 3);
+  // the blast slapping the water round the gun: an uneven ring of low spray thrown out, most of it on the firing
+  // side, each puff flattened along the water (never a tidy fan of balls, never a drawn ring)
+  if (m.recoil > 0 && tt < WATER) {
+    const q = tt / WATER;
+    const n = 6 + (seed % 2);
     const ql = easeOut(q);
-    const fade = 0.42 * m.recoil * (1 - q) * (1 - q);
+    const fade = 0.5 * m.recoil * (1 - q) * (1 - q);
     for (let i = 0; i < n; i++) {
       // spread round the gun, bunched toward the line of fire, each a little off its place
       const u = i / (n - 1) - 0.5;
-      const a = f.aim + u * Math.abs(u) * 5.2 + (rnd(seed, i + 70) - 0.5) * 0.4;
+      const a = f.aim + u * Math.abs(u) * 3 + (rnd(seed, i + 70) - 0.5) * 0.3;
       const reach = 0.55 + 0.75 * rnd(seed, i + 80) * (1 - Math.abs(u));
-      const d = U * (1.6 + 4.8 * reach * ql) * (0.8 + 0.2 * fz);
-      const r = U * (0.8 + 0.7 * rnd(seed, i + 90)) * (1 + 1.3 * q);
+      const d = U * (3 + 5.4 * reach * ql) * (0.8 + 0.2 * fz);
+      const r = U * (0.9 + 0.7 * rnd(seed, i + 90)) * (1 + 1.3 * q);
       const x = mx + Math.cos(a) * d;
       const y = my + Math.sin(a) * d;
-      ctx.save();
       ctx.translate(x, y);
       ctx.rotate(a);
       ctx.scale(0.55, 1);
       puff(ctx, Puff.SPRAY, i, 0, 0, r, fade * (0.6 + 0.4 * rnd(seed, i + 100)));
-      ctx.restore();
+      ctx.scale(1 / 0.55, 1);
+      ctx.rotate(-a);
+      ctx.translate(-x, -y);
     }
   }
 
-  // gun smoke: brown-grey, shoved out along the line of fire from each barrel, slowing, swelling, drifting off
-  const smokeT = SMOKE * m.muzzleSmoke + FLASH * 0.5;
-  if (m.muzzleSmoke > 0 && tt > 10) {
-    const n = Math.max(3, Math.round(2 + 2.5 * m.muzzleSmoke));
+  // the light of the blast on the water and the deck round the gun, lying out ahead of it: strong while the blast
+  // holds, gone with the ball of fire
+  if (fs.light > 0) {
+    const lr = U * 8.5 * fz;
+    fireLight(ctx, mx + c * U * 4, my + s * U * 4, lr * 1.3, 0.5 * fs.light);
+    glow(ctx, mx + c * U * 4.5, my + s * U * 4.5, lr, 0.35 * fs.light);
+  }
+
+  // gun smoke: shoved out of the ball of fire along the line of fire from each barrel, slowing, swelling, rising and
+  // drifting off with the wind as it thins
+  const smokeT = SMOKE * m.muzzleSmoke + FLASH * 0.45;
+  if (m.muzzleSmoke > 0 && tt > 30) {
+    const n = Math.max(4, Math.round(3 + 2.5 * m.muzzleSmoke));
+    // lit from inside by the fire for a moment
+    const lit = 1 - ramp(tt, FLASH * 0.6, FLASH * 1.2);
     for (let i = n - 1; i >= 0; i--) {
-      const t0 = 10 + i * 14;
+      const t0 = 30 + i * 16;
       const q = clamp01((tt - t0) / smokeT);
       if (q <= 0 || q >= 1) continue;
       const lane = ((i % BARRELS) - 1) * GAP * U;
-      const push = U * (2.4 + i * 1.6) * fz * easeOut3(Math.min(1, q * 2.4));
-      const drift = U * 7 * Math.pow(q, 1.3);
-      const rise = U * 2.4 * q;
-      const r = U * (1.5 + 0.4 * i) * (0.5 + 2 * easeOut(q)) * (0.7 + 0.3 * fz);
+      const push = U * (2.6 + i * 1.5) * fz * easeOut3(Math.min(1, q * 2.4));
+      const drift = U * 8 * Math.pow(q, 1.3);
+      const rise = U * 2.8 * q;
+      const r = U * (1.5 + 0.35 * i) * (0.55 + 2 * easeOut(q)) * (0.7 + 0.3 * fz);
       const x = mx + c * push + nx * lane * (1 + q) + WIND_X * drift;
       const y = my + s * push + ny * lane * (1 + q) + WIND_Y * drift - rise;
-      // lit from inside by the flash for a moment
-      if (tt < FLASH * 1.3 && i < BARRELS) puff(ctx, Puff.EMBER, i, x, y, r * 0.85, 0.6 * (1 - tt / (FLASH * 1.3)));
-      const kind = i % 3 === 1 ? Puff.DUST : Puff.GREY;
-      puff(ctx, kind, i + seed, x, y, r, 0.85 * ramp(q, 0, 0.05) * Math.pow(1 - q, 1.4));
+      const a = 0.88 * ramp(q, 0, 0.06) * Math.pow(1 - q, 1.35);
+      if (lit > 0 && i < 3) puff(ctx, Puff.EMBER, i, x, y, r * 0.8, 0.55 * lit * a);
+      // sooty as it leaves the fire, then the brown-grey of cordite smoke
+      const kind = q < 0.12 && i < 2 ? Puff.DARK : i % 3 === 1 ? Puff.DUST : Puff.GREY;
+      puff(ctx, kind, i + seed, x, y, r, a);
     }
   }
 
-  // the flash: longest and sharpest in its first frame (the blast thrown straight out of the barrels), then drawn
-  // back into one ragged ball of fire rolling out along the line of fire into the smoke
-  if (tt < FLASH) {
-    const q = tt / FLASH;
-    // the light of it on the deck and the water, lying out ahead of the muzzles along the line of fire, strong and
-    // gone at once
-    const lr = U * 8 * fz * (0.85 + 0.3 * q);
-    ctx.save();
-    ctx.translate(mx + c * U * 3, my + s * U * 3);
-    ctx.rotate(f.aim);
-    ctx.scale(1.6, 1);
-    glow(ctx, 0, 0, lr, 0.6 * Math.exp(-tt / 34));
-    ctx.restore();
-    // the fused blast in front of the barrels: long at once, shrinking and fading by about 60 ms as the ball takes over
-    {
-      const L = U * 8.5 * fz * (1 - 0.6 * easeOut(clamp01(q / 0.5)));
-      const W = U * 5.4 * fz * (0.75 + 0.5 * q);
-      const A = 1 - smooth(q / 0.45);
-      flame(ctx, Flame.CONE, false, seed + 5, mx, my, f.aim, L, W, A);
-      flame(ctx, Flame.CONE, true, seed + 5, mx, my, f.aim, L, W, A * (1 - smooth(q / 0.25)));
-    }
+  // the neck of the blast: a tongue of fire out of each barrel (the barrels go off a few ms apart, in their own order
+  // each turret), close together and overlapping, the middle one leading, a side jet out of each outer barrel and a
+  // wide cone over them fusing them, longest and brightest at once, held a few frames, then drawn back into the ball
+  if (tt < BLAST) {
     for (let b = 0; b < BARRELS; b++) {
-      // the barrels go off a few ms apart, in their own order each turret
-      const delay = ((b + seed) % BARRELS) * 4;
-      const tb = tt - delay;
+      const tb = tt - ((b + seed) % BARRELS) * 5;
       if (tb < 0) continue;
-      const qb = tb / FLASH;
-      // out by about 28 ms: the comb of tongues never outlives the first frames
-      const A = 1 - smooth(qb / 0.22);
-      if (A <= 0.01) continue;
+      const kb = tb < HOLD ? 0 : clamp01((tb - HOLD) / (BLAST - 20 - HOLD));
+      const Ab = 1 - smooth(kb);
+      if (Ab <= 0.01) continue;
       const lane = (b - 1) * GAP_FIRE * U;
-      const main = b === 1 ? 1 : 0.85;
-      const grow = clamp01(tb / 4);
-      const L = U * 9.5 * fz * main * (0.8 + 0.2 * grow) * (1 - 0.85 * easeOut(qb));
-      const W = U * 2.4 * fz * main * (0.8 + 0.6 * qb);
-      // each barrel's tongue a little off the others' line (they splay; never parallel)
-      const ba = f.aim + (b - 1) * 0.1 + (rnd(seed, b + 7) - 0.5) * 0.1;
+      const main = b === 1 ? 1 : 0.8;
+      const Lb = U * 8 * fz * main * (0.82 + 0.18 * clamp01(tb / 6)) * (1 - 0.6 * easeOut(kb));
+      const Wb = U * 3 * fz * main * (0.85 + 0.5 * kb);
+      // each a little off the others' line (never parallel), but never a splayed claw
+      const ba = f.aim + (b - 1) * 0.05 + (rnd(seed, b + 7) - 0.5) * 0.06;
       const bx = mx + nx * lane;
       const by = my + ny * lane;
       const v = seed + b;
-      // a tongue of fire out of each barrel, white hot, cooling to orange and red as it dies
-      flame(ctx, Flame.BOLT, false, v, bx, by, ba, L, W, A);
-      flame(ctx, Flame.BOLT, true, v, bx, by, ba, L, W, A * (1 - smooth(qb / 0.15)));
-      // a side jet out of each outer barrel
-      if (b !== 1 && qb < 0.3) {
-        const side = b === 0 ? -1 : 1;
-        const ja = f.aim + side * 1.15;
-        flame(ctx, Flame.CONE, qb < 0.12, v + 1, bx + c * U * 0.6, by + s * U * 0.6, ja, U * 3.8 * fz * (1 - qb * 1.4), U * 2.2 * fz, 1 - qb / 0.3);
+      flame(ctx, Flame.BOLT, false, v, bx, by, ba, Lb, Wb, Ab);
+      flame(ctx, Flame.BOLT, true, v, bx, by, ba, Lb * 0.95, Wb * 0.9, Ab * (1 - smooth(kb * 1.4)));
+      if (b !== 1 && kb < 0.5) {
+        const jk = 1 - kb / 0.5;
+        const ja = f.aim + (b === 0 ? -1.1 : 1.1);
+        flame(ctx, Flame.JET, kb < 0.1, v + 1, bx + c * U * 0.5, by + s * U * 0.5, ja, U * 3.4 * fz * (0.6 + 0.4 * jk), U * 2.6 * fz, jk);
       }
     }
-    // the barrels' blasts fused into one ragged ball of fire rolling out along the line of fire, cooling as the smoke
-    // takes over: two lobes of fire off each other's centre, so it is never a clean round ball
-    const fuse = ramp(q, 0.04, 0.16) * Math.pow(1 - q, 1.1);
-    if (fuse > 0.01) {
-      const d = U * (2.6 + 2 * q) * fz;
-      const r = U * 3.6 * fz * (0.75 + 0.4 * q);
-      const off = (rnd(seed, 3) - 0.5) * 1.4 * U * fz;
-      puff(ctx, Puff.FIRE, seed, mx + c * d + nx * off, my + s * d + ny * off, r, 0.95 * fuse);
-      puff(ctx, Puff.FIRE, seed + 1, mx + c * (d + r * 0.55) - nx * off * 0.8, my + s * (d + r * 0.55) - ny * off * 0.8, r * 0.7, 0.8 * fuse);
+    const k = tt < HOLD ? 0 : (tt - HOLD) / (BLAST - HOLD);
+    const L = U * 7 * fz * (1 - 0.4 * easeOut(k));
+    const W = U * 5 * fz * (0.85 + 0.35 * k);
+    const A = fs.blast;
+    flame(ctx, Flame.BOLT, false, seed + 5, mx, my, f.aim, L, W, 0.85 * A);
+    flame(ctx, Flame.BOLT, true, seed + 5, mx, my, f.aim, L * 0.9, W * 0.85, A * (1 - smooth(k * 1.6)));
+  }
+
+  // the ball of fire: the blast ballooning out at the end of the neck from the first frame, then rolling on along the
+  // line of fire as the blast dies, two lobes off each other's centre (never a clean round ball), cooling from yellow
+  // through orange to a dull red inside the smoke
+  if (fs.ball > 0) {
+    const cool = fs.cool;
+    const a = fs.ball;
+    const d = U * fs.ballD;
+    const r = U * fs.ballR;
+    const off = (rnd(seed, 3) - 0.5) * 1.4 * U * fz;
+    const x1 = mx + c * d + nx * off;
+    const y1 = my + s * d + ny * off;
+    const x2 = mx + c * (d + r * 0.5) - nx * off * 0.8;
+    const y2 = my + s * (d + r * 0.5) - ny * off * 0.8;
+    // white hot while the blast holds
+    if (fs.blast > 0) glow(ctx, x1, y1, r * 1.6, 0.55 * fs.blast);
+    if (cool < 1) {
+      puff(ctx, Puff.FIRE, seed, x1, y1, r, a * (1 - cool));
+      puff(ctx, Puff.FIRE, seed + 1, x2, y2, r * 0.75, 0.9 * a * (1 - cool));
     }
-    // the white-hot core at the muzzles, drawn out along the line of fire
-    const core = Math.exp(-tt / 22);
-    if (core > 0.02) {
-      ctx.save();
-      ctx.translate(mx + c * U * 1.6, my + s * U * 1.6);
-      ctx.rotate(f.aim);
-      ctx.scale(1.8, 0.7);
-      flashOver(ctx, 0, 0, U * 2.6 * fz, core);
-      flashOver(ctx, U * 1.6, 0, U * 1.8 * fz, core * 0.8);
-      ctx.restore();
+    if (cool > 0) {
+      puff(ctx, Puff.EMBER, seed, x1, y1, r * 1.04, 0.95 * a * cool);
+      puff(ctx, Puff.EMBER, seed + 1, x2, y2, r * 0.78, 0.8 * a * cool);
     }
   }
 
-  // the shell leaving: a bright slug racing out through the flash, gone before the map's own shell is far out
-  if (tt < SLUG) {
-    const q = tt / SLUG;
-    const d = U * (2 + 30 * easeOut(q));
-    const hx = mx + c * d;
-    const hy = my + s * d;
-    const back = U * 3 * (1 - q * 0.4);
-    ctx.lineCap = 'round';
-    ctx.globalAlpha = prev * (1 - q) * 0.9;
-    ctx.strokeStyle = 'rgba(255,214,140,0.75)';
-    ctx.lineWidth = Math.max(0.8, U * 0.3);
-    ctx.beginPath();
-    ctx.moveTo(hx - c * back, hy - s * back);
-    ctx.lineTo(hx, hy);
-    ctx.stroke();
-    ctx.fillStyle = '#fff6d8';
-    ctx.beginPath();
-    ctx.arc(hx, hy, Math.max(0.7, U * 0.26), 0, Math.PI * 2);
-    ctx.fill();
-    ctx.lineCap = 'butt';
+  // the white-hot core at the muzzles, drawn out along the line of fire into the ball: blinding while the blast holds
+  const core = fs.core;
+  if (core > 0) {
+    const cx = mx + c * U * 2;
+    const cy = my + s * U * 2;
+    glow(ctx, cx, cy, U * 4.5 * fz, 0.6 * core);
+    ctx.translate(cx, cy);
+    ctx.rotate(f.aim);
+    ctx.scale(1.9, 0.75);
+    flashOver(ctx, 0, 0, U * 2.6 * fz, core);
+    flashOver(ctx, U * 1.8, 0, U * 2 * fz, core * 0.85);
+    ctx.scale(1 / 1.9, 1 / 0.75);
+    ctx.rotate(-f.aim);
+    ctx.translate(-cx, -cy);
   }
   ctx.globalAlpha = prev;
+  ctx.imageSmoothingEnabled = prevS;
+}
+
+/** Points of a shell's trail along its arc, reused (nothing allocated per frame). */
+const TRAIL_N = 6;
+const trailX = new Float64Array(TRAIL_N + 1);
+const trailY = new Float64Array(TRAIL_N + 1);
+
+/** The trail's points from `i0` on as one stroke, `w` wide. */
+function strokeTrail(ctx: CanvasRenderingContext2D, i0: number, w: number): void {
+  ctx.lineWidth = Math.max(0.8, w);
+  ctx.beginPath();
+  ctx.moveTo(trailX[i0], trailY[i0]);
+  for (let i = i0 + 1; i <= TRAIL_N; i++) ctx.lineTo(trailX[i], trailY[i]);
+  ctx.stroke();
 }
 
 function drawShell(ctx: CanvasRenderingContext2D, sh: ShellDraw, m: MotionParams): void {
@@ -219,105 +308,146 @@ function drawShell(ctx: CanvasRenderingContext2D, sh: ShellDraw, m: MotionParams
   const dist = Math.hypot(x1 - x0, y1 - y0);
   const u = unitPx(sh.zoom);
   const prev = ctx.globalAlpha;
+  const prevS = ctx.imageSmoothingEnabled;
   ctx.lineCap = 'round';
-  if (sh.kind === 'torpedo') {
-    // a line of bubbles drawn out behind a dark shape running just under the surface
-    const hx = x0 + (x1 - x0) * t;
-    const hy = y0 + (y1 - y0) * t;
-    const g = ctx.createLinearGradient(x0, y0, hx, hy);
-    g.addColorStop(0, 'rgba(230,242,246,0)');
-    g.addColorStop(0.7, 'rgba(230,242,246,0.35)');
-    g.addColorStop(1, 'rgba(250,253,254,0.85)');
-    ctx.strokeStyle = g;
-    ctx.lineWidth = Math.max(1, u * 0.28);
-    ctx.beginPath();
-    ctx.moveTo(x0 + (hx - x0) * 0.15, y0 + (hy - y0) * 0.15);
-    ctx.lineTo(hx, hy);
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(245,250,252,0.8)';
-    const n = Math.min(14, Math.floor((dist * t) / Math.max(3, u * 0.7)));
-    for (let i = 0; i < n; i++) {
-      const q = t - (i + 1) * (Math.max(3, u * 0.7) / Math.max(1, dist));
-      if (q < 0) break;
-      const r = Math.max(0.5, u * 0.09 * (1 + (i % 3) * 0.4));
-      const j = (rnd(sh.seed * 100, i) - 0.5) * u * 0.3;
-      ctx.globalAlpha = prev * (1 - i / 14);
+  if (sh.kind === 'torpedo') drawTorpedo(ctx, sh, dist, u);
+  else if (sh.kind === 'tracer') drawTracer(ctx, sh, dist, u);
+  else {
+    // a cannon shell: lifted up the screen with height along its arc
+    const H = Math.min(80, dist * 0.24) * m.shellArc;
+    const ax = x1 - x0;
+    const ay = y1 - y0;
+    const lift = 4 * t * (1 - t);
+    const look = shellLook(sh.scale);
+    // a little bigger at the top of its arc, nearer the eye
+    const rh = look.head * (1 + 0.3 * lift * Math.min(1, m.shellArc));
+    // its flight starts at the ship's middle while the flash is at the turret: it shows once it is off the hull and
+    // out of the flash (on a short shot, after the first part of its flight), its trail never reaching back onto
+    // the ship
+    const qc = shellClear(sh.scale, dist);
+    const show = ramp(t, qc, qc + Math.max(0.04, (3 + 3 * sh.scale) / Math.max(1, dist)));
+    if (show > 0) {
+      ctx.imageSmoothingEnabled = true;
+      // the trail of fire and the thread of smoke behind it, as points along the arc: the smoke from `back` to the
+      // fire's tail (points 0..2), the fire from there to the head (points 2..TRAIL_N)
+      const room = t - qc * 0.6;
+      const dq = Math.min(room, look.trail / Math.max(1, dist));
+      const back = Math.min(room, dq * 2.4);
+      for (let i = 0; i <= TRAIL_N; i++) {
+        const q = i <= 2 ? t - back + (back - dq) * (i / 2) : t - dq * (1 - (i - 2) / (TRAIL_N - 2));
+        trailX[i] = x0 + ax * q;
+        trailY[i] = y0 + ay * q - 4 * H * q * (1 - q);
+      }
+      const px = trailX[TRAIL_N];
+      const py = trailY[TRAIL_N];
+      // the shadow on the water or the ground, straight below it, fainter the higher it is
+      ctx.globalAlpha = prev * 0.32 * show * (1 - 0.5 * lift);
+      ctx.fillStyle = '#0a0c0e';
       ctx.beginPath();
-      ctx.arc(x0 + (x1 - x0) * q - ((y1 - y0) / dist) * j, y0 + (y1 - y0) * q + ((x1 - x0) / dist) * j, r, 0, Math.PI * 2);
+      ctx.ellipse(x0 + ax * t, y0 + ay * t, rh * 0.9, rh * 0.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = prev * show;
+      // a thin thread of smoke behind the fire
+      if (back > dq * 1.05) {
+        const g = ctx.createLinearGradient(trailX[0], trailY[0], trailX[2], trailY[2]);
+        g.addColorStop(0, 'rgba(122,116,110,0)');
+        g.addColorStop(1, 'rgba(122,116,110,0.34)');
+        ctx.strokeStyle = g;
+        ctx.lineWidth = Math.max(0.8, rh * 0.8);
+        ctx.beginPath();
+        ctx.moveTo(trailX[0], trailY[0]);
+        ctx.lineTo(trailX[1], trailY[1]);
+        ctx.lineTo(trailX[2], trailY[2]);
+        ctx.stroke();
+      }
+      // the trail of fire, tapering: a deep orange skin, then a yellow-white heart toward the head
+      const g = ctx.createLinearGradient(trailX[2], trailY[2], px, py);
+      g.addColorStop(0, 'rgba(176,74,28,0)');
+      g.addColorStop(0.5, 'rgba(220,116,38,0.55)');
+      g.addColorStop(1, 'rgba(246,165,62,0.95)');
+      ctx.strokeStyle = g;
+      strokeTrail(ctx, 2, rh * 2.1);
+      const h = ctx.createLinearGradient(trailX[2], trailY[2], px, py);
+      h.addColorStop(0.3, 'rgba(255,217,138,0)');
+      h.addColorStop(1, 'rgba(255,244,214,1)');
+      ctx.strokeStyle = h;
+      strokeTrail(ctx, 3, rh * 0.95);
+      // the white-hot head and the glow round it
+      glow(ctx, px, py, rh * 4.2, 0.6 * show);
+      ctx.fillStyle = '#fff4d6';
+      ctx.beginPath();
+      ctx.arc(px, py, rh, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.globalAlpha = prev * 0.85;
-    ctx.fillStyle = '#1d2427';
-    ctx.save();
-    ctx.translate(hx, hy);
-    ctx.rotate(Math.atan2(y1 - y0, x1 - x0));
-    ctx.beginPath();
-    ctx.ellipse(0, 0, Math.max(1.5, u * 0.45), Math.max(0.6, u * 0.1), 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-    ctx.globalAlpha = prev;
-    return;
   }
-  if (sh.kind === 'tracer') {
-    // three short bursts of red-orange streaks racing up at the plane, a little scattered
-    for (let i = 0; i < 5; i++) {
-      const q = t - i * 0.09;
-      if (q < 0 || q > 1) continue;
-      const j = (rnd(sh.seed * 50, i) - 0.5) * u * 0.8 * (1 - q);
-      const nx = -(y1 - y0) / Math.max(1, dist);
-      const ny = (x1 - x0) / Math.max(1, dist);
-      const px = x0 + (x1 - x0) * q + nx * j;
-      const py = y0 + (y1 - y0) * q + ny * j;
-      const back = Math.min(0.08, q);
-      const bx = x0 + (x1 - x0) * (q - back) + nx * j;
-      const by = y0 + (y1 - y0) * (q - back) + ny * j;
-      ctx.globalAlpha = prev * 0.9;
-      ctx.strokeStyle = 'rgba(255,120,60,0.55)';
-      ctx.lineWidth = Math.max(1.4, u * 0.3);
-      ctx.beginPath();
-      ctx.moveTo(bx, by);
-      ctx.lineTo(px, py);
-      ctx.stroke();
-      ctx.strokeStyle = '#ffe2a0';
-      ctx.lineWidth = Math.max(0.7, u * 0.12);
-      ctx.stroke();
-    }
-    ctx.globalAlpha = prev;
-    return;
-  }
-  // a cannon shell: lifted up the screen with height along its arc, a glowing streak, its shadow straight below it
-  const H = Math.min(80, dist * 0.24) * m.shellArc;
-  const at = (q: number): [number, number] => [x0 + (x1 - x0) * q, y0 + (y1 - y0) * q - 4 * H * q * (1 - q)];
-  const [px, py] = at(t);
-  const [bx, by] = at(Math.max(0, t - 0.07));
-  // the flight starts at the ship's middle while the flash and the slug leave the turret: the shell shows only once it
-  // has cleared the hull (on a short shot, after the first part of its flight)
-  const show = dist > u * 6 ? clamp01((dist * t - u * 1.4) / (u * 1.6)) : ramp(t, 0.1, 0.3);
-  if (show <= 0) return;
-  // the shadow on the ground or the water
-  ctx.globalAlpha = prev * 0.3 * (1 - Math.abs(0.5 - t)) * show;
-  ctx.fillStyle = '#0a0c0e';
-  ctx.beginPath();
-  ctx.ellipse(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, Math.max(0.8, u * 0.18), Math.max(0.5, u * 0.11), 0, 0, Math.PI * 2);
-  ctx.fill();
-  // the glowing streak and the hot shell at its head
-  const g = ctx.createLinearGradient(bx, by, px, py);
-  g.addColorStop(0, 'rgba(255,150,60,0)');
-  g.addColorStop(1, 'rgba(255,190,100,0.85)');
-  ctx.globalAlpha = prev * show;
-  ctx.strokeStyle = g;
-  ctx.lineWidth = Math.max(1.1, u * 0.22);
-  ctx.beginPath();
-  ctx.moveTo(bx, by);
-  ctx.lineTo(px, py);
-  ctx.stroke();
-  ctx.fillStyle = '#fff6d8';
-  ctx.beginPath();
-  ctx.arc(px, py, Math.max(0.8, u * 0.13), 0, Math.PI * 2);
-  ctx.fill();
-  glow(ctx, px, py, Math.max(2.5, u * 0.6), 0.5 * show);
   ctx.globalAlpha = prev;
   ctx.lineCap = 'butt';
+  ctx.imageSmoothingEnabled = prevS;
+}
+
+/** Anti-air fire: bursts of short red-orange streaks racing up at the plane, a little scattered. */
+function drawTracer(ctx: CanvasRenderingContext2D, sh: ShellDraw, dist: number, u: number): void {
+  const { x0, y0, x1, y1, t } = sh;
+  const prev = ctx.globalAlpha;
+  const nx = -(y1 - y0) / Math.max(1, dist);
+  const ny = (x1 - x0) / Math.max(1, dist);
+  for (let i = 0; i < 5; i++) {
+    const q = t - i * 0.09;
+    if (q < 0 || q > 1) continue;
+    const j = (rnd(sh.seed * 50, i) - 0.5) * u * 0.8 * (1 - q);
+    const px = x0 + (x1 - x0) * q + nx * j;
+    const py = y0 + (y1 - y0) * q + ny * j;
+    const back = Math.min(0.08, q);
+    const bx = x0 + (x1 - x0) * (q - back) + nx * j;
+    const by = y0 + (y1 - y0) * (q - back) + ny * j;
+    ctx.globalAlpha = prev * 0.9;
+    ctx.strokeStyle = 'rgba(255,120,60,0.55)';
+    ctx.lineWidth = Math.max(1.4, u * 0.3);
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(px, py);
+    ctx.stroke();
+    ctx.strokeStyle = '#ffe2a0';
+    ctx.lineWidth = Math.max(0.7, u * 0.12);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = prev;
+}
+
+/** A torpedo: a line of bubbles drawn out behind a dark shape running just under the surface. */
+function drawTorpedo(ctx: CanvasRenderingContext2D, sh: ShellDraw, dist: number, u: number): void {
+  const { x0, y0, x1, y1, t } = sh;
+  const prev = ctx.globalAlpha;
+  const hx = x0 + (x1 - x0) * t;
+  const hy = y0 + (y1 - y0) * t;
+  const g = ctx.createLinearGradient(x0, y0, hx, hy);
+  g.addColorStop(0, 'rgba(230,242,246,0)');
+  g.addColorStop(0.7, 'rgba(230,242,246,0.35)');
+  g.addColorStop(1, 'rgba(250,253,254,0.85)');
+  ctx.strokeStyle = g;
+  ctx.lineWidth = Math.max(1, u * 0.28);
+  ctx.beginPath();
+  ctx.moveTo(x0 + (hx - x0) * 0.15, y0 + (hy - y0) * 0.15);
+  ctx.lineTo(hx, hy);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(245,250,252,0.8)';
+  const n = Math.min(14, Math.floor((dist * t) / Math.max(3, u * 0.7)));
+  for (let i = 0; i < n; i++) {
+    const q = t - (i + 1) * (Math.max(3, u * 0.7) / Math.max(1, dist));
+    if (q < 0) break;
+    const r = Math.max(0.5, u * 0.09 * (1 + (i % 3) * 0.4));
+    const j = (rnd(sh.seed * 100, i) - 0.5) * u * 0.3;
+    ctx.globalAlpha = prev * (1 - i / 14);
+    ctx.beginPath();
+    ctx.arc(x0 + (x1 - x0) * q - ((y1 - y0) / dist) * j, y0 + (y1 - y0) * q + ((x1 - x0) / dist) * j, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = prev * 0.85;
+  ctx.fillStyle = '#1d2427';
+  ctx.beginPath();
+  ctx.ellipse(hx, hy, Math.max(1.5, u * 0.45), Math.max(0.6, u * 0.1), Math.atan2(y1 - y0, x1 - x0), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = prev;
 }
 
 export const realisticCannon: CannonArt = { flashMs, drawMuzzle, drawShell };
