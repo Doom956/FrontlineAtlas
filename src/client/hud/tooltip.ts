@@ -368,7 +368,7 @@ export class MapTooltip {
         id === 'barrage'
           ? `Guns reach ${barrageRange(me)} tiles from your border: the lit zone`
           : id === 'paradrop' || id === 'bomb'
-            ? id === 'bomb' ? 'Pick enemy land inside a gold ring (your bombers\' reach)' : 'Pick enemy or empty land inside a gold ring'
+            ? id === 'bomb' ? 'Pick enemy land inside a blue ring (your bombers\' reach)' : 'Pick enemy or empty land inside a blue ring'
             : 'Pick enemy land';
       rows.push(this.line(pic, t.reason || 'Not possible here', help, 'head'));
       rows.push(el('div', 'mt-hint', 'Esc or right-click: cancel.'));

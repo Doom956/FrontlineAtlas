@@ -1,7 +1,8 @@
 // Attack fronts, drawn on the overlay canvas (client only: reads the state, never changes it).
 //
 // Front lines: where two nations are at war (an attack running either way, or one in the last WAR_MEMORY_TICKS),
-//   their shared border gets a crisp line over the territory edge: brass on your own fronts, pale bone on others',
+//   their shared border gets a crisp line over the territory edge: the map accent (light cobalt) on your own fronts,
+//   pale bone on others',
 //   with a dark casing and a slow pulse. Quiet borders stay as the shader draws them. The border edges of each
 //   warring pair are kept incrementally from the tile feed (seeded from the sim's border lists when a war starts,
 //   re-seeded every RESEED_MS), merged into straight runs and cached as one Path2D per pair.
@@ -25,7 +26,7 @@ import { isTribe } from '../../sim/types';
 import type { Attack, GameState } from '../../sim/types';
 import type { Camera } from '../camera';
 import type { UiState } from '../uiState';
-import { clamp, css, formatCount, MAP_NUM_FAMILY, mix, type RGB } from './common';
+import { ACCENT, ACCENT_RGB, clamp, css, formatCount, MAP_NUM_FAMILY, mix, type RGB } from './common';
 import { troopKinds, troopPill, troopPillSize } from './troopIcons';
 import { hasIntel } from '../../sim/buildings';
 import { OWNER_MASK, type TileFeed } from './tiles';
@@ -61,7 +62,6 @@ const SPEED_WINDOW_TICKS = 30;
 /** Pair keys: lower id * PAIR_K + higher id (ids fit in 12 bits, OWNER_MASK). */
 const PAIR_K = 4096;
 
-const BRASS: RGB = [227, 192, 78];
 const BONE: RGB = [228, 223, 210];
 const SIGNAL = '#ff6b5e';
 /** trench lines (hover card): dug earth, light enough to read on the dark card */
@@ -678,7 +678,7 @@ export class FrontLayer {
     for (const d of draw) {
       const base = d.mine ? 0.85 + 0.15 * pulse : 0.72 + 0.16 * pulse;
       ctx.globalAlpha = d.a * (d.hot ? 1 : base);
-      ctx.strokeStyle = css(d.mine ? BRASS : d.hot ? mix(BONE, [255, 255, 255], 0.4) : BONE);
+      ctx.strokeStyle = css(d.mine ? ACCENT_RGB : d.hot ? mix(BONE, [255, 255, 255], 0.4) : BONE);
       ctx.lineWidth = ((d.mine ? (far ? 2 : 2.4) : 1.7) + (d.hot ? 0.8 : 0)) / z;
       this.stroke(ctx, d, z);
     }
@@ -782,10 +782,10 @@ export class FrontLayer {
         }
       }
       pills.push({ x: s.x, y: py });
-      const edge = mine ? '#ffe98a' : incoming ? SIGNAL : css(colors[a.attacker] ?? [200, 200, 200]);
+      const edge = mine ? ACCENT : incoming ? SIGNAL : css(colors[a.attacker] ?? [200, 200, 200]);
       const owner = (colors[a.attacker] ?? [200, 200, 200]) as RGB;
       const pw = troopPill(ctx, s.x, py, armyTotal(a.troops), kinds, owner, { edge, arrow: mine || ally ? 'up' : incoming ? 'down' : 'none', alarm: incoming });
-      if (coveringAirfields(state, a.attacker, a.target).length > 0) glyph(ctx, 'plane', s.x + pw / 2 + 9, py, 13, mine ? '#ffe98a' : '#e4dfd2');
+      if (coveringAirfields(state, a.attacker, a.target).length > 0) glyph(ctx, 'plane', s.x + pw / 2 + 9, py, 13, mine ? ACCENT : '#e4dfd2');
       if (mine && a.focusTile >= 0) {
         const f = cam.tileToScreen((a.focusTile % w) + 0.5, ((a.focusTile / w) | 0) + 0.5);
         ctx.beginPath();
@@ -1009,7 +1009,7 @@ export class FrontLayer {
     ctx.strokeStyle = '#39424b';
     ctx.lineWidth = 1;
     ctx.strokeRect(x0 + 0.5, y0 + 0.5, bw - 1, bh - 1);
-    ctx.fillStyle = css(mine ? BRASS : BONE);
+    ctx.fillStyle = css(mine ? ACCENT_RGB : BONE);
     ctx.fillRect(x0, y0, 3, bh);
     rows.forEach((r, n) => {
       const y = y0 + 5 + lh * n + lh / 2;

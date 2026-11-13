@@ -18,6 +18,37 @@ export function clamp(v: number, lo: number, hi: number): number {
 export function css(c: RGB | readonly number[], a = 1): string {
   return a >= 1 ? `rgb(${c[0]},${c[1]},${c[2]})` : `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 }
+// ---- Map overlay accent (docs/UI_DIRECTION.md, "Map overlays"): yours, the selection and what you are aiming, in the
+// panels' cool steel and the research cobalt (never brass). A light cobalt line over a dark cobalt casing: the line
+// carries it on the slate sea (7:1 on deep water, 4.4:1 on the shelf), the casing on light land (6.5:1 or more on
+// plains, desert and a blue nation's fill). Area fills are cobalt at a low alpha; labels on the dark map plate are
+// pale ice (13:1). Cautions stay warm and hostile things red.
+/** the research panel's --accent-hi, #93aef8: lines, rings, paths, markers */
+export const ACCENT_RGB: RGB = [147, 174, 248];
+export const ACCENT = '#93aef8';
+/** research cobalt (--accent of the research panel, #3b69fa): translucent area fills */
+export const ACCENT_FILL_RGB: RGB = [59, 105, 250];
+/** pale ice: label text on the dark map plate, centre marks */
+export const ACCENT_TEXT = '#c4d4fc';
+/** dark cobalt casing under a thin accent line */
+export const ACCENT_CASING_RGB: RGB = [10, 18, 44];
+
+/**
+ * Strokes the current path (and its dash) in the accent `width` px wide over a dark casing 2 px wider; `alpha` scales
+ * both. A dashed line gets square ends, so each dash is one clean bar with dark sides (round ends would ring it).
+ */
+export function accentStroke(ctx: CanvasRenderingContext2D, width: number, alpha = 1, casing = 0.55): void {
+  const cap = ctx.lineCap;
+  if (typeof ctx.getLineDash === 'function' && ctx.getLineDash().length) ctx.lineCap = 'butt';
+  ctx.lineWidth = width + 2;
+  ctx.strokeStyle = css(ACCENT_CASING_RGB, casing * alpha);
+  ctx.stroke();
+  ctx.lineWidth = width;
+  ctx.strokeStyle = css(ACCENT_RGB, alpha);
+  ctx.stroke();
+  ctx.lineCap = cap;
+}
+
 /** Multiplies a colour (f < 1 darker). */
 export function shade(c: RGB | readonly number[], f: number): RGB {
   return [clamp(Math.round(c[0] * f), 0, 255), clamp(Math.round(c[1] * f), 0, 255), clamp(Math.round(c[2] * f), 0, 255)];
@@ -101,6 +132,10 @@ export function dashedLine(ctx: CanvasRenderingContext2D, x1: number, y1: number
   ctx.moveTo(x1, y1);
   ctx.lineTo(x2, y2);
   ctx.setLineDash([8, 6]);
+  // a faint dark casing keeps a light dash readable on light land
+  ctx.lineWidth = 3.5;
+  ctx.strokeStyle = 'rgba(10,18,44,0.35)';
+  ctx.stroke();
   ctx.lineWidth = 2;
   ctx.strokeStyle = color;
   ctx.stroke();

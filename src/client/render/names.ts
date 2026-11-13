@@ -398,7 +398,7 @@ export class NameLayer {
       if (name) {
         ctx.font = nameFont;
         setTracking(ctx, track);
-        const fill = traitor ? '#ff9d92' : tribe ? 'rgba(240,241,244,0.94)' : p.id === me ? 'rgba(255,240,196,0.96)' : 'rgba(255,255,255,0.93)';
+        const fill = traitor ? '#ff9d92' : tribe ? 'rgba(240,241,244,0.94)' : p.id === me ? 'rgba(220,230,254,0.97)' : 'rgba(255,255,255,0.93)';
         haloText(ctx, name, nameX, nameY, fill, px, tribe ? 1.25 : 1);
       }
       if (showArmy) {

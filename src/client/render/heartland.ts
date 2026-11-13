@@ -1,4 +1,4 @@
-// Heartland hint: a faint brass glow along the edge of your heartland (the land deep inside your borders that
+// Heartland hint: a faint cobalt glow along the edge of your heartland (the land deep inside your borders that
 // defends harder). Drawn only while the Army drawer or the map key is open (ui.showHeartland), never during play
 // otherwise. The outline is sampled in blocks (bigger when zoomed out, ~20k samples at most) over the view plus a
 // margin, and rebuilt about once a second or when the view leaves the sampled area.
@@ -26,14 +26,18 @@ export class HeartlandLayer {
     const z = cam.zoom;
     ctx.save();
     ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * (cam.viewW / 2 - cam.x * z), dpr * (cam.viewH / 2 - cam.y * z));
-    ctx.fillStyle = 'rgba(227, 192, 78, 0.07)';
+    // the map accent (render/common.ts): a cobalt wash, a soft dark-cobalt glow and a light cobalt line on top
+    ctx.fillStyle = 'rgba(59, 105, 250, 0.09)';
     ctx.fill(this.fill);
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    ctx.strokeStyle = 'rgba(227, 192, 78, 0.16)';
+    ctx.strokeStyle = 'rgba(10, 18, 44, 0.16)';
     ctx.lineWidth = 7 / z;
     ctx.stroke(this.path);
-    ctx.strokeStyle = 'rgba(240, 214, 120, 0.6)';
+    ctx.strokeStyle = 'rgba(10, 18, 44, 0.34)';
+    ctx.lineWidth = 3 / z;
+    ctx.stroke(this.path);
+    ctx.strokeStyle = 'rgba(176, 197, 250, 0.75)';
     ctx.lineWidth = 1.3 / z;
     ctx.stroke(this.path);
     ctx.restore();

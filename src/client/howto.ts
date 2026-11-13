@@ -74,7 +74,7 @@ const min = (seconds: number): number => Math.round(seconds / 60);
 /** One line per strike: what it needs first and what it does. */
 const STRIKE_HELP: Record<StrikeId, string> = {
   barrage: `Needs an Arsenal and ${n(BARRAGE_MIN_ARTILLERY)} artillery. Shells enemy land up to ${BARRAGE_RANGE} tiles from your border: kills troops, silences forts and SAM sites for ${BARRAGE_DISABLE_SECONDS} s.`,
-  bomb: `Needs Flight, an Airfield and a bomber. Wrecks buildings and kills troops within ${BOMBER_RADIUS} tiles, as far as the airfield reaches (the gold rings). Works exactly like a mission sortie: Heavy Bombers, Ground-attack planes, Strategic Bombing, Night Bombing and Drop Tanks all count. Near your front it bombs ahead of your push; over a building it raids it.`,
+  bomb: `Needs Flight, an Airfield and a bomber. Wrecks buildings and kills troops within ${BOMBER_RADIUS} tiles, as far as the airfield reaches (the blue rings). Works exactly like a mission sortie: Heavy Bombers, Ground-attack planes, Strategic Bombing, Night Bombing and Drop Tanks all count. Near your front it bombs ahead of your push; over a building it raids it.`,
   paradrop: `Needs Flight and an Airfield. Drops infantry up to ${PARADROP_RANGE} tiles away; they attack from where they land.`,
   rocket: `Needs Rocketry and a Missile Silo. Hits anywhere: destroys enemy buildings within ${ROCKET_RADIUS} tiles. Your silos fire them by themselves at the nation you fight (auto-fire, on unless you switch it off).`,
   atomBomb: `Needs Nuclear Fission and a Missile Silo. Wipes out everything within ${ATOM_RADIUS} tiles, yours too; every nation turns on you.`,

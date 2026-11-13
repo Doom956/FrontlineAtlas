@@ -13,7 +13,7 @@ import type { Building, GameState } from '../../sim/types';
 import type { Camera } from '../camera';
 import { CATEGORY_COLORS, drawMarker, ICON_INFO, markerReady, type BuildingIconId } from '../icons';
 import type { FogView } from '../fog/fogView';
-import { buildingsKey, clamp, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, setTracking, type RGB, type View } from './common';
+import { ACCENT, buildingsKey, clamp, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, setTracking, type RGB, type View } from './common';
 
 export const FAR_ZOOM = 1.7;
 const CELL = 32;
@@ -248,10 +248,10 @@ export class BuildingLayer {
         const py = y - r + pr + k * (pr * 2 + 1.5);
         ctx.beginPath();
         ctx.arc(px, py, pr, 0, Math.PI * 2);
-        ctx.fillStyle = '#e3c04e';
+        ctx.fillStyle = ACCENT;
         ctx.fill();
         ctx.lineWidth = 1;
-        ctx.strokeStyle = 'rgba(20,16,6,0.9)';
+        ctx.strokeStyle = 'rgba(10,18,44,0.9)';
         ctx.stroke();
       }
     }
