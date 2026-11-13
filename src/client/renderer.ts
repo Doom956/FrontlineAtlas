@@ -219,7 +219,7 @@ export class Renderer {
     // battle effects: read what is new, then shake the view a few px after a nearby nuke (undone after drawing)
     if (this.shookBy.x !== 0 || this.shookBy.y !== 0) this.unshake(camera);
     this.fx.update(state, camera, nowMs);
-    this.pfx.update(state, nowMs);
+    this.pfx.update(state, nowMs, this.units);
     const sh = this.fx.shake(nowMs);
     if (sh.x !== 0 || sh.y !== 0) {
       this.shookBy.x = sh.x / camera.zoom;
@@ -321,7 +321,7 @@ export class Renderer {
     this.units.draw(ctx, state, camera, frac, this.colors, me, d, nowMs);
     this.overlays.effects(ctx, state, camera, frac);
     // shells, turret flashes and explosions over the units
-    this.pfx.drawAir(ctx, camera, nowMs, this.units, d);
+    this.pfx.drawAir(ctx, camera, nowMs, this.units, d, this.colors);
     const hs = ui.hoverTile >= 0 ? camera.tileToScreen((ui.hoverTile % this.w) + 0.5, ((ui.hoverTile / this.w) | 0) + 0.5) : null;
     const hoverOwner = ui.hoverTile >= 0 && ui.hoverTile < state.map.owner.length ? this.knownOwner(state, ui.hoverTile) : 0;
     this.names.draw(ctx, state, camera, me, { hoverOwner, targeting: ui.mode.kind !== 'none', hover: hs }, nowMs, d);

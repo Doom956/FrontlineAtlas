@@ -14,6 +14,11 @@
 // where each gun is), shells arc to the target and land as a splash on water or a small explosion and a crater on
 // land. Submarines send a torpedo; carriers, SAM sites and airfields send tracer bursts that end in a flak puff.
 //
+// Deaths: a unit destroyed (fx/deaths.ts tells it from one that arrived) plays its death where it was, in the
+// explosions style (ExplosionArt.drawDeath): a plane shot down falls and crashes (a crater where it hits land), a missile
+// shot down bursts in the air, a tank division burns out, a ship goes under. A style without death animations shows its
+// small blast there instead, as before (a plane's burst in the air, a hit and a crater).
+//
 // Craters: every blast on land leaves one that fades out over about a minute of game time (atom bombs bigger and
 // longer; the motion preset's craterLife scales it). None at the coast; one reaching water is clipped to the land
 // tiles. A capped ring buffer (CRATER_CAP); drawn under units; hidden far out. Every pool is fixed size, nothing is
@@ -21,9 +26,12 @@
 import type { Effect, GameState, Unit, UnitVariant } from '../../sim/types';
 import type { FogView } from '../fog/fogView';
 import { artFor, motionFor } from '../art/registry';
+import type { RGB } from '../art/shared/colour';
 import { spriteKey, type SpriteKey } from '../art/shared/keys';
 import { fract, rnd } from '../art/shared/noise';
-import { CRATER_ATOM_REACH, CRATER_REACH, type BlastDraw, type BlastKind, type CraterDraw, type MuzzleDraw, type ShellDraw } from '../art/types';
+import { CRATER_ATOM_REACH, CRATER_REACH, DEATH_GLIDE_TILES, type BlastDraw, type BlastKind, type CraterDraw, type DeathDraw, type DeathKind, type ExplosionArt, type MotionParams, type MuzzleDraw, type ShellDraw } from '../art/types';
+import { unitSpriteMods } from '../render/pixelSprites';
+import { DeathWatch, deathKindOf, isKillBlast } from './deaths';
 import { fxEnabled, prefersReducedMotion } from './settings';
 
 export type { BlastKind } from '../art/types';
@@ -33,6 +41,7 @@ export const CRATER_CAP = 200;
 /** Game ticks between a blast and its crater showing (the fireball hides the moment it appears). */
 const CRATER_DELAY = 1.5;
 const BLAST_CAP = 72;
+const DEATH_CAP = 32;
 const SHELL_CAP = 48;
 const FLASH_CAP = 48;
 /** Things older than this (ticks) are history, not news (as fx/battleFx.ts). */
@@ -106,6 +115,25 @@ export interface Crater {
   atom: boolean;
 }
 
+interface Death {
+  kind: DeathKind;
+  key: SpriteKey;
+  mods: number;
+  /** the owner's player id (its colour is read when drawing) */
+  owner: number;
+  /** where it was hit (tile coordinates of its centre) and its heading */
+  x: number;
+  y: number;
+  angle: number;
+  water: boolean;
+  t0: number;
+  dur: number;
+  /** when it reaches the ground or goes under (ms after t0) */
+  impact: number;
+  seed: number;
+  live: boolean;
+}
+
 /** How far a crater's drawing reaches, in tiles. */
 const craterReach = (c: { r: number; atom: boolean }): number => c.r * (c.atom ? CRATER_ATOM_REACH : CRATER_REACH);
 
@@ -113,6 +141,8 @@ const craterReach = (c: { r: number; atom: boolean }): number => c.r * (c.atom ?
 export interface UnitPoses {
   screenOf(id: number): { x: number; y: number } | null;
   headingOf(id: number): number | null;
+  /** the heading a unit was last drawn at, eased and not snapped (a unit that died this tick still has one) */
+  angleOf?(id: number): number | null;
 }
 
 export interface FxCam {
@@ -142,6 +172,7 @@ export class PixelFx {
   fog: FogView | null = null;
 
   readonly blasts: Blast[] = [];
+  readonly deaths: Death[] = [];
   readonly shells: Shell[] = [];
   readonly flashes: Flash[] = [];
   readonly craters: Crater[] = [];
@@ -155,19 +186,27 @@ export class PixelFx {
   private missileNext = new Map<number, 'rocket' | 'atomBomb'>();
   /** ships and planes alive last frame (a small blast where one died says what it was) */
   private prev: Unit[] = [];
+  /** units destroyed since the last tick (fx/deaths.ts) */
+  private watch = new DeathWatch();
+  private gone: Unit[] = [];
+  private scanTick = -1;
   private reduced = prefersReducedMotion();
   private wasOn = true;
 
   constructor() {
     for (let i = 0; i < BLAST_CAP; i++) this.blasts.push({ kind: 'shell', x: 0, y: 0, rt: 0, t0: 0, dur: 1, seed: 0, live: false });
+    for (let i = 0; i < DEATH_CAP; i++) this.deaths.push({ kind: 'plane', key: 'bomber', mods: 0, owner: 0, x: 0, y: 0, angle: 0, water: false, t0: 0, dur: 1, impact: 0, seed: 0, live: false });
     for (let i = 0; i < SHELL_CAP; i++) this.shells.push({ kind: 'cannon', x0: 0, y0: 0, x1: 0, y1: 0, t0: 0, dur: 1, water: false, live: false, landed: false, seed: 0 });
     for (let i = 0; i < FLASH_CAP; i++) this.flashes.push({ unit: -1, key: 'warship', gun: 0, x: 0, y: 0, tx: 0, ty: 0, t0: 0, dur: 1, live: false });
   }
 
   // ------------------------------------------------------------------------------------------- reading the game
 
-  /** Reads what is new in `state` and starts its effects. Call once per frame before drawing. */
-  update(state: GameState, nowMs: number): void {
+  /**
+   * Reads what is new in `state` and starts its effects. Call once per frame before drawing; `poses` (the unit layer,
+   * before it tracks this tick) gives the heading a unit that died was drawn at.
+   */
+  update(state: GameState, nowMs: number, poses: UnitPoses | null = null): void {
     const t0 = performance.now();
     try {
       if (!fxEnabled()) {
@@ -188,8 +227,17 @@ export class PixelFx {
         const e = fx[i];
         this.seen.add(e);
         if (e.tick < state.tick - FRESH_TICKS) continue;
+        // the sim's kill blast: a unit's death, or a ship or fort hit (told apart once the tick's units are read)
+        if (e.kind === 'explosion' && isKillBlast(e.radius)) {
+          this.watch.blast(e.x, e.y);
+          continue;
+        }
         if (!this.inSight(state, e.x, e.y)) continue;
         this.ingest(state, e, nowMs);
+      }
+      if (state.tick !== this.scanTick || this.watch.blasts > 0) {
+        this.scanTick = state.tick;
+        this.readDeaths(state, nowMs, poses);
       }
       this.snapshot(state);
       this.land(state, nowMs);
@@ -203,6 +251,9 @@ export class PixelFx {
   private clear(): void {
     this.state = null;
     this.lastTick = -1;
+    this.scanTick = -1;
+    this.watch.reset(null);
+    for (const d of this.deaths) d.live = false;
     for (const b of this.blasts) b.live = false;
     for (const s of this.shells) s.live = false;
     for (const f of this.flashes) f.live = false;
@@ -216,6 +267,8 @@ export class PixelFx {
     this.lastTick = state.tick;
     this.seen = new WeakSet();
     for (const e of state.effects) this.seen.add(e);
+    this.watch.reset(state);
+    this.scanTick = state.tick;
     this.snapshot(state);
   }
 
@@ -339,13 +392,7 @@ export class PixelFx {
           }
           return;
         }
-        const lost = this.lostAt(e.x, e.y);
-        if (lost && (lost.type === 'bomber' || lost.type === 'fighter' || lost.type === 'transportPlane' || lost.type === 'reconPlane')) this.blast('air', e.x, e.y, 0, now);
-        else if (this.isWater(state, e.x, e.y)) this.blast('hit', e.x, e.y, 0, now);
-        else {
-          this.blast('hit', e.x, e.y, 0, now);
-          this.scar(state, e.x, e.y, 0.7, tick, 500);
-        }
+        this.smallBlast(state, e.x, e.y, now);
         return;
       }
       case 'shot':
@@ -354,6 +401,82 @@ export class PixelFx {
       default:
         return;
     }
+  }
+
+  /** The sim's kill blast where no death animation plays: a plane's burst in the air, else a hit (and a crater on land). */
+  private smallBlast(state: GameState, x: number, y: number, now: number): void {
+    const lost = this.lostAt(x, y);
+    if (lost && (lost.type === 'bomber' || lost.type === 'fighter' || lost.type === 'transportPlane' || lost.type === 'reconPlane')) this.blast('air', x, y, 0, now);
+    else if (this.isWater(state, x, y)) this.blast('hit', x, y, 0, now);
+    else {
+      this.blast('hit', x, y, 0, now);
+      this.scar(state, x, y, 0.7, state.tick, 500);
+    }
+  }
+
+  /**
+   * This tick's deaths (fx/deaths.ts): with a style that animates them, each one in sight plays its death and its kill
+   * blast is not drawn again; the other kill blasts (ships and forts hit, and every one with a style that does not
+   * animate deaths) are small blasts as before.
+   */
+  private readDeaths(state: GameState, now: number, poses: UnitPoses | null): void {
+    const art = artFor('explosions');
+    const m = motionFor('explosions');
+    const animate = typeof art.drawDeath === 'function' && typeof art.deathTimes === 'function';
+    const n = this.watch.scan(state, this.gone);
+    if (animate) for (let i = 0; i < n; i++) {
+      const u = this.gone[i];
+      if (this.inSight(state, u.x + 0.5, u.y + 0.5)) this.addDeath(state, u, now, poses, art, m);
+    }
+    const w = this.watch;
+    for (let i = 0; i < w.blasts; i++) {
+      if (animate && w.wasDeath(i)) continue;
+      const x = w.blastX(i);
+      const y = w.blastY(i);
+      if (this.inSight(state, x, y)) this.smallBlast(state, x, y, now);
+    }
+    w.endTick();
+    this.gone.length = 0;
+  }
+
+  private addDeath(state: GameState, u: Unit, now: number, poses: UnitPoses | null, art: ExplosionArt, m: MotionParams): void {
+    const kind = deathKindOf(u.type);
+    if (!kind || !art.deathTimes) return;
+    let slot: Death | null = null;
+    let oldest: Death | null = null;
+    for (const d of this.deaths) {
+      if (!d.live || now - d.t0 > d.dur) {
+        slot = d;
+        break;
+      }
+      if (!oldest || d.t0 < oldest.t0) oldest = d;
+    }
+    slot = slot ?? oldest;
+    if (!slot) return;
+    const cx = u.x + 0.5;
+    const cy = u.y + 0.5;
+    const angle = poses?.angleOf?.(u.id) ?? headingOf(state, u);
+    const times = art.deathTimes(kind, m);
+    slot.kind = kind;
+    slot.key = spriteKey(u.type, u.variant);
+    slot.mods = unitSpriteMods(state, u);
+    slot.owner = u.owner;
+    slot.x = cx;
+    slot.y = cy;
+    slot.angle = angle;
+    slot.t0 = now;
+    slot.dur = Math.max(1, times.durMs);
+    slot.impact = times.impactMs;
+    slot.seed = fract(Math.sin(cx * 12.9898 + cy * 78.233 + u.id * 0.618) * 43758.5453);
+    slot.live = true;
+    if (kind === 'plane') {
+      // it comes down a little way on along its heading: water there, or a crater once it has crashed
+      const gx = cx + Math.cos(angle) * DEATH_GLIDE_TILES;
+      const gy = cy + Math.sin(angle) * DEATH_GLIDE_TILES;
+      slot.water = this.isWater(state, gx, gy);
+      if (!slot.water) this.scar(state, gx, gy, 0.55, state.tick + times.impactMs / 100, 450);
+    } else slot.water = kind === 'ship' || this.isWater(state, cx, cy);
+    this.spawned++;
   }
 
   /** A 'shot' effect: warship cannon fire (turret flashes and shells), a torpedo, or anti-air tracers and flak. */
@@ -530,12 +653,13 @@ export class PixelFx {
   }
 
   private craterDraw: CraterDraw = { x: 0, y: 0, radiusPx: 0, q: 0, zoom: 1, scale: 1, seed: 0, dpr: 1, atom: false };
+  private deathDraw: DeathDraw = { kind: 'plane', key: 'bomber', mods: 0, owner: [128, 128, 128], x: 0, y: 0, angle: 0, water: false, t: 0, ageMs: 0, durMs: 1, zoom: 1, scale: 1, seed: 0, reduced: false, dpr: 1 };
   private blastDraw: BlastDraw = { kind: 'shell', x: 0, y: 0, t: 0, ageMs: 0, durMs: 1, zoom: 1, scale: 1, rt: 0, seed: 0, reduced: false, dpr: 1 };
   private muzzleDraw: MuzzleDraw = { x: 0, y: 0, aim: 0, t: 0, zoom: 1, scale: 1, seed: 0, dpr: 1 };
   private shellDraw: ShellDraw = { kind: 'cannon', x0: 0, y0: 0, x1: 0, y1: 0, t: 0, zoom: 1, scale: 1, seed: 0, dpr: 1 };
 
-  /** Shells, tracers, turret flashes and explosions, over the units. */
-  drawAir(ctx: CanvasRenderingContext2D, cam: FxCam, now: number, poses: UnitPoses | null, dpr = 1): void {
+  /** Shells, tracers, turret flashes, deaths and explosions, over the units; `colors` the players' colours by id. */
+  drawAir(ctx: CanvasRenderingContext2D, cam: FxCam, now: number, poses: UnitPoses | null, dpr = 1, colors: readonly RGB[] | null = null): void {
     if (!this.wasOn) return;
     const t0 = performance.now();
     const z = cam.zoom;
@@ -601,6 +725,7 @@ export class PixelFx {
       }
       const blasts = artFor('explosions');
       const bm = motionFor('explosions');
+      this.drawDeaths(ctx, cam, now, dpr, colors, blasts, bm, far, ox, oy, z, g);
       const bd = this.blastDraw;
       bd.zoom = z;
       bd.scale = g;
@@ -638,11 +763,69 @@ export class PixelFx {
     this.ms += performance.now() - t0;
   }
 
+  private drawDeaths(ctx: CanvasRenderingContext2D, cam: FxCam, now: number, dpr: number, colors: readonly RGB[] | null, art: ExplosionArt, m: MotionParams, far: boolean, ox: number, oy: number, z: number, g: number): void {
+    const dd = this.deathDraw;
+    dd.zoom = z;
+    dd.scale = g;
+    dd.dpr = dpr;
+    dd.reduced = this.reduced;
+    for (const d of this.deaths) {
+      if (!d.live) continue;
+      const age = now - d.t0;
+      if (age > d.dur) {
+        d.live = false;
+        continue;
+      }
+      if (age < 0) continue;
+      const sx = ox + d.x * z;
+      const sy = oy + d.y * z;
+      const reach = Math.max(160, (DEATH_GLIDE_TILES + 2) * z);
+      if (sx < -reach || sy < -reach || sx > cam.viewW + reach || sy > cam.viewH + reach) continue;
+      if (far || !art.drawDeath) {
+        // far out (or a style without death animations now): the far blink where it was hit, and where a plane came down
+        if (age < FAR_DEATH_MS) drawBlastFar(ctx, FAR_HIT, sx, sy, age / FAR_DEATH_MS);
+        const ia = age - d.impact;
+        if (d.kind === 'plane' && ia >= 0 && ia < FAR_DEATH_MS) drawBlastFar(ctx, d.water ? FAR_SPLASH : FAR_HIT, sx + Math.cos(d.angle) * DEATH_GLIDE_TILES * z, sy + Math.sin(d.angle) * DEATH_GLIDE_TILES * z, ia / FAR_DEATH_MS);
+        continue;
+      }
+      dd.kind = d.kind;
+      dd.key = d.key;
+      dd.mods = d.mods;
+      dd.owner = colors?.[d.owner] ?? GREY;
+      dd.x = sx;
+      dd.y = sy;
+      dd.angle = d.angle;
+      dd.water = d.water;
+      dd.t = age / d.dur;
+      dd.ageMs = age;
+      dd.durMs = d.dur;
+      dd.seed = d.seed;
+      art.drawDeath(ctx, dd, m);
+      ctx.globalAlpha = 1;
+    }
+  }
+
   /** Live counts (tests, stats). */
-  liveCounts(): { blasts: number; shells: number; flashes: number; craters: number } {
-    return { blasts: this.blasts.filter((b) => b.live).length, shells: this.shells.filter((s) => s.live).length, flashes: this.flashes.filter((f) => f.live).length, craters: this.craters.length };
+  liveCounts(): { blasts: number; shells: number; flashes: number; craters: number; deaths: number } {
+    return { blasts: this.blasts.filter((b) => b.live).length, shells: this.shells.filter((s) => s.live).length, flashes: this.flashes.filter((f) => f.live).length, craters: this.craters.length, deaths: this.deaths.filter((d) => d.live).length };
   }
 }
+
+/** The heading of a unit toward where it was going (when the unit layer has no drawn heading for it). */
+function headingOf(state: GameState, u: Unit): number {
+  const w = state.map.width;
+  const dest = (u.type === 'bomber' || u.type === 'reconPlane') && u.state === 1 ? u.home : u.target;
+  if (typeof dest !== 'number' || dest < 0 || w <= 0) return 0;
+  const dx = (dest % w) + 0.5 - (u.x + 0.5);
+  const dy = Math.floor(dest / w) + 0.5 - (u.y + 0.5);
+  return dx * dx + dy * dy > 1e-6 ? Math.atan2(dy, dx) : 0;
+}
+
+const GREY: RGB = [128, 128, 128];
+/** How long a death's far blink lasts (ms), and the blasts it blinks like. */
+const FAR_DEATH_MS = 900;
+const FAR_HIT = { kind: 'hit' } as Blast;
+const FAR_SPLASH = { kind: 'splash' } as Blast;
 
 /**
  * A small blast far out: a two-pixel blink in the same ramp (white, yellow, orange, red, smoke grey; a splash white

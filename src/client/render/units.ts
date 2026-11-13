@@ -120,6 +120,11 @@ export class UnitLayer {
     return Math.round(t.shown / step) * step;
   }
 
+  /** The heading a unit's sprite was drawn at last (eased, not snapped), or null; a unit gone this tick still has it until track(). */
+  angleOf(id: number): number | null {
+    return this.tracks.get(id)?.shown ?? null;
+  }
+
   /** Interpolated position of a unit (tile coords, unit origin at the tile corner like Unit.x/y). */
   pos(u: Unit, frac: number): { x: number; y: number } {
     const t = this.tracks.get(u.id);

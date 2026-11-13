@@ -210,7 +210,10 @@ export interface BlastDraw {
   zoom: number;
   /** the map's whole-number px per art pixel (UnitDraw.scale) */
   scale: number;
-  /** the sim's blast radius in tiles for 'missile' and 'atom' (the fireball grows with it); 0 for the small ones */
+  /**
+   * The sim's blast radius in tiles for 'missile' and 'atom' (the fireball grows with it); 0 for the small ones (a
+   * style may read a positive value on a small one as a size multiplier: a plane crashing into the sea)
+   */
   rt: number;
   /** 0..1, the blast's own look */
   seed: number;
@@ -241,6 +244,59 @@ export interface MapFxDraw {
   dpr: number;
 }
 
+// ------------------------------------------------------------------------------------------------- deaths
+
+/**
+ * A unit destroyed, as the map saw it go (fx/deaths.ts finds them, read-only): plane = a plane shot down (hit, it
+ * catches fire, falls and crashes), missile = a rocket or atom bomb shot down in the air (it bursts and its pieces
+ * fall), tank = a tank division destroyed (a burning wreck), ship = a ship sunk (it lists, burns and goes under).
+ */
+export type DeathKind = 'plane' | 'missile' | 'tank' | 'ship';
+export const DEATH_KINDS: readonly DeathKind[] = ['plane', 'missile', 'tank', 'ship'];
+
+/**
+ * How far a falling plane goes on along its heading before it hits the ground, in tiles. The map reads the ground
+ * there (DeathDraw.water) and leaves its crash crater there; a style draws the crash there too.
+ */
+export const DEATH_GLIDE_TILES = 2.2;
+
+/** One frame of a unit's death. */
+export interface DeathDraw {
+  kind: DeathKind;
+  /** the unit's picture, its upgrades and its owner's colour, as the map drew it */
+  key: SpriteKey;
+  mods: number;
+  owner: RGB;
+  /** where it was when it was hit (CSS px; planes and missiles in the air, where the map drew them) and its heading */
+  x: number;
+  y: number;
+  angle: number;
+  /**
+   * Water where it comes down: under a plane at its crash point (DEATH_GLIDE_TILES along its heading), under a
+   * missile below the burst; always for ships, for a tank when it was wading.
+   */
+  water: boolean;
+  /** 0 at the hit, 1 when it is over (age / duration) */
+  t: number;
+  ageMs: number;
+  durMs: number;
+  zoom: number;
+  /** the map's whole-number px per art pixel (UnitDraw.scale) */
+  scale: number;
+  /** 0..1, its own look (the spin, where the fires are, the pieces) */
+  seed: number;
+  /** prefers-reduced-motion: still frames */
+  reduced: boolean;
+  dpr: number;
+}
+
+/** How long a death takes and when it reaches the ground or is under (ms after the hit; ExplosionArt.deathTimes). */
+export interface DeathTimes {
+  durMs: number;
+  /** a plane's crash, a missile's last piece down, a ship gone under; for a tank the blast itself (0) */
+  impactMs: number;
+}
+
 export interface ExplosionArt {
   /** How long a blast of this kind lasts (ms). The pool frees it after; the far blink keeps the same length. */
   durationMs(kind: BlastKind, m: MotionParams): number;
@@ -248,6 +304,13 @@ export interface ExplosionArt {
   draw(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams): void;
   /** One frame of a sinking ship, a falling plane's smoke or dust. */
   drawMapFx(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionParams): void;
+  /**
+   * Optional: a style that animates deaths gives their times (the returned object may be reused) and draws them,
+   * from zoom 2 in (farther out the map shows the far blink). A style without them shows its small blasts instead:
+   * a plane's burst in the air and its smoke, a ship's hit and its sinking splash, a hit on a tank or a missile.
+   */
+  deathTimes?(kind: DeathKind, m: MotionParams): DeathTimes;
+  drawDeath?(ctx: CanvasRenderingContext2D, d: DeathDraw, m: MotionParams): void;
 }
 
 // ================================================================================================ craters

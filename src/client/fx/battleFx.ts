@@ -1,5 +1,7 @@
 // Battle effects director: once per frame it reads what is new in the game state (events, sim effects, units that
-// died, forts that disappeared), turns it into map effects (fx/map.ts) and draws them (fx/layer.ts). Read-only:
+// died, forts that disappeared), turns it into map effects (fx/map.ts) and draws them (fx/layer.ts).
+// A ship sunk or a plane shot down gets its splash or smoke here only when the explosions style does not animate deaths
+// itself (fx/pixelFx.ts then plays the whole death). Read-only:
 // it never writes to the state, so the sim, its hash and multiplayer are untouched.
 //
 // Only fresh things count: on a new game, after a jump of more than a few seconds (an online catch-up, a test's
@@ -8,6 +10,7 @@
 // near the camera, never with prefers-reduced-motion.
 
 import type { FogView } from '../fog/fogView';
+import { artFor } from '../art/registry';
 import type { BuildingType, Effect, GameEvent, GameState, Unit } from '../../sim/types';
 import { FxPool, type ScreenCam } from './layer';
 import { FxLimiter, fxForEffect, fxForEvent, isPlane, isShip, type FxSpawn } from './map';
@@ -193,6 +196,8 @@ export class BattleFx {
       } else if (e.kind === 'explosion' && e.radius < 4) {
         lost = this.lostAt(e.x, e.y);
         if (!lost) continue;
+        // a style that animates deaths plays the whole sinking or crash itself (fx/pixelFx.ts, fx/deaths.ts)
+        if (typeof artFor('explosions').drawDeath === 'function') continue;
       }
       const s = fxForEffect(e, mine, lost);
       if (s) out.push(s);

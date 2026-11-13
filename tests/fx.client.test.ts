@@ -1,6 +1,7 @@
 // Battle effects (src/client/fx): event mapping, rate limits, the pool, and the director reading a real game state
 // without writing to it. No DOM: drawing is not called here (the Playwright run covers it).
 import { describe, expect, it } from 'vitest';
+import { artStyleOf, setArtStyle } from '../src/client/art/artStyle';
 import { BattleFx } from '../src/client/fx/battleFx';
 import { FX_CAP, FxPool } from '../src/client/fx/layer';
 import { FX_INFO, FX_KINDS, FxLimiter, fxForEffect, fxForEvent, fxLabel } from '../src/client/fx/map';
@@ -157,6 +158,9 @@ describe('BattleFx director', () => {
   });
 
   it('splashes a sunk ship and smokes a downed plane, not a ship that just arrived', () => {
+    // an explosions style without death animations (the detailed one plays the whole death in fx/pixelFx.ts instead)
+    const was = artStyleOf('explosions');
+    setArtStyle('explosions', 'refined');
     const s = game();
     const unit = (id: number, type: Unit['type'], x: number, y: number) => ({ id, type, owner: 2, x, y, hp: 1 }) as unknown as Unit;
     const ship = unit(1, 'warship', 18, 14);
@@ -174,6 +178,7 @@ describe('BattleFx director', () => {
     expect(b.pool.countOf('splash')).toBe(1);
     expect(b.pool.countOf('smoke')).toBe(1);
     expect(b.spawned).toBe(2);
+    setArtStyle('explosions', was);
   });
 
   it('raises dust where a fort disappears and pulses a city you take', () => {
