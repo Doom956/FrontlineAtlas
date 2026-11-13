@@ -7,7 +7,7 @@
 import { canBake, SpriteAtlas, type AtlasEntry, type RGBABitmap } from '../shared/atlas';
 import { hex, type RGB } from '../shared/colour';
 import type { Grid } from './grid';
-import { CLOUD, CLOUD_SHADE, CLOUD_TOP, DUST, FIRE, SHADE, SMOKE, SOOT, SPRAY, VAPOUR } from './palette';
+import { CLOUD, CLOUD_SHADE, CLOUD_TOP, DUST, FIRE, SCORCH, SHADE, SMOKE, SOOT, SPRAY, VAPOUR } from './palette';
 
 /**
  * Puffs: smoke, soot, dust, spray, vapour and shade (balls lit from the top left), fire by heat, the flash core, the
@@ -16,12 +16,13 @@ import { CLOUD, CLOUD_SHADE, CLOUD_TOP, DUST, FIRE, SHADE, SMOKE, SOOT, SPRAY, V
  * rolling along the ground). The soft ones have a gentle tone range and no darker rim, so many of them overlapping read
  * as one billowing mass, not a heap of separate stones. Then the burning and the sea: 'flame' (a flickering tongue of
  * fire standing on its base, four flicker frames, leaning with the wind), 'foam' (a flat lacy patch of foam on the
- * water that breaks up as it ages) and 'heat' (ground glowing red hot and cooling, like 'glow' in deep reds).
+ * water that breaks up as it ages), 'heat' (ground glowing red hot and cooling, like 'glow' in deep reds), 'scorch'
+ * (a flat blackened, burnt patch on a deck) and 'press' (the pale patch of water a gun's blast presses flat).
  */
-export type BlobKind = 'smoke' | 'soot' | 'dust' | 'spray' | 'fire' | 'vapour' | 'flash' | 'glow' | 'halo' | 'shade' | 'haze' | 'cloudTop' | 'cloud' | 'cloudUnder' | 'roll' | 'flame' | 'foam' | 'heat';
-const KINDS: BlobKind[] = ['smoke', 'soot', 'dust', 'spray', 'fire', 'vapour', 'flash', 'glow', 'halo', 'shade', 'haze', 'cloudTop', 'cloud', 'cloudUnder', 'roll', 'flame', 'foam', 'heat'];
+export type BlobKind = 'smoke' | 'soot' | 'dust' | 'spray' | 'fire' | 'vapour' | 'flash' | 'glow' | 'halo' | 'shade' | 'haze' | 'cloudTop' | 'cloud' | 'cloudUnder' | 'roll' | 'flame' | 'foam' | 'heat' | 'scorch' | 'press';
+const KINDS: BlobKind[] = ['smoke', 'soot', 'dust', 'spray', 'fire', 'vapour', 'flash', 'glow', 'halo', 'shade', 'haze', 'cloudTop', 'cloud', 'cloudUnder', 'roll', 'flame', 'foam', 'heat', 'scorch', 'press'];
 
-const RAMP: Record<Exclude<BlobKind, 'fire' | 'flash' | 'glow' | 'halo' | 'haze' | 'flame' | 'foam' | 'heat'>, RGB[]> = {
+const RAMP: Record<Exclude<BlobKind, 'fire' | 'flash' | 'glow' | 'halo' | 'haze' | 'flame' | 'foam' | 'heat' | 'scorch' | 'press'>, RGB[]> = {
   smoke: SMOKE.map(hex),
   soot: SOOT.map(hex),
   dust: DUST.map(hex),
@@ -65,7 +66,7 @@ function vnoise(x: number, y: number, s: number): number {
  * seven dithered steps (no smooth gradient and no ring), white hot in the middle through yellow to an orange edge.
  * 'glow' lies on the ground (squashed by the 3/4 view), 'halo' hangs in the air (round). Radius `r` cells (1..48).
  */
-export function glowBitmap(kind: 'glow' | 'halo' | 'heat', r: number, variant: number): RGBABitmap {
+export function glowBitmap(kind: 'glow' | 'halo' | 'heat' | 'press', r: number, variant: number): RGBABitmap {
   const R = Math.max(1, Math.min(48, Math.round(r)));
   const sq = kind === 'halo' ? 1 : 0.6;
   const half = Math.ceil(R * 1.15) + 1;
@@ -78,10 +79,14 @@ export function glowBitmap(kind: 'glow' | 'halo' | 'heat', r: number, variant: n
   // seven alpha steps a little apart: the dither between two of them stays quiet even when a big light is drawn
   // with coarse cells
   const ALPHA = [0, 30, 60, 92, 124, 158, 192, 226];
-  // 'heat': ground glowing red hot, from a dull ember brown at its edge to orange in the middle (never white)
+  // 'heat': ground glowing red hot, from a dark red at its edge to orange in the middle (never white)
+  // 'press': water pressed flat by a gun's blast, pale spray tones
+  const SP = SPRAY.map(hex);
   const COL =
-    kind === 'heat'
-      ? [FIRE_RGB[6], FIRE_RGB[6], FIRE_RGB[5], FIRE_RGB[5], FIRE_RGB[4], FIRE_RGB[4], FIRE_RGB[3], FIRE_RGB[3]]
+    kind === 'press'
+      ? [SP[1], SP[1], SP[1], SP[2], SP[2], SP[2], SP[3], SP[3]]
+      : kind === 'heat'
+      ? [FIRE_RGB[5], FIRE_RGB[5], FIRE_RGB[4], FIRE_RGB[4], FIRE_RGB[4], FIRE_RGB[3], FIRE_RGB[3], FIRE_RGB[2]]
       : [FIRE_RGB[2], FIRE_RGB[2], FIRE_RGB[2], FIRE_RGB[1], FIRE_RGB[1], FIRE_RGB[1], FIRE_RGB[0], FIRE_RGB[0]];
   for (let y = 0; y < Hh; y++) {
     for (let x = 0; x < W; x++) {
@@ -154,7 +159,8 @@ export function hazeBitmap(r: number, variant: number): RGBABitmap {
  * rim, never red. The origin (ox, oy) is the blob's centre.
  */
 export function blobBitmap(kind: BlobKind, r: number, variant: number, heat = 0): RGBABitmap {
-  if (kind === 'glow' || kind === 'halo' || kind === 'heat') return glowBitmap(kind, r, variant);
+  if (kind === 'glow' || kind === 'halo' || kind === 'heat' || kind === 'press') return glowBitmap(kind, r, variant);
+  if (kind === 'scorch') return scorchBitmap(r, variant);
   if (kind === 'haze') return hazeBitmap(r, variant);
   if (kind === 'flame') return flameBitmap(r, variant, heat & 3, (heat >> 2) - 2);
   if (kind === 'foam') return foamBitmap(r, variant, heat);
@@ -301,42 +307,103 @@ export function flameBitmap(r: number, variant: number, frame: number, lean: num
 }
 
 /**
- * A patch of foam on the water: flat (the sea seen at the 3/4 angle), lacy, densest in its middle and thinning out
- * to the edge in dithered steps (never a ring), white where it froths and blue grey where it thins; `age` 0..3 opens
- * more and bigger holes in it as it breaks up. Radius `r` cells (1..48).
+ * A patch of foam on the water: flat (the sea seen at the 3/4 angle), white lace, not a mat: clumps of near-white froth
+ * threaded with streaky holes, thin low veils of blue-grey spray between them, densest in its middle and breaking into
+ * lobes and loose bubbles at its edge (never a ring or a straight edge); `age` 0..3 opens more and bigger holes in it
+ * as it breaks up. Radius `r` cells (1..48).
  */
 export function foamBitmap(r: number, variant: number, age: number): RGBABitmap {
   const R = Math.max(1, Math.min(48, Math.round(r)));
   const sq = 0.55;
-  const half = Math.ceil(R * 1.2) + 1;
-  const hy = Math.ceil(R * sq * 1.2) + 1;
+  const half = Math.ceil(R * 1.45) + 1;
+  const hy = Math.ceil(R * sq * 1.45) + 1;
   const W = half * 2 + 1;
   const Hh = hy * 2 + 1;
   const data = new Uint8ClampedArray(W * Hh * 4);
   const ph = variant * 1.37 + 0.2;
   const s = variant * 23 + R + 3;
   const A = Math.max(0, Math.min(3, age | 0));
-  const fs = Math.max(0.22, Math.min(0.7, 3.5 / R));
+  const fs = Math.max(0.33, Math.min(0.8, 5 / R));
+  const top = RAMP.spray[3];
+  const veil = RAMP.spray[1];
   for (let y = 0; y < Hh; y++) {
     for (let x = 0; x < W; x++) {
       const dx = x - half;
       const dy = (y - hy) / sq;
       const a = Math.atan2(dy, dx);
-      const e = R * (0.86 + 0.12 * Math.sin(3 * a + ph) + 0.08 * Math.sin(5 * a + ph * 2.1) + 0.05 * Math.sin(9 * a + ph * 1.3));
+      // big lobes round the edge (three and five round), so the patch never has a straight top or bottom
+      const e = R * (0.9 + 0.13 * Math.sin(3 * a + ph) + 0.09 * Math.sin(5 * a + ph * 2.1) + 0.05 * Math.sin(9 * a + ph * 1.3));
       const d = Math.hypot(dx, dy) / e;
-      if (d >= 1) continue;
+      const o = (y * W + x) * 4;
+      const grain = hash2(x, y, s + 5);
+      if (d >= 1) {
+        // loose bubbles out past the edge
+        if (d < 1.35 && grain < 0.05 * (1.35 - d) / 0.35 * (1 - A * 0.2)) {
+          data[o] = top[0];
+          data[o + 1] = top[1];
+          data[o + 2] = top[2];
+          data[o + 3] = 210;
+        }
+        continue;
+      }
       const dith = BAYER[(x & 1) + ((y & 1) << 1)];
-      // streaky lace: coarse froth with finer bubbles in it, stretched a little across the screen
-      const n = vnoise(x * fs * 0.8 + variant * 2.3, y * fs * 1.3, s) * 0.65 + vnoise(x * fs * 2.2, y * fs * 3, s + 1) * 0.35;
-      const thr = 0.16 + A * 0.1 + d * d * 0.45;
-      if (n + dith * 0.14 < thr) continue;
-      const f = n - thr;
-      const c = f > 0.2 ? RAMP.spray[3] : f > 0.08 ? RAMP.spray[2] : RAMP.spray[1];
+      // lace: a network of froth round open holes (ridges of noise), stretched across the screen, its strands thick
+      // and white in the middle of the patch and thin toward its edge
+      const rid = 1 - Math.abs(2 * vnoise(x * fs + variant * 2.3, y * fs * 1.7, s) - 1);
+      const clump = vnoise(x * fs * 0.35 + 4.1, y * fs * 0.6, s + 1);
+      const dens = 1 - d * d;
+      const score = rid + 0.6 * dens + 0.3 * (clump - 0.5) - A * 0.1 + dith * 0.08;
+      if (score < 0.92) continue;
+      if (score > 1.08) {
+        data[o] = top[0];
+        data[o + 1] = top[1];
+        data[o + 2] = top[2];
+        data[o + 3] = 235;
+      } else {
+        // a thin veil of spray at the edge of a strand
+        data[o] = veil[0];
+        data[o + 1] = veil[1];
+        data[o + 2] = veil[2];
+        data[o + 3] = 90;
+      }
+    }
+  }
+  return { w: W, h: Hh, ox: half, oy: hy, data };
+}
+
+/**
+ * A burnt patch on a deck: flat (the 3/4 view), blackened plating in soot and scorched-earth tones, darkest in the
+ * middle, its edge broken by dither into the paint round it. Radius `r` cells (1..48).
+ */
+export function scorchBitmap(r: number, variant: number): RGBABitmap {
+  const R = Math.max(1, Math.min(48, Math.round(r)));
+  const sq = 0.6;
+  const half = Math.ceil(R * 1.2) + 1;
+  const hy = Math.ceil(R * sq * 1.2) + 1;
+  const W = half * 2 + 1;
+  const Hh = hy * 2 + 1;
+  const data = new Uint8ClampedArray(W * Hh * 4);
+  const ph = variant * 1.9 + 0.3;
+  const s = variant * 19 + R + 7;
+  const T = [hex(SOOT[0]), hex(SCORCH[1]), hex(SOOT[1]), hex(SCORCH[3])];
+  for (let y = 0; y < Hh; y++) {
+    for (let x = 0; x < W; x++) {
+      const dx = x - half;
+      const dy = (y - hy) / sq;
+      const a = Math.atan2(dy, dx);
+      const e = R * (0.9 + 0.16 * Math.sin(3 * a + ph) + 0.1 * Math.sin(5 * a + ph * 1.7));
+      const d = Math.hypot(dx, dy) / e;
+      if (d >= 1.05) continue;
+      const dith = BAYER[(x & 1) + ((y & 1) << 1)];
+      const n = vnoise(x * 0.6 + variant * 3.7, y * 0.9, s);
+      if (d + (n - 0.5) * 0.5 + dith * 0.35 > 0.85) continue;
+      const t = Math.max(0, Math.min(3, Math.floor(d * 2.6 + (n - 0.5) * 1.6 + dith * 0.8)));
+      const c = T[t];
       const o = (y * W + x) * 4;
       data[o] = c[0];
       data[o + 1] = c[1];
       data[o + 2] = c[2];
-      data[o + 3] = f > 0.12 ? 235 : 170;
+      data[o + 3] = t === 3 ? 170 : 235;
     }
   }
   return { w: W, h: Hh, ox: half, oy: hy, data };
@@ -379,7 +446,7 @@ export function drawBlob(ctx: CanvasRenderingContext2D, kind: BlobKind, r: numbe
   const sm = ctx.imageSmoothingEnabled;
   // a soft light or dust sheet drawn with coarse cells (a big one) is smoothed, so its dither never shows as a
   // checkerboard of big squares; every other blob keeps crisp pixels
-  ctx.imageSmoothingEnabled = f >= 4 && (kind === 'glow' || kind === 'halo' || kind === 'haze' || kind === 'heat');
+  ctx.imageSmoothingEnabled = f >= 4 && (kind === 'glow' || kind === 'halo' || kind === 'haze' || kind === 'heat' || kind === 'press');
   ctx.globalAlpha = prev * Math.min(1, alpha);
   ctx.drawImage(e.page, e.sx, e.sy, e.w, e.h, cx - e.ox * k, cy - e.oy * k, e.w * k, e.h * k);
   ctx.globalAlpha = prev;

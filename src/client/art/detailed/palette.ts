@@ -123,8 +123,10 @@ export const DUST: Ramp = ['#4b3d2d', '#6a5843', '#8a775c', '#a89679'];
 export const SPRAY: Ramp = ['#7c909c', '#a3b4bd', '#c9d5da', '#e9eff1'];
 /** Scorched ground and crater earth, darkest first. */
 export const SCORCH: readonly string[] = ['#141110', '#211b18', '#2f2620', '#3f342b', '#54473a', '#6c5d4b', '#86775f'];
-/** Earth fused to glass at the atom bomb's ground zero: a dull green grey, darkest first. */
-export const GLASS: readonly string[] = ['#262c28', '#36403a', '#4d5850'];
+/** Earth fused to glass at the atom bomb's ground zero: a dull bottle olive, darkest first (warm, never teal). */
+export const GLASS: readonly string[] = ['#2c3020', '#41472c', '#5b623c'];
+/** Ash and blasted earth bleached pale at the atom bomb's ground zero: light warm greys, darkest first (lighter than the land). */
+export const ASH: readonly string[] = ['#7d786e', '#9a958a', '#b5b0a4', '#cdc8bb'];
 /** Debris chunks: dark, mid, lit. */
 export const DEBRIS: readonly string[] = ['#141311', '#2b2723', '#4a443d'];
 /** Tracer and shell glow. */

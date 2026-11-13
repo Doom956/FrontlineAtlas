@@ -1,9 +1,10 @@
 // The detailed style's cannon fire (client only), in the same pixels, puffs and palette as the explosions:
 //   muzzle flash  out of each barrel of the turret (two tongues side by side) along the line of fire: a white-yellow
 //                 core at the muzzle, a long orange tongue of flame, short side jets out of the muzzle brakes, all at
-//                 full length in the first frame and drawn back within about a tenth of a second; a soft light thrown
-//                 on the deck and the water round it; the fire balling up and cooling ahead of the muzzle; the blast
-//                 pressing the water flat (a pale patch, spray thrown off); then a big puff of pale gun smoke pushed out
+//                 full length in the first frame and drawn back within about a tenth of a second; a warm light thrown
+//                 on the deck round the turret and on the water ahead (held two frames); the fire balling up and
+//                 cooling ahead of the muzzle; the blast pressing the water flat beside the hull (a pale patch for a
+//                 few frames, spray thrown off); then a big puff of pale gun smoke pushed out
 //                 along the line of fire that slows, swells, rises and drifts off downwind (flashSize, flashTime,
 //                 muzzleSmoke). The interface gives a ship's drawing no target, so its turrets cannot train on it: the
 //                 flash comes from the gun's resting position (UnitArt.turretPoint) and points at the target. A
@@ -94,10 +95,17 @@ function drawMuzzle(ctx: CanvasRenderingContext2D, f: MuzzleDraw, m: MotionParam
   const mid = g.res < 1.5;
   const prev = ctx.globalAlpha;
   const still = m.reduced;
-  // ---- the light on the deck and the water round the muzzle, out ahead of it (a fifth of a second at most)
-  if (!still && tt < 160) {
-    const k = tt / 160;
-    drawBlob(ctx, 'glow', Math.max(2, 8 * cpu * (0.55 + 0.45 * size) * (0.9 + 0.25 * k)), Math.floor(sd) & 3, f.x + c * 3.5 * U, f.y + s * 3.5 * U, g, 0.8 * (1 - k) ** 1.5);
+  // ---- the blast pressing the water flat beside the hull (a pale patch for three or four frames), under the fire
+  if (!still && tt < 75) {
+    const k = tt / 75;
+    drawBlob(ctx, 'press', Math.max(2, 4.2 * cpu * (0.7 + 0.3 * size) * (0.8 + 0.5 * k)), Math.floor(sd + 2) & 3, f.x + c * 4.5 * U, f.y + s * 4.5 * U + 1.2 * U, g, 0.62 * (1 - k * k));
+  }
+  // ---- the light of the shot: on the deck round the turret (held two frames, then gone within a tenth of a second)
+  // and on the water out ahead, past the tongue of flame
+  if (!still && tt < 110) {
+    const k = tt < 34 ? 0 : (tt - 34) / 76;
+    drawBlob(ctx, 'glow', Math.max(2, 3.2 * cpu * (0.7 + 0.3 * size)), Math.floor(sd) & 3, f.x - c * 1.2 * U, f.y - s * 1.2 * U, g, 0.55 * (1 - k) ** 1.5);
+    drawBlob(ctx, 'glow', Math.max(2, 6 * cpu * (0.55 + 0.45 * size)), (Math.floor(sd) + 1) & 3, f.x + c * 9 * U, f.y + s * 9 * U + U, g, 0.45 * (1 - k) ** 1.5);
   }
   // ---- the blast pressing the water flat ahead of the gun, and spray thrown off it
   if (tt < 900) {

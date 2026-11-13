@@ -60,6 +60,11 @@ export interface SmokeSource {
   /** multipliers of the wind and the rise (a heavy column climbs faster) */
   wind: number;
   rise: number;
+  /**
+   * Seconds the wind takes to get hold of a fresh puff (0 or absent: at once): before that it climbs nearly straight
+   * up, so a column stands on its fire before it bends over downwind.
+   */
+  calm?: number;
   /** phase, so neighbouring trails do not puff in step */
   seed: number;
 }
@@ -87,12 +92,15 @@ export function puffOf(s: SmokeSource, a: number, k: number): Puff {
   const bx = -(s.vx * c - s.vy * sn) * sec;
   const by = -(s.vx * sn + s.vy * c) * sec;
   const wob = Math.sin(a * 5.3 + k * 1.9 + s.seed * 6) * s.u * 0.7 * a;
-  puff.x = s.x + bx + WIND_X * s.u * s.wind * sec + wob;
-  puff.y = s.y + by + (WIND_Y * s.wind - RISE * s.rise) * s.u * sec;
+  // the wind's share of the puff's age: slow to take hold of it while it is calm, then all of it
+  const calm = s.calm ?? 0;
+  const ws = calm > 0 ? (sec * sec) / (sec + calm) : sec;
+  puff.x = s.x + bx + WIND_X * s.u * s.wind * ws + wob;
+  puff.y = s.y + by + WIND_Y * s.wind * s.u * ws - RISE * s.rise * s.u * sec;
   puff.r = Math.max(1, s.r0 + (s.r1 - s.r0) * easeOut(a));
   puff.alpha = s.alpha * (a < 0.08 ? a / 0.08 : 1) * (1 - a) ** 1.25;
   // dark smoke goes from oily soot to grey; a thin wisp (no dark at all) from grey to pale, so it shows over a dark hull
-  puff.kind = s.dark > 0 ? (a < s.dark * 0.6 ? 'soot' : a < s.dark ? 'shade' : 'smoke') : a < 0.3 ? 'smoke' : 'vapour';
+  puff.kind = s.dark > 0 ? (a < s.dark * 0.6 ? 'soot' : a < s.dark ? 'shade' : 'smoke') : a < 0.12 ? 'smoke' : 'vapour';
   return puff;
 }
 
@@ -107,9 +115,23 @@ export function drawSmokeTrail(ctx: CanvasRenderingContext2D, s: SmokeSource, g:
   // the oldest puff first: the k whose age is closest to 1
   const k0 = (((Math.ceil((1 - base) * n) - 1) % n) + n) % n;
   const sd = Math.floor(s.seed * 64);
+  // no gaps: neighbouring puffs lie as far apart as the source and the wind carry them in one puff's turn (the path
+  // length, whether it sails straight or turns), so each is drawn at least about that wide and they overlap into one
+  // stream instead of a dotted line of balls
+  const minR = joinRadius(s, g.k);
   for (let j = 0; j < n; j++) {
     const k = (k0 - j + n) % n;
-    const p = puffOf(s, frac(base + k / n), k);
-    drawBlob(ctx, p.kind, p.r, (k + sd) & 3, p.x, p.y, g, p.alpha);
+    const a = frac(base + k / n);
+    const p = puffOf(s, a, k);
+    const r = Math.max(p.r, minR * (0.85 + 0.3 * a));
+    drawBlob(ctx, p.kind, r, (k + sd) & 3, p.x, p.y, g, p.alpha);
   }
+}
+
+/** The smallest radius (cells) drawSmokeTrail gives a puff of `s` with grid cells `k` CSS px wide, so its puffs join (pure). */
+export function joinRadius(s: SmokeSource, k: number): number {
+  const n = Math.max(1, Math.round(s.n));
+  const gx = -s.vx + WIND_X * s.u * s.wind;
+  const gy = -s.vy + (WIND_Y * s.wind - RISE * s.rise) * s.u;
+  return Math.min(((Math.hypot(gx, gy) * s.lifeMs) / 1000 / n / k) * 0.62, Math.max(s.r0, s.r1 * 1.6));
 }

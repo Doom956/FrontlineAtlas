@@ -384,15 +384,16 @@ function drawHit(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams): 
       drawFlame(ctx, fx, fy, Rc * (i === 0 ? 0.44 : 0.3) * grow, g, b.ageMs + i * 71, rnd(sd, i + 42), m, 1, i === 0 ? -1 : 2);
     }
   }
-  // sparks: white-hot fragments flung out fast on low arcs, each drawing a short streak, gone in a moment
+  // sparks: a few white-hot fragments flung out to one side (downwind, up off the hull) on low arcs, each drawing a
+  // short streak, gone in a moment; not a halo round the fire
   if (!b.reduced) {
-    const n = Math.round((mid ? 7 : 12) * m.debris);
+    const n = Math.round((mid ? 4 : 7) * m.debris);
     for (let i = 0; i < n; i++) {
-      const life = 230 + 220 * rnd(sd, i + 120);
+      const life = 200 + 180 * rnd(sd, i + 120);
       const k = age / life;
       if (k >= 1) continue;
-      const ang = -Math.PI / 2 + (rnd(sd, i + 100) - 0.5) * 3;
-      const v = R * (3.2 + 3.4 * rnd(sd, i + 110));
+      const ang = -Math.PI / 2 + 0.6 + (rnd(sd, i + 100) - 0.5) * 1.5;
+      const v = R * (2 + 2 * rnd(sd, i + 110));
       const at = (kk: number): [number, number] => [x + Math.cos(ang) * v * kk * u, y + (Math.sin(ang) * v * kk * 0.8 + 3.6 * R * kk * kk) * u];
       ctx.globalAlpha = prev * (1 - k * k);
       for (let j = 2; j >= 0; j--) {
@@ -403,14 +404,14 @@ function drawHit(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams): 
     // dark plates of steel tumbling out and falling back
     const nd = Math.round((mid ? 3 : 6) * m.debris);
     for (let i = 0; i < nd; i++) {
-      const life = 520 + 260 * rnd(sd, i + 130);
+      const life = 420 + 200 * rnd(sd, i + 130);
       const k = age / life;
       if (k >= 1) continue;
-      const ang = -Math.PI / 2 + (rnd(sd, i + 140) - 0.5) * 2.4;
-      const v = R * (2 + 1.8 * rnd(sd, i + 150));
+      const ang = -Math.PI / 2 + 0.3 + (rnd(sd, i + 140) - 0.5) * 2;
+      const v = R * (1.8 + 1.5 * rnd(sd, i + 150));
       const px = x + Math.cos(ang) * v * k * u;
       const py = y + (Math.sin(ang) * v * k * 0.85 + 3.4 * R * k * k) * u;
-      ctx.globalAlpha = prev * (1 - k ** 3);
+      ctx.globalAlpha = prev * (1 - k) ** 1.5;
       const tumble = (Math.floor(age / 70) + i) & 1;
       const c = k < 0.18 ? FIRE[3] : DEBRIS[i % 3];
       speck(ctx, px, py, g, 1, c);
@@ -445,10 +446,11 @@ function drawSplash(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams
   const k = clamp01(age / fT);
   const mid = g.res < 1.5;
   const prev = ctx.globalAlpha;
-  // the foam: a patch spreading where the water came down, breaking up and fading (two lobes, downwind the larger)
-  const fk = clamp01((age - fT * 0.2) / (dur - fT * 0.2));
-  if (fk > 0) {
-    const a = 0.95 * (1 - fk) ** 1.1 * clamp01((age - fT * 0.2) / 140);
+  // the foam: white lace spreading where the water came down, breaking up and gone by about 60% of the splash's life
+  // (two lobes, downwind the larger)
+  const fk = clamp01((age - fT * 0.2) / Math.max(1, dur * 0.6 - fT * 0.2));
+  if (fk > 0 && fk < 1) {
+    const a = 0.95 * (1 - fk * fk) * clamp01((age - fT * 0.2) / 140);
     const level = Math.min(3, Math.floor(fk * 4.2));
     drawBlob(ctx, 'foam', Rc * (1 + 1.8 * easeOut(fk)), Math.floor(sd) & 3, x, y + 0.2 * u, g, a, level);
     drawBlob(ctx, 'foam', Rc * (0.6 + 1.3 * easeOut(fk)), (Math.floor(sd) + 1) & 3, x + R * (0.7 + 0.7 * fk) * u, y - R * 0.12 * u, g, a * 0.85, Math.min(3, level + 1));
@@ -471,8 +473,14 @@ function drawSplash(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams
     const spread = 1 + 0.5 * broke;
     for (let j = 0; j <= rows; j++) {
       const yy = j / rows;
-      const hwU = R * (0.26 + 0.42 * yy ** 1.4 + (yy > 0.7 ? 0.14 * Math.sin(((yy - 0.7) / 0.3) * Math.PI) : 0)) * spread;
-      const hw = Math.max(1, Math.round(hwU * g.res + (rnd(sd + step, j) - 0.5) * 1.6));
+      // a narrow foot flaring into a wide crown (about 0.16 R at the base to 1 R at 0.8 of its height), rounded off
+      // at the very top; each side of each row ragged on its own
+      const flare = Math.min(1, yy / 0.8);
+      const hwU = R * (0.16 + 0.86 * flare ** 1.7 - (yy > 0.86 ? 0.55 * ((yy - 0.86) / 0.14) ** 2 : 0)) * spread;
+      const jag = 1 + 2.4 * yy;
+      const hwL = Math.max(1, Math.round(hwU * g.res + (rnd(sd + step, j) - 0.5) * jag));
+      const hwR = Math.max(1, Math.round(hwU * g.res + (rnd(sd + step, j + 97) - 0.5) * jag));
+      const hw = Math.max(hwL, hwR);
       // the plume leans a little downwind as it rises
       const cx = x + (yy * yy * R * 0.35 + (rnd(sd, j + 300) - 0.5) * 0.6 * yy) * u;
       const cy = y - j * cell;
@@ -487,21 +495,21 @@ function drawSplash(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams
       };
       // the head is thinner spray than the body
       ctx.globalAlpha = prev * (1 - broke * 0.4) * (yy > 0.78 ? 0.8 : 0.97);
-      for (let o = -hw; o <= hw; o++) {
-        const rel = (o + hw) / (2 * hw);
+      for (let o = -hwL; o <= hwR; o++) {
+        const rel = (o + hwL) / (hwL + hwR);
         // holes in the spray toward the edges and in the head; more as it falls apart, from the top down
         const edgeHole = (Math.abs(o) / hw) ** 4 * (0.15 + 0.65 * yy * yy) + (yy > 0.8 ? 0.2 * (yy - 0.8) / 0.2 : 0);
         const gone = rnd(j * 31 + o * 7, step + Math.floor(sd)) < edgeHole + broke * (0.5 + 0.5 * yy);
         // lit on its left, white streaks of water running up it, shaded on its right
         const streak = rnd(o * 13 + 5, Math.floor(sd)) > 0.62;
-        const tone = gone ? -1 : rel < 0.34 || (streak && rel < 0.7) || yy > 0.92 ? 3 : rel < 0.72 ? 2 : 1;
+        const tone = gone ? -1 : rel < 0.4 || (streak && rel < 0.6) || yy > 0.93 ? 3 : rel < 0.62 ? 2 : 1;
         if (tone !== runTone) {
           flush(o);
           runStart = o;
           runTone = tone;
         }
       }
-      flush(hw + 1);
+      flush(hwR + 1);
     }
     ctx.globalAlpha = prev;
   }
@@ -988,8 +996,8 @@ function drawMapFx(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionParams)
     case 'splash': {
       // a ship going under: an oil slick spreading, foam and bubbles, wreckage bobbing and sinking
       const end = 1 - t;
-      // churned water where it went down: a patch of foam spreading and breaking up round the slick
-      drawBlob(ctx, 'foam', (4 + 7 * easeOut(t)) * k * g.res, Math.floor(sd) & 3, f.x, f.y, g, 0.75 * end, Math.min(3, Math.floor(t * 4)));
+      // churned water where it went down: a small lace of foam round the slick, breaking up and gone before the smoke
+      if (t < 0.7) drawBlob(ctx, 'foam', (3 + 3.5 * easeOut(t)) * k * g.res, Math.floor(sd) & 3, f.x, f.y, g, 0.5 * (1 - t / 0.7), Math.min(3, 1 + Math.floor(t * 3)));
       drawBlob(ctx, 'soot', (2.5 + 5 * easeOut(t)) * k * g.res, 1, f.x, f.y, g, 0.35 * end);
       // the burning wreck's smoke: oily soot rising and turning grey as it drifts off
       for (let j = 0; j < 4; j++) {
