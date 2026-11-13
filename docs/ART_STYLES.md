@@ -9,10 +9,17 @@ paratroopers), `missiles`, `explosions`, `craters`, `cannonFire`; troop icons do
 
 `troopIcons` (`TroopIconArt` in `art/types.ts`) draws one troop marker (infantry, armor, artillery, or an unknown mix)
 in a size + 2 px footprint. The refined and realistic markers are a symbol on an owner-colour plate. The detailed ones
-are bare mini units with no plate (`art/detailed/troopIcons.ts`): a rifleman, a tank, a towed field gun and a grey
-figure with a question mark, the nation colour on the uniform, hull and shield, a dark 1 px outline, and a lighter rim
-on a near-black nation. A style with bare markers sets `bare: true`; the shared troop pills (`render/troopIcons.ts`)
-then run their dark plate under the markers and set them side by side.
+are bare mini units with no plate (`art/detailed/troopIcons.ts`), drawn in side view facing right (a profile reads best
+at 12 to 16 px; the tank's deck and turret roof and the gun's shield show a little of their top): a rifleman with
+helmet, pack and rifle, a tank, a towed field gun (shield, spoked wheel, split trail), and for an unknown mix the
+rifleman's own silhouette in two neutral greys with a question mark. The nation colour sits where the map units carry
+it: the soldier's uniform, the tank's turret and a band on its olive hull, the gun's shield. A dark 1 px outline keeps
+each one readable on any ground, a near-black nation stays dark with a lighter rim, and every kind stands on one ground
+row. On a 2x screen a second set at twice the pixels is drawn (edges redrawn smooth, the small parts drawn again
+finer). A style with bare markers sets `bare: true` and gives each marker's real width (`span`); the shared troop pills
+(`render/troopIcons.ts`) then run their dark plate under the markers and set them side by side by those widths. On
+bare markers the soldier next to a nation's army count wears a plain field uniform (olive, khaki or field grey), since
+it stands on the nation's own land.
 
 `paradrop` (`ParadropArt` in `art/types.ts`) is the paratroopers: the parachutes coming down round the point a cargo
 plane dropped its troops on (owner colour, age, parachute count, zoom, seed; drawn at every zoom, far out too) and the
