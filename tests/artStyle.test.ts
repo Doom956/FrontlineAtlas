@@ -2,13 +2,15 @@
 // module covering every category, and the three style folders staying apart.
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { applyPicks, ART_CATEGORIES, OWNER_PICKS, ART_STYLES, artStyleOf, CATEGORY_LABEL, defaultMotionPicks, defaultStylePicks, MOTION_CATEGORIES, MOTION_PRESETS, motionCategoryOf, motionPresetFor, parseMotionPicks, parseStylePicks, picksLine, setArtStyle, setMotionPreset } from '../src/client/art/artStyle';
 import { motionParams } from '../src/client/art/motion';
 import { artFor, motionFor, styleModule } from '../src/client/art/registry';
 import { refined } from '../src/client/art/refined';
 import { SPRITE_KEYS, spriteKey, unitCategoryOf, unitTypeOf, variantOf } from '../src/client/art/shared/keys';
-import { BLAST_KINDS } from '../src/client/art/types';
+import { BLAST_KINDS, CRATER_ATOM_REACH, CRATER_REACH, type UnitDraw } from '../src/client/art/types';
+import { drawMapSprite, unitDamage, type MapSpriteState } from '../src/client/render/pixelSprites';
+import type { Unit } from '../src/sim/types';
 
 afterEach(() => {
   setArtStyle('all', 'refined');
@@ -150,8 +152,60 @@ describe('art switch', () => {
 });
 
 describe('owner picks', () => {
-  it('starts the game in detailed pixel art with realistic craters and cannon fire', async () => {
+  it('starts the game in detailed pixel art (craters too) with realistic cannon fire', async () => {
     const { OWNER_PICKS, ART_CATEGORIES: cats } = await import('../src/client/art/artStyle');
-    for (const c of cats) expect(OWNER_PICKS[c], c).toBe(c === 'craters' || c === 'cannonFire' ? 'realistic' : 'detailed');
+    for (const c of cats) expect(OWNER_PICKS[c], c).toBe(c === 'cannonFire' ? 'realistic' : 'detailed');
+  });
+});
+
+describe('unit damage for the art', () => {
+  const ship = (hp: number, over: Partial<Unit> = {}): Unit => ({ type: 'warship', hp, ...over }) as Unit;
+
+  it('reads 1 - hp / max hp from the game, never below 0 or above 1', () => {
+    expect(unitDamage(ship(3))).toBe(0);
+    expect(unitDamage(ship(1))).toBeCloseTo(2 / 3, 6);
+    expect(unitDamage(ship(0))).toBe(1);
+    expect(unitDamage(ship(-2))).toBe(1);
+    // a battleship has 3 more hp than a plain warship, a veteran 1 more per level
+    expect(unitDamage(ship(3, { variant: 'battleship' }))).toBeCloseTo(0.5, 6);
+    expect(unitDamage(ship(5, { vet: 2 }))).toBe(0);
+    // more hp than the client knows of (an upgrade): unhurt, not negative
+    expect(unitDamage(ship(9))).toBe(0);
+    // units with nothing to lose, and odd values
+    expect(unitDamage({ type: 'transportPlane', hp: 1 } as Unit)).toBe(0);
+    expect(unitDamage({ type: 'atomBomb', hp: 1 } as Unit)).toBeCloseTo(0.5, 6);
+    expect(unitDamage(ship(Number.NaN))).toBe(0);
+  });
+
+  it('reaches the style through drawMapSprite, and every style takes a badly damaged ship', () => {
+    const seen: number[] = [];
+    const spy = vi.spyOn(styleModule('refined').ships, 'drawUnit').mockImplementation((_c, u: UnitDraw) => {
+      seen.push(u.damage);
+      return true;
+    });
+    try {
+      setArtStyle('ships', 'refined');
+      const ss: MapSpriteState = { zoom: 14, scale: 2, dpr: 1, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 1, damage: 0.6 };
+      const ctx = {} as CanvasRenderingContext2D;
+      drawMapSprite(ctx, 'warship', 'destroyer', 10, 10, 0, [64, 160, 255], 0, ss);
+      ss.damage = 0;
+      drawMapSprite(ctx, 'warship', undefined, 10, 10, 0, [64, 160, 255], 0, ss);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(seen).toEqual([0.6, 0]);
+    // without a canvas the styles draw nothing, but a damaged unit must not throw
+    const ctx = new Proxy({}, { get: () => () => undefined }) as unknown as CanvasRenderingContext2D;
+    for (const st of ART_STYLES)
+      for (const key of ['battleship', 'destroyer', 'carrier', 'warship'] as const)
+        for (const damage of [0, 0.3, 0.6, 0.9, 1]) {
+          const u: UnitDraw = { key, mods: 0, owner: [64, 160, 255], x: 50, y: 50, angle: 0.4, zoom: 14, scale: 2, lod: 'near', dpr: 1, timeMs: 1500, turnRate: 0, speed: 1, moving: true, seed: 3, alpha: 1, shadow: true, damage };
+          expect(() => styleModule(st).ships.drawUnit(ctx, u, motionParams('lively', false)), `${st} ${key} ${damage}`).not.toThrow();
+        }
+  });
+
+  it("gives the atom bomb's ground mark room for its blast zone", () => {
+    expect(CRATER_ATOM_REACH).toBeGreaterThan(3 * 1.0);
+    expect(CRATER_ATOM_REACH).toBeGreaterThan(CRATER_REACH);
   });
 });

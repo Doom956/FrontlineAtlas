@@ -35,7 +35,7 @@ function recorder(): { ctx: CanvasRenderingContext2D; log: string[] } {
 const [subtle, lively, cinematic] = (['subtle', 'lively', 'cinematic'] as const).map((p) => motionParams(p, false));
 
 function unit(key: SpriteKey, over: Partial<UnitDraw> = {}): UnitDraw {
-  return { key, mods: 0, owner: [64, 160, 255], x: 100, y: 80, angle: 0.3, zoom: 14, scale: 2, lod: 'near', dpr: 1, timeMs: 1234, turnRate: 0.4, speed: 2, moving: true, seed: 7, alpha: 1, shadow: true, ...over };
+  return { key, mods: 0, owner: [64, 160, 255], x: 100, y: 80, angle: 0.3, zoom: 14, scale: 2, lod: 'near', dpr: 1, timeMs: 1234, turnRate: 0.4, speed: 2, moving: true, seed: 7, alpha: 1, shadow: true, damage: 0, ...over };
 }
 
 describe('realistic art style', () => {
