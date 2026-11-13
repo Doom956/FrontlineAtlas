@@ -181,8 +181,9 @@ export function rolled(parts: readonly Part[], roll: number, list = false): Part
   return parts.map((p) => {
     const b = partBox(p);
     const vc = (b[1] + b[3]) / 2;
-    // a listing ship: what stands high over the deck leans over toward the low side with it
-    const lean = list ? (p.z + p.h * 0.5) * s : 0;
+    // a listing ship: what stands high over the deck leans a little toward the low side with it (a shift, not a
+    // squash: the bridge and masts keep their full height and silhouette)
+    const lean = list ? (p.z + p.h * 0.5) * s * 0.4 : 0;
     const sv = (q: readonly number[] | undefined, k: Part['k'] | 'clip'): number[] | undefined => {
       if (!q) return undefined;
       if (k === 'poly') return q.map((x, i) => (i % 2 ? x * c + lean : x));
