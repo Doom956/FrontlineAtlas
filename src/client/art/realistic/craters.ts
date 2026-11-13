@@ -295,6 +295,9 @@ const smooth = (t: number): number => {
   return c * c * (3 - 2 * c);
 };
 
+/** The longest a fire burns (q): its embers are out by about 1.8 times that, its smoke by 2.5 times. */
+const BURN_MAX = 0.34;
+
 /**
  * Fires burning in and round a fresh crater: a few spots of fire (in the pit, on the rim, on clods thrown out), each a
  * glow on the ground, two or three flame tongues licking up and leaning with the wind, embers, and smoke rising off
@@ -307,7 +310,7 @@ const smooth = (t: number): number => {
 export interface CraterFire {
   /** how big a blast left the crater (0 a shell .. 1 an atom bomb) */
   k: number;
-  /** when (q) the fires are out; embers glow to about 1.8 times that, smoke rises to 3 times that */
+  /** when (q) the fires are out; embers glow to about 1.8 times that, smoke rises to 2.5 times that */
   burn: number;
   /** a flame's height (CSS px) */
   flameH: number;
@@ -325,7 +328,8 @@ export function craterFire(radiusPx: number, zoom: number, m: MotionParams): Cra
   const fs = 0.65 + 0.5 * m.fireLinger;
   return {
     k,
-    burn: (0.15 + 0.35 * k) * fd,
+    // eased toward a third of the life at most, so even a cinematic atom bomb's embers are out before the crater fades
+    burn: BURN_MAX * (1 - Math.exp((-(0.15 + 0.35 * k) * fd) / BURN_MAX)),
     // about 0.8 of a tile for a shell's, 1.4 for an atom bomb's, more on a big crater
     flameH: (zoom * (0.8 + 0.6 * k) + radiusPx * 0.16 * k * k) * fs,
     spots: Math.min(MAX_SPOTS, Math.round(1 + 12 * Math.pow(k, 1.15))),
@@ -336,7 +340,7 @@ function drawFire(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams,
   const q = d.q;
   const { k, burn, flameH: fh, spots: n } = craterFire(d.radiusPx, d.zoom, m);
   // past every ember and every wisp of smoke: nothing to draw
-  if (q >= burn * 3) return;
+  if (q >= burn * 2.5) return;
   const smokeK = 0.5 + 0.5 * m.craterSmoke;
   const R = d.radiusPx;
   const ign = clamp01(q / 0.008);
@@ -376,7 +380,7 @@ function drawFire(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams,
     const dist = zone < 0.3 ? 0.12 + 0.45 * rnd(s, 3) : zone < 0.68 ? 0.82 + 0.3 * rnd(s, 3) : 1.25 + 0.55 * rnd(s, 3);
     SX[i] = d.x + Math.cos(a) * dist * R;
     SY[i] = d.y + Math.sin(a) * dist * R * 0.9;
-    SB[i] = (zone < 0.3 ? 1 : zone < 0.68 ? 0.85 : 0.6) * (0.75 + 0.45 * rnd(s, 4));
+    SB[i] = (zone < 0.3 ? 1 : zone < 0.68 ? 0.85 : 0.6) * (0.6 + 0.65 * rnd(s, 4));
     // each catches a moment apart and burns out at its own time (thrown-out clods first)
     const q0 = rnd(s, 5) * 0.01;
     const qEnd = burn * (zone < 0.68 ? 0.6 + 0.4 * rnd(s, 6) : 0.35 + 0.3 * rnd(s, 6));
@@ -384,7 +388,7 @@ function drawFire(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams,
     SI[i] = on * (1 - smooth((q - qEnd * 0.4) / (qEnd * 0.6)));
     SE[i] = on * (1 - smooth((q - qEnd * 0.7) / (qEnd * 1.1)));
     // smoke goes on longest, from the pit longest of all
-    SS[i] = on * (1 - smooth((q - qEnd * 0.3) / (qEnd * (i === 0 ? 2.7 : 1.9))));
+    SS[i] = on * (1 - smooth((q - qEnd * 0.3) / (qEnd * (i === 0 ? 2.2 : 1.6))));
     ic = Math.max(ic, SE[i]);
     // flames drawn top to bottom, so a nearer one stands in front
     let j = i;
@@ -449,7 +453,7 @@ function drawFire(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams,
       const w = fh * big * (t === 0 ? 0.68 : 0.58) * grow;
       const side = t === 0 ? 0 : t === 1 ? -1 : 1;
       const ox = side * 0.2 * fh * big;
-      const lean = -Math.PI / 2 + 0.26 + (still ? 0 : 0.09 * Math.sin(TAU * (tc * 0.6 + ph))) + side * 0.16;
+      const lean = -Math.PI / 2 + 0.18 + 0.2 * rnd(s, 36) + (still ? 0 : 0.09 * Math.sin(TAU * (tc * 0.6 + ph))) + side * 0.16;
       const v = Math.floor(s) + t;
       const x = SX[i] + ox;
       const y = SY[i] + fh * (0.12 + 0.06 * Math.abs(side)) * big;

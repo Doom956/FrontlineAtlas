@@ -54,8 +54,9 @@ describe('realistic crater fires', () => {
     // a shell's fire is small and brief: one spot, out within the first sixth of the crater's life
     expect(f[0].spots).toBe(1);
     expect(f[0].burn).toBeLessThan(1 / 6);
-    // an atom bomb's burns through a good part of it
-    expect(f[3].burn).toBeGreaterThan(0.3);
+    // an atom bomb's burns through a good part of it, and every fire's embers are out before the crater fades
+    expect(f[3].burn).toBeGreaterThan(0.2);
+    for (const m of [subtle, lively, cinematic]) expect(craterFire(ATOM * 3, 3, m).burn * 1.8).toBeLessThan(0.62);
   });
 
   it('orders the fires from subtle (small, short) to cinematic (big, long)', () => {
@@ -79,7 +80,7 @@ describe('realistic crater fires', () => {
       realistic.craters.draw(fresh.ctx, crater(rt, burn * 0.3, zoom), m);
       expect(fresh.calls.filter((c) => c.name === 'fillRect').length, `embers ${rt}`).toBeGreaterThan(0);
       const out = recorder();
-      realistic.craters.draw(out.ctx, crater(rt, Math.min(0.99, burn * 3.05), zoom), m);
+      realistic.craters.draw(out.ctx, crater(rt, Math.min(0.99, burn * 2.55), zoom), m);
       expect(out.calls.filter((c) => c.name === 'fillRect'), `out ${rt}`).toEqual([]);
       for (const r of [fresh, out]) {
         expect(r.ctx.globalAlpha).toBeCloseTo(1, 6);
