@@ -396,7 +396,7 @@ function drawPlane(ctx: CanvasRenderingContext2D, d: DeathDraw, m: MotionParams)
   }
 
   // ---- the hit: a flash and a black burst left hanging where it was
-  blastAt(ctx, 'flak', d.x, d.y, d.reduced ? 120 : age, d.zoom, d.scale, d.dpr, d.seed, m, d.reduced);
+  if (!d.reduced || d.t < 0.34) blastAt(ctx, 'flak', d.x, d.y, d.reduced ? 120 : age, d.zoom, d.scale, d.dpr, d.seed, m, d.reduced);
   ctx.globalAlpha = prev;
 }
 
@@ -464,13 +464,18 @@ function crashSea(ctx: CanvasRenderingContext2D, d: DeathDraw, m: MotionParams, 
   column(ctx, x, y, g, u, timeMs, m, mid ? 3 : 5, 1500 * lin, g.res * size * 0.9, g.res * size * 3, 0.55, colA * 0.85, d.seed, 1);
   // the splash: a big column of water thrown up and falling back, foam spreading
   // (at most 1.15 times a shell's: its foam stays in fine cells close up)
-  blastAt(ctx, 'splash', x, y, d.reduced ? 200 : a, d.zoom, d.scale, d.dpr, d.seed, m, d.reduced, Math.min(1.15, 0.75 + 0.35 * size));
+  if (!d.reduced || d.t < 0.67) blastAt(ctx, 'splash', x, y, d.reduced ? 200 : a, d.zoom, d.scale, d.dpr, d.seed, m, d.reduced, Math.min(1.15, 0.75 + 0.35 * size));
   // a quick fireball of fuel at the surface and the flash
   fireball(ctx, x, y - R * 0.2 * u, R * 0.75, a, fT * 0.6, g, u, sd, mid ? 3 : 4);
   if (!d.reduced) flashCore(ctx, 'air', x, y, Rc * 0.8, a, g, m, sd);
 }
 
 // ------------------------------------------------------------------------------------------------- missiles
+
+/** A point worked out without allocating (a falling piece's place). */
+const PT = { x: 0, y: 0 };
+/** Both sides of a hull (across, in spans). */
+const SIDES = [-0.55, 0.55] as const;
 
 function drawMissile(ctx: CanvasRenderingContext2D, d: DeathDraw, m: MotionParams): void {
   const g = gridOf(d.scale, d.dpr);
@@ -516,10 +521,14 @@ function drawMissile(ctx: CanvasRenderingContext2D, d: DeathDraw, m: MotionParam
       const burning = main || rnd(sd, i + 44) < 0.5;
       const burnEnd = main ? 1 : 0.45 + 0.55 * rnd(sd, i + 45);
       const thick = main ? 1.4 : 0.6 + 0.7 * rnd(sd, i + 46);
-      const at = (kk: number): [number, number] => {
+      const cdx = Math.cos(dir) * vh * u;
+      const cdy = Math.sin(dir) * vh * u * FORE;
+      /** Where the piece is `kk` of its way down (into PT: no allocation per puff). */
+      const at = (kk: number): void => {
         const sp = easeOut(Math.min(1, kk));
         const h = 1 - kk * kk + pop * 4 * kk * (1 - kk);
-        return [x + ox + Math.cos(dir) * vh * sp * u - h * ox, y + oy + Math.sin(dir) * vh * sp * u * FORE - h * oy];
+        PT.x = x + ox + cdx * sp - h * ox;
+        PT.y = y + oy + cdy * sp - h * oy;
       };
       if (pass === 1) {
         // the smoke a burning piece leaves along its way down, lingering and drifting off after it
@@ -531,7 +540,9 @@ function drawMissile(ctx: CanvasRenderingContext2D, d: DeathDraw, m: MotionParam
           const pa = a - tb;
           const pk = pa / life;
           if (pk >= 1) continue;
-          const [qx, qy] = at(tb / tf);
+          at(tb / tf);
+          const qx = PT.x;
+          const qy = PT.y;
           const sec = d.reduced ? 0 : pa / 1000;
           const r = g.res * (0.4 + 1.15 * easeOut(pk)) * thick * (atom ? 1.1 : 1);
           drawBlob(ctx, pk < 0.4 ? 'soot' : pk < 0.7 ? 'shade' : 'smoke', r, (i + j) & 3, qx + WIND_X * u * sec * 0.6, qy - RISE * u * sec * 0.3, g, 0.85 * (1 - pk) ** 1.2 * Math.min(1, pa / 40));
@@ -541,7 +552,9 @@ function drawMissile(ctx: CanvasRenderingContext2D, d: DeathDraw, m: MotionParam
       if (k < 1) {
         if (pass !== 2) continue;
         // in the air: a burning piece (the small cold ones dark)
-        const [px, py] = at(k);
+        at(k);
+        const px = PT.x;
+        const py = PT.y;
         const hot = (burning && k < burnEnd) || k < 0.25;
         speck(ctx, px, py, g, main ? 2 : 1, hot ? (i & 1 ? TRACER[0] : TRACER[1]) : DEBRIS[i % 3]);
         if (main || (burning && k < burnEnd && !mid)) drawBlob(ctx, 'fire', Math.max(1, g.res * (main ? 0.9 : 0.55)), i, px, py - g.k * 0.5, g, 1, 2);
@@ -550,7 +563,9 @@ function drawMissile(ctx: CanvasRenderingContext2D, d: DeathDraw, m: MotionParam
       if (pass !== 0) continue;
       // down: a small blast on land, a splash on the sea (the main piece a little bigger), then a wisp
       const la = a - tf;
-      const [gx, gy] = at(1);
+      at(1);
+      const gx = PT.x;
+      const gy = PT.y;
       if (main) {
         if (d.water) blastAt(ctx, 'splash', gx, gy, la, d.zoom, d.scale, d.dpr, d.seed, m, d.reduced, atom ? 0.75 : 0.6);
         else blastAt(ctx, 'shell', gx, gy, la, d.zoom, d.scale, d.dpr, d.seed, m, d.reduced);
@@ -679,7 +694,7 @@ function drawTank(ctx: CanvasRenderingContext2D, d: DeathDraw, m: MotionParams):
   column(ctx, px, py, g, u, timeMs, m, mid ? 4 : 8, 2100 * lingerOf(m), g.res * size * 1.1, g.res * size * 4.4, 1, colA, d.seed, 1.3);
 
   // ---- the blast: steel struck, a fireball out of the turret ring, the flash
-  blastAt(ctx, 'hit', px, py, d.reduced ? 150 : age, d.zoom, d.scale, d.dpr, d.seed, m, d.reduced);
+  if (!d.reduced || d.t < 0.3) blastAt(ctx, 'hit', px, py, d.reduced ? 150 : age, d.zoom, d.scale, d.dpr, d.seed, m, d.reduced);
   fireball(ctx, px, py, R, age - 20, 420 * m.blastTime, g, u, sd, mid ? 3 : 5);
   if (!d.reduced) flashCore(ctx, 'bomb', px, py, R * g.res, age, g, m, sd);
   void dur;
@@ -765,7 +780,7 @@ function drawShip(ctx: CanvasRenderingContext2D, d: DeathDraw, m: MotionParams):
   // ---- foam where the sea meets the hull at its waterline, and bubbles boiling up
   if (sinkQ > 0 && sinkQ < 1) {
     const aw = dir < 0 ? -L / 2 + L * Math.min(1, Math.max(0, p)) : L / 2 - L * Math.min(1, Math.max(0, p));
-    for (const sv of [-0.55, 0.55]) {
+    for (const sv of SIDES) {
       const [fx, fy] = project(aw, sv * B, 0, th, rollRad, u, false);
       drawBlob(ctx, 'foam', g.res * size * (1.4 + 0.8 * Math.sin(age / 210 + sv * 3) ** 2), (Math.floor(age / 260) + (sv > 0 ? 1 : 0)) & 3, x + fx, y + fy, g, 0.85, 1);
     }
@@ -810,7 +825,7 @@ function drawShip(ctx: CanvasRenderingContext2D, d: DeathDraw, m: MotionParams):
 
   // ---- the hits: a blast on the hull, more on a big ship (a magazine going up)
   const [h0x, h0y] = project(...hitSpot(um, seedInt, 0), th, 0, u, false);
-  blastAt(ctx, 'hit', x + h0x, y + h0y, d.reduced ? 150 : age, d.zoom, d.scale, d.dpr, d.seed, m, d.reduced);
+  if (!d.reduced || d.t < 0.3) blastAt(ctx, 'hit', x + h0x, y + h0y, d.reduced ? 150 : age, d.zoom, d.scale, d.dpr, d.seed, m, d.reduced);
   if (L > 24 && !d.reduced) {
     const [h1x, h1y] = project(...hitSpot(um, seedInt, 1), th, 0, u, false);
     blastAt(ctx, 'hit', x + h1x, y + h1y, age - 260, d.zoom, d.scale, d.dpr, (d.seed + 0.37) % 1, m, false);
