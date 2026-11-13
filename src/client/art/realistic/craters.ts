@@ -449,14 +449,15 @@ function drawFire(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams,
       const ph = rnd(s, t + 30);
       const f1 = 1.1 + 0.6 * rnd(s, t + 33);
       const flick = still ? 1 : 1 + 0.17 * Math.sin(TAU * (tc * f1 + ph)) + 0.09 * Math.sin(TAU * (tc * f1 * 2.3 + ph * 3)) + 0.1 * (rnd(fr, i * 3 + t) - 0.5);
-      const h = fh * big * (t === 0 ? 1 : t === 1 ? 0.7 : 0.6) * grow * flick;
-      const w = fh * big * (t === 0 ? 0.68 : 0.58) * grow;
-      const side = t === 0 ? 0 : t === 1 ? -1 : 1;
-      const ox = side * 0.2 * fh * big;
-      const lean = -Math.PI / 2 + 0.18 + 0.2 * rnd(s, 36) + (still ? 0 : 0.09 * Math.sin(TAU * (tc * 0.6 + ph))) + side * 0.16;
+      // one tall tongue and shorter ones of uneven height set off to either side at random (never a tidy fan), all
+      // taller than they are wide and leaning downwind together, each swaying on its own
+      const h = fh * big * (t === 0 ? 1 : 0.4 + 0.38 * rnd(s, t + 43)) * grow * flick;
+      const w = fh * big * (t === 0 ? 0.56 : 0.44) * grow;
+      const ox = (t === 0 ? (rnd(s, 39) - 0.5) * 0.12 : (t === 1 ? -1 : 1) * (0.07 + 0.14 * rnd(s, t + 40))) * fh * big;
+      const lean = -Math.PI / 2 + 0.2 + 0.16 * rnd(s, t + 46) + (still ? 0 : 0.09 * Math.sin(TAU * (tc * 0.6 + ph)));
       const v = Math.floor(s) + t;
       const x = SX[i] + ox;
-      const y = SY[i] + fh * (0.12 + 0.06 * Math.abs(side)) * big;
+      const y = SY[i] + fh * (0.1 + 0.08 * rnd(s, t + 49)) * big;
       // white hot while it burns fiercely, then the dying picture (one picture each, the flicker hides the change)
       flame(ctx, Flame.TONGUE, hotA > 0.5, v, x, y, lean, h, w, Math.min(1, I * 2.5));
     }
@@ -475,8 +476,9 @@ function drawFire(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams,
         const rise = fh * big * (0.7 + 3.6 * ph);
         const drift = fh * 2.8 * ph * ph;
         const r = fh * (0.55 + 1.6 * ph) * (0.75 + 0.45 * big);
-        const kind = SI[i] > 0.3 && ph < 0.3 ? Puff.DARK : Puff.GREY;
-        puff(ctx, kind, i * 3 + j, SX[i] + WIND_X * drift, SY[i] - rise + WIND_Y * drift, r, 0.85 * S * ramp(ph, 0, 0.12) * Math.pow(1 - ph, 1.2));
+        // (dark smoke thinner and softer than grey, so a young puff over the fire never reads as a lump)
+        const dark = SI[i] > 0.3 && ph < 0.3;
+        puff(ctx, dark ? Puff.DARK : Puff.GREY, i * 3 + j, SX[i] + WIND_X * drift, SY[i] - rise + WIND_Y * drift, r * (dark ? 1.15 : 1), (dark ? 0.6 : 0.8) * S * ramp(ph, 0, 0.12) * Math.pow(1 - ph, 1.2));
       }
     }
   }

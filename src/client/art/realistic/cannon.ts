@@ -25,6 +25,8 @@ const SMOKE = 620;
 /** The barrels a flash comes out of (a turret's guns side by side) and how far apart they are (art units). */
 const BARRELS = 3;
 const GAP = 1.05;
+/** How far apart the barrels' tongues of fire start (art units): closer than the smoke, so they fuse into one blast. */
+const GAP_FIRE = 0.75;
 /** The shell leaving the muzzle (ms), before the map's own shell takes over. */
 const SLUG = 60;
 
@@ -113,10 +115,11 @@ function drawMuzzle(ctx: CanvasRenderingContext2D, f: MuzzleDraw, m: MotionParam
       const tb = tt - delay;
       if (tb < 0) continue;
       const qb = clamp01(tb / (FLASH - delay));
-      const lane = (b - 1) * GAP * U;
+      const lane = (b - 1) * GAP_FIRE * U;
       const main = b === 1 ? 1 : 0.85;
       const grow = clamp01(tb / 14);
-      const L = U * 9 * fz * main * (0.35 + 0.65 * grow) * (1 - 0.45 * qb);
+      // long for an instant, then drawn back into the fireball
+      const L = U * 9 * fz * main * (0.35 + 0.65 * grow) * (1 - 0.6 * qb);
       const W = U * 2.6 * fz * main * (0.75 + 0.7 * qb);
       const bx = mx + nx * lane;
       const by = my + ny * lane;
@@ -131,6 +134,10 @@ function drawMuzzle(ctx: CanvasRenderingContext2D, f: MuzzleDraw, m: MotionParam
         flame(ctx, Flame.CONE, qb < 0.25, v + 1, bx + c * U * 0.6, by + s * U * 0.6, ja, U * 3.8 * fz * (0.5 + 0.5 * grow) * (1 - qb * 0.6), U * 2.2 * fz, 1 - qb / 0.55);
       }
     }
+    // the barrels' blasts fused into one ball of fire rolling out along the line of fire, cooling as the smoke takes
+    // over (it covers the gaps between the tongues once the first instant is past, so they never read as a comb)
+    const fuse = ramp(q, 0.08, 0.26) * Math.pow(1 - q, 1.1);
+    if (fuse > 0.01) puff(ctx, Puff.FIRE, seed, mx + c * U * (2.4 + 1.6 * q) * fz, my + s * U * (2.4 + 1.6 * q) * fz, U * 2.7 * fz * (0.8 + 0.45 * q), 0.95 * fuse);
     // the white-hot core at the muzzles
     const core = (1 - q) * (1 - q);
     flashOver(ctx, mx + c * U * 0.9, my + s * U * 0.9, U * 3.4 * fz * (1 - 0.5 * q), core);
