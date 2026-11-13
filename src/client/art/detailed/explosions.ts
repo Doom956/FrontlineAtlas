@@ -63,7 +63,7 @@ function durationOf(kind: BlastKind, m: MotionParams): number {
 }
 
 /** A small square of colour on the grid. */
-function speck(ctx: CanvasRenderingContext2D, x: number, y: number, g: Grid, n: number, color: string): void {
+export function speck(ctx: CanvasRenderingContext2D, x: number, y: number, g: Grid, n: number, color: string): void {
   const s = Math.max(1, Math.round(n)) * g.p;
   ctx.fillStyle = color;
   ctx.fillRect((Math.round((x * g.dpr) / g.p) * g.p) / g.dpr, (Math.round((y * g.dpr) / g.p) * g.p) / g.dpr, s / g.dpr, s / g.dpr);
@@ -139,13 +139,13 @@ export function flashAt(kind: BlastKind, age: number, m: MotionParams): FlashAt 
  * The light a blast throws on the ground (or round it in the air, `air`) in its first moments: a soft dithered pool
  * that swells a little and fades fast. Drawn under the blast.
  */
-function flashGlow(ctx: CanvasRenderingContext2D, kind: BlastKind, x: number, y: number, Rc: number, age: number, g: Grid, m: MotionParams, sd: number, air: boolean): void {
+export function flashGlow(ctx: CanvasRenderingContext2D, kind: BlastKind, x: number, y: number, Rc: number, age: number, g: Grid, m: MotionParams, sd: number, air: boolean): void {
   const f = flashAt(kind, age, m);
   if (f.glowA > 0) drawBlob(ctx, air ? 'halo' : 'glow', Rc * f.glowR, Math.floor(sd) & 3, x, y, g, f.glowA);
 }
 
 /** The white-hot core of a blast's first two or three frames, with short spikes of light from the bigger ones. */
-function flashCore(ctx: CanvasRenderingContext2D, kind: BlastKind, x: number, y: number, Rc: number, age: number, g: Grid, m: MotionParams, sd: number): void {
+export function flashCore(ctx: CanvasRenderingContext2D, kind: BlastKind, x: number, y: number, Rc: number, age: number, g: Grid, m: MotionParams, sd: number): void {
   const f = FLASH[kind];
   const ms = CORE_MS * m.flashTime;
   if (age >= ms) return;
@@ -434,7 +434,8 @@ function drawSplash(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams
   const g = gridOf(b.scale, b.dpr);
   const s = SPEC.splash;
   const u = b.scale;
-  const R = s.r;
+  // a positive rt makes it bigger (a plane crashing into the sea), up to three times
+  const R = s.r * (b.rt > 0 ? Math.min(3, b.rt) : 1);
   const Rc = R * g.res;
   const fT = s.fire * m.blastTime;
   const dur = Math.max(1, b.durMs);
@@ -1064,6 +1065,34 @@ function drawMapFx(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionParams)
   }
   ctx.globalAlpha = prev;
 }
+
+const sub: BlastDraw = { kind: 'shell', x: 0, y: 0, t: 0, ageMs: 0, durMs: 1, zoom: 1, scale: 1, rt: 0, seed: 0, reduced: false, dpr: 1 };
+
+/**
+ * Draws a blast of `kind` at (x, y), `ageMs` after it went off, as the map would (the deaths build theirs from these):
+ * false when it is not showing at that age (before it or over). `rt` as BlastDraw.rt (a splash's size).
+ */
+export function blastAt(ctx: CanvasRenderingContext2D, kind: BlastKind, x: number, y: number, ageMs: number, zoom: number, scale: number, dpr: number, seed: number, m: MotionParams, reduced = false, rt = 0): boolean {
+  const dur = Math.max(1, durationOf(kind, m));
+  if (ageMs < 0 || ageMs > dur) return false;
+  sub.kind = kind;
+  sub.x = x;
+  sub.y = y;
+  sub.t = ageMs / dur;
+  sub.ageMs = ageMs;
+  sub.durMs = dur;
+  sub.zoom = zoom;
+  sub.scale = scale;
+  sub.rt = rt;
+  sub.seed = seed;
+  sub.reduced = reduced;
+  sub.dpr = dpr;
+  drawBlast(ctx, sub, m);
+  return true;
+}
+
+/** How long a blast of `kind` lasts (ms) under motion `m`. */
+export const blastMs = (kind: BlastKind, m: MotionParams): number => durationOf(kind, m);
 
 export const detailedExplosions: ExplosionArt = {
   durationMs: (kind, m) => durationOf(kind, m),

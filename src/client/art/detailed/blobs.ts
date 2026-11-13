@@ -19,12 +19,13 @@ import { CLOUD, CLOUD_SHADE, CLOUD_TOP, DUST, FIRE, SCORCH, SHADE, SMOKE, SOOT, 
  * water that breaks up as it ages), 'heat' (ground glowing red hot and cooling, like 'glow' in deep reds), 'scorch'
  * (a flat blackened, burnt patch on a deck), 'press' (the pale patch of water a gun's blast presses flat) and
  * 'lamp' (a broad pool of warm light a gun's flash throws on its deck) and 'whiteHot' (ground glowing white hot, a
- * broad pool white nearly to its pale yellow edge).
+ * broad pool white nearly to its pale yellow edge), and 'oil' (a flat slick of oil on the sea where a ship went down or
+ * a plane crashed: near black, a dull sheen in streaks, thinning and breaking up as it ages).
  */
-export type BlobKind = 'smoke' | 'soot' | 'dust' | 'spray' | 'fire' | 'vapour' | 'flash' | 'glow' | 'halo' | 'shade' | 'haze' | 'cloudTop' | 'cloud' | 'cloudUnder' | 'roll' | 'flame' | 'foam' | 'heat' | 'scorch' | 'press' | 'lamp' | 'whiteHot';
-const KINDS: BlobKind[] = ['smoke', 'soot', 'dust', 'spray', 'fire', 'vapour', 'flash', 'glow', 'halo', 'shade', 'haze', 'cloudTop', 'cloud', 'cloudUnder', 'roll', 'flame', 'foam', 'heat', 'scorch', 'press', 'lamp', 'whiteHot'];
+export type BlobKind = 'smoke' | 'soot' | 'dust' | 'spray' | 'fire' | 'vapour' | 'flash' | 'glow' | 'halo' | 'shade' | 'haze' | 'cloudTop' | 'cloud' | 'cloudUnder' | 'roll' | 'flame' | 'foam' | 'heat' | 'scorch' | 'press' | 'lamp' | 'whiteHot' | 'oil';
+const KINDS: BlobKind[] = ['smoke', 'soot', 'dust', 'spray', 'fire', 'vapour', 'flash', 'glow', 'halo', 'shade', 'haze', 'cloudTop', 'cloud', 'cloudUnder', 'roll', 'flame', 'foam', 'heat', 'scorch', 'press', 'lamp', 'whiteHot', 'oil'];
 
-const RAMP: Record<Exclude<BlobKind, 'fire' | 'flash' | 'glow' | 'halo' | 'haze' | 'flame' | 'foam' | 'heat' | 'scorch' | 'press' | 'lamp' | 'whiteHot'>, RGB[]> = {
+const RAMP: Record<Exclude<BlobKind, 'fire' | 'flash' | 'glow' | 'halo' | 'haze' | 'flame' | 'foam' | 'heat' | 'scorch' | 'press' | 'lamp' | 'whiteHot' | 'oil'>, RGB[]> = {
   smoke: SMOKE.map(hex),
   soot: SOOT.map(hex),
   dust: DUST.map(hex),
@@ -171,6 +172,7 @@ export function blobBitmap(kind: BlobKind, r: number, variant: number, heat = 0)
   if (kind === 'haze') return hazeBitmap(r, variant);
   if (kind === 'flame') return flameBitmap(r, variant, heat & 3, (heat >> 2) - 2);
   if (kind === 'foam') return foamBitmap(r, variant, heat);
+  if (kind === 'oil') return oilBitmap(r, variant, heat);
   const R = Math.max(1, Math.min(48, Math.round(r)));
   const half = Math.ceil(R * 1.22) + 1;
   const W = half * 2 + 1;
@@ -416,6 +418,57 @@ export function scorchBitmap(r: number, variant: number): RGBABitmap {
   return { w: W, h: Hh, ox: half, oy: hy, data };
 }
 
+/** Oil on the sea, darkest first, and its dull sheen (a muted olive and a muted violet grey, never bright). */
+const OIL: RGB[] = ['#090c0f', '#10151a', '#182026', '#20292f'].map(hex);
+const SHEEN: RGB[] = ['#3b4135', '#3f3b47'].map(hex);
+
+/**
+ * A slick of oil on the sea: flat (the 3/4 view), its edge in big uneven lobes thinning out in dithered steps, near
+ * black with darker and lighter swirls inside and a dull sheen in a few streaks; `age` 0..3 thins it, opening holes
+ * of open water in it. Radius `r` cells (1..48).
+ */
+export function oilBitmap(r: number, variant: number, age: number): RGBABitmap {
+  const R = Math.max(1, Math.min(48, Math.round(r)));
+  const sq = 0.52;
+  const half = Math.ceil(R * 1.3) + 1;
+  const hy = Math.ceil(R * sq * 1.3) + 1;
+  const W = half * 2 + 1;
+  const Hh = hy * 2 + 1;
+  const data = new Uint8ClampedArray(W * Hh * 4);
+  const ph = variant * 1.53 + 0.7;
+  const s = variant * 29 + R + 11;
+  const A = Math.max(0, Math.min(3, age | 0));
+  const fs = Math.max(0.18, Math.min(0.6, 3.5 / R));
+  for (let y = 0; y < Hh; y++) {
+    for (let x = 0; x < W; x++) {
+      const dx = x - half;
+      const dy = (y - hy) / sq;
+      const a = Math.atan2(dy, dx);
+      const e = R * (0.86 + 0.15 * Math.sin(3 * a + ph) + 0.1 * Math.sin(5 * a + ph * 1.9) + 0.06 * Math.sin(8 * a + ph * 2.7));
+      const d = Math.hypot(dx, dy) / e;
+      if (d >= 1) continue;
+      const dith = BAYER[(x & 1) + ((y & 1) << 1)];
+      const n = vnoise(x * fs + variant * 2.1, y * fs * 1.6, s);
+      // holes of open water as it thins, and its edge breaking into dither
+      if (n < A * 0.12 - 0.05 + d * 0.15 * A) continue;
+      if (d + dith * 0.25 > 0.82 + 0.1 * n) {
+        if (((x + y) & 1) === 0) continue;
+      }
+      const swirl = vnoise(x * fs * 0.6 + 7.3, y * fs, s + 3);
+      const t = Math.max(0, Math.min(3, Math.floor(swirl * 3.4 + dith * 0.7 + d * 0.6)));
+      // the sheen: a few thin streaks where a ridge of the swirl noise runs
+      const ridge = 1 - Math.abs(2 * vnoise(x * fs * 0.9 + 1.7, y * fs * 2.2, s + 7) - 1);
+      const c = ridge > 0.965 && d < 0.8 && hash2(x, y, s) < 0.6 ? SHEEN[(x + variant) & 1] : OIL[t];
+      const o = (y * W + x) * 4;
+      data[o] = c[0];
+      data[o + 1] = c[1];
+      data[o + 2] = c[2];
+      data[o + 3] = d > 0.8 ? 150 : 215 - A * 25;
+    }
+  }
+  return { w: W, h: Hh, ox: half, oy: hy, data };
+}
+
 // ------------------------------------------------------------------------------------------------- drawing
 
 const atlas = new SpriteAtlas(1024, 6);
@@ -429,7 +482,7 @@ export function cellsOf(r: number): number {
 function entry(kind: BlobKind, r: number, variant: number, heat: number): AtlasEntry | null {
   const R = kind === 'flame' ? Math.max(1, Math.min(16, Math.round(r))) : cellsOf(r);
   const v = variant & 3;
-  const h = kind === 'fire' ? Math.max(0, Math.min(4, Math.round(heat))) : kind === 'flame' ? Math.max(0, Math.min(19, heat | 0)) : kind === 'foam' ? Math.max(0, Math.min(3, heat | 0)) : 0;
+  const h = kind === 'fire' ? Math.max(0, Math.min(4, Math.round(heat))) : kind === 'flame' ? Math.max(0, Math.min(19, heat | 0)) : kind === 'foam' || kind === 'oil' ? Math.max(0, Math.min(3, heat | 0)) : 0;
   const key = ((KINDS.indexOf(kind) * 64 + R) * 4 + v) * 32 + h;
   return atlas.get(key, () => blobBitmap(kind, R, v, h));
 }
@@ -437,8 +490,8 @@ function entry(kind: BlobKind, r: number, variant: number, heat: number): AtlasE
 /**
  * Draws a blob centred at (x, y) CSS px, `r` cells of grid `g` (bigger than 48 cells: drawn with coarser cells),
  * at `alpha`. Fire heat 0..4; a flame's `heat` is its frame (0..3) plus four times its lean plus two (flameCode), and
- * its origin is the middle of its base; a foam patch's `heat` is its age (0 fresh .. 3 breaking up). Returns false
- * when it could not be drawn (no canvas).
+ * its origin is the middle of its base; a foam patch's or an oil slick's `heat` is its age (0 fresh .. 3 breaking
+ * up). Returns false when it could not be drawn (no canvas).
  */
 export function drawBlob(ctx: CanvasRenderingContext2D, kind: BlobKind, r: number, variant: number, x: number, y: number, g: Grid, alpha = 1, heat = 0): boolean {
   if (alpha <= 0.01 || r < 0.5) return true;
