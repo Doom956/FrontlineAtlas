@@ -232,7 +232,8 @@ function drawMuzzle(ctx: CanvasRenderingContext2D, f: MuzzleDraw, m: MotionParam
       const by = my + ny * lane;
       const v = seed + b;
       flame(ctx, Flame.BOLT, false, v, bx, by, ba, Lb, Wb, Ab);
-      flame(ctx, Flame.BOLT, true, v, bx, by, ba, Lb * 0.95, Wb * 0.9, Ab * (1 - smooth(kb * 1.4)));
+      // the white-hot heart of the outer ones only close up (at mid zoom the cone's heart covers them)
+      if (b === 1 || f.scale > 1) flame(ctx, Flame.BOLT, true, v, bx, by, ba, Lb * 0.95, Wb * 0.9, Ab * (1 - smooth(kb * 1.4)));
       if (b !== 1 && kb < 0.5) {
         const jk = 1 - kb / 0.5;
         const ja = f.aim + (b === 0 ? -1.1 : 1.1);
@@ -350,31 +351,26 @@ function drawShell(ctx: CanvasRenderingContext2D, sh: ShellDraw, m: MotionParams
       ctx.ellipse(x0 + ax * t, y0 + ay * t, rh * 0.9, rh * 0.6, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = prev * show;
-      // a thin thread of smoke behind the fire
+      // a thin faint thread of smoke behind the fire
       if (back > dq * 1.05) {
-        const g = ctx.createLinearGradient(trailX[0], trailY[0], trailX[2], trailY[2]);
-        g.addColorStop(0, 'rgba(122,116,110,0)');
-        g.addColorStop(1, 'rgba(122,116,110,0.34)');
-        ctx.strokeStyle = g;
-        ctx.lineWidth = Math.max(0.8, rh * 0.8);
+        ctx.strokeStyle = 'rgba(122,116,110,0.2)';
+        ctx.lineWidth = Math.max(0.8, rh * 0.7);
         ctx.beginPath();
         ctx.moveTo(trailX[0], trailY[0]);
         ctx.lineTo(trailX[1], trailY[1]);
         ctx.lineTo(trailX[2], trailY[2]);
         ctx.stroke();
       }
-      // the trail of fire, tapering: a deep orange skin, then a yellow-white heart toward the head
+      // the trail of fire, tapering: a deep orange skin fading out behind (the one gradient), then a yellow-white
+      // heart over its last part up to the head
       const g = ctx.createLinearGradient(trailX[2], trailY[2], px, py);
       g.addColorStop(0, 'rgba(176,74,28,0)');
       g.addColorStop(0.5, 'rgba(220,116,38,0.55)');
       g.addColorStop(1, 'rgba(246,165,62,0.95)');
       ctx.strokeStyle = g;
       strokeTrail(ctx, 2, rh * 2.1);
-      const h = ctx.createLinearGradient(trailX[2], trailY[2], px, py);
-      h.addColorStop(0.3, 'rgba(255,217,138,0)');
-      h.addColorStop(1, 'rgba(255,244,214,1)');
-      ctx.strokeStyle = h;
-      strokeTrail(ctx, 3, rh * 0.95);
+      ctx.strokeStyle = 'rgba(255,236,190,0.9)';
+      strokeTrail(ctx, 4, rh * 0.95);
       // the white-hot head and the glow round it
       glow(ctx, px, py, rh * 4.2, 0.6 * show);
       ctx.fillStyle = '#fff4d6';
