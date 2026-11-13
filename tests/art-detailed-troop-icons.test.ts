@@ -1,10 +1,13 @@
 // The detailed style's troop icons (client/art/detailed/troopIcons.ts): tiny pixel units with no tile round them (the
 // corners of the icon box stay transparent), the nation colour on the unit itself, the three kinds and the unknown mix
 // told apart at both sizes, every nation colour (near black and near white too) clear of the dark outline and of the
-// dark pill.
-import { describe, expect, it } from 'vitest';
+// dark pill, and the shared pills (render/troopIcons.ts) running their plate under the bare units.
+import { afterEach, describe, expect, it } from 'vitest';
+import { artStyleOf, setArtStyle } from '../src/client/art/artStyle';
 import { bakeTroopIcon, iconTones, lightRimFor, OUTLINE, type IconBitmap } from '../src/client/art/detailed/troopIcons';
+import { styleModule } from '../src/client/art/registry';
 import { luma } from '../src/client/art/shared/colour';
+import { troopPill, troopPillSize } from '../src/client/render/troopIcons';
 
 const KINDS = ['infantry', 'armor', 'artillery', 'troops'] as const;
 const SIZES = [16, 12];
@@ -161,5 +164,55 @@ describe('detailed troop icons', () => {
         expect(diff(a, b)).toBe(0);
         for (let i = 3; i < a.data.length; i += 4) expect([0, 235, 255]).toContain(a.data[i]);
       }
+  });
+});
+
+describe('troop pills with bare units', () => {
+  const prev = artStyleOf('troopIcons');
+  afterEach(() => setArtStyle('troopIcons', prev));
+
+  function fakeCtx(rects: [number, number, number, number][]): CanvasRenderingContext2D {
+    return new Proxy({ fillStyle: '', font: '', textAlign: 'left', textBaseline: 'alphabetic', imageSmoothingEnabled: true } as Record<string, unknown>, {
+      get: (o, k) => {
+        if (k in o) return o[k as string];
+        if (k === 'measureText') return (t: string) => ({ width: t.length * 6 });
+        if (k === 'fillRect') return (x: number, y: number, w: number, h: number) => rects.push([x, y, w, h]);
+        return () => undefined;
+      },
+      set: (o, k, v) => ((o[k as string] = v), true),
+    }) as unknown as CanvasRenderingContext2D;
+  }
+
+  it('marks the detailed icons as bare and the other styles as plated', () => {
+    expect(styleModule('detailed').troopIcons.bare).toBe(true);
+    expect(styleModule('refined').troopIcons.bare).toBeFalsy();
+    expect(styleModule('realistic').troopIcons.bare).toBeFalsy();
+  });
+
+  it('runs the pill plate under the bare units, from the pill left edge, and sets them side by side', () => {
+    setArtStyle('troopIcons', 'detailed');
+    for (const small of [false, true]) {
+      const rects: [number, number, number, number][] = [];
+      const ctx = fakeCtx(rects);
+      const size = troopPillSize(ctx, 12400, 3, { arrow: 'up', small });
+      const w = troopPill(ctx, 200, 100, 12400, ['infantry', 'armor', 'artillery'], [64, 160, 255], { edge: '#ffe98a', arrow: 'up', small });
+      expect(w).toBe(size.w);
+      const x0 = Math.round(200 - w / 2);
+      // the plate's outline is the first rect: the whole pill
+      expect(rects[0]).toEqual([x0, Math.round(100 - size.h / 2), w, size.h]);
+      // three units of (plate + 2) px with air between them, then the count and the arrow
+      const plate = small ? 12 : 16;
+      expect(w).toBeGreaterThan(3 * (plate + 2) + 2 * 1 + '12.4k troops'.length * 6);
+    }
+  });
+
+  it('keeps the plated layout for the refined style', () => {
+    setArtStyle('troopIcons', 'refined');
+    const rects: [number, number, number, number][] = [];
+    const ctx = fakeCtx(rects);
+    const w = troopPill(ctx, 200, 100, 12400, ['infantry', 'armor'], [64, 160, 255], { edge: '#ffe98a', arrow: 'up' });
+    const x0 = Math.round(200 - w / 2);
+    // the plate starts under the markers' right end, not at the pill's left edge
+    expect(rects[0][0]).toBeGreaterThan(x0 + 16);
   });
 });

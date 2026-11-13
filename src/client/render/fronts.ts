@@ -12,7 +12,7 @@
 // Troop pills: a count at each active front (your attacks with an up arrow, attacks on you with a down arrow, your
 //   allies' attacks on your enemies at any zoom, other nations' fights when zoomed in), on the most recent capture
 //   nearest to the attack's focus, learnt from the tile feed. Each pill carries the attacker's troop markers
-//   (troopIcons.ts: a soldier, a tank, a field gun on an owner-colour plate) for the types in the attack, so its mix
+//   (troopIcons.ts: a soldier, a tank, a field gun in the owner's colour) for the types in the attack, so its mix
 //   reads at a glance; another nation's mix only with intel (else one plain troops marker), like the HUD.
 // Hover a front: a small card "Your attack on X: +N tiles/s, troops left Y" next to the pointer, with a shovel line
 //   "Dug in: +30%" when the defender's side is dug in and a plane line when Air cover bombs it (trench.ts).

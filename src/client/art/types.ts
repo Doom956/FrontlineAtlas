@@ -115,7 +115,7 @@ export interface UnitArt {
 
 // ================================================================================================ troop icons
 
-/** A troop marker's symbol, or 'troops' for a mix the viewer does not know (never drawn as the soldier). */
+/** A troop marker's symbol, or 'troops' for a mix the viewer does not know (never drawn as the infantry marker). */
 export type TroopIconKind = TroopType | 'troops';
 
 export interface TroopIconArt {
@@ -126,6 +126,12 @@ export interface TroopIconArt {
    * nothing could be drawn (no canvas).
    */
   draw(ctx: CanvasRenderingContext2D, kind: TroopIconKind, x: number, y: number, owner: RGB, size: number): number;
+  /**
+   * True when the markers are bare units with no plate of their own (the owner's colour on the unit itself, the
+   * footprint transparent round it): the troop pills then run their dark plate under the markers too and set them
+   * side by side instead of overlapping.
+   */
+  readonly bare?: boolean;
 }
 
 // ================================================================================================ wakes and contrails

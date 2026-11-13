@@ -6,7 +6,7 @@
 // trail), a little quieter and evened toward a mid lightness so it sits with the muted unit art. A dark 1 px outline
 // round the silhouette keeps it readable on any land, water or pill colour; a dark nation's parts also get a lighter
 // rim on their top and left edges so they still part from a dark pill. Baked once per (kind, owner, size) and drawn on
-// whole pixels.
+// whole pixels; the pills (render/troopIcons.ts) set the units on their own dark plate (TroopIconArt.bare).
 import { makeCanvas } from '../../render/common';
 import { hex, lerpRGB, luma, ownerRamp, type RGB } from '../shared/colour';
 import type { TroopIconArt, TroopIconKind } from '../types';
@@ -244,6 +244,7 @@ function iconCanvas(kind: TroopIconKind, owner: readonly number[], size: number)
 }
 
 export const detailedTroopIcons: TroopIconArt = {
+  bare: true,
   draw(ctx, kind, x, y, owner, size) {
     const cv = iconCanvas(kind, owner, size);
     if (!cv) return 0;

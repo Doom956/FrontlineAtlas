@@ -409,8 +409,8 @@ export class NameLayer {
         setTracking(ctx, small * 0.02);
         const ay = nameY + px * 0.55 + small * 0.55;
         const fill = tribe ? 'rgba(236,238,241,0.94)' : traitor ? 'rgba(255,196,189,0.94)' : 'rgba(250,251,253,0.96)';
-        // the soldier marker on the nation's colour plate (a neutral grey plate for tribes), the same rounded-square
-        // plate as the front and transport pills (troopIcons.ts), says what the number counts
+        // the soldier marker in the nation's colour (a neutral grey for tribes), the same marker as the front and
+        // transport pills (troopIcons.ts), says what the number counts
         const plate = PLATE;
         const aw = ctx.measureText(army).width;
         const gx = Math.round(s.x - (plate + 6 + aw) / 2);
