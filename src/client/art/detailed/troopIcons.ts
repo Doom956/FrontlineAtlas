@@ -1,113 +1,130 @@
-// The detailed style's troop icons (client only): the same meaning as before (infantry, armor, artillery, or an
-// unknown mix on the owner's plate; the pills that carry them and their counts are shared), drawn less like cartoons:
-// a plate in the owner's colour, a little desaturated, with a 3-tone bevel (lit top and left edges, dark bottom and
-// right edges, cut corners) and a translucent dark rim instead of a black outline, carrying a stencilled figure in
-// side view: a slim soldier in a helmet walking with his rifle up, a low long tank with its road wheels and its gun
-// past the nose, a field gun with a long raised barrel, its shield, a round wheel and the trail, or a question mark for
-// a mix the viewer does not know. The figure is off-white on a dark or mid plate and dark ink on a pale one, in 3
-// tones lit from the top left with a soft shadow. Baked once per (kind, owner, size) and drawn on whole pixels.
+// The detailed style's troop icons (client only): tiny pixel units with no plate or tile round them, drawn like the
+// detailed units on the map (muted military colours, lit from the top left, seen from a high three-quarter view, facing
+// right): a rifleman in a helmet with his pack, a tank (turret, barrel, hull, tracks and road wheels), a towed field
+// gun (long barrel, shield, spoked wheel, split trail), and for a mix the viewer does not know, a plain grey figure
+// with a small question mark. The owner's colour is on the unit itself (the uniform, the hull, the gun's shield and
+// trail), a little quieter and evened toward a mid lightness so it sits with the muted unit art. A dark 1 px outline
+// round the silhouette keeps it readable on any land, water or pill colour; a dark nation's parts also get a lighter
+// rim on their top and left edges so they still part from a dark pill. Baked once per (kind, owner, size) and drawn on
+// whole pixels.
 import { makeCanvas } from '../../render/common';
-import { hex, luma, type RGB } from '../shared/colour';
+import { hex, lerpRGB, luma, ownerRamp, type RGB } from '../shared/colour';
 import type { TroopIconArt, TroopIconKind } from '../types';
-import { ownerTones } from './palette';
+import { rampOf } from './palette';
 
-/** a..d: light to dark tones of the figure, '.' = plate. Side view, facing right. */
-const SYMBOLS: Record<TroopIconKind, readonly string[]> = {
-  // a slim rifleman in a helmet, walking, his rifle held up and forward
+// Sprite letters: owner colour 1 deep, 2 dark, 3 base, 4 light; helmet H light, h base, j dark; gun metal G light,
+// g base, q dark; rubber and tracks r light, t dark, k deep; skin s, S shade; pack and webbing P light, p base, b dark;
+// the unknown figure m light, n base, o dark; the question mark Q; '.' empty. The outline is added round the sprite.
+
+/** Normal size (a 16 px icon, an 18 px footprint): every sprite fits 16 x 16 inside its outline. */
+const SPRITES: Record<TroopIconKind, readonly string[]> = {
+  // a rifleman walking right, his rifle held forward, helmet, pack and webbing on his back
   infantry: [
-    '.....abc.....',
-    '....abbbc....',
-    '...cbbbbbc...',
-    '.....bbc.....',
-    '....abbbc..cc',
-    '....bbbbbcc..',
-    '...abbbbc....',
-    '....bbbc.....',
-    '....bbbc.....',
-    '....bc.bc....',
-    '...bc...bc...',
-    '..cc.....cc..',
+    '....HHh.....',
+    '...HHhhj....',
+    '...jhhhhj...',
+    '....23sS....',
+    '..Pp4433....',
+    '..pb43333...',
+    '..bb3332sggG',
+    '...b3322....',
+    '...12112....',
+    '....3232....',
+    '...32..32...',
+    '...2....2...',
+    '..kk....kk..',
   ],
-  // a low, long tank: a small turret set back, its gun reaching past the nose, road wheels in the track
+  // a medium tank: the turret set a little back with its gun past the nose, the hull, tracks with road wheels
   armor: [
-    '....abbbc.....',
-    '...abbbbbcaaaa',
-    '.abbbbbbbbbc..',
-    'abbbbbbbbbbbc.',
-    '.dcdcdcdcdcd..',
+    '.....4443.......',
+    '....4333321GGGGG',
+    '.444122221144...',
+    '.433333333333...',
+    '.33333333333322.',
+    '.22222222222221.',
+    '.ktrrtrrtrrtrk..',
+    '..kkkkkkkkkkk...',
   ],
-  // a field gun: a long barrel raised at about 30 degrees, the shield, a round spoked wheel, the trail on the ground
+  // a field gun: the barrel raised to the right, the shield, a spoked wheel, the split trail back to the ground
   artillery: [
-    '..........ab',
-    '........abbc',
-    '......abbc..',
-    '....abbbc...',
-    '..aabbbbc...',
-    '..bbbbbbbc..',
-    '.bc.dcccd...',
-    'bc.dc...cd..',
-    'c..c..b..c..',
-    '...dc...cd..',
-    '....dcccd...',
+    '..............GG',
+    '............GGq.',
+    '........44GGq...',
+    '......4433Gq....',
+    '.....43333q.....',
+    '.....33332......',
+    '.....3kkk2......',
+    '....kqgqk.......',
+    '11.kqtgtqk......',
+    '.11kggGggk......',
+    '.33kqtgtqk......',
+    '33..kqgqk.......',
+    '.....kkk........',
   ],
+  // an unknown mix: the rifleman as a plain grey figure, no detail, and a small question mark
   troops: [
-    '..abbbc..',
-    '.abbcbbc.',
-    '.bc...bbc',
-    '......bbc',
-    '....abbc.',
-    '...abbc..',
-    '...bbc...',
-    '...cc....',
-    '.........',
-    '...abc...',
-    '...bcc...',
+    '....mmm.....QQ..',
+    '...mmmmm...Q..Q.',
+    '...ommmmo.....Q.',
+    '....onn......Q..',
+    '..oonnnn....Q...',
+    '..oonnnnn.......',
+    '..oonnnnn...Q...',
+    '...onnno........',
+    '...onnno........',
+    '....nnno........',
+    '...nn..nn.......',
+    '...n....n.......',
+    '..oo....oo......',
   ],
 };
 
-/** The same figures at about 8 to 10 px, for the small plates (transports, nation army counts). */
+/** Small size (a 12 px icon, a 14 px footprint, on transports and next to nation army counts): fits 12 x 12. */
 const SMALL: Record<TroopIconKind, readonly string[]> = {
   infantry: [
-    '...abc...',
-    '..cbbbc..',
-    '...bc....',
-    '..abbc.cc',
-    '..bbbcc..',
-    '..bbc....',
-    '..b.bc...',
-    '.cc..cc..',
+    '...HHh...',
+    '..jhhhj..',
+    '...j3s...',
+    '..p4433..',
+    '..pb33sgG',
+    '..b232...',
+    '...2.32..',
+    '..2...2..',
+    '..k...k..',
   ],
   armor: [
-    '...abbc...',
-    '..abbbbcaa',
-    '.abbbbbbc.',
-    'abbbbbbbc.',
-    '.dcdcdcd..',
+    '....443.....',
+    '...43332GGGG',
+    '.4412221....',
+    '.33333333...',
+    '.222222221..',
+    '.ktrtrtrk...',
+    '..kkkkkk....',
   ],
-  // a gun, not a head: the barrel at about 30 degrees, the shield, a round wheel with its hub, the trail
   artillery: [
-    '........ab',
-    '......abbc',
-    '....abbc..',
-    '..abbbbc..',
-    '.abbbbbbc.',
-    'bc.dcccd..',
-    'c..c.b.c..',
-    '...dcccd..',
+    '..........GG',
+    '........GGq.',
+    '......44Gq..',
+    '.....433q...',
+    '....4332....',
+    '....3kkk....',
+    '11.kqgqk....',
+    '.11kgGgk....',
+    '.33kqgqk....',
+    '33..kkk.....',
   ],
   troops: [
-    '.abbc.',
-    'abc.bc',
-    '....bc',
-    '..abc.',
-    '..bc..',
-    '......',
-    '..bc..',
+    '...mm...QQ.',
+    '..mmmm....Q',
+    '..ommo...Q.',
+    '...on....Q.',
+    '.oonnn.....',
+    '.oonnn...Q.',
+    '..onno.....',
+    '..nn.n.....',
+    '.oo..oo....',
   ],
 };
-
-const LIGHT: RGB[] = ['#f1eee6', '#d6d2c7', '#a8a397', '#6d6960'].map(hex);
-const DARK: RGB[] = ['#4c4b45', '#33322e', '#22211e', '#121210'].map(hex);
 
 export interface IconBitmap {
   w: number;
@@ -115,70 +132,95 @@ export interface IconBitmap {
   data: Uint8ClampedArray;
 }
 
-/** True when the figure on this owner's plate should be dark ink (a pale plate). */
-export function darkFigureOn(owner: readonly number[]): boolean {
-  return luma(ownerTones(owner, PLATE_QUIET)[2]) > 165;
-}
-
-/** The plate's owner colour, a little desaturated (toward its own grey) so it sits with the muted unit art. */
-const PLATE_QUIET = 0.2;
-const mix = (a: readonly number[], b: readonly number[], t: number): RGB => [Math.round(a[0] + (b[0] - a[0]) * t), Math.round(a[1] + (b[1] - a[1]) * t), Math.round(a[2] + (b[2] - a[2]) * t)];
+const INK: RGB = [12, 14, 17];
+const WHITE: RGB = [255, 255, 255];
+/** How far the owner's colour is pulled toward its own grey on the icons. */
+const QUIET = 0.28;
+/** The darkest a nation's base tone gets on the icons (luma): darker ones are lifted toward a charcoal. */
+const DARK_BASE = 74;
 
 /**
- * One troop marker as RGBA, size + 2 px square: the owner's plate (`size` px, cut corners, a bevel), the figure
- * centred on it with a soft shadow, and a translucent dark rim round the plate.
+ * The owner's 4 tones on the icon (deep, dark, base, light): a little quieter than the nation colour, evened toward a
+ * mid lightness (a near-black nation becomes a charcoal that still parts from the dark outline).
+ */
+export function iconTones(owner: readonly number[]): RGB[] {
+  const l = luma(owner);
+  let base = ownerRamp(lerpRGB(owner, [l, l, l], QUIET))[2];
+  const lb = luma(base);
+  if (lb < DARK_BASE) base = lerpRGB(base, [150, 150, 150], (DARK_BASE - lb) / (150 - lb));
+  return [lerpRGB(base, INK, 0.62), lerpRGB(base, INK, 0.36), base, lerpRGB(base, WHITE, 0.28)];
+}
+
+/** True when the owner's colour is dark: its parts get a lighter rim on their top and left edges. */
+export function lightRimFor(owner: readonly number[]): boolean {
+  return luma(owner) < 80;
+}
+
+/** The outline colour round every icon. */
+export const OUTLINE = INK;
+
+function paletteOf(kind: TroopIconKind, owner: readonly number[]): Map<string, RGB> {
+  const p = new Map<string, RGB>();
+  const o = iconTones(owner);
+  ['1', '2', '3', '4'].forEach((ch, i) => p.set(ch, o[i]));
+  p.set('5', lerpRGB(o[2], WHITE, 0.45));
+  const helmet = rampOf('helmet');
+  p.set('H', helmet[3]).set('h', helmet[2]).set('j', helmet[1]);
+  const gun = rampOf('gun');
+  p.set('G', lerpRGB(gun[3], WHITE, 0.12)).set('g', gun[3]).set('q', gun[2]);
+  const track = rampOf('track');
+  p.set('r', lerpRGB(track[3], WHITE, 0.1)).set('t', track[2]).set('k', track[1]);
+  const skin = rampOf('skin');
+  p.set('s', skin[2]).set('S', skin[1]);
+  const canvas = rampOf('canvas');
+  p.set('P', canvas[3]).set('p', canvas[2]).set('b', canvas[1]);
+  if (kind === 'troops') {
+    // the unknown figure: a grey with a hint of the owner's colour, flat
+    const l = luma(o[2]);
+    const g = lerpRGB(o[2], [l, l, l], 0.7);
+    const mid = lerpRGB(g, [128, 128, 128], 0.5);
+    p.set('m', lerpRGB(mid, WHITE, 0.18)).set('n', mid).set('o', lerpRGB(mid, INK, 0.3));
+    p.set('Q', hex('#e4e1d8'));
+  }
+  return p;
+}
+
+const OWNER_PART = new Set(['1', '2', '3', '4']);
+
+/**
+ * One troop icon as RGBA, size + 2 px square and transparent round the unit: the sprite centred, every pixel next to
+ * it (left, right, above, below) the outline. A dark nation's parts get a lighter rim where their top or left edge
+ * meets the outline, so they still part from a dark pill.
  */
 export function bakeTroopIcon(kind: TroopIconKind, owner: readonly number[], size = 16): IconBitmap {
   const W = size + 2;
   const data = new Uint8ClampedArray(W * W * 4);
-  const tones = ownerTones(owner, PLATE_QUIET);
-  const set = (x: number, y: number, c: readonly number[], a = 255): void => {
-    if (x < 0 || y < 0 || x >= W || y >= W) return;
-    const o = (y * W + x) * 4;
+  const rows = (size >= 16 ? SPRITES : SMALL)[kind];
+  const pal = paletteOf(kind, owner);
+  const sw = Math.max(...rows.map((r) => r.length));
+  const sh = rows.length;
+  const ox = Math.floor((W - sw) / 2);
+  const oy = Math.floor((W - sh) / 2);
+  const at = (x: number, y: number): string => {
+    const ch = rows[y - oy]?.[x - ox];
+    return ch !== undefined && pal.has(ch) ? ch : '.';
+  };
+  const solid = (x: number, y: number): boolean => at(x, y) !== '.';
+  const rim = lightRimFor(owner);
+  const put = (o: number, c: readonly number[], a: number): void => {
     data[o] = c[0];
     data[o + 1] = c[1];
     data[o + 2] = c[2];
     data[o + 3] = a;
   };
-  const inPlate = (x: number, y: number): boolean => {
-    if (x < 0 || y < 0 || x >= size || y >= size) return false;
-    const cx = x < 1 ? 1 - x : x > size - 2 ? x - (size - 2) : 0;
-    const cy = y < 1 ? 1 - y : y > size - 2 ? y - (size - 2) : 0;
-    return cx + cy <= 1;
-  };
-  // the plate: a 3-tone bevel (a lit outer edge and a softer inner one on the top and left, a dark outer edge and a
-  // softer inner one on the bottom and right) round a fill that lightens a touch toward the top
-  for (let y = -1; y <= size; y++) {
-    for (let x = -1; x <= size; x++) {
-      if (inPlate(x, y)) {
-        const top1 = !inPlate(x, y - 1) || !inPlate(x - 1, y);
-        const low1 = !inPlate(x, y + 1) || !inPlate(x + 1, y);
-        const top2 = !inPlate(x, y - 2) || !inPlate(x - 2, y);
-        const low2 = !inPlate(x, y + 2) || !inPlate(x + 2, y);
-        const fill = mix(tones[2], tones[3], 0.12 * (1 - y / size));
-        const c = low1 ? tones[1] : top1 ? tones[3] : low2 ? mix(tones[2], tones[1], 0.45) : top2 ? mix(tones[2], tones[3], 0.4) : fill;
-        set(x + 1, y + 1, c);
-      } else if (inPlate(x - 1, y) || inPlate(x + 1, y) || inPlate(x, y - 1) || inPlate(x, y + 1)) {
-        set(x + 1, y + 1, [10, 12, 16], inPlate(x - 1, y) || inPlate(x, y - 1) ? 170 : 110);
-      }
-    }
-  }
-  const rows = (size < 14 ? SMALL : SYMBOLS)[kind];
-  const sw = Math.max(...rows.map((r) => r.length));
-  const sh = rows.length;
-  const ink = darkFigureOn(owner) ? DARK : LIGHT;
-  const ox = 1 + Math.floor((size - sw) / 2);
-  const oy = 1 + Math.floor((size - sh) / 2);
-  const at = (x: number, y: number): number => {
-    const ch = rows[y]?.[x];
-    return ch === 'a' ? 0 : ch === 'b' ? 1 : ch === 'c' ? 2 : ch === 'd' ? 3 : -1;
-  };
-  // a soft shadow one px down and right, then the figure
-  for (let y = 0; y < sh; y++) for (let x = 0; x < sw; x++) if (at(x, y) >= 0 && at(x + 1, y + 1) < 0) set(ox + x + 1, oy + y + 1, tones[0], 150);
-  for (let y = 0; y < sh; y++)
-    for (let x = 0; x < sw; x++) {
-      const t = at(x, y);
-      if (t >= 0) set(ox + x, oy + y, ink[t]);
+  for (let y = 0; y < W; y++)
+    for (let x = 0; x < W; x++) {
+      const o = (y * W + x) * 4;
+      let ch = at(x, y);
+      if (ch !== '.') {
+        if (rim && OWNER_PART.has(ch) && (!solid(x, y - 1) || !solid(x - 1, y))) ch = '5';
+        put(o, pal.get(ch)!, 255);
+      } else if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) put(o, OUTLINE, 235);
     }
   return { w: W, h: W, data };
 }

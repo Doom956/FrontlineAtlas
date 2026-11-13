@@ -165,16 +165,18 @@ describe('detailed art style', () => {
     expect(red).toBeGreaterThan(8);
   });
 
-  it('bakes troop icons as size + 2 squares on the owner plate', () => {
+  it('bakes troop icons as size + 2 squares holding a bare unit, no plate (tests/art-detailed-troop-icons.test.ts)', () => {
     for (const kind of ['infantry', 'armor', 'artillery', 'troops'] as const) {
       for (const size of [16, 12]) {
         const b = bakeTroopIcon(kind, OWNER, size);
         expect(b.w).toBe(size + 2);
         expect(b.h).toBe(size + 2);
-        // the plate centre row carries the figure (off-white) on the owner's blue
-        let figure = 0;
-        for (let i = 0; i < b.data.length; i += 4) if (b.data[i + 3] === 255 && b.data[i] > 200 && b.data[i + 1] > 200) figure++;
-        expect(figure, `${kind} ${size}`).toBeGreaterThan(3);
+        // transparent corners (no plate), and a unit drawn in the box
+        expect(b.data[3]).toBe(0);
+        expect(b.data[b.data.length - 1]).toBe(0);
+        let unit = 0;
+        for (let i = 0; i < b.data.length; i += 4) if (b.data[i + 3] === 255) unit++;
+        expect(unit, `${kind} ${size}`).toBeGreaterThan(size * 2);
       }
     }
   });
