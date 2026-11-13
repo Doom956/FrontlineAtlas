@@ -15,7 +15,7 @@ import type { MotionParams } from '../motion';
 import { SpriteAtlas, type AtlasEntry } from '../shared/atlas';
 import { rnd } from '../shared/noise';
 import type { CraterArt, CraterDraw } from '../types';
-import { fireLight, Flame, flame } from './fire';
+import { fireLight, fireLights, Flame, flame } from './fire';
 import { LIGHT_X, LIGHT_Y, TAU } from './paint';
 import { clamp01, glow, Puff, puff, ramp, WIND_X, WIND_Y } from './puffs';
 
@@ -269,6 +269,11 @@ const SI = new Float64Array(MAX_SPOTS);
 const SE = new Float64Array(MAX_SPOTS);
 const SS = new Float64Array(MAX_SPOTS);
 const ORDER = new Int8Array(MAX_SPOTS);
+/** the lights of this frame's spots (and the pit), drawn together */
+const LX = new Float64Array(MAX_SPOTS + 1);
+const LY = new Float64Array(MAX_SPOTS + 1);
+const LR = new Float64Array(MAX_SPOTS + 1);
+const LA = new Float64Array(MAX_SPOTS + 1);
 
 /**
  * How big a blast left the crater, from its radius in tiles: 0 a shell (0.5), about 0.2 a bomb (0.9), about 0.45 a
@@ -299,18 +304,41 @@ const smooth = (t: number): number => {
  * and how long they burn (subtle small and short, cinematic big and long), craterSmoke the smoke; reduced motion
  * keeps them still.
  */
+export interface CraterFire {
+  /** how big a blast left the crater (0 a shell .. 1 an atom bomb) */
+  k: number;
+  /** when (q) the fires are out; embers glow to about 1.8 times that, smoke rises to 3 times that */
+  burn: number;
+  /** a flame's height (CSS px) */
+  flameH: number;
+  /** how many spots burn */
+  spots: number;
+}
+
+/**
+ * The fire a crater of radius `radiusPx` at `zoom` gets: more spots, taller flames and a longer burn after a bigger
+ * blast; fireLinger makes them smaller and shorter (subtle) or bigger and longer (cinematic).
+ */
+export function craterFire(radiusPx: number, zoom: number, m: MotionParams): CraterFire {
+  const k = sizeClass(radiusPx / Math.max(0.01, zoom));
+  const fd = 0.6 + 0.8 * m.fireLinger;
+  const fs = 0.65 + 0.5 * m.fireLinger;
+  return {
+    k,
+    burn: (0.15 + 0.35 * k) * fd,
+    // about 0.8 of a tile for a shell's, 1.4 for an atom bomb's, more on a big crater
+    flameH: (zoom * (0.8 + 0.6 * k) + radiusPx * 0.16 * k * k) * fs,
+    spots: Math.min(MAX_SPOTS, Math.round(1 + 12 * Math.pow(k, 1.15))),
+  };
+}
+
 function drawFire(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams, small: boolean): void {
   const q = d.q;
-  const k = sizeClass(d.radiusPx / Math.max(0.01, d.zoom));
-  const fd = 0.6 + 0.8 * m.fireLinger;
-  const burn = (0.15 + 0.35 * k) * fd;
+  const { k, burn, flameH: fh, spots: n } = craterFire(d.radiusPx, d.zoom, m);
   // past every ember and every wisp of smoke: nothing to draw
   if (q >= burn * 3) return;
-  const fs = 0.65 + 0.5 * m.fireLinger;
   const smokeK = 0.5 + 0.5 * m.craterSmoke;
   const R = d.radiusPx;
-  /** a flame's height (CSS px): about half a tile for a shell's, a tile for an atom bomb's, more on a big crater */
-  const fh = (d.zoom * (0.8 + 0.6 * k) + R * 0.16 * k * k) * fs;
   const ign = clamp01(q / 0.008);
   const sd = d.seed * 977 + 13;
   const still = m.reduced;
@@ -319,23 +347,26 @@ function drawFire(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams,
   const fr = still ? 0 : Math.floor(q * 60000);
   const prevA = ctx.globalAlpha;
   if (small) {
-    // far out: the fire is a warm glow and a bright point
+    // far out: a warm glow and a flame when there is room, else a bright point of fire in an orange one (two fills)
     const I = ign * (1 - smooth((q - burn * 0.3) / (burn * 0.7)));
     if (I <= 0.02) return;
     const flick = 1 + (still ? 0 : 0.18 * Math.sin(TAU * (tc * 1.7 + d.seed)) + 0.12 * (rnd(fr, 3) - 0.5));
-    fireLight(ctx, d.x, d.y - fh * 0.15, Math.max(2, fh * 1.6), 0.8 * I * flick);
-    if (fh * d.dpr >= 2.5) flame(ctx, Flame.TONGUE, I > 0.45, Math.floor(sd), d.x, d.y + fh * 0.1, -Math.PI / 2 + 0.3, fh * I * flick, fh * 0.65 * I, Math.min(1, I * 2));
-    else {
-      ctx.globalAlpha = prevA * Math.min(1, I * 1.5);
+    if (fh * d.dpr >= 6) {
+      fireLight(ctx, d.x, d.y - fh * 0.15, fh * 1.6, 0.8 * I * flick);
+      flame(ctx, Flame.TONGUE, I > 0.45, Math.floor(sd), d.x, d.y + fh * 0.1, -Math.PI / 2 + 0.3, fh * I * flick, fh * 0.65 * I, Math.min(1, I * 2));
+    } else {
+      const p = Math.max(1, Math.round(fh * 0.45 * d.dpr)) / d.dpr;
+      ctx.globalAlpha = prevA * Math.min(1, I * 1.2) * 0.55;
+      ctx.fillStyle = '#dc7426';
+      ctx.fillRect(d.x - p, d.y - p * 1.5, p * 2, p * 2);
+      ctx.globalAlpha = prevA * Math.min(1, I * 1.5 * flick);
       ctx.fillStyle = I > 0.5 ? '#ffd98a' : '#f6a53e';
-      const p = Math.max(1, Math.round(fh * 0.6 * d.dpr)) / d.dpr;
       ctx.fillRect(d.x - p / 2, d.y - p, p, p);
       ctx.globalAlpha = prevA;
     }
     return;
   }
   // the spots: where, how big, how fierce now
-  const n = Math.min(MAX_SPOTS, Math.round(1.6 + 12 * Math.pow(k, 1.15)));
   let ic = 0;
   for (let i = 0; i < n; i++) {
     const s = sd + i * 17;
@@ -363,22 +394,32 @@ function drawFire(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams,
     }
     ORDER[j] = i;
   }
-  // the pit still glowing red, and on a big crater the whole bowl lit by its fires
-  if (ic > 0.02) fireLight(ctx, d.x, d.y, R * (0.8 + 0.3 * k), (0.3 + 0.12 * k) * ic * ign);
+  // the light of the fires on the ground round them; after a bomb or bigger, the whole bowl lit red by its embers
+  let nl = 0;
+  if (k > 0.12 && ic > 0.02) {
+    LX[nl] = d.x;
+    LY[nl] = d.y;
+    LR[nl] = R * (0.8 + 0.3 * k);
+    LA[nl++] = (0.3 + 0.12 * k) * ic * ign;
+  }
   for (let i = 0; i < n; i++) {
     const I = SI[i];
     const E = SE[i];
     if (I <= 0.01 && E <= 0.01) continue;
     const flick = 1 + (still ? 0 : 0.2 * Math.sin(TAU * (tc * 1.3 + i * 0.37)) + 0.1 * (rnd(fr, i) - 0.5));
-    fireLight(ctx, SX[i], SY[i] - fh * 0.2, fh * 1.5 * SB[i], (0.6 * I + 0.25 * E) * flick);
+    LX[nl] = SX[i];
+    LY[nl] = SY[i] - fh * 0.2;
+    LR[nl] = fh * 1.5 * SB[i];
+    LA[nl++] = (0.6 * I + 0.25 * E) * flick;
   }
+  fireLights(ctx, nl, LX, LY, LR, LA);
   // embers: specks glowing in the ashes, twinkling, dull red as they die
   const ep = Math.max(1, Math.round(Math.max(0.6, fh * 0.11) * d.dpr)) / d.dpr;
   for (let i = 0; i < n; i++) {
     const E = SE[i];
     if (E <= 0.02) continue;
     const s = sd + i * 17;
-    for (let e = 0; e < 4; e++) {
+    for (let e = i === 0 ? 3 : 2; e > 0; e--) {
       const tw = still ? 0.7 : 0.45 + 0.55 * rnd(Math.floor(tc * 6 + e * 0.3), s + e);
       ctx.globalAlpha = prevA * E * tw;
       ctx.fillStyle = E > 0.6 && e % 2 === 0 ? '#ffb46b' : E > 0.3 ? '#dc7426' : '#9c3a16';
@@ -398,8 +439,8 @@ function drawFire(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams,
     const nt = fh * big * d.dpr > 9 ? 3 : 2;
     const hotA = clamp01((I - 0.35) / 0.45);
     const grow = Math.pow(I, 0.6);
-    // the bed of the fire: a hot glow the tongues rise out of
-    puff(ctx, Puff.FIRE, i, SX[i], SY[i] + fh * 0.05 * big, fh * 0.32 * big * grow, 0.75 * Math.min(1, I * 2));
+    // the bed of the fire, a hot glow the tongues rise out of (close up, where it shows)
+    if (fh * big * d.dpr > 10) puff(ctx, Puff.FIRE, i, SX[i], SY[i] + fh * 0.05 * big, fh * 0.32 * big * grow, 0.75 * Math.min(1, I * 2));
     for (let t = nt - 1; t >= 0; t--) {
       const ph = rnd(s, t + 30);
       const f1 = 1.1 + 0.6 * rnd(s, t + 33);
@@ -412,8 +453,8 @@ function drawFire(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams,
       const v = Math.floor(s) + t;
       const x = SX[i] + ox;
       const y = SY[i] + fh * (0.12 + 0.06 * Math.abs(side)) * big;
-      if (hotA < 0.98) flame(ctx, Flame.TONGUE, false, v, x, y, lean, h, w, Math.min(1, I * 2.5));
-      if (hotA > 0.02) flame(ctx, Flame.TONGUE, true, v, x, y, lean, h, w, hotA);
+      // white hot while it burns fiercely, then the dying picture (one picture each, the flicker hides the change)
+      flame(ctx, Flame.TONGUE, hotA > 0.5, v, x, y, lean, h, w, Math.min(1, I * 2.5));
     }
   }
   // smoke off the fires: a column of puffs, dark while they burn hot, grey as they die, rising, swelling and drifting
@@ -424,14 +465,14 @@ function drawFire(ctx: CanvasRenderingContext2D, d: CraterDraw, m: MotionParams,
       if (S <= 0.02) continue;
       const s = sd + i * 17;
       const big = SB[i];
-      const np = fh * d.dpr > 6 ? 3 : 1;
+      const np = fh * d.dpr > 8 && SI[i] > 0.05 ? 2 : 1;
       for (let j = 0; j < np; j++) {
         const ph = still ? (j / np + rnd(s, 40)) % 1 : (tc / 2.6 + j / np + rnd(s, 40)) % 1;
         const rise = fh * big * (0.7 + 3.6 * ph);
         const drift = fh * 2.8 * ph * ph;
-        const r = fh * (0.4 + 1.3 * ph) * (0.7 + 0.5 * big);
-        const kind = SI[i] > 0.3 ? (ph < 0.45 ? Puff.DARK : Puff.GREY) : Puff.GREY;
-        puff(ctx, kind, i * 3 + j, SX[i] + WIND_X * drift, SY[i] - rise + WIND_Y * drift, r, S * ramp(ph, 0, 0.12) * Math.pow(1 - ph, 1.2));
+        const r = fh * (0.55 + 1.6 * ph) * (0.75 + 0.45 * big);
+        const kind = SI[i] > 0.3 && ph < 0.3 ? Puff.DARK : Puff.GREY;
+        puff(ctx, kind, i * 3 + j, SX[i] + WIND_X * drift, SY[i] - rise + WIND_Y * drift, r, 0.85 * S * ramp(ph, 0, 0.12) * Math.pow(1 - ph, 1.2));
       }
     }
   }

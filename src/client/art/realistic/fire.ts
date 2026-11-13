@@ -213,6 +213,21 @@ export function fireLight(ctx: CanvasRenderingContext2D, x: number, y: number, r
   ctx.globalCompositeOperation = prevOp;
 }
 
+/** Many fire lights in one go (one change of the blend mode): `n` of them at (X, Y), radius R, alpha A. */
+export function fireLights(ctx: CanvasRenderingContext2D, n: number, X: ArrayLike<number>, Y: ArrayLike<number>, R: ArrayLike<number>, A: ArrayLike<number>): void {
+  if (n <= 0 || !init() || !lightSprite) return;
+  const prevA = ctx.globalAlpha;
+  const prevOp = ctx.globalCompositeOperation;
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < n; i++) {
+    if (A[i] <= 0.01 || R[i] <= 0.3) continue;
+    ctx.globalAlpha = prevA * Math.min(1, A[i]);
+    ctx.drawImage(lightSprite, X[i] - R[i], Y[i] - R[i], R[i] * 2, R[i] * 2);
+  }
+  ctx.globalAlpha = prevA;
+  ctx.globalCompositeOperation = prevOp;
+}
+
 /** True once the flames are painted (false without a canvas: tests in node). */
 export function flamesReady(): boolean {
   return init();

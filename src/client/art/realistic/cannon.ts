@@ -32,13 +32,24 @@ function flashMs(m: MotionParams): number {
   return (FLASH + SMOKE * m.muzzleSmoke) * m.flashTime;
 }
 
+/** An art unit of the flash on screen (px) at map scale `scale`: a little over the ship's own, so it reads at mid zoom. */
+const flashUnit = (scale: number): number => Math.max(1.6, scale * 1.4);
+
+/**
+ * The size of a flash at map scale `scale` (CSS px): the fireball's length along the line of fire and its width, how
+ * far the barrels' tongues reach, and how many barrels flash (flashSize scales them).
+ */
+export function muzzleFlash(scale: number, m: MotionParams): { length: number; width: number; tongue: number; barrels: number } {
+  const U = flashUnit(scale);
+  return { length: U * 8.5 * m.flashSize, width: U * 6 * m.flashSize, tongue: U * 9 * m.flashSize, barrels: BARRELS };
+}
+
 function drawMuzzle(ctx: CanvasRenderingContext2D, f: MuzzleDraw, m: MotionParams): void {
   const total = flashMs(m);
   // ms on a flashTime-1 clock, so a longer flashTime plays the same flash slower
   const tt = (f.t * total) / Math.max(0.2, m.flashTime);
   if (tt < 0) return;
-  /** an art unit on screen (px), a little over the ship's own so the flash reads at mid zoom */
-  const U = Math.max(1.6, f.scale * 1.4);
+  const U = flashUnit(f.scale);
   const fz = m.flashSize;
   const c = Math.cos(f.aim);
   const s = Math.sin(f.aim);
