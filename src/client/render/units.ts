@@ -17,7 +17,7 @@ import type { GameState, Unit } from '../../sim/types';
 import type { Camera } from '../camera';
 import { clamp, css, MAP_NUM_FAMILY, type RGB } from './common';
 import { GLYPHS, strokeDucks, type Inst } from './unitGlyphs';
-import { drawMapSprite, drawUnitMarker, isAirType, setSpriteBakeBudget, spriteLength, unitSpriteMods, type MapSpriteState } from './pixelSprites';
+import { drawMapSprite, drawUnitMarker, isAirType, setSpriteBakeBudget, spriteLength, unitDamage, unitSpriteMods, type MapSpriteState } from './pixelSprites';
 import { artStyleOf, type ArtStyle } from '../art/artStyle';
 import { artFor, motionFor, styleModule } from '../art/registry';
 import { spriteKey } from '../art/shared/keys';
@@ -364,6 +364,7 @@ export class UnitLayer {
             ss.speed = e.speed;
             ss.moving = !!e.moving;
             ss.seed = e.u.id;
+            ss.damage = e.fleet ? 0 : unitDamage(e.u);
             if (e.fleet || !drawMapSprite(ctx, e.type, e.u.variant, e.x, e.y, e.angle, c, unitSpriteMods(state, e.u), ss)) drawUnitMarker(ctx, e.type, e.x, e.y, e.fleet ? e.S * 1.6 : Math.min(14, e.S * 1.5), e.angle, css(c));
           }
         }
@@ -457,7 +458,7 @@ export class UnitLayer {
 
   private markArgs: ParachuteMarkDraw = { x: 0, y: 0, half: 0, owner: [200, 200, 200], zoom: 1, dpr: 1 };
   private dropArgs: ParadropDraw = { x: 0, y: 0, owner: [220, 220, 220], ageMs: 0, durMs: 1, t: 0, count: CHUTES, zoom: 1, scale: 1, seed: 0, dpr: 1 };
-  private spriteState: MapSpriteState = { zoom: 1, scale: 1, dpr: 1, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 0 };
+  private spriteState: MapSpriteState = { zoom: 1, scale: 1, dpr: 1, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 0, damage: 0 };
 
   /** Wakes behind moving ships, contrails behind planes and missiles, each drawn by its category's current style. */
   private drawTrailLayers(ctx: CanvasRenderingContext2D, visible: readonly Vis[], view: TrailView): void {

@@ -9,7 +9,7 @@
 //
 // No module-level side effects: a normal build drops this file (artlab/gate.ts only calls it when __ART_LAB__).
 import { loadFonts } from '../fonts';
-import { applyPicks, ART_CATEGORIES, ART_STYLES, CATEGORY_LABEL, currentMotionPicks, currentStylePicks, MOTION_LABEL, MOTION_PRESETS, motionCategoryOf, parseMotionPicks, parseStylePicks, picksLine, setArtStyle, artStyleOf, STYLE_LABEL, type ArtCategory, type ArtStyle, type MotionCategory, type MotionPicks, type MotionPreset, type StylePicks } from '../art/artStyle';
+import { applyPicks, ART_CATEGORIES, OWNER_PICKS, ART_STYLES, CATEGORY_LABEL, currentMotionPicks, currentStylePicks, MOTION_LABEL, MOTION_PRESETS, motionCategoryOf, parseMotionPicks, parseStylePicks, picksLine, setArtStyle, artStyleOf, STYLE_LABEL, type ArtCategory, type ArtStyle, type MotionCategory, type MotionPicks, type MotionPreset, type StylePicks } from '../art/artStyle';
 import { motionOf, styleModule } from '../art/registry';
 import { refined } from '../art/refined';
 import type { TrailLayer } from '../art/types';
@@ -235,10 +235,10 @@ export function startArtLab(): void {
     location.hash = '';
     location.reload();
   });
-  const reset = h('button', 'al-btn al-quiet', 'Reset picks');
+  const reset = h('button', 'al-btn al-quiet', 'Back to the game picks');
   reset.type = 'button';
   reset.addEventListener('click', () => {
-    for (const c of ART_CATEGORIES) st.styles[c] = 'refined';
+    for (const c of ART_CATEGORIES) st.styles[c] = OWNER_PICKS[c];
     for (const c of Object.keys(st.motions) as MotionCategory[]) st.motions[c] = 'lively';
     for (const [c, f] of styleSet) f(st.styles[c]);
     for (const [c, f] of motionSet) f(st.motions[c]);

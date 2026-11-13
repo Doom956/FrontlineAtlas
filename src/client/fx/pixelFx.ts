@@ -23,7 +23,7 @@ import type { FogView } from '../fog/fogView';
 import { artFor, motionFor } from '../art/registry';
 import { spriteKey, type SpriteKey } from '../art/shared/keys';
 import { fract, rnd } from '../art/shared/noise';
-import type { BlastDraw, BlastKind, CraterDraw, MuzzleDraw, ShellDraw } from '../art/types';
+import { CRATER_ATOM_REACH, CRATER_REACH, type BlastDraw, type BlastKind, type CraterDraw, type MuzzleDraw, type ShellDraw } from '../art/types';
 import { fxEnabled, prefersReducedMotion } from './settings';
 
 export type { BlastKind } from '../art/types';
@@ -102,7 +102,12 @@ export interface Crater {
   seed: number;
   /** the crater reaches water: it is drawn clipped to the land tiles */
   coast: boolean;
+  /** the atom bomb's ground mark (it reaches CRATER_ATOM_REACH radii, its blast zone; others CRATER_REACH) */
+  atom: boolean;
 }
+
+/** How far a crater's drawing reaches, in tiles. */
+const craterReach = (c: { r: number; atom: boolean }): number => c.r * (c.atom ? CRATER_ATOM_REACH : CRATER_REACH);
 
 /** What the effects need from the unit layer: where a ship was drawn and which way it faces. */
 export interface UnitPoses {
@@ -252,10 +257,11 @@ export class PixelFx {
    * A crater from a blast on land: none at the coast (the centre tile or one of its four neighbours is water), and
    * one whose bitmap reaches water is drawn clipped to the land tiles. Water hits splash instead.
    */
-  private scar(state: GameState, x: number, y: number, r: number, born: number, life: number): void {
+  private scar(state: GameState, x: number, y: number, r: number, born: number, life: number, atom = false): void {
     if (!this.landAround(state, x, y)) return;
     const c = this.crater(x, y, r, born, life);
-    const reach = Math.ceil(r * 1.8) + 1;
+    c.atom = atom;
+    const reach = Math.ceil(craterReach(c)) + 1;
     const w = state.map.width;
     const h = state.map.height;
     const T = state.map.terrain;
@@ -290,7 +296,7 @@ export class PixelFx {
     switch (e.kind) {
       case 'nuke':
         this.blast('atom', e.x, e.y, e.radius, now);
-        this.scar(state, e.x, e.y, Math.max(4, e.radius * 0.32), tick, 1800);
+        this.scar(state, e.x, e.y, Math.max(4, e.radius * 0.32), tick, 1800, true);
         return;
       case 'barrage': {
         // shells land over the disc in a quick ripple, each with its own small crater
@@ -468,7 +474,7 @@ export class PixelFx {
   /** A scorch crater at (x, y) tiles, radius r tiles, made at game time `born` (ticks), lasting `life` ticks. */
   crater(x: number, y: number, r: number, born: number, life: number): Crater {
     // it shows once the fireball covers the spot, not under the first flash
-    const c = { x, y, r, born: born + CRATER_DELAY, life, seed: fract(Math.sin(x * 7.13 + y * 3.71) * 9157.31), coast: false };
+    const c = { x, y, r, born: born + CRATER_DELAY, life, seed: fract(Math.sin(x * 7.13 + y * 3.71) * 9157.31), coast: false, atom: false };
     if (this.craters.length < CRATER_CAP) this.craters.push(c);
     else {
       this.craters[this.craterNext] = c;
@@ -504,7 +510,7 @@ export class PixelFx {
       const R = c.r * z;
       const sx = ox + c.x * z;
       const sy = oy + c.y * z;
-      const reach = R * 1.8 + 8;
+      const reach = craterReach(c) * z + 8;
       if (sx < -reach || sy < -reach || sx > cam.viewW + reach || sy > cam.viewH + reach) continue;
       // at the coast: clipped to the land tiles, so no scorch lies on the water
       const clip = c.coast && map ? clipToLand(ctx, map.terrain, map.width, map.height, c, ox, oy, z) : false;
@@ -514,6 +520,7 @@ export class PixelFx {
       d.radiusPx = R;
       d.q = age / life;
       d.seed = c.seed;
+      d.atom = c.atom;
       art.draw(ctx, d, m);
       if (clip) ctx.restore();
     }
@@ -522,7 +529,7 @@ export class PixelFx {
     this.ms += performance.now() - t0;
   }
 
-  private craterDraw: CraterDraw = { x: 0, y: 0, radiusPx: 0, q: 0, zoom: 1, scale: 1, seed: 0, dpr: 1 };
+  private craterDraw: CraterDraw = { x: 0, y: 0, radiusPx: 0, q: 0, zoom: 1, scale: 1, seed: 0, dpr: 1, atom: false };
   private blastDraw: BlastDraw = { kind: 'shell', x: 0, y: 0, t: 0, ageMs: 0, durMs: 1, zoom: 1, scale: 1, rt: 0, seed: 0, reduced: false, dpr: 1 };
   private muzzleDraw: MuzzleDraw = { x: 0, y: 0, aim: 0, t: 0, zoom: 1, scale: 1, seed: 0, dpr: 1 };
   private shellDraw: ShellDraw = { kind: 'cannon', x0: 0, y0: 0, x1: 0, y1: 0, t: 0, zoom: 1, scale: 1, seed: 0, dpr: 1 };
@@ -665,20 +672,28 @@ function drawBlastFar(ctx: CanvasRenderingContext2D, b: Blast, x: number, y: num
  * when a clip was set (call ctx.restore() after drawing); false when no land tile is there.
  */
 function clipToLand(ctx: CanvasRenderingContext2D, T: ArrayLike<number>, w: number, h: number, c: Crater, ox: number, oy: number, z: number): boolean {
-  const reach = Math.ceil(c.r * 1.8) + 1;
+  const reach = Math.ceil(craterReach(c)) + 1;
   const cx = Math.floor(c.x);
   const cy = Math.floor(c.y);
+  const xa = Math.max(0, cx - reach);
+  const xb = Math.min(w - 1, cx + reach);
   let any = false;
   ctx.save();
   ctx.beginPath();
-  for (let ty = Math.max(0, cy - reach); ty <= Math.min(h - 1, cy + reach); ty++)
-    for (let tx = Math.max(0, cx - reach); tx <= Math.min(w - 1, cx + reach); tx++) {
+  // one rect per run of land tiles in a row (an atom bomb's blast zone spans thousands of tiles)
+  for (let ty = Math.max(0, cy - reach); ty <= Math.min(h - 1, cy + reach); ty++) {
+    const y0 = Math.round(oy + ty * z);
+    const y1 = Math.round(oy + (ty + 1) * z);
+    for (let tx = xa; tx <= xb; tx++) {
       if (T[ty * w + tx] <= 1) continue;
+      let te = tx;
+      while (te < xb && T[ty * w + te + 1] > 1) te++;
       const x0 = Math.round(ox + tx * z);
-      const y0 = Math.round(oy + ty * z);
-      ctx.rect(x0, y0, Math.round(ox + (tx + 1) * z) - x0, Math.round(oy + (ty + 1) * z) - y0);
+      ctx.rect(x0, y0, Math.round(ox + (te + 1) * z) - x0, y1 - y0);
       any = true;
+      tx = te;
     }
+  }
   if (!any) {
     ctx.restore();
     return false;

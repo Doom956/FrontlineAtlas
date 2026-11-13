@@ -6,6 +6,8 @@
 // What a player owns shows on their units (unitSpriteMods reads the owner's techs, read-only): arsenal variants have
 // their own silhouettes and the upgrades add details (art/shared/keys.ts M_* bits). All art is original and drawn in
 // code (art/<style>/).
+import { UNITS } from '../../sim/config';
+import { warshipMaxHp } from '../../sim/naval2';
 import type { GameState, Player, Unit, UnitType, UnitVariant } from '../../sim/types';
 import { artFor, motionFor } from '../art/registry';
 import { setBakeBudget, atlasStats } from '../art/shared/atlas';
@@ -51,9 +53,25 @@ export interface MapSpriteState {
   speed: number;
   moving: boolean;
   seed: number;
+  /** 0 = full health .. 1 = about to sink or be destroyed (unitDamage) */
+  damage: number;
 }
 
-const draw: UnitDraw = { key: 'warship', mods: 0, owner: [0, 0, 0], x: 0, y: 0, angle: 0, zoom: 1, scale: 1, lod: 'mid', dpr: 1, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 0, alpha: 1, shadow: true };
+/**
+ * How badly a unit is hurt for the art, 0..1 (UnitDraw.damage): 1 - hp / max hp, read only. The max is the configured
+ * hp (UNITS; warships: the sim's warshipMaxHp, which adds veterancy and the arsenal variant), or the unit's hp when that
+ * is higher (an upgrade the client does not know about), so it is never negative. 0 for units with nothing to lose.
+ */
+export function unitDamage(u: Pick<Unit, 'type' | 'hp'> & Partial<Unit>): number {
+  const hp = u.hp;
+  if (typeof hp !== 'number' || !Number.isFinite(hp)) return 0;
+  const base = u.type === 'warship' ? warshipMaxHp(u as Unit) : (UNITS[u.type]?.hp ?? 0);
+  const max = Math.max(base, hp);
+  if (!(max > 0)) return 0;
+  return Math.max(0, Math.min(1, 1 - hp / max));
+}
+
+const draw: UnitDraw = { key: 'warship', mods: 0, owner: [0, 0, 0], x: 0, y: 0, angle: 0, zoom: 1, scale: 1, lod: 'mid', dpr: 1, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 0, alpha: 1, shadow: true, damage: 0 };
 
 /**
  * A unit's sprite on the map in the current style of its category, centred at (x, y). False when it could not be drawn
@@ -80,6 +98,7 @@ export function drawMapSprite(ctx: CanvasRenderingContext2D, type: UnitType, var
   d.seed = s.seed;
   d.alpha = 1;
   d.shadow = true;
+  d.damage = s.damage;
   return artFor(cat).drawUnit(ctx, d, motionFor(cat));
 }
 

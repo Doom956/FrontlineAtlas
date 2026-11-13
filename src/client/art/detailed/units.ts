@@ -341,7 +341,7 @@ export const detailedUnits: UnitArt = {
     // whole art pixels; two art pixels per model unit at most, so a portrait has the map's detail, not finer
     const res = Math.max(0.5, Math.min(2, Math.floor((s / px) * 4) / 4));
     const g: Grid = { p: px, res, k: px, dpr: 1 };
-    const d: UnitDraw = { key: p.key, mods: p.mods, owner: p.owner, x: p.x, y: p.y, angle, zoom: 1, scale: res * px, lod: 'near', dpr: 1, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 0, alpha: p.alpha, shadow: false };
+    const d: UnitDraw = { key: p.key, mods: p.mods, owner: p.owner, x: p.x, y: p.y, angle, zoom: 1, scale: res * px, lod: 'near', dpr: 1, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 0, alpha: p.alpha, shadow: false, damage: 0 };
     const prev = bakeSpent;
     bakeSpent = 0;
     const ok = drawAt(ctx, d, PORTRAIT_MOTION, g);
