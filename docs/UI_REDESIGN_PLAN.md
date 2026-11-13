@@ -21,10 +21,13 @@ same screens, let the owner pick one, then roll the winner out fully.
   they buy). No clever interactions. Anything hidden sits behind a clearly labelled button,
   never only a hotkey / hover / right-click / long-press. Tooltips add detail but are never the
   only way to learn what something is. Keep the guide and How to play working.
-- Take only PRINCIPLES from good pixel RTS games (muted map so important things pop; team
-  colour as a small plate/band/flag, not a full tint; place names on small quiet plates; few
-  colours; one consistent style; one panel for the selected thing). Never copy a specific
-  game's sprites, layout, name or logo. All art original, drawn in code.
+- Learn from good games freely (muted map so important things pop; team colour as a small
+  plate/band/flag, not a full tint; place names on small quiet plates; few colours; one
+  consistent style; one panel for the selected thing). Other games are fine as references for
+  looks, effects and patterns (for example Warfront's troop icons, missiles and explosions, or a
+  CS case-hardened finish). The one thing not to do: a 1:1 copy of the competitor game (see
+  CLAUDE.md). Art is drawn in code so the build stays one offline file; do not paste asset files
+  taken from other games.
 - No game rule / sim / protocol changes: look, layout and art only; every control keeps working.
 - Keep all test selectors (data-test, aria-label, role) and visible labels tests rely on; grep
   tests/ and tests/e2e before renaming; update tests in the same commit if you must change one.

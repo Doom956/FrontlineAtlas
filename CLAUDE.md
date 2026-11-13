@@ -9,6 +9,8 @@ doom956.github.io/FrontlineAtlas (Pages); both deploy from `main`.
 - Never write the name of the other game the owner compares this one to (the word "open" joined to "front")
   anywhere. Check with `git grep -i "open""front"` (split so this file stays clean).
 - No em dashes anywhere (code, docs, UI text, commits).
+- Other games are fine as references for looks and effects (match a style closely if the owner asks). Only a 1:1
+  copy of the competitor game is off limits. Art is drawn in code; never paste asset files taken from other games.
 - No new hotkeys, and no hotkey chips in the visible UI.
 - Everything must be obvious to a first-time player without hovering: icon plus a plain word on main controls,
   numbers carry units, disabled things say why, nothing reachable only by hover, hotkey, right-click or long-press.
