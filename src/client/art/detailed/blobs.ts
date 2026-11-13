@@ -7,10 +7,17 @@
 import { canBake, SpriteAtlas, type AtlasEntry, type RGBABitmap } from '../shared/atlas';
 import { hex, type RGB } from '../shared/colour';
 import type { Grid } from './grid';
-import { DUST, FIRE, SHADE, SMOKE, SOOT, SPRAY, VAPOUR } from './palette';
+import { CLOUD, CLOUD_SHADE, CLOUD_TOP, DUST, FIRE, SHADE, SMOKE, SOOT, SPRAY, VAPOUR } from './palette';
 
-export type BlobKind = 'smoke' | 'soot' | 'dust' | 'spray' | 'fire' | 'vapour' | 'flash' | 'glow' | 'halo' | 'shade' | 'haze';
-const KINDS: BlobKind[] = ['smoke', 'soot', 'dust', 'spray', 'fire', 'vapour', 'flash', 'glow', 'halo', 'shade', 'haze'];
+/**
+ * Puffs: smoke, soot, dust, spray, vapour and shade (balls lit from the top left), fire by heat, the flash core, the
+ * lights ('glow' on the ground, 'halo' in the air), the 'haze' dust sheet, and the big cloud's soft billows: 'cloudTop'
+ * (lit tops), 'cloud' (warm grey sides), 'cloudUnder' (the shaded underside) and 'roll' (a low flattened billow of dust
+ * rolling along the ground). The soft ones have a gentle tone range and no darker rim, so many of them overlapping read
+ * as one billowing mass, not a heap of separate stones.
+ */
+export type BlobKind = 'smoke' | 'soot' | 'dust' | 'spray' | 'fire' | 'vapour' | 'flash' | 'glow' | 'halo' | 'shade' | 'haze' | 'cloudTop' | 'cloud' | 'cloudUnder' | 'roll';
+const KINDS: BlobKind[] = ['smoke', 'soot', 'dust', 'spray', 'fire', 'vapour', 'flash', 'glow', 'halo', 'shade', 'haze', 'cloudTop', 'cloud', 'cloudUnder', 'roll'];
 
 const RAMP: Record<Exclude<BlobKind, 'fire' | 'flash' | 'glow' | 'halo' | 'haze'>, RGB[]> = {
   smoke: SMOKE.map(hex),
@@ -19,7 +26,16 @@ const RAMP: Record<Exclude<BlobKind, 'fire' | 'flash' | 'glow' | 'halo' | 'haze'
   spray: SPRAY.map(hex),
   vapour: VAPOUR.map(hex),
   shade: SHADE.map(hex),
+  cloudTop: CLOUD_TOP.map(hex),
+  cloud: CLOUD.map(hex),
+  cloudUnder: CLOUD_SHADE.map(hex),
+  roll: DUST.map(hex),
 };
+/** How much of its ramp a ball uses (1 = full contrast) and whether its lower right rim goes a tone deeper. */
+const SOFT: Partial<Record<BlobKind, number>> = { dust: 0.55, spray: 0.8, vapour: 0.8, cloudTop: 0.55, cloud: 0.6, cloudUnder: 0.6, roll: 0.42 };
+const NO_RIM = new Set<BlobKind>(['dust', 'cloudTop', 'cloud', 'cloudUnder', 'roll']);
+/** A 'roll' lies low: this much flatter than wide. */
+const ROLL_FLAT = 0.7;
 const FIRE_RGB: RGB[] = FIRE.map(hex);
 
 const BAYER = [-0.375, 0.125, 0.375, -0.125];
@@ -137,14 +153,19 @@ export function blobBitmap(kind: BlobKind, r: number, variant: number, heat = 0)
   const R = Math.max(1, Math.min(48, Math.round(r)));
   const half = Math.ceil(R * 1.22) + 1;
   const W = half * 2 + 1;
-  const data = new Uint8ClampedArray(W * W * 4);
+  const sq = kind === 'roll' ? ROLL_FLAT : 1;
+  const hy = sq === 1 ? half : Math.ceil(R * 1.22 * sq) + 1;
+  const Hh = hy * 2 + 1;
+  const data = new Uint8ClampedArray(W * Hh * 4);
   const ph = variant * 1.731 + 0.4;
   const s = variant * 13 + R;
   const ramp = kind === 'fire' || kind === 'flash' ? null : RAMP[kind];
-  for (let y = 0; y < W; y++) {
+  const soft = SOFT[kind] ?? 1;
+  const rim = !NO_RIM.has(kind);
+  for (let y = 0; y < Hh; y++) {
     for (let x = 0; x < W; x++) {
       const dx = x - half;
-      const dy = y - half;
+      const dy = (y - hy) / sq;
       const a = Math.atan2(dy, dx);
       // a lumpy edge: billows of a few sizes round the rim, bigger toward the top (a puff rises)
       let e = R * (0.9 + 0.11 * Math.sin(3 * a + ph) + 0.07 * Math.sin(5 * a + ph * 2.3) + 0.04 * Math.sin(8 * a + ph * 3.1));
@@ -163,12 +184,11 @@ export function blobBitmap(kind: BlobKind, r: number, variant: number, heat = 0)
       if (ramp) {
         // a ball lit from the top left, billowing inside
         const lum = -0.55 * nx - 0.62 * ny + 0.55 * nz + grain * 0.5;
-        // dust is soft (a narrow range of tones), smoke and soot billow with more contrast
-        const soft = kind === 'dust' ? 0.55 : kind === 'spray' || kind === 'vapour' ? 0.8 : 1;
+        // dust and the big cloud's billows are soft (a narrow range of tones), smoke and soot billow with more contrast
         const tf = 1.6 + ((lum + 0.25) * 2.6 - 1.6) * soft;
         let t = Math.max(0, Math.min(3, Math.floor(tf + 0.5 + dith * 0.45)));
         // the lower right rim a tone deeper
-        if (d > e - 1.05 && dx + dy > 0 && kind !== 'dust') t = Math.min(t, 1);
+        if (rim && d > e - 1.05 && dx + dy > 0) t = Math.min(t, 1);
         c = ramp[t];
       } else if (kind === 'flash') {
         // the flash: white hot, a pale yellow skin, a thin yellow rim (a little up and left the hottest)
@@ -189,7 +209,7 @@ export function blobBitmap(kind: BlobKind, r: number, variant: number, heat = 0)
       data[o + 3] = 255;
     }
   }
-  return { w: W, h: W, ox: half, oy: half, data };
+  return { w: W, h: Hh, ox: half, oy: hy, data };
 }
 
 // ------------------------------------------------------------------------------------------------- drawing

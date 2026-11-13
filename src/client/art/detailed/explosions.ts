@@ -20,7 +20,7 @@
 import type { MotionParams } from '../motion';
 import { rnd } from '../shared/noise';
 import type { BlastDraw, BlastKind, ExplosionArt, MapFxDraw } from '../types';
-import { drawBlob } from './blobs';
+import { drawBlob, type BlobKind } from './blobs';
 import { gridOf, type Grid } from './grid';
 import { DEBRIS, FIRE, SPRAY, TRACER } from './palette';
 
@@ -392,10 +392,12 @@ export interface AtomShape {
   capIn: number;
   young: number;
   glow: number;
+  /** how far its smoke has cooled from dark soot (0) to pale lit tops and warm grey sides (1) */
+  cool: number;
   /** the whole cloud's opacity as it thins away */
   fade: number;
 }
-const atomNow: AtomShape = { q: 0, late: 0, capH: 0, Rm: 0, rm: 0, wind: 0, capIn: 0, young: 0, glow: 0, fade: 0 };
+const atomNow: AtomShape = { q: 0, late: 0, capH: 0, Rm: 0, rm: 0, wind: 0, capIn: 0, young: 0, glow: 0, cool: 0, fade: 0 };
 
 /** The atom cloud's shape `age` ms after the flash, with a fire phase of `fT` ms in a life of `dur` ms (pure; reused). */
 export function atomShape(age: number, fT: number, dur: number): AtomShape {
@@ -409,8 +411,11 @@ export function atomShape(age: number, fT: number, dur: number): AtomShape {
   a.rm = 0.18 + 0.16 * easeOut(clamp01((q - 0.04) / 0.7)) + 0.06 * late;
   a.wind = 0.75 * late * late;
   a.capIn = clamp01((q - 0.1) / 0.18);
-  a.young = 1 - clamp01((q - 0.14) / 0.32);
-  a.glow = clamp01(1 - (q - 0.12) / 0.85);
+  // it burns for about a quarter of the fire phase, then glows dark red inside its soot for a while, then cools from
+  // soot to pale tops over grey sides (the glow outlasting the fire phase a little)
+  a.young = 1 - clamp01((q - 0.12) / 0.5);
+  a.glow = clamp01(1 - (q - 0.2) / 1.05);
+  a.cool = clamp01((q - 0.3) / 0.7);
   // it thins away over the last two thirds of its late life
   a.fade = 1 - smooth(clamp01((late - 0.3) / 0.7));
   return a;
@@ -434,18 +439,83 @@ const SUN_Z = 0.79;
 const CAP_FLAT = 0.38;
 const smooth = (t: number): number => t * t * (3 - 2 * t);
 
+// ---- the cloud's layer: the atom cloud is drawn whole into a scratch canvas and laid on the map at the cloud's
+// opacity, so a thinning cloud fades as one mass (no billow showing through another as a ghost outline)
+let layerCv: HTMLCanvasElement | null = null;
+let layerCx: CanvasRenderingContext2D | null = null;
+let layerOn = false;
+let layerX = 0;
+let layerY = 0;
+let layerW = 0;
+let layerH = 0;
+
+/**
+ * Opens the layer over the CSS box (x0, y0)-(x1, y1) of `ctx` (clipped to its canvas): the context to draw the cloud
+ * into, `ctx` itself where there is no layer (no DOM, a rotated or odd transform), or null when the box is off screen.
+ */
+function openLayer(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number): CanvasRenderingContext2D | null {
+  layerOn = false;
+  if (typeof document === 'undefined' || typeof ctx.getTransform !== 'function' || !ctx.canvas) return ctx;
+  const T = ctx.getTransform();
+  if (T.b !== 0 || T.c !== 0 || !(T.a > 0) || !(T.d > 0)) return ctx;
+  const dx0 = Math.max(0, Math.floor(T.a * x0 + T.e));
+  const dy0 = Math.max(0, Math.floor(T.d * y0 + T.f));
+  const dx1 = Math.min(ctx.canvas.width, Math.ceil(T.a * x1 + T.e));
+  const dy1 = Math.min(ctx.canvas.height, Math.ceil(T.d * y1 + T.f));
+  if (dx1 <= dx0 || dy1 <= dy0) return null;
+  if (!layerCv) {
+    layerCv = document.createElement('canvas');
+    layerCx = layerCv.getContext('2d');
+  }
+  if (!layerCx) return ctx;
+  const w = dx1 - dx0;
+  const h = dy1 - dy0;
+  // it only grows (a resize reallocates), and only to what the cloud covers on screen
+  if (layerCv.width < w || layerCv.height < h) {
+    layerCv.width = Math.max(layerCv.width, w);
+    layerCv.height = Math.max(layerCv.height, h);
+  }
+  const c = layerCx;
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.globalAlpha = 1;
+  c.clearRect(0, 0, w, h);
+  // the same device pixel grid as the map (whole device px shifted), so every blob lands on the same cells
+  c.setTransform(T.a, 0, 0, T.d, T.e - dx0, T.f - dy0);
+  c.imageSmoothingEnabled = false;
+  layerOn = true;
+  layerX = dx0;
+  layerY = dy0;
+  layerW = w;
+  layerH = h;
+  return c;
+}
+
+/** Lays the layer onto the map at `alpha`. */
+function closeLayer(ctx: CanvasRenderingContext2D, alpha: number): void {
+  if (!layerOn || !layerCv) return;
+  layerOn = false;
+  if (alpha <= 0.01) return;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = alpha;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(layerCv, 0, 0, layerW, layerH, layerX, layerY, layerW, layerH);
+  ctx.restore();
+}
+
 /**
  * The atom bomb, a sequence over its whole life:
  *   - a blinding flash: a white core and a light over the whole area that fades within a fraction of a second;
  *   - a fireball that forms at once, boils, rises and cools from white through yellow and orange to deep red, soot
  *     closing over it, lighting the ground under it while it is low;
  *   - a stem climbing under it, dust drawn up from the ground into smoke higher up, its billows rising along it;
- *   - the cap: a torus of billows rolling outward over the top and under at the rim (a slow, visible roll), lit on
- *     top (pale), in shade on the far side from the light and dark underneath, glowing orange underneath while the
- *     fire inside is hot, a domed crown over its middle;
- *   - a base surge of dust rolling out along the ground, uneven (thicker lobes, gaps, billows lagging), never a ring;
- *   - then the cloud rising a little more, spreading, drifting downwind (the top more than the stem), thinning and
- *     fading away.
+ *   - the cap: a torus of billows rolling outward over the top and under at the rim (a slow, visible roll); it burns
+ *     at first, then is dark soot with the fire glowing red through it, then cools billow by billow to pale tops lit
+ *     from the top left, warm grey sides and a deep brown grey underside, a domed crown over its middle;
+ *   - a base surge: low flattened billows of dust rolling out along the ground over a thin sheet of dust, in uneven
+ *     lobes with gaps and stragglers, never a ring;
+ *   - then the cloud rising a little more, spreading, drifting downwind (the top more than the stem), its billows
+ *     shrinking away one by one into ragged gaps while the whole cloud thins as one mass.
  * Every frame is a picture of its own: the parts overlap from the first moment, so no frame is empty or a lone shape.
  */
 function drawAtom(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams): void {
@@ -467,6 +537,7 @@ function drawAtom(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams):
   const fade = A.fade;
   const glow = A.glow;
   const young = A.young;
+  const cool = A.cool;
   const prev = ctx.globalAlpha;
   const flash = !b.reduced;
   const wind = R * A.wind;
@@ -480,172 +551,51 @@ function drawAtom(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams):
 
   // ---- the light: the whole area lit for a moment, then the fireball's light on the ground while it is low
   if (flash) {
-    const k0 = age / (280 * m.flashTime);
-    if (k0 < 1) drawBlob(ctx, 'glow', Rc * 6.5 * flashScale(m), 1, x, y, g, 0.55 * (1 - k0) * (1 - k0));
+    const k0 = age / (340 * m.flashTime);
+    if (k0 < 1) drawBlob(ctx, 'glow', Rc * 6.5 * flashScale(m), 1, x, y, g, 0.8 * (1 - k0) ** 1.6);
     flashGlow(ctx, 'atom', x, y, Rc, age, g, m, sd, false);
   }
-  if (q < 0.6) drawBlob(ctx, 'glow', Rc * 2.4, 2, x, y, g, 0.5 * (1 - q / 0.6) ** 2);
+  if (q < 0.7) drawBlob(ctx, 'glow', Rc * 2.4, 2, x, y, g, 0.5 * (1 - q / 0.7) ** 2);
 
-  // ---- the base surge: a low sheet of dust spreading in uneven lobes, billows rolling along its edge, some lagging
+  // ---- the base surge: a thin sheet of dust spreading over the ground and low flattened billows rolling along its
+  // uneven front, overlapping into one lumpy bank (thicker where it bulges, gaps where it lags), a few stragglers
+  // behind; drawn whole in the layer and laid on the ground translucent, thinning as it settles
   if (q > 0.015) {
     const k = easeOut3(clamp01(age / (fT * 1.3)));
     const reach = R * (0.7 + 2.5 * k) * m.shockwave + R * 0.5 * late;
     const fin = clamp01((q - 0.015) / 0.05);
     const a0 = fin * (1 - late) * (1 - late * 0.4);
-    drawBlob(ctx, 'haze', reach * 0.92 * g.res, Math.floor(sd) & 3, x, y, g, 0.85 * a0);
-    const n = 34;
-    for (let i = 0; i < n; i++) {
-      if (rnd(sd, i + 200) < 0.14) continue;
-      const th = ((i + 0.7 * rnd(sd, i + 201)) / n) * Math.PI * 2;
-      const lobe = 0.78 + 0.2 * Math.sin(3 * th + sd) + 0.13 * Math.sin(5 * th + 2.1 * sd) + 0.07 * Math.sin(9 * th + 3 * sd);
-      const d = reach * lobe * (0.58 + 0.44 * rnd(sd, i + 203));
-      const r = Rc * (0.14 + 0.12 * rnd(sd, i + 204)) * (0.6 + 0.7 * k) * (1 + 0.45 * late);
-      const a = (0.25 + 0.3 * rnd(sd, i + 205)) * a0;
-      const px = x + Math.cos(th) * d * u;
-      const py = y + Math.sin(th) * d * u * 0.5 - r * g.k * 0.25;
-      drawBlob(ctx, rnd(sd, i + 206) < 0.2 ? 'smoke' : 'dust', r, i, px, py, g, a);
-    }
-  }
-
-  // ---- the skirt: dust thrown up round the foot of the stem
-  if (q > 0.1) {
-    const k = easeOut(clamp01((q - 0.1) / 0.5));
-    const a = 0.62 * clamp01((q - 0.1) / 0.15) * fade * (1 - 0.5 * late);
-    for (let i = 0; i < 9; i++) {
-      const th = ((i + 0.5 * rnd(sd, i + 330)) / 9) * Math.PI * 2;
-      const d = R * (0.22 + 0.2 * k + 0.4 * late) * (0.8 + 0.4 * rnd(sd, i + 331));
-      const r = Rc * (0.18 + 0.08 * rnd(sd, i + 332)) * (0.7 + 0.5 * k + 0.4 * late);
-      const h = R * 0.18 * k * rnd(sd, i + 333);
-      drawBlob(ctx, 'dust', r, i + 3, x + (Math.cos(th) * d + wind * 0.05) * u, y + (Math.sin(th) * d * 0.5 - h) * u, g, a);
-    }
-  }
-
-  // ---- the stem: billows rising along it from the ground into the cap, dust low and smoke higher
-  if (q > 0.06) {
-    const top = Math.max(R * 0.3, capH - rm * 0.7);
-    const sin = clamp01((q - 0.06) / 0.15) * fade * (1 - 0.55 * late);
-    const NS = 12;
-    const F = age / (650 * m.blastTime);
-    const fr = F - Math.floor(F);
-    for (let k = 0; k < NS; k++) {
-      const f = (k + fr) / NS;
-      const id = (k - Math.floor(F)) & 63;
-      const h = top * f;
-      const w = R * (0.19 + 0.12 * (1 - f) ** 2 + 0.14 * f ** 3) * (1 + 0.5 * late);
-      const jit = (rnd(sd, id + 60) - 0.5) * w * 0.7;
-      const px = x + (jit + wind * f * 0.85) * u;
-      const py = y - h * u;
-      const r = w * g.res * 1.3;
-      // the ends fade in and out, so the billows never pop as they enter at the foot or reach the cap
-      const end = Math.min(1, f * 5, (1 - f) * 4 + 0.2);
-      drawBlob(ctx, f < 0.45 || rnd(sd, id + 61) < 0.4 ? 'dust' : 'smoke', r, id, px, py, g, sin * end);
-      if (glow > 0.05 && f > 0.3) drawBlob(ctx, 'fire', r * 0.42, id + 1, px + w * 0.1 * u, py, g, glow * 0.65 * sin * end, 2 + (1 - glow) * 2);
-    }
-  }
-
-  // ---- the cap's billows: placed on the torus, rolling, shaded by how they face the sun, sorted far to near
-  const capIn = A.capIn;
-  let nb = 0;
-  if (capIn > 0.01) {
-    const grow = 1 + 0.35 * late;
-    for (let i = 0; i < NA; i++) {
-      const th = ((i + 0.5 * (i & 1) * 0.5) / NA) * Math.PI * 2 + sd * 0.3;
-      const ct = Math.cos(th);
-      const st = Math.sin(th);
-      for (let j = 0; j < NM; j++) {
-        // the roll: every billow travels outward over the top, down the rim and back in underneath
-        const ph = (j / NM + 0.15 * rnd(sd, i * 7 + j) - roll) * Math.PI * 2 + 0.6;
-        const cf = Math.cos(ph);
-        const sf = Math.sin(ph);
-        const rho = Rm + rm * cf;
-        const z = rm * sf;
-        capX[nb] = cx + rho * ct * u;
-        capY[nb] = cy - z * u + rho * st * u * CAP_FLAT;
-        capR[nb] = rm * g.res * (0.5 + 0.42 * rnd(sd, i * 5 + j + 90)) * grow;
-        capLum[nb] = cf * ct * SUN_X + cf * st * SUN_Y + sf * SUN_Z;
-        capSin[nb] = sf;
-        capKey[nb] = rho * st + z * 0.6;
-        capIdx[nb] = nb;
-        nb++;
+    const S = a0 > 0.01 ? openLayer(ctx, x - (reach * 1.3 + R * 0.4) * u - 8, y - (reach * 0.7 + R * 0.4) * u - 8, x + (reach * 1.3 + R * 0.4) * u + 8, y + (reach * 0.7 + R * 0.2) * u + 8) : null;
+    if (S) {
+      const sa = layerOn ? 1 : a0 * 0.75;
+      drawBlob(S, 'haze', reach * 0.95 * g.res, Math.floor(sd) & 3, x, y, g, sa);
+      const n = 52;
+      for (let i = 0; i < n; i++) {
+        if (rnd(sd, i + 200) < 0.1) continue;
+        const th = ((i + 0.6 * rnd(sd, i + 201)) / n) * Math.PI * 2;
+        const lobe = 0.78 + 0.2 * Math.sin(3 * th + sd) + 0.13 * Math.sin(5 * th + 2.1 * sd) + 0.07 * Math.sin(9 * th + 3 * sd);
+        // three in four roll along the front, the rest straggle behind it over the sheet, so the bank never reads as
+        // a hollow ring
+        const behind = rnd(sd, i + 207) < 0.27;
+        const d = reach * lobe * (behind ? 0.25 + 0.5 * rnd(sd, i + 203) : 0.84 + 0.16 * rnd(sd, i + 203));
+        const settle = smooth(clamp01((late - 0.05 - 0.35 * rnd(sd, i + 208)) / 0.5));
+        const r = Rc * (0.24 + 0.1 * rnd(sd, i + 204)) * (0.5 + 0.8 * lobe) * (0.55 + 0.6 * k) * (behind ? 0.7 : 1) * (1 - 0.5 * settle);
+        const px = x + Math.cos(th) * d * u;
+        const py = y + Math.sin(th) * d * u * 0.5 - r * g.k * 0.2;
+        drawBlob(S, 'roll', r, i, px, py, g, sa * (1 - 0.6 * settle));
       }
     }
-    // far to near (insertion sort: 48 billows)
-    for (let i = 1; i < nb; i++) {
-      const v = capIdx[i];
-      let j = i - 1;
-      while (j >= 0 && capKey[capIdx[j]] > capKey[v]) {
-        capIdx[j + 1] = capIdx[j];
-        j--;
-      }
-      capIdx[j + 1] = v;
-    }
-  }
-  const billow = (n: number): void => {
-    const lum = capLum[n];
-    // each billow thins away on its own time, so the cloud breaks up into ragged gaps as it dissipates
-    const a = capIn * (1 - smooth(clamp01((late - 0.22 - 0.33 * rnd(sd, n + 140)) / 0.5)));
-    if (a <= 0.01) return;
-    // pale where the sun strikes the top, grey on the sides, dusty brown low on the cap (earth drawn up the stem), in
-    // shade underneath and away from the light
-    const kind = lum > 0.56 && young < 0.3 ? 'vapour' : lum > -0.15 ? (capSin[n] < 0.1 && rnd(sd, n + 170) < 0.6 ? 'dust' : 'smoke') : 'shade';
-    drawBlob(ctx, kind, capR[n], n, capX[n], capY[n], g, a);
-    // the young cap is still burning; later the fire inside glows through the rim and underneath while it is hot
-    if (young > 0.02) drawBlob(ctx, 'fire', capR[n] * 0.85, n + 2, capX[n], capY[n], g, Math.min(1, young * 1.2) * a, 2.6 + (1 - young) * 1.4);
-    else if (glow > 0.04 && capSin[n] < 0.25) {
-      const under = capSin[n] < -0.3 ? 1 : 0.45;
-      drawBlob(ctx, 'fire', capR[n] * 0.55, n + 1, capX[n], capY[n] + capR[n] * g.k * 0.3, g, Math.min(1, glow * 1.3) * under * a, 1.5 + (1 - glow) * 2.5);
-    }
-  };
-  // the far half of the cap
-  const crownKey = rm * 0.5;
-  let bi = 0;
-  for (; bi < nb && capKey[capIdx[bi]] < crownKey; bi++) billow(capIdx[bi]);
-
-  // ---- the fireball: forms at once, boils, rises with the cap and cools, soot closing over it
-  if (q < 0.75) {
-    const fr = R * (0.36 + 0.4 * easeOut3(clamp01(q / 0.06))) * (1 - 0.45 * clamp01((q - 0.15) / 0.45));
-    const fa = 1 - clamp01((q - 0.45) / 0.3);
-    const fl = Math.floor(age / 110);
-    const fy = y - capH * u + rm * 0.1 * u;
-    for (let i = 8; i >= 0; i--) {
-      const ang = (i / 8) * Math.PI * 2 + sd + Math.sin(age / 160 + i) * 0.25;
-      const d = i === 0 ? 0 : fr * (0.5 + 0.08 * Math.sin(age / 120 + i * 2));
-      const r = fr * (i === 0 ? 0.72 : 0.5 + 0.08 * rnd(sd, i + 70)) * g.res;
-      const heat = Math.max(0, Math.min(4, q * 8 - (i === 0 ? 0.3 : -0.6)));
-      drawBlob(ctx, 'fire', Math.max(1, r), (fl + i) & 3, cx + Math.cos(ang) * d * u, fy + Math.sin(ang) * d * u * 0.8, g, fa, heat);
-    }
-    // soot forming over the top of the fireball as it cools
-    const so = clamp01((q - 0.18) / 0.3) * fa;
-    if (so > 0.02) for (let i = 0; i < 3; i++) drawBlob(ctx, 'soot', fr * (0.45 + 0.1 * i) * g.res, i + 5, cx + (i - 1) * fr * 0.5 * u, fy - fr * (0.5 - Math.abs(i - 1) * 0.15) * u, g, so * 0.85);
+    closeLayer(ctx, prev * a0 * 0.75);
   }
 
-  // ---- the crown: a domed top over the middle of the cap, filling the ring
-  if (capIn > 0.01) {
-    const crownIn = clamp01((q - 0.18) / 0.2) * capIn;
-    if (crownIn > 0.01) {
-      const grow = 1 + 0.35 * late;
-      // a low dome: wide, flat billows over the middle, the one toward the sun lit
-      const offs = [
-        [0, 0, 0.55, 0.3],
-        [-0.42, -0.18, 0.4, 0.42],
-        [0.42, -0.08, 0.4, 0.36],
-        [-0.08, 0.3, 0.42, 0.3],
-        [0.02, -0.36, 0.34, 0.5],
-      ] as const;
-      for (let i = 0; i < offs.length; i++) {
-        const [ox, oy, rr, zz] = offs[i];
-        const lum = ox * 0.6 * SUN_X + oy * 0.6 * SUN_Y + 0.8 * SUN_Z;
-        const kind = young < 0.3 && lum + (i === 4 ? 0.15 : 0) > 0.7 ? 'vapour' : 'smoke';
-        const a = crownIn * (1 - smooth(clamp01((late - 0.3 - 0.3 * rnd(sd, i + 150)) / 0.5)));
-        const px = cx + ox * Rm * u;
-        const py = cy - rm * zz * u + oy * Rm * CAP_FLAT * u;
-        drawBlob(ctx, kind, Rm * rr * g.res * grow, i + 11, px, py, g, a);
-        if (young > 0.02) drawBlob(ctx, 'fire', Rm * rr * g.res * 0.8, i + 12, px, py, g, Math.min(1, young * 1.2) * a, 2.8 + (1 - young) * 1.2);
-      }
-    }
-  }
-  // the near half of the cap
-  for (; bi < nb; bi++) billow(capIdx[bi]);
+  // ---- the cloud (the skirt, the stem, the cap, the fireball and the crown), in its layer
+  // (its box holds the cap's widest roll and crown, the young fireball, the stem and the skirt round its foot)
+  const grow = 1 + 0.35 * late;
+  const ext = Math.max((Rm + 2.4 * rm) * grow + R * 0.2, R * 1.3) * u;
+  const top = cy - Math.max((2.6 * rm + 0.9 * Rm) * grow, R * 1.3) * u - 8;
+  const L = openLayer(ctx, Math.min(x - R * 1.5 * u, cx - ext) - 8, top, Math.max(x + R * 1.5 * u, cx + ext) + 8, y + R * 1.2 * u + 8);
+  if (L) drawAtomCloud(L, m, A, g, u, R, Rc, age, sd, x, y, cx, cy, Rm, rm, wind, roll, grow, layerOn ? 1 : fade);
+  closeLayer(ctx, prev * fade);
 
   // ---- debris thrown far out early on
   const nd = Math.round(s.debris * m.debris);
@@ -671,6 +621,166 @@ function drawAtom(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams):
     }
   }
   ctx.globalAlpha = prev;
+}
+
+/** The atom cloud itself (see drawAtom), drawn into `ctx` with every part's alpha times `ca`. */
+function drawAtomCloud(ctx: CanvasRenderingContext2D, m: MotionParams, A: AtomShape, g: Grid, u: number, R: number, Rc: number, age: number, sd: number, x: number, y: number, cx: number, cy: number, Rm: number, rm: number, wind: number, roll: number, grow: number, ca: number): void {
+  const q = A.q;
+  const late = A.late;
+  const glow = A.glow;
+  const young = A.young;
+  const cool = A.cool;
+  const capH = R * A.capH;
+
+  // ---- the skirt: dust thrown up round the foot of the stem
+  if (q > 0.1) {
+    const k = easeOut(clamp01((q - 0.1) / 0.5));
+    const a = 0.75 * clamp01((q - 0.1) / 0.15) * ca * (1 - 0.4 * late);
+    for (let i = 0; i < 9; i++) {
+      const th = ((i + 0.5 * rnd(sd, i + 330)) / 9) * Math.PI * 2;
+      const d = R * (0.22 + 0.2 * k + 0.4 * late) * (0.8 + 0.4 * rnd(sd, i + 331));
+      const r = Rc * (0.18 + 0.08 * rnd(sd, i + 332)) * (0.7 + 0.5 * k + 0.4 * late);
+      const h = R * 0.18 * k * rnd(sd, i + 333);
+      drawBlob(ctx, 'dust', r, i + 3, x + (Math.cos(th) * d + wind * 0.05) * u, y + (Math.sin(th) * d * 0.5 - h) * u, g, a);
+    }
+  }
+
+  // ---- the stem: billows rising along it from the ground into the cap, dust low and smoke higher
+  if (q > 0.06) {
+    const top = Math.max(R * 0.3, capH - rm * 0.7);
+    const sin = clamp01((q - 0.06) / 0.15) * ca * (1 - 0.5 * late);
+    const NS = 12;
+    const F = age / (650 * m.blastTime);
+    const fr = F - Math.floor(F);
+    for (let k = 0; k < NS; k++) {
+      const f = (k + fr) / NS;
+      const id = (k - Math.floor(F)) & 63;
+      const h = top * f;
+      const w = R * (0.2 + 0.12 * (1 - f) ** 2 + 0.14 * f ** 3) * (1 + 0.5 * late);
+      const jit = (rnd(sd, id + 60) - 0.5) * w * 0.7;
+      const px = x + (jit + wind * f * 0.85) * u;
+      const py = y - h * u;
+      const r = w * g.res * 1.3;
+      // the ends fade in and out, so the billows never pop as they enter at the foot or reach the cap
+      const end = Math.min(1, f * 5, (1 - f) * 4 + 0.2);
+      const kind = f < 0.45 || rnd(sd, id + 61) < 0.35 ? 'dust' : cool < 0.25 + 0.3 * rnd(sd, id + 62) ? 'soot' : 'cloud';
+      drawBlob(ctx, kind, r, id, px, py, g, sin * end);
+      if (glow > 0.05 && f > 0.3) drawBlob(ctx, 'fire', r * 0.42, id + 1, px + w * 0.1 * u, py, g, glow * 0.6 * sin * end, 2 + (1 - glow) * 2);
+    }
+  }
+
+  // ---- the cap's billows: placed on the torus, rolling, shaded by how they face the sun, sorted far to near
+  const capIn = A.capIn;
+  let nb = 0;
+  if (capIn > 0.01) {
+    for (let i = 0; i < NA; i++) {
+      const th = ((i + 0.5 * (i & 1) * 0.5) / NA) * Math.PI * 2 + sd * 0.3;
+      const ct = Math.cos(th);
+      const st = Math.sin(th);
+      for (let j = 0; j < NM; j++) {
+        // the roll: every billow travels outward over the top, down the rim and back in underneath
+        const ph = (j / NM + 0.15 * rnd(sd, i * 7 + j) - roll) * Math.PI * 2 + 0.6;
+        const cf = Math.cos(ph);
+        const sf = Math.sin(ph);
+        const rho = Rm + rm * cf;
+        const z = rm * sf;
+        capX[nb] = cx + rho * ct * u;
+        capY[nb] = cy - z * u + rho * st * u * CAP_FLAT;
+        capR[nb] = rm * g.res * (0.58 + 0.4 * rnd(sd, i * 5 + j + 90)) * grow;
+        capLum[nb] = cf * ct * SUN_X + cf * st * SUN_Y + sf * SUN_Z;
+        capSin[nb] = sf;
+        capKey[nb] = rho * st + z * 0.6;
+        capIdx[nb] = nb;
+        nb++;
+      }
+    }
+    // far to near (insertion sort: 48 billows)
+    for (let i = 1; i < nb; i++) {
+      const v = capIdx[i];
+      let j = i - 1;
+      while (j >= 0 && capKey[capIdx[j]] > capKey[v]) {
+        capIdx[j + 1] = capIdx[j];
+        j--;
+      }
+      capIdx[j + 1] = v;
+    }
+  }
+  /** A billow's kind by how it faces the sun and how far the cloud has cooled (each billow on its own time). */
+  const cloudKind = (lum: number, low: number, n: number): BlobKind => {
+    if (lum < -0.15) return 'cloudUnder';
+    if (cool < 0.22 + 0.3 * rnd(sd, n + 180)) return lum > 0.4 ? 'smoke' : 'soot';
+    if (lum > 0.62 - 0.3 * cool && cool > 0.3 + 0.3 * rnd(sd, n + 181)) return 'cloudTop';
+    return low < 0.1 && rnd(sd, n + 170) < 0.45 ? 'dust' : 'cloud';
+  };
+  const billow = (n: number): void => {
+    // each billow shrinks away on its own time, so the cloud breaks up into ragged gaps as it dissipates
+    const gone = smooth(clamp01((late - 0.2 - 0.35 * rnd(sd, n + 140)) / 0.45));
+    if (gone >= 0.98) return;
+    const a = capIn * ca * (gone > 0.7 ? (1 - gone) / 0.3 : 1);
+    if (a <= 0.01) return;
+    const r = capR[n] * (1 - 0.55 * gone);
+    drawBlob(ctx, cloudKind(capLum[n], capSin[n], n), r, n, capX[n], capY[n], g, a);
+    // the young cap is still burning; then the fire glows through its soot and under the rim while it is hot
+    if (young > 0.02) drawBlob(ctx, 'fire', r * 0.85, n + 2, capX[n], capY[n], g, Math.min(1, young * 1.2) * a, 2.6 + (1 - young) * 1.4);
+    else if (glow > 0.04) {
+      // a band of dull red light under the rim (wide, overlapping glows, not a string of beads), a little through the
+      // soot on the sides while it is still dark
+      const under = capSin[n] < -0.3 ? 0.9 : capSin[n] < 0.25 ? 0.55 : cool < 0.35 ? 0.3 : 0;
+      if (under > 0) drawBlob(ctx, 'fire', r * 0.75, n + 1, capX[n], capY[n] + r * g.k * 0.25, g, Math.min(1, glow * 1.2) * under * a, 2.4 + (1 - glow) * 1.6);
+    }
+  };
+  // the far half of the cap
+  const crownKey = rm * 0.5;
+  let bi = 0;
+  for (; bi < nb && capKey[capIdx[bi]] < crownKey; bi++) billow(capIdx[bi]);
+
+  // ---- the fireball: forms at once, boils, rises with the cap and cools, soot closing over it
+  if (q < 0.8) {
+    const fr = R * (0.36 + 0.4 * easeOut3(clamp01(q / 0.06))) * (1 - 0.45 * clamp01((q - 0.15) / 0.5));
+    const fa = (1 - clamp01((q - 0.5) / 0.3)) * ca;
+    const fl = Math.floor(age / 110);
+    const fy = y - capH * u + rm * 0.1 * u;
+    for (let i = 8; i >= 0; i--) {
+      const ang = (i / 8) * Math.PI * 2 + sd + Math.sin(age / 160 + i) * 0.25;
+      const d = i === 0 ? 0 : fr * (0.5 + 0.08 * Math.sin(age / 120 + i * 2));
+      const r = fr * (i === 0 ? 0.72 : 0.5 + 0.08 * rnd(sd, i + 70)) * g.res;
+      const heat = Math.max(0, Math.min(4, q * 7 - (i === 0 ? 0.3 : -0.6)));
+      drawBlob(ctx, 'fire', Math.max(1, r), (fl + i) & 3, cx + Math.cos(ang) * d * u, fy + Math.sin(ang) * d * u * 0.8, g, fa, heat);
+    }
+    // soot forming over the top of the fireball as it cools
+    const so = clamp01((q - 0.18) / 0.3) * fa;
+    if (so > 0.02) for (let i = 0; i < 3; i++) drawBlob(ctx, 'soot', fr * (0.45 + 0.1 * i) * g.res, i + 5, cx + (i - 1) * fr * 0.5 * u, fy - fr * (0.5 - Math.abs(i - 1) * 0.15) * u, g, so * 0.85);
+  }
+
+  // ---- the crown: a domed top over the middle of the cap, filling the ring
+  if (capIn > 0.01) {
+    const crownIn = clamp01((q - 0.18) / 0.2) * capIn;
+    if (crownIn > 0.01) {
+      // a low dome: wide, flat billows over the middle, the one toward the sun lit
+      const offs = [
+        [0, 0, 0.55, 0.3],
+        [-0.42, -0.18, 0.4, 0.42],
+        [0.42, -0.08, 0.4, 0.36],
+        [-0.08, 0.3, 0.42, 0.3],
+        [0.02, -0.36, 0.34, 0.5],
+      ] as const;
+      for (let i = 0; i < offs.length; i++) {
+        const [ox, oy, rr, zz] = offs[i];
+        const lum = ox * 0.6 * SUN_X + oy * 0.6 * SUN_Y + 0.8 * SUN_Z + (i === 4 ? 0.15 : 0);
+        const gone = smooth(clamp01((late - 0.3 - 0.3 * rnd(sd, i + 150)) / 0.45));
+        if (gone >= 0.98) continue;
+        const a = crownIn * ca * (gone > 0.7 ? (1 - gone) / 0.3 : 1);
+        const px = cx + ox * Rm * u;
+        const py = cy - rm * zz * u + oy * Rm * CAP_FLAT * u;
+        const r = Rm * rr * g.res * grow * (1 - 0.55 * gone);
+        drawBlob(ctx, cloudKind(lum, 1, i + 60), r, i + 11, px, py, g, a);
+        if (young > 0.02) drawBlob(ctx, 'fire', r * 0.8, i + 12, px, py, g, Math.min(1, young * 1.2) * a, 2.8 + (1 - young) * 1.2);
+        else if (glow > 0.04 && cool < 0.35) drawBlob(ctx, 'fire', r * 0.4, i + 13, px, py + r * g.k * 0.2, g, glow * 0.5 * a, 2.4 + (1 - glow) * 1.6);
+      }
+    }
+  }
+  // the near half of the cap
+  for (; bi < nb; bi++) billow(capIdx[bi]);
 }
 
 // ------------------------------------------------------------------------------------------------- aftermath

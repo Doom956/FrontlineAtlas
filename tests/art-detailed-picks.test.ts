@@ -243,4 +243,54 @@ describe('detailed atom bomb', () => {
     expect(end.fade).toBeLessThan(0.01);
     expect(end.wind).toBeGreaterThan(0.5);
   });
+
+  it('burns, then glows red inside its soot, then cools to pale tops, each stage overlapping the next', () => {
+    const fT = 2400;
+    const dur = 7600;
+    let prevCool = 0;
+    for (let age = 0; age <= dur; age += 50) {
+      const a = atomShape(age, fT, dur);
+      expect(a.cool).toBeGreaterThanOrEqual(prevCool);
+      prevCool = a.cool;
+    }
+    expect(atomShape(0, fT, dur).cool).toBe(0);
+    // the fire is out before the glow inside fades, and the glow outlasts the start of the cooling
+    const at = (age: number) => ({ ...atomShape(age, fT, dur) });
+    expect(at(fT * 0.7).young).toBe(0);
+    expect(at(fT * 0.7).glow).toBeGreaterThan(0.3);
+    expect(at(fT * 0.7).cool).toBeGreaterThan(0.3);
+    expect(at(fT).cool).toBe(1);
+    expect(at(fT * 1.3).glow).toBe(0);
+  });
+
+  it('builds the cloud from soft billows (a narrow tone range, no dark rim) and the surge from low flat ones', () => {
+    /** The share of a blob's pixels in its two commonest tones, and in its darkest tone. */
+    const tones = (kind: 'cloud' | 'cloudTop' | 'cloudUnder' | 'smoke' | 'roll'): [number, number] => {
+      const bm = blobBitmap(kind, 14, 1);
+      const count = new Map<number, number>();
+      let n = 0;
+      for (let i = 0; i < bm.data.length; i += 4) {
+        if (!bm.data[i + 3]) continue;
+        n++;
+        const lum = bm.data[i] + bm.data[i + 1] + bm.data[i + 2];
+        count.set(lum, (count.get(lum) ?? 0) + 1);
+      }
+      const byLum = [...count.entries()].sort((a, b) => a[0] - b[0]);
+      const top2 = [...count.values()].sort((a, b) => b - a);
+      return [(top2[0] + (top2[1] ?? 0)) / n, byLum[0][1] / n];
+    };
+    const [smokeMain, smokeDark] = tones('smoke');
+    expect(smokeMain).toBeLessThan(0.7);
+    expect(smokeDark).toBeGreaterThan(0.12);
+    for (const k of ['cloud', 'cloudTop', 'cloudUnder', 'roll'] as const) {
+      const [main, dark] = tones(k);
+      expect(main, k).toBeGreaterThan(0.75);
+      expect(dark, k).toBeLessThan(0.1);
+    }
+    const roll = blobBitmap('roll', 14, 1);
+    expect(roll.h).toBeLessThan(roll.w * 0.8);
+    // the tops stay below white (only the flash and the fire glare)
+    const top = blobBitmap('cloudTop', 14, 1);
+    for (let i = 0; i < top.data.length; i += 4) if (top.data[i + 3]) expect(top.data[i] + top.data[i + 1] + top.data[i + 2]).toBeLessThan(3 * 215);
+  });
 });
