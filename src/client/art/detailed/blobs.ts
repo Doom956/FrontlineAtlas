@@ -7,18 +7,35 @@
 import { canBake, SpriteAtlas, type AtlasEntry, type RGBABitmap } from '../shared/atlas';
 import { hex, type RGB } from '../shared/colour';
 import type { Grid } from './grid';
-import { DUST, FIRE, SMOKE, SOOT, SPRAY, VAPOUR } from './palette';
+import { CLOUD, CLOUD_SHADE, CLOUD_TOP, DUST, FIRE, SHADE, SMOKE, SOOT, SPRAY, VAPOUR } from './palette';
 
-export type BlobKind = 'smoke' | 'soot' | 'dust' | 'spray' | 'fire' | 'vapour';
-const KINDS: BlobKind[] = ['smoke', 'soot', 'dust', 'spray', 'fire', 'vapour'];
+/**
+ * Puffs: smoke, soot, dust, spray, vapour and shade (balls lit from the top left), fire by heat, the flash core, the
+ * lights ('glow' on the ground, 'halo' in the air), the 'haze' dust sheet, and the big cloud's soft billows: 'cloudTop'
+ * (lit tops), 'cloud' (warm grey sides), 'cloudUnder' (the shaded underside) and 'roll' (a low flattened billow of dust
+ * rolling along the ground). The soft ones have a gentle tone range and no darker rim, so many of them overlapping read
+ * as one billowing mass, not a heap of separate stones.
+ */
+export type BlobKind = 'smoke' | 'soot' | 'dust' | 'spray' | 'fire' | 'vapour' | 'flash' | 'glow' | 'halo' | 'shade' | 'haze' | 'cloudTop' | 'cloud' | 'cloudUnder' | 'roll';
+const KINDS: BlobKind[] = ['smoke', 'soot', 'dust', 'spray', 'fire', 'vapour', 'flash', 'glow', 'halo', 'shade', 'haze', 'cloudTop', 'cloud', 'cloudUnder', 'roll'];
 
-const RAMP: Record<Exclude<BlobKind, 'fire'>, RGB[]> = {
+const RAMP: Record<Exclude<BlobKind, 'fire' | 'flash' | 'glow' | 'halo' | 'haze'>, RGB[]> = {
   smoke: SMOKE.map(hex),
   soot: SOOT.map(hex),
   dust: DUST.map(hex),
   spray: SPRAY.map(hex),
   vapour: VAPOUR.map(hex),
+  shade: SHADE.map(hex),
+  cloudTop: CLOUD_TOP.map(hex),
+  cloud: CLOUD.map(hex),
+  cloudUnder: CLOUD_SHADE.map(hex),
+  roll: DUST.map(hex),
 };
+/** How much of its ramp a ball uses (1 = full contrast) and whether its lower right rim goes a tone deeper. */
+const SOFT: Partial<Record<BlobKind, number>> = { dust: 0.55, spray: 0.8, vapour: 0.8, cloudTop: 0.55, cloud: 0.6, cloudUnder: 0.6, roll: 0.42 };
+const NO_RIM = new Set<BlobKind>(['dust', 'cloudTop', 'cloud', 'cloudUnder', 'roll']);
+/** A 'roll' lies low: this much flatter than wide. */
+const ROLL_FLAT = 0.7;
 const FIRE_RGB: RGB[] = FIRE.map(hex);
 
 const BAYER = [-0.375, 0.125, 0.375, -0.125];
@@ -42,21 +59,113 @@ function vnoise(x: number, y: number, s: number): number {
 }
 
 /**
+ * The light of a blast on the ground or in the air: a soft lumpy pool, densest in the middle, its alpha falling off in
+ * seven dithered steps (no smooth gradient and no ring), white hot in the middle through yellow to an orange edge.
+ * 'glow' lies on the ground (squashed by the 3/4 view), 'halo' hangs in the air (round). Radius `r` cells (1..48).
+ */
+export function glowBitmap(kind: 'glow' | 'halo', r: number, variant: number): RGBABitmap {
+  const R = Math.max(1, Math.min(48, Math.round(r)));
+  const sq = kind === 'glow' ? 0.6 : 1;
+  const half = Math.ceil(R * 1.15) + 1;
+  const hy = Math.ceil(R * sq * 1.15) + 1;
+  const W = half * 2 + 1;
+  const Hh = hy * 2 + 1;
+  const data = new Uint8ClampedArray(W * Hh * 4);
+  const ph = variant * 1.731 + 0.4;
+  const s = variant * 13 + R + 5;
+  // seven alpha steps a little apart: the dither between two of them stays quiet even when a big light is drawn
+  // with coarse cells
+  const ALPHA = [0, 30, 60, 92, 124, 158, 192, 226];
+  const COL = [FIRE_RGB[2], FIRE_RGB[2], FIRE_RGB[2], FIRE_RGB[1], FIRE_RGB[1], FIRE_RGB[1], FIRE_RGB[0], FIRE_RGB[0]];
+  for (let y = 0; y < Hh; y++) {
+    for (let x = 0; x < W; x++) {
+      const dx = x - half;
+      const dy = (y - hy) / sq;
+      const a = Math.atan2(dy, dx);
+      const e = R * (0.92 + 0.1 * Math.sin(3 * a + ph) + 0.06 * Math.sin(5 * a + ph * 2.3));
+      const d = Math.hypot(dx, dy) / e;
+      if (d >= 1) continue;
+      const grain = vnoise(x * 0.5 + variant * 3.1, y * 0.5, s) - 0.5;
+      const i = (1 - d) ** 1.6 + grain * 0.15;
+      const lv = Math.max(0, Math.min(7, Math.floor(i * 8 + 0.4 + BAYER[(x & 1) + ((y & 1) << 1)] * 0.95)));
+      if (!lv) continue;
+      const o = (y * W + x) * 4;
+      const c = COL[lv];
+      data[o] = c[0];
+      data[o + 1] = c[1];
+      data[o + 2] = c[2];
+      data[o + 3] = ALPHA[lv];
+    }
+  }
+  return { w: W, h: Hh, ox: half, oy: hy, data };
+}
+
+/**
+ * A sheet of dust lying low on the ground (the atom bomb's base surge): flat (squashed by the 3/4 view), its edge in
+ * big uneven lobes, dense inside and thinning toward the edge in dithered steps, lit a shade lighter toward the top
+ * left. Radius `r` cells (1..48).
+ */
+export function hazeBitmap(r: number, variant: number): RGBABitmap {
+  const R = Math.max(1, Math.min(48, Math.round(r)));
+  const sq = 0.5;
+  const half = Math.ceil(R * 1.3) + 1;
+  const hy = Math.ceil(R * sq * 1.3) + 1;
+  const W = half * 2 + 1;
+  const Hh = hy * 2 + 1;
+  const data = new Uint8ClampedArray(W * Hh * 4);
+  const ph = variant * 1.731 + 0.9;
+  const s = variant * 17 + R + 9;
+  const ALPHA = [0, 44, 88, 128, 168, 206];
+  const ramp = RAMP.dust;
+  for (let y = 0; y < Hh; y++) {
+    for (let x = 0; x < W; x++) {
+      const dx = x - half;
+      const dy = (y - hy) / sq;
+      const a = Math.atan2(dy, dx);
+      const e = R * (0.86 + 0.16 * Math.sin(3 * a + ph) + 0.11 * Math.sin(5 * a + ph * 2.3) + 0.06 * Math.sin(9 * a + ph * 1.7));
+      const d = Math.hypot(dx, dy) / e;
+      if (d >= 1) continue;
+      const grain = vnoise(x * 0.35 + variant * 3.1, y * 0.6, s) - 0.5;
+      const dith = BAYER[(x & 1) + ((y & 1) << 1)];
+      const i = (1 - d) ** 0.7 + grain * 0.35;
+      const lv = Math.max(0, Math.min(5, Math.floor(i * 5.5 + dith * 0.95)));
+      if (!lv) continue;
+      const t = Math.max(1, Math.min(3, Math.floor(2 + (-dx - dy * 1.4) / (e * 1.6) + grain * 1.2 + dith * 0.6)));
+      const c = ramp[t];
+      const o = (y * W + x) * 4;
+      data[o] = c[0];
+      data[o + 1] = c[1];
+      data[o + 2] = c[2];
+      data[o + 3] = ALPHA[lv];
+    }
+  }
+  return { w: W, h: Hh, ox: half, oy: hy, data };
+}
+
+/**
  * A blob's pixels: radius `r` cells (1..48), shape `variant` (0..3), and for fire the heat (0 white hot .. 4 cooling
- * to red and brown). The origin (ox, oy) is the blob's centre.
+ * to red and brown). 'flash' is the white-hot core of a blast's first frames: white through pale yellow to a yellow
+ * rim, never red. The origin (ox, oy) is the blob's centre.
  */
 export function blobBitmap(kind: BlobKind, r: number, variant: number, heat = 0): RGBABitmap {
+  if (kind === 'glow' || kind === 'halo') return glowBitmap(kind, r, variant);
+  if (kind === 'haze') return hazeBitmap(r, variant);
   const R = Math.max(1, Math.min(48, Math.round(r)));
   const half = Math.ceil(R * 1.22) + 1;
   const W = half * 2 + 1;
-  const data = new Uint8ClampedArray(W * W * 4);
+  const sq = kind === 'roll' ? ROLL_FLAT : 1;
+  const hy = sq === 1 ? half : Math.ceil(R * 1.22 * sq) + 1;
+  const Hh = hy * 2 + 1;
+  const data = new Uint8ClampedArray(W * Hh * 4);
   const ph = variant * 1.731 + 0.4;
   const s = variant * 13 + R;
-  const ramp = kind === 'fire' ? null : RAMP[kind];
-  for (let y = 0; y < W; y++) {
+  const ramp = kind === 'fire' || kind === 'flash' ? null : RAMP[kind];
+  const soft = SOFT[kind] ?? 1;
+  const rim = !NO_RIM.has(kind);
+  for (let y = 0; y < Hh; y++) {
     for (let x = 0; x < W; x++) {
       const dx = x - half;
-      const dy = y - half;
+      const dy = (y - hy) / sq;
       const a = Math.atan2(dy, dx);
       // a lumpy edge: billows of a few sizes round the rim, bigger toward the top (a puff rises)
       let e = R * (0.9 + 0.11 * Math.sin(3 * a + ph) + 0.07 * Math.sin(5 * a + ph * 2.3) + 0.04 * Math.sin(8 * a + ph * 3.1));
@@ -75,13 +184,17 @@ export function blobBitmap(kind: BlobKind, r: number, variant: number, heat = 0)
       if (ramp) {
         // a ball lit from the top left, billowing inside
         const lum = -0.55 * nx - 0.62 * ny + 0.55 * nz + grain * 0.5;
-        // dust is soft (a narrow range of tones), smoke and soot billow with more contrast
-        const soft = kind === 'dust' ? 0.55 : kind === 'spray' || kind === 'vapour' ? 0.8 : 1;
+        // dust and the big cloud's billows are soft (a narrow range of tones), smoke and soot billow with more contrast
         const tf = 1.6 + ((lum + 0.25) * 2.6 - 1.6) * soft;
         let t = Math.max(0, Math.min(3, Math.floor(tf + 0.5 + dith * 0.45)));
         // the lower right rim a tone deeper
-        if (d > e - 1.05 && dx + dy > 0 && kind !== 'dust') t = Math.min(t, 1);
+        if (rim && d > e - 1.05 && dx + dy > 0) t = Math.min(t, 1);
         c = ramp[t];
+      } else if (kind === 'flash') {
+        // the flash: white hot, a pale yellow skin, a thin yellow rim (a little up and left the hottest)
+        const q = d / e + grain * 0.35 + (dx + dy) / (e * 8);
+        const idx = q + dith * 0.25 < 0.58 ? 0 : q + dith * 0.25 < 0.86 ? 1 : 2;
+        c = FIRE_RGB[idx === 2 && R < 3 ? 1 : idx];
       } else {
         // fire by temperature: hot core (a little up and left), cooling outward, flickering grain
         const q = d / e;
@@ -96,7 +209,7 @@ export function blobBitmap(kind: BlobKind, r: number, variant: number, heat = 0)
       data[o + 3] = 255;
     }
   }
-  return { w: W, h: W, ox: half, oy: half, data };
+  return { w: W, h: Hh, ox: half, oy: hy, data };
 }
 
 // ------------------------------------------------------------------------------------------------- drawing
@@ -126,7 +239,9 @@ export function drawBlob(ctx: CanvasRenderingContext2D, kind: BlobKind, r: numbe
   const cy = (Math.round((y * g.dpr) / (g.p * f)) * g.p * f) / g.dpr;
   const prev = ctx.globalAlpha;
   const sm = ctx.imageSmoothingEnabled;
-  ctx.imageSmoothingEnabled = false;
+  // a soft light or dust sheet drawn with coarse cells (a big one) is smoothed, so its dither never shows as a
+  // checkerboard of big squares; every other blob keeps crisp pixels
+  ctx.imageSmoothingEnabled = f >= 4 && (kind === 'glow' || kind === 'halo' || kind === 'haze');
   ctx.globalAlpha = prev * Math.min(1, alpha);
   ctx.drawImage(e.page, e.sx, e.sy, e.w, e.h, cx - e.ox * k, cy - e.oy * k, e.w * k, e.h * k);
   ctx.globalAlpha = prev;

@@ -129,7 +129,7 @@ describe('realistic art style', () => {
   it('draws craters, cannon fire and paratroopers, and nothing once they are over', () => {
     const { ctx } = recorder();
     for (const q of [0, 0.5, 0.95]) realistic.craters.draw(ctx, { x: 10, y: 10, radiusPx: 7, q, zoom: 14, scale: 2, seed: 0.2, dpr: 1 }, cinematic);
-    // far out a crater is one small picture (no smoke wisps or glow)
+    // far out a crater is one small picture (no smoke wisps or glow; a fresh one adds a point of fire, two fills)
     const small = recorder();
     for (const q of [0, 0.05, 0.5]) realistic.craters.draw(small.ctx, { x: 10, y: 10, radiusPx: 1.6, q, zoom: 1.6, scale: 1, seed: 0.2, dpr: 1 }, cinematic);
     expect(small.log.filter((l) => l.startsWith('drawImage'))).toEqual([]);

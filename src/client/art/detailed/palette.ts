@@ -107,6 +107,14 @@ export const FIRE: readonly string[] = ['#fff4d6', '#ffd98a', '#f6a53e', '#dc742
 export const SOOT: Ramp = ['#17151a', '#28252a', '#3b3739', '#55504f'];
 /** Smoke as it thins and drifts: warm greys (deep, dark, base, light). */
 export const SMOKE: Ramp = ['#3a3836', '#55524e', '#75716b', '#99958e'];
+/** The shadowed side of a big cloud (the atom bomb's cap away from the light): between soot and smoke. */
+export const SHADE: Ramp = ['#282628', '#3e3b3c', '#585452', '#77726e'];
+/** A big cloud's tops in the sun: light warm greys, kept below white so only the flash and the fire glare. */
+export const CLOUD_TOP: Ramp = ['#77726b', '#948e86', '#b0aaa1', '#cac4ba'];
+/** A big cloud's sides (the atom bomb's cap and stem once cooled): smoke greys warmed by the earth drawn up into it. */
+export const CLOUD: Ramp = ['#3f3a34', '#5b544b', '#7c7368', '#a0978a'];
+/** A big cloud's underside in its own shadow: a deep brown grey. */
+export const CLOUD_SHADE: Ramp = ['#2a2523', '#3f3834', '#57504a', '#726a62'];
 /** Rocket exhaust smoke as it thins: pale warm greys (deep, dark, base, light). */
 export const VAPOUR: Ramp = ['#898581', '#a5a19c', '#c1bdb8', '#dbd7d2'];
 /** Dust and thrown earth (deep, dark, base, light). */

@@ -1,24 +1,28 @@
 // The detailed style's explosions (client only). No clean circles and no drawn rings: a blast is built from the shared
 // puffs (blobs.ts), each one lumpy and shaded, moving by simple physics from the clock:
-//   - a short white-hot flash, then a fireball of several fire puffs that swell, rise a little and cool from white
-//     through orange to deep red as they burn out;
+//   - the flash: a white-hot core for two or three frames that shrinks into the fireball (a few short spikes of light
+//     from the bigger blasts) and a soft stepped pool of light thrown on the ground, the water or round a burst in the
+//     air that fades within a fifth of a second; its size and length follow flashSize and flashTime, and reduced
+//     motion has none;
+//   - a fireball of several fire puffs that swell, rise a little and cool from white through orange to deep red as
+//     they burn out;
 //   - smoke that starts as oily soot over the fire and thins to grey as it rises and drifts, staying longer with
 //     smokeLinger;
 //   - debris and earth thrown out on ballistic arcs that fall back, and for blasts on the ground a crown of dirt and a
 //     skirt of dust rolling out along the ground (as far as the shockwave number says);
 //   - small fires left burning on the ground after the bigger blasts (fireLinger).
 // Kinds: a shell, one bomb of a stick, a ship or fort hit (sparks and black smoke), a plane bursting in the air with
-// burning pieces falling, a missile (a big fireball, a dust skirt and a rising smoke column), the atom bomb (a blinding
-// flash, a fireball rising into a mushroom cap on its stem over a rolling base surge), a splash (a white column of
-// spray collapsing, foam spreading irregularly) and flak (a black puff with a quick orange core).
+// burning pieces falling, a missile (a big fireball, a dust skirt and a rising smoke column), the atom bomb (a whole
+// sequence, see drawAtom), a splash (a small burst at the waterline, then a white column of spray collapsing, foam
+// spreading irregularly) and flak (a black puff with a quick orange core).
 // Aftermath (fx/layer.ts): a ship going under (foam, an oil slick, bubbles, wreckage), a plane's smoke, dust after
 // shells and a fort coming down. Reduced motion: a still frame of the burst, then a still frame of its smoke.
 import type { MotionParams } from '../motion';
 import { rnd } from '../shared/noise';
 import type { BlastDraw, BlastKind, ExplosionArt, MapFxDraw } from '../types';
-import { drawBlob } from './blobs';
+import { drawBlob, type BlobKind } from './blobs';
 import { gridOf, type Grid } from './grid';
-import { DEBRIS, SPRAY, TRACER } from './palette';
+import { DEBRIS, FIRE, SPRAY, TRACER } from './palette';
 
 interface Spec {
   /** fireball radius in model units (screen px at mid zoom) */
@@ -42,7 +46,7 @@ const SPEC: Record<BlastKind, Spec> = {
   hit: { r: 4.2, fire: 380, smoke: 900, puffs: 5, debris: 8, dirt: 0, skirt: false, burn: 2 },
   air: { r: 3.4, fire: 300, smoke: 700, puffs: 3, debris: 5, dirt: 0, skirt: false, burn: 0 },
   missile: { r: 9, fire: 520, smoke: 1100, puffs: 8, debris: 10, dirt: 10, skirt: true, burn: 4 },
-  atom: { r: 26, fire: 1700, smoke: 2600, puffs: 0, debris: 12, dirt: 0, skirt: true, burn: 0 },
+  atom: { r: 26, fire: 2400, smoke: 5200, puffs: 0, debris: 12, dirt: 0, skirt: true, burn: 0 },
   splash: { r: 3.8, fire: 520, smoke: 450, puffs: 0, debris: 0, dirt: 0, skirt: false, burn: 0 },
   flak: { r: 4.2, fire: 160, smoke: 700, puffs: 3, debris: 5, dirt: 0, skirt: false, burn: 0 },
 };
@@ -53,7 +57,8 @@ const easeOut3 = (t: number): number => 1 - (1 - t) ** 3;
 
 function durationOf(kind: BlastKind, m: MotionParams): number {
   const s = SPEC[kind];
-  return s.fire * m.blastTime + s.smoke * m.smokeLinger;
+  // the atom cloud drifts and thins for a long while, but never past about twelve seconds
+  return s.fire * m.blastTime + s.smoke * (kind === 'atom' ? Math.min(1.6, m.smokeLinger) : m.smokeLinger);
 }
 
 /** A small square of colour on the grid. */
@@ -71,6 +76,103 @@ function radiusOf(b: BlastDraw): number {
   if (b.kind === 'atom') return Math.max(18, Math.min(220, b.rt * b.zoom * 0.45)) / sc;
   if (b.kind === 'bomb') return Math.max(s.r, Math.min(9, (1.2 * b.zoom) / sc));
   return s.r;
+}
+
+// ------------------------------------------------------------------------------------------------- the flash
+
+interface FlashSpec {
+  /** the light's radius on the ground (or round a burst in the air) and its peak alpha */
+  glow: number;
+  a: number;
+  /** the white-hot core's radius (times the fireball's) */
+  core: number;
+  /** short spikes of light out of the core in its first frame (the bigger blasts) */
+  rays: number;
+  /** how long the light lasts (ms, times flashTime) */
+  ms: number;
+}
+
+const FLASH: Record<BlastKind, FlashSpec> = {
+  shell: { glow: 2.6, a: 0.6, core: 0.95, rays: 0, ms: 190 },
+  bomb: { glow: 3, a: 0.72, core: 0.9, rays: 4, ms: 220 },
+  hit: { glow: 2.8, a: 0.72, core: 0.9, rays: 4, ms: 220 },
+  air: { glow: 2.5, a: 0.62, core: 0.95, rays: 3, ms: 190 },
+  missile: { glow: 3, a: 0.8, core: 0.85, rays: 6, ms: 300 },
+  atom: { glow: 4.5, a: 0.85, core: 1.2, rays: 0, ms: 900 },
+  splash: { glow: 2, a: 0.32, core: 0.6, rays: 0, ms: 150 },
+  flak: { glow: 2.3, a: 0.58, core: 0.9, rays: 3, ms: 170 },
+};
+/** How long the white-hot core shows (ms, times flashTime): two to three frames at 60 frames a second. */
+const CORE_MS = 48;
+
+/** The flash's size from the motion: smaller under subtle, bigger under cinematic. */
+const flashScale = (m: MotionParams): number => 0.55 + 0.45 * m.flashSize;
+
+/** A blast's flash at a moment: its light's alpha and radius, its core's alpha and radius (radii times the fireball's). */
+export interface FlashAt {
+  glowA: number;
+  glowR: number;
+  coreA: number;
+  coreR: number;
+}
+const flashNow: FlashAt = { glowA: 0, glowR: 0, coreA: 0, coreR: 0 };
+
+/**
+ * The flash of a blast `age` ms old (pure; the returned object is reused): the light swells a little and fades fast,
+ * the core shrinks into the fireball growing under it over two or three frames (it never fades to a pale veil over
+ * the fire). Smaller and shorter under subtle motion, bigger and longer under cinematic.
+ */
+export function flashAt(kind: BlastKind, age: number, m: MotionParams): FlashAt {
+  const f = FLASH[kind];
+  const sc = flashScale(m);
+  const gk = age / (f.ms * m.flashTime);
+  flashNow.glowA = gk < 1 ? f.a * (0.75 + 0.25 * m.flashSize) * (1 - gk) * (1 - gk) : 0;
+  flashNow.glowR = f.glow * sc * (0.85 + 0.3 * easeOut(Math.min(1, gk * 3)));
+  const ck = age / (CORE_MS * m.flashTime);
+  flashNow.coreA = ck < 1 ? (ck < 0.7 ? 1 : (1 - ck) / 0.3) : 0;
+  flashNow.coreR = f.core * sc * (1.05 - 0.6 * Math.min(1, ck));
+  return flashNow;
+}
+
+/**
+ * The light a blast throws on the ground (or round it in the air, `air`) in its first moments: a soft dithered pool
+ * that swells a little and fades fast. Drawn under the blast.
+ */
+function flashGlow(ctx: CanvasRenderingContext2D, kind: BlastKind, x: number, y: number, Rc: number, age: number, g: Grid, m: MotionParams, sd: number, air: boolean): void {
+  const f = flashAt(kind, age, m);
+  if (f.glowA > 0) drawBlob(ctx, air ? 'halo' : 'glow', Rc * f.glowR, Math.floor(sd) & 3, x, y, g, f.glowA);
+}
+
+/** The white-hot core of a blast's first two or three frames, with short spikes of light from the bigger ones. */
+function flashCore(ctx: CanvasRenderingContext2D, kind: BlastKind, x: number, y: number, Rc: number, age: number, g: Grid, m: MotionParams, sd: number): void {
+  const f = FLASH[kind];
+  const ms = CORE_MS * m.flashTime;
+  if (age >= ms) return;
+  const k = age / ms;
+  const sc = flashScale(m);
+  const prev = ctx.globalAlpha;
+  if (f.rays && k < 0.6) {
+    // spikes of light: a few short, uneven rays of single cells, white near the core, yellow at their tips
+    const n = f.rays;
+    const fade = 1 - k / 0.6;
+    for (let i = 0; i < n; i++) {
+      const ang = ((i + 0.5 * rnd(sd, i + 300)) / n) * Math.PI * 2 + sd;
+      const len = Rc * f.core * sc * (1.5 + 0.9 * rnd(sd, i + 310)) * (0.8 + 0.4 * k);
+      const r0 = Rc * f.core * sc * 0.7;
+      const cells = Math.max(1, Math.round(len - r0));
+      const step = Math.max(1, cells / 9);
+      const ca = Math.cos(ang) * g.k;
+      const sa = Math.sin(ang) * g.k * 0.8;
+      for (let j = 0; j < cells; j += step) {
+        const q = j / cells;
+        ctx.globalAlpha = prev * fade * (1 - q * 0.7);
+        speck(ctx, x + ca * (r0 + j), y + sa * (r0 + j), g, 1, q < 0.45 ? FIRE[0] : FIRE[1]);
+      }
+    }
+    ctx.globalAlpha = prev;
+  }
+  const c = flashAt(kind, age, m);
+  drawBlob(ctx, 'flash', Math.max(1, Rc * c.coreR), (Math.floor(sd) + 1) & 3, x, y, g, c.coreA);
 }
 
 function drawBlast(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams): void {
@@ -92,6 +194,13 @@ function drawBlast(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams)
   const ground = !air && b.kind !== 'flak' && b.kind !== 'hit';
   const fq = clamp01(age / fT);
   const prev = ctx.globalAlpha;
+  const flash = !b.reduced;
+
+  // the flash's light on the ground, or round a burst in the air (a plane shot down lights the ground under it too)
+  if (flash) {
+    if (air) flashGlow(ctx, b.kind, x, b.y, Rc * 0.8, age, g, m, sd, false);
+    flashGlow(ctx, b.kind, x, y, Rc, age, g, m, sd, air || b.kind === 'flak');
+  }
 
   // dust rolling out along the ground (the shockwave as moving earth, never a drawn ring)
   // at mid zoom (an art pixel a screen px) the skirt and crown use fewer, so a barrage stays cheap
@@ -103,7 +212,8 @@ function drawBlast(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams)
     for (let i = 0; i < n; i++) {
       const ang = (i / n) * Math.PI * 2 + rnd(sd, i) * 0.6;
       const d = reach * (0.75 + 0.35 * rnd(sd, i + 40));
-      drawBlob(ctx, 'dust', Rc * (0.42 + 0.3 * fq), i, x + Math.cos(ang) * d * u, y + Math.sin(ang) * d * u * 0.5, g, a);
+      // low flat billows of dust (round puffs here read as a ring of stones)
+      drawBlob(ctx, 'roll', Rc * (0.5 + 0.3 * fq), i, x + Math.cos(ang) * d * u, y + Math.sin(ang) * d * u * 0.5, g, a);
     }
   }
   // the crown of earth thrown up and falling back
@@ -199,12 +309,8 @@ function drawBlast(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams)
       ctx.globalAlpha = prev;
     }
   }
-  // the flash: a white-hot lump for the first moment
-  const flashMs = 70 * m.blastTime;
-  if (age < flashMs && !b.reduced) {
-    const k = age / flashMs;
-    drawBlob(ctx, 'fire', Math.max(1, Rc * (0.9 + 0.3 * k)), 0, x, y, g, 1 - k * 0.6, 0);
-  }
+  // the flash: a white-hot core over everything for the first two or three frames
+  if (flash) flashCore(ctx, b.kind, x, y, Rc, age, g, m, sd);
   ctx.globalAlpha = prev;
 }
 
@@ -228,6 +334,8 @@ function drawSplash(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams
   const k = clamp01(age / fT);
   const end = 1 - clamp01((age - fT * 0.6) / Math.max(1, dur - fT * 0.6));
   const prev = ctx.globalAlpha;
+  // the shell bursting as it strikes the water: a faint light on the sea and a small hot core at the column's foot
+  if (!b.reduced) flashGlow(ctx, 'splash', x, y, Rc, age, g, m, sd, false);
   // the foam ring: the column's water landing round it, ragged puffs spreading out
   const ringK = clamp01((age - fT * 0.35) / (dur - fT * 0.35));
   if (ringK > 0) {
@@ -266,13 +374,150 @@ function drawSplash(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams
     speck(ctx, x + Math.cos(ang) * v * kk * u, y + (Math.sin(ang) * v * kk + 4.4 * R * kk * kk) * u, g, 1, i % 2 ? SPRAY[3] : SPRAY[2]);
   }
   ctx.globalAlpha = prev;
+  if (!b.reduced) flashCore(ctx, 'splash', x, y - Rc * 0.3 * g.k, Rc, age, g, m, sd);
+  ctx.globalAlpha = prev;
+}
+
+/** The atom cloud at a moment, lengths in fireball radii (R). */
+export interface AtomShape {
+  /** age over the fire phase (1 at its end) and 0..1 of the late phase (the drift and the dissipation) */
+  q: number;
+  late: number;
+  /** the cap's height over the ground, its ring radius and the thickness of its roll */
+  capH: number;
+  Rm: number;
+  rm: number;
+  /** how far the cloud has drifted downwind at the cap's height */
+  wind: number;
+  /** the cap showing (0..1), still burning (1 = all fire, 0 = cooled to smoke), the fire glowing inside (0..1) */
+  capIn: number;
+  young: number;
+  glow: number;
+  /** how far its smoke has cooled from dark soot (0) to pale lit tops and warm grey sides (1) */
+  cool: number;
+  /** the whole cloud's opacity as it thins away */
+  fade: number;
+}
+const atomNow: AtomShape = { q: 0, late: 0, capH: 0, Rm: 0, rm: 0, wind: 0, capIn: 0, young: 0, glow: 0, cool: 0, fade: 0 };
+
+/** The atom cloud's shape `age` ms after the flash, with a fire phase of `fT` ms in a life of `dur` ms (pure; reused). */
+export function atomShape(age: number, fT: number, dur: number): AtomShape {
+  const a = atomNow;
+  const q = age / fT;
+  const late = clamp01((age - fT) / Math.max(1, dur - fT));
+  a.q = q;
+  a.late = late;
+  a.capH = 0.4 + 1.5 * easeOut(clamp01(q / 0.85)) + 0.25 * late;
+  a.Rm = 0.14 + 0.8 * easeOut(clamp01((q - 0.04) / 0.9)) + 0.35 * late;
+  a.rm = 0.18 + 0.16 * easeOut(clamp01((q - 0.04) / 0.7)) + 0.06 * late;
+  a.wind = 0.75 * late * late;
+  a.capIn = clamp01((q - 0.1) / 0.18);
+  // it burns for about a quarter of the fire phase, then glows dark red inside its soot for a while, then cools from
+  // soot to pale tops over grey sides (the glow outlasting the fire phase a little)
+  a.young = 1 - clamp01((q - 0.12) / 0.5);
+  a.glow = clamp01(1 - (q - 0.2) / 1.05);
+  a.cool = clamp01((q - 0.3) / 0.7);
+  // it thins away over the last two thirds of its late life
+  a.fade = 1 - smooth(clamp01((late - 0.3) / 0.7));
+  return a;
+}
+
+/** Scratch for the atom cap's billows, sorted far to near every frame (no allocation per frame). */
+const NA = 12;
+const NM = 4;
+const capKey = new Float64Array(NA * NM);
+const capIdx = new Int16Array(NA * NM);
+const capX = new Float64Array(NA * NM);
+const capY = new Float64Array(NA * NM);
+const capR = new Float64Array(NA * NM);
+const capLum = new Float64Array(NA * NM);
+const capSin = new Float64Array(NA * NM);
+// the sun, from the top left of the screen and high: x right, y toward the viewer (down the screen), z up
+const SUN_X = -0.45;
+const SUN_Y = -0.42;
+const SUN_Z = 0.79;
+/** The cap seen at the 3/4 angle: a horizontal circle is this much flatter than wide. */
+const CAP_FLAT = 0.38;
+const smooth = (t: number): number => t * t * (3 - 2 * t);
+
+// ---- the cloud's layer: the atom cloud is drawn whole into a scratch canvas and laid on the map at the cloud's
+// opacity, so a thinning cloud fades as one mass (no billow showing through another as a ghost outline)
+let layerCv: HTMLCanvasElement | null = null;
+let layerCx: CanvasRenderingContext2D | null = null;
+let layerOn = false;
+let layerX = 0;
+let layerY = 0;
+let layerW = 0;
+let layerH = 0;
+
+/**
+ * Opens the layer over the CSS box (x0, y0)-(x1, y1) of `ctx` (clipped to its canvas): the context to draw the cloud
+ * into, `ctx` itself where there is no layer (no DOM, a rotated or odd transform), or null when the box is off screen.
+ */
+function openLayer(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number): CanvasRenderingContext2D | null {
+  layerOn = false;
+  if (typeof document === 'undefined' || typeof ctx.getTransform !== 'function' || !ctx.canvas) return ctx;
+  const T = ctx.getTransform();
+  if (T.b !== 0 || T.c !== 0 || !(T.a > 0) || !(T.d > 0)) return ctx;
+  const dx0 = Math.max(0, Math.floor(T.a * x0 + T.e));
+  const dy0 = Math.max(0, Math.floor(T.d * y0 + T.f));
+  const dx1 = Math.min(ctx.canvas.width, Math.ceil(T.a * x1 + T.e));
+  const dy1 = Math.min(ctx.canvas.height, Math.ceil(T.d * y1 + T.f));
+  if (dx1 <= dx0 || dy1 <= dy0) return null;
+  if (!layerCv) {
+    layerCv = document.createElement('canvas');
+    layerCx = layerCv.getContext('2d');
+  }
+  if (!layerCx) return ctx;
+  const w = dx1 - dx0;
+  const h = dy1 - dy0;
+  // it only grows (a resize reallocates), and only to what the cloud covers on screen
+  if (layerCv.width < w || layerCv.height < h) {
+    layerCv.width = Math.max(layerCv.width, w);
+    layerCv.height = Math.max(layerCv.height, h);
+  }
+  const c = layerCx;
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.globalAlpha = 1;
+  c.clearRect(0, 0, w, h);
+  // the same device pixel grid as the map (whole device px shifted), so every blob lands on the same cells
+  c.setTransform(T.a, 0, 0, T.d, T.e - dx0, T.f - dy0);
+  c.imageSmoothingEnabled = false;
+  layerOn = true;
+  layerX = dx0;
+  layerY = dy0;
+  layerW = w;
+  layerH = h;
+  return c;
+}
+
+/** Lays the layer onto the map at `alpha`. */
+function closeLayer(ctx: CanvasRenderingContext2D, alpha: number): void {
+  if (!layerOn || !layerCv) return;
+  layerOn = false;
+  if (alpha <= 0.01) return;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = alpha;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(layerCv, 0, 0, layerW, layerH, layerX, layerY, layerW, layerH);
+  ctx.restore();
 }
 
 /**
- * The atom bomb: a blinding flash; a fireball rising on a stem of smoke into a broad, flattened, rolling cap (a torus
- * of billows, wider than tall) whose underside glows with fire and cools to soot; a dusty skirt widening down the
- * stem into the ground; an uneven base surge of dust rolling out along the ground (shockwave); then the cloud drifting
- * and thinning.
+ * The atom bomb, a sequence over its whole life:
+ *   - a blinding flash: a white core and a light over the whole area that fades within a fraction of a second;
+ *   - a fireball that forms at once, boils, rises and cools from white through yellow and orange to deep red, soot
+ *     closing over it, lighting the ground under it while it is low;
+ *   - a stem climbing under it, dust drawn up from the ground into smoke higher up, its billows rising along it;
+ *   - the cap: a torus of billows rolling outward over the top and under at the rim (a slow, visible roll); it burns
+ *     at first, then is dark soot with the fire glowing red through it, then cools billow by billow to pale tops lit
+ *     from the top left, warm grey sides and a deep brown grey underside, a domed crown over its middle;
+ *   - a base surge: low flattened billows of dust rolling out along the ground over a thin sheet of dust, in uneven
+ *     lobes with gaps and stragglers, never a ring;
+ *   - then the cloud rising a little more, spreading, drifting downwind (the top more than the stem), its billows
+ *     shrinking away one by one into ragged gaps while the whole cloud thins as one mass.
+ * Every frame is a picture of its own: the parts overlap from the first moment, so no frame is empty or a lone shape.
  */
 function drawAtom(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams): void {
   const g = gridOf(b.scale, b.dpr);
@@ -283,131 +528,261 @@ function drawAtom(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams):
   const fT = s.fire * m.blastTime;
   const dur = Math.max(1, b.durMs);
   let age = b.t * dur;
-  if (b.reduced) age = b.t < 0.3 ? fT * 0.25 : fT * 1.1;
+  if (b.reduced) age = b.t < 0.3 ? fT * 0.3 : fT * 1.1;
   const sd = b.seed * 31.7;
   const x = b.x;
   const y = b.y;
-  const q = clamp01(age / fT);
-  const late = clamp01((age - fT) / Math.max(1, dur - fT));
-  const fade = 1 - late * late;
+  const A = atomShape(age, fT, dur);
+  const q = A.q;
+  const late = A.late;
+  const fade = A.fade;
+  const glow = A.glow;
+  const young = A.young;
+  const cool = A.cool;
   const prev = ctx.globalAlpha;
-  // the base surge: an uneven cloud of dust rolling outward, thicker in places, with gaps, some billows lagging
-  if (q > 0.04) {
-    const reach = R * (0.9 + 2.5 * easeOut3(clamp01(age / (fT * 1.4)))) * m.shockwave;
-    const n = 26;
-    for (let i = 0; i < n; i++) {
-      if (rnd(sd, i + 200) < 0.14) continue;
-      const ang = (i / n) * Math.PI * 2 + (rnd(sd, i) - 0.5) * 0.5;
-      const lag = rnd(sd, i + 30);
-      const d = reach * (0.62 + 0.45 * lag);
-      const r = Rc * (0.16 + 0.24 * rnd(sd, i + 210)) * (0.7 + 0.5 * q);
-      const a = (0.25 + 0.35 * rnd(sd, i + 220)) * fade * (1 - late * 0.6);
-      drawBlob(ctx, rnd(sd, i + 230) < 0.25 ? 'smoke' : 'dust', r, i, x + Math.cos(ang) * d * u, y + Math.sin(ang) * d * u * 0.55, g, a);
-    }
+  const flash = !b.reduced;
+  const wind = R * A.wind;
+  // how far the cap has rolled (turns)
+  const roll = age / (4400 * m.blastTime);
+  const capH = R * A.capH;
+  const Rm = R * A.Rm;
+  const rm = R * A.rm;
+  const cx = x + wind * u;
+  const cy = y - capH * u;
+
+  // ---- the light: the whole area lit for a moment, then the fireball's light on the ground while it is low
+  if (flash) {
+    const k0 = age / (340 * m.flashTime);
+    if (k0 < 1) drawBlob(ctx, 'glow', Rc * 6.5 * flashScale(m), 1, x, y, g, 0.8 * (1 - k0) ** 1.6);
+    flashGlow(ctx, 'atom', x, y, Rc, age, g, m, sd, false);
   }
-  // the cap's height over the ground and its size (wider than tall)
-  const rise = easeOut(clamp01((age - fT * 0.1) / (fT * 1.3)));
-  const capH = R * (0.3 + 1.5 * rise);
-  const capY = y - capH * u;
-  const grow = easeOut(clamp01((age - fT * 0.12) / (fT * 1.2)));
-  const cw = R * (0.4 + 0.8 * grow);
-  const ch = cw * 0.3;
-  const dx = late * R * 0.45;
-  // heat: the underside glows orange, then cools through red to soot
-  const glow = clamp01(1 - (age - fT * 0.25) / (fT * 1.5));
-  // the stem: a column of smoke from the ground to the cap, glowing inside while it is hot
-  if (q > 0.16) {
-    const n = 9;
-    const top = capH - ch * 0.4;
-    for (let i = 0; i < n; i++) {
-      const f = (i + 0.5) / n;
-      const h = top * f;
-      const wob = Math.sin(i * 1.7 + sd) * R * 0.06 + late * R * 0.35 * f;
-      const r = Rc * (0.2 + 0.08 * rnd(sd, i + 60) + 0.06 * (1 - f));
-      const a = fade * clamp01((q - 0.16) * 4);
-      drawBlob(ctx, 'smoke', r, i, x + wob * u, y - h * u, g, a * (f < 0.25 ? 0.6 : 1));
-      if (glow > 0.05 && f > 0.25) drawBlob(ctx, 'fire', r * 0.45, i + 2, x + wob * u, y - h * u, g, glow * 0.75, 2 + (1 - glow) * 2);
-    }
-  }
-  // the skirt: dust thrown up round the foot of the stem, widening down into the ground and the surge
-  if (q > 0.08) {
-    const k = easeOut(clamp01((age - fT * 0.08) / (fT * 1.2)));
-    for (let j = 0; j < 4; j++) {
-      const f = j / 3;
-      const h = R * 0.4 * f * k;
-      const half = R * (0.2 + 1.1 * (1 - f) * (1 - f)) * (0.5 + 0.5 * k);
-      const cnt = 5 - j;
-      for (let i = 0; i < cnt; i++) {
-        const side = cnt === 1 ? 0 : (i / (cnt - 1)) * 2 - 1;
-        const r = Rc * (0.16 + 0.12 * (1 - f) + 0.06 * rnd(sd, j * 7 + i + 300));
-        const yy = y - h * u + Math.abs(side) * R * 0.12 * u;
-        drawBlob(ctx, rnd(sd, j * 3 + i + 320) < 0.3 ? 'smoke' : 'dust', r, j + i, x + (side * half + (rnd(sd, j * 5 + i + 310) - 0.5) * R * 0.2) * u, yy, g, (0.42 - f * 0.18) * fade);
-      }
-    }
-  }
-  // the cap: a torus of billows, the far half first, a low crown over the middle, then the near half with the glow
-  // under it
-  if (q > 0.12) {
-    const n = 12;
-    const ring = (front: boolean): void => {
+  if (q < 0.7) drawBlob(ctx, 'glow', Rc * 2.4, 2, x, y, g, 0.5 * (1 - q / 0.7) ** 2);
+
+  // ---- the base surge: a thin sheet of dust spreading over the ground and low flattened billows rolling along its
+  // uneven front, overlapping into one lumpy bank (thicker where it bulges, gaps where it lags), a few stragglers
+  // behind; drawn whole in the layer and laid on the ground translucent, thinning as it settles
+  if (q > 0.015) {
+    const k = easeOut3(clamp01(age / (fT * 1.3)));
+    const reach = R * (0.7 + 2.5 * k) * m.shockwave + R * 0.5 * late;
+    const fin = clamp01((q - 0.015) / 0.05);
+    const a0 = fin * (1 - late) * (1 - late * 0.4);
+    const S = a0 > 0.01 ? openLayer(ctx, x - (reach * 1.3 + R * 0.4) * u - 8, y - (reach * 0.7 + R * 0.4) * u - 8, x + (reach * 1.3 + R * 0.4) * u + 8, y + (reach * 0.7 + R * 0.2) * u + 8) : null;
+    if (S) {
+      const sa = layerOn ? 1 : a0 * 0.75;
+      drawBlob(S, 'haze', reach * 0.95 * g.res, Math.floor(sd) & 3, x, y, g, sa);
+      const n = 52;
       for (let i = 0; i < n; i++) {
-        const ang = (i / n) * Math.PI * 2 + sd;
-        const sn = Math.sin(ang);
-        if (sn > 0 !== front) continue;
-        const px = x + (Math.cos(ang) * cw + dx) * u;
-        const py = capY + sn * ch * u;
-        const r = Rc * (0.3 + 0.1 * rnd(sd, i + 50)) * (0.55 + 0.45 * grow);
-        // lit from the top left, oily soot low on the cap while it is young
-        drawBlob(ctx, front && glow > 0.3 ? 'soot' : 'smoke', r, i, px, py, g, fade);
-        if (front) {
-          const ux = px + (rnd(sd, i + 80) - 0.5) * r * g.k * 0.6;
-          const uy = py + r * g.k * 0.45;
-          if (glow > 0.02) drawBlob(ctx, 'fire', r * (0.55 + 0.25 * glow), i + 1, ux, uy, g, Math.min(1, glow * 1.4) * fade, 1 + (1 - glow) * 3);
-          else drawBlob(ctx, 'soot', r * 0.6, i + 1, ux, uy, g, 0.7 * fade);
-        }
+        if (rnd(sd, i + 200) < 0.1) continue;
+        const th = ((i + 0.6 * rnd(sd, i + 201)) / n) * Math.PI * 2;
+        const lobe = 0.8 + 0.24 * Math.sin(3 * th + sd) + 0.15 * Math.sin(5 * th + 2.1 * sd) + 0.08 * Math.sin(9 * th + 3 * sd);
+        // three in four roll along the front, the rest straggle behind it over the sheet, so the bank never reads as
+        // a hollow ring
+        const behind = rnd(sd, i + 207) < 0.27;
+        const d = reach * lobe * (behind ? 0.25 + 0.5 * rnd(sd, i + 203) : 0.84 + 0.16 * rnd(sd, i + 203));
+        const settle = smooth(clamp01((late - 0.05 - 0.35 * rnd(sd, i + 208)) / 0.5));
+        const r = Rc * (0.24 + 0.1 * rnd(sd, i + 204)) * (0.5 + 0.8 * lobe) * (0.55 + 0.6 * k) * (behind ? 0.7 : 1) * (1 - 0.5 * settle);
+        const px = x + Math.cos(th) * d * u;
+        const py = y + Math.sin(th) * d * u * 0.5 - r * g.k * 0.2;
+        drawBlob(S, 'roll', r, i, px, py, g, sa * (1 - 0.6 * settle));
       }
-    };
-    ring(false);
-    // the body of the cap between its far and near rolls, so it reads as one rolling mass, not a hoop
-    drawBlob(ctx, 'smoke', Rc * 0.5 * (0.55 + 0.45 * grow), 7, x + dx * u, capY, g, fade);
-    // the crown: a low dome over the middle, a little flattened
-    for (let i = 0; i < 3; i++) {
-      const off = (i - 1) * cw * 0.45;
-      drawBlob(ctx, 'smoke', Rc * (0.36 - Math.abs(i - 1) * 0.06) * (0.55 + 0.45 * grow), i + 5, x + (off + dx) * u, capY - ch * (0.9 - Math.abs(i - 1) * 0.3) * u, g, fade);
     }
-    ring(true);
-    // the underside of the cap round the top of the stem, glowing
-    if (glow > 0.02) drawBlob(ctx, 'fire', Rc * 0.3 * (0.6 + 0.4 * grow), 3, x + dx * u, capY + ch * 0.8 * u, g, glow * fade, 1 + (1 - glow) * 3);
+    closeLayer(ctx, prev * a0 * 0.75);
   }
-  // the fireball rising into the cap and cooling
-  if (q < 0.7) {
-    const fy = y + (capY - y) * clamp01(q * 1.3);
-    const n = 7;
-    for (let i = n - 1; i >= 0; i--) {
-      const ang = (i / n) * Math.PI * 2 + sd;
-      const d = i === 0 ? 0 : R * 0.36;
-      const r = Rc * (i === 0 ? 0.6 : 0.34 + 0.1 * rnd(sd, i + 70)) * (0.7 + 0.5 * easeOut(clamp01(q * 4))) * (1 - 0.5 * clamp01((q - 0.35) / 0.35));
-      drawBlob(ctx, 'fire', Math.max(1, r), i, x + Math.cos(ang) * d * 1.2 * u, fy + Math.sin(ang) * d * 0.6 * u, g, 1 - clamp01((q - 0.5) / 0.2), Math.min(4, q * 6));
-    }
-  }
-  // the flash
-  if (q < 0.12 && !b.reduced) {
-    const k = q / 0.12;
-    drawBlob(ctx, 'fire', Rc * 1.6, 2, x, y, g, 0.35 * (1 - k), 0);
-    drawBlob(ctx, 'fire', Rc * (1 + 0.5 * k), 0, x, y, g, 1 - k * 0.5, 0);
-  }
-  // debris thrown far out
+
+  // ---- the cloud (the skirt, the stem, the cap, the fireball and the crown), in its layer
+  // (its box holds the cap's widest roll and crown, the young fireball, the stem and the skirt round its foot)
+  const grow = 1 + 0.35 * late;
+  const ext = Math.max((Rm + 2.4 * rm) * grow + R * 0.2, R * 1.3) * u;
+  const top = cy - Math.max((2.6 * rm + 0.9 * Rm) * grow, R * 1.3) * u - 8;
+  const L = openLayer(ctx, Math.min(x - R * 1.5 * u, cx - ext) - 8, top, Math.max(x + R * 1.5 * u, cx + ext) + 8, y + R * 1.2 * u + 8);
+  if (L) drawAtomCloud(L, m, A, g, u, R, Rc, age, sd, x, y, cx, cy, Rm, rm, wind, roll, grow, layerOn ? 1 : fade);
+  closeLayer(ctx, prev * fade);
+
+  // ---- debris thrown far out early on
   const nd = Math.round(s.debris * m.debris);
-  const kd = clamp01(age / (fT * 1.1));
+  const kd = clamp01(age / (fT * 0.6));
   if (!b.reduced && kd < 1) {
     for (let i = 0; i < nd; i++) {
       const ang = -Math.PI / 2 + (rnd(sd, i + 100) - 0.5) * 3;
-      const v = R * (2.5 + 2 * rnd(sd, i + 110));
+      const v = R * (2.2 + 2 * rnd(sd, i + 110));
       ctx.globalAlpha = prev * (1 - kd);
-      speck(ctx, x + Math.cos(ang) * v * kd * u, y + (Math.sin(ang) * v * kd + 3 * R * kd * kd) * u, g, 2, kd < 0.3 ? TRACER[1] : DEBRIS[i % 3]);
+      speck(ctx, x + Math.cos(ang) * v * kd * u, y - R * 0.45 * u + (Math.sin(ang) * v * kd + 3 * R * kd * kd) * u, g, 2, kd < 0.3 ? TRACER[1] : DEBRIS[i % 3]);
+    }
+    ctx.globalAlpha = prev;
+  }
+
+  // ---- the white-hot core of the first moments, a halo of light round it
+  if (flash) {
+    const ms = CORE_MS * 3 * m.flashTime;
+    if (age < ms) {
+      const k = age / ms;
+      const fy = y - capH * u;
+      drawBlob(ctx, 'halo', Rc * 1.9 * flashScale(m), 3, x, fy, g, 0.9 * (1 - k));
+      drawBlob(ctx, 'flash', Rc * 0.62 * flashScale(m) * (1 - 0.35 * k), 2, x, fy, g, k < 0.7 ? 1 : (1 - k) / 0.3);
     }
   }
   ctx.globalAlpha = prev;
+}
+
+/** The atom cloud itself (see drawAtom), drawn into `ctx` with every part's alpha times `ca`. */
+function drawAtomCloud(ctx: CanvasRenderingContext2D, m: MotionParams, A: AtomShape, g: Grid, u: number, R: number, Rc: number, age: number, sd: number, x: number, y: number, cx: number, cy: number, Rm: number, rm: number, wind: number, roll: number, grow: number, ca: number): void {
+  const q = A.q;
+  const late = A.late;
+  const glow = A.glow;
+  const young = A.young;
+  const cool = A.cool;
+  const capH = R * A.capH;
+
+  // ---- the skirt: dust thrown up round the foot of the stem
+  if (q > 0.1) {
+    const k = easeOut(clamp01((q - 0.1) / 0.5));
+    const a = 0.75 * clamp01((q - 0.1) / 0.15) * ca * (1 - 0.4 * late);
+    for (let i = 0; i < 9; i++) {
+      const th = ((i + 0.5 * rnd(sd, i + 330)) / 9) * Math.PI * 2;
+      const d = R * (0.22 + 0.2 * k + 0.4 * late) * (0.8 + 0.4 * rnd(sd, i + 331));
+      const r = Rc * (0.18 + 0.08 * rnd(sd, i + 332)) * (0.7 + 0.5 * k + 0.4 * late);
+      const h = R * 0.18 * k * rnd(sd, i + 333);
+      drawBlob(ctx, 'dust', r, i + 3, x + (Math.cos(th) * d + wind * 0.05) * u, y + (Math.sin(th) * d * 0.5 - h) * u, g, a);
+    }
+  }
+
+  // ---- the stem: billows rising along it from the ground into the cap, dust low and smoke higher
+  if (q > 0.06) {
+    const top = Math.max(R * 0.3, capH - rm * 0.7);
+    const sin = clamp01((q - 0.06) / 0.15) * ca * (1 - 0.5 * late);
+    const NS = 12;
+    const F = age / (650 * m.blastTime);
+    const fr = F - Math.floor(F);
+    for (let k = 0; k < NS; k++) {
+      const f = (k + fr) / NS;
+      const id = (k - Math.floor(F)) & 63;
+      const h = top * f;
+      const w = R * (0.2 + 0.12 * (1 - f) ** 2 + 0.14 * f ** 3) * (1 + 0.5 * late);
+      const jit = (rnd(sd, id + 60) - 0.5) * w * 0.7;
+      const px = x + (jit + wind * f * 0.85) * u;
+      const py = y - h * u;
+      const r = w * g.res * 1.3;
+      // the ends fade in and out, so the billows never pop as they enter at the foot or reach the cap
+      const end = Math.min(1, f * 5, (1 - f) * 4 + 0.2);
+      const kind = f < 0.45 || rnd(sd, id + 61) < 0.35 ? 'dust' : cool < 0.25 + 0.3 * rnd(sd, id + 62) ? 'soot' : 'cloud';
+      drawBlob(ctx, kind, r, id, px, py, g, sin * end);
+      if (glow > 0.05 && f > 0.3) drawBlob(ctx, 'fire', r * 0.42, id + 1, px + w * 0.1 * u, py, g, glow * 0.6 * sin * end, 2 + (1 - glow) * 2);
+    }
+  }
+
+  // ---- the cap's billows: placed on the torus, rolling, shaded by how they face the sun, sorted far to near
+  const capIn = A.capIn;
+  let nb = 0;
+  if (capIn > 0.01) {
+    for (let i = 0; i < NA; i++) {
+      const th = ((i + 0.5 * (i & 1) * 0.5) / NA) * Math.PI * 2 + sd * 0.3;
+      const ct = Math.cos(th);
+      const st = Math.sin(th);
+      for (let j = 0; j < NM; j++) {
+        // the roll: every billow travels outward over the top, down the rim and back in underneath
+        const ph = (j / NM + 0.15 * rnd(sd, i * 7 + j) - roll) * Math.PI * 2 + 0.6;
+        const cf = Math.cos(ph);
+        const sf = Math.sin(ph);
+        const rho = Rm + rm * cf;
+        const z = rm * sf;
+        capX[nb] = cx + rho * ct * u;
+        capY[nb] = cy - z * u + rho * st * u * CAP_FLAT;
+        capR[nb] = rm * g.res * (0.58 + 0.4 * rnd(sd, i * 5 + j + 90)) * grow;
+        capLum[nb] = cf * ct * SUN_X + cf * st * SUN_Y + sf * SUN_Z;
+        capSin[nb] = sf;
+        capKey[nb] = rho * st + z * 0.6;
+        capIdx[nb] = nb;
+        nb++;
+      }
+    }
+    // far to near (insertion sort: 48 billows)
+    for (let i = 1; i < nb; i++) {
+      const v = capIdx[i];
+      let j = i - 1;
+      while (j >= 0 && capKey[capIdx[j]] > capKey[v]) {
+        capIdx[j + 1] = capIdx[j];
+        j--;
+      }
+      capIdx[j + 1] = v;
+    }
+  }
+  /** A billow's kind by how it faces the sun and how far the cloud has cooled (each billow on its own time). */
+  const cloudKind = (lum: number, low: number, n: number): BlobKind => {
+    if (lum < -0.15) return 'cloudUnder';
+    if (cool < 0.22 + 0.3 * rnd(sd, n + 180)) return lum > 0.4 ? 'smoke' : 'soot';
+    if (lum > 0.62 - 0.3 * cool && cool > 0.3 + 0.3 * rnd(sd, n + 181)) return 'cloudTop';
+    return low < 0.1 && rnd(sd, n + 170) < 0.45 ? 'dust' : 'cloud';
+  };
+  const billow = (n: number): void => {
+    // each billow shrinks away on its own time, so the cloud breaks up into ragged gaps as it dissipates
+    const gone = smooth(clamp01((late - 0.2 - 0.35 * rnd(sd, n + 140)) / 0.45));
+    if (gone >= 0.98) return;
+    const a = capIn * ca * (gone > 0.7 ? (1 - gone) / 0.3 : 1);
+    if (a <= 0.01) return;
+    const r = capR[n] * (1 - 0.55 * gone);
+    drawBlob(ctx, cloudKind(capLum[n], capSin[n], n), r, n, capX[n], capY[n], g, a);
+    // the young cap is still burning; then the fire glows through its soot and under the rim while it is hot
+    if (young > 0.02) drawBlob(ctx, 'fire', r * 0.85, n + 2, capX[n], capY[n], g, Math.min(1, young * 1.2) * a, 2.6 + (1 - young) * 1.4);
+    else if (glow > 0.04) {
+      // dull red light under the rim and, while it is still dark, a little through the soot on the sides: patches of
+      // uneven size and heat on some billows only, so it never reads as an evenly spaced string of lights
+      const pick = rnd(sd, n + 190);
+      const under = capSin[n] < -0.3 ? 0.9 : capSin[n] < 0.25 ? 0.55 : cool < 0.35 ? 0.3 : 0;
+      if (under > 0 && pick < 0.6) drawBlob(ctx, 'fire', r * (0.5 + 0.45 * rnd(sd, n + 191)), n + 1, capX[n], capY[n] + r * g.k * 0.25, g, Math.min(1, glow * 1.2) * under * a, 2.2 + 1.2 * pick + (1 - glow) * 1.4);
+    }
+  };
+  // the far half of the cap
+  const crownKey = rm * 0.5;
+  let bi = 0;
+  for (; bi < nb && capKey[capIdx[bi]] < crownKey; bi++) billow(capIdx[bi]);
+
+  // ---- the fireball: forms at once, boils, rises with the cap and cools, soot closing over it
+  if (q < 0.8) {
+    const fr = R * (0.36 + 0.4 * easeOut3(clamp01(q / 0.06))) * (1 - 0.45 * clamp01((q - 0.15) / 0.5));
+    const fa = (1 - clamp01((q - 0.5) / 0.3)) * ca;
+    const fl = Math.floor(age / 110);
+    const fy = y - capH * u + rm * 0.1 * u;
+    for (let i = 8; i >= 0; i--) {
+      const ang = (i / 8) * Math.PI * 2 + sd + Math.sin(age / 160 + i) * 0.25;
+      const d = i === 0 ? 0 : fr * (0.5 + 0.08 * Math.sin(age / 120 + i * 2));
+      const r = fr * (i === 0 ? 0.72 : 0.5 + 0.08 * rnd(sd, i + 70)) * g.res;
+      const heat = Math.max(0, Math.min(4, q * 7 - (i === 0 ? 0.3 : -0.6)));
+      drawBlob(ctx, 'fire', Math.max(1, r), (fl + i) & 3, cx + Math.cos(ang) * d * u, fy + Math.sin(ang) * d * u * 0.8, g, fa, heat);
+    }
+    // soot forming over the top of the fireball as it cools
+    const so = clamp01((q - 0.18) / 0.3) * fa;
+    if (so > 0.02) for (let i = 0; i < 3; i++) drawBlob(ctx, 'soot', fr * (0.45 + 0.1 * i) * g.res, i + 5, cx + (i - 1) * fr * 0.5 * u, fy - fr * (0.5 - Math.abs(i - 1) * 0.15) * u, g, so * 0.85);
+  }
+
+  // ---- the crown: a domed top over the middle of the cap, filling the ring
+  if (capIn > 0.01) {
+    const crownIn = clamp01((q - 0.18) / 0.2) * capIn;
+    if (crownIn > 0.01) {
+      // a low dome: wide, flat billows over the middle, the one toward the sun lit
+      const offs = [
+        [0, 0, 0.55, 0.3],
+        [-0.42, -0.18, 0.4, 0.42],
+        [0.42, -0.08, 0.4, 0.36],
+        [-0.08, 0.3, 0.42, 0.3],
+        [0.02, -0.36, 0.34, 0.5],
+      ] as const;
+      for (let i = 0; i < offs.length; i++) {
+        const [ox, oy, rr, zz] = offs[i];
+        const lum = ox * 0.6 * SUN_X + oy * 0.6 * SUN_Y + 0.8 * SUN_Z + (i === 4 ? 0.15 : 0);
+        const gone = smooth(clamp01((late - 0.3 - 0.3 * rnd(sd, i + 150)) / 0.45));
+        if (gone >= 0.98) continue;
+        const a = crownIn * ca * (gone > 0.7 ? (1 - gone) / 0.3 : 1);
+        const px = cx + ox * Rm * u;
+        const py = cy - rm * zz * u + oy * Rm * CAP_FLAT * u;
+        const r = Rm * rr * g.res * grow * (1 - 0.55 * gone);
+        drawBlob(ctx, cloudKind(lum, 1, i + 60), r, i + 11, px, py, g, a);
+        if (young > 0.02) drawBlob(ctx, 'fire', r * 0.8, i + 12, px, py, g, Math.min(1, young * 1.2) * a, 2.8 + (1 - young) * 1.2);
+        else if (glow > 0.04 && cool < 0.35) drawBlob(ctx, 'fire', r * 0.4, i + 13, px, py + r * g.k * 0.2, g, glow * 0.5 * a, 2.4 + (1 - glow) * 1.6);
+      }
+    }
+  }
+  // the near half of the cap
+  for (; bi < nb; bi++) billow(capIdx[bi]);
 }
 
 // ------------------------------------------------------------------------------------------------- aftermath
