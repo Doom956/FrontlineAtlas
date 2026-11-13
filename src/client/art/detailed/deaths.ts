@@ -213,7 +213,8 @@ function column(ctx: CanvasRenderingContext2D, x: number, y: number, g: Grid, u:
   const s = smokeSrc;
   s.x = x;
   s.y = y;
-  s.n = n;
+  // a longer life (cinematic) gets more puffs, so the column stays one mass instead of a string of beads
+  s.n = Math.min(18, Math.round(n * Math.max(1, lifeMs / 2100)));
   s.lifeMs = lifeMs;
   s.r0 = r0;
   s.r1 = r1;
@@ -511,7 +512,10 @@ function drawMissile(ctx: CanvasRenderingContext2D, d: DeathDraw, m: MotionParam
       const dir = rnd(sd, i + 41) * TAU;
       const vh = R * (main ? 0.6 : 1.3 + 2.6 * rnd(sd, i + 42));
       const pop = main ? 0.15 : 0.25 + 0.5 * rnd(sd, i + 43);
-      const burning = main || i % 2 === 1;
+      // about half of them burn (and trail smoke), some only for part of the way down; each its own thickness
+      const burning = main || rnd(sd, i + 44) < 0.5;
+      const burnEnd = main ? 1 : 0.45 + 0.55 * rnd(sd, i + 45);
+      const thick = main ? 1.4 : 0.6 + 0.7 * rnd(sd, i + 46);
       const at = (kk: number): [number, number] => {
         const sp = easeOut(Math.min(1, kk));
         const h = 1 - kk * kk + pop * 4 * kk * (1 - kk);
@@ -520,15 +524,16 @@ function drawMissile(ctx: CanvasRenderingContext2D, d: DeathDraw, m: MotionParam
       if (pass === 1) {
         // the smoke a burning piece leaves along its way down, lingering and drifting off after it
         if (!burning) continue;
-        const tEnd = Math.min(a, tf);
-        for (let j = Math.max(1, Math.ceil((a - trailLife) / step)); j * step <= tEnd; j++) {
+        const tEnd = Math.min(a, tf * burnEnd);
+        const life = trailLife * (main ? 1 : 0.55 + 0.45 * thick);
+        for (let j = Math.max(1, Math.ceil((a - life) / step)); j * step <= tEnd; j++) {
           const tb = j * step;
           const pa = a - tb;
-          const pk = pa / trailLife;
+          const pk = pa / life;
           if (pk >= 1) continue;
           const [qx, qy] = at(tb / tf);
           const sec = d.reduced ? 0 : pa / 1000;
-          const r = g.res * (0.45 + 1.5 * easeOut(pk)) * (main ? 1.4 : 1) * (atom ? 1.1 : 1);
+          const r = g.res * (0.4 + 1.15 * easeOut(pk)) * thick * (atom ? 1.1 : 1);
           drawBlob(ctx, pk < 0.4 ? 'soot' : pk < 0.7 ? 'shade' : 'smoke', r, (i + j) & 3, qx + WIND_X * u * sec * 0.6, qy - RISE * u * sec * 0.3, g, 0.85 * (1 - pk) ** 1.2 * Math.min(1, pa / 40));
         }
         continue;
@@ -537,9 +542,9 @@ function drawMissile(ctx: CanvasRenderingContext2D, d: DeathDraw, m: MotionParam
         if (pass !== 2) continue;
         // in the air: a burning piece (the small cold ones dark)
         const [px, py] = at(k);
-        const hot = burning || k < 0.25;
+        const hot = (burning && k < burnEnd) || k < 0.25;
         speck(ctx, px, py, g, main ? 2 : 1, hot ? (i & 1 ? TRACER[0] : TRACER[1]) : DEBRIS[i % 3]);
-        if (main || (burning && !mid)) drawBlob(ctx, 'fire', Math.max(1, g.res * (main ? 0.9 : 0.55)), i, px, py - g.k * 0.5, g, 1, 2);
+        if (main || (burning && k < burnEnd && !mid)) drawBlob(ctx, 'fire', Math.max(1, g.res * (main ? 0.9 : 0.55)), i, px, py - g.k * 0.5, g, 1, 2);
         continue;
       }
       if (pass !== 0) continue;
