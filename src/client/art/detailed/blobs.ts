@@ -81,7 +81,7 @@ export function glowBitmap(kind: 'glow' | 'halo' | 'heat' | 'press' | 'lamp' | '
   // seven alpha steps a little apart: the dither between two of them stays quiet even when a big light is drawn
   // with coarse cells
   const ALPHA = [0, 30, 60, 92, 124, 158, 192, 226];
-  // 'heat': ground glowing red hot, from a dark red at its edge to orange in the middle (never white)
+  // 'heat': ground glowing red hot, a broad pool from a dark red at its edge to orange in the middle (never white)
   // 'press': water pressed flat by a gun's blast, pale spray tones
   const SP = SPRAY.map(hex);
   const COL =
@@ -104,7 +104,7 @@ export function glowBitmap(kind: 'glow' | 'halo' | 'heat' | 'press' | 'lamp' | '
       if (d >= 1) continue;
       const grain = vnoise(x * 0.5 + variant * 3.1, y * 0.5, s) - 0.5;
       // 'lamp' (a gun's light thrown on a deck): a broad pool, strong out to near its edge
-      const i = (1 - d) ** (kind === 'lamp' || kind === 'whiteHot' ? 0.45 : 1.6) + grain * 0.15;
+      const i = (1 - d) ** (kind === 'lamp' || kind === 'whiteHot' ? 0.45 : kind === 'heat' ? 0.8 : 1.6) + grain * 0.15;
       const lv = Math.max(0, Math.min(7, Math.floor(i * 8 + 0.4 + BAYER[(x & 1) + ((y & 1) << 1)] * 0.95)));
       if (!lv) continue;
       const o = (y * W + x) * 4;

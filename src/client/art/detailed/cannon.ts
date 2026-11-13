@@ -95,8 +95,9 @@ function drawMuzzle(ctx: CanvasRenderingContext2D, f: MuzzleDraw, m: MotionParam
   const mid = g.res < 1.5;
   const prev = ctx.globalAlpha;
   const still = m.reduced;
-  // ---- the blast pressing the water flat beside the hull (a pale patch for three or four frames), under the fire
-  if (!still && tt < 75) {
+  // ---- the blast pressing the water flat beside the hull (a pale patch for three or four frames, from near zoom in:
+  // at mid zoom it is a few pixels), under the fire
+  if (!still && !mid && tt < 75) {
     const k = tt / 75;
     drawBlob(ctx, 'press', Math.max(3, 6.5 * cpu * (0.7 + 0.3 * size) * (0.8 + 0.5 * k)), Math.floor(sd + 2) & 3, f.x + c * 5 * U, f.y + s * 5 * U + 1.5 * U, g, 0.75 * (1 - k * k));
   }
@@ -105,7 +106,7 @@ function drawMuzzle(ctx: CanvasRenderingContext2D, f: MuzzleDraw, m: MotionParam
   if (!still && tt < 110) {
     const k = tt < 34 ? 0 : (tt - 34) / 76;
     drawBlob(ctx, 'lamp', Math.max(3, 8 * cpu * (0.7 + 0.3 * size)), Math.floor(sd) & 3, f.x, f.y + 0.5 * U, g, 0.5 * (1 - k) ** 1.5);
-    drawBlob(ctx, 'lamp', Math.max(3, 7 * cpu * (0.55 + 0.45 * size)), (Math.floor(sd) + 1) & 3, f.x + c * 9 * U, f.y + s * 9 * U + U, g, 0.4 * (1 - k) ** 1.5);
+    if (!mid) drawBlob(ctx, 'lamp', Math.max(3, 7 * cpu * (0.55 + 0.45 * size)), (Math.floor(sd) + 1) & 3, f.x + c * 9 * U, f.y + s * 9 * U + U, g, 0.4 * (1 - k) ** 1.5);
   }
   // ---- the blast pressing the water flat ahead of the gun, and spray thrown off it
   if (tt < 900) {
