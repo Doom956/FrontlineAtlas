@@ -9,6 +9,7 @@ import { styleModule } from '../src/client/art/registry';
 import { ART_STYLES } from '../src/client/art/artStyle';
 import { rasterize, solidCount } from '../src/client/art/detailed/bake';
 import { deathTimesOf } from '../src/client/art/detailed/deaths';
+import { flashAt } from '../src/client/art/detailed/explosions';
 import { unitModel } from '../src/client/art/detailed/models';
 import { CHAR_STEPS, charOf, SINK_STEPS, sinkOf } from '../src/client/art/detailed/wrecks';
 import { DEATH_KINDS, type DeathDraw, type DeathKind } from '../src/client/art/types';
@@ -381,6 +382,17 @@ describe('detailed deaths: drawing', () => {
       // a plane falls for a moment before it hits; a ship floats a while before it is under
       if (k === 'plane' || k === 'ship') expect(tl.impactMs, k).toBeGreaterThan(1000);
     }
+  });
+
+  it('a blast timed to come later throws no light yet (the second blast on a big ship once flashed huge too early)', () => {
+    const m = motionParams('lively', false);
+    for (const k of ['bomb', 'hit', 'missile', 'air'] as const) {
+      const f = { ...flashAt(k, -200, m) };
+      expect(f.coreA, k).toBe(0);
+      expect(f.glowA, k).toBe(0);
+      expect(f.coreR, k).toBe(0);
+    }
+    expect(flashAt('bomb', 10, m).coreA).toBeGreaterThan(0);
   });
 
   it('only the detailed style animates deaths; the others keep their small blasts', () => {

@@ -125,6 +125,14 @@ const flashNow: FlashAt = { glowA: 0, glowR: 0, coreA: 0, coreR: 0 };
  */
 export function flashAt(kind: BlastKind, age: number, m: MotionParams): FlashAt {
   const f = FLASH[kind];
+  if (!(age >= 0)) {
+    // not gone off yet (a blast timed to come later): no light at all
+    flashNow.glowA = 0;
+    flashNow.coreA = 0;
+    flashNow.glowR = 0;
+    flashNow.coreR = 0;
+    return flashNow;
+  }
   const sc = flashScale(m);
   const gk = age / (f.ms * m.flashTime);
   flashNow.glowA = gk < 1 ? f.a * (0.75 + 0.25 * m.flashSize) * (1 - gk) * (1 - gk) : 0;
@@ -140,6 +148,7 @@ export function flashAt(kind: BlastKind, age: number, m: MotionParams): FlashAt 
  * that swells a little and fades fast. Drawn under the blast.
  */
 export function flashGlow(ctx: CanvasRenderingContext2D, kind: BlastKind, x: number, y: number, Rc: number, age: number, g: Grid, m: MotionParams, sd: number, air: boolean): void {
+  if (!(age >= 0)) return;
   const f = flashAt(kind, age, m);
   if (f.glowA > 0) drawBlob(ctx, air ? 'halo' : 'glow', Rc * f.glowR, Math.floor(sd) & 3, x, y, g, f.glowA);
 }
@@ -148,7 +157,7 @@ export function flashGlow(ctx: CanvasRenderingContext2D, kind: BlastKind, x: num
 export function flashCore(ctx: CanvasRenderingContext2D, kind: BlastKind, x: number, y: number, Rc: number, age: number, g: Grid, m: MotionParams, sd: number): void {
   const f = FLASH[kind];
   const ms = CORE_MS * m.flashTime;
-  if (age >= ms) return;
+  if (age >= ms || !(age >= 0)) return;
   const k = age / ms;
   const sc = flashScale(m);
   const prev = ctx.globalAlpha;
