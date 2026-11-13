@@ -330,6 +330,56 @@ const HAND: Record<string, Hand> = {
       for (let y = 7; y <= 9; y++) g.fillRow(y);
     },
   },
+  // 12 x 12 price and state marks (research and arsenal cards): a coin, a clock, a check, a cross
+  // a coin: a full disc, a shaded groove inside the rim, a full face
+  'gold-s': {
+    n: 12,
+    draw: (g) => {
+      for (let y = 0; y < 12; y++)
+        for (let x = 0; x < 12; x++) {
+          const d = Math.hypot(x + 0.5 - 6, y + 0.5 - 6);
+          if (d <= 5.3) g.px(x, y, d > 2.9 && d <= 4 ? 2 : 1);
+        }
+    },
+  },
+  // a clock: the rim and two hands (twelve and three)
+  'clock-s': {
+    n: 12,
+    draw: (g) => {
+      g.ring(5.6);
+      g.rect(5, 3, 2, 4);
+      g.rect(7, 5, 2, 2, 2);
+    },
+  },
+  'accept-s': {
+    n: 12,
+    draw: (g) =>
+      g.art(0, 2, [
+        '..........##',
+        '.........##.',
+        '........##..',
+        '.......##...',
+        '##....##....',
+        '.##..##.....',
+        '..####......',
+        '...##.......',
+      ]),
+  },
+  'close-s': {
+    n: 12,
+    draw: (g) =>
+      g.art(0, 1, [
+        '.##......##.',
+        '..##....##..',
+        '...##..##...',
+        '....####....',
+        '.....##.....',
+        '....####....',
+        '...##..##...',
+        '..##....##..',
+        '.##......##.',
+      ]),
+  },
 };
 
 /** Square runs of each tone as SVG paths. */
@@ -399,11 +449,14 @@ function lineShapes(body: string): { d: string; fill: boolean }[] {
   return out;
 }
 
-/** A line icon without hand-made pixel art, traced onto a 16 x 16 grid with one-pixel strokes (vector fallback). */
+/**
+ * A line icon without hand-made pixel art, traced onto a grid of `px` cells (16 in the top bar, 20 on the research
+ * cards) with one-pixel strokes, one cell per CSS pixel (vector fallback).
+ */
 function tracedLine(name: string, px: number): string {
   const body = lineIconBody(name);
-  const n = 16;
-  const key = `l:${name}`;
+  const n = Math.max(12, Math.round(px));
+  const key = `l:${name}|${n}`;
   const hit = cache.get(key);
   if (hit) return hit;
   const ctx = body ? scratch(n) : null;
