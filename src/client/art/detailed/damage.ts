@@ -121,11 +121,12 @@ function drawShipBurning(ctx: CanvasRenderingContext2D, u: UnitDraw, um: UnitMod
   const linger = lingerOf(m);
   const life = (1700 + 1300 * b.heavy + (b.fires ? 500 : 0)) * linger;
   // the main column's puffs, and how big they are on average (cells)
-  const nMain = Math.round((mid ? 2 : 5) + (mid ? 2 : 5) * b.heavy + (b.fires ? 1 : 0));
+  const moving = (u.moving || u.speed > 0) && !m.reduced;
+  const nMain = Math.round((mid ? 2 : 5) + (mid ? 2 : 5) * b.heavy + (b.fires ? 1 : 0) + (moving && !mid ? 1 : 0));
   const r0 = res * (0.7 + 0.5 * b.heavy) * size;
   const r1 = (main: boolean): number => res * (2.4 + (b.fires ? 1 : 0) + 2.2 * b.heavy * (main ? 1 : 0.6)) * size;
   // a fast ship would string its puffs out into a dotted line: the trail is kept as long as its puffs can cover
-  const [vx, vy] = velocity(u, life, Math.min(L * sc * 2.6, nMain * ((r0 + r1(true)) / 2) * g.k * 1.5));
+  const [vx, vy] = velocity(u, life, Math.min(L * sc * 2.6, nMain * ((r0 + r1(true)) / 2) * g.k * 2));
   // flames stream with the wind they feel: the wind less the ship's own way through it
   const lean = Math.max(-2, Math.min(2, Math.round((WIND_X - vx / sc) / 4)));
   const base = ctx.globalAlpha;
@@ -163,7 +164,8 @@ function drawShipBurning(ctx: CanvasRenderingContext2D, u: UnitDraw, um: UnitMod
     src.alpha = (0.62 + 0.3 * Math.min(1, b.smoke - 0.4 + b.dark * 0.5)) * (main ? 1 : 0.85);
     src.u = sc;
     src.wind = 1 - 0.25 * b.heavy;
-    src.rise = 1 + 0.6 * b.heavy;
+    // under way the smoke is laid down low and long astern by the wind of its passage
+    src.rise = (1 + 0.6 * b.heavy) * (moving ? 0.5 : 1);
     src.seed = rnd(u.seed, i + 40);
     drawSmokeTrail(ctx, src, g, u.timeMs, m);
   }

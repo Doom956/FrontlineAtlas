@@ -988,13 +988,9 @@ function drawMapFx(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionParams)
     case 'splash': {
       // a ship going under: an oil slick spreading, foam and bubbles, wreckage bobbing and sinking
       const end = 1 - t;
+      // churned water where it went down: a patch of foam spreading and breaking up round the slick
+      drawBlob(ctx, 'foam', (4 + 7 * easeOut(t)) * k * g.res, Math.floor(sd) & 3, f.x, f.y, g, 0.75 * end, Math.min(3, Math.floor(t * 4)));
       drawBlob(ctx, 'soot', (2.5 + 5 * easeOut(t)) * k * g.res, 1, f.x, f.y, g, 0.35 * end);
-      for (let i = 0; i < 6; i++) {
-        const ang = (i / 6) * Math.PI * 2 + rnd(sd, i);
-        const d = (2 + 7 * easeOut(t)) * k;
-        if (i % 2) continue;
-        drawBlob(ctx, 'spray', (0.7 + 0.6 * rnd(sd, i + 5)) * k * g.res, i, f.x + Math.cos(ang) * d * sc, f.y + Math.sin(ang) * d * sc * 0.6, g, 0.4 * end);
-      }
       // the burning wreck's smoke: oily soot rising and turning grey as it drifts off
       for (let j = 0; j < 4; j++) {
         const tj = clamp01((t - j * 0.08) / 0.7);
@@ -1015,7 +1011,6 @@ function drawMapFx(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionParams)
         const d = (2 + 5 * easeOut(t)) * k;
         speck(ctx, f.x + Math.cos(ang) * d * sc, f.y + Math.sin(ang) * d * sc * 0.6, g, Math.max(1, Math.round((3 - i * 0.5) * sink * g.res * 0.6)), DEBRIS[1 + (i % 2)]);
       }
-      if (t < 0.35) drawBlob(ctx, 'spray', 3 * k * g.res, 2, f.x, f.y - (2 + t * 10) * sc, g, 0.35 * (1 - t / 0.35));
       break;
     }
     case 'smoke': {

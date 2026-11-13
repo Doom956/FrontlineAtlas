@@ -90,6 +90,9 @@ describe('detailed smoke trails', () => {
     // young puffs are the dark ones
     expect(puffOf(s, 0.1, 0).kind).toBe('soot');
     expect(puffOf(s, 0.9, 0).kind).toBe('smoke');
+    // a thin wisp (no dark smoke) pales as it thins, so it shows over a dark hull
+    expect(puffOf(src({ dark: 0 }), 0.1, 0).kind).toBe('smoke');
+    expect(puffOf(src({ dark: 0 }), 0.7, 0).kind).toBe('vapour');
   });
 
   it('stream back along the course of a moving ship, so they follow it instead of floating where they were', () => {

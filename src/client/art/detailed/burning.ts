@@ -91,7 +91,8 @@ export function puffOf(s: SmokeSource, a: number, k: number): Puff {
   puff.y = s.y + by + (WIND_Y * s.wind - RISE * s.rise) * s.u * sec;
   puff.r = Math.max(1, s.r0 + (s.r1 - s.r0) * easeOut(a));
   puff.alpha = s.alpha * (a < 0.08 ? a / 0.08 : 1) * (1 - a) ** 1.25;
-  puff.kind = a < s.dark * 0.6 ? 'soot' : a < s.dark ? 'shade' : 'smoke';
+  // dark smoke goes from oily soot to grey; a thin wisp (no dark at all) from grey to pale, so it shows over a dark hull
+  puff.kind = s.dark > 0 ? (a < s.dark * 0.6 ? 'soot' : a < s.dark ? 'shade' : 'smoke') : a < 0.3 ? 'smoke' : 'vapour';
   return puff;
 }
 

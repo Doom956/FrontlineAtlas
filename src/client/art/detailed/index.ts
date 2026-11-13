@@ -6,9 +6,10 @@
 // palette and one set of puffs.
 //
 // Files: palette.ts (materials and the effect palette), grid.ts (the pixel grid: device px per art pixel), bake.ts
-// (the rasterizer), models.ts (the unit models), units.ts (units on the map and in portraits), blobs.ts (smoke, soot,
-// dust, spray and fire puffs), trails.ts (wakes and contrails), explosions.ts, craters.ts, cannon.ts, paradrop.ts,
-// troopIcons.ts.
+// (the rasterizer), models.ts (the unit models), units.ts (units on the map and in portraits), damage.ts (damaged units
+// burning), blobs.ts (smoke, soot, dust, spray and fire puffs, flame tongues, foam), burning.ts (fires and smoke that
+// keep going: trails that follow a unit, crater fires), trails.ts (wakes and contrails), explosions.ts, craters.ts (with
+// the atom bomb's blast zone), cannon.ts, paradrop.ts, troopIcons.ts.
 import type { StyleModule } from '../types';
 import { detailedCannon } from './cannon';
 import { detailedCraters } from './craters';
