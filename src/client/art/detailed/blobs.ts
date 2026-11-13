@@ -17,12 +17,13 @@ import { CLOUD, CLOUD_SHADE, CLOUD_TOP, DUST, FIRE, SCORCH, SHADE, SMOKE, SOOT, 
  * as one billowing mass, not a heap of separate stones. Then the burning and the sea: 'flame' (a flickering tongue of
  * fire standing on its base, four flicker frames, leaning with the wind), 'foam' (a flat lacy patch of foam on the
  * water that breaks up as it ages), 'heat' (ground glowing red hot and cooling, like 'glow' in deep reds), 'scorch'
- * (a flat blackened, burnt patch on a deck) and 'press' (the pale patch of water a gun's blast presses flat).
+ * (a flat blackened, burnt patch on a deck), 'press' (the pale patch of water a gun's blast presses flat) and
+ * 'lamp' (a broad pool of warm light a gun's flash throws on its deck).
  */
-export type BlobKind = 'smoke' | 'soot' | 'dust' | 'spray' | 'fire' | 'vapour' | 'flash' | 'glow' | 'halo' | 'shade' | 'haze' | 'cloudTop' | 'cloud' | 'cloudUnder' | 'roll' | 'flame' | 'foam' | 'heat' | 'scorch' | 'press';
-const KINDS: BlobKind[] = ['smoke', 'soot', 'dust', 'spray', 'fire', 'vapour', 'flash', 'glow', 'halo', 'shade', 'haze', 'cloudTop', 'cloud', 'cloudUnder', 'roll', 'flame', 'foam', 'heat', 'scorch', 'press'];
+export type BlobKind = 'smoke' | 'soot' | 'dust' | 'spray' | 'fire' | 'vapour' | 'flash' | 'glow' | 'halo' | 'shade' | 'haze' | 'cloudTop' | 'cloud' | 'cloudUnder' | 'roll' | 'flame' | 'foam' | 'heat' | 'scorch' | 'press' | 'lamp';
+const KINDS: BlobKind[] = ['smoke', 'soot', 'dust', 'spray', 'fire', 'vapour', 'flash', 'glow', 'halo', 'shade', 'haze', 'cloudTop', 'cloud', 'cloudUnder', 'roll', 'flame', 'foam', 'heat', 'scorch', 'press', 'lamp'];
 
-const RAMP: Record<Exclude<BlobKind, 'fire' | 'flash' | 'glow' | 'halo' | 'haze' | 'flame' | 'foam' | 'heat' | 'scorch' | 'press'>, RGB[]> = {
+const RAMP: Record<Exclude<BlobKind, 'fire' | 'flash' | 'glow' | 'halo' | 'haze' | 'flame' | 'foam' | 'heat' | 'scorch' | 'press' | 'lamp'>, RGB[]> = {
   smoke: SMOKE.map(hex),
   soot: SOOT.map(hex),
   dust: DUST.map(hex),
@@ -66,7 +67,7 @@ function vnoise(x: number, y: number, s: number): number {
  * seven dithered steps (no smooth gradient and no ring), white hot in the middle through yellow to an orange edge.
  * 'glow' lies on the ground (squashed by the 3/4 view), 'halo' hangs in the air (round). Radius `r` cells (1..48).
  */
-export function glowBitmap(kind: 'glow' | 'halo' | 'heat' | 'press', r: number, variant: number): RGBABitmap {
+export function glowBitmap(kind: 'glow' | 'halo' | 'heat' | 'press' | 'lamp', r: number, variant: number): RGBABitmap {
   const R = Math.max(1, Math.min(48, Math.round(r)));
   const sq = kind === 'halo' ? 1 : 0.6;
   const half = Math.ceil(R * 1.15) + 1;
@@ -85,6 +86,8 @@ export function glowBitmap(kind: 'glow' | 'halo' | 'heat' | 'press', r: number, 
   const COL =
     kind === 'press'
       ? [SP[1], SP[1], SP[1], SP[2], SP[2], SP[2], SP[3], SP[3]]
+      : kind === 'lamp'
+      ? [FIRE_RGB[3], FIRE_RGB[3], FIRE_RGB[3], FIRE_RGB[2], FIRE_RGB[2], FIRE_RGB[2], FIRE_RGB[2], FIRE_RGB[1]]
       : kind === 'heat'
       ? [FIRE_RGB[5], FIRE_RGB[5], FIRE_RGB[4], FIRE_RGB[4], FIRE_RGB[4], FIRE_RGB[3], FIRE_RGB[3], FIRE_RGB[2]]
       : [FIRE_RGB[2], FIRE_RGB[2], FIRE_RGB[2], FIRE_RGB[1], FIRE_RGB[1], FIRE_RGB[1], FIRE_RGB[0], FIRE_RGB[0]];
@@ -97,7 +100,8 @@ export function glowBitmap(kind: 'glow' | 'halo' | 'heat' | 'press', r: number, 
       const d = Math.hypot(dx, dy) / e;
       if (d >= 1) continue;
       const grain = vnoise(x * 0.5 + variant * 3.1, y * 0.5, s) - 0.5;
-      const i = (1 - d) ** 1.6 + grain * 0.15;
+      // 'lamp' (a gun's light thrown on a deck): a broad pool, strong out to near its edge
+      const i = (1 - d) ** (kind === 'lamp' ? 0.45 : 1.6) + grain * 0.15;
       const lv = Math.max(0, Math.min(7, Math.floor(i * 8 + 0.4 + BAYER[(x & 1) + ((y & 1) << 1)] * 0.95)));
       if (!lv) continue;
       const o = (y * W + x) * 4;
@@ -159,7 +163,7 @@ export function hazeBitmap(r: number, variant: number): RGBABitmap {
  * rim, never red. The origin (ox, oy) is the blob's centre.
  */
 export function blobBitmap(kind: BlobKind, r: number, variant: number, heat = 0): RGBABitmap {
-  if (kind === 'glow' || kind === 'halo' || kind === 'heat' || kind === 'press') return glowBitmap(kind, r, variant);
+  if (kind === 'glow' || kind === 'halo' || kind === 'heat' || kind === 'press' || kind === 'lamp') return glowBitmap(kind, r, variant);
   if (kind === 'scorch') return scorchBitmap(r, variant);
   if (kind === 'haze') return hazeBitmap(r, variant);
   if (kind === 'flame') return flameBitmap(r, variant, heat & 3, (heat >> 2) - 2);
@@ -446,7 +450,7 @@ export function drawBlob(ctx: CanvasRenderingContext2D, kind: BlobKind, r: numbe
   const sm = ctx.imageSmoothingEnabled;
   // a soft light or dust sheet drawn with coarse cells (a big one) is smoothed, so its dither never shows as a
   // checkerboard of big squares; every other blob keeps crisp pixels
-  ctx.imageSmoothingEnabled = f >= 4 && (kind === 'glow' || kind === 'halo' || kind === 'haze' || kind === 'heat' || kind === 'press');
+  ctx.imageSmoothingEnabled = f >= 4 && (kind === 'glow' || kind === 'halo' || kind === 'haze' || kind === 'heat' || kind === 'press' || kind === 'lamp');
   ctx.globalAlpha = prev * Math.min(1, alpha);
   ctx.drawImage(e.page, e.sx, e.sy, e.w, e.h, cx - e.ox * k, cy - e.oy * k, e.w * k, e.h * k);
   ctx.globalAlpha = prev;
