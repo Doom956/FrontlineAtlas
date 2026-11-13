@@ -1,16 +1,20 @@
 // The detailed style's explosions (client only). No clean circles and no drawn rings: a blast is built from the shared
 // puffs (blobs.ts), each one lumpy and shaded, moving by simple physics from the clock:
-//   - a short white-hot flash, then a fireball of several fire puffs that swell, rise a little and cool from white
-//     through orange to deep red as they burn out;
+//   - the flash: a white-hot core for two or three frames that shrinks into the fireball (a few short spikes of light
+//     from the bigger blasts) and a soft stepped pool of light thrown on the ground, the water or round a burst in the
+//     air that fades within a fifth of a second; its size and length follow flashSize and flashTime, and reduced
+//     motion has none;
+//   - a fireball of several fire puffs that swell, rise a little and cool from white through orange to deep red as
+//     they burn out;
 //   - smoke that starts as oily soot over the fire and thins to grey as it rises and drifts, staying longer with
 //     smokeLinger;
 //   - debris and earth thrown out on ballistic arcs that fall back, and for blasts on the ground a crown of dirt and a
 //     skirt of dust rolling out along the ground (as far as the shockwave number says);
 //   - small fires left burning on the ground after the bigger blasts (fireLinger).
 // Kinds: a shell, one bomb of a stick, a ship or fort hit (sparks and black smoke), a plane bursting in the air with
-// burning pieces falling, a missile (a big fireball, a dust skirt and a rising smoke column), the atom bomb (a blinding
-// flash, a fireball rising into a mushroom cap on its stem over a rolling base surge), a splash (a white column of
-// spray collapsing, foam spreading irregularly) and flak (a black puff with a quick orange core).
+// burning pieces falling, a missile (a big fireball, a dust skirt and a rising smoke column), the atom bomb (a whole
+// sequence, see drawAtom), a splash (a small burst at the waterline, then a white column of spray collapsing, foam
+// spreading irregularly) and flak (a black puff with a quick orange core).
 // Aftermath (fx/layer.ts): a ship going under (foam, an oil slick, bubbles, wreckage), a plane's smoke, dust after
 // shells and a fort coming down. Reduced motion: a still frame of the burst, then a still frame of its smoke.
 import type { MotionParams } from '../motion';
@@ -494,7 +498,7 @@ function drawAtom(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams):
       if (rnd(sd, i + 200) < 0.14) continue;
       const th = ((i + 0.7 * rnd(sd, i + 201)) / n) * Math.PI * 2;
       const lobe = 0.78 + 0.2 * Math.sin(3 * th + sd) + 0.13 * Math.sin(5 * th + 2.1 * sd) + 0.07 * Math.sin(9 * th + 3 * sd);
-      const d = reach * lobe * (0.72 + 0.3 * rnd(sd, i + 203));
+      const d = reach * lobe * (0.58 + 0.44 * rnd(sd, i + 203));
       const r = Rc * (0.14 + 0.12 * rnd(sd, i + 204)) * (0.6 + 0.7 * k) * (1 + 0.45 * late);
       const a = (0.25 + 0.3 * rnd(sd, i + 205)) * a0;
       const px = x + Math.cos(th) * d * u;
