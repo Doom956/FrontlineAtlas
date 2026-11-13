@@ -303,8 +303,8 @@ export class Renderer {
       this.units.selected = this.selectedSet;
     }
     const frac = this.units.subTick(nowMs, ui.paused, ui.speed);
-    // scorch craters lie on the ground, under markers and units
-    this.pfx.drawGround(ctx, camera, state.tick + frac, d);
+    // scorch craters and what of a death lies on the ground or the sea (an oil slick, a burnt hull), under the units
+    this.pfx.drawGround(ctx, camera, state.tick + frac, d, nowMs, this.colors);
     const b = ui.mode.kind === 'build' ? ui.mode.building : null;
     const depFocus = b === 'mine' ? 1 : b === 'oilWell' ? 2 : b === 'farm' ? 3 : 0;
     this.deposits.draw(ctx, state, camera, view, ui.showResources, me, depFocus, d);

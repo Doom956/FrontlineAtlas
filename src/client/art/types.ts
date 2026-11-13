@@ -260,9 +260,18 @@ export const DEATH_KINDS: readonly DeathKind[] = ['plane', 'missile', 'tank', 's
  */
 export const DEATH_GLIDE_TILES = 2.2;
 
+/**
+ * Which part of a death a call draws: 'ground' what lies on the ground or the sea (an oil slick, foam, floating or
+ * sunk wreckage, a burnt hull, a landed turret, scorch, shadows), drawn under the units; 'air' what stands up or flies
+ * (a falling plane, a thrown turret in the air, fireballs, flashes, flames and smoke), drawn over them. Absent: both.
+ */
+export type DeathLayer = 'ground' | 'air';
+
 /** One frame of a unit's death. */
 export interface DeathDraw {
   kind: DeathKind;
+  /** the part to draw (absent: all of it, as the art lab does) */
+  layer?: DeathLayer;
   /** the unit's picture, its upgrades and its owner's colour, as the map drew it */
   key: SpriteKey;
   mods: number;

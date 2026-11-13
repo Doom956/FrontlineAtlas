@@ -29,7 +29,7 @@ import { artFor, motionFor } from '../art/registry';
 import type { RGB } from '../art/shared/colour';
 import { spriteKey, type SpriteKey } from '../art/shared/keys';
 import { fract, rnd } from '../art/shared/noise';
-import { CRATER_ATOM_REACH, CRATER_REACH, DEATH_GLIDE_TILES, type BlastDraw, type BlastKind, type CraterDraw, type DeathDraw, type DeathKind, type ExplosionArt, type MotionParams, type MuzzleDraw, type ShellDraw } from '../art/types';
+import { CRATER_ATOM_REACH, CRATER_REACH, DEATH_GLIDE_TILES, type BlastDraw, type BlastKind, type CraterDraw, type DeathDraw, type DeathKind, type DeathLayer, type ExplosionArt, type MotionParams, type MuzzleDraw, type ShellDraw } from '../art/types';
 import { unitSpriteMods } from '../render/pixelSprites';
 import { DeathWatch, deathKindOf, isKillBlast } from './deaths';
 import { fxEnabled, prefersReducedMotion } from './settings';
@@ -608,17 +608,34 @@ export class PixelFx {
 
   // ------------------------------------------------------------------------------------------------ drawing
 
-  /** Craters, under the units (overlay canvas in CSS px). `gameTime` = tick + fraction. */
-  drawGround(ctx: CanvasRenderingContext2D, cam: FxCam, gameTime: number, dpr = 1): void {
-    if (!this.wasOn || this.craters.length === 0) return;
+  /**
+   * Craters and what of the deaths lies on the ground or the sea (an oil slick, foam, floating and sunk wreckage, a
+   * burnt hull, a landed turret, scorch), under the units (overlay canvas in CSS px). `gameTime` = tick + fraction;
+   * `now` the clock the deaths run on (ms, as drawAir) and `colors` the players' colours by id (both absent: craters
+   * only).
+   */
+  drawGround(ctx: CanvasRenderingContext2D, cam: FxCam, gameTime: number, dpr = 1, now = -1, colors: readonly RGB[] | null = null): void {
+    if (!this.wasOn) return;
     const z = cam.zoom;
-    if (z < 1.5) return; // far out: nothing (a crater is a fraction of a pixel)
+    if (z < 1.5) return; // far out: nothing (a crater is a fraction of a pixel; a death is the far blink, drawAir)
     const t0 = performance.now();
     const g = pixelSize(z);
     const ox = cam.viewW / 2 - cam.x * z;
     const oy = cam.viewH / 2 - cam.y * z;
     const prevA = ctx.globalAlpha;
     const prevS = ctx.imageSmoothingEnabled;
+    if (now >= 0 && z >= FAR_FX_ZOOM) {
+      try {
+        this.drawDeaths(ctx, cam, now, dpr, colors, artFor('explosions'), motionFor('explosions'), false, ox, oy, z, g, 'ground');
+      } catch {
+        /* ignore */
+      }
+      ctx.globalAlpha = prevA;
+    }
+    if (this.craters.length === 0) {
+      this.ms += performance.now() - t0;
+      return;
+    }
     const map = this.state?.map ?? null;
     const art = artFor('craters');
     const m = motionFor('craters');
@@ -725,7 +742,7 @@ export class PixelFx {
       }
       const blasts = artFor('explosions');
       const bm = motionFor('explosions');
-      this.drawDeaths(ctx, cam, now, dpr, colors, blasts, bm, far, ox, oy, z, g);
+      this.drawDeaths(ctx, cam, now, dpr, colors, blasts, bm, far, ox, oy, z, g, 'air');
       const bd = this.blastDraw;
       bd.zoom = z;
       bd.scale = g;
@@ -763,8 +780,13 @@ export class PixelFx {
     this.ms += performance.now() - t0;
   }
 
-  private drawDeaths(ctx: CanvasRenderingContext2D, cam: FxCam, now: number, dpr: number, colors: readonly RGB[] | null, art: ExplosionArt, m: MotionParams, far: boolean, ox: number, oy: number, z: number, g: number): void {
+  /**
+   * The deaths' `layer`: 'ground' (drawGround, under the units: what lies on the ground or the sea) or 'air' (drawAir,
+   * over them: what falls, flies, burns and smokes, and the far blink farther out).
+   */
+  private drawDeaths(ctx: CanvasRenderingContext2D, cam: FxCam, now: number, dpr: number, colors: readonly RGB[] | null, art: ExplosionArt, m: MotionParams, far: boolean, ox: number, oy: number, z: number, g: number, layer: DeathLayer): void {
     const dd = this.deathDraw;
+    dd.layer = layer;
     dd.zoom = z;
     dd.scale = g;
     dd.dpr = dpr;
@@ -782,6 +804,7 @@ export class PixelFx {
       const reach = Math.max(160, (DEATH_GLIDE_TILES + 2) * z);
       if (sx < -reach || sy < -reach || sx > cam.viewW + reach || sy > cam.viewH + reach) continue;
       if (far || !art.drawDeath) {
+        if (layer === 'ground') continue;
         // far out (or a style without death animations now): the far blink where it was hit, and where a plane came down
         if (age < FAR_DEATH_MS) drawBlastFar(ctx, FAR_HIT, sx, sy, age / FAR_DEATH_MS);
         const ia = age - d.impact;
