@@ -37,6 +37,27 @@ minimap and the Canvas2D fallback use the same ramp (`waterRGB` in terrain.ts). 
 light stone mountains. Nation fills are the nation hue at even lightness and 58% opacity; tribes are paler still
 (44%) so they read as background. Borders are a darker shade of the same hue, never black.
 
+### Map overlays
+
+What the map canvas draws on top of the land (render/selectionOverlay.ts, pillarOverlay.ts, overlays.ts, fronts.ts,
+units.ts, buildings.ts, names.ts, heartland.ts) uses the panels' cool steel and the research cobalt, never brass: your
+fronts, your troop pills and fleet badges, the selection box and the outlines it draws, the selected tile, routes,
+spearhead arrows, range rings, the aim discs of your strikes, your launch sites, queued level pips, the heartland edge
+and your own nation's name. The tokens live in render/common.ts (`ACCENT_*`, `accentStroke`).
+
+| Token | Hex | Role | Contrast |
+|---|---|---|---|
+| `ACCENT` | `#93aef8` | lines, rings, paths, markers (the research panel's `--accent-hi`) | 7.1:1 on the open sea, 4.4:1 on the shelf |
+| casing | `#0a122c` at 35 to 75% | a dark cobalt line 2 px wider under every thin accent line | 6.5:1 or more on plains, desert, tundra and a blue nation's fill |
+| `ACCENT_FILL` | `#3b69fa` at 8 to 30% | area fills: the selection box, a pocket, the barrage reach, the heartland | |
+| `ACCENT_TEXT` | `#c4d4fc` | labels on the dark map plate (`rgba(10,13,21,0.82)`): rail time, spearhead depth, aim radius | 13.1:1 |
+| own name | `rgba(220,230,254,0.97)` | your nation's name on its halo (others are white) | |
+
+The line carries the overlay on water, the casing on light land, so every overlay reads on both. Navy reach and
+reveals stay pale sky (`rgba(160,220,255)`), hostile things red, cautions warm (`#f0b07a`: a spearhead warning, the
+atom bomb's core inside its aim disc). Explosions, shells and fire keep their own warm colours: they are effects, not
+accents.
+
 ### Where the accent changes
 
 The in-game HUD, the setup screen and the unit card are amber. Two places repoint `--accent` (and its `--brass`
@@ -129,7 +150,11 @@ Sentence case everywhere. No letter-spaced capitals, no eyebrow labels above hea
   --cat-econ, --cat-science, --cat-strike in styles.css), never the accent.
 - Unit card and Forces list: the unit's own map sprite as a portrait (hud/portrait.ts calls drawUnitSprite).
 - Research and Arsenal: the Modern Flat layout (tabs on a track, no fork frames, neutral lines, a Next flag) in
-  these tokens, with the research blue accent.
+  these tokens, with the research blue accent. The cards use the same pixel set: the tech's picture at 20 px (a
+  building's map silhouette, or the line icon traced onto a 20 x 20 grid; the top bar's hand-made warship, swords,
+  hammer and flask where they exist), 16 px on the order chips, and hand-made 12 x 12 marks for the price (coin,
+  ingot, drop, clock) and the owned check. Card icons keep the card's state colour (neutral, cyan while running,
+  faint when locked) rather than a family hue, so blue and cyan keep their one meaning inside the panel.
 - Accent: amber everywhere except the main menu (case-hardened steel) and the research panel (research blue), see "Where the
   accent changes".
 - Units (render/pixelSprites.ts): original pixel sprites drawn from rectangles in code, one density, a 1px dark
