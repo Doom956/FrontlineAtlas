@@ -7,7 +7,8 @@
 //   - MotionPreset: 'subtle', 'lively' or 'cinematic'. A style never gets the preset name alone: it gets the numbers
 //     derived from it (art/motion.ts motionParams), so every style supports all three without three implementations.
 //
-// Defaults: every category 'refined' with 'lively' motion (the look the game had before the switch). A build can
+// Defaults: the owner's picks (OWNER_PICKS: detailed pixel art, with realistic craters and cannon fire) and 'lively'
+// motion. A build can
 // override them for whole-game comparison builds:
 //   VITE_ART_STYLE=realistic                         every category in one style
 //   VITE_ART_STYLE="ships: realistic (subtle motion), land: detailed (lively motion), ..."   the art lab's copied picks
@@ -70,6 +71,11 @@ export const MOTION_LABEL: Record<MotionPreset, string> = { subtle: 'Subtle', li
 
 export const DEFAULT_STYLE: ArtStyle = 'refined';
 export const DEFAULT_MOTION: MotionPreset = 'lively';
+/** The owner's picks from the art lab: the look the game starts with. */
+export const OWNER_PICKS: Readonly<Record<ArtCategory, ArtStyle>> = {
+  ships: 'detailed', wakes: 'detailed', land: 'detailed', air: 'detailed', contrails: 'detailed', paradrop: 'detailed',
+  missiles: 'detailed', troopIcons: 'detailed', explosions: 'detailed', craters: 'realistic', cannonFire: 'realistic',
+};
 
 export type StylePicks = Record<ArtCategory, ArtStyle>;
 export type MotionPicks = Record<MotionCategory, MotionPreset>;
@@ -163,7 +169,7 @@ function buildEnv(): { style?: string; motion?: string } {
 }
 
 const env = buildEnv();
-const styles: StylePicks = parseStylePicks(env.style);
+const styles: StylePicks = parseStylePicks(env.style, { ...OWNER_PICKS });
 const motions: MotionPicks = parseMotionPicks(env.motion ?? env.style);
 let version = 0;
 

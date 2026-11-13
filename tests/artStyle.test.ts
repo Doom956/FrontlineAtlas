@@ -3,7 +3,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { applyPicks, ART_CATEGORIES, ART_STYLES, artStyleOf, CATEGORY_LABEL, defaultMotionPicks, defaultStylePicks, MOTION_CATEGORIES, MOTION_PRESETS, motionCategoryOf, motionPresetFor, parseMotionPicks, parseStylePicks, picksLine, setArtStyle, setMotionPreset } from '../src/client/art/artStyle';
+import { applyPicks, ART_CATEGORIES, OWNER_PICKS, ART_STYLES, artStyleOf, CATEGORY_LABEL, defaultMotionPicks, defaultStylePicks, MOTION_CATEGORIES, MOTION_PRESETS, motionCategoryOf, motionPresetFor, parseMotionPicks, parseStylePicks, picksLine, setArtStyle, setMotionPreset } from '../src/client/art/artStyle';
 import { motionParams } from '../src/client/art/motion';
 import { artFor, motionFor, styleModule } from '../src/client/art/registry';
 import { refined } from '../src/client/art/refined';
@@ -16,8 +16,8 @@ afterEach(() => {
 });
 
 describe('art switch', () => {
-  it('starts with the refined style and lively motion everywhere', () => {
-    for (const c of ART_CATEGORIES) expect(artStyleOf(c)).toBe('refined');
+  it("starts with the owner's picks and lively motion everywhere", () => {
+    for (const c of ART_CATEGORIES) expect(artStyleOf(c)).toBe(OWNER_PICKS[c]);
     for (const c of ART_CATEGORIES) expect(motionPresetFor(c)).toBe('lively');
   });
 
@@ -146,5 +146,12 @@ describe('art switch', () => {
     }
     // the shared helpers belong to no style
     for (const file of walk(join(root, 'shared'))) expect(readFileSync(file, 'utf8')).not.toMatch(/from '\.\.\/(refined|detailed|realistic)/);
+  });
+});
+
+describe('owner picks', () => {
+  it('starts the game in detailed pixel art with realistic craters and cannon fire', async () => {
+    const { OWNER_PICKS, ART_CATEGORIES: cats } = await import('../src/client/art/artStyle');
+    for (const c of cats) expect(OWNER_PICKS[c], c).toBe(c === 'craters' || c === 'cannonFire' ? 'realistic' : 'detailed');
   });
 });
