@@ -1,13 +1,12 @@
-// The realistic crater fires and muzzle flashes (client/art/realistic/craters.ts, cannon.ts, fire.ts): bigger blasts
-// leave more and longer fire, the motion presets order them from small and short to big and long, a fire goes out and
-// leaves nothing of itself, the flash is thrown out along the line of fire, and every call is deterministic and safe
-// without a canvas (node). Pictures are checked in the art lab, not here.
+// The realistic crater fires (client/art/realistic/craters.ts, fire.ts): bigger blasts leave more and longer fire, the
+// motion presets order them from small and short to big and long, a fire goes out and leaves nothing of itself, and
+// every call is deterministic and safe without a canvas (node). The muzzle flash and the shells are in
+// art-realistic-cannon.test.ts. Pictures are checked in the art lab, not here.
 import { describe, expect, it } from 'vitest';
 import { motionParams } from '../src/client/art/motion';
 import { realistic } from '../src/client/art/realistic';
-import { muzzleFlash } from '../src/client/art/realistic/cannon';
 import { craterFire } from '../src/client/art/realistic/craters';
-import type { CraterDraw, MuzzleDraw } from '../src/client/art/types';
+import type { CraterDraw } from '../src/client/art/types';
 
 /** A 2D context that records what is called and set, and draws nothing. */
 function recorder(): { ctx: CanvasRenderingContext2D; log: string[]; calls: { name: string; args: unknown[] }[] } {
@@ -44,16 +43,20 @@ const ATOM = 11.2;
 const crater = (rt: number, q: number, zoom = 14, over: Partial<CraterDraw> = {}): CraterDraw => ({ x: 200, y: 150, radiusPx: rt * zoom, q, zoom, scale: 2, seed: 0.37, dpr: 1, ...over });
 
 describe('realistic crater fires', () => {
-  it('leaves more spots, taller flames and a longer fire after a bigger blast', () => {
+  it('leaves more patches of fire, taller flames and a longer fire after a bigger blast', () => {
     const f = [SHELL, BOMB, MISSILE, ATOM].map((rt) => craterFire(rt * 8, 8, lively));
     for (let i = 1; i < f.length; i++) {
-      expect(f[i].spots, `spots ${i}`).toBeGreaterThan(f[i - 1].spots);
+      expect(f[i].clusters, `patches ${i}`).toBeGreaterThan(f[i - 1].clusters);
       expect(f[i].burn, `burn ${i}`).toBeGreaterThan(f[i - 1].burn);
       expect(f[i].flameH, `flame ${i}`).toBeGreaterThan(f[i - 1].flameH);
     }
-    // a shell's fire is small and brief: one spot, out within the first sixth of the crater's life
-    expect(f[0].spots).toBe(1);
-    expect(f[0].burn).toBeLessThan(1 / 6);
+    // a shell's fire is small and brief: one patch, out within the first tenth of the crater's life; an atom bomb's
+    // four or five
+    expect(f[0].clusters).toBe(1);
+    expect(f[0].burn).toBeLessThan(0.1);
+    expect(f[3].clusters).toBeGreaterThanOrEqual(4);
+    // an atom bomb's fire clearly outlasts a missile's (still burning when the missile's is down to embers)
+    expect(f[3].burn).toBeGreaterThan(f[2].burn * 1.25);
     // an atom bomb's burns through a good part of it, and every fire's embers are out before the crater fades
     expect(f[3].burn).toBeGreaterThan(0.2);
     for (const m of [subtle, lively, cinematic]) expect(craterFire(ATOM * 3, 3, m).burn * 1.8).toBeLessThan(0.62);
@@ -123,61 +126,5 @@ describe('realistic crater fires', () => {
     expect(new Set(se.slice(0, 3)).size).toBe(1);
     const moving = emberAlphas(a);
     expect(new Set(moving.slice(0, 3)).size).toBeGreaterThan(1);
-  });
-});
-
-describe('realistic muzzle flash', () => {
-  const muzzle = (t: number, over: Partial<MuzzleDraw> = {}): MuzzleDraw => ({ x: 100, y: 100, aim: 0.6, t, zoom: 14, scale: 2, seed: 0.3, dpr: 1, ...over });
-
-  it('is a flash out of every barrel of a turret, longer than it is wide, growing with flashSize and the map scale', () => {
-    const f = [subtle, lively, cinematic].map((m) => muzzleFlash(2, m));
-    expect(f[1].barrels).toBe(3);
-    for (const x of f) {
-      expect(x.length).toBeGreaterThan(x.width);
-      expect(x.tongue).toBeGreaterThan(x.width);
-    }
-    expect(f[0].length).toBeLessThan(f[1].length);
-    expect(f[1].length).toBeLessThan(f[2].length);
-    expect(muzzleFlash(4, lively).length).toBeGreaterThan(muzzleFlash(2, lively).length);
-    // still readable at mid zoom (map scale 1): several px long
-    expect(muzzleFlash(1, lively).length).toBeGreaterThan(10);
-  });
-
-  it('sends the shell out of the muzzle along the line of fire', () => {
-    for (const aim of [0, 0.6, 2.4, -1.9]) {
-      const total = realistic.cannonFire.flashMs(lively);
-      const r = recorder();
-      realistic.cannonFire.drawMuzzle(r.ctx, muzzle(25 / total, { aim }), lively);
-      const mv = r.calls.find((c) => c.name === 'moveTo');
-      const ln = r.calls.find((c) => c.name === 'lineTo');
-      expect(mv && ln, `slug ${aim}`).toBeTruthy();
-      const dx = (ln!.args[0] as number) - (mv!.args[0] as number);
-      const dy = (ln!.args[1] as number) - (mv!.args[1] as number);
-      const L = Math.hypot(dx, dy);
-      expect(L).toBeGreaterThan(0);
-      expect((dx * Math.cos(aim) + dy * Math.sin(aim)) / L).toBeGreaterThan(0.99);
-      // and the slug's head is out ahead of the gun
-      const hx = (ln!.args[0] as number) - 100;
-      const hy = (ln!.args[1] as number) - 100;
-      expect(hx * Math.cos(aim) + hy * Math.sin(aim)).toBeGreaterThan(0);
-    }
-  });
-
-  it('is gone by the end, deterministic, and restores the context', () => {
-    for (const m of [subtle, lively, cinematic]) {
-      const a = recorder();
-      const b = recorder();
-      for (const t of [0, 0.02, 0.1, 0.5, 0.9]) {
-        realistic.cannonFire.drawMuzzle(a.ctx, muzzle(t), m);
-        realistic.cannonFire.drawMuzzle(b.ctx, muzzle(t), m);
-      }
-      expect(a.log).toEqual(b.log);
-      expect(a.ctx.globalAlpha).toBeCloseTo(1, 6);
-      expect(a.ctx.globalCompositeOperation).toBe('source-over');
-      expect(a.ctx.lineCap).toBe('butt');
-      const end = recorder();
-      realistic.cannonFire.drawMuzzle(end.ctx, muzzle(1), m);
-      expect(end.calls.filter((c) => c.name === 'stroke' || c.name === 'fill' || c.name === 'fillRect')).toEqual([]);
-    }
   });
 });
