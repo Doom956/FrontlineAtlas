@@ -21,6 +21,7 @@ import type { MotionParams } from '../motion';
 import { rnd } from '../shared/noise';
 import type { BlastDraw, BlastKind, ExplosionArt, MapFxDraw } from '../types';
 import { drawBlob, type BlobKind } from './blobs';
+import { drawFlame, WIND_X } from './burning';
 import { gridOf, type Grid } from './grid';
 import { DEBRIS, FIRE, SPRAY, TRACER } from './palette';
 
@@ -43,11 +44,11 @@ interface Spec {
 const SPEC: Record<BlastKind, Spec> = {
   shell: { r: 3.4, fire: 300, smoke: 650, puffs: 4, debris: 5, dirt: 6, skirt: false, burn: 1 },
   bomb: { r: 4.6, fire: 360, smoke: 800, puffs: 5, debris: 7, dirt: 9, skirt: true, burn: 2 },
-  hit: { r: 4.2, fire: 380, smoke: 900, puffs: 5, debris: 8, dirt: 0, skirt: false, burn: 2 },
+  hit: { r: 4.2, fire: 420, smoke: 1400, puffs: 6, debris: 6, dirt: 0, skirt: false, burn: 2 },
   air: { r: 3.4, fire: 300, smoke: 700, puffs: 3, debris: 5, dirt: 0, skirt: false, burn: 0 },
   missile: { r: 9, fire: 520, smoke: 1100, puffs: 8, debris: 10, dirt: 10, skirt: true, burn: 4 },
   atom: { r: 26, fire: 2400, smoke: 5200, puffs: 0, debris: 12, dirt: 0, skirt: true, burn: 0 },
-  splash: { r: 3.8, fire: 520, smoke: 450, puffs: 0, debris: 0, dirt: 0, skirt: false, burn: 0 },
+  splash: { r: 3.8, fire: 700, smoke: 1100, puffs: 0, debris: 0, dirt: 0, skirt: false, burn: 0 },
   flak: { r: 4.2, fire: 160, smoke: 700, puffs: 3, debris: 5, dirt: 0, skirt: false, burn: 0 },
 };
 
@@ -95,7 +96,7 @@ interface FlashSpec {
 const FLASH: Record<BlastKind, FlashSpec> = {
   shell: { glow: 2.6, a: 0.6, core: 0.95, rays: 0, ms: 190 },
   bomb: { glow: 3, a: 0.72, core: 0.9, rays: 4, ms: 220 },
-  hit: { glow: 2.8, a: 0.72, core: 0.9, rays: 4, ms: 220 },
+  hit: { glow: 2.8, a: 0.78, core: 0.85, rays: 7, ms: 200 },
   air: { glow: 2.5, a: 0.62, core: 0.95, rays: 3, ms: 190 },
   missile: { glow: 3, a: 0.8, core: 0.85, rays: 6, ms: 300 },
   atom: { glow: 4.5, a: 0.85, core: 1.2, rays: 0, ms: 900 },
@@ -178,6 +179,7 @@ function flashCore(ctx: CanvasRenderingContext2D, kind: BlastKind, x: number, y:
 function drawBlast(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams): void {
   if (b.kind === 'atom') return drawAtom(ctx, b, m);
   if (b.kind === 'splash') return drawSplash(ctx, b, m);
+  if (b.kind === 'hit') return drawHit(ctx, b, m);
   const g = gridOf(b.scale, b.dpr);
   const s = SPEC[b.kind];
   const R = radiusOf(b);
@@ -191,7 +193,7 @@ function drawBlast(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams)
   const air = b.kind === 'air';
   const x = b.x;
   const y = air ? b.y - 7 * u : b.y;
-  const ground = !air && b.kind !== 'flak' && b.kind !== 'hit';
+  const ground = !air && b.kind !== 'flak';
   const fq = clamp01(age / fT);
   const prev = ctx.globalAlpha;
   const flash = !b.reduced;
@@ -315,8 +317,117 @@ function drawBlast(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams)
 }
 
 /**
- * A splash: a tall white column of spray thrown up, hanging a moment and collapsing, its water falling back into a
- * ragged ring of foam puffs that spreads and fades; droplets thrown out and falling back.
+ * A ship (or fort) hit: a sharp white flash with spikes of light and a light on the hull and the water round it, fire
+ * bursting from the hull (a quick ball of fire and tongues of flame jetting up), white-hot sparks and dark plates of
+ * steel thrown out and falling, then a puff of oily black smoke that rises, drifts downwind and lingers while a small
+ * fire flickers on where it struck. No dirt and no dust: it reads as steel struck, not ground.
+ */
+function drawHit(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams): void {
+  const g = gridOf(b.scale, b.dpr);
+  const s = SPEC.hit;
+  const u = b.scale;
+  const R = s.r;
+  const Rc = R * g.res;
+  const fT = s.fire * m.blastTime;
+  const dur = Math.max(1, b.durMs);
+  let age = b.t * dur;
+  if (b.reduced) age = b.t < 0.5 ? fT * 0.3 : fT + (dur - fT) * 0.3;
+  const sd = b.seed * 61.7;
+  const x = b.x;
+  const y = b.y;
+  const mid = g.res < 1.5;
+  const prev = ctx.globalAlpha;
+  const fq = clamp01(age / fT);
+  if (!b.reduced) flashGlow(ctx, 'hit', x, y, Rc, age, g, m, sd, false);
+  // the smoke: oily black puffs boiling up out of the fire, rising and drifting downwind, lingering (smokeLinger),
+  // the oldest a dark grey
+  const nS = mid ? 4 : 6;
+  for (let i = nS - 1; i >= 0; i--) {
+    const born = 60 + (i / nS) * fT * 0.9;
+    const life = dur - born;
+    const k = (age - born) / life;
+    if (k < 0 || k >= 1) continue;
+    const sec = (age - born) / 1000;
+    const rise = R * (0.4 + 2.3 * easeOut(k)) * (0.75 + 0.12 * i);
+    const px = x + ((rnd(sd, i + 1) - 0.5) * R * 0.9 + WIND_X * sec * 0.9) * u;
+    const py = y - rise * u;
+    const r = Rc * (0.4 + 0.2 * rnd(sd, i + 3)) * (0.6 + 1.05 * easeOut(k));
+    const a = 0.95 * (1 - k) ** 1.1 * Math.min(1, (age - born) / 60);
+    drawBlob(ctx, k < 0.5 + 0.15 * rnd(sd, i + 7) ? 'soot' : 'shade', r, i, px, py, g, a);
+  }
+  // a small fire flickering on where it struck after the burst, dying down (fireLinger)
+  const fireEnd = fT + (dur - fT) * (0.25 + 0.4 * m.fireLinger);
+  if (age > fT * 0.35 && age < fireEnd) {
+    const k = clamp01((age - fT * 0.35) / (fireEnd - fT * 0.35));
+    for (let i = 0; i < (mid ? 1 : 2); i++) {
+      const fx = x + (rnd(sd, i + 90) - 0.5) * R * 0.7 * u;
+      const fy = y + (rnd(sd, i + 91) - 0.3) * R * 0.3 * u;
+      drawFlame(ctx, fx, fy, Rc * (0.24 - 0.06 * i) * (1 - k * 0.65), g, b.ageMs + i * 137, rnd(sd, i + 92), m, 1 - k * k, 1);
+    }
+  }
+  // the burst: a quick ball of fire swelling and cooling, tongues of flame jetting up from the hull
+  if (age < fT) {
+    for (let i = 2; i >= 0; i--) {
+      const ang = rnd(sd, i + 20) * Math.PI * 2;
+      const d = i === 0 ? 0 : R * 0.35;
+      const grow = easeOut3(clamp01(fq * 5));
+      const r = Rc * (i === 0 ? 0.62 : 0.42) * grow * (1 - 0.6 * clamp01((fq - 0.25) / 0.6));
+      if (r < 0.5) continue;
+      drawBlob(ctx, 'fire', Math.max(1, r), i + 3, x + Math.cos(ang) * d * u, y + Math.sin(ang) * d * u * 0.6 - R * 0.35 * fq * u, g, 1 - fq * fq, Math.min(4, fq * 5.5 + i * 0.5));
+    }
+    const jets = mid ? 1 : 2;
+    for (let i = 0; i < jets; i++) {
+      const grow = clamp01(fq * 6) * (1 - clamp01((fq - 0.35) / 0.65));
+      if (grow <= 0.05) continue;
+      const fx = x + (i === 0 ? -0.15 : 0.3) * R * u + (rnd(sd, i + 40) - 0.5) * R * 0.3 * u;
+      const fy = y + (i === 0 ? 0.1 : -0.1) * R * u;
+      drawFlame(ctx, fx, fy, Rc * (i === 0 ? 0.44 : 0.3) * grow, g, b.ageMs + i * 71, rnd(sd, i + 42), m, 1, i === 0 ? -1 : 2);
+    }
+  }
+  // sparks: white-hot fragments flung out fast on low arcs, each drawing a short streak, gone in a moment
+  if (!b.reduced) {
+    const n = Math.round((mid ? 7 : 12) * m.debris);
+    for (let i = 0; i < n; i++) {
+      const life = 230 + 220 * rnd(sd, i + 120);
+      const k = age / life;
+      if (k >= 1) continue;
+      const ang = -Math.PI / 2 + (rnd(sd, i + 100) - 0.5) * 3;
+      const v = R * (3.2 + 3.4 * rnd(sd, i + 110));
+      const at = (kk: number): [number, number] => [x + Math.cos(ang) * v * kk * u, y + (Math.sin(ang) * v * kk * 0.8 + 3.6 * R * kk * kk) * u];
+      ctx.globalAlpha = prev * (1 - k * k);
+      for (let j = 2; j >= 0; j--) {
+        const [px, py] = at(Math.max(0, k - j * 0.05));
+        speck(ctx, px, py, g, 1, j === 0 ? TRACER[0] : j === 1 ? TRACER[1] : TRACER[2]);
+      }
+    }
+    // dark plates of steel tumbling out and falling back
+    const nd = Math.round((mid ? 3 : 6) * m.debris);
+    for (let i = 0; i < nd; i++) {
+      const life = 520 + 260 * rnd(sd, i + 130);
+      const k = age / life;
+      if (k >= 1) continue;
+      const ang = -Math.PI / 2 + (rnd(sd, i + 140) - 0.5) * 2.4;
+      const v = R * (2 + 1.8 * rnd(sd, i + 150));
+      const px = x + Math.cos(ang) * v * k * u;
+      const py = y + (Math.sin(ang) * v * k * 0.85 + 3.4 * R * k * k) * u;
+      ctx.globalAlpha = prev * (1 - k ** 3);
+      const tumble = (Math.floor(age / 70) + i) & 1;
+      const c = k < 0.18 ? FIRE[3] : DEBRIS[i % 3];
+      speck(ctx, px, py, g, 1, c);
+      speck(ctx, px + (tumble ? g.k : 0), py + (tumble ? 0 : g.k), g, 1, c);
+    }
+    ctx.globalAlpha = prev;
+  }
+  // the sharp flash: a white core and spikes of light over everything for the first frames
+  if (!b.reduced) flashCore(ctx, 'hit', x, y, Rc, age, g, m, sd);
+  ctx.globalAlpha = prev;
+}
+
+/**
+ * A shell landing in the water: a white column of water thrown up fast (lit on its left, shaded on its right, a
+ * ragged plume at its head), hanging a moment and collapsing back as a curtain of falling drops while spray bursts
+ * round its foot and droplets arc out and fall; under it a patch of foam that spreads and breaks up as it fades, and a
+ * low mist drifting downwind. No fire and no ring.
  */
 function drawSplash(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams): void {
   const g = gridOf(b.scale, b.dpr);
@@ -327,54 +438,116 @@ function drawSplash(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams
   const fT = s.fire * m.blastTime;
   const dur = Math.max(1, b.durMs);
   let age = b.t * dur;
-  if (b.reduced) age = fT * 0.35;
+  if (b.reduced) age = b.t < 0.5 ? fT * 0.3 : fT + (dur - fT) * 0.3;
   const sd = b.seed * 53.1;
   const x = b.x;
   const y = b.y;
   const k = clamp01(age / fT);
-  const end = 1 - clamp01((age - fT * 0.6) / Math.max(1, dur - fT * 0.6));
+  const mid = g.res < 1.5;
   const prev = ctx.globalAlpha;
-  // the shell bursting as it strikes the water: a faint light on the sea and a small hot core at the column's foot
-  if (!b.reduced) flashGlow(ctx, 'splash', x, y, Rc, age, g, m, sd, false);
-  // the foam ring: the column's water landing round it, ragged puffs spreading out
-  const ringK = clamp01((age - fT * 0.35) / (dur - fT * 0.35));
-  if (ringK > 0) {
-    const n = 9;
-    for (let i = 0; i < n; i++) {
-      if (rnd(sd, i + 90) < 0.15) continue;
-      const ang = (i / n) * Math.PI * 2 + (rnd(sd, i) - 0.5) * 0.6;
-      const d = R * (0.4 + 1.5 * easeOut(ringK)) * (0.7 + 0.45 * rnd(sd, i + 7));
-      const r = Rc * (0.18 + 0.2 * rnd(sd, i + 3)) * (0.8 + 0.5 * ringK);
-      drawBlob(ctx, 'spray', r, i, x + Math.cos(ang) * d * u, y + Math.sin(ang) * d * u * 0.55, g, (0.5 + 0.35 * rnd(sd, i + 5)) * end);
-    }
+  // the foam: a patch spreading where the water came down, breaking up and fading (two lobes, downwind the larger)
+  const fk = clamp01((age - fT * 0.2) / (dur - fT * 0.2));
+  if (fk > 0) {
+    const a = 0.95 * (1 - fk) ** 1.1 * clamp01((age - fT * 0.2) / 140);
+    const level = Math.min(3, Math.floor(fk * 4.2));
+    drawBlob(ctx, 'foam', Rc * (1 + 1.8 * easeOut(fk)), Math.floor(sd) & 3, x, y + 0.2 * u, g, a, level);
+    drawBlob(ctx, 'foam', Rc * (0.6 + 1.3 * easeOut(fk)), (Math.floor(sd) + 1) & 3, x + R * (0.7 + 0.7 * fk) * u, y - R * 0.12 * u, g, a * 0.85, Math.min(3, level + 1));
   }
-  // the column: a tall, narrow stack of spray, rising fast, hanging, then slumping back down and spreading
+  // the column of water: a plume thrown up fast, broadening upward to a ragged head of spray, hanging a moment,
+  // then falling back from the top as a curtain of drops
   if (k < 1) {
-    const up = k < 0.45 ? easeOut3(k / 0.45) : 1 - easeOut((k - 0.45) / 0.55) * 0.85;
-    const h = R * 5.2 * up;
-    const n = 7;
-    for (let i = n - 1; i >= 0; i--) {
-      const f = i / (n - 1);
-      const spread = 1 + (k > 0.45 ? (k - 0.45) * 2.2 : 0);
-      const r = Rc * (0.62 - 0.3 * f) * spread * (0.8 + 0.2 * rnd(sd, i + 25));
-      drawBlob(ctx, 'spray', r, i + 2, x + (rnd(sd, i + 20) - 0.5) * R * 0.35 * spread * u, y - h * f * u, g, (1 - k * 0.45) * (f > 0.85 ? 0.8 : 1));
+    const Hmax = R * 4.4;
+    const h = k < 0.26 ? Hmax * easeOut3(k / 0.26) : k < 0.42 ? Hmax * (1 + 0.05 * ((k - 0.26) / 0.16)) : Hmax * 1.05 * (1 - ((k - 0.42) / 0.58) ** 1.6 * 0.95);
+    const broke = k < 0.42 ? 0 : (k - 0.42) / 0.58;
+    // its faint shadow on the water, lower right of the foot
+    ctx.globalAlpha = prev * 0.2 * (1 - broke);
+    const shadowCells = Math.round(h * g.res * 0.4);
+    for (let j = 1; j < shadowCells; j++) speck(ctx, x + (R * 0.35 + j * 0.55 / g.res) * u, y + (j * 0.3 / g.res) * u, g, mid ? 1 : 2, '#0a1218');
+    ctx.globalAlpha = prev;
+    const rows = Math.max(3, Math.round(h * g.res));
+    const step = Math.floor(age / 50);
+    const cell = g.k;
+    // it fans out as it climbs (and wider still as it falls apart)
+    const spread = 1 + 0.5 * broke;
+    for (let j = 0; j <= rows; j++) {
+      const yy = j / rows;
+      const hwU = R * (0.26 + 0.42 * yy ** 1.4 + (yy > 0.7 ? 0.14 * Math.sin(((yy - 0.7) / 0.3) * Math.PI) : 0)) * spread;
+      const hw = Math.max(1, Math.round(hwU * g.res + (rnd(sd + step, j) - 0.5) * 1.6));
+      // the plume leans a little downwind as it rises
+      const cx = x + (yy * yy * R * 0.35 + (rnd(sd, j + 300) - 0.5) * 0.6 * yy) * u;
+      const cy = y - j * cell;
+      let runStart = 0;
+      let runTone = -1;
+      const flush = (end: number): void => {
+        if (runTone < 0) return;
+        ctx.fillStyle = SPRAY[runTone];
+        const X0 = (Math.round(((cx + runStart * cell) * g.dpr) / g.p) * g.p) / g.dpr;
+        const Y0 = (Math.round((cy * g.dpr) / g.p) * g.p) / g.dpr;
+        ctx.fillRect(X0, Y0, (end - runStart) * cell, cell);
+      };
+      // the head is thinner spray than the body
+      ctx.globalAlpha = prev * (1 - broke * 0.4) * (yy > 0.78 ? 0.8 : 0.97);
+      for (let o = -hw; o <= hw; o++) {
+        const rel = (o + hw) / (2 * hw);
+        // holes in the spray toward the edges and in the head; more as it falls apart, from the top down
+        const edgeHole = (Math.abs(o) / hw) ** 4 * (0.15 + 0.65 * yy * yy) + (yy > 0.8 ? 0.2 * (yy - 0.8) / 0.2 : 0);
+        const gone = rnd(j * 31 + o * 7, step + Math.floor(sd)) < edgeHole + broke * (0.5 + 0.5 * yy);
+        // lit on its left, white streaks of water running up it, shaded on its right
+        const streak = rnd(o * 13 + 5, Math.floor(sd)) > 0.62;
+        const tone = gone ? -1 : rel < 0.34 || (streak && rel < 0.7) || yy > 0.92 ? 3 : rel < 0.72 ? 2 : 1;
+        if (tone !== runTone) {
+          flush(o);
+          runStart = o;
+          runTone = tone;
+        }
+      }
+      flush(hw + 1);
     }
-    // the white top of the column catching the light
-    ctx.globalAlpha = prev * (1 - k);
-    for (let i = 0; i < 4; i++) speck(ctx, x + (rnd(sd, i + 60) - 0.5) * R * 0.5 * u, y - (h + R * 0.4 * rnd(sd, i + 61)) * u, g, 1, SPRAY[3]);
     ctx.globalAlpha = prev;
   }
-  // droplets thrown out and falling back
-  for (let i = 0; i < 12; i++) {
-    const ang = -Math.PI / 2 + (rnd(sd, i + 40) - 0.5) * 2.2;
-    const v = R * (2.4 + 2.2 * rnd(sd, i + 50));
-    const kk = clamp01(age / (fT * 1.6));
-    if (kk >= 1) break;
-    ctx.globalAlpha = prev * (1 - kk);
-    speck(ctx, x + Math.cos(ang) * v * kk * u, y + (Math.sin(ang) * v * kk + 4.4 * R * kk * kk) * u, g, 1, i % 2 ? SPRAY[3] : SPRAY[2]);
+  // the foot: a low white skirt of churned water spreading round the column (flat, it lies on the sea), and spray
+  // tossed up off it early on
+  if (age < fT * 1.3) {
+    const kk = clamp01(age / (fT * 1.3));
+    drawBlob(ctx, 'foam', Rc * (0.45 + 0.75 * easeOut(kk)), (Math.floor(sd) + 2) & 3, x, y, g, 0.95 * (1 - kk * kk), kk < 0.5 ? 0 : 1);
+    if (kk < 0.5) {
+      const n = mid ? 2 : 4;
+      for (let i = 0; i < n; i++) {
+        const ang = (i / n) * Math.PI * 2 + rnd(sd, i + 80);
+        const d = R * (0.3 + 0.7 * easeOut(kk * 2)) * (0.7 + 0.5 * rnd(sd, i + 81));
+        const lift = R * 0.35 * Math.sin(kk * 2 * Math.PI) * (0.6 + 0.6 * rnd(sd, i + 82));
+        drawBlob(ctx, 'spray', Rc * 0.16, i + 1, x + Math.cos(ang) * d * u, y + (Math.sin(ang) * d * 0.5 - lift) * u, g, 0.8 * (1 - kk * 2));
+      }
+    }
   }
-  ctx.globalAlpha = prev;
-  if (!b.reduced) flashCore(ctx, 'splash', x, y - Rc * 0.3 * g.k, Rc, age, g, m, sd);
+  // droplets flung out of the column and its foot, arcing and falling back
+  if (!b.reduced) {
+    const n = mid ? 8 : 16;
+    const H = R * 4.4;
+    for (let i = 0; i < n; i++) {
+      const life = fT * (0.7 + 0.5 * rnd(sd, i + 50));
+      const kk = age / life;
+      if (kk >= 1) continue;
+      const fromTop = i % 3 === 0;
+      const ang = -Math.PI / 2 + (rnd(sd, i + 40) - 0.5) * (fromTop ? 2.6 : 2);
+      const v = R * (fromTop ? 1.6 : 2.6 + 2 * rnd(sd, i + 45));
+      const y0 = fromTop ? y - H * Math.min(1, kk * 3) * u : y;
+      ctx.globalAlpha = prev * (1 - kk * kk);
+      speck(ctx, x + Math.cos(ang) * v * kk * u, y0 + (Math.sin(ang) * v * kk + 4.4 * R * kk * kk) * u, g, 1, i % 2 ? SPRAY[3] : SPRAY[2]);
+    }
+    ctx.globalAlpha = prev;
+  }
+  // the strike: a crown of white water bursting out at the foot in the first frames
+  if (age < 80 && !b.reduced) {
+    const kk = age / 80;
+    ctx.globalAlpha = prev * (1 - kk * 0.5);
+    for (let i = 0; i < 10; i++) {
+      const ang = -Math.PI / 2 + ((i / 9) - 0.5) * 2.8;
+      const d = R * (0.3 + 0.9 * kk) * (0.7 + 0.5 * rnd(sd, i + 400));
+      speck(ctx, x + Math.cos(ang) * d * u, y + Math.sin(ang) * d * 0.8 * u, g, i % 3 === 0 && !mid ? 2 : 1, SPRAY[3]);
+    }
+    ctx.globalAlpha = prev;
+  }
   ctx.globalAlpha = prev;
 }
 
