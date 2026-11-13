@@ -186,7 +186,7 @@ export function howToPlayContent(): HTMLElement {
     { icon: lineIcon('build', 18), title: 'Build', text: 'Open the build menu, pick a building, click your land.', key: 'Tab' },
     { icon: lineIcon('science', 18), title: 'Research', text: 'Science builds up by itself. Auto picks techs; choose your own here.', key: 'T' },
     { icon: lineIcon('doctrine', 18), title: 'Doctrines', text: `At ${min(DOCTRINE_UNLOCK_SECONDS)}:00 pick a play style: Blitz, Fortress, Siege ...`, key: 'Shift D' },
-    { icon: lineIcon('rocket', 18), title: 'Strikes', text: 'A strike icon lights up in the bottom bar when ready: press its key, click the target.' },
+    { icon: lineIcon('rocket', 18), title: 'Strikes', text: 'A strike button lights up in the bottom bar when ready: click it, then click the target.' },
     { icon: lineIcon('ally', 18), title: 'Allies', text: 'Click a nation in the standings, then Ally. Allies cannot attack each other.', key: 'P' },
     { icon: lineIcon('bell', 18), title: 'Alerts', text: 'Big news about you shows on the left: attacks, your capital in danger, lost ships and tanks, bombs on their way. Click one to see the spot. The bell (top right) lists the last 20.' },
     { icon: lineIcon('help', 18), title: 'Tutorial', text: 'Title screen, Tutorial: one 5-minute practice game, step by step.' },
@@ -320,7 +320,7 @@ export function howToPlayContent(): HTMLElement {
   // ---------------------------------------------------------------- special units and strikes
   const strikeRows: Row[] = STRIKE_ORDER.map((id) => ({ icon: pic(STRIKES[id].icon), title: STRIKES[id].name, text: STRIKE_HELP[id], key: STRIKES[id].key }));
   const strikeHow: Row[] = [
-    { title: 'Fire', text: 'A ready strike shows at the right end of the bottom bar (a ring while it reloads). Press its key, then click the target. Esc or right-click cancels. Forces says how to unlock the locked ones.', key: 'Y' },
+    { title: 'Fire', text: 'A ready strike shows at the right end of the bottom bar (a ring while it reloads). Click it, then click the target. Esc or right-click cancels. Forces says how to unlock the locked ones.', key: 'Y' },
     { title: 'Salvos', text: 'Bombs, rockets and atom bombs fire x1, x3, x5 or All per click: pick it in the bar at the top while aiming, or right-click the strike button. Bombers come from every airfield in reach, rockets from every loaded silo; the preview says how many fly and what they will hit. Bombs and rockets remember the size; atom bombs start at x1 and a salvo of them asks first.' },
     { title: 'Smart aim', text: 'Bombers aimed at a front aim ahead of your attack, where the front will be when they arrive. If you have taken the spot by then, they bomb the nearest enemy land along that front instead, or fly home with their bombs.' },
     { title: 'Rocket auto-fire', text: 'Forces (Y), Missiles: Auto-fire on a silo, or Auto-fire all for every silo (later ones too). Loaded rockets fly by themselves at the nation you fight: forts and SAM sites near your front first, then cities near it, keeping some gold in reserve. On by default; switch it off on a silo or for all silos in Forces. Atom bombs never fire by themselves.', key: 'Y' },

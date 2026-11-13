@@ -42,7 +42,7 @@ export const STRIKE_ORDER: readonly StrikeId[] = ['barrage', 'bomb', 'paradrop',
 export interface StrikeInfo {
   id: StrikeId;
   name: string;
-  /** button label (short) */
+  /** the plain word under the strike's button in the bottom bar (hud/strikeBar.ts); tips name the button by it */
   label: string;
   key: string;
   /** picture from icons.ts */
@@ -79,7 +79,7 @@ export const STRIKES: Record<StrikeId, StrikeInfo> = {
   paradrop: {
     id: 'paradrop',
     name: 'Paratroopers',
-    label: 'Paras',
+    label: 'Drop',
     key: 'K',
     icon: 'transportPlane',
     line: 'paradrop',

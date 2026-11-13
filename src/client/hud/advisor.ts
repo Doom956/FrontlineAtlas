@@ -6,7 +6,7 @@
 // - Advisor: the sim's suggestions() (advisor.ts), one at a time, cycling every 8 s, plus two client hints:
 //   artillery when the main foe's front is fortified or hilly, units when they matter (unitAdvice: warships against
 //   enemy fleets off your coast, fighters / SAM sites against enemy bombers; once each, ever), and once per strike (remembered in localStorage) a
-//   first-use hint pointing at its button the first time it is ready ("Bombers ready: press X ...").
+//   first-use hint pointing at its button the first time it is ready ("Bombers ready: pick Aim bombers ...").
 //   Click the button to act (enter build mode, open a drawer, centre the map); X dismisses that hint for a while;
 //   it can be switched off in the menu.
 import { activeFog } from '../fog/fogView';

@@ -23,6 +23,7 @@ import { iconDataUrl } from '../icons';
 import { enterTankDivisionBuildMode, enterWarshipSpawnMode } from '../selection';
 import { maxLevel, resolveBuild } from '../simx';
 import type { UiState } from '../uiState';
+import { STRIKES } from '../strikes';
 import { BUILD_TAB_OF, BUILD_TABS, buildingTexts, type BuildTab } from './text';
 import { el, fmtSeconds, keycap, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon, worldGlyph } from './glyph';
@@ -534,7 +535,7 @@ export class BuildMenu {
       }
       const why = buildUnit(s, me, (a) => this.ctx.dispatch(a), kind, { x: this.ctx.camera.x, y: this.ctx.camera.y });
       if (why) return this.refuse(name, why);
-      this.ctx.toast(`${name} ready at your Airfield. ${kind === 'bomber' ? 'Press X to send it on a bombing run.' : 'It guards the sky around the Airfield.'}`, 'good');
+      this.ctx.toast(`${name} ready at your Airfield. ${kind === 'bomber' ? `Click ${STRIKES.bomb.label} in the bottom bar to send it on a bombing run.` : 'It guards the sky around the Airfield.'}`, 'good');
       this.ctx.refreshSoon();
     });
     this.cards.push({
@@ -572,7 +573,7 @@ export class BuildMenu {
     setText(line, 'Selects your buildings in it; then U upgrades them all');
     b.addEventListener('click', () => {
       this.close();
-      this.ctx.toast('Hold Shift and drag a box over your buildings, then press U (or click Upgrade x1 / x3 / x5)', 'info');
+      this.ctx.toast('Hold Shift and drag a box over your buildings, then click Upgrade x1, x3 or x5 in the bar that opens', 'info');
     });
     setTip(b, 'Upgrade many buildings: hold Shift and drag a box on the map. Your buildings inside are selected (filter them by type); the bar then orders Upgrade x1 / x3 / x5 for all of them, cheapest first, as far as your gold and iron go. Each level still takes its build time.');
     this.cards.push({ btn: b, update: () => {} });
