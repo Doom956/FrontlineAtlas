@@ -316,14 +316,22 @@
   margin-left: auto;
 }
 
+/* small screens: the card starts below the labelled top bar (two rows on phones, like the drawers) and is opaque,
+   so Pause, Speed, Help and Menu stay in reach and the standings and the advisor line do not show through it */
 @media (max-width: 720px) {
   .tut-card {
     left: 8px;
     right: 8px;
     width: auto;
     bottom: auto;
-    top: 64px;
+    top: 70px;
     transform: none;
+    background-color: var(--metal);
+  }
+}
+@media (max-width: 640px) {
+  .tut-card {
+    top: 108px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

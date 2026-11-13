@@ -5741,12 +5741,21 @@ strong {
 .drawer {
   top: calc(70px * var(--ui, 1));
 }
+/* the game rule chips sit just under the labelled top bar, not over its labels */
+.mod-chips {
+  top: calc(68px * var(--ui, 1));
+}
 /* phones: the labelled top bar takes two rows; the standings, the toasts and every drawer move down to clear both,
    so Pause, Speed, Help and Menu stay in reach and no strip of cut-off icons shows above a drawer's title. A drawer
    ends above the command bar (about 236 px tall with its margin), and above the guide's one-line form when it shows. */
 @media (max-width: 640px) {
   .hud-left {
     top: 108px;
+  }
+  /* the rule chips beside the standings (about 228 px wide), wrapping into rows above the toasts */
+  .mod-chips {
+    top: 108px;
+    max-width: calc(100vw - 24px - 236px);
   }
   .hud-top {
     top: 214px;
