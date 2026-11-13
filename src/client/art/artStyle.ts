@@ -7,7 +7,7 @@
 //   - MotionPreset: 'subtle', 'lively' or 'cinematic'. A style never gets the preset name alone: it gets the numbers
 //     derived from it (art/motion.ts motionParams), so every style supports all three without three implementations.
 //
-// Defaults: the owner's picks (OWNER_PICKS: detailed pixel art, with realistic cannon fire) and 'lively'
+// Defaults: the owner's picks (OWNER_PICKS: detailed pixel art for everything) and 'lively'
 // motion. A build can
 // override them for whole-game comparison builds:
 //   VITE_ART_STYLE=realistic                         every category in one style
@@ -74,7 +74,7 @@ export const DEFAULT_MOTION: MotionPreset = 'lively';
 /** The owner's picks from the art lab: the look the game starts with. */
 export const OWNER_PICKS: Readonly<Record<ArtCategory, ArtStyle>> = {
   ships: 'detailed', wakes: 'detailed', land: 'detailed', air: 'detailed', contrails: 'detailed', paradrop: 'detailed',
-  missiles: 'detailed', troopIcons: 'detailed', explosions: 'detailed', craters: 'detailed', cannonFire: 'realistic',
+  missiles: 'detailed', troopIcons: 'detailed', explosions: 'detailed', craters: 'detailed', cannonFire: 'detailed',
 };
 
 export type StylePicks = Record<ArtCategory, ArtStyle>;

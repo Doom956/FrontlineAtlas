@@ -152,9 +152,9 @@ describe('art switch', () => {
 });
 
 describe('owner picks', () => {
-  it('starts the game in detailed pixel art (craters too) with realistic cannon fire', async () => {
+  it('starts the game in detailed pixel art for everything', async () => {
     const { OWNER_PICKS, ART_CATEGORIES: cats } = await import('../src/client/art/artStyle');
-    for (const c of cats) expect(OWNER_PICKS[c], c).toBe(c === 'cannonFire' ? 'realistic' : 'detailed');
+    for (const c of cats) expect(OWNER_PICKS[c], c).toBe('detailed');
   });
 });
 
