@@ -1172,9 +1172,12 @@ canvas.minimap {
 }
 
 /* ---------------------------------------------------------------- nation card */
+/* Who they are and where you stand, top to bottom: the name, the relation as a small word chip in its semantic colour
+   (ally green, at war red, asking you amber, otherwise neutral) beside their doctrine, two big figures with their
+   units, the troop mix, and the buttons. Cool steel glass like every HUD panel; separation is space. */
 .ncard {
   --c: #888;
-  padding: 10px 12px 12px;
+  padding: 12px 12px 12px 14px;
   --tone: var(--c);
   animation: slide-l var(--fast) ease-out;
 }
@@ -1188,64 +1191,96 @@ canvas.minimap {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  gap: 8px;
 }
 .nc-titles {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
   min-width: 0;
 }
 .nc-name {
-  font: 600 20px/1.05 var(--f-label);
+  font: 600 20px/1.1 var(--f-label);
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .nc-rel {
-  font: 600 11px/1.2 var(--f-label);
+  flex: none;
+  align-self: flex-start;
+  padding: 0 6px;
+  border-radius: var(--r-xs);
+  background: rgba(255, 255, 255, 0.08);
+  font: 600 11px/18px var(--f-label);
   color: var(--dim);
+  white-space: nowrap;
+}
+.nc-rel:empty {
+  display: none;
+}
+.nc-rel.me {
+  color: var(--text);
 }
 .nc-rel.ally {
-  color: var(--olive);
+  background: rgb(116 195 101 / 0.16);
+  color: var(--good);
 }
 .nc-rel.war,
 .nc-rel.traitor {
-  color: var(--signal);
+  background: rgb(242 84 61 / 0.16);
+  color: #f58a77;
 }
 .nc-rel.req {
-  color: var(--brass-hi);
+  background: rgb(var(--accent-rgb) / 0.16);
+  color: var(--accent-hi);
 }
 .nc-stats {
   display: flex;
-  gap: var(--s4);
-  margin: var(--s2) 0 6px;
+  gap: var(--s5);
+  margin: 12px 0 8px;
 }
 .nc-stat {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 .nc-k {
-  font: 600 11px/1.2 var(--f-label);
-  color: var(--faint);
+  font: 500 12px/1.2 var(--f-label);
+  color: var(--dim);
 }
+.nc-vrow {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+/* the card's two big figures in the pixel face, as the HUD's big numbers */
 .nc-v {
-  font: 600 18px/1.1 var(--f-ui);
+  font: 400 26px/1 var(--f-pixel);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.nc-u {
+  font: 500 12px/1 var(--f-label);
+  color: var(--dim);
 }
 .nc-note {
   display: block;
-  margin-top: 4px;
+  margin-top: 6px;
   font-size: 12px;
+  line-height: 16px;
   color: var(--dim);
 }
 .nc-acts {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
-  margin-top: 10px;
+  margin-top: 12px;
 }
 .nc-acts .wr-btn {
   justify-content: flex-start;
-  padding: 0 8px;
+  min-width: 0;
+  padding: 0 10px;
 }
 .mixbar {
   display: flex;
@@ -1257,6 +1292,13 @@ canvas.minimap {
 .mixbar > span {
   height: 100%;
   transition: width 0.3s;
+}
+.ncard .mixbar {
+  gap: 1px;
+  height: 6px;
+  border: 0;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 /* ---------------------------------------------------------------- cluster (top-right) */
@@ -1859,30 +1901,34 @@ canvas.minimap {
   display: none;
 }
 
-/* doctrine picker: seven cards in a grid (picture, name, one line, three levels), the chosen one in its accent
-   colour; "Suits you" in brass with the reason; the footer holds the selected card's price and its button */
+/* doctrine picker: seven cards and a "How it works" cell in a grid, then the selected card's details and its button.
+   The research panel's card language (hud/researchPanel.css) in the HUD's amber: a card is a fill, never a coloured
+   stripe. The doctrine's own colour is only its picture, its level marks and the edge of the one you hold. "Suits you"
+   is an amber flag (the suggestion, as research's "Next"), the card you are reading has the light ring, and Choose /
+   Switch is the one amber button. Opaque like the research panel: cards over the live map read as clutter. */
 .drawer[data-page='doctrine'] {
   width: min(1000px, calc((100vw - 24px) / var(--ui, 1)));
+  background-color: var(--metal);
 }
 .doc-head {
-  padding: 2px 2px 10px;
+  padding: 0 2px 6px;
 }
 .doc-head-t {
-  font: 600 17px/1.15 var(--f-label);
+  font: 600 17px/1.2 var(--f-label);
   color: var(--text);
 }
 .doc-head-l {
-  margin-top: 2px;
-  font-size: 12px;
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 18px;
   color: var(--dim);
-}
-.doc-head.locked .doc-head-t {
-  color: var(--brass-hi);
 }
 .doc-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 10px;
+  /* room for the "Suits you" flags on the top row */
+  padding-top: 8px;
 }
 @media (max-width: 860px) {
   .doc-grid {
@@ -1893,17 +1939,21 @@ canvas.minimap {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 9px 10px;
-  border: 1px dashed var(--rule-hi);
+  padding: 10px 12px;
   border-radius: var(--r);
+  background: rgba(255, 255, 255, 0.035);
 }
-.doc-how .wr-sec {
+.page .doc-how .wr-sec {
   margin: 0 0 2px;
+  padding: 0;
+  border: 0;
+  font: 600 14px/1.2 var(--f-label);
+  color: var(--text);
 }
 .doc-how-l {
   margin: 0;
   font-size: 12px;
-  line-height: 1.3;
+  line-height: 16px;
   color: var(--dim);
 }
 .doc-card {
@@ -1912,11 +1962,10 @@ canvas.minimap {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
-  padding: 8px 9px 9px;
-  border: 1px solid var(--edge);
-  border-top: 2px solid color-mix(in srgb, var(--dc) 55%, var(--rule));
+  padding: 10px 12px 12px;
+  border: 1px solid transparent;
   border-radius: var(--r);
   background: var(--metal-2);
   color: var(--text);
@@ -1929,26 +1978,30 @@ canvas.minimap {
   background: var(--metal-3);
 }
 .doc-card:focus-visible {
-  outline: 2px solid var(--brass-hi);
-  outline-offset: 1px;
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
 }
-.doc-card.sel {
-  border-color: var(--brass);
-  border-top-color: var(--dc);
-  box-shadow: 0 0 0 1px var(--brass);
+/* suits you: the available card's fill and hairline, plus the flag */
+.doc-card.rec {
+  border-color: rgba(255, 255, 255, 0.16);
   background: var(--metal-3);
 }
+/* the one you hold: a tint and an edge in its own colour */
 .doc-card.cur {
-  border-color: var(--dc);
-  background: color-mix(in srgb, var(--dc) 13%, var(--metal-2));
+  border-color: color-mix(in srgb, var(--dc) 70%, transparent);
+  background: color-mix(in srgb, var(--dc) 12%, var(--metal-2));
 }
-.doc-card.cur.sel {
-  box-shadow: 0 0 0 1px var(--dc);
+/* the one you are reading below */
+.doc-card.sel {
+  box-shadow: 0 0 0 2px var(--text);
+}
+.doc-card.sel:not(.cur) {
+  background: var(--metal-3);
 }
 .doc-top {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
 }
 .doc-ic {
   position: relative;
@@ -1956,10 +2009,9 @@ canvas.minimap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
-  background: var(--ink);
   color: var(--dc);
   line-height: 0;
 }
@@ -1977,56 +2029,62 @@ canvas.minimap {
 .doc-n {
   flex: 1;
   min-width: 0;
-  font: 600 15px/1.1 var(--f-label);
+  font: 600 15px/1.2 var(--f-label);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .doc-s {
   flex: none;
-  font: 600 11px/1 var(--f-label);
-  color: var(--dc);
+  font: 600 12px/1 var(--f-label);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
 }
+/* "Suits you": the research panel's Next flag, in amber */
 .doc-tag {
-  align-self: flex-start;
-  padding: 2px 6px;
-  border-radius: 1px;
-  background: rgb(var(--accent-rgb) / 0.16);
-  color: var(--brass-hi);
-  font: 600 11px/1.2 var(--f-label);
+  position: absolute;
+  top: -8px;
+  right: 10px;
+  padding: 0 6px;
+  border-radius: var(--r-xs);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: 600 10px/14px var(--f-label);
+  white-space: nowrap;
 }
 .doc-short {
-  font-size: 12px;
-  line-height: 1.3;
+  font-size: 13px;
+  line-height: 17px;
   color: var(--text);
 }
 .doc-lv {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding-top: 5px;
+  gap: 4px;
+  margin-top: 2px;
+  padding-top: 8px;
   border-top: 1px solid var(--rule);
 }
 .doc-lvr {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 8px;
   font-size: 12px;
-  line-height: 1.25;
+  line-height: 16px;
   color: var(--dim);
 }
 .doc-lvn {
   flex: none;
-  width: 14px;
-  height: 14px;
-  border: 1px solid var(--edge-hi);
-  border-radius: 1px;
-  font: 600 10px/12px var(--f-ui);
+  width: 16px;
+  height: 16px;
+  border-radius: var(--r-xs);
+  background: rgba(255, 255, 255, 0.08);
+  font: 600 10px/16px var(--f-ui);
   font-style: normal;
   text-align: center;
   color: var(--dim);
 }
-/* the current doctrine: levels reached bright, the one you are on outlined in its colour, the next ones dim */
+/* the one you hold: levels reached bright with a mark in its colour, the one you are on bold, the next ones faint */
 .doc-card.cur .doc-lvr {
   color: var(--faint);
 }
@@ -2034,62 +2092,73 @@ canvas.minimap {
   color: var(--text);
 }
 .doc-card.cur .doc-lvr.got .doc-lvn {
-  border-color: var(--dc);
   background: var(--dc);
   color: var(--ink);
 }
 .doc-card.cur .doc-lvr.now .doc-lvt {
   font-weight: 600;
 }
+/* why it suits you, under the levels */
 .doc-why {
   font-size: 12px;
-  line-height: 1.25;
-  color: var(--brass-hi);
+  line-height: 16px;
+  color: var(--accent-hi);
 }
 .doc-why:empty {
   display: none;
 }
-.doc-card.rec {
-  border-color: var(--brass-lo);
-}
-.doc-card.rec.sel {
-  border-color: var(--brass);
-}
+/* the selected card in full and its button, kept in view while the grid scrolls */
 .doc-foot {
   position: sticky;
   bottom: -16px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: 10px;
-  padding: 8px 10px;
-  --tone: var(--brass-lo);
+  gap: 16px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: var(--r);
   background: var(--metal-2);
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 18px;
 }
 .doc-foot-txt {
   flex: 1;
   min-width: 0;
 }
 .doc-foot-t {
-  font: 600 14px/1.2 var(--f-label);
+  font: 600 15px/1.2 var(--f-label);
+  color: var(--text);
 }
 .doc-foot-d {
-  margin-top: 2px;
+  margin-top: 3px;
   color: var(--dim);
 }
 .doc-foot-n {
-  margin-top: 2px;
-  color: var(--brass-hi);
+  margin-top: 3px;
+  color: var(--caution);
 }
 .doc-foot-n.bad {
-  color: #e59a7a;
+  color: #e2785f;
 }
 .doc-foot-n:empty {
   display: none;
 }
 .doc-go {
   flex: none;
+  min-width: 180px;
+}
+@media (max-width: 640px) {
+  .doc-foot {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .doc-go {
+    flex: 1 1 100%;
+  }
+  /* one card per row: a narrow column of long level lines reads badly */
+  .doc-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* top-right doctrine button: its picture in the doctrine colour, three level pips under it */
@@ -2133,21 +2202,23 @@ canvas.minimap {
 .nc-sub {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px 8px;
   min-width: 0;
 }
+/* their doctrine in words ("Merchant, level 1"), its picture in the doctrine's colour */
 .nc-doc {
   --dc: var(--dim);
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  font: 600 11px/1.2 var(--f-label);
-  color: var(--dc);
+  gap: 4px;
+  font: 500 12px/18px var(--f-label);
+  color: var(--dim);
   white-space: nowrap;
-  cursor: help;
 }
 .nc-doc-ic {
   line-height: 0;
+  color: var(--dc);
 }
 
 /* forces drawer: groups of rows, each a picture, a name (finds it), one status line and its orders */
@@ -3928,27 +3999,24 @@ strong {
 }
 
 /* ---------------------------------------------------------------- allies, defence hints, online pause */
+/* One ally (nation card and Diplomacy drawer): a status line with a dot (green: will help, amber: busy or
+   unwilling), two labelled requests side by side, and the picker of whom to name, which opens under them as a quiet
+   inset: one row per nation, its colour and name, "at war" in red, a nation it would refuse dimmed with the reason. */
 .ally-help {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
-}
-.ally-row {
-  border-bottom: 1px solid rgba(57, 66, 75, 0.6);
-  padding-bottom: 8px;
-}
-.ally-row .drow {
-  border-bottom: 0;
+  gap: 8px;
+  margin-top: 10px;
 }
 .ally-row .ally-help {
-  margin-top: 0;
+  margin-top: 8px;
 }
 .ally-st {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
+  line-height: 16px;
   color: var(--dim);
 }
 .ally-dot {
@@ -3959,13 +4027,13 @@ strong {
   background: var(--faint);
 }
 .ally-st.yes {
-  color: #c9d79a;
+  color: var(--text);
 }
 .ally-st.yes .ally-dot {
-  background: var(--olive);
+  background: var(--good);
 }
 .ally-st.no .ally-dot {
-  background: var(--brass);
+  background: var(--caution);
 }
 .ally-btns {
   display: grid;
@@ -3976,6 +4044,11 @@ strong {
   justify-content: flex-start;
   min-width: 0;
 }
+.ally-btns .wr-btn.on {
+  background: var(--sel-bg);
+  border-color: var(--sel-bg);
+  color: var(--sel-ink);
+}
 /* the nation card is narrow: one button per row */
 .ncard .ally-btns {
   grid-template-columns: minmax(0, 1fr);
@@ -3984,19 +4057,20 @@ strong {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 6px 8px 8px;
-  border: 1px solid var(--edge);
-  --tone: var(--brass);
-  background: rgba(11, 15, 21, 0.55);
+  padding: 8px;
+  border: 0;
+  border-radius: var(--r);
+  background: rgba(255, 255, 255, 0.04);
 }
 .ally-pick-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 0 0 4px 4px;
 }
 .ally-pick-h {
-  font: 600 11px/1.2 var(--f-label);
-  color: var(--brass-hi);
+  font: 600 13px/1.2 var(--f-label);
+  color: var(--text);
 }
 .ally-pick-x {
   width: 26px;
@@ -4006,38 +4080,145 @@ strong {
 .ally-pick-l {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 .ally-target {
-  min-height: 28px;
-  padding: 0 4px;
-  border-radius: var(--r);
+  min-height: 32px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
 }
-.ally-target:hover,
+.ally-target:hover:not(:disabled),
 .ally-target:focus-visible {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--metal-3);
 }
 .ally-target .tag {
   margin-left: auto;
   font: 600 11px/1 var(--f-label);
-  color: var(--signal);
+  color: #f58a77;
 }
 .ally-target.no {
   flex-wrap: wrap;
-  padding-top: 3px;
-  padding-bottom: 3px;
-  opacity: 0.7;
+  padding-top: 5px;
+  padding-bottom: 5px;
   cursor: not-allowed;
+}
+.ally-target.no,
+.ally-target.no .sw {
+  opacity: 0.75;
 }
 .ally-target .ally-why {
   flex-basis: 100%;
-  padding-left: 18px;
+  padding-left: 15px;
   text-align: left;
-  font: 500 11px/1.3 var(--f-ui);
+  font: 500 12px/16px var(--f-ui);
   color: var(--dim);
 }
 .ally-pick .note {
-  margin: 2px 0 0;
+  margin: 2px 4px 2px;
 }
+
+/* ---------------------------------------------------------------- diplomacy drawer */
+/* Plain section headings (no rule), then one row per nation as a quiet fill: its colour and name (opens its card),
+   one line on where you stand with a time and its unit ("0:25 left to answer"), and its buttons at the end. An offer
+   to you is the lighter, available fill with Accept as the drawer's one amber button; an ally's row holds its
+   status and requests under the name. */
+.dip .big-read {
+  margin-bottom: 4px;
+}
+.page .dip .wr-sec {
+  margin: 18px 0 8px;
+  padding: 0;
+  border: 0;
+  font: 600 14px/1.2 var(--f-label);
+  color: var(--text);
+}
+.dip .drow,
+.dip .ally-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--r);
+  background: var(--metal-2);
+}
+.dip .drow + .drow,
+.dip .drow + .ally-row,
+.dip .ally-row + .ally-row,
+.dip .ally-row + .drow {
+  margin-top: 6px;
+}
+.dip .ally-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding-bottom: 10px;
+}
+.dip .ally-row > .drow {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.dip .drow.offer {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: var(--metal-3);
+}
+.drow-t {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.dip .pname {
+  flex: none;
+  align-self: flex-start;
+  max-width: 100%;
+  font: 600 14px/1.2 var(--f-label);
+}
+.dip .pname:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.dip .pname .sw {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.dip .dmeta {
+  flex: none;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+.dip .drow.traitor .dmeta {
+  color: #f58a77;
+}
+.drow-acts {
+  flex: none;
+  display: flex;
+  gap: 6px;
+}
+/* buttons on a row's fill: one step lighter, so they still read as buttons */
+.dip .wr-btn:not(.primary) {
+  background: var(--metal-3);
+}
+.dip .wr-btn:not(.primary):not(.danger):hover:not(:disabled) {
+  background: var(--metal-4);
+}
+.dip .ally-btns .wr-btn.on {
+  background: var(--sel-bg);
+  color: var(--sel-ink);
+}
+.dip .note {
+  margin: 0 0 8px;
+  line-height: 16px;
+}
+
 .toast .toast-sw {
   width: 10px;
   height: 10px;

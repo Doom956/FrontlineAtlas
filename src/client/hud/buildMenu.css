@@ -121,14 +121,29 @@
 }
 
 /* ---------------------------------------------------------------- build menu */
+/* The research panel's look (hud/researchPanel.css) in the HUD's amber: one opaque steel panel, no title bar chrome,
+   plain group headings, and cards that differ by fill and words, never by outline style. Card states:
+     can build: the lightest fill and a hairline (like an available research card);
+     short of gold or iron: the same card with a fainter hairline, the price and "Short by 300 gold" in red (it can
+       still be picked, to aim);
+     locked (its tech is missing): no fill, a hairline only, the reason in place of the effect; faded further when the
+       tech is not even next.
+   Hover lifts the fill one step; keyboard focus is the light ring the research cards use. Red #e2785f is the research
+   panel's "can't pay" (5.4:1 on #27313f). */
 .bm {
   left: 50%;
   bottom: calc(100% + 8px);
   transform: translateX(-50%);
   width: min(1160px, calc(100vw - 24px));
-  max-height: calc(100vh - 150px);
+  /* --bm-room: the room above the command bar (buildMenu.ts fitHeight) */
+  max-height: min(calc(100vh - 150px), var(--bm-room, 100vh));
   display: flex;
   flex-direction: column;
+  /* opaque, like the research panel: the live map through rows of cards read as clutter */
+  background-color: var(--metal);
+  border: 0;
+  border-radius: var(--r-lg);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 10px 30px rgba(0, 0, 0, 0.38);
 }
 .bm.slide {
   animation: bm-in var(--fast) ease-out;
@@ -143,192 +158,263 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  height: 44px;
   flex: none;
-  padding: 0 4px 0 14px;
-  border-bottom: 1px solid var(--rule);
+  min-height: 52px;
+  padding: 8px 8px 4px 16px;
 }
 .bm-title {
   display: flex;
   align-items: center;
   gap: 8px;
 }
+.bm-t-ic {
+  line-height: 0;
+  color: var(--dim);
+}
 .bm-t {
   font: 600 18px/1 var(--f-label);
+  color: var(--text);
 }
 .bm-count-wrap {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   margin-left: auto;
 }
 .bm-count-l {
-  font: 600 11px/1 var(--f-label);
+  font: 500 12px/1 var(--f-label);
   color: var(--dim);
 }
+/* the count selector on the research panel's tab track: the chosen count is the light selection fill */
+.bm-count-wrap .bm-count {
+  gap: 2px;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--r);
+  background: var(--metal-2);
+}
 .bm-count-wrap .bm-cnt {
-  height: 26px;
-  min-width: 36px;
-  font-size: 14px;
-  line-height: 26px;
+  min-width: 40px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--dim);
+  font: 600 14px/28px var(--f-label);
+}
+.bm-count-wrap .bm-cnt:hover {
+  background: var(--metal-3);
+  color: var(--text);
+}
+.bm-count-wrap .bm-cnt.on {
+  background: var(--sel-bg);
+  color: var(--sel-ink);
+}
+.bm-count-wrap .bm-cnt:focus-visible {
+  outline-offset: -2px;
+}
+.bm-x {
+  flex: none;
 }
 .bm-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
   align-items: start;
-  column-gap: 12px;
-  padding: 8px 12px 6px;
+  column-gap: 20px;
+  padding: 4px 16px 8px;
   overflow-y: auto;
   min-height: 0;
   scrollbar-width: thin;
+  scrollbar-color: var(--metal-4) transparent;
 }
 .bm-col {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 16px;
   min-width: 0;
 }
+/* group names are plain headings, as the research panel's row names */
 .bm-gh {
-  margin: 0 0 5px;
-  padding-bottom: 3px;
-  border-bottom: 1px solid var(--rule);
-  font: 600 12px/1.2 var(--f-label);
-  color: var(--brass-hi);
+  margin: 4px 0 8px;
+  font: 600 14px/1.2 var(--f-label);
+  color: var(--text);
 }
 .bm-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 5px;
+  gap: 6px;
 }
-.bm-military .bm-grid {
+.bm-military .bm-grid,
+.bm-tools .bm-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .bm-card {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 9px;
-  min-height: 52px;
-  padding: 4px 9px 4px 7px;
-  border: 1px solid var(--edge);
+  gap: 10px;
+  min-height: 62px;
+  padding: 7px 10px 7px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: var(--r);
-  background: var(--metal-2);
+  background: var(--metal-3);
   color: var(--text);
   text-align: left;
+  font: inherit;
   cursor: pointer;
-  transition: background var(--fast), border-color var(--fast);
+  transition: background var(--fast), border-color var(--fast), opacity var(--fast), scale var(--fast) ease-out;
 }
-.bm-card:hover,
+.bm-card:hover {
+  background: var(--metal-4);
+}
 .bm-card:focus-visible {
-  background: var(--metal-3);
-  border-color: var(--brass);
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
 }
 .bm-card:active {
-  transform: translateY(1px);
+  scale: 0.98;
 }
 .bm-c-ic {
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
+  width: 48px;
+  height: 34px;
   line-height: 0;
 }
-.bm-c-ic.unit,
-.bm-c-ic.tool {
-  border-radius: 50%;
-  background: var(--ink);
-  color: var(--brass-hi);
-}
-.bm-c-img {
-  width: 32px;
-  height: 32px;
+canvas.bm-c-pic {
+  display: block;
+  image-rendering: pixelated;
 }
 .bm-c-txt {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 3px;
   min-width: 0;
   flex: 1;
 }
 .bm-c-top {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
+  min-width: 0;
 }
 .bm-c-n {
-  font: 600 15px/1.1 var(--f-label);
+  min-width: 0;
+  font: 600 14px/17px var(--f-label);
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.bm-c-k {
+/* what is missing ("Short by 300 gold"), else "Pinned" */
+.bm-c-tag {
   flex: none;
-  line-height: 0;
+  font: 500 11px/14px var(--f-label);
+  color: var(--faint);
+  white-space: nowrap;
 }
-.bm-unit-tag {
+.bm-c-tag.bad {
+  font-weight: 600;
+  color: #e2785f;
+}
+.bm-c-tag:empty {
   display: none;
 }
+/* the price in words, the build time at the end with the research panel's clock */
 .bm-c-cost {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
   font-size: 12px;
-  color: var(--dim);
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
+  line-height: 15px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
-.bm-c-cost.bad {
-  color: #e6705a;
+.bm-c-price {
+  min-width: 0;
+}
+.bm-c-price.bad {
+  color: #e2785f;
+}
+.bm-c-time {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  color: var(--dim);
+  white-space: nowrap;
+}
+.bm-c-time svg {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  opacity: 0.8;
+}
+.bm-c-time:empty {
+  display: none;
 }
 .bm-c-l {
   font-size: 12px;
-  line-height: 1.25;
+  line-height: 15px;
   color: var(--dim);
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
 }
-.bm-c-l.why {
-  color: #d9a08f;
+/* short of gold or iron: still a card you can pick (to aim), its hairline quieter */
+.bm-card.short {
+  border-color: rgba(255, 255, 255, 0.08);
 }
-.bm-c-pin {
-  position: absolute;
-  right: 4px;
-  bottom: 4px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
+/* locked: no fill, a hairline only; the reason replaces the effect line */
+.bm-card.locked {
+  border-color: var(--rule);
   background: transparent;
 }
-.bm-c-pin.on {
-  background: var(--brass-hi);
+.bm-card.locked:hover {
+  background: rgba(255, 255, 255, 0.04);
 }
-/* locked: dim with the reason; far away (tech not next): dimmer */
-.bm-card.locked {
-  border-style: dashed;
-  background: rgba(34, 41, 48, 0.55);
-  cursor: help;
+.bm-card.locked .bm-c-n {
+  color: var(--dim);
+}
+.bm-card.locked .bm-c-price,
+.bm-card.locked .bm-c-time {
+  color: var(--faint);
 }
 .bm-card.locked .bm-c-ic,
-.bm-card.locked .bm-c-n,
-.bm-card.locked .bm-c-cost {
-  opacity: 0.55;
+.bm-card.locked .bm-c-ic.pi-c {
+  color: var(--faint);
 }
+.bm-card.locked canvas.bm-c-pic {
+  opacity: 0.7;
+  filter: grayscale(1);
+}
+/* the reason can be a short recipe ("Research X, then build Y, then buy Z"): room for three lines */
+.bm-c-l.why {
+  color: var(--dim);
+  -webkit-line-clamp: 3;
+}
+/* its tech is not even next: quieter still */
 .bm-card.far {
-  opacity: 0.75;
-}
-.bm-card.short .bm-c-ic {
-  opacity: 0.8;
+  opacity: 0.6;
 }
 .bm-foot {
   flex: none;
-  padding: 6px 14px 8px;
-  border-top: 1px solid var(--rule);
+  padding: 6px 16px 12px;
   font-size: 12px;
-  color: var(--faint);
+  line-height: 16px;
+  color: var(--dim);
+}
+@media (hover: none) {
+  .bm-foot-pin {
+    display: none;
+  }
 }
 @media (max-width: 860px) {
   .bm-body {
@@ -337,6 +423,42 @@
   .bm-col.wide {
     grid-column: 1 / -1;
     grid-row: 2;
+  }
+}
+/* phones: one column of cards, the count selector on its own row under the title */
+@media (max-width: 560px) {
+  .bm-head {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    padding: 8px 4px 4px 12px;
+  }
+  .bm-title {
+    flex: 1;
+  }
+  .bm-x {
+    order: 2;
+  }
+  .bm-count-wrap {
+    order: 3;
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+  .bm-body {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 4px 12px 8px;
+  }
+  .bm-col.wide {
+    grid-row: auto;
+  }
+  .bm-military .bm-grid,
+  .bm-tools .bm-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .bm-card {
+    min-height: 56px;
+  }
+  .bm-foot {
+    padding: 4px 12px 10px;
   }
 }
 
@@ -572,9 +694,6 @@
 }
 .rtree.forked .rt-l {
   font-size: 11px;
-}
-.bm-tools .bm-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .rtree.forked {
   column-gap: 18px;

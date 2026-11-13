@@ -1,7 +1,8 @@
-// Build menu (Tab): a tidy grid of big cards grouped Economy / Military / Defence / Special, each with the building's
-// literal icon, NAME, cost, hotkey and one-line effect; locked ones dimmed with a one-line reason. Click a card to
-// enter build mode (one click), right-click to pin / unpin it on the quick bar (hud/quickBar.ts). A count selector
-// x1 / x3 / x5 (holding Shift = x5) makes one click place the building and queue it up to that many levels
+// Build menu (Tab): a tidy grid of cards grouped Economy / Military / Defence / Special, each with the building's
+// pixel picture (units: their map sprite), name, cost in words, build time and one-line effect; locked ones say why
+// in place of the effect, ones you can't pay yet say how much is missing. Click a card to enter build mode (one
+// click), right-click to pin / unpin it on the quick bar (hud/quickBar.ts). No hotkeys show on the cards. A count
+// selector x1 / x3 / x5 (holding Shift = x5) makes one click place the building and queue it up to that many levels
 // (Action buildMany: each level still takes its build time; what can't be paid is not queued). The Military group
 // also sells warships, bombers, fighters and tank divisions; the Tools row points to the building selection
 // (Shift+drag a box over your buildings, then Upgrade x1 / x3 / x5: client/selection.ts, hud/buildingSelection.ts).
@@ -19,13 +20,14 @@ import { bestFactory, canBuildTankDivision, tankBuildSeconds, tankDivisionCost, 
 import type { Action, BuildingType, GameState, Player } from '../../sim/types';
 import { formatCount } from '../render/common';
 import { BUYABLE_UNITS, buildUnit, priceText, UNIT_TEXT, unitBuildStatus, type BuyableUnit } from '../forces';
-import { iconDataUrl } from '../icons';
 import { enterTankDivisionBuildMode, enterWarshipSpawnMode } from '../selection';
 import { maxLevel, resolveBuild } from '../simx';
 import type { UiState } from '../uiState';
 import { BUILD_TAB_OF, BUILD_TABS, buildingTexts, type BuildTab } from './text';
-import { el, fmtSeconds, keycap, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
-import { iconSpan, lineIcon, worldGlyph } from './glyph';
+import { el, fmtSeconds, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
+import { iconSpan, lineIcon } from './glyph';
+import { catSpan, pixelGlyph, pixelIcon } from './pixelIcons';
+import { paintPortrait } from './portrait';
 
 // ================================================================================================ pure helpers
 
@@ -223,7 +225,7 @@ export function tankDivisionStatus(state: GameState, me: Player): { allowed: boo
   if (!allowed) return { allowed, ok: false, locked: true, line: 'Tank divisions are off in this game', factory: -1 };
   if (!hasTech(me, 'mechanization')) return { allowed, ok: false, locked: true, line: onOrder(me, 'mechanization') ? `${TECHS.mechanization.name} is on order (Arsenal)` : howToGet(state, me, 'mechanization'), factory: -1 };
   const f = bestFactory(state, me.id);
-  if (f < 0) return { allowed, ok: false, locked: true, line: 'Build a Factory first (7)', factory: -1 };
+  if (f < 0) return { allowed, ok: false, locked: true, line: 'Build a Factory first', factory: -1 };
   const r = canBuildTankDivision(state, me.id, f);
   const lim = tankDivisionLimit(state, me.id);
   const have = tankDivisionCount(state, me.id);
@@ -240,6 +242,18 @@ export function tankPriceText(state: GameState, pid: number): string {
 /** Small top-down tank line glyph (no icon id for it yet). */
 export function tankGlyph(px = 24): string {
   return `<svg viewBox="0 0 24 24" width="${px}" height="${px}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="12" width="18" height="6" rx="3"/><path d="M7 12V9h8v3M15 10.5h6"/><circle cx="7" cy="15" r="1"/><circle cx="12" cy="15" r="1"/><circle cx="17" cy="15" r="1"/></svg>`;
+}
+
+/** A card line without hotkey mentions: "buy Flight in the Arsenal (T)" reads "buy Flight in the Arsenal". */
+export function withoutKeys(line: string): string {
+  return line.replace(/ \((?:[A-Z0-9]|Shift\+[A-Z]|Tab|Esc)\)/g, '');
+}
+
+/** "Short by 300 gold" when the player can't pay a building yet ('' when they can). */
+export function shortText(me: Pick<Player, 'gold' | 'iron'>, cost: { gold: number; iron: number }): string {
+  if (me.gold < cost.gold) return `Short by ${formatCount(cost.gold - me.gold)} gold`;
+  if (me.iron < cost.iron) return `Short by ${formatCount(cost.iron - me.iron)} iron`;
+  return '';
 }
 
 // ================================================================================================ the menu
@@ -305,7 +319,7 @@ export class BuildMenu {
     this.el.setAttribute('aria-label', 'Build menu');
     const head = el('div', 'bm-head');
     const title = el('div', 'bm-title');
-    title.append(el('span', 'bm-t', 'Build'), keycap(BUILD_MENU_KEY));
+    title.append(iconSpan(pixelIcon('build', 16), 'bm-t-ic'), el('span', 'bm-t', 'Build'));
     this.count = countSelector(ctx);
     const countWrap = el('div', 'bm-count-wrap');
     countWrap.append(el('span', 'bm-count-l', 'Levels per click'), this.count.el);
@@ -341,7 +355,12 @@ export class BuildMenu {
     tg.append(this.areaCard());
     tools.append(tg);
     colB.append(tools);
-    const foot = el('div', 'bm-foot', 'Click a card to build it. Right-click pins it to the quick bar. x3 / x5 (or hold Shift) queues levels. Esc closes.');
+    // the pin hint only where there is a right button (a phone has none)
+    const foot = el('div', 'bm-foot');
+    foot.append(
+      el('span', '', 'Click a card, then click your land to place it. x3 and x5 queue more levels with one click.'),
+      el('span', 'bm-foot-pin', ' Right-click a card to pin it to the quick bar.'),
+    );
     this.el.append(head, body, foot);
 
     // keyboard: Esc closes, arrows move between cards; capture phase so the map's keys don't also fire
@@ -364,6 +383,7 @@ export class BuildMenu {
       },
       { capture: true, signal: this.ac.signal },
     );
+    window.addEventListener('resize', () => this.isOpen && this.fitHeight(), { signal: this.ac.signal });
     this.el.addEventListener('pointerdown', (e) => e.stopPropagation());
   }
 
@@ -383,6 +403,7 @@ export class BuildMenu {
     this.el.classList.remove('slide');
     void this.el.offsetWidth;
     this.el.classList.add('slide');
+    this.fitHeight();
     this.count.sync();
     const s = this.ctx.state();
     const me = this.ctx.me();
@@ -390,6 +411,18 @@ export class BuildMenu {
     // focus the first card you can use, so the keyboard works at once
     const first = this.cards.find((c) => !c.btn.classList.contains('locked') && !c.btn.classList.contains('hidden')) ?? this.cards[0];
     first?.btn.focus({ preventScroll: true });
+  }
+
+  /**
+   * The room above the command bar, so the menu's header never leaves the screen (phones: the bar is three rows
+   * tall). In the bar's own scale (the HUD scales with --ui); the stylesheet caps it as before on a big screen.
+   */
+  private fitHeight(): void {
+    const host = this.el.parentElement;
+    if (!host) return;
+    const r = host.getBoundingClientRect();
+    const k = host.offsetHeight > 0 && r.height > 0 ? r.height / host.offsetHeight : 1;
+    this.el.style.setProperty('--bm-room', `${Math.max(200, Math.round((r.top - 20) / k))}px`);
   }
 
   close(): void {
@@ -433,28 +466,39 @@ export class BuildMenu {
     best?.focus();
   }
 
-  private shell(test: string, icon: HTMLElement, name: string): { b: HTMLButtonElement; cost: HTMLElement; line: HTMLElement; key: HTMLElement; pin: HTMLElement } {
+  /**
+   * One card: picture | name and its state tag (short of gold, pinned), the price in words with the build time at
+   * the end, and one line (what it does, or why it can't be built yet).
+   */
+  private shell(test: string, icon: HTMLElement, name: string): { b: HTMLButtonElement; cost: HTMLElement; time: HTMLElement; line: HTMLElement; tag: HTMLElement } {
     const b = el('button', 'bm-card');
     b.type = 'button';
     b.dataset.test = test;
     const top = el('span', 'bm-c-top');
     const nm = el('span', 'bm-c-n', name);
-    const key = el('span', 'bm-c-k');
-    top.append(nm, key);
-    const cost = el('span', 'bm-c-cost');
+    const tag = el('span', 'bm-c-tag');
+    top.append(nm, tag);
+    const price = el('span', 'bm-c-cost');
+    const cost = el('span', 'bm-c-price');
+    const time = el('span', 'bm-c-time');
+    price.append(cost, time);
     const line = el('span', 'bm-c-l');
-    const pin = el('span', 'bm-c-pin');
-    pin.setAttribute('aria-hidden', 'true');
     const txt = el('span', 'bm-c-txt');
-    txt.append(top, cost, line);
-    b.append(icon, txt, pin);
-    return { b, cost, line, key, pin };
+    txt.append(top, price, line);
+    b.append(icon, txt);
+    return { b, cost, time, line, tag };
+  }
+
+  /** The build time with the research panel's clock ("20 s"), or nothing. */
+  private static setTime(e: HTMLElement, text: string): void {
+    if (e.dataset.v === text) return;
+    e.dataset.v = text;
+    e.innerHTML = text ? `${lineIcon('clock', 12, 2)}<span>${text}</span>` : '';
   }
 
   private buildingCard(type: BuildingType): HTMLElement {
     const info = BUILDINGS[type];
-    const { b, cost, line, key, pin } = this.shell(`bm-${type}`, iconSpan(worldGlyph(type, 34), 'bm-c-ic'), info.name);
-    key.append(keycap(info.hotkey));
+    const { b, cost, time, line, tag } = this.shell(`bm-${type}`, catSpan(pixelGlyph(type, 28), 'econ', 'bm-c-ic'), info.name);
     b.addEventListener('click', () => {
       this.ctx.ui.contextMenu = null;
       this.ctx.ui.mode = { kind: 'build', building: type };
@@ -476,20 +520,25 @@ export class BuildMenu {
         if (!allowed) return;
         const c = buildingCost(s, me.id, type);
         setText(cost, `${formatCount(c.gold)} gold${c.iron ? ` + ${formatCount(c.iron)} iron` : ''}`);
+        BuildMenu.setTime(time, fmtSeconds(buildSeconds(s, info.buildTime)));
         const why = lockReason(s, me, type);
         const tx = buildingTexts(mods(s).noNukes, type, info.description);
         // a building whose tech is far away is "locked"; one that is only unaffordable is still pickable (to aim)
         const locked = !!info.tech && !hasTech(me, info.tech);
+        const short = !locked && why !== '';
+        const pinned = this.hooks.picks.isPinned(type);
         setClass(b, 'locked', locked);
-        setClass(b, 'short', !locked && why !== '');
-        setText(line, locked ? why : tx.short);
+        setClass(b, 'short', short);
+        setText(line, locked ? withoutKeys(why) : tx.short);
         setClass(line, 'why', locked);
-        setClass(cost, 'bad', !locked && why !== '');
-        setClass(b, 'pinned', this.hooks.picks.isPinned(type));
-        setClass(pin, 'on', this.hooks.picks.isPinned(type));
+        setClass(cost, 'bad', short);
+        setClass(b, 'pinned', pinned);
+        // the tag says what is missing; otherwise that the card is on the quick bar
+        setText(tag, short ? shortText(me, c) || withoutKeys(why) : pinned ? 'Pinned' : '');
+        setClass(tag, 'bad', short);
         setClass(b, 'far', locked && !techClose(me, info.tech));
         setTip(b, buildingTip(s, me, type) + '\nRight-click: pin to the quick bar');
-        b.setAttribute('aria-label', `${info.name}, ${formatCount(c.gold)} gold, hotkey ${info.hotkey}. ${locked ? why : tx.short}`);
+        b.setAttribute('aria-label', `${info.name}, ${formatCount(c.gold)} gold${c.iron ? ` and ${formatCount(c.iron)} iron` : ''}, hotkey ${info.hotkey}. ${locked ? why : short ? `${shortText(me, c)}. ${tx.short}` : tx.short}`);
       },
     });
     return b;
@@ -497,24 +546,21 @@ export class BuildMenu {
 
   private unitCard(kind: MenuUnit): HTMLElement {
     const name = kind === 'tankDivision' ? 'Tank division' : UNITS[kind].name;
-    let icon: HTMLElement;
-    if (kind === 'tankDivision') icon = iconSpan(tankGlyph(32), 'bm-c-ic unit');
-    else {
-      const img = el('img', 'bm-c-img');
-      img.alt = '';
-      img.width = 32;
-      img.height = 32;
-      img.draggable = false;
-      try {
-        img.src = iconDataUrl(kind, 32);
-      } catch {
-        /* no canvas (tests) */
-      }
-      icon = el('span', 'bm-c-ic unit');
-      icon.append(img);
-    }
-    const { b, cost, line, key } = this.shell(`bm-${kind}`, icon, name);
-    key.append(el('span', 'bm-unit-tag', 'unit'));
+    // the unit's own map sprite in your colour (as on the unit card and in the Forces list); the line glyph where
+    // there is no canvas
+    const icon = el('span', `bm-c-ic unit pi-c pi-${kind === 'warship' ? 'navy' : kind === 'tankDivision' ? 'armor' : 'air'}`);
+    const pic = el('canvas', 'bm-c-pic');
+    pic.setAttribute('aria-hidden', 'true');
+    icon.append(pic);
+    let picKey = '';
+    const paint = (me: Player) => {
+      const k = me.color.join(',');
+      if (k === picKey) return;
+      picKey = k;
+      const ok = paintPortrait(pic, kind, undefined, me.color, 48, 32);
+      if (!ok) icon.innerHTML = kind === 'tankDivision' ? tankGlyph(26) : lineIcon(kind === 'warship' ? 'warship' : 'plane', 24);
+    };
+    const { b, cost, time, line, tag } = this.shell(`bm-${kind}`, icon, name);
     b.addEventListener('click', () => {
       const s = this.ctx.state();
       const me = this.ctx.me();
@@ -534,30 +580,34 @@ export class BuildMenu {
       }
       const why = buildUnit(s, me, (a) => this.ctx.dispatch(a), kind, { x: this.ctx.camera.x, y: this.ctx.camera.y });
       if (why) return this.refuse(name, why);
-      this.ctx.toast(`${name} ready at your Airfield. ${kind === 'bomber' ? 'Press X to send it on a bombing run.' : 'It guards the sky around the Airfield.'}`, 'good');
+      this.ctx.toast(`${name} ready at your Airfield. ${kind === 'bomber' ? 'Click Bomb in the strike bar to send it on a bombing run.' : 'It guards the sky around the Airfield.'}`, 'good');
       this.ctx.refreshSoon();
     });
     this.cards.push({
       btn: b,
       update: (s, me) => {
+        paint(me);
+        setText(tag, '');
         if (kind === 'tankDivision') {
           const st = tankDivisionStatus(s, me);
           setVisible(b, st.allowed);
           setText(cost, tankPriceText(s, me.id));
+          BuildMenu.setTime(time, fmtSeconds(tankBuildSeconds(s)));
           setClass(b, 'locked', st.locked);
           setClass(b, 'short', !st.locked && !st.ok);
-          setText(line, st.ok ? 'Breakthroughs on land; click a Factory' : st.line);
+          setText(line, st.ok ? 'Breakthroughs on land; click a Factory' : withoutKeys(st.line));
           setClass(line, 'why', !st.ok);
           setTip(b, `Tank division  ${tankPriceText(s, me.id)}\nA commandable armored division: click your land to drive there fast (rail moves), or enemy land near your border to launch a fast spearhead.\n${st.line}`);
           return;
         }
         const st = unitBuildStatus(s, me, kind, { x: this.ctx.camera.x, y: this.ctx.camera.y });
         setVisible(b, st.allowed);
-        setText(cost, priceText(kind, s, me.id));
+        setText(cost, priceText(kind, s, me.id).replace(/, /g, ' + '));
+        BuildMenu.setTime(time, '');
         setClass(b, 'locked', st.locked);
         setClass(b, 'short', !st.locked && !st.ok);
         const t = UNIT_TEXT[kind];
-        setText(line, st.ok ? (kind === 'warship' ? 'Click the water where it appears' : t.what.split('.')[0]) : st.line);
+        setText(line, st.ok ? (kind === 'warship' ? 'Click the water where it appears' : t.what.split('.')[0]) : withoutKeys(st.line));
         setClass(line, 'why', !st.ok);
         setTip(b, `${t.name}  ${priceText(kind, s, me.id)}\n${t.what}\nCounter: ${t.counter}\n${st.line}`);
       },
@@ -566,13 +616,12 @@ export class BuildMenu {
   }
 
   private areaCard(): HTMLElement {
-    const { b, cost, line, key } = this.shell('bm-upgrade-sel', iconSpan(lineIcon('upgrade', 30, 1.8), 'bm-c-ic tool'), 'Upgrade many');
-    key.append(el('span', 'bm-unit-tag', 'tip'));
-    setText(cost, 'Shift+drag a box on the map');
-    setText(line, 'Selects your buildings in it; then U upgrades them all');
+    const { b, cost, line } = this.shell('bm-upgrade-sel', catSpan(pixelIcon('upgrade', 16), 'econ', 'bm-c-ic tool'), 'Upgrade many');
+    setText(cost, 'Hold Shift and drag a box on the map');
+    setText(line, 'Selects your buildings in it; then Upgrade x1, x3 or x5 for all of them');
     b.addEventListener('click', () => {
       this.close();
-      this.ctx.toast('Hold Shift and drag a box over your buildings, then press U (or click Upgrade x1 / x3 / x5)', 'info');
+      this.ctx.toast('Hold Shift and drag a box over your buildings, then click Upgrade x1, x3 or x5', 'info');
     });
     setTip(b, 'Upgrade many buildings: hold Shift and drag a box on the map. Your buildings inside are selected (filter them by type); the bar then orders Upgrade x1 / x3 / x5 for all of them, cheapest first, as far as your gold and iron go. Each level still takes its build time.');
     this.cards.push({ btn: b, update: () => {} });

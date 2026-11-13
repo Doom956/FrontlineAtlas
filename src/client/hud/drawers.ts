@@ -382,6 +382,8 @@ export class DiplomacyPage implements DrawerPage {
   private key = '';
   /** per ally: status line and the two requests (kept across rebuilds so an open picker stays open) */
   private helps = new Map<number, AllyHelp>();
+  /** lines that count down ("0:25 left to answer"): set on every update, not rebuilt under the pointer */
+  private live: ((s: GameState) => void)[] = [];
 
   constructor(private ctx: HudCtx) {
     this.root.append(this.body);
@@ -400,16 +402,22 @@ export class DiplomacyPage implements DrawerPage {
     const fog = activeFog(s);
     // fog of war: only nations you have met
     const traitors = s.players.filter((p) => p && p.alive && p.id !== me.id && isTraitor(s, p.id) && (!fog || fog.isMet(p.id)));
+    // "1:05 left": read again from the state on every update (the rows are only rebuilt when the lists change)
+    const left = (g: GameState, t: number | undefined) => fmtTime(Math.max(0, ((t ?? g.tick) - g.tick) / TICKS_PER_SECOND));
+    const reqLeft = (g: GameState, from: number, to: number) => left(g, g.allianceRequests.find((r) => r.from === from && r.to === to)?.expiresTick);
     const key = [
       inReq.map((r) => r.from).join(','),
       outReq.map((r) => r.to).join(','),
-      allies.map((a) => `${a.a}-${a.b}-${Math.floor((a.expiresTick - s.tick) / (TICKS_PER_SECOND * 5))}`).join(','),
+      allies.map((a) => `${a.a}-${a.b}`).join(','),
       me.embargoes.join(','),
       traitors.map((p) => p.id).join(','),
-      Math.floor(me.gold / 200),
     ].join('|');
-    if (key === this.key) return;
+    if (key === this.key) {
+      for (const f of this.live) f(s);
+      return;
+    }
     this.key = key;
+    this.live = [];
     const b = this.body;
     b.replaceChildren();
     const big = el('div', 'big-read');
@@ -419,35 +427,56 @@ export class DiplomacyPage implements DrawerPage {
       const p = s.players[id];
       const n = el('button', 'pname');
       n.type = 'button';
+      n.dataset.tip = `Open ${p.name}'s card`;
       const sw = el('i', 'sw');
       sw.style.background = swatchCss(p, me.id);
       n.append(sw, p.name);
       n.addEventListener('click', () => this.ctx.openNation(id));
       return n;
     };
+    /** One nation: its name (opens its card), one line on where you stand (kept current), and the buttons for it. */
+    const row = (id: number, meta: string | ((g: GameState) => string), acts: HTMLElement[] = [], cls = ''): HTMLElement => {
+      const r = el('div', `drow${cls ? ` ${cls}` : ''}`);
+      const txt = el('div', 'drow-t');
+      txt.append(nameBtn(id));
+      if (typeof meta === 'string') txt.append(el('span', 'dmeta', meta));
+      else {
+        const m = el('span', 'dmeta', meta(s));
+        this.live.push((g) => setText(m, meta(g)));
+        txt.append(m);
+      }
+      r.append(txt);
+      if (acts.length) {
+        const a = el('div', 'drow-acts');
+        a.append(...acts);
+        r.append(a);
+      }
+      return r;
+    };
     if (inReq.length) {
       b.append(sectionTitle('Asking you'));
       for (const r of inReq) {
-        const row = el('div', 'drow');
-        row.append(
-          nameBtn(r.from),
-          btn('Accept', 'primary mini', () => this.ctx.act({ type: 'answerAlliance', from: r.from, accept: true })),
-          btn('Decline', 'mini', () => this.ctx.act({ type: 'answerAlliance', from: r.from, accept: false })),
+        b.append(
+          row(
+            r.from,
+            (g) => `Wants an alliance. ${reqLeft(g, r.from, me.id)} left to answer`,
+            [
+              btn('Accept', 'primary mini', () => this.ctx.act({ type: 'answerAlliance', from: r.from, accept: true }), 'accept'),
+              btn('Decline', 'mini', () => this.ctx.act({ type: 'answerAlliance', from: r.from, accept: false }), 'decline'),
+            ],
+            'offer',
+          ),
         );
-        b.append(row);
       }
     }
     b.append(sectionTitle('Allies'));
     if (!allies.length) b.append(el('p', 'note', 'No allies. Right-click a nation or open its card from the standings to ask. Allies cannot attack each other, share what they see, and you can ask them to attack your enemies or send troops.'));
     for (const a of allies) {
       const other = a.a === me.id ? a.b : a.a;
-      const row = el('div', 'drow');
-      const left = (a.expiresTick - s.tick) / TICKS_PER_SECOND;
-      const brk = btn('Break', 'mini danger', () => this.ctx.act({ type: 'breakAlliance', with: other }));
+      const brk = btn('Break', 'mini danger', () => this.ctx.act({ type: 'breakAlliance', with: other }), 'breakAlly');
       brk.dataset.tip = 'Break the alliance: you become a traitor for a while (weaker defence, everyone trusts you less)';
-      row.append(nameBtn(other), el('span', 'dmeta', `${fmtTime(left)} left`), brk);
       const box = el('div', 'ally-row');
-      box.append(row);
+      box.append(row(other, (g) => `Allied, ${left(g, g.alliances.find((x) => x.a === a.a && x.b === a.b)?.expiresTick)} left`, [brk]));
       const h = this.helps.get(other);
       if (h) box.append(h.el);
       b.append(box);
@@ -455,29 +484,19 @@ export class DiplomacyPage implements DrawerPage {
     for (const id of [...this.helps.keys()]) if (!allies.some((a) => a.a === id || a.b === id)) this.helps.delete(id);
     if (outReq.length) {
       b.append(sectionTitle('Waiting for an answer'));
-      for (const r of outReq) {
-        const row = el('div', 'drow');
-        row.append(nameBtn(r.to), el('span', 'dmeta', `${fmtTime((r.expiresTick - s.tick) / TICKS_PER_SECOND)}`));
-        b.append(row);
-      }
+      for (const r of outReq) b.append(row(r.to, (g) => `Request sent, ${reqLeft(g, me.id, r.to)} left`));
     }
     if (me.embargoes.length) {
       b.append(sectionTitle('Embargoes'));
       for (const id of me.embargoes) {
         if (!s.players[id]?.alive) continue;
-        const row = el('div', 'drow');
-        row.append(nameBtn(id), btn('Lift', 'mini', () => this.ctx.act({ type: 'toggleEmbargo', with: id })));
-        b.append(row);
+        b.append(row(id, 'No trade ships between you', [btn('Lift', 'mini', () => this.ctx.act({ type: 'toggleEmbargo', with: id }), 'embargo')]));
       }
     }
     if (traitors.length) {
       b.append(sectionTitle('Traitors right now'));
       b.append(el('p', 'note', 'They broke an alliance: their defence is weaker for a short while.'));
-      for (const p of traitors.slice(0, 8)) {
-        const row = el('div', 'drow');
-        row.append(nameBtn(p.id));
-        b.append(row);
-      }
+      for (const p of traitors.slice(0, 8)) b.append(row(p.id, 'Broke an alliance', [], 'traitor'));
     }
   }
 }

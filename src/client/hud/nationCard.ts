@@ -6,7 +6,7 @@ import { hasIntel } from '../../sim/buildings';
 import { borders } from '../../sim/combat';
 import { areAllied } from '../../sim/diplomacy';
 import { DOCTRINES, TRAITOR_DURATION } from '../../sim/config';
-import { doctrineIcon, knownDoctrine } from '../doctrineView';
+import { doctrineIcon, doctrineLabel, knownDoctrine } from '../doctrineView';
 import type { GameState, Player } from '../../sim/types';
 import { isTribe } from '../compat';
 import { troopsToSend, troopSum } from '../input';
@@ -17,6 +17,7 @@ import { btn, el, setClass, setDisabled, setText, setTip, setVisible, type HudCt
 import { relationOf, TROOP_COLORS } from './drawers';
 import { iconSpan, lineIcon } from './glyph';
 import { AllyHelp } from './allyHelp';
+import { catSpan, pixelIcon } from './pixelIcons';
 
 export const GIFT_GOLD = 200;
 
@@ -63,9 +64,13 @@ export class NationCard {
     head.append(titles, close);
     const stats = el('div', 'nc-stats');
     const a = el('div', 'nc-stat');
-    a.append(el('span', 'nc-k', 'Army'), this.army);
+    const av = el('span', 'nc-vrow');
+    av.append(this.army, el('span', 'nc-u', 'troops'));
+    a.append(el('span', 'nc-k', 'Army'), av);
     const l = el('div', 'nc-stat');
-    l.append(el('span', 'nc-k', 'Land'), this.land);
+    const lv = el('span', 'nc-vrow');
+    lv.append(this.land, el('span', 'nc-u', 'of all land'));
+    l.append(el('span', 'nc-k', 'Land'), lv);
     stats.append(a, l);
     for (const k of ['infantry', 'armor', 'artillery'] as const) {
       const p = el('span');
@@ -139,8 +144,8 @@ export class NationCard {
         this.docShown = key;
         const d = DOCTRINES[kd.id];
         this.doc.style.setProperty('--dc', d.color);
-        this.docIc.replaceChildren(iconSpan(lineIcon(doctrineIcon(kd.id), 13)));
-        setText(this.docT, kd.adapting ? `${d.name}, adapting` : `${d.name} L${kd.level}`);
+        this.docIc.replaceChildren(catSpan(pixelIcon(doctrineIcon(kd.id), 12), null));
+        setText(this.docT, doctrineLabel(kd.id, kd.level, kd.adapting));
         // what applies now: level 2 replaces level 1's numbers, level 3 adds its perk
         const now = kd.adapting ? ['Adapting after a switch: no bonus yet.'] : [d.levels[kd.level >= 2 ? 1 : 0], ...(kd.level >= 3 ? [d.levels[2]] : [])];
         setTip(this.doc, [`Doctrine: ${d.name}${kd.adapting ? '' : `, level ${kd.level}`}`, d.short, ...now].join('\n'));

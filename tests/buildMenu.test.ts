@@ -13,7 +13,10 @@ import {
   effectiveCount,
   QuickPicks,
   QUICK_SLOTS,
+  shortText,
   stableSlots,
+  tankDivisionStatus,
+  withoutKeys,
   type PickStore,
 } from '../src/client/hud/buildMenu';
 import { bondsText, fundableAllies, fundText, mercSteps, mercText, waysToPlayAdvice } from '../src/client/hud/spendPanel';
@@ -73,6 +76,27 @@ describe('bulk preview text', () => {
     const t = bulkPreviewText(buildManyPreview(s, 1, 'city', at(s, 20, 20), 3), 'city');
     expect(t.tone).toBe('short');
     expect(t.sub).toMatch(/^Can afford 1 of 3/);
+  });
+});
+
+describe('build menu card lines', () => {
+  it('names what is missing, gold first, in words with the amount', () => {
+    expect(shortText({ gold: 100, iron: 0 }, { gold: 400, iron: 50 })).toBe('Short by 300 gold');
+    expect(shortText({ gold: 500, iron: 20 }, { gold: 400, iron: 50 })).toBe('Short by 30 iron');
+    expect(shortText({ gold: 1500, iron: 0 }, { gold: 1500, iron: 0 })).toBe('');
+    expect(shortText({ gold: 0, iron: 0 }, { gold: 2_400, iron: 0 })).toBe('Short by 2.4k gold');
+  });
+
+  it('shows no hotkeys: the "(T)" of a how-to line and the old Factory hint are gone', () => {
+    expect(withoutKeys('Research Logistics, then buy Flight in the Arsenal (T), then build an Airfield')).toBe('Research Logistics, then buy Flight in the Arsenal, then build an Airfield');
+    expect(withoutKeys('Buy Navigation in the Arsenal (T)')).toBe('Buy Navigation in the Arsenal');
+    expect(withoutKeys('Doctrine (Shift+D)')).toBe('Doctrine');
+    // words in brackets stay
+    expect(withoutKeys('Needs 2 Ports (one per coast)')).toBe('Needs 2 Ports (one per coast)');
+    const s = game();
+    s.players[1].techs.push('mechanization');
+    const st = tankDivisionStatus(s, s.players[1]);
+    expect(st.line).toBe('Build a Factory first');
   });
 });
 
