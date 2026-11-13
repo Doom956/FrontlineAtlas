@@ -56,6 +56,9 @@ describe('realistic muzzle flash', () => {
     expect(muzzleFlash(1, lively).length).toBeGreaterThan(15);
     expect(muzzleFlash(1, lively).width).toBeGreaterThan(10);
     expect(muzzleFlash(1, subtle).length).toBeGreaterThan(12);
+    // below zoom 3 the ships are small far markers: the flash shrinks with them
+    expect(muzzleFlash(1, lively, 2).length).toBeLessThan(muzzleFlash(1, lively, 3).length * 0.6);
+    expect(muzzleFlash(1, lively, 3).length).toBeCloseTo(muzzleFlash(1, lively, 10).length, 6);
   });
 
   it('holds the blast at full strength for a few frames, longer at Cinematic, and lasts long enough to be seen', () => {

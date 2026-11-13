@@ -58,15 +58,18 @@ function flashMs(m: MotionParams): number {
   return (FLASH + SMOKE * m.muzzleSmoke) * m.flashTime;
 }
 
-/** An art unit of the flash on screen (px) at map scale `scale`: bolder than the ship's own, so it reads at mid zoom. */
-const flashUnit = (scale: number): number => Math.max(2.1, scale * 1.5);
+/**
+ * An art unit of the flash on screen (px) at map scale `scale`: bolder than the ship's own, so it reads at mid zoom.
+ * Below zoom 3 the ships are small far markers: the flash shrinks with them down to zoom 2 (none is drawn farther out).
+ */
+const flashUnit = (scale: number, zoom: number): number => (scale > 1 ? scale * 1.5 : 2.1 * clamp01(0.45 + 0.55 * (zoom - 2)));
 
 /**
- * The size of a flash at map scale `scale` (CSS px): the blast's length along the line of fire and its width, how far
- * the barrels' tongues reach, and how many barrels flash (flashSize scales them).
+ * The size of a flash at map scale `scale` and zoom `zoom` (CSS px): the blast's length along the line of fire and its
+ * width, how far the barrels' tongues reach, and how many barrels flash (flashSize scales them).
  */
-export function muzzleFlash(scale: number, m: MotionParams): { length: number; width: number; tongue: number; barrels: number } {
-  const U = flashUnit(scale);
+export function muzzleFlash(scale: number, m: MotionParams, zoom = 6): { length: number; width: number; tongue: number; barrels: number } {
+  const U = flashUnit(scale, zoom);
   return { length: U * 8.5 * m.flashSize, width: U * 6 * m.flashSize, tongue: U * 8 * m.flashSize, barrels: BARRELS };
 }
 
@@ -134,7 +137,7 @@ function drawMuzzle(ctx: CanvasRenderingContext2D, f: MuzzleDraw, m: MotionParam
   // ms on a flashTime-1 clock, so a longer flashTime plays the same flash slower
   const tt = f.t * (FLASH + SMOKE * m.muzzleSmoke);
   if (tt < 0 || f.t >= 1) return;
-  const U = flashUnit(f.scale);
+  const U = flashUnit(f.scale, f.zoom);
   const fz = m.flashSize;
   const c = Math.cos(f.aim);
   const s = Math.sin(f.aim);
