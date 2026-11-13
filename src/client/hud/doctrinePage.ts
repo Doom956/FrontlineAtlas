@@ -1,14 +1,15 @@
 // Doctrine picker (a wide drawer, Shift+D or the doctrine button in the top-right row): seven cards in a grid, each
 // with its picture, name, one line on what it does and its three levels (reached levels bright, the next ones dim).
-// The three that suit your situation say so, with the reason. Click a card to read it in the footer, where the
-// Choose / Switch button and its price live (a switch costs gold, a short time without any doctrine and a cooldown).
+// The three that suit your situation carry a "Suits you" flag and say why. Click a card to read it in the footer,
+// where the Choose / Switch button and its price live (a switch costs gold, a short time without any doctrine and a
+// cooldown).
 // Before the unlock the page explains when doctrines open; every card can still be read.
 import { DOCTRINES, DOCTRINE_ADAPT_SECONDS, DOCTRINE_LEVEL_SECONDS, DOCTRINE_SWITCH_COOLDOWN } from '../../sim/config';
 import type { DoctrineId, GameState, Player } from '../../sim/types';
 import { choiceInfo, DOCTRINE_ORDER, doctrineIcon, doctrineStatus, fmtClock, fmtDuration, recommendations, scaledSeconds } from '../doctrineView';
 import { el, setClass, setDisabled, setText, type DrawerId, type HudCtx } from './dom';
 import type { DrawerPage } from './drawers';
-import { iconSpan, lineIcon } from './glyph';
+import { catSpan, pixelIcon } from './pixelIcons';
 
 interface Card {
   id: DoctrineId;
@@ -94,7 +95,8 @@ export class DoctrinePage implements DrawerPage {
     b.style.setProperty('--dc', d.color);
     const top = el('span', 'doc-top');
     const ic = el('span', 'doc-ic');
-    ic.append(iconSpan(lineIcon(doctrineIcon(id), 20)));
+    // the same pixel picture as the top bar's Doctrine button, in the doctrine's colour
+    ic.append(catSpan(pixelIcon(doctrineIcon(id), 16), null));
     const name = el('span', 'doc-n', d.name);
     const state = el('span', 'doc-s');
     top.append(ic, name, state);
