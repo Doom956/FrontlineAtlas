@@ -1,5 +1,6 @@
 // What the unit selection and the unit orders draw on the map (client/selection.ts holds the logic):
-//   - the Shift+drag selection box, and a thin brass outline on the buildings it selected (ui.buildingSel)
+//   - the Shift+drag selection box, and a thin accent outline on the buildings it selected (ui.buildingSel)
+// Colours: the map overlay accent (render/common.ts ACCENT: light cobalt over a dark casing), cautions warm, refusals red.
 //   - the warship placement mode: the water where a warship can appear (any sea your ports touch), shaded, and a ring
 //     at the cursor, or a cross with a short reason where it can't go
 //   - the tank division build mode: rings on your factories
@@ -15,11 +16,10 @@ import { activeBuildings, nearestOwnBuilding, previewFor, railPreviewFor, SPEARH
 import { arrivalText, portSeas, type RailMove } from '../reach';
 import { FAR_ZOOM, markerSize } from './buildings';
 import type { UiState } from '../uiState';
-import { MAP_NUM_FAMILY } from './common';
+import { ACCENT_FILL_RGB, ACCENT_RGB, ACCENT_TEXT, accentStroke, css, MAP_NUM_FAMILY } from './common';
 import { pocketPreview } from '../pillars';
 
 const AREA_MS = 1000;
-const BRASS = '#e3c04e';
 const RED = '#ff6b5e';
 
 export class SelectionOverlay {
@@ -52,12 +52,12 @@ export class SelectionOverlay {
       const y = Math.min(b.y0, b.y1);
       const w = Math.abs(b.x1 - b.x0);
       const h = Math.abs(b.y1 - b.y0);
-      ctx.fillStyle = 'rgba(227,192,78,0.08)';
+      ctx.fillStyle = css(ACCENT_FILL_RGB, 0.1);
       ctx.fillRect(x, y, w, h);
       ctx.setLineDash([5, 4]);
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = BRASS;
-      ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+      ctx.beginPath();
+      ctx.rect(x + 0.5, y + 0.5, w, h);
+      accentStroke(ctx, 1);
       ctx.setLineDash([]);
     }
   }
@@ -71,10 +71,6 @@ export class SelectionOverlay {
     const far = z < FAR_ZOOM;
     const base = far ? Math.max(5, z * 2.2) : markerSize(z);
     ctx.save();
-    ctx.lineWidth = far ? 1 : 1.5;
-    ctx.strokeStyle = 'rgba(227,192,78,0.9)';
-    ctx.shadowColor = 'rgba(0,0,0,0.6)';
-    ctx.shadowBlur = 2;
     ctx.beginPath();
     for (const b of list) {
       const c = cam.tileToScreen((b.tile % w) + 0.5, ((b.tile / w) | 0) + 0.5);
@@ -83,7 +79,8 @@ export class SelectionOverlay {
       if (c.x < -r || c.y < -r || c.x > cam.viewW + r || c.y > cam.viewH + r) continue;
       ctx.roundRect(c.x - r, c.y - r, r * 2, r * 2, far ? 1 : r * 0.45);
     }
-    ctx.stroke();
+    // the light line reads on the sea, its dark casing on your own (often light or blue) land
+    accentStroke(ctx, far ? 1 : 1.5, 0.95, 0.75);
     ctx.restore();
   }
 
@@ -125,19 +122,21 @@ export class SelectionOverlay {
     const c = cam.tileToScreen((t % w) + 0.5, ((t / w) | 0) + 0.5);
     const why = warshipSpawnHint(state, me, this.seas, t);
     const r = Math.max(7, z * 1.2);
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = why ? RED : BRASS;
     ctx.beginPath();
     if (!why) {
+      // a warship can appear here: an accent ring
       ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
-    } else {
-      ctx.moveTo(c.x - r * 0.6, c.y - r * 0.6);
-      ctx.lineTo(c.x + r * 0.6, c.y + r * 0.6);
-      ctx.moveTo(c.x + r * 0.6, c.y - r * 0.6);
-      ctx.lineTo(c.x - r * 0.6, c.y + r * 0.6);
+      accentStroke(ctx, 1.5);
+      return;
     }
+    ctx.moveTo(c.x - r * 0.6, c.y - r * 0.6);
+    ctx.lineTo(c.x + r * 0.6, c.y + r * 0.6);
+    ctx.moveTo(c.x + r * 0.6, c.y - r * 0.6);
+    ctx.lineTo(c.x - r * 0.6, c.y + r * 0.6);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = RED;
     ctx.stroke();
-    if (why) tag(ctx, cam, c.x + r + 6, c.y, [why], '#f0b07a');
+    tag(ctx, cam, c.x + r + 6, c.y, [why], '#f0b07a');
   }
 
   private buildArea(state: GameState, me: number, seas: ReadonlySet<number>): void {
@@ -174,10 +173,10 @@ export class SelectionOverlay {
     const m = railPreviewFor(state, me, ui.selection, ui.hoverTile, nowMs);
     if (!m || m.path.length < 2) return;
     const end = this.route(ctx, state, cam, m, 0.75);
-    tag(ctx, cam, end.x + 10, end.y, [`by rail: ${arrivalText(m.seconds)}`], BRASS);
+    tag(ctx, cam, end.x + 10, end.y, [`by rail: ${arrivalText(m.seconds)}`], ACCENT_TEXT);
   }
 
-  /** Dotted brass route over your land (a division's drive); returns the screen point of its end. */
+  /** Dotted accent route over your land (a division's drive); returns the screen point of its end. */
   private route(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, m: RailMove, alpha: number): { x: number; y: number } {
     const w = state.map.width;
     const pts = m.path.map((t) => cam.tileToScreen((t % w) + 0.5, ((t / w) | 0) + 0.5));
@@ -192,17 +191,15 @@ export class SelectionOverlay {
     const e = pts[pts.length - 1];
     ctx.lineTo(e.x, e.y);
     ctx.setLineDash([2, 5]);
-    ctx.lineWidth = 2.5;
-    ctx.strokeStyle = `rgba(10,13,21,${alpha * 0.6})`;
-    ctx.stroke();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = `rgba(227,192,78,${alpha})`;
-    ctx.stroke();
+    accentStroke(ctx, 1.5, alpha, 0.75);
     ctx.setLineDash([]);
     ctx.beginPath();
     ctx.arc(e.x, e.y, Math.max(3, Math.min(6, cam.zoom)), 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(227,192,78,${alpha})`;
+    ctx.fillStyle = css(ACCENT_RGB, alpha);
     ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = `rgba(10,18,44,${alpha * 0.75})`;
+    ctx.stroke();
     ctx.restore();
     return e;
   }
@@ -216,9 +213,7 @@ export class SelectionOverlay {
       const c = cam.tileToScreen((pick % w) + 0.5, ((pick / w) | 0) + 0.5);
       ctx.beginPath();
       ctx.arc(c.x, c.y, r + 3, 0, Math.PI * 2);
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = BRASS;
-      ctx.stroke();
+      accentStroke(ctx, 3);
     }
     ctx.beginPath();
     for (const b of buildingsOf(state, state.humanId, 'factory')) {
@@ -229,9 +224,7 @@ export class SelectionOverlay {
       ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
     }
     ctx.setLineDash([4, 3]);
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = BRASS;
-    ctx.stroke();
+    accentStroke(ctx, 1.5);
     ctx.setLineDash([]);
   }
 
@@ -248,15 +241,15 @@ export class SelectionOverlay {
     const pts = [at(p.launch), ...p.path.map(at)];
     if (pts.length < 2) return;
     const deep = Math.min(pts.length - 1, Math.max(1, p.expectedDepth));
-    const alpha = pend >= 0 ? 0.55 : 0.32;
+    const alpha = pend >= 0 ? 0.62 : 0.4;
     // the drive to the launch tile first (spearheads start up to TANK_LAUNCH_REACH tiles past your border)
     const drive = railPreviewFor(state, me, ui.selection, p.launch, nowMs);
     if (drive && drive.path.length > 1) this.route(ctx, state, cam, drive, alpha + 0.15);
-    // encirclement: the pocket the line would cut off, hatched in brass (pillars.pocketPreview)
+    // encirclement: the pocket the line would cut off, shaded in cobalt (pillars.pocketPreview)
     const pocket = pocketPreview(state, me, p);
     if (pocket) {
       const z = cam.zoom;
-      ctx.fillStyle = `rgba(227,192,78,${pend >= 0 ? 0.26 : 0.16})`;
+      ctx.fillStyle = css(ACCENT_FILL_RGB, pend >= 0 ? 0.3 : 0.2);
       for (const t of pocket.tiles) {
         const q = cam.tileToScreen(t % w, (t / w) | 0);
         if (q.x < -z || q.y < -z || q.x > cam.viewW || q.y > cam.viewH) continue;
@@ -270,8 +263,11 @@ export class SelectionOverlay {
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
     for (let k = 1; k <= deep; k++) ctx.lineTo(pts[k].x, pts[k].y);
+    ctx.lineWidth = width + 2;
+    ctx.strokeStyle = `rgba(10,18,44,${alpha * 0.5})`;
+    ctx.stroke();
     ctx.lineWidth = width;
-    ctx.strokeStyle = `rgba(227,192,78,${alpha})`;
+    ctx.strokeStyle = css(ACCENT_RGB, alpha);
     ctx.stroke();
     // dashed rest of the line
     if (deep < pts.length - 1) {
@@ -279,9 +275,7 @@ export class SelectionOverlay {
       ctx.moveTo(pts[deep].x, pts[deep].y);
       for (let k = deep + 1; k < pts.length; k++) ctx.lineTo(pts[k].x, pts[k].y);
       ctx.setLineDash([4, 5]);
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = `rgba(227,192,78,${alpha + 0.15})`;
-      ctx.stroke();
+      accentStroke(ctx, 1.5, alpha + 0.15, 0.9);
       ctx.setLineDash([]);
     }
     // arrow head at the expected depth
@@ -294,8 +288,11 @@ export class SelectionOverlay {
     ctx.lineTo(b.x + Math.cos(ang + 2.4) * hs, b.y + Math.sin(ang + 2.4) * hs);
     ctx.lineTo(b.x + Math.cos(ang - 2.4) * hs, b.y + Math.sin(ang - 2.4) * hs);
     ctx.closePath();
-    ctx.fillStyle = `rgba(227,192,78,${Math.min(0.9, alpha + 0.25)})`;
+    ctx.fillStyle = css(ACCENT_RGB, Math.min(0.9, alpha + 0.25));
     ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(10,18,44,0.6)';
+    ctx.stroke();
     // label at the head
     const label = `~${p.expectedDepth} tiles`;
     const warn = p.warnings[0] ?? '';
@@ -315,7 +312,7 @@ export class SelectionOverlay {
     ctx.fillStyle = 'rgba(10,13,21,0.82)';
     ctx.fillRect(lx - 5, ly - th / 2, tw, th);
     lines.forEach((l, k) => {
-      ctx.fillStyle = k === 0 || (pocket && k === 1) || l.startsWith('starts in') ? BRASS : '#f0b07a';
+      ctx.fillStyle = k === 0 || (pocket && k === 1) || l.startsWith('starts in') ? ACCENT_TEXT : '#f0b07a';
       ctx.fillText(l, lx, ly - th / 2 + 9 + k * 14);
     });
   }

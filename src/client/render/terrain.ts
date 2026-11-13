@@ -10,16 +10,35 @@ import type { RGB } from './common';
  * tundra pale grey-blue) without shouting over the nation colours.
  */
 export const TERRAIN_RGB: readonly RGB[] = [
-  [26, 50, 84], // deep water
-  [44, 88, 128], // shallow water
-  [138, 170, 98], // plains
-  [70, 114, 64], // forest
-  [160, 150, 102], // hills
-  [134, 130, 126], // mountains
-  [224, 204, 146], // desert
-  [94, 110, 78], // swamp
-  [208, 216, 216], // tundra
+  [23, 38, 52], // deep water: open sea, slate close to the UI ink so the land carries the picture
+  [38, 74, 91], // shallow water: the coastal shelf, a lighter steel blue (3:1 against a blue nation's fill)
+  [146, 162, 120], // plains
+  [100, 124, 92], // forest
+  [160, 152, 124], // hills
+  [138, 138, 136], // mountains
+  [204, 192, 156], // desert
+  [108, 118, 96], // swamp
+  [208, 214, 218], // tundra
 ];
+
+// ---- Water depth: one slate ramp, OKLCH lightness 0.39 (shelf) / 0.34 (middle) / 0.26 (open sea), hue 230 to 246
+// (bluer further out), faded smoothly, so a blue nation (lighter and more saturated) never blends into the sea.
+/** Middle of the fade between the shelf (TERRAIN_RGB[1]) and the open sea (TERRAIN_RGB[0]). */
+export const WATER_MID: RGB = [32, 59, 76];
+/** Depth (tiles) where the smooth fade reaches the open sea colour. */
+export const WATER_FADE_END = 14;
+
+function mixRgb(a: RGB, b: RGB, k: number): RGB {
+  return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+}
+
+/** Flat water colour at `d` whole tiles from land (minimap, Canvas2D map, the far-zoom texture); the shader fades the same way. */
+export function waterRGB(d: number): RGB {
+  const k = Math.min(1, Math.max(0, (d - 1) / (WATER_FADE_END - 1)));
+  const s = k * k * (3 - 2 * k);
+  return s < 0.5 ? mixRgb(TERRAIN_RGB[1], WATER_MID, s * 2) : mixRgb(WATER_MID, TERRAIN_RGB[0], s * 2 - 1);
+}
+
 /** Deposit colours (marker fills and the resource overlay). Index = ResourceId. */
 export const RESOURCE_RGB: readonly RGB[] = [
   [0, 0, 0],
@@ -63,22 +82,21 @@ export function buildTerrain(map: MapData): TerrainData {
   for (let i = 0; i < n; i++) if (depth[i] > MAX_DEPTH) depth[i] = MAX_DEPTH;
 
   const rgba = new Uint8ClampedArray(n * 4);
-  const shallow = TERRAIN_RGB[1];
-  const deep = TERRAIN_RGB[0];
+  const ramp: RGB[] = [];
+  for (let d = 0; d <= MAX_DEPTH; d++) ramp.push(waterRGB(d));
   for (let i = 0; i < n; i++) {
     const t = terrain[i];
     const o = i * 4;
     if (isWater(t)) {
-      const d = depth[i];
-      const k = Math.min(1, (d - 1) / 10);
-      const s = k * k * (3 - 2 * k);
-      let r = shallow[0] + (deep[0] - shallow[0]) * s;
-      let g = shallow[1] + (deep[1] - shallow[1]) * s;
-      let b = shallow[2] + (deep[2] - shallow[2]) * s;
-      if (d === 1) {
-        r += 14;
-        g += 18;
-        b += 18;
+      const c = ramp[depth[i]];
+      let r = c[0];
+      let g = c[1];
+      let b = c[2];
+      if (depth[i] === 1) {
+        // a quiet shoreline, so the coast reads at every zoom
+        r += 5;
+        g += 8;
+        b += 9;
       }
       rgba[o] = r;
       rgba[o + 1] = g;

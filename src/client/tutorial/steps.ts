@@ -79,7 +79,7 @@ export const QUICK_TUTORIAL: TutorialChapter = {
     {
       id: 'city',
       label: 'Build a City',
-      text: 'Press 1, then click your land to build a City: more troops and more gold.',
+      text: 'Click City in the bottom bar, then your land, to build a City: more troops and gold.',
       target: 'build-city || build-menu-btn',
       tile: at('citySite'),
       onEnter: (api) => topUp(api, { gold: CITY.cost + 50 }),
@@ -118,7 +118,7 @@ export const QUICK_TUTORIAL: TutorialChapter = {
     {
       id: 'research',
       label: 'Open Research',
-      text: 'Press T to open Research.',
+      text: 'Click Research in the top bar to open it.',
       target: 'open-research',
       onEnter: (api) => topUp(api, { gold: AGRI.gold + 50, science: AGRI.science + 10 }),
       done: (_s, _me, ui) => ui.openPanel === 'research' || ui.openPanel === 'arsenal',

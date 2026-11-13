@@ -39,7 +39,7 @@ export function pillarAdvice(s: GameState, me: Player): Suggestion | null {
   if (coast >= 2 && unitAllowed(s, 'warship')) {
     const ships = mine.filter((u) => u.type === 'warship');
     if (ships.length && ships.every((u) => warshipStance(u) !== 'bombard' && warshipStance(u) !== 'blockade') && !ships.some((u) => u.state === 3)) {
-      return { key: 'pillar-bombard', text: `${fp.name}'s front runs along the coast: select your warships (Shift+W) and pick Bombard, the land there falls faster`, drawer: 'forces' };
+      return { key: 'pillar-bombard', text: `${fp.name}'s front runs along the coast: select your warships (Forces, All) and pick Bombard, the land there falls faster`, drawer: 'forces' };
     }
     if (!ships.length && hasTech(me, 'navigation') && unitBuildStatus(s, me, 'warship').ok) {
       return { key: 'pillar-navy', text: `${fp.name}'s front runs along the coast: warships shelling it make your attacks there cheaper`, unit: 'warship' };
@@ -49,7 +49,7 @@ export function pillarAdvice(s: GameState, me: Player): Suggestion | null {
   // open ground: tank divisions on Support front break through by themselves
   const tanks = mine.filter((u) => u.type === 'tankDivision');
   if (tanks.length && openness(s, frontTiles) > 0.55 && tanks.every((u) => divisionMode(u) === 'hold' && u.state === 0)) {
-    return { key: 'pillar-armor', text: `Open ground along ${fp.name}'s front: select your divisions (Shift+A), pick Support front and click the front`, drawer: 'forces' };
+    return { key: 'pillar-armor', text: `Open ground along ${fp.name}'s front: select your divisions (Forces, All), pick Support front and click the front`, drawer: 'forces' };
   }
 
   // a stuck front: forts or hills, and bombers waiting at home

@@ -1,7 +1,8 @@
 // Attack fronts, drawn on the overlay canvas (client only: reads the state, never changes it).
 //
 // Front lines: where two nations are at war (an attack running either way, or one in the last WAR_MEMORY_TICKS),
-//   their shared border gets a crisp line over the territory edge: brass on your own fronts, pale bone on others',
+//   their shared border gets a crisp line over the territory edge: the map accent (light cobalt) on your own fronts,
+//   pale bone on others',
 //   with a dark casing and a slow pulse. Quiet borders stay as the shader draws them. The border edges of each
 //   warring pair are kept incrementally from the tile feed (seeded from the sim's border lists when a war starts,
 //   re-seeded every RESEED_MS), merged into straight runs and cached as one Path2D per pair.
@@ -10,7 +11,9 @@
 //   nearby arrows merged, at most MAX_ARROWS on screen, others' fights only when zoomed in a little.
 // Troop pills: a count at each active front (your attacks with an up arrow, attacks on you with a down arrow, your
 //   allies' attacks on your enemies at any zoom, other nations' fights when zoomed in), on the most recent capture
-//   nearest to the attack's focus, learnt from the tile feed.
+//   nearest to the attack's focus, learnt from the tile feed. Each pill carries the attacker's troop markers
+//   (troopIcons.ts: a soldier, a tank, a field gun on an owner-colour plate) for the types in the attack, so its mix
+//   reads at a glance; another nation's mix only with intel (else one plain troops marker), like the HUD.
 // Hover a front: a small card "Your attack on X: +N tiles/s, troops left Y" next to the pointer, with a shovel line
 //   "Dug in: +30%" when the defender's side is dug in and a plane line when Air cover bombs it (trench.ts).
 // Air cover: a small plane glyph next to the troop pill of an attack that idle airfields cover by themselves.
@@ -23,7 +26,9 @@ import { isTribe } from '../../sim/types';
 import type { Attack, GameState } from '../../sim/types';
 import type { Camera } from '../camera';
 import type { UiState } from '../uiState';
-import { clamp, css, formatCount, MAP_NUM_FAMILY, mix, pill, type RGB } from './common';
+import { ACCENT, ACCENT_RGB, clamp, css, formatCount, MAP_NUM_FAMILY, mix, type RGB } from './common';
+import { troopKinds, troopPill, troopPillSize } from './troopIcons';
+import { hasIntel } from '../../sim/buildings';
 import { OWNER_MASK, type TileFeed } from './tiles';
 import { coveringAirfields, dugInPct } from '../trench';
 
@@ -57,7 +62,6 @@ const SPEED_WINDOW_TICKS = 30;
 /** Pair keys: lower id * PAIR_K + higher id (ids fit in 12 bits, OWNER_MASK). */
 const PAIR_K = 4096;
 
-const BRASS: RGB = [227, 192, 78];
 const BONE: RGB = [228, 223, 210];
 const SIGNAL = '#ff6b5e';
 /** trench lines (hover card): dug earth, light enough to read on the dark card */
@@ -442,6 +446,8 @@ export class FrontLayer {
   private ownerAt = (i: number): number => (this.feed ? this.feed.mirror[i] & OWNER_MASK : 0);
   /** fog of war view (set by the renderer each frame; null or inactive = no fog) */
   fog: FogView | null = null;
+  /** screen boxes (x0, y0, x1, y1) the troop pills keep clear of: the nations' army count marks (set by the renderer) */
+  avoid: readonly number[] | null = null;
 
   /** Fog of war: wars between others show only where you see the fighting (yours and your allies' always). */
   private seenWar(state: GameState, a: Attack): boolean {
@@ -672,7 +678,7 @@ export class FrontLayer {
     for (const d of draw) {
       const base = d.mine ? 0.85 + 0.15 * pulse : 0.72 + 0.16 * pulse;
       ctx.globalAlpha = d.a * (d.hot ? 1 : base);
-      ctx.strokeStyle = css(d.mine ? BRASS : d.hot ? mix(BONE, [255, 255, 255], 0.4) : BONE);
+      ctx.strokeStyle = css(d.mine ? ACCENT_RGB : d.hot ? mix(BONE, [255, 255, 255], 0.4) : BONE);
       ctx.lineWidth = ((d.mine ? (far ? 2 : 2.4) : 1.7) + (d.hot ? 0.8 : 0)) / z;
       this.stroke(ctx, d, z);
     }
@@ -745,6 +751,13 @@ export class FrontLayer {
     const z = cam.zoom;
     const w = this.w;
     const pills: { x: number; y: number }[] = [];
+    // whose troop mix this viewer may see (own, allies, recon or watchtower intel; spectators see all), once a frame
+    const intel = new Map<number, boolean>();
+    const knows = (id: number): boolean => {
+      let k = intel.get(id);
+      if (k === undefined) intel.set(id, (k = me <= 0 || id === me || hasIntel(state, me, id)));
+      return k;
+    };
     for (const a of state.attacks) {
       const mine = me > 0 && a.attacker === me;
       const incoming = me > 0 && a.target === me;
@@ -756,11 +769,23 @@ export class FrontLayer {
       if (tile < 0) continue;
       const s = cam.tileToScreen((tile % w) + 0.5, ((tile / w) | 0) + 0.5);
       if (s.x < -40 || s.y < -40 || s.x > cam.viewW + 40 || s.y > cam.viewH + 40) continue;
-      const py = s.y - Math.max(12, z * 0.9);
+      let py = s.y - Math.max(12, z * 0.9);
+      // keep clear of the nations' army count marks (names.ts armyMarks): lift the pill above one it would cover
+      const kinds = troopKinds(knows(a.attacker) ? a.troops : null);
+      const am = this.avoid;
+      if (am && am.length) {
+        const sz = troopPillSize(ctx, armyTotal(a.troops), kinds.length, { arrow: mine || ally || incoming ? 'up' : 'none' });
+        for (let k = 0; k < am.length; k += 4) {
+          const x0 = s.x - sz.w / 2;
+          const y0 = py - sz.h / 2;
+          if (x0 < am[k + 2] && x0 + sz.w > am[k] && y0 < am[k + 3] && y0 + sz.h > am[k + 1]) py = am[k + 1] - sz.h / 2 - 1;
+        }
+      }
       pills.push({ x: s.x, y: py });
-      const edge = mine ? '#ffe98a' : incoming ? SIGNAL : css(colors[a.attacker] ?? [200, 200, 200]);
-      const pw = pill(ctx, s.x, py, formatCount(armyTotal(a.troops)), edge, mine || ally ? 'up' : incoming ? 'down' : 'none');
-      if (coveringAirfields(state, a.attacker, a.target).length > 0) glyph(ctx, 'plane', s.x + pw / 2 + 9, py, 13, mine ? '#ffe98a' : '#e4dfd2');
+      const edge = mine ? ACCENT : incoming ? SIGNAL : css(colors[a.attacker] ?? [200, 200, 200]);
+      const owner = (colors[a.attacker] ?? [200, 200, 200]) as RGB;
+      const pw = troopPill(ctx, s.x, py, armyTotal(a.troops), kinds, owner, { edge, arrow: mine || ally ? 'up' : incoming ? 'down' : 'none', alarm: incoming });
+      if (coveringAirfields(state, a.attacker, a.target).length > 0) glyph(ctx, 'plane', s.x + pw / 2 + 9, py, 13, mine ? ACCENT : '#e4dfd2');
       if (mine && a.focusTile >= 0) {
         const f = cam.tileToScreen((a.focusTile % w) + 0.5, ((a.focusTile / w) | 0) + 0.5);
         ctx.beginPath();
@@ -984,7 +1009,7 @@ export class FrontLayer {
     ctx.strokeStyle = '#39424b';
     ctx.lineWidth = 1;
     ctx.strokeRect(x0 + 0.5, y0 + 0.5, bw - 1, bh - 1);
-    ctx.fillStyle = css(mine ? BRASS : BONE);
+    ctx.fillStyle = css(mine ? ACCENT_RGB : BONE);
     ctx.fillRect(x0, y0, 3, bh);
     rows.forEach((r, n) => {
       const y = y0 + 5 + lh * n + lh / 2;

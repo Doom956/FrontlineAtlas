@@ -1,40 +1,72 @@
-/* Frontline Atlas UI: "war room". A command table over the map: near-opaque gunmetal panels with a fine brushed grain,
-   thin steel rules and corner brackets instead of rounded cards, brass for actions and key numbers, muted status
-   colours. Labels in a condensed military sans (uppercase, tracked), values in a legible face with tabular figures.
-   Decoration stays minimal: colour, type and crisp lines carry the identity. */
+/* Frontline Atlas UI: "Pixel Clean". A calm, modern interface over a bright pixel-art world. Panels are cool steel
+   glass with no borders, separated by space and one hairline. One warm accent (amber) marks the primary action, the
+   current selection and the current value; everything else is a neutral step. Type is a clean sans (DM Sans) with a
+   pixel display face (Jersey 15) for the logo, the clock and the big changing numbers. See docs/UI_DIRECTION.md. */
 :root {
-  --ink: #0d1013;
-  --metal: #191e23;
-  --metal-a: rgba(25, 30, 35, 0.95);
-  --metal-2: #222930;
-  --metal-3: #2c343c;
-  --metal-4: #36404a;
-  --rule: #39424b;
-  --rule-hi: #56616c;
-  --text: #e4dfd2;
-  --dim: #a3a49c;
-  --faint: #73766f;
-  --brass: #c9a227;
-  --brass-hi: #e3c04e;
-  --brass-lo: #7c6416;
-  --brass-ink: #1a1508;
-  --olive: #98a957;
-  --olive-d: #5d6a2c;
-  --signal: #d4503a;
-  --signal-d: #7f2a1d;
-  --steel: #6b95b8;
-  --steel-d: #34536d;
-  --grain: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0.08)),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 3px);
-  --f-label: 'Barlow Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif;
-  --f-ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --f-logo: 'Barlow Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif;
-  --r: 2px;
+  --ink: #0a0e14;
+
+  /* Panels are cool steel glass (a dark blue-grey, hue about 215); --metal is the opaque fallback. Old names kept so
+     the whole sheet maps cleanly. */
+  --metal: #121821;
+  --metal-a: rgba(18, 24, 33, 0.8);
+  --metal-2: #1c2531; /* raised control / inset inside a panel */
+  --metal-3: #27313f; /* hover, available card */
+  --metal-4: #313d4c; /* pressed / strong */
+
+  /* The single hairline, as a faint light line rather than a hard rule. */
+  --rule: rgba(255, 255, 255, 0.09);
+  --rule-hi: rgba(255, 255, 255, 0.16);
+  --line: rgba(255, 255, 255, 0.09);
+
+  --text: #edeff3;
+  --dim: #a0a8b5; /* 7.4:1 on the panel, 5.5:1 on hover */
+  --faint: #8f98a7; /* 6.1:1 on the panel, 5.3:1 on a control, 4.5:1 on hover: small labels stay AA */
+
+  /* One accent. Old --brass names alias it so existing rules become "accent", not "gold everywhere". */
+  --accent: #f5b13d;
+  --accent-hi: #ffc658; /* the accent as text and marks on a panel */
+  --accent-ink: #1a1304; /* text on an accent fill */
+  --accent-hover: #ffc658; /* an accent fill under the pointer (keeps --accent-ink readable) */
+  --accent-rgb: 245 177 61; /* for tints: rgb(var(--accent-rgb) / 0.12) */
+  /* Caution (a missing building, short of a resource): its own token, so a panel that repoints --accent (research
+     and arsenal) keeps amber for warnings. */
+  --caution: #f5b13d;
+  --brass: var(--accent);
+  --brass-hi: var(--accent-hi);
+  --brass-lo: #6f5519; /* muted amber for subtle edges */
+  --brass-ink: var(--accent-ink);
+
+  /* Semantic status only. */
+  --good: #74c365;
+  --danger: #f2543d;
+  --info: #7fa6d6;
+  --olive: var(--good);
+  --olive-d: #3f6a33;
+  --signal: var(--danger);
+  --signal-d: #7a2a1e;
+  --steel: var(--info);
+  --steel-d: #3a5572;
+
+  /* No decorative texture. */
+  --grain: none;
+
+  --f-label: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --f-ui: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --f-logo: 'Jersey 15', 'DM Sans', system-ui, sans-serif;
+  --f-pixel: 'Jersey 15', 'DM Sans', system-ui, sans-serif;
+
+  --r: 8px; /* controls */
+  --r-sm: 5px; /* chips */
+  --r-xs: 4px;
+  --r-lg: 12px; /* panels */
   --s1: 4px;
   --s2: 8px;
   --s3: 12px;
   --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
   --fast: 120ms;
+  --med: 200ms;
   color-scheme: dark;
 }
 
@@ -81,14 +113,13 @@ kbd,
   display: inline-block;
   min-width: 15px;
   padding: 0 3px;
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   border-bottom-width: 2px;
   border-radius: 2px;
   background: var(--metal);
   color: var(--dim);
   font: 600 10px/13px var(--f-label);
   text-align: center;
-  letter-spacing: 0.04em;
 }
 .ico {
   display: inline-flex;
@@ -128,7 +159,7 @@ canvas.map.dragging {
   bottom: 120px;
   padding: 4px;
   background: var(--metal);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--r);
   line-height: 0;
   z-index: 5;
@@ -149,8 +180,6 @@ canvas.minimap {
 /* ---------------------------------------------------------------- shared atoms */
 .wr-sec {
   font: 600 12px/1 var(--f-label);
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
   color: var(--dim);
 }
 .cmdbar,
@@ -167,33 +196,19 @@ canvas.minimap {
 .modal-card,
 .menu-card {
   background-color: var(--metal-a);
-  background-image: var(--grain);
-  border: 1px solid var(--rule);
-  border-radius: var(--r);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 6px 18px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  border: 0;
+  border-radius: var(--r-lg);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 10px 30px rgba(0, 0, 0, 0.38);
 }
-/* corner brackets: two thin brass L shapes on the main panels */
+/* No corner brackets in Pixel Clean: panels are separated by space, not ornament. */
 .cmdbar,
 .lb,
 .drawer,
 .menu-card,
 .modal-card {
   position: relative;
-}
-.cmdbar::before,
-.lb::before,
-.drawer::before,
-.menu-card::before,
-.modal-card::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  pointer-events: none;
-  background:
-    linear-gradient(var(--brass-lo), var(--brass-lo)) top left / 10px 1px no-repeat,
-    linear-gradient(var(--brass-lo), var(--brass-lo)) top left / 1px 10px no-repeat,
-    linear-gradient(var(--brass-lo), var(--brass-lo)) bottom right / 10px 1px no-repeat,
-    linear-gradient(var(--brass-lo), var(--brass-lo)) bottom right / 1px 10px no-repeat;
 }
 
 /* buttons: obvious default, hover, pressed, disabled */
@@ -205,13 +220,11 @@ canvas.minimap {
   gap: 6px;
   min-height: 32px;
   padding: 0 12px;
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   border-radius: var(--r);
   background: var(--metal-2);
   color: var(--text);
   font: 600 13px/1 var(--f-label);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   cursor: pointer;
   white-space: nowrap;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 1px 0 rgba(0, 0, 0, 0.5);
@@ -241,8 +254,8 @@ canvas.minimap {
 }
 .wr-btn.primary:hover:not(:disabled),
 .btn.primary:hover:not(:disabled) {
-  background: var(--brass-hi);
-  border-color: #f1d77e;
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 .wr-btn.danger,
 .btn.danger {
@@ -293,28 +306,37 @@ canvas.minimap {
   height: 34px;
   padding: 0;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--dim);
   cursor: pointer;
   transition: background var(--fast), color var(--fast);
 }
 .sq:hover {
-  background: var(--metal-3);
+  background: var(--panel-3, rgba(255, 255, 255, 0.09));
   color: var(--text);
+}
+/* Pixel Clean: hotkeys never show in the HUD. Every action keeps its labelled button. */
+.qb-k,
+.bm-c-k,
+.rp-tab-k,
+.qb-build .kc,
+.cmdbar kbd,
+.modechip kbd,
+.cb-build kbd {
+  display: none !important;
 }
 .sq:active {
   background: var(--metal);
 }
 .sq.on {
   color: var(--brass-hi);
-  background: rgba(201, 162, 39, 0.12);
+  background: rgb(var(--accent-rgb) / 0.12);
   box-shadow: inset 0 -2px 0 var(--brass);
 }
 .sq.txt {
   width: 32px;
   font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.04em;
 }
 .sq.small {
   width: 26px;
@@ -327,7 +349,7 @@ canvas.minimap {
 /* segmented control */
 .segc {
   display: flex;
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   border-radius: var(--r);
   overflow: hidden;
   margin: var(--s2) 0;
@@ -340,8 +362,6 @@ canvas.minimap {
   background: var(--metal-2);
   color: var(--dim);
   font: 600 13px/1 var(--f-label);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   cursor: pointer;
   transition: background var(--fast), color var(--fast);
 }
@@ -372,14 +392,14 @@ canvas.minimap {
 .range::-webkit-slider-runnable-track {
   height: 4px;
   background: var(--metal-4);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: 1px;
 }
 .wr-range::-moz-range-track,
 .range::-moz-range-track {
   height: 4px;
   background: var(--metal-4);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
 }
 .wr-range::-webkit-slider-thumb,
 .range::-webkit-slider-thumb {
@@ -513,8 +533,6 @@ canvas.minimap {
 }
 .cb-lab {
   font: 600 11px/1 var(--f-label);
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
   color: var(--faint);
 }
 .cb-read {
@@ -524,9 +542,8 @@ canvas.minimap {
   white-space: nowrap;
 }
 .cb-big {
-  font: 600 21px/1 var(--f-ui);
+  font: 400 22px/1 var(--f-pixel);
   color: var(--text);
-  letter-spacing: -0.01em;
 }
 .cb-big.gold {
   color: var(--brass-hi);
@@ -534,7 +551,7 @@ canvas.minimap {
 .cb-cap,
 .cb-rate,
 .cb-sub {
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1;
   color: var(--dim);
 }
@@ -542,7 +559,7 @@ canvas.minimap {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  font: 600 11.5px/1 var(--f-ui);
+  font: 600 12px/1 var(--f-ui);
 }
 .cb-trend.good {
   color: var(--olive);
@@ -618,7 +635,7 @@ canvas.minimap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--r);
   background: var(--metal-2);
   color: var(--text);
@@ -648,7 +665,7 @@ canvas.minimap {
   height: 18px;
   margin-left: 2px;
   padding: 0 4px;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: 9px;
   background: transparent;
   color: var(--faint);
@@ -664,7 +681,7 @@ canvas.minimap {
 .res:hover,
 .res:focus-visible {
   color: var(--text);
-  border-color: var(--rule-hi);
+  border-color: var(--edge-hi);
 }
 .res-pop {
   position: absolute;
@@ -675,7 +692,7 @@ canvas.minimap {
   gap: 6px;
   padding: 8px 10px;
   background: var(--metal-a);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--r);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
   white-space: nowrap;
@@ -699,7 +716,7 @@ canvas.minimap {
 }
 .chip-t {
   color: var(--dim);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 /* build: four category icons, icon-only buttons, the strikes row */
 .cb-build {
@@ -731,7 +748,7 @@ canvas.minimap {
 }
 .tab.on {
   color: var(--brass-hi);
-  background: rgba(201, 162, 39, 0.16);
+  background: rgb(var(--accent-rgb) / 0.16);
 }
 .bbar {
   display: flex;
@@ -763,7 +780,7 @@ canvas.minimap {
 }
 .bb.on {
   border-color: var(--brass);
-  background: rgba(201, 162, 39, 0.16);
+  background: rgb(var(--accent-rgb) / 0.16);
   color: var(--brass-hi);
 }
 .bb.disabled {
@@ -797,7 +814,7 @@ canvas.minimap {
 }
 .bb.locked {
   background: transparent;
-  border: 1px dashed var(--rule);
+  border: 1px dashed var(--rule-hi);
 }
 .bb.locked .bb-img {
   opacity: 0.35;
@@ -823,7 +840,7 @@ canvas.minimap {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--r);
   background: var(--metal-2);
   color: var(--text);
@@ -910,7 +927,7 @@ canvas.minimap {
 /* aiming with it */
 .sk.on {
   border-color: var(--brass);
-  background: rgba(201, 162, 39, 0.16);
+  background: rgb(var(--accent-rgb) / 0.16);
 }
 .sk-flash {
   animation: sk-flash 0.9s ease-out;
@@ -938,17 +955,15 @@ canvas.minimap {
   max-width: min(980px, calc(100vw - 24px));
   height: 28px;
   padding: 0 2px 0 0;
-  border-left: 2px solid var(--steel);
+  --tone: var(--steel);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   animation: rise var(--fast) ease-out;
 }
 .advisor.tut {
-  border-left-color: var(--brass);
+  --tone: var(--brass);
 }
 .adv-tag {
-  font: 600 10.5px/1 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font: 600 11px/1 var(--f-label);
   color: var(--steel);
   padding-left: 8px;
   white-space: nowrap;
@@ -964,7 +979,7 @@ canvas.minimap {
 .adv-text {
   min-width: 0;
   color: var(--text);
-  font-size: 12.5px;
+  font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -973,7 +988,7 @@ canvas.minimap {
 .advisor .wr-btn.mini {
   min-height: 22px;
   padding: 0 7px;
-  font-size: 11.5px;
+  font-size: 12px;
 }
 .advisor.mini:not(:hover):not(:focus-within) {
   padding-right: 8px;
@@ -1031,16 +1046,14 @@ canvas.minimap {
 .lb-sum {
   flex: 1;
   text-align: right;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .lb:not(.collapsed) .lb-sum {
-  font: 600 10.5px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font: 600 11px/1 var(--f-label);
   color: var(--faint);
 }
 .lb-chev {
@@ -1072,7 +1085,7 @@ canvas.minimap {
   cursor: pointer;
   text-align: left;
   color: var(--text);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .lb-row:hover {
   background: rgba(255, 255, 255, 0.04);
@@ -1090,8 +1103,6 @@ canvas.minimap {
 .lb-row.ally .c-name::after {
   content: ' ally';
   font: 600 10px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--olive);
 }
 .lb-row.traitor .c-name {
@@ -1128,7 +1139,6 @@ canvas.minimap {
   white-space: nowrap;
   /* condensed like the map labels: full nation names fit the small card */
   font: 500 14px/1 var(--f-label);
-  letter-spacing: 0.01em;
 }
 .sw {
   display: inline-block;
@@ -1154,9 +1164,7 @@ canvas.minimap {
   border: 0;
   background: none;
   color: var(--faint);
-  font: 600 10.5px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font: 600 11px/1 var(--f-label);
   cursor: pointer;
 }
 .lb-more:hover {
@@ -1164,10 +1172,13 @@ canvas.minimap {
 }
 
 /* ---------------------------------------------------------------- nation card */
+/* Who they are and where you stand, top to bottom: the name, the relation as a small word chip in its semantic colour
+   (ally green, at war red, asking you amber, otherwise neutral) beside their doctrine, two big figures with their
+   units, the troop mix, and the buttons. Cool steel glass like every HUD panel; separation is space. */
 .ncard {
   --c: #888;
-  padding: 10px 12px 12px;
-  border-left: 3px solid var(--c);
+  padding: 12px 12px 12px 14px;
+  --tone: var(--c);
   animation: slide-l var(--fast) ease-out;
 }
 @keyframes slide-l {
@@ -1180,80 +1191,114 @@ canvas.minimap {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  gap: 8px;
 }
 .nc-titles {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
   min-width: 0;
 }
 .nc-name {
-  font: 600 20px/1.05 var(--f-label);
-  letter-spacing: 0.02em;
+  font: 600 20px/1.1 var(--f-label);
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .nc-rel {
-  font: 600 11px/1.2 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  flex: none;
+  align-self: flex-start;
+  padding: 0 6px;
+  border-radius: var(--r-xs);
+  background: rgba(255, 255, 255, 0.08);
+  font: 600 11px/18px var(--f-label);
   color: var(--dim);
+  white-space: nowrap;
+}
+.nc-rel:empty {
+  display: none;
+}
+.nc-rel.me {
+  color: var(--text);
 }
 .nc-rel.ally {
-  color: var(--olive);
+  background: rgb(116 195 101 / 0.16);
+  color: var(--good);
 }
 .nc-rel.war,
 .nc-rel.traitor {
-  color: var(--signal);
+  background: rgb(242 84 61 / 0.16);
+  color: #f58a77;
 }
 .nc-rel.req {
-  color: var(--brass-hi);
+  background: rgb(var(--accent-rgb) / 0.16);
+  color: var(--accent-hi);
 }
 .nc-stats {
   display: flex;
-  gap: var(--s4);
-  margin: var(--s2) 0 6px;
+  gap: var(--s5);
+  margin: 12px 0 8px;
 }
 .nc-stat {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 .nc-k {
-  font: 600 10.5px/1.2 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--faint);
+  font: 500 12px/1.2 var(--f-label);
+  color: var(--dim);
 }
+.nc-vrow {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+/* the card's two big figures in the pixel face, as the HUD's big numbers */
 .nc-v {
-  font: 600 18px/1.1 var(--f-ui);
+  font: 400 26px/1 var(--f-pixel);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.nc-u {
+  font: 500 12px/1 var(--f-label);
+  color: var(--dim);
 }
 .nc-note {
   display: block;
-  margin-top: 4px;
-  font-size: 11.5px;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 16px;
   color: var(--dim);
 }
 .nc-acts {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
-  margin-top: 10px;
+  margin-top: 12px;
 }
 .nc-acts .wr-btn {
   justify-content: flex-start;
-  padding: 0 8px;
+  min-width: 0;
+  padding: 0 10px;
 }
 .mixbar {
   display: flex;
   height: 6px;
   background: var(--ink);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   overflow: hidden;
 }
 .mixbar > span {
   height: 100%;
   transition: width 0.3s;
+}
+.ncard .mixbar {
+  gap: 1px;
+  height: 6px;
+  border: 0;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 /* ---------------------------------------------------------------- cluster (top-right) */
@@ -1310,10 +1355,9 @@ canvas.minimap {
   display: flex;
   align-items: center;
   padding: 0 9px;
-  min-width: 56px;
+  min-width: 58px;
   justify-content: center;
-  font: 600 14px/1 var(--f-ui);
-  letter-spacing: 0.02em;
+  font: 400 18px/1 var(--f-pixel);
 }
 .clock.overtime {
   color: #f0b07a;
@@ -1390,8 +1434,6 @@ canvas.minimap {
 }
 .dr-title {
   font: 600 16px/1 var(--f-label);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
   color: var(--text);
 }
 .dr-body {
@@ -1414,18 +1456,18 @@ canvas.minimap {
   margin-bottom: 8px;
 }
 .big-v {
-  font: 600 26px/1.05 var(--f-ui);
-  color: var(--brass-hi);
+  font: 400 28px/1.05 var(--f-pixel);
+  color: var(--text);
 }
 .big-l {
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--dim);
 }
 .mix-legend {
   display: flex;
   justify-content: space-between;
   margin-top: 6px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--dim);
 }
 .mix-legend i,
@@ -1448,15 +1490,15 @@ canvas.minimap {
   margin: 6px 0 0;
   padding: 6px 8px;
   font-size: 12px;
-  border-left: 2px solid var(--olive);
+  --tone: var(--olive);
   background: rgba(152, 169, 87, 0.08);
 }
 .status.warn {
-  border-left-color: var(--brass);
+  --tone: var(--caution);
   background: rgba(201, 162, 39, 0.08);
 }
 .status.bad {
-  border-left-color: var(--signal);
+  --tone: var(--signal);
   background: rgba(212, 80, 58, 0.1);
 }
 .slider-row {
@@ -1470,7 +1512,7 @@ canvas.minimap {
   grid-template-columns: 10px 64px 1fr 64px;
 }
 .sl {
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .sv {
   text-align: right;
@@ -1516,7 +1558,7 @@ canvas.minimap {
   flex: 1;
   display: flex;
   flex-direction: column;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--dim);
 }
 .arow-n {
@@ -1525,7 +1567,7 @@ canvas.minimap {
 .frow-n,
 .dmeta {
   flex: 1;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--dim);
 }
 .pname {
@@ -1573,7 +1615,7 @@ canvas.minimap {
   height: 4px;
   margin: 6px 0 4px;
   background: var(--ink);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
 }
 .art-bar > span {
   display: block;
@@ -1588,7 +1630,7 @@ canvas.minimap {
   height: 4px;
   margin: 6px 0;
   background: var(--ink);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
 }
 .pbar > span {
   display: block;
@@ -1657,9 +1699,7 @@ canvas.minimap {
 }
 .rt-tier {
   grid-row: 1;
-  font: 600 10.5px/16px var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font: 600 11px/16px var(--f-label);
   color: var(--faint);
 }
 .rt-lines {
@@ -1709,7 +1749,7 @@ canvas.minimap {
   gap: 8px;
   min-height: 54px;
   padding: 6px 8px;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--r);
   background: var(--metal-2);
   color: var(--text);
@@ -1756,7 +1796,6 @@ canvas.minimap {
 }
 .rt-n {
   font: 600 14px/1.1 var(--f-label);
-  letter-spacing: 0.03em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1767,7 +1806,7 @@ canvas.minimap {
   color: var(--dim);
 }
 .rt-l {
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.25;
   color: var(--dim);
   display: -webkit-box;
@@ -1842,13 +1881,12 @@ canvas.minimap {
   min-height: 52px;
   margin-top: 8px;
   padding: 7px 10px;
-  border-left: 2px solid var(--brass-lo);
+  --tone: var(--brass-lo);
   background: rgba(255, 255, 255, 0.03);
   font-size: 12px;
 }
 .rt-foot-t {
-  font: 600 13.5px/1.2 var(--f-label);
-  letter-spacing: 0.04em;
+  font: 600 14px/1.2 var(--f-label);
   color: var(--text);
 }
 .rt-foot-d {
@@ -1863,31 +1901,34 @@ canvas.minimap {
   display: none;
 }
 
-/* doctrine picker: seven cards in a grid (picture, name, one line, three levels), the chosen one in its accent
-   colour; "Suits you" in brass with the reason; the footer holds the selected card's price and its button */
+/* doctrine picker: seven cards and a "How it works" cell in a grid, then the selected card's details and its button.
+   The research panel's card language (hud/researchPanel.css) in the HUD's amber: a card is a fill, never a coloured
+   stripe. The doctrine's own colour is only its picture, its level marks and the edge of the one you hold. "Suits you"
+   is an amber flag (the suggestion, as research's "Next"), the card you are reading has the light ring, and Choose /
+   Switch is the one amber button. Opaque like the research panel: cards over the live map read as clutter. */
 .drawer[data-page='doctrine'] {
   width: min(1000px, calc((100vw - 24px) / var(--ui, 1)));
+  background-color: var(--metal);
 }
 .doc-head {
-  padding: 2px 2px 10px;
+  padding: 0 2px 6px;
 }
 .doc-head-t {
-  font: 600 17px/1.15 var(--f-label);
-  letter-spacing: 0.03em;
+  font: 600 17px/1.2 var(--f-label);
   color: var(--text);
 }
 .doc-head-l {
-  margin-top: 2px;
-  font-size: 12px;
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 18px;
   color: var(--dim);
-}
-.doc-head.locked .doc-head-t {
-  color: var(--brass-hi);
 }
 .doc-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 10px;
+  /* room for the "Suits you" flags on the top row */
+  padding-top: 8px;
 }
 @media (max-width: 860px) {
   .doc-grid {
@@ -1898,17 +1939,21 @@ canvas.minimap {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 9px 10px;
-  border: 1px dashed var(--rule);
+  padding: 10px 12px;
   border-radius: var(--r);
+  background: rgba(255, 255, 255, 0.035);
 }
-.doc-how .wr-sec {
+.page .doc-how .wr-sec {
   margin: 0 0 2px;
+  padding: 0;
+  border: 0;
+  font: 600 14px/1.2 var(--f-label);
+  color: var(--text);
 }
 .doc-how-l {
   margin: 0;
-  font-size: 11.5px;
-  line-height: 1.3;
+  font-size: 12px;
+  line-height: 16px;
   color: var(--dim);
 }
 .doc-card {
@@ -1917,11 +1962,10 @@ canvas.minimap {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
-  padding: 8px 9px 9px;
-  border: 1px solid var(--rule);
-  border-top: 2px solid color-mix(in srgb, var(--dc) 55%, var(--rule));
+  padding: 10px 12px 12px;
+  border: 1px solid transparent;
   border-radius: var(--r);
   background: var(--metal-2);
   color: var(--text);
@@ -1934,26 +1978,30 @@ canvas.minimap {
   background: var(--metal-3);
 }
 .doc-card:focus-visible {
-  outline: 2px solid var(--brass-hi);
-  outline-offset: 1px;
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
 }
-.doc-card.sel {
-  border-color: var(--brass);
-  border-top-color: var(--dc);
-  box-shadow: 0 0 0 1px var(--brass);
+/* suits you: the available card's fill and hairline, plus the flag */
+.doc-card.rec {
+  border-color: rgba(255, 255, 255, 0.16);
   background: var(--metal-3);
 }
+/* the one you hold: a tint and an edge in its own colour */
 .doc-card.cur {
-  border-color: var(--dc);
-  background: color-mix(in srgb, var(--dc) 13%, var(--metal-2));
+  border-color: color-mix(in srgb, var(--dc) 70%, transparent);
+  background: color-mix(in srgb, var(--dc) 12%, var(--metal-2));
 }
-.doc-card.cur.sel {
-  box-shadow: 0 0 0 1px var(--dc);
+/* the one you are reading below */
+.doc-card.sel {
+  box-shadow: 0 0 0 2px var(--text);
+}
+.doc-card.sel:not(.cur) {
+  background: var(--metal-3);
 }
 .doc-top {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
 }
 .doc-ic {
   position: relative;
@@ -1961,10 +2009,9 @@ canvas.minimap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
-  background: var(--ink);
   color: var(--dc);
   line-height: 0;
 }
@@ -1982,61 +2029,70 @@ canvas.minimap {
 .doc-n {
   flex: 1;
   min-width: 0;
-  font: 600 15px/1.1 var(--f-label);
-  letter-spacing: 0.03em;
+  font: 600 15px/1.2 var(--f-label);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .doc-s {
   flex: none;
-  font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--dc);
+  font: 600 12px/1 var(--f-label);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
 }
+/* "Suits you": a neutral raised flag with a check (amber is kept for the one Choose button of the view) */
 .doc-tag {
-  align-self: flex-start;
-  padding: 2px 6px;
-  border-radius: 1px;
-  background: rgba(201, 162, 39, 0.16);
-  color: var(--brass-hi);
-  font: 600 10.5px/1.2 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  position: absolute;
+  top: -9px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px 0 5px;
+  border-radius: var(--r-xs);
+  background: var(--metal-3);
+  box-shadow: 0 0 0 1px var(--rule-hi) inset;
+  color: var(--text);
+  font: 600 10px/16px var(--f-label);
+  white-space: nowrap;
+}
+.doc-tag-ic {
+  line-height: 0;
+  color: var(--good);
 }
 .doc-short {
-  font-size: 12px;
-  line-height: 1.3;
+  font-size: 13px;
+  line-height: 17px;
   color: var(--text);
 }
 .doc-lv {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding-top: 5px;
+  gap: 4px;
+  margin-top: 2px;
+  padding-top: 8px;
   border-top: 1px solid var(--rule);
 }
 .doc-lvr {
   display: flex;
   align-items: baseline;
-  gap: 6px;
-  font-size: 11.5px;
-  line-height: 1.25;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 16px;
   color: var(--dim);
 }
 .doc-lvn {
   flex: none;
-  width: 14px;
-  height: 14px;
-  border: 1px solid var(--rule-hi);
-  border-radius: 1px;
-  font: 600 10px/12px var(--f-ui);
+  width: 16px;
+  height: 16px;
+  border-radius: var(--r-xs);
+  background: rgba(255, 255, 255, 0.08);
+  font: 600 10px/16px var(--f-ui);
   font-style: normal;
   text-align: center;
   color: var(--dim);
 }
-/* the current doctrine: levels reached bright, the one you are on outlined in its colour, the next ones dim */
+/* the one you hold: levels reached bright with a mark in its colour, the one you are on bold, the next ones faint */
 .doc-card.cur .doc-lvr {
   color: var(--faint);
 }
@@ -2044,63 +2100,82 @@ canvas.minimap {
   color: var(--text);
 }
 .doc-card.cur .doc-lvr.got .doc-lvn {
-  border-color: var(--dc);
   background: var(--dc);
   color: var(--ink);
 }
 .doc-card.cur .doc-lvr.now .doc-lvt {
   font-weight: 600;
 }
+/* why it suits you, under the levels: a quiet line, not a second accent */
 .doc-why {
-  font-size: 11.5px;
-  line-height: 1.25;
-  color: var(--brass-hi);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dim);
+}
+/* a card picked from the keyboard or by a click scrolls fully clear of the sticky footer */
+.doc-card {
+  scroll-margin-bottom: 120px;
+}
+.drawer[data-page='doctrine'] .dr-body {
+  scroll-padding-bottom: 120px;
 }
 .doc-why:empty {
   display: none;
 }
-.doc-card.rec {
-  border-color: var(--brass-lo);
-}
-.doc-card.rec.sel {
-  border-color: var(--brass);
-}
+/* the selected card in full and its button, kept in view while the grid scrolls */
 .doc-foot {
   position: sticky;
   bottom: -16px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: 10px;
-  padding: 8px 10px;
-  border-left: 2px solid var(--brass-lo);
+  gap: 16px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: var(--r);
   background: var(--metal-2);
-  font-size: 12px;
+  /* the cards scroll under it: a soft fade above its edge says so, instead of a hard cut through a line of text */
+  box-shadow: 0 -16px 18px -6px var(--metal);
+  font-size: 13px;
+  line-height: 18px;
 }
 .doc-foot-txt {
   flex: 1;
   min-width: 0;
 }
 .doc-foot-t {
-  font: 600 14px/1.2 var(--f-label);
-  letter-spacing: 0.04em;
+  font: 600 15px/1.2 var(--f-label);
+  color: var(--text);
 }
 .doc-foot-d {
-  margin-top: 2px;
+  margin-top: 3px;
   color: var(--dim);
 }
 .doc-foot-n {
-  margin-top: 2px;
-  color: var(--brass-hi);
+  margin-top: 3px;
+  color: var(--dim);
 }
 .doc-foot-n.bad {
-  color: #e59a7a;
+  color: #e2785f;
 }
 .doc-foot-n:empty {
   display: none;
 }
 .doc-go {
   flex: none;
+  min-width: 180px;
+}
+@media (max-width: 640px) {
+  .doc-foot {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .doc-go {
+    flex: 1 1 100%;
+  }
+  /* one card per row: a narrow column of long level lines reads badly */
+  .doc-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* top-right doctrine button: its picture in the doctrine colour, three level pips under it */
@@ -2144,23 +2219,23 @@ canvas.minimap {
 .nc-sub {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px 8px;
   min-width: 0;
 }
+/* their doctrine in words ("Merchant, level 1"), its picture in the doctrine's colour */
 .nc-doc {
   --dc: var(--dim);
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  font: 600 11px/1.2 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--dc);
+  gap: 4px;
+  font: 500 12px/18px var(--f-label);
+  color: var(--dim);
   white-space: nowrap;
-  cursor: help;
 }
 .nc-doc-ic {
   line-height: 0;
+  color: var(--dc);
 }
 
 /* forces drawer: groups of rows, each a picture, a name (finds it), one status line and its orders */
@@ -2213,7 +2288,6 @@ canvas.minimap {
   border: 0;
   background: none;
   font: 600 14px/1.2 var(--f-label);
-  letter-spacing: 0.04em;
   color: var(--text);
   text-align: left;
 }
@@ -2271,7 +2345,7 @@ button.fr-t:hover {
   align-items: stretch;
   min-width: 0;
   min-height: 30px;
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   border-radius: var(--r);
   background: var(--metal-2);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 1px 0 rgba(0, 0, 0, 0.5);
@@ -2296,7 +2370,6 @@ button.fr-t:hover {
   padding: 0 10px;
   text-align: left;
   font: 600 14px/28px var(--f-label);
-  letter-spacing: 0.04em;
 }
 .ug-pick:hover,
 .ug-find:hover {
@@ -2338,7 +2411,6 @@ button.fr-t:hover {
   background: var(--ink);
   color: var(--text);
   font: 600 14px/24px var(--f-label);
-  letter-spacing: 0.04em;
   user-select: text;
 }
 .ug-edit:focus-visible {
@@ -2404,9 +2476,8 @@ button.fr-t:hover {
   /* clicks go through to the map (a spearhead or move target can sit under the card); only the X takes them */
   pointer-events: none;
   background-color: var(--metal-a);
-  background-image: var(--grain);
-  border: 1px solid var(--rule);
-  border-left: 2px solid #a0dcff;
+  border: 1px solid var(--edge);
+  --tone: #a0dcff;
   border-radius: var(--r);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
   font-size: 12px;
@@ -2431,7 +2502,6 @@ button.fr-t:hover {
 }
 .uc-t {
   font: 600 14px/1.15 var(--f-label);
-  letter-spacing: 0.04em;
 }
 .uc-s {
   font-size: 11px;
@@ -2453,7 +2523,7 @@ button.fr-t:hover {
 }
 .uc-a {
   margin-top: 3px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text);
 }
 .uc-r {
@@ -2517,7 +2587,7 @@ button.ev:hover {
   color: rgba(16, 18, 20, 0.62);
 }
 .lg-sw.plain {
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   background: var(--ink);
   color: var(--text);
 }
@@ -2530,7 +2600,6 @@ button.ev:hover {
 }
 .lg-t b {
   font: 600 14px/1.2 var(--f-label);
-  letter-spacing: 0.04em;
   color: var(--text);
 }
 .lg-t .dim {
@@ -2564,7 +2633,8 @@ button.ev:hover {
   color: #f6e7a6;
 }
 .lg-sw.m-heart {
-  background: radial-gradient(circle at 70% 70%, rgba(227, 192, 78, 0.28) 0 45%, transparent 46%), #6f8f4e;
+  /* the map's heartland edge (render/heartland.ts): a cobalt wash inside a light cobalt line */
+  background: radial-gradient(circle at 70% 70%, rgba(59, 105, 250, 0.3) 0 42%, rgba(176, 197, 250, 0.9) 43% 47%, transparent 48%), #6f8f4e;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
 }
 .mt-row.core .mt-ic {
@@ -2597,8 +2667,6 @@ button.ev:hover {
 }
 .tbl th {
   font: 600 11px/1.2 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .tbl td.b {
@@ -2619,7 +2687,7 @@ button.ev:hover {
 .bhead-ic {
   width: 52px;
   height: 52px;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   background: var(--ink);
   color: var(--brass-hi);
 }
@@ -2629,12 +2697,11 @@ button.ev:hover {
 }
 .bhead-t .big-v {
   font: 600 22px/1.1 var(--f-label);
-  letter-spacing: 0.04em;
   color: var(--text);
 }
 .desc {
   margin: 10px 0;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--dim);
 }
 .bacts {
@@ -2662,7 +2729,7 @@ button.ev:hover {
   max-width: 100%;
   min-height: 34px;
   padding: 3px 4px 3px 10px;
-  border-left: 3px solid var(--steel);
+  --tone: var(--steel);
   animation: drop var(--fast) ease-out;
   transition: opacity 0.16s, transform 0.16s;
 }
@@ -2671,13 +2738,13 @@ button.ev:hover {
   transform: translateY(-6px);
 }
 .toast.k-bad {
-  border-left-color: var(--signal);
+  --tone: var(--signal);
 }
 .toast.k-good {
-  border-left-color: var(--olive);
+  --tone: var(--olive);
 }
 .toast.k-warn {
-  border-left-color: var(--brass);
+  --tone: var(--brass);
 }
 .toast .ico {
   color: var(--brass-hi);
@@ -2710,7 +2777,7 @@ button.toast-t:hover {
   gap: 12px;
   padding: 4px 4px 4px 12px;
   min-height: 40px;
-  border-left: 3px solid var(--brass);
+  --tone: var(--brass);
 }
 .sb-text {
   flex: 1;
@@ -2719,11 +2786,9 @@ button.toast-t:hover {
 .modechip {
   min-height: 32px;
   font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
 }
 .modechip.paused {
-  border-left-color: var(--steel);
+  --tone: var(--steel);
 }
 /* salvo size while a bomb or missile is aimed (hud/salvoPicker.ts) */
 .salvo {
@@ -2733,15 +2798,12 @@ button.toast-t:hover {
   padding-left: 10px;
   border-left: 1px solid var(--rule);
   text-transform: none;
-  letter-spacing: 0;
 }
 .salvo.hidden {
   display: none;
 }
 .salvo-l {
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--dim);
 }
 .salvo-n {
@@ -2788,8 +2850,6 @@ button.toast-t:hover {
 }
 .tip-h {
   font: 600 13px/1.2 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--brass-hi);
 }
 .tip-l {
@@ -2844,23 +2904,23 @@ button.toast-t:hover {
   font-size: 13px;
 }
 .mt-sub {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--dim);
 }
 .mt-row.warn .mt-main {
-  color: var(--brass-hi);
+  color: var(--caution);
 }
 .mt-row.bad .mt-main {
   color: #f0a597;
 }
 .mtip.build {
-  border-left: 3px solid var(--olive);
+  --tone: var(--olive);
 }
 .mtip.build.up {
-  border-left-color: var(--steel);
+  --tone: var(--steel);
 }
 .mtip.build.no {
-  border-left-color: var(--signal);
+  --tone: var(--signal);
 }
 .mtip.build .mt-row.head .mt-ic {
   color: var(--olive);
@@ -2878,7 +2938,7 @@ button.toast-t:hover {
   gap: 10px;
   padding: 4px 0 2px 28px;
   font-weight: 600;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--brass-hi);
 }
 .mt-cost .bad {
@@ -2891,13 +2951,13 @@ button.toast-t:hover {
 .mtip.price {
   width: auto;
   padding: 5px 10px;
-  border-left: 3px solid var(--olive);
+  --tone: var(--olive);
 }
 .mtip.price.up {
-  border-left-color: var(--steel);
+  --tone: var(--steel);
 }
 .mtip.price.no {
-  border-left-color: var(--signal);
+  --tone: var(--signal);
 }
 .mt-price {
   display: flex;
@@ -2938,7 +2998,7 @@ button.toast-t:hover {
 }
 .mt-warn {
   padding: 2px 0 2px 28px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: #f0b27a;
 }
 .mt-ic img {
@@ -2951,8 +3011,8 @@ button.toast-t:hover {
   top: 0;
   z-index: 41;
   padding: 3px 8px;
-  border: 1px solid var(--rule);
-  border-left: 3px solid var(--dim);
+  border: 1px solid var(--edge);
+  --tone: var(--dim);
   border-radius: var(--r);
   background: var(--metal-a);
   font: 600 12px/1.3 var(--f-ui);
@@ -2960,15 +3020,15 @@ button.toast-t:hover {
   pointer-events: none;
 }
 .odds.good {
-  border-left-color: var(--olive);
+  --tone: var(--olive);
   color: #d4e3a2;
 }
 .odds.ok {
-  border-left-color: var(--brass);
-  color: var(--brass-hi);
+  --tone: var(--caution);
+  color: var(--caution);
 }
 .odds.bad {
-  border-left-color: var(--signal);
+  --tone: var(--signal);
   color: #f6b0a2;
 }
 
@@ -3004,8 +3064,8 @@ button.toast-t:hover {
   left: 0;
   top: 0;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(13, 16, 19, 0.3) 0 30%, rgba(13, 16, 19, 0.78) 31% 100%);
-  border: 1px solid var(--rule-hi);
+  background: radial-gradient(circle, rgba(11, 15, 21, 0.3) 0 30%, rgba(11, 15, 21, 0.78) 31% 100%);
+  border: 1px solid var(--edge-hi);
   opacity: 0;
   transition: opacity var(--fast) ease-out;
 }
@@ -3024,7 +3084,7 @@ button.toast-t:hover {
   margin: -27px 0 0 -27px;
   padding: 0;
   border-radius: 50%;
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   background: var(--metal-2);
   color: var(--text);
   cursor: pointer;
@@ -3094,7 +3154,7 @@ button.toast-t:hover {
 }
 .rad-centre.primary:hover,
 .rad-centre.primary:focus-visible {
-  background: var(--brass-hi);
+  background: var(--accent-hover);
   color: var(--brass-ink);
 }
 .rad-ic {
@@ -3119,8 +3179,6 @@ button.toast-t:hover {
   left: 50%;
   transform: translateX(-50%);
   font: 600 12px/1.1 var(--f-label);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   white-space: nowrap;
   color: var(--text);
   text-shadow: 0 1px 2px rgba(4, 6, 12, 0.7), 0 0 6px rgba(4, 6, 12, 0.45);
@@ -3141,16 +3199,14 @@ button.toast-t:hover {
   white-space: nowrap;
   border-radius: var(--r);
   background: var(--metal-a);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   box-shadow: inset 3px 0 0 var(--c);
   font: 600 15px/1 var(--f-label);
-  letter-spacing: 0.06em;
   pointer-events: none;
 }
 .rad-tsub {
   color: var(--dim);
   font: 400 12px/1 var(--f-ui);
-  letter-spacing: 0;
 }
 .rad-caption {
   position: absolute;
@@ -3166,13 +3222,11 @@ button.toast-t:hover {
   text-align: center;
   border-radius: var(--r);
   background: var(--metal-a);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   pointer-events: none;
 }
 .rad-cap-l {
   font: 600 13px/1.2 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 .rad-cap-l,
 .rad-cap-h {
@@ -3229,42 +3283,53 @@ button.toast-t:hover {
 .modal-head h2,
 .menu-head h2 {
   font: 600 18px/1 var(--f-label);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
 }
 .modal-scroll {
   overflow-y: auto;
   padding: 6px 20px 20px;
 }
+/* The end of a game (hud/gameOver.ts, summary/summary.css): an opaque steel card (the live map and the HUD showing
+   through a chart and a table read as clutter), the verdict as the heading in the display face, the big numbers,
+   then the buttons on a hairline: leaving on the leading side, Continue playing and Play again (the one accent) on
+   the trailing side. The verdict is semantic, not the accent: Victory green --good #74c365 (7.7:1 on #121821),
+   Defeat the soft danger tint #f0a597 (8.6:1), a watcher's "Game over" plain --text. */
 .over-card {
-  width: 520px;
+  width: 560px;
   max-width: calc(100vw - 32px);
-  padding: 28px 32px;
+  padding: 24px 28px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  background-color: var(--metal-a);
-  background-image: var(--grain);
-  border: 1px solid var(--rule);
+  gap: 12px;
+  background-color: var(--metal);
+  border: 0;
+  border-radius: var(--r-lg);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 10px 30px rgba(0, 0, 0, 0.38);
 }
 .over-t {
-  font: 600 56px/1 var(--f-logo);
-  letter-spacing: 0.16em;
+  font: 400 56px/1 var(--f-logo);
+  color: var(--text);
   margin-right: -0.16em;
-  text-transform: uppercase;
 }
 .over-t.win {
-  color: var(--brass-hi);
+  color: var(--good);
 }
 .over-t.lose {
-  color: #e98d7b;
+  color: #f0a597;
 }
 .over-sub {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 8px;
+  margin: 0;
+  font-size: 14px;
   color: var(--dim);
+}
+.over-sub .sw {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
 }
 .over-big {
   display: grid;
@@ -3277,22 +3342,43 @@ button.toast-t:hover {
 .over-big > div {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 .stats {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 4px 16px;
-  margin: 8px 0;
-  font-size: 12.5px;
+  gap: 6px 16px;
+  margin: 4px 0;
+  font-size: 13px;
 }
 .stats .k {
   color: var(--dim);
 }
 .over-btns {
   display: flex;
+  align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  margin-top: 8px;
+  margin-top: 4px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rule);
+}
+.over-btns .over-menu {
+  order: 0;
+}
+.over-btns .over-look {
+  order: 1;
+  margin-inline-end: auto;
+}
+.over-btns .over-cont > * {
+  order: 2;
+}
+.over-btns .over-again {
+  order: 3;
+  min-width: 160px;
+}
+.over-look .ico {
+  color: var(--dim);
 }
 
 /* how to play (shared with the menu): quick start, collapsible sections, search */
@@ -3319,7 +3405,7 @@ button.toast-t:hover {
   height: 32px;
   padding: 0 10px;
   background: var(--ink);
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   border-radius: var(--r);
   color: var(--text);
   font: 13px var(--f-ui);
@@ -3333,18 +3419,14 @@ button.toast-t:hover {
   min-width: 64px;
   text-align: right;
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .hw-quick {
   margin: 6px 0 14px;
 }
 .hw-qh {
-  font: 600 14px/1.2 var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--brass-hi);
+  font: 600 15px/1.2 var(--f-label);
+  color: var(--text);
   margin-bottom: 4px;
 }
 .hw-goal {
@@ -3372,7 +3454,7 @@ button.toast-t:hover {
   grid-template-columns: 20px 112px 1fr;
 }
 .hw-ico {
-  color: var(--brass-hi);
+  color: var(--dim);
   display: inline-flex;
   margin-top: 1px;
 }
@@ -3415,8 +3497,8 @@ button.toast-t:hover {
   align-self: center;
   width: 6px;
   height: 6px;
-  border-right: 2px solid var(--brass);
-  border-bottom: 2px solid var(--brass);
+  border-right: 2px solid var(--dim);
+  border-bottom: 2px solid var(--dim);
   transform: rotate(-45deg);
   transition: transform var(--fast);
 }
@@ -3424,7 +3506,7 @@ button.toast-t:hover {
   transform: rotate(45deg);
 }
 .hw-sec summary:hover .hw-h {
-  color: var(--brass-hi);
+  color: var(--text);
 }
 .hw-sec summary:focus-visible {
   outline: 2px solid var(--brass);
@@ -3432,8 +3514,6 @@ button.toast-t:hover {
 }
 .hw-h {
   font: 600 15px/1.2 var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
   color: var(--text);
 }
 .hw-hint {
@@ -3452,8 +3532,6 @@ button.toast-t:hover {
 }
 .hw-sub {
   font: 600 12px/1.2 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--brass);
   margin: 6px 0 6px;
 }
@@ -3462,7 +3540,7 @@ button.toast-t:hover {
   color: var(--dim);
 }
 mark.hw-hit {
-  background: rgba(227, 192, 78, 0.35);
+  background: rgb(var(--accent-rgb) / 0.35);
   color: var(--text);
   border-radius: 1px;
 }
@@ -3527,7 +3605,7 @@ mark.hw-hit {
   background:
     repeating-linear-gradient(0deg, rgba(201, 162, 39, 0.05) 0 1px, transparent 1px 64px),
     repeating-linear-gradient(90deg, rgba(201, 162, 39, 0.05) 0 1px, transparent 1px 64px),
-    radial-gradient(ellipse at center, rgba(13, 16, 19, 0.2) 0%, rgba(13, 16, 19, 0.85) 80%);
+    radial-gradient(ellipse at center, rgba(11, 15, 21, 0.2) 0%, rgba(11, 15, 21, 0.85) 80%);
 }
 .menu-card {
   padding: 28px 32px;
@@ -3568,13 +3646,11 @@ mark.hw-hit {
 }
 .form-label {
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--dim);
 }
 .seg {
   display: flex;
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   border-radius: var(--r);
   overflow: hidden;
 }
@@ -3602,7 +3678,7 @@ mark.hw-hit {
 .input {
   height: 32px;
   padding: 0 10px;
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   border-radius: var(--r);
   background: var(--ink);
   color: var(--text);
@@ -3626,8 +3702,9 @@ mark.hw-hit {
   cursor: pointer;
   padding: 0;
 }
+/* the picked colour: a light ring, like every other selection (the accent stays for the main action) */
 .swatch-btn.on {
-  box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--brass);
+  box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--sel-bg);
 }
 .icon-btn {
   width: 32px;
@@ -3647,53 +3724,78 @@ mark.hw-hit {
   transform: translateX(-50%);
   padding: 8px 16px;
   font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   background: var(--metal-a);
-  border: 1px solid var(--rule);
-  border-left: 3px solid var(--brass);
+  border: 1px solid var(--edge);
+  --tone: var(--brass);
 }
 
 .btn.mini-btn {
   min-height: 26px;
   padding: 0 9px;
-  font-size: 11.5px;
+  font-size: 12px;
 }
 .btn.mini-btn.on {
   border-color: var(--brass);
   color: var(--brass-hi);
 }
 .switch {
-  position: relative;
-  width: 42px;
-  height: 22px;
-  padding: 0;
-  border: 1px solid var(--rule-hi);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 2px 0 4px;
+  border: 0;
   border-radius: var(--r);
-  background: var(--ink);
+  background: none;
+  color: var(--dim);
+  font: 600 12px/1 var(--f-label);
   cursor: pointer;
+}
+.switch-w {
+  min-width: 22px;
+  text-align: right;
+}
+.switch-track {
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  background: var(--metal-3);
+  box-shadow: 0 0 0 1px var(--rule-hi) inset;
 }
 .switch-knob {
   position: absolute;
   top: 3px;
   left: 3px;
-  width: 14px;
-  height: 14px;
-  border-radius: 1px;
-  background: var(--faint);
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--dim);
 }
+.switch:hover .switch-track {
+  background: var(--metal-4);
+}
+/* on: the light selection fill with a dark knob (amber is kept for Start game) */
 .switch.on {
-  background: var(--brass-lo);
-  border-color: var(--brass);
+  color: var(--text);
+}
+.switch.on .switch-track {
+  background: var(--sel-bg);
+  box-shadow: none;
 }
 .switch.on .switch-knob {
-  transform: translateX(20px);
-  background: var(--brass-hi);
+  transform: translateX(18px);
+  background: var(--sel-ink);
 }
 @media (prefers-reduced-motion: no-preference) {
   .switch-knob {
     transition: transform var(--fast), background-color var(--fast);
   }
+}
+/* the auto-focused Start game: no ring until the keyboard is used (the ring then shows as usual) */
+.btn.primary[data-quiet]:focus-visible {
+  outline: none;
 }
 .mod-chips {
   position: absolute;
@@ -3712,11 +3814,9 @@ mark.hw-hit {
   height: 22px;
   padding: 0 8px;
   background: var(--metal-a);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--r);
-  font: 600 11.5px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font: 600 12px/1 var(--f-label);
   color: var(--dim);
   white-space: nowrap;
 }
@@ -3747,331 +3847,8 @@ mark.hw-hit {
   }
 }
 
-/* ---------------------------------------------------------------- multiplayer: lobby list, lobby, online HUD */
-.menu-card.mp {
-  width: min(1040px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
-  padding: 18px 24px 16px;
-}
-.menu-card.mp .menu-head .net-status {
-  margin-inline-start: auto;
-}
-.net-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font: 600 12.5px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--dim);
-  white-space: nowrap;
-}
-.net-status::before {
-  content: '';
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--faint);
-}
-.net-status.ok::before {
-  background: var(--olive);
-  box-shadow: 0 0 6px rgba(152, 169, 87, 0.7);
-}
-.net-status.warn::before {
-  background: var(--brass);
-}
-.net-status.bad {
-  color: #f0a597;
-}
-.net-status.bad::before {
-  background: var(--signal);
-}
-.mp-body {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-  gap: 32px;
-}
-.mp-col {
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.mp-note {
-  color: var(--dim);
-  font-size: 13px;
-  line-height: 1.45;
-  margin: 0;
-}
-.lob-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  overflow-y: auto;
-  min-height: 120px;
-}
-.lob-empty {
-  padding: 18px;
-  border: 1px dashed var(--rule);
-  color: var(--faint);
-  text-align: center;
-}
-.lob-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 10px 12px;
-  background: var(--ink);
-  border: 1px solid var(--rule);
-  border-inline-start: 3px solid var(--steel);
-  border-radius: var(--r);
-}
-.lob-row.kind-teams {
-  border-inline-start-color: var(--olive);
-}
-.lob-row.kind-special {
-  border-inline-start-color: var(--brass);
-}
-.lob-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.lob-head {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  min-width: 0;
-}
-.lob-kind {
-  font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--steel);
-}
-.lob-kind.teams {
-  color: var(--olive);
-}
-.lob-kind.special {
-  color: var(--brass-hi);
-}
-.lob-map {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.lob-meta {
-  display: flex;
-  gap: 14px;
-  font-size: 12.5px;
-  color: var(--dim);
-  font-variant-numeric: tabular-nums;
-}
-.lob-when[data-starts] {
-  color: var(--brass-hi);
-}
-.lob-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.lob-chips .mod-chip {
-  color: var(--brass-hi);
-  border-color: var(--brass-lo);
-}
-.lob-rules {
-  font-size: 12.5px;
-  color: var(--faint);
-}
-.mp-private .btn.big {
-  align-self: stretch;
-}
-.mp-or {
-  margin-top: 10px;
-}
-.mp-join {
-  display: flex;
-  gap: 6px;
-}
-.code-in {
-  flex: 1;
-  min-width: 0;
-  font: 600 18px/1 var(--f-label);
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
-  height: 40px;
-}
-.mp-join .btn {
-  min-height: 40px;
-}
-.mp-foot {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--rule);
-}
-.mp-you {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-.mp-you .input {
-  width: 150px;
-}
-.mp-you .palette {
-  flex-wrap: nowrap;
-  gap: 5px;
-}
-.mp-you .swatch-btn {
-  width: 20px;
-  height: 20px;
-}
-/* phone: the colours take their own line (twelve don't fit beside the name) */
-@media (max-width: 640px) {
-  .mp-you {
-    flex-wrap: wrap;
-  }
-  .mp-you .input {
-    flex: 1;
-    width: auto;
-  }
-  .mp-you .palette {
-    flex-basis: 100%;
-    flex-wrap: wrap;
-  }
-}
-.mp-msg {
-  color: var(--dim);
-  font-size: 13px;
-  text-align: end;
-}
-.mp-msg.bad {
-  color: #f0a597;
-}
-
-/* the lobby (layout: setupScreen.css) */
-.lobby-code {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.code-big {
-  font: 600 30px/1 var(--f-logo);
-  letter-spacing: 0.12em;
-  color: var(--brass-hi);
-  user-select: all;
-}
-.lobby-when {
-  font: 600 13px/1.3 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--dim);
-  font-variant-numeric: tabular-nums;
-}
-.seats-in {
-  height: 28px;
-  padding: 0 6px;
-}
-.lobby-players {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.lobby-players .lp {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 32px;
-  padding: 0 8px;
-  background: var(--ink);
-  border: 1px solid var(--rule);
-  border-radius: var(--r);
-}
-.lobby-players .lp.away {
-  opacity: 0.55;
-}
-.lobby-players .sw {
-  width: 12px;
-  height: 12px;
-  flex: none;
-  border-radius: 1px;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
-}
-.lp-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.lp-tag {
-  font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--faint);
-  padding: 3px 5px;
-  border: 1px solid var(--rule);
-  border-radius: var(--r);
-}
-.lp-tag.you {
-  color: var(--brass-hi);
-  border-color: var(--brass-lo);
-}
-.lp-team {
-  font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--olive);
-}
-.team-seg {
-  flex-wrap: wrap;
-}
-.team-seg .btn[style*='--team']::before {
-  content: '';
-  width: 9px;
-  height: 9px;
-  border-radius: 1px;
-  background: var(--team);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
-}
-.lobby-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: auto;
-  padding-top: 12px;
-}
-.lobby-foot {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--rule);
-}
-@media (max-width: 1100px) {
-  .mp-body {
-    grid-template-columns: minmax(0, 1fr);
-    overflow-y: auto;
-  }
-  .mp-foot {
-    flex-wrap: wrap;
-  }
-}
-
+/* ---------------------------------------------------------------- multiplayer: online HUD (the lobby list and the lobby
+   pages: lobby.css) */
 /* online HUD: no speed (the server's clock); pause only for the private lobby's host (cluster.ts); watchers have
    no action UI */
 .hud.online .cl-spd {
@@ -4099,11 +3876,9 @@ mark.hw-hit {
   height: 26px;
   padding: 0 10px;
   background: var(--metal-a);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--r);
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--dim);
   white-space: nowrap;
 }
@@ -4129,7 +3904,7 @@ mark.hw-hit {
   max-width: min(560px, calc(100vw - 32px));
   padding: 12px 16px;
   background: var(--metal-a);
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   border-inline-start: 3px solid var(--brass);
   border-radius: var(--r);
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
@@ -4269,27 +4044,24 @@ strong {
 }
 
 /* ---------------------------------------------------------------- allies, defence hints, online pause */
+/* One ally (nation card and Diplomacy drawer): a status line with a dot (green: will help, amber: busy or
+   unwilling), two labelled requests side by side, and the picker of whom to name, which opens under them as a quiet
+   inset: one row per nation, its colour and name, "at war" in red, a nation it would refuse dimmed with the reason. */
 .ally-help {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
-}
-.ally-row {
-  border-bottom: 1px solid rgba(57, 66, 75, 0.6);
-  padding-bottom: 8px;
-}
-.ally-row .drow {
-  border-bottom: 0;
+  gap: 8px;
+  margin-top: 10px;
 }
 .ally-row .ally-help {
-  margin-top: 0;
+  margin-top: 8px;
 }
 .ally-st {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11.5px;
+  font-size: 12px;
+  line-height: 16px;
   color: var(--dim);
 }
 .ally-dot {
@@ -4300,13 +4072,13 @@ strong {
   background: var(--faint);
 }
 .ally-st.yes {
-  color: #c9d79a;
+  color: var(--text);
 }
 .ally-st.yes .ally-dot {
-  background: var(--olive);
+  background: var(--good);
 }
 .ally-st.no .ally-dot {
-  background: var(--brass);
+  background: var(--caution);
 }
 .ally-btns {
   display: grid;
@@ -4317,6 +4089,11 @@ strong {
   justify-content: flex-start;
   min-width: 0;
 }
+.ally-btns .wr-btn.on {
+  background: var(--sel-bg);
+  border-color: var(--sel-bg);
+  color: var(--sel-ink);
+}
 /* the nation card is narrow: one button per row */
 .ncard .ally-btns {
   grid-template-columns: minmax(0, 1fr);
@@ -4325,21 +4102,20 @@ strong {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 6px 8px 8px;
-  border: 1px solid var(--rule);
-  border-left: 3px solid var(--brass);
-  background: rgba(13, 16, 19, 0.55);
+  padding: 8px;
+  border: 0;
+  border-radius: var(--r);
+  background: rgba(255, 255, 255, 0.04);
 }
 .ally-pick-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 0 0 4px 4px;
 }
 .ally-pick-h {
-  font: 600 11px/1.2 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--brass-hi);
+  font: 600 13px/1.2 var(--f-label);
+  color: var(--text);
 }
 .ally-pick-x {
   width: 26px;
@@ -4349,40 +4125,145 @@ strong {
 .ally-pick-l {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 .ally-target {
-  min-height: 28px;
-  padding: 0 4px;
-  border-radius: var(--r);
+  min-height: 32px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
 }
-.ally-target:hover,
+.ally-target:hover:not(:disabled),
 .ally-target:focus-visible {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--metal-3);
 }
 .ally-target .tag {
   margin-left: auto;
-  font: 600 10.5px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--signal);
+  font: 600 11px/1 var(--f-label);
+  color: #f58a77;
 }
 .ally-target.no {
   flex-wrap: wrap;
-  padding-top: 3px;
-  padding-bottom: 3px;
-  opacity: 0.7;
+  padding-top: 5px;
+  padding-bottom: 5px;
   cursor: not-allowed;
+}
+.ally-target.no,
+.ally-target.no .sw {
+  opacity: 0.75;
 }
 .ally-target .ally-why {
   flex-basis: 100%;
-  padding-left: 18px;
+  padding-left: 15px;
   text-align: left;
-  font: 500 11px/1.3 var(--f-ui);
+  font: 500 12px/16px var(--f-ui);
   color: var(--dim);
 }
 .ally-pick .note {
-  margin: 2px 0 0;
+  margin: 2px 4px 2px;
 }
+
+/* ---------------------------------------------------------------- diplomacy drawer */
+/* Plain section headings (no rule), then one row per nation as a quiet fill: its colour and name (opens its card),
+   one line on where you stand with a time and its unit ("0:25 left to answer"), and its buttons at the end. An offer
+   to you is the lighter, available fill with Accept as the drawer's one amber button; an ally's row holds its
+   status and requests under the name. */
+.dip .big-read {
+  margin-bottom: 4px;
+}
+.page .dip .wr-sec {
+  margin: 18px 0 8px;
+  padding: 0;
+  border: 0;
+  font: 600 14px/1.2 var(--f-label);
+  color: var(--text);
+}
+.dip .drow,
+.dip .ally-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--r);
+  background: var(--metal-2);
+}
+.dip .drow + .drow,
+.dip .drow + .ally-row,
+.dip .ally-row + .ally-row,
+.dip .ally-row + .drow {
+  margin-top: 6px;
+}
+.dip .ally-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding-bottom: 10px;
+}
+.dip .ally-row > .drow {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.dip .drow.offer {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: var(--metal-3);
+}
+.drow-t {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.dip .pname {
+  flex: none;
+  align-self: flex-start;
+  max-width: 100%;
+  font: 600 14px/1.2 var(--f-label);
+}
+.dip .pname:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.dip .pname .sw {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.dip .dmeta {
+  flex: none;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+.dip .drow.traitor .dmeta {
+  color: #f58a77;
+}
+.drow-acts {
+  flex: none;
+  display: flex;
+  gap: 6px;
+}
+/* buttons on a row's fill: one step lighter, so they still read as buttons */
+.dip .wr-btn:not(.primary) {
+  background: var(--metal-3);
+}
+.dip .wr-btn:not(.primary):not(.danger):hover:not(:disabled) {
+  background: var(--metal-4);
+}
+.dip .ally-btns .wr-btn.on {
+  background: var(--sel-bg);
+  color: var(--sel-ink);
+}
+.dip .note {
+  margin: 0 0 8px;
+  line-height: 16px;
+}
+
 .toast .toast-sw {
   width: 10px;
   height: 10px;
@@ -4407,14 +4288,11 @@ strong {
   gap: 12px;
   padding: 10px 10px 10px 16px;
   transform: translateX(-50%);
-  border: 1px solid var(--rule);
-  border-left: 3px solid var(--steel);
+  border: 1px solid var(--edge);
+  --tone: var(--steel);
   background-color: var(--metal-a);
-  background-image: var(--grain);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
   font: 600 16px/1.2 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   pointer-events: auto;
   animation: drop var(--fast) ease-out;
 }
@@ -4423,7 +4301,6 @@ strong {
 }
 .pause-banner .wr-btn {
   text-transform: none;
-  letter-spacing: 0;
 }
 
 /* ---------------------------------------------------------------- continue after the end (hud/gameOverContinue.ts) */
@@ -4434,17 +4311,13 @@ strong {
   align-self: center;
   color: var(--dim);
   font: 600 14px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 .cluster .vchip {
   align-items: center;
   gap: 6px;
   padding: 0 10px;
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--brass-hi);
+  color: var(--text);
   white-space: nowrap;
 }
 .cluster .vchip.hidden {
@@ -4466,7 +4339,7 @@ strong {
   gap: 8px;
   padding: 4px 8px;
   background: rgba(8, 10, 12, 0.88);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   font: 12px/1 ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
   color: var(--faint);
   z-index: 40;
@@ -4479,11 +4352,9 @@ strong {
   color: var(--text);
   caret-color: var(--brass-hi);
   font: inherit;
-  letter-spacing: 0.12em;
 }
 .adm-line .adm-wait {
   color: var(--faint);
-  letter-spacing: 0.1em;
 }
 .adm-line .adm-wait.hidden {
   display: none;
@@ -4497,10 +4368,9 @@ strong {
   max-width: calc(100vw - 24px);
   display: flex;
   flex-direction: column;
-  background-color: rgba(17, 20, 23, 0.97);
-  background-image: var(--grain);
-  border: 1px solid var(--rule-hi);
-  border-left: 3px solid var(--signal);
+  background-color: rgba(18, 24, 33, 0.97);
+  border: 1px solid var(--edge-hi);
+  --tone: var(--signal);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   z-index: 40;
   font-size: 12px;
@@ -4514,14 +4384,12 @@ strong {
 }
 .adm-title {
   font: 700 15px/1 var(--f-label);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
   color: var(--signal);
 }
 .adm-x {
   width: 26px;
   height: 26px;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   background: var(--metal-2);
   color: var(--text);
   font-size: 16px;
@@ -4544,8 +4412,6 @@ strong {
   min-width: 56px;
   color: var(--dim);
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
 }
 .adm-v {
   min-width: 64px;
@@ -4565,13 +4431,11 @@ strong {
   background: transparent;
   color: var(--dim);
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   cursor: pointer;
 }
 .adm-tab:hover {
   color: var(--text);
-  border-color: var(--rule);
+  border-color: var(--edge);
 }
 .adm-tab.on {
   color: var(--brass-ink);
@@ -4586,18 +4450,14 @@ strong {
   padding: 10px 12px 4px;
   color: var(--text);
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 .adm-btn {
   min-height: 26px;
   padding: 0 8px;
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   background: var(--metal-2);
   color: var(--text);
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   cursor: pointer;
 }
 .adm-btn:hover:not(:disabled) {
@@ -4622,7 +4482,7 @@ strong {
 .adm-sel {
   height: 26px;
   padding: 0 6px;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   background: var(--ink);
   color: var(--text);
   font: 12px/1 var(--f-ui);
@@ -4659,7 +4519,7 @@ strong {
   top: 56px;
   padding: 6px 8px;
   background: rgba(8, 10, 12, 0.85);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   color: #b8e0a0;
   font: 11px/1.35 ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
   white-space: pre;
@@ -4700,18 +4560,17 @@ strong {
   align-items: stretch;
   overflow: hidden;
   background-color: var(--metal-a);
-  background-image: var(--grain);
-  border: 1px solid var(--rule);
-  border-left: 3px solid var(--al);
+  border: 1px solid var(--edge);
+  --tone: var(--al);
   border-radius: var(--r);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
   animation: al-in 180ms ease-out;
   transition: opacity 0.2s, transform 0.2s;
 }
 .alert.t-warn {
-  --al: var(--brass);
+  --al: var(--caution);
   --al-tint: rgba(201, 162, 39, 0.16);
-  --al-ink: var(--brass-hi);
+  --al-ink: var(--caution);
 }
 .alert.t-info {
   --al: var(--steel);
@@ -4785,8 +4644,8 @@ strong {
   padding: 0 4px;
   min-width: 22px;
   text-align: center;
-  background: var(--brass);
-  color: var(--brass-ink);
+  background: var(--metal-4);
+  color: var(--text);
   font: 700 11px/16px var(--f-ui);
 }
 .alert.bump .al-n,
@@ -5051,9 +4910,8 @@ strong {
   gap: 14px;
   padding: 14px 48px 16px 16px;
   max-height: 40vh;
-  background-color: rgba(17, 20, 23, 0.97);
-  background-image: var(--grain);
-  border: 1px solid var(--rule-hi);
+  background-color: rgba(18, 24, 33, 0.97);
+  border: 1px solid var(--edge-hi);
   border-left: 5px solid var(--bc);
   border-radius: var(--r);
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -5076,7 +4934,7 @@ strong {
   --bc-tint: rgba(201, 162, 39, 0.18);
 }
 .bc-ann.s-celebration {
-  border-left-color: transparent;
+  --tone: transparent;
   border-image: linear-gradient(180deg, var(--brass-hi), var(--brass-lo)) 0 0 0 5;
   border-image-width: 0 0 0 5px;
 }
@@ -5123,8 +4981,6 @@ strong {
 .bc-note-title {
   color: var(--bc);
   font: 700 13px/1 var(--f-label);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
 }
 .s-info .bc-ann-title,
 .s-info .bc-note-title {
@@ -5144,7 +5000,6 @@ strong {
 }
 .bc-ann-title {
   font-size: 22px;
-  letter-spacing: 0.12em;
   line-height: 1.1;
 }
 .bc-ann-text {
@@ -5190,7 +5045,7 @@ strong {
 }
 .bc-x:hover {
   color: var(--text);
-  border-color: var(--rule);
+  border-color: var(--edge);
 }
 .bc-life {
   position: absolute;
@@ -5209,8 +5064,7 @@ strong {
   align-items: baseline;
   gap: 12px;
   padding: 8px 18px 9px;
-  background-color: rgba(17, 20, 23, 0.97);
-  background-image: var(--grain);
+  background-color: rgba(18, 24, 33, 0.97);
   border: 1px solid var(--brass-lo);
   border-bottom: 3px solid var(--brass);
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
@@ -5221,8 +5075,6 @@ strong {
   min-width: 0;
   color: var(--dim);
   font: 700 14px/1 var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5424,12 +5276,10 @@ strong {
   gap: 6px;
   max-width: 220px;
   padding: 5px 10px;
-  background: rgba(17, 20, 23, 0.95);
+  background: rgba(18, 24, 33, 0.95);
   border: 1px solid var(--brass);
   color: var(--brass-hi);
   font: 700 12px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   white-space: nowrap;
   pointer-events: auto;
   cursor: pointer;
@@ -5570,19 +5420,19 @@ strong {
   padding: 4px 12px 8px;
 }
 .adm-game {
-  border: 1px solid var(--rule);
-  border-left: 3px solid var(--rule-hi);
+  border: 1px solid var(--edge);
+  --tone: var(--rule-hi);
   background: rgba(8, 10, 12, 0.5);
 }
 .adm-game.running {
-  border-left-color: var(--olive);
+  --tone: var(--olive);
 }
 .adm-game.lobby {
-  border-left-color: var(--steel);
+  --tone: var(--steel);
 }
 .adm-game.sel {
   border-color: var(--brass-lo);
-  border-left-color: var(--brass);
+  --tone: var(--brass);
 }
 .adm-game-head {
   display: flex;
@@ -5594,19 +5444,15 @@ strong {
 .adm-code {
   color: var(--brass-hi);
   font: 700 15px/1 var(--f-label);
-  letter-spacing: 0.14em;
 }
 .adm-code.adm-nation {
-  letter-spacing: 0.04em;
   overflow-wrap: anywhere;
 }
 .adm-chip {
   padding: 2px 5px;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   color: var(--dim);
   font: 600 10px/1.1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 .adm-chip.on {
   color: var(--olive);
@@ -5659,7 +5505,7 @@ strong {
   width: 100%;
   min-height: 64px;
   padding: 6px;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   background: var(--ink);
   color: var(--text);
   font: 13px/1.35 var(--f-ui);
@@ -5706,4 +5552,516 @@ strong {
   .adm-sel {
     height: 32px;
   }
+}
+
+/* ---------------------------------------------------------------- Pixel Clean: icon plus word on primary controls */
+/* top-right cluster: each button is its icon over a plain word; no hairlines between groups, just space */
+.cluster {
+  gap: 2px;
+  padding: 3px;
+}
+.cluster > * + * {
+  border-left: 0;
+}
+.cluster .sq.lbl {
+  flex-direction: column;
+  gap: 3px;
+  width: auto;
+  min-width: 48px;
+  height: 44px;
+  padding: 0 6px;
+}
+.sq-w {
+  font: 500 11px/1 var(--f-ui);
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.sq-n {
+  font: 400 18px/1 var(--f-pixel);
+}
+.sq.lbl.on {
+  box-shadow: none;
+  background: rgb(var(--accent-rgb) / 0.12);
+}
+.cluster .clock {
+  min-width: 64px;
+  font: 400 24px/1 var(--f-pixel);
+  color: var(--text);
+}
+.cluster .sq-prog {
+  left: 12px;
+  right: 12px;
+  bottom: 2px;
+  max-width: none;
+}
+.cluster .sq-badge {
+  top: 2px;
+  right: 6px;
+  border-radius: 7px;
+}
+.cluster .sq-dot {
+  top: 6px;
+  right: 12px;
+  border-radius: 50%;
+}
+@media (max-width: 640px) {
+  .cluster {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 2px;
+  }
+  .cluster .sq.lbl {
+    flex: 0 1 auto;
+    min-width: 40px;
+    height: 40px;
+    padding: 0 3px;
+  }
+  .sq-w {
+    font-size: 10px;
+  }
+}
+
+/* command bar: quick build slots and strikes get a word under the picture */
+.qb-slot.bb,
+.sk {
+  flex-direction: column;
+  gap: 2px;
+  width: auto;
+  min-width: 46px;
+  height: 46px;
+  padding: 3px 5px 4px;
+  border: 0;
+}
+.qb-w,
+.sk-w {
+  font: 500 11px/1 var(--f-ui);
+  color: var(--dim);
+  white-space: nowrap;
+}
+.qb-slot.bb .bb-ic {
+  height: 22px;
+}
+.qb-slot.bb.on .qb-w,
+.sk.on .sk-w {
+  color: var(--accent-hi);
+}
+.qb-slot.bb.disabled .qb-w {
+  color: var(--faint);
+}
+.sk-ic {
+  width: 22px;
+  height: 22px;
+}
+.sk-ring {
+  top: 15px;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+}
+.sk-l {
+  bottom: 14px;
+}
+.sk.ready {
+  box-shadow: inset 0 0 0 1px rgb(var(--accent-rgb) / 0.45);
+}
+.sk.on {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.skbar {
+  border-left: 0;
+  padding-left: 10px;
+}
+
+/* ---------------------------------------------------------------- Pixel Clean: concept pass */
+/* Selection is a light neutral fill with dark text; amber is kept for the one primary action of each view (Play,
+   Start game, Build) and the current value. Measured: --sel-ink on --sel-bg 14.9:1. */
+:root {
+  --sel-bg: #e6e9ef;
+  --sel-ink: #15171c;
+}
+.seg .btn.on,
+.segc-b.on,
+.rp-tab.on {
+  background: var(--sel-bg);
+  color: var(--sel-ink);
+}
+.seg .btn.on:hover:not(:disabled),
+.segc-b.on:hover,
+.rp-tab.on:hover {
+  background: #f4f6f9;
+  color: var(--sel-ink);
+}
+.map-thumb.on {
+  border-color: var(--sel-bg);
+  box-shadow: 0 0 0 1px var(--sel-bg) inset;
+}
+.map-thumb:hover {
+  border-color: var(--rule-hi);
+}
+/* section names are plain headings, not accent labels */
+.setup-h {
+  font: 600 15px/1.2 var(--f-label);
+  color: var(--text);
+}
+/* the focus ring on the primary button is the light ring, so it never reads as a second amber border */
+.btn.primary:focus-visible,
+.wr-btn.primary:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+}
+/* no leading accent stripes: "you" in the standings and the suggested tutorial row are a quiet fill */
+.lb-row.me {
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: none;
+}
+.lb-row.me .c-name {
+  color: var(--text);
+  font-weight: 600;
+}
+.btn.menu-row.suggested {
+  box-shadow: none;
+  background: rgba(255, 255, 255, 0.05);
+}
+.menu-row-hint {
+  color: var(--dim);
+}
+.bc-ann,
+.bc-note {
+  border-left: 0;
+}
+/* strike countdown reads "30 s": white on the dark ring, the amber stays for "ready" */
+.sk-l {
+  font: 600 11px/1 var(--f-ui);
+  color: var(--text);
+}
+/* toasts and drawers start below the labelled top bar (44px buttons) instead of touching it */
+.hud-top {
+  top: calc(70px * var(--ui, 1));
+}
+.drawer {
+  top: calc(70px * var(--ui, 1));
+}
+/* the game rule chips sit just under the labelled top bar, not over its labels */
+.mod-chips {
+  top: calc(68px * var(--ui, 1));
+}
+/* phones: the labelled top bar takes two rows; the standings, the toasts and every drawer move down to clear both,
+   so Pause, Speed, Help and Menu stay in reach and no strip of cut-off icons shows above a drawer's title. A drawer
+   ends above the command bar (about 236 px tall with its margin), and above the guide's one-line form when it shows. */
+@media (max-width: 640px) {
+  .hud-left {
+    top: 108px;
+  }
+  /* the rule chips beside the standings (about 228 px wide), wrapping into rows above the toasts */
+  .mod-chips {
+    top: 108px;
+    max-width: calc(100vw - 24px - 236px);
+  }
+  .hud-top {
+    top: 214px;
+  }
+  .drawer,
+  .drawer[data-page] {
+    top: 108px;
+    max-height: calc(100% - 108px - 236px - 8px);
+  }
+  .hud:has(> .guide:not(.hidden):not(.covered):not(.tucked)) > .drawer {
+    max-height: calc(100% - 108px - 236px - 84px);
+  }
+}
+/* iron / oil / science stay in sight: icon plus amount, the list with what each is for opens on hover or focus */
+.cb-gold {
+  width: auto;
+  min-width: 122px;
+}
+.res {
+  height: 22px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--metal-2);
+  color: var(--dim);
+}
+.res-ics {
+  gap: 8px;
+}
+.res-i {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+.res-n {
+  font: 500 12px/1 var(--f-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.res-i.low .res-n {
+  color: var(--danger);
+}
+/* standings wide enough for "Atlas (you)" next to its share and army */
+@media (min-width: 641px) {
+  .hud-left {
+    width: 244px;
+  }
+}
+/* while the full-width research panel is open, messages sit in the gap above the command bar instead of on the
+   panel's header */
+@media (min-width: 641px) {
+  .hud:has(> aside.drawer[data-page='research']:not(.hidden)) > .hud-top {
+    top: auto;
+    bottom: calc(100px * var(--ui, 1));
+    flex-direction: column-reverse;
+    transform-origin: bottom center;
+  }
+}
+/* selected stance and filter buttons: the same light fill as every other selection */
+.wr-btn.on {
+  background: var(--sel-bg);
+  border-color: var(--sel-bg);
+  color: var(--sel-ink);
+}
+@media (max-width: 640px) {
+  .hud-left {
+    width: 228px;
+  }
+}
+
+/* ---------------------------------------------------------------- Hybrid: pixel icons in colour families */
+/* Icons are small pixel pictures (hud/pixelIcons.ts) at the size the line icons had, kept quiet: a muted hue per
+   family at about the lightness of --dim, slightly see-through like before. Measured at their 0.9 opacity on --metal
+   (#121821), every family is 6.5:1 or more, on --metal-3 (#27313f) 4.9:1 or more (icons need 3:1). One hue each, never the accent:
+   navy blue, armor olive, air sky, buildings and economy sage, research lavender, strikes rose. */
+:root {
+  --cat-navy: #85b4d6;
+  --cat-armor: #acb481;
+  --cat-air: #77bcbf;
+  --cat-econ: #87bc9f;
+  --cat-science: #b8a3d2;
+  --cat-strike: #d39cb0;
+}
+svg.pi {
+  display: block;
+  shape-rendering: crispEdges;
+}
+.pi-c {
+  opacity: 0.9;
+}
+.pi-navy {
+  color: var(--cat-navy);
+}
+.pi-armor {
+  color: var(--cat-armor);
+}
+.pi-air {
+  color: var(--cat-air);
+}
+.pi-econ {
+  color: var(--cat-econ);
+}
+.pi-science {
+  color: var(--cat-science);
+}
+.pi-strike {
+  color: var(--cat-strike);
+}
+/* the family colour gives way to the state: an open panel's icon lights up, a locked or empty one goes faint */
+.sq.on .pi-c,
+.sq:hover .pi-c {
+  opacity: 1;
+}
+.bb.disabled .pi-c,
+.sq.off .pi-c,
+.sk.locked .pi-c {
+  color: var(--faint);
+}
+.res-i.low .pi-c {
+  color: var(--danger);
+}
+.qb-slot.bb .bb-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+span.sk-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---------------------------------------------------------------- Hybrid: unit card and Forces portraits */
+/* The card reads top to bottom: the unit's sprite, its name and owner; one strength line (word, bar, number); then
+   its order, what it does by itself and its reach. */
+.ucard {
+  width: 232px;
+  padding: 10px 12px 11px;
+  border: 0;
+  border-radius: var(--r-lg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 10px 30px rgba(0, 0, 0, 0.38);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  font-size: 12px;
+  line-height: 16px;
+}
+.uc-head {
+  gap: 10px;
+}
+.uc-pic {
+  flex: none;
+  image-rendering: pixelated;
+  border-radius: var(--r-xs);
+  background: rgba(255, 255, 255, 0.05);
+}
+.uc-t {
+  font: 600 15px/1.2 var(--f-label);
+  color: var(--text);
+}
+.uc-s {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dim);
+}
+.uc-str {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 8px;
+}
+.uc-k {
+  flex: none;
+  font: 500 12px/1 var(--f-label);
+  color: var(--dim);
+}
+.ucard .uc-hp {
+  flex: 1;
+  height: 4px;
+  margin: 0;
+  border-radius: 2px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.1);
+}
+.uc-hp > i {
+  border-radius: 2px;
+  background: var(--good);
+}
+.uc-v {
+  flex: none;
+  font: 600 12px/1 var(--f-label);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.uc-o {
+  padding-top: 8px;
+  border-top: 1px solid var(--rule);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text);
+}
+.uc-a {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text);
+}
+.uc-r {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dim);
+}
+.frow2 {
+  grid-template-columns: 40px 1fr;
+  column-gap: 10px;
+}
+.fr-ic {
+  justify-self: center;
+}
+canvas.fr-pic {
+  width: 40px;
+  height: 26px;
+  image-rendering: pixelated;
+}
+/* phones: while a drawer is open the orders bar and the unit card wait under it (a new selection closes the drawer,
+   hud.ts), so two panels never share the same pixels */
+@media (max-width: 640px) {
+  .hud:has(> .drawer:not(.hidden)) > .hud-bottom > .orders-bar,
+  .hud:has(> .drawer:not(.hidden)) > .ucard {
+    display: none;
+  }
+  /* the floating unit card would sit under the orders bar and the guide: on a phone the orders bar (name, hull,
+     stance and its help line) speaks for the selected unit */
+  .hud:has(> .hud-bottom > .orders-bar:not(.hidden)) > .ucard {
+    display: none;
+  }
+}
+/* the mode chip's way out is a labelled Cancel (icon plus word), not a bare cross */
+.mc-cancel {
+  height: 26px;
+  padding: 0 8px 0 6px;
+  border-radius: var(--r-sm);
+  background: var(--metal-3);
+  color: var(--text);
+  font: 600 12px/1 var(--f-label);
+}
+.mc-cancel:hover {
+  background: var(--metal-4);
+}
+/* Map key: the two overlays as labelled switches (icon, word, On / Off) */
+.lg-ovl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 2px 0 8px;
+}
+.lg-ovl-b {
+  justify-content: flex-start;
+  min-height: 36px;
+  border: 0;
+  background: var(--metal-3);
+  box-shadow: none;
+}
+.lg-ovl-s {
+  margin-left: auto;
+  font: 600 11px/1 var(--f-label);
+  color: var(--faint);
+}
+.lg-ovl-b.on {
+  background: var(--sel-bg);
+  color: var(--sel-ink);
+}
+.lg-ovl-b.on .lg-ovl-s {
+  color: var(--sel-ink);
+}
+.lg-ovl-b.on .pi-c {
+  color: var(--sel-ink);
+}
+/* the advisor's name is a real button: folded, it reads "Advisor" or "New: Artillery barrage ready" and opens the line */
+button.adv-tag {
+  align-self: stretch;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  padding: 0 2px 0 8px;
+}
+.advisor.mini button.adv-tag::after {
+  content: ' ›';
+  color: var(--faint);
+}
+/* Back: a ghost button with a left-arrow pixel icon */
+.btn.back-btn {
+  gap: 6px;
+  padding: 0 12px 0 8px;
+}
+.back-ic {
+  color: var(--dim);
+}
+.btn.back-btn:hover .back-ic {
+  color: var(--text);
+}
+/* building drawer: why an action button is off, on its own line under it */
+.bacts .bact-why {
+  margin: -2px 0 2px 4px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dim);
 }

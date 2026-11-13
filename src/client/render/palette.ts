@@ -14,15 +14,15 @@ const CHROMA_KEEP: Record<DisplayRole, number> = { nation: 0.88, own: 1.0, tribe
 const LIGHT_MID = 0.68;
 const LIGHT_KEEP = 0.72;
 /** Opacity of the territory fill over the (calmed) terrain. */
-export const NATION_ALPHA = 0.58;
-export const TRIBE_ALPHA = 0.62;
+export const NATION_ALPHA = 0.7;
+export const TRIBE_ALPHA = 0.26;
 /** How much of its own colour the terrain keeps under a nation (0 = grey of the same brightness, 1 = unchanged). */
 export const UNDER_CHROMA = 0.55;
 /** Brightness range the terrain keeps under a nation, around UNDER_MID (1 = unchanged): forest and desert barely stripe the land. */
 export const UNDER_LUM = 0.45;
 export const UNDER_MID = 0.42;
 /** Terrain pattern strength under a nation (1 = as on free land): detail shows through softly, not as patches. */
-export const UNDER_DETAIL = 0.3;
+export const UNDER_DETAIL = 0.15;
 /** Border: lightness x, chroma x of the display colour, and the chroma ceiling (borders stay muted too). */
 const BORDER_LIGHT = 0.7;
 const BORDER_CHROMA = 1.2;

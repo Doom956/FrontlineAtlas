@@ -44,7 +44,7 @@ describe('buying special units', () => {
     let st = unitBuildStatus(s, me, 'warship');
     expect(st.ok).toBe(false);
     expect(st.locked).toBe(true);
-    expect(st.line).toBe('Build a Port, then buy Navigation in the Arsenal (T)'); // Arsenal items need their building (procurement.ts)
+    expect(st.line).toBe('Build a Port, then buy Navigation in the Arsenal'); // Arsenal items need their building (procurement.ts)
     me.techs.push('navigation');
     expect(unitBuildStatus(s, me, 'warship').line).toMatch(/^Build a Port/);
     const port = addBuilding(s, 'port', 1, at(s, 19, 10));
@@ -66,7 +66,7 @@ describe('buying special units', () => {
   it('names the missing prerequisite of Flight and picks the airfield with room', () => {
     const s = seaGame();
     const me = s.players[1];
-    expect(unitBuildStatus(s, me, 'bomber').line).toBe('Research Logistics, then buy Flight in the Arsenal (T), then build an Airfield');
+    expect(unitBuildStatus(s, me, 'bomber').line).toBe('Research Logistics, then buy Flight in the Arsenal, then build an Airfield');
     me.techs.push('logistics', 'flight');
     const full = addBuilding(s, 'airfield', 1, at(s, 2, 2));
     full.bombers = 6;

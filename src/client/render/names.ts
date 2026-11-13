@@ -13,8 +13,9 @@ import { isTribe } from '../../sim/types';
 import type { GameState, Player } from '../../sim/types';
 import type { Camera } from '../camera';
 import { drawIcon, type StatusIconId } from '../icons';
-import { fitSize, LABEL_BLOCK_H, LABEL_CHAR_W } from '../labels';
-import { clamp, formatCount, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, setTracking } from './common';
+import { fitSize, LABEL_BLOCK_H } from '../labels';
+import { clamp, formatCount, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, setTracking, type RGB } from './common';
+import { drawTroopIcon, PLATE } from './troopIcons';
 import { OWNER_MASK, type TileFeed } from './tiles';
 
 /** Tribe labels only from this zoom (device px per tile) on, except the hovered tribe. */
@@ -30,6 +31,8 @@ const BBOX_MS = 1000;
 const REFRESH_MS = 2500;
 const GLIDE_MS = 600;
 const MIX_COLORS = ['#e4dccb', '#76b3ec', '#f0a15e'];
+/** Plate colour of the troop marker next to a tribe's army count (tribes have no nation colour of their own). */
+const TRIBE_PLATE: RGB = [132, 138, 132];
 void LABEL_BLOCK_H;
 
 interface Label {
@@ -75,6 +78,8 @@ export class NameLayer {
   /** labels drawn last frame (stats) */
   drawn = 0;
   computed = 0;
+  /** screen boxes (x0, y0, x1, y1) of the army count marks drawn this frame: the front pills keep clear of them */
+  readonly armyMarks: number[] = [];
 
   setGame(state: GameState): void {
     const { width: w, height: h } = state.map;
@@ -299,6 +304,7 @@ export class NameLayer {
 
   draw(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, humanId: number, style: NameStyle, nowMs: number, dpr: number): void {
     this.drawn = 0;
+    this.armyMarks.length = 0;
     const fog = this.fog?.active ? this.fog : null;
     // during the spawn phase the capitals carry the names
     if (state.phase === 'spawn') return;
@@ -346,26 +352,16 @@ export class NameLayer {
         else if (requests.has(p.id)) icons.push('envelope');
       }
       const iconPx = clamp(px * 0.85, 12, 20);
-      // Clean map type: nations in tracked uppercase Barlow Condensed 600, tribes in mixed-case 500. Big countries
-      // keep a capped size and spread their letters over the spare width instead of growing into giant letters.
+      // Pixel Clean map type: nations in their own mixed case at 600 with a hair of tracking, tribes at 500. No
+      // tracked capitals and no letters spread over a big country: a calm label, sized by the region, then capped.
       ctx.font = tribe ? `500 ${Math.round(px * 1.04)}px ${MAP_LABEL_FAMILY}` : `600 ${Math.round(px)}px ${MAP_LABEL_FAMILY}`;
       const nameFont = ctx.font;
       // a tribe far out: just its army number (the name on hover), so dozens of "Tribe of the ..." don't pile up
       const raw = tribe && z < TRIBE_NAME_ZOOM && l.id !== style.hoverOwner ? '' : p.name;
-      const name = tribe ? raw : raw.toUpperCase();
-      let track = tribe ? px * 0.01 : px * 0.07;
+      const name = raw;
+      const track = tribe ? px * 0.01 : px * 0.02;
       setTracking(ctx, track);
-      let tw = name ? ctx.measureText(name).width : 0;
-      if (!tribe && name.length > 1 && size > px) {
-        // spare width the region offers at its fitted size (fitSize keeps this inside the territory)
-        const budget = size * (name.length * LABEL_CHAR_W + 0.6) * 0.7;
-        const extra = clamp((budget - tw) / (name.length - 1), 0, px * 0.12);
-        if (extra > 0.5) {
-          track += extra;
-          setTracking(ctx, track);
-          tw = ctx.measureText(name).width;
-        }
-      }
+      const tw = name ? ctx.measureText(name).width : 0;
       const iconsW = icons.length ? icons.length * (iconPx + 2) + 2 : 0;
       const totalW = tw + iconsW;
       const small = clamp(px * (name ? 0.62 : 0.8), tribe ? 10.5 : 10, 14);
@@ -391,7 +387,9 @@ export class NameLayer {
       const hs = style.hover;
       const under = !!hs && hs.x > x0 - 6 && hs.x < x1 + 6 && hs.y > y0 - 6 && hs.y < y1 + 6;
       const overIcons = z >= ICON_ZOOM && coversBuilding(state, cam, x0, y0, x1, y1);
-      ctx.globalAlpha = style.targeting ? (under ? 0.15 : 0.45) : under && px > 14 ? 0.35 : overIcons ? 0.65 : 1;
+      // over building plates (mid zoom) the name stays solid, drawn above them with a stronger dark halo, so the plates
+      // never cross its letters; the cursor over it or aiming still fades it
+      ctx.globalAlpha = style.targeting ? (under ? 0.15 : 0.45) : under && px > 14 ? 0.35 : 1;
       const nameY = showArmy ? s.y - small * 0.45 : s.y;
       const left = s.x - totalW / 2;
       for (let k = 0; k < icons.length; k++) {
@@ -402,16 +400,26 @@ export class NameLayer {
       if (name) {
         ctx.font = nameFont;
         setTracking(ctx, track);
-        const fill = traitor ? '#ff9d92' : tribe ? 'rgba(240,241,244,0.94)' : p.id === me ? 'rgba(255,240,196,0.96)' : 'rgba(255,255,255,0.93)';
-        haloText(ctx, name, nameX, nameY, fill, px, tribe ? 1.25 : 1);
+        const fill = traitor ? '#ff9d92' : tribe ? 'rgba(240,241,244,0.94)' : p.id === me ? 'rgba(220,230,254,0.97)' : 'rgba(255,255,255,0.93)';
+        haloText(ctx, name, nameX, nameY, fill, px, overIcons ? 1.4 : tribe ? 1.25 : 1);
       }
       if (showArmy) {
         const army = formatCount(armyTotal(p.troops));
         ctx.font = `500 ${Math.round(small)}px ${MAP_NUM_FAMILY}`;
         setTracking(ctx, small * 0.02);
         const ay = nameY + px * 0.55 + small * 0.55;
-        const fill = tribe ? 'rgba(232,234,238,0.9)' : traitor ? 'rgba(255,196,189,0.9)' : 'rgba(238,241,246,0.86)';
-        haloText(ctx, army, s.x, ay, fill, small, tribe ? 1.25 : 1.05);
+        const fill = tribe ? 'rgba(236,238,241,0.94)' : traitor ? 'rgba(255,196,189,0.94)' : 'rgba(250,251,253,0.96)';
+        // the soldier marker on the nation's colour plate (a neutral grey plate for tribes), the same rounded-square
+        // plate as the front and transport pills (troopIcons.ts), says what the number counts
+        const plate = PLATE;
+        const aw = ctx.measureText(army).width;
+        const gx = Math.round(s.x - (plate + 6 + aw) / 2);
+        const gy = Math.round(ay - plate / 2 - 1);
+        drawTroopIcon(ctx, 'infantry', gx, gy, tribe ? TRIBE_PLATE : (p.color as RGB), plate);
+        this.armyMarks.push(gx - 2, gy - 2, gx + plate + 6 + aw + 4, gy + plate + 4);
+        ctx.font = `500 ${Math.round(small)}px ${MAP_NUM_FAMILY}`;
+        ctx.textAlign = 'center';
+        haloText(ctx, army, gx + plate + 6 + aw / 2, ay, fill, small, tribe ? 1.25 : 1.05);
         if (mixBar) this.mixBar(ctx, p, s.x, ay + small * 0.6 + 3, Math.max(28, Math.min(tw, 90)));
       }
     }

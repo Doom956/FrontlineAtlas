@@ -209,13 +209,14 @@ export function setupInput(deps: InputDeps): () => void {
       // Middle button pans right away; left and right become a pan only after moving DRAG_THRESHOLD px.
       press = { id: e.pointerId, button: e.button, x0: p.x, y0: p.y, x: p.x, y: p.y, dragging: e.button === 1, done: closing, turns: prankView.turns, side: mapSide() };
       lastTouch = e.pointerType === 'touch';
-      if (e.button === 0 && !closing && e.shiftKey && ui.mode.kind === 'none' && e.pointerType !== 'touch') press.box = true;
+      // the box: Shift+drag with a mouse, or any drag (finger too) after Upgrade many in the build menu
+      if (e.button === 0 && !closing && ((e.shiftKey && ui.mode.kind === 'none' && e.pointerType !== 'touch') || ui.mode.kind === 'boxSelect')) press.box = true;
       if (e.button === 0 && !closing && ui.mode.kind === 'adminTile' && ui.mode.brush) {
         press.brush = true;
         press.done = true;
         paint(tileAt(p.x, p.y), true);
       }
-      if (e.pointerType === 'touch' && e.button === 0) {
+      if (e.pointerType === 'touch' && e.button === 0 && !press.box) {
         clearTimeout(longTimer);
         const cx = e.clientX;
         const cy = e.clientY;
@@ -290,8 +291,11 @@ export function setupInput(deps: InputDeps): () => void {
         const b = camera.screenToTile(p.x, p.y);
         ui.buildingSel = s.phase === 'playing' ? boxBuildingSelection(s, s.humanId, ui.buildingSel, a.x, a.y, b.x, b.y) : { ...NO_BUILDING_SEL, levels: ui.buildingSel.levels };
       }
+      if (ui.mode.kind === 'boxSelect') ui.mode = { kind: 'none' };
       return;
     }
+    // box mode waits for a drag: a tap does nothing (Cancel on the chip leaves it)
+    if (pr.box && ui.mode.kind === 'boxSelect') return;
     if (cancelled || pr.dragging || pr.done) return;
     const p = local(e);
     const tile = tileAt(p.x, p.y);

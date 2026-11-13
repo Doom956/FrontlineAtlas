@@ -6,7 +6,7 @@
 // - Advisor: the sim's suggestions() (advisor.ts), one at a time, cycling every 8 s, plus two client hints:
 //   artillery when the main foe's front is fortified or hilly, units when they matter (unitAdvice: warships against
 //   enemy fleets off your coast, fighters / SAM sites against enemy bombers; once each, ever), and once per strike (remembered in localStorage) a
-//   first-use hint pointing at its button the first time it is ready ("Bombers ready: press X ...").
+//   first-use hint pointing at its button the first time it is ready ("Bombers ready: pick Aim bombers ...").
 //   Click the button to act (enter build mode, open a drawer, centre the map); X dismisses that hint for a while;
 //   it can be switched off in the menu.
 import { activeFog } from '../fog/fogView';
@@ -26,7 +26,8 @@ import { adviceFor, type Suggestion } from '../simx';
 import { STRIKES, strikeOfMode, type StrikeId } from '../strikes';
 import type { StrikeBar } from './strikeBar';
 import { el, setClass, setText, setVisible, type HudCtx } from './dom';
-import { iconSpan, lineIcon, worldGlyph } from './glyph';
+import { iconSpan, lineIcon } from './glyph';
+import { pixelGlyph, pixelIcon, pixelStrike, type IconCat } from './pixelIcons';
 import { waysToPlayAdvice } from './spendPanel';
 import { pillarAdvice } from './pillarAdvice';
 
@@ -80,18 +81,18 @@ export function unitAdvice(s: GameState, me: Player): Suggestion[] {
     else if (!hasTech(me, 'navigation') && buildingsOf(s, me.id, 'port').length === 0) out.push({ key: 'unit-warship', text: 'Enemy warships off your coast: build a Port, then buy Navigation in the Arsenal for Warships', building: 'port' });
     else if (!hasTech(me, 'navigation')) out.push({ key: 'unit-warship', text: 'Enemy warships off your coast: buy Navigation in the Arsenal, then Warships at your Port', drawer: 'research' });
     else if (buildingsOf(s, me.id, 'port').length === 0) out.push({ key: 'unit-warship', text: 'Enemy warships off your coast: build a Port, then Warships', building: 'port' });
-    else out.push({ key: 'unit-warship', text: 'Enemy warships off your coast: open Forces (Y) for your fleet', drawer: 'forces' });
+    else out.push({ key: 'unit-warship', text: 'Enemy warships off your coast: open Forces in the top bar for your fleet', drawer: 'forces' });
   }
   return out;
 }
 
-/** First-use hint per strike: what is ready, the key to press and what to click. */
+/** First-use hint per strike: what is ready and what to click (the toast's own button starts the aim). */
 export const STRIKE_HINTS: Record<StrikeId, string> = {
-  barrage: `Artillery ready: press ${STRIKES.barrage.key} and click enemy land near your border`,
-  bomb: `Bombers ready: press ${STRIKES.bomb.key} and click an enemy building`,
-  paradrop: `Paratroopers ready: press ${STRIKES.paradrop.key} and click enemy land in an Airfield's range`,
-  rocket: `Rocket ready: press ${STRIKES.rocket.key} and click any enemy land on the map`,
-  atomBomb: `Atom bomb ready: press ${STRIKES.atomBomb.key} and click a target. It hits your land too`,
+  barrage: 'Artillery ready: pick Aim barrage, then click enemy land near your border',
+  bomb: 'Bombers ready: pick Aim bombers, then click an enemy building',
+  paradrop: "Paratroopers ready: pick Aim drop, then click enemy land in an Airfield's range",
+  rocket: 'Rocket ready: pick Aim rocket, then click any enemy land on the map',
+  atomBomb: 'Atom bomb ready: pick Aim atom bomb, then click a target. It hits your land too',
 };
 
 const AIM_LABEL: Record<StrikeId, string> = { barrage: 'Aim barrage', bomb: 'Aim bombers', paradrop: 'Aim drop', rocket: 'Aim rocket', atomBomb: 'Aim atom bomb' };
@@ -132,7 +133,8 @@ function save(key: string, v: string): void {
 
 export class AdvisorStrip {
   readonly el: HTMLElement;
-  private tag = el('span', 'adv-tag');
+  /** the line's name; folded, it is the button that opens the line again */
+  private tag = el('button', 'adv-tag');
   private icon = el('span', 'adv-ic');
   private text = el('span', 'adv-text');
   private doBtn: HTMLButtonElement;
@@ -170,6 +172,7 @@ export class AdvisorStrip {
   constructor(private ctx: HudCtx) {
     this.el = el('div', 'advisor hidden');
     this.el.dataset.test = 'advisor';
+    this.tag.type = 'button';
     this.doBtn = el('button', 'wr-btn mini primary adv-do', 'Do it');
     this.doBtn.type = 'button';
     this.doBtn.addEventListener('click', () => this.act());
@@ -282,7 +285,12 @@ export class AdvisorStrip {
     } else this.current = stillThere;
     const c = this.current;
     setText(this.tag, 'Advisor');
-    this.icon.innerHTML = c.unit ? lineIcon(c.unit === 'warship' ? 'warship' : 'plane', 16) : c.building ? worldGlyph(c.building, 16) : c.mode ? worldGlyph(c.mode, 16) : lineIcon(c.drawer === 'research' ? 'science' : c.drawer === 'diplomacy' ? 'diplomacy' : c.tile !== undefined ? 'target' : 'info', 16);
+    // a pixel icon in its family hue, as in the top bar and the command bar
+    const cat: IconCat | null = c.unit ? (c.unit === 'warship' ? 'navy' : 'air') : c.building ? 'econ' : c.mode ? 'strike' : c.drawer === 'research' ? 'science' : null;
+    this.setIcon(
+      c.unit ? pixelIcon(c.unit === 'warship' ? 'warship' : 'plane', 16) : c.building ? pixelGlyph(c.building, 16) : c.mode ? pixelStrike(c.mode === 'paradrop' ? 'transportPlane' : 'artillery', 16) || pixelIcon('target', 16) : pixelIcon(c.drawer === 'research' ? 'science' : c.drawer === 'diplomacy' ? 'diplomacy' : c.tile !== undefined ? 'target' : 'info', 16),
+      cat,
+    );
     setText(this.text, c.text);
     const label = c.unit
       ? `Build ${UNITS[c.unit].name}`
@@ -322,8 +330,9 @@ export class AdvisorStrip {
     }
     const id = this.hint.id;
     this.current = null;
-    setText(this.tag, 'New');
-    this.icon.innerHTML = lineIcon(STRIKES[id].line, 16);
+    // folded, the tab still says what is new and that it is ready ("New: Artillery barrage ready")
+    setText(this.tag, `New: ${STRIKES[id].name} ready`);
+    this.setIcon(pixelStrike(STRIKES[id].icon, 16) || lineIcon(STRIKES[id].line, 16), 'strike');
     setText(this.text, STRIKE_HINTS[id]);
     setText(this.doBtn, AIM_LABEL[id]);
     setVisible(this.doBtn, true);
@@ -332,6 +341,11 @@ export class AdvisorStrip {
     return true;
   }
   private strikes: StrikeBar | null = null;
+
+  private setIcon(html: string, cat: IconCat | null): void {
+    if (this.icon.innerHTML !== html) this.icon.innerHTML = html;
+    this.icon.className = cat ? `adv-ic pi-c pi-${cat}` : 'adv-ic';
+  }
 
   private act(): void {
     if (this.hint && this.strikes) {
@@ -348,11 +362,11 @@ export class AdvisorStrip {
       if (!s || !me) return;
       if (c.unit === 'warship') {
         const no = enterWarshipSpawnMode(this.ctx.ui, s, me);
-        this.ctx.toast(no ? `Warship: ${no}` : 'Warship: click any water your ports reach (shaded). Esc cancels.', no ? 'info' : 'good');
+        this.ctx.toast(no ? `Warship: ${no}` : 'Warship: click any water your ports reach (shaded)', no ? 'info' : 'good');
         return;
       }
       const why = buildUnit(s, me, (a) => this.ctx.dispatch(a), c.unit, { x: this.ctx.camera.x, y: this.ctx.camera.y });
-      this.ctx.toast(why ? `${UNITS[c.unit].name}: ${why}` : `${UNITS[c.unit].name} built. Open Forces (Y) to command it.`, why ? 'info' : 'good');
+      this.ctx.toast(why ? `${UNITS[c.unit].name}: ${why}` : `${UNITS[c.unit].name} built. Open Forces in the top bar to command it.`, why ? 'info' : 'good');
       this.ctx.refreshSoon();
     } else if (c.building) {
       this.ctx.ui.mode = { kind: 'build', building: c.building };

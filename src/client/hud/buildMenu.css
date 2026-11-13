@@ -7,8 +7,7 @@
   position: absolute;
   z-index: 30;
   background-color: var(--metal-a);
-  background-image: var(--grain);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--r);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 28px rgba(0, 0, 0, 0.5);
   color: var(--text);
@@ -24,24 +23,25 @@
   gap: 6px;
   height: 38px;
   padding: 0 10px 0 9px;
-  border: 1px solid var(--brass-lo);
+  border: 0;
   border-radius: var(--r);
-  background: linear-gradient(180deg, rgba(201, 162, 39, 0.16), rgba(201, 162, 39, 0.06));
-  color: var(--brass-hi);
+  /* the HUD's one primary action: a solid amber fill (ink on amber 9.6:1) */
+  background: var(--accent);
+  color: var(--accent-ink);
   font: 600 15px/1 var(--f-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   cursor: pointer;
   white-space: nowrap;
+  transition: background-color var(--fast), scale var(--fast) ease-out;
 }
 .qb-build:hover,
 .qb-build.on {
-  border-color: var(--brass);
-  background: rgba(201, 162, 39, 0.24);
+  background: var(--accent-hover);
+}
+.qb-build:active {
+  scale: 0.96;
 }
 .qb-build .kc {
   margin-left: 2px;
-  letter-spacing: 0;
   text-transform: none;
 }
 .qb-build-ic {
@@ -76,7 +76,7 @@
 /* count selector x1 / x3 / x5 */
 .bm-count {
   display: inline-flex;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--r);
   overflow: hidden;
   flex: none;
@@ -90,7 +90,6 @@
   background: var(--metal-2);
   color: var(--dim);
   font: 600 12px/22px var(--f-label);
-  letter-spacing: 0.04em;
   cursor: pointer;
 }
 .bm-cnt:first-child {
@@ -101,34 +100,50 @@
   color: var(--text);
 }
 .bm-cnt.on {
-  background: rgba(201, 162, 39, 0.22);
-  color: var(--brass-hi);
+  background: var(--sel-bg);
+  color: var(--sel-ink);
+}
+.qb-count-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
 }
 .qb-count {
-  flex-direction: column;
+  flex-direction: row;
 }
 .qb-count .bm-cnt {
-  height: 14px;
-  min-width: 24px;
-  padding: 0 4px;
-  border-left: 0;
-  border-top: 1px solid var(--rule);
-  font-size: 10.5px;
-  line-height: 14px;
-}
-.qb-count .bm-cnt:first-child {
-  border-top: 0;
+  height: 24px;
+  min-width: 28px;
+  padding: 0 5px;
+  font-size: 12px;
+  line-height: 24px;
 }
 
 /* ---------------------------------------------------------------- build menu */
+/* The research panel's look (hud/researchPanel.css) in the HUD's amber: one opaque steel panel, no title bar chrome,
+   plain group headings, and cards that differ by fill and words, never by outline style. Card states:
+     can build: the lightest fill and a hairline (like an available research card);
+     short of gold or iron: the same card with a fainter hairline, the price and "Short by 300 gold" in red (it can
+       still be picked, to aim);
+     locked (its tech is missing): no fill, a hairline only, the reason in place of the effect; faded further when the
+       tech is not even next.
+   Hover lifts the fill one step; keyboard focus is the light ring the research cards use. Red #e2785f is the research
+   panel's "can't pay" (5.4:1 on #27313f). */
 .bm {
   left: 50%;
   bottom: calc(100% + 8px);
   transform: translateX(-50%);
   width: min(1160px, calc(100vw - 24px));
-  max-height: calc(100vh - 150px);
+  /* --bm-room: the room above the command bar (buildMenu.ts fitHeight) */
+  max-height: min(calc(100vh - 150px), var(--bm-room, 100vh));
   display: flex;
   flex-direction: column;
+  /* opaque, like the research panel: the live map through rows of cards read as clutter */
+  background-color: var(--metal);
+  border: 0;
+  border-radius: var(--r-lg);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 10px 30px rgba(0, 0, 0, 0.38);
 }
 .bm.slide {
   animation: bm-in var(--fast) ease-out;
@@ -143,206 +158,304 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  height: 44px;
   flex: none;
-  padding: 0 4px 0 14px;
-  border-bottom: 1px solid var(--rule);
+  min-height: 52px;
+  padding: 8px 8px 4px 16px;
 }
 .bm-title {
   display: flex;
   align-items: center;
   gap: 8px;
 }
+.bm-t-ic {
+  line-height: 0;
+  color: var(--dim);
+}
 .bm-t {
   font: 600 18px/1 var(--f-label);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  color: var(--text);
 }
 .bm-count-wrap {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   margin-left: auto;
 }
 .bm-count-l {
-  font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font: 500 12px/1 var(--f-label);
   color: var(--dim);
 }
+/* the count selector on the research panel's tab track: the chosen count is the light selection fill */
+.bm-count-wrap .bm-count {
+  gap: 2px;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--r);
+  background: var(--metal-2);
+}
 .bm-count-wrap .bm-cnt {
-  height: 26px;
-  min-width: 36px;
-  font-size: 14px;
-  line-height: 26px;
+  min-width: 40px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--dim);
+  font: 600 14px/28px var(--f-label);
+}
+.bm-count-wrap .bm-cnt:hover {
+  background: var(--metal-3);
+  color: var(--text);
+}
+.bm-count-wrap .bm-cnt.on {
+  background: var(--sel-bg);
+  color: var(--sel-ink);
+}
+.bm-count-wrap .bm-cnt:focus-visible {
+  outline-offset: -2px;
+}
+.bm-x {
+  flex: none;
 }
 .bm-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
   align-items: start;
-  column-gap: 12px;
-  padding: 8px 12px 6px;
+  column-gap: 20px;
+  padding: 4px 16px 8px;
   overflow-y: auto;
   min-height: 0;
   scrollbar-width: thin;
+  scrollbar-color: var(--metal-4) transparent;
 }
 .bm-col {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 16px;
   min-width: 0;
 }
+/* group names are plain headings, as the research panel's row names */
 .bm-gh {
-  margin: 0 0 5px;
-  padding-bottom: 3px;
-  border-bottom: 1px solid var(--rule);
-  font: 600 11.5px/1.2 var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--brass-hi);
+  margin: 4px 0 8px;
+  font: 600 14px/1.2 var(--f-label);
+  color: var(--text);
 }
 .bm-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 5px;
+  gap: 6px;
 }
-.bm-military .bm-grid {
+.bm-military .bm-grid,
+.bm-tools .bm-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .bm-card {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 9px;
-  min-height: 52px;
-  padding: 4px 9px 4px 7px;
-  border: 1px solid var(--rule);
+  gap: 10px;
+  min-height: 62px;
+  padding: 7px 10px 7px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: var(--r);
-  background: var(--metal-2);
+  background: var(--metal-3);
   color: var(--text);
   text-align: left;
+  font: inherit;
   cursor: pointer;
-  transition: background var(--fast), border-color var(--fast);
+  transition: background var(--fast), border-color var(--fast), opacity var(--fast), scale var(--fast) ease-out;
 }
-.bm-card:hover,
+.bm-card:hover {
+  background: var(--metal-4);
+}
 .bm-card:focus-visible {
-  background: var(--metal-3);
-  border-color: var(--brass);
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
 }
 .bm-card:active {
-  transform: translateY(1px);
+  scale: 0.98;
 }
 .bm-c-ic {
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
+  width: 48px;
+  height: 34px;
   line-height: 0;
 }
-.bm-c-ic.unit,
-.bm-c-ic.tool {
-  border-radius: 50%;
-  background: var(--ink);
-  color: var(--brass-hi);
-}
-.bm-c-img {
-  width: 32px;
-  height: 32px;
+canvas.bm-c-pic {
+  display: block;
+  image-rendering: pixelated;
 }
 .bm-c-txt {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 3px;
   min-width: 0;
   flex: 1;
 }
 .bm-c-top {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
+  min-width: 0;
 }
 .bm-c-n {
-  font: 600 15px/1.1 var(--f-label);
-  letter-spacing: 0.03em;
+  min-width: 0;
+  font: 600 14px/17px var(--f-label);
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.bm-c-k {
+/* what is missing ("Short by 300 gold"), else "Pinned" */
+.bm-c-tag {
   flex: none;
-  line-height: 0;
+  font: 500 11px/14px var(--f-label);
+  color: var(--faint);
+  white-space: nowrap;
 }
-.bm-unit-tag {
-  display: inline-block;
-  padding: 0 4px;
-  border: 1px solid var(--rule-hi);
-  border-radius: 2px;
-  font: 600 9.5px/13px var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--dim);
+.bm-c-tag.bad {
+  font-weight: 600;
+  color: #e2785f;
 }
+.bm-c-tag:empty {
+  display: none;
+}
+/* the price in words, the build time at the end with the research panel's clock */
 .bm-c-cost {
-  font-size: 11.5px;
-  color: var(--brass-hi);
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 15px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
-.bm-c-cost.bad {
-  color: #e6705a;
+.bm-c-price {
+  min-width: 0;
+}
+.bm-c-price.bad {
+  color: #e2785f;
+}
+.bm-c-time {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  color: var(--dim);
+  white-space: nowrap;
+}
+.bm-c-time svg {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  opacity: 0.8;
+}
+.bm-c-time:empty {
+  display: none;
 }
 .bm-c-l {
-  font-size: 11.5px;
-  line-height: 1.25;
+  font-size: 12px;
+  line-height: 15px;
   color: var(--dim);
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
 }
-.bm-c-l.why {
-  color: #d9a08f;
+/* short of gold or iron: still a card you can pick (to aim), its hairline quieter */
+.bm-card.short {
+  border-color: rgba(255, 255, 255, 0.08);
 }
-.bm-c-pin {
-  position: absolute;
-  right: 4px;
-  bottom: 4px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
+/* locked: no fill, a hairline only; the reason replaces the effect line */
+.bm-card.locked {
+  border-color: var(--rule);
   background: transparent;
 }
-.bm-c-pin.on {
-  background: var(--brass-hi);
+.bm-card.locked:hover {
+  background: rgba(255, 255, 255, 0.04);
 }
-/* locked: dim with the reason; far away (tech not next): dimmer */
-.bm-card.locked {
-  border-style: dashed;
-  background: rgba(34, 41, 48, 0.55);
-  cursor: help;
+.bm-card.locked .bm-c-n {
+  color: var(--dim);
+}
+.bm-card.locked .bm-c-price,
+.bm-card.locked .bm-c-time {
+  color: var(--faint);
 }
 .bm-card.locked .bm-c-ic,
-.bm-card.locked .bm-c-n,
-.bm-card.locked .bm-c-cost {
-  opacity: 0.55;
+.bm-card.locked .bm-c-ic.pi-c {
+  color: var(--faint);
 }
+.bm-card.locked canvas.bm-c-pic {
+  opacity: 0.7;
+  filter: grayscale(1);
+}
+/* the reason can be a short recipe ("Research X, then build Y, then buy Z"): room for three lines */
+.bm-c-l.why {
+  color: var(--dim);
+  -webkit-line-clamp: 3;
+}
+/* its tech is not even next: quieter still */
 .bm-card.far {
-  opacity: 0.75;
-}
-.bm-card.short .bm-c-ic {
-  opacity: 0.8;
+  opacity: 0.6;
 }
 .bm-foot {
   flex: none;
-  padding: 6px 14px 8px;
-  border-top: 1px solid var(--rule);
-  font-size: 11.5px;
-  color: var(--faint);
+  padding: 6px 16px 12px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dim);
+}
+/* Pin / Unpin on every building card: a small icon-over-word control at the card's right end (the card leaves room
+   for it). Neutral; once pinned it reads Unpin on a raised fill. */
+.bm-cardw {
+  position: relative;
+  display: grid;
+  min-width: 0;
+}
+.bm-cardw > .bm-card {
+  padding-right: 52px;
+}
+.bm-pin {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  translate: 0 -50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 42px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--dim);
+  font: 600 10px/1 var(--f-label);
+  cursor: pointer;
+  transition: background var(--fast), color var(--fast);
+}
+.bm-pin:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+.bm-pin.on {
+  background: var(--metal-4);
+  color: var(--text);
+}
+.bm-pin:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+.bm-pin-ic {
+  line-height: 0;
 }
 @media (max-width: 860px) {
   .bm-body {
@@ -353,16 +466,52 @@
     grid-row: 2;
   }
 }
+/* phones: one column of cards, the count selector on its own row under the title */
+@media (max-width: 560px) {
+  .bm-head {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    padding: 8px 4px 4px 12px;
+  }
+  .bm-title {
+    flex: 1;
+  }
+  .bm-x {
+    order: 2;
+  }
+  .bm-count-wrap {
+    order: 3;
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+  .bm-body {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 4px 12px 8px;
+  }
+  .bm-col.wide {
+    grid-row: auto;
+  }
+  .bm-military .bm-grid,
+  .bm-tools .bm-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .bm-card {
+    min-height: 56px;
+  }
+  .bm-foot {
+    padding: 4px 12px 10px;
+  }
+}
 
 .sp-sel {
   height: 26px;
   max-width: 170px;
   padding: 0 6px;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--r);
   background: var(--metal-2);
   color: var(--text);
-  font: 12.5px var(--f-ui);
+  font: 13px var(--f-ui);
 }
 /* ---------------------------------------------------------------- spend */
 .cmdbar .cb-gold {
@@ -373,58 +522,76 @@
 .hud-bottom > .cmdbar {
   z-index: 5;
 }
+/* the Spend chip next to the gold: a quiet neutral control with a pixel coin in the economy hue (the Build button is
+   the bar's one amber action) */
 .sp-btn {
   align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   margin-left: 4px;
-  height: 18px;
-  padding: 0 6px;
-  border: 1px solid var(--brass-lo);
-  border-radius: var(--r);
-  background: rgba(201, 162, 39, 0.1);
-  color: var(--brass-hi);
-  font: 600 10.5px/16px var(--f-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  height: 22px;
+  padding: 0 7px 0 5px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--metal-3);
+  color: var(--text);
+  font: 600 12px/1 var(--f-label);
   cursor: pointer;
   vertical-align: middle;
+  transition: background var(--fast);
 }
 .sp-btn:hover,
 .sp-btn.on {
-  background: rgba(201, 162, 39, 0.24);
-  border-color: var(--brass);
+  background: var(--metal-4);
 }
+.sp-btn.on {
+  box-shadow: 0 0 0 1px var(--rule-hi) inset;
+}
+.sp-btn-ic {
+  line-height: 0;
+}
+/* The Spend panel in the build menu's look: one opaque steel panel (toasts and the map never show through it),
+   plain headings in --text with a pixel icon in the economy hue, neutral buttons, and War bonds as its one amber
+   action. A button that cannot be pressed is a flat --metal-2 fill with faint text; the line above it says why. */
 .sp {
   left: 180px;
   bottom: calc(100% + 8px);
-  width: 330px;
+  width: 340px;
+  max-height: var(--bm-room, calc(100vh - 160px));
+  overflow-y: auto;
   padding: 0 0 4px;
+  background-color: var(--metal);
+  border: 0;
+  border-radius: var(--r-lg);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 10px 30px rgba(0, 0, 0, 0.42);
+  scrollbar-width: thin;
+  scrollbar-color: var(--metal-4) transparent;
 }
 .sp-head {
   display: flex;
   align-items: center;
-  gap: 6px;
-  height: 36px;
-  padding: 0 2px 0 12px;
+  gap: 8px;
+  height: 44px;
+  padding: 0 4px 0 14px;
   border-bottom: 1px solid var(--rule);
 }
 .sp-hic {
   line-height: 0;
-  color: var(--brass-hi);
 }
 .sp-t {
   flex: 1;
-  font: 600 14px/1 var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font: 600 16px/1 var(--f-label);
+  color: var(--text);
 }
 .sp-x {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
 }
 .sp-sec {
   display: grid;
-  gap: 4px;
-  padding: 8px 12px 9px;
+  gap: 6px;
+  padding: 10px 14px 12px;
   border-bottom: 1px solid var(--rule);
 }
 .sp-sec:last-child {
@@ -433,11 +600,9 @@
 .sp-sh {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font: 600 12.5px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--brass-hi);
+  gap: 8px;
+  font: 600 14px/1.2 var(--f-label);
+  color: var(--text);
 }
 .sp-ic {
   line-height: 0;
@@ -465,17 +630,19 @@
   text-align: right;
 }
 .sp-main {
-  font: 600 12.5px/1.3 var(--f-ui);
+  font: 600 13px/1.3 var(--f-ui);
+  color: var(--text);
 }
+/* the reason a button is off, in the research panel's "can't" red (5.4:1 on the panel) */
 .sp-main.bad {
-  color: #e6a08f;
+  color: #e2785f;
 }
 .sp-main.run {
-  color: var(--olive);
+  color: var(--good);
 }
 .sp-sub {
-  font-size: 11.5px;
-  line-height: 1.3;
+  font-size: 12px;
+  line-height: 1.35;
   color: var(--dim);
 }
 .sp-sub:empty {
@@ -483,7 +650,33 @@
 }
 .sp-go {
   justify-self: start;
+  min-height: 32px;
   margin-top: 2px;
+}
+.sp-go:not(.primary) {
+  border: 0;
+  background: var(--metal-3);
+  box-shadow: none;
+}
+.sp-go:not(.primary):hover:not(:disabled) {
+  background: var(--metal-4);
+}
+.sp-go:disabled,
+.sp-go.primary:disabled {
+  opacity: 1;
+  border: 0;
+  background: var(--metal-2);
+  box-shadow: none;
+  color: var(--faint);
+}
+/* phones: full width above the command bar, never off the right edge */
+@media (max-width: 640px) {
+  .sp {
+    left: 0;
+    right: 0;
+    width: auto;
+    max-height: min(60vh, var(--bm-room, 60vh));
+  }
 }
 
 /* ---------------------------------------------------------------- tech tree forks (exclusive choices) */
@@ -502,11 +695,10 @@
   top: 50%;
   transform: translate(-50%, -50%);
   padding: 1px 4px;
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   border-radius: 2px;
   background: var(--ink);
-  font: 700 9.5px/12px var(--f-label);
-  letter-spacing: 0.1em;
+  font: 700 10px/12px var(--f-label);
   color: var(--brass-hi);
   pointer-events: none;
 }
@@ -542,8 +734,6 @@
   top: -15px;
   left: 0;
   font: 600 9px/12px var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--faint);
   white-space: nowrap;
   pointer-events: none;
@@ -591,13 +781,10 @@
   gap: 7px;
 }
 .rtree.forked .rt-n {
-  font-size: 13.5px;
+  font-size: 14px;
 }
 .rtree.forked .rt-l {
   font-size: 11px;
-}
-.bm-tools .bm-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .rtree.forked {
   column-gap: 18px;
@@ -651,4 +838,36 @@
 .rtree.forked .rt-fork .rt-node .rt-glyph svg {
   width: 15px;
   height: 15px;
+}
+
+/* Pixel Clean phones: Build and the quick slots share one row of equal picture-over-word buttons (the sixth slot
+   waits for a wider screen), so the bar is three short rows instead of five */
+@media (max-width: 640px) {
+  .cmdbar > .cb-build.qb {
+    flex-wrap: wrap;
+    gap: 6px 4px;
+  }
+  .qb-build {
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    height: 46px;
+    min-width: 50px;
+    padding: 3px 6px;
+    font-size: 11px;
+  }
+  .qb-build .qb-build-ic svg {
+    width: 20px;
+    height: 20px;
+  }
+  .qb-row {
+    gap: 2px;
+  }
+  .qb-row > .qb-slot:nth-child(6) {
+    display: none;
+  }
+  .qb-row > .qb-slot.bb {
+    min-width: 44px;
+    padding: 3px 2px 4px;
+  }
 }

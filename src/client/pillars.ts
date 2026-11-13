@@ -43,7 +43,7 @@ export interface ChoiceInfo {
 }
 
 export const STANCE_INFO: Record<WarshipStance, ChoiceInfo> = {
-  auto: { name: 'Auto', icon: 'shield', help: 'Guards its post; at war it roams its sea to the enemy coast, sinks ships and shells, home only to repair.' },
+  auto: { name: 'Auto', icon: 'shield', help: 'Follows your war: guards its post; at war it roams its sea to the enemy coast, sinks ships and shells, home only to repair.' },
   hold: { name: 'Hold', icon: 'stop', help: 'Stays at its post: sinks enemy ships that come near, but never sails off to shell a coast.' },
   hunt: { name: 'Hunt', icon: 'target', help: 'Seeks out enemy ships anywhere on its sea and chases them down.' },
   escort: { name: 'Escort', icon: 'transport', help: 'Sticks to your transports and trade ships: escorted ships are much harder to sink.' },
@@ -78,18 +78,18 @@ export function airInfo(m: AirMission): ChoiceInfo {
 
 /** The chip line while picking. */
 export const PICK_LABEL: Record<PillarPick, string> = {
-  bombard: 'Bombard: following your war. Click an enemy coast to fix one, or Esc.',
-  blockade: 'Blockade: following your war. Click an enemy port to fix one, or Esc.',
-  front: 'Support front: following your war. Click a front to fix one, or Esc.',
-  airSupport: 'Air support: following your war. Click an attack or front to fix one, or Esc.',
-  airStrategic: 'Strategic bombing: following your war. Click a nation to raid to fix it, or Esc.',
-  airSuperiority: 'Air superiority: patrols over your main front. Click to fix the patrol, or Esc.',
+  bombard: 'Bombard: following your war. Click an enemy coast to fix one, or Cancel.',
+  blockade: 'Blockade: following your war. Click an enemy port to fix one, or Cancel.',
+  front: 'Support front: following your war. Click a front to fix one, or Cancel.',
+  airSupport: 'Air support: following your war. Click an attack or front to fix one, or Cancel.',
+  airStrategic: 'Strategic bombing: following your war. Click a nation to raid to fix it, or Cancel.',
+  airSuperiority: 'Air superiority: patrols over your main front. Click to fix the patrol, or Cancel.',
 };
 /** The old pick lines (a target is needed): when the sim refuses a mission without one. */
 const PICK_NEEDED: Partial<Record<PillarPick, string>> = {
-  front: 'Support front: click the front to hold behind. Esc cancels.',
-  airSupport: 'Air support: click an attack or front. Esc cancels.',
-  airStrategic: 'Strategic bombing: click a city or any land of the nation to raid. Esc cancels.',
+  front: 'Support front: click the front to hold behind.',
+  airSupport: 'Air support: click an attack or front.',
+  airStrategic: 'Strategic bombing: click a city or any land of the nation to raid.',
 };
 
 // ------------------------------------------------------------------------------------------------ helpers
@@ -408,11 +408,11 @@ export function pillarPickClick(state: GameState, ui: UiState, dispatch: Dispatc
       let foe = ownerOf(tile);
       if (m.pick === 'blockade') {
         const port = portNear(state, me, tile);
-        if (!port) return { ok: false, reason: 'Click an enemy port (or Esc to let them pick one)' };
+        if (!port) return { ok: false, reason: 'Click an enemy port (or Cancel to let them pick one)' };
         aim = port.tile;
         foe = port.owner;
       } else if (isWater(map.terrain[tile])) foe = 0;
-      else if (foe === me || foe <= 0 || areAllied(state, me, foe)) return { ok: false, reason: 'Click an enemy coast (or Esc to let them pick one)' };
+      else if (foe === me || foe <= 0 || areAllied(state, me, foe)) return { ok: false, reason: 'Click an enemy coast (or Cancel to let them pick one)' };
       const water = waterNear(state, aim, from, 6);
       if (water < 0) return { ok: false, reason: 'Your warships cannot reach that coast from their sea' };
       const ids = ships.map((u) => u.id).slice(0, MAX_GROUP_UNITS);

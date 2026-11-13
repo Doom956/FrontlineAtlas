@@ -21,7 +21,8 @@ import type { BuildingType, GameState, Player, TechId } from '../../sim/types';
 import { formatCount } from '../render/common';
 import { el, pct, setClass, setText, type DrawerId, type HudCtx } from './dom';
 import { seg2, type DrawerPage } from './drawers';
-import { iconSpan, lineIcon, worldGlyph } from './glyph';
+import { iconSpan, lineIcon } from './glyph';
+import { pixelGlyph, pixelIcon } from './pixelIcons';
 import { arsenalCard, missingBuilding, ordersOf, priceOf, type Order } from './procure';
 import { BRANCH_TECH_ICON, BRANCH_TECH_LINE } from './techFork';
 import { TechRowsView } from './arsenalPage';
@@ -74,49 +75,51 @@ export const TECH_LINE: Record<TechId, string> = {
   ...ARSENAL_TECH_LINE,
 } as Record<TechId, string>;
 
-const ARSENAL_ICON: Partial<Record<TechId, () => string>> = {
-  destroyers: () => lineIcon('warship', 20),
-  battleships: () => lineIcon('barrage', 20),
-  submarines: () => lineIcon('eye', 20),
-  carriers: () => lineIcon('plane', 20),
-  lightTanks: () => lineIcon('expand', 20),
-  heavyTanks: () => lineIcon('shield', 20),
-  deepRaids: () => lineIcon('chevronRight', 20),
-  siegeTanks: () => worldGlyph('fort', 20),
-  groundAttack: () => lineIcon('target', 20),
-  heavyBombers: () => lineIcon('bomb', 20),
-  mechInfantry: () => lineIcon('troops', 20),
-  reconPlanes: () => lineIcon('eye', 20),
-  navalMastery: () => lineIcon('star', 20),
-  armorMastery: () => lineIcon('star', 20),
-  airMastery: () => lineIcon('star', 20),
-  amphibiousTanks: () => lineIcon('transport', 20),
-  earlyWarning: () => lineIcon('signal', 20),
-  navalMines: () => lineIcon('target', 20),
-  dropTanks: () => lineIcon('expand', 20),
-  nightBombing: () => lineIcon('eye', 20),
+/** Card pictures: pixel icons (hud/pixelIcons.ts) at `px`, like the top bar and the build bar; buildings as their map silhouette. */
+const ARSENAL_ICON: Partial<Record<TechId, (px: number) => string>> = {
+  destroyers: (px) => pixelIcon('warship', px),
+  battleships: (px) => pixelIcon('barrage', px),
+  submarines: (px) => pixelIcon('eye', px),
+  carriers: (px) => pixelIcon('plane', px),
+  lightTanks: (px) => pixelIcon('expand', px),
+  heavyTanks: (px) => pixelIcon('shield', px),
+  deepRaids: (px) => pixelIcon('chevronRight', px),
+  siegeTanks: (px) => pixelGlyph('fort', px),
+  groundAttack: (px) => pixelIcon('target', px),
+  heavyBombers: (px) => pixelIcon('bomb', px),
+  mechInfantry: (px) => pixelIcon('troops', px),
+  reconPlanes: (px) => pixelIcon('eye', px),
+  navalMastery: (px) => pixelIcon('star', px),
+  armorMastery: (px) => pixelIcon('star', px),
+  airMastery: (px) => pixelIcon('star', px),
+  amphibiousTanks: (px) => pixelIcon('transport', px),
+  earlyWarning: (px) => pixelIcon('signal', px),
+  navalMines: (px) => pixelIcon('target', px),
+  dropTanks: (px) => pixelIcon('expand', px),
+  nightBombing: (px) => pixelIcon('eye', px),
 };
 
-const TECH_ICON = {
-  agriculture: () => worldGlyph('farm', 20),
-  metallurgy: () => worldGlyph('mine', 20),
-  logistics: () => lineIcon('transport', 20),
-  fortification: () => worldGlyph('fort', 20),
-  navigation: () => lineIcon('warship', 20),
-  banking: () => worldGlyph('market', 20),
-  medicine: () => worldGlyph('hospital', 20),
-  mechanization: () => worldGlyph('factory', 20),
-  ballistics: () => worldGlyph('arsenal', 20),
-  flight: () => worldGlyph('airfield', 20),
-  industrialization: () => lineIcon('build', 20),
-  combinedArms: () => lineIcon('army', 20),
-  radar: () => worldGlyph('sam', 20),
-  rocketry: () => worldGlyph('silo', 20),
-  nuclearFission: () => lineIcon('atom', 20),
+const TECH_ICON: Partial<Record<TechId, (px: number) => string>> = {
+  agriculture: (px) => pixelGlyph('farm', px),
+  metallurgy: (px) => pixelGlyph('mine', px),
+  logistics: (px) => pixelIcon('transport', px),
+  fortification: (px) => pixelGlyph('fort', px),
+  navigation: (px) => pixelIcon('warship', px),
+  banking: (px) => pixelGlyph('market', px),
+  medicine: (px) => pixelGlyph('hospital', px),
+  mechanization: (px) => pixelGlyph('factory', px),
+  ballistics: (px) => pixelGlyph('arsenal', px),
+  flight: (px) => pixelGlyph('airfield', px),
+  industrialization: (px) => pixelIcon('build', px),
+  combinedArms: (px) => pixelIcon('army', px),
+  radar: (px) => pixelGlyph('sam', px),
+  rocketry: (px) => pixelGlyph('silo', px),
+  nuclearFission: (px) => pixelIcon('atom', px),
   ...BRANCH_TECH_ICON,
   ...ARSENAL_ICON,
-} as Record<TechId, () => string>;
-const iconOf = (t: TechId): string => (TECH_ICON[t] ?? (() => lineIcon('science', 20)))();
+};
+/** A tech's card picture at `px` (20 on the cards and in the detail pane, 16 on the order chips). */
+const iconOf = (t: TechId, px = 20): string => (TECH_ICON[t] ?? ((n: number) => pixelIcon('science', n)))(px);
 const lineOf = (t: TechId): string => TECH_LINE[t] ?? TECHS[t].description;
 
 /** Buildings each tech unlocks. */
@@ -133,8 +136,8 @@ const TABS: { id: PanelTab; label: string; key: string }[] = [
 /** How long a first click on a "choose one" card waits for the second (like switching research). */
 const CONFIRM_MS = 4000;
 const PHONE = '(max-width: 640px)';
-const OK = lineIcon('accept', 12, 2.4);
-const NO = lineIcon('close', 11, 2.4);
+const OK = pixelIcon('accept', 12);
+const NO = pixelIcon('close', 12);
 
 type Fact = [label: string, html: string];
 
@@ -179,8 +182,8 @@ export class ResearchPage implements DrawerPage {
       b.dataset.test = `tab-${t.id}`;
       b.setAttribute('role', 'tab');
       const dot = el('span', 'rp-tab-dot');
-      b.append(el('span', 'rp-tab-l', t.label), dot, el('kbd', 'rp-tab-k', t.key));
-      b.dataset.tip = `${t.label}  (${t.key} or Tab)`;
+      b.append(el('span', 'rp-tab-l', t.label), dot);
+      b.dataset.tip = t.label;
       b.addEventListener('click', () => this.setTab(t.id));
       tabs.append(b);
       this.tabBtns.set(t.id, { b, dot });
@@ -441,7 +444,7 @@ export class ResearchPage implements DrawerPage {
           const fill = el('span');
           bar.append(fill);
           const left = el('span', 'rp-order-t');
-          root.append(iconSpan(iconOf(o.tech), 'rp-order-ic'), el('span', 'rp-order-n', TECHS[o.tech].name), bar, left);
+          root.append(iconSpan(iconOf(o.tech, 16), 'rp-order-ic'), el('span', 'rp-order-n', TECHS[o.tech].name), bar, left);
           e = { root, fill, left };
           this.orderEls.set(o.tech, e);
         }

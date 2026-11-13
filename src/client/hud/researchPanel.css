@@ -1,8 +1,33 @@
 /* Research panel (hud/researchTree.ts, hud/arsenalPage.ts): two tabs of rows on a shared column grid, and a detail
-   pane. War-room style, kept plain: every card the same size with two lines; states told apart by shape and words
-   (owned: muted with a brass edge and a check; available: brass outline; in progress: steel outline and a bar;
-   locked: dashed, "Needs X"; not chosen: faded). One line style. Red only for what you can't pay. */
+   pane. Layout from the Modern Flat concept (a node graph, not boxes in boxes: no fork frames, thin neutral lines,
+   tabs on a quiet track), in the Pixel Clean tokens and type. Every card the same size with two lines; states told
+   apart by fill and words (owned: quiet fill and a green check; available: the lightest fill and a hairline; next: an
+   accent tint and a "Next" flag; in progress: a cyan edge, a cyan bar and "97%, 15 s left"; locked: a hairline
+   only, "Needs X"; not chosen: faded). Row names read left to right. Red only for what you can't pay.
+
+   This panel's accent is research blue, not amber (scoped here; the aliases are repointed too, they resolve where
+   they are declared). One colour, one meaning: blue = the suggestion and the main action ("Next", Start), cyan =
+   researching or on order now. Cobalt sits at OKLCH hue 266, cyan at 205. Contrast (WCAG, cool steel panel #121821):
+     #3b69fa fill (the owner's cobalt #3d6bff gives white text 4.43:1, so the same hue a step darker): white text
+     4.6:1, edge 3.9:1; hover #3560e6 white 5.3:1, edge 3.4:1
+     #93aef8 text and marks 8.2:1 (6.0:1 on #27313f); on the Next tint (renders #1d2d59): --text 11.6:1, --dim 5.6:1,
+     --faint 4.6:1, edge #93aef8 6.1:1
+     #4fccd9 cyan text 9.3:1 (7.7:1 on its own tint #182a33) */
 aside.drawer[data-page='research'] {
+  --accent: #3b69fa;
+  --accent-hi: #93aef8;
+  --accent-ink: #ffffff;
+  --accent-hover: #3560e6;
+  --accent-rgb: 59 105 250;
+  --brass: var(--accent);
+  --brass-hi: var(--accent-hi);
+  --brass-lo: #34518f;
+  --brass-ink: var(--accent-ink);
+  /* in progress, on order */
+  --info: #4fccd9;
+  --info-rgb: 79 204 217;
+  --steel: var(--info);
+  --steel-d: #05585f;
   /* opaque: the live map showing through the rows read as clutter */
   background-color: var(--metal);
   width: min(1320px, calc((100vw - 24px) / var(--ui, 1)));
@@ -65,39 +90,39 @@ aside.drawer[data-page='research'] .dr-body {
 .rp-tabs {
   flex: none;
   display: flex;
-  border: 1px solid var(--rule);
+  gap: 2px;
+  padding: 2px;
+  border: 0;
   border-radius: var(--r);
-  background: var(--ink);
+  background: var(--metal-2);
 }
 .rp-tab {
   position: relative;
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  height: 32px;
+  height: 34px;
   padding: 0 14px;
   border: 0;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--dim);
   font: 600 15px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   cursor: pointer;
 }
 .rp-tab + .rp-tab {
-  border-left: 1px solid var(--rule);
+  border-left: 0;
 }
 .rp-tab:hover {
   color: var(--text);
-  background: var(--metal-2);
+  background: var(--metal-3);
 }
 .rp-tab.on {
-  color: var(--brass-ink);
-  background: var(--brass);
+  color: var(--sel-ink);
+  background: var(--sel-bg);
 }
 .rp-tab-k {
   font: 600 10px/1 var(--f-ui);
-  letter-spacing: 0;
   padding: 2px 4px;
   border: 1px solid currentColor;
   border-radius: 2px;
@@ -129,13 +154,10 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-cur-k {
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .rp-cur-v {
   font: 600 16px/1 var(--f-label);
-  letter-spacing: 0.03em;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -163,7 +185,7 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-cur-l {
   min-width: 0;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--dim);
   font-variant-numeric: tabular-nums;
   overflow: hidden;
@@ -208,7 +230,7 @@ aside.drawer[data-page='research'] .dr-body {
 
 /* the grid: a label column, then the tab's columns; each row lays its lanes on the same template */
 .rp-grid {
-  --rp-lab: 22px;
+  --rp-lab: 76px;
   display: flex;
   flex-direction: column;
 }
@@ -225,10 +247,8 @@ aside.drawer[data-page='research'] .dr-body {
   padding-bottom: 4px;
 }
 .rp-colhead-c {
-  font: 600 11px/14px var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--faint);
+  font: 500 12px/14px var(--f-label);
+  color: var(--dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -245,7 +265,7 @@ aside.drawer[data-page='research'] .dr-body {
   grid-template-rows: repeat(var(--lanes, 2), auto);
   row-gap: 10px;
   padding: 18px 0 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 .rp-row.hidden {
   display: none;
@@ -255,29 +275,27 @@ aside.drawer[data-page='research'] .dr-body {
   align-self: stretch;
   display: flex;
   align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   justify-content: center;
-  gap: 8px;
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
+  gap: 4px;
   white-space: nowrap;
 }
 .rp-rowlab-t {
-  font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--dim);
+  font: 600 14px/1.2 var(--f-label);
+  color: var(--text);
 }
 .rp-rowlab-n {
-  font: 500 11px/1 var(--f-label);
-  letter-spacing: 0.06em;
-  color: var(--faint);
+  font: 500 12px/1 var(--f-label);
+  color: var(--dim);
 }
 /* tier labels of the phone list */
 .rp-tier {
   display: none;
 }
 
-/* lines: one plain style; brass between owned techs; the hovered card's path lights up */
+/* lines: one plain style; the hovered card's path lights up in neutral light (what it needs) and grey (what it opens),
+   so the path never borrows the blue of "Next" or the cyan of "researching" */
 .rp-lines {
   position: absolute;
   left: 0;
@@ -287,12 +305,12 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-lines path {
   fill: none;
-  stroke: var(--rule-hi);
-  stroke-width: 1;
+  stroke: #3a4350;
+  stroke-width: 1.5;
   transition: stroke var(--fast), opacity var(--fast);
 }
 .rp-lines path.done {
-  stroke: var(--brass-lo);
+  stroke: #6e7888;
 }
 .rp-lines path.off {
   opacity: 0.35;
@@ -306,10 +324,10 @@ aside.drawer[data-page='research'] .dr-body {
   stroke-width: 1.5;
 }
 .rp-grid.hovering .rp-lines path.hl-pre {
-  stroke: var(--brass-hi);
+  stroke: var(--text);
 }
 .rp-grid.hovering .rp-lines path.hl-next {
-  stroke: var(--steel);
+  stroke: var(--dim);
 }
 
 /* a choice: both branches in one bracket, "Choose one" on its top edge */
@@ -317,24 +335,22 @@ aside.drawer[data-page='research'] .dr-body {
   position: relative;
   z-index: 0;
   margin: -10px -9px -6px;
-  /* neutral: the cards inside say what can be taken (a brass box round locked cards was noise) */
-  border: 1px solid var(--rule-hi);
+  /* no frame: the "Choose one" label over the pair says it (a box round the cards was noise) */
+  border: 0;
   border-radius: 3px;
   pointer-events: none;
 }
 .rp-fork-l {
   position: absolute;
-  top: -7px;
-  left: 8px;
-  padding: 0 5px;
-  background: var(--metal);
-  font: 600 11px/13px var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--brass);
+  top: -9px;
+  left: 9px;
+  padding: 0;
+  background: none;
+  font: 500 12px/13px var(--f-label);
+  color: var(--dim);
 }
 .rp-fork.decided {
-  border-color: var(--rule);
+  border: 0;
 }
 .rp-fork.decided .rp-fork-l {
   color: var(--faint);
@@ -350,8 +366,8 @@ aside.drawer[data-page='research'] .dr-body {
   gap: 8px;
   min-width: 0;
   height: var(--rp-ch);
-  padding: 0 8px;
-  border: 1px solid var(--rule);
+  padding: 0 10px;
+  border: 1px solid transparent;
   border-radius: var(--r);
   background: var(--metal-2);
   color: var(--text);
@@ -373,7 +389,8 @@ aside.drawer[data-page='research'] .dr-body {
   line-height: 0;
   color: var(--dim);
 }
-.rp-ic svg {
+/* pixel icons (hud/pixelIcons.ts) keep their own size, one grid cell per CSS pixel; the line icon (no canvas) is 20px */
+.rp-ic svg.li {
   width: 20px;
   height: 20px;
 }
@@ -385,8 +402,7 @@ aside.drawer[data-page='research'] .dr-body {
   gap: 3px;
 }
 .rp-n {
-  font: 600 15px/17px var(--f-label);
-  letter-spacing: 0.02em;
+  font: 600 14px/17px var(--f-label);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -422,16 +438,14 @@ aside.drawer[data-page='research'] .dr-body {
 .rp-flag {
   display: none;
   position: absolute;
-  top: -7px;
+  top: -8px;
   /* right-hand end: the left end of a fork's top card sits under the fork's "Choose one" label */
   right: 10px;
-  padding: 0 5px;
-  border-radius: 2px;
-  font: 700 9px/12px var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--brass-ink);
-  background: var(--brass-hi);
+  padding: 0 6px;
+  border-radius: var(--r-xs);
+  font: 600 10px/14px var(--f-label);
+  color: var(--accent-ink);
+  background: var(--accent);
 }
 .rp-card.next .rp-flag {
   display: block;
@@ -476,8 +490,6 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-p svg {
   flex: none;
-  width: 12px;
-  height: 12px;
   opacity: 0.8;
 }
 .rp-p.p-time {
@@ -491,19 +503,24 @@ aside.drawer[data-page='research'] .dr-body {
 
 /* states */
 .rp-card.done {
-  background: var(--metal-3);
+  background: rgba(255, 255, 255, 0.035);
   border-color: transparent;
-  box-shadow: inset 2px 0 0 var(--brass);
+}
+.rp-card.done .rp-n {
+  color: var(--dim);
 }
 .rp-card.done .rp-mark {
-  color: var(--brass);
+  color: var(--good);
 }
 .rp-card.avail {
-  border-color: var(--brass);
+  background: var(--metal-3);
+  border-color: rgba(255, 255, 255, 0.16);
 }
-.rp-card.avail .rp-n,
+.rp-card.avail .rp-n {
+  color: var(--text);
+}
 .rp-card.avail .rp-ic {
-  color: var(--brass-hi);
+  color: var(--text);
 }
 .rp-card.avail .rp-meta {
   color: var(--text);
@@ -512,28 +529,31 @@ aside.drawer[data-page='research'] .dr-body {
   background: var(--metal-3);
 }
 .rp-card.avail.poor {
-  border-color: var(--brass-lo);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 .rp-card.avail.poor .rp-n,
 .rp-card.avail.poor .rp-ic {
   color: var(--text);
 }
 .rp-card.next {
-  border-color: var(--brass-hi);
-  background: linear-gradient(180deg, rgba(227, 192, 78, 0.12), rgba(227, 192, 78, 0.03)), var(--metal-2);
+  border-color: var(--accent-hi);
+  background: rgb(var(--accent-rgb) / 0.26);
+}
+.rp-card.next .rp-n,
+.rp-card.next .rp-ic {
+  color: var(--text);
 }
 .rp-card.active {
-  border-color: var(--steel);
-  background: rgba(107, 149, 184, 0.1);
+  border-color: rgb(var(--info-rgb) / 0.7);
+  background: rgb(var(--info-rgb) / 0.1);
 }
 .rp-card.active .rp-ic,
 .rp-card.active .rp-meta {
-  color: var(--steel);
+  color: var(--info);
 }
 .rp-card.locked {
   background: transparent;
-  border-style: dashed;
-  border-color: var(--rule-hi);
+  border-color: var(--rule);
 }
 .rp-card.locked .rp-n {
   color: var(--dim);
@@ -545,7 +565,7 @@ aside.drawer[data-page='research'] .dr-body {
 }
 /* the building it needs is missing: a to-do, not an error */
 .rp-card.needs-building .rp-meta {
-  color: var(--brass);
+  color: var(--caution);
 }
 .rp-card.off {
   opacity: 0.45;
@@ -558,10 +578,10 @@ aside.drawer[data-page='research'] .dr-body {
 }
 /* the card the detail pane is pinned to */
 .rp-card.sel {
-  box-shadow: 0 0 0 2px var(--brass-hi);
+  box-shadow: 0 0 0 2px var(--text);
 }
 .rp-card.done.sel {
-  box-shadow: inset 2px 0 0 var(--brass), 0 0 0 2px var(--brass-hi);
+  box-shadow: 0 0 0 2px var(--text);
 }
 
 /* hover / focus: the path lights up, the rest dims a little */
@@ -572,10 +592,10 @@ aside.drawer[data-page='research'] .dr-body {
   opacity: 0.3;
 }
 .rp-card.hl-pre:not(.done):not(.off) {
-  border-color: var(--brass-hi);
+  border-color: var(--text);
 }
 .rp-card.hl-next:not(.off) {
-  border-color: var(--steel);
+  border-color: var(--dim);
 }
 
 /* ---- the detail pane */
@@ -586,9 +606,9 @@ aside.drawer[data-page='research'] .dr-body {
   height: 92px;
   overflow: hidden;
   padding: 10px 14px;
-  border: 1px solid var(--rule);
+  border: 0;
   border-radius: var(--r);
-  background: rgba(255, 255, 255, 0.025);
+  background: rgba(255, 255, 255, 0.035);
   font-size: 13px;
   line-height: 18px;
 }
@@ -623,7 +643,7 @@ aside.drawer[data-page='research'] .dr-body {
   line-height: 0;
   color: var(--dim);
 }
-.rp-d-ic svg {
+.rp-d-ic svg.li {
   width: 20px;
   height: 20px;
 }
@@ -631,7 +651,6 @@ aside.drawer[data-page='research'] .dr-body {
   margin: 0;
   min-width: 0;
   font: 600 17px/20px var(--f-label);
-  letter-spacing: 0.02em;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -640,7 +659,7 @@ aside.drawer[data-page='research'] .dr-body {
 .rp-d-state {
   flex: none;
   margin-left: auto;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--dim);
   font-variant-numeric: tabular-nums;
 }
@@ -672,8 +691,6 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-d-k {
   font: 600 11px/18px var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .rp-d-v {
@@ -722,7 +739,7 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-d-note {
   margin: 0;
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 16px;
   color: var(--dim);
   text-align: center;
@@ -731,7 +748,7 @@ aside.drawer[data-page='research'] .dr-body {
   display: none;
 }
 .rp-d-note.warn {
-  color: var(--brass-hi);
+  color: var(--caution);
 }
 .rp-d-act {
   grid-area: act;
@@ -768,7 +785,7 @@ aside.drawer[data-page='research'] .dr-body {
   display: none;
 }
 .rp-orders-none {
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--dim);
   white-space: nowrap;
   overflow: hidden;
@@ -777,8 +794,6 @@ aside.drawer[data-page='research'] .dr-body {
 .rp-orders-l {
   flex: none;
   font: 600 11px/14px var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--faint);
 }
 .rp-order {
@@ -797,13 +812,12 @@ aside.drawer[data-page='research'] .dr-body {
   line-height: 0;
   color: var(--steel);
 }
-.rp-order-ic svg {
+.rp-order-ic svg.li {
   width: 14px;
   height: 14px;
 }
 .rp-order-n {
   font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.03em;
 }
 .rp-order-bar {
   height: 4px;
@@ -826,7 +840,7 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-orders-more {
   flex: none;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--steel);
 }
 
@@ -912,7 +926,7 @@ aside.drawer[data-page='research'] .dr-body {
     padding: 12px 0 4px;
   }
   .rp-n {
-    font-size: 14.5px;
+    font-size: 15px;
     line-height: 16px;
   }
   .rp-txt {
@@ -942,7 +956,7 @@ aside.drawer[data-page='research'] .dr-body {
 /* ---- phones: one row at a time as a list grouped by tier, no lines; the detail is a bottom sheet with the button */
 @media (max-width: 640px) {
   aside.drawer[data-page='research'] {
-    max-height: calc(100% - 58px - 236px);
+    max-height: calc(100% - 108px - 236px - 8px);
   }
   aside.drawer[data-page='research'] .dr-body {
     padding: 6px 10px 10px;
@@ -1001,7 +1015,6 @@ aside.drawer[data-page='research'] .dr-body {
   }
   .rp-auto .segc-b {
     padding: 0 4px;
-    letter-spacing: 0.04em;
   }
   .rp-chips {
     flex: none;
@@ -1017,19 +1030,17 @@ aside.drawer[data-page='research'] .dr-body {
     flex: none;
     height: 34px;
     padding: 0 14px;
-    border: 1px solid var(--rule);
+    border: 1px solid var(--edge);
     border-radius: 17px;
     background: transparent;
     color: var(--dim);
     font: 600 13px/32px var(--f-label);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
     cursor: pointer;
   }
   .rp-chip.on {
     color: var(--brass-hi);
     border-color: var(--brass);
-    background: rgba(201, 162, 39, 0.12);
+    background: rgb(var(--accent-rgb) / 0.12);
   }
   .rp-colhead,
   .rp-rowlab,
@@ -1047,13 +1058,11 @@ aside.drawer[data-page='research'] .dr-body {
   .rp-tier {
     display: block;
     margin-top: 10px;
-    font: 600 11.5px/14px var(--f-label);
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
+    font: 600 12px/14px var(--f-label);
     color: var(--faint);
   }
   .rp-tier.choose {
-    color: var(--brass);
+    color: var(--brass-hi);
   }
   .rp-card {
     flex: none;
@@ -1130,8 +1139,8 @@ aside.drawer[data-page='research'] .dr-body {
 /* phones: while the panel is open the guide folds to one line just above the command bar and the panel ends above
    it, so neither covers the other (hud/researchTree.ts sets .rp-open) */
 @media (max-width: 640px) {
-  .hud.rp-open:has(> .guide:not(.hidden):not(.covered)) aside.drawer[data-page='research'] {
-    max-height: calc(100% - 58px - 236px - 84px);
+  .hud.rp-open:has(> .guide:not(.hidden):not(.covered):not(.tucked)) aside.drawer[data-page='research'] {
+    max-height: calc(100% - 108px - 236px - 84px);
   }
   .hud.rp-open .guide-bar {
     flex-wrap: nowrap;
@@ -1142,7 +1151,7 @@ aside.drawer[data-page='research'] .dr-body {
   .hud.rp-open .guide-text {
     flex: 1 1 auto;
     min-width: 0;
-    font-size: 12.5px;
+    font-size: 13px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1155,4 +1164,9 @@ aside.drawer[data-page='research'] .dr-body {
     width: auto;
     flex: none;
   }
+}
+
+/* the research sheet covers the map's left edge: the standings step aside instead of peeking out from under it */
+.hud.rp-open > .hud-left {
+  visibility: hidden;
 }

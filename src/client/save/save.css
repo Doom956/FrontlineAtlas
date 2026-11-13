@@ -7,10 +7,10 @@
   display: flex;
   flex-direction: column;
   margin-bottom: 12px;
-  border: 1px solid var(--rule);
-  border-inline-start: 2px solid var(--brass);
+  border: 1px solid var(--edge);
+  --tone: var(--brass);
   border-radius: var(--r);
-  background: rgba(201, 162, 39, 0.05);
+  background: rgb(var(--accent-rgb) / 0.05);
 }
 .menu-save.old,
 .menu-save.broken {
@@ -32,7 +32,6 @@
 }
 .menu-save-map {
   font: 600 17px/1.15 var(--f-label);
-  letter-spacing: 0.04em;
   color: var(--text);
   overflow-wrap: anywhere;
 }
@@ -70,7 +69,7 @@
 .menu-save-ask {
   flex: 1;
   min-width: 0;
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.3;
   color: var(--text);
 }
@@ -86,7 +85,7 @@
 }
 .btn.menu-save-del:hover:not(:disabled) {
   background: transparent;
-  border-color: var(--rule-hi);
+  border-color: var(--edge-hi);
   color: var(--text);
 }
 /* Continue holds the brass: Play steps back to a plain button while a save is there */
@@ -106,11 +105,10 @@
 }
 .save-ask-title {
   font: 600 19px/1.2 var(--f-label);
-  letter-spacing: 0.04em;
 }
 .save-ask-text {
   margin: 0;
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.45;
   color: var(--dim);
 }
@@ -131,7 +129,6 @@
 }
 .save-load-title {
   font: 600 22px/1.15 var(--f-label);
-  letter-spacing: 0.06em;
 }
 .save-load-map {
   margin: 6px 0 20px;
@@ -147,7 +144,7 @@
 .save-bar {
   position: relative;
   height: 10px;
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   background: repeating-linear-gradient(90deg, var(--metal-3) 0 10%, var(--ink) 10% 20%);
   overflow: hidden;
 }
@@ -167,7 +164,7 @@
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--dim);
 }
 .save-load-left {

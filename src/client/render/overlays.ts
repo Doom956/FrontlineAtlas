@@ -18,7 +18,10 @@ import { barrageReach, fmtR, strikeOfMode, strikeTarget, type StrikeTarget } fro
 import { bombReach, bomberRadiusOf } from '../airSim';
 import { bulkPreviews, bulkPreviewText, effectiveCount } from '../hud/buildMenu';
 import { shiftHeld } from '../hud/quickBar';
-import { clamp, css, dashedLine, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, mix, pill, setTracking, type RGB } from './common';
+import { ACCENT_FILL_RGB, ACCENT_RGB, ACCENT_TEXT, accentStroke, clamp, css, dashedLine, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, mix, pill, setTracking, type RGB } from './common';
+
+/** The map overlay accent (render/common.ts) as 'r,g,b' for the strike discs: your launch sites, reach and aim. */
+const ACC = ACCENT_RGB.join(',');
 import type { UnitLayer } from './units';
 import type { FogView } from '../fog/fogView';
 import { markerSize } from './buildings';
@@ -68,6 +71,9 @@ export class Overlays {
     ctx.fillStyle = css(color, strong ? 0.1 : 0.05);
     ctx.fill();
     ctx.setLineDash([5, 4]);
+    ctx.lineWidth = (strong ? 1.5 : 1) + 1.75;
+    ctx.strokeStyle = `rgba(10,18,44,${strong ? 0.4 : 0.22})`;
+    ctx.stroke();
     ctx.lineWidth = strong ? 1.5 : 1;
     ctx.strokeStyle = css(color, strong ? 0.85 : 0.4);
     ctx.stroke();
@@ -160,12 +166,13 @@ export class Overlays {
       }
       this.star(ctx, sx, sy, R, css(colors[p.id] ?? p.color), p.id === me ? '#ffffff' : '#141414');
       if (spawn && p.id !== me && (!tribe || cam.zoom >= 3)) {
-        ctx.font = tribe ? `500 12px ${MAP_LABEL_FAMILY}` : `600 12px ${MAP_LABEL_FAMILY}`;
+        // the nation's own mixed case at 600 with a hair of tracking, as the names on the map (no spaced capitals)
+        ctx.font = tribe ? `500 12px ${MAP_LABEL_FAMILY}` : `600 13px ${MAP_LABEL_FAMILY}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        const track = tribe ? 0 : 0.8;
+        const track = tribe ? 0 : 0.26;
         setTracking(ctx, track);
-        haloText(ctx, tribe ? p.name : p.name.toUpperCase(), sx + track / 2, sy - R - 2, tribe ? 'rgba(232,234,238,0.85)' : 'rgba(255,255,255,0.94)', 12);
+        haloText(ctx, p.name, sx + track / 2, sy - R - 2, tribe ? 'rgba(232,234,238,0.85)' : 'rgba(255,255,255,0.94)', 12);
         setTracking(ctx, 0);
       }
     }
@@ -359,12 +366,16 @@ export class Overlays {
         if (q <= 0) continue;
         const sx = tx - (1 - q) * (60 + span);
         const sy = ty - (1 - q) * (90 + span) + (1 - q) * (1 - q) * 30;
-        ctx.beginPath();
-        ctx.moveTo(sx - 6, sy - 9);
-        ctx.lineTo(sx, sy);
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = 'rgba(255,236,190,0.8)';
-        ctx.stroke();
+        // a pixel shell with a short fading smoke tracer behind it (fx/pixelFx.ts style)
+        const g = z < 11 ? 1 : 2;
+        ctx.fillStyle = 'rgba(196,196,190,0.35)';
+        ctx.fillRect(Math.round(sx - 6), Math.round(sy - 9), g * 2, g * 2);
+        ctx.fillStyle = 'rgba(214,214,208,0.6)';
+        ctx.fillRect(Math.round(sx - 3), Math.round(sy - 4.5), g * 2, g * 2);
+        ctx.fillStyle = '#ffd84a';
+        ctx.fillRect(Math.round(sx) - g, Math.round(sy) - g, g * 2, g * 2);
+        ctx.fillStyle = '#fffbe8';
+        ctx.fillRect(Math.round(sx) - g, Math.round(sy) - g, g, g);
       }
     }
   }
@@ -387,102 +398,32 @@ export class Overlays {
     ctx.globalAlpha = 1;
   }
 
+  /**
+   * A sim effect's map marks. The explosions themselves, shells, tracers and craters are pixel art in fx/pixelFx.ts;
+   * here only the exact blast area of a rocket, bomb run, barrage or atom bomb (a thin outline that fades) and the
+   * small burst of a tile capture.
+   */
   private effect(ctx: CanvasRenderingContext2D, e: Effect, x: number, y: number, t: number, cam: Camera): void {
     const z = cam.zoom;
-    const R = Math.max(e.radius, 0.5) * z;
-    // the blast disc flashes at its exact radius, then fades (rocket, bombs, atom bomb, barrage; not the small blasts)
     if (e.radius >= 4 && e.kind !== 'shot' && e.kind !== 'capture') {
       const f = t < 0.12 ? 1 : Math.max(0, 1 - (t - 0.12) / 0.88);
       const rgb = e.kind === 'nuke' ? '255,214,140' : '255,196,110';
-      this.blastDisc(ctx, x, y, e.radius, z, rgb, 0.3 * f * f, 0.95 * f, 1.5);
-      if (e.kind === 'nuke') this.blastDisc(ctx, x, y, ATOM_CORE_RADIUS, z, '255,150,80', 0.3 * f * f, 0.95 * f, 1.5);
+      // the atom bomb's own shockwave is the ring to watch: its blast area stays a faint outline under it
+      const k = e.kind === 'nuke' ? 0.25 : 1;
+      this.blastDisc(ctx, x, y, e.radius, z, rgb, 0.06 * f * f * k, 0.8 * f * k, 1.25);
     }
-    switch (e.kind) {
-      case 'explosion': {
-        const r = Math.max(6, R) * (0.3 + 0.7 * t);
-        ctx.globalAlpha = 1 - t;
-        ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255,150,50,0.4)';
-        ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = 'rgba(255,230,160,0.9)';
-        ctx.stroke();
-        break;
+    if (e.kind === 'capture') {
+      const r = Math.max(3, z * 0.8) * (0.5 + t);
+      ctx.globalAlpha = 1 - t;
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(255,255,220,1)';
+      ctx.beginPath();
+      for (let k = 0; k < 4; k++) {
+        const a = (k * Math.PI) / 2 + t * 2;
+        ctx.moveTo(x + Math.cos(a) * r * 0.3, y + Math.sin(a) * r * 0.3);
+        ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
       }
-      case 'nuke': {
-        const big = Math.max(20, R);
-        if (t < 0.3) {
-          ctx.globalAlpha = 1 - t / 0.3;
-          ctx.beginPath();
-          ctx.arc(x, y, big * 1.5, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(255,255,240,0.85)';
-          ctx.fill();
-        }
-        ctx.globalAlpha = 1 - t;
-        const g = ctx.createRadialGradient(x, y, 0, x, y, big * (0.5 + 0.5 * t));
-        g.addColorStop(0, 'rgba(255,250,210,0.95)');
-        g.addColorStop(0.4, 'rgba(255,160,40,0.8)');
-        g.addColorStop(1, 'rgba(200,60,20,0)');
-        ctx.beginPath();
-        ctx.arc(x, y, big * (0.5 + 0.5 * t), 0, Math.PI * 2);
-        ctx.fillStyle = g;
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(x, y, big * (0.4 + 1.3 * t), 0, Math.PI * 2);
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = 'rgba(255,200,120,0.9)';
-        ctx.stroke();
-        break;
-      }
-      case 'shot': {
-        if (e.x2 === undefined || e.y2 === undefined) break;
-        const s2 = cam.tileToScreen(e.x2, e.y2);
-        ctx.globalAlpha = Math.max(0, 1 - t * 2);
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(s2.x, s2.y);
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = 'rgba(255,240,150,1)';
-        ctx.stroke();
-        break;
-      }
-      case 'barrage': {
-        // a ripple of small bursts over the disc (at least ~18 px across so it reads when zoomed out)
-        const RB = Math.max(18, R);
-        for (let k = 0; k < 7; k++) {
-          const tk = t * 1.4 - k * 0.07;
-          if (tk <= 0 || tk >= 1) continue;
-          const a = k * 2.1 + e.x;
-          const rr = RB * (0.15 + 0.8 * ((k * 37) % 10) / 10);
-          const bx = x + Math.cos(a) * rr;
-          const by = y + Math.sin(a) * rr;
-          const br = Math.max(7, z * 1.4) * (0.5 + 0.8 * tk);
-          ctx.globalAlpha = 1 - tk;
-          ctx.beginPath();
-          ctx.arc(bx, by, br, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(255,170,70,0.7)';
-          ctx.fill();
-          ctx.lineWidth = 1.5;
-          ctx.strokeStyle = 'rgba(255,236,190,0.9)';
-          ctx.stroke();
-        }
-        break;
-      }
-      case 'capture': {
-        const r = Math.max(3, z * 0.8) * (0.5 + t);
-        ctx.globalAlpha = 1 - t;
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = 'rgba(255,255,220,1)';
-        ctx.beginPath();
-        for (let k = 0; k < 4; k++) {
-          const a = (k * Math.PI) / 2 + t * 2;
-          ctx.moveTo(x + Math.cos(a) * r * 0.3, y + Math.sin(a) * r * 0.3);
-          ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
-        }
-        ctx.stroke();
-        break;
-      }
+      ctx.stroke();
     }
     ctx.globalAlpha = 1;
   }
@@ -549,7 +490,7 @@ export class Overlays {
     for (const b of state.buildings.values()) {
       if (b.buildLeft > 0) continue;
       if (b.owner === me.id) {
-        if (b.type === own && id !== 'paradrop') this.ring(ctx, cam, b.tile, 2.5, [214, 170, 60], true);
+        if (b.type === own && id !== 'paradrop') this.ring(ctx, cam, b.tile, 2.5, ACCENT_RGB, true);
         continue;
       }
       if (b.owner <= 0 || areAllied(state, me.id, b.owner)) continue;
@@ -581,10 +522,11 @@ export class Overlays {
       for (let i = 0; i < mask.inside.length; i++) {
         const o = i * 4;
         if (mask.inside[i]) {
-          px[o] = 214;
-          px[o + 1] = 170;
-          px[o + 2] = 60;
-          px[o + 3] = 22;
+          // in the guns' reach: a light cobalt wash (the map accent's fill)
+          px[o] = ACCENT_FILL_RGB[0];
+          px[o + 1] = ACCENT_FILL_RGB[1];
+          px[o + 2] = ACCENT_FILL_RGB[2];
+          px[o + 3] = 26;
         } else {
           px[o] = 6;
           px[o + 1] = 8;
@@ -615,12 +557,13 @@ export class Overlays {
     const z = cam.zoom;
     let top = 0;
     for (const r of rings) {
-      const rgb = !ok ? '226,72,52' : r.core ? '240,110,60' : '214,170,60';
+      // the atom bomb's core stays warm: a caution inside the accent disc (it hits your own land too)
+      const rgb = !ok ? '226,72,52' : r.core ? '240,110,60' : ACC;
       const fill = !ok ? (r.core ? 0.2 : 0.11) : r.core ? 0.2 : rings.length > 1 ? 0.1 : 0.2;
       this.blastDisc(ctx, x, y, r.radius, z, rgb, fill, ok ? 0.95 : 0.9, 1.5);
       top = Math.max(top, r.radius * z);
     }
-    this.centreMark(ctx, x, y, ok ? '255,236,190' : '255,170,160', 0.9);
+    this.centreMark(ctx, x, y, ok ? '220,230,254' : '255,170,160', 0.9);
     ctx.font = `600 12px ${MAP_LABEL_FAMILY}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
@@ -633,7 +576,7 @@ export class Overlays {
     ctx.roundRect(lx - tw / 2 - 6, ly - 16, tw + 12, 19, 6);
     ctx.fillStyle = 'rgba(10,13,21,0.62)';
     ctx.fill();
-    haloText(ctx, label, lx, ly, ok ? '#f6e7b8' : '#ffb8ae', 12, 1.2);
+    haloText(ctx, label, lx, ly, ok ? ACCENT_TEXT : '#ffb8ae', 12, 1.2);
     setTracking(ctx, 0);
   }
 
@@ -643,9 +586,9 @@ export class Overlays {
     const z = cam.zoom;
     if (ui.selectedTile >= 0 && ui.selectedTile < n) {
       const r = this.tileRect(cam, ui.selectedTile, 7);
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = '#ffd84a';
-      ctx.strokeRect(r.x, r.y, r.s, r.s);
+      ctx.beginPath();
+      ctx.rect(r.x, r.y, r.s, r.s);
+      accentStroke(ctx, 2);
     }
     const hover = ui.hoverTile;
     if (hover < 0 || hover >= n) return;
@@ -709,9 +652,12 @@ export class Overlays {
           ctx.beginPath();
           ctx.arc(c.x, c.y, bombReach(state, b) * z, 0, Math.PI * 2);
           ctx.setLineDash([6, 5]);
-          ctx.lineWidth = 1.5;
-          ctx.strokeStyle = b.bombers > 0 ? 'rgba(214,170,60,0.7)' : 'rgba(200,200,200,0.35)';
-          ctx.stroke();
+          if (b.bombers > 0) accentStroke(ctx, 1.5, 0.75);
+          else {
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = 'rgba(200,200,200,0.35)';
+            ctx.stroke();
+          }
           ctx.setLineDash([]);
         }
         // a front strike aims ahead of the push: the disc sits where the bombs will fall, a dashed line from the cursor
@@ -722,7 +668,7 @@ export class Overlays {
           const a = cam.tileToScreen((f % this.w) + 0.5, ((f / this.w) | 0) + 0.5);
           dashedLine(ctx, a.x, a.y, as.x, as.y, 'rgba(255,255,255,0.6)');
         }
-        if (aim !== hover) dashedLine(ctx, hs.x, hs.y, as.x, as.y, 'rgba(214,170,60,0.9)');
+        if (aim !== hover) dashedLine(ctx, hs.x, hs.y, as.x, as.y, css(ACCENT_RGB, 0.9));
         const r = t?.radius || bomberRadiusOf(state, state.humanId);
         const ok = !!t?.ok;
         const what = ok && t && t.count > 1 ? `${t.count} bombers` : 'Bombing run';
@@ -754,9 +700,12 @@ export class Overlays {
           ctx.beginPath();
           ctx.arc(c.x, c.y, range * z, 0, Math.PI * 2);
           ctx.setLineDash([6, 5]);
-          ctx.lineWidth = 1.5;
-          ctx.strokeStyle = b.dropCooldown > 0 ? 'rgba(200,200,200,0.45)' : 'rgba(214,170,60,0.85)';
-          ctx.stroke();
+          if (b.dropCooldown <= 0) accentStroke(ctx, 1.5, 0.85);
+          else {
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = 'rgba(200,200,200,0.45)';
+            ctx.stroke();
+          }
           ctx.setLineDash([]);
           const dx = (b.tile % this.w) - (hover % this.w);
           const dy = ((b.tile / this.w) | 0) - ((hover / this.w) | 0);
@@ -766,8 +715,8 @@ export class Overlays {
             best = b.tile;
           }
         }
-        if (best >= 0) lineFrom(best, 'rgba(214,170,60,0.9)');
-        circle(2.5, best >= 0 ? 'rgba(214,170,60,0.95)' : 'rgba(226,72,52,0.95)', best >= 0 ? 'rgba(214,170,60,0.18)' : 'rgba(226,72,52,0.15)');
+        if (best >= 0) lineFrom(best, css(ACCENT_RGB, 0.9));
+        circle(2.5, best >= 0 ? css(ACCENT_RGB, 0.95) : 'rgba(226,72,52,0.95)', best >= 0 ? css(ACCENT_FILL_RGB, 0.22) : 'rgba(226,72,52,0.15)');
         break;
       }
       case 'barrage': {

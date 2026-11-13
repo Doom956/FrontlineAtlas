@@ -1,5 +1,7 @@
 // The selected unit's card: a small card next to your selected warship (it follows the ship) with its type, owner,
 // hull and current order, while the line at the top says what a click does. Esc or the X cancels the selection.
+// Read top to bottom: portrait (the map sprite), name and owner with its stance; one strength line (label, bar, number);
+// then what it is doing, what it does by itself, and its reach.
 import { divisionMode, divisionStrength } from '../../sim/armor2';
 import { divisionReachLine, shipReachLine } from '../reach';
 import { warshipMaxHp, warshipStance } from '../../sim/naval2';
@@ -11,6 +13,7 @@ import { iconDataUrl } from '../icons';
 import { el, setText, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon } from './glyph';
 import { mapShown } from '../fx/prankView';
+import { paintPortrait } from './portrait';
 
 export class UnitCard {
   readonly el: HTMLElement;
@@ -18,6 +21,8 @@ export class UnitCard {
   private sub = el('span', 'uc-s');
   private hp = el('span', 'uc-hp');
   private hpFill = el('i');
+  private strK = el('span', 'uc-k', 'Hull');
+  private strV = el('span', 'uc-v');
   private order = el('div', 'uc-o');
   /** what it does by itself ("Auto: supporting the front with Azuria") */
   private auto = el('div', 'uc-a');
@@ -26,6 +31,9 @@ export class UnitCard {
   private lastMs = 0;
   private img: HTMLImageElement;
   private imgType = 'warship';
+  /** the sprite portrait (render/pixelSprites.ts); the painted icon stays as the fallback without a canvas */
+  private pic = document.createElement('canvas');
+  private picKey = '';
 
   constructor(private ctx: HudCtx) {
     this.el = el('div', 'ucard hidden');
@@ -46,17 +54,21 @@ export class UnitCard {
     tt.append(this.title, this.sub);
     const x = el('button', 'mc-x');
     x.type = 'button';
-    x.setAttribute('aria-label', 'Deselect (Esc)');
+    x.setAttribute('aria-label', 'Deselect');
     x.append(iconSpan(lineIcon('close', 12, 2)));
     x.addEventListener('click', () => {
       ctx.ui.mode = { kind: 'none' };
       ctx.ui.selection = [];
       ctx.ui.pendingSpearhead = null;
     });
-    head.append(img, tt, x);
+    this.pic.className = 'uc-pic hidden';
+    this.pic.setAttribute('aria-hidden', 'true');
+    head.append(this.pic, img, tt, x);
     this.hp.append(this.hpFill);
+    const str = el('div', 'uc-str');
+    str.append(this.strK, this.hp, this.strV);
     this.auto.dataset.test = 'unit-auto';
-    this.el.append(head, this.hp, this.order, this.auto, this.range);
+    this.el.append(head, str, this.order, this.auto, this.range);
   }
 
   /** Every frame: follow the selected warship on screen; texts at ~5 Hz. */
@@ -82,6 +94,14 @@ export class UnitCard {
       setText(this.title, `${tank ? 'Tank division' : 'Warship'} ${same.indexOf(u) + 1}`);
       const lvl = vetOf(u).level;
       setText(this.sub, `Yours · ${tank ? MODE_INFO[divisionMode(u)].name : STANCE_INFO[warshipStance(u)].name}${lvl ? ` · veteran ${lvl}` : ''}`);
+      const owner = state.players.find((p) => p.id === u.owner)?.color ?? me.color;
+      const pk = `${u.type}|${u.variant ?? ''}|${owner.join(',')}`;
+      if (pk !== this.picKey) {
+        this.picKey = pk;
+        const ok = paintPortrait(this.pic, u.type, u.variant, owner, 44, 28);
+        setVisible(this.pic, ok);
+        setVisible(this.img, !ok);
+      }
       if (this.imgType !== u.type) {
         this.imgType = u.type;
         try {
@@ -94,6 +114,8 @@ export class UnitCard {
       const share = tank ? divisionStrength(u) : Math.max(0, u.hp) / Math.max(1, warshipMaxHp(u));
       this.hpFill.style.width = `${Math.round(Math.min(1, share) * 100)}%`;
       this.hp.dataset.tip = tank ? `Strength ${Math.round(share * 100)}%` : `Hull ${hpText(u)}`;
+      setText(this.strK, tank ? 'Strength' : 'Hull');
+      setText(this.strV, tank ? `${Math.round(share * 100)}%` : hpText(u));
       setText(this.order, unitDoing(state, me, u));
       const auto = unitAutoLine(state, me.id, u);
       setText(this.auto, auto);

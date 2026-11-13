@@ -41,10 +41,10 @@ describe('arsenal card states', () => {
     expect(a.price.gold).toBeGreaterThan(0);
     expect(a.price.iron).toBeGreaterThan(0);
     expect(a.price.oil).toBe(0); // tier-1 unlocks cost iron only: a nation without oil can still start a pillar
-    expect(howToGet(s, me, 'navigation')).toBe('Build a Port, then buy Navigation in the Arsenal (T)');
+    expect(howToGet(s, me, 'navigation')).toBe('Build a Port, then buy Navigation in the Arsenal');
     addBuilding(s, 'port', 1, 5 * 40 + 5);
     expect(arsenalCard(s, me, 'navigation').state).toBe('buy');
-    expect(howToGet(s, me, 'navigation')).toBe('Buy Navigation in the Arsenal (T)');
+    expect(howToGet(s, me, 'navigation')).toBe('Buy Navigation in the Arsenal');
   });
 
   it('Flight needs no Airfield (it unlocks it), the air paths after it do', () => {
@@ -60,7 +60,7 @@ describe('arsenal card states', () => {
     expect(g.reason).toBe('Build an Airfield first');
     // a research prerequisite in the other tab comes first in the how-to line
     const s2 = rich();
-    expect(howToGet(s2, s2.players[1], 'flight')).toBe('Research Logistics, then buy Flight in the Arsenal (T)');
+    expect(howToGet(s2, s2.players[1], 'flight')).toBe('Research Logistics, then buy Flight in the Arsenal');
     expect(techFirst('flight')).toBe('Buy Flight in the Arsenal first');
     expect(techFirst('rocketry')).toBe('Research Rocketry first');
   });

@@ -84,7 +84,8 @@ export class MapTooltip {
     if (px + w > window.innerWidth - 8) px = Math.max(8, x - w - 32);
     // keep clear of the command bar at the bottom
     const bottom = window.innerHeight - 110;
-    if (py + h > bottom) py = Math.max(8, y - h - 34);
+    // flipped above the pointer it ends over the odds tag (which sits 34 px above the pointer), never on it
+    if (py + h > bottom) py = Math.max(8, y - h - 44);
     e.style.transform = `translate(${Math.round(px)}px, ${Math.round(py)}px)`;
   }
 
@@ -243,7 +244,7 @@ export class MapTooltip {
     this.card.className = `mtip build ${ok ? 'ok' : 'no'}`;
     this.card.replaceChildren(
       this.line(lineIcon('warship', 18), ok ? 'Sail here' : 'Warships sail on water', ok ? 'It patrols around this spot' : 'Pick a water tile', 'head'),
-      el('div', 'mt-hint', 'Esc or right-click: cancel.'),
+      el('div', 'mt-hint', 'Cancel at the top stops.'),
     );
     setVisible(this.odds, false);
   }
@@ -314,7 +315,7 @@ export class MapTooltip {
     row.append(el('span', me.gold >= t.cost.gold ? 'g' : 'g bad', `${formatCount(t.cost.gold)} gold`));
     if (t.cost.iron > 0) row.append(el('span', me.iron >= t.cost.iron ? 'g' : 'g bad', `${formatCount(t.cost.iron)} iron`));
     row.append(el('span', 'dim', fmtSeconds(buildSeconds(state, info.buildTime))));
-    const hint = el('div', 'mt-hint', t.ok ? 'Shift: x5 levels. Esc: stop.' : 'Esc: stop.');
+    const hint = el('div', 'mt-hint', 'Cancel at the top stops.');
     this.card.className = `mtip price ${t.ok ? (t.upgrade ? 'up' : 'ok') : 'no'}`;
     this.card.replaceChildren(row, hint);
     setVisible(this.odds, false);
@@ -325,7 +326,7 @@ export class MapTooltip {
     const t = bulkPreviewText(pv, type);
     const row = el('div', 'mt-price');
     row.append(iconSpan(worldGlyph(type, 18), 'mt-ic'), el('span', t.tone === 'no' ? 'g bad' : 'g', t.text));
-    const sub = el('div', 'mt-hint', t.sub ? `${t.sub}. Esc: stop.` : 'Esc: stop.');
+    const sub = el('div', 'mt-hint', t.sub ? `${t.sub}. Cancel at the top stops.` : 'Cancel at the top stops.');
     this.card.className = `mtip price ${t.tone === 'no' ? 'no' : t.tone === 'up' ? 'up' : 'ok'}`;
     this.card.replaceChildren(row, sub);
     setVisible(this.odds, false);
@@ -361,16 +362,16 @@ export class MapTooltip {
       if (own) rows.push(el('div', 'mt-warn', own));
       if (t.covered && !hidden) rows.push(el('div', 'mt-warn', t.covered));
       const salvo = id === 'bomb' || id === 'rocket' || id === 'atomBomb' ? ' Salvo size: top bar.' : '';
-      rows.push(el('div', 'mt-hint', `Click to fire. Shift: fire again.${salvo} Esc or right-click: cancel.`));
+      rows.push(el('div', 'mt-hint', `Click to fire.${salvo} Cancel at the top stops.`));
     } else {
       const help =
         id === 'barrage'
           ? `Guns reach ${barrageRange(me)} tiles from your border: the lit zone`
           : id === 'paradrop' || id === 'bomb'
-            ? id === 'bomb' ? 'Pick enemy land inside a gold ring (your bombers\' reach)' : 'Pick enemy or empty land inside a gold ring'
+            ? id === 'bomb' ? 'Pick enemy land inside a blue ring (your bombers\' reach)' : 'Pick enemy or empty land inside a blue ring'
             : 'Pick enemy land';
       rows.push(this.line(pic, t.reason || 'Not possible here', help, 'head'));
-      rows.push(el('div', 'mt-hint', 'Esc or right-click: cancel.'));
+      rows.push(el('div', 'mt-hint', 'Cancel at the top stops.'));
     }
     this.card.className = `mtip build ${t.ok ? 'ok' : 'no'}`;
     this.card.replaceChildren(...rows);

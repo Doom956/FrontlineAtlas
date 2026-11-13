@@ -61,7 +61,8 @@ import { forceLimit } from './allies';
 import { el } from './dom';
 import { UNIT_TEXT } from './forces';
 import { SHELL_RANGE_TILES } from './reach';
-import { lineIcon, worldGlyph } from './hud/glyph';
+import { worldGlyph } from './hud/glyph';
+import { pixelGlyph, pixelIcon, pixelStrike, type IconCat } from './hud/pixelIcons';
 import { BUILDING_SHORT, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect } from './hud/text';
 import { iconDataUrl, type IconId } from './icons';
 import { STRIKE_ORDER, STRIKES, type StrikeId } from './strikes';
@@ -74,7 +75,7 @@ const min = (seconds: number): number => Math.round(seconds / 60);
 /** One line per strike: what it needs first and what it does. */
 const STRIKE_HELP: Record<StrikeId, string> = {
   barrage: `Needs an Arsenal and ${n(BARRAGE_MIN_ARTILLERY)} artillery. Shells enemy land up to ${BARRAGE_RANGE} tiles from your border: kills troops, silences forts and SAM sites for ${BARRAGE_DISABLE_SECONDS} s.`,
-  bomb: `Needs Flight, an Airfield and a bomber. Wrecks buildings and kills troops within ${BOMBER_RADIUS} tiles, as far as the airfield reaches (the gold rings). Works exactly like a mission sortie: Heavy Bombers, Ground-attack planes, Strategic Bombing, Night Bombing and Drop Tanks all count. Near your front it bombs ahead of your push; over a building it raids it.`,
+  bomb: `Needs Flight, an Airfield and a bomber. Wrecks buildings and kills troops within ${BOMBER_RADIUS} tiles, as far as the airfield reaches (the blue rings). Works exactly like a mission sortie: Heavy Bombers, Ground-attack planes, Strategic Bombing, Night Bombing and Drop Tanks all count. Near your front it bombs ahead of your push; over a building it raids it.`,
   paradrop: `Needs Flight and an Airfield. Drops infantry up to ${PARADROP_RANGE} tiles away; they attack from where they land.`,
   rocket: `Needs Rocketry and a Missile Silo. Hits anywhere: destroys enemy buildings within ${ROCKET_RADIUS} tiles. Your silos fire them by themselves at the nation you fight (auto-fire, on unless you switch it off).`,
   atomBomb: `Needs Nuclear Fission and a Missile Silo. Wipes out everything within ${ATOM_RADIUS} tiles, yours too; every nation turns on you.`,
@@ -89,9 +90,10 @@ export function matchesQuery(text: string, query: string): boolean {
 
 interface Row {
   icon?: string;
+  /** the icon's colour family (pixel icons take their category's muted hue, never the accent) */
+  cat?: IconCat;
   title: string;
   text: string;
-  key?: string;
   /** a second, dimmer line (e.g. the counter) */
   note?: string;
 }
@@ -112,13 +114,12 @@ export function howToPlayContent(): HTMLElement {
   const item = (row: Row): HTMLLIElement => {
     const li = el('li', 'hw-item');
     if (row.icon !== undefined) {
-      const ic = el('span', 'hw-ico');
+      const ic = el('span', row.cat ? `hw-ico pi-c pi-${row.cat}` : 'hw-ico');
       ic.innerHTML = row.icon;
       li.append(ic);
     }
     const t = el('span', 'hw-t');
     t.append(el('b', '', row.title));
-    if (row.key) t.append(el('kbd', '', row.key));
     const d = el('span', 'hw-d', row.text);
     if (row.note) d.append(el('span', 'hw-note', row.note));
     li.append(t, d);
@@ -169,7 +170,7 @@ export function howToPlayContent(): HTMLElement {
   const find = el('div', 'hw-find');
   const input = el('input');
   input.type = 'search';
-  input.placeholder = 'Search the guide: fort, ally, tank, T ...';
+  input.placeholder = 'Search the guide: fort, ally, tank ...';
   input.setAttribute('aria-label', 'Search the guide');
   input.autocomplete = 'off';
   input.spellcheck = false;
@@ -180,18 +181,18 @@ export function howToPlayContent(): HTMLElement {
 
   // ---------------------------------------------------------------- quick start
   const quickRows: Row[] = [
-    { icon: lineIcon('expand', 18), title: 'Expand', text: 'Click empty land next to yours. Click an enemy border to attack it.' },
-    { icon: lineIcon('attack', 18), title: 'Attack %', text: 'Bottom bar, keys [ and ]: the share of your troops each click sends. Click again to send more.', key: '[ ]' },
-    { icon: worldGlyph('city', 18), title: 'Cities', text: 'More troops and gold. Farms add troops, Markets add gold.' },
-    { icon: lineIcon('build', 18), title: 'Build', text: 'Open the build menu, pick a building, click your land.', key: 'Tab' },
-    { icon: lineIcon('science', 18), title: 'Research', text: 'Science builds up by itself. Auto picks techs; choose your own here.', key: 'T' },
-    { icon: lineIcon('doctrine', 18), title: 'Doctrines', text: `At ${min(DOCTRINE_UNLOCK_SECONDS)}:00 pick a play style: Blitz, Fortress, Siege ...`, key: 'Shift D' },
-    { icon: lineIcon('rocket', 18), title: 'Strikes', text: 'A strike icon lights up in the bottom bar when ready: press its key, click the target.' },
-    { icon: lineIcon('ally', 18), title: 'Allies', text: 'Click a nation in the standings, then Ally. Allies cannot attack each other.', key: 'P' },
-    { icon: lineIcon('bell', 18), title: 'Alerts', text: 'Big news about you shows on the left: attacks, your capital in danger, lost ships and tanks, bombs on their way. Click one to see the spot. The bell (top right) lists the last 20.' },
-    { icon: lineIcon('help', 18), title: 'Tutorial', text: 'Title screen, Tutorial: one 5-minute practice game, step by step.' },
-    { icon: lineIcon('play', 18), title: 'Saving', text: 'Single-player games save by themselves as you play. Close the page any time, then press Continue on the title screen (your groups come back too). One game is kept: a new game replaces it.' },
-    { icon: lineIcon('help', 18), title: 'Guide', text: 'In games, a small bar above the command bar walks you through the start and explains new things once. Menu (Esc) > Help: Guide on / off, Restart guide.' },
+    { icon: pixelIcon('expand', 16), cat: 'armor', title: 'Expand', text: 'Click empty land next to yours. Click an enemy border to attack it.' },
+    { icon: pixelIcon('army', 16), cat: 'armor', title: 'Attack %', text: 'Bottom bar, the Attack slider with its minus and plus: the share of your troops each click sends. Click again to send more.' },
+    { icon: pixelGlyph('city', 18), cat: 'econ', title: 'Cities', text: 'More troops and gold. Farms add troops, Markets add gold.' },
+    { icon: pixelIcon('build', 16), cat: 'econ', title: 'Build', text: 'Build in the bottom bar opens the build menu: pick a building, click your land.' },
+    { icon: pixelIcon('science', 16), cat: 'science', title: 'Research', text: 'Science builds up by itself. Auto picks techs; choose your own in Research (top bar).' },
+    { icon: pixelIcon('doctrine', 16), cat: 'science', title: 'Doctrines', text: `At ${min(DOCTRINE_UNLOCK_SECONDS)}:00 pick a play style in Doctrine (top bar): Blitz, Fortress, Siege ...` },
+    { icon: pixelStrike('rocket', 18) || pixelIcon('rocket', 16), cat: 'strike', title: 'Strikes', text: 'A strike button lights up in the bottom bar when ready: click it, then click the target.' },
+    { icon: pixelIcon('diplomacy', 16), title: 'Allies', text: 'Click a nation in the standings, then Ally. Allies cannot attack each other.' },
+    { icon: pixelIcon('bell', 16), title: 'Alerts', text: 'Big news about you shows on the left: attacks, your capital in danger, lost ships and tanks, bombs on their way. Click one to see the spot. The bell (top right) lists the last 20.' },
+    { icon: pixelIcon('help', 16), title: 'Tutorial', text: 'Title screen, Tutorial: one 5-minute practice game, step by step.' },
+    { icon: pixelIcon('play', 16), title: 'Saving', text: 'Single-player games save by themselves as you play. Close the page any time, then press Continue on the title screen (your groups come back too). One game is kept: a new game replaces it.' },
+    { icon: pixelIcon('events', 16), title: 'Guide', text: 'In games, a small bar above the command bar walks you through the start and explains new things once. Menu, Help: Guide on / off, Restart guide.' },
   ];
   const quick = el('section', 'hw-quick');
   quick.append(
@@ -213,7 +214,7 @@ export function howToPlayContent(): HTMLElement {
     { title: 'Heartland', text: `Land deep inside a nation's borders defends up to x${1 + HEARTLAND_DEFENSE} better.` },
     { title: 'Trenches', text: `Borders between nations dig in over time (a dark zig-zag line). Artillery, barrages, planes and warships flatten trenches, and landings go around them. Each level, up to ${TRENCH.baseMaxLevel} (+1 with Fortress, +1 with Trench Warfare), costs attackers ${pct(TRENCH.step)}% more and slows them ${pct(TRENCH.slow)}%; land that changes hands starts undug. Tribes and coasts never dig.` },
     { title: 'Last stand', text: `A nation ${LAST_STAND_START}x or more smaller than its attacker defends up to x${1 + LAST_STAND_MAX}.` },
-    { title: 'Supply', text: 'Fronts far from your capital, cities and forts fight weaker (overlay: B). Forts also protect the hatched land.', key: 'B' },
+    { title: 'Supply', text: 'Fronts far from your capital, cities and forts fight weaker (Map key: Supply shows it). Forts also protect the hatched land.' },
     { title: 'Tribes', text: 'Small grey peoples with an army number. They never attack, accept any alliance (not from a traitor) and are cheap land early.' },
     { title: 'Collapse', text: `A nation under ${ENDGAME_SMALL_TILES} tiles (a tribe: ${TRIBE_ANNEX_TILES}) falls when hit; you get ${min(HUMAN_GRACE_SECONDS)} min to grow first. Pockets walled in by one nation are annexed.` },
     { title: 'Overtime', text: `After ${OVERTIME_MINUTES} min the land share needed to win drops ${pct(OVERTIME_DROP_PER_MINUTE)}% a minute, down to ${pct(OVERTIME_MIN_SHARE)}%.` },
@@ -233,7 +234,7 @@ export function howToPlayContent(): HTMLElement {
     { title: 'Infantry', text: 'Grows by itself. Best in forest, hills and mountains.' },
     { title: 'Armor', text: 'Made at Factories. Fast and strong on open ground, poor in rough terrain, burns oil.' },
     { title: 'Artillery', text: 'Made at Arsenals. Breaks forts; fragile alone.' },
-    { title: 'Mix', text: 'Auto (default) counters your neighbours; set it yourself in Army. Army sizes are public; the mix shows only near your Watchtowers or for allies.', key: 'U' },
+    { title: 'Mix', text: 'Auto (default) counters your neighbours; set it yourself in Army. Army sizes are public; the mix shows only near your Watchtowers or for allies.' },
   ];
   const terrainRows: Row[] = ([2, 3, 4, 5, 6, 7, 8] as TerrainId[]).map((id) => ({
     icon: worldGlyph(TERRAIN_GLYPH[id], 18),
@@ -259,9 +260,9 @@ export function howToPlayContent(): HTMLElement {
   // ---------------------------------------------------------------- buildings
   const buildRows: Row[] = [
     { title: 'Place', text: 'Pick a building (hotkey or build bar), click your land. It snaps to the nearest free spot; near one of the same kind it upgrades. Cursor preview: green builds, blue upgrades, red says why not.' },
-    { title: 'Build x3 / x5', text: 'Or hold Shift: one click queues that many levels (a City goes straight to level 5). Only what you can pay is queued; the building card cancels for a refund.' },
-    { title: 'Upgrade many', text: 'Hold Shift and drag a box over your buildings: they are selected (chips filter by type). Press U or click Upgrade x1 / x3 / x5: every one gets more levels, cheapest first, as far as your money goes. Shift+U switches x1 / x3 / x5; Esc clears.' },
-    { title: 'Quick bar', text: 'Six buildings you use most sit by the Build button. Right-click one in the menu to pin it.' },
+    { title: 'Build x3 / x5', text: 'Levels x3 or x5 (bottom bar or build menu): one click queues that many levels (a City goes straight to level 5). Only what you can pay is queued; the building card cancels for a refund.' },
+    { title: 'Upgrade many', text: 'Upgrade many in the build menu, then drag a box over your buildings (finger or mouse): they are selected (chips filter by type). Click Upgrade x1 / x3 / x5: every one gets more levels, cheapest first, as far as your money goes. The X on the bar clears it.' },
+    { title: 'Quick bar', text: 'Six buildings you use most sit by the Build button. Pin on a card in the build menu keeps one there.' },
     { title: 'Spend', text: 'Button next to your gold. Mercenaries: troops now for gold (the price rises with each hire). War bonds: gold now for stronger attacks for a while.' },
   ];
   const buildingRows: Row[] = BUILDING_ORDER.map((b: BuildingType) => {
@@ -284,12 +285,12 @@ export function howToPlayContent(): HTMLElement {
   const secs = Object.values(ARSENAL_PRICES.tiers).map((x) => x.seconds);
   const researchRows: Row[] = [
     { title: 'Science', text: `Builds up by ${BASE_SCIENCE} a second, +${SCIENCE_PER_LAB} per Research Lab level. ${resTechs.length} techs in ${tiers} tiers, one at a time; each also costs gold. The first tiers go quickly; Nuclear Fission and the last tier take most of a game.` },
-    { title: 'Auto', text: 'The next useful tech starts by itself. Choosing one by hand turns Auto off.', key: 'T' },
+    { title: 'Auto', text: 'The next useful tech starts by itself. Choosing one by hand turns Auto off.' },
     { title: 'OR pairs', text: 'Some techs come in pairs marked OR (Stock Exchange or Free Trade, Blitz Tactics or Trench Warfare ...). Taking one locks the other for good.' },
     { title: 'Switching', text: 'Clicking another tech while one is in progress asks for a second click: the current one loses its progress and gold.' },
   ];
   const arsenalRows: Row[] = [
-    { title: 'Arsenal tab', text: 'The second tab of the Research panel: one row each for Navy, Armor, Air and Shared.', key: 'T' },
+    { title: 'Arsenal tab', text: 'The second tab of the Research panel: one row each for Navy, Armor, Air and Shared.' },
     { title: 'Buying', text: `Not researched: bought with gold plus iron (armor) or oil and some iron (navy, air), and delivered ${Math.min(...secs)}-${Math.max(...secs)} s later. Several can be on order at once; the header shows each with a countdown.` },
     { title: 'Prices', text: `By column: ${[1, 2, 3, 4].map((k) => `${['unlock', 'path', 'upgrade or special', 'mastery'][k - 1]} ${n(ARSENAL_PRICES.tiers[k].gold)} gold + ${n(ARSENAL_PRICES.tiers[k].resource)} iron / oil`).join('; ')}. The three unlocks (Navigation, Mechanization, Flight) take iron only.` },
     { title: 'Buildings', text: 'Navy items need a Port, armor items a Factory, air items an Airfield. Flight itself unlocks the Airfield, so it needs none.' },
@@ -299,14 +300,15 @@ export function howToPlayContent(): HTMLElement {
     { title: 'Mastery', text: `The last card of a row and the biggest purchase. At most ${MASTERY_CAP} masteries per game (an order counts): the header counts "Mastery 1 of ${MASTERY_CAP}".` },
   ];
   const doctrineRows: Row[] = [
-    { title: 'Unlock', text: `At ${min(DOCTRINE_UNLOCK_SECONDS)}:00 (half that in a fast game) pick one. It only adds a bonus: every unit, building and strike stays open. The picker marks the three that suit your land and neighbours.`, key: 'Shift D' },
+    { title: 'Unlock', text: `At ${min(DOCTRINE_UNLOCK_SECONDS)}:00 (half that in a fast game) pick one. It only adds a bonus: every unit, building and strike stays open. The picker marks the three that suit your land and neighbours.` },
     { title: 'Levels', text: `Level 2 after ${min(DOCTRINE_LEVEL_SECONDS[1])} min, level 3 (a small extra perk) after ${min(DOCTRINE_LEVEL_SECONDS[2])} min with the same doctrine.` },
     { title: 'Switching', text: `The first choice is free. A switch costs gold, leaves you ${DOCTRINE_ADAPT_SECONDS} s with none, restarts at level 1, then has a ${min(DOCTRINE_SWITCH_COOLDOWN)} min cooldown.` },
     { title: 'Air cover', text: 'Air doctrine: airfields set to Idle bomb the trenches in front of your attacks by themselves, for free.' },
     { title: 'Scouting', text: "A neighbour's doctrine shows on its card once you share a border, have a Watchtower near it or are allied. Counter it." },
   ];
   const doctrineList: Row[] = (Object.keys(DOCTRINES) as DoctrineId[]).map((id) => ({
-    icon: lineIcon(DOCTRINES[id].icon, 18),
+    icon: pixelIcon(DOCTRINES[id].icon, 16),
+    cat: 'science',
     title: DOCTRINES[id].name,
     text: DOCTRINES[id].short,
   }));
@@ -320,10 +322,10 @@ export function howToPlayContent(): HTMLElement {
   // ---------------------------------------------------------------- special units and strikes
   const strikeRows: Row[] = STRIKE_ORDER.map((id) => ({ icon: pic(STRIKES[id].icon), title: STRIKES[id].name, text: STRIKE_HELP[id], key: STRIKES[id].key }));
   const strikeHow: Row[] = [
-    { title: 'Fire', text: 'A ready strike shows at the right end of the bottom bar (a ring while it reloads). Press its key, then click the target. Esc or right-click cancels. Forces says how to unlock the locked ones.', key: 'Y' },
-    { title: 'Salvos', text: 'Bombs, rockets and atom bombs fire x1, x3, x5 or All per click: pick it in the bar at the top while aiming, or right-click the strike button. Bombers come from every airfield in reach, rockets from every loaded silo; the preview says how many fly and what they will hit. Bombs and rockets remember the size; atom bombs start at x1 and a salvo of them asks first.' },
+    { title: 'Fire', text: 'A ready strike shows at the right end of the bottom bar (a ring while it reloads). Click it, then click the target. Cancel at the top stops. Forces says how to unlock the locked ones.' },
+    { title: 'Salvos', text: 'Bombs, rockets and atom bombs fire x1, x3, x5 or All per click: pick it in the bar at the top while aiming. Bombers come from every airfield in reach, rockets from every loaded silo; the preview says how many fly and what they will hit. Bombs and rockets remember the size; atom bombs start at x1 and a salvo of them asks first.' },
     { title: 'Smart aim', text: 'Bombers aimed at a front aim ahead of your attack, where the front will be when they arrive. If you have taken the spot by then, they bomb the nearest enemy land along that front instead, or fly home with their bombs.' },
-    { title: 'Rocket auto-fire', text: 'Forces (Y), Missiles: Auto-fire on a silo, or Auto-fire all for every silo (later ones too). Loaded rockets fly by themselves at the nation you fight: forts and SAM sites near your front first, then cities near it, keeping some gold in reserve. On by default; switch it off on a silo or for all silos in Forces. Atom bombs never fire by themselves.', key: 'Y' },
+    { title: 'Rocket auto-fire', text: 'Forces, Missiles: Auto-fire on a silo, or Auto-fire all for every silo (later ones too). Loaded rockets fly by themselves at the nation you fight: forts and SAM sites near your front first, then cities near it, keeping some gold in reserve. On by default; switch it off on a silo or for all silos in Forces. Atom bombs never fire by themselves.' },
   ];
   const unitRows: Row[] = (['warship', 'transport', 'bomber', 'fighter', 'transportPlane'] as const).map((id) => ({
     icon: pic(UNIT_TEXT[id].icon),
@@ -332,19 +334,19 @@ export function howToPlayContent(): HTMLElement {
     note: `Counter: ${UNIT_TEXT[id].counter}`,
   }));
   const unitHow: Row[] = [
-    { title: 'Buy', text: 'Warships, bombers and fighters are in the Military group of the build menu (or at a Port / Airfield). Forces lists everything you own with its orders.', key: 'Y' },
+    { title: 'Buy', text: 'Warships, bombers and fighters are in the Military group of the build menu (or at a Port / Airfield). Forces lists everything you own with its orders.' },
     { title: 'Place a warship', text: `Click any water of a sea one of your Ports touches, however far out: off the enemy coast works too. Selected ships show their rings: guns (${WARSHIP_RANGE} tiles), shelling (${SHELL_RANGE_TILES}) and shore support (${NAVY_SUPPORT_RANGE}); battleships shell twice as far.` },
     { title: 'Ships at war', text: 'Auto ships leave their post: they sail to your war target\'s coast anywhere on their sea, sink ships and shell, and go home only to repair. Hunt ships search the whole sea for enemy ships.' },
-    { title: 'Orders', text: 'Click your warship (or Select in Forces), then click water to move it. Shift+W selects every warship, a double-click every one on screen; zoomed out, close ships show as one fleet marker with a count (click it for the fleet). The Forces drawer (Y) gives all of them one order. Hover any unit to see what it is doing; enemy units heading for you get a red ring.' },
+    { title: 'Orders', text: 'Click your warship (or Select in Forces), then click water to move it. All in Forces selects every warship, a double-click every one on screen; zoomed out, close ships show as one fleet marker with a count (click it for the fleet). The Forces drawer gives all of them one order. Hover any unit to see what it is doing; enemy units heading for you get a red ring.' },
     { title: 'Follow my war', text: 'Your tanks, airfields, warships and silos fight by themselves: they go after the nation you attack, or the one attacking you. Each card says what it does now ("Auto: ..."). A map click fixes a target; Follow my war switches back.' },
     { title: 'Air missions', text: 'New airfields start on Support (or the mission you last set for all airfields). An airfield on Support bombs ahead of your attack, or the nearest enemy front it can reach, and keeps pace with the front; on Strategic it raids the most valuable targets of the nation you fight (factories, cities, airfields, SAM sites in the way), never ones already destroyed. Each airfield shows its last result ("Last raid: 3 buildings hit"). Re-buy losses replaces lost bombers on every mission, Air cover too.' },
-    { title: 'Group orders', text: 'With 2 or more warships, airfields or tank divisions, Forces (Y) shows one order bar per type: one click orders them all. Units on another order show as "set by hand"; Reset to all brings them back. Shift+W / Shift+A or a double-click selects the whole group.' },
+    { title: 'Group orders', text: 'With 2 or more warships, airfields or tank divisions, Forces shows one order bar per type: one click orders them all. Units on another order show as "set by hand"; Reset to all brings them back. All in Forces or a double-click selects the whole group.' },
     { title: 'Your groups', text: 'Select some warships or tank divisions, open Forces and click New group: a button like "Fleet 1 · 8 ships" appears. Click it to select them again, the target icon to find them on the map. Click a selected group again to rename it (Save or Cancel); + adds the units you have selected, x deletes the group (Undo brings it back). Lost units drop out.' },
   ];
   const tank = UNITS.tankDivision;
   const tankRows: Row[] = [
     { title: 'Build', text: `Military group, needs Mechanization and a Factory (one per Factory level). Costs ${n(tank.gold)} gold, ${tank.iron} iron, ${tank.oil} oil and takes armor from your pool.` },
-    { title: 'Move', text: `Select tank divisions like warships (click, or Shift+drag a box; Shift+A picks all), then click your land: they drive there fast over your own land (${Math.round(tank.speed)} tiles/s, Railways x${TANK_MOBILITY.railways}). Hovering shows the route and when they arrive.` },
+    { title: 'Move', text: `Select tank divisions like warships (click, or All in Forces), then click your land: they drive there fast over your own land (${Math.round(tank.speed)} tiles/s, Railways x${TANK_MOBILITY.railways}). Hovering shows the route and when they arrive.` },
     { title: 'Spearhead', text: `Click enemy land up to ${TANK_LAUNCH_REACH} tiles past your border, with no water on the way (Amphibious Tanks cross narrow water), then click again to launch: the tanks drive to the nearest own tile, then make a ${TANK_SPEARHEAD_WIDTH}-tile-wide breakthrough up to ${TANK_SPEARHEAD_MAX_DEPTH} tiles deep at ${TANK_SPEARHEAD_SPEED} tiles/s on plains. Fast on plains and desert, slow in forest, hills and swamp.` },
     { title: 'Support front', text: 'New tank divisions start on Support front: they ride to your current war\'s main front by themselves and spearhead into its weak spots whenever they are ready. Hold keeps them where they are.' },
     { title: 'Stalls at', text: `Mountains and forts, unless ${pct(TANK_ARTILLERY_SUPPORT)}% of the division is artillery (then slowly, at high loss).` },
@@ -387,11 +389,11 @@ export function howToPlayContent(): HTMLElement {
 
   // ---------------------------------------------------------------- diplomacy and allies
   const dipRows: Row[] = [
-    { title: 'Actions', text: "Ally, Gift and Embargo are on a nation's card (click it in the standings) and in the radial menu.", key: 'P' },
+    { title: 'Actions', text: "Ally, Gift and Embargo are on a nation's card (click it in the standings) and in the radial menu." },
     { title: 'Alliances', text: `Last ${min(ALLIANCE_DURATION)} min; both sides can renew in the last minute. Allies cannot attack each other, and trade pays allies ${pct(ALLY_TRADE_BONUS)}% more.` },
     { title: 'Traitor', text: `Breaking an alliance makes you a traitor for ${TRAITOR_DURATION} s: defence x${TRAITOR_DEFENSE} and everyone trusts you less.` },
     { title: 'Attacked', text: `The attacker loses trade with you for ${min(AUTO_EMBARGO_SECONDS)} min and pending alliance requests between you are cancelled.` },
-    { title: 'Ask allies', text: 'The line under an ally\'s name says whether it will help or is busy. "Ask to attack..." names an enemy, "Ask for troops" asks for some; right-click enemy land for "Ask allies". The answer comes as a toast; an ally asking you shows as an alert.' },
+    { title: 'Ask allies', text: 'The line under an ally\'s name says whether it will help or is busy. "Ask to attack..." names an enemy, "Ask for troops" asks for some. The answer comes as a toast; an ally asking you shows as an alert.' },
     { title: 'Fund an ally', text: 'Spend > fund: send gold; for a while it fights harder against your enemies and joins your wars more readily.' },
     { title: 'Coalitions', text: `When one nation holds ${pct(COALITION_LAND_SHARE)}% of the land and is well ahead, the others team up against it. A toast says so.` },
     { title: 'Teams', text: 'In a teams game, teammates are allied all game and win together.' },
@@ -403,7 +405,7 @@ export function howToPlayContent(): HTMLElement {
   const mpRows: Row[] = [
     { title: 'Public games', text: 'Multiplayer on the title screen lists them (Free for all, Teams, Special with random modifiers). Join one: it starts when its countdown ends and AI nations fill the free places.' },
     { title: 'Private lobby', text: 'Create private lobby: the single-player setup plus a seat count. Share the 6-character code or invite link; friends press Join. The host changes settings, kicks and presses Start.' },
-    { title: 'Host pause', text: 'Only the host of a private game can pause (Space or the pause button). Guests see the button disabled; public games never pause.', key: 'Space' },
+    { title: 'Host pause', text: 'Only the host of a private game can pause (Pause in the top bar). Guests see the button disabled; public games never pause.' },
     { title: 'Speed', text: 'No game speed online: the server sets the clock.' },
     { title: 'Watch', text: 'Joins as a spectator: the whole map, no actions. A player whose nation falls keeps watching.' },
     { title: 'Reconnect', text: 'If your connection drops, the game reconnects and catches up. Reload the page to get back into your game.' },

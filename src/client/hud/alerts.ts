@@ -11,6 +11,7 @@ import { el, fmtTime, setClass, setText, type DrawerId } from './dom';
 import type { DrawerPage } from './drawers';
 import { iconSpan, lineIcon } from './glyph';
 import { mapShown } from '../fx/prankView';
+import { compactNumbers } from '../render/common';
 
 const MAX_CARDS = 3;
 /** ms on screen: a red (bad) alert a little longer */
@@ -102,7 +103,7 @@ export class AlertStack {
   }
 
   private fill(c: Card): void {
-    setText(c.text, c.entry.text);
+    setText(c.text, compactNumbers(c.entry.text));
     setText(c.count, c.entry.count > 1 ? `x${c.entry.count}` : '');
     setClass(c.count, 'hidden', c.entry.count < 2);
     c.el.querySelector('.al-go')?.setAttribute('aria-label', `${c.entry.text}${c.entry.count > 1 ? ` (${c.entry.count} times)` : ''}${c.entry.tile >= 0 ? '. Show on the map' : ''}`);
@@ -203,7 +204,7 @@ export class AlertsPage implements DrawerPage {
       const r = el('button', `al-row t-${e.tone}${this.news.has(e.id) ? ' new' : ''}`);
       r.type = 'button';
       r.dataset.test = 'alert-row';
-      r.append(el('span', 'al-tm', fmtTime(gameSecondsAt(s, e.tick))), iconSpan(lineIcon(e.icon, 16), 'al-ic'), el('span', 'al-t', e.text));
+      r.append(el('span', 'al-tm', fmtTime(gameSecondsAt(s, e.tick))), iconSpan(lineIcon(e.icon, 16), 'al-ic'), el('span', 'al-t', compactNumbers(e.text)));
       if (e.count > 1) r.append(el('span', 'al-n', `x${e.count}`));
       if (e.tile >= 0) {
         r.dataset.tip = 'Show on the map';

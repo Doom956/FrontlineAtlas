@@ -10,6 +10,7 @@
 // say why not. Strikes the game's modifiers switch off are hidden for good.
 import type { GameState, Player } from '../../sim/types';
 import { iconDataUrl } from '../icons';
+import { catSpan, pixelStrike } from './pixelIcons';
 import { aimStrike, allStrikes, salvoKindOf, salvoOf, STRIKE_ORDER, STRIKES, strikeOfMode, strikesRevealed, type StrikeId, type StrikeStatus } from '../strikes';
 import { salvoLabel } from '../salvoPrefs';
 import { cycleSalvo, salvoTip } from './salvoPicker';
@@ -46,22 +47,30 @@ export class StrikeBar {
       const root = el('button', 'sk locked');
       root.type = 'button';
       root.dataset.test = `strike-${id}`;
-      root.setAttribute('aria-label', `${info.name} (${info.key})`);
+      root.setAttribute('aria-label', info.name);
       const ring = el('span', 'sk-ring');
-      const img = el('img', 'sk-ic');
-      img.alt = '';
-      img.width = 26;
-      img.height = 26;
-      img.draggable = false;
-      try {
-        img.src = iconDataUrl(info.icon, 26);
-      } catch {
-        /* no canvas (tests): the label still names it */
+      // a pixel picture in the strikes colour; the painted icon only where there is no canvas to trace it
+      const art = pixelStrike(info.icon, 26);
+      let img: HTMLElement;
+      if (art) img = catSpan(art, 'strike', 'sk-ic');
+      else {
+        const im = el('img', 'sk-ic');
+        im.alt = '';
+        im.width = 26;
+        im.height = 26;
+        im.draggable = false;
+        try {
+          im.src = iconDataUrl(info.icon, 26);
+        } catch {
+          /* no canvas (tests): the label still names it */
+        }
+        img = im;
       }
       const label = el('span', 'sk-l');
       const count = el('span', 'sk-n');
       const size = el('span', 'sk-x');
-      root.append(ring, img, label, count, size);
+      // Pixel Clean: a plain word under the icon (the cooldown seconds show in its place while reloading)
+      root.append(ring, img, el('span', 'sk-w', info.label), label, count, size);
       root.addEventListener('click', () => {
         // keep the keyboard on the map (Space pauses, letters aim) instead of on this button
         root.blur();
@@ -138,7 +147,7 @@ export class StrikeBar {
         const total = st.total > 0 ? st.total : b.peak;
         const p = total > 0 ? Math.max(0, Math.min(1, 1 - st.left / total)) : 0;
         b.ring.style.setProperty('--p', p.toFixed(3));
-        setText(b.label, `${Math.max(1, Math.ceil(st.left))}`);
+        setText(b.label, `${Math.max(1, Math.ceil(st.left))} s`);
       } else {
         b.peak = 0;
         setText(b.label, '');
@@ -148,8 +157,8 @@ export class StrikeBar {
       const size = kind ? salvoOf(this.ctx.ui, kind) : 1;
       setText(b.size, kind && size !== 1 ? salvoLabel(size) : '');
       const head = st.state === 'ready' ? 'Ready' : st.state === 'cooldown' ? 'Reloading' : st.state === 'locked' ? 'Locked' : 'Not now';
-      const salvo = kind ? `\nSalvo ${salvoTip(kind, size)}. Right-click: x1 / x3 / x5 / All.` : '';
-      setTip(b.root, `${info.name}  [${info.key}]\n${head}: ${st.line}${salvo}\n${info.what}\n${info.counter}`);
+      const salvo = kind ? `\nSalvo ${salvoTip(kind, size)}. Change it at the top while you aim.` : '';
+      setTip(b.root, `${info.name}\n${head}: ${st.line}${salvo}\n${info.what}\n${info.counter}`);
     }
   }
 }

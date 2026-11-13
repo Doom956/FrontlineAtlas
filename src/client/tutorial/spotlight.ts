@@ -126,9 +126,21 @@ export class Spotlight {
     setVisible(this.spot, true);
   }
 
+  /** Where the arrow was last placed (host px, its square box), for callers that keep it off other panels. */
+  readonly arrowBox = { left: 0, top: 0, right: 0, bottom: 0 };
+
+  /** Hides only the arrow (the ring stays). */
+  hideArrow(): void {
+    setVisible(this.arrow, false);
+  }
+
   private placeArrow(ax: number, ay: number, dir: ArrowDir, vw: number, vh: number): void {
     ax = Math.max(EDGE, Math.min(vw - A - EDGE, ax));
     ay = Math.max(EDGE, Math.min(vh - A - EDGE, ay));
+    this.arrowBox.left = ax;
+    this.arrowBox.top = ay;
+    this.arrowBox.right = ax + A;
+    this.arrowBox.bottom = ay + A;
     this.arrow.style.transform = `translate(${ax.toFixed(1)}px, ${ay.toFixed(1)}px)`;
     if (this.arrow.dataset.dir !== dir) this.arrow.dataset.dir = dir;
   }

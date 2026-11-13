@@ -16,14 +16,11 @@
   gap: 6px;
   height: 32px;
   padding: 0 10px 0 9px;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--r);
   background-color: var(--metal-a);
-  background-image: var(--grain);
   color: var(--dim);
   font: 600 13px/1 var(--f-label);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   cursor: pointer;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 6px 18px rgba(0, 0, 0, 0.35);
   transition: color var(--fast), border-color var(--fast), background-color var(--fast);
@@ -44,7 +41,6 @@
   background: var(--brass);
   color: var(--brass-ink);
   font: 600 11px/16px var(--f-ui);
-  letter-spacing: 0;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
@@ -57,8 +53,8 @@
   width: max-content;
   max-width: min(300px, calc(100vw - 24px));
   padding: 6px 10px;
-  border: 1px solid var(--rule);
-  border-left: 2px solid var(--brass-lo);
+  border: 1px solid var(--edge);
+  --tone: var(--brass-lo);
   border-radius: var(--r);
   background: var(--metal-a);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
@@ -97,8 +93,7 @@
   display: flex;
   flex-direction: column;
   background-color: var(--metal-a);
-  background-image: var(--grain);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--r);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 28px rgba(0, 0, 0, 0.5);
   user-select: text;
@@ -125,8 +120,6 @@
 }
 .chat-title {
   font: 600 12px/1 var(--f-label);
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
   color: var(--dim);
 }
 .chat-tabs {
@@ -137,7 +130,7 @@
   min-height: 24px;
   padding: 0 10px;
   font-size: 12px;
-  border-color: var(--rule);
+  border-color: var(--edge);
   background: transparent;
   box-shadow: none;
   color: var(--dim);
@@ -204,11 +197,9 @@
   display: inline-block;
   margin-right: 6px;
   padding: 0 4px;
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   border-radius: 1px;
   font: 600 10px/14px var(--f-label);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   color: var(--dim);
   vertical-align: 1px;
 }
@@ -263,7 +254,7 @@ button.chat-name:hover {
   flex-direction: column;
   gap: 6px;
   background: var(--metal-2);
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   border-radius: var(--r);
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55);
 }
@@ -291,7 +282,6 @@ button.chat-name:hover {
   min-height: 26px;
   padding: 0 8px;
   font-size: 12px;
-  letter-spacing: 0.05em;
 }
 .chat-q-ping {
   border-color: var(--brass-lo);
@@ -308,7 +298,7 @@ button.chat-name:hover {
   min-width: 0;
   height: 34px;
   padding: 0 10px;
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   border-radius: var(--r);
   background: var(--ink);
   color: var(--text);
@@ -333,8 +323,6 @@ button.chat-name:hover {
   background: var(--brass);
   color: var(--brass-ink);
   font: 600 13px/1 var(--f-label);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   cursor: pointer;
 }
 .chat-send:hover {
@@ -395,8 +383,13 @@ button.chat-name:hover {
 .lobby-chat > .chat.open {
   flex-basis: 100%;
 }
-.lobby-chat > .chat-switch {
-  margin-left: auto;
+/* the rule row: "Lobby chat" with On / Off, the full width above the Chat button */
+.lobby-chat-rule {
+  flex: 1 1 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 .chat-switch .btn {
   flex: none;

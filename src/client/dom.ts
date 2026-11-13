@@ -1,4 +1,5 @@
 // Small DOM helpers shared by the menu, the setup screen and the HUD.
+import { pixelIcon } from './hud/pixelIcons';
 
 /** Creates an element with an optional class string and text. */
 export function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string): HTMLElementTagNameMap[K] {
@@ -13,6 +14,15 @@ export function button(label: string, cls: string, onClick: (e: MouseEvent) => v
   const b = el('button', 'btn ' + cls, label);
   b.type = 'button';
   b.addEventListener('click', onClick);
+  return b;
+}
+
+/** A ghost "Back" button with a left-arrow pixel icon, so it reads as a button and not a stray word. */
+export function backButton(onClick: (e: MouseEvent) => void, label = 'Back'): HTMLButtonElement {
+  const b = button('', 'ghost back-btn', onClick);
+  const ic = el('span', 'ico back-ic');
+  ic.innerHTML = pixelIcon('back', 16);
+  b.append(ic, el('span', '', label));
   return b;
 }
 

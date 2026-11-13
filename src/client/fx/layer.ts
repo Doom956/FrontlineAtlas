@@ -1,9 +1,14 @@
 // Pooled map effects drawn on the overlay canvas (CSS px). A fixed set of records is reused: no allocation per
-// effect, no per-particle objects (the few particles of an effect are placed from its seed). Plain arcs and
-// rectangles only, no gradients or shadows, so a full pool costs a fraction of a millisecond.
+// effect, no per-particle objects (the few particles of an effect are placed from its seed). The rings and labels of
+// captured cities are drawn here (plain arcs, no gradients or shadows); a sinking ship, a falling plane's smoke and
+// dust are drawn by the current explosions art style (art/registry.ts).
 
 import { MAP_LABEL_FAMILY } from '../render/common';
+import { artFor, motionFor } from '../art/registry';
+import type { MapFxDraw } from '../art/types';
 import { FX_INFO, fxLabel, type FxKind } from './map';
+
+const mapFxDraw: MapFxDraw = { kind: 'splash', x: 0, y: 0, t: 0, zoom: 1, seed: 0, rt: 0, dpr: 1 };
 
 export const FX_CAP = 40;
 
@@ -154,98 +159,29 @@ function drawOne(ctx: CanvasRenderingContext2D, f: FxRec, x: number, y: number, 
       label(ctx, fxLabel(f.kind) ?? '', x, y - (capital ? 36 : 30), t, rgb, capital);
       break;
     }
-    case 'splash': {
-      const R = 16 * k;
-      ring(ctx, x, y, 3 + R * easeOut(t), 1.5, FOAM, 0.6 * (1 - t) * (1 - t));
-      const t2 = clamp01((t - 0.15) / 0.85);
-      if (t2 > 0) ring(ctx, x, y, 2 + R * 0.6 * easeOut(t2), 1, FOAM, 0.45 * (1 - t2) * (1 - t2));
-      // droplets: thrown up and out, then fall back
-      const td = clamp01(t / 0.45);
-      if (td < 1) {
-        ctx.fillStyle = `rgba(${FOAM},${(0.8 * (1 - td)).toFixed(3)})`;
-        for (let j = 0; j < 5; j++) {
-          const a = f.seed * TAU + (j * TAU) / 5;
-          const d = R * 0.7 * td;
-          ctx.fillRect(x + Math.cos(a) * d - 1, y + Math.sin(a) * d * 0.6 - 10 * k * td * (1 - td) * 2 - 1, 2, 2);
-        }
-      }
-      // hull fragments: drift apart, tilt, shrink as they go under
-      const sink = 1 - easeOut(t);
-      if (sink > 0.05) {
-        ctx.fillStyle = `rgba(52,58,66,${(0.85 * sink).toFixed(3)})`;
-        for (let j = 0; j < 3; j++) {
-          const a = f.seed * 5 + j * 2.1;
-          const d = 3 * k + 7 * k * easeOut(t);
-          const w = (4 - j) * k * sink + 1;
-          const fx = x + Math.cos(a) * d;
-          const fy = y + Math.sin(a) * d * 0.7;
-          ctx.save();
-          ctx.translate(fx, fy);
-          ctx.rotate(a + t * 1.5);
-          ctx.fillRect(-w, -1, w * 2, 2);
-          ctx.restore();
-        }
-      }
-      break;
-    }
-    case 'smoke': {
-      // a falling ember first, then puffs that grow and drift with the wind
-      if (t < 0.3) {
-        const te = t / 0.3;
-        ctx.beginPath();
-        ctx.moveTo(x - 6 * k, y - 10 * k + te * 4 * k);
-        ctx.lineTo(x, y);
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = `rgba(255,190,120,${(0.8 * (1 - te)).toFixed(3)})`;
-        ctx.stroke();
-      }
-      for (let j = 0; j < 4; j++) {
-        const tj = clamp01((t - j * 0.08) / 0.92);
-        if (tj <= 0) continue;
-        const a = f.seed * TAU + j * 1.7;
-        const r = (3 + 7 * easeOut(tj)) * k;
-        const px = x + Math.cos(a) * 4 * k + tj * 8 * k;
-        const py = y + Math.sin(a) * 3 * k - tj * 10 * k;
-        disc(ctx, px, py, r, SMOKE, 0.38 * (1 - tj) * (1 - tj * 0.3));
-      }
-      break;
-    }
+    case 'splash':
+    case 'smoke':
     case 'dust':
     case 'fortDust': {
-      const fort = f.kind === 'fortDust';
-      const n = fort ? 7 : 4;
-      const spread = fort ? Math.max(10, z * 1.2) : Math.max(10, f.r * z * 0.55);
-      for (let j = 0; j < n; j++) {
-        const tj = clamp01((t - (fort ? 0 : 0.18 + j * 0.06)) / (fort ? 1 : 0.76));
-        if (tj <= 0) continue;
-        const a = f.seed * TAU + (j * TAU) / n;
-        const d = fort ? spread * (0.4 + 0.9 * easeOut(tj)) : spread * (0.3 + 0.6 * fract(f.seed * 7 + j * 0.37));
-        const r = (fort ? 4 + 6 * easeOut(tj) : 3 + 5 * easeOut(tj)) * k;
-        disc(ctx, x + Math.cos(a) * d, y + Math.sin(a) * d * 0.75 - tj * 3 * k, r, DUST, (fort ? 0.42 : 0.3) * (1 - tj) * (1 - tj));
-      }
-      if (fort && t < 0.4) {
-        const td = t / 0.4;
-        ctx.fillStyle = `rgba(90,80,66,${(0.9 * (1 - td)).toFixed(3)})`;
-        for (let j = 0; j < 6; j++) {
-          const a = f.seed * 3 + j * 1.05;
-          const d = 4 * k + 14 * k * td;
-          ctx.fillRect(x + Math.cos(a) * d - 1, y + Math.sin(a) * d - 8 * k * td * (1 - td) - 1, 2, 2);
-        }
-      }
+      // a ship sinking, a plane going down, dust after shells or a fort coming down: drawn by the explosions art style
+      const d = mapFxDraw;
+      d.kind = f.kind;
+      d.x = x;
+      d.y = y;
+      d.t = t;
+      d.zoom = z;
+      d.seed = f.seed;
+      d.rt = f.r;
+      artFor('explosions').drawMapFx(ctx, d, motionFor('explosions'));
+      ctx.globalAlpha = 1;
       break;
     }
-    case 'shockwave': {
-      const R = Math.max(18, f.r * z);
-      ring(ctx, x, y, R * (0.3 + 1.3 * easeOut(t)), 0.75 + 2 * (1 - t), WAVE, 0.65 * (1 - t) * (1 - t));
+    case 'shockwave':
+      // the rocket / bomb blasts draw their own pixel ring (fx/pixelFx.ts)
       break;
-    }
-    case 'nukeWave': {
-      const R = Math.max(40, f.r * z);
-      ring(ctx, x, y, R * (0.2 + 2.2 * easeOut(t)), 1 + 3.5 * (1 - t), WAVE, 0.75 * Math.pow(1 - t, 1.5));
-      const t2 = clamp01((t - 0.12) / 0.88);
-      if (t2 > 0) ring(ctx, x, y, R * (0.15 + 1.5 * easeOut(t2)), 1 + 2 * (1 - t2), '255,170,110', 0.5 * (1 - t2) * (1 - t2));
+    case 'nukeWave':
+      // the atom bomb draws its own single pixel shockwave ring (fx/pixelFx.ts); this kind keeps the camera shake
       break;
-    }
   }
 }
 

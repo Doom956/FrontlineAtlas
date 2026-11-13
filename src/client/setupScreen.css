@@ -21,10 +21,10 @@
   gap: 8px;
   min-height: 32px;
   padding: 0 10px;
-  border-color: var(--rule);
+  border-color: var(--edge);
 }
 .btn.you-chip:hover:not(:disabled) {
-  border-color: var(--rule-hi);
+  border-color: var(--edge-hi);
 }
 .you-label {
   color: var(--faint);
@@ -42,7 +42,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   font: 500 13px/1 var(--f-ui);
-  letter-spacing: 0;
   text-transform: none;
 }
 .you-pop {
@@ -56,7 +55,7 @@
   gap: 8px;
   padding: 14px;
   background: var(--metal);
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   border-radius: var(--r);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
 }
@@ -159,10 +158,8 @@
   min-height: 32px;
 }
 .setup-h {
-  font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--brass);
+  font: 600 15px/1.2 var(--f-label);
+  color: var(--text);
 }
 .setup-sec-head + .setup-sec-head {
   margin-top: 8px;
@@ -194,7 +191,7 @@
   min-width: 0;
   padding: 5px 5px 6px;
   background: var(--metal-2);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--r);
   color: var(--text);
   text-align: start;
@@ -202,12 +199,12 @@
   transition: border-color var(--fast), background-color var(--fast);
 }
 .map-thumb:hover {
-  border-color: var(--brass-lo);
+  border-color: var(--rule-hi);
   background: var(--metal-3);
 }
 .map-thumb.on {
-  border-color: var(--brass);
-  box-shadow: 0 0 0 1px var(--brass) inset;
+  border-color: var(--sel-bg);
+  box-shadow: 0 0 0 1px var(--sel-bg) inset;
   background: var(--metal-3);
 }
 .map-pic {
@@ -229,7 +226,6 @@
 }
 .map-name {
   font: 600 14px/1.15 var(--f-label);
-  letter-spacing: 0.03em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -260,7 +256,7 @@
 .setup-note {
   margin: 0;
   color: var(--dim);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.4;
 }
 .setup-note.field-note {
@@ -303,7 +299,7 @@
   display: flex;
   align-items: center;
   flex: none;
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   border-radius: var(--r);
 }
 .btn.step-btn {
@@ -326,7 +322,7 @@
   flex: 0 0 auto;
   min-height: 30px;
   padding: 0 10px;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 /* ---- rules: name and one line on the leading side, the control on the trailing side */
@@ -343,7 +339,7 @@
   padding: 5px 0;
 }
 .mod-name {
-  font: 600 13.5px/1.25 var(--f-ui);
+  font: 600 14px/1.25 var(--f-ui);
 }
 .mod-detail {
   font: 400 12px/1.35 var(--f-ui);
@@ -360,14 +356,12 @@
 .mod-group-h {
   margin: 0 0 2px;
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--dim);
 }
 
 /* ---- folded parts (map options, more rules): a row that reads as a control, the live value on the trailing side */
 .setup-fold {
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-radius: var(--r);
 }
 .fold-sum {
@@ -404,13 +398,11 @@
 }
 .fold-title {
   font: 600 13px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--text);
 }
 .fold-val {
   margin-inline-start: auto;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--dim);
   white-space: nowrap;
   overflow: hidden;
@@ -493,32 +485,35 @@
   overflow: visible;
   padding: 0;
 }
+/* code, players, team and chat scroll in the upper part; Start and Leave stay at the foot of the column (no sticky
+   bar with its own background: the glass card shows the same behind both) */
 .lobby-col {
   flex: 0 0 320px;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
   padding-inline-start: 24px;
   padding-bottom: 16px;
   border-inline-start: 1px solid var(--rule);
   gap: 12px;
+}
+.lobby-col > .lobby-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 /* the redrawn parts of the lobby column (lobby.ts) lay out as if they were the column's own children */
 .lobby-top,
 .lobby-bottom {
   display: contents;
 }
+.lobby-scroll > *,
 .lobby-top > *,
 .lobby-bottom > * {
   flex-shrink: 0;
-}
-/* Start and Leave stay in view at the bottom of the lobby column while it scrolls */
-.lobby-col .lobby-actions {
-  position: sticky;
-  bottom: -16px;
-  z-index: 2;
-  margin-bottom: -16px;
-  padding-bottom: 16px;
-  background: var(--metal-a);
 }
 .setup-foot.lobby-mode .lobby-foot {
   flex: none;
@@ -653,8 +648,16 @@
   }
   /* the lobby column's parts join the page: code and players first, the setup, then Start and Leave stuck at the
      bottom while the page scrolls */
-  .lobby-col {
+  .lobby-col,
+  .lobby-col > .lobby-scroll {
     display: contents;
+  }
+  /* a guest's "Waiting for ..." line reads first, Leave at the end of the bar */
+  .with-side .lobby-actions .lobby-wait {
+    order: 1;
+    flex: 1;
+    min-width: 0;
+    text-align: start;
   }
   .setup-body.with-side {
     gap: 14px;
@@ -669,6 +672,7 @@
     bottom: 0;
     z-index: 5;
     flex-direction: row-reverse;
+    align-items: center;
     margin: 0;
     padding: 12px 0;
     background: var(--metal);
@@ -709,13 +713,17 @@
     gap: 8px;
     width: 100%;
   }
+  /* five game types do not fit one row at phone width: they wrap onto two rows inside the card's padding, split by
+     the control's own hairlines (the 1px gaps show the track colour) */
   .preset-chips {
-    overflow-x: auto;
-    scrollbar-width: none;
-    margin-inline-end: -16px;
+    flex-wrap: wrap;
+    gap: 1px;
+    background: var(--rule-hi);
   }
   .preset-chips .btn {
-    flex: none;
+    flex: 1 1 auto;
+    min-width: 30%;
+    border-right: 0;
   }
   .map-grid,
   .map-grid.world {
@@ -766,7 +774,7 @@
   }
   .mod-row:has(> .switch) {
     position: relative;
-    padding-inline-end: 56px;
+    padding-inline-end: 92px;
   }
   .setup-foot {
     flex-direction: column;

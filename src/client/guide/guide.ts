@@ -70,7 +70,7 @@ export class GuideController {
           this.engine.hide();
           this.view = null;
           this.bar.render(null);
-          ctx.toast('Guide off. Menu (Esc) > Guide on brings it back.');
+          ctx.toast('Guide off. Menu, Guide on brings it back.');
         },
         showMe: () => {
           const t = this.view?.tile ?? -1;

@@ -1,5 +1,18 @@
 /* Start page (menu.ts showTitle): a command column on the leading side over the live map. The map stays (it is the
-   game's identity) but is dimmed while any menu page shows, so the menu reads first. One brass action, quiet rows. */
+   game's identity) but is dimmed while any menu page shows, so the menu reads first. One case-hardened action, quiet
+   rows.
+
+   Case-hardened steel: the logo and the one main action wear a heat-treated metal finish, drawn once at startup by
+   caseHardened.ts (fluid blue, purple and gold swirls over grey steel; four colour balances that take turns, one
+   per visit) and handed in as --case-logo and --case-fill. The start page alone wears it; every other screen keeps
+   amber. Contrast (WCAG formula, every balance):
+     logo   every texture pixel 3.3:1 or more on the column (about #0e131b; 60px display type, so the large-text
+            floor of 3:1 applies), plus a 1px dark edge; the flat fallback #a9bfe6 is 10.0:1
+     button white text on the brightest texture pixel 4.8:1 or more (the texture is capped at luminance 0.168); the
+            flat fallback #34508f is 7.8:1; the measured worst pixel is in docs/UI_DIRECTION.md. Its edge is a 1px
+            light steel line #6a7d9c, 4.5:1 on the column (the dark patches alone would not show the shape);
+            under the pointer #a9bfe6, 10.0:1
+     small accents #7ac8f5 as text 10.3:1; #06192a on it 9.7:1 */
 
 .app.in-menu canvas.map-gl,
 .app.in-menu canvas.map {
@@ -16,11 +29,18 @@
 .app.in-menu:has(.menu.at-title:not(.hidden)) canvas.map {
   translate: calc((400px + clamp(24px, 5vw, 96px) + 40px) / 2) 0;
 }
+/* Pixel Clean: on the start page the bright map is the picture, so it is only a little quieter than in play */
+.app.in-menu:has(.menu.at-title:not(.hidden)) canvas.map-gl {
+  filter: saturate(0.85) brightness(0.85);
+}
+.app.in-menu:has(.menu.at-title:not(.hidden)) canvas.map {
+  opacity: 0.85;
+}
 
 .menu.at-title {
   justify-content: flex-start;
   align-items: stretch;
-  background: linear-gradient(90deg, rgba(13, 16, 19, 0.55) 0, rgba(13, 16, 19, 0.35) 40%, rgba(13, 16, 19, 0) 62%);
+  background: linear-gradient(90deg, rgba(11, 15, 21, 0.55) 0, rgba(11, 15, 21, 0.35) 40%, rgba(11, 15, 21, 0) 62%);
 }
 
 /* the column: no boxed card, just a rail with a rule on its trailing edge */
@@ -34,25 +54,55 @@
   gap: 0;
   padding: 32px 40px 32px clamp(24px, 5vw, 96px);
   overflow-y: auto;
-  background: rgba(16, 20, 24, 0.86);
+  background: rgba(14, 19, 27, 0.9);
   border: 0;
-  border-inline-end: 1px solid var(--rule);
+  border-inline-end: 0;
   border-radius: 0;
   box-shadow: 12px 0 32px rgba(0, 0, 0, 0.35);
 }
 .menu-card.title::before {
   display: none;
 }
+/* the start page's accent is a light heat-tint blue (the aliases are repointed too, they resolve where they are
+   declared) */
+.menu-card.title {
+  --accent: #7ac8f5;
+  --accent-hi: #9ddbf8;
+  --accent-ink: #06192a;
+  --accent-hover: #9ddbf8;
+  --accent-rgb: 122 200 245;
+  --brass: var(--accent);
+  --brass-hi: var(--accent-hi);
+  --brass-lo: #375d76;
+  --brass-ink: var(--accent-ink);
+}
 
 .menu-title-head {
   margin-bottom: 32px;
 }
 .logo {
+  width: fit-content;
+  max-width: 100%;
   margin: 0;
-  font: 600 54px/0.98 var(--f-logo);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  font: 400 60px/0.98 var(--f-logo);
   color: var(--text);
+}
+/* the logo in case-hardened steel (once the texture is drawn; until then, and without a canvas, a flat light steel
+   blue). A 1px dark edge under the glyphs keeps the lighter patches apart from the column. */
+.menu-card.title .logo {
+  color: #a9bfe6;
+}
+@supports ((background-clip: text) or (-webkit-background-clip: text)) {
+  .case-ready .menu-card.title .logo {
+    background-image: var(--case-logo);
+    background-size: var(--case-logo-size);
+    background-position: 0 0;
+    background-repeat: repeat;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 1px 0 rgba(3, 5, 9, 0.85));
+  }
 }
 .tagline {
   margin: 12px 0 0;
@@ -69,9 +119,9 @@
   margin-bottom: 12px;
   padding: 10px 10px 10px 14px;
   border: 1px solid var(--brass-lo);
-  border-inline-start: 2px solid var(--brass);
+  --tone: var(--brass);
   border-radius: var(--r);
-  background: rgba(201, 162, 39, 0.06);
+  background: rgb(var(--accent-rgb) / 0.06);
 }
 .menu-rejoin-text {
   flex: 1;
@@ -82,21 +132,62 @@
 .menu-rejoin-text strong {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
 }
 
-/* the main action */
+/* the main action (Play, or Continue / Rejoin when they lead): a matte case-hardened fill, white text. The texture
+   is capped dark enough for white text on its brightest pixel, so the label needs no plate. */
+.menu-card.title .btn.primary {
+  border-color: #6a7d9c;
+  background-color: #34508f;
+  background-image: none;
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(3, 5, 9, 0.6);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12) inset, 0 6px 18px rgba(8, 14, 30, 0.45);
+}
+.case-ready .menu-card.title .btn.primary {
+  background-image: var(--case-fill);
+  background-size: var(--case-fill-size);
+  background-position: 0 0;
+  background-repeat: repeat;
+}
+/* hover: an honest small change, a 1px lighter edge (the fill and the label contrast stay as they are) */
+.menu-card.title .btn.primary:hover:not(:disabled) {
+  border-color: #a9bfe6;
+  background-color: #34508f;
+}
+.menu-card.title .btn.primary:active:not(:disabled) {
+  background-color: #34508f;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) inset;
+}
+.menu-card.title .btn.primary .menu-play-note {
+  /* white like the label (size tells them apart): a tinted note would drop under 4.5:1 on the brightest patch */
+  opacity: 1;
+  color: #ffffff;
+}
+@media (forced-colors: active) {
+  .menu-card.title .logo,
+  .case-ready .menu-card.title .logo {
+    background: none;
+    filter: none;
+    color: CanvasText;
+  }
+  .menu-card.title .btn.primary,
+  .case-ready .menu-card.title .btn.primary {
+    background-image: none;
+    border-color: ButtonText;
+    text-shadow: none;
+  }
+}
+
 .btn.menu-play {
   justify-content: space-between;
   width: 100%;
   min-height: 56px;
   padding: 0 20px;
   font-size: 19px;
-  letter-spacing: 0.12em;
 }
 .menu-play-note {
   font: 500 13px/1 var(--f-ui);
-  letter-spacing: 0;
   text-transform: none;
   opacity: 0.72;
 }
@@ -147,13 +238,12 @@
   background: transparent;
   box-shadow: none;
   font-size: 16px;
-  letter-spacing: 0.1em;
   color: var(--text);
   text-align: start;
 }
 .btn.menu-row:hover:not(:disabled) {
   background: var(--metal-3);
-  border-color: var(--rule);
+  border-color: var(--edge);
 }
 .btn.menu-row:active:not(:disabled) {
   background: var(--metal-2);
@@ -178,7 +268,6 @@
 }
 .menu-row-note {
   font: 500 13px/1 var(--f-ui);
-  letter-spacing: 0;
   text-transform: none;
   font-variant-numeric: tabular-nums;
   color: var(--dim);
@@ -193,19 +282,18 @@
   color: inherit;
   transform: none;
 }
-/* first visit: the tutorial row is the suggested next step (brass leading edge and a short note) */
+/* first visit: the tutorial row is the suggested next step (a quiet fill and a short note, no leading stripe) */
 .btn.menu-row.suggested {
-  box-shadow: inset 2px 0 0 var(--brass);
-  background: rgba(201, 162, 39, 0.05);
+  box-shadow: none;
+  background: rgba(255, 255, 255, 0.05);
 }
 .btn.menu-row.suggested:hover:not(:disabled) {
   background: var(--metal-3);
 }
 .menu-row-hint {
   font: 500 13px/1 var(--f-ui);
-  letter-spacing: 0;
   text-transform: none;
-  color: var(--brass-hi);
+  color: var(--dim);
 }
 
 @media (min-width: 1600px) and (min-height: 900px) {
@@ -235,7 +323,7 @@
   }
   .menu.at-title {
     align-items: flex-end;
-    background: linear-gradient(180deg, rgba(13, 16, 19, 0) 0, rgba(13, 16, 19, 0) 30%, rgba(13, 16, 19, 0.6) 100%);
+    background: linear-gradient(180deg, rgba(11, 15, 21, 0) 0, rgba(11, 15, 21, 0) 30%, rgba(11, 15, 21, 0.6) 100%);
   }
   .menu-card.title {
     width: 100%;
@@ -247,7 +335,7 @@
     border-top: 1px solid var(--rule);
     border-radius: var(--r) var(--r) 0 0;
     box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.4);
-    background: rgba(18, 22, 26, 0.95);
+    background: rgba(18, 24, 33, 0.95);
   }
   .menu-title-head {
     margin-bottom: 24px;
@@ -266,7 +354,8 @@
 @media (prefers-reduced-motion: reduce) {
   .app.in-menu canvas.map-gl,
   .app.in-menu canvas.map,
-  .menu-row .ico {
+  .menu-row .ico,
+  .menu-card.title .btn.primary {
     transition: none;
   }
 }

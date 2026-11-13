@@ -1,0 +1,137 @@
+// The detailed style's fires and smoke that keep going (client only): a damaged unit burning, a fresh crater, the atom
+// bomb's blast zone. Built from the shared puffs (blobs.ts: 'flame' tongues, 'soot', 'shade' and 'smoke' balls) and
+// animated from the clock alone, with no state: a smoke trail is a ring of puffs, each born at its source in turn and
+// carried off by the wind as it ages, and a source that moves leaves its puffs behind along the way it came (they are
+// placed by the source's own speed, heading and turn), so the smoke follows a ship instead of floating on the water.
+// Reduced motion: still flames and still puffs.
+import type { MotionParams } from '../motion';
+import { drawBlob, flameCode, type BlobKind } from './blobs';
+import type { Grid } from './grid';
+
+/** The wind over the map, CSS px per second at map scale 1: to the right and a little up the screen. */
+export const WIND_X = 5.5;
+export const WIND_Y = -1.1;
+/** How fast warm smoke rises, CSS px per second at map scale 1 (up the screen in the 3/4 view). */
+export const RISE = 6.5;
+
+const frac = (v: number): number => v - Math.floor(v);
+const easeOut = (t: number): number => 1 - (1 - t) * (1 - t);
+
+/** A flicker frame 0..3 at `timeMs` for a fire with phase `seed` (still under reduced motion). */
+export function flickerFrame(timeMs: number, seed: number, m: MotionParams): number {
+  if (m.reduced) return Math.floor(seed * 4) & 3;
+  return Math.floor(timeMs / Math.max(40, m.flameMs) + seed * 13.7) & 3;
+}
+
+/**
+ * A fire burning on a spot: a flickering tongue of flame standing at (x, y) (its base), `r` cells half-wide at the base,
+ * leaning `lean` (-2..2) with the wind. Under 1 cell it is a flickering speck of fire.
+ */
+export function drawFlame(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, g: Grid, timeMs: number, seed: number, m: MotionParams, alpha = 1, lean = 1): void {
+  const fr = flickerFrame(timeMs, seed, m);
+  if (r < 0.75) {
+    drawBlob(ctx, 'fire', 1, fr, x, y - g.k * 0.5, g, alpha, fr & 1 ? 1 : 2);
+    return;
+  }
+  // the size breathes a little with the flicker, so a small fire does not hold one height
+  const R = Math.max(1, Math.round(r * (fr === 1 ? 1.15 : fr === 3 ? 0.88 : 1)));
+  drawBlob(ctx, 'flame', R, Math.floor(seed * 7) & 3, x, y, g, alpha, flameCode(fr, lean));
+}
+
+/** A smoke trail's source this frame. */
+export interface SmokeSource {
+  /** where the smoke comes out now (CSS px) */
+  x: number;
+  y: number;
+  /** how the source moves (CSS px per second) and turns (rad/s, clockwise on screen): its smoke is left behind it */
+  vx: number;
+  vy: number;
+  turn: number;
+  /** puffs alive at once, how long one lives (ms), its radius at birth and at the end (cells) */
+  n: number;
+  lifeMs: number;
+  r0: number;
+  r1: number;
+  /** the share of a puff's life it stays oily black (0 grey smoke throughout .. 1 soot throughout) */
+  dark: number;
+  alpha: number;
+  /** CSS px per art unit of motion (the map scale): the wind and the rise are this much faster on screen */
+  u: number;
+  /** multipliers of the wind and the rise (a heavy column climbs faster) */
+  wind: number;
+  rise: number;
+  /**
+   * Seconds the wind takes to get hold of a fresh puff (0 or absent: at once): before that it climbs nearly straight
+   * up, so a column stands on its fire before it bends over downwind.
+   */
+  calm?: number;
+  /** phase, so neighbouring trails do not puff in step */
+  seed: number;
+}
+
+/** One puff of a trail (puffOf's result, reused). */
+export interface Puff {
+  x: number;
+  y: number;
+  r: number;
+  alpha: number;
+  kind: BlobKind;
+}
+const puff: Puff = { x: 0, y: 0, r: 1, alpha: 0, kind: 'smoke' };
+
+/**
+ * Puff `k` of a trail when it is `a` (0 born .. 1 gone) through its life (pure; the returned object is reused): where
+ * it is, how big, how opaque and which puff. It lies back along the source's course (bent by its turn) by as far as
+ * the source went since it gave it off, carried downwind and risen.
+ */
+export function puffOf(s: SmokeSource, a: number, k: number): Puff {
+  const sec = a * (s.lifeMs / 1000);
+  const phi = -s.turn * sec * 0.5;
+  const c = Math.cos(phi);
+  const sn = Math.sin(phi);
+  const bx = -(s.vx * c - s.vy * sn) * sec;
+  const by = -(s.vx * sn + s.vy * c) * sec;
+  const wob = Math.sin(a * 5.3 + k * 1.9 + s.seed * 6) * s.u * 0.7 * a;
+  // the wind's share of the puff's age: slow to take hold of it while it is calm, then all of it
+  const calm = s.calm ?? 0;
+  const ws = calm > 0 ? (sec * sec) / (sec + calm) : sec;
+  puff.x = s.x + bx + WIND_X * s.u * s.wind * ws + wob;
+  puff.y = s.y + by + WIND_Y * s.wind * s.u * ws - RISE * s.rise * s.u * sec;
+  puff.r = Math.max(1, s.r0 + (s.r1 - s.r0) * easeOut(a));
+  puff.alpha = s.alpha * (a < 0.08 ? a / 0.08 : 1) * (1 - a) ** 1.25;
+  // dark smoke goes from oily soot to grey; a thin wisp (no dark at all) from grey to pale, so it shows over a dark hull
+  puff.kind = s.dark > 0 ? (a < s.dark * 0.6 ? 'soot' : a < s.dark ? 'shade' : 'smoke') : a < 0.12 ? 'smoke' : 'vapour';
+  return puff;
+}
+
+/**
+ * Draws a smoke trail: `n` puffs, each born at the source in turn, swelling, rising and drifting downwind as it ages
+ * and fading out, oldest first so the fresh dark puffs at the source lie on top. A moving source leaves its puffs
+ * behind along its path (bent by its turn), so the trail streams aft of a ship and curves where it turned.
+ */
+export function drawSmokeTrail(ctx: CanvasRenderingContext2D, s: SmokeSource, g: Grid, timeMs: number, m: MotionParams): void {
+  const n = Math.max(1, Math.round(s.n));
+  const base = m.reduced ? 0.5 / n : frac(timeMs / Math.max(1, s.lifeMs) + s.seed * 0.37);
+  // the oldest puff first: the k whose age is closest to 1
+  const k0 = (((Math.ceil((1 - base) * n) - 1) % n) + n) % n;
+  const sd = Math.floor(s.seed * 64);
+  // no gaps: neighbouring puffs lie as far apart as the source and the wind carry them in one puff's turn (the path
+  // length, whether it sails straight or turns), so each is drawn at least about that wide and they overlap into one
+  // stream instead of a dotted line of balls
+  const minR = joinRadius(s, g.k);
+  for (let j = 0; j < n; j++) {
+    const k = (k0 - j + n) % n;
+    const a = frac(base + k / n);
+    const p = puffOf(s, a, k);
+    const r = Math.max(p.r, minR * (0.85 + 0.3 * a));
+    drawBlob(ctx, p.kind, r, (k + sd) & 3, p.x, p.y, g, p.alpha);
+  }
+}
+
+/** The smallest radius (cells) drawSmokeTrail gives a puff of `s` with grid cells `k` CSS px wide, so its puffs join (pure). */
+export function joinRadius(s: SmokeSource, k: number): number {
+  const n = Math.max(1, Math.round(s.n));
+  const gx = -s.vx + WIND_X * s.u * s.wind;
+  const gy = -s.vy + (WIND_Y * s.wind - RISE * s.rise) * s.u;
+  return Math.min(((Math.hypot(gx, gy) * s.lifeMs) / 1000 / n / k) * 0.62, Math.max(s.r0, s.r1 * 1.6));
+}

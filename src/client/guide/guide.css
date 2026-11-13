@@ -26,18 +26,19 @@
   gap: 10px;
   width: max-content;
   max-width: min(900px, calc((100vw - 24px) / var(--ui, 1)));
-  min-height: 34px;
-  padding: 4px 4px 4px 10px;
+  min-height: 36px;
+  padding: 6px 6px 6px 14px;
   pointer-events: auto;
   background-color: var(--metal-a);
-  background-image: var(--grain);
-  border: 1px solid var(--rule);
-  border-left: 2px solid var(--brass);
-  border-radius: var(--r);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 6px 18px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  border: 0;
+  --tone: var(--accent);
+  border-radius: var(--r-lg);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 10px 30px rgba(0, 0, 0, 0.42);
 }
 .guide-bar.is-tip {
-  border-left-color: var(--steel);
+  --tone: var(--steel);
 }
 .guide-bar.top {
   bottom: auto;
@@ -50,7 +51,7 @@
 }
 @keyframes guide-nod {
   0% {
-    border-left-color: var(--brass-hi);
+    --tone: var(--brass-hi);
     box-shadow: 0 0 0 1px rgba(227, 192, 78, 0.35), 0 6px 18px rgba(0, 0, 0, 0.4);
   }
   100% {
@@ -67,28 +68,22 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font: 600 10.5px/1 var(--f-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--brass-hi);
+  font: 600 11px/1 var(--f-label);
+  color: var(--accent-hi);
 }
 .guide-bar.is-tip .guide-tag {
-  color: var(--steel);
+  color: var(--info);
 }
 .guide-count {
-  font: 600 11.5px/1 var(--f-label);
-  letter-spacing: 0.06em;
-  color: var(--dim);
+  font: 600 12px/1 var(--f-label);
+  color: var(--faint);
   font-variant-numeric: tabular-nums;
-  padding: 3px 5px;
-  border: 1px solid var(--rule);
-  border-radius: var(--r);
 }
 .guide-text {
   flex: 1 1 auto;
   min-width: 0;
   margin: 0;
-  font: 500 13.5px/1.3 var(--f-ui);
+  font: 500 14px/1.3 var(--f-ui);
   color: var(--text);
   text-wrap: pretty;
 }
@@ -101,7 +96,7 @@
 .guide-acts .wr-btn.mini {
   min-height: 24px;
   padding: 0 8px;
-  font-size: 11.5px;
+  font-size: 12px;
 }
 .guide-acts .guide-hide {
   color: var(--faint);
@@ -126,5 +121,35 @@
   .guide-acts {
     width: 100%;
     justify-content: flex-end;
+  }
+}
+
+/* phones while a drawer or a nation card is open (bar.ts `fold`): one line just above the command bar, the drawer
+   ends above it; while the build menu, Spend or the building selection is open (`tucked`) the bar steps aside */
+.guide.tucked .guide-bar {
+  visibility: hidden;
+}
+@media (max-width: 640px) {
+  .guide.fold .guide-bar {
+    flex-wrap: nowrap;
+    gap: 8px;
+    min-height: 36px;
+    padding: 3px 3px 3px 8px;
+  }
+  .guide.fold .guide-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .guide.fold .guide-count,
+  .guide.fold .guide-hide {
+    display: none;
+  }
+  .guide.fold .guide-acts {
+    width: auto;
+    flex: none;
   }
 }

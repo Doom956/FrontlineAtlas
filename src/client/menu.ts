@@ -9,11 +9,12 @@ import { tutorialButton } from './tutorial/menuEntry';
 import { iconSpan, lineIcon } from './hud/glyph';
 import { askDialog, saveCard, type LoadPage } from './save/saveViews';
 import { clearSave, readSave } from './save/store';
+import { applyCaseHardened } from './caseHardened';
 import './menu.css';
 
 // DOM helpers live in dom.ts (re-exported here for older imports).
 export { button, el, rgbCss, setText } from './dom';
-import { button, el, rgbCss } from './dom';
+import { backButton, button, el, rgbCss } from './dom';
 
 // ------------------------------------------------------------------------------------------------ settings
 
@@ -46,6 +47,8 @@ export class Menu {
 
   constructor(root: HTMLElement, private cb: MenuCallbacks) {
     this.prefs = loadSetupPrefs();
+    // the start page's case-hardened logo and main action (drawn once; a flat fill where there is no canvas)
+    applyCaseHardened();
     this.el = el('div', 'menu');
     this.card = el('div', 'menu-card');
     this.busy = el('div', 'menu-busy hidden');
@@ -200,7 +203,7 @@ export class Menu {
   private showHelp(): void {
     this.reset('wide');
     const top = el('div', 'menu-head');
-    top.append(button('Back', 'ghost', () => this.showTitle()), el('h2', '', 'How to play'));
+    top.append(backButton(() => this.showTitle()), el('h2', '', 'How to play'));
     const body = el('div', 'menu-scroll');
     body.append(howToPlayContent());
     this.card.append(top, body);

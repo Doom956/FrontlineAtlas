@@ -17,6 +17,7 @@ import type { GameState, Player } from '../../sim/types';
 import { formatCount } from '../render/common';
 import { el, setClass, setDisabled, setText, setTip, setVisible, slider, syncSlider, type HudCtx } from './dom';
 import { iconSpan, lineIcon } from './glyph';
+import { catSpan, pixelIcon } from './pixelIcons';
 
 // ================================================================================================ pure helpers
 
@@ -83,7 +84,7 @@ export class SpendPanel {
     this.button.type = 'button';
     this.button.dataset.test = 'spend';
     this.button.setAttribute('aria-haspopup', 'dialog');
-    this.button.append(el('span', '', 'Spend'));
+    this.button.append(catSpan(pixelIcon('gold-s', 12), 'econ', 'sp-btn-ic'), el('span', '', 'Spend'));
     this.button.dataset.tip = 'Spend gold: hire mercenaries, fund an ally, sell war bonds';
     this.button.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -96,10 +97,10 @@ export class SpendPanel {
     this.el.setAttribute('aria-label', 'Spend gold');
     this.el.addEventListener('pointerdown', (e) => e.stopPropagation());
     const head = el('div', 'sp-head');
-    head.append(iconSpan(lineIcon('gold', 16, 1.9), 'sp-hic'), el('span', 'sp-t', 'Spend gold'));
+    head.append(catSpan(pixelIcon('gold', 16), 'econ', 'sp-hic'), el('span', 'sp-t', 'Spend gold'));
     const x = el('button', 'sq sp-x');
     x.type = 'button';
-    x.setAttribute('aria-label', 'Close (Esc)');
+    x.setAttribute('aria-label', 'Close');
     x.append(iconSpan(lineIcon('close', 14)));
     x.addEventListener('click', () => this.close());
     head.append(x);
@@ -139,6 +140,7 @@ export class SpendPanel {
     this.isOpen = true;
     setVisible(this.el, true);
     setClass(this.button, 'on', true);
+    this.fitHeight();
     const s = this.ctx.state();
     const me = this.ctx.me();
     if (s && me) this.update(s, me);
@@ -147,6 +149,18 @@ export class SpendPanel {
     this.isOpen = false;
     setVisible(this.el, false);
     setClass(this.button, 'on', false);
+  }
+  /**
+   * The room above the command bar (in the bar's own scale), so the panel scrolls instead of leaving the screen; on
+   * phones it also stays under the two-row top bar.
+   */
+  private fitHeight(): void {
+    const host = this.el.parentElement;
+    if (!host) return;
+    const r = host.getBoundingClientRect();
+    const k = host.offsetHeight > 0 && r.height > 0 ? r.height / host.offsetHeight : 1;
+    const topBar = window.innerWidth <= 640 ? 116 : 20;
+    this.el.style.setProperty('--bm-room', `${Math.max(200, Math.round((r.top - topBar) / k))}px`);
   }
   private alive(): boolean {
     if (this.button.isConnected) return true;
@@ -163,15 +177,17 @@ export class SpendPanel {
     for (const f of this.upd) f(s, me);
   }
 
-  private block(title: string, icon: string, test: string): { box: HTMLElement; main: HTMLElement; sub: HTMLElement; go: HTMLButtonElement; ctl: HTMLElement } {
+  /** One way to spend: a plain heading with a pixel icon in the economy hue, its controls, what it does (or why not)
+   * and its button. Only War bonds is the amber primary; Hire and Send are the neutral secondary button. */
+  private block(title: string, icon: string, test: string, primary = false): { box: HTMLElement; main: HTMLElement; sub: HTMLElement; go: HTMLButtonElement; ctl: HTMLElement } {
     const box = el('section', 'sp-sec');
     box.dataset.test = test;
     const h = el('div', 'sp-sh');
-    h.append(iconSpan(lineIcon(icon, 15, 1.9), 'sp-ic'), el('span', 'sp-st', title));
+    h.append(catSpan(pixelIcon(icon, 16), 'econ', 'sp-ic'), el('span', 'sp-st', title));
     const ctl = el('div', 'sp-ctl');
     const main = el('div', 'sp-main');
     const sub = el('div', 'sp-sub');
-    const go = el('button', 'wr-btn primary sp-go');
+    const go = el('button', `wr-btn ${primary ? 'primary ' : ''}sp-go`);
     go.type = 'button';
     box.append(h, ctl, main, sub, go);
     return { box, main, sub, go, ctl };
@@ -255,7 +271,7 @@ export class SpendPanel {
       setVisible(row, allies.length > 0);
       if (!allies.length) {
         setText(b.main, 'You have no allies to fund');
-        setText(b.sub, 'Ally with a nation first (Diplomacy, P)');
+        setText(b.sub, 'Ally with a nation first: Diplomacy in the top bar');
         setClass(b.main, 'bad', true);
         setDisabled(b.go, true);
         setText(b.go, 'Send');
@@ -299,7 +315,7 @@ export class SpendPanel {
   }
 
   private bonds(): HTMLElement {
-    const b = this.block('War bonds', 'attack', 'spend-bonds');
+    const b = this.block('War bonds', 'attack', 'spend-bonds', true);
     b.ctl.remove();
     const refresh = (s: GameState, me: Player) => {
       const i = warBondsInfo(s, me.id);
@@ -344,11 +360,11 @@ export function waysToPlayAdvice(s: GameState, me: Player): Suggestion | null {
     if (ally) return { key: 'fund-ally', text: `Fund ${ally.name} (Spend, next to your gold): they fight harder against your enemies` };
   }
   if (hasTech(me, 'mechanization') && bestFactory(s, me.id) >= 0 && tankDivisionCount(s, me.id) === 0 && canBuildTankDivision(s, me.id, bestFactory(s, me.id)).ok) {
-    return { key: 'tank-division', text: 'Tank divisions: build one at a Factory (Build menu, Tab) and click enemy land to break through' };
+    return { key: 'tank-division', text: 'Tank divisions: build one at a Factory (Build menu) and click enemy land to break through' };
   }
   const city = buildingCost(s, me.id, 'city');
   if (countBuildings(s, me.id, 'city', true) > 0 && me.gold > city.gold * 6) {
-    return { key: 'bulk-city', text: 'Gold piling up: pick x5 in the Build menu (Tab) to take a City straight to level 5', building: 'city' };
+    return { key: 'bulk-city', text: 'Gold piling up: pick x5 in the Build menu to take a City straight to level 5', building: 'city' };
   }
   return null;
 }

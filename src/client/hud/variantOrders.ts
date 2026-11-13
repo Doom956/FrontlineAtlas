@@ -71,5 +71,5 @@ export function reconClickAction(s: GameState, me: number, airfield: number, til
 }
 /** The mode chip while picking a recon target. */
 export function reconHint(): string {
-  return `Recon: click where the plane should look (reveals ${ARSENAL.reconRadius} tiles around for ${ARSENAL.reconSeconds} s). Esc to cancel.`;
+  return `Recon: click where the plane should look (reveals ${ARSENAL.reconRadius} tiles around for ${ARSENAL.reconSeconds} s).`;
 }

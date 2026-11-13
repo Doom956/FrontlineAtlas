@@ -6,7 +6,9 @@
 //   landing craft = short square-fronted hull + ramp       trade ship = pointed hull with container blocks
 //   rocket / atom bomb = one missile shape (the bomb bigger, with a ring), both with a long fading contrail
 //   tank division = squat hull with two track lines, a round turret and a long barrel forward (no trail)
-// The detailed pictures live in icons.ts (HUD). Trails (contrails, wakes) are drawn here too so the glyph sheet can use them.
+// The detailed pictures live in icons.ts (HUD) and the map sprites in the art styles (art/). Trails (contrails and
+// wakes) are drawn by the art styles too (art/refined/trails.ts); the trail kind of each unit type is here (Glyph.trail).
+// The rubber ducks of the owner console's prank are here (strokeDucks).
 import type { UnitType } from '../../sim/types';
 import { prankView } from '../fx/prankView';
 
@@ -205,6 +207,10 @@ export interface Inst {
   S: number;
   /** ships only: drawn a wake while true */
   moving?: boolean;
+  /** world-anchored trails (TrailPuffs): the unit's id and position in tiles */
+  id?: number;
+  tx?: number;
+  ty?: number;
 }
 
 /** All of one owner's glyphs: dark under-stroke, faint fill, solid blocks, dark pits, colour stroke (5 draw calls at most). */
@@ -252,75 +258,6 @@ export function strokeGlyphs(ctx: CanvasRenderingContext2D, list: readonly Inst[
   path('stroke');
   ctx.lineWidth = lw;
   ctx.strokeStyle = color;
-  ctx.stroke();
-}
-
-const TIERS = 3;
-const AIR_ALPHA = [0.34, 0.2, 0.09];
-const MISSILE_ALPHA = [0.75, 0.45, 0.2];
-
-/** Tier i of a tapering contrail behind (x, y): a trapezoid from distance d0 to d1 behind, half-width w0 * (1 - t) at t. */
-function addTier(ctx: CanvasRenderingContext2D, x: number, y: number, cos: number, sin: number, from: number, len: number, w0: number, i: number): void {
-  const t0 = i / TIERS;
-  const t1 = (i + 1) / TIERS;
-  const d0 = from + len * t0;
-  const d1 = from + len * t1;
-  const h0 = (w0 * (1 - t0)) / 2;
-  const h1 = (w0 * (1 - t1)) / 2;
-  ctx.moveTo(x - cos * d0 - sin * h0, y - sin * d0 + cos * h0);
-  ctx.lineTo(x - cos * d1 - sin * h1, y - sin * d1 + cos * h1);
-  ctx.lineTo(x - cos * d1 + sin * h1, y - sin * d1 - cos * h1);
-  ctx.lineTo(x - cos * d0 + sin * h0, y - sin * d0 - cos * h0);
-  ctx.closePath();
-}
-
-/**
- * Contrails (missiles: long, tapering, fading; planes: short and faint) and ship wakes (a faint V) behind the glyphs.
- * `wakes`: also the ships' wakes and the planes' contrails (off at far zoom, where only missiles keep theirs).
- * Per frame 3 fills per trail class and one stroke for all wakes.
- */
-export function drawTrails(ctx: CanvasRenderingContext2D, list: readonly Inst[], wakes: boolean): void {
-  for (const kind of ['air', 'missile'] as const) {
-    if (kind === 'air' && !wakes) continue;
-    for (let i = 0; i < TIERS; i++) {
-      ctx.beginPath();
-      let any = false;
-      for (const e of list) {
-        const g = GLYPHS[e.type];
-        if (g.trail !== kind) continue;
-        const L = e.S * 2 * g.trailLen;
-        const w0 = kind === 'missile' ? (e.type === 'atomBomb' ? 3.4 : 2.4) : 1.5;
-        addTier(ctx, e.x, e.y, Math.cos(e.angle), Math.sin(e.angle), e.S * 0.85, L, w0, i);
-        any = true;
-      }
-      if (!any) continue;
-      ctx.fillStyle = `rgba(255,255,255,${(kind === 'missile' ? MISSILE_ALPHA : AIR_ALPHA)[i]})`;
-      ctx.fill();
-    }
-  }
-  if (!wakes) return;
-  ctx.beginPath();
-  let any = false;
-  for (const e of list) {
-    const g = GLYPHS[e.type];
-    if (g.trail !== 'wake' || !e.moving) continue;
-    const cos = Math.cos(e.angle);
-    const sin = Math.sin(e.angle);
-    const sx = -e.S * 0.9;
-    const L = e.S * 2 * g.trailLen;
-    for (const side of [1, -1]) {
-      const y0 = side * e.S * 0.18;
-      const bx = sx - L;
-      const by = side * (e.S * 0.18 + L * 0.3);
-      ctx.moveTo(e.x + sx * cos - y0 * sin, e.y + sx * sin + y0 * cos);
-      ctx.lineTo(e.x + bx * cos - by * sin, e.y + bx * sin + by * cos);
-    }
-    any = true;
-  }
-  if (!any) return;
-  ctx.lineWidth = 1;
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = 'rgba(235,245,255,0.32)';
   ctx.stroke();
 }
 

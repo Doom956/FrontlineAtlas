@@ -21,6 +21,8 @@ export type TargetMode =
   | { kind: 'recon'; airfield: number }
   /** next click = one of your factories: build a tank division there (selection.ts) */
   | { kind: 'buildTankDivision' }
+  /** the next drag on the map draws the selection box (Upgrade many in the build menu; mouse or finger, no key) */
+  | { kind: 'boxSelect' }
   /** owner console: clicks go to `pick` (sticky until Esc); brush = dragging paints too (adminConsole.ts) */
   | { kind: 'adminTile'; label: string; pick: (tile: number) => void; brush?: boolean; radius?: number }
   /** next click aims a stance / mode / air mission (pillars.ts): ships, divisions or an airfield tile (-1 = all) */

@@ -9,7 +9,6 @@ import { formatCount } from '../render/common';
 import { buildingCost } from '../../sim/buildings';
 import {
   browserStore,
-  BUILD_MENU_KEY,
   BuildMenu,
   buildingTip,
   countSelector,
@@ -19,8 +18,9 @@ import {
   stableSlots,
 } from './buildMenu';
 import { BuildingSelectionBar } from './buildingSelection';
-import { el, keycap, setClass, setTip, setVisible, type HudCtx } from './dom';
-import { iconSpan, lineIcon, worldGlyph } from './glyph';
+import { el, setClass, setTip, setVisible, type HudCtx } from './dom';
+import { iconSpan } from './glyph';
+import { pixelGlyph, pixelIcon } from './pixelIcons';
 import { TECHS } from '../../sim/config';
 import { hasTech } from '../../sim/tech';
 import { techComing } from './procure';
@@ -48,7 +48,7 @@ export class QuickBar {
   readonly menu: BuildMenu;
   readonly sel: BuildingSelectionBar;
   readonly picks: QuickPicks;
-  private slots: { b: HTMLButtonElement; ic: HTMLElement; key: HTMLElement; type: BuildingType | null }[] = [];
+  private slots: { b: HTMLButtonElement; ic: HTMLElement; key: HTMLElement; word: HTMLElement; type: BuildingType | null }[] = [];
   private buildBtn: HTMLButtonElement;
   private count: { el: HTMLElement; sync: () => void };
   private lastMode = '';
@@ -66,8 +66,8 @@ export class QuickBar {
     this.buildBtn.type = 'button';
     this.buildBtn.dataset.test = 'build-menu-btn';
     this.buildBtn.setAttribute('aria-haspopup', 'dialog');
-    this.buildBtn.append(iconSpan(lineIcon('build', 16, 2), 'qb-build-ic'), el('span', 'qb-build-l', 'Build'), keycap(BUILD_MENU_KEY));
-    this.buildBtn.dataset.tip = `Build menu (${BUILD_MENU_KEY}): every building with its cost and what it does, warships and tank divisions`;
+    this.buildBtn.append(iconSpan(pixelIcon('build', 16), 'qb-build-ic'), el('span', 'qb-build-l', 'Build'));
+    this.buildBtn.dataset.tip = 'Build menu: every building with its cost and what it does, warships and tank divisions';
     this.buildBtn.addEventListener('click', () => this.menu.toggle());
 
     // six quick slots
@@ -75,10 +75,12 @@ export class QuickBar {
     for (let k = 0; k < QUICK_SLOTS; k++) {
       const b = el('button', 'bb qb-slot');
       b.type = 'button';
-      const ic = el('span', 'bb-ic');
+      // the building's picture in the buildings colour (styles.css .pi-econ)
+      const ic = el('span', 'bb-ic pi-c pi-econ');
       const key = el('span', 'qb-k');
-      b.append(ic, key);
-      const slot = { b, ic, key, type: null as BuildingType | null };
+      const word = el('span', 'qb-w');
+      b.append(ic, word, key);
+      const slot = { b, ic, key, word, type: null as BuildingType | null };
       b.addEventListener('click', () => {
         const t = slot.type;
         if (!t) return;
@@ -99,7 +101,10 @@ export class QuickBar {
       row.append(b);
     }
     this.count = countSelector(ctx, 'qb-count');
-    this.el.append(this.buildBtn, row, this.count.el);
+    // Pixel Clean: the x1 / x3 / x5 choice carries a word, so a new player knows what the numbers count
+    const countWrap = el('div', 'qb-count-wrap');
+    countWrap.append(el('span', 'cb-lab', 'Levels'), this.count.el);
+    this.el.append(this.buildBtn, row, countWrap);
 
     // Tab opens / closes the menu; Shift is tracked for x5 (the map's own key handler ignores Tab)
     const o = { signal: this.ac.signal };
@@ -166,8 +171,9 @@ export class QuickBar {
       if (!t) return;
       if (slot.type !== t) {
         slot.type = t;
-        slot.ic.innerHTML = worldGlyph(t, 22);
+        slot.ic.innerHTML = pixelGlyph(t, 22);
         slot.key.textContent = BUILDINGS[t].hotkey;
+        slot.word.textContent = BUILDINGS[t].name.replace(/^Research /, '').replace(/ Site$/, '');
         slot.b.dataset.test = `build-${t}`;
         slot.b.dataset.building = t;
       }
@@ -175,8 +181,8 @@ export class QuickBar {
       setClass(slot.b, 'disabled', why !== '');
       setClass(slot.b, 'pinned', this.picks.isPinned(t));
       const c = buildingCost(s, me.id, t);
-      slot.b.setAttribute('aria-label', `${BUILDINGS[t].name}, ${formatCount(c.gold)} gold (${BUILDINGS[t].hotkey})`);
-      setTip(slot.b, buildingTip(s, me, t) + `\nRight-click: ${this.picks.isPinned(t) ? 'unpin' : 'pin'}`);
+      slot.b.setAttribute('aria-label', `${BUILDINGS[t].name}, ${formatCount(c.gold)} gold`);
+      setTip(slot.b, buildingTip(s, me, t) + `\n${this.picks.isPinned(t) ? 'Pinned here: Unpin on its card in the Build menu' : 'Pin it here with Pin on its card in the Build menu'}`);
     });
     this.menu.update(s, me);
   }

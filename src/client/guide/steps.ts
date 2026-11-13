@@ -17,7 +17,6 @@ import { isTribe, isWater } from '../../sim/types';
 import type { BuildingType, GameState, Player, TechId } from '../../sim/types';
 import { victoryShareNow } from '../../sim/victory';
 import { coalitionLeader } from '../allies';
-import { DOCTRINE_KEY } from '../doctrineView';
 import { isIncoming } from '../forces';
 import { missingBuilding, onOrder, priceOf } from '../hud/procure';
 import { snapBuild } from '../placement';
@@ -201,11 +200,11 @@ function getUnlock(c: GuideCtx, t: TechId, what: string, lead = ''): { text: str
   const name = TECHS[t].name;
   const pre = lead ? `${lead} ` : '';
   if (b) {
-    if (countBuildings(c.s, c.me.id, b, true) > 0) return { text: `${pre}Your ${BUILDINGS[b].name} is being built; then buy ${name} in the Arsenal (T) ${what}.`, target: 'open-research', tile: buildingTile(c.s, c.me, b) };
+    if (countBuildings(c.s, c.me.id, b, true) > 0) return { text: `${pre}Your ${BUILDINGS[b].name} is being built; then buy ${name} in the Arsenal ${what}.`, target: 'open-research', tile: buildingTile(c.s, c.me, b) };
     if (c.ui.buildMode === b) return { text: `Now click your ${b === 'port' ? 'coast' : 'land'} to place the ${BUILDINGS[b].name}.`, target: undefined, tile: b === 'port' ? coastTile(c) : -1 };
-    return { text: `${pre}Build ${b === 'airfield' ? 'an' : 'a'} ${BUILDINGS[b].name} (${hotkey(b)})${b === 'port' ? ' on your coast' : ''}, then buy ${name} in the Arsenal (T) ${what}.`, target: buildTarget(c, b), tile: -1 };
+    return { text: `${pre}Build ${b === 'airfield' ? 'an' : 'a'} ${BUILDINGS[b].name}${b === 'port' ? ' on your coast' : ''}, then buy ${name} in the Arsenal ${what}.`, target: buildTarget(c, b), tile: -1 };
   }
-  return { text: `${pre}Buy ${name} in the Arsenal (T, Arsenal tab) ${what}: it arrives ${priceOf(c.s, c.me, t).seconds} s later.`, target: techTarget(t), tile: -1 };
+  return { text: `${pre}Buy ${name} in the Arsenal (Research, Arsenal tab) ${what}: it arrives ${priceOf(c.s, c.me, t).seconds} s later.`, target: techTarget(t), tile: -1 };
 }
 /** The tech's card in the Arsenal tab, else that tab, else the Research button. */
 const techTarget = (t: TechId): string => `tech-${t} || tab-arsenal || open-research`;
@@ -213,7 +212,6 @@ const techTarget = (t: TechId): string => `tech-${t} || tab-arsenal || open-rese
 const buildTarget = (c: GuideCtx, b: BuildingType): string | undefined => (c.ui.buildMode === b ? undefined : `bm-${b} || build-${b} || build-menu-btn`);
 /** None of this type, built or being built. */
 const lacks = (c: GuideCtx, b: BuildingType): boolean => countBuildings(c.s, c.me.id, b, true) === 0;
-const hotkey = (b: BuildingType): string => BUILDINGS[b].hotkey;
 
 /** The player has a coast and the sea matters: no nation borders them by land (an island), or 6 minutes in. */
 function seaMatters(c: GuideCtx): boolean {
@@ -245,10 +243,10 @@ export function enemyAirOnMe(s: GameState, me: Player): boolean {
 function airAnswer(c: GuideCtx): { text: string; target: string | undefined; tile: number } | null {
   const { s, me } = c;
   const lead = 'Enemy planes over your land.';
-  if (hasTech(me, 'radar') && buildingAllowed(s, 'sam')) return { text: `${lead} SAM sites (${hotkey('sam')}) shoot them down.`, target: buildTarget(c, 'sam'), tile: -1 };
+  if (hasTech(me, 'radar') && buildingAllowed(s, 'sam')) return { text: `${lead} SAM sites shoot them down.`, target: buildTarget(c, 'sam'), tile: -1 };
   if (!unitAllowed(s, 'fighter')) return null;
   if (countBuildings(s, me.id, 'airfield', false) > 0) return { text: `${lead} Click your Airfield and buy Fighters.`, target: 'order-fighter', tile: buildingTile(s, me, 'airfield') };
-  if (hasTech(me, 'flight') && buildingAllowed(s, 'airfield')) return { text: `${lead} Build an Airfield (${hotkey('airfield')}) for Fighters.`, target: buildTarget(c, 'airfield'), tile: -1 };
+  if (hasTech(me, 'flight') && buildingAllowed(s, 'airfield')) return { text: `${lead} Build an Airfield for Fighters.`, target: buildTarget(c, 'airfield'), tile: -1 };
   if (researchRule(s) === null) return getUnlock(c, 'flight', 'for Fighters', lead);
   return null;
 }
@@ -360,7 +358,7 @@ export function openingSteps(view: { centreTile: () => number; canStartNow?: () 
     {
       id: 'share',
       playingOnly: true,
-      text: 'ATTACK: the share of troops each click sends. Drag it, or press [ and ].',
+      text: 'ATTACK: the share of troops each click sends. Drag it, or use its minus and plus.',
       target: 'attack-share',
       begin: (c) => ({ share: c.ui.attackShare, tick: c.s.tick }),
       done: (c, m) => Math.abs(c.ui.attackShare - m.share) > 0.01 || ownAttack(c.s, c.me, m.tick),
@@ -468,7 +466,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'research',
-      text: 'Press T for Research and pick a tech: new buildings, stronger troops.',
+      text: 'Open Research in the top bar and pick a tech: new buildings, stronger troops.',
       target: 'open-research',
       when: (c) => playing(c) && c.sec >= 40 && (c.me.researching !== null || canStartAny(c, false)),
       still: (c) => !panel(c, 'research', 'arsenal'),
@@ -476,7 +474,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'doctrine',
-      text: `Doctrines are open (${DOCTRINE_KEY}): pick a style of war. It grows the longer you keep it.`,
+      text: 'Doctrines are open: pick a style of war. It grows the longer you keep it.',
       target: 'doctrine-go || open-doctrine',
       when: (c) => playing(c) && c.sec >= DOCTRINE_UNLOCK_SECONDS && !c.me.doctrine.id,
       still: (c) => !c.me.doctrine.id,
@@ -503,7 +501,8 @@ export function guideTips(): GuideTip[] {
       id: 'strike',
       text: (c) => {
         const id = readyStrike(c);
-        return id ? `${STRIKES[id].name} ready: press ${STRIKES[id].key} or this button, then click the target.` : 'A strike is ready.';
+        // the button by the word under it (no keys in tips): "Artillery barrage ready: click Barrage in the bottom bar ..."
+        return id ? `${STRIKES[id].name} ready: click ${STRIKES[id].label} in the bottom bar, then click the target.` : 'A strike is ready.';
       },
       target: (c) => {
         const id = readyStrike(c);
@@ -527,7 +526,7 @@ export function guideTips(): GuideTip[] {
     {
       // two or more silos: rockets can fire by themselves (Forces, Missiles)
       id: 'autoFire',
-      text: 'Several silos: Forces (Y), Missiles, Auto-fire all fires your rockets by themselves at the nation you fight. Atom bombs never fire by themselves.',
+      text: 'Several silos: Forces, Missiles, Auto-fire all fires your rockets by themselves at the nation you fight. Atom bombs never fire by themselves.',
       target: 'open-forces',
       when: (c) => playing(c) && hasTech(c.me, 'rocketry') && countBuildings(c.s, c.me.id, 'silo', true) >= 2 && !autoFireCount(c.s, c.me.id).on && ownAttack(c.s, c.me),
       done: (c) => autoFireCount(c.s, c.me.id).on > 0 || c.ui.openPanel === 'forces',
@@ -545,7 +544,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'navyPort',
-      text: (c) => (c.ui.buildMode === 'port' ? 'Now click your coast to place the Port.' : `Navigation is done. Build a Port (${hotkey('port')}) on your coast for warships.`),
+      text: (c) => (c.ui.buildMode === 'port' ? 'Now click your coast to place the Port.' : 'Navigation is done. Build a Port on your coast for warships.'),
       target: (c) => buildTarget(c, 'port'),
       tile: (c) => (c.ui.buildMode === 'port' ? coastTile(c) : -1),
       when: (c) => playing(c) && unitAllowed(c.s, 'warship') && buildingAllowed(c.s, 'port') && hasTech(c.me, 'navigation') && coastCount(c.s, c.me.id) > 0 && lacks(c, 'port'),
@@ -573,7 +572,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'armorFactory',
-      text: (c) => (c.ui.buildMode === 'factory' ? 'Now click your land to place the Factory.' : `Mechanization is done. Build a Factory (${hotkey('factory')}) for tank divisions.`),
+      text: (c) => (c.ui.buildMode === 'factory' ? 'Now click your land to place the Factory.' : 'Mechanization is done. Build a Factory for tank divisions.'),
       target: (c) => buildTarget(c, 'factory'),
       when: (c) => playing(c) && buildingAllowed(c.s, 'factory') && hasTech(c.me, 'mechanization') && lacks(c, 'factory'),
       still: (c) => lacks(c, 'factory'),
@@ -597,7 +596,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'airField',
-      text: (c) => (c.ui.buildMode === 'airfield' ? 'Now click your land to place the Airfield.' : `Flight is done. Build an Airfield (${hotkey('airfield')}) for bombers and fighters.`),
+      text: (c) => (c.ui.buildMode === 'airfield' ? 'Now click your land to place the Airfield.' : 'Flight is done. Build an Airfield for bombers and fighters.'),
       target: (c) => buildTarget(c, 'airfield'),
       when: (c) => playing(c) && buildingAllowed(c.s, 'airfield') && hasTech(c.me, 'flight') && lacks(c, 'airfield'),
       still: (c) => lacks(c, 'airfield'),
@@ -624,7 +623,7 @@ export function guideTips(): GuideTip[] {
       text: (c) => {
         const r = c.s.allianceRequests.find((q) => q.to === c.me.id);
         const name = r ? c.s.players[r.from]?.name ?? 'A nation' : 'A nation';
-        return `${name} offers an alliance. Open Diplomacy (P) to accept or decline.`;
+        return `${name} offers an alliance. Open Diplomacy in the top bar to accept or decline.`;
       },
       // the nation's card when it is open, else the Diplomacy button (it carries the request count); the nation
       // is often not in the short standings list
@@ -646,7 +645,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'arsenal',
-      text: 'Arsenal (T, Arsenal tab): buy better ships, tanks and planes with gold, iron and oil. Each splits into two paths: pick one.',
+      text: 'Arsenal (Research, Arsenal tab): buy better ships, tanks and planes with gold, iron and oil. Each splits into two paths: pick one.',
       target: (c) => (panel(c, 'research') ? 'tab-arsenal' : 'open-research'),
       // later in the game (after the doctrine pick opens), once an Arsenal item can be started
       when: (c) => playing(c) && c.sec >= DOCTRINE_UNLOCK_SECONDS + 60 && canStartAny(c, true),
@@ -655,7 +654,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'upgrade',
-      text: 'Upgrade many at once: Shift-drag over your buildings, then Upgrade x1, x3 or x5.',
+      text: 'Upgrade many at once: Upgrade many in the Build menu, drag a box over your buildings, then Upgrade x1, x3 or x5.',
       target: 'building-selection',
       tile: (c) => c.me.capital,
       when: (c) => playing(c) && ownedBuildings(c.s, c.me) >= 5,

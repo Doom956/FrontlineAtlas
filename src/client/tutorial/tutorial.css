@@ -25,9 +25,8 @@
   gap: 10px;
   pointer-events: auto;
   background-color: var(--metal-a);
-  background-image: var(--grain);
-  border: 1px solid var(--rule);
-  border-left: 2px solid var(--brass);
+  border: 1px solid var(--edge);
+  --tone: var(--brass);
   border-radius: var(--r);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 8px 24px rgba(0, 0, 0, 0.45);
   transform: scale(var(--ui, 1));
@@ -39,7 +38,7 @@
 @keyframes tut-nod {
   0% {
     translate: -6px 0;
-    border-left-color: var(--brass-hi);
+    --tone: var(--brass-hi);
   }
   100% {
     translate: 0 0;
@@ -53,8 +52,6 @@
 }
 .tut-kicker {
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
   color: var(--brass);
   white-space: nowrap;
   overflow: hidden;
@@ -62,7 +59,6 @@
 }
 .tut-count {
   font: 600 12px/1 var(--f-label);
-  letter-spacing: 0.08em;
   color: var(--dim);
   font-variant-numeric: tabular-nums;
 }
@@ -111,8 +107,6 @@
   background: transparent;
   padding: 2px 0;
   font: 600 11px/1 var(--f-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--dim);
   cursor: pointer;
   white-space: nowrap;
@@ -135,7 +129,7 @@
   display: flex;
   align-items: flex-start;
   gap: 6px;
-  font: 400 12.5px/1.35 var(--f-ui);
+  font: 400 13px/1.35 var(--f-ui);
   color: var(--faint);
 }
 .tut-list li[data-s='current'] {
@@ -152,7 +146,7 @@
   margin-top: 1px;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--rule-hi);
+  border: 1px solid var(--edge-hi);
   color: transparent;
 }
 .tut-list li[data-s='done'] .tut-tick {
@@ -216,7 +210,7 @@
   border: 2px solid var(--brass-hi);
   border-radius: 3px;
   box-shadow:
-    0 0 0 1px rgba(13, 16, 19, 0.9),
+    0 0 0 1px rgba(11, 15, 21, 0.9),
     0 0 18px rgba(227, 192, 78, 0.45);
   pointer-events: none;
   animation: tut-pulse 1.4s ease-in-out infinite;
@@ -225,12 +219,12 @@
   0%,
   100% {
     box-shadow:
-      0 0 0 1px rgba(13, 16, 19, 0.9),
+      0 0 0 1px rgba(11, 15, 21, 0.9),
       0 0 10px rgba(227, 192, 78, 0.3);
   }
   50% {
     box-shadow:
-      0 0 0 1px rgba(13, 16, 19, 0.9),
+      0 0 0 1px rgba(11, 15, 21, 0.9),
       0 0 0 6px rgba(227, 192, 78, 0.18),
       0 0 22px rgba(227, 192, 78, 0.55);
   }
@@ -275,7 +269,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(13, 16, 19, 0.55);
+  background: rgba(11, 15, 21, 0.55);
   pointer-events: auto;
 }
 .tut-done-card {
@@ -287,8 +281,7 @@
   align-items: flex-start;
   gap: 8px;
   background-color: var(--metal-a);
-  background-image: var(--grain);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--edge);
   border-top: 2px solid var(--olive);
   border-radius: var(--r);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
@@ -305,9 +298,7 @@
   border: 1px solid var(--olive-d);
 }
 .tut-done-t {
-  font: 600 30px/1.05 var(--f-logo);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font: 400 30px/1.05 var(--f-logo);
 }
 .tut-done-l {
   margin: 0 0 10px;
@@ -325,14 +316,22 @@
   margin-left: auto;
 }
 
+/* small screens: the card starts below the labelled top bar (two rows on phones, like the drawers) and is opaque,
+   so Pause, Speed, Help and Menu stay in reach and the standings and the advisor line do not show through it */
 @media (max-width: 720px) {
   .tut-card {
     left: 8px;
     right: 8px;
     width: auto;
     bottom: auto;
-    top: 64px;
+    top: 70px;
     transform: none;
+    background-color: var(--metal);
+  }
+}
+@media (max-width: 640px) {
+  .tut-card {
+    top: 108px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

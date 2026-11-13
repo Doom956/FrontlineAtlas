@@ -1,6 +1,10 @@
 // GLSL for the map layer (WebGL2). One fullscreen pass: terrain, nations, borders, overlays.
 import { UNDER_CHROMA, UNDER_DETAIL, UNDER_LUM, UNDER_MID } from './palette';
 import { FOG } from '../../sim/config';
+import { WATER_FADE_END, WATER_MID } from './terrain';
+import type { RGB } from './common';
+
+const rgb = (c: RGB): string => c.map((v) => (v / 255).toFixed(4)).join(', ');
 
 export const MAP_VS = /* glsl */ `#version 300 es
 void main() {
@@ -166,6 +170,19 @@ float seg(vec2 p, vec2 a, vec2 b) {
   return length(pa - ba * h);
 }
 
+// Water by depth d (tiles to land, smooth): one smooth fade from the shelf through the middle slate to the open sea.
+// Colours and the fade length come from terrain.ts (waterRGB is the same ramp for the minimap and the far texture).
+const vec3 WATER_MID = vec3(${rgb(WATER_MID)});
+// px = tiles per device pixel: zoomed far out the fade widens (up to 1.8x, so the open sea still starts within
+// MAX_DEPTH) and the shelf never shrinks to a coast outline.
+vec3 waterAt(float d, float px) {
+  vec3 shelf = uTerr[1];
+  vec3 sea = uTerr[0];
+  d /= clamp(px * 1.5, 1.0, 1.8);
+  float g = smoothstep(1.0, ${WATER_FADE_END.toFixed(1)}, d);
+  return g < 0.5 ? mix(shelf, WATER_MID, g * 2.0) : mix(WATER_MID, sea, g * 2.0 - 1.0);
+}
+
 // Terrain pattern: returns the terrain colour at t; lum = luminance change the pattern makes (nations show it faintly).
 vec3 terrainAt(int ter, ivec2 ti, vec2 t, vec2 f, float px, float detail, out float lum) {
   vec3 c = uTerr[ter];
@@ -302,11 +319,13 @@ void main() {
   vec3 col;
   float near = smoothstep(1.2, 2.6, uZoom);
   vec3 flat_ = texture(uTerrCol, uv).rgb;
+  // tiles to land, smooth (0 on land)
+  float landDist = texture(uDepth, uv).r * 25.5;
   if (water) {
-    float d = texture(uDepth, uv).r * 25.5; // tiles to land, smooth
-    float k = smoothstep(1.0, 11.0, d);
-    vec3 wc = mix(uTerr[1], uTerr[0], k);
-    wc += vec3(0.05, 0.07, 0.07) * (1.0 - smoothstep(0.55, 1.5, d)); // light shore band
+    float d = landDist;
+    float k = smoothstep(1.0, 6.0, d);
+    vec3 wc = waterAt(d, px);
+    wc += vec3(0.02, 0.03, 0.035) * (1.0 - smoothstep(0.55, 1.5, d)); // quiet shoreline
     if (detail > 0.0) {
       // faint wave dashes in open water
       vec2 q = t * vec2(1.0, 2.0) / 3.0;
@@ -316,12 +335,12 @@ void main() {
       float wave = (1.0 - smoothstep(0.22, 0.22 + px, abs(l.x))) * (1.0 - smoothstep(0.03, 0.03 + px * 0.7, abs(l.y + 0.08 * cos(l.x * 9.0))));
       wc += vec3(0.05, 0.06, 0.07) * wave * on * detail;
     }
-    col = mix(flat_, wc, near);
+    col = wc; // the depth style at every zoom (the flat texture's water steps per whole tile)
   } else {
     vec3 tc = terrainAt(ter, ti, t, f, px, detail, lum);
     // soft sandy shore on land tiles next to water
-    float shore = smoothstep(0.08, 0.45, texture(uDepth, uv).r * 25.5);
-    tc = mix(tc, vec3(0.86, 0.8, 0.62), shore * 0.5);
+    float shore = smoothstep(0.08, 0.45, landDist);
+    tc = mix(tc, vec3(0.8, 0.77, 0.66), shore * 0.25);
     col = mix(flat_, tc, near);
   }
 
@@ -347,6 +366,8 @@ void main() {
     float cy = dot(calm, vec3(0.299, 0.587, 0.114));
     calm = vec3(${UNDER_MID.toFixed(3)} + (cy - ${UNDER_MID.toFixed(3)}) * ${UNDER_LUM.toFixed(3)}) + (calm - cy) * ${UNDER_CHROMA.toFixed(3)};
     vec3 fill = mix(calm, oc, pc.a);
+    // tribes: a light tint straight over the terrain (no grey wash), so the far map stays land, not grey patches
+    if (int(flags.r * 255.0 + 0.5) == 3) fill = mix(col, oc, pc.a);
     if (res > 0 && detail > 0.0) {
       // under a nation deposits only shade the colour faintly (no foreign hues, no dotted clusters), and only very
       // close: the deposit markers already say where the fields are
@@ -427,7 +448,8 @@ void main() {
       int rel = int(flags.r * 255.0 + 0.5);
       vec3 bc = pal(o, 2).rgb; // darker, slightly more saturated shade of the nation colour (palette.ts)
       float ba = 1.0;
-      if (rel == 1) bc = vec3(0.97);
+      if (rel == 3) bc = mix(col, vec3(0.95), 0.22); // tribe parcels: a faint light edge, not a dark outline
+      else if (rel == 1) bc = vec3(0.97);
       else if (rel == 2) {
         bc = mix(oc, vec3(1.0), 0.6);
         float period = max(1.5, 12.0 * px);

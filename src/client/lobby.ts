@@ -8,11 +8,12 @@ import type { LobbyChip, LobbyStateMsg, LobbySummary, RGB, ServerMessage } from 
 import { cloneSetup, DEFAULT_SETUP, mapLabel, MULTIPLAYER_NATIONS } from '../sim/setup';
 import { TEAM_COLORS } from '../sim/state';
 import type { GameSetup } from '../sim/types';
-import { button, el, rgbCss, setText } from './dom';
-import { lineIcon } from './hud/glyph';
+import { backButton, button, el, rgbCss, setText } from './dom';
+import { iconSpan, lineIcon } from './hud/glyph';
 import { ChatView } from './chat/view';
 import { chatEnabled, chatFor, setChatEnabled } from './chat/store';
 import { PLAYER_PALETTE, saveSetupPrefs, SetupScreen, type SetupPrefs } from './setupScreen';
+import './lobby.css';
 
 /** Settings edits are sent at most this often (sliders fire many input events). */
 const SEND_DELAY_MS = 180;
@@ -63,6 +64,25 @@ function fmtCountdown(ms: number): string {
 }
 
 const KIND_LABEL: Record<LobbySummary['kind'], string> = { ffa: 'Free for all', teams: 'Teams', special: 'Special' };
+/** Each kind of public game has its own small picture beside its name (the word says it too). */
+const KIND_ICON: Record<LobbySummary['kind'], string> = { ffa: 'army', teams: 'ally', special: 'star' };
+
+/** A button with a small line icon before its word (the word stays the button's name). */
+function iconButton(label: string, icon: string, cls: string, onClick: (e: MouseEvent) => void): HTMLButtonElement {
+  const b = button('', cls, onClick);
+  b.append(iconSpan(lineIcon(icon, 16)), el('span', 'btn-l', label));
+  return b;
+}
+
+/**
+ * The public game a newcomer should join: one with a countdown running and the most players, else the first free
+ * for all, never a full one. Its Join is the page's one accent button.
+ */
+export function suggestedLobby(lobbies: readonly LobbySummary[]): string | null {
+  const open = lobbies.filter((l) => l.players < l.maxPlayers);
+  const running = open.filter((l) => l.startsAt !== null).sort((a, b) => b.players - a.players);
+  return (running[0] ?? open.find((l) => l.kind === 'ffa') ?? open[0])?.code ?? null;
+}
 
 function chipEls(chips: readonly LobbyChip[]): HTMLElement {
   const row = el('div', 'lob-chips');
@@ -100,6 +120,7 @@ export class MultiplayerScreen {
   private statusEl: HTMLElement | null = null;
   private listEl: HTMLElement | null = null;
   private msgEl: HTMLElement | null = null;
+  private createBtn: HTMLButtonElement | null = null;
   // lobby page parts
   private side: HTMLElement | null = null;
   /** the column's parts: top (code, players, teams) and bottom (Start, Leave) are redrawn; the chat stays */
@@ -220,6 +241,7 @@ export class MultiplayerScreen {
     if (this.view === 'lobby' && this.countdownEl && this.lobby) {
       const l = this.lobby;
       setText(this.countdownEl, l.startsAt !== null ? `Starts in ${fmtCountdown(l.startsAt - net.serverNow())}` : l.isPublic ? 'Starts when the first player joins' : 'The host starts the game');
+      this.countdownEl.classList.toggle('counting', l.startsAt !== null);
     }
   }
 
@@ -248,7 +270,7 @@ export class MultiplayerScreen {
     const top = el('div', 'menu-head');
     this.statusEl = el('span', 'net-status');
     this.statusEl.dataset.test = 'net-status';
-    top.append(button('Back', 'ghost', () => this.hooks.onBack()), el('h2', '', 'Multiplayer'), this.statusEl);
+    top.append(backButton(() => this.hooks.onBack()), el('h2', '', 'Multiplayer'), this.statusEl);
 
     // identity: name and colour
     const you = el('div', 'mp-you');
@@ -297,7 +319,8 @@ export class MultiplayerScreen {
     const priv = el('section', 'mp-col mp-private');
     priv.append(el('h3', 'setup-h', 'Play with friends'));
     priv.append(el('p', 'mp-note', 'Create a private lobby, choose the map and the rules like in single player, and send the code to your friends.'));
-    const create = button('Create private lobby', 'primary big', () => {
+    // the page's accent: the suggested public game's Join, or this button while no public game can be joined
+    const create = button('Create private lobby', 'big mp-create', () => {
       if (!this.hooks.net().send({ type: 'createLobby', settings: { ...cloneSetup(this.prefs.setup), aiCount: Math.max(0, MULTIPLAYER_NATIONS - 2) } })) {
         this.say('Not connected yet: try again in a moment', true);
         return;
@@ -306,6 +329,7 @@ export class MultiplayerScreen {
       this.say('Creating a lobby…');
     });
     create.dataset.test = 'mp-create';
+    this.createBtn = create;
     const joinRow = el('div', 'mp-join');
     const code = el('input', 'input code-in');
     code.type = 'text';
@@ -317,7 +341,7 @@ export class MultiplayerScreen {
     code.dataset.test = 'mp-code';
     const joinBtn = button('Join', '', () => this.join(code.value));
     joinBtn.dataset.test = 'mp-join';
-    const watchBtn = button('Watch', 'ghost', () => this.join(code.value, true));
+    const watchBtn = iconButton('Watch', 'eye', 'ghost', () => this.join(code.value, true));
     watchBtn.title = 'Join as a spectator: see the whole map, no actions';
     watchBtn.dataset.test = 'mp-watch';
     code.addEventListener('keydown', (e) => {
@@ -344,6 +368,8 @@ export class MultiplayerScreen {
     if (!list || this.view !== 'browse') return;
     list.replaceChildren();
     const net = this.hooks.net();
+    const pick = suggestedLobby(this.lobbies);
+    this.createBtn?.classList.toggle('primary', !pick);
     if (!this.lobbies.length) {
       const text = net.online ? 'No public games right now.' : net.status === 'noServer' ? 'This copy of the game has no multiplayer server: open the game from a server, or add ?server=<address> to the page link.' : 'Waiting for the server…';
       list.append(el('div', 'lob-empty', text));
@@ -355,7 +381,7 @@ export class MultiplayerScreen {
       row.dataset.code = l.code;
       row.dataset.kind = l.kind;
       const head = el('div', 'lob-head');
-      head.append(el('span', `lob-kind ${l.kind}`, l.kind === 'teams' ? `${l.teamCount} teams` : KIND_LABEL[l.kind]), el('span', 'lob-map', mapLabel(l.map)));
+      head.append(iconSpan(lineIcon(KIND_ICON[l.kind], 16), 'ico lob-ic'), el('span', `lob-kind ${l.kind}`, l.kind === 'teams' ? `${l.teamCount} teams` : KIND_LABEL[l.kind]), el('span', 'lob-map', mapLabel(l.map)));
       const meta = el('div', 'lob-meta');
       const players = el('span', 'lob-players', `${l.players} / ${l.maxPlayers} players`);
       const when = el('span', 'lob-when');
@@ -368,8 +394,13 @@ export class MultiplayerScreen {
       info.append(head, meta);
       if (l.chips.length) info.append(chipEls(l.chips));
       else info.append(el('div', 'lob-rules', 'Standard rules'));
-      const go = button('Join', 'primary', () => this.join(l.code));
+      const full = l.players >= l.maxPlayers;
+      const go = button(full ? 'Full' : 'Join', l.code === pick ? 'primary' : '', () => this.join(l.code));
       go.dataset.test = `join-${l.kind}`;
+      if (full) {
+        go.disabled = true;
+        go.title = 'Every seat is taken';
+      }
       row.append(info, go);
       list.append(row);
     }
@@ -395,18 +426,26 @@ export class MultiplayerScreen {
     this.chat?.destroy();
     this.chat = new ChatView(chatFor(this.hooks.net()), { mode: 'lobby' });
     const chatSec = el('div', 'lobby-chat');
+    // one labelled rule ("Lobby chat: On / Off") above the Chat button, so the two never read as twin chat controls
     this.chatSwitch = el('div', 'seg setup-seg chat-switch');
     this.chatSwitch.dataset.test = 'chat-toggle';
+    this.chatSwitch.setAttribute('role', 'group');
+    this.chatSwitch.setAttribute('aria-label', 'Lobby chat');
     for (const on of [true, false]) {
-      const b = button(on ? 'Chat on' : 'Chat off', '', () => {
+      const b = button(on ? 'On' : 'Off', '', () => {
         setChatEnabled(on);
         this.renderChatSwitch();
       });
       b.dataset.on = String(on);
       this.chatSwitch.append(b);
     }
-    chatSec.append(this.chat.el, this.chatSwitch);
-    this.side.append(this.sideTop, chatSec, this.sideBottom);
+    const chatRule = el('div', 'lobby-chat-rule');
+    chatRule.append(el('span', 'form-label', 'Lobby chat'), this.chatSwitch);
+    chatSec.append(chatRule, this.chat.el);
+    // the upper part scrolls on its own; Start and Leave stay at the foot of the column
+    const scroll = el('div', 'lobby-scroll');
+    scroll.append(this.sideTop, chatSec);
+    this.side.append(scroll, this.sideBottom);
     this.renderChatSwitch();
     this.lobbyStatus = el('div', 'menu-foot lobby-foot');
     this.lobbyPrefs.setup = cloneSetup(l.settings);
@@ -469,14 +508,14 @@ export class MultiplayerScreen {
       const codeRow = el('div', 'lobby-code');
       const code = el('span', 'code-big', l.code);
       code.dataset.test = 'lobby-code';
-      const copy = button('', 'icon-btn', () => void this.copy(l.code, 'Code copied'));
-      copy.innerHTML = lineIcon('copy', 16);
-      copy.title = 'Copy the code';
-      copy.setAttribute('aria-label', 'Copy the code');
+      const copy = iconButton('Copy code', 'copy', 'mini-btn', () => void this.copy(l.code, 'Code copied'));
+      copy.title = 'Copy the code to send it to your friends';
       copy.dataset.test = 'copy-code';
-      const link = button('Copy link', 'ghost mini-btn', () => void this.copy(this.inviteLink(l.code), 'Invite link copied'));
+      const link = iconButton('Copy link', 'copy', 'mini-btn', () => void this.copy(this.inviteLink(l.code), 'Invite link copied'));
       link.title = 'A link that opens the game and joins this lobby';
-      codeRow.append(code, copy, link);
+      const btns = el('div', 'lobby-copy');
+      btns.append(copy, link);
+      codeRow.append(code, btns);
       side.append(codeRow);
     }
     this.countdownEl = el('div', 'lobby-when');
@@ -505,6 +544,7 @@ export class MultiplayerScreen {
     for (const p of l.players) {
       const li = el('li', 'lp');
       if (!p.connected) li.classList.add('away');
+      if (p.memberId === l.you) li.classList.add('me');
       const sw = el('i', 'sw');
       sw.style.background = rgbCss(p.color);
       const nm = el('span', 'lp-name', p.name);
@@ -513,8 +553,9 @@ export class MultiplayerScreen {
       if (p.isHost) li.append(el('span', 'lp-tag', 'host'));
       if (!p.connected) li.append(el('span', 'lp-tag', 'away'));
       if (teams) {
+        // the team's colour as a small square before its name (coloured words would be hard to read)
         const tm = el('span', 'lp-team', p.team > 0 ? TEAM_NAMES[p.team - 1] ?? `Team ${p.team}` : 'Auto');
-        if (p.team > 0 && TEAM_COLORS[p.team - 1]) tm.style.color = rgbCss(TEAM_COLORS[p.team - 1]);
+        if (p.team > 0 && TEAM_COLORS[p.team - 1]) tm.style.setProperty('--team', rgbCss(TEAM_COLORS[p.team - 1]));
         li.append(tm);
       }
       if (host && p.memberId !== l.you) {
@@ -550,8 +591,12 @@ export class MultiplayerScreen {
       const start = button('Start game', 'primary big', () => this.hooks.net().send({ type: 'startGame' }));
       start.dataset.test = 'mp-start';
       act.append(start);
+    } else if (!l.isPublic) {
+      // no Start for the others in a private lobby: say who starts it, where the button would be
+      const hostName = l.players.find((p) => p.isHost)?.name;
+      act.append(el('div', 'lobby-wait', hostName ? `Waiting for ${hostName} to start the game` : 'Waiting for the host to start the game'));
     }
-    const leave = button('Leave', 'ghost', () => this.leave());
+    const leave = iconButton('Leave', 'exit', 'ghost', () => this.leave());
     leave.dataset.test = 'mp-leave';
     act.append(leave);
     this.sideBottom.replaceChildren(act);

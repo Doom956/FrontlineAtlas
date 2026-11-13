@@ -30,7 +30,7 @@ export function gameOverCard(
   const title = el('div', 'over-title');
   head.append(title);
   card.append(head);
-  title.append(el('div', 'wr-sec', watcher ? 'Final result' : won ? 'Mission complete' : 'Mission failed'));
+  // the verdict is the heading itself (no small label above it)
   title.append(el('h1', watcher ? 'over-t' : won ? 'over-t win' : 'over-t lose', watcher ? 'Game over' : won ? 'Victory' : 'Defeat'));
   const sub = el('p', 'over-sub');
   // Every human was eliminated: nobody reached a win condition, the "winner" is only the nation leading the map.
@@ -73,10 +73,12 @@ export function gameOverCard(
   for (const [k, v] of rows) grid.append(el('span', 'k', k), el('span', 'v', v));
   if (opts.summary) card.append(opts.summary);
   else if (!watcher) card.append(grid);
+  // leaving on the leading side, playing on the trailing side with Play again (the accent) last; the HUD adds
+  // Continue playing in front of it (over-cont, placed by order in the CSS)
   const btns = el('div', 'over-btns');
-  const again = btn(againLabel, 'primary big', onAgain);
+  const again = btn(againLabel, 'primary big over-again', onAgain);
   again.dataset.test = 'play-again';
-  btns.append(again, btn('Main menu', 'big', onMenu), btn(opts.lookLabel ?? 'Look at the map', 'big ghost', onLook));
+  btns.append(btn('Main menu', 'big over-menu', onMenu), btn(opts.lookLabel ?? 'Look at the map', 'big ghost over-look', onLook, 'map'), again);
   card.append(btns);
   return card;
 }
