@@ -107,6 +107,8 @@ export const FIRE: readonly string[] = ['#fff4d6', '#ffd98a', '#f6a53e', '#dc742
 export const SOOT: Ramp = ['#17151a', '#28252a', '#3b3739', '#55504f'];
 /** Smoke as it thins and drifts: warm greys (deep, dark, base, light). */
 export const SMOKE: Ramp = ['#3a3836', '#55524e', '#75716b', '#99958e'];
+/** The shadowed side of a big cloud (the atom bomb's cap away from the light): between soot and smoke. */
+export const SHADE: Ramp = ['#282628', '#3e3b3c', '#585452', '#77726e'];
 /** Rocket exhaust smoke as it thins: pale warm greys (deep, dark, base, light). */
 export const VAPOUR: Ramp = ['#898581', '#a5a19c', '#c1bdb8', '#dbd7d2'];
 /** Dust and thrown earth (deep, dark, base, light). */

@@ -4,9 +4,16 @@
 // surge, slow dissipation).
 import { describe, expect, it } from 'vitest';
 import { rasterize, type Part } from '../src/client/art/detailed/bake';
+import { blobBitmap, glowBitmap } from '../src/client/art/detailed/blobs';
 import { AHALF, ALEN, DECK_PAINT, flightDeckTone, onAngled } from '../src/client/art/detailed/carrierDeck';
+import { atomShape, flashAt } from '../src/client/art/detailed/explosions';
 import { modelLength, unitModel } from '../src/client/art/detailed/models';
+import { FIRE } from '../src/client/art/detailed/palette';
+import { motionParams } from '../src/client/art/motion';
+import { styleModule } from '../src/client/art/registry';
+import { hex } from '../src/client/art/shared/colour';
 import { ALL_MODS } from '../src/client/art/shared/keys';
+import { BLAST_KINDS } from '../src/client/art/types';
 
 const OWNER = [64, 160, 255] as const;
 
@@ -102,5 +109,138 @@ describe('detailed carrier', () => {
     const plain = unitModel('carrier', 0).model.parts.length;
     const all = unitModel('carrier', ALL_MODS).model.parts.length;
     expect(all).toBeGreaterThan(plain + 10);
+  });
+});
+
+describe('detailed explosion flashes', () => {
+  const lively = motionParams('lively', false);
+  const subtle = motionParams('subtle', false);
+  const cinematic = motionParams('cinematic', false);
+  const kinds = BLAST_KINDS.filter((k) => k !== 'atom');
+  /** The first age (ms) at which the core no longer shows. */
+  const coreEnd = (k: (typeof kinds)[number], m: typeof lively): number => {
+    let a = 0;
+    while (flashAt(k, a, m).coreA > 0) a++;
+    return a;
+  };
+
+  it('opens every blast with a white-hot core for two or three frames and a light that fades fast', () => {
+    for (const k of kinds) {
+      const f0 = { ...flashAt(k, 0, lively) };
+      expect(f0.coreA, k).toBe(1);
+      expect(f0.coreR, k).toBeGreaterThan(0.5);
+      expect(f0.glowA, k).toBeGreaterThan(0.25);
+      expect(f0.glowR, k).toBeGreaterThan(f0.coreR * 1.8);
+      // still there on the second frame at 60 frames a second, gone by the fourth
+      expect(flashAt(k, 17, lively).coreA, k).toBeGreaterThan(0.5);
+      expect(flashAt(k, 50, lively).coreA, k).toBe(0);
+      // the light halves within an eighth of a second and is gone well inside half a second
+      expect(flashAt(k, 120, lively).glowA, k).toBeLessThan(f0.glowA * 0.5);
+      expect(flashAt(k, 400, lively).glowA, k).toBe(0);
+      // the core shrinks into the fireball instead of fading to a pale veil over it
+      expect(flashAt(k, 30, lively).coreR, k).toBeLessThan(f0.coreR);
+    }
+  });
+
+  it('makes the flash smaller and shorter with subtle motion, bigger and longer with cinematic', () => {
+    for (const k of kinds) {
+      const r = (m: typeof lively): [number, number] => {
+        const f = flashAt(k, 0, m);
+        return [f.coreR, f.glowR];
+      };
+      const [cs, gs] = r(subtle);
+      const [cl, gl] = r(lively);
+      const [cc, gc] = r(cinematic);
+      expect(cs).toBeLessThan(cl);
+      expect(cl).toBeLessThan(cc);
+      expect(gs).toBeLessThan(gl);
+      expect(gl).toBeLessThan(gc);
+      expect(coreEnd(k, subtle)).toBeLessThan(coreEnd(k, cinematic));
+      expect(coreEnd(k, subtle)).toBeGreaterThanOrEqual(17);
+      expect(flashAt(k, 0, subtle).glowA).toBeLessThan(flashAt(k, 0, cinematic).glowA);
+    }
+  });
+
+  it('paints the core white to yellow (never red) and the light as a soft stepped pool, not a ring', () => {
+    const allowed = new Set([FIRE[0], FIRE[1], FIRE[2]].map((c) => hex(c).join(',')));
+    const core = blobBitmap('flash', 12, 1);
+    let lit = 0;
+    for (let i = 0; i < core.data.length; i += 4) {
+      if (!core.data[i + 3]) continue;
+      lit++;
+      expect(allowed.has(`${core.data[i]},${core.data[i + 1]},${core.data[i + 2]}`)).toBe(true);
+    }
+    expect(lit).toBeGreaterThan(200);
+    const gl = glowBitmap('glow', 24, 2);
+    // lying on the ground: wider than tall; translucent everywhere, in several steps
+    expect(gl.h).toBeLessThan(gl.w * 0.75);
+    const alphas = new Set<number>();
+    for (let i = 3; i < gl.data.length; i += 4) {
+      expect(gl.data[i]).toBeLessThan(255);
+      if (gl.data[i]) alphas.add(gl.data[i]);
+    }
+    expect(alphas.size).toBeGreaterThan(4);
+    // densest in the middle, thinning outward band by band (no bright rim)
+    const bands = [0, 0, 0, 0, 0];
+    const counts = [0, 0, 0, 0, 0];
+    for (let y = 0; y < gl.h; y++)
+      for (let x = 0; x < gl.w; x++) {
+        const d = Math.hypot((x - gl.ox) / gl.ox, (y - gl.oy) / gl.oy);
+        if (d >= 1) continue;
+        const b = Math.floor(d * 5);
+        bands[b] += gl.data[(y * gl.w + x) * 4 + 3];
+        counts[b]++;
+      }
+    const mean = bands.map((v, i) => v / Math.max(1, counts[i]));
+    for (let i = 1; i < 5; i++) expect(mean[i]).toBeLessThan(mean[i - 1]);
+    const halo = glowBitmap('halo', 24, 2);
+    expect(halo.h).toBe(halo.w);
+  });
+});
+
+describe('detailed atom bomb', () => {
+  const ex = styleModule('detailed').explosions;
+
+  it('lasts longer than every other blast, longer with cinematic motion, never past about twelve seconds', () => {
+    const d = (p: 'subtle' | 'lively' | 'cinematic'): number => ex.durationMs('atom', motionParams(p, false));
+    expect(d('subtle')).toBeLessThan(d('lively'));
+    expect(d('lively')).toBeLessThan(d('cinematic'));
+    expect(d('lively')).toBeGreaterThan(6000);
+    expect(d('cinematic')).toBeLessThanOrEqual(12000);
+    for (const k of BLAST_KINDS) if (k !== 'atom') expect(ex.durationMs(k, motionParams('lively', false))).toBeLessThan(d('lively') / 2);
+  });
+
+  it('plays as a sequence: a fireball that rises into a broad rolling cap, cools, then drifts and thins away', () => {
+    const fT = 2400;
+    const dur = 7600;
+    let prev = { ...atomShape(0, fT, dur) };
+    // the first moment: the fireball near the ground, no cap yet, all fire
+    expect(prev.capIn).toBe(0);
+    expect(prev.young).toBe(1);
+    expect(prev.glow).toBe(1);
+    expect(prev.capH).toBeLessThan(0.6);
+    for (let age = 100; age <= dur; age += 100) {
+      const a = { ...atomShape(age, fT, dur) };
+      // it only rises, widens and cools; the cap never shrinks back
+      expect(a.capH).toBeGreaterThanOrEqual(prev.capH);
+      expect(a.Rm).toBeGreaterThanOrEqual(prev.Rm);
+      expect(a.glow).toBeLessThanOrEqual(prev.glow);
+      expect(a.young).toBeLessThanOrEqual(prev.young);
+      expect(a.fade).toBeLessThanOrEqual(prev.fade);
+      expect(a.wind).toBeGreaterThanOrEqual(prev.wind);
+      // a cap wider than tall, its top within about three fireball radii of the ground
+      if (a.capIn > 0.5) expect(2 * (a.Rm + a.rm)).toBeGreaterThan(3 * a.rm);
+      expect(a.capH + a.rm).toBeLessThan(2.9);
+      prev = a;
+    }
+    // by the end of the fire phase: a full cap, cooled to smoke, the stem long under it
+    const mid = { ...atomShape(fT, fT, dur) };
+    expect(mid.capIn).toBe(1);
+    expect(mid.young).toBe(0);
+    expect(mid.capH).toBeGreaterThan(1.7);
+    // at the end it has drifted downwind and thinned away
+    const end = atomShape(dur, fT, dur);
+    expect(end.fade).toBeLessThan(0.01);
+    expect(end.wind).toBeGreaterThan(0.5);
   });
 });
