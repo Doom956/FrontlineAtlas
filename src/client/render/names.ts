@@ -15,7 +15,7 @@ import type { Camera } from '../camera';
 import { drawIcon, type StatusIconId } from '../icons';
 import { fitSize, LABEL_BLOCK_H } from '../labels';
 import { clamp, formatCount, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, setTracking, type RGB } from './common';
-import { drawTroopIcon, PLATE } from './troopIcons';
+import { armyCountColour, drawTroopIcon, PLATE, troopMarkerSpan } from './troopIcons';
 import { OWNER_MASK, type TileFeed } from './tiles';
 
 /** Tribe labels only from this zoom (device px per tile) on, except the hovered tribe. */
@@ -409,17 +409,20 @@ export class NameLayer {
         setTracking(ctx, small * 0.02);
         const ay = nameY + px * 0.55 + small * 0.55;
         const fill = tribe ? 'rgba(236,238,241,0.94)' : traitor ? 'rgba(255,196,189,0.94)' : 'rgba(250,251,253,0.96)';
-        // the soldier marker in the nation's colour (a neutral grey for tribes), the same marker as the front and
-        // transport pills (troopIcons.ts), says what the number counts
+        // the soldier marker, the same marker as the front and transport pills (troopIcons.ts), says what the number
+        // counts: in the nation's colour on its plate (a neutral grey for tribes), or, as a bare unit standing on the
+        // nation's own land, in a plain field uniform that stands out from it
         const plate = PLATE;
         const aw = ctx.measureText(army).width;
-        const gx = Math.round(s.x - (plate + 6 + aw) / 2);
+        // laid out by the marker's visible width (a bare unit is narrower than its footprint), 4 px before the number
+        const sp = troopMarkerSpan('infantry', plate);
+        const gx = Math.round(s.x - (sp.w + 4 + aw) / 2);
         const gy = Math.round(ay - plate / 2 - 1);
-        drawTroopIcon(ctx, 'infantry', gx, gy, tribe ? TRIBE_PLATE : (p.color as RGB), plate);
-        this.armyMarks.push(gx - 2, gy - 2, gx + plate + 6 + aw + 4, gy + plate + 4);
+        drawTroopIcon(ctx, 'infantry', gx - sp.x, gy, armyCountColour(tribe ? TRIBE_PLATE : (p.color as RGB)), plate);
+        this.armyMarks.push(gx - 2, gy - 2, gx + sp.w + 4 + aw + 4, gy + plate + 4);
         ctx.font = `500 ${Math.round(small)}px ${MAP_NUM_FAMILY}`;
         ctx.textAlign = 'center';
-        haloText(ctx, army, gx + plate + 6 + aw / 2, ay, fill, small, tribe ? 1.25 : 1.05);
+        haloText(ctx, army, gx + sp.w + 4 + aw / 2, ay, fill, small, tribe ? 1.25 : 1.05);
         if (mixBar) this.mixBar(ctx, p, s.x, ay + small * 0.6 + 3, Math.max(28, Math.min(tw, 90)));
       }
     }

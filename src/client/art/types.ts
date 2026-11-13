@@ -132,6 +132,11 @@ export interface TroopIconArt {
    * side by side instead of overlapping.
    */
   readonly bare?: boolean;
+  /**
+   * Bare markers: the unit's visible extent across its footprint at `size`, its outline included (x px from the
+   * footprint's left edge, w px wide), so the pills can set the units side by side by their real widths.
+   */
+  span?(kind: TroopIconKind, size: number): { x: number; w: number };
 }
 
 // ================================================================================================ wakes and contrails

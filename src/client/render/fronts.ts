@@ -774,7 +774,7 @@ export class FrontLayer {
       const kinds = troopKinds(knows(a.attacker) ? a.troops : null);
       const am = this.avoid;
       if (am && am.length) {
-        const sz = troopPillSize(ctx, armyTotal(a.troops), kinds.length, { arrow: mine || ally || incoming ? 'up' : 'none' });
+        const sz = troopPillSize(ctx, armyTotal(a.troops), kinds, { arrow: mine || ally || incoming ? 'up' : 'none' });
         for (let k = 0; k < am.length; k += 4) {
           const x0 = s.x - sz.w / 2;
           const y0 = py - sz.h / 2;
