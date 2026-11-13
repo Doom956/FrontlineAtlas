@@ -120,12 +120,17 @@ function drawShipBurning(ctx: CanvasRenderingContext2D, u: UnitDraw, um: UnitMod
   const size = Math.max(0.75, Math.min(1.3, Math.sqrt(L / 32)));
   const linger = lingerOf(m);
   const life = (1700 + 1300 * b.heavy + (b.fires ? 500 : 0)) * linger;
-  const [vx, vy] = velocity(u, life, L * sc * 2.6);
+  // the main column's puffs, and how big they are on average (cells)
+  const nMain = Math.round((mid ? 2 : 5) + (mid ? 2 : 5) * b.heavy + (b.fires ? 1 : 0));
+  const r0 = res * (0.7 + 0.5 * b.heavy) * size;
+  const r1 = (main: boolean): number => res * (2.4 + (b.fires ? 1 : 0) + 2.2 * b.heavy * (main ? 1 : 0.6)) * size;
+  // a fast ship would string its puffs out into a dotted line: the trail is kept as long as its puffs can cover
+  const [vx, vy] = velocity(u, life, Math.min(L * sc * 2.6, nMain * ((r0 + r1(true)) / 2) * g.k * 1.5));
   // flames stream with the wind they feel: the wind less the ship's own way through it
   const lean = Math.max(-2, Math.min(2, Math.round((WIND_X - vx / sc) / 4)));
   const base = ctx.globalAlpha;
   // scorched, blackened deck round the spots that were hit
-  const scorched = Math.min(4, Math.max(1, b.fires));
+  const scorched = mid ? 0 : Math.min(4, Math.max(1, b.fires));
   for (let i = 0; i < scorched; i++) {
     const [su, sv, sz] = hitSpot(um, u.seed, i);
     const [dx, dy] = project(su, sv, sz, th, roll, sc, false);
@@ -140,7 +145,8 @@ function drawShipBurning(ctx: CanvasRenderingContext2D, u: UnitDraw, um: UnitMod
   }
   ctx.globalAlpha = base;
   // the smoke: one column per burning spot, the first the biggest; grey and thin at first, black and heavy later
-  for (let i = 0; i < b.columns; i++) {
+  const columns = mid ? Math.min(2, b.columns) : b.columns;
+  for (let i = 0; i < columns; i++) {
     const [su, sv, sz] = hitSpot(um, u.seed, i);
     const [dx, dy] = project(su, sv, sz + 1, th, roll, sc, false);
     const main = i === 0;
@@ -149,10 +155,10 @@ function drawShipBurning(ctx: CanvasRenderingContext2D, u: UnitDraw, um: UnitMod
     src.vx = vx;
     src.vy = vy;
     src.turn = m.reduced ? 0 : u.turnRate;
-    src.n = Math.round((mid ? 3 : 5) + (main ? (mid ? 2 : 5) * b.heavy + (b.fires ? 1 : 0) : 0));
+    src.n = main ? nMain : mid ? 2 : 5;
     src.lifeMs = life * (main ? 1 : 0.8);
-    src.r0 = res * (0.7 + 0.5 * b.heavy) * size;
-    src.r1 = res * (2.4 + (b.fires ? 1 : 0) + 2.2 * b.heavy * (main ? 1 : 0.6)) * size;
+    src.r0 = r0;
+    src.r1 = r1(main);
     src.dark = b.dark;
     src.alpha = (0.62 + 0.3 * Math.min(1, b.smoke - 0.4 + b.dark * 0.5)) * (main ? 1 : 0.85);
     src.u = sc;
@@ -178,26 +184,28 @@ function drawTankBurning(ctx: CanvasRenderingContext2D, u: UnitDraw, um: UnitMod
   const res = g.res;
   const L = lengthOf(um);
   const fire = d >= 0.6;
-  const life = 1500 * lingerOf(m);
-  const [vx, vy] = velocity(u, life, L * sc * 3);
+  const life = 1700 * lingerOf(m);
+  const n = res < 1.5 ? 3 : 5;
+  const r1 = res * (fire ? 3 : 2.2);
+  const [vx, vy] = velocity(u, life, Math.min(L * sc * 3, n * ((res * 0.6 + r1) / 2) * g.k * 1.5));
   const [dx, dy] = project(-L * 0.28, 0, 2.2, th, 0, sc, false);
   src.x = x + dx;
   src.y = y + dy;
   src.vx = vx;
   src.vy = vy;
   src.turn = m.reduced ? 0 : u.turnRate;
-  src.n = res < 1.5 ? 3 : 5;
+  src.n = n;
   src.lifeMs = life;
-  src.r0 = res * 0.5;
-  src.r1 = res * (fire ? 2 : 1.5);
-  src.dark = fire ? 0.55 : 0;
-  src.alpha = fire ? 0.8 : 0.5;
+  src.r0 = res * 0.6;
+  src.r1 = r1;
+  src.dark = fire ? 0.65 : 0.3;
+  src.alpha = fire ? 0.9 : 0.7;
   src.u = sc;
   src.wind = 1;
   src.rise = 1;
   src.seed = rnd(u.seed, 70);
   drawSmokeTrail(ctx, src, g, u.timeMs, m);
-  if (fire) drawFlame(ctx, x + dx, y + dy, res * 0.5, g, u.timeMs, rnd(u.seed, 71), m, 1, Math.max(-2, Math.min(2, Math.round((WIND_X - vx / sc) / 4))));
+  if (fire) drawFlame(ctx, x + dx, y + dy, res * 0.7, g, u.timeMs, rnd(u.seed, 71), m, 1, Math.max(-2, Math.min(2, Math.round((WIND_X - vx / sc) / 4))));
 }
 
 function drawPlaneSmoke(ctx: CanvasRenderingContext2D, u: UnitDraw, um: UnitModel, m: MotionParams, g: Grid, th: number, roll: number, x: number, y: number): void {
@@ -212,20 +220,22 @@ function drawPlaneSmoke(ctx: CanvasRenderingContext2D, u: UnitDraw, um: UnitMode
   const eu = e ? e.u : 0;
   const ev = e ? e.v : -spanOf(um) * 0.2;
   const ez = e ? e.z : 1;
-  const life = 900 * lingerOf(m);
-  const [vx, vy] = velocity(u, life, L * sc * 4);
+  const life = 1300 * lingerOf(m);
+  const n = res < 1.5 ? 5 : 9;
+  const r1 = res * (fire ? 2.6 : 1.9);
+  const [vx, vy] = velocity(u, life, Math.min(L * sc * 5, n * ((res * 0.5 + r1) / 2) * g.k * 1.6));
   const [dx, dy] = project(eu - 1, ev, ez, th, roll, sc, false);
   src.x = x + dx;
   src.y = y + dy;
   src.vx = vx;
   src.vy = vy;
   src.turn = m.reduced ? 0 : u.turnRate;
-  src.n = res < 1.5 ? 4 : 7;
+  src.n = n;
   src.lifeMs = life;
-  src.r0 = res * 0.45;
-  src.r1 = res * (fire ? 1.9 : 1.4);
-  src.dark = fire ? 0.6 : 0.15;
-  src.alpha = fire ? 0.85 : 0.55;
+  src.r0 = res * 0.5;
+  src.r1 = r1;
+  src.dark = fire ? 0.65 : 0.25;
+  src.alpha = fire ? 0.9 : 0.7;
   src.u = sc;
   src.wind = 0.5;
   src.rise = 0.15;

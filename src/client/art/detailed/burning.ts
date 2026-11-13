@@ -64,6 +64,37 @@ export interface SmokeSource {
   seed: number;
 }
 
+/** One puff of a trail (puffOf's result, reused). */
+export interface Puff {
+  x: number;
+  y: number;
+  r: number;
+  alpha: number;
+  kind: BlobKind;
+}
+const puff: Puff = { x: 0, y: 0, r: 1, alpha: 0, kind: 'smoke' };
+
+/**
+ * Puff `k` of a trail when it is `a` (0 born .. 1 gone) through its life (pure; the returned object is reused): where
+ * it is, how big, how opaque and which puff. It lies back along the source's course (bent by its turn) by as far as
+ * the source went since it gave it off, carried downwind and risen.
+ */
+export function puffOf(s: SmokeSource, a: number, k: number): Puff {
+  const sec = a * (s.lifeMs / 1000);
+  const phi = -s.turn * sec * 0.5;
+  const c = Math.cos(phi);
+  const sn = Math.sin(phi);
+  const bx = -(s.vx * c - s.vy * sn) * sec;
+  const by = -(s.vx * sn + s.vy * c) * sec;
+  const wob = Math.sin(a * 5.3 + k * 1.9 + s.seed * 6) * s.u * 0.7 * a;
+  puff.x = s.x + bx + WIND_X * s.u * s.wind * sec + wob;
+  puff.y = s.y + by + (WIND_Y * s.wind - RISE * s.rise) * s.u * sec;
+  puff.r = Math.max(1, s.r0 + (s.r1 - s.r0) * easeOut(a));
+  puff.alpha = s.alpha * (a < 0.08 ? a / 0.08 : 1) * (1 - a) ** 1.25;
+  puff.kind = a < s.dark * 0.6 ? 'soot' : a < s.dark ? 'shade' : 'smoke';
+  return puff;
+}
+
 /**
  * Draws a smoke trail: `n` puffs, each born at the source in turn, swelling, rising and drifting downwind as it ages
  * and fading out, oldest first so the fresh dark puffs at the source lie on top. A moving source leaves its puffs
@@ -74,24 +105,10 @@ export function drawSmokeTrail(ctx: CanvasRenderingContext2D, s: SmokeSource, g:
   const base = m.reduced ? 0.5 / n : frac(timeMs / Math.max(1, s.lifeMs) + s.seed * 0.37);
   // the oldest puff first: the k whose age is closest to 1
   const k0 = (((Math.ceil((1 - base) * n) - 1) % n) + n) % n;
-  const life = s.lifeMs / 1000;
   const sd = Math.floor(s.seed * 64);
   for (let j = 0; j < n; j++) {
     const k = (k0 - j + n) % n;
-    const a = frac(base + k / n);
-    const sec = a * life;
-    // where the source was when it gave off this puff: back along its course, which bends by its turn
-    const phi = -s.turn * sec * 0.5;
-    const c = Math.cos(phi);
-    const sn = Math.sin(phi);
-    const bx = -(s.vx * c - s.vy * sn) * sec;
-    const by = -(s.vx * sn + s.vy * c) * sec;
-    const wob = Math.sin(a * 5.3 + k * 1.9 + s.seed * 6) * s.u * 0.7 * a;
-    const px = s.x + bx + WIND_X * s.u * s.wind * sec + wob;
-    const py = s.y + by + (WIND_Y * s.wind - RISE * s.rise) * s.u * sec;
-    const r = s.r0 + (s.r1 - s.r0) * easeOut(a);
-    const fade = (a < 0.08 ? a / 0.08 : 1) * (1 - a) ** 1.25;
-    const kind: BlobKind = a < s.dark * 0.6 ? 'soot' : a < s.dark ? 'shade' : 'smoke';
-    drawBlob(ctx, kind, Math.max(1, r), (k + sd) & 3, px, py, g, s.alpha * fade);
+    const p = puffOf(s, frac(base + k / n), k);
+    drawBlob(ctx, p.kind, p.r, (k + sd) & 3, p.x, p.y, g, p.alpha);
   }
 }

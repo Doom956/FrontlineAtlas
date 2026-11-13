@@ -214,12 +214,12 @@ function drawFires(ctx: CanvasRenderingContext2D, c: CraterDraw, m: MotionParams
   // how hard it burns overall: catching in the first moments, then dying down
   const catchUp = clamp01(q / 0.008);
   const I = clamp01(1 - q / burn) * catchUp;
-  // the fires' warm light on the earth round them
-  if (I > 0.02) drawBlob(ctx, 'glow', Math.max(2, cells * 0.9), Math.floor(sd) & 3, c.x, c.y, g, 0.32 * I * fade);
+  // the fires' warm light on the earth round them (from near zoom in: at mid zoom it is a pixel or two)
+  if (I > 0.02 && !mid) drawBlob(ctx, 'glow', Math.max(2, cells * 0.9), Math.floor(sd) & 3, c.x, c.y, g, 0.32 * I * fade);
   // embers glowing in the pit and on the rim, flickering, cooling from orange to a dull red
   if (q < embersEnd) {
     const E = 1 - q / embersEnd;
-    const n = mid ? 3 : Math.min(14, 3 + Math.round(cells * 0.5));
+    const n = mid ? 2 : Math.min(14, 3 + Math.round(cells * 0.5));
     const fl = Math.floor(clock / 140);
     for (let i = 0; i < n; i++) {
       if (!m.reduced && rnd(fl + i * 3, i) < 0.3) continue;
@@ -235,7 +235,8 @@ function drawFires(ctx: CanvasRenderingContext2D, c: CraterDraw, m: MotionParams
   // smoke: a column from each fire while it burns, then grey wisps from the pit
   const S = clamp01(1 - q / smokeEnd);
   const smokeA = (0.5 + 0.4 * m.craterSmoke) * fade;
-  for (let i = 0; i < nF; i++) {
+  // at mid zoom one column for the crater, from near zoom in one for each fire
+  for (let i = 0; i < (mid ? 1 : nF); i++) {
     const end = burn * (0.55 + 0.45 * rnd(sd, i + 30));
     const Ii = clamp01(1 - q / end) * catchUp;
     const a = rnd(sd, i + 20) * Math.PI * 2;
