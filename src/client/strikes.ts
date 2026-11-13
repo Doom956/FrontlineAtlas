@@ -42,7 +42,7 @@ export const STRIKE_ORDER: readonly StrikeId[] = ['barrage', 'bomb', 'paradrop',
 export interface StrikeInfo {
   id: StrikeId;
   name: string;
-  /** button label (short) */
+  /** the plain word under the strike's button in the bottom bar (hud/strikeBar.ts); tips name the button by it */
   label: string;
   key: string;
   /** picture from icons.ts */
@@ -79,7 +79,7 @@ export const STRIKES: Record<StrikeId, StrikeInfo> = {
   paradrop: {
     id: 'paradrop',
     name: 'Paratroopers',
-    label: 'Paras',
+    label: 'Drop',
     key: 'K',
     icon: 'transportPlane',
     line: 'paradrop',
@@ -315,7 +315,7 @@ export function instruction(state: GameState, me: Player, m: TargetMode, ui?: Pi
     case 'bomb':
       return `Bombing run ${salvoLabel(salvoOf(ui, 'bomb'))}: click enemy land.${tail}`;
     case 'paradrop':
-      return `Paratroopers: click enemy or empty land inside a gold ring.${tail}`;
+      return `Paratroopers: click enemy or empty land inside a blue ring.${tail}`;
     case 'rocket':
       return `Rocket ${salvoLabel(salvoOf(ui, 'rocket'))}: click enemy land anywhere on the map.${tail}`;
     case 'atomBomb':
@@ -583,7 +583,7 @@ function tooFar(state: GameState, pid: number, tile: number): string {
     if (d <= r) return '';
     if (d - r < gap) {
       gap = d - r;
-      best = `Too far: your nearest bombers reach ${Math.round(r)} tiles, this is ${Math.round(d)} away (the gold rings)`;
+      best = `Too far: your nearest bombers reach ${Math.round(r)} tiles, this is ${Math.round(d)} away (the blue rings)`;
     }
   }
   return best;

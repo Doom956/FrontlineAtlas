@@ -2,14 +2,17 @@
 //   - selected warships: their gun range (thin ring: enemy ships inside are fought), shelling range (dotted) and shore-
 //     support range (dashed, filled: land inside is cheaper and faster to take), per variant (reach.shipReach)
 //   - own warships on station: a thin line to the coast / port they cover and a small crosshair there
-//   - blockades: a ring with a bar over every blockaded port you are part of (brass = yours, red = against you)
+//   - blockades: a ring with a bar over every blockaded port you are part of (accent = yours, red = against you)
 //   - escorts: a thin line from each escorting warship to the transport / trade ship it guards
 //   - divisions supporting a front: a dotted line to the front and a small flag there
 //   - air support: a subtle dashed disc over each live support zone of yours (and a red one over zones on your land)
 //   - air superiority: the patrol circle of the selected airfield, or of every airfield while picking
 //   - while aiming a stance / mode / mission: the area the click would cover (bombard range, front radius, zone)
-//   - Arsenal: your recon / light-tank reveal circles (steel, fading) and minefields around ports (dotted: brass =
+//   - Arsenal: your recon / light-tank reveal circles (steel, fading) and minefields around ports (dotted: accent =
 //     yours or an ally's, red = dangerous to you); the recon aim shows the circle the flight would reveal
+// Colours: ACC is the map overlay accent (render/common.ts, light cobalt) for yours and what you aim, STEEL (pale sky)
+// the navy's reach and reveals, RED what threatens you. Every ring, line and mark has a thin dark casing, so it reads
+// on light land as well as on the slate sea.
 // Cheap: rings and lines only, a few dozen per frame at most.
 import { activeFog } from '../fog/fogView';
 import { airPatrolRadius, airSupportRadius, airZones, airWingRange, wingOf } from '../../sim/airwings';
@@ -29,9 +32,11 @@ import { shipReach } from '../reach';
 import { navalReachMul } from '../../sim/variants';
 import { MAP_NUM_FAMILY } from './common';
 
-const BRASS = 'rgba(227,192,78,';
+const ACC = 'rgba(147,174,248,';
 const STEEL = 'rgba(160,220,255,';
 const RED = 'rgba(255,107,94,';
+/** the dark casing under every line (the accent's dark cobalt) */
+const CASE = 'rgba(10,18,44,';
 
 export class PillarOverlay {
   draw(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, ui: UiState, units: UnitLayer, frac: number, nowMs: number): void {
@@ -62,14 +67,17 @@ export class PillarOverlay {
       const left = Math.max(0, Math.min(1, (zn.untilTick - state.tick) / (AIR.supportSeconds * TICKS_PER_SECOND)));
       ctx.beginPath();
       ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
-      ctx.fillStyle = `${mine ? BRASS : RED}${0.05 + 0.05 * left})`;
+      ctx.fillStyle = `${mine ? ACC : RED}${0.05 + 0.05 * left})`;
       ctx.fill();
       ctx.setLineDash([3, 5]);
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = `${CASE}${0.3 + 0.2 * left})`;
+      ctx.stroke();
       ctx.lineWidth = 1;
-      ctx.strokeStyle = `${mine ? BRASS : RED}${0.35 + 0.3 * left})`;
+      ctx.strokeStyle = `${mine ? ACC : RED}${0.35 + 0.3 * left})`;
       ctx.stroke();
       ctx.setLineDash([]);
-      if (mine && z >= 1.2) planeMark(ctx, c.x, c.y - r - 7, `${BRASS}0.9)`);
+      if (mine && z >= 1.2) planeMark(ctx, c.x, c.y - r - 7, `${ACC}0.9)`);
     }
 
     // ---- air: the selected airfield (or every airfield while picking): patrol circle / mission reach
@@ -90,12 +98,12 @@ export class PillarOverlay {
         const centre = picking?.pick === 'airSuperiority' && ui.hoverTile >= 0 ? at(ui.hoverTile) : wg && wg.target >= 0 ? at(wg.target) : c;
         ring(ctx, centre.x, centre.y, airPatrolRadius(b, state) * z, `${STEEL}0.55)`, [6, 4], `${STEEL}0.05)`);
       }
-      if (picking && (picking.pick === 'airSupport' || picking.pick === 'airStrategic')) ring(ctx, c.x, c.y, airWingRange(b, state) * z, `${BRASS}0.4)`, [2, 6]);
+      if (picking && (picking.pick === 'airSupport' || picking.pick === 'airStrategic')) ring(ctx, c.x, c.y, airWingRange(b, state) * z, `${ACC}0.4)`, [2, 6]);
     }
     if (picking && picking.pick === 'airSupport' && ui.hoverTile >= 0) {
       const b = picking.airfield >= 0 ? buildingAt(state, picking.airfield) : fields[0];
       const c = at(ui.hoverTile);
-      ring(ctx, c.x, c.y, airSupportRadius(b) * z, `${BRASS}0.8)`, [4, 3], `${BRASS}0.08)`);
+      ring(ctx, c.x, c.y, airSupportRadius(b) * z, `${ACC}0.8)`, [4, 3], `${ACC}0.08)`);
     }
 
     // ---- warships: range of the selected ones, station lines, escort links
@@ -109,17 +117,17 @@ export class PillarOverlay {
           ringed.push(p);
           const r = shipReach(state, u);
           if (r.support > 0) ring(ctx, p.x, p.y, r.support * z, `${STEEL}0.45)`, [5, 5], `${STEEL}0.035)`);
-          if (r.shell > 0 && Math.abs(r.shell - r.support) > 1.5) ring(ctx, p.x, p.y, r.shell * z, `${BRASS}0.45)`, [1, 4]);
+          if (r.shell > 0 && Math.abs(r.shell - r.support) > 1.5) ring(ctx, p.x, p.y, r.shell * z, `${ACC}0.45)`, [1, 4]);
           ring(ctx, p.x, p.y, r.weapon * z, `${RED}0.4)`, []);
           if (z >= 0.9 && ringed.length === 1) {
             ringLabel(ctx, p.x, p.y - r.weapon * z, `guns ${Math.round(r.weapon)}`, `${RED}0.85)`);
             if (r.support > 0) ringLabel(ctx, p.x, p.y + r.support * z, `shore support ${Math.round(r.support)}`, `${STEEL}0.9)`);
-            if (r.shell > 0 && Math.abs(r.shell - r.support) > 1.5) ringLabel(ctx, p.x, p.y - r.shell * z, `shelling ${Math.floor(r.shell)}`, `${BRASS}0.9)`);
+            if (r.shell > 0 && Math.abs(r.shell - r.support) > 1.5) ringLabel(ctx, p.x, p.y - r.shell * z, `shelling ${Math.floor(r.shell)}`, `${ACC}0.9)`);
           }
         }
         if (u.state === 3 && u.station !== undefined && u.station >= 0) {
           const s = at(u.station);
-          line(ctx, p.x, p.y, s.x, s.y, `${warshipStance(u) === 'blockade' ? BRASS : STEEL}0.45)`, [2, 4]);
+          line(ctx, p.x, p.y, s.x, s.y, `${warshipStance(u) === 'blockade' ? ACC : STEEL}0.45)`, [2, 4]);
           cross(ctx, s.x, s.y, Math.max(4, Math.min(9, z * 1.6)), `${STEEL}0.85)`);
         } else if (u.state === 4 && u.station !== undefined) {
           const t = byId.get(u.station);
@@ -131,13 +139,13 @@ export class PillarOverlay {
       } else if (u.type === 'tankDivision' && divisionMode(u) === 'support' && u.station !== undefined && u.station >= 0 && u.state !== 3) {
         const p = posOf(u);
         const s = at(u.station);
-        line(ctx, p.x, p.y, s.x, s.y, `${BRASS}${sel.has(u.id) ? 0.7 : 0.35})`, [1, 4]);
-        flag(ctx, s.x, s.y, `${BRASS}0.9)`);
-        if (sel.has(u.id)) ring(ctx, s.x, s.y, ARMOR_SUPPORT_RADIUS * z, `${BRASS}0.3)`, [3, 6]);
+        line(ctx, p.x, p.y, s.x, s.y, `${ACC}${sel.has(u.id) ? 0.7 : 0.35})`, [1, 4]);
+        flag(ctx, s.x, s.y, `${ACC}0.9)`);
+        if (sel.has(u.id)) ring(ctx, s.x, s.y, ARMOR_SUPPORT_RADIUS * z, `${ACC}0.3)`, [3, 6]);
       }
     }
 
-    // ---- blockades: ports you blockade (brass) and your ports under blockade (red)
+    // ---- blockades: ports you blockade (accent) and your ports under blockade (red)
     for (const b of state.buildings.values()) {
       if (b.type !== 'port' || b.owner <= 0) continue;
       const by = portBlockadedBy(state, b.tile);
@@ -145,20 +153,21 @@ export class PillarOverlay {
       const c = at(b.tile);
       const r = Math.max(7, Math.min(14, z * 2.4));
       if (!onScreen(c.x, c.y, r)) continue;
-      const col = by === me ? `${BRASS}0.95)` : `${RED}0.95)`;
+      const col = by === me ? `${ACC}0.95)` : `${RED}0.95)`;
       const pulse = 0.5 + 0.5 * Math.sin(nowMs / 400);
       ctx.beginPath();
       ctx.arc(c.x, c.y, r + pulse * 1.5, 0, Math.PI * 2);
+      ctx.moveTo(c.x - r * 0.7, c.y + r * 0.7);
+      ctx.lineTo(c.x + r * 0.7, c.y - r * 0.7);
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = `${CASE}0.55)`;
+      ctx.stroke();
       ctx.lineWidth = 2;
       ctx.strokeStyle = col;
       ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(c.x - r * 0.7, c.y + r * 0.7);
-      ctx.lineTo(c.x + r * 0.7, c.y - r * 0.7);
-      ctx.stroke();
     }
 
-    // ---- Arsenal: reveal circles of yours, minefields (yours / allied brass, hostile red)
+    // ---- Arsenal: reveal circles of yours, minefields (yours / allied accent, hostile red)
     for (const rv of revealsOf(state, me)) {
       const c = at(rv.tile);
       const r = rv.radius * z;
@@ -174,7 +183,7 @@ export class PillarOverlay {
       const c = cam.tileToScreen(f.x + 0.5, f.y + 0.5);
       const r = f.radius * z;
       if (!onScreen(c.x, c.y, r)) continue;
-      ring(ctx, c.x, c.y, r, friendly ? `${BRASS}0.35)` : `${RED}0.55)`, [1, 5], friendly ? undefined : `${RED}0.04)`);
+      ring(ctx, c.x, c.y, r, friendly ? `${ACC}0.35)` : `${RED}0.55)`, [1, 5], friendly ? undefined : `${RED}0.04)`);
     }
     if (ui.mode.kind === 'recon' && ui.hoverTile >= 0) {
       const c = at(ui.hoverTile);
@@ -185,8 +194,8 @@ export class PillarOverlay {
     if (picking && ui.hoverTile >= 0) {
       const c = at(ui.hoverTile);
       if (picking.pick === 'bombard') ring(ctx, c.x, c.y, range * z, `${STEEL}0.75)`, [5, 4], `${STEEL}0.06)`);
-      else if (picking.pick === 'front') ring(ctx, c.x, c.y, ARMOR_SUPPORT_RADIUS * z, `${BRASS}0.7)`, [5, 4], `${BRASS}0.05)`);
-      else if (picking.pick === 'blockade') ring(ctx, c.x, c.y, Math.max(8, 3 * z), `${BRASS}0.9)`, []);
+      else if (picking.pick === 'front') ring(ctx, c.x, c.y, ARMOR_SUPPORT_RADIUS * z, `${ACC}0.7)`, [5, 4], `${ACC}0.05)`);
+      else if (picking.pick === 'blockade') ring(ctx, c.x, c.y, Math.max(8, 3 * z), `${ACC}0.9)`, []);
     }
     ctx.restore();
   }
@@ -204,6 +213,20 @@ function ringLabel(ctx: CanvasRenderingContext2D, x: number, y: number, text: st
   ctx.fillText(text, x, y);
 }
 
+/** A thin stroke of the current path over a faint dark casing (readable on light land and on the sea). */
+function cased(ctx: CanvasRenderingContext2D, stroke: string, width = 1.25): void {
+  // dashes and dots get square ends: round ends would ring every dash with the casing
+  const cap = ctx.lineCap;
+  if (ctx.getLineDash().length) ctx.lineCap = 'butt';
+  ctx.lineWidth = width + 1.75;
+  ctx.strokeStyle = `${CASE}0.32)`;
+  ctx.stroke();
+  ctx.lineWidth = width;
+  ctx.strokeStyle = stroke;
+  ctx.stroke();
+  ctx.lineCap = cap;
+}
+
 function ring(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, stroke: string, dash: number[], fill?: string): void {
   if (r < 2) return;
   ctx.beginPath();
@@ -213,9 +236,7 @@ function ring(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, st
     ctx.fill();
   }
   ctx.setLineDash(dash);
-  ctx.lineWidth = 1.25;
-  ctx.strokeStyle = stroke;
-  ctx.stroke();
+  cased(ctx, stroke);
   ctx.setLineDash([]);
 }
 
@@ -224,9 +245,7 @@ function line(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number,
   ctx.moveTo(x0, y0);
   ctx.lineTo(x1, y1);
   ctx.setLineDash(dash);
-  ctx.lineWidth = 1.25;
-  ctx.strokeStyle = stroke;
-  ctx.stroke();
+  cased(ctx, stroke);
   ctx.setLineDash([]);
 }
 
@@ -241,23 +260,22 @@ function cross(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, s
   ctx.lineTo(x, y - r * 0.3);
   ctx.moveTo(x, y + r * 0.3);
   ctx.lineTo(x, y + r);
-  ctx.lineWidth = 1.25;
-  ctx.strokeStyle = stroke;
-  ctx.stroke();
+  cased(ctx, stroke);
 }
 
 function flag(ctx: CanvasRenderingContext2D, x: number, y: number, col: string): void {
   ctx.beginPath();
   ctx.moveTo(x, y);
   ctx.lineTo(x, y - 11);
-  ctx.lineWidth = 1.5;
-  ctx.strokeStyle = col;
-  ctx.stroke();
+  cased(ctx, col, 1.5);
   ctx.beginPath();
   ctx.moveTo(x, y - 11);
   ctx.lineTo(x + 7, y - 8.5);
   ctx.lineTo(x, y - 6);
   ctx.closePath();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = `${CASE}0.45)`;
+  ctx.stroke();
   ctx.fillStyle = col;
   ctx.fill();
 }
@@ -270,6 +288,9 @@ function planeMark(ctx: CanvasRenderingContext2D, x: number, y: number, col: str
   ctx.lineTo(x, y + 1);
   ctx.lineTo(x - 6, y + 3);
   ctx.closePath();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = `${CASE}0.45)`;
+  ctx.stroke();
   ctx.fillStyle = col;
   ctx.fill();
 }

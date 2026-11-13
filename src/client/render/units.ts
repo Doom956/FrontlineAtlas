@@ -15,7 +15,7 @@ import { TICKS_PER_SECOND } from '../../sim/config';
 import { armyTotal } from '../../sim/economy';
 import type { GameState, Unit } from '../../sim/types';
 import type { Camera } from '../camera';
-import { clamp, css, MAP_NUM_FAMILY, type RGB } from './common';
+import { ACCENT, clamp, css, MAP_NUM_FAMILY, type RGB } from './common';
 import { GLYPHS, strokeDucks, type Inst } from './unitGlyphs';
 import { drawMapSprite, drawUnitMarker, isAirType, setSpriteBakeBudget, spriteLength, unitDamage, unitSpriteMods, type MapSpriteState } from './pixelSprites';
 import { artStyleOf, type ArtStyle } from '../art/artStyle';
@@ -454,7 +454,7 @@ export class UnitLayer {
       for (const e of visible) {
         if (!e.fleet) continue;
         const c = colors[e.u.owner] ?? [200, 200, 200];
-        countBadge(ctx, e.x + e.S * 0.9, e.y - e.S * 0.9, String(e.fleet.length), me > 0 && e.u.owner === me ? '#ffe98a' : css(c));
+        countBadge(ctx, e.x + e.S * 0.9, e.y - e.S * 0.9, String(e.fleet.length), me > 0 && e.u.owner === me ? ACCENT : css(c));
       }
     }
     // transports: a small troop pill (the troop markers of what it carries and the count) and, on cargo planes, a tiny
@@ -465,7 +465,7 @@ export class UnitLayer {
         if (e.type !== 'transport' && e.type !== 'transportPlane') continue;
         // army sizes are public; the troop mix needs intel (own, allies, recon, watchtowers; spectators see all)
         const toMe = me > 0 && u.owner !== me && state.map.owner[u.target] === me;
-        const edge = u.owner === me ? '#ffe98a' : toMe ? '#ff6b5e' : css(colors[u.owner] ?? [200, 200, 200]);
+        const edge = u.owner === me ? ACCENT : toMe ? '#ff6b5e' : css(colors[u.owner] ?? [200, 200, 200]);
         const known = me <= 0 || u.owner === me || hasIntel(state, me, u.owner);
         const owner = (colors[u.owner] ?? [200, 200, 200]) as RGB;
         troopPill(ctx, e.x, e.y - Math.max(e.S * 0.55, 8) - 12, armyTotal(u.troops), troopKinds(known ? u.troops : null), owner, { edge, arrow: u.owner === me ? 'up' : toMe ? 'down' : 'none', alarm: toMe, small: true });

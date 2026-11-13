@@ -18,7 +18,10 @@ import { barrageReach, fmtR, strikeOfMode, strikeTarget, type StrikeTarget } fro
 import { bombReach, bomberRadiusOf } from '../airSim';
 import { bulkPreviews, bulkPreviewText, effectiveCount } from '../hud/buildMenu';
 import { shiftHeld } from '../hud/quickBar';
-import { clamp, css, dashedLine, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, mix, pill, setTracking, type RGB } from './common';
+import { ACCENT_FILL_RGB, ACCENT_RGB, ACCENT_TEXT, accentStroke, clamp, css, dashedLine, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, mix, pill, setTracking, type RGB } from './common';
+
+/** The map overlay accent (render/common.ts) as 'r,g,b' for the strike discs: your launch sites, reach and aim. */
+const ACC = ACCENT_RGB.join(',');
 import type { UnitLayer } from './units';
 import type { FogView } from '../fog/fogView';
 import { markerSize } from './buildings';
@@ -68,6 +71,9 @@ export class Overlays {
     ctx.fillStyle = css(color, strong ? 0.1 : 0.05);
     ctx.fill();
     ctx.setLineDash([5, 4]);
+    ctx.lineWidth = (strong ? 1.5 : 1) + 1.75;
+    ctx.strokeStyle = `rgba(10,18,44,${strong ? 0.4 : 0.22})`;
+    ctx.stroke();
     ctx.lineWidth = strong ? 1.5 : 1;
     ctx.strokeStyle = css(color, strong ? 0.85 : 0.4);
     ctx.stroke();
@@ -483,7 +489,7 @@ export class Overlays {
     for (const b of state.buildings.values()) {
       if (b.buildLeft > 0) continue;
       if (b.owner === me.id) {
-        if (b.type === own && id !== 'paradrop') this.ring(ctx, cam, b.tile, 2.5, [214, 170, 60], true);
+        if (b.type === own && id !== 'paradrop') this.ring(ctx, cam, b.tile, 2.5, ACCENT_RGB, true);
         continue;
       }
       if (b.owner <= 0 || areAllied(state, me.id, b.owner)) continue;
@@ -515,10 +521,11 @@ export class Overlays {
       for (let i = 0; i < mask.inside.length; i++) {
         const o = i * 4;
         if (mask.inside[i]) {
-          px[o] = 214;
-          px[o + 1] = 170;
-          px[o + 2] = 60;
-          px[o + 3] = 22;
+          // in the guns' reach: a light cobalt wash (the map accent's fill)
+          px[o] = ACCENT_FILL_RGB[0];
+          px[o + 1] = ACCENT_FILL_RGB[1];
+          px[o + 2] = ACCENT_FILL_RGB[2];
+          px[o + 3] = 26;
         } else {
           px[o] = 6;
           px[o + 1] = 8;
@@ -549,12 +556,13 @@ export class Overlays {
     const z = cam.zoom;
     let top = 0;
     for (const r of rings) {
-      const rgb = !ok ? '226,72,52' : r.core ? '240,110,60' : '214,170,60';
+      // the atom bomb's core stays warm: a caution inside the accent disc (it hits your own land too)
+      const rgb = !ok ? '226,72,52' : r.core ? '240,110,60' : ACC;
       const fill = !ok ? (r.core ? 0.2 : 0.11) : r.core ? 0.2 : rings.length > 1 ? 0.1 : 0.2;
       this.blastDisc(ctx, x, y, r.radius, z, rgb, fill, ok ? 0.95 : 0.9, 1.5);
       top = Math.max(top, r.radius * z);
     }
-    this.centreMark(ctx, x, y, ok ? '255,236,190' : '255,170,160', 0.9);
+    this.centreMark(ctx, x, y, ok ? '220,230,254' : '255,170,160', 0.9);
     ctx.font = `600 12px ${MAP_LABEL_FAMILY}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
@@ -567,7 +575,7 @@ export class Overlays {
     ctx.roundRect(lx - tw / 2 - 6, ly - 16, tw + 12, 19, 6);
     ctx.fillStyle = 'rgba(10,13,21,0.62)';
     ctx.fill();
-    haloText(ctx, label, lx, ly, ok ? '#f6e7b8' : '#ffb8ae', 12, 1.2);
+    haloText(ctx, label, lx, ly, ok ? ACCENT_TEXT : '#ffb8ae', 12, 1.2);
     setTracking(ctx, 0);
   }
 
@@ -577,9 +585,9 @@ export class Overlays {
     const z = cam.zoom;
     if (ui.selectedTile >= 0 && ui.selectedTile < n) {
       const r = this.tileRect(cam, ui.selectedTile, 7);
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = '#ffd84a';
-      ctx.strokeRect(r.x, r.y, r.s, r.s);
+      ctx.beginPath();
+      ctx.rect(r.x, r.y, r.s, r.s);
+      accentStroke(ctx, 2);
     }
     const hover = ui.hoverTile;
     if (hover < 0 || hover >= n) return;
@@ -643,9 +651,12 @@ export class Overlays {
           ctx.beginPath();
           ctx.arc(c.x, c.y, bombReach(state, b) * z, 0, Math.PI * 2);
           ctx.setLineDash([6, 5]);
-          ctx.lineWidth = 1.5;
-          ctx.strokeStyle = b.bombers > 0 ? 'rgba(214,170,60,0.7)' : 'rgba(200,200,200,0.35)';
-          ctx.stroke();
+          if (b.bombers > 0) accentStroke(ctx, 1.5, 0.75);
+          else {
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = 'rgba(200,200,200,0.35)';
+            ctx.stroke();
+          }
           ctx.setLineDash([]);
         }
         // a front strike aims ahead of the push: the disc sits where the bombs will fall, a dashed line from the cursor
@@ -656,7 +667,7 @@ export class Overlays {
           const a = cam.tileToScreen((f % this.w) + 0.5, ((f / this.w) | 0) + 0.5);
           dashedLine(ctx, a.x, a.y, as.x, as.y, 'rgba(255,255,255,0.6)');
         }
-        if (aim !== hover) dashedLine(ctx, hs.x, hs.y, as.x, as.y, 'rgba(214,170,60,0.9)');
+        if (aim !== hover) dashedLine(ctx, hs.x, hs.y, as.x, as.y, css(ACCENT_RGB, 0.9));
         const r = t?.radius || bomberRadiusOf(state, state.humanId);
         const ok = !!t?.ok;
         const what = ok && t && t.count > 1 ? `${t.count} bombers` : 'Bombing run';
@@ -688,9 +699,12 @@ export class Overlays {
           ctx.beginPath();
           ctx.arc(c.x, c.y, range * z, 0, Math.PI * 2);
           ctx.setLineDash([6, 5]);
-          ctx.lineWidth = 1.5;
-          ctx.strokeStyle = b.dropCooldown > 0 ? 'rgba(200,200,200,0.45)' : 'rgba(214,170,60,0.85)';
-          ctx.stroke();
+          if (b.dropCooldown <= 0) accentStroke(ctx, 1.5, 0.85);
+          else {
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = 'rgba(200,200,200,0.45)';
+            ctx.stroke();
+          }
           ctx.setLineDash([]);
           const dx = (b.tile % this.w) - (hover % this.w);
           const dy = ((b.tile / this.w) | 0) - ((hover / this.w) | 0);
@@ -700,8 +714,8 @@ export class Overlays {
             best = b.tile;
           }
         }
-        if (best >= 0) lineFrom(best, 'rgba(214,170,60,0.9)');
-        circle(2.5, best >= 0 ? 'rgba(214,170,60,0.95)' : 'rgba(226,72,52,0.95)', best >= 0 ? 'rgba(214,170,60,0.18)' : 'rgba(226,72,52,0.15)');
+        if (best >= 0) lineFrom(best, css(ACCENT_RGB, 0.9));
+        circle(2.5, best >= 0 ? css(ACCENT_RGB, 0.95) : 'rgba(226,72,52,0.95)', best >= 0 ? css(ACCENT_FILL_RGB, 0.22) : 'rgba(226,72,52,0.15)');
         break;
       }
       case 'barrage': {

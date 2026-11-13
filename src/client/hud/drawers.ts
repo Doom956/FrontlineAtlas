@@ -147,7 +147,7 @@ export class ArmyPage implements DrawerPage {
       const core = me.capital >= 0 ? heartlandBonus(s, me.capital) : 0;
       const ls = lastStandBonus(s, me.id);
       setVisible(heart, core > 0 || ls > 0);
-      setText(heart, [core > 0 ? `Gold edge on the map: your heartland, up to +${pct(core)} defence.` : '', ls > 0 ? `Last stand: +${pct(ls)} defence while outnumbered.` : ''].filter(Boolean).join(' '));
+      setText(heart, [core > 0 ? `Blue edge on the map: your heartland, up to +${pct(core)} defence.` : '', ls > 0 ? `Last stand: +${pct(ls)} defence while outnumbered.` : ''].filter(Boolean).join(' '));
     });
     this.upd.push((s, me) => {
       setText(bv, formatCount(fieldArmy(s, me.id)));
@@ -603,7 +603,7 @@ export class LegendPage implements DrawerPage {
     mark('m-trench', 'Trench', 'Dark zig-zag line inside a border: quiet borders between nations dig in, and attacks there cost more. Artillery, barrages, planes and warships flatten it.', lineIcon('trench', 22));
     mark('m-capital', 'Capital', 'Star: the heart of a nation. Taking it costs them gold.', worldGlyph('capital', 16));
     mark('m-front', 'Front', 'Yellow flashes are your gains, red flashes your losses.');
-    mark('m-heart', 'Heartland', 'Faint gold edge (shown while this key or Army is open): your land deep inside your borders defends harder. Hover a tile for the bonus.');
+    mark('m-heart', 'Heartland', 'Faint blue edge (shown while this key or Army is open): your land deep inside your borders defends harder. Hover a tile for the bonus.');
 
     r.append(sectionTitle('Buildings'));
     const cats = el('p', 'note');

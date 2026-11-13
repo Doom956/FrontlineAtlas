@@ -3,11 +3,12 @@
 //
 // Every card has the same size and two lines: the name, then its state or price ("Owned", "600 · 2:30", "Needs
 // Ballistics", "Arrives in 0:23", "Not chosen"). States differ by shape and words, not colour alone: owned cards are
-// muted with a brass edge and a check, available ones have a brass outline, researching / on order a steel outline and
-// a bar along the bottom, locked ones a dashed outline and a lock, not-chosen ones are faded. A fork (choose one) sits
-// in one bracket box. The full description, prices and the Buy / Research button are in the host's detail pane.
-// Lines are one plain style; hovering a card lights the path to it (brass) and from it (steel). Arrow keys move
-// between cards (across rows too). On a phone the rows become a vertical list grouped by tier (CSS), one row at a time.
+// muted with a check, available ones have a light outline, the suggested one a cobalt Next flag, researching / on
+// order a cyan outline and a bar along the bottom, locked ones a dashed outline, not-chosen ones are faded. A fork
+// (choose one) sits in one bracket box. The full description, prices and the Buy / Research button are in the host's
+// detail pane. Icons are the pixel set (hud/pixelIcons.ts). Lines are one plain style; hovering a card lights the path
+// to it (light) and from it (grey). Arrow keys move between cards (across rows too). On a phone the rows become a
+// vertical list grouped by tier (CSS), one row at a time.
 import './researchPanel.css';
 import { TECHS } from '../../sim/config';
 import { canResearch, hasTech } from '../../sim/tech';
@@ -15,7 +16,8 @@ import { missingPrereqs, rivalsOf, techStatus, techStatusReason } from '../../si
 import type { GameState, Player, TechId } from '../../sim/types';
 import { formatCount } from '../render/common';
 import { el, pct, setClass, setText } from './dom';
-import { iconSpan, lineIcon } from './glyph';
+import { iconSpan } from './glyph';
+import { pixelIcon } from './pixelIcons';
 import { roundedPath, type Box, type Pt } from './techFork';
 import { arsenalCard, type ArsenalCard } from './procure';
 import { formatEta, masteryCapLine, researchEta, type PanelLayout, type PanelRow, type RowCard, type RowEdge, type RowId } from './techRows';
@@ -64,7 +66,7 @@ const svgEl = <K extends keyof SVGElementTagNameMap>(k: K, cls?: string): SVGEle
   if (cls) e.setAttribute('class', cls);
   return e;
 };
-const MARK = { done: lineIcon('accept', 14, 2.2) };
+const MARK = { done: pixelIcon('accept', 12) };
 let uid = 0;
 
 /**
@@ -501,7 +503,8 @@ export class TechRowsView {
   }
 }
 
-const RES_ICON = { gold: lineIcon('gold', 12, 2), iron: lineIcon('iron', 12, 2), oil: lineIcon('oil', 12, 2), time: lineIcon('clock', 12, 2) };
+// prices in 12 px pixel icons (the resource chips' ingot and drop, a coin, a clock)
+const RES_ICON = { gold: pixelIcon('gold', 12), iron: pixelIcon('iron', 12), oil: pixelIcon('oil', 12), time: pixelIcon('clock', 12) };
 function priceKey(a: ArsenalCard): string {
   const p = a.price;
   return `${p.gold}|${p.iron}|${p.oil}|${p.seconds}|${a.short.gold ? 1 : 0}${a.short.iron ? 1 : 0}${a.short.oil ? 1 : 0}`;

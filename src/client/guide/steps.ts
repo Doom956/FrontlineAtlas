@@ -468,7 +468,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'research',
-      text: 'Press T for Research and pick a tech: new buildings, stronger troops.',
+      text: 'Open Research in the top bar and pick a tech: new buildings, stronger troops.',
       target: 'open-research',
       when: (c) => playing(c) && c.sec >= 40 && (c.me.researching !== null || canStartAny(c, false)),
       still: (c) => !panel(c, 'research', 'arsenal'),
@@ -503,7 +503,8 @@ export function guideTips(): GuideTip[] {
       id: 'strike',
       text: (c) => {
         const id = readyStrike(c);
-        return id ? `${STRIKES[id].name} ready: press ${STRIKES[id].key} or this button, then click the target.` : 'A strike is ready.';
+        // the button by the word under it (no keys in tips): "Artillery barrage ready: click Barrage in the bottom bar ..."
+        return id ? `${STRIKES[id].name} ready: click ${STRIKES[id].label} in the bottom bar, then click the target.` : 'A strike is ready.';
       },
       target: (c) => {
         const id = readyStrike(c);

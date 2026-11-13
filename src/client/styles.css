@@ -2616,7 +2616,8 @@ button.ev:hover {
   color: #f6e7a6;
 }
 .lg-sw.m-heart {
-  background: radial-gradient(circle at 70% 70%, rgba(227, 192, 78, 0.28) 0 45%, transparent 46%), #6f8f4e;
+  /* the map's heartland edge (render/heartland.ts): a cobalt wash inside a light cobalt line */
+  background: radial-gradient(circle at 70% 70%, rgba(59, 105, 250, 0.3) 0 42%, rgba(176, 197, 250, 0.9) 43% 47%, transparent 48%), #6f8f4e;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
 }
 .mt-row.core .mt-ic {

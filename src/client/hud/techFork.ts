@@ -1,9 +1,9 @@
-// Research panel helpers (hud/researchTree.ts, hud/arsenalPage.ts): one-liners and icons of the branch techs, and
+// Research panel helpers (hud/researchTree.ts, hud/arsenalPage.ts): one-liners and pixel icons of the branch techs, and
 // line geometry (rounded polylines, routing through gaps, the cut mark of a fork not taken). No DOM. The panel's row
 // layout is hud/techRows.ts.
 import { TECHS } from '../../sim/config';
 import type { TechId } from '../../sim/types';
-import { lineIcon, worldGlyph } from './glyph';
+import { pixelGlyph, pixelIcon } from './pixelIcons';
 
 /** One line per branch tech (the core techs' lines live in researchTree.ts). */
 export const BRANCH_TECH_LINE: Partial<Record<TechId, string>> = {
@@ -24,22 +24,23 @@ export const BRANCH_TECH_LINE: Partial<Record<TechId, string>> = {
   automation: 'Buildings and upgrades faster and cheaper',
 };
 
-export const BRANCH_TECH_ICON: Partial<Record<TechId, () => string>> = {
-  propaganda: () => lineIcon('signal', 20),
-  railways: () => lineIcon('transport', 20),
-  stockExchange: () => lineIcon('gold', 20),
-  freeTrade: () => worldGlyph('port', 20),
-  blitzTactics: () => lineIcon('attack', 20),
-  trenchWarfare: () => lineIcon('shield', 20),
-  carriers: () => lineIcon('plane', 20),
-  submarines: () => lineIcon('target', 20),
-  jetEngines: () => lineIcon('up', 20),
-  strategicBombing: () => lineIcon('bomb', 20),
-  diplomaticCorps: () => lineIcon('ally', 20),
-  conscription: () => lineIcon('troops', 20),
-  industrialBoom: () => lineIcon('upgrade', 20),
-  massMobilization: () => lineIcon('army', 20),
-  automation: () => lineIcon('settings', 20),
+/** Card pictures of the branch techs: pixel icons (hud/pixelIcons.ts) at `px`, one cell per CSS pixel. */
+export const BRANCH_TECH_ICON: Partial<Record<TechId, (px: number) => string>> = {
+  propaganda: (px) => pixelIcon('signal', px),
+  railways: (px) => pixelIcon('transport', px),
+  stockExchange: (px) => pixelIcon('gold', px),
+  freeTrade: (px) => pixelGlyph('port', px),
+  blitzTactics: (px) => pixelIcon('attack', px),
+  trenchWarfare: (px) => pixelIcon('shield', px),
+  carriers: (px) => pixelIcon('plane', px),
+  submarines: (px) => pixelIcon('target', px),
+  jetEngines: (px) => pixelIcon('up', px),
+  strategicBombing: (px) => pixelIcon('bomb', px),
+  diplomaticCorps: (px) => pixelIcon('ally', px),
+  conscription: (px) => pixelIcon('troops', px),
+  industrialBoom: (px) => pixelIcon('upgrade', px),
+  massMobilization: (px) => pixelIcon('army', px),
+  automation: (px) => pixelIcon('settings', px),
 };
 
 /** Every tech a tech needs: `requires` plus the either-or `requiresAny`. */

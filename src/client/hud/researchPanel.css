@@ -389,7 +389,8 @@ aside.drawer[data-page='research'] .dr-body {
   line-height: 0;
   color: var(--dim);
 }
-.rp-ic svg {
+/* pixel icons (hud/pixelIcons.ts) keep their own size, one grid cell per CSS pixel; the line icon (no canvas) is 20px */
+.rp-ic svg.li {
   width: 20px;
   height: 20px;
 }
@@ -489,8 +490,6 @@ aside.drawer[data-page='research'] .dr-body {
 }
 .rp-p svg {
   flex: none;
-  width: 12px;
-  height: 12px;
   opacity: 0.8;
 }
 .rp-p.p-time {
@@ -644,7 +643,7 @@ aside.drawer[data-page='research'] .dr-body {
   line-height: 0;
   color: var(--dim);
 }
-.rp-d-ic svg {
+.rp-d-ic svg.li {
   width: 20px;
   height: 20px;
 }
@@ -813,7 +812,7 @@ aside.drawer[data-page='research'] .dr-body {
   line-height: 0;
   color: var(--steel);
 }
-.rp-order-ic svg {
+.rp-order-ic svg.li {
   width: 14px;
   height: 14px;
 }

@@ -489,6 +489,20 @@ describe('guide: getting ships, tanks and planes', () => {
     expect(navyPort.done!(at(s, 150))).toBe(true);
   });
 
+  it('tips name the visible control, never a key to press', () => {
+    const s = game();
+    const strike = tip('strike');
+    // each ready strike: the button by the word under it in the bottom bar, and the arrow on that button
+    for (const [id, word] of [['barrage', 'Barrage'], ['bomb', 'Bomb'], ['paradrop', 'Drop'], ['rocket', 'Rocket'], ['atomBomb', 'Atom']] as const) {
+      const c: GuideCtx = { ...at(s, 400), strike: (k) => (k === id ? 'ready' : null) };
+      expect(text(strike, c)).toContain(`click ${word} in the bottom bar`);
+      expect(target(strike, c)).toBe(`strike-${id}`);
+    }
+    // no tip tells the player to press a key
+    const ready: GuideCtx = { ...at(s, 400), strike: () => 'ready' };
+    for (const t of guideTips()) expect(text(t, ready), t.id).not.toMatch(/\bpress\b/i);
+  });
+
   it('Navigation: with a land border only after 6 minutes; never without a coast', () => {
     const s = game();
     // a land bridge: the two nations border each other
