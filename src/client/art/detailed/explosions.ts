@@ -212,7 +212,8 @@ function drawBlast(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams)
     for (let i = 0; i < n; i++) {
       const ang = (i / n) * Math.PI * 2 + rnd(sd, i) * 0.6;
       const d = reach * (0.75 + 0.35 * rnd(sd, i + 40));
-      drawBlob(ctx, 'dust', Rc * (0.42 + 0.3 * fq), i, x + Math.cos(ang) * d * u, y + Math.sin(ang) * d * u * 0.5, g, a);
+      // low flat billows of dust (round puffs here read as a ring of stones)
+      drawBlob(ctx, 'roll', Rc * (0.5 + 0.3 * fq), i, x + Math.cos(ang) * d * u, y + Math.sin(ang) * d * u * 0.5, g, a);
     }
   }
   // the crown of earth thrown up and falling back
@@ -573,7 +574,7 @@ function drawAtom(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams):
       for (let i = 0; i < n; i++) {
         if (rnd(sd, i + 200) < 0.1) continue;
         const th = ((i + 0.6 * rnd(sd, i + 201)) / n) * Math.PI * 2;
-        const lobe = 0.78 + 0.2 * Math.sin(3 * th + sd) + 0.13 * Math.sin(5 * th + 2.1 * sd) + 0.07 * Math.sin(9 * th + 3 * sd);
+        const lobe = 0.8 + 0.24 * Math.sin(3 * th + sd) + 0.15 * Math.sin(5 * th + 2.1 * sd) + 0.08 * Math.sin(9 * th + 3 * sd);
         // three in four roll along the front, the rest straggle behind it over the sheet, so the bank never reads as
         // a hollow ring
         const behind = rnd(sd, i + 207) < 0.27;
@@ -723,10 +724,11 @@ function drawAtomCloud(ctx: CanvasRenderingContext2D, m: MotionParams, A: AtomSh
     // the young cap is still burning; then the fire glows through its soot and under the rim while it is hot
     if (young > 0.02) drawBlob(ctx, 'fire', r * 0.85, n + 2, capX[n], capY[n], g, Math.min(1, young * 1.2) * a, 2.6 + (1 - young) * 1.4);
     else if (glow > 0.04) {
-      // a band of dull red light under the rim (wide, overlapping glows, not a string of beads), a little through the
-      // soot on the sides while it is still dark
+      // dull red light under the rim and, while it is still dark, a little through the soot on the sides: patches of
+      // uneven size and heat on some billows only, so it never reads as an evenly spaced string of lights
+      const pick = rnd(sd, n + 190);
       const under = capSin[n] < -0.3 ? 0.9 : capSin[n] < 0.25 ? 0.55 : cool < 0.35 ? 0.3 : 0;
-      if (under > 0) drawBlob(ctx, 'fire', r * 0.75, n + 1, capX[n], capY[n] + r * g.k * 0.25, g, Math.min(1, glow * 1.2) * under * a, 2.4 + (1 - glow) * 1.6);
+      if (under > 0 && pick < 0.6) drawBlob(ctx, 'fire', r * (0.5 + 0.45 * rnd(sd, n + 191)), n + 1, capX[n], capY[n] + r * g.k * 0.25, g, Math.min(1, glow * 1.2) * under * a, 2.2 + 1.2 * pick + (1 - glow) * 1.4);
     }
   };
   // the far half of the cap
