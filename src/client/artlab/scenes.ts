@@ -6,7 +6,7 @@
 import type { ArtCategory, ArtStyle, MotionCategory } from '../art/artStyle';
 import type { MotionParams } from '../art/motion';
 import { ALL_MODS, unitCategoryOf, type SpriteKey } from '../art/shared/keys';
-import type { BlastKind, MapFxKind, ParachuteMarkDraw, ParadropDraw, StyleModule, TrailLayer, TrailUnit, TrailView, UnitDraw } from '../art/types';
+import { CRATER_ATOM_REACH, type BlastKind, type MapFxKind, type ParachuteMarkDraw, type ParadropDraw, type StyleModule, type TrailLayer, type TrailUnit, type TrailView, type UnitDraw } from '../art/types';
 import { FX_INFO } from '../fx/map';
 import { css, type RGB } from '../render/common';
 import { troopKinds, troopPill } from '../render/troopIcons';
@@ -78,15 +78,15 @@ function ground(env: SceneEnv, kind: Ground, x = 0, y = 0, w = env.w, h = env.h,
   env.ctx.drawImage(backdrop(kind, w, h, zoom), Math.round(x), Math.round(y));
 }
 
-/** A plain-words label on a small dark plate, its left edge (or centre) at x, its middle at y. */
-export function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, align: 'left' | 'center' = 'left', small = false): void {
+/** A plain-words label on a small dark plate, its left edge (or centre, or right edge) at x, its middle at y. */
+export function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, align: 'left' | 'center' | 'right' = 'left', small = false): void {
   ctx.font = `${small ? 500 : 600} ${small ? 10 : 11}px "DM Sans", system-ui, sans-serif`;
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'left';
   const tw = Math.ceil(ctx.measureText(text).width);
   const w = tw + 10;
   const h = small ? 15 : 17;
-  const x0 = Math.round(align === 'center' ? x - w / 2 : x);
+  const x0 = Math.round(align === 'center' ? x - w / 2 : align === 'right' ? x - w : x);
   const y0 = Math.round(y - h / 2);
   const prev = ctx.globalAlpha;
   ctx.globalAlpha = 1;
@@ -99,9 +99,10 @@ export function label(ctx: CanvasRenderingContext2D, text: string, x: number, y:
   ctx.globalAlpha = prev;
 }
 
-const unitArgs: UnitDraw = { key: 'warship', mods: 0, owner: OWNER, x: 0, y: 0, angle: 0, zoom: 1, scale: 1, lod: 'mid', dpr: 1, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 0, alpha: 1, shadow: true };
+const unitArgs: UnitDraw = { key: 'warship', mods: 0, owner: OWNER, x: 0, y: 0, angle: 0, zoom: 1, scale: 1, lod: 'mid', dpr: 1, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 0, alpha: 1, shadow: true, damage: 0 };
 
-function drawUnit(env: SceneEnv, key: SpriteKey, mods: number, x: number, y: number, angle: number, turnRate: number, speed: number, seed: number, zoom = env.zoom, owner: RGB = OWNER): void {
+/** One unit through the cell's style, as the map draws it; `damage` 0 = full health .. 1 = about to sink (UnitDraw.damage). */
+function drawUnit(env: SceneEnv, key: SpriteKey, mods: number, x: number, y: number, angle: number, turnRate: number, speed: number, seed: number, zoom = env.zoom, owner: RGB = OWNER, damage = 0): void {
   const u = unitArgs;
   const scale = spriteScale(zoom);
   u.key = key;
@@ -121,6 +122,7 @@ function drawUnit(env: SceneEnv, key: SpriteKey, mods: number, x: number, y: num
   u.seed = seed;
   u.alpha = 1;
   u.shadow = true;
+  u.damage = damage;
   env.style[unitCategoryOf(key)].drawUnit(env.ctx, u, env.motion);
 }
 
@@ -252,9 +254,32 @@ const shipLane = (z: number): number => 18 + 33 * px(z);
 const tankLane = (z: number): number => 24 + 30 * px(z);
 const planeLane = (z: number): number => 24 + 34 * px(z);
 
+/** The damaged warships under the lanes: the same hull at three levels of damage, so the smoke and fire can be compared. */
+const DAMAGED: { key: SpriteKey; damage: number }[] = [
+  { key: 'battleship', damage: 0.3 },
+  { key: 'battleship', damage: 0.6 },
+  { key: 'battleship', damage: 0.9 },
+];
+/** Height of the damaged line: the hull, room for its smoke drifting off, and the labels under it. */
+const damagedBand = (z: number): number => 40 + 30 * px(z);
+
 function shipsScene(env: SceneEnv): void {
   ground(env, 'sea');
-  laneScene(env, SHIPS, shipLane(env.zoom), 2, 2.4, true);
+  const laneH = shipLane(env.zoom);
+  laneScene(env, SHIPS, laneH, 2, 2.4, true);
+  // a short line of damaged warships lying still, under the lanes
+  const top = 2 + SHIPS.length * laneH;
+  const band = damagedBand(env.zoom);
+  const cy = top + band * 0.5;
+  const cw = env.w / DAMAGED.length;
+  env.ctx.fillStyle = 'rgba(10,14,20,0.35)';
+  env.ctx.fillRect(0, Math.round(top), env.w, 1);
+  label(env.ctx, 'Damaged warships', 6, top + 10, 'left', true);
+  DAMAGED.forEach((d, i) => {
+    const x = cw * i + cw / 2;
+    drawUnit(env, d.key, 0, x, cy, 0, 0, 0, 40 + i, env.zoom, OWNER, d.damage);
+    label(env.ctx, `Damaged (${Math.round(d.damage * 100)}%)`, x, top + band - 9, 'center', true);
+  });
 }
 
 function landScene(env: SceneEnv): void {
@@ -451,12 +476,16 @@ function explosionsScene(env: SceneEnv): void {
 
 // ------------------------------------------------------------------------------------------------- craters
 
-const CRATER_ROWS: { name: string; r: number; zoom?: number }[] = [
+const CRATER_ROWS: { name: string; r: number; zoom?: number; atom?: boolean }[] = [
   { name: 'Shell', r: 0.5 },
   { name: 'Bomb', r: 0.9 },
   { name: 'Missile', r: 2.1 },
-  { name: 'Atom bomb (seen from further out)', r: 11.2, zoom: 3 },
+  { name: 'Atom bomb (seen from further out)', r: 11.2, zoom: 3, atom: true },
 ];
+/** The atom bomb's row (its mark is the map's: crater radius 11.2 tiles of a 35 tile blast, fx/pixelFx.ts). */
+const ATOM_ROW = CRATER_ROWS[CRATER_ROWS.length - 1];
+/** The band under the rows where the atom bomb's whole mark plays out, its blast zone included (CRATER_ATOM_REACH). */
+const atomBand = (): number => Math.round(ATOM_ROW.r * (ATOM_ROW.zoom ?? 3) * CRATER_ATOM_REACH * 2 + 26);
 const CRATER_AGES: { name: string; q: number | null }[] = [
   { name: 'Fresh', q: 0.04 },
   { name: 'Older', q: 0.45 },
@@ -482,11 +511,43 @@ function cratersScene(env: SceneEnv): void {
     CRATER_AGES.forEach((a, i) => {
       const q = a.q ?? ((env.time + ri * 900) % (life + 1200)) / life;
       if (q > 1) return;
-      env.style.craters.draw(ctx, { x: cw * i + cw / 2, y: y + h / 2, radiusPx: row.r * zoom, q, zoom, scale: spriteScale(zoom), seed: (ri * 5 + i) / 23, dpr: env.dpr }, env.motion);
+      // the atom bomb's blast zone is wider than a column: each age keeps to its own column here (the band below shows it whole)
+      if (row.atom) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(Math.round(cw * i), y, Math.round(cw * (i + 1)) - Math.round(cw * i), h);
+        ctx.clip();
+      }
+      env.style.craters.draw(ctx, { x: cw * i + cw / 2, y: y + h / 2, radiusPx: row.r * zoom, q, zoom, scale: spriteScale(zoom), seed: (ri * 5 + i) / 23, dpr: env.dpr, atom: !!row.atom }, env.motion);
+      if (row.atom) {
+        ctx.restore();
+        ctx.globalAlpha = 1;
+      }
     });
     label(ctx, row.name, 4, y + 8, 'left', true);
     y += h;
   });
+  // the atom bomb's whole ground mark, blast zone and all, across the cell: fresh on the left of a wide cell, its whole life
+  const zoom = craterZoom(ATOM_ROW, env.zoom);
+  const band = atomBand();
+  const R = ATOM_ROW.r * zoom;
+  ctx.fillStyle = 'rgba(10,14,20,0.35)';
+  ctx.fillRect(0, Math.round(y), env.w, 1);
+  const two = env.w >= 4 * R * CRATER_ATOM_REACH;
+  const spots = two ? [{ x: env.w * 0.27, q: 0.04, name: 'Fresh' }, { x: env.w * 0.73, q: null, name: 'Whole life' }] : [{ x: env.w / 2, q: null, name: 'Whole life' }];
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, y, env.w, band);
+  ctx.clip();
+  spots.forEach((s, i) => {
+    const q = s.q ?? ((env.time + 4 * 900) % (life + 1200)) / life;
+    if (q > 1) return;
+    env.style.craters.draw(ctx, { x: s.x, y: y + band / 2 + 6, radiusPx: R, q, zoom, scale: spriteScale(zoom), seed: (21 + i) / 23, dpr: env.dpr, atom: true }, env.motion);
+  });
+  ctx.restore();
+  ctx.globalAlpha = 1;
+  label(ctx, 'Atom bomb blast zone (seen from further out)', 4, y + 10, 'left', true);
+  for (const s of spots) label(ctx, s.name, s.x, y + band - 9, 'center', true);
 }
 
 // ------------------------------------------------------------------------------------------------- cannon fire
@@ -501,6 +562,17 @@ interface Gunner {
   offset: number;
 }
 
+/** One lap of the enemy warship up the channel (ms): it starts unhurt at the bottom and is badly hurt at the top. */
+const ENEMY_LAP_MS = 20000;
+/** How hurt the enemy warship is at the end of its lap (UnitDraw.damage). */
+const ENEMY_MAX_DAMAGE = 0.85;
+
+/**
+ * A battleship (three guns) and a destroyer (one turret, two shots) firing salvo by salvo, in turn at the coast (shells,
+ * blasts, craters) and at an enemy warship sailing slowly up the channel between them and the coast: shells that hit
+ * burst on its hull ('hit'), the others fall short into the water ('splash'), and it gets more hurt over its lap (0 to
+ * ENEMY_MAX_DAMAGE), so its smoke and fire can be judged at every level.
+ */
 function cannonScene(env: SceneEnv): void {
   ground(env, 'coastRight');
   const { ctx } = env;
@@ -517,7 +589,23 @@ function cannonScene(env: SceneEnv): void {
   const m = env.motion;
   const flashMs = cannon.flashMs(m);
   const blastMs = blasts.durationMs('shell', m);
+  const hitMs = blasts.durationMs('hit', m);
+  const splashMs = blasts.durationMs('splash', m);
   const craterMs = 7000 * m.craterLife;
+  // the enemy warship: up the channel from the bottom of the cell to the top, once a lap, heading north
+  const enemyKey: SpriteKey = 'warship';
+  const enemyLen = unitLength(env, enemyKey);
+  const ex = env.w * 0.58;
+  const ey0 = env.h - Math.max(14, enemyLen * 0.6);
+  const ey1 = Math.max(14, enemyLen * 0.6);
+  const lapOf = (time: number): number => Math.floor(time / ENEMY_LAP_MS);
+  const enemyAt = (time: number): { x: number; y: number; f: number } => {
+    const f = (((time % ENEMY_LAP_MS) + ENEMY_LAP_MS) % ENEMY_LAP_MS) / ENEMY_LAP_MS;
+    return { x: ex, y: ey0 + (ey1 - ey0) * f, f };
+  };
+  const enemySpeed = Math.abs(ey0 - ey1) / (ENEMY_LAP_MS / 1000) / z;
+  const enemyNow = enemyAt(env.time);
+  const damage = ENEMY_MAX_DAMAGE * enemyNow.f;
   interface Shot {
     sx: number;
     sy: number;
@@ -528,6 +616,10 @@ function cannonScene(env: SceneEnv): void {
     gun: number;
     ship: Gunner;
     seed: number;
+    /** coast: a shell blast and a crater; hit: a burst on the enemy's hull at (hx, hy) from its centre; miss: a splash */
+    on: 'coast' | 'hit' | 'miss';
+    hx: number;
+    hy: number;
   }
   const shots: Shot[] = [];
   for (const s of ships) {
@@ -536,27 +628,64 @@ function cannonScene(env: SceneEnv): void {
       const n = k - back;
       if (n < 0) continue;
       const start = n * s.period + s.offset;
+      // every other salvo goes at the enemy warship
+      const atShip = n % 2 === 1;
       const baseX = coast + 30 + rnd(n, s.guns) * (env.w - coast - 60);
       const baseY = s.y + (rnd(n, s.guns + 1) - 0.5) * env.h * 0.3;
       for (let i = 0; i < s.guns; i++) {
         const fire = start + i * 80;
-        const tx = baseX + (rnd(n * 3 + i, 1) - 0.5) * 1.6 * z;
-        const ty = baseY + (rnd(n * 3 + i, 2) - 0.5) * 1.6 * z;
-        const dist = Math.hypot(tx - s.x, ty - s.y) / z;
-        const land = fire + 30 + 260 + Math.min(700, dist * 18);
-        shots.push({ sx: s.x, sy: s.y, tx, ty, fire, land, gun: i, ship: s, seed: rnd(n, i + 9) });
+        const seed = rnd(n, i + 9);
+        const flight = (tx: number, ty: number): number => fire + 30 + 260 + Math.min(700, (Math.hypot(tx - s.x, ty - s.y) / z) * 18);
+        if (!atShip) {
+          const tx = baseX + (rnd(n * 3 + i, 1) - 0.5) * 1.6 * z;
+          const ty = baseY + (rnd(n * 3 + i, 2) - 0.5) * 1.6 * z;
+          shots.push({ sx: s.x, sy: s.y, tx, ty, fire, land: flight(tx, ty), gun: i, ship: s, seed, on: 'coast', hx: 0, hy: 0 });
+          continue;
+        }
+        // aimed where the enemy will be when the shell lands; none while it is coming round to the start of its lap
+        const e0 = enemyAt(fire);
+        const land = flight(e0.x, e0.y);
+        if (lapOf(fire) !== lapOf(land + Math.max(hitMs, splashMs))) continue;
+        const e1 = enemyAt(land);
+        const hit = i === 0 || rnd(n * 3 + i, 5) < 0.55;
+        if (hit) {
+          // somewhere along the hull, a little to either side of the keel
+          const hx = (rnd(n * 3 + i, 6) - 0.5) * enemyLen * 0.12;
+          const hy = (rnd(n * 3 + i, 7) - 0.5) * enemyLen * 0.6;
+          shots.push({ sx: s.x, sy: s.y, tx: e1.x + hx, ty: e1.y + hy, fire, land, gun: i, ship: s, seed, on: 'hit', hx, hy });
+        } else {
+          // short of the hull, in the water on the firing ship's side
+          const dx = s.x - e1.x;
+          const dy = s.y - e1.y;
+          const d = Math.max(1, Math.hypot(dx, dy));
+          const short = (0.9 + rnd(n * 3 + i, 8) * 1.1) * z + enemyLen * 0.12;
+          const side = (rnd(n * 3 + i, 9) - 0.5) * 1.4 * z;
+          const tx = e1.x + (dx / d) * short - (dy / d) * side;
+          const ty = e1.y + (dy / d) * short + (dx / d) * side;
+          shots.push({ sx: s.x, sy: s.y, tx, ty, fire, land, gun: i, ship: s, seed, on: 'miss', hx: 0, hy: 0 });
+        }
       }
     }
   }
-  // craters on the ground, the ships, then shells, muzzle flashes and blasts over them
+  // craters on the ground, the enemy's wake, the ships, then shells, muzzle flashes and blasts over them
   for (const sh of shots) {
+    if (sh.on !== 'coast') continue;
     const age = env.time - sh.land - 150;
     if (age < 0 || age > craterMs) continue;
     craters.draw(ctx, { x: sh.tx, y: sh.ty, radiusPx: 0.5 * z, q: age / craterMs, zoom: z, scale: g, seed: sh.seed, dpr: env.dpr }, m);
   }
+  const enemyAngle = -Math.PI / 2;
+  const wake: TrailUnit = { id: 900, key: enemyKey, x: enemyNow.x, y: enemyNow.y, tx: enemyNow.x / z, ty: enemyNow.y / z, angle: enemyAngle, half: enemyLen / 2, moving: true, speed: enemySpeed, turnRate: 0, motion: m };
+  trailLayer(env, 'wakes').frame(ctx, [wake], trailView(env));
   label(ctx, 'Battleship', ships[0].x - 70 - 10 * env.scale, ships[0].y, 'left', true);
   label(ctx, 'Destroyer', ships[1].x - 66 - 10 * env.scale, ships[1].y, 'left', true);
   for (const s of ships) drawUnit(env, s.key, 0, s.x, s.y, s.angle, 0, 0, s.key === 'battleship' ? 1 : 2);
+  drawUnit(env, enemyKey, 0, enemyNow.x, enemyNow.y, enemyAngle, 0, enemySpeed, 3, z, OWNERS[1], damage);
+  // its name and how hurt it is now, beside it on the side away from the coast
+  const ly = Math.min(env.h - 19, Math.max(19, enemyNow.y));
+  const lx = enemyNow.x - Math.max(10, enemyLen * 0.18) - 6;
+  label(ctx, 'Enemy warship', lx, ly - 9, 'right', true);
+  label(ctx, `Damaged (${Math.round((damage * 100) / 5) * 5}%)`, lx, ly + 9, 'right', true);
   for (const sh of shots) {
     const t = (env.time - sh.fire - 30) / (sh.land - sh.fire - 30);
     if (t >= 0 && t <= 1) cannon.drawShell(ctx, { kind: 'cannon', x0: sh.sx, y0: sh.sy, x1: sh.tx, y1: sh.ty, t, zoom: z, scale: g, seed: sh.seed, dpr: env.dpr }, m);
@@ -568,9 +697,14 @@ function cannonScene(env: SceneEnv): void {
     cannon.drawMuzzle(ctx, { x: p.x, y: p.y, aim: Math.atan2(sh.ty - p.y, sh.tx - p.x), t, zoom: z, scale: g, seed: sh.seed, dpr: env.dpr }, m);
   }
   for (const sh of shots) {
+    const kind: BlastKind = sh.on === 'coast' ? 'shell' : sh.on === 'hit' ? 'hit' : 'splash';
+    const dur = sh.on === 'coast' ? blastMs : sh.on === 'hit' ? hitMs : splashMs;
     const age = env.time - sh.land;
-    if (age < 0 || age > blastMs) continue;
-    blasts.draw(ctx, { kind: 'shell', x: sh.tx, y: sh.ty, t: age / blastMs, ageMs: age, durMs: blastMs, zoom: z, scale: g, rt: 0, seed: sh.seed, reduced: false, dpr: env.dpr }, m);
+    if (age < 0 || age > dur) continue;
+    // a hit rides with the ship it burst on
+    const x = sh.on === 'hit' ? enemyNow.x + sh.hx : sh.tx;
+    const y = sh.on === 'hit' ? enemyNow.y + sh.hy : sh.ty;
+    blasts.draw(ctx, { kind, x, y, t: age / dur, ageMs: age, durMs: dur, zoom: z, scale: g, rt: 0, seed: sh.seed, reduced: false, dpr: env.dpr }, m);
   }
   ctx.globalAlpha = 1;
 }
@@ -682,11 +816,11 @@ export function rowSpecs(): RowSpec[] {
     {
       id: 'ships',
       title: 'Ships and wakes',
-      note: 'Every ship, plain and with every upgrade, half a lap apart, leaving its wake.',
+      note: 'Every ship, plain and with every upgrade, half a lap apart, leaving its wake; under them a battleship at 30%, 60% and 90% damage.',
       pick: 'ships',
       also: ['wakes'],
       motion: 'ships',
-      height: (z) => SHIPS.length * shipLane(z) + 8,
+      height: (z) => SHIPS.length * shipLane(z) + damagedBand(z) + 8,
       draw: shipsScene,
     },
     {
@@ -742,17 +876,17 @@ export function rowSpecs(): RowSpec[] {
     {
       id: 'craters',
       title: 'Craters',
-      note: 'From fresh to almost gone, from a shell to an atom bomb; the last column plays a whole life.',
+      note: 'From fresh to almost gone, from a shell to an atom bomb; the last column plays a whole life, and the band at the bottom shows the atom bomb\'s whole blast zone.',
       pick: 'craters',
       also: [],
       motion: 'craters',
-      height: (z) => 22 + CRATER_ROWS.reduce((a, r) => a + craterRow(r.r, craterZoom(r, z)), 0) + 6,
+      height: (z) => 22 + CRATER_ROWS.reduce((a, r) => a + craterRow(r.r, craterZoom(r, z)), 0) + atomBand() + 6,
       draw: cratersScene,
     },
     {
       id: 'cannonFire',
       title: 'Cannon fire',
-      note: 'A battleship (three guns) and a destroyer (one turret, two shots) shelling the coast.',
+      note: 'A battleship (three guns) and a destroyer (one turret, two shots) shelling the coast and an enemy warship: hits burst on its hull, misses splash short, and it smokes and burns more as it gets hurt.',
       pick: 'cannonFire',
       also: [],
       motion: 'cannonFire',

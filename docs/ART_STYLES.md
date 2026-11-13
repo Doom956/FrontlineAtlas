@@ -11,6 +11,13 @@ paratroopers), `missiles`, `explosions`, `craters`, `cannonFire`; troop icons do
 plane dropped its troops on (owner colour, age, parachute count, zoom, seed; drawn at every zoom, far out too) and the
 small parachute mark next to a cargo plane in flight (mid and close zoom). The refined art is `art/refined/paradrop.ts`.
 
+Damage: `UnitDraw.damage` is how badly a unit is hurt, 0 (full health) to 1 (about to sink or be destroyed), read by the
+renderer from the unit's hp and max hp (`render/pixelSprites.ts` `unitDamage`; warships use the sim's `warshipMaxHp`,
+so veterancy and the arsenal variant count). Portraits, fleet markers and units without hp to lose get 0. A style may
+show it with smoke and fire (refined ignores it). The atom bomb's ground mark comes with `CraterDraw.atom` set and may
+spread a blast zone out to `CRATER_ATOM_REACH` crater radii (other craters `CRATER_REACH`); the map culls and clips it
+that far.
+
 | Piece | File |
 |---|---|
 | Categories, styles, motion presets, the picks and their build-time overrides | `art/artStyle.ts` |
@@ -19,7 +26,7 @@ small parachute mark next to a cargo plane in flight (mid and close zoom). The r
 | Lookup used by the game (`artFor`, `motionFor`) | `art/registry.ts` |
 | Shared helpers: sprite atlas with a per-frame bake budget, colour maths, noise, pixel discs, unit keys | `art/shared/` |
 | Refined pixel style (the game's art) | `art/refined/` |
-| Detailed pixel style, realistic painted style (stubs that draw the refined art until written) | `art/detailed/`, `art/realistic/` |
+| Detailed pixel style (twice the pixels, muted military colours), realistic painted top-down style | `art/detailed/`, `art/realistic/` |
 
 Rules for a style: draw only (never read or write the game state); deterministic for the same arguments (no
 `Math.random`); motion only from the clock and the `MotionParams` numbers, so all three presets work; the three style
@@ -33,7 +40,8 @@ markers with counts, the troop pills' plates and counts) is shared and not part 
   picks line as it is (styles and motion presets). A wakes, contrails or paradrop entry carries the motion of the ships
   or planes it follows.
 - `VITE_ART_MOTION=cinematic` (or `"ships: subtle, explosions: cinematic"`) sets the motion presets.
-- Without them: every category refined, every motion lively (the look before the switch).
+- Without them: the owner's picks (`OWNER_PICKS`: detailed pixel art for everything, craters included, with realistic
+  cannon fire) and lively motion.
 
 ## The art lab
 
@@ -42,8 +50,10 @@ A normal build drops the lab completely (`__ART_LAB__` is false in `vite.config.
 
 Three columns (refined pixel, detailed pixel, realistic), one row per category, each cell a live scene drawn by the
 real style module: ships with wakes, land units, planes with contrails flying a figure eight (they bank both ways),
-missiles with smoke trails, troop icons and pills, explosions, craters from fresh to faded, a battleship and a
-destroyer shelling a coast, and paratroopers (two cargo planes flying a loop over land, each dropping its troops once a
+missiles with smoke trails, troop icons and pills, explosions, craters from fresh to faded (and a band with the atom bomb's whole
+blast zone), a line of battleships at 30%, 60% and 90% damage under the ships, a battleship and a destroyer shelling a
+coast and an enemy warship that sails up the channel taking hits (bursts on its hull, splashes short of it) and gets
+more hurt over its lap, from unhurt to 85%, and paratroopers (two cargo planes flying a loop over land, each dropping its troops once a
 lap: the parachutes open, drift down swaying, land and fade, in the owner's colour). Controls: the picks for the game (a style and a motion per category, also a Pick button
 under every cell), the motion of every cell at once and per row, close, near and mid zoom, pause, "Copy my picks" and
 "Try my picks in the game" (the lab build's game then starts with those picks).

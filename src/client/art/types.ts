@@ -66,6 +66,13 @@ export interface UnitDraw {
   alpha: number;
   /** planes and missiles: draw their ground shadow */
   shadow: boolean;
+  /**
+   * How badly the unit is hurt, 0..1: 0 = full health, 1 = about to sink or be destroyed (1 - hp / max hp, read from
+   * the game by the renderer: render/pixelSprites.ts unitDamage). Units without hit points to lose, the HUD portraits
+   * and fleet markers get 0. A style may show it (smoke, fire, scorch marks, a list to one side) or ignore it; it never
+   * changes the unit's size, heading or turret points.
+   */
+  damage: number;
 }
 
 /** A unit's picture for the HUD (the unit card, the Forces list): the same art as the map, fitted to a box. */
@@ -257,7 +264,18 @@ export interface CraterDraw {
   /** 0..1, the crater's own shape */
   seed: number;
   dpr: number;
+  /**
+   * True for the atom bomb's ground mark: radiusPx is still its crater, but the mark may spread a blast zone (scorched,
+   * flattened, burning ground) out to CRATER_ATOM_REACH x radiusPx; the map culls and clips it that far. Absent or
+   * false for every other crater, which stays within CRATER_REACH x radiusPx.
+   */
+  atom?: boolean;
 }
+
+/** How far a crater's drawing may reach, in crater radii (scorch ring, smoke and fire at its rim). */
+export const CRATER_REACH = 1.8;
+/** How far the atom bomb's ground mark may reach, in crater radii: its blast zone (the sim's blast radius is about 3.1). */
+export const CRATER_ATOM_REACH = 3.3;
 
 export interface CraterArt {
   /**

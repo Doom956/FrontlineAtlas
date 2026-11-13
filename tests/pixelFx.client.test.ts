@@ -79,6 +79,9 @@ describe('pixel effects', () => {
     const atom = p.craters[p.craters.length - 1];
     expect(atom.r).toBeGreaterThan(4);
     expect(atom.life).toBeGreaterThan(p.craters[0].life);
+    // the atom bomb's mark is told apart, so a style can spread its blast zone (CraterDraw.atom)
+    expect(atom.atom).toBe(true);
+    expect(p.craters[0].atom).toBe(false);
   });
 
   it('leaves craters only inland: none at the water line, and those reaching water are marked to clip to land', () => {
