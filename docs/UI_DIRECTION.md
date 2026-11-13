@@ -93,6 +93,29 @@ Cobalt sits at OKLCH hue 266 and cyan at 205, so the two never read as one colou
 ("Next" on a flag, a percentage and time left with a bar). Hovering a card lights its path in neutral light (what it
 needs) and grey (what it opens), never in blue or cyan. Cautions (a missing building) stay amber (`--caution`).
 
+### Multiplayer pages and the end of a game
+
+Same amber and cool steel as the setup screen; the lobby itself is the setup screen with a column beside it
+(lobby.ts, lobby.css, setupScreen.css).
+
+- Public game list: each game is a calm filled row (`--metal-2`, 8px radius, no stripe), its kind a small line icon
+  and a word (Free for all, 2 teams, Special), the map in `--dim`, rule chips a step lighter (`--metal-3`, 4px
+  radius). One accent: the Join of the suggested game (a countdown running and the most players, else the first
+  free for all, never a full one, which reads "Full"); the other Joins are `--metal-4` buttons. With no game to
+  join, Create private lobby takes the accent.
+- Lobby column: the code in Jersey 15 in `--text` (the accent stays on Start game), Copy code and Copy link as small
+  buttons with an icon and a word. Players are filled rows, you a step lighter and bold, tags as 4px chips, a team
+  as a colour square and its name (no coloured words). Code, players, team and chat scroll above; Start game and
+  Leave stay at the foot of the column with no bar of their own. Someone who can't start reads who will
+  ("Waiting for Alice to start the game") where Start would be.
+- End of game: an opaque steel card (the map and HUD showing through a chart read as clutter), the verdict as the
+  heading in Jersey 15 with no label above it: Victory `--good` (7.7:1), Defeat `#f0a597` (8.6:1), a watcher's
+  "Game over" `--text`. The stats table marks you with a quiet light fill and the best value of each row in bold
+  `--good`. Buttons on a hairline: Main menu and Look at the map (ghost, with an icon) on the leading side, Continue
+  playing and Play again (the one accent) on the trailing side; they stay in view while the card scrolls. Phones:
+  the card fills the screen, Play again across the full width first.
+- Ghost buttons (Watch, Leave, Look at the map) carry an icon so they read as buttons; filled buttons are words.
+
 ## Type
 
 - **DM Sans** (400, 500, 600, 700) for every word: labels, body, buttons, values, map names. Tabular figures on

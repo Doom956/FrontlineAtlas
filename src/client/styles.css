@@ -3199,32 +3199,48 @@ button.toast-t:hover {
   overflow-y: auto;
   padding: 6px 20px 20px;
 }
+/* The end of a game (hud/gameOver.ts, summary/summary.css): an opaque steel card (the live map and the HUD showing
+   through a chart and a table read as clutter), the verdict as the heading in the display face, the big numbers,
+   then the buttons on a hairline: leaving on the leading side, Continue playing and Play again (the one accent) on
+   the trailing side. The verdict is semantic, not the accent: Victory green --good #74c365 (7.7:1 on #121821),
+   Defeat the soft danger tint #f0a597 (8.6:1), a watcher's "Game over" plain --text. */
 .over-card {
-  width: 520px;
+  width: 560px;
   max-width: calc(100vw - 32px);
-  padding: 28px 32px;
+  padding: 24px 28px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  background-color: var(--metal-a);
-  border: 1px solid var(--edge);
+  gap: 12px;
+  background-color: var(--metal);
+  border: 0;
+  border-radius: var(--r-lg);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 10px 30px rgba(0, 0, 0, 0.38);
 }
 .over-t {
   font: 400 56px/1 var(--f-logo);
+  color: var(--text);
   margin-right: -0.16em;
 }
 .over-t.win {
-  color: var(--brass-hi);
+  color: var(--good);
 }
 .over-t.lose {
-  color: #e98d7b;
+  color: #f0a597;
 }
 .over-sub {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 8px;
+  margin: 0;
+  font-size: 14px;
   color: var(--dim);
+}
+.over-sub .sw {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
 }
 .over-big {
   display: grid;
@@ -3237,12 +3253,13 @@ button.toast-t:hover {
 .over-big > div {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 .stats {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 4px 16px;
-  margin: 8px 0;
+  gap: 6px 16px;
+  margin: 4px 0;
   font-size: 13px;
 }
 .stats .k {
@@ -3250,9 +3267,29 @@ button.toast-t:hover {
 }
 .over-btns {
   display: flex;
+  align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  margin-top: 8px;
+  margin-top: 4px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rule);
+}
+.over-btns .over-menu {
+  order: 0;
+}
+.over-btns .over-look {
+  order: 1;
+  margin-inline-end: auto;
+}
+.over-btns .over-cont > * {
+  order: 2;
+}
+.over-btns .over-again {
+  order: 3;
+  min-width: 160px;
+}
+.over-look .ico {
+  color: var(--dim);
 }
 
 /* how to play (shared with the menu): quick start, collapsible sections, search */
@@ -3576,8 +3613,9 @@ mark.hw-hit {
   cursor: pointer;
   padding: 0;
 }
+/* the picked colour: a light ring, like every other selection (the accent stays for the main action) */
 .swatch-btn.on {
-  box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--brass);
+  box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--sel-bg);
 }
 .icon-btn {
   width: 32px;
@@ -3693,318 +3731,8 @@ mark.hw-hit {
   }
 }
 
-/* ---------------------------------------------------------------- multiplayer: lobby list, lobby, online HUD */
-.menu-card.mp {
-  width: min(1040px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
-  padding: 18px 24px 16px;
-}
-.menu-card.mp .menu-head .net-status {
-  margin-inline-start: auto;
-}
-.net-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font: 600 13px/1 var(--f-label);
-  color: var(--dim);
-  white-space: nowrap;
-}
-.net-status::before {
-  content: '';
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--faint);
-}
-.net-status.ok::before {
-  background: var(--olive);
-  box-shadow: 0 0 6px rgba(152, 169, 87, 0.7);
-}
-.net-status.warn::before {
-  background: var(--caution);
-}
-.net-status.bad {
-  color: #f0a597;
-}
-.net-status.bad::before {
-  background: var(--signal);
-}
-.mp-body {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-  gap: 32px;
-}
-.mp-col {
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.mp-note {
-  color: var(--dim);
-  font-size: 13px;
-  line-height: 1.45;
-  margin: 0;
-}
-.lob-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  overflow-y: auto;
-  min-height: 120px;
-}
-.lob-empty {
-  padding: 18px;
-  border: 1px dashed var(--rule-hi);
-  color: var(--faint);
-  text-align: center;
-}
-.lob-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 10px 12px;
-  background: var(--ink);
-  border: 1px solid var(--edge);
-  border-inline-start: 3px solid var(--steel);
-  border-radius: var(--r);
-}
-.lob-row.kind-teams {
-  border-inline-start-color: var(--olive);
-}
-.lob-row.kind-special {
-  border-inline-start-color: var(--brass);
-}
-.lob-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.lob-head {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  min-width: 0;
-}
-.lob-kind {
-  font: 600 13px/1 var(--f-label);
-  color: var(--steel);
-}
-.lob-kind.teams {
-  color: var(--olive);
-}
-.lob-kind.special {
-  color: var(--brass-hi);
-}
-.lob-map {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.lob-meta {
-  display: flex;
-  gap: 14px;
-  font-size: 13px;
-  color: var(--dim);
-  font-variant-numeric: tabular-nums;
-}
-.lob-when[data-starts] {
-  color: var(--brass-hi);
-}
-.lob-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.lob-chips .mod-chip {
-  color: var(--brass-hi);
-  border-color: var(--brass-lo);
-}
-.lob-rules {
-  font-size: 13px;
-  color: var(--faint);
-}
-.mp-private .btn.big {
-  align-self: stretch;
-}
-.mp-or {
-  margin-top: 10px;
-}
-.mp-join {
-  display: flex;
-  gap: 6px;
-}
-.code-in {
-  flex: 1;
-  min-width: 0;
-  font: 600 18px/1 var(--f-label);
-  height: 40px;
-}
-.mp-join .btn {
-  min-height: 40px;
-}
-.mp-foot {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--rule);
-}
-.mp-you {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-.mp-you .input {
-  width: 150px;
-}
-.mp-you .palette {
-  flex-wrap: nowrap;
-  gap: 5px;
-}
-.mp-you .swatch-btn {
-  width: 20px;
-  height: 20px;
-}
-/* phone: the colours take their own line (twelve don't fit beside the name) */
-@media (max-width: 640px) {
-  .mp-you {
-    flex-wrap: wrap;
-  }
-  .mp-you .input {
-    flex: 1;
-    width: auto;
-  }
-  .mp-you .palette {
-    flex-basis: 100%;
-    flex-wrap: wrap;
-  }
-}
-.mp-msg {
-  color: var(--dim);
-  font-size: 13px;
-  text-align: end;
-}
-.mp-msg.bad {
-  color: #f0a597;
-}
-
-/* the lobby (layout: setupScreen.css) */
-.lobby-code {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.code-big {
-  font: 400 30px/1 var(--f-logo);
-  color: var(--brass-hi);
-  user-select: all;
-}
-.lobby-when {
-  font: 600 13px/1.3 var(--f-label);
-  color: var(--dim);
-  font-variant-numeric: tabular-nums;
-}
-.seats-in {
-  height: 28px;
-  padding: 0 6px;
-}
-.lobby-players {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.lobby-players .lp {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 32px;
-  padding: 0 8px;
-  background: var(--ink);
-  border: 1px solid var(--edge);
-  border-radius: var(--r);
-}
-.lobby-players .lp.away {
-  opacity: 0.55;
-}
-.lobby-players .sw {
-  width: 12px;
-  height: 12px;
-  flex: none;
-  border-radius: 1px;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
-}
-.lp-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.lp-tag {
-  font: 600 11px/1 var(--f-label);
-  color: var(--faint);
-  padding: 3px 5px;
-  border: 1px solid var(--edge);
-  border-radius: var(--r);
-}
-.lp-tag.you {
-  color: var(--brass-hi);
-  border-color: var(--brass-lo);
-}
-.lp-team {
-  font: 600 12px/1 var(--f-label);
-  color: var(--olive);
-}
-.team-seg {
-  flex-wrap: wrap;
-}
-.team-seg .btn[style*='--team']::before {
-  content: '';
-  width: 9px;
-  height: 9px;
-  border-radius: 1px;
-  background: var(--team);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
-}
-.lobby-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: auto;
-  padding-top: 12px;
-}
-.lobby-foot {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--rule);
-}
-@media (max-width: 1100px) {
-  .mp-body {
-    grid-template-columns: minmax(0, 1fr);
-    overflow-y: auto;
-  }
-  .mp-foot {
-    flex-wrap: wrap;
-  }
-}
-
+/* ---------------------------------------------------------------- multiplayer: online HUD (the lobby list and the lobby
+   pages: lobby.css) */
 /* online HUD: no speed (the server's clock); pause only for the private lobby's host (cluster.ts); watchers have
    no action UI */
 .hud.online .cl-spd {
@@ -4363,7 +4091,7 @@ strong {
   gap: 6px;
   padding: 0 10px;
   font: 600 12px/1 var(--f-label);
-  color: var(--brass-hi);
+  color: var(--text);
   white-space: nowrap;
 }
 .cluster .vchip.hidden {

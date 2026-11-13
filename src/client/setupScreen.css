@@ -485,32 +485,35 @@
   overflow: visible;
   padding: 0;
 }
+/* code, players, team and chat scroll in the upper part; Start and Leave stay at the foot of the column (no sticky
+   bar with its own background: the glass card shows the same behind both) */
 .lobby-col {
   flex: 0 0 320px;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
   padding-inline-start: 24px;
   padding-bottom: 16px;
   border-inline-start: 1px solid var(--rule);
   gap: 12px;
+}
+.lobby-col > .lobby-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 /* the redrawn parts of the lobby column (lobby.ts) lay out as if they were the column's own children */
 .lobby-top,
 .lobby-bottom {
   display: contents;
 }
+.lobby-scroll > *,
 .lobby-top > *,
 .lobby-bottom > * {
   flex-shrink: 0;
-}
-/* Start and Leave stay in view at the bottom of the lobby column while it scrolls */
-.lobby-col .lobby-actions {
-  position: sticky;
-  bottom: -16px;
-  z-index: 2;
-  margin-bottom: -16px;
-  padding-bottom: 16px;
-  background: var(--metal-a);
 }
 .setup-foot.lobby-mode .lobby-foot {
   flex: none;
@@ -645,8 +648,16 @@
   }
   /* the lobby column's parts join the page: code and players first, the setup, then Start and Leave stuck at the
      bottom while the page scrolls */
-  .lobby-col {
+  .lobby-col,
+  .lobby-col > .lobby-scroll {
     display: contents;
+  }
+  /* a guest's "Waiting for ..." line reads first, Leave at the end of the bar */
+  .with-side .lobby-actions .lobby-wait {
+    order: 1;
+    flex: 1;
+    min-width: 0;
+    text-align: start;
   }
   .setup-body.with-side {
     gap: 14px;
@@ -661,6 +672,7 @@
     bottom: 0;
     z-index: 5;
     flex-direction: row-reverse;
+    align-items: center;
     margin: 0;
     padding: 12px 0;
     background: var(--metal);

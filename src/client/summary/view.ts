@@ -101,11 +101,13 @@ class Chart {
     const xs = X_STEPS.find((st) => dur / st <= 6) ?? 7200;
     for (let t = 0; t <= dur + 1e-6; t += xs) grid.append(svg('text', { x: x(t), y: M.t + ph + 40, 'text-anchor': 'middle' }, fmtTime(t)));
     s.append(grid);
+    // the win line under the nations' lines, its label over them (with a halo, see summary.css)
+    const winLabel = svg('g', { class: 'sum-win' });
     if (d.victoryShare <= top) {
       const g = svg('g', { class: 'sum-win' });
       g.append(svg('line', { x1: M.l, x2: M.l + pw, y1: y(d.victoryShare), y2: y(d.victoryShare) }));
-      g.append(svg('text', { x: M.l + 4, y: y(d.victoryShare) - 4 }, `Victory at ${pctText(d.victoryShare)}`));
       s.append(g);
+      winLabel.append(svg('text', { x: M.l + 4, y: y(d.victoryShare) - 4 }, `Victory at ${pctText(d.victoryShare)}`));
     }
 
     // lines: faded first, then the top nations, yours last (on top, with a dark halo)
@@ -117,7 +119,7 @@ class Chart {
       if (se.role !== 'faded') pl.setAttribute('stroke', this.color(se.id));
       lines.append(pl);
     }
-    s.append(lines);
+    s.append(lines, winLabel);
 
     // names at the right end of the lines still there at the end (nudged apart)
     const labels = d.series
@@ -192,12 +194,15 @@ function statsTable(cols: StatColumn[], color: (id: number) => string, me: numbe
   for (const c of cols) {
     const th = el('th', c.id === me ? 'me' : '');
     th.scope = 'col';
+    // the name gets the column's whole width; the nation's colour dot leads the line under it
     const n = el('span', 'sum-nat');
+    n.append(el('span', 'nm', short(c.name)));
+    n.title = c.name;
+    const tag = el('span', 'sum-tag');
     const dot = el('i', 'sw');
     dot.style.background = color(c.id);
-    n.append(dot, el('span', 'nm', short(c.name)));
-    n.title = c.name;
-    th.append(n, el('span', 'sum-tag', c.eliminated ? `${c.tag} · out` : c.tag));
+    tag.append(dot, el('span', '', c.eliminated ? `${c.tag} · out` : c.tag));
+    th.append(n, tag);
     head.append(th);
   }
   t.append(el('thead'));
