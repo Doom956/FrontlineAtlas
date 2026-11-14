@@ -665,8 +665,9 @@ function followWing(state: GameState, wing: AirWing, b: Building): void {
   const foe = followedNation(state, wing.owner);
   const front = foe > 0 ? mainFront(state, wing.owner, foe) : -1;
   if (wing.mission === 'superiority') {
-    let centre = -1;
-    if (front >= 0) {
+    // Where enemy bombers fly at us now (their aims), when the patrol centre may be there; else over the main front.
+    let centre = patrolCentre(state, wing.owner, b);
+    if (centre < 0 && front >= 0) {
       const own = nearestOwn(state, wing.owner, front, 12);
       const r = airfieldRadius(b) * AIR.superiorityCentreReach * dropTanksPatrolMul(state, wing.owner);
       if (own >= 0 && d2(state.map.width, b.tile, own) <= r * r) centre = own;
@@ -956,6 +957,54 @@ export function raidSecondsOf(state: GameState, owner: number): number {
 // ---------------------------------------------------------------------------------------------------------------
 // Superiority patrols
 // ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Where airfield b's superiority patrol catches the most enemy bombers: the aims of hostile bombers flying at `owner`'s
+ * (or an ally's) land and of hostile support / strategic wings aimed at it (weighted by the bombers stored at their
+ * airfield), each a candidate centre within the patrol centre reach of b; the one whose patrol circle holds the most
+ * weight (then the first found). -1 = no enemy bombers about. Pure read.
+ */
+export function patrolCentre(state: GameState, owner: number, b: Building): number {
+  return patrolPick(state, owner, b)[0];
+}
+/** patrolCentre and the weight of enemy bombers its circle holds ([-1, 0] = none). */
+function patrolPick(state: GameState, owner: number, b: Building): [number, number] {
+  const map = state.map;
+  const w = map.width;
+  const ours = (t: number): boolean => {
+    const o = map.owner[t];
+    return o === owner || (o > 0 && areAllied(state, owner, o));
+  };
+  const aims: number[] = [];
+  const weights: number[] = [];
+  for (const u of state.units) {
+    if (u.type !== 'bomber' || u.hp <= 0 || u.state !== 0 || !hostile(state, owner, u.owner) || !ours(u.target)) continue;
+    aims.push(u.target);
+    weights.push(1);
+  }
+  for (const wg of state.air?.wings ?? []) {
+    if ((wg.mission !== 'support' && wg.mission !== 'strategic') || wg.target < 0 || !hostile(state, owner, wg.owner) || !ours(wg.target)) continue;
+    const site = state.buildings.get(wg.airfield);
+    if (!site || site.owner !== wg.owner || site.bombers <= 0) continue;
+    aims.push(wg.target);
+    weights.push(site.bombers);
+  }
+  if (!aims.length) return [-1, 0];
+  const reach = airfieldRadius(b) * AIR.superiorityCentreReach * dropTanksPatrolMul(state, owner);
+  const r = airPatrolRadius(b, state);
+  let best = -1;
+  let bestW = 0;
+  for (const c of aims) {
+    if (d2(w, b.tile, c) > reach * reach) continue;
+    let sum = 0;
+    for (let k = 0; k < aims.length; k++) if (d2(w, aims[k], c) <= r * r) sum += weights[k];
+    if (sum > bestW) {
+      bestW = sum;
+      best = c;
+    }
+  }
+  return [best, bestW];
+}
 
 /**
  * After the SAMs, airfield fighters and carriers (units.updateUnits): every superiority wing whose fighters are ready
@@ -1353,6 +1402,20 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
   // Heavy bombers (variants.ts: raids x1.7, support x0.7) raid cities from every airfield but the one nearest the
   // main attack, and fall back to front support when no city is in reach.
   const heavy = AI_HEAVY_RAIDS && airVariantOf(state, id) === 'heavyBomber';
+  // The patrolling airfield: the farthest from the main front (the nearest flies support); from Normal up, of the others
+  // with 2+ fighters, the one whose patrol would catch the most enemy bombers (patrolCentre), when any is about.
+  let patrolAf = sortedAfs[sortedAfs.length - 1];
+  if (airThreat && afs.length >= 2 && aiAttackLevel(state) >= 1) {
+    let bestW = 0;
+    for (const b of sortedAfs) {
+      if (b.fighters < 2 || (main && b === sortedAfs[0])) continue;
+      const pw = patrolPick(state, id, b)[1];
+      if (pw > bestW) {
+        bestW = pw;
+        patrolAf = b;
+      }
+    }
+  }
   const supportAim = (b: Building): number => {
     if (!main || !front.length) return -1;
     const range = airWingRange(b, state);
@@ -1377,10 +1440,17 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
     const raidFirst = heavy && fighting.length > 0 && (afs.length < 2 || b !== sortedAfs[0]);
 
     // Superiority: one airfield with fighters when the enemy flies (the farthest from the front if there are several).
-    const wantPatrol = airThreat && b.fighters >= 2 && (afs.length >= 2 ? b === sortedAfs[sortedAfs.length - 1] : !main);
+    const wantPatrol = airThreat && b.fighters >= 2 && (afs.length >= 2 ? b === patrolAf : !main);
     if (wantPatrol && (!patrolling || cur?.mission === 'superiority')) {
       mission = 'superiority';
       patrolling = true;
+      // From Normal up the patrol flies where the enemy bombers aim (kept while it still covers them), not over the airfield.
+      if (aiAttackLevel(state) >= 1) {
+        const c = patrolCentre(state, id, b);
+        const r = airPatrolRadius(b, state) / 3;
+        if (c >= 0) target = cur?.mission === 'superiority' && cur.target >= 0 && d2(w, cur.target, c) <= r * r ? cur.target : c;
+        else if (cur?.mission === 'superiority' && cur.target >= 0) target = cur.target;
+      }
     } else if (mainCovered && b === sortedAfs[0] && b.bombers > 0) {
       // left idle: Air cover flies it at the dug-in main front (coverFor)
     } else if (main && front.length && !raidFirst) {
