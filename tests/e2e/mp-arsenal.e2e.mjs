@@ -433,6 +433,15 @@ try {
       log(`A orders ${tech}: on order ${m.procuring.join(',')}`);
       if (m.procuring.includes(tech) || m.techs.includes(tech)) fail(`${tech} was accepted (the fork / mastery lock did not hold)`);
     }
+    // Mechanization needs Metallurgy: picking Fortification by hand above turned B's auto research off, so B has
+    // Metallurgy only if its auto research got there first (that depends on how fast the machine runs the steps
+    // before it); if not, B picks it by hand now (its science saved up meanwhile)
+    if (!(await me(B.page)).techs.includes('metallurgy')) {
+      r = await dispatch(B.page, { type: 'research', tech: 'metallurgy' });
+      if (!r.ok) fail(`B metallurgy: ${r.reason}`);
+      await waitFor(async () => (await me(B.page)).techs.includes('metallurgy'), 90000, 'B metallurgy');
+      log('B researched Metallurgy (Mechanization needs it)');
+    }
     // B buys Mechanization (armor unlock, needs a Factory), then a special: Amphibious Tanks (Mechanization + Navigation)
     r = await dispatch(B.page, { type: 'procure', tech: 'mechanization' });
     if (!r.ok) fail(`B mechanization: ${r.reason}`);
