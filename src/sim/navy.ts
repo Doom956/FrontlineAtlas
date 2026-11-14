@@ -27,7 +27,8 @@ import { atPeace, buildSeconds, unitRule } from './rules';
 import { addEvent, newId } from './state';
 import { hasTech } from './tech';
 import { moveWarship, spawnWarshipAt, unitCost } from './units';
-import { warshipBuildTicks, warshipCount, warshipLimit } from './naval2';
+import { warshipBuildTicks, warshipCount, warshipLimit, warshipMaxHp } from './naval2';
+import { aiAttackLevel } from './aiattack';
 import { applyWarshipVariant, defaultNavalVariant, navalCanTarget, navalVariantBlock, variantWarshipCost, VARIANT_NAMES } from './variants';
 import { isWater } from './types';
 import type { ActionResult, Building, GameState, NavalVariant, QueuedUnit, Unit } from './types';
@@ -309,21 +310,27 @@ function interceptRank(state: GameState, me: number, s: Unit, wars: Set<number>)
   return -1;
 }
 
+/** AI hp odds (outnumbered): the foes' hp must beat ours by this factor (an even duel stays a fight, no flapping). */
+const AI_ODDS_MARGIN = 1.25;
 /**
  * True when hostile warships within NAVY_REACH.oddsRadius of `target` outnumber u's owner's warships within it of u
  * (u included).
  */
 export function outnumbered(state: GameState, u: Unit, target: Unit, ships: readonly Unit[]): boolean {
   const r2 = NAVY_REACH.oddsRadius * NAVY_REACH.oddsRadius;
+  // AI nations (Normal and up, aiattack.ts) weigh the ships by their hp: a damaged ship doesn't take on a whole one
+  // (warship duels are decided in seconds once they start, so mending afterwards is too late). Players count ships.
+  const byHp = !state.players[u.owner]?.isHuman && aiAttackLevel(state) >= 1;
   let foes = 0;
   let mine = 0;
   for (const s of ships) {
     if (s.type !== 'warship' || s.hp <= 0) continue;
+    const v = byHp ? s.hp / warshipMaxHp(s) : 1;
     if (s.owner === u.owner) {
-      if (d2(s.x, s.y, u.x, u.y) <= r2) mine++;
-    } else if (hostileTo(state, u.owner, s.owner) && d2(s.x, s.y, target.x, target.y) <= r2) foes++;
+      if (d2(s.x, s.y, u.x, u.y) <= r2) mine += v;
+    } else if (hostileTo(state, u.owner, s.owner) && d2(s.x, s.y, target.x, target.y) <= r2) foes += v;
   }
-  return foes > mine;
+  return byHp ? foes > mine * AI_ODDS_MARGIN : foes > mine;
 }
 
 function d2(ax: number, ay: number, bx: number, by: number): number {

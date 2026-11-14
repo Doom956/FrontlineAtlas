@@ -17,6 +17,7 @@ import { hashState } from '../src/sim/hash';
 import { tick } from '../src/sim/sim';
 import { newId } from '../src/sim/state';
 import { spawnWarshipAt } from '../src/sim/units';
+import { outnumbered } from '../src/sim/navy';
 import { Terrain } from '../src/sim/types';
 import type { Action, Building, BuildingType, Difficulty, GameState, Unit } from '../src/sim/types';
 import { claimRect, makeFlatGame } from './helpers';
@@ -131,6 +132,22 @@ describe('AI warships', () => {
       // Whole again: it gets its job back.
       hurt.hp = warshipMaxHp(hurt);
       expect(aiNeedsRepair(s, hurt)).toBe(false);
+    }
+  });
+
+  it('from Normal up, an AI ship weighs the odds by hp: a damaged one does not take on a whole one', () => {
+    for (const d of ['normal', 'easy'] as Difficulty[]) {
+      const s = coastGame(d);
+      const mine = ship(s, 2, 50, 25);
+      const foe = ship(s, 1, 40, 25);
+      const ships = [mine, foe];
+      expect(outnumbered(s, mine, foe, ships)).toBe(false); // an even duel stays a fight
+      mine.hp = warshipMaxHp(mine) * 0.4;
+      expect(outnumbered(s, mine, foe, ships)).toBe(d === 'normal');
+      // Two damaged ships of ours together still take it on.
+      const second = ship(s, 2, 52, 25);
+      second.hp = warshipMaxHp(second) * 0.6;
+      expect(outnumbered(s, mine, foe, [...ships, second])).toBe(false);
     }
   });
 
