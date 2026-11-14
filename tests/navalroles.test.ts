@@ -223,6 +223,31 @@ describe('submarines hunt', () => {
   });
 });
 
+describe('ships hit by a submarine they cannot see', () => {
+  it("a player's auto ship sails away; its destroyer heads for the submarine; a hold ship stays", () => {
+    const play = (v: NavalVariant | undefined, stance: 'auto' | 'hold' = 'auto'): { u: Unit; sub: Unit } => {
+      const s = seaGame();
+      war(s);
+      const u = ship(s, 1, 40, 40, v);
+      if (stance !== 'auto') applyAction(s, 1, { type: 'setUnitStance', unitIds: [u.id], stance });
+      const sub = ship(s, 2, 40 + ARSENAL.destroyerSonar + 6, 40, 'submarine');
+      asAI(s, () => applyAction(s, 2, { type: 'setUnitStance', unitIds: [sub.id], stance: 'hold' }));
+      u.hp = warshipMaxHp(u) - 0.5;
+      for (let k = 0; k < 12 && u.state !== 1; k++) tick(s);
+      return { u, sub };
+    };
+    const plain = play(undefined);
+    expect(plain.u.state).toBe(1);
+    const end = plain.u.path[plain.u.path.length - 1];
+    expect(end % 120).toBeLessThan(40); // away from the submarine (east of it)
+    const dd = play('destroyer');
+    expect(dd.u.state).toBe(1);
+    const ddEnd = dd.u.path[dd.u.path.length - 1];
+    expect(Math.abs((ddEnd % 120) - dd.sub.x)).toBeLessThan(6);
+    expect(play(undefined, 'hold').u.state).not.toBe(1);
+  });
+});
+
 describe('gunnery by type', () => {
   it('a submarine shoots the transport in range before a warship; a destroyer the submarine', () => {
     const sub = { type: 'warship', variant: 'submarine' } as Unit;

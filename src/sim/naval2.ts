@@ -79,7 +79,7 @@ import { ownedTilesOf } from './territory';
 import { mainFront, shipWarTarget, unitFollows } from './warTarget';
 import { atPeace } from './rules';
 import { aiAttackLevel } from './aiattack';
-import { autoEscorts, coverLanding, destroyerJob, evade, evades, portGuarded, rolesOn, subBlockades, subStationWater, subThreat } from './navalroles';
+import { autoEscorts, coverLanding, destroyerJob, evade, evades, portGuarded, rolesOn, subBlockades, subStationWater, subThreat, unseenAttacker } from './navalroles';
 import { addEvent } from './state';
 import { hasTech } from './tech';
 import { frontTrench } from './trenches';
@@ -990,6 +990,13 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
   if (sub && (state.tick + u.id) % WARSHIP_SCAN_TICKS === 0 && evades(state, u)) {
     const threat = subThreat(state, u, ships);
     if (threat && evade(state, u, threat.x, threat.y)) return;
+  }
+  // Hit by a submarine it cannot see: a destroyer heads for it (its sonar finds it there), others sail away.
+  if (!sub && (state.tick + u.id) % WARSHIP_SCAN_TICKS === 0) {
+    const hidden = unseenAttacker(state, u, ships);
+    if (hidden) {
+      if (u.variant === 'destroyer' ? sailNear(state, u, Math.round(hidden.y) * state.map.width + Math.round(hidden.x)) : evade(state, u, hidden.x, hidden.y)) return;
+    }
   }
   if (st === 'auto' || st === 'hunt' || st === 'hold') {
     if (roams && u.hp < warshipMaxHp(u) - 1e-9 && (state.tick + u.id) % WARSHIP_SCAN_TICKS === 0 && mending(state, u)) {

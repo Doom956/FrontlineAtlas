@@ -15,6 +15,7 @@
 //   any ship   chases of transports and trade ships aim ahead on their route (intercept, not a tail chase); on
 //              'auto' (AI also 'bombard') the nearest ship that can support goes to cover an own landing on a nation
 //   carrier    no head-on chase of a whole warship (its guns are weak; its wings do the work)
+//   hit by a submarine it cannot see: a destroyer heads for it (sonar), other ships sail away (unseenAttacker)
 // Deterministic: reads the state, no RNG, no transcendental Math.
 import { ARSENAL, NAVAL_ROLES as R, NAVY_BLOCKADE_RANGE, NAVY_ESCORT_PICK, NAVY_STATION_DIST, NAVY_SUPPORT_RANGE, TICKS_PER_SECOND, UNITS, WARSHIP_RANGE } from './config';
 import { buildingAt } from './buildings';
@@ -186,7 +187,8 @@ const C45 = 0.7071067811865476;
 const TURNS: readonly [number, number][] = [[1, 0], [C45, C45], [C45, -C45], [0, 1], [0, -1], [-C45, C45], [-C45, -C45]];
 
 /**
- * Sends submarine u away from (cx, cy): to water about NAVAL_ROLES.evadeDist away in its sea (straight away first,
+ * Sends warship u (a submarine diving away, a ship hit by a submarine it cannot see) away from (cx, cy): to water
+ * about NAVAL_ROLES.evadeDist away in its sea (straight away first,
  * then turning), outside hostile minefields; a move (state 1) after which it patrols there. It keeps off stations for
  * evadeSeconds (Unit.retryTick). False when no water could be reached.
  */
@@ -239,6 +241,29 @@ export function evades(state: GameState, u: Unit): boolean {
   if (!isSub(u) || u.state === 4 || !rolesOn(state, u.owner)) return false;
   if (!state.players[u.owner].isHuman) return true;
   return warshipStance(u) === 'auto' && (u.state !== 1 || (u.retryTick ?? 0) > state.tick);
+}
+
+/**
+ * A hidden submarine shooting at warship u: a damaged u with a hostile submarine within gun range that u cannot target
+ * (the nearest). Ships of owners whose ships play their role react (naval2.warshipThink): a destroyer heads for it (its
+ * sonar then finds it), others sail away. AI ships on any stance, a player's on 'auto'; never under a move order or
+ * on escort duty. Null = none.
+ */
+export function unseenAttacker(state: GameState, u: Unit, ships: readonly Unit[]): Unit | null {
+  if (u.type !== 'warship' || isSub(u) || u.state === 1 || u.state === 4 || !rolesOn(state, u.owner)) return null;
+  if (state.players[u.owner].isHuman && warshipStance(u) !== 'auto') return null;
+  if (u.hp >= warshipMaxHp(u) - 1e-9) return null;
+  const r2 = WARSHIP_RANGE * WARSHIP_RANGE;
+  let best: Unit | null = null;
+  let bestD = Infinity;
+  for (const s of ships) {
+    if (!isSub(s) || s.hp <= 0 || !hostile(state, u.owner, s.owner)) continue;
+    const d = d2(s.x, s.y, u.x, u.y);
+    if (d > r2 || d >= bestD || navalCanTarget(state, u, s)) continue;
+    best = s;
+    bestD = d;
+  }
+  return best;
 }
 
 /** A submarine blockading `port` takes a hidden spot (subStationWater) instead of parking next to it. */
