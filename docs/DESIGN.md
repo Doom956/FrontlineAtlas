@@ -679,6 +679,36 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   (`aiNavy`): at war, fixed roles per ship (blockade / bombard / auto, admirals also hunt; damaged ships mend first),
   escorts for transports
   (their auto ships roam to the enemy's coast by themselves); coastal AIs research Navigation once boxed in or at 5 techs.
+- **Each warship type's job** (src/sim/navalroles.ts, config `NAVAL_ROLES`; hooks in navy.interceptStep, units.updateWarship,
+  naval2.warshipThink): for every player's ships (gunnery and chases on any stance, the jobs on `auto`; a move order or
+  another stance is never overridden) and AI ships from Normal up (`rolesOn`; Easy keeps the old habits, gunnery aside).
+  Gunnery (`gunRank`): in range, a submarine shoots transports, then trade ships, then warships, destroyers last; a
+  destroyer shoots a submarine it can target first; other ships the nearest, as before. Chases (`roleRank`, `chaseAim`):
+  a chase of a transport or trade ship sails to the first tile of its route it can reach in gun range no later than the
+  ship does (an intercept, not a tail chase); a submarine chases transports, then trade ships of nations at war (on
+  `auto` and `hunt` anywhere in its sea, `preyAnywhere`), and a warship only when it is soft (under `softHp` of its hp,
+  or no other warship of its side within `loneRadius`), never a destroyer, prey a hostile destroyer is near
+  (`destroyerSonar` + `destroyerPad`) or prey inside a hostile minefield, and it holds at `standoff` x `WARSHIP_RANGE`
+  from its prey (others fire back only within `subTargetRange`); a destroyer chases a submarine its sonar finds first;
+  a carrier chases no whole warship. Submarines dive away (`subThreat`, `evade`; AI on any stance, a player's on `auto`):
+  with a hostile destroyer within its sonar range + `destroyerPad`, or hostile guns that can fire at them and outweigh
+  their hp (any such gun when under half hp), they sail `evadeDist` straight away (else turning by 45 degrees) and keep
+  off stations for `evadeSeconds`. A warship hit by a submarine it cannot see (damaged, with a hostile submarine in gun
+  range it cannot target; `unseenAttacker`; AI on any stance, a player's on `auto`) runs to the nearest other own
+  warship within 2 x `loneRadius` (with company it is no soft prey, `friendTile`), else sails away the same way; a
+  destroyer heads for it instead (its sonar finds it there). A submarine blockades (stance `blockade`, and `auto` at war: it has no shelling to do
+  off a coast) a port of the nation it aims at that no hostile destroyer guards (`portGuarded`), from a spot inside its
+  blockade range less `blockadeInset`, outside hostile minefields, farther than the port owner's reveal range from its
+  land when the sea allows (`subStationWater`); with no port to blockade an `auto` one patrols and hunts. A destroyer on
+  `auto` at war (`destroyerJob`): escorts an own transport at sea that has no escort, else sails to an own blockaded Port
+  of its sea (its sonar finds the raider), else, when a nation at war with its owner has Submarines, escorts an own trade
+  ship (at most `tradeEscortShare` of the owner's auto destroyers). Landings (`coverLanding`): an own transport bound for
+  a nation's coast with no own supporting warship near the landing tile gets the nearest free `auto` ship that supports
+  (AI: also `bombard`) within `landingReach`; it sails off the landing tile. AI nations from Normal up: transport
+  escorts are destroyers when one is in reach (`aiNavy`), submarines blockade only a port of the foe on their own sea
+  (else they hunt), against a foe with Submarines every other destroyer stays on `auto`, and landings go in under the
+  guns: the coasts their warships are stationed off are landing candidates, and a coast within support range of an own
+  warship scores `AI_LANDING_FLEET_BONUS` more (ai.ts `landingTarget`; such a beachhead costs a fifth).
 - **Divisions, part two** (src/sim/armor2.ts; `setDivisionMode {unitIds, mode, front?}`): a spearhead no longer
   spends a division (it disbands only under `TANK_DISBAND_SHARE`); holding divisions refit from the pool
   (`ARMOR_REFIT_FACTORY` per s near an own Factory, `ARMOR_REFIT_FIELD` elsewhere). Spearheads of 8+ tiles give
@@ -709,6 +739,9 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   player's land (`landFlood`) and drives that route; when the main front can't be reached over own land (found by
   that flood, or near the front when the strike's launch tile can't be reached), a following division supports the target's border it can reach (or another war's) for `DETOUR_SECONDS` (60, `Unit.detour`,
   hashed); with no land border to the target at all it supports the nearest front of another war, else holds.
+  Superiority wings (following) patrol where hostile bombers aim at our land now (`airwings.patrolCentre`: the aims of
+  hostile bombers in the air and of hostile support / strategic wings, weighted by their stored bombers; the candidate
+  in the patrol centre's reach whose circle holds the most), else over our side of the main front.
   Warships: a player's `auto` ship doesn't start or keep a chase where hostile warships within
   `NAVY_REACH.oddsRadius` (50) of the target outnumber its own warships near it (`navy.outnumbered`), falls back to
   the nearest own Port of its sea when they outnumber it where it is (then waits `NAVY_REACH.regroupSeconds`, 20,
@@ -880,10 +913,15 @@ refit at a Factory. From Normal up (`AI_ATTACK_LEVEL`; Easy keeps the old habits
   over its own land); a division on a spearhead's thin tip pulls back to a hold tile at once (any difficulty);
 - air wings keep their support and strategic missions while the war is live (`aiKeepsFlying`), so a support zone
   is laid between waves for the next one; manual strikes go out as one salvo of the wing size, skip targets under
-  working SAM cover and prefer targets within 30 tiles of the border with their owner.
+  working SAM cover and prefer targets within 30 tiles of the border with their owner;
+- each warship type does its job (section 7, "Each warship type's job"): submarines raid trade and landings from
+  hiding and dive away from destroyers, destroyers escort landings and sweep for submarines, the nearest free ship
+  covers a landing on a nation.
 Air defence: with enemy bombers about and 4+ techs an AI researches Flight and Radar next (`AI_RADAR_VS_AIR`) and
 puts SAM sites about `SAM_FRONT_DEPTH` (24) tiles behind its border with the nation that threatens it most, not
-stacked under another SAM. Airfields flying heavy bombers raid cities (all but the one nearest the main attack) and
+stacked under another SAM. From Normal up the patrolling airfield is the one (of those not flying support at the main
+front, with 2+ fighters) whose patrol would catch the most enemy bombers, and it patrols where they aim
+(`airwings.patrolCentre`, kept while it still covers them) instead of over itself. Airfields flying heavy bombers raid cities (all but the one nearest the main attack) and
 fall back to front support when no city is in reach (`AI_HEAVY_RAIDS`, airwings.ts). Manual AI bombs only go to
 targets in the airfield's reach; with no raid target in reach, an AI airfield bombs the main front of a nation it
 fights instead (a front strike, led ahead of its push). An AI keeps at most
