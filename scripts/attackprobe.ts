@@ -49,6 +49,8 @@ export interface ShipKindStats {
   sunkByDestroyer: number;
   sunkByShip: number;
   sunkOther: number;
+  /** sunk by an enemy warship, by the killer's type */
+  sunkByKind?: Record<string, number>;
   /** ships this type sank, by kind (softWarship = a warship below half its hp at the last 10 s sample or with no own
    *  warship within NAVY_REACH.oddsRadius of it when it sank; warship = the others; sub = submarines) */
   kills: Record<KillKind, number>;
@@ -502,6 +504,8 @@ export class AttackProbe {
           if (best) {
             if (best.kind === 'destroyer') ks.sunkByDestroyer++;
             else ks.sunkByShip++;
+            const by = (ks.sunkByKind ??= {});
+            by[best.kind] = (by[best.kind] ?? 0) + 1;
           } else ks.sunkOther++;
         } else if (v.type === 'transport' && !best && v.atEnd && v.targetOwner > 0) {
           s.landings++;
@@ -737,7 +741,8 @@ export function attackReport(a: AttackStats, games: number): string[] {
       const v = a.navy[k];
       if (!v || v.built <= 0) continue;
       const kl = v.kills;
-      out.push(`    ${k.padEnd(10)} built ${f1(v.built / g).padStart(5)}  sunk ${f1(v.sunkByDestroyer / g)} / ${f1(v.sunkByShip / g)} / ${f1(v.sunkOther / g)}  kills: trade ${f1(kl.trade / g)}, transports ${f1(kl.transport / g)} (${f1(v.killsLanding / g)}), warships ${f1(kl.warship / g)}, soft ${f1(kl.softWarship / g)}, subs ${f1(kl.sub / g)}  per loss ${f1((kl.trade + kl.transport + kl.warship + kl.softWarship + kl.sub) / Math.max(1, v.sunkByDestroyer + v.sunkByShip + v.sunkOther))}`);
+      const byKind = v.sunkByKind ? Object.entries(v.sunkByKind).sort((x, y) => y[1] - x[1]).map(([kk, n]) => `${kk} ${f1(n / g)}`).join(', ') : '';
+      out.push(`    ${k.padEnd(10)} built ${f1(v.built / g).padStart(5)}  sunk ${f1(v.sunkByDestroyer / g)} / ${f1(v.sunkByShip / g)} / ${f1(v.sunkOther / g)}  kills: trade ${f1(kl.trade / g)}, transports ${f1(kl.transport / g)} (${f1(v.killsLanding / g)}), warships ${f1(kl.warship / g)}, soft ${f1(kl.softWarship / g)}, subs ${f1(kl.sub / g)}  per loss ${f1((kl.trade + kl.transport + kl.warship + kl.softWarship + kl.sub) / Math.max(1, v.sunkByDestroyer + v.sunkByShip + v.sunkOther))}${byKind ? `  (sunk by ${byKind})` : ''}`);
       const extra: string[] = [];
       if (k === 'submarine') extra.push(`seen by the enemy ${pc(v.revealed, v.war)}`);
       if (k === 'destroyer') extra.push(`enemy sub in sonar ${pc(v.sonarContact, v.war)}`, `by own shipping ${pc(v.nearShipping, v.war)}`);
