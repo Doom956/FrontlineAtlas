@@ -1,6 +1,6 @@
 <div align="center">
 
-<a href="https://frontline-atlas.onrender.com"><img src="docs/images/banner.webp" width="100%" alt="Frontline Atlas: push your borders, outthink every front. An atom bomb goes off on France's front as the teal nation Atlas pushes in."></a>
+<a href="https://frontline-atlas.onrender.com"><img src="docs/images/banner.webp" width="100%" alt="Frontline Atlas: push your borders, outthink every front. An atom bomb goes off on the French front as the teal nation Atlas pushes in."></a>
 
 <br>
 
@@ -11,11 +11,11 @@
 
 <br>
 
-**Choose a target, not a tile.** Every border you share with it advances at once. Then win your way: with a navy, tank divisions, air wings, a wall of forts or a booming economy.
+**Choose a target, not a tile.** Every border you share with it advances at once. Then win your way: with a navy, tank divisions, air wings, a wall of forts or a booming economy. Every ship, tank and plane is drawn in detailed pixel art, so you see every battle play out.
 
-<img src="docs/images/front-push.gif" width="100%" alt="A brass front line with push arrows moves into France as Atlas's troop counts tick up.">
+<img src="docs/images/front-push.gif" width="100%" alt="Atlas's front pushes south into France: the border moves, newly taken land glows, a captured capital is marked and warships fire off the coast.">
 
-<sub>The front pushing into France at 2x speed.</sub>
+<sub>The front pushing into France, sped up.</sub>
 
 </div>
 
@@ -26,12 +26,12 @@
 <table>
 <tr>
 <td width="50%" valign="top">
-<img src="docs/images/war-fronts.webp" width="100%" alt="Atlas has taken France's capital: the captured land glows, labels mark a captured city, arsenal and farm, and bombers fly over the front.">
+<img src="docs/images/war-fronts.webp" width="100%" alt="Atlas pushes into France: attack arrows on the front line, a captured capital marked, a tank division in the lead and warships firing off the coast.">
 <br><b>Whole fronts, one click</b>
 <br>Pick who you attack. The shared border moves, faster the longer it is.
 </td>
 <td width="50%" valign="top">
-<img src="docs/images/arsenal.webp" width="100%" alt="The Arsenal tab of the Research panel: navy, armor and air rows with prices on each card, Drop Tanks on order and arriving in 33 s, and Light Tanks picked, waiting for a second click to confirm.">
+<img src="docs/images/arsenal.webp" width="100%" alt="The Arsenal tab of the Research panel: navy, armor and air rows with prices on each card, Drop Tanks on order and arriving in 31 s, and Light Tanks picked, waiting for a second click to confirm.">
 <br><b>Arsenal paths</b>
 <br>Fork your navy, armor and air. One path each per game, two masteries at most.
 </td>
@@ -41,7 +41,7 @@
 <table>
 <tr>
 <td width="50%" valign="top">
-<img src="docs/images/nuke.gif" width="100%" alt="Animation: target rings count down over a French city on the front, a missile flies in, then the blast, the shockwave and the fallout.">
+<img src="docs/images/nuke.gif" width="100%" alt="Animation: target rings count down over a French town on the front, a missile streaks in, then the fireball, the mushroom cloud and the charred blast zone.">
 <br><b>Strikes and atom bombs</b>
 <br>Barrages, bombs, paradrops, rockets and nukes. SAM sites shoot them down.
 </td>
@@ -56,12 +56,12 @@
 <table>
 <tr>
 <td width="50%" valign="top">
-<img src="docs/images/lobby.webp" width="100%" alt="A private lobby: the game settings, the join code RUXWFM and four players in different colours.">
+<img src="docs/images/lobby.webp" width="100%" alt="A private lobby on the Europe map: the game settings, the join code R427AA and four players in different colours.">
 <br><b>Online lobbies</b>
 <br>Public games, or a private lobby with a 6-character code. AI fills the free seats.
 </td>
 <td width="50%" valign="top">
-<img src="docs/images/guide.webp" width="100%" alt="The in-game guide at step 7 of 9, Build a City, with a brass arrow on the City button below Atlas's first land.">
+<img src="docs/images/guide.webp" width="100%" alt="The in-game guide at step 7 of 9, Build a City, with an arrow on the City button below Atlas's first land.">
 <br><b>Learn as you play</b>
 <br>A 5-minute tutorial, then a small guide that explains each new thing once.
 </td>
@@ -82,19 +82,20 @@
 - **Air wings.** Support a front, bomb an enemy's income or hold the sky with fighters.
 - **Diplomacy.** Alliances, gifts, embargoes, traitor penalties, and coalitions against a runaway leader.
 - **AI nations and tribes.** Personalities, four difficulty levels, and hundreds of small tribes to absorb.
+- **Detailed pixel art.** Every ship, tank, plane and missile drawn for every heading. Ships burn, list and sink, planes are shot down, craters smoke and atom bombs leave a blast zone.
 - **Fair online play.** A deterministic lockstep simulation: every browser computes the same game.
 
 </details>
 
 ## How to play
 
-1. Press **Single player**, pick a map and start. Click a land tile to place your capital.
+1. Press **Play**, pick a map and start. Click a land tile to place your capital.
 2. Click land next to yours to expand. Click an enemy border to attack it.
-3. Set **Attack %** with `[` and `]`. Keep spending: a full troop bar barely grows.
-4. Press `Tab` to build (cities and farms first) and `T` for research.
-5. At 5:00, press `Shift+D` and pick a doctrine. Click a nation in the standings to ally, gift or embargo.
+3. Set how much of your army each attack takes with the **Attack** buttons. Keep spending: a full troop bar barely grows.
+4. Press **Build** (cities and farms first) and **Research** in the top bar.
+5. At 5:00, open **Doctrine** in the top bar and pick a play style. Click a nation in the standings to ally, gift or embargo.
 
-New here? Press **Tutorial** on the title screen. In any game, `?` opens a searchable guide.
+New here? Press **Tutorial** on the title screen. In any game, **Help** opens a searchable guide. Keyboard shortcuts are listed under Controls below.
 
 ## Ways to win
 
@@ -111,9 +112,9 @@ A game ends when one nation holds 75% of the land, is the last one standing, or 
 <table>
 <tr>
 <td width="50%" valign="top">
-<img src="docs/images/victory.gif" width="100%" alt="Animation: a 15-minute game on the Europe map sped up from the first spawn; Atlas overtakes Russia and the Victory card appears.">
-<br><b>A whole game in eight seconds</b>
-<br>Fifteen minutes on the Europe map, from the first spawn to the win.
+<img src="docs/images/victory.gif" width="100%" alt="Animation: a 16-minute game on the Europe map sped up from the first spawn; Russia grows fastest, then Atlas overtakes everyone and the Victory card appears.">
+<br><b>A whole game in nine seconds</b>
+<br>Sixteen minutes on the Europe map, from the first spawn to the win.
 </td>
 <td width="50%" valign="top">
 <img src="docs/images/summary.webp" width="100%" alt="The Victory card: land over time per nation, the key moments of the game and a table comparing the nations.">
@@ -289,7 +290,7 @@ What is planned next, and what the balance checks still flag: [ROADMAP.md](ROADM
 
 ## Credits
 
-Real-world map data from [Natural Earth](https://www.naturalearthdata.com) (public domain). Fonts: Barlow Condensed and IBM Plex Sans, bundled through Fontsource. Data sources in detail: [docs/MAPS.md](docs/MAPS.md).
+Real-world map data from [Natural Earth](https://www.naturalearthdata.com) (public domain). Fonts: DM Sans and Jersey 15, bundled through Fontsource. Data sources in detail: [docs/MAPS.md](docs/MAPS.md).
 
 ## License
 
