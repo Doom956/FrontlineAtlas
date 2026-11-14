@@ -34,6 +34,11 @@ export interface AttackStats {
   ships: {
     built: number;
     sunk: number;
+    /** gone with their owner (eliminated); not counted as sunk */
+    ownerGone: number;
+    /** sunk by an enemy warship / by a mine (events) */
+    sunkByShip: number;
+    sunkByMine: number;
     /** sunk with no veterancy at all (never shelled nor sank anything) */
     sunkNoXp: number;
     /** sunk after a sample that saw it below half its hp (had the time to mend) */
@@ -66,6 +71,12 @@ export interface AttackStats {
     /** overrun with < 10%, 10-40%, >= 40% of a full division at the last sample */
     overrun: [number, number, number];
     spent: number;
+    /** gone with their owner; overrun within 60 s after a spearhead of theirs ended */
+    ownerGone: number;
+    overrunAfterSpearhead: number;
+    /** holding samples at war (holdFront + holdFar): in support mode; within 16 tiles of their support front */
+    holdSupport: number;
+    holdAtStation: number;
     /** 10 s samples of divisions of nations at war: spearheading, holding within 12 tiles of an own attack front,
      *  holding elsewhere, driving; worn (< 40%) among them */
     atWar: number;
@@ -89,9 +100,9 @@ export interface AttackStats {
 export function newAttackStats(): AttackStats {
   const b = (): BomberStats => ({ sorties: 0, arrivals: 0, onFront: 0, intoSam: 0, intoSamArrived: 0 });
   return {
-    ships: { built: 0, sunk: 0, sunkNoXp: 0, sunkCrippled: 0, alive: 0, atWar: 0, onFront: 0, station: 0, stationOnFront: 0, outnumbered: 0, escorting: 0, mainCoastal: 0, mainSupported: 0 },
+    ships: { built: 0, sunk: 0, ownerGone: 0, sunkByShip: 0, sunkByMine: 0, sunkNoXp: 0, sunkCrippled: 0, alive: 0, atWar: 0, onFront: 0, station: 0, stationOnFront: 0, outnumbered: 0, escorting: 0, mainCoastal: 0, mainSupported: 0 },
     transports: { invasions: 0, sunk: 0, troopsSunk: 0, repelled: 0, atSea: 0, escorted: 0 },
-    tanks: { formed: 0, overrun: [0, 0, 0], spent: 0, atWar: 0, spearhead: 0, holdFront: 0, holdFar: 0, driving: 0, worn: 0, overrunDefending: 0 },
+    tanks: { formed: 0, overrun: [0, 0, 0], spent: 0, ownerGone: 0, overrunAfterSpearhead: 0, holdSupport: 0, holdAtStation: 0, atWar: 0, spearhead: 0, holdFront: 0, holdFar: 0, driving: 0, worn: 0, overrunDefending: 0 },
     bombers: { manual: b(), support: b(), strategic: b(), cover: b() },
     strikeTypes: {},
     mainAirOwn: 0,
@@ -126,6 +137,8 @@ function hostile(state: GameState, a: number, b: number): boolean {
 interface DivSeen {
   owner: number;
   share: number;
+  /** last tick seen spearheading */
+  spear: number;
 }
 interface ShipSeen {
   owner: number;
@@ -223,10 +236,11 @@ export class AttackProbe {
       } else if (u.type === 'tankDivision') {
         let seen = this.divs.get(u.id);
         if (!seen) {
-          this.divs.set(u.id, (seen = { owner: u.owner, share: 1 }));
+          this.divs.set(u.id, (seen = { owner: u.owner, share: 1, spear: -1e9 }));
           s.tanks.formed++;
         }
         seen.share = (u.troops.infantry + u.troops.armor + u.troops.artillery) / FULL_DIVISION;
+        if (u.state === 3) seen.spear = state.tick;
       } else if (u.type === 'bomber') {
         let seen = this.bombers.get(u.id);
         if (!seen) {
@@ -269,11 +283,17 @@ export class AttackProbe {
         s.transports.sunk++;
         s.transports.troopsSunk += Number(/with (\d+) troops/.exec(e.message)![1]);
       } else if (e.kind === 'unitLost' && /landing was repelled/.test(e.message)) s.transports.repelled++;
+      else if (e.kind === 'unitLost' && /lost a warship to/.test(e.message)) s.ships.sunkByShip++;
+      else if (e.kind === 'unitLost' && /warship hit a mine/.test(e.message)) s.ships.sunkByMine++;
       else if ((e.kind as string) === 'spearheadEnded' && /the division is spent/.test(e.message)) s.tanks.spent++;
     }
     for (const [id, seen] of this.ships) {
       if (id < 0 || alive.has(id)) continue;
       this.ships.delete(id);
+      if (!state.players[seen.owner].alive) {
+        s.ships.ownerGone++;
+        continue;
+      }
       s.ships.sunk++;
       if (seen.xp <= 0) s.ships.sunkNoXp++;
       if (seen.crippled) s.ships.sunkCrippled++;
@@ -282,10 +302,15 @@ export class AttackProbe {
     for (const [id, seen] of this.divs) {
       if (alive.has(id)) continue;
       this.divs.delete(id);
+      if (!state.players[seen.owner].alive) {
+        s.tanks.ownerGone++;
+        continue;
+      }
       const n = overrun.get(seen.owner) ?? 0;
       if (n <= 0) continue;
       overrun.set(seen.owner, n - 1);
       s.tanks.overrun[seen.share < 0.1 ? 0 : seen.share < 0.4 ? 1 : 2]++;
+      if (state.tick - seen.spear <= 600) s.tanks.overrunAfterSpearhead++;
       if (state.attacks.some((a) => a.target === seen.owner && a.attacker > 0 && !isTribe(state.players[a.attacker]))) s.tanks.overrunDefending++;
     }
     for (const id of this.bombers.keys()) if (!alive.has(id)) this.bombers.delete(id);
@@ -345,8 +370,17 @@ export class AttackProbe {
         if (share < 0.4) s.tanks.worn++;
         if (u.state === 3) s.tanks.spearhead++;
         else if (u.state === 1 || u.state === 2) s.tanks.driving++;
-        else if (this.frontNear(u.owner, targets.get(u.owner), u.x, u.y, 12)) s.tanks.holdFront++;
-        else s.tanks.holdFar++;
+        else {
+          if (this.frontNear(u.owner, targets.get(u.owner), u.x, u.y, 12)) s.tanks.holdFront++;
+          else s.tanks.holdFar++;
+          if (u.mode === 'support') {
+            s.tanks.holdSupport++;
+            const st = u.station;
+            const dx = (st ?? 0) % w - u.x;
+            const dy = (((st ?? 0) / w) | 0) - u.y;
+            if (st !== undefined && dx * dx + dy * dy <= 256) s.tanks.holdAtStation++;
+          }
+        }
       }
     }
     // Main attacks: naval and air support on the AI's biggest attack on a nation.
@@ -384,15 +418,15 @@ export function attackReport(a: AttackStats, games: number): string[] {
   const out: string[] = [];
   const sh = a.ships;
   out.push(`\nAI attack probe (${games} games; AI nations only):`);
-  out.push(`  Warships: ${f1(sh.built / g)} built, ${f1(sh.sunk / g)} sunk per game (${pc(sh.sunk, sh.built)}); sunk without any effect ${pc(sh.sunkNoXp, sh.sunk)}, sunk after being crippled ${pc(sh.sunkCrippled, sh.sunk)}.`);
+  out.push(`  Warships: ${f1(sh.built / g)} built, ${f1(sh.sunk / g)} sunk per game (${pc(sh.sunk, sh.built)}; by warships ${f1(sh.sunkByShip / g)}, mines ${f1(sh.sunkByMine / g)}; ${f1(sh.ownerGone / g)} more gone with their owner); sunk without any effect ${pc(sh.sunkNoXp, sh.sunk)}, sunk after being crippled ${pc(sh.sunkCrippled, sh.sunk)}.`);
   out.push(`    ship time: at war ${pc(sh.atWar, sh.alive)}; of that on an own attack's front ${pc(sh.onFront, sh.atWar)}; on station ${pc(sh.station, sh.alive)} (on the front ${pc(sh.stationOnFront, sh.station)}); escorting ${pc(sh.escorting, sh.alive)}; locally outnumbered ${pc(sh.outnumbered, sh.alive)}.`);
   out.push(`    main attack on a nation, fleet afloat: naval support on that front ${pc(sh.mainSupported, sh.mainCoastal)} of ${sh.mainCoastal} samples.`);
   const tr = a.transports;
   out.push(`  Invasions: ${f1(tr.invasions / g)} per game; sunk ${pc(tr.sunk, tr.invasions)} (${f1(tr.troopsSunk / g / 1000)}k troops per game), repelled ${pc(tr.repelled, tr.invasions)}; escorted ${pc(tr.escorted, tr.atSea)} of transport time at sea.`);
   const tk = a.tanks;
   const ov = tk.overrun[0] + tk.overrun[1] + tk.overrun[2];
-  out.push(`  Tank divisions: ${f1(tk.formed / g)} formed per game; overrun ${pc(ov, tk.formed)} (at <10% / 10-40% / >=40% strength: ${tk.overrun.join(' / ')}; while defending ${pc(tk.overrunDefending, ov)}), spent ${pc(tk.spent, tk.formed)}.`);
-  out.push(`    division time at war: spearheading ${pc(tk.spearhead, tk.atWar)}, holding at an own attack front ${pc(tk.holdFront, tk.atWar)}, holding elsewhere ${pc(tk.holdFar, tk.atWar)}, driving ${pc(tk.driving, tk.atWar)}; worn (<40%) ${pc(tk.worn, tk.atWar)}.`);
+  out.push(`  Tank divisions: ${f1(tk.formed / g)} formed per game; overrun ${pc(ov, tk.formed)} (at <10% / 10-40% / >=40% strength: ${tk.overrun.join(' / ')}; while defending ${pc(tk.overrunDefending, ov)}), spent ${pc(tk.spent, tk.formed)}; within 60 s after a spearhead ${pc(tk.overrunAfterSpearhead, ov)}; ${f1(tk.ownerGone / g)} gone with their owner.`);
+  out.push(`    division time at war: spearheading ${pc(tk.spearhead, tk.atWar)}, holding at an own attack front ${pc(tk.holdFront, tk.atWar)}, holding elsewhere ${pc(tk.holdFar, tk.atWar)}, driving ${pc(tk.driving, tk.atWar)}; worn (<40%) ${pc(tk.worn, tk.atWar)}; holding time on support ${pc(tk.holdSupport, tk.holdFront + tk.holdFar)} (near its front tile ${pc(tk.holdAtStation, tk.holdSupport)}).`);
   out.push('  Bombers by mission: sorties per game / arrived / on an own attack front (support, cover, manual) / into SAM cover (arrived)');
   for (const m of MISSIONS) {
     const b = a.bombers[m];
