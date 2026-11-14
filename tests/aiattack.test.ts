@@ -15,7 +15,7 @@ import { spawnTankDivision } from '../src/sim/tanks';
 import { TANK_DIVISION_TROOPS } from '../src/sim/config';
 import { hashState } from '../src/sim/hash';
 import { tick } from '../src/sim/sim';
-import { newId } from '../src/sim/state';
+import { newId, setOwner } from '../src/sim/state';
 import { spawnWarshipAt } from '../src/sim/units';
 import { outnumbered } from '../src/sim/navy';
 import { Terrain } from '../src/sim/types';
@@ -231,6 +231,20 @@ describe('AI tank divisions', () => {
       const y = (div.station! / s.map.width) | 0;
       if (d === 'normal') expect(y).toBeGreaterThan(90);
       else expect(y).toBeLessThan(30);
+    }
+  });
+
+  it("an AI division left on a spearhead's thin tip pulls back to a hold tile; a player's stays", () => {
+    for (const human of [false, true]) {
+      const s = landGame();
+      s.players[1].isHuman = human;
+      // A thin finger of our land poking into player 2 (x 30..40, y 15): the division sits at its tip.
+      for (let x = 30; x <= 40; x++) setOwner(s, at(s, x, 15), 1);
+      const div = spawnTankDivision(s, 1, at(s, 40, 15));
+      asAI(s, () => applyAction(s, 1, { type: 'setDivisionMode', unitIds: [div.id], mode: 'support', front: at(s, 41, 15) }));
+      for (let k = 0; k < 40; k++) tick(s);
+      if (human) expect(div.x).toBe(40);
+      else expect(div.x).toBeLessThan(30); // back on solid ground behind the old border
     }
   });
 
