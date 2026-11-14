@@ -21,7 +21,7 @@ import { drawMapSprite, drawUnitMarker, isAirType, setSpriteBakeBudget, spriteLe
 import { artStyleOf, type ArtStyle } from '../art/artStyle';
 import { artFor, motionFor, styleModule } from '../art/registry';
 import { spriteKey } from '../art/shared/keys';
-import type { ParachuteMarkDraw, ParadropDraw, TrailLayer, TrailUnit, TrailView } from '../art/types';
+import type { MotionParams, ParachuteMarkDraw, ParadropDraw, TrailLayer, TrailUnit, TrailView } from '../art/types';
 import { prankView } from '../fx/prankView';
 import { isKillBlast, KILL_EXACT } from '../fx/deaths';
 import { isIncoming } from '../forces';
@@ -109,6 +109,8 @@ export class UnitLayer {
   private trailLayers = new Map<string, TrailLayer>();
   private wakeList: TrailUnit[] = [];
   private contrailList: TrailUnit[] = [];
+  /** more contrails to lay with the planes' (fx/fighters.ts: the fighters over airfields and carriers) */
+  extraContrails: ((into: TrailUnit[], motion: MotionParams) => void) | null = null;
 
   reset(w: number): void {
     this.tracks.clear();
@@ -502,6 +504,7 @@ export class UnitLayer {
       const tu: TrailUnit = { id: e.id, key: spriteKey(e.u.type, e.u.variant), x: e.x, y: e.y, tx: e.tx, ty: e.ty, angle: e.angle, half: e.S, moving: !!e.moving, speed: e.speed, turnRate: e.turn, motion: tr === 'wake' ? ships : tr === 'missile' ? missiles : air };
       (tr === 'wake' ? wakes : trails).push(tu);
     }
+    this.extraContrails?.(trails, air);
     // every layer that holds trails draws each frame (old ones fade out after a style change too)
     const wakeStyle = artStyleOf('wakes');
     const trailStyle = artStyleOf('contrails');
