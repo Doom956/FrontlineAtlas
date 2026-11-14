@@ -4,6 +4,8 @@ interface ImportMetaEnv {
   readonly VITE_ART_STYLE?: string;
   /** one motion preset for every category, or "category: preset" pairs (art/artStyle.ts parseMotionPicks) */
   readonly VITE_ART_MOTION?: string;
+  /** the map style a build starts with: a, b, c or today (render/mapStyle.ts) */
+  readonly VITE_MAP_STYLE?: string;
   /** "1" builds the art lab into the page (shown at #artlab); vite.config.ts turns it into __ART_LAB__ */
   readonly VITE_ART_LAB?: string;
 }

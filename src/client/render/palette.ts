@@ -4,6 +4,8 @@
 // quiet copy of the terrain, with crisp borders in a darker, slightly more saturated shade of the same colour.
 // Everything here runs when the palette changes (a few hundred colours), never per frame; the shader, the minimap
 // and the 2D fallback read the same constants so they agree.
+import type { MapStyle } from './mapStyle';
+
 export type Rgb = [number, number, number];
 export type DisplayRole = 'nation' | 'own' | 'tribe';
 
@@ -23,6 +25,25 @@ export const UNDER_LUM = 0.45;
 export const UNDER_MID = 0.42;
 /** Terrain pattern strength under a nation (1 = as on free land): detail shows through softly, not as patches. */
 export const UNDER_DETAIL = 0.15;
+/**
+ * Per map style (render/mapStyle.ts): the fill's share over the ground (nation, tribe), extra chroma kept and the
+ * lightness range. Pixel terrain tints the ground (the nation colour carries its light and dark); the muted war map is
+ * today's opaque fill in a greyer, narrower military palette (you keep more colour, to find yourself); real ground
+ * shows nations by their border bands and only a light tint.
+ */
+const STYLE_FILL: Record<MapStyle, { nation: number; tribe: number; chroma: number; ownChroma: number; lightMid: number; lightKeep: number }> = {
+  today: { nation: NATION_ALPHA, tribe: TRIBE_ALPHA, chroma: 1, ownChroma: 1, lightMid: LIGHT_MID, lightKeep: LIGHT_KEEP },
+  pixel: { nation: 0.66, tribe: 0.22, chroma: 0.92, ownChroma: 1.0, lightMid: 0.64, lightKeep: 0.72 },
+  muted: { nation: 0.88, tribe: 0.24, chroma: 0.62, ownChroma: 0.82, lightMid: 0.6, lightKeep: 0.6 },
+  ground: { nation: 0.18, tribe: 0.1, chroma: 1.08, ownChroma: 1.08, lightMid: 0.62, lightKeep: 0.72 },
+};
+
+/** Opacity of a territory fill in a map style. */
+export function fillAlpha(style: MapStyle, tribe: boolean): number {
+  const f = STYLE_FILL[style] ?? STYLE_FILL.today;
+  return tribe ? f.tribe : f.nation;
+}
+
 /** Border: lightness x, chroma x of the display colour, and the chroma ceiling (borders stay muted too). */
 const BORDER_LIGHT = 0.7;
 const BORDER_CHROMA = 1.2;
@@ -74,11 +95,12 @@ export function fromOklch(L: number, C: number, h: number): Rgb {
 }
 
 /** The colour territory is painted with: muted, narrower lightness range, same hue. */
-export function displayColor(rgb: readonly number[], opts: { role?: DisplayRole } = {}): Rgb {
+export function displayColor(rgb: readonly number[], opts: { role?: DisplayRole; style?: MapStyle } = {}): Rgb {
   const role = opts.role ?? 'nation';
+  const f = STYLE_FILL[opts.style ?? 'today'] ?? STYLE_FILL.today;
   const [L, C, h] = toOklch(rgb);
-  const L2 = LIGHT_MID + (L - LIGHT_MID) * LIGHT_KEEP;
-  return fromOklch(L2, C * CHROMA_KEEP[role], h);
+  const L2 = f.lightMid + (L - f.lightMid) * f.lightKeep;
+  return fromOklch(L2, C * CHROMA_KEEP[role] * (role === 'own' ? f.ownChroma : f.chroma), h);
 }
 
 /** Border colour for a display colour: darker and a little more saturated, still muted. */
