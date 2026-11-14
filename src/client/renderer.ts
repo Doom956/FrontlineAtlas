@@ -24,6 +24,7 @@ import { DepositLayer } from './render/deposits';
 import { FrontLayer } from './render/fronts';
 import { HeartlandLayer } from './render/heartland';
 import { MapGL } from './render/glmap';
+import { mapStyle } from './render/mapStyle';
 import { Map2D } from './render/map2d';
 import { TrenchFeed } from './render/trenchFeed';
 import { Minimap } from './render/minimap';
@@ -256,6 +257,12 @@ export class Renderer {
     if (fogSend) this.fogSent = fog.bitsGen;
     if (!fogOn) this.fogSent = -1;
     if (gl) {
+      if (gl.style !== mapStyle()) {
+        // the map style changed (render/mapStyle.ts): a new shader, and the palette again (fills depend on the style)
+        gl.setStyle(mapStyle());
+        this.palSig = '';
+        this.updatePalette(state, ui);
+      }
       if (fogSend) gl.uploadFog(fog.tex, fog.bw, fog.bh);
       gl.uploadOwner(this.feed);
       gl.uploadTrench(this.trench);
@@ -270,6 +277,7 @@ export class Renderer {
         fortOn: this.forts.size > 0,
         trenchOn: this.trench.any,
         fogOn,
+        dpr: d,
       });
       this.stats.uploads = gl.uploads;
       this.stats.uploadTiles = gl.uploadTiles;

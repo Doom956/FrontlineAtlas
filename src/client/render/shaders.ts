@@ -3,6 +3,8 @@ import { UNDER_CHROMA, UNDER_DETAIL, UNDER_LUM, UNDER_MID } from './palette';
 import { FOG } from '../../sim/config';
 import { WATER_FADE_END, WATER_MID } from './terrain';
 import type { RGB } from './common';
+import { GROUND, SEA_BANDS, type GroundRamp } from './ground';
+import { MAP_STYLE_ID, type MapStyle } from './mapStyle';
 
 const rgb = (c: RGB): string => c.map((v) => (v / 255).toFixed(4)).join(', ');
 
@@ -27,11 +29,46 @@ void main() {
  *   uAux     R8     supply class (overlay) or spawn mask (spawn phase)
  *   uTrench  R8     trench level 0..4 (trenchFeed.ts): an earth hatch on dug tiles, a zig-zag line along the edge that
  *                   faces another nation, and far out only a darker border on level 2+
+ * Pixel map styles only (render/mapStyle.ts, MAP_STYLE 1-3):
+ *   uGround    RGBA8  hill shading, height, variety, ruggedness per tile (ground.ts), linear
+ *   uGroundCol RGBA8  the pixel ground's average colours, mipmapped (far view)
+ *   uGroundTex RGBA8  this view's ground, one texel per art pixel, drawn by the ground pass (GROUND_PASS, glmap.ts)
  */
-export const MAP_FS = /* glsl */ `#version 300 es
+const ramp4 = (name: string, r: GroundRamp | readonly RGB[]): string =>
+  `const vec3 ${name}[${r.length}] = vec3[${r.length}](${r.map((c) => `vec3(${rgb(c)})`).join(', ')});`;
+
+const GROUND_RAMPS = [
+  ramp4('GRASS', GROUND.grass),
+  ramp4('FOREST', GROUND.forest),
+  ramp4('HILLS', GROUND.hills),
+  ramp4('ROCK', GROUND.rock),
+  ramp4('SNOW', GROUND.snow),
+  ramp4('SAND', GROUND.sand),
+  ramp4('SWAMP', GROUND.swamp),
+  ramp4('TUNDRA', GROUND.tundra),
+  ramp4('WHEAT', GROUND.wheat),
+  ramp4('CROP', GROUND.crop),
+  ramp4('SOIL', GROUND.soil),
+  ramp4('POOL', GROUND.pool),
+  ramp4('SEA', GROUND.sea),
+  ramp4('FOAM', GROUND.foam),
+].join('\n');
+
+/** The map's fragment shader for a map style (render/mapStyle.ts); MAP_FS is today's. */
+export function mapFragmentShader(style: MapStyle): string {
+  return MAP_FS_SRC.replace('#define MAP_STYLE 0', `#define MAP_STYLE ${MAP_STYLE_ID[style]}`);
+}
+/** The ground pass of a pixel map style: the ground alone, one fragment per art pixel (glmap.ts caches it). */
+export function groundFragmentShader(style: MapStyle): string {
+  return MAP_FS_SRC.replace('#define MAP_STYLE 0', `#define MAP_STYLE ${MAP_STYLE_ID[style]}\n#define GROUND_PASS 1`);
+}
+
+const MAP_FS_SRC = /* glsl */ `#version 300 es
 precision highp float;
 precision highp int;
 precision highp usampler2D;
+// 0 today, 1 pixel terrain, 2 muted war map, 3 real ground (render/mapStyle.ts)
+#define MAP_STYLE 0
 
 uniform usampler2D uOwner;
 uniform sampler2D uTerrId;
@@ -282,6 +319,287 @@ vec4 depositAt(int res, ivec2 ti, vec2 f, float px) {
   return vec4(0.0);
 }
 
+#if MAP_STYLE != 0
+// ================================================================ pixel ground (map styles 1-3)
+// The ground is drawn in art pixels: P per tile (a power of two, so the grid only changes at a few zooms), each one
+// sampled at its centre, so every pattern is crisp and pixel-snapped at any zoom. Features live in tile space (a tree,
+// a dune, a peak stay put while you zoom); only how finely they are drawn changes. Colours come in 4-tone ramps lit
+// from the top left (render/ground.ts), like the unit art. Far out the mipmapped average colours take over.
+uniform sampler2D uGround;
+uniform sampler2D uGroundCol;
+uniform sampler2D uGroundTex;
+uniform ivec2 uGOrigin;
+uniform float uP;
+uniform float uDpr;
+
+${GROUND_RAMPS}
+
+const vec2 LIGHT = vec2(-0.7071, -0.7071); // towards the light: top left
+
+// Distance (tile units, square corners) from in-tile position f to the nearest edge of tile ti that borders another
+// owner, looking only at edges closer than maxW; 9.0 = none.
+float edgeDist(ivec2 ti, vec2 f, uint o, int fogHere, float maxW) {
+  float d = 9.0;
+  bool l = f.x < maxW, r = 1.0 - f.x < maxW, u = f.y < maxW, dn = 1.0 - f.y < maxW;
+  if (l && borderTo(ti, ti + ivec2(-1, 0), o, fogHere)) d = min(d, f.x);
+  if (r && borderTo(ti, ti + ivec2(1, 0), o, fogHere)) d = min(d, 1.0 - f.x);
+  if (u && borderTo(ti, ti + ivec2(0, -1), o, fogHere)) d = min(d, f.y);
+  if (dn && borderTo(ti, ti + ivec2(0, 1), o, fogHere)) d = min(d, 1.0 - f.y);
+  if (l && u && borderTo(ti, ti + ivec2(-1, -1), o, fogHere)) d = min(d, max(f.x, f.y));
+  if (r && u && borderTo(ti, ti + ivec2(1, -1), o, fogHere)) d = min(d, max(1.0 - f.x, f.y));
+  if (l && dn && borderTo(ti, ti + ivec2(-1, 1), o, fogHere)) d = min(d, max(f.x, 1.0 - f.y));
+  if (r && dn && borderTo(ti, ti + ivec2(1, 1), o, fogHere)) d = min(d, max(1.0 - f.x, 1.0 - f.y));
+  return d;
+}
+
+// Ordered dither threshold of an art pixel (4 x 4 Bayer), 0..1.
+float bayer4(ivec2 p) {
+  int i = (p.y & 3) * 4 + (p.x & 3);
+  const float m[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+  return (m[i] + 0.5) / 16.0;
+}
+// Tone index 0..3 of a ramp for v in 0..1: hard steps, dithered over a narrow band at each step (dith 0..1).
+int toneIdx(float v, float dth, float dith) {
+  return clamp(int(floor(v * 4.0 + (dth - 0.5) * dith)), 0, 3);
+}
+#define TONE(R, v) R[toneIdx(v, dth, 0.3)]
+
+#ifdef GROUND_PASS
+// Relief of rugged ground (ridged noise) and of rolling ground, in 0..1 at tile position p.
+float hRidge(vec2 p) {
+  float a = 1.0 - abs(vnoise(p / 1.9, 71u) * 2.0 - 1.0);
+  float b = 1.0 - abs(vnoise(p / 0.85, 73u) * 2.0 - 1.0);
+  return a * 0.68 + b * 0.32;
+}
+float hRoll(vec2 p) {
+  return vnoise(p / 1.5, 75u) * 0.65 + vnoise(p / 0.7, 77u) * 0.35;
+}
+
+// A small detail sprite on a sparse grid (cell tile units): 1 when art pixel centre q is the lit pixel of the cell's
+// sprite, -1 on its shadow pixel (one pixel down and right), 0 elsewhere. density = share of cells with one.
+float speck(vec2 q, float cell, float density, uint salt, float P) {
+  vec2 cq = q / cell;
+  ivec2 c = ivec2(floor(cq));
+  if (hash(c, salt) >= density) return 0.0;
+  vec2 at = (vec2(c) + 0.2 + 0.6 * vec2(hash(c, salt + 1u), hash(c, salt + 2u))) * cell;
+  ivec2 a = ivec2(floor(at * P));
+  ivec2 me = ivec2(floor(q * P));
+  if (me == a) return 1.0;
+  if (me == a + ivec2(1, 1) || (P >= 8.0 && me == a + ivec2(0, 1))) return -1.0;
+  return 0.0;
+}
+
+// The land at art pixel centre q (tile units): returns its colour. ter = the (edge-warped) terrain, S = hill shading
+// -1..1, hgt = height 0..1, vary = slow variety 0..1, ap = art pixel coords, P = art pixels per tile. Tone values sit
+// at the middle of a ramp step (0.625 = the base tone), so flat ground is one clean colour and only light, shade and
+// the small details step it up or down.
+vec3 landAt(int ter, vec2 q, float S, float hgt, float vary, ivec2 ap, float P) {
+  float dth = bayer4(ap);
+  float sh = clamp(S, -1.0, 1.0) * 0.26;
+  if (ter == 3) {
+    // forest: packed tree crowns lit on the upper left, dark gaps between them; a crown is about 4 art pixels across
+    // (one per tile when art pixels are coarse, two per tile each way when fine), so trees read at every zoom
+    float tc = P >= 8.0 ? 2.0 : 1.0;
+    vec2 c2 = q * tc;
+    ivec2 c0 = ivec2(floor(c2 - 0.5));
+    float best = 9.0;
+    vec2 rel = vec2(0.0);
+    for (int j = 0; j < 2; j++) {
+      for (int i = 0; i < 2; i++) {
+        ivec2 c = c0 + ivec2(i, j);
+        vec2 ctr = vec2(c) + 0.5 + (vec2(hash(c, 101u), hash(c, 103u)) - 0.5) * 0.5;
+        float r = 0.66 + 0.2 * hash(c, 107u);
+        vec2 l = (c2 - ctr) / r;
+        float d = length(l);
+        if (d < best) { best = d; rel = l; }
+      }
+    }
+    if (best > 1.0) return FOREST[0];
+    float lit = dot(rel, LIGHT);
+    return TONE(FOREST, 0.6 + 0.3 * lit - 0.18 * best * best + sh * 0.6);
+  }
+  if (ter == 4) {
+    // hills: round knolls on a staggered grid, lit on the upper left with a shadow on the lower right; the front ones
+    // (lower on screen) overlap the ones behind
+    vec2 cs = P >= 8.0 ? vec2(1.5, 1.1) : vec2(2.2, 1.6);
+    float row = floor(q.y / cs.y);
+    for (int j = 1; j >= 0; j--) {
+      float r = row + float(j) - 0.0;
+      for (int i = -1; i <= 1; i++) {
+        float ox = 0.5 * mod(r, 2.0);
+        float cxi = floor(q.x / cs.x - ox) + float(i);
+        ivec2 c = ivec2(int(cxi), int(r));
+        if (hash(c, 201u) > 0.5) continue;
+        vec2 ctr = vec2((cxi + ox + 0.5 + (hash(c, 203u) - 0.5) * 0.4) * cs.x, (r + 0.35) * cs.y);
+        vec2 rad = vec2(0.55, 0.42) * cs * (0.8 + 0.4 * hash(c, 205u));
+        vec2 l = (q - ctr) / rad;
+        float d = dot(l, l);
+        if (d > 1.0) continue;
+        float lit = dot(normalize(l + vec2(0.0001)), LIGHT) * sqrt(d);
+        float v = 0.6 + 0.3 * lit + sh * 0.5;
+        if (d > 0.7 && l.y > 0.2 && l.x > -0.3) v -= 0.25; // the foot of the lower edge in shade
+        return TONE(HILLS, v);
+      }
+    }
+    float v = 0.5 + sh + 0.25 * speck(q, 0.9, 0.3, 211u, P);
+    return TONE(HILLS, v);
+  }
+  if (ter == 5) {
+    // mountains: peaks drawn as pixel sprites seen a little from the side: a triangle with its lit left face and dark
+    // right face, a snow cap on the high ranges; peaks lower on screen stand in front; rock between them
+    vec2 cs = P >= 8.0 ? vec2(1.9, 1.15) : vec2(2.8, 1.7);
+    float row = floor(q.y / cs.y);
+    float cap = clamp((hgt - 0.55) * 1.6, 0.0, 0.45);
+    for (int j = 2; j >= 0; j--) {
+      float r = row + float(j);
+      for (int i = -1; i <= 1; i++) {
+        float ox = 0.5 * mod(r, 2.0);
+        float cxi = floor(q.x / cs.x - ox) + float(i);
+        ivec2 c = ivec2(int(cxi), int(r));
+        // peaks gather where the range is high: fewer on its low edges, rock showing between
+        if (hash(c, 301u) > 0.15 + 0.55 * smoothstep(0.45, 0.85, hgt)) continue;
+        float k = 0.65 + 0.7 * hash(c, 303u) * hash(c, 309u) + 0.25 * smoothstep(0.5, 0.9, hgt);
+        float ax = (cxi + ox + 0.5 + (hash(c, 305u) - 0.5) * 0.35) * cs.x;
+        float by = (r + 0.85 + (hash(c, 313u) - 0.5) * 0.3) * cs.y;
+        float ht = cs.y * 1.45 * k;
+        float ay = by - ht;
+        if (q.y < ay || q.y > by) continue;
+        float fy = (q.y - ay) / ht; // 0 at the tip, 1 at the base
+        float hw = cs.x * 0.62 * k * fy;
+        float dx = q.x - ax;
+        if (abs(dx) > hw) continue;
+        float side = dx / max(hw, 0.001); // -1 left edge .. 1 right edge
+        // the faces: lit left, a light ridge line just left of the crest, dark right, darkest at the right foot
+        float v = dx < 0.0 ? 0.78 + 0.1 * step(-0.25, side) : 0.42 - 0.14 * step(0.6, side) * step(0.5, fy);
+        if (fy < cap + (hash(c, 307u) - 0.5) * 0.12) return SNOW[dx < 0.0 ? 3 : 1];
+        return TONE(ROCK, v + sh * 0.3);
+      }
+    }
+    return TONE(ROCK, 0.4 + sh + 0.25 * speck(q, 0.7, 0.35, 311u, P));
+  }
+  if (ter == 6) {
+    // desert: dune ridges where the sand runs deep (a long lit windward side, a crest, a short dark lee), flat sand
+    // with a few pebbles between
+    vec2 dir = vec2(0.9138, 0.4061);
+    float u = dot(q, dir) * 0.42 + vnoise(q / 4.5, 81u) * 1.5;
+    float s = fract(u);
+    float amp = vnoise(q / 2.6, 83u) * 0.7 + vnoise(q / 7.0, 85u) * 0.3;
+    float v = 0.625 + sh;
+    if (amp > 0.5) {
+      if (s > 0.9) v -= 0.25;
+      else if (s > 0.86) v += 0.25;
+    }
+    v += 0.25 * speck(q, 1.1, 0.18, 221u, P);
+    return TONE(SAND, v);
+  }
+  if (ter == 7) {
+    // swamp: dark olive with standing pools (a light rim on their far edge) and reed tufts
+    vec2 rq = mat2(0.8, -0.6, 0.6, 0.8) * q;
+    float pv = vnoise(rq / 0.8, 91u);
+    if (pv > 0.62) {
+      float rim = vnoise((rq + vec2(0.14, 0.98) * (0.7 / P)) / 0.8, 91u);
+      return rim <= 0.62 ? POOL[3] : POOL[1];
+    }
+    float v = 0.625 + sh + 0.25 * speck(q, 0.6, 0.45, 231u, P);
+    return TONE(SWAMP, v);
+  }
+  if (ter == 8) {
+    // tundra: pale ground with lichen specks and drifts of snow
+    vec2 rq = mat2(0.8, -0.6, 0.6, 0.8) * q; // turned, so the drifts do not line up with the tile grid
+    float sv = vnoise(rq / 1.6, 95u) * 0.7 + vnoise(rq / 3.5, 97u) * 0.3;
+    if (sv > 0.69) return TONE(SNOW, 0.6 + sh);
+    float v = 0.625 + sh - 0.25 * abs(speck(q, 1.1, 0.25, 241u, P));
+    return TONE(TUNDRA, v);
+  }
+  // plains: grass with tufts, and in the farmed stretches a patchwork of fields (wheat, crops, now and then ploughed
+  // soil): blocks of 4 x 3 tiles cut once each way at random, so the fields differ in size and never line up as bricks
+  float v = 0.625 + sh;
+  float farm = smoothstep(0.5, 0.75, vary);
+  if (farm > 0.0) {
+    vec2 bq = q / vec2(4.0, 3.0);
+    ivec2 bc = ivec2(floor(bq));
+    vec2 bl = fract(bq);
+    float cx = 0.3 + 0.4 * hash(bc, 141u);
+    float cy = 0.3 + 0.4 * hash(bc, 142u);
+    ivec2 part = ivec2(bl.x < cx ? 0 : 1, bl.y < cy ? 0 : 1);
+    ivec2 fc = bc * 2 + part;
+    if (hash(fc, 143u) < farm * 0.8) {
+      float k = hash(fc, 145u);
+      // a one-pixel hedge on the field's top and left edges when close
+      vec2 lo = vec2(part.x == 0 ? 0.0 : cx, part.y == 0 ? 0.0 : cy) * vec2(4.0, 3.0);
+      vec2 fl = bl * vec2(4.0, 3.0) - lo;
+      if (P >= 8.0 && (fl.x < 1.0 / P || fl.y < 1.0 / P)) return TONE(GRASS, 0.375 + sh);
+      float fv = v;
+      if (P >= 8.0 && fract(fl.y * 2.5 + k) < 0.3) fv -= 0.25;
+      if (k < 0.45) return TONE(WHEAT, fv);
+      if (k < 0.85) return TONE(CROP, fv);
+      return TONE(SOIL, fv);
+    }
+  }
+  v += 0.25 * speck(q, 0.7, 0.4, 251u, P);
+  return TONE(GRASS, v);
+}
+
+// The sea at art pixel centre q: depth bands with dithered edges, wave marks that come and go, shore foam.
+// d = tiles to land (smooth, 0.5 at the coast line).
+vec3 seaAt(vec2 q, float d, ivec2 ap, float P) {
+  float dth = bayer4(ap);
+  float dj = d + (dth - 0.5) * 0.7 + (vnoise(q / 3.0, 151u) - 0.5) * 1.6;
+  int band = dj < ${SEA_BANDS[0].toFixed(2)} ? 0 : dj < ${SEA_BANDS[1].toFixed(2)} ? 1 : dj < ${SEA_BANDS[2].toFixed(2)} ? 2 : dj < ${SEA_BANDS[3].toFixed(2)} ? 3 : 4;
+  vec3 c = SEA[band];
+  // shore foam: one art pixel of surf on the coast line, and a broken second line just off it that drifts
+  float a1 = 0.5 + 1.0 / P;
+  if (d < a1) return mix(c, FOAM[3], 0.62);
+  float a2 = 0.5 + max(2.0 / P, 0.35);
+  if (P >= 4.0 && d < a2 + 1.0 / P && d >= a2 && vnoise(q * 1.6 + vec2(uTime * 0.12, 0.0), 157u) > 0.58) return mix(c, FOAM[2], 0.35);
+  // wave marks: short crests of a few art pixels on a staggered grid, each showing for a while then resting
+  if (d > 2.5 && P >= 4.0) {
+    vec2 cell = P >= 8.0 ? vec2(3.2, 1.7) : vec2(4.4, 2.4);
+    vec2 wq = q / cell;
+    float row = floor(wq.y);
+    wq.x += 0.5 * mod(row, 2.0);
+    ivec2 wc = ivec2(floor(wq));
+    float wh = hash(wc, 161u);
+    float phase = fract(uTime / 9.0 + wh * 3.7);
+    if (wh < (P >= 8.0 ? 0.4 : 0.28) && phase < 0.7) {
+      vec2 l = (fract(wq) - 0.5) * cell; // tile units from the cell centre
+      float hw = max(0.3 + 0.25 * hash(wc, 163u), 1.6 / P);
+      float x = l.x / hw;
+      float y = l.y + (0.12 + 0.5 / P) * (1.0 - x * x); // a crest: the middle a pixel higher than the ends
+      if (abs(x) < 1.0 && abs(y) < 0.5 / P) return mix(c, FOAM[0], band <= 1 ? 0.7 : 0.55);
+    }
+  }
+  return c;
+}
+#endif
+#endif
+
+#ifdef GROUND_PASS
+// The ground of art pixel ap at P art pixels per tile: sea or land, the beach strip, terrain edges that wander.
+vec3 groundAt(ivec2 ap, float P) {
+  vec2 tq = (vec2(ap) + 0.5) / P;
+  if (tq.x < 0.0 || tq.y < 0.0 || tq.x >= uMap.x || tq.y >= uMap.y) return uBg;
+  ivec2 ti = ivec2(floor(tq));
+  int ter = int(texelFetch(uTerrId, ti, 0).r * 255.0 + 0.5);
+  float landDistQ = texture(uDepth, tq / uMap).r * 25.5;
+  if (ter <= 1) return seaAt(tq, landDistQ, ap, P);
+  vec4 gd = texture(uGround, tq / uMap);
+  // terrain edges wander by up to half a tile (land to land only), so forests and fields do not end in staircases
+  vec2 wq = tq + (vec2(vnoise(tq * 1.4, 171u), vnoise(tq * 1.4, 173u)) - 0.5) * 0.9;
+  ivec2 wi = clamp(ivec2(floor(wq)), ivec2(0), ivec2(uMap) - 1);
+  int wter = int(texelFetch(uTerrId, wi, 0).r * 255.0 + 0.5);
+  int gter = wter > 1 ? wter : ter;
+  vec3 c = landAt(gter, tq, (gd.r - 0.5) * 2.0, gd.g, gd.b, ap, P);
+  // a strip of beach on land at the coast
+  if (landDistQ > 0.2 && gter != 6 && gter != 5) c = mix(c, SAND[2], 0.8);
+  return c;
+}
+
+// Ground pass: one fragment per art pixel of the view (glmap.ts sizes the target and sets uGOrigin, uP)
+void main() {
+  outColor = vec4(groundAt(uGOrigin + ivec2(floor(gl_FragCoord.xy)), uP), 1.0);
+}
+#else
 void main() {
   vec2 frag = vec2(gl_FragCoord.x, uView.y - gl_FragCoord.y);
   vec2 t = uCenter + (frag - uView * 0.5) / uZoom;
@@ -317,6 +635,26 @@ void main() {
   // ---- terrain
   float lum = 0.0;
   vec3 col;
+#if MAP_STYLE != 0
+  // art pixels per tile: a power of two that keeps an art pixel 1.25 to 2.5 CSS px wide (the units' mid-zoom scale),
+  // worked out once on the CPU (glmap.ts artPixelsPerTile) so this pass and the ground pass agree exactly
+  float zc = uZoom / uDpr;
+  float P = uP;
+  ivec2 ap = ivec2(floor(t * P));
+  vec2 tq = (vec2(ap) + 0.5) / P;
+  vec2 fq = tq - vec2(ti);
+  // the pixel ground (drawn by the ground pass, one texel per art pixel) fades in over the far view's average colours
+  // (mipmapped: calm, no shimmer far out)
+  float nearG = smoothstep(2.0, 3.2, zc);
+  vec3 farCol = texture(uGroundCol, uv).rgb;
+  vec3 gcol = farCol;
+  if (nearG > 0.0) gcol = mix(farCol, texelFetch(uGroundTex, clamp(ap - uGOrigin, ivec2(0), textureSize(uGroundTex, 0) - 1), 0).rgb, nearG);
+  col = gcol;
+#if MAP_STYLE == 2
+  // muted war map: the pixel ground pulled towards today's calm flat colours (quieter, still lit and textured)
+  if (!water) col = mix(mix(texture(uTerrCol, uv).rgb, farCol, 0.5), col, 0.55);
+#endif
+#else
   float near = smoothstep(1.2, 2.6, uZoom);
   vec3 flat_ = texture(uTerrCol, uv).rgb;
   // tiles to land, smooth (0 on land)
@@ -344,6 +682,7 @@ void main() {
     col = mix(flat_, tc, near);
   }
 
+#endif
   // ---- deposits on unowned land (close zoom)
   uint raw = rawAt(ti);
   uint o = raw & 0xFFFu;
@@ -361,11 +700,35 @@ void main() {
     // Under the fill: the terrain with its pattern softened (blend with the terrain blurred over ~8 tiles, mip level 3,
     // so changes between terrains shade the nation gently instead of cutting it into bands) and pulled towards grey,
     // so forest / hills / desert still show as light and dark without competing with the nation's hue.
+#if MAP_STYLE == 0
     vec3 under = textureLod(uTerrCol, uv, 3.0).rgb;
     vec3 calm = mix(under, col, ${UNDER_DETAIL.toFixed(3)});
     float cy = dot(calm, vec3(0.299, 0.587, 0.114));
     calm = vec3(${UNDER_MID.toFixed(3)} + (cy - ${UNDER_MID.toFixed(3)}) * ${UNDER_LUM.toFixed(3)}) + (calm - cy) * ${UNDER_CHROMA.toFixed(3)};
     vec3 fill = mix(calm, oc, pc.a);
+#else
+    // a colour tint: the nation's hue at the ground's own brightness (pulled kL of the way to the nation colour's), so
+    // fields, trees and hill shading read through it; pc.a = how much of that covers the ground
+    // The nation colour over the ground, plus the ground's own light and dark: its small detail (trees, fields, faces)
+    // in full, its broad brightness (snow against forest) only in part, so the nation reads as one colour at a glance.
+    float gy = dot(col, vec3(0.299, 0.587, 0.114));
+    float avgY = dot(textureLod(uGroundCol, uv, 2.5).rgb, vec3(0.299, 0.587, 0.114));
+#if MAP_STYLE == 1
+    vec2 kD = vec2(0.95, 0.3);
+#elif MAP_STYLE == 2
+    vec2 kD = vec2(0.45, 0.2);
+#else
+    vec2 kD = vec2(1.0, 1.0);
+#endif
+    vec3 lit = oc;
+#if MAP_STYLE == 3
+    // real ground: a light tint close in (the border bands carry the nation), stronger far out where bands are too thin
+    float fa = mix(min(0.62, pc.a * 3.0), pc.a, smoothstep(2.5, 6.0, zc));
+#else
+    float fa = pc.a;
+#endif
+    vec3 fill = mix(col, lit, fa) + fa * ((gy - avgY) * kD.x + (avgY - 0.45) * kD.y) * nearG;
+#endif
     // tribes: a light tint straight over the terrain (no grey wash), so the far map stays land, not grey patches
     if (int(flags.r * 255.0 + 0.5) == 3) fill = mix(col, oc, pc.a);
     if (res > 0 && detail > 0.0) {
@@ -424,6 +787,32 @@ void main() {
   if (o != 0u) {
     bool edge = false;
     float bpx = clamp(uZoom * 0.13, 1.3, 3.2); // border width in device px
+#if MAP_STYLE != 0
+    if (P >= 2.0) {
+      // crisp pixel borders, in whole art pixels: a dark line (two pixels for a hovered nation or a deep trench), then
+      // a one-pixel light inner edge (pixel terrain, muted map) or a thick band of the nation colour (real ground)
+      int relB = int(flags.r * 255.0 + 0.5);
+      float a1 = 1.0 / P;
+      float hb = flags.b > 0.0 ? 2.0 : 1.0;
+      if (uTrenchOn == 1 && live && zc < 5.0 && trenchAt(ti) >= 2) hb = 2.0;
+      float lineW = a1 * hb;
+#if MAP_STYLE == 3
+      float bandW = relB == 3 ? lineW : clamp(floor(10.0 / zc * P + 0.5) / P, lineW + 2.0 * a1, 1.0);
+#else
+      float bandW = relB == 3 ? lineW : lineW + a1;
+#endif
+      float dE = edgeDist(ti, fq, o, fogHere, bandW);
+      if (dE < lineW) edge = true;
+      else if (dE < bandW) {
+#if MAP_STYLE == 3
+        vec3 boc = pal(o, 0).rgb;
+        col = dE >= bandW - a1 ? mix(col, boc, 0.45) : mix(col, boc * 0.94, 0.88);
+#else
+        col = mix(col, vec3(1.0), relB == 1 ? 0.3 : 0.2);
+#endif
+      }
+    } else
+#endif
     if (uZoom < 1.0) {
       int s = int(ceil(1.0 / uZoom));
       edge = borderTo(ti, ti + ivec2(s, 0), o, fogHere) || borderTo(ti, ti - ivec2(s, 0), o, fogHere) || borderTo(ti, ti + ivec2(0, s), o, fogHere) || borderTo(ti, ti - ivec2(0, s), o, fogHere);
@@ -503,4 +892,7 @@ void main() {
   }
   outColor = vec4(col, 1.0);
 }
+#endif
 `;
+
+export const MAP_FS = mapFragmentShader('today');

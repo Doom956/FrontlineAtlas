@@ -8,10 +8,15 @@
 //   trench  trench level per tile (R8, 0..4), dirty blocks from the trench feed (trenchFeed.ts)
 //   fog     fog of war, one texel per 16 x 16 tile block (R8: 255 in view, 110 explored, 0 never seen; LINEAR, so the
 //           shader gets soft edges), re-sent only when the view changes (fog/fogView.ts)
+//   ground  the pixel map styles' height, hill shading and far colours (render/ground.ts), built and sent once per game
+//           the first time such a style is on (today's look never builds them)
+// The fragment shader is built for the map style (render/mapStyle.ts); setStyle relinks it when the style changes.
 import type { MapData } from '../../sim/types';
 import type { RGB } from './common';
-import { borderColor, displayColor, NATION_ALPHA, TRIBE_ALPHA, type DisplayRole, type Rgb } from './palette';
-import { MAP_FS, MAP_VS } from './shaders';
+import { buildGround } from './ground';
+import { mapStyle, type MapStyle } from './mapStyle';
+import { borderColor, displayColor, fillAlpha, type DisplayRole, type Rgb } from './palette';
+import { groundFragmentShader, mapFragmentShader, MAP_VS } from './shaders';
 import { TERRAIN_RGB, RESOURCE_RGB, type TerrainData } from './terrain';
 import { dirtyRects, type TileFeed } from './tiles';
 import type { TrenchFeed } from './trenchFeed';
@@ -35,6 +40,28 @@ export interface MapUniforms {
   trenchOn: boolean;
   /** fog of war is drawn (the fog texture holds this client's view) */
   fogOn?: boolean;
+  /** device px per CSS px (the pixel styles size their art pixels in CSS px) */
+  dpr?: number;
+}
+
+const UNIFORMS = ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uView', 'uCenter', 'uZoom', 'uMap', 'uTime', 'uNowDs', 'uAuxMode', 'uShowRes', 'uFortOn', 'uTrenchOn', 'uTerr', 'uRes', 'uBg', 'uFog', 'uFogOn', 'uFogScale', 'uGround', 'uGroundCol', 'uGroundTex', 'uGOrigin', 'uP', 'uDpr'];
+type TexName = 'owner' | 'terrId' | 'depth' | 'terrCol' | 'pal' | 'fort' | 'aux' | 'trench' | 'fog' | 'ground' | 'groundCol' | 'groundView';
+/** Texture units, in order (the sampler uniform of each is set to its index). */
+const TEX_ORDER: readonly TexName[] = ['owner', 'terrId', 'depth', 'terrCol', 'pal', 'fort', 'aux', 'trench', 'fog', 'ground', 'groundCol', 'groundView'];
+const SAMPLERS = ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uFog', 'uGround', 'uGroundCol', 'uGroundTex'];
+/** Art pixels are at least this many CSS px wide (shaders.ts: P art pixels per tile, a power of two up to 16). */
+const ART_PX_MIN = 1.25;
+/** The ground pass is redrawn at most this often while the view stands still (its waves and foam move slowly). */
+const GROUND_FRAME_MS = 200;
+
+/** Art pixels per tile of the pixel map styles at a zoom (CSS px per tile): a power of two, 1 to 16. */
+export function artPixelsPerTile(zoomCss: number): number {
+  const k = Math.floor(Math.log2(Math.max(1e-6, zoomCss) / ART_PX_MIN));
+  return 2 ** Math.max(0, Math.min(4, k));
+}
+interface Prog {
+  prog: WebGLProgram;
+  loc: Record<string, WebGLUniformLocation | null>;
 }
 
 export class MapGL {
@@ -42,7 +69,19 @@ export class MapGL {
   lost = false;
   private prog: WebGLProgram;
   private loc: Record<string, WebGLUniformLocation | null> = {};
-  private tex: Record<'owner' | 'terrId' | 'depth' | 'terrCol' | 'pal' | 'fort' | 'aux' | 'trench' | 'fog', WebGLTexture>;
+  /** the pixel styles' ground pass (null for today's look): one fragment per art pixel into groundView */
+  private ground: Prog | null = null;
+  private fbo: WebGLFramebuffer | null = null;
+  /** groundView's allocated size and what it holds now (redrawn only when this changes) */
+  private gvW = 0;
+  private gvH = 0;
+  private gvKey = '';
+  private tex: Record<TexName, WebGLTexture>;
+  /** the map style the shader is built for */
+  style: MapStyle;
+  /** this game's map and terrain (the ground textures are built from them when a pixel style first shows) */
+  private game: { map: MapData; terr: TerrainData } | null = null;
+  private groundBuilt = false;
   /** fog texture size in blocks (0 = none uploaded) */
   private fogW = 0;
   private fogH = 0;
@@ -76,22 +115,21 @@ export class MapGL {
 
   private constructor(gl: WebGL2RenderingContext, canvas: HTMLCanvasElement) {
     this.gl = gl;
-    this.prog = link(gl, MAP_VS, MAP_FS);
-    gl.useProgram(this.prog);
-    for (const name of ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uView', 'uCenter', 'uZoom', 'uMap', 'uTime', 'uNowDs', 'uAuxMode', 'uShowRes', 'uFortOn', 'uTrenchOn', 'uTerr', 'uRes', 'uBg', 'uFog', 'uFogOn', 'uFogScale']) {
-      this.loc[name] = gl.getUniformLocation(this.prog, name);
-    }
-    const units = ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uFog'];
-    units.forEach((u, k) => gl.uniform1i(this.loc[u], k));
-    gl.uniform3fv(this.loc.uTerr, new Float32Array(TERRAIN_RGB.flatMap((c) => c.map((v) => v / 255))));
-    gl.uniform3fv(this.loc.uRes, new Float32Array(RESOURCE_RGB.flatMap((c) => c.map((v) => v / 255))));
-    gl.uniform3f(this.loc.uBg, BG[0] / 255, BG[1] / 255, BG[2] / 255);
+    this.style = mapStyle();
     const mk = (): WebGLTexture => {
       const t = gl.createTexture();
       if (!t) throw new Error('createTexture failed');
       return t;
     };
-    this.tex = { owner: mk(), terrId: mk(), depth: mk(), terrCol: mk(), pal: mk(), fort: mk(), aux: mk(), trench: mk(), fog: mk() };
+    this.tex = { owner: mk(), terrId: mk(), depth: mk(), terrCol: mk(), pal: mk(), fort: mk(), aux: mk(), trench: mk(), fog: mk(), ground: mk(), groundCol: mk(), groundView: mk() };
+    try {
+      this.prog = this.usePrograms(this.style);
+    } catch (err) {
+      if (this.style === 'today') throw err;
+      console.warn('map style unavailable', this.style, err);
+      this.style = 'today';
+      this.prog = this.usePrograms('today');
+    }
     const vao = gl.createVertexArray();
     if (!vao) throw new Error('createVertexArray failed');
     this.vao = vao;
@@ -99,6 +137,81 @@ export class MapGL {
       e.preventDefault();
       this.lost = true;
     });
+  }
+
+  /** Links a fragment shader and sets its fixed uniforms. */
+  private makeProgram(fs: string): Prog {
+    const gl = this.gl;
+    const prog = link(gl, MAP_VS, fs);
+    gl.useProgram(prog);
+    const loc: Prog['loc'] = {};
+    for (const name of UNIFORMS) loc[name] = gl.getUniformLocation(prog, name);
+    SAMPLERS.forEach((u, k) => gl.uniform1i(loc[u], k));
+    gl.uniform3fv(loc.uTerr, new Float32Array(TERRAIN_RGB.flatMap((c) => c.map((v) => v / 255))));
+    gl.uniform3fv(loc.uRes, new Float32Array(RESOURCE_RGB.flatMap((c) => c.map((v) => v / 255))));
+    gl.uniform3f(loc.uBg, BG[0] / 255, BG[1] / 255, BG[2] / 255);
+    if (this.w > 0) gl.uniform2f(loc.uMap, this.w, this.h);
+    return { prog, loc };
+  }
+
+  /** Links the map shader of a style (and its ground pass) and makes them current; returns the map program. */
+  private usePrograms(style: MapStyle): WebGLProgram {
+    const main = this.makeProgram(mapFragmentShader(style));
+    let ground: Prog | null = null;
+    if (style !== 'today') {
+      try {
+        ground = this.makeProgram(groundFragmentShader(style));
+      } catch (err) {
+        this.gl.deleteProgram(main.prog);
+        throw err;
+      }
+    }
+    if (this.ground) this.gl.deleteProgram(this.ground.prog);
+    this.ground = ground;
+    this.gvKey = '';
+    this.loc = main.loc;
+    return main.prog;
+  }
+
+  /**
+   * Switches the map style: relinks the shader, sets the per-game uniforms again and builds the ground textures if
+   * the new style needs them. The palette must be written again (setPalette) since fill strength depends on the style.
+   */
+  setStyle(style: MapStyle): void {
+    if (style === this.style) return;
+    const gl = this.gl;
+    const old = this.prog;
+    try {
+      this.prog = this.usePrograms(style);
+    } catch (err) {
+      // a driver that refuses the new shader keeps the one it has (and is not asked again for this style)
+      console.warn('map style unavailable', style, err);
+      this.style = style;
+      return;
+    }
+    gl.deleteProgram(old);
+    this.style = style;
+    this.shown.clear();
+    gl.useProgram(this.prog);
+    if (this.fogW > 0) gl.uniform2f(this.loc.uFogScale, 1 / (this.fogW * 16), 1 / (this.fogH * 16));
+    this.ensureGround();
+  }
+
+  /** Builds and sends the ground textures once per game, when a pixel style is on. */
+  private ensureGround(): void {
+    if (this.style === 'today' || this.groundBuilt || !this.game) return;
+    const gl = this.gl;
+    const { map, terr } = this.game;
+    const g = buildGround(map, terr.depth);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    resetUnpack(gl);
+    this.bind(9, this.tex.ground, gl.LINEAR, gl.LINEAR);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, map.width, map.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, g.data);
+    this.bind(10, this.tex.groundCol, gl.LINEAR_MIPMAP_LINEAR, gl.LINEAR);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, map.width, map.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, g.far);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    this.groundBuilt = true;
+    this.gvKey = '';
   }
 
   /** Max texture side the GPU supports. */
@@ -152,6 +265,20 @@ export class MapGL {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 1, 1, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array([255]));
     this.fogW = 0;
     this.fogH = 0;
+    // ground textures: 1 x 1 placeholders until a pixel style needs them
+    this.bind(9, this.tex.ground, gl.NEAREST, gl.NEAREST);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([128, 0, 128, 0]));
+    this.bind(10, this.tex.groundCol, gl.NEAREST, gl.NEAREST);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([90, 110, 80, 255]));
+    this.game = { map, terr };
+    this.groundBuilt = false;
+    this.gvKey = '';
+    this.ensureGround();
+    if (this.ground) {
+      gl.useProgram(this.ground.prog);
+      gl.uniform2f(this.ground.loc.uMap, w, h);
+    }
+    gl.useProgram(this.prog);
     gl.uniform2f(this.loc.uMap, w, h);
   }
 
@@ -233,12 +360,60 @@ export class MapGL {
     resetUnpack(gl);
   }
 
+  /**
+   * The pixel styles' ground for this view, one texel per art pixel (P per tile), into groundView. Redrawn only when
+   * the view's art pixel grid moves or GROUND_FRAME_MS passes (the waves); far out (below 2 CSS px a tile) the map
+   * shows the far colours only and nothing is drawn. Returns the origin (art pixel coords of texel 0, 0).
+   */
+  private drawGround(viewW: number, viewH: number, u: MapUniforms, P: number): [number, number] {
+    const gl = this.gl;
+    const g = this.ground!;
+    const ox = Math.floor((u.centerX - viewW / 2 / u.zoom) * P) - 2;
+    const oy = Math.floor((u.centerY - viewH / 2 / u.zoom) * P) - 2;
+    const gw = Math.ceil((viewW / u.zoom) * P) + 5;
+    const gh = Math.ceil((viewH / u.zoom) * P) + 5;
+    const key = `${P}:${ox}:${oy}:${gw}:${gh}:${Math.floor((u.timeS * 1000) / GROUND_FRAME_MS)}`;
+    if (key === this.gvKey) return [ox, oy];
+    this.gvKey = key;
+    if (!this.fbo) this.fbo = gl.createFramebuffer();
+    if (gw > this.gvW || gh > this.gvH) {
+      this.gvW = Math.max(gw, this.gvW);
+      this.gvH = Math.max(gh, this.gvH);
+      this.bind(11, this.tex.groundView, gl.NEAREST, gl.NEAREST);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, this.gvW, this.gvH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    }
+    // the target is not bound to a texture unit while drawn into
+    gl.activeTexture(gl.TEXTURE11);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.tex.groundView, 0);
+    gl.viewport(0, 0, gw, gh);
+    gl.useProgram(g.prog);
+    gl.uniform1f(g.loc.uTime, u.timeS);
+    gl.uniform2i(g.loc.uGOrigin, ox, oy);
+    gl.uniform1f(g.loc.uP, P);
+    gl.bindVertexArray(this.vao);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return [ox, oy];
+  }
+
   draw(viewW: number, viewH: number, u: MapUniforms): void {
     const gl = this.gl;
+    const dpr = u.dpr ?? 1;
+    const P = artPixelsPerTile(u.zoom / dpr);
+    TEX_ORDER.forEach((k, unit) => {
+      if (k === 'groundView') return;
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, this.tex[k]);
+    });
+    let origin: [number, number] = [0, 0];
+    if (this.ground && this.groundBuilt && u.zoom / dpr > 2) origin = this.drawGround(viewW, viewH, u, P);
+    gl.activeTexture(gl.TEXTURE11);
+    gl.bindTexture(gl.TEXTURE_2D, this.tex.groundView);
     gl.viewport(0, 0, viewW, viewH);
     gl.useProgram(this.prog);
-    const order: (keyof MapGL['tex'])[] = ['owner', 'terrId', 'depth', 'terrCol', 'pal', 'fort', 'aux', 'trench', 'fog'];
-    order.forEach((k, unit) => {
+    TEX_ORDER.forEach((k, unit) => {
       gl.activeTexture(gl.TEXTURE0 + unit);
       gl.bindTexture(gl.TEXTURE_2D, this.tex[k]);
     });
@@ -253,6 +428,9 @@ export class MapGL {
     gl.uniform1i(L.uFortOn, u.fortOn ? 1 : 0);
     gl.uniform1i(L.uTrenchOn, u.trenchOn ? 1 : 0);
     gl.uniform1i(L.uFogOn, u.fogOn && this.fogW > 0 ? 1 : 0);
+    gl.uniform1f(L.uDpr, dpr);
+    gl.uniform1f(L.uP, P);
+    gl.uniform2i(L.uGOrigin, origin[0], origin[1]);
     gl.bindVertexArray(this.vao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
@@ -267,7 +445,7 @@ export class MapGL {
     const key = ((c[0] << 16) | (c[1] << 8) | c[2]) * 4 + (relation === 1 ? 1 : relation === 3 ? 2 : 0);
     let d = this.shown.get(key);
     if (!d) {
-      const fill = displayColor(c, { role });
+      const fill = displayColor(c, { role, style: this.style });
       d = { fill, border: borderColor(fill) };
       if (this.shown.size > 4096) this.shown.clear();
       this.shown.set(key, d);
@@ -279,7 +457,7 @@ export class MapGL {
     p[ci] = d.fill[0];
     p[ci + 1] = d.fill[1];
     p[ci + 2] = d.fill[2];
-    p[ci + 3] = Math.round((relation === 3 ? TRIBE_ALPHA : NATION_ALPHA) * 255);
+    p[ci + 3] = Math.round(fillAlpha(this.style, relation === 3) * 255);
     const fi = ((row + 4) * PALETTE_W + x) * 4;
     p[fi] = relation;
     p[fi + 1] = traitor ? 255 : 0;
