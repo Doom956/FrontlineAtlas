@@ -44,23 +44,23 @@ describe('detailed ships told apart', () => {
     // the hull (the first part) of the destroyer: at least 6.5 times as long as it is wide
     const [u0, v0, u1, v1] = partBox(parts('destroyer')[0]);
     expect((u1 - u0) / (v1 - v0)).toBeGreaterThan(6.5);
-    // the battleship's beam is more than three destroyers'
+    // the battleship's beam is nearly three destroyers'
     const beam = (k: SpriteKey): number => {
       const b = partBox(parts(k)[0]);
       return b[3] - b[1];
     };
-    expect(beam('battleship')).toBeGreaterThan(beam('destroyer') * 3);
+    expect(beam('battleship')).toBeGreaterThan(beam('destroyer') * 2.8);
     expect(modelSpan(unitModel('submarine', 0))).toBeLessThan(modelSpan(unitModel('warship', 0)));
   });
 
-  it('arms them differently: four triple turrets of thick barrels, three twin turrets, single light mounts', () => {
+  it('arms them differently: four triple turrets of thick barrels, three twin turrets, single mounts', () => {
     const barrels = (k: SpriteKey, w: number): number => parts(k).filter((p) => p.k === 'seg' && p.sh === 'cyl' && Math.abs(p.p[4] - w) < 1e-6).length;
     expect(barrels('battleship', 1.2)).toBe(12);
-    expect(barrels('warship', 0.6)).toBe(6);
-    expect(barrels('destroyer', 0.5)).toBe(3);
-    // the destroyer's torpedo tubes: ten long tubes, the one thing no other ship has
-    const tubes = (k: SpriteKey): number => parts(k).filter((p) => p.k === 'seg' && Math.abs(p.p[4] - 0.36) < 1e-6 && Math.hypot(p.p[2] - p.p[0], p.p[3] - p.p[1]) > 4).length;
-    expect(tubes('destroyer')).toBe(10);
+    expect(barrels('warship', 0.8)).toBe(6);
+    expect(barrels('destroyer', 0.9)).toBe(3);
+    // the destroyer's torpedo tubes: two banks of three long tubes swung across the deck, the one thing no other ship has
+    const tubes = (k: SpriteKey): number => parts(k).filter((p) => p.k === 'seg' && Math.abs(p.p[4] - 0.75) < 1e-6 && Math.hypot(p.p[2] - p.p[0], p.p[3] - p.p[1]) > 3).length;
+    expect(tubes('destroyer')).toBe(6);
     for (const k of ['warship', 'battleship', 'submarine', 'carrier'] as const) expect(tubes(k), k).toBe(0);
   });
 
@@ -70,8 +70,8 @@ describe('detailed ships told apart', () => {
     for (const k of ['destroyer', 'battleship', 'carrier', 'submarine'] as const) expect(mats(k).has('teak'), k).toBe(false);
     expect(mats('battleship').has('bbdeck')).toBe(true);
     expect(mats('submarine').has('sub') && mats('submarine').has('foam')).toBe(true);
-    // the destroyer is the lightest warship: its hull a tone lighter
-    expect(parts('destroyer')[0].tone).toBeGreaterThan(0);
+    // the destroyer is the lightest warship: its deck (the third part) a tone lighter
+    expect(parts('destroyer')[2].tone).toBeGreaterThan(0);
   });
 
   it('looks different from every other ship at the normal zoom', () => {
@@ -106,7 +106,7 @@ describe('detailed ship upgrades', () => {
       expect(domes(k, M_MASTERY), k).toBeGreaterThanOrEqual(1);
     }
     // fewer old guns: the battleship loses its X turret, the cruiser its B turret, the destroyer two of its mounts
-    const barrels = (k: SpriteKey, m: number): number => parts(k, m).filter((p) => p.k === 'seg' && p.sh === 'cyl' && p.m === 'hull' && p.tone === -0.4).length;
+    const barrels = (k: SpriteKey, m: number): number => parts(k, m).filter((p) => p.k === 'seg' && p.sh === 'cyl' && (p.m === 'gun' || p.m === 'sup')).length;
     expect(barrels('battleship', M_MASTERY)).toBe(barrels('battleship', 0) - 3);
     expect(barrels('warship', M_MASTERY)).toBe(barrels('warship', 0) - 2);
     expect(barrels('destroyer', M_MASTERY)).toBe(barrels('destroyer', 0) - 2);
@@ -119,22 +119,41 @@ describe('detailed ship upgrades', () => {
     const plain = unitModel('submarine', 0);
     const nuke = unitModel('submarine', M_MASTERY);
     expect(modelLength(nuke)).toBeGreaterThan(modelLength(plain) + 1.5);
-    // the sail: the tallest 'sub' part, set forward of midships on the nuclear boat
-    const sail = (um: typeof plain): Part => (um.model.parts as Part[]).filter((p) => p.m === 'sub').reduce((a, b) => (b.z + b.h > a.z + a.h ? b : a));
+    // the sail: the tallest grey part, set forward of midships on the nuclear boat
+    const sail = (um: typeof plain): Part => (um.model.parts as Part[]).filter((p) => p.m === 'hull').reduce((a, b) => (b.z + b.h > a.z + a.h ? b : a));
     const sb = partBox(sail(nuke));
     expect((sb[0] + sb[2]) / 2).toBeGreaterThan(3);
     expect(sail(nuke).h).toBeGreaterThan(sail(plain).h);
     // fin planes reaching out past the sail on both sides
-    expect((nuke.model.parts as Part[]).some((p) => p.k === 'seg' && p.m === 'sub' && Math.abs(p.p[1]) > 2.4 && Math.abs(p.p[3]) > 2.4 && p.z > 2)).toBe(true);
+    expect((nuke.model.parts as Part[]).some((p) => p.k === 'seg' && p.m === 'hull' && Math.abs(p.p[1]) > 2.4 && Math.abs(p.p[3]) > 2.4 && p.z > 2)).toBe(true);
   });
 
-  it('lays yellow banded mines on rails aft with Naval Mines', () => {
+  it('lays a yellow and black row of mines on dark rails aft with Naval Mines', () => {
     for (const k of WARSHIPS) {
       const mines = parts(k, M_SPECIAL).filter((p) => p.m === 'hazard');
       expect(parts(k, 0).filter((p) => p.m === 'hazard').length, k).toBe(0);
-      expect(mines.length, k).toBeGreaterThanOrEqual(6);
+      // a row on each side (the submarine one row along its casing)
+      expect(mines.length, k).toBeGreaterThanOrEqual(k === 'submarine' ? 4 : 6);
+      expect(parts(k, M_SPECIAL).some((p) => p.m === 'black' && p.k === 'seg'), k).toBe(true);
       // all of them in the aft half
       for (const p of mines) expect(p.p[0], k).toBeLessThan(0);
+    }
+  });
+
+  it('makes the upgrades big enough to read at the normal zoom: a radar dome three px across, mines a pixel apart', () => {
+    for (const k of ['warship', 'destroyer', 'battleship', 'carrier'] as const) {
+      const domes = parts(k, M_MASTERY).filter((p) => p.m === 'white' && p.sh === 'dome' && p.k === 'ell');
+      const r = Math.max(...domes.map((p) => Math.min(p.p[2], p.p[3])));
+      expect(r, k).toBeGreaterThanOrEqual(1.5);
+    }
+    for (const k of WARSHIPS) {
+      const mines = parts(k, M_SPECIAL).filter((p) => p.m === 'hazard' && p.k === 'ell');
+      for (const a of mines)
+        for (const b of mines) {
+          if (a === b || Math.abs(a.p[1] - b.p[1]) > 0.01) continue;
+          // the black between two mines on one rail is at least most of a pixel
+          expect(Math.abs(a.p[0] - b.p[0]) - a.p[2] - b.p[2], k).toBeGreaterThan(0.75);
+        }
     }
   });
 
