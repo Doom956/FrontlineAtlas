@@ -7,12 +7,15 @@ import { aiAttackLevel, aiMainAttack, clearAIAttackCache } from '../src/sim/aiat
 import { seaContested } from '../src/sim/ai';
 import { computeCoastAndLand } from '../src/sim/mapgen';
 import { aiNavy, aiNeedsRepair, aiShipAim, warshipMaxHp } from '../src/sim/naval2';
+import { aiDivisionModes, divisionStrength, pressedBy } from '../src/sim/armor2';
+import { spawnTankDivision } from '../src/sim/tanks';
+import { TANK_DIVISION_TROOPS } from '../src/sim/config';
 import { hashState } from '../src/sim/hash';
 import { tick } from '../src/sim/sim';
 import { newId } from '../src/sim/state';
 import { spawnWarshipAt } from '../src/sim/units';
 import { Terrain } from '../src/sim/types';
-import type { Building, BuildingType, Difficulty, GameState, Unit } from '../src/sim/types';
+import type { Action, Building, BuildingType, Difficulty, GameState, Unit } from '../src/sim/types';
 import { claimRect, makeFlatGame } from './helpers';
 
 const at = (s: GameState, x: number, y: number): number => y * s.map.width + x;
@@ -156,5 +159,92 @@ describe('AI warships', () => {
       return hashState(s);
     };
     expect(go()).toBe(go());
+  });
+});
+
+/** 60x30 plains: AI player 1 owns x 0..29 (a Factory far back), AI player 2 x 30..59; both AI, frozen (only our calls act). */
+function landGame(difficulty: Difficulty = 'normal'): GameState {
+  const s = makeFlatGame(60, 30, 2, { seed: 5 });
+  claimRect(s, 1, 0, 0, 29, 29);
+  claimRect(s, 2, 30, 0, 59, 29);
+  s.players[2].capital = at(s, 55, 15);
+  s.settings.difficulty = difficulty;
+  s.settings.victoryLandShare = 0.99;
+  s.admin = { aiPassive: [], godMode: [], aiFrozen: true, revealIntel: [] };
+  for (const p of s.players) {
+    if (p.id === 0) continue;
+    p.gold = 1e6;
+    p.iron = 1e5;
+    p.oil = 1e5;
+    p.personality = 'warlord';
+  }
+  s.players[1].techs.push('mechanization');
+  s.players[1].troops = { infantry: 50000, armor: 20000, artillery: 5000 };
+  s.players[2].troops = { infantry: 20000, armor: 0, artillery: 0 };
+  addBuilding(s, 'factory', 1, at(s, 3, 15));
+  return s;
+}
+const weaken = (d: Unit, share: number): void => {
+  for (const k of ['armor', 'infantry', 'artillery'] as const) d.troops[k] = TANK_DIVISION_TROOPS[k] * share;
+};
+/** Player 2 attacks player 1 (a push into the AI's land). */
+function pushed(s: GameState): void {
+  const r = asAI(s, () => applyAction(s, 2, { type: 'attack', tile: at(s, 29, 15), troops: { infantry: 15000, armor: 0, artillery: 0 } }));
+  expect(r.reason ?? 'ok').toBe('ok');
+}
+
+describe('AI tank divisions', () => {
+  it('a holding division about to be rolled over strikes back when strong (Normal up), on Easy it stays', () => {
+    for (const d of ['normal', 'easy'] as Difficulty[]) {
+      const s = landGame(d);
+      const div = spawnTankDivision(s, 1, at(s, 26, 15));
+      expect(pressedBy(s, div)).toBe(0); // no attack on us yet
+      pushed(s);
+      expect(pressedBy(s, div)).toBe(2);
+      const acts: Action[] = [];
+      asAI(s, () => aiDivisionModes(s, 1, (a) => (acts.push(a), applyAction(s, 1, a))));
+      if (d === 'normal') {
+        expect(acts.some((a) => a.type === 'moveTankDivision')).toBe(true);
+        expect(div.state === 2 || div.state === 3).toBe(true);
+      } else expect(acts.some((a) => a.type === 'moveTankDivision')).toBe(false);
+    }
+  });
+
+  it('a worn division under a push, or worn out after a spearhead, drives back to refit at a Factory', () => {
+    for (const d of ['normal', 'easy'] as Difficulty[]) {
+      const s = landGame(d);
+      const a = spawnTankDivision(s, 1, at(s, 26, 15));
+      weaken(a, 0.45);
+      pushed(s);
+      asAI(s, () => aiDivisionModes(s, 1, (x) => applyAction(s, 1, x)));
+      expect(a.mode).toBe('refit');
+      expect(a.state).toBe(1); // on its way to the Factory
+      const t = landGame(d);
+      const b = spawnTankDivision(t, 1, at(t, 20, 5));
+      weaken(b, 0.2);
+      expect(divisionStrength(b)).toBeLessThan(0.4);
+      asAI(t, () => aiDivisionModes(t, 1, (x) => applyAction(t, 1, x)));
+      expect(b.mode).toBe('refit');
+    }
+  });
+
+  it('from Normal up, divisions back our own push before a front we only hold', () => {
+    for (const d of ['normal', 'easy'] as Difficulty[]) {
+      // Player 1 (x 0..29, y 0..29), player 2 east of it, player 3 south of both.
+      const s = makeFlatGame(60, 40, 3, { seed: 5 });
+      claimRect(s, 1, 0, 0, 29, 29);
+      claimRect(s, 2, 30, 0, 59, 29);
+      claimRect(s, 3, 0, 30, 59, 39);
+      s.settings.difficulty = d;
+      s.settings.victoryLandShare = 0.99;
+      s.admin = { aiPassive: [], godMode: [], aiFrozen: true, revealIntel: [] };
+      for (const p of s.players) if (p.id) p.troops = { infantry: 60000, armor: 0, artillery: 0 };
+      const div = spawnTankDivision(s, 1, at(s, 10, 10));
+      asAI(s, () => applyAction(s, 1, { type: 'attack', tile: at(s, 30, 5), troops: { infantry: 10000, armor: 0, artillery: 0 } }));
+      asAI(s, () => applyAction(s, 3, { type: 'attack', tile: at(s, 10, 29), troops: { infantry: 15000, armor: 0, artillery: 0 } }));
+      asAI(s, () => aiDivisionModes(s, 1, (x) => applyAction(s, 1, x)));
+      expect(div.mode).toBe('support');
+      expect(s.map.owner[div.station!]).toBe(d === 'normal' ? 2 : 3);
+    }
   });
 });

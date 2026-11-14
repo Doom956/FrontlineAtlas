@@ -1164,7 +1164,7 @@ export function aiTankDivisions(state: GameState, id: number, act: (a: Action) =
   }
   // 'Support front' mode on the main war's front: they strike weak spots, cut pockets and refit by themselves (armor2.ts).
   aiDivisionModes(state, id, act);
-  const idle = mine.filter((u) => u.state === 0 && total(u.troops) >= FULL_DIVISION * ARMOR_SUPPORT_READY);
+  const idle = mine.filter((u) => u.hp > 0 && u.state === 0 && u.mode !== 'refit' && total(u.troops) >= FULL_DIVISION * ARMOR_SUPPORT_READY);
   if (!idle.length || personality === 'turtle') return;
   // The war we fight with the most troops (nations before tribes), or else the nation attacking us hardest: an idle
   // division strikes back rather than wait to be overrun.

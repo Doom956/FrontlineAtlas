@@ -41,6 +41,7 @@ import {
   ARMOR_VET_SPEED,
   ARMOR_VET_XP,
   TANK_DIVISION_TROOPS,
+  TANK_FALLBACK_RADIUS,
   TANK_MOBILITY,
   TANK_PER_FACTORY_LEVEL,
   TANK_SPEARHEAD_WIDTH,
@@ -48,6 +49,7 @@ import {
 } from './config';
 import { areAllied } from './diplomacy';
 import { atWar } from './naval2';
+import { aiAttackLevel } from './aiattack';
 import { ownGroup } from './navy';
 import { atPeace } from './rules';
 import { addEvent } from './state';
@@ -699,6 +701,51 @@ function otherFront(state: GameState, u: Unit, foe: number): number {
 // AI
 // ---------------------------------------------------------------------------------------------------------------
 
+/** AI divisions: a counter-strike needs this expected depth (tiles); below AI_STAY_STRENGTH a pressed one refits. */
+const AI_COUNTER_MIN_DEPTH = 4;
+const AI_STAY_STRENGTH = 0.6;
+/** A holding division is pressed when land of a nation attacking its owner is this close (tiles). */
+const AI_PRESSED_RADIUS = TANK_FALLBACK_RADIUS;
+
+/**
+ * The nation pushing into AI division u: one with an attack on u's owner running whose land is within
+ * AI_PRESSED_RADIUS of it (nations only; the nearest such tile's owner, ties: lower tile). 0 = none. Pure read.
+ */
+export function pressedBy(state: GameState, u: Unit): number {
+  const me = u.owner;
+  const attackers = new Set<number>();
+  for (const a of state.attacks) if (a.target === me && a.attacker > 0 && !isTribe(state.players[a.attacker]) && isFoe(state, me, a.attacker)) attackers.add(a.attacker);
+  if (!attackers.size) return 0;
+  return nearestOf(state, u, attackers, AI_PRESSED_RADIUS).owner;
+}
+
+/** Nearest tile owned by one of `owners` within r of division u: its tile and owner (-1 / 0 = none). */
+function nearestOf(state: GameState, u: Unit, owners: Set<number>, r: number): { tile: number; owner: number } {
+  const map = state.map;
+  const { width: w, height: h, owner } = map;
+  const cx = Math.round(u.x);
+  const cy = Math.round(u.y);
+  let best = -1;
+  let bestD = r * r + 1;
+  for (let y = Math.max(0, cy - r); y <= Math.min(h - 1, cy + r); y++) {
+    for (let x = Math.max(0, cx - r); x <= Math.min(w - 1, cx + r); x++) {
+      const t = y * w + x;
+      if (!owners.has(owner[t]) || isWater(map.terrain[t])) continue;
+      const d = d2(x, y, cx, cy);
+      if (d < bestD || (d === bestD && t < best)) {
+        bestD = d;
+        best = t;
+      }
+    }
+  }
+  return best >= 0 ? { tile: best, owner: owner[best] } : { tile: -1, owner: 0 };
+}
+
+/** Where a pressed division strikes back into q: q's land nearest it. -1 = none. */
+function counterTile(state: GameState, u: Unit, q: number): number {
+  return nearestOf(state, u, new Set([q]), AI_PRESSED_RADIUS + 4).tile;
+}
+
 /**
  * AI nations (tanks.aiTankDivisions, on decision ticks, through applyAction): put the divisions on 'support' at the
  * front of the war it fights hardest (they then strike weak spots and cut pockets by themselves and refit between
@@ -707,15 +754,42 @@ function otherFront(state: GameState, u: Unit, foe: number): number {
 export function aiDivisionModes(state: GameState, id: number, act: (a: Action) => ActionResult): void {
   const p = state.players[id];
   if (!p || !p.alive || p.isHuman || isTribe(p)) return;
-  const mine = state.units.filter((u) => u.type === 'tankDivision' && u.owner === id && u.hp > 0 && u.state !== 3).sort((a, b) => a.id - b.id);
+  let mine = state.units.filter((u) => u.type === 'tankDivision' && u.owner === id && u.hp > 0 && u.state !== 3).sort((a, b) => a.id - b.id);
+  if (!mine.length) return;
+  const level = aiAttackLevel(state);
+  // Under a push: a holding division about to be rolled over strikes back into the attacker when it is strong enough
+  // and the line looks worth it (Normal and up), else drives back to refit at a Factory, deeper inside, rather than
+  // fall back again and again until it is overrun (93% of overrun AI divisions were holding against an enemy attack).
+  const handled = new Set<number>();
+  const toRefit = (u: Unit): boolean => nearestFactory(state, id, unitTile(state, u)) >= 0 && !nearFactory(state, u) && act({ type: 'setDivisionMode', unitIds: [u.id], mode: 'refit' }).ok;
+  for (const u of mine) {
+    if (u.state !== 0 || divisionMode(u) === 'refit') continue;
+    const s = divisionStrength(u);
+    const q = pressedBy(state, u);
+    if (q <= 0) {
+      // Worn out and holding (a spearhead's leftovers): back to a Factory to refit.
+      if (divisionMode(u) === 'hold' && s < ARMOR_SUPPORT_REFIT && toRefit(u)) handled.add(u.id);
+      continue;
+    }
+    if (level >= 1 && p.personality !== 'turtle' && s >= ARMOR_SUPPORT_READY) {
+      const t = counterTile(state, u, q);
+      if (t >= 0 && spearheadPreview(state, id, u.id, t).expectedDepth >= AI_COUNTER_MIN_DEPTH && act({ type: 'moveTankDivision', unitIds: [u.id], tile: t }).ok) {
+        handled.add(u.id);
+        continue;
+      }
+    }
+    if ((s < AI_STAY_STRENGTH || p.personality === 'turtle') && toRefit(u)) handled.add(u.id);
+  }
+  mine = mine.filter((u) => !handled.has(u.id) && divisionMode(u) !== 'refit');
   if (!mine.length || p.personality === 'turtle') return;
-  // The war we fight with the most troops (nations before tribes), either way.
+  // The war we fight with the most troops (nations before tribes), either way; from Normal up our own attacks count
+  // double a defence (the divisions join our push rather than wait to be overrun behind a front we only hold).
   let foe = 0;
   let foeScore = 0;
   for (const a of state.attacks) {
     const other = a.attacker === id ? a.target : a.target === id ? a.attacker : 0;
     if (other <= 0 || !isFoe(state, id, other)) continue;
-    const score = total(a.troops) * (isTribe(state.players[other]) ? 0.3 : 1);
+    const score = total(a.troops) * (isTribe(state.players[other]) ? 0.3 : 1) * (a.attacker !== id && level >= 1 ? 0.5 : 1);
     if (score > foeScore || (score === foeScore && other < foe)) {
       foe = other;
       foeScore = score;
