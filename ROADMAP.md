@@ -608,6 +608,26 @@ compare them; the game starts in the owner's picks, detailed pixel for everythin
 hits and splashes, burning craters, the atom blast zone, cannon fire, death animations (planes shot down, missiles
 shot down, tanks destroyed, ships sunk) and the detailed troop icons. Details: [docs/ART_STYLES.md](docs/ART_STYLES.md).
 
+## Unit redesign: ships, planes and tanks (2026-11-14, live)
+Every ship type its own shape (battleship, destroyer, submarine, cruiser, carrier with a flight deck), planes and
+tanks each with their own build, and upgrades shown on the model (jets, the strategic bomber, modern tanks, missile
+launchers and radar on ships). Units drawn 1.5 times bigger at normal zoom; crisp shapes in the owner's colour far out.
+
+## Fighters in the sky (2026-11-14, live)
+Fighters circle their airfields and carriers, fly the air superiority patrol and streak in to shoot bombers down.
+
+## Fleets as formations (2026-11-14, live)
+Zoomed out, a fleet is a small formation of ships in the owner's colour instead of a marker with a number.
+
+## Real ground map (2026-11-14, live)
+The default map: fields, forests, hills, mountains, desert and snow in the units' pixel style, each nation a band of
+its colour inside its border. The minimap matches; the old look stays in Menu, Map, as Classic.
+
+## Natural terrain (2026-11-14, live)
+Forest edges thin into lone trees, grass from dry to lush, clearings, rock at the foot of mountains, beaches, rugged
+far peaks with some snow. Without a graphics card the map is drawn lighter, and the ground is built in small steps
+between frames.
+
 ## Queued next (owner, 2026-11-03)
 Later: anonymous real-match stats on the server for balance, rematch + quick chat, replays, real-GPU performance check, flaky scripted-player e2e fix. (The in-game phone HUD shipped with the UI redesign on 2026-11-13.)
 
