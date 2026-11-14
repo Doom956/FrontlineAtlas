@@ -63,26 +63,26 @@ Final table on fresh seeds (baseline -> now; ratio = specialist land vs the norm
 | (i) tick time p99 | 7.2 ms | 7.3 ms | ok |
 Still failing / next: economy specialist is the top pillar (tune the normal-AI economy or Banking/Markets, then re-measure on 192+ pairs: one slot on 48 seeds is noise, slots disagree up to 2x); blitz doctrine over-picked and air under-picked (AI doctrine scoring); SAM/fighter kill share and tank overrun rate still low; heavy-bomber spam (cap or cost curve); atom bombs rarely come early; mercenaries need a bigger role (price or cap). Not checked: humanbench "steady" style, World broken down by map type (6 seeds each), direct measures of destroyers finding subs and forts slowing light tanks. An idle human (no clicks at all) is still eliminated by neighbours/tribes at 3-5 min on Easy and Normal (same as before the round).
 
-## Tutorial mode (done 2026-10-31, made quick 2026-11-01, on `dev`, not merged yet)
+## Tutorial mode (done 2026-10-31, made quick 2026-11-01, live)
 Title screen, **Tutorial**: one practice game of 10 steps (labelled 5 min; a scripted new player finished it in 38-64 s) on a hand-made map (src/sim/tutorialScenario.ts), steps in src/client/tutorial/steps.ts; ends with Play now (an Easy game) or Main menu, and the guide teaches the rest in normal games. Replaced the 8 chapters. `state.tutorial` is only set by setupTutorial (single player); no new actions, no protocol change.
 Open: checked at 1280x720 only; the step text is not translated.
 
-## In-game guide (done 2026-11-01, on `dev`, not merged yet)
+## In-game guide (done 2026-11-01, live)
 Normal games (single player and online, client-side only): a small guide bar above the command bar (moves to the top strip when it would cover its target or an open panel) with a step counter, Show me (map steps), Next / Skip, Hide guide; the tutorial's brass ring + arrow on the button or map tile (spotlight shared in src/client/tutorial/spotlight.ts). Opening: start, Start now, troops, gold, expand, ATTACK %, City, tribe, standings. Then one-time tips: attacked (critical, cuts in), research, doctrine at 5:00, troops full and idle, first strike ready, port/navy, factory/tanks, airfield/air missions, alliance offer, coalition, Arsenal, Shift-select upgrade. Prefs in localStorage `frontline.guide.v1`; Menu: Guide on/off, Restart guide. Replaced the advisor's old first-game steps (the advisor hides while the guide shows). Code in src/client/guide/; tests tests/guide.client.test.ts.
 Playtest 2026-11-01 (three new players in the browser: follows everything / ignores the guide / skips everything then Restart guide; Easy single player, one private online game, Tutorial chapter 1 to the end). Fixed: "Good spot" shown before a start was placed (after Skip); steps after Start showing during the spawn phase (0/0 troops); the City step asking for a second City when one was built before it showed; the expand step without an arrow when no empty land is left (after Restart guide): passed over; online guests told to press a Start now they don't have; the alliance tip pointed at the standings, where the nation often isn't listed (now Diplomacy, which shows the request count); the attacked tip said "A neighbour" with no Show me once a short attack had ended (it keeps the name and tile); waiting tips now come in list order (the doctrine pick no longer waits behind an idle-troops hint after a long opening); plainer troops and Arsenal texts.
 Open: coalition and strike tips never seen in a browser (unit tests only; factory and airfield only in the first runs with extra resources); the attacked tip seen only with a test-made attack (no AI attacked in the runs, human grace is 3 min); a passive player sees the opening for ~5 min (each goal step waits its full time limit); a player who finished the Basics chapter gets the tips without the opening; texts not translated.
 
-## Military tune (2026-11-01, on `dev`, not merged yet)
+## Military tune (2026-11-01, live)
 Kept (config.ts / ai.ts / airwings.ts): Blitz doctrine open ground 30% -> 10%, armor conversion 25% -> 15%, perk terrain ignore 50% -> 30%; Naval doctrine also +40% trade gold; air support zone radius 7 -> 11 (+2 per level, was +1); a nation with more than 2 airfields on missions flies each 50% slower per extra one (`AIR.massFree` / `massCooldown`), AI keeps at most 3 airfields (`AI_MAX_AIRFIELDS`); shore support range 12 -> 18, first-ship bonus 0.35 -> 0.45, cap 0.8 -> 1, beachhead loss next to own warships x0.4 -> x0.2; tank fallback radius 5 -> 8, overrun below 10% (was 20%) of a full division. Log: /tmp/fa-bal/log2.md.
 Results (384 specialist pairs on four seed sets, 288 random-doctrine games, 96+96 medium + 24 World normal games): armor 1.57 -> 1.10, land 0.60 -> 0.77, navy 0.70 -> 0.69, air 0.76 -> 0.71, economy 1.46 -> 1.51; Blitz 1.92 -> 1.55, Naval 0.44 -> 0.73, Air 0.69 -> 0.64; sorties max / median 4.7x -> 2.9x, peak aircraft max 31 -> 18; overrun 72% -> 64-68%; length and leader-at-15 unchanged.
 Still failing: navy and air specialists ~0.7 and economy ~1.5 (the specialists give up economy for their pillar); Air doctrine (cheaper or more bombers, stronger strikes: none helped); Blitz 1.55; atom bombs >= 5 min before the end 22-31% (Fission comes ~36 min, last in the research order); mercenaries 0.6% of winners' gold.
 
-## Economy + new-player tune (2026-11-01, on `dev`, not merged yet)
+## Economy + new-player tune (2026-11-01, live)
 Kept: human grace by difficulty (a walled-in human can't collapse or be absorbed for 10 min on Easy, 6 on Normal, 3 on Hard/Brutal: `HUMAN_GRACE_BY_DIFFICULTY`, `combat.humanGraceSeconds`); Easy AI starts keep 2x the usual spacing from a human's start (`DIFFICULTY.humanRoom`); Easy AI economy growth / income / cap 0.7 / 0.7 / 0.7 -> 0.5 / 0.6 / 0.5; AI mercenaries (aispending.ts): gold gate 8 -> 4 s of income, a push counts below 50% of the bar (was 35%), budget 30% / 50% -> 45% / 60% of gold, 20 s between hires (was 30); merchant personality researches Banking 4th (was 2nd), market lean 1.6 -> 1.3, port 1.6 -> 1.4. Log: /tmp/fa-bal/log2.md (pass 3).
 Results: idle human on Easy / Normal alive at 12 min in 12/12 (was 4/12 and 3/8: absorbed at 3-5 min by the AI that walled it in, no attack); scripted new player Easy rank at 20 min median 6.5 / 6 -> 4 / 5 of 9 (medium / World; fresh seeds 7 / 7 -> 5 / 5), Easy and Normal alive at 20 min 100%, Hard and Brutal unchanged; winners' mercenary share 0.6 -> 1.8% of gold; merchant personality 2.0x -> 1.85x its share (1.6x with that change alone); specialists (288 pairs) navy 0.67 -> 0.82, armor 1.34 -> 1.13, air 0.90 -> 0.83, land 0.69 -> 0.73, economy 1.68 -> 1.66; length 34.8 / 36.6 -> 36.0 / 36.5 min.
 Still failing: economy specialist ~1.65 (its edge is early Agriculture + Banking and a market/lab lean; every gold cut tried (markets, Banking) moved economy into range but pushed navy and air down, since airfields, bombers and warships need gold); mercenaries still a small share; atom bombs >= 5 min before the end 7-8%; AI-only Easy games rarely end within 50 min (13%, was 58%).
 
-## Guide + balance round: final check (2026-11-01, on `dev`, not merged yet)
+## Guide + balance round: final check (2026-11-01, live)
 Checks green: `npx tsc -p .`, `npx tsc -p server`, `npx vitest run` (703 tests; no balance-number test needed updating), `npm run build`; multiplayer `mp-pillars` and `mp-arsenal` PASS (hashes agree; `mp-arsenal` once failed its fixed 5 s "research seen by A, B, C" wait while three browser runs shared the machine, then passed alone). New-player run on Easy at 1280x720: the 9 opening steps each pointed at the right button or tile and moved on; no console errors. How to play has a Guide row (Menu > Help: Guide on / off, Restart guide).
 Balance verification on fresh seeds (7001+) vs base2 (c700ea3); "base" = the old tree on the same fresh seeds. Log: /tmp/fa-bal/log2.md.
 | Target | base2 | Base, fresh seeds | Now [95%] | Result |
@@ -101,13 +101,13 @@ Balance verification on fresh seeds (7001+) vs base2 (c700ea3); "base" = the old
 Claims that didn't hold on fresh seeds: Blitz 1.82 (not 1.55); AI Air-doctrine picks still 3.1; merchant personality 1.48x its share before and after; idle human on Normal alive at 12 min 10/12 (deaths at 10.5 and 11.2 min, after its 6-min grace; Easy 12/12); new player on Easy, World map rank 7.3 -> 6.8 (no clear change; medium 6.75 -> 5.25 is real).
 Still open: economy and land specialists, Blitz and AI Air-doctrine picks, early atom bombs, mercenaries; AI-only Easy games rarely end (5 of 48 within 50 min, was 22); guide: attacked / coalition / strike tips not seen in a browser with a real AI attack, a passive player sees the opening for ~5 min, texts not translated; not checked: Brutal, World by map type.
 
-## Round 3: battle readability (2026-11-01, on `dev`, not merged yet; client-side only)
+## Round 3: battle readability (2026-11-01, live; client-side only)
 - Front lines: borders at war get a line (brass on your fronts, faint for others) with push arrows and troop pills; hover for speed (src/client/render/fronts.ts).
 - Map effects: short flashes for cities and capitals changing hands, ships sunk and bombs, a small shake near a nuke (none with reduced motion); Menu, Map effects off (src/client/fx/). Three new sounds: city taken, city lost, ship sunk.
 - Summary on the game-over card: land over time, key moments, a nations table; the Victory chip reopens it after playing on (src/client/summary/).
 Open: 60 fps not confirmed on a real GPU (far-zoom p95 frame time 20-26 ms vs 16-18 ms before in the software-rendering test browser, few frames, noisy); the player's blue is close to the AI nation Vesperia's; the guide and the advisor sometimes give the same alliance tip.
 
-## Arsenal shop + faster research (2026-11-01, on `dev`, not merged yet)
+## Arsenal shop + faster research (2026-11-01, live)
 Owner: the Arsenal and the Research tree shouldn't all be research points that take that long.
 - Arsenal items (navy, armor, air rows, specials, masteries, Mechanized Infantry, Recon Planes) are BOUGHT, not
   researched (src/sim/procurement.ts, Action `procure`, `Player.procuring` hashed, config `ARSENAL_PRICES`): unlock
@@ -162,7 +162,7 @@ place port/airfield/factory": A found no oil in 5 min and got no Airfield / Fact
 mp-arsenal #2 PASS (game 1: 119 turns 3299..4479, game 2: 119 turns 889..2069); mp-pillars PASS (120 turns 889..2079).
 No hash mismatch or desync flag in any run.
 
-## Round 4: "Follow my war" (2026-11-01, branch `round4`, not merged yet)
+## Round 4: "Follow my war" (2026-11-01, live)
 Owner: strategic bombing (and similar orders) should follow whichever nation I attack, without resetting it.
 - The player's war target (src/sim/warTarget.ts): the nation attacked with the most troops now (tribes count less, a 1.25x margin before switching), else the last one attacked within 60 s.
 - Default for the player's units: air wings (Strategic raids it, Support bombs its main front, Superiority patrols over that front), warships (Bombard / Blockade / Auto go for its coast and ports first) and tank divisions on Support front. AI units are unchanged.
@@ -176,7 +176,7 @@ Group controls (owner: "same for the warships, it's hard to control them, and ai
 - Fleet markers (render/fleets.ts): below zoom 4, warships of one owner within 4 tiles or 16 px on screen (chained) draw as one marker with a count badge; a click on your own marker selects the fleet (Shift adds). Grid-bucketed single linkage: ~0.07 ms per frame for 200 ships.
 - Fix: a Fixed Strategic wing with no war against its nation said "Raiding X · next 2 s"; it now says "Waiting: no war with X".
 
-## Economy rule + doctrine + mercenary tune (2026-11-02, on `dev`, not merged yet)
+## Economy rule + doctrine + mercenary tune (2026-11-02, live)
 Kept, economy (config `GOLD_RULES`, economy.ts): the gold bonuses (markets, Banking, doctrine gold) add up instead of
 multiplying, and Banking / Merchant make each market level pay more but no longer lift the +80% market limit. Economy
 specialist 1.64 -> 1.30 on 384 pairs; the other pillars within noise. Log: /tmp/fa-bal/log4.md.
@@ -212,7 +212,7 @@ budget, or only below 50% with 20 s between hires) didn't bring research back. N
 Still open: economy specialist ~1.3; navy, air and land specialists ~0.7; Blitz random pick ~1.4; AI Air and Fortress
 picks; research at 20 min just under 50%; tick p50 up ~30%; Brutal not checked.
 
-## Balance pass 4: dug-in borders + Air cover (2026-11-02, on `dev`, not merged yet)
+## Balance pass 4: dug-in borders + Air cover (2026-11-02, live)
 Number tuning had stalled, so two automatic, visible mechanics (design: /tmp/fa-bal/design5.md, log: /tmp/fa-bal/log5.md):
 - Trenches (src/sim/trenches.ts, config `TRENCH`): borders between nations dig in over time (level 1 after ~40 s, max
   2, Fortress +1 and twice as fast, Trench Warfare +1); attacks on dug tiles cost +15% and go 15% slower per level;
@@ -281,7 +281,7 @@ Still open: random Naval high and Fortress low on one seed set; AI Air pickers ~
 low; air specialist ~0.7 and economy specialist ~1.4; leader at 15 min +5 points; Air cover costs CPU and AI
 airfield use with no measured gain (simplify or drop: owner's call); Brutal and World specialists not checked.
 
-## Site icon (2026-11-02, on `dev`, not merged yet)
+## Site icon (2026-11-02, live)
 `public/favicon.svg` (navy square, orange territory pushing a gold front line into teal) plus favicon.ico (16/32/48),
 favicon-32.png, apple-touch-icon.png (180), icon-192/512, icon-512-maskable.png and site.webmanifest ("Frontline
 Atlas", short name "Atlas"); relative links in index.html, so it works at `/` and under `/FrontlineAtlas/`. Remake the
@@ -414,7 +414,7 @@ only: no src/sim file changed (released together with the auto round, protocol 1
   events. Open: on phones the new-player guide bar (its own layer) sits over an open drawer, including group rows,
   until Next or Hide guide; hovering a group shows its tooltip over the name.
 
-## Fog of war (2026-11-05, branch `fog`, not merged yet)
+## Fog of war (2026-11-05, live)
 Owner asked for a fog of war game mode. A game rule (Modifiers.fogOfWar), off by default, never in the tutorial.
 Protocol 17 (the owner-chat round also bumps it: whichever merges second takes the next number).
 - Rule: each player sees in 16 x 16 tile blocks. Sources: own land (24 tiles past the border), units (warship 30,
@@ -449,7 +449,7 @@ Protocol 17 (the owner-chat round also bumps it: whichever merges second takes t
   out of sight can still fail with the sim's reason (like an attack); online fog is honour based (every client holds
   the full state).
 
-## Owner powers online and chat (2026-11-05, branch owner-chat, not merged yet)
+## Owner powers online and chat (2026-11-05, live)
 Protocol 18 after the merge with fog of war (the server and every client must be updated together). Nothing here changes a game: chat, banners,
 messages and effects are server messages, never lockstep actions, so they can't desync and aren't hashed. The
 console's own actions still go through the sim as before.
@@ -494,7 +494,7 @@ Not checked: real phones (desktop browser at phone size only); a watching owner'
 (no name set) and spectators would see that name if the owner chats while watching; a teammate's name can show in
 another lobby colour in chat; look-alike letters from other alphabets in names (a Cyrillic "a") still pass.
 
-## Screen pranks and announcement sizing (2026-11-06, branch pranks)
+## Screen pranks and announcement sizing (2026-11-06, live)
 Protocol stays 18: the pranks are new values of the existing `spectacle` kind, and every client since the owner
 powers drops a kind it doesn't know (broadcast.ts checks it against its own list first), so an older client simply
 shows nothing. Nothing here changes a game: all of it is drawing on the player's own screen, never a lockstep action,
@@ -538,7 +538,7 @@ apply under 500 px tall. A drag held while a flip turns is let go (it jumped the
 when a slow machine misses the whole turn between two frames. The unit card, the alert ping and the guide's ring and
 arrow follow a flip or a wobble with the map.
 
-## Owner effects in single-player games (2026-11-11, branch sp-live)
+## Owner effects in single-player games (2026-11-11, live)
 Protocol 19 (spHello, spWelcome, spStatus; adminRooms carries `sp` and `spTotal`; scope 'sp' with an optional spId on
 adminAnnounce / adminSpectacle; adminNotice with spId). Owner's scope: single-player games only receive what is drawn
 on the screen; nothing changes their game, no view of their map, nothing else read from their browser.
@@ -564,7 +564,7 @@ Not checked: the live Render site, a GitHub Pages build and the claude.ai artifa
 path). A card shows the last status, so a game that just started shows 0 min and 0% until its next status. Open
 single-player pages count as visitors on the free Render server and may keep it awake longer.
 
-## Watch single-player games and jumpscare (2026-11-11, branch spectate)
+## Watch single-player games and jumpscare (2026-11-11, live)
 Protocol 20, on top of the single-player link. Two owner-console features, both invisible to the watched player:
 nothing player-facing names watching/admin/console/owner, and the How to play line from sp-live is kept as is.
 - Watch live: a "Watch" button on each Single player card. The owner sends `adminWatch {spId, on}`; the server
@@ -596,8 +596,20 @@ Not done / notes: the audio sting is best-effort (a WebAudio context on the watc
 user gesture; the visual scare always shows). If the watched game hits a sim tick error, the owner's rebuild stops
 advancing at that tick rather than reproducing it.
 
+## UI redesign (2026-11-13, live)
+The hybrid look on every screen: cool steel panels with an amber accent, the swirl main menu, pixel icons, research
+and arsenal cards, the build menu, doctrine, diplomacy and the Spend panel in the card look, the lobby and the end of
+game summary restyled, map overlays in cool steel and cobalt, tips that name the visible control, one design on phones.
+Plan and picks: [docs/UI_REDESIGN_PLAN.md](docs/UI_REDESIGN_PLAN.md), [docs/UI_DIRECTION.md](docs/UI_DIRECTION.md).
+
+## Art styles and detailed pixel art (2026-11-13, live)
+An art switch with three styles per category (refined pixel, detailed pixel, realistic) and an art lab build to
+compare them; the game starts in the owner's picks, detailed pixel for everything. Burning and listing ships, ship
+hits and splashes, burning craters, the atom blast zone, cannon fire, death animations (planes shot down, missiles
+shot down, tanks destroyed, ships sunk) and the detailed troop icons. Details: [docs/ART_STYLES.md](docs/ART_STYLES.md).
+
 ## Queued next (owner, 2026-11-03)
-Later: anonymous real-match stats on the server for balance, rematch + quick chat, replays, in-game phone/touch HUD, real-GPU performance check, flaky scripted-player e2e fix.
+Later: anonymous real-match stats on the server for balance, rematch + quick chat, replays, real-GPU performance check, flaky scripted-player e2e fix. (The in-game phone HUD shipped with the UI redesign on 2026-11-13.)
 
 ## Parked ideas (owner said later / maybe)
 Building limits (city slots, upkeep), rivers and bridges, wonders, game modes (King of the Hill, capital capture, scenarios), quick chat/emotes/rematch, phone layout, making Easy winnable, calmer tribes.
