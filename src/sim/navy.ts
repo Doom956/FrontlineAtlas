@@ -30,6 +30,7 @@ import { moveWarship, spawnWarshipAt, unitCost } from './units';
 import { warshipBuildTicks, warshipCount, warshipLimit, warshipMaxHp } from './naval2';
 import { aiAttackLevel } from './aiattack';
 import { applyWarshipVariant, defaultNavalVariant, navalCanTarget, navalVariantBlock, variantWarshipCost, VARIANT_NAMES } from './variants';
+import { chaseAim, preyAnywhere, roleRank } from './navalroles';
 import { isWater } from './types';
 import type { ActionResult, Building, GameState, NavalVariant, QueuedUnit, Unit } from './types';
 
@@ -379,7 +380,14 @@ const FAR_CHASE_BUDGET = 12000;
 const FAR_RETRY_TICKS = 3 * TICKS_PER_SECOND;
 
 function chaseTo(state: GameState, u: Unit, t: Unit, far = false): boolean {
-  const to = shipTileOf(state, t);
+  // Each type's way (navalroles.ts): meet transports and trade ships ahead on their route; a submarine shoots a
+  // warship from standoff range (-1: it holds where it is).
+  const to = chaseAim(state, u, t);
+  if (to < 0) {
+    u.path = [];
+    u.pathPos = 0;
+    return true;
+  }
   const path = far ? waterPath(state.map, shipTileOf(state, u), to, undefined, FAR_CHASE_BUDGET) : waterPath(state.map, shipTileOf(state, u), to, 4 * WARSHIP_DETECT_RANGE, 4000);
   if (!path) return false;
   u.path = path;
@@ -414,25 +422,28 @@ export function interceptStep(
   const me = u.owner;
   if (u.state === 2) {
     const t = u.chase ? ships.find((s) => s.id === u.chase) : undefined;
-    if (!t || interceptRank(state, me, t, wars) < 0 || d2(t.x, t.y, postX, postY) > leash2 || (odds && outnumbered(state, u, t, ships))) {
-      returnToPost(state, u, far);
+    // A submarine's prey on 'auto' / 'hunt' (transports, trade ships at war) is followed anywhere in its sea.
+    const anywhere = far || (!!t && preyAnywhere(state, u, t, wars));
+    if (!t || roleRank(state, u, t, interceptRank(state, me, t, wars), ships) < 0 || (!anywhere && d2(t.x, t.y, postX, postY) > leash2) || (odds && outnumbered(state, u, t, ships))) {
+      returnToPost(state, u, anywhere);
       return;
     }
     const dt = d2(t.x, t.y, u.x, u.y);
     const lost = fogOn(state) && !visibleTile(state, me, shipTileOf(state, t)); // fog of war: it sailed out of view
-    if ((dt > detect2 && !(far && wars.has(me * 1024 + t.owner) && !lost)) || !navalCanTarget(state, u, t)) {
+    if ((dt > detect2 && !(anywhere && wars.has(me * 1024 + t.owner) && !lost)) || !navalCanTarget(state, u, t)) {
       // out of sight (a submarine dived away: variants.ts)
       u.chaseLost = (u.chaseLost ?? 0) + WARSHIP_SCAN_TICKS;
       if (u.chaseLost >= WARSHIP_CHASE_GIVE_UP * TICKS_PER_SECOND) {
-        returnToPost(state, u, far);
+        returnToPost(state, u, anywhere);
         return;
       }
     } else u.chaseLost = 0;
-    // Re-aim when the target moved away from where we are heading (a far target: by a sixth of the distance).
+    // Re-aim when the target moved away from where we are heading (a far target: by a sixth of the distance), or the
+    // aim moved (an intercept point ahead on its route, a standoff: navalroles.chaseAim).
     const end = u.path.length ? u.path[u.path.length - 1] : -1;
-    if (end < 0 || u.pathPos >= u.path.length || d2(end % w, (end / w) | 0, t.x, t.y) > Math.max(9, dt / 36)) {
-      if (!chaseTo(state, u, t, far)) returnToPost(state, u, far);
-    }
+    const aim = chaseAim(state, u, t);
+    const moved = aim < 0 ? end >= 0 : end < 0 || u.pathPos >= u.path.length || d2(end % w, (end / w) | 0, aim % w, (aim / w) | 0) > Math.max(9, dt / 36);
+    if (moved && !chaseTo(state, u, t, anywhere)) returnToPost(state, u, anywhere);
     return;
   }
   // Patrolling: the best target in sight (rank, then distance, then id) within the leash of our post, on our sea (a
@@ -447,11 +458,14 @@ export function interceptStep(
   for (const s of ships) {
     if (s === u || s.owner === me) continue;
     const d = d2(s.x, s.y, u.x, u.y);
-    if (d > detect2 && (!far || !wars.has(me * 1024 + s.owner))) continue;
+    const anywhere = far || preyAnywhere(state, u, s, wars);
+    if (d > detect2 && (!anywhere || !wars.has(me * 1024 + s.owner))) continue;
     if (fog && !visibleTile(state, me, shipTileOf(state, s))) continue; // fog of war (fog.ts): only ships in view
     if (comp[shipTileOf(state, s)] !== sea) continue;
-    const rank = interceptRank(state, me, s, wars);
-    if (rank < 0 || d2(s.x, s.y, postX, postY) > leash2) continue;
+    const base = interceptRank(state, me, s, wars);
+    if (base < 0 || (!anywhere && d2(s.x, s.y, postX, postY) > leash2)) continue;
+    const rank = roleRank(state, u, s, base, ships); // each type's prey (navalroles.ts)
+    if (rank < 0) continue;
     if (rank > bestRank || (rank === bestRank && (d > bestD || (d === bestD && best !== null && s.id > best.id)))) continue;
     if (!navalCanTarget(state, u, s)) continue; // hidden submarines (variants.ts)
     best = s;
@@ -460,8 +474,9 @@ export function interceptStep(
   }
   if (!best) return;
   if (odds && outnumbered(state, u, best, ships)) return; // a player's 'auto' ship doesn't take on a fight it is outnumbered in
-  if (!chaseTo(state, u, best, far)) {
-    if (far) u.retryTick = state.tick + FAR_RETRY_TICKS;
+  const anywhere = far || preyAnywhere(state, u, best, wars);
+  if (!chaseTo(state, u, best, anywhere)) {
+    if (anywhere) u.retryTick = state.tick + FAR_RETRY_TICKS;
     return;
   }
   u.state = 2;

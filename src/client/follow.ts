@@ -9,7 +9,7 @@ import { buildingAt, buildingsOf } from '../sim/buildings';
 import type { Building, GameState, Unit } from '../sim/types';
 import { ARMOR_SUPPORT_READY, NAVY_REACH, UNITS } from '../sim/config';
 import { followedNation, followTargetOf, liveFoes, warTargetOf } from '../sim/warTarget';
-import { mendingInPort, warshipMaxHp, warshipStance } from '../sim/naval2';
+import { blockadedPorts, mendingInPort, warshipMaxHp, warshipStance } from '../sim/naval2';
 import { divisionStrength } from '../sim/armor2';
 import { airCoverActive, airMissionOf, followRaidOf, wingOf } from '../sim/airwings';
 import { outnumbered } from '../sim/navy';
@@ -112,6 +112,24 @@ export function unitAutoLine(state: GameState, me: number, u: Unit): string {
     if (st === 'escort') return 'Auto: escorting your transports and trade ships';
     if (st === 'hunt') return 'Auto: hunting enemy ships in its sea';
     if (mendingInPort(state, u)) return 'Auto: repairing at port, then back out';
+    const sub = u.variant === 'submarine';
+    // Each type's own jobs (sim/navalroles.ts): escorts, sweeps, landing cover, a submarine's hunt and dives.
+    if (u.state === 4 && st === 'auto') {
+      const s = state.units.find((q) => q.id === u.station);
+      return `Auto: escorting your ${s?.type === 'transport' ? 'transport' : 'trade ship'} (sonar on watch)`;
+    }
+    if (u.state === 2 && u.chase) {
+      const t = state.units.find((q) => q.id === u.chase);
+      if (t && t.owner !== me) return `Auto: hunting a ${t.type === 'transport' ? 'transport' : t.type === 'tradeShip' ? 'trade ship' : t.variant === 'submarine' ? 'submarine' : 'warship'} of ${nameOf(state, t.owner)}`;
+    }
+    if (u.state === 1 && st === 'auto' && sub && (u.retryTick ?? 0) > state.tick) return 'Auto: diving away from enemy destroyers or guns';
+    const end = u.path.length ? u.path[u.path.length - 1] : -1;
+    if (u.state === 1 && st === 'auto' && end >= 0 && u.variant === 'destroyer' && blockadedPorts(state, me).some((t) => near(state, t, end, 12))) {
+      return 'Auto: sweeping your blockaded port for submarines';
+    }
+    if (u.state === 1 && st === 'auto' && end >= 0 && state.units.some((t) => t.type === 'transport' && t.owner === me && t.hp > 0 && near(state, t.target, end, 8))) {
+      return 'Auto: covering your landing';
+    }
     if (u.state === 1 && st === 'auto' && u.path.length && nearOwnPort(state, u.owner, u.path[u.path.length - 1])) {
       // Sailing to a Port: to mend (badly damaged), away from a bigger enemy group, or just back to its post there.
       if (u.hp < NAVY_REACH.repairBelow * warshipMaxHp(u)) return 'Auto: going to port for repairs';
@@ -121,7 +139,9 @@ export function unitAutoLine(state: GameState, me: number, u: Unit): string {
     const fixed = u.fixed && u.fixed > 0 ? u.fixed : 0;
     const aim = fixed || nation;
     const coast = u.state === 3 && u.station !== undefined ? state.map.owner[u.station] : 0;
+    if (coast > 0 && coast !== me && sub && buildingAt(state, u.station!)?.type === 'port') return `Auto: blockading ${nameOf(state, coast)}'s port from hiding${fixed ? ' (fixed)' : ''}`;
     if (coast > 0 && coast !== me) return `Auto: ${st === 'blockade' ? 'blockading' : 'shelling'} ${nameOf(state, coast)}'s coast${fixed ? ' (fixed)' : ''}`;
+    if (sub && st === 'auto') return liveFoes(state, me).length ? 'Auto: hunting trade ships and transports in its sea' : 'Auto: no war, patrolling';
     if (aim <= 0) return liveFoes(state, me).length ? 'Auto: looking for an enemy coast in its sea' : 'Auto: no war, patrolling';
     if ((u.retryTick ?? 0) > state.tick) return `Auto: no coast of ${nameOf(state, aim)} in its sea, waiting`;
     return `Auto: sailing to ${nameOf(state, aim)}'s coast`;
@@ -142,6 +162,14 @@ export function unitAutoLine(state: GameState, me: number, u: Unit): string {
   if (u.state === 1) return `Auto: driving to the front with ${nameOf(state, vs)}`;
   if ((u.retryTick ?? 0) > state.tick) return `Auto: no road to the front with ${nameOf(state, vs)} yet, retrying`;
   return `Auto: supporting the front with ${nameOf(state, vs)}`;
+}
+
+/** True when tiles a and b are within r tiles of each other. */
+function near(state: GameState, a: number, b: number, r: number): boolean {
+  const w = state.map.width;
+  const dx = (a % w) - (b % w);
+  const dy = ((a / w) | 0) - ((b / w) | 0);
+  return dx * dx + dy * dy <= r * r;
 }
 
 /** True when an own finished Port is within 8 tiles of `tile` (where ships mend and fall back to). */

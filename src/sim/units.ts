@@ -98,6 +98,7 @@ import { bomberArrived } from './airstrike';
 import { doctrineLess, doctrineLever, doctrineMore, doctrinePerk } from './doctrines';
 import { TROOP_TYPES, isWater } from './types';
 import { airBomberExtraHp, airVariantOf, carrierFor, navalCanTarget, navalShellMul, navalShellRangeMul } from './variants';
+import { gunRank } from './navalroles';
 import { dropTanksParadropMul, earlyWarningMul, earlyWarningWarnMul, mineLandingLoss, nightDodges, nightEffectMul, nightRadiusMul } from './specials';
 import type { ActionResult, Building, BuildingType, GameState, Troops, Unit, UnitType } from './types';
 
@@ -596,20 +597,24 @@ function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<numbe
   const navalPerk = doctrinePerk(state, u.owner, 'naval');
   // Naval level 3: warships repair at sea.
   if (navalPerk && u.hp < UNITS.warship.hp) u.hp = Math.min(UNITS.warship.hp, u.hp + DOCTRINE_PERKS.naval.warshipRepair * dt);
-  // Shoot the nearest hostile ship in range. Trade ships bound for us or an ally are left alone.
+  // Shoot the nearest hostile ship in range, by its type's preference (navalroles.gunRank: submarines go for
+  // transports and trade ships, destroyers for submarines). Trade ships bound for us or an ally are left alone.
   let target: Unit | null = null;
   let bestD = WARSHIP_RANGE * WARSHIP_RANGE;
+  let bestRank = 99;
   for (const s of ships) {
     if (s === u || s.hp <= 0 || !hostile(state, u.owner, s.owner)) continue;
     if (s.type === 'tradeShip' && (s.targetOwner === u.owner || areAllied(state, s.targetOwner, u.owner))) continue;
-    if (!navalCanTarget(state, u, s)) continue; // hidden submarines (variants.ts)
     const dx = s.x - u.x;
     const dy = s.y - u.y;
     const d = dx * dx + dy * dy;
-    if (d <= bestD) {
-      bestD = d;
-      target = s;
-    }
+    if (d > WARSHIP_RANGE * WARSHIP_RANGE) continue;
+    const rank = gunRank(u, s);
+    if (rank > bestRank || (rank === bestRank && d > bestD)) continue;
+    if (!navalCanTarget(state, u, s)) continue; // hidden submarines (variants.ts)
+    bestD = d;
+    bestRank = rank;
+    target = s;
   }
   // A chasing ship shoots the ship it chases once it is in range.
   const chased = chaseTargetInRange(u, ships, WARSHIP_RANGE);

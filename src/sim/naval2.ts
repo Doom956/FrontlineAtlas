@@ -79,6 +79,7 @@ import { ownedTilesOf } from './territory';
 import { mainFront, shipWarTarget, unitFollows } from './warTarget';
 import { atPeace } from './rules';
 import { aiAttackLevel } from './aiattack';
+import { autoEscorts, coverLanding, destroyerJob, evade, evades, portGuarded, rolesOn, subBlockades, subStationWater, subThreat } from './navalroles';
 import { addEvent } from './state';
 import { hasTech } from './tech';
 import { frontTrench } from './trenches';
@@ -660,7 +661,7 @@ function pickCoast(state: GameState, u: Unit, cx: number, cy: number, reach: num
 }
 
 /** Nearest enemy port (at war) within `reach` of the ship, in its sea (`aim`'s first; with `only` nothing else); -1 = none. */
-function pickPort(state: GameState, u: Unit, reach: number, aim = 0, only = false): number {
+function pickPort(state: GameState, u: Unit, reach: number, aim = 0, only = false, avoid?: (port: number) => boolean): number {
   const c = cache(state);
   if (!c.wars.size) return -1;
   const w = state.map.width;
@@ -675,7 +676,7 @@ function pickPort(state: GameState, u: Unit, reach: number, aim = 0, only = fals
     if (raw > r2) continue;
     const d = raw + (aim > 0 && b.owner !== aim ? OFF_TARGET : 0);
     if (d > bestD || (d === bestD && best >= 0 && b.tile > best)) continue;
-    if (!hostile(state, u.owner, b.owner) || stationWaterFor(state, from, b.tile) < 0) continue;
+    if (!hostile(state, u.owner, b.owner) || stationWaterFor(state, from, b.tile) < 0 || (avoid && avoid(b.tile))) continue;
     best = b.tile;
     bestD = d;
   }
@@ -703,7 +704,9 @@ function stationWaterFor(state: GameState, from: number, coast: number): number 
  * ('auto'): the ship's post (Unit.cargo) moves there too, so it intercepts and patrols around its new spot.
  */
 function goStation(state: GameState, u: Unit, tile: number, roam = false): boolean {
-  const water = stationWater(state, u, tile);
+  // A submarine blockades from a hidden spot inside its longer range (navalroles.ts).
+  const hidden = subBlockades(state, u, tile) ? subStationWater(state, u, tile) : -1;
+  const water = hidden >= 0 ? hidden : stationWater(state, u, tile);
   if (water < 0 || !sail(state, u, water)) return sailFailed(state, u);
   u.state = 3;
   u.station = tile;
@@ -964,7 +967,7 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
   if (u.state === 4) {
     if ((state.tick + u.id) % ESCORT_FOLLOW_TICKS !== 0) return;
     const s = u.station !== undefined ? state.units.find((q) => q.id === u.station) : undefined;
-    if (st !== 'escort' || !s || s.hp <= 0 || s.owner !== u.owner) {
+    if ((st !== 'escort' && !autoEscorts(state, u)) || !s || s.hp <= 0 || s.owner !== u.owner) {
       // Its charge landed, sank or got home: the escort stays on post right here (it supports the landing).
       u.state = 0;
       u.station = undefined;
@@ -981,6 +984,13 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
     return;
   }
   const roams = st === 'auto' || st === 'hunt';
+  // A submarine in danger (a destroyer near its sonar range, guns that see it and outmatch it) dives away
+  // (navalroles.ts): AI ones on any stance, a player's on 'auto'.
+  const sub = u.variant === 'submarine' && rolesOn(state, u.owner);
+  if (sub && (state.tick + u.id) % WARSHIP_SCAN_TICKS === 0 && evades(state, u)) {
+    const threat = subThreat(state, u, ships);
+    if (threat && evade(state, u, threat.x, threat.y)) return;
+  }
   if (st === 'auto' || st === 'hunt' || st === 'hold') {
     if (roams && u.hp < warshipMaxHp(u) - 1e-9 && (state.tick + u.id) % WARSHIP_SCAN_TICKS === 0 && mending(state, u)) {
       // Badly damaged (or mending at a Port): no chases; the think below sends it to a Port.
@@ -994,7 +1004,7 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
     } else {
       const hunt = st === 'hunt';
       // A player's 'auto' ship weighs the odds: no chase where enemy warships outnumber ours (navy.outnumbered).
-      const odds = st === 'auto' && weighsOdds(state, u.owner);
+      const odds = st === 'auto' && weighsOdds(state, u.owner) && !sub; // a submarine weighs its own dangers (navalroles.ts)
       interceptStep(state, u, ships, wars, (hunt ? NAVY_HUNT_DETECT : WARSHIP_DETECT_RANGE) * navalDetectMul(u), WARSHIP_LEASH, hunt, odds);
     }
     if (u.state === 1 || u.state === 2) return;
@@ -1004,7 +1014,7 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
   if (u.state === 1 || u.state === 2) return; // under orders / chasing
   // A player's 'auto' ship outnumbered by enemy warships around it falls back to a Port of its sea.
   // It then waits NAVY_REACH.regroupSeconds before the next coast search (no trips straight back to the same fight).
-  if (st === 'auto' && weighsOdds(state, u.owner) && !portNear(state, u) && outnumbered(state, u, u, ships) && (u.retryTick ?? 0) <= state.tick && goRepair(state, u)) {
+  if (st === 'auto' && !sub && weighsOdds(state, u.owner) && !portNear(state, u) && outnumbered(state, u, u, ships) && (u.retryTick ?? 0) <= state.tick && goRepair(state, u)) {
     u.retryTick = state.tick + NAVY_REACH.regroupSeconds * TICKS_PER_SECOND;
     return;
   }
@@ -1041,6 +1051,13 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
       if (u.state === 3) backToPost(state, u); // left over from another stance
       return;
     case 'auto': {
+      // Each type's job first (navalroles.ts): destroyers escort and sweep, ships cover own landings, submarines raid
+      // and blockade from hiding instead of parking off a coast they cannot shell.
+      if (autoJob(state, u, wars)) return;
+      if (sub) {
+        subBlockade(state, u, aim, only, recheck, ships, true);
+        return;
+      }
       if (u.state === 3) {
         if (u.station !== undefined && keep(validBombard(state, u, u.station))) {
           if (recheck) {
@@ -1060,6 +1077,7 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
       return;
     }
     case 'bombard': {
+      if (!state.players[u.owner].isHuman && coverLanding(state, u, (t) => sailNear(state, u, t))) return; // AI: cover own landings
       if (u.state === 3 && u.station !== undefined && keep(validBombard(state, u, u.station))) {
         if (!recheck) return;
         const t = findCoast(state, u, aim, true);
@@ -1072,6 +1090,10 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
       return;
     }
     case 'blockade': {
+      if (sub) {
+        subBlockade(state, u, aim, only, recheck, ships, false);
+        return;
+      }
       if (u.state === 3 && u.station !== undefined && keep(validBlockade(state, u, u.station))) {
         if (!recheck) return;
         const t = pickPort(state, u, Infinity, aim, true);
@@ -1105,6 +1127,65 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
       return;
     }
   }
+}
+
+/** Sails u to water off `tile` (a coast or port tile; state 1, it patrols there on arrival). False = no route. */
+function sailNear(state: GameState, u: Unit, tile: number): boolean {
+  if ((u.retryTick ?? 0) > state.tick) return false;
+  const water = stationWater(state, u, tile);
+  if (water < 0 || !sail(state, u, water)) return sailFailed(state, u);
+  u.state = 1;
+  u.station = undefined;
+  u.chase = 0;
+  u.chaseLost = 0;
+  return true;
+}
+
+/** 'auto' jobs of a ship's type (navalroles.ts): a destroyer's escort / sweep, cover for an own landing. True = busy. */
+function autoJob(state: GameState, u: Unit, wars: Set<number>): boolean {
+  const escort = (s: Unit): void => {
+    u.state = 4;
+    u.station = s.id;
+    u.chase = 0;
+    u.chaseLost = 0;
+    sail(state, u, escortAim(s, state), 4 * NAVY_ESCORT_PICK);
+  };
+  if (destroyerJob(state, u, wars, escort, (t) => sailNear(state, u, t))) return true;
+  return coverLanding(state, u, (t) => sailNear(state, u, t));
+}
+
+/**
+ * A submarine's blockade (stance 'blockade', and 'auto' at war): a port of the nation it aims at first (others when
+ * `only` is off), not one a hostile destroyer guards, taken from a hidden spot (goStation); it never parks off a coast
+ * (it can't shell). After diving away it keeps off stations for a while (retryTick). Nothing to blockade: an 'auto'
+ * submarine patrols where it is (it still hunts trade ships and transports), a 'blockade' one goes back to its post.
+ */
+function subBlockade(state: GameState, u: Unit, aim: number, only: boolean, recheck: boolean, ships: readonly Unit[], roam: boolean): void {
+  const owners = state.map.owner;
+  const guarded = (port: number): boolean => portGuarded(state, u, port, ships);
+  const leave = (): void => {
+    if (u.state !== 3) return;
+    if (roam) settle(state, u);
+    else backToPost(state, u);
+  };
+  if (u.state === 3 && u.station !== undefined && validBlockade(state, u, u.station) && (!only || owners[u.station] === aim)) {
+    if (guarded(u.station)) {
+      leave();
+      return;
+    }
+    if (!recheck) return;
+    const t = pickPort(state, u, Infinity, aim, true, guarded);
+    if (t >= 0 && t !== u.station) goStation(state, u, t, roam);
+    return;
+  }
+  if ((u.retryTick ?? 0) > state.tick) {
+    leave();
+    return;
+  }
+  const t = pickPort(state, u, Infinity, aim, only, guarded);
+  if (t >= 0 && goStation(state, u, t, roam)) return;
+  if (t < 0 && foesOf(state, u.owner).length) u.retryTick = state.tick + NAVY_REACH.retrySeconds * TICKS_PER_SECOND;
+  leave();
 }
 
 /** Warships near an own finished port mend (NAVY_PORT_REPAIR hp/s, up to their max). */
@@ -1164,7 +1245,9 @@ export function aiNavy(state: GameState, id: number, act: (a: Action) => ActionR
     free.delete(u.id);
     assign(u, 'auto');
   }
-  // Escorts for transports at sea (one each, nearest free ships first).
+  // Escorts for transports at sea (one each, nearest free ships first; from Normal up a destroyer when one is in
+  // reach: its sonar sweeps the lane for submarines, navalroles.ts).
+  const roles = rolesOn(state, id);
   const transports = state.units.filter((u) => u.type === 'transport' && u.owner === id && u.hp > 0);
   for (const t of transports) {
     if (escortsOf(state, t.id) > 0) {
@@ -1175,7 +1258,9 @@ export function aiNavy(state: GameState, id: number, act: (a: Action) => ActionR
     let bestD = NAVY_ESCORT_PICK * NAVY_ESCORT_PICK;
     for (const e of fleet) {
       if (!free.has(e.id) || e.state === 2) continue;
-      const d = d2(e.x, e.y, t.x, t.y);
+      const raw = d2(e.x, e.y, t.x, t.y);
+      if (raw >= NAVY_ESCORT_PICK * NAVY_ESCORT_PICK) continue;
+      const d = raw * (roles && e.variant !== 'destroyer' ? 4 : 1);
       if (d < bestD) {
         bestD = d;
         best = e;
@@ -1190,13 +1275,23 @@ export function aiNavy(state: GameState, id: number, act: (a: Action) => ActionR
   const foePorts = foe ? buildingsOf(state, foe, 'port').filter((b) => b.owner === foe).length : 0;
   // A dug-in land front with the foe (trenches.ts): the patrolling ships bombard instead (they flatten coastal trenches).
   const foeDug = foe > 0 && !isTribe(state.players[foe]) ? frontTrench(state, id, foe) >= AI_NAVY_DUG_LEVEL : false;
+  // From Normal up: a foe at war with Submarines keeps every other destroyer on 'auto' (they escort and sweep own
+  // waters, navalroles.ts); submarines blockade only a port of the foe on their own sea (else they hunt).
+  let subFoe = false;
+  if (roles) for (const q of foesOf(state, id)) if (hasTech(state.players[q], 'submarines')) subFoe = true;
+  const foePortTiles = roles && foe ? buildingsOf(state, foe, 'port').filter((b) => b.owner === foe).map((b) => b.tile) : [];
   for (const u of rest) {
     if (!foe) assign(u, 'auto');
     else {
       // Variants have their job (variants.ts): submarines raid trade (blockade / hunt), battleships bombard, carriers
       // stay on post (their wings strike from there).
       if (u.variant === 'submarine') {
-        assign(u, foePorts > 0 && u.id % 2 === 0 ? 'blockade' : 'hunt');
+        const portHere = !roles ? foePorts > 0 : foePortTiles.some((t) => sameWater(state.map, shipTile(state, u), t));
+        assign(u, portHere && u.id % 2 === 0 ? 'blockade' : 'hunt');
+        continue;
+      }
+      if (u.variant === 'destroyer' && subFoe && u.id % 2 === 1) {
+        assign(u, 'auto');
         continue;
       }
       if (u.variant === 'battleship') {

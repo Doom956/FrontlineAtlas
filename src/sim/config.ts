@@ -1274,6 +1274,32 @@ export const NAVY_REACH = {
   dangerPenalty: 60,
   regroupSeconds: 20,
 } as const;
+/**
+ * What each warship type does by itself (navalroles.ts): a player's ships on 'auto' (and their gunnery and chases on any
+ * stance), AI nations' ships from Normal up (aiattack.ts).
+ */
+export const NAVAL_ROLES = {
+  /** a warship below this share of its hp, or with no other hostile warship within loneRadius, is soft prey for a submarine */
+  softHp: 0.5,
+  loneRadius: 30,
+  /** submarines chase a warship only to this share of WARSHIP_RANGE (they shoot from out there, unseen) */
+  standoff: 0.7,
+  /** a hostile destroyer within destroyerSonar + this many tiles of a submarine (or of its prey) is too close */
+  destroyerPad: 14,
+  /** a threatened submarine dives away this many tiles, then keeps off stations for evadeSeconds */
+  evadeDist: 30,
+  evadeSeconds: 20,
+  /** a blockading submarine sits this many tiles inside its blockade range from the port (hidden, outside mines) */
+  blockadeInset: 1.5,
+  /** chases of transports and trade ships aim this far ahead on their route (tiles of lead per tile of distance) */
+  leadMax: 60,
+  /** destroyers: escort own trade ships (when a foe at war has submarines) with at most this share of the auto destroyers */
+  tradeEscortShare: 0.5,
+  /** a ship goes to cover an own landing on a nation within this many tiles of it (one per landing, the nearest) */
+  landingReach: 150,
+  /** carriers on 'auto' keep station this many tiles off the coast they cover (their wings strike from there) */
+  carrierStandoff: 18,
+} as const;
 /** 'auto' / 'bombard' / 'blockade': a ship looks for enemy coast this far (tiles) around it first, then anywhere in its sea */
 export const NAVY_STATION_SEEK = 120;
 /** a ship on station sits within this many tiles of the coast / port tile it covers */

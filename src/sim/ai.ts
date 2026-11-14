@@ -101,7 +101,7 @@ import { aiSpend, aiTechOrder, rejectedBranch } from './aispending';
 import { allyTrustDiscount } from './spending';
 import { techStatus } from './techtree';
 import { aiTankDivisions } from './tanks';
-import { aiNavy, atWar as navalAtWar } from './naval2';
+import { aiNavy, atWar as navalAtWar, supportingShips } from './naval2';
 import { aiAttackLevel } from './aiattack';
 import { DOCTRINE_IDS, TROOP_TYPES, Resource, isTribe, isWater } from './types';
 import type { Attack, Building, BuildingType, Difficulty, DoctrineId, GameState, Personality, Player, TechId, TerrainId, TroopType, Troops } from './types';
@@ -1079,6 +1079,8 @@ const AI_TRENCH_GUNS_LEVEL = 1.5;
 const AI_TRENCH_ARTILLERY = 0.1;
 /** Landing score x this on the coast of a nation whose front with us is dug in (AI_TRENCH_GUNS_LEVEL+). */
 const AI_TRENCH_LANDING = 1.5;
+/** From Normal up, landing score + this for a coast within support range of an own warship (cheap beachhead). */
+const AI_LANDING_FLEET_BONUS = 5;
 /** Extra armor / artillery share the AI wants under a doctrine. */
 const DOCTRINE_MIX: Partial<Record<DoctrineId, { armor: number; artillery: number }>> = {
   blitz: { armor: 0.1, artillery: 0 },
@@ -2282,17 +2284,31 @@ function landingTarget(ctx: Ctx, coast: readonly number[]): { tile: number; from
     if (owner[t] === 0) candidates.push(t);
   }
   // Coasts of nations and tribes we clearly outmatch (landings are riskier than land wars).
+  const eligible = new Set<number>();
   for (const q of state.players) {
     if (q.id === 0 || q.id === id || !q.alive || coastCount(state, q.id) === 0) continue;
     const ratio = ctx.army / Math.max(1, estArmy(state, m, diff, id, q.id));
     if (ratio < (isTribe(q) ? 2 : 0.4) || areAllied(state, id, q.id) || atPeace(state, id, q.id)) continue;
     if (!isTribe(q) && ratio < warNeed(ctx, q.id) * 1.1) continue;
     if (q.isHuman && humanLimit(ctx, q.id, 1, wars) <= 0) continue;
+    eligible.add(q.id);
     // Fog of war (fog.ts): only coast this AI has seen (sailing to empty land is how anyone explores).
     if (fogOn(state)) {
       let n = 0;
       for (const t of sampleOwnedTiles(state, q.id, 'coast', 12)) if (n < 3 && knownTile(state, id, t)) (candidates.push(t), n++);
     } else for (const t of sampleOwnedTiles(state, q.id, 'coast', 3)) candidates.push(t);
+  }
+  // From Normal up: the coasts our warships shell now (on station off them) are candidates too, so landings go in
+  // under the guns (AI_LANDING_FLEET_BONUS below).
+  if (aiAttackLevel(state) >= 1 && eligible.size) {
+    let n = 0;
+    for (const u of state.units) {
+      if (n >= 4 || u.type !== 'warship' || u.owner !== id || u.hp <= 0 || u.state !== 3 || u.station === undefined) continue;
+      const t = u.station;
+      if (!state.map.coastal[t] || !eligible.has(owner[t]) || (fogOn(state) && !knownTile(state, id, t))) continue;
+      candidates.push(t);
+      n++;
+    }
   }
   let best: { tile: number; from: number; owner: number } | null = null;
   let bestScore = -Infinity;
@@ -2316,6 +2332,9 @@ function landingTarget(ctx: Ctx, coast: readonly number[]): { tile: number; from
     let s = tileValue(state, t) * 10 - d * 0.08 + (q === 0 ? 6 : 0);
     if (q > 0 && isTraitor(state, q)) s += 3;
     if (q > 0 && isTribe(state.players[q])) s += 2;
+    // From Normal up: a landing next to our own warships pays a fifth of the beachhead and stays supplied longer
+    // (naval2.navalBeachheadMul): land where the fleet is.
+    if (q > 0 && aiAttackLevel(state) >= 1 && supportingShips(state, id, t) > 0) s += AI_LANDING_FLEET_BONUS;
     // Landings go around dug-in lines (trenches.ts; coasts never dig).
     if (q > 0 && s > 0 && !isTribe(state.players[q])) {
       let lvl = dugFront.get(q);
