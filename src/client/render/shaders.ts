@@ -335,6 +335,7 @@ uniform sampler2D uGroundTex;
 uniform ivec2 uGOrigin;
 uniform float uP;
 uniform float uDpr;
+uniform float uNearOn;
 
 ${GROUND_RAMPS}
 
@@ -838,7 +839,8 @@ void main() {
   vec2 fq = tq - vec2(ti);
   // the pixel ground (drawn by the ground pass, one texel per art pixel) fades in over the far view's average colours
   // (mipmapped: calm, no shimmer far out)
-  float nearG = smoothstep(2.0, 3.2, zc);
+  // (uNearOn 0: no ground pass to show, the far colours at every zoom: the light map, or while the ground is built)
+  float nearG = smoothstep(2.0, 3.2, zc) * uNearOn;
   vec3 farCol = texture(uGroundCol, uv).rgb;
   vec3 gcol = farCol;
   if (nearG > 0.0) gcol = mix(farCol, texelFetch(uGroundTex, clamp(ap - uGOrigin, ivec2(0), textureSize(uGroundTex, 0) - 1), 0).rgb, nearG);

@@ -5,7 +5,7 @@ import { isTribe, type GameState } from '../../sim/types';
 import type { Camera } from '../camera';
 import { clamp, ctx2d, makeCanvas, type RGB } from './common';
 import { displayColor, GROUND_TINT, groundTint, NATION_ALPHA, paintOver, TRIBE_ALPHA, type DisplayRole } from './palette';
-import { groundFor } from './ground';
+import { groundLater } from './ground';
 import { mapStyle } from './mapStyle';
 import type { TerrainData } from './terrain';
 import { OWNER_MASK, type TileFeed } from './tiles';
@@ -31,6 +31,10 @@ export class Minimap {
   private terr: TerrainData | null = null;
   /** real ground (map style C): the ground's far colours under everything, nations as its hue-true tint; else null */
   private ground: Uint8Array | null = null;
+  /** the ground's far colours are built: the next draw picks them up (syncShown) */
+  private readonly groundReady = (): void => {
+    this.dirty = true;
+  };
   private game: GameState | null = null;
   private colors: readonly RGB[] = [];
   /** palette.ts display colour and fill opacity per owner (rebuilt when the colours, the player count or you change) */
@@ -93,7 +97,12 @@ export class Minimap {
   private syncShown(state: GameState, humanId: number): void {
     const style = mapStyle();
     const key = `${state.players.length}:${humanId}:${style}`;
-    this.ground = style === 'ground' && this.terr && this.game ? groundFor(this.game.map, this.terr.depth).far : null;
+    // real ground's far colours once they are built (render/ground.ts builds them between frames); today's until then
+    const ground = style === 'ground' && this.terr && this.game ? groundLater(this.game.map, this.terr.depth, this.groundReady)?.far ?? null : null;
+    if (ground !== this.ground) {
+      this.ground = ground;
+      this.gen = -1; // repaint every pixel
+    }
     if (!this.colorsStale && key === this.shownKey) return;
     this.colorsStale = false;
     this.shownKey = key;

@@ -13,7 +13,7 @@
 // The fragment shader is built for the map style (render/mapStyle.ts); setStyle relinks it when the style changes.
 import type { MapData } from '../../sim/types';
 import type { RGB } from './common';
-import { groundFor } from './ground';
+import { groundLater } from './ground';
 import { mapStyle, type MapStyle } from './mapStyle';
 import { borderColor, displayColor, fillAlpha, type DisplayRole, type Rgb } from './palette';
 import { groundFragmentShader, mapFragmentShader, MAP_VS } from './shaders';
@@ -44,7 +44,7 @@ export interface MapUniforms {
   dpr?: number;
 }
 
-const UNIFORMS = ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uView', 'uCenter', 'uZoom', 'uMap', 'uTime', 'uNowDs', 'uAuxMode', 'uShowRes', 'uFortOn', 'uTrenchOn', 'uTerr', 'uRes', 'uBg', 'uFog', 'uFogOn', 'uFogScale', 'uGround', 'uGroundCol', 'uGroundTex', 'uGOrigin', 'uP', 'uDpr', 'uMixA', 'uMixB', 'uMixC'];
+const UNIFORMS = ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uView', 'uCenter', 'uZoom', 'uMap', 'uTime', 'uNowDs', 'uAuxMode', 'uShowRes', 'uFortOn', 'uTrenchOn', 'uTerr', 'uRes', 'uBg', 'uFog', 'uFogOn', 'uFogScale', 'uGround', 'uGroundCol', 'uGroundTex', 'uGOrigin', 'uP', 'uDpr', 'uMixA', 'uMixB', 'uMixC', 'uNearOn'];
 type TexName = 'owner' | 'terrId' | 'depth' | 'terrCol' | 'pal' | 'fort' | 'aux' | 'trench' | 'fog' | 'ground' | 'groundCol' | 'groundView' | 'mixA' | 'mixB' | 'mixC';
 /** Texture units, in order (the sampler uniform of each is set to its index). */
 const TEX_ORDER: readonly TexName[] = ['owner', 'terrId', 'depth', 'terrCol', 'pal', 'fort', 'aux', 'trench', 'fog', 'ground', 'groundCol', 'groundView', 'mixA', 'mixB', 'mixC'];
@@ -53,6 +53,20 @@ const SAMPLERS = ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'u
 const ART_PX_MIN = 1.25;
 /** The ground pass is redrawn at most this often while the view stands still (its waves and foam move slowly). */
 const GROUND_FRAME_MS = 200;
+/**
+ * Software rendering (no GPU: SwiftShader, llvmpipe and the like) draws every fragment on the CPU, so the map takes
+ * all of it and the page (and others in the same browser) stalls. There the map is drawn light: no ground pass (the
+ * pixel styles show their far colours at every zoom) and only when something changed, at most this often: moving,
+ * after an upload, standing still (the slow pulses).
+ */
+const LITE_MOVE_MS = 33;
+const LITE_CHANGE_MS = 200;
+const LITE_IDLE_MS = 500;
+
+/** Whether a WebGL renderer name is a software one (the light map, above). */
+export function softwareRenderer(name: string): boolean {
+  return /swiftshader|llvmpipe|softpipe|software|basic render/i.test(name);
+}
 
 /** Art pixels per tile of the pixel map styles at a zoom (CSS px per tile): a power of two, 1 to 16. */
 export function artPixelsPerTile(zoomCss: number): number {
@@ -96,6 +110,15 @@ export class MapGL {
   uploads = 0;
   /** tiles uploaded this frame (stats) */
   uploadTiles = 0;
+  /** software rendering: the light map (LITE_* above) */
+  readonly lite: boolean;
+  /** draws skipped by the light map (stats) */
+  skipped = 0;
+  /** light map: something was uploaded since the last draw; what the last draw showed, and when */
+  private changed = true;
+  private drawnKey = '';
+  private drawnSize = '';
+  private drawnMs = -1e9;
 
   static create(canvas: HTMLCanvasElement): MapGL | null {
     let gl: WebGL2RenderingContext | null = null;
@@ -116,6 +139,14 @@ export class MapGL {
   private constructor(gl: WebGL2RenderingContext, canvas: HTMLCanvasElement) {
     this.gl = gl;
     this.style = mapStyle();
+    let renderer = '';
+    try {
+      const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+      renderer = String(gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER) ?? '');
+    } catch {
+      renderer = '';
+    }
+    this.lite = softwareRenderer(renderer);
     const mk = (): WebGLTexture => {
       const t = gl.createTexture();
       if (!t) throw new Error('createTexture failed');
@@ -158,7 +189,8 @@ export class MapGL {
   private usePrograms(style: MapStyle): WebGLProgram {
     const main = this.makeProgram(mapFragmentShader(style));
     let ground: Prog | null = null;
-    if (style !== 'today') {
+    this.changed = true;
+    if (style !== 'today' && !this.lite) {
       try {
         ground = this.makeProgram(groundFragmentShader(style));
       } catch (err) {
@@ -197,26 +229,37 @@ export class MapGL {
     this.ensureGround();
   }
 
-  /** Builds and sends the ground textures once per game, when a pixel style is on. */
+  /** the ground of this game is built (in slices between frames, render/ground.ts groundLater): send it */
+  private readonly groundReady = (): void => this.ensureGround();
+
+  /**
+   * Sends the ground textures once per game, when a pixel style is on. They are built between frames the first time;
+   * until then the map shows today's flat terrain colours (setGame) and no ground pass.
+   */
   private ensureGround(): void {
-    if (this.style === 'today' || this.groundBuilt || !this.game) return;
+    if (this.style === 'today' || this.groundBuilt || !this.game || this.lost) return;
     const gl = this.gl;
     const { map, terr } = this.game;
-    const g = groundFor(map, terr.depth);
+    const g = groundLater(map, terr.depth, this.groundReady);
+    if (!g) return;
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     resetUnpack(gl);
-    this.bind(9, this.tex.ground, gl.LINEAR, gl.LINEAR);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, map.width, map.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, g.data);
     this.bind(10, this.tex.groundCol, gl.LINEAR_MIPMAP_LINEAR, gl.LINEAR);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, map.width, map.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, g.far);
     gl.generateMipmap(gl.TEXTURE_2D);
-    // terrain shares, moisture and nearness (natural ground's soft edges): sampled linearly between tiles
-    for (const [unit, name, px, tw, th] of [[12, 'mixA', g.mixA, map.width, map.height], [13, 'mixB', g.mixB, map.width, map.height], [14, 'mixC', g.mixC, g.mixCW, g.mixCH]] as const) {
-      this.bind(unit, this.tex[name], gl.LINEAR, gl.LINEAR);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, tw, th, 0, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    // the light map draws the far colours only: the rest is for the ground pass
+    if (!this.lite) {
+      this.bind(9, this.tex.ground, gl.LINEAR, gl.LINEAR);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, map.width, map.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, g.data);
+      // terrain shares, moisture and nearness (natural ground's soft edges): sampled linearly between tiles
+      for (const [unit, name, px, tw, th] of [[12, 'mixA', g.mixA, map.width, map.height], [13, 'mixB', g.mixB, map.width, map.height], [14, 'mixC', g.mixC, g.mixCW, g.mixCH]] as const) {
+        this.bind(unit, this.tex[name], gl.LINEAR, gl.LINEAR);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, tw, th, 0, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      }
     }
     this.groundBuilt = true;
     this.gvKey = '';
+    this.changed = true;
   }
 
   /** Max texture side the GPU supports. */
@@ -273,8 +316,10 @@ export class MapGL {
     // ground textures: 1 x 1 placeholders until a pixel style needs them
     this.bind(9, this.tex.ground, gl.NEAREST, gl.NEAREST);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([128, 0, 128, 0]));
-    this.bind(10, this.tex.groundCol, gl.NEAREST, gl.NEAREST);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([90, 110, 80, 255]));
+    // the far colours: today's flat terrain colours until the ground is built (ensureGround)
+    this.bind(10, this.tex.groundCol, gl.LINEAR_MIPMAP_LINEAR, gl.LINEAR);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(terr.rgba.buffer, terr.rgba.byteOffset, terr.rgba.byteLength));
+    gl.generateMipmap(gl.TEXTURE_2D);
     for (const [unit, name] of [[12, 'mixA'], [13, 'mixB'], [14, 'mixC']] as const) {
       this.bind(unit, this.tex[name], gl.NEAREST, gl.NEAREST);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 255, 128]));
@@ -282,6 +327,7 @@ export class MapGL {
     this.game = { map, terr };
     this.groundBuilt = false;
     this.gvKey = '';
+    this.changed = true;
     this.ensureGround();
     if (this.ground) {
       gl.useProgram(this.ground.prog);
@@ -307,6 +353,7 @@ export class MapGL {
     gl.useProgram(this.prog);
     gl.uniform2f(this.loc.uFogScale, 1 / (bw * 16), 1 / (bh * 16));
     this.uploads++;
+    this.changed = true;
   }
 
   /** Uploads the dirty blocks of the owner mirror. */
@@ -315,6 +362,7 @@ export class MapGL {
     this.uploads = 0;
     this.uploadTiles = 0;
     if (feed.dirtyList.length === 0) return;
+    this.changed = true;
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tex.owner);
     const rects = dirtyRects(feed, 2);
@@ -333,6 +381,7 @@ export class MapGL {
   uploadTrench(feed: TrenchFeed): void {
     if (feed.dirtyList.length === 0 || feed.w !== this.w || feed.h !== this.h) return;
     const gl = this.gl;
+    this.changed = true;
     gl.activeTexture(gl.TEXTURE7);
     gl.bindTexture(gl.TEXTURE_2D, this.tex.trench);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
@@ -352,11 +401,13 @@ export class MapGL {
     gl.activeTexture(gl.TEXTURE4);
     gl.bindTexture(gl.TEXTURE_2D, this.tex.pal);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, PALETTE_W, PALETTE_H, gl.RGBA, gl.UNSIGNED_BYTE, this.palette);
+    this.changed = true;
   }
 
   /** Uploads a rectangle of a full-map array (Uint16 fort owners or Uint8 aux values). */
   uploadRect(which: 'fort' | 'aux', data: Uint16Array | Uint8Array, x: number, y: number, rw: number, rh: number): void {
     if (rw <= 0 || rh <= 0) return;
+    this.changed = true;
     const gl = this.gl;
     gl.activeTexture(which === 'fort' ? gl.TEXTURE5 : gl.TEXTURE6);
     gl.bindTexture(gl.TEXTURE_2D, this.tex[which]);
@@ -407,9 +458,27 @@ export class MapGL {
     return [ox, oy];
   }
 
-  draw(viewW: number, viewH: number, u: MapUniforms): void {
+  /** Draws the map; false when the light map had nothing new to show yet (the canvas keeps the last frame). */
+  draw(viewW: number, viewH: number, u: MapUniforms): boolean {
     const gl = this.gl;
     const dpr = u.dpr ?? 1;
+    if (this.lite) {
+      // the light map (software rendering): only when something changed, and not more often than LITE_*
+      const nowMs = u.timeS * 1000;
+      const size = `${viewW}x${viewH}`;
+      const key = `${u.centerX}:${u.centerY}:${u.zoom}:${u.auxMode}:${u.showRes}:${u.fortOn}:${u.trenchOn}:${u.fogOn}`;
+      const since = nowMs - this.drawnMs;
+      const gap = key !== this.drawnKey ? LITE_MOVE_MS : this.changed ? LITE_CHANGE_MS : LITE_IDLE_MS;
+      // a new canvas size clears it: always drawn; a clock that went back (the hour wraps) too
+      if (size === this.drawnSize && since >= 0 && since < gap) {
+        this.skipped++;
+        return false;
+      }
+      this.drawnKey = key;
+      this.drawnSize = size;
+      this.drawnMs = nowMs;
+      this.changed = false;
+    }
     const P = artPixelsPerTile(u.zoom / dpr);
     TEX_ORDER.forEach((k, unit) => {
       if (k === 'groundView') return;
@@ -440,8 +509,10 @@ export class MapGL {
     gl.uniform1f(L.uDpr, dpr);
     gl.uniform1f(L.uP, P);
     gl.uniform2i(L.uGOrigin, origin[0], origin[1]);
+    gl.uniform1f(L.uNearOn, this.ground && this.groundBuilt ? 1 : 0);
     gl.bindVertexArray(this.vao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    return true;
   }
 
   /**

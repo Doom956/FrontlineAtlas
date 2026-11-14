@@ -153,18 +153,81 @@ export interface GroundData {
 }
 
 const built = new WeakMap<MapData, GroundData>();
+/** grounds being built in slices (groundLater), and who to tell when one is done */
+interface Job {
+  it: Generator<void, GroundData>;
+  ready: Set<() => void>;
+}
+const jobs = new WeakMap<MapData, Job>();
+/** One slice of a ground built later runs about this long (ms); the page draws its frames between slices. */
+const SLICE_MS = 10;
+/** Rows of the per-tile passes between two slice checks. */
+const ROWS = 24;
+
 /** The ground textures of a map, built once and shared (map layer, minimap, 2D fallback). */
 export function groundFor(map: MapData, depth: Uint8Array): GroundData {
   let g = built.get(map);
   if (!g) {
-    g = buildGround(map, depth);
+    // one being built in slices is finished here at once
+    const job = jobs.get(map);
+    g = runAll(job ? job.it : groundSteps(map, depth));
     built.set(map, g);
+    if (job) {
+      jobs.delete(map);
+      for (const f of job.ready) f();
+    }
   }
   return g;
 }
 
-/** The ground textures. `depth`: water distance to land (terrain.ts). */
+/**
+ * The ground textures of a map if they are built; if not, null, and they are built in short slices between frames
+ * (a big map takes most of a second on a fast machine and several on a slow one, which would freeze the page at game
+ * start); `onReady` runs once they are (pass the same function each time: it is called once).
+ */
+export function groundLater(map: MapData, depth: Uint8Array, onReady: () => void): GroundData | null {
+  const g = built.get(map);
+  if (g) return g;
+  let job = jobs.get(map);
+  if (!job) {
+    const j: Job = { it: groundSteps(map, depth), ready: new Set() };
+    jobs.set(map, j);
+    job = j;
+    const slice = (): void => {
+      if (jobs.get(map) !== j) return; // finished at once by groundFor
+      const t0 = performance.now();
+      for (;;) {
+        const r = j.it.next();
+        if (r.done) {
+          built.set(map, r.value);
+          jobs.delete(map);
+          for (const f of j.ready) f();
+          return;
+        }
+        if (performance.now() - t0 > SLICE_MS) break;
+      }
+      setTimeout(slice, 0);
+    };
+    setTimeout(slice, 0);
+  }
+  job.ready.add(onReady);
+  return null;
+}
+
+function runAll(it: Generator<void, GroundData>): GroundData {
+  for (;;) {
+    const r = it.next();
+    if (r.done) return r.value;
+  }
+}
+
+/** The ground textures, built at once. `depth`: water distance to land (terrain.ts). */
 export function buildGround(map: MapData, depth: Uint8Array): GroundData {
+  return runAll(groundSteps(map, depth));
+}
+
+/** The ground textures in steps: it yields every few milliseconds of work (groundLater spreads them over frames). */
+function* groundSteps(map: MapData, depth: Uint8Array): Generator<void, GroundData> {
   const { width: w, height: h, terrain } = map;
   const n = w * h;
   const base = new Float32Array(n);
@@ -174,14 +237,73 @@ export function buildGround(map: MapData, depth: Uint8Array): GroundData {
     base[i] = t <= 1 ? -0.04 * Math.min(6, depth[i]) : BASE[t] ?? 0.14;
     rough[i] = ROUGH[t] ?? 0.05;
   }
+  yield;
   // the land's broad shape: terrain heights blurred over a few tiles, so ranges rise out of the plains
   blur(base, w, h, 2);
+  yield;
   blur(base, w, h, 2);
+  yield;
   blur(rough, w, h, 1);
+  yield;
   const height = new Float32Array(n);
   // snow on a mountain tile (0..1): snowfields on the high cores of a range, in patches, on high ground
   const snowy = new Float32Array(n);
-  for (let y = 0; y < h; y++) {
+  for (let y = 0; y < h; y += ROWS) {
+    heightRows(w, terrain, base, rough, height, snowy, y, Math.min(h, y + ROWS));
+    yield;
+  }
+  // terrain shares (mixA, mixB) and how near each terrain is (mixC: worked out on a half-size grid, 2 x 2 tiles a
+  // cell, blurred over about four tiles; the GPU's linear filter smooths it back to tiles)
+  const mixA = new Uint8Array(n * 4);
+  const mixB = new Uint8Array(n * 4);
+  const hw = Math.ceil(w / 2);
+  const hh = Math.ceil(h / 2);
+  const near: Float32Array[] = [0, 1, 2, 3].map(() => new Float32Array(hw * hh));
+  const moist = moisture(w, h);
+  yield;
+  for (let y = 0; y < h; y += ROWS) {
+    shareRows(w, hw, terrain, moist, mixA, mixB, near, y, Math.min(h, y + ROWS));
+    yield;
+  }
+  const mixC = new Uint8Array(hw * hh * 4);
+  for (let c = 0; c < 4; c++) {
+    blur(near[c], hw, hh, 1);
+    blur(near[c], hw, hh, 1);
+    const f = near[c];
+    for (let j = 0; j < hw * hh; j++) mixC[j * 4 + c] = Math.round(Math.min(1, f[j]) * 255);
+    yield;
+  }
+  // the far colour of the terrains nearby, per half-size cell: the sum of their colours x 0.45 x nearness (RGB) and of
+  // their weights (A); a tile takes out its own terrain's part
+  const nearMix = new Float32Array(hw * hh * 4);
+  for (let j = 0; j < hw * hh; j++) {
+    for (let k = 0; k < 4; k++) {
+      const v = near[k][j] * 0.45;
+      if (v <= 0.002) continue;
+      const fl = FAR_LAND[NEAR_TERRAINS[k]];
+      nearMix[j * 4] += fl[0] * v;
+      nearMix[j * 4 + 1] += fl[1] * v;
+      nearMix[j * 4 + 2] += fl[2] * v;
+      nearMix[j * 4 + 3] += v;
+    }
+  }
+  yield;
+  // the slow variety value (fields, grass hue): smooth, so worked out every 2 tiles and smoothed between
+  const variety = smoothField(w, h, 2, (x, y) => vnoise(x, y, 23, 17) * 0.65 + vnoise(x, y, 7, 19) * 0.35);
+  yield;
+  const out = new Uint8Array(n * 4);
+  const far = new Uint8Array(n * 4);
+  const p: TileInputs = { w, h, hw, terrain, depth, height, rough, variety, moist, snowy, near, nearMix, out, far };
+  for (let y = 0; y < h; y += ROWS) {
+    finishTiles(p, y, Math.min(h, y + ROWS));
+    yield;
+  }
+  return { data: out, far, mixA, mixB, mixC, mixCW: hw, mixCH: hh };
+}
+
+/** Rows y0..y1 of the height and snow (its own function, so it stays fast). */
+function heightRows(w: number, terrain: Uint8Array, base: Float32Array, rough: Float32Array, height: Float32Array, snowy: Float32Array, y0: number, y1: number): void {
+  for (let y = y0; y < y1; y++) {
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
       const r = rough[i];
@@ -202,15 +324,11 @@ export function buildGround(map: MapData, depth: Uint8Array): GroundData {
       height[i] = base[i] + r * ((ridge * 0.7 + n3 * 0.3) * k + roll * (1 - k));
     }
   }
-  // terrain shares (mixA, mixB) and how near each terrain is (mixC: worked out on a half-size grid, 2 x 2 tiles a
-  // cell, blurred over about four tiles; the GPU's linear filter smooths it back to tiles)
-  const mixA = new Uint8Array(n * 4);
-  const mixB = new Uint8Array(n * 4);
-  const hw = Math.ceil(w / 2);
-  const hh = Math.ceil(h / 2);
-  const near: Float32Array[] = [0, 1, 2, 3].map(() => new Float32Array(hw * hh));
-  const moist = moisture(w, h);
-  for (let y = 0; y < h; y++) {
+}
+
+/** Rows y0..y1 of the terrain shares, moisture and the nearness sums. */
+function shareRows(w: number, hw: number, terrain: Uint8Array, moist: Float32Array, mixA: Uint8Array, mixB: Uint8Array, near: Float32Array[], y0: number, y1: number): void {
+  for (let y = y0; y < y1; y++) {
     const hrow = (y >> 1) * hw;
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
@@ -225,33 +343,6 @@ export function buildGround(map: MapData, depth: Uint8Array): GroundData {
       if (c >= 0) near[c][hrow + (x >> 1)] += 0.25;
     }
   }
-  const mixC = new Uint8Array(hw * hh * 4);
-  for (let c = 0; c < 4; c++) {
-    blur(near[c], hw, hh, 1);
-    blur(near[c], hw, hh, 1);
-    const f = near[c];
-    for (let j = 0; j < hw * hh; j++) mixC[j * 4 + c] = Math.round(Math.min(1, f[j]) * 255);
-  }
-  // the far colour of the terrains nearby, per half-size cell: the sum of their colours x 0.45 x nearness (RGB) and of
-  // their weights (A); a tile takes out its own terrain's part
-  const nearMix = new Float32Array(hw * hh * 4);
-  for (let j = 0; j < hw * hh; j++) {
-    for (let k = 0; k < 4; k++) {
-      const v = near[k][j] * 0.45;
-      if (v <= 0.002) continue;
-      const fl = FAR_LAND[NEAR_TERRAINS[k]];
-      nearMix[j * 4] += fl[0] * v;
-      nearMix[j * 4 + 1] += fl[1] * v;
-      nearMix[j * 4 + 2] += fl[2] * v;
-      nearMix[j * 4 + 3] += v;
-    }
-  }
-  // the slow variety value (fields, grass hue): smooth, so worked out every 2 tiles and smoothed between
-  const variety = smoothField(w, h, 2, (x, y) => vnoise(x, y, 23, 17) * 0.65 + vnoise(x, y, 7, 19) * 0.35);
-  const out = new Uint8Array(n * 4);
-  const far = new Uint8Array(n * 4);
-  finishTiles({ w, h, hw, terrain, depth, height, rough, variety, moist, snowy, near, nearMix, out, far });
-  return { data: out, far, mixA, mixB, mixC, mixCW: hw, mixCH: hh };
 }
 
 interface TileInputs {
@@ -271,10 +362,10 @@ interface TileInputs {
   far: Uint8Array;
 }
 
-/** The per-tile pass: hill shading, the packed ground data and the far colours (its own function, so it stays fast). */
-function finishTiles(p: TileInputs): void {
+/** The per-tile pass, rows y0..y1: hill shading, the packed ground data and the far colours (its own function, so it stays fast). */
+function finishTiles(p: TileInputs, y0: number, y1: number): void {
   const { w, h, hw, terrain, depth, height, rough, variety, moist, snowy, near, nearMix, out, far } = p;
-  for (let y = 0; y < h; y++) {
+  for (let y = y0; y < y1; y++) {
     const ym = Math.max(0, y - 1) * w;
     const yp = Math.min(h - 1, y + 1) * w;
     for (let x = 0; x < w; x++) {

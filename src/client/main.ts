@@ -64,6 +64,12 @@ const BG_TRIBES = 20;
 const AUTOSAVE_MS = 30_000;
 /** A loading replay works this long (ms) before it lets the page paint its progress bar. */
 const LOAD_SLICE_MS = 90;
+/**
+ * Software rendering (no GPU, render/glmap.ts lite): every drawn frame costs the CPU a lot, so the game is drawn at
+ * most this often (ms): about 20 frames a second in a game, 4 behind the menu. The game itself runs on as usual.
+ */
+const LITE_FRAME_MS = 50;
+const LITE_MENU_FRAME_MS = 250;
 
 interface Session {
   state: GameState;
@@ -658,6 +664,8 @@ function beginSession(state: GameState, settings: GameSettings, opts: { tutorial
 // ------------------------------------------------------------------------------------------------ save and continue
 
 let lastAutosave = 0;
+/** when the last frame was drawn (the light map's frame cap, LITE_FRAME_MS) */
+let lastDrawn = -1e9;
 
 /**
  * Saves the single-player game (never the tutorial or an online game). A finished game removes its save instead; a
@@ -980,7 +988,9 @@ function frame(now: number): void {
     }
     const cur = session;
     // while a save loads, the menu's background map stands still (its last frame stays): the replay gets the time
-    if (cur && (cur.human || !loadJob)) {
+    const gap = renderer.lite ? (cur?.human ? LITE_FRAME_MS : LITE_MENU_FRAME_MS) : 0;
+    if (cur && (cur.human || !loadJob) && (gap === 0 || now - lastDrawn >= gap - 4 || now < lastDrawn)) {
+      lastDrawn = now;
       try {
         const t2 = performance.now();
         if (cur.human) cur.camera.step(now);

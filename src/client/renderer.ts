@@ -46,6 +46,8 @@ import type { UiState } from './uiState';
 export { formatCount } from './render/common';
 
 const SUPPLY_MS = 1000;
+/** Software rendering (no GPU): the map layer is drawn at this fraction of the canvas resolution (render/glmap.ts lite). */
+const LITE_GL_SCALE = 0.5;
 const SPAWN_MS = 400;
 const PALETTE_FRAMES = 12;
 
@@ -66,6 +68,9 @@ export interface RenderStats {
   sorties?: number;
   labels: number;
   labelsComputed: number;
+  /** the light map is on (software rendering, render/glmap.ts) and how many of its draws were skipped so far */
+  glLite?: boolean;
+  glSkipped?: number;
   /** ms this frame: tile feed + labels + palette/forts/aux, GPU uploads + draw call, overlay, minimap */
   msPrep: number;
   msMap: number;
@@ -145,9 +150,6 @@ export class Renderer {
   stats: RenderStats = { gl: false, uploads: 0, uploadTiles: 0, tilesApplied: 0, buildings: 0, deposits: 0, units: 0, fleets: 0, labels: 0, labelsComputed: 0, msPrep: 0, msMap: 0, msOverlay: 0, msMinimap: 0, msFronts: 0, frontSegments: 0, msFx: 0 };
 
   constructor(public canvas: HTMLCanvasElement, public minimap: HTMLCanvasElement) {
-    this.ctx = ctx2d(canvas);
-    this.mini = new Minimap(minimap);
-    this.feed.listeners.push(this.fronts.onChange, this.mini.onChange, this.names.onChange);
     if (typeof document !== 'undefined') {
       const gc = document.createElement('canvas');
       gc.className = 'map-gl';
@@ -155,6 +157,15 @@ export class Renderer {
       this.gl = MapGL.create(gc);
       if (this.gl) this.glCanvas = gc;
     }
+    // software rendering: the overlay is drawn by the CPU straight away (cheaper than the GPU emulated on the CPU)
+    this.ctx = ctx2d(canvas, this.gl?.lite ? { willReadFrequently: true } : undefined);
+    this.mini = new Minimap(minimap);
+    this.feed.listeners.push(this.fronts.onChange, this.mini.onChange, this.names.onChange);
+  }
+
+  /** Software rendering (no GPU): the light map is on (render/glmap.ts) and main.ts draws fewer frames. */
+  get lite(): boolean {
+    return this.gl?.lite ?? false;
   }
 
   /** Call once per new game (builds the terrain and uploads the map textures). */
@@ -281,10 +292,12 @@ export class Renderer {
       if (fogSend) gl.uploadFog(fog.tex, fog.bw, fog.bh);
       gl.uploadOwner(this.feed);
       gl.uploadTrench(this.trench);
-      gl.draw(this.canvas.width, this.canvas.height, {
+      const gw = this.glCanvas?.width ?? this.canvas.width;
+      const gk = gw / this.canvas.width;
+      gl.draw(gw, this.glCanvas?.height ?? this.canvas.height, {
         centerX: camera.x,
         centerY: camera.y,
-        zoom: z * d,
+        zoom: z * d * gk,
         timeS: (nowMs / 1000) % 3600,
         nowDs: Math.floor(nowMs / 100),
         auxMode: this.auxMode,
@@ -292,7 +305,7 @@ export class Renderer {
         fortOn: this.forts.size > 0,
         trenchOn: this.trench.any,
         fogOn,
-        dpr: d,
+        dpr: d * gk,
       });
       this.stats.uploads = gl.uploads;
       this.stats.uploadTiles = gl.uploadTiles;
@@ -375,6 +388,8 @@ export class Renderer {
     this.stats.msMinimap = performance.now() - tMini;
     this.stats.msFx = this.fx.ms + this.pfx.ms;
     this.stats.gl = !!this.gl;
+    this.stats.glLite = this.gl?.lite ?? false;
+    this.stats.glSkipped = this.gl?.skipped ?? 0;
     this.stats.buildings = this.buildings.drawn;
     this.stats.deposits = this.deposits.drawn;
     this.stats.units = this.units.drawn;
@@ -453,8 +468,10 @@ export class Renderer {
       this.canvas.width = Math.max(1, Math.round(cw * dpr));
       this.canvas.height = Math.max(1, Math.round(ch * dpr));
       if (this.glCanvas) {
-        this.glCanvas.width = this.canvas.width;
-        this.glCanvas.height = this.canvas.height;
+        // the light map (software rendering) is drawn at half resolution and stretched: a quarter of the work
+        const k = this.gl?.lite ? LITE_GL_SCALE : 1;
+        this.glCanvas.width = Math.max(1, Math.round(this.canvas.width * k));
+        this.glCanvas.height = Math.max(1, Math.round(this.canvas.height * k));
       }
     }
     // The GL canvas sits right under the overlay canvas (inserted once the overlay is in the page).
