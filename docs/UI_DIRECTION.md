@@ -181,8 +181,13 @@ Sentence case everywhere. No letter-spaced capitals, no eyebrow labels above hea
 - Accent: amber everywhere except the main menu (case-hardened steel) and the research panel (research blue), see "Where the
   accent changes".
 - Units (render/pixelSprites.ts through the art switch, docs/ART_STYLES.md; the refined style in src/client/art/refined):
-  original pixel sprites drawn from rectangles in code, one density, a 1px dark outline and a two-tone owner ramp. Far: a small solid marker per unit and fleet markers with a count. Near (zoom 3
-  and up): the full sprite for warships, transports, tank divisions, planes and missiles.
+  original pixel sprites drawn from rectangles in code, one density, a 1px dark outline and a two-tone owner ramp. Far
+  (below zoom 4): a small silhouette icon per unit kind (render/unitIcons.ts: ship, submarine, carrier, landing craft,
+  trade ship, three tanks, every plane, rocket, atom bomb) in the owner's full colour with a dark 1 px outline and a
+  light rim, at least 10 px long, nose along the heading; fleet markers are the lead's icon with a second hull behind
+  it and a count badge. Zoom 4 to 5: the icons fade into the sprites. Mid and near: the full sprite with a 1 CSS px
+  ring in the owner's full colour and a dark outer edge (art/detailed/outline.ts), so every unit reads on land, sea and
+  its own territory and shows whose it is.
 - Buildings: a calm category plate with a white glyph and a thin owner band under it; the name appears close up.
 
 ## Motion

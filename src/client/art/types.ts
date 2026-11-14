@@ -27,8 +27,9 @@ export type { RGB } from './shared/colour';
 // ================================================================================================ units
 
 /**
- * Level of detail of a unit sprite: 'mid' from zoom 3 to 11 (1 screen px per art pixel in the refined style), 'near'
- * closer (2 to 4). Below zoom 3 the map draws the shared far markers instead (render/pixelSprites.ts drawUnitMarker).
+ * Level of detail of a unit sprite: 'mid' from zoom 4 to 11 (1 screen px per art pixel in the refined style), 'near'
+ * closer (2 to 4). Below zoom 4 the map draws the shared far icons instead (render/unitIcons.ts), crossfading to the
+ * sprites between zoom 4 and 5.
  */
 export type UnitLod = 'mid' | 'near';
 
@@ -66,6 +67,12 @@ export interface UnitDraw {
   alpha: number;
   /** planes and missiles: draw their ground shadow */
   shadow: boolean;
+  /**
+   * On the map: give the unit an outline that reads on any ground and shows its owner (the detailed style draws a
+   * ring in the owner's full colour and a dark outer edge, art/detailed/outline.ts). Portraits and the art lab leave
+   * it off; a style may ignore it.
+   */
+  outline?: boolean;
   /**
    * How badly the unit is hurt, 0..1: 0 = full health, 1 = about to sink or be destroyed (1 - hp / max hp, read from
    * the game by the renderer: render/pixelSprites.ts unitDamage). Units without hit points to lose, the HUD portraits
