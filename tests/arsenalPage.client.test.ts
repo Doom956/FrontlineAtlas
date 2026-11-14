@@ -103,7 +103,7 @@ describe('research panel state', () => {
     expect(researchEta(me, 'agriculture')).toBeCloseTo((TECHS.agriculture.science - 50) / 5);
     me.income.science = 0;
     expect(researchEta(me, 'agriculture')).toBeNull();
-    expect(formatEta(null)).toBe('—');
+    expect(formatEta(null)).toBe('-');
     expect(formatEta(45)).toBe('45 s');
     expect(formatEta(220)).toBe('3:40');
     expect(formatEta(3900)).toBe('1 h 05');

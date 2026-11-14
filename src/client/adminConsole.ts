@@ -464,7 +464,7 @@ export class AdminConsole {
   }
 
   private playerOptions(s: GameState, includeNone = false): [string, string][] {
-    const out: [string, string][] = includeNone ? [['0', '—']] : [];
+    const out: [string, string][] = includeNone ? [['0', 'none']] : [];
     for (const p of s.players) if (p && p.id > 0) out.push([String(p.id), `${p.name}${p.id === s.humanId ? ' (you)' : ''}${p.alive ? '' : ' (out)'}`]);
     return out;
   }

@@ -260,9 +260,9 @@ export function researchEta(me: Player, t: TechId): number | null {
   const rate = me.income.science;
   return rate > 0 ? need / rate : null;
 }
-/** "3:40", "45 s", "1 h 05"; "—" when it would never finish. */
+/** "3:40", "45 s", "1 h 05"; "-" when it would never finish. */
 export function formatEta(sec: number | null): string {
-  if (sec === null || !Number.isFinite(sec)) return '—';
+  if (sec === null || !Number.isFinite(sec)) return '-';
   const s = Math.ceil(sec);
   if (s < 60) return `${s} s`;
   if (s >= 3600) {
