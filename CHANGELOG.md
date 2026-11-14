@@ -2,6 +2,48 @@
 
 The big rounds of work, newest first. Each one was merged to `main` and deployed to the live game.
 
+## 2026-11-13 · Battles you can see: detailed pixel art and effects
+
+**Units**
+- Every ship, tank, plane and missile redrawn in a detailed pixel style: shaded, lit from the top left, drawn for
+  every heading, each arsenal pick with its own look and upgrades shown on the unit.
+- Ships are told apart at a glance: the carrier is the biggest, the battleship broad with big gun turrets, the
+  cruiser slim, the destroyer small with torpedo tubes, the submarine low in the water.
+- Planes bank into their turns and their propellers spin; ships leave a V-shaped wake and planes leave contrails.
+- Troop icons: tiny pixel tanks and field guns in your nation's colour on the front and transport pills. Army counts
+  read like "50k troops".
+
+**Effects**
+- Every blast opens with a bright flash. Bombs and shells leave craters that burn, smoke and fade.
+- The atom bomb rises into a mushroom cloud and leaves a blast zone: a pale ash pan, a charred band and scorch marks.
+- Warships fire from their turrets with muzzle flashes and shells you can follow.
+- Ships under fire flash where they are hit, then trail smoke, burn on deck and list when badly hurt.
+
+**When units are destroyed**
+- Planes shot down fall burning and crash, or splash into the sea and leave an oil slick and wreckage.
+- Missiles shot down break apart in the air, their pieces trailing smoke.
+- Tanks blow up and leave a burnt hull. Ships sink, leaving foam and floating wreckage.
+
+## 2026-11-13 · A new look for the whole game
+
+- Cool steel panels with an amber accent everywhere, and a new main menu with a swirled metal logo and Play button.
+- The lobby and the end-of-game summary in the same look.
+- The build menu, research, arsenal, doctrine, diplomacy and the Spend panel as cards with pixel pictures, prices
+  with build time, and a plain reason when something cannot be built yet.
+- Pixel icons in the top bar and on every card; unit pictures on the unit card and in Forces.
+- A calmer map: smooth deep-water shading, tribes as a light veil, resources shown with their amounts.
+- Your fronts, troop pills, fleet badges, selections and routes drawn in cool steel and blue.
+- Tips name the button to press, never a key. Phones get the same design, with the top bar in two rows.
+
+## 2026-11-11 · Quality of life
+
+- The clock in single player counts real time played: steady at any game speed, stopped while paused.
+- Bigger click areas for your buildings, so they are easy to pick on a phone too.
+- Announcements and messages now reach single-player games as well.
+- The online server stays awake, so nobody waits for it to start up.
+- Better search results and link previews: a full title and description, a share picture, and the site shows up
+  as Frontline Atlas.
+
 ## 2026-11-05 · Fog of war
 
 - New game rule (setup screen, also in private lobbies): you see only near your land, ships, tanks, planes and
