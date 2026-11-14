@@ -1,6 +1,6 @@
 <div align="center">
 
-<a href="https://frontline-atlas.onrender.com"><img src="docs/images/banner.webp" width="100%" alt="Frontline Atlas: push your borders, outthink every front. An atom bomb goes off on the French front as the teal nation Atlas pushes in."></a>
+<a href="https://frontline-atlas.onrender.com"><img src="docs/images/banner.webp" width="100%" alt="Frontline Atlas: push your borders, outthink every front. An atom bomb goes off on the French coast while the teal nation Atlas's battleships, carrier and destroyers fire from the sea and its bombers fly over, on the Real ground map."></a>
 
 <br>
 
@@ -11,9 +11,9 @@
 
 <br>
 
-**Choose a target, not a tile.** Every border you share with it advances at once. Then win your way: with a navy, tank divisions, air wings, a wall of forts or a booming economy. Every ship, tank and plane is drawn in detailed pixel art, so you see every battle play out.
+**Choose a target, not a tile.** Every border you share with it advances at once. Then win your way: with a navy, tank divisions, air wings, a wall of forts or a booming economy. Every ship, tank and plane has its own look in detailed pixel art, and its upgrades show on the model. Fighters circle in the sky, fleets sail in formation, and the map shows real ground: fields, forests, hills, mountains and snow.
 
-<img src="docs/images/front-push.gif" width="100%" alt="Atlas's front pushes south into France: the border moves, newly taken land glows, a captured capital is marked and warships fire off the coast.">
+<img src="docs/images/front-push.gif" width="100%" alt="Atlas's front pushes south into France over fields and forests: the border moves, newly taken land glows, a captured capital is marked and battleships fire off the coast.">
 
 <sub>The front pushing into France, sped up.</sub>
 
@@ -26,7 +26,7 @@
 <table>
 <tr>
 <td width="50%" valign="top">
-<img src="docs/images/war-fronts.webp" width="100%" alt="Atlas pushes into France: attack arrows on the front line, a captured capital marked, a tank division in the lead and warships firing off the coast.">
+<img src="docs/images/war-fronts.webp" width="100%" alt="Atlas pushes into France on the Real ground map: attack arrows on the front line, a tank division in the lead and warships firing off the coast.">
 <br><b>Whole fronts, one click</b>
 <br>Pick who you attack. The shared border moves, faster the longer it is.
 </td>
@@ -41,7 +41,7 @@
 <table>
 <tr>
 <td width="50%" valign="top">
-<img src="docs/images/nuke.gif" width="100%" alt="Animation: target rings count down over a French town on the front, a missile streaks in, then the fireball, the mushroom cloud and the charred blast zone.">
+<img src="docs/images/nuke.gif" width="100%" alt="Animation: target rings count down over the French coast, a missile streaks in past Atlas's fleet, then the fireball, the mushroom cloud and the charred blast zone.">
 <br><b>Strikes and atom bombs</b>
 <br>Barrages, bombs, paradrops, rockets and nukes. SAM sites shoot them down.
 </td>
@@ -82,7 +82,8 @@
 - **Air wings.** Support a front, bomb an enemy's income or hold the sky with fighters.
 - **Diplomacy.** Alliances, gifts, embargoes, traitor penalties, and coalitions against a runaway leader.
 - **AI nations and tribes.** Personalities, four difficulty levels, and hundreds of small tribes to absorb.
-- **Detailed pixel art.** Every ship, tank, plane and missile drawn for every heading. Ships burn, list and sink, planes are shot down, craters smoke and atom bombs leave a blast zone.
+- **Detailed pixel art.** Every ship, tank and plane type has its own look, drawn for every heading, and upgrades show on the model. Fighters circle their airfields and carriers, and fleets sail as formations. Ships burn, list and sink, planes are shot down, craters smoke and atom bombs leave a blast zone.
+- **Real ground.** Fields, forests, hills, mountains, desert and snow drawn in the same pixel style, with forest edges, beaches and rocky peaks. The flat Classic look stays in Menu, Map.
 - **Fair online play.** A deterministic lockstep simulation: every browser computes the same game.
 
 </details>
