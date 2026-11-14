@@ -1,5 +1,6 @@
-// Fleet markers: zoomed out, warships of one owner close together draw as ONE marker with a count badge
-// (render/units.ts); zoomed in they are individual ships again. Clicking an own marker selects that fleet (input.ts).
+// Fleet markers: zoomed out, warships of one owner close together draw as ONE small formation of ship icons, its
+// biggest members first, with a count badge only past 3 ships (render/units.ts); zoomed in they are individual ships
+// again (the formation crossfades with them just below FLEET_ZOOM). Clicking an own marker selects that fleet (input.ts).
 // Single linkage: two ships of the same owner within FLEET_RADIUS tiles are in the same fleet (so a line of ships
 // strung out a few tiles apart is one fleet). Grid buckets of the radius keep it linear in the number of ships.
 // Client only, deterministic for the same input (ids order the members; the lowest id leads).
@@ -14,6 +15,14 @@ export const FLEET_MIN_PX = 16;
 /** The joining distance in screen px at zoom z: FLEET_RADIUS tiles, at least FLEET_MIN_PX. */
 export function fleetRadiusPx(z: number): number {
   return Math.max(FLEET_RADIUS * z, FLEET_MIN_PX);
+}
+
+/** Warship kinds by size, biggest first: a fleet's formation shows its biggest members. */
+const FLEET_RANK: Record<string, number> = { carrier: 0, battleship: 1, warship: 2, destroyer: 3, submarine: 4 };
+/** The ships a fleet's formation shows: up to 3 of its members, biggest kind (arsenal variant) first, then by id. */
+export function fleetForm<T extends { id: number; variant?: string }>(members: readonly T[]): T[] {
+  const rank = (v: string | undefined): number => FLEET_RANK[v ?? 'warship'] ?? 5;
+  return [...members].sort((a, b) => rank(a.variant) - rank(b.variant) || a.id - b.id).slice(0, 3);
 }
 
 export interface FleetPoint {
