@@ -707,8 +707,9 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   (AI: also `bombard`) within `landingReach`; it sails off the landing tile. AI nations from Normal up: transport
   escorts are destroyers when one is in reach (`aiNavy`), submarines blockade only a port of the foe on their own sea
   (else they hunt), against a foe with Submarines every other destroyer stays on `auto`, and landings go in under the
-  guns: the coasts their warships are stationed off are landing candidates, and a coast within support range of an own
-  warship scores `AI_LANDING_FLEET_BONUS` more (ai.ts `landingTarget`; such a beachhead costs a fifth).
+  guns: a coast within support range of an own warship scores `AI_LANDING_FLEET_BONUS` more (ai.ts `landingTarget`;
+  such a beachhead costs a fifth), and from Hard up (`AI_LANDING_UNDER_GUNS`) the coasts their warships are stationed
+  off are landing candidates too (at Normal that made World games end 2 to 3 minutes sooner).
 - **Divisions, part two** (src/sim/armor2.ts; `setDivisionMode {unitIds, mode, front?}`): a spearhead no longer
   spends a division (it disbands only under `TANK_DISBAND_SHARE`); holding divisions refit from the pool
   (`ARMOR_REFIT_FACTORY` per s near an own Factory, `ARMOR_REFIT_FIELD` elsewhere). Spearheads of 8+ tiles give

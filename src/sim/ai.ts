@@ -1081,6 +1081,8 @@ const AI_TRENCH_ARTILLERY = 0.1;
 const AI_TRENCH_LANDING = 1.5;
 /** From Normal up, landing score + this for a coast within support range of an own warship (cheap beachhead). */
 const AI_LANDING_FLEET_BONUS = 5;
+/** From this attack level (aiattack.ts: 2 = Hard) the coasts our warships are stationed off are landing candidates too. */
+const AI_LANDING_UNDER_GUNS = 2;
 /** Extra armor / artillery share the AI wants under a doctrine. */
 const DOCTRINE_MIX: Partial<Record<DoctrineId, { armor: number; artillery: number }>> = {
   blitz: { armor: 0.1, artillery: 0 },
@@ -2298,9 +2300,9 @@ function landingTarget(ctx: Ctx, coast: readonly number[]): { tile: number; from
       for (const t of sampleOwnedTiles(state, q.id, 'coast', 12)) if (n < 3 && knownTile(state, id, t)) (candidates.push(t), n++);
     } else for (const t of sampleOwnedTiles(state, q.id, 'coast', 3)) candidates.push(t);
   }
-  // From Normal up: the coasts our warships shell now (on station off them) are candidates too, so landings go in
+  // From Hard up: the coasts our warships shell now (on station off them) are candidates too, so landings go in
   // under the guns (AI_LANDING_FLEET_BONUS below).
-  if (aiAttackLevel(state) >= 1 && eligible.size) {
+  if (aiAttackLevel(state) >= AI_LANDING_UNDER_GUNS && eligible.size) {
     let n = 0;
     for (const u of state.units) {
       if (n >= 4 || u.type !== 'warship' || u.owner !== id || u.hp <= 0 || u.state !== 3 || u.station === undefined) continue;
