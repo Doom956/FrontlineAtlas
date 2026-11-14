@@ -22,6 +22,10 @@ The big rounds of work, newest first. Each one was merged to `main` and deployed
 - Real ground: fields, forests, hills, mountains, desert and snow drawn in the same pixel style as the units, with
   each nation shown by a band of its colour inside its border and a tint that keeps its colour true on any ground.
 - The minimap matches. The old look stays in Menu, Map, as Classic.
+- Natural terrain: forest edges thin out into lone trees, grass runs from dry to lush, woods have clearings, rock
+  gathers at the foot of mountains, flat coasts have beaches and far mountains read as rugged rock with some snow.
+- Without a graphics card the game draws a lighter map and no longer freezes, and every game starts faster: the
+  ground is built in small steps between frames.
 
 ## 2026-11-13 · Battles you can see: detailed pixel art and effects
 
