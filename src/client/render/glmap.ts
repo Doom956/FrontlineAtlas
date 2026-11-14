@@ -44,11 +44,11 @@ export interface MapUniforms {
   dpr?: number;
 }
 
-const UNIFORMS = ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uView', 'uCenter', 'uZoom', 'uMap', 'uTime', 'uNowDs', 'uAuxMode', 'uShowRes', 'uFortOn', 'uTrenchOn', 'uTerr', 'uRes', 'uBg', 'uFog', 'uFogOn', 'uFogScale', 'uGround', 'uGroundCol', 'uGroundTex', 'uGOrigin', 'uP', 'uDpr'];
-type TexName = 'owner' | 'terrId' | 'depth' | 'terrCol' | 'pal' | 'fort' | 'aux' | 'trench' | 'fog' | 'ground' | 'groundCol' | 'groundView';
+const UNIFORMS = ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uView', 'uCenter', 'uZoom', 'uMap', 'uTime', 'uNowDs', 'uAuxMode', 'uShowRes', 'uFortOn', 'uTrenchOn', 'uTerr', 'uRes', 'uBg', 'uFog', 'uFogOn', 'uFogScale', 'uGround', 'uGroundCol', 'uGroundTex', 'uGOrigin', 'uP', 'uDpr', 'uMixA', 'uMixB', 'uMixC'];
+type TexName = 'owner' | 'terrId' | 'depth' | 'terrCol' | 'pal' | 'fort' | 'aux' | 'trench' | 'fog' | 'ground' | 'groundCol' | 'groundView' | 'mixA' | 'mixB' | 'mixC';
 /** Texture units, in order (the sampler uniform of each is set to its index). */
-const TEX_ORDER: readonly TexName[] = ['owner', 'terrId', 'depth', 'terrCol', 'pal', 'fort', 'aux', 'trench', 'fog', 'ground', 'groundCol', 'groundView'];
-const SAMPLERS = ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uFog', 'uGround', 'uGroundCol', 'uGroundTex'];
+const TEX_ORDER: readonly TexName[] = ['owner', 'terrId', 'depth', 'terrCol', 'pal', 'fort', 'aux', 'trench', 'fog', 'ground', 'groundCol', 'groundView', 'mixA', 'mixB', 'mixC'];
+const SAMPLERS = ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uFog', 'uGround', 'uGroundCol', 'uGroundTex', 'uMixA', 'uMixB', 'uMixC'];
 /** Art pixels are at least this many CSS px wide (shaders.ts: P art pixels per tile, a power of two up to 16). */
 const ART_PX_MIN = 1.25;
 /** The ground pass is redrawn at most this often while the view stands still (its waves and foam move slowly). */
@@ -121,7 +121,7 @@ export class MapGL {
       if (!t) throw new Error('createTexture failed');
       return t;
     };
-    this.tex = { owner: mk(), terrId: mk(), depth: mk(), terrCol: mk(), pal: mk(), fort: mk(), aux: mk(), trench: mk(), fog: mk(), ground: mk(), groundCol: mk(), groundView: mk() };
+    this.tex = { owner: mk(), terrId: mk(), depth: mk(), terrCol: mk(), pal: mk(), fort: mk(), aux: mk(), trench: mk(), fog: mk(), ground: mk(), groundCol: mk(), groundView: mk(), mixA: mk(), mixB: mk(), mixC: mk() };
     try {
       this.prog = this.usePrograms(this.style);
     } catch (err) {
@@ -210,6 +210,11 @@ export class MapGL {
     this.bind(10, this.tex.groundCol, gl.LINEAR_MIPMAP_LINEAR, gl.LINEAR);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, map.width, map.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, g.far);
     gl.generateMipmap(gl.TEXTURE_2D);
+    // terrain shares, moisture and nearness (natural ground's soft edges): sampled linearly between tiles
+    for (const [unit, name, px, tw, th] of [[12, 'mixA', g.mixA, map.width, map.height], [13, 'mixB', g.mixB, map.width, map.height], [14, 'mixC', g.mixC, g.mixCW, g.mixCH]] as const) {
+      this.bind(unit, this.tex[name], gl.LINEAR, gl.LINEAR);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, tw, th, 0, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    }
     this.groundBuilt = true;
     this.gvKey = '';
   }
@@ -270,6 +275,10 @@ export class MapGL {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([128, 0, 128, 0]));
     this.bind(10, this.tex.groundCol, gl.NEAREST, gl.NEAREST);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([90, 110, 80, 255]));
+    for (const [unit, name] of [[12, 'mixA'], [13, 'mixB'], [14, 'mixC']] as const) {
+      this.bind(unit, this.tex[name], gl.NEAREST, gl.NEAREST);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 255, 128]));
+    }
     this.game = { map, terr };
     this.groundBuilt = false;
     this.gvKey = '';

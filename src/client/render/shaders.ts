@@ -33,12 +33,16 @@ void main() {
  *   uGround    RGBA8  hill shading, height, variety, ruggedness per tile (ground.ts), linear
  *   uGroundCol RGBA8  the pixel ground's average colours, mipmapped (far view)
  *   uGroundTex RGBA8  this view's ground, one texel per art pixel, drawn by the ground pass (GROUND_PASS, glmap.ts)
+ *   uMixA, uMixB, uMixC  RGBA8, linear: terrain shares, moisture and nearness (ground.ts), for real ground's natural
+ *                    ground in the ground pass: rounded terrain edges, soft edges between terrains, variety inside them
  */
 const ramp4 = (name: string, r: GroundRamp | readonly RGB[]): string =>
   `const vec3 ${name}[${r.length}] = vec3[${r.length}](${r.map((c) => `vec3(${rgb(c)})`).join(', ')});`;
 
 const GROUND_RAMPS = [
   ramp4('GRASS', GROUND.grass),
+  ramp4('GRASS_DRY', GROUND.grassDry),
+  ramp4('GRASS_LUSH', GROUND.grassLush),
   ramp4('FOREST', GROUND.forest),
   ramp4('HILLS', GROUND.hills),
   ramp4('ROCK', GROUND.rock),
@@ -403,6 +407,59 @@ float speck(vec2 q, float cell, float density, uint salt, float P) {
   return 0.0;
 }
 
+#if MAP_STYLE == 3
+// Real ground draws natural ground: terrain edges along rounded lines, soft edges between terrains (lone trees out from
+// a forest, scree at a mountain's foot, grass at a desert's edge), variety inside a terrain (drier and lusher grass,
+// meadows, clearings, darker old woods, now and then a tiny pond). Only how the ground looks: a tile's terrain and what
+// it does in the game never change, and nothing here looks like a road or a river.
+#define NATURAL 1
+uniform sampler2D uMixA;
+uniform sampler2D uMixB;
+uniform sampler2D uMixC;
+#endif
+// natural ground, set by groundAt for the pixel being drawn: how near forest, desert, mountains and hills are (0..1,
+// blurred over about four tiles) and the moisture (0..1)
+vec4 gNear = vec4(0.0);
+float gMoist = 0.5;
+
+// Grass in the tone for v, dry (yellower), plain or lush (greener) by moisture m.
+vec3 grassTone(float v, float dth, float m) {
+  int i = toneIdx(v, dth, 0.3);
+  return m < 0.3 ? GRASS_DRY[i] : m > 0.68 ? GRASS_LUSH[i] : GRASS[i];
+}
+// The moisture at q: its slow field, the edges of its patches broken into wandering lines by finer noise (a hair of
+// dither only, so no checkerboard bands), drier towards a desert.
+float moistAt(vec2 q, float dth) {
+  return gMoist + (vnoise(q / 1.4, 431u) - 0.5) * 0.16 + (vnoise(q / 4.0, 433u) - 0.5) * 0.12 + (dth - 0.5) * 0.015 - gNear.g * 0.45;
+}
+// Tree crowns on the forest's grid (a crown about 4 art pixels across: one per tile when art pixels are coarse, two per
+// tile each way when fine), lit on the upper left. density = share of the grid's cells with a tree; dark = how much
+// darker the crowns are. Returns the crown colour with a = 1 on a crown; else a = -1 in a crown's shadow (down and to
+// the right of it), 0 in the open.
+vec4 treeAt(vec2 q, float P, float density, float dth, float sh, float dark) {
+  float tc = P >= 8.0 ? 2.0 : 1.0;
+  vec2 c2 = q * tc;
+  ivec2 c0 = ivec2(floor(c2 - 0.5));
+  float best = 9.0;
+  vec2 rel = vec2(0.0);
+  bool shade = false;
+  for (int j = 0; j < 2; j++) {
+    for (int i = 0; i < 2; i++) {
+      ivec2 c = c0 + ivec2(i, j);
+      if (density < 1.0 && hash(c, 109u) >= density) continue;
+      vec2 ctr = vec2(c) + 0.5 + (vec2(hash(c, 101u), hash(c, 103u)) - 0.5) * 0.5;
+      float r = 0.66 + 0.2 * hash(c, 107u);
+      vec2 l = (c2 - ctr) / r;
+      float d = length(l);
+      if (d < best) { best = d; rel = l; }
+      if (length(l - vec2(0.35, 0.45)) < 0.95) shade = true;
+    }
+  }
+  if (best > 1.0) return vec4(0.0, 0.0, 0.0, shade ? -1.0 : 0.0);
+  float lit = dot(rel, LIGHT);
+  return vec4(TONE(FOREST, 0.6 + 0.3 * lit - 0.18 * best * best + sh * 0.6 - dark), 1.0);
+}
+
 // The land at art pixel centre q (tile units): returns its colour. ter = the (edge-warped) terrain, S = hill shading
 // -1..1, hgt = height 0..1, vary = slow variety 0..1, ap = art pixel coords, P = art pixels per tile. Tone values sit
 // at the middle of a ramp step (0.625 = the base tone), so flat ground is one clean colour and only light, shade and
@@ -411,6 +468,18 @@ vec3 landAt(int ter, vec2 q, float S, float hgt, float vary, ivec2 ap, float P) 
   float dth = bayer4(ap);
   float sh = clamp(S, -1.0, 1.0) * 0.26;
   if (ter == 3) {
+#ifdef NATURAL
+    // natural forest: a little thinner at its very edge (fewer cells hold a tree), small glades that stay wooded (a
+    // forest tile always reads as forest), darker old woods in wet country; the forest floor shows where trees are missing
+    float dens = mix(0.66, 1.0, smoothstep(0.3, 0.62, gNear.r));
+    float clr = vnoise(q / 2.2, 411u);
+    dens *= 1.0 - 0.5 * smoothstep(0.74, 0.8, clr);
+    float old = gMoist > 0.58 && vnoise(q / 7.0, 413u) > 0.55 ? 0.12 : 0.0;
+    vec4 tr = treeAt(q, P, dens, dth, sh, old);
+    if (tr.a > 0.0) return tr.rgb;
+    if (dens > 0.9) return FOREST[0];
+    return grassTone(0.45 + sh - (tr.a < 0.0 ? 0.25 : 0.0), dth, moistAt(q, dth) + 0.15);
+#endif
     // forest: packed tree crowns lit on the upper left, dark gaps between them; a crown is about 4 art pixels across
     // (one per tile when art pixels are coarse, two per tile each way when fine), so trees read at every zoom
     float tc = P >= 8.0 ? 2.0 : 1.0;
@@ -435,6 +504,12 @@ vec3 landAt(int ter, vec2 q, float S, float hgt, float vary, ivec2 ap, float P) 
   if (ter == 4) {
     // hills: round knolls on a staggered grid, lit on the upper left with a shadow on the lower right; the front ones
     // (lower on screen) overlap the ones behind
+#ifdef NATURAL
+    // near a forest a few trees stand on the hills
+    float td = smoothstep(0.1, 0.6, gNear.r) * 0.4;
+    vec4 htr = td > 0.0 ? treeAt(q, P, td, dth, sh, 0.0) : vec4(0.0);
+    if (htr.a > 0.0) return htr.rgb;
+#endif
     vec2 cs = P >= 8.0 ? vec2(1.5, 1.1) : vec2(2.2, 1.6);
     float row = floor(q.y / cs.y);
     for (int j = 1; j >= 0; j--) {
@@ -456,6 +531,12 @@ vec3 landAt(int ter, vec2 q, float S, float hgt, float vary, ivec2 ap, float P) 
       }
     }
     float v = 0.5 + sh + 0.25 * speck(q, 0.9, 0.3, 211u, P);
+#ifdef NATURAL
+    // scree at a mountain's foot, a tree's shadow
+    float scr = smoothstep(0.1, 0.55, gNear.b) * 0.5;
+    if (scr > 0.0) { float k = speck(q, 0.5, scr, 441u, P); if (k != 0.0) return TONE(ROCK, 0.625 + 0.25 * k + sh); }
+    if (htr.a < 0.0) v -= 0.25;
+#endif
     return TONE(HILLS, v);
   }
   if (ter == 5) {
@@ -517,6 +598,15 @@ vec3 landAt(int ter, vec2 q, float S, float hgt, float vary, ivec2 ap, float P) 
     float s = fract(u);
     float amp = vnoise(q / 2.6, 83u) * 0.7 + vnoise(q / 7.0, 85u) * 0.3;
     float v = 0.625 + sh;
+#ifdef NATURAL
+    // natural desert: dunes only where the sand runs deep; at its edges dry grass creeps in, in patches that thin out
+    // towards the middle; scree near mountains
+    float deep = smoothstep(0.5, 0.92, gNear.g);
+    amp *= deep;
+    if (vnoise(q / 1.2, 421u) > 0.45 + 0.55 * deep + (dth - 0.5) * 0.08) return grassTone(0.5 + sh, dth, 0.2);
+    float scr = smoothstep(0.1, 0.55, gNear.b) * 0.45;
+    if (scr > 0.0) { float k = speck(q, 0.5, scr, 443u, P); if (k != 0.0) return TONE(ROCK, 0.625 + 0.25 * k + sh); }
+#endif
     if (amp > 0.5) {
       if (s > 0.9) v -= 0.25;
       else if (s > 0.86) v += 0.25;
@@ -546,6 +636,31 @@ vec3 landAt(int ter, vec2 q, float S, float hgt, float vary, ivec2 ap, float P) 
   // plains: grass with tufts, and in the farmed stretches a patchwork of fields (wheat, crops, now and then ploughed
   // soil): blocks of 4 x 3 tiles cut once each way at random, so the fields differ in size and never line up as bricks
   float v = 0.625 + sh;
+#ifdef NATURAL
+  // natural plains: lone trees out from a forest's edge, scree at a mountain's foot, a tiny pond now and then where it
+  // is wet (a few art pixels: decoration, not water you could sail), lighter meadows, the grass drier or lusher
+  float m = moistAt(q, dth);
+  float ptd = smoothstep(0.1, 0.5, gNear.r) * 0.3;
+  vec4 ptr = ptd > 0.0 ? treeAt(q, P, ptd, dth, sh, 0.0) : vec4(0.0);
+  if (ptr.a > 0.0) return ptr.rgb;
+  float pscr = smoothstep(0.1, 0.55, gNear.b) * 0.5;
+  if (pscr > 0.0) { float k = speck(q, 0.5, pscr, 445u, P); if (k != 0.0) return TONE(ROCK, 0.625 + 0.25 * k + sh); }
+  if (P >= 4.0 && m > 0.45) {
+    vec2 pq = q / 6.0;
+    ivec2 pc = ivec2(floor(pq));
+    if (hash(pc, 451u) < 0.12) {
+      vec2 ctr = (vec2(pc) + 0.25 + 0.5 * vec2(hash(pc, 453u), hash(pc, 455u))) * 6.0;
+      vec2 rr = vec2(0.32 + 0.18 * hash(pc, 457u), 0.2 + 0.1 * hash(pc, 459u));
+      vec2 l = (q - ctr) / rr;
+      float d = dot(l, l);
+      if (d < 1.0) return l.y < -0.35 ? POOL[1] : POOL[2];
+      if (d < 1.7 && l.y > 0.1) v -= 0.25; // a darker bank below it
+    }
+  }
+  // meadows: patches with more light specks (flowers, tall grass), not a lighter wash
+  float meadow = smoothstep(0.62, 0.72, vnoise(q / 4.5, 401u));
+  if (ptr.a < 0.0) v -= 0.25;
+#endif
   float farm = smoothstep(0.5, 0.75, vary);
   if (farm > 0.0) {
     vec2 bq = q / vec2(4.0, 3.0);
@@ -568,8 +683,16 @@ vec3 landAt(int ter, vec2 q, float S, float hgt, float vary, ivec2 ap, float P) 
       return TONE(SOIL, fv);
     }
   }
+#ifdef NATURAL
+  v += 0.25 * speck(q, 0.7, 0.4 + 0.45 * meadow, 251u, P);
+  if (meadow > 0.0) v += 0.25 * max(0.0, speck(q, 0.45, 0.5 * meadow, 253u, P));
+  return grassTone(v, dth, m);
+#endif
   v += 0.25 * speck(q, 0.7, 0.4, 251u, P);
+#ifdef NATURAL
+#else
   return TONE(GRASS, v);
+#endif
 }
 
 // The sea at art pixel centre q: depth bands with dithered edges, wave marks that come and go, shore foam.
@@ -616,6 +739,43 @@ vec3 groundAt(ivec2 ap, float P) {
   float landDistQ = texture(uDepth, tq / uMap).r * 25.5;
   if (ter <= 1) return seaAt(tq, landDistQ, ap, P);
   vec4 gd = texture(uGround, tq / uMap);
+#ifdef NATURAL
+  // Which terrain to draw: each terrain's share sampled smoothly between tiles (full at a tile's centre, half way at
+  // its edge), nudged by slow noise and a fine dither, the largest wins. Edges follow rounded, wandering lines in whole
+  // art pixels instead of the tile staircase; a lone tile of forest keeps its place.
+  vec2 uv = tq / uMap;
+  vec4 ma = texture(uMixA, uv);
+  vec4 mb = texture(uMixB, uv);
+  gNear = texture(uMixC, uv);
+  gMoist = mb.a;
+  float dth = bayer4(ap);
+  float n1 = vnoise(tq * 0.75, 181u) - 0.5;
+  float n2 = vnoise(tq * 1.7, 183u) - 0.5;
+  float wa = n1 * 0.36 + n2 * 0.18;
+  float wb = n2 * 0.36 - n1 * 0.18;
+  int gter = 2;
+  float best = mb.b + (dth - 0.5) * 0.1;
+  float sc;
+  sc = ma.r + wa; if (sc > best) { best = sc; gter = 3; }
+  sc = ma.g - wb; if (sc > best) { best = sc; gter = 6; }
+  sc = ma.b + wb; if (sc > best) { best = sc; gter = 5; }
+  sc = ma.a - wa; if (sc > best) { best = sc; gter = 4; }
+  sc = mb.r - wa * 0.8; if (sc > best) { best = sc; gter = 7; }
+  sc = mb.g + wb * 0.8; if (sc > best) { best = sc; gter = 8; }
+  vec3 c = landAt(gter, tq, (gd.r - 0.5) * 2.0, gd.g, gd.b, ap, P);
+  // the coast: a sand beach on flat land, a narrow dark one by forest and swamp, rocky shore by hills and mountains;
+  // its width wanders
+  if (landDistQ > 0.12) {
+    float edge = landDistQ + (vnoise(tq * 1.3, 461u) - 0.5) * 0.3;
+    float sh = (gd.r - 0.5) * 0.52;
+    if (ma.b + ma.a > 0.45) {
+      if (edge > 0.22) c = ROCK[toneIdx(0.5 + sh + 0.25 * speck(tq, 0.4, 0.5, 463u, P), dth, 0.3)];
+    } else if (gter == 3 || gter == 7) {
+      if (edge > 0.3) c = SAND[1];
+    } else if (edge > 0.18) c = SAND[toneIdx(0.625 + sh, dth, 0.3)];
+  }
+  return c;
+#else
   // terrain edges wander by up to half a tile (land to land only), so forests and fields do not end in staircases
   vec2 wq = tq + (vec2(vnoise(tq * 1.4, 171u), vnoise(tq * 1.4, 173u)) - 0.5) * 0.9;
   ivec2 wi = clamp(ivec2(floor(wq)), ivec2(0), ivec2(uMap) - 1);
@@ -625,6 +785,7 @@ vec3 groundAt(ivec2 ap, float P) {
   // a strip of beach on land at the coast
   if (landDistQ > 0.2 && gter != 6 && gter != 5) c = mix(c, SAND[2], 0.8);
   return c;
+#endif
 }
 
 // Ground pass: one fragment per art pixel of the view (glmap.ts sizes the target and sets uGOrigin, uP)
