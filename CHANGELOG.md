@@ -2,6 +2,18 @@
 
 The big rounds of work, newest first. Each one was merged to `main` and deployed to the live game.
 
+## 2026-11-14 · A sharper AI at sea, on land and in the air
+
+From Normal up (Easy only gets the repairs):
+- Damaged warships go home to a Port to repair instead of fighting on until they sink, and a damaged ship no longer
+  takes on a healthy one.
+- Landings wait until the escort is not outnumbered by enemy warships near the start or the beach.
+- Tank divisions about to be overrun strike back when they are strong enough, or pull back to refit at a Factory, and
+  divisions far from the fighting support the nearest stretch of the front.
+- Bomber wings keep air support over the front between attack waves, strikes go out together, and bombers no longer
+  fly into air defence.
+- New players keep their fair chance: Easy and Normal play as before for beginners.
+
 ## 2026-11-14 · Units you can tell apart, fighters in the sky, and real ground
 
 **Units**
