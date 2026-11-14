@@ -15,7 +15,8 @@
 //   any ship   chases of transports and trade ships aim ahead on their route (intercept, not a tail chase); on
 //              'auto' (AI also 'bombard') the nearest ship that can support goes to cover an own landing on a nation
 //   carrier    no head-on chase of a whole warship (its guns are weak; its wings do the work)
-//   hit by a submarine it cannot see: a destroyer heads for it (sonar), other ships sail away (unseenAttacker)
+//   hit by a submarine it cannot see: a destroyer heads for it (sonar), other ships run to an own warship nearby (with
+//              company they are no soft prey), else sail away (unseenAttacker, friendTile)
 // Deterministic: reads the state, no RNG, no transcendental Math.
 import { ARSENAL, NAVAL_ROLES as R, NAVY_BLOCKADE_RANGE, NAVY_ESCORT_PICK, NAVY_STATION_DIST, NAVY_SUPPORT_RANGE, TICKS_PER_SECOND, UNITS, WARSHIP_RANGE } from './config';
 import { buildingAt } from './buildings';
@@ -264,6 +265,24 @@ export function unseenAttacker(state: GameState, u: Unit, ships: readonly Unit[]
     bestD = d;
   }
   return best;
+}
+
+/**
+ * Where a ship hit by an unseen submarine runs to: the nearest other own warship within 2 x NAVAL_ROLES.loneRadius (a
+ * ship with company is no soft prey: a raider leaves it), as a tile; -1 = none (it just sails away).
+ */
+export function friendTile(state: GameState, u: Unit, ships: readonly Unit[]): number {
+  const r = 2 * R.loneRadius;
+  let best: Unit | null = null;
+  let bestD = r * r;
+  for (const e of ships) {
+    if (e === u || e.type !== 'warship' || e.owner !== u.owner || e.hp <= 0) continue;
+    const d = d2(e.x, e.y, u.x, u.y);
+    if (d > bestD || (d === bestD && best !== null && e.id > best.id)) continue;
+    best = e;
+    bestD = d;
+  }
+  return best ? Math.round(best.y) * state.map.width + Math.round(best.x) : -1;
 }
 
 /** A submarine blockading `port` takes a hidden spot (subStationWater) instead of parking next to it. */

@@ -79,7 +79,7 @@ import { ownedTilesOf } from './territory';
 import { mainFront, shipWarTarget, unitFollows } from './warTarget';
 import { atPeace } from './rules';
 import { aiAttackLevel } from './aiattack';
-import { autoEscorts, coverLanding, destroyerJob, evade, evades, portGuarded, rolesOn, subBlockades, subStationWater, subThreat, unseenAttacker } from './navalroles';
+import { autoEscorts, coverLanding, destroyerJob, evade, evades, friendTile, portGuarded, rolesOn, subBlockades, subStationWater, subThreat, unseenAttacker } from './navalroles';
 import { addEvent } from './state';
 import { hasTech } from './tech';
 import { frontTrench } from './trenches';
@@ -991,11 +991,19 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
     const threat = subThreat(state, u, ships);
     if (threat && evade(state, u, threat.x, threat.y)) return;
   }
-  // Hit by a submarine it cannot see: a destroyer heads for it (its sonar finds it there), others sail away.
+  // Hit by a submarine it cannot see: a destroyer heads for it (its sonar finds it there), others run to an own
+  // warship nearby (with company they are no soft prey), else sail away.
   if (!sub && (state.tick + u.id) % WARSHIP_SCAN_TICKS === 0) {
     const hidden = unseenAttacker(state, u, ships);
     if (hidden) {
-      if (u.variant === 'destroyer' ? sailNear(state, u, Math.round(hidden.y) * state.map.width + Math.round(hidden.x)) : evade(state, u, hidden.x, hidden.y)) return;
+      const w = state.map.width;
+      if (u.variant === 'destroyer') {
+        if (sailNear(state, u, Math.round(hidden.y) * w + Math.round(hidden.x))) return;
+      } else {
+        const f = friendTile(state, u, ships);
+        if (f >= 0 && d2(f % w, (f / w) | 0, u.x, u.y) > 16 && sailNear(state, u, f)) return;
+        if (f < 0 && evade(state, u, hidden.x, hidden.y)) return;
+      }
     }
   }
   if (st === 'auto' || st === 'hunt' || st === 'hold') {

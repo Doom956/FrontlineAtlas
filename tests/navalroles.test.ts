@@ -246,6 +246,21 @@ describe('ships hit by a submarine they cannot see', () => {
     expect(Math.abs((ddEnd % 120) - dd.sub.x)).toBeLessThan(6);
     expect(play(undefined, 'hold').u.state).not.toBe(1);
   });
+
+  it('with an own warship nearby it runs to it (company: no soft prey)', () => {
+    const s = seaGame();
+    war(s);
+    const u = ship(s, 1, 40, 40);
+    const mate = ship(s, 1, 40, 58);
+    applyAction(s, 1, { type: 'setUnitStance', unitIds: [mate.id], stance: 'hold' });
+    const sub = ship(s, 2, 40 + ARSENAL.destroyerSonar + 6, 40, 'submarine');
+    asAI(s, () => applyAction(s, 2, { type: 'setUnitStance', unitIds: [sub.id], stance: 'hold' }));
+    u.hp = warshipMaxHp(u) - 0.5;
+    for (let k = 0; k < 12 && u.state !== 1; k++) tick(s);
+    expect(u.state).toBe(1);
+    const end = u.path[u.path.length - 1];
+    expect(Math.abs(Math.floor(end / 120) - 58)).toBeLessThan(6);
+  });
 });
 
 describe('gunnery by type', () => {
