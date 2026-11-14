@@ -9,6 +9,7 @@ import { applyAction } from '../sim/actions';
 import { TICKS_PER_SECOND, VICTORY_LAND_SHARE } from '../sim/config';
 import { tick } from '../sim/sim';
 import { createGame } from '../sim/state';
+import { mapStyle, parseMapStyle, setMapStyle, type MapStyle } from './render/mapStyle';
 import { cloneSetup, DEFAULT_SETUP } from '../sim/setup';
 import type { Action, ActionResult, GameSettings, GameState, MapData } from '../sim/types';
 import { loadWorldMap } from '../sim/worldmaps';
@@ -1036,6 +1037,8 @@ declare global {
       dropConnection: () => void;
       /** the last loaded save: tick and hash right after its replay, checkpoints compared, whether they matched */
       lastLoad: () => { tick: number; hash: number; checked: number; matched: boolean } | null;
+      /** the map style now, or switches it (a, b, c, today; render/mapStyle.ts): the map redraws on the next frame */
+      mapStyle: (style?: string) => MapStyle;
     };
   }
 }
@@ -1080,6 +1083,11 @@ window.__borderfall = {
   },
   dropConnection: () => net?.dropForTest(),
   lastLoad: () => lastLoad,
+  mapStyle: (style?: string) => {
+    const s = parseMapStyle(style);
+    if (s) setMapStyle(s);
+    return mapStyle();
+  },
 };
 
 startBackground();

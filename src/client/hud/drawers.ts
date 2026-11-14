@@ -66,6 +66,7 @@ import { warshipOrderCost } from '../../sim/navy';
 import { VARIANT_NAMES } from '../../sim/variants';
 import { canBuildTankDivision, tankDivisionCost, tankDivisionCount, tankDivisionLimit } from '../../sim/tanks';
 import { fxEnabled, setFxEnabled } from '../fx/settings';
+import { MAP_STYLES, MAP_STYLE_SHORT, mapStyle, setMapStyle, type MapStyle } from '../render/mapStyle';
 
 export const TROOP_COLORS = { infantry: '#9aa86a', armor: '#c9a227', artillery: '#c0564a' } as const;
 
@@ -1051,6 +1052,29 @@ export class SettingsPage implements DrawerPage {
     fx.el.dataset.test = 'fx-toggle';
     r.append(fx.el, el('p', 'note', 'Short flashes when land or a city changes hands, a ship sinks or a bomb lands. A nearby nuke shakes the view.'));
     this.sync.push(() => fx.set(fxEnabled()));
+    // the map's look (render/mapStyle.ts): today's, or one of the three styles on trial, two buttons a row
+    const looks = el('div', 'map-looks');
+    looks.dataset.test = 'map-style';
+    const lookBtns: [MapStyle, HTMLButtonElement][] = [];
+    for (const pair of [MAP_STYLES.slice(0, 2), MAP_STYLES.slice(2, 4)]) {
+      const g = el('div', 'segc');
+      for (const st of pair) {
+        const b = el('button', 'segc-b', MAP_STYLE_SHORT[st]);
+        b.type = 'button';
+        b.addEventListener('click', () => {
+          setMapStyle(st);
+          for (const [k, x] of lookBtns) setClass(x, 'on', k === st);
+        });
+        lookBtns.push([st, b]);
+        g.append(b);
+      }
+      looks.append(g);
+    }
+    r.append(looks, el('p', 'note', 'Map look: Today is the usual map. Pixel terrain, Muted war map and Real ground are trial looks for the ground, nations and sea.'));
+    this.sync.push(() => {
+      const now = mapStyle();
+      for (const [k, x] of lookBtns) setClass(x, 'on', k === now);
+    });
     if (hooks.chat) {
       const chat = hooks.chat;
       r.append(sectionTitle('Chat'));
