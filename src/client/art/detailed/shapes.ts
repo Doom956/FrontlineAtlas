@@ -26,3 +26,14 @@ export function sym(half: number[]): number[] {
   for (let i = half.length - 2; i >= 0; i -= 2) if (half[i + 1] !== 0) out.push(half[i], -half[i + 1]);
   return out;
 }
+
+/** Parts scaled by `k` round the origin (footprints, heights, shading frames, clip shapes). */
+export function grown(parts: readonly Part[], k: number): Part[] {
+  const sc = (q: readonly number[] | undefined): number[] | undefined => q && q.map((x) => x * k);
+  return parts.map((p) => ({ ...p, p: sc(p.p)!, z: p.z * k, h: p.h * k, sc: p.sc && ([p.sc[0] * k, p.sc[1] * k, p.sc[2] * k, p.sc[3] * k] as const), clip: sc(p.clip), clipPoly: sc(p.clipPoly) }));
+}
+
+/** Parts in material `m` shifted `dt` tones lighter (a unit's paint lifted off the ground it stands on). */
+export function toned(parts: readonly Part[], m: MatId, dt: number): Part[] {
+  return parts.map((p) => (p.m === m ? { ...p, tone: (p.tone ?? 0) + dt } : p));
+}
