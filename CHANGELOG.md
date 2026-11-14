@@ -2,6 +2,27 @@
 
 The big rounds of work, newest first. Each one was merged to `main` and deployed to the live game.
 
+## 2026-11-14 · Units you can tell apart, fighters in the sky, and real ground
+
+**Units**
+- Every ship type has its own shape: a big battleship with four gun turrets, a long narrow destroyer with torpedo
+  tubes, a submarine with its tower, a cruiser, and a carrier with a full flight deck.
+- Planes and tanks too: a heavy armoured ground attack plane, a four-engine heavy bomber, light, medium and heavy
+  tanks each with their own build.
+- Upgrades change the model: jet planes get swept wings or the A-10 style attack jet, the eight-jet strategic
+  bomber, modern battle tanks, missile launchers and radar on ships, mine rails, fuel drums, flotation skirts.
+- Units are drawn 1.5 times bigger at normal zoom, so guns, engines and turrets show.
+- Fighters are in the sky: they circle their airfields and carriers, fly the air superiority patrol, and streak in
+  to shoot bombers down.
+- Zoomed out, units are crisp shapes in the owner's colour, and a fleet is a small formation of ships instead of a
+  marker with a number.
+- The recon plane crash reads clearly: a burning dive, a splash and wreckage.
+
+**Map**
+- Real ground: fields, forests, hills, mountains, desert and snow drawn in the same pixel style as the units, with
+  each nation shown by a band of its colour inside its border and a tint that keeps its colour true on any ground.
+- The minimap matches. The old look stays in Menu, Map, as Classic.
+
 ## 2026-11-13 · Battles you can see: detailed pixel art and effects
 
 **Units**
