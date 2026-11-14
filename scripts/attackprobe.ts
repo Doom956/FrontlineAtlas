@@ -6,12 +6,15 @@
 // tile of a nation we attack that touches our land is where that attack is fought. A warship within
 // NAVY_SUPPORT_RANGE of such a tile supports it (naval2.navalSupportAt), a support strike centred within
 // AIR.supportRadius of one bombs it.
-import { AIR, NAVY_REACH, NAVY_SUPPORT_RANGE, TANK_DIVISION_TROOPS } from '../src/sim/config';
+import { AIR, ARSENAL, NAVY_BLOCKADE_RANGE, NAVY_REACH, NAVY_SUPPORT_RANGE, NAVY_XP_SINK, TANK_DIVISION_TROOPS, WARSHIP_RANGE } from '../src/sim/config';
 import { buildingAt, buildingsOf, isDisabled, samRadius } from '../src/sim/buildings';
 import { areAllied } from '../src/sim/diplomacy';
 import { atPeace } from '../src/sim/rules';
-import { warshipMaxHp } from '../src/sim/naval2';
-import { airState } from '../src/sim/airwings';
+import { atWar, supportingShips, warshipMaxHp } from '../src/sim/naval2';
+import { airPatrolRadius, airState } from '../src/sim/airwings';
+import { unitVisibleTo } from '../src/sim/techtree';
+import { minefieldAt, minefields } from '../src/sim/specials';
+import { navalBlockadeMul, navalCanTarget, navalSupportMul } from '../src/sim/variants';
 import { coastCount } from '../src/sim/territory';
 import { isTribe } from '../src/sim/types';
 import type { GameEvent, GameState, Unit } from '../src/sim/types';
@@ -32,7 +35,61 @@ export interface BomberStats {
   intoSamArrived: number;
 }
 
+/** Kinds of ship a warship sank. */
+export const KILL_KINDS = ['trade', 'transport', 'warship', 'softWarship', 'sub'] as const;
+type KillKind = (typeof KILL_KINDS)[number];
+/** Warship types: the variants and the standard ship. */
+export const SHIP_KINDS = ['standard', 'destroyer', 'battleship', 'submarine', 'carrier'] as const;
+type ShipKind = (typeof SHIP_KINDS)[number];
+
+/** Per warship type (counted owners' ships). */
+export interface ShipKindStats {
+  built: number;
+  /** sunk by an enemy destroyer / by another enemy warship / by anything else (mines, unmatched) */
+  sunkByDestroyer: number;
+  sunkByShip: number;
+  sunkOther: number;
+  /** ships this type sank, by kind (softWarship = a warship below half its hp or with no own warship within
+   *  NAVY_REACH.oddsRadius of it; warship = the others; sub = submarines) */
+  kills: Record<KillKind, number>;
+  /** invasion transports sunk while their owner was at war with ours (landings in progress) */
+  killsLanding: number;
+  /** 10 s samples: alive; owner at war; of those: within its support reach of an own attack front, on station,
+   *  chasing, escorting, mending at a port; seen by a nation at war with its owner (subs), a hostile warship in gun
+   *  range could fire at it, a hostile destroyer within sonar range, inside a hostile minefield, an enemy port at war
+   *  within its blockade range; destroyers: a hostile submarine within sonar range, own trade ship or transport within
+   *  sonar range; carriers: an own attack front within carrierAirRange */
+  alive: number;
+  war: number;
+  onFront: number;
+  station: number;
+  chasing: number;
+  escorting: number;
+  mending: number;
+  revealed: number;
+  targetable: number;
+  nearDestroyer: number;
+  inMinefield: number;
+  blockading: number;
+  sonarContact: number;
+  nearShipping: number;
+  airReach: number;
+}
+
 export interface AttackStats {
+  /** per warship type */
+  navy: Record<ShipKind, ShipKindStats>;
+  /** invasion landings (transport reached its tile) and of them with an own warship in support range of the tile */
+  landings: number;
+  landingsSupported: number;
+  /** bomber sorties of counted owners that took off from a carrier */
+  carrierSorties: number;
+  /** hostile bomber sorties aimed at a counted nation's land; of them, aimed inside one of its superiority patrol
+   *  circles; while it had a superiority patrol at all; patrol engagements (a patrol fired at a plane) */
+  incomingBombers: number;
+  incomingCovered: number;
+  incomingWithPatrol: number;
+  patrolEngagements: number;
   ships: {
     built: number;
     sunk: number;
@@ -103,9 +160,25 @@ export interface AttackStats {
   mainAirZone: number;
 }
 
+function newShipKind(): ShipKindStats {
+  return {
+    built: 0, sunkByDestroyer: 0, sunkByShip: 0, sunkOther: 0, kills: { trade: 0, transport: 0, warship: 0, softWarship: 0, sub: 0 }, killsLanding: 0,
+    alive: 0, war: 0, onFront: 0, station: 0, chasing: 0, escorting: 0, mending: 0, revealed: 0, targetable: 0, nearDestroyer: 0, inMinefield: 0,
+    blockading: 0, sonarContact: 0, nearShipping: 0, airReach: 0,
+  };
+}
+
 export function newAttackStats(): AttackStats {
   const b = (): BomberStats => ({ sorties: 0, arrivals: 0, onFront: 0, intoSam: 0, intoSamArrived: 0 });
   return {
+    navy: { standard: newShipKind(), destroyer: newShipKind(), battleship: newShipKind(), submarine: newShipKind(), carrier: newShipKind() },
+    landings: 0,
+    landingsSupported: 0,
+    carrierSorties: 0,
+    incomingBombers: 0,
+    incomingCovered: 0,
+    incomingWithPatrol: 0,
+    patrolEngagements: 0,
     ships: { built: 0, sunk: 0, ownerGone: 0, sunkByShip: 0, sunkByMine: 0, sunkNoXp: 0, sunkCrippled: 0, alive: 0, atWar: 0, onFront: 0, attacking: 0, attackingOnFront: 0, attackingStation: 0, station: 0, stationOnFront: 0, outnumbered: 0, escorting: 0, mainCoastal: 0, mainSupported: 0 },
     transports: { invasions: 0, sunk: 0, troopsSunk: 0, repelled: 0, atSea: 0, escorted: 0 },
     tanks: { formed: 0, overrun: [0, 0, 0], spent: 0, ownerGone: 0, overrunAfterSpearhead: 0, holdSupport: 0, holdAtStation: 0, atWar: 0, spearhead: 0, holdFront: 0, holdFar: 0, driving: 0, worn: 0, overrunDefending: 0 },
@@ -151,6 +224,22 @@ interface ShipSeen {
   xp: number;
   crippled: boolean;
 }
+/** Every ship afloat (any owner) at the end of the last tick: for kill matching (a warship's xp jumps by
+ *  NAVY_XP_SINK on a kill, units.updateWarship / naval2.onShipKilled). */
+interface ShipPrev {
+  owner: number;
+  type: Unit['type'];
+  kind: ShipKind;
+  x: number;
+  y: number;
+  xp: number;
+  hpShare: number;
+  target: number;
+  targetOwner: number;
+  /** at (or one step from) the end of its route: a vanished transport / trade ship there landed or delivered */
+  atEnd: boolean;
+}
+const shipKind = (u: Unit): ShipKind => (u.variant === 'destroyer' || u.variant === 'battleship' || u.variant === 'submarine' || u.variant === 'carrier' ? u.variant : 'standard');
 interface BomberSeen {
   owner: number;
   mission: MissionKey;
@@ -167,7 +256,16 @@ export class AttackProbe {
   /** attack targets per attacker (nations only), rebuilt per use */
   private targets = new Map<number, Set<number>>();
   private targetsTick = -1;
-  constructor(private readonly state: GameState) {}
+  /** owners whose units are counted (default: AI nations) */
+  private readonly counted: (id: number) => boolean;
+  private prevShips = new Map<number, ShipPrev>();
+  private readonly coverTicks = new Map<number, number>();
+  constructor(
+    private readonly state: GameState,
+    counted?: (state: GameState, id: number) => boolean,
+  ) {
+    this.counted = counted ? (id) => counted(state, id) : (id) => isAINation(state, id);
+  }
 
   /** last tick attacker*4096+target had an attack running (nations only) */
   private readonly lastAttack = new Map<number, number>();
@@ -245,13 +343,14 @@ export class AttackProbe {
     this.noteAttacks();
     const alive = new Set<number>();
     for (const u of state.units) {
-      if (u.hp <= 0 || !isAINation(state, u.owner)) continue;
+      if (u.hp <= 0 || !this.counted(u.owner)) continue;
       alive.add(u.id);
       if (u.type === 'warship') {
         let seen = this.ships.get(u.id);
         if (!seen) {
           this.ships.set(u.id, (seen = { owner: u.owner, xp: 0, crippled: false }));
           s.ships.built++;
+          s.navy[shipKind(u)].built++;
         }
         seen.xp = u.xp ?? 0;
       } else if (u.type === 'tankDivision') {
@@ -267,6 +366,9 @@ export class AttackProbe {
         if (!seen) {
           const mission: MissionKey = MISSIONS[u.mission ?? 0] ?? 'manual';
           seen = { owner: u.owner, mission, aim: u.target, intoSam: this.inHostileSam(u.owner, u.target), arrived: false };
+          // Carriers: a bomber that takes off away from its airfield left from a carrier (airwings.launchFrom).
+          const w = state.map.width;
+          if (Math.round(u.x) !== u.home % w || Math.round(u.y) !== ((u.home / w) | 0)) s.carrierSorties++;
           this.bombers.set(u.id, seen);
           const bs = s.bombers[mission];
           bs.sorties++;
@@ -298,7 +400,7 @@ export class AttackProbe {
     const overrun = new Map<number, number>();
     for (const e of events) {
       const o = e.players[0];
-      if (!isAINation(state, o)) continue;
+      if (!this.counted(o)) continue;
       if (e.kind === 'unitLost' && /tank division was overrun/.test(e.message)) overrun.set(o, (overrun.get(o) ?? 0) + 1);
       else if (e.kind === 'unitLost' && /lost a transport with (\d+) troops/.test(e.message)) {
         s.transports.sunk++;
@@ -335,6 +437,167 @@ export class AttackProbe {
       if (state.attacks.some((a) => a.target === seen.owner && a.attacker > 0 && !isTribe(state.players[a.attacker]))) s.tanks.overrunDefending++;
     }
     for (const id of this.bombers.keys()) if (!alive.has(id)) this.bombers.delete(id);
+    this.naval();
+    this.incoming();
+  }
+
+  /** Kills by ship type (xp jumps matched to ships gone this tick), landings with naval support. */
+  private naval(): void {
+    const state = this.state;
+    const s = this.stats;
+    const now = new Map<number, ShipPrev>();
+    for (const u of state.units) {
+      if (u.hp <= 0 || (u.type !== 'warship' && u.type !== 'transport' && u.type !== 'tradeShip')) continue;
+      now.set(u.id, {
+        owner: u.owner,
+        type: u.type,
+        kind: shipKind(u),
+        x: u.x,
+        y: u.y,
+        xp: u.xp ?? 0,
+        hpShare: u.type === 'warship' ? u.hp / warshipMaxHp(u) : 1,
+        target: u.target,
+        targetOwner: u.targetOwner,
+        atEnd: u.path.length > 0 && u.pathPos >= u.path.length - 2,
+      });
+    }
+    const prev = this.prevShips;
+    const gone: [number, ShipPrev][] = [];
+    for (const [id, p] of prev) if (!now.has(id)) gone.push([id, p]);
+    if (gone.length) {
+      const killers: ShipPrev[] = [];
+      for (const [id, n] of now) {
+        const p = prev.get(id);
+        if (p && n.type === 'warship' && n.xp - p.xp >= NAVY_XP_SINK - 1e-6) killers.push(p);
+      }
+      const used = new Set<ShipPrev>();
+      const r2 = (WARSHIP_RANGE + 2) * (WARSHIP_RANGE + 2);
+      for (const [, v] of gone) {
+        let best: ShipPrev | null = null;
+        let bestD = r2;
+        for (const k of killers) {
+          if (used.has(k) || !hostile(state, k.owner, v.owner)) continue;
+          const d = (k.x - v.x) * (k.x - v.x) + (k.y - v.y) * (k.y - v.y);
+          if (d <= bestD) {
+            bestD = d;
+            best = k;
+          }
+        }
+        if (best) used.add(best);
+        if (best && this.counted(best.owner)) {
+          const ks = s.navy[best.kind];
+          let kind: KillKind = v.type === 'tradeShip' ? 'trade' : v.type === 'transport' ? 'transport' : v.kind === 'submarine' ? 'sub' : 'warship';
+          if (kind === 'warship') {
+            let lone = true;
+            const or2 = NAVY_REACH.oddsRadius * NAVY_REACH.oddsRadius;
+            for (const o of now.values()) if (o.type === 'warship' && o.owner === v.owner && (o.x - v.x) * (o.x - v.x) + (o.y - v.y) * (o.y - v.y) <= or2) lone = false;
+            if (lone || v.hpShare < 0.5) kind = 'softWarship';
+          }
+          ks.kills[kind]++;
+          if (v.type === 'transport' && v.targetOwner > 0 && atWar(state, best.owner, v.owner)) ks.killsLanding++;
+        }
+        if (!this.counted(v.owner) || !state.players[v.owner]?.alive) continue;
+        if (v.type === 'warship') {
+          const ks = s.navy[v.kind];
+          if (best) {
+            if (best.kind === 'destroyer') ks.sunkByDestroyer++;
+            else ks.sunkByShip++;
+          } else ks.sunkOther++;
+        } else if (v.type === 'transport' && !best && v.atEnd && v.targetOwner > 0) {
+          s.landings++;
+          if (supportingShips(state, v.owner, v.target) > 0) s.landingsSupported++;
+        }
+      }
+    }
+    this.prevShips = now;
+  }
+
+  /** Hostile bombers launched at counted nations' land: inside a superiority patrol of the victim? Patrol engagements. */
+  private incoming(): void {
+    const state = this.state;
+    const s = this.stats;
+    const air = state.air;
+    for (const wg of air?.wings ?? []) {
+      if (wg.mission !== 'superiority' || !this.counted(wg.owner)) continue;
+      const last = this.coverTicks.get(wg.airfield);
+      if (last !== undefined && wg.coverTick !== last && wg.coverTick > state.tick) s.patrolEngagements++;
+      this.coverTicks.set(wg.airfield, wg.coverTick);
+    }
+    const w = state.map.width;
+    for (const u of state.units) {
+      if (u.type !== 'bomber' || u.hp <= 0 || u.state !== 0 || this.launched.has(u.id)) continue;
+      this.launched.add(u.id);
+      const victim = state.map.owner[u.target];
+      if (victim <= 0 || !this.counted(victim) || !hostile(state, u.owner, victim)) continue;
+      s.incomingBombers++;
+      let patrol = false;
+      let covered = false;
+      for (const wg of air?.wings ?? []) {
+        if (wg.owner !== victim || wg.mission !== 'superiority') continue;
+        const b = state.buildings.get(wg.airfield);
+        if (!b || b.owner !== victim || b.buildLeft > 0 || b.fighters <= 0) continue;
+        patrol = true;
+        const c = wg.target >= 0 ? wg.target : b.tile;
+        const r = airPatrolRadius(b, state);
+        const dx = (c % w) - (u.target % w);
+        const dy = ((c / w) | 0) - ((u.target / w) | 0);
+        if (dx * dx + dy * dy <= r * r) covered = true;
+      }
+      if (patrol) s.incomingWithPatrol++;
+      if (covered) s.incomingCovered++;
+    }
+    if (this.launched.size > 4096) for (const id of [...this.launched]) if (!state.units.some((u) => u.id === id && u.hp > 0)) this.launched.delete(id);
+  }
+  private readonly launched = new Set<number>();
+
+  /** Per warship type, every sample (see ShipKindStats). */
+  private sampleKinds(warships: readonly Unit[], atWarSet: Set<number>, targets: Map<number, Set<number>>): void {
+    const state = this.state;
+    const s = this.stats;
+    const w = state.map.width;
+    const fields = minefields(state);
+    const sonar2 = ARSENAL.destroyerSonar * ARSENAL.destroyerSonar;
+    const range2 = WARSHIP_RANGE * WARSHIP_RANGE;
+    const shipping = state.units.filter((u) => u.hp > 0 && (u.type === 'transport' || u.type === 'tradeShip'));
+    const nations = state.players.filter((p) => p.id > 0 && p.alive && !isTribe(p));
+    for (const u of warships) {
+      if (!this.counted(u.owner)) continue;
+      const ks = s.navy[shipKind(u)];
+      ks.alive++;
+      if (!atWarSet.has(u.owner)) continue;
+      ks.war++;
+      const reach = NAVY_SUPPORT_RANGE * Math.max(0.5, navalSupportMul(u));
+      if (this.frontNear(u.owner, targets.get(u.owner), u.x, u.y, Math.round(reach))) ks.onFront++;
+      if (u.state === 3) ks.station++;
+      else if (u.state === 2) ks.chasing++;
+      else if (u.state === 4) ks.escorting++;
+      if (u.hp < warshipMaxHp(u) - 1e-9 && buildingsOf(state, u.owner, 'port').some((b) => b.owner === u.owner && (b.tile % w - u.x) ** 2 + (((b.tile / w) | 0) - u.y) ** 2 <= 64)) ks.mending++;
+      if (u.variant === 'submarine' && nations.some((p) => p.id !== u.owner && atWar(state, p.id, u.owner) && unitVisibleTo(state, p.id, u))) ks.revealed++;
+      let targetable = false;
+      let nearDestroyer = false;
+      let sonarContact = false;
+      for (const e of warships) {
+        if (e.owner === u.owner || !hostile(state, u.owner, e.owner)) continue;
+        const d = (e.x - u.x) * (e.x - u.x) + (e.y - u.y) * (e.y - u.y);
+        if (d <= range2 && navalCanTarget(state, e, u)) targetable = true;
+        if (e.variant === 'destroyer' && d <= sonar2) nearDestroyer = true;
+        if (e.variant === 'submarine' && d <= sonar2) sonarContact = true;
+      }
+      if (targetable) ks.targetable++;
+      if (nearDestroyer) ks.nearDestroyer++;
+      if (u.variant === 'destroyer' && sonarContact) ks.sonarContact++;
+      if (minefieldAt(state, fields, u.x, u.y, u.owner) > 0) ks.inMinefield++;
+      const br = NAVY_BLOCKADE_RANGE * navalBlockadeMul(u);
+      for (const b of state.buildings.values()) {
+        if (b.type !== 'port' || b.owner === u.owner || !atWar(state, u.owner, b.owner)) continue;
+        if ((b.tile % w - u.x) ** 2 + (((b.tile / w) | 0) - u.y) ** 2 <= br * br) {
+          ks.blockading++;
+          break;
+        }
+      }
+      if (u.variant === 'destroyer' && shipping.some((t) => t.owner === u.owner && (t.x - u.x) ** 2 + (t.y - u.y) ** 2 <= sonar2)) ks.nearShipping++;
+      if (u.variant === 'carrier' && this.frontNear(u.owner, targets.get(u.owner), u.x, u.y, ARSENAL.carrierAirRange)) ks.airReach++;
+    }
   }
 
   /** Every 10 s of game time. */
@@ -355,7 +618,7 @@ export class AttackProbe {
     const or2 = NAVY_REACH.oddsRadius * NAVY_REACH.oddsRadius;
     const supported = new Set<number>(); // owner*1024+target: a ship of owner on the front with target
     for (const u of warships) {
-      if (!isAINation(state, u.owner)) continue;
+      if (!this.counted(u.owner)) continue;
       s.ships.alive++;
       const seen = this.ships.get(u.id);
       if (seen && u.hp < 0.5 * warshipMaxHp(u)) seen.crippled = true;
@@ -385,8 +648,9 @@ export class AttackProbe {
         supported.add(u.owner * 1024 + v);
       }
     }
+    this.sampleKinds(warships, atWar, targets);
     for (const u of state.units) {
-      if (u.hp <= 0 || !isAINation(state, u.owner)) continue;
+      if (u.hp <= 0 || !this.counted(u.owner)) continue;
       if (u.type === 'transport' && u.targetOwner > 0) {
         s.transports.atSea++;
         if (warships.some((e) => e.owner === u.owner && e.state === 4 && e.station === u.id)) s.transports.escorted++;
@@ -412,7 +676,7 @@ export class AttackProbe {
     // Main attacks: naval and air support on the AI's biggest attack on a nation.
     const zones = airState(state).zones;
     for (const p of state.players) {
-      if (!p.alive || !isAINation(state, p.id)) continue;
+      if (!p.alive || !this.counted(p.id)) continue;
       // The nation it attacked last (within 30 s; ties: lower id).
       let main = null as null | { target: number; tick: number };
       for (const q of targets.get(p.id) ?? []) {
@@ -464,5 +728,21 @@ export function attackReport(a: AttackStats, games: number): string[] {
   const stTot = st.reduce((s, [, n]) => s + n, 0);
   out.push(`  Strategic / manual aims: ${st.map(([k, n]) => `${k} ${pc(n, stTot)}`).join(', ') || '-'}`);
   out.push(`  Main attack (the nation attacked last), nation with bombers: an air support zone on that front ${pc(a.mainAirZone, a.mainAirOwn)} of ${a.mainAirOwn} samples.`);
+  if (a.navy) {
+    out.push('  Warships by type, per game: built, sunk by destroyers / other ships / other; kills of trade ships, transports (landings at war), warships, soft warships (damaged or alone), submarines');
+    for (const k of SHIP_KINDS) {
+      const v = a.navy[k];
+      if (!v || v.built <= 0) continue;
+      const kl = v.kills;
+      out.push(`    ${k.padEnd(10)} built ${f1(v.built / g).padStart(5)}  sunk ${f1(v.sunkByDestroyer / g)} / ${f1(v.sunkByShip / g)} / ${f1(v.sunkOther / g)}  kills: trade ${f1(kl.trade / g)}, transports ${f1(kl.transport / g)} (${f1(v.killsLanding / g)}), warships ${f1(kl.warship / g)}, soft ${f1(kl.softWarship / g)}, subs ${f1(kl.sub / g)}  per loss ${f1((kl.trade + kl.transport + kl.warship + kl.softWarship + kl.sub) / Math.max(1, v.sunkByDestroyer + v.sunkByShip + v.sunkOther))}`);
+      const extra: string[] = [];
+      if (k === 'submarine') extra.push(`seen by the enemy ${pc(v.revealed, v.war)}`);
+      if (k === 'destroyer') extra.push(`enemy sub in sonar ${pc(v.sonarContact, v.war)}`, `by own shipping ${pc(v.nearShipping, v.war)}`);
+      if (k === 'carrier') extra.push(`front in air reach ${pc(v.airReach, v.war)}`);
+      out.push(`      time at war ${pc(v.war, v.alive)}; of it: on an own attack front ${pc(v.onFront, v.war)}, station ${pc(v.station, v.war)}, chasing ${pc(v.chasing, v.war)}, escorting ${pc(v.escorting, v.war)}, mending ${pc(v.mending, v.war)}, enemy can fire at it ${pc(v.targetable, v.war)}, enemy destroyer in sonar ${pc(v.nearDestroyer, v.war)}, in a minefield ${pc(v.inMinefield, v.war)}, blockading ${pc(v.blockading, v.war)}${extra.length ? ', ' + extra.join(', ') : ''}`);
+    }
+    out.push(`  Landings with naval support ${pc(a.landingsSupported, a.landings)} of ${f1(a.landings / g)} per game; bomber sorties from carriers ${f1(a.carrierSorties / g)} per game.`);
+    out.push(`  Enemy bombers at our land: ${f1(a.incomingBombers / g)} per game; while we had a superiority patrol ${pc(a.incomingWithPatrol, a.incomingBombers)}, aimed inside a patrol circle ${pc(a.incomingCovered, a.incomingBombers)} (${pc(a.incomingCovered, a.incomingWithPatrol)} of those with a patrol); patrol engagements ${f1(a.patrolEngagements / g)} per game.`);
+  }
   return out;
 }

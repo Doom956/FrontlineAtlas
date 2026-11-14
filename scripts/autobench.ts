@@ -15,6 +15,9 @@
 //   once  one plausible click per vehicle when it appears: each new division Support front (following), each new
 //         airfield Support (following, no target), silos auto-fire on (all silos); warships keep their default
 // A list (none,once) plays the same seeds with each setting.
+// --navy picks the warships it buys: none (the default ship), destroyers (procures Destroyers and Battleships, orders the
+// mix an AI nation would: aiWarshipVariant), submarines (Submarines and Carriers). A list plays the same seeds with each.
+// The attack probe (scripts/attackprobe.ts) counts player 1's units: kills and time by warship type, landings, air.
 //
 // Measured, sampled every SAMPLE_SECONDS while player 1 is at war with a nation (an attack either way in the last
 // NAVY_WAR_MEMORY seconds, naval2.warSet; tribes don't count), per vehicle type, as shares of unit-time:
@@ -78,6 +81,9 @@ import { autoFireOn } from '../src/sim/airstrike';
 import { unitCost } from '../src/sim/units';
 import { followedNation, mainFront } from '../src/sim/warTarget';
 import { navalShellMul, navalShellRangeMul } from '../src/sim/variants';
+import { aiWarshipVariant } from '../src/sim/variantsAI';
+import { AttackProbe, addAttackStats, attackReport, newAttackStats } from './attackprobe';
+import type { AttackStats } from './attackprobe';
 import { cloneSetup, DEFAULT_MODIFIERS, DEFAULT_SETUP, SINGLE_PLAYER_NATIONS } from '../src/sim/setup';
 import { isTribe, isWater } from '../src/sim/types';
 import { loadWorldMap } from '../src/sim/worldmaps';
@@ -95,6 +101,8 @@ const MAX_SHIPS = 6;
 const VEHICLE_RESERVE = 400;
 
 type Clicks = 'none' | 'once';
+type Navy = 'none' | 'destroyers' | 'submarines';
+const NAVY_TECHS: Record<Navy, TechId[]> = { none: [], destroyers: ['destroyers', 'battleships'], submarines: ['submarines', 'carriers'] };
 type VKind = 'ship' | 'tank' | 'air' | 'silo';
 const VKINDS: VKind[] = ['ship', 'tank', 'air', 'silo'];
 const VNAME: Record<VKind, string> = { ship: 'warships', tank: 'tank divisions', air: 'airfields', silo: 'silos' };
@@ -149,7 +157,7 @@ class AutoBot {
   /** --trace: why the last purchases failed */
   notes: string[] = [];
 
-  constructor(seed: number, private clicks: Clicks) {
+  constructor(seed: number, private clicks: Clicks, private navy: Navy = 'none') {
     this.rnd = mulberry(seed * 7919 + 13);
   }
 
@@ -296,7 +304,7 @@ class AutoBot {
    */
   private research(state: GameState): void {
     const p = state.players[ME];
-    const goals = VEHICLE_TECHS.filter((t) => !hasTech(p, t));
+    const goals = [...VEHICLE_TECHS, ...NAVY_TECHS[this.navy]].filter((t) => !hasTech(p, t));
     if (!goals.length) {
       if (!p.auto.research) applyAction(state, ME, { type: 'setAuto', research: true });
       return;
@@ -357,7 +365,8 @@ class AutoBot {
     if (hasTech(p, 'navigation') && warshipCount(state, ME) < Math.min(MAX_SHIPS, warshipLimit(state, ME)) && ok(900)) {
       const port = buildingsOf(state, ME, 'port').find((b) => b.owner === ME && b.buildLeft <= 0);
       if (port) {
-        const r = applyAction(state, ME, { type: 'buildWarship', port: port.tile });
+        const variant = this.navy === 'none' ? undefined : aiWarshipVariant(state, ME);
+        const r = applyAction(state, ME, variant ? { type: 'buildWarship', port: port.tile, variant } : { type: 'buildWarship', port: port.tile });
         if (r.ok) {
           this.bought.ships++;
           return true;
@@ -472,6 +481,7 @@ interface Job {
   type: MapType;
   difficulty: Difficulty;
   clicks: Clicks;
+  navy?: Navy;
   seed: number;
 }
 
@@ -500,6 +510,8 @@ interface Result {
   bombs: { arrivals: number; home: number; off: number };
   rockets: number;
   sorties: number;
+  /** attack probe over player 1's units */
+  atk?: AttackStats;
   /** player 1's unitLost events by kind (names and numbers taken out) */
   lossWhy: Record<string, number>;
 }
@@ -856,8 +868,9 @@ async function runGame(job: Job, minutes: number): Promise<Result> {
     modifiers: { ...DEFAULT_MODIFIERS },
   };
   const state = createGame(settings, world ? await loadWorldMap(world) : null);
-  const bot = new AutoBot(job.seed, job.clicks);
+  const bot = new AutoBot(job.seed, job.clicks, job.navy ?? 'none');
   const m = new Meter(job);
+  const atk = new AttackProbe(state, (_s, id) => id === ME);
   const r = m.r;
   while (state.phase === 'spawn') {
     if (state.tick >= 30 && !state.players[ME].spawned) bot.spawn(state);
@@ -880,6 +893,8 @@ async function runGame(job: Job, minutes: number): Promise<Result> {
     }
     tick(state);
     if (outB.length) m.bombs(state, outB, rockT);
+    atk.afterTick(state.events);
+    if (state.tick % (10 * TICKS_PER_SECOND) === 0) atk.sample();
     m.events(state);
     state.events.length = 0;
     if (state.tick % every === 0) m.sample(state);
@@ -910,6 +925,7 @@ async function runGame(job: Job, minutes: number): Promise<Result> {
     r.share25 = state.players[ME].tiles / land;
   }
   m.finish(state, bot.bought);
+  r.atk = atk.stats;
   return r;
 }
 
@@ -936,6 +952,7 @@ interface Options {
   types: MapType[];
   difficulties: Difficulty[];
   clicks: Clicks[];
+  navy: Navy[];
   seeds: number;
   start: number;
   minutes: number;
@@ -953,6 +970,7 @@ function parseOptions(argv: string[]): Options {
     types: ['continents', 'archipelago', 'pangaea', 'highlands'],
     difficulties: ['normal'],
     clicks: ['none', 'once'],
+    navy: ['none'],
     seeds: 8,
     start: 1,
     minutes: 25,
@@ -972,6 +990,7 @@ function parseOptions(argv: string[]): Options {
       case '--types': o.types = list() as MapType[]; k++; break;
       case '--difficulty': o.difficulties = list() as Difficulty[]; k++; break;
       case '--clicks': o.clicks = list().filter((c): c is Clicks => c === 'none' || c === 'once'); k++; break;
+      case '--navy': o.navy = list().filter((c): c is Navy => c === 'none' || c === 'destroyers' || c === 'submarines'); k++; break;
       case '--seeds': o.seeds = Number(v); k++; break;
       case '--start': o.start = Number(v); k++; break;
       case '--minutes': o.minutes = Number(v); k++; break;
@@ -992,15 +1011,18 @@ function parseOptions(argv: string[]): Options {
     }
   }
   if (!o.clicks.length) o.clicks = ['none'];
+  if (!o.navy.length) o.navy = ['none'];
   return o;
 }
 
 function jobList(o: Options): Job[] {
   const jobs: Job[] = [];
-  for (const clicks of o.clicks) {
-    for (const map of o.maps) {
-      for (const difficulty of o.difficulties) {
-        for (let k = 0; k < o.seeds; k++) jobs.push({ index: jobs.length, map, type: o.types[k % o.types.length], difficulty, clicks, seed: o.start + k });
+  for (const navy of o.navy) {
+    for (const clicks of o.clicks) {
+      for (const map of o.maps) {
+        for (const difficulty of o.difficulties) {
+          for (let k = 0; k < o.seeds; k++) jobs.push({ index: jobs.length, map, type: o.types[k % o.types.length], difficulty, clicks, seed: o.start + k, ...(navy !== 'none' ? { navy } : {}) });
+        }
       }
     }
   }
@@ -1035,11 +1057,11 @@ function table(rows: string[][]): void {
 }
 
 function report(rs: Result[], o: Options): void {
-  for (const clicks of o.clicks) {
-    const g = rs.filter((r) => r.job.clicks === clicks);
+  for (const navy of o.navy) for (const clicks of o.clicks) {
+    const g = rs.filter((r) => r.job.clicks === clicks && (r.job.navy ?? 'none') === navy);
     if (!g.length) continue;
     const n = g.length;
-    console.log(`\n=== --clicks ${clicks}: ${n} games (${o.maps.join(',')} x ${[...new Set(g.map((r) => r.job.type))].join(',')} x ${o.difficulties.join(',')}) ===`);
+    console.log(`\n=== --clicks ${clicks}${navy !== 'none' ? ` --navy ${navy}` : ''}: ${n} games (${o.maps.join(',')} x ${[...new Set(g.map((r) => r.job.type))].join(',')} x ${o.difficulties.join(',')}) ===`);
     const war = g.filter((r) => r.warSamples > 0);
     console.log(
       `Player 1: alive at 15 / 25 min ${pct(g.filter((r) => r.alive15).length / n)} / ${pct(g.filter((r) => r.alive25).length / n)}; land share at 15 / 25 min mean ${pci(g.map((r) => r.share15))} / ${pci(g.map((r) => r.share25))} (median ${pct(median(g.map((r) => r.share15)))} / ${pct(median(g.map((r) => r.share25)))}); at war ${pci(g.map((r) => (r.warSamples * SAMPLE_SECONDS) / 60 / Math.max(1, r.minutes)))} of the game.`,
@@ -1114,6 +1136,12 @@ function report(rs: Result[], o: Options): void {
         ]);
       }
       table(rows2);
+    }
+    const withAtk = g.filter((r) => r.atk);
+    if (withAtk.length) {
+      const sum = newAttackStats();
+      for (const r of withAtk) addAttackStats(sum, r.atk!);
+      for (const line of attackReport(sum, withAtk.length)) console.log(line.replace('AI attack probe', 'Attack probe').replace('AI nations only', 'player 1 only'));
     }
   }
 }
