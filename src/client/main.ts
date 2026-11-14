@@ -111,7 +111,7 @@ void loadFonts();
 // announcements, notices and effects from the server, on top of the menu and the game (broadcast.ts)
 const broadcast = new BroadcastLayer(document.body, app);
 
-// Sound: procedural, quiet by default, unlocked by the first click or key (autoplay policy). See docs/AUDIO.md.
+// Sound: recorded effects and music, loaded after the first click or key (autoplay policy). See docs/AUDIO.md.
 let audio: AudioManager | null = null;
 try {
   audio = new AudioManager();
