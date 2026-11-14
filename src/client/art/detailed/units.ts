@@ -26,6 +26,7 @@ import { drawBlob } from './blobs';
 import { drawDamage, listOf } from './damage';
 import { facingIndex, facingsFor, gridOf, type Grid } from './grid';
 import { modelLength, modelSpan, MOD_MASK, unitLength, unitModel, type UnitModel } from './models';
+import { outlineOf, ringWidth } from './outline';
 import { FIRE } from './palette';
 
 const atlas = new SpriteAtlas(1024, 12);
@@ -63,10 +64,12 @@ function bankRoll(bank: number): number {
 const BODY = 0;
 const TURRET = 1;
 const SHADOW = 2;
+/** The body with the map outline (outline.ts): OUTLINED + ring width in art px (1 to 3). */
+const OUTLINED = 2;
 
 function entryKey(key: SpriteKey, mods: number, facing: number, bank: number, frame: number, owner: readonly number[], res: number, layer: number): number {
   const o = layer === SHADOW ? 0 : ((owner[0] & 255) << 16) | ((owner[1] & 255) << 8) | (owner[2] & 255);
-  return ((((((o * 32 + (KEY_INDEX.get(key) ?? 0)) * 32 + mods) * 64 + facing) * 8 + bank) * 2 + frame) * 32 + Math.round(res * 4)) * 4 + layer;
+  return ((((((o * 32 + (KEY_INDEX.get(key) ?? 0)) * 32 + mods) * 64 + facing) * 8 + bank) * 2 + frame) * 32 + Math.round(res * 4)) * 8 + layer;
 }
 
 /**
@@ -83,7 +86,7 @@ function entry(um: UnitModel, key: SpriteKey, mods: number, facing: number, n: n
     timed(() => {
       if (layer === TURRET && um.turret) return rasterize(um.turret.model, res, facing, { facings: n, owner });
       const b = rasterize(um.model, res, facing, { facings: n, owner: layer === SHADOW ? [0, 0, 0] : owner, roll: layer === SHADOW ? 0 : roll, list: roll !== 0 && unitCategoryOf(key) === 'ships', tread: frame ? 0.7 : 0 });
-      return layer === SHADOW ? shadowOf(b) : b;
+      return layer === SHADOW ? shadowOf(b) : layer > OUTLINED ? outlineOf(b, owner, layer - OUTLINED) : b;
     }),
   );
 }
@@ -192,7 +195,8 @@ function drawAt(ctx: CanvasRenderingContext2D, u: UnitDraw, m: MotionParams, g: 
   const moving = u.moving || u.speed > 0;
   const tank = cat === 'land';
   const frame = tank && moving && !still && g.res >= 1.6 ? Math.floor(t / 110) & 1 : 0;
-  const body = entry(um, key, mods, facing, n, bank, frame, u.owner, g.res, BODY);
+  // on the map the body carries the owner ring and dark edge (outline.ts), about one CSS px each; portraits do not
+  const body = entry(um, key, mods, facing, n, bank, frame, u.owner, g.res, u.outline ? OUTLINED + ringWidth(g.k) : BODY);
   if (!body) return false;
   let turret: AtlasEntry | null = null;
   let tFacing = 0;

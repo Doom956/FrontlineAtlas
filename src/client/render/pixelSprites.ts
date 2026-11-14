@@ -1,7 +1,7 @@
 // Unit sprites on the map and in the HUD, through the art switch (client only). render/units.ts picks the level of
-// detail (far = small calm markers and fleet counts, drawn here and shared by every style; mid and near = the sprite
-// of the current art style for the unit's category, art/registry.ts), and the HUD portraits (the unit card and the
-// Forces list call drawUnitSprite) draw the same art as the map.
+// detail (far = small silhouette icons and fleet counts, render/unitIcons.ts, shared by every style; mid and near =
+// the sprite of the current art style for the unit's category, art/registry.ts, with the map outline), and the HUD
+// portraits (the unit card and the Forces list call drawUnitSprite) draw the same art as the map, without the outline.
 //
 // What a player owns shows on their units (unitSpriteMods reads the owner's techs, read-only): arsenal variants have
 // their own silhouettes and the upgrades add details (art/shared/keys.ts M_* bits). All art is original and drawn in
@@ -55,6 +55,8 @@ export interface MapSpriteState {
   seed: number;
   /** 0 = full health .. 1 = about to sink or be destroyed (unitDamage) */
   damage: number;
+  /** opacity 0..1 (the crossfade from the far icons to the sprites, render/units.ts); 1 when left out */
+  alpha?: number;
 }
 
 /**
@@ -96,8 +98,9 @@ export function drawMapSprite(ctx: CanvasRenderingContext2D, type: UnitType, var
   d.speed = s.speed;
   d.moving = s.moving;
   d.seed = s.seed;
-  d.alpha = 1;
+  d.alpha = s.alpha ?? 1;
   d.shadow = true;
+  d.outline = true;
   d.damage = s.damage;
   return artFor(cat).drawUnit(ctx, d, motionFor(cat));
 }
@@ -209,44 +212,4 @@ export function modsFor(state: GameState, owner: number, type: UnitType, variant
 /** Upgrade details of one unit on the map. */
 export function unitSpriteMods(state: GameState, u: Unit): number {
   return modsFor(state, u.owner, u.type, u.variant);
-}
-
-// ------------------------------------------------------------------------------------------------- far zoom
-
-/**
- * Far zoom marker: a tiny solid shape in the owner's colour with a dark edge, one per unit class (ship = lozenge,
- * tank = square, plane = small arrow, missile = dot). No detail, so hundreds of them stay calm.
- */
-export function drawUnitMarker(ctx: CanvasRenderingContext2D, type: UnitType, x: number, y: number, size: number, angle: number, fill: string): void {
-  const s = size;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.beginPath();
-  if (type === 'tankDivision') {
-    ctx.rect(-s * 0.42, -s * 0.42, s * 0.84, s * 0.84);
-  } else if (type === 'rocket' || type === 'atomBomb') {
-    ctx.arc(0, 0, s * (type === 'atomBomb' ? 0.42 : 0.32), 0, Math.PI * 2);
-  } else if (type === 'bomber' || type === 'fighter' || type === 'transportPlane' || type === 'reconPlane') {
-    ctx.rotate(angle);
-    ctx.moveTo(s * 0.55, 0);
-    ctx.lineTo(-s * 0.45, s * 0.45);
-    ctx.lineTo(-s * 0.2, 0);
-    ctx.lineTo(-s * 0.45, -s * 0.45);
-    ctx.closePath();
-  } else {
-    ctx.rotate(angle);
-    ctx.moveTo(s * 0.62, 0);
-    ctx.lineTo(s * 0.2, s * 0.3);
-    ctx.lineTo(-s * 0.55, s * 0.3);
-    ctx.lineTo(-s * 0.55, -s * 0.3);
-    ctx.lineTo(s * 0.2, -s * 0.3);
-    ctx.closePath();
-  }
-  ctx.lineWidth = 2.5;
-  ctx.lineJoin = 'round';
-  ctx.strokeStyle = 'rgba(14,18,24,0.8)';
-  ctx.stroke();
-  ctx.fillStyle = fill;
-  ctx.fill();
-  ctx.restore();
 }

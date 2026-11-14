@@ -2,22 +2,27 @@
 // is drawn by the current art style of its category (art/registry.ts through pixelSprites.ts drawMapSprite; the
 // refined pixel sprites are art/refined/sprites.ts): the style gets the unit's heading, how fast it turns (planes
 // bank), its speed (wake size), the zoom and a clock for animation. The owner's colour is a plate or band, never a
-// tint. Planes and missiles cast a short ground shadow. Far out, every unit is a tiny solid marker in the owner's
-// colour (shared by every style). Missiles and planes leave contrails and moving ships a wake, drawn by the styles of
+// tint, and on the map each sprite has a ring in its owner's full colour and a dark outer edge (outline), so it reads
+// on any land or sea and shows whose it is. Planes and missiles cast a short ground shadow. Far out, every unit is a
+// small silhouette icon of its own kind in its owner's colour (render/unitIcons.ts, shared by every style); between
+// zoom 4 and 5 the icons fade into the sprites, and when the sprites' pixel size steps up close in (zoom 11, 22, 32)
+// the old size fades out over a moment instead of popping. Missiles and planes leave contrails and moving ships a wake, drawn by the styles of
 // the 'contrails' and 'wakes' categories (one trail layer per style, anchored to the map). Paratroopers coming down
 // where a cargo plane dropped its troops, and the parachute mark on cargo planes, are drawn by the 'paradrop' style.
 // A small troop pill on transports at mid/close zoom; your own warships carry a tiny tick (a ring only while one is
 // hovered or picked, UnitLayer.focusId); they can be clicked to give orders, the hit area is
 // larger than the drawing. At far zoom units on the same pixel are drawn once and only missiles keep their trails.
 // Zoomed out (FLEET_ZOOM), warships of one owner within FLEET_RADIUS tiles (or 16 px on screen) draw as one fleet
-// marker with a count badge (render/fleets.ts); a click on your own marker selects that fleet (ownFleetAt).
+// marker (the lead ship's icon with a second hull behind it) with a count badge (render/fleets.ts); a click on your
+// own marker selects that fleet (ownFleetAt).
 import { TICKS_PER_SECOND } from '../../sim/config';
 import { armyTotal } from '../../sim/economy';
 import type { GameState, Unit } from '../../sim/types';
 import type { Camera } from '../camera';
 import { ACCENT, clamp, css, MAP_NUM_FAMILY, type RGB } from './common';
 import { GLYPHS, strokeDucks, type Inst } from './unitGlyphs';
-import { drawMapSprite, drawUnitMarker, isAirType, setSpriteBakeBudget, spriteLength, unitDamage, unitSpriteMods, type MapSpriteState } from './pixelSprites';
+import { drawMapSprite, isAirType, setSpriteBakeBudget, spriteLength, unitDamage, unitSpriteMods, type MapSpriteState } from './pixelSprites';
+import { drawFleetCount, drawUnitIcon, iconScale, iconShapeOf } from './unitIcons';
 import { artStyleOf, type ArtStyle } from '../art/artStyle';
 import { artFor, motionFor, styleModule } from '../art/registry';
 import { spriteKey } from '../art/shared/keys';
@@ -36,22 +41,30 @@ const HIST = 3;
 const CHUTES = 6;
 const UNDER = 'rgba(6,9,15,0.6)';
 
-/** Levels of detail: below NEAR_ZOOM every unit is a tiny solid marker (and warships merge into fleet markers with a
- * count, fleets.ts); from NEAR_ZOOM on each unit is its shaded pixel sprite (pixelSprites.ts), one art pixel per screen
- * px at mid zoom, then 2, 3 and 4 px per art pixel as the camera comes closer (whole numbers keep the pixels crisp,
- * and every unit on screen shares the same pixel size). */
-const NEAR_ZOOM = 3;
+/** Levels of detail: below NEAR_ZOOM every unit is a small silhouette icon of its kind (unitIcons.ts; warships merge
+ * into fleet markers with a count below FLEET_ZOOM, fleets.ts); from NEAR_ZOOM to SPRITE_ZOOM the icons fade out as
+ * the sprites fade in; from there each unit is its shaded pixel sprite (pixelSprites.ts) with its outline, one art
+ * pixel per screen px at mid zoom, then 2, 3 and 4 px per art pixel as the camera comes closer (whole numbers keep the
+ * pixels crisp, and every unit on screen shares the same pixel size). */
+export const NEAR_ZOOM = 4;
+export const SPRITE_ZOOM = 5;
+/** How strongly the far icons and the sprites show at zoom z (0..1 each; they add up to 1). */
+export function unitBands(z: number): { icon: number; sprite: number } {
+  const t = clamp((z - NEAR_ZOOM) / (SPRITE_ZOOM - NEAR_ZOOM), 0, 1);
+  return { icon: 1 - t, sprite: t };
+}
+/** How long the old sprite size fades out when the pixel size steps up or down (ms). */
+const SCALE_FADE_MS = 150;
 /** Screen px per art pixel of the unit sprites at zoom z. */
 export function spriteScale(z: number): number {
   return z < 11 ? 1 : z < 22 ? 2 : z < 32 ? 3 : 4;
 }
-/** Sprites baked per frame at most (the rest show their marker for a frame or two). */
+/** Sprites and icons baked per frame at most (the rest show their icon, painted on the spot, for a frame or two). */
 const BAKES_PER_FRAME = 24;
-/** Base unit length on screen (CSS px) at a zoom level; each unit scales it a little (unitGlyphs.ts len). */
-const glyphPx = (z: number): number => (z < NEAR_ZOOM ? clamp(6 + z * 1.1, 7, 9) : clamp(12 + (z - NEAR_ZOOM) * 3.2, 14, 48));
 
-/** `fleet`: this entry is a fleet marker standing for these ships (the lead, u, is the lowest id). */
-type Vis = Inst & { u: Unit; fleet?: number[]; turn: number; speed: number };
+/** `fleet`: this entry is a fleet marker standing for these ships (the lead, u, is the lowest id). `R`: how far the
+ * drawing reaches from its centre (CSS px), for the tick under own units. */
+type Vis = Inst & { u: Unit; fleet?: number[]; turn: number; speed: number; R: number };
 
 interface Track {
   px: number;
@@ -107,6 +120,10 @@ export class UnitLayer {
   selected: ReadonlySet<number> = new Set();
   /** live wakes and contrails, one layer per art style that drew them (art/types.ts TrailLayer) */
   private trailLayers = new Map<string, TrailLayer>();
+  /** the sprites' pixel size last frame, and the size it stepped from and when (the short fade, SCALE_FADE_MS) */
+  private lastScale = 0;
+  private fadeFrom = 0;
+  private fadeAt = -Infinity;
   private wakeList: TrailUnit[] = [];
   private contrailList: TrailUnit[] = [];
 
@@ -292,9 +309,14 @@ export class UnitLayer {
     const oy = cam.viewH / 2 - cam.y * z;
     const me = humanId;
     const fog = this.fog?.active ? this.fog : null;
-    const base = glyphPx(z);
     const near = z >= NEAR_ZOOM;
     const k = spriteScale(z);
+    const isz = iconScale(z);
+    if (near && this.lastScale > 0 && k !== this.lastScale) {
+      this.fadeFrom = this.lastScale;
+      this.fadeAt = nowMs;
+    }
+    this.lastScale = near ? k : 0;
     let visible: Vis[] = [];
     const taken = new Set<number>();
     const grouping = z < FLEET_ZOOM;
@@ -304,8 +326,10 @@ export class UnitLayer {
       const uy = t ? t.py + (t.cy - t.py) * frac : u.y;
       const x = ox + (ux + 0.5) * z;
       const y = oy + (uy + 0.5) * z;
-      // half length on screen: the sprite's own length close up, the marker's size far out
-      const S = near ? Math.max(6, spriteLength(u.type, u.variant, 0, k) / 2) : (base * GLYPHS[u.type].len) / 2;
+      // half length on screen: the sprite's own length close up, the icon's far out
+      const ic = near ? null : iconShapeOf(u.type, u.variant);
+      const S = ic ? ic.half * isz : Math.max(6, spriteLength(u.type, u.variant, 0, k) / 2);
+      const R = ic ? Math.max(ic.half, ic.beam) * isz + 1 : S * 0.5;
       const m = Math.max(40, S + 8);
       if (x < -m || y < -m || x > cam.viewW + m || y > cam.viewH + m) continue;
       // enemy submarines stay hidden until close, sonar, recon or Early Warning shows them (techtree.unitVisibleTo)
@@ -339,7 +363,7 @@ export class UnitLayer {
         moving = t.hn >= 2 && Math.abs(t.hx[0] - t.hx[1]) + Math.abs(t.hy[0] - t.hy[1]) > 1e-4;
         if (t.hn >= 2) speed = Math.hypot(t.hx[0] - t.hx[1], t.hy[0] - t.hy[1]) * TICKS_PER_SECOND;
       }
-      visible.push({ u, type: u.type, x, y, S, angle, moving, id: u.id, tx: ux + 0.5, ty: uy + 0.5, turn, speed });
+      visible.push({ u, type: u.type, x, y, S, R, angle, moving, id: u.id, tx: ux + 0.5, ty: uy + 0.5, turn, speed });
     }
     // zoomed out: close warships of one owner become one marker (screen px, so the radius scales with the zoom)
     if (grouping) {
@@ -354,7 +378,10 @@ export class UnitLayer {
         for (const f of fleets) {
           const lead = byId.get(f.ids[0])!;
           for (const id of f.ids) gone.add(id);
-          marks.push({ u: lead.u, type: 'warship', x: f.x, y: f.y, S: lead.S * 1.25, angle: lead.angle, moving: false, fleet: f.ids, turn: 0, speed: 0 });
+          // the size comes from the lead's icon (never its sprite: a carrier's fleet stays an icon, not a block)
+          const ic = iconShapeOf(lead.u.type, lead.u.variant);
+          const fs = iconScale(z, true);
+          marks.push({ u: lead.u, type: 'warship', x: f.x, y: f.y, S: ic.half * fs, R: Math.max(ic.half, ic.beam) * fs + 1, angle: lead.angle, moving: false, fleet: f.ids, turn: 0, speed: 0 });
         }
         visible = visible.filter((e) => e.type !== 'warship' || !gone.has(e.u.id));
         visible.push(...marks);
@@ -368,50 +395,68 @@ export class UnitLayer {
     }
     // contrails and wakes, left where the unit went (missiles at every zoom, planes and ships from the middle zooms on)
     this.drawTrailLayers(ctx, visible, { ox, oy, zoom: z, scale: k, now: nowMs, viewW: cam.viewW, viewH: cam.viewH, dpr, full: z >= 2 });
-    // far: one small solid marker per unit; mid and near: the unit's shaded pixel sprite (16 baked headings, whole
-    // pixel scale): ships and tanks first, then planes, then missiles on top
+    // far: one small silhouette icon per unit; mid and near: the unit's shaded pixel sprite with its outline (16 or
+    // more baked headings, whole pixel scale); between NEAR_ZOOM and SPRITE_ZOOM both, crossfading. Ships and tanks
+    // first, then planes, then missiles on top.
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
     const drawList = prankView.ducks ? this.drawDucks(ctx, visible, colors, z) : visible;
-    if (near) {
-      setSpriteBakeBudget(BAKES_PER_FRAME);
-      const ss = this.spriteState;
-      ss.zoom = z;
-      ss.scale = k;
-      ss.dpr = dpr;
-      ss.timeMs = nowMs;
-      try {
-        for (const pass of [0, 1, 2]) {
-          for (const e of drawList) {
-            const air = isAirType(e.type);
-            const missile = e.type === 'rocket' || e.type === 'atomBomb';
-            if ((pass === 0 && air) || (pass === 1 && (!air || missile)) || (pass === 2 && !missile)) continue;
-            const c = colors[e.u.owner] ?? [200, 200, 200];
+    const band = unitBands(z);
+    const fadeT = (nowMs - this.fadeAt) / SCALE_FADE_MS;
+    const fadeFrom = band.sprite > 0 && fadeT >= 0 && fadeT < 1 && this.fadeFrom > 0 ? this.fadeFrom : 0;
+    setSpriteBakeBudget(BAKES_PER_FRAME);
+    const ss = this.spriteState;
+    ss.zoom = z;
+    ss.dpr = dpr;
+    ss.timeMs = nowMs;
+    try {
+      for (const pass of [0, 1, 2]) {
+        for (const e of drawList) {
+          const air = isAirType(e.type);
+          const missile = e.type === 'rocket' || e.type === 'atomBomb';
+          if ((pass === 0 && air) || (pass === 1 && (!air || missile)) || (pass === 2 && !missile)) continue;
+          const c = colors[e.u.owner] ?? [200, 200, 200];
+          let iconA = e.fleet ? 1 : band.icon;
+          if (band.sprite > 0 && !e.fleet) {
             ss.turnRate = e.turn;
             ss.speed = e.speed;
             ss.moving = !!e.moving;
             ss.seed = e.u.id;
-            ss.damage = e.fleet ? 0 : unitDamage(e.u);
-            if (e.fleet || !drawMapSprite(ctx, e.type, e.u.variant, e.x, e.y, e.angle, c, unitSpriteMods(state, e.u), ss)) drawUnitMarker(ctx, e.type, e.x, e.y, e.fleet ? e.S * 1.6 : Math.min(14, e.S * 1.5), e.angle, css(c));
+            ss.damage = unitDamage(e.u);
+            const mods = unitSpriteMods(state, e.u);
+            if (fadeFrom) {
+              // the pixel size just stepped: the old size fades out under the new one
+              ss.scale = fadeFrom;
+              ss.alpha = band.sprite * (1 - fadeT);
+              drawMapSprite(ctx, e.type, e.u.variant, e.x, e.y, e.angle, c, mods, ss);
+            }
+            ss.scale = k;
+            ss.alpha = band.sprite * (fadeFrom ? fadeT : 1);
+            // a sprite not baked yet shows its icon for a frame (the same kind and colour, never a block)
+            if (!drawMapSprite(ctx, e.type, e.u.variant, e.x, e.y, e.angle, c, mods, ss)) iconA = Math.max(iconA, band.sprite);
           }
+          if (iconA > 0) drawUnitIcon(ctx, e.type, e.u.variant, e.x, e.y, e.angle, c, z, dpr, !!e.fleet, iconA);
         }
-      } finally {
-        setSpriteBakeBudget(Infinity);
       }
-    } else {
-      for (const e of drawList) {
-        const c = colors[e.u.owner] ?? [200, 200, 200];
-        drawUnitMarker(ctx, e.type, e.x, e.y, e.fleet ? e.S * 1.6 : e.S * 1.5, e.angle, css(c));
-      }
+    } finally {
+      setSpriteBakeBudget(Infinity);
     }
+    ctx.globalAlpha = 1;
     this.drawn += visible.length;
-    // own warships and tank divisions: a tiny white tick under the hull, a ring while hovered, picked or selected
-    // (selection.ts); clickable (hit area larger than the drawing)
+    // own warships, tank divisions and planes: a tiny white tick under the unit; warships and tank divisions also get a
+    // ring while hovered, picked or selected (selection.ts) and are clickable (hit area larger than the drawing)
     if (me > 0) {
       ctx.beginPath();
       let ring = false;
       for (const e of visible) {
-        if (e.u.owner !== me || (e.type !== 'warship' && e.type !== 'tankDivision')) continue;
+        if (e.u.owner !== me) continue;
+        if (e.type !== 'warship' && e.type !== 'tankDivision') {
+          if (isAirType(e.type) && e.type !== 'rocket' && e.type !== 'atomBomb') {
+            ctx.moveTo(e.x - 2, e.y + e.R + 3);
+            ctx.lineTo(e.x + 2, e.y + e.R + 3);
+          }
+          continue;
+        }
         const r = e.S + 3;
         const ids = e.fleet;
         if (ids ? ids.some((id) => id === this.focusId || this.selected.has(id)) : e.u.id === this.focusId || this.selected.has(e.u.id)) {
@@ -419,8 +464,8 @@ export class UnitLayer {
           ctx.arc(e.x, e.y, r, 0, Math.PI * 2);
           ring = true;
         } else {
-          ctx.moveTo(e.x - 2, e.y + e.S * 0.5 + 3);
-          ctx.lineTo(e.x + 2, e.y + e.S * 0.5 + 3);
+          ctx.moveTo(e.x - 2, e.y + e.R + 3);
+          ctx.lineTo(e.x + 2, e.y + e.R + 3);
         }
         if (ids) {
           // every ship of the fleet sits under the marker (box selection, hover); a click takes the whole fleet
@@ -454,7 +499,7 @@ export class UnitLayer {
       for (const e of visible) {
         if (!e.fleet) continue;
         const c = colors[e.u.owner] ?? [200, 200, 200];
-        countBadge(ctx, e.x + e.S * 0.9, e.y - e.S * 0.9, String(e.fleet.length), me > 0 && e.u.owner === me ? ACCENT : css(c));
+        drawFleetCount(ctx, e.x + e.S * 0.85 + 3, e.y - e.S * 0.85 - 3, String(e.fleet.length), me > 0 && e.u.owner === me ? ACCENT : css(c), MAP_NUM_FAMILY);
       }
     }
     // transports: a small troop pill (the troop markers of what it carries and the count) and, on cargo planes, a tiny
@@ -485,7 +530,7 @@ export class UnitLayer {
 
   private markArgs: ParachuteMarkDraw = { x: 0, y: 0, half: 0, owner: [200, 200, 200], zoom: 1, dpr: 1 };
   private dropArgs: ParadropDraw = { x: 0, y: 0, owner: [220, 220, 220], ageMs: 0, durMs: 1, t: 0, count: CHUTES, zoom: 1, scale: 1, seed: 0, dpr: 1 };
-  private spriteState: MapSpriteState = { zoom: 1, scale: 1, dpr: 1, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 0, damage: 0 };
+  private spriteState: MapSpriteState = { zoom: 1, scale: 1, dpr: 1, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 0, damage: 0, alpha: 1 };
 
   /** Wakes behind moving ships, contrails behind planes and missiles, each drawn by its category's current style. */
   private drawTrailLayers(ctx: CanvasRenderingContext2D, visible: readonly Vis[], view: TrailView): void {
@@ -568,22 +613,3 @@ export class UnitLayer {
     ctx.globalAlpha = 1;
   }
 }
-
-/** A fleet's ship count: a small round badge (a pill for 10+). */
-function countBadge(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, edge: string): void {
-  ctx.font = `600 9px ${MAP_NUM_FAMILY}`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  const bh = 12;
-  const bw = Math.max(bh, ctx.measureText(text).width + 6);
-  ctx.beginPath();
-  ctx.roundRect(x - bw / 2, y - bh / 2, bw, bh, bh / 2);
-  ctx.fillStyle = 'rgba(10,13,21,0.88)';
-  ctx.fill();
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = edge;
-  ctx.stroke();
-  ctx.fillStyle = '#fff';
-  ctx.fillText(text, x, y + 0.5);
-}
-
