@@ -194,6 +194,26 @@ function pushed(s: GameState): void {
 }
 
 describe('AI tank divisions', () => {
+  it('from Normal up, a division far from the main front supports the stretch of that border nearest it', () => {
+    for (const d of ['normal', 'easy'] as Difficulty[]) {
+      // A long border at x = 29/30 (y 0..119); the attack is at the north end, the division at the south end.
+      const s = makeFlatGame(60, 120, 2, { seed: 5 });
+      claimRect(s, 1, 0, 0, 29, 119);
+      claimRect(s, 2, 30, 0, 59, 119);
+      s.settings.difficulty = d;
+      s.settings.victoryLandShare = 0.99;
+      s.admin = { aiPassive: [], godMode: [], aiFrozen: true, revealIntel: [] };
+      for (const p of s.players) if (p.id) p.troops = { infantry: 60000, armor: 0, artillery: 0 };
+      const div = spawnTankDivision(s, 1, at(s, 20, 115));
+      asAI(s, () => applyAction(s, 1, { type: 'attack', tile: at(s, 30, 3), troops: { infantry: 10000, armor: 0, artillery: 0 } }));
+      asAI(s, () => aiDivisionModes(s, 1, (x) => applyAction(s, 1, x)));
+      expect(div.mode).toBe('support');
+      const y = (div.station! / s.map.width) | 0;
+      if (d === 'normal') expect(y).toBeGreaterThan(90);
+      else expect(y).toBeLessThan(30);
+    }
+  });
+
   it('a holding division about to be rolled over strikes back when strong (Normal up), on Easy it stays', () => {
     for (const d of ['normal', 'easy'] as Difficulty[]) {
       const s = landGame(d);

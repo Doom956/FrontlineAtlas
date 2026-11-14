@@ -704,6 +704,8 @@ function otherFront(state: GameState, u: Unit, foe: number): number {
 /** AI divisions: a counter-strike needs this expected depth (tiles); below AI_STAY_STRENGTH a pressed one refits. */
 const AI_COUNTER_MIN_DEPTH = 4;
 const AI_STAY_STRENGTH = 0.6;
+/** A division farther than this (tiles) from the main front supports the foe's border tile nearest it (Normal up). */
+const AI_FRONT_NEAR = 60;
 /** A holding division is pressed when land of a nation attacking its owner is this close (tiles). */
 const AI_PRESSED_RADIUS = TANK_FALLBACK_RADIUS;
 
@@ -820,23 +822,41 @@ export function aiDivisionModes(state: GameState, id: number, act: (a: Action) =
   const lead = mine[0];
   const ax = focus >= 0 ? focus % w : lead.x;
   const ay = focus >= 0 ? (focus / w) | 0 : lead.y;
-  let front = -1;
-  let bestD = Infinity;
-  for (const t of frontTiles(state, id, foe)) {
-    const d = d2(t % w, (t / w) | 0, ax, ay);
-    if (d < bestD || (d === bestD && t < front)) {
-      bestD = d;
-      front = t;
+  const tiles = frontTiles(state, id, foe);
+  const nearest = (x: number, y: number): number => {
+    let best = -1;
+    let bestD = Infinity;
+    for (const t of tiles) {
+      const d = d2(t % w, (t / w) | 0, x, y);
+      if (d < bestD || (d === bestD && t < best)) {
+        bestD = d;
+        best = t;
+      }
     }
-  }
+    return best;
+  };
+  const front = nearest(ax, ay);
   if (front < 0) return;
-  const stale = mine.filter((u) => {
-    if (divisionMode(u) !== 'support' || u.station === undefined) return true;
-    const st = u.station;
-    const o = owner[st];
-    // A foe's tile or our own (the front moved on) near the main front: keep it; elsewhere they jump to it.
-    if (o !== foe && o !== id) return true;
-    return d2(st % w, (st / w) | 0, front % w, (front / w) | 0) > 40 * 40;
-  });
-  if (stale.length) act({ type: 'setDivisionMode', unitIds: stale.map((u) => u.id), mode: 'support', front });
+  // Which front tile each division supports: the main front; from Normal up the foe's border tile nearest the division
+  // when the main front is far from it (attacks advance along the whole border, so a strike anywhere on it joins the
+  // push, and the main front is often out of reach over our land: AI divisions sat idle far from it).
+  const frontFor = (u: Unit): number => {
+    if (level < 1 || d2(u.x, u.y, front % w, (front / w) | 0) <= AI_FRONT_NEAR * AI_FRONT_NEAR) return front;
+    return nearest(u.x, u.y);
+  };
+  const jobs = new Map<number, number[]>();
+  for (const u of mine) {
+    const f = frontFor(u);
+    if (f < 0) continue;
+    if (divisionMode(u) === 'support' && u.station !== undefined) {
+      const st = u.station;
+      const o = owner[st];
+      // A foe's tile or our own (the front moved on) near its front: keep it; elsewhere they jump to it.
+      if ((o === foe || o === id) && d2(st % w, (st / w) | 0, f % w, (f / w) | 0) <= 40 * 40) continue;
+    }
+    let l = jobs.get(f);
+    if (!l) jobs.set(f, (l = []));
+    l.push(u.id);
+  }
+  for (const [f, ids] of jobs) act({ type: 'setDivisionMode', unitIds: ids, mode: 'support', front: f });
 }
