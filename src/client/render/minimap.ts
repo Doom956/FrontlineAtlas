@@ -4,7 +4,9 @@
 import { isTribe, type GameState } from '../../sim/types';
 import type { Camera } from '../camera';
 import { clamp, ctx2d, makeCanvas, type RGB } from './common';
-import { displayColor, NATION_ALPHA, paintOver, TRIBE_ALPHA, type DisplayRole } from './palette';
+import { displayColor, GROUND_TINT, groundTint, NATION_ALPHA, paintOver, TRIBE_ALPHA, type DisplayRole } from './palette';
+import { groundFor } from './ground';
+import { mapStyle } from './mapStyle';
 import type { TerrainData } from './terrain';
 import { OWNER_MASK, type TileFeed } from './tiles';
 import { FOG } from '../../sim/config';
@@ -27,6 +29,9 @@ export class Minimap {
   private rowOf = new Int32Array(0);
   private sample = new Int32Array(0);
   private terr: TerrainData | null = null;
+  /** real ground (map style C): the ground's far colours under everything, nations as its hue-true tint; else null */
+  private ground: Uint8Array | null = null;
+  private game: GameState | null = null;
   private colors: readonly RGB[] = [];
   /** palette.ts display colour and fill opacity per owner (rebuilt when the colours, the player count or you change) */
   private shown: RGB[] = [];
@@ -51,6 +56,8 @@ export class Minimap {
     this.w = w;
     this.h = h;
     this.terr = terr;
+    this.game = state;
+    this.ground = null;
     this.cssW = MINIMAP_CSS_W;
     this.cssH = Math.max(1, Math.round((MINIMAP_CSS_W * h) / w));
     this.canvas.style.width = `${this.cssW}px`;
@@ -84,14 +91,16 @@ export class Minimap {
 
   /** Same palette as the map (palette.ts): your nation keeps a little more chroma, tribes are the calmest. */
   private syncShown(state: GameState, humanId: number): void {
-    const key = `${state.players.length}:${humanId}`;
+    const style = mapStyle();
+    const key = `${state.players.length}:${humanId}:${style}`;
+    this.ground = style === 'ground' && this.terr && this.game ? groundFor(this.game.map, this.terr.depth).far : null;
     if (!this.colorsStale && key === this.shownKey) return;
     this.colorsStale = false;
     this.shownKey = key;
     for (let id = 0; id < this.colors.length; id++) {
       const p = state.players[id];
       const role: DisplayRole = id === humanId ? 'own' : p && isTribe(p) ? 'tribe' : 'nation';
-      this.shown[id] = displayColor(this.colors[id], { role });
+      this.shown[id] = displayColor(this.colors[id], { role, style });
       this.shownAlpha[id] = role === 'tribe' ? TRIBE_ALPHA : NATION_ALPHA;
     }
     this.gen = -1; // repaint every pixel with the new colours
@@ -168,14 +177,16 @@ export class Minimap {
     const d = this.img!.data;
     const k = p * 4;
     const tk = t * 4;
-    let r = terr.rgba[tk];
-    let g = terr.rgba[tk + 1];
-    let b = terr.rgba[tk + 2];
+    const base = this.ground ?? terr.rgba;
+    let r = base[tk];
+    let g = base[tk + 1];
+    let b = base[tk + 2];
     const o = feed.mirror[t] & OWNER_MASK;
     if (o !== 0) {
       const c = this.shown[o];
       if (c) {
-        const m = paintOver([r, g, b], c, this.shownAlpha[o]);
+        // the map's own look: real ground's far tint (the minimap is the far view), else today's fill
+        const m = this.ground ? groundTint([r, g, b], c, this.shownAlpha[o] === TRIBE_ALPHA ? GROUND_TINT.tribe : GROUND_TINT.far) : paintOver([r, g, b], c, this.shownAlpha[o]);
         r = m[0];
         g = m[1];
         b = m[2];

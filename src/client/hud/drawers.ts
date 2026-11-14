@@ -66,7 +66,7 @@ import { warshipOrderCost } from '../../sim/navy';
 import { VARIANT_NAMES } from '../../sim/variants';
 import { canBuildTankDivision, tankDivisionCost, tankDivisionCount, tankDivisionLimit } from '../../sim/tanks';
 import { fxEnabled, setFxEnabled } from '../fx/settings';
-import { MAP_STYLES, MAP_STYLE_SHORT, mapStyle, setMapStyle, type MapStyle } from '../render/mapStyle';
+import { MAP_STYLE_MENU, MAP_STYLE_SHORT, mapStyle, setMapStyle, type MapStyle } from '../render/mapStyle';
 
 export const TROOP_COLORS = { infantry: '#9aa86a', armor: '#c9a227', artillery: '#c0564a' } as const;
 
@@ -1052,11 +1052,11 @@ export class SettingsPage implements DrawerPage {
     fx.el.dataset.test = 'fx-toggle';
     r.append(fx.el, el('p', 'note', 'Short flashes when land or a city changes hands, a ship sinks or a bomb lands. A nearby nuke shakes the view.'));
     this.sync.push(() => fx.set(fxEnabled()));
-    // the map's look (render/mapStyle.ts): today's, or one of the three styles on trial, two buttons a row
+    // the map's look (render/mapStyle.ts): real ground (the default), the classic look, or one of the other two, two a row
     const looks = el('div', 'map-looks');
     looks.dataset.test = 'map-style';
     const lookBtns: [MapStyle, HTMLButtonElement][] = [];
-    for (const pair of [MAP_STYLES.slice(0, 2), MAP_STYLES.slice(2, 4)]) {
+    for (const pair of [MAP_STYLE_MENU.slice(0, 2), MAP_STYLE_MENU.slice(2, 4)]) {
       const g = el('div', 'segc');
       for (const st of pair) {
         const b = el('button', 'segc-b', MAP_STYLE_SHORT[st]);
@@ -1070,7 +1070,7 @@ export class SettingsPage implements DrawerPage {
       }
       looks.append(g);
     }
-    r.append(looks, el('p', 'note', 'Map look: Today is the usual map. Pixel terrain, Muted war map and Real ground are trial looks for the ground, nations and sea.'));
+    r.append(looks, el('p', 'note', 'Map look: Real ground shows the land as it is, each nation in its colour with a thick band inside its border. Classic is the earlier flat map. Pixel terrain and Muted war map are other looks.'));
     this.sync.push(() => {
       const now = mapStyle();
       for (const [k, x] of lookBtns) setClass(x, 'on', k === now);

@@ -264,6 +264,13 @@ export class Renderer {
     const fogSend = fogOn && fog.bitsGen !== this.fogSent;
     if (fogSend) this.fogSent = fog.bitsGen;
     if (!fogOn) this.fogSent = -1;
+    if (!gl && this.map2d && this.map2d.style !== mapStyle()) {
+      // the map style changed: the 2D layers are built per style (ground colours, fill), so a new set, all colours again
+      this.map2d = null;
+      this.ensure2d();
+      this.updatePalette(state, ui);
+      if (fogOn && fog) (this.map2d as Map2D | null)?.setFog(fog.tex, fog.bw, fog.bh);
+    }
     if (gl) {
       if (gl.style !== mapStyle()) {
         // the map style changed (render/mapStyle.ts): a new shader, and the palette again (fills depend on the style)

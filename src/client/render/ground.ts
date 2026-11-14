@@ -125,6 +125,17 @@ export interface GroundData {
   far: Uint8Array;
 }
 
+const built = new WeakMap<MapData, GroundData>();
+/** The ground textures of a map, built once and shared (map layer, minimap, 2D fallback). */
+export function groundFor(map: MapData, depth: Uint8Array): GroundData {
+  let g = built.get(map);
+  if (!g) {
+    g = buildGround(map, depth);
+    built.set(map, g);
+  }
+  return g;
+}
+
 /** The ground textures. `depth`: water distance to land (terrain.ts). */
 export function buildGround(map: MapData, depth: Uint8Array): GroundData {
   const { width: w, height: h, terrain } = map;

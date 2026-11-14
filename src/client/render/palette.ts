@@ -38,6 +38,49 @@ const STYLE_FILL: Record<MapStyle, { nation: number; tribe: number; chroma: numb
   ground: { nation: 0.18, tribe: 0.1, chroma: 1.08, ownChroma: 1.08, lightMid: 0.62, lightKeep: 0.72 },
 };
 
+/**
+ * Real ground (map style C): how a nation colours the ground under it. A plain blend of a red nation over green grass
+ * comes out brown (the two hues cancel), so the ground's own colour is mostly taken out and the nation's hue put in at
+ * the ground's brightness: the land keeps its light and dark (trees, fields, hill shading), the hue is the nation's on
+ * any ground. Per strength: [ground colour kept, nation colour added, broad brightness kept, small detail kept].
+ * Close in the tint is light (the border bands carry the nation), far out it takes over (the bands get too thin).
+ */
+export type TintK = readonly [number, number, number, number];
+export const GROUND_TINT: { near: TintK; far: TintK; band: TintK; tribe: TintK } = {
+  near: [0.6, 0.3, 0.85, 1],
+  far: [0.2, 0.76, 0.3, 0.85],
+  band: [0.08, 1, 0.15, 0.4],
+  tribe: [0.75, 0.28, 0.9, 1],
+};
+/** Zoom (CSS px per tile) where the far tint ends and the near one is full. */
+export const GROUND_TINT_ZOOM: readonly [number, number] = [2.2, 7];
+/**
+ * The nation colour is moved to the ground's brightness by at most this much: never brightened past TINT_LIFT_MAX (a
+ * navy on snow stays a navy), never darkened below TINT_LIFT_MIN (on dark forest the colour keeps its strength).
+ */
+export const TINT_LIFT_MAX = 1.6;
+export const TINT_LIFT_MIN = 0.75;
+
+const lumaOf = (c: readonly number[]): number => 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
+
+/** Mix of two tint strengths (t = 0 a, 1 b). */
+export function tintMix(a: TintK, b: TintK, t: number): TintK {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t];
+}
+
+/**
+ * Nation colour `fill` on ground colour `ground` (bytes), the same maths as the map shader's tintGround. `avgY` is the
+ * ground's broad brightness (0..255; the minimap and the 2D fallback pass the ground's own).
+ */
+export function groundTint(ground: readonly number[], fill: readonly number[], k: TintK, avgY = lumaOf(ground)): Rgb {
+  const gy = lumaOf(ground);
+  const oy = Math.max(10, lumaOf(fill));
+  const y = oy + (avgY - oy) * k[2] + (gy - avgY) * k[3];
+  const lift = Math.max(TINT_LIFT_MIN, Math.min(TINT_LIFT_MAX, y / oy));
+  const ch = (i: number): number => Math.round(Math.max(0, Math.min(255, y + (fill[i] - oy) * lift * k[1] + (ground[i] - gy) * k[0])));
+  return [ch(0), ch(1), ch(2)];
+}
+
 /** Opacity of a territory fill in a map style. */
 export function fillAlpha(style: MapStyle, tribe: boolean): number {
   const f = STYLE_FILL[style] ?? STYLE_FILL.today;

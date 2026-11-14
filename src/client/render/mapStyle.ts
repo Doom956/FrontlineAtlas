@@ -2,24 +2,26 @@
 // game: nothing here touches the sim, its hash or multiplayer, and every style draws the same tiles, borders, fronts,
 // fog and overlays (render/shaders.ts builds one fragment shader per style).
 //
-//   today   the current look: calm flat nation colours over a quiet copy of the terrain, a smooth slate sea
+//   today   ("Classic") the earlier look: calm flat nation colours over a quiet copy of the terrain, a smooth slate sea
 //   pixel   (A, "Pixel terrain") the ground in the units' detailed pixel style, lit from the top left, nations as a
 //           translucent tint with crisp pixel borders, a pixel sea with depth bands, waves and shore foam
 //   muted   (B, "Muted war map") today's layout in a muted military palette, hill shading and a fine pixel texture
 //           under the fill, crisp pixel borders, the pixel sea
-//   ground  (C, "Real ground") the pixel ground everywhere, nations shown by thick coloured border bands and a light
-//           tint, so a blast lands on real ground
+//   ground  (C, "Real ground", the default) the pixel ground everywhere, nations shown by thick coloured border bands
+//           and a light tint in their own hue (palette.ts groundTint), stronger far out, so a blast lands on real ground
 //
 // Picked at startup: ?map=a|b|c|today in the page address (also remembered in this browser), else the remembered
-// pick (localStorage 'fa.mapStyle'), else the build's VITE_MAP_STYLE, else today. setMapStyle switches at run time.
+// pick (localStorage 'fa.mapStyle'), else the build's VITE_MAP_STYLE, else real ground. setMapStyle switches at run time.
 
 export type MapStyle = 'today' | 'pixel' | 'muted' | 'ground';
 export const MAP_STYLES: readonly MapStyle[] = ['today', 'pixel', 'muted', 'ground'];
-export const DEFAULT_MAP_STYLE: MapStyle = 'today';
+export const DEFAULT_MAP_STYLE: MapStyle = 'ground';
+/** The order of the Menu's Map look buttons: the default first, then the classic look, then the other two. */
+export const MAP_STYLE_MENU: readonly MapStyle[] = ['ground', 'today', 'pixel', 'muted'];
 export const MAP_STYLE_KEY = 'fa.mapStyle';
 /** Button words for each style (the Menu's Map look switch). */
 export const MAP_STYLE_SHORT: Record<MapStyle, string> = {
-  today: 'Today',
+  today: 'Classic',
   pixel: 'Pixel terrain',
   muted: 'Muted war map',
   ground: 'Real ground',

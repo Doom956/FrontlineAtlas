@@ -1,5 +1,5 @@
 // GLSL for the map layer (WebGL2). One fullscreen pass: terrain, nations, borders, overlays.
-import { UNDER_CHROMA, UNDER_DETAIL, UNDER_LUM, UNDER_MID } from './palette';
+import { GROUND_TINT, GROUND_TINT_ZOOM, TINT_LIFT_MAX, TINT_LIFT_MIN, UNDER_CHROMA, UNDER_DETAIL, UNDER_LUM, UNDER_MID } from './palette';
 import { FOG } from '../../sim/config';
 import { WATER_FADE_END, WATER_MID } from './terrain';
 import type { RGB } from './common';
@@ -364,6 +364,20 @@ int toneIdx(float v, float dth, float dith) {
 }
 #define TONE(R, v) R[toneIdx(v, dth, 0.3)]
 
+// Real ground's nation tint (palette.ts groundTint, the same maths): the ground's own colour mostly out, the nation's
+// hue in at the ground's brightness, so a red nation is red on grass, forest, sand or snow (a plain blend goes brown).
+// k = ground colour kept, nation colour added, broad brightness kept, small detail kept.
+const vec4 TINT_NEAR = vec4(${GROUND_TINT.near.map((v) => v.toFixed(3)).join(', ')});
+const vec4 TINT_FAR = vec4(${GROUND_TINT.far.map((v) => v.toFixed(3)).join(', ')});
+const vec4 TINT_BAND = vec4(${GROUND_TINT.band.map((v) => v.toFixed(3)).join(', ')});
+const vec4 TINT_TRIBE = vec4(${GROUND_TINT.tribe.map((v) => v.toFixed(3)).join(', ')});
+vec3 tintGround(vec3 g, float gy, float avgY, vec3 oc, vec4 k) {
+  float oy = max(0.04, dot(oc, vec3(0.299, 0.587, 0.114)));
+  float y = oy + (avgY - oy) * k.z + (gy - avgY) * k.w;
+  float lift = clamp(y / oy, ${TINT_LIFT_MIN.toFixed(2)}, ${TINT_LIFT_MAX.toFixed(2)});
+  return clamp(vec3(y) + (oc - oy) * lift * k.y + (g - gy) * k.x, 0.0, 1.0);
+}
+
 #ifdef GROUND_PASS
 // Relief of rugged ground (ridged noise) and of rolling ground, in 0..1 at tile position p.
 float hRidge(vec2 p) {
@@ -447,32 +461,50 @@ vec3 landAt(int ter, vec2 q, float S, float hgt, float vary, ivec2 ap, float P) 
   if (ter == 5) {
     // mountains: peaks drawn as pixel sprites seen a little from the side: a triangle with its lit left face and dark
     // right face, a snow cap on the high ranges; peaks lower on screen stand in front; rock between them
+    // Each row of cells slides sideways by its own random amount (not a fixed half-cell stagger), and every peak varies
+    // in place, height, width and lean (left and right flanks of their own length), now and then with a lower second
+    // summit on one shoulder, so a dense range reads as a jumble of peaks, not rows of the same triangle. The ranges
+    // keep every peak inside the cells searched (its foot within its own row, at most one cell either side of the
+    // pixel's cell, up to two rows below), so no peak is ever cut straight.
     vec2 cs = P >= 8.0 ? vec2(1.9, 1.15) : vec2(2.8, 1.7);
     float row = floor(q.y / cs.y);
     float cap = clamp((hgt - 0.55) * 1.6, 0.0, 0.45);
     for (int j = 2; j >= 0; j--) {
       float r = row + float(j);
+      float ox = hash(ivec2(int(r), 17), 315u);
       for (int i = -1; i <= 1; i++) {
-        float ox = 0.5 * mod(r, 2.0);
         float cxi = floor(q.x / cs.x - ox) + float(i);
         ivec2 c = ivec2(int(cxi), int(r));
         // peaks gather where the range is high: fewer on its low edges, rock showing between
         if (hash(c, 301u) > 0.15 + 0.55 * smoothstep(0.45, 0.85, hgt)) continue;
-        float k = 0.65 + 0.7 * hash(c, 303u) * hash(c, 309u) + 0.25 * smoothstep(0.5, 0.9, hgt);
-        float ax = (cxi + ox + 0.5 + (hash(c, 305u) - 0.5) * 0.35) * cs.x;
-        float by = (r + 0.85 + (hash(c, 313u) - 0.5) * 0.3) * cs.y;
-        float ht = cs.y * 1.45 * k;
+        float k = 0.55 + 0.85 * hash(c, 303u) * hash(c, 309u) + 0.25 * smoothstep(0.5, 0.9, hgt);
+        float ax = (cxi + ox + 0.5 + (hash(c, 305u) - 0.5) * 0.6) * cs.x;
+        float by = (r + 0.7 + 0.3 * hash(c, 313u)) * cs.y;
+        float ht = cs.y * min(2.6, 1.45 * k * (0.75 + 0.5 * hash(c, 317u)));
         float ay = by - ht;
         if (q.y < ay || q.y > by) continue;
         float fy = (q.y - ay) / ht; // 0 at the tip, 1 at the base
-        float hw = cs.x * 0.62 * k * fy;
+        float wl = cs.x * min(1.0, k * (0.44 + 0.22 * hash(c, 319u))) * fy;
+        float wr = cs.x * min(1.0, k * (0.44 + 0.22 * hash(c, 321u))) * fy;
         float dx = q.x - ax;
-        if (abs(dx) > hw) continue;
-        float side = dx / max(hw, 0.001); // -1 left edge .. 1 right edge
+        bool inside = dx < 0.0 ? -dx <= wl : dx <= wr;
+        // a shoulder: a lower second summit on one flank, its own small triangle
+        float sh2 = hash(c, 323u);
+        bool shoulder = false;
+        if (!inside && sh2 < 0.4) {
+          float sx = ax + (sh2 < 0.2 ? -1.0 : 1.0) * cs.x * min(0.55, k * 0.35);
+          float sy = ay + ht * 0.38;
+          float sfy = (q.y - sy) / (by - sy);
+          float sdx = q.x - sx;
+          float sw = cs.x * min(0.48, k * 0.3) * sfy;
+          if (sfy >= 0.0 && abs(sdx) <= sw) { inside = true; shoulder = true; dx = sdx; fy = sfy; wl = wr = sw; }
+        }
+        if (!inside) continue;
+        float side = dx < 0.0 ? dx / max(wl, 0.001) : dx / max(wr, 0.001); // -1 left edge .. 1 right edge
         // the faces: lit left, a light ridge line just left of the crest, dark right, darkest at the right foot
         float v = dx < 0.0 ? 0.78 + 0.1 * step(-0.25, side) : 0.42 - 0.14 * step(0.6, side) * step(0.5, fy);
-        if (fy < cap + (hash(c, 307u) - 0.5) * 0.12) return SNOW[dx < 0.0 ? 3 : 1];
-        return TONE(ROCK, v + sh * 0.3);
+        if (!shoulder && fy < cap + (hash(c, 307u) - 0.5) * 0.16) return SNOW[dx < 0.0 ? 3 : 1];
+        return TONE(ROCK, v + sh * 0.3 - (shoulder ? 0.08 : 0.0));
       }
     }
     return TONE(ROCK, 0.4 + sh + 0.25 * speck(q, 0.7, 0.35, 311u, P));
@@ -720,17 +752,36 @@ void main() {
 #else
     vec2 kD = vec2(1.0, 1.0);
 #endif
-    vec3 lit = oc;
 #if MAP_STYLE == 3
-    // real ground: a light tint close in (the border bands carry the nation), stronger far out where bands are too thin
-    float fa = mix(min(0.62, pc.a * 3.0), pc.a, smoothstep(2.5, 6.0, zc));
+    // real ground: the nation's hue at the ground's brightness (palette.ts groundTint), light close in where the border
+    // bands carry the nation, stronger far out where the bands get too thin; tribes lighter still
+    bool tribeHere = int(flags.r * 255.0 + 0.5) == 3;
+    float avgK = mix(gy, avgY, nearG);
+    vec4 tk = tribeHere ? TINT_TRIBE : mix(TINT_FAR, TINT_NEAR, smoothstep(${GROUND_TINT_ZOOM[0].toFixed(2)}, ${GROUND_TINT_ZOOM[1].toFixed(2)}, zc));
+    vec3 fill = tintGround(col, gy, avgK, oc, tk);
+    // the border band: a thick strip of the nation's colour just inside its border, in whole art pixels (about 10 CSS px,
+    // a little less close in), the ground still showing through it; drawn here, under forts, trenches, flashes and
+    // fallout, so they all still show on it. The dark border line goes on top later.
+    if (P >= 2.0 && !tribeHere) {
+      float a1 = 1.0 / P;
+      float bandCss = mix(10.0, 7.0, smoothstep(12.0, 32.0, zc));
+      float bandW = min(max(floor(bandCss / zc * P + 0.5) / P, 3.0 * a1), 1.0);
+      float dB = edgeDist(ti, fq, o, fogHere, bandW);
+      if (dB < bandW) {
+        vec3 band = tintGround(col, gy, avgK, oc, TINT_BAND);
+        // a one-pixel step between band and fill, so the band's inner edge is crisp but not a hard cut
+        fill = dB >= bandW - a1 ? mix(fill, band, 0.5) : band;
+      }
+    }
 #else
     float fa = pc.a;
+    vec3 fill = mix(col, oc, fa) + fa * ((gy - avgY) * kD.x + (avgY - 0.45) * kD.y) * nearG;
 #endif
-    vec3 fill = mix(col, lit, fa) + fa * ((gy - avgY) * kD.x + (avgY - 0.45) * kD.y) * nearG;
 #endif
+#if MAP_STYLE != 3
     // tribes: a light tint straight over the terrain (no grey wash), so the far map stays land, not grey patches
     if (int(flags.r * 255.0 + 0.5) == 3) fill = mix(col, oc, pc.a);
+#endif
     if (res > 0 && detail > 0.0) {
       // under a nation deposits only shade the colour faintly (no foreign hues, no dotted clusters), and only very
       // close: the deposit markers already say where the fields are
@@ -797,20 +848,14 @@ void main() {
       if (uTrenchOn == 1 && live && zc < 5.0 && trenchAt(ti) >= 2) hb = 2.0;
       float lineW = a1 * hb;
 #if MAP_STYLE == 3
-      float bandW = relB == 3 ? lineW : clamp(floor(10.0 / zc * P + 0.5) / P, lineW + 2.0 * a1, 1.0);
+      // real ground: the band is already drawn (with the fill), only the line here
+      float bandW = lineW;
 #else
       float bandW = relB == 3 ? lineW : lineW + a1;
 #endif
       float dE = edgeDist(ti, fq, o, fogHere, bandW);
       if (dE < lineW) edge = true;
-      else if (dE < bandW) {
-#if MAP_STYLE == 3
-        vec3 boc = pal(o, 0).rgb;
-        col = dE >= bandW - a1 ? mix(col, boc, 0.45) : mix(col, boc * 0.94, 0.88);
-#else
-        col = mix(col, vec3(1.0), relB == 1 ? 0.3 : 0.2);
-#endif
-      }
+      else if (dE < bandW) col = mix(col, vec3(1.0), relB == 1 ? 0.3 : 0.2);
     } else
 #endif
     if (uZoom < 1.0) {

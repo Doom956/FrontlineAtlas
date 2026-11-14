@@ -13,7 +13,7 @@
 // The fragment shader is built for the map style (render/mapStyle.ts); setStyle relinks it when the style changes.
 import type { MapData } from '../../sim/types';
 import type { RGB } from './common';
-import { buildGround } from './ground';
+import { groundFor } from './ground';
 import { mapStyle, type MapStyle } from './mapStyle';
 import { borderColor, displayColor, fillAlpha, type DisplayRole, type Rgb } from './palette';
 import { groundFragmentShader, mapFragmentShader, MAP_VS } from './shaders';
@@ -202,7 +202,7 @@ export class MapGL {
     if (this.style === 'today' || this.groundBuilt || !this.game) return;
     const gl = this.gl;
     const { map, terr } = this.game;
-    const g = buildGround(map, terr.depth);
+    const g = groundFor(map, terr.depth);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     resetUnpack(gl);
     this.bind(9, this.tex.ground, gl.LINEAR, gl.LINEAR);

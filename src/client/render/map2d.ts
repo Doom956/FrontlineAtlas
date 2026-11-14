@@ -2,10 +2,14 @@
 // smoothing off. Flat terrain colours, nation fill with darker borders (your border white), fallout tint, and the
 // supply / spawn / resource overlays, and trenches only as a darker border on level 2+. No terrain patterns or
 // capture flashes. Same palette as the WebGL layer
-// (palette.ts): calmer colours, fill opacity and the calmed terrain underneath baked into one opaque pixel.
+// (palette.ts): calmer colours, fill opacity and the calmed terrain underneath baked into one opaque pixel. In real
+// ground (map style C, render/mapStyle.ts) the ground's far colours (ground.ts) lie under everything, nations are its
+// hue-true tint with a band of their colour one tile wide inside the border, like the WebGL map far out.
 import type { MapData } from '../../sim/types';
 import { ctx2d, makeCanvas, mix, type View } from './common';
-import { borderColor, displayColor, NATION_ALPHA, paintOver } from './palette';
+import { groundFor } from './ground';
+import { mapStyle, type MapStyle } from './mapStyle';
+import { borderColor, displayColor, GROUND_TINT, groundTint, NATION_ALPHA, paintOver } from './palette';
 import { RESOURCE_RGB, type TerrainData } from './terrain';
 import { dirtyRects, FALLOUT_BIT, OWNER_MASK, type TileFeed } from './tiles';
 import type { TrenchFeed } from './trenchFeed';
@@ -17,6 +21,8 @@ const TRENCH_MIX = 0.55;
 const FILL_ALPHA = Math.round(NATION_ALPHA * 255);
 
 export class Map2D {
+  /** the map style this layer was built for (the renderer builds a new one when it changes) */
+  readonly style: MapStyle = mapStyle();
   private w = 0;
   private h = 0;
   private terrainCv: HTMLCanvasElement | null = null;
@@ -39,8 +45,9 @@ export class Map2D {
     this.w = w;
     this.h = h;
     this.terrRgba = terr.rgba;
+    if (this.style === 'ground') this.terrRgba = new Uint8ClampedArray(groundFor(map, terr.depth).far);
     this.terrainCv = makeCanvas(w, h);
-    ctx2d(this.terrainCv).putImageData(new ImageData(terr.rgba.slice(), w, h), 0, 0);
+    ctx2d(this.terrainCv).putImageData(new ImageData(this.terrRgba.slice(), w, h), 0, 0);
     this.resCv = makeCanvas(w, h);
     const rc = ctx2d(this.resCv);
     const ri = rc.createImageData(w, h);
@@ -71,7 +78,7 @@ export class Map2D {
   setColor(id: number, c: readonly number[], borderRgb: readonly number[]): void {
     if (id < 0 || id >= 4096) return;
     const you = borderRgb[0] >= 235 && borderRgb[1] >= 235 && borderRgb[2] >= 235;
-    const fill = displayColor(c, { role: you ? 'own' : 'nation' });
+    const fill = displayColor(c, { role: you ? 'own' : 'nation', style: this.style });
     const lum = (v: readonly number[]): number => 0.299 * v[0] + 0.587 * v[1] + 0.114 * v[2];
     const ally = !you && lum(borderRgb) > lum(c);
     const b = you ? borderRgb : ally ? mix(fill, [255, 255, 255], 0.45) : borderColor(fill);
@@ -92,11 +99,13 @@ export class Map2D {
   private redraw(mirror: Uint32Array, rects: number[][]): void {
     const img = this.img!;
     const ctx = this.terrCtx!;
+    // the rim round a changed block: its borders may change (and in real ground the band one tile further in)
+    const rim = this.style === 'ground' ? 2 : 1;
     for (const [x, y, rw, rh] of rects) {
-      const x0 = Math.max(0, x - 1);
-      const y0 = Math.max(0, y - 1);
-      const x1 = Math.min(this.w, x + rw + 1);
-      const y1 = Math.min(this.h, y + rh + 1);
+      const x0 = Math.max(0, x - rim);
+      const y0 = Math.max(0, y - rim);
+      const x1 = Math.min(this.w, x + rw + rim);
+      const y1 = Math.min(this.h, y + rh + rim);
       for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) this.pixel(mirror, yy * this.w + xx);
       ctx.putImageData(img, 0, 0, x0, y0, x1 - x0, y1 - y0);
     }
@@ -175,11 +184,12 @@ export class Map2D {
     let a = 0;
     if (o !== 0) {
       const x = i % w;
-      const edge =
-        (x > 0 && (m[i - 1] & OWNER_MASK) !== o) ||
-        (x < w - 1 && (m[i + 1] & OWNER_MASK) !== o) ||
-        (i >= w && (m[i - w] & OWNER_MASK) !== o) ||
-        (i + w < n && (m[i + w] & OWNER_MASK) !== o);
+      const isEdge = (j: number, jx: number): boolean =>
+        (jx > 0 && (m[j - 1] & OWNER_MASK) !== o) ||
+        (jx < w - 1 && (m[j + 1] & OWNER_MASK) !== o) ||
+        (j >= w && (m[j - w] & OWNER_MASK) !== o) ||
+        (j + w < n && (m[j + w] & OWNER_MASK) !== o);
+      const edge = isEdge(i, x);
       const p = edge ? this.border : this.fill;
       const o4 = o * 4;
       r = p[o4];
@@ -192,9 +202,15 @@ export class Map2D {
         b += (TRENCH_RGB[2] - b) * TRENCH_MIX;
       }
       if (!edge && this.terrRgba) {
-        // translucent fill over the calmed terrain, baked into an opaque pixel
+        // translucent fill over the calmed terrain, baked into an opaque pixel; real ground: the hue-true tint, and the
+        // band of the nation's colour on the tiles next to the border line
         const t = this.terrRgba;
-        const m = paintOver([t[k], t[k + 1], t[k + 2]], [r, g, b], a / 255);
+        const under = [t[k], t[k + 1], t[k + 2]];
+        let m;
+        if (this.style === 'ground') {
+          const band = (x > 0 && isEdge(i - 1, x - 1)) || (x < w - 1 && isEdge(i + 1, x + 1)) || (i >= w && isEdge(i - w, x)) || (i + w < n && isEdge(i + w, x));
+          m = groundTint(under, [r, g, b], band ? GROUND_TINT.band : GROUND_TINT.far);
+        } else m = paintOver(under, [r, g, b], a / 255);
         r = m[0];
         g = m[1];
         b = m[2];
