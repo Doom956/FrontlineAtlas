@@ -9,7 +9,7 @@ import { EDGE_ALPHA, outlineOf, ringWidth } from '../src/client/art/detailed/out
 import { SPRITE_KEYS, unitCategoryOf, type SpriteKey } from '../src/client/art/shared/keys';
 import { Camera } from '../src/client/camera';
 import { css } from '../src/client/render/common';
-import { FLEET_ZOOM } from '../src/client/render/fleets';
+import { FLEET_ZOOM, fleetForm } from '../src/client/render/fleets';
 import { clearIcons, drawUnitIcon, ICON_SHAPES, iconKey, iconScale, iconStats, paintIcon, type IconShape } from '../src/client/render/unitIcons';
 import { NEAR_ZOOM, SPRITE_ZOOM, UnitLayer, unitBands } from '../src/client/render/units';
 import { Terrain, type GameState, type Unit, type UnitType, type UnitVariant } from '../src/sim/types';
@@ -291,6 +291,76 @@ describe('the unit layer', () => {
     expect(layer.ownFleetAt(at.x + 10, at.y)).not.toBeNull();
     // the old marker took the carrier sprite's length (about 60 px): its hit area reached 40 px out
     expect(layer.ownFleetAt(at.x + 40, at.y)).toBeNull();
+  });
+});
+
+describe('fleets as a small formation (the owner pick)', () => {
+  afterEach(() => clearIcons());
+
+  /** Draws the layer at zoom z over the ships of player 1 at (70, 20): icons painted, number badges, fleets. */
+  function look(s: GameState, z: number): { painted: number; badges: string[]; fleets: number; layer: UnitLayer } {
+    const colors = s.players.map((p) => p.color);
+    const cam = new Camera(s.map.width, s.map.height);
+    cam.resize(800, 400);
+    cam.zoom = z;
+    cam.x = 70;
+    cam.y = 20;
+    const layer = new UnitLayer();
+    layer.reset(s.map.width);
+    layer.track(s, 0);
+    const { ctx, calls } = recCtx();
+    const p0 = iconStats.painted;
+    layer.draw(ctx, s, cam, 1, colors, 1, 1, 0);
+    const badges = calls.filter((c) => c.k === 'fillText').map((c) => String(c.a[0]));
+    return { painted: iconStats.painted - p0, badges, fleets: layer.fleets, layer };
+  }
+
+  it('shows its biggest members first, at most three', () => {
+    let id = 1;
+    const m = (variant?: string) => ({ id: id++, variant });
+    const kinds = (ms: { variant?: string }[]) => fleetForm(ms as { id: number; variant?: string }[]).map((q) => q.variant);
+    expect(kinds([m('destroyer'), m(), m('battleship')])).toEqual(['battleship', undefined, 'destroyer']);
+    expect(kinds([m('submarine'), m('destroyer'), m('carrier'), m('battleship'), m()])).toEqual(['carrier', 'battleship', undefined]);
+    expect(kinds([m('destroyer'), m('destroyer')])).toEqual(['destroyer', 'destroyer']);
+  });
+
+  it('draws 2 or 3 ship shapes and no number for a small fleet; a count only past 3 ships', () => {
+    const s = game();
+    unit(s, 'warship', 'destroyer', 1, 70, 20);
+    unit(s, 'warship', undefined, 1, 71, 20);
+    let r = look(s, 2.5);
+    expect(r.fleets).toBe(1);
+    expect(r.painted).toBe(2);
+    expect(r.badges).toEqual([]);
+    unit(s, 'warship', 'battleship', 1, 70, 21);
+    r = look(s, 2.5);
+    expect(r.painted).toBe(3);
+    expect(r.badges).toEqual([]);
+    unit(s, 'warship', 'destroyer', 1, 71, 21);
+    unit(s, 'warship', 'submarine', 1, 72, 20);
+    r = look(s, 2.5);
+    // still three shapes (the biggest), and now the count
+    expect(r.fleets).toBe(1);
+    expect(r.painted).toBe(3);
+    expect(r.badges).toEqual(['5']);
+  });
+
+  it('morphs into its ships just below FLEET_ZOOM, and clicking your own fleet still takes it', () => {
+    const s = game();
+    const a = unit(s, 'warship', 'battleship', 1, 70, 20);
+    unit(s, 'warship', 'destroyer', 1, 71, 20);
+    // well below: only the formation (2 shapes)
+    expect(look(s, FLEET_ZOOM - 1).painted).toBe(2);
+    // just below: the same two shapes, sliding from the formation to the ships' real places (no ghost copies)
+    expect(look(s, FLEET_ZOOM - 0.2).painted).toBe(2);
+    // at FLEET_ZOOM: the ships alone
+    const at = look(s, FLEET_ZOOM);
+    expect(at.fleets).toBe(0);
+    expect(at.painted).toBe(2);
+    const far = look(s, FLEET_ZOOM - 1);
+    const p = far.layer.screenOf(a.id)!;
+    expect(far.layer.ownFleetAt(p.x, p.y)).not.toBeNull();
+    expect(far.layer.ownFleetAt(p.x + 60, p.y)).toBeNull();
   });
 });
 

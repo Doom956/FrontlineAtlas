@@ -17,12 +17,12 @@
 // own marker selects that fleet (ownFleetAt).
 import { TICKS_PER_SECOND } from '../../sim/config';
 import { armyTotal } from '../../sim/economy';
-import type { GameState, Unit } from '../../sim/types';
+import type { GameState, Unit, UnitVariant } from '../../sim/types';
 import type { Camera } from '../camera';
 import { ACCENT, clamp, css, MAP_NUM_FAMILY, type RGB } from './common';
 import { GLYPHS, strokeDucks, type Inst } from './unitGlyphs';
 import { drawMapSprite, isAirType, setSpriteBakeBudget, spriteLength, unitDamage, unitSpriteMods, type MapSpriteState } from './pixelSprites';
-import { drawFleetCount, drawUnitIcon, iconScale, iconShapeOf } from './unitIcons';
+import { drawFleetCount, drawUnitIcon, iconHalf, iconScale, iconShapeOf } from './unitIcons';
 import { artStyleOf, type ArtStyle } from '../art/artStyle';
 import { artFor, motionFor, styleModule } from '../art/registry';
 import { spriteKey } from '../art/shared/keys';
@@ -34,7 +34,7 @@ import { troopKinds, troopPill } from './troopIcons';
 import { hasIntel } from '../../sim/buildings';
 import { unitVisibleTo } from '../../sim/techtree';
 import type { FogView } from '../fog/fogView';
-import { clusterFleets, FLEET_ZOOM, fleetRadiusPx, type FleetPoint } from './fleets';
+import { clusterFleets, FLEET_ZOOM, fleetForm, fleetRadiusPx, type FleetPoint } from './fleets';
 
 const HIST = 3;
 /** Paratroopers drifting down where a cargo plane arrived (client-only effect, drawn by the 'paradrop' art style). */
@@ -68,7 +68,27 @@ const BAKES_PER_FRAME = 24;
 
 /** `fleet`: this entry is a fleet marker standing for these ships (the lead, u, is the lowest id). `R`: how far the
  * drawing reaches from its centre (CSS px), for the tick under own units. */
-type Vis = Inst & { u: Unit; fleet?: number[]; turn: number; speed: number; R: number };
+type Vis = Inst & { u: Unit; fleet?: number[]; turn: number; speed: number; R: number; form?: (UnitVariant | undefined)[]; formAt?: number[]; fa?: number };
+
+/** Below FLEET_ZOOM by this much (zoom) a fleet's formation morphs into its ships: the ships it shows slide from their
+ * places in it to where they really are, the rest fade in, so a split never pops. */
+const FLEET_FADE = 0.5;
+/** A fleet's formation: where its 1, 2 or 3 ship shapes sit (along its heading f, across it r), in spacings. */
+const FORMATION: readonly (readonly (readonly [number, number])[])[] = [
+  [],
+  [[0, 0]],
+  [
+    [0.45, -0.32],
+    [-0.45, 0.32],
+  ],
+  [
+    [0.6, 0],
+    [-0.4, -0.85],
+    [-0.4, 0.85],
+  ],
+];
+/** The spacing of a formation (screen px) for its biggest member's icon half length. */
+const formSpacing = (half: number): number => half * 1.35 + 2;
 
 interface Track {
   px: number;
@@ -373,6 +393,8 @@ export class UnitLayer {
     }
     // zoomed out: close warships of one owner become one marker (screen px, so the radius scales with the zoom)
     if (grouping) {
+      // the formation fades in below FLEET_ZOOM while its ships fade out (no pop when a fleet splits)
+      const fleetA = clamp((FLEET_ZOOM - z) / FLEET_FADE, 0, 1);
       const pts: FleetPoint[] = [];
       for (const e of visible) if (e.type === 'warship') pts.push({ id: e.u.id, owner: e.u.owner, x: e.x, y: e.y });
       const fleets = pts.length > 1 ? clusterFleets(pts, fleetRadiusPx(z)) : [];
@@ -381,15 +403,36 @@ export class UnitLayer {
         for (const e of visible) if (e.type === 'warship') byId.set(e.u.id, e);
         const gone = new Set<number>();
         const marks: Vis[] = [];
+        const inForm = new Set<number>();
         for (const f of fleets) {
           const lead = byId.get(f.ids[0])!;
           for (const id of f.ids) gone.add(id);
-          // the size comes from the lead's icon (never its sprite: a carrier's fleet stays an icon, not a block)
-          const ic = iconShapeOf(lead.u.type, lead.u.variant);
-          const fs = iconScale(z, true);
-          marks.push({ u: lead.u, type: 'warship', x: f.x, y: f.y, S: ic.half * fs, R: Math.max(ic.half, ic.beam) * fs + 1, angle: lead.angle, moving: false, fleet: f.ids, turn: 0, speed: 0 });
+          // a small formation of its biggest members' ship icons along the lead's heading (never its sprites: a
+          // carrier's fleet stays icons, not a block); the size comes from the icons
+          const shown = fleetForm(f.ids.map((id) => byId.get(id)!.u));
+          const form = shown.map((u) => u.variant);
+          // where the ships it shows really are (for the morph into them near FLEET_ZOOM)
+          const formAt: number[] = [];
+          for (const u of shown) {
+            const v = byId.get(u.id)!;
+            formAt.push(v.x, v.y);
+          }
+          let half = 0;
+          let beam = 0;
+          for (const v of form) {
+            const ic = iconShapeOf('warship', v);
+            half = Math.max(half, ic.half);
+            beam = Math.max(beam, ic.beam);
+          }
+          const isz = iconScale(z);
+          const d = formSpacing(half * isz);
+          const S = half * isz + (form.length > 1 ? d * 0.75 : 0);
+          marks.push({ u: lead.u, type: 'warship', x: f.x, y: f.y, S, R: Math.max(S, beam * isz + (form.length > 2 ? d * 0.85 : d * 0.35)) + 1, angle: lead.angle, moving: false, fleet: f.ids, turn: 0, speed: 0, form, formAt, fa: fleetA });
+          if (fleetA < 1) for (const u of shown) inForm.add(u.id);
         }
-        visible = visible.filter((e) => e.type !== 'warship' || !gone.has(e.u.id));
+        if (fleetA >= 1) visible = visible.filter((e) => e.type !== 'warship' || !gone.has(e.u.id));
+        // the ships the formation shows are drawn by it as it morphs; the others fade in
+        else for (const e of visible) if (e.type === 'warship' && gone.has(e.u.id)) e.fa = inForm.has(e.u.id) ? 0 : 1 - fleetA;
         visible.push(...marks);
         this.fleets = marks.length;
       }
@@ -411,6 +454,7 @@ export class UnitLayer {
     const fadeT = (nowMs - this.fadeAt) / SCALE_FADE_MS;
     const fadeFrom = band.sprite > 0 && fadeT >= 0 && fadeT < 1 && this.fadeFrom > 0 ? this.fadeFrom : 0;
     setSpriteBakeBudget(BAKES_PER_FRAME);
+    let extra = 0;
     const ss = this.spriteState;
     ss.zoom = z;
     ss.dpr = dpr;
@@ -441,14 +485,15 @@ export class UnitLayer {
             // a sprite not baked yet shows its icon for a frame (the same kind and colour, never a block)
             if (!drawMapSprite(ctx, e.type, e.u.variant, e.x, e.y, e.angle, c, mods, ss)) iconA = Math.max(iconA, band.sprite);
           }
-          if (iconA > 0) drawUnitIcon(ctx, e.type, e.u.variant, e.x, e.y, e.angle, c, z, dpr, !!e.fleet, iconA);
+          if (e.form) extra += this.drawFormation(ctx, e, c, z, dpr) - 1;
+          else if (iconA > 0) drawUnitIcon(ctx, e.type, e.u.variant, e.x, e.y, e.angle, c, z, dpr, false, iconA * (e.fa ?? 1));
         }
       }
     } finally {
       setSpriteBakeBudget(Infinity);
     }
     ctx.globalAlpha = 1;
-    this.drawn += visible.length;
+    this.drawn += visible.length + extra;
     // own warships, tank divisions and planes: a tiny white tick under the unit; warships and tank divisions also get a
     // ring while hovered, picked or selected (selection.ts) and are clickable (hit area larger than the drawing)
     if (me > 0) {
@@ -502,10 +547,14 @@ export class UnitLayer {
     }
     // fleet markers: the number of ships in a small badge at the top right (owner-coloured edge)
     if (this.fleets) {
+      // (only for fleets of more than the 3 ships the formation shows)
       for (const e of visible) {
-        if (!e.fleet) continue;
+        if (!e.fleet || e.fleet.length <= 3) continue;
         const c = colors[e.u.owner] ?? [200, 200, 200];
+        const prevA = ctx.globalAlpha;
+        ctx.globalAlpha = prevA * (e.fa ?? 1);
         drawFleetCount(ctx, e.x + e.S * 0.85 + 3, e.y - e.S * 0.85 - 3, String(e.fleet.length), me > 0 && e.u.owner === me ? ACCENT : css(c), MAP_NUM_FAMILY);
+        ctx.globalAlpha = prevA;
       }
     }
     // transports: a small troop pill (the troop markers of what it carries and the count) and, on cargo planes, a tiny
@@ -539,6 +588,35 @@ export class UnitLayer {
   private spriteState: MapSpriteState = { zoom: 1, scale: 1, dpr: 1, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 0, damage: 0, alpha: 1 };
 
   /** Wakes behind moving ships, contrails behind planes and missiles, each drawn by its category's current style. */
+  /**
+   * A fleet marker as a small formation: its 1 to 3 biggest members' ship icons (the crisp far-zoom icons, baked per
+   * kind, colour and facing) along the lead's heading, the lead in front, drawn back to front. Returns how many.
+   */
+  private drawFormation(ctx: CanvasRenderingContext2D, e: Vis, c: RGB | readonly number[], z: number, dpr: number): number {
+    const form = e.form!;
+    const n = Math.min(3, form.length);
+    let half = 0;
+    for (let i = 0; i < n; i++) half = Math.max(half, iconShapeOf('warship', form[i]).half);
+    const d = formSpacing(half * iconScale(z));
+    const fx = Math.cos(e.angle);
+    const fy = Math.sin(e.angle);
+    const slots = FORMATION[n];
+    // near FLEET_ZOOM (fa < 1) each shape slides from its place in the formation to its ship's real place
+    const t = 1 - (e.fa ?? 1);
+    const at = e.formAt;
+    for (let i = n - 1; i >= 0; i--) {
+      const [f, r] = slots[i];
+      let x = e.x + (fx * f - fy * r) * d;
+      let y = e.y + (fy * f + fx * r) * d;
+      if (t > 0 && at) {
+        x += (at[i * 2] - x) * t;
+        y += (at[i * 2 + 1] - y) * t;
+      }
+      drawUnitIcon(ctx, 'warship', form[i], x, y, e.angle, c, z, dpr, false, 1);
+    }
+    return n;
+  }
+
   private drawTrailLayers(ctx: CanvasRenderingContext2D, visible: readonly Vis[], view: TrailView): void {
     const wakes = this.wakeList;
     const trails = this.contrailList;
@@ -547,10 +625,15 @@ export class UnitLayer {
     const ships = motionFor('ships');
     const air = motionFor('air');
     const missiles = motionFor('missiles');
+    // while the icons fade into the sprites (unitBands), e.S is already the sprite's length but the icon is still
+    // drawn: a wake or contrail starts from the blend of the two sterns, so it never trails off behind a small icon
+    const band = unitBands(view.zoom);
+    const blend = view.zoom >= NEAR_ZOOM && band.icon > 0;
     for (const e of visible) {
       const tr = GLYPHS[e.type].trail;
       if (tr === 'none' || e.fleet || e.id === undefined || e.tx === undefined || e.ty === undefined) continue;
-      const tu: TrailUnit = { id: e.id, key: spriteKey(e.u.type, e.u.variant), x: e.x, y: e.y, tx: e.tx, ty: e.ty, angle: e.angle, half: e.S, moving: !!e.moving, speed: e.speed, turnRate: e.turn, motion: tr === 'wake' ? ships : tr === 'missile' ? missiles : air };
+      const half = blend ? iconHalf(e.u.type, e.u.variant, view.zoom) * band.icon + e.S * band.sprite : e.S;
+      const tu: TrailUnit = { id: e.id, key: spriteKey(e.u.type, e.u.variant), x: e.x, y: e.y, tx: e.tx, ty: e.ty, angle: e.angle, half, moving: !!e.moving, speed: e.speed, turnRate: e.turn, motion: tr === 'wake' ? ships : tr === 'missile' ? missiles : air };
       (tr === 'wake' ? wakes : trails).push(tu);
     }
     this.extraContrails?.(trails, air);

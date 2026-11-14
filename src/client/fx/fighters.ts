@@ -11,7 +11,8 @@
 //     or a plane shot down inside a hostile airfield's reach with no SAM shot at it), a fighter streaks in from that
 //     side past the kill firing tracers, banks round and heads home.
 // Fog of war: your own and allied fighters always show; other nations' only over tiles you see now (as planes in
-// render/units.ts). Drawn from the middle zooms on (far out every unit is a marker). Fixed pools, no allocation per
+// render/units.ts). Drawn with the unit sprites: none far out where units are kind icons, fading in with the
+// sprites (render/units.ts unitBands). Fixed pools, no allocation per
 // frame or per fighter.
 import { wingOf, airMissionOf, airPatrolRadius } from '../../sim/airwings';
 import { airfieldRadius, buildingAt, isDisabled } from '../../sim/buildings';
@@ -22,9 +23,9 @@ import type { Building, Effect, GameState, Unit } from '../../sim/types';
 import { motionFor } from '../art/registry';
 import type { RGB } from '../art/shared/colour';
 import type { MotionParams, TrailUnit } from '../art/types';
-import { css } from '../render/common';
-import { drawMapSprite, drawUnitMarker, modsFor, spriteLength, type MapSpriteState } from '../render/pixelSprites';
-import { spriteScale } from '../render/units';
+import { drawMapSprite, modsFor, spriteLength, type MapSpriteState } from '../render/pixelSprites';
+import { drawUnitIcon } from '../render/unitIcons';
+import { spriteScale, unitBands } from '../render/units';
 import { DeathWatch, isKillBlast } from './deaths';
 import { fxEnabled } from './settings';
 
@@ -36,10 +37,8 @@ export const CARRIER_FIGHTERS = 2;
 export const FLIGHT_CAP = 48;
 /** Interception sorties at once. */
 export const SORTIE_CAP = 12;
-/** Below this zoom units are markers, not sprites: no fighters. */
-export const FIGHTER_ZOOM = 3;
 /** Circle radius (tiles) over an idle airfield and round a carrier. */
-const IDLE_R = 3.6;
+const IDLE_R = 4.8;
 const CARRIER_R = 3.4;
 /** Patrols fly just inside the patrol ring. */
 const PATROL_SHARE = 0.86;
@@ -310,7 +309,8 @@ export class FighterFx {
   layout(state: GameState, me: number, gameTicks: number, nowMs: number, cam: Cam | null = null, poses: Poses | null = null): number {
     this.count = 0;
     this.sortiesDrawn = 0;
-    if (!fxEnabled() || (cam && cam.zoom < FIGHTER_ZOOM)) return 0;
+    // far out the units are kind icons: no fighters there; they fade in with the sprites (render/units.ts unitBands)
+    if (!fxEnabled() || (cam && unitBands(cam.zoom).sprite <= 0)) return 0;
     if (cam) {
       this.zoom = cam.zoom;
       this.ox = cam.viewW / 2 - cam.x * cam.zoom;
@@ -462,15 +462,16 @@ export class FighterFx {
     ss.moving = true;
     ss.damage = 0;
     const prev = ctx.globalAlpha;
+    const band = unitBands(this.zoom).sprite;
     for (let i = 0; i < this.count; i++) {
       const f = this.flights[i];
       ss.turnRate = f.turn;
       ss.speed = f.kind === 'sortie' ? CRUISE * 2.5 : CRUISE;
       ss.seed = f.id;
-      ctx.globalAlpha = prev * f.alpha;
+      ctx.globalAlpha = prev * f.alpha * band;
       const c = (colors?.[f.owner] ?? [200, 200, 200]) as RGB;
-      // the frame's bake budget spent (a new heading not baked yet): its small marker this frame, as units.ts does
-      if (!drawMapSprite(ctx, 'fighter', undefined, f.x, f.y, f.angle, c, f.mods, ss)) drawUnitMarker(ctx, 'fighter', f.x, f.y, 10, f.angle, css(c));
+      // the frame's bake budget spent (a new heading not baked yet): its kind icon this frame, as units.ts does
+      if (!drawMapSprite(ctx, 'fighter', undefined, f.x, f.y, f.angle, c, f.mods, ss)) drawUnitIcon(ctx, 'fighter', undefined, f.x, f.y, f.angle, c, this.zoom, dpr, false, prev * f.alpha * band);
       if (f.firing) {
         // tracers: short bright streaks out ahead of the nose, a new few every frame
         const k = Math.max(1, Math.round(ss.scale)); // whole screen px, crisp at any sprite scale

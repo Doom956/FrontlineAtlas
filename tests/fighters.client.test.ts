@@ -73,7 +73,7 @@ describe('fighters over their airfields', () => {
     const f = new FighterFx();
     f.layout(s, 1, 100, 1000);
     const a = flightsOf(f, 1).map((q) => ({ x: q.tx, y: q.ty }));
-    for (const p of a) expect(Math.hypot(p.x - 10.5, p.y - 15.5)).toBeLessThan(5);
+    for (const p of a) expect(Math.hypot(p.x - 10.5, p.y - 15.5)).toBeLessThan(6.5);
     // the same game clock: the same place; later: moved on
     f.layout(s, 1, 100, 9999);
     expect(flightsOf(f, 1).map((q) => ({ x: q.tx, y: q.ty }))).toEqual(a);
@@ -108,7 +108,7 @@ describe('fighters over their airfields', () => {
     // back to idle: over the field again
     applyAction(s, 1, { type: 'setAirMission', airfield: b.tile, mission: 'idle' });
     f.layout(s, 1, 300, 1000);
-    for (const q of flightsOf(f, 1)) expect(Math.hypot(q.tx - 10.5, q.ty - 15.5)).toBeLessThan(5);
+    for (const q of flightsOf(f, 1)) expect(Math.hypot(q.tx - 10.5, q.ty - 15.5)).toBeLessThan(6.5);
   });
 
   it('hides other nations fighters in the fog, never your own or an ally', () => {

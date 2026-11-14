@@ -31,6 +31,7 @@ import { spriteKey, type SpriteKey } from '../art/shared/keys';
 import { fract, rnd } from '../art/shared/noise';
 import { CRATER_ATOM_REACH, CRATER_REACH, DEATH_GLIDE_TILES, type BlastDraw, type BlastKind, type CraterDraw, type DeathDraw, type DeathKind, type DeathLayer, type ExplosionArt, type MotionParams, type MuzzleDraw, type ShellDraw } from '../art/types';
 import { unitSpriteMods } from '../render/pixelSprites';
+import { spriteScale } from '../render/units';
 import { DeathWatch, deathKindOf, isKillBlast } from './deaths';
 import { fxEnabled, prefersReducedMotion } from './settings';
 
@@ -159,9 +160,12 @@ const SALVO: Record<string, number> = { warship: 2, destroyer: 2, battleship: 3 
 /** Below this zoom small blasts are a blink and shells and muzzle flashes are not drawn. */
 const FAR_FX_ZOOM = 2;
 
-/** Screen px per art pixel at zoom z (the unit sprites' scale, render/units.ts spriteScale). */
+/**
+ * Screen px per art pixel at zoom z: the unit sprites' own scale (render/units.ts spriteScale, 1.5 at mid zoom), so a
+ * ship's muzzle flashes sit on its barrels and a unit's death is drawn the size the unit was.
+ */
 export function pixelSize(z: number): number {
-  return z < 11 ? 1 : z < 22 ? 2 : z < 32 ? 3 : 4;
+  return spriteScale(z);
 }
 
 export class PixelFx {
