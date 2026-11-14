@@ -2,6 +2,21 @@
 
 The big rounds of work, newest first. Each one was merged to `main` and deployed to the live game.
 
+## 2026-11-14 · Every ship does its own job
+
+For your ships on Auto, and for AI nations from Normal up (Easy plays as before):
+- Submarines hunt: they go for landings and trade ships first, meet them ahead on their route, shoot from out of
+  sight, pick off damaged or lone warships and leave fleets and destroyers alone. They blockade ports from a hidden
+  spot outside the minefields, and dive away when a destroyer comes near. Your Auto submarines no longer park off a
+  coast they cannot shell.
+- Destroyers hunt submarines: they shoot them first, escort your landings, sweep a blockaded port of yours, and
+  guard your trade ships against a nation with submarines.
+- The nearest free ship covers each landing, and AI landings go in where their warships are shelling.
+- A ship hit by a submarine it cannot see runs to a friendly ship nearby; a destroyer goes after the submarine.
+- Fighter patrols fly where enemy bombers actually aim.
+- Cards say what each ship is doing: hunting a trade ship, blockading from hiding, diving away, escorting, covering a
+  landing.
+
 ## 2026-11-14 · A sharper AI at sea, on land and in the air
 
 From Normal up (Easy only gets the repairs):
