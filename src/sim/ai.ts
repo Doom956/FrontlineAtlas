@@ -101,7 +101,8 @@ import { aiSpend, aiTechOrder, rejectedBranch } from './aispending';
 import { allyTrustDiscount } from './spending';
 import { techStatus } from './techtree';
 import { aiTankDivisions } from './tanks';
-import { aiNavy } from './naval2';
+import { aiNavy, atWar as navalAtWar } from './naval2';
+import { aiAttackLevel } from './aiattack';
 import { DOCTRINE_IDS, TROOP_TYPES, Resource, isTribe, isWater } from './types';
 import type { Attack, BuildingType, Difficulty, DoctrineId, GameState, Personality, Player, TechId, TerrainId, TroopType, Troops } from './types';
 
@@ -144,6 +145,8 @@ const AI_PROCURE_PRIO = 5.5;
 const AI_PROCURE_COMMITTED = 2.5;
 /** Priority of the building a wanted Arsenal item waits for (Port, Factory; the Airfield comes with Flight) */
 const AI_PROCURE_BUILDING_PRIO = 5;
+/** Landings: hostile warships this close to the start or the landing tile count against it (seaContested). */
+const AI_LANDING_WATCH = 60;
 
 interface Profile {
   /** willingness to start wars, 0..1 */
@@ -2208,6 +2211,12 @@ function naval(ctx: Ctx): void {
   const amount = humanLimit(ctx, target.owner, Math.min(ctx.home * share, ctx.home - ctx.cap * 0.2), warTargets(ctx));
   if (amount < MIN_ATTACK_TROOPS * 20) return;
   const troops = chooseForce(ctx, amount, target.tile, target.owner);
+  // From Normal up: no landing through waters where enemy warships outnumber the ships we have there to escort it
+  // (aiattack.ts); a third of the troops sent overseas used to go down with their transports.
+  if (aiAttackLevel(state) >= 1 && seaContested(state, id, target.from, target.tile, target.owner)) {
+    ctx.ai.badLandings.set(target.tile, state.tick + 30 * TICKS_PER_SECOND);
+    return;
+  }
   if (target.owner > 0 && !isTribe(state.players[target.owner])) {
     const strength = ctx.army / Math.max(1, estArmy(state, ctx.m, diff, id, target.owner));
     if (judgeAttack(ctx, target.owner, target.tile, troops, strength) < 0) {
@@ -2227,6 +2236,29 @@ function naval(ctx: Ctx): void {
     const ship = state.units.find((u) => u.owner === id && u.type === 'warship' && u.hp > 0 && u.state === 0);
     if (ship) applyAction(state, id, { type: 'moveWarship', unitId: ship.id, tile: target.tile });
   }
+}
+
+/**
+ * True when hostile warships (of nations at war with us, naval2.atWar, or of the nation we land on) near a landing's start or its landing tile
+ * (within AI_LANDING_WATCH tiles) outnumber our warships near it: transports there would be sunk. Pure read.
+ */
+export function seaContested(state: GameState, id: number, from: number, to: number, victim = 0): boolean {
+  const w = state.map.width;
+  const r2 = AI_LANDING_WATCH * AI_LANDING_WATCH;
+  const near = (u: { x: number; y: number }, t: number): boolean => {
+    const dx = u.x - (t % w);
+    const dy = u.y - ((t / w) | 0);
+    return dx * dx + dy * dy <= r2;
+  };
+  let foes = 0;
+  let mine = 0;
+  for (const u of state.units) {
+    if (u.type !== 'warship' || u.hp <= 0) continue;
+    if (!near(u, from) && !near(u, to)) continue;
+    if (u.owner === id) mine++;
+    else if ((u.owner === victim && !areAllied(state, id, victim)) || navalAtWar(state, id, u.owner)) foes++;
+  }
+  return foes > mine;
 }
 
 /**

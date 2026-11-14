@@ -49,6 +49,10 @@ export interface AttackStats {
     alive: number;
     atWar: number;
     onFront: number;
+    /** samples while the owner attacks a nation (where support can help at all); of them on the front, on station */
+    attacking: number;
+    attackingOnFront: number;
+    attackingStation: number;
     station: number;
     stationOnFront: number;
     outnumbered: number;
@@ -100,7 +104,7 @@ export interface AttackStats {
 export function newAttackStats(): AttackStats {
   const b = (): BomberStats => ({ sorties: 0, arrivals: 0, onFront: 0, intoSam: 0, intoSamArrived: 0 });
   return {
-    ships: { built: 0, sunk: 0, ownerGone: 0, sunkByShip: 0, sunkByMine: 0, sunkNoXp: 0, sunkCrippled: 0, alive: 0, atWar: 0, onFront: 0, station: 0, stationOnFront: 0, outnumbered: 0, escorting: 0, mainCoastal: 0, mainSupported: 0 },
+    ships: { built: 0, sunk: 0, ownerGone: 0, sunkByShip: 0, sunkByMine: 0, sunkNoXp: 0, sunkCrippled: 0, alive: 0, atWar: 0, onFront: 0, attacking: 0, attackingOnFront: 0, attackingStation: 0, station: 0, stationOnFront: 0, outnumbered: 0, escorting: 0, mainCoastal: 0, mainSupported: 0 },
     transports: { invasions: 0, sunk: 0, troopsSunk: 0, repelled: 0, atSea: 0, escorted: 0 },
     tanks: { formed: 0, overrun: [0, 0, 0], spent: 0, ownerGone: 0, overrunAfterSpearhead: 0, holdSupport: 0, holdAtStation: 0, atWar: 0, spearhead: 0, holdFront: 0, holdFar: 0, driving: 0, worn: 0, overrunDefending: 0 },
     bombers: { manual: b(), support: b(), strategic: b(), cover: b() },
@@ -353,6 +357,11 @@ export class AttackProbe {
       if (!atWar.has(u.owner)) continue;
       s.ships.atWar++;
       const v = this.frontNear(u.owner, targets.get(u.owner), u.x, u.y, NAVY_SUPPORT_RANGE);
+      if (targets.get(u.owner)?.size) {
+        s.ships.attacking++;
+        if (u.state === 3) s.ships.attackingStation++;
+        if (v > 0) s.ships.attackingOnFront++;
+      }
       if (v > 0) {
         s.ships.onFront++;
         if (u.state === 3) s.ships.stationOnFront++;
@@ -420,6 +429,7 @@ export function attackReport(a: AttackStats, games: number): string[] {
   out.push(`\nAI attack probe (${games} games; AI nations only):`);
   out.push(`  Warships: ${f1(sh.built / g)} built, ${f1(sh.sunk / g)} sunk per game (${pc(sh.sunk, sh.built)}; by warships ${f1(sh.sunkByShip / g)}, mines ${f1(sh.sunkByMine / g)}; ${f1(sh.ownerGone / g)} more gone with their owner); sunk without any effect ${pc(sh.sunkNoXp, sh.sunk)}, sunk after being crippled ${pc(sh.sunkCrippled, sh.sunk)}.`);
   out.push(`    ship time: at war ${pc(sh.atWar, sh.alive)}; of that on an own attack's front ${pc(sh.onFront, sh.atWar)}; on station ${pc(sh.station, sh.alive)} (on the front ${pc(sh.stationOnFront, sh.station)}); escorting ${pc(sh.escorting, sh.alive)}; locally outnumbered ${pc(sh.outnumbered, sh.alive)}.`);
+  out.push(`    while their nation attacks a nation (${pc(sh.attacking, sh.alive)} of ship time): on that attack's front ${pc(sh.attackingOnFront, sh.attacking)}, on station ${pc(sh.attackingStation, sh.attacking)}.`);
   out.push(`    main attack on a nation, fleet afloat: naval support on that front ${pc(sh.mainSupported, sh.mainCoastal)} of ${sh.mainCoastal} samples.`);
   const tr = a.transports;
   out.push(`  Invasions: ${f1(tr.invasions / g)} per game; sunk ${pc(tr.sunk, tr.invasions)} (${f1(tr.troopsSunk / g / 1000)}k troops per game), repelled ${pc(tr.repelled, tr.invasions)}; escorted ${pc(tr.escorted, tr.atSea)} of transport time at sea.`);

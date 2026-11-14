@@ -78,6 +78,7 @@ import { interceptStep, outnumbered, ownGroup } from './navy';
 import { ownedTilesOf } from './territory';
 import { mainFront, shipWarTarget, unitFollows } from './warTarget';
 import { atPeace } from './rules';
+import { aiAttackLevel, aiMainAttack, aiMainFront } from './aiattack';
 import { addEvent } from './state';
 import { hasTech } from './tech';
 import { frontTrench } from './trenches';
@@ -100,6 +101,10 @@ import type { Action, ActionResult, GameState, Unit, WarshipStance } from './typ
 const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
 /** AI: auto-role warships bombard when the land front with the foe averages this trench level (trenches.ts). */
 const AI_NAVY_DUG_LEVEL = 1.5;
+/** AI ships on station move along the coast with their owner's push once over this x NAVY_SUPPORT_RANGE from its
+ *  main front, to a coast at least AI_FOLLOW_GAIN tiles nearer (players' following ships: 2 x and the full range). */
+const AI_FOLLOW_FAR = 0.7;
+const AI_FOLLOW_GAIN = 8;
 
 function d2(ax: number, ay: number, bx: number, by: number): number {
   const dx = ax - bx;
@@ -722,12 +727,33 @@ function settle(state: GameState, u: Unit): void {
 }
 
 /**
- * A player's ship (null for AI ships, or with no enemy warships about): (x, y) -> how many enemy warships within
+ * Whose 'auto' ships weigh the odds (shipOdds, no chase they are outnumbered in, fall back when outnumbered): every
+ * player's, and AI nations' from Normal up (aiattack.ts; Easy AIs fight wherever they meet).
+ */
+function weighsOdds(state: GameState, owner: number): boolean {
+  const p = state.players[owner];
+  return !!p && (p.isHuman || aiAttackLevel(state) >= 1);
+}
+
+/**
+ * AI warships (Normal and up) aim at the nation their owner attacks hardest right now (aiattack.aiMainAttack) and
+ * take station nearest its main front, so the shelling lands where the AI's own attack is fought; 0 = none (any war,
+ * the old habit). Ships a player pinned (Unit.fixed) and players' ships use warTarget.shipWarTarget instead.
+ */
+export function aiShipAim(state: GameState, u: Unit): number {
+  const p = state.players[u.owner];
+  if (!p || p.isHuman || u.fixed || aiAttackLevel(state) < 1) return 0;
+  const m = aiMainAttack(state, u.owner);
+  return m && atWar(state, u.owner, m.target) ? m.target : 0;
+}
+
+/**
+ * A ship that weighs the odds (null for Easy AI ships, or with no enemy warships about): (x, y) -> how many enemy warships within
  * NAVY_REACH.oddsRadius of that tile outnumber ours there (u counts wherever it is); 0 = even or better.
  */
 function shipOdds(state: GameState, u: Unit): ((x: number, y: number) => number) | null {
   const me = u.owner;
-  if (!state.players[me]?.isHuman) return null;
+  if (!weighsOdds(state, me)) return null;
   const enemies: Unit[] = [];
   const friends: Unit[] = [];
   for (const s of state.units) {
@@ -810,7 +836,7 @@ function findCoast(state: GameState, u: Unit, aim: number, only: boolean): numbe
   const foes = foesOf(state, u.owner);
   if (!foes.length) return -1;
   if (aim > 0 && foes.includes(aim)) {
-    const front = unitFollows(state, u) ? mainFront(state, u.owner, aim) : -1;
+    const front = unitFollows(state, u) ? mainFront(state, u.owner, aim) : aiShipAim(state, u) === aim ? aiMainFront(state, u.owner, aim) : -1;
     const t = front >= 0 ? roamCoast(state, u, [aim], front) : nearOrRoam(state, u, [aim], aim);
     if (t >= 0) return t;
   }
@@ -837,18 +863,20 @@ function portNear(state: GameState, u: Unit): boolean {
  * main front moves to the coast nearest it when that is clearly nearer (the war moved along the coast).
  */
 function followMainFront(state: GameState, u: Unit, aim: number): void {
-  const front = mainFront(state, u.owner, aim);
+  const follows = unitFollows(state, u);
+  const front = follows ? mainFront(state, u.owner, aim) : aiMainFront(state, u.owner, aim);
   if (front < 0 || u.station === undefined) return;
   const w = state.map.width;
   const fx = front % w;
   const fy = (front / w) | 0;
-  const far = 2 * NAVY_SUPPORT_RANGE;
+  // AI ships (aiShipAim) keep closer: their shelling only helps their attack within NAVY_SUPPORT_RANGE of it.
+  const far = (follows ? 2 : AI_FOLLOW_FAR) * NAVY_SUPPORT_RANGE;
   const now = d2(u.station % w, (u.station / w) | 0, fx, fy);
   if (now <= far * far) return;
   const t = roamCoast(state, u, [aim], front);
   if (t < 0 || t === u.station) return;
   const better = Math.sqrt(d2(t % w, (t / w) | 0, fx, fy));
-  if (better + NAVY_SUPPORT_RANGE < Math.sqrt(now)) goStation(state, u, t, true);
+  if (better + (follows ? NAVY_SUPPORT_RANGE : AI_FOLLOW_GAIN) < Math.sqrt(now)) goStation(state, u, t, true);
 }
 
 /** The own finished Port nearest u that touches its sea (tile), or -1. */
@@ -984,7 +1012,7 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
     } else {
       const hunt = st === 'hunt';
       // A player's 'auto' ship weighs the odds: no chase where enemy warships outnumber ours (navy.outnumbered).
-      const odds = st === 'auto' && !!state.players[u.owner]?.isHuman;
+      const odds = st === 'auto' && weighsOdds(state, u.owner);
       interceptStep(state, u, ships, wars, (hunt ? NAVY_HUNT_DETECT : WARSHIP_DETECT_RANGE) * navalDetectMul(u), WARSHIP_LEASH, hunt, odds);
     }
     if (u.state === 1 || u.state === 2) return;
@@ -994,7 +1022,7 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
   if (u.state === 1 || u.state === 2) return; // under orders / chasing
   // A player's 'auto' ship outnumbered by enemy warships around it falls back to a Port of its sea.
   // It then waits NAVY_REACH.regroupSeconds before the next coast search (no trips straight back to the same fight).
-  if (st === 'auto' && state.players[u.owner]?.isHuman && !portNear(state, u) && outnumbered(state, u, u, ships) && (u.retryTick ?? 0) <= state.tick && goRepair(state, u)) {
+  if (st === 'auto' && weighsOdds(state, u.owner) && !portNear(state, u) && outnumbered(state, u, u, ships) && (u.retryTick ?? 0) <= state.tick && goRepair(state, u)) {
     u.retryTick = state.tick + NAVY_REACH.regroupSeconds * TICKS_PER_SECOND;
     return;
   }
@@ -1008,7 +1036,8 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
   }
   // Follow my war / Fixed (warTarget.ts): the nation it aims at (0 = any war), and whether only that one counts.
   if (u.fixed && !state.players[u.fixed]?.alive) delete u.fixed; // the pinned nation is gone: back to Follow
-  const aim = shipWarTarget(state, u);
+  const aiAim = aiShipAim(state, u);
+  const aim = aiAim || shipWarTarget(state, u);
   const only = !!u.fixed && u.fixed > 0;
   const owners = state.map.owner;
   // On station off another nation than the aim: look for the aim's coast every FOLLOW_RECHECK_THINKS thinks.
@@ -1036,7 +1065,7 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
           if (recheck) {
             const t = findCoast(state, u, aim, true);
             if (t >= 0 && t !== u.station) goStation(state, u, t, true);
-          } else if (due && aim > 0 && (u.retryTick ?? 0) <= state.tick && unitFollows(state, u)) followMainFront(state, u, aim);
+          } else if (due && aim > 0 && (u.retryTick ?? 0) <= state.tick && (unitFollows(state, u) || aiAim > 0)) followMainFront(state, u, aim);
           return;
         }
         // The coast fell or the war ended: other enemy coast in our sea, else patrol right here.
@@ -1051,7 +1080,11 @@ export function warshipThink(state: GameState, u: Unit, ships: readonly Unit[], 
     }
     case 'bombard': {
       if (u.state === 3 && u.station !== undefined && keep(validBombard(state, u, u.station))) {
-        if (!recheck) return;
+        if (!recheck) {
+          // AI ships: the bombardment moves along the coast with the AI's own push.
+          if (due && aiAim > 0 && owners[u.station] === aiAim && (u.retryTick ?? 0) <= state.tick) followMainFront(state, u, aim);
+          return;
+        }
         const t = findCoast(state, u, aim, true);
         if (t >= 0 && t !== u.station) goStation(state, u, t);
         return;
@@ -1126,7 +1159,8 @@ export function aiNavy(state: GameState, id: number, act: (a: Action) => ActionR
   const fleet = state.units.filter((u) => u.type === 'warship' && u.owner === id && u.hp > 0).sort((a, b) => a.id - b.id);
   if (!fleet.length) return;
   const personality = p.personality ?? 'balanced';
-  // The main enemy: the nation we fight with the most troops (either way), with a port or a coast.
+  // The main enemy: the nation we fight with the most troops (either way), with a port or a coast; from Normal up the
+  // nation of our own main attack comes first (the fleet backs the push, aiattack.ts).
   let foe = 0;
   let foeScore = 0;
   for (const a of state.attacks) {
@@ -1139,6 +1173,8 @@ export function aiNavy(state: GameState, id: number, act: (a: Action) => ActionR
       foeScore = score;
     }
   }
+  const main = aiAttackLevel(state) >= 1 ? aiMainAttack(state, id) : null;
+  if (main && hostile(state, id, main.target)) foe = main.target;
   const want = new Map<WarshipStance, number[]>();
   const assign = (u: Unit, s: WarshipStance): void => {
     if (warshipStance(u) === s) return;
@@ -1146,9 +1182,16 @@ export function aiNavy(state: GameState, id: number, act: (a: Action) => ActionR
     if (!l) want.set(s, (l = []));
     l.push(u.id);
   };
+  const free = new Set(fleet.map((u) => u.id));
+  // Damaged ships mend first, whatever their job: 'auto' sails a badly damaged ship to a Port of its sea and keeps a
+  // damaged one there until whole (mending), instead of bombarding or blockading until it sinks.
+  for (const u of fleet) {
+    if (!aiNeedsRepair(state, u)) continue;
+    free.delete(u.id);
+    assign(u, 'auto');
+  }
   // Escorts for transports at sea (one each, nearest free ships first).
   const transports = state.units.filter((u) => u.type === 'transport' && u.owner === id && u.hp > 0);
-  const free = new Set(fleet.map((u) => u.id));
   for (const t of transports) {
     if (escortsOf(state, t.id) > 0) {
       for (const e of fleet) if (e.state === 4 && e.station === t.id) free.delete(e.id);
@@ -1202,6 +1245,18 @@ export function aiNavy(state: GameState, id: number, act: (a: Action) => ActionR
     for (let i = 0; i < ids.length; i += MAX_GROUP_UNITS) act({ type: 'setUnitStance', unitIds: ids.slice(i, i + MAX_GROUP_UNITS), stance: s });
   }
   // 'auto' ships at war find enemy coast anywhere in their sea by themselves (warshipThink): no post moves needed.
+}
+
+/**
+ * AI fleets: true when warship u should go and mend now (aiNavy puts it on 'auto', which sails it to a Port of its sea
+ * and keeps it there until whole): badly damaged (under NAVY_REACH.repairBelow of its hp) with an own Port on its
+ * sea, or damaged and already at a Port.
+ */
+export function aiNeedsRepair(state: GameState, u: Unit): boolean {
+  const max = warshipMaxHp(u);
+  if (u.hp >= max - 1e-9) return false;
+  if (portNear(state, u)) return true;
+  return u.hp < NAVY_REACH.repairBelow * max && repairPort(state, u) >= 0;
 }
 
 /** Ticks a warship order takes at the port on `site` (navy.orderWarship): faster at higher port levels. */
