@@ -4,7 +4,10 @@ import { describe, expect, it } from 'vitest';
 import { applyAction } from '../src/sim/actions';
 import { markBuildingsChanged } from '../src/sim/buildings';
 import { aiAttackLevel, aiMainAttack, clearAIAttackCache } from '../src/sim/aiattack';
-import { seaContested } from '../src/sim/ai';
+import { aiManualStrike, seaContested } from '../src/sim/ai';
+import { aiAirWings, aiKeepsFlying, airMissionOf, airWingSize, wingOf } from '../src/sim/airwings';
+import { updateWarMemory } from '../src/sim/naval2';
+import { TICKS_PER_SECOND } from '../src/sim/config';
 import { computeCoastAndLand } from '../src/sim/mapgen';
 import { aiNavy, aiNeedsRepair, aiShipAim, warshipMaxHp } from '../src/sim/naval2';
 import { aiDivisionModes, divisionStrength, pressedBy } from '../src/sim/armor2';
@@ -266,5 +269,80 @@ describe('AI tank divisions', () => {
       expect(div.mode).toBe('support');
       expect(s.map.owner[div.station!]).toBe(d === 'normal' ? 2 : 3);
     }
+  });
+});
+
+/** 200 x 30 plain: AI 1 owns x 0..99, AI 2 x 100..199; Flight; an airfield of 1 with bombers. */
+function airGame(difficulty: Difficulty = 'normal'): { s: GameState; af: Building } {
+  const s = makeFlatGame(200, 30, 2, { seed: 11 });
+  claimRect(s, 1, 0, 0, 99, 29);
+  claimRect(s, 2, 100, 0, 199, 29);
+  s.settings.difficulty = difficulty;
+  s.settings.victoryLandShare = 0.99;
+  s.admin = { aiPassive: [], godMode: [], aiFrozen: true, revealIntel: [] };
+  for (const p of s.players) {
+    if (p.id === 0) continue;
+    p.gold = 100000;
+    p.iron = 10000;
+    p.oil = 10000;
+    p.troops = { infantry: 200000, armor: 0, artillery: 0 };
+    p.techs.push('flight');
+  }
+  const af = addBuilding(s, 'airfield', 1, at(s, 70, 15));
+  af.bombers = 4;
+  return { s, af };
+}
+/** One attack wave of AI 1 on AI 2 that ends at once; the war stays live (war memory). */
+function wave(s: GameState): void {
+  asAI(s, () => applyAction(s, 1, { type: 'attack', tile: at(s, 100, 15), troops: { infantry: 20000, armor: 0, artillery: 0 } }));
+  clearAIAttackCache(s);
+  while (s.tick % TICKS_PER_SECOND !== 0) s.tick++;
+  updateWarMemory(s);
+}
+function endWaves(s: GameState): void {
+  for (const a of s.attacks.filter((x) => x.attacker === 1)) asAI(s, () => applyAction(s, 1, { type: 'retreat', attackId: a.id }));
+  s.attacks = s.attacks.filter((x) => x.attacker !== 1);
+  clearAIAttackCache(s);
+}
+
+describe('AI bombers', () => {
+  it('from Normal up, AI wings keep their support mission between attack waves on a live war', () => {
+    for (const d of ['normal', 'easy'] as Difficulty[]) {
+      const { s, af } = airGame(d);
+      wave(s);
+      asAI(s, () => aiAirWings(s, 1, [2], false));
+      expect(airMissionOf(s, af)).toBe('support');
+      endWaves(s);
+      expect(aiKeepsFlying(s, 1, 2)).toBe(d === 'normal');
+      asAI(s, () => aiAirWings(s, 1, [2], false));
+      expect(airMissionOf(s, af)).toBe(d === 'normal' ? 'support' : 'idle');
+      if (d === 'normal') expect(s.map.owner[wingOf(s, af)!.target]).toBe(2);
+    }
+  });
+
+  it('a player never gets the AI between-waves rule', () => {
+    const { s } = airGame();
+    s.players[1].isHuman = true;
+    wave(s);
+    endWaves(s);
+    expect(aiKeepsFlying(s, 1, 2)).toBe(false);
+  });
+
+  it('manual AI strikes: one salvo of the wing size, nothing under SAM cover, targets near the fighting border first', () => {
+    const { s, af } = airGame();
+    const deep = addBuilding(s, 'fort', 2, at(s, 190, 15));
+    const front = addBuilding(s, 'fort', 2, at(s, 110, 15));
+    wave(s);
+    expect(s.attacks.filter((a) => a.attacker === 1).length).toBe(1);
+    let r = aiManualStrike(s, 1, af.tile);
+    expect(r.tile).toBe(front.tile);
+    expect(r.count).toBe(Math.min(af.bombers, airWingSize(s, af)));
+    // A working SAM over the front fort: the bombers go for the uncovered one instead.
+    addBuilding(s, 'sam', 2, at(s, 112, 15)); // radius 60: covers the front fort only
+    r = aiManualStrike(s, 1, af.tile);
+    expect(r.tile).toBe(deep.tile);
+    // Easy: the old habit (one bomber, SAM cover only weighed).
+    s.settings.difficulty = 'easy';
+    expect(aiManualStrike(s, 1, af.tile).count).toBeUndefined();
   });
 });

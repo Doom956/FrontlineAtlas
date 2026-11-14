@@ -16,6 +16,8 @@ import { coastCount } from '../src/sim/territory';
 import { isTribe } from '../src/sim/types';
 import type { GameEvent, GameState, Unit } from '../src/sim/types';
 
+/** "On the front": the nation was attacked by the unit's owner within this many ticks (30 s). */
+const RECENT_TICKS = 300;
 const FULL_DIVISION = TANK_DIVISION_TROOPS.armor + TANK_DIVISION_TROOPS.infantry + TANK_DIVISION_TROOPS.artillery;
 const MISSIONS = ['manual', 'support', 'strategic', 'cover'] as const;
 type MissionKey = (typeof MISSIONS)[number];
@@ -78,7 +80,7 @@ export interface AttackStats {
     /** gone with their owner; overrun within 60 s after a spearhead of theirs ended */
     ownerGone: number;
     overrunAfterSpearhead: number;
-    /** holding samples at war (holdFront + holdFar): in support mode; within 16 tiles of their support front */
+    /** holding samples at war (holdFront + holdFar): in support mode; within 24 tiles of their support front */
     holdSupport: number;
     holdAtStation: number;
     /** 10 s samples of divisions of nations at war: spearheading, holding within 12 tiles of an own attack front,
@@ -167,16 +169,30 @@ export class AttackProbe {
   private targetsTick = -1;
   constructor(private readonly state: GameState) {}
 
+  /** last tick attacker*4096+target had an attack running (nations only) */
+  private readonly lastAttack = new Map<number, number>();
+  private noteAttacks(): void {
+    const state = this.state;
+    for (const a of state.attacks) {
+      if (a.target <= 0 || a.attacker <= 0 || isTribe(state.players[a.target])) continue;
+      this.lastAttack.set(a.attacker * 4096 + a.target, state.tick);
+    }
+  }
+  /** Nations each attacker attacked within the last RECENT_TICKS (AI attacks come in waves of about a second, some
+   *  20 s apart: a ship or bomb zone on that border serves the next wave). */
   private attackTargets(): Map<number, Set<number>> {
     const state = this.state;
     if (this.targetsTick === state.tick) return this.targets;
     this.targetsTick = state.tick;
     const m = new Map<number, Set<number>>();
-    for (const a of state.attacks) {
-      if (a.target <= 0 || isTribe(state.players[a.target])) continue;
-      let s = m.get(a.attacker);
-      if (!s) m.set(a.attacker, (s = new Set()));
-      s.add(a.target);
+    for (const [k, t] of this.lastAttack) {
+      if (state.tick - t > RECENT_TICKS) continue;
+      const attacker = Math.floor(k / 4096);
+      const target = k % 4096;
+      if (!state.players[target]?.alive) continue;
+      let s = m.get(attacker);
+      if (!s) m.set(attacker, (s = new Set()));
+      s.add(target);
     }
     this.targets = m;
     return m;
@@ -226,6 +242,7 @@ export class AttackProbe {
   afterTick(events: readonly GameEvent[]): void {
     const state = this.state;
     const s = this.stats;
+    this.noteAttacks();
     const alive = new Set<number>();
     for (const u of state.units) {
       if (u.hp <= 0 || !isAINation(state, u.owner)) continue;
@@ -387,7 +404,7 @@ export class AttackProbe {
             const st = u.station;
             const dx = (st ?? 0) % w - u.x;
             const dy = (((st ?? 0) / w) | 0) - u.y;
-            if (st !== undefined && dx * dx + dy * dy <= 256) s.tanks.holdAtStation++;
+            if (st !== undefined && dx * dx + dy * dy <= 576) s.tanks.holdAtStation++;
           }
         }
       }
@@ -396,11 +413,11 @@ export class AttackProbe {
     const zones = airState(state).zones;
     for (const p of state.players) {
       if (!p.alive || !isAINation(state, p.id)) continue;
-      let main = null as null | { target: number; troops: number };
-      for (const a of state.attacks) {
-        if (a.attacker !== p.id || a.target <= 0 || isTribe(state.players[a.target])) continue;
-        const tr = a.troops.infantry + a.troops.armor + a.troops.artillery;
-        if (!main || tr > main.troops) main = { target: a.target, troops: tr };
+      // The nation it attacked last (within 30 s; ties: lower id).
+      let main = null as null | { target: number; tick: number };
+      for (const q of targets.get(p.id) ?? []) {
+        const t = this.lastAttack.get(p.id * 4096 + q) ?? -1;
+        if (!main || t > main.tick || (t === main.tick && q < main.target)) main = { target: q, tick: t };
       }
       if (!main) continue;
       const fleet = warships.some((u) => u.owner === p.id);
@@ -430,13 +447,14 @@ export function attackReport(a: AttackStats, games: number): string[] {
   out.push(`  Warships: ${f1(sh.built / g)} built, ${f1(sh.sunk / g)} sunk per game (${pc(sh.sunk, sh.built)}; by warships ${f1(sh.sunkByShip / g)}, mines ${f1(sh.sunkByMine / g)}; ${f1(sh.ownerGone / g)} more gone with their owner); sunk without any effect ${pc(sh.sunkNoXp, sh.sunk)}, sunk after being crippled ${pc(sh.sunkCrippled, sh.sunk)}.`);
   out.push(`    ship time: at war ${pc(sh.atWar, sh.alive)}; of that on an own attack's front ${pc(sh.onFront, sh.atWar)}; on station ${pc(sh.station, sh.alive)} (on the front ${pc(sh.stationOnFront, sh.station)}); escorting ${pc(sh.escorting, sh.alive)}; locally outnumbered ${pc(sh.outnumbered, sh.alive)}.`);
   out.push(`    while their nation attacks a nation (${pc(sh.attacking, sh.alive)} of ship time): on that attack's front ${pc(sh.attackingOnFront, sh.attacking)}, on station ${pc(sh.attackingStation, sh.attacking)}.`);
-  out.push(`    main attack on a nation, fleet afloat: naval support on that front ${pc(sh.mainSupported, sh.mainCoastal)} of ${sh.mainCoastal} samples.`);
+  out.push(`    main attack (the nation attacked last), fleet afloat: naval support on that front ${pc(sh.mainSupported, sh.mainCoastal)} of ${sh.mainCoastal} samples.`);
   const tr = a.transports;
   out.push(`  Invasions: ${f1(tr.invasions / g)} per game; sunk ${pc(tr.sunk, tr.invasions)} (${f1(tr.troopsSunk / g / 1000)}k troops per game), repelled ${pc(tr.repelled, tr.invasions)}; escorted ${pc(tr.escorted, tr.atSea)} of transport time at sea.`);
   const tk = a.tanks;
   const ov = tk.overrun[0] + tk.overrun[1] + tk.overrun[2];
   out.push(`  Tank divisions: ${f1(tk.formed / g)} formed per game; overrun ${pc(ov, tk.formed)} (at <10% / 10-40% / >=40% strength: ${tk.overrun.join(' / ')}; while defending ${pc(tk.overrunDefending, ov)}), spent ${pc(tk.spent, tk.formed)}; within 60 s after a spearhead ${pc(tk.overrunAfterSpearhead, ov)}; ${f1(tk.ownerGone / g)} gone with their owner.`);
   out.push(`    division time at war: spearheading ${pc(tk.spearhead, tk.atWar)}, holding at an own attack front ${pc(tk.holdFront, tk.atWar)}, holding elsewhere ${pc(tk.holdFar, tk.atWar)}, driving ${pc(tk.driving, tk.atWar)}; worn (<40%) ${pc(tk.worn, tk.atWar)}; holding time on support ${pc(tk.holdSupport, tk.holdFront + tk.holdFar)} (near its front tile ${pc(tk.holdAtStation, tk.holdSupport)}).`);
+  out.push('  ("front" = the border with a nation the unit\'s owner attacked within the last 30 s; AI attacks come in waves of about a second)');
   out.push('  Bombers by mission: sorties per game / arrived / on an own attack front (support, cover, manual) / into SAM cover (arrived)');
   for (const m of MISSIONS) {
     const b = a.bombers[m];
@@ -445,6 +463,6 @@ export function attackReport(a: AttackStats, games: number): string[] {
   const st = Object.entries(a.strikeTypes).sort((x, y) => y[1] - x[1]);
   const stTot = st.reduce((s, [, n]) => s + n, 0);
   out.push(`  Strategic / manual aims: ${st.map(([k, n]) => `${k} ${pc(n, stTot)}`).join(', ') || '-'}`);
-  out.push(`  Main attack, nation with bombers: an air support zone on that front ${pc(a.mainAirZone, a.mainAirOwn)} of ${a.mainAirOwn} samples.`);
+  out.push(`  Main attack (the nation attacked last), nation with bombers: an air support zone on that front ${pc(a.mainAirZone, a.mainAirOwn)} of ${a.mainAirOwn} samples.`);
   return out;
 }

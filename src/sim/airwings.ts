@@ -23,6 +23,7 @@ import { AIR, AIR_COVER, TICKS_PER_SECOND } from './config';
 import { aircraftCap, airfieldRadius, buildingAt, buildingsOf, chargesReady, isDisabled, samRadius } from './buildings';
 import { applyAction } from './actions';
 import { atWar } from './allies';
+import { aiAttackLevel } from './aiattack';
 import { frontLength, frontTiles } from './combat';
 import { areAllied } from './diplomacy';
 import { doctrineActive, doctrineLess } from './doctrines';
@@ -749,12 +750,12 @@ function sortie(state: GameState, wing: AirWing, b: Building): void {
     let aim = front >= 0 ? leadAim(state, wing.owner, foe, front, b.tile) : -1;
     if (aim >= 0 && d2(w, b.tile, aim) > range * range && !carrierFor(state, wing.owner, aim)) aim = front;
     // Support flies while we are at war with them (either side attacking; following: our war target), within reach.
-    if (aim >= 0 && (atWar(state, wing.owner, foe) || (wing.follow && foe > 0 && foe === followedNation(state, wing.owner))) && (d2(w, b.tile, aim) <= range * range || carrierFor(state, wing.owner, aim))) aims = [aim]; // carriers (variants.ts)
+    if (aim >= 0 && (atWar(state, wing.owner, foe) || (wing.follow && foe > 0 && foe === followedNation(state, wing.owner)) || aiKeepsFlying(state, wing.owner, foe)) && (d2(w, b.tile, aim) <= range * range || carrierFor(state, wing.owner, aim))) aims = [aim]; // carriers (variants.ts)
   } else {
     mission = MISSION_STRATEGIC;
     const foe = wing.targetOwner;
     const n = Math.max(1, Math.min(b.bombers, airWingSize(state, b)));
-    if (foe > 0 && hostile(state, wing.owner, foe) && (wing.follow || atWar(state, wing.owner, foe))) aims = strategicAims(state, wing, b, n);
+    if (foe > 0 && hostile(state, wing.owner, foe) && (wing.follow || atWar(state, wing.owner, foe) || aiKeepsFlying(state, wing.owner, foe))) aims = strategicAims(state, wing, b, n);
     // Following with nothing of the war target in reach: raid another nation we fight (nations first, lower id).
     if (!aims.length && wing.follow && foe > 0) {
       for (const other of liveFoes(state, wing.owner)) {
@@ -777,6 +778,18 @@ function sortie(state: GameState, wing: AirWing, b: Building): void {
   }
   wing.sorties++;
   wing.nextTick = state.tick + Math.max(1, Math.round(AIR.sortieCooldown * doctrineLess(state, wing.owner, 'airfieldReload') * massCooldownMul(state, wing.owner) * TICKS_PER_SECOND));
+}
+
+/**
+ * AI wings (Normal and up) keep flying at a nation between the AI's attack waves: true while the war with `foe` is
+ * live (an attack either way within NAVY_WAR_MEMORY s, warTarget.liveFoes). AI land attacks come in short waves
+ * (median about a second, some 20 s apart), so a wing that only flew while one ran took off during a wave and arrived
+ * after it, and a support zone (AIR.supportSeconds) laid between waves still cuts the next one's losses.
+ */
+export function aiKeepsFlying(state: GameState, owner: number, foe: number): boolean {
+  const p = state.players[owner];
+  if (!p || p.isHuman || foe <= 0 || aiAttackLevel(state) < 1 || !hostile(state, owner, foe)) return false;
+  return liveFoes(state, owner).includes(foe);
 }
 
 /** Sortie cooldown x for a nation with many airfields on support / strategic missions (AIR.massFree, AIR.massCooldown). */
@@ -1377,6 +1390,10 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
         // Keep the old aim while it is still on that front (it follows the push by itself).
         target = cur?.mission === 'support' && cur.targetOwner === main.target && cur.target >= 0 && d2(w, cur.target, best) < 30 * 30 ? cur.target : best;
       }
+    } else if (!main && cur?.mission === 'support' && cur.target >= 0 && aiKeepsFlying(state, id, cur.targetOwner)) {
+      // Between two attack waves on that nation: keep the support mission (and its aim) for the next wave.
+      mission = 'support';
+      target = cur.target;
     }
     if (mission === 'idle' && !(mainCovered && b === sortedAfs[0]) && !(airHolder && anyCovered && supportAim(b) >= 0) && fighting.length && (minded || heavy || p.personality === 'merchant' || techOf(state, id, 'strategicBombing'))) {
       let bestFoe = 0;

@@ -87,7 +87,7 @@ import { mainFront } from './warTarget';
 import { fogOn, knownTile } from './fog';
 import { borderTiles, coastCount, depositCount, landComponents, sampleOwnedTiles } from './territory';
 import { canParadrop, paradropMaxTroops, paradropRange, unitCost } from './units';
-import { aiAirDoctrineTaste, aiAirTechs, aiAirWings, aiExtraAirfields, airWingBusy, airWingRange } from './airwings';
+import { aiAirDoctrineTaste, aiAirTechs, aiAirWings, aiExtraAirfields, airWingBusy, airWingRange, airWingSize } from './airwings';
 import { inOvertime, victoryShareNow } from './victory';
 import { hasTech } from './tech';
 import { isArsenalTech, pillarOf } from './arsenal';
@@ -104,7 +104,7 @@ import { aiTankDivisions } from './tanks';
 import { aiNavy, atWar as navalAtWar } from './naval2';
 import { aiAttackLevel } from './aiattack';
 import { DOCTRINE_IDS, TROOP_TYPES, Resource, isTribe, isWater } from './types';
-import type { Attack, BuildingType, Difficulty, DoctrineId, GameState, Personality, Player, TechId, TerrainId, TroopType, Troops } from './types';
+import type { Attack, Building, BuildingType, Difficulty, DoctrineId, GameState, Personality, Player, TechId, TerrainId, TroopType, Troops } from './types';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Tuning
@@ -147,6 +147,9 @@ const AI_PROCURE_COMMITTED = 2.5;
 const AI_PROCURE_BUILDING_PRIO = 5;
 /** Landings: hostile warships this close to the start or the landing tile count against it (seaContested). */
 const AI_LANDING_WATCH = 60;
+/** Manual bomb targets (strikeTarget) within this many tiles of the border with their owner score this much more. */
+const AI_STRIKE_FRONT = 30;
+const AI_STRIKE_FRONT_BONUS = 15;
 
 interface Profile {
   /** willingness to start wars, 0..1 */
@@ -2362,9 +2365,12 @@ function foes(ctx: Ctx): number[] {
 function strikeTarget(ctx: Ctx, kinds: BuildingType[], from: number, reach = Infinity): number {
   const { state } = ctx;
   const w = state.map.width;
+  // From Normal up (aiattack.ts): nothing under working SAM cover, and targets near the border we fight on first.
+  const sharp = aiAttackLevel(state) >= 1;
   let best = -1;
   let bestScore = -Infinity;
   for (const q of foes(ctx)) {
+    const border = sharp ? frontSamples(ctx, q) : EMPTY;
     // SAMs knocked out by a barrage don't count (that is what barrages are for).
     const sams = ctx.diff.careful ? buildingsOf(state, q, 'sam').filter((b) => b.buildLeft <= 0 && !isDisabled(state, b)) : [];
     for (let k = 0; k < kinds.length; k++) {
@@ -2376,8 +2382,10 @@ function strikeTarget(ctx: Ctx, kinds: BuildingType[], from: number, reach = Inf
           const r = samRadius(s);
           if (dist2(w, s.tile, b.tile) <= r * r) covered += s.level;
         }
+        if (sharp && covered > 0 && from >= 0) continue; // bombers; rockets go for the SAMs themselves
         const far = from >= 0 ? Math.sqrt(dist2(w, from, b.tile)) : 0;
-        const s = (kinds.length - k) * 10 - covered * 12 - far * 0.03 + (b.type === 'city' ? b.level : 0);
+        let s = (kinds.length - k) * 10 - covered * 12 - far * 0.03 + (b.type === 'city' ? b.level : 0);
+        if (sharp && border.some((t) => dist2(w, t, b.tile) <= AI_STRIKE_FRONT * AI_STRIKE_FRONT)) s += AI_STRIKE_FRONT_BONUS;
         if (s > bestScore) {
           bestScore = s;
           best = b.tile;
@@ -2386,6 +2394,24 @@ function strikeTarget(ctx: Ctx, kinds: BuildingType[], from: number, reach = Inf
     }
   }
   return best;
+}
+
+/**
+ * The target an AI airfield's manual bombs would go for now (strikeTarget with the airfield's kinds and reach), and
+ * the salvo size it would send (undefined = one bomber, Easy). For tests and tools; reads only.
+ */
+export function aiManualStrike(state: GameState, id: number, airfield: number): { tile: number; count: number | undefined } {
+  const m = memory(state);
+  refreshArmies(state, m);
+  const ctx = makeCtx(state, m, state.players[id]);
+  const af = state.buildings.get(state.map.building[airfield] - 1);
+  if (!af || af.type !== 'airfield') return { tile: -1, count: undefined };
+  return { tile: strikeTarget(ctx, MANUAL_STRIKE_KINDS, af.tile, airWingRange(af, state)), count: manualSalvo(state, af) };
+}
+const MANUAL_STRIKE_KINDS: BuildingType[] = ['fort', 'factory', 'arsenal', 'airfield', 'city', 'barracks'];
+/** From Normal up a manual strike is one salvo of the wing's size, not a bomber at a time into the enemy's fighters. */
+function manualSalvo(state: GameState, af: Building): number | undefined {
+  return aiAttackLevel(state) >= 1 ? Math.max(1, Math.min(af.bombers, airWingSize(state, af))) : undefined;
 }
 
 function airAndMissiles(ctx: Ctx): void {
@@ -2406,8 +2432,9 @@ function airAndMissiles(ctx: Ctx): void {
       applyAction(state, id, { type: 'buildAircraft', airfield: af.tile, kind });
     }
     if (fighting.length && af.bombers > 0 && !airWingBusy(state, af)) {
-      const t = strikeTarget(ctx, ['fort', 'factory', 'arsenal', 'airfield', 'city', 'barracks'], af.tile, airWingRange(af, state));
-      if (t >= 0) applyAction(state, id, { type: 'bomb', airfield: af.tile, tile: t });
+      const t = strikeTarget(ctx, MANUAL_STRIKE_KINDS, af.tile, airWingRange(af, state));
+      const count = manualSalvo(state, af);
+      if (t >= 0) applyAction(state, id, count === undefined ? { type: 'bomb', airfield: af.tile, tile: t } : { type: 'bomb', airfield: af.tile, tile: t, count });
       else {
         // Nothing worth a raid in reach: a front strike on the main front of the nearest foe in reach instead.
         const r = airWingRange(af, state);
