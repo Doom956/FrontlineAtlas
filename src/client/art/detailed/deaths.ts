@@ -36,7 +36,7 @@ import { hitSpot } from './damage';
 import { blastAt, detailedExplosions, flashCore, flashGlow, speck } from './explosions';
 import { facingIndex, facingsFor, gridOf, type Grid } from './grid';
 import { modelLength, modelSpan, MOD_MASK, unitModel, type UnitModel } from './models';
-import { DEBRIS, FIRE, SPRAY, TRACER } from './palette';
+import { DEBRIS, FIRE, MATERIALS, SPRAY, TRACER, type MaterialId } from './palette';
 import { detailedUnits } from './units';
 import { CHAR_STEPS, drawWreck, SINK_STEPS, sinkReach, warmWreck, WRECK_ROLLS, type WreckPose } from './wrecks';
 
@@ -295,7 +295,7 @@ const PLANK_LIT = '#aca596';
  * Wreckage floating on the sea round (x, y): `n` planks, each 2 or 3 art pixels of dark wood lying one of three ways
  * with one pixel of a lighter edge, bobbing and drifting downwind, `alpha` 0..1.
  */
-function floating(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number, n: number, age: number, g: Grid, u: number, sd: number, alpha: number, still: boolean): void {
+function floating(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number, n: number, age: number, g: Grid, u: number, sd: number, alpha: number, still: boolean, paint?: readonly [string, string, string]): void {
   if (alpha <= 0.02) return;
   const prev = ctx.globalAlpha;
   for (let i = 0; i < n; i++) {
@@ -308,8 +308,31 @@ function floating(ctx: CanvasRenderingContext2D, x: number, y: number, rx: numbe
     const len = rnd(sd, i + 303) < 0.45 ? 3 : 2;
     const way = Math.floor(rnd(sd, i + 304) * 3);
     const sy = way === 0 ? 0 : way === 1 ? g.k : -g.k;
-    for (let j = 0; j < len; j++) speck(ctx, px + j * g.k, py + j * sy, g, 1, PLANK[(i + j) & 1]);
-    speck(ctx, px + (way === 2 ? (len - 1) * g.k : 0), py + (way === 2 ? (len - 1) * sy : 0) - g.k, g, 1, PLANK_LIT);
+    for (let j = 0; j < len; j++) speck(ctx, px + j * g.k, py + j * sy, g, 1, paint ? paint[(i + j) & 1] : PLANK[(i + j) & 1]);
+    speck(ctx, px + (way === 2 ? (len - 1) * g.k : 0), py + (way === 2 ? (len - 1) * sy : 0) - g.k, g, 1, paint ? paint[2] : PLANK_LIT);
+  }
+  ctx.globalAlpha = prev;
+}
+
+/** A plane's own paint (two tones and a lit edge) for the pieces of it floating where it went in. */
+const PLANE_PAINT: Partial<Record<SpriteKey, MaterialId>> = { bomber: 'odplane', groundAttack: 'camo', heavyBomber: 'alu', fighter: 'seagrey', transportPlane: 'cargo', reconPlane: 'prublue' };
+function paintOf(key: SpriteKey): readonly [string, string, string] | undefined {
+  const m = PLANE_PAINT[key];
+  if (!m) return undefined;
+  const r = MATERIALS[m];
+  return [r[2], r[1], r[3]];
+}
+
+/** A ragged rim of light sheen round an oil slick at (x, y), radii (rx, ry) px, one art pixel specks. */
+function sheen(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number, g: Grid, sd: number, alpha: number, mid: boolean): void {
+  if (alpha <= 0.02) return;
+  const prev = ctx.globalAlpha;
+  ctx.globalAlpha = prev * alpha;
+  const n = mid ? 14 : 28;
+  for (let i = 0; i < n; i++) {
+    const t = (i / n) * TAU + rnd(sd, i + 960) * 0.2;
+    const k = 0.9 + 0.2 * rnd(sd, i + 961);
+    speck(ctx, x + Math.cos(t) * rx * k, y + Math.sin(t) * ry * k, g, 1, SPRAY[2]);
   }
   ctx.globalAlpha = prev;
 }
@@ -472,9 +495,10 @@ function bubbles(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number
 // ------------------------------------------------------------------------------------------------- planes
 
 /** How many turns a plane makes as it falls (a fighter spins, a big plane turns slowly) and its corkscrew (in lengths). */
-const SPIN: Partial<Record<SpriteKey, [number, number]>> = {
+export const SPIN: Partial<Record<SpriteKey, [number, number]>> = {
   fighter: [1.7, 0.42],
-  reconPlane: [1.25, 0.34],
+  // a twin-engine plane that lost an engine: one slow turn into the dead side and a steady dive, not a whirl
+  reconPlane: [0.45, 0.16],
   groundAttack: [0.95, 0.28],
   bomber: [0.42, 0.16],
   heavyBomber: [0.3, 0.12],
@@ -506,16 +530,20 @@ function fallAt(d: DeathDraw, um: UnitModel, a: number, fall: number, turns: num
   f.x = d.x + Math.cos(d.angle) * fwd + cr * (Math.cos(hd + side) - Math.cos(d.angle + side));
   f.y = d.y + Math.sin(d.angle) * fwd + cr * (Math.sin(hd + side) - Math.sin(d.angle + side)) * FORE;
   f.hd = hd;
-  f.roll = spin * (q < 0.1 ? 1 : q < 0.32 ? 2 : 3);
-  f.s = 1 - 0.45 * q ** 1.4;
+  // the twin booms of the recon plane read as a ladder rolled far over: it rolls no further than level 2
+  f.roll = spin * Math.min(d.key === 'reconPlane' ? 2 : 3, q < 0.1 ? 1 : q < 0.32 ? 2 : 3);
+  // it falls away from the eye, but a small plane must stay readable to the water, not shrink into a smudge
+  f.s = Math.max(L < 20 ? 0.72 : 0, 1 - 0.45 * q ** 1.4);
   f.alt = um.alt * (1 - q * q);
   f.q = q;
   return f;
 }
 
 /** Where a plane burns from: its first engine, else a wing root (u, v, z model units). */
-function engineOf(um: UnitModel, spin: number): [number, number, number] {
+function engineOf(um: UnitModel, spin: number, key?: SpriteKey): [number, number, number] {
   const p = um.props[0] ?? um.nozzles[0];
+  // the recon plane burns at the hit boom's engine nacelle, behind its propeller, not out at the propeller hub
+  if (p && key === 'reconPlane') return [p.u - 1.9, p.v, p.z - 0.2];
   if (p) return [p.u, p.v, p.z];
   return [0, spin * spanOf(um) * 0.22, 1.5];
 }
@@ -591,6 +619,8 @@ function drawPlane(ctx: CanvasRenderingContext2D, d: DeathDraw, m: MotionParams)
   const prev = ctx.globalAlpha;
   const after = age - fall;
   const R = Math.max(4.5, Math.min(10, L * 0.42));
+  // a small plane keeps its paint until late in the fall (charred early it is a dark smudge in its own smoke)
+  const charQ = L < 20 ? 0.8 : 0.55;
   const fT = 600 * m.blastTime;
   const timeMs = d.reduced ? 0 : d.ageMs;
 
@@ -645,25 +675,38 @@ function drawPlane(ctx: CanvasRenderingContext2D, d: DeathDraw, m: MotionParams)
     const f = fallAt(d, um, age, fall, turns, cork, spin, L);
     const res = g.res * f.s;
     if (sprite) {
-      wreckOrLive(ctx, d, m, setPose(d, 'body', f.hd, res, f.roll, f.q > 0.55 ? 1 : 0), f.x, f.y, g);
+      wreckOrLive(ctx, d, m, setPose(d, 'body', f.hd, res, f.roll, f.q > charQ ? 1 : 0), f.x, f.y, g);
       // the pose a moment on, baked ahead so it is ready
       if (!d.reduced) {
         const nx = fallAt(d, um, age + 90, fall, turns, cork, spin, L);
-        warmWreck(setPose(d, 'body', nx.hd, g.res * nx.s, nx.roll, nx.q > 0.55 ? 1 : 0));
+        warmWreck(setPose(d, 'body', nx.hd, g.res * nx.s, nx.roll, nx.q > charQ ? 1 : 0));
       }
     }
     // fire at an engine, streaming back along its way
     const fireK = clamp01((f.q - 0.04) / 0.22);
     if (fireK > 0) {
-      const [eu, ev, ez] = engineOf(um, spin);
+      const [eu, ev, ez] = engineOf(um, spin, d.key);
       const rr = WRECK_ROLLS[Math.min(3, Math.abs(f.roll))] * Math.sign(f.roll);
       const [ex, ey] = project(eu, ev, ez, f.hd, rr, u * f.s, false);
       const lean = Math.max(-2, Math.min(2, Math.round(-Math.cos(f.hd) * 2)));
+      // a small plane's engine fire is as big as a bomber's, so it reads as burning, not as a spark
+      const fs = Math.max(1, size);
       for (let i = mid ? 1 : 2; i >= 1; i--) {
         const bk = i * 1.6 * u * f.s;
-        drawBlob(ctx, 'fire', Math.max(1, g.res * f.s * size * (0.75 - 0.18 * i)), i, f.x + ex - Math.cos(f.hd) * bk, f.y + ey - Math.sin(f.hd) * bk * FORE, g, fireK * 0.9, 1 + i);
+        drawBlob(ctx, 'fire', Math.max(1, g.res * f.s * fs * (0.75 - 0.18 * i)), i, f.x + ex - Math.cos(f.hd) * bk, f.y + ey - Math.sin(f.hd) * bk * FORE, g, fireK * 0.9, 1 + i);
       }
-      drawFlame(ctx, f.x + ex, f.y + ey + g.k, g.res * f.s * size * (0.55 + 0.45 * fireK), g, timeMs, rnd(sd, 7), m, fireK, lean);
+      drawFlame(ctx, f.x + ex, f.y + ey + g.k, g.res * f.s * fs * (0.55 + 0.45 * fireK), g, timeMs, rnd(sd, 7), m, fireK, lean);
+      // a short trail of sparks streaming back from the fire, new ones every frame
+      if (!d.reduced) {
+        const prevA = ctx.globalAlpha;
+        ctx.globalAlpha = prevA * fireK;
+        for (let i = 0; i < 3; i++) {
+          const bk = (2.6 + 3.2 * rnd(sd + Math.floor(timeMs / 60), i + 940)) * u * f.s;
+          const off = (rnd(sd + Math.floor(timeMs / 60), i + 941) - 0.5) * 1.6 * u;
+          speck(ctx, f.x + ex - Math.cos(f.hd) * bk - Math.sin(f.hd) * off, f.y + ey - Math.sin(f.hd) * bk * FORE + Math.cos(f.hd) * off * FORE, g, 1, FIRE[1 + i]);
+        }
+        ctx.globalAlpha = prevA;
+      }
     }
   }
 
@@ -727,10 +770,16 @@ function crashSea(ctx: CanvasRenderingContext2D, d: DeathDraw, m: MotionParams, 
   if (layer === 0) {
     if (!d.reduced) flashGlow(ctx, 'shell', x, y, Rc, a, g, m, sd, false);
     // the oil slick spreading where it went in, thinning out
-    if (a > 120) slick(ctx, Rc * (0.55 + 1.1 * easeOut(clamp01(a / (rest * 0.6)))), Math.floor(sd) & 3, x + WIND_X * u * (a / 1000) * 0.15, y, g, 0.65 * fade, Math.min(3, Math.floor(k * 3.6)));
-    // floating pieces and bubbles
+    if (a > 120) {
+      const sr = Rc * (0.55 + 1.1 * easeOut(clamp01(a / (rest * 0.6))));
+      const sx = x + WIND_X * u * (a / 1000) * 0.15;
+      slick(ctx, sr, Math.floor(sd) & 3, sx, y, g, 0.65 * fade, Math.min(3, Math.floor(k * 3.6)));
+      // a lighter sheen round its ragged rim, so the slick shows on the dark sea
+      if (!d.reduced) sheen(ctx, sx, y, sr * g.k * 0.8, sr * g.k * 0.45, g, sd, 0.35 * fade, mid);
+    }
+    // floating pieces of the plane in its own paint, and bubbles
     const spread = easeOut(clamp01((a - 150) / 1200));
-    if (a > 150) floating(ctx, x, y, R * (0.6 + 1.2 * spread) * u, R * (0.35 + 0.6 * spread) * u, mid ? 3 : 6, a, g, u, sd, fade, d.reduced);
+    if (a > 150) floating(ctx, x, y, R * (0.6 + 1.2 * spread) * u, R * (0.35 + 0.6 * spread) * u, mid ? 3 : 5, a, g, u, sd, fade, d.reduced, paintOf(d.key));
     bubbles(ctx, x, y, R * 0.9 * u, R * 0.5 * u, mid ? 2 : 4, a, g, sd, (1 - clamp01((a - 400) / 1600)) * 0.9);
     return;
   }
