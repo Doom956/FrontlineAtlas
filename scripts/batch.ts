@@ -70,6 +70,8 @@ import { cloneSetup, DEFAULT_MODIFIERS, DEFAULT_SETUP, SINGLE_PLAYER_NATIONS } f
 import { loadWorldMap } from '../src/sim/worldmaps';
 import { FOCUS_PILLARS, FOCUS_SPEC, setAIFocus } from '../src/sim/aifocus';
 import { applyRules } from './rules';
+import { AttackProbe, addAttackStats, attackReport, newAttackStats } from './attackprobe';
+import type { AttackStats } from './attackprobe';
 import type { FocusPillar } from '../src/sim/aifocus';
 import { aiCommittedPillar } from '../src/sim/variantsAI';
 import { borderTiles, coastCount } from '../src/sim/territory';
@@ -363,6 +365,8 @@ interface GameResult {
   slot?: SlotResult;
   /** economy probe per nation at 10 / 20 / 30 min and the end */
   econ?: EconNation[];
+  /** attack probe (scripts/attackprobe.ts): AI use of warships, tank divisions and bombers */
+  atk?: AttackStats;
 }
 
 /** The --specialist slot's game, specialist or baseline. */
@@ -539,6 +543,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
   // --specialist: the slot is the o.slot-th AI nation (ids follow the setup: humans, AI nations, tribes).
   const slotId = job.focus ? (state.players.filter((p) => p.id > 0 && !p.isHuman && !isTribe(p))[o.slot - 1]?.id ?? 0) : 0;
   const econProbe = installEconProbe(state);
+  const atkProbe = new AttackProbe(state);
   const econ: EconNation[] = [];
   for (const p of state.players) if (p.id && !isTribe(p)) econ.push({ id: p.id, personality: p.personality ?? 'human', at: [null, null, null], end: null });
   if (slotId && job.focus && job.focus !== 'none') {
@@ -741,6 +746,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
       barrageArmy.set(key, q);
       barragesBy.set(b.owner, (barragesBy.get(b.owner) ?? 0) + 1);
     }
+    atkProbe.afterTick(state.events);
     state.events.length = 0;
     state.effects.length = 0;
     const minute = gameSeconds(state) / 60;
@@ -780,6 +786,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     }
     if ((state.tick - state.playStartTick) % sampleEvery !== 0) continue;
     shipUseSample(state, r.shipUse!, slot);
+    atkProbe.sample();
     {
       const owner = state.map.owner;
       for (const i of fortTiles) {
@@ -975,6 +982,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     r.branches!.push({ id: p.id, picks });
   }
   r.spend = { ...aiSpendStats(state) };
+  r.atk = atkProbe.stats;
   for (const e of econ) e.end = econSnap(state, e.id, econProbe.spent.get(e.id)!);
   r.econ = econ;
   for (const p of state.players) {
@@ -1279,6 +1287,12 @@ function report(all: GameResult[], o: Options): void {
   branchReport(rs);
   researchPaceReport(rs);
   counterReport(rs);
+  {
+    const withAtk = rs.filter((r) => r.atk);
+    const sum = newAttackStats();
+    for (const r of withAtk) addAttackStats(sum, r.atk!);
+    if (withAtk.length) for (const line of attackReport(sum, withAtk.length)) console.log(line);
+  }
   if (o.specialist) specialistReport(all, o);
 }
 
