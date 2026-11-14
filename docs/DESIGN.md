@@ -676,8 +676,8 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   blockader's warships capture its trade ships (cargo x `NAVY_CAPTURE_GOLD` to them). Veterancy (sinking, shelling):
   +1 max hp and +20% damage per level; ships near an own port mend. Fleet cap `NAVY_CAP_BASE` + 3 per port level;
   higher ports build faster. Carriers: support range x1.5; Submarines: blockade range and captured gold x1.5. AIs
-  (`aiNavy`): at war, fixed roles per ship (blockade / bombard / auto, admirals also hunt; damaged ships mend first;
-  from Normal up the main enemy is the nation of their own main attack), escorts for transports
+  (`aiNavy`): at war, fixed roles per ship (blockade / bombard / auto, admirals also hunt; damaged ships mend first),
+  escorts for transports
   (their auto ships roam to the enemy's coast by themselves); coastal AIs research Navigation once boxed in or at 5 techs.
 - **Divisions, part two** (src/sim/armor2.ts; `setDivisionMode {unitIds, mode, front?}`): a spearhead no longer
   spends a division (it disbands only under `TANK_DISBAND_SHARE`); holding divisions refit from the pool
@@ -865,15 +865,13 @@ are about to attack (SAMs first; with lots of artillery and nothing to silence, 
 sometimes (40% of the air turns with a ready airfield) **drop paratroopers** on a capital or city of a nation they
 clearly outnumber (careful AIs avoid SAM cover), else about 30 tiles behind the main front toward its capital.
 **How AIs fight with warships, tank divisions and bombers** (`src/sim/aiattack.ts` and the AI parts of naval2.ts,
-armor2.ts, airwings.ts, ai.ts; checked with the attack probe of `scripts/batch.ts`, `scripts/attackprobe.ts`). An AI
-nation's *main attack* is its own attack with the most troops on a live, hostile nation (tribes don't count), its
-*main front* that nation's border tile nearest the attack's focus (both per tick, no new state). AI land attacks come
-in waves of about a second some 20 s apart, so "the war is live" (an attack either way within `NAVY_WAR_MEMORY` s) is
-what the units key off between waves. At every difficulty: badly damaged AI warships of any job go and mend at a Port
+armor2.ts, airwings.ts, ai.ts; checked with the attack probe of `scripts/batch.ts`, `scripts/attackprobe.ts`). AI
+land attacks come in waves of about a second some 20 s apart, so "the war is live" (an attack either way within
+`NAVY_WAR_MEMORY` s) is what the units key off between waves. At every difficulty: badly damaged AI warships of any job go and mend at a Port
 of their sea (`aiNeedsRepair`), and worn-out holding divisions (under 40%) and pressed ones under 60% drive back to
 refit at a Factory. From Normal up (`AI_ATTACK_LEVEL`; Easy keeps the old habits):
-- warships aim at the nation of the main attack and take station nearest the main front, moving along the coast with
-  the push (`aiShipAim`); auto ships weigh the odds like a player's, by hp (a damaged ship doesn't take on a whole
+- warships keep shelling enemy coast next to our own land (aiming them at the main attack's front instead was tried
+  and put fewer of them on a front: attacks are too short to steer by); auto ships weigh the odds like a player's, by hp (a damaged ship doesn't take on a whole
   one; the enemy must be a quarter stronger to count); no landing while enemy warships near its start or landing
   tile outnumber ours (`seaContested`);
 - a holding division with land of a nation attacking it within 8 tiles strikes back into it when at half strength or
@@ -908,7 +906,7 @@ ai.ts. The human's own economy never changes.
 | decides every | 5 s | 3 s | 2 s | 1.5 s |
 | troop shares sent | x0.7 | x0.9 | x1.1 | x1.2 |
 | reads matchups, SAMs (`careful`) / joins allies' wars / atom bombs | no / no / no | yes / no / yes | yes | yes |
-| warships, divisions and bombers back the main attack, weigh odds, skip SAM cover (`AI_ATTACK_LEVEL`) | no (repairs only) | yes | yes | yes |
+| warships, divisions and bombers weigh odds, follow the waves of their attacks, skip SAM cover (`AI_ATTACK_LEVEL`) | no (repairs only) | yes | yes | yes |
 | human grace (no new war on a human that isn't attacking us) | 15 min | 9 min | 6 min | none |
 | human can't collapse or be absorbed when walled in (`HUMAN_GRACE_BY_DIFFICULTY`) | 10 min | 6 min | 3 min | 3 min |
 | AI starts keep x the usual spacing from a human start (`humanRoom`) | x2 | x1 | x1 | x1 |

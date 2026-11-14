@@ -3,13 +3,13 @@
 import { describe, expect, it } from 'vitest';
 import { applyAction } from '../src/sim/actions';
 import { markBuildingsChanged } from '../src/sim/buildings';
-import { aiAttackLevel, aiMainAttack, clearAIAttackCache } from '../src/sim/aiattack';
+import { aiAttackLevel } from '../src/sim/aiattack';
 import { aiManualStrike, seaContested } from '../src/sim/ai';
 import { aiAirWings, aiKeepsFlying, airMissionOf, airWingSize, wingOf } from '../src/sim/airwings';
 import { updateWarMemory } from '../src/sim/naval2';
 import { TICKS_PER_SECOND } from '../src/sim/config';
 import { computeCoastAndLand } from '../src/sim/mapgen';
-import { aiNavy, aiNeedsRepair, aiShipAim, warshipMaxHp } from '../src/sim/naval2';
+import { aiNavy, aiNeedsRepair, warshipMaxHp } from '../src/sim/naval2';
 import { aiDivisionModes, divisionStrength, pressedBy } from '../src/sim/armor2';
 import { spawnTankDivision } from '../src/sim/tanks';
 import { TANK_DIVISION_TROOPS } from '../src/sim/config';
@@ -68,41 +68,23 @@ function asAI<T>(s: GameState, fn: () => T): T {
 function aiAttacks(s: GameState, troops = 20000): void {
   const r = asAI(s, () => applyAction(s, 2, { type: 'attack', tile: at(s, 39, 5), troops: { infantry: troops, armor: 0, artillery: 0 } }));
   expect(r.reason ?? 'ok').toBe('ok');
-  clearAIAttackCache(s);
 }
 
-describe('AI attack helpers', () => {
-  it('levels by difficulty; the main attack is the biggest own attack on a nation', () => {
+describe('AI attack level', () => {
+  it('by difficulty: Easy keeps the old habits', () => {
     const s = coastGame();
     expect(aiAttackLevel(s)).toBe(1);
     s.settings.difficulty = 'easy';
     expect(aiAttackLevel(s)).toBe(0);
+    s.settings.difficulty = 'hard';
+    expect(aiAttackLevel(s)).toBe(2);
     s.settings.difficulty = 'brutal';
     expect(aiAttackLevel(s)).toBe(3);
-    expect(aiMainAttack(s, 2)).toBeNull();
-    aiAttacks(s);
-    const m = aiMainAttack(s, 2);
-    expect(m?.target).toBe(1);
-    expect(m?.troops).toBeGreaterThan(0);
   });
 });
 
 describe('AI warships', () => {
-  it('from Normal up, AI ships aim at the nation the AI attacks; on Easy and for a player they keep their old aim', () => {
-    const s = coastGame();
-    const u = ship(s, 2, 60, 25);
-    expect(aiShipAim(s, u)).toBe(0); // no attack yet
-    aiAttacks(s);
-    expect(aiShipAim(s, u)).toBe(1);
-    const mine = ship(s, 1, 20, 25);
-    expect(aiShipAim(s, mine)).toBe(0); // a player's ship follows its owner's war target instead
-    const e = coastGame('easy');
-    const v = ship(e, 2, 60, 25);
-    aiAttacks(e);
-    expect(aiShipAim(e, v)).toBe(0);
-  });
-
-  it('an AI ship on station shells the coast nearest its own attack', () => {
+  it('an AI ship on station shells the enemy coast next to the border it fights on', () => {
     const s = coastGame();
     const u = ship(s, 2, 75, 30);
     asAI(s, () => applyAction(s, 2, { type: 'setUnitStance', unitIds: [u.id], stance: 'bombard' }));
@@ -326,14 +308,12 @@ function airGame(difficulty: Difficulty = 'normal'): { s: GameState; af: Buildin
 /** One attack wave of AI 1 on AI 2 that ends at once; the war stays live (war memory). */
 function wave(s: GameState): void {
   asAI(s, () => applyAction(s, 1, { type: 'attack', tile: at(s, 100, 15), troops: { infantry: 20000, armor: 0, artillery: 0 } }));
-  clearAIAttackCache(s);
   while (s.tick % TICKS_PER_SECOND !== 0) s.tick++;
   updateWarMemory(s);
 }
 function endWaves(s: GameState): void {
   for (const a of s.attacks.filter((x) => x.attacker === 1)) asAI(s, () => applyAction(s, 1, { type: 'retreat', attackId: a.id }));
   s.attacks = s.attacks.filter((x) => x.attacker !== 1);
-  clearAIAttackCache(s);
 }
 
 describe('AI bombers', () => {
