@@ -7,8 +7,6 @@ The big rounds of work, newest first. Each one was merged to `main` and deployed
 **Units**
 - Every ship, tank, plane and missile redrawn in a detailed pixel style: shaded, lit from the top left, drawn for
   every heading, each arsenal pick with its own look and upgrades shown on the unit.
-- Ships are told apart at a glance: the carrier is the biggest, the battleship broad with big gun turrets, the
-  cruiser slim, the destroyer small with torpedo tubes, the submarine low in the water.
 - Planes bank into their turns and their propellers spin; ships leave a V-shaped wake and planes leave contrails.
 - Troop icons: tiny pixel tanks and field guns in your nation's colour on the front and transport pills. Army counts
   read like "50k troops".
