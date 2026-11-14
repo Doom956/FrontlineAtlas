@@ -24,6 +24,7 @@ export { PLAYER_PALETTE, settingsFromPrefs } from './setupScreen';
 // The page itself lives in howto.ts (kept here as an export for older imports).
 export { howToPlayContent } from './howto';
 import { howToPlayContent } from './howto';
+import { creditsContent } from './sound/creditsView';
 
 // ------------------------------------------------------------------------------------------------ menu
 
@@ -191,6 +192,9 @@ export class Menu {
     rows.append(online);
     if (this.cb.onTutorial) rows.append(tutorialButton(() => this.cb.onTutorial?.()));
     rows.append(menuRow('How to play', 'The rules and controls on one page', () => this.showHelp()));
+    const credits = menuRow('Credits', 'Who made the sounds and music', () => this.showCredits());
+    credits.dataset.test = 'menu-credits';
+    rows.append(credits);
     this.card.append(rows);
     // Enter starts: the main action holds the focus (Rejoin while in a lobby).
     requestAnimationFrame(() => {
@@ -206,6 +210,15 @@ export class Menu {
     top.append(backButton(() => this.showTitle()), el('h2', '', 'How to play'));
     const body = el('div', 'menu-scroll');
     body.append(howToPlayContent());
+    this.card.append(top, body);
+  }
+
+  private showCredits(): void {
+    this.reset('wide');
+    const top = el('div', 'menu-head');
+    top.append(backButton(() => this.showTitle()), el('h2', '', 'Credits'));
+    const body = el('div', 'menu-scroll');
+    body.append(creditsContent());
     this.card.append(top, body);
   }
 

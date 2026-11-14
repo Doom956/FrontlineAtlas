@@ -219,6 +219,7 @@ const LINE: Record<string, string> = {
   // chat (chat/view.ts): a speech box and a send arrow
   chat: '<path d="M4 5h16v11H11l-4.5 3.5V16H4z"/><path d="M8 9.5h8M8 12.5h5"/>',
   send: '<path d="M4 12l16-7-5 15-3-6.5zM12 13.5l8-8.5"/>',
+  credits: '<path d="M9 17.5V5.5l10-2v12"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/><path d="M9 9.5l10-2"/>',
   tank: '<path d="M3.5 14h17l-2 5h-13z"/><path d="M6.5 14v-3.5h8l1.5 3.5M10.5 10.5V8.5h9"/><circle cx="7.5" cy="16.5" r=".6"/><circle cx="16.5" cy="16.5" r=".6"/>',
 };
 export type LineIconId = keyof typeof LINE;

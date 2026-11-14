@@ -6065,3 +6065,32 @@ button.adv-tag {
   line-height: 16px;
   color: var(--dim);
 }
+
+/* Credits (sound/creditsView.ts): the title screen's Credits page and the in-game Menu */
+.credits {
+  margin: 6px 0 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--dim);
+}
+.credits-intro {
+  margin: 0 0 8px;
+  color: var(--text);
+}
+.credits-h {
+  margin: 10px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.credits-list {
+  margin: 0;
+  padding-inline-start: 16px;
+}
+.credit-line {
+  margin: 0 0 4px;
+  overflow-wrap: anywhere;
+}
+.credit-line a {
+  color: var(--brass-hi, inherit);
+}

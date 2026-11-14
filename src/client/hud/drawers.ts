@@ -66,6 +66,7 @@ import { warshipOrderCost } from '../../sim/navy';
 import { VARIANT_NAMES } from '../../sim/variants';
 import { canBuildTankDivision, tankDivisionCost, tankDivisionCount, tankDivisionLimit } from '../../sim/tanks';
 import { fxEnabled, setFxEnabled } from '../fx/settings';
+import { creditsContent } from '../sound/creditsView';
 import { MAP_STYLE_MENU, MAP_STYLE_SHORT, mapStyle, setMapStyle, type MapStyle } from '../render/mapStyle';
 
 export const TROOP_COLORS = { infantry: '#9aa86a', armor: '#c9a227', artillery: '#c0564a' } as const;
@@ -1024,7 +1025,23 @@ export class SettingsPage implements DrawerPage {
       const mute = seg2('Sound on', 'Muted', () => hooks.setMuted(false), () => hooks.setMuted(true));
       r.append(mute.el);
       this.sync.push(() => mute.set(!(hooks.audio()?.muted ?? false)));
+      r.append(el('p', 'note', 'Fighting is heard where you look: zoom in close to hear the guns, zoom out for quiet. News about your nation always sounds.'));
     }
+    // who made the sounds and music: opens and closes in place
+    let credits: HTMLElement | null = null;
+    const creditsBtn = btn('Credits', 'wide', () => {
+      if (credits) {
+        credits.remove();
+        credits = null;
+        setText(creditsBtn.querySelector('.wr-btn-l') as HTMLElement, 'Credits');
+        return;
+      }
+      credits = creditsContent();
+      creditsBtn.after(credits);
+      setText(creditsBtn.querySelector('.wr-btn-l') as HTMLElement, 'Hide credits');
+    }, 'credits');
+    creditsBtn.dataset.test = 'credits-toggle';
+    r.append(creditsBtn);
     r.append(sectionTitle('Help'));
     const adv = seg2('Advisor on', 'Advisor off', () => hooks.setAdvisor(true), () => hooks.setAdvisor(false));
     adv.el.dataset.test = 'advisor-toggle';

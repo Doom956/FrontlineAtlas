@@ -1,230 +1,147 @@
 # Audio
 
-`src/client/audio.ts` makes every sound procedurally with the Web Audio API: oscillators, filtered noise and
-envelopes. There are no audio files. The goal is a small, quiet soundscape that stays pleasant at x4 speed with
-hundreds of nations:
+Sounds are recordings and music is real music, made by people (CC0 and CC BY, listed in `CREDITS.md` and in the
+game: title screen > Credits, and Menu > Credits in a game). `src/client/audio.ts` is the entry point; the parts are
+in `src/client/sound/`:
 
-- **Rate limits per sound** in real time (`SOUND_INFO[id].gapMs`), so x4 game speed does not make it 4x noisier.
-- **A global voice cap**: cosmetic sounds stop at 8 voices playing at once, everything else at 14. Critical
-  sounds (under attack, capital lost, atom bomb, victory, defeat) always play.
-- **Only events that concern the human** make a sound, plus a few global ones (atom bombs, nations eliminated,
-  the war beginning).
-- **A soft compressor** on the master bus. The measured peak is ≤ 0.8 even when every sound plays at once at full
-  volume (see Verification).
-- **No AudioContext, no problem.** In Node, in old browsers or with audio blocked, the manager is a silent no-op that
-  never throws. The rate limiting still runs, which is how the tests check it.
+| File | What |
+|---|---|
+| `sound/library.ts` | data: which file(s) each sound plays and at what gain (the mix), the music tracks of each mood |
+| `sound/bank.ts` | loads and decodes the effect files in the background after the first click |
+| `sound/spatial.ts` | pure: zoom and on-screen gating, the gunfire bed level, variant picks, per-play variation |
+| `sound/battle.ts` | read-only: turns the fighting in the state (effects, deaths, tank fire, launches) into cues at map places |
+| `sound/music.ts` | pure mood machine, and the player that streams and crossfades the tracks |
+| `sound/credits.gen.ts`, `sound/creditsView.ts` | the credits (generated) and their DOM |
+| `scripts/audio/import.ts` | copies the picked files from the sound-candidates folder, makes the AAC copies, writes the credits |
+
+A sound without a file in `library.ts`, or whose file is not loaded yet (or failed), plays its synthesized version
+(the recipes in `audio.ts`), so nothing is ever silent and nothing throws. Without an AudioContext (Node tests, old
+browsers, blocked audio) the manager is a silent no-op; its rate limiting still runs, which is how the tests check it.
+
+## Adding or swapping a file
+
+Each sound maps to a list of variant takes in `SFX` (`sound/library.ts`); music moods map to lists of tracks in
+`MUSIC`. Adding a variant or swapping a file is one line there, then:
+
+```sh
+git fetch origin sound-candidates
+mkdir -p /tmp/cand && git archive origin/sound-candidates sound-candidates | tar x -C /tmp/cand
+npx vite-node scripts/audio/import.ts /tmp/cand/sound-candidates
+```
+
+It copies the files to `public/audio/sfx/<id>.ogg` and `public/audio/music/<id>.ogg` (ids as in the candidates'
+`manifest.json`), re-encodes music above 88 kbps to 80 kbps Opus, makes an AAC `.m4a` copy of each, removes files no
+longer used and rebuilds `CREDITS.md` and `sound/credits.gen.ts`.
+
+## Formats
+
+Files are Ogg Opus with an AAC (`.m4a`) copy. Safari plays Ogg only from 18.4 (macOS 15.4, iOS 18.4) and its Web
+Audio decoding of Ogg Opus is not reliable, so the browser's `canPlayType('audio/ogg; codecs="opus"')` picks the order:
+Ogg first where it says yes, AAC first otherwise; a file that fails in one format is tried in the other. Firefox on
+Linux may lack AAC, which is why Ogg stays the first choice where it plays. Paths are relative (`audio/...`), so they
+work with vite `base: './'` on the Pages subpath and at the root on the server; the server answers byte ranges,
+which Safari needs to stream `<audio>`. The single-file copy of the page (the playable artifact) has no audio files:
+there the effects stay synthesized and there is no music.
+
+## Loading
+
+- Nothing loads before the first click or key (the AudioContext needs a gesture anyway). Then the effects load in
+  the background, three at a time, the most used first (about 0.6 MB in Ogg). The game never waits for them.
+- Music streams with an `<audio>` element through a `MediaElementAudioSourceNode` (no decoded minutes in memory).
+  A track loads only when it is about to play.
+
+## Every play varies
+
+- a random variant take, never the same one twice in a row when there are several;
+- a playback rate within the sound's `pitch` spread (4 to 7 % for effects, less for musical alerts, none for the
+  stings), moved a clear step from the last play, so even one take never repeats exactly;
+- a gain within +-2 dB;
+- the gunfire bed starts at a random place in its loop.
+
+## Not everything at once
+
+Sounds at a map place (`SOUND_INFO[id].spatial`) are heard only when the place is on screen or just off its edge, and
+their volume follows the camera zoom (screen px per tile, `camera.ts`: from 0.8 x the whole-map fit, about 0.7 to 2.3
+by map size, up to 40; units are drawn as sprites from 5):
+
+| Tier | Sounds | Full at zoom | Silent at or below | Past the screen edge |
+|---|---|---|---|---|
+| small | shots, small blasts, tank shots | 6 | 2.5 | 8 % of the view |
+| medium | tank kills, plane crashes, missile launches, sonar, barrages | 4.5 | 1.6 | 12 % |
+| big | atom bomb, big blasts, ships sinking | 3 | never: 22 % of full from zoom 1 | 25 % |
+
+The fade is even in log(zoom). Pan follows the screen x. Your nation's news (under attack, capital and city lost,
+alliances, research, victory, defeat) and the UI are not positional and always play; an atom bomb on your own land
+plays at 60 % or more wherever the camera is. The capture tick plays for your own captures anywhere and for others'
+only on screen, close up.
+
+Where the fighting sounds come from (`sound/battle.ts`, with the fog of war applied):
+
+| In the state | Sound |
+|---|---|
+| `shot` effect from a warship / a submarine / anti-air | `shot` (cannon) / `sonarPing` / a soft `shot` |
+| `barrage` effect | `bombard` |
+| `explosion` of 4 tiles and up (rockets, bomb runs) | `explosionBig` |
+| the sim's kill blast (1.5 tiles) where a unit died (`fx/deaths.ts`) | `planeCrash`, `shipSunk`, a small `explosion` for a missile |
+| a kill blast with no death (a hit) | `explosion` (soft) |
+| a tank division destroyed | `tankDestroyed` (`unitLost` when it was yours) |
+| a tank division in a fight (a spearhead, or next to land of a nation it fights) | `tankShot` about every 2.5 s |
+| a rocket or atom bomb appears | `missileLaunch` at its silo |
+| `nuke` effect | `atomBomb` |
+
+The front gunfire bed is one looping voice: its level follows the captures and the tanks firing on screen (decaying
+over about 2.5 s), close up only (silent at zoom 2.5 and below, full from 5), smoothed, and it stops after 5 quiet
+seconds. With a camera, the event-side copies of fighting sounds (strike reports, units lost) stay silent because
+the cues above already play them where they happen.
+
+## Limits and the mix
+
+- Per-sound minimum gaps in real time (`gapMs`), so x4 game speed is not 4x noisier.
+- A per-sound cap on copies at once (`cap`, default 2): a big battle can't stack 20 explosions.
+- A global voice cap: cosmetic sounds stop at 8 voices, everything else at 14; critical ones always play.
+- A soft compressor on the master bus (threshold -12 dB, ratio 10), so a busy battle can't clip.
+- Gains in `SFX` (files are levelled to about -16 LUFS, music to -20): the atom bomb is the loudest; big blasts and
+  alerts next; combat under the music when zoomed out (the zoom fade) and forward when zoomed in; UI clicks soft.
+- Settings: Menu > Sound has Master, Effects and Music sliders and Sound on / Muted.
+
+## Music
+
+Moods: menu (title screen), peace, war (your nation fought another nation within 30 s) and battle (heavy fighting:
+tension 0.6 or more). Tension is the largest of `setTension()`, attacks on you (0.3 each) plus your attacks on nations
+(0.12 each), a decaying alarm (half-life 20 s) from under-attack, capital-lost and incoming-missile events, and the
+fighting on screen. Rising needs the mood to hold 2.5 s; calming down needs 25 s and at least 30 s in the mood;
+battle stays down to tension 0.35. Tracks crossfade over 3.5 s, rotate within a mood (never the last one again) and
+hand over near their end. Victory and defeat stings stop the music; it comes back softly a few seconds after. The
+atom bomb and alerts duck the music for a moment. The music pauses while the tab is hidden.
+
+Music is on by default (0.5). Settings are saved in `localStorage['borderfall.audio.v2']`; version 1 settings
+(`borderfall.audio.v1`, when music was a synth pad that was off by default) are migrated once: master, effects and
+mute are kept, music comes on at the default unless it had been turned up.
 
 ## API
 
 ```ts
-import { AudioManager } from './audio';
-import type { SoundId } from './audio';
-
-const audio = new AudioManager();           // reads saved settings; does not create an AudioContext yet
-
-audio.unlock();                             // call in a user gesture (autoplay policy): creates/resumes the context
-audio.unlockOnGesture(window);              // or: calls unlock() on the first pointerdown/keydown; returns a remover
-
-audio.setVolume(master, sfx, music);        // each 0..1, undefined keeps the current value; saved
-audio.setMuted(true);                       // saved
-audio.getSettings();                        // { master, sfx, music, muted }
-
-audio.play('uiClick', { pan: -0.3, volume: 0.8 });   // -> boolean: false if rate-limited, capped or muted
-
-audio.onGameEvent(event, humanId, screenPan?);       // -> SoundId | null (the sound played)
-audio.onEffect(effect, humanId, screenPan?, mine?);  // -> SoundId | null
-audio.setTension(0..1);                     // music bed mood; update() also raises it by itself
-
-audio.update(state, camera?);               // per frame: drains new events/effects, countdown ticks, auto tension
-audio.dispose();                            // stops everything, closes the context
+const audio = new AudioManager();       // reads saved settings; no AudioContext yet
+audio.unlockOnGesture(window);          // unlock() on clicks and keys: context, effect loading, music
+audio.setVolume(master, sfx, music);    // each 0..1, undefined keeps one; saved
+audio.setMuted(true);                   // saved
+audio.play('uiClick', { pan, volume }); // -> boolean (false: rate-limited, capped or muted)
+audio.update(state, camera);            // per frame in a game: events, effects, fighting, bed, countdown, music
+audio.skipTo(state);                    // an online catch-up: all of it is history
+audio.onGameEvent(e, humanId, pan?);    // the plain event mapping (soundForEvent)
+audio.onEffect(fx, humanId, pan?);      // the plain effect mapping (soundForEffect)
+audio.musicMood; audio.musicTrack; audio.sampleStats; audio.gunfireLevel; // for checks
+audio.dispose();
 ```
-
-Settings are saved in `localStorage['borderfall.audio.v1']`, and every access is wrapped in try/catch. Defaults:
-master 0.6, sfx 0.8, **music 0 (off)**, not muted.
-
-Constructor options, mostly for tests and checks: `{ context?, now?, storage?, createContext? }`. `context`
-uses that context right away (for example an `OfflineAudioContext`), `now` injects a fake clock in ms, and
-`storage: null` turns persistence off.
-
-Pure helpers are also exported: `soundForEvent(e, humanId)`, `soundForEffect(e, screenPan, mine?)`,
-`panFromScreenX(sx, viewW)`, `SoundLimiter`, `SOUND_IDS`, `SOUND_INFO`.
-
-## Integration (HUD / main loop)
-
-Nothing in the game calls the audio module yet. Wiring it in takes four small pieces.
-
-### 1. Create it once and unlock it on the first gesture (`src/client/main.ts`, top level)
-
-```ts
-import { AudioManager } from './audio';
-
-const audio = new AudioManager();
-audio.unlockOnGesture(window); // the menu's "Start" click is enough
-```
-
-### 2. One call per frame (`src/client/main.ts`, `frame()`, after `runTicks`, human games only)
-
-```ts
-const cur = session;
-if (cur && cur.human) audio.update(cur.state, cur.camera);
-```
-
-`update()` drains each new event and effect exactly once, using its own WeakSets, so it does not interfere with
-the HUD's `seenEvents`. When it sees a new `GameState`, it treats everything already in it as history and plays
-nothing for it. It also ticks the spawn countdown for the last 5 seconds and computes the music tension from
-attacks on the human. The `Camera` already satisfies the `ScreenView` shape (`viewW`, `viewH`, `tileToScreen`),
-so it gives stereo pan and the on-screen test. Explosions and shots only sound on screen (or within 15% of
-its edge). Capture ticks only sound for the human's own captures.
-
-Use `update()` **or** `onGameEvent`/`onEffect` (for example from `Hud.addLog`), not both. Both together would
-not double the sounds, because the per-sound gap would drop the second one, but they would count events twice for
-the tension.
-
-### 3. Sounds for the player's own actions (`dispatch` in `src/client/main.ts`)
-
-```ts
-const r = applyAction(s.state, s.state.humanId, action);
-if (r.ok) {
-  if (action.type === 'build') audio.play('buildPlaced');
-  else if (action.type === 'launchMissile') audio.play('missileLaunch'); // also covers a strike on neutral land (no event)
-} else {
-  audio.play('uiError', { volume: 0.7 });
-}
-```
-
-Attacks need no hook here. The sim's `attackStarted` event already plays `attackLaunched`.
-
-### 4. UI clicks and the settings panel (`src/client/hud.ts`)
-
-```ts
-// in the Hud constructor, on the HUD root
-root.addEventListener('click', (e) => {
-  if ((e.target as Element).closest('button')) audio.play('uiClick');
-});
-root.addEventListener('pointerover', (e) => {
-  if ((e.target as Element).closest('button')) audio.play('uiHover'); // 70 ms gap built in
-});
-
-// settings sliders (0..100) and a mute toggle
-masterSlider.oninput = () => audio.setVolume(+masterSlider.value / 100);
-sfxSlider.oninput = () => audio.setVolume(undefined, +sfxSlider.value / 100);
-musicSlider.oninput = () => audio.setVolume(undefined, undefined, +musicSlider.value / 100);
-muteBox.onchange = () => audio.setMuted(muteBox.checked);
-const st = audio.getSettings(); // initial slider positions
-```
-
-Pass the manager to the `Hud` (constructor argument or a setter), or export it from a small module. On "back to
-menu", nothing needs to happen: the next `update()` with a new state resets its bookkeeping. Call `dispose()`
-only if the whole app is torn down.
-
-## Event → sound
-
-"Human" means `e.players` includes `humanId`, and "first" means `e.players[0] === humanId`. Events that concern
-other nations only are silent, except the global ones (`players: []`).
-
-| GameEventKind | When | Sound |
-|---|---|---|
-| `info` | global "The war begins!" | `countdownGo` |
-| `info` | anything else | (none) |
-| `attackStarted` | first (our attack) | `attackLaunched` (softer for neutral land) |
-| `underAttack` | human, message mentions a transport (watchtower) | `shipHorn` (raises tension) |
-| `underAttack` | human | `underAttack` alert (raises tension) |
-| `buildingDone` | first | `buildingDone` (city upgrades a bit louder) |
-| `buildingLost` | first | `buildingLost` |
-| `buildingCaptured` | a City, first / human; silent when far off screen | `cityTaken` / `cityLost` |
-| `buildingCaptured` | first (we took it) / human (taken from us) | `buildingDone` (soft) / `buildingLost` |
-| `researchDone` | human | `researchDone` |
-| `allianceRequest` | human (asked to us) | `allianceRequest` chime |
-| `allianceFormed` | human | `allianceFormed` (softer when renewed) |
-| `allianceBroken` | human | `allianceBroken` |
-| `allianceExpired` | human | `allianceExpired` |
-| `eliminated` | first (we are out) | `defeat` |
-| `eliminated` | global or human | `eliminated` (distant gong) |
-| `capitalLost` | first (ours) / human (we took one) | `capitalLost` (raises tension) / `capitalTaken` |
-| `nuke` | global (always) | `atomBomb` |
-| `missile` | human, "launched" | `missileLaunch` (raises tension when aimed at us) |
-| `missile` | human, strike report | `explosion` |
-| `bombing` | human | `explosion` |
-| `unitLost` | human, a ship sunk by a warship or a mine; silent when far off screen | `shipSunk` |
-| `unitLost` | first / human (enemy unit lost to us) | `unitLost` / `explosion` (soft) |
-| `tradeDelivered` | human | `tradeCoin` |
-| `victory` | first | `victory` fanfare (if someone else wins, the `defeat` event follows) |
-| `defeat` | human | `defeat` sting |
-
-## Effect → sound
-
-| Effect kind | When | Sound |
-|---|---|---|
-| `nuke` | always | `atomBomb` (deduplicated with the `nuke` event by the 1.5 s gap) |
-| `explosion` | on screen | `explosion` (quieter for small radius, e.g. ships sunk) |
-| `capture` | the human's own capture (`update()` checks the tile owner) | `capture` tick, very quiet, panned, max ~14/s |
-| `shot` | on screen | `shot` (very soft) |
-
-"Far off screen" means more than one view width or height beyond the screen edge (`update()` checks the event's
-tile against the camera). Big news (nukes, your capital) plays wherever it happens.
-
-Other sounds are not mapped to an event or effect. `uiClick`, `uiHover`, `uiError` and `buildPlaced` come from
-the HUD and `dispatch`. `countdown` comes from `update()` during the spawn phase, at 5..1 seconds.
-
-## Sounds
-
-| Id | What it is | Gap (ms) | Priority |
-|---|---|---|---|
-| `uiClick` / `uiHover` | tiny sine blips | 40 / 70 | 0 |
-| `uiError` | two low soft triangles | 250 | 1 |
-| `buildPlaced` | wooden double knock | 80 | 1 |
-| `buildingDone` | two-note chime | 350 | 1 |
-| `buildingLost` | falling thud | 600 | 1 |
-| `researchDone` | rising four-bell arpeggio over a soft fifth | 800 | 2 |
-| `attackLaunched` | two soft brass notes + swish | 1200 | 1 |
-| `capture` | very quiet random-pitch tick | 70 | 0 |
-| `underAttack` | two-tone alert twice over a low hum | 4000 | 3 |
-| `allianceRequest` | three-bell major chime | 1500 | 2 |
-| `allianceFormed` / `allianceBroken` / `allianceExpired` | major arpeggio + pad / tritone drop / two falling bells | 1500 | 2/2/1 |
-| `capitalLost` / `capitalTaken` | minor brass chord + boom / rising brass + drum | 3000 | 3/2 |
-| `cityTaken` / `cityLost` | short rising bugle call + drum / falling call over a low drop | 700 | 2 |
-| `shipSunk` | low hull crump, a wash of water, a few bubbles | 600 | 1 |
-| `explosion` | filtered noise burst + sine thump | 110 | 1 |
-| `atomBomb` | deep falling boom + long wobbling rumble (5 s) | 1500 | 3 |
-| `missileLaunch` | band-passed noise whoosh | 500 | 1 |
-| `shipHorn` | low detuned saw horn | 4000 | 2 |
-| `tradeCoin` | two-note coin ping | 500 | 0 |
-| `unitLost` | short falling blip | 800 | 1 |
-| `eliminated` | distant gong | 2500 | 1 |
-| `victory` / `defeat` | brass fanfare with drums / falling brass line over a drone | 5000 | 3 |
-| `countdown` / `countdownGo` | spawn-phase ticks / "go" ping | 400 / 1000 | 2 |
-| `shot` | faint noise tick | 120 | 0 |
-
-## Music bed
-
-The music bed is off by default (music volume 0). Raise the music slider above 0 to start it. It is a slow
-generative pad: four chord voices, each made of two detuned oscillators, plus a sub drone, through a low-pass
-filter with a slow LFO. The chord changes every 9 s in peace and every 6 s under tension. With tension above 0.5
-it switches to a minor progression, and the filter, the drone and its tremolo rise with tension. Tension is the
-largest of three values: `setTension()`, the attacks against the human (0.3 each), and a decaying alarm
-(half-life 20 s) from under-attack, capital-lost and incoming-missile events. The context suspends while the tab
-is hidden.
 
 ## Verification
 
-- `tests/audio.test.ts` runs in Node (vitest), where there is no AudioContext. It covers:
-  - construction and every method, without throws;
-  - every `GameEventKind`, which a `Record` forces to stay complete;
-  - the mapping of each event;
-  - rate limits and the voice cap, with a fake clock;
-  - persistence, including corrupt and throwing storage;
-  - `update()` on a real game state.
-- In Chromium through Playwright, a scratch page outside the repo bundles `audio.ts` with esbuild and runs three
-  checks:
-  - Each sound is rendered alone in an `OfflineAudioContext` at master = sfx = 1. Every sound has RMS > 0, and
-    the highest peak is 0.72 (atom bomb).
-  - Every sound plus 40 explosions and captures are fired within one second at full volume. The voice cap let 23
-    through, and the peak was 0.78.
-  - A live `AudioContext` ran with `state === 'running'`. Each sound was played through an `AnalyserNode`: RMS
-    was > 0 for every sound and the peak was ≤ 0.55. The music bed measured RMS 0.03 at rest and 0.11 at
-    tension 1.
-
-  There were no console errors or warnings.
+- `tests/audio.test.ts`: every method without throws, every `GameEventKind`, the event mapping, rate limits and the
+  voice cap with a fake clock, persistence, `update()` on a real game state.
+- `tests/sound.test.ts`: variant picks (no immediate repeat), per-play variation, zoom and on-screen gating, the
+  per-sound cap, `update()` hearing a blast close up but not off screen and a shot close up but not far out, the
+  music mood machine (hysteresis, no flip-flop, track rotation), the settings migration, that every file in the
+  table exists in both formats, and the server's byte ranges.
 
 ## Map effects
 

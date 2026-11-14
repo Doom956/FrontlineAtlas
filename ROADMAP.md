@@ -633,3 +633,12 @@ Later: anonymous real-match stats on the server for balance, rematch + quick cha
 
 ## Parked ideas (owner said later / maybe)
 Building limits (city slots, upkeep), rivers and bridges, wonders, game modes (King of the Hill, capital capture, scenarios), quick chat/emotes/rematch, phone layout, making Easy winnable, calmer tribes.
+
+## Sound and music (branch `sound`, 2026-11-14)
+Real recordings and music made by people replace the synthesized sounds and the synth pad (picked by the owner from the
+`sound-candidates` branch; details in docs/AUDIO.md, credits in CREDITS.md and in the game's Credits).
+- Done: every sound maps to a list of variant takes (one-line swaps in src/client/sound/library.ts); per-play variation;
+  fighting heard only on screen and by zoom; a gunfire bed under fronts in view; music moods menu, peace, war, battle
+  with crossfades; music on by default (old settings migrated); Ogg Opus plus AAC copies for older Safari.
+- Still synthesized (no file picked yet): ship sinking, building done, research done, alliance formed, under attack,
+  countdown go. The atom bomb file is a placeholder the owner wants replaced.
