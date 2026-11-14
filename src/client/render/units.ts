@@ -55,9 +55,13 @@ export function unitBands(z: number): { icon: number; sprite: number } {
 }
 /** How long the old sprite size fades out when the pixel size steps up or down (ms). */
 const SCALE_FADE_MS = 150;
-/** Screen px per art pixel of the unit sprites at zoom z. */
+/** Units are drawn this many times bigger at mid zoom than one art pixel per screen px: the extra pixels go into
+ * real detail (turrets, engines, the submarine's sail), the owner's pick of 1x, 1.5x and 2x. */
+export const MID_UNIT_SCALE = 1.5;
+/** Screen px per art pixel of the unit sprites at zoom z (fractional at mid zoom: the detailed grid then bakes more
+ * art pixels per model unit, each still one screen px). */
 export function spriteScale(z: number): number {
-  return z < 11 ? 1 : z < 22 ? 2 : z < 32 ? 3 : 4;
+  return z < 11 ? MID_UNIT_SCALE : z < 22 ? 2 : z < 32 ? 3 : 4;
 }
 /** Sprites and icons baked per frame at most (the rest show their icon, painted on the spot, for a frame or two). */
 const BAKES_PER_FRAME = 24;
