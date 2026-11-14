@@ -49,8 +49,8 @@ export interface ShipKindStats {
   sunkByDestroyer: number;
   sunkByShip: number;
   sunkOther: number;
-  /** ships this type sank, by kind (softWarship = a warship below half its hp or with no own warship within
-   *  NAVY_REACH.oddsRadius of it; warship = the others; sub = submarines) */
+  /** ships this type sank, by kind (softWarship = a warship below half its hp at the last 10 s sample or with no own
+   *  warship within NAVY_REACH.oddsRadius of it when it sank; warship = the others; sub = submarines) */
   kills: Record<KillKind, number>;
   /** invasion transports sunk while their owner was at war with ours (landings in progress) */
   killsLanding: number;
@@ -472,7 +472,7 @@ export class AttackProbe {
       }
       const used = new Set<ShipPrev>();
       const r2 = (WARSHIP_RANGE + 2) * (WARSHIP_RANGE + 2);
-      for (const [, v] of gone) {
+      for (const [id, v] of gone) {
         let best: ShipPrev | null = null;
         let bestD = r2;
         for (const k of killers) {
@@ -491,7 +491,7 @@ export class AttackProbe {
             let lone = true;
             const or2 = NAVY_REACH.oddsRadius * NAVY_REACH.oddsRadius;
             for (const o of now.values()) if (o.type === 'warship' && o.owner === v.owner && (o.x - v.x) * (o.x - v.x) + (o.y - v.y) * (o.y - v.y) <= or2) lone = false;
-            if (lone || v.hpShare < 0.5) kind = 'softWarship';
+            if (lone || (this.sampleHp.get(id) ?? 1) < 0.5) kind = 'softWarship';
           }
           ks.kills[kind]++;
           if (v.type === 'transport' && v.targetOwner > 0 && atWar(state, best.owner, v.owner)) ks.killsLanding++;
@@ -549,6 +549,8 @@ export class AttackProbe {
     if (this.launched.size > 4096) for (const id of [...this.launched]) if (!state.units.some((u) => u.id === id && u.hp > 0)) this.launched.delete(id);
   }
   private readonly launched = new Set<number>();
+  /** hp share of every warship at the last 10 s sample (a warship sunk "soft" was below half then) */
+  private sampleHp = new Map<number, number>();
 
   /** Per warship type, every sample (see ShipKindStats). */
   private sampleKinds(warships: readonly Unit[], atWarSet: Set<number>, targets: Map<number, Set<number>>): void {
@@ -615,6 +617,7 @@ export class AttackProbe {
       atWar.add(a.target);
     }
     const warships = state.units.filter((u) => u.type === 'warship' && u.hp > 0);
+    this.sampleHp = new Map(warships.map((u) => [u.id, u.hp / warshipMaxHp(u)]));
     const or2 = NAVY_REACH.oddsRadius * NAVY_REACH.oddsRadius;
     const supported = new Set<number>(); // owner*1024+target: a ship of owner on the front with target
     for (const u of warships) {
