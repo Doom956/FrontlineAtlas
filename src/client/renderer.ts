@@ -23,7 +23,7 @@ import { buildingsKey, clamp, ctx2d, shade, type RGB } from './render/common';
 import { DepositLayer } from './render/deposits';
 import { FrontLayer } from './render/fronts';
 import { HeartlandLayer } from './render/heartland';
-import { MapGL } from './render/glmap';
+import { liteWanted, MapGL } from './render/glmap';
 import { mapStyle } from './render/mapStyle';
 import { Map2D } from './render/map2d';
 import { TrenchFeed } from './render/trenchFeed';
@@ -176,6 +176,11 @@ export class Renderer {
     return this.gl?.lite ?? false;
   }
 
+  /** Graphics quality now (Settings): software = no graphics card in use; lite = the light map is on. */
+  quality(): { software: boolean; lite: boolean } | null {
+    return this.gl ? { software: this.gl.liteAuto, lite: this.gl.lite } : null;
+  }
+
   /** Call once per new game (builds the terrain and uploads the map textures). */
   setGame(state: GameState): void {
     const map = state.map;
@@ -292,6 +297,14 @@ export class Renderer {
       if (fogOn && fog) (this.map2d as Map2D | null)?.setFog(fog.tex, fog.bw, fog.bh);
     }
     if (gl) {
+      const lite = liteWanted(gl.liteAuto);
+      if (gl.lite !== lite) {
+        // graphics quality changed in Settings: the light map on or off, the canvas sized again, the palette again
+        gl.setLite(lite);
+        this.cssW = 0;
+        this.palSig = '';
+        this.updatePalette(state, ui);
+      }
       if (gl.style !== mapStyle()) {
         // the map style changed (render/mapStyle.ts): a new shader, and the palette again (fills depend on the style)
         gl.setStyle(mapStyle());

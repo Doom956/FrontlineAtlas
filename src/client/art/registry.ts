@@ -20,11 +20,9 @@ export function artFor<C extends ArtCategory>(c: C): StyleModule[C] {
   return styleModule(artStyleOf(c))[c];
 }
 
-let reduced: boolean | null = null;
-/** The motion numbers of a preset, honouring prefers-reduced-motion (read once). */
+/** The motion numbers of a preset, honouring reduce motion (Settings, or the device's prefers-reduced-motion). */
 export function motionOf(p: MotionPreset): MotionParams {
-  if (reduced === null) reduced = motionParams('lively').reduced;
-  return motionParams(p, reduced);
+  return motionParams(p);
 }
 
 /** The motion numbers a motion category animates with now. */

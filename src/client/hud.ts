@@ -14,6 +14,7 @@
 // The DOM is built once. update() runs every frame but only does cheap work there; texts and lists refresh at
 // ~5 Hz through each part's update().
 import { blitzHint } from './blitzUi';
+import { getSettings, setSetting } from './settings/store';
 import { activeFog, fogEvent, UNMET_TOAST } from './fog/fogView';
 import { reconHint } from './hud/variantOrders';
 import { VARIANT_NAMES } from '../sim/variants';
@@ -277,8 +278,8 @@ export class Hud {
 
     this.cluster = new Cluster(this.ctx, {
       isOpen: (id) => this.drawer?.open === id,
-      muted: () => this.audio?.getSettings().muted ?? false,
-      toggleMute: () => this.audio?.setMuted(!this.audio.getSettings().muted),
+      muted: () => getSettings().muted,
+      toggleMute: () => setSetting('muted', !getSettings().muted),
       toggleHelp: () => this.toggleHelp(),
       hasAudio: () => !!this.audio,
       pauseMode: () => (hudOpts.online ? hudOpts.pause?.().mode ?? 'none' : 'local'),
@@ -314,9 +315,6 @@ export class Hud {
     }
     this.drawer.add(
       new SettingsPage(this.ctx, {
-        audio: () => this.audio?.getSettings() ?? null,
-        setVolume: (m, s, mu) => this.audio?.setVolume(m, s, mu),
-        setMuted: (m) => this.audio?.setMuted(m),
         advisorOn: () => this.advisor.advisorOn,
         setAdvisor: (on) => this.advisor.setAdvisor(on),
         guideOn: () => this.guide?.on ?? false,

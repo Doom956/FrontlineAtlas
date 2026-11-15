@@ -11,6 +11,7 @@
 //   ground  the pixel map styles' height, hill shading and far colours (render/ground.ts), built and sent once per game
 //           the first time such a style is on (today's look never builds them)
 // The fragment shader is built for the map style (render/mapStyle.ts); setStyle relinks it when the style changes.
+import { getSettings, type Quality } from '../settings/store';
 import type { MapData } from '../../sim/types';
 import type { RGB } from './common';
 import { groundLater } from './ground';
@@ -63,6 +64,11 @@ const LITE_MOVE_MS = 33;
 const LITE_CHANGE_MS = 200;
 const LITE_IDLE_MS = 500;
 
+/** The light map wanted for the Settings' graphics quality: Low always, Auto without a graphics card, High never. */
+export function liteWanted(softwareOnly: boolean, quality: Quality = getSettings().quality): boolean {
+  return quality === 'low' || (quality === 'auto' && softwareOnly);
+}
+
 /** Whether a WebGL renderer name is a software one (the light map, above). */
 export function softwareRenderer(name: string): boolean {
   return /swiftshader|llvmpipe|softpipe|software|basic render/i.test(name);
@@ -110,8 +116,10 @@ export class MapGL {
   uploads = 0;
   /** tiles uploaded this frame (stats) */
   uploadTiles = 0;
-  /** software rendering: the light map (LITE_* above) */
-  readonly lite: boolean;
+  /** the light map (LITE_* above) is on: software rendering on Auto quality, or Low quality (Settings, setLite) */
+  lite: boolean;
+  /** the browser renders without a graphics card: Auto quality uses the light map */
+  readonly liteAuto: boolean;
   /** draws skipped by the light map (stats) */
   skipped = 0;
   /** light map: something was uploaded since the last draw; what the last draw showed, and when */
@@ -146,7 +154,8 @@ export class MapGL {
     } catch {
       renderer = '';
     }
-    this.lite = softwareRenderer(renderer);
+    this.liteAuto = softwareRenderer(renderer);
+    this.lite = liteWanted(this.liteAuto);
     const mk = (): WebGLTexture => {
       const t = gl.createTexture();
       if (!t) throw new Error('createTexture failed');
@@ -227,6 +236,32 @@ export class MapGL {
     gl.useProgram(this.prog);
     if (this.fogW > 0) gl.uniform2f(this.loc.uFogScale, 1 / (this.fogW * 16), 1 / (this.fogH * 16));
     this.ensureGround();
+  }
+
+  /**
+   * Graphics quality (Settings): turns the light map on or off. Relinks the shaders like setStyle and sends the ground
+   * textures again (the light map leaves the detailed ones out). The palette must be written again (setPalette).
+   */
+  setLite(on: boolean): void {
+    if (on === this.lite) return;
+    const gl = this.gl;
+    const old = this.prog;
+    const was = this.lite;
+    this.lite = on;
+    try {
+      this.prog = this.usePrograms(this.style);
+    } catch (err) {
+      console.warn('map quality switch failed', err);
+      this.lite = was;
+      return;
+    }
+    gl.deleteProgram(old);
+    this.shown.clear();
+    gl.useProgram(this.prog);
+    if (this.fogW > 0) gl.uniform2f(this.loc.uFogScale, 1 / (this.fogW * 16), 1 / (this.fogH * 16));
+    this.groundBuilt = false;
+    this.ensureGround();
+    this.drawnSize = '';
   }
 
   /** the ground of this game is built (in slices between frames, render/ground.ts groundLater): send it */

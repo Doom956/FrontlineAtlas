@@ -194,6 +194,7 @@ const LINE: Record<string, string> = {
   paradrop: '<path d="M3 11a9 7 0 0 1 18 0c-1.5-1-3-1-4.5 0-1.5-1-3-1-4.5 0-1.5-1-3-1-4.5 0C6 10 4.5 10 3 11zM3.5 11l7 7M20.5 11l-7 7M12 11v7"/><rect x="10.5" y="18" width="3" height="3.5"/>',
   barrage: '<path d="M3 20c2-9 7-13 13-11M6 21c2-7 6-10 11-9"/><path d="M18 6l1.5 2.5L22 8l-1.5 2.5L22 13l-2.5-.5L18 15l-1-2.5-2.5.5 1-2.5L14 8l2.5.5z"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>',
+  reset: '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4v4.5H9"/>',
   shuffle: '<path d="M3 7h4l10 10h4M3 17h4L17 7h4M18 4l3 3-3 3M18 14l3 3-3 3"/>',
   dot: '<circle cx="12" cy="12" r="3" fill="currentColor"/>',
   copy: '<path d="M9 9h11v11H9z"/><path d="M15 9V4H4v11h5"/>',

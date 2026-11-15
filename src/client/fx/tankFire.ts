@@ -293,7 +293,11 @@ export class TankFire {
   private scanNo = 0;
   /** the screen's device px per CSS px (last draw) */
   private dpr = 1;
-  private reduced = prefersReducedMotion();
+  /** a test's pick (setReduced); null = the Settings pick, read live (Reduce motion: Auto follows the device) */
+  private reducedPick: boolean | null = null;
+  private get reduced(): boolean {
+    return this.reducedPick ?? prefersReducedMotion();
+  }
   private draw0: TankShotDraw = { gun: 'medium', sharp: false, size: 1, x0: 0, y0: 0, x1: 0, y1: 0, aim: 0, ageMs: 0, flightMs: 1, water: false, spark: false, zoom: 1, scale: 1, seed: 0, dpr: 1 };
 
   constructor(
@@ -303,9 +307,9 @@ export class TankFire {
     for (let i = 0; i < SHOT_CAP; i++) this.shots.push({ live: false, unit: -1, key: 'tankDivision', mods: 0, spec: GUNS.medium as GunSpec, x0: 0, y0: 0, x1: 0, y1: 0, aim: 0, t0: 0, flight: 1, dur: 1, water: false, spark: false, seed: 0 });
   }
 
-  /** Reduced motion on or off (tests; the page reads prefers-reduced-motion once). */
+  /** Reduced motion on or off (tests; the page follows the Settings pick live). */
   setReduced(on: boolean): void {
-    this.reduced = on;
+    this.reducedPick = on;
   }
 
   /** The turret heading of division `id` while it fights (or swings back after), or null: it looks along the hull. */

@@ -2,6 +2,19 @@
 
 The big rounds of work, newest first. Each one was merged to `main` and deployed to the live game.
 
+## 2026-11-15 · Settings
+
+- One Settings screen, on the title screen (Settings, with a gear) and in the game's Menu, in four tabs:
+  - Sound: Master, Effects and Music in %, Sound on or Muted, a Test sound button that says why it is off when it is.
+  - Display: the map look with a small picture of each (Real ground, Classic, Pixel terrain, Muted war map), the unit
+    art (Detailed pixel, Refined pixel, Realistic), how much units move, map effects, Reduce motion (Auto follows
+    your device, On or Off) and graphics quality (Auto, High, Low; Low is the light map for slow computers). In a
+    game, the minimap, supply and resource overlays are here too.
+  - Gameplay: the advisor and the guide on or off, and Restart guide. Chat on or off in online games.
+  - About: the version and build, and the credits (they moved here from the title screen's own Credits row).
+- Every setting is kept in this browser and works at once, no reload. Each tab has its own Reset to defaults.
+- Your sound volumes, map look and map effects from before are kept.
+
 ## 2026-11-15 · Breakthrough
 
 With Armor Mastery your tank divisions get a new order, Breakthrough:

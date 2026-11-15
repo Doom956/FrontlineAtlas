@@ -221,6 +221,13 @@ export function applyPicks(s: Partial<StylePicks>, m: Partial<MotionPicks> = {})
   version++;
 }
 
+/** Puts every pick back to the build's (the owner's picks, or VITE_ART_STYLE / VITE_ART_MOTION): Settings' default. */
+export function resetArtPicks(): void {
+  Object.assign(styles, parseStylePicks(env.style, { ...OWNER_PICKS }));
+  Object.assign(motions, parseMotionPicks(env.motion ?? env.style));
+  version++;
+}
+
 /** Changes whenever a pick changes (caches that hold drawn art, such as HUD portraits, can redraw). */
 export function artVersion(): number {
   return version;
