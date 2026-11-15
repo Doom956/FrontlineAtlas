@@ -724,6 +724,23 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   `ARMOR_SUPPORT_RADIUS` + 12 tiles away jumps there by rail (route search `TANK_MOBILITY.jumpBudget`). AIs put their
   divisions on `support` at the main war's front: the foe's border tile nearest the focus of the biggest attack between
   them (`aiDivisionModes`); warlords field up to 6.
+- **Blitz** (src/sim/blitz.ts, config `BLITZ`; the name the player reads is `BLITZ_NAME`, one constant, so a rename is
+  one line; Action `blitz {unitId, tile}`, protocol 24): with Armor Mastery (which keeps its bigger encirclements) a
+  tank division can blitz: it pops a smoke screen at its launch tile (Effect `smokeScreen`) and surges into a spearhead
+  at `BLITZ.speedMul` (2) x the head speed and `BLITZ.depthMul` (1.5) x the depth, a band `BLITZ.width` (5) tiles wide,
+  losses x `BLITZ.lossMul` (0.6); every tile it takes holds for `BLITZ.holdSeconds` (20) (`state.blitzHolds`, triples
+  tile, owner, until tick, hashed; `heldBy`): attacks don't take it (it is no front tile), landings can't land on it,
+  other spearheads stop at it and encirclements leave it. Checks (`blitzBlock`, plain reasons for the button): own
+  division not in a spearhead, Armor Mastery, recharged (`Unit.blitzReady`, `BLITZ.cooldownSeconds` 120, hashed),
+  `BLITZ.minShare` (50%) strength, `BLITZ.oil` (100) oil; the target as for a spearhead (`blitzPreview`). `Unit.blitz`
+  (hashed) marks the spearhead; a fall-back on the way, or a new order, calls it off (the cooldown stays). AI from
+  Normal up (armor2.ts `aiMayBlitz`, keeping 2x the oil): a ready division blitzes a strike that cuts the enemy's
+  land, and breaks a stalemate (no strike worth it near its front) when a blitz would get 12+ tiles deep; never into a
+  player's land at Easy or Normal; Easy AIs never blitz. A player's divisions never blitz by themselves. Client
+  (client/blitzUi.ts, render/blitzOverlay.ts): a Blitz button on the division's orders bar (icon and name, or the name
+  and why it can't go: "Recharging 40 s", "Needs Armor Mastery"), a target mode (ui.mode `blitz`) with the wedge
+  preview, the push arrow and the held land (hatched, "Holds N s") on the map, the smoke screen and dust trails (fx),
+  a card line, sounds from the existing ids, How to play and a guide tip.
 - **Smarter armour** (armor2.ts, `armorLevel`: a player's divisions on their automatic modes count as Normal at every
   difficulty; AI divisions follow `AI_ATTACK_LEVEL`, Easy keeps the old habits). A player's own move orders and
   modes are never overridden (a drive the player orders clears `Unit.ended`, so the division stays where it was sent).

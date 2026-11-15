@@ -177,3 +177,22 @@ describe('determinism', () => {
     expect(go()).toBe(go());
   });
 });
+
+describe('the button (client/blitzUi.ts)', () => {
+  it('names the order and says why it can not go, in plain words', async () => {
+    const { blitzButton, enterBlitz } = await import('../src/client/blitzUi');
+    const s = game();
+    const d = spawnTankDivision(s, 1, at(s, 36, 20));
+    expect(blitzButton(s, 1, [d.id])).toMatchObject({ unitId: d.id, label: BLITZ_NAME, off: '' });
+    d.blitzReady = s.tick + 40 * TICKS_PER_SECOND;
+    expect(blitzButton(s, 1, [d.id]).label).toBe(`${BLITZ_NAME} · Recharging 40 s`);
+    s.players[1].techs = s.players[1].techs.filter((t) => t !== 'armorMastery');
+    expect(blitzButton(s, 1, [d.id]).off).toBe('Needs Armor Mastery');
+    const ui = { mode: { kind: 'none' }, pendingSpearhead: null } as unknown as Parameters<typeof enterBlitz>[1];
+    expect(enterBlitz(s, ui, 1, d.id)).toBe('Needs Armor Mastery');
+    s.players[1].techs.push('armorMastery');
+    delete d.blitzReady;
+    expect(enterBlitz(s, ui, 1, d.id)).toBe('');
+    expect(ui.mode).toEqual({ kind: 'blitz', unitId: d.id });
+  });
+});

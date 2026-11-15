@@ -27,6 +27,12 @@
 }
 .ob-row[data-test='orders-tanks'] {
   --accent: var(--brass-hi);
+  grid-template-areas: 'head btns' 'act act' 'line line';
+}
+/* the division's blitz (blitzUi.ts): its own line under the modes, the reason in the label when it can't go */
+.ob-btns.ob-act {
+  grid-area: act;
+  justify-content: flex-start;
 }
 .ob-head {
   grid-area: head;
@@ -183,6 +189,9 @@
   .ob-row {
     grid-template-columns: 1fr;
     grid-template-areas: 'head' 'btns' 'line';
+  }
+  .ob-row[data-test='orders-tanks'] {
+    grid-template-areas: 'head' 'btns' 'act' 'line';
   }
   .ob-btns {
     justify-content: flex-start;

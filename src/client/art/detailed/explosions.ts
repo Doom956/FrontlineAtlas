@@ -1116,17 +1116,17 @@ function drawSmokeScreen(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionP
   const sd = f.seed * 53.1 + 2;
   const linger = Math.max(0.5, Math.min(1.6, m.smokeLinger));
   const spread = Math.max(10, f.rt * z * 0.6);
-  const n = 9;
+  const n = 12;
   for (let j = 0; j < n; j++) {
     // the canisters pop in quick order round the launch tile, each cloud swelling and fading on its own clock
     const tj = clamp01((t - j * 0.03) / (0.75 / linger + 0.25));
     if (tj <= 0 || tj >= 1) continue;
     const ang = sd + (j * Math.PI * 2) / n + (rnd(sd, j) - 0.5) * 0.6;
     const d = spread * (0.25 + 0.75 * easeOut(Math.min(1, tj * 1.6))) * (0.6 + 0.4 * rnd(sd, j + 10));
-    const r = (1.6 + 3.2 * easeOut(tj)) * k * g.res;
+    const r = (2.6 + 5 * easeOut(tj)) * k * g.res;
     const px = f.x + Math.cos(ang) * d + tj * 5 * k * sc * WIND_X;
     const py = f.y + Math.sin(ang) * d * 0.6 - tj * 3 * k * sc;
-    drawBlob(ctx, tj < 0.15 ? 'dust' : 'smoke', r, j, px, py, g, 0.8 * (1 - tj) * (tj < 0.1 ? tj / 0.1 : 1));
+    drawBlob(ctx, tj < 0.15 ? 'dust' : 'smoke', r, j, px, py, g, 0.9 * (1 - tj * tj) * (tj < 0.08 ? tj / 0.08 : 1));
   }
   // the pop of the canisters: a few bright specks at the start
   if (t < 0.12) {

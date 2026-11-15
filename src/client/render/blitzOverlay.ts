@@ -1,7 +1,7 @@
 // What a blitz draws on the map (rules: sim/blitz.ts; the player's side: client/blitzUi.ts), in the map's pixel
 // manner (tile-snapped fills, chunky strokes over a dark casing):
 //   - aiming (ui.mode 'blitz'): the wedge it would drive, BLITZ.width tiles wide along the blitz preview, solid as
-//     deep as it is expected to get and outlined beyond, with "Blitz ~N tiles, holds 20 s" at its head
+//     deep as it is expected to get and outlined beyond, with "Blitz ~N tiles, holds 20 s" at its launch end
 //   - a blitz under way: a thick arrow from its launch tile to the head and on toward its aim (yours amber, others red)
 //   - land a blitz holds: hatched tiles that fade as the hold runs out, with the seconds left on a chip (yours amber,
 //     others red); with fog of war only what you can see
@@ -25,8 +25,8 @@ export class BlitzOverlay {
     if (state.phase !== 'playing') return;
     const me = state.humanId;
     ctx.save();
-    this.holds(ctx, state, cam, me, nowMs);
     this.pushes(ctx, state, cam, me);
+    this.holds(ctx, state, cam, me, nowMs);
     if (ui.mode.kind === 'blitz' && ui.hoverTile >= 0) this.wedge(ctx, state, cam, ui);
     ctx.restore();
   }
@@ -160,8 +160,9 @@ export class BlitzOverlay {
       ctx.setLineDash([]);
     }
     arrowHead(ctx, pts[Math.max(0, deep - 1)].x, pts[Math.max(0, deep - 1)].y, pts[deep].x, pts[deep].y, band * 0.9, css(OWN, 0.9));
-    const head = pts[deep];
-    chip(ctx, head.x, head.y - band / 2 - 12, `${BLITZ_NAME} ~${p.expectedDepth} tiles, holds ${BLITZ.holdSeconds} s`, OWN);
+    // the label at the launch end (the hovered tile's card sits by the head)
+    const start = pts[0];
+    chip(ctx, start.x, start.y - band / 2 - 14, `${BLITZ_NAME} ~${p.expectedDepth} tiles, holds ${BLITZ.holdSeconds} s`, OWN);
   }
 }
 
