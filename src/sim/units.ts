@@ -93,10 +93,10 @@ import {
 import { chaseTargetInRange } from './navy';
 import { blockadeTradeMul, warSet, onShipKilled, shellingMul, shipDamageMul, mendingInPort, warshipSpeedMul, warshipThink } from './naval2';
 import { bombDivisions } from './tanks';
-import { airParadropMul, airWingRange, escortAbsorbs, escortCargo, interceptBySuperiority } from './airwings';
+import { airParadropMul, airWingRange, escortAbsorbs, escortCargo, interceptBySuperiority, superiorityBombMul, superiorityNote } from './airwings';
 import { bomberArrived } from './airstrike';
 import { doctrineLess, doctrineLever, doctrineMore, doctrinePerk } from './doctrines';
-import { TROOP_TYPES, isWater } from './types';
+import { TROOP_TYPES, isFighterTarget, isWater } from './types';
 import { airBomberExtraHp, airVariantOf, carrierFor, navalCanTarget, navalShellMul, navalShellRangeMul } from './variants';
 import { gunRank } from './navalroles';
 import { dropTanksParadropMul, earlyWarningMul, earlyWarningWarnMul, mineLandingLoss, nightDodges, nightEffectMul, nightRadiusMul } from './specials';
@@ -808,6 +808,8 @@ export interface DropResult {
   buildings: number;
   kills: number;
   gold: number;
+  /** the victim's fighters guarded the aim (air superiority: less damage) */
+  guarded?: boolean;
 }
 
 /**
@@ -829,37 +831,53 @@ export function dropBombs(state: GameState, u: Unit, radiusMul = 1, payload = 1)
   state.effects.push({ kind: 'explosion', x: (tile % w) + 0.5, y: ((tile / w) | 0) + 0.5, radius: bombR, tick: state.tick });
   let destroyed = 0;
   const hit = new Map<number, number>(); // hostile owner -> tiles in radius
+  // Air superiority (airwings.ts): a nation whose fighters guard the aim takes this much of the bombs (per owner).
+  const guard = new Map<number, number>();
+  const guardOf = (o: number): number => {
+    let g = guard.get(o);
+    if (g === undefined) guard.set(o, (g = superiorityBombMul(state, u.owner, o, tile)));
+    return g;
+  };
   let hitTiles = 0;
+  const targets: Building[] = [];
   forEachInRadius(map, tile, bombR, (i) => {
     const o = map.owner[i];
     if (!hostile(state, u.owner, o) || !state.players[o]?.alive) return;
     hit.set(o, (hit.get(o) ?? 0) + 1);
     hitTiles++;
     const b = buildingAt(state, i);
-    if (b && hostile(state, u.owner, b.owner) && state.rng() < hitChance) {
+    if (b && hostile(state, u.owner, b.owner)) targets.push(b);
+  });
+  // Guards first (a guarding airfield hit by this very bomb still guarded it), then the buildings in the same order.
+  for (const o of hit.keys()) guardOf(o);
+  for (const b of targets) guardOf(b.owner);
+  for (const b of targets) {
+    if (state.rng() < hitChance * guardOf(b.owner)) {
       destroyBuilding(state, b);
       destroyed++;
     }
-  });
+  }
   if (!hitTiles) return out;
   let killed = 0;
   for (const [o, n] of hit) {
     const p = state.players[o];
     const share = n / Math.max(1, p.tiles);
-    const kill = Math.max((BOMBER_MIN_KILL * n) / hitTiles, BOMBER_TROOP_KILL * troopTotal(p.troops) * share) * night;
+    const kill = Math.max((BOMBER_MIN_KILL * n) / hitTiles, BOMBER_TROOP_KILL * troopTotal(p.troops) * share) * night * guardOf(o);
     killed += killTroops(state, o, kill, u.owner, false);
   }
   // Tank divisions caught in the blast lose troops (tanks.ts).
   bombDivisions(state, u.owner, tile);
-  const burnt = strategicBurn(state, u.owner, hit.keys()); // Strategic Bombing: gold and iron burn
+  const burnt = strategicBurn(state, u.owner, hit.keys(), guardOf); // Strategic Bombing: gold and iron burn
   const me = state.players[u.owner];
   let victim = map.owner[tile];
   if (!hit.has(victim)) victim = [...hit.keys()].sort((a, b) => (hit.get(b) ?? 0) - (hit.get(a) ?? 0) || a - b)[0];
-  const msg = `${me.name} bombed ${state.players[victim].name}: ${destroyed} building${destroyed === 1 ? '' : 's'} destroyed, ${Math.round(killed)} troops killed${burnt >= 1 ? `, ${Math.round(burnt)} gold burnt` : ''}`;
+  const guarded = guardOf(victim) < 1;
+  const msg = `${me.name} bombed ${state.players[victim].name}: ${destroyed} building${destroyed === 1 ? '' : 's'} destroyed, ${Math.round(killed)} troops killed${burnt >= 1 ? `, ${Math.round(burnt)} gold burnt` : ''}${guarded ? superiorityNote() : ''}`;
   addEvent(state, 'bombing', msg, [u.owner, ...hit.keys()], tile);
   out.buildings = destroyed;
   out.kills = killed;
   out.gold = burnt;
+  out.guarded = guarded;
   return out;
 }
 
@@ -1147,15 +1165,16 @@ function atomImpact(state: GameState, u: Unit): void {
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Interception order: the most dangerous threat is shot at first. */
-const THREAT_ORDER: Record<string, number> = { atomBomb: 0, rocket: 1, bomber: 2, transportPlane: 3 };
+const THREAT_ORDER: Record<string, number> = { atomBomb: 0, rocket: 1, bomber: 2, transportPlane: 3, reconPlane: 4 };
 
 /**
- * Deterministic interception (config RULES_TEXT.interception). Threats (bombers, rockets, atom bombs, cargo planes)
- * are handled atom bombs first, then rockets, bombers, cargo planes (then by id). Every SAM of a player hostile to
- * the threat's owner that has a shot loaded (chargesReady; a level-L SAM holds L), is not knocked out by a barrage
- * and has the threat inside its samRadius fires once: a sure hit that takes 1 hp (planes and rockets have 1, atom
- * bombs 2). A bomber or cargo plane still flying then meets the first ready airfield with fighters in range
- * (airfieldRadius): shot down, and that airfield needs FIGHTER_COOLDOWN / fighters seconds to be ready again.
+ * Deterministic interception (config RULES_TEXT.interception). Threats (bombers, rockets, atom bombs, cargo planes,
+ * recon planes on their way out) are handled atom bombs first, then rockets, bombers, cargo planes, recon planes (then
+ * by id). Every SAM of a player hostile to the threat's owner that has a shot loaded (chargesReady; a level-L SAM
+ * holds L), is not knocked out by a barrage and has the threat inside its samRadius fires once: a sure hit that takes
+ * 1 hp (planes and rockets have 1, atom bombs 2). SAMs leave recon planes alone: fighters are the answer to recon. A
+ * plane still flying (isFighterTarget) then meets the first ready airfield with fighters in range (airfieldRadius):
+ * shot down, and that airfield needs FIGHTER_COOLDOWN / fighters seconds to be ready again.
  */
 function interceptThreats(state: GameState, threats: Unit[], sams: Building[], airfields: Building[]): void {
   if (!threats.length || (!sams.length && !airfields.length)) return;
@@ -1163,7 +1182,7 @@ function interceptThreats(state: GameState, threats: Unit[], sams: Building[], a
   const w = state.map.width;
   for (const u of threats) {
     for (const s of sams) {
-      if (u.hp <= 0) break;
+      if (u.hp <= 0 || u.type === 'reconPlane') break;
       if (chargesReady(s) < 1 || isDisabled(state, s) || !hostile(state, u.owner, s.owner)) continue;
       const r = samRadius(s) * earlyWarningMul(state, s.owner); // Early Warning (specials.ts)
       if (d2To(state, u, s.tile) > r * r) continue;
@@ -1173,7 +1192,7 @@ function interceptThreats(state: GameState, threats: Unit[], sams: Building[], a
       u.hp -= 1;
       if (u.hp <= 0) shotDown(state, u, s.owner, 'SAM site');
     }
-    if (u.hp <= 0 || (u.type !== 'bomber' && u.type !== 'transportPlane')) continue;
+    if (u.hp <= 0 || !isFighterTarget(u)) continue;
     for (const a of airfields) {
       if (a.fighters <= 0 || a.cooldown > 0 || !hostile(state, u.owner, a.owner)) continue;
       const r = airfieldRadius(a) * earlyWarningMul(state, a.owner); // Early Warning (specials.ts)
@@ -1306,6 +1325,10 @@ export function updateUnits(state: GameState): void {
       case 'transportPlane':
         if (moveStraight(state, u, u.target, UNITS[u.type].speed * (u.type === 'transportPlane' ? techAirSpeedMul(state, u.owner) : 1))) arrived.add(u);
         threats.push(u);
+        break;
+      case 'reconPlane':
+        // Recon planes fly in variants.updateArsenal; on their way out enemy fighters can catch them here.
+        if (u.state === 0) threats.push(u);
         break;
       case 'fighter':
         // Fighters stay stored on airfields; a fighter unit should never exist.

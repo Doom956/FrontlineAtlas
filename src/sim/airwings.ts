@@ -38,7 +38,7 @@ import { hashResults, leadAim, updateAutoFire } from './airstrike';
 import { followedNation, liveFoes, mainFront } from './warTarget';
 import { ownedTilesOf } from './territory';
 import { frontTrench, trenchLevel } from './trenches';
-import { AIR_MISSIONS, isTribe } from './types';
+import { AIR_MISSIONS, isFighterTarget, isTribe } from './types';
 import type { ActionResult, AirCover, AirMission, AirRaid, AirState, AirWing, AirZone, Attack, Building, BuildingType, GameState, TechId, Unit } from './types';
 
 const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
@@ -847,7 +847,7 @@ export function supportStrikeRadius(state: GameState, owner: number, home: numbe
  * (x ground-attack / heavy, x Night Bombing) and the victim's forts in it knocked out. Returns the kills and victim
  * (null = nothing hostile there).
  */
-export function supportStrike(state: GameState, u: Unit): { victim: number; kills: number } | null {
+export function supportStrike(state: GameState, u: Unit): { victim: number; kills: number; guarded: boolean } | null {
   const map = state.map;
   const tile = u.target;
   const home = buildingAt(state, u.home);
@@ -880,8 +880,11 @@ export function supportStrike(state: GameState, u: Unit): { victim: number; kill
   const vp = state.players[victim];
   const share = tiles / Math.max(1, vp.tiles);
   const army = vp.troops.infantry + vp.troops.armor + vp.troops.artillery;
-  const kill = Math.max((AIR.supportMinKill * tiles) / Math.max(1, hostileTiles), AIR.supportKillShare * army * share) * nightEffectMul(state, u.owner) * airSupportMul(state, u.owner); // ground-attack / heavy (variants.ts)
+  // The victim's fighters guard the tile (air superiority): kills and zone strength are cut.
+  const guard = superiorityBombMul(state, u.owner, victim, tile);
+  const kill = Math.max((AIR.supportMinKill * tiles) / Math.max(1, hostileTiles), AIR.supportKillShare * army * share) * nightEffectMul(state, u.owner) * airSupportMul(state, u.owner) * guard; // ground-attack / heavy (variants.ts)
   const killed = killArmy(state, victim, kill, u.owner);
+  const strength = airSupportMul(state, u.owner) * guard; // ground-attack planes strike harder (variants.ts)
 
   // Strengthen this wing's zone if it is near, else start a new one.
   const air = airState(state);
@@ -890,16 +893,21 @@ export function supportStrike(state: GameState, u: Unit): { victim: number; kill
     if (z.owner === u.owner && z.wing === (af?.id ?? -1) && z.untilTick > state.tick && d2(w, z.tile, tile) <= (radius * radius) / 4) zone = z;
   }
   if (zone) {
-    zone.strength += airSupportMul(state, u.owner); // ground-attack planes strike harder (variants.ts)
+    zone.strength += strength;
     zone.untilTick = Math.max(zone.untilTick, untilTick);
     zone.tiles = tiles;
     zone.victim = victim;
   } else {
-    air.zones.push({ wing: af?.id ?? -1, owner: u.owner, tile, radius, strength: airSupportMul(state, u.owner), untilTick, victim, tiles });
+    air.zones.push({ wing: af?.id ?? -1, owner: u.owner, tile, radius, strength, untilTick, victim, tiles });
     const me = state.players[u.owner];
-    addEvent(state, 'bombing', `${me.name}'s bombers are supporting the attack on ${vp.name}: ${Math.round(killed)} troops killed`, [u.owner, victim], tile);
+    addEvent(state, 'bombing', `${me.name}'s bombers are supporting the attack on ${vp.name}: ${Math.round(killed)} troops killed${guard < 1 ? superiorityNote() : ''}`, [u.owner, victim], tile);
   }
-  return { victim, kills: killed };
+  return { victim, kills: killed, guarded: guard < 1 };
+}
+
+/** The end of a bombing message when the victim's fighters guarded the tile. */
+export function superiorityNote(): string {
+  return ` (air superiority: ${Math.round(AIR.superiorityBombCut * 100)}% less)`;
 }
 
 /** Kills `amount` of a nation's troops split by composition; returns the number killed. */
@@ -926,7 +934,7 @@ function killArmy(state: GameState, victim: number, amount: number, killer: numb
 export function raid(state: GameState, u: Unit, victim: number): { victim: number; cut: number } {
   if (!hostile(state, u.owner, victim) || !state.players[victim]?.alive) return { victim: 0, cut: 0 };
   const tech = techOf(state, u.owner, 'strategicBombing');
-  const per = raidCutPer(state, u.owner);
+  const per = raidCutPer(state, u.owner) * superiorityBombMul(state, u.owner, victim, u.target); // air superiority
   const max = tech ? AIR.raidTechMaxCut : AIR.raidMaxCut;
   const until = state.tick + Math.round(raidSecondsOf(state, u.owner) * TICKS_PER_SECOND);
   const air = airState(state);
@@ -1008,7 +1016,7 @@ function patrolPick(state: GameState, owner: number, b: Building): [number, numb
 
 /**
  * After the SAMs, airfield fighters and carriers (units.updateUnits): every superiority wing whose fighters are ready
- * shoots at the first hostile bomber / cargo plane inside its patrol circle (threat order), then waits
+ * shoots at the first hostile bomber / cargo plane / outbound recon plane inside its patrol circle (threat order), then waits
  * AIR.superiorityCooldown / fighters seconds (x AIR.jetsCooldown with Jet Engines, x Air doctrine airfieldReload).
  * Escorts can fight the hit off (escortAbsorbs).
  */
@@ -1025,7 +1033,7 @@ export function interceptBySuperiority(state: GameState, threats: readonly Unit[
     const cx = (centre % w) + 0.5;
     const cy = ((centre / w) | 0) + 0.5;
     for (const t of threats) {
-      if (t.hp <= 0 || (t.type !== 'bomber' && t.type !== 'transportPlane') || !hostile(state, t.owner, wing.owner)) continue;
+      if (t.hp <= 0 || !isFighterTarget(t) || !hostile(state, t.owner, wing.owner)) continue;
       const dx = t.x + 0.5 - cx;
       const dy = t.y + 0.5 - cy;
       if (dx * dx + dy * dy > r * r) continue;

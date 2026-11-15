@@ -34,6 +34,14 @@ export function isTribe(p: { personality: Personality | null } | null | undefine
   return !!p && p.personality === 'tribe';
 }
 
+/**
+ * Planes enemy fighters shoot at (airfield cover, carriers, superiority patrols): bombers and cargo planes, and recon
+ * planes on their way out (one shot down before it gets there reveals nothing; on the way home it has done its job).
+ */
+export function isFighterTarget(u: { type: string; state: number }): boolean {
+  return u.type === 'bomber' || u.type === 'transportPlane' || (u.type === 'reconPlane' && u.state === 0);
+}
+
 export type BuildingType =
   | 'city'
   | 'farm'
@@ -872,6 +880,8 @@ export interface AirResult {
   buildings: number;
   kills: number;
   gold: number;
+  /** bombers of this result that struck where the victim's fighters guard the sky (air superiority); absent = 0 */
+  guarded?: number;
 }
 
 /** One airfield's Air cover record (airwings.ts). */
