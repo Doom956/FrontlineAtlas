@@ -191,6 +191,9 @@ export interface AttackStats {
     away: Record<string, number>;
     /** overrun divisions by where they were the tick before */
     overrunWhere: Record<string, number>;
+    /** blitzes started (blitz.ts); tiles their spearheads took (seen at the last tick of the spearhead) */
+    blitzes?: number;
+    blitzTiles?: number;
   };
   bombers: Record<MissionKey, BomberStats>;
   /** strategic / manual strike aims by building type at the aim tile */
@@ -268,6 +271,9 @@ interface DivSeen {
   fell: number;
   /** on thin ground and its own land around it is a piece of under 60 tiles (cut off) */
   cut: boolean;
+  /** its running spearhead is a blitz; tiles it has taken so far */
+  blitz: boolean;
+  cargo: number;
 }
 /** Division samples: "at the front" = within this many tiles of a foe's land touching ours. */
 const FRONT_TILES = 12;
@@ -412,12 +418,21 @@ export class AttackProbe {
       } else if (u.type === 'tankDivision') {
         let seen = this.divs.get(u.id);
         if (!seen) {
-          this.divs.set(u.id, (seen = { owner: u.owner, share: 1, spear: -1e9, st: u.state, thin: false, fell: -1e9, cut: false }));
+          this.divs.set(u.id, (seen = { owner: u.owner, share: 1, spear: -1e9, st: u.state, thin: false, fell: -1e9, cut: false, blitz: false, cargo: 0 }));
           s.tanks.formed++;
         }
         seen.share = (u.troops.infantry + u.troops.armor + u.troops.artillery) / FULL_DIVISION;
         if (u.state === 3) seen.spear = state.tick;
-        if (u.state === 3 && seen.st !== 3) this.spearStart(u);
+        if (u.state === 3 && seen.st !== 3) {
+          this.spearStart(u);
+          seen.blitz = !!u.blitz;
+          if (seen.blitz) s.armor.blitzes = (s.armor.blitzes ?? 0) + 1;
+        }
+        if (u.state === 3) seen.cargo = u.cargo;
+        else if (seen.st === 3 && seen.blitz) {
+          s.armor.blitzTiles = (s.armor.blitzTiles ?? 0) + seen.cargo;
+          seen.blitz = false;
+        }
         seen.st = u.state;
         seen.thin = this.thinAt(u);
         seen.cut = seen.thin && this.cutOff(u);
@@ -938,6 +953,7 @@ export function attackReport(a: AttackStats, games: number): string[] {
     out.push(`    holding away ready, why: ${away || '-'}.`);
     const ov = Object.entries(ar.overrunWhere ?? {}).sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k} ${v}`).join('; ');
     if (ov) out.push(`    overrun where (the tick before): ${ov}.`);
+    if (ar.blitzes) out.push(`    blitzes ${f1(ar.blitzes / g)} per game, ${f1((ar.blitzTiles ?? 0) / ar.blitzes)} tiles each.`);
     out.push(`    ended: ${ends || '-'}; enemy spearheads into their land ${f1(ar.enemySpears / g)} per game, ${f1(ar.enemySpearTiles / Math.max(1, ar.enemySpears))} tiles each.`);
   }
   out.push('  ("front" = the border with a nation the unit\'s owner attacked within the last 30 s; AI attacks come in waves of about a second)');
