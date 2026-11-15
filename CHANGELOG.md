@@ -2,6 +2,23 @@
 
 The big rounds of work, newest first. Each one was merged to `main` and deployed to the live game.
 
+## 2026-11-15 · Stealth strike
+
+- Air Mastery keeps its bigger air wings and adds a stealth bomber: a dark grey flying wing that SAM sites cannot see.
+  It is the answer to a wall of SAM sites. Click an airfield, then Stealth strike, then an enemy target up to 188
+  tiles away (more from a bigger airfield).
+- It drops a heavy raid where you send it: every enemy building within about 6 tiles is wrecked, troops there are
+  killed and the nation's income is cut for a while. Enemy fighters guarding that sky still cut its bombs by 40%.
+- One stealth bomber at a time: 2,000 gold and 150 oil a strike, then it recharges for 90 s. The button says plainly
+  why it is off: "Recharging 45 s", "Stealth bomber in the air", "Needs Air Mastery", not enough gold.
+- While aiming you see its reach, the route, the blast, the SAM sites in grey (they cannot see it) and what it should
+  wreck.
+- The nation it flies at sees it only 2 s before the bombs fall: "Stealth bomber of Azuria over your land: bombs in
+  2 s", with the air-raid siren.
+- AI nations with Air Mastery send it at silos, airfields, factories and SAM sites behind strong SAM cover, first of
+  all near their own landings, and keep a gold reserve. Easy AIs never send it at you.
+- Online games need the new version (protocol 23).
+
 ## 2026-11-15 · Fighters that matter
 
 - Fighters shoot down enemy recon planes. A recon plane that flies into enemy fighter cover on its way out (an

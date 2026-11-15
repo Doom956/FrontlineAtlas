@@ -1106,7 +1106,7 @@ export const RULES_TEXT = {
     `${UNITS.atomBomb.hp}. Send more threats than the SAMs can load to get through, or knock SAMs out with an artillery ` +
     `barrage first. Fighters on an airfield shoot down one bomber, cargo plane or recon plane within ${BUILDINGS.airfield.radius} tiles, ` +
     `then need ${FIGHTER_COOLDOWN} s divided by the number of fighters stationed there to be ready again. SAMs leave recon ` +
-    `planes alone; a recon plane shot down on its way reveals nothing.`,
+    `planes alone; a recon plane shot down on its way reveals nothing. SAMs cannot see a stealth bomber (Air Mastery) at all.`,
   barrage:
     `Artillery barrage: with at least ${BARRAGE_MIN_ARTILLERY} artillery, shell enemy land up to ${BARRAGE_RANGE} tiles from ` +
     `your border (Ballistics x${BARRAGE_BALLISTICS_RANGE}). The shells land ${BARRAGE_DELAY} s later on a ${BARRAGE_RADIUS}-tile ` +

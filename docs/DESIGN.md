@@ -553,7 +553,7 @@ other root and everything after it lock together ("You chose Destroyers; Carrier
   revealed"). SAMs let it pass (fighters are the answer to recon); on its way home it is let go.
 - Mastery (tier 4) in at most `MASTERY_CAP` = 2 pillars per game (`masteryLocked`: 'locked-choice', "Mastery 2 of 2
   used (Navy, Air)"): Naval (veterancy xp x2, bombardment / support reach x1.3, +2 warships, cruise missiles from warships, destroyers and battleships: section 7), Armor (pockets up to x3
-  bigger collapse, x1.5 troops lost in them), Air (every wing x1.5 bombers).
+  bigger collapse, x1.5 troops lost in them), Air (every wing x1.5 bombers, and the stealth strike: section 7).
 AIs (variantsAI.ts): a fork by the map and personality (enemy trade and ports -> silent service; forts and mountains
 -> heavy tanks; enemy cities and factories -> heavy bombers; plus a per-game hash), the committed pillar's path right
 after its prerequisites and its mastery only there; one battleship in three, one carrier in four; recon over the
@@ -808,6 +808,42 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   `aiReserve` (2) missile prices in gold; Easy AIs fire one at a time, only with no SAM cover, and never at a human.
   A human's ships never fire by themselves: the ship card's Cruise missile button (orders bar for a group of ships,
   and on phones) enters a target mode; the click fires from the nearest loaded selected ship in reach.
+- **Stealth strike** (Air Mastery; units.ts `launchStealth`, stealth.ts, stealthSight.ts, config `STEALTH` and
+  `UNITS.stealthBomber`; Action `stealthStrike {airfield | -1, tile}`, protocol 23): the counter to a SAM wall. A
+  nation with Air Mastery sends its one stealth bomber (a flying wing) from an own finished airfield (-1 = the nearest
+  with the target in reach) at a target up to `airWingRange` x `STEALTH.reachMul` (1.25: 188 tiles from a level-1
+  airfield) away, at bomber speed (`UNITS.stealthBomber.speed` 30, x Jet Engines). 2,000 gold + 150 oil per strike,
+  nothing stored at the airfield. One at a time: while it is out or on its way home the button says "Stealth bomber
+  in the air"; it recharges `STEALTH.cooldownSeconds` (90 s) from launch (`Player.stealthReady`, hashed: "Recharging
+  45 s"). Validated like a bomb: land, not own land, not an ally, no peace time; neutral land is allowed (nothing is
+  hit there). SAM sites never see it: they never fire at it, whatever their shots (units.interceptThreats). Fighters
+  (airfield cover, carriers, superiority patrols) engage it only where it is revealed to their side
+  (`stealthSight.stealthRevealedTo`, the one hook a future Defense radar fills; it returns false now), then by the
+  bomber rule. On arrival it drops a heavy raid, not a support strike, because its job is the high-value buildings
+  behind a SAM wall (a front strike is what ordinary bombers already do well): the income raid of
+  `STEALTH.raidBombers` (2) bombers on the nation hit, then `dropBombs` with radius x `STEALTH.radiusMul` (1.15, a
+  heavy bomber raid's: 5.75 tiles, wider with Strategic Bombing) and `STEALTH.payload` (2) x the building hit chance
+  and the troop kills (0.6 x 2: every hostile building in the blast). No re-aim and no Night Bombing scatter. Air
+  superiority cuts it like any bombing (enemy fighters guarding the target: 40% less, so a 60% chance per building):
+  fighters cannot catch what they cannot see, but they make any bomber over a guarded sky drop worse, and it keeps
+  one rule for every bomb; it also leaves the defender a real answer (fighters) while SAMs are blind. Flak does not
+  exist. Sight (techtree.unitVisibleTo -> stealthSight.stealthShownTo, so the fog of war, the renderer, the incoming
+  list and the AI all follow it): its owner and allies always, spectators always; the nation it flies at only from
+  `STEALTH.revealSeconds` (2 s) of flight before the bombs fall, when that nation gets the warning (a 'bombing' event
+  "A stealth bomber of X is over Y: its bombs fall in 2 s", the alert "Stealth bomber of X over your land: bombs in
+  2 s" and the air-raid siren; `Unit.cargo` = 1 from then); hidden again on its way home. Telling the target a few
+  seconds early is the fair middle: no warning at all makes a blast from nowhere that a new player cannot read, and
+  a long warning would let it react to a strike nothing can stop. The result is a 'bombing' event "Stealth strike by X
+  on Y: 3 buildings destroyed, 16000 troops killed". AI (`aiStealth`, every air turn after its recon): a nation with
+  Air Mastery at war, its bomber home and recharged and `aiReserve` (2) strike prices in gold to spare, picks the best
+  known building of a nation it fights within reach of one of its airfields that at least `aiMinCover` (2) ready SAM
+  shots it knows of cover (route or target; elsewhere bombers and rockets do the job): silos, airfields, factories,
+  SAMs, arsenals, ports, cities first, +6 for each other building in the blast, +3 per covering shot (up to 8), +30
+  for SAMs, silos and airfields within `aiLandingNear` (30) of a landing of its own on the way (+10 for others), x 0.6
+  where the target's fighters hold the sky. Easy AIs never send it at a human. A human's bomber flies only when
+  ordered: the airfield card's Stealth strike button (icon, the word, the price, the reason when off) enters a target
+  mode that shows the reach ring, the route, the blast disc, the SAM rings in grey and the preview ("Wrecks about 3 of
+  3 buildings of Azuria within 5.8 tiles", "3 SAM sites on the way: they cannot see the stealth bomber").
 - **Atom bomb** (Silo, Nuclear Fission): radius 35: destroys buildings, kills 60-90% of the army share in the area,
   turns tiles neutral with fallout within 14. Every AI that sees a nuke drops opinion of the launcher sharply.
 - **Interception is deterministic** (`RULES_TEXT.interception` in config is the help text): threats are handled atom
@@ -817,7 +853,8 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   Planes, rockets and cruise missiles have 1 hp, atom bombs 2, so an atom bomb needs two shots. A bomber or cargo plane still flying
   then meets the first ready hostile airfield with fighters in range: shot down, and that airfield needs
   `FIGHTER_COOLDOWN / fighters` seconds to be ready again. Recon planes on their way out come last in the threat order
-  and meet only fighters (airfields, carriers, patrols), never SAMs. No dice anywhere, so players can plan their cover, and
+  and meet only fighters (airfields, carriers, patrols), never SAMs. A stealth bomber (with the bombers in the order)
+  meets no SAM ever, and fighters only where it is revealed (stealthSight.ts). No dice anywhere, so players can plan their cover, and
   attackers can plan saturation (more threats than shots) or silence SAMs with a barrage first.
 
 ### Strikes: one rule, smart aim, salvos, auto-fire (src/sim/airstrike.ts, config STRIKE)
