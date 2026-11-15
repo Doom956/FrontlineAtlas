@@ -2,7 +2,7 @@
 // superiority patrols), and where they guard the sky (airwings.airSuperiorityAt) enemy bombs do less.
 import { describe, expect, it } from 'vitest';
 import { applyAction } from '../src/sim/actions';
-import { aiFighterWant, airState, airSuperiorityAt, fighterCoverOnRoute, fightersOver, raid, supportStrike, updateAir } from '../src/sim/airwings';
+import { aiFighterWant, aiUnguardedBombing, airState, airSuperiorityAt, fighterCoverOnRoute, fightersOver, raid, supportStrike, updateAir } from '../src/sim/airwings';
 import { wingLastResult, strikePreview } from '../src/sim/airstrike';
 import { hasIntel, markBuildingsChanged } from '../src/sim/buildings';
 import { AIR, FIGHTER_COOLDOWN, TICKS_PER_SECOND } from '../src/sim/config';
@@ -261,6 +261,16 @@ describe('the AI and Auto use it', () => {
     theirs.bombers = 2 * AIR.aiFightersPerBombers;
     expect(aiFighterWant(s, 1, mine, [2], true)).toBeGreaterThan(base);
     expect(aiFighterWant(s, 1, mine, [2], true)).toBeLessThanOrEqual(AIR.aiFightersMax);
+  });
+
+  it('AI nations see enemy bombing on their land that no fighters of theirs guard', () => {
+    const s = skyGame();
+    const theirs = airfield(s, 2, at(s, 200, 20), 6, 0);
+    expect(applyAction(s, 2, { type: 'setAirMission', airfield: theirs.tile, mission: 'support', target: at(s, 145, 20) }).ok).toBe(true);
+    expect(aiUnguardedBombing(s, 1)).toEqual({ weight: 6, nation: 2 }); // their support wing aims at our land
+    expect(aiUnguardedBombing(s, 2).weight).toBe(0);
+    airfield(s, 1, at(s, 100, 20), 0, AIR.superiorityMinFighters); // our fighters guard it
+    expect(aiUnguardedBombing(s, 1).weight).toBe(0);
   });
 
   it('AI recon flies around known enemy fighter cover, from the airfield whose route is clear', () => {

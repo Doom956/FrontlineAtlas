@@ -2,6 +2,24 @@
 
 The big rounds of work, newest first. Each one was merged to `main` and deployed to the live game.
 
+## 2026-11-15 · Fighters that matter
+
+- Fighters shoot down enemy recon planes. A recon plane that flies into enemy fighter cover on its way out (an
+  airfield's fighters, a carrier, a Superiority patrol) is shot down by the same rule as bombers, and reveals
+  nothing. The alert says so: "Azuria's fighters shot down your recon plane before it got there: nothing revealed".
+  SAM sites let recon planes pass: fighters are the answer to recon.
+- Air superiority: where you have at least 2 fighters guarding the sky, and more than the enemy has there, enemy
+  bombs do 40% less. Fewer troops killed, fewer buildings hit, a smaller cut to your defence and your income.
+  Bombers still fly and still hit; send fighters of your own over your front to take the sky back.
+- You can see it: the airfield card says "Air superiority: enemy bombing within 80 tiles does 40% less, while their
+  fighters there are fewer", a selected airfield shows its fighter cover ring, and the strike preview, the bombing
+  alerts and the airfield's last result say when enemy fighters cut your bombs.
+- AI nations from Normal up buy more fighters against nations that lean on bombers and recon, patrol where enemy
+  bombers aim, build an airfield where they are bombed with no fighters near, contest the sky over their own attacks,
+  and never send recon through fighter cover they know of. Your Auto recon flies around enemy fighters too ("Auto
+  recon: waiting, enemy fighters guard Azuria"); orders you give are never changed.
+- Online games need the new version (protocol 21).
+
 ## 2026-11-15 · Real sound and music
 
 - Real recordings in place of the made-up sounds: artillery, explosions, the atom bomb, missile launches, tank

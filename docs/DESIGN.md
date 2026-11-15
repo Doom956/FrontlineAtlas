@@ -779,8 +779,11 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   hashed).
   AIs: from Normal up an airfield keeps `aiFightersBase` (2) fighters plus one per `aiFightersPerBombers` (4) bombers of
   the nations it fights in reach of it, plus one while enemy bombers or recon planes fly at its land (at most
-  `aiFightersMax` 5, half the room); a second patrol (3+ airfields) where 6+ enemy bombers aim; when the foe holds the
-  sky over the AI's main front, its patrol flies over its own side of that front; recon never flies through known
+  `aiFightersMax` 5, half the room); bombed by 4+ bombers where no fighters of its own guard the aim
+  (`aiUnguardedBombing`), it wants an airfield facing that nation (priority 5, within its 3 airfields); the airfield
+  nearest its main attack (or its only one) patrols instead when 4+ enemy bombers aim inside its patrol and no other
+  patrol reaches them (its bombers still fly manual strikes); a second patrol (3+ airfields) where 6+ enemy bombers
+  aim; when the foe holds the sky over the AI's main front, its patrol flies over its own side of that front; recon never flies through known
   enemy fighter cover (`fighterCoverOnRoute`), it tries other aims and airfields; strategic raids weigh guarded targets
   40% less. A player's Auto does the same without overriding orders: auto recon flies around fighter cover (the front
   instead of deeper, else it waits: "Auto recon: waiting, enemy fighters guard X"), strategic wings weigh guarded
