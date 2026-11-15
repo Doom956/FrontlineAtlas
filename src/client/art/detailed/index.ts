@@ -9,7 +9,7 @@
 // (the rasterizer), models.ts (the unit models), units.ts (units on the map and in portraits), damage.ts (damaged units
 // burning), blobs.ts (smoke, soot, dust, spray and fire puffs, flame tongues, foam), burning.ts (fires and smoke that
 // keep going: trails that follow a unit, crater fires), trails.ts (wakes and contrails), explosions.ts, craters.ts (with
-// the atom bomb's blast zone), cannon.ts, paradrop.ts, troopIcons.ts, wrecks.ts (units baked as their deaths draw them:
+// the atom bomb's blast zone), cannon.ts, tankFire.ts (tank gun fire), paradrop.ts, troopIcons.ts, wrecks.ts (units baked as their deaths draw them:
 // falling, burnt, going under) and deaths.ts (a plane shot down, a missile shot down, a tank destroyed, a ship sunk).
 import type { StyleModule } from '../types';
 import { detailedCannon } from './cannon';
@@ -17,6 +17,7 @@ import { detailedCraters } from './craters';
 import { detailedExplosionArt } from './deaths';
 import { detailedParadrop } from './paradrop';
 import { detailedContrails, detailedWakes } from './trails';
+import { detailedTankGun } from './tankFire';
 import { detailedTroopIcons } from './troopIcons';
 import { detailedUnits } from './units';
 
@@ -31,6 +32,6 @@ export const detailed: StyleModule = {
   contrails: detailedContrails,
   explosions: detailedExplosionArt,
   craters: detailedCraters,
-  cannonFire: detailedCannon,
+  cannonFire: { ...detailedCannon, tank: detailedTankGun },
   paradrop: detailedParadrop,
 };

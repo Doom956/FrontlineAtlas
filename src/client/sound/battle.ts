@@ -8,12 +8,14 @@
 //   the sim's kill blast           the death of the unit it stands for (fx/deaths.ts): a plane crash, a ship
 //                                  sinking, a missile shot down (small blast); else a hit (small blast)
 //   a tank division destroyed      tankDestroyed
-//   a tank division in a fight     a tank shot now and then (spearheads, and divisions next to a nation they fight)
+//   a tank division fires          a tank shot: fx/tankFire.ts decides each shot (who fights, when it fires, the fog
+//                                  of war) and puts it on tankShotBus; it is heard with the flash it draws
 //   a rocket or atom bomb appears  missileLaunch at its silo
 //   'nuke'                         atomBomb
 //   'capture', tanks firing        heat for the gunfire bed under the front
 import type { Effect, GameState, Unit } from '../../sim/types';
 import { DeathWatch, deathKindOf, isKillBlast } from '../fx/deaths';
+import { tankShotBus, type TankShotBus } from '../fx/tankFire';
 import type { SoundId } from '../audio';
 
 export interface BattleCue {
@@ -27,9 +29,7 @@ export interface BattleCue {
   mine?: boolean;
 }
 
-/** Chance per tick (10 per second) that a division in a fight fires: about once every 2.5 s. */
-export const TANK_FIRE_CHANCE = 0.04;
-/** A division counts as in a fight when land of a nation it fights lies within this many tiles. */
+/** A division counts as in a fight (the gunfire bed under the front) when land of a nation it fights lies within this many tiles. */
 const TANK_REACH = 3;
 
 export class BattleEars {
@@ -40,11 +40,13 @@ export class BattleEars {
   private missileTargets = new Set<number>();
   private lastTick = -1;
 
-  constructor(private rand: () => number = Math.random) {}
+  /** `shots`: the tank shots the map fires (fx/tankFire.ts), heard as they are drawn. */
+  constructor(private shots: TankShotBus = tankShotBus) {}
 
   /** Forgets everything: what `state` holds now is history. */
   reset(state: GameState | null): void {
     this.deaths.reset(state);
+    this.shots.clear();
     this.missiles.clear();
     this.missileTargets.clear();
     if (state) for (const u of state.units) if (u.type === 'rocket' || u.type === 'atomBomb') {
@@ -90,6 +92,8 @@ export class BattleEars {
 
   /** Once per frame after the effects: deaths, tank fire and launches of each new tick. */
   tick(state: GameState, out: BattleCue[]): void {
+    // the tank shots fired since the last frame, each with its muzzle flash
+    this.shots.drain(state, (c) => out.push({ id: 'tankShot', x: c.x, y: c.y, volume: c.volume }));
     if (state.tick === this.lastTick && this.deaths.blasts === 0) return;
     const ticks = this.lastTick < 0 ? 1 : Math.max(0, Math.min(10, state.tick - this.lastTick));
     this.lastTick = state.tick;
@@ -130,8 +134,6 @@ export class BattleEars {
       if (u.type !== 'tankDivision' || !fighting) continue;
       if (!tankInFight(state, u, fighting)) continue;
       out.push({ id: 'front', x: u.x + 0.5, y: u.y + 0.5, volume: 0.05 * ticks });
-      // each division fires now and then (several ticks since the last frame: as many chances)
-      if (1 - Math.pow(1 - TANK_FIRE_CHANCE, ticks) > this.rand()) out.push({ id: 'tankShot', x: u.x + 0.5, y: u.y + 0.5, volume: 1 });
     }
     this.missilesNext = this.missiles;
     this.missiles = next;

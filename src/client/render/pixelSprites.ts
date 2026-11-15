@@ -57,6 +57,9 @@ export interface MapSpriteState {
   damage: number;
   /** opacity 0..1 (the crossfade from the far icons to the sprites, render/units.ts); 1 when left out */
   alpha?: number;
+  /** tanks in a fight: the turret's heading and the gun's recoil (UnitDraw.aim, recoil; fx/tankFire.ts) */
+  aim?: number;
+  recoil?: number;
 }
 
 /**
@@ -102,6 +105,8 @@ export function drawMapSprite(ctx: CanvasRenderingContext2D, type: UnitType, var
   d.shadow = true;
   d.outline = true;
   d.damage = s.damage;
+  d.aim = s.aim;
+  d.recoil = s.recoil;
   return artFor(cat).drawUnit(ctx, d, motionFor(cat));
 }
 
