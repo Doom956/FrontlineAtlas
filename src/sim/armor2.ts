@@ -319,7 +319,7 @@ function driveTo(state: GameState, u: Unit, dest: number, auto = false, now = fa
   const farR = ARMOR_SUPPORT_RADIUS + 12;
   const far = d2(u.x, u.y, dest % w, (dest / w) | 0) > farR * farR;
   let path = ownLandPath(state, u.owner, unitTile(state, u), dest, auto ? (far ? TANK_MOBILITY.jumpBudget : ARMOR_AUTO_PATH_BUDGET) : undefined);
-  if (!path && auto && !waiting && armorLevel(state, u.owner) >= 1) {
+  if (!path && auto && !waiting && armorLevel(state, u.owner) >= 1 && (state.players[u.owner]?.isHuman || spend(state, 'floods'))) {
     // A player's division and AI ones from Normal up (Easy keeps the quick search): the quick search gave up, so a
     // flood of our land finds any route there, or tells a division on support that its front can't be reached over
     // our land (it then supports a front it can reach for a while).
@@ -354,7 +354,7 @@ function driveTo(state: GameState, u: Unit, dest: number, auto = false, now = fa
 function landFlood(state: GameState, owner: number, from: number): Int32Array {
   const map = state.map;
   const { width: w, height: h } = map;
-  const prev = new Int32Array(map.owner.length).fill(-1);
+  const prev = floodScratch(state); // reused (callers read it at once); same result as a fresh array
   const own = (t: number): boolean => map.owner[t] === owner && !isWater(map.terrain[t]);
   if (!own(from)) return prev;
   prev[from] = from;
@@ -378,6 +378,31 @@ function landFlood(state: GameState, owner: number, from: number): Int32Array {
 }
 const DX8 = [1, -1, 0, 0, 1, 1, -1, -1];
 const DY8 = [0, 0, 1, -1, 1, -1, 1, -1];
+
+/** landFlood's array, one per game, cleared for each flood. Not game state. */
+const floodScratches = new WeakMap<GameState, Int32Array>();
+function floodScratch(state: GameState): Int32Array {
+  let a = floodScratches.get(state);
+  if (!a || a.length !== state.map.owner.length) {
+    a = new Int32Array(state.map.owner.length);
+    floodScratches.set(state, a);
+  }
+  return a.fill(-1);
+}
+
+/**
+ * Per-tick work budgets of the smarter armour (all players' divisions together, in the fixed order the sim runs them):
+ * strike scans (bestStrike) and land floods of AI drives. A call over budget waits for a later think. Only counts of
+ * the current tick are kept (rebuilt each tick), so every client and a game loaded from a snapshot agree. Not game state.
+ */
+const budgets = new WeakMap<GameState, { tick: number; scans: number; floods: number }>();
+function spend(state: GameState, kind: 'scans' | 'floods'): boolean {
+  let b = budgets.get(state);
+  if (!b || b.tick !== state.tick) budgets.set(state, (b = { tick: state.tick, scans: 0, floods: 0 }));
+  if (b[kind] >= (kind === 'scans' ? ARMOR_SCANS_PER_TICK : ARMOR_FLOODS_PER_TICK)) return false;
+  b[kind]++;
+  return true;
+}
 
 /** The route from `from` to a flooded tile `to` (landFlood), without `from` (like ownLandPath). */
 function floodPath(prev: Int32Array, from: number, to: number): number[] {
@@ -566,6 +591,11 @@ const ARMOR_REFIT_TRIP = 48;
 const ARMOR_SMART_FULL = 0.85;
 /** Smarter armour: a straight strike (no cut) needs this share of a full division (a cut: ARMOR_SUPPORT_READY). */
 const ARMOR_SMART_READY = 0.7;
+/** Smarter armour work budgets per tick (spend): strike scans, land floods of AI drives. */
+const ARMOR_SCANS_PER_TICK = 2;
+const ARMOR_FLOODS_PER_TICK = 1;
+/** Cut lines are looked for within this many tiles of the front at Normal (Hard up: ARMOR_SUPPORT_RADIUS). */
+const ARMOR_CUT_SCAN_NORMAL = 16;
 /** Smarter armour: a division that found no strike worth it looks again after this many seconds. */
 const ARMOR_QUIET_SECONDS = 4;
 /** A division whose own land around it (over land) is under this many tiles is cut off (it breaks out). */
@@ -649,7 +679,7 @@ export function cutClicks(state: GameState, me: number, cx: number, cy: number, 
 }
 
 /** pocketBeside: flood budget per side (tiles); a bigger piece counts as open. */
-const POCKET_PEEK = 400;
+const POCKET_PEEK = 300;
 
 /**
  * Rough size of the piece of `victim`'s land a cut through `click` would close off: the line from the nearest own
@@ -780,6 +810,7 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
   const fy = (front / w) | 0;
   const r = ARMOR_SUPPORT_RADIUS;
   const cands: { t: number; d: number }[] = [];
+  const foes = new Map<number, boolean>();
   for (let y = Math.max(0, fy - r); y <= Math.min(h - 1, fy + r); y++) {
     for (let x = Math.max(0, fx - r); x <= Math.min(w - 1, fx + r); x++) {
       const t = y * w + x;
@@ -789,7 +820,9 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
       if (d > r * r) continue;
       // A border tile: own land next to it.
       if (!((x > 0 && owner[t - 1] === me) || (x < w - 1 && owner[t + 1] === me) || (y > 0 && owner[t - w] === me) || (y < h - 1 && owner[t + w] === me))) continue;
-      if (!isFoe(state, me, o)) continue;
+      let foe = foes.get(o);
+      if (foe === undefined) foes.set(o, (foe = isFoe(state, me, o)));
+      if (!foe) continue;
       cands.push({ t, d });
     }
   }
@@ -810,7 +843,7 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
         bonus.set(c.click, ARMOR_CUT_BONUS + Math.min(30, c.pocket / 10));
       }
     }
-    for (const c of cutClicks(state, me, fx, fy, r, level >= 2 ? 4 : 3)) {
+    for (const c of cutClicks(state, me, fx, fy, level >= 2 ? r : ARMOR_CUT_SCAN_NORMAL, level >= 2 ? 4 : 3)) {
       if (bonus.has(c.click)) continue;
       if (!picks.includes(c.click)) picks.push(c.click);
       bonus.set(c.click, Math.min(30, c.pocket / 10));
@@ -966,11 +999,11 @@ export function divisionStep(state: GameState, u: Unit): void {
   if (slot && u.state === 0) refit(state, u);
   const mode = divisionMode(u);
   if (slot && u.ended !== undefined && state.tick - u.ended > ENDED_SECONDS * TICKS_PER_SECOND) delete u.ended;
-  // Smarter armour: off a spearhead's thin tip at once (checked every second, every tick for the first 3 s after the
+  // Smarter armour: off a spearhead's thin tip at once (checked every second, every tick for the first second after the
   // spearhead), striking on along a cut when ready. AI divisions in any mode but refit, a player's on support.
   const human = !!state.players[u.owner]?.isHuman;
   const tipMode = mode === 'support' || (!human && mode === 'hold');
-  const justEnded = u.ended !== undefined && state.tick - u.ended <= 3 * TICKS_PER_SECOND;
+  const justEnded = u.ended !== undefined && state.tick - u.ended <= TICKS_PER_SECOND;
   const due = u.ended !== undefined ? slot : (state.tick + u.id) % (3 * TICKS_PER_SECOND) === 0; // else every 3 s
   if ((due || justEnded) && u.state === 0 && tipMode && armorLevel(state, u.owner) >= 1 && leaveTip(state, u)) return;
   if (mode === 'hold') return;
@@ -1013,11 +1046,13 @@ export function divisionStep(state: GameState, u: Unit): void {
   const w = state.map.width;
   const near = d2(u.x, u.y, front % w, (front / w) | 0) <= (ARMOR_SUPPORT_RADIUS + 12) * (ARMOR_SUPPORT_RADIUS + 12);
   if (s >= ARMOR_SUPPORT_READY && near && (u.retryTick ?? 0) <= state.tick) {
-    let strike = bestStrike(state, u, front);
+    // Smarter armour: at most ARMOR_SCANS_PER_TICK strike scans a tick (over budget: the next think looks).
+    const scan = level < 1 || spend(state, 'scans');
+    let strike = scan ? bestStrike(state, u, front) : null;
     // Smarter armour: nothing worth it here now and it holds in place; look again in ARMOR_QUIET_SECONDS (the scan is
     // the costly part).
     const inPlace = d2(u.x, u.y, front % w, (front / w) | 0) <= (ARMOR_SUPPORT_HOLD + 6) * (ARMOR_SUPPORT_HOLD + 6);
-    if (!strike && level >= 1 && inPlace) u.retryTick = state.tick + ARMOR_QUIET_SECONDS * TICKS_PER_SECOND;
+    if (scan && !strike && level >= 1 && inPlace) u.retryTick = state.tick + ARMOR_QUIET_SECONDS * TICKS_PER_SECOND;
     // Smarter armour: under ARMOR_SMART_READY only a line that cuts their land is worth it (a straight one would leave
     // the division bled white on a thin tip).
     if (strike && !strike.cut && s < ready) strike = null;
@@ -1239,7 +1274,7 @@ export function aiDivisionModes(state: GameState, id: number, act: (a: Action) =
       // The best line near it first (a cut through the push's flank or across an enemy spearhead's base beats a
       // straight hit), else straight into the attacker's land nearest it; the ready divisions nearby go with it.
       // Turtles only cut (they win back the ground an enemy spearhead took).
-      const st = bestStrike(state, u, unitTile(state, u));
+      const st = spend(state, 'scans') ? bestStrike(state, u, unitTile(state, u)) : null;
       let t = st && (st.cut || (!turtle && st.score >= AI_COUNTER_MIN_DEPTH)) ? st.tile : -1;
       if (t < 0 && !turtle) {
         t = counterTile(state, u, q);
