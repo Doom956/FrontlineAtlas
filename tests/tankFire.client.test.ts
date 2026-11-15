@@ -111,6 +111,13 @@ describe('who fights', () => {
     expect(e!.x).toBeCloseTo(30.5, 6);
     expect(e!.y).toBeCloseTo(12.5, 6);
     expect(engagementOf(s, tank(1, 10, 12), warPairs(s))).toBeNull(); // far behind the front
+    // the attack is over but the war goes on a while (the sim's war memory): still fighting; allies never
+    s.attacks.length = 0;
+    expect(engagementOf(s, u, warPairs(s))).toBeNull();
+    s.warMemory = [1, 2, s.tick + 50];
+    expect(engagementOf(s, u, warPairs(s))).not.toBeNull();
+    s.warMemory = [1, 2, s.tick];
+    expect(engagementOf(s, u, warPairs(s))).toBeNull();
   });
 });
 

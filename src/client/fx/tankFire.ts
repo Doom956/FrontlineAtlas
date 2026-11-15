@@ -5,8 +5,8 @@
 //   attacking   a spearhead (Unit.state 3, tanks.ts) is fighting its way in: it fires at the enemy land ahead of its
 //               head, along its line from the launch tile toward its target, often
 //   holding     a division not attacking that has land of a nation it is at war with (an attack running between the
-//               two, either way) within TANK_DEFENSE_RADIUS, the reach of its defence in the sim: it fires at the
-//               nearest such tile, less often
+//               two either way, or one lately: the sim's war memory) within TANK_DEFENSE_RADIUS, the reach of its
+//               defence in the sim: it fires at the nearest such tile, less often
 //
 // Each division in a fight trains its turret on the enemy (UnitLayer.gunnery: the art draws the turret there), and once
 // the turret is on target it fires now and then: the muzzle flash, a recoil jolt and gun smoke at the tank, a shell
@@ -21,6 +21,7 @@
 // SHOTS_PER_FRAME new shots a frame and SHOT_CAP drawn at once, so a huge battle costs a fixed amount.
 // Client randomness only (Math.random): every client sees its own shots.
 import { TANK_DEFENSE_RADIUS, TICKS_PER_SECOND } from '../../sim/config';
+import { areAllied } from '../../sim/diplomacy';
 import type { GameState, Unit, UnitVariant } from '../../sim/types';
 import type { FogView } from '../fog/fogView';
 import { artFor, motionFor, styleModule } from '../art/registry';
@@ -100,14 +101,20 @@ export function tankFxLevel(z: number): 'none' | 'faint' | 'full' {
 
 // ------------------------------------------------------------------------------------------------- the fight
 
-/** Who fights whom: pairs of nations with an attack running between them (key a * 4096 + b, both ways). */
+/**
+ * Who fights whom (key a * 4096 + b, both ways): nations with an attack running between them, or one in the last
+ * NAVY_WAR_MEMORY seconds (state.warMemory, as the sim's own "at war"), never allies.
+ */
 export function warPairs(state: GameState): Set<number> {
   const s = new Set<number>();
-  for (const a of state.attacks) {
-    if (a.target <= 0) continue;
-    s.add(a.attacker * 4096 + a.target);
-    s.add(a.target * 4096 + a.attacker);
-  }
+  const add = (a: number, b: number): void => {
+    if (a <= 0 || b <= 0 || a === b || areAllied(state, a, b)) return;
+    s.add(a * 4096 + b);
+    s.add(b * 4096 + a);
+  };
+  for (const a of state.attacks) add(a.attacker, a.target);
+  const wm = state.warMemory;
+  if (wm) for (let k = 0; k + 2 < wm.length; k += 3) if (wm[k + 2] > state.tick) add(wm[k], wm[k + 1]);
   return s;
 }
 
@@ -425,7 +432,7 @@ export class TankFire {
     const bl = Math.hypot(bx, by) || 1;
     const fx = bx / bl;
     const fy = by / bl;
-    const deeper = g.attacking ? 0.3 + this.rand() * 2.2 : this.rand() * 1.5;
+    const deeper = g.attacking ? 0.5 + this.rand() * 2.5 : 0.6 + this.rand() * 2;
     const side = (this.rand() - 0.5) * (g.attacking ? 1.6 : 1.8);
     const w = state.map.width;
     const h = state.map.height;
