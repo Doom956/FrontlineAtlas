@@ -2,6 +2,18 @@
 
 The big rounds of work, newest first. Each one was merged to `main` and deployed to the live game.
 
+## 2026-11-15 · Real sound and music
+
+- Real recordings in place of the made-up sounds: artillery, explosions, the atom bomb, missile launches, tank
+  shots, plane crashes, sonar pings, ship horns, the air-raid siren and more. Each sound has several takes and a
+  slightly different pitch every time, so repeats never sound the same.
+- You hear the fighting where you look: battle sounds play for what is on screen and grow louder as you zoom in.
+  Zoomed far out, only the big blasts come through. News about your own nation always plays.
+- A soft bed of distant gunfire plays when you zoom in on an active front.
+- Music made by people, on by default: calm in peace, tense at war, full battle music when the fighting is heavy.
+  Tracks rotate and crossfade, and the victory and defeat music plays at the end of the game.
+- A Credits page on the title screen and in the Menu lists the composers and recordists.
+
 ## 2026-11-14 · Every ship does its own job
 
 For your ships on Auto, and for AI nations from Normal up (Easy plays as before):
