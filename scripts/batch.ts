@@ -667,6 +667,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
       if (u.type === 'bomber' && u.state === 0) outB.push(u);
       else if (u.type === 'rocket') rockT.push(u.target);
     }
+    atkProbe.beforeTick();
     const t0 = performance.now();
     tick(state);
     tickMs.push(performance.now() - t0);

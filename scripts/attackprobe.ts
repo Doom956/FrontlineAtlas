@@ -11,7 +11,7 @@ import { buildingAt, buildingsOf, isDisabled, samRadius } from '../src/sim/build
 import { areAllied } from '../src/sim/diplomacy';
 import { atPeace } from '../src/sim/rules';
 import { atWar, supportingShips, warshipMaxHp } from '../src/sim/naval2';
-import { airPatrolRadius, airState } from '../src/sim/airwings';
+import { airPatrolRadius, airState, airSuperiorityAt } from '../src/sim/airwings';
 import { unitVisibleTo } from '../src/sim/techtree';
 import { minefieldAt, minefields } from '../src/sim/specials';
 import { navalBlockadeMul, navalCanTarget, navalSupportMul } from '../src/sim/variants';
@@ -160,6 +160,36 @@ export interface AttackStats {
    *  where the nation had bombers at an airfield */
   mainAirOwn: number;
   mainAirZone: number;
+  /** fighters and air superiority (counted owners) */
+  air?: AirFightStats;
+}
+
+/** Fighters, recon and bombing under air superiority (airwings.airSuperiorityAt). */
+export interface AirFightStats {
+  /** fighters bought (an airfield's stored fighters going up) */
+  fightersBought: number;
+  /** recon flights flown, reached their target, shot down */
+  reconFlights: number;
+  reconArrived: number;
+  reconLost: number;
+  /** planes of any owner shot down by counted owners: by airfield / patrol fighters, carrier fighters, SAM sites;
+   *  of the fighter and carrier kills, recon planes */
+  fighterKills: number;
+  carrierKills: number;
+  samKills: number;
+  reconKills: number;
+  /** bomber arrivals of counted owners, of them over a tile the victim's fighters guard; troops killed and buildings
+   *  hit by those arrivals (airfield strike results), split the same way */
+  arrivals: number;
+  guardedArrivals: number;
+  kills: number;
+  guardedKills: number;
+  buildings: number;
+  guardedBuildings: number;
+}
+
+function newAirFight(): AirFightStats {
+  return { fightersBought: 0, reconFlights: 0, reconArrived: 0, reconLost: 0, fighterKills: 0, carrierKills: 0, samKills: 0, reconKills: 0, arrivals: 0, guardedArrivals: 0, kills: 0, guardedKills: 0, buildings: 0, guardedBuildings: 0 };
 }
 
 function newShipKind(): ShipKindStats {
@@ -188,6 +218,7 @@ export function newAttackStats(): AttackStats {
     strikeTypes: {},
     mainAirOwn: 0,
     mainAirZone: 0,
+    air: newAirFight(),
   };
 }
 
@@ -335,8 +366,18 @@ export class AttackProbe {
     return false;
   }
 
-  /** Before tick(): nothing to record (the unit maps hold the last state). */
-  beforeTick(): void {}
+  /** airfield building id -> fighters stored at the last tick (counted owners) */
+  private afFighters = new Map<number, number>();
+  /** recon planes of counted owners seen: id -> reached its target */
+  private recon = new Map<number, boolean>();
+  /** airfield strike results before the tick: airfield id -> first tick, kills, buildings */
+  private resultSnap = new Map<number, { start: number; kills: number; buildings: number }>();
+
+  /** Before tick(): the airfield strike results as they were (afterTick adds what this tick's arrivals did). */
+  beforeTick(): void {
+    this.resultSnap.clear();
+    for (const r of this.state.air?.results ?? []) this.resultSnap.set(r.airfield, { start: r.start, kills: r.kills, buildings: r.buildings });
+  }
 
   /** After tick(): new units, units gone (sunk, overrun), arrivals, events. Call before the caller clears events. */
   afterTick(events: readonly GameEvent[]): void {
@@ -344,9 +385,22 @@ export class AttackProbe {
     const s = this.stats;
     this.noteAttacks();
     const alive = new Set<number>();
+    /** airfield building id -> a bomber of it arrived this tick (true: one over a guarded tile) */
+    const arrivedFrom = new Map<number, boolean>();
     for (const u of state.units) {
       if (u.hp <= 0 || !this.counted(u.owner)) continue;
       alive.add(u.id);
+      if (u.type === 'reconPlane') {
+        const air = (s.air ??= newAirFight());
+        if (!this.recon.has(u.id)) {
+          this.recon.set(u.id, false);
+          air.reconFlights++;
+        }
+        if (u.state === 1 && !this.recon.get(u.id)) {
+          this.recon.set(u.id, true);
+          air.reconArrived++;
+        }
+      }
       if (u.type === 'warship') {
         let seen = this.ships.get(u.id);
         if (!seen) {
@@ -386,6 +440,14 @@ export class AttackProbe {
           seen.arrived = true;
           const bs = s.bombers[seen.mission];
           bs.arrivals++;
+          // Over a tile the victim's fighters guard (air superiority)?
+          const af = buildingAt(state, u.home);
+          const victim = state.map.owner[seen.aim];
+          const guarded = victim > 0 && hostile(state, u.owner, victim) && airSuperiorityAt(state, victim, u.owner, seen.aim);
+          const air = (s.air ??= newAirFight());
+          air.arrivals++;
+          if (guarded) air.guardedArrivals++;
+          if (af) arrivedFrom.set(af.id, (arrivedFrom.get(af.id) ?? false) || guarded);
           if (seen.intoSam) bs.intoSamArrived++;
           if (seen.mission !== 'strategic') {
             const w = state.map.width;
@@ -439,8 +501,52 @@ export class AttackProbe {
       if (state.attacks.some((a) => a.target === seen.owner && a.attacker > 0 && !isTribe(state.players[a.attacker]))) s.tanks.overrunDefending++;
     }
     for (const id of this.bombers.keys()) if (!alive.has(id)) this.bombers.delete(id);
+    this.airFight(events, arrivedFrom, alive);
     this.naval();
     this.incoming();
+  }
+
+  /** Fighters bought, planes shot down, recon lost, what this tick's bomber arrivals did (guarded or not). */
+  private airFight(events: readonly GameEvent[], arrivedFrom: Map<number, boolean>, alive: Set<number>): void {
+    const state = this.state;
+    const air = (this.stats.air ??= newAirFight());
+    for (const p of state.players) {
+      if (!p.alive || !this.counted(p.id)) continue;
+      for (const b of buildingsOf(state, p.id, 'airfield')) {
+        const was = this.afFighters.get(b.id) ?? 0;
+        if (b.fighters > was) air.fightersBought += b.fighters - was;
+        this.afFighters.set(b.id, b.fighters);
+      }
+    }
+    for (const e of events) {
+      if (e.kind !== 'unitLost') continue;
+      const m = /^(.*)'s (SAM site|fighters|carrier fighters) shot down an? (.+?) of (.+)$/.exec(e.message);
+      if (!m) continue;
+      const [owner, by] = e.players;
+      if (m[3].startsWith('recon plane') && this.counted(owner)) air.reconLost++;
+      if (!this.counted(by)) continue;
+      if (m[2] === 'SAM site') air.samKills++;
+      else {
+        if (m[2] === 'fighters') air.fighterKills++;
+        else air.carrierKills++;
+        if (m[3].startsWith('recon plane')) air.reconKills++;
+      }
+    }
+    for (const id of [...this.recon.keys()]) if (!alive.has(id)) this.recon.delete(id);
+    if (!arrivedFrom.size) return;
+    for (const r of state.air?.results ?? []) {
+      if (r.tick !== state.tick - 1 || !arrivedFrom.has(r.airfield) || !this.counted(r.owner)) continue;
+      const prev = this.resultSnap.get(r.airfield);
+      const same = !!prev && prev.start === r.start;
+      const dk = r.kills - (same ? prev!.kills : 0);
+      const db = r.buildings - (same ? prev!.buildings : 0);
+      air.kills += dk;
+      air.buildings += db;
+      if (arrivedFrom.get(r.airfield)) {
+        air.guardedKills += dk;
+        air.guardedBuildings += db;
+      }
+    }
   }
 
   /** Kills by ship type (xp jumps matched to ships gone this tick), landings with naval support. */
@@ -708,6 +814,8 @@ export class AttackProbe {
 
 const pc = (a: number, b: number): string => (b > 0 ? `${Math.round((100 * a) / b)}%` : '-');
 const f1 = (v: number): string => (Number.isFinite(v) ? v.toFixed(1) : '-');
+const f2 = (a: number, b: number): string => (b > 0 ? (a / b).toFixed(2) : '-');
+const shortK = (v: number): string => (v >= 1e4 ? `${Math.round(v / 1e3)}k` : v >= 1e3 ? `${(v / 1e3).toFixed(1)}k` : `${Math.round(v)}`);
 
 /** Report lines for the summed stats of `games` games. */
 export function attackReport(a: AttackStats, games: number): string[] {
@@ -750,6 +858,13 @@ export function attackReport(a: AttackStats, games: number): string[] {
       out.push(`      time at war ${pc(v.war, v.alive)}; of it: on an own attack front ${pc(v.onFront, v.war)}, station ${pc(v.station, v.war)}, chasing ${pc(v.chasing, v.war)}, escorting ${pc(v.escorting, v.war)}, mending ${pc(v.mending, v.war)}, enemy can fire at it ${pc(v.targetable, v.war)}, enemy destroyer in sonar ${pc(v.nearDestroyer, v.war)}, in a minefield ${pc(v.inMinefield, v.war)}, blockading ${pc(v.blockading, v.war)}${extra.length ? ', ' + extra.join(', ') : ''}`);
     }
     out.push(`  Landings with naval support ${pc(a.landingsSupported, a.landings)} of ${f1(a.landings / g)} per game; bomber sorties from carriers ${f1(a.carrierSorties / g)} per game.`);
+    const af = a.air;
+    if (af) {
+      const per = (k: number, n: number): string => (n > 0 ? shortK(k / n) : '-');
+      out.push(`  Fighters: ${f1(af.fightersBought / g)} bought per game; planes shot down per game by airfield and patrol fighters ${f1(af.fighterKills / g)}, carriers ${f1(af.carrierKills / g)}, SAM sites ${f1(af.samKills / g)}; recon planes among the fighter kills ${f1(af.reconKills / g)}.`);
+      out.push(`  Recon: ${f1(af.reconFlights / g)} flights per game, reached the target ${pc(af.reconArrived, af.reconFlights)}, shot down ${pc(af.reconLost, af.reconFlights)}.`);
+      out.push(`  Bomber arrivals ${f1(af.arrivals / g)} per game, over a tile the victim's fighters guard ${pc(af.guardedArrivals, af.arrivals)}; per arrival: troops killed ${per(af.kills - af.guardedKills, af.arrivals - af.guardedArrivals)} unguarded / ${per(af.guardedKills, af.guardedArrivals)} guarded, buildings hit ${f2(af.buildings - af.guardedBuildings, af.arrivals - af.guardedArrivals)} / ${f2(af.guardedBuildings, af.guardedArrivals)}.`);
+    }
     out.push(`  Enemy bombers at our land: ${f1(a.incomingBombers / g)} per game; while we had a superiority patrol ${pc(a.incomingWithPatrol, a.incomingBombers)}, aimed inside a patrol circle ${pc(a.incomingCovered, a.incomingBombers)} (${pc(a.incomingCovered, a.incomingWithPatrol)} of those with a patrol); patrol engagements ${f1(a.patrolEngagements / g)} per game.`);
   }
   return out;

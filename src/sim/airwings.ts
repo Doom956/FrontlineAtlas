@@ -19,7 +19,7 @@
 // Numbers: config AIR. Deterministic: state.rng only, no transcendental Math functions.
 
 import { knownTile } from './fog';
-import { AIR, AIR_COVER, TICKS_PER_SECOND } from './config';
+import { AIR, AIR_COVER, TECH_EFFECTS, TICKS_PER_SECOND } from './config';
 import { aircraftCap, airfieldRadius, buildingAt, buildingsOf, chargesReady, isDisabled, samRadius } from './buildings';
 import { applyAction } from './actions';
 import { atWar } from './allies';
@@ -31,7 +31,7 @@ import { atPeace, peaceReason, unitRule } from './rules';
 import { addEvent } from './state';
 import { hasTech } from './tech';
 import { techOf } from './techtree';
-import { dropTanksPatrolMul, dropTanksRangeMul, nightDodges, nightEffectMul, nightRadiusMul } from './specials';
+import { dropTanksPatrolMul, dropTanksRangeMul, earlyWarningMul, nightDodges, nightEffectMul, nightRadiusMul } from './specials';
 import { airRaidMul, airRangeMul, airSupportMul, airVariantOf, airWingMul, carrierFor, carrierReach } from './variants';
 import { buildAircraft, launchBomber, shotDown, unitCost } from './units';
 import { hashResults, leadAim, updateAutoFire } from './airstrike';
@@ -1040,6 +1040,69 @@ export function interceptBySuperiority(state: GameState, threats: readonly Unit[
       break;
     }
   }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Air superiority: fighters that guard a tile cut the enemy bombs that land there
+// ---------------------------------------------------------------------------------------------------------------
+
+/** True when a and b are the same nation or allies. */
+function sameSide(state: GameState, a: number, b: number): boolean {
+  return a === b || (a > 0 && b > 0 && areAllied(state, a, b));
+}
+
+/**
+ * Fighters guarding `tile` for `pid`'s side (pid and its allies): every finished, working airfield of theirs counts its
+ * fighters when the tile is inside its fighter cover (airfieldRadius x Early Warning, as units.interceptThreats) or
+ * inside its superiority patrol circle; every carrier of theirs within TECH_EFFECTS.carrierRadius counts
+ * AIR.carrierFighters. Pure read.
+ */
+export function fightersOver(state: GameState, pid: number, tile: number): number {
+  if (pid <= 0) return 0;
+  const w = state.map.width;
+  let n = 0;
+  for (const q of state.players) {
+    if (!q || q.id <= 0 || !q.alive || !sameSide(state, pid, q.id)) continue;
+    for (const b of buildingsOf(state, q.id, 'airfield')) {
+      if (b.owner !== q.id || b.buildLeft > 0 || b.fighters <= 0 || isDisabled(state, b)) continue;
+      const r = airfieldRadius(b) * earlyWarningMul(state, q.id); // Early Warning (specials.ts)
+      let inside = d2(w, b.tile, tile) <= r * r;
+      if (!inside) {
+        const wing = wingOf(state, b);
+        if (wing && wing.mission === 'superiority' && wing.owner === q.id) {
+          const pr = airPatrolRadius(b, state);
+          inside = d2(w, wing.target >= 0 ? wing.target : b.tile, tile) <= pr * pr;
+        }
+      }
+      if (inside) n += b.fighters;
+    }
+  }
+  const tx = (tile % w) + 0.5;
+  const ty = ((tile / w) | 0) + 0.5;
+  const cr2 = TECH_EFFECTS.carrierRadius * TECH_EFFECTS.carrierRadius;
+  for (const u of state.units) {
+    if (u.type !== 'warship' || u.variant !== 'carrier' || u.hp <= 0 || !sameSide(state, pid, u.owner)) continue;
+    const dx = u.x + 0.5 - tx;
+    const dy = u.y + 0.5 - ty;
+    if (dx * dx + dy * dy <= cr2) n += AIR.carrierFighters;
+  }
+  return n;
+}
+
+/**
+ * Does `defender` hold air superiority over `tile` against bombs of `attacker`? Its side's fighters there
+ * (fightersOver) number at least AIR.superiorityMinFighters and more than the attacker side's. Pure read.
+ */
+export function airSuperiorityAt(state: GameState, defender: number, attacker: number, tile: number): boolean {
+  if (defender <= 0 || attacker <= 0 || sameSide(state, defender, attacker) || tile < 0 || tile >= state.map.owner.length) return false;
+  const ours = fightersOver(state, defender, tile);
+  if (ours < AIR.superiorityMinFighters) return false;
+  return ours > fightersOver(state, attacker, tile);
+}
+
+/** Damage x of `attacker`'s bombs on `victim` at `tile`: 1 - AIR.superiorityBombCut under the victim's air superiority, else 1. */
+export function superiorityBombMul(state: GameState, attacker: number, victim: number, tile: number): number {
+  return airSuperiorityAt(state, victim, attacker, tile) ? 1 - AIR.superiorityBombCut : 1;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

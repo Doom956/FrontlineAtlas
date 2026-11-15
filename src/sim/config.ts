@@ -1230,6 +1230,16 @@ export const AIR = {
   /** superiority: seconds between interceptions / fighters stationed (x jetsCooldown with Jet Engines) */
   superiorityCooldown: 8,
   jetsCooldown: 0.5,
+  /**
+   * Air superiority (airwings.airSuperiorityAt): a nation's fighters guard a tile when the fighter cover of its (or an
+   * ally's) airfields, their superiority patrols and their carriers (carrierFighters each, within TECH_EFFECTS
+   * carrierRadius) there add up to at least minFighters and to more than the bombing side's own there. Enemy bombs
+   * that land on a guarded tile do bombCut less: support strike kills and zone strength, raid income cut, buildings
+   * hit and troops killed.
+   */
+  superiorityMinFighters: 2,
+  superiorityBombCut: 0.4,
+  carrierFighters: 2,
   /** escort: hits each escorted plane can fight off (Jet Engines: + escortJets); duel chances (see airwings.escortAbsorbs) */
   escortHits: 1,
   escortJets: 1,
