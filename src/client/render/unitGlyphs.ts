@@ -119,6 +119,8 @@ export const GLYPHS: Record<UnitType, Glyph> = {
   },
   // one simple missile: body, nose cone, swept fins; long contrail
   rocket: { len: 0.9, trail: 'missile', trailLen: 3.4, shapes: MISSILE },
+  // the cruise missile: the rocket's shape, smaller, with a shorter trail (it flies low and slow)
+  cruiseMissile: { len: 0.62, trail: 'missile', trailLen: 2, shapes: MISSILE },
   // the same, a bit bigger, with a ring (the atom mark) on the body
   atomBomb: { len: 1.05, trail: 'missile', trailLen: 2.6, shapes: [...MISSILE, { k: 'ring', p: [-0.08, 0, 0.32] }] },
   // tank division: a squat hull, the two tracks as lines along its sides, a round turret and a barrel past the bow

@@ -102,6 +102,7 @@ import { allyTrustDiscount } from './spending';
 import { techStatus } from './techtree';
 import { aiTankDivisions } from './tanks';
 import { aiNavy, atWar as navalAtWar, supportingShips } from './naval2';
+import { aiCruise } from './cruise';
 import { aiAttackLevel } from './aiattack';
 import { DOCTRINE_IDS, TROOP_TYPES, Resource, isTribe, isWater } from './types';
 import type { Attack, Building, BuildingType, Difficulty, DoctrineId, GameState, Personality, Player, TechId, TerrainId, TroopType, Troops } from './types';
@@ -2468,6 +2469,7 @@ function airAndMissiles(ctx: Ctx): void {
     if (fighting.length) paradrop(ctx, af.tile, fighting);
   }
 
+  aiCruise(state, id); // cruise missiles from warships (Naval Mastery; cruise.ts)
   if (!hasTech(p, 'rocketry')) return;
   // Rockets: every ready silo that doesn't nuke fires at the best target, as one salvo (airstrike.ts).
   let ready = 0;

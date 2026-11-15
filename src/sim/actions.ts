@@ -12,7 +12,7 @@ import { buyWarBonds, fundAlly, hireMercenaries } from './spending';
 import { buildMany, cancelQueuedLevels, upgradeArea, upgradeBuildings } from './bulkbuild';
 import { launchBarrage } from './barrage';
 import { chooseDoctrine } from './doctrines';
-import { buildAircraft, launchParadrop, launchTransport, moveWarship } from './units';
+import { buildAircraft, launchCruise, launchParadrop, launchTransport, moveWarship } from './units';
 import { bombSalvo, missileSalvo, setAutoFire } from './airstrike';
 import { moveWarships, orderWarship } from './navy';
 import { buildTankDivision, clearDefenseCache, moveTankDivisions } from './tanks';
@@ -171,6 +171,9 @@ export function applyAction(state: GameState, playerId: number, action: Action):
       if ((action.silo !== -1 && !isTile(state, action.silo)) || !isTile(state, action.tile)) return FAIL('Invalid tile');
       if (action.kind !== 'rocket' && action.kind !== 'atomBomb') return FAIL('Invalid missile');
       return missileSalvo(state, playerId, action.silo, action.kind, action.tile, action.count);
+    case 'cruiseMissile':
+      if (!isTile(state, action.tile)) return FAIL('Invalid tile');
+      return launchCruise(state, playerId, action.ship, action.tile);
     case 'setAutoFire':
       if (action.silo !== -1 && !isTile(state, action.silo)) return FAIL('Invalid tile');
       return setAutoFire(state, playerId, action.silo, action.on);

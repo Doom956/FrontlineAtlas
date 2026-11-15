@@ -326,6 +326,11 @@ interface GameResult {
   fortTakenArt: number;
   bombersShot: number;
   missilesShot: number;
+  /** cruise missiles (Naval Mastery): fired, shot down, buildings their blasts destroyed; minute each nation got Naval Mastery */
+  cruiseFired?: number;
+  cruiseShot?: number;
+  cruiseWrecks?: number;
+  navalMastery?: number[];
   /** bomber arrivals over their aim; of them: came home with the bombs (no drop), dropped centred off hostile land */
   bomberArrivals?: number;
   bombsHome?: number;
@@ -605,6 +610,10 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     fortTakenArt: 0,
     bombersShot: 0,
     missilesShot: 0,
+    cruiseFired: 0,
+    cruiseShot: 0,
+    cruiseWrecks: 0,
+    navalMastery: [],
     winnerParadrops: 0,
     winnerBarrages: 0,
     meanParadrops: 0,
@@ -734,6 +743,11 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
       }
       else if (e.kind === 'unitLost' && /tank division was overrun/.test(e.message)) r.divisions!.overrun++;
       else if (e.kind === 'unitLost' && /shot down a (rocket|atom bomb)/.test(e.message)) r.missilesShot++;
+      else if (e.kind === 'unitLost' && /shot down a cruise missile/.test(e.message)) r.cruiseShot!++;
+      else if (e.kind === 'missile' && /^Cruise missile strike by /.test(e.message)) {
+        const m = /: (\d+) buildings? destroyed/.exec(e.message);
+        if (m) r.cruiseWrecks! += Number(m[1]);
+      }
     }
     for (const b of state.barrages) {
       if (seenUnits.has(-b.id)) continue;
@@ -773,6 +787,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
           r.firstAtomBy = u.owner;
         }
       } else if (u.type === 'rocket') r.rockets++;
+      else if (u.type === 'cruiseMissile') r.cruiseFired!++;
       else if (u.type === 'bomber') r.bombers++;
       else if (u.type === 'warship') r.warships++;
       else if (u.type === 'transportPlane') {
@@ -833,6 +848,10 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     const sec = Math.round(gameSeconds(state));
     for (const p of state.players) {
       if (p.id === 0 || isTribe(p) || !p.alive) continue;
+      if (!arrived.has(`navy:${p.id}`) && p.techs.includes('navalMastery')) {
+        arrived.add(`navy:${p.id}`);
+        r.navalMastery!.push(minute);
+      }
       for (const k of ['path', 'special', 'mastery'] as const) {
         const key = `${k}:${p.id}`;
         if (arrived.has(key)) continue;
@@ -1249,6 +1268,19 @@ function report(all: GameResult[], o: Options): void {
   const artW = won.filter((r) => (share(r.winnerMix)?.artillery ?? 0) >= 0.15).length;
   console.log(`Winners with >= 15% artillery: ${artW} of ${won.length} (${pct(artW, won.length)}).`);
   console.log(`Shot down: ${tot((r) => r.bombersShot)} of ${tot((r) => r.bombers)} bombers, ${tot((r) => r.missilesShot)} of ${tot((r) => r.rockets + r.atomBombs)} missiles.`);
+  {
+    // Cruise missiles (Naval Mastery): how often a nation gets the mastery, and what the missiles do.
+    const nm = rs.map((r) => r.navalMastery ?? []);
+    const firstNm = nm.filter((v) => v.length).map((v) => Math.min(...v));
+    const n = Math.max(1, rs.length);
+    const fired = tot((r) => r.cruiseFired ?? 0);
+    const shot = tot((r) => r.cruiseShot ?? 0);
+    console.log(
+      `Naval Mastery: in ${nm.filter((v) => v.length).length} of ${rs.length} games (${f1(nm.reduce((a, v) => a + v.length, 0) / n)} nations per game), first at median minute ${f1(median(firstNm))}. ` +
+        `Cruise missiles: ${fired} fired (${f1(fired / n)} per game, in ${rs.filter((r) => (r.cruiseFired ?? 0) > 0).length} games), ${shot} shot down (${pct(shot, fired)}), ` +
+        `${tot((r) => r.cruiseWrecks ?? 0)} buildings destroyed (${f1(tot((r) => r.cruiseWrecks ?? 0) / n)} per game).`,
+    );
+  }
   {
     const a = tot((r) => r.bomberArrivals ?? 0);
     const h = tot((r) => r.bombsHome ?? 0);

@@ -104,6 +104,7 @@ const ACTION_SPECS: ActionSpecs = {
   // Salvos (protocol 14): a site of -1 = every own site; count = how many fly (absent 1, 0 = every ready one).
   bomb: { airfield: { k: 'siteOrAuto' }, tile: TILE, count: { k: 'count', optional: true } },
   launchMissile: { silo: { k: 'siteOrAuto' }, kind: { k: 'enum', values: ['rocket', 'atomBomb'] }, tile: TILE, count: { k: 'count', optional: true } },
+  cruiseMissile: { ship: ID, tile: TILE },
   paradrop: { airfield: TILE, tile: TILE, troops: { k: 'amount' } },
   barrage: { tile: TILE },
   requestAlliance: { to: PLAYER },

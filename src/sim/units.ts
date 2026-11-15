@@ -13,6 +13,8 @@
 //              cargo = gold paid to each owner on arrival
 //   bomber     home = airfield tile, target = where it is flying now, state 0 = outbound, 1 = returning
 //   rocket / atomBomb  home = silo tile, target = impact tile, targetOwner = owner of that tile at launch
+//   cruiseMissile      home = the ship's tile at launch, target = impact tile, targetOwner = owner of that tile at
+//                      launch, cargo = id of the ship that fired it (x, y start at the ship)
 //   transportPlane     home = airfield tile, target = drop tile, troops = paratroopers (infantry),
 //                      targetOwner = owner of the drop tile at launch
 // Fighters are never units: they stay stored on their airfield (Building.fighters) and intercept from there.
@@ -42,6 +44,7 @@ import {
   BOMBER_RADIUS,
   BOMBER_TROOP_KILL,
   BUILDINGS,
+  CRUISE,
   FALLOUT_SECONDS,
   FIGHTER_COOLDOWN,
   MIN_ATTACK_TROOPS,
@@ -1025,6 +1028,112 @@ export function launchMissile(state: GameState, playerId: number, siloTile: numb
   return { ok: true };
 }
 
+// ---------- cruise missiles (Naval Mastery; config CRUISE, client and AI in cruise.ts) ----------
+
+/** A warship that can carry cruise missiles: the standard warship, a destroyer or a battleship (not submarines or carriers). */
+export function cruiseHull(u: Unit): boolean {
+  return u.type === 'warship' && (u.variant === undefined || u.variant === 'destroyer' || u.variant === 'battleship');
+}
+
+/** Seconds until the ship's cruise missile cell is loaded (0 = loaded). Pure read. */
+export function cruiseReloadLeft(state: GameState, u: Unit): number {
+  return u.cruiseReady !== undefined && u.cruiseReady > state.tick ? (u.cruiseReady - state.tick) / TICKS_PER_SECOND : 0;
+}
+
+/** Tiles from a ship to a tile (its float position against the tile's corner, like every unit distance). */
+export function cruiseDistance(state: GameState, u: Unit, tile: number): number {
+  return Math.sqrt(d2To(state, u, tile));
+}
+
+/**
+ * Why ship `u` of pid cannot fire a cruise missile now, whatever the target ('' = it can): not yours, the wrong
+ * hull, no Naval Mastery, reloading, too poor. Pure read (the ship card's disabled line reads it).
+ */
+export function cruiseShipReason(state: GameState, pid: number, u: Unit | undefined): string {
+  const p = state.players[pid];
+  if (!p || pid === 0 || !p.alive) return 'No such player';
+  if (!u || u.hp <= 0 || u.type !== 'warship') return 'Cruise missiles fly from a warship of yours';
+  if (u.owner !== pid) return 'That ship is not yours';
+  if (!cruiseHull(u)) return u.variant === 'submarine' ? 'Submarines carry no cruise missiles' : 'Carriers carry no cruise missiles';
+  if (!hasTech(p, 'navalMastery')) return 'Needs Naval Mastery';
+  const left = cruiseReloadLeft(state, u);
+  if (left > 0) return `Reloading ${Math.ceil(left)} s`;
+  const c = unitCost(state, pid, 'cruiseMissile');
+  if (p.gold < c.gold) return `Not enough gold (${c.gold})`;
+  if (p.oil < c.oil) return `Not enough oil (${c.oil})`;
+  return '';
+}
+
+/**
+ * Why a cruise missile of pid from ship `u` cannot hit `tile` ('' = it can): the ship's own reasons first, then
+ * the target: land within CRUISE.reach tiles of the ship, not own land, not an ally, no peace time. Like a rocket
+ * it may hit neutral land (nobody's buildings are hit there). Pure read.
+ */
+export function cruiseReason(state: GameState, pid: number, u: Unit | undefined, tile: number): string {
+  const why = cruiseShipReason(state, pid, u);
+  if (why) return why;
+  if (!isTile(state, tile)) return 'Invalid tile';
+  if (isWater(state.map.terrain[tile])) return 'Cruise missiles hit land';
+  const d = cruiseDistance(state, u!, tile);
+  if (d > CRUISE.reach) return `Too far: cruise missiles reach ${CRUISE.reach} tiles from the ship, this is ${Math.round(d)} away`;
+  const target = state.map.owner[tile];
+  if (target === pid) return 'That is your own land';
+  if (target !== 0 && areAllied(state, pid, target)) return 'You cannot fire at an ally';
+  return peaceReason(state, pid, target) ?? '';
+}
+
+/**
+ * Action cruiseMissile {ship, tile}: the ship fires one cruise missile at `tile` (cruiseReason); paid per missile
+ * (UNITS.cruiseMissile), the ship's cell reloads for CRUISE.reloadSeconds. It flies straight from the ship like a
+ * rocket (SAMs shoot it down) and hits with cruiseImpact. The target nation is warned ('missile' event).
+ */
+export function launchCruise(state: GameState, pid: number, shipId: number, tile: number): ActionResult {
+  if (typeof shipId !== 'number' || !Number.isInteger(shipId)) return FAIL('Invalid unit');
+  const ship = state.units.find((q) => q.id === shipId);
+  const why = cruiseReason(state, pid, ship, tile);
+  if (why) return FAIL(why);
+  const s = ship!;
+  pay(state, pid, 'cruiseMissile');
+  s.cruiseReady = state.tick + Math.round(CRUISE.reloadSeconds * TICKS_PER_SECOND);
+  const u = makeUnit(state, 'cruiseMissile', pid, unitTile(state, s), tile);
+  u.x = s.x;
+  u.y = s.y;
+  u.cargo = s.id;
+  const target = state.map.owner[tile];
+  u.targetOwner = target;
+  state.units.push(u);
+  if (target !== 0) addEvent(state, 'missile', `${state.players[pid].name} launched a cruise missile at ${state.players[target].name}`, [pid, target], tile);
+  return { ok: true };
+}
+
+/** Cruise missile: hostile buildings within CRUISE.radius destroyed; each hostile player with land there loses troops (the rocket rule). */
+function cruiseImpact(state: GameState, u: Unit): void {
+  const map = state.map;
+  const tile = u.target;
+  const w = map.width;
+  const R = CRUISE.radius;
+  state.effects.push({ kind: 'explosion', x: (tile % w) + 0.5, y: ((tile / w) | 0) + 0.5, radius: R, tick: state.tick });
+  let destroyed = 0;
+  forEachInRadius(map, tile, R, (i) => {
+    const b = buildingAt(state, i);
+    if (b && hostile(state, u.owner, b.owner)) {
+      destroyBuilding(state, b);
+      destroyed++;
+    }
+  });
+  let killed = 0;
+  const hitPlayers: number[] = [];
+  for (const [o, n] of tilesInRadius(state, tile, R)) {
+    const p = state.players[o];
+    if (!hostile(state, u.owner, o) || !p.alive) continue;
+    const kill = Math.max(CRUISE.killMin, ROCKET_TROOP_KILL * troopTotal(p.troops) * (n / Math.max(1, p.tiles)));
+    killed += killTroops(state, o, kill, u.owner, false);
+    hitPlayers.push(o);
+  }
+  const msg = `Cruise missile strike by ${state.players[u.owner].name}: ${destroyed} building${destroyed === 1 ? '' : 's'} destroyed, ${Math.round(killed)} troops killed`;
+  addEvent(state, 'missile', msg, [u.owner, ...hitPlayers], tile);
+}
+
 /** Owned tiles per player inside the radius. */
 function tilesInRadius(state: GameState, tile: number, r: number): Map<number, number> {
   const owner = state.map.owner;
@@ -1147,7 +1256,7 @@ function atomImpact(state: GameState, u: Unit): void {
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Interception order: the most dangerous threat is shot at first. */
-const THREAT_ORDER: Record<string, number> = { atomBomb: 0, rocket: 1, bomber: 2, transportPlane: 3 };
+const THREAT_ORDER: Record<string, number> = { atomBomb: 0, rocket: 1, cruiseMissile: 1, bomber: 2, transportPlane: 3 };
 
 /**
  * Deterministic interception (config RULES_TEXT.interception). Threats (bombers, rockets, atom bombs, cargo planes)
@@ -1303,6 +1412,7 @@ export function updateUnits(state: GameState): void {
         break;
       case 'rocket':
       case 'atomBomb':
+      case 'cruiseMissile':
       case 'transportPlane':
         if (moveStraight(state, u, u.target, UNITS[u.type].speed * (u.type === 'transportPlane' ? techAirSpeedMul(state, u.owner) : 1))) arrived.add(u);
         threats.push(u);
@@ -1332,6 +1442,7 @@ export function updateUnits(state: GameState): void {
     } else {
       u.hp = 0;
       if (u.type === 'rocket') rocketImpact(state, u);
+      else if (u.type === 'cruiseMissile') cruiseImpact(state, u);
       else atomImpact(state, u);
     }
   }
