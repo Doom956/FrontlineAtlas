@@ -1,9 +1,14 @@
-// The player's settings (client only): sound, the map's look, the unit art, motion and graphics quality, kept in one
-// place and saved in this browser (localStorage FA_SETTINGS_KEY, every access in try/catch). Read-only for the game:
-// nothing here touches the sim, its hash or multiplayer.
+// The player's settings (client only): sound, reduce motion and graphics quality, kept in one place and saved in this
+// browser (localStorage FA_SETTINGS_KEY, every access in try/catch). Read-only for the game: nothing here touches the
+// sim, its hash or multiplayer.
 //
-// The first load with no saved settings reads the keys each part used to keep on its own (the sound volumes, the map
-// look, the map effects switch), so a returning player keeps their picks; those old keys are left as they were.
+// The map look, the unit art, the unit motion and the map effects are not in Settings: every player gets the defaults
+// (real ground, detailed pixel, lively, effects on). They stay in the store (LOOK_KEYS) so the page address (?map=),
+// the test hooks and the art lab can still switch them, for this page only: they are never saved, and a value saved
+// by an older build is not read (loadSettings).
+//
+// The first load with no saved settings reads the sound volumes the audio kept on its own, so a returning player keeps
+// them; that old key is left as it was (the old map look and map effects keys are no longer read).
 // The advisor, the guide and the chat keep their own keys (hud/advisor.ts, guide/engine.ts, chat/store.ts): the
 // guide's key also holds which tips were seen.
 //
@@ -13,7 +18,7 @@ import { ART_STYLES, MOTION_PRESETS, type ArtStyle, type MotionPreset } from '..
 import type { MapStyle } from '../render/mapStyle';
 
 export const FA_SETTINGS_KEY = 'fa.settings.v1';
-/** The keys the settings were kept under before this store (read once when FA_SETTINGS_KEY is missing). */
+/** Keys of older builds: the map look and the map effects switch, no longer read (the looks take the defaults). */
 export const LEGACY_MAP_STYLE_KEY = 'fa.mapStyle';
 export const LEGACY_FX_KEY = 'borderfall.fx.v1';
 
@@ -56,7 +61,9 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
 export type SettingKey = keyof Settings;
 /** What each section's "Reset to defaults" puts back. */
 export const SOUND_KEYS: readonly SettingKey[] = ['master', 'sfx', 'music', 'muted'];
-export const DISPLAY_KEYS: readonly SettingKey[] = ['mapStyle', 'art', 'motion', 'effects', 'reduceMotion', 'quality'];
+export const DISPLAY_KEYS: readonly SettingKey[] = ['reduceMotion', 'quality'];
+/** The looks with no control in Settings: the defaults at every load, never saved (see the top of this file). */
+export const LOOK_KEYS: readonly SettingKey[] = ['mapStyle', 'art', 'motion', 'effects'];
 
 const MAP_STYLE_WORDS: readonly MapStyle[] = ['today', 'pixel', 'muted', 'ground'];
 const QUALITIES: readonly Quality[] = ['auto', 'high', 'low'];
@@ -67,7 +74,13 @@ const num01 = (v: unknown, d: number) => (typeof v === 'number' && Number.isFini
 const oneOf = <T extends string>(list: readonly T[], v: unknown, d: T): T => (typeof v === 'string' && (list as readonly string[]).includes(v) ? (v as T) : d);
 const oneOrNull = <T extends string>(list: readonly T[], v: unknown): T | null => (typeof v === 'string' && (list as readonly string[]).includes(v) ? (v as T) : null);
 
-/** Settings from a stored object: anything missing or broken takes the default. */
+/** These settings with the looks back on their defaults (LOOK_KEYS). */
+function withDefaultLooks(s: Settings): Settings {
+  const d = DEFAULT_SETTINGS;
+  return { ...s, mapStyle: d.mapStyle, art: d.art, motion: d.motion, effects: d.effects };
+}
+
+/** Settings from an object: anything missing or broken takes the default. */
 export function parseSettings(o: unknown): Settings {
   const r = (o && typeof o === 'object' ? o : {}) as Record<string, unknown>;
   const d = DEFAULT_SETTINGS;
@@ -103,7 +116,7 @@ function json(text: string | null): unknown {
   }
 }
 
-/** The settings the old keys hold (the sound volumes, the map look, the map effects switch), else the defaults. */
+/** The sound volumes the old audio keys hold, else the defaults (the old map look and map effects keys are not read). */
 export function migrateLegacy(store: KeyValueStore): Settings {
   const s = parseSettings(null);
   const v2 = json(read(store, AUDIO_STORAGE_KEY));
@@ -115,25 +128,23 @@ export function migrateLegacy(store: KeyValueStore): Settings {
     s.music = a.music;
     s.muted = a.muted;
   }
-  const look = (read(store, LEGACY_MAP_STYLE_KEY) ?? '').trim().toLowerCase();
-  // the old key held a style name (the default was not stored); words from older builds map like mapStyle.ts did
-  const alias: Record<string, MapStyle> = { a: 'pixel', b: 'muted', c: 'ground', classic: 'today', default: 'today' };
-  s.mapStyle = oneOrNull(MAP_STYLE_WORDS, look) ?? alias[look] ?? null;
-  if (read(store, LEGACY_FX_KEY) === 'off') s.effects = false;
   return s;
 }
 
-/** The saved settings; with none saved yet, the old keys' settings. */
+/** The saved settings; with none saved yet, the old keys' settings. A saved map look, art, motion or effects is not read. */
 export function loadSettings(store: KeyValueStore | null): Settings {
   if (!store) return parseSettings(null);
   const raw = read(store, FA_SETTINGS_KEY);
-  if (raw !== null) return parseSettings(json(raw));
+  if (raw !== null) return withDefaultLooks(parseSettings(json(raw)));
   return migrateLegacy(store);
 }
 
+/** Saves the settings, without the looks (LOOK_KEYS: those last for this page only). */
 export function saveSettings(store: KeyValueStore | null, s: Settings): void {
+  const kept: Partial<Settings> = { ...s };
+  for (const k of LOOK_KEYS) delete kept[k];
   try {
-    store?.setItem(FA_SETTINGS_KEY, JSON.stringify(s));
+    store?.setItem(FA_SETTINGS_KEY, JSON.stringify(kept));
   } catch {
     /* private mode or full: the settings last for this page only */
   }

@@ -10,9 +10,9 @@
 //   ground  (C, "Real ground", the default) the pixel ground everywhere, nations shown by thick coloured border bands
 //           and a light tint in their own hue (palette.ts groundTint), stronger far out, so a blast lands on real ground
 //
-// Picked at startup: ?map=a|b|c|today in the page address (also remembered in this browser), else the remembered
-// pick in Settings (settings/store.ts, which took over the old localStorage 'fa.mapStyle'), else the build's
-// VITE_MAP_STYLE, else real ground. setMapStyle switches at run time.
+// Picked at startup: ?map=a|b|c|today in the page address (for this page only), else the build's VITE_MAP_STYLE,
+// else real ground. Settings has no map look: every player gets the default, and no pick is saved or read back
+// (settings/store.ts LOOK_KEYS). setMapStyle switches at run time, for this page (the test hooks).
 
 import { getSettings, setSetting } from '../settings/store';
 
@@ -21,7 +21,7 @@ export const MAP_STYLES: readonly MapStyle[] = ['today', 'pixel', 'muted', 'grou
 export const DEFAULT_MAP_STYLE: MapStyle = 'ground';
 /** The order of the Menu's Map look buttons: the default first, then the classic look, then the other two. */
 export const MAP_STYLE_MENU: readonly MapStyle[] = ['ground', 'today', 'pixel', 'muted'];
-/** Where the pick was kept before settings/store.ts (read once by its migration). */
+/** Where the pick was kept before settings/store.ts (no longer read). */
 export const MAP_STYLE_KEY = 'fa.mapStyle';
 /** Button words for each style (the Menu's Map look switch). */
 export const MAP_STYLE_SHORT: Record<MapStyle, string> = {
@@ -55,11 +55,11 @@ function urlStyle(): void {
   } catch {
     fromUrl = null;
   }
-  // remembered like a pick in Settings
+  // for this page only (settings/store.ts never saves the map look)
   if (fromUrl) setSetting('mapStyle', fromUrl);
 }
 
-/** The build's style (VITE_MAP_STYLE), else real ground: what "Reset to defaults" in Settings gives. */
+/** The build's style (VITE_MAP_STYLE), else real ground: what every player gets. */
 export function buildMapStyle(): MapStyle {
   try {
     const env = (import.meta as ImportMeta).env;
@@ -74,7 +74,7 @@ export function buildMapStyle(): MapStyle {
 let current: MapStyle | null = null;
 let version = 0;
 
-/** The map style now: the page address, else the pick in Settings (settings/store.ts), else the build's. */
+/** The map style now: the page address or a switch on this page (settings/store.ts), else the build's. */
 export function mapStyle(): MapStyle {
   urlStyle();
   const s = getSettings().mapStyle ?? buildMapStyle();
@@ -84,7 +84,7 @@ export function mapStyle(): MapStyle {
   }
   return current;
 }
-/** Switches the map style (the map layer rebuilds its shader on the next frame) and remembers it in this browser. */
+/** Switches the map style (the map layer rebuilds its shader on the next frame), for this page only. */
 export function setMapStyle(s: MapStyle): void {
   if (!MAP_STYLES.includes(s)) return;
   urlStyle();

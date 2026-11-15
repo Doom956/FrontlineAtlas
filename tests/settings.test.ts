@@ -1,6 +1,6 @@
 // The settings store (src/client/settings/store.ts): defaults, saving and loading, broken values, the move from the
-// keys each part used to keep (sound volumes, map look, map effects), section resets, and the parts that read it
-// (map look, map effects, reduce motion, graphics quality).
+// sound volumes the audio used to keep, the looks every player gets (map look, art, motion, effects: never saved or
+// read back), section resets, and the parts that read it (map look, map effects, reduce motion, graphics quality).
 import { beforeEach, describe, expect, it } from 'vitest';
 import { AUDIO_STORAGE_KEY, LEGACY_AUDIO_STORAGE_KEY } from '../src/client/audio';
 import { FX_STORAGE_KEY, fxEnabled, prefersReducedMotion, setFxEnabled } from '../src/client/fx/settings';
@@ -11,6 +11,7 @@ import {
   DISPLAY_KEYS,
   FA_SETTINGS_KEY,
   getSettings,
+  LOOK_KEYS,
   LEGACY_FX_KEY,
   LEGACY_MAP_STYLE_KEY,
   loadSettings,
@@ -54,12 +55,27 @@ describe('settings store', () => {
   it('saves every change at once and loads it back', () => {
     setSetting('music', 0.25);
     setSetting('quality', 'low');
-    setSetting('mapStyle', 'today');
+    setSetting('reduceMotion', 'on');
     const saved = JSON.parse(mem.getItem(FA_SETTINGS_KEY)!);
-    expect(saved).toMatchObject({ music: 0.25, quality: 'low', mapStyle: 'today' });
+    expect(saved).toMatchObject({ music: 0.25, quality: 'low', reduceMotion: 'on' });
     useSettingsStorage(mem);
-    expect(getSettings()).toMatchObject({ music: 0.25, quality: 'low', mapStyle: 'today', master: DEFAULT_SETTINGS.master });
+    expect(getSettings()).toMatchObject({ music: 0.25, quality: 'low', reduceMotion: 'on', master: DEFAULT_SETTINGS.master });
     expect(loadSettings(mem).quality).toBe('low');
+  });
+
+  it('the looks (map look, art, motion, effects) last for this page only: never saved, never read back', () => {
+    expect([...LOOK_KEYS].sort()).toEqual(['art', 'effects', 'mapStyle', 'motion']);
+    setSetting('mapStyle', 'today');
+    setSetting('art', 'realistic');
+    setSetting('motion', 'subtle');
+    setSetting('effects', false);
+    expect(getSettings()).toMatchObject({ mapStyle: 'today', art: 'realistic', motion: 'subtle', effects: false });
+    const saved = JSON.parse(mem.getItem(FA_SETTINGS_KEY)!);
+    for (const k of LOOK_KEYS) expect(saved).not.toHaveProperty(k);
+    // what an older build saved is not read: every player gets the defaults
+    mem.setItem(FA_SETTINGS_KEY, JSON.stringify({ master: 0.4, mapStyle: 'pixel', art: 'refined', motion: 'cinematic', effects: false }));
+    useSettingsStorage(mem);
+    expect(getSettings()).toEqual({ ...DEFAULT_SETTINGS, master: 0.4 });
   });
 
   it('takes the default for anything missing or broken', () => {
@@ -74,28 +90,29 @@ describe('settings store', () => {
     expect(getSettings().quality).toBe('auto');
   });
 
-  it("moves today's keys over: the sound volumes, the map look and the map effects switch", () => {
+  it("moves the sound volumes over; the old map look and map effects keys are not read", () => {
     mem.setItem(AUDIO_STORAGE_KEY, JSON.stringify({ master: 0.3, sfx: 0.4, music: 0.1, muted: true }));
     mem.setItem(MAP_STYLE_KEY, 'today');
     mem.setItem(FX_STORAGE_KEY, 'off');
     expect(LEGACY_MAP_STYLE_KEY).toBe(MAP_STYLE_KEY);
     expect(LEGACY_FX_KEY).toBe(FX_STORAGE_KEY);
-    expect(getSettings()).toMatchObject({ master: 0.3, sfx: 0.4, music: 0.1, muted: true, mapStyle: 'today', effects: false });
+    expect(getSettings()).toMatchObject({ master: 0.3, sfx: 0.4, music: 0.1, muted: true, mapStyle: null, effects: true });
+    expect(mapStyle()).toBe('ground');
     // moved once: now under the new key, the old keys left as they were
-    expect(JSON.parse(mem.getItem(FA_SETTINGS_KEY)!)).toMatchObject({ master: 0.3, mapStyle: 'today', effects: false });
+    expect(JSON.parse(mem.getItem(FA_SETTINGS_KEY)!)).toMatchObject({ master: 0.3 });
     expect(mem.getItem(AUDIO_STORAGE_KEY)).not.toBeNull();
     expect(mem.getItem(MAP_STYLE_KEY)).toBe('today');
     // a later change to an old key is not read again
-    mem.setItem(MAP_STYLE_KEY, 'muted');
+    mem.setItem(AUDIO_STORAGE_KEY, JSON.stringify({ master: 0.9 }));
     useSettingsStorage(mem);
-    expect(getSettings().mapStyle).toBe('today');
+    expect(getSettings().master).toBe(0.3);
   });
 
-  it('moves the version 1 sound settings (music turned on) and old map words', () => {
+  it('moves the version 1 sound settings (music turned on), not the old map words', () => {
     mem.setItem(LEGACY_AUDIO_STORAGE_KEY, JSON.stringify({ master: 0.5, sfx: 0.9, music: 0, muted: false }));
-    mem.setItem(MAP_STYLE_KEY, 'c');
+    mem.setItem(MAP_STYLE_KEY, 'pixel');
     const s = migrateLegacy(mem);
-    expect(s).toMatchObject({ master: 0.5, sfx: 0.9, music: DEFAULT_SETTINGS.music, mapStyle: 'ground', effects: true });
+    expect(s).toMatchObject({ master: 0.5, sfx: 0.9, music: DEFAULT_SETTINGS.music, mapStyle: null, effects: true });
     // nothing old: the defaults
     expect(migrateLegacy(new MemStore())).toEqual(DEFAULT_SETTINGS);
   });
@@ -141,13 +158,13 @@ describe('settings store', () => {
 });
 
 describe('parts that read the settings', () => {
-  it('map look: a pick is saved, and the reset gives the build default', () => {
+  it('map look: a switch on this page (?map=, test hooks) is not kept, the next load gives the build default', () => {
     const v = mapStyleVersion();
     setMapStyle('pixel');
     expect(mapStyle()).toBe('pixel');
     expect(getSettings().mapStyle).toBe('pixel');
     expect(mapStyleVersion()).toBeGreaterThan(v);
-    resetSettings(DISPLAY_KEYS);
+    useSettingsStorage(mem);
     expect(mapStyle()).toBe(buildMapStyle());
     expect(buildMapStyle()).toBe('ground');
   });

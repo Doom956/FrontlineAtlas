@@ -1,6 +1,7 @@
 // Applies the settings (settings/store.ts) to the parts that do not read them on their own, at startup and after every
 // change, so nothing needs a reload. The map look, map effects, reduce motion and graphics quality are read where
-// they are used (render/mapStyle.ts, fx/settings.ts, render/glmap.ts liteWanted).
+// they are used (render/mapStyle.ts, fx/settings.ts, render/glmap.ts liteWanted). The art and motion picks are not in
+// Settings any more (settings/store.ts LOOK_KEYS); a pick made on this page (the art lab) is still applied.
 import type { AudioManager } from '../audio';
 import { resetArtPicks, setArtStyle, setMotionPreset } from '../art/artStyle';
 import { prefersReducedMotion } from '../fx/settings';

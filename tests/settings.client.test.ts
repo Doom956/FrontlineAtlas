@@ -177,19 +177,13 @@ describe('Settings panel', () => {
     expect(test.disabled).toBe(false);
   });
 
-  it('Display: map look, unit art, effects, reduce motion and graphics quality save at once', () => {
+  it('Display: only reduce motion and graphics quality, saved at once; the looks are not offered', () => {
     const p = new SettingsPanel({ gameplay: hooks().gameplay });
     const sec = byTest(p.el as unknown as FakeEl, 'settings-sec-display');
-    expect(all(byTest(sec, 'map-style'), (e) => e.tag === 'button').map((b) => b.textContent)).toEqual(['Real ground', 'Classic', 'Pixel terrain', 'Muted war map']);
-    button(sec, 'Classic').click();
-    expect(mapStyle()).toBe('today');
-    expect(button(sec, 'Classic').classList.contains('on')).toBe(true);
-    button(byTest(sec, 'settings-art'), 'Realistic').click();
-    expect(store.getSettings().art).toBe('realistic');
-    button(byTest(sec, 'settings-motion'), 'Subtle').click();
-    expect(store.getSettings().motion).toBe('subtle');
-    button(byTest(sec, 'fx-toggle'), 'Map effects off').click();
-    expect(store.getSettings().effects).toBe(false);
+    // the map look, unit art, unit motion and map effects are gone: every player gets the defaults
+    for (const t of ['map-style', 'settings-art', 'settings-motion', 'fx-toggle']) expect(all(sec, (e) => e.dataset.test === t)).toHaveLength(0);
+    for (const word of ['Map look', 'Unit art', 'Unit motion', 'Map effects', 'Classic', 'Realistic', 'Cinematic']) expect(sec.textContent).not.toContain(word);
+    expect(mapStyle()).toBe('ground');
     button(byTest(sec, 'settings-reduce-motion'), 'On').click();
     expect(store.getSettings().reduceMotion).toBe('on');
     const q = byTest(sec, 'settings-quality');

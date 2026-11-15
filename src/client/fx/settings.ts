@@ -1,9 +1,10 @@
-// Map effects on/off (ripples, splashes, blasts, the nuke shake) and reduce motion, both picked in Settings and kept
-// by settings/store.ts (which took over the old FX_STORAGE_KEY). Sounds have their own volumes.
+// Map effects on/off (ripples, splashes, blasts, the nuke shake) and reduce motion, kept by settings/store.ts. Reduce
+// motion is picked in Settings; the map effects are always on for players (no control, not saved; setFxEnabled is
+// for tests and this page only). Sounds have their own volumes.
 // Reduce motion keeps the effects but drops the screen shake and the idle motion of units and fronts.
 import { getSettings, setSetting } from '../settings/store';
 
-/** Where the switch was kept before settings/store.ts (read once by its migration). */
+/** Where the switch was kept before settings/store.ts (no longer read). */
 export const FX_STORAGE_KEY = 'borderfall.fx.v1';
 
 export function fxEnabled(): boolean {

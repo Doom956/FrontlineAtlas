@@ -6,9 +6,7 @@
 import { el, setText } from '../dom';
 import { iconSpan, lineIcon } from '../hud/glyph';
 import { btn, setClass, slider, syncSlider } from '../hud/dom';
-import { ART_STYLES, artStyleOf, MOTION_LABEL, MOTION_PRESETS, motionPresetOf, STYLE_LABEL, type ArtStyle, type MotionPreset } from '../art/artStyle';
-import { deviceReducedMotion, fxEnabled, setFxEnabled } from '../fx/settings';
-import { MAP_STYLE_MENU, MAP_STYLE_SHORT, mapStyle, setMapStyle, type MapStyle } from '../render/mapStyle';
+import { deviceReducedMotion } from '../fx/settings';
 import { creditsContent } from '../sound/creditsView';
 import { clientBuildId } from '../../net/client';
 import { PROTOCOL_VERSION } from '../../net/protocol';
@@ -208,59 +206,8 @@ export class SettingsPanel {
   // ---------------------------------------------------------------------------------------------- Display
 
   private buildDisplay(sec: HTMLElement): void {
-    // the map's look (render/mapStyle.ts), two a row, each with a small picture of it
-    const looks = el('div', 'map-looks');
-    looks.dataset.test = 'map-style';
-    const lookBtns: [MapStyle, HTMLButtonElement][] = [];
-    for (const pair of [MAP_STYLE_MENU.slice(0, 2), MAP_STYLE_MENU.slice(2, 4)]) {
-      const g = el('div', 'segc');
-      for (const st of pair) {
-        const b = el('button', 'segc-b set-look');
-        b.type = 'button';
-        const sw = el('span', `ms-sw ms-${st}`);
-        sw.setAttribute('aria-hidden', 'true');
-        b.append(sw, el('span', '', MAP_STYLE_SHORT[st]));
-        b.addEventListener('click', () => {
-          setMapStyle(st);
-          this.sync();
-        });
-        lookBtns.push([st, b]);
-        g.append(b);
-      }
-      looks.append(g);
-    }
-    sec.append(field('Map look', looks, 'Real ground shows the land as it is, each nation in its colour with a thick band inside its border. Classic is the earlier flat map. Pixel terrain and Muted war map are other looks.'));
-    this.syncs.push(() => {
-      const now = mapStyle();
-      for (const [k, x] of lookBtns) {
-        setClass(x, 'on', k === now);
-        x.setAttribute('aria-pressed', k === now ? 'true' : 'false');
-      }
-    });
-
-    // the unit art (art/artStyle.ts): detailed pixel is the standard look, so it comes first
-    const order: ArtStyle[] = ['detailed', ...ART_STYLES.filter((s) => s !== 'detailed')];
-    const art = choice(order.map((v) => ({ v, label: STYLE_LABEL[v] })), (v) => {
-      setSetting('art', v);
-      this.sync();
-    }, 'settings-art');
-    sec.append(field('Unit art', art.el, 'How ships, tanks, planes, missiles and blasts are drawn. Detailed pixel is the standard look.'));
-    this.syncs.push(() => art.set(getSettings().art ?? artStyleOf('ships')));
-
-    const motion = choice(MOTION_PRESETS.map((v) => ({ v, label: MOTION_LABEL[v] })), (v: MotionPreset) => {
-      setSetting('motion', v);
-      this.sync();
-    }, 'settings-motion');
-    sec.append(field('Unit motion', motion.el, 'How much units move: bobbing ships, banking planes, smoke that stays. Lively is the standard.'));
-    this.syncs.push(() => motion.set(getSettings().motion ?? motionPresetOf('ships')));
-
-    const fx = choice([{ v: 'on', label: 'Map effects on' }, { v: 'off', label: 'Map effects off' }], (v) => {
-      setFxEnabled(v === 'on');
-      this.sync();
-    }, 'fx-toggle');
-    sec.append(field('Map effects', fx.el, 'Short flashes when land or a city changes hands, a ship sinks or a bomb lands. A nearby nuke shakes the view.'));
-    this.syncs.push(() => fx.set(fxEnabled() ? 'on' : 'off'));
-
+    // the map look, the unit art and motion and the map effects are not picked here: every player gets the defaults
+    // (settings/store.ts LOOK_KEYS)
     const reduceNote = el('p', 'note');
     const reduce = choice<ReduceMotion>([{ v: 'device', label: 'Auto' }, { v: 'on', label: 'On' }, { v: 'off', label: 'Off' }], (v) => {
       setSetting('reduceMotion', v);
