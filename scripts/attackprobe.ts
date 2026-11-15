@@ -6,7 +6,7 @@
 // tile of a nation we attack that touches our land is where that attack is fought. A warship within
 // NAVY_SUPPORT_RANGE of such a tile supports it (naval2.navalSupportAt), a support strike centred within
 // AIR.supportRadius of one bombs it.
-import { AIR, ARMOR_SUPPORT_READY, ARSENAL, NAVY_BLOCKADE_RANGE, NAVY_REACH, NAVY_SUPPORT_RANGE, NAVY_XP_SINK, TANK_DIVISION_TROOPS, WARSHIP_RANGE } from '../src/sim/config';
+import { AIR, ARMOR_SUPPORT_READY, ARSENAL, TANK_FALLBACK_PAUSE, TICKS_PER_SECOND, NAVY_BLOCKADE_RANGE, NAVY_REACH, NAVY_SUPPORT_RANGE, NAVY_XP_SINK, TANK_DIVISION_TROOPS, WARSHIP_RANGE } from '../src/sim/config';
 import { buildingAt, buildingsOf, isDisabled, samRadius } from '../src/sim/buildings';
 import { areAllied } from '../src/sim/diplomacy';
 import { atPeace } from '../src/sim/rules';
@@ -189,6 +189,8 @@ export interface AttackStats {
      *  nation at war, support with its front tile over 36 tiles away, support near its front tile (that tile is
      *  no longer at a live front) */
     away: Record<string, number>;
+    /** overrun divisions by where they were the tick before */
+    overrunWhere: Record<string, number>;
   };
   bombers: Record<MissionKey, BomberStats>;
   /** strategic / manual strike aims by building type at the aim tile */
@@ -221,7 +223,7 @@ export function newAttackStats(): AttackStats {
     ships: { built: 0, sunk: 0, ownerGone: 0, sunkByShip: 0, sunkByMine: 0, sunkNoXp: 0, sunkCrippled: 0, alive: 0, atWar: 0, onFront: 0, attacking: 0, attackingOnFront: 0, attackingStation: 0, station: 0, stationOnFront: 0, outnumbered: 0, escorting: 0, mainCoastal: 0, mainSupported: 0 },
     transports: { invasions: 0, sunk: 0, troopsSunk: 0, repelled: 0, atSea: 0, escorted: 0 },
     tanks: { formed: 0, overrun: [0, 0, 0], spent: 0, ownerGone: 0, overrunAfterSpearhead: 0, holdSupport: 0, holdAtStation: 0, atWar: 0, spearhead: 0, holdFront: 0, holdFar: 0, driving: 0, worn: 0, overrunDefending: 0 },
-    armor: { war: 0, attack: 0, launch: 0, toFront: 0, retreat: 0, holdFront: 0, holdRefit: 0, holdAway: 0, spearheads: 0, withCompany: 0, ended: 0, spearTiles: 0, shallow: 0, pocketEvents: 0, pockets: 0, pocketTiles: 0, fellBack: 0, enemySpears: 0, enemySpearTiles: 0, ends: {}, away: {} },
+    armor: { war: 0, attack: 0, launch: 0, toFront: 0, retreat: 0, holdFront: 0, holdRefit: 0, holdAway: 0, spearheads: 0, withCompany: 0, ended: 0, spearTiles: 0, shallow: 0, pocketEvents: 0, pockets: 0, pocketTiles: 0, fellBack: 0, enemySpears: 0, enemySpearTiles: 0, ends: {}, away: {}, overrunWhere: {} },
     bombers: { manual: b(), support: b(), strategic: b(), cover: b() },
     strikeTypes: {},
     mainAirOwn: 0,
@@ -260,6 +262,10 @@ interface DivSeen {
   spear: number;
   /** state at the last tick */
   st: number;
+  /** own land under 3 tiles deep in one of the 4 directions at the last tick */
+  thin: boolean;
+  /** last tick it fell back under attack (its retry pause set to TANK_FALLBACK_PAUSE) */
+  fell: number;
 }
 /** Division samples: "at the front" = within this many tiles of a foe's land touching ours. */
 const FRONT_TILES = 12;
@@ -404,13 +410,15 @@ export class AttackProbe {
       } else if (u.type === 'tankDivision') {
         let seen = this.divs.get(u.id);
         if (!seen) {
-          this.divs.set(u.id, (seen = { owner: u.owner, share: 1, spear: -1e9, st: u.state }));
+          this.divs.set(u.id, (seen = { owner: u.owner, share: 1, spear: -1e9, st: u.state, thin: false, fell: -1e9 }));
           s.tanks.formed++;
         }
         seen.share = (u.troops.infantry + u.troops.armor + u.troops.artillery) / FULL_DIVISION;
         if (u.state === 3) seen.spear = state.tick;
         if (u.state === 3 && seen.st !== 3) this.spearStart(u);
         seen.st = u.state;
+        seen.thin = this.thinAt(u);
+        if (u.retryTick === state.tick + TANK_FALLBACK_PAUSE * TICKS_PER_SECOND) seen.fell = state.tick;
       } else if (u.type === 'bomber') {
         let seen = this.bombers.get(u.id);
         if (!seen) {
@@ -484,6 +492,8 @@ export class AttackProbe {
       if (n <= 0) continue;
       overrun.set(seen.owner, n - 1);
       s.tanks.overrun[seen.share < 0.1 ? 0 : seen.share < 0.4 ? 1 : 2]++;
+      const where = `${state.tick - seen.spear <= 600 ? 'after a spearhead, ' : ''}${seen.st === 1 || seen.st === 2 ? 'driving' : seen.thin ? 'on thin ground' : 'on solid ground'}${state.tick - seen.fell <= 300 ? ', fell back lately' : ''}`;
+      s.armor.overrunWhere[where] = (s.armor.overrunWhere[where] ?? 0) + 1;
       if (state.tick - seen.spear <= 600) s.tanks.overrunAfterSpearhead++;
       if (state.attacks.some((a) => a.target === seen.owner && a.attacker > 0 && !isTribe(state.players[a.attacker]))) s.tanks.overrunDefending++;
     }
@@ -744,12 +754,21 @@ export class AttackProbe {
       a.away[why] = (a.away[why] ?? 0) + 1;
     }
   }
+  /** Own land under 3 tiles deep from u in one of the 4 directions (armor2's interior test). */
+  private thinAt(u: Unit): boolean {
+    const map = this.state.map;
+    const { width: w, height: h, owner } = map;
+    const x = Math.round(u.x);
+    const y = Math.round(u.y);
+    const own = (xx: number, yy: number): boolean => xx >= 0 && yy >= 0 && xx < w && yy < h && owner[yy * w + xx] === u.owner;
+    return !(own(x + 3, y) && own(x - 3, y) && own(x, y + 3) && own(x, y - 3));
+  }
   private awayWhy(u: Unit, foes: Set<number>): string {
     const state = this.state;
     const mode = u.mode ?? 'hold';
     if (mode === 'hold') return 'hold mode';
     if (mode === 'refit') return 'refit mode';
-    if ((u.retryTick ?? 0) > state.tick) return 'waiting on a route';
+    if ((u.retryTick ?? 0) > state.tick) return state.tick - (this.divs.get(u.id)?.fell ?? -1e9) <= TANK_FALLBACK_PAUSE * TICKS_PER_SECOND ? 'paused after falling back' : 'waiting on a route';
     let border = false;
     for (const f of foes) if (frontTiles(state, u.owner, f, 1).length) border = true;
     if (!border) return 'no land front';
@@ -890,6 +909,8 @@ export function attackReport(a: AttackStats, games: number): string[] {
     out.push(`    spearheads ${f1(ar.spearheads / g)} per game (${f1(ar.spearheads / Math.max(1, tk.formed))} per division), with company ${pc(ar.withCompany, ar.spearheads)}; ${f1(ar.spearTiles / Math.max(1, ar.ended))} tiles each, under 5 tiles ${pc(ar.shallow, ar.ended)}; land taken per division ${f1(land / Math.max(1, tk.formed))} tiles (pockets ${f1(ar.pocketTiles / Math.max(1, tk.formed))}); encirclements ${f1(ar.pocketEvents / g)} per game (${f1(ar.pockets / g)} pockets, ${f1(ar.pocketTiles / g)} tiles); fell back ${f1(ar.fellBack / g)} per game.`);
     const away = Object.entries(ar.away ?? {}).sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k} ${pc(v, ar.holdAway)}`).join(', ');
     out.push(`    holding away ready, why: ${away || '-'}.`);
+    const ov = Object.entries(ar.overrunWhere ?? {}).sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k} ${v}`).join('; ');
+    if (ov) out.push(`    overrun where (the tick before): ${ov}.`);
     out.push(`    ended: ${ends || '-'}; enemy spearheads into their land ${f1(ar.enemySpears / g)} per game, ${f1(ar.enemySpearTiles / Math.max(1, ar.enemySpears))} tiles each.`);
   }
   out.push('  ("front" = the border with a nation the unit\'s owner attacked within the last 30 s; AI attacks come in waves of about a second)');

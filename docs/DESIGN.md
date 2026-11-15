@@ -724,6 +724,28 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   `ARMOR_SUPPORT_RADIUS` + 12 tiles away jumps there by rail (route search `TANK_MOBILITY.jumpBudget`). AIs put their
   divisions on `support` at the main war's front: the foe's border tile nearest the focus of the biggest attack between
   them (`aiDivisionModes`); warlords field up to 6.
+- **Smarter armour** (armor2.ts, `armorLevel`: a player's divisions on their automatic modes count as Normal at every
+  difficulty; AI divisions follow `AI_ATTACK_LEVEL`, Easy keeps the old habits). A player's own move orders and
+  modes are never overridden (a drive the player orders clears `Unit.ended`, so the division stays where it was sent).
+  - Strikes (`bestStrike`): besides the 8 (Hard up 10) border tiles, lines that **cut** (`cutClicks`): from our land
+    across 3 to 24 tiles of a nation at war with us and out onto our or allied land or water (a thin strip, a bulge,
+    an enemy spearhead's band, the way back from a tip, the way to their coast), each scored by the piece it should
+    close off (`pocketBeside`: a flood of their land beside the line of at most 400 tiles that runs out without the
+    capital; a tenth of its tiles, at most 30, on top of `ARMOR_CUT_BONUS`); the base of an enemy spearhead running
+    into our land scores `ARMOR_CUT_BONUS` more. A straight line expected to bleed the division under 30% scores 6
+    less; from Hard up the strength left counts (x6).
+  - A straight strike (no cut) needs 70% of a full division (a cut: `ARMOR_SUPPORT_READY`); a division under 70%
+    drives to a Factory within 48 tiles and refits there to 85%.
+  - **Together**: the ready divisions on support within `ARMOR_SUPPORT_RADIUS` + 12 tiles of the strike go in with it,
+    side by side (at most 3, one order); from Hard up an AI division alone waits while another on support drives up
+    (not for a cut).
+  - **Off a thin tip**: a division on support standing where own land runs under 3 tiles deep (an AI one any time, a
+    player's for 60 s after its spearhead ended, `Unit.ended`, hashed) acts at once (checked every second): ready and
+    just after a spearhead, it strikes on along a cut from there; else it drives back to a hold tile behind its front.
+  - **Near the enemy** (land of a nation at war with us within `TANK_FALLBACK_RADIUS`) it holds where own land runs 6
+    tiles out all round (3 when there is none such near the front), even during the pause after falling back.
+  - Routes: a drive the quick search gives up on floods our land (as for a player's following divisions); an AI
+    division whose front can't be reached over our land supports one it can reach for `DETOUR_SECONDS`.
 - **Auto for every vehicle** (protocol 16; src/sim/warTarget.ts and the vehicle files): what a new player's vehicles do
   with no clicks. A player's **war target** (`updateFollow`): the nation it attacks with the most troops; with no
   attack on a nation of its own, the last target while that war is live (an attack either way within
@@ -909,9 +931,17 @@ refit at a Factory. From Normal up (`AI_ATTACK_LEVEL`; Easy keeps the old habits
   one; the enemy must be a quarter stronger to count); no landing while enemy warships near its start or landing
   tile outnumber ours (`seaContested`);
 - a holding division with land of a nation attacking it within 8 tiles strikes back into it when at half strength or
-  more and the line looks worth it; the support front counts our own attacks double a defence, and a division more
-  than 60 tiles from the main front supports the foe's border tile nearest it (often the only stretch it can reach
-  over its own land); a division on a spearhead's thin tip pulls back to a hold tile at once (any difficulty);
+  more: the best line near it first (a cut through the push's flank or across an enemy spearhead's base), else
+  straight into the attacker's land when that looks worth it, with the ready divisions near it; turtles only cut.
+  The support front counts our own attacks double a defence, and a division more than 60 tiles from the main front
+  supports the foe's border tile nearest it (often the only stretch it can reach over its own land); a division on a
+  spearhead's thin tip pulls back to a hold tile at once (any difficulty);
+- tank divisions keep their front between attack waves: with no attack running the war is still on (`atWar`), so
+  they stay on support at the front of the war their fronts are on (`liveFoe`) instead of standing down to hold
+  wherever they are (that was 69% of their war time); when the war fought hardest has no land front (landings
+  only) they support a war fought over land; they strike only through the support mode (the old lone launches into
+  the nearest border tile are Easy only) and use the smarter armour of section 7 (cuts, strikes together, off thin
+  tips, refit nearby, deeper holds under a push, routes by flood);
 - air wings keep their support and strategic missions while the war is live (`aiKeepsFlying`), so a support zone
   is laid between waves for the next one; manual strikes go out as one salvo of the wing size, skip targets under
   working SAM cover and prefer targets within 30 tiles of the border with their owner;

@@ -950,10 +950,10 @@ export function divisionStep(state: GameState, u: Unit): void {
   const human = !!state.players[u.owner]?.isHuman;
   const fresh = u.ended !== undefined && state.tick - u.ended <= ENDED_SECONDS * TICKS_PER_SECOND;
   const exposed = u.state === 0 && (!human || fresh) && !interiorAt(state, u.owner, unitTile(state, u));
-  // Smarter armour under a push (land of a nation attacking us within TANK_FALLBACK_RADIUS): it holds deeper (own land
-  // ARMOR_PRESSED_DEPTH tiles out all round), even right after falling back, rather than wait at the edge to be
-  // rolled over again and again.
-  const pressed = level >= 1 && u.state === 0 && pressedBy(state, u) > 0;
+  // Smarter armour with a nation at war with us that close (land within TANK_FALLBACK_RADIUS): it holds deeper (own
+  // land ARMOR_PRESSED_DEPTH tiles out all round), even right after falling back, rather than wait at the edge to be
+  // rolled over by every wave of theirs.
+  const pressed = level >= 1 && u.state === 0 && foeNear(state, u);
   const deep = !pressed || interiorAt(state, u.owner, unitTile(state, u), ARMOR_PRESSED_DEPTH);
   if (d2(u.x, u.y, front % w, (front / w) | 0) <= (ARMOR_SUPPORT_HOLD + 6) * (ARMOR_SUPPORT_HOLD + 6) && u.state === 0 && !exposed && deep) return;
   if ((u.retryTick ?? 0) > state.tick && !exposed && deep) return;
@@ -1035,6 +1035,13 @@ export function pressedBy(state: GameState, u: Unit): number {
   for (const a of state.attacks) if (a.target === me && a.attacker > 0 && !isTribe(state.players[a.attacker]) && isFoe(state, me, a.attacker)) attackers.add(a.attacker);
   if (!attackers.size) return 0;
   return nearestOf(state, u, attackers, AI_PRESSED_RADIUS).owner;
+}
+
+/** Land of a nation at war with u's owner within TANK_FALLBACK_RADIUS of division u. Pure read. */
+function foeNear(state: GameState, u: Unit): boolean {
+  const foes = new Set<number>();
+  for (const q of state.players) if (q && q.id > 0 && q.id !== u.owner && q.alive && isFoe(state, u.owner, q.id)) foes.add(q.id);
+  return foes.size > 0 && nearestOf(state, u, foes, AI_PRESSED_RADIUS).tile >= 0;
 }
 
 /** Nearest tile owned by one of `owners` within r of division u: its tile and owner (-1 / 0 = none). */
