@@ -50,6 +50,9 @@ export const MISSION_STRATEGIC = 2;
 export const MISSION_COVER = 3;
 /** AI (Normal up, 3+ airfields): a second superiority patrol where its circle holds this many enemy bombers. */
 const AI_SECOND_PATROL = 6;
+/** AI (Normal up): the airfield nearest its main attack patrols instead when this many enemy bombers aim inside its
+ *  patrol and no other airfield's patrol reaches them. */
+const AI_DEFEND_PATROL = 4;
 /** AI: airfields flying heavy bombers raid cities (all but the one nearest the main attack), see aiAirWings. */
 const AI_HEAVY_RAIDS = true;
 /** Following wings re-aim this often between sorties (warTarget.ts re-evaluates war targets every 2 s). */
@@ -1535,15 +1538,27 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
   let patrolAf = sortedAfs[sortedAfs.length - 1];
   // A second patrol (Normal up, 3+ airfields) where the enemy leans on bombers: its circle holds AI_SECOND_PATROL+ of them.
   let patrolAf2: Building | null = null;
-  if (airThreat && afs.length >= 2 && sharp) {
+  // Defend (Normal up): enemy bombers aim at our land where no other airfield's patrol reaches them, so the one
+  // nearest our main attack (or our only airfield) patrols there; its bombers still fly manual strikes (ai.ts).
+  let defend = false;
+  if (airThreat && sharp) {
     const cands: { b: Building; pw: number }[] = [];
+    let frontPw = 0;
     for (const b of sortedAfs) {
-      if (b.fighters < 2 || (main && b === sortedAfs[0])) continue;
+      if (b.fighters < 2) continue;
       const pw = patrolPick(state, id, b)[1];
+      if (main && b === sortedAfs[0]) {
+        frontPw = pw;
+        continue;
+      }
       if (pw > 0) cands.push({ b, pw });
     }
     cands.sort((x, y) => y.pw - x.pw || sortedAfs.indexOf(x.b) - sortedAfs.indexOf(y.b));
-    if (cands.length) patrolAf = cands[0].b;
+    if (cands.length && afs.length >= 2) patrolAf = cands[0].b;
+    else if (main && frontPw >= AI_DEFEND_PATROL) {
+      patrolAf = sortedAfs[0];
+      defend = true;
+    }
     if (afs.length >= 3 && cands.length >= 2 && cands[1].pw >= AI_SECOND_PATROL) patrolAf2 = cands[1].b;
   }
   const supportAim = (b: Building): number => {
@@ -1571,7 +1586,7 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
 
     // Superiority: one airfield with fighters when the enemy flies (the farthest from the front if there are several),
     // a second one where many enemy bombers aim, or one over our main front when the foe's fighters own the sky there.
-    const wantPatrol = wantAir && b.fighters >= 2 && (afs.length >= 2 ? b === patrolAf : !main);
+    const wantPatrol = wantAir && b.fighters >= 2 && (afs.length >= 2 || defend ? b === patrolAf : !main);
     if (b === patrolAf2 && b.fighters >= 2) {
       mission = 'superiority';
       const c = patrolCentre(state, id, b);
