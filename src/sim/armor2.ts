@@ -311,14 +311,15 @@ function refit(state: GameState, u: Unit): void {
 function driveTo(state: GameState, u: Unit, dest: number, auto = false, now = false): boolean {
   // `now` (smarter armour): a drive away from the fighting (to refit, off a thin tip) doesn't wait out the pause after a
   // failed route or a fall-back (that pause is for drives back to the front).
-  if (auto && !now && (u.retryTick ?? 0) > state.tick) return false;
+  const waiting = (u.retryTick ?? 0) > state.tick;
+  if (auto && !now && waiting) return false;
   // Automatic drives search less (a jump to a far front: TANK_MOBILITY.jumpBudget) and wait ARMOR_RETRY_SECONDS after
   // a failed route (an unreachable front / Factory).
   const w = state.map.width;
   const farR = ARMOR_SUPPORT_RADIUS + 12;
   const far = d2(u.x, u.y, dest % w, (dest / w) | 0) > farR * farR;
   let path = ownLandPath(state, u.owner, unitTile(state, u), dest, auto ? (far ? TANK_MOBILITY.jumpBudget : ARMOR_AUTO_PATH_BUDGET) : undefined);
-  if (!path && auto && armorLevel(state, u.owner) >= 1) {
+  if (!path && auto && !waiting && armorLevel(state, u.owner) >= 1) {
     // A player's division and AI ones from Normal up (Easy keeps the quick search): the quick search gave up, so a
     // flood of our land finds any route there, or tells a division on support that its front can't be reached over
     // our land (it then supports a front it can reach for a while).
@@ -335,7 +336,7 @@ function driveTo(state: GameState, u: Unit, dest: number, auto = false, now = fa
   }
   if (!path) {
     // A failed far jump (the bigger search) waits TANK_MOBILITY.jumpRetry times as long.
-    if (auto) u.retryTick = state.tick + ARMOR_RETRY_SECONDS * (far ? TANK_MOBILITY.jumpRetry : 1) * TICKS_PER_SECOND;
+    if (auto) u.retryTick = Math.max(u.retryTick ?? 0, state.tick + ARMOR_RETRY_SECONDS * (far ? TANK_MOBILITY.jumpRetry : 1) * TICKS_PER_SECOND);
     return false;
   }
   u.retryTick = undefined;
