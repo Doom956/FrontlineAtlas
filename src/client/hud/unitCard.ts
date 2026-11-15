@@ -10,10 +10,16 @@ import type { GameState, Player } from '../../sim/types';
 import { hpText, unitDoing } from '../forces';
 import { unitAutoLine } from '../follow';
 import { iconDataUrl } from '../icons';
-import { el, setText, setVisible, type HudCtx } from './dom';
+import { el, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
+import { aimCruise, cruiseButton, cruisePriceText } from '../cruise';
 import { iconSpan, lineIcon } from './glyph';
 import { mapShown } from '../fx/prankView';
 import { paintPortrait } from './portrait';
+
+/** "700 gold · 60 oil" (the button's own short price). */
+function priceShort(state: GameState, pid: number): string {
+  return cruisePriceText(state, pid).replace(', ', ' · ');
+}
 
 export class UnitCard {
   readonly el: HTMLElement;
@@ -27,6 +33,11 @@ export class UnitCard {
   /** what it does by itself ("Auto: supporting the front with Azuria") */
   private auto = el('div', 'uc-a');
   private range = el('div', 'uc-r', '');
+  /** Naval Mastery: the Cruise missile button (aims a strike from this ship) and the line that says why it's off */
+  private cm = el('div', 'uc-cm hidden');
+  private cmBtn = el('button', 'wr-btn mini uc-cm-b');
+  private cmSub = el('span', 'uc-cm-s');
+  private cmLine = el('div', 'uc-cm-l');
   private shown = -1;
   private lastMs = 0;
   private img: HTMLImageElement;
@@ -68,7 +79,20 @@ export class UnitCard {
     const str = el('div', 'uc-str');
     str.append(this.strK, this.hp, this.strV);
     this.auto.dataset.test = 'unit-auto';
-    this.el.append(head, str, this.order, this.auto, this.range);
+    this.cmBtn.type = 'button';
+    this.cmBtn.dataset.test = 'cruise-btn';
+    this.cmBtn.append(iconSpan(lineIcon('rocket', 14, 2)), el('span', 'wr-btn-l', 'Cruise missile'), this.cmSub);
+    this.cmBtn.addEventListener('click', () => {
+      const s = ctx.state();
+      const me = ctx.me();
+      if (!s || !me || this.shown < 0) return;
+      const why = aimCruise(s, me, ctx.ui, [this.shown]);
+      ctx.sound(why ? 'uiError' : 'uiClick');
+      if (why) ctx.toast(why, 'info');
+    });
+    this.cmLine.dataset.test = 'cruise-line';
+    this.cm.append(this.cmBtn, this.cmLine);
+    this.el.append(head, str, this.order, this.auto, this.range, this.cm);
   }
 
   /** Every frame: follow the selected warship on screen; texts at ~5 Hz. */
@@ -120,6 +144,17 @@ export class UnitCard {
       const auto = unitAutoLine(state, me.id, u);
       setText(this.auto, auto);
       setVisible(this.auto, auto !== '');
+      // Naval Mastery: fire a cruise missile from this ship (enters the target mode; the click picks the land)
+      const cb = u.owner === me.id && !tank ? cruiseButton(state, me, [u.id]) : null;
+      setVisible(this.cm, !!cb?.show);
+      if (cb?.show) {
+        this.cmBtn.disabled = !cb.ok;
+        setClass(this.cmBtn, 'ready', cb.ok);
+        setText(this.cmSub, cb.ok ? priceShort(state, me.id) : cb.why);
+        this.cmBtn.setAttribute('aria-label', cb.ok ? `Cruise missile, ${priceShort(state, me.id)}` : `Cruise missile: ${cb.why}`);
+        setTip(this.cmBtn, cb.line);
+        setText(this.cmLine, cb.line);
+      }
     }
     const at = this.ctx.probe()?.unitScreen(id);
     setVisible(this.el, !!at);

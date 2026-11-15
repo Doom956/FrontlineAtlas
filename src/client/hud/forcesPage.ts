@@ -510,8 +510,8 @@ export class ForcesPage implements DrawerPage {
           acts,
         });
       });
-      for (const u of mine.filter((q) => q.type === 'rocket' || q.type === 'atomBomb')) {
-        rows.push({ key: `m${u.id}`, pic: { unit: u.type === 'rocket' ? 'rocket' : 'atomBomb', sprite: { type: u.type, owner: me.color } }, title: unitName(u), status: unitDoing(s, me, u), tile: this.tileOf(s, u), acts: [] });
+      for (const u of mine.filter((q) => q.type === 'rocket' || q.type === 'atomBomb' || q.type === 'cruiseMissile')) {
+        rows.push({ key: `m${u.id}`, pic: { unit: u.type === 'atomBomb' ? 'atomBomb' : 'rocket', sprite: { type: u.type, owner: me.color } }, title: unitName(u), status: unitDoing(s, me, u), tile: this.tileOf(s, u), acts: [] });
       }
       const empty = !allowed ? 'Missiles are off in this game.' : silos.length ? '' : hasTech(me, 'rocketry') ? 'Rockets: build a Missile Silo (Build menu, N).' : `Rockets: ${UNIT_TEXT.rocket.unlock.toLowerCase()}.`;
       // one switch for every silo (later ones too): rockets fire by themselves at your war target, never atom bombs

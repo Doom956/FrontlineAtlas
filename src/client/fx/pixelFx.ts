@@ -186,8 +186,8 @@ export class PixelFx {
   private lastTick = -1;
   private seen = new WeakSet<Effect>();
   /** missiles in flight last frame: their target tiles (a blast there is a missile, not a bomb) */
-  private missileTargets = new Map<number, 'rocket' | 'atomBomb'>();
-  private missileNext = new Map<number, 'rocket' | 'atomBomb'>();
+  private missileTargets = new Map<number, 'rocket' | 'atomBomb' | 'cruiseMissile'>();
+  private missileNext = new Map<number, 'rocket' | 'atomBomb' | 'cruiseMissile'>();
   /** ships and planes alive last frame (a small blast where one died says what it was) */
   private prev: Unit[] = [];
   /** units destroyed since the last tick (fx/deaths.ts) */
@@ -290,7 +290,7 @@ export class PixelFx {
     const next = this.missileNext;
     next.clear();
     for (const u of state.units) {
-      if (u.type === 'rocket' || u.type === 'atomBomb') next.set(u.target, u.type);
+      if (u.type === 'rocket' || u.type === 'atomBomb' || u.type === 'cruiseMissile') next.set(u.target, u.type);
       else if (u.type !== 'tankDivision') p.push(u);
     }
     this.missileNext = this.missileTargets;

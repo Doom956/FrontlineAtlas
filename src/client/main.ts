@@ -337,7 +337,7 @@ function pickOwnUnit(state: GameState, id?: number): { id: number; x: number; y:
     const u = state.units.find((x) => x.id === id && x.owner === me);
     return u ? { id: u.id, x: u.x, y: u.y } : null;
   }
-  const mine = state.units.filter((u) => u.owner === me && u.type !== 'rocket' && u.type !== 'atomBomb');
+  const mine = state.units.filter((u) => u.owner === me && u.type !== 'rocket' && u.type !== 'atomBomb' && u.type !== 'cruiseMissile');
   if (!mine.length) return null;
   const u = mine[Math.floor(Math.random() * mine.length)];
   return { id: u.id, x: u.x, y: u.y };

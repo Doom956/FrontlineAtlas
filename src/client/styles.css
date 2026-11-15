@@ -5981,6 +5981,51 @@ canvas.fr-pic {
   height: 26px;
   image-rendering: pixelated;
 }
+/* Naval Mastery: the card's Cruise missile button (icon, word, price or why not) and its plain line */
+.uc-cm {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--rule);
+}
+.ucard .uc-cm-b {
+  pointer-events: auto;
+  width: 100%;
+  justify-content: flex-start;
+}
+.uc-cm-b .wr-btn-l {
+  flex: 1;
+  text-align: left;
+}
+.uc-cm-s {
+  flex: none;
+  font: 500 11px/1 var(--f-label);
+  font-variant-numeric: tabular-nums;
+  color: var(--dim);
+}
+.uc-cm-b:disabled {
+  opacity: 0.6;
+}
+.uc-cm-l {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--dim);
+}
+/* the orders bar's Cruise missile: for a group of ships (one ship has it on its card), and on phones always */
+.ob-cm {
+  margin-top: 6px;
+}
+.ob-cm.single {
+  display: none;
+}
+.ob-cm-b .wr-btn-l {
+  margin-right: 6px;
+}
+@media (max-width: 640px) {
+  .ob-cm.single:not(.hidden) {
+    display: block;
+  }
+}
 /* phones: while a drawer is open the orders bar and the unit card wait under it (a new selection closes the drawer,
    hud.ts), so two panels never share the same pixels */
 @media (max-width: 640px) {

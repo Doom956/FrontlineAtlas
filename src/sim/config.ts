@@ -554,7 +554,7 @@ export const UNITS: Record<UnitType, UnitInfo> = {
   rocket: { name: 'Rocket', speed: 55, gold: 900, iron: 60, oil: 30, hp: 1, tech: 'rocketry' },
   atomBomb: { name: 'Atom bomb', speed: 35, gold: 6000, iron: 300, oil: 150, hp: 2, tech: 'nuclearFission' },
   /** fired from a warship, destroyer or battleship (CRUISE below): slower than a rocket, paid per missile */
-  cruiseMissile: { name: 'Cruise missile', speed: 14, gold: 700, iron: 0, oil: 60, hp: 1, tech: 'navalMastery' },
+  cruiseMissile: { name: 'Cruise missile', speed: 10, gold: 700, iron: 0, oil: 60, hp: 1, tech: 'navalMastery' },
   /** paratrooper drop: the price is paid per drop */
   transportPlane: { name: 'Cargo plane', speed: 30, gold: 400, iron: 0, oil: 30, hp: 1, tech: 'flight' },
   /** tank division (tanks.ts): speed = tiles/s moving over own land (a rail move; TANK_MOBILITY); the troops it carries are its strength */

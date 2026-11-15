@@ -310,6 +310,8 @@ export function unitDoing(state: GameState, me: Player, u: Unit): string {
     case 'rocket':
     case 'atomBomb':
       return `Falling on ${unitPlace(state, me, u.target)}`;
+    case 'cruiseMissile':
+      return `Flying low at ${unitPlace(state, me, u.target)}`;
     case 'fighter':
       return 'Intercepting planes';
     case 'tankDivision':
@@ -356,7 +358,7 @@ export function tankDivisionDoing(state: GameState, me: number, u: Unit): string
 export function isIncoming(state: GameState, me: number, u: Unit): boolean {
   if (me <= 0 || u.owner === me || u.hp <= 0 || areAllied(state, me, u.owner)) return false;
   // fog of war: transports, cargo planes and bombers count once seen (rocket and atom bomb launches are announced)
-  if (u.type !== 'rocket' && u.type !== 'atomBomb' && state.fog) {
+  if (u.type !== 'rocket' && u.type !== 'atomBomb' && u.type !== 'cruiseMissile' && state.fog) {
     const fog = activeFog(state);
     if (fog && !fog.unitShown(state, u)) return false;
   }
@@ -366,6 +368,7 @@ export function isIncoming(state: GameState, me: number, u: Unit): boolean {
     case 'transportPlane':
     case 'rocket':
     case 'atomBomb':
+    case 'cruiseMissile':
       return t === me;
     case 'bomber':
       return u.state === 0 && u.targetOwner === me;
@@ -381,7 +384,7 @@ export function unitName(u: Unit): string {
 
 /** Icon of a unit type (icons.ts). */
 export function unitIcon(type: UnitType): IconId {
-  return type === 'tankDivision' ? 'armor' : (type as IconId);
+  return type === 'tankDivision' ? 'armor' : type === 'cruiseMissile' ? 'rocket' : (type as IconId);
 }
 
 /** HP as "2.5 of 3" (only warships and atom bombs have more than 1). */

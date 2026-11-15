@@ -29,6 +29,7 @@ export function deathKindOf(type: UnitType): DeathKind | null {
       return 'plane';
     case 'rocket':
     case 'atomBomb':
+    case 'cruiseMissile':
       return 'missile';
     case 'tankDivision':
       return 'tank';

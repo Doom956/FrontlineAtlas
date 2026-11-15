@@ -14,6 +14,7 @@ import { followUnitsAgain, MODE_INFO, MODE_ORDER, pocketLine, pocketPreview, set
 import { FollowRow } from './followRow';
 import { previewFor, SPEARHEAD_CONFIRM_MS, splitSelection } from '../selection';
 import { el, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
+import { aimCruise, cruiseButton, cruisePriceText } from '../cruise';
 import { iconSpan, lineIcon } from './glyph';
 import './pillars.css';
 
@@ -111,6 +112,11 @@ export class OrdersBar {
   private tanks: ChoiceRow<keyof typeof MODE_INFO>;
   private last = 0;
   private dirty = true;
+  /** Naval Mastery: Cruise missile for the selected ships (a group, or one ship on a phone where the unit card waits) */
+  private cm = el('div', 'ob-cm hidden');
+  private cmBtn = el('button', 'wr-btn mini ob-cm-b');
+  private cmSub = el('span', 'uc-cm-s');
+  private cmLine = el('div', 'ob-line');
 
   constructor(private ctx: HudCtx) {
     this.el = el('div', 'orders-bar hidden');
@@ -149,6 +155,20 @@ export class OrdersBar {
       say(followUnitsAgain(s, ctx.dispatch, 'division', splitSelection(s, s.humanId, ctx.ui.selection).tanks));
       poke();
     });
+    this.cmBtn.type = 'button';
+    this.cmBtn.dataset.test = 'orders-cruise';
+    this.cmBtn.append(iconSpan(lineIcon('rocket', 14, 2)), el('span', 'wr-btn-l', 'Cruise missile'), this.cmSub);
+    this.cmBtn.addEventListener('click', () => {
+      const s = ctx.state();
+      const me = ctx.me();
+      if (!s || !me) return;
+      const why = aimCruise(s, me, ctx.ui, splitSelection(s, me.id, ctx.ui.selection).warships);
+      ctx.sound(why ? 'uiError' : 'uiClick');
+      say(why);
+      poke();
+    });
+    this.cm.append(this.cmBtn, this.cmLine);
+    this.ships.el.append(this.cm);
     this.el.append(this.ships.el, this.tanks.el);
   }
 
@@ -196,6 +216,17 @@ export class OrdersBar {
         `Hull ${Math.round(hull * 100)}%${ships.length > 1 ? ' on average' : ''}. Ships mend near your ports.`,
         '',
       );
+      const cb = cruiseButton(state, me, c.warships);
+      setVisible(this.cm, cb.show);
+      setClass(this.cm, 'single', c.warships.length === 1);
+      if (cb.show) {
+        this.cmBtn.disabled = !cb.ok;
+        const price = cruisePriceText(state, me.id).replace(', ', ' · ');
+        setText(this.cmSub, cb.ok ? price : cb.why);
+        this.cmBtn.setAttribute('aria-label', cb.ok ? `Cruise missile, ${price}` : `Cruise missile: ${cb.why}`);
+        setTip(this.cmBtn, cb.line);
+        setText(this.cmLine, cb.line);
+      }
     }
 
     setVisible(this.tanks.el, c.tanks.length > 0);
