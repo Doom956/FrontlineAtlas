@@ -16,7 +16,7 @@
 //   'smokeScreen' (a blitz)        a soft bombard and a tank shot, and heat for the gunfire bed
 import type { Effect, GameState, Unit } from '../../sim/types';
 import { DeathWatch, deathKindOf, isKillBlast } from '../fx/deaths';
-import { tankShotBus, type TankShotBus } from '../fx/tankFire';
+import { tankShotBus, type TankShotBus } from '../fx/tankShotBus';
 import type { SoundId } from '../audio';
 
 export interface BattleCue {

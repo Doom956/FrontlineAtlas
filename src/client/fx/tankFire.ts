@@ -197,35 +197,10 @@ export function fireSeen(fog: FogLike | null, state: GameState, u: Unit): boolea
 
 // ------------------------------------------------------------------------------------------------- the sound bus
 
-/** A tank shot for the sound (tile coordinates of the tank). */
-export interface TankShotCue {
-  state: GameState;
-  x: number;
-  y: number;
-  volume: number;
-}
-const BUS_CAP = 32;
-
-/** The shots fired since the sound last looked (sound/battle.ts drains it every frame). */
-export class TankShotBus {
-  private q: TankShotCue[] = [];
-  push(c: TankShotCue): void {
-    if (this.q.length >= BUS_CAP) this.q.shift();
-    this.q.push(c);
-  }
-  /** Hands over the shots of game `state` (others are dropped: the menu's background game) and empties the bus. */
-  drain(state: GameState, take: (c: TankShotCue) => void): void {
-    for (const c of this.q) if (c.state === state) take(c);
-    this.q.length = 0;
-  }
-  clear(): void {
-    this.q.length = 0;
-  }
-  get size(): number {
-    return this.q.length;
-  }
-}
-export const tankShotBus = new TankShotBus();
+// The bus lives in fx/tankShotBus.ts, free of the settings store: sound/battle.ts (imported by audio.ts, which the
+// store reads its sound defaults from) drains it, so importing this file there would close an import cycle.
+import { TankShotBus, tankShotBus } from './tankShotBus';
+export { TankShotBus, tankShotBus, type TankShotCue } from './tankShotBus';
 
 // ------------------------------------------------------------------------------------------------- the layer
 
