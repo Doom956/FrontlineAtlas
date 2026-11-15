@@ -420,6 +420,12 @@ export interface Unit {
    * this tick (the main front could not be reached); absent = none
    */
   detour?: number;
+  /**
+   * tank division (tanks.ts, armor2.ts): the tick its last spearhead ended, while it may still stand on that
+   * spearhead's ground (an automatic mode then pulls it off a thin tip or strikes on from there); cleared by a drive
+   * the player orders and by the next spearhead; absent = none
+   */
+  ended?: number;
 }
 
 /** A unit being built (navy.ts warships, tanks.ts divisions): it appears at `tile` at readyTick. */

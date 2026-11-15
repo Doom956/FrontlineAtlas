@@ -86,6 +86,13 @@ export function divisionMode(u: Unit): DivisionMode {
 export function divisionStrength(u: Unit): number {
   return total(u.troops) / FULL;
 }
+/**
+ * How sharply a division fights on its automatic modes: AI divisions by difficulty (aiattack.ts: 0 Easy keeps the old
+ * habits, 1 Normal, 2 Hard, 3 Brutal); a player's divisions count as Normal at every difficulty.
+ */
+export function armorLevel(state: GameState, owner: number): number {
+  return state.players[owner]?.isHuman ? 1 : aiAttackLevel(state);
+}
 
 // ---------------------------------------------------------------------------------------------------------------
 // Limits and veterancy (tanks.ts asks)
@@ -526,7 +533,100 @@ interface Strike {
   /** own tile the spearhead starts from */
   launch: number;
   score: number;
+  /** the line gets right across the enemy's land (a cut that encircles) */
+  cut?: boolean;
 }
+
+/** A cut line crosses at most this many tiles of the enemy's land (cutClicks). */
+const CUT_CROSS = 24;
+/** ... and at least this many (thinner slivers are not worth a strike). */
+const CUT_MIN_CROSS = 3;
+/** Divisions that strike together at most (side by side: a band this many times as wide). */
+const GROUP_MAX = 3;
+/** Smarter armour: a division under ready drives back to a Factory within this many tiles to refit there. */
+const ARMOR_REFIT_TRIP = 48;
+/** A division that ended a spearhead this recently (s) may still stand on its ground (Unit.ended). */
+const ENDED_SECONDS = 60;
+
+/**
+ * Lines that cut (smarter armour, armorLevel >= 1): from own tiles within r of (cx, cy), the straight lines (8
+ * directions) that cross CUT_MIN_CROSS..CUT_CROSS tiles of one nation at war with `me` and come out on own or allied
+ * land or water, so the land on one side is closed off: a thin strip, an enemy spearhead's band in our land, a bulge
+ * to pinch off, the way from a spearhead's tip back to our line, the way to their coast. Returns the tiles to click
+ * (2 tiles into their land along the line, so the line keeps that direction), longest crossings first, at least 4
+ * tiles apart, at most `max`. Pure read.
+ */
+function cutClicks(state: GameState, me: number, cx: number, cy: number, r: number, max: number): number[] {
+  const map = state.map;
+  const { width: w, height: h, owner, terrain } = map;
+  const found: { click: number; cross: number }[] = [];
+  const x0 = Math.max(0, Math.round(cx) - r);
+  const x1 = Math.min(w - 1, Math.round(cx) + r);
+  const y0 = Math.max(0, Math.round(cy) - r);
+  const y1 = Math.min(h - 1, Math.round(cy) + r);
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const t = y * w + x;
+      if (owner[t] !== me || isWater(terrain[t]) || d2(x, y, cx, cy) > r * r) continue;
+      for (let k = 0; k < 8; k++) {
+        const dx = DX8[k];
+        const dy = DY8[k];
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const v = owner[ny * w + nx];
+        if (v === me || v === 0 || isWater(terrain[ny * w + nx]) || !isFoe(state, me, v)) continue;
+        let cut = false;
+        let j = 2;
+        for (; j <= CUT_CROSS + 1; j++) {
+          const xx = x + dx * j;
+          const yy = y + dy * j;
+          if (xx < 0 || yy < 0 || xx >= w || yy >= h) break;
+          const q = yy * w + xx;
+          const o = owner[q];
+          if (isWater(terrain[q]) || o === me || (o > 0 && o !== v && areAllied(state, me, o))) {
+            cut = true;
+            break;
+          }
+          if (o !== v) break;
+        }
+        const cross = j - 1;
+        if (!cut || cross < CUT_MIN_CROSS) continue;
+        found.push({ click: (y + 2 * dy) * w + x + 2 * dx, cross });
+      }
+    }
+  }
+  found.sort((a, b) => b.cross - a.cross || a.click - b.click);
+  const out: number[] = [];
+  for (const f of found) {
+    if (out.length >= max) break;
+    const fx = f.click % w;
+    const fy = (f.click / w) | 0;
+    if (out.some((c) => Math.abs((c % w) - fx) < 4 && Math.abs(((c / w) | 0) - fy) < 4)) continue;
+    out.push(f.click);
+  }
+  return out;
+}
+
+/** Enemy spearheads running into `me`'s land within r of (cx, cy): points 3 tiles along their line from its start. */
+function enemySpearBases(state: GameState, me: number, cx: number, cy: number, r: number): { x: number; y: number }[] {
+  const w = state.map.width;
+  const out: { x: number; y: number }[] = [];
+  for (const e of state.units) {
+    if (e.type !== 'tankDivision' || e.hp <= 0 || e.state !== 3 || e.targetOwner !== me || e.launch === undefined || !isFoe(state, me, e.owner)) continue;
+    const lx = e.launch % w;
+    const ly = (e.launch / w) | 0;
+    const dx = (e.target % w) - lx;
+    const dy = ((e.target / w) | 0) - ly;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 1e-9) continue;
+    const bx = lx + (3 * dx) / len;
+    const by = ly + (3 * dy) / len;
+    if (d2(bx, by, cx, cy) <= r * r) out.push({ x: bx, y: by });
+  }
+  return out;
+}
+
 
 /**
  * Best spearhead for division u into enemy land within ARMOR_SUPPORT_RADIUS of `front` (null = none worth it):
@@ -556,9 +656,22 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
   }
   if (!cands.length) return null;
   cands.sort((a, b) => a.d - b.d || a.t - b.t);
+  const level = armorLevel(state, me);
   const picks: number[] = [];
-  const n = Math.min(8, cands.length);
+  const bonus = new Map<number, number>();
+  const n = Math.min(level >= 2 ? 12 : 8, cands.length);
   for (let k = 0; k < n; k++) picks.push(cands[Math.floor((k * cands.length) / n)].t);
+  if (level >= 1) {
+    // Smarter armour: lines that cut their land (pockets), and the base of an enemy spearhead running into ours
+    // (cut off, its head is spent and the division at its tip overrun).
+    for (const b of enemySpearBases(state, me, fx, fy, r + 16)) {
+      for (const t of cutClicks(state, me, b.x, b.y, 8, 2)) {
+        if (!bonus.has(t)) picks.push(t);
+        bonus.set(t, ARMOR_CUT_BONUS);
+      }
+    }
+    for (const t of cutClicks(state, me, fx, fy, r, level >= 2 ? 10 : 6)) if (!picks.includes(t)) picks.push(t);
+  }
   let best: Strike | null = null;
   for (const t of picks) {
     const pv = spearheadPreview(state, me, u.id, t);
@@ -576,11 +689,72 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
       if (o === me || isWater(map.terrain[q]) || (o > 0 && areAllied(state, me, o))) cut = pv.expectedDepth >= enemy;
       break;
     }
-    const score = pv.expectedDepth + (cut ? ARMOR_CUT_BONUS : 0);
+    let score = pv.expectedDepth + (cut ? ARMOR_CUT_BONUS + (bonus.get(t) ?? 0) : 0);
+    // Hard up: a line that bleeds the division white far from a cut leaves it worn on a thin tip.
+    if (level >= 2) score += 6 * (pv.endShare ?? 0);
     if (pv.expectedDepth < ARMOR_SUPPORT_MIN_DEPTH && !cut) continue;
-    if (!best || score > best.score || (score === best.score && t < best.tile)) best = { tile: t, launch: pv.launch, score };
+    if (!best || score > best.score || (score === best.score && t < best.tile)) best = { tile: t, launch: pv.launch, score, cut };
   }
   return best;
+}
+
+/**
+ * Divisions that strike with u toward `tile` (smarter armour): u first, then other divisions of its owner on support,
+ * holding, ready (ARMOR_SUPPORT_READY) and not waiting on a failed route, within ARMOR_SUPPORT_RADIUS + 12 tiles of
+ * the tile (state.units order), at most GROUP_MAX in all. One order sends them side by side (tanks.moveTankDivisions).
+ */
+function strikeGroup(state: GameState, u: Unit, tile: number): number[] {
+  const w = state.map.width;
+  const tx = tile % w;
+  const ty = (tile / w) | 0;
+  const r = ARMOR_SUPPORT_RADIUS + 12;
+  const ids = [u.id];
+  for (const o of state.units) {
+    if (ids.length >= GROUP_MAX) break;
+    if (o === u || o.type !== 'tankDivision' || o.hp <= 0 || o.owner !== u.owner || o.state !== 0 || divisionMode(o) !== 'support') continue;
+    if (divisionStrength(o) < ARMOR_SUPPORT_READY || (o.retryTick ?? 0) > state.tick || d2(o.x, o.y, tx, ty) > r * r) continue;
+    ids.push(o.id);
+  }
+  return ids;
+}
+
+/** Another division of u's owner on support driving up to within ARMOR_SUPPORT_RADIUS + 12 tiles of `tile` (Hard up waits for it). */
+function companionComing(state: GameState, u: Unit, tile: number): boolean {
+  const w = state.map.width;
+  const r = ARMOR_SUPPORT_RADIUS + 12;
+  for (const o of state.units) {
+    if (o === u || o.type !== 'tankDivision' || o.hp <= 0 || o.owner !== u.owner || o.state !== 1 || divisionMode(o) !== 'support') continue;
+    if (divisionStrength(o) < ARMOR_SUPPORT_READY) continue;
+    if (d2(o.target % w, (o.target / w) | 0, tile % w, (tile / w) | 0) <= r * r) return true;
+  }
+  return false;
+}
+
+/**
+ * Smarter armour on a spearhead's thin tip (own land under 3 tiles deep around it; an AI division any time, a player's
+ * within ENDED_SECONDS of its spearhead's end, unless the player moved it since): a ready one strikes on from there
+ * along a line that cuts their land, else it pulls back to a hold tile behind its front. True when it acted.
+ */
+function leaveTip(state: GameState, u: Unit): boolean {
+  const here = unitTile(state, u);
+  if (interiorAt(state, u.owner, here)) return false;
+  if (state.players[u.owner]?.isHuman && (u.ended === undefined || state.tick - u.ended > ENDED_SECONDS * TICKS_PER_SECOND)) return false;
+  if ((u.retryTick ?? 0) > state.tick) return false;
+  if (divisionStrength(u) >= ARMOR_SUPPORT_READY) {
+    let best: { t: number; score: number } | null = null;
+    for (const t of cutClicks(state, u.owner, u.x, u.y, 6, 4)) {
+      const pv = spearheadPreview(state, u.owner, u.id, t);
+      if (pv.reason || pv.expectedDepth < CUT_MIN_CROSS) continue;
+      if (!best || pv.expectedDepth > best.score) best = { t, score: pv.expectedDepth };
+    }
+    if (best && moveTankDivisions(state, u.owner, [u.id], best.t).ok) return true;
+  }
+  const hold = holdTileNear(state, u.owner, u.station ?? here);
+  delete u.ended;
+  if (hold < 0 || hold === here) return false;
+  if (driveTo(state, u, hold)) return true;
+  u.retryTick = state.tick + 2 * TICKS_PER_SECOND;
+  return false;
 }
 
 /**
@@ -591,6 +765,9 @@ export function divisionStep(state: GameState, u: Unit): void {
   const slot = (state.tick + u.id) % TICKS_PER_SECOND === 0;
   if (slot && u.state === 0) refit(state, u);
   const mode = divisionMode(u);
+  if (slot && u.ended !== undefined && state.tick - u.ended > ENDED_SECONDS * TICKS_PER_SECOND) delete u.ended;
+  // Smarter armour: off a spearhead's thin tip at once (checked every second), striking on along a cut when ready.
+  if (slot && u.state === 0 && mode === 'support' && armorLevel(state, u.owner) >= 1 && leaveTip(state, u)) return;
   if (mode === 'hold') return;
   const every = Math.max(1, Math.round(ARMOR_SUPPORT_SCAN_SECONDS * TICKS_PER_SECOND));
   if ((state.tick + u.id * 7) % every !== 0) return;
@@ -615,10 +792,14 @@ export function divisionStep(state: GameState, u: Unit): void {
     return;
   }
   if (u.state === 1) return; // on its way (to the front or to a Factory)
-  // Worn down: refit at a Factory first (or in place without one).
-  if (s < ARMOR_SUPPORT_REFIT && !nearFactory(state, u)) {
+  const level = armorLevel(state, u.owner);
+  // Worn down: refit at a Factory first (or in place without one). Smarter armour also pulls a division that is
+  // under ready back to a Factory nearby (it refits five times as fast there).
+  if ((s < ARMOR_SUPPORT_REFIT || (level >= 1 && s < ARMOR_SUPPORT_READY)) && !nearFactory(state, u)) {
     const f = nearestFactory(state, u.owner, unitTile(state, u));
-    if (f >= 0 && driveTo(state, u, f, true)) return;
+    const w0 = state.map.width;
+    const close = f >= 0 && d2(u.x, u.y, f % w0, (f / w0) | 0) <= ARMOR_REFIT_TRIP * ARMOR_REFIT_TRIP;
+    if (f >= 0 && (s < ARMOR_SUPPORT_REFIT || close) && driveTo(state, u, f, true)) return;
   }
   if (s < ARMOR_SUPPORT_READY) {
     if (nearFactory(state, u)) return; // refitting
@@ -628,9 +809,18 @@ export function divisionStep(state: GameState, u: Unit): void {
   const near = d2(u.x, u.y, front % w, (front / w) | 0) <= (ARMOR_SUPPORT_RADIUS + 12) * (ARMOR_SUPPORT_RADIUS + 12);
   if (s >= ARMOR_SUPPORT_READY && near && (u.retryTick ?? 0) <= state.tick) {
     const strike = bestStrike(state, u, front);
+    let wait = false;
     if (strike) {
       // A cheap route check first (moveTankDivisions searches with the full budget).
-      if (ownLandPath(state, u.owner, unitTile(state, u), strike.launch, ARMOR_AUTO_PATH_BUDGET, hasAmphibious(state, u.owner) ? (t) => narrowWater(state, t) : undefined) && moveTankDivisions(state, u.owner, [u.id], strike.tile).ok) return;
+      if (ownLandPath(state, u.owner, unitTile(state, u), strike.launch, ARMOR_AUTO_PATH_BUDGET, hasAmphibious(state, u.owner) ? (t) => narrowWater(state, t) : undefined)) {
+        // Smarter armour: the ready divisions near the strike go in together, side by side; from Hard up an AI
+        // division alone waits for one driving up (unless the line cuts their land: that won't wait).
+        const ids = level >= 1 ? strikeGroup(state, u, strike.tile) : [u.id];
+        wait = ids.length === 1 && level >= 2 && !state.players[u.owner]?.isHuman && !strike.cut && companionComing(state, u, strike.tile);
+        if (!wait && moveTankDivisions(state, u.owner, ids, strike.tile).ok) return;
+      }
+    }
+    if (strike && !wait) {
       // A player's following division near a front on land it can't reach (another piece of ours): support a front it
       // can reach for a while instead of retrying the same strike all war.
       if (u.detour === undefined && state.players[u.owner]?.isHuman && unitFollows(state, u)) {
@@ -651,7 +841,9 @@ export function divisionStep(state: GameState, u: Unit): void {
   // Nothing to strike yet: hold just behind the front. An AI division left out on a limb (a spearhead's tip, our land
   // under 3 tiles deep around it) pulls back to a hold tile at once, even right after falling back: 61% of overrun AI
   // divisions were caught there within a minute of a spearhead.
-  const exposed = u.state === 0 && !state.players[u.owner]?.isHuman && !interiorAt(state, u.owner, unitTile(state, u));
+  const human = !!state.players[u.owner]?.isHuman;
+  const fresh = u.ended !== undefined && state.tick - u.ended <= ENDED_SECONDS * TICKS_PER_SECOND;
+  const exposed = u.state === 0 && (!human || fresh) && !interiorAt(state, u.owner, unitTile(state, u));
   if (d2(u.x, u.y, front % w, (front / w) | 0) <= (ARMOR_SUPPORT_HOLD + 6) * (ARMOR_SUPPORT_HOLD + 6) && u.state === 0 && !exposed) return;
   if ((u.retryTick ?? 0) > state.tick && !exposed) return;
   const hold = holdTileNear(state, u.owner, front);
@@ -756,6 +948,38 @@ function nearestOf(state: GameState, u: Unit, owners: Set<number>, r: number): {
   return best >= 0 ? { tile: best, owner: owner[best] } : { tile: -1, owner: 0 };
 }
 
+/**
+ * The war AI `id` is in between attack waves (Normal up): the nation at war with it (naval2.atWar) whose land most of
+ * its support divisions' fronts are on (ties: lower id), else the first nation at war with it it borders (ids
+ * ascending, tribes last). 0 = none.
+ */
+function liveFoe(state: GameState, id: number, mine: readonly Unit[]): number {
+  const owner = state.map.owner;
+  const votes = new Map<number, number>();
+  for (const u of mine) {
+    if (divisionMode(u) !== 'support' || u.station === undefined) continue;
+    const o = owner[u.station];
+    if (o !== id && isFoe(state, id, o)) votes.set(o, (votes.get(o) ?? 0) + 1);
+  }
+  let best = 0;
+  let bestN = 0;
+  for (const [o, n] of votes) {
+    if (n > bestN || (n === bestN && o < best)) {
+      best = o;
+      bestN = n;
+    }
+  }
+  if (best) return best;
+  const tribes: number[] = [];
+  for (const q of state.players) {
+    if (!q || q.id <= 0 || q.id === id || !q.alive || !isFoe(state, id, q.id)) continue;
+    if (isTribe(q)) tribes.push(q.id);
+    else if (frontTiles(state, id, q.id, 1).length) return q.id;
+  }
+  for (const t of tribes) if (frontTiles(state, id, t, 1).length) return t;
+  return 0;
+}
+
 /** Where a pressed division strikes back into q: q's land nearest it. -1 = none. */
 function counterTile(state: GameState, u: Unit, q: number): number {
   return nearestOf(state, u, new Set([q]), AI_PRESSED_RADIUS + 4).tile;
@@ -787,9 +1011,17 @@ export function aiDivisionModes(state: GameState, id: number, act: (a: Action) =
       continue;
     }
     if (level >= 1 && p.personality !== 'turtle' && s >= ARMOR_SUPPORT_READY) {
-      const t = counterTile(state, u, q);
-      if (t >= 0 && spearheadPreview(state, id, u.id, t).expectedDepth >= AI_COUNTER_MIN_DEPTH && act({ type: 'moveTankDivision', unitIds: [u.id], tile: t }).ok) {
-        handled.add(u.id);
+      // The best line near it first (a cut through the push's flank or across an enemy spearhead's base beats a
+      // straight hit), else straight into the attacker's land nearest it; the ready divisions nearby go with it.
+      const st = bestStrike(state, u, unitTile(state, u));
+      let t = st && (st.cut || st.score >= AI_COUNTER_MIN_DEPTH) ? st.tile : -1;
+      if (t < 0) {
+        t = counterTile(state, u, q);
+        if (t >= 0 && spearheadPreview(state, id, u.id, t).expectedDepth < AI_COUNTER_MIN_DEPTH) t = -1;
+      }
+      const ids = t >= 0 ? strikeGroup(state, u, t).filter((k) => !handled.has(k)) : [];
+      if (t >= 0 && act({ type: 'moveTankDivision', unitIds: ids, tile: t }).ok) {
+        for (const k of ids) handled.add(k);
         continue;
       }
     }
@@ -812,6 +1044,9 @@ export function aiDivisionModes(state: GameState, id: number, act: (a: Action) =
   }
   const w = state.map.width;
   const owner = state.map.owner;
+  // From Normal up, between two waves of attacks (they last about a second) the war is still on (naval2.atWar): the
+  // divisions keep the front they support instead of standing down to hold wherever they are until the next wave.
+  if (!foe && level >= 1) foe = liveFoe(state, id, mine);
   if (!foe) {
     // No war: keep holding (and refitting) where they are.
     const ids = mine.filter((u) => divisionMode(u) === 'support').map((u) => u.id);
