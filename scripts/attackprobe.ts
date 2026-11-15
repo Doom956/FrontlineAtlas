@@ -11,7 +11,7 @@ import { buildingAt, buildingsOf, isDisabled, samRadius } from '../src/sim/build
 import { areAllied } from '../src/sim/diplomacy';
 import { atPeace } from '../src/sim/rules';
 import { atWar, supportingShips, warshipMaxHp } from '../src/sim/naval2';
-import { airPatrolRadius, airState, airSuperiorityAt } from '../src/sim/airwings';
+import { airPatrolRadius, airState, airSuperiorityAt, fightersOver } from '../src/sim/airwings';
 import { unitVisibleTo } from '../src/sim/techtree';
 import { minefieldAt, minefields } from '../src/sim/specials';
 import { navalBlockadeMul, navalCanTarget, navalSupportMul } from '../src/sim/variants';
@@ -186,10 +186,18 @@ export interface AirFightStats {
   guardedKills: number;
   buildings: number;
   guardedBuildings: number;
+  /** arrivals by the victim's fighters over the aim: none, fewer than the minimum, enough but matched by ours */
+  arrNoFighters?: number;
+  arrFewFighters?: number;
+  arrContested?: number;
+  /** 10 s samples of finished airfields of counted owners: count, fighters stored, with the minimum or more */
+  afSamples?: number;
+  afFighters?: number;
+  afEnough?: number;
 }
 
 function newAirFight(): AirFightStats {
-  return { fightersBought: 0, reconFlights: 0, reconArrived: 0, reconLost: 0, fighterKills: 0, carrierKills: 0, samKills: 0, reconKills: 0, arrivals: 0, guardedArrivals: 0, kills: 0, guardedKills: 0, buildings: 0, guardedBuildings: 0 };
+  return { fightersBought: 0, reconFlights: 0, reconArrived: 0, reconLost: 0, fighterKills: 0, carrierKills: 0, samKills: 0, reconKills: 0, arrivals: 0, guardedArrivals: 0, kills: 0, guardedKills: 0, buildings: 0, guardedBuildings: 0, arrNoFighters: 0, arrFewFighters: 0, arrContested: 0, afSamples: 0, afFighters: 0, afEnough: 0 };
 }
 
 function newShipKind(): ShipKindStats {
@@ -447,6 +455,12 @@ export class AttackProbe {
           const air = (s.air ??= newAirFight());
           air.arrivals++;
           if (guarded) air.guardedArrivals++;
+          else if (victim > 0 && hostile(state, u.owner, victim)) {
+            const def = fightersOver(state, victim, seen.aim);
+            if (def <= 0) air.arrNoFighters = (air.arrNoFighters ?? 0) + 1;
+            else if (def < AIR.superiorityMinFighters) air.arrFewFighters = (air.arrFewFighters ?? 0) + 1;
+            else air.arrContested = (air.arrContested ?? 0) + 1;
+          }
           if (af) arrivedFrom.set(af.id, (arrivedFrom.get(af.id) ?? false) || guarded);
           if (seen.intoSam) bs.intoSamArrived++;
           if (seen.mission !== 'strategic') {
@@ -714,6 +728,18 @@ export class AttackProbe {
 
   /** Every 10 s of game time. */
   sample(): void {
+    {
+      const air = (this.stats.air ??= newAirFight());
+      for (const p of this.state.players) {
+        if (!p.alive || !this.counted(p.id)) continue;
+        for (const b of buildingsOf(this.state, p.id, 'airfield')) {
+          if (b.buildLeft > 0) continue;
+          air.afSamples = (air.afSamples ?? 0) + 1;
+          air.afFighters = (air.afFighters ?? 0) + b.fighters;
+          if (b.fighters >= AIR.superiorityMinFighters) air.afEnough = (air.afEnough ?? 0) + 1;
+        }
+      }
+    }
     const state = this.state;
     const s = this.stats;
     const w = state.map.width;
@@ -863,6 +889,7 @@ export function attackReport(a: AttackStats, games: number): string[] {
       const per = (k: number, n: number): string => (n > 0 ? shortK(k / n) : '-');
       out.push(`  Fighters: ${f1(af.fightersBought / g)} bought per game; planes shot down per game by airfield and patrol fighters ${f1(af.fighterKills / g)}, carriers ${f1(af.carrierKills / g)}, SAM sites ${f1(af.samKills / g)}; recon planes among the fighter kills ${f1(af.reconKills / g)}.`);
       out.push(`  Recon: ${f1(af.reconFlights / g)} flights per game, reached the target ${pc(af.reconArrived, af.reconFlights)}, shot down ${pc(af.reconLost, af.reconFlights)}.`);
+      if (af.afSamples) out.push(`  Airfields (10 s samples): ${f2(af.afFighters ?? 0, af.afSamples)} fighters each, ${pc(af.afEnough ?? 0, af.afSamples)} with ${AIR.superiorityMinFighters}+; arrivals not guarded: victim had no fighters there ${pc(af.arrNoFighters ?? 0, af.arrivals)}, too few ${pc(af.arrFewFighters ?? 0, af.arrivals)}, matched by the bomber's side ${pc(af.arrContested ?? 0, af.arrivals)}.`);
       out.push(`  Bomber arrivals ${f1(af.arrivals / g)} per game, over a tile the victim's fighters guard ${pc(af.guardedArrivals, af.arrivals)}; per arrival: troops killed ${per(af.kills - af.guardedKills, af.arrivals - af.guardedArrivals)} unguarded / ${per(af.guardedKills, af.guardedArrivals)} guarded, buildings hit ${f2(af.buildings - af.guardedBuildings, af.arrivals - af.guardedArrivals)} / ${f2(af.guardedBuildings, af.guardedArrivals)}.`);
     }
     out.push(`  Enemy bombers at our land: ${f1(a.incomingBombers / g)} per game; while we had a superiority patrol ${pc(a.incomingWithPatrol, a.incomingBombers)}, aimed inside a patrol circle ${pc(a.incomingCovered, a.incomingBombers)} (${pc(a.incomingCovered, a.incomingWithPatrol)} of those with a patrol); patrol engagements ${f1(a.patrolEngagements / g)} per game.`);
