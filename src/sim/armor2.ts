@@ -551,15 +551,16 @@ const ENDED_SECONDS = 60;
 /**
  * Lines that cut (smarter armour, armorLevel >= 1): from own tiles within r of (cx, cy), the straight lines (8
  * directions) that cross CUT_MIN_CROSS..CUT_CROSS tiles of one nation at war with `me` and come out on own or allied
- * land or water, so the land on one side is closed off: a thin strip, an enemy spearhead's band in our land, a bulge
- * to pinch off, the way from a spearhead's tip back to our line, the way to their coast. Returns the tiles to click
- * (2 tiles into their land along the line, so the line keeps that direction), longest crossings first, at least 4
+ * land or water, so the land on one side may be closed off: a thin strip, an enemy spearhead's band in our land, a
+ * bulge to pinch off, the way from a spearhead's tip back to our line, the way to their coast. Each comes with the
+ * size of the piece it would close off (pocketBeside; 0 = none found). Returns the tiles to click (2 tiles into their
+ * land along the line, so the line keeps that direction), biggest pockets first, then longest crossings, at least 4
  * tiles apart, at most `max`. Pure read.
  */
-function cutClicks(state: GameState, me: number, cx: number, cy: number, r: number, max: number): number[] {
+export function cutClicks(state: GameState, me: number, cx: number, cy: number, r: number, max: number): { click: number; pocket: number }[] {
   const map = state.map;
   const { width: w, height: h, owner, terrain } = map;
-  const found: { click: number; cross: number }[] = [];
+  const found: { click: number; cross: number; pocket: number }[] = [];
   const x0 = Math.max(0, Math.round(cx) - r);
   const x1 = Math.min(w - 1, Math.round(cx) + r);
   const y0 = Math.max(0, Math.round(cy) - r);
@@ -592,20 +593,103 @@ function cutClicks(state: GameState, me: number, cx: number, cy: number, r: numb
         }
         const cross = j - 1;
         if (!cut || cross < CUT_MIN_CROSS) continue;
-        found.push({ click: (y + 2 * dy) * w + x + 2 * dx, cross });
+        found.push({ click: (y + 2 * dy) * w + x + 2 * dx, cross, pocket: -1 });
       }
     }
   }
+  // Longest crossings first for the pocket estimates (bounded work), then biggest pockets first.
   found.sort((a, b) => b.cross - a.cross || a.click - b.click);
-  const out: number[] = [];
+  const spaced: typeof found = [];
   for (const f of found) {
-    if (out.length >= max) break;
+    if (spaced.length >= max * 3) break;
     const fx = f.click % w;
     const fy = (f.click / w) | 0;
-    if (out.some((c) => Math.abs((c % w) - fx) < 4 && Math.abs(((c / w) | 0) - fy) < 4)) continue;
-    out.push(f.click);
+    if (spaced.some((c) => Math.abs((c.click % w) - fx) < 4 && Math.abs(((c.click / w) | 0) - fy) < 4)) continue;
+    spaced.push(f);
   }
-  return out;
+  for (const f of spaced) f.pocket = pocketBeside(state, me, f.click, owner[f.click]);
+  spaced.sort((a, b) => b.pocket - a.pocket || b.cross - a.cross || a.click - b.click);
+  return spaced.slice(0, max).map((f) => ({ click: f.click, pocket: f.pocket }));
+}
+
+/** pocketBeside: flood budget per side (tiles); a bigger piece counts as open. */
+const POCKET_PEEK = 400;
+
+/**
+ * Rough size of the piece of `victim`'s land a cut through `click` would close off: the line from the nearest own
+ * tile through it (3 tiles wide, as far as the victim's land runs) is taken out, and the victim's land on each side
+ * next to it is flooded (4 directions, at most POCKET_PEEK tiles); a side that runs out of land without reaching the
+ * capital is closed. The bigger closed side, 0 = none. Pure read; an estimate for scoring only (armor2.collapsePockets
+ * decides what really falls).
+ */
+function pocketBeside(state: GameState, me: number, click: number, victim: number): number {
+  const map = state.map;
+  const { width: w, height: h, owner } = map;
+  const cap = state.players[victim]?.capital ?? -1;
+  // The line: from the own tile 2 tiles back (cutClicks' launch side) through the click, across the victim's land.
+  let launch = -1;
+  const cx = click % w;
+  const cy = (click / w) | 0;
+  for (let k = 0; k < 8 && launch < 0; k++) {
+    const lx = cx - 2 * DX8[k];
+    const ly = cy - 2 * DY8[k];
+    const mx = cx - DX8[k];
+    const my = cy - DY8[k];
+    if (lx < 0 || ly < 0 || lx >= w || ly >= h) continue;
+    if (owner[ly * w + lx] === me && owner[my * w + mx] === victim) launch = k;
+  }
+  if (launch < 0) return 0;
+  const dx = DX8[launch];
+  const dy = DY8[launch];
+  const band = new Set<number>();
+  const line: number[] = [];
+  for (let j = -1; j <= CUT_CROSS + 1; j++) {
+    const x = cx + dx * j;
+    const y = cy + dy * j;
+    if (x < 0 || y < 0 || x >= w || y >= h) break;
+    if (j >= 0 && owner[y * w + x] !== victim) break;
+    line.push(y * w + x);
+    for (let s2 = -1; s2 <= 1; s2++) {
+      const bx = x - dy * s2;
+      const by = y + dx * s2;
+      if (bx >= 0 && by >= 0 && bx < w && by < h) band.add(by * w + bx);
+    }
+  }
+  if (line.length < 2) return 0;
+  const mid = line[(line.length / 2) | 0];
+  const mx = mid % w;
+  const my = (mid / w) | 0;
+  let best = 0;
+  for (const side of [1, -1]) {
+    const sx = mx - dy * 2 * side;
+    const sy = my + dx * 2 * side;
+    if (sx < 0 || sy < 0 || sx >= w || sy >= h) continue;
+    const s0 = sy * w + sx;
+    if (owner[s0] !== victim || band.has(s0)) continue;
+    const seen = new Set<number>([s0]);
+    const queue = [s0];
+    let open = false;
+    for (let head = 0; head < queue.length && !open; head++) {
+      const t = queue[head];
+      if (t === cap || queue.length > POCKET_PEEK) {
+        open = true;
+        break;
+      }
+      const x = t % w;
+      const y = (t / w) | 0;
+      for (let k = 0; k < 4; k++) {
+        const nx = x + DX4[k];
+        const ny = y + DY4[k];
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const q = ny * w + nx;
+        if (owner[q] !== victim || band.has(q) || seen.has(q)) continue;
+        seen.add(q);
+        queue.push(q);
+      }
+    }
+    if (!open) best = Math.max(best, queue.length);
+  }
+  return best;
 }
 
 /** Enemy spearheads running into `me`'s land within r of (cx, cy): points 3 tiles along their line from its start. */
@@ -664,13 +748,18 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
   if (level >= 1) {
     // Smarter armour: lines that cut their land (pockets), and the base of an enemy spearhead running into ours
     // (cut off, its head is spent and the division at its tip overrun).
+    // A cut scores the pocket it should close (a tenth of its tiles, at most 30) on top of ARMOR_CUT_BONUS.
     for (const b of enemySpearBases(state, me, fx, fy, r + 16)) {
-      for (const t of cutClicks(state, me, b.x, b.y, 8, 2)) {
-        if (!bonus.has(t)) picks.push(t);
-        bonus.set(t, ARMOR_CUT_BONUS);
+      for (const c of cutClicks(state, me, b.x, b.y, 8, 2)) {
+        if (!bonus.has(c.click)) picks.push(c.click);
+        bonus.set(c.click, ARMOR_CUT_BONUS + Math.min(30, c.pocket / 10));
       }
     }
-    for (const t of cutClicks(state, me, fx, fy, r, level >= 2 ? 10 : 6)) if (!picks.includes(t)) picks.push(t);
+    for (const c of cutClicks(state, me, fx, fy, r, level >= 2 ? 10 : 6)) {
+      if (bonus.has(c.click)) continue;
+      if (!picks.includes(c.click)) picks.push(c.click);
+      bonus.set(c.click, Math.min(30, c.pocket / 10));
+    }
   }
   let best: Strike | null = null;
   for (const t of picks) {
@@ -742,10 +831,11 @@ function leaveTip(state: GameState, u: Unit): boolean {
   if ((u.retryTick ?? 0) > state.tick) return false;
   if (divisionStrength(u) >= ARMOR_SUPPORT_READY) {
     let best: { t: number; score: number } | null = null;
-    for (const t of cutClicks(state, u.owner, u.x, u.y, 6, 4)) {
-      const pv = spearheadPreview(state, u.owner, u.id, t);
+    for (const c of cutClicks(state, u.owner, u.x, u.y, 6, 4)) {
+      const pv = spearheadPreview(state, u.owner, u.id, c.click);
       if (pv.reason || pv.expectedDepth < CUT_MIN_CROSS) continue;
-      if (!best || pv.expectedDepth > best.score) best = { t, score: pv.expectedDepth };
+      const score = pv.expectedDepth + c.pocket / 10;
+      if (!best || score > best.score) best = { t: c.click, score };
     }
     if (best && moveTankDivisions(state, u.owner, [u.id], best.t).ok) return true;
   }
