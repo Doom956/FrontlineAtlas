@@ -6,7 +6,7 @@
 // tile of a nation we attack that touches our land is where that attack is fought. A warship within
 // NAVY_SUPPORT_RANGE of such a tile supports it (naval2.navalSupportAt), a support strike centred within
 // AIR.supportRadius of one bombs it.
-import { AIR, ARSENAL, NAVY_BLOCKADE_RANGE, NAVY_REACH, NAVY_SUPPORT_RANGE, NAVY_XP_SINK, TANK_DIVISION_TROOPS, WARSHIP_RANGE } from '../src/sim/config';
+import { AIR, ARMOR_SUPPORT_READY, ARSENAL, NAVY_BLOCKADE_RANGE, NAVY_REACH, NAVY_SUPPORT_RANGE, NAVY_XP_SINK, TANK_DIVISION_TROOPS, WARSHIP_RANGE } from '../src/sim/config';
 import { buildingAt, buildingsOf, isDisabled, samRadius } from '../src/sim/buildings';
 import { areAllied } from '../src/sim/diplomacy';
 import { atPeace } from '../src/sim/rules';
@@ -153,6 +153,38 @@ export interface AttackStats {
     /** divisions overrun while their owner's land around them was under an enemy attack */
     overrunDefending: number;
   };
+  /** Tank divisions, second cut (at war = naval2.atWar with a nation: an attack either way now or in the last 30 s). */
+  armor: {
+    /** 10 s samples of divisions at war: spearheading, driving to a launch tile, driving (not to refit), driving to
+     *  refit, holding within FRONT_TILES of a foe's land touching ours, holding elsewhere worn (< ready) / ready */
+    war: number;
+    attack: number;
+    launch: number;
+    toFront: number;
+    retreat: number;
+    holdFront: number;
+    holdRefit: number;
+    holdAway: number;
+    /** spearheads started; with another own division spearheading, launching or started in the last 20 s within
+     *  COMPANY_TILES of it */
+    spearheads: number;
+    withCompany: number;
+    /** spearheads ended: tiles taken by them; ended with fewer than 5 tiles */
+    ended: number;
+    spearTiles: number;
+    shallow: number;
+    /** encirclements (events) by the counted owners: events, pockets, tiles */
+    pocketEvents: number;
+    pockets: number;
+    pocketTiles: number;
+    /** fell back under attack (events) */
+    fellBack: number;
+    /** spearheads by anyone into a counted owner's land: ended, tiles taken */
+    enemySpears: number;
+    enemySpearTiles: number;
+    /** why own spearheads ended */
+    ends: Record<string, number>;
+  };
   bombers: Record<MissionKey, BomberStats>;
   /** strategic / manual strike aims by building type at the aim tile */
   strikeTypes: Record<string, number>;
@@ -184,6 +216,7 @@ export function newAttackStats(): AttackStats {
     ships: { built: 0, sunk: 0, ownerGone: 0, sunkByShip: 0, sunkByMine: 0, sunkNoXp: 0, sunkCrippled: 0, alive: 0, atWar: 0, onFront: 0, attacking: 0, attackingOnFront: 0, attackingStation: 0, station: 0, stationOnFront: 0, outnumbered: 0, escorting: 0, mainCoastal: 0, mainSupported: 0 },
     transports: { invasions: 0, sunk: 0, troopsSunk: 0, repelled: 0, atSea: 0, escorted: 0 },
     tanks: { formed: 0, overrun: [0, 0, 0], spent: 0, ownerGone: 0, overrunAfterSpearhead: 0, holdSupport: 0, holdAtStation: 0, atWar: 0, spearhead: 0, holdFront: 0, holdFar: 0, driving: 0, worn: 0, overrunDefending: 0 },
+    armor: { war: 0, attack: 0, launch: 0, toFront: 0, retreat: 0, holdFront: 0, holdRefit: 0, holdAway: 0, spearheads: 0, withCompany: 0, ended: 0, spearTiles: 0, shallow: 0, pocketEvents: 0, pockets: 0, pocketTiles: 0, fellBack: 0, enemySpears: 0, enemySpearTiles: 0, ends: {} },
     bombers: { manual: b(), support: b(), strategic: b(), cover: b() },
     strikeTypes: {},
     mainAirOwn: 0,
@@ -220,7 +253,13 @@ interface DivSeen {
   share: number;
   /** last tick seen spearheading */
   spear: number;
+  /** state at the last tick */
+  st: number;
 }
+/** Division samples: "at the front" = within this many tiles of a foe's land touching ours. */
+const FRONT_TILES = 12;
+/** A spearhead has company when another own division is spearheading / launching / started within this many tiles. */
+const COMPANY_TILES = 30;
 interface ShipSeen {
   owner: number;
   xp: number;
@@ -254,6 +293,8 @@ export class AttackProbe {
   readonly stats = newAttackStats();
   private readonly ships = new Map<number, ShipSeen>();
   private readonly divs = new Map<number, DivSeen>();
+  /** spearhead starts of the last 20 s: owner, tick, x, y */
+  private starts: { owner: number; tick: number; x: number; y: number }[] = [];
   private readonly bombers = new Map<number, BomberSeen>();
   /** attack targets per attacker (nations only), rebuilt per use */
   private targets = new Map<number, Set<number>>();
@@ -358,11 +399,13 @@ export class AttackProbe {
       } else if (u.type === 'tankDivision') {
         let seen = this.divs.get(u.id);
         if (!seen) {
-          this.divs.set(u.id, (seen = { owner: u.owner, share: 1, spear: -1e9 }));
+          this.divs.set(u.id, (seen = { owner: u.owner, share: 1, spear: -1e9, st: u.state }));
           s.tanks.formed++;
         }
         seen.share = (u.troops.infantry + u.troops.armor + u.troops.artillery) / FULL_DIVISION;
         if (u.state === 3) seen.spear = state.tick;
+        if (u.state === 3 && seen.st !== 3) this.spearStart(u);
+        seen.st = u.state;
       } else if (u.type === 'bomber') {
         let seen = this.bombers.get(u.id);
         if (!seen) {
@@ -412,6 +455,7 @@ export class AttackProbe {
       else if (e.kind === 'unitLost' && /warship hit a mine/.test(e.message)) s.ships.sunkByMine++;
       else if ((e.kind as string) === 'spearheadEnded' && /the division is spent/.test(e.message)) s.tanks.spent++;
     }
+    this.armorEvents(events);
     for (const [id, seen] of this.ships) {
       if (id < 0 || alive.has(id)) continue;
       this.ships.delete(id);
@@ -441,6 +485,60 @@ export class AttackProbe {
     for (const id of this.bombers.keys()) if (!alive.has(id)) this.bombers.delete(id);
     this.naval();
     this.incoming();
+  }
+
+  /** A counted division started a spearhead this tick: company within COMPANY_TILES (spearheading, launching, or
+   *  started in the last 20 s). */
+  private spearStart(u: Unit): void {
+    const state = this.state;
+    const a = this.stats.armor;
+    a.spearheads++;
+    const r2 = COMPANY_TILES * COMPANY_TILES;
+    this.starts = this.starts.filter((q) => state.tick - q.tick <= 200);
+    let company = this.starts.some((q) => q.owner === u.owner && (q.x - u.x) ** 2 + (q.y - u.y) ** 2 <= r2);
+    if (!company) {
+      for (const o of state.units) {
+        if (o === u || o.hp <= 0 || o.type !== 'tankDivision' || o.owner !== u.owner || (o.state !== 3 && o.state !== 2)) continue;
+        if ((o.x - u.x) ** 2 + (o.y - u.y) ** 2 <= r2) {
+          company = true;
+          break;
+        }
+      }
+    }
+    if (company) a.withCompany++;
+    this.starts.push({ owner: u.owner, tick: state.tick, x: u.x, y: u.y });
+  }
+
+  /** Spearhead ends (tiles, why), encirclements and fall-backs from this tick's events. */
+  private armorEvents(events: readonly GameEvent[]): void {
+    const a = this.stats.armor;
+    for (const e of events) {
+      const o = e.players[0];
+      if ((e.kind as string) === 'spearheadEnded') {
+        const m = /'s spearhead (.*?): (\d+) tiles taken/.exec(e.message);
+        if (!m) continue;
+        const tiles = Number(m[2]);
+        if (this.counted(o)) {
+          a.ended++;
+          a.spearTiles += tiles;
+          if (tiles < 5) a.shallow++;
+          const why = m[1].replace(/^stalled in .*/, 'stalled').replace(/^stopped by .*/, 'stopped by a fort');
+          a.ends[why] = (a.ends[why] ?? 0) + 1;
+        }
+        const v = e.players[1];
+        if (v !== undefined && v !== o && this.counted(v)) {
+          a.enemySpears++;
+          a.enemySpearTiles += tiles;
+        }
+      } else if (e.kind === 'info' && this.counted(o)) {
+        const m = /tanks encircled (a pocket|(\d+) pockets) of .*: (\d+) tiles collapse/.exec(e.message);
+        if (m) {
+          a.pocketEvents++;
+          a.pockets += m[2] ? Number(m[2]) : 1;
+          a.pocketTiles += Number(m[3]);
+        } else if (/tank division fell back under attack/.test(e.message)) a.fellBack++;
+      }
+    }
   }
 
   /** Kills by ship type (xp jumps matched to ships gone this tick), landings with naval support. */
@@ -606,6 +704,38 @@ export class AttackProbe {
     }
   }
 
+  private foesTick = -1;
+  private foes = new Map<number, Set<number>>();
+  /** Nations `me` is at war with (naval2.atWar: an attack either way now or lately), cached per tick. */
+  private foesOf(me: number): Set<number> {
+    const state = this.state;
+    if (this.foesTick !== state.tick) {
+      this.foesTick = state.tick;
+      this.foes = new Map();
+    }
+    let f = this.foes.get(me);
+    if (f) return f;
+    f = new Set();
+    for (const p of state.players) if (p.id > 0 && p.id !== me && p.alive && !isTribe(p) && atWar(state, me, p.id)) f.add(p.id);
+    this.foes.set(me, f);
+    return f;
+  }
+  /** One 10 s sample of a counted division (second cut). */
+  private sampleArmor(u: Unit): void {
+    const foes = this.foesOf(u.owner);
+    if (!foes.size) return;
+    const a = this.stats.armor;
+    a.war++;
+    if (u.state === 3) a.attack++;
+    else if (u.state === 2) a.launch++;
+    else if (u.state === 1) {
+      if (u.mode === 'refit') a.retreat++;
+      else a.toFront++;
+    } else if (this.frontNear(u.owner, foes, u.x, u.y, FRONT_TILES)) a.holdFront++;
+    else if ((u.troops.infantry + u.troops.armor + u.troops.artillery) / FULL_DIVISION < ARMOR_SUPPORT_READY) a.holdRefit++;
+    else a.holdAway++;
+  }
+
   /** Every 10 s of game time. */
   sample(): void {
     const state = this.state;
@@ -661,7 +791,9 @@ export class AttackProbe {
       if (u.type === 'transport' && u.targetOwner > 0) {
         s.transports.atSea++;
         if (warships.some((e) => e.owner === u.owner && e.state === 4 && e.station === u.id)) s.transports.escorted++;
-      } else if (u.type === 'tankDivision' && atWar.has(u.owner)) {
+      } else if (u.type === 'tankDivision') {
+        this.sampleArmor(u);
+        if (!atWar.has(u.owner)) continue;
         s.tanks.atWar++;
         const share = (u.troops.infantry + u.troops.armor + u.troops.artillery) / FULL_DIVISION;
         if (share < 0.4) s.tanks.worn++;
