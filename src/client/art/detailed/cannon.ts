@@ -49,7 +49,7 @@ export function tongueAt(tt: number, m: MotionParams): number {
   return tt < 28 ? full : full * (1 - easeOut((tt - 28) / 67));
 }
 
-function speck(ctx: CanvasRenderingContext2D, x: number, y: number, g: Grid, n = 1): void {
+export function speck(ctx: CanvasRenderingContext2D, x: number, y: number, g: Grid, n = 1): void {
   const s = Math.max(1, Math.round(n)) * g.p;
   ctx.fillRect((Math.round((x * g.dpr) / g.p) * g.p) / g.dpr, (Math.round((y * g.dpr) / g.p) * g.p) / g.dpr, s / g.dpr, s / g.dpr);
 }
@@ -59,7 +59,7 @@ function speck(ctx: CanvasRenderingContext2D, x: number, y: number, g: Grid, n =
  * yellow, orange and deep orange toward a ragged tip; hotter along its middle than at its sides. Stepped finer than a
  * cell along its length, so a slanting jet has no gaps.
  */
-function jet(ctx: CanvasRenderingContext2D, x: number, y: number, c: number, s: number, len: number, w: number, g: Grid, sd: number, step: number, cool = 0): void {
+export function jet(ctx: CanvasRenderingContext2D, x: number, y: number, c: number, s: number, len: number, w: number, g: Grid, sd: number, step: number, cool = 0): void {
   const cell = g.k;
   const n = Math.max(1, Math.round(len / 0.7));
   const L = Math.max(1, len);

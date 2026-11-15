@@ -38,6 +38,7 @@ import { PillarOverlay } from './render/pillarOverlay';
 import { BattleFx } from './fx/battleFx';
 import { PixelFx } from './fx/pixelFx';
 import { FighterFx } from './fx/fighters';
+import { gameClockMs, TankFire } from './fx/tankFire';
 import { setSpriteState } from './render/pixelSprites';
 import { hueShift, prankView } from './fx/prankView';
 import { fogFor, type FogView } from './fog/fogView';
@@ -82,6 +83,8 @@ export interface RenderStats {
   frontSegments: number;
   /** ms this frame in the battle effects (fx/battleFx.ts: reading new events + drawing; part of msPrep + msOverlay) */
   msFx: number;
+  /** tank gun shots drawn this frame (fx/tankFire.ts) */
+  tankShots?: number;
 }
 
 export class Renderer {
@@ -123,6 +126,8 @@ export class Renderer {
   private fx = new BattleFx();
   /** pixel explosions, ship cannon fire, shells, flak and scorch craters (fx/pixelFx.ts) */
   private pfx = new PixelFx();
+  /** tank divisions in a fight: turrets on the enemy, gun fire, shells and bursts (fx/tankFire.ts) */
+  private tanks = new TankFire();
   /** fighters circling their airfields and carriers, flying patrols and interceptions (fx/fighters.ts) */
   private fighters = new FighterFx();
   private shookBy = { x: 0, y: 0 };
@@ -234,6 +239,7 @@ export class Renderer {
     this.deposits.fog = fog;
     this.fx.fog = fog;
     this.pfx.fog = fog;
+    this.tanks.fog = fog;
     this.fighters.fog = fog;
     // battle effects: read what is new, then shake the view a few px after a nearby nuke (undone after drawing)
     if (this.shookBy.x !== 0 || this.shookBy.y !== 0) this.unshake(camera);
@@ -339,6 +345,9 @@ export class Renderer {
       this.units.selected = this.selectedSet;
     }
     const frac = this.units.subTick(nowMs, ui.paused, ui.speed);
+    // tanks in a fight train their turrets and fire (the unit layer draws the turrets where they point)
+    this.tanks.update(state, camera, nowMs, gameClockMs(state.tick, frac), this.units);
+    this.units.gunnery = this.tanks;
     // scorch craters and what of a death lies on the ground or the sea (an oil slick, a burnt hull), under the units
     this.pfx.drawGround(ctx, camera, state.tick + frac, d, nowMs, this.colors);
     const b = ui.mode.kind === 'build' ? ui.mode.building : null;
@@ -363,6 +372,7 @@ export class Renderer {
     this.overlays.effects(ctx, state, camera, frac);
     // shells, turret flashes and explosions over the units
     this.pfx.drawAir(ctx, camera, nowMs, this.units, d, this.colors);
+    this.tanks.draw(ctx, camera, nowMs, this.units, d);
     const hs = ui.hoverTile >= 0 ? camera.tileToScreen((ui.hoverTile % this.w) + 0.5, ((ui.hoverTile / this.w) | 0) + 0.5) : null;
     const hoverOwner = ui.hoverTile >= 0 && ui.hoverTile < state.map.owner.length ? this.knownOwner(state, ui.hoverTile) : 0;
     this.names.draw(ctx, state, camera, me, { hoverOwner, targeting: ui.mode.kind !== 'none', hover: hs }, nowMs, d);
@@ -386,7 +396,8 @@ export class Renderer {
     if (this.shookBy.x !== 0 || this.shookBy.y !== 0) this.unshake(camera);
     this.mini.draw(state, camera, this.feed, me, nowMs, fog);
     this.stats.msMinimap = performance.now() - tMini;
-    this.stats.msFx = this.fx.ms + this.pfx.ms;
+    this.stats.msFx = this.fx.ms + this.pfx.ms + this.tanks.ms;
+    this.stats.tankShots = this.tanks.drawnShots;
     this.stats.gl = !!this.gl;
     this.stats.glLite = this.gl?.lite ?? false;
     this.stats.glSkipped = this.gl?.skipped ?? 0;

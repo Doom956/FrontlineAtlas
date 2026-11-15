@@ -2,6 +2,19 @@
 
 The big rounds of work, newest first. Each one was merged to `main` and deployed to the live game.
 
+## 2026-11-15 · Tanks shoot
+
+- Tank divisions in a fight now visibly fight: the turret turns toward the enemy, then the gun fires with a muzzle
+  flash, a jolt of recoil and a puff of gun smoke, and a tracer shell flies to the enemy side of the front and lands
+  in a small burst of dirt, a spark of steel struck, or a splash on water.
+- Attacking divisions (spearheads) fire often; divisions holding a front next to a nation at war fire less often.
+- Light tanks fire small and quick, heavy tanks big and slow, the siege tank's howitzer lobs its shell in a high
+  arc, and Armor Mastery's modern long gun gives a sharp, bright flash.
+- You hear each shot with its flash. You never see or hear enemy fire you cannot see under fog of war.
+- Far out the shots are a faint blink or nothing. Reduced motion fires fewer flashes with no recoil. Big battles stay
+  smooth: only a few new shots start each frame.
+- The art lab shows the tank fire next to the ship cannon fire.
+
 ## 2026-11-15 · Stealth strike
 
 - Air Mastery keeps its bigger air wings and adds a stealth bomber: a dark grey flying wing that SAM sites cannot see.

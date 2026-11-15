@@ -5,7 +5,8 @@
 // pixels per art pixel (grid.ts), so the pixels stay square and crisp. What moves is drawn from the clock and the
 // MotionParams numbers only:
 //   ships     bob on the swell (bob, bobMs), out of step with each other (seed)
-//   tanks     the turret traverses a little (turretSway, baked on its own at twice the headings), the hull shakes
+//   tanks     the turret traverses a little (turretSway, baked on its own at twice the headings) or, in a fight, is
+//             trained on the enemy (UnitDraw.aim) and jolts back when the gun fires (UnitDraw.recoil); the hull shakes
 //             while driving (jiggle), the track links turn, dust puffs from the track ends (treadDust)
 //   planes    bank into turns (turnRate times bankPerTurn, up to bankMax), propellers show as a blur disc with a
 //             flickering blade (propellers, propFps), jets glow at the nozzle, the ground shadow lies off by the
@@ -25,7 +26,7 @@ import { FORE, LIFT, project, rasterize, shadowOf, type Baked } from './bake';
 import { drawBlob } from './blobs';
 import { drawCruise } from './cruise';
 import { drawDamage, listOf } from './damage';
-import { facingIndex, facingsFor, gridOf, type Grid } from './grid';
+import { facingIndex, facingsFor, gridOf, snapCell, type Grid } from './grid';
 import { modelLength, modelSpan, MOD_MASK, unitLength, unitModel, type UnitModel } from './models';
 import { outlineOf, ringWidth } from './outline';
 import { FIRE } from './palette';
@@ -202,9 +203,12 @@ function drawAt(ctx: CanvasRenderingContext2D, u: UnitDraw, m: MotionParams, g: 
   let turret: AtlasEntry | null = null;
   let tFacing = 0;
   if (um.turret) {
+    // trained on the enemy in a fight (UnitDraw.aim, fx/tankFire.ts), else scanning a little either side of the nose
     const sway = still ? 0 : m.turretSway * Math.sin(t / 1900 + u.seed * 1.37) * (0.6 + 0.4 * Math.sin(t / 830 + u.seed));
-    tFacing = facingIndex(u.angle + sway, n * 2);
+    tFacing = facingIndex(u.aim ?? u.angle + sway, n * 2);
     turret = entry(um, key, mods, tFacing, n * 2, 3, 0, u.owner, g.res, TURRET);
+    // a heading the turret was never trained on yet and this frame's bakes are spent: along the hull for a frame
+    if (!turret && u.aim !== undefined) turret = entry(um, key, mods, facingIndex(u.angle, n * 2), n * 2, 3, 0, u.owner, g.res, TURRET);
     if (!turret) return false;
   }
   const shadow = isAirKey(key) && u.shadow ? entry(um, key, mods, facing, n, 3, 0, u.owner, g.res, SHADOW) : null;
@@ -231,12 +235,18 @@ function drawAt(ctx: CanvasRenderingContext2D, u: UnitDraw, m: MotionParams, g: 
     const alt = um.alt + (still ? 0 : m.altitudeBob * 1.6 * Math.sin(t / 1300 + u.seed * 0.9));
     blit(ctx, shadow, u.x + alt * 0.62 * u.scale, u.y + alt * 0.86 * u.scale, k, dpr);
   }
-  blit(ctx, body, x, y, k, dpr);
+  // the gun's recoil (UnitDraw.recoil): the turret jolts back along the line of fire, the hull rocks a little with it,
+  // in whole art pixels
+  const kick = tank && !still && u.recoil && u.recoil > 0 && m.recoil > 0 ? u.recoil * (0.6 + m.recoil) * u.scale : 0;
+  const ka = u.aim ?? u.angle;
+  const hx = kick ? snapCell(-Math.cos(ka) * kick * 0.45, g) : 0;
+  const hy = kick ? snapCell(-Math.sin(ka) * kick * 0.45 * FORE, g) : 0;
+  blit(ctx, body, x + hx, y + hy, k, dpr);
   if (turret && um.turret) {
     // the turret sits on whole art pixels from the hull's own origin, so it never shifts against the hull as it drives
     const [px, py] = project(um.turret.u, um.turret.v, 0, th, 0, u.scale, false);
-    const ox = (Math.round((px * dpr) / g.p) * g.p) / dpr;
-    const oy = (Math.round((py * dpr) / g.p) * g.p) / dpr;
+    const ox = (Math.round((px * dpr) / g.p) * g.p) / dpr + (kick ? snapCell(-Math.cos(ka) * kick, g) : 0);
+    const oy = (Math.round((py * dpr) / g.p) * g.p) / dpr + (kick ? snapCell(-Math.sin(ka) * kick * FORE, g) : 0);
     blit(ctx, turret, Math.round(x * dpr) / dpr + ox, Math.round(y * dpr) / dpr + oy, k, dpr);
   }
   if (um.props.length) drawProps(ctx, u, um, m, g, facing, n, bank, th, roll, x, y);
@@ -368,7 +378,43 @@ export const detailedUnits: UnitArt = {
     const [dx, dy] = project(gun[0], gun[1], gun[2], th, 0, scale, false);
     return { x: x + dx, y: y + dy };
   },
+
+  muzzlePoint(key, mods, x, y, angle, aim, scale, dpr) {
+    const um = unitModel(key, mods & MOD_MASK[key]);
+    const res = gridOf(scale, dpr).res;
+    const n = facingsFor(res, 'other');
+    const th = facingIndex(angle, n) * ((Math.PI * 2) / n);
+    if (!um.turret) {
+      const [dx, dy] = project(modelLength(um) / 2, 0, 1, th, 0, scale, false);
+      return { x: x + dx, y: y + dy };
+    }
+    // the turret's pivot on the hull, then the gun's tip on the turret as drawn (its own facings, twice the hull's)
+    const ta = facingIndex(aim, n * 2) * (Math.PI / n);
+    const [gu, gz] = gunTip(um);
+    const [px, py] = project(um.turret.u, um.turret.v, 0, th, 0, scale, false);
+    const [dx, dy] = project(gu, 0, gz, ta, 0, scale, false);
+    return { x: x + px + dx, y: y + py + dy };
+  },
 };
+
+const gunTips = new WeakMap<UnitModel, readonly [number, number]>();
+/** A tank's gun tip on its turret (model u forward of the pivot, and its height): the farthest forward barrel part. */
+function gunTip(um: UnitModel): readonly [number, number] {
+  let t = gunTips.get(um);
+  if (t) return t;
+  let bu = 0;
+  let bz = 2;
+  for (const p of um.turret?.model.parts ?? []) {
+    if (p.m !== 'gun' || (p.k !== 'seg' && p.k !== 'box')) continue;
+    const u = Math.max(p.p[0], p.p[2]);
+    if (u > bu) {
+      bu = u;
+      bz = p.z + p.h / 2;
+    }
+  }
+  gunTips.set(um, (t = [bu, bz]));
+  return t;
+}
 
 /** How far a ship's portrait is turned toward the viewer (radians), so its deck shows. */
 const SHIP_PORTRAIT_TURN = 0.35;

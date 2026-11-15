@@ -152,6 +152,8 @@ export class UnitLayer {
   private contrailList: TrailUnit[] = [];
   /** more contrails to lay with the planes' (fx/fighters.ts: the fighters over airfields and carriers) */
   extraContrails: ((into: TrailUnit[], motion: MotionParams) => void) | null = null;
+  /** tank divisions in a fight: where their turrets point and their guns' recoil (fx/tankFire.ts) */
+  gunnery: { aimOf(id: number): number | null; recoilOf(id: number, nowMs: number): number } | null = null;
 
   reset(w: number): void {
     this.tracks.clear();
@@ -479,6 +481,10 @@ export class UnitLayer {
             ss.moving = !!e.moving;
             ss.seed = e.u.id;
             ss.damage = unitDamage(e.u);
+            const gun = e.type === 'tankDivision' ? this.gunnery : null;
+            const aim = gun ? gun.aimOf(e.u.id) : null;
+            ss.aim = aim ?? undefined;
+            ss.recoil = gun && aim !== null ? gun.recoilOf(e.u.id, nowMs) : 0;
             const mods = unitSpriteMods(state, e.u);
             if (fadeFrom) {
               // the pixel size just stepped: the old size fades out under the new one
