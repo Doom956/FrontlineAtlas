@@ -19,6 +19,7 @@ import { isTribe } from '../sim/types';
 import { BattleEars, type BattleCue } from './sound/battle';
 import { SampleBank } from './sound/bank';
 import { audioFormats, SFX, type SampleSet } from './sound/library';
+import { LOUDNESS } from './sound/loudness.gen';
 import { initialMood, MusicPlayer, stepMood, type MoodState, type MusicMood } from './sound/music';
 import { gunfireLevel, MIN_AUDIBLE, pickVariant, playVariation, screenGain, spatialGain, zoomGain, type SpatialTier } from './sound/spatial';
 
@@ -83,24 +84,24 @@ export const SOUND_INFO: Readonly<Record<SoundId, SoundInfo>> = {
   uiHover: { dur: 0.04, gapMs: 70, priority: 0, cap: 1 },
   uiError: { dur: 0.2, gapMs: 250, priority: 1, cap: 1 },
   buildPlaced: { dur: 0.3, gapMs: 80, priority: 1 },
-  buildingDone: { dur: 1.0, gapMs: 350, priority: 1 },
+  buildingDone: { dur: 1.0, gapMs: 350, priority: 1, cap: 2 },
   buildingLost: { dur: 0.4, gapMs: 600, priority: 1 },
-  researchDone: { dur: 1.2, gapMs: 800, priority: 2, cap: 1 },
+  researchDone: { dur: 2.0, gapMs: 1500, priority: 2, cap: 1 },
   attackLaunched: { dur: 0.65, gapMs: 1200, priority: 1, cap: 1 },
   capture: { dur: 0.03, gapMs: 70, priority: 0 },
-  underAttack: { dur: 0.8, gapMs: 4000, priority: 3, cap: 1 },
+  underAttack: { dur: 2.0, gapMs: 4000, priority: 3, cap: 1 },
   allianceRequest: { dur: 1.7, gapMs: 1500, priority: 2, cap: 1 },
-  allianceFormed: { dur: 1.9, gapMs: 1500, priority: 2, cap: 1 },
+  allianceFormed: { dur: 2.5, gapMs: 1500, priority: 2, cap: 1 },
   allianceBroken: { dur: 1.5, gapMs: 1500, priority: 2, cap: 1 },
   allianceExpired: { dur: 1.4, gapMs: 1500, priority: 1, cap: 1 },
   capitalLost: { dur: 2.0, gapMs: 3000, priority: 3, cap: 1 },
   capitalTaken: { dur: 1.2, gapMs: 3000, priority: 2, cap: 1 },
   cityTaken: { dur: 1.0, gapMs: 700, priority: 2, cap: 1 },
   cityLost: { dur: 1.2, gapMs: 700, priority: 2, cap: 1 },
-  shipSunk: { dur: 1.3, gapMs: 600, priority: 1, spatial: 'big' },
+  shipSunk: { dur: 2.5, gapMs: 600, priority: 1, cap: 2, spatial: 'big' },
   explosion: { dur: 1.0, gapMs: 110, priority: 1, cap: 4, spatial: 'small' },
   explosionBig: { dur: 2.0, gapMs: 250, priority: 2, cap: 3, spatial: 'big' },
-  atomBomb: { dur: 5.2, gapMs: 1500, priority: 3, spatial: 'big' },
+  atomBomb: { dur: 5.5, gapMs: 1500, priority: 3, cap: 2, spatial: 'big' },
   missileLaunch: { dur: 1.5, gapMs: 500, priority: 1, spatial: 'medium' },
   shipHorn: { dur: 1.7, gapMs: 4000, priority: 2, cap: 1 },
   tradeCoin: { dur: 0.42, gapMs: 500, priority: 0, cap: 1 },
@@ -109,7 +110,7 @@ export const SOUND_INFO: Readonly<Record<SoundId, SoundInfo>> = {
   victory: { dur: 3.0, gapMs: 5000, priority: 3, cap: 1 },
   defeat: { dur: 3.0, gapMs: 5000, priority: 3, cap: 1 },
   countdown: { dur: 0.1, gapMs: 400, priority: 2, cap: 1 },
-  countdownGo: { dur: 0.7, gapMs: 1000, priority: 2, cap: 1 },
+  countdownGo: { dur: 1.5, gapMs: 1500, priority: 2, cap: 1 },
   shot: { dur: 0.3, gapMs: 120, priority: 0, cap: 3, spatial: 'small' },
   bombard: { dur: 1.0, gapMs: 300, priority: 1, spatial: 'medium' },
   tankShot: { dur: 0.4, gapMs: 90, priority: 0, cap: 3, spatial: 'small' },
@@ -749,6 +750,17 @@ const DUCK: Partial<Record<SoundId, readonly [number, number]>> = {
   shipHorn: [0.7, 1.5],
 };
 
+/**
+ * Evens out a variant take that sits quieter or louder than its sound's first take (peak-limited recordings land below
+ * the -16 LUFS target): at most 4 dB either way, so the mix in sound/library.ts holds for every take.
+ */
+export function takeTrim(set: SampleSet, file: string): number {
+  const ref = LOUDNESS[set.files[0]];
+  const l = LOUDNESS[file];
+  if (ref === undefined || l === undefined) return 1;
+  return Math.pow(10, clamp(ref - l, -4, 4) / 20);
+}
+
 export class AudioManager {
   readonly limiter = new SoundLimiter();
   private settings: AudioSettings = { ...DEFAULT_AUDIO_SETTINGS };
@@ -1309,7 +1321,7 @@ export class AudioManager {
       src.buffer = buf;
       src.playbackRate.value = v.rate;
       const g = c.createGain();
-      g.gain.value = vol * set.gain * v.gain;
+      g.gain.value = vol * set.gain * v.gain * takeTrim(set, set.files[vi]);
       src.connect(g);
       let out: AudioNode = g;
       const p = Number.isFinite(pan) ? clamp(pan, -1, 1) : 0;

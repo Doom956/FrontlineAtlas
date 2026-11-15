@@ -3,7 +3,8 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { AUDIO_STORAGE_KEY, AudioManager, DEFAULT_AUDIO_SETTINGS, LEGACY_AUDIO_STORAGE_KEY, SOUND_INFO, SoundLimiter, migrateAudioSettings } from '../src/client/audio';
+import { AUDIO_STORAGE_KEY, AudioManager, DEFAULT_AUDIO_SETTINGS, LEGACY_AUDIO_STORAGE_KEY, SOUND_INFO, SoundLimiter, migrateAudioSettings, takeTrim } from '../src/client/audio';
+import { LOUDNESS } from '../src/client/sound/loudness.gen';
 import type { SoundId } from '../src/client/audio';
 import { audioFormats, audioUrl, MUSIC, musicFileIds, sfxFileIds, SFX } from '../src/client/sound/library';
 import { BATTLE_OFF, BATTLE_ON, CALM_MS, ESCALATE_MS, initialMood, MIN_DWELL_MS, nextTrack, stepMood, wantedMood, type MusicInput } from '../src/client/sound/music';
@@ -57,7 +58,7 @@ describe('variants', () => {
       if (!set) continue;
       const p = set.pitch ?? 0.05;
       if (set.sting) expect(p, id).toBe(0);
-      else if (['countdown', 'capitalLost', 'cityLost', 'capitalTaken', 'cityTaken', 'allianceRequest', 'allianceBroken', 'allianceExpired'].includes(id)) expect(p, id).toBeGreaterThanOrEqual(0.02);
+      else if (['countdown', 'capitalLost', 'cityLost', 'capitalTaken', 'cityTaken', 'allianceRequest', 'allianceBroken', 'allianceExpired', 'allianceFormed', 'researchDone', 'buildingDone', 'underAttack'].includes(id)) expect(p, id).toBeGreaterThanOrEqual(0.02);
       else {
         expect(p, id).toBeGreaterThanOrEqual(0.04);
         expect(p, id).toBeLessThanOrEqual(0.07);
@@ -290,6 +291,46 @@ describe('files', () => {
       throw new Error('x');
     })).toEqual(['m4a', 'ogg']);
     expect(audioUrl('music', 'a', 'ogg')).toBe('audio/music/a.ogg'); // relative: works under the Pages subpath
+  });
+
+  it('round 2: the redone sounds have their files, every variant take is in its list', () => {
+    for (const id of ['atomBomb', 'shipSunk', 'buildingDone', 'researchDone', 'allianceFormed', 'underAttack', 'countdownGo'] as const) expect(SFX[id]?.files.length, id).toBeGreaterThan(0);
+    expect(SFX.atomBomb?.files).not.toContain('sfx-atom-fs741175');
+    const variants = sfxFileIds().filter((f) => /-v\d+$/.test(f));
+    expect(variants.length).toBe(58);
+    // each take sits in the list of the sound it is a take of (its id starts with the first take's)
+    for (const v of variants) {
+      const base = v.replace(/-v\d+$/, '');
+      const sets = Object.values(SFX).filter((s) => s && s.files.includes(v));
+      expect(sets.length, v).toBeGreaterThan(0);
+      for (const s of sets) expect(s!.files[0], v).toBe(base);
+    }
+  });
+
+  it('the mix: the atom bomb is the loudest, building done soft, the cannon for "go" below the bomb', () => {
+    // effective level of a sound's first take: its gain on the bus and the file's loudness
+    const level = (id: keyof typeof SFX) => {
+      const s = SFX[id]!;
+      return 20 * Math.log10(s.gain) + (LOUDNESS[s.files[0]] ?? -16);
+    };
+    const atom = level('atomBomb');
+    for (const id of Object.keys(SFX) as (keyof typeof SFX)[]) if (id !== 'atomBomb') expect(level(id), id).toBeLessThan(atom);
+    expect(level('countdownGo')).toBeLessThan(atom - 6);
+    expect(level('buildingDone')).toBeLessThan(level('capitalLost'));
+    expect(level('underAttack')).toBeLessThan(atom - 4);
+  });
+
+  it('evens out quieter takes, by 4 dB at most', () => {
+    for (const s of Object.values(SFX)) {
+      if (!s) continue;
+      expect(takeTrim(s, s.files[0])).toBeCloseTo(1);
+      for (const f of s.files) {
+        const t = takeTrim(s, f);
+        expect(t).toBeGreaterThanOrEqual(Math.pow(10, -4 / 20) - 1e-9);
+        expect(t).toBeLessThanOrEqual(Math.pow(10, 4 / 20) + 1e-9);
+      }
+    }
+    expect(takeTrim({ files: ['nope'], gain: 1 }, 'nope')).toBe(1);
   });
 
   it('credits list the CC BY lines', () => {

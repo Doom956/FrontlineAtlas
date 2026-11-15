@@ -11,7 +11,8 @@ in `src/client/sound/`:
 | `sound/spatial.ts` | pure: zoom and on-screen gating, the gunfire bed level, variant picks, per-play variation |
 | `sound/battle.ts` | read-only: turns the fighting in the state (effects, deaths, tank fire, launches) into cues at map places |
 | `sound/music.ts` | pure mood machine, and the player that streams and crossfades the tracks |
-| `sound/credits.gen.ts`, `sound/creditsView.ts` | the credits (generated) and their DOM |
+| `sound/credits.gen.ts`, `sound/creditsView.ts` | the credits (generated, one per recording a layered file mixes) and their DOM |
+| `sound/loudness.gen.ts` | each file's measured loudness (generated): quieter variant takes are evened out, by 4 dB at most |
 | `scripts/audio/import.ts` | copies the picked files from the sound-candidates folder, makes the AAC copies, writes the credits |
 
 A sound without a file in `library.ts`, or whose file is not loaded yet (or failed), plays its synthesized version
@@ -30,8 +31,12 @@ npx vite-node scripts/audio/import.ts /tmp/cand/sound-candidates
 ```
 
 It copies the files to `public/audio/sfx/<id>.ogg` and `public/audio/music/<id>.ogg` (ids as in the candidates'
-`manifest.json`), re-encodes music above 88 kbps to 80 kbps Opus, makes an AAC `.m4a` copy of each, removes files no
-longer used and rebuilds `CREDITS.md` and `sound/credits.gen.ts`.
+`manifest.json`; variant takes are `<id>-v2`, `-v3` and so on, `variantOf` in the manifest). An effect is replaced when
+its source changed; a music track only when the new one is no bigger. Music above 88 kbps is re-encoded to 80 kbps
+Opus. It remakes the AAC `.m4a` copy of each changed file, removes files no longer used and rebuilds `CREDITS.md`,
+`sound/credits.gen.ts` and `sound/loudness.gen.ts`. Round 2 (2026-11-15): every picked effect has 2 to 4 more takes
+(58 in all), the six sounds that were still synthesized and the atom bomb got new files, and every effect has short
+fades at both ends.
 
 ## Formats
 
@@ -46,7 +51,8 @@ there the effects stay synthesized and there is no music.
 ## Loading
 
 - Nothing loads before the first click or key (the AudioContext needs a gesture anyway). Then the effects load in
-  the background, three at a time, the most used first (about 0.6 MB in Ogg). The game never waits for them.
+  the background, four at a time: the first take of every sound (most used first), then the other takes (about
+  1.9 MB in Ogg for all 86 files). The game never waits for them; a take not loaded yet is skipped for one that is.
 - Music streams with an `<audio>` element through a `MediaElementAudioSourceNode` (no decoded minutes in memory).
   A track loads only when it is about to play.
 
@@ -55,7 +61,7 @@ there the effects stay synthesized and there is no music.
 - a random variant take, never the same one twice in a row when there are several;
 - a playback rate within the sound's `pitch` spread (4 to 7 % for effects, less for musical alerts, none for the
   stings), moved a clear step from the last play, so even one take never repeats exactly;
-- a gain within +-2 dB;
+- a gain within +-2 dB, with quieter or louder takes evened out against the first take (4 dB at most);
 - the gunfire bed starts at a random place in its loop.
 
 ## Not everything at once

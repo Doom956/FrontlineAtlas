@@ -6,13 +6,14 @@
 import { audioUrl, SFX, type AudioFormat, type SampleKey } from './library';
 
 /** Files loading at once. */
-const PARALLEL = 3;
+const PARALLEL = 4;
 
 /** Load order: what plays most and first (UI, combat), then notices, then the big and long ones. */
 const ORDER: readonly SampleKey[] = [
   'uiClick', 'uiError', 'buildPlaced', 'shot', 'explosion', 'tankShot', 'bombard', 'countdown', 'tankDestroyed', 'unitLost',
   'missileLaunch', 'planeCrash', 'sonarPing', 'explosionBig', 'cityTaken', 'cityLost', 'capitalLost', 'capitalTaken',
-  'allianceRequest', 'allianceBroken', 'allianceExpired', 'tradeCoin', 'shipHorn', 'frontGunfire', 'atomBomb', 'victory', 'defeat',
+  'allianceRequest', 'allianceBroken', 'allianceExpired', 'tradeCoin', 'shipHorn', 'underAttack', 'buildingDone', 'researchDone',
+  'allianceFormed', 'countdownGo', 'shipSunk', 'frontGunfire', 'atomBomb', 'victory', 'defeat',
 ];
 
 export type Fetcher = (url: string) => Promise<ArrayBuffer>;
@@ -72,10 +73,14 @@ export class SampleBank {
     this.started = true;
     const seen = new Set<string>();
     const keys = [...ORDER, ...(Object.keys(SFX) as SampleKey[])];
-    for (const k of keys) for (const f of SFX[k]?.files ?? []) if (!seen.has(f)) {
+    const add = (f: string | undefined) => {
+      if (f === undefined || seen.has(f)) return;
       seen.add(f);
       this.queue.push(f);
-    }
+    };
+    // every sound's first take first (each sound has its recording soon), then the other takes
+    for (const k of keys) add(SFX[k]?.files[0]);
+    for (const k of keys) for (const f of SFX[k]?.files ?? []) add(f);
     this.stats.total = this.queue.length;
     for (let i = 0; i < PARALLEL; i++) void this.pump();
   }
