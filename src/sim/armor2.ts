@@ -826,6 +826,33 @@ function lineCuts(state: GameState, me: number, victim: number, pv: SpearheadPre
   return false;
 }
 
+/** True when own land 8-connected to `t` (over land) is a piece of under CUT_OFF_TILES tiles. Pure read. */
+function smallPiece(state: GameState, owner: number, t: number): boolean {
+  const map = state.map;
+  const { width: w, height: h } = map;
+  const own = (q: number): boolean => map.owner[q] === owner && !isWater(map.terrain[q]);
+  if (!own(t)) return false;
+  const seen = new Set<number>([t]);
+  const queue = [t];
+  for (let head = 0; head < queue.length; head++) {
+    if (queue.length >= CUT_OFF_TILES) return false;
+    const cur = queue[head];
+    const cx = cur % w;
+    const cy = (cur / w) | 0;
+    for (let k = 0; k < 8; k++) {
+      const x = cx + DX8[k];
+      const y = cy + DY8[k];
+      if (x < 0 || y < 0 || x >= w || y >= h) continue;
+      const q = y * w + x;
+      if (seen.has(q) || !own(q)) continue;
+      if (k >= 4 && !own(cy * w + x) && !own(y * w + cx)) continue;
+      seen.add(q);
+      queue.push(q);
+    }
+  }
+  return true;
+}
+
 /**
  * Smarter armour, a division cut off on a small piece of our land (no way back over it): it breaks out along the
  * shortest line across the enemy's land back onto ours that it has the strength for, at any strength (overrun there,
@@ -883,7 +910,8 @@ function leaveTip(state: GameState, u: Unit): boolean {
   const here = unitTile(state, u);
   if (interiorAt(state, u.owner, here)) return false;
   const fresh = u.ended !== undefined && state.tick - u.ended <= ENDED_SECONDS * TICKS_PER_SECOND;
-  if (state.players[u.owner]?.isHuman && !fresh) return false;
+  // A player's division only right after its spearhead (else it stays where it is), unless it is cut off.
+  if (state.players[u.owner]?.isHuman && !fresh) return smallPiece(state, u.owner, here) && breakOut(state, u);
   if (fresh && divisionStrength(u) >= ARMOR_SUPPORT_READY) {
     let best: { t: number; score: number } | null = null;
     for (const c of cutClicks(state, u.owner, u.x, u.y, 6, 4)) {
@@ -902,9 +930,7 @@ function leaveTip(state: GameState, u: Unit): boolean {
   const prev = landFlood(state, u.owner, here);
   let dest = prev[hold] >= 0 ? hold : -1;
   if (dest < 0) {
-    let reach = 0;
-    for (let k = 0; k < prev.length && reach < CUT_OFF_TILES; k++) if (prev[k] >= 0) reach++;
-    if (reach < CUT_OFF_TILES && breakOut(state, u)) return true;
+    if (smallPiece(state, u.owner, here) && breakOut(state, u)) return true;
     const alt = holdTileNear(state, u.owner, u.station ?? here, (t) => prev[t] >= 0, 3, ARMOR_HOLD_FAR);
     if (alt >= 0 && alt !== here && interiorAt(state, u.owner, alt)) dest = alt;
   }

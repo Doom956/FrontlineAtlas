@@ -164,21 +164,23 @@ describe("off a spearhead's thin tip", () => {
 });
 
 describe('cut off', () => {
-  it('a worn AI division cut off on a small piece of our land breaks out back to our line', () => {
-    const s = game('normal');
-    // A 3x3 island of ours inside player 2's land, 6 tiles past the border.
-    for (let x = 35; x <= 37; x++) for (let y = 14; y <= 16; y++) setOwner(s, at(s, x, y), 1);
-    const div = spawnTankDivision(s, 1, at(s, 36, 15));
-    for (const k of ['armor', 'infantry', 'artillery'] as const) div.troops[k] *= 0.3;
-    asAI(s, () => applyAction(s, 1, { type: 'setDivisionMode', unitIds: [div.id], mode: 'support', front: at(s, 30, 15) }));
-    wave(s);
-    div.ended = s.tick;
-    let out = false;
-    for (let k = 0; k < 30 && !out; k++) {
-      tick(s);
-      out = div.state === 2 || div.state === 3;
+  it("a worn division cut off on a small piece of our land breaks out back to our line (an AI's, a player's on support)", () => {
+    for (const human of [false, true]) {
+      const s = game('normal', human);
+      // A 3x3 island of ours inside player 2's land, 6 tiles past the border.
+      for (let x = 35; x <= 37; x++) for (let y = 14; y <= 16; y++) setOwner(s, at(s, x, y), 1);
+      const div = spawnTankDivision(s, 1, at(s, 36, 15));
+      for (const k of ['armor', 'infantry', 'artillery'] as const) div.troops[k] *= 0.3;
+      asAI(s, () => applyAction(s, 1, { type: 'setDivisionMode', unitIds: [div.id], mode: 'support', front: at(s, 30, 15) }));
+      wave(s);
+      if (!human) div.ended = s.tick;
+      let out = false;
+      for (let k = 0; k < 30 && !out; k++) {
+        tick(s);
+        out = div.state === 2 || div.state === 3;
+      }
+      expect(out).toBe(true);
     }
-    expect(out).toBe(true);
   });
 });
 
