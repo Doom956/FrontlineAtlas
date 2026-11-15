@@ -40,6 +40,7 @@ import {
   ARMOR_VET_MIN_TILES,
   ARMOR_VET_SPEED,
   ARMOR_VET_XP,
+  TANK_DISBAND_SHARE,
   TANK_DIVISION_TROOPS,
   TANK_FALLBACK_RADIUS,
   TANK_MOBILITY,
@@ -55,6 +56,7 @@ import { atPeace } from './rules';
 import { addEvent } from './state';
 import { hasTech } from './tech';
 import { moveTankDivisions, ownLandPath, spearheadPreview } from './tanks';
+import type { SpearheadPreview } from './tanks';
 import { hasAmphibious, narrowWater } from './specials';
 import { armorPocketKillMul, armorPocketMul, armorRefitMul } from './variants';
 import { followedNation, liveFoes, mainFront, unitFollows } from './warTarget';
@@ -563,6 +565,8 @@ const ARMOR_REFIT_TRIP = 48;
 const ARMOR_SMART_FULL = 0.85;
 /** Smarter armour: a straight strike (no cut) needs this share of a full division (a cut: ARMOR_SUPPORT_READY). */
 const ARMOR_SMART_READY = 0.7;
+/** A division whose own land around it (over land) is under this many tiles is cut off (it breaks out). */
+const CUT_OFF_TILES = 60;
 /** Smarter armour looks this far (tiles) from its front for solid ground to hold when there is none near it. */
 const ARMOR_HOLD_FAR = 40;
 /** Smarter armour under a push holds where own land runs this many tiles out all round. */
@@ -579,10 +583,10 @@ const ENDED_SECONDS = 60;
  * land along the line, so the line keeps that direction), biggest pockets first, then longest crossings, at least 4
  * tiles apart, at most `max`. Pure read.
  */
-export function cutClicks(state: GameState, me: number, cx: number, cy: number, r: number, max: number): { click: number; pocket: number }[] {
+export function cutClicks(state: GameState, me: number, cx: number, cy: number, r: number, max: number, shortest = false): { click: number; pocket: number }[] {
   const map = state.map;
   const { width: w, height: h, owner, terrain } = map;
-  const found: { click: number; cross: number; pocket: number }[] = [];
+  const found: { click: number; cross: number; pocket: number; k: number }[] = [];
   const x0 = Math.max(0, Math.round(cx) - r);
   const x1 = Math.min(w - 1, Math.round(cx) + r);
   const y0 = Math.max(0, Math.round(cy) - r);
@@ -615,20 +619,23 @@ export function cutClicks(state: GameState, me: number, cx: number, cy: number, 
         }
         const cross = j - 1;
         if (!cut || cross < CUT_MIN_CROSS) continue;
-        found.push({ click: (y + 2 * dy) * w + x + 2 * dx, cross, pocket: -1 });
+        found.push({ click: (y + 2 * dy) * w + x + 2 * dx, cross, pocket: -1, k });
       }
     }
   }
-  // Longest crossings first for the pocket estimates (bounded work), then biggest pockets first.
-  found.sort((a, b) => b.cross - a.cross || a.click - b.click);
+  // Longest crossings first for the pocket estimates (bounded work), then biggest pockets first; `shortest`: the
+  // shortest crossings first (a way out), no pocket estimates. Lines in the same direction 4+ tiles apart, any two 2+.
+  found.sort((a, b) => (shortest ? a.cross - b.cross : b.cross - a.cross) || a.click - b.click);
   const spaced: typeof found = [];
   for (const f of found) {
-    if (spaced.length >= max * 3) break;
+    if (spaced.length >= (shortest ? max : max * 3)) break;
     const fx = f.click % w;
     const fy = (f.click / w) | 0;
-    if (spaced.some((c) => Math.abs((c.click % w) - fx) < 4 && Math.abs(((c.click / w) | 0) - fy) < 4)) continue;
+    const near = (c: (typeof found)[number]): number => Math.max(Math.abs((c.click % w) - fx), Math.abs(((c.click / w) | 0) - fy));
+    if (spaced.some((c) => near(c) < 2 || (c.k === f.k && near(c) < 4))) continue;
     spaced.push(f);
   }
+  if (shortest) return spaced.map((f) => ({ click: f.click, pocket: 0 }));
   for (const f of spaced) f.pocket = pocketBeside(state, me, f.click, owner[f.click]);
   spaced.sort((a, b) => b.pocket - a.pocket || b.cross - a.cross || a.click - b.click);
   return spaced.slice(0, max).map((f) => ({ click: f.click, pocket: f.pocket }));
@@ -787,19 +794,7 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
   for (const t of picks) {
     const pv = spearheadPreview(state, me, u.id, t);
     if (pv.reason) continue;
-    const victim = owner[t];
-    let enemy = 0;
-    let cut = false;
-    for (const q of pv.path) {
-      const o = owner[q];
-      if (o === victim && !isWater(map.terrain[q])) {
-        enemy++;
-        continue;
-      }
-      if (enemy === 0) continue;
-      if (o === me || isWater(map.terrain[q]) || (o > 0 && areAllied(state, me, o))) cut = pv.expectedDepth >= enemy;
-      break;
-    }
+    const cut = lineCuts(state, me, owner[t], pv);
     let score = pv.expectedDepth + (cut ? ARMOR_CUT_BONUS + (bonus.get(t) ?? 0) : 0);
     // Smarter armour: a line that bleeds the division white far from a cut leaves it worn on a thin tip, where it is
     // overrun; Hard up weighs the strength left at the end.
@@ -809,6 +804,42 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
     if (!best || score > best.score || (score === best.score && t < best.tile)) best = { tile: t, launch: pv.launch, score, cut };
   }
   return best;
+}
+
+/**
+ * True when the previewed line gets right across `victim`'s land (it comes out on own / allied land or water with the
+ * expected depth to get there): a cut that encircles, or a way out. `toOwn`: only own land counts as the way out.
+ */
+function lineCuts(state: GameState, me: number, victim: number, pv: SpearheadPreview, toOwn = false): boolean {
+  const map = state.map;
+  let enemy = 0;
+  for (const q of pv.path) {
+    const o = map.owner[q];
+    if (o === victim && !isWater(map.terrain[q])) {
+      enemy++;
+      continue;
+    }
+    if (enemy === 0) continue;
+    if (o === me || (!toOwn && (isWater(map.terrain[q]) || (o > 0 && areAllied(state, me, o))))) return pv.expectedDepth >= enemy;
+    return false;
+  }
+  return false;
+}
+
+/**
+ * Smarter armour, a division cut off on a small piece of our land (no way back over it): it breaks out along the
+ * shortest line across the enemy's land back onto ours that it has the strength for, at any strength (overrun there,
+ * it would be lost). True when it went.
+ */
+function breakOut(state: GameState, u: Unit): boolean {
+  if (divisionStrength(u) < TANK_DISBAND_SHARE * 1.5) return false;
+  let best: { t: number; d: number } | null = null;
+  for (const c of cutClicks(state, u.owner, u.x, u.y, 4, 6, true)) {
+    const pv = spearheadPreview(state, u.owner, u.id, c.click);
+    if (pv.reason || !lineCuts(state, u.owner, state.map.owner[c.click], pv, true)) continue;
+    if (!best || pv.expectedDepth < best.d) best = { t: c.click, d: pv.expectedDepth };
+  }
+  return !!best && moveTankDivisions(state, u.owner, [u.id], best.t).ok;
 }
 
 /**
@@ -866,14 +897,21 @@ function leaveTip(state: GameState, u: Unit): boolean {
   const hold = holdTileNear(state, u.owner, u.station ?? here, undefined, 3, ARMOR_HOLD_FAR);
   delete u.ended;
   if (hold < 0 || hold === here) return false;
-  if (driveTo(state, u, hold, true, true)) return true;
-  // No route there (the band behind it was cut): the best solid ground it can still reach over our land.
+  // The way back over our land (a flood: the band behind it may have been cut), else the best solid ground it can
+  // still reach; cut off on a small piece of our land, it breaks out back to our line.
   const prev = landFlood(state, u.owner, here);
-  const alt = holdTileNear(state, u.owner, u.station ?? here, (t) => prev[t] >= 0, 3, ARMOR_HOLD_FAR);
-  if (alt >= 0 && alt !== here && interiorAt(state, u.owner, alt)) {
-    u.path = floodPath(prev, here, alt);
+  let dest = prev[hold] >= 0 ? hold : -1;
+  if (dest < 0) {
+    let reach = 0;
+    for (let k = 0; k < prev.length && reach < CUT_OFF_TILES; k++) if (prev[k] >= 0) reach++;
+    if (reach < CUT_OFF_TILES && breakOut(state, u)) return true;
+    const alt = holdTileNear(state, u.owner, u.station ?? here, (t) => prev[t] >= 0, 3, ARMOR_HOLD_FAR);
+    if (alt >= 0 && alt !== here && interiorAt(state, u.owner, alt)) dest = alt;
+  }
+  if (dest >= 0) {
+    u.path = floodPath(prev, here, dest);
     u.pathPos = 0;
-    u.target = alt;
+    u.target = dest;
     u.state = u.path.length ? 1 : 0;
     u.retryTick = undefined;
     return true;
