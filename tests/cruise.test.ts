@@ -9,7 +9,8 @@ import { formAlliance } from '../src/sim/diplomacy';
 import { hashState } from '../src/sim/hash';
 import { computeCoastAndLand } from '../src/sim/mapgen';
 import { newId } from '../src/sim/state';
-import { cruiseReason, cruiseReloadLeft, spawnWarshipAt, updateUnits } from '../src/sim/units';
+import { buildAircraft, cruiseReason, cruiseReloadLeft, spawnWarshipAt, updateUnits } from '../src/sim/units';
+import { updateArsenal } from '../src/sim/variants';
 import { Terrain } from '../src/sim/types';
 import type { Building, BuildingType, GameState, Unit } from '../src/sim/types';
 import { validateAction } from '../server/validate';
@@ -279,5 +280,47 @@ describe('cruise missile: determinism', () => {
     const h = hashState(a);
     ua.cruiseReady = (ua.cruiseReady ?? 0) + 1;
     expect(hashState(a)).not.toBe(h);
+  });
+});
+
+describe('cruise missiles with fighters and recon planes (protocol 22)', () => {
+  /** p1 has a ship, an airfield with Recon Planes; p2 has a city, fighters on an airfield and maybe one SAM shot. */
+  function mixed(withSam: boolean): { s: GameState; city: Building; guard: Building; sam?: Building } {
+    const s = game(7);
+    s.players[1].techs.push('flight', 'reconPlanes');
+    s.players[2].techs.push('flight');
+    const u = ship(s, 1, 70, 32);
+    const af = addBuilding(s, 'airfield', 1, at(s, 50, 20));
+    const guard = addBuilding(s, 'airfield', 2, at(s, 100, 20));
+    for (let k = 0; k < 2; k++) expect(buildAircraft(s, 2, guard.tile, 'fighter').ok).toBe(true);
+    const sam = withSam ? addBuilding(s, 'sam', 2, at(s, 75, 25)) : undefined;
+    const city = addBuilding(s, 'city', 2, at(s, 70, 20));
+    expect(applyAction(s, 1, { type: 'reconFlight', airfield: af.tile, tile: at(s, 80, 12) }).ok).toBe(true);
+    expect(fire(s, u, city.tile).ok).toBe(true);
+    for (let k = 0; k < 400 && (missiles(s).length || s.units.some((q) => q.type === 'reconPlane' && q.hp > 0 && q.state === 0)); k++) {
+      updateUnits(s);
+      updateArsenal(s);
+      s.tick++;
+    }
+    return { s, city, guard, sam };
+  }
+  const shot = (s: GameState, re: RegExp): boolean => s.events.some((e) => e.kind === 'unitLost' && re.test(e.message));
+
+  it('one SAM shot goes to the cruise missile, the recon plane passes the SAM and falls to the fighters', () => {
+    const { s, city, guard, sam } = mixed(true);
+    expect(shot(s, /SAM site shot down a cruise missile/)).toBe(true);
+    expect(shot(s, /SAM site shot down a recon plane/)).toBe(false);
+    expect(shot(s, /fighters shot down a recon plane/)).toBe(true);
+    expect(s.buildings.has(city.id)).toBe(true);
+    expect(sam!.cooldown).toBeGreaterThan(0);
+    expect(guard.cooldown).toBeGreaterThan(0);
+    expect(s.arsenal?.reveals.length ?? 0).toBe(0);
+  });
+
+  it('fighters never shoot at cruise missiles: with no SAM the missile lands, the recon plane still falls', () => {
+    const { s, city } = mixed(false);
+    expect(s.buildings.has(city.id)).toBe(false);
+    expect(shot(s, /cruise missile/)).toBe(false);
+    expect(shot(s, /fighters shot down a recon plane/)).toBe(true);
   });
 });
