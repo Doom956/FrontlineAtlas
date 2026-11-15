@@ -1058,7 +1058,8 @@ export function divisionStep(state: GameState, u: Unit): void {
   // Smarter armour with a nation at war with us that close (land within TANK_FALLBACK_RADIUS): it holds deeper (own
   // land ARMOR_PRESSED_DEPTH tiles out all round), even right after falling back, rather than wait at the edge to be
   // rolled over by every wave of theirs.
-  const pressed = level >= 1 && u.state === 0 && foeNear(state, u);
+  // A player's division only right after its own automatic spearhead (else it keeps the spot it holds or was sent to).
+  const pressed = level >= 1 && u.state === 0 && (!human || fresh) && foeNear(state, u);
   const deep = !pressed || interiorAt(state, u.owner, unitTile(state, u), ARMOR_PRESSED_DEPTH);
   if (d2(u.x, u.y, front % w, (front / w) | 0) <= (ARMOR_SUPPORT_HOLD + 6) * (ARMOR_SUPPORT_HOLD + 6) && u.state === 0 && !exposed && deep) return;
   if ((u.retryTick ?? 0) > state.tick && !exposed && deep) return;

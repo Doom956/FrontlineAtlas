@@ -269,21 +269,30 @@ describe('AI tank divisions', () => {
     expect(built).toBe(true);
   });
 
-  it('an idle AI division strikes back at the nation attacking it', () => {
-    const s = landGame();
-    const ai = s.players[1];
-    ai.isHuman = false;
-    ai.personality = 'balanced';
-    s.admin!.aiFrozen = false; // no ticks here: only the calls below act
-    const d = spawnTankDivision(s, 1, at(s, 20, 15));
-    const act = (a: Parameters<typeof applyAction>[2]) => applyAction(s, 1, a);
-    // At peace: it holds.
-    aiTankDivisions(s, 1, act);
-    expect(d.state).toBe(0);
-    // Player 2 attacks us: the division heads for a spearhead into player 2.
-    expect(applyAction(s, 2, { type: 'attack', tile: at(s, 29, 15), troops: { infantry: 5000, armor: 0, artillery: 0 } }).ok).toBe(true);
-    aiTankDivisions(s, 1, act);
-    expect(d.state).toBe(2);
-    expect(d.targetOwner).toBe(2);
+  it('an idle AI division strikes back at the nation attacking it (Easy at once; from Normal up from the support mode)', () => {
+    for (const diff of ['easy', 'normal'] as const) {
+      const s = landGame();
+      s.settings.difficulty = diff;
+      const ai = s.players[1];
+      ai.isHuman = false;
+      ai.personality = 'balanced';
+      s.admin!.aiFrozen = false; // only the calls below act (the AI decisions themselves are frozen in the ticks)
+      const d = spawnTankDivision(s, 1, at(s, 20, 15));
+      const act = (a: Parameters<typeof applyAction>[2]) => applyAction(s, 1, a);
+      // At peace: it holds.
+      aiTankDivisions(s, 1, act);
+      expect(d.state).toBe(0);
+      // Player 2 attacks us: the division heads for a spearhead into player 2.
+      expect(applyAction(s, 2, { type: 'attack', tile: at(s, 29, 15), troops: { infantry: 5000, armor: 0, artillery: 0 } }).ok).toBe(true);
+      aiTankDivisions(s, 1, act);
+      if (diff === 'normal') {
+        expect(d.mode).toBe('support');
+        expect(s.map.owner[d.station!]).toBe(2);
+        s.admin!.aiFrozen = true;
+        for (let k = 0; k < 60 && d.state !== 2 && d.state !== 3; k++) tick(s);
+      }
+      expect(d.state === 2 || d.state === 3).toBe(true);
+      expect(d.targetOwner).toBe(2);
+    }
   });
 });

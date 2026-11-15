@@ -2,6 +2,22 @@
 
 The big rounds of work, newest first. Each one was merged to `main` and deployed to the live game.
 
+## 2026-11-15 · Tank divisions that fight like an army
+
+For your tank divisions on Support, and for AI nations from Normal up (Easy plays as before):
+- Divisions stay at the front for the whole war instead of standing down between two attack waves.
+- They look for the line that cuts the enemy off: across a thin strip of their land, the base of an enemy tank push
+  into yours, or a bulge they can pinch off. More enemy land now falls in pockets.
+- Ready divisions near the same strike go in together, side by side, instead of one at a time. On Hard and Brutal a
+  lone division waits for one driving up.
+- A straight push needs a strong division, and lines that would leave it worn out deep in enemy land are avoided.
+- After a push, a division leaves the thin tip at once and drives back to solid ground. When the way back is cut, it
+  breaks out to your line. Near the enemy it holds a little deeper, so it is not pushed back by every attack.
+- A worn division goes back to a Factory nearby and refits until nearly full.
+- A division whose front cannot be reached over your land supports a front it can reach.
+- Your own orders come first: divisions you set to Hold or Refit do just that, as before, and only divisions on
+  Support use the new habits. A division you drive to the tip of a push by hand stays there.
+
 ## 2026-11-15 · Real sound and music
 
 - Real recordings in place of the made-up sounds: artillery, explosions, the atom bomb, missile launches, tank

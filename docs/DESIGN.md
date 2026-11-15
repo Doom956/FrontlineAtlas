@@ -739,11 +739,18 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   - **Together**: the ready divisions on support within `ARMOR_SUPPORT_RADIUS` + 12 tiles of the strike go in with it,
     side by side (at most 3, one order); from Hard up an AI division alone waits while another on support drives up
     (not for a cut).
-  - **Off a thin tip**: a division on support standing where own land runs under 3 tiles deep (an AI one any time, a
-    player's for 60 s after its spearhead ended, `Unit.ended`, hashed) acts at once (checked every second): ready and
-    just after a spearhead, it strikes on along a cut from there; else it drives back to a hold tile behind its front.
-  - **Near the enemy** (land of a nation at war with us within `TANK_FALLBACK_RADIUS`) it holds where own land runs 6
-    tiles out all round (3 when there is none such near the front), even during the pause after falling back.
+  - **Off a thin tip**: a division standing where own land runs under 3 tiles deep (an AI one on support or hold any
+    time, a player's on support for 60 s after its spearhead ended, `Unit.ended`, hashed) acts at once (every tick for
+    3 s after the spearhead, then every second while `ended` lasts, else every 3 s): ready and just after a spearhead,
+    it strikes on along a cut from there; else it drives back to solid ground behind its front (looked for up to 40
+    tiles out), over a flood of our land when the quick search fails. Drives away from the fighting (off a tip, to
+    refit) don't wait out the pause after falling back.
+  - **Cut off** (its own land around it a piece of under 60 tiles; a player's support division too): it breaks out
+    along the shortest line across the enemy's land back onto ours it has the strength for, at any strength (a spent
+    division's troops go home; overrun, a quarter would be lost).
+  - **Near the enemy** (land of a nation at war with us within `TANK_FALLBACK_RADIUS`; a player's division only while
+    `ended` lasts) it holds where own land runs 6 tiles out all round (3 when there is none such near the front), even
+    during the pause after falling back.
   - Routes: a drive the quick search gives up on floods our land (as for a player's following divisions); an AI
     division whose front can't be reached over our land supports one it can reach for `DETOUR_SECONDS`.
 - **Auto for every vehicle** (protocol 16; src/sim/warTarget.ts and the vehicle files): what a new player's vehicles do
