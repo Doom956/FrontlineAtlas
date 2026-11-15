@@ -546,7 +546,11 @@ other root and everything after it lock together ("You chose Destroyers; Carrier
 - Shared: Mechanized Infantry (spearheads lose 15% less; the land a spearhead took holds: attacks on it cost
   `mechHoldDefense` x for `mechHoldSeconds`), Recon Planes (Action `reconFlight {airfield | -1, tile}`: a plane flies
   out, reveals a `reconRadius` circle for `reconSeconds`: intel on every nation with land or a capital in it
-  (buildings.hasIntel) and its submarines there; `reconCooldown` per airfield; gold + oil per flight).
+  (buildings.hasIntel) and its submarines there; `reconCooldown` per airfield; gold + oil per flight). On its way out
+  a recon plane is a fighter target (types.isFighterTarget): airfield fighter cover, carriers and superiority patrols
+  shoot it down by the bomber rule (protocol 22); one shot down reveals nothing (all or nothing reads clearer than a
+  half circle where it fell, and the alert says so: "...shot down your recon plane before it got there: nothing
+  revealed"). SAMs let it pass (fighters are the answer to recon); on its way home it is let go.
 - Mastery (tier 4) in at most `MASTERY_CAP` = 2 pillars per game (`masteryLocked`: 'locked-choice', "Mastery 2 of 2
   used (Navy, Air)"): Naval (veterancy xp x2, bombardment / support reach x1.3, +2 warships, cruise missiles from warships, destroyers and battleships: section 7), Armor (pockets up to x3
   bigger collapse, x1.5 troops lost in them), Air (every wing x1.5 bombers).
@@ -758,12 +762,36 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   range can shoot it down.
 - **Cargo plane** (`transportPlane`, Airfield, Flight): carries paratroopers straight to their drop tile (section
   4, Special land abilities); intercepted like a bomber.
-- **Fighter** (Airfield): stationed; intercepts enemy bombers and cargo planes within its airfield's radius (80, +15
-  per level).
+- **Fighter** (Airfield): stationed; intercepts enemy bombers, cargo planes and outbound recon planes within its
+  airfield's radius (80, +15 per level).
+- **Air superiority** (protocol 22; airwings.ts `airSuperiorityAt`, config AIR `superiority*`): a nation's side
+  (itself and its allies) guards a tile with the fighters of every finished, working airfield whose cover circle
+  (`airfieldRadius` x Early Warning) or superiority patrol circle holds it, plus `carrierFighters` (2) per carrier
+  within `carrierRadius`. It holds the sky there when that count is at least `superiorityMinFighters` (2) and more than
+  the bombing side's own count at the same tile. Enemy bombs landing on a guarded tile do `superiorityBombCut` (40%)
+  less: support strike kills and the zone strength they add (so the defence cut and bleed), the raid income cut,
+  buildings hit, troops killed and Strategic Bombing burn. No dice and no state of its own: it is read at arrival from
+  the airfields, wings and carriers. Bombers still fly and still face interception; the attacker takes the sky back by
+  matching the fighters there (a patrol over its own side of the front). Shown on the airfield card ("Air
+  superiority: enemy bombing within 80 tiles does 40% less, while their fighters there are fewer"), as the selected
+  airfield's fighter cover ring and its patrol ring on the map (labelled "enemy bombs -40%"), in the strike preview,
+  in the bombing alerts ("(air superiority: 40% less)") and in the airfield's last result (`AirResult.guarded`,
+  hashed).
+  AIs: from Normal up an airfield keeps `aiFightersBase` (2) fighters plus one per `aiFightersPerBombers` (4) bombers of
+  the nations it fights in reach of it, plus one while enemy bombers or recon planes fly at its land (at most
+  `aiFightersMax` 5, half the room); bombed by 4+ bombers where no fighters of its own guard the aim
+  (`aiUnguardedBombing`), it wants an airfield facing that nation (priority 5, within its 3 airfields); the airfield
+  nearest its main attack (or its only one) patrols instead when 4+ enemy bombers aim inside its patrol and no other
+  patrol reaches them (its bombers still fly manual strikes); a second patrol (3+ airfields) where 6+ enemy bombers
+  aim; when the foe holds the sky over the AI's main front, its patrol flies over its own side of that front; recon never flies through known
+  enemy fighter cover (`fighterCoverOnRoute`), it tries other aims and airfields; strategic raids weigh guarded targets
+  40% less. A player's Auto does the same without overriding orders: auto recon flies around fighter cover (the front
+  instead of deeper, else it waits: "Auto recon: waiting, enemy fighters guard X"), strategic wings weigh guarded
+  targets less.
 - **Rocket** (Silo, Rocketry): fast missile, radius 7: destroys buildings, kills troops. A level-L silo has L launch
   slots (one reload `SILO_COOLDOWN` each, reloading L times as fast). Can fire by itself (auto-fire, below).
 - **Cruise missile** (Naval Mastery; units.ts `launchCruise`, cruise.ts, config `CRUISE` and `UNITS.cruiseMissile`;
-  Action `cruiseMissile {ship, tile}`, protocol 21): a small rocket fired from a warship, destroyer or battleship
+  Action `cruiseMissile {ship, tile}`, protocol 22): a small rocket fired from a warship, destroyer or battleship
   (not submarines or carriers) of a nation with Naval Mastery, at land within `CRUISE.reach` (35 = `WARSHIP_RANGE`,
   the range a warship already fights ships at: a coastal strip, twice its shelling reach) of the ship. Radius
   `CRUISE.radius` 4 (a rocket's is 7): hostile buildings in it destroyed, troops killed by the rocket rule
@@ -788,7 +816,8 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   fires once: a sure hit for 1 hp. A level-L SAM holds L shots and reloads one every `SAM_COOLDOWN` (4 s) / L.
   Planes, rockets and cruise missiles have 1 hp, atom bombs 2, so an atom bomb needs two shots. A bomber or cargo plane still flying
   then meets the first ready hostile airfield with fighters in range: shot down, and that airfield needs
-  `FIGHTER_COOLDOWN / fighters` seconds to be ready again. No dice anywhere, so players can plan their cover, and
+  `FIGHTER_COOLDOWN / fighters` seconds to be ready again. Recon planes on their way out come last in the threat order
+  and meet only fighters (airfields, carriers, patrols), never SAMs. No dice anywhere, so players can plan their cover, and
   attackers can plan saturation (more threats than shots) or silence SAMs with a barrage first.
 
 ### Strikes: one rule, smart aim, salvos, auto-fire (src/sim/airstrike.ts, config STRIKE)

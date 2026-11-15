@@ -10,7 +10,7 @@ import { buildingAt } from '../../sim/buildings';
 import { unitAllowed } from '../../sim/rules';
 import type { AirMission, Building, GameState, Player } from '../../sim/types';
 import { airAutoLine, followOf, followsWar, followText } from '../follow';
-import { AIR_ORDER, airInfo, airReady, followWingAgain, idleAirLabel, setMission, toggleRefill, wingStatus } from '../pillars';
+import { AIR_ORDER, airCoverLine, airInfo, airReady, followWingAgain, idleAirLabel, setMission, toggleRefill, wingStatus } from '../pillars';
 import { FollowRow } from './followRow';
 import { el, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
 import { iconSpan, lineIcon } from './glyph';
@@ -25,6 +25,8 @@ export class AirPanel {
   private wing = el('div', 'ap-wing');
   /** the latest raid's result (hidden before the first) */
   private last = el('div', 'ap-last');
+  /** what the fighters here do for the sky (air superiority) */
+  private cover = el('div', 'ap-line');
   private refill: HTMLButtonElement;
   private btns = new Map<AirMission, HTMLButtonElement>();
   private refillOn: boolean | null = null;
@@ -73,7 +75,8 @@ export class AirPanel {
     foot.append(this.wing, this.refill);
     this.last.dataset.test = 'air-last';
     this.auto.dataset.test = 'air-auto';
-    this.el.append(this.seg, this.auto, this.line, this.last, this.follow.el, foot);
+    this.cover.dataset.test = 'air-cover';
+    this.el.append(this.seg, this.auto, this.line, this.cover, this.last, this.follow.el, foot);
   }
 
   private pick(m: AirMission): void {
@@ -111,6 +114,7 @@ export class AirPanel {
     }
     setText(this.auto, airAutoLine(s, b));
     setText(this.line, st.line);
+    setText(this.cover, airCoverLine(s, b));
     setText(this.last, st.last);
     setVisible(this.last, st.last !== '');
     setClass(this.line, 'warn', (st.mission === 'support' || st.mission === 'strategic') && st.bombers <= 0 || (st.mission === 'superiority' && st.fighters <= 0));

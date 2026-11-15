@@ -108,7 +108,7 @@
 //   Streaming frames (spSetup, spLog) may be up to SP_STREAM_MAX_BYTES; a link that still sends anything else, or more
 //   than SP_MAX_INVALID bad frames, is refused and closed as before.
 //
-// - Cruise missiles (protocol 21): intent `cruiseMissile {ship, tile}`: an own warship, destroyer or battleship of a
+// - Cruise missiles (protocol 22): intent `cruiseMissile {ship, tile}`: an own warship, destroyer or battleship of a
 //   nation with Naval Mastery fires one at land within its reach (src/sim/units.ts launchCruise).
 //
 // Single player never needs any of this: the client runs the sim locally (no server needed); the link above is
@@ -135,7 +135,7 @@ export type { GameMode };
 // ------------------------------------------------------------------------------------------------ constants
 
 /** Bumped on any incompatible change to the messages below. `hello.protocol` must equal it. */
-export const PROTOCOL_VERSION = 21;
+export const PROTOCOL_VERSION = 22;
 /** Longest owner-console code a client may send (adminAuth). */
 export const ADMIN_CODE_MAX_LENGTH = 128;
 /** Longest chat message (characters, after cleaning). */

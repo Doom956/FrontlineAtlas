@@ -56,6 +56,7 @@ import {
   ALLY_TRADE_BONUS,
   AUTO_EMBARGO_SECONDS,
   VICTORY_LAND_SHARE,
+  AIR,
 } from '../sim/config';
 import type { BuildingType, DoctrineId, TerrainId } from '../sim/types';
 import { forceLimit } from './allies';
@@ -343,6 +344,7 @@ export function howToPlayContent(): HTMLElement {
     { title: 'Orders', text: 'Click your warship (or Select in Forces), then click water to move it. All in Forces selects every warship, a double-click every one on screen; zoomed out, close ships show as one fleet marker with a count (click it for the fleet). The Forces drawer gives all of them one order. Hover any unit to see what it is doing; enemy units heading for you get a red ring.' },
     { title: 'Follow my war', text: 'Your tanks, airfields, warships and silos fight by themselves: they go after the nation you attack, or the one attacking you. Each card says what it does now ("Auto: ..."). A map click fixes a target; Follow my war switches back.' },
     { title: 'Air missions', text: 'New airfields start on Support (or the mission you last set for all airfields). An airfield on Support bombs ahead of your attack, or the nearest enemy front it can reach, and keeps pace with the front; on Strategic it raids the most valuable targets of the nation you fight (factories, cities, airfields, SAM sites in the way), never ones already destroyed. Each airfield shows its last result ("Last raid: 3 buildings hit"). Re-buy losses replaces lost bombers on every mission, Air cover too.' },
+    { title: 'Air superiority', text: `Fighters guard the sky around their Airfield (the dotted ring when you select it), over a Superiority patrol and near a carrier. Where you have at least ${AIR.superiorityMinFighters} fighters and more than the enemy has there, enemy bombs do ${pct(AIR.superiorityBombCut)}% less: fewer troops killed, fewer buildings hit, a smaller cut to your defence and income. Fighters also shoot down enemy recon planes on their way, and a plane shot down reveals nothing. Your bombers face the same over enemy fighters: patrol over your front to take the sky back.` },
     { title: 'Group orders', text: 'With 2 or more warships, airfields or tank divisions, Forces shows one order bar per type: one click orders them all. Units on another order show as "set by hand"; Reset to all brings them back. All in Forces or a double-click selects the whole group.' },
     { title: 'Your groups', text: 'Select some warships or tank divisions, open Forces and click New group: a button like "Fleet 1 · 8 ships" appears. Click it to select them again, the target icon to find them on the map. Click a selected group again to rename it (Save or Cancel); + adds the units you have selected, x deletes the group (Undo brings it back). Lost units drop out.' },
   ];
@@ -358,7 +360,8 @@ export function howToPlayContent(): HTMLElement {
   const counterTable = table(
     ['Threat', 'Stopped by'],
     [
-      ['Bomber, cargo plane', 'SAM sites; fighters at an Airfield'],
+      ['Bomber, cargo plane', 'SAM sites; fighters at an Airfield. Fighters also cut enemy bombing (air superiority)'],
+      ['Recon plane', 'Fighters (airfields, carriers, patrols); SAM sites let it pass'],
       ['Rocket', 'SAM sites (one hit)'],
       ['Cruise missile', 'SAM sites (one hit)'],
       ['Atom bomb', 'SAM sites (two hits)'],

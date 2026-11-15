@@ -11,11 +11,11 @@
 //   air       support: click an attack / front; strategic: click a tile of the nation to raid; superiority: click
 //             the centre of the patrol (own land or right at the front)
 import { buildingAt, buildingsOf } from '../sim/buildings';
-import { ARMOR_POCKET_MAX_TILES, ARMOR_VET_XP, MAX_GROUP_UNITS, NAVY_BLOCKADE_RANGE, NAVY_SUPPORT_RANGE, NAVY_VET_XP, TANK_SPEARHEAD_WIDTH, TICKS_PER_SECOND, UNITS } from '../sim/config';
+import { AIR, ARMOR_POCKET_MAX_TILES, ARMOR_VET_XP, MAX_GROUP_UNITS, NAVY_BLOCKADE_RANGE, NAVY_SUPPORT_RANGE, NAVY_VET_XP, TANK_SPEARHEAD_WIDTH, TICKS_PER_SECOND, UNITS } from '../sim/config';
 import { areAllied } from '../sim/diplomacy';
 import { sameWater } from '../sim/grid';
 import { divisionMode, divisionStrength } from '../sim/armor2';
-import { AIR_MISSION_INFO, airMissionOf, airPatrolRadius, airRaidOn, airSupportRadius, airWingCap, airWingRange, airWingSize, wingOf } from '../sim/airwings';
+import { AIR_MISSION_INFO, airMissionOf, airPatrolRadius, fighterCoverRadius, airRaidOn, airSupportRadius, airWingCap, airWingRange, airWingSize, wingOf } from '../sim/airwings';
 import { atWar as warRunning } from '../sim/allies';
 import { atWar, blockadedPorts, portBlockadedBy, warshipStance } from '../sim/naval2';
 import { hasTech } from '../sim/tech';
@@ -254,6 +254,20 @@ export function wingStatus(state: GameState, b: Building): WingStatus {
     foe,
     target: w?.target ?? -1,
   };
+}
+
+/**
+ * The airfield's air superiority line (airwings.airSuperiorityAt): what its fighters do for the sky around it, in
+ * numbers ("Air superiority: enemy bombing within 80 tiles does 40% less, while their fighters there are fewer").
+ */
+export function airCoverLine(state: GameState, b: Building): string {
+  const need = AIR.superiorityMinFighters;
+  const cut = Math.round(AIR.superiorityBombCut * 100);
+  const r = Math.round(fighterCoverRadius(state, b));
+  const patrol = airMissionOf(state, b) === 'superiority' ? ' and over the patrol' : '';
+  if (b.fighters >= need) return `Air superiority: enemy bombing within ${r} tiles${patrol} does ${cut}% less, while their fighters there are fewer`;
+  if (b.fighters > 0) return `Air superiority needs ${need} fighters (${b.fighters} here): then enemy bombing within ${r} tiles does ${cut}% less`;
+  return `No fighters: with ${need} here, enemy bombing within ${r} tiles does ${cut}% less and enemy recon planes are shot down`;
 }
 
 // ------------------------------------------------------------------------------------------------ orders

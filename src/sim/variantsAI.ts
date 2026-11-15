@@ -22,7 +22,8 @@ import { doctrineActive } from './doctrines';
 import { coastCount } from './territory';
 import { Terrain, isTribe, isWater } from './types';
 import type { GameState, NavalVariant, Personality, TechId } from './types';
-import { airMinded } from './airwings';
+import { airMinded, fighterCoverOnRoute } from './airwings';
+import { aiAttackLevel } from './aiattack';
 import { canReconFlight, navalVariantsOf, reconRange, reconWorthIt } from './variants';
 import { aiFocusSpec } from './aifocus';
 
@@ -225,7 +226,12 @@ export function aiWarshipVariant(state: GameState, id: number): NavalVariant | u
 
 const reconTick = new WeakMap<GameState, Map<number, number>>();
 
-/** Recon flight over the capital of the first nation in `fighting` that is in reach (ai.ts air turn). */
+/**
+ * Recon flight over the capital of the first nation in `fighting` that is in reach (ai.ts air turn). From Normal up
+ * (aiattack.aiAttackLevel) the plane never flies through enemy fighter cover it knows of (airwings.fighterCoverOnRoute:
+ * enemy fighters shoot recon planes down on their way out): it tries the capital, then the known buildings nearest
+ * its airfields, then a fog aim, each from every airfield that reaches it, and flies the first clear route.
+ */
 export function aiRecon(state: GameState, id: number, fighting: readonly number[]): void {
   const p = state.players[id];
   if (!p || !p.alive || p.isHuman || isTribe(p) || !p.techs.includes('reconPlanes') || !fighting.length) return;
@@ -235,34 +241,62 @@ export function aiRecon(state: GameState, id: number, fighting: readonly number[
   const w = state.map.width;
   const fields = buildingsOf(state, id, 'airfield').filter((b) => b.owner === id && b.buildLeft <= 0);
   if (!fields.length) return;
+  const careful = aiAttackLevel(state) >= 1;
+  let guarded = false;
   for (const foe of fighting) {
     const fp = state.players[foe];
     if (!fp?.alive || !reconWorthIt(state, id, foe)) continue;
     // Its capital if in reach, else its building nearest one of our airfields (within recon reach). Fog of war
     // (fog.ts): only a capital or building it knows; else a known front tile pushed one recon radius inward.
-    let aim = fp.capital >= 0 && knownTile(state, id, fp.capital) && canReconFlight(state, id, -1, fp.capital).ok ? fp.capital : -1;
-    if (aim < 0) {
+    const aims: number[] = [];
+    if (fp.capital >= 0 && knownTile(state, id, fp.capital) && canReconFlight(state, id, -1, fp.capital).ok) aims.push(fp.capital);
+    const near: { tile: number; d: number }[] = [];
+    for (const b of buildingsOf(state, foe)) {
+      if (b.owner !== foe || !knownTile(state, id, b.tile)) continue;
       let bestD = Infinity;
-      for (const b of buildingsOf(state, foe)) {
-        if (b.owner !== foe || !knownTile(state, id, b.tile)) continue;
-        for (const f of fields) {
-          const dx = (b.tile % w) - (f.tile % w);
-          const dy = ((b.tile / w) | 0) - ((f.tile / w) | 0);
-          const d = dx * dx + dy * dy;
-          const r = reconRange(f);
-          if (d <= r * r && (d < bestD || (d === bestD && b.tile < aim))) {
-            bestD = d;
-            aim = b.tile;
-          }
+      for (const f of fields) {
+        const dx = (b.tile % w) - (f.tile % w);
+        const dy = ((b.tile / w) | 0) - ((f.tile / w) | 0);
+        const d = dx * dx + dy * dy;
+        const r = reconRange(f);
+        if (d <= r * r && d < bestD) bestD = d;
+      }
+      if (bestD < Infinity) near.push({ tile: b.tile, d: bestD });
+    }
+    near.sort((a, b) => a.d - b.d || a.tile - b.tile);
+    for (const c of near.slice(0, careful ? 6 : 1)) if (!aims.includes(c.tile)) aims.push(c.tile);
+    if ((!aims.length || careful) && fogOn(state)) {
+      const t = fogReconAim(state, id, foe);
+      if (t >= 0 && !aims.includes(t)) aims.push(t);
+    }
+    for (const aim of careful ? aims : aims.slice(0, 1)) {
+      if (!careful) {
+        if (applyAction(state, id, { type: 'reconFlight', airfield: -1, tile: aim }).ok) {
+          m.set(id, state.tick + Math.round((ARSENAL.reconCooldown + 15) * TICKS_PER_SECOND));
+          return;
+        }
+        continue;
+      }
+      // Nearest airfield first; only a route clear of known enemy fighters.
+      const dd = (t: number): number => {
+        const dx = (t % w) - (aim % w);
+        const dy = ((t / w) | 0) - ((aim / w) | 0);
+        return dx * dx + dy * dy;
+      };
+      const order = [...fields].sort((a, b) => dd(a.tile) - dd(b.tile) || a.id - b.id);
+      for (const f of order) {
+        if (!canReconFlight(state, id, f.tile, aim).ok) continue;
+        if (fighterCoverOnRoute(state, id, f.tile, aim) > 0) {
+          guarded = true;
+          continue;
+        }
+        if (applyAction(state, id, { type: 'reconFlight', airfield: f.tile, tile: aim }).ok) {
+          m.set(id, state.tick + Math.round((ARSENAL.reconCooldown + 15) * TICKS_PER_SECOND));
+          return;
         }
       }
     }
-    if (aim < 0 && fogOn(state)) aim = fogReconAim(state, id, foe);
-    if (aim < 0) continue;
-    if (applyAction(state, id, { type: 'reconFlight', airfield: -1, tile: aim }).ok) {
-      m.set(id, state.tick + Math.round((ARSENAL.reconCooldown + 15) * TICKS_PER_SECOND));
-      return;
-    }
   }
-  m.set(id, state.tick + 10 * TICKS_PER_SECOND); // nothing in reach: look again later
+  // Nothing in reach (or every route guarded by enemy fighters): look again later.
+  m.set(id, state.tick + (guarded ? 20 : 10) * TICKS_PER_SECOND);
 }

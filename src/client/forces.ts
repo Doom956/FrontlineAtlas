@@ -8,7 +8,7 @@
 // The rules stay in the sim (buildWarship, buildAircraft, moveWarship); this file only reads and phrases them.
 import { activeFog, knownOwnerOf, nationName } from './fog/fogView';
 import { aircraftCap, buildingsOf } from '../sim/buildings';
-import { BOMBER_RADIUS, NAVY_SUPPORT_RANGE, TECHS, UNITS, WARSHIP_RANGE } from '../sim/config';
+import { AIR, BOMBER_RADIUS, NAVY_SUPPORT_RANGE, TECHS, UNITS, WARSHIP_RANGE } from '../sim/config';
 import { SHELL_RANGE_TILES } from './reach';
 import { areAllied } from '../sim/diplomacy';
 import { unitCost } from '../sim/units';
@@ -68,8 +68,8 @@ export const UNIT_TEXT: Record<SpecialId, UnitText> = {
   fighter: {
     name: 'Fighter',
     icon: 'fighter',
-    what: 'Waits at its Airfield and shoots down enemy bombers and cargo planes that fly nearby.',
-    counter: 'Each interception needs a reload; losing the Airfield loses its planes.',
+    what: `Waits at its Airfield and shoots down enemy bombers, cargo planes and recon planes that fly nearby. With ${AIR.superiorityMinFighters} or more, you hold air superiority there: enemy bombing does ${Math.round(AIR.superiorityBombCut * 100)}% less.`,
+    counter: 'Each interception needs a reload; as many enemy fighters over a place cancel your air superiority there; losing the Airfield loses its planes.',
     unlock: 'Buy Flight (Arsenal), then build an Airfield',
   },
   transportPlane: {

@@ -28,8 +28,8 @@ import { TICKS_PER_SECOND } from './config';
 import { areAllied } from './diplomacy';
 import { atPeace } from './rules';
 import { hasTech } from './tech';
-import { canReconFlight, reconFlight, reconRange } from './variants';
-import { wingOf } from './airwings';
+import { canReconFlight, reconCooldownLeft, reconFlight, reconRange } from './variants';
+import { fighterCoverOnRoute, wingOf } from './airwings';
 import { ownedTilesOf } from './territory';
 import { isTribe } from './types';
 import type { ActionResult, Building, FollowState, GameState, Unit } from './types';
@@ -393,6 +393,21 @@ function reconAim(state: GameState, owner: number, nation: number, b: Building):
   return front;
 }
 
+/**
+ * Where auto recon from airfield b flies over `nation` now: reconAim, or the main front itself when the deeper aim's
+ * route crosses enemy fighter cover the owner knows of (airwings.fighterCoverOnRoute: fighters shoot recon planes down
+ * on their way out); aim -1 with guarded true when both routes are covered (the plane waits). Pure read (the
+ * airfield's Auto recon label says so).
+ */
+export function autoReconAim(state: GameState, b: Building, nation: number): { aim: number; guarded: boolean } {
+  const aim = reconAim(state, b.owner, nation, b);
+  if (aim < 0) return { aim: -1, guarded: false };
+  if (fighterCoverOnRoute(state, b.owner, b.tile, aim) <= 0) return { aim, guarded: false };
+  const front = mainFront(state, b.owner, nation);
+  if (front >= 0 && front !== aim && fighterCoverOnRoute(state, b.owner, b.tile, front) <= 0) return { aim: front, guarded: false };
+  return { aim: -1, guarded: true };
+}
+
 function autoRecon(state: GameState): void {
   const f = state.follow;
   if (!f || !f.recon.length) return;
@@ -404,8 +419,9 @@ function autoRecon(state: GameState): void {
     const b = state.buildings.get(id)!;
     if (b.buildLeft > 0) continue;
     const nation = followedNation(state, b.owner);
-    if (nation <= 0 || scouted(state, b.owner, nation)) continue;
-    const aim = reconAim(state, b.owner, nation, b);
+    if (nation <= 0 || reconCooldownLeft(state, b) > 0 || scouted(state, b.owner, nation)) continue;
+    // Not through enemy fighters (Auto only: a recon flight the player orders flies where it is sent).
+    const { aim } = autoReconAim(state, b, nation);
     if (aim < 0 || !canReconFlight(state, b.owner, b.tile, aim).ok) continue;
     reconFlight(state, b.owner, b.tile, aim);
   }
