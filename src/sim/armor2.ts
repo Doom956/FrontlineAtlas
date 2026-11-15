@@ -166,15 +166,17 @@ export function collapsePockets(state: GameState, u: Unit, launch: number, headX
   const half = ((TANK_SPEARHEAD_WIDTH - 1) >> 1) + 2;
   // Seeds: victim tiles on and around the band along the line.
   const seeds: number[] = [];
-  const seen = new Set<number>();
+  // Scratch marks (pocketScratch: one stamp per use, nothing to clear); same results as sets.
+  const sc = pocketScratch(state);
+  const seenMark = ++sc.stamp;
   for (let d = 0; d <= Math.ceil(len) + 1; d++) {
     for (let k = -half; k <= half; k++) {
       const x = Math.round(lx + ux * d - uy * k);
       const y = Math.round(ly + uy * d + ux * k);
       if (x < 0 || y < 0 || x >= w || y >= h) continue;
       const t = y * w + x;
-      if (owner[t] === victim && !seen.has(t)) {
-        seen.add(t);
+      if (owner[t] === victim && sc.a[t] !== seenMark) {
+        sc.a[t] = seenMark;
         seeds.push(t);
       }
     }
@@ -183,9 +185,11 @@ export function collapsePockets(state: GameState, u: Unit, launch: number, headX
   const maxTiles = Math.round(ARMOR_POCKET_MAX_TILES * armorPocketMul(state, me)); // Armor Mastery (variants.ts)
   const cap = Math.min(maxTiles, Math.floor((vp.tiles - 1) / 2));
   if (cap < 1) return 0;
-  const visited = new Set<number>();
+  const visitMark = ++sc.stamp;
+  const visited = { has: (t: number): boolean => sc.b[t] === visitMark, add: (t: number): void => void (sc.b[t] = visitMark) };
   // Tiles of searches that turned out open: reaching one means this piece is open too (they are not walls).
-  const openTiles = new Set<number>();
+  const openMark = ++sc.stamp;
+  const openTiles = { has: (t: number): boolean => sc.c[t] === openMark, add: (t: number): void => void (sc.c[t] = openMark) };
   const closes = (o: number, t: number): boolean => o === me || isWater(terrain[t]) || (o > 0 && o !== victim && areAllied(state, me, o));
   const tilesBefore = vp.tiles;
   let taken = 0;
@@ -603,7 +607,7 @@ function softOn(state: GameState, me: number, victim: number): boolean {
 }
 
 /** Smarter armour work budgets per tick (spend): strike scans, land floods of AI drives. */
-const ARMOR_SCANS_PER_TICK = 2;
+const ARMOR_SCANS_PER_TICK = 1;
 const ARMOR_FLOODS_PER_TICK = 1;
 /** Cut lines are looked for within this many tiles of the front at Normal (Hard up: ARMOR_SUPPORT_RADIUS). */
 const ARMOR_CUT_SCAN_NORMAL = 16;
@@ -775,6 +779,18 @@ function pocketBeside(state: GameState, me: number, click: number, victim: numbe
     if (!open) best = Math.max(best, queue.length);
   }
   return best;
+}
+
+/** Scratch marks for collapsePockets (per game; a stamp per use). Not game state. */
+const pocketScratches = new WeakMap<GameState, { a: Int32Array; b: Int32Array; c: Int32Array; stamp: number }>();
+function pocketScratch(state: GameState): { a: Int32Array; b: Int32Array; c: Int32Array; stamp: number } {
+  let sc = pocketScratches.get(state);
+  const n = state.map.owner.length;
+  if (!sc || sc.a.length !== n || sc.stamp > 0x7ffffff0) {
+    sc = { a: new Int32Array(n), b: new Int32Array(n), c: new Int32Array(n), stamp: 0 };
+    pocketScratches.set(state, sc);
+  }
+  return sc;
 }
 
 /** Scratch marks for pocketBeside (per game; a stamp per flood, so nothing needs clearing). Not game state. */
