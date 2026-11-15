@@ -6,12 +6,13 @@
 import type { ArtCategory, ArtStyle, MotionCategory } from '../art/artStyle';
 import type { MotionParams } from '../art/motion';
 import { ALL_MODS, unitCategoryOf, type SpriteKey } from '../art/shared/keys';
-import { CRATER_ATOM_REACH, DEATH_GLIDE_TILES, type BlastKind, type DeathDraw, type DeathKind, type MapFxKind, type ParachuteMarkDraw, type ParadropDraw, type StyleModule, type TrailLayer, type TrailUnit, type TrailView, type UnitDraw } from '../art/types';
+import { CRATER_ATOM_REACH, DEATH_GLIDE_TILES, type BlastKind, type CruiseDraw, type DeathDraw, type DeathKind, type MapFxKind, type ParachuteMarkDraw, type ParadropDraw, type StyleModule, type TrailLayer, type TrailUnit, type TrailView, type UnitDraw } from '../art/types';
 import { FX_INFO } from '../fx/map';
 import { css, type RGB } from '../render/common';
 import { troopKinds, troopPill } from '../render/troopIcons';
 import { spriteScale } from '../render/units';
 import { backdrop, type Ground } from './backdrop';
+import { cruisePhase } from '../art/detailed/cruise';
 
 export type RowId = 'ships' | 'land' | 'air' | 'missiles' | 'troopIcons' | 'explosions' | 'deaths' | 'craters' | 'cannonFire' | 'paradrop';
 
@@ -315,10 +316,92 @@ function airScene(env: SceneEnv): void {
   for (const q of poses) drawUnit(env, q.key, q.mods, q.p.x, q.p.y, q.p.angle, q.p.turn, tilesPerSec, q.seed);
 }
 
-function missilesScene(env: SceneEnv): void {
-  ground(env, 'split');
+/** The rocket and atom bomb band's height, then the cruise missile's lane and its frames strip (missilesScene). */
+const rocketBand = (z: number): number => 100 + 60 * px(z);
+const cruiseLane = (z: number): number => 56 + 30 * px(z);
+const cruiseFrames = (z: number): number => 44 + 26 * px(z);
+/** The launch frames the strip freezes: ms after launch of a 2.5 s flight (art/detailed/cruise.ts cruisePhase). */
+const CRUISE_FRAMES: readonly { name: string; e: number }[] = [
+  { name: 'Pop-up', e: 220 },
+  { name: 'Pitch over', e: 600 },
+  { name: 'Wings unfold', e: 1040 },
+  { name: 'Booster drops', e: 1260 },
+  { name: 'Cruise', e: 1700 },
+  { name: 'Dive', e: 2380 },
+];
+const CRUISE_FLIGHT = 2500;
+
+const cruiseArgs: CruiseDraw = { x: 0, y: 0, sx: 0, sy: 0, tx: 0, ty: 0, angle: 0, elapsedMs: 0, leftMs: 0, owner: OWNER, zoom: 1, scale: 1, dpr: 1, timeMs: 0, seed: 0, alpha: 1 };
+/** A cruise missile `e` ms into a CRUISE_FLIGHT ms flight from (sx, sy) to (tx, ty), through the cell's style. */
+function drawCruiseAt(env: SceneEnv, sx: number, sy: number, tx: number, ty: number, e: number, seed: number): void {
+  const q = Math.max(0, Math.min(1, e / CRUISE_FLIGHT));
+  const c = cruiseArgs;
+  c.sx = sx;
+  c.sy = sy;
+  c.tx = tx;
+  c.ty = ty;
+  c.x = sx + (tx - sx) * q;
+  c.y = sy + (ty - sy) * q;
+  c.angle = Math.atan2(ty - sy, tx - sx);
+  c.elapsedMs = e;
+  c.leftMs = CRUISE_FLIGHT - e;
+  c.zoom = env.zoom;
+  c.scale = spriteScale(env.zoom);
+  c.dpr = env.dpr;
+  c.timeMs = env.time;
+  c.seed = seed;
+  const art = env.style.missiles;
+  if (art.drawCruise) art.drawCruise(env.ctx, c, env.motion);
+  else drawUnit(env, 'rocket', 0, c.x, c.y, c.angle, 0, 10, seed, env.zoom * 0.66);
+}
+
+/** The cruise missile: a destroyer with Naval Mastery fires one at the coast (looping), then its launch frame by frame. */
+function cruiseScene(env: SceneEnv, y0: number): void {
   const { ctx } = env;
-  const laneH = env.h / 2;
+  const H = cruiseLane(env.zoom);
+  const seaW = Math.round(env.w * 0.34);
+  ground(env, 'sea', 0, y0, seaW, H);
+  ground(env, 'land', seaW, y0, env.w - seaW, H);
+  const sx = Math.round(seaW * 0.45);
+  const sy = Math.round(y0 + H * 0.62);
+  const tx = env.w - 40;
+  const ty = Math.round(y0 + H * 0.45);
+  drawUnit(env, 'destroyer', 1, sx, sy, -0.15, 0, 0, 77);
+  const period = CRUISE_FLIGHT + 1300;
+  const t = env.time % period;
+  if (t < CRUISE_FLIGHT) drawCruiseAt(env, sx, sy, tx, ty, t, 9000 + Math.floor(env.time / period));
+  label(ctx, env.style.missiles.drawCruise ? 'Cruise missile from a destroyer (Naval Mastery)' : 'Cruise missile: this style draws the rocket, smaller', 8, y0 + 12, 'left', true);
+  // the launch, frozen frame by frame
+  const fy = y0 + H;
+  const FH = cruiseFrames(env.zoom);
+  const n = CRUISE_FRAMES.length;
+  const cw = env.w / n;
+  CRUISE_FRAMES.forEach((f, i) => {
+    const x = Math.round(cw * i);
+    ground(env, f.e < 1100 ? 'sea' : 'land', x, fy, Math.round(cw) + 1, FH);
+    // the missile sits in the middle of its cell: the route is laid out round where it is drawn now (the launch
+    // lags over the ship: the ship is drawn under it while it climbs and unfolds)
+    const L = cw * 4;
+    const q = f.e / CRUISE_FLIGHT;
+    const lag = cruisePhase(f.e, CRUISE_FLIGHT - f.e).lag;
+    const cx = x + cw * 0.5;
+    const cy = fy + FH * 0.66;
+    const sx2 = cx - L * q * lag;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, fy, cw, FH);
+    ctx.clip();
+    if (f.e < 1100) drawUnit(env, 'destroyer', 1, sx2, cy, 0, 0, 0, 78 + i);
+    drawCruiseAt(env, sx2, cy, sx2 + L, cy, f.e, 4000 + i);
+    ctx.restore();
+    label(ctx, f.name, x + 4, fy + 10, 'left', true);
+  });
+}
+
+function missilesScene(env: SceneEnv): void {
+  ground(env, 'split', 0, 0, env.w, rocketBand(env.zoom));
+  const { ctx } = env;
+  const laneH = rocketBand(env.zoom) / 2;
   const flight = 2600;
   const period = 3800;
   const units: TrailUnit[] = [];
@@ -344,6 +427,7 @@ function missilesScene(env: SceneEnv): void {
   label(ctx, 'Atom bomb', 8, laneH + 12, 'left', true);
   trailLayer(env, 'contrails').frame(ctx, units, trailView(env));
   for (const p of poses) drawUnit(env, p.key, 0, p.x, p.y, p.angle, 0, p.speed, p.seed);
+  cruiseScene(env, rocketBand(env.zoom));
 }
 
 // ------------------------------------------------------------------------------------------------- troop icons
@@ -977,11 +1061,11 @@ export function rowSpecs(): RowSpec[] {
     {
       id: 'missiles',
       title: 'Missiles',
-      note: 'A rocket and an atom bomb in flight with their smoke trails.',
+      note: 'A rocket and an atom bomb in flight with their smoke trails; a cruise missile fired from a destroyer, and its launch frame by frame.',
       pick: 'missiles',
       also: ['contrails'],
       motion: 'missiles',
-      height: (z) => 100 + 60 * px(z),
+      height: (z) => rocketBand(z) + cruiseLane(z) + cruiseFrames(z),
       draw: missilesScene,
     },
     {

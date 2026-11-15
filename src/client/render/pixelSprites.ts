@@ -17,7 +17,7 @@ import type { RGB } from './common';
 
 export { facingOf, M_JET, M_MASTERY, M_NIGHT, M_PATH3, M_SPECIAL, spriteKey, SPRITE_KEYS, type SpriteKey };
 
-const AIR_TYPES: ReadonlySet<UnitType> = new Set<UnitType>(['bomber', 'fighter', 'transportPlane', 'reconPlane', 'rocket', 'atomBomb']);
+const AIR_TYPES: ReadonlySet<UnitType> = new Set<UnitType>(['bomber', 'fighter', 'transportPlane', 'reconPlane', 'rocket', 'atomBomb', 'cruiseMissile']);
 
 /** True when the unit has a sprite (every unit type and variant does). */
 export function hasSprite(type: UnitType, variant?: UnitVariant): boolean {

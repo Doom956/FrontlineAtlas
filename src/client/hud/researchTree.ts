@@ -44,7 +44,7 @@ export const ARSENAL_TECH_LINE: Partial<Record<TechId, string>> = {
   strategicBombing: 'Wider bombs that burn their economy',
   mechInfantry: 'Land your spearheads take holds',
   reconPlanes: 'Reveal armies, doctrines, buildings',
-  navalMastery: 'Veteran fleets, longer reach, +2 ships',
+  navalMastery: 'Veteran fleets, +2 ships, cruise missiles',
   armorMastery: 'Encirclements trap bigger pockets',
   airMastery: 'Every air wing flies 50% more bombers',
   amphibiousTanks: 'Divisions cross straits and rivers',

@@ -9,7 +9,7 @@
 //                                  sinking, a missile shot down (small blast); else a hit (small blast)
 //   a tank division destroyed      tankDestroyed
 //   a tank division in a fight     a tank shot now and then (spearheads, and divisions next to a nation they fight)
-//   a rocket or atom bomb appears  missileLaunch at its silo
+//   a rocket or atom bomb appears  missileLaunch at its silo; a cruise missile: missileLaunch at its ship (softer)
 //   'nuke'                         atomBomb
 //   'capture', tanks firing        heat for the gunfire bed under the front
 import type { Effect, GameState, Unit } from '../../sim/types';
@@ -47,7 +47,7 @@ export class BattleEars {
     this.deaths.reset(state);
     this.missiles.clear();
     this.missileTargets.clear();
-    if (state) for (const u of state.units) if (u.type === 'rocket' || u.type === 'atomBomb') {
+    if (state) for (const u of state.units) if (u.type === 'rocket' || u.type === 'atomBomb' || u.type === 'cruiseMissile') {
       this.missiles.add(u.id);
       this.missileTargets.add(u.target);
     }
@@ -121,10 +121,10 @@ export class BattleEars {
     const fighting = ticks > 0 ? warPairs(state) : null;
     for (const u of state.units) {
       if (u.hp <= 0) continue;
-      if (u.type === 'rocket' || u.type === 'atomBomb') {
+      if (u.type === 'rocket' || u.type === 'atomBomb' || u.type === 'cruiseMissile') {
         next.add(u.id);
         this.missileTargets.add(u.target);
-        if (!this.missiles.has(u.id)) out.push({ id: 'missileLaunch', x: u.x + 0.5, y: u.y + 0.5, volume: u.type === 'atomBomb' ? 1 : 0.85 });
+        if (!this.missiles.has(u.id)) out.push({ id: 'missileLaunch', x: u.x + 0.5, y: u.y + 0.5, volume: u.type === 'atomBomb' ? 1 : u.type === 'cruiseMissile' ? 0.7 : 0.85 });
         continue;
       }
       if (u.type !== 'tankDivision' || !fighting) continue;

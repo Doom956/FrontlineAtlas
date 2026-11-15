@@ -2,6 +2,23 @@
 
 The big rounds of work, newest first. Each one was merged to `main` and deployed to the live game.
 
+## 2026-11-15 · Cruise missiles from sea
+
+- Naval Mastery now arms your warships, destroyers and battleships with cruise missiles. Click a ship, then Cruise
+  missile on its card, then enemy land up to 35 tiles from the ship. With several ships selected the button sits in
+  the orders bar and the nearest loaded ship fires.
+- A cruise missile is a small rocket: it wrecks enemy buildings within 4 tiles (a rocket hits 7) and kills troops.
+  700 gold and 60 oil each, and each ship needs 30 s to reload. The button says plainly why it is off: reloading,
+  needs Naval Mastery, not enough gold.
+- While aiming you see each ship's reach, the blast and the SAM sites in the way. SAM sites shoot cruise missiles down
+  like rockets, so send more than they can load or silence them first.
+- You see it launch: it rises out of the ship's deck on a booster with a flash and a puff of smoke, pitches over,
+  unfolds its wings, drops the booster and skims low to the target before it dives.
+- The nation it flies at is warned: "Cruise missile incoming".
+- AI nations with Naval Mastery use them at war: on SAM sites, airfields and silos near the coast before they land,
+  and on buildings in reach. They keep a gold reserve and never fire into heavy SAM cover. Your own ships fire only
+  when you tell them to.
+
 ## 2026-11-15 · Real sound and music
 
 - Real recordings in place of the made-up sounds: artillery, explosions, the atom bomb, missile launches, tank

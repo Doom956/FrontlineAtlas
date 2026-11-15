@@ -548,7 +548,7 @@ other root and everything after it lock together ("You chose Destroyers; Carrier
   out, reveals a `reconRadius` circle for `reconSeconds`: intel on every nation with land or a capital in it
   (buildings.hasIntel) and its submarines there; `reconCooldown` per airfield; gold + oil per flight).
 - Mastery (tier 4) in at most `MASTERY_CAP` = 2 pillars per game (`masteryLocked`: 'locked-choice', "Mastery 2 of 2
-  used (Navy, Air)"): Naval (veterancy xp x2, bombardment / support reach x1.3, +2 warships), Armor (pockets up to x3
+  used (Navy, Air)"): Naval (veterancy xp x2, bombardment / support reach x1.3, +2 warships, cruise missiles from warships, destroyers and battleships: section 7), Armor (pockets up to x3
   bigger collapse, x1.5 troops lost in them), Air (every wing x1.5 bombers).
 AIs (variantsAI.ts): a fork by the map and personality (enemy trade and ports -> silent service; forts and mountains
 -> heavy tanks; enemy cities and factories -> heavy bombers; plus a per-game hash), the committed pillar's path right
@@ -762,13 +762,31 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   per level).
 - **Rocket** (Silo, Rocketry): fast missile, radius 7: destroys buildings, kills troops. A level-L silo has L launch
   slots (one reload `SILO_COOLDOWN` each, reloading L times as fast). Can fire by itself (auto-fire, below).
+- **Cruise missile** (Naval Mastery; units.ts `launchCruise`, cruise.ts, config `CRUISE` and `UNITS.cruiseMissile`;
+  Action `cruiseMissile {ship, tile}`, protocol 21): a small rocket fired from a warship, destroyer or battleship
+  (not submarines or carriers) of a nation with Naval Mastery, at land within `CRUISE.reach` (35 = `WARSHIP_RANGE`,
+  the range a warship already fights ships at: a coastal strip, twice its shelling reach) of the ship. Radius
+  `CRUISE.radius` 4 (a rocket's is 7): hostile buildings in it destroyed, troops killed by the rocket rule
+  (`ROCKET_TROOP_KILL` x the army share living there, at least `CRUISE.killMin` 5000). 700 gold + 60 oil per
+  missile; each ship reloads its cell for `CRUISE.reloadSeconds` (30 s, `Unit.cruiseReady`, hashed). It flies straight
+  from the ship at 10 tiles/s (slower than a rocket) and SAMs shoot it down like a rocket: 1 hp, the rockets' place in
+  the interception order. Validated like a rocket: not own land, not an ally, no peace time; noNukes does not touch it;
+  under fog of war a player may fire at land out of sight (the sim judges by the real owner), the AI only at buildings
+  it knows. The target nation gets a 'missile' event ("X launched a cruise missile at Y", alert "Cruise missile
+  incoming"). AI (`aiCruise`, every air turn): a nation with the mastery at war picks the best known building of a foe
+  in reach of its loaded ships (SAMs, silos and airfields first, more so within `aiLandingNear` 30 tiles of a landing
+  of its own on the way; then factories, forts, ports, arsenals, cities and the rest), fires a salvo one larger than
+  the ready SAM shots covering the route and target, never into more than `aiMaxCover` (2) of them, and keeps
+  `aiReserve` (2) missile prices in gold; Easy AIs fire one at a time, only with no SAM cover, and never at a human.
+  A human's ships never fire by themselves: the ship card's Cruise missile button (orders bar for a group of ships,
+  and on phones) enters a target mode; the click fires from the nearest loaded selected ship in reach.
 - **Atom bomb** (Silo, Nuclear Fission): radius 35: destroys buildings, kills 60-90% of the army share in the area,
   turns tiles neutral with fallout within 14. Every AI that sees a nuke drops opinion of the launcher sharply.
 - **Interception is deterministic** (`RULES_TEXT.interception` in config is the help text): threats are handled atom
-  bombs first, then rockets, bombers, cargo planes (then by id). Every hostile SAM with a shot loaded
+  bombs first, then rockets and cruise missiles, bombers, cargo planes (then by id). Every hostile SAM with a shot loaded
   (`chargesReady`), not knocked out by a barrage and with the threat inside its `samRadius` (60, +10 per level)
   fires once: a sure hit for 1 hp. A level-L SAM holds L shots and reloads one every `SAM_COOLDOWN` (4 s) / L.
-  Planes and rockets have 1 hp, atom bombs 2, so an atom bomb needs two shots. A bomber or cargo plane still flying
+  Planes, rockets and cruise missiles have 1 hp, atom bombs 2, so an atom bomb needs two shots. A bomber or cargo plane still flying
   then meets the first ready hostile airfield with fighters in range: shot down, and that airfield needs
   `FIGHTER_COOLDOWN / fighters` seconds to be ready again. No dice anywhere, so players can plan their cover, and
   attackers can plan saturation (more threats than shots) or silence SAMs with a barrage first.

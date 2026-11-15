@@ -187,6 +187,7 @@ export function hashState(state: GameState): number {
     if (u.wading) h = mixInt(h, u.wading); // Amphibious Tanks (specials.ts)
     if (u.fixed) h = mixInt(h, u.fixed | 0x20000); // Follow my war: pinned (warTarget.ts)
     if (u.detour !== undefined) h = mixInt(h, u.detour | 0x40000000); // a following division's detour (armor2.ts)
+    if (u.cruiseReady !== undefined) h = mixInt(h, u.cruiseReady ^ 0x2c1b3c6d); // cruise missile reload (units.ts)
   }
   // Recent wars (naval2.ts).
   const wm = state.warMemory ?? [];

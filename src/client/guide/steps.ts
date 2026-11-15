@@ -6,7 +6,8 @@ import { fogOn } from '../../sim/fog';
 import { buildingCost, chargesReady, countBuildings } from '../../sim/buildings';
 import { autoFireCount } from '../airSim';
 import { borders } from '../../sim/combat';
-import { BUILDINGS, DOCTRINE_UNLOCK_SECONDS, TECHS } from '../../sim/config';
+import { BUILDINGS, CRUISE, DOCTRINE_UNLOCK_SECONDS, TECHS } from '../../sim/config';
+import { cruiseHull } from '../../sim/units';
 import { areAllied } from '../../sim/diplomacy';
 import { neighbors4, nearestTile, tileDist } from '../../sim/grid';
 import { buildingAllowed, mods, researchRule, unitAllowed } from '../../sim/rules';
@@ -530,6 +531,14 @@ export function guideTips(): GuideTip[] {
       target: 'open-forces',
       when: (c) => playing(c) && hasTech(c.me, 'rocketry') && countBuildings(c.s, c.me.id, 'silo', true) >= 2 && !autoFireCount(c.s, c.me.id).on && ownAttack(c.s, c.me),
       done: (c) => autoFireCount(c.s, c.me.id).on > 0 || c.ui.openPanel === 'forces',
+    },
+    {
+      // Naval Mastery: warships, destroyers and battleships carry cruise missiles (fired from the ship's card)
+      id: 'cruise',
+      text: `Naval Mastery: your warships carry cruise missiles. Click a warship, then Cruise missile on its card, then enemy land up to ${CRUISE.reach} tiles from it.`,
+      target: 'cruise-btn',
+      when: (c) => playing(c) && hasTech(c.me, 'navalMastery') && c.s.units.some((u) => u.owner === c.me.id && u.hp > 0 && cruiseHull(u)) && (ownAttack(c.s, c.me) || attackOnMe(c.s, c.me) !== null),
+      done: (c) => c.s.units.some((u) => u.owner === c.me.id && u.cruiseReady !== undefined),
     },
     // Ships, tanks and planes: how to get them (the tech, then the building), then how to use them. Each step only
     // once it is the next one for the player.

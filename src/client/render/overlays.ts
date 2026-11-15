@@ -2,7 +2,7 @@
 // floating texts, the hovered tile, the selection and target-mode previews (build ghost, strike circles, routes).
 import { buildingAt } from '../../sim/buildings';
 import { barrageRadius } from '../../sim/barrage';
-import { ATOM_CORE_RADIUS, ATOM_RADIUS, BARRAGE_DELAY, BARRAGE_RADIUS, BUILDINGS, FORT_RADIUS_TECH, ROCKET_RADIUS, TICKS_PER_SECOND, UNITS } from '../../sim/config';
+import { ATOM_CORE_RADIUS, ATOM_RADIUS, BARRAGE_DELAY, BARRAGE_RADIUS, BUILDINGS, CRUISE, FORT_RADIUS_TECH, ROCKET_RADIUS, TICKS_PER_SECOND, UNITS } from '../../sim/config';
 import { barrageRange } from '../../sim/barrage';
 import { airfieldRadius, isDisabled, samRadius } from '../../sim/buildings';
 import { areAllied } from '../../sim/diplomacy';
@@ -16,6 +16,8 @@ import type { Snap } from '../placement';
 import { FLOATER_MS, type UiState } from '../uiState';
 import { barrageReach, fmtR, strikeOfMode, strikeTarget, type StrikeTarget } from '../strikes';
 import { bombReach, bomberRadiusOf } from '../airSim';
+import { cruiseTarget, type CruiseTarget } from '../cruise';
+import { cruiseReloadLeft } from '../../sim/units';
 import { bulkPreviews, bulkPreviewText, effectiveCount } from '../hud/buildMenu';
 import { shiftHeld } from '../hud/quickBar';
 import { ACCENT_FILL_RGB, ACCENT_RGB, ACCENT_TEXT, accentStroke, clamp, css, dashedLine, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, mix, pill, setTracking, type RGB } from './common';
@@ -279,7 +281,7 @@ export class Overlays {
     const live = new Set<number>();
     for (const u of state.units) {
       const kind = u.type;
-      const strike = kind === 'rocket' || kind === 'atomBomb' || (kind === 'bomber' && u.state === 0);
+      const strike = kind === 'rocket' || kind === 'atomBomb' || kind === 'cruiseMissile' || (kind === 'bomber' && u.state === 0);
       const drop = kind === 'transportPlane' && u.state === 0;
       if (!strike && !drop) continue;
       const own = u.owner === me;
@@ -299,7 +301,7 @@ export class Overlays {
         this.etas.set(u.id, eta0);
       }
       const s = cam.tileToScreen(tx, ty);
-      const outer = kind === 'atomBomb' ? ATOM_RADIUS : kind === 'rocket' ? ROCKET_RADIUS : kind === 'transportPlane' ? 2.5 : bomberRadiusOf(state, u.owner);
+      const outer = kind === 'atomBomb' ? ATOM_RADIUS : kind === 'rocket' ? ROCKET_RADIUS : kind === 'cruiseMissile' ? CRUISE.radius : kind === 'transportPlane' ? 2.5 : bomberRadiusOf(state, u.owner);
       const R = outer * z;
       if (s.x < -R - 20 || s.y < -R - 20 || s.x > cam.viewW + R + 20 || s.y > cam.viewH + R + 20) continue;
       // strikes between others stay faint and vanish when they would only be specks
@@ -458,6 +460,21 @@ export class Overlays {
     return { x: c.x - s / 2, y: c.y - s / 2, s };
   }
 
+  private cruiseKey = '';
+  private cruiseT: CruiseTarget | null = null;
+  /** The cruise missile check for the hovered tile (cached per tile, ships and 4 ticks). */
+  private cruiseCheck(state: GameState, ui: UiState, ships: readonly number[], tile: number): CruiseTarget | null {
+    const me = state.players[state.humanId];
+    if (!me) return null;
+    const key = `${tile}|${ships.join(',')}|${state.tick >> 2}`;
+    if (key !== this.cruiseKey || !this.cruiseT) {
+      this.cruiseKey = key;
+      this.cruiseT = cruiseTarget(state, me, ships, tile);
+    }
+    void ui;
+    return this.cruiseT;
+  }
+
   /** The strike check for the hovered tile (cached per tile, mode and 4 ticks). */
   private check(state: GameState, ui: UiState, tile: number): StrikeTarget | null {
     const me = state.players[state.humanId];
@@ -479,13 +496,14 @@ export class Overlays {
   strikeZones(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, ui: UiState): void {
     const id = strikeOfMode(ui.mode);
     const me = state.players[state.humanId];
-    if (!id || !me || state.phase !== 'playing') return;
+    const cruise = ui.mode.kind === 'cruise';
+    if ((!id && !cruise) || !me || state.phase !== 'playing') return;
     if (id === 'barrage') {
       this.drawReach(ctx, state, cam, me.id, barrageRange(me));
       return;
     }
     const planes = id === 'bomb' || id === 'paradrop';
-    const own = id === 'rocket' || id === 'atomBomb' ? 'silo' : 'airfield';
+    const own = id === 'rocket' || id === 'atomBomb' ? 'silo' : cruise ? '' : 'airfield';
     const fog = this.fv;
     for (const b of state.buildings.values()) {
       if (b.buildLeft > 0) continue;
@@ -686,6 +704,30 @@ export class Overlays {
         } else {
           this.aimDisc(ctx, cam, hs.x, hs.y, ok, [{ radius: ROCKET_RADIUS }], `Rocket${many} · radius ${ROCKET_RADIUS} tiles`);
         }
+        break;
+      }
+      case 'cruise': {
+        // the reach of each selected ship (dim while it reloads), the route from the ship that fires and the blast
+        const t = this.cruiseCheck(state, ui, mode.ships, hover);
+        for (const id of mode.ships) {
+          const u = state.units.find((q) => q.id === id && q.hp > 0);
+          if (!u) continue;
+          const p = units.pos(u, frac);
+          const c = cam.tileToScreen(p.x + 0.5, p.y + 0.5);
+          ctx.beginPath();
+          ctx.arc(c.x, c.y, CRUISE.reach * z, 0, Math.PI * 2);
+          ctx.setLineDash([6, 5]);
+          if (cruiseReloadLeft(state, u) <= 0) accentStroke(ctx, 1.5, 0.85);
+          else {
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = 'rgba(200,200,200,0.4)';
+            ctx.stroke();
+          }
+          ctx.setLineDash([]);
+          if (t?.ship && t.ship.id === u.id) dashedLine(ctx, c.x, c.y, hs.x, hs.y, t.ok ? 'rgba(255,255,255,0.7)' : 'rgba(230,110,90,0.7)');
+        }
+        const ok = !!t?.ok;
+        this.aimDisc(ctx, cam, hs.x, hs.y, ok, [{ radius: CRUISE.radius }], `Cruise missile · radius ${CRUISE.radius} tiles`);
         break;
       }
       case 'paradrop': {

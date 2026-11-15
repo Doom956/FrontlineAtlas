@@ -10,7 +10,7 @@
 //   planes    bank into turns (turnRate times bankPerTurn, up to bankMax), propellers show as a blur disc with a
 //             flickering blade (propellers, propFps), jets glow at the nozzle, the ground shadow lies off by the
 //             altitude and breathes with altitudeBob
-//   missiles  a flickering exhaust flame (flameMs)
+//   missiles  a flickering exhaust flame (flameMs); the cruise missile has its own launch animation (cruise.ts)
 // Damage (UnitDraw.damage) shows as burning, drawn with the unit so it goes where the unit goes (damage.ts): a ship
 // trails a wisp of smoke from about a quarter, burns on deck from about half, and from 0.8 burns in several places
 // under a heavy black column with a slight list; a damaged tank smokes and burns from its engine deck, a damaged
@@ -23,6 +23,7 @@ import { isAirKey, SPRITE_KEYS, unitCategoryOf, type SpriteKey } from '../shared
 import type { PortraitDraw, UnitArt, UnitDraw } from '../types';
 import { FORE, LIFT, project, rasterize, shadowOf, type Baked } from './bake';
 import { drawBlob } from './blobs';
+import { drawCruise } from './cruise';
 import { drawDamage, listOf } from './damage';
 import { facingIndex, facingsFor, gridOf, type Grid } from './grid';
 import { modelLength, modelSpan, MOD_MASK, unitLength, unitModel, type UnitModel } from './models';
@@ -352,6 +353,10 @@ export const detailedUnits: UnitArt = {
     const ok = drawAt(ctx, d, PORTRAIT_MOTION, g);
     bakeSpent = prev;
     return ok;
+  },
+
+  drawCruise(ctx, c, m) {
+    return drawCruise(ctx, c, m);
   },
 
   turretPoint(key, _mods, index, x, y, angle, scale) {

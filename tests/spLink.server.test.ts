@@ -110,7 +110,7 @@ async function list(o: Client): Promise<Msg<'adminRooms'>> {
 
 describe('single-player link: messages', () => {
   it('protocol 20 has the link', () => {
-    expect(PROTOCOL_VERSION).toBe(20);
+    expect(PROTOCOL_VERSION).toBe(21);
   });
 
   it('validates spHello and spStatus and rebuilds them without extra fields', () => {

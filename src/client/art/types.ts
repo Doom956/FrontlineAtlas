@@ -97,6 +97,35 @@ export interface PortraitDraw {
   alpha: number;
 }
 
+/**
+ * A cruise missile in flight (fired from a warship with Naval Mastery). The sim flies it straight from the ship to its
+ * target at one speed; a style may show its launch over the first part of the flight as a visual offset (it pops up
+ * out of the ship's deck cell, pitches over, unfolds its wings and drops its booster, cruises low, dives on the
+ * target), timed from `elapsedMs` and `leftMs` so it lands exactly when the sim's missile does.
+ */
+export interface CruiseDraw {
+  /** where the sim's missile is over the ground now, the ship it was fired from and its target (CSS px) */
+  x: number;
+  y: number;
+  sx: number;
+  sy: number;
+  tx: number;
+  ty: number;
+  /** heading over the ground, ship to target (radians, 0 = east, clockwise on screen) */
+  angle: number;
+  /** time since launch and until impact at game speed (ms; game time, so it follows the sim's speed) */
+  elapsedMs: number;
+  leftMs: number;
+  owner: RGB;
+  zoom: number;
+  /** the map's px per art pixel (UnitDraw.scale: spriteScale, 1.5 at mid zoom) */
+  scale: number;
+  dpr: number;
+  timeMs: number;
+  seed: number;
+  alpha: number;
+}
+
 /** Draws one category of units: ships, land units, planes or missiles (the same object may serve all four). */
 export interface UnitArt {
   /**
@@ -118,6 +147,11 @@ export interface UnitArt {
    * SALVO: a plain warship 2, a destroyer 2 from its one turret, a battleship 3). Other units: their centre.
    */
   turretPoint(key: SpriteKey, mods: number, index: number, x: number, y: number, angle: number, scale: number): { x: number; y: number };
+  /**
+   * Missiles: a cruise missile with its own launch animation (CruiseDraw). Optional: a style without it shows the
+   * rocket sprite, smaller (render/units.ts). False when nothing could be drawn this frame.
+   */
+  drawCruise?(ctx: CanvasRenderingContext2D, c: CruiseDraw, m: MotionParams): boolean;
 }
 
 // ================================================================================================ troop icons

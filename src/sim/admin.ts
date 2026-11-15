@@ -112,6 +112,7 @@ function aimedTile(a: Action): number {
     case 'attack':
     case 'bomb':
     case 'launchMissile':
+    case 'cruiseMissile':
     case 'paradrop':
     case 'barrage':
     case 'moveTankDivision':

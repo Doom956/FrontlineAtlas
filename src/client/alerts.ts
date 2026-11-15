@@ -88,10 +88,11 @@ export function alertFromEvent(state: GameState, me: Player, e: GameEvent): Aler
     }
     case 'missile': {
       // "<X> launched an atom bomb at <me>" (the impact report stays a toast)
-      const l = / launched (an atom bomb|a rocket) at /.exec(m);
+      const l = / launched (an atom bomb|a rocket|a cruise missile) at /.exec(m);
       if (!l || m.startsWith(`${n} launched`) || !m.endsWith(` at ${n}`)) return null;
       const by = m.slice(0, l.index);
       const atom = l[1] === 'an atom bomb';
+      if (l[1] === 'a cruise missile') return { kind: 'incoming', key: `incoming:cruise:${by}`, text: `Cruise missile incoming from ${by}'s warship`, tile: e.tile, icon: 'rocket' };
       return { kind: 'incoming', key: `incoming:${atom ? 'atom' : 'rocket'}:${by}`, text: `${atom ? 'Atom bomb' : 'Rocket'} incoming from ${by}`, tile: e.tile, icon: atom ? 'atom' : 'rocket' };
     }
     case 'capitalLost': {

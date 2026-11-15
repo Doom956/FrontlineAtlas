@@ -113,6 +113,8 @@ export type UnitType =
   | 'fighter'
   | 'rocket'
   | 'atomBomb'
+  /** cruise missile (units.ts launchCruise): fired from a warship, destroyer or battleship of a nation with Naval Mastery */
+  | 'cruiseMissile'
   /** cargo plane carrying paratroopers from an airfield to a drop tile (Action 'paradrop') */
   | 'transportPlane'
   /** commandable armored division (tanks.ts): built at a Factory, moves over own land, launches spearheads */
@@ -420,6 +422,11 @@ export interface Unit {
    * this tick (the main front could not be reached); absent = none
    */
   detour?: number;
+  /**
+   * warship with Naval Mastery (units.ts launchCruise): tick from which its cruise missile cell is loaded again;
+   * absent = loaded (never fired)
+   */
+  cruiseReady?: number;
 }
 
 /** A unit being built (navy.ts warships, tanks.ts divisions): it appears at `tile` at readyTick. */
@@ -939,6 +946,8 @@ export type Action =
   | { type: 'bomb'; airfield: number; tile: number; count?: number }
   /** missiles at tile: silo = an own silo tile, or -1 = every own silo (nearest first); count as for 'bomb' */
   | { type: 'launchMissile'; silo: number; kind: 'rocket' | 'atomBomb'; tile: number; count?: number }
+  /** a cruise missile from an own warship, destroyer or battleship (Naval Mastery) at a land tile within its reach (units.ts) */
+  | { type: 'cruiseMissile'; ship: number; tile: number }
   /** paratroopers: `troops` infantry fly from an own airfield (tile) to an enemy / neutral land tile (units.ts) */
   | { type: 'paradrop'; airfield: number; tile: number; troops: number }
   /** artillery barrage on an enemy tile near your border (barrage.ts) */
