@@ -504,15 +504,16 @@ export function stealthBomber(_mods: number): UnitModel {
   ] as const)
     for (const s of SIDES) out.push(seg(u0, s * v0, u1, s * v1, 0.45, Z + 0.55, 0, 'black', { tone: 2 }));
   // the hump over the middle, the cockpit windows at its front
-  out.push(ell(2.4, 0, 7.4, 2.6, Z + 0.4, 1.1, m, { sh: 'dome', tone: 0.8 }));
-  out.push(ell(7.4, -0.55, 0.8, 0.45, Z + 1.35, 0.1, 'glass', { tone: 1 }), ell(7.4, 0.55, 0.8, 0.45, Z + 1.35, 0.1, 'glass', { tone: 1 }));
+  out.push(ell(2.2, 0, 6.8, 3.4, Z + 0.45, 0.6, m, { sh: 'dome', tone: 0.3 }));
+  out.push(ell(6.9, -0.6, 0.75, 0.45, Z + 1.05, 0, 'glass', { tone: 1 }), ell(6.9, 0.6, 0.75, 0.45, Z + 1.05, 0, 'glass', { tone: 1 }));
   // engine intakes (dark slits on top beside the hump) and exhaust troughs over the trailing edge
   for (const s of SIDES) {
-    out.push(seg(4.2, s * 2.9, 2.4, s * 3.6, 0.75, Z + 0.8, 0, 'black'));
+    out.push(seg(4.2, s * 3.2, 2.4, s * 3.9, 0.75, Z + 0.7, 0, 'black'));
     out.push(poly([-1.2, s * 2.6, -1.6, s * 5.4, -3.4, s * 5.0, -3.0, s * 2.8], Z + 0.6, 0, 'black', { tone: 1 }));
   }
   // the owner: a thin stripe down the hump and a small dull roundel on each wing
-  out.push(seg(-1.6, 0, 5.4, 0, 0.6, Z + 1.5, 0, 'own'));
+  out.push(seg(-1.6, 0, 5.4, 0, 0.6, Z + 1.05, 0, 'own'));
   out.push(...roundels(-3.6, 12.2, Z + 0.55, 0.95, true));
-  return plane(out, [], [], 10);
+  // drawn a fifth over its numbers: a dark plane has to win by its size and outline at the normal zoom
+  return scaled(plane(out, [], [], 10), 1.2);
 }

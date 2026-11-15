@@ -18,6 +18,7 @@ import type { Action, GameState, Player } from '../sim/types';
 import { isWater } from '../sim/types';
 import { activeFog, nationName } from './fog/fogView';
 import { formatCount } from './render/common';
+import { fmtR } from './strikes';
 import type { UiState } from './uiState';
 
 /** The plain name of the strike (the button's word). */
@@ -66,7 +67,7 @@ export function stealthButton(state: GameState, me: Player, tile: number): Steal
     return out;
   }
   out.ok = true;
-  out.line = `A stealth bomber SAM sites cannot see: bombs one target up to ${Math.round(stealthReach(state, b))} tiles away and wrecks the buildings within ${Math.round(stealthRadius(state, me.id))} tiles. Recharges in ${STEALTH.cooldownSeconds} s.`;
+  out.line = `A stealth bomber SAM sites cannot see: bombs one target up to ${Math.round(stealthReach(state, b))} tiles away and wrecks the buildings within ${fmtR(stealthRadius(state, me.id))} tiles. Recharges in ${STEALTH.cooldownSeconds} s.`;
   return out;
 }
 
@@ -157,7 +158,7 @@ export function stealthClick(state: GameState, me: Player, airfield: number, til
 
 /** The cursor card's body for an ok target ("Wrecks about 3 of 3 buildings of Azuria within 6 tiles"). */
 export function stealthBody(state: GameState, t: StealthTarget): string {
-  const r = Math.round(t.radius);
+  const r = fmtR(t.radius);
   if (t.blind) return `Radius ${r} tiles. Out of sight: you will see what it hit when the bombs fall. ${stealthPriceText(state, state.humanId)}.`;
   const who = t.victim > 0 ? ` of ${nationName(state, t.victim)}` : '';
   const b = t.enemyBuildings;
