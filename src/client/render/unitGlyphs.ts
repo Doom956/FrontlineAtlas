@@ -121,7 +121,7 @@ export const GLYPHS: Record<UnitType, Glyph> = {
   rocket: { len: 0.9, trail: 'missile', trailLen: 3.4, shapes: MISSILE },
   // the cruise missile: the rocket's shape, smaller; no map trail (its art draws its own short exhaust puffs, from
   // where it is drawn: its launch climb is a visual offset off the ship, art/detailed/cruise.ts)
-  cruiseMissile: { len: 0.62, trail: 'none', trailLen: 0, shapes: MISSILE },
+  cruiseMissile: { len: 0.62, trail: 'none', trailLen: 1, shapes: MISSILE },
   // the same, a bit bigger, with a ring (the atom mark) on the body
   atomBomb: { len: 1.05, trail: 'missile', trailLen: 2.6, shapes: [...MISSILE, { k: 'ring', p: [-0.08, 0, 0.32] }] },
   // tank division: a squat hull, the two tracks as lines along its sides, a round turret and a barrel past the bow
