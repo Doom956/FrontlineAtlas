@@ -1687,6 +1687,38 @@ export function aiFighterWant(state: GameState, id: number, af: Building, fighti
   return Math.min(want, AIR.aiFightersMax, Math.floor(aircraftCap(af) / 2));
 }
 
+/**
+ * Enemy bombing on `id`'s land where its own side's fighters do not guard the aim (AI build plan, ai.ts): hostile
+ * bombers on their way to its land and hostile support / strategic wings aimed at it (weighted by the bombers stored
+ * at their airfield) whose aim has fewer than AIR.superiorityMinFighters guarding it (fightersOver). weight = their
+ * sum; nation = the nation with the most of it (0 = none). Pure read.
+ */
+export function aiUnguardedBombing(state: GameState, id: number): { weight: number; nation: number } {
+  const owner = state.map.owner;
+  const by = new Map<number, number>();
+  const add = (aim: number, from: number, n: number): void => {
+    if (aim < 0 || owner[aim] !== id || !hostile(state, id, from) || fightersOver(state, id, aim) >= AIR.superiorityMinFighters) return;
+    by.set(from, (by.get(from) ?? 0) + n);
+  };
+  for (const u of state.units) if (u.type === 'bomber' && u.hp > 0 && u.state === 0) add(u.target, u.owner, 1);
+  for (const wg of state.air?.wings ?? []) {
+    if (wg.mission !== 'support' && wg.mission !== 'strategic') continue;
+    const site = state.buildings.get(wg.airfield);
+    if (site && site.owner === wg.owner && site.bombers > 0) add(wg.target, wg.owner, site.bombers);
+  }
+  let weight = 0;
+  let nation = 0;
+  let most = 0;
+  for (const [q, n] of by) {
+    weight += n;
+    if (n > most || (n === most && q < nation)) {
+      most = n;
+      nation = q;
+    }
+  }
+  return { weight, nation };
+}
+
 /** Bomber price (for the client's mission panel). */
 export function airSortieCost(state: GameState, pid: number): { gold: number; iron: number; oil: number } {
   return unitCost(state, pid, 'bomber');
