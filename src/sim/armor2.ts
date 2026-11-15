@@ -591,6 +591,17 @@ const ARMOR_REFIT_TRIP = 48;
 const ARMOR_SMART_FULL = 0.85;
 /** Smarter armour: a straight strike (no cut) needs this share of a full division (a cut: ARMOR_SUPPORT_READY). */
 const ARMOR_SMART_READY = 0.7;
+/**
+ * Normal AI against a player's land (softOn): a straight strike needs ARMOR_SOFT_READY, at most ARMOR_SOFT_GROUP
+ * divisions go in together, and the base of the player's own push gets no extra weight. Easy never strikes like this;
+ * Hard up and wars between AIs get the full habits.
+ */
+const ARMOR_SOFT_READY = 0.8;
+const ARMOR_SOFT_GROUP = 2;
+function softOn(state: GameState, me: number, victim: number): boolean {
+  return !state.players[me]?.isHuman && aiAttackLevel(state) === 1 && !!state.players[victim]?.isHuman;
+}
+
 /** Smarter armour work budgets per tick (spend): strike scans, land floods of AI drives. */
 const ARMOR_SCANS_PER_TICK = 2;
 const ARMOR_FLOODS_PER_TICK = 1;
@@ -840,7 +851,8 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
     for (const b of enemySpearBases(state, me, fx, fy, r + 16)) {
       for (const c of cutClicks(state, me, b.x, b.y, 8, 2)) {
         if (!bonus.has(c.click)) picks.push(c.click);
-        bonus.set(c.click, ARMOR_CUT_BONUS + Math.min(30, c.pocket / 10));
+        // Normal, against a player's land: no extra weight on the base of their push (fair to a new player).
+        bonus.set(c.click, (softOn(state, me, owner[c.click]) ? 0 : ARMOR_CUT_BONUS) + Math.min(30, c.pocket / 10));
       }
     }
     for (const c of cutClicks(state, me, fx, fy, level >= 2 ? r : ARMOR_CUT_SCAN_NORMAL, level >= 2 ? 4 : 3)) {
@@ -934,13 +946,14 @@ function breakOut(state: GameState, u: Unit): boolean {
  * the tile (state.units order), at most GROUP_MAX in all. One order sends them side by side (tanks.moveTankDivisions).
  */
 function strikeGroup(state: GameState, u: Unit, tile: number, ready = ARMOR_SUPPORT_READY): number[] {
+  const max = softOn(state, u.owner, state.map.owner[tile]) ? ARMOR_SOFT_GROUP : GROUP_MAX;
   const w = state.map.width;
   const tx = tile % w;
   const ty = (tile / w) | 0;
   const r = ARMOR_SUPPORT_RADIUS + 12;
   const ids = [u.id];
   for (const o of state.units) {
-    if (ids.length >= GROUP_MAX) break;
+    if (ids.length >= max) break;
     if (o === u || o.type !== 'tankDivision' || o.hp <= 0 || o.owner !== u.owner || o.state !== 0 || divisionMode(o) !== 'support') continue;
     if (divisionStrength(o) < ready || (o.retryTick ?? 0) > state.tick || d2(o.x, o.y, tx, ty) > r * r) continue;
     ids.push(o.id);
@@ -1055,7 +1068,7 @@ export function divisionStep(state: GameState, u: Unit): void {
     if (scan && !strike && level >= 1 && inPlace) u.retryTick = state.tick + ARMOR_QUIET_SECONDS * TICKS_PER_SECOND;
     // Smarter armour: under ARMOR_SMART_READY only a line that cuts their land is worth it (a straight one would leave
     // the division bled white on a thin tip).
-    if (strike && !strike.cut && s < ready) strike = null;
+    if (strike && !strike.cut && s < (softOn(state, u.owner, state.map.owner[strike.tile]) ? ARMOR_SOFT_READY : ready)) strike = null;
     let wait = false;
     if (strike) {
       // A cheap route check first (moveTankDivisions searches with the full budget).

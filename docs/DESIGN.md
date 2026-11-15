@@ -751,6 +751,9 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   - **Near the enemy** (land of a nation at war with us within `TANK_FALLBACK_RADIUS`; a player's division only while
     `ended` lasts) it holds where own land runs 6 tiles out all round (3 when there is none such near the front), even
     during the pause after falling back.
+  - **Fair to a new player**: a Normal AI striking a player's land needs 80% for a straight strike, sends at most 2
+    divisions together and puts no extra weight on the base of the player's own push (`softOn`; wars between AIs and
+    Hard up keep the full habits).
   - Work budgets per tick for all divisions together (`ARMOR_SCANS_PER_TICK` 2 strike scans, `ARMOR_FLOODS_PER_TICK`
     1 land flood of an AI drive; over budget waits for a later think); cut lines are looked for within 16 tiles of
     the front at Normal (Hard up `ARMOR_SUPPORT_RADIUS`).

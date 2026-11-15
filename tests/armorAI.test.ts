@@ -139,6 +139,27 @@ describe('strikes together', () => {
   });
 });
 
+describe('fair to a new player at Normal', () => {
+  it("at Normal, against a player's land at most 2 go in together and a straight strike needs 80%; against an AI, 3 and 70%", () => {
+    for (const human of [true, false]) {
+      for (const share of [1, 0.75]) {
+        const s = game('normal');
+        s.players[2].isHuman = human;
+        const divs = [12, 15, 18].map((y) => spawnTankDivision(s, 1, at(s, 24, y)));
+        for (const d of divs) for (const k of ['armor', 'infantry', 'artillery'] as const) d.troops[k] *= share;
+        asAI(s, () => applyAction(s, 1, { type: 'setDivisionMode', unitIds: divs.map((d) => d.id), mode: 'support', front: at(s, 30, 15) }));
+        wave(s);
+        const moving = (): number => divs.filter((u) => u.state === 2 || u.state === 3).length;
+        let first = 0;
+        // (5 s: field refit can't lift a 75% division to 80% that fast)
+        for (let k = 0; k < 50 && !(first = moving()); k++) tick(s);
+        if (share === 1) expect(first).toBe(human ? 2 : 3);
+        else expect(first).toBe(human ? 0 : 3);
+      }
+    }
+  });
+});
+
 describe("off a spearhead's thin tip", () => {
   /** Our finger (y 15, x 30..40) into player 2 with the division at its tip, just after a spearhead ended there. */
   function tip(human: boolean): { s: GameState; id: number } {
