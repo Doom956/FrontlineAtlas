@@ -70,7 +70,7 @@ export function cruiseButton(state: GameState, me: Player, ids: readonly number[
     return out;
   }
   out.ok = true;
-  out.line = `Click enemy land within ${CRUISE.reach} tiles of the ship: it wrecks buildings within ${CRUISE.radius} tiles and kills troops. ${price}.`;
+  out.line = `Hits enemy land up to ${CRUISE.reach} tiles from the ship: wrecks buildings within ${CRUISE.radius} tiles and kills troops. Reloads in ${CRUISE.reloadSeconds} s.`;
   return out;
 }
 

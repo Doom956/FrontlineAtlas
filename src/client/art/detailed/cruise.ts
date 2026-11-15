@@ -22,7 +22,7 @@ import { box, ell, poly, sym } from './shapes';
 // ------------------------------------------------------------------------------------------------- the timeline
 
 /** Phase lengths (ms at a full-length flight; a short flight squeezes them, see cruisePhase). */
-export const CRUISE_TIMES = { pop: 300, pitch: 320, unfold: 320, dive: 380, puff: 700, boosterFall: 520 } as const;
+export const CRUISE_TIMES = { pop: 380, pitch: 360, unfold: 360, dive: 360, puff: 800, boosterFall: 560 } as const;
 /** Heights over the ground in model units (screen px at mid zoom per spriteScale step). */
 const ALT = { deck: 1, top: 9, cruise: 3.6 } as const;
 
@@ -59,12 +59,12 @@ const smooth = (v: number): number => {
 };
 
 /**
- * Where the launch stands `e` ms after it and `left` ms before impact. A full flight (2 s and more) gets the whole
+ * Where the launch stands `e` ms after it and `left` ms before impact. A flight of 1.5 s and more gets the whole
  * timeline; a shorter one squeezes every phase by the same factor, so a short shot still shows each step.
  */
 export function cruisePhase(e: number, left: number): CruisePhase {
   const total = Math.max(1, e + left);
-  const k = Math.min(1, total / 2000);
+  const k = Math.min(1, total / 1500);
   const pop = CRUISE_TIMES.pop * k;
   const pitch = CRUISE_TIMES.pitch * k;
   const unfold = CRUISE_TIMES.unfold * k;
@@ -113,8 +113,8 @@ export function cruiseModel(pitch: number, w: number, booster: boolean): Model {
     const sc = [0, 0, BODY / 2 + 0.5, RAD] as const;
     if (w > 0) {
       // the wings swing out from under the body, swept back while unfolding
-      const span = 0.8 + 2.6 * w;
-      const sweep = 1.6 * (1 - w) + 0.5;
+      const span = 0.8 + 1.7 * w;
+      const sweep = 1.6 * (1 - w) + 0.35;
       parts.push(poly(sym([0.8, -RAD, 0.8 - sweep, -span, -0.2 - sweep, -span, -0.6, -RAD]), z + 0.2, 0.25, 'sup', { tone: -1 }));
       // tail fins (a cross: the side pair flat, the top one standing)
       const fs = 0.4 + 0.9 * w;
@@ -151,8 +151,8 @@ export function cruiseModel(pitch: number, w: number, booster: boolean): Model {
   if (w > 0) {
     // a diving missile keeps its wings out: flat at mid body, shortened along the pitch
     const z = lift + 0.3;
-    const span = 0.8 + 2.6 * w;
-    parts.push(poly(sym([0.8 * c, -RAD, 0.3 * c, -span, -0.7 * c, -span, -0.6 * c, -RAD]), z, 0.25, 'sup', { tone: -1 }));
+    const span = 0.8 + 1.7 * w;
+    parts.push(poly(sym([0.8 * c, -RAD, 0.45 * c, -span, -0.25 * c, -span, -0.6 * c, -RAD]), z, 0.25, 'sup', { tone: -1 }));
   }
   return { parts, ground: 0 };
 }

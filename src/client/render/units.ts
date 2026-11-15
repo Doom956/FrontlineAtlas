@@ -508,7 +508,7 @@ export class UnitLayer {
       for (const e of visible) {
         if (e.u.owner !== me) continue;
         if (e.type !== 'warship' && e.type !== 'tankDivision') {
-          if (isAirType(e.type) && e.type !== 'rocket' && e.type !== 'atomBomb') {
+          if (isAirType(e.type) && e.type !== 'rocket' && e.type !== 'atomBomb' && e.type !== 'cruiseMissile') {
             ctx.moveTo(e.x - 2, e.y + e.R + 3);
             ctx.lineTo(e.x + 2, e.y + e.R + 3);
           }
