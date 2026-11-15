@@ -3,6 +3,9 @@
 // Read top to bottom: portrait (the map sprite), name and owner with its stance; one strength line (label, bar, number);
 // then what it is doing, what it does by itself, and its reach.
 import { divisionMode, divisionStrength } from '../../sim/armor2';
+import { blitzBlock } from '../../sim/blitz';
+import { BLITZ_NAME } from '../../sim/config';
+import { hasTech } from '../../sim/tech';
 import { divisionReachLine, shipReachLine } from '../reach';
 import { warshipMaxHp, warshipStance } from '../../sim/naval2';
 import { MODE_INFO, STANCE_INFO, vetOf } from '../pillars';
@@ -27,6 +30,8 @@ export class UnitCard {
   /** what it does by itself ("Auto: supporting the front with Azuria") */
   private auto = el('div', 'uc-a');
   private range = el('div', 'uc-r', '');
+  /** a division's blitz: ready or recharging (with Armor Mastery) */
+  private blitz = el('div', 'uc-a', '');
   private shown = -1;
   private lastMs = 0;
   private img: HTMLImageElement;
@@ -68,7 +73,8 @@ export class UnitCard {
     const str = el('div', 'uc-str');
     str.append(this.strK, this.hp, this.strV);
     this.auto.dataset.test = 'unit-auto';
-    this.el.append(head, str, this.order, this.auto, this.range);
+    this.blitz.dataset.test = 'unit-blitz';
+    this.el.append(head, str, this.order, this.auto, this.blitz, this.range);
   }
 
   /** Every frame: follow the selected warship on screen; texts at ~5 Hz. */
@@ -120,6 +126,10 @@ export class UnitCard {
       const auto = unitAutoLine(state, me.id, u);
       setText(this.auto, auto);
       setVisible(this.auto, auto !== '');
+      const bz = tank && hasTech(me, 'armorMastery') ? blitzBlock(state, me.id, u) : 'Needs Armor Mastery';
+      const bzLine = bz === 'Needs Armor Mastery' ? '' : bz ? `${BLITZ_NAME}: ${bz}` : `${BLITZ_NAME} ready`;
+      setText(this.blitz, bzLine);
+      setVisible(this.blitz, bzLine !== '');
     }
     const at = this.ctx.probe()?.unitScreen(id);
     setVisible(this.el, !!at);

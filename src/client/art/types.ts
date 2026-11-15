@@ -332,6 +332,11 @@ export interface ExplosionArt {
   /** One frame of a sinking ship, a falling plane's smoke or dust. */
   drawMapFx(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionParams): void;
   /**
+   * One frame of a blitz's smoke screen (sim/blitz.ts) at (f.x, f.y), f.rt = its spread in tiles; f.kind is 'smoke'.
+   * A style without one gets dust puffs (fx/layer.ts).
+   */
+  drawSmokeScreen?(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionParams): void;
+  /**
    * Optional: a style that animates deaths gives their times (the returned object may be reused) and draws them,
    * from zoom 2 in (farther out the map shows the far blink). A style without them shows its small blasts instead:
    * a plane's burst in the air and its smoke, a ship's hit and its sinking splash, a hit on a tank or a missile.

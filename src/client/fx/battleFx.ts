@@ -71,6 +71,7 @@ export class BattleFx {
       this.readEvents(state, spawns);
       this.readEffects(state, spawns);
       if (now - this.fortScanAt >= FORT_SCAN_MS) this.scanForts(state, spawns, now);
+      this.blitzTrails(state, spawns);
       this.snapshotUnits(state);
       this.pool.prune(now);
       const fog = this.fog?.active ? this.fog : null;
@@ -201,6 +202,20 @@ export class BattleFx {
       }
       const s = fxForEffect(e, mine, lost);
       if (s) out.push(s);
+    }
+  }
+
+  /** Dust thrown up behind every blitz under way (sim/blitz.ts): one puff a tile behind its head (rate-limited). */
+  private blitzTrails(state: GameState, out: FxSpawn[]): void {
+    const w = state.map.width;
+    for (const u of state.units) {
+      if (u.type !== 'tankDivision' || u.hp <= 0 || !u.blitz || u.state !== 3 || u.launch === undefined) continue;
+      const lx = (u.launch % w) + 0.5;
+      const ly = ((u.launch / w) | 0) + 0.5;
+      const dx = u.x + 0.5 - lx;
+      const dy = u.y + 0.5 - ly;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      out.push({ kind: 'trail', x: u.x + 0.5 - (dx / len) * 1.2, y: u.y + 0.5 - (dy / len) * 1.2, r: 1.2 });
     }
   }
 

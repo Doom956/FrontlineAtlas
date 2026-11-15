@@ -21,6 +21,8 @@ export type TargetMode =
   | { kind: 'recon'; airfield: number }
   /** next click = one of your factories: build a tank division there (selection.ts) */
   | { kind: 'buildTankDivision' }
+  /** a tank division's blitz (client/blitzUi.ts): the next click is where it surges */
+  | { kind: 'blitz'; unitId: number }
   /** the next drag on the map draws the selection box (Upgrade many in the build menu; mouse or finger, no key) */
   | { kind: 'boxSelect' }
   /** owner console: clicks go to `pick` (sticky until Esc); brush = dragging paints too (adminConsole.ts) */
