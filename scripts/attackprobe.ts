@@ -792,6 +792,9 @@ export class AttackProbe {
     const mode = u.mode ?? 'hold';
     if (mode === 'hold') return 'hold mode';
     if (mode === 'refit') return 'refit mode';
+    const w0 = state.map.width;
+    const share = (u.troops.infantry + u.troops.armor + u.troops.artillery) / FULL_DIVISION;
+    if (share < 0.85 && buildingsOf(state, u.owner, 'factory').some((b) => b.owner === u.owner && (b.tile % w0 - u.x) ** 2 + (((b.tile / w0) | 0) - u.y) ** 2 <= 36)) return 'refitting at a Factory';
     if ((u.retryTick ?? 0) > state.tick) return state.tick - (this.divs.get(u.id)?.fell ?? -1e9) <= TANK_FALLBACK_PAUSE * TICKS_PER_SECOND ? 'paused after falling back' : 'waiting on a route';
     let border = false;
     for (const f of foes) if (frontTiles(state, u.owner, f, 1).length) border = true;
