@@ -324,7 +324,7 @@ const cruiseFrames = (z: number): number => 44 + 26 * px(z);
 const CRUISE_FRAMES: readonly { name: string; e: number }[] = [
   { name: 'Pop-up', e: 220 },
   { name: 'Pitch over', e: 600 },
-  { name: 'Wings unfold', e: 980 },
+  { name: 'Wings unfold', e: 1040 },
   { name: 'Booster drops', e: 1260 },
   { name: 'Cruise', e: 1700 },
   { name: 'Dive', e: 2380 },
