@@ -857,6 +857,14 @@ export function attackReport(a: AttackStats, games: number): string[] {
   const ov = tk.overrun[0] + tk.overrun[1] + tk.overrun[2];
   out.push(`  Tank divisions: ${f1(tk.formed / g)} formed per game; overrun ${pc(ov, tk.formed)} (at <10% / 10-40% / >=40% strength: ${tk.overrun.join(' / ')}; while defending ${pc(tk.overrunDefending, ov)}), spent ${pc(tk.spent, tk.formed)}; within 60 s after a spearhead ${pc(tk.overrunAfterSpearhead, ov)}; ${f1(tk.ownerGone / g)} gone with their owner.`);
   out.push(`    division time at war: spearheading ${pc(tk.spearhead, tk.atWar)}, holding at an own attack front ${pc(tk.holdFront, tk.atWar)}, holding elsewhere ${pc(tk.holdFar, tk.atWar)}, driving ${pc(tk.driving, tk.atWar)}; worn (<40%) ${pc(tk.worn, tk.atWar)}; holding time on support ${pc(tk.holdSupport, tk.holdFront + tk.holdFar)} (near its front tile ${pc(tk.holdAtStation, tk.holdSupport)}).`);
+  const ar = a.armor;
+  if (ar && ar.war) {
+    const ends = Object.entries(ar.ends).sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k} ${pc(v, ar.ended)}`).join(', ');
+    const land = ar.spearTiles + ar.pocketTiles;
+    out.push(`    at war (an attack either way in the last 30 s): attacking ${pc(ar.attack, ar.war)}, to a launch tile ${pc(ar.launch, ar.war)}, driving ${pc(ar.toFront, ar.war)}, retreating to refit ${pc(ar.retreat, ar.war)}, holding at the front ${pc(ar.holdFront, ar.war)}, holding away worn ${pc(ar.holdRefit, ar.war)}, holding away ready ${pc(ar.holdAway, ar.war)}; at the front in all ${pc(ar.attack + ar.launch + ar.holdFront, ar.war)}.`);
+    out.push(`    spearheads ${f1(ar.spearheads / g)} per game (${f1(ar.spearheads / Math.max(1, tk.formed))} per division), with company ${pc(ar.withCompany, ar.spearheads)}; ${f1(ar.spearTiles / Math.max(1, ar.ended))} tiles each, under 5 tiles ${pc(ar.shallow, ar.ended)}; land taken per division ${f1(land / Math.max(1, tk.formed))} tiles (pockets ${f1(ar.pocketTiles / Math.max(1, tk.formed))}); encirclements ${f1(ar.pocketEvents / g)} per game (${f1(ar.pockets / g)} pockets, ${f1(ar.pocketTiles / g)} tiles); fell back ${f1(ar.fellBack / g)} per game.`);
+    out.push(`    ended: ${ends || '-'}; enemy spearheads into their land ${f1(ar.enemySpears / g)} per game, ${f1(ar.enemySpearTiles / Math.max(1, ar.enemySpears))} tiles each.`);
+  }
   out.push('  ("front" = the border with a nation the unit\'s owner attacked within the last 30 s; AI attacks come in waves of about a second)');
   out.push('  Bombers by mission: sorties per game / arrived / on an own attack front (support, cover, manual) / into SAM cover (arrived)');
   for (const m of MISSIONS) {
