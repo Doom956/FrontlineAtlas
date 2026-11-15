@@ -35,7 +35,7 @@ It copies the files to `public/audio/sfx/<id>.ogg` and `public/audio/music/<id>.
 its source changed; a music track only when the new one is no bigger. Music above 88 kbps is re-encoded to 80 kbps
 Opus. It remakes the AAC `.m4a` copy of each changed file, removes files no longer used and rebuilds `CREDITS.md`,
 `sound/credits.gen.ts` and `sound/loudness.gen.ts`. Round 2 (2026-11-15): a new atom bomb and an air-raid siren for
-under attack, short fades at both ends of every effect, and the owner kept up to 5 takes per sound (45 effect files
+under attack, short fades at both ends of every effect, and the owner kept up to 5 takes per sound (44 effect files
 in all). No file, so synthesized: shipSunk, buildingDone, researchDone, allianceFormed, countdownGo, uiHover,
 buildingLost, attackLaunched, capture, eliminated.
 
@@ -53,7 +53,7 @@ there the effects stay synthesized and there is no music.
 
 - Nothing loads before the first click or key (the AudioContext needs a gesture anyway). Then the effects load in
   the background, four at a time: the first take of every sound (most used first), then the other takes (about
-  1.1 MB in Ogg for all 45 files). The game never waits for them; a take not loaded yet is skipped for one that is.
+  1.1 MB in Ogg for all 44 files). The game never waits for them; a take not loaded yet is skipped for one that is.
 - Music streams with an `<audio>` element through a `MediaElementAudioSourceNode` (no decoded minutes in memory).
   A track loads only when it is about to play.
 

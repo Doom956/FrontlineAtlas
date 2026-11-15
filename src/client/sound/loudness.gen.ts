@@ -27,7 +27,6 @@ export const LOUDNESS: Readonly<Record<string, number>> = {
   "sfx-explosion-fs182429-v2": -21.8,
   "sfx-explosion-fs182429-v4": -17,
   "sfx-explosion-fs182429-v5": -19.6,
-  "sfx-explosion-fs182431": -21.8,
   "sfx-artillery-fs239137": -16,
   "sfx-artillery-fs239137-v2": -16,
   "sfx-tank-shot-fs127845": -16,

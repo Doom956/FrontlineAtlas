@@ -641,6 +641,6 @@ Real recordings and music made by people replace the synthesized sounds and the 
   fighting heard only on screen and by zoom; a gunfire bed under fronts in view; music moods menu, peace, war, battle
   with crossfades; music on by default (old settings migrated); Ogg Opus plus AAC copies for older Safari.
 - Round 2 (2026-11-15): a new atom bomb, an air-raid siren for under attack, short fades on every effect, and the
-  owner kept up to 5 takes per sound (45 effect files). Still synthesized (no file picked): ship sinking, building
+  owner kept up to 5 takes per sound (44 effect files). Still synthesized (no file picked): ship sinking, building
   done, research done, alliance formed, countdown go, plus hover, building lost, attack launched, the capture tick and
   nation eliminated.

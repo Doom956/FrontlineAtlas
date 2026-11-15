@@ -45,7 +45,7 @@ export const SFX: Readonly<Partial<Record<SampleKey, SampleSet>>> = {
   tankDestroyed: { files: ['sfx-tank-destroyed-fs209772'], gain: 0.55, pitch: 0.06 },
   unitLost: { files: ['sfx-tank-destroyed-fs209772'], gain: 0.5, pitch: 0.06 },
   planeCrash: { files: ['sfx-plane-crash-fs861876', 'sfx-plane-crash-fs861876-v3'], gain: 0.6 },
-  explosion: { files: ['sfx-explosion-fs182429', 'sfx-explosion-fs182429-v2', 'sfx-explosion-fs182429-v4', 'sfx-explosion-fs182429-v5', 'sfx-explosion-fs182431'], gain: 0.5, pitch: 0.07 },
+  explosion: { files: ['sfx-explosion-fs182429', 'sfx-explosion-fs182429-v2', 'sfx-explosion-fs182429-v4', 'sfx-explosion-fs182429-v5'], gain: 0.5, pitch: 0.07 },
   bombard: { files: ['sfx-artillery-fs239137', 'sfx-artillery-fs239137-v2'], gain: 0.5, pitch: 0.06 },
   shot: { files: ['sfx-artillery-fs239137', 'sfx-artillery-fs239137-v2'], gain: 0.4, pitch: 0.07 },
   tankShot: { files: ['sfx-tank-shot-fs127845', 'sfx-tank-shot-fs127845-v2', 'sfx-tank-shot-fs127845-v3', 'sfx-tank-shot-fs127845-v4'], gain: 0.42, pitch: 0.07 },

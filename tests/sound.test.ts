@@ -297,7 +297,7 @@ describe('files', () => {
     const want: Record<string, string[]> = {
       shot: ['sfx-artillery-fs239137', 'sfx-artillery-fs239137-v2'],
       bombard: ['sfx-artillery-fs239137', 'sfx-artillery-fs239137-v2'],
-      explosion: ['sfx-explosion-fs182429', 'sfx-explosion-fs182429-v2', 'sfx-explosion-fs182429-v4', 'sfx-explosion-fs182429-v5', 'sfx-explosion-fs182431'],
+      explosion: ['sfx-explosion-fs182429', 'sfx-explosion-fs182429-v2', 'sfx-explosion-fs182429-v4', 'sfx-explosion-fs182429-v5'],
       explosionBig: ['sfx-explosion-big-fs741173', 'sfx-explosion-big-fs741173-v2', 'sfx-explosion-big-fs741173-v4'],
       atomBomb: ['sfx-atom-r2-windy'],
       missileLaunch: ['sfx-missile-fs854476-v2', 'sfx-missile-fs854476-v3', 'sfx-missile-fs854476-v4'],
@@ -329,7 +329,7 @@ describe('files', () => {
     expect(have).toEqual(want);
     // synthesized on purpose
     for (const id of ['uiHover', 'buildingLost', 'attackLaunched', 'capture', 'eliminated', 'shipSunk', 'buildingDone', 'researchDone', 'allianceFormed', 'countdownGo'] as const) expect(SFX[id], id).toBeUndefined();
-    expect(sfxFileIds().length).toBe(45);
+    expect(sfxFileIds().length).toBe(44);
     expect(SFX.atomBomb?.files).not.toContain('sfx-atom-fs741175');
     expect(SFX.missileLaunch?.files).not.toContain('sfx-missile-fs854476');
   });
