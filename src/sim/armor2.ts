@@ -566,6 +566,8 @@ const ARMOR_REFIT_TRIP = 48;
 const ARMOR_SMART_FULL = 0.85;
 /** Smarter armour: a straight strike (no cut) needs this share of a full division (a cut: ARMOR_SUPPORT_READY). */
 const ARMOR_SMART_READY = 0.7;
+/** Smarter armour: a division that found no strike worth it looks again after this many seconds. */
+const ARMOR_QUIET_SECONDS = 4;
 /** A division whose own land around it (over land) is under this many tiles is cut off (it breaks out). */
 const CUT_OFF_TILES = 60;
 /** Smarter armour looks this far (tiles) from its front for solid ground to hold when there is none near it. */
@@ -588,6 +590,7 @@ export function cutClicks(state: GameState, me: number, cx: number, cy: number, 
   const map = state.map;
   const { width: w, height: h, owner, terrain } = map;
   const found: { click: number; cross: number; pocket: number; k: number }[] = [];
+  const foes = new Map<number, boolean>();
   const x0 = Math.max(0, Math.round(cx) - r);
   const x1 = Math.min(w - 1, Math.round(cx) + r);
   const y0 = Math.max(0, Math.round(cy) - r);
@@ -603,7 +606,10 @@ export function cutClicks(state: GameState, me: number, cx: number, cy: number, 
         const ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
         const v = owner[ny * w + nx];
-        if (v === me || v === 0 || isWater(terrain[ny * w + nx]) || !isFoe(state, me, v)) continue;
+        if (v === me || v === 0 || isWater(terrain[ny * w + nx])) continue;
+        let foe = foes.get(v);
+        if (foe === undefined) foes.set(v, (foe = isFoe(state, me, v)));
+        if (!foe) continue;
         let cut = false;
         let j = 2;
         for (; j <= CUT_CROSS + 1; j++) {
@@ -671,22 +677,26 @@ function pocketBeside(state: GameState, me: number, click: number, victim: numbe
   if (launch < 0) return 0;
   const dx = DX8[launch];
   const dy = DY8[launch];
-  const band = new Set<number>();
-  const line: number[] = [];
+  const sc = scratch(state);
+  const band = ++sc.stamp;
+  let n = 0;
+  let mid = -1;
   for (let j = -1; j <= CUT_CROSS + 1; j++) {
     const x = cx + dx * j;
     const y = cy + dy * j;
     if (x < 0 || y < 0 || x >= w || y >= h) break;
     if (j >= 0 && owner[y * w + x] !== victim) break;
-    line.push(y * w + x);
+    n++;
     for (let s2 = -1; s2 <= 1; s2++) {
       const bx = x - dy * s2;
       const by = y + dx * s2;
-      if (bx >= 0 && by >= 0 && bx < w && by < h) band.add(by * w + bx);
+      if (bx >= 0 && by >= 0 && bx < w && by < h) sc.mark[by * w + bx] = band;
     }
   }
-  if (line.length < 2) return 0;
-  const mid = line[(line.length / 2) | 0];
+  if (n < 2) return 0;
+  // The middle of the line (j from -1).
+  const half = ((n / 2) | 0) - 1;
+  mid = (cy + dy * half) * w + cx + dx * half;
   const mx = mid % w;
   const my = (mid / w) | 0;
   let best = 0;
@@ -695,9 +705,12 @@ function pocketBeside(state: GameState, me: number, click: number, victim: numbe
     const sy = my + dx * 2 * side;
     if (sx < 0 || sy < 0 || sx >= w || sy >= h) continue;
     const s0 = sy * w + sx;
-    if (owner[s0] !== victim || band.has(s0)) continue;
-    const seen = new Set<number>([s0]);
-    const queue = [s0];
+    if (owner[s0] !== victim || sc.mark[s0] === band) continue;
+    const seen = ++sc.stamp;
+    const queue = sc.queue;
+    queue.length = 0;
+    queue.push(s0);
+    sc.mark[s0] = seen;
     let open = false;
     for (let head = 0; head < queue.length && !open; head++) {
       const t = queue[head];
@@ -712,14 +725,26 @@ function pocketBeside(state: GameState, me: number, click: number, victim: numbe
         const ny = y + DY4[k];
         if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
         const q = ny * w + nx;
-        if (owner[q] !== victim || band.has(q) || seen.has(q)) continue;
-        seen.add(q);
+        const m = sc.mark[q];
+        if (owner[q] !== victim || m === band || m === seen) continue;
+        sc.mark[q] = seen;
         queue.push(q);
       }
     }
     if (!open) best = Math.max(best, queue.length);
   }
   return best;
+}
+
+/** Scratch marks for pocketBeside (per game; a stamp per flood, so nothing needs clearing). Not game state. */
+const scratches = new WeakMap<GameState, { mark: Int32Array; stamp: number; queue: number[] }>();
+function scratch(state: GameState): { mark: Int32Array; stamp: number; queue: number[] } {
+  let sc = scratches.get(state);
+  if (!sc || sc.mark.length !== state.map.owner.length || sc.stamp > 0x7ffffff0) {
+    sc = { mark: new Int32Array(state.map.owner.length), stamp: 0, queue: [] };
+    scratches.set(state, sc);
+  }
+  return sc;
 }
 
 /** Enemy spearheads running into `me`'s land within r of (cx, cy): points 3 tiles along their line from its start. */
@@ -785,7 +810,7 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
         bonus.set(c.click, ARMOR_CUT_BONUS + Math.min(30, c.pocket / 10));
       }
     }
-    for (const c of cutClicks(state, me, fx, fy, r, level >= 2 ? 6 : 4)) {
+    for (const c of cutClicks(state, me, fx, fy, r, level >= 2 ? 4 : 3)) {
       if (bonus.has(c.click)) continue;
       if (!picks.includes(c.click)) picks.push(c.click);
       bonus.set(c.click, Math.min(30, c.pocket / 10));
@@ -989,6 +1014,10 @@ export function divisionStep(state: GameState, u: Unit): void {
   const near = d2(u.x, u.y, front % w, (front / w) | 0) <= (ARMOR_SUPPORT_RADIUS + 12) * (ARMOR_SUPPORT_RADIUS + 12);
   if (s >= ARMOR_SUPPORT_READY && near && (u.retryTick ?? 0) <= state.tick) {
     let strike = bestStrike(state, u, front);
+    // Smarter armour: nothing worth it here now and it holds in place; look again in ARMOR_QUIET_SECONDS (the scan is
+    // the costly part).
+    const inPlace = d2(u.x, u.y, front % w, (front / w) | 0) <= (ARMOR_SUPPORT_HOLD + 6) * (ARMOR_SUPPORT_HOLD + 6);
+    if (!strike && level >= 1 && inPlace) u.retryTick = state.tick + ARMOR_QUIET_SECONDS * TICKS_PER_SECOND;
     // Smarter armour: under ARMOR_SMART_READY only a line that cuts their land is worth it (a straight one would leave
     // the division bled white on a thin tip).
     if (strike && !strike.cut && s < ready) strike = null;
