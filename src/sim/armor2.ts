@@ -306,8 +306,10 @@ function refit(state: GameState, u: Unit): void {
 // Action setDivisionMode
 // ---------------------------------------------------------------------------------------------------------------
 
-function driveTo(state: GameState, u: Unit, dest: number, auto = false): boolean {
-  if (auto && (u.retryTick ?? 0) > state.tick) return false;
+function driveTo(state: GameState, u: Unit, dest: number, auto = false, now = false): boolean {
+  // `now` (smarter armour): a drive away from the fighting (to refit, off a thin tip) doesn't wait out the pause after a
+  // failed route or a fall-back (that pause is for drives back to the front).
+  if (auto && !now && (u.retryTick ?? 0) > state.tick) return false;
   // Automatic drives search less (a jump to a far front: TANK_MOBILITY.jumpBudget) and wait ARMOR_RETRY_SECONDS after
   // a failed route (an unreachable front / Factory).
   const w = state.map.width;
@@ -851,7 +853,6 @@ function leaveTip(state: GameState, u: Unit): boolean {
   if (interiorAt(state, u.owner, here)) return false;
   const fresh = u.ended !== undefined && state.tick - u.ended <= ENDED_SECONDS * TICKS_PER_SECOND;
   if (state.players[u.owner]?.isHuman && !fresh) return false;
-  if ((u.retryTick ?? 0) > state.tick && !fresh) return false;
   if (fresh && divisionStrength(u) >= ARMOR_SUPPORT_READY) {
     let best: { t: number; score: number } | null = null;
     for (const c of cutClicks(state, u.owner, u.x, u.y, 6, 4)) {
@@ -865,7 +866,7 @@ function leaveTip(state: GameState, u: Unit): boolean {
   const hold = holdTileNear(state, u.owner, u.station ?? here, undefined, 3, ARMOR_HOLD_FAR);
   delete u.ended;
   if (hold < 0 || hold === here) return false;
-  if (driveTo(state, u, hold)) return true;
+  if (driveTo(state, u, hold, true, true)) return true;
   // No route there (the band behind it was cut): the best solid ground it can still reach over our land.
   const prev = landFlood(state, u.owner, here);
   const alt = holdTileNear(state, u.owner, u.station ?? here, (t) => prev[t] >= 0, 3, ARMOR_HOLD_FAR);
@@ -908,7 +909,7 @@ export function divisionStep(state: GameState, u: Unit): void {
     }
     if (!nearFactory(state, u)) {
       const f = nearestFactory(state, u.owner, unitTile(state, u));
-      if (f < 0 || !driveTo(state, u, f, true)) u.mode = 'hold';
+      if (f < 0 || !driveTo(state, u, f, true, armorLevel(state, u.owner) >= 1)) u.mode = 'hold';
     }
     return;
   }
@@ -929,7 +930,7 @@ export function divisionStep(state: GameState, u: Unit): void {
     const f = nearestFactory(state, u.owner, unitTile(state, u));
     const w0 = state.map.width;
     const close = f >= 0 && d2(u.x, u.y, f % w0, (f / w0) | 0) <= ARMOR_REFIT_TRIP * ARMOR_REFIT_TRIP;
-    if (f >= 0 && (s < ARMOR_SUPPORT_REFIT || close) && driveTo(state, u, f, true)) return;
+    if (f >= 0 && (s < ARMOR_SUPPORT_REFIT || close) && driveTo(state, u, f, true, level >= 1)) return;
   }
   if (atFactory && s < (level >= 1 ? ARMOR_SMART_FULL : ARMOR_SUPPORT_READY)) return; // refitting
   if (s < ARMOR_SUPPORT_REFIT) return; // no Factory to reach: refits slowly where it is

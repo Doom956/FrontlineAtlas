@@ -266,6 +266,8 @@ interface DivSeen {
   thin: boolean;
   /** last tick it fell back under attack (its retry pause set to TANK_FALLBACK_PAUSE) */
   fell: number;
+  /** on thin ground and its own land around it is a piece of under 60 tiles (cut off) */
+  cut: boolean;
 }
 /** Division samples: "at the front" = within this many tiles of a foe's land touching ours. */
 const FRONT_TILES = 12;
@@ -410,7 +412,7 @@ export class AttackProbe {
       } else if (u.type === 'tankDivision') {
         let seen = this.divs.get(u.id);
         if (!seen) {
-          this.divs.set(u.id, (seen = { owner: u.owner, share: 1, spear: -1e9, st: u.state, thin: false, fell: -1e9 }));
+          this.divs.set(u.id, (seen = { owner: u.owner, share: 1, spear: -1e9, st: u.state, thin: false, fell: -1e9, cut: false }));
           s.tanks.formed++;
         }
         seen.share = (u.troops.infantry + u.troops.armor + u.troops.artillery) / FULL_DIVISION;
@@ -418,6 +420,7 @@ export class AttackProbe {
         if (u.state === 3 && seen.st !== 3) this.spearStart(u);
         seen.st = u.state;
         seen.thin = this.thinAt(u);
+        seen.cut = seen.thin && this.cutOff(u);
         if (u.retryTick === state.tick + TANK_FALLBACK_PAUSE * TICKS_PER_SECOND) seen.fell = state.tick;
       } else if (u.type === 'bomber') {
         let seen = this.bombers.get(u.id);
@@ -492,7 +495,7 @@ export class AttackProbe {
       if (n <= 0) continue;
       overrun.set(seen.owner, n - 1);
       s.tanks.overrun[seen.share < 0.1 ? 0 : seen.share < 0.4 ? 1 : 2]++;
-      const where = `${state.tick - seen.spear <= 600 ? 'after a spearhead, ' : ''}${seen.st === 1 || seen.st === 2 ? 'driving' : seen.thin ? 'on thin ground' : 'on solid ground'}${state.tick - seen.fell <= 300 ? ', fell back lately' : ''}`;
+      const where = `${state.tick - seen.spear <= 600 ? 'after a spearhead, ' : ''}${seen.st === 1 || seen.st === 2 ? 'driving' : seen.cut ? 'cut off' : seen.thin ? 'on thin ground' : 'on solid ground'}${state.tick - seen.fell <= 300 ? ', fell back lately' : ''}`;
       s.armor.overrunWhere[where] = (s.armor.overrunWhere[where] ?? 0) + 1;
       if (state.tick - seen.spear <= 600) s.tanks.overrunAfterSpearhead++;
       if (state.attacks.some((a) => a.target === seen.owner && a.attacker > 0 && !isTribe(state.players[a.attacker]))) s.tanks.overrunDefending++;
@@ -762,6 +765,27 @@ export class AttackProbe {
     const y = Math.round(u.y);
     const own = (xx: number, yy: number): boolean => xx >= 0 && yy >= 0 && xx < w && yy < h && owner[yy * w + xx] === u.owner;
     return !(own(x + 3, y) && own(x - 3, y) && own(x, y + 3) && own(x, y - 3));
+  }
+  /** Own land 4-connected to u's tile is a piece of under 60 tiles. */
+  private cutOff(u: Unit): boolean {
+    const map = this.state.map;
+    const { width: w, height: h, owner } = map;
+    const t0 = Math.round(u.y) * w + Math.round(u.x);
+    if (owner[t0] !== u.owner) return false;
+    const seen = new Set<number>([t0]);
+    const q = [t0];
+    for (let i = 0; i < q.length; i++) {
+      if (q.length >= 60) return false;
+      const t = q[i];
+      const x = t % w;
+      const y = (t / w) | 0;
+      for (const n of [x > 0 ? t - 1 : -1, x < w - 1 ? t + 1 : -1, y > 0 ? t - w : -1, y < h - 1 ? t + w : -1]) {
+        if (n < 0 || seen.has(n) || owner[n] !== u.owner) continue;
+        seen.add(n);
+        q.push(n);
+      }
+    }
+    return true;
   }
   private awayWhy(u: Unit, foes: Set<number>): string {
     const state = this.state;
