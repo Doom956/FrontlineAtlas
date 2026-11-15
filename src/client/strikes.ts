@@ -12,6 +12,7 @@ import { noMissileReason } from '../sim/airstrike';
 import { activeFog, nationName, type FogView } from './fog/fogView';
 import { airfieldRadius, buildingAt, buildingsOf, chargesReady, isDisabled, nextChargeIn, samRadius } from '../sim/buildings';
 import {
+  AIR,
   ATOM_RADIUS,
   BARRAGE_DELAY,
   BARRAGE_GOLD,
@@ -376,6 +377,8 @@ export interface StrikeTarget {
   incomeCut: number;
   raidSeconds: number;
   burn: number;
+  /** bombs: the victim's fighters guard the aim (air superiority): the numbers above are already cut */
+  guarded: boolean;
 }
 
 function hostileTo(state: GameState, me: number, o: number): boolean {
@@ -488,7 +491,7 @@ function fogStrike(state: GameState, fog: FogView, me: Player, m: TargetMode, ti
       if (!known && hostile(fog.knownOwner(state, i))) known = true;
     });
   } else known = hostile(fog.knownOwner(state, aim));
-  const out: StrikeTarget = hidden ? { ...t, blind: true, enemyTiles: 0, enemyBuildings: 0, victim: -1, kills: 0, wrecks: 0, zoneCut: 0, incomeCut: 0, burn: 0, covered: hiddenClick ? '' : t.covered } : t;
+  const out: StrikeTarget = hidden ? { ...t, blind: true, enemyTiles: 0, enemyBuildings: 0, victim: -1, kills: 0, wrecks: 0, zoneCut: 0, incomeCut: 0, burn: 0, guarded: false, covered: hiddenClick ? '' : t.covered } : t;
   if (!hidden) return t;
   const no = (reason: string): StrikeTarget => ({ ...out, ok: false, reason });
   if (hiddenClick && peaceActive(state)) return no('Peace time: strike only where you can see who holds the land');
@@ -519,7 +522,7 @@ function fogStrike(state: GameState, fog: FogView, me: Player, m: TargetMode, ti
 function liveStrikeTarget(state: GameState, me: Player, ui: UiState, m: TargetMode, tile: number): StrikeTarget {
   const t: StrikeTarget = {
     ok: false, reason: '', from: -1, troops: 0, enemyTiles: 0, enemyBuildings: 0, ownTiles: 0, ownBuildings: 0, victim: -1, covered: '',
-    count: 0, ready: 0, sites: 0, siteTiles: [], size: 1, role: '', aim: -1, blind: false, radius: 0, kills: 0, wrecks: 0, zoneCut: 0, zoneSeconds: 0, incomeCut: 0, raidSeconds: 0, burn: 0,
+    count: 0, ready: 0, sites: 0, siteTiles: [], size: 1, role: '', aim: -1, blind: false, radius: 0, kills: 0, wrecks: 0, zoneCut: 0, zoneSeconds: 0, incomeCut: 0, raidSeconds: 0, burn: 0, guarded: false,
   };
   const map = state.map;
   if (tile < 0 || tile >= map.owner.length) return { ...t, reason: 'Pick a tile on the map' };
@@ -559,6 +562,7 @@ function liveStrikeTarget(state: GameState, me: Player, ui: UiState, m: TargetMo
   t.incomeCut = pv.raidCut;
   t.raidSeconds = pv.raidSeconds;
   t.burn = pv.goldBurn;
+  t.guarded = pv.guarded;
   t.victim = pv.victim > 0 ? pv.victim : -1;
   t.enemyTiles = pv.enemyTiles;
   t.enemyBuildings = pv.enemyBuildings;
@@ -656,6 +660,7 @@ function effectText(m: TargetMode, t: StrikeTarget, victim: string): string {
   if (t.zoneCut > 0) s += `; their defence there −${Math.round(t.zoneCut * 100)}% for ${Math.round(t.zoneSeconds)} s`;
   if (t.incomeCut > 0) s += `; their income −${Math.round(t.incomeCut * 100)}% for ${Math.round(t.raidSeconds)} s`;
   if (t.burn >= 1) s += `; ${formatCount(t.burn)} gold burnt`;
+  if (t.guarded) s += `; their fighters guard the sky there: ${Math.round(AIR.superiorityBombCut * 100)}% less`;
   return s;
 }
 
@@ -778,12 +783,14 @@ export function strikeToastText(e: GameEvent, me: Player): { text: string; kind:
       if ((r = after(`${n}'s paratroopers landed in `)) !== null) return { text: `Your paratroopers landed in ${r}`, kind: 'good', icon: 'paradrop' };
       return { text: m, kind: 'bad', icon: 'paradrop' };
     case 'unitLost': {
-      const shot = /^(.*)'s (SAM site|fighters) shot down an? (.+?) of (.+)$/.exec(m);
+      const shot = /^(.*)'s (SAM site|fighters|carrier fighters) shot down an? (.+?) of (.+)$/.exec(m);
       if (shot) {
         const [, by, what, unit, owner] = shot;
-        const icon = /bomber/.test(unit) ? 'bomb' : /rocket/.test(unit) ? 'rocket' : /atom/.test(unit) ? 'atom' : 'paradrop';
-        if (owner === n) return { text: `${by}'s ${what} shot down your ${unit}`, kind: 'bad', icon };
-        if (by === n) return { text: `Your ${what} shot down ${owner}'s ${unit}`, kind: 'good', icon };
+        const recon = unit === 'recon plane';
+        const icon = /bomber/.test(unit) ? 'bomb' : /rocket/.test(unit) ? 'rocket' : /atom/.test(unit) ? 'atom' : recon ? 'eye' : 'paradrop';
+        // A recon plane shot down on its way out reveals nothing (sim units.ts interceptThreats).
+        if (owner === n) return { text: `${by}'s ${what} shot down your ${unit}${recon ? ' before it got there: nothing revealed' : ''}`, kind: 'bad', icon };
+        if (by === n) return { text: `Your ${what} shot down ${owner}'s ${unit}${recon ? ': they saw nothing' : ''}`, kind: 'good', icon };
       }
       if ((r = after(`${n}'s paratroopers were wiped out`)) !== null) return { text: `Your paratroopers were wiped out${r}`, kind: 'bad', icon: 'paradrop' };
       return null;

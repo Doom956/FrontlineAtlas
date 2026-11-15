@@ -455,7 +455,7 @@ export const TECHS: Record<TechId, TechInfo> = {
   groundAttack: { name: 'Ground-attack Planes', tier: 3, science: 2200, gold: 1000, requires: ['flight'], exclusiveGroup: 'airDoctrine', description: 'Your bombers become ground-attack planes: front support strikes hit 60% harder; strategic raids are weaker.' },
   heavyBombers: { name: 'Heavy Bombers', tier: 3, science: 2200, gold: 1000, requires: ['flight'], exclusiveGroup: 'airDoctrine', description: 'Your bombers become heavy bombers: strategic raids hit 70% harder, 50% longer range, one more hit; front support is weaker.' },
   mechInfantry: { name: 'Mechanized Infantry', tier: 3, science: 2200, gold: 1000, requires: ['mechanization'], description: 'Infantry rides with your tanks: spearheads lose 15% less, and the land they take holds (attacks on it cost 40% more for a minute).' },
-  reconPlanes: { name: 'Recon Planes', tier: 3, science: 1500, gold: 800, requires: ['flight'], description: 'Airfields fly recon: reveal enemy armies, doctrines, buildings and submarines in a wide circle for 40 seconds.' },
+  reconPlanes: { name: 'Recon Planes', tier: 3, science: 1500, gold: 800, requires: ['flight'], description: 'Airfields fly recon: reveal enemy armies, doctrines, buildings and submarines in a wide circle for 40 seconds. Enemy fighters shoot recon planes down on the way.' },
   navalMastery: { name: 'Naval Mastery', tier: 5, science: 8000, gold: 3000, requires: ['navigation'], requiresAny: ['battleships', 'carriers'], description: 'Mastery: warships earn veterancy twice as fast; bombardment and naval support reach 30% further; +2 warships.' },
   armorMastery: { name: 'Armor Mastery', tier: 5, science: 8000, gold: 3000, requires: ['mechanization'], requiresAny: ['deepRaids', 'siegeTanks'], description: 'Mastery: encirclements collapse pockets three times as big and destroy more of the troops caught in them.' },
   airMastery: { name: 'Air Mastery', tier: 5, science: 8000, gold: 3000, requires: ['flight'], requiresAny: ['jetEngines', 'strategicBombing'], description: 'Mastery: every air wing flies 50% more bombers.' },
@@ -1079,8 +1079,9 @@ export const RULES_TEXT = {
     `radius (+${SAM_LEVEL_RADIUS} per level; atom bombs first, then rockets, bombers, cargo planes). A level-L SAM holds ` +
     `L shots and reloads one every ${SAM_COOLDOWN} s divided by L. Planes and rockets fall to one hit; an atom bomb needs ` +
     `${UNITS.atomBomb.hp}. Send more threats than the SAMs can load to get through, or knock SAMs out with an artillery ` +
-    `barrage first. Fighters on an airfield shoot down one bomber or cargo plane within ${BUILDINGS.airfield.radius} tiles, ` +
-    `then need ${FIGHTER_COOLDOWN} s divided by the number of fighters stationed there to be ready again.`,
+    `barrage first. Fighters on an airfield shoot down one bomber, cargo plane or recon plane within ${BUILDINGS.airfield.radius} tiles, ` +
+    `then need ${FIGHTER_COOLDOWN} s divided by the number of fighters stationed there to be ready again. SAMs leave recon ` +
+    `planes alone; a recon plane shot down on its way reveals nothing.`,
   barrage:
     `Artillery barrage: with at least ${BARRAGE_MIN_ARTILLERY} artillery, shell enemy land up to ${BARRAGE_RANGE} tiles from ` +
     `your border (Ballistics x${BARRAGE_BALLISTICS_RANGE}). The shells land ${BARRAGE_DELAY} s later on a ${BARRAGE_RADIUS}-tile ` +
@@ -1240,6 +1241,14 @@ export const AIR = {
   superiorityMinFighters: 2,
   superiorityBombCut: 0.4,
   carrierFighters: 2,
+  /**
+   * AI fighters per airfield (airwings.aiFighterWant): base while enemy air is a threat; from Normal up + 1 per
+   * aiFightersPerBombers hostile bombers stored at airfields of nations it fights that reach this one, + 1 while enemy
+   * bombers or recon planes fly at its land; at most aiFightersMax (and half the airfield's room)
+   */
+  aiFightersBase: 2,
+  aiFightersPerBombers: 4,
+  aiFightersMax: 5,
   /** escort: hits each escorted plane can fight off (Jet Engines: + escortJets); duel chances (see airwings.escortAbsorbs) */
   escortHits: 1,
   escortJets: 1,

@@ -868,7 +868,7 @@ export class BuildingPage implements DrawerPage {
         actions.append(ar);
         this.upd.push((ss, m, bb) => {
           const on = autoReconOn(ss, bb);
-          const t = autoReconText(ss, m.id, on);
+          const t = autoReconText(ss, m.id, on, bb);
           const lab = ar.querySelector('.wr-btn-l');
           if (lab && lab.textContent !== t.label) lab.textContent = t.label;
           setClass(ar, 'on', on);

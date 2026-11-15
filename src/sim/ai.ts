@@ -87,7 +87,7 @@ import { mainFront } from './warTarget';
 import { fogOn, knownTile } from './fog';
 import { borderTiles, coastCount, depositCount, landComponents, sampleOwnedTiles } from './territory';
 import { canParadrop, paradropMaxTroops, paradropRange, unitCost } from './units';
-import { aiAirDoctrineTaste, aiAirTechs, aiAirWings, aiExtraAirfields, airWingBusy, airWingRange, airWingSize } from './airwings';
+import { aiAirDoctrineTaste, aiAirTechs, aiAirWings, aiExtraAirfields, aiFighterWant, airWingBusy, airWingRange, airWingSize } from './airwings';
 import { inOvertime, victoryShareNow } from './victory';
 import { hasTech } from './tech';
 import { isArsenalTech, pillarOf } from './arsenal';
@@ -2446,8 +2446,8 @@ function airAndMissiles(ctx: Ctx): void {
 
   for (const af of buildingsOf(state, id, 'airfield')) {
     if (af.buildLeft > 0) continue;
-    // Fighters if the enemy has bombers, else bombers.
-    const kind = airThreat && af.fighters < 2 ? 'fighter' : 'bomber';
+    // Fighters if the enemy has bombers (more where they lean on bombers and recon: airwings.aiFighterWant), else bombers.
+    const kind = af.fighters < aiFighterWant(state, id, af, fighting, airThreat) ? 'fighter' : 'bomber';
     const c = unitCost(state, id, kind);
     if (af.bombers + af.fighters < aircraftCap(af) - 1 && p.gold > c.gold + 1000 && p.oil >= c.oil && p.iron >= c.iron) {
       applyAction(state, id, { type: 'buildAircraft', airfield: af.tile, kind });

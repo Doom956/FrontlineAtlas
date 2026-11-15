@@ -48,6 +48,8 @@ export const MISSION_SUPPORT = 1;
 export const MISSION_STRATEGIC = 2;
 /** Air cover (Air doctrine): an automatic support sortie from an idle airfield; its zone lasts AIR_COVER.zoneMul longer. */
 export const MISSION_COVER = 3;
+/** AI (Normal up, 3+ airfields): a second superiority patrol where its circle holds this many enemy bombers. */
+const AI_SECOND_PATROL = 6;
 /** AI: airfields flying heavy bombers raid cities (all but the one nearest the main attack), see aiAirWings. */
 const AI_HEAVY_RAIDS = true;
 /** Following wings re-aim this often between sorties (warTarget.ts re-evaluates war targets every 2 s). */
@@ -517,7 +519,8 @@ function routeNear(w: number, a: number, b: number, c: number, r: number): boole
  * Strategic targets for this sortie: the most valuable buildings of the target nation within reach (cities,
  * factories, airfields, markets, silos, ports, labs, mines, oil wells; SAMs that cover the route to one of them),
  * best first, one per bomber where there are enough: a building already struck by own bombers on their way counts
- * less, so the wing spreads out instead of hitting what is already gone.
+ * less, so the wing spreads out instead of hitting what is already gone. A building the foe's fighters guard (air
+ * superiority) is worth AIR.superiorityBombCut less.
  */
 function strategicAims(state: GameState, wing: AirWing, b: Building, n: number): number[] {
   const foe = wing.targetOwner;
@@ -537,7 +540,9 @@ function strategicAims(state: GameState, wing: AirWing, b: Building, n: number):
         if (d2(w, s.tile, t.tile) <= r * r) cover += chargesReady(s);
       }
       const near = wing.target >= 0 ? Math.sqrt(d2(w, wing.target, t.tile)) / range : 0;
-      scored.push({ tile: t.tile, score: weight * (1 + 0.3 * (t.level - 1)) - cover * 1.5 - near });
+      // Under the foe's air superiority the bombs do less: worth that much less (a guarded city still beats a mine).
+      const guard = superiorityBombMul(state, wing.owner, foe, t.tile);
+      scored.push({ tile: t.tile, score: weight * (1 + 0.3 * (t.level - 1)) * guard - cover * 1.5 - near });
     }
   }
   // SAMs that guard the route to one of the best targets.
@@ -1059,6 +1064,11 @@ function sameSide(state: GameState, a: number, b: number): boolean {
   return a === b || (a > 0 && b > 0 && areAllied(state, a, b));
 }
 
+/** Fighter cover radius of an airfield (airfieldRadius x Early Warning): fighters there catch planes and guard the sky. */
+export function fighterCoverRadius(state: GameState, b: Building): number {
+  return airfieldRadius(b) * earlyWarningMul(state, b.owner);
+}
+
 /**
  * Fighters guarding `tile` for `pid`'s side (pid and its allies): every finished, working airfield of theirs counts its
  * fighters when the tile is inside its fighter cover (airfieldRadius x Early Warning, as units.interceptThreats) or
@@ -1073,7 +1083,7 @@ export function fightersOver(state: GameState, pid: number, tile: number): numbe
     if (!q || q.id <= 0 || !q.alive || !sameSide(state, pid, q.id)) continue;
     for (const b of buildingsOf(state, q.id, 'airfield')) {
       if (b.owner !== q.id || b.buildLeft > 0 || b.fighters <= 0 || isDisabled(state, b)) continue;
-      const r = airfieldRadius(b) * earlyWarningMul(state, q.id); // Early Warning (specials.ts)
+      const r = fighterCoverRadius(state, b); // Early Warning (specials.ts)
       let inside = d2(w, b.tile, tile) <= r * r;
       if (!inside) {
         const wing = wingOf(state, b);
@@ -1093,6 +1103,36 @@ export function fightersOver(state: GameState, pid: number, tile: number): numbe
     const dx = u.x + 0.5 - tx;
     const dy = u.y + 0.5 - ty;
     if (dx * dx + dy * dy <= cr2) n += AIR.carrierFighters;
+  }
+  return n;
+}
+
+/**
+ * Hostile fighters that could catch a plane of `pid` flying straight from `from` to `to` (0 = a clear route): every
+ * finished, working hostile airfield with fighters whose cover circle (airfieldRadius x Early Warning) or superiority
+ * patrol circle the route crosses counts its fighters, every hostile carrier near the route AIR.carrierFighters. Only
+ * airfields on tiles `pid` knows (fog of war) and carriers it can see. For AI recon and auto recon. Pure read.
+ */
+export function fighterCoverOnRoute(state: GameState, pid: number, from: number, to: number): number {
+  const w = state.map.width;
+  let n = 0;
+  for (const q of state.players) {
+    if (!q || q.id <= 0 || !q.alive || !hostile(state, pid, q.id)) continue;
+    for (const b of buildingsOf(state, q.id, 'airfield')) {
+      if (b.owner !== q.id || b.buildLeft > 0 || b.fighters <= 0 || isDisabled(state, b) || !knownTile(state, pid, b.tile)) continue;
+      let crosses = routeNear(w, from, to, b.tile, airfieldRadius(b) * earlyWarningMul(state, q.id));
+      if (!crosses) {
+        const wing = wingOf(state, b);
+        if (wing && wing.mission === 'superiority' && wing.owner === q.id) crosses = routeNear(w, from, to, wing.target >= 0 ? wing.target : b.tile, airPatrolRadius(b, state));
+      }
+      if (crosses) n += b.fighters;
+    }
+  }
+  for (const u of state.units) {
+    if (u.type !== 'warship' || u.variant !== 'carrier' || u.hp <= 0 || !hostile(state, pid, u.owner)) continue;
+    const t = Math.round(u.y) * w + Math.round(u.x);
+    if (!knownTile(state, pid, t)) continue;
+    if (routeNear(w, from, to, t, TECH_EFFECTS.carrierRadius)) n += AIR.carrierFighters;
   }
   return n;
 }
@@ -1467,8 +1507,25 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
   const byCarrier = carrierReach(state, id);
   const reaches = (b: Building, range: number, t: number): boolean => d2(w, b.tile, t) <= range * range || (byCarrier !== null && byCarrier(t));
 
+  // Contest the sky (Normal up): the foe's fighters hold air superiority over our main front, so our bombs there do
+  // less; a patrol over our side of that front takes it back (fightersOver counts both sides).
+  const sharp = aiAttackLevel(state) >= 1;
+  let contest = -1;
+  if (sharp && main && front.length && afs.length >= 2) {
+    let ft = -1;
+    let fd = Infinity;
+    for (const t of front) {
+      const dd = d2(w, t, main.focus);
+      if (dd < fd) {
+        fd = dd;
+        ft = t;
+      }
+    }
+    if (ft >= 0 && airSuperiorityAt(state, main.target, id, ft)) contest = nearestOwn(state, id, ft, 12);
+  }
+  const wantAir = airThreat || contest >= 0;
   let busy = 0;
-  let patrolling = afs.some((b) => airMissionOf(state, b) === 'superiority') && airThreat;
+  let patrolling = afs.some((b) => airMissionOf(state, b) === 'superiority') && wantAir;
   const sortedAfs = [...afs].sort((a, b) => (main ? d2(w, a.tile, main.focus) - d2(w, b.tile, main.focus) : 0) || a.id - b.id);
   // Heavy bombers (variants.ts: raids x1.7, support x0.7) raid cities from every airfield but the one nearest the
   // main attack, and fall back to front support when no city is in reach.
@@ -1476,16 +1533,18 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
   // The patrolling airfield: the farthest from the main front (the nearest flies support); from Normal up, of the others
   // with 2+ fighters, the one whose patrol would catch the most enemy bombers (patrolCentre), when any is about.
   let patrolAf = sortedAfs[sortedAfs.length - 1];
-  if (airThreat && afs.length >= 2 && aiAttackLevel(state) >= 1) {
-    let bestW = 0;
+  // A second patrol (Normal up, 3+ airfields) where the enemy leans on bombers: its circle holds AI_SECOND_PATROL+ of them.
+  let patrolAf2: Building | null = null;
+  if (airThreat && afs.length >= 2 && sharp) {
+    const cands: { b: Building; pw: number }[] = [];
     for (const b of sortedAfs) {
       if (b.fighters < 2 || (main && b === sortedAfs[0])) continue;
       const pw = patrolPick(state, id, b)[1];
-      if (pw > bestW) {
-        bestW = pw;
-        patrolAf = b;
-      }
+      if (pw > 0) cands.push({ b, pw });
     }
+    cands.sort((x, y) => y.pw - x.pw || sortedAfs.indexOf(x.b) - sortedAfs.indexOf(y.b));
+    if (cands.length) patrolAf = cands[0].b;
+    if (afs.length >= 3 && cands.length >= 2 && cands[1].pw >= AI_SECOND_PATROL) patrolAf2 = cands[1].b;
   }
   const supportAim = (b: Building): number => {
     if (!main || !front.length) return -1;
@@ -1510,16 +1569,23 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
     let target: number | undefined;
     const raidFirst = heavy && fighting.length > 0 && (afs.length < 2 || b !== sortedAfs[0]);
 
-    // Superiority: one airfield with fighters when the enemy flies (the farthest from the front if there are several).
-    const wantPatrol = airThreat && b.fighters >= 2 && (afs.length >= 2 ? b === patrolAf : !main);
-    if (wantPatrol && (!patrolling || cur?.mission === 'superiority')) {
+    // Superiority: one airfield with fighters when the enemy flies (the farthest from the front if there are several),
+    // a second one where many enemy bombers aim, or one over our main front when the foe's fighters own the sky there.
+    const wantPatrol = wantAir && b.fighters >= 2 && (afs.length >= 2 ? b === patrolAf : !main);
+    if (b === patrolAf2 && b.fighters >= 2) {
+      mission = 'superiority';
+      const c = patrolCentre(state, id, b);
+      if (c >= 0) target = c;
+    } else if (wantPatrol && (!patrolling || cur?.mission === 'superiority')) {
       mission = 'superiority';
       patrolling = true;
       // From Normal up the patrol flies where the enemy bombers aim (kept while it still covers them), not over the airfield.
-      if (aiAttackLevel(state) >= 1) {
-        const c = patrolCentre(state, id, b);
+      if (sharp) {
+        const c = airThreat ? patrolCentre(state, id, b) : -1;
         const r = airPatrolRadius(b, state) / 3;
+        const reach = airfieldRadius(b) * AIR.superiorityCentreReach * dropTanksPatrolMul(state, id);
         if (c >= 0) target = cur?.mission === 'superiority' && cur.target >= 0 && d2(w, cur.target, c) <= r * r ? cur.target : c;
+        else if (contest >= 0 && d2(w, b.tile, contest) <= reach * reach) target = contest;
         else if (cur?.mission === 'superiority' && cur.target >= 0) target = cur.target;
       }
     } else if (mainCovered && b === sortedAfs[0] && b.bombers > 0) {
@@ -1578,6 +1644,34 @@ export function aiAirWings(state: GameState, id: number, fighting: readonly numb
   return busy;
 }
 
+/**
+ * Fighters an AI airfield keeps (ai.ts air turn: it buys a fighter while it has fewer, else bombers). AIR.aiFightersBase
+ * while enemy air is a threat at all; from Normal up more where the nations it fights lean on bombers and recon:
+ * + 1 per AIR.aiFightersPerBombers bombers stored at their airfields whose reach (+ 30 tiles) holds this airfield,
+ * + 1 while hostile bombers or recon planes fly at its land. At most AIR.aiFightersMax and half the airfield's room.
+ * Fighters guard the sky: they shoot down bombers and recon planes and give air superiority. Pure read.
+ */
+export function aiFighterWant(state: GameState, id: number, af: Building, fighting: readonly number[], airThreat: boolean): number {
+  if (!airThreat) return 0;
+  let want: number = AIR.aiFightersBase;
+  if (aiAttackLevel(state) >= 1) {
+    const w = state.map.width;
+    let bombers = 0;
+    for (const q of fighting) {
+      if (!state.players[q]?.alive || !hostile(state, id, q)) continue;
+      for (const b of buildingsOf(state, q, 'airfield')) {
+        if (b.owner !== q || b.buildLeft > 0 || b.bombers <= 0) continue;
+        const r = airWingRange(b, state) + 30;
+        if (d2(w, b.tile, af.tile) <= r * r) bombers += b.bombers;
+      }
+    }
+    want += Math.floor(bombers / AIR.aiFightersPerBombers);
+    const owner = state.map.owner;
+    if (state.units.some((u) => (u.type === 'bomber' || u.type === 'reconPlane') && u.hp > 0 && u.state === 0 && owner[u.target] === id && hostile(state, id, u.owner))) want++;
+  }
+  return Math.min(want, AIR.aiFightersMax, Math.floor(aircraftCap(af) / 2));
+}
+
 /** Bomber price (for the client's mission panel). */
 export function airSortieCost(state: GameState, pid: number): { gold: number; iron: number; oil: number } {
   return unitCost(state, pid, 'bomber');
@@ -1596,7 +1690,7 @@ export const AIR_MISSION_INFO: Record<AirMission, { name: string; help: string }
   },
   superiority: {
     name: 'Air superiority',
-    help: `Fighters patrol ${AIR.superiorityRadiusMul}x the airfield's cover radius and shoot down enemy bombers and cargo planes; Jet Engines doubles their pace and beats escorts.`,
+    help: `Fighters patrol ${AIR.superiorityRadiusMul}x the airfield's cover radius and shoot down enemy bombers, cargo planes and recon planes; enemy bombing inside the patrol does ${Math.round(AIR.superiorityBombCut * 100)}% less while their fighters there are fewer. Jet Engines doubles their pace and beats escorts.`,
   },
 };
 

@@ -6,7 +6,8 @@
 //   - escorts: a thin line from each escorting warship to the transport / trade ship it guards
 //   - divisions supporting a front: a dotted line to the front and a small flag there
 //   - air support: a subtle dashed disc over each live support zone of yours (and a red one over zones on your land)
-//   - air superiority: the patrol circle of the selected airfield, or of every airfield while picking
+//   - air superiority: the patrol circle of the selected airfield, or of every airfield while picking, and the
+//     selected airfield's fighter cover once it has enough fighters (both labelled: enemy bombs do less inside)
 //   - while aiming a stance / mode / mission: the area the click would cover (bombard range, front radius, zone)
 //   - Arsenal: your recon / light-tank reveal circles (steel, fading) and minefields around ports (dotted: accent =
 //     yours or an ally's, red = dangerous to you); the recon aim shows the circle the flight would reveal
@@ -15,7 +16,7 @@
 // on light land as well as on the slate sea.
 // Cheap: rings and lines only, a few dozen per frame at most.
 import { activeFog } from '../fog/fogView';
-import { airPatrolRadius, airSupportRadius, airZones, airWingRange, wingOf } from '../../sim/airwings';
+import { airPatrolRadius, airSupportRadius, airZones, airWingRange, fighterCoverRadius, wingOf } from '../../sim/airwings';
 import { buildingAt, buildingsOf } from '../../sim/buildings';
 import { AIR, ARMOR_SUPPORT_RADIUS, NAVY_SUPPORT_RANGE, TICKS_PER_SECOND } from '../../sim/config';
 import { divisionMode } from '../../sim/armor2';
@@ -91,12 +92,21 @@ export class PillarOverlay {
         if (b) fields.push(b);
       } else fields.push(...buildingsOf(state, me, 'airfield').filter((b) => b.buildLeft <= 0));
     }
+    const cut = `enemy bombs −${Math.round(AIR.superiorityBombCut * 100)}%`;
     for (const b of fields) {
       const c = at(b.tile);
       const wg = wingOf(state, b);
+      // Air superiority: the selected airfield's fighter cover, where enemy bombs do less (airwings.airSuperiorityAt)
+      if (!picking && b.fighters >= AIR.superiorityMinFighters) {
+        const r = fighterCoverRadius(state, b) * z;
+        ring(ctx, c.x, c.y, r, `${STEEL}0.4)`, [2, 5]);
+        if (z >= 0.5) ringLabel(ctx, c.x, c.y + r, `fighter cover: ${cut}`, `${STEEL}0.9)`);
+      }
       if (wg?.mission === 'superiority' || picking?.pick === 'airSuperiority') {
         const centre = picking?.pick === 'airSuperiority' && ui.hoverTile >= 0 ? at(ui.hoverTile) : wg && wg.target >= 0 ? at(wg.target) : c;
-        ring(ctx, centre.x, centre.y, airPatrolRadius(b, state) * z, `${STEEL}0.55)`, [6, 4], `${STEEL}0.05)`);
+        const r = airPatrolRadius(b, state) * z;
+        ring(ctx, centre.x, centre.y, r, `${STEEL}0.55)`, [6, 4], `${STEEL}0.05)`);
+        if (z >= 0.5 && b.fighters >= AIR.superiorityMinFighters) ringLabel(ctx, centre.x, centre.y - r, `patrol: ${cut}`, `${STEEL}0.9)`);
       }
       if (picking && (picking.pick === 'airSupport' || picking.pick === 'airStrategic')) ring(ctx, c.x, c.y, airWingRange(b, state) * z, `${ACC}0.4)`, [2, 6]);
     }
