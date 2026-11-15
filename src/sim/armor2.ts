@@ -494,36 +494,44 @@ function interiorAt(state: GameState, owner: number, t: number, depth = 3): bool
   return own(x + depth, y) && own(x - depth, y) && own(x, y + depth) && own(x, y - depth);
 }
 
-/** Own land tile to hold behind `front` (and `ok`): interior (own land `depth` tiles out in all 4 directions), nearest the front. */
-function holdTileNear(state: GameState, owner: number, front: number, ok?: (t: number) => boolean, depth = 3): number {
+/**
+ * Own land tile to hold behind `front` (and `ok`): interior (own land `depth` tiles out in all 4 directions), nearest
+ * the front, within ARMOR_SUPPORT_HOLD + 12 tiles (with `far`, smarter armour: within `far` tiles when there is none
+ * that close, e.g. a front tile deep in our own new spearhead's band); else the own tile nearest the front.
+ */
+function holdTileNear(state: GameState, owner: number, front: number, ok?: (t: number) => boolean, depth = 3, far = 0): number {
   const map = state.map;
   const { width: w, height: h } = map;
   const fx = front % w;
   const fy = (front / w) | 0;
-  const r = ARMOR_SUPPORT_HOLD + 12;
   const own = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < w && y < h && map.owner[y * w + x] === owner && !isWater(map.terrain[y * w + x]);
   let best = -1;
   let bestD = Infinity;
   let fallback = -1;
   let fallbackD = Infinity;
-  for (let y = Math.max(0, fy - r); y <= Math.min(h - 1, fy + r); y++) {
-    for (let x = Math.max(0, fx - r); x <= Math.min(w - 1, fx + r); x++) {
-      if (!own(x, y)) continue;
-      const d = d2(x, y, fx, fy);
-      if (d > r * r) continue;
-      const t = y * w + x;
-      if (ok && !ok(t)) continue;
-      if (d < fallbackD) {
-        fallbackD = d;
-        fallback = t;
+  const scan = (r: number): void => {
+    for (let y = Math.max(0, fy - r); y <= Math.min(h - 1, fy + r); y++) {
+      for (let x = Math.max(0, fx - r); x <= Math.min(w - 1, fx + r); x++) {
+        if (!own(x, y)) continue;
+        const d = d2(x, y, fx, fy);
+        if (d > r * r) continue;
+        const t = y * w + x;
+        if (ok && !ok(t)) continue;
+        if (d < fallbackD) {
+          fallbackD = d;
+          fallback = t;
+        }
+        if (d >= bestD) continue;
+        if (!own(x + depth, y) || !own(x - depth, y) || !own(x, y + depth) || !own(x, y - depth)) continue;
+        best = t;
+        bestD = d;
       }
-      if (d >= bestD) continue;
-      if (!own(x + depth, y) || !own(x - depth, y) || !own(x, y + depth) || !own(x, y - depth)) continue;
-      best = t;
-      bestD = d;
     }
-  }
-  if (best < 0 && depth > 3) return holdTileNear(state, owner, front, ok);
+  };
+  const r = ARMOR_SUPPORT_HOLD + 12;
+  scan(r);
+  if (best < 0 && depth > 3) return holdTileNear(state, owner, front, ok, 3, far);
+  if (best < 0 && far > r) scan(far);
   return best >= 0 ? best : fallback;
 }
 
@@ -553,6 +561,8 @@ const ARMOR_REFIT_TRIP = 48;
 const ARMOR_SMART_FULL = 0.85;
 /** Smarter armour: a straight strike (no cut) needs this share of a full division (a cut: ARMOR_SUPPORT_READY). */
 const ARMOR_SMART_READY = 0.7;
+/** Smarter armour looks this far (tiles) from its front for solid ground to hold when there is none near it. */
+const ARMOR_HOLD_FAR = 40;
 /** Smarter armour under a push holds where own land runs this many tiles out all round. */
 const ARMOR_PRESSED_DEPTH = 6;
 /** A division that ended a spearhead this recently (s) may still stand on its ground (Unit.ended). */
@@ -841,7 +851,7 @@ function leaveTip(state: GameState, u: Unit): boolean {
   if (interiorAt(state, u.owner, here)) return false;
   const fresh = u.ended !== undefined && state.tick - u.ended <= ENDED_SECONDS * TICKS_PER_SECOND;
   if (state.players[u.owner]?.isHuman && !fresh) return false;
-  if ((u.retryTick ?? 0) > state.tick) return false;
+  if ((u.retryTick ?? 0) > state.tick && !fresh) return false;
   if (fresh && divisionStrength(u) >= ARMOR_SUPPORT_READY) {
     let best: { t: number; score: number } | null = null;
     for (const c of cutClicks(state, u.owner, u.x, u.y, 6, 4)) {
@@ -852,10 +862,21 @@ function leaveTip(state: GameState, u: Unit): boolean {
     }
     if (best && moveTankDivisions(state, u.owner, [u.id], best.t).ok) return true;
   }
-  const hold = holdTileNear(state, u.owner, u.station ?? here);
+  const hold = holdTileNear(state, u.owner, u.station ?? here, undefined, 3, ARMOR_HOLD_FAR);
   delete u.ended;
   if (hold < 0 || hold === here) return false;
   if (driveTo(state, u, hold)) return true;
+  // No route there (the band behind it was cut): the best solid ground it can still reach over our land.
+  const prev = landFlood(state, u.owner, here);
+  const alt = holdTileNear(state, u.owner, u.station ?? here, (t) => prev[t] >= 0, 3, ARMOR_HOLD_FAR);
+  if (alt >= 0 && alt !== here && interiorAt(state, u.owner, alt)) {
+    u.path = floodPath(prev, here, alt);
+    u.pathPos = 0;
+    u.target = alt;
+    u.state = u.path.length ? 1 : 0;
+    u.retryTick = undefined;
+    return true;
+  }
   u.retryTick = state.tick + ARMOR_RETRY_SECONDS * TICKS_PER_SECOND;
   return false;
 }
@@ -869,8 +890,12 @@ export function divisionStep(state: GameState, u: Unit): void {
   if (slot && u.state === 0) refit(state, u);
   const mode = divisionMode(u);
   if (slot && u.ended !== undefined && state.tick - u.ended > ENDED_SECONDS * TICKS_PER_SECOND) delete u.ended;
-  // Smarter armour: off a spearhead's thin tip at once (checked every second), striking on along a cut when ready.
-  if (slot && u.state === 0 && mode === 'support' && armorLevel(state, u.owner) >= 1 && leaveTip(state, u)) return;
+  // Smarter armour: off a spearhead's thin tip at once (checked every second, every tick for the first 3 s after the
+  // spearhead), striking on along a cut when ready. AI divisions in any mode but refit, a player's on support.
+  const human = !!state.players[u.owner]?.isHuman;
+  const tipMode = mode === 'support' || (!human && mode === 'hold');
+  const justEnded = u.ended !== undefined && state.tick - u.ended <= 3 * TICKS_PER_SECOND;
+  if ((slot || justEnded) && u.state === 0 && tipMode && armorLevel(state, u.owner) >= 1 && leaveTip(state, u)) return;
   if (mode === 'hold') return;
   const every = Math.max(1, Math.round(ARMOR_SUPPORT_SCAN_SECONDS * TICKS_PER_SECOND));
   if ((state.tick + u.id * 7) % every !== 0) return;
@@ -947,7 +972,6 @@ export function divisionStep(state: GameState, u: Unit): void {
   // Nothing to strike yet: hold just behind the front. An AI division left out on a limb (a spearhead's tip, our land
   // under 3 tiles deep around it) pulls back to a hold tile at once, even right after falling back: 61% of overrun AI
   // divisions were caught there within a minute of a spearhead.
-  const human = !!state.players[u.owner]?.isHuman;
   const fresh = u.ended !== undefined && state.tick - u.ended <= ENDED_SECONDS * TICKS_PER_SECOND;
   const exposed = u.state === 0 && (!human || fresh) && !interiorAt(state, u.owner, unitTile(state, u));
   // Smarter armour with a nation at war with us that close (land within TANK_FALLBACK_RADIUS): it holds deeper (own
@@ -957,7 +981,7 @@ export function divisionStep(state: GameState, u: Unit): void {
   const deep = !pressed || interiorAt(state, u.owner, unitTile(state, u), ARMOR_PRESSED_DEPTH);
   if (d2(u.x, u.y, front % w, (front / w) | 0) <= (ARMOR_SUPPORT_HOLD + 6) * (ARMOR_SUPPORT_HOLD + 6) && u.state === 0 && !exposed && deep) return;
   if ((u.retryTick ?? 0) > state.tick && !exposed && deep) return;
-  const hold = holdTileNear(state, u.owner, front, undefined, pressed ? ARMOR_PRESSED_DEPTH : 3);
+  const hold = holdTileNear(state, u.owner, front, undefined, pressed ? ARMOR_PRESSED_DEPTH : 3, level >= 1 ? ARMOR_HOLD_FAR : 0);
   if (hold >= 0 && hold !== unitTile(state, u)) driveTo(state, u, hold, !exposed && deep);
 }
 
