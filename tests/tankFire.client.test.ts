@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { M_MASTERY, M_PATH3 } from '../src/client/art/shared/keys';
 import type { FxCam, UnitPoses } from '../src/client/fx/pixelFx';
-import { engagementOf, fireInterval, fireSeen, gunOf, nextShotIn, REDUCED_FIRE_MUL, SHOT_CAP, SHOTS_PER_FRAME, TankFire, tankFxLevel, TankShotBus, warPairs } from '../src/client/fx/tankFire';
+import { BLITZ_FIRE_MUL, engagementOf, fireInterval, fireSeen, gunOf, nextShotIn, REDUCED_FIRE_MUL, SHOT_CAP, SHOTS_PER_FRAME, TankFire, tankFxLevel, TankShotBus, warPairs } from '../src/client/fx/tankFire';
 import { BattleEars, type BattleCue } from '../src/client/sound/battle';
 import { hashState } from '../src/sim/hash';
 import type { Attack, GameState, Unit } from '../src/sim/types';
@@ -94,6 +94,15 @@ describe('who fights', () => {
     expect(e!.x).toBeCloseTo(30.5, 6);
     expect(e!.y).toBeCloseTo(20.5, 6);
     expect(e!.foe).toBe(2);
+    expect(e!.blitz).toBe(false);
+    // a Breakthrough (Unit.blitz) is a spearhead too, and fires more often
+    const b = engagementOf(s, { ...u, blitz: 1 }, warPairs(s));
+    expect(b!.attacking).toBe(true);
+    expect(b!.blitz).toBe(true);
+    const g = gunOf(undefined, 0);
+    expect(BLITZ_FIRE_MUL).toBeLessThan(1);
+    expect(fireInterval(g, true, false, true)).toBeCloseTo(fireInterval(g, true) * BLITZ_FIRE_MUL, 6);
+    expect(fireInterval(g, false, false, true)).toBe(fireInterval(g, false)); // only an attacking spearhead
     // into empty land: no one to fight
     const s2 = makeFlatGame(60, 40, 2, { human: true });
     claimRect(s2, 1, 0, 0, 29, 39);

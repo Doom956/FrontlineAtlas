@@ -176,6 +176,26 @@ function drawOne(ctx: CanvasRenderingContext2D, f: FxRec, x: number, y: number, 
       ctx.globalAlpha = 1;
       break;
     }
+    case 'smokeScreen':
+    case 'trail': {
+      // a blitz: its smoke screen at the launch, dust behind the head (the explosions art style; dust puffs without one)
+      const d = mapFxDraw;
+      d.kind = f.kind === 'smokeScreen' ? 'smoke' : 'dust';
+      d.x = x;
+      d.y = y;
+      d.t = t;
+      d.zoom = z;
+      d.seed = f.seed;
+      d.rt = f.r;
+      const art = artFor('explosions');
+      if (f.kind === 'smokeScreen' && art.drawSmokeScreen) art.drawSmokeScreen(ctx, d, motionFor('explosions'));
+      else {
+        d.kind = 'dust';
+        art.drawMapFx(ctx, d, motionFor('explosions'));
+      }
+      ctx.globalAlpha = 1;
+      break;
+    }
     case 'shockwave':
       // the rocket / bomb blasts draw their own pixel ring (fx/pixelFx.ts)
       break;

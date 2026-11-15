@@ -1103,7 +1103,48 @@ export function blastAt(ctx: CanvasRenderingContext2D, kind: BlastKind, x: numbe
 /** How long a blast of `kind` lasts (ms) under motion `m`. */
 export const blastMs = (kind: BlastKind, m: MotionParams): number => durationOf(kind, m);
 
+/**
+ * A blitz's smoke screen: a low wall of white-grey smoke bursting out round the launch tile, billowing, then thinning
+ * as it drifts downwind (pixel blobs on the map's grid, like the rest of the aftermath).
+ */
+function drawSmokeScreen(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionParams): void {
+  const z = f.zoom;
+  const sc = scaleAt(z);
+  const g = gridOf(sc, f.dpr);
+  const k = Math.min(1.6, Math.max(0.7, z / 8));
+  const t = f.t;
+  const sd = f.seed * 53.1 + 2;
+  const linger = Math.max(0.5, Math.min(1.6, m.smokeLinger));
+  const spread = Math.max(10, f.rt * z * 0.6);
+  const n = 12;
+  for (let j = 0; j < n; j++) {
+    // the canisters pop in quick order round the launch tile, each cloud swelling and fading on its own clock
+    const tj = clamp01((t - j * 0.03) / (0.75 / linger + 0.25));
+    if (tj <= 0 || tj >= 1) continue;
+    const ang = sd + (j * Math.PI * 2) / n + (rnd(sd, j) - 0.5) * 0.6;
+    const d = spread * (0.25 + 0.75 * easeOut(Math.min(1, tj * 1.6))) * (0.6 + 0.4 * rnd(sd, j + 10));
+    const r = (2.6 + 5 * easeOut(tj)) * k * g.res;
+    const px = f.x + Math.cos(ang) * d + tj * 5 * k * sc * WIND_X;
+    const py = f.y + Math.sin(ang) * d * 0.6 - tj * 3 * k * sc;
+    drawBlob(ctx, tj < 0.15 ? 'dust' : 'smoke', r, j, px, py, g, 0.9 * (1 - tj * tj) * (tj < 0.08 ? tj / 0.08 : 1));
+  }
+  // the pop of the canisters: a few bright specks at the start
+  if (t < 0.12) {
+    for (let j = 0; j < 5; j++) {
+      const ang = sd * 2 + j * 1.3;
+      ctx.globalAlpha = 1 - t / 0.12;
+      speck(ctx, f.x + Math.cos(ang) * spread * 0.3, f.y + Math.sin(ang) * spread * 0.2, g, 2, TRACER[0]);
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
 export const detailedExplosions: ExplosionArt = {
+  drawSmokeScreen(ctx, f, m) {
+    const prev = ctx.globalAlpha;
+    drawSmokeScreen(ctx, f, m);
+    ctx.globalAlpha = prev;
+  },
   durationMs: (kind, m) => durationOf(kind, m),
   draw(ctx, b, m) {
     drawBlast(ctx, b, m);

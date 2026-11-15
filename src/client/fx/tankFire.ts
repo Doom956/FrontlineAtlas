@@ -3,7 +3,8 @@
 // being where it is. This reads that from the state and shows it:
 //
 //   attacking   a spearhead (Unit.state 3, tanks.ts) is fighting its way in: it fires at the enemy land ahead of its
-//               head, along its line from the launch tile toward its target, often
+//               head, along its line from the launch tile toward its target, often; a Breakthrough (Unit.blitz,
+//               sim/blitz.ts) is a spearhead too and fires more often still (BLITZ_FIRE_MUL)
 //   holding     a division not attacking that has land of a nation it is at war with (an attack running between the
 //               two either way, or one lately: the sim's war memory) within TANK_DEFENSE_RADIUS, the reach of its
 //               defence in the sim: it fires at the nearest such tile, less often
@@ -39,6 +40,8 @@ export const SHOT_CAP = 40;
 export const FAR_FX_ZOOM = 2;
 /** Reduced motion: shots this many times further apart. */
 export const REDUCED_FIRE_MUL = 2.5;
+/** A Breakthrough's surge (Unit.blitz, sim/blitz.ts): shots this many times as far apart as a plain spearhead's. */
+export const BLITZ_FIRE_MUL = 0.7;
 /** How far ahead of a spearhead's head it looks for the enemy (tiles). */
 const LOOK_AHEAD = 6;
 /** The turret's traverse (radians per second of game time) and how close to the target it must be to fire. */
@@ -84,14 +87,17 @@ export function gunOf(variant: UnitVariant | undefined, mods: number): GunSpec {
   return sharp ? { ...base, sharp, size: base.size * 1.1, attackMs: base.attackMs * 0.9, holdMs: base.holdMs * 0.9 } : { ...base, sharp };
 }
 
-/** Mean game ms between shots for a gun attacking or holding (reduced motion: REDUCED_FIRE_MUL times longer). */
-export function fireInterval(g: GunSpec, attacking: boolean, reduced = false): number {
-  return (attacking ? g.attackMs : g.holdMs) * (reduced ? REDUCED_FIRE_MUL : 1);
+/**
+ * Mean game ms between shots for a gun attacking or holding (reduced motion: REDUCED_FIRE_MUL times longer; a
+ * Breakthrough's spearhead: BLITZ_FIRE_MUL times as long, so more often).
+ */
+export function fireInterval(g: GunSpec, attacking: boolean, reduced = false, blitz = false): number {
+  return (attacking ? g.attackMs : g.holdMs) * (reduced ? REDUCED_FIRE_MUL : 1) * (attacking && blitz ? BLITZ_FIRE_MUL : 1);
 }
 
 /** The game ms to the next shot, for a random number r in [0, 1): 0.6 to 1.4 times the mean, so a line never fires in step. */
-export function nextShotIn(g: GunSpec, attacking: boolean, reduced: boolean, r: number): number {
-  return fireInterval(g, attacking, reduced) * (0.6 + 0.8 * r);
+export function nextShotIn(g: GunSpec, attacking: boolean, reduced: boolean, r: number, blitz = false): number {
+  return fireInterval(g, attacking, reduced, blitz) * (0.6 + 0.8 * r);
 }
 
 /** How the fire is drawn at zoom z: not at all, a faint blink, or in full. */
@@ -125,6 +131,8 @@ export interface Engagement {
   y: number;
   /** the enemy it fights */
   foe: number;
+  /** a Breakthrough's spearhead (Unit.blitz, sim/blitz.ts): it fires more often */
+  blitz: boolean;
 }
 
 /** The fight division `u` is in, or null (read-only). `pairs` from warPairs. */
@@ -151,7 +159,7 @@ export function engagementOf(state: GameState, u: Unit, pairs: ReadonlySet<numbe
       if (x < 0 || y < 0 || x >= w || y >= h) return null;
       const t = y * w + x;
       const o = map.owner[t];
-      if (o > 0 && o !== own && map.terrain[t] > 1) return { attacking: true, x: x + 0.5, y: y + 0.5, foe: o };
+      if (o > 0 && o !== own && map.terrain[t] > 1) return { attacking: true, x: x + 0.5, y: y + 0.5, foe: o, blitz: !!u.blitz };
     }
     return null;
   }
@@ -175,7 +183,7 @@ export function engagementOf(state: GameState, u: Unit, pairs: ReadonlySet<numbe
       foe = o;
     }
   }
-  return best < 0 ? null : { attacking: false, x: (best % w) + 0.5, y: ((best / w) | 0) + 0.5, foe };
+  return best < 0 ? null : { attacking: false, x: (best % w) + 0.5, y: ((best / w) | 0) + 0.5, foe, blitz: false };
 }
 
 /** What of the fog the shots need. */
@@ -228,6 +236,8 @@ interface Gunner {
   spec: GunSpec;
   engaged: boolean;
   attacking: boolean;
+  /** a Breakthrough's spearhead: fires more often (BLITZ_FIRE_MUL) */
+  blitz: boolean;
   /** the enemy point and the tank (tile coordinates of their centres) */
   ex: number;
   ey: number;
@@ -377,12 +387,13 @@ export class TankFire {
         const mods = unitSpriteMods(state, u);
         const spec = gunOf(u.variant, mods);
         // the turret starts along the hull (its heading is read on the next step) and swings round to the enemy
-        g = { id: u.id, key: spriteKey(u.type, u.variant), mods, spec, engaged: true, attacking: e.attacking, ex: e.x, ey: e.y, ux, uy, aim: NaN, nextAt: -1, firedAt: -Infinity, scan: no };
+        g = { id: u.id, key: spriteKey(u.type, u.variant), mods, spec, engaged: true, attacking: e.attacking, blitz: e.blitz, ex: e.x, ey: e.y, ux, uy, aim: NaN, nextAt: -1, firedAt: -Infinity, scan: no };
         this.gunners.set(u.id, g);
       }
       if (!g.engaged || g.attacking !== e.attacking) g.nextAt = -1; // a new fight: its first shot comes after a while
       g.engaged = true;
       g.attacking = e.attacking;
+      g.blitz = e.blitz;
       g.ex = e.x;
       g.ey = e.y;
       g.ux = ux;
@@ -408,7 +419,7 @@ export class TankFire {
         if (Math.abs(wrap(want - g.aim)) < 0.03 && nowMs - g.firedAt > RECOIL_MS) this.gunners.delete(id);
         continue;
       }
-      if (g.nextAt < 0) g.nextAt = gameMs + nextShotIn(g.spec, g.attacking, this.reduced, this.rand()) * (0.2 + 0.6 * this.rand());
+      if (g.nextAt < 0) g.nextAt = gameMs + nextShotIn(g.spec, g.attacking, this.reduced, this.rand(), g.blitz) * (0.2 + 0.6 * this.rand());
       if (gameMs < g.nextAt) continue;
       // the turret must be on target first
       if (Math.abs(wrap(want - g.aim)) > ON_TARGET) continue;
@@ -417,7 +428,7 @@ export class TankFire {
         continue;
       }
       started++;
-      g.nextAt = gameMs + nextShotIn(g.spec, g.attacking, this.reduced, this.rand());
+      g.nextAt = gameMs + nextShotIn(g.spec, g.attacking, this.reduced, this.rand(), g.blitz);
       this.fire(state, cam, g, nowMs, poses);
     }
   }

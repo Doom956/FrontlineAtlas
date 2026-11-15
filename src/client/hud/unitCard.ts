@@ -3,6 +3,9 @@
 // Read top to bottom: portrait (the map sprite), name and owner with its stance; one strength line (label, bar, number);
 // then what it is doing, what it does by itself, and its reach.
 import { divisionMode, divisionStrength } from '../../sim/armor2';
+import { blitzBlock } from '../../sim/blitz';
+import { BLITZ_NAME } from '../../sim/config';
+import { hasTech } from '../../sim/tech';
 import { divisionReachLine, shipReachLine } from '../reach';
 import { warshipMaxHp, warshipStance } from '../../sim/naval2';
 import { MODE_INFO, STANCE_INFO, vetOf } from '../pillars';
@@ -38,6 +41,8 @@ export class UnitCard {
   private cmBtn = el('button', 'wr-btn mini uc-cm-b');
   private cmSub = el('span', 'uc-cm-s');
   private cmLine = el('div', 'uc-cm-l');
+  /** a division's blitz: ready or recharging (with Armor Mastery) */
+  private blitz = el('div', 'uc-a', '');
   private shown = -1;
   private lastMs = 0;
   private img: HTMLImageElement;
@@ -92,7 +97,8 @@ export class UnitCard {
     });
     this.cmLine.dataset.test = 'cruise-line';
     this.cm.append(this.cmBtn, this.cmLine);
-    this.el.append(head, str, this.order, this.auto, this.range, this.cm);
+    this.blitz.dataset.test = 'unit-blitz';
+    this.el.append(head, str, this.order, this.auto, this.blitz, this.range, this.cm);
   }
 
   /** Every frame: follow the selected warship on screen; texts at ~5 Hz. */
@@ -155,6 +161,10 @@ export class UnitCard {
         setTip(this.cmBtn, cb.line);
         setText(this.cmLine, cb.line);
       }
+      const bz = tank && hasTech(me, 'armorMastery') ? blitzBlock(state, me.id, u) : 'Needs Armor Mastery';
+      const bzLine = bz === 'Needs Armor Mastery' ? '' : bz ? `${BLITZ_NAME}: ${bz}` : `${BLITZ_NAME} ready`;
+      setText(this.blitz, bzLine);
+      setVisible(this.blitz, bzLine !== '');
     }
     const at = this.ctx.probe()?.unitScreen(id);
     setVisible(this.el, !!at);

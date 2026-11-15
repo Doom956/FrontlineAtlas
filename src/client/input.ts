@@ -1,4 +1,5 @@
 // Mouse and keyboard handling on the map canvas.
+import { blitzClick } from './blitzUi';
 import { knownOwnerOf } from './fog/fogView';
 import { mapInputPaused, mapPointer, mapSide, prankView } from './fx/prankView';
 import { buildingsOf } from '../sim/buildings';
@@ -430,6 +431,13 @@ export function setupInput(deps: InputDeps): () => void {
           ui.toast = { text: a, until: performance.now() + TOAST_MS };
           ok = false;
         } else ok = dispatch(a).ok;
+        break;
+      }
+      case 'blitz': {
+        // a tank division's blitz (blitzUi.ts): the click is where it surges
+        const r = blitzClick(s, ui, dispatch, tile);
+        if (!r.ok && r.reason) ui.toast = { text: r.reason, until: performance.now() + TOAST_MS };
+        ok = r.ok;
         break;
       }
       case 'recon': {

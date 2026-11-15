@@ -2,6 +2,37 @@
 
 The big rounds of work, newest first. Each one was merged to `main` and deployed to the live game.
 
+## 2026-11-15 · Breakthrough
+
+With Armor Mastery your tank divisions get a new order, Breakthrough:
+- Select a division and click Breakthrough on its orders bar, then click enemy land near your border. The map shows the
+  wedge it will drive before you click.
+- The division pops a smoke screen and surges at twice the speed, five tiles wide and half again as deep, with
+  fewer losses. The land it takes holds for 20 seconds: the enemy can't take it back meanwhile, so the wedge is hard
+  to cut off. Its tanks fire faster than a plain spearhead's as they surge.
+- It costs 100 oil and needs half strength; then the division recharges for 2 minutes. The button says when it is
+  ready and why it can't go ("Recharging 40 s", "Needs Armor Mastery").
+- Armor Mastery still makes encirclements collapse bigger pockets.
+- AI nations from Normal up use it to close encirclements and break stalemates, never into your land at Easy or
+  Normal. Your own divisions never use it by themselves.
+- Online games need the new version (protocol 21).
+
+## 2026-11-15 · Tank divisions that fight like an army
+
+For your tank divisions on Support, and for AI nations from Normal up (Easy plays as before):
+- Divisions stay at the front for the whole war instead of standing down between two attack waves.
+- They look for the line that cuts the enemy off: across a thin strip of their land, the base of an enemy tank push
+  into yours, or a bulge they can pinch off. More enemy land now falls in pockets.
+- Ready divisions near the same strike go in together, side by side, instead of one at a time. On Hard and Brutal a
+  lone division waits for one driving up.
+- A straight push needs a strong division, and lines that would leave it worn out deep in enemy land are avoided.
+- After a push, a division leaves the thin tip at once and drives back to solid ground. When the way back is cut, it
+  breaks out to your line. Near the enemy it holds a little deeper, so it is not pushed back by every attack.
+- A worn division goes back to a Factory nearby and refits until nearly full.
+- A division whose front cannot be reached over your land supports a front it can reach.
+- Your own orders come first: divisions you set to Hold or Refit do just that, as before, and only divisions on
+  Support use the new habits. A division you drive to the tip of a push by hand stays there.
+
 ## 2026-11-15 · Tanks shoot
 
 - Tank divisions in a fight now visibly fight: the turret turns toward the enemy, then the gun fires with a muzzle
@@ -30,7 +61,7 @@ The big rounds of work, newest first. Each one was merged to `main` and deployed
   2 s", with the air-raid siren.
 - AI nations with Air Mastery send it at silos, airfields, factories and SAM sites behind strong SAM cover, first of
   all near their own landings, and keep a gold reserve. Easy AIs never send it at you.
-- Online games need the new version (protocol 23).
+- Online games need the new version (protocol 21).
 
 ## 2026-11-15 · Fighters that matter
 
@@ -48,7 +79,7 @@ The big rounds of work, newest first. Each one was merged to `main` and deployed
   bombers aim, build an airfield where they are bombed with no fighters near, contest the sky over their own attacks,
   and never send recon through fighter cover they know of. Your Auto recon flies around enemy fighters too ("Auto
   recon: waiting, enemy fighters guard Azuria"); orders you give are never changed.
-- Online games need the new version (protocol 22).
+- Online games need the new version (protocol 21).
 
 ## 2026-11-15 · Cruise missiles from sea
 

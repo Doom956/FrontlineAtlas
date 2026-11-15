@@ -7,6 +7,7 @@
 
 import { hashAir } from './airwings';
 import { hashFollow } from './warTarget';
+import { hashBlitz } from './blitz';
 import { hashFog } from './fog';
 import { hashArsenal } from './variants';
 import type { GameState, Troops } from './types';
@@ -189,6 +190,9 @@ export function hashState(state: GameState): number {
     if (u.fixed) h = mixInt(h, u.fixed | 0x20000); // Follow my war: pinned (warTarget.ts)
     if (u.detour !== undefined) h = mixInt(h, u.detour | 0x40000000); // a following division's detour (armor2.ts)
     if (u.cruiseReady !== undefined) h = mixInt(h, u.cruiseReady ^ 0x2c1b3c6d); // cruise missile reload (units.ts)
+    if (u.ended !== undefined) h = mixInt(mixInt(h, 0x454e44), u.ended); // a division's last spearhead end (armor2.ts)
+    if (u.blitz) h = mixInt(h, 0x424c5a); // a blitz under way (blitz.ts)
+    if (u.blitzReady !== undefined) h = mixInt(mixInt(h, 0x424c52), u.blitzReady);
   }
   // Recent wars (naval2.ts).
   const wm = state.warMemory ?? [];
@@ -257,6 +261,7 @@ export function hashState(state: GameState): number {
   h = hashArsenal(state, h, mixInt, mixFloat);
   // War targets and auto recon (warTarget.ts).
   h = hashFollow(state, h, mixInt);
+  h = hashBlitz(state, h, mixInt); // land held by a blitz (blitz.ts)
   // Fog of war vision (fog.ts); nothing without the rule.
   h = hashFog(state, h, mixInt);
   return h >>> 0;

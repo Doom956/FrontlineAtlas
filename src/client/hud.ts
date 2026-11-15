@@ -13,6 +13,7 @@
 //
 // The DOM is built once. update() runs every frame but only does cheap work there; texts and lists refresh at
 // ~5 Hz through each part's update().
+import { blitzHint } from './blitzUi';
 import { activeFog, fogEvent, UNMET_TOAST } from './fog/fogView';
 import { reconHint } from './hud/variantOrders';
 import { VARIANT_NAMES } from '../sim/variants';
@@ -865,6 +866,7 @@ export class Hud {
       else if (m.kind === 'cruise') chip = cruiseInstruction(state, m.ships);
       else if (m.kind === 'stealth') chip = stealthInstruction(state);
       else if (m.kind === 'buildTankDivision') chip = 'Tank division: click one of your factories.';
+      else if (m.kind === 'blitz') chip = blitzHint();
       else if (m.kind === 'boxSelect') chip = 'Upgrade many: drag a box over your buildings on the map.';
       else if (m.kind === 'adminTile') chip = m.label;
       else if (m.kind === 'pillarPick') chip = m.label;

@@ -12,6 +12,7 @@ import type { GameState, Player, Unit } from '../../sim/types';
 import { followsWar, followText, groupFollow } from '../follow';
 import { followUnitsAgain, MODE_INFO, MODE_ORDER, pocketLine, pocketPreview, setMode, setStance, sharedMode, sharedStance, STANCE_INFO, STANCE_ORDER, vetOf, VET_MAX, type ChoiceInfo } from '../pillars';
 import { FollowRow } from './followRow';
+import { blitzButton, enterBlitz } from '../blitzUi';
 import { previewFor, SPEARHEAD_CONFIRM_MS, splitSelection } from '../selection';
 import { el, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
 import { aimCruise, cruiseButton, cruisePriceText } from '../cruise';
@@ -110,6 +111,10 @@ export class OrdersBar {
   readonly el: HTMLElement;
   private ships: ChoiceRow<keyof typeof STANCE_INFO>;
   private tanks: ChoiceRow<keyof typeof MODE_INFO>;
+  /** the selected division's blitz (blitzUi.ts): icon and name, or the name and why it can't go now */
+  private blitzBtn = el('button', 'wr-btn mini ob-b ob-blitz') as HTMLButtonElement;
+  private blitzLabel = el('span', 'wr-btn-l');
+  private blitzAim = -1;
   private last = 0;
   private dirty = true;
   /** Naval Mastery: Cruise missile for the selected ships (a group, or one ship on a phone where the unit card waits) */
@@ -169,6 +174,20 @@ export class OrdersBar {
     });
     this.cm.append(this.cmBtn, this.cmLine);
     this.ships.el.append(this.cm);
+    this.blitzBtn.type = 'button';
+    this.blitzBtn.dataset.test = 'blitz';
+    this.blitzBtn.append(iconSpan(lineIcon('blitz', 14, 2)), this.blitzLabel);
+    this.blitzBtn.addEventListener('click', () => {
+      const s = ctx.state();
+      if (!s || this.blitzAim < 0) return;
+      const why = enterBlitz(s, ctx.ui, s.humanId, this.blitzAim);
+      if (why) say(why);
+      else ctx.sound('uiClick');
+      poke();
+    });
+    const act = el('div', 'ob-btns ob-act');
+    act.append(this.blitzBtn);
+    this.tanks.el.insertBefore(act, this.tanks.line);
     this.el.append(this.ships.el, this.tanks.el);
   }
 
@@ -253,6 +272,12 @@ export class OrdersBar {
         status,
       );
       setClass(this.tanks.line, 'pocket', status.startsWith('Encircles'));
+      const bz = blitzButton(state, me.id, c.tanks);
+      this.blitzAim = bz.unitId;
+      setText(this.blitzLabel, bz.label);
+      this.blitzBtn.disabled = bz.off !== '';
+      setClass(this.blitzBtn, 'off', bz.off !== '');
+      setTip(this.blitzBtn, bz.off ? `${bz.off}. ${bz.tip}` : bz.tip);
     }
   }
 }

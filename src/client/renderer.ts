@@ -34,6 +34,7 @@ import { buildTerrain, type TerrainData } from './render/terrain';
 import { TileFeed } from './render/tiles';
 import { UnitLayer } from './render/units';
 import { SelectionOverlay } from './render/selectionOverlay';
+import { BlitzOverlay } from './render/blitzOverlay';
 import { PillarOverlay } from './render/pillarOverlay';
 import { BattleFx } from './fx/battleFx';
 import { PixelFx } from './fx/pixelFx';
@@ -114,6 +115,8 @@ export class Renderer {
   private units = new UnitLayer();
   /** selection box, warship placement area, spearhead preview (render/selectionOverlay.ts) */
   private selectionOverlay = new SelectionOverlay();
+  /** blitz pushes, held land and the blitz wedge preview (render/blitzOverlay.ts) */
+  private blitzOverlay = new BlitzOverlay();
   /** stance ranges, blockades, escorts, supported fronts, air zones (render/pillarOverlay.ts) */
   private pillarOverlay = new PillarOverlay();
   private selectedSet = new Set<number>();
@@ -390,6 +393,7 @@ export class Renderer {
     this.overlays.hoverAndPreview(ctx, state, camera, ui, snap, this.units, frac, d);
     this.pillarOverlay.draw(ctx, state, camera, ui, this.units, frac, nowMs);
     this.selectionOverlay.draw(ctx, state, camera, ui, nowMs);
+    this.blitzOverlay.draw(ctx, state, camera, ui, nowMs);
 
     const tMini = performance.now();
     this.stats.msOverlay = tMini - tOver;

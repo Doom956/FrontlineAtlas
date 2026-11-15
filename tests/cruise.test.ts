@@ -283,7 +283,7 @@ describe('cruise missile: determinism', () => {
   });
 });
 
-describe('cruise missiles with fighters and recon planes (protocol 22)', () => {
+describe('cruise missiles with fighters and recon planes (protocol 21)', () => {
   /** p1 has a ship, an airfield with Recon Planes; p2 has a city, fighters on an airfield and maybe one SAM shot. */
   function mixed(withSam: boolean): { s: GameState; city: Building; guard: Building; sam?: Building } {
     const s = game(7);

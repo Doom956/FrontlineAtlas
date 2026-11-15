@@ -22,7 +22,11 @@ export type FxKind =
   /** rocket / bomb impact: one shockwave ring */
   | 'shockwave'
   /** atom bomb: two wide rings (and the screen shake near the camera) */
-  | 'nukeWave';
+  | 'nukeWave'
+  /** a blitz launching (sim/blitz.ts): a smoke screen round the launch tile */
+  | 'smokeScreen'
+  /** a blitz under way: dust thrown up behind the head */
+  | 'trail';
 
 export interface FxSpawn {
   kind: FxKind;
@@ -56,6 +60,8 @@ export const FX_INFO: Readonly<Record<FxKind, FxInfo>> = {
   fortDust: { dur: 1800, gapMs: 300, maxLive: 3, priority: 1 },
   shockwave: { dur: 900, gapMs: 120, maxLive: 4, priority: 1 },
   nukeWave: { dur: 2200, gapMs: 300, maxLive: 2, priority: 2 },
+  smokeScreen: { dur: 3200, gapMs: 100, maxLive: 4, priority: 1 },
+  trail: { dur: 1100, gapMs: 60, maxLive: 10, priority: 0 },
 };
 
 export const FX_KINDS = Object.keys(FX_INFO) as FxKind[];
@@ -82,6 +88,8 @@ export function fxForEffect(e: Effect, mineCapture = false, lost: UnitType | nul
       return { kind: 'nukeWave', x: e.x, y: e.y, r: e.radius };
     case 'barrage':
       return { kind: 'dust', x: e.x, y: e.y, r: e.radius };
+    case 'smokeScreen':
+      return { kind: 'smokeScreen', x: e.x, y: e.y, r: e.radius };
     case 'explosion':
       if (e.radius >= SHOCKWAVE_MIN_RADIUS) return { kind: 'shockwave', x: e.x, y: e.y, r: e.radius };
       if (lost && isShip(lost)) return { kind: 'splash', x: e.x, y: e.y, r: 0 };

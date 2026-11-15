@@ -597,6 +597,26 @@ export const TANK_DIVISION_TROOPS = { armor: 6000, infantry: 2000, artillery: 10
 export const TANK_MIN_ARMOR = 3000;
 /** divisions (alive + being built) per Factory level of a player */
 export const TANK_PER_FACTORY_LEVEL = 1;
+/**
+ * The tank division's special order with Armor Mastery (blitz.ts, Action 'blitz'). BLITZ_NAME is what the player
+ * reads everywhere (cards, buttons, events, help): a rename is this one line.
+ */
+export const BLITZ_NAME = 'Breakthrough';
+/**
+ * A smoke screen, then a surge: a spearhead at speedMul x the head speed, depthMul x the depth, a band `width` tiles
+ * wide, losses x lossMul; the land it takes holds for holdSeconds (no attack, landing or spearhead takes it back).
+ * Needs minShare of a full division and `oil`; the division may not do it again for cooldownSeconds.
+ */
+export const BLITZ = {
+  speedMul: 2,
+  depthMul: 1.5,
+  width: 5,
+  lossMul: 0.6,
+  holdSeconds: 20,
+  cooldownSeconds: 120,
+  minShare: 0.5,
+  oil: 100,
+} as const;
 /** spearhead: head speed in tiles/s on plains (x TANK_TERRAIN_SPEED) */
 export const TANK_SPEARHEAD_SPEED = 8;
 /** spearhead width in tiles (odd; the head tile and (width-1)/2 on each side) */

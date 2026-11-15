@@ -13,6 +13,7 @@
 //   a rocket or atom bomb appears  missileLaunch at its silo; a cruise missile: missileLaunch at its ship (softer)
 //   'nuke'                         atomBomb
 //   'capture', tanks firing        heat for the gunfire bed under the front
+//   'smokeScreen' (a blitz)        a soft bombard and a tank shot, and heat for the gunfire bed
 import type { Effect, GameState, Unit } from '../../sim/types';
 import { DeathWatch, deathKindOf, isKillBlast } from '../fx/deaths';
 import { tankShotBus, type TankShotBus } from '../fx/tankFire';
@@ -84,6 +85,12 @@ export class BattleEars {
       }
       case 'capture':
         out.push({ id: 'front', x: e.x, y: e.y, volume: e.radius > 2 ? 2 : 1 });
+        return;
+      case 'smokeScreen':
+        // a blitz launching (sim/blitz.ts): the smoke canisters pop and the tanks open fire as they surge
+        out.push({ id: 'bombard', x: e.x, y: e.y, volume: 0.6 });
+        out.push({ id: 'tankShot', x: e.x, y: e.y, volume: 1 });
+        out.push({ id: 'front', x: e.x, y: e.y, volume: 2 });
         return;
       default:
         return;
