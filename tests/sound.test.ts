@@ -293,21 +293,48 @@ describe('files', () => {
     expect(audioUrl('music', 'a', 'ogg')).toBe('audio/music/a.ogg'); // relative: works under the Pages subpath
   });
 
-  it('round 2: the redone sounds have their files, every variant take is in its list', () => {
-    for (const id of ['atomBomb', 'shipSunk', 'buildingDone', 'researchDone', 'allianceFormed', 'underAttack', 'countdownGo'] as const) expect(SFX[id]?.files.length, id).toBeGreaterThan(0);
+  it('each sound plays exactly the takes the owner kept', () => {
+    const want: Record<string, string[]> = {
+      shot: ['sfx-artillery-fs239137', 'sfx-artillery-fs239137-v2'],
+      bombard: ['sfx-artillery-fs239137', 'sfx-artillery-fs239137-v2'],
+      explosion: ['sfx-explosion-fs182429', 'sfx-explosion-fs182429-v2', 'sfx-explosion-fs182429-v4', 'sfx-explosion-fs182429-v5', 'sfx-explosion-fs182431'],
+      explosionBig: ['sfx-explosion-big-fs741173', 'sfx-explosion-big-fs741173-v2', 'sfx-explosion-big-fs741173-v4'],
+      atomBomb: ['sfx-atom-r2-windy'],
+      missileLaunch: ['sfx-missile-fs854476-v2', 'sfx-missile-fs854476-v3', 'sfx-missile-fs854476-v4'],
+      shipHorn: ['sfx-ship-horn-fs261846', 'sfx-ship-horn-fs636075'],
+      planeCrash: ['sfx-plane-crash-fs861876', 'sfx-plane-crash-fs861876-v3'],
+      tankShot: ['sfx-tank-shot-fs127845', 'sfx-tank-shot-fs127845-v2', 'sfx-tank-shot-fs127845-v3', 'sfx-tank-shot-fs127845-v4'],
+      tankDestroyed: ['sfx-tank-destroyed-fs209772'],
+      unitLost: ['sfx-tank-destroyed-fs209772'],
+      sonarPing: ['sfx-sonar-fs12677', 'sfx-sonar-fs12677-v2', 'sfx-sonar-fs12677-v3', 'sfx-sonar-fs12677-v5'],
+      frontGunfire: ['sfx-front-gunfire-fs840492', 'sfx-front-gunfire-fs840492-v4'],
+      uiClick: ['ui-click-kenney-click3', 'ui-click-kenney-click3-v2', 'ui-click-kenney-click3-v3'],
+      uiError: ['ui-error-kenney-error-008'],
+      buildPlaced: ['build-placed-fs449955'],
+      allianceRequest: ['alliance-request-fs198874'],
+      allianceBroken: ['alliance-broken-fs790253', 'alliance-broken-fs790253-v3'],
+      allianceExpired: ['alliance-broken-fs790253', 'alliance-broken-fs790253-v3'],
+      cityTaken: ['city-taken-fs592096-short', 'city-taken-fs592096-short-v2'],
+      capitalTaken: ['city-taken-fs592096-short', 'city-taken-fs592096-short-v2'],
+      capitalLost: ['capital-lost-fs374271'],
+      cityLost: ['capital-lost-fs374271'],
+      tradeCoin: ['trade-coin-fs223344'],
+      countdown: ['countdown-fs361783'],
+      underAttack: ['under-attack-r2-air-raid-test'],
+      victory: ['sting-victory-fs470083'],
+      defeat: ['sting-defeat-oga-the-fallen'],
+    };
+    const have: Record<string, string[]> = {};
+    for (const [k, set] of Object.entries(SFX)) if (set) have[k] = [...set.files];
+    expect(have).toEqual(want);
+    // synthesized on purpose
+    for (const id of ['uiHover', 'buildingLost', 'attackLaunched', 'capture', 'eliminated', 'shipSunk', 'buildingDone', 'researchDone', 'allianceFormed', 'countdownGo'] as const) expect(SFX[id], id).toBeUndefined();
+    expect(sfxFileIds().length).toBe(45);
     expect(SFX.atomBomb?.files).not.toContain('sfx-atom-fs741175');
-    const variants = sfxFileIds().filter((f) => /-v\d+$/.test(f));
-    expect(variants.length).toBe(58);
-    // each take sits in the list of the sound it is a take of (its id starts with the first take's)
-    for (const v of variants) {
-      const base = v.replace(/-v\d+$/, '');
-      const sets = Object.values(SFX).filter((s) => s && s.files.includes(v));
-      expect(sets.length, v).toBeGreaterThan(0);
-      for (const s of sets) expect(s!.files[0], v).toBe(base);
-    }
+    expect(SFX.missileLaunch?.files).not.toContain('sfx-missile-fs854476');
   });
 
-  it('the mix: the atom bomb is the loudest, building done soft, the cannon for "go" below the bomb', () => {
+  it('the mix: the atom bomb is the loudest, the siren clear but well below it', () => {
     // effective level of a sound's first take: its gain on the bus and the file's loudness
     const level = (id: keyof typeof SFX) => {
       const s = SFX[id]!;
@@ -315,8 +342,6 @@ describe('files', () => {
     };
     const atom = level('atomBomb');
     for (const id of Object.keys(SFX) as (keyof typeof SFX)[]) if (id !== 'atomBomb') expect(level(id), id).toBeLessThan(atom);
-    expect(level('countdownGo')).toBeLessThan(atom - 6);
-    expect(level('buildingDone')).toBeLessThan(level('capitalLost'));
     expect(level('underAttack')).toBeLessThan(atom - 4);
   });
 

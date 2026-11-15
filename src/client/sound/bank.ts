@@ -12,8 +12,7 @@ const PARALLEL = 4;
 const ORDER: readonly SampleKey[] = [
   'uiClick', 'uiError', 'buildPlaced', 'shot', 'explosion', 'tankShot', 'bombard', 'countdown', 'tankDestroyed', 'unitLost',
   'missileLaunch', 'planeCrash', 'sonarPing', 'explosionBig', 'cityTaken', 'cityLost', 'capitalLost', 'capitalTaken',
-  'allianceRequest', 'allianceBroken', 'allianceExpired', 'tradeCoin', 'shipHorn', 'underAttack', 'buildingDone', 'researchDone',
-  'allianceFormed', 'countdownGo', 'shipSunk', 'frontGunfire', 'atomBomb', 'victory', 'defeat',
+  'allianceRequest', 'allianceBroken', 'allianceExpired', 'tradeCoin', 'shipHorn', 'underAttack', 'frontGunfire', 'atomBomb', 'victory', 'defeat',
 ];
 
 export type Fetcher = (url: string) => Promise<ArrayBuffer>;

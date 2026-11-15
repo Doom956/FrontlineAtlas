@@ -640,6 +640,7 @@ Real recordings and music made by people replace the synthesized sounds and the 
 - Done: every sound maps to a list of variant takes (one-line swaps in src/client/sound/library.ts); per-play variation;
   fighting heard only on screen and by zoom; a gunfire bed under fronts in view; music moods menu, peace, war, battle
   with crossfades; music on by default (old settings migrated); Ogg Opus plus AAC copies for older Safari.
-- Round 2 (2026-11-15): the owner's picks for ship sinking, building done, research done, alliance formed, under
-  attack (an air-raid siren), countdown go (a salute cannon) and a new atom bomb; every picked effect has 2 to 4 more
-  takes (58 in all), and every effect short fades. No sound is synthesized now when its files are in.
+- Round 2 (2026-11-15): a new atom bomb, an air-raid siren for under attack, short fades on every effect, and the
+  owner kept up to 5 takes per sound (45 effect files). Still synthesized (no file picked): ship sinking, building
+  done, research done, alliance formed, countdown go, plus hover, building lost, attack launched, the capture tick and
+  nation eliminated.
