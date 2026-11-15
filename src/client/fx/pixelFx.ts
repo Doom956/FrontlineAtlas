@@ -410,7 +410,7 @@ export class PixelFx {
   /** The sim's kill blast where no death animation plays: a plane's burst in the air, else a hit (and a crater on land). */
   private smallBlast(state: GameState, x: number, y: number, now: number): void {
     const lost = this.lostAt(x, y);
-    if (lost && (lost.type === 'bomber' || lost.type === 'fighter' || lost.type === 'transportPlane' || lost.type === 'reconPlane')) this.blast('air', x, y, 0, now);
+    if (lost && (lost.type === 'bomber' || lost.type === 'fighter' || lost.type === 'transportPlane' || lost.type === 'reconPlane' || lost.type === 'stealthBomber')) this.blast('air', x, y, 0, now);
     else if (this.isWater(state, x, y)) this.blast('hit', x, y, 0, now);
     else {
       this.blast('hit', x, y, 0, now);
@@ -501,7 +501,7 @@ export class PixelFx {
     // aimed at a plane: tracers (SAM sites, airfields, carriers)
     let atPlane = false;
     for (const u of state.units) {
-      if ((u.type === 'bomber' || u.type === 'transportPlane' || u.type === 'fighter' || u.type === 'reconPlane') && Math.abs(u.x + 0.5 - e.x2) + Math.abs(u.y + 0.5 - e.y2) < 1.5) {
+      if ((u.type === 'bomber' || u.type === 'transportPlane' || u.type === 'fighter' || u.type === 'reconPlane' || u.type === 'stealthBomber') && Math.abs(u.x + 0.5 - e.x2) + Math.abs(u.y + 0.5 - e.y2) < 1.5) {
         atPlane = true;
         break;
       }
@@ -841,7 +841,7 @@ export class PixelFx {
 /** The heading of a unit toward where it was going (when the unit layer has no drawn heading for it). */
 function headingOf(state: GameState, u: Unit): number {
   const w = state.map.width;
-  const dest = (u.type === 'bomber' || u.type === 'reconPlane') && u.state === 1 ? u.home : u.target;
+  const dest = (u.type === 'bomber' || u.type === 'reconPlane' || u.type === 'stealthBomber') && u.state === 1 ? u.home : u.target;
   if (typeof dest !== 'number' || dest < 0 || w <= 0) return 0;
   const dx = (dest % w) + 0.5 - (u.x + 0.5);
   const dy = Math.floor(dest / w) + 0.5 - (u.y + 0.5);

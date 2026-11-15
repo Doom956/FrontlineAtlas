@@ -125,6 +125,8 @@ export type UnitType =
   | 'cruiseMissile'
   /** cargo plane carrying paratroopers from an airfield to a drop tile (Action 'paradrop') */
   | 'transportPlane'
+  /** stealth bomber (units.ts launchStealth): Air Mastery's stealth strike; SAMs never see it (stealthSight.ts) */
+  | 'stealthBomber'
   /** commandable armored division (tanks.ts): built at a Factory, moves over own land, launches spearheads */
   | 'tankDivision'
   /** recon plane (variants.ts, Action reconFlight): flies from an airfield, reveals a circle for a while, flies home */
@@ -507,6 +509,8 @@ export interface Player {
   traitorUntil: number;
   /** tick from which the next artillery barrage may be fired (Action 'barrage'; global per player) */
   barrageReadyTick: number;
+  /** Air Mastery (units.ts launchStealth): tick from which the stealth bomber may fly again; absent = never flown */
+  stealthReady?: number;
   embargoes: number[]; // player ids this player refuses to trade with
   /** mid-game doctrine (doctrines.ts); tribes never get one */
   doctrine: PlayerDoctrine;
@@ -958,6 +962,8 @@ export type Action =
   | { type: 'launchMissile'; silo: number; kind: 'rocket' | 'atomBomb'; tile: number; count?: number }
   /** a cruise missile from an own warship, destroyer or battleship (Naval Mastery) at a land tile within its reach (units.ts) */
   | { type: 'cruiseMissile'; ship: number; tile: number }
+  /** the stealth strike (Air Mastery): the stealth bomber flies from an own airfield (-1 = the nearest in reach) to tile (units.ts) */
+  | { type: 'stealthStrike'; airfield: number; tile: number }
   /** paratroopers: `troops` infantry fly from an own airfield (tile) to an enemy / neutral land tile (units.ts) */
   | { type: 'paradrop'; airfield: number; tile: number; troops: number }
   /** artillery barrage on an enemy tile near your border (barrage.ts) */

@@ -49,6 +49,7 @@ export const MOD_MASK: Record<SpriteKey, number> = {
   fighter: M_MASTERY | M_JET | M_SPECIAL,
   transportPlane: M_JET | M_SPECIAL,
   reconPlane: M_SPECIAL,
+  stealthBomber: 0,
   rocket: 0,
   atomBomb: 0,
 };

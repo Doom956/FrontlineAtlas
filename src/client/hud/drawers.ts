@@ -62,6 +62,7 @@ import { autoFireOn } from '../../sim/airstrike';
 import { autoReconText, siloAutoLine } from '../follow';
 import { autoReconOn } from '../../sim/warTarget';
 import { airfieldVariantLine, factoryVariantLine, reconBlock, reconLabel, reconOffered, warshipOptions } from './variantOrders';
+import { aimStealth, STEALTH_LABEL, stealthBlock, stealthButton, stealthPriceText } from '../stealth';
 import { warshipOrderCost } from '../../sim/navy';
 import { VARIANT_NAMES } from '../../sim/variants';
 import { canBuildTankDivision, tankDivisionCost, tankDivisionCount, tankDivisionLimit } from '../../sim/tanks';
@@ -849,6 +850,26 @@ export class BuildingPage implements DrawerPage {
       add('Paratroopers', 'danger', 'paradrop', () => (ctx.ui.mode = { kind: 'paradrop', airfield: tile }), (_ss, m, bb) =>
         !hasTech(m, 'flight') ? techFirst('flight') : bb.buildLeft > 0 ? 'Still being built' : bb.dropCooldown > 0 ? `Next drop ready in ${Math.ceil(bb.dropCooldown)} s` : '',
       ).dataset.test = 'order-paradrop';
+      // Air Mastery: the stealth strike (client/stealth.ts): one stealth bomber SAM sites cannot see, on a recharge
+      const g1 = ctx.state();
+      if (g1 && stealthButton(g1, me, tile).show) {
+        const sb = add(`${STEALTH_LABEL} (${stealthPriceText(g1, me.id)})`, 'danger', 'stealth', () => {
+          const ss = ctx.state();
+          const m = ctx.me();
+          if (!ss || !m) return;
+          const why = aimStealth(ss, m, ctx.ui, tile);
+          if (why) ctx.toast(why, 'info');
+        }, (ss, m) => stealthBlock(ss, m, tile));
+        sb.dataset.test = 'order-stealth';
+        const sl = el('p', 'note');
+        sl.dataset.test = 'stealth-line';
+        actions.append(sl);
+        this.upd.push((ss, m) => {
+          const st = stealthButton(ss, m, tile);
+          setText(sl, st.ok ? st.line : '');
+          setVisible(sl, st.ok);
+        });
+      }
       // Arsenal (hud/variantOrders.ts): the bomber type of the Air path, and recon flights
       const airNote = el('p', 'note');
       actions.before(airNote);

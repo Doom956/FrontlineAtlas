@@ -58,6 +58,7 @@ export const MOD_MASK: Record<SpriteKey, number> = {
   fighter: M_MASTERY | M_JET | M_SPECIAL,
   transportPlane: M_JET | M_SPECIAL,
   reconPlane: M_SPECIAL,
+  stealthBomber: 0,
   rocket: 0,
   atomBomb: 0,
 };
@@ -95,6 +96,7 @@ export const ALTITUDE: Partial<Record<SpriteKey, number>> = {
   heavyBomber: 8,
   transportPlane: 6,
   reconPlane: 8,
+  stealthBomber: 9,
   rocket: 3,
   atomBomb: 3,
 };
@@ -801,6 +803,26 @@ function reconPlane(mods: number): Plane {
   return { parts: out, props: [{ u: 5.4, v: -3.4, z: 3, r: 2 }, { u: 5.4, v: 3.4, z: 3, r: 2 }] };
 }
 
+/**
+ * The stealth bomber (Air Mastery's stealth strike): a dark grey flying wing, no body and no fins: a sharp nose, the
+ * leading edges straight back to the tips, a sawtooth trailing edge with two notches each side and a short point in
+ * the middle, a low hump with the cockpit, dark intake slits beside it and a thin owner stripe on top.
+ */
+function stealthBomber(): Plane {
+  const m: MatId = 'night';
+  const wing = sym([10, 0, -3, -17, -4.4, -16.6, -1.4, -11.2, -5.2, -7, -2.2, -3.4, -5.6, 0]);
+  return {
+    parts: [
+      poly(wing, 2.6, 0.6, m),
+      ell(2.2, 0, 6.6, 2.3, 3.2, 1, m, { sh: 'dome' }),
+      ell(6.4, 0, 0.9, 0.8, 4.2, 0, 'glass'),
+      seg(-1.2, 0, 4.4, 0, 0.7, 4.2, 0, 'own'),
+      ...both((sd) => [seg(3.6, sd * 2.7, 2, sd * 3.3, 0.8, 3.2, 0, 'black')]),
+    ],
+    props: [],
+  };
+}
+
 // ------------------------------------------------------------------------------------------------- missiles
 
 /**
@@ -854,7 +876,7 @@ function atomBomb(frame: number): Part[] {
 
 // ------------------------------------------------------------------------------------------------- lookup
 
-const AIR: ReadonlySet<SpriteKey> = new Set<SpriteKey>(['bomber', 'groundAttack', 'heavyBomber', 'fighter', 'transportPlane', 'reconPlane', 'rocket', 'atomBomb']);
+const AIR: ReadonlySet<SpriteKey> = new Set<SpriteKey>(['bomber', 'groundAttack', 'heavyBomber', 'fighter', 'transportPlane', 'reconPlane', 'stealthBomber', 'rocket', 'atomBomb']);
 
 /** The model of a sprite with the given upgrade details and animation frame. */
 export function buildModel(key: SpriteKey, mods: number, frame = 0): Model {
@@ -913,6 +935,9 @@ export function buildModel(key: SpriteKey, mods: number, frame = 0): Model {
       break;
     case 'reconPlane':
       parts = plane(reconPlane(m));
+      break;
+    case 'stealthBomber':
+      parts = plane(stealthBomber());
       break;
     case 'rocket':
       parts = centred(rocket(frame & 1));

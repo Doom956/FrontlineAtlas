@@ -458,7 +458,7 @@ export const TECHS: Record<TechId, TechInfo> = {
   reconPlanes: { name: 'Recon Planes', tier: 3, science: 1500, gold: 800, requires: ['flight'], description: 'Airfields fly recon: reveal enemy armies, doctrines, buildings and submarines in a wide circle for 40 seconds. Enemy fighters shoot recon planes down on the way.' },
   navalMastery: { name: 'Naval Mastery', tier: 5, science: 8000, gold: 3000, requires: ['navigation'], requiresAny: ['battleships', 'carriers'], description: 'Mastery: warships earn veterancy twice as fast; bombardment and naval support reach 30% further; +2 warships; warships, destroyers and battleships fire cruise missiles at the coast.' },
   armorMastery: { name: 'Armor Mastery', tier: 5, science: 8000, gold: 3000, requires: ['mechanization'], requiresAny: ['deepRaids', 'siegeTanks'], description: 'Mastery: encirclements collapse pockets three times as big and destroy more of the troops caught in them.' },
-  airMastery: { name: 'Air Mastery', tier: 5, science: 8000, gold: 3000, requires: ['flight'], requiresAny: ['jetEngines', 'strategicBombing'], description: 'Mastery: every air wing flies 50% more bombers.' },
+  airMastery: { name: 'Air Mastery', tier: 5, science: 8000, gold: 3000, requires: ['flight'], requiresAny: ['jetEngines', 'strategicBombing'], description: 'Mastery: every air wing flies 50% more bombers; a stealth bomber SAM sites cannot see strikes one target behind their walls.' },
 };
 export const TECH_ORDER: TechId[] = [
   'agriculture', 'metallurgy', 'logistics', 'fortification', 'navigation',
@@ -557,6 +557,8 @@ export const UNITS: Record<UnitType, UnitInfo> = {
   cruiseMissile: { name: 'Cruise missile', speed: 10, gold: 700, iron: 0, oil: 60, hp: 1, tech: 'navalMastery' },
   /** paratrooper drop: the price is paid per drop */
   transportPlane: { name: 'Cargo plane', speed: 30, gold: 400, iron: 0, oil: 30, hp: 1, tech: 'flight' },
+  /** the stealth strike (Air Mastery, STEALTH below): one flying wing at bomber speed, paid per strike */
+  stealthBomber: { name: 'Stealth bomber', speed: 30, gold: 2000, iron: 0, oil: 150, hp: 1, tech: 'airMastery' },
   /** tank division (tanks.ts): speed = tiles/s moving over own land (a rail move; TANK_MOBILITY); the troops it carries are its strength */
   tankDivision: { name: 'Tank division', speed: 20, gold: 1200, iron: 100, oil: 50, hp: 1, tech: 'mechanization' },
   /** recon flight (variants.ts): the price is paid per flight */
@@ -1284,6 +1286,31 @@ export const AIR = {
   massCooldown: 0.5,
 } as const;
 
+/**
+ * Stealth strike (Air Mastery; units.ts launchStealth, stealth.ts, stealthSight.ts; DESIGN section 7): Action
+ * stealthStrike {airfield | -1, tile}. One stealth bomber per nation at a time flies from an own finished airfield at
+ * bomber speed (UNITS.stealthBomber, x Jet Engines) to a target up to airWingRange x `reachMul` away. SAM sites never
+ * see it; fighters only where something reveals it (stealthSight.stealthRevealedTo: nothing yet, a future Defense
+ * radar). Over the target it drops a heavy raid: the bomb drop of a heavy bomber's raid (radius x `radiusMul`) with
+ * `payload` x the hit chance and kills (0.6 x 2: every building in the blast, unless the victim's fighters hold the
+ * sky there: air superiority cuts it like any bombing), plus the income raid of `raidBombers` bombers. The nation it
+ * flies at sees it, and is warned, `revealSeconds` before the bombs fall. It recharges `cooldownSeconds` from launch
+ * (Player.stealthReady, hashed). AIs send it only at targets under at least `aiMinCover` ready SAM shots they know of
+ * (elsewhere bombers and rockets do it), keep `aiReserve` strike prices in gold, and weigh SAMs, silos and airfields
+ * near a landing of theirs (within `aiLandingNear` tiles) much higher.
+ */
+export const STEALTH = {
+  reachMul: 1.25,
+  radiusMul: 1.15,
+  payload: 2,
+  raidBombers: 2,
+  cooldownSeconds: 90,
+  revealSeconds: 2,
+  aiReserve: 2,
+  aiMinCover: 2,
+  aiLandingNear: 30,
+} as const;
+
 // ---------- navy, part three: stances, shore bombardment, blockades, veterancy (naval2.ts) ----------
 /** stanced warships (re)think every this many ticks (staggered by id) */
 export const NAVY_THINK_TICKS = 20;
@@ -1449,7 +1476,7 @@ export const FOG = {
   /** AI nations refresh every this many ticks (1 s), staggered the same way; tribes have no vision */
   aiTicks: 10,
   /** vision of one unit by type (0 = none); the submarine variant uses `submarine` */
-  unit: { warship: 30, submarine: 18, transport: 12, tradeShip: 10, tankDivision: 20, bomber: 14, fighter: 18, transportPlane: 12, reconPlane: 20, rocket: 0, atomBomb: 0 } as Record<string, number>,
+  unit: { warship: 30, submarine: 18, transport: 12, tradeShip: 10, tankDivision: 20, bomber: 14, fighter: 18, transportPlane: 12, reconPlane: 20, stealthBomber: 14, rocket: 0, atomBomb: 0 } as Record<string, number>,
   /** ground vision of a finished watchtower = buildings.watchtowerRadiusOf x this */
   watchtowerMul: 0.5,
   /** a finished Port sees this far (mostly sea: spots landings) */

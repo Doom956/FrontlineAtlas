@@ -12,6 +12,7 @@ import { resolveBuild } from './simx';
 import { buildClickAction, effectiveCount } from './hud/buildMenu';
 import { strikeAction, strikeForKey, strikeTarget, type StrikeId } from './strikes';
 import { cruiseClick } from './cruise';
+import { stealthClick } from './stealth';
 import type { Renderer } from './renderer';
 import type { Dispatch, GetState, UiState } from './uiState';
 import { pillarPickClick } from './pillars';
@@ -416,6 +417,15 @@ export function setupInput(deps: InputDeps): () => void {
       case 'cruise': {
         // a cruise missile from the nearest loaded ship of the selection in reach (cruise.ts)
         const a = cruiseClick(s, me, mode.ships, tile);
+        if (typeof a === 'string') {
+          ui.toast = { text: a, until: performance.now() + TOAST_MS };
+          ok = false;
+        } else ok = dispatch(a).ok;
+        break;
+      }
+      case 'stealth': {
+        // the stealth strike from the chosen airfield (stealth.ts)
+        const a = stealthClick(s, me, mode.airfield, tile);
         if (typeof a === 'string') {
           ui.toast = { text: a, until: performance.now() + TOAST_MS };
           ok = false;

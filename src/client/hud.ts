@@ -70,6 +70,7 @@ import { allyEventKind, coalitionLeader } from './allies';
 import { swatchCss } from './hud/swatch';
 import { instruction, strikeToastText, type StrikeId } from './strikes';
 import { cruiseInstruction } from './cruise';
+import { stealthInstruction } from './stealth';
 import { SalvoPicker } from './hud/salvoPicker';
 import type { Dispatch, UiState } from './uiState';
 import { GameHistory } from './summary/history';
@@ -862,6 +863,7 @@ export class Hud {
       else if (m.kind === 'spawnWarship') chip = `${m.variant ? VARIANT_NAMES[m.variant] : 'Warship'}: click any water your ports reach (shaded) where it should appear.`;
       else if (m.kind === 'recon') chip = reconHint();
       else if (m.kind === 'cruise') chip = cruiseInstruction(state, m.ships);
+      else if (m.kind === 'stealth') chip = stealthInstruction(state);
       else if (m.kind === 'buildTankDivision') chip = 'Tank division: click one of your factories.';
       else if (m.kind === 'boxSelect') chip = 'Upgrade many: drag a box over your buildings on the map.';
       else if (m.kind === 'adminTile') chip = m.label;

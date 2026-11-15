@@ -359,7 +359,7 @@ export class UnitLayer {
       const m = Math.max(40, S + 8);
       if (x < -m || y < -m || x > cam.viewW + m || y > cam.viewH + m) continue;
       // enemy submarines stay hidden until close, sonar, recon or Early Warning shows them (techtree.unitVisibleTo)
-      if (u.variant === 'submarine' && me > 0 && !unitVisibleTo(state, me, u)) continue;
+      if ((u.variant === 'submarine' || u.type === 'stealthBomber') && me > 0 && !unitVisibleTo(state, me, u)) continue;
       // fog of war: other nations' units only where you see them (fog/fogView.ts); hit tests follow
       if (fog && !fog.unitShown(state, u)) continue;
       const own = me > 0 && u.owner === me;

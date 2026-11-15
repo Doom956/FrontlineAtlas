@@ -11,6 +11,8 @@
 //   ground attack  a heavy armoured single-engine bruiser: a thick body behind a big radial engine, broad straight
 //                  wings hung with bombs and rockets, a long canopy with a rear gunner, camouflage
 //   fighter        the smallest: an elliptic wing, a slim body, one propeller, sea grey
+//   stealth bomber Air Mastery's stealth strike: a dark grey flying wing, no body and no fins, a sharp nose and a
+//                  sawtooth trailing edge (the only plane shaped like that)
 // Upgrades carry them from the propeller age into the jet age:
 //   Jet Engines        fighter: a modern stealth fighter (a diamond wing, an angular body, two fins canted outward);
 //                      bomber: a swept-wing jet bomber with pods under the wings;
@@ -476,4 +478,41 @@ export function reconPlane(mods: number): UnitModel {
   if (mods & M_SPECIAL) for (const s of SIDES) out.push(...dropTank(6, s * 7, Z - 0.4, 7.6, 1.8));
   out.push(...roundels(1.4, 8.6, Z + 0.65, 1));
   return plane(out, props, [], 7);
+}
+
+export function stealthBomber(_mods: number): UnitModel {
+  // the stealth bomber (Air Mastery's stealth strike): a flying wing, no fuselage and no fins. A sharp nose, straight
+  // leading edges swept back to the tips, and a sawtooth trailing edge (two notches each side and a short pointed
+  // tail in the middle); a low hump over the middle with the cockpit windows at its front, the engine intakes as dark
+  // slits on top either side of it and the exhausts as dark troughs over the trailing edge. Dark grey, lit hard on the
+  // leading edges and the hump so it keeps its shape over dark sea; a small dull roundel and a thin owner stripe on
+  // the hump. No glow at the exhausts (it hides its heat).
+  const m: MatId = 'stealth';
+  const out: Part[] = [];
+  const Z = 2.6;
+  // the port half from the nose to the tail point: the leading edge to the tip, then the sawtooth back to the middle
+  const wing = sym([11, 0, -3.4, -19, -5, -18.6, -1.6, -12.6, -5.8, -7.8, -2.4, -3.8, -6.2, 0]);
+  out.push(poly(wing, Z, 0.55, m, { pat: 'panels', tone: -0.3 }));
+  // the leading edges caught by the light (the silhouette's sharp front reads first)
+  for (const s of SIDES) out.push(seg(10.4, s * 0.4, -3.2, s * 18.5, 0.55, Z + 0.55, 0, m, { tone: 2 }));
+  // the trailing edge a shade darker, so the sawtooth reads against the ground
+  for (const [u0, v0, u1, v1] of [
+    [-5, 18.6, -1.6, 12.6],
+    [-1.6, 12.6, -5.8, 7.8],
+    [-5.8, 7.8, -2.4, 3.8],
+    [-2.4, 3.8, -6.2, 0],
+  ] as const)
+    for (const s of SIDES) out.push(seg(u0, s * v0, u1, s * v1, 0.45, Z + 0.55, 0, 'black', { tone: 2 }));
+  // the hump over the middle, the cockpit windows at its front
+  out.push(ell(2.4, 0, 7.4, 2.6, Z + 0.4, 1.1, m, { sh: 'dome', tone: 0.8 }));
+  out.push(ell(7.4, -0.55, 0.8, 0.45, Z + 1.35, 0.1, 'glass', { tone: 1 }), ell(7.4, 0.55, 0.8, 0.45, Z + 1.35, 0.1, 'glass', { tone: 1 }));
+  // engine intakes (dark slits on top beside the hump) and exhaust troughs over the trailing edge
+  for (const s of SIDES) {
+    out.push(seg(4.2, s * 2.9, 2.4, s * 3.6, 0.75, Z + 0.8, 0, 'black'));
+    out.push(poly([-1.2, s * 2.6, -1.6, s * 5.4, -3.4, s * 5.0, -3.0, s * 2.8], Z + 0.6, 0, 'black', { tone: 1 }));
+  }
+  // the owner: a thin stripe down the hump and a small dull roundel on each wing
+  out.push(seg(-1.6, 0, 5.4, 0, 0.6, Z + 1.5, 0, 'own'));
+  out.push(...roundels(-3.6, 12.2, Z + 0.55, 0.95, true));
+  return plane(out, [], [], 10);
 }

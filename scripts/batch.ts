@@ -331,6 +331,13 @@ interface GameResult {
   cruiseShot?: number;
   cruiseWrecks?: number;
   navalMastery?: number[];
+  /** masteries owned by nations by the end (naval / armor / air: nations), minute each nation got Air Mastery */
+  masteryKinds?: Record<string, number>;
+  airMastery?: number[];
+  /** stealth strikes (Air Mastery): bombers flown, shot down, buildings their bombs destroyed */
+  stealthFlown?: number;
+  stealthShot?: number;
+  stealthWrecks?: number;
   /** bomber arrivals over their aim; of them: came home with the bombs (no drop), dropped centred off hostile land */
   bomberArrivals?: number;
   bombsHome?: number;
@@ -614,6 +621,11 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     cruiseShot: 0,
     cruiseWrecks: 0,
     navalMastery: [],
+    masteryKinds: {},
+    airMastery: [],
+    stealthFlown: 0,
+    stealthShot: 0,
+    stealthWrecks: 0,
     winnerParadrops: 0,
     winnerBarrages: 0,
     meanParadrops: 0,
@@ -745,6 +757,11 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
       else if (e.kind === 'unitLost' && /tank division was overrun/.test(e.message)) r.divisions!.overrun++;
       else if (e.kind === 'unitLost' && /shot down a (rocket|atom bomb)/.test(e.message)) r.missilesShot++;
       else if (e.kind === 'unitLost' && /shot down a cruise missile/.test(e.message)) r.cruiseShot!++;
+      else if (e.kind === 'unitLost' && /shot down a stealth bomber/.test(e.message)) r.stealthShot!++;
+      else if (e.kind === 'bombing' && /^Stealth strike by /.test(e.message)) {
+        const m = /: (\d+) buildings? destroyed/.exec(e.message);
+        if (m) r.stealthWrecks! += Number(m[1]);
+      }
       else if (e.kind === 'missile' && /^Cruise missile strike by /.test(e.message)) {
         const m = /: (\d+) buildings? destroyed/.exec(e.message);
         if (m) r.cruiseWrecks! += Number(m[1]);
@@ -789,6 +806,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
         }
       } else if (u.type === 'rocket') r.rockets++;
       else if (u.type === 'cruiseMissile') r.cruiseFired!++;
+      else if ((u.type as string) === 'stealthBomber') r.stealthFlown!++;
       else if (u.type === 'bomber') r.bombers++;
       else if (u.type === 'warship') r.warships++;
       else if (u.type === 'transportPlane') {
@@ -852,6 +870,15 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
       if (!arrived.has(`navy:${p.id}`) && p.techs.includes('navalMastery')) {
         arrived.add(`navy:${p.id}`);
         r.navalMastery!.push(minute);
+      }
+      if (!arrived.has(`airM:${p.id}`) && p.techs.includes('airMastery')) {
+        arrived.add(`airM:${p.id}`);
+        r.airMastery!.push(minute);
+      }
+      for (const m of ['navalMastery', 'armorMastery', 'airMastery'] as const) {
+        if (arrived.has(`${m}:${p.id}`) || !p.techs.includes(m)) continue;
+        arrived.add(`${m}:${p.id}`);
+        r.masteryKinds![m] = (r.masteryKinds![m] ?? 0) + 1;
       }
       for (const k of ['path', 'special', 'mastery'] as const) {
         const key = `${k}:${p.id}`;
@@ -1280,6 +1307,23 @@ function report(all: GameResult[], o: Options): void {
       `Naval Mastery: in ${nm.filter((v) => v.length).length} of ${rs.length} games (${f1(nm.reduce((a, v) => a + v.length, 0) / n)} nations per game), first at median minute ${f1(median(firstNm))}. ` +
         `Cruise missiles: ${fired} fired (${f1(fired / n)} per game, in ${rs.filter((r) => (r.cruiseFired ?? 0) > 0).length} games), ${shot} shot down (${pct(shot, fired)}), ` +
         `${tot((r) => r.cruiseWrecks ?? 0)} buildings destroyed (${f1(tot((r) => r.cruiseWrecks ?? 0) / n)} per game).`,
+    );
+  }
+  {
+    // Masteries: which ones nations get (pick rate), and the Air Mastery stealth strike.
+    const nations = Math.max(1, rs.reduce((s, r) => s + r.nations, 0));
+    const kinds = (k: string): number => tot((r) => r.masteryKinds?.[k] ?? 0);
+    const all = Math.max(1, kinds('navalMastery') + kinds('armorMastery') + kinds('airMastery'));
+    const am = rs.map((r) => r.airMastery ?? []);
+    const firstAm = am.filter((v) => v.length).map((v) => Math.min(...v));
+    const n = Math.max(1, rs.length);
+    const flown = tot((r) => r.stealthFlown ?? 0);
+    const shotS = tot((r) => r.stealthShot ?? 0);
+    console.log(
+      `Masteries owned: Naval ${kinds('navalMastery')}, Armor ${kinds('armorMastery')}, Air ${kinds('airMastery')} of ${nations} nations; Air is ${pct(kinds('airMastery'), all)} of masteries, ` +
+        `${pct(kinds('airMastery'), nations)} of nations, in ${am.filter((v) => v.length).length} of ${rs.length} games, first at median minute ${f1(median(firstAm))}. ` +
+        `Stealth strikes: ${flown} flown (${f1(flown / n)} per game, in ${rs.filter((r) => (r.stealthFlown ?? 0) > 0).length} games), ${shotS} shot down, ` +
+        `${tot((r) => r.stealthWrecks ?? 0)} buildings destroyed (${f1(tot((r) => r.stealthWrecks ?? 0) / n)} per game).`,
     );
   }
   {

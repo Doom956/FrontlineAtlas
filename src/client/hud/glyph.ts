@@ -173,6 +173,8 @@ const LINE: Record<string, string> = {
   build: '<path d="M14 6l4 4M5 19l8.5-8.5M12 4.5l2-1.5 6.5 6.5-1.5 2z"/>',
   upgrade: '<path d="M12 20V5M6 11l6-6 6 6M6 20h12"/>',
   transport: '<path d="M3 15h18l-2.5 4h-13zM6 15V9h9l3 6M10 9V5"/>',
+  // a flying wing seen from above: the sharp nose up, the sawtooth trailing edge below (the stealth strike)
+  stealth: '<path d="M12 5l10 10-3 2-2.5-2-2.5 2-2-1.5-2 1.5-2.5-2-2.5 2-3-2z"/><path d="M12 9v4"/>',
   bomb: '<circle cx="11" cy="14" r="6"/><path d="M15 9.5l2.5-2.5M17 5l1-1M19.5 7l1-.5"/>',
   rocket: '<path d="M12 3c3 2 4 6 4 10l-2 3h-4l-2-3c0-4 1-8 4-10zM8 15l-3 3v2l3-1M16 15l3 3v2l-3-1M11 20h2"/>',
   atom: '<circle cx="12" cy="12" r="2"/><path d="M12 10l-3-6a8 8 0 0 1 6 0zM13.7 13l6.3 1.5a8 8 0 0 1-3 5.2zM10.3 13L4 14.5a8 8 0 0 0 3 5.2z"/>',

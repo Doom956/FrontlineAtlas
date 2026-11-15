@@ -105,6 +105,7 @@ const ACTION_SPECS: ActionSpecs = {
   bomb: { airfield: { k: 'siteOrAuto' }, tile: TILE, count: { k: 'count', optional: true } },
   launchMissile: { silo: { k: 'siteOrAuto' }, kind: { k: 'enum', values: ['rocket', 'atomBomb'] }, tile: TILE, count: { k: 'count', optional: true } },
   cruiseMissile: { ship: ID, tile: TILE },
+  stealthStrike: { airfield: { k: 'siteOrAuto' }, tile: TILE },
   paradrop: { airfield: TILE, tile: TILE, troops: { k: 'amount' } },
   barrage: { tile: TILE },
   requestAlliance: { to: PLAYER },

@@ -17,6 +17,7 @@ import { formatCount } from '../render/common';
 import { armyOf, barrageRange, BuildTargetCache, maxLevel } from '../simx';
 import { fmtR, ownHitWarning, STRIKES, strikeBody, strikeOfMode, strikeRoleLine, strikeTarget } from '../strikes';
 import { cruiseBody, cruiseTarget } from '../cruise';
+import { stealthBody, stealthGuardLine, stealthSamLine, stealthTarget } from '../stealth';
 import { iconDataUrl } from '../icons';
 import { el, fmtSeconds, pct, setVisible, type HudCtx } from './dom';
 import { relationOf } from './drawers';
@@ -70,6 +71,7 @@ export class MapTooltip {
       else if (ui.mode.kind === 'build' && state.phase === 'playing') this.buildPreview(state, me, ui.mode.building, tile);
       else if (strikeOfMode(ui.mode) && state.phase === 'playing') this.strikePreview(state, me, tile);
       else if (ui.mode.kind === 'cruise' && state.phase === 'playing') this.cruisePreview(state, me, ui.mode.ships, tile);
+      else if (ui.mode.kind === 'stealth' && state.phase === 'playing') this.stealthPreview(state, me, ui.mode.airfield, tile);
       else this.tileCard(state, me, tile);
     }
     if (!this.card.classList.contains('hidden')) this.place(this.card, this.mouse.x + 18, this.mouse.y + 20);
@@ -346,6 +348,27 @@ export class MapTooltip {
       rows.push(el('div', 'mt-hint', 'Click to fire. Cancel at the top stops.'));
     } else {
       rows.push(this.line(pic, t.reason || 'Not possible here', `Pick enemy land inside a blue ring (${CRUISE.reach} tiles from the ship)`, 'head'));
+      rows.push(el('div', 'mt-hint', 'Cancel at the top stops.'));
+    }
+    this.card.className = `mtip build ${t.ok ? 'ok' : 'no'}`;
+    this.card.replaceChildren(...rows);
+    setVisible(this.odds, false);
+  }
+
+  /** Stealth strike mode: what a click bombs, or why not (stealth.ts). */
+  private stealthPreview(state: GameState, me: Player, airfield: number, tile: number): void {
+    const t = stealthTarget(state, me, airfield, tile);
+    const pic = `<img src="${iconDataUrl('bomber', 22)}" width="22" height="22" alt="">`;
+    const rows: HTMLElement[] = [];
+    if (t.ok) {
+      rows.push(this.line(pic, 'Stealth strike here', stealthBody(state, t), 'head'));
+      const sam = stealthSamLine(t);
+      if (sam) rows.push(el('div', 'mt-hint', sam));
+      const guard = stealthGuardLine(t);
+      if (guard) rows.push(el('div', 'mt-warn', guard));
+      rows.push(el('div', 'mt-hint', 'Click to send it. Cancel at the top stops.'));
+    } else {
+      rows.push(this.line(pic, t.reason || 'Not possible here', 'Pick an enemy target inside the blue ring around your airfield', 'head'));
       rows.push(el('div', 'mt-hint', 'Cancel at the top stops.'));
     }
     this.card.className = `mtip build ${t.ok ? 'ok' : 'no'}`;

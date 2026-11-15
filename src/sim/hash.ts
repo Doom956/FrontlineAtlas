@@ -79,6 +79,7 @@ export function hashState(state: GameState): number {
     h = mixFloat(h, p.armyMix.armor);
     h = mixFloat(h, p.armyMix.artillery);
     h = mixInt(h, p.barrageReadyTick);
+    if (p.stealthReady !== undefined) h = mixInt(h, p.stealthReady ^ 0x5e17b0d1); // stealth bomber recharge (units.ts launchStealth)
     h = mixStr(h, p.researching);
     h = mixFloat(h, p.researchProgress);
     // Arsenal orders (procurement.ts).

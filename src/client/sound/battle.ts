@@ -142,7 +142,7 @@ export class BattleEars {
 export function shotSource(state: GameState, e: Effect): 'cannon' | 'torpedo' | 'tracer' {
   if (e.x2 === undefined || e.y2 === undefined) return 'tracer';
   for (const u of state.units) {
-    if ((u.type === 'bomber' || u.type === 'transportPlane' || u.type === 'fighter' || u.type === 'reconPlane') && Math.abs(u.x + 0.5 - e.x2) + Math.abs(u.y + 0.5 - e.y2) < 1.5) return 'tracer';
+    if ((u.type === 'bomber' || u.type === 'transportPlane' || u.type === 'fighter' || u.type === 'reconPlane' || u.type === 'stealthBomber') && Math.abs(u.x + 0.5 - e.x2) + Math.abs(u.y + 0.5 - e.y2) < 1.5) return 'tracer';
   }
   let ship: Unit | null = null;
   let bd = 1.2;

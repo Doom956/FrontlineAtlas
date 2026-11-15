@@ -12,6 +12,8 @@ export type TargetMode =
   | { kind: 'moveWarship'; unitId: number }
   /** next click = land a cruise missile hits (cruise.ts): fired from the nearest loaded one of these own ships in reach */
   | { kind: 'cruise'; ships: number[] }
+  /** next click = the target of the stealth strike (client/stealth.ts) from this own airfield */
+  | { kind: 'stealth'; airfield: number }
   /** next click = drop zone for paratroopers (airfield: a chosen one, -1 = the nearest ready one) */
   | { kind: 'paradrop'; airfield: number }
   /** next click = centre of an artillery barrage */

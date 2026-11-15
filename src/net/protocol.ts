@@ -111,6 +111,9 @@
 // - Cruise missiles (protocol 22): intent `cruiseMissile {ship, tile}`: an own warship, destroyer or battleship of a
 //   nation with Naval Mastery fires one at land within its reach (src/sim/units.ts launchCruise).
 //
+// - Stealth strike (protocol 23): intent `stealthStrike {airfield | -1, tile}`: a nation with Air Mastery sends its one
+//   stealth bomber from an own airfield (-1 = the nearest in reach) at a target (src/sim/units.ts launchStealth).
+//
 // Single player never needs any of this: the client runs the sim locally (no server needed); the link above is
 // optional and the game plays the same without it.
 //
@@ -135,7 +138,7 @@ export type { GameMode };
 // ------------------------------------------------------------------------------------------------ constants
 
 /** Bumped on any incompatible change to the messages below. `hello.protocol` must equal it. */
-export const PROTOCOL_VERSION = 22;
+export const PROTOCOL_VERSION = 23;
 /** Longest owner-console code a client may send (adminAuth). */
 export const ADMIN_CODE_MAX_LENGTH = 128;
 /** Longest chat message (characters, after cleaning). */

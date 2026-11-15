@@ -5,7 +5,7 @@
 // Told apart by size and silhouette first, colour second:
 //   ships   the warship, destroyer, battleship, submarine, carrier, transport and trade ship: ships.ts
 //   tanks   the tank division, light tank and heavy tank: tanks.ts
-//   planes  the bomber, ground attack plane, heavy bomber, fighter, cargo plane and recon plane: planes.ts
+//   planes  the bomber, ground attack plane, heavy bomber, fighter, cargo plane, recon plane and stealth bomber: planes.ts
 //   missiles  the rocket and the atom bomb: here
 // The owner's colour is only ever a small plate, band or roundel: a turret roof or deck band on ships, a funnel band,
 // a recognition panel on a tank's engine deck, roundels and a fuselage band on planes.
@@ -15,7 +15,7 @@
 import { M_JET, M_MASTERY, M_NIGHT, M_PATH3, M_SPECIAL, SPRITE_KEYS, type SpriteKey } from '../shared/keys';
 import type { Model, Part } from './bake';
 import { box, ell, poly, seg, sym } from './shapes';
-import { bomber, fighter, groundAttack, heavyBomber, reconPlane, transportPlane } from './planes';
+import { bomber, fighter, groundAttack, heavyBomber, reconPlane, stealthBomber, transportPlane } from './planes';
 import { battleship, carrier, destroyer, submarine, tradeShip, transport, warship } from './ships';
 import { heavyTank, lightTank, mediumTank } from './tanks';
 
@@ -37,6 +37,7 @@ export const MOD_MASK: Record<SpriteKey, number> = {
   fighter: M_MASTERY | M_JET | M_SPECIAL,
   transportPlane: M_JET | M_SPECIAL,
   reconPlane: M_SPECIAL,
+  stealthBomber: 0,
   rocket: 0,
   atomBomb: 0,
 };
@@ -171,6 +172,9 @@ export function unitModel(key: SpriteKey, mods: number): UnitModel {
       break;
     case 'reconPlane':
       um = reconPlane(m);
+      break;
+    case 'stealthBomber':
+      um = stealthBomber(m);
       break;
     case 'rocket':
       um = rocket();

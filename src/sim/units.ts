@@ -17,6 +17,9 @@
 //                      launch, cargo = id of the ship that fired it (x, y start at the ship)
 //   transportPlane     home = airfield tile, target = drop tile, troops = paratroopers (infantry),
 //                      targetOwner = owner of the drop tile at launch
+//   stealthBomber      home = airfield tile, target = where it is flying now, state 0 = outbound, 1 = returning,
+//                      targetOwner = owner of the target at launch, cargo = 1 once the target has been warned (it is
+//                      shown to the target side from then: stealthSight.ts)
 // Fighters are never units: they stay stored on their airfield (Building.fighters) and intercept from there.
 import {
   aircraftCap,
@@ -45,6 +48,7 @@ import {
   BOMBER_TROOP_KILL,
   BUILDINGS,
   CRUISE,
+  STEALTH,
   FALLOUT_SECONDS,
   FIGHTER_COOLDOWN,
   MIN_ATTACK_TROOPS,
@@ -75,6 +79,7 @@ import {
   WARSHIP_SHELL_RANGE,
   TECHS,
 } from './config';
+import { stealthRevealedTo } from './stealthSight';
 import { areAllied, canTrade, changeOpinion } from './diplomacy';
 import { atPeace, peaceReason, unitRule } from './rules';
 import { forEachInRadius, neighbors4, sameWater, waterPath, waterSearchSpent } from './grid';
@@ -96,7 +101,7 @@ import {
 import { chaseTargetInRange } from './navy';
 import { blockadeTradeMul, warSet, onShipKilled, shellingMul, shipDamageMul, mendingInPort, warshipSpeedMul, warshipThink } from './naval2';
 import { bombDivisions } from './tanks';
-import { airParadropMul, airWingRange, escortAbsorbs, escortCargo, interceptBySuperiority, superiorityBombMul, superiorityNote } from './airwings';
+import { airParadropMul, airWingRange, escortAbsorbs, escortCargo, interceptBySuperiority, raid, superiorityBombMul, superiorityNote } from './airwings';
 import { bomberArrived } from './airstrike';
 import { doctrineLess, doctrineLever, doctrineMore, doctrinePerk } from './doctrines';
 import { TROOP_TYPES, isFighterTarget, isWater } from './types';
@@ -822,7 +827,7 @@ export interface DropResult {
  * tiles) troops (x payload), capped at their army. Works off the centre tile's owner: a scattered night drop still
  * hits the enemy land in the radius.
  */
-export function dropBombs(state: GameState, u: Unit, radiusMul = 1, payload = 1): DropResult {
+export function dropBombs(state: GameState, u: Unit, radiusMul = 1, payload = 1, stealth = false): DropResult {
   const map = state.map;
   const tile = u.target;
   const w = map.width;
@@ -875,7 +880,8 @@ export function dropBombs(state: GameState, u: Unit, radiusMul = 1, payload = 1)
   let victim = map.owner[tile];
   if (!hit.has(victim)) victim = [...hit.keys()].sort((a, b) => (hit.get(b) ?? 0) - (hit.get(a) ?? 0) || a - b)[0];
   const guarded = guardOf(victim) < 1;
-  const msg = `${me.name} bombed ${state.players[victim].name}: ${destroyed} building${destroyed === 1 ? '' : 's'} destroyed, ${Math.round(killed)} troops killed${burnt >= 1 ? `, ${Math.round(burnt)} gold burnt` : ''}${guarded ? superiorityNote() : ''}`;
+  const head = stealth ? `Stealth strike by ${me.name} on ${state.players[victim].name}` : `${me.name} bombed ${state.players[victim].name}`;
+  const msg = `${head}: ${destroyed} building${destroyed === 1 ? '' : 's'} destroyed, ${Math.round(killed)} troops killed${burnt >= 1 ? `, ${Math.round(burnt)} gold burnt` : ''}${guarded ? superiorityNote() : ''}`;
   addEvent(state, 'bombing', msg, [u.owner, ...hit.keys()], tile);
   out.buildings = destroyed;
   out.kills = killed;
@@ -1152,6 +1158,142 @@ function cruiseImpact(state: GameState, u: Unit): void {
   addEvent(state, 'missile', msg, [u.owner, ...hitPlayers], tile);
 }
 
+// ---------- stealth bomber (Air Mastery; config STEALTH, preview and AI in stealth.ts, sight in stealthSight.ts) ----------
+
+/** How far the stealth bomber reaches from airfield b: its wing's reach x STEALTH.reachMul. */
+export function stealthReach(state: GameState, b: Building): number {
+  return airWingRange(b, state) * STEALTH.reachMul;
+}
+
+/** Bomb radius of a stealth strike by `owner`: a heavy bomber raid's (x STEALTH.radiusMul), with Strategic and Night Bombing. */
+export function stealthRadius(state: GameState, owner: number): number {
+  return BOMBER_RADIUS * techBombRadiusMul(state, owner) * nightRadiusMul(state, owner) * STEALTH.radiusMul;
+}
+
+/** pid's stealth bomber in the air (out or back), if any: one flies at a time. */
+export function stealthInAir(state: GameState, pid: number): Unit | undefined {
+  return state.units.find((u) => u.type === 'stealthBomber' && u.owner === pid && u.hp > 0);
+}
+
+/** Seconds until pid's stealth bomber may fly again (0 = ready). Pure read. */
+export function stealthRechargeLeft(state: GameState, pid: number): number {
+  const r = state.players[pid]?.stealthReady;
+  return r !== undefined && r > state.tick ? (r - state.tick) / TICKS_PER_SECOND : 0;
+}
+
+/**
+ * Why pid cannot send a stealth strike now, whatever the airfield and the target ('' = it can): no air force in this
+ * game, no Air Mastery, the bomber in the air, recharging, too poor. Pure read (the airfield card's disabled line).
+ */
+export function stealthPlayerReason(state: GameState, pid: number): string {
+  const p = state.players[pid];
+  if (!p || pid === 0 || !p.alive) return 'No such player';
+  const ruled = unitRule(state, 'bomber');
+  if (ruled) return ruled;
+  if (!hasTech(p, 'airMastery')) return 'Needs Air Mastery';
+  if (stealthInAir(state, pid)) return 'Stealth bomber in the air';
+  const left = stealthRechargeLeft(state, pid);
+  if (left > 0) return `Recharging ${Math.ceil(left)} s`;
+  const c = unitCost(state, pid, 'stealthBomber');
+  if (p.gold < c.gold) return `Not enough gold (${c.gold})`;
+  if (p.oil < c.oil) return `Not enough oil (${c.oil})`;
+  return '';
+}
+
+/**
+ * The airfield a stealth strike of pid at `tile` flies from: `airfield` (a finished one of pid's, with the target in
+ * its reach), or with -1 the nearest such one (then by id). A string says why none. Pure read.
+ */
+export function stealthSite(state: GameState, pid: number, airfield: number, tile: number): Building | string {
+  if (!isTile(state, tile)) return 'Invalid tile';
+  if (airfield !== -1) {
+    if (!isTile(state, airfield)) return 'Invalid tile';
+    const b = buildingAt(state, airfield);
+    if (!isFinished(b, pid, 'airfield')) return 'Stealth bombers fly from a finished Airfield of yours';
+    const r = stealthReach(state, b);
+    if (d2Tiles(state, b.tile, tile) > r * r) return `Too far: the stealth bomber reaches ${Math.round(r)} tiles from this airfield`;
+    return b;
+  }
+  let best: Building | null = null;
+  let bestD = Infinity;
+  let why = 'You need a finished Airfield';
+  for (const b of buildingsOf(state, pid, 'airfield')) {
+    if (!isFinished(b, pid, 'airfield')) continue;
+    const r = stealthReach(state, b);
+    const d = d2Tiles(state, b.tile, tile);
+    if (d > r * r) {
+      why = 'Too far from your airfields';
+      continue;
+    }
+    if (d < bestD || (d === bestD && best !== null && b.id < best.id)) {
+      best = b;
+      bestD = d;
+    }
+  }
+  return best ?? why;
+}
+
+/**
+ * Why a stealth strike of pid from `airfield` at `tile` cannot fly ('' = it can): pid's own reasons, the airfield and
+ * its reach, then the target: land, not own land, not an ally, no peace time. Like a bomb it may fall on neutral
+ * land (nothing is hit there). Pure read.
+ */
+export function stealthReason(state: GameState, pid: number, airfield: number, tile: number): string {
+  const why = stealthPlayerReason(state, pid);
+  if (why) return why;
+  if (!isTile(state, tile)) return 'Invalid tile';
+  if (isWater(state.map.terrain[tile])) return 'Stealth bombers bomb land';
+  const target = state.map.owner[tile];
+  if (target === pid) return 'That is your own land';
+  if (target !== 0 && areAllied(state, pid, target)) return 'You cannot bomb an ally';
+  const peace = peaceReason(state, pid, target);
+  if (peace) return peace;
+  const site = stealthSite(state, pid, airfield, tile);
+  return typeof site === 'string' ? site : '';
+}
+
+/**
+ * Action stealthStrike {airfield, tile}: the stealth bomber flies from the airfield (-1 = the nearest in reach) to
+ * `tile` (stealthReason), paid per strike (UNITS.stealthBomber); the next one may fly STEALTH.cooldownSeconds after
+ * this launch (Player.stealthReady), and only once this one is home. Nobody is told at launch: the target side is
+ * warned STEALTH.revealSeconds before the bombs fall (stealthWarn).
+ */
+export function launchStealth(state: GameState, pid: number, airfield: number, tile: number): ActionResult {
+  if (typeof airfield !== 'number' || !Number.isInteger(airfield)) return FAIL('Invalid tile');
+  const why = stealthReason(state, pid, airfield, tile);
+  if (why) return FAIL(why);
+  const b = stealthSite(state, pid, airfield, tile) as Building;
+  pay(state, pid, 'stealthBomber');
+  state.players[pid].stealthReady = state.tick + Math.round(STEALTH.cooldownSeconds * TICKS_PER_SECOND);
+  const u = makeUnit(state, 'stealthBomber', pid, b.tile, tile);
+  u.targetOwner = state.map.owner[tile];
+  state.units.push(u);
+  return { ok: true };
+}
+
+/** Outbound stealth bomber: warns the target side once, STEALTH.revealSeconds of flight before the bombs fall. */
+function stealthWarn(state: GameState, u: Unit, speed: number): void {
+  if (u.state !== 0 || u.cargo > 0) return;
+  const reveal = speed * STEALTH.revealSeconds;
+  if (d2To(state, u, u.target) > reveal * reveal) return;
+  u.cargo = 1;
+  const t = u.targetOwner;
+  if (t <= 0 || !state.players[t]?.alive || !hostile(state, u.owner, t)) return;
+  addEvent(state, 'bombing', `A stealth bomber of ${state.players[u.owner].name} is over ${state.players[t].name}: its bombs fall in ${STEALTH.revealSeconds} s`, [t, u.owner], u.target);
+}
+
+/**
+ * The stealth bomber over its target: the income raid of STEALTH.raidBombers bombers on the nation hit, then the
+ * drop (dropBombs x STEALTH.radiusMul, payload STEALTH.payload; air superiority cuts it like any bombing). No re-aim
+ * and no Night Bombing scatter: it drops where it was sent.
+ */
+function stealthArrived(state: GameState, u: Unit): void {
+  const o = state.map.owner[u.target];
+  const victim = hostile(state, u.owner, o) && state.players[o]?.alive ? o : u.targetOwner;
+  for (let k = 0; k < STEALTH.raidBombers; k++) raid(state, u, victim);
+  dropBombs(state, u, STEALTH.radiusMul, STEALTH.payload, true);
+}
+
 /** Owned tiles per player inside the radius. */
 function tilesInRadius(state: GameState, tile: number, r: number): Map<number, number> {
   const owner = state.map.owner;
@@ -1274,7 +1416,7 @@ function atomImpact(state: GameState, u: Unit): void {
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Interception order: the most dangerous threat is shot at first. */
-const THREAT_ORDER: Record<string, number> = { atomBomb: 0, rocket: 1, cruiseMissile: 1, bomber: 2, transportPlane: 3, reconPlane: 4 };
+const THREAT_ORDER: Record<string, number> = { atomBomb: 0, rocket: 1, cruiseMissile: 1, bomber: 2, stealthBomber: 2, transportPlane: 3, reconPlane: 4 };
 
 /**
  * Deterministic interception (config RULES_TEXT.interception). Threats (bombers, rockets, cruise missiles, atom
@@ -1291,7 +1433,7 @@ function interceptThreats(state: GameState, threats: Unit[], sams: Building[], a
   const w = state.map.width;
   for (const u of threats) {
     for (const s of sams) {
-      if (u.hp <= 0 || u.type === 'reconPlane') break;
+      if (u.hp <= 0 || u.type === 'reconPlane' || u.type === 'stealthBomber') break; // SAMs never see a stealth bomber
       if (chargesReady(s) < 1 || isDisabled(state, s) || !hostile(state, u.owner, s.owner)) continue;
       const r = samRadius(s) * earlyWarningMul(state, s.owner); // Early Warning (specials.ts)
       if (d2To(state, u, s.tile) > r * r) continue;
@@ -1301,9 +1443,11 @@ function interceptThreats(state: GameState, threats: Unit[], sams: Building[], a
       u.hp -= 1;
       if (u.hp <= 0) shotDown(state, u, s.owner, 'SAM site');
     }
-    if (u.hp <= 0 || !isFighterTarget(u)) continue;
+    const stealth = u.type === 'stealthBomber';
+    if (u.hp <= 0 || (!stealth && !isFighterTarget(u))) continue;
     for (const a of airfields) {
       if (a.fighters <= 0 || a.cooldown > 0 || !hostile(state, u.owner, a.owner)) continue;
+      if (stealth && !stealthRevealedTo(state, a.owner, u)) continue; // fighters engage a stealth bomber only when revealed
       const r = airfieldRadius(a) * earlyWarningMul(state, a.owner); // Early Warning (specials.ts)
       if (d2To(state, u, a.tile) > r * r) continue;
       a.cooldown = (FIGHTER_COOLDOWN / a.fighters) * doctrineLess(state, a.owner, 'airfieldReload');
@@ -1436,6 +1580,13 @@ export function updateUnits(state: GameState): void {
         if (moveStraight(state, u, u.target, UNITS[u.type].speed * (u.type === 'transportPlane' ? techAirSpeedMul(state, u.owner) : 1))) arrived.add(u);
         threats.push(u);
         break;
+      case 'stealthBomber': {
+        const sp = UNITS.stealthBomber.speed * techAirSpeedMul(state, u.owner);
+        stealthWarn(state, u, sp);
+        if (moveStraight(state, u, u.state === 0 ? u.target : u.home, sp)) arrived.add(u);
+        threats.push(u);
+        break;
+      }
       case 'reconPlane':
         // Recon planes fly in variants.updateArsenal; on their way out enemy fighters can catch them here.
         if (u.state === 0) threats.push(u);
@@ -1460,6 +1611,12 @@ export function updateUnits(state: GameState): void {
       } else {
         bomberHome(state, u);
       }
+    } else if (u.type === 'stealthBomber') {
+      if (u.state === 0) {
+        stealthArrived(state, u);
+        u.state = 1;
+        u.target = u.home;
+      } else u.hp = 0; // home: nothing is stored (each strike is paid on its own)
     } else if (u.type === 'transportPlane') {
       landParadrop(state, u);
     } else {

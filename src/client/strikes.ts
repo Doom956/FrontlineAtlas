@@ -768,6 +768,16 @@ export function strikeToastText(e: GameEvent, me: Player): { text: string; kind:
       return { text: m, kind: 'bad', icon: 'barrage' };
     case 'bombing':
       if ((r = after(`${n} bombed `)) !== null) return { text: `Bombing run on ${r}`, kind: 'good', icon: 'bomb' };
+      // the stealth strike (Air Mastery, sim units.ts): the warning a few seconds before, then what it hit
+      if ((r = after(`Stealth strike by ${n} on `)) !== null) return { text: `Stealth strike on ${r}`, kind: 'good', icon: 'bomb' };
+      if ((r = after(`A stealth bomber of ${n} is over `)) !== null) return { text: `Your stealth bomber is over ${r.replace(/: its bombs fall in (\d+) s$/, ': bombs in $1 s')}`, kind: 'info', icon: 'bomb' };
+      {
+        const mid = ` is over ${n}: its bombs fall in `;
+        const at = m.indexOf(mid);
+        if (m.startsWith('A stealth bomber of ') && at > 0) return { text: `A stealth bomber of ${m.slice(20, at)} is over your land: its bombs fall in ${m.slice(at + mid.length)}`, kind: 'bad', icon: 'bomb' };
+        const hit = /^Stealth strike by (.+?) on (.+?): (.+)$/.exec(m);
+        if (hit && hit[2] === n) return { text: `Stealth strike by ${hit[1]}: ${hit[3]}`, kind: 'bad', icon: 'bomb' };
+      }
       return { text: m, kind: 'bad', icon: 'bomb' };
     case 'missile': {
       const atom = / an atom bomb /.test(m);

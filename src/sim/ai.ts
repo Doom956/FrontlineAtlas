@@ -103,6 +103,7 @@ import { techStatus } from './techtree';
 import { aiTankDivisions } from './tanks';
 import { aiNavy, atWar as navalAtWar, supportingShips } from './naval2';
 import { aiCruise } from './cruise';
+import { aiStealth } from './stealth';
 import { aiAttackLevel } from './aiattack';
 import { DOCTRINE_IDS, TROOP_TYPES, Resource, isTribe, isWater } from './types';
 import type { Attack, Building, BuildingType, Difficulty, DoctrineId, GameState, Personality, Player, TechId, TerrainId, TroopType, Troops } from './types';
@@ -2459,6 +2460,7 @@ function airAndMissiles(ctx: Ctx): void {
   // Standing air-wing missions first: support over our main attack, strategic raids, fighter patrols (airwings.ts).
   aiAirWings(state, id, fighting, airThreat);
   aiRecon(state, id, fighting); // recon flights over the enemy (variantsAI.ts)
+  aiStealth(state, id); // the stealth strike behind SAM walls (Air Mastery; stealth.ts)
 
   for (const af of buildingsOf(state, id, 'airfield')) {
     if (af.buildLeft > 0) continue;

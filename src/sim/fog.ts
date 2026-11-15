@@ -116,7 +116,7 @@ function inRadius(state: GameState, tile: number, u: Unit, r: number): boolean {
   const dy = ((tile / w) | 0) - u.y;
   return dx * dx + dy * dy <= r * r;
 }
-const AIR = new Set(['bomber', 'fighter', 'transportPlane', 'reconPlane', 'rocket', 'atomBomb', 'cruiseMissile']);
+const AIR = new Set(['bomber', 'fighter', 'transportPlane', 'reconPlane', 'stealthBomber', 'rocket', 'atomBomb', 'cruiseMissile']);
 
 /** True when `viewer` may see unit u: own and allied always; aircraft and missiles by airSeen; others in view. Submarines must also pass techtree.unitVisibleTo. Pure read. */
 export function unitSeen(state: GameState, viewer: number, u: Unit): boolean {

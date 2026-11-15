@@ -33,6 +33,7 @@ import {
   RETREAT_LOSS,
   ROCKET_RADIUS,
   CRUISE,
+  STEALTH,
   SAM_COOLDOWN,
   TANK_ARTILLERY_SUPPORT,
   TANK_FALLBACK_LOSS,
@@ -328,6 +329,7 @@ export function howToPlayContent(): HTMLElement {
     { title: 'Salvos', text: 'Bombs, rockets and atom bombs fire x1, x3, x5 or All per click: pick it in the bar at the top while aiming. Bombers come from every airfield in reach, rockets from every loaded silo; the preview says how many fly and what they will hit. Bombs and rockets remember the size; atom bombs start at x1 and a salvo of them asks first.' },
     { title: 'Smart aim', text: 'Bombers aimed at a front aim ahead of your attack, where the front will be when they arrive. If you have taken the spot by then, they bomb the nearest enemy land along that front instead, or fly home with their bombs.' },
     { title: 'Rocket auto-fire', text: 'Forces, Missiles: Auto-fire on a silo, or Auto-fire all for every silo (later ones too). Loaded rockets fly by themselves at the nation you fight: forts and SAM sites near your front first, then cities near it, keeping some gold in reserve. On by default; switch it off on a silo or for all silos in Forces. Atom bombs never fire by themselves.' },
+    { title: 'Stealth strike', text: `With Air Mastery, an airfield sends your stealth bomber: click the airfield, then Stealth strike, then an enemy target. SAM sites cannot see it, so it reaches targets behind a SAM wall; it wrecks the buildings where it bombs, kills troops and cuts their income. One flies at a time; ${n(UNITS.stealthBomber.gold)} gold and ${UNITS.stealthBomber.oil} oil each, then it recharges for ${STEALTH.cooldownSeconds} s. The target sees it ${STEALTH.revealSeconds} s before the bombs fall. Fighters guarding the sky there cut its bombs like any bombing.` },
     { title: 'Cruise missiles', text: `With Naval Mastery, each warship, destroyer and battleship carries one. Click your ship, then Cruise missile on its card, then enemy land up to ${CRUISE.reach} tiles from the ship: it wrecks buildings within ${CRUISE.radius} tiles and kills troops (a rocket's blast is ${ROCKET_RADIUS}). ${n(UNITS.cruiseMissile.gold)} gold and ${UNITS.cruiseMissile.oil} oil each; the ship reloads in ${CRUISE.reloadSeconds} s. SAM sites shoot them down like rockets. Your ships never fire them by themselves.` },
   ];
   const unitRows: Row[] = (['warship', 'transport', 'bomber', 'fighter', 'transportPlane'] as const).map((id) => ({
@@ -364,6 +366,7 @@ export function howToPlayContent(): HTMLElement {
       ['Recon plane', 'Fighters (airfields, carriers, patrols); SAM sites let it pass'],
       ['Rocket', 'SAM sites (one hit)'],
       ['Cruise missile', 'SAM sites (one hit)'],
+      ['Stealth bomber', 'Not SAM sites: they cannot see it. Fighters guarding the sky cut its bombs'],
       ['Atom bomb', 'SAM sites (two hits)'],
       ['Artillery shells', 'Nothing: only range limits them'],
       ['Warship, transport', 'Enemy warships (destroyers for submarines); naval mines'],

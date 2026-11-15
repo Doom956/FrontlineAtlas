@@ -218,6 +218,7 @@ const PLANES: { key: SpriteKey; name: string }[] = [
   { key: 'fighter', name: 'Fighter' },
   { key: 'transportPlane', name: 'Transport plane' },
   { key: 'reconPlane', name: 'Recon plane' },
+  { key: 'stealthBomber', name: 'Stealth bomber' },
 ];
 
 /** Lanes of units going round stadium tracks, the plain unit and the upgraded one half a lap apart. */

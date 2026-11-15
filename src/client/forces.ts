@@ -6,6 +6,7 @@
 //   - buildUnit(): buys one at the best site (the port / airfield nearest the view with room)
 //   - unitDoing() / unitPlace(): what a unit on the map is doing, in words ("heading to Azuria's coast")
 // The rules stay in the sim (buildWarship, buildAircraft, moveWarship); this file only reads and phrases them.
+import { unitVisibleTo } from '../sim/techtree';
 import { activeFog, knownOwnerOf, nationName } from './fog/fogView';
 import { aircraftCap, buildingsOf } from '../sim/buildings';
 import { AIR, BOMBER_RADIUS, NAVY_SUPPORT_RANGE, TECHS, UNITS, WARSHIP_RANGE } from '../sim/config';
@@ -307,6 +308,8 @@ export function unitDoing(state: GameState, me: Player, u: Unit): string {
       return u.state === 0 ? `Flying to bomb ${bombTarget(state, me, u)}` : 'Flying home to its Airfield';
     case 'transportPlane':
       return `Dropping ${formatCount(armyTotal(u.troops))} paratroopers on ${unitPlace(state, me, u.target)}`;
+    case 'stealthBomber':
+      return u.state === 0 ? `Stealth strike on ${bombTarget(state, me, u)}: SAM sites cannot see it` : 'Flying home to its Airfield';
     case 'rocket':
     case 'atomBomb':
       return `Falling on ${unitPlace(state, me, u.target)}`;
@@ -372,6 +375,9 @@ export function isIncoming(state: GameState, me: number, u: Unit): boolean {
       return t === me;
     case 'bomber':
       return u.state === 0 && u.targetOwner === me;
+    case 'stealthBomber':
+      // only once it is shown to the target (the last seconds before its bombs fall: stealthSight.ts)
+      return u.state === 0 && u.targetOwner === me && unitVisibleTo(state, me, u);
     default:
       return false;
   }
@@ -384,7 +390,7 @@ export function unitName(u: Unit): string {
 
 /** Icon of a unit type (icons.ts). */
 export function unitIcon(type: UnitType): IconId {
-  return type === 'tankDivision' ? 'armor' : type === 'cruiseMissile' ? 'rocket' : (type as IconId);
+  return type === 'tankDivision' ? 'armor' : type === 'cruiseMissile' ? 'rocket' : type === 'stealthBomber' ? 'bomber' : (type as IconId);
 }
 
 /** HP as "2.5 of 3" (only warships and atom bombs have more than 1). */

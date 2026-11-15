@@ -64,7 +64,7 @@ export const FX_KINDS = Object.keys(FX_INFO) as FxKind[];
 export const SHOCKWAVE_MIN_RADIUS = 4;
 
 const SHIPS: ReadonlySet<UnitType> = new Set<UnitType>(['transport', 'warship', 'tradeShip']);
-const PLANES: ReadonlySet<UnitType> = new Set<UnitType>(['bomber', 'fighter', 'transportPlane', 'reconPlane']);
+const PLANES: ReadonlySet<UnitType> = new Set<UnitType>(['bomber', 'fighter', 'transportPlane', 'reconPlane', 'stealthBomber']);
 
 export const isShip = (t: UnitType): boolean => SHIPS.has(t);
 export const isPlane = (t: UnitType): boolean => PLANES.has(t);

@@ -39,6 +39,7 @@ import { followedNation, liveFoes, mainFront } from './warTarget';
 import { ownedTilesOf } from './territory';
 import { frontTrench, trenchLevel } from './trenches';
 import { AIR_MISSIONS, isFighterTarget, isTribe } from './types';
+import { stealthRevealedTo } from './stealthSight';
 import type { ActionResult, AirCover, AirMission, AirRaid, AirState, AirWing, AirZone, Attack, Building, BuildingType, GameState, TechId, Unit } from './types';
 
 const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
@@ -1041,7 +1042,8 @@ export function interceptBySuperiority(state: GameState, threats: readonly Unit[
     const cx = (centre % w) + 0.5;
     const cy = ((centre / w) | 0) + 0.5;
     for (const t of threats) {
-      if (t.hp <= 0 || !isFighterTarget(t) || !hostile(state, t.owner, wing.owner)) continue;
+      if (t.hp <= 0 || !hostile(state, t.owner, wing.owner)) continue;
+      if (t.type === 'stealthBomber' ? !stealthRevealedTo(state, wing.owner, t) : !isFighterTarget(t)) continue; // stealth: only when revealed
       const dx = t.x + 0.5 - cx;
       const dy = t.y + 0.5 - cy;
       if (dx * dx + dy * dy > r * r) continue;

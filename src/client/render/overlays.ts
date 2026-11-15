@@ -17,6 +17,9 @@ import { FLOATER_MS, type UiState } from '../uiState';
 import { barrageReach, fmtR, strikeOfMode, strikeTarget, type StrikeTarget } from '../strikes';
 import { bombReach, bomberRadiusOf } from '../airSim';
 import { cruiseTarget, type CruiseTarget } from '../cruise';
+import { stealthTarget, type StealthTarget } from '../stealth';
+import { stealthRadius, stealthReach } from '../../sim/units';
+import { unitVisibleTo } from '../../sim/techtree';
 import { cruiseReloadLeft } from '../../sim/units';
 import { bulkPreviews, bulkPreviewText, effectiveCount } from '../hud/buildMenu';
 import { shiftHeld } from '../hud/quickBar';
@@ -281,7 +284,7 @@ export class Overlays {
     const live = new Set<number>();
     for (const u of state.units) {
       const kind = u.type;
-      const strike = kind === 'rocket' || kind === 'atomBomb' || kind === 'cruiseMissile' || (kind === 'bomber' && u.state === 0);
+      const strike = kind === 'rocket' || kind === 'atomBomb' || kind === 'cruiseMissile' || ((kind === 'bomber' || kind === 'stealthBomber') && u.state === 0);
       const drop = kind === 'transportPlane' && u.state === 0;
       if (!strike && !drop) continue;
       const own = u.owner === me;
@@ -289,6 +292,8 @@ export class Overlays {
       if (drop && !own && !atMe) continue;
       // fog of war: others' strikes only while the plane or missile is seen (launches at you also come as an alert)
       if (!own && this.fv && !this.fv.unitShown(state, u)) continue;
+      // a stealth bomber: others see its strike only once it is shown to them (stealthSight.ts), fog or not
+      if (kind === 'stealthBomber' && !own && !unitVisibleTo(state, me, u)) continue;
       live.add(u.id);
       const tx = (u.target % this.w) + 0.5;
       const ty = ((u.target / this.w) | 0) + 0.5;
@@ -301,7 +306,7 @@ export class Overlays {
         this.etas.set(u.id, eta0);
       }
       const s = cam.tileToScreen(tx, ty);
-      const outer = kind === 'atomBomb' ? ATOM_RADIUS : kind === 'rocket' ? ROCKET_RADIUS : kind === 'cruiseMissile' ? CRUISE.radius : kind === 'transportPlane' ? 2.5 : bomberRadiusOf(state, u.owner);
+      const outer = kind === 'atomBomb' ? ATOM_RADIUS : kind === 'rocket' ? ROCKET_RADIUS : kind === 'cruiseMissile' ? CRUISE.radius : kind === 'stealthBomber' ? stealthRadius(state, u.owner) : kind === 'transportPlane' ? 2.5 : bomberRadiusOf(state, u.owner);
       const R = outer * z;
       if (s.x < -R - 20 || s.y < -R - 20 || s.x > cam.viewW + R + 20 || s.y > cam.viewH + R + 20) continue;
       // strikes between others stay faint and vanish when they would only be specks
@@ -475,6 +480,20 @@ export class Overlays {
     return this.cruiseT;
   }
 
+  private stealthKey = '';
+  private stealthT: StealthTarget | null = null;
+  /** The stealth strike check for the hovered tile (cached per tile, airfield and 4 ticks). */
+  private stealthCheck(state: GameState, airfield: number, tile: number): StealthTarget | null {
+    const me = state.players[state.humanId];
+    if (!me) return null;
+    const key = `${tile}|${airfield}|${state.tick >> 2}`;
+    if (key !== this.stealthKey || !this.stealthT) {
+      this.stealthKey = key;
+      this.stealthT = stealthTarget(state, me, airfield, tile);
+    }
+    return this.stealthT;
+  }
+
   /** The strike check for the hovered tile (cached per tile, mode and 4 ticks). */
   private check(state: GameState, ui: UiState, tile: number): StrikeTarget | null {
     const me = state.players[state.humanId];
@@ -497,13 +516,16 @@ export class Overlays {
     const id = strikeOfMode(ui.mode);
     const me = state.players[state.humanId];
     const cruise = ui.mode.kind === 'cruise';
-    if ((!id && !cruise) || !me || state.phase !== 'playing') return;
+    // the stealth strike: the SAM sites it slips past show grey (they cannot see it), fighter cover as for bombs
+    const stealth = ui.mode.kind === 'stealth';
+    if ((!id && !cruise && !stealth) || !me || state.phase !== 'playing') return;
     if (id === 'barrage') {
       this.drawReach(ctx, state, cam, me.id, barrageRange(me));
       return;
     }
-    const planes = id === 'bomb' || id === 'paradrop';
+    const planes = id === 'bomb' || id === 'paradrop' || stealth;
     const own = id === 'rocket' || id === 'atomBomb' ? 'silo' : cruise ? '' : 'airfield';
+    const samRgb: RGB = stealth ? [150, 156, 162] : [226, 72, 52];
     const fog = this.fv;
     for (const b of state.buildings.values()) {
       if (b.buildLeft > 0) continue;
@@ -513,14 +535,14 @@ export class Overlays {
       }
       if (b.owner <= 0 || areAllied(state, me.id, b.owner)) continue;
       if (fog && !fog.visible(b.tile)) continue; // fog of war: hostile sites you see (remembered ones below)
-      if (b.type === 'sam' && !isDisabled(state, b)) this.ring(ctx, cam, b.tile, samRadius(b), [226, 72, 52], false);
+      if (b.type === 'sam' && !isDisabled(state, b)) this.ring(ctx, cam, b.tile, samRadius(b), samRgb, false);
       else if (planes && b.type === 'airfield' && b.fighters > 0) this.ring(ctx, cam, b.tile, airfieldRadius(b), [226, 120, 52], false);
     }
     if (!fog) return;
     // remembered hostile SAM sites and airfields (last seen; their fighters are unknown)
     for (const [tile, r] of fog.buildings) {
       if (fog.visible(tile) || r.owner <= 0 || areAllied(state, me.id, r.owner)) continue;
-      if (r.type === 'sam') this.ring(ctx, cam, tile, samRadius(r as Building), [226, 72, 52], false);
+      if (r.type === 'sam') this.ring(ctx, cam, tile, samRadius(r as Building), samRgb, false);
       else if (planes && r.type === 'airfield') this.ring(ctx, cam, tile, airfieldRadius(r as Building), [226, 120, 52], false);
     }
   }
@@ -728,6 +750,23 @@ export class Overlays {
         }
         const ok = !!t?.ok;
         this.aimDisc(ctx, cam, hs.x, hs.y, ok, [{ radius: CRUISE.radius }], `Cruise missile · radius ${CRUISE.radius} tiles`);
+        break;
+      }
+      case 'stealth': {
+        // the stealth bomber's reach from its airfield, the route and the blast
+        const t = this.stealthCheck(state, mode.airfield, hover);
+        const b = buildingAt(state, mode.airfield);
+        if (b && b.owner === state.humanId) {
+          const c = cam.tileToScreen((b.tile % this.w) + 0.5, ((b.tile / this.w) | 0) + 0.5);
+          ctx.beginPath();
+          ctx.arc(c.x, c.y, stealthReach(state, b) * z, 0, Math.PI * 2);
+          ctx.setLineDash([6, 5]);
+          accentStroke(ctx, 1.5, 0.85);
+          ctx.setLineDash([]);
+          dashedLine(ctx, c.x, c.y, hs.x, hs.y, t?.ok ? 'rgba(255,255,255,0.7)' : 'rgba(230,110,90,0.7)');
+        }
+        const r = t?.radius ?? 6;
+        this.aimDisc(ctx, cam, hs.x, hs.y, !!t?.ok, [{ radius: r }], `Stealth strike · radius ${fmtR(r)} tiles`);
         break;
       }
       case 'paradrop': {

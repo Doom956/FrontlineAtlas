@@ -46,7 +46,7 @@ export const ARSENAL_TECH_LINE: Partial<Record<TechId, string>> = {
   reconPlanes: 'Reveal armies, doctrines, buildings',
   navalMastery: 'Veteran fleets, +2 ships, cruise missiles',
   armorMastery: 'Encirclements trap bigger pockets',
-  airMastery: 'Every air wing flies 50% more bombers',
+  airMastery: 'Wings +50% bombers, a stealth bomber',
   amphibiousTanks: 'Divisions cross straits and rivers',
   earlyWarning: 'Spot submarines and planes sooner',
   navalMines: 'Mined waters around your ports',

@@ -16,6 +16,7 @@ import { earlyWarningSees, nightDodges } from './specials';
 import { arsenalItem, isArsenalTech, masteryLocked, onOrder } from './arsenal';
 import { subRevealedTo } from './variants';
 import { isFighterTarget } from './types';
+import { stealthRevealedTo, stealthShownTo } from './stealthSight';
 import type { BuildingType, GameState, Player, SpendState, TechId, Unit } from './types';
 
 /** 'researching' also means "on order" for an Arsenal item (procurement.ts: bought, waiting for delivery). */
@@ -310,10 +311,12 @@ export function interceptByCarriers(state: GameState, threats: readonly Unit[], 
   if (!carriers) return;
   const r2 = E.carrierRadius * E.carrierRadius;
   for (const t of threats) {
-    if (t.hp <= 0 || !isFighterTarget(t)) continue;
+    const stealth = t.type === 'stealthBomber';
+    if (t.hp <= 0 || (!stealth && !isFighterTarget(t))) continue;
     for (const [owner, ships] of carriers) {
       const p = state.players[owner];
       if (!p?.alive || !hostileTo(state, t.owner, owner)) continue;
+      if (stealth && !stealthRevealedTo(state, owner, t)) continue; // a stealth bomber only when revealed (stealthSight.ts)
       const ss = spendState(p);
       if (ss.carrierReadyTick > state.tick) continue;
       const near = ships.find((s) => (s.x - t.x) * (s.x - t.x) + (s.y - t.y) * (s.y - t.y) <= r2);
@@ -331,7 +334,7 @@ export function interceptByCarriers(state: GameState, threats: readonly Unit[], 
           t.troops = { infantry: 0, armor: 0, artillery: 0 };
         }
         state.effects.push({ kind: 'explosion', x: t.x + 0.5, y: t.y + 0.5, radius: 1.5, tick: state.tick });
-        const what = t.type === 'bomber' ? 'bomber' : t.type === 'reconPlane' ? 'recon plane' : 'cargo plane';
+        const what = t.type === 'bomber' ? 'bomber' : t.type === 'reconPlane' ? 'recon plane' : t.type === 'stealthBomber' ? 'stealth bomber' : 'cargo plane';
         addEvent(state, 'unitLost', `${p.name}'s carrier fighters shot down a ${what} of ${state.players[t.owner].name}`, [t.owner, owner], -1);
       }
       break;
@@ -346,6 +349,7 @@ export function interceptByCarriers(state: GameState, threats: readonly Unit[], 
  * the minimap too). Cheap enough for the renderer (ships of the viewer, then coast tiles in a small box).
  */
 export function unitVisibleTo(state: GameState, viewer: number, u: Unit): boolean {
+  if (u.type === 'stealthBomber') return stealthShownTo(state, viewer, u); // Air Mastery (stealthSight.ts)
   if (u.type !== 'warship' || u.owner === viewer || u.variant !== 'submarine') return true; // submarine variant (variants.ts)
   if (viewer <= 0) return true; // spectators see everything
   if (areAllied(state, viewer, u.owner)) return true;

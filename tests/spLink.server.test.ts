@@ -109,7 +109,7 @@ async function list(o: Client): Promise<Msg<'adminRooms'>> {
 }
 
 describe('single-player link: messages', () => {
-  it('protocol 20 has the link (still there in 22)', () => {
+  it('protocol 20 has the link (still there in 23)', () => {
     expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(20);
   });
 

@@ -533,6 +533,14 @@ export function guideTips(): GuideTip[] {
       done: (c) => autoFireCount(c.s, c.me.id).on > 0 || c.ui.openPanel === 'forces',
     },
     {
+      // Air Mastery: the stealth strike from an airfield's card (client/stealth.ts)
+      id: 'stealth',
+      text: 'Air Mastery: you have a stealth bomber SAM sites cannot see. Click an airfield, then Stealth strike, then a target behind their SAM sites.',
+      target: 'order-stealth',
+      when: (c) => playing(c) && hasTech(c.me, 'airMastery') && countBuildings(c.s, c.me.id, 'airfield', true) >= 1 && (ownAttack(c.s, c.me) || attackOnMe(c.s, c.me) !== null),
+      done: (c) => c.me.stealthReady !== undefined,
+    },
+    {
       // Naval Mastery: warships, destroyers and battleships carry cruise missiles (fired from the ship's card)
       id: 'cruise',
       text: `Naval Mastery: your warships carry cruise missiles. Click a warship, then Cruise missile on its card, then enemy land up to ${CRUISE.reach} tiles from it.`,

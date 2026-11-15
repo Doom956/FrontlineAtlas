@@ -213,7 +213,7 @@ export class FighterFx {
 
   /** A bomber, cargo plane or recon plane shot down where no SAM fired at it: the nearest hostile airfield whose fighters reach it. */
   private readKill(state: GameState, u: Unit, now: number): void {
-    if (u.type !== 'bomber' && u.type !== 'transportPlane' && u.type !== 'reconPlane') return;
+    if (u.type !== 'bomber' && u.type !== 'transportPlane' && u.type !== 'reconPlane' && u.type !== 'stealthBomber') return;
     const x = u.x + 0.5;
     const y = u.y + 0.5;
     for (let i = 0; i < this.nSam; i++) if (Math.abs(this.samX[i] - x) < 1.5 && Math.abs(this.samY[i] - y) < 1.5) return;

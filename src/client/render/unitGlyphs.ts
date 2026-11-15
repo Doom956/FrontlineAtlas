@@ -4,6 +4,7 @@
 //   fighter = small swept delta with twin tail prongs      bomber = long straight wings, 4 engine ticks, long body
 //   cargo plane = fat body, boxy high wings, T-tail        warship = long narrow hull, two turrets with barrels
 //   landing craft = short square-fronted hull + ramp       trade ship = pointed hull with container blocks
+//   stealth bomber = a flying wing with a sawtooth trailing edge, no trail
 //   rocket / atom bomb = one missile shape (the bomb bigger, with a ring), both with a long fading contrail
 //   tank division = squat hull with two track lines, a round turret and a long barrel forward (no trail)
 // The detailed pictures live in icons.ts (HUD) and the map sprites in the art styles (art/). Trails (contrails and
@@ -136,6 +137,13 @@ export const GLYPHS: Record<UnitType, Glyph> = {
       { k: 'ring', p: [-0.2, 0, 0.28] },
       { k: 'line', p: [0.08, 0, 1, 0] },
     ],
+  },
+  // stealth bomber: a flying wing, its sawtooth trailing edge, no body line; no contrail (it hides)
+  stealthBomber: {
+    len: 1.15,
+    trail: 'none',
+    trailLen: 0.5,
+    shapes: [{ k: 'poly', p: [1, 0, -0.3, 1.1, -0.42, 1.07, -0.16, 0.72, -0.5, 0.45, -0.24, 0.22, -0.55, 0, -0.24, -0.22, -0.5, -0.45, -0.16, -0.72, -0.42, -1.07, -0.3, -1.1] }],
   },
   // recon plane: a slim body, long straight wings, a small tail and a lens ring at the nose
   reconPlane: {
