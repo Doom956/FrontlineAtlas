@@ -588,7 +588,7 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'blitz',
-      text: `${BLITZ_NAME}: select a tank division and press ${BLITZ_NAME} on its orders bar, then click enemy land: smoke, a fast deep push, and the land it takes holds ${BLITZ.holdSeconds} s.`,
+      text: `${BLITZ_NAME}: select a tank division and click ${BLITZ_NAME} on its orders bar, then click enemy land: smoke, a fast deep push, and the land it takes holds ${BLITZ.holdSeconds} s.`,
       tile: (c) => {
         const u = c.s.units.find((q) => q.owner === c.me.id && q.type === 'tankDivision' && q.hp > 0);
         return u ? Math.round(u.y) * c.s.map.width + Math.round(u.x) : -1;

@@ -44,7 +44,7 @@ export function enterBlitz(state: GameState, ui: UiState, me: number, unitId: nu
 
 /** The line at the top while aiming. */
 export function blitzHint(): string {
-  return `${BLITZ_NAME}: click enemy land near your border where the division surges (Esc cancels).`;
+  return `${BLITZ_NAME}: click enemy land near your border where the division surges.`;
 }
 
 /** The preview for the hovered tile in the blitz mode, or null. */

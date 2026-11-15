@@ -5,7 +5,7 @@ The big rounds of work, newest first. Each one was merged to `main` and deployed
 ## 2026-11-15 · Blitz
 
 With Armor Mastery your tank divisions get a new order, Blitz:
-- Select a division and press Blitz on its orders bar, then click enemy land near your border. The map shows the
+- Select a division and click Blitz on its orders bar, then click enemy land near your border. The map shows the
   wedge it will drive before you click.
 - The division pops a smoke screen and surges at twice the speed, five tiles wide and half again as deep, with
   fewer losses. The land it takes holds for 20 seconds: the enemy can't take it back meanwhile, so the wedge is hard
