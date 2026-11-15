@@ -403,7 +403,8 @@ const budgets = new WeakMap<GameState, { tick: number; scans: number; floods: nu
 function spend(state: GameState, kind: 'scans' | 'floods'): boolean {
   let b = budgets.get(state);
   if (!b || b.tick !== state.tick) budgets.set(state, (b = { tick: state.tick, scans: 0, floods: 0 }));
-  if (b[kind] >= (kind === 'scans' ? ARMOR_SCANS_PER_TICK : ARMOR_FLOODS_PER_TICK)) return false;
+  if (kind === 'floods' && state.tick % ARMOR_FLOOD_EVERY_TICKS !== 0) return false;
+  if (b[kind] >= (kind === 'scans' ? ARMOR_SCANS_PER_TICK : 1)) return false;
   b[kind]++;
   return true;
 }
@@ -606,11 +607,13 @@ function softOn(state: GameState, me: number, victim: number): boolean {
   return !state.players[me]?.isHuman && aiAttackLevel(state) === 1 && !!state.players[victim]?.isHuman;
 }
 
-/** Smarter armour work budgets per tick (spend): strike scans, land floods of AI drives. */
+/** Smarter armour work budgets per tick (spend): strike scans, ... */
 const ARMOR_SCANS_PER_TICK = 1;
-const ARMOR_FLOODS_PER_TICK = 1;
-/** Cut lines are looked for within this many tiles of the front at Normal (Hard up: ARMOR_SUPPORT_RADIUS). */
+/** ... and one land flood of an AI drive every this many ticks */
+const ARMOR_FLOOD_EVERY_TICKS = 5;
+/** Cut lines are looked for within this many tiles of the front at Normal / Hard up. */
 const ARMOR_CUT_SCAN_NORMAL = 16;
+const ARMOR_CUT_SCAN_HARD = 20;
 /** Smarter armour: a division that found no strike worth it looks again after this many seconds. */
 const ARMOR_QUIET_SECONDS = 4;
 /** A division whose own land around it (over land) is under this many tiles is cut off (it breaks out). */
@@ -680,7 +683,7 @@ export function cutClicks(state: GameState, me: number, cx: number, cy: number, 
   found.sort((a, b) => (shortest ? a.cross - b.cross : b.cross - a.cross) || a.click - b.click);
   const spaced: typeof found = [];
   for (const f of found) {
-    if (spaced.length >= (shortest ? max : max * 3)) break;
+    if (spaced.length >= (shortest ? max : max * 2)) break;
     const fx = f.click % w;
     const fy = (f.click / w) | 0;
     const near = (c: (typeof found)[number]): number => Math.max(Math.abs((c.click % w) - fx), Math.abs(((c.click / w) | 0) - fy));
@@ -858,7 +861,7 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
   const level = armorLevel(state, me);
   const picks: number[] = [];
   const bonus = new Map<number, number>();
-  const n = Math.min(level >= 2 ? 8 : level >= 1 ? 6 : 8, cands.length);
+  const n = Math.min(level >= 1 ? 6 : 8, cands.length);
   for (let k = 0; k < n; k++) picks.push(cands[Math.floor((k * cands.length) / n)].t);
   if (level >= 1) {
     // Smarter armour: lines that cut their land (pockets), and the base of an enemy spearhead running into ours
@@ -871,7 +874,7 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
         bonus.set(c.click, ARMOR_CUT_BONUS + Math.min(30, c.pocket / 10));
       }
     }
-    for (const c of cutClicks(state, me, fx, fy, level >= 2 ? r : ARMOR_CUT_SCAN_NORMAL, level >= 2 ? 4 : 3)) {
+    for (const c of cutClicks(state, me, fx, fy, level >= 2 ? ARMOR_CUT_SCAN_HARD : ARMOR_CUT_SCAN_NORMAL, level >= 2 ? 4 : 3)) {
       if (bonus.has(c.click) || softOn(state, me, owner[c.click])) continue; // Normal: no cut lines into a player's land
       if (!picks.includes(c.click)) picks.push(c.click);
       bonus.set(c.click, Math.min(30, c.pocket / 10));

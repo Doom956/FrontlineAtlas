@@ -727,7 +727,7 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
 - **Smarter armour** (armor2.ts, `armorLevel`: a player's divisions on their automatic modes count as Normal at every
   difficulty; AI divisions follow `AI_ATTACK_LEVEL`, Easy keeps the old habits). A player's own move orders and
   modes are never overridden (a drive the player orders clears `Unit.ended`, so the division stays where it was sent).
-  - Strikes (`bestStrike`, a division that finds none looks again after 4 s): besides 6 (Hard up 8; Easy 8 as before) border tiles, the best 3 (Hard up 4) lines that **cut** (`cutClicks`): from our land
+  - Strikes (`bestStrike`, a division that finds none looks again after 4 s): besides 6 border tiles (Easy 8, as before), the best 3 (Hard up 4) lines that **cut** (`cutClicks`): from our land
     across 3 to 24 tiles of a nation at war with us and out onto our or allied land or water (a thin strip, a bulge,
     an enemy spearhead's band, the way back from a tip, the way to their coast), each scored by the piece it should
     close off (`pocketBeside`: a flood of their land beside the line of at most 400 tiles that runs out without the
@@ -754,9 +754,9 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   - **Fair to a new player**: a Normal AI looks for no cut lines into a player's land (straight strikes only, as
     before), needs 80% for one and sends its divisions one at a time (`softOn`; wars between AIs and Hard up keep the
     full habits).
-  - Work budgets per tick for all divisions together (`ARMOR_SCANS_PER_TICK` 1 strike scan, `ARMOR_FLOODS_PER_TICK`
-    1 land flood of an AI drive; over budget waits for a later think); cut lines are looked for within 16 tiles of
-    the front at Normal (Hard up `ARMOR_SUPPORT_RADIUS`).
+  - Work budgets for all divisions together (`spend`; over budget waits for a later think): 1 strike scan a tick, 1
+    land flood of an AI drive every 5 ticks; cut lines are looked for within 16 tiles of the front at Normal, 20 from
+    Hard up.
   - Routes: a drive the quick search gives up on floods our land (as for a player's following divisions); an AI
     division whose front can't be reached over our land supports one it can reach for `DETOUR_SECONDS`.
 - **Auto for every vehicle** (protocol 16; src/sim/warTarget.ts and the vehicle files): what a new player's vehicles do
