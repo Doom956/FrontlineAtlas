@@ -597,7 +597,7 @@ export const TANK_PER_FACTORY_LEVEL = 1;
  * The tank division's special order with Armor Mastery (blitz.ts, Action 'blitz'). BLITZ_NAME is what the player
  * reads everywhere (cards, buttons, events, help): a rename is this one line.
  */
-export const BLITZ_NAME = 'Blitz';
+export const BLITZ_NAME = 'Breakthrough';
 /**
  * A smoke screen, then a surge: a spearhead at speedMul x the head speed, depthMul x the depth, a band `width` tiles
  * wide, losses x lossMul; the land it takes holds for holdSeconds (no attack, landing or spearhead takes it back).

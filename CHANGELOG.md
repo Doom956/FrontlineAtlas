@@ -2,10 +2,10 @@
 
 The big rounds of work, newest first. Each one was merged to `main` and deployed to the live game.
 
-## 2026-11-15 · Blitz
+## 2026-11-15 · Breakthrough
 
-With Armor Mastery your tank divisions get a new order, Blitz:
-- Select a division and click Blitz on its orders bar, then click enemy land near your border. The map shows the
+With Armor Mastery your tank divisions get a new order, Breakthrough:
+- Select a division and click Breakthrough on its orders bar, then click enemy land near your border. The map shows the
   wedge it will drive before you click.
 - The division pops a smoke screen and surges at twice the speed, five tiles wide and half again as deep, with
   fewer losses. The land it takes holds for 20 seconds: the enemy can't take it back meanwhile, so the wedge is hard
@@ -13,8 +13,8 @@ With Armor Mastery your tank divisions get a new order, Blitz:
 - It costs 100 oil and needs half strength; then the division recharges for 2 minutes. The button says when it is
   ready and why it can't go ("Recharging 40 s", "Needs Armor Mastery").
 - Armor Mastery still makes encirclements collapse bigger pockets.
-- AI nations from Normal up blitz to close encirclements and break stalemates, never into your land at Easy or
-  Normal. Your own divisions never blitz by themselves.
+- AI nations from Normal up use it to close encirclements and break stalemates, never into your land at Easy or
+  Normal. Your own divisions never use it by themselves.
 
 ## 2026-11-15 · Tank divisions that fight like an army
 
