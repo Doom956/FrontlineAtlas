@@ -314,10 +314,10 @@ function driveTo(state: GameState, u: Unit, dest: number, auto = false): boolean
   const farR = ARMOR_SUPPORT_RADIUS + 12;
   const far = d2(u.x, u.y, dest % w, (dest / w) | 0) > farR * farR;
   let path = ownLandPath(state, u.owner, unitTile(state, u), dest, auto ? (far ? TANK_MOBILITY.jumpBudget : ARMOR_AUTO_PATH_BUDGET) : undefined);
-  if (!path && auto && state.players[u.owner]?.isHuman) {
-    // A player's division (AI divisions keep the quick search): the quick search gave up, so a flood of our land finds
-    // any route there, or tells a following division that its front can't be reached over our land (it then supports
-    // a front it can reach for a while).
+  if (!path && auto && armorLevel(state, u.owner) >= 1) {
+    // A player's division and AI ones from Normal up (Easy keeps the quick search): the quick search gave up, so a
+    // flood of our land finds any route there, or tells a division on support that its front can't be reached over
+    // our land (it then supports a front it can reach for a while).
     const from = unitTile(state, u);
     const prev = landFlood(state, u.owner, from);
     if (prev[dest] >= 0) path = floodPath(prev, from, dest);
@@ -383,11 +383,12 @@ function floodPath(prev: Int32Array, from: number, to: number): number[] {
 }
 
 /**
- * A player's following support division whose front can't be reached over our land (prev = landFlood from it):
- * supports a front it can reach for DETOUR_SECONDS (u.station, u.detour). Returns the tile to hold, -1 = none.
+ * A player's following support division, or an AI one from Normal up, whose front can't be reached over our land
+ * (prev = landFlood from it): supports a front it can reach for DETOUR_SECONDS (u.station, u.detour; aiDivisionModes
+ * leaves it there meanwhile). Returns the tile to hold, -1 = none.
  */
 function startDetour(state: GameState, u: Unit, prev: Int32Array): number {
-  if (divisionMode(u) !== 'support' || !unitFollows(state, u)) return -1;
+  if (divisionMode(u) !== 'support' || !(unitFollows(state, u) || !state.players[u.owner]?.isHuman)) return -1;
   const alt = reachableFront(state, u, prev, u.station ?? unitTile(state, u));
   if (!alt) return -1;
   u.station = alt.front;
@@ -424,7 +425,9 @@ function reachableFront(state: GameState, u: Unit, prev: Int32Array, ref: number
     }
     return best;
   };
-  const foe = followedNation(state, u.owner);
+  // The war target (a player's), else the nation whose land the front was on (an AI's).
+  const was = u.station !== undefined ? state.map.owner[u.station] : 0;
+  const foe = state.players[u.owner]?.isHuman ? followedNation(state, u.owner) : isFoe(state, u.owner, was) ? was : 0;
   let front = foe > 0 ? pick(foe, ref) : -1;
   if (front < 0) {
     for (const n of liveFoes(state, u.owner)) {
@@ -481,18 +484,18 @@ export function setDivisionMode(state: GameState, playerId: number, unitIds: unk
 // Per-tick work (tanks.updateTanks calls divisionStep for every division not in a spearhead)
 // ---------------------------------------------------------------------------------------------------------------
 
-/** True when own land runs at least 3 tiles out in all 4 directions from t (holdTileNear's interior test). */
-function interiorAt(state: GameState, owner: number, t: number): boolean {
+/** True when own land runs at least `depth` tiles out in all 4 directions from t (holdTileNear's interior test). */
+function interiorAt(state: GameState, owner: number, t: number, depth = 3): boolean {
   const map = state.map;
   const { width: w, height: h } = map;
   const x = t % w;
   const y = (t / w) | 0;
   const own = (xx: number, yy: number): boolean => xx >= 0 && yy >= 0 && xx < w && yy < h && map.owner[yy * w + xx] === owner;
-  return own(x + 3, y) && own(x - 3, y) && own(x, y + 3) && own(x, y - 3);
+  return own(x + depth, y) && own(x - depth, y) && own(x, y + depth) && own(x, y - depth);
 }
 
-/** Own land tile to hold behind `front` (and `ok`): interior (own land 3 tiles out in all 4 directions), nearest the front. */
-function holdTileNear(state: GameState, owner: number, front: number, ok?: (t: number) => boolean): number {
+/** Own land tile to hold behind `front` (and `ok`): interior (own land `depth` tiles out in all 4 directions), nearest the front. */
+function holdTileNear(state: GameState, owner: number, front: number, ok?: (t: number) => boolean, depth = 3): number {
   const map = state.map;
   const { width: w, height: h } = map;
   const fx = front % w;
@@ -515,11 +518,12 @@ function holdTileNear(state: GameState, owner: number, front: number, ok?: (t: n
         fallback = t;
       }
       if (d >= bestD) continue;
-      if (!own(x + 3, y) || !own(x - 3, y) || !own(x, y + 3) || !own(x, y - 3)) continue;
+      if (!own(x + depth, y) || !own(x - depth, y) || !own(x, y + depth) || !own(x, y - depth)) continue;
       best = t;
       bestD = d;
     }
   }
+  if (best < 0 && depth > 3) return holdTileNear(state, owner, front, ok);
   return best >= 0 ? best : fallback;
 }
 
@@ -549,6 +553,8 @@ const ARMOR_REFIT_TRIP = 48;
 const ARMOR_SMART_FULL = 0.85;
 /** Smarter armour: a straight strike (no cut) needs this share of a full division (a cut: ARMOR_SUPPORT_READY). */
 const ARMOR_SMART_READY = 0.7;
+/** Smarter armour under a push holds where own land runs this many tiles out all round. */
+const ARMOR_PRESSED_DEPTH = 6;
 /** A division that ended a spearhead this recently (s) may still stand on its ground (Unit.ended). */
 const ENDED_SECONDS = 60;
 
@@ -944,10 +950,15 @@ export function divisionStep(state: GameState, u: Unit): void {
   const human = !!state.players[u.owner]?.isHuman;
   const fresh = u.ended !== undefined && state.tick - u.ended <= ENDED_SECONDS * TICKS_PER_SECOND;
   const exposed = u.state === 0 && (!human || fresh) && !interiorAt(state, u.owner, unitTile(state, u));
-  if (d2(u.x, u.y, front % w, (front / w) | 0) <= (ARMOR_SUPPORT_HOLD + 6) * (ARMOR_SUPPORT_HOLD + 6) && u.state === 0 && !exposed) return;
-  if ((u.retryTick ?? 0) > state.tick && !exposed) return;
-  const hold = holdTileNear(state, u.owner, front);
-  if (hold >= 0 && hold !== unitTile(state, u)) driveTo(state, u, hold, !exposed);
+  // Smarter armour under a push (land of a nation attacking us within TANK_FALLBACK_RADIUS): it holds deeper (own land
+  // ARMOR_PRESSED_DEPTH tiles out all round), even right after falling back, rather than wait at the edge to be
+  // rolled over again and again.
+  const pressed = level >= 1 && u.state === 0 && pressedBy(state, u) > 0;
+  const deep = !pressed || interiorAt(state, u.owner, unitTile(state, u), ARMOR_PRESSED_DEPTH);
+  if (d2(u.x, u.y, front % w, (front / w) | 0) <= (ARMOR_SUPPORT_HOLD + 6) * (ARMOR_SUPPORT_HOLD + 6) && u.state === 0 && !exposed && deep) return;
+  if ((u.retryTick ?? 0) > state.tick && !exposed && deep) return;
+  const hold = holdTileNear(state, u.owner, front, undefined, pressed ? ARMOR_PRESSED_DEPTH : 3);
+  if (hold >= 0 && hold !== unitTile(state, u)) driveTo(state, u, hold, !exposed && deep);
 }
 
 /**
@@ -1053,13 +1064,13 @@ function nearestOf(state: GameState, u: Unit, owners: Set<number>, r: number): {
  * its support divisions' fronts are on (ties: lower id), else the first nation at war with it it borders (ids
  * ascending, tribes last). 0 = none.
  */
-function liveFoe(state: GameState, id: number, mine: readonly Unit[]): number {
+function liveFoe(state: GameState, id: number, mine: readonly Unit[], skip = 0): number {
   const owner = state.map.owner;
   const votes = new Map<number, number>();
   for (const u of mine) {
     if (divisionMode(u) !== 'support' || u.station === undefined) continue;
     const o = owner[u.station];
-    if (o !== id && isFoe(state, id, o)) votes.set(o, (votes.get(o) ?? 0) + 1);
+    if (o !== id && o !== skip && isFoe(state, id, o)) votes.set(o, (votes.get(o) ?? 0) + 1);
   }
   let best = 0;
   let bestN = 0;
@@ -1072,7 +1083,7 @@ function liveFoe(state: GameState, id: number, mine: readonly Unit[]): number {
   if (best) return best;
   const tribes: number[] = [];
   for (const q of state.players) {
-    if (!q || q.id <= 0 || q.id === id || !q.alive || !isFoe(state, id, q.id)) continue;
+    if (!q || q.id <= 0 || q.id === id || q.id === skip || !q.alive || !isFoe(state, id, q.id)) continue;
     if (isTribe(q)) tribes.push(q.id);
     else if (frontTiles(state, id, q.id, 1).length) return q.id;
   }
@@ -1110,12 +1121,14 @@ export function aiDivisionModes(state: GameState, id: number, act: (a: Action) =
       if (divisionMode(u) === 'hold' && s < ARMOR_SUPPORT_REFIT && toRefit(u)) handled.add(u.id);
       continue;
     }
-    if (level >= 1 && p.personality !== 'turtle' && s >= ARMOR_SUPPORT_READY) {
+    const turtle = p.personality === 'turtle';
+    if (level >= 1 && s >= ARMOR_SUPPORT_READY) {
       // The best line near it first (a cut through the push's flank or across an enemy spearhead's base beats a
       // straight hit), else straight into the attacker's land nearest it; the ready divisions nearby go with it.
+      // Turtles only cut (they win back the ground an enemy spearhead took).
       const st = bestStrike(state, u, unitTile(state, u));
-      let t = st && (st.cut || st.score >= AI_COUNTER_MIN_DEPTH) ? st.tile : -1;
-      if (t < 0) {
+      let t = st && (st.cut || (!turtle && st.score >= AI_COUNTER_MIN_DEPTH)) ? st.tile : -1;
+      if (t < 0 && !turtle) {
         t = counterTile(state, u, q);
         if (t >= 0 && spearheadPreview(state, id, u.id, t).expectedDepth < AI_COUNTER_MIN_DEPTH) t = -1;
       }
@@ -1153,6 +1166,15 @@ export function aiDivisionModes(state: GameState, id: number, act: (a: Action) =
     if (ids.length) act({ type: 'setDivisionMode', unitIds: ids, mode: 'hold' });
     return;
   }
+  let tiles = frontTiles(state, id, foe);
+  if (!tiles.length && level >= 1) {
+    // The war we fight hardest is overseas (landings): the divisions support a war we fight over land instead.
+    const alt = liveFoe(state, id, mine, foe);
+    if (alt) {
+      foe = alt;
+      tiles = frontTiles(state, id, foe);
+    }
+  }
   // Front tile: the main front, the foe's border tile nearest the focus of the biggest attack between us (either way;
   // ties: lower id); without one, nearest the first division.
   let focus = -1;
@@ -1170,7 +1192,6 @@ export function aiDivisionModes(state: GameState, id: number, act: (a: Action) =
   const lead = mine[0];
   const ax = focus >= 0 ? focus % w : lead.x;
   const ay = focus >= 0 ? (focus / w) | 0 : lead.y;
-  const tiles = frontTiles(state, id, foe);
   const nearest = (x: number, y: number): number => {
     let best = -1;
     let bestD = Infinity;
@@ -1194,6 +1215,7 @@ export function aiDivisionModes(state: GameState, id: number, act: (a: Action) =
   };
   const jobs = new Map<number, number[]>();
   for (const u of mine) {
+    if (level >= 1 && u.detour !== undefined && u.detour > state.tick && divisionMode(u) === 'support') continue; // on a detour (driveTo)
     const f = frontFor(u);
     if (f < 0) continue;
     if (divisionMode(u) === 'support' && u.station !== undefined) {
