@@ -206,6 +206,8 @@ function drawAt(ctx: CanvasRenderingContext2D, u: UnitDraw, m: MotionParams, g: 
     const sway = still ? 0 : m.turretSway * Math.sin(t / 1900 + u.seed * 1.37) * (0.6 + 0.4 * Math.sin(t / 830 + u.seed));
     tFacing = facingIndex(u.aim ?? u.angle + sway, n * 2);
     turret = entry(um, key, mods, tFacing, n * 2, 3, 0, u.owner, g.res, TURRET);
+    // a heading the turret was never trained on yet and this frame's bakes are spent: along the hull for a frame
+    if (!turret && u.aim !== undefined) turret = entry(um, key, mods, facingIndex(u.angle, n * 2), n * 2, 3, 0, u.owner, g.res, TURRET);
     if (!turret) return false;
   }
   const shadow = isAirKey(key) && u.shadow ? entry(um, key, mods, facing, n, 3, 0, u.owner, g.res, SHADOW) : null;
