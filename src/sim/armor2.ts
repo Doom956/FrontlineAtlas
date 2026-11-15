@@ -543,8 +543,12 @@ const CUT_CROSS = 24;
 const CUT_MIN_CROSS = 3;
 /** Divisions that strike together at most (side by side: a band this many times as wide). */
 const GROUP_MAX = 3;
-/** Smarter armour: a division under ready drives back to a Factory within this many tiles to refit there. */
+/** Smarter armour: a division under ARMOR_SMART_READY drives back to a Factory within this many tiles to refit there,
+ *  and stays there until ARMOR_SMART_FULL. */
 const ARMOR_REFIT_TRIP = 48;
+const ARMOR_SMART_FULL = 0.85;
+/** Smarter armour: a straight strike (no cut) needs this share of a full division (a cut: ARMOR_SUPPORT_READY). */
+const ARMOR_SMART_READY = 0.7;
 /** A division that ended a spearhead this recently (s) may still stand on its ground (Unit.ended). */
 const ENDED_SECONDS = 60;
 
@@ -743,7 +747,7 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
   const level = armorLevel(state, me);
   const picks: number[] = [];
   const bonus = new Map<number, number>();
-  const n = Math.min(level >= 2 ? 12 : 8, cands.length);
+  const n = Math.min(level >= 2 ? 10 : 8, cands.length);
   for (let k = 0; k < n; k++) picks.push(cands[Math.floor((k * cands.length) / n)].t);
   if (level >= 1) {
     // Smarter armour: lines that cut their land (pockets), and the base of an enemy spearhead running into ours
@@ -755,7 +759,7 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
         bonus.set(c.click, ARMOR_CUT_BONUS + Math.min(30, c.pocket / 10));
       }
     }
-    for (const c of cutClicks(state, me, fx, fy, r, level >= 2 ? 10 : 6)) {
+    for (const c of cutClicks(state, me, fx, fy, r, level >= 2 ? 6 : 4)) {
       if (bonus.has(c.click)) continue;
       if (!picks.includes(c.click)) picks.push(c.click);
       bonus.set(c.click, Math.min(30, c.pocket / 10));
@@ -779,7 +783,9 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
       break;
     }
     let score = pv.expectedDepth + (cut ? ARMOR_CUT_BONUS + (bonus.get(t) ?? 0) : 0);
-    // Hard up: a line that bleeds the division white far from a cut leaves it worn on a thin tip.
+    // Smarter armour: a line that bleeds the division white far from a cut leaves it worn on a thin tip, where it is
+    // overrun; Hard up weighs the strength left at the end.
+    if (level >= 1 && !cut && (pv.endShare ?? 1) < 0.3) score -= 6;
     if (level >= 2) score += 6 * (pv.endShare ?? 0);
     if (pv.expectedDepth < ARMOR_SUPPORT_MIN_DEPTH && !cut) continue;
     if (!best || score > best.score || (score === best.score && t < best.tile)) best = { tile: t, launch: pv.launch, score, cut };
@@ -792,7 +798,7 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
  * holding, ready (ARMOR_SUPPORT_READY) and not waiting on a failed route, within ARMOR_SUPPORT_RADIUS + 12 tiles of
  * the tile (state.units order), at most GROUP_MAX in all. One order sends them side by side (tanks.moveTankDivisions).
  */
-function strikeGroup(state: GameState, u: Unit, tile: number): number[] {
+function strikeGroup(state: GameState, u: Unit, tile: number, ready = ARMOR_SUPPORT_READY): number[] {
   const w = state.map.width;
   const tx = tile % w;
   const ty = (tile / w) | 0;
@@ -801,7 +807,7 @@ function strikeGroup(state: GameState, u: Unit, tile: number): number[] {
   for (const o of state.units) {
     if (ids.length >= GROUP_MAX) break;
     if (o === u || o.type !== 'tankDivision' || o.hp <= 0 || o.owner !== u.owner || o.state !== 0 || divisionMode(o) !== 'support') continue;
-    if (divisionStrength(o) < ARMOR_SUPPORT_READY || (o.retryTick ?? 0) > state.tick || d2(o.x, o.y, tx, ty) > r * r) continue;
+    if (divisionStrength(o) < ready || (o.retryTick ?? 0) > state.tick || d2(o.x, o.y, tx, ty) > r * r) continue;
     ids.push(o.id);
   }
   return ids;
@@ -827,9 +833,10 @@ function companionComing(state: GameState, u: Unit, tile: number): boolean {
 function leaveTip(state: GameState, u: Unit): boolean {
   const here = unitTile(state, u);
   if (interiorAt(state, u.owner, here)) return false;
-  if (state.players[u.owner]?.isHuman && (u.ended === undefined || state.tick - u.ended > ENDED_SECONDS * TICKS_PER_SECOND)) return false;
+  const fresh = u.ended !== undefined && state.tick - u.ended <= ENDED_SECONDS * TICKS_PER_SECOND;
+  if (state.players[u.owner]?.isHuman && !fresh) return false;
   if ((u.retryTick ?? 0) > state.tick) return false;
-  if (divisionStrength(u) >= ARMOR_SUPPORT_READY) {
+  if (fresh && divisionStrength(u) >= ARMOR_SUPPORT_READY) {
     let best: { t: number; score: number } | null = null;
     for (const c of cutClicks(state, u.owner, u.x, u.y, 6, 4)) {
       const pv = spearheadPreview(state, u.owner, u.id, c.click);
@@ -843,7 +850,7 @@ function leaveTip(state: GameState, u: Unit): boolean {
   delete u.ended;
   if (hold < 0 || hold === here) return false;
   if (driveTo(state, u, hold)) return true;
-  u.retryTick = state.tick + 2 * TICKS_PER_SECOND;
+  u.retryTick = state.tick + ARMOR_RETRY_SECONDS * TICKS_PER_SECOND;
   return false;
 }
 
@@ -883,29 +890,32 @@ export function divisionStep(state: GameState, u: Unit): void {
   }
   if (u.state === 1) return; // on its way (to the front or to a Factory)
   const level = armorLevel(state, u.owner);
-  // Worn down: refit at a Factory first (or in place without one). Smarter armour also pulls a division that is
-  // under ready back to a Factory nearby (it refits five times as fast there).
-  if ((s < ARMOR_SUPPORT_REFIT || (level >= 1 && s < ARMOR_SUPPORT_READY)) && !nearFactory(state, u)) {
+  // Worn down: refit at a Factory first (or in place without one). Smarter armour also pulls a division under
+  // ARMOR_SMART_READY back to a Factory nearby (it refits five times as fast there) and stays there until nearly full.
+  const atFactory = nearFactory(state, u);
+  const ready = level >= 1 ? ARMOR_SMART_READY : ARMOR_SUPPORT_READY;
+  if ((s < ARMOR_SUPPORT_REFIT || (level >= 1 && s < ready)) && !atFactory) {
     const f = nearestFactory(state, u.owner, unitTile(state, u));
     const w0 = state.map.width;
     const close = f >= 0 && d2(u.x, u.y, f % w0, (f / w0) | 0) <= ARMOR_REFIT_TRIP * ARMOR_REFIT_TRIP;
     if (f >= 0 && (s < ARMOR_SUPPORT_REFIT || close) && driveTo(state, u, f, true)) return;
   }
-  if (s < ARMOR_SUPPORT_READY) {
-    if (nearFactory(state, u)) return; // refitting
-    if (s < ARMOR_SUPPORT_REFIT) return; // no Factory to reach: refits slowly where it is
-  }
+  if (atFactory && s < (level >= 1 ? ARMOR_SMART_FULL : ARMOR_SUPPORT_READY)) return; // refitting
+  if (s < ARMOR_SUPPORT_REFIT) return; // no Factory to reach: refits slowly where it is
   const w = state.map.width;
   const near = d2(u.x, u.y, front % w, (front / w) | 0) <= (ARMOR_SUPPORT_RADIUS + 12) * (ARMOR_SUPPORT_RADIUS + 12);
   if (s >= ARMOR_SUPPORT_READY && near && (u.retryTick ?? 0) <= state.tick) {
-    const strike = bestStrike(state, u, front);
+    let strike = bestStrike(state, u, front);
+    // Smarter armour: under ARMOR_SMART_READY only a line that cuts their land is worth it (a straight one would leave
+    // the division bled white on a thin tip).
+    if (strike && !strike.cut && s < ready) strike = null;
     let wait = false;
     if (strike) {
       // A cheap route check first (moveTankDivisions searches with the full budget).
       if (ownLandPath(state, u.owner, unitTile(state, u), strike.launch, ARMOR_AUTO_PATH_BUDGET, hasAmphibious(state, u.owner) ? (t) => narrowWater(state, t) : undefined)) {
         // Smarter armour: the ready divisions near the strike go in together, side by side; from Hard up an AI
         // division alone waits for one driving up (unless the line cuts their land: that won't wait).
-        const ids = level >= 1 ? strikeGroup(state, u, strike.tile) : [u.id];
+        const ids = level >= 1 ? strikeGroup(state, u, strike.tile, strike.cut ? ARMOR_SUPPORT_READY : ready) : [u.id];
         wait = ids.length === 1 && level >= 2 && !state.players[u.owner]?.isHuman && !strike.cut && companionComing(state, u, strike.tile);
         if (!wait && moveTankDivisions(state, u.owner, ids, strike.tile).ok) return;
       }

@@ -16,6 +16,7 @@ import { unitVisibleTo } from '../src/sim/techtree';
 import { minefieldAt, minefields } from '../src/sim/specials';
 import { navalBlockadeMul, navalCanTarget, navalSupportMul } from '../src/sim/variants';
 import { coastCount } from '../src/sim/territory';
+import { frontTiles } from '../src/sim/combat';
 import { isTribe } from '../src/sim/types';
 import type { GameEvent, GameState, Unit } from '../src/sim/types';
 
@@ -184,6 +185,10 @@ export interface AttackStats {
     enemySpearTiles: number;
     /** why own spearheads ended */
     ends: Record<string, number>;
+    /** holding away samples by why: hold mode, refit mode, support waiting on a failed route, no land border with a
+     *  nation at war, support with its front tile over 36 tiles away, support near its front tile (that tile is
+     *  no longer at a live front) */
+    away: Record<string, number>;
   };
   bombers: Record<MissionKey, BomberStats>;
   /** strategic / manual strike aims by building type at the aim tile */
@@ -216,7 +221,7 @@ export function newAttackStats(): AttackStats {
     ships: { built: 0, sunk: 0, ownerGone: 0, sunkByShip: 0, sunkByMine: 0, sunkNoXp: 0, sunkCrippled: 0, alive: 0, atWar: 0, onFront: 0, attacking: 0, attackingOnFront: 0, attackingStation: 0, station: 0, stationOnFront: 0, outnumbered: 0, escorting: 0, mainCoastal: 0, mainSupported: 0 },
     transports: { invasions: 0, sunk: 0, troopsSunk: 0, repelled: 0, atSea: 0, escorted: 0 },
     tanks: { formed: 0, overrun: [0, 0, 0], spent: 0, ownerGone: 0, overrunAfterSpearhead: 0, holdSupport: 0, holdAtStation: 0, atWar: 0, spearhead: 0, holdFront: 0, holdFar: 0, driving: 0, worn: 0, overrunDefending: 0 },
-    armor: { war: 0, attack: 0, launch: 0, toFront: 0, retreat: 0, holdFront: 0, holdRefit: 0, holdAway: 0, spearheads: 0, withCompany: 0, ended: 0, spearTiles: 0, shallow: 0, pocketEvents: 0, pockets: 0, pocketTiles: 0, fellBack: 0, enemySpears: 0, enemySpearTiles: 0, ends: {} },
+    armor: { war: 0, attack: 0, launch: 0, toFront: 0, retreat: 0, holdFront: 0, holdRefit: 0, holdAway: 0, spearheads: 0, withCompany: 0, ended: 0, spearTiles: 0, shallow: 0, pocketEvents: 0, pockets: 0, pocketTiles: 0, fellBack: 0, enemySpears: 0, enemySpearTiles: 0, ends: {}, away: {} },
     bombers: { manual: b(), support: b(), strategic: b(), cover: b() },
     strikeTypes: {},
     mainAirOwn: 0,
@@ -733,7 +738,27 @@ export class AttackProbe {
       else a.toFront++;
     } else if (this.frontNear(u.owner, foes, u.x, u.y, FRONT_TILES)) a.holdFront++;
     else if ((u.troops.infantry + u.troops.armor + u.troops.artillery) / FULL_DIVISION < ARMOR_SUPPORT_READY) a.holdRefit++;
-    else a.holdAway++;
+    else {
+      a.holdAway++;
+      const why = this.awayWhy(u, foes);
+      a.away[why] = (a.away[why] ?? 0) + 1;
+    }
+  }
+  private awayWhy(u: Unit, foes: Set<number>): string {
+    const state = this.state;
+    const mode = u.mode ?? 'hold';
+    if (mode === 'hold') return 'hold mode';
+    if (mode === 'refit') return 'refit mode';
+    if ((u.retryTick ?? 0) > state.tick) return 'waiting on a route';
+    let border = false;
+    for (const f of foes) if (frontTiles(state, u.owner, f, 1).length) border = true;
+    if (!border) return 'no land front';
+    const st = u.station;
+    if (st === undefined) return 'no front tile';
+    const w = state.map.width;
+    const dx = (st % w) - u.x;
+    const dy = ((st / w) | 0) - u.y;
+    return dx * dx + dy * dy > 36 * 36 ? 'front tile far' : 'front tile near, quiet';
   }
 
   /** Every 10 s of game time. */
@@ -863,6 +888,8 @@ export function attackReport(a: AttackStats, games: number): string[] {
     const land = ar.spearTiles + ar.pocketTiles;
     out.push(`    at war (an attack either way in the last 30 s): attacking ${pc(ar.attack, ar.war)}, to a launch tile ${pc(ar.launch, ar.war)}, driving ${pc(ar.toFront, ar.war)}, retreating to refit ${pc(ar.retreat, ar.war)}, holding at the front ${pc(ar.holdFront, ar.war)}, holding away worn ${pc(ar.holdRefit, ar.war)}, holding away ready ${pc(ar.holdAway, ar.war)}; at the front in all ${pc(ar.attack + ar.launch + ar.holdFront, ar.war)}.`);
     out.push(`    spearheads ${f1(ar.spearheads / g)} per game (${f1(ar.spearheads / Math.max(1, tk.formed))} per division), with company ${pc(ar.withCompany, ar.spearheads)}; ${f1(ar.spearTiles / Math.max(1, ar.ended))} tiles each, under 5 tiles ${pc(ar.shallow, ar.ended)}; land taken per division ${f1(land / Math.max(1, tk.formed))} tiles (pockets ${f1(ar.pocketTiles / Math.max(1, tk.formed))}); encirclements ${f1(ar.pocketEvents / g)} per game (${f1(ar.pockets / g)} pockets, ${f1(ar.pocketTiles / g)} tiles); fell back ${f1(ar.fellBack / g)} per game.`);
+    const away = Object.entries(ar.away ?? {}).sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k} ${pc(v, ar.holdAway)}`).join(', ');
+    out.push(`    holding away ready, why: ${away || '-'}.`);
     out.push(`    ended: ${ends || '-'}; enemy spearheads into their land ${f1(ar.enemySpears / g)} per game, ${f1(ar.enemySpearTiles / Math.max(1, ar.enemySpears))} tiles each.`);
   }
   out.push('  ("front" = the border with a nation the unit\'s owner attacked within the last 30 s; AI attacks come in waves of about a second)');
