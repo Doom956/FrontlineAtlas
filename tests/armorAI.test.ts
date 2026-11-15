@@ -140,7 +140,7 @@ describe('strikes together', () => {
 });
 
 describe('fair to a new player at Normal', () => {
-  it("at Normal, against a player's land at most 2 go in together and a straight strike needs 80%; against an AI, 3 and 70%", () => {
+  it("at Normal, against a player's land one goes in at a time and a straight strike needs 80%; against an AI, 3 and 70%", () => {
     for (const human of [true, false]) {
       for (const share of [1, 0.75]) {
         const s = game('normal');
@@ -153,7 +153,7 @@ describe('fair to a new player at Normal', () => {
         let first = 0;
         // (5 s: field refit can't lift a 75% division to 80% that fast)
         for (let k = 0; k < 50 && !(first = moving()); k++) tick(s);
-        if (share === 1) expect(first).toBe(human ? 2 : 3);
+        if (share === 1) expect(first).toBe(human ? 1 : 3);
         else expect(first).toBe(human ? 0 : 3);
       }
     }

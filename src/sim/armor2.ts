@@ -596,12 +596,12 @@ const ARMOR_SMART_FULL = 0.85;
 /** Smarter armour: a straight strike (no cut) needs this share of a full division (a cut: ARMOR_SUPPORT_READY). */
 const ARMOR_SMART_READY = 0.7;
 /**
- * Normal AI against a player's land (softOn): a straight strike needs ARMOR_SOFT_READY, at most ARMOR_SOFT_GROUP
- * divisions go in together, and the base of the player's own push gets no extra weight. Easy never strikes like this;
+ * Normal AI against a player's land (softOn): no cut lines are looked for there (the old straight strikes only), a
+ * straight strike needs ARMOR_SOFT_READY and divisions go in one at a time (ARMOR_SOFT_GROUP). Easy never strikes like this;
  * Hard up and wars between AIs get the full habits.
  */
 const ARMOR_SOFT_READY = 0.8;
-const ARMOR_SOFT_GROUP = 2;
+const ARMOR_SOFT_GROUP = 1;
 function softOn(state: GameState, me: number, victim: number): boolean {
   return !state.players[me]?.isHuman && aiAttackLevel(state) === 1 && !!state.players[victim]?.isHuman;
 }
@@ -866,13 +866,13 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
     // A cut scores the pocket it should close (a tenth of its tiles, at most 30) on top of ARMOR_CUT_BONUS.
     for (const b of enemySpearBases(state, me, fx, fy, r + 16)) {
       for (const c of cutClicks(state, me, b.x, b.y, 8, 2)) {
+        if (softOn(state, me, owner[c.click])) continue;
         if (!bonus.has(c.click)) picks.push(c.click);
-        // Normal, against a player's land: no extra weight on the base of their push (fair to a new player).
-        bonus.set(c.click, (softOn(state, me, owner[c.click]) ? 0 : ARMOR_CUT_BONUS) + Math.min(30, c.pocket / 10));
+        bonus.set(c.click, ARMOR_CUT_BONUS + Math.min(30, c.pocket / 10));
       }
     }
     for (const c of cutClicks(state, me, fx, fy, level >= 2 ? r : ARMOR_CUT_SCAN_NORMAL, level >= 2 ? 4 : 3)) {
-      if (bonus.has(c.click)) continue;
+      if (bonus.has(c.click) || softOn(state, me, owner[c.click])) continue; // Normal: no cut lines into a player's land
       if (!picks.includes(c.click)) picks.push(c.click);
       bonus.set(c.click, Math.min(30, c.pocket / 10));
     }
