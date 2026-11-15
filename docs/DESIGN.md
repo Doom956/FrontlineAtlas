@@ -732,8 +732,8 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
     an enemy spearhead's band, the way back from a tip, the way to their coast), each scored by the piece it should
     close off (`pocketBeside`: a flood of their land beside the line of at most 400 tiles that runs out without the
     capital; a tenth of its tiles, at most 30, on top of `ARMOR_CUT_BONUS`); the base of an enemy spearhead running
-    into our land scores `ARMOR_CUT_BONUS` more. A straight line expected to bleed the division under 30% scores 6
-    less; from Hard up the strength left counts (x6).
+    into our land scores `ARMOR_CUT_BONUS` more. A straight line expected to bleed the division under 30% (it would end worn on a
+    thin tip, where most overrun divisions were caught) scores x0.6 - 4; from Hard up the strength left counts (x6).
   - A straight strike (no cut) needs 70% of a full division (a cut: `ARMOR_SUPPORT_READY`); a division under 70%
     drives to a Factory within 48 tiles and refits there to 85%.
   - **Together**: the ready divisions on support within `ARMOR_SUPPORT_RADIUS` + 12 tiles of the strike go in with it,

@@ -801,7 +801,7 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
     let score = pv.expectedDepth + (cut ? ARMOR_CUT_BONUS + (bonus.get(t) ?? 0) : 0);
     // Smarter armour: a line that bleeds the division white far from a cut leaves it worn on a thin tip, where it is
     // overrun; Hard up weighs the strength left at the end.
-    if (level >= 1 && !cut && (pv.endShare ?? 1) < 0.3) score -= 6;
+    if (level >= 1 && !cut && (pv.endShare ?? 1) < 0.3) score = score * 0.6 - 4;
     if (level >= 2) score += 6 * (pv.endShare ?? 0);
     if (pv.expectedDepth < ARMOR_SUPPORT_MIN_DEPTH && !cut) continue;
     if (!best || score > best.score || (score === best.score && t < best.tile)) best = { tile: t, launch: pv.launch, score, cut };
