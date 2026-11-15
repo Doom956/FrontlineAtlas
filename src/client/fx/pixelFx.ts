@@ -194,7 +194,9 @@ export class PixelFx {
   private watch = new DeathWatch();
   private gone: Unit[] = [];
   private scanTick = -1;
-  private reduced = prefersReducedMotion();
+  private get reduced(): boolean {
+    return prefersReducedMotion();
+  }
   private wasOn = true;
 
   constructor() {

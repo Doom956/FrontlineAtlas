@@ -44,7 +44,9 @@ export class BattleFx {
   private shakeAmp = 0;
   private shakeT0 = 0;
   private shakeOut = { x: 0, y: 0 };
-  private reduced = prefersReducedMotion();
+  private get reduced(): boolean {
+    return prefersReducedMotion();
+  }
   private wasOn = true;
   private spawnsThisFrame: FxSpawn[] = [];
   /** fog of war view (set by the renderer each frame; null or inactive = no fog): effects only where you see */

@@ -555,6 +555,8 @@ if (!ONLY || ONLY.some((x) => x <= '18')) {
     if (wantFrom('06')) {
       try {
         await click(page, '[data-test=menu]', 'cluster Menu button');
+        // the guide switch is on the Menu's Gameplay tab
+        if (await isVisible(page, '[data-test=settings-tab-gameplay]')) await click(page, '[data-test=settings-tab-gameplay]', 'Gameplay tab');
         await need(page, '[data-test=guide-toggle]', 'guide setting in the menu drawer');
         const off = page.locator('[data-test=guide-toggle]').getByRole('button', { name: /off/i }).first();
         if (await off.count()) await off.evaluate((n) => n.click());

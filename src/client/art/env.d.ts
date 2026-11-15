@@ -12,3 +12,7 @@ interface ImportMetaEnv {
 
 /** True only in an art lab build (VITE_ART_LAB=1, vite.config.ts define); false code is dropped from the build. */
 declare const __ART_LAB__: boolean;
+
+/** package.json's version and the day of the build (vite.config.ts define; Settings > About). */
+declare const __APP_VERSION__: string;
+declare const __BUILD_DATE__: string;

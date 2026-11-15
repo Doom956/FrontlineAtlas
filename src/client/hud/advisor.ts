@@ -131,6 +131,14 @@ function save(key: string, v: string): void {
   }
 }
 
+/** The advisor's on/off pick as saved (Settings on the title screen, when no game is running). */
+export function advisorSaved(): boolean {
+  return load(ADVISOR_KEY) !== 'off';
+}
+export function saveAdvisor(on: boolean): void {
+  save(ADVISOR_KEY, on ? 'on' : 'off');
+}
+
 export class AdvisorStrip {
   readonly el: HTMLElement;
   /** the line's name; folded, it is the button that opens the line again */

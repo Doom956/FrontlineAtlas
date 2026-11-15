@@ -1,6 +1,7 @@
 // Boot: main menu -> new game -> loop (fixed-step sim at 10 ticks/s x speed, render every frame). Online games run
 // the same sim in lockstep (mpgame.ts): turns from the server drive the ticks, actions go out as intents.
 // First the art lab gate: an art lab build opened at #artlab shows the lab and never starts the game (artlab/gate.ts).
+import { setSettingsProbes, wireSettings } from './settings/apply';
 import './artlab/gate';
 import './styles.css';
 import { loadFonts } from './fonts';
@@ -114,12 +115,23 @@ const broadcast = new BroadcastLayer(document.body, app);
 // Sound: recorded effects and music, loaded after the first click or key (autoplay policy). See docs/AUDIO.md.
 let audio: AudioManager | null = null;
 try {
-  audio = new AudioManager();
+  // the volumes live in Settings (settings/store.ts): wireSettings hands them over
+  audio = new AudioManager({ storage: null });
   audio.unlockOnGesture(window);
 } catch (err) {
   console.warn('Audio unavailable', err);
   audio = null;
 }
+wireSettings(audio);
+setSettingsProbes({
+  testSound: () => {
+    if (!audio) return false;
+    audio.unlock();
+    audio.play('buildingDone');
+    return true;
+  },
+  quality: () => renderer.quality(),
+});
 
 let session: Session | null = null;
 
