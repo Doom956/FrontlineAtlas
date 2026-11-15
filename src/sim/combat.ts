@@ -107,6 +107,7 @@ import { techFrontSpeedMul, techLossMul, techSupplyRangeMul } from './techtree';
 import { attackBonusMul } from './spending';
 import { borderTiles, landComponents } from './territory';
 import { tankDefenseAt } from './tanks';
+import { heldBy } from './blitz';
 import { blockadedAt, blockadeSupplyMul, navalBeachheadMul, navalSupportAt } from './naval2';
 import { NAVY_BEACHHEAD_SUPPLY, NAVY_SUPPORT_SPEED } from './config';
 import { airSupportCut } from './airwings';
@@ -854,6 +855,7 @@ function queueTile(state: GameState, a: Attack, f: Front, tile: number): void {
 function isFrontTile(state: GameState, attacker: number, target: number, tile: number): boolean {
   const map = state.map;
   if (map.owner[tile] !== target) return false;
+  if (state.blitzHolds && heldBy(state, tile) > 0) return false; // held by a blitz for now (blitz.ts)
   if (target === 0 && isWater(map.terrain[tile])) return false;
   return ownedNeighbours(state, tile, attacker) > 0;
 }
@@ -891,8 +893,10 @@ function findFront(state: GameState, attacker: number, target: number, comp = 0,
   const mk = nextMark(state);
   const gen = mk.gen;
   const m = mk.arr;
+  const holds = !!state.blitzHolds;
   const consider = (j: number): void => {
     if (owner[j] !== target || terrain[j] <= 1 || m[j] === gen) return;
+    if (holds && heldBy(state, j) > 0) return; // held by a blitz for now (blitz.ts)
     m[j] = gen;
     out.push(j);
   };
@@ -1214,6 +1218,7 @@ export function launchAttack(state: GameState, playerId: number, tile: number, t
     if (areAllied(state, playerId, target)) return { ok: false, reason: sameTeam(state, playerId, target) ? 'You cannot attack a teammate' : 'You cannot attack an ally' };
     const peace = peaceReason(state, playerId, target);
     if (peace) return { ok: false, reason: peace };
+    if (amphibious && heldBy(state, tile) > 0) return { ok: false, reason: 'That land is held by a blitz for now' }; // blitz.ts
   }
   const tot = total(sent);
   if (!amphibious) {

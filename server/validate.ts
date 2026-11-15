@@ -122,6 +122,8 @@ const ACTION_SPECS: ActionSpecs = {
   moveWarships: { unitIds: { k: 'ids' }, tile: TILE },
   buildTankDivision: { tile: TILE },
   moveTankDivision: { unitIds: { k: 'ids' }, tile: TILE },
+  // protocol 24: a tank division's blitz (blitz.ts)
+  blitz: { unitId: ID, tile: TILE },
   admin: {
     op: { k: 'enum', values: ADMIN_OP_LIST },
     player: { k: 'player', optional: true },

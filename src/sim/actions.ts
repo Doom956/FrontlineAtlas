@@ -18,6 +18,7 @@ import { moveWarships, orderWarship } from './navy';
 import { buildTankDivision, clearDefenseCache, moveTankDivisions } from './tanks';
 import { clearNavyCache, setUnitStance } from './naval2';
 import { setDivisionMode } from './armor2';
+import { launchBlitz } from './blitz';
 import { setAirMission } from './airwings';
 import { clearIntelCache, reconFlight } from './variants';
 import { setAutoRecon } from './warTarget';
@@ -242,6 +243,9 @@ export function applyAction(state: GameState, playerId: number, action: Action):
     case 'buildTankDivision':
       if (!isTile(state, action.tile)) return FAIL('Invalid tile');
       return buildTankDivision(state, playerId, action.tile);
+    case 'blitz':
+      if (!isTile(state, action.tile)) return FAIL('Invalid tile');
+      return launchBlitz(state, playerId, action.unitId, action.tile);
     case 'moveTankDivision':
       if (!isTile(state, action.tile)) return FAIL('Invalid tile');
       return moveTankDivisions(state, playerId, action.unitIds, action.tile);

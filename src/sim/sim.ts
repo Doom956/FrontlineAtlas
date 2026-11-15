@@ -1,4 +1,5 @@
 // One simulation tick (100 ms of game time). Fixed system order for determinism.
+import { updateBlitz } from './blitz';
 import { updateTrenches } from './trenches';
 import { updateAdvisor } from './advisor';
 import { clearLeaderCache, updateAllies } from './allies';
@@ -65,6 +66,7 @@ export function tick(state: GameState): void {
     updateAttacks(state);
     updateTrenches(state); // dug-in borders: staggered dig passes (trenches.ts)
     updateWarMemory(state);
+    updateBlitz(state); // blitz holds that ran out (blitz.ts)
     updateFollow(state); // war targets for Follow my war, auto recon (warTarget.ts)
     updateEndgame(state);
     pruneEliminated(state);

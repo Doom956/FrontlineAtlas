@@ -426,6 +426,10 @@ export interface Unit {
    * the player orders and by the next spearhead; absent = none
    */
   ended?: number;
+  /** tank division (blitz.ts): 1 while its running (or coming) spearhead is a blitz; absent = 0 */
+  blitz?: number;
+  /** tank division (blitz.ts): the tick from which it may blitz again; absent = ready */
+  blitzReady?: number;
 }
 
 /** A unit being built (navy.ts warships, tanks.ts divisions): it appears at `tile` at readyTick. */
@@ -703,6 +707,8 @@ export interface GameState {
    * them and NAVY_WAR_MEMORY seconds after (warships and divisions keep working between attacks). Absent = none.
    */
   warMemory?: number[];
+  /** land held by a blitz (blitz.ts): triples tile, owner, until tick; no attack, landing or spearhead takes it back */
+  blitzHolds?: number[];
   /** air wings, air-support zones and strategic raid damage (airwings.ts); absent = none yet */
   air?: AirState;
   /** dug-in borders (trenches.ts); created by createGame (absent only in hand-built test states = no trenches) */
@@ -909,7 +915,8 @@ export interface TrenchState {
 
 export interface Effect {
   /** 'barrage': artillery shells landing on a disc (radius = BARRAGE_RADIUS) */
-  kind: 'explosion' | 'nuke' | 'shot' | 'capture' | 'barrage';
+  /** 'smokeScreen': a blitz's smoke at its launch tile (blitz.ts; radius = BLITZ.width) */
+  kind: 'explosion' | 'nuke' | 'shot' | 'capture' | 'barrage' | 'smokeScreen';
   x: number;
   y: number;
   radius: number;
@@ -985,6 +992,8 @@ export type Action =
   | { type: 'buildTankDivision'; tile: number }
   /** move divisions over own land; a tile of enemy / neutral land at the border launches a spearhead (tanks.ts) */
   | { type: 'moveTankDivision'; unitIds: number[]; tile: number }
+  /** a tank division's blitz (blitz.ts, protocol 24): Armor Mastery, ready, a spearhead target */
+  | { type: 'blitz'; unitId: number; tile: number }
   /** owner console (admin.ts): online the server relays it only from an authenticated admin session */
   /** set the stance of own warships (naval2.ts) */
   /**

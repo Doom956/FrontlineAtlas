@@ -22,6 +22,7 @@ import { buildingsOf } from './buildings';
 import { annexTiles, frontTiles } from './combat';
 import {
   ARMOR_AUTO_PATH_BUDGET,
+  BLITZ,
   ARMOR_CUT_BONUS,
   ARMOR_RETRY_SECONDS,
   ARMOR_POCKET_KILL,
@@ -51,6 +52,7 @@ import {
 import { areAllied } from './diplomacy';
 import { atWar } from './naval2';
 import { aiAttackLevel } from './aiattack';
+import { blitzBlock, blitzPreview, heldBy, launchBlitz } from './blitz';
 import { ownGroup } from './navy';
 import { atPeace } from './rules';
 import { addEvent } from './state';
@@ -206,7 +208,7 @@ export function collapsePockets(state: GameState, u: Unit, launch: number, headX
         break;
       }
       const t = piece[head];
-      if (t === vp.capital) {
+      if (t === vp.capital || heldBy(state, t) === victim) { // the capital, or land a blitz holds (blitz.ts)
         open = true;
         break;
       }
@@ -607,6 +609,21 @@ function softOn(state: GameState, me: number, victim: number): boolean {
   return !state.players[me]?.isHuman && aiAttackLevel(state) === 1 && !!state.players[victim]?.isHuman;
 }
 
+/** AI blitz (blitz.ts): a stalemate-breaking blitz needs this expected depth; the AI keeps BLITZ.oil x this in hand. */
+const AI_BLITZ_MIN_DEPTH = 12;
+const AI_BLITZ_OIL_KEEP = 2;
+/**
+ * May AI division u blitz (toward `tile`, -1 = any): an AI's from Normal up, ready (blitz.blitzBlock), with
+ * AI_BLITZ_OIL_KEEP x the oil, never into a player's land at Easy or Normal.
+ */
+function aiMayBlitz(state: GameState, u: Unit, tile: number): boolean {
+  const p = state.players[u.owner];
+  if (!p || p.isHuman || aiAttackLevel(state) < 1 || blitzBlock(state, u.owner, u) !== '' || p.oil < BLITZ.oil * AI_BLITZ_OIL_KEEP) return false;
+  if (tile < 0) return true;
+  const v = state.map.owner[tile];
+  return !(state.players[v]?.isHuman && aiAttackLevel(state) <= 1);
+}
+
 /** Smarter armour work budgets per tick (spend): strike scans, ... */
 const ARMOR_SCANS_PER_TICK = 1;
 /** ... and one land flood of an AI drive every this many ticks */
@@ -832,7 +849,7 @@ function enemySpearBases(state: GameState, me: number, cx: number, cy: number, r
  * up to 8 border tiles of nations at war with u's owner, scored by the preview's expected depth, + ARMOR_CUT_BONUS
  * when the head would get right across their land (a cut that encircles).
  */
-export function bestStrike(state: GameState, u: Unit, front: number): Strike | null {
+export function bestStrike(state: GameState, u: Unit, front: number, blitz = false): Strike | null {
   const map = state.map;
   const { width: w, height: h, owner } = map;
   const me = u.owner;
@@ -852,7 +869,7 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
       if (!((x > 0 && owner[t - 1] === me) || (x < w - 1 && owner[t + 1] === me) || (y > 0 && owner[t - w] === me) || (y < h - 1 && owner[t + w] === me))) continue;
       let foe = foes.get(o);
       if (foe === undefined) foes.set(o, (foe = isFoe(state, me, o)));
-      if (!foe) continue;
+      if (!foe || (blitz && softOn(state, me, o))) continue;
       cands.push({ t, d });
     }
   }
@@ -863,7 +880,7 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
   const bonus = new Map<number, number>();
   const n = Math.min(level >= 1 ? 6 : 8, cands.length);
   for (let k = 0; k < n; k++) picks.push(cands[Math.floor((k * cands.length) / n)].t);
-  if (level >= 1) {
+  if (level >= 1 && !blitz) {
     // Smarter armour: lines that cut their land (pockets), and the base of an enemy spearhead running into ours
     // (cut off, its head is spent and the division at its tip overrun).
     // A cut scores the pocket it should close (a tenth of its tiles, at most 30) on top of ARMOR_CUT_BONUS.
@@ -882,7 +899,7 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
   }
   let best: Strike | null = null;
   for (const t of picks) {
-    const pv = spearheadPreview(state, me, u.id, t);
+    const pv = blitz ? blitzPreview(state, me, u.id, t) : spearheadPreview(state, me, u.id, t);
     if (pv.reason) continue;
     const cut = lineCuts(state, me, owner[t], pv);
     let score = pv.expectedDepth + (cut ? ARMOR_CUT_BONUS + (bonus.get(t) ?? 0) : 0);
@@ -1084,7 +1101,14 @@ export function divisionStep(state: GameState, u: Unit): void {
     // Smarter armour: nothing worth it here now and it holds in place; look again in ARMOR_QUIET_SECONDS (the scan is
     // the costly part).
     const inPlace = d2(u.x, u.y, front % w, (front / w) | 0) <= (ARMOR_SUPPORT_HOLD + 6) * (ARMOR_SUPPORT_HOLD + 6);
-    if (scan && !strike && level >= 1 && inPlace) u.retryTick = state.tick + ARMOR_QUIET_SECONDS * TICKS_PER_SECOND;
+    if (scan && !strike && level >= 1 && inPlace) {
+      // A stalemate here (no strike worth it): from Normal up a ready AI division blitzes when the surge gets deep.
+      if (aiMayBlitz(state, u, -1) && spend(state, 'scans')) {
+        const b = bestStrike(state, u, front, true);
+        if (b && b.score >= AI_BLITZ_MIN_DEPTH && launchBlitz(state, u.owner, u.id, b.tile).ok) return;
+      }
+      u.retryTick = state.tick + ARMOR_QUIET_SECONDS * TICKS_PER_SECOND;
+    }
     // Smarter armour: under ARMOR_SMART_READY only a line that cuts their land is worth it (a straight one would leave
     // the division bled white on a thin tip).
     if (strike && !strike.cut && s < (softOn(state, u.owner, state.map.owner[strike.tile]) ? ARMOR_SOFT_READY : ready)) strike = null;
@@ -1096,6 +1120,13 @@ export function divisionStep(state: GameState, u: Unit): void {
         // division alone waits for one driving up (unless the line cuts their land: that won't wait).
         const ids = level >= 1 ? strikeGroup(state, u, strike.tile, strike.cut ? ARMOR_SUPPORT_READY : ready) : [u.id];
         wait = ids.length === 1 && level >= 2 && !state.players[u.owner]?.isHuman && !strike.cut && companionComing(state, u, strike.tile);
+        // AI from Normal up: a ready division blitzes a line that cuts their land (closes the pocket fast), the
+        // others go with it as a plain strike.
+        if (!wait && strike.cut && aiMayBlitz(state, u, strike.tile) && launchBlitz(state, u.owner, u.id, strike.tile).ok) {
+          const rest = ids.filter((k) => k !== u.id);
+          if (rest.length) moveTankDivisions(state, u.owner, rest, strike.tile);
+          return;
+        }
         if (!wait && moveTankDivisions(state, u.owner, ids, strike.tile).ok) return;
       }
     }

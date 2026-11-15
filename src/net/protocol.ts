@@ -56,6 +56,8 @@
 // - Warship groups and tank divisions (protocol 7): intents `moveWarships {unitIds, tile}`, `buildTankDivision {tile}`,
 //   `moveTankDivision {unitIds, tile}` (unitIds: 1..MAX_GROUP_UNITS distinct ids); `buildWarship {port, tile?}` (port
 //   -1 with a tile = the sim picks the port).
+// - Blitz (protocol 24): intent `blitz {unitId, tile}`: one own tank division with Armor Mastery, ready, toward
+//   enemy or neutral land near the border (sim/blitz.ts).
 // - Chat (online lobbies and games only): send `chat {channel, text, ping?}`. The server cleans the text (control
 //   characters out, spaces collapsed, 1..CHAT_MAX_LENGTH characters), masks rude words with ***, rate-limits it
 //   (CHAT_BURST messages per CHAT_WINDOW_MS, then a short cooldown) and relays it as `chat {entry}` to the members
@@ -132,7 +134,9 @@ export type { GameMode };
 // ------------------------------------------------------------------------------------------------ constants
 
 /** Bumped on any incompatible change to the messages below. `hello.protocol` must equal it. */
-export const PROTOCOL_VERSION = 20;
+// 24 (armor-blitz): Action blitz {unitId, tile}. dev is 20; the branches next (22) and air-stealth (23) take the numbers
+// in between, reconciled when they merge.
+export const PROTOCOL_VERSION = 24;
 /** Longest owner-console code a client may send (adminAuth). */
 export const ADMIN_CODE_MAX_LENGTH = 128;
 /** Longest chat message (characters, after cleaning). */
