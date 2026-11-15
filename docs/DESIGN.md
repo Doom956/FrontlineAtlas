@@ -945,7 +945,7 @@ refit at a Factory. From Normal up (`AI_ATTACK_LEVEL`; Easy keeps the old habits
   spearhead's thin tip pulls back to a hold tile at once (any difficulty);
 - tank divisions keep their front between attack waves: with no attack running the war is still on (`atWar`), so
   they stay on support at the front of the war their fronts are on (`liveFoe`) instead of standing down to hold
-  wherever they are (that was 69% of their war time); when the war fought hardest has no land front (landings
+  wherever they are (holding away from the front was 69% of their war time); when the war fought hardest has no land front (landings
   only) they support a war fought over land; they strike only through the support mode (the old lone launches into
   the nearest border tile are Easy only) and use the smarter armour of section 7 (cuts, strikes together, off thin
   tips, refit nearby, deeper holds under a push, routes by flood);
