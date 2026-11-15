@@ -149,7 +149,7 @@ export class SettingsPanel {
       this.sync();
       setText(said, 'Back to the defaults.');
       setTimeout(() => setText(said, ''), 2500);
-    }, 'back');
+    }, 'reset');
     b.dataset.test = `settings-reset-${id}`;
     sec.append(b, said);
   }
@@ -262,14 +262,14 @@ export class SettingsPanel {
     this.syncs.push(() => fx.set(fxEnabled() ? 'on' : 'off'));
 
     const reduceNote = el('p', 'note');
-    const reduce = choice<ReduceMotion>([{ v: 'device', label: 'Like my device' }, { v: 'on', label: 'On' }, { v: 'off', label: 'Off' }], (v) => {
+    const reduce = choice<ReduceMotion>([{ v: 'device', label: 'Auto' }, { v: 'on', label: 'On' }, { v: 'off', label: 'Off' }], (v) => {
       setSetting('reduceMotion', v);
       this.sync();
     }, 'settings-reduce-motion');
     sec.append(field('Reduce motion', reduce.el, reduceNote));
     this.syncs.push(() => {
       reduce.set(getSettings().reduceMotion);
-      setText(reduceNote, `On stops the screen shake and the bobbing, pulsing and swaying, and blasts show a still picture. Your device asks for ${deviceReducedMotion() ? 'less motion' : 'full motion'}.`);
+      setText(reduceNote, `On stops the screen shake and the bobbing, pulsing and swaying, and blasts show a still picture. Auto follows your device, which asks for ${deviceReducedMotion() ? 'less motion' : 'full motion'}.`);
     });
 
     const qualityNote = el('p', 'note');

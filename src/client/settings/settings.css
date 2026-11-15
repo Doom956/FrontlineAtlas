@@ -160,9 +160,8 @@
   margin-top: 4px;
 }
 
-/* the title screen's Settings page: a readable column */
+/* the title screen's Settings page */
 .menu-scroll > .set-panel {
-  max-width: 640px;
   padding-bottom: 12px;
 }
 
@@ -174,7 +173,12 @@
   transform: none;
 }
 
-/* phones: the tab's icon above its word, so four fit */
+/* the Menu drawer and phones: the tab's icon above its word, so four whole words fit */
+.drawer .set-tab {
+  flex-direction: column;
+  gap: 3px;
+  min-height: 48px;
+}
 @media (max-width: 420px) {
   .set-tab {
     flex-direction: column;

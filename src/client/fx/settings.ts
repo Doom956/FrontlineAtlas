@@ -26,7 +26,7 @@ export function deviceReducedMotion(): boolean {
   }
 }
 
-/** Less motion now: the Settings pick, or the device's when it is "Like my device". */
+/** Less motion now: the Settings pick, or the device's when it is Auto. */
 export function prefersReducedMotion(): boolean {
   const r = getSettings().reduceMotion;
   return r === 'on' ? true : r === 'off' ? false : deviceReducedMotion();
