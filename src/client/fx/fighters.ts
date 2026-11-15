@@ -7,9 +7,9 @@
 //   - an airfield flying air superiority (sim/airwings.ts airMissionOf): its fighters fly the patrol circle instead,
 //     round the patrol's centre, just inside the ring render/pillarOverlay.ts draws;
 //   - a carrier: its wing of CARRIER_FIGHTERS circles the ship and follows it;
-//   - an interception: when fighters hit a bomber or a cargo plane (a 'shot' from a superiority airfield or a carrier,
-//     or a plane shot down inside a hostile airfield's reach with no SAM shot at it), a fighter streaks in from that
-//     side past the kill firing tracers, banks round and heads home.
+//   - an interception: when fighters hit a bomber, a cargo plane or a recon plane (a 'shot' from a superiority
+//     airfield or a carrier, or a plane shot down inside a hostile airfield's reach with no SAM shot at it), a fighter
+//     streaks in from that side past the kill firing tracers, banks round and heads home.
 // Fog of war: your own and allied fighters always show; other nations' only over tiles you see now (as planes in
 // render/units.ts). Drawn with the unit sprites: none far out where units are kind icons, fading in with the
 // sprites (render/units.ts unitBands). Fixed pools, no allocation per
@@ -211,9 +211,9 @@ export class FighterFx {
     this.nSam++;
   }
 
-  /** A bomber or cargo plane shot down where no SAM fired at it: the nearest hostile airfield whose fighters reach it. */
+  /** A bomber, cargo plane or recon plane shot down where no SAM fired at it: the nearest hostile airfield whose fighters reach it. */
   private readKill(state: GameState, u: Unit, now: number): void {
-    if (u.type !== 'bomber' && u.type !== 'transportPlane') return;
+    if (u.type !== 'bomber' && u.type !== 'transportPlane' && u.type !== 'reconPlane') return;
     const x = u.x + 0.5;
     const y = u.y + 0.5;
     for (let i = 0; i < this.nSam; i++) if (Math.abs(this.samX[i] - x) < 1.5 && Math.abs(this.samY[i] - y) < 1.5) return;
