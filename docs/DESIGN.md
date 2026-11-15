@@ -727,7 +727,7 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
 - **Smarter armour** (armor2.ts, `armorLevel`: a player's divisions on their automatic modes count as Normal at every
   difficulty; AI divisions follow `AI_ATTACK_LEVEL`, Easy keeps the old habits). A player's own move orders and
   modes are never overridden (a drive the player orders clears `Unit.ended`, so the division stays where it was sent).
-  - Strikes (`bestStrike`): besides the 8 (Hard up 10) border tiles, lines that **cut** (`cutClicks`): from our land
+  - Strikes (`bestStrike`): besides 6 (Hard up 8; Easy 8 as before) border tiles, lines that **cut** (`cutClicks`): from our land
     across 3 to 24 tiles of a nation at war with us and out onto our or allied land or water (a thin strip, a bulge,
     an enemy spearhead's band, the way back from a tip, the way to their coast), each scored by the piece it should
     close off (`pocketBeside`: a flood of their land beside the line of at most 400 tiles that runs out without the

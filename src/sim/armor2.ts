@@ -772,7 +772,7 @@ export function bestStrike(state: GameState, u: Unit, front: number): Strike | n
   const level = armorLevel(state, me);
   const picks: number[] = [];
   const bonus = new Map<number, number>();
-  const n = Math.min(level >= 2 ? 10 : 8, cands.length);
+  const n = Math.min(level >= 2 ? 8 : level >= 1 ? 6 : 8, cands.length);
   for (let k = 0; k < n; k++) picks.push(cands[Math.floor((k * cands.length) / n)].t);
   if (level >= 1) {
     // Smarter armour: lines that cut their land (pockets), and the base of an enemy spearhead running into ours
@@ -922,28 +922,13 @@ function leaveTip(state: GameState, u: Unit): boolean {
     }
     if (best && moveTankDivisions(state, u.owner, [u.id], best.t).ok) return true;
   }
-  const hold = holdTileNear(state, u.owner, u.station ?? here, undefined, 3, ARMOR_HOLD_FAR);
+  // Cut off on a small piece of our land: it breaks out back to our line.
+  if (smallPiece(state, u.owner, here)) return breakOut(state, u);
   delete u.ended;
+  const hold = holdTileNear(state, u.owner, u.station ?? here, undefined, 3, ARMOR_HOLD_FAR);
   if (hold < 0 || hold === here) return false;
-  // The way back over our land (a flood: the band behind it may have been cut), else the best solid ground it can
-  // still reach; cut off on a small piece of our land, it breaks out back to our line.
-  const prev = landFlood(state, u.owner, here);
-  let dest = prev[hold] >= 0 ? hold : -1;
-  if (dest < 0) {
-    if (smallPiece(state, u.owner, here) && breakOut(state, u)) return true;
-    const alt = holdTileNear(state, u.owner, u.station ?? here, (t) => prev[t] >= 0, 3, ARMOR_HOLD_FAR);
-    if (alt >= 0 && alt !== here && interiorAt(state, u.owner, alt)) dest = alt;
-  }
-  if (dest >= 0) {
-    u.path = floodPath(prev, here, dest);
-    u.pathPos = 0;
-    u.target = dest;
-    u.state = u.path.length ? 1 : 0;
-    u.retryTick = undefined;
-    return true;
-  }
-  u.retryTick = state.tick + ARMOR_RETRY_SECONDS * TICKS_PER_SECOND;
-  return false;
+  // Back over our land (the quick search, then a flood of our land: driveTo).
+  return driveTo(state, u, hold, true, true);
 }
 
 /**
@@ -960,7 +945,8 @@ export function divisionStep(state: GameState, u: Unit): void {
   const human = !!state.players[u.owner]?.isHuman;
   const tipMode = mode === 'support' || (!human && mode === 'hold');
   const justEnded = u.ended !== undefined && state.tick - u.ended <= 3 * TICKS_PER_SECOND;
-  if ((slot || justEnded) && u.state === 0 && tipMode && armorLevel(state, u.owner) >= 1 && leaveTip(state, u)) return;
+  const due = u.ended !== undefined ? slot : (state.tick + u.id) % (3 * TICKS_PER_SECOND) === 0; // else every 3 s
+  if ((due || justEnded) && u.state === 0 && tipMode && armorLevel(state, u.owner) >= 1 && leaveTip(state, u)) return;
   if (mode === 'hold') return;
   const every = Math.max(1, Math.round(ARMOR_SUPPORT_SCAN_SECONDS * TICKS_PER_SECOND));
   if ((state.tick + u.id * 7) % every !== 0) return;
