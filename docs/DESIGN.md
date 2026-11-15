@@ -844,6 +844,12 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   ordered: the airfield card's Stealth strike button (icon, the word, the price, the reason when off) enters a target
   mode that shows the reach ring, the route, the blast disc, the SAM rings in grey and the preview ("Wrecks about 3 of
   3 buildings of Azuria within 5.8 tiles", "3 SAM sites on the way: they cannot see the stealth bomber").
+  Result (AI only, seeds 7001+, 48 medium / 24 World games per difficulty, before -> after): win times unchanged on
+  medium (Easy 46.2, Normal 32.9, Hard 29.3, Brutal 26.7 min) and within half a minute on World (Hard 35.5 -> 36.0,
+  Brutal 34.8 -> 35.5); Air Mastery owned by 1% (Easy) to 6% (Brutal) of medium nations, the same before and after;
+  stealth strikes per game 0 (Easy), 0.2 (Normal), 0.2 (Hard), 0.4 (Brutal) on medium, up to 1.3 on World Brutal,
+  about 0.9 buildings destroyed each, none shot down. The human bench (Easy, Normal) is unchanged: the mastery comes
+  late (median minute 33) and Easy AIs never aim it at a human.
 - **Atom bomb** (Silo, Nuclear Fission): radius 35: destroys buildings, kills 60-90% of the army share in the area,
   turns tiles neutral with fallout within 14. Every AI that sees a nuke drops opinion of the launcher sharply.
 - **Interception is deterministic** (`RULES_TEXT.interception` in config is the help text): threats are handled atom
