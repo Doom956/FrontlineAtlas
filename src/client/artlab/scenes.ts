@@ -5,15 +5,17 @@
 // No module-level side effects (a normal build drops all of this).
 import type { ArtCategory, ArtStyle, MotionCategory } from '../art/artStyle';
 import type { MotionParams } from '../art/motion';
-import { ALL_MODS, unitCategoryOf, type SpriteKey } from '../art/shared/keys';
-import { CRATER_ATOM_REACH, DEATH_GLIDE_TILES, type BlastKind, type DeathDraw, type DeathKind, type MapFxKind, type ParachuteMarkDraw, type ParadropDraw, type StyleModule, type TrailLayer, type TrailUnit, type TrailView, type UnitDraw } from '../art/types';
+import { styleModule } from '../art/registry';
+import { ALL_MODS, M_MASTERY, M_PATH3, unitCategoryOf, type SpriteKey } from '../art/shared/keys';
+import { CRATER_ATOM_REACH, DEATH_GLIDE_TILES, type TankShotDraw, type BlastKind, type DeathDraw, type DeathKind, type MapFxKind, type ParachuteMarkDraw, type ParadropDraw, type StyleModule, type TrailLayer, type TrailUnit, type TrailView, type UnitDraw } from '../art/types';
 import { FX_INFO } from '../fx/map';
+import { fireInterval, gunOf, type GunSpec } from '../fx/tankFire';
 import { css, type RGB } from '../render/common';
 import { troopKinds, troopPill } from '../render/troopIcons';
 import { spriteScale } from '../render/units';
 import { backdrop, type Ground } from './backdrop';
 
-export type RowId = 'ships' | 'land' | 'air' | 'missiles' | 'troopIcons' | 'explosions' | 'deaths' | 'craters' | 'cannonFire' | 'paradrop';
+export type RowId = 'ships' | 'land' | 'air' | 'missiles' | 'troopIcons' | 'explosions' | 'deaths' | 'craters' | 'cannonFire' | 'tankFire' | 'paradrop';
 
 /** What a scene draws with, this frame. */
 export interface SceneEnv {
@@ -840,6 +842,160 @@ function cannonScene(env: SceneEnv): void {
   ctx.globalAlpha = 1;
 }
 
+// ------------------------------------------------------------------------------------------------- tank fire
+
+interface TankGunner {
+  key: SpriteKey;
+  mods: number;
+  name: string;
+  gun: GunSpec;
+  x: number;
+  y: number;
+  /** the hull's heading; the turret turns from it onto each target */
+  hull: number;
+  /** ms between shots and when the first one fires */
+  period: number;
+  offset: number;
+  owner: RGB;
+  /** where its shells land: a box (x0, x1 across, y round its own y, CSS px) */
+  tx0: number;
+  tx1: number;
+}
+
+const tankFireLane = (z: number): number => 20 + 24 * px(z);
+const tankShotArgs: TankShotDraw = { gun: 'medium', sharp: false, size: 1, x0: 0, y0: 0, x1: 0, y1: 0, aim: 0, ageMs: 0, flightMs: 1, water: false, spark: false, zoom: 1, scale: 1, seed: 0, dpr: 1 };
+
+/**
+ * Tanks fighting a front: on the left each tank (light, medium, heavy, siege, and Armor Mastery's modern tank) attacking
+ * and firing at the enemy land across it, as often as its gun fires in the game when attacking; on the right two enemy
+ * tanks holding and firing back, less often. Each turret turns onto its next target between shots, then the flash,
+ * the recoil, the gun smoke, the shell and its burst (now and then a spark of steel struck).
+ */
+function tankFireScene(env: SceneEnv): void {
+  ground(env, 'land');
+  const { ctx } = env;
+  const z = env.zoom;
+  const g = env.scale;
+  const m = env.motion;
+  const lane = tankFireLane(z);
+  const top = 30;
+  const front = env.w * 0.56;
+  const list: { key: SpriteKey; mods: number; name: string; variant?: 'lightTank' | 'heavyTank' }[] = [
+    { key: 'lightTank', mods: 0, name: 'Light tank', variant: 'lightTank' },
+    { key: 'tankDivision', mods: 0, name: 'Tank division' },
+    { key: 'heavyTank', mods: 0, name: 'Heavy tank', variant: 'heavyTank' },
+    { key: 'heavyTank', mods: M_PATH3, name: 'Siege tank', variant: 'heavyTank' },
+    { key: 'tankDivision', mods: M_MASTERY, name: 'Armor Mastery' },
+  ];
+  const hulls = [0.35, -0.25, 0.15, -0.4, 0.5];
+  const gunners: TankGunner[] = list.map((it, i) => {
+    const gun = gunOf(it.variant, it.mods);
+    return { key: it.key, mods: it.mods, name: it.name, gun, x: env.w * 0.33, y: top + lane * i + lane / 2, hull: hulls[i], period: fireInterval(gun, true), offset: 300 + i * 410, owner: OWNER, tx0: front + 0.06 * env.w, tx1: env.w - 20 };
+  });
+  for (let i = 0; i < 2; i++) {
+    const gun = gunOf(undefined, 0);
+    gunners.push({ key: 'tankDivision', mods: 0, name: '', gun, x: front + env.w * 0.16 + i * env.w * 0.1, y: top + lane * (1 + i * 2) + lane / 2, hull: Math.PI + (i ? 0.3 : -0.2), period: fireInterval(gun, false), offset: 1200 + i * 1700, owner: OWNERS[1], tx0: env.w * 0.3, tx1: front - 0.04 * env.w });
+  }
+  // the front between the two sides, and what each side is doing
+  ctx.fillStyle = 'rgba(226,74,60,0.12)';
+  ctx.fillRect(Math.round(front), 0, env.w - Math.round(front), env.h);
+  ctx.fillStyle = 'rgba(10,14,20,0.45)';
+  ctx.fillRect(Math.round(front), 0, 1, env.h);
+  label(ctx, 'Your tanks attacking: fire often', 8, 14, 'left', true);
+  label(ctx, 'Enemy tanks holding: fire less', env.w - 8, 14, 'right', true);
+  const tank = env.style.cannonFire.tank ?? styleModule('detailed').cannonFire.tank!;
+  interface Shot {
+    gn: TankGunner;
+    fire: number;
+    tx: number;
+    ty: number;
+    seed: number;
+    spark: boolean;
+  }
+  const target = (gn: TankGunner, n: number, k: number): { x: number; y: number } => ({
+    x: gn.tx0 + rnd(n * 7 + k, 1) * (gn.tx1 - gn.tx0),
+    y: Math.max(top, Math.min(env.h - 6, gn.y + (rnd(n * 7 + k, 2) - 0.5) * lane * 1.4)),
+  });
+  const shots: Shot[] = [];
+  const aims: number[] = [];
+  const recoils: number[] = [];
+  gunners.forEach((gn, k) => {
+    const fireAt = (n: number): number => gn.offset + n * gn.period + rnd(n, k + 3) * gn.period * 0.3;
+    const last = Math.floor((env.time - gn.offset) / gn.period);
+    const dur = tank.shotMs({ gun: gn.gun.gun, flightMs: 1200 }, m);
+    let cur = -1;
+    for (let n = Math.max(0, last - Math.ceil(dur / gn.period) - 1); n <= last + 1; n++) {
+      const f = fireAt(n);
+      if (f > env.time) continue;
+      cur = Math.max(cur, n);
+      const t = target(gn, n, k);
+      shots.push({ gn, fire: f, tx: t.x, ty: t.y, seed: rnd(n, k + 11), spark: rnd(n, k + 13) < 0.25 });
+    }
+    // the turret: on the last shot's target, then turning onto the next one between shots
+    const bearing = (n: number): number => {
+      const t = target(gn, n, k);
+      return Math.atan2(t.y - gn.y, t.x - gn.x);
+    };
+    let aim = bearing(Math.max(0, cur));
+    if (cur >= 0) {
+      const since = (env.time - fireAt(cur)) / gn.period;
+      const q = Math.max(0, Math.min(1, (since - 0.35) / 0.3));
+      let d = bearing(cur + 1) - aim;
+      while (d > Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      aim += d * (q * q * (3 - 2 * q));
+      const rk = (env.time - fireAt(cur)) / 170;
+      recoils.push(rk >= 0 && rk < 1 ? (1 - rk) * (1 - rk) : 0);
+    } else recoils.push(0);
+    aims.push(aim);
+  });
+  // the tanks, then the shells and bursts, then the flashes over them
+  gunners.forEach((gn, k) => {
+    unitArgs.aim = aims[k];
+    unitArgs.recoil = recoils[k];
+    drawUnit(env, gn.key, gn.mods, gn.x, gn.y, gn.hull, 0, 0, 60 + k, z, gn.owner);
+    unitArgs.aim = undefined;
+    unitArgs.recoil = undefined;
+    if (gn.name) label(ctx, gn.name, gn.x - unitLength(env, gn.key) * 0.6 - 8, gn.y, 'right', true);
+  });
+  const d = tankShotArgs;
+  d.zoom = z;
+  d.scale = g;
+  d.dpr = env.dpr;
+  const muzzle = (gn: TankGunner, aim: number): { x: number; y: number } => {
+    const land = env.style.land;
+    if (land.muzzlePoint) return land.muzzlePoint(gn.key, gn.mods, gn.x, gn.y, gn.hull, aim, g, env.dpr);
+    const r = unitLength(env, gn.key) * 0.5;
+    return { x: gn.x + Math.cos(aim) * r, y: gn.y + Math.sin(aim) * r };
+  };
+  for (const pass of [0, 1]) {
+    for (const sh of shots) {
+      const gn = sh.gn;
+      const aim = Math.atan2(sh.ty - gn.y, sh.tx - gn.x);
+      const mz = muzzle(gn, aim);
+      const flight = 50 + (Math.hypot(sh.tx - mz.x, sh.ty - mz.y) / z / gn.gun.speed) * 1000;
+      const age = env.time - sh.fire;
+      if (age < 0 || age > tank.shotMs({ gun: gn.gun.gun, flightMs: flight }, m)) continue;
+      d.gun = gn.gun.gun;
+      d.sharp = gn.gun.sharp;
+      d.size = gn.gun.size;
+      d.x0 = mz.x;
+      d.y0 = mz.y;
+      d.x1 = sh.tx;
+      d.y1 = sh.ty;
+      d.aim = aim;
+      d.ageMs = age;
+      d.flightMs = flight;
+      d.water = false;
+      d.spark = sh.spark;
+      d.seed = sh.seed;
+      if (pass === 0) tank.drawShell(ctx, d, m);
+      else tank.drawFlash(ctx, d, m);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
 // ------------------------------------------------------------------------------------------------- paratroopers
 
 /** How far the drop's parachutes scatter round the drop point at a zoom (the map's own spread, render/units.ts). */
@@ -1033,6 +1189,16 @@ export function rowSpecs(): RowSpec[] {
       motion: 'cannonFire',
       height: (z) => 140 + 80 * px(z),
       draw: cannonScene,
+    },
+    {
+      id: 'tankFire',
+      title: 'Tank fire',
+      note: 'Tanks fighting a front: light, medium, heavy, siege and Armor Mastery tanks attacking and firing often, enemy tanks holding and firing back less; each turret turns onto its target before it fires.',
+      pick: 'cannonFire',
+      also: [],
+      motion: 'cannonFire',
+      height: (z) => 34 + 5 * tankFireLane(z),
+      draw: tankFireScene,
     },
     {
       id: 'paradrop',

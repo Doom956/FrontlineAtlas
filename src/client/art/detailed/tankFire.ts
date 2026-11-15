@@ -32,8 +32,9 @@ const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 const easeOut = (t: number): number => 1 - (1 - t) * (1 - t);
 const easeOut3 = (t: number): number => 1 - (1 - t) ** 3;
 
-/** A model unit of the flash on screen (CSS px) at map scale `scale`: a little more than the tank's own at mid zoom, so it reads. */
-const flashUnit = (scale: number): number => (scale < 2 ? Math.max(1.3, scale * 1.2) : scale);
+/** A model unit of the fire on screen (CSS px) at map scale `scale`: half again the tank's own, so a shot reads at a glance. */
+export const tankFlashUnit = (scale: number): number => (scale < 2 ? Math.max(1.9, scale * 1.5) : scale * 1.45);
+const flashUnit = tankFlashUnit;
 
 function smokeMs(m: MotionParams): number {
   return SMOKE_MS * Math.min(1.6, m.muzzleSmoke);
@@ -113,7 +114,7 @@ function drawFlash(ctx: CanvasRenderingContext2D, d: TankShotDraw, m: MotionPara
   }
   // ---- the blast itself: the tongue of flame, side jets, the white-yellow core
   const tf = still ? (d.ageMs < 60 ? 8 : 999) : tt;
-  const full = (d.gun === 'siege' ? 4.6 : 6) * size * (d.sharp ? 1.45 : 1);
+  const full = (d.gun === 'siege' ? 5.4 : 7) * size * (d.sharp ? 1.45 : 1);
   const tongue = tankTongueAt(tf, full);
   if (tongue > 0.3) {
     const step = still ? 0 : Math.floor(tt / 16);
@@ -138,7 +139,7 @@ function drawFlash(ctx: CanvasRenderingContext2D, d: TankShotDraw, m: MotionPara
         jet(ctx, x, y, Math.cos(a), Math.sin(a), 2.4 * size * cpu * (1 - tf / 60), Math.max(1.2, w * 0.5), g, sd + side * 31, step, 0.6);
       }
     }
-    if (tf < 45) drawBlob(ctx, 'flash', Math.max(1, (d.sharp ? 1.5 : 1.9) * cpu * (0.6 + 0.4 * size) * (1 - tf / 90)), Math.floor(sd) & 3, x + c * U * 0.8, y + s * U * 0.8, g, 1);
+    if (tf < 45) drawBlob(ctx, 'flash', Math.max(1.5, (d.sharp ? 1.7 : 2.2) * cpu * (0.6 + 0.4 * size) * (1 - tf / 90)), Math.floor(sd) & 3, x + c * U * 0.8, y + s * U * 0.8, g, 1);
   }
   ctx.globalAlpha = prev;
 }
@@ -170,7 +171,7 @@ function drawShell(ctx: CanvasRenderingContext2D, d: TankShotDraw, m: MotionPara
     ctx.globalAlpha = prev;
     if (d.size >= 0.9) drawBlob(ctx, 'halo', Math.max(1.2, 1.3 * g.res * Math.min(1.4, d.size)), Math.floor(d.seed * 4) & 3, px, py, g, 0.36);
     // the trail: short and unbroken, yellow behind the head cooling to orange and a red tail
-    const len = Math.max(3, Math.round((2.4 * g.res + 1.5) * Math.min(1.5, 0.6 + 0.5 * d.size)));
+    const len = Math.max(4, Math.round((3.4 * g.res + 3) * Math.min(1.5, 0.6 + 0.5 * d.size)));
     for (let j = len; j >= 1; j--) {
       const q = j / len;
       ctx.globalAlpha = prev * (1 - q * 0.75);
@@ -179,7 +180,7 @@ function drawShell(ctx: CanvasRenderingContext2D, d: TankShotDraw, m: MotionPara
     }
     ctx.globalAlpha = prev;
     ctx.fillStyle = TRACER[0];
-    const head = g.res >= 1.5 && d.size >= 1.2 ? 2 : 1;
+    const head = g.res >= 1.5 && d.size >= 0.9 ? 2 : 1;
     speck(ctx, px - (cell * (head - 1)) / 2, py - (cell * (head - 1)) / 2, g, head);
   }
   const bt = d.ageMs - d.flightMs;
@@ -208,7 +209,7 @@ function drawBurst(ctx: CanvasRenderingContext2D, d: TankShotDraw, bt: number, d
     return;
   }
   // the hot flash of the hit
-  if (bt < 70) drawBlob(ctx, d.spark ? 'flash' : 'fire', Math.max(1, (d.spark ? 1.3 : 1.1) * cpu * (0.6 + 0.4 * size) * (1 - bt / 110)), Math.floor(sd) & 3, x, y, g, 1, d.spark ? 0 : bt / 50);
+  if (bt < 90) drawBlob(ctx, d.spark ? 'flash' : 'fire', Math.max(1.5, (d.spark ? 1.6 : 1.7) * cpu * (0.6 + 0.4 * size) * (1 - bt / 140)), Math.floor(sd) & 3, x, y - 0.5 * U, g, 1, d.spark ? 0 : bt / 60);
   if (d.spark) {
     // steel struck: bright specks flying out and fading
     if (bt < 220) {
@@ -229,7 +230,7 @@ function drawBurst(ctx: CanvasRenderingContext2D, d: TankShotDraw, bt: number, d
   // a dirt burst: dark clods thrown up on arcs and falling back, a puff of dust and smoke rising and swelling
   if (!still && bt < 420) {
     const q = bt / 420;
-    const n = Math.round(4 + 3 * size);
+    const n = Math.round(5 + 4 * size);
     ctx.fillStyle = DEBRIS[1];
     for (let i = 0; i < n; i++) {
       const a = (rnd(sd, i + 3) - 0.5) * 2.6 - Math.PI / 2;
@@ -238,13 +239,14 @@ function drawBurst(ctx: CanvasRenderingContext2D, d: TankShotDraw, bt: number, d
       const py = y + Math.sin(a) * v * q + 5 * U * q * q;
       ctx.globalAlpha = prev * (1 - q * q);
       ctx.fillStyle = i % 3 === 0 ? DEBRIS[2] : DEBRIS[1];
-      speck(ctx, px, py, g, size >= 1.3 && i % 2 === 0 ? 2 : 1);
+      speck(ctx, px, py, g, g.res >= 1.5 && i % 2 === 0 ? 2 : 1);
     }
     ctx.globalAlpha = prev;
   }
-  for (let i = 0; i < 2; i++) {
-    const r = Math.max(1, (1.2 + 0.5 * i) * cpu * (0.55 + 0.45 * size) * (0.7 + 1.2 * easeOut(k)));
-    drawBlob(ctx, i === 0 ? 'dust' : 'smoke', r, (Math.floor(sd) + i) & 3, x + (i - 0.5) * U * 1.2 + WIND_X * U * k * 0.25, y - (1 + i) * U * easeOut(k) * 1.4, g, (i === 0 ? 0.75 : 0.55) * (1 - k) ** 1.3);
+  for (let i = 2; i >= 0; i--) {
+    const r = Math.max(1, (1.3 + 0.45 * i) * cpu * (0.55 + 0.45 * size) * (0.7 + 1.2 * easeOut(k)));
+    const kind: BlobKind = i === 0 ? 'smoke' : 'dust';
+    drawBlob(ctx, kind, r, (Math.floor(sd) + i) & 3, x + (i - 1) * U * 1.1 + WIND_X * U * k * 0.25, y - (0.6 + 0.8 * i) * U * easeOut(k) * 1.4, g, (i === 0 ? 0.6 : 0.85) * (1 - k) ** 1.3);
   }
 }
 
