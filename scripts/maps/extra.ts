@@ -195,6 +195,30 @@ export const EXTRA_REGIONS: ExtraRegion[] = [
   { name: 'Lithuanian lowland', kind: 'open', poly: [[21.2, 56.0], [24.4, 56.4], [25.6, 55.2], [23.0, 54.6], [21.4, 55.0]] },
   { name: 'Latvian lowland', kind: 'open', poly: [[21.4, 57.2], [24.4, 57.4], [25.8, 56.6], [22.6, 56.4]] },
   { name: 'Skane farmland', kind: 'open', poly: [[12.6, 56.4], [14.4, 56.4], [14.4, 55.4], [12.8, 55.4]] },
+  // --- second pass: uplands and wetlands that give starting areas iron and oil ---
+  { name: 'Kashubian lakeland', kind: 'hills', poly: [[17.2, 54.5], [18.4, 54.5], [18.4, 53.8], [17.4, 53.6], [16.8, 54.0]] },
+  { name: 'Masurian lakeland hills', kind: 'hills', poly: [[19.6, 54.0], [21.8, 54.1], [22.4, 53.5], [21.4, 53.1], [19.8, 53.3]] },
+  { name: 'Greater Poland moraines', kind: 'hills', poly: [[16.2, 52.9], [17.6, 53.1], [18.2, 52.5], [17.0, 52.2]] },
+  { name: 'Vidzeme upland', kind: 'hills', poly: [[24.6, 57.4], [26.0, 57.5], [26.2, 56.9], [25.0, 56.8]] },
+  { name: 'Latgale upland', kind: 'hills', poly: [[26.4, 56.6], [27.8, 56.7], [27.8, 55.9], [26.6, 55.8]] },
+  { name: 'Haanja upland', kind: 'hills', poly: [[26.6, 57.9], [27.6, 57.9], [27.6, 57.5], [26.7, 57.4]] },
+  { name: 'Samogitian upland', kind: 'hills', poly: [[22.0, 56.0], [23.6, 56.1], [23.6, 55.4], [22.2, 55.3]] },
+  { name: 'Lithuanian uplands east', kind: 'hills', poly: [[24.8, 55.1], [26.4, 55.3], [26.2, 54.4], [25.0, 54.4]] },
+  { name: 'Salpausselka ridges', kind: 'hills', poly: [[22.8, 60.2], [25.0, 60.5], [27.0, 60.8], [29.4, 61.2], [29.4, 60.9], [27.0, 60.5], [25.0, 60.2], [23.0, 59.95]] },
+  { name: 'Suomenselka', kind: 'hills', poly: [[23.8, 63.6], [25.6, 63.6], [25.4, 62.2], [24.0, 62.2]] },
+  { name: 'Oulu uplands', kind: 'hills', poly: [[25.6, 65.2], [27.8, 65.4], [27.8, 64.4], [26.0, 64.2]] },
+  { name: 'Gotland Oland limestone', kind: 'hills', poly: [[18.1, 57.9], [18.9, 57.9], [18.8, 57.0], [18.2, 57.0]] },
+  { name: 'Puuc hills', kind: 'hills', poly: [[-89.9, 20.5], [-89.2, 20.5], [-89.2, 20.0], [-89.9, 20.0]] },
+  { name: 'Campeche Tabasco wetlands', kind: 'swamp', poly: [[-92.6, 18.8], [-90.8, 19.0], [-90.6, 18.2], [-92.4, 17.9]] },
+  { name: 'Mosquito Coast lagoons', kind: 'swamp', poly: [[-84.6, 15.6], [-83.4, 15.4], [-83.4, 14.0], [-84.2, 14.2]] },
+  { name: 'Nicaragua Caribbean lowland', kind: 'swamp', poly: [[-84.2, 12.8], [-83.6, 12.8], [-83.6, 11.6], [-84.0, 11.0], [-84.4, 11.6]] },
+  { name: 'Limon lowland', kind: 'swamp', poly: [[-83.8, 10.6], [-83.2, 10.4], [-83.0, 9.8], [-83.6, 9.9]] },
+  { name: 'Bocas Atrato wetlands', kind: 'swamp', poly: [[-82.4, 9.2], [-81.8, 9.2], [-81.8, 8.8], [-82.4, 8.8]] },
+  { name: 'Darien swamps', kind: 'swamp', poly: [[-78.0, 8.6], [-77.2, 8.5], [-77.2, 7.8], [-77.9, 8.0]] },
+  { name: 'Magdalena delta', kind: 'swamp', poly: [[-75.2, 10.9], [-74.5, 10.9], [-74.5, 10.0], [-75.2, 10.0]] },
+  { name: 'Sinu lowlands', kind: 'swamp', poly: [[-76.3, 9.4], [-75.6, 9.4], [-75.6, 8.4], [-76.3, 8.4]] },
+  { name: 'Jaffna and Mannar lagoons', kind: 'swamp', poly: [[79.8, 9.7], [80.4, 9.7], [80.2, 8.9], [79.8, 8.9]] },
+  { name: 'Puttalam lagoons', kind: 'swamp', poly: [[79.7, 8.3], [80.0, 8.3], [79.9, 7.6], [79.7, 7.6]] },
   // --- open country: farmland and treeless islands that the moisture belts would make forest ---
   { name: 'Outer Hebrides', kind: 'open', poly: [[-7.9, 56.7], [-7.1, 56.7], [-6.9, 57.4], [-6.1, 57.9], [-5.9, 58.6], [-6.5, 58.7], [-7.3, 58.3], [-7.8, 57.8]] },
   { name: 'Orkney', kind: 'open', poly: [[-3.6, 58.65], [-2.2, 58.65], [-2.2, 59.5], [-3.6, 59.5]] },
@@ -230,5 +254,16 @@ export const OIL_REGIONS: number[][][] = [
   [[4.0, 32.5], [9.5, 32.5], [9.5, 27.5], [4.0, 28.0]], // Hassi Messaoud / Berkine
   [[123.0, 47.5], [126.0, 47.5], [126.0, 45.0], [123.0, 45.0]], // Daqing
   [[100.5, 2.5], [104.0, 0.5], [104.5, -3.5], [101.5, -1.0]], // Sumatra
+  [[-93.4, 18.6], [-91.0, 19.0], [-90.6, 18.0], [-92.8, 17.4]], // Tabasco / Campeche
+  [[-84.8, 15.4], [-83.4, 15.0], [-83.4, 12.6], [-84.4, 12.0], [-85.0, 13.6]], // Mosquitia basin
+  [[-84.0, 10.8], [-82.8, 9.8], [-83.6, 9.6]], // Limon basin
+  [[-79.8, 9.4], [-77.2, 8.9], [-77.0, 7.6], [-78.6, 7.8]], // Panama and Darien
+  [[-76.6, 9.4], [-74.4, 10.8], [-74.0, 9.6], [-75.4, 8.0]], // Colombian Caribbean lowlands
+  [[79.6, 9.8], [80.4, 9.4], [80.2, 8.0], [79.7, 8.0]], // Mannar basin
+  [[18.8, 56.0], [22.0, 56.4], [22.4, 55.0], [19.5, 54.7]], // Baltic shelf and Kaliningrad
+  [[19.0, 54.9], [24.0, 55.4], [24.0, 57.8], [21.0, 57.8]], // Courland and Lithuania
+  [[16.5, 54.6], [20.0, 54.6], [20.0, 53.4], [16.5, 53.6]], // Pomerania
+  [[22.5, 60.4], [26.5, 61.0], [26.0, 60.0], [23.0, 59.8]], // Gulf of Finland coast
+  [[22.0, 59.8], [26.5, 59.6], [26.0, 58.8], [22.4, 58.6]], // Estonia
   [[114.0, 1.0], [118.5, 2.0], [118.0, -2.0], [114.5, -1.0]], // Borneo
 ];
