@@ -9,6 +9,7 @@ import { DRIFTISLES, DRIFTISLES_PLANE, DRIFTISLES_SPAWNS } from './drawn/driftis
 import { RINGLANDS, RINGLANDS_DECOR, RINGLANDS_PLANE, RINGLANDS_SPAWNS } from './drawn/ringlands';
 import type { DecorKind } from '../../src/sim/worldmaps';
 import { FIVEFOLD, FIVEFOLD_PLANE, FIVEFOLD_SPAWNS } from './drawn/fivefold';
+import { RINGSEA, RINGSEA_PLANE, RINGSEA_SPAWNS } from './drawn/ringsea';
 
 export interface SpawnDef {
   /** nation name shown in the game */
@@ -771,6 +772,16 @@ export const MAP_DEFS: MapDef[] = [
     drawn: FIVEFOLD,
     spawns: FIVEFOLD_SPAWNS,
     theme: 'warmscroll',
+  },
+  {
+    id: 'ringsea',
+    name: 'The Dark Beyond',
+    description: 'A fictional world: six known continents and their isles sit in the middle of an enormous lake, and all round it, out to every edge, lies a vast unsettled dark continent of bleak heath, fens and dark ranges, rich in iron and oil.',
+    ...RINGSEA_PLANE.def,
+    targetLand: 1_300_000,
+    drawn: RINGSEA,
+    spawns: RINGSEA_SPAWNS,
+    theme: 'darkbeyond',
   },
   {
     id: 'japan',
