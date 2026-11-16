@@ -60,14 +60,14 @@ export function radarSweep(ctx: CanvasRenderingContext2D, x: number, y: number, 
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(1, ry / rx);
-  ctx.strokeStyle = 'rgba(93,255,138,0.35)';
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(93,255,138,0.55)';
+  ctx.lineWidth = 1.25;
   ctx.beginPath();
   ctx.arc(0, 0, rx, 0, Math.PI * 2);
   ctx.stroke();
   const steps = 8;
   for (let k = 0; k < steps; k++) {
-    ctx.globalAlpha = 0.22 * (1 - k / steps);
+    ctx.globalAlpha = 0.32 * (1 - k / steps);
     ctx.fillStyle = RADAR_GREEN;
     ctx.beginPath();
     ctx.moveTo(0, 0);
@@ -351,7 +351,7 @@ export class BuildingLayer {
     this.drawn++;
     const bottom = y + 13 * scale;
     // Tracking Radar (sim/defense.ts): a slow green sweep over a working SAM site's ground
-    if (spec.addon === 'radar' && !ghost && !unfinished && b.disabledUntil <= state.tick) radarSweep(ctx, x, y + 2 * scale, 19 * scale, 13 * scale, performance.now());
+    if (spec.addon === 'radar' && !ghost && !unfinished && b.disabledUntil <= state.tick) radarSweep(ctx, x, y + 2 * scale, 30 * scale, 21 * scale, performance.now());
     if (focus) {
       ctx.beginPath();
       ctx.ellipse(x, y + 2 * scale, 17 * scale, 12 * scale, 0, 0, Math.PI * 2);

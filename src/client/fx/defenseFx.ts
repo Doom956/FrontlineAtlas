@@ -322,7 +322,14 @@ export class DefenseFx {
       if (Math.max(a.x, b.x) < -40 || Math.min(a.x, b.x) > cam.viewW + 40 || Math.max(a.y, b.y) < -80 || Math.min(a.y, b.y) > cam.viewH + 40) continue;
       this.drawnShells++;
       const lift = Math.min(160, 12 + dist * 0.3); // the arc's height (px)
-      const at = (t: number): { x: number; y: number } => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t - lift * 4 * t * (1 - t) });
+      // the lob goes up the screen, and bows a little sideways so the arc reads on a north-south shot too
+      const nx = dist > 0 ? -(b.y - a.y) / dist : 0;
+      const ny = dist > 0 ? (b.x - a.x) / dist : 0;
+      const side = (nx >= 0 ? 1 : -1) * lift * 0.35;
+      const at = (t: number): { x: number; y: number } => {
+        const h = 4 * t * (1 - t);
+        return { x: a.x + (b.x - a.x) * t + nx * side * h, y: a.y + (b.y - a.y) * t - lift * h + ny * side * h };
+      };
       // muzzle flash: a bright core and a short orange burst toward the ship
       if (age < 110) {
         const f = 1 - age / 110;
@@ -344,18 +351,23 @@ export class DefenseFx {
       if (age < SHELL_FLIGHT_MS) {
         const t = age / SHELL_FLIGHT_MS;
         // a fading trail along the arc, then the shell
-        for (let k = 1; k <= 5; k++) {
-          const q = at(Math.max(0, t - k * 0.035));
-          ctx.globalAlpha = 0.5 * (1 - k / 6);
-          ctx.fillStyle = '#d8d2c4';
-          ctx.fillRect(px(q.x - 0.75), px(q.y - 0.75), 1.5, 1.5);
+        for (let k = 1; k <= 8; k++) {
+          const q = at(Math.max(0, t - k * 0.03));
+          ctx.globalAlpha = 0.7 * (1 - k / 9);
+          ctx.fillStyle = '#e6dfcf';
+          ctx.fillRect(px(q.x - 1), px(q.y - 1), 2, 2);
         }
         ctx.globalAlpha = 1;
         const p = at(t);
-        ctx.fillStyle = '#2a2a2e';
-        ctx.fillRect(px(p.x - 1.5), px(p.y - 1.5), 3, 3);
+        const r = 2 * Math.min(1.5, zk);
+        ctx.fillStyle = 'rgba(255,190,90,0.35)';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r + 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#1e1e22';
+        ctx.fillRect(px(p.x - r), px(p.y - r), 2 * r, 2 * r);
         ctx.fillStyle = '#ffd27a';
-        ctx.fillRect(px(p.x - 0.5), px(p.y - 0.5), 1, 1);
+        ctx.fillRect(px(p.x - 1), px(p.y - 1), 2, 2);
         continue;
       }
       // splash: a white column and a ring on the water, the orange hit spark on the ship
