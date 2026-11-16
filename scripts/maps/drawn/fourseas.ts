@@ -8,7 +8,7 @@
 // Every outline is drawn by hand below as points on a 1000 x 1000 sketch grid ([x east, y down], 0..1000 over the
 // whole map), then smoothed and roughened a little so the coasts look natural.
 import type { DrawnMap } from './kit';
-import { blob, fractal, makePlane, rngFor, smoothClosed, wobbler } from './kit';
+import { blob, fractal, makePlane, rngFor, smoothClosed, strip, wobbler } from './kit';
 import type { Pt } from './kit';
 import type { SpawnDef } from '../defs';
 import type { ExtraKind, ExtraRegion } from '../extra';
@@ -33,6 +33,16 @@ function isle(x: number, y: number, rx: number, ry: number, rot: number, seed: n
   const rng = rngFor(seed);
   const [u, v] = F(x, y);
   return fractal(blob(u, v, rx, ry, rng, wob, rot, 48), rng, 0.2, 4, 0.04);
+}
+/** an island drawn by hand around a sketch point: its corners on a little square grid of its own ([x east, y down],
+ * one step = `s` plane units, so the shape keeps its true proportions), smoothed and roughened lightly */
+function shape(x0: number, y0: number, s: number, pts: G[], seed: number, rough = 0.1, per = 5): Pt[] {
+  return fractal(smoothClosed(local(x0, y0, s, pts), per), rngFor(seed), rough, 4, 0.04);
+}
+/** the same little grid as `shape`, as plain plane points (for lines drawn across an island) */
+function local(x0: number, y0: number, s: number, pts: G[]): Pt[] {
+  const [u0, v0] = F(x0, y0);
+  return pts.map(([x, y]): Pt => [u0 + x * s, v0 - y * s]);
 }
 /** a crescent island opening towards `dir` (radians): an arc of land around a sheltered bay */
 function crescent(x: number, y: number, r: number, dir: number, seed: number): Pt[] {
@@ -229,46 +239,54 @@ const NW_FISH = coast(
 );
 const NW_SMALL = [isle(29, 302, 0.75, 0.45, 0.2, 32), isle(118, 240, 0.6, 0.4, 0.8, 33), isle(265, 440, 0.55, 0.35, 0.4, 34), isle(95, 430, 0.5, 0.35, 1.1, 35)];
 
-// north-east: a big island down from the top edge with a hooked spur, many island clusters near the top, a long
-// diagonal island, a lone round island in the open sea and an island hard by the east wall
+// north-east: a dense patchwork of islands under the top edge, split by narrow sounds. A broad blocky island with a
+// lobed east side, a long broken chain running down from the top edge, a wide island in the top right with a spur
+// hanging south, a lumpy island with a little sister to its east, short chains below, an oval island hard by the east
+// wall and a scatter of islets between them
 const NE_BIG = coast(
   [
-    [652, -30], [708, -30], [713, 10], [737, 36], [762, 55], [770, 79], [757, 93], [737, 86], [726, 106], [722, 130],
-    [709, 143], [696, 141], [689, 124], [680, 110], [669, 80], [662, 49], [656, 20],
+    [660, -30], [760, -30], [757, 22], [766, 52], [768, 78], [757, 93], [740, 88], [732, 108], [720, 130], [706, 134],
+    [696, 117], [686, 99], [674, 74], [664, 49], [658, 20],
   ],
   41,
 );
 const NE_ROUND = coast(
-  [[752, 134], [765, 124], [781, 128], [790, 146], [789, 171], [780, 191], [765, 198], [751, 188], [747, 165]],
+  [[748, 128], [762, 121], [776, 130], [787, 126], [794, 141], [788, 160], [784, 178], [772, 187], [760, 181], [750, 170], [743, 150]],
   42,
 );
 const NE_LONG = coast(
-  [[798, 151], [806, 139], [815, 117], [825, 94], [834, 70], [842, 47], [849, 52], [846, 76], [836, 101], [823, 126], [812, 146], [803, 157]],
+  [[804, 145], [797, 138], [801, 118], [809, 97], [814, 76], [822, 58], [832, 46], [841, 50], [838, 66], [830, 86], [823, 108], [816, 128]],
   43,
 );
+const NE_LONG_TOP = coast([[826, -30], [856, -30], [852, 8], [846, 30], [836, 38], [828, 22]], 39);
 const NE_TOP = coast(
-  [[826, -30], [870, -30], [867, 10], [881, 30], [884, 55], [872, 69], [858, 60], [850, 40], [838, 31], [829, 12]],
+  [
+    [870, -30], [920, -30], [916, 8], [906, 30], [900, 56], [902, 88], [898, 116], [887, 124], [880, 104], [878, 80],
+    [871, 70], [866, 52], [866, 24],
+  ],
   44,
 );
 const NE_SMALL = [
   coast([[650, 126], [665, 117], [679, 124], [683, 141], [678, 159], [667, 167], [654, 162], [648, 145]], 45),
-  isle(691, 162, 0.85, 0.7, 0.3, 46),
-  isle(705, 180, 0.6, 0.5, 0.9, 47),
-  isle(737, 225, 0.7, 0.55, 0.2, 48),
-  isle(797, 165, 0.45, 0.6, 0.1, 49),
-  isle(624, 14, 1.0, 0.7, 0.4, 50),
-  isle(545, 118, 0.7, 0.35, 0.2, 51),
-  isle(570, 121, 0.6, 0.32, 0.1, 52),
-  isle(871, 111, 1.1, 0.5, 0.15, 53),
-  isle(902, 68, 0.9, 0.55, 0.5, 54),
-  coast([[916, 100], [928, 104], [934, 125], [931, 150], [924, 166], [913, 160], [910, 133]], 55),
-  coast([[772, 98], [784, 92], [792, 104], [786, 118], [774, 116]], 58),
-  isle(792, 30, 0.8, 0.45, 0.7, 59),
-  isle(812, 68, 0.5, 0.35, 1.2, 60),
-  isle(846, 128, 0.55, 0.35, 0.4, 65),
-  isle(887, 92, 0.4, 0.3, 0.2, 66),
+  coast([[680, 148], [690, 143], [697, 156], [694, 176], [690, 196], [680, 204], [673, 190], [676, 170]], 46),
+  coast([[700, 130], [712, 126], [718, 138], [713, 155], [702, 160], [697, 146]], 47),
+  coast([[797, 150], [807, 146], [813, 158], [810, 174], [800, 181], [794, 168]], 48),
+  coast([[740, 186], [750, 182], [754, 196], [749, 211], [740, 208], [737, 196]], 49),
+  coast([[726, 216], [736, 212], [741, 226], [736, 241], [727, 239], [723, 227]], 50),
+  coast([[916, 104], [926, 108], [931, 128], [928, 152], [921, 168], [913, 160], [911, 132]], 55),
+  coast([[773, 98], [784, 94], [791, 104], [786, 117], [775, 116]], 58),
+  isle(624, 14, 1.0, 0.7, 0.4, 51),
+  isle(545, 118, 0.7, 0.35, 0.2, 52),
+  isle(570, 121, 0.6, 0.32, 0.1, 53),
+  isle(866, 115, 0.55, 0.3, 0.1, 54),
+  isle(790, 30, 0.8, 0.5, 0.7, 59),
+  isle(788, 62, 0.45, 0.3, 1.0, 60),
+  isle(848, 118, 0.5, 0.35, 0.4, 65),
+  isle(866, 150, 0.4, 0.3, 0.2, 66),
   isle(640, 82, 0.6, 0.4, 0.9, 67),
-  isle(728, 160, 0.45, 0.35, 0.3, 68),
+  isle(727, 163, 0.45, 0.35, 0.3, 68),
+  isle(712, 215, 0.4, 0.3, 0.6, 69),
+  isle(762, 216, 0.45, 0.3, 0.2, 70),
   isle(612, 450, 0.55, 0.4, 0.6, 56),
   isle(548, 428, 0.5, 0.3, 0.3, 57),
 ];
@@ -298,58 +316,117 @@ const SE_SMALL = [
 ];
 
 // ======================= the island belt =======================
-// Islands of every shape between the calm strips (sketch y 519..624), from the west wall to the east wall.
-const BELT_W_BIG = coast(
-  [[200, 538], [214, 527], [232, 526], [246, 538], [250, 558], [246, 579], [235, 595], [218, 599], [203, 590], [195, 572], [192, 552]],
-  81,
-);
-const BELT_E_BIG = coast(
+// Islands between the calm strips (sketch y 519..624). The route runs east from the crossing to the east wall (the
+// first half: many islands, each with its own look, one big desert island the largest), then comes back in from the
+// west edge and runs east to the crossing again (the second half: fewer islands, but larger and stranger).
+
+// --- first half, east of the wall, in route order ---
+// a lone rock where the channel of the crossing spills into the belt
+const B_ROCK = isle(514, 603, 0.3, 0.22, 0.3, 120);
+// a tall island crowned with round rock pillars along its north shore
+const B_PILLARS = shape(536, 562, 0.08, [
+  [-5, 10], [-6, 4], [-7, -2], [-9, -6], [-8, -10], [-5, -9], [-4, -13], [-1, -15], [1, -11], [3, -14], [6, -12], [6, -7],
+  [8, -4], [7, 2], [5, 8], [1, 11],
+], 121);
+// a lumpy jungle island where old beasts still roam
+const B_JUNGLE = shape(565, 593, 0.095, [
+  [0, -12], [7, -10], [12, -4], [11, 4], [13, 9], [6, 12], [-2, 11], [-9, 12], [-12, 5], [-11, -3], [-8, -9],
+], 122);
+// a winter island: a squat round plateau with sheer sides and one deep cove on its west side
+const B_WINTER = shape(606, 546, 0.085, [
+  [-9, -9], [-3, -11], [4, -11], [10, -8], [12, -1], [10, 7], [4, 11], [-3, 11], [-9, 8], [-11, 3], [-6, 1], [-11, -2],
+], 123);
+// an empty islet south of the winter island
+const B_EMPTY = isle(626, 614, 0.32, 0.24, 0.5, 124);
+// the desert kingdom: the biggest island of the first half, a broad bean with a river bay on its south coast and a
+// sandy cape to the north-east
+const B_DESERT = shape(672, 571, 0.17, [
+  [-13, 1], [-12, -3], [-11, -7], [-6, -9], [0, -10], [5, -8], [9, -11], [13, -7], [13, 0], [11, 5], [7, 8], [2, 9],
+  [-1, 6], [-3, 9], [-8, 8], [-11, 5],
+], 125, 0.08);
+// the bitten island: a round island with its east half torn away, leaving a hollow coast facing east
+const B_BITTEN = shape(727, 558, 0.1, [
+  [-2, -12], [-8, -9], [-12, -3], [-12, 4], [-8, 10], [-1, 12], [5, 11], [2, 7], [-1, 3], [0, -1], [3, -5], [5, -9],
+  [3, -12],
+], 126);
+// islands in the clouds: a ring of tiny islets in the open sea beside the bitten island
+const B_SKY: Pt[][] = [];
+for (let i = 0; i < 8; i++) {
+  const a = (i / 8) * Math.PI * 2 + 0.3;
+  const [u, v] = F(752, 604);
+  const r = 0.85 + 0.12 * Math.sin(i * 2.3);
+  B_SKY.push(fractal(blob(u + Math.cos(a) * r * 1.15, v + Math.sin(a) * r, 0.17 + 0.05 * ((i * 5) % 3), 0.15, rngFor(130 + i), 0.2, a, 24), rngFor(140 + i), 0.15, 3, 0.04));
+}
+// the long chain: thin islands in an arc, end to end
+const B_LONG = [
+  isle(779, 619, 0.36, 0.13, 0.12, 151, 0.15),
+  isle(790, 616, 0.36, 0.13, 0.2, 152, 0.15),
+  isle(801, 613, 0.36, 0.13, 0.25, 153, 0.15),
+  isle(812, 609, 0.36, 0.13, 0.35, 154, 0.15),
+  isle(822, 603, 0.32, 0.13, 0.6, 155, 0.15),
+];
+// the water city: a round island cut by four straight canals to its centre
+const B_WATER = shape(794, 549, 0.075, [
+  [0, -11], [3, -11], [1.5, -4], [5, -10], [9, -7], [11, -2], [5, -0.8], [11, 2], [10, 7], [5, 10], [1.5, 4], [0, 11],
+  [-5, 10], [-9, 7], [-11, 2], [-5, 0.8], [-11, -2], [-10, -7], [-5, -10], [-1.5, -4],
+], 156, 0.05, 3);
+// the court island: a ring of land around a deep hole, open on its south side
+const B_RING = shape(827, 572, 0.06, [
+  [0, -10], [7, -7], [10, 0], [7, 7], [2.5, 10], [2.5, 5], [4, 3], [5, 0], [4, -3], [0, -5], [-4, -3], [-5, 0], [-4, 3],
+  [-2.5, 5], [-2.5, 10], [-7, 7], [-10, 0], [-7, -7],
+], 157, 0.05, 3);
+// the ghost ship isle: a sharp triangle of marsh in a foggy patch of sea
+const B_TRIANGLE = shape(861, 598, 0.08, [[0, -10], [3, -4], [6, 2], [9, 8], [3, 8], [-3, 8], [-9, 8], [-6, 2], [-3, -4]], 158, 0.06, 2);
+// the mangrove archipelago before the east wall: a tight oval of small tree islets
+const B_MANGROVE = (
   [
-    [634, 548], [645, 532], [662, 526], [680, 530], [697, 540], [703, 558], [699, 576], [688, 594], [670, 604], [652, 602],
-    [640, 590], [646, 574], [632, 566],
-  ],
-  82,
-);
+    [888, 545, 0.28, 0.22], [899, 541, 0.25, 0.2], [910, 548, 0.3, 0.22], [884, 560, 0.3, 0.25], [896, 558, 0.22, 0.2],
+    [908, 563, 0.28, 0.24], [918, 559, 0.2, 0.18], [887, 577, 0.26, 0.22], [899, 575, 0.3, 0.22], [911, 580, 0.25, 0.2],
+    [893, 592, 0.24, 0.2], [905, 594, 0.28, 0.2], [880, 590, 0.2, 0.16],
+  ] as number[][]
+).map(([x, y, rx, ry], i) => isle(x, y, rx, ry, i * 0.7, 160 + i, 0.25));
+// the fortress bay against the east wall: a hooked crescent around a harbour, opening west
+const B_FORT = crescent(936, 616, 0.6, 3.1, 139);
+
+// --- second half, from the west edge back east to the crossing ---
+// the fire and ice island: two half islands split by a narrow north-south strait (scorched west, frozen east)
+const B_FIRE = shape(62, 576, 0.09, [[-1.3, -10], [-6, -9], [-10, -4], [-10, 3], [-6, 9], [-1.3, 10], [-1.3, 5], [-1.3, 0], [-1.3, -5]], 171, 0.06, 3);
+const B_ICE = shape(62, 576, 0.09, [[1.3, -10], [6, -9], [10, -4], [10, 3], [6, 9], [1.3, 10], [1.3, 5], [1.3, 0], [1.3, -5]], 172, 0.06, 3);
+// the kidney island: a big island with a deep south bay and a green islet off its south shore
+const B_KIDNEY = shape(114, 551, 0.12, [
+  [-11, -4], [-8, -10], [-1, -12], [6, -10], [11, -5], [12, 2], [8, 8], [3, 9], [0, 5], [-3, 9], [-9, 8], [-12, 3],
+], 173);
+const B_KIDNEY_ISLET = isle(116, 597, 0.45, 0.3, 0.2, 174);
+// the walking beast island: an oval body on four stubby legs, its trunk curling out to the west
+const B_BEAST = shape(172, 573, 0.075, [
+  [-8, -6], [-2, -9], [5, -8], [10, -5], [12, 0], [10, 4], [9, 8], [7, 8], [6, 5], [3, 6], [2, 9], [0, 9], [-1, 6],
+  [-4, 6], [-5, 9], [-7, 9], [-8, 5], [-10, 3], [-13, 2], [-15, 4], [-17, 2], [-15, -1], [-11, -2],
+], 175, 0.05, 3);
+// the sweets archipelago: a big round island inside a ring of islets
+const B_SWEETS = shape(234, 570, 0.12, [
+  [0, -12], [6, -11], [11, -6], [12, 0], [10, 7], [5, 11], [-1, 12], [-7, 10], [-12, 4], [-11, -3], [-7, -10],
+], 176);
+const B_SWEETS_RING: Pt[][] = [];
+for (let i = 0; i < 11; i++) {
+  const a = (i / 11) * Math.PI * 2 + 0.2;
+  const [u, v] = F(234, 570);
+  const r = 2.4 + 0.15 * Math.sin(i * 1.7);
+  B_SWEETS_RING.push(fractal(blob(u + Math.cos(a) * r, v + Math.sin(a) * r, 0.24 + 0.05 * ((i * 7) % 3), 0.2, rngFor(180 + i), 0.25, a, 30), rngFor(195 + i), 0.18, 3, 0.04));
+}
+// the walled country: the biggest island of the second half, craggy, ringed by a wall of peaks with one gap in the
+// south-east where a river reaches the sea
+const WALLED: G[] = [
+  [-11, -3], [-9, -8], [-4, -9], [-1, -6], [2, -10], [7, -9], [10, -5], [11, 1], [8, 4], [10, 8], [5, 9], [1, 7], [-3, 10],
+  [-8, 8], [-10, 4], [-7, 1],
+];
+const B_WALLED = shape(298, 560, 0.12, WALLED, 177);
+const WALLED_RIM = local(298, 560, 0.12 * 0.78, [...WALLED.slice(9), ...WALLED.slice(0, 8)]);
+// the giants' island: a tall forest island just west of the crossing
+const B_GIANTS = shape(331, 607, 0.075, [[-6, -9], [2, -10], [7, -6], [8, 1], [6, 8], [0, 10], [-6, 8], [-8, 0]], 178);
+
 const BELT: Pt[][] = [
-  // west of the wall
-  isle(46, 547, 0.65, 0.95, 0.2, 101),
-  isle(62, 590, 1.0, 0.45, 0.5, 102),
-  crescent(100, 552, 1.25, -2.4, 103),
-  isle(124, 603, 0.6, 0.4, 0.3, 104),
-  isle(156, 560, 1.9, 0.7, 0.45, 105), // the long island
-  crescent(180, 600, 0.95, 1.2, 106),
-  BELT_W_BIG,
-  isle(186, 532, 0.38, 0.3, 0.2, 107), // islets around the big round island
-  isle(262, 540, 0.45, 0.3, 0.6, 108),
-  isle(258, 586, 0.4, 0.32, 0.1, 109),
-  isle(226, 612, 0.5, 0.28, 0.0, 110),
-  coast([[279, 540], [292, 530], [306, 535], [312, 552], [305, 569], [291, 574], [279, 563]], 111), // the high island
-  isle(314, 603, 0.6, 0.4, 0.9, 112),
-  isle(282, 608, 0.4, 0.3, 0.3, 113),
-  isle(86, 612, 0.4, 0.28, 0.2, 114),
-  // east of the wall
-  isle(512, 578, 1.0, 0.38, -0.2, 121),
-  coast([[538, 552], [552, 546], [562, 556], [560, 575], [548, 582], [538, 572]], 122), // the jungle island
-  coast([[598, 537], [611, 531], [622, 541], [620, 557], [608, 563], [597, 553]], 123), // the cold peak island
-  isle(612, 600, 0.5, 0.38, 0.4, 124),
-  isle(578, 607, 0.42, 0.3, 0.1, 125),
-  BELT_E_BIG,
-  crescent(726, 556, 1.2, 0.1, 126), // the half island
-  isle(738, 598, 0.95, 0.22, 0.25, 127), // the long thin chain
-  isle(758, 603, 0.85, 0.2, 0.15, 128),
-  isle(776, 606, 0.8, 0.22, -0.1, 129),
-  coast([[765, 548], [776, 540], [788, 546], [790, 560], [781, 569], [768, 566]], 130), // the water city island
-  coast([[804, 552], [822, 548], [812, 572]], 131, 0.12, 8), // the triangle island
-  isle(800, 600, 0.45, 0.35, 0.3, 132),
-  isle(842, 592, 0.75, 0.9, 0.2, 133),
-  isle(866, 546, 0.32, 0.28, 0.0, 134), // the mangrove cluster
-  isle(876, 552, 0.28, 0.25, 0.5, 135),
-  isle(870, 560, 0.3, 0.24, 0.9, 136),
-  isle(882, 543, 0.26, 0.22, 0.3, 137),
-  isle(861, 556, 0.24, 0.2, 0.7, 138),
-  crescent(905, 578, 0.8, 3.0, 139), // the fortress bay
-  isle(710, 610, 0.42, 0.3, 0.2, 140),
-  isle(640, 530, 0.3, 0.25, 0.1, 141),
+  B_ROCK, B_PILLARS, B_JUNGLE, B_WINTER, B_EMPTY, B_DESERT, B_BITTEN, ...B_SKY, ...B_LONG, B_WATER, B_RING, B_TRIANGLE,
+  ...B_MANGROVE, B_FORT, B_FIRE, B_ICE, B_KIDNEY, B_KIDNEY_ISLET, B_BEAST, B_SWEETS, ...B_SWEETS_RING, B_WALLED, B_GIANTS,
 ];
 
 // ======================= relief, biomes and oil =======================
@@ -370,11 +447,16 @@ const OIL = (x: number, y: number, rx: number, ry: number): void => {
 
 // the wall's spine: high peaks top to bottom (painted as mountains below), foothills (iron) on both sides
 const SPINE_N: G[] = [[472, -40], [470, 30], [462, 90], [452, 150], [446, 205], [438, 260], [430, 320], [421, 385], [414, 445], [418, 505], [427, 550]];
-const SPINE_N_HALF = [4.6, 4.4, 3.6, 3.0, 2.6, 2.3, 2.0, 1.6, 1.2, 0.9, 0.7];
+const SPINE_N_HALF = [5.6, 5.4, 4.8, 4.2, 3.8, 3.4, 3.0, 2.5, 1.9, 1.3, 0.8];
 const SPINE_S: G[] = [[434, 586], [438, 630], [441, 690], [438, 750], [444, 810], [441, 870], [428, 940], [410, 1040]];
-const SPINE_S_HALF = [0.7, 0.9, 1.3, 1.5, 1.5, 1.6, 1.9, 2.2];
+const SPINE_S_HALF = [1.0, 1.4, 2.0, 2.4, 2.6, 2.8, 3.0, 3.2];
 const PEAKS_N = ridge(SPINE_N, SPINE_N_HALF, 401, 0.6);
 const PEAKS_S = ridge(SPINE_S, SPINE_S_HALF, 402, 0.4);
+// spurs of the spine reaching out into the big lobes, so their hearts are high rock too and only the coasts are low
+const SPUR_NW: G[] = [[440, 250], [390, 245], [335, 262], [290, 290]];
+const SPUR_SW: G[] = [[438, 765], [392, 762], [350, 772]];
+const SPUR_NE: G[] = [[452, 120], [505, 95], [555, 60]];
+const PEAKS_SPURS = [ridge(SPUR_NW, [1.6, 1.3, 0.9, 0.5], 407, 0.3), ridge(SPUR_SW, [1.4, 1.0, 0.5], 408, 0.25), ridge(SPUR_NE, [1.5, 1.2, 0.7], 409, 0.25)];
 regions.push({ name: 'Wall foothills north', kind: 'hills', poly: ring(ridge(SPINE_N, SPINE_N_HALF.map((h) => h + 1.5), 403, 0.6, 0.5)) });
 regions.push({ name: 'Wall foothills south', kind: 'hills', poly: ring(ridge(SPINE_S, SPINE_S_HALF.map((h) => h + 1.3), 404, 0.4, 0.5)) });
 // the far side of the wall along both map edges: peaks on the outer side, a livable coast on the inner side
@@ -436,12 +518,12 @@ R('tundra', 690, 30, 2.2, 1.4);
 OIL(690, 30, 2.0, 1.2);
 R('hills', 725, 95, 1.2, 0.9);
 R('mountains', 700, 60, 0.9, 0.9, 0, 0.8);
-R('woods', 768, 175, 0.9, 1.0);
+R('woods', 768, 155, 0.9, 1.0);
 R('hills', 770, 140, 0.8, 0.7);
-R('swamp', 760, 185, 0.6, 0.4);
-OIL(760, 185, 0.7, 0.5);
+R('swamp', 764, 174, 0.6, 0.4);
+OIL(764, 174, 0.7, 0.5);
 R('hills', 822, 105, 0.6, 1.5, -0.8);
-R('tundra', 855, 30, 1.4, 1.0);
+R('tundra', 886, 22, 1.6, 1.2);
 // south-west sea: islets
 R('hills', 240, 868, 0.7, 0.4);
 // south-east sea: the big island has hills in the middle, forest in the north, a dry south and a marshy bay
@@ -455,48 +537,63 @@ OIL(655, 870, 0.9, 0.6);
 R('hills', 922, 690, 0.8, 0.6);
 R('desert', 823, 970, 1.0, 0.6);
 OIL(823, 970, 0.9, 0.5);
-// the belt: a forested round island with hills, a high mountain island, a big desert island with a river, a cold
-// peak island, hills on the jungle island and the long island, dry crescents
-R('hills', 228, 548, 0.9, 0.7);
-R('swamp', 210, 580, 0.6, 0.5);
-OIL(210, 580, 0.7, 0.5);
-R('woods', 236, 580, 0.7, 0.5);
-R('mountains', 296, 550, 0.6, 0.6, 0, 0.85);
-R('hills', 156, 560, 1.4, 0.5, 0.45);
-R('desert', 100, 552, 1.0, 1.0);
-OIL(100, 552, 1.0, 1.0);
-R('desert', 668, 565, 2.4, 1.8);
-OIL(668, 565, 2.2, 1.6);
-R('hills', 690, 545, 0.8, 0.6);
-R('mountains', 645, 545, 0.5, 0.5, 0, 0.7);
-R('tundra', 610, 547, 0.6, 0.6);
-R('mountains', 610, 545, 0.35, 0.35, 0, 0.8);
-R('woods', 550, 565, 0.6, 0.7);
-R('desert', 726, 556, 1.2, 1.2);
-OIL(726, 556, 1.0, 1.0);
-R('hills', 776, 555, 0.5, 0.5);
-R('hills', 842, 592, 0.6, 0.6);
-R('swamp', 872, 552, 0.8, 0.6);
+// the belt, first half: rock pillars, a jungle, a frozen plateau, the desert kingdom with its river, a wooded bitten
+// island, a marshy triangle and the mangroves
+R('hills', 536, 560, 0.4, 0.7);
+R('woods', 565, 593, 1.0, 1.0);
+R('hills', 570, 585, 0.5, 0.4);
+R('tundra', 606, 546, 0.95, 0.95);
+R('mountains', 607, 543, 0.35, 0.35, 0, 0.85);
+R('desert', 672, 571, 2.9, 2.1);
+OIL(672, 571, 2.7, 1.9);
+R('hills', 692, 552, 0.8, 0.6);
+R('mountains', 650, 560, 0.5, 0.5, 0, 0.7);
+R('woods', 722, 556, 0.6, 0.9);
+R('hills', 794, 549, 0.35, 0.35);
+R('swamp', 861, 600, 0.6, 0.4);
+R('swamp', 898, 568, 1.2, 1.5);
+R('woods', 899, 560, 0.8, 1.0);
+// the belt, second half: scorched and frozen halves, a hilly kidney island, the forested beast, the sweets island with
+// a marsh, the walled country's inner valleys and the giants' forest
+R('desert', 57, 576, 0.5, 0.95);
+OIL(57, 576, 0.5, 0.9);
+R('tundra', 68, 576, 0.5, 0.95);
+R('hills', 118, 545, 0.8, 0.6);
+R('woods', 105, 560, 0.6, 0.5);
+R('woods', 170, 572, 0.8, 0.5);
+R('hills', 234, 560, 0.9, 0.6);
+R('swamp', 236, 585, 0.6, 0.4);
+OIL(236, 585, 0.7, 0.5);
+R('woods', 296, 556, 0.7, 0.6);
+R('hills', 300, 566, 0.6, 0.5);
+R('woods', 331, 607, 0.6, 0.7);
 
-// a river through the big desert island of the belt (green banks across the sand)
-const RIVER = line([[688, 532], [676, 548], [668, 562], [664, 580], [656, 600]]);
+// a river through the desert kingdom, from the hills in the north-east down to the bay on the south coast
+const RIVER = local(672, 571, 0.17, [[8, -6], [5, -3], [2, 0], [0, 3], [-2, 7]]);
+// a river out of the walled country through the gap in its peaks
+const RIVER_W = local(298, 560, 0.12, [[-2, -3], [2, 0], [6, 3], [9, 4.5]]);
 
 // ======================= the map =======================
-const land: Pt[][] = [NORTH, NECK, SOUTH, BOOT, WEST_EDGE_N, WEST_EDGE_S, EAST_EDGE, NW_FISH, ...NW_SMALL, NE_BIG, NE_ROUND, NE_LONG, NE_TOP, ...NE_SMALL, ...SW_SMALL, SE_BIG, ...SE_SMALL, ...BELT];
+const land: Pt[][] = [NORTH, NECK, SOUTH, BOOT, WEST_EDGE_N, WEST_EDGE_S, EAST_EDGE, NW_FISH, ...NW_SMALL, NE_BIG, NE_ROUND, NE_LONG, NE_LONG_TOP, NE_TOP, ...NE_SMALL, ...SW_SMALL, SE_BIG, ...SE_SMALL, ...BELT];
 
 export const FOURSEAS: DrawnMap = {
   land: land.map(ring),
   lakes: [...channels, ...basin].map(ring),
-  rivers: [ring(RIVER)],
+  rivers: [ring(RIVER), ring(RIVER_W)],
   regions,
   oilZones,
   paint: [
     // the spine of the wall: impassable peaks top to bottom, and the lone peak of the crossing
     { terrain: 'mountains', poly: ring(PEAKS_N) },
     { terrain: 'mountains', poly: ring(PEAKS_S) },
+    ...PEAKS_SPURS.map((p) => ({ terrain: 'mountains' as const, poly: ring(p) })),
     { terrain: 'mountains', poly: ring(blob(CROSS[0], CROSS[1], BASIN_IN + 0.1, BASIN_IN + 0.1, rngR, 0.05, 0, 24)) },
     { terrain: 'mountains', poly: ring(PEAKS_W) },
     { terrain: 'mountains', poly: ring(PEAKS_E) },
+    // the ring of peaks around the walled country of the belt
+    { terrain: 'mountains', poly: ring(strip(WALLED_RIM, 0.17)) },
+    // rocky hills over the desert kingdom's north-east cape, where its river rises
+    { terrain: 'hills', poly: ring(blob(...F(694, 550), 0.8, 0.6, rngFor(410), 0.2, 0.3, 32)) },
   ],
 };
 
@@ -517,6 +614,6 @@ export const FOURSEAS_SPAWNS: SpawnDef[] = [
   sp('Garrowe', 585, 820, true),
   sp('Harrowick', 975, 780),
   // the belt
-  sp('Isenvar', 222, 562),
-  sp('Jorlund', 668, 566),
+  sp('Isenvar', 234, 568),
+  sp('Jorlund', 674, 568),
 ];
