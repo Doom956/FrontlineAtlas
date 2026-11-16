@@ -1526,11 +1526,10 @@ export function levelPill(ctx: CanvasRenderingContext2D, cx: number, y: number, 
 // ------------------------------------------------------------------------------------------------- far look (normal zoom)
 
 /** The far look (normal zoom): colours pulled toward the land, a thin soft owner outline, a wide soft shadow. */
-const FAR_GAIN = 0.72;
+const FAR_GAIN = 0.9;
 /** the same for add-ons (guns), kept stronger so they still read */
 const FAR_ADD_GAIN = 0.95;
-const FAR_RING_A = 0.5;
-const FAR_SHADOW_A = 0.6;
+const FAR_SHADOW_A = 0.82;
 
 /** Simplified shapes for far zoom: big masses, no windows, merlons, gear, piles or trees. */
 function farModel(spec: BuildingSpec): Part[] {
@@ -1686,7 +1685,6 @@ export function bakeBuildingFar(spec: BuildingSpec, owner: RGB, scale: number, d
   const body = farModel(spec);
   const add = addonParts(spec, true);
   const gr = new Ground(CW, CH, res, ox, oy, under);
-  gr.smooth = true;
   if (fillWater) {
     for (let y = 0; y < CH; y++) {
       for (let x = 0; x < CW; x++) {
@@ -1701,7 +1699,7 @@ export function bakeBuildingFar(spec: BuildingSpec, owner: RGB, scale: number, d
     }
   }
   groundFar(gr, spec);
-  gr.shadows([...body, ...add], FAR_SHADOW_A, 3, 1.25);
+  gr.shadows([...body, ...add], FAR_SHADOW_A);
   const d = gr.d;
   const blend = (X: number, Y: number, c: C, a: number): void => {
     const o = (Y * CW + X) * 4;
@@ -1713,50 +1711,27 @@ export function bakeBuildingFar(spec: BuildingSpec, owner: RGB, scale: number, d
     d[o + 2] = (c[2] * a + d[o + 2] * w) / oa;
     d[o + 3] = oa * 255;
   };
-  /** the solid pixels of a bake, in cell coordinates */
-  const maskOf = (b: Baked): Uint8Array => {
-    const m = new Uint8Array(CW * CH);
-    for (let y = 0; y < b.h; y++) {
-      for (let x = 0; x < b.w; x++) {
-        const X = x + ox - b.ox;
-        const Y = y + oy - b.oy;
-        if (X >= 0 && Y >= 0 && X < CW && Y < CH && b.data[(y * b.w + x) * 4 + 3] >= 200) m[Y * CW + X] = 1;
-      }
-    }
-    return m;
-  };
-  const ringPx = Math.max(1, ringWidth(g.k) - 1);
-  /** draws a layer of parts: its outline (grown from `mask`, outside it) first, then the pulled colours */
-  const layer = (parts: Part[], gain: number, mask?: Uint8Array, ringOn = true): void => {
+  /** draws a layer of parts: the crisp troop-style owner ring round its outer silhouette first, then the lightly pulled colours */
+  const layer = (parts: Part[], gain: number, ringOn = true): void => {
     if (!parts.length) return;
     const b = rasterize({ parts, ground: 0 }, res, 0, { facings: 32, owner });
-    const own = maskOf(b);
-    const sil = mask ?? own;
-    // the ring: grow the silhouette ringPx steps (4 neighbours), then one more step for the faint edge
-    const dist = new Uint8Array(CW * CH).fill(255);
-    let front: number[] = [];
-    for (let i = 0; i < sil.length; i++) {
-      if (sil[i]) {
-        dist[i] = 0;
-        front.push(i);
-      }
-    }
-    for (let k = 1; k <= (ringOn ? ringPx + 1 : 0); k++) {
-      const next: number[] = [];
-      for (const idx of front) {
-        const x = idx % CW;
-        const y = (idx / CW) | 0;
-        for (const j of [x > 0 ? idx - 1 : -1, x < CW - 1 ? idx + 1 : -1, y > 0 ? idx - CW : -1, y < CH - 1 ? idx + CW : -1]) {
-          if (j < 0 || dist[j] !== 255) continue;
-          dist[j] = k;
-          next.push(j);
-          const X = j % CW;
-          const Y = (j / CW) | 0;
-          const land = under.rgb(X, Y);
-          if (k <= ringPx) blend(X, Y, owner, FAR_RING_A);
+    if (ringOn) {
+      const ring = outlineOf(b, owner, ringWidth(g.k));
+      const G = ring.ox - b.ox;
+      for (let y = 0; y < ring.h; y++) {
+        for (let x = 0; x < ring.w; x++) {
+          const s = (y * ring.w + x) * 4;
+          const sa = ring.data[s + 3] / 255;
+          if (sa <= 0) continue;
+          const rx = x - G;
+          const ry = y - G;
+          if (rx >= 0 && ry >= 0 && rx < b.w && ry < b.h && b.data[(ry * b.w + rx) * 4 + 3] >= 200) continue;
+          const X = x + ox - ring.ox;
+          const Y = y + oy - ring.oy;
+          if (X < 0 || Y < 0 || X >= CW || Y >= CH) continue;
+          blend(X, Y, [ring.data[s], ring.data[s + 1], ring.data[s + 2]], sa);
         }
       }
-      front = next;
     }
     for (let y = 0; y < b.h; y++) {
       for (let x = 0; x < b.w; x++) {
@@ -1773,7 +1748,7 @@ export function bakeBuildingFar(spec: BuildingSpec, owner: RGB, scale: number, d
     }
   };
   layer(body, FAR_GAIN);
-  layer(add, FAR_ADD_GAIN, undefined, false);
+  layer(add, FAR_ADD_GAIN, false);
   const cv = makeCanvas(CW, CH);
   const cx = cv.getContext('2d');
   if (cx) {
