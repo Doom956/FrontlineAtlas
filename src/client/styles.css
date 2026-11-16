@@ -316,15 +316,48 @@ canvas.minimap {
   background: var(--panel-3, rgba(255, 255, 255, 0.09));
   color: var(--text);
 }
-/* Pixel Clean: hotkeys never show in the HUD. Every action keeps its labelled button. */
-.qb-k,
-.bm-c-k,
-.rp-tab-k,
-.qb-build .kc,
-.cmdbar kbd,
-.modechip kbd,
-.cb-build kbd {
-  display: none !important;
+/* Key labels: a small dim hotkey in the top-right corner of the main buttons (build bar, top bar, strikes, attack
+   share). Absolute, so a button never changes size. Every button still has its icon and plain word. Phones have no
+   keyboard, so touch screens hide them. Build menu cards carry no key text. */
+.hk {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font: 600 9px/1 var(--f-label);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--faint);
+  opacity: 0.85;
+  pointer-events: none;
+}
+.hk:empty {
+  display: none;
+}
+.sk,
+.qb-build {
+  position: relative;
+}
+.qb-build .hk {
+  color: var(--accent-ink);
+  opacity: 0.6;
+}
+.stepper {
+  position: relative;
+}
+.stepper .hk {
+  top: 0;
+  right: 2px;
+  font-size: 8px;
+}
+.sq.on .hk,
+.sk.on .hk,
+.qb-slot.on .hk {
+  color: var(--brass-hi);
+}
+@media (hover: none) and (pointer: coarse) {
+  .hk {
+    display: none;
+  }
 }
 .sq:active {
   background: var(--metal);

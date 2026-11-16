@@ -6,9 +6,9 @@ import { gameSeconds } from '../../sim/state';
 import type { GameState, Player } from '../../sim/types';
 import { inOvertime, victoryShareNow } from '../../sim/victory';
 import { unreadBadge } from '../alerts';
-import { SPEEDS } from '../input';
+import { DRAWER_KEYS, HELP_KEY_LABEL, PAUSE_KEY_LABEL, SPEEDS } from '../input';
 import { doctrineIcon, doctrineStatus, fmtDuration } from '../doctrineView';
-import { el, fmtTime, setClass, setText, setTip, type DrawerId, type HudCtx } from './dom';
+import { addKeyLabel, el, fmtTime, setClass, setText, setTip, type DrawerId, type HudCtx } from './dom';
 import { catSpan, pixelIcon, type IconCat } from './pixelIcons';
 
 /** Top bar icons that belong to a colour family (the rest stay neutral grey). */
@@ -59,6 +59,7 @@ export class Cluster {
     const dbtn = (id: DrawerId, icon: string, tip: string, word: string) => {
       const b = sq(icon, tip, () => ctx.openDrawer(id, true), `open-${id}`, word);
       this.drawerBtns.set(id, b);
+      if (DRAWER_KEYS[id]) addKeyLabel(b, DRAWER_KEYS[id]);
       drawers.append(b);
       return b;
     };
@@ -117,6 +118,7 @@ export class Cluster {
     this.soundBtn = sq('sound', 'Sound on/off\nVolumes are in the menu', () => hooks.toggleMute(), 'sound', 'Sound');
     if (!hooks.hasAudio()) this.soundBtn.classList.add('hidden');
     const help = sq('help', 'How to play', () => hooks.toggleHelp(), 'help', 'Help');
+    addKeyLabel(help, HELP_KEY_LABEL);
     const menu = sq('menu', 'Menu\nSettings, sound, leave the game', () => ctx.openDrawer('settings', true), 'menu', 'Menu');
     this.drawerBtns.set('settings', menu);
     sys.append(this.soundBtn, help, menu);
@@ -208,6 +210,7 @@ export class Cluster {
       if (pm === 'guest') this.pauseBtn.setAttribute('aria-disabled', 'true');
       else this.pauseBtn.removeAttribute('aria-disabled');
       this.pauseBtn.replaceChildren(topIcon(ui.paused ? 'play' : 'pause'), el('span', 'sq-w', ui.paused ? 'Resume' : 'Pause'));
+      addKeyLabel(this.pauseBtn, PAUSE_KEY_LABEL);
       const tip = pm === 'guest' ? 'Only the host can pause' : ui.paused ? 'Resume' : 'Pause';
       setTip(this.pauseBtn, tip);
       this.pauseBtn.setAttribute('aria-label', tip);

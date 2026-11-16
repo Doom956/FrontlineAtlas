@@ -203,6 +203,7 @@ No idle pulses or bounces. `prefers-reduced-motion` turns movement off.
 2. **No chrome, only space.** No borders, corner brackets, stripes, grain or gradient washes on panels. Cards in the
    research tree differ by fill, not by outline style.
 3. **Icon plus word, numbers with units.** Every primary control names itself; every number says what it counts
-   (k troops, gold/s, 30 s). No hotkey chips and no hint that only names a key.
+   (k troops, gold/s, 30 s). A hotkey shows only as a small, dim label in a button's corner (hidden on touch
+   screens), never as the only hint.
 4. **The map is the picture.** Calm water, pale tribes, mixed-case names on a soft halo, and units that collapse to
    markers when zoomed out.
