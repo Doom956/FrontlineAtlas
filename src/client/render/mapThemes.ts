@@ -141,6 +141,42 @@ export const THEME_DEFS: Record<string, MapThemeDef> = {
     ],
     waterMid: [20, 120, 175],
   },
+  /**
+   * The Fivefold Lands: a warm painted-scroll look. Warm parchment greens and ochre hills, deep lush forest, orange-tan
+   * desert, grey-violet rock, and a vivid but soft blue sea.
+   */
+  warmscroll: {
+    ground: {
+      grass: ramp('#a2c776', '#a9cf7e', '#afd484', '#b4d889'),
+      grassDry: ramp('#b3c97c', '#bbd083', '#c2d58a', '#c8d990'),
+      grassLush: ramp('#a2c776', '#a9cf7e', '#afd484', '#b4d889'),
+      forest: ramp('#84b062', '#8db96a', '#94bf71', '#9ac476'),
+      hills: ramp('#bda878', '#c9b38a', '#d1bc94', '#d8c49c'),
+      rock: ramp('#9a8eaa', '#a99cb8', '#b4a8c2', '#bdb2ca'),
+      snow: ramp('#c9c9d6', '#d6d6e0', '#e2e2ea', '#ececf2'),
+      sand: ramp('#e1b070', '#e8b97a', '#edc088', '#f0c692'),
+      swamp: ramp('#98bb78', '#a0c080', '#a8c688', '#aecb8e'),
+      tundra: ramp('#b8b8c0', '#c0c0c8', '#c8c8d0', '#d0d0d6'),
+      wheat: ramp('#b9c97c', '#c1d083', '#c8d68a', '#ced98f'),
+      crop: ramp('#a2c776', '#a9cf7e', '#afd484', '#b4d889'),
+      soil: ramp('#c2ab82', '#c9b38a', '#d0ba92', '#d6c09a'),
+      pool: ramp('#93a9d0', '#9eb0d4', '#a9b9da', '#b4c2e0'),
+      sea: [hx('#b9c8e4'), hx('#b0c0e0'), hx('#a6b8da'), hx('#9eb0d4'), hx('#98aad0')],
+      foam: ramp('#c9d5ea', '#d6dfef', '#e3e9f4', '#f0f3f9'),
+    },
+    flat: [
+      [158, 176, 212], // open sea
+      [185, 200, 228], // shelf
+      [169, 207, 126], // plains: flat anime green
+      [141, 185, 106], // forest
+      [201, 179, 138], // hills: tan
+      [169, 156, 184], // mountains: grey-violet rock
+      [232, 185, 122], // desert: orange-tan
+      [160, 192, 128], // swamp
+      [192, 192, 200], // tundra
+    ],
+    waterMid: [158, 176, 212],
+  },
 };
 
 const made = new Map<string, MapTheme>();

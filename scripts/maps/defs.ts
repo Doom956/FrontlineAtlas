@@ -8,6 +8,7 @@ import { FOURSEAS, FOURSEAS_PLANE, FOURSEAS_SPAWNS } from './drawn/fourseas';
 import { DRIFTISLES, DRIFTISLES_PLANE, DRIFTISLES_SPAWNS } from './drawn/driftisles';
 import { RINGLANDS, RINGLANDS_DECOR, RINGLANDS_PLANE, RINGLANDS_SPAWNS } from './drawn/ringlands';
 import type { DecorKind } from '../../src/sim/worldmaps';
+import { FIVEFOLD, FIVEFOLD_PLANE, FIVEFOLD_SPAWNS } from './drawn/fivefold';
 
 export interface SpawnDef {
   /** nation name shown in the game */
@@ -759,6 +760,17 @@ export const MAP_DEFS: MapDef[] = [
     targetLand: 450_000,
     drawn: DRIFTISLES,
     spawns: DRIFTISLES_SPAWNS,
+  },
+  {
+    id: 'fivefold',
+    name: 'The Fivefold Lands',
+    description: 'A fictional continent of five great countries (a forested heartland, a desert, a rocky highland, a stormy mountain peninsula and a misty island realm) with small buffer states wedged between them.',
+    ...FIVEFOLD_PLANE.def,
+    targetLand: 700_000,
+    forestMax: 0.6,
+    drawn: FIVEFOLD,
+    spawns: FIVEFOLD_SPAWNS,
+    theme: 'warmscroll',
   },
   {
     id: 'japan',

@@ -2931,6 +2931,73 @@
   ]
  },
  {
+  "id": "fivefold",
+  "name": "The Fivefold Lands",
+  "description": "A fictional continent of five great countries (a forested heartland, a desert, a rocky highland, a stormy mountain peninsula and a misty island realm) with small buffer states wedged between them.",
+  "width": 1408,
+  "height": 861,
+  "landTiles": 700001,
+  "recommendedNations": 5,
+  "recommendedTribes": 175,
+  "presets": {
+   "singlePlayer": {
+    "nations": 5,
+    "tribes": 175
+   },
+   "multiplayer": {
+    "nations": 10,
+    "tribes": 80
+   }
+  },
+  "spawns": [
+   {
+    "name": "Verdane",
+    "tile": 766558
+   },
+   {
+    "name": "Sandmoor",
+    "tile": 990129
+   },
+   {
+    "name": "Stormreach",
+    "tile": 382549
+   },
+   {
+    "name": "Craghold",
+    "tile": 429829
+   },
+   {
+    "name": "Mistral Isles",
+    "tile": 867082
+   },
+   {
+    "name": "Rainmark",
+    "tile": 728330
+   },
+   {
+    "name": "Riverholt",
+    "tile": 959348
+   },
+   {
+    "name": "Grassmere",
+    "tile": 491901
+   },
+   {
+    "name": "Chimevale",
+    "tile": 530058
+   },
+   {
+    "name": "Stonebridge",
+    "tile": 694436
+   },
+   {
+    "name": "Frostmere",
+    "tile": 520344
+   }
+  ],
+  "theme": "warmscroll"
+ },
+ {
   "id": "japan",
   "name": "Japan",
   "description": "The Japanese home islands from Hokkaido to Kyushu, with the south coast of Korea and Sakhalin, Lambert conformal conic.",
