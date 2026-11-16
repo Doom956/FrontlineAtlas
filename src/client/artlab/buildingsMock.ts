@@ -73,6 +73,14 @@ const GROUPS: { name: string; rows: Row[] }[] = [
   },
 ];
 
+const lv = (type: BuildingSpec['type'], name: string, levels: number[]): { name: string; rows: Row[] } => ({
+  name,
+  rows: levels.map((level) => ({ title: `${name}, level ${level}`, spec: { type, level, addon: null } })),
+});
+/** The other twelve building types (not drawn by the game yet), two sheets of six: level 1 and the top level (1, 3, 5 where it goes to 5). */
+const MORE1: { name: string; rows: Row[] }[] = [lv('farm', 'Farm', [1, 3, 5]), lv('market', 'Market', [1, 3, 5]), lv('mine', 'Mine', [1, 3, 5]), lv('oilWell', 'Oil well', [1, 3, 5]), lv('barracks', 'Barracks', [1, 3]), lv('factory', 'Factory', [1, 3, 5])];
+const MORE2: { name: string; rows: Row[] }[] = [lv('arsenal', 'Arsenal', [1, 3, 5]), lv('watchtower', 'Watchtower', [1, 3]), lv('lab', 'Research lab', [1, 3, 5]), lv('hospital', 'Hospital', [1, 2]), lv('airfield', 'Airfield', [1, 3]), lv('silo', 'Missile silo', [1, 3])];
+
 const LABEL_W = 232;
 const PAD = 8;
 const COLS = [
@@ -101,7 +109,7 @@ export function sheetLayout(): { name: string; y: number; h: number }[] {
   out.push({ name: 'Flat', y, h: FLAT_H });
   return out;
 }
-const SHEET_H = HEAD_H + GROUPS.reduce((a, g) => a + GROUP_H + g.rows.length * ROW_H, 0) + FLAT_H;
+const sheetHeight = (groups: { rows: Row[] }[], flat: boolean): number => HEAD_H + groups.reduce((a, g) => a + GROUP_H + g.rows.length * ROW_H, 0) + (flat ? FLAT_H : 0);
 
 /** Today's map marker for a building (render/buildings.ts drawOne): a category plate, a white glyph, the owner band. */
 function todayIcon(ctx: CanvasRenderingContext2D, type: BuildingSpec['type'], level: number, x: number, y: number, owner: RGB, dpr: number): void {
@@ -170,7 +178,8 @@ function sheetUnder(spec: BuildingSpec, res: number, scale: number): Under {
   };
 }
 
-function drawSheet(ctx: CanvasRenderingContext2D, dpr: number): void {
+function drawSheet(ctx: CanvasRenderingContext2D, dpr: number, groups: { name: string; rows: Row[] }[], flat: boolean): void {
+  const SHEET_H = sheetHeight(groups, flat);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(backdrop('land', SHEET_W, SHEET_H, 14), 0, 0);
@@ -188,7 +197,7 @@ function drawSheet(ctx: CanvasRenderingContext2D, dpr: number): void {
   });
   label(ctx, 'Building (rows)', 8, 23, 'left');
   let y = HEAD_H;
-  for (const g of GROUPS) {
+  for (const g of groups) {
     ctx.fillStyle = 'rgba(10,14,20,0.78)';
     ctx.fillRect(0, y, SHEET_W, GROUP_H);
     ctx.font = '700 13px "DM Sans", system-ui, sans-serif';
@@ -218,6 +227,10 @@ function drawSheet(ctx: CanvasRenderingContext2D, dpr: number): void {
       ctx.fillRect(0, y + ROW_H - 1, SHEET_W, 1);
       y += ROW_H;
     }
+  }
+  if (!flat) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    return;
   }
   // the far-zoom flat Fort (one flat level-3 fort: the flat icon is the same at every level and for every nation)
   ctx.fillStyle = 'rgba(10,14,20,0.78)';
@@ -290,6 +303,13 @@ interface Pill {
   blue: boolean;
 }
 
+/** What stands on the map preview: buildings, real units and army count pills. */
+interface MapSet {
+  sites: Site[];
+  troops: Troop[];
+  pills: Pill[];
+}
+
 interface Crop {
   /** the tile window the preview shows (the normal zoom window; the close one is its middle) */
   cx: number;
@@ -305,6 +325,8 @@ interface Crop {
   sites: Site[];
   troops: Troop[];
   pills: Pill[];
+  /** the second preview: the other twelve building types beside the finished ones */
+  more: MapSet;
   water: (x: number, y: number) => boolean;
   /** which nation owns a land tile: 1 blue, 2 red, 0 none */
   owner: (x: number, y: number) => number;
@@ -462,7 +484,56 @@ async function buildCrop(): Promise<Crop> {
   addTank(5, 'tankDivision', 28, 6, 0.2);
   addTank(6, 'lightTank', -36, 10, 3.2);
   troops.push({ key: 'destroyer', site: 0, u: 34, v: -34, angle: 0.05, blue: false }, { key: 'tradeShip', site: 0, u: 36, v: 34, angle: -0.1, blue: false });
+  // the second preview: a grid of the other twelve types and three finished ones, four columns that follow the border (three
+  // blue, one red) and four rows, with the port on the coast, real tanks, a pill and ships
+  const kinds: [BuildingSpec['type'], number, Addon][][] = [
+    [['farm', 3, null], ['market', 3, null], ['mine', 3, null], ['oilWell', 3, null], ['barracks', 3, null]],
+    [['factory', 3, null], ['arsenal', 3, null], ['watchtower', 3, null], ['lab', 3, null], ['hospital', 2, null]],
+    [['airfield', 3, null], ['silo', 3, null], ['fort', 3, 'flak'], ['city', 3, null], ['sam', 3, 'radar']],
+  ];
+  const offs = [-88, -72, -56, -39, -22];
+  const rowsY = [-20, 0, 20];
+  const msites: Site[] = [];
+  const clear = (x: number, y: number): boolean => msites.every((q) => Math.hypot(q.x - x, (q.y - y) * 1.3) > 12) && Math.hypot(x - px, y - py) > 16;
+  const spot = (x: number, y: number): [number, number] => {
+    for (let r = 0; r < 24; r++) {
+      for (let j = -r; j <= r; j++) {
+        for (let i = -r; i <= r; i++) {
+          if (Math.max(Math.abs(i), Math.abs(j)) === r && dry(x + i, y + j) && clear(x + i, y + j)) return [x + i, y + j];
+        }
+      }
+    }
+    return [x, y];
+  };
+  kinds.forEach((row, ri) => {
+    row.forEach(([type, level, addon], ci) => {
+      const [sx, sy] = spot(px + offs[ci], py + rowsY[ri]);
+      msites.push({ type, level, addon, x: sx, y: sy, blue: owner(sx, sy) !== 2 });
+    });
+  });
+  msites.push({ type: 'port', level: 3, addon: 'guns', x: px, y: py, blue: false });
+  const mtroops: Troop[] = [];
+  const mpills: Pill[] = [];
+  const idx = (t: string): number => msites.findIndex((q) => q.type === t);
+  const tank = (t: string, key: SpriteKey, u: number, v: number, a: number): void => {
+    const k = idx(t);
+    if (k >= 0) mtroops.push({ key, site: k, u, v, angle: a, blue: msites[k].blue });
+  };
+  tank('barracks', 'tankDivision', -10, 31, 0.1);
+  tank('barracks', 'lightTank', 6, 32, 0.1);
+  tank('arsenal', 'heavyTank', 2, 31, 0.2);
+  tank('factory', 'lightTank', -4, 31, 3.1);
+  tank('airfield', 'tankDivision', 30, 28, 0.3);
+  tank('fort', 'heavyTank', -6, 31, 0.1);
+  tank('hospital', 'lightTank', 24, 30, 0.2);
+  const bk = idx('barracks');
+  if (bk >= 0) mpills.push({ site: bk, u: 0, v: 41, troops: 24000, kinds: ['armor'], blue: msites[bk].blue });
+  const fk = idx('fort');
+  if (fk >= 0) mpills.push({ site: fk, u: 2, v: 41, troops: 50000, kinds: [], blue: msites[fk].blue });
+  const pk = idx('port');
+  mtroops.push({ key: 'destroyer', site: pk, u: 34, v: -34, angle: 0.05, blue: false }, { key: 'tradeShip', site: pk, u: 36, v: 34, angle: -0.1, blue: false });
   return {
+    more: { sites: msites, troops: mtroops, pills: mpills },
     cx: px - 8,
     cy: py,
     tiles,
@@ -481,7 +552,7 @@ async function buildCrop(): Promise<Crop> {
 }
 
 /** Draws a preview of the crop at a zoom (CSS px per tile) with buildings and units at the units' own scale for that zoom. */
-function drawMapPreview(cv: HTMLCanvasElement, crop: Crop, zoom: number, dpr: number, shiftX: number, far = false): void {
+function drawMapPreview(cv: HTMLCanvasElement, crop: Crop, set: MapSet, zoom: number, dpr: number, shiftX: number, far = false): void {
   const cw = MAP_W;
   const ch = cv.height / dpr;
   const ctx = cv.getContext('2d');
@@ -526,7 +597,7 @@ function drawMapPreview(cv: HTMLCanvasElement, crop: Crop, zoom: number, dpr: nu
     const iy = Math.max(0, Math.min(crop.h - 1, Math.floor(ty - crop.y0)));
     return (iy * crop.w + ix) * 4;
   };
-  const sorted = crop.sites.slice().sort((a, b) => a.y - b.y);
+  const sorted = set.sites.slice().sort((a, b) => a.y - b.y);
   const levels: [number, number, number, RGB][] = [];
   const anchors = new Map<Site, [number, number]>();
   for (const s of sorted) {
@@ -563,16 +634,16 @@ function drawMapPreview(cv: HTMLCanvasElement, crop: Crop, zoom: number, dpr: nu
   // the game's own unit art beside the buildings, at the same zoom, with the map outline the units wear
   const motion = motionParams('subtle', true);
   const at = (site: number, u: number, v: number): [number, number] => {
-    const a = anchors.get(crop.sites[site]) ?? [toX(crop.sites[site].x + 0.5), toY(crop.sites[site].y + 0.5)];
+    const a = anchors.get(set.sites[site]) ?? [toX(set.sites[site].x + 0.5), toY(set.sites[site].y + 0.5)];
     return [a[0] + u * scale, a[1] + v * scale * FORE];
   };
-  const placed = crop.troops.map((t) => ({ t, p: at(t.site, t.u, t.v) })).sort((a, b) => a.p[1] - b.p[1]);
+  const placed = set.troops.map((t) => ({ t, p: at(t.site, t.u, t.v) })).sort((a, b) => a.p[1] - b.p[1]);
   for (const { t, p } of placed) {
     const u: UnitDraw = { key: t.key, mods: 0, owner: t.blue ? BLUE : RED, x: p[0], y: p[1], angle: t.angle, zoom, scale, lod: 'near', dpr, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 1, alpha: 1, shadow: false, outline: true, damage: 0 };
     detailedUnits.drawUnit(ctx, u, motion);
   }
   ctx.imageSmoothingEnabled = false;
-  for (const q of crop.pills) {
+  for (const q of set.pills) {
     const p = at(q.site, q.u, q.v);
     troopPill(ctx, p[0], p[1], q.troops, q.kinds, q.blue ? BLUE : RED, { edge: '#ffe98a', arrow: 'up', small: true });
   }
@@ -597,14 +668,28 @@ export function mountBuildingsMock(root: HTMLElement): HTMLElement {
   const note2 = document.createElement('p');
   note2.textContent = 'Flak, tank traps, the radar dish and coastal guns are not in the game yet: they are drawn as add-ons only. The build menu, the pin menu and the tabs keep today\'s icons, and far zoom keeps the flat icons. This is a mockup: the real map still draws today\'s icons.';
   head.append(t, note, note2);
-  const cv = document.createElement('canvas');
-  cv.setAttribute('role', 'img');
-  cv.setAttribute('aria-label', 'Buildings mockup: fort, city, SAM site and port at every level, two nations, two zooms, next to today\'s icons');
-  cv.style.cssText = `display:block;margin-top:12px;border-radius:8px;max-width:100%;width:${SHEET_W}px`;
   const dpr = Math.min(3, Math.max(1, Math.round(window.devicePixelRatio || 1)));
-  cv.width = SHEET_W * dpr;
-  cv.height = SHEET_H * dpr;
-  sec.append(head, cv);
+  const sheets: { cv: HTMLCanvasElement; groups: { name: string; rows: Row[] }[]; flat: boolean }[] = [];
+  const addSheet = (label: string, groups: { name: string; rows: Row[] }[], flat: boolean, name: string): HTMLCanvasElement => {
+    const c = document.createElement('canvas');
+    c.setAttribute('role', 'img');
+    c.setAttribute('aria-label', label);
+    c.dataset.sheet = name;
+    c.style.cssText = `display:block;margin-top:12px;border-radius:8px;max-width:100%;width:${SHEET_W}px`;
+    c.width = SHEET_W * dpr;
+    c.height = sheetHeight(groups, flat) * dpr;
+    sheets.push({ cv: c, groups, flat });
+    return c;
+  };
+  sec.append(head, addSheet('Buildings mockup: fort, city, SAM site and port at every level, two nations, two zooms, next to today\'s icons', GROUPS, true, 'four'));
+  const more = document.createElement('div');
+  more.className = 'al-row-head';
+  const moreT = document.createElement('h3');
+  moreT.textContent = 'The other twelve buildings';
+  const moreP = document.createElement('p');
+  moreP.textContent = 'Farm, market, mine, oil well, barracks, factory, arsenal, watchtower, research lab, hospital, airfield and missile silo, drawn the same way: level 1 and the highest level (1, 3 and 5 where a building goes to 5). Not in the game yet: the map still draws today\'s icons for these.';
+  more.append(moreT, moreP);
+  sec.append(more, addSheet('Buildings mockup, part one: farm, market, mine, oil well, barracks and factory, close and normal zoom, two nations, next to today\'s icons', MORE1, false, 'more1'), addSheet('Buildings mockup, part two: arsenal, watchtower, research lab, hospital, airfield and missile silo, close and normal zoom, two nations, next to today\'s icons', MORE2, false, 'more2'));
   const mh = document.createElement('div');
   mh.className = 'al-row-head';
   const mt = document.createElement('h3');
@@ -617,8 +702,12 @@ export function mountBuildingsMock(root: HTMLElement): HTMLElement {
     [`Normal zoom (zoom ${ZOOM_NORMAL})`, ZOOM_NORMAL, 300, 0, true],
     [`Close zoom (zoom ${ZOOM_CLOSE})`, ZOOM_CLOSE, 720, -16, false],
   ];
-  const mcs: { cv: HTMLCanvasElement; zoom: number; shift: number; far: boolean }[] = [];
-  for (const [name, zoom, hh, shift, far] of previews) {
+  const mcs: { cv: HTMLCanvasElement; zoom: number; shift: number; far: boolean; more: boolean }[] = [];
+  const previews2: [string, number, number, number, boolean][] = [
+    ['Normal zoom (zoom 8)', 8, 520, -37, true],
+    ['Close zoom (zoom 11)', 11, 660, -47, false],
+  ];
+  const addPreview = (name: string, zoom: number, hh: number, shift: number, far: boolean, more: boolean, host: HTMLElement): void => {
     const sub = document.createElement('p');
     sub.textContent = name;
     sub.style.cssText = 'margin:12px 0 4px;font-weight:600';
@@ -629,14 +718,25 @@ export function mountBuildingsMock(root: HTMLElement): HTMLElement {
     mc.width = MAP_W * dpr;
     mc.height = hh * dpr;
     mc.getContext('2d')?.fillRect(0, 0, 1, 1);
-    sec.append(sub, mc);
-    mcs.push({ cv: mc, zoom, shift, far });
-  }
+    mc.dataset.preview = more ? `more${zoom}` : `four${zoom}`;
+    host.append(sub, mc);
+    mcs.push({ cv: mc, zoom, shift, far, more });
+  };
+  for (const [name, zoom, hh, shift, far] of previews) addPreview(name, zoom, hh, shift, far, false, sec);
+  const m2 = document.createElement('div');
+  m2.className = 'al-row-head';
+  const m2t = document.createElement('h3');
+  m2t.textContent = 'On the real map: the other twelve buildings';
+  const m2p = document.createElement('p');
+  m2p.textContent = 'A mix of the new building types beside a fort, a city, a SAM site and a port, with real tanks, ships and army count pills, at zoom 8 (normal look) and zoom 11 (close look), at the same size as the units for each zoom.';
+  m2.append(m2t, m2p);
+  sec.append(m2);
+  for (const [name, zoom, hh, shift, far] of previews2) addPreview(name, zoom, hh, shift, far, true, sec);
   root.append(sec);
   void buildCrop().then(
     (crop) => {
       const go = (): void => {
-        for (const m of mcs) drawMapPreview(m.cv, crop, m.zoom, dpr, m.shift, m.far);
+        for (const m of mcs) drawMapPreview(m.cv, crop, m.more ? crop.more : crop, m.zoom, dpr, m.shift, m.far);
       };
       go();
       void document.fonts?.ready.then(go);
@@ -654,9 +754,11 @@ export function mountBuildingsMock(root: HTMLElement): HTMLElement {
       }
     },
   );
-  const ctx = cv.getContext('2d');
   const go = (): void => {
-    if (ctx) drawSheet(ctx, dpr);
+    for (const sh of sheets) {
+      const ctx = sh.cv.getContext('2d');
+      if (ctx) drawSheet(ctx, dpr, sh.groups, sh.flat);
+    }
   };
   go();
   // the fonts may arrive after the first draw: draw again once they have

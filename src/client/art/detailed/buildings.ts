@@ -12,6 +12,7 @@ import { FORE, rasterize, type Baked, type Part, type Pattern } from './bake';
 import { gridOf } from './grid';
 import { outlineOf, ringWidth } from './outline';
 import { box, ell, grown, poly, seg } from './shapes';
+import { isMoreType, moreGround, moreModel, type MoreType } from './buildingsMore';
 
 /** The cell a building is baked into, in model units (1 unit = 1 map screen px at mid zoom, like the units). */
 export const CU = 68;
@@ -58,7 +59,7 @@ const bayer = (x: number, y: number): number => (BAYER4[(y & 3) * 4 + (x & 3)] +
 export type Addon = 'flak' | 'traps' | 'radar' | 'guns' | null;
 
 export interface BuildingSpec {
-  type: 'fort' | 'city' | 'sam' | 'port';
+  type: 'fort' | 'city' | 'sam' | 'port' | MoreType;
   level: number;
   addon: Addon;
 }
@@ -75,7 +76,7 @@ interface RoofOpt {
   alongU?: boolean;
 }
 /** A gable roof over a footprint: a lit slope, a darker slope, a bright ridge cap, tile courses or metal corrugation on both. */
-function gable(u0: number, v0: number, u1: number, v1: number, z: number, m: Mat, o: RoofOpt = {}): Part[] {
+export function gable(u0: number, v0: number, u1: number, v1: number, z: number, m: Mat, o: RoofOpt = {}): Part[] {
   const rh = o.rh ?? 1.4;
   const ov = o.over ?? 0.5;
   const a = u0 - ov;
@@ -93,7 +94,7 @@ function gable(u0: number, v0: number, u1: number, v1: number, z: number, m: Mat
   return [bx(a, b, um, d, z, rh, m, { tone: 0.8, pat }), bx(um, b, c, d, z, rh * 0.6, m, { tone: -1, pat }), bx(um - 0.22, b, um + 0.22, d, z + rh, 0.25, m, { tone: 1.6 })];
 }
 /** A hip roof: four slopes (lit north and west, shaded south and east) meeting in a ridge or a point. */
-function hip(u0: number, v0: number, u1: number, v1: number, z: number, m: Mat, o: RoofOpt = {}): Part[] {
+export function hip(u0: number, v0: number, u1: number, v1: number, z: number, m: Mat, o: RoofOpt = {}): Part[] {
   const rh = o.rh ?? 1.6;
   const ov = o.over ?? 0.5;
   const a = u0 - ov;
@@ -118,11 +119,11 @@ function hip(u0: number, v0: number, u1: number, v1: number, z: number, m: Mat, 
 /** A pitched roof over a footprint (a gable). */
 const roof = (u0: number, v0: number, u1: number, v1: number, z: number, m: Mat, rh = 1.3, over = 0.5, metal = false): Part[] => gable(u0, v0, u1, v1, z, m, { rh, over, metal });
 /** A brick chimney with a dark flue. */
-const chimney = (u: number, v: number, z: number, h: number): Part[] => [bx(u, v, u + 1.1, v + 1.1, z, h, 'brick', { tone: -0.2 }), bx(u + 0.25, v + 0.25, u + 0.85, v + 0.85, z + h, 0, 'black')];
+export const chimney = (u: number, v: number, z: number, h: number): Part[] => [bx(u, v, u + 1.1, v + 1.1, z, h, 'brick', { tone: -0.2 }), bx(u + 0.25, v + 0.25, u + 0.85, v + 0.85, z + h, 0, 'black')];
 /** A rooftop air-conditioning unit: a grilled casing with a dark fan. */
-const acUnit = (u: number, v: number, z: number): Part[] => [bx(u, v, u + 2.4, v + 1.7, z, 1.1, 'alu', { tone: -0.2, pat: 'grille' }), el(u + 0.8, v + 0.85, 0.55, 0.5, z + 1.1, 0, 'gun')];
-const skylight = (u: number, v: number, z: number, w = 2, d = 1.3): Part[] => [bx(u - 0.2, v - 0.2, u + w + 0.2, v + d + 0.2, z, 0.5, 'sup', { tone: 0.3 }), bx(u, v, u + w, v + d, z + 0.5, 0, 'glass', { tone: 0.3, pat: 'frames' })];
-const ventPipe = (u: number, v: number, z: number): Part[] => [el(u, v, 0.45, 0.45, z, 1.6, 'gun', { sh: 'cyl', tone: 0.7 }), el(u, v, 0.7, 0.7, z + 1.6, 0.25, 'alu', { sh: 'dome' })];
+export const acUnit = (u: number, v: number, z: number): Part[] => [bx(u, v, u + 2.4, v + 1.7, z, 1.1, 'alu', { tone: -0.2, pat: 'grille' }), el(u + 0.8, v + 0.85, 0.55, 0.5, z + 1.1, 0, 'gun')];
+export const skylight = (u: number, v: number, z: number, w = 2, d = 1.3): Part[] => [bx(u - 0.2, v - 0.2, u + w + 0.2, v + d + 0.2, z, 0.5, 'sup', { tone: 0.3 }), bx(u, v, u + w, v + d, z + 0.5, 0, 'glass', { tone: 0.3, pat: 'frames' })];
+export const ventPipe = (u: number, v: number, z: number): Part[] => [el(u, v, 0.45, 0.45, z, 1.6, 'gun', { sh: 'cyl', tone: 0.7 }), el(u, v, 0.7, 0.7, z + 1.6, 0.25, 'alu', { sh: 'dome' })];
 const waterTank = (u: number, v: number, z: number): Part[] => [el(u, v, 1.3, 1.2, z, 2.3, 'canvas', { sh: 'cyl', tone: -0.2 }), el(u, v, 1.35, 1.25, z + 2.3, 0.5, 'alu', { sh: 'dome', tone: 0.3 })];
 /** Gear scattered on a flat roof: units, skylights, vents, a stair box, a tank, picked by a seed. */
 function roofGear(u0: number, v0: number, u1: number, v1: number, z: number, seed: number, simple: boolean): Part[] {
@@ -146,7 +147,7 @@ function roofGear(u0: number, v0: number, u1: number, v1: number, z: number, see
 /** A roof stair house. */
 const bx2 = (u: number, v: number, z: number): Part[] => [bx(u, v, u + 2.4, v + 2, z, 1.8, 'sup', { tone: 0.1 }), bx(u + 0.4, v + 2, u + 1.4, v + 2.14, z, 1.2, 'black', { tone: 0.5 })];
 /** A tree: a round crown with a lighter top, in the muted greens. */
-const tree = (u: number, v: number, r: number, seed = 0): Part[] => [
+export const tree = (u: number, v: number, r: number, seed = 0): Part[] => [
   el(u, v, r, r * 0.92, 0.5, 2.4, hash(seed, 3) > 0.5 ? 'camo' : 'olive', { sh: 'dome', tone: 0.3 }),
   el(u - r * 0.25, v - r * 0.25, r * 0.5, r * 0.45, 2.9, 0.8, 'olive', { sh: 'dome', tone: 0.7 }),
 ];
@@ -166,7 +167,7 @@ function ptsT(u0: number, v0: number, u1: number, v1: number, sw: number, bd: nu
   return [u0 + m, v0 + m, u1 - m, v0 + m, u1 - m, v0 + bd - m, um + sw / 2 - m, v0 + bd - m, um + sw / 2 - m, v1 - m, um - sw / 2 + m, v1 - m, um - sw / 2 + m, v0 + bd - m, u0 + m, v0 + bd - m];
 }
 /** A house: walls and a gable or hip roof, with a chimney. */
-function house(u0: number, v0: number, u1: number, v1: number, z: number, roofM: Mat, wall: Mat = 'cream', o: { hip?: boolean; chim?: number; metal?: boolean } = {}): Part[] {
+export function house(u0: number, v0: number, u1: number, v1: number, z: number, roofM: Mat, wall: Mat = 'cream', o: { hip?: boolean; chim?: number; metal?: boolean } = {}): Part[] {
   const P: Part[] = [bx(u0, v0, u1, v1, 0, z, wall, { tone: -0.4 })];
   const rh = Math.min(2, Math.max(1.2, Math.min(u1 - u0, v1 - v0) * 0.3));
   P.push(...(o.hip ? hip(u0, v0, u1, v1, z, roofM, { rh, metal: o.metal }) : gable(u0, v0, u1, v1, z, roofM, { rh, metal: o.metal })));
@@ -199,11 +200,11 @@ function houseT(u0: number, v0: number, u1: number, v1: number, z: number, roofM
   ];
 }
 /** A flag: a pole standing up and a small flag in the owner's colour. */
-function flag(u: number, v: number, z: number, h: number, w = 3.2): Part[] {
+export function flag(u: number, v: number, z: number, h: number, w = 3.2): Part[] {
   return [el(u, v, 0.3, 0.3, z, h, 'gun', { sh: 'cyl', tone: 1 }), bx(u + 0.3, v - 0.5, u + 0.3 + w, v + 1.0, z + h - 1.5, 1.4, 'own')];
 }
 /** A thin band of the owner's colour lying on a roof or wall top. */
-const band = (u0: number, v0: number, u1: number, v1: number, z: number): Part => bx(u0, v0, u1, v1, z, 0.35, 'own');
+export const band = (u0: number, v0: number, u1: number, v1: number, z: number): Part => bx(u0, v0, u1, v1, z, 0.35, 'own');
 /** A round tower: a stone drum with a crenellated ring and a stepped conical slate cap. */
 function tower(u: number, v: number, r: number, z: number, cap: Mat = 'rust'): Part[] {
   return [
@@ -232,7 +233,7 @@ function hedgehog(u: number, v: number): Part[] {
  * A gun barrel: a near-black round tube with a thin light stripe along its lit (upper left) side, so it reads on any
  * ground. From (u0, v0) to (u1, v1), `w` wide, standing at height z.
  */
-function barrel(u0: number, v0: number, u1: number, v1: number, w: number, z: number): Part[] {
+export function barrel(u0: number, v0: number, u1: number, v1: number, w: number, z: number): Part[] {
   const du = u1 - u0;
   const dv = v1 - v0;
   const L = Math.hypot(du, dv) || 1;
@@ -246,7 +247,7 @@ function barrel(u0: number, v0: number, u1: number, v1: number, w: number, z: nu
   return [seg(u0, v0, u1, v1, w, z, w * 0.9, 'black', { sh: 'cyl', tone: 0.3 }), seg(u0 + nu * o, v0 + nv * o, u1 + nu * o, v1 + nv * o, w * 0.32, z + w * 0.9, 0.25, 'alu', { tone: 0.7 })];
 }
 /** A round sandbag emplacement: a ring of pale sandbags round a pit of trodden earth (z is the height it stands at). */
-function sandRing(u: number, v: number, ru: number, rv: number, z: number, simple: boolean): Part[] {
+export function sandRing(u: number, v: number, ru: number, rv: number, z: number, simple: boolean): Part[] {
   const P: Part[] = [el(u, v, ru, rv, z, 0, 'tan', { inset: true, tone: -1.2 })];
   const n = Math.max(9, Math.round((Math.PI * (ru + rv)) / (simple ? 2.1 : 1.8)));
   for (let i = 0; i < n; i++) {
@@ -745,7 +746,7 @@ function revetment(u0: number, v0: number, u1: number, v1: number): Part[] {
   return P;
 }
 /** The parts moved by (du, dv). */
-function moved(parts: readonly Part[], du: number, dv: number): Part[] {
+export function moved(parts: readonly Part[], du: number, dv: number): Part[] {
   return parts.map((p) => {
     const q = p.p.map((x, i) => (p.k === 'ell' ? (i === 0 ? x + du : i === 1 ? x + dv : x) : p.k === 'seg' ? (i < 4 ? x + (i % 2 ? dv : du) : x) : x + (i % 2 ? dv : du)));
     return { ...p, p: q, sc: p.sc && ([p.sc[0] + du, p.sc[1] + dv, p.sc[2], p.sc[3]] as const) };
@@ -1031,6 +1032,8 @@ function modelOf(spec: BuildingSpec, simple: boolean): Part[] {
       return samModel(spec.level, spec.addon, simple);
     case 'port':
       return portModel(spec.level, spec.addon, simple);
+    default:
+      return moreModel(spec.type, spec.level, simple);
   }
 }
 
@@ -1081,7 +1084,7 @@ function inFoot(p: Part, u: number, v: number): boolean {
     }
   }
 }
-function footBox(p: Part): [number, number, number, number] {
+export function footBox(p: Part): [number, number, number, number] {
   const q = p.p;
   switch (p.k) {
     case 'box':
@@ -1109,7 +1112,7 @@ function footBox(p: Part): [number, number, number, number] {
 }
 
 /** The painted ground of a cell: soft dithered overlays whose colours are derived from the terrain colour under them. */
-class Ground {
+export class Ground {
   readonly d: Uint8ClampedArray;
   /** far look: coverage becomes a smooth alpha (no dither steps) so the patch fades into the terrain */
   smooth = false;
@@ -1314,6 +1317,10 @@ class Ground {
 
 function groundOf(g: Ground, spec: BuildingSpec): void {
   const lv = spec.level;
+  if (isMoreType(spec.type)) {
+    moreGround(g, spec.type, lv, false);
+    return;
+  }
   switch (spec.type) {
     case 'fort': {
       const w = lv >= 5 ? 36 : lv >= 3 ? 30 : 24;
@@ -1528,6 +1535,7 @@ const FAR_SHADOW_A = 0.6;
 /** Simplified shapes for far zoom: big masses, no windows, merlons, gear, piles or trees. */
 function farModel(spec: BuildingSpec): Part[] {
   const lv = spec.level;
+  if (isMoreType(spec.type)) return moreModel(spec.type, lv, true);
   const P: Part[] = [];
   switch (spec.type) {
     case 'fort': {
@@ -1625,11 +1633,17 @@ function addonParts(spec: BuildingSpec, simple: boolean): Part[] {
       return samAddon(spec.level, spec.addon, simple);
     case 'port':
       return portAddon(spec.level, spec.addon, simple);
+    default:
+      return [];
   }
 }
 /** The ground of a far-zoom building: one wide soft dark patch and a lighter one that fade into the terrain. */
 function groundFar(g: Ground, spec: BuildingSpec): void {
   const lv = spec.level;
+  if (isMoreType(spec.type)) {
+    moreGround(g, spec.type, lv, true);
+    return;
+  }
   switch (spec.type) {
     case 'fort': {
       const w = lv >= 5 ? 36 : lv >= 3 ? 30 : 24;
