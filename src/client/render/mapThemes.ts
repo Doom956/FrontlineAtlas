@@ -125,11 +125,11 @@ export const THEME_DEFS: Record<string, MapThemeDef> = {
       crop: ramp('#62b052', '#79c265', '#91d27b', '#abe194'),
       soil: ramp('#a68f74', '#baa488', '#ccb99e', '#ddcdb3'),
       pool: ramp('#62bfe9', '#7bcdf0', '#95d9f4', '#b1e5f8'),
-      sea: [hx('#a6e0f7'), hx('#86d0f2'), hx('#68bdec'), hx('#50abe5'), hx('#409ddf')],
+      sea: [hx('#c4ecfb'), hx('#9cdaf5'), hx('#7cc8f0'), hx('#5fb6ea'), hx('#4aa7e4')],
       foam: ramp('#c6ebfa', '#ddf4fc', '#eefaff', '#ffffff'),
     },
     flat: [
-      [64, 157, 223], // open sea: bright cerulean
+      [74, 167, 228], // open sea: bright cerulean
       [134, 208, 242], // shelf: pale sky blue
       [118, 202, 104], // plains: lush bright green
       [50, 152, 92], // forest

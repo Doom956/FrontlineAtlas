@@ -2479,9 +2479,9 @@
   "id": "driftisles",
   "name": "The Drifting Isles",
   "description": "A fictional sea of floating isles: one great horseshoe island round an inner bay, with crescents, long ridges, terraced plateaus and curving chains of islets split by narrow straits. Fleets and aircraft rule.",
-  "width": 1477,
-  "height": 945,
-  "landTiles": 450160,
+  "width": 1496,
+  "height": 957,
+  "landTiles": 450311,
   "recommendedNations": 5,
   "recommendedTribes": 115,
   "presets": {
@@ -2497,43 +2497,43 @@
   "spawns": [
    {
     "name": "Veyra",
-    "tile": 632768
+    "tile": 648388
    },
    {
     "name": "Thessaly",
-    "tile": 248233
+    "tile": 309770
    },
    {
     "name": "Pellor",
-    "tile": 650952
+    "tile": 666806
    },
    {
     "name": "Imbria",
-    "tile": 1165057
+    "tile": 1195004
    },
    {
     "name": "Norwick",
-    "tile": 1146299
+    "tile": 1198466
    },
    {
     "name": "Orsund",
-    "tile": 689153
+    "tile": 706994
    },
    {
     "name": "Kelmar",
-    "tile": 304978
+    "tile": 313389
    },
    {
     "name": "Ravenne",
-    "tile": 762462
+    "tile": 782743
    },
    {
     "name": "Dravik",
-    "tile": 267135
+    "tile": 273564
    },
    {
     "name": "Sunnach",
-    "tile": 1055248
+    "tile": 1052471
    }
   ],
   "theme": "skyisles"

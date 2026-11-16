@@ -1,8 +1,8 @@
 // "The Drifting Isles": a hand-drawn fictional map of islands adrift in a sky-blue sea. In the middle lies one great
 // horseshoe island whose two arms curl round a round inner bay opening south; round it, across narrow straits, lie a
 // long curved ridge to the north, a terraced plateau isle to the west, a bent ridge to the east, a long crescent in the
-// northwest, a stepped plateau in the northeast, a fjord isle in the southeast, a cluster of isles in the southwest and
-// a low isle off the bay mouth, with curving chains of islets between them. Fleets and aircraft decide the war. Drawn
+// northwest, a stepped plateau in the northeast, a fjord isle in the southeast, a hooked cluster of isles in the southwest and
+// a long low ridge off the bay mouth, with curving chains of islets between them. Fleets and aircraft decide the war. Drawn
 // for this project by hand, point by point (see drawn/kit.ts).
 import type { DrawnMap, Pt } from './kit';
 import { blob, dense, fractal, islandChain, makePlane, path, rngFor, smoothClosed } from './kit';
@@ -53,32 +53,32 @@ add(isle(CENTRAL.map(([x, y]) => cen(x, y)), 501, 0.32, 2));
 add(isle([[-13.5, 15.4], [-11, 17.6], [-6.5, 19.2], [-1, 20], [4.5, 19.9], [9.5, 19], [13.2, 17.6], [14.5, 15.8], [12.6, 14.8], [8.5, 15.9], [4, 16.6], [-1, 16.6], [-5.5, 16], [-9.8, 14.6]], 502));
 // the northwest crescent: a long thin arc, its hollow facing the centre
 add(isle([
-  [-21.5, 27.8], [-26, 29.4], [-31.5, 29.6], [-36.5, 28.6], [-41, 26], [-44.6, 22.3], [-46.8, 17.6], [-47.6, 12.6], [-47, 8], [-45.6, 4.6],
-  [-43.6, 5.2], [-42.9, 8.6], [-42.4, 12.6], [-41, 17], [-38.4, 20.8], [-34.6, 23.8], [-30, 25.4], [-25.6, 25.6], [-22.4, 25.6],
+  [-21.5, 25.3], [-26, 26.9], [-31.5, 27.1], [-36.5, 26.1], [-41, 23.5], [-44.6, 19.8], [-46.8, 15.1], [-47.6, 10.1], [-47, 5.5], [-45.6, 2.1],
+  [-43.6, 2.7], [-42.9, 6.1], [-42.4, 10.1], [-41, 14.5], [-38.4, 18.3], [-34.6, 21.3], [-30, 22.9], [-25.6, 23.1], [-22.4, 23.1],
 ], 503));
-// the west plateau: a squat terraced isle with stepped lobes
-add(isle([[-30.4, 3], [-28.6, 5.8], [-26.4, 5.4], [-25.2, 3.4], [-23.6, 5.8], [-20.8, 5.2], [-18.8, 3], [-18.4, -0.2], [-20.4, -2], [-18.6, -4.4], [-19.4, -7.4], [-22.4, -7.8], [-24.4, -6], [-26.2, -8.6], [-29.6, -7.8], [-31.6, -5], [-30, -2.6], [-31.8, -0.4]], 504));
+// the west plateau: a stepped terrace isle curled round a cove that opens east
+add(isle([[-31, 6], [-27, 7], [-23.5, 6.2], [-19.5, 5.6], [-18.2, 3.4], [-20.4, 2], [-23.6, 1.8], [-24.6, -0.6], [-22.4, -3], [-20.6, -6], [-21.8, -8.6], [-25, -8.2], [-27.6, -5.6], [-29.4, -2.4], [-31.4, 0.4], [-32.2, 3.6]], 504));
 // the east ridge: a long bent ridge running north to south, hollow toward the centre
 add(isle([[18.4, 9.4], [21, 10.4], [23.2, 8.4], [24.6, 4.4], [25.6, 0.2], [26.4, -3.8], [27.8, -7.8], [29.6, -11.2], [28.6, -14.6], [25.8, -13.8], [23.6, -10.2], [22, -6.2], [20.8, -2.2], [19.4, 1.8], [18, 5.6]], 505));
 // the northeast plateau: the largest outer isle, stepped like terraces, with a bight on its south shore
 add(isle([
-  [20.4, 20.4], [22.2, 24.6], [26, 27], [30.6, 27.8], [34.6, 26.4], [38, 27.6], [42, 26.2], [44.6, 22.6], [44, 18.6], [46.2, 15.4], [44.2, 12.4],
+  [20.4, 20.4], [22.2, 24.6], [26, 27], [30, 27.4], [32.2, 24.8], [34.6, 27], [38, 27.6], [42, 26.2], [44.6, 22.6], [44, 18.6], [46.2, 15.4], [44.2, 12.4],
   [40.4, 11.8], [37.4, 13.8], [35.6, 16.4], [33.4, 13.4], [30, 12.6], [26.8, 11.4], [23, 13.2], [21, 16.4],
 ], 506));
 // the east crescent: a small arc facing the east ridge
 add(isle([[36, 6.4], [38.6, 8], [41.2, 6.2], [42.4, 1.8], [42.2, -3.2], [40.6, -7.6], [38, -10.4], [35.4, -10.8], [36.8, -7.2], [38.4, -3.2], [38.6, 1], [37.6, 4]], 507));
 // the south isle, off the mouth of the inner bay
-add(isle([[-13.2, -15], [-9, -13.8], [-4.2, -14.2], [0, -13.6], [4, -14.6], [6.6, -16.6], [5, -19.2], [1, -19.6], [-3, -18.6], [-7, -19.8], [-11, -19.2], [-13.8, -17.2]], 508));
+add(isle([[-14.6, -13.6], [-11.4, -13], [-8, -14.2], [-4.6, -13.4], [-0.8, -13.8], [2.8, -13.2], [6.2, -14.2], [8, -16.2], [6.4, -17.4], [3, -16.6], [-0.4, -17.4], [-3.6, -19.4], [-7.2, -18.8], [-9.8, -17], [-12.4, -17.6], [-14.6, -19.6], [-16.2, -18.4], [-15.6, -16]], 508));
 // the southeast fjord isle: a deep narrow inlet bites in from the north
 add(isle([
   [13, -19], [16, -16.6], [19.8, -16.8], [21.8, -18.2], [22.6, -21.2], [23.2, -25], [24.2, -25.2], [24.6, -21.2], [25.8, -18.4], [29, -17.4], [33, -18.4], [37, -17.4],
   [40.2, -19.4], [41.2, -23], [39.2, -26.6], [35, -28.6], [30, -27.4], [26, -29.6], [21, -29.2], [17, -27], [13.6, -24.6], [12, -21.6],
 ], 509));
 // the southwest cluster: one main isle and four smaller ones split by narrow channels
-add(isle([[-43, -15.8], [-40, -14.4], [-36, -15], [-33.2, -16.6], [-32.6, -19.6], [-34, -22.6], [-37.6, -23.6], [-41, -23], [-44, -21], [-44.8, -18.4]], 510));
+add(isle([[-45, -13.6], [-42.4, -12.8], [-40.6, -14.6], [-41.2, -17.4], [-39.2, -19.6], [-36, -20.2], [-33, -18.8], [-31.6, -20.6], [-33.4, -23.4], [-37.4, -24.4], [-41.4, -23.6], [-44.6, -21.2], [-46.4, -17.6]], 510));
 add(isle([[-30.2, -12.8], [-27.6, -12.4], [-25.8, -14.6], [-26.4, -18], [-28.4, -19.4], [-29.8, -16.4]], 511));
-add(isle([[-33.2, -25.6], [-29.2, -24.8], [-26.4, -26.4], [-27.4, -29.2], [-31, -29.8], [-34.2, -28.2]], 512));
-add(isle([[-47.2, -25], [-44, -25.6], [-42.8, -28], [-46, -29.6], [-48, -28]], 513));
+add(isle([[-34.6, -26.4], [-31.4, -25], [-28, -25.2], [-25.2, -26.6], [-25.8, -27.8], [-28.6, -27.2], [-31.8, -27.6], [-34.4, -28.6]], 512));
+add(isle([[-48, -24.6], [-45.6, -25.4], [-43.2, -27.6], [-43.6, -29.4], [-45, -28.2], [-46.8, -27.4], [-48.4, -27.2]], 513));
 add(isle([[-38.6, -26.4], [-36.4, -26], [-36, -28.4], [-38.4, -29.2]], 514));
 // a small round isle inside the inner bay, and one off the east arm's tip
 add(isle([[1.2, -4], [2.8, -3.6], [3.8, -4.8], [3.2, -6.4], [1.4, -6.6], [0.6, -5.2]], 515, 0.2, 0.6));
@@ -95,7 +95,7 @@ chain([[-17, 23.6], [-8, 26.4], [2, 27.6], [12, 26.2], [17, 23.2]], 8, 0.6, 1.3)
 chain([[-21, -23.6], [-12, -25.6], [-2, -26.4], [8, -24.2]], 7, 0.6, 1.3); // the south arc
 chain([[31.4, 9.4], [32.6, 2], [32.4, -5], [33.2, -12]], 5, 0.55, 1.1); // between the east ridge and the east crescent
 chain([[45.2, 9], [47, 2], [46.6, -6], [45, -12]], 4, 0.6, 1.2); // off the east crescent
-chain([[-39.4, 3.2], [-37, -1.6], [-35.4, -6.4], [-36.4, -10.4]], 5, 0.6, 1.3); // inside the northwest crescent
+chain([[-39.4, 1.4], [-37, -2.6], [-35.6, -6.8], [-36.4, -10.4]], 5, 0.6, 1.3); // inside the northwest crescent
 chain([[-22, -10.6], [-18.4, -13.6], [-16.8, -17.4]], 3, 0.5, 1.0); // toward the south isle
 chain([[42.6, -31], [46.6, -26], [47.6, -19]], 4, 0.6, 1.2); // the far southeast
 chain([[45.6, 31], [48, 26.6]], 2, 0.6, 1.0); // the far northeast
@@ -130,15 +130,15 @@ reg('North ridge spine', 'mountains', 4, 18.1, 4, 0.9, 0.05, 0.85);
 reg('North ridge hills', 'hills', 2, 17.8, 8, 1.6, 0.05);
 oil('North ridge dunes', 'desert', -9.5, 16.4, 2.2, 1.1, 0.25);
 // the northwest crescent
-reg('Crescent spine', 'mountains', -38.6, 25.4, 3, 0.9, -0.55, 0.85);
-reg('Crescent hills', 'hills', -40.6, 23, 5, 1.6, -0.75);
-reg('Crescent south hills', 'hills', -45, 10, 1.2, 3.2);
-oil('Crescent dunes', 'desert', -45.3, 15, 1.3, 2);
-oil('Crescent fen', 'swamp', -27, 27.2, 2.4, 1.1);
+reg('Crescent spine', 'mountains', -38.6, 22.9, 3, 0.9, -0.55, 0.85);
+reg('Crescent hills', 'hills', -40.6, 20.5, 5, 1.6, -0.75);
+reg('Crescent south hills', 'hills', -45, 7.5, 1.2, 3.2);
+oil('Crescent dunes', 'desert', -45.3, 12.5, 1.3, 2);
+oil('Crescent fen', 'swamp', -27, 24.7, 2.4, 1.1);
 // the west plateau
-reg('West terraces', 'hills', -24.6, -1, 4.6, 4);
-reg('West peaks', 'mountains', -25, 0.2, 2.2, 1.6, 0, 0.85);
-oil('West plateau dunes', 'desert', -21, -5.4, 1.8, 1.2);
+reg('West terraces', 'hills', -26.4, 0.4, 4.4, 4.6);
+reg('West peaks', 'mountains', -27.4, 2.6, 2.2, 1.6, 0, 0.85);
+oil('West plateau dunes', 'desert', -22.4, -6, 1.6, 1.4);
 // the east ridge
 reg('East ridge spine', 'mountains', 25.4, -4.6, 0.8, 3.4, 0.25, 0.85);
 reg('East ridge hills', 'hills', 23.6, -1, 1.6, 6, 0.3);
@@ -153,20 +153,20 @@ oil('Northeast fen', 'swamp', 25, 15, 2, 1.2);
 reg('East crescent hills', 'hills', 40.6, -1.4, 1.2, 4, 0.1);
 oil('East crescent dunes', 'desert', 39.6, 5.6, 1.4, 1);
 // the south isle
-reg('South isle hills', 'hills', 0.4, -16.6, 4, 1.5);
-reg('South isle crags', 'mountains', 1.2, -16.8, 1.6, 0.8, 0, 0.82);
-oil('South isle dunes', 'desert', -10.4, -16.8, 2, 1.2);
+reg('South isle hills', 'hills', -2.6, -16, 4.4, 1.6);
+reg('South isle crags', 'mountains', -3.4, -16.6, 1.6, 0.8, 0, 0.82);
+oil('South isle dunes', 'desert', -12.4, -15.6, 1.8, 1.2);
 // the southeast fjord isle
 reg('Fjord highlands', 'hills', 33, -22.6, 6, 3.2);
 reg('Fjord peaks', 'mountains', 35.6, -22.4, 2.8, 1.6, 0, 0.86);
 oil('Fjord dunes', 'desert', 17.4, -24.2, 2.6, 1.8);
 oil('Fjord fen', 'swamp', 27.4, -26.6, 1.8, 1.1);
 // the southwest cluster
-reg('Southwest hills', 'hills', -38.4, -18, 4, 2.6);
-reg('Southwest crags', 'mountains', -39.4, -17.2, 1.8, 1.2, 0, 0.82);
-oil('Southwest dunes', 'desert', -35.4, -21.4, 1.8, 1.2);
+reg('Southwest hills', 'hills', -40, -20.8, 4.4, 2.2);
+reg('Southwest crags', 'mountains', -43.6, -17, 1.8, 1.2, 0, 0.82);
+oil('Southwest dunes', 'desert', -34.6, -21.6, 1.8, 1.2);
 reg('Channel isle hills', 'hills', -28.2, -15.4, 1.2, 2.2);
-oil('Channel isle dunes', 'desert', -30.6, -27.2, 2, 1.2);
+oil('Channel isle dunes', 'desert', -30.2, -26.3, 2.4, 0.9);
 
 export const DRIFTISLES: DrawnMap = {
   land: land.map((p) => pl.ring(p)),
@@ -182,11 +182,11 @@ export const DRIFTISLES_SPAWNS: SpawnDef[] = [
   sp('Veyra', -8.5, 3, true),
   sp('Orsund', 9, 0.4, true),
   sp('Kelmar', -1.5, 18),
-  sp('Thessaly', -43.4, 20.6),
+  sp('Thessaly', -43.4, 18.1),
   sp('Ravenne', -27.6, -3),
   sp('Pellor', 22.6, 2.2),
   sp('Dravik', 36.4, 19.8),
-  sp('Sunnach', -4.6, -16.4),
+  sp('Sunnach', 2.4, -15),
   sp('Imbria', 30, -21.4),
-  sp('Norwick', -40, -20.6),
+  sp('Norwick', -38.6, -21.6),
 ];
