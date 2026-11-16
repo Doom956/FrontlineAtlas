@@ -2274,72 +2274,72 @@
  {
   "id": "ringlands",
   "name": "The Ringlands",
-  "description": "A fictional land: three mountain walls round a small core, with gates in each wall, and a wide wild country outside.",
-  "width": 1344,
-  "height": 924,
-  "landTiles": 700017,
+  "description": "A fictional island: three round walls in its heart, each with four gate districts, snowy mountains in the north and wild country to every coast.",
+  "width": 1116,
+  "height": 1529,
+  "landTiles": 650166,
   "recommendedNations": 5,
-  "recommendedTribes": 175,
+  "recommendedTribes": 165,
   "presets": {
    "singlePlayer": {
     "nations": 5,
-    "tribes": 175
+    "tribes": 165
    },
    "multiplayer": {
     "nations": 10,
-    "tribes": 80
+    "tribes": 70
    }
   },
   "spawns": [
    {
     "name": "Aldmere",
-    "tile": 621516
-   },
-   {
-    "name": "Kestrelmoor",
-    "tile": 508956
-   },
-   {
-    "name": "Norvane",
-    "tile": 395430
-   },
-   {
-    "name": "Ilmarsh",
-    "tile": 726515
-   },
-   {
-    "name": "Orlith",
-    "tile": 1030050
-   },
-   {
-    "name": "Dunmarrow",
-    "tile": 420020
-   },
-   {
-    "name": "Halvard",
-    "tile": 852621
-   },
-   {
-    "name": "Brannoch",
-    "tile": 644262
-   },
-   {
-    "name": "Corvane",
-    "tile": 644464
+    "tile": 836442
    },
    {
     "name": "Eskerin",
-    "tile": 446666
+    "tile": 475803
+   },
+   {
+    "name": "Halvard",
+    "tile": 504045
+   },
+   {
+    "name": "Norvane",
+    "tile": 1224732
+   },
+   {
+    "name": "Kestrelmoor",
+    "tile": 976221
+   },
+   {
+    "name": "Ilmarsh",
+    "tile": 947840
+   },
+   {
+    "name": "Orlith",
+    "tile": 1392427
+   },
+   {
+    "name": "Brannoch",
+    "tile": 790644
+   },
+   {
+    "name": "Corvane",
+    "tile": 761737
+   },
+   {
+    "name": "Dunmarrow",
+    "tile": 912262
    }
   ]
  },
  {
   "id": "sundered",
   "name": "The Sundered Sea",
-  "description": "A fictional world: a strong walled island across a strait from a vast mainland of many nations, with a great desert and long ranges.",
-  "width": 1785,
-  "height": 930,
-  "landTiles": 900013,
+  "description": "An upside-down world: a walled island lies across a wide channel from a vast mainland of many nations, its great desert along the south and its far cape in the north.",
+  "width": 1424,
+  "height": 1355,
+  "landTiles": 900216,
   "recommendedNations": 5,
   "recommendedTribes": 225,
   "presets": {
@@ -2355,515 +2355,51 @@
   "spawns": [
    {
     "name": "Taruvan",
-    "tile": 828481
-   },
-   {
-    "name": "Vashti",
-    "tile": 265519
-   },
-   {
-    "name": "Ulvane",
-    "tile": 1493450
-   },
-   {
-    "name": "Zephren",
-    "tile": 929669
-   },
-   {
-    "name": "Brenmar",
-    "tile": 364921
+    "tile": 469702
    },
    {
     "name": "Khoril",
-    "tile": 165298
+    "tile": 1607157
    },
    {
-    "name": "Oskaren",
-    "tile": 431821
+    "name": "Ulvane",
+    "tile": 247168
    },
    {
-    "name": "Marlowe",
-    "tile": 1128956
+    "name": "Brenmar",
+    "tile": 1780382
    },
    {
     "name": "Dorrin",
-    "tile": 565175
+    "tile": 1260483
+   },
+   {
+    "name": "Oskaren",
+    "tile": 1163000
+   },
+   {
+    "name": "Vashti",
+    "tile": 1546168
+   },
+   {
+    "name": "Zephren",
+    "tile": 1136820
+   },
+   {
+    "name": "Marlowe",
+    "tile": 890729
    },
    {
     "name": "Tyrnak",
-    "tile": 1395758
+    "tile": 816907
    },
    {
     "name": "Calvern",
-    "tile": 497643
+    "tile": 593078
    },
    {
     "name": "Selvane",
-    "tile": 680311
-   }
-  ]
- },
- {
-  "id": "fourseas",
-  "name": "The Sundering Wall",
-  "description": "A fictional world: one towering mountain wall runs the whole height of the map, and a belt of islands crosses it, cutting four seas, each with islands to settle.",
-  "width": 1847,
-  "height": 1172,
-  "landTiles": 599927,
-  "recommendedNations": 5,
-  "recommendedTribes": 150,
-  "presets": {
-   "singlePlayer": {
-    "nations": 5,
-    "tribes": 150
-   },
-   "multiplayer": {
-    "nations": 10,
-    "tribes": 65
-   }
-  },
-  "spawns": [
-   {
-    "name": "Aldmere",
-    "tile": 425271
-   },
-   {
-    "name": "Caldrin",
-    "tile": 426195
-   },
-   {
-    "name": "Eskeld",
-    "tile": 1738488
-   },
-   {
-    "name": "Garrowe",
-    "tile": 1739412
-   },
-   {
-    "name": "Brisk",
-    "tile": 687297
-   },
-   {
-    "name": "Dunmark",
-    "tile": 688717
-   },
-   {
-    "name": "Fenhollow",
-    "tile": 1475966
-   },
-   {
-    "name": "Harrowick",
-    "tile": 1477386
-   },
-   {
-    "name": "Isenvar",
-    "tile": 1071526
-   },
-   {
-    "name": "Jorlund",
-    "tile": 1093157
-   }
-  ]
- },
- {
-  "id": "driftisles",
-  "name": "The Drifting Isles",
-  "description": "A fictional sea of islands: one great central island, a ring of medium islands and chains of islets split by narrow straits. Fleets and aircraft rule.",
-  "width": 1677,
-  "height": 1073,
-  "landTiles": 450497,
-  "recommendedNations": 5,
-  "recommendedTribes": 115,
-  "presets": {
-   "singlePlayer": {
-    "nations": 5,
-    "tribes": 115
-   },
-   "multiplayer": {
-    "nations": 10,
-    "tribes": 50
-   }
-  },
-  "spawns": [
-   {
-    "name": "Veyra",
-    "tile": 844285
-   },
-   {
-    "name": "Kelmar",
-    "tile": 871570
-   },
-   {
-    "name": "Thessaly",
-    "tile": 927850
-   },
-   {
-    "name": "Orsund",
-    "tile": 983661
-   },
-   {
-    "name": "Ravenne",
-    "tile": 406705
-   },
-   {
-    "name": "Pellor",
-    "tile": 1394391
-   },
-   {
-    "name": "Dravik",
-    "tile": 422184
-   },
-   {
-    "name": "Sunnach",
-    "tile": 431412
-   },
-   {
-    "name": "Imbria",
-    "tile": 1364658
-   },
-   {
-    "name": "Norwick",
-    "tile": 1360451
-   }
-  ]
- },
- {
-  "id": "japan",
-  "name": "Japan",
-  "description": "The Japanese home islands from Hokkaido to Kyushu, with the south coast of Korea and Sakhalin, Lambert conformal conic.",
-  "width": 1521,
-  "height": 1304,
-  "landTiles": 599518,
-  "recommendedNations": 5,
-  "recommendedTribes": 150,
-  "presets": {
-   "singlePlayer": {
-    "nations": 5,
-    "tribes": 150
-   },
-   "multiplayer": {
-    "nations": 10,
-    "tribes": 65
-   }
-  },
-  "spawns": [
-   {
-    "name": "Kanto",
-    "tile": 1319735
-   },
-   {
-    "name": "Korea",
-    "tile": 1358616
-   },
-   {
-    "name": "Hokkaido",
-    "tile": 461963
-   },
-   {
-    "name": "Kansai",
-    "tile": 1438110
-   },
-   {
-    "name": "Tohoku",
-    "tile": 1017119
-   },
-   {
-    "name": "Chugoku",
-    "tile": 1463775
-   },
-   {
-    "name": "Satsuma",
-    "tile": 1776968
-   },
-   {
-    "name": "Kyushu",
-    "tile": 1542735
-   },
-   {
-    "name": "Honam",
-    "tile": 1331109
-   },
-   {
-    "name": "Hokuriku",
-    "tile": 1223721
-   },
-   {
-    "name": "Aomori",
-    "tile": 725068
-   },
-   {
-    "name": "Kushiro",
-    "tile": 457569
-   },
-   {
-    "name": "Chubu",
-    "tile": 1384963
-   },
-   {
-    "name": "Nagasaki",
-    "tile": 1635479
-   },
-   {
-    "name": "San-in",
-    "tile": 1342138
-   },
-   {
-    "name": "Shikoku",
-    "tile": 1527675
-   }
-  ]
- },
- {
-  "id": "caribbean",
-  "name": "Caribbean",
-  "description": "The Greater and Lesser Antilles, the Yucatan, Florida and the Spanish Main, equirectangular.",
-  "width": 2370,
-  "height": 1548,
-  "landTiles": 698540,
-  "recommendedNations": 5,
-  "recommendedTribes": 175,
-  "presets": {
-   "singlePlayer": {
-    "nations": 5,
-    "tribes": 175
-   },
-   "multiplayer": {
-    "nations": 10,
-    "tribes": 80
-   }
-  },
-  "spawns": [
-   {
-    "name": "Venezuela",
-    "tile": 3127748
-   },
-   {
-    "name": "Florida",
-    "tile": 7723
-   },
-   {
-    "name": "Panama",
-    "tile": 3406513
-   },
-   {
-    "name": "Puerto Rico",
-    "tile": 1712926
-   },
-   {
-    "name": "Yucatan",
-    "tile": 1258569
-   },
-   {
-    "name": "Jamaica",
-    "tile": 1780888
-   },
-   {
-    "name": "Colombia",
-    "tile": 3048983
-   },
-   {
-    "name": "Cuba",
-    "tile": 1000932
-   },
-   {
-    "name": "Costa Rica",
-    "tile": 3233177
-   },
-   {
-    "name": "Hispaniola",
-    "tile": 1705543
-   },
-   {
-    "name": "Honduras",
-    "tile": 2486401
-   },
-   {
-    "name": "Trinidad",
-    "tile": 3104447
-   },
-   {
-    "name": "Haiti",
-    "tile": 1693520
-   },
-   {
-    "name": "Nicaragua",
-    "tile": 2844330
-   },
-   {
-    "name": "Oriente",
-    "tile": 1427830
-   },
-   {
-    "name": "Belize",
-    "tile": 1922230
-   }
-  ]
- },
- {
-  "id": "indonesia",
-  "name": "Indonesia",
-  "description": "The Indonesian archipelago from Sumatra to New Guinea, with Malaya, Borneo and the southern Philippines, equirectangular.",
-  "width": 2600,
-  "height": 1056,
-  "landTiles": 576410,
-  "recommendedNations": 5,
-  "recommendedTribes": 145,
-  "presets": {
-   "singlePlayer": {
-    "nations": 5,
-    "tribes": 145
-   },
-   "multiplayer": {
-    "nations": 10,
-    "tribes": 65
-   }
-  },
-  "spawns": [
-   {
-    "name": "Java",
-    "tile": 1994894
-   },
-   {
-    "name": "Papua",
-    "tile": 1484529
-   },
-   {
-    "name": "Sumatra",
-    "tile": 621651
-   },
-   {
-    "name": "Sulawesi",
-    "tile": 1849977
-   },
-   {
-    "name": "Mindanao",
-    "tile": 126513
-   },
-   {
-    "name": "East Java",
-    "tile": 2146015
-   },
-   {
-    "name": "Sarawak",
-    "tile": 910884
-   },
-   {
-    "name": "Sabah",
-    "tile": 284597
-   },
-   {
-    "name": "Timor",
-    "tile": 2560002
-   },
-   {
-    "name": "Vogelkop",
-    "tile": 1247419
-   },
-   {
-    "name": "Malaya",
-    "tile": 684216
-   },
-   {
-    "name": "Kalimantan",
-    "tile": 1301236
-   },
-   {
-    "name": "Palembang",
-    "tile": 1544982
-   },
-   {
-    "name": "Central Java",
-    "tile": 2106889
-   },
-   {
-    "name": "Bali",
-    "tile": 2343749
-   },
-   {
-    "name": "Palu",
-    "tile": 1254599
-   },
-   {
-    "name": "Aceh",
-    "tile": 343271
-   }
-  ]
- },
- {
-  "id": "pacific-islands",
-  "name": "Pacific Islands",
-  "description": "Melanesia and western Micronesia: New Guinea, the Solomons, Vanuatu, New Caledonia, Fiji and the Marianas, equirectangular.",
-  "width": 2600,
-  "height": 1539,
-  "landTiles": 454113,
-  "recommendedNations": 5,
-  "recommendedTribes": 115,
-  "presets": {
-   "singlePlayer": {
-    "nations": 5,
-    "tribes": 115
-   },
-   "multiplayer": {
-    "nations": 10,
-    "tribes": 50
-   }
-  },
-  "spawns": [
-   {
-    "name": "Papua New Guinea",
-    "tile": 1646212
-   },
-   {
-    "name": "Fiji",
-    "tile": 3156296
-   },
-   {
-    "name": "New Caledonia",
-    "tile": 3873096
-   },
-   {
-    "name": "Solomon Islands",
-    "tile": 1641863
-   },
-   {
-    "name": "Vanuatu",
-    "tile": 2697944
-   },
-   {
-    "name": "Bougainville",
-    "tile": 1082570
-   },
-   {
-    "name": "Sepik",
-    "tile": 618975
-   },
-   {
-    "name": "Morobe",
-    "tile": 1170399
-   },
-   {
-    "name": "Vanimo",
-    "tile": 468020
-   },
-   {
-    "name": "New Britain",
-    "tile": 731342
-   },
-   {
-    "name": "Highlands",
-    "tile": 1024605
-   },
-   {
-    "name": "Madang",
-    "tile": 907718
-   },
-   {
-    "name": "Vanua Levu",
-    "tile": 2857358
-   },
-   {
-    "name": "Gulf",
-    "tile": 1378322
+    "tile": 347218
    }
   ]
  }
