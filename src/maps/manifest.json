@@ -2270,5 +2270,71 @@
     "tile": 684676
    }
   ]
+ },
+ {
+  "id": "fourseas",
+  "name": "The Sundering Wall",
+  "description": "A fictional world: one towering continent wall with sprawling lobes runs the whole height of the map, and a belt of islands crosses it at a pass of channels, cutting four seas, each with its own coasts and islands.",
+  "width": 1926,
+  "height": 1219,
+  "landTiles": 800052,
+  "recommendedNations": 5,
+  "recommendedTribes": 200,
+  "presets": {
+   "singlePlayer": {
+    "nations": 5,
+    "tribes": 200
+   },
+   "multiplayer": {
+    "nations": 10,
+    "tribes": 90
+   }
+  },
+  "spawns": [
+   {
+    "name": "Aldmere",
+    "tile": 585981
+   },
+   {
+    "name": "Garrowe",
+    "tile": 1925200
+   },
+   {
+    "name": "Caldrin",
+    "tile": 130413
+   },
+   {
+    "name": "Eskeld",
+    "tile": 1724370
+   },
+   {
+    "name": "Dunmark",
+    "tile": 985145
+   },
+   {
+    "name": "Fenhollow",
+    "tile": 1617926
+   },
+   {
+    "name": "Harrowick",
+    "tile": 1831577
+   },
+   {
+    "name": "Brisk",
+    "tile": 872801
+   },
+   {
+    "name": "Isenvar",
+    "tile": 1317811
+   },
+   {
+    "name": "Jorlund",
+    "tile": 1328300
+   },
+   {
+    "name": "Kelmarsh",
+    "tile": 377048
+   }
+  ]
  }
 ]
