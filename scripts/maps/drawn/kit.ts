@@ -209,6 +209,12 @@ export interface WalledRingsOpts {
   gateWidth: number;
   /** relative radius wobble of the rings (0.02 = nearly circular) */
   wobble?: number;
+  /**
+   * Gate districts: each gate becomes a half-disc of open land bulging OUTWARD from the wall (radius in units), walled
+   * round its rim, with a gap of `gap` units through the main wall into it and an opening of the same width at the
+   * outer end of the rim. Without this option a gate is a plain gap in the wall.
+   */
+  district?: { radius: number; gap: number };
   /** foothill band on each side of a wall, units (hills = iron) */
   foot?: number;
   rng: () => number;
@@ -251,9 +257,40 @@ export function walledRings(o: WalledRingsOpts): WalledRings {
       const a0 = (s / SECTORS) * Math.PI * 2;
       const a1 = ((s + 1) / SECTORS) * Math.PI * 2 + 0.02;
       paint.push({ terrain: 'mountains', poly: band(k, -o.thick / 2, o.thick / 2, a0, a1) });
-      regions.push({ name: `foothills ${k}.${s}`, kind: 'hills', poly: band(k, -foot - o.thick / 2, foot + o.thick / 2, a0, a1) });
+      if (foot > 0) regions.push({ name: `foothills ${k}.${s}`, kind: 'hills', poly: band(k, -foot - o.thick / 2, foot + o.thick / 2, a0, a1) });
     }
-  for (let k = 0; k < o.radii.length; k++)
+  const d = o.district;
+  if (d)
+    for (let k = 0; k < o.radii.length; k++)
+      for (const deg of o.gates[k] ?? []) {
+        const t = (deg * Math.PI) / 180;
+        const ex = Math.cos(t);
+        const ey = Math.sin(t);
+        // the district's base: the middle of the gate on the wall's outer face; local frame e (outward), p (along)
+        const r0 = radiusAt(k, t) + o.thick / 2;
+        const bx = o.cx + ex * r0;
+        const by = o.cy + ey * r0;
+        const L = (along: number, out: number): Pt => [bx + ex * out - ey * along, by + ey * out + ex * along];
+        const arc = (r: number, a0: number, a1: number, n = 24): Pt[] => {
+          const pts: Pt[] = [];
+          for (let i = 0; i <= n; i++) {
+            const a = a0 + ((a1 - a0) * i) / n;
+            pts.push(L(Math.sin(a) * r, Math.cos(a) * r));
+          }
+          return pts;
+        };
+        // the rim reaches back into the wall so the two join without a crack
+        const dip = Math.asin(Math.min(0.9, o.thick / d.radius));
+        const hp = Math.PI / 2;
+        const rim = arc(d.radius, -hp - dip, hp + dip).concat(arc(d.radius - o.thick, hp + dip, -hp - dip));
+        paint.push({ terrain: 'mountains', poly: o.plane.ring(rim) });
+        paint.push({ terrain: 'plains', poly: o.plane.ring(arc(d.radius - o.thick, -hp, hp)) });
+        const g = d.gap / 2;
+        // the gap through the main wall, then the opening at the outer end of the rim
+        paint.push({ terrain: 'plains', poly: o.plane.ring([L(-g, -o.thick * 1.3), L(g, -o.thick * 1.3), L(g, o.thick * 0.3), L(-g, o.thick * 0.3)]) });
+        paint.push({ terrain: 'plains', poly: o.plane.ring([L(-g, d.radius - o.thick * 1.4), L(g, d.radius - o.thick * 1.4), L(g, d.radius + o.thick * 0.4), L(-g, d.radius + o.thick * 0.4)]) });
+      }
+  for (let k = 0; k < o.radii.length && !d; k++)
     for (const deg of o.gates[k] ?? []) {
       const t = (deg * Math.PI) / 180;
       const half = o.gateWidth / 2 / o.radii[k];

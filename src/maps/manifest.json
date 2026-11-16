@@ -2270,5 +2270,137 @@
     "tile": 684676
    }
   ]
+ },
+ {
+  "id": "ringlands",
+  "name": "The Ringlands",
+  "description": "A fictional island: three round walls in its heart, each with four gate districts, snowy mountains in the north and wild country to every coast.",
+  "width": 1116,
+  "height": 1529,
+  "landTiles": 650166,
+  "recommendedNations": 5,
+  "recommendedTribes": 165,
+  "presets": {
+   "singlePlayer": {
+    "nations": 5,
+    "tribes": 165
+   },
+   "multiplayer": {
+    "nations": 10,
+    "tribes": 70
+   }
+  },
+  "spawns": [
+   {
+    "name": "Aldmere",
+    "tile": 836442
+   },
+   {
+    "name": "Eskerin",
+    "tile": 475803
+   },
+   {
+    "name": "Halvard",
+    "tile": 504045
+   },
+   {
+    "name": "Norvane",
+    "tile": 1224732
+   },
+   {
+    "name": "Kestrelmoor",
+    "tile": 976221
+   },
+   {
+    "name": "Ilmarsh",
+    "tile": 947840
+   },
+   {
+    "name": "Orlith",
+    "tile": 1392427
+   },
+   {
+    "name": "Brannoch",
+    "tile": 790644
+   },
+   {
+    "name": "Corvane",
+    "tile": 761737
+   },
+   {
+    "name": "Dunmarrow",
+    "tile": 912262
+   }
+  ]
+ },
+ {
+  "id": "sundered",
+  "name": "The Sundered Sea",
+  "description": "An upside-down world: a walled island lies across a wide channel from a vast mainland of many nations, its great desert along the south and its far cape in the north.",
+  "width": 1424,
+  "height": 1355,
+  "landTiles": 900216,
+  "recommendedNations": 5,
+  "recommendedTribes": 225,
+  "presets": {
+   "singlePlayer": {
+    "nations": 5,
+    "tribes": 225
+   },
+   "multiplayer": {
+    "nations": 10,
+    "tribes": 100
+   }
+  },
+  "spawns": [
+   {
+    "name": "Taruvan",
+    "tile": 469702
+   },
+   {
+    "name": "Khoril",
+    "tile": 1607157
+   },
+   {
+    "name": "Ulvane",
+    "tile": 247168
+   },
+   {
+    "name": "Brenmar",
+    "tile": 1780382
+   },
+   {
+    "name": "Dorrin",
+    "tile": 1260483
+   },
+   {
+    "name": "Oskaren",
+    "tile": 1163000
+   },
+   {
+    "name": "Vashti",
+    "tile": 1546168
+   },
+   {
+    "name": "Zephren",
+    "tile": 1136820
+   },
+   {
+    "name": "Marlowe",
+    "tile": 890729
+   },
+   {
+    "name": "Tyrnak",
+    "tile": 816907
+   },
+   {
+    "name": "Calvern",
+    "tile": 593078
+   },
+   {
+    "name": "Selvane",
+    "tile": 347218
+   }
+  ]
  }
 ]
