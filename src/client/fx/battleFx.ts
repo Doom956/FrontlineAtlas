@@ -15,6 +15,7 @@ import type { BuildingType, Effect, GameEvent, GameState, Unit } from '../../sim
 import { FxPool, type ScreenCam } from './layer';
 import { FxLimiter, fxForEffect, fxForEvent, isPlane, isShip, type FxSpawn } from './map';
 import { fxEnabled, prefersReducedMotion } from './settings';
+import { BLITZ } from '../../sim/config';
 
 /** Things older than this (ticks, 10 per second) are history, not news. */
 const FRESH_TICKS = 15;
@@ -48,6 +49,9 @@ export class BattleFx {
     return prefersReducedMotion();
   }
   private wasOn = true;
+  /** blitzTrails: which side of the wedge gets this frame's smoke, and a counter that varies how far back */
+  private flankSide = 1;
+  private flankN = 0;
   private spawnsThisFrame: FxSpawn[] = [];
   /** fog of war view (set by the renderer each frame; null or inactive = no fog): effects only where you see */
   fog: FogView | null = null;
@@ -207,9 +211,14 @@ export class BattleFx {
     }
   }
 
-  /** Dust thrown up behind every blitz under way (sim/blitz.ts): one puff a tile behind its head (rate-limited). */
+  /**
+   * Behind every blitz under way (sim/blitz.ts): dust a tile behind its head, and smoke drifting along the sides of its
+   * wedge, just outside its band (one side a frame, in turn). Both rate-limited and capped (fx/map.ts FX_INFO).
+   */
   private blitzTrails(state: GameState, out: FxSpawn[]): void {
     const w = state.map.width;
+    const side = (this.flankSide = -this.flankSide);
+    const off = BLITZ.width / 2 + 0.6;
     for (const u of state.units) {
       if (u.type !== 'tankDivision' || u.hp <= 0 || !u.blitz || u.state !== 3 || u.launch === undefined) continue;
       const lx = (u.launch % w) + 0.5;
@@ -217,7 +226,12 @@ export class BattleFx {
       const dx = u.x + 0.5 - lx;
       const dy = u.y + 0.5 - ly;
       const len = Math.sqrt(dx * dx + dy * dy) || 1;
-      out.push({ kind: 'trail', x: u.x + 0.5 - (dx / len) * 1.2, y: u.y + 0.5 - (dy / len) * 1.2, r: 1.2 });
+      const ux = dx / len;
+      const uy = dy / len;
+      out.push({ kind: 'trail', x: u.x + 0.5 - ux * 1.2, y: u.y + 0.5 - uy * 1.2, r: 1.2 });
+      // along the wedge's sides, a little behind the head (never behind the launch tile)
+      const back = Math.min(len, 1.5 + (this.flankN++ % 3));
+      out.push({ kind: 'flankSmoke', x: u.x + 0.5 - ux * back - uy * off * side, y: u.y + 0.5 - uy * back + ux * off * side, r: 1.6 });
     }
   }
 
@@ -276,7 +290,7 @@ export class BattleFx {
     }
     const reach = Math.max(60, s.r * cam.zoom * 2.4);
     if (p.x < -reach || p.y < -reach || p.x > vw + reach || p.y > vh + reach) return;
-    if (s.kind === 'ripple' && cam.zoom < 2) return; // a 1-tile ring is noise zoomed out
+    if ((s.kind === 'ripple' || s.kind === 'flankSmoke') && cam.zoom < 2) return; // 1-tile puffs are noise zoomed out
     if (!this.limiter.accept(s.kind, now, this.pool.countOf(s.kind), this.pool.live, this.pool.cap)) return;
     if (this.pool.add(s.kind, s.x, s.y, s.r, now)) this.spawned++;
   }

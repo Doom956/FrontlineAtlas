@@ -384,6 +384,11 @@ export interface ExplosionArt {
    */
   drawSmokeScreen?(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionParams): void;
   /**
+   * One frame of the smoke a blitz leaves along the sides of its wedge as it surges (fx/battleFx.ts blitzTrails), at
+   * (f.x, f.y), f.rt = its spread in tiles. A style without one gets a plain smoke puff (fx/layer.ts).
+   */
+  drawFlankSmoke?(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionParams): void;
+  /**
    * Optional: a style that animates deaths gives their times (the returned object may be reused) and draws them,
    * from zoom 2 in (farther out the map shows the far blink). A style without them shows its small blasts instead:
    * a plane's burst in the air and its smoke, a ship's hit and its sinking splash, a hit on a tank or a missile.

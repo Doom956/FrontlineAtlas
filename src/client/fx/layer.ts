@@ -177,10 +177,12 @@ function drawOne(ctx: CanvasRenderingContext2D, f: FxRec, x: number, y: number, 
       break;
     }
     case 'smokeScreen':
+    case 'flankSmoke':
     case 'trail': {
-      // a blitz: its smoke screen at the launch, dust behind the head (the explosions art style; dust puffs without one)
+      // a blitz: its smoke screen at the launch, smoke along the wedge, dust behind the head (the explosions art
+      // style; plain puffs without one)
       const d = mapFxDraw;
-      d.kind = f.kind === 'smokeScreen' ? 'smoke' : 'dust';
+      d.kind = f.kind === 'trail' ? 'dust' : 'smoke';
       d.x = x;
       d.y = y;
       d.t = t;
@@ -189,8 +191,9 @@ function drawOne(ctx: CanvasRenderingContext2D, f: FxRec, x: number, y: number, 
       d.rt = f.r;
       const art = artFor('explosions');
       if (f.kind === 'smokeScreen' && art.drawSmokeScreen) art.drawSmokeScreen(ctx, d, motionFor('explosions'));
+      else if (f.kind === 'flankSmoke' && art.drawFlankSmoke) art.drawFlankSmoke(ctx, d, motionFor('explosions'));
       else {
-        d.kind = 'dust';
+        d.kind = f.kind === 'flankSmoke' ? 'smoke' : 'dust';
         art.drawMapFx(ctx, d, motionFor('explosions'));
       }
       ctx.globalAlpha = 1;

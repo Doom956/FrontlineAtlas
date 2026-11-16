@@ -26,7 +26,9 @@ export type FxKind =
   /** a blitz launching (sim/blitz.ts): a smoke screen round the launch tile */
   | 'smokeScreen'
   /** a blitz under way: dust thrown up behind the head */
-  | 'trail';
+  | 'trail'
+  /** a blitz under way: smoke drifting along the sides of its wedge */
+  | 'flankSmoke';
 
 export interface FxSpawn {
   kind: FxKind;
@@ -60,8 +62,9 @@ export const FX_INFO: Readonly<Record<FxKind, FxInfo>> = {
   fortDust: { dur: 1800, gapMs: 300, maxLive: 3, priority: 1 },
   shockwave: { dur: 900, gapMs: 120, maxLive: 4, priority: 1 },
   nukeWave: { dur: 2200, gapMs: 300, maxLive: 2, priority: 2 },
-  smokeScreen: { dur: 3200, gapMs: 100, maxLive: 4, priority: 1 },
+  smokeScreen: { dur: 6000, gapMs: 100, maxLive: 4, priority: 1 },
   trail: { dur: 1100, gapMs: 60, maxLive: 10, priority: 0 },
+  flankSmoke: { dur: 3000, gapMs: 110, maxLive: 18, priority: 0 },
 };
 
 export const FX_KINDS = Object.keys(FX_INFO) as FxKind[];
