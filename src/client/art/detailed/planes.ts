@@ -58,11 +58,11 @@ function jetPod(u: number, v: number, z: number, len: number, r: number, m: MatI
   return [ell(u, v, len, r, z, r * 1.1, m, { sh: 'cyl' }), ell(u + len - 0.45, v, 0.5, r * 0.7, z + r * 0.2, r * 0.9, 'black'), ell(u - len + 0.3, v, 0.5, r * 0.6, z + r * 0.15, r * 0.8, 'gun')];
 }
 /** A drop tank (Drop Tanks): a pale torpedo with a dark nose cap and a thin dark band, its nose at `front`. */
-function dropTank(front: number, v: number, z: number, len: number, wid: number): Part[] {
+function dropTank(front: number, v: number, z: number, len: number, wid: number, mat: MatId = 'alu', tone = 1): Part[] {
   const c = front - len / 2;
   const fr = over(c, v, len / 2, wid / 2);
   return [
-    ell(c, v, len / 2, wid / 2, z, wid * 0.9, 'alu', { sh: 'cyl', tone: 1 }),
+    ell(c, v, len / 2, wid / 2, z, wid * 0.9, mat, { sh: 'cyl', tone }),
     ell(front - 0.4, v, 0.55, wid * 0.36, z + wid * 0.25, wid * 0.55, 'gun'),
     box(c - 0.6, v - wid / 2, c - 0.25, v + wid / 2, z, wid * 0.92, 'gun', { sh: 'cyl', sc: fr, clip: [c, v, len / 2, wid / 2] }),
   ];
@@ -365,13 +365,13 @@ export function fighter(mods: number): UnitModel {
     // the leading edge runs from u 1.4 at the root to -2.4 at the tip
     const le = (v: number): number => 1.4 - (3.8 * (v - 1.8)) / 4.3;
     if (mods & M_MASTERY)
-      // air-to-air missiles under both wings: pale bodies, dark fins and seekers, well ahead of the wing
+      // air-to-air missiles: slim light grey darts tucked under the wing near the tips, dark seeker tips
       for (const s of SIDES) {
-        const f = le(3.2) + 2.8;
-        out.push(seg(f - 4.8, s * 3.2, f - 0.3, s * 3.2, 0.62, Z - 0.4, 0.55, 'white', { sh: 'cyl' }), ell(f - 0.3, s * 3.2, 0.35, 0.3, Z - 0.35, 0.45, 'gun'), seg(f - 4.6, s * 2.5, f - 4.6, s * 3.9, 0.5, Z - 0.3, 0.2, 'gun'));
+        const f = le(5.2) + 1.4;
+        out.push(seg(f - 3, s * 5.2, f - 0.2, s * 5.2, 0.3, Z - 0.1, 0.28, 'alu', { sh: 'cyl', tone: -0.5 }), ell(f - 0.2, s * 5.2, 0.25, 0.15, Z - 0.1, 0.24, 'gun'), seg(f - 2.9, s * 4.8, f - 2.9, s * 5.6, 0.3, Z, 0.12, 'gun'));
       }
-    // drop tanks on the outer pylons
-    if (mods & M_SPECIAL) for (const s of SIDES) out.push(...dropTank(le(4.9) + 3.2, s * 4.9, Z - 0.4, 6.4, 1.6));
+    // drop tanks on the inner pylons: small, in the plane's own grey, tucked in under the wing
+    if (mods & M_SPECIAL) for (const s of SIDES) out.push(...dropTank(le(3) + 2.2, s * 3, Z - 0.1, 4.4, 1, 'seagrey', -1));
     // a bit bigger than the propeller fighter it replaces (still under the ground attack plane)
     return scaled(plane(out, props, noz, 6), 1.36);
   } else {
@@ -388,7 +388,7 @@ export function fighter(mods: number): UnitModel {
         for (const v of [2.3, 4.8]) out.push(seg(le(v) - 0.2, s * v, le(v) + 1.4, s * v, 0.28, Z + 0.3, 0.2, 'gun'));
       }
     }
-    if (mods & M_SPECIAL) for (const s of SIDES) out.push(...dropTank(le(5.6) + 3.2, s * 5.6, Z - 0.4, 6.8, 1.7));
+    if (mods & M_SPECIAL) for (const s of SIDES) out.push(...dropTank(le(5.6) + 3, s * 5.6, Z - 0.3, 6, 1.4, 'seagrey', -0.3));
     props.push({ u: 6.9, v: 0, z: Z + 0.55, r: 2.1 });
     out.push(poly(sym([-4.2, -0.5, -4.8, -2.6, -6, -2.6, -6.3, -0.5]), Z + 0.3, 0.3, m), seg(-6.4, 0, -4.2, 0, 0.45, Z + 1, 1.4, m));
     out.push(...roundels(0.4, 4.6, Z + 0.5, 0.8));
