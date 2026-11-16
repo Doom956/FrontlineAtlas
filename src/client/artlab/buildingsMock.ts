@@ -29,11 +29,11 @@ import { backdrop } from './backdrop';
 import { label } from './scenes';
 
 /** The cell a building is baked into, in model units (1 unit = 1 map screen px at mid zoom, like the units). */
-const CU = 54;
-const CV = 50;
-/** where the model origin (u 0, v 0, on the ground) sits in the cell, in model units */
-const OU = 27;
-const OV = 32;
+const CU = 68;
+const CV = 73;
+/** where the model origin (u 0, v 0, on the ground) sits in the cell, in model units (room above for skyscrapers, room right and below for their long shadows) */
+const OU = 29;
+const OV = 47;
 const SCALE_CLOSE = 3;
 const SCALE_NORMAL = 1.5;
 
@@ -243,23 +243,43 @@ function hedgehog(u: number, v: number): Part[] {
   const o = { sh: 'cyl' as const, tone: 0.5 };
   return [seg(u - 1.2, v - 1.0, u + 1.2, v + 1.0, 0.8, 0.5, 0.8, 'gun', o), seg(u - 1.2, v + 1.0, u + 1.2, v - 1.0, 0.8, 0.5, 0.8, 'gun', o), seg(u, v - 1.4, u, v + 1.4, 0.8, 0.5, 0.8, 'gun', o)];
 }
-function flakGun(u: number, v: number, simple = false): Part[] {
-  if (simple) return [el(u, v, 2.4, 2.0, 0, 1.2, 'gun', { sh: 'dome', tone: 0.2 }), seg(u, v, u + 4.2, v - 2.2, 1.4, 0.9, 0.8, 'gun', { sh: 'cyl', tone: 1 })];
-  return [
-    el(u, v, 2.6, 2.2, 0, 1.0, 'canvas', { edge: true, tone: 0.2 }),
-    el(u, v, 1.6, 1.4, 0, 1.0, 'gun', { sh: 'dome' }),
-    seg(u, v - 0.5, u + 3.8, v - 2.6, 0.8, 1.6, 0.8, 'gun', { sh: 'cyl', tone: 1 }),
-    seg(u, v + 0.5, u + 3.8, v - 1.5, 0.8, 1.6, 0.8, 'gun', { sh: 'cyl', tone: 1 }),
-    bx(u - 0.9, v + 0.3, u + 0.9, v + 1.3, 1.0, 1.0, 'gun', { tone: 1 }),
-  ];
+/**
+ * A gun barrel: a near-black round tube with a thin light stripe along its lit (upper left) side, so it reads on any
+ * ground. From (u0, v0) to (u1, v1), `w` wide, standing at height z.
+ */
+function barrel(u0: number, v0: number, u1: number, v1: number, w: number, z: number): Part[] {
+  const du = u1 - u0;
+  const dv = v1 - v0;
+  const L = Math.hypot(du, dv) || 1;
+  let nu = -dv / L;
+  let nv = du / L;
+  if (nu + nv > 0) {
+    nu = -nu;
+    nv = -nv;
+  }
+  const o = w * 0.2;
+  return [seg(u0, v0, u1, v1, w, z, w * 0.9, 'black', { sh: 'cyl', tone: 0.3 }), seg(u0 + nu * o, v0 + nv * o, u1 + nu * o, v1 + nv * o, w * 0.32, z + w * 0.9, 0.25, 'alu', { tone: 0.7 })];
 }
-function coastalGun(u: number, v: number, simple = false): Part[] {
-  if (simple) return [el(u, v, 3.0, 2.6, 0, 2.2, 'fieldgrey', { sh: 'dome', tone: 0.3 }), seg(u, v, u + 7, v - 1.6, 1.4, 1.6, 0.9, 'gun', { sh: 'cyl', tone: 1 })];
+/** A round sandbag emplacement: a ring of pale sandbags round a pit of trodden earth (z is the height it stands at). */
+function sandRing(u: number, v: number, ru: number, rv: number, z: number, simple: boolean): Part[] {
+  const P: Part[] = [el(u, v, ru, rv, z, 0, 'tan', { inset: true, tone: -1.2 })];
+  const n = Math.max(9, Math.round((Math.PI * (ru + rv)) / (simple ? 2.1 : 1.8)));
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + 0.3;
+    P.push(el(u + Math.cos(a) * (ru - 0.5), v + Math.sin(a) * (rv - 0.4), 1.15, 0.9, z, 1.1, 'canvas', { sh: 'dome', tone: i % 3 === 0 ? 0.6 : i % 3 === 1 ? 0.1 : -0.2 }));
+  }
+  return P;
+}
+/** An anti-aircraft gun: a round sandbag ring, a mount in the owner's colour, a dark gun house and two long barrels pointing up to the right. */
+function flakGun(u: number, v: number, simple = false): Part[] {
   return [
-    el(u, v, 3.0, 2.6, 0, 2.2, 'fieldgrey', { sh: 'dome', tone: 0.3 }),
-    seg(u, v, u + 7, v - 1.6, 1.4, 1.6, 0.9, 'gun', { sh: 'cyl', tone: 1 }),
-    el(u + 7.2, v - 1.6, 0.8, 0.8, 1.5, 1.0, 'gun', { tone: 1.2 }),
-    el(u - 0.4, v + 0.2, 1.0, 1.0, 2.2, 0.35, 'own'),
+    ...sandRing(u, v, 4.4, 3.7, 0, simple),
+    el(u, v, 2.3, 1.9, 0.4, 1.0, 'own', { sh: 'dome', tone: 0.2 }),
+    bx(u - 1.5, v - 0.8, u + 1.5, v + 1.5, 1.4, 1.2, 'black', { tone: 0.2 }),
+    ...barrel(u + 0.4, v - 0.7, u + 7.4, v - 4.1, 1.15, 2.0),
+    ...barrel(u + 0.4, v + 0.7, u + 7.4, v - 2.7, 1.15, 2.0),
+    el(u + 7.5, v - 4.1, 0.75, 0.75, 2.0, 1.3, 'gun', { tone: 0.2 }),
+    el(u + 7.5, v - 2.7, 0.75, 0.75, 2.0, 1.3, 'gun', { tone: 0.2 }),
   ];
 }
 function radarDish(u: number, v: number, simple = false): Part[] {
@@ -338,7 +358,19 @@ function fortModel(lv: number, addon: Addon, simple = false): Part[] {
   P.push(...flag(x1 - 0.2, y0 - 0.4, tz + 4.6, lv >= 3 ? 7 : 5.5, 4.4));
   for (const cx of [x0, x1]) P.push(band(cx - r * 0.6, y1 + r * 0.55, cx + r * 0.6, y1 + r * 0.55 + 0.9, 0.5));
   if (lv >= 5) P.push(bx(-2.3, y1, 2.3, y1 + 4.4, 0, 0.6, 'teak', { pat: 'planks' }));
-  if (addon === 'flak') P.push(...flakGun(x0 - 5, y1 + 5, simple), ...flakGun(x1 + 5, y1 + 5, simple));
+  P.push(...fortAddon(lv, addon, simple));
+  return P;
+}
+/** The fort's add-ons: flak guns in front of the corner towers, or a belt of tank traps. */
+function fortAddon(lv: number, addon: Addon, simple: boolean): Part[] {
+  const P: Part[] = [];
+  const w = lv >= 5 ? 36 : lv >= 3 ? 30 : 24;
+  const d = lv >= 5 ? 24 : lv >= 3 ? 20 : 15;
+  const x0 = -w / 2;
+  const x1 = w / 2;
+  const y0 = -d / 2;
+  const y1 = d / 2;
+  if (addon === 'flak') P.push(...flakGun(x0 - 5, y1 + 6, simple), ...flakGun(x1 + 5, y1 + 6, simple));
   if (addon === 'traps') {
     for (let h = x0 - 5; h <= x1 + 5; h += simple ? 9 : 6) if (Math.abs(h) > 5) P.push(...hedgehog(h, y1 + 8 + (hash(Math.round(h), 4) - 0.5) * 1.6));
     for (let h = y0 + 3; h < y1 + 5; h += simple ? 11 : 7) P.push(...hedgehog(x0 - 6, h), ...hedgehog(x1 + 6, h));
@@ -348,7 +380,13 @@ function fortModel(lv: number, addon: Addon, simple = false): Part[] {
 
 // ---- city
 
-type LotKind = 'gable' | 'hip' | 'L' | 'T' | 'block' | 'blockL' | 'tall' | 'shed' | 'tanks' | 'church';
+type LotKind = 'gable' | 'hip' | 'L' | 'T' | 'block' | 'blockL' | 'tower' | 'sky' | 'park' | 'shed' | 'tanks' | 'church';
+/** How a tower or skyscraper stands up: tiers of (height, inset from the lot edge) from the ground up, and what crowns it. */
+interface Stack {
+  tiers: [number, number][];
+  fin: 'helipad' | 'mast' | 'spire' | 'crown';
+  lit: number;
+}
 interface Lot {
   u: number;
   v: number;
@@ -358,42 +396,44 @@ interface Lot {
   k: LotKind;
   roof: Mat;
   wall?: Mat;
+  stack?: Stack;
 }
-const lot = (u: number, v: number, w: number, d: number, z: number, k: LotKind, roofM: Mat, wall?: Mat): Lot => ({ u, v, w, d, z, k, roof: roofM, wall });
-/** The blocks of a town. The streets are the gaps between them (3 to 7 model units wide). Levels 3 and 5 grow taller and denser. */
+const lot = (u: number, v: number, w: number, d: number, z: number, k: LotKind, roofM: Mat, wall?: Mat, stack?: Stack): Lot => ({ u, v, w, d, z, k, roof: roofM, wall, stack });
+/** The blocks of a town. The streets are the gaps between them (3 to 7 model units wide). Level 3 is a modern city of mid-rise blocks, level 5 a skyline. */
 function cityLots(lv: number): Lot[] {
   if (lv >= 5) {
-    // four columns by four rows; the cathedral takes the middle and its plaza the middle of the front row
+    // three columns by three rows: skyscrapers of different heights at the back and in the middle, mid-rise blocks and a plaza in front
     return [
-      lot(-19, -16, 8.5, 5, 16, 'tall', 'fieldgrey', 'sup'),
-      lot(-6.5, -16, 8, 5, 7, 'blockL', 'fieldgrey', 'cream'),
-      lot(6.5, -16, 8, 5, 4.4, 'shed', 'cargo', 'tan'),
-      lot(19, -16, 8.5, 5, 7.5, 'block', 'fieldgrey', 'sup'),
-      lot(-19, -6, 8.5, 5, 5.5, 'T', 'brick', 'cream'),
-      lot(19, -6, 8.5, 5, 14, 'tall', 'fieldgrey', 'tan'),
-      lot(0, 4, 9.5, 15, 6, 'church', 'brick'),
-      lot(-19, 4, 8.5, 5, 7, 'blockL', 'fieldgrey', 'tan'),
-      lot(19, 4, 8.5, 5, 5.5, 'L', 'rust', 'canvas'),
-      lot(-19, 14, 8.5, 5, 5, 'hip', 'ochre', 'cream'),
-      lot(-9, 14, 5, 5, 4.5, 'gable', 'fadedBlue', 'canvas'),
-      lot(9, 14, 5, 5, 4.5, 'hip', 'brick', 'cream'),
-      lot(19, 14, 8.5, 5, 5, 'tanks', 'cargo', 'sup'),
+      lot(-17, -14, 10, 8.5, 0, 'sky', 'fieldgrey', 'prublue', { tiers: [[30, 0], [39, 2.4]], fin: 'helipad', lit: 0.33 }),
+      lot(0, -14, 11, 9, 0, 'sky', 'fieldgrey', 'alu', { tiers: [[24, 0], [34, 2], [41, 3.8]], fin: 'spire', lit: 0.3 }),
+      lot(17, -14, 10, 8.5, 0, 'sky', 'fieldgrey', 'seagrey', { tiers: [[31, 0], [37, 2.2]], fin: 'helipad', lit: 0.36 }),
+      lot(-17, -3, 9.5, 7.5, 0, 'sky', 'sup', 'alu', { tiers: [[20, 0]], fin: 'helipad', lit: 0.4 }),
+      lot(0, -3, 10, 8, 0, 'sky', 'fieldgrey', 'fadedBlue', { tiers: [[17, 0], [29, 2.2]], fin: 'crown', lit: 0.35 }),
+      lot(17, -3, 9.5, 7.5, 0, 'sky', 'sup', 'prublue', { tiers: [[25, 0]], fin: 'mast', lit: 0.38 }),
+      lot(-17, 9, 9.5, 7, 12, 'block', 'fieldgrey', 'cream'),
+      lot(0, 9.5, 10, 6, 0, 'park', 'olive'),
+      lot(17, 9, 9.5, 7, 14, 'blockL', 'fieldgrey', 'tan'),
     ];
   }
   if (lv >= 3) {
+    // three columns by three rows: mid-rise blocks of 4 to 8 storeys, two taller towers, a small park
     return [
-      lot(-14.5, -12.5, 9, 5.5, 8, 'blockL', 'fieldgrey', 'sup'),
-      lot(0, -12.5, 9, 5.5, 4.2, 'shed', 'cargo', 'tan'),
-      lot(14.5, -12.5, 9, 5.5, 7, 'block', 'fieldgrey', 'cream'),
-      lot(-14.5, 0, 9, 5.5, 4.5, 'hip', 'brick', 'cream'),
-      lot(0, 0.5, 7.5, 13, 5.5, 'church', 'brick'),
-      lot(14.5, 0, 9, 5.5, 5, 'L', 'rust', 'canvas'),
-      lot(-14.5, 12, 9, 5.5, 4.5, 'gable', 'fadedBlue', 'cream'),
-      lot(0, 13.5, 7, 5, 4.5, 'tanks', 'cargo', 'sup'),
-      lot(14.5, 12, 9, 5.5, 7, 'blockL', 'fieldgrey', 'tan'),
+      lot(-14.5, -13, 9.5, 6, 13.8, 'blockL', 'fieldgrey', 'sup'),
+      lot(0, -13, 9, 6.5, 0, 'tower', 'fieldgrey', 'prublue', { tiers: [[27, 0], [33, 2.4]], fin: 'mast', lit: 0.4 }),
+      lot(14.5, -13, 9.5, 6, 16.1, 'block', 'fieldgrey', 'cream'),
+      lot(-14.5, -1, 9.5, 6, 9.2, 'blockL', 'fieldgrey', 'tan'),
+      lot(0, -0.5, 9, 7, 0, 'park', 'olive'),
+      lot(14.5, -1, 9.5, 6.5, 0, 'tower', 'fieldgrey', 'alu', { tiers: [[9, 0], [23, 1.8]], fin: 'crown', lit: 0.4 }),
+      lot(-14.5, 12, 9.5, 6, 11.5, 'block', 'fieldgrey', 'white'),
+      lot(0, 12.5, 8, 5.5, 9.2, 'block', 'fieldgrey', 'tan'),
+      lot(14.5, 12, 9.5, 6, 9.2, 'blockL', 'fieldgrey', 'cream'),
     ];
   }
   return [lot(-12, -5.5, 7.5, 5.5, 3.6, 'gable', 'brick', 'cream'), lot(12, -5.5, 7.5, 5.5, 3.8, 'L', 'rust', 'tan'), lot(0, 0.5, 7, 12, 4.5, 'church', 'brick'), lot(-12, 5.5, 7.5, 5.5, 3.4, 'hip', 'ochre', 'canvas'), lot(12, 5.5, 7.5, 5.5, 3.4, 'gable', 'fadedBlue', 'cream')];
+}
+/** The streets of a level: the middles of the gaps between its rows and columns, as [horizontal v values, vertical u values]. */
+function cityStreets(lv: number): [number[], number[]] {
+  return lv >= 5 ? [[-8.4, 3.2], [-8.7, 8.7]] : lv >= 3 ? [[-7, 6], [-7.2, 7.2]] : [[], []];
 }
 /** The outer edge of the town (all lots plus a little margin), for its ground. */
 function cityBounds(lv: number): [number, number, number, number] {
@@ -410,16 +450,104 @@ function cityBounds(lv: number): [number, number, number, number] {
   return [u0 - 1.4, v0 - 1.4, u1 + 1.4, v1 + 1.4];
 }
 /** Small windows on a wall facing the viewer (the south wall): rows of lit (yellow) and dark panes. `simple` keeps a few. */
-function windows(u0: number, u1: number, v: number, z0: number, z1: number, simple: boolean, seed: number): Part[] {
+function windows(u0: number, u1: number, v: number, z0: number, z1: number, simple: boolean, seed: number, litP = 0.5): Part[] {
   const P: Part[] = [];
   const cs = simple ? 2.8 : 1.9;
   const rs = simple ? 3.4 : 2.3;
   for (let z = z0; z + 1 <= z1; z += rs) {
     for (let u = u0 + 0.9; u + 0.9 <= u1 - 0.5; u += cs) {
-      const lit = hash(Math.round(u * 3), Math.round(z * 3), seed) > 0.5;
+      const lit = hash(Math.round(u * 3), Math.round(z * 3), seed) < litP;
       P.push(bx(u, v, u + 0.85, v + 0.6, z, 1.05, lit ? 'brass' : 'glass', lit ? { glow: true } : { tone: -0.6 }));
     }
   }
+  return P;
+}
+/**
+ * A glass curtain wall on a south face: rows of wide panes (a few lit, most dark) with solid floor bands between them.
+ * `simple` keeps fewer, bigger panes.
+ */
+function facade(u0: number, u1: number, v: number, z0: number, z1: number, simple: boolean, seed: number, litP: number): Part[] {
+  const P: Part[] = [];
+  const cs = simple ? 2.7 : 1.9;
+  const rs = simple ? 3.3 : 2.4;
+  const pw = cs * 0.66;
+  const n = Math.floor((u1 - u0 - 0.9) / cs);
+  const off = (u1 - u0 - n * cs + (cs - pw)) / 2;
+  for (let z = z0; z + 1.4 <= z1; z += rs) {
+    for (let i = 0; i < n; i++) {
+      const u = u0 + off + i * cs;
+      const lit = hash(i, Math.round(z * 2), seed) < litP;
+      P.push(bx(u, v, u + pw, v + 0.6, z, 1.25, lit ? 'brass' : 'glass', lit ? { glow: true } : { tone: -0.2 }));
+    }
+  }
+  return P;
+}
+/** The crown of a tower, standing on its top roof (a x b to c x d at height z). */
+function crown(a: number, b: number, c: number, d: number, z: number, fin: Stack['fin'], seed: number): Part[] {
+  const cu = (a + c) / 2;
+  const cv = (b + d) / 2;
+  const mast = (u: number, v: number, h: number): Part[] => [el(u, v, 0.28, 0.28, z, h, 'gun', { sh: 'cyl', tone: 0.8 }), seg(u - 1.2, v, u + 1.2, v, 0.3, z + h * 0.7, 0.3, 'gun'), el(u, v, 0.55, 0.5, z + h, 0.5, 'own', { sh: 'dome', tone: 0.5 })];
+  switch (fin) {
+    case 'helipad': {
+      const r = Math.max(2.2, Math.min(c - a, d - b) / 2 - 0.9);
+      return [
+        el(cu, cv, r, r, z, 0.3, 'fieldgrey', { tone: -0.3 }),
+        el(cu, cv, r - 0.45, r - 0.45, z + 0.3, 0, 'white', { edge: true, tone: 0.3 }),
+        bx(cu - r * 0.42, cv - r * 0.5, cu - r * 0.42 + 0.45, cv + r * 0.5, z + 0.3, 0, 'paintYellow'),
+        bx(cu + r * 0.42 - 0.45, cv - r * 0.5, cu + r * 0.42, cv + r * 0.5, z + 0.3, 0, 'paintYellow'),
+        bx(cu - r * 0.42, cv - 0.22, cu + r * 0.42, cv + 0.22, z + 0.3, 0, 'paintYellow'),
+        ...mast(c - 0.9, b + 0.9, 6.5),
+        ...mast(a + 0.9, d - 0.9, 4),
+      ];
+    }
+    case 'mast':
+      return [bx(cu - 1.3, cv - 1.3, cu + 1.3, cv + 1.3, z, 1.2, 'sup', { tone: 0.3 }), ...mast(cu, cv, 9), ...acUnit(a + 0.9, d - 2.7, z)];
+    case 'spire':
+      return [bx(cu - 2.6, cv - 2.4, cu + 2.6, cv + 2.4, z, 2.0, 'alu', { tone: 0.2 }), bx(cu - 1.8, cv - 1.7, cu + 1.8, cv + 1.7, z + 2.0, 2.0, 'white', { tone: 0.2 }), bx(cu - 1.0, cv - 1.0, cu + 1.0, cv + 1.0, z + 4.0, 2.0, 'alu', { tone: 0.5 }), ...mast(cu, cv, 11).map((q) => ({ ...q, z: q.z + 6 }))];
+    case 'crown':
+      return [bx(a + 1.0, b + 1.0, c - 1.0, d - 1.0, z, 2.4, 'white', { tone: 0.1, pat: 'frames' }), bx(a + 0.7, b + 0.7, c - 0.7, d - 0.7, z + 2.4, 0.5, 'brass', { glow: true }), el(cu, cv, 1.4, 1.2, z + 2.9, 1.2, 'alu', { sh: 'dome', tone: 0.3 }), ...mast(cu, cv, 6).map((q) => ({ ...q, z: q.z + 4 }))];
+  }
+}
+/**
+ * A tower or skyscraper: tiers that step in (setbacks), each a wall with a glass curtain facade, a parapet and a roof; the
+ * lower roofs carry a cooling unit, the top one a crown (helipad, mast, spire or lit crown).
+ */
+function stackTower(u0: number, v0: number, u1: number, v1: number, st: Stack, wall: Mat, roofM: Mat, seed: number, simple: boolean, far = false): Part[] {
+  const P: Part[] = [];
+  let zb = 0;
+  st.tiers.forEach(([z, ins], k) => {
+    const a = u0 + ins;
+    const c = u1 - ins;
+    const b = v0 + ins * 0.8;
+    const d = v1 - ins * 0.8;
+    P.push(bx(a, b, c, d, zb, z - zb, wall, { tone: -0.3 }));
+    if (!far) P.push(...facade(a, c, d, k === 0 ? 2.8 : zb + 1.1, z - 0.8, simple, seed + k * 7, st.lit));
+    P.push(bx(a - 0.15, b - 0.15, c + 0.15, d + 0.15, z, 0.7, wall, { tone: 0.5, edge: true }), bx(a + 0.7, b + 0.7, c - 0.7, d - 0.7, z, 0, roofM, { inset: true, tone: -0.2 }));
+    const next = st.tiers[k + 1];
+    if (next) {
+      // the strip of this roof left in front of the next tier carries a cooling unit when it is deep enough
+      const strip = (next[1] - ins) * 0.8;
+      if (!far && strip >= 2.4 && c - a > 6) P.push(...acUnit(a + 1.0, d - strip + 0.4, z));
+    } else if (!far) {
+      P.push(...crown(a, b, c, d, z, st.fin, seed));
+    } else if (st.fin === 'spire' || st.fin === 'mast') {
+      P.push(el((a + c) / 2, (b + d) / 2, 0.5, 0.5, z, 6, 'alu', { sh: 'cyl' }));
+    }
+    zb = z;
+  });
+  return P;
+}
+/** A small park: a lawn with crossing paths, a round pond and a few trees. */
+function park(l: Lot, far: boolean): Part[] {
+  const u0 = l.u - l.w / 2 + 0.5;
+  const u1 = l.u + l.w / 2 - 0.5;
+  const v0 = l.v - l.d / 2 + 0.5;
+  const v1 = l.v + l.d / 2 - 0.5;
+  const P: Part[] = [bx(u0, v0, u1, v1, 0, 0, 'olive', { inset: true, tone: -0.2 })];
+  if (far) return P;
+  P.push(bx(l.u - 0.6, v0, l.u + 0.6, v1, 0, 0, 'tan', { tone: 0.4 }), bx(u0, l.v - 0.6, u1, l.v + 0.6, 0, 0, 'tan', { tone: 0.4 }));
+  P.push(el(l.u, l.v, 1.9, 1.6, 0, 0.5, 'sup', { sh: 'cyl', tone: 0.4 }), el(l.u, l.v, 1.35, 1.1, 0.5, 0, 'sea'));
+  for (const [du, dv] of [[-2.8, -1.6], [2.9, -1.8], [-2.6, 1.9], [2.8, 2.0]]) P.push(...tree(l.u + du, l.v + dv, 1.3, Math.round(du * 7 + dv)));
   return P;
 }
 /** A church: a nave with a tiled pitched roof and a round apse, a transept from level 3, a front tower (two at level 5) with a spire and the owner's banner. */
@@ -517,16 +645,13 @@ function lotParts(l: Lot, i: number, lv: number, simple: boolean): Part[] {
       P.push(band(u0, v1 - 1.1, u1, v1 - 0.4, l.z + 0.7));
       break;
     }
-    case 'tall': {
-      const z1 = l.z - 4;
-      P.push(poly(ptsRect(u0, v0, u1, v1, 0), 0, z1, wall, { tone: -0.3 }), poly(ptsRect(u0, v0, u1, v1, 0), z1, 0.7, wall, { tone: 0.5, edge: true }), poly(ptsRect(u0, v0, u1, v1, 0.7), z1, 0, l.roof, { inset: true, tone: -0.2 }));
-      P.push(...windows(u0, u1, v1, 1.4, z1 - 0.4, simple, i));
-      // a setback upper tier with its own windows, a cornice, a mast and a flag
-      P.push(bx(u0 + 1.2, v0 + 1.2, u1 - 1.2, v1 - 1.4, z1, 4, wall, { tone: 0.1 }), bx(u0 + 1.0, v0 + 1.0, u1 - 1.0, v1 - 1.2, l.z, 0.5, wall, { tone: 0.6, edge: true }), bx(u0 + 1.7, v0 + 1.7, u1 - 1.7, v1 - 1.9, l.z, 0, l.roof, { inset: true, tone: -0.5 }));
-      P.push(...windows(u0 + 1.2, u1 - 1.2, v1 - 1.4, z1 + 0.8, l.z - 0.2, simple, i + 40));
-      P.push(...acUnit(u0 + 1.9, v0 + 1.9, z1), el(u1 - 2.2, v0 + 2.2, 0.25, 0.25, l.z, 4.6, 'gun', { sh: 'cyl' }), ...flag(u1 - 2.9, v0 + 2.2, l.z + 0.5, 4.5, 3));
+    case 'tower':
+    case 'sky':
+      P.push(...stackTower(l.u - l.w / 2, l.v - l.d / 2, l.u + l.w / 2, l.v + l.d / 2, l.stack ?? { tiers: [[l.z, 0]], fin: 'mast', lit: 0.4 }, wall, l.roof, i * 13 + 5, simple));
       break;
-    }
+    case 'park':
+      P.push(...park(l, false));
+      break;
     case 'shed':
       P.push(...warehouse(u0, v0, u1, v1, wall, l.roof, i, simple, l.z));
       break;
@@ -551,9 +676,9 @@ function cityModel(lv: number, addon: Addon, simple: boolean): Part[] {
 /** The city's add-on parts (flak guns beside the town), which wear their own outline. */
 function cityAddon(lv: number, addon: Addon, simple: boolean): Part[] {
   if (addon !== 'flak') return [];
-  const [, bv0] = cityBounds(lv);
-  const ux = lv >= 3 ? 13 : 10;
-  return [...flakGun(-ux, bv0 - 7, simple), ...flakGun(ux, bv0 - 7, simple)];
+  const [, , , bv1] = cityBounds(lv);
+  const ux = lv >= 5 ? 17 : lv >= 3 ? 14 : 10.5;
+  return [...flakGun(-ux, bv1 + 6, simple), ...flakGun(ux, bv1 + 6, simple)];
 }
 
 // ---- SAM site
@@ -578,18 +703,18 @@ function launcher(u: number, v: number): Part[] {
   P.push(bx(o(-6), v + 2.1, o(4), v + 2.7, 2.4, 0, 'own'));
   // the cab: a boxy crew compartment with a glass slit and a hatch
   P.push(bx(o(3.6), v - 2.4, o(7.0), v + 0.6, 2.4, 1.6, 'olive', { tone: 0.5 }), bx(o(6.5), v - 2.0, o(7.1), v + 0.2, 3.3, 0, 'glass'), el(o(4.6), v - 0.6, 0.6, 0.6, 4.0, 0.3, 'gun', { tone: 0.6 }));
-  // the cradle: a raised dark frame on a turntable
-  P.push(el(o(-1.6), v, 2.6, 2.4, 2.4, 0.8, 'gun', { sh: 'dome', tone: 0.2 }), bx(o(-6), v - 2.4, o(3.2), v + 2.4, 3.1, 0.8, 'gun', { tone: 0.3, pat: 'grille' }));
-  // three angled tubes with gaps between them: each a dark casing, a white missile rising toward the nose, an owner-coloured nose cone, dark tail fins
+  // the cradle: a raised black frame on a turntable in the owner's colour
+  P.push(el(o(-1.6), v, 2.9, 2.7, 2.4, 0.9, 'own', { sh: 'dome', tone: 0.1 }), bx(o(-6), v - 2.5, o(3.2), v + 2.5, 3.2, 0.8, 'black', { tone: 0.3, pat: 'grille' }));
+  // three angled tubes: a black casing, a thick white missile rising toward the nose with a light stripe, a big owner-coloured nose cone, black tail fins
   for (let i = 0; i < 3; i++) {
-    const vv = v - 1.85 + i * 1.85;
+    const vv = v - 1.95 + i * 1.95;
     const u0 = o(-5.8);
     const dv = -1.5;
-    P.push(seg(u0, vv, o(3.2), vv + dv, 1.5, 3.9, 0.6, 'olive', { sh: 'cyl', tone: -0.7 }));
-    P.push(seg(u0 + 0.5, vv, o(2.4), vv + dv * 0.7, 1.05, 4.5, 0.9, 'white', { sh: 'cyl', tone: i === 1 ? 0.4 : 0 }));
-    P.push(seg(o(2.4), vv + dv * 0.7, o(4.3), vv + dv * 1.2, 0.95, 4.9, 0.8, 'white', { sh: 'cyl', tone: 0.5 }));
-    P.push(el(o(5.0), vv + dv * 1.35, 0.9, 0.55, 5.0, 0.9, 'own', { sh: 'dome' }));
-    P.push(bx(u0 + 0.1, vv - 1.0, u0 + 1.2, vv + 1.0, 4.8, 0.3, 'black'), bx(u0 + 0.5, vv - 0.4, u0 + 1.0, vv + 0.4, 4.9, 0.3, 'gun'));
+    P.push(seg(u0, vv, o(3.2), vv + dv, 1.75, 3.9, 0.7, 'black', { sh: 'cyl', tone: 0.2 }));
+    P.push(seg(u0 + 0.5, vv, o(2.4), vv + dv * 0.7, 1.3, 4.5, 1.0, 'white', { sh: 'cyl', tone: i === 1 ? 0.5 : 0.2 }));
+    P.push(seg(o(2.4), vv + dv * 0.7, o(4.3), vv + dv * 1.2, 1.25, 5.0, 0.9, 'white', { sh: 'cyl', tone: 0.6 }));
+    P.push(el(o(5.1), vv + dv * 1.35, 1.25, 0.8, 5.0, 1.1, 'own', { sh: 'dome', tone: 0.3 }));
+    P.push(bx(u0 - 0.1, vv - 1.3, u0 + 1.3, vv + 1.3, 4.9, 0.35, 'black'), bx(u0 + 0.5, vv - 0.5, u0 + 1.1, vv + 0.5, 5.1, 0.3, 'gun'));
   }
   return P;
 }
@@ -654,8 +779,11 @@ function samModel(lv: number, addon: Addon, simple: boolean): Part[] {
     P.push(...moved(grown(commandTruck(0, 0), 1.1), 12, -7));
     P.push(...samBay(-7, 4));
   }
-  if (addon === 'radar') P.push(...(lv >= 3 ? radarDish(21, 12, simple) : radarDish(-5, -11, simple)));
+  P.push(...samAddon(lv, addon, simple));
   return P;
+}
+function samAddon(lv: number, addon: Addon, simple: boolean): Part[] {
+  return addon === 'radar' ? (lv >= 3 ? radarDish(21, 12, simple) : radarDish(-5, -11, simple)) : [];
 }
 
 // ---- port: the coast is at u = COAST, land to the west, the sea and the piers to the east
@@ -683,8 +811,8 @@ interface Hull {
 function pierList(lv: number): Pier[] {
   return lv >= 3
     ? [
-        { u0: -1, v0: -9, u1: 22, v1: -6.2, wood: false },
-        { u0: -1, v0: 3.8, u1: 20, v1: 6.6, wood: false },
+        { u0: -1, v0: -12.4, u1: 22, v1: -8.8, wood: false },
+        { u0: -1, v0: 7.6, u1: 19, v1: 11, wood: false },
       ]
     : [{ u0: -1, v0: -1.2, u1: 22, v1: 1.6, wood: true }];
 }
@@ -692,16 +820,15 @@ function pierList(lv: number): Pier[] {
 function hullList(lv: number): Hull[] {
   return lv >= 3
     ? [
-        { u: 3.4, v: -2.1, len: 16.6, wid: 4.8, kind: 'cargo' },
-        { u: 9, v: 9.4, len: 8, wid: 3.2, kind: 'tug' },
-        { u: 7, v: -13, len: 12.4, wid: 3.8, kind: 'coaster' },
+        { u: 4, v: -5.2, len: 17, wid: 5.2, kind: 'cargo' },
+        { u: 9, v: 4.9, len: 8.4, wid: 3.4, kind: 'tug' },
       ]
     : [
         { u: 5, v: 4.3, len: 12.6, wid: 4.2, kind: 'coaster' },
         { u: 9, v: -4.3, len: 7, wid: 3, kind: 'tug' },
       ];
 }
-const MOLE: [number, number][] = [[-1, -20.2], [8, -19.8], [15.5, -19], [21.5, -17.6]];
+const MOLE: [number, number][] = [[-1, -22], [8, -21.6], [15.5, -20.8], [21.5, -19.4]];
 
 /** A pier on pilings: planks (wood) or concrete slabs, a kerb, pile caps along both edges, bollards, a lamp, dark piles standing under its south edge and head. */
 function pier(p: Pier, simple: boolean): Part[] {
@@ -887,11 +1014,11 @@ function casemate(u: number, v: number, simple = false): Part[] {
   const shell = [u - 4, v - 3, u + 2.6, v - 3, u + 4.2, v - 1.4, u + 4.2, v + 1.4, u + 2.6, v + 3, u - 4, v + 3];
   const lid = [u - 3.4, v - 2.4, u + 2.4, v - 2.4, u + 3.6, v - 1.2, u + 3.6, v + 1.2, u + 2.4, v + 2.4, u - 3.4, v + 2.4];
   P.push(poly(shell, 0, 3.0, 'sup', { tone: -0.2 }), poly(shell, 3.0, 0.5, 'sup', { tone: 0.5, edge: true }), poly(lid, 3.0, 0, 'sup', { inset: true, tone: -0.1 }));
-  P.push(el(u + 0.2, v, 2.5, 2.2, 3.0, 0, 'gun', { tone: -1 }), el(u + 0.2, v, 1.6, 1.4, 3.0, 1.0, 'gun', { sh: 'dome', tone: 0.2 }));
-  P.push(seg(u + 0.4, v, u + 8.6, v, 0.9, 3.5, 0.9, 'gun', { sh: 'cyl', tone: 1 }), el(u + 8.7, v, 0.8, 0.8, 3.4, 1.1, 'gun', { sh: 'cyl', tone: 1.2 }));
-  P.push(bx(u + 3.2, v - 1.0, u + 4.2, v + 1.0, 3.0, 0, 'black'));
+  // the gun on the roof: a round sandbag ring round its pit, a mount in the owner's colour, a dark turret and a long barrel out to sea
+  P.push(...sandRing(u + 0.2, v, 3.1, 2.5, 3.0, simple));
+  P.push(el(u + 0.2, v, 2.3, 1.9, 3.0, 1.0, 'own', { sh: 'dome', tone: 0.2 }), el(u + 0.2, v, 1.5, 1.3, 4.0, 0.9, 'gun', { sh: 'dome', tone: 0.3 }));
+  P.push(...barrel(u + 0.6, v, u + 11, v - 0.4, 1.6, 4.2), el(u + 11.2, v - 0.4, 1.1, 1.1, 4.2, 1.5, 'gun', { tone: 0.3 }));
   P.push(bx(u - 2.6, v + 3.0, u - 1.0, v + 3.14, 0, 2.0, 'black', { tone: 0.5 }), band(u - 3.0, v + 1.4, u - 1.0, v + 2.0, 3.0));
-  if (!simple) P.push(el(u - 0.8, v - 0.8, 0.5, 0.5, 3.0, 0.6, 'brass', { sh: 'dome' }), bx(u + 1.6, v - 2.2, u + 2.6, v - 1.5, 3.0, 0.6, 'brass'));
   return P;
 }
 function portModel(lv: number, addon: Addon, simple = false): Part[] {
@@ -899,22 +1026,26 @@ function portModel(lv: number, addon: Addon, simple = false): Part[] {
   for (const p of pierList(lv)) P.push(...pier(p, simple));
   for (const h of hullList(lv)) P.push(...(h.kind === 'tug' ? tug(h.u, h.v, h.len, h.wid) : ship(h.u, h.v, h.len, h.wid)));
   if (lv >= 3) {
-    P.push(...gantry(6, -7.6, 1, 7, DECK), ...gantry(13, -7.6, 1, 7, DECK));
-    P.push(rope(8, -2.1 - 2.4, -6.2 + 0.4), rope(15, -2.1 - 2.4, -6.2 + 0.4), rope(9, -2.1 + 2.4, 4.2), rope(15, -2.1 + 2.4, 4.2));
-    P.push(rope(12, 9.4 - 1.6, 6.4), rope(16, 9.4 - 1.6, 6.4));
-    P.push(...warehouse(-25, -20, -9.5, -13.4, 'tan', 'cargo', 1, simple, 3.8), ...warehouse(-25, -11.4, -12, -6, 'cream', 'cargo', 2, simple, 3.4));
-    P.push(...harbourOffice(-8.4, -10.4, -3.6, -6.2));
-    P.push(...containers(-24, -2.5, 3, 3, 2, true), ...containers(-24, 9.8, 2, 2, 7, false));
-    P.push(...dryDock(-13, 9.6, 2.4, 17.6, simple), ...breakwater(MOLE, simple));
-    if (addon === 'guns') P.push(...casemate(-4.5, -15.6, simple), ...casemate(-5.5, -1.8, simple));
+    // fewer, bigger pieces with open water between them: one gantry over the cargo ship, one tug, one big warehouse
+    P.push(...gantry(11, -10.6, 1, 6.2, DECK));
+    P.push(rope(8, -5.2 - 2.6, -8.8 + 0.4), rope(16, -5.2 - 2.6, -8.8 + 0.4), rope(12, 4.9 + 1.7, 7.8), rope(16, 4.9 + 1.7, 7.8));
+    P.push(...warehouse(-26, -19.5, -10.5, -12.8, 'tan', 'cargo', 1, simple, 4.0));
+    P.push(...harbourOffice(-8.4, -11.4, -3.6, -7.2));
+    P.push(...containers(-24, -4, 3, 3, 2, true));
+    P.push(...dryDock(-15, 13, 1.6, 21, simple), ...breakwater(MOLE, simple));
   } else {
     P.push(...jibCrane(3.5, -0.2, DECK, 9.5, 6.5));
     P.push(rope(8, 4.3 - 2.1, 1.2), rope(14, 4.3 - 2.1, 1.2), rope(10, -4.3 + 1.5, -0.8), rope(14, -4.3 + 1.5, -0.8));
     P.push(...warehouse(-24, -11, -8, -4.6, 'tan', 'fieldgrey', 3, simple, 3.8), ...harbourOffice(-6.5, -9.6, -2, -5.6));
     P.push(...containers(-24, 3, 4, 2, 4, true), ...containers(-24, 10, 3, 1, 9, false), ...lighthouse(-3.2, 10.4, 10));
-    if (addon === 'guns') P.push(...casemate(-4.5, -14.2, simple), ...casemate(-4.5, 15, simple));
   }
+  P.push(...portAddon(lv, addon, simple));
   return P;
+}
+/** The port's add-on: two coastal gun emplacements on the shore. */
+function portAddon(lv: number, addon: Addon, simple: boolean): Part[] {
+  if (addon !== 'guns') return [];
+  return lv >= 3 ? [...casemate(-4.8, -17.2, simple), ...casemate(-5.2, 3.4, simple)] : [...casemate(-4.5, -14.2, simple), ...casemate(-4.5, 15, simple)];
 }
 
 function modelOf(spec: BuildingSpec, simple: boolean): Part[] {
@@ -1007,6 +1138,8 @@ function footBox(p: Part): [number, number, number, number] {
 /** The painted ground of a cell: soft dithered overlays whose colours are derived from the terrain colour under them. */
 class Ground {
   readonly d: Uint8ClampedArray;
+  /** far look: coverage becomes a smooth alpha (no dither steps) so the patch fades into the terrain */
+  smooth = false;
   constructor(
     readonly W: number,
     readonly H: number,
@@ -1027,9 +1160,15 @@ class Ground {
   /** a pixel of a kind with coverage m (0..1, the strongest alpha amax), quantised to 4 dithered steps */
   put(ax: number, ay: number, kind: Kind, m: number, amax: number): void {
     if (m <= 0 || ax < 0 || ay < 0 || ax >= this.W || ay >= this.H) return;
-    const lvl = Math.floor(m * 3 + bayer(ax, ay));
-    if (lvl <= 0) return;
-    const a = (amax * Math.min(3, lvl)) / 3;
+    let a: number;
+    if (this.smooth) {
+      a = amax * Math.min(1, m);
+      if (a < 0.01) return;
+    } else {
+      const lvl = Math.floor(m * 3 + bayer(ax, ay));
+      if (lvl <= 0) return;
+      a = (amax * Math.min(3, lvl)) / 3;
+    }
     const sea = this.under.water(ax, ay);
     if (sea && kind !== 'shadow' && kind !== 'foam') return;
     if (!sea && kind === 'foam') return;
@@ -1086,14 +1225,16 @@ class Ground {
     });
   }
   /** the shadow cast by the parts: each part's footprint swept toward the lower right by its height (light from the upper left) */
-  shadows(parts: readonly Part[], amax: number): void {
-    const m = new Float32Array(this.W * this.H);
+  shadows(parts: readonly Part[], amax: number, soft = 0, wide = 1): void {
+    let m = new Float32Array(this.W * this.H);
     const dirU = 0.62;
     const dirV = 0.5;
     for (const p of parts) {
       const top = p.z + p.h;
       if (top < 0.7 || p.glow || (p.a ?? 1) < 1 || p.edge) continue;
-      const reach = top * 0.55;
+      // thin things hung on a wall (window panes, doors) cast no shadow of their own
+      if (p.k === 'box' && p.p[3] - p.p[1] <= 0.7) continue;
+      const reach = top * 0.55 * wide;
       const n = Math.max(1, Math.ceil(reach * this.res * 0.8));
       const [a, b, c, e] = footBox(p);
       const ax0 = Math.max(0, Math.floor(this.ox + a * this.res) - 1);
@@ -1114,6 +1255,27 @@ class Ground {
         }
       }
     }
+    // far look: blur the mask several times so the shadow is wide and soft
+    for (let pass = 0; pass < soft; pass++) {
+      const o = new Float32Array(m.length);
+      const r = 2;
+      for (let ay = 0; ay < this.H; ay++) {
+        for (let ax = 0; ax < this.W; ax++) {
+          let t = 0;
+          let n = 0;
+          for (let j = -r; j <= r; j++) {
+            for (let i = -r; i <= r; i++) {
+              const x = ax + i;
+              const y = ay + j;
+              if (x >= 0 && y >= 0 && x < this.W && y < this.H) t += m[y * this.W + x];
+              n++;
+            }
+          }
+          o[ay * this.W + ax] = t / n;
+        }
+      }
+      m = o;
+    }
     // soften by one pixel so the penumbra dithers
     for (let ay = 0; ay < this.H; ay++) {
       for (let ax = 0; ax < this.W; ax++) {
@@ -1126,7 +1288,7 @@ class Ground {
           }
         }
         const cov = s / 9;
-        if (cov > 0.05) this.put(ax, ay, 'shadow', Math.min(1, cov * 1.25), amax);
+        if (cov > 0.04) this.put(ax, ay, 'shadow', Math.min(1, cov * (soft ? 1.6 : 1.25)), amax);
       }
     }
   }
@@ -1182,6 +1344,10 @@ function groundOf(g: Ground, spec: BuildingSpec): void {
       g.slab('dark', u0 - 4, v0 - 3, u1 + 4, v1 + 4, 7, 0.4, 5, 12);
       g.slab('dirt', u0 - 1.2, v0 - 1.2, u1 + 1.2, v1 + 1.2, 4, 0.8, 2, 13);
       g.slab('dirtL', u0 + 1, v0 + 1, u1 - 1, v1 - 1, 3, 0.4, 3, 14);
+      // the streets of a modern city: worn tarmac in the gaps between the blocks
+      const [hs, vs] = cityStreets(lv);
+      for (const sv of hs) g.strip('road', u0 + 1.5, sv, u1 - 1.5, sv, 3, 0.55, 60 + Math.round(sv));
+      for (const su of vs) g.strip('road', su, v0 + 1.5, su, v1 - 1.5, 3, 0.55, 70 + Math.round(su));
       g.strip('dirtL', 0, v1, 2.8, v1 + 10, 3, 0.5, 16);
       g.blob('dark', u0 - 5, v1 + 1, 4, 2.4, 0.5, 0.4, 17);
       break;
@@ -1202,16 +1368,16 @@ function groundOf(g: Ground, spec: BuildingSpec): void {
     }
     case 'port': {
       const L = 26;
-      const top = lv >= 3 ? -22 : -15;
-      const bot = lv >= 3 ? 18 : 17;
+      const top = lv >= 3 ? -24 : -15;
+      const bot = lv >= 3 ? 23 : 17;
       g.slab('dark', -L - 4, top - 3, COAST + 2, bot + 3, 6, 0.4, 5, 25);
       g.slab('dirt', -L, top, COAST + 1, bot, 4, 0.78, 3, 26);
       // the concrete quay along the water, yards and a lane in light concrete
       g.slab('road', -7.5, top + 2, COAST + 2, bot - 1, 2.4, 0.5, 1.8, 27);
       if (lv >= 3) {
-        g.slab('dirtL', -26, -3.2, -6, 6, 2, 0.5, 2.4, 28);
-        g.slab('dirtL', -25, 9.2, -14, 15.8, 2, 0.45, 2.4, 29);
-        g.strip('road', -26, -5.2, -3, -5.2, 2.4, 0.45, 30);
+        g.slab('dirtL', -26, -5.4, -6, 5.6, 2, 0.5, 2.4, 28);
+        g.slab('dirtL', -26, 9.5, -16, 15, 2, 0.4, 2.4, 29);
+        g.strip('road', -26, -9.5, -3, -9.5, 2.4, 0.45, 30);
       } else {
         g.slab('dirtL', -26, 2, -6, 12.6, 2, 0.5, 2.4, 28);
         g.strip('road', -26, -2.4, -3, -2.4, 2.4, 0.45, 30);
@@ -1233,7 +1399,7 @@ function groundOf(g: Ground, spec: BuildingSpec): void {
       if (lv >= 3) {
         // the breakwater's wash, and the dry dock's water
         for (let i = 0; i + 1 < MOLE.length; i++) g.strip('foam', MOLE[i][0], MOLE[i][1], MOLE[i + 1][0], MOLE[i + 1][1], 6, 0.55, 80 + i);
-        g.slab('water', -11.5, 11.1, 3, 16.1, 0.6, 0.95, 0.8, 90);
+        g.slab('water', -13.5, 14.5, 3, 19.5, 0.6, 0.95, 0.8, 90);
       }
       break;
     }
@@ -1358,6 +1524,276 @@ function levelPill(ctx: CanvasRenderingContext2D, cx: number, y: number, level: 
   ctx.fillRect(x0 + 1, y0 + 1, 3, h - 2);
   ctx.fillStyle = '#ffffff';
   ctx.fillText(text, x0 + 7, y0 + h / 2 + 0.5);
+}
+
+// ------------------------------------------------------------------------------------------------- far look (normal zoom)
+
+export type FarId = 'A' | 'B' | 'C';
+/** One far-zoom look: how strongly colours are pulled to the land, and how the owner outline and shadow are drawn. */
+export interface FarLook {
+  id: FarId;
+  name: string;
+  /** 1 keeps the colours, 0 is the land colour (the building's own contrast is scaled by this) */
+  gain: number;
+  /** the same for add-ons (guns), kept stronger so they still read */
+  addGain: number;
+  ringA: number;
+  /** how far the outline colour is mixed toward the land */
+  ringLand: number;
+  edgeA: number;
+  /** flat silhouette: four land-tinted tones only */
+  flat: boolean;
+  shadowA: number;
+}
+export const FAR_LOOKS: FarLook[] = [
+  { id: 'A', name: 'Far look A: soft outline', gain: 0.72, addGain: 0.95, ringA: 0.5, ringLand: 0, edgeA: 0, flat: false, shadowA: 0.36 },
+  { id: 'B', name: 'Far look B: tinted to land', gain: 0.6, addGain: 0.85, ringA: 0.9, ringLand: 0.55, edgeA: 0.28, flat: false, shadowA: 0.3 },
+  { id: 'C', name: 'Far look C: simple silhouette', gain: 1, addGain: 1, ringA: 0.55, ringLand: 0.1, edgeA: 0, flat: true, shadowA: 0.34 },
+];
+
+/** Simplified shapes for far zoom: big masses, no windows, merlons, gear, piles or trees. */
+function farModel(spec: BuildingSpec): Part[] {
+  const lv = spec.level;
+  const P: Part[] = [];
+  switch (spec.type) {
+    case 'fort': {
+      const cfg = lv >= 5 ? { w: 36, d: 24, t: 3.2, wz: 8, tz: 12, r: 4.0 } : lv >= 3 ? { w: 30, d: 20, t: 2.8, wz: 6, tz: 9, r: 3.3 } : { w: 24, d: 15, t: 2.2, wz: 4.2, tz: 6.5, r: 2.6 };
+      const { w, d, t, wz, tz, r } = cfg;
+      const x0 = -w / 2;
+      const x1 = w / 2;
+      const y0 = -d / 2;
+      const y1 = d / 2;
+      const gate = 3.6;
+      P.push(bx(x0 + t, y0 + t, x1 - t, y1 - t, 0, 0, 'tan', { inset: true, tone: -1 }));
+      P.push(bx(x0, y0, x1, y0 + t, 0, wz, 'sup', { tone: -0.2 }), bx(x0, y0, x0 + t, y1, 0, wz, 'sup', { tone: -0.2 }), bx(x1 - t, y0, x1, y1, 0, wz, 'sup', { tone: -0.2 }), bx(x0, y1 - t, -gate, y1, 0, wz, 'sup', { tone: -0.2 }), bx(gate, y1 - t, x1, y1, 0, wz, 'sup', { tone: -0.2 }));
+      P.push(bx(-gate - 0.9, y1 - t - 0.6, gate + 0.9, y1 + 0.4, 0, wz + 1.2, 'sup', { tone: 0.1 }));
+      if (lv >= 3) P.push(bx(-5.2, -4.4, 5.2, 2.4, 0, lv >= 5 ? 12 : 7.6, 'cream', { tone: -0.3 }), ...hip(-5.2, -4.4, 5.2, 2.4, lv >= 5 ? 12 : 7.6, 'fieldgrey', { rh: 2.4, over: 0.5 }));
+      else P.push(...house(-8.4, -3.9, 0.6, -0.3, 3.0, 'rust', 'cream'), ...house(3.2, -3.8, 8.6, 0.8, 2.6, 'brick', 'canvas', { hip: true }));
+      for (const [cx, cy] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) P.push(el(cx, cy, r, r * 0.9, 0, tz, 'sup', { sh: 'cyl', tone: -0.1 }), el(cx, cy, r * 0.9, r * 0.8, tz, 1.6, 'rust', { sh: 'dome', tone: 0.5 }));
+      break;
+    }
+    case 'city':
+      cityLots(lv).sort((a, b) => a.v - b.v || a.u - b.u).forEach((l, i) => P.push(...lotFar(l, i)));
+      break;
+    case 'sam': {
+      const bay = (u: number, v: number): Part[] => [bx(u - 10, v - 5.6, u + 11.5, v - 4.1, 0, 1.0, 'tan', { tone: -0.5 }), bx(u - 10, v + 4.1, u + 11.5, v + 5.6, 0, 1.0, 'tan', { tone: -0.5 }), bx(u - 10, v - 5.6, u - 8.5, v + 5.6, 0, 1.0, 'tan', { tone: -0.5 }), bx(u - 6.5, v - 3, u + 6.5, v + 3, 1.0, 2.2, 'olive'), el(u - 1, v, 2.8, 2.5, 3.2, 0.8, 'own', { sh: 'dome' }), seg(u - 5, v, u + 5.5, v - 1.8, 2.4, 4.0, 0.9, 'white', { sh: 'cyl', tone: 0.4 })];
+      const truck = (u: number, v: number): Part[] => [bx(u - 6, v - 2.4, u + 6, v + 2.4, 0.8, 3.4, 'olive', { tone: 0.2 }), bx(u - 5, v + 1.6, u + 2, v + 2.4, 4.2, 0, 'own')];
+      if (lv >= 3) P.push(...truck(-1, -17.5), ...bay(-15.5, -4), ...bay(11, -4), ...bay(-2, 14));
+      else P.push(...truck(12, -7), ...bay(-7, 4));
+      break;
+    }
+    case 'port': {
+      for (const p of pierList(lv)) P.push(bx(p.u0, p.v0, p.u1, p.v1, PIER_Z, 0.8, p.wood ? 'teak' : 'sup'));
+      for (const h of hullList(lv)) {
+        const hw = h.wid / 2;
+        P.push(poly([h.u, h.v - hw, h.u + h.len - 3.5, h.v - hw, h.u + h.len, h.v, h.u + h.len - 3.5, h.v + hw, h.u, h.v + hw], 0, 2.2, 'merchant', { tone: 0.6 }), bx(h.u + 1.2, h.v - hw + 0.8, h.u + 5, h.v + hw - 0.8, 2.2, 3.2, 'white'));
+        if (h.kind !== 'tug') P.push(bx(h.u + 7, h.v - hw + 0.8, h.u + h.len - 4, h.v + hw - 0.8, 2.2, 1.4, 'rust', { tone: -0.2 }));
+      }
+      if (lv >= 3) {
+        P.push(bx(9.5, -11.6, 12.5, -9.6, DECK, 8, 'ochre', { tone: -0.2 }), seg(11, -10.6, 11, -2, 1.2, DECK + 8, 0.6, 'ochre', { tone: 0.3 }));
+        P.push(bx(-26, -19.5, -10.5, -12.8, 0, 4.0, 'tan', { tone: -0.3 }), ...gable(-26, -19.5, -10.5, -12.8, 4.0, 'cargo', { rh: 1.8, over: 0.4, metal: true }));
+        P.push(...house(-8.4, -11.4, -3.6, -7.2, 3.6, 'brick', 'white', { hip: true }), bx(-24, -4, -12, 4.1, 0, 2.3, 'rust', { tone: -0.2 }), bx(-24, -4, -18, 4.1, 2.3, 2.3, 'fadedBlue'));
+        P.push(bx(-15, 13, 1.6, 14.5, 0, 2, 'sup', { tone: -0.1 }), bx(-15, 19.5, 1.6, 21, 0, 2, 'sup', { tone: -0.1 }), bx(-15, 13, -13.5, 21, 0, 2, 'sup', { tone: -0.1 }));
+        for (let i = 0; i + 1 < MOLE.length; i++) P.push(seg(MOLE[i][0], MOLE[i][1], MOLE[i + 1][0], MOLE[i + 1][1], 3.4, 0, 2.2, 'sup', { tone: 0.1 }));
+        const [tu, tv] = MOLE[MOLE.length - 1];
+        P.push(el(tu - 0.3, tv, 2.0, 1.8, 2.2, 7, 'white', { sh: 'cyl' }), el(tu - 0.3, tv, 1.6, 1.4, 9.2, 1.4, 'redlead', { sh: 'dome' }));
+      } else {
+        P.push(bx(2.5, -1.2, 4.5, 0.8, DECK, 7, 'ochre', { tone: -0.2 }), seg(3.5, -0.2, 9.5, 6.5, 1.2, DECK + 7, 0.6, 'ochre', { tone: 0.3 }));
+        P.push(bx(-24, -11, -8, -4.6, 0, 3.8, 'tan', { tone: -0.3 }), ...gable(-24, -11, -8, -4.6, 3.8, 'fieldgrey', { rh: 1.6, over: 0.4, metal: true }), ...house(-6.5, -9.6, -2, -5.6, 3.6, 'brick', 'white', { hip: true }));
+        P.push(bx(-24, 3, -8, 8.4, 0, 2.3, 'rust', { tone: -0.2 }), el(-3.2, 10.4, 1.9, 1.7, 1.2, 8, 'white', { sh: 'cyl' }), el(-3.2, 10.4, 1.5, 1.3, 9.2, 1.4, 'redlead', { sh: 'dome' }));
+      }
+      break;
+    }
+  }
+  return P;
+}
+/** A lot at far zoom: one plain mass (no windows, gear, chimneys or trees). */
+function lotFar(l: Lot, i: number): Part[] {
+  const su0 = hash(i, 11, 1) * 1.1;
+  const su1 = hash(i, 12, 1) * 1.1;
+  const sv0 = hash(i, 13, 1) * 0.8;
+  const sv1 = hash(i, 14, 1) * 0.4;
+  const u0 = l.u - l.w / 2 + su0;
+  const u1 = l.u + l.w / 2 - su1;
+  const v0 = l.v - l.d / 2 + sv0;
+  const v1 = l.v + l.d / 2 - sv1;
+  const wall = l.wall ?? 'sup';
+  switch (l.k) {
+    case 'church':
+      return [bx(l.u - l.w / 2, l.v - l.d / 2, l.u + l.w / 2, l.v + l.d / 2 - 3, 0, l.z, 'cream', { tone: -0.3 }), ...roof(l.u - l.w / 2, l.v - l.d / 2 + 0.8, l.u + l.w / 2, l.v + l.d / 2 - 3, l.z, l.roof, 1.9, 0.5), bx(l.u - 1.6, l.v + l.d / 2 - 3.2, l.u + 1.6, l.v + l.d / 2, 0, 10, 'cream'), bx(l.u - 1.2, l.v + l.d / 2 - 2.8, l.u + 1.2, l.v + l.d / 2 - 0.4, 10, 2.4, 'fadedBlue')];
+    case 'gable':
+    case 'L':
+    case 'T':
+      return house(u0, v0, u1, v1, l.z, l.roof, wall);
+    case 'hip':
+      return house(u0, v0, u1, v1, l.z, l.roof, wall, { hip: true });
+    case 'block':
+    case 'blockL':
+      return [bx(u0, v0, u1, v1, 0, l.z, wall, { tone: -0.3 }), bx(u0 - 0.1, v0 - 0.1, u1 + 0.1, v1 + 0.1, l.z, 0.6, wall, { tone: 0.5, edge: true }), bx(u0 + 0.6, v0 + 0.6, u1 - 0.6, v1 - 0.6, l.z, 0, l.roof, { inset: true, tone: -0.2 })];
+    case 'tower':
+    case 'sky':
+      return stackTower(l.u - l.w / 2, l.v - l.d / 2, l.u + l.w / 2, l.v + l.d / 2, l.stack ?? { tiers: [[l.z, 0]], fin: 'mast', lit: 0 }, wall, l.roof, i, true, true);
+    case 'park':
+      return park(l, true);
+    case 'shed':
+      return [bx(u0, v0, u1, v1, 0, l.z, wall, { tone: -0.3 }), ...gable(u0, v0, u1, v1, l.z, l.roof, { rh: 1.4, over: 0.4, metal: true })];
+    case 'tanks':
+      return [el((u0 + u1) / 2, (v0 + v1) / 2, 3, 2.8, 0, 4, 'white', { sh: 'cyl' })];
+  }
+}
+/** Every add-on of a building (guns, traps, radar), drawn the same at every distance. */
+function addonParts(spec: BuildingSpec, simple: boolean): Part[] {
+  switch (spec.type) {
+    case 'fort':
+      return fortAddon(spec.level, spec.addon, simple);
+    case 'city':
+      return cityAddon(spec.level, spec.addon, simple);
+    case 'sam':
+      return samAddon(spec.level, spec.addon, simple);
+    case 'port':
+      return portAddon(spec.level, spec.addon, simple);
+  }
+}
+/** The ground of a far-zoom building: one wide soft dark patch and a lighter one that fade into the terrain. */
+function groundFar(g: Ground, spec: BuildingSpec): void {
+  const lv = spec.level;
+  switch (spec.type) {
+    case 'fort': {
+      const w = lv >= 5 ? 36 : lv >= 3 ? 30 : 24;
+      const d = lv >= 5 ? 24 : lv >= 3 ? 20 : 15;
+      g.slab('dark', -w / 2 - 10, -d / 2 - 9, w / 2 + 10, d / 2 + 12, 9, 0.38, 9, 5);
+      g.slab('dirt', -w / 2 - 5, -d / 2 - 4, w / 2 + 5, d / 2 + 6, 6, 0.5, 6, 6);
+      break;
+    }
+    case 'city': {
+      const [u0, v0, u1, v1] = cityBounds(lv);
+      g.slab('dark', u0 - 6, v0 - 5, u1 + 6, v1 + 6, 8, 0.36, 9, 12);
+      g.slab('dirt', u0 - 2, v0 - 2, u1 + 2, v1 + 2, 6, 0.5, 6, 13);
+      break;
+    }
+    case 'sam': {
+      const rx = lv >= 3 ? 23 : 18;
+      const ry = lv >= 3 ? 17 : 12;
+      g.blob('dark', 1, 2, rx + 8, ry + 7, 0.36, 0.9, 18);
+      g.blob('dirt', 1, 2, rx, ry, 0.5, 0.7, 19);
+      break;
+    }
+    case 'port': {
+      const top = lv >= 3 ? -24 : -15;
+      const bot = lv >= 3 ? 23 : 17;
+      g.slab('dark', -34, top - 5, COAST + 1, bot + 5, 8, 0.36, 9, 25);
+      g.slab('dirt', -27, top, COAST, bot, 6, 0.5, 6, 26);
+      break;
+    }
+  }
+}
+
+/** The far-zoom picture of a building: the ground fades into the terrain, shapes are simplified, colours are pulled toward the land under them, the owner outline is thin and soft. */
+export function bakeBuildingFar(spec: BuildingSpec, owner: RGB, scale: number, dpr: number, under: Under, look: FarLook): BakedBuilding {
+  const g = gridOf(scale, dpr);
+  const res = g.res;
+  const CW = Math.round(CU * res);
+  const CH = Math.round(CV * res);
+  const ox = Math.round(OU * res);
+  const oy = Math.round(OV * res);
+  const body = farModel(spec);
+  const add = addonParts(spec, true);
+  const gr = new Ground(CW, CH, res, ox, oy, under);
+  gr.smooth = true;
+  groundFar(gr, spec);
+  gr.shadows([...body, ...add], look.shadowA, 3, 1.25);
+  const d = gr.d;
+  const blend = (X: number, Y: number, c: C, a: number): void => {
+    const o = (Y * CW + X) * 4;
+    const da = d[o + 3] / 255;
+    const oa = a + da * (1 - a);
+    const w = da * (1 - a);
+    d[o] = (c[0] * a + d[o] * w) / oa;
+    d[o + 1] = (c[1] * a + d[o + 1] * w) / oa;
+    d[o + 2] = (c[2] * a + d[o + 2] * w) / oa;
+    d[o + 3] = oa * 255;
+  };
+  /** the solid pixels of a bake, in cell coordinates */
+  const maskOf = (b: Baked): Uint8Array => {
+    const m = new Uint8Array(CW * CH);
+    for (let y = 0; y < b.h; y++) {
+      for (let x = 0; x < b.w; x++) {
+        const X = x + ox - b.ox;
+        const Y = y + oy - b.oy;
+        if (X >= 0 && Y >= 0 && X < CW && Y < CH && b.data[(y * b.w + x) * 4 + 3] >= 200) m[Y * CW + X] = 1;
+      }
+    }
+    return m;
+  };
+  const ringPx = Math.max(1, ringWidth(g.k) - 1);
+  /** draws a layer of parts: its outline (grown from `mask`, outside it) first, then the pulled colours */
+  const layer = (parts: Part[], gain: number, mask?: Uint8Array): void => {
+    if (!parts.length) return;
+    const b = rasterize({ parts, ground: 0 }, res, 0, { facings: 32, owner });
+    const own = maskOf(b);
+    const sil = mask ?? own;
+    // the ring: grow the silhouette ringPx steps (4 neighbours), then one more step for the faint edge
+    const dist = new Uint8Array(CW * CH).fill(255);
+    let front: number[] = [];
+    for (let i = 0; i < sil.length; i++) {
+      if (sil[i]) {
+        dist[i] = 0;
+        front.push(i);
+      }
+    }
+    for (let k = 1; k <= ringPx + 1; k++) {
+      const next: number[] = [];
+      for (const idx of front) {
+        const x = idx % CW;
+        const y = (idx / CW) | 0;
+        for (const j of [x > 0 ? idx - 1 : -1, x < CW - 1 ? idx + 1 : -1, y > 0 ? idx - CW : -1, y < CH - 1 ? idx + CW : -1]) {
+          if (j < 0 || dist[j] !== 255) continue;
+          dist[j] = k;
+          next.push(j);
+          const X = j % CW;
+          const Y = (j / CW) | 0;
+          const land = under.rgb(X, Y);
+          if (k <= ringPx) blend(X, Y, mix(owner, land, look.ringLand), look.ringA);
+          else if (look.edgeA > 0) blend(X, Y, dark(land, 0.5), look.edgeA);
+        }
+      }
+      front = next;
+    }
+    for (let y = 0; y < b.h; y++) {
+      for (let x = 0; x < b.w; x++) {
+        const s = (y * b.w + x) * 4;
+        if (b.data[s + 3] < 200) continue;
+        const X = x + ox - b.ox;
+        const Y = y + oy - b.oy;
+        if (X < 0 || Y < 0 || X >= CW || Y >= CH) continue;
+        const land = under.rgb(X, Y);
+        const c: C = [b.data[s], b.data[s + 1], b.data[s + 2]];
+        let out: RGB;
+        if (look.flat) {
+          const l = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
+          const f = l < 70 ? 0.64 : l < 120 ? 0.76 : l < 175 ? 0.88 : 1.0;
+          out = mix([land[0] * f, land[1] * f, land[2] * f], [92, 98, 100], 0.2);
+        } else out = [cl(land[0] + (c[0] - land[0]) * gain), cl(land[1] + (c[1] - land[1]) * gain), cl(land[2] + (c[2] - land[2]) * gain)];
+        blend(X, Y, out, 1);
+      }
+    }
+  };
+  if (spec.type === 'city') {
+    // one soft outline round the whole town, drawn outside the blocks
+    const shape: Part[] = cityLots(spec.level).map((l) => ({ k: 'box' as const, p: [l.u - l.w / 2 - 3.6, l.v - l.d / 2 - 3.6, l.u + l.w / 2 + 3.6, l.v + l.d / 2 + 3.6], z: 0, h: 0.3, m: 'tan' as const }));
+    const flak = add.map((p) => ({ ...p, m: 'tan' as const, pat: undefined, tone: 0 }));
+    const m = maskOf(rasterize({ parts: [...shape, ...flak], ground: 0 }, res, 0, { facings: 32, owner }));
+    layer(body, look.gain, m);
+  } else layer(body, look.gain);
+  layer(add, look.addGain);
+  const cv = makeCanvas(CW, CH);
+  const cx = cv.getContext('2d');
+  if (cx) {
+    const img = cx.createImageData(CW, CH);
+    img.data.set(d);
+    cx.putImageData(img, 0, 0);
+  }
+  return { canvas: cv, w: CW * g.k, h: CH * g.k, top: 0, cx: ox * g.k };
 }
 
 // ------------------------------------------------------------------------------------------------- the sheet
@@ -1768,13 +2204,14 @@ async function buildCrop(): Promise<Crop> {
   };
   const sites: Site[] = [
     // the port sits on the coast itself (the pier reaches into the sea), on the red side
-    { type: 'port', level: 3, addon: null, x: px, y: py, blue: false },
-    mk('fort', 3, null, px - 16, py - 27, false),
-    mk('city', 3, null, px - 24, py + 26, false),
+    { type: 'port', level: 3, addon: 'guns', x: px, y: py, blue: false },
+    mk('fort', 3, 'flak', px - 16, py - 27, false),
+    mk('city', 3, 'flak', px - 24, py + 26, false),
     mk('sam', 1, null, px - 27, py + 9, false),
-    mk('fort', 5, null, px - 52, py - 27, true),
+    mk('fort', 5, 'flak', px - 52, py - 27, true),
     mk('city', 1, null, px - 50, py + 26, true),
-    mk('sam', 3, null, px - 46, py + 1, true),
+    mk('sam', 3, 'radar', px - 46, py + 1, true),
+    mk('city', 5, null, px - 84, py + 6, true),
   ];
   const troops: Troop[] = [];
   const pills: Pill[] = [];
@@ -1814,7 +2251,7 @@ async function buildCrop(): Promise<Crop> {
 }
 
 /** Draws a preview of the crop at a zoom (CSS px per tile) with buildings and units at the units' own scale for that zoom. */
-function drawMapPreview(cv: HTMLCanvasElement, crop: Crop, zoom: number, dpr: number, shiftX: number): void {
+function drawMapPreview(cv: HTMLCanvasElement, crop: Crop, zoom: number, dpr: number, shiftX: number, far?: FarLook): void {
   const cw = MAP_W;
   const ch = cv.height / dpr;
   const ctx = cv.getContext('2d');
@@ -1887,7 +2324,8 @@ function drawMapPreview(cv: HTMLCanvasElement, crop: Crop, zoom: number, dpr: nu
         return crop.water(Math.floor(tx), Math.floor(ty));
       },
     };
-    const spr = bakeBuilding({ type: s.type, level: s.level, addon: s.addon }, owner, scale, dpr, under);
+    const bs: BuildingSpec = { type: s.type, level: s.level, addon: s.addon };
+    const spr = far ? bakeBuildingFar(bs, owner, scale, dpr, under, far) : bakeBuilding(bs, owner, scale, dpr, under);
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(spr.canvas, Math.round(cellX * dpr) / dpr, Math.round(cellY * dpr) / dpr, spr.w, spr.h);
     if (scale >= 2) levels.push([cellX + spr.cx, cellY + spr.top - 15, s.level, owner]);
@@ -1909,6 +2347,17 @@ function drawMapPreview(cv: HTMLCanvasElement, crop: Crop, zoom: number, dpr: nu
     troopPill(ctx, p[0], p[1], q.troops, q.kinds, q.blue ? BLUE : RED, { edge: '#ffe98a', arrow: 'up', small: true });
   }
   for (const [x, y, lv, o] of levels) levelPill(ctx, x, y, lv, o);
+  if (far) {
+    // the variant's name on the picture itself
+    ctx.font = '700 14px "DM Sans", system-ui, sans-serif';
+    const tw = Math.ceil(ctx.measureText(far.name).width);
+    ctx.fillStyle = 'rgba(10,14,20,0.85)';
+    ctx.fillRect(8, 8, tw + 20, 26);
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(far.name, 18, 21.5);
+  }
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
@@ -1942,15 +2391,15 @@ export function mountBuildingsMock(root: HTMLElement): HTMLElement {
   const mt = document.createElement('h3');
   mt.textContent = 'On the real map';
   const mn = document.createElement('p');
-  mn.textContent = `The same buildings over a crop of the game's ${MAP_ID} map (its own loader and terrain colours), with the border of two nations, at the same size as the game's units for each zoom (zoom ${ZOOM_NORMAL} and zoom ${ZOOM_CLOSE}). Next to them are the game's real tanks, ships and army count pills, so the two can be compared side by side.`;
+  mn.textContent = `Normal zoom shows three far looks to pick from (A, B, C): simplified shapes with no inner clutter, a thinner softer owner outline, colours pulled toward the land, a wide soft shadow and a ground patch that fades into the terrain. Close zoom keeps the full detail. The same buildings over a crop of the game's ${MAP_ID} map (its own loader and terrain colours), with the border of two nations, at the same size as the game's units for each zoom (zoom ${ZOOM_NORMAL} and zoom ${ZOOM_CLOSE}). Next to them are the game's real tanks, ships and army count pills, so the two can be compared side by side.`;
   mh.append(mt, mn);
   sec.append(mh);
-  const previews: [string, number, number, number][] = [
-    [`Normal zoom (zoom ${ZOOM_NORMAL})`, ZOOM_NORMAL, 300, 0],
-    [`Close zoom (zoom ${ZOOM_CLOSE})`, ZOOM_CLOSE, 720, -16],
+  const previews: [string, number, number, number, FarLook | undefined][] = [
+    ...FAR_LOOKS.map((f): [string, number, number, number, FarLook | undefined] => [`Normal zoom (zoom ${ZOOM_NORMAL}), ${f.name}`, ZOOM_NORMAL, 300, 0, f]),
+    [`Close zoom (zoom ${ZOOM_CLOSE})`, ZOOM_CLOSE, 720, -16, undefined],
   ];
-  const mcs: { cv: HTMLCanvasElement; zoom: number; shift: number }[] = [];
-  for (const [name, zoom, hh, shift] of previews) {
+  const mcs: { cv: HTMLCanvasElement; zoom: number; shift: number; far?: FarLook }[] = [];
+  for (const [name, zoom, hh, shift, far] of previews) {
     const sub = document.createElement('p');
     sub.textContent = name;
     sub.style.cssText = 'margin:12px 0 4px;font-weight:600';
@@ -1962,13 +2411,13 @@ export function mountBuildingsMock(root: HTMLElement): HTMLElement {
     mc.height = hh * dpr;
     mc.getContext('2d')?.fillRect(0, 0, 1, 1);
     sec.append(sub, mc);
-    mcs.push({ cv: mc, zoom, shift });
+    mcs.push({ cv: mc, zoom, shift, far });
   }
   root.append(sec);
   void buildCrop().then(
     (crop) => {
       const go = (): void => {
-        for (const m of mcs) drawMapPreview(m.cv, crop, m.zoom, dpr, m.shift);
+        for (const m of mcs) drawMapPreview(m.cv, crop, m.zoom, dpr, m.shift, m.far);
       };
       go();
       void document.fonts?.ready.then(go);
