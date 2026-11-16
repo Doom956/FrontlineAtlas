@@ -2,12 +2,21 @@
 // Natural Earth's populated places (ne_10m_populated_places_simple), so their coordinates come from the data set;
 // `country` narrows the lookup when a city name exists in several countries.
 import type { LonLatBox, ProjDef } from './lib';
+import type { DrawnMap } from './drawn/kit';
+import { SUNDERED, SUNDERED_PLANE, SUNDERED_SPAWNS } from './drawn/sundered';
+import { FOURSEAS, FOURSEAS_PLANE, FOURSEAS_SPAWNS } from './drawn/fourseas';
+import { DRIFTISLES, DRIFTISLES_PLANE, DRIFTISLES_SPAWNS } from './drawn/driftisles';
+import { RINGLANDS, RINGLANDS_PLANE, RINGLANDS_SPAWNS } from './drawn/ringlands';
 
 export interface SpawnDef {
   /** nation name shown in the game */
   name: string;
-  /** Natural Earth populated place (name, nameascii or namealt) */
-  city: string;
+  /** Natural Earth populated place (name, nameascii or namealt); not used when `at` is given */
+  city?: string;
+  /** drawn maps: the capital's [lon, lat] (use the map's plane helper P(u, v)) */
+  at?: number[];
+  /** ordering weight standing in for a city's population (default 1 million for `at` spawns) */
+  pop?: number;
   /** Natural Earth adm0name, to disambiguate */
   country?: string;
   /** a major power: comes early in the spawn order (among the spawns far enough from those before it) */
@@ -29,6 +38,8 @@ export interface MapDef {
   forestMax?: number;
   /** listed in any order: the build sorts them so any first N are spread out (see spreadOrder in build.ts) */
   spawns: SpawnDef[];
+  /** hand-drawn map: these shapes replace the Natural Earth layers (see drawn/kit.ts) */
+  drawn?: DrawnMap;
 }
 
 const s = (name: string, city: string, country?: string): SpawnDef => ({ name, city, country });
@@ -690,5 +701,41 @@ export const MAP_DEFS: MapDef[] = [
       s('Mecklenburg', 'Rostock'),
       s('Ingria', 'St.  Petersburg', 'Russia'),
     ],
+  },
+  {
+    id: 'ringlands',
+    name: 'The Ringlands',
+    description: 'A fictional land: three mountain walls round a small core, with gates in each wall, and a wide wild country outside.',
+    ...RINGLANDS_PLANE.def,
+    targetLand: 700_000,
+    drawn: RINGLANDS,
+    spawns: RINGLANDS_SPAWNS,
+  },
+  {
+    id: 'sundered',
+    name: 'The Sundered Sea',
+    description: 'A fictional world: a strong walled island across a strait from a vast mainland of many nations, with a great desert and long ranges.',
+    ...SUNDERED_PLANE.def,
+    targetLand: 900_000,
+    drawn: SUNDERED,
+    spawns: SUNDERED_SPAWNS,
+  },
+  {
+    id: 'fourseas',
+    name: 'The Sundering Wall',
+    description: 'A fictional world: one towering mountain wall runs the whole height of the map, and a belt of islands crosses it, cutting four seas, each with islands to settle.',
+    ...FOURSEAS_PLANE.def,
+    targetLand: 600_000,
+    drawn: FOURSEAS,
+    spawns: FOURSEAS_SPAWNS,
+  },
+  {
+    id: 'driftisles',
+    name: 'The Drifting Isles',
+    description: 'A fictional sea of islands: one great central island, a ring of medium islands and chains of islets split by narrow straits. Fleets and aircraft rule.',
+    ...DRIFTISLES_PLANE.def,
+    targetLand: 450_000,
+    drawn: DRIFTISLES,
+    spawns: DRIFTISLES_SPAWNS,
   },
 ];

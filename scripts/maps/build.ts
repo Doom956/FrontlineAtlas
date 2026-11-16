@@ -14,6 +14,7 @@ import { RESOURCE_COLORS, TERRAIN } from '../../src/sim/config';
 import type { WorldMapInfo, WorldMapPresets } from '../../src/sim/worldmaps';
 import { MAP_DEFS } from './defs';
 import type { MapDef } from './defs';
+import type { DrawnMap } from './drawn/kit';
 import { encodePng, fillFeature, fitBox, makeFrame, makeProjection, parseFeatures, projectedBox, toPixel } from './lib';
 import type { Feature, Frame } from './lib';
 import { buildTerrain } from './terrain';
@@ -58,6 +59,31 @@ function splitLakes(all: Feature[]): { lakes: Feature[]; reservoirs: Feature[]; 
     else lakes.push(f);
   }
   return { lakes, reservoirs, dryLakes };
+}
+
+/** Layers of a hand-drawn map: our own shapes in the places Natural Earth's would be; the rest stays empty. */
+function drawnLayers(d: DrawnMap): Layers {
+  const poly = (r: number[][]): Feature => feat([[r]]);
+  const feat = (parts: number[][][][]): Feature => {
+    let west = Infinity;
+    let east = -Infinity;
+    let south = Infinity;
+    let north = -Infinity;
+    for (const p of parts) for (const r of p) for (const c of r) (west = Math.min(west, c[0])), (east = Math.max(east, c[0])), (south = Math.min(south, c[1])), (north = Math.max(north, c[1]));
+    return { props: { scalerank: 3 }, parts, bbox: { west, east, south, north } };
+  };
+  return {
+    land: d.land.map(poly),
+    minorIslands: [],
+    lakes: d.lakes.map(poly),
+    reservoirs: [],
+    dryLakes: [],
+    regions: [],
+    glaciers: [],
+    rivers: d.rivers.map((l) => feat([[l]])),
+    peaks: [],
+    deep: [],
+  };
 }
 
 function loadLayers(): { layers: Layers; places: Feature[] } {
@@ -326,7 +352,8 @@ function main(): void {
     console.error(`unknown map id; known: ${MAP_DEFS.map((d) => d.id).join(', ')}`);
     process.exit(1);
   }
-  const { layers, places } = loadLayers();
+  // Natural Earth is only read (and downloaded) when a real-world map is built
+  const real = defs.some((d) => !d.drawn) ? loadLayers() : null;
   mkdirSync(`${OUT_DIR}data`, { recursive: true });
   const manifestFile = `${OUT_DIR}manifest.json`;
   const old: WorldMapInfo[] = existsSync(manifestFile) ? JSON.parse(readFileSync(manifestFile, 'utf8')) : [];
@@ -335,23 +362,32 @@ function main(): void {
 
   for (const def of defs) {
     const t0 = Date.now();
+    const layers = def.drawn ? drawnLayers(def.drawn) : real!.layers;
+    const places = real ? real.places : [];
     const scale = chooseScale(def, layers);
     const fr: Frame = makeFrame(makeProjection(def.proj), def.frame, scale, !!def.isWorld, def.fit);
-    const { terrain, resource, landTiles } = buildTerrain(fr, layers, def.id, { forestMax: def.forestMax });
+    const { terrain, resource, landTiles } = buildTerrain(
+      fr,
+      layers,
+      def.id,
+      def.drawn ? { forestMax: def.forestMax, regions: def.drawn.regions, oilRegions: def.drawn.oilZones ?? [], paint: def.drawn.paint } : { forestMax: def.forestMax },
+    );
     const W = fr.width;
     const H = fr.height;
     const used = new Set<number>();
     const placed: { name: string; tile: number; pop: number; major: boolean }[] = [];
     const moved: string[] = [];
     for (const sp of def.spawns) {
-      const c = findCity(places, sp.city, sp.country);
+      const c = sp.at ? { lon: sp.at[0], lat: sp.at[1], pop: sp.pop ?? 1_000_000 } : findCity(places, sp.city ?? '', sp.country);
       if (!c) throw new Error(`${def.id}: city not found: ${sp.city}`);
       const [px, py] = toPixel(fr, c.lon, c.lat);
-      if (px < 0 || py < 0 || px >= W || py >= H) throw new Error(`${def.id}: ${sp.city} is outside the map`);
+      const label0 = sp.city ?? sp.name;
+      if (px < 0 || py < 0 || px >= W || py >= H) throw new Error(`${def.id}: ${label0} is outside the map`);
       const tile = spawnTile(terrain, W, H, px, py, used);
-      if (tile < 0) throw new Error(`${def.id}: no land near ${sp.city}`);
+      if (tile < 0) throw new Error(`${def.id}: no land near ${sp.city ?? sp.name}`);
+      const label = sp.city ?? sp.name;
       const off = Math.hypot((tile % W) + 0.5 - px, Math.floor(tile / W) + 0.5 - py);
-      if (off > 1.5) moved.push(`${sp.city} ${off.toFixed(1)}`);
+      if (off > 1.5) moved.push(`${label} ${off.toFixed(1)}`);
       used.add(tile);
       placed.push({ name: sp.name, tile, pop: c.pop, major: !!sp.major });
     }
