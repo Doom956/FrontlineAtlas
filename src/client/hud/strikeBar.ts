@@ -16,7 +16,7 @@ import type { IconId } from '../icons';
 import { aimStrike, allStrikes, salvoKindOf, salvoOf, STRIKE_ORDER, STRIKES, strikeOfMode, strikesRevealed, type StrikeId, type StrikeStatus } from '../strikes';
 import { salvoLabel } from '../salvoPrefs';
 import { cycleSalvo, salvoTip } from './salvoPicker';
-import { el, flash, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
+import { addKeyLabel, el, flash, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
 
 interface Btn {
   root: HTMLButtonElement;
@@ -47,7 +47,7 @@ export class StrikeBar {
     const row = this.el;
     for (const id of STRIKE_ORDER) {
       const info = STRIKES[id];
-      const btn = makeBtn(`strike-${id}`, info.name, info.label, info.icon);
+      const btn = makeBtn(`strike-${id}`, info.name, info.label, info.icon, info.key);
       btn.root.addEventListener('click', () => {
         // keep the keyboard on the map (Space pauses, letters aim) instead of on this button
         btn.root.blur();
@@ -190,7 +190,7 @@ export class StrikeBar {
 }
 
 /** One bottom-bar strike button: ring, picture, plain word, cooldown seconds, stored count and salvo size. */
-function makeBtn(test: string, name: string, word: string, icon: IconId): Btn {
+function makeBtn(test: string, name: string, word: string, icon: IconId, key = ''): Btn {
   const root = el('button', 'sk locked');
   root.type = 'button';
   root.dataset.test = test;
@@ -218,5 +218,6 @@ function makeBtn(test: string, name: string, word: string, icon: IconId): Btn {
   const size = el('span', 'sk-x');
   // Pixel Clean: a plain word under the icon (the cooldown seconds show in its place while reloading)
   root.append(ring, img, el('span', 'sk-w', word), label, count, size);
+  if (key) addKeyLabel(root, key);
   return { root, ring, label, count, size, last: null, peak: 0 };
 }

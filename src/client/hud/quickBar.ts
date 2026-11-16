@@ -18,7 +18,8 @@ import {
   stableSlots,
 } from './buildMenu';
 import { BuildingSelectionBar } from './buildingSelection';
-import { el, setClass, setTip, setVisible, type HudCtx } from './dom';
+import { addKeyLabel, el, setClass, setTip, setVisible, type HudCtx } from './dom';
+import { BUILD_MENU_KEY_LABEL } from '../input';
 import { iconSpan } from './glyph';
 import { pixelGlyph, pixelIcon } from './pixelIcons';
 import { TECHS } from '../../sim/config';
@@ -67,6 +68,7 @@ export class QuickBar {
     this.buildBtn.dataset.test = 'build-menu-btn';
     this.buildBtn.setAttribute('aria-haspopup', 'dialog');
     this.buildBtn.append(iconSpan(pixelIcon('build', 16), 'qb-build-ic'), el('span', 'qb-build-l', 'Build'));
+    addKeyLabel(this.buildBtn, BUILD_MENU_KEY_LABEL);
     this.buildBtn.dataset.tip = 'Build menu: every building with its cost and what it does, warships and tank divisions';
     this.buildBtn.addEventListener('click', () => this.menu.toggle());
 
@@ -77,7 +79,8 @@ export class QuickBar {
       b.type = 'button';
       // the building's picture in the buildings colour (styles.css .pi-econ)
       const ic = el('span', 'bb-ic pi-c pi-econ');
-      const key = el('span', 'qb-k');
+      const key = el('span', 'qb-k hk');
+      key.setAttribute('aria-hidden', 'true');
       const word = el('span', 'qb-w');
       b.append(ic, word, key);
       const slot = { b, ic, key, word, type: null as BuildingType | null };

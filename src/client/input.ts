@@ -147,6 +147,20 @@ export function sendTransport(state: GameState, ui: UiState, dispatch: Dispatch,
 /** Hotkey -> building, from BUILDINGS[].hotkey (upper-case letters and digits). */
 const HOTKEYS = new Map<string, BuildingType>(BUILDING_ORDER.map((b) => [BUILDINGS[b].hotkey.toUpperCase(), b]));
 
+/** Top bar drawer -> its hotkey (the key labels on the buttons read this; T opens Research through deps.openResearch). */
+export const DRAWER_KEYS: Readonly<Record<string, string>> = { army: 'U', forces: 'Y', research: 'T', diplomacy: 'P', events: 'J', legend: 'L' };
+type ToggledDrawer = Parameters<NonNullable<InputDeps['toggleDrawer']>>[0];
+/** key -> drawer for the toggle below (Research is left out: T opens it earlier, through deps.openResearch) */
+const DRAWER_BY_KEY = new Map<string, ToggledDrawer>(
+  Object.entries(DRAWER_KEYS)
+    .filter(([d]) => d !== 'research')
+    .map(([d, k]) => [k, d as ToggledDrawer]),
+);
+/** Key labels for Pause, Help and the Build menu: the keys the handlers in this file and the quick bar listen for. */
+export const PAUSE_KEY_LABEL = 'Space';
+export const HELP_KEY_LABEL = '?';
+export const BUILD_MENU_KEY_LABEL = 'Tab';
+
 function isTextInput(t: EventTarget | null): boolean {
   if (!(t instanceof HTMLElement)) return false;
   if (t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement || t.isContentEditable) return true;
@@ -596,8 +610,9 @@ export function setupInput(deps: InputDeps): () => void {
         }
         return;
       }
-      if (up === 'U' || up === 'Y' || up === 'P' || up === 'J' || up === 'L') {
-        deps.toggleDrawer?.(up === 'U' ? 'army' : up === 'Y' ? 'forces' : up === 'P' ? 'diplomacy' : up === 'J' ? 'events' : 'legend');
+      const drawer = DRAWER_BY_KEY.get(up);
+      if (drawer) {
+        deps.toggleDrawer?.(drawer);
         return;
       }
       if (up === 'M') {

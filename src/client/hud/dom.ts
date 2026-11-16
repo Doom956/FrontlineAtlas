@@ -35,6 +35,14 @@ export function keycap(k: string): HTMLElement {
   return el('kbd', 'kc', k);
 }
 
+/** A quiet key label in the top-right corner of a button (styles.css .hk). Hidden on touch screens. Empty key: no label. */
+export function addKeyLabel(btn: HTMLElement, k: string, extra = ''): HTMLElement {
+  const h = el('span', extra ? `hk ${extra}` : 'hk', k);
+  h.setAttribute('aria-hidden', 'true');
+  btn.append(h);
+  return h;
+}
+
 /** A section title in the command-table style ("FORCES"). */
 export function sectionTitle(text: string): HTMLElement {
   return el('div', 'wr-sec', text);
