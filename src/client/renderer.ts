@@ -192,6 +192,8 @@ export class Renderer {
     this.humanId = state.humanId;
     this.terr = buildTerrain(map, themeForMap(state.settings.map));
     this.terr.decor = decorForMap(state.settings.map);
+    this.buildings.terr = this.terr;
+    this.buildings.reset();
     this.feed.vis = null; // the new game's fog view attaches below (render)
     this.fog = null;
     this.fogSent = -1;
