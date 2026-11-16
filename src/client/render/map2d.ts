@@ -45,7 +45,7 @@ export class Map2D {
     this.w = w;
     this.h = h;
     this.terrRgba = terr.rgba;
-    if (this.style === 'ground') this.terrRgba = new Uint8ClampedArray(groundFor(map, terr.depth).far);
+    if (this.style === 'ground') this.terrRgba = new Uint8ClampedArray(groundFor(map, terr.depth, terr.theme).far);
     this.terrainCv = makeCanvas(w, h);
     ctx2d(this.terrainCv).putImageData(new ImageData(this.terrRgba.slice(), w, h), 0, 0);
     this.resCv = makeCanvas(w, h);

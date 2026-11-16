@@ -40,6 +40,8 @@ export interface MapDef {
   spawns: SpawnDef[];
   /** hand-drawn map: these shapes replace the Natural Earth layers (see drawn/kit.ts) */
   drawn?: DrawnMap;
+  /** colour theme the client draws the map in (src/client/render/mapThemes.ts THEME_DEFS); copied to the manifest */
+  theme?: string;
 }
 
 const s = (name: string, city: string, country?: string): SpawnDef => ({ name, city, country });
@@ -705,11 +707,12 @@ export const MAP_DEFS: MapDef[] = [
   {
     id: 'ringlands',
     name: 'The Ringlands',
-    description: 'A fictional island: three round walls in its heart, each with four gate districts, snowy mountains in the north and wild country to every coast.',
+    description: 'A fictional walled country: three round walls with four gate districts each fill most of an island, with forests and fields between them, snowy mountains to the north and a band of open country to every coast.',
     ...RINGLANDS_PLANE.def,
     targetLand: 650_000,
     drawn: RINGLANDS,
     spawns: RINGLANDS_SPAWNS,
+    theme: 'stonewall',
   },
   {
     id: 'sundered',
@@ -719,6 +722,7 @@ export const MAP_DEFS: MapDef[] = [
     targetLand: 900_000,
     drawn: SUNDERED,
     spawns: SUNDERED_SPAWNS,
+    theme: 'stonewall',
   },
   {
     id: 'fourseas',

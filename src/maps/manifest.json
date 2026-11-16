@@ -2274,10 +2274,10 @@
  {
   "id": "ringlands",
   "name": "The Ringlands",
-  "description": "A fictional island: three round walls in its heart, each with four gate districts, snowy mountains in the north and wild country to every coast.",
-  "width": 1116,
-  "height": 1529,
-  "landTiles": 650166,
+  "description": "A fictional walled country: three round walls with four gate districts each fill most of an island, with forests and fields between them, snowy mountains to the north and a band of open country to every coast.",
+  "width": 1141,
+  "height": 1242,
+  "landTiles": 650090,
   "recommendedNations": 5,
   "recommendedTribes": 165,
   "presets": {
@@ -2293,45 +2293,50 @@
   "spawns": [
    {
     "name": "Aldmere",
-    "tile": 836442
+    "tile": 730824
    },
    {
     "name": "Eskerin",
-    "tile": 475803
-   },
-   {
-    "name": "Halvard",
-    "tile": 504045
-   },
-   {
-    "name": "Norvane",
-    "tile": 1224732
-   },
-   {
-    "name": "Kestrelmoor",
-    "tile": 976221
-   },
-   {
-    "name": "Ilmarsh",
-    "tile": 947840
+    "tile": 413291
    },
    {
     "name": "Orlith",
-    "tile": 1392427
+    "tile": 1113361
+   },
+   {
+    "name": "Norvane",
+    "tile": 1054612
+   },
+   {
+    "name": "Kestrelmoor",
+    "tile": 976139
    },
    {
     "name": "Brannoch",
-    "tile": 790644
+    "tile": 607703
+   },
+   {
+    "name": "Halvard",
+    "tile": 643976
+   },
+   {
+    "name": "Ilmarsh",
+    "tile": 852803
    },
    {
     "name": "Corvane",
-    "tile": 761737
+    "tile": 484368
    },
    {
     "name": "Dunmarrow",
-    "tile": 912262
+    "tile": 731040
+   },
+   {
+    "name": "Thornwick",
+    "tile": 730608
    }
-  ]
+  ],
+  "theme": "stonewall"
  },
  {
   "id": "sundered",
@@ -2401,7 +2406,8 @@
     "name": "Selvane",
     "tile": 347218
    }
-  ]
+  ],
+  "theme": "stonewall"
  },
  {
   "id": "fourseas",
@@ -2467,7 +2473,8 @@
     "name": "Kelmarsh",
     "tile": 374538
    }
-  ]
+  ],
+  "theme": "brightseas"
  },
  {
   "id": "driftisles",

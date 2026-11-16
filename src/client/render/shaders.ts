@@ -1,10 +1,11 @@
 // GLSL for the map layer (WebGL2). One fullscreen pass: terrain, nations, borders, overlays.
 import { GROUND_TINT, GROUND_TINT_ZOOM, TINT_LIFT_MAX, TINT_LIFT_MIN, UNDER_CHROMA, UNDER_DETAIL, UNDER_LUM, UNDER_MID } from './palette';
 import { FOG } from '../../sim/config';
-import { WATER_FADE_END, WATER_MID } from './terrain';
+import { WATER_FADE_END } from './terrain';
 import type { RGB } from './common';
-import { GROUND, SEA_BANDS, type GroundRamp } from './ground';
+import { SEA_BANDS, type GroundRamp } from './ground';
 import { MAP_STYLE_ID, type MapStyle } from './mapStyle';
+import { DEFAULT_THEME, type GroundPalette, type MapTheme } from './mapThemes';
 
 const rgb = (c: RGB): string => c.map((v) => (v / 255).toFixed(4)).join(', ');
 
@@ -39,32 +40,49 @@ void main() {
 const ramp4 = (name: string, r: GroundRamp | readonly RGB[]): string =>
   `const vec3 ${name}[${r.length}] = vec3[${r.length}](${r.map((c) => `vec3(${rgb(c)})`).join(', ')});`;
 
-const GROUND_RAMPS = [
-  ramp4('GRASS', GROUND.grass),
-  ramp4('GRASS_DRY', GROUND.grassDry),
-  ramp4('GRASS_LUSH', GROUND.grassLush),
-  ramp4('FOREST', GROUND.forest),
-  ramp4('HILLS', GROUND.hills),
-  ramp4('ROCK', GROUND.rock),
-  ramp4('SNOW', GROUND.snow),
-  ramp4('SAND', GROUND.sand),
-  ramp4('SWAMP', GROUND.swamp),
-  ramp4('TUNDRA', GROUND.tundra),
-  ramp4('WHEAT', GROUND.wheat),
-  ramp4('CROP', GROUND.crop),
-  ramp4('SOIL', GROUND.soil),
-  ramp4('POOL', GROUND.pool),
-  ramp4('SEA', GROUND.sea),
-  ramp4('FOAM', GROUND.foam),
-].join('\n');
+/** A ground palette's ramps as GLSL constants. */
+const groundRamps = (g: GroundPalette): string =>
+  [
+    ramp4('GRASS', g.grass),
+    ramp4('GRASS_DRY', g.grassDry),
+    ramp4('GRASS_LUSH', g.grassLush),
+    ramp4('FOREST', g.forest),
+    ramp4('HILLS', g.hills),
+    ramp4('ROCK', g.rock),
+    ramp4('SNOW', g.snow),
+    ramp4('SAND', g.sand),
+    ramp4('SWAMP', g.swamp),
+    ramp4('TUNDRA', g.tundra),
+    ramp4('WHEAT', g.wheat),
+    ramp4('CROP', g.crop),
+    ramp4('SOIL', g.soil),
+    ramp4('POOL', g.pool),
+    ramp4('SEA', g.sea),
+    ramp4('FOAM', g.foam),
+  ].join('\n');
 
-/** The map's fragment shader for a map style (render/mapStyle.ts); MAP_FS is today's. */
-export function mapFragmentShader(style: MapStyle): string {
-  return MAP_FS_SRC.replace('#define MAP_STYLE 0', `#define MAP_STYLE ${MAP_STYLE_ID[style]}`);
+/** Shader sources by (style, theme, pass), built once each. */
+const sources = new Map<string, string>();
+function shaderSource(style: MapStyle, theme: MapTheme, pass: boolean): string {
+  const key = `${style}|${theme.id}|${pass ? 1 : 0}`;
+  let src = sources.get(key);
+  if (src === undefined) {
+    const def = `#define MAP_STYLE ${MAP_STYLE_ID[style]}${pass ? '\n#define GROUND_PASS 1' : ''}`;
+    src = MAP_FS_SRC.replace('#define MAP_STYLE 0', () => def)
+      .replace('@WATER_MID@', () => rgb(theme.waterMid))
+      .replace('@GROUND_RAMPS@', () => groundRamps(theme.ground));
+    sources.set(key, src);
+  }
+  return src;
+}
+
+/** The map's fragment shader for a map style (render/mapStyle.ts) in a map theme (render/mapThemes.ts); MAP_FS is today's. */
+export function mapFragmentShader(style: MapStyle, theme: MapTheme = DEFAULT_THEME): string {
+  return shaderSource(style, theme, false);
 }
 /** The ground pass of a pixel map style: the ground alone, one fragment per art pixel (glmap.ts caches it). */
-export function groundFragmentShader(style: MapStyle): string {
-  return MAP_FS_SRC.replace('#define MAP_STYLE 0', `#define MAP_STYLE ${MAP_STYLE_ID[style]}\n#define GROUND_PASS 1`);
+export function groundFragmentShader(style: MapStyle, theme: MapTheme = DEFAULT_THEME): string {
+  return shaderSource(style, theme, true);
 }
 
 const MAP_FS_SRC = /* glsl */ `#version 300 es
@@ -213,7 +231,7 @@ float seg(vec2 p, vec2 a, vec2 b) {
 
 // Water by depth d (tiles to land, smooth): one smooth fade from the shelf through the middle slate to the open sea.
 // Colours and the fade length come from terrain.ts (waterRGB is the same ramp for the minimap and the far texture).
-const vec3 WATER_MID = vec3(${rgb(WATER_MID)});
+const vec3 WATER_MID = vec3(@WATER_MID@);
 // px = tiles per device pixel: zoomed far out the fade widens (up to 1.8x, so the open sea still starts within
 // MAX_DEPTH) and the shelf never shrinks to a coast outline.
 vec3 waterAt(float d, float px) {
@@ -337,7 +355,7 @@ uniform float uP;
 uniform float uDpr;
 uniform float uNearOn;
 
-${GROUND_RAMPS}
+@GROUND_RAMPS@
 
 const vec2 LIGHT = vec2(-0.7071, -0.7071); // towards the light: top left
 

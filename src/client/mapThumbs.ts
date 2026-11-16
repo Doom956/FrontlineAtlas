@@ -1,7 +1,7 @@
 // Small map previews for the setup screen, drawn from real map data: a generated map of each type (a compact small
 // one with a fixed seed: the shape of that type, not the exact map you will get) and every real-world map. Made
 // lazily one at a time so the menu stays responsive, and kept for the session as data URLs.
-import { TERRAIN } from '../sim/config';
+import { themeForMap } from './render/mapThemes';
 import { generateMap } from '../sim/mapgen';
 import { makeRng } from '../sim/rng';
 import { cloneSetup, DEFAULT_SETUP } from '../sim/setup';
@@ -17,8 +17,11 @@ const waiting = new Map<ThumbKey, ((url: string) => void)[]>();
 const queue: ThumbKey[] = [];
 let busy = false;
 
-/** Draws a map's terrain into a w x h canvas (nearest sample, water a little darker toward the deep). */
-export function drawMapThumb(map: MapData, w: number, h: number): HTMLCanvasElement {
+/**
+ * Draws a map's terrain into a w x h canvas (nearest sample, water a little darker toward the deep), in a map colour
+ * theme's thumbnail colours (render/mapThemes.ts; per TerrainId, the default theme's when left out).
+ */
+export function drawMapThumb(map: MapData, w: number, h: number, colors: readonly (readonly number[])[] = themeForMap(undefined).thumb): HTMLCanvasElement {
   // Keep the map's aspect inside w x h.
   const scale = Math.min(w / map.width, h / map.height);
   const cw = Math.max(1, Math.round(map.width * scale));
@@ -40,7 +43,7 @@ export function drawMapThumb(map: MapData, w: number, h: number): HTMLCanvasElem
         const v = map.terrain[my * map.width + mx];
         if (v >= 2 || v > t) t = v; // the first land sample wins; else shallow over deep
       }
-      const col = TERRAIN[t as TerrainId]?.color ?? [0, 0, 0];
+      const col = colors[t as TerrainId] ?? [0, 0, 0];
       const o = (y * cw + x) * 4;
       d[o] = col[0];
       d[o + 1] = col[1];
@@ -54,6 +57,7 @@ export function drawMapThumb(map: MapData, w: number, h: number): HTMLCanvasElem
 
 async function make(key: ThumbKey): Promise<string> {
   let map: MapData;
+  let colors = themeForMap(undefined).thumb;
   if (key.startsWith('gen:')) {
     const type = key.slice(4) as MapType;
     const settings: GameSettings = {
@@ -68,8 +72,9 @@ async function make(key: ThumbKey): Promise<string> {
     map = generateMap(settings, makeRng(7).rng);
   } else {
     map = await loadWorldMap(key.slice(6));
+    colors = themeForMap(key.slice(6)).thumb;
   }
-  return drawMapThumb(map, THUMB_W, THUMB_H).toDataURL();
+  return drawMapThumb(map, THUMB_W, THUMB_H, colors).toDataURL();
 }
 
 function pump(): void {
