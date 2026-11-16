@@ -2336,7 +2336,399 @@
     "tile": 730608
    }
   ],
-  "theme": "stonewall"
+  "theme": "stonewall",
+  "decor": [
+   {
+    "kind": "road",
+    "tile": 329187,
+    "size": 0.6,
+    "path": [
+     345161,
+     362276,
+     378250,
+     395365,
+     412480,
+     428454,
+     445569,
+     461543,
+     478658,
+     495773,
+     511747,
+     528862,
+     544836,
+     561951,
+     579066,
+     595040,
+     612155,
+     628129,
+     645244,
+     661218
+    ]
+   },
+   {
+    "kind": "road",
+    "tile": 725471,
+    "size": 0.6,
+    "path": [
+     725456,
+     725442,
+     725427,
+     725412,
+     725398,
+     725383,
+     725369,
+     725354,
+     725339,
+     725325,
+     725310,
+     725296,
+     725281,
+     725266,
+     725252,
+     725237,
+     725223,
+     725208,
+     725194,
+     725179
+    ]
+   },
+   {
+    "kind": "road",
+    "tile": 1132460,
+    "size": 0.6,
+    "path": [
+     1115345,
+     1099371,
+     1082256,
+     1065141,
+     1049167,
+     1032052,
+     1016078,
+     998963,
+     981848,
+     965874,
+     948759,
+     932785,
+     915670,
+     898555,
+     882581,
+     865466,
+     849492,
+     832377,
+     815262,
+     799288
+    ]
+   },
+   {
+    "kind": "road",
+    "tile": 735036,
+    "size": 0.6,
+    "path": [
+     735050,
+     735065,
+     735079,
+     735094,
+     735109,
+     735123,
+     735138,
+     735152,
+     735167,
+     735182,
+     735196,
+     735211,
+     735225,
+     735240,
+     735255,
+     735269,
+     735284,
+     735298,
+     735313,
+     735328
+    ]
+   },
+   {
+    "kind": "town",
+    "tile": 730824,
+    "size": 78.2
+   },
+   {
+    "kind": "palace",
+    "tile": 730824,
+    "size": 9
+   },
+   {
+    "kind": "district",
+    "tile": 730941,
+    "size": 25.6,
+    "dir": 0
+   },
+   {
+    "kind": "district",
+    "tile": 596186,
+    "size": 25.6,
+    "dir": 90
+   },
+   {
+    "kind": "district",
+    "tile": 730706,
+    "size": 25.6,
+    "dir": 180
+   },
+   {
+    "kind": "district",
+    "tile": 864321,
+    "size": 25.6,
+    "dir": 270
+   },
+   {
+    "kind": "district",
+    "tile": 731023,
+    "size": 25.6,
+    "dir": 0
+   },
+   {
+    "kind": "district",
+    "tile": 503765,
+    "size": 25.6,
+    "dir": 90
+   },
+   {
+    "kind": "district",
+    "tile": 730625,
+    "size": 25.6,
+    "dir": 180
+   },
+   {
+    "kind": "district",
+    "tile": 956742,
+    "size": 25.6,
+    "dir": 270
+   },
+   {
+    "kind": "district",
+    "tile": 731131,
+    "size": 25.6,
+    "dir": 0
+   },
+   {
+    "kind": "district",
+    "tile": 380537,
+    "size": 25.6,
+    "dir": 90
+   },
+   {
+    "kind": "district",
+    "tile": 730516,
+    "size": 25.6,
+    "dir": 180
+   },
+   {
+    "kind": "district",
+    "tile": 1081111,
+    "size": 25.6,
+    "dir": 270
+   },
+   {
+    "kind": "town",
+    "tile": 657936,
+    "size": 20.1
+   },
+   {
+    "kind": "town",
+    "tile": 574443,
+    "size": 18.1
+   },
+   {
+    "kind": "town",
+    "tile": 802570,
+    "size": 19.1
+   },
+   {
+    "kind": "town",
+    "tile": 879229,
+    "size": 20.1
+   },
+   {
+    "kind": "village",
+    "tile": 563150,
+    "size": 10
+   },
+   {
+    "kind": "village",
+    "tile": 669063,
+    "size": 10
+   },
+   {
+    "kind": "village",
+    "tile": 898497,
+    "size": 10
+   },
+   {
+    "kind": "village",
+    "tile": 791444,
+    "size": 10
+   },
+   {
+    "kind": "farms",
+    "tile": 631680,
+    "size": 25.1
+   },
+   {
+    "kind": "farms",
+    "tile": 840475,
+    "size": 25.1
+   },
+   {
+    "kind": "town",
+    "tile": 531323,
+    "size": 18.1
+   },
+   {
+    "kind": "town",
+    "tile": 530974,
+    "size": 18.1
+   },
+   {
+    "kind": "town",
+    "tile": 929183,
+    "size": 18.1
+   },
+   {
+    "kind": "town",
+    "tile": 929532,
+    "size": 18.1
+   },
+   {
+    "kind": "village",
+    "tile": 632932,
+    "size": 10
+   },
+   {
+    "kind": "village",
+    "tile": 462774,
+    "size": 10
+   },
+   {
+    "kind": "village",
+    "tile": 462603,
+    "size": 10
+   },
+   {
+    "kind": "village",
+    "tile": 632463,
+    "size": 10
+   },
+   {
+    "kind": "village",
+    "tile": 827574,
+    "size": 10
+   },
+   {
+    "kind": "village",
+    "tile": 997732,
+    "size": 10
+   },
+   {
+    "kind": "village",
+    "tile": 997903,
+    "size": 10
+   },
+   {
+    "kind": "village",
+    "tile": 828043,
+    "size": 10
+   },
+   {
+    "kind": "farms",
+    "tile": 486773,
+    "size": 27.6
+   },
+   {
+    "kind": "farms",
+    "tile": 633607,
+    "size": 27.6
+   },
+   {
+    "kind": "farms",
+    "tile": 995620,
+    "size": 27.6
+   },
+   {
+    "kind": "farms",
+    "tile": 445507,
+    "size": 27.6
+   },
+   {
+    "kind": "farms",
+    "tile": 1016007,
+    "size": 27.6
+   },
+   {
+    "kind": "village",
+    "tile": 457270,
+    "size": 8
+   },
+   {
+    "kind": "village",
+    "tile": 325934,
+    "size": 8
+   },
+   {
+    "kind": "village",
+    "tile": 343829,
+    "size": 8
+   },
+   {
+    "kind": "village",
+    "tile": 489708,
+    "size": 8
+   },
+   {
+    "kind": "village",
+    "tile": 939309,
+    "size": 8
+   },
+   {
+    "kind": "village",
+    "tile": 1116286,
+    "size": 8
+   },
+   {
+    "kind": "village",
+    "tile": 1140650,
+    "size": 8
+   },
+   {
+    "kind": "village",
+    "tile": 1036956,
+    "size": 8
+   },
+   {
+    "kind": "farms",
+    "tile": 376190,
+    "size": 22.6
+   },
+   {
+    "kind": "farms",
+    "tile": 321074,
+    "size": 22.6
+   },
+   {
+    "kind": "farms",
+    "tile": 1074029,
+    "size": 22.6
+   },
+   {
+    "kind": "farms",
+    "tile": 1171353,
+    "size": 22.6
+   },
+   {
+    "kind": "farms",
+    "tile": 1092807,
+    "size": 22.6
+   }
+  ]
  },
  {
   "id": "sundered",

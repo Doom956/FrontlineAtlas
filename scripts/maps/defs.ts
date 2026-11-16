@@ -6,7 +6,8 @@ import type { DrawnMap } from './drawn/kit';
 import { SUNDERED, SUNDERED_PLANE, SUNDERED_SPAWNS } from './drawn/sundered';
 import { FOURSEAS, FOURSEAS_PLANE, FOURSEAS_SPAWNS } from './drawn/fourseas';
 import { DRIFTISLES, DRIFTISLES_PLANE, DRIFTISLES_SPAWNS } from './drawn/driftisles';
-import { RINGLANDS, RINGLANDS_PLANE, RINGLANDS_SPAWNS } from './drawn/ringlands';
+import { RINGLANDS, RINGLANDS_DECOR, RINGLANDS_PLANE, RINGLANDS_SPAWNS } from './drawn/ringlands';
+import type { DecorKind } from '../../src/sim/worldmaps';
 
 export interface SpawnDef {
   /** nation name shown in the game */
@@ -42,6 +43,21 @@ export interface MapDef {
   drawn?: DrawnMap;
   /** colour theme the client draws the map in (src/client/render/mapThemes.ts THEME_DEFS); copied to the manifest */
   theme?: string;
+  /** towns, farms and roads the client paints on the map (looks only; src/client/render/decor.ts) */
+  decor?: DecorDef[];
+}
+
+/** One piece of map decor, in lon / lat (the build turns it into tiles: WorldMapDecor in src/sim/worldmaps.ts). */
+export interface DecorDef {
+  kind: DecorKind;
+  /** [lon, lat] of its centre (a district: the middle of its straight side) */
+  at: number[];
+  /** radius (a road: its width) in degrees of latitude (one drawn-map plane unit) */
+  size: number;
+  /** district: the way its half disc faces, degrees counter-clockwise from east */
+  dir?: number;
+  /** road: the [lon, lat] points it runs through after `at` */
+  path?: number[][];
 }
 
 const s = (name: string, city: string, country?: string): SpawnDef => ({ name, city, country });
@@ -713,6 +729,7 @@ export const MAP_DEFS: MapDef[] = [
     drawn: RINGLANDS,
     spawns: RINGLANDS_SPAWNS,
     theme: 'stonewall',
+    decor: RINGLANDS_DECOR,
   },
   {
     id: 'sundered',

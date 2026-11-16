@@ -4,6 +4,7 @@ import { isWater } from '../../sim/types';
 import type { MapData } from '../../sim/types';
 import type { RGB } from './common';
 import type { MapTheme } from './mapThemes';
+import type { WorldMapDecor } from '../../sim/worldmaps';
 
 /**
  * One calm, distinct colour per terrain (index = TerrainId). Water: deep, shallow. Chosen so the terrains stay
@@ -59,6 +60,8 @@ export interface TerrainData {
   rgba: Uint8ClampedArray;
   /** the map's colour theme (render/mapThemes.ts); undefined = the default */
   theme?: MapTheme;
+  /** the map's decor (towns, farms, roads: render/decor.ts), drawn by the map layer */
+  decor?: readonly WorldMapDecor[];
 }
 
 export function buildTerrain(map: MapData, theme?: MapTheme): TerrainData {

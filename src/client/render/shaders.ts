@@ -6,6 +6,7 @@ import type { RGB } from './common';
 import { SEA_BANDS, type GroundRamp } from './ground';
 import { MAP_STYLE_ID, type MapStyle } from './mapStyle';
 import { DEFAULT_THEME, type GroundPalette, type MapTheme } from './mapThemes';
+import { DECOR_BLOCK, DECOR_SCALE } from './decor';
 
 const rgb = (c: RGB): string => c.map((v) => (v / 255).toFixed(4)).join(', ');
 
@@ -117,8 +118,26 @@ uniform int uTrenchOn;
 uniform vec3 uTerr[9];
 uniform vec3 uRes[4];
 uniform vec3 uBg;
+// map decor (decor.ts): towns, farms and roads in art pixels of 1 / ${DECOR_SCALE} tile, premultiplied RGBA, kept in
+// blocks of ${DECOR_BLOCK} x ${DECOR_BLOCK} tiles: the texture's first rows are the block index (slot + 1 in R + G * 256,
+// 0 = none), the blocks follow below it. uDecorInfo: index width, index height, blocks per atlas row, on (1) / off (0)
+uniform sampler2D uDecor;
+uniform ivec4 uDecorInfo;
 
 out vec4 outColor;
+
+// The decor's art pixel at tile position t (premultiplied; clear where there is none).
+vec4 decorAt(vec2 t) {
+  ivec2 b = ivec2(floor(t / ${DECOR_BLOCK.toFixed(1)}));
+  if (b.x < 0 || b.y < 0 || b.x >= uDecorInfo.x || b.y >= uDecorInfo.y) return vec4(0.0);
+  vec4 ix = texelFetch(uDecor, b, 0);
+  int slot = int(ix.r * 255.0 + 0.5) + int(ix.g * 255.0 + 0.5) * 256 - 1;
+  if (slot < 0) return vec4(0.0);
+  const int BP = ${DECOR_BLOCK * DECOR_SCALE};
+  ivec2 q = clamp(ivec2(floor((t - vec2(b * ${DECOR_BLOCK})) * ${DECOR_SCALE.toFixed(1)})), ivec2(0), ivec2(BP - 1));
+  ivec2 s = ivec2((slot % uDecorInfo.z) * BP, uDecorInfo.y + (slot / uDecorInfo.z) * BP);
+  return texelFetch(uDecor, s + q, 0);
+}
 
 uint rawAt(ivec2 p) {
   p = clamp(p, ivec2(0), ivec2(uMap) - 1);
@@ -863,6 +882,11 @@ void main() {
   vec3 gcol = farCol;
   if (nearG > 0.0) gcol = mix(farCol, texelFetch(uGroundTex, clamp(ap - uGOrigin, ivec2(0), textureSize(uGroundTex, 0) - 1), 0).rgb, nearG);
   col = gcol;
+  // map decor in its own art pixels, fading in with the pixel ground (the far colours already hold its average)
+  if (uDecorInfo.w == 1 && nearG > 0.0 && !water) {
+    vec4 dc = decorAt(t);
+    col = col * (1.0 - dc.a * nearG) + dc.rgb * nearG;
+  }
 #if MAP_STYLE == 2
   // muted war map: the pixel ground pulled towards today's calm flat colours (quieter, still lit and textured)
   if (!water) col = mix(mix(texture(uTerrCol, uv).rgb, farCol, 0.5), col, 0.55);
@@ -893,6 +917,11 @@ void main() {
     float shore = smoothstep(0.08, 0.45, landDist);
     tc = mix(tc, vec3(0.8, 0.77, 0.66), shore * 0.25);
     col = mix(flat_, tc, near);
+    // map decor in its own art pixels, fading in with the pattern (the flat colours already hold its average)
+    if (uDecorInfo.w == 1 && near > 0.0) {
+      vec4 dc = decorAt(t);
+      col = col * (1.0 - dc.a * near) + dc.rgb * near;
+    }
   }
 
 #endif

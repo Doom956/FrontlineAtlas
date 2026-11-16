@@ -7,7 +7,7 @@
 import type { DrawnMap, Plane, Pt, WalledRings } from './kit';
 import { blob, fractal, islandChain, makePlane, path, rngFor, smoothClosed, strip, walledRings } from './kit';
 import type { ExtraRegion } from '../extra';
-import type { SpawnDef } from '../defs';
+import type { DecorDef, SpawnDef } from '../defs';
 
 const deg = (d: number): number => (d * Math.PI) / 180;
 
@@ -346,4 +346,49 @@ export const RINGLANDS_SPAWNS: SpawnDef[] = [
   sp('Eskerin', shift(polar(1.45, 140)), true),
   sp('Orlith', shift(polar(1.5, 312))),
   sp('Norvane', shift(polar(1.27, 228))),
+];
+
+// ---------- decor: towns, farms and roads the client paints on the map (looks only, never game state) ----------
+
+const ll = (p: Pt): number[] => pl.P(p[0], p[1]);
+const at = (r: number, a: number): number[] => ll(shift(polar(r, a)));
+const dc = (kind: DecorDef['kind'], r: number, a: number, size: number): DecorDef => ({ kind, at: at(r, a), size });
+/** a road from radius r0 to r1 along angle a, a little to the side of the river that runs through the same gates */
+const road = (a: number, r0: number, r1: number): DecorDef => {
+  const side = (p: number): number[] => {
+    const q = polar(p, a);
+    const t = deg(a);
+    return ll(shift([q[0] - Math.sin(t) * 0.09, q[1] + Math.cos(t) * 0.09]));
+  };
+  const n = Math.ceil(Math.abs(r1 - r0) / 0.05);
+  const pts: number[][] = [];
+  for (let i = 1; i <= n; i++) pts.push(side(r0 + ((r1 - r0) * i) / n));
+  return { kind: 'road', at: side(r0), size: 0.012, path: pts };
+};
+/** gate district of wall k at angle a: the middle of its straight side on the wall's outer face, facing out */
+const districtDecor = (k: number, a: number): DecorDef => {
+  const t = deg(a);
+  const r = walls.radiusAt(k, t) + THICK / 2;
+  return { kind: 'district', at: ll([OX + Math.cos(t) * r, OY + Math.sin(t) * r]), size: DISTRICT - THICK, dir: a };
+};
+
+export const RINGLANDS_DECOR: DecorDef[] = [
+  // roads from the outer gates in to the core
+  ...[90, 0, 270, 180].map((a) => road(a, 1.17, 0.2)),
+  // the core: a walled town round the palace
+  dc('town', 0, 0, RO * 0.26),
+  dc('palace', 0, 0, 0.18),
+  // every gate district a half disc of rooftops
+  ...[0, 1, 2].flatMap((k) => [0, 90, 180, 270].map((a) => districtDecor(k, a))),
+  // between the inner and the middle wall: towns along the roads and rivers, villages and fields
+  ...([[25, 0.4], [115, 0.36], [205, 0.38], [300, 0.4]] as const).map(([a, s]) => dc('town', 0.5, a, s)),
+  ...[70, 160, 250, 340].map((a) => dc('village', 0.52, a, 0.2)),
+  ...([[35, 0.5], [320, 0.5]] as const).map(([a, r]) => dc('farms', r, a, 0.5)),
+  // between the middle and the outer wall
+  ...[45, 135, 225, 315].map((a) => dc('town', 0.82, a, 0.36)),
+  ...[20, 70, 110, 160, 200, 250, 290, 340].map((a) => dc('village', 0.83, a, 0.2)),
+  ...([[60, 0.82], [160, 0.82], [290, 0.82], [105, 0.86], [255, 0.86]] as const).map(([a, r]) => dc('farms', r, a, 0.55)),
+  // the country outside: sparse villages and farm fields
+  ...([[40, 1.24], [65, 1.3], [120, 1.3], [150, 1.4], [210, 1.22], [240, 1.3], [300, 1.38], [322, 1.45]] as const).map(([a, r]) => dc('village', r, a, 0.16)),
+  ...([[55, 1.26], [110, 1.27], [232, 1.27], [285, 1.33], [312, 1.42]] as const).map(([a, r]) => dc('farms', r, a, 0.45)),
 ];
