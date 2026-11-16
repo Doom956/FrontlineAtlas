@@ -1694,12 +1694,12 @@
   },
   "spawns": [
    {
-    "name": "Florida",
-    "tile": 394193
-   },
-   {
     "name": "Venezuela",
     "tile": 3127748
+   },
+   {
+    "name": "Florida",
+    "tile": 7723
    },
    {
     "name": "Panama",
@@ -1722,12 +1722,16 @@
     "tile": 3048983
    },
    {
+    "name": "Cuba",
+    "tile": 1000932
+   },
+   {
     "name": "Costa Rica",
     "tile": 3233177
    },
    {
-    "name": "Haiti",
-    "tile": 1693520
+    "name": "Hispaniola",
+    "tile": 1705543
    },
    {
     "name": "Honduras",
@@ -1738,16 +1742,8 @@
     "tile": 3104447
    },
    {
-    "name": "Cuba",
-    "tile": 870410
-   },
-   {
-    "name": "Lesser Antilles",
-    "tile": 2398219
-   },
-   {
-    "name": "Hispaniola",
-    "tile": 1705543
+    "name": "Haiti",
+    "tile": 1693520
    },
    {
     "name": "Nicaragua",
@@ -1882,44 +1878,36 @@
     "tile": 3156296
    },
    {
-    "name": "New Caledonia",
-    "tile": 3873096
-   },
-   {
-    "name": "Solomon Islands",
-    "tile": 1641863
-   },
-   {
     "name": "Vanuatu",
     "tile": 2697944
-   },
-   {
-    "name": "New Britain",
-    "tile": 731342
-   },
-   {
-    "name": "Madang",
-    "tile": 907718
-   },
-   {
-    "name": "Bougainville",
-    "tile": 1082570
-   },
-   {
-    "name": "Morobe",
-    "tile": 1170399
-   },
-   {
-    "name": "Highlands",
-    "tile": 1024606
    },
    {
     "name": "Sepik",
     "tile": 618975
    },
    {
+    "name": "Highlands",
+    "tile": 1024605
+   },
+   {
+    "name": "Morobe",
+    "tile": 1170399
+   },
+   {
+    "name": "Madang",
+    "tile": 907718
+   },
+   {
     "name": "Vanua Levu",
     "tile": 2857358
+   },
+   {
+    "name": "Vanimo",
+    "tile": 468020
+   },
+   {
+    "name": "Gulf",
+    "tile": 1378322
    }
   ]
  }

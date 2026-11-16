@@ -21,6 +21,29 @@ export interface ExtraRegion {
 }
 
 export const EXTRA_REGIONS: ExtraRegion[] = [
+  // --- Pacific islands and Caribbean (added with the Pacific and Caribbean maps) ---
+  { name: 'Fly River swamps', kind: 'swamp', poly: [[141.0, -6.6], [143.2, -6.6], [144.6, -7.4], [144.0, -8.4], [142.0, -8.9], [141.0, -8.2]] },
+  { name: 'Gulf of Papua delta', kind: 'swamp', poly: [[144.0, -7.2], [145.8, -7.4], [146.6, -8.2], [145.6, -8.7], [144.2, -8.3]] },
+  { name: 'Sepik wetlands', kind: 'swamp', poly: [[141.4, -3.8], [143.6, -4.0], [144.2, -4.6], [143.0, -5.0], [141.6, -4.7]] },
+  { name: 'Ramu valley', kind: 'swamp', poly: [[144.6, -4.9], [145.8, -5.2], [146.2, -5.8], [145.2, -5.9], [144.6, -5.4]] },
+  { name: 'Southern Highlands', kind: 'mountains', strength: 0.8, poly: [[142.0, -5.6], [144.0, -5.6], [144.8, -6.4], [143.4, -6.9], [142.0, -6.4]] },
+  { name: 'Owen Stanley Range', kind: 'mountains', strength: 0.85, poly: [[146.8, -7.9], [148.0, -9.0], [149.6, -10.0], [149.0, -10.3], [147.4, -9.0], [146.6, -8.3]] },
+  { name: 'New Britain ranges', kind: 'mountains', strength: 0.75, poly: [[148.8, -5.8], [150.6, -5.4], [151.6, -5.6], [150.8, -6.0], [149.2, -6.1]] },
+  { name: 'Bougainville ranges', kind: 'mountains', strength: 0.8, poly: [[154.6, -6.0], [155.4, -5.8], [155.7, -6.6], [155.0, -6.8]] },
+  { name: 'Guadalcanal ranges', kind: 'hills', poly: [[159.6, -9.5], [160.6, -9.4], [160.4, -9.9], [159.7, -9.9]] },
+  { name: 'Espiritu Santo ranges', kind: 'hills', poly: [[166.6, -15.2], [167.2, -15.0], [167.0, -15.8], [166.6, -15.6]] },
+  { name: 'Grande Terre spine', kind: 'mountains', strength: 0.7, poly: [[164.4, -20.4], [165.4, -21.0], [166.4, -21.8], [166.0, -22.0], [164.8, -21.3]] },
+  { name: 'Viti Levu highlands', kind: 'hills', poly: [[177.7, -17.5], [178.2, -17.6], [178.1, -18.1], [177.7, -17.9]] },
+  { name: 'Kikori and Purari delta', kind: 'swamp', poly: [[144.4, -7.6], [145.6, -7.6], [146.2, -8.0], [145.6, -8.5], [144.6, -8.2]] },
+  { name: 'Buin and Siwai swamps', kind: 'swamp', poly: [[155.0, -6.5], [155.8, -6.4], [155.9, -6.9], [155.2, -7.0]] },
+  { name: 'Bougainville west coast swamps', kind: 'swamp', poly: [[154.6, -5.6], [155.0, -5.6], [155.1, -6.2], [154.7, -6.2]] },
+  { name: 'Pomio and Kandrian swamps', kind: 'swamp', poly: [[149.6, -6.4], [151.0, -6.0], [152.2, -5.8], [152.2, -6.2], [150.0, -6.8]] },
+  { name: 'Lake Wales Ridge', kind: 'hills', poly: [[-81.7, 28.2], [-81.3, 28.2], [-81.2, 27.2], [-81.6, 27.0]] },
+  { name: 'Everglades', kind: 'swamp', poly: [[-81.4, 26.0], [-80.5, 26.2], [-80.3, 25.5], [-80.7, 25.1], [-81.2, 25.3]] },
+  { name: 'Sierra Maestra', kind: 'mountains', strength: 0.8, poly: [[-77.6, 20.1], [-76.2, 20.2], [-75.4, 19.95], [-76.4, 19.9], [-77.2, 19.8]] },
+  { name: 'Escambray', kind: 'mountains', strength: 0.65, poly: [[-80.2, 21.9], [-79.8, 21.95], [-79.7, 21.7], [-80.1, 21.7]] },
+  { name: 'Lesser Antilles volcanic hills', kind: 'hills', poly: [[-61.3, 16.3], [-61.0, 16.3], [-61.0, 14.4], [-60.8, 14.0], [-61.1, 14.0], [-61.3, 14.8]] },
+  { name: 'Trinidad Northern Range', kind: 'hills', poly: [[-61.6, 10.8], [-60.9, 10.8], [-61.0, 10.6], [-61.6, 10.6]] },
   // --- British Isles ---
   { name: 'Scottish Highlands', kind: 'highland', poly: [[-5.9, 58.6], [-4.4, 58.6], [-3.3, 58.0], [-2.4, 57.3], [-2.7, 56.9], [-3.8, 56.6], [-4.6, 56.1], [-5.6, 56.2], [-6.0, 56.8], [-5.9, 57.6]] },
   { name: 'Grampians', kind: 'mountains', strength: 0.74, poly: [[-5.2, 57.0], [-3.9, 57.3], [-3.0, 57.1], [-3.6, 56.7], [-4.7, 56.6]] },
@@ -165,4 +188,7 @@ export const OIL_REGIONS: number[][][] = [
   [[123.0, 47.5], [126.0, 47.5], [126.0, 45.0], [123.0, 45.0]], // Daqing
   [[100.5, 2.5], [104.0, 0.5], [104.5, -3.5], [101.5, -1.0]], // Sumatra
   [[114.0, 1.0], [118.5, 2.0], [118.0, -2.0], [114.5, -1.0]], // Borneo
+  [[142.0, -6.0], [144.5, -6.0], [146.4, -7.4], [146.4, -8.6], [141.8, -7.8]], // Papua Southern Highlands and Gulf of Papua
+  [[-61.8, 10.5], [-60.9, 10.5], [-60.9, 10.0], [-61.8, 10.0]], // Trinidad
+  [[-81.7, 26.6], [-80.6, 26.6], [-80.6, 25.8], [-81.7, 25.8]], // southwest Florida
 ];
