@@ -98,7 +98,7 @@ export class Minimap {
     const style = mapStyle();
     const key = `${state.players.length}:${humanId}:${style}`;
     // real ground's far colours once they are built (render/ground.ts builds them between frames); today's until then
-    const ground = style === 'ground' && this.terr && this.game ? groundLater(this.game.map, this.terr.depth, this.groundReady)?.far ?? null : null;
+    const ground = style === 'ground' && this.terr && this.game ? groundLater(this.game.map, this.terr.depth, this.groundReady, this.terr.theme)?.far ?? null : null;
     if (ground !== this.ground) {
       this.ground = ground;
       this.gen = -1; // repaint every pixel
