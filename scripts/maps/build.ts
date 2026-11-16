@@ -418,6 +418,7 @@ function main(): void {
       recommendedTribes: pre.singlePlayer.tribes,
       presets: pre,
       spawns,
+      ...(def.theme ? { theme: def.theme } : {}),
     });
     const counts = new Array(9).fill(0);
     for (let i = 0; i < W * H; i++) counts[terrain[i]]++;

@@ -40,6 +40,8 @@ export interface MapDef {
   spawns: SpawnDef[];
   /** hand-drawn map: these shapes replace the Natural Earth layers (see drawn/kit.ts) */
   drawn?: DrawnMap;
+  /** colour theme the client draws the map in (src/client/render/mapThemes.ts THEME_DEFS); copied to the manifest */
+  theme?: string;
 }
 
 const s = (name: string, city: string, country?: string): SpawnDef => ({ name, city, country });

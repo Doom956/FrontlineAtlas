@@ -51,6 +51,8 @@ export interface WorldMapInfo {
    * each next one the farthest from all before it, so nations taking the first N spawns are spread over the map.
    */
   spawns: WorldMapSpawn[];
+  /** colour theme the client draws this map in (src/client/render/mapThemes.ts); looks only, never game state */
+  theme?: string;
 }
 
 export const BFM_MAGIC = 'BFM1';

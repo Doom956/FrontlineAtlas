@@ -3,6 +3,7 @@
 import { isWater } from '../../sim/types';
 import type { MapData } from '../../sim/types';
 import type { RGB } from './common';
+import type { MapTheme } from './mapThemes';
 
 /**
  * One calm, distinct colour per terrain (index = TerrainId). Water: deep, shallow. Chosen so the terrains stay
@@ -33,10 +34,12 @@ function mixRgb(a: RGB, b: RGB, k: number): RGB {
 }
 
 /** Flat water colour at `d` whole tiles from land (minimap, Canvas2D map, the far-zoom texture); the shader fades the same way. */
-export function waterRGB(d: number): RGB {
+export function waterRGB(d: number, theme?: MapTheme): RGB {
+  const flat = theme?.flat ?? TERRAIN_RGB;
+  const mid = theme?.waterMid ?? WATER_MID;
   const k = Math.min(1, Math.max(0, (d - 1) / (WATER_FADE_END - 1)));
   const s = k * k * (3 - 2 * k);
-  return s < 0.5 ? mixRgb(TERRAIN_RGB[1], WATER_MID, s * 2) : mixRgb(WATER_MID, TERRAIN_RGB[0], s * 2 - 1);
+  return s < 0.5 ? mixRgb(flat[1], mid, s * 2) : mixRgb(mid, flat[0], s * 2 - 1);
 }
 
 /** Deposit colours (marker fills and the resource overlay). Index = ResourceId. */
@@ -54,9 +57,12 @@ export interface TerrainData {
   depth: Uint8Array;
   /** RGBA flat colours, water shaded by depth, light sand on the coast */
   rgba: Uint8ClampedArray;
+  /** the map's colour theme (render/mapThemes.ts); undefined = the default */
+  theme?: MapTheme;
 }
 
-export function buildTerrain(map: MapData): TerrainData {
+export function buildTerrain(map: MapData, theme?: MapTheme): TerrainData {
+  const flat = theme?.flat ?? TERRAIN_RGB;
   const { width: w, height: h, terrain } = map;
   const n = w * h;
   const depth = new Uint8Array(n).fill(255);
@@ -83,7 +89,7 @@ export function buildTerrain(map: MapData): TerrainData {
 
   const rgba = new Uint8ClampedArray(n * 4);
   const ramp: RGB[] = [];
-  for (let d = 0; d <= MAX_DEPTH; d++) ramp.push(waterRGB(d));
+  for (let d = 0; d <= MAX_DEPTH; d++) ramp.push(waterRGB(d, theme));
   for (let i = 0; i < n; i++) {
     const t = terrain[i];
     const o = i * 4;
@@ -102,14 +108,14 @@ export function buildTerrain(map: MapData): TerrainData {
       rgba[o + 1] = g;
       rgba[o + 2] = b;
     } else {
-      const c = TERRAIN_RGB[t] ?? TERRAIN_RGB[2];
+      const c = flat[t] ?? flat[2];
       rgba[o] = c[0];
       rgba[o + 1] = c[1];
       rgba[o + 2] = c[2];
     }
     rgba[o + 3] = 255;
   }
-  return { depth, rgba };
+  return { depth, rgba, theme };
 }
 
 /** A group of deposit tiles of one resource: marker position (tile coords of the centre) and size. */
