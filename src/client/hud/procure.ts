@@ -106,7 +106,7 @@ export function masteryUsed(me: Player): Pillar[] {
     const it = arsenalItem(o.tech);
     if (it?.kind === 'mastery' && !out.includes(it.pillar)) out.push(it.pillar);
   }
-  return (['navy', 'armor', 'air'] as Pillar[]).filter((p) => out.includes(p));
+  return (['navy', 'armor', 'air', 'defense'] as Pillar[]).filter((p) => out.includes(p));
 }
 /** "Cap used: Navy, Air" when mastery t is locked by the cap, else null. */
 export function masteryCapped(me: Player, t: TechId): string | null {
@@ -133,7 +133,7 @@ export function arsenalCard(s: GameState, me: Player, t: TechId): ArsenalCard {
   const res = canProcure(s, me.id, t);
   if (st === 'locked-prereq') return { ...base, state: 'prereq', reason: techStatusReason(s, me.id, t) ?? res.reason ?? 'Needs another tech first' };
   const building = missingBuilding(s, me, t);
-  if (building) return { ...base, state: 'building', building, reason: `Build ${aBuilding(building)} first` };
+  if (building) return { ...base, state: 'building', building, reason: arsenalItem(t)?.pillar === 'defense' ? `Needs a finished ${BUILDINGS[building].name}` : `Build ${aBuilding(building)} first` };
   if (res.ok) return { ...base, state: 'buy' };
   if (short.gold || short.iron || short.oil) return { ...base, state: 'poor', reason: res.reason ?? 'Not enough resources' };
   return { ...base, state: 'disabled', reason: res.reason ?? 'Not possible now' };

@@ -8,18 +8,23 @@
 //     Armor  Heavy tanks when rivals sit behind forts and mountains (turtles), Light tanks on open ground (warlords).
 //     Air    Heavy bombers when rivals have many cities / factories in reach (merchants, air-minded), Ground-attack
 //            for nations that mostly fight at their borders (warlords).
+//     Defense Tank Traps when hostile rivals field many tank divisions, Flak Guns when they fly many bombers.
+// - Defense is a second interest next to the committed pillar (aiDefenseCommitted): turtles, nations facing a hostile
+//   neighbour with DEFENSE.aiStrongerNeighbour x their army, and nations whose foes hold DEFENSE.aiEnemyBombers
+//   bombers buy a Defense root as soon as they can; others leave the row alone. Never at Easy (it stays simple).
 // - Mastery only in the committed pillar (aiCommittedPillar: doctrine, then personality and map).
 // - Warships: a battleship every third ship once it has Battleships, a carrier every fourth once it has Carriers.
 // - Recon: every ARSENAL.reconCooldown + a bit, over the capital of the nation it fights hardest, when in reach.
 // Deterministic: state and hashes only.
 import { fogOn, fogReconAim, knownTile } from './fog';
 import { applyAction } from './actions';
-import { arsenalItem, isMasteryTech, pillarOf } from './arsenal';
+import { arsenalItem, isMasteryTech, ownsOrPending, pillarOf } from './arsenal';
 import type { Pillar } from './arsenal';
 import { buildingsOf } from './buildings';
-import { ARSENAL, TECHS, TICKS_PER_SECOND } from './config';
+import { ARSENAL, DEFENSE, TECHS, TICKS_PER_SECOND } from './config';
+import { areAllied } from './diplomacy';
 import { doctrineActive } from './doctrines';
-import { coastCount } from './territory';
+import { borderTiles, coastCount } from './territory';
 import { Terrain, isTribe, isWater } from './types';
 import type { GameState, NavalVariant, Personality, TechId } from './types';
 import { airMinded, fighterCoverOnRoute } from './airwings';
@@ -103,6 +108,10 @@ function forkLean(state: GameState, id: number, group: string): number {
     if (pers === 'warlord') lean -= 0.15;
     return lean;
   }
+  if (group === 'defenseDoctrine') {
+    const f = foeForces(state, id);
+    return 0.5 + 0.45 * (f.tanks / (f.tanks + 4)) - 0.45 * (f.bombers / (f.bombers + 6));
+  }
   if (group === 'airDoctrine') {
     let econ = 0;
     for (const o of others) econ += buildingsOf(state, o, 'city').length + buildingsOf(state, o, 'factory').length;
@@ -119,7 +128,76 @@ const FORKS: Record<string, [TechId, TechId]> = {
   navalDoctrine: ['destroyers', 'submarines'],
   armorPath: ['lightTanks', 'heavyTanks'],
   airDoctrine: ['groundAttack', 'heavyBombers'],
+  defenseDoctrine: ['flakGuns', 'tankTraps'],
 };
+
+/** Tank divisions and bombers (stored and flying) of the nations hostile to id. */
+function foeForces(state: GameState, id: number): { tanks: number; bombers: number } {
+  let tanks = 0;
+  let bombers = 0;
+  const foe = (o: number): boolean => o !== id && o > 0 && !areAllied(state, id, o) && !isTribe(state.players[o]);
+  for (const u of state.units) {
+    if (u.hp <= 0 || !foe(u.owner)) continue;
+    if (u.type === 'tankDivision') tanks++;
+    else if (u.type === 'bomber' || u.type === 'stealthBomber') bombers++;
+  }
+  for (const o of rivals(state, id)) {
+    if (!foe(o)) continue;
+    for (const b of buildingsOf(state, o, 'airfield')) bombers += b.bombers;
+  }
+  return { tanks, bombers };
+}
+
+/** Hostile land neighbours of id (a stride over its border tiles). */
+function landNeighbours(state: GameState, id: number): number[] {
+  const { list, len } = borderTiles(state, id);
+  const map = state.map;
+  const w = map.width;
+  const seen = new Set<number>();
+  const step = Math.max(1, Math.floor(len / 200));
+  for (let k = 0; k < len; k += step) {
+    const t = list[k];
+    for (const n of [t - 1, t + 1, t - w, t + w]) {
+      if (n < 0 || n >= map.owner.length) continue;
+      const o = map.owner[n];
+      if (o > 0 && o !== id) seen.add(o);
+    }
+  }
+  return [...seen].sort((a, b) => a - b);
+}
+
+const defenseCache = new WeakMap<GameState, Map<number, { win: number; v: boolean }>>();
+/**
+ * True if AI id wants the Defense row (a Flak Guns or Tank Traps root; part 3 adds the mastery): it already chose one,
+ * or (from Normal up, not a benchmark specialist) it is a turtle, faces a hostile neighbour with
+ * DEFENSE.aiStrongerNeighbour x its army, or its foes hold DEFENSE.aiEnemyBombers bombers. Re-judged every 30 s.
+ */
+export function aiDefenseCommitted(state: GameState, id: number): boolean {
+  const p = state.players[id];
+  if (!p || !p.alive || isTribe(p)) return false;
+  if (ownsOrPending(p, 'flakGuns') || ownsOrPending(p, 'tankTraps')) return true;
+  if (state.settings.difficulty === 'easy' || aiFocusSpec(state, id)) return false;
+  let m = defenseCache.get(state);
+  if (!m) defenseCache.set(state, (m = new Map()));
+  const win = Math.floor(state.tick / (30 * TICKS_PER_SECOND));
+  const c = m.get(id);
+  if (c && c.win === win) return c.v;
+  const v = defenseWanted(state, id);
+  m.set(id, { win, v });
+  return v;
+}
+function defenseWanted(state: GameState, id: number): boolean {
+  const p = state.players[id];
+  if (p.personality === 'turtle') return true;
+  const army = p.troops.infantry + p.troops.armor + p.troops.artillery;
+  for (const o of landNeighbours(state, id)) {
+    const q = state.players[o];
+    if (!q?.alive || isTribe(q) || areAllied(state, id, o)) continue;
+    const theirs = q.troops.infantry + q.troops.armor + q.troops.artillery;
+    if (theirs >= DEFENSE.aiStrongerNeighbour * Math.max(1, army)) return noise(state, id, 991) > -0.2;
+  }
+  return foeForces(state, id).bombers >= DEFENSE.aiEnemyBombers;
+}
 
 /**
  * The fork root AI id takes in an arsenal group (null for another group): stable while the map looks the same, and
@@ -145,7 +223,7 @@ export function aiCommittedPillar(state: GameState, id: number): Exclude<Pillar,
     let up: Exclude<Pillar, 'shared'> | null = null;
     for (const t of [...p.techs, ...(p.researching ? [p.researching] : []), ...(p.procuring ?? []).map((o) => o.tech)]) {
       const it = arsenalItem(t);
-      if (!it || it.pillar === 'shared') continue;
+      if (!it || it.pillar === 'shared' || it.pillar === 'defense') continue; // Defense is a second interest
       if (it.kind === 'mastery') return it.pillar;
       if (it.kind === 'variant' && it.tier >= 3 && !up) up = it.pillar;
     }
@@ -174,6 +252,7 @@ export function aiCommittedPillar(state: GameState, id: number): Exclude<Pillar,
 
 /** True for arsenal techs AI id leaves alone: masteries outside its committed pillar. */
 export function aiSkipsArsenalTech(state: GameState, id: number, t: TechId): boolean {
+  if (pillarOf(t) === 'defense') return !aiDefenseCommitted(state, id);
   if (!isMasteryTech(t)) return false;
   return pillarOf(t) !== aiCommittedPillar(state, id);
 }
@@ -189,6 +268,7 @@ export function aiPriorityArsenalTech(state: GameState, id: number, t: TechId): 
   if (!it || it.kind === 'special') return false;
   // A mastery (the dearest tech) jumps the queue only once the nation has a broad base (else it starves the economy).
   if (it.kind === 'mastery' && (state.players[id]?.techs.length ?? 0) < ARSENAL.aiMasteryMinTechs) return false;
+  if (it.pillar === 'defense') return aiDefenseCommitted(state, id); // a second interest (part 3: its mastery too)
   const pillar = aiCommittedPillar(state, id);
   if (it.pillar === pillar) return it.kind !== 'unlock';
   return (t === 'mechInfantry' && pillar === 'armor') || (t === 'reconPlanes' && pillar === 'air');

@@ -36,6 +36,7 @@ import { formatCount } from './render/common';
 import { bombReach, bomberRadiusOf, previewStrike, salvoAction, salvoLabel, type SalvoKind, type SalvoSize } from './airSim';
 import { barrageCheck, paradropRange, planParadrop } from './simx';
 import type { TargetMode, UiState } from './uiState';
+import { myFlakFactor, routeFlak, routeFlakText } from './defenseView';
 
 export type StrikeId = 'barrage' | 'bomb' | 'paradrop' | 'rocket' | 'atomBomb';
 export const STRIKE_ORDER: readonly StrikeId[] = ['barrage', 'bomb', 'paradrop', 'rocket', 'atomBomb'];
@@ -411,6 +412,11 @@ function blast(state: GameState, me: number, tile: number, r: number, t: StrikeT
 }
 
 /** First hostile SAM site (or fighter airfield, for planes) covering the straight route from `from` to `to`, as text. */
+/** A route warning and a flak line joined ("... shot down. Enemy flak on the way: bombs about -30%"). */
+function withFlak(cover: string, flak: string): string {
+  return cover && flak ? `${cover}. ${flak}` : cover || flak;
+}
+
 function coverOnRoute(state: GameState, me: number, from: number, to: number, planes: boolean): string {
   const w = state.map.width;
   const fx = from >= 0 ? from % w : to % w;
@@ -538,7 +544,7 @@ function liveStrikeTarget(state: GameState, me: Player, ui: UiState, m: TargetMo
     const plan = planParadrop(state, me, ui, tile, m.airfield);
     t.from = plan.airfield;
     t.troops = plan.troops;
-    if (!plan.reason && plan.airfield >= 0) t.covered = coverOnRoute(state, me.id, plan.airfield, tile, true);
+    if (!plan.reason && plan.airfield >= 0) t.covered = withFlak(coverOnRoute(state, me.id, plan.airfield, tile, true), routeFlakText(routeFlak(state, me.id, plan.airfield, tile, myFlakFactor(state, me.id, 'paradrop')), 'paratroopers'));
     return { ...t, ok: plan.reason === '', reason: plan.reason };
   }
   const kind: SalvoKind = m.kind === 'bomb' ? 'bomb' : m.kind === 'missile' ? m.missile : 'rocket';
@@ -571,6 +577,8 @@ function liveStrikeTarget(state: GameState, me: Player, ui: UiState, m: TargetMo
   let why = pv.reason;
   if (kind === 'bomb' && !pv.launchers && fixed < 0) why = tooFar(state, me.id, tile) || why;
   if (!why) t.covered = coverOnRoute(state, me.id, t.from, t.aim >= 0 ? t.aim : tile, kind === 'bomb');
+  // Flak Guns (sim/defense.ts): the known enemy flak on the bombers' way
+  if (!why && kind === 'bomb') t.covered = withFlak(t.covered, routeFlakText(routeFlak(state, me.id, t.from, t.aim >= 0 ? t.aim : tile, myFlakFactor(state, me.id, 'bomb'))));
   return { ...t, ok: why === '', reason: why };
 }
 

@@ -18,6 +18,7 @@
 //
 // Numbers: config AIR. Deterministic: state.rng only, no transcendental Math functions.
 
+import { flakCut, flakNote } from './defense';
 import { knownTile } from './fog';
 import { AIR, AIR_COVER, TECH_EFFECTS, TICKS_PER_SECOND } from './config';
 import { aircraftCap, airfieldRadius, buildingAt, buildingsOf, chargesReady, isDisabled, samRadius } from './buildings';
@@ -890,7 +891,8 @@ export function supportStrike(state: GameState, u: Unit): { victim: number; kill
   const share = tiles / Math.max(1, vp.tiles);
   const army = vp.troops.infantry + vp.troops.armor + vp.troops.artillery;
   // The victim's fighters guard the tile (air superiority): kills and zone strength are cut.
-  const guard = superiorityBombMul(state, u.owner, victim, tile);
+  const sup = superiorityBombMul(state, u.owner, victim, tile);
+  const guard = flakCut(u, sup); // flak wear (defense.ts) on top, never below DEFENSE.flakEffectFloor
   const kill = Math.max((AIR.supportMinKill * tiles) / Math.max(1, hostileTiles), AIR.supportKillShare * army * share) * nightEffectMul(state, u.owner) * airSupportMul(state, u.owner) * guard; // ground-attack / heavy (variants.ts)
   const killed = killArmy(state, victim, kill, u.owner);
   const strength = airSupportMul(state, u.owner) * guard; // ground-attack planes strike harder (variants.ts)
@@ -909,9 +911,9 @@ export function supportStrike(state: GameState, u: Unit): { victim: number; kill
   } else {
     air.zones.push({ wing: af?.id ?? -1, owner: u.owner, tile, radius, strength, untilTick, victim, tiles });
     const me = state.players[u.owner];
-    addEvent(state, 'bombing', `${me.name}'s bombers are supporting the attack on ${vp.name}: ${Math.round(killed)} troops killed${guard < 1 ? superiorityNote() : ''}`, [u.owner, victim], tile);
+    addEvent(state, 'bombing', `${me.name}'s bombers are supporting the attack on ${vp.name}: ${Math.round(killed)} troops killed${sup < 1 ? superiorityNote() : ''}${flakNote(u)}`, [u.owner, victim], tile);
   }
-  return { victim, kills: killed, guarded: guard < 1 };
+  return { victim, kills: killed, guarded: sup < 1 };
 }
 
 /** The end of a bombing message when the victim's fighters guarded the tile. */
@@ -943,7 +945,7 @@ function killArmy(state: GameState, victim: number, amount: number, killer: numb
 export function raid(state: GameState, u: Unit, victim: number): { victim: number; cut: number } {
   if (!hostile(state, u.owner, victim) || !state.players[victim]?.alive) return { victim: 0, cut: 0 };
   const tech = techOf(state, u.owner, 'strategicBombing');
-  const per = raidCutPer(state, u.owner) * superiorityBombMul(state, u.owner, victim, u.target); // air superiority
+  const per = raidCutPer(state, u.owner) * flakCut(u, superiorityBombMul(state, u.owner, victim, u.target)); // air superiority, flak (defense.ts)
   const max = tech ? AIR.raidTechMaxCut : AIR.raidMaxCut;
   const until = state.tick + Math.round(raidSecondsOf(state, u.owner) * TICKS_PER_SECOND);
   const air = airState(state);

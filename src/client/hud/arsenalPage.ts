@@ -10,6 +10,7 @@
 // to it (light) and from it (grey). Arrow keys move between cards (across rows too). On a phone the rows become a
 // vertical list grouped by tier (CSS), one row at a time.
 import './researchPanel.css';
+import { arsenalItem } from '../../sim/arsenal';
 import { TECHS } from '../../sim/config';
 import { canResearch, hasTech } from '../../sim/tech';
 import { missingPrereqs, rivalsOf, techStatus, techStatusReason } from '../../sim/techtree';
@@ -316,7 +317,7 @@ export class TechRowsView {
     let full: string | null = null;
     if (st === 'done') text = 'In service';
     else if (st === 'ordered') text = `Arrives in ${formatEta(a.order!.left)}`;
-    else if (st === 'chose-other') text = 'Not chosen';
+    else if (st === 'chose-other') text = arsenalItem(t)?.pillar === 'defense' ? a.reason : 'Not chosen'; // "You chose Flak Guns; Tank Traps is locked"
     else if (st === 'building') text = a.reason;
     else if (st === 'prereq') {
       const miss = missingPrereqs(me, t);

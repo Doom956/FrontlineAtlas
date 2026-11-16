@@ -5,6 +5,7 @@
 //   from FAR_ZOOM on        every building as a marker (at least 14 px, so it reads at normal play zoom)
 // The hovered or selected building is drawn as a bigger marker. Unfinished buildings are faded with a progress
 // ring; levels above 1 get a badge; damaged ones a health bar.
+// Forts and Cities of a Flak Guns holder (sim/defense.ts) carry two small AA guns on their marker (art/detailed/flak.ts).
 // Culling: a spatial grid (CELL tiles) rebuilt when the buildings change (GameState.buildingsVersion).
 // Fog of war (fog/fogView.ts): buildings in view are drawn live; in explored blocks out of view the ones last seen
 // there are drawn greyed, without level badge or progress; nothing in blocks never seen.
@@ -13,6 +14,8 @@ import type { Building, GameState } from '../../sim/types';
 import type { Camera } from '../camera';
 import { CATEGORY_COLORS, drawMarker, ICON_INFO, markerReady, type BuildingIconId } from '../icons';
 import type { FogView } from '../fog/fogView';
+import { drawFlakGuns } from '../art/detailed/flak';
+import { hasTech } from '../../sim/tech';
 import { ACCENT, buildingsKey, clamp, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, setTracking, type RGB, type View } from './common';
 
 export const FAR_ZOOM = 1.7;
@@ -53,6 +56,8 @@ export class BuildingLayer {
   private budget = 0;
   /** buildings drawn last frame (stats) */
   drawn = 0;
+  /** owners holding Flak Guns (their Forts and Cities get AA guns on the marker); set each frame */
+  private flak = new Set<number>();
 
   reset(): void {
     this.key = -1;
@@ -109,6 +114,8 @@ export class BuildingLayer {
     }
     this.drawn = 0;
     this.budget = SPRITE_BUDGET;
+    this.flak.clear();
+    for (const p of state.players) if (p.id > 0 && p.alive && hasTech(p, 'flakGuns')) this.flak.add(p.id);
     const z = cam.zoom;
     if (z < FAR_ZOOM) {
       this.drawFar(ctx, state, cam, v, z);
@@ -214,6 +221,7 @@ export class BuildingLayer {
     const opts = { plate: cat ? CATEGORY_PLATES[cat] : c, dpr };
     if (markerReady(id, size, opts) || this.budget-- > 0) drawMarker(ctx, id, x, y, size, { ...opts, alpha });
     else drawMarker(ctx, id, x, y, size, { plate: NEUTRAL_PLATE, dpr, alpha });
+    if ((b.type === 'fort' || b.type === 'city') && !ghost && !unfinished && this.flak.has(b.owner)) drawFlakGuns(ctx, x, y, size, dpr, alpha);
     this.drawn++;
     if (unfinished) {
       ctx.beginPath();

@@ -9,6 +9,9 @@
 //   Armor   Mechanization -> Light Tanks -> Deep Raids   OR   Heavy Tanks -> Siege Tanks;  Amphibious Tanks;  Armor Mastery
 //   Air     Flight -> Ground-attack Planes -> Jet Engines   OR   Heavy Bombers -> Strategic Bombing;  Drop Tanks,
 //           Night Bombing;  Air Mastery
+//   Defense (+ Fortification, a Research-tab tech)  Flak Guns   OR   Tank Traps  (anti-air lane / barriers lane; part 2
+//           adds Tracking Radar after Flak Guns and Coastal Batteries after Tank Traps, part 3 the Counteroffensive
+//           mastery); every item needs a finished own Fort
 //   Shared  Mechanized Infantry, Recon Planes;  Early Warning
 // A fork is an exclusive group (TechInfo.exclusiveGroup on the two roots): choosing one root locks the other root and
 // everything after it (techtree.choiceLockedBy follows `requires`). Mastery techs (top tier) may be researched in at
@@ -17,8 +20,8 @@
 import { ARSENAL, TECHS } from './config';
 import type { Player, TechId } from './types';
 
-export type Pillar = 'navy' | 'armor' | 'air' | 'shared';
-export const PILLARS: readonly Pillar[] = ['navy', 'armor', 'air', 'shared'];
+export type Pillar = 'navy' | 'armor' | 'air' | 'defense' | 'shared';
+export const PILLARS: readonly Pillar[] = ['navy', 'armor', 'air', 'defense', 'shared'];
 
 export interface ArsenalItem {
   tech: TechId;
@@ -74,6 +77,17 @@ export const ARSENAL_ROWS: { pillar: Pillar; name: string; items: ArsenalItem[] 
     ],
   },
   {
+    // Defense (defense.ts): no unlock of its own (Fortification, a Research-tab tech, opens it). Hooks for part 2 and 3:
+    // trackingRadar (tier 3, branch flakGuns), coastalBatteries (tier 3, branch tankTraps), counteroffensive (tier 4,
+    // mastery: add it to MASTERY_TECHS).
+    pillar: 'defense',
+    name: 'Defense',
+    items: [
+      { tech: 'flakGuns', pillar: 'defense', tier: 2, kind: 'variant', fork: 'defenseDoctrine', branch: 'flakGuns' },
+      { tech: 'tankTraps', pillar: 'defense', tier: 2, kind: 'variant', fork: 'defenseDoctrine', branch: 'tankTraps' },
+    ],
+  },
+  {
     pillar: 'shared',
     name: 'Shared',
     items: [
@@ -102,9 +116,13 @@ export function pillarOf(t: TechId): Pillar | null {
 
 /** Mastery techs in at most this many pillars per game. */
 export const MASTERY_CAP = ARSENAL.masteryCap;
-/** The mastery tech of each combat pillar. */
-export const MASTERY_TECHS: Record<Exclude<Pillar, 'shared'>, TechId> = { navy: 'navalMastery', armor: 'armorMastery', air: 'airMastery' };
-export const PILLAR_NAMES: Record<Pillar, string> = { navy: 'Navy', armor: 'Armor', air: 'Air', shared: 'Shared' };
+/** Pillars with a mastery (Navy, Armor, Air, Defense): "2 of 4". */
+export const MASTERY_PILLARS = ARSENAL.masteryPillars;
+/** Combat pillars (the ones with a mastery). */
+export type CombatPillar = Exclude<Pillar, 'shared'>;
+/** The mastery tech of each combat pillar (Defense: the Counteroffensive, part 3; none yet). */
+export const MASTERY_TECHS: Partial<Record<CombatPillar, TechId>> = { navy: 'navalMastery', armor: 'armorMastery', air: 'airMastery' };
+export const PILLAR_NAMES: Record<Pillar, string> = { navy: 'Navy', armor: 'Armor', air: 'Air', defense: 'Defense', shared: 'Shared' };
 
 export function isMasteryTech(t: TechId): boolean {
   return ITEMS.get(t)?.kind === 'mastery';
@@ -124,8 +142,9 @@ export function ownsOrPending(p: Player, t: TechId): boolean {
 /** Pillars in which p has (or has on order) the mastery. */
 export function masteryPillars(p: Player): Pillar[] {
   const out: Pillar[] = [];
-  for (const pl of ['navy', 'armor', 'air'] as const) {
-    if (ownsOrPending(p, MASTERY_TECHS[pl])) out.push(pl);
+  for (const pl of ['navy', 'armor', 'air', 'defense'] as const) {
+    const t = MASTERY_TECHS[pl];
+    if (t && ownsOrPending(p, t)) out.push(pl);
   }
   return out;
 }

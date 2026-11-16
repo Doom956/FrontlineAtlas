@@ -23,6 +23,7 @@
 //   targetOwner = owner of the clicked tile at the order; launch = spearhead start tile; strength0 = troops at start
 //   cargo = tiles taken by the current spearhead
 // Deterministic: no RNG; searches have fixed tie-breaks.
+import { isTrapTile, trapBlitzSpeedMul, trapFactor, trapSpeedMul, trapTileLoss } from './defense';
 import { buildingAt, buildingsOf, fortMultiplierAt } from './buildings';
 import { frontTiles, tileFightCost } from './combat';
 import {
@@ -617,8 +618,11 @@ function armorShare(p: Player | undefined): number {
   const t = total(p.troops);
   return t > 0 ? p.troops.armor / t : 0;
 }
-/** Head speed (tiles/s) entering a tile of terrain `ter` (0 = can't). */
-function headSpeed(state: GameState, u: Unit, ter: number, defender: number): number {
+/**
+ * Head speed (tiles/s) entering a tile of terrain `ter` (0 = can't). `trap`: the tank trap penalty factor there
+ * (defense.ts trapFactor; 0 = no traps).
+ */
+function headSpeed(state: GameState, u: Unit, ter: number, defender: number, trap = 0): number {
   if (isWater(ter)) return amphibWaterSpeed(state, u.owner) * frontRate(state); // Amphibious Tanks (specials.ts)
   let s = TANK_SPEARHEAD_SPEED * (TANK_TERRAIN_SPEED[ter] ?? 0.5);
   if (ter === Terrain.Mountains && !artillerySupport(u) && !armorBreaksThrough(state, u.owner)) return 0; // heavy tanks (variants.ts)
@@ -626,9 +630,16 @@ function headSpeed(state: GameState, u: Unit, ter: number, defender: number): nu
   s *= tankDivisionMods(state, u.owner).speedMul * vetSpeedMul(u); // Blitz Tactics (techtree.ts), veterancy (armor2.ts)
   s *= armorSpeedMul(state, u.owner); // light / heavy tanks (variants.ts)
   if (ter === Terrain.Plains || ter === Terrain.Desert) s *= doctrineMore(state, u.owner, 'openGroundSpeed');
-  if (u.blitz) s *= BLITZ.speedMul; // a blitz's surge (blitz.ts)
+  if (u.blitz) s *= trap > 0 ? trapBlitzSpeedMul() : BLITZ.speedMul; // a blitz's surge (blitz.ts), halved on tank traps
+  if (trap > 0) s *= trapSpeedMul(trap); // Tank Traps (defense.ts)
   if (defender > 0 && hasTech(state.players[defender], 'trenchWarfare')) s *= 0.7;
   return s * frontRate(state);
+}
+/** Tank trap penalty factor for division u entering `tile` (0 = no traps there; defense.ts). */
+function trapAt(state: GameState, u: Unit, tile: number): number {
+  const o = state.map.owner[tile];
+  if (o <= 0 || o === u.owner || !isTrapTile(state, tile, o)) return 0;
+  return trapFactor(state, u, artillerySupport(u));
 }
 function maxDepth(state: GameState, u: Unit): number {
   return TANK_SPEARHEAD_MAX_DEPTH * tankDivisionMods(state, u.owner).depthMul * vetSpeedMul(u) * armorDepthMul(state, u.owner) * (u.blitz ? BLITZ.depthMul : 1); // Blitz Tactics, veterancy, light / heavy (variants.ts), a blitz (blitz.ts)
@@ -755,6 +766,7 @@ function startSpearhead(state: GameState, u: Unit): void {
   u.x = here % state.map.width;
   u.y = (here / state.map.width) | 0;
   u.strength0 = total(u.troops);
+  delete u.trapLoss; // tank traps: a fresh budget per spearhead (defense.ts)
   u.cargo = 0;
   u.path = [];
   u.pathPos = 0;
@@ -806,6 +818,7 @@ function endSpearhead(state: GameState, u: Unit, why: string): void {
   u.launch = undefined;
   u.strength0 = undefined;
   delete u.blitz;
+  delete u.trapLoss;
   const taken = u.cargo;
   u.cargo = 0;
   onSpearheadEnded(state, u, taken); // veterancy (armor2.ts)
@@ -871,7 +884,8 @@ function stepSpearhead(state: GameState, u: Unit): void {
     return;
   }
   const ahead = ay * w + ax;
-  const speed = headSpeed(state, u, map.terrain[ahead], map.owner[ahead]);
+  const trap = trapAt(state, u, ahead);
+  const speed = headSpeed(state, u, map.terrain[ahead], map.owner[ahead], trap);
   const step = Math.min(0.9, Math.max(speed, 0.05) * TICK_SECONDS);
   const nd = Math.min(limit, depth + step);
   const nx = lx + ux * nd;
@@ -907,6 +921,16 @@ function stepSpearhead(state: GameState, u: Unit): void {
           return;
         }
         continue;
+      }
+      if (k === 0) {
+        // Tank Traps (defense.ts): the head's tile costs the division a share of its start strength (capped).
+        const tf = trapAt(state, u, t);
+        const tl = trapTileLoss(u, tf, u.strength0 ?? total(u.troops));
+        if (tl > 0) {
+          loseTroops(state, u, tl, o);
+          u.trapLoss = (u.trapLoss ?? 0) + tl;
+          state.effects.push({ kind: 'trapHit', x: (t % w) + 0.5, y: ((t / w) | 0) + 0.5, radius: 1, tick: state.tick });
+        }
       }
       loseTroops(state, u, c.loss, o);
       killDefenders(state, o, c.killed, u.owner);
@@ -1101,7 +1125,7 @@ export function spearheadPreview(state: GameState, playerId: number, unitId: num
   out.launch = launch;
   // Simulate on a copy of the division (no state change).
   const [from, aim] = frontOfLine(state, playerId, launch, aimPoint(state, playerId, launch, tile));
-  const sim: Unit = { ...u, troops: { ...u.troops }, path: [], launch: from, target: aim, targetOwner: target, blitz: blitz ? 1 : undefined }; // blitz: a blitz's speed, depth and losses (blitz.ts)
+  const sim: Unit = { ...u, troops: { ...u.troops }, path: [], launch: from, target: aim, targetOwner: target, blitz: blitz ? 1 : undefined, trapLoss: 0 }; // blitz: a blitz's speed, depth and losses (blitz.ts)
   const w = map.width;
   const { lx, ly, ux, uy } = lineOf(state, sim);
   const start = total(sim.troops);
@@ -1133,6 +1157,10 @@ export function spearheadPreview(state: GameState, playerId: number, unitId: num
     if (ter === Terrain.Forest || ter === Terrain.Hills) warn('Forests or hills ahead: the spearhead slows down');
     if (ter === Terrain.Swamp) warn('Swamp ahead: the spearhead bogs down');
     if (o > 0 && fortMultiplierAt(state, t, o) > 1.01) warn(breaks ? 'Fort ahead: it will be breached at a high cost' : 'Fort ahead: spearhead will stop (bring artillery)');
+    // Tank Traps (defense.ts): dug-in land near the defender's forts
+    const tf = o > 0 && isTrapTile(state, t, o) ? trapFactor(state, sim, artillerySupport(sim)) : -1;
+    if (tf > 0) warn(`Tank traps ahead: tanks slow to ${Math.round(trapSpeedMul(tf) * 100)}% here`);
+    else if (tf === 0) warn('Tank traps ahead: your Siege Tanks drive through');
     const c = bandCost(state, sim, t, o);
     if (typeof c === 'string') {
       if (c === 'reached the coast') warn('Water ahead: the spearhead ends at the coast');
@@ -1144,7 +1172,10 @@ export function spearheadPreview(state: GameState, playerId: number, unitId: num
       stopped = true;
       continue;
     }
-    for (const k of TROOP_TYPES) sim.troops[k] = Math.max(0, sim.troops[k] - (c.loss * sim.troops[k]) / Math.max(1e-9, total(sim.troops)));
+    const tl = tf > 0 ? trapTileLoss(sim, tf, start) : 0;
+    sim.trapLoss = (sim.trapLoss ?? 0) + tl;
+    const lost = c.loss + tl;
+    for (const k of TROOP_TYPES) sim.troops[k] = Math.max(0, sim.troops[k] - (lost * sim.troops[k]) / Math.max(1e-9, total(sim.troops)));
     out.expectedDepth++;
   }
   out.endShare = start > 0 ? total(sim.troops) / start : 0;

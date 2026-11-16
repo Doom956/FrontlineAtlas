@@ -111,7 +111,11 @@ export type TechId =
   | 'reconPlanes'
   | 'navalMastery'
   | 'armorMastery'
-  | 'airMastery';
+  | 'airMastery'
+  // Arsenal Defense row (defense.ts): the two lane roots (fork defenseDoctrine). Part 2 adds Tracking Radar and
+  // Coastal Batteries, part 3 the Counteroffensive mastery.
+  | 'flakGuns'
+  | 'tankTraps';
 
 export type UnitType =
   | 'transport'
@@ -447,6 +451,13 @@ export interface Unit {
   blitz?: number;
   /** tank division (blitz.ts): the tick from which it may blitz again; absent = ready */
   blitzReady?: number;
+  /**
+   * bomber, cargo plane, stealth bomber (defense.ts Flak Guns): wear 0..1 from hostile flak zones flown through on the
+   * way out; its strike does x (1 - wear) on arrival, and at DEFENSE.flakAbortAt it turns home. Absent = 0.
+   */
+  flakWear?: number;
+  /** tank division (defense.ts Tank Traps): troops its running spearhead lost to tank traps; absent = 0 */
+  trapLoss?: number;
 }
 
 /** A unit being built (navy.ts warships, tanks.ts divisions): it appears at `tile` at readyTick. */
@@ -937,7 +948,8 @@ export interface TrenchState {
 export interface Effect {
   /** 'barrage': artillery shells landing on a disc (radius = BARRAGE_RADIUS) */
   /** 'smokeScreen': a blitz's smoke at its launch tile (blitz.ts; radius = BLITZ.width) */
-  kind: 'explosion' | 'nuke' | 'shot' | 'capture' | 'barrage' | 'smokeScreen';
+  /** 'trapHit': a spearhead head ran into tank traps (defense.ts; a dirt burst) */
+  kind: 'explosion' | 'nuke' | 'shot' | 'capture' | 'barrage' | 'smokeScreen' | 'trapHit';
   x: number;
   y: number;
   radius: number;

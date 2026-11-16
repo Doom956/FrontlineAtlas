@@ -181,6 +181,8 @@ export interface PlayOptions {
   pan?: number;
   /** 0..1, on top of the master and sfx volumes */
   volume?: number;
+  /** playback rate x for recordings (below 1: pitched down); synth fallbacks ignore it */
+  rate?: number;
 }
 
 /** Anything with the Camera's screen mapping (src/client/camera.ts matches). */
@@ -940,7 +942,7 @@ export class AudioManager {
       return false;
     }
     if (!this.limiter.accept(id, now)) return false;
-    this.sound(id, vol, opts.pan ?? 0, now);
+    this.sound(id, vol, opts.pan ?? 0, now, opts.rate ?? 1);
     return true;
   }
 
@@ -1084,7 +1086,7 @@ export class AudioManager {
           }
           const g = spatialGain(SOUND_INFO[c.id].spatial ?? 'medium', zoom, s.x, s.y, view.viewW, view.viewH);
           if (g < MIN_AUDIBLE) continue;
-          this.play(c.id, { volume: c.volume * g, pan: panFromScreenX(s.x, view.viewW) });
+          this.play(c.id, { volume: c.volume * g, pan: panFromScreenX(s.x, view.viewW), rate: c.rate });
         }
       }
       this.cues.length = 0;
@@ -1279,11 +1281,11 @@ export class AudioManager {
   }
 
   /** A sound that passed the limits: its recording when loaded, else the synth; then the music ducks or stops. */
-  private sound(id: SoundId, vol: number, pan: number, now: number): void {
+  private sound(id: SoundId, vol: number, pan: number, now: number, rate = 1): void {
     const set = SFX[id];
     let len = SOUND_INFO[id].dur;
     if (this.ctx) {
-      const played = set ? this.playSample(id, set, vol, pan) : -1;
+      const played = set ? this.playSample(id, set, vol, pan, rate) : -1;
       if (played >= 0) len = played;
       else this.synth(id, vol, pan);
     }
@@ -1297,7 +1299,7 @@ export class AudioManager {
   }
 
   /** Plays a recording of `id` (a variant, varied); returns its length in s, or -1 when none is loaded. */
-  private playSample(id: SoundId, set: SampleSet, vol: number, pan: number): number {
+  private playSample(id: SoundId, set: SampleSet, vol: number, pan: number, rate = 1): number {
     const c = this.ctx;
     const bank = this.bank;
     if (!c || !bank || !this.sfxBus || c.state === 'closed') return -1;
@@ -1321,7 +1323,7 @@ export class AudioManager {
       const t = c.currentTime + 0.005;
       const src = c.createBufferSource();
       src.buffer = buf;
-      src.playbackRate.value = v.rate;
+      src.playbackRate.value = v.rate * rate;
       const g = c.createGain();
       g.gain.value = vol * set.gain * v.gain * takeTrim(set, set.files[vi]);
       src.connect(g);

@@ -32,3 +32,5 @@ export class TankShotBus {
   }
 }
 export const tankShotBus = new TankShotBus();
+/** Flak bursts the map draws (fx/defenseFx.ts pushes one per plane per frame at most); the sound rate limits them. */
+export const flakBus = new TankShotBus();

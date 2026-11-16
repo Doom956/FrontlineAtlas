@@ -458,6 +458,9 @@ export const TECHS: Record<TechId, TechInfo> = {
   reconPlanes: { name: 'Recon Planes', tier: 3, science: 1500, gold: 800, requires: ['flight'], description: 'Airfields fly recon: reveal enemy armies, doctrines, buildings and submarines in a wide circle for 40 seconds. Enemy fighters shoot recon planes down on the way.' },
   navalMastery: { name: 'Naval Mastery', tier: 5, science: 8000, gold: 3000, requires: ['navigation'], requiresAny: ['battleships', 'carriers'], description: 'Mastery: warships earn veterancy twice as fast; bombardment and naval support reach 30% further; +2 warships; warships, destroyers and battleships fire cruise missiles at the coast.' },
   armorMastery: { name: 'Armor Mastery', tier: 5, science: 8000, gold: 3000, requires: ['mechanization'], requiresAny: ['deepRaids', 'siegeTanks'], description: 'Mastery: encirclements collapse pockets three times as big and destroy more of the troops caught in them.' },
+  // ---- Arsenal Defense row (defense.ts; numbers in the DEFENSE block): no buildings of its own, it arms Forts and Cities ----
+  flakGuns: { name: 'Flak Guns', tier: 3, science: 2200, gold: 1000, requires: ['fortification'], exclusiveGroup: 'defenseDoctrine', description: 'Your finished Forts and Cities fire flak: enemy bombers, ground-attack planes and cargo planes flying through lose up to 65% of their effect, and badly hit ones turn home. Rockets, missiles and recon planes fly too fast or too high.' },
+  tankTraps: { name: 'Tank Traps', tier: 3, science: 2200, gold: 1000, requires: ['fortification'], exclusiveGroup: 'defenseDoctrine', description: 'Dug-in land (trench level 1 or more) near your finished Forts is laid with mines and steel hedgehogs: enemy tank spearheads there slow to 40% and lose troops. Siege Tanks drive through; barrages flatten them with the trench.' },
   airMastery: { name: 'Air Mastery', tier: 5, science: 8000, gold: 3000, requires: ['flight'], requiresAny: ['jetEngines', 'strategicBombing'], description: 'Mastery: every air wing flies 50% more bombers; a stealth bomber SAM sites cannot see strikes one target behind their walls.' },
 };
 export const TECH_ORDER: TechId[] = [
@@ -467,7 +470,7 @@ export const TECH_ORDER: TechId[] = [
   'propaganda', 'railways', 'stockExchange', 'freeTrade', 'blitzTactics', 'trenchWarfare', 'carriers', 'submarines',
   'jetEngines', 'strategicBombing', 'diplomaticCorps', 'conscription', 'industrialBoom', 'massMobilization', 'automation',  'amphibiousTanks', 'earlyWarning', 'navalMines', 'dropTanks', 'nightBombing',
   'destroyers', 'battleships', 'lightTanks', 'heavyTanks', 'deepRaids', 'siegeTanks', 'groundAttack', 'heavyBombers',
-  'mechInfantry', 'reconPlanes', 'navalMastery', 'armorMastery', 'airMastery',
+  'mechInfantry', 'reconPlanes', 'navalMastery', 'armorMastery', 'airMastery', 'flakGuns', 'tankTraps',
 ];
 /** Display names of the exclusive choice groups (TechInfo.exclusiveGroup). */
 export const TECH_GROUP_NAMES: Record<string, string> = {
@@ -476,6 +479,7 @@ export const TECH_GROUP_NAMES: Record<string, string> = {
   navalDoctrine: 'Navy path',
   airDoctrine: 'Air path',
   armorPath: 'Armor path',
+  defenseDoctrine: 'Defense lane',
   statecraft: 'Statecraft',
   capstone: 'National effort',
 };
@@ -1594,6 +1598,8 @@ export interface NavalVariantInfo {
 export const ARSENAL = {
   /** mastery techs in at most this many pillars per game */
   masteryCap: 2,
+  /** pillars that have (or will have) a mastery: Navy, Armor, Air and Defense ("Mastery 2 of 4" in the texts) */
+  masteryPillars: 4,
   /**
    * AI: a mastery is put first in the research order / bought at once only once the nation has this many techs
    * (arsenalAI / variantsAI; Research and Arsenal together: 8 when the Arsenal was researched too)
@@ -1658,6 +1664,57 @@ export const ARSENAL = {
  * and delivered after a timer, instead of being researched. Price = tier price x the pillar's resource mix; several
  * items can be on order at once; no refunds.
  */
+/**
+ * Arsenal Defense row (defense.ts). Flak Guns: every finished, working own Fort and City is a flak site; hostile
+ * bombers, ground-attack planes, cargo planes and the stealth bomber flying out through it gain wear per tile, at most
+ * flakMaxZones zones counted at once. Tank Traps: own trench tiles (level >= trapMinTrench) inside a finished, working
+ * own Fort's radius slow and bleed hostile spearheads. First guesses for the balance round.
+ */
+export const DEFENSE = {
+  /** flak site radius (tiles): Fort, + per level above 1; City, + per level above 1 */
+  flakFortRadius: 14,
+  flakFortRadiusPerLevel: 2,
+  flakCityRadius: 10,
+  flakCityRadiusPerLevel: 1,
+  /** wear per tile flown inside one hostile flak zone, + per site level above 1 */
+  flakWearPerTile: 0.025,
+  flakWearPerLevel: 0.004,
+  /** zones counted at once (the strongest ones): no flak carpet */
+  flakMaxZones: 2,
+  /** wear at or above this before release: the plane turns home with its bombs (cargo planes bring the troops back) */
+  flakAbortAt: 0.8,
+  /** flak x air superiority never cut a strike below this share of normal */
+  flakEffectFloor: 0.35,
+  /** wear x by plane: ground-attack planes fly low, heavy bombers are tough; flak is not radar aimed (stealth x1) */
+  flakVsGroundAttack: 1.3,
+  flakVsHeavy: 0.7,
+  flakVsStealth: 1,
+  flakVsCargo: 1,
+  /** wear is added every this many ticks (the site grid is cached) */
+  flakCheckTicks: 5,
+  /** site grid cell size (tiles) */
+  flakGridCell: 16,
+  /** Tank Traps: trench level a tile needs to hold traps */
+  trapMinTrench: 1,
+  /** a hostile spearhead head on a trap tile moves at this share of its speed */
+  trapHeadSpeed: 0.4,
+  /** ...and its division loses this share of its troops per trap tile, at most trapMaxLoss of its start strength */
+  trapLossPerTile: 0.02,
+  trapMaxLoss: 0.25,
+  /** penalty x by tank: light tanks, heavy tanks, Siege Tanks (they drive through) */
+  trapLight: 1.3,
+  trapHeavy: 0.7,
+  trapSiege: 0,
+  /** penalty x for a division with artillery support (TANK_ARTILLERY_SUPPORT or more): engineers clear a lane */
+  trapArtillery: 0.5,
+  /** a Breakthrough's surge (BLITZ.speedMul above 1) x this on trap tiles */
+  trapBlitzSurge: 0.5,
+  /** AI: a nation commits to Defense when its strongest hostile neighbour has this many times its army */
+  aiStrongerNeighbour: 1.5,
+  /** AI: ...or its hostile rivals hold this many bombers */
+  aiEnemyBombers: 6,
+} as const;
+
 export const ARSENAL_PRICES = {
   /** by arsenal column (arsenal.ts ArsenalItem.tier: 1 unlock, 2 path root / shared unlock, 3 upgrade / special, 4 mastery) */
   tiers: {
@@ -1671,7 +1728,10 @@ export const ARSENAL_PRICES = {
     armor: { iron: 1, oil: 0 },
     navy: { iron: 0.3, oil: 0.7 },
     air: { iron: 0.3, oil: 0.7 },
-  } as Record<'armor' | 'navy' | 'air', { iron: number; oil: number }>,
+    defense: { iron: 0.8, oil: 0.2 },
+  } as Record<'armor' | 'navy' | 'air' | 'defense', { iron: number; oil: number }>,
+  /** pillars whose path roots (tier 2) are paid in iron only, like the unlocks: an oil-poor turtle can start Defense */
+  ironOnlyRoots: ['defense'] as string[],
   /**
    * the first item of each row (Navigation, Mechanization, Flight) is paid in iron only: a nation without oil wells
    * can still get transports' Navigation bonus and Radar / SAM sites (Radar needs Flight)
@@ -1682,11 +1742,11 @@ export const ARSENAL_PRICES = {
     mechInfantry: 'armor',
     reconPlanes: 'air',
     earlyWarning: 'air',
-  } as Partial<Record<TechId, 'armor' | 'navy' | 'air'>>,
+  } as Partial<Record<TechId, 'armor' | 'navy' | 'air' | 'defense'>>,
   /** shared items that need no building (Early Warning works through SAMs, coast and airfields alike) */
   sharedNoBuilding: ['earlyWarning'] as TechId[],
   /** the building each pillar's items need (finished, own); an item that unlocks that building itself is exempt */
-  building: { navy: 'port', armor: 'factory', air: 'airfield' } as Record<'armor' | 'navy' | 'air', BuildingType>,
+  building: { navy: 'port', armor: 'factory', air: 'airfield', defense: 'fort' } as Record<'armor' | 'navy' | 'air' | 'defense', BuildingType>,
   /** AI: at most this many items on order at once */
   aiMaxOrders: 2,
   /** AI: iron / oil it keeps back for units (tank divisions, warships, bombers) after a purchase */

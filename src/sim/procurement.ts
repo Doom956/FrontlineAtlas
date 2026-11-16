@@ -7,7 +7,8 @@
 // - Several items can be on order at once (Player.procuring, in order of purchase; hashed).
 // - The tech tree's rules stay: prerequisites must be delivered, ordering one side of a fork locks the other at once,
 //   an order uses a mastery slot (MASTERY_CAP).
-// - Each pillar's items need a finished building of its own: navy a Port, armor a Factory, air an Airfield; an item
+// - Each pillar's items need a finished building of its own: navy a Port, armor a Factory, air an Airfield, defense a
+//   Fort ("Needs a finished Fort"); an item
 //   that unlocks that building itself (Flight unlocks the Airfield) needs none, so nothing is circular.
 // - Delivery (updateProcurement, every tick): the tech is pushed to Player.techs, exactly as a finished research was,
 //   with a 'researchDone' event "Delivered: <name>".
@@ -32,7 +33,7 @@ export interface ArsenalPrice {
   needs?: BuildingType;
 }
 
-type ArmPillar = 'armor' | 'navy' | 'air';
+type ArmPillar = 'armor' | 'navy' | 'air' | 'defense';
 
 /** The pillar whose resource mix and building an item uses (shared items: ARSENAL_PRICES.shared). */
 function armPillarOf(t: TechId): ArmPillar | null {
@@ -73,7 +74,8 @@ export function arsenalPrice(state: GameState, pid: number, t: TechId): ArsenalP
   const pillar = armPillarOf(t);
   if (!it || !pillar) return { gold: 0, iron: 0, oil: 0, seconds: 0 };
   const tier = ARSENAL_PRICES.tiers[it.tier] ?? ARSENAL_PRICES.tiers[3];
-  const mix = it.tier === 1 ? ARSENAL_PRICES.unlockMix : ARSENAL_PRICES.mix[pillar];
+  const ironOnly = it.tier === 1 || (it.tier === 2 && it.branch === it.tech && ARSENAL_PRICES.ironOnlyRoots.includes(pillar));
+  const mix = ironOnly ? ARSENAL_PRICES.unlockMix : ARSENAL_PRICES.mix[pillar];
   const out: ArsenalPrice = {
     gold: tier.gold,
     iron: Math.round(tier.resource * mix.iron),
@@ -115,6 +117,7 @@ function check(state: GameState, pid: number, t: TechId, cost: boolean): { ok: b
   const price = arsenalPrice(state, pid, t);
   if (price.needs && countBuildings(state, pid, price.needs) <= 0) {
     const name = BUILDINGS[price.needs].name;
+    if (arsenalItem(t)?.pillar === 'defense') return FAIL(`Needs a finished ${name}`); // Defense: a Fort (defense.ts)
     return FAIL(`Needs ${/^[AEIOU]/.test(name) ? 'an' : 'a'} ${name}`);
   }
   if (!cost) return { ok: true };

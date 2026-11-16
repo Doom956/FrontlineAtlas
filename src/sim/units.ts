@@ -73,6 +73,7 @@ import {
   TRANSPORT_PER_PORT,
   UNITS,
   WARSHIP_BOMBARD_KILL,
+  DEFENSE,
   DOCTRINE_PERKS,
   WARSHIP_DAMAGE_PER_S,
   WARSHIP_RANGE,
@@ -84,6 +85,7 @@ import { areAllied, canTrade, changeOpinion } from './diplomacy';
 import { atPeace, peaceReason, unitRule } from './rules';
 import { forEachInRadius, neighbors4, sameWater, waterPath, waterSearchSpent } from './grid';
 import { flattenDisc } from './trenches';
+import { flakCut, flakNote, updateFlak } from './defense';
 import { recordTileChange } from './changes';
 import { addEvent, newId, setOwner } from './state';
 import { onFalloutChange, ownedTilesOf } from './territory';
@@ -839,11 +841,17 @@ export function dropBombs(state: GameState, u: Unit, radiusMul = 1, payload = 1,
   state.effects.push({ kind: 'explosion', x: (tile % w) + 0.5, y: ((tile / w) | 0) + 0.5, radius: bombR, tick: state.tick });
   let destroyed = 0;
   const hit = new Map<number, number>(); // hostile owner -> tiles in radius
-  // Air superiority (airwings.ts): a nation whose fighters guard the aim takes this much of the bombs (per owner).
+  // Air superiority (airwings.ts): a nation whose fighters guard the aim takes this much of the bombs (per owner);
+  // flak wear (defense.ts) cuts it further, never below DEFENSE.flakEffectFloor.
   const guard = new Map<number, number>();
+  const sup = new Map<number, number>();
   const guardOf = (o: number): number => {
     let g = guard.get(o);
-    if (g === undefined) guard.set(o, (g = superiorityBombMul(state, u.owner, o, tile)));
+    if (g === undefined) {
+      const s0 = superiorityBombMul(state, u.owner, o, tile);
+      sup.set(o, s0);
+      guard.set(o, (g = flakCut(u, s0)));
+    }
     return g;
   };
   let hitTiles = 0;
@@ -879,9 +887,10 @@ export function dropBombs(state: GameState, u: Unit, radiusMul = 1, payload = 1,
   const me = state.players[u.owner];
   let victim = map.owner[tile];
   if (!hit.has(victim)) victim = [...hit.keys()].sort((a, b) => (hit.get(b) ?? 0) - (hit.get(a) ?? 0) || a - b)[0];
-  const guarded = guardOf(victim) < 1;
+  guardOf(victim);
+  const guarded = (sup.get(victim) ?? 1) < 1;
   const head = stealth ? `Stealth strike by ${me.name} on ${state.players[victim].name}` : `${me.name} bombed ${state.players[victim].name}`;
-  const msg = `${head}: ${destroyed} building${destroyed === 1 ? '' : 's'} destroyed, ${Math.round(killed)} troops killed${burnt >= 1 ? `, ${Math.round(burnt)} gold burnt` : ''}${guarded ? superiorityNote() : ''}`;
+  const msg = `${head}: ${destroyed} building${destroyed === 1 ? '' : 's'} destroyed, ${Math.round(killed)} troops killed${burnt >= 1 ? `, ${Math.round(burnt)} gold burnt` : ''}${guarded ? superiorityNote() : ''}${flakNote(u)}`;
   addEvent(state, 'bombing', msg, [u.owner, ...hit.keys()], tile);
   out.buildings = destroyed;
   out.kills = killed;
@@ -1003,6 +1012,14 @@ function landParadrop(state: GameState, u: Unit): void {
   if (owner === u.owner || (owner !== 0 && areAllied(state, u.owner, owner))) {
     for (const k of TROOP_TYPES) p.troops[k] += troops[k];
     return;
+  }
+  // Flak (defense.ts): worn cargo planes drop fewer paratroopers; the rest are lost with the damaged planes.
+  const wear = u.flakWear ?? 0;
+  if (wear > 0) {
+    const keep = Math.max(DEFENSE.flakEffectFloor, 1 - wear);
+    const lost = troopTotal(troops) * (1 - keep);
+    for (const k of TROOP_TYPES) troops[k] *= keep;
+    p.stats.troopsLost += lost;
   }
   const res = launchAttack(state, u.owner, tile, troops, true);
   const involved = owner ? [u.owner, owner] : [u.owner];
@@ -1598,6 +1615,7 @@ export function updateUnits(state: GameState): void {
     }
   }
 
+  updateFlak(state, threats, arrived); // Flak Guns (defense.ts): wear, and badly worn planes turn home
   interceptThreats(state, threats, sams, airfields);
   interceptByCarriers(state, threats, units); // Carriers (techtree.ts): warships shoot down planes too
   interceptBySuperiority(state, threats); // air-wing fighter patrols (airwings.ts)

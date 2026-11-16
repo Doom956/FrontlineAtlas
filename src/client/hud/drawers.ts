@@ -1,5 +1,6 @@
 // Side drawers (right edge, one at a time, closed by default): Army, Research, Diplomacy, Events, Map key,
 // the selected building and the menu (settings). Each has one big primary readout and plain-word rows.
+import { defenseLines } from '../defenseView';
 import { activeFog } from '../fog/fogView';
 import { enterWarshipSpawnMode } from '../selection';
 import { buildSeconds, researchRule, unitAllowed } from '../../sim/rules';
@@ -767,6 +768,17 @@ export class BuildingPage implements DrawerPage {
     ht.append(el('span', 'big-v', info.name), el('span', 'big-l', lv > 1 ? `Level ${b.level} of ${lv}` : tx.short));
     head.append(ic, ht);
     r.append(head, el('p', 'desc', tx.description));
+    // Defense row (sim/defense.ts): what this Fort or City adds, "Flak: 14 tiles, enemy bombs here -35%"
+    if (b.type === 'fort' || b.type === 'city') {
+      const dl = el('p', 'note def-line');
+      dl.dataset.test = 'defense-line';
+      r.append(dl);
+      this.upd.push((ss, _m, bb) => {
+        const lines = defenseLines(ss, bb);
+        setText(dl, lines.join('. '));
+        setVisible(dl, lines.length > 0);
+      });
+    }
     const prog = el('div', 'pbar');
     const fill = el('span');
     prog.append(fill);

@@ -142,7 +142,9 @@ export type { GameMode };
 /** Bumped on any incompatible change to the messages below. `hello.protocol` must equal it. */
 // 21: Actions cruiseMissile {ship, tile}, stealthStrike {airfield, tile} and blitz {unitId, tile}, and the fighter
 // rules (one bump over 20 for cruise missiles, fighters, the stealth bomber, tank fire and Breakthrough together).
-export const PROTOCOL_VERSION = 21;
+// 22: Arsenal Defense row (techs flakGuns / tankTraps for 'procure'; Unit.flakWear, Unit.trapLoss and the 'trapHit'
+// effect in the state).
+export const PROTOCOL_VERSION = 22;
 /** Longest owner-console code a client may send (adminAuth). */
 export const ADMIN_CODE_MAX_LENGTH = 128;
 /** Longest chat message (characters, after cleaning). */

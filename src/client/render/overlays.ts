@@ -18,6 +18,8 @@ import { barrageReach, fmtR, strikeOfMode, strikeTarget, type StrikeTarget } fro
 import { bombReach, bomberRadiusOf } from '../airSim';
 import { cruiseTarget, type CruiseTarget } from '../cruise';
 import { stealthTarget, type StealthTarget } from '../stealth';
+import { enemyFlakLabel, knownEnemyFlak, myFlakFactor } from '../defenseView';
+import { flakRadius, flakSiteCut, isFlakSite } from '../../sim/defense';
 import { stealthRadius, stealthReach } from '../../sim/units';
 import { unitVisibleTo } from '../../sim/techtree';
 import { cruiseReloadLeft } from '../../sim/units';
@@ -85,6 +87,34 @@ export class Overlays {
     ctx.setLineDash([]);
   }
 
+  /**
+   * A flak zone (sim/defense.ts): a dark grey dotted ring with a faint smoke fill and its label on top ("Enemy flak:
+   * bombs -35%"); the label only when the ring is big enough on screen.
+   */
+  flakRing(ctx: CanvasRenderingContext2D, cam: Camera, tile: number, radius: number, label: string, showLabel: boolean): void {
+    const s = cam.tileToScreen((tile % this.w) + 0.5, ((tile / this.w) | 0) + 0.5);
+    const R = radius * cam.zoom;
+    if (s.x < -R || s.y < -R || s.x > cam.viewW + R || s.y > cam.viewH + R) return;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, R, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(40,42,46,0.10)';
+    ctx.fill();
+    ctx.setLineDash([2, 3]);
+    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = 'rgba(235,236,238,0.35)';
+    ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(38,40,44,0.95)';
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (showLabel && R >= 34) {
+      ctx.font = `600 11px ${MAP_LABEL_FAMILY}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      haloText(ctx, label, s.x, s.y - R - 3, 'rgba(236,237,240,0.98)', 11, 1);
+    }
+  }
+
   /** Effect radius of the hovered building, or of the building being placed (plus your others of that type). */
   rings(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, ui: UiState, snap: Snap | null, me: number): void {
     const hover = ui.hoverTile;
@@ -95,6 +125,12 @@ export class Overlays {
       }
       const at = snap && snap.tile >= 0 ? snap.tile : hover;
       if (at >= 0) this.ring(ctx, cam, at, ringRadius(state, type, me), [255, 255, 255], true);
+    }
+    // a selected own Fort or City with Flak Guns: its flak zone (sim/defense.ts)
+    const sel = ui.selectedTile;
+    if (sel >= 0 && sel < state.map.owner.length && ui.mode.kind === 'none') {
+      const b = buildingAt(state, sel);
+      if (b && b.owner === me && isFlakSite(state, b)) this.flakRing(ctx, cam, b.tile, flakRadius(b), `Your flak: enemy bombs -${Math.round(flakSiteCut(b) * 100)}%`, true);
     }
     if (hover >= 0 && ui.mode.kind !== 'build') {
       // fog of war: the building you see or remember there (none where you never looked)
@@ -537,6 +573,17 @@ export class Overlays {
       if (fog && !fog.visible(b.tile)) continue; // fog of war: hostile sites you see (remembered ones below)
       if (b.type === 'sam' && !isDisabled(state, b)) this.ring(ctx, cam, b.tile, samRadius(b), samRgb, false);
       else if (planes && b.type === 'airfield' && b.fighters > 0) this.ring(ctx, cam, b.tile, airfieldRadius(b), [226, 120, 52], false);
+    }
+    // enemy flak zones (sim/defense.ts) for bombs, paratroopers and the stealth strike: labels nearest the cursor first
+    if (planes) {
+      const kind = id === 'paradrop' ? 'paradrop' : stealth ? 'stealth' : 'bomb';
+      const f = myFlakFactor(state, me.id, kind);
+      const zones = knownEnemyFlak(state, me.id);
+      const hv = ui.hoverTile;
+      const w = state.map.width;
+      const d2 = (t: number): number => (hv < 0 ? t : ((t % w) - (hv % w)) ** 2 + (((t / w) | 0) - ((hv / w) | 0)) ** 2);
+      zones.sort((a, b) => d2(a.tile) - d2(b.tile) || a.tile - b.tile);
+      zones.forEach((z, k) => this.flakRing(ctx, cam, z.tile, z.r, enemyFlakLabel(z, f).replace('bombs', kind === 'paradrop' ? 'drop' : 'bombs'), k < 8));
     }
     if (!fog) return;
     // remembered hostile SAM sites and airfields (last seen; their fighters are unknown)

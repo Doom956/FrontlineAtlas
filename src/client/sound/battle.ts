@@ -14,9 +14,11 @@
 //   'nuke'                         atomBomb
 //   'capture', tanks firing        heat for the gunfire bed under the front
 //   'smokeScreen' (a blitz)        a soft bombard and a tank shot, and heat for the gunfire bed
+//   flak bursts (fx/defenseFx.ts)  the soft anti-air shot at low gain, at most one per FLAK_GAP_TICKS
+//   'trapHit' (tank traps)         a tank shot pitched down (TRAP_RATE)
 import type { Effect, GameState, Unit } from '../../sim/types';
 import { DeathWatch, deathKindOf, isKillBlast } from '../fx/deaths';
-import { tankShotBus, type TankShotBus } from '../fx/tankShotBus';
+import { flakBus, tankShotBus, type TankShotBus } from '../fx/tankShotBus';
 import type { SoundId } from '../audio';
 
 export interface BattleCue {
@@ -28,7 +30,13 @@ export interface BattleCue {
   volume: number;
   /** the unit is the human's (a loss of yours) */
   mine?: boolean;
+  /** playback rate x (below 1: pitched down) */
+  rate?: number;
 }
+
+/** Flak bursts are heard at most once per this many ticks; a trap hit plays the tank shot at this rate. */
+const FLAK_GAP_TICKS = 4;
+const TRAP_RATE = 0.72;
 
 /** A division counts as in a fight (the gunfire bed under the front) when land of a nation it fights lies within this many tiles. */
 const TANK_REACH = 3;
@@ -40,14 +48,19 @@ export class BattleEars {
   private missilesNext = new Set<number>();
   private missileTargets = new Set<number>();
   private lastTick = -1;
+  private flakTick = -1e9;
 
   /** `shots`: the tank shots the map fires (fx/tankFire.ts), heard as they are drawn. */
-  constructor(private shots: TankShotBus = tankShotBus) {}
+  constructor(
+    private shots: TankShotBus = tankShotBus,
+    private flak: TankShotBus = flakBus,
+  ) {}
 
   /** Forgets everything: what `state` holds now is history. */
   reset(state: GameState | null): void {
     this.deaths.reset(state);
     this.shots.clear();
+    this.flak.clear();
     this.missiles.clear();
     this.missileTargets.clear();
     if (state) for (const u of state.units) if (u.type === 'rocket' || u.type === 'atomBomb' || u.type === 'cruiseMissile') {
@@ -86,6 +99,10 @@ export class BattleEars {
       case 'capture':
         out.push({ id: 'front', x: e.x, y: e.y, volume: e.radius > 2 ? 2 : 1 });
         return;
+      case 'trapHit':
+        // a spearhead runs into tank traps (sim/defense.ts): a dull, low tank shot
+        out.push({ id: 'tankShot', x: e.x, y: e.y, volume: 0.7, rate: TRAP_RATE });
+        return;
       case 'smokeScreen':
         // a blitz launching (sim/blitz.ts): the smoke canisters pop and the tanks open fire as they surge
         out.push({ id: 'bombard', x: e.x, y: e.y, volume: 0.6 });
@@ -101,6 +118,12 @@ export class BattleEars {
   tick(state: GameState, out: BattleCue[]): void {
     // the tank shots fired since the last frame, each with its muzzle flash
     this.shots.drain(state, (c) => out.push({ id: 'tankShot', x: c.x, y: c.y, volume: c.volume }));
+    // flak bursts the map drew: the soft anti-air shot, rate limited
+    this.flak.drain(state, (c) => {
+      if (state.tick - this.flakTick < FLAK_GAP_TICKS) return;
+      this.flakTick = state.tick;
+      out.push({ id: 'shot', x: c.x, y: c.y, volume: c.volume });
+    });
     if (state.tick === this.lastTick && this.deaths.blasts === 0) return;
     const ticks = this.lastTick < 0 ? 1 : Math.max(0, Math.min(10, state.tick - this.lastTick));
     this.lastTick = state.tick;

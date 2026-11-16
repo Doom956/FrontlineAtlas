@@ -83,7 +83,7 @@ function ship(s: GameState, owner: number, x: number, y: number, v?: 'destroyer'
 
 describe('arsenal data', () => {
   it('rows hold real techs; each pillar fork has two roots in one exclusive group; Research-tab techs stay out', () => {
-    expect(ARSENAL_ROWS.map((r) => r.pillar)).toEqual(['navy', 'armor', 'air', 'shared']);
+    expect(ARSENAL_ROWS.map((r) => r.pillar)).toEqual(['navy', 'armor', 'air', 'defense', 'shared']);
     for (const row of ARSENAL_ROWS) {
       for (const it of row.items) {
         expect(TECHS[it.tech], it.tech).toBeDefined();
@@ -93,7 +93,8 @@ describe('arsenal data', () => {
       if (row.pillar !== 'shared') {
         expect(roots.length).toBe(2);
         expect(TECHS[roots[0].tech].exclusiveGroup).toBe(TECHS[roots[1].tech].exclusiveGroup);
-        expect(row.items.filter((it) => it.kind === 'mastery').length).toBe(1);
+        // Defense gets its mastery (Counteroffensive) in part 3
+        expect(row.items.filter((it) => it.kind === 'mastery').length).toBe(row.pillar === 'defense' ? 0 : 1);
       }
     }
     for (const t of ['banking', 'radar', 'blitzTactics', 'stockExchange'] as TechId[]) expect(isArsenalTech(t)).toBe(false);

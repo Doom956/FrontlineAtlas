@@ -41,6 +41,7 @@ import { PillarOverlay } from './render/pillarOverlay';
 import { BattleFx } from './fx/battleFx';
 import { PixelFx } from './fx/pixelFx';
 import { FighterFx } from './fx/fighters';
+import { DefenseFx } from './fx/defenseFx';
 import { gameClockMs, TankFire } from './fx/tankFire';
 import { setSpriteState } from './render/pixelSprites';
 import { hueShift, prankView } from './fx/prankView';
@@ -135,6 +136,8 @@ export class Renderer {
   private tanks = new TankFire();
   /** fighters circling their airfields and carriers, flying patrols and interceptions (fx/fighters.ts) */
   private fighters = new FighterFx();
+  /** flak bursts, worn planes' smoke, tank trap hedgehogs and their dirt bursts (fx/defenseFx.ts) */
+  private defense = new DefenseFx();
   private shookBy = { x: 0, y: 0 };
   private mini: Minimap;
   private snapCache = new BuildTargetCache();
@@ -252,11 +255,13 @@ export class Renderer {
     this.pfx.fog = fog;
     this.tanks.fog = fog;
     this.fighters.fog = fog;
+    this.defense.fog = fog;
     // battle effects: read what is new, then shake the view a few px after a nearby nuke (undone after drawing)
     if (this.shookBy.x !== 0 || this.shookBy.y !== 0) this.unshake(camera);
     this.fx.update(state, camera, nowMs);
     this.pfx.update(state, nowMs, this.units);
     this.fighters.update(state, nowMs);
+    this.defense.update(state, camera, nowMs);
     const sh = this.fx.shake(nowMs);
     if (sh.x !== 0 || sh.y !== 0) {
       this.shookBy.x = sh.x / camera.zoom;
@@ -373,6 +378,7 @@ export class Renderer {
     const depFocus = b === 'mine' ? 1 : b === 'oilWell' ? 2 : b === 'farm' ? 3 : 0;
     this.deposits.draw(ctx, state, camera, view, ui.showResources, me, depFocus, d);
     this.heartland.draw(ctx, state, camera, me, ui.showHeartland && state.phase === 'playing', d);
+    this.defense.drawGround(ctx, state, camera, nowMs, me, d); // tank trap hedgehogs (fx/defenseFx.ts)
     tf = performance.now();
     this.fronts.drawLines(ctx, state, camera, ui, d);
     msFronts += performance.now() - tf;
@@ -392,6 +398,7 @@ export class Renderer {
     // shells, turret flashes and explosions over the units
     this.pfx.drawAir(ctx, camera, nowMs, this.units, d, this.colors);
     this.tanks.draw(ctx, camera, nowMs, this.units, d);
+    this.defense.drawAir(ctx, state, camera, nowMs, this.units, d); // flak bursts, worn planes' smoke, trap dirt
     const hs = ui.hoverTile >= 0 ? camera.tileToScreen((ui.hoverTile % this.w) + 0.5, ((ui.hoverTile / this.w) | 0) + 0.5) : null;
     const hoverOwner = ui.hoverTile >= 0 && ui.hoverTile < state.map.owner.length ? this.knownOwner(state, ui.hoverTile) : 0;
     this.names.draw(ctx, state, camera, me, { hoverOwner, targeting: ui.mode.kind !== 'none', hover: hs }, nowMs, d);

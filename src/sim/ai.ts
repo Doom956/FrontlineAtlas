@@ -1872,6 +1872,8 @@ function economy(ctx: Ctx): void {
     add('fort', count('fort') < fortCap ? 2 + clamp(ctx.threat, 0, 2) * 1.8 : 0);
     add('watchtower', count('watchtower') < Math.min(3, ctx.enemies.length) ? 2 : 0);
   }
+  // Flak Guns (defense.ts): enemy bombers hit our cities lately: a fort beside them adds flak.
+  if (bombedCities(ctx).length) add('fort', count('fort') < fortCap + 2 + T / 3000 ? 4 : 0);
   // Forts are supply sources: one near a main front that is mostly beyond supply (placed for supply, tryBuild).
   if (frontNeedsSupply(ctx)) add('fort', count('fort') < fortCap + 2 + T / 2500 ? 5 : 0, true);
   if (coastCount(state, id) > 0) {
@@ -2057,14 +2059,28 @@ function candidateTiles(ctx: Ctx, type: BuildingType, supply = false): number[] 
     case 'airfield':
     case 'sam': {
       if (type === 'sam' && !SAM_NEAR_FRONT) return ownedSample(ctx, 20);
+      // Defense row (defense.ts): Flak Guns holders guard the cities enemy bombers hit; Tank Traps holders face the
+      // neighbour with the most tank divisions (forts ~8 tiles behind that border lay traps on the dug band).
+      const defenseTiles: number[] = [];
+      if (type === 'fort' && !supply) {
+        for (const c of bombedCities(ctx)) {
+          defenseTiles.push(c);
+          for (let k = 0; k < 4; k++) {
+            const x = (c % w) + Math.floor(state.rng() * 11) - 5;
+            const y = ((c / w) | 0) + Math.floor(state.rng() * 11) - 5;
+            if (x >= 0 && y >= 0 && x < w && y < state.map.height) defenseTiles.push(y * w + x);
+          }
+        }
+      }
+      const tankFoe = type === 'fort' && !supply ? trapFoe(ctx) : 0;
       // SAM sites face the nation most likely to bomb us (bombers strike ahead of its attacks on our land).
-      const foe = type === 'sam' ? ctx.threatId || mainWarTarget(ctx) : type === 'airfield' && ctx.airFoe ? ctx.airFoe : supply || type === 'airfield' ? mainWarTarget(ctx) || ctx.threatId : ctx.threatId;
+      const foe = tankFoe || (type === 'sam' ? ctx.threatId || mainWarTarget(ctx) : type === 'airfield' && ctx.airFoe ? ctx.airFoe : supply || type === 'airfield' ? mainWarTarget(ctx) || ctx.threatId : ctx.threatId);
       const edges = foe > 0 ? (ctx.hood.edge.get(foe) ?? EMPTY) : ctx.foreignEdges;
       // Forts a few tiles behind the border (not lost at the first push), airfields within reach of the front
       // (fighter cover, paratroopers) but out of the first push.
       // SAM sites cover the front (where enemy bombers strike) from a little further back.
       const depth = type === 'fort' ? [8, 12, 5] : type === 'watchtower' ? [3, 5] : type === 'airfield' ? [30, 45, 20] : type === 'sam' ? [SAM_FRONT_DEPTH, SAM_FRONT_DEPTH * 1.5, SAM_FRONT_DEPTH * 0.6] : [16, 24, 10];
-      const out: number[] = [];
+      const out: number[] = defenseTiles.filter(own);
       for (const e of sample(state, edges.filter(own), 8)) {
         for (const k of depth) {
           const t = inward(ctx, e, k);
@@ -2080,6 +2096,42 @@ function candidateTiles(ctx: Ctx, type: BuildingType, supply = false): number[] 
       return out;
     }
   }
+}
+
+/**
+ * Flak Guns holders (defense.ts): own cities enemy bombs fell within 12 tiles of in the last 60 s (from Normal up;
+ * Easy stays simple). Empty for others.
+ */
+function bombedCities(ctx: Ctx): number[] {
+  const { state, id, p } = ctx;
+  if (!hasTech(p, 'flakGuns') || state.settings.difficulty === 'easy') return [];
+  const w = state.map.width;
+  const since = state.tick - 60 * TICKS_PER_SECOND;
+  const out: number[] = [];
+  const cities = buildingsOf(state, id, 'city');
+  for (let k = state.events.length - 1; k >= 0; k--) {
+    const e = state.events[k];
+    if (e.tick < since) break;
+    if (e.kind !== 'bombing' || e.tile < 0 || e.players[0] === id || !e.players.includes(id)) continue;
+    for (const c of cities) if (!out.includes(c.tile) && dist2(w, c.tile, e.tile) <= 144) out.push(c.tile);
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+/** Tank Traps holders (defense.ts): the hostile neighbour with the most tank divisions (0 = none, or Easy). */
+function trapFoe(ctx: Ctx): number {
+  const { state, id, p } = ctx;
+  if (!hasTech(p, 'tankTraps') || state.settings.difficulty === 'easy') return 0;
+  const count = new Map<number, number>();
+  for (const u of state.units) {
+    if (u.type !== 'tankDivision' || u.hp <= 0 || u.owner === id || !ctx.hood.edge.has(u.owner)) continue;
+    if (areAllied(state, id, u.owner)) continue;
+    count.set(u.owner, (count.get(u.owner) ?? 0) + 1);
+  }
+  let best = 0;
+  let n = 0;
+  for (const [o, c] of [...count].sort((a, b) => a[0] - b[0])) if (c > n) [best, n] = [o, c];
+  return best;
 }
 
 /** The tile k steps from border tile e toward our capital (e itself without a capital). */
@@ -2126,7 +2178,10 @@ function siteScore(ctx: Ctx, type: BuildingType, t: number, upgrade: boolean, su
         if (dist2(w, t, b.tile) < r * r * 1.2) covered = 1;
       }
       const reach = supply ? Math.min(supplyDistance(state, id, t), 300) / 50 : 0;
-      return TERRAIN[ter].defense - covered * 3 + reach + noise;
+      // Flak Guns (defense.ts): a fort next to a city enemy bombers hit is worth it even inside another fort's cover
+      let flak = 0;
+      if (!supply) for (const c of bombedCities(ctx)) if (dist2(w, t, c) <= 100) flak = 3.5;
+      return TERRAIN[ter].defense - covered * 3 + reach + flak + noise;
     }
     case 'watchtower': {
       if (upgrade) return TERRAIN[ter].defense * 0.5 + noise;
