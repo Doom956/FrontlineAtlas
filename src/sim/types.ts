@@ -115,7 +115,10 @@ export type TechId =
   // Arsenal Defense row (defense.ts): the two lane roots (fork defenseDoctrine). Part 2 adds Tracking Radar and
   // Coastal Batteries, part 3 the Counteroffensive mastery.
   | 'flakGuns'
-  | 'tankTraps';
+  | 'tankTraps'
+  // Defense part 2: the lane upgrades (Tracking Radar after Flak Guns, Coastal Batteries after Tank Traps)
+  | 'trackingRadar'
+  | 'coastalBatteries';
 
 export type UnitType =
   | 'transport'
@@ -458,6 +461,13 @@ export interface Unit {
   flakWear?: number;
   /** tank division (defense.ts Tank Traps): troops its running spearhead lost to tank traps; absent = 0 */
   trapLoss?: number;
+  /**
+   * stealth bomber (defense.ts Tracking Radar): ticks spent inside each hostile tracking radar circle this flight, as
+   * flat pairs [SAM building id, ticks, ...] by id; absent = none
+   */
+  radarLock?: number[];
+  /** stealth bomber (defense.ts Tracking Radar): players whose locked radar holds it now, ascending; absent = none */
+  radarSeen?: number[];
 }
 
 /** A unit being built (navy.ts warships, tanks.ts divisions): it appears at `tile` at readyTick. */
@@ -949,7 +959,9 @@ export interface Effect {
   /** 'barrage': artillery shells landing on a disc (radius = BARRAGE_RADIUS) */
   /** 'smokeScreen': a blitz's smoke at its launch tile (blitz.ts; radius = BLITZ.width) */
   /** 'trapHit': a spearhead head ran into tank traps (defense.ts; a dirt burst) */
-  kind: 'explosion' | 'nuke' | 'shot' | 'capture' | 'barrage' | 'smokeScreen' | 'trapHit';
+  /** 'battery': a coastal battery shell from (x, y) to the ship at (x2, y2) (defense.ts; radius 1 = warship hit, 0.5 = transport) */
+  /** 'radarLock': a tracking radar locked onto a stealth bomber at (x, y) (defense.ts) */
+  kind: 'explosion' | 'nuke' | 'shot' | 'capture' | 'barrage' | 'smokeScreen' | 'trapHit' | 'battery' | 'radarLock';
   x: number;
   y: number;
   radius: number;

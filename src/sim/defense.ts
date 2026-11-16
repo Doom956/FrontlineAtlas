@@ -26,16 +26,37 @@
 //     trapLossPerTile of its start strength per trap tile taken, at most trapMaxLoss per spearhead (Unit.trapLoss,
 //     hashed). Light tanks x1.3, heavy x0.7, Siege Tanks x0; artillery support halves it; a Breakthrough's surge is
 //     x trapBlitzSurge there (tanks.ts).
-// Part 2 (Tracking Radar, Coastal Batteries) and part 3 (Counteroffensive) hook in here.
+// Tracking Radar (anti-air lane, after Flak Guns; needs Radar):
+//   - Every finished, working own SAM site of a holder tracks a hostile stealth bomber inside radarReach x its SAM
+//     reach (x Early Warning). Time inside adds up per SAM site and bomber over the whole flight (Unit.radarLock,
+//     hashed); from radarLockSeconds on, the bomber is revealed to that side while it is inside a locked circle
+//     (Unit.radarSeen, hashed; stealthSight.stealthRevealedTo reads it). Revealed, SAMs and fighters engage it by the
+//     bomber rule; it has 2 hp (UNITS.stealthBomber). Shot down, its owner's next one waits STEALTH.lostCooldownSeconds.
+//   - Crossing a level-1 circle takes a stealth bomber about 2 s, so a lock mostly comes on its way home past the same
+//     radars (near its target the SAM hunter has silenced them): the strike still lands most of the time.
+// Coastal Batteries (barriers lane, after Tank Traps):
+//   - Sites: finished own Ports and finished Forts within batteryCoast tiles of water. Every batteryFireSeconds
+//     (staggered by building id) a working site (not knocked out, hp >= batteryFireHp) fires at one hostile ship of a
+//     nation at war with it (naval2.atWar) within batteryRange (+ per level, at most batteryRangeMax < battleship
+//     shelling 35): a warship that fired a cruise missile in the last batteryCruiseMemory s, then warships whose
+//     shelling reaches the site, then transports, then other warships (nearest, then id). Hidden submarines are not
+//     seen. Warships lose batteryDamage hp, transports batteryTransportLoss of the troops aboard (never sunk).
+//   - Silencing: hostile warships shell batteries first (units.ts updateWarship, shellBatteryTarget: AI ships and a
+//     player's auto / bombard ships), taking hp off them (never below batteryHpFloor; no fire under batteryFireHp).
+// Part 3 (Counteroffensive) hooks in here.
 // Deterministic: state only, no RNG; caches are WeakMaps keyed by the GameState and rebuilt from it.
-import { BLITZ, DEFENSE, TICK_SECONDS, UNITS } from './config';
-import { buildingsOf, isFortified } from './buildings';
+import { BLITZ, CRUISE, DEFENSE, STEALTH, TICK_SECONDS, TICKS_PER_SECOND, UNITS, WARSHIP_SHELL_RANGE } from './config';
+import { buildingsOf, isFortified, samRadius } from './buildings';
 import { areAllied } from './diplomacy';
+import { atWar } from './naval2';
 import { atPeace } from './rules';
+import { earlyWarningMul } from './specials';
 import { addEvent } from './state';
 import { hasTech } from './tech';
-import { techAirSpeedMul } from './techtree';
+import { techAirSpeedMul, unitVisibleTo } from './techtree';
 import { trenchLevel } from './trenches';
+import { navalShellMul, navalShellRangeMul } from './variants';
+import { isWater, TROOP_TYPES } from './types';
 import type { Building, GameState, Unit } from './types';
 
 /** A flak site: a finished Fort or City of a Flak Guns holder. */
@@ -313,4 +334,282 @@ export function trapTileLoss(u: Unit, f: number, strength0: number): number {
   if (f <= 0) return 0;
   const left = DEFENSE.trapMaxLoss * strength0 - (u.trapLoss ?? 0);
   return Math.max(0, Math.min(left, DEFENSE.trapLossPerTile * f * strength0));
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Tracking Radar
+// ---------------------------------------------------------------------------------------------------------------
+
+/** True if player pid holds Tracking Radar. */
+export function hasTrackingRadar(state: GameState, pid: number): boolean {
+  const p = state.players[pid];
+  return !!p && pid > 0 && hasTech(p, 'trackingRadar');
+}
+/** Tracking radar radius (tiles) of SAM site b: radarReach x its SAM reach (x Early Warning). */
+export function radarRadius(state: GameState, b: Building): number {
+  return samRadius(b) * earlyWarningMul(state, b.owner) * DEFENSE.radarReach;
+}
+/** Ticks a stealth bomber must spend inside one radar circle before it is spotted. */
+export const RADAR_LOCK_TICKS = Math.round(DEFENSE.radarLockSeconds * TICKS_PER_SECOND);
+
+/** Ticks stealth bomber u has spent inside the radar of SAM site `samId` this flight (0 = none). */
+export function radarLockTicks(u: Unit, samId: number): number {
+  const l = u.radarLock;
+  if (!l) return 0;
+  for (let k = 0; k < l.length; k += 2) if (l[k] === samId) return l[k + 1];
+  return 0;
+}
+
+/**
+ * Tracking Radar, every tick before interception (units.ts): every hostile holder's finished, working SAM sites add a
+ * tick to their lock on each stealth bomber inside their radar circle; Unit.radarSeen becomes the holders whose
+ * locked circle holds it now. A side that newly spots it is told (and the bomber's owner), with a 'radarLock' effect.
+ */
+export function updateRadar(state: GameState, planes: readonly Unit[]): void {
+  let holders: number[] | null = null;
+  for (const u of planes) {
+    if (u.type !== 'stealthBomber' || u.hp <= 0) continue;
+    holders ??= state.players.filter((p) => p.id > 0 && p.alive && hasTech(p, 'trackingRadar')).map((p) => p.id);
+    const before = u.radarSeen;
+    if (!holders.length) {
+      if (before) delete u.radarSeen;
+      continue;
+    }
+    const w = state.map.width;
+    const lock = u.radarLock ? u.radarLock.slice() : [];
+    const seen: number[] = [];
+    for (const pid of holders) {
+      if (!hostile(state, pid, u.owner)) continue;
+      let spotted = false;
+      for (const b of buildingsOf(state, pid, 'sam')) {
+        if (!flakWorking(state, b)) continue;
+        const r = radarRadius(state, b);
+        const dx = (b.tile % w) + 0.5 - (u.x + 0.5);
+        const dy = ((b.tile / w) | 0) + 0.5 - (u.y + 0.5);
+        if (dx * dx + dy * dy > r * r) continue;
+        let k = 0;
+        while (k < lock.length && lock[k] < b.id) k += 2;
+        if (k < lock.length && lock[k] === b.id) lock[k + 1]++;
+        else lock.splice(k, 0, b.id, 1);
+        if (lock[k + 1] >= RADAR_LOCK_TICKS) spotted = true;
+      }
+      if (spotted) seen.push(pid);
+    }
+    if (lock.length) u.radarLock = lock;
+    if (seen.length) u.radarSeen = seen;
+    else if (before) delete u.radarSeen;
+    for (const pid of seen) {
+      if (before?.includes(pid)) continue;
+      const tile = (Math.round(u.y) * w + Math.round(u.x)) | 0;
+      state.effects.push({ kind: 'radarLock', x: u.x + 0.5, y: u.y + 0.5, radius: 1, tick: state.tick });
+      const by = state.players[pid].name;
+      addEvent(state, 'bombing', `${by}'s Tracking Radar spotted a stealth bomber of ${state.players[u.owner].name}: SAMs and fighters can shoot at it`, [pid, u.owner], tile);
+    }
+  }
+}
+
+/** A stealth bomber shot down: its owner's next one may fly STEALTH.lostCooldownSeconds from now (units.ts shotDown). */
+export function stealthLost(state: GameState, u: Unit): void {
+  const p = state.players[u.owner];
+  if (!p) return;
+  const at = state.tick + Math.round(STEALTH.lostCooldownSeconds * TICKS_PER_SECOND);
+  p.stealthReady = Math.max(p.stealthReady ?? 0, at);
+}
+
+/** Tracking radar circles of SAM sites of `owner` (finished, working): for the client's aim rings. */
+export function radarCircles(state: GameState, owner: number): { tile: number; r: number; building: Building }[] {
+  if (!hasTrackingRadar(state, owner)) return [];
+  const out: { tile: number; r: number; building: Building }[] = [];
+  for (const b of buildingsOf(state, owner, 'sam')) if (flakWorking(state, b)) out.push({ tile: b.tile, r: radarRadius(state, b), building: b });
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Coastal Batteries
+// ---------------------------------------------------------------------------------------------------------------
+
+/** True if player pid holds Coastal Batteries. */
+export function hasBatteries(state: GameState, pid: number): boolean {
+  const p = state.players[pid];
+  return !!p && pid > 0 && hasTech(p, 'coastalBatteries');
+}
+/** Battery range (tiles) of site b: batteryRange + per level above 1, at most batteryRangeMax (below battleship shelling). */
+export function batteryRange(b: Building): number {
+  return Math.min(DEFENSE.batteryRangeMax, DEFENSE.batteryRange + DEFENSE.batteryRangePerLevel * (b.level - 1));
+}
+/** True if Fort b stands within DEFENSE.batteryCoast tiles of water (a coastal fort). Pure read. */
+export function coastalFort(state: GameState, b: Building): boolean {
+  const map = state.map;
+  const w = map.width;
+  const x = b.tile % w;
+  const y = (b.tile / w) | 0;
+  const r = DEFENSE.batteryCoast;
+  for (let j = -r; j <= r; j++) {
+    const ty = y + j;
+    if (ty < 0 || ty >= map.height) continue;
+    for (let i = -r; i <= r; i++) {
+      const tx = x + i;
+      if (tx < 0 || tx >= w || i * i + j * j > r * r) continue;
+      if (isWater(map.terrain[ty * w + tx])) return true;
+    }
+  }
+  return false;
+}
+/** True if building b is a battery site type for its owner: a Port, or a coastal Fort, of a Coastal Batteries holder (built or not). */
+export function isBatterySite(state: GameState, b: Building): boolean {
+  if (b.type !== 'port' && b.type !== 'fort') return false;
+  if (!hasBatteries(state, b.owner)) return false;
+  return b.type === 'port' || coastalFort(state, b);
+}
+/** True while battery b fires: finished, not knocked out, hp at least batteryFireHp. */
+export function batteryWorking(state: GameState, b: Building): boolean {
+  return b.buildLeft <= 0 && b.disabledUntil <= state.tick && b.hp >= DEFENSE.batteryFireHp;
+}
+
+interface BatteryCache {
+  key: string;
+  sites: Building[];
+}
+const batteryCaches = new WeakMap<GameState, BatteryCache>();
+
+/** Finished battery sites (Ports and coastal Forts of holders), working or not; cached on buildingsVersion and the holders. */
+export function batterySites(state: GameState): readonly Building[] {
+  const hs: number[] = [];
+  for (const p of state.players) if (p.id > 0 && p.alive && hasTech(p, 'coastalBatteries')) hs.push(p.id);
+  if (!hs.length) return [];
+  const key = `${state.buildingsVersion}|${hs.join(',')}`;
+  const old = batteryCaches.get(state);
+  if (old && old.key === key) return old.sites;
+  const sites: Building[] = [];
+  for (const pid of hs) {
+    for (const b of buildingsOf(state, pid, 'port')) if (b.buildLeft <= 0) sites.push(b);
+    for (const b of buildingsOf(state, pid, 'fort')) if (b.buildLeft <= 0 && coastalFort(state, b)) sites.push(b);
+  }
+  sites.sort((a, b) => a.id - b.id);
+  batteryCaches.set(state, { key, sites });
+  return sites;
+}
+
+/** Working batteries hostile to `owner` (at war with it, or of nation `q` when given) whose range covers tile t. */
+export function batteriesCovering(state: GameState, owner: number, t: number, q = 0): number {
+  const sites = batterySites(state);
+  if (!sites.length) return 0;
+  const w = state.map.width;
+  const x = t % w;
+  const y = (t / w) | 0;
+  let n = 0;
+  for (const b of sites) {
+    if (b.owner === owner || (b.owner !== q && !atWar(state, owner, b.owner)) || !hostile(state, owner, b.owner) || !batteryWorking(state, b)) continue;
+    const dx = (b.tile % w) - x;
+    const dy = ((b.tile / w) | 0) - y;
+    const r = batteryRange(b);
+    if (dx * dx + dy * dy <= r * r) n++;
+  }
+  return n;
+}
+
+/** Target rank of ship s for battery b (lower first; 99 = not a target). */
+function batteryRank(state: GameState, s: Unit, d2: number): number {
+  if (s.type === 'transport') return 2;
+  if (s.type !== 'warship') return 99;
+  const reload = Math.round(CRUISE.reloadSeconds * TICKS_PER_SECOND);
+  if (s.cruiseReady !== undefined && state.tick < s.cruiseReady - reload + DEFENSE.batteryCruiseMemory * TICKS_PER_SECOND) return 0;
+  const reach = WARSHIP_SHELL_RANGE * navalShellRangeMul(state, s);
+  if (navalShellMul(s) > 0 && d2 <= reach * reach) return 1;
+  return 3;
+}
+
+/**
+ * Coastal Batteries, every tick after the ships moved (units.ts): each working battery whose turn it is
+ * ((tick + id) % batteryFireSeconds) fires at its best target (batteryRank, then nearest, then id).
+ */
+export function updateBatteries(state: GameState, ships: readonly Unit[]): void {
+  const sites = batterySites(state);
+  if (!sites.length || !ships.length) return;
+  const every = Math.max(1, Math.round(DEFENSE.batteryFireSeconds * TICKS_PER_SECOND));
+  const w = state.map.width;
+  for (const b of sites) {
+    if ((state.tick + b.id) % every !== 0 || !batteryWorking(state, b) || !state.buildings.has(b.id)) continue;
+    const bx = b.tile % w;
+    const by = (b.tile / w) | 0;
+    const r = batteryRange(b);
+    let best: Unit | null = null;
+    let bestRank = 99;
+    let bestD = Infinity;
+    for (const s of ships) {
+      if (s.hp <= 0 || (s.type !== 'warship' && s.type !== 'transport') || s.owner === b.owner) continue;
+      const dx = s.x - bx;
+      const dy = s.y - by;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > r * r) continue;
+      if (!atWar(state, b.owner, s.owner)) continue;
+      const rank = batteryRank(state, s, d2);
+      if (rank > bestRank || (rank === bestRank && (d2 > bestD || (d2 === bestD && best !== null && s.id > best.id)))) continue;
+      if (!unitVisibleTo(state, b.owner, s)) continue; // hidden submarines
+      best = s;
+      bestRank = rank;
+      bestD = d2;
+    }
+    if (best) batteryHit(state, b, best);
+  }
+}
+
+function batteryHit(state: GameState, b: Building, s: Unit): void {
+  const w = state.map.width;
+  const transport = s.type === 'transport';
+  state.effects.push({ kind: 'battery', x: (b.tile % w) + 0.5, y: ((b.tile / w) | 0) + 0.5, x2: s.x + 0.5, y2: s.y + 0.5, radius: transport ? 0.5 : 1, tick: state.tick });
+  const by = state.players[b.owner];
+  const victim = state.players[s.owner];
+  if (transport) {
+    let lost = 0;
+    for (const t of TROOP_TYPES) {
+      const k = s.troops[t] * DEFENSE.batteryTransportLoss;
+      s.troops[t] -= k;
+      lost += k;
+    }
+    victim.stats.troopsLost += lost;
+    by.stats.troopsKilled += lost;
+    return;
+  }
+  s.hp -= DEFENSE.batteryDamage;
+  if (s.hp > 1e-9) return;
+  s.hp = 0;
+  state.effects.push({ kind: 'explosion', x: s.x + 0.5, y: s.y + 0.5, radius: 1.5, tick: state.tick });
+  const what = UNITS.warship.name.toLowerCase();
+  addEvent(state, 'unitLost', `${victim.name} lost a ${what} to ${by.name}'s coastal battery`, [s.owner, b.owner], (Math.round(s.y) * w + Math.round(s.x)) | 0);
+}
+
+/**
+ * The battery warship u shells first ('' none): AI ships, and a player's auto and bombard ships, pick the nearest
+ * working hostile battery of a nation they are at war with inside their shelling reach.
+ */
+export function shellBatteryTarget(state: GameState, u: Unit, reach: number, wars: Set<number>): Building | null {
+  const sites = batterySites(state);
+  if (!sites.length) return null;
+  const p = state.players[u.owner];
+  if (!p) return null;
+  const st = u.stance ?? 'auto';
+  if (p.isHuman && st !== 'auto' && st !== 'bombard') return null;
+  const w = state.map.width;
+  let best: Building | null = null;
+  let bestD = reach * reach;
+  for (const b of sites) {
+    if (!wars.has(u.owner * 1024 + b.owner) || !hostile(state, u.owner, b.owner) || !batteryWorking(state, b)) continue;
+    const dx = (b.tile % w) - u.x;
+    const dy = ((b.tile / w) | 0) - u.y;
+    const d = dx * dx + dy * dy;
+    if (d > bestD || (d === bestD && best && b.id > best.id)) continue;
+    best = b;
+    bestD = d;
+  }
+  return best;
+}
+
+/** Warship u shells battery b for `amount` (shelling x seconds): hp off, never below batteryHpFloor; told once silenced. */
+export function shellBattery(state: GameState, u: Unit, b: Building, amount: number): void {
+  const was = b.hp;
+  b.hp = Math.max(DEFENSE.batteryHpFloor, b.hp - DEFENSE.batteryShellDamage * amount);
+  if (was >= DEFENSE.batteryFireHp && b.hp < DEFENSE.batteryFireHp) {
+    addEvent(state, 'info', `${state.players[u.owner].name}'s ships shelled a coastal battery of ${state.players[b.owner].name} silent`, [b.owner, u.owner], b.tile);
+  }
 }

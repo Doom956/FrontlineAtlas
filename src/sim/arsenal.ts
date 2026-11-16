@@ -9,9 +9,9 @@
 //   Armor   Mechanization -> Light Tanks -> Deep Raids   OR   Heavy Tanks -> Siege Tanks;  Amphibious Tanks;  Armor Mastery
 //   Air     Flight -> Ground-attack Planes -> Jet Engines   OR   Heavy Bombers -> Strategic Bombing;  Drop Tanks,
 //           Night Bombing;  Air Mastery
-//   Defense (+ Fortification, a Research-tab tech)  Flak Guns   OR   Tank Traps  (anti-air lane / barriers lane; part 2
-//           adds Tracking Radar after Flak Guns and Coastal Batteries after Tank Traps, part 3 the Counteroffensive
-//           mastery); every item needs a finished own Fort
+//   Defense (+ Fortification, a Research-tab tech)  Flak Guns -> Tracking Radar (+ Radar)   OR   Tank Traps -> Coastal
+//           Batteries  (anti-air lane / barriers lane; part 3 adds the Counteroffensive mastery); every item needs a
+//           finished own Fort
 //   Shared  Mechanized Infantry, Recon Planes;  Early Warning
 // A fork is an exclusive group (TechInfo.exclusiveGroup on the two roots): choosing one root locks the other root and
 // everything after it (techtree.choiceLockedBy follows `requires`). Mastery techs (top tier) may be researched in at
@@ -77,14 +77,15 @@ export const ARSENAL_ROWS: { pillar: Pillar; name: string; items: ArsenalItem[] 
     ],
   },
   {
-    // Defense (defense.ts): no unlock of its own (Fortification, a Research-tab tech, opens it). Hooks for part 2 and 3:
-    // trackingRadar (tier 3, branch flakGuns), coastalBatteries (tier 3, branch tankTraps), counteroffensive (tier 4,
-    // mastery: add it to MASTERY_TECHS).
+    // Defense (defense.ts): no unlock of its own (Fortification, a Research-tab tech, opens it). Part 3 adds the
+    // Counteroffensive (tier 4, mastery: add it to MASTERY_TECHS).
     pillar: 'defense',
     name: 'Defense',
     items: [
       { tech: 'flakGuns', pillar: 'defense', tier: 2, kind: 'variant', fork: 'defenseDoctrine', branch: 'flakGuns' },
       { tech: 'tankTraps', pillar: 'defense', tier: 2, kind: 'variant', fork: 'defenseDoctrine', branch: 'tankTraps' },
+      { tech: 'trackingRadar', pillar: 'defense', tier: 3, kind: 'variant', fork: 'defenseDoctrine', branch: 'flakGuns' },
+      { tech: 'coastalBatteries', pillar: 'defense', tier: 3, kind: 'variant', fork: 'defenseDoctrine', branch: 'tankTraps' },
     ],
   },
   {

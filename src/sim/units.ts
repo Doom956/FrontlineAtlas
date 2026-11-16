@@ -86,7 +86,7 @@ import { areAllied, canTrade, changeOpinion } from './diplomacy';
 import { atPeace, peaceReason, unitRule } from './rules';
 import { forEachInRadius, neighbors4, sameWater, waterPath, waterSearchSpent } from './grid';
 import { flattenDisc } from './trenches';
-import { flakCut, flakNote, updateFlak } from './defense';
+import { flakCut, flakNote, shellBattery, shellBatteryTarget, stealthLost, updateBatteries, updateFlak, updateRadar } from './defense';
 import { recordTileChange } from './changes';
 import { addEvent, newId, setOwner } from './state';
 import { onFalloutChange, ownedTilesOf } from './territory';
@@ -647,9 +647,19 @@ function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<numbe
   if (!wars.size || navalShellMul(u) <= 0) return; // submarines never shell (variants.ts)
   const map = state.map;
   const w = map.width;
+  const reach = WARSHIP_SHELL_RANGE * navalShellRangeMul(state, u); // battleships reach further
+  // Coastal Batteries (defense.ts): AI ships and a player's auto / bombard ships silence a battery in reach first.
+  const bat = shellBatteryTarget(state, u, reach, wars);
+  if (bat) {
+    const amount = shellingMul(state, u, dt) * dt;
+    killTroops(state, bat.owner, WARSHIP_BOMBARD_KILL * (navalPerk ? DOCTRINE_PERKS.naval.shelling : 1) * amount, u.owner, true);
+    shellBattery(state, u, bat, amount);
+    if (showShot) state.effects.push({ kind: 'shot', x: u.x + 0.5, y: u.y + 0.5, x2: (bat.tile % w) + 0.5, y2: ((bat.tile / w) | 0) + 0.5, radius: 0.5, tick: state.tick });
+    return;
+  }
   let bestTile = -1;
   let bestDist = Infinity;
-  forEachInRadius(map, unitTile(state, u), WARSHIP_SHELL_RANGE * navalShellRangeMul(state, u), (i, d) => { // battleships reach further
+  forEachInRadius(map, unitTile(state, u), reach, (i, d) => {
     if (d >= bestDist || !map.coastal[i]) return;
     const o = map.owner[i];
     if (o === 0 || o === u.owner || !wars.has(u.owner * 1024 + o) || areAllied(state, u.owner, o)) return;
@@ -1484,8 +1494,9 @@ function interceptThreats(state: GameState, threats: Unit[], sams: Building[], a
   const w = state.map.width;
   for (const u of threats) {
     for (const s of sams) {
-      if (u.hp <= 0 || u.type === 'reconPlane' || u.type === 'stealthBomber') break; // SAMs never see a stealth bomber
+      if (u.hp <= 0 || u.type === 'reconPlane') break; // SAMs leave recon planes to fighters
       if (chargesReady(s) < 1 || isDisabled(state, s) || !hostile(state, u.owner, s.owner)) continue;
+      if (u.type === 'stealthBomber' && !stealthRevealedTo(state, s.owner, u)) continue; // only once a Tracking Radar spots it (defense.ts)
       const r = samRadius(s) * earlyWarningMul(state, s.owner); // Early Warning (specials.ts)
       if (d2To(state, u, s.tile) > r * r) continue;
       useCharge(s);
@@ -1514,6 +1525,7 @@ function interceptThreats(state: GameState, threats: Unit[], sams: Building[], a
 
 export function shotDown(state: GameState, u: Unit, by: number, what: string): void {
   u.hp = 0;
+  if (u.type === 'stealthBomber') stealthLost(state, u); // a lost stealth bomber takes longer to replace (defense.ts)
   state.effects.push({ kind: 'explosion', x: u.x + 0.5, y: u.y + 0.5, radius: 1.5, tick: state.tick });
   const aboard = troopTotal(u.troops);
   if (aboard > 0) {
@@ -1650,6 +1662,7 @@ export function updateUnits(state: GameState): void {
   }
 
   updateFlak(state, threats, arrived); // Flak Guns (defense.ts): wear, and badly worn planes turn home
+  updateRadar(state, threats); // Tracking Radar (defense.ts): locks on stealth bombers, reveals them
   interceptThreats(state, threats, sams, airfields);
   interceptByCarriers(state, threats, units); // Carriers (techtree.ts): warships shoot down planes too
   interceptBySuperiority(state, threats); // air-wing fighter patrols (airwings.ts)
@@ -1679,6 +1692,7 @@ export function updateUnits(state: GameState): void {
     }
   }
 
+  updateBatteries(state, ships); // Coastal Batteries (defense.ts): big guns on Ports and coastal Forts fire at ships
   watchtowerWarnings(state, units);
 
   // Drop delivered, sunk, shot-down and orphaned units.

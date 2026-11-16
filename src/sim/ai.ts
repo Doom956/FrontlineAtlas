@@ -74,6 +74,7 @@ import {
   TRIBE_MAX_TILES,
   TRENCH,
   TROOP_ATTACK,
+  DEFENSE,
   UNITS,
 } from './config';
 import { meanTrenchLevel, trenchLevel } from './trenches';
@@ -102,6 +103,7 @@ import { allyTrustDiscount } from './spending';
 import { techStatus } from './techtree';
 import { aiTankDivisions } from './tanks';
 import { aiNavy, atWar as navalAtWar, supportingShips } from './naval2';
+import { batteriesCovering } from './defense';
 import { aiCruise } from './cruise';
 import { aiStealth } from './stealth';
 import { aiAttackLevel } from './aiattack';
@@ -2409,6 +2411,13 @@ function landingTarget(ctx: Ctx, coast: readonly number[]): { tile: number; from
     // From Normal up: a landing next to our own warships pays a fifth of the beachhead and stays supplied longer
     // (naval2.navalBeachheadMul): land where the fleet is.
     if (q > 0 && aiAttackLevel(state) >= 1 && supportingShips(state, id, t) > 0) s += AI_LANDING_FLEET_BONUS;
+    // Coastal Batteries (defense.ts): every working battery over the landing wears the transports down; with our
+    // warships there to shell them first it matters less.
+    if (q > 0) {
+      const nb = batteriesCovering(state, id, t, q);
+      const f = supportingShips(state, id, t) > 0 ? DEFENSE.batteryAiEscorted : DEFENSE.batteryAiLanding;
+      for (let k = 0; k < nb; k++) s *= f;
+    }
     // Landings go around dug-in lines (trenches.ts; coasts never dig).
     if (q > 0 && s > 0 && !isTribe(state.players[q])) {
       let lvl = dugFront.get(q);

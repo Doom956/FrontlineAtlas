@@ -175,13 +175,16 @@ describe('stealth strike: the flight and the bombs', () => {
     expect(near.disabledUntil > s.tick).toBe(false);
   });
 
-  it('fighters leave it alone unless something reveals it (the radar hook); then they shoot it down', () => {
+  it('fighters leave it alone unless something reveals it (Tracking Radar); then two hits shoot it down', () => {
     const run = (reveal: boolean): GameState => {
       flags.reveal = reveal;
       const s = game();
       addBuilding(s, 'airfield', 1, at(s, 100, 20));
       const guard = addBuilding(s, 'airfield', 2, at(s, 240, 20));
       for (let k = 0; k < 3; k++) expect(buildAircraft(s, 2, guard.tile, 'fighter').ok).toBe(true);
+      // it has 2 hp (Tracking Radar, defense.ts): a second airfield on the way lands the second hit
+      const guard2 = addBuilding(s, 'airfield', 2, at(s, 230, 22));
+      for (let k = 0; k < 3; k++) expect(buildAircraft(s, 2, guard2.tile, 'fighter').ok).toBe(true);
       addBuilding(s, 'factory', 2, at(s, 250, 20));
       expect(strike(s, 1, -1, at(s, 250, 20)).ok).toBe(true);
       fly(s, () => !bomber(s));
