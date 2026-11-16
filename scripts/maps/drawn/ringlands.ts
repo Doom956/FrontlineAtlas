@@ -1,13 +1,13 @@
-// "The Ringlands": a hand-drawn fictional map. A tall island leaning from northwest to southeast, snowy mountains across
-// its north end, a pointed northwest corner, a notch in the west coast, an east coast that bulges out twice, a slanting
-// southwest shore and a broad southeast lobe. In the middle a compact cluster of three round walls (thin continuous
-// mountain rings), each wall with four half-round gate districts bulging outward at north, east, south and west;
-// rivers run out from the centre through the gates to every coast. Drawn for this project by hand, point by point
-// (see drawn/kit.ts). The island is also used, smaller, in drawn/sundered.ts.
+// "The Ringlands": a hand-drawn fictional map of a walled country. Three round walls (thick continuous mountain rings),
+// each with four half-round gate districts bulging outward at north, east, south and west, fill most of a tall island;
+// rivers run out from the centre through the gates to every coast, forests and fields lie between the walls, and a
+// band of open country runs round the outer wall to the coast. Drawn for this project by hand, point by point (see
+// drawn/kit.ts). `walledIsle` below is the same island seen from far (the walls a small cluster in its middle), used
+// by drawn/sundered.ts; the Ringlands map itself is laid out further down.
 import type { DrawnMap, Plane, Pt, WalledRings } from './kit';
 import { blob, fractal, islandChain, makePlane, path, rngFor, smoothClosed, strip, walledRings } from './kit';
 import type { ExtraRegion } from '../extra';
-import type { SpawnDef } from '../defs';
+import type { DecorDef, SpawnDef } from '../defs';
 
 const deg = (d: number): number => (d * Math.PI) / 180;
 
@@ -173,35 +173,222 @@ export function walledIsle(o: WalledIsleOpts): WalledIsle {
 }
 
 // ---------- the map ----------
+//
+// The Ringlands map itself is the walled country seen close: the outer wall fills about three quarters of the island's
+// width, with a modest band of open country between it and the coast. Shapes are laid out around the wall centre in
+// polar terms (radius as a share of the outer wall's radius RO, angle in degrees, 0 = east, counter-clockwise), so the
+// island keeps its character (a tall island leaning NW to SE, snowy mountains at the north end, a pointed northwest
+// corner, a notch in the west coast, two bulges in the east coast, sands on the south coast and a wetland and a long
+// lobe in the southeast) squeezed into the band outside the outer wall.
 
-export const RINGLANDS_PLANE = makePlane(23, 31.5, 44);
+/** outer wall radius (units) */
+const RO = 6;
+/** wall thickness, gate district radius and gate gap (units): bold enough to read at whole-map zoom */
+const THICK = 0.24;
+const DISTRICT = 0.75;
+const GAP = 0.3;
+
+/** The coast as [angle (degrees), radius (share of RO)] round the wall centre, counter-clockwise from the east. */
+const COAST: [number, number][] = [
+  [0, 1.28], [12, 1.23], [28, 1.37], [45, 1.33], [60, 1.45], [75, 1.6], [90, 1.64], [110, 1.68], [128, 1.74], [140, 1.82],
+  [152, 1.64], [164, 1.38], [174, 1.29], [181, 1.23], [189, 1.3], [208, 1.3], [228, 1.34], [245, 1.42], [262, 1.56],
+  [280, 1.58], [295, 1.66], [307, 1.8], [317, 1.86], [327, 1.66], [339, 1.4], [351, 1.31],
+];
+/** Coast radius (share of RO) at an angle, linear between the control points. */
+function coastR(a: number): number {
+  const t = ((a % 360) + 360) % 360;
+  for (let i = 0; i < COAST.length; i++) {
+    const [a0, r0] = COAST[i];
+    const [a1, r1] = i + 1 < COAST.length ? COAST[i + 1] : [COAST[0][0] + 360, COAST[0][1]];
+    if (t >= a0 && t <= a1) return r0 + ((r1 - r0) * (t - a0)) / (a1 - a0);
+  }
+  return COAST[0][1];
+}
+
+/** a point at radius r (share of RO) and angle a (degrees) from the wall centre (0, 0) */
+const polar = (r: number, a: number): Pt => [Math.cos(deg(a)) * r * RO, Math.sin(deg(a)) * r * RO];
+
+const SEED = 310;
+const coast = fractal(smoothClosed(COAST.map(([a, r]) => polar(r, a)), 8), rngFor(SEED + 1), 0.16, 4, 0.08);
+const rIs = rngFor(SEED + 3);
+const isletAt = (r: number, a: number, size: number): Pt[] => fractal(blob(...polar(r, a), size, size * 0.75, rIs, 0.25, a), rIs, 0.18, 3, 0.04);
+const islets: Pt[][] = [isletAt(1.5, 176, 0.35), isletAt(1.62, 22, 0.4), isletAt(2.05, 322, 0.4), isletAt(1.86, 252, 0.3), isletAt(1.9, 94, 0.35), isletAt(1.98, 150, 0.3)];
+
+// the plane: the island's box with a little sea round it, the wall centre moved so the box is centred
+const allPts = coast.concat(...islets);
+const minX = Math.min(...allPts.map((p) => p[0]));
+const maxX = Math.max(...allPts.map((p) => p[0]));
+const minY = Math.min(...allPts.map((p) => p[1]));
+const maxY = Math.max(...allPts.map((p) => p[1]));
+const SEA = 1.1;
+export const RINGLANDS_PLANE = makePlane(maxX - minX + 2 * SEA, maxY - minY + 2 * SEA, 44);
 const pl = RINGLANDS_PLANE;
+const OX = -(minX + maxX) / 2;
+const OY = -(minY + maxY) / 2;
+const shift = (p: Pt): Pt => [p[0] + OX, p[1] + OY];
+const ring = (pts: Pt[]): number[][] => pl.ring(pts.map(shift));
 
-const isle = walledIsle({ plane: pl, cx: 0, cy: 0.3, width: 16, wallFrac: 0.3, thick: 0.125, district: 0.3, gap: 0.13, seed: 300, islets: true });
+const walls = walledRings({
+  cx: OX,
+  cy: OY,
+  radii: [RO * 0.37, RO * 0.64, RO],
+  thick: THICK,
+  gates: [
+    [0, 90, 180, 270],
+    [0, 90, 180, 270],
+    [0, 90, 180, 270],
+  ],
+  gateWidth: GAP,
+  wobble: 0.004,
+  foot: 0,
+  district: { radius: DISTRICT, gap: GAP },
+  rng: rngFor(SEED + 2),
+  plane: pl,
+});
+
+// rivers: from the centre straight out through the four gates of every wall and on to the coasts, and three more
+// from the outer wall to the northeast, southeast and southwest coasts
+const rr = rngFor(SEED + 8);
+const toCoast = (r0: number, a0: number, a1: number, bend: number): Pt[] => path(polar(r0, a0), polar(coastR(a1) + 0.06, a1), rr, bend);
+const gateRiver = (a: number, a1: number): Pt[] => [polar(0.03, a), polar(1.22, a)].concat(toCoast(1.22, a, a1, 0.35).slice(1));
+const rivers: Pt[][] = [gateRiver(90, 96), gateRiver(270, 263), gateRiver(0, 8), gateRiver(180, 186), toCoast(1.18, 42, 52, 0.4), toCoast(1.18, 318, 320, 0.5), toCoast(1.18, 222, 218, 0.3)];
+
+const rg = rngFor(SEED + 9);
+/** a blob at radius r, angle a; rx, ry as shares of RO (rx along the ring by default), rot radians */
+const pb = (r: number, a: number, rx: number, ry: number, rot = deg(a) + Math.PI / 2, wob = 0.22): Pt[] => blob(...polar(r, a), rx * RO, ry * RO, rg, wob, rot);
+/** a mountain range along an arc at radius r from angle a0 to a1, half width hw (share of RO) */
+const arcRange = (r: number, a0: number, a1: number, hw: number): Pt[] => {
+  const n = 6;
+  const line: Pt[] = [];
+  for (let i = 0; i < n; i++) {
+    const p = polar(r + (i % 2 ? 0.04 : -0.03), a0 + ((a1 - a0) * i) / (n - 1));
+    const q = polar(r + ((i + 1) % 2 ? 0.04 : -0.03), a0 + ((a1 - a0) * (i + 1)) / (n - 1));
+    if (i + 1 < n) line.push(...path(p, q, rg, 0.25, 12).slice(i ? 1 : 0));
+  }
+  return strip(line, hw * RO);
+};
+const R = (name: string, kind: ExtraRegion['kind'], poly: Pt[], strength?: number): ExtraRegion => ({ name, kind, poly: ring(poly), ...(strength ? { strength } : {}) });
+
+const regions: ExtraRegion[] = [
+  // the snowy north end: two ranges, snow on the high ground, cold downs below
+  R('North range', 'mountains', arcRange(1.42, 70, 148, 0.075), 0.85),
+  R('North range west', 'mountains', arcRange(1.6, 115, 145, 0.055), 0.82),
+  R('Snowfields', 'cold', pb(1.54, 124, 0.26, 0.1)),
+  R('Snowfields east', 'cold', pb(1.47, 82, 0.14, 0.07)),
+  R('North tundra', 'tundra', pb(1.3, 62, 0.12, 0.06)),
+  R('Northwest downs', 'hills', pb(1.32, 148, 0.12, 0.08)),
+  // the east coast bulges and the southeast lobe
+  R('East downs', 'hills', pb(1.29, 30, 0.08, 0.06)),
+  R('East hills', 'hills', pb(1.36, 340, 0.06, 0.05)),
+  R('Southeast hills', 'hills', pb(1.68, 316, 0.09, 0.06)),
+  R('Southeast fen', 'swamp', pb(1.48, 302, 0.16, 0.1)),
+  // the south coast: a sandy waste; downs and a little marsh to the southwest
+  R('South sands', 'desert', pb(1.42, 270, 0.28, 0.1)),
+  R('Southwest downs', 'hills', pb(1.28, 236, 0.08, 0.06)),
+  R('Southwest marsh', 'swamp', pb(1.3, 213, 0.06, 0.05)),
+  R('West ridge', 'hills', pb(1.24, 196, 0.05, 0.04)),
+  // farmland inside the inner wall and between the walls (plain fields, so the rings stand out)
+  R('Crown fields', 'open', pb(0, 0, 0.33, 0.33, 0, 0.12)),
+  R('Inner fields', 'open', pb(0.5, 35, 0.12, 0.08)),
+  R('Inner fields east', 'open', pb(0.5, 320, 0.1, 0.07)),
+  R('North fields', 'open', pb(0.82, 60, 0.14, 0.09)),
+  R('West fields', 'open', pb(0.82, 160, 0.12, 0.09)),
+  R('South fields', 'open', pb(0.82, 290, 0.12, 0.09)),
+  // forests between the walls: a small wood inside the middle wall, big ones in the west, southwest and east
+  R('Inner wood', 'woods', pb(0.5, 228, 0.08, 0.05)),
+  R('Inner wood west', 'woods', pb(0.5, 145, 0.06, 0.045)),
+  R('West forest', 'woods', pb(0.82, 205, 0.12, 0.085)),
+  R('Southwest forest', 'woods', pb(0.82, 245, 0.12, 0.08)),
+  R('Long wood', 'woods', pb(0.83, 335, 0.07, 0.17, deg(335) + 0.2)),
+  R('North wood', 'woods', pb(0.82, 115, 0.08, 0.05)),
+  // scattered woods in the country outside
+  ...([[1.42, 100, 0.08, 0.05], [1.3, 45, 0.06, 0.04], [1.3, 175, 0.05, 0.04], [1.36, 250, 0.07, 0.05], [1.5, 310, 0.07, 0.05], [1.4, 290, 0.06, 0.04]] as const).map(
+    ([r, a, rx, ry], i) => R(`Wood ${i + 1}`, 'woods', pb(r, a, rx, ry)),
+  ),
+];
+// oil: the fen, the sands, the snow, the marsh, and gas pockets inside each ring of walls
+const oil: Pt[][] = [
+  pb(1.48, 302, 0.14, 0.09), pb(1.42, 270, 0.24, 0.09), pb(1.54, 124, 0.22, 0.09), pb(1.3, 213, 0.06, 0.05), pb(1.3, 62, 0.1, 0.05),
+  pb(0.18, 300, 0.08, 0.08), pb(0.5, 60, 0.06, 0.06), pb(0.5, 200, 0.06, 0.06), pb(0.5, 285, 0.05, 0.05),
+  pb(0.84, 125, 0.07, 0.07), pb(0.84, 275, 0.07, 0.07), pb(0.84, 20, 0.06, 0.06), pb(0.84, 225, 0.06, 0.06),
+];
 
 export const RINGLANDS: DrawnMap = {
-  land: isle.land.map((p) => pl.ring(p)),
+  land: [coast, ...islets].map(ring),
   lakes: [],
-  rivers: isle.rivers.map((p) => pl.ring(p)),
-  regions: isle.regions,
-  oilZones: isle.oil.map((p) => pl.ring(p)),
-  paint: isle.rings.paint,
+  rivers: rivers.map(ring),
+  regions,
+  oilZones: oil.map(ring),
+  paint: walls.paint,
 };
 
 const sp = (name: string, p: Pt, major = false): SpawnDef => ({ name, at: pl.P(p[0], p[1]), major, pop: major ? 2_000_000 : 1_000_000 });
-const r = isle.rings;
+/** the middle of wall k's gate district at angle a (plane point, already shifted) */
+const district = (k: number, a: number): Pt => {
+  const t = deg(a);
+  const r = walls.radiusAt(k, t) + THICK / 2 + DISTRICT * 0.45;
+  return [OX + Math.cos(t) * r, OY + Math.sin(t) * r];
+};
 
 export const RINGLANDS_SPAWNS: SpawnDef[] = [
-  // inside the walls: the crown in the core, then the two rings
-  sp('Aldmere', [0, 0.3], true),
-  sp('Brannoch', r.between(1, deg(135))),
-  sp('Corvane', r.between(2, deg(45))),
-  sp('Dunmarrow', r.between(2, deg(225))),
+  // the crown in the core
+  sp('Aldmere', [OX, OY], true),
+  // between the inner and the middle wall
+  sp('Brannoch', walls.between(1, deg(45))),
+  sp('Halvard', walls.between(1, deg(150))),
+  sp('Ilmarsh', walls.between(1, deg(225))),
+  // the middle wall's four gate districts, between the middle and the outer wall
+  sp('Corvane', district(1, 90)),
+  sp('Dunmarrow', district(1, 0)),
+  sp('Kestrelmoor', district(1, 270), true),
+  sp('Thornwick', district(1, 180)),
   // the open country outside the outer wall
-  sp('Eskerin', isle.at(28, 22), true),
-  sp('Halvard', isle.at(72, 24)),
-  sp('Ilmarsh', isle.at(24, 56)),
-  sp('Kestrelmoor', isle.at(86, 58), true),
-  sp('Norvane', isle.at(40, 76)),
-  sp('Orlith', isle.at(78, 88)),
+  sp('Eskerin', shift(polar(1.45, 140)), true),
+  sp('Orlith', shift(polar(1.5, 312))),
+  sp('Norvane', shift(polar(1.27, 228))),
+];
+
+// ---------- decor: towns, farms and roads the client paints on the map (looks only, never game state) ----------
+
+const ll = (p: Pt): number[] => pl.P(p[0], p[1]);
+const at = (r: number, a: number): number[] => ll(shift(polar(r, a)));
+const dc = (kind: DecorDef['kind'], r: number, a: number, size: number): DecorDef => ({ kind, at: at(r, a), size });
+/** a road from radius r0 to r1 along angle a, a little to the side of the river that runs through the same gates */
+const road = (a: number, r0: number, r1: number): DecorDef => {
+  const side = (p: number): number[] => {
+    const q = polar(p, a);
+    const t = deg(a);
+    return ll(shift([q[0] - Math.sin(t) * 0.09, q[1] + Math.cos(t) * 0.09]));
+  };
+  const n = Math.ceil(Math.abs(r1 - r0) / 0.05);
+  const pts: number[][] = [];
+  for (let i = 1; i <= n; i++) pts.push(side(r0 + ((r1 - r0) * i) / n));
+  return { kind: 'road', at: side(r0), size: 0.012, path: pts };
+};
+/** gate district of wall k at angle a: the middle of its straight side on the wall's outer face, facing out */
+const districtDecor = (k: number, a: number): DecorDef => {
+  const t = deg(a);
+  const r = walls.radiusAt(k, t) + THICK / 2;
+  return { kind: 'district', at: ll([OX + Math.cos(t) * r, OY + Math.sin(t) * r]), size: DISTRICT - THICK, dir: a };
+};
+
+export const RINGLANDS_DECOR: DecorDef[] = [
+  // roads from the outer gates in to the core
+  ...[90, 0, 270, 180].map((a) => road(a, 1.17, 0.2)),
+  // the core: a walled town round the palace
+  dc('town', 0, 0, RO * 0.26),
+  dc('palace', 0, 0, 0.18),
+  // every gate district a half disc of rooftops
+  ...[0, 1, 2].flatMap((k) => [0, 90, 180, 270].map((a) => districtDecor(k, a))),
+  // between the inner and the middle wall: towns along the roads and rivers, villages and fields
+  ...([[25, 0.4], [115, 0.36], [205, 0.38], [300, 0.4]] as const).map(([a, s]) => dc('town', 0.5, a, s)),
+  ...[70, 160, 250, 340].map((a) => dc('village', 0.52, a, 0.2)),
+  ...([[35, 0.5], [320, 0.5]] as const).map(([a, r]) => dc('farms', r, a, 0.5)),
+  // between the middle and the outer wall
+  ...[45, 135, 225, 315].map((a) => dc('town', 0.82, a, 0.36)),
+  ...[20, 70, 110, 160, 200, 250, 290, 340].map((a) => dc('village', 0.83, a, 0.2)),
+  ...([[60, 0.82], [160, 0.82], [290, 0.82], [105, 0.86], [255, 0.86]] as const).map(([a, r]) => dc('farms', r, a, 0.55)),
+  // the country outside: sparse villages and farm fields
+  ...([[40, 1.24], [65, 1.3], [120, 1.3], [150, 1.4], [210, 1.22], [240, 1.3], [300, 1.38], [322, 1.45]] as const).map(([a, r]) => dc('village', r, a, 0.16)),
+  ...([[55, 1.26], [110, 1.27], [232, 1.27], [285, 1.33], [312, 1.42]] as const).map(([a, r]) => dc('farms', r, a, 0.45)),
 ];

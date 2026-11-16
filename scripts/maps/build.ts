@@ -11,9 +11,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { RESOURCE_COLORS, TERRAIN } from '../../src/sim/config';
-import type { WorldMapInfo, WorldMapPresets } from '../../src/sim/worldmaps';
+import type { WorldMapDecor, WorldMapInfo, WorldMapPresets } from '../../src/sim/worldmaps';
 import { MAP_DEFS } from './defs';
-import type { MapDef } from './defs';
+import type { DecorDef, MapDef } from './defs';
 import type { DrawnMap } from './drawn/kit';
 import { encodePng, fillFeature, fitBox, makeFrame, makeProjection, parseFeatures, projectedBox, toPixel } from './lib';
 import type { Feature, Frame } from './lib';
@@ -418,6 +418,8 @@ function main(): void {
       recommendedTribes: pre.singlePlayer.tribes,
       presets: pre,
       spawns,
+      ...(def.theme ? { theme: def.theme } : {}),
+      ...(def.decor ? { decor: buildDecor(fr, W, H, def.decor) } : {}),
     });
     const counts = new Array(9).fill(0);
     for (let i = 0; i < W * H; i++) counts[terrain[i]]++;
@@ -442,6 +444,25 @@ function main(): void {
     entries.map((e) => `  '${e.id}': () => import('./data/${e.id}'),\n`).join('') +
     `};\n`;
   writeFileSync(`${OUT_DIR}manifest.ts`, ts);
+}
+
+/** Map decor (towns, farms, roads) from lon / lat into tiles; pieces off the map are left out. */
+function buildDecor(fr: Frame, W: number, H: number, defs: DecorDef[]): WorldMapDecor[] {
+  const tileAt = (p: number[]): number => {
+    const [x, y] = toPixel(fr, p[0], p[1]);
+    return x < 0 || y < 0 || x >= W || y >= H ? -1 : Math.floor(y) * W + Math.floor(x);
+  };
+  const out: WorldMapDecor[] = [];
+  for (const d of defs) {
+    const tile = tileAt(d.at);
+    if (tile < 0) continue;
+    const size = Math.abs(toPixel(fr, d.at[0], d.at[1] + d.size)[1] - toPixel(fr, d.at[0], d.at[1])[1]);
+    const e: WorldMapDecor = { kind: d.kind, tile, size: Math.round(size * 10) / 10 };
+    if (d.dir !== undefined) e.dir = d.dir;
+    if (d.path) e.path = d.path.map(tileAt).filter((t) => t >= 0);
+    out.push(e);
+  }
+  return out;
 }
 
 main();

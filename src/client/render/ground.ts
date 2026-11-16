@@ -18,6 +18,7 @@
 // The terrain itself (what a tile is, what it does in the game) never changes; only how its edges and insides look.
 import type { MapData } from '../../sim/types';
 import type { RGB } from './common';
+import type { GroundPalette, MapTheme } from './mapThemes';
 
 /** A 4-tone ramp (deep, dark, base, light), the unit art's way of shading (art/detailed/palette.ts). */
 export type GroundRamp = readonly [RGB, RGB, RGB, RGB];
@@ -52,27 +53,46 @@ export const GROUND = {
 
 const mixc = (a: RGB, b: RGB, k: number): RGB => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
 
-/** Average colour of each land terrain's pixel ground (index = TerrainId), for the far view. */
-const FAR_LAND: readonly RGB[] = [
-  GROUND.sea[4],
-  GROUND.sea[1],
-  mixc(GROUND.grass[2], GROUND.wheat[2], 0.12),
-  mixc(GROUND.forest[2], GROUND.forest[1], 0.3),
-  mixc(GROUND.hills[2], GROUND.hills[1], 0.3),
-  mixc(mixc(GROUND.rock[2], GROUND.rock[1], 0.5), GROUND.hills[1], 0.18),
-  mixc(GROUND.sand[2], GROUND.sand[3], 0.15),
-  mixc(GROUND.swamp[2], GROUND.pool[1], 0.3),
-  mixc(GROUND.tundra[2], GROUND.snow[2], 0.15),
-];
+/** The far view's colours of a ground palette (a map theme's, render/mapThemes.ts). */
+interface FarColours {
+  /** average colour of each land terrain's pixel ground (index = TerrainId) */
+  land: readonly RGB[];
+  /** plains on dry ground */
+  dry: RGB;
+  g: GroundPalette;
+}
+const farOf = new WeakMap<GroundPalette, FarColours>();
+function farColours(g: GroundPalette): FarColours {
+  let f = farOf.get(g);
+  if (!f) {
+    f = {
+      land: [
+        g.sea[4],
+        g.sea[1],
+        mixc(g.grass[2], g.wheat[2], 0.12),
+        mixc(g.forest[2], g.forest[1], 0.3),
+        mixc(g.hills[2], g.hills[1], 0.3),
+        mixc(mixc(g.rock[2], g.rock[1], 0.5), g.hills[1], 0.18),
+        mixc(g.sand[2], g.sand[3], 0.15),
+        mixc(g.swamp[2], g.pool[1], 0.3),
+        mixc(g.tundra[2], g.snow[2], 0.15),
+      ],
+      dry: mixc(g.grassDry[2], g.wheat[2], 0.12),
+      g,
+    };
+    farOf.set(g, f);
+  }
+  return f;
+}
 
 /** Sea band of a water depth (tiles to land, smooth): 0 shallows .. 4 open sea, with the fraction to the next. */
 export const SEA_BANDS = [1.6, 4, 8.5, 14] as const;
 
 /** Flat colour of the sea at depth d (tiles to land), the bands blended (far view). */
-function farSea(d: number): RGB {
+function farSea(d: number, g: GroundPalette): RGB {
   let k = 0;
   while (k < SEA_BANDS.length && d >= SEA_BANDS[k]) k++;
-  return GROUND.sea[k];
+  return g.sea[k];
 }
 
 /** Base height of each terrain (index = TerrainId), 0..1. */
@@ -150,12 +170,15 @@ export interface GroundData {
   mixCH: number;
   /** RGBA8 per tile: the pixel ground's average colour, hill shaded (far view, mipmapped) */
   far: Uint8Array;
+  /** the ground palette it was built with (a map theme's) */
+  palette: GroundPalette;
 }
 
 const built = new WeakMap<MapData, GroundData>();
 /** grounds being built in slices (groundLater), and who to tell when one is done */
 interface Job {
   it: Generator<void, GroundData>;
+  palette: GroundPalette;
   ready: Set<() => void>;
 }
 const jobs = new WeakMap<MapData, Job>();
@@ -164,13 +187,31 @@ const SLICE_MS = 10;
 /** Rows of the per-tile passes between two slice checks. */
 const ROWS = 24;
 
-/** The ground textures of a map, built once and shared (map layer, minimap, 2D fallback). */
-export function groundFor(map: MapData, depth: Uint8Array): GroundData {
-  let g = built.get(map);
+/** The ground palette of a theme (none: the default). */
+const paletteOf = (theme: MapTheme | undefined): GroundPalette => theme?.ground ?? GROUND;
+/** A map's built ground if it was built in this palette (a map drawn in another theme builds again). */
+function builtIn(map: MapData, palette: GroundPalette): GroundData | undefined {
+  const g = built.get(map);
+  return g && g.palette === palette ? g : undefined;
+}
+/** A map's ground job if it builds in this palette; one in another palette is dropped. */
+function jobIn(map: MapData, palette: GroundPalette): Job | undefined {
+  const j = jobs.get(map);
+  if (j && j.palette !== palette) {
+    jobs.delete(map);
+    return undefined;
+  }
+  return j;
+}
+
+/** The ground textures of a map, built once and shared (map layer, minimap, 2D fallback), in a theme's colours. */
+export function groundFor(map: MapData, depth: Uint8Array, theme?: MapTheme): GroundData {
+  const palette = paletteOf(theme);
+  let g = builtIn(map, palette);
   if (!g) {
     // one being built in slices is finished here at once
-    const job = jobs.get(map);
-    g = runAll(job ? job.it : groundSteps(map, depth));
+    const job = jobIn(map, palette);
+    g = runAll(job ? job.it : groundSteps(map, depth, palette));
     built.set(map, g);
     if (job) {
       jobs.delete(map);
@@ -185,12 +226,13 @@ export function groundFor(map: MapData, depth: Uint8Array): GroundData {
  * (a big map takes most of a second on a fast machine and several on a slow one, which would freeze the page at game
  * start); `onReady` runs once they are (pass the same function each time: it is called once).
  */
-export function groundLater(map: MapData, depth: Uint8Array, onReady: () => void): GroundData | null {
-  const g = built.get(map);
+export function groundLater(map: MapData, depth: Uint8Array, onReady: () => void, theme?: MapTheme): GroundData | null {
+  const palette = paletteOf(theme);
+  const g = builtIn(map, palette);
   if (g) return g;
-  let job = jobs.get(map);
+  let job = jobIn(map, palette);
   if (!job) {
-    const j: Job = { it: groundSteps(map, depth), ready: new Set() };
+    const j: Job = { it: groundSteps(map, depth, palette), palette, ready: new Set() };
     jobs.set(map, j);
     job = j;
     const slice = (): void => {
@@ -222,12 +264,13 @@ function runAll(it: Generator<void, GroundData>): GroundData {
 }
 
 /** The ground textures, built at once. `depth`: water distance to land (terrain.ts). */
-export function buildGround(map: MapData, depth: Uint8Array): GroundData {
-  return runAll(groundSteps(map, depth));
+export function buildGround(map: MapData, depth: Uint8Array, theme?: MapTheme): GroundData {
+  return runAll(groundSteps(map, depth, paletteOf(theme)));
 }
 
 /** The ground textures in steps: it yields every few milliseconds of work (groundLater spreads them over frames). */
-function* groundSteps(map: MapData, depth: Uint8Array): Generator<void, GroundData> {
+function* groundSteps(map: MapData, depth: Uint8Array, palette: GroundPalette): Generator<void, GroundData> {
+  const fc = farColours(palette);
   const { width: w, height: h, terrain } = map;
   const n = w * h;
   const base = new Float32Array(n);
@@ -280,7 +323,7 @@ function* groundSteps(map: MapData, depth: Uint8Array): Generator<void, GroundDa
     for (let k = 0; k < 4; k++) {
       const v = near[k][j] * 0.45;
       if (v <= 0.002) continue;
-      const fl = FAR_LAND[NEAR_TERRAINS[k]];
+      const fl = fc.land[NEAR_TERRAINS[k]];
       nearMix[j * 4] += fl[0] * v;
       nearMix[j * 4 + 1] += fl[1] * v;
       nearMix[j * 4 + 2] += fl[2] * v;
@@ -293,12 +336,12 @@ function* groundSteps(map: MapData, depth: Uint8Array): Generator<void, GroundDa
   yield;
   const out = new Uint8Array(n * 4);
   const far = new Uint8Array(n * 4);
-  const p: TileInputs = { w, h, hw, terrain, depth, height, rough, variety, moist, snowy, near, nearMix, out, far };
+  const p: TileInputs = { w, h, hw, terrain, depth, height, rough, variety, moist, snowy, near, nearMix, out, far, fc };
   for (let y = 0; y < h; y += ROWS) {
     finishTiles(p, y, Math.min(h, y + ROWS));
     yield;
   }
-  return { data: out, far, mixA, mixB, mixC, mixCW: hw, mixCH: hh };
+  return { data: out, far, mixA, mixB, mixC, mixCW: hw, mixCH: hh, palette };
 }
 
 /** Rows y0..y1 of the height and snow (its own function, so it stays fast). */
@@ -360,11 +403,12 @@ interface TileInputs {
   nearMix: Float32Array;
   out: Uint8Array;
   far: Uint8Array;
+  fc: FarColours;
 }
 
 /** The per-tile pass, rows y0..y1: hill shading, the packed ground data and the far colours (its own function, so it stays fast). */
 function finishTiles(p: TileInputs, y0: number, y1: number): void {
-  const { w, h, hw, terrain, depth, height, rough, variety, moist, snowy, near, nearMix, out, far } = p;
+  const { w, h, hw, terrain, depth, height, rough, variety, moist, snowy, near, nearMix, out, far, fc } = p;
   for (let y = y0; y < y1; y++) {
     const ym = Math.max(0, y - 1) * w;
     const yp = Math.min(h - 1, y + 1) * w;
@@ -386,12 +430,12 @@ function finishTiles(p: TileInputs, y0: number, y1: number): void {
       let cg: number;
       let cb: number;
       if (t <= 1) {
-        const sc = farSea(depth[i]);
+        const sc = farSea(depth[i], fc.g);
         cr = sc[0];
         cg = sc[1];
         cb = sc[2];
       } else {
-        farLandInto(t, moist[i], FL);
+        farLandInto(fc, t, moist[i], FL);
         cr = FL[0];
         cg = FL[1];
         cb = FL[2];
@@ -405,7 +449,7 @@ function finishTiles(p: TileInputs, y0: number, y1: number): void {
         if (own >= 0) {
           const v = near[own][hj] * 0.45;
           if (v > 0.002) {
-            const fl = FAR_LAND[t];
+            const fl = fc.land[t];
             mr -= fl[0] * v;
             mg -= fl[1] * v;
             mbl -= fl[2] * v;
@@ -422,7 +466,7 @@ function finishTiles(p: TileInputs, y0: number, y1: number): void {
         // reads as rugged rock with some snow, not a pale lump)
         if (t === 5 && snowy[i] > 0 && s > -0.3) {
           const a = snowy[i] * 0.6;
-          const sn = GROUND.snow[2];
+          const sn = fc.g.snow[2];
           cr += (sn[0] - cr) * a;
           cg += (sn[1] - cg) * a;
           cb += (sn[2] - cb) * a;
@@ -492,17 +536,16 @@ function smoothField(w: number, h: number, C: number, f: (x: number, y: number) 
 }
 
 const FL = [0, 0, 0];
-const FAR_DRY = mixc(GROUND.grassDry[2], GROUND.wheat[2], 0.12);
 /** Far colour of a land terrain at a moisture into out: plains drier or lusher, woods darker where it is wet. */
-function farLandInto(t: number, m: number, out: number[]): void {
-  const c = FAR_LAND[t] ?? FAR_LAND[2];
+function farLandInto(fc: FarColours, t: number, m: number, out: number[]): void {
+  const c = fc.land[t] ?? fc.land[2];
   let to: RGB = c;
   let k = 0;
   if (t === 2) {
-    to = m < 0.5 ? FAR_DRY : GROUND.grassLush[2];
+    to = m < 0.5 ? fc.dry : fc.g.grassLush[2];
     k = Math.min(1, Math.abs(m - 0.5) * 3);
   } else if (t === 3) {
-    to = GROUND.forest[1];
+    to = fc.g.forest[1];
     k = Math.max(0, m - 0.5) * 0.8;
   }
   out[0] = c[0] + (to[0] - c[0]) * k;

@@ -51,6 +51,26 @@ export interface WorldMapInfo {
    * each next one the farthest from all before it, so nations taking the first N spawns are spread over the map.
    */
   spawns: WorldMapSpawn[];
+  /** colour theme the client draws this map in (src/client/render/mapThemes.ts); looks only, never game state */
+  theme?: string;
+  /** towns, farms and roads painted on the map by the client (src/client/render/decor.ts); looks only, never game state */
+  decor?: WorldMapDecor[];
+}
+
+/** What a piece of map decor is: a palace, a town, a gate district (a half disc of town), a village, farm fields, a road. */
+export type DecorKind = 'palace' | 'town' | 'district' | 'village' | 'farms' | 'road';
+
+/** One piece of map decor (drawn by the client only: no building, no effect on the game). */
+export interface WorldMapDecor {
+  kind: DecorKind;
+  /** tile index (y * width + x) of its centre; a district's is the middle of its straight side */
+  tile: number;
+  /** radius in tiles (a road: its width) */
+  size: number;
+  /** district: the way its half disc faces, degrees counter-clockwise from east (north up) */
+  dir?: number;
+  /** road: the tiles it runs through, in order (from `tile`) */
+  path?: number[];
 }
 
 export const BFM_MAGIC = 'BFM1';

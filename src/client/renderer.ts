@@ -31,6 +31,8 @@ import { Minimap } from './render/minimap';
 import { NameLayer } from './render/names';
 import { Overlays, ringRadius } from './render/overlays';
 import { buildTerrain, type TerrainData } from './render/terrain';
+import { themeForMap } from './render/mapThemes';
+import { decorForMap } from './render/decor';
 import { TileFeed } from './render/tiles';
 import { UnitLayer } from './render/units';
 import { SelectionOverlay } from './render/selectionOverlay';
@@ -175,7 +177,8 @@ export class Renderer {
     this.w = map.width;
     this.h = map.height;
     this.humanId = state.humanId;
-    this.terr = buildTerrain(map);
+    this.terr = buildTerrain(map, themeForMap(state.settings.map));
+    this.terr.decor = decorForMap(state.settings.map);
     this.feed.vis = null; // the new game's fog view attaches below (render)
     this.fog = null;
     this.fogSent = -1;

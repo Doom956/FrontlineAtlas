@@ -15,9 +15,11 @@ import type { MapData } from '../../sim/types';
 import type { RGB } from './common';
 import { groundLater } from './ground';
 import { mapStyle, type MapStyle } from './mapStyle';
+import { DEFAULT_THEME, type MapTheme } from './mapThemes';
+import { decorFor, withDecor, type DecorLayer } from './decor';
 import { borderColor, displayColor, fillAlpha, type DisplayRole, type Rgb } from './palette';
 import { groundFragmentShader, mapFragmentShader, MAP_VS } from './shaders';
-import { TERRAIN_RGB, RESOURCE_RGB, type TerrainData } from './terrain';
+import { RESOURCE_RGB, type TerrainData } from './terrain';
 import { dirtyRects, type TileFeed } from './tiles';
 import type { TrenchFeed } from './trenchFeed';
 
@@ -44,11 +46,11 @@ export interface MapUniforms {
   dpr?: number;
 }
 
-const UNIFORMS = ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uView', 'uCenter', 'uZoom', 'uMap', 'uTime', 'uNowDs', 'uAuxMode', 'uShowRes', 'uFortOn', 'uTrenchOn', 'uTerr', 'uRes', 'uBg', 'uFog', 'uFogOn', 'uFogScale', 'uGround', 'uGroundCol', 'uGroundTex', 'uGOrigin', 'uP', 'uDpr', 'uMixA', 'uMixB', 'uMixC', 'uNearOn'];
-type TexName = 'owner' | 'terrId' | 'depth' | 'terrCol' | 'pal' | 'fort' | 'aux' | 'trench' | 'fog' | 'ground' | 'groundCol' | 'groundView' | 'mixA' | 'mixB' | 'mixC';
+const UNIFORMS = ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uView', 'uCenter', 'uZoom', 'uMap', 'uTime', 'uNowDs', 'uAuxMode', 'uShowRes', 'uFortOn', 'uTrenchOn', 'uTerr', 'uRes', 'uBg', 'uFog', 'uFogOn', 'uFogScale', 'uGround', 'uGroundCol', 'uGroundTex', 'uGOrigin', 'uP', 'uDpr', 'uMixA', 'uMixB', 'uMixC', 'uNearOn', 'uDecor', 'uDecorInfo'];
+type TexName = 'owner' | 'terrId' | 'depth' | 'terrCol' | 'pal' | 'fort' | 'aux' | 'trench' | 'fog' | 'ground' | 'groundCol' | 'groundView' | 'mixA' | 'mixB' | 'mixC' | 'decor';
 /** Texture units, in order (the sampler uniform of each is set to its index). */
-const TEX_ORDER: readonly TexName[] = ['owner', 'terrId', 'depth', 'terrCol', 'pal', 'fort', 'aux', 'trench', 'fog', 'ground', 'groundCol', 'groundView', 'mixA', 'mixB', 'mixC'];
-const SAMPLERS = ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uFog', 'uGround', 'uGroundCol', 'uGroundTex', 'uMixA', 'uMixB', 'uMixC'];
+const TEX_ORDER: readonly TexName[] = ['owner', 'terrId', 'depth', 'terrCol', 'pal', 'fort', 'aux', 'trench', 'fog', 'ground', 'groundCol', 'groundView', 'mixA', 'mixB', 'mixC', 'decor'];
+const SAMPLERS = ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uFog', 'uGround', 'uGroundCol', 'uGroundTex', 'uMixA', 'uMixB', 'uMixC', 'uDecor'];
 /** Art pixels are at least this many CSS px wide (shaders.ts: P art pixels per tile, a power of two up to 16). */
 const ART_PX_MIN = 1.25;
 /** The ground pass is redrawn at most this often while the view stands still (its waves and foam move slowly). */
@@ -93,9 +95,14 @@ export class MapGL {
   private tex: Record<TexName, WebGLTexture>;
   /** the map style the shader is built for */
   style: MapStyle;
+  /** the map colour theme it is built for (render/mapThemes.ts): the game's map's */
+  private theme: MapTheme = DEFAULT_THEME;
   /** this game's map and terrain (the ground textures are built from them when a pixel style first shows) */
   private game: { map: MapData; terr: TerrainData } | null = null;
   private groundBuilt = false;
+  /** this game's map decor (render/decor.ts), null for none; uDecorInfo: index width, height, blocks per row, on */
+  private decor: DecorLayer | null = null;
+  private decorInfo: [number, number, number, number] = [0, 0, 1, 0];
   /** fog texture size in blocks (0 = none uploaded) */
   private fogW = 0;
   private fogH = 0;
@@ -152,7 +159,7 @@ export class MapGL {
       if (!t) throw new Error('createTexture failed');
       return t;
     };
-    this.tex = { owner: mk(), terrId: mk(), depth: mk(), terrCol: mk(), pal: mk(), fort: mk(), aux: mk(), trench: mk(), fog: mk(), ground: mk(), groundCol: mk(), groundView: mk(), mixA: mk(), mixB: mk(), mixC: mk() };
+    this.tex = { owner: mk(), terrId: mk(), depth: mk(), terrCol: mk(), pal: mk(), fort: mk(), aux: mk(), trench: mk(), fog: mk(), ground: mk(), groundCol: mk(), groundView: mk(), mixA: mk(), mixB: mk(), mixC: mk(), decor: mk() };
     try {
       this.prog = this.usePrograms(this.style);
     } catch (err) {
@@ -178,21 +185,21 @@ export class MapGL {
     const loc: Prog['loc'] = {};
     for (const name of UNIFORMS) loc[name] = gl.getUniformLocation(prog, name);
     SAMPLERS.forEach((u, k) => gl.uniform1i(loc[u], k));
-    gl.uniform3fv(loc.uTerr, new Float32Array(TERRAIN_RGB.flatMap((c) => c.map((v) => v / 255))));
+    gl.uniform3fv(loc.uTerr, new Float32Array(this.theme.flat.flatMap((c) => c.map((v) => v / 255))));
     gl.uniform3fv(loc.uRes, new Float32Array(RESOURCE_RGB.flatMap((c) => c.map((v) => v / 255))));
     gl.uniform3f(loc.uBg, BG[0] / 255, BG[1] / 255, BG[2] / 255);
     if (this.w > 0) gl.uniform2f(loc.uMap, this.w, this.h);
     return { prog, loc };
   }
 
-  /** Links the map shader of a style (and its ground pass) and makes them current; returns the map program. */
+  /** Links the map shader of a style (and its ground pass) in this.theme and makes them current; returns the map program. */
   private usePrograms(style: MapStyle): WebGLProgram {
-    const main = this.makeProgram(mapFragmentShader(style));
+    const main = this.makeProgram(mapFragmentShader(style, this.theme));
     let ground: Prog | null = null;
     this.changed = true;
     if (style !== 'today' && !this.lite) {
       try {
-        ground = this.makeProgram(groundFragmentShader(style));
+        ground = this.makeProgram(groundFragmentShader(style, this.theme));
       } catch (err) {
         this.gl.deleteProgram(main.prog);
         throw err;
@@ -229,6 +236,25 @@ export class MapGL {
     this.ensureGround();
   }
 
+  /** Builds the shaders in a map colour theme (they bake its ground colours in); the style stays. */
+  private useTheme(theme: MapTheme): void {
+    if (theme === this.theme) return;
+    const prev = this.theme;
+    const old = this.prog;
+    this.theme = theme;
+    try {
+      this.prog = this.usePrograms(this.style);
+    } catch (err) {
+      console.warn('map theme unavailable', theme.id, err);
+      this.theme = prev;
+      return;
+    }
+    this.gl.deleteProgram(old);
+    this.shown.clear();
+    this.gl.useProgram(this.prog);
+    if (this.fogW > 0) this.gl.uniform2f(this.loc.uFogScale, 1 / (this.fogW * 16), 1 / (this.fogH * 16));
+  }
+
   /** the ground of this game is built (in slices between frames, render/ground.ts groundLater): send it */
   private readonly groundReady = (): void => this.ensureGround();
 
@@ -240,12 +266,12 @@ export class MapGL {
     if (this.style === 'today' || this.groundBuilt || !this.game || this.lost) return;
     const gl = this.gl;
     const { map, terr } = this.game;
-    const g = groundLater(map, terr.depth, this.groundReady);
+    const g = groundLater(map, terr.depth, this.groundReady, terr.theme);
     if (!g) return;
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     resetUnpack(gl);
     this.bind(10, this.tex.groundCol, gl.LINEAR_MIPMAP_LINEAR, gl.LINEAR);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, map.width, map.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, g.far);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, map.width, map.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, this.decor ? withDecor(g.far, this.decor) : g.far);
     gl.generateMipmap(gl.TEXTURE_2D);
     // the light map draws the far colours only: the rest is for the ground pass
     if (!this.lite) {
@@ -267,9 +293,10 @@ export class MapGL {
     return this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE) as number;
   }
 
-  /** Uploads the per-game textures. */
+  /** Uploads the per-game textures (and relinks the shaders when the map's colour theme differs from the last game's). */
   setGame(map: MapData, terr: TerrainData, mirror: Uint32Array): void {
     const gl = this.gl;
+    this.useTheme(terr.theme ?? DEFAULT_THEME);
     const w = map.width;
     const h = map.height;
     this.w = w;
@@ -289,9 +316,18 @@ export class MapGL {
     for (let i = 0; i < w * h; i++) dep[i] = Math.min(255, terr.depth[i] * 10);
     this.bind(2, this.tex.depth, gl.LINEAR, gl.LINEAR);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, w, h, 0, gl.RED, gl.UNSIGNED_BYTE, dep);
+    // map decor (towns, farms, roads): painted once per map; its average colours go into the flat and far colours
+    let d = terr.decor?.length ? decorFor(map, terr.decor) : null;
+    if (d && Math.max(d.texW, d.texH) > this.maxSize) d = null;
+    this.decor = d;
+    this.bind(15, this.tex.decor, gl.NEAREST, gl.NEAREST);
+    if (d) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, d.texW, d.texH, 0, gl.RGBA, gl.UNSIGNED_BYTE, d.data);
+    else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+    this.decorInfo = d ? [d.idxW, d.idxH, d.perRow, this.lite ? 0 : 1] : [0, 0, 1, 0];
+    const flat = d ? withDecor(terr.rgba, d) : new Uint8Array(terr.rgba.buffer, terr.rgba.byteOffset, terr.rgba.byteLength);
     // flat colours, mipmapped
     this.bind(3, this.tex.terrCol, gl.LINEAR_MIPMAP_LINEAR, gl.NEAREST);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(terr.rgba.buffer, terr.rgba.byteOffset, terr.rgba.byteLength));
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, flat);
     gl.generateMipmap(gl.TEXTURE_2D);
     // owner
     this.bind(0, this.tex.owner, gl.NEAREST, gl.NEAREST);
@@ -318,7 +354,7 @@ export class MapGL {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([128, 0, 128, 0]));
     // the far colours: today's flat terrain colours until the ground is built (ensureGround)
     this.bind(10, this.tex.groundCol, gl.LINEAR_MIPMAP_LINEAR, gl.LINEAR);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(terr.rgba.buffer, terr.rgba.byteOffset, terr.rgba.byteLength));
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, flat);
     gl.generateMipmap(gl.TEXTURE_2D);
     for (const [unit, name] of [[12, 'mixA'], [13, 'mixB'], [14, 'mixC']] as const) {
       this.bind(unit, this.tex[name], gl.NEAREST, gl.NEAREST);
@@ -510,6 +546,7 @@ export class MapGL {
     gl.uniform1f(L.uP, P);
     gl.uniform2i(L.uGOrigin, origin[0], origin[1]);
     gl.uniform1f(L.uNearOn, this.ground && this.groundBuilt ? 1 : 0);
+    gl.uniform4i(L.uDecorInfo, ...this.decorInfo);
     gl.bindVertexArray(this.vao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     return true;
