@@ -18,7 +18,7 @@ import { decodeWorldMapBlob } from '../../sim/worldmaps';
 import balticBlob from '../../maps/data/baltic';
 import type { RGB } from '../art/shared/colour';
 import { motionParams } from '../art/motion';
-import { FORE, rasterize, type Baked, type Part } from '../art/detailed/bake';
+import { FORE, rasterize, type Baked, type Part, type Pattern } from '../art/detailed/bake';
 import { gridOf } from '../art/detailed/grid';
 import { outlineOf, ringWidth } from '../art/detailed/outline';
 import { box, ell, grown, poly, seg } from '../art/detailed/shapes';
@@ -81,22 +81,137 @@ export interface BuildingSpec {
 const bx = box;
 const el = ell;
 
-/** A pitched roof over a footprint: a lit slope, a darker slope, a bright ridge cap. */
-function roof(u0: number, v0: number, u1: number, v1: number, z: number, m: Mat, rh = 1.3, over = 0.5): Part[] {
-  const a = u0 - over;
-  const b = v0 - over;
-  const c = u1 + over;
-  const d = v1 + over;
-  if (c - a >= d - b) {
+interface RoofOpt {
+  rh?: number;
+  over?: number;
+  /** corrugated metal (lines run down the slope) instead of tiles (courses across it) */
+  metal?: boolean;
+  /** the ridge runs along u (default: along the longer side) */
+  alongU?: boolean;
+}
+/** A gable roof over a footprint: a lit slope, a darker slope, a bright ridge cap, tile courses or metal corrugation on both. */
+function gable(u0: number, v0: number, u1: number, v1: number, z: number, m: Mat, o: RoofOpt = {}): Part[] {
+  const rh = o.rh ?? 1.4;
+  const ov = o.over ?? 0.5;
+  const a = u0 - ov;
+  const b = v0 - ov;
+  const c = u1 + ov;
+  const d = v1 + ov;
+  const alongU = o.alongU ?? c - a >= d - b;
+  if (alongU) {
     const vm = (b + d) / 2;
-    return [bx(a, b, c, vm, z, rh, m, { tone: 0.8 }), bx(a, vm, c, d, z, rh * 0.55, m, { tone: -0.9 }), bx(a, vm - 0.25, c, vm + 0.25, z + rh, 0.2, m, { tone: 1.7 })];
+    const pat: Pattern = o.metal ? 'grille' : 'planks';
+    return [bx(a, b, c, vm, z, rh, m, { tone: 0.8, pat }), bx(a, vm, c, d, z, rh * 0.6, m, { tone: -1, pat }), bx(a, vm - 0.22, c, vm + 0.22, z + rh, 0.25, m, { tone: 1.6 })];
   }
   const um = (a + c) / 2;
-  return [bx(a, b, um, d, z, rh, m, { tone: 0.8 }), bx(um, b, c, d, z, rh * 0.55, m, { tone: -0.9 }), bx(um - 0.25, b, um + 0.25, d, z + rh, 0.2, m, { tone: 1.7 })];
+  const pat: Pattern = o.metal ? 'planks' : 'grille';
+  return [bx(a, b, um, d, z, rh, m, { tone: 0.8, pat }), bx(um, b, c, d, z, rh * 0.6, m, { tone: -1, pat }), bx(um - 0.22, b, um + 0.22, d, z + rh, 0.25, m, { tone: 1.6 })];
 }
-/** A house: walls and a pitched roof. */
-function house(u0: number, v0: number, u1: number, v1: number, z: number, roofM: Mat, wall: Mat = 'cream'): Part[] {
-  return [bx(u0, v0, u1, v1, 0, z, wall, { tone: -0.4 }), ...roof(u0, v0, u1, v1, z, roofM)];
+/** A hip roof: four slopes (lit north and west, shaded south and east) meeting in a ridge or a point. */
+function hip(u0: number, v0: number, u1: number, v1: number, z: number, m: Mat, o: RoofOpt = {}): Part[] {
+  const rh = o.rh ?? 1.6;
+  const ov = o.over ?? 0.5;
+  const a = u0 - ov;
+  const b = v0 - ov;
+  const c = u1 + ov;
+  const d = v1 + ov;
+  const s = Math.min(rh * 1.6, Math.min(c - a, d - b) / 2);
+  const vm = (b + d) / 2;
+  const um = (a + c) / 2;
+  const tp: Pattern = o.metal ? 'grille' : 'planks';
+  const P: Part[] = [
+    poly([a, b, c, b, c - s, b + s, a + s, b + s], z, rh, m, { tone: 0.7, pat: tp }),
+    poly([a, b, a + s, b + s, a + s, d - s, a, d], z, rh, m, { tone: 1.0, pat: 'grille' }),
+    poly([c, b, c, d, c - s, d - s, c - s, b + s], z, rh, m, { tone: -1.3, pat: 'grille' }),
+    poly([a, d, a + s, d - s, c - s, d - s, c, d], z, rh, m, { tone: -0.9, pat: tp }),
+  ];
+  if (c - a - 2 * s > 0.4) P.push(bx(a + s, vm - 0.2, c - s, vm + 0.2, z + rh, 0.25, m, { tone: 1.6 }));
+  else if (d - b - 2 * s > 0.4) P.push(bx(um - 0.2, b + s, um + 0.2, d - s, z + rh, 0.25, m, { tone: 1.6 }));
+  else P.push(el(um, vm, 0.5, 0.5, z + rh, 0.5, m, { sh: 'dome', tone: 1 }));
+  return P;
+}
+/** A pitched roof over a footprint (a gable). */
+const roof = (u0: number, v0: number, u1: number, v1: number, z: number, m: Mat, rh = 1.3, over = 0.5, metal = false): Part[] => gable(u0, v0, u1, v1, z, m, { rh, over, metal });
+/** A brick chimney with a dark flue. */
+const chimney = (u: number, v: number, z: number, h: number): Part[] => [bx(u, v, u + 1.1, v + 1.1, z, h, 'brick', { tone: -0.2 }), bx(u + 0.25, v + 0.25, u + 0.85, v + 0.85, z + h, 0, 'black')];
+/** A rooftop air-conditioning unit: a grilled casing with a dark fan. */
+const acUnit = (u: number, v: number, z: number): Part[] => [bx(u, v, u + 2.4, v + 1.7, z, 1.1, 'alu', { tone: -0.2, pat: 'grille' }), el(u + 0.8, v + 0.85, 0.55, 0.5, z + 1.1, 0, 'gun')];
+const skylight = (u: number, v: number, z: number, w = 2, d = 1.3): Part[] => [bx(u - 0.2, v - 0.2, u + w + 0.2, v + d + 0.2, z, 0.5, 'sup', { tone: 0.3 }), bx(u, v, u + w, v + d, z + 0.5, 0, 'glass', { tone: 0.3, pat: 'frames' })];
+const ventPipe = (u: number, v: number, z: number): Part[] => [el(u, v, 0.45, 0.45, z, 1.6, 'gun', { sh: 'cyl', tone: 0.7 }), el(u, v, 0.7, 0.7, z + 1.6, 0.25, 'alu', { sh: 'dome' })];
+const waterTank = (u: number, v: number, z: number): Part[] => [el(u, v, 1.3, 1.2, z, 2.3, 'canvas', { sh: 'cyl', tone: -0.2 }), el(u, v, 1.35, 1.25, z + 2.3, 0.5, 'alu', { sh: 'dome', tone: 0.3 })];
+/** Gear scattered on a flat roof: units, skylights, vents, a stair box, a tank, picked by a seed. */
+function roofGear(u0: number, v0: number, u1: number, v1: number, z: number, seed: number, simple: boolean): Part[] {
+  const P: Part[] = [];
+  const w = u1 - u0;
+  const d = v1 - v0;
+  if (w < 5 || d < 3.4) return [...ventPipe((u0 + u1) / 2, (v0 + v1) / 2, z)];
+  const n = simple ? 2 : 3;
+  for (let i = 0; i < n; i++) {
+    const kind = Math.floor(hash(seed, i, 5) * 5);
+    const fu = u0 + 0.9 + ((i + 0.3 + hash(seed, i, 6) * 0.4) / n) * (w - 4.4);
+    const fv = v0 + 0.9 + hash(seed, i, 7) * Math.max(0, d - 3.8);
+    if (kind === 0) P.push(...acUnit(fu, fv, z));
+    else if (kind === 1) P.push(...skylight(fu, fv, z, 2.2, 1.3));
+    else if (kind === 2) P.push(...bx2(fu, fv, z));
+    else if (kind === 3) P.push(...waterTank(fu + 1.2, fv + 1.2, z));
+    else P.push(...ventPipe(fu + 0.5, fv + 0.5, z), ...acUnit(fu + 1.3, fv + 0.2, z));
+  }
+  return P;
+}
+/** A roof stair house. */
+const bx2 = (u: number, v: number, z: number): Part[] => [bx(u, v, u + 2.4, v + 2, z, 1.8, 'sup', { tone: 0.1 }), bx(u + 0.4, v + 2, u + 1.4, v + 2.14, z, 1.2, 'black', { tone: 0.5 })];
+/** A tree: a round crown with a lighter top, in the muted greens. */
+const tree = (u: number, v: number, r: number, seed = 0): Part[] => [
+  el(u, v, r, r * 0.92, 0.5, 2.4, hash(seed, 3) > 0.5 ? 'camo' : 'olive', { sh: 'dome', tone: 0.3 }),
+  el(u - r * 0.25, v - r * 0.25, r * 0.5, r * 0.45, 2.9, 0.8, 'olive', { sh: 'dome', tone: 0.7 }),
+];
+/** Polygon points of a rectangle shrunk by m. */
+const ptsRect = (u0: number, v0: number, u1: number, v1: number, m = 0): number[] => [u0 + m, v0 + m, u1 - m, v0 + m, u1 - m, v1 - m, u0 + m, v1 - m];
+/** An L footprint: the rectangle less its north-east corner (cw wide, cd deep), shrunk by m, optionally mirrored west to east. */
+function ptsL(u0: number, v0: number, u1: number, v1: number, cw: number, cd: number, m: number, flipU: boolean): number[] {
+  const p = [u0 + m, v0 + m, u1 - cw - m, v0 + m, u1 - cw - m, v0 + cd + m, u1 - m, v0 + cd + m, u1 - m, v1 - m, u0 + m, v1 - m];
+  if (!flipU) return p;
+  const out: number[] = [];
+  for (let i = 0; i < p.length; i += 2) out.push(u0 + u1 - p[i], p[i + 1]);
+  return out;
+}
+/** A T footprint: a bar along the north (bd deep) and a stem (sw wide) running south from its middle, shrunk by m. */
+function ptsT(u0: number, v0: number, u1: number, v1: number, sw: number, bd: number, m: number): number[] {
+  const um = (u0 + u1) / 2;
+  return [u0 + m, v0 + m, u1 - m, v0 + m, u1 - m, v0 + bd - m, um + sw / 2 - m, v0 + bd - m, um + sw / 2 - m, v1 - m, um - sw / 2 + m, v1 - m, um - sw / 2 + m, v0 + bd - m, u0 + m, v0 + bd - m];
+}
+/** A house: walls and a gable or hip roof, with a chimney. */
+function house(u0: number, v0: number, u1: number, v1: number, z: number, roofM: Mat, wall: Mat = 'cream', o: { hip?: boolean; chim?: number; metal?: boolean } = {}): Part[] {
+  const P: Part[] = [bx(u0, v0, u1, v1, 0, z, wall, { tone: -0.4 })];
+  const rh = Math.min(2, Math.max(1.2, Math.min(u1 - u0, v1 - v0) * 0.3));
+  P.push(...(o.hip ? hip(u0, v0, u1, v1, z, roofM, { rh, metal: o.metal }) : gable(u0, v0, u1, v1, z, roofM, { rh, metal: o.metal })));
+  if (o.chim !== undefined) P.push(...chimney(u0 + (u1 - u0) * o.chim, v0 + 0.5, z, rh + 1.3));
+  return P;
+}
+/** An L house: an L of walls, a gable along each wing, the east-west one lower, a chimney. */
+function houseL(u0: number, v0: number, u1: number, v1: number, z: number, roofM: Mat, wall: Mat, flipU: boolean): Part[] {
+  const ww = (u1 - u0) * 0.5;
+  const wd = (v1 - v0) * 0.55;
+  const P: Part[] = [poly(ptsL(u0, v0, u1, v1, u1 - u0 - ww, v1 - v0 - wd, 0, flipU), 0, z, wall, { tone: -0.4 })];
+  const a0 = flipU ? u1 - ww : u0;
+  const a1 = flipU ? u1 : u0 + ww;
+  P.push(...gable(u0, v1 - wd, u1, v1, z - 0.5, roofM, { rh: 1.2, alongU: true }));
+  P.push(...gable(a0, v0, a1, v1, z, roofM, { rh: 1.5, alongU: false }));
+  P.push(...chimney(flipU ? a1 - 1.8 : a0 + 0.8, v0 + 0.8, z, 2.6));
+  return P;
+}
+/** A T house: a bar gable and a lower stem gable, two chimneys. */
+function houseT(u0: number, v0: number, u1: number, v1: number, z: number, roofM: Mat, wall: Mat): Part[] {
+  const bd = (v1 - v0) * 0.5;
+  const sw = (u1 - u0) * 0.42;
+  const um = (u0 + u1) / 2;
+  return [
+    poly(ptsT(u0, v0, u1, v1, sw, bd, 0), 0, z, wall, { tone: -0.4 }),
+    ...gable(um - sw / 2, v0 + bd - 0.4, um + sw / 2, v1, z - 0.5, roofM, { rh: 1.2, alongU: false }),
+    ...gable(u0, v0, u1, v0 + bd, z, roofM, { rh: 1.5, alongU: true }),
+    ...chimney(u0 + 1.4, v0 + 0.5, z, 2.6),
+    ...chimney(u1 - 2.6, v0 + 0.5, z, 2.6),
+  ];
 }
 /** A flag: a pole standing up and a small flag in the owner's colour. */
 function flag(u: number, v: number, z: number, h: number, w = 3.2): Part[] {
@@ -104,9 +219,15 @@ function flag(u: number, v: number, z: number, h: number, w = 3.2): Part[] {
 }
 /** A thin band of the owner's colour lying on a roof or wall top. */
 const band = (u0: number, v0: number, u1: number, v1: number, z: number): Part => bx(u0, v0, u1, v1, z, 0.35, 'own');
-/** A round tower with a conical cap. */
-function tower(u: number, v: number, r: number, z: number): Part[] {
-  return [el(u, v, r, r * 0.9, 0, z, 'sup', { sh: 'cyl', tone: -0.2 }), el(u, v, r * 0.78, r * 0.7, z, 1.4, 'fieldgrey', { sh: 'dome', tone: 0.4 })];
+/** A round tower: a stone drum with a crenellated ring and a stepped conical slate cap. */
+function tower(u: number, v: number, r: number, z: number, cap: Mat = 'rust'): Part[] {
+  return [
+    el(u, v, r, r * 0.9, 0, z, 'sup', { sh: 'cyl', tone: -0.2 }),
+    el(u, v, r * 1.05, r * 0.95, z, 0.9, 'sup', { sh: 'cyl', tone: 0.5 }),
+    el(u, v, r * 0.9, r * 0.8, z + 0.9, 1.3, cap, { sh: 'dome', tone: 0.5 }),
+    el(u, v, r * 0.62, r * 0.55, z + 2.2, 1.3, cap, { sh: 'dome', tone: 0.8 }),
+    el(u, v, r * 0.34, r * 0.3, z + 3.5, 1.2, cap, { sh: 'dome', tone: 1.1 }),
+  ];
 }
 function merlonsH(u0: number, u1: number, v: number, z: number, step = 2.4): Part[] {
   const out: Part[] = [];
@@ -154,6 +275,10 @@ function radarDish(u: number, v: number, simple = false): Part[] {
 
 // ---- fort
 
+/** A stone wall run with a worn walkway on top (the merlons are added by the caller). */
+function wallRun(u0: number, v0: number, u1: number, v1: number, wz: number): Part[] {
+  return [bx(u0, v0, u1, v1, 0, wz, 'sup', { tone: -0.3, pat: 'planks' })];
+}
 function fortModel(lv: number, addon: Addon, simple = false): Part[] {
   const cfg = lv >= 5 ? { w: 36, d: 24, t: 3.2, wz: 8, tz: 12, r: 4.0 } : lv >= 3 ? { w: 30, d: 20, t: 2.8, wz: 6, tz: 9, r: 3.3 } : { w: 24, d: 15, t: 2.2, wz: 4.2, tz: 6.5, r: 2.6 };
   const { w, d, t, wz, tz, r } = cfg;
@@ -163,40 +288,54 @@ function fortModel(lv: number, addon: Addon, simple = false): Part[] {
   const y1 = d / 2;
   const gate = lv >= 5 ? 4.6 : 3.6;
   const P: Part[] = [];
-  // the courtyard floor: trampled earth
+  // the courtyard floor: trampled earth with a worn flagstone lane from the gate
   P.push(bx(x0 + t, y0 + t, x1 - t, y1 - t, 0, 0, 'tan', { inset: true, tone: -1.2 }));
-  // the wall ring (the south wall has the gate gap)
-  P.push(bx(x0, y0, x1, y0 + t, 0, wz, 'sup', { tone: -0.3 }));
-  P.push(bx(x0, y0, x0 + t, y1, 0, wz, 'sup', { tone: -0.3 }));
-  P.push(bx(x1 - t, y0, x1, y1, 0, wz, 'sup', { tone: -0.3 }));
-  P.push(bx(x0, y1 - t, -gate, y1, 0, wz, 'sup', { tone: -0.3 }));
-  P.push(bx(gate, y1 - t, x1, y1, 0, wz, 'sup', { tone: -0.3 }));
+  P.push(bx(-1.6, y0 + t + 3, 1.6, y1 - t, 0, 0, 'tan', { tone: 0.3, pat: 'hatches' }));
+  // the wall ring (the south wall has the gate gap), with a darker walkway behind the merlons
+  P.push(...wallRun(x0, y0, x1, y0 + t, wz), ...wallRun(x0, y0, x0 + t, y1, wz), ...wallRun(x1 - t, y0, x1, y1, wz), ...wallRun(x0, y1 - t, -gate, y1, wz), ...wallRun(gate, y1 - t, x1, y1, wz));
+  P.push(bx(x0 + 1.4, y0 + 1.2, x1 - 1.4, y0 + t - 0.3, wz, 0, 'tan', { inset: true, tone: -0.9 }), bx(x0 + 1.2, y0 + 1.4, x0 + t - 0.3, y1 - 1.4, wz, 0, 'tan', { inset: true, tone: -0.9 }), bx(x1 - t + 0.3, y0 + 1.4, x1 - 1.2, y1 - 1.4, wz, 0, 'tan', { inset: true, tone: -0.9 }));
   P.push(...merlonsH(x0 + 1, x1 - 1, y0 + 0.2, wz), ...merlonsH(x0 + 1, -gate - 0.5, y1 - 1.1, wz), ...merlonsH(gate + 0.5, x1 - 1, y1 - 1.1, wz));
   P.push(...merlonsV(y0 + 2, y1 - 2, x0 + 0.2, wz), ...merlonsV(y0 + 2, y1 - 2, x1 - 1.1, wz));
-  // the gate house: a lintel over a dark arch, a band of the owner's colour on its roof
-  P.push(bx(-gate - 0.6, y1 - t - 0.6, gate + 0.6, y1 + 0.4, 0, wz + 1.6, 'sup', { tone: 0.1 }));
-  P.push(bx(-gate * 0.6, y1 + 0.4, gate * 0.6, y1 + 0.7, 0, (wz + 1.6) * 0.62, 'black', { tone: 0.5 }));
-  P.push(band(-gate - 0.2, y1 - 1.4, gate + 0.2, y1 - 0.4, wz + 1.6));
+  // buttresses against the outer faces
+  if (!simple) {
+    for (let u = x0 + r + 2.5; u < x1 - r - 2; u += 5.5) P.push(bx(u, y0 - 0.9, u + 1.5, y0, 0, wz * 0.72, 'sup', { tone: 0.1 }));
+    for (let v = y0 + r + 2; v < y1 - r - 1; v += 5.5) P.push(bx(x0 - 0.9, v, x0, v + 1.5, 0, wz * 0.72, 'sup', { tone: 0.1 }), bx(x1, v, x1 + 0.9, v + 1.5, 0, wz * 0.72, 'sup', { tone: 0.1 }));
+  }
+  // the gate house: stone piers either side of a dark arch with a portcullis, a tiled hip roof, the owner's band on its ridge
+  P.push(bx(-gate - 0.9, y1 - t - 0.6, -gate + 0.4, y1 + 0.4, 0, wz + 1.2, 'sup', { tone: 0.1 }), bx(gate - 0.4, y1 - t - 0.6, gate + 0.9, y1 + 0.4, 0, wz + 1.2, 'sup', { tone: 0.1 }));
+  P.push(bx(-gate, y1 - t - 0.2, gate, y1 + 0.3, 0, wz + 1.0, 'cream', { tone: -0.2 }));
+  P.push(...hip(-gate - 0.9, y1 - t - 0.6, gate + 0.9, y1 + 0.4, wz + 1.2, 'rust', { rh: 1.6, over: 0.3 }));
+  P.push(bx(-gate * 0.66, y1 + 0.3, gate * 0.66, y1 + 0.9, 0, (wz + 1.0) * 0.66, 'black', { tone: 0.5 }), bx(-gate * 0.66, y1 + 0.9, gate * 0.66, y1 + 1.3, 0.6, (wz + 1.0) * 0.5, 'gun', { tone: 0.4, pat: 'grille' }));
+  P.push(band(-gate - 0.2, y1 - 1.6, gate + 0.2, y1 - 0.8, wz + 2.8));
   // what stands inside
   if (lv <= 1) {
-    P.push(...house(-4, -1, 3, 3.4, 3.2, 'rust'), ...house(-9, -2.6, -5.4, 0.6, 2.6, 'brick'));
+    P.push(...house(-8.4, -3.9, 0.6, -0.3, 3.0, 'rust', 'cream', { chim: 0.7 }), ...house(3.2, -3.8, 8.6, 0.8, 2.6, 'brick', 'canvas', { hip: true }));
+    // a well, a haystack, a heap of crates
+    P.push(el(4.6, 3, 1.3, 1.2, 0, 1.1, 'sup', { sh: 'cyl', tone: 0.3 }), el(4.6, 3, 0.85, 0.75, 1.1, 0, 'sea'), el(-6.2, 2.9, 2.0, 1.6, 0, 2.1, 'ochre', { sh: 'dome', tone: 0.3 }), bx(-2.6, 2.6, -0.8, 3.9, 0, 1.2, 'teak', { pat: 'planks' }), bx(-1.0, 3.0, 0.4, 4.1, 0, 0.9, 'teak', { pat: 'planks', tone: -0.3 }), bx(-2.2, 2.9, -1.2, 3.8, 1.2, 0.9, 'teak', { pat: 'planks', tone: 0.3 }));
   } else if (lv <= 3) {
-    P.push(bx(-5, -3, 5, 3.6, 0, 8, 'cream', { tone: -0.3 }), ...roof(-5, -3, 5, 3.6, 8, 'fieldgrey', 1.6, 0.6), band(-5.4, 3.6, 5.4, 4.2, 8));
-    P.push(...house(-12, -1, -7, 3, 3.6, 'brick'), ...house(7.4, -1, 12, 3, 3.6, 'brick'));
-    P.push(...flag(0, -1.6, 9.6, 8, 4));
+    // a keep with a slate hip roof and four round corner turrets, a banner on a pole, two barracks, a well
+    P.push(bx(-5.2, -4.4, 5.2, 2.4, 0, 7.6, 'cream', { tone: -0.3 }), ...hip(-5.2, -4.4, 5.2, 2.4, 7.6, 'fieldgrey', { rh: 2.6, over: 0.7 }), band(-5.6, 2.4, 5.6, 3.1, 7.6));
+    for (const [tu, tv] of [[-5.2, -4.4], [5.2, -4.4], [-5.2, 2.4], [5.2, 2.4]]) P.push(...tower(tu, tv, 1.2, 8.6, 'ochre'));
+    P.push(...chimney(-2.4, -3.4, 7.6, 4));
+    P.push(...flag(0, -1.0, 10.4, 7.5, 4));
+    P.push(...house(-11.6, -4.6, -7.4, 3.4, 3.4, 'brick', 'cream', { chim: 0.5 }), ...house(7.4, -4.6, 11.6, 3.4, 3.4, 'rust', 'canvas', { chim: 0.5 }));
+    P.push(el(0, 5.2, 1.3, 1.2, 0, 1.1, 'sup', { sh: 'cyl', tone: 0.3 }), el(0, 5.2, 0.85, 0.75, 1.1, 0, 'sea'));
   } else {
-    // an inner wall, a tall keep with a dome and a banner band, barracks
-    P.push(bx(-12, -6, 12, 7, 0, 3.4, 'sup', { tone: -0.5 }), bx(-10.8, -4.8, 10.8, 5.8, 0, 0, 'tan', { inset: true, tone: -1.4 }));
-    P.push(bx(-6.5, -4.6, 6.5, 3.4, 0, 12, 'cream', { tone: -0.3 }), ...roof(-6.5, -4.6, 6.5, 3.4, 12, 'fieldgrey', 1.8, 0.6));
-    P.push(el(0, -0.6, 3.0, 2.6, 13.4, 2.6, 'brass', { sh: 'dome' }), band(-6.9, 3.4, 6.9, 4.2, 12));
-    P.push(...flag(0.4, -0.6, 16, 9, 5));
-    P.push(...house(-16, -2, -12.6, 2, 4.2, 'brick'), ...house(12.6, -2, 16, 2, 4.2, 'brick'));
+    // an inner wall round a tall keep (stepped slate roof, a brass dome, corner turrets), cottages in the yard
+    P.push(bx(-12, -6, 12, 7, 0, 3.4, 'sup', { tone: -0.5, pat: 'planks' }), bx(-10.8, -4.8, 10.8, 5.8, 0, 0, 'tan', { inset: true, tone: -1.4 }));
+    P.push(...merlonsH(-11.4, 11, -6, 3.4, 2.6), ...merlonsH(-11.4, 11, 6.1, 3.4, 2.6));
+    P.push(bx(-6.5, -4.6, 6.5, 3.4, 0, 12, 'cream', { tone: -0.3 }), ...hip(-6.5, -4.6, 6.5, 3.4, 12, 'fieldgrey', { rh: 2.4, over: 0.7 }));
+    P.push(bx(-3.4, -3.2, 3.4, 1.6, 14.4, 1.2, 'sup', { tone: 0.2 }), ...hip(-3.4, -3.2, 3.4, 1.6, 15.6, 'fadedBlue', { rh: 1.8, over: 0.4 }), el(0, -0.8, 1.2, 1.1, 17.4, 1.8, 'brass', { sh: 'dome' }));
+    for (const [tu, tv] of [[-6.5, -4.6], [6.5, -4.6], [-6.5, 3.4], [6.5, 3.4]]) P.push(...tower(tu, tv, 1.5, 13.4, 'rust'));
+    P.push(band(-6.9, 3.4, 6.9, 4.2, 12), ...flag(0.4, -0.8, 19, 8, 5));
+    P.push(...house(-10.4, -3.8, -7.4, 0.4, 3.4, 'brick', 'cream', { chim: 0.5 }), ...house(7.4, -3.8, 10.4, 0.4, 3.4, 'rust', 'canvas', { hip: true }));
   }
-  // the corner towers and (level 5) the back one
-  P.push(...tower(x0, y0, r, tz), ...tower(x1, y0, r, tz));
-  if (lv >= 5) P.push(...tower(0, y0 + 0.2, r * 0.9, tz - 1));
-  P.push(...tower(x0, y1, r, tz), ...tower(x1, y1, r, tz));
-  P.push(...flag(x1 - 0.2, y0 - 0.4, tz + 1.4, lv >= 3 ? 7 : 5.5, 4.4));
+  // the corner towers (round drums with stepped slate caps) and (level 5) the back one
+  const caps: Mat[] = ['rust', 'ochre', 'ochre', 'rust'];
+  P.push(...tower(x0, y0, r, tz, caps[0]), ...tower(x1, y0, r, tz, caps[1]));
+  if (lv >= 5) P.push(...tower(0, y0 + 0.2, r * 0.9, tz - 1, 'rust'));
+  P.push(...tower(x0, y1, r, tz, caps[2]), ...tower(x1, y1, r, tz, caps[3]));
+  P.push(...flag(x1 - 0.2, y0 - 0.4, tz + 4.6, lv >= 3 ? 7 : 5.5, 4.4));
   for (const cx of [x0, x1]) P.push(band(cx - r * 0.6, y1 + r * 0.55, cx + r * 0.6, y1 + r * 0.55 + 0.9, 0.5));
   if (lv >= 5) P.push(bx(-2.3, y1, 2.3, y1 + 4.4, 0, 0.6, 'teak', { pat: 'planks' }));
   if (addon === 'flak') P.push(...flakGun(x0 - 5, y1 + 5, simple), ...flakGun(x1 + 5, y1 + 5, simple));
@@ -209,58 +348,54 @@ function fortModel(lv: number, addon: Addon, simple = false): Part[] {
 
 // ---- city
 
+type LotKind = 'gable' | 'hip' | 'L' | 'T' | 'block' | 'blockL' | 'tall' | 'shed' | 'tanks' | 'church';
 interface Lot {
   u: number;
   v: number;
   w: number;
   d: number;
   z: number;
-  k: 'house' | 'block' | 'church';
+  k: LotKind;
   roof: Mat;
   wall?: Mat;
 }
-/** The blocks of a town. The streets are the gaps between them (3 to 5 model units wide). Levels 3 and 5 grow taller and denser. */
+const lot = (u: number, v: number, w: number, d: number, z: number, k: LotKind, roofM: Mat, wall?: Mat): Lot => ({ u, v, w, d, z, k, roof: roofM, wall });
+/** The blocks of a town. The streets are the gaps between them (3 to 7 model units wide). Levels 3 and 5 grow taller and denser. */
 function cityLots(lv: number): Lot[] {
   if (lv >= 5) {
     // four columns by four rows; the cathedral takes the middle and its plaza the middle of the front row
     return [
-      { u: -19, v: -16, w: 8.5, d: 5, z: 16, k: 'block', roof: 'fieldgrey', wall: 'sup' },
-      { u: -6.5, v: -16, w: 8, d: 5, z: 7, k: 'block', roof: 'fieldgrey', wall: 'cream' },
-      { u: 6.5, v: -16, w: 8, d: 5, z: 10, k: 'block', roof: 'fieldgrey', wall: 'tan' },
-      { u: 19, v: -16, w: 8.5, d: 5, z: 7, k: 'block', roof: 'fieldgrey', wall: 'sup' },
-      { u: -19, v: -6, w: 8.5, d: 5, z: 5.5, k: 'house', roof: 'brick' },
-      { u: 19, v: -6, w: 8.5, d: 5, z: 14, k: 'block', roof: 'fieldgrey', wall: 'sup' },
-      { u: 0, v: 4, w: 9.5, d: 15, z: 6, k: 'church', roof: 'brick' },
-      { u: -19, v: 4, w: 8.5, d: 5, z: 7, k: 'block', roof: 'fieldgrey', wall: 'tan' },
-      { u: 19, v: 4, w: 8.5, d: 5, z: 5.5, k: 'house', roof: 'rust' },
-      { u: -19, v: 14, w: 8.5, d: 5, z: 5, k: 'house', roof: 'ochre' },
-      { u: -9, v: 14, w: 5, d: 5, z: 4.5, k: 'house', roof: 'fadedBlue' },
-      { u: 9, v: 14, w: 5, d: 5, z: 4.5, k: 'house', roof: 'brick' },
-      { u: 19, v: 14, w: 8.5, d: 5, z: 5, k: 'house', roof: 'rust' },
+      lot(-19, -16, 8.5, 5, 16, 'tall', 'fieldgrey', 'sup'),
+      lot(-6.5, -16, 8, 5, 7, 'blockL', 'fieldgrey', 'cream'),
+      lot(6.5, -16, 8, 5, 4.4, 'shed', 'cargo', 'tan'),
+      lot(19, -16, 8.5, 5, 7.5, 'block', 'fieldgrey', 'sup'),
+      lot(-19, -6, 8.5, 5, 5.5, 'T', 'brick', 'cream'),
+      lot(19, -6, 8.5, 5, 14, 'tall', 'fieldgrey', 'tan'),
+      lot(0, 4, 9.5, 15, 6, 'church', 'brick'),
+      lot(-19, 4, 8.5, 5, 7, 'blockL', 'fieldgrey', 'tan'),
+      lot(19, 4, 8.5, 5, 5.5, 'L', 'rust', 'canvas'),
+      lot(-19, 14, 8.5, 5, 5, 'hip', 'ochre', 'cream'),
+      lot(-9, 14, 5, 5, 4.5, 'gable', 'fadedBlue', 'canvas'),
+      lot(9, 14, 5, 5, 4.5, 'hip', 'brick', 'cream'),
+      lot(19, 14, 8.5, 5, 5, 'tanks', 'cargo', 'sup'),
     ];
   }
   if (lv >= 3) {
     return [
-      { u: -14.5, v: -12.5, w: 9, d: 5.5, z: 8, k: 'block', roof: 'fieldgrey', wall: 'sup' },
-      { u: 0, v: -12.5, w: 9, d: 5.5, z: 8, k: 'block', roof: 'fieldgrey', wall: 'cream' },
-      { u: 14.5, v: -12.5, w: 9, d: 5.5, z: 7, k: 'block', roof: 'fieldgrey', wall: 'tan' },
-      { u: -14.5, v: 0, w: 9, d: 5.5, z: 4.5, k: 'house', roof: 'brick' },
-      { u: 0, v: 0.5, w: 7.5, d: 13, z: 5.5, k: 'church', roof: 'brick' },
-      { u: 14.5, v: 0, w: 9, d: 5.5, z: 5, k: 'house', roof: 'rust' },
-      { u: -14.5, v: 12, w: 9, d: 5.5, z: 4.5, k: 'house', roof: 'fadedBlue' },
-      { u: 0, v: 13.5, w: 7, d: 5, z: 4.5, k: 'house', roof: 'ochre' },
-      { u: 14.5, v: 12, w: 9, d: 5.5, z: 7, k: 'block', roof: 'fieldgrey', wall: 'cream' },
+      lot(-14.5, -12.5, 9, 5.5, 8, 'blockL', 'fieldgrey', 'sup'),
+      lot(0, -12.5, 9, 5.5, 4.2, 'shed', 'cargo', 'tan'),
+      lot(14.5, -12.5, 9, 5.5, 7, 'block', 'fieldgrey', 'cream'),
+      lot(-14.5, 0, 9, 5.5, 4.5, 'hip', 'brick', 'cream'),
+      lot(0, 0.5, 7.5, 13, 5.5, 'church', 'brick'),
+      lot(14.5, 0, 9, 5.5, 5, 'L', 'rust', 'canvas'),
+      lot(-14.5, 12, 9, 5.5, 4.5, 'gable', 'fadedBlue', 'cream'),
+      lot(0, 13.5, 7, 5, 4.5, 'tanks', 'cargo', 'sup'),
+      lot(14.5, 12, 9, 5.5, 7, 'blockL', 'fieldgrey', 'tan'),
     ];
   }
-  return [
-    { u: -12, v: -5.5, w: 7.5, d: 5.5, z: 3.6, k: 'house', roof: 'brick' },
-    { u: 12, v: -5.5, w: 7.5, d: 5.5, z: 3.6, k: 'house', roof: 'rust' },
-    { u: 0, v: 0.5, w: 7, d: 12, z: 4.5, k: 'church', roof: 'brick' },
-    { u: -12, v: 5.5, w: 7.5, d: 5.5, z: 3.4, k: 'house', roof: 'ochre' },
-    { u: 12, v: 5.5, w: 7.5, d: 5.5, z: 3.4, k: 'house', roof: 'fadedBlue' },
-  ];
+  return [lot(-12, -5.5, 7.5, 5.5, 3.6, 'gable', 'brick', 'cream'), lot(12, -5.5, 7.5, 5.5, 3.8, 'L', 'rust', 'tan'), lot(0, 0.5, 7, 12, 4.5, 'church', 'brick'), lot(-12, 5.5, 7.5, 5.5, 3.4, 'hip', 'ochre', 'canvas'), lot(12, 5.5, 7.5, 5.5, 3.4, 'gable', 'fadedBlue', 'cream')];
 }
-/** The outer edge of the town (all lots plus a little margin), for its single outline and its ground. */
+/** The outer edge of the town (all lots plus a little margin), for its ground. */
 function cityBounds(lv: number): [number, number, number, number] {
   let u0 = 99;
   let u1 = -99;
@@ -279,16 +414,15 @@ function windows(u0: number, u1: number, v: number, z0: number, z1: number, simp
   const P: Part[] = [];
   const cs = simple ? 2.8 : 1.9;
   const rs = simple ? 3.4 : 2.3;
-  let ri = 0;
-  for (let z = z0; z + 1 <= z1; z += rs, ri++) {
-    for (let u = u0 + 0.9 + (ri % 2) * (simple ? 0 : 0.0); u + 0.9 <= u1 - 0.5; u += cs) {
+  for (let z = z0; z + 1 <= z1; z += rs) {
+    for (let u = u0 + 0.9; u + 0.9 <= u1 - 0.5; u += cs) {
       const lit = hash(Math.round(u * 3), Math.round(z * 3), seed) > 0.5;
-      P.push(bx(u, v, u + 0.85, v + 0.14, z, 1.05, lit ? 'brass' : 'glass', lit ? { glow: true } : { tone: -0.6 }));
+      P.push(bx(u, v, u + 0.85, v + 0.6, z, 1.05, lit ? 'brass' : 'glass', lit ? { glow: true } : { tone: -0.6 }));
     }
   }
   return P;
 }
-/** A church: a nave with a pitched roof, a transept from level 3, a front tower (two at level 5) with a spire and the owner's banner. */
+/** A church: a nave with a tiled pitched roof and a round apse, a transept from level 3, a front tower (two at level 5) with a spire and the owner's banner. */
 function church(l: Lot, lv: number, simple: boolean): Part[] {
   const P: Part[] = [];
   const u0 = l.u - l.w / 2;
@@ -299,19 +433,21 @@ function church(l: Lot, lv: number, simple: boolean): Part[] {
   const tz = lv >= 5 ? 19 : lv >= 3 ? 14 : 10;
   const nz = l.z;
   const nv1 = v1 - tw + 0.3;
-  P.push(bx(u0, v0, u1, nv1, 0, nz, 'cream', { tone: -0.3 }), ...roof(u0, v0, u1, nv1, nz, l.roof, 1.9, 0.5));
+  // the apse: a half drum with a little conical cap
+  P.push(el(l.u, v0 + 0.4, l.w * 0.36, 2.5, 0, nz * 0.85, 'cream', { sh: 'cyl', tone: -0.3 }), el(l.u, v0 + 0.4, l.w * 0.4, 2.7, nz * 0.85, 1.0, l.roof, { sh: 'dome', tone: 0.2 }), el(l.u, v0 + 0.4, l.w * 0.22, 1.6, nz * 0.85 + 1.0, 1.0, l.roof, { sh: 'dome', tone: 0.6 }));
+  P.push(bx(u0, v0, u1, nv1, 0, nz, 'cream', { tone: -0.3 }), ...roof(u0, v0 + 0.8, u1, nv1, nz, l.roof, 1.9, 0.5));
   if (lv >= 3) {
     const vm = v0 + (nv1 - v0) * 0.45;
     P.push(bx(u0 - 2.4, vm - 1.7, u1 + 2.4, vm + 1.7, 0, nz - 0.8, 'cream', { tone: -0.3 }), ...roof(u0 - 2.4, vm - 1.7, u1 + 2.4, vm + 1.7, nz - 0.8, l.roof, 1.4, 0.3));
-    P.push(...roof(u0, v0, u1, nv1, nz, l.roof, 1.9, 0.5));
+    P.push(...roof(u0, v0 + 0.8, u1, nv1, nz, l.roof, 1.9, 0.5));
   }
   const towers = lv >= 5 ? [u0 + tw / 2, u1 - tw / 2] : [l.u];
   for (const tu of towers) {
     const a = tu - tw / 2;
     const b = tu + tw / 2;
     P.push(bx(a, v1 - tw, b, v1, 0, tz, 'cream', { tone: -0.1 }));
-    P.push(bx(a + 0.9, v1, b - 0.9, v1 + 0.14, tz - 5.2, 3.2, 'black', { tone: 0.5 }));
-    if (!simple) P.push(bx(a + 1.1, v1, b - 1.1, v1 + 0.14, 1.2, 1.1, 'glass', { tone: -0.5 }));
+    P.push(bx(a + 0.9, v1, b - 0.9, v1 + 0.6, tz - 5.2, 3.2, 'black', { tone: 0.5 }));
+    if (!simple) P.push(bx(a + 1.1, v1, b - 1.1, v1 + 0.6, 1.2, 1.1, 'glass', { tone: -0.5 }));
     P.push(band(a - 0.2, v1 - 0.3, b + 0.2, v1 + 0.5, tz));
     for (let i = 0; i < 4; i++) {
       const s = tw * (0.92 - i * 0.22);
@@ -321,37 +457,94 @@ function church(l: Lot, lv: number, simple: boolean): Part[] {
   }
   return P;
 }
+/** A round-tank yard: a low pad, two or three cylinders with domed lids, a pipe between them and a pump shed. */
+function tankYard(u0: number, v0: number, u1: number, v1: number, seed: number): Part[] {
+  const P: Part[] = [bx(u0, v0, u1, v1, 0, 0.4, 'sup', { tone: -0.6 })];
+  const n = u1 - u0 > 8 ? 3 : 2;
+  const r = Math.min((v1 - v0) / 2 - 0.3, (u1 - u0) / (n * 2) - 0.2);
+  const mats: Mat[] = ['white', 'alu', 'cargo'];
+  for (let i = 0; i < n; i++) {
+    const cu = u0 + (u1 - u0) * ((i + 0.5) / n);
+    const cv = (v0 + v1) / 2 + (hash(seed, i, 2) - 0.5) * 0.6;
+    const h = 3.4 + hash(seed, i, 3) * 2.2;
+    P.push(el(cu, cv, r, r * 0.96, 0.4, h, mats[(i + seed) % 3], { sh: 'cyl' }), el(cu, cv, r * 0.96, r * 0.92, 0.4 + h, 0.7, 'alu', { sh: 'dome', tone: 0.3 }));
+    P.push(seg(cu + r * 0.6, cv + r * 0.8, cu + r * 0.9, cv + r * 0.2, 0.35, 0.8, h, 'gun', { tone: 0.2 }));
+    if (i > 0) P.push(seg(cu - (u1 - u0) / n + r, cv + r * 0.55, cu - r, cv + r * 0.55, 0.5, 1.4, 0.5, 'gun', { sh: 'cyl', tone: 0.5 }));
+  }
+  return P;
+}
+/** The parts of one lot (a house, a block, a shed, a tank yard) with its own small details. */
+function lotParts(l: Lot, i: number, lv: number, simple: boolean): Part[] {
+  const P: Part[] = [];
+  // each lot a little smaller than its slot and nudged within it, so no two are the same size
+  const su0 = hash(i, 11, 1) * 1.1;
+  const su1 = hash(i, 12, 1) * 1.1;
+  const sv0 = hash(i, 13, 1) * 0.8;
+  const sv1 = hash(i, 14, 1) * 0.4;
+  const u0 = l.u - l.w / 2 + su0;
+  const u1 = l.u + l.w / 2 - su1;
+  const v0 = l.v - l.d / 2 + sv0;
+  const v1 = l.v + l.d / 2 - sv1;
+  const wall = l.wall ?? 'sup';
+  const flipU = hash(i, 15, 1) > 0.5;
+  switch (l.k) {
+    case 'church':
+      return church(l, lv, simple);
+    case 'gable':
+      P.push(...house(u0, v0, u1, v1, l.z, l.roof, wall, { chim: 0.2 + hash(i, 2, 2) * 0.5 }), ...windows(u0, u1, v1, 1.1, l.z - 0.3, simple, i + 80));
+      break;
+    case 'hip':
+      P.push(...house(u0, v0, u1, v1, l.z, l.roof, wall, { hip: true, chim: 0.3 + hash(i, 2, 2) * 0.4 }), ...windows(u0, u1, v1, 1.1, l.z - 0.3, simple, i + 80));
+      break;
+    case 'L':
+      P.push(...houseL(u0, v0, u1, v1, l.z, l.roof, wall, flipU), ...windows(u0, u1, v1, 1.1, l.z - 0.3, simple, i + 80));
+      break;
+    case 'T':
+      P.push(...houseT(u0, v0, u1, v1, l.z, l.roof, wall), ...windows(u0 + (u1 - u0) * 0.3, u1 - (u1 - u0) * 0.3, v1, 1.1, l.z - 0.3, simple, i + 80));
+      break;
+    case 'block':
+    case 'blockL': {
+      const L = l.k === 'blockL';
+      const cw = (u1 - u0) * 0.42;
+      const cd = (v1 - v0) * 0.45;
+      const outer = L ? ptsL(u0, v0, u1, v1, cw, cd, 0, flipU) : ptsRect(u0, v0, u1, v1, 0);
+      const inner = L ? ptsL(u0, v0, u1, v1, cw, cd, 0.7, flipU) : ptsRect(u0, v0, u1, v1, 0.7);
+      P.push(poly(outer, 0, l.z, wall, { tone: -0.3 }), poly(outer, l.z, 0.7, wall, { tone: 0.5, edge: true }), poly(inner, l.z, 0, l.roof, { inset: true, tone: -0.2 }));
+      P.push(...windows(u0, u1, v1, 1.4, l.z - 0.4, simple, i));
+      // gear on the roof (in the south wing of an L)
+      P.push(...roofGear(u0 + 0.7, L ? v0 + cd + 0.7 : v0 + 0.7, u1 - 0.7, v1 - 0.7, l.z, i, simple));
+      if (L) P.push(...skylight(flipU ? u1 - cw + 0.3 : u0 + 0.9, v0 + 1.1, l.z, cw - 1.2, 1.2));
+      P.push(band(u0, v1 - 1.1, u1, v1 - 0.4, l.z + 0.7));
+      break;
+    }
+    case 'tall': {
+      const z1 = l.z - 4;
+      P.push(poly(ptsRect(u0, v0, u1, v1, 0), 0, z1, wall, { tone: -0.3 }), poly(ptsRect(u0, v0, u1, v1, 0), z1, 0.7, wall, { tone: 0.5, edge: true }), poly(ptsRect(u0, v0, u1, v1, 0.7), z1, 0, l.roof, { inset: true, tone: -0.2 }));
+      P.push(...windows(u0, u1, v1, 1.4, z1 - 0.4, simple, i));
+      // a setback upper tier with its own windows, a cornice, a mast and a flag
+      P.push(bx(u0 + 1.2, v0 + 1.2, u1 - 1.2, v1 - 1.4, z1, 4, wall, { tone: 0.1 }), bx(u0 + 1.0, v0 + 1.0, u1 - 1.0, v1 - 1.2, l.z, 0.5, wall, { tone: 0.6, edge: true }), bx(u0 + 1.7, v0 + 1.7, u1 - 1.7, v1 - 1.9, l.z, 0, l.roof, { inset: true, tone: -0.5 }));
+      P.push(...windows(u0 + 1.2, u1 - 1.2, v1 - 1.4, z1 + 0.8, l.z - 0.2, simple, i + 40));
+      P.push(...acUnit(u0 + 1.9, v0 + 1.9, z1), el(u1 - 2.2, v0 + 2.2, 0.25, 0.25, l.z, 4.6, 'gun', { sh: 'cyl' }), ...flag(u1 - 2.9, v0 + 2.2, l.z + 0.5, 4.5, 3));
+      break;
+    }
+    case 'shed':
+      P.push(...warehouse(u0, v0, u1, v1, wall, l.roof, i, simple, l.z));
+      break;
+    case 'tanks':
+      P.push(...tankYard(u0, v0, u1, v1, i));
+      break;
+  }
+  // a tree or two in the yard of the small houses
+  if (!simple && (l.k === 'gable' || l.k === 'hip' || l.k === 'L' || l.k === 'T') && hash(i, 17, 1) > 0.35) {
+    const side = hash(i, 18, 1) > 0.5 ? 1 : -1;
+    P.push(...tree(side > 0 ? u1 + 0.6 : u0 - 0.6, v0 + 1.2 + hash(i, 19, 1) * 1.2, 1.15 + hash(i, 20, 1) * 0.4, i));
+  }
+  return P;
+}
 function cityModel(lv: number, addon: Addon, simple: boolean): Part[] {
   const P: Part[] = [];
   const lots = cityLots(lv).sort((a, b) => a.v - b.v || a.u - b.u);
-  lots.forEach((l, i) => {
-    const u0 = l.u - l.w / 2;
-    const u1 = l.u + l.w / 2;
-    const v0 = l.v - l.d / 2;
-    const v1 = l.v + l.d / 2;
-    if (l.k === 'church') {
-      P.push(...church(l, lv, simple));
-    } else if (l.k === 'block') {
-      const wall = l.wall ?? 'sup';
-      const tall = l.z >= 13;
-      const z1 = tall ? l.z - 4 : l.z;
-      P.push(bx(u0, v0, u1, v1, 0, z1, wall, { tone: -0.3 }), bx(u0, v0, u1, v1, z1, 0.7, wall, { tone: 0.5, edge: true }), bx(u0 + 0.7, v0 + 0.7, u1 - 0.7, v1 - 0.7, z1, 0, l.roof, { inset: true, tone: -0.2 }));
-      P.push(...windows(u0, u1, v1, 1.4, z1 - 0.4, simple, i));
-      if (tall) {
-        // a setback upper tier with its own rows of windows
-        P.push(bx(u0 + 1.2, v0 + 1.2, u1 - 1.2, v1 - 1.4, z1, 4, wall, { tone: 0.1 }), bx(u0 + 1.0, v0 + 1.0, u1 - 1.0, v1 - 1.2, l.z, 0.5, wall, { tone: 0.6, edge: true }), bx(u0 + 1.7, v0 + 1.7, u1 - 1.7, v1 - 1.9, l.z, 0, l.roof, { inset: true, tone: -0.5 }));
-        P.push(...windows(u0 + 1.2, u1 - 1.2, v1 - 1.4, z1 + 0.8, l.z - 0.2, simple, i + 40));
-        P.push(...flag(u1 - 2.4, v0 + 2.4, l.z + 0.5, 4.5, 3));
-      } else {
-        P.push(bx(u0 + 1.2, v0 + 1.2, u0 + 3.6, v0 + 2.8, z1, 1.1, 'gun', { tone: 0.5 }), bx(u1 - 3.4, v1 - 3, u1 - 1.4, v1 - 1.5, z1, 0.9, 'gun', { tone: 0.2 }));
-        P.push(band(u0, v1 - 1.1, u1, v1 - 0.4, z1 + 0.7));
-      }
-    } else {
-      P.push(...house(u0, v0, u1, v1, l.z, l.roof));
-      P.push(...windows(u0, u1, v1, 1.1, l.z - 0.3, simple, i + 80));
-      if (l.z >= 7) P.push(band(u0, v1 - 0.2, u1, v1 + 0.6, l.z));
-    }
-  });
+  lots.forEach((l, i) => P.push(...lotParts(l, i, lv, simple)));
   P.push(...cityAddon(lv, addon, simple));
   return P;
 }
@@ -362,7 +555,6 @@ function cityAddon(lv: number, addon: Addon, simple: boolean): Part[] {
   const ux = lv >= 3 ? 13 : 10;
   return [...flakGun(-ux, bv0 - 7, simple), ...flakGun(ux, bv0 - 7, simple)];
 }
-
 
 // ---- SAM site
 
@@ -401,22 +593,45 @@ function launcher(u: number, v: number): Part[] {
   }
   return P;
 }
-/** A command truck: wheels, cab, a grey shelter with a roof radome and a whip aerial. */
+/**
+ * A command truck: six wheels under mud guards, a chamfered cab with a sloped windscreen, mirrors and a light bar, a
+ * grey shelter with a corrugated roof carrying a radome, a dish, a cooling unit, a hatch and whip aerials, a door with
+ * steps, a cable reel on the back. Faces east.
+ */
 function commandTruck(u: number, v: number): Part[] {
   const P: Part[] = [];
-  for (const wu of [-3.6, -0.6, 2.8]) P.push(el(u + wu, v + 2.6, 1.1, 0.5, 0, 1.5, 'track', { sh: 'cyl' }), el(u + wu, v - 2.6, 1.1, 0.5, 0, 1.3, 'track', { sh: 'cyl' }));
-  P.push(bx(u - 5, v - 2.3, u + 3.6, v + 2.3, 0.8, 1.3, 'olive'));
-  P.push(bx(u + 3.6, v - 2.2, u + 6.4, v + 2.2, 0.8, 2.6, 'olive', { tone: 0.4 }), bx(u + 5.9, v - 1.7, u + 6.5, v + 1.7, 2.9, 0, 'glass'));
-  P.push(bx(u - 4.8, v - 2.1, u + 3.2, v + 2.1, 2.1, 3.2, 'fieldgrey', { tone: 0.1, pat: 'panels' }), bx(u - 4.8, v + 1.5, u + 3.2, v + 2.1, 5.3, 0, 'own'));
-  P.push(el(u - 1.4, v - 0.4, 1.5, 1.4, 5.3, 1.1, 'alu', { sh: 'dome' }), el(u + 1.6, v - 1.0, 0.25, 0.25, 5.3, 4.2, 'gun', { sh: 'cyl' }));
+  for (const wu of [-3.6, -0.6, 2.8]) {
+    P.push(el(u + wu, v + 2.7, 1.1, 0.5, 0, 1.5, 'track', { sh: 'cyl' }), el(u + wu, v - 2.7, 1.1, 0.5, 0, 1.3, 'track', { sh: 'cyl' }));
+    P.push(bx(u + wu - 1.4, v + 2.2, u + wu + 1.4, v + 3.3, 1.5, 0.4, 'olive', { tone: -0.3 }), bx(u + wu - 1.4, v - 3.3, u + wu + 1.4, v - 2.2, 1.5, 0.4, 'olive', { tone: -0.3 }));
+  }
+  P.push(bx(u - 5.2, v - 2.3, u + 3.6, v + 2.3, 0.8, 1.3, 'olive', { tone: -0.2 }));
+  // the cab and bonnet
+  P.push(poly([u + 3.6, v - 2.2, u + 5.8, v - 2.2, u + 6.8, v - 1.2, u + 6.8, v + 1.2, u + 5.8, v + 2.2, u + 3.6, v + 2.2], 0.8, 1.6, 'olive', { tone: 0.1 }));
+  P.push(poly([u + 3.6, v - 2.1, u + 5.0, v - 2.1, u + 5.0, v + 2.1, u + 3.6, v + 2.1], 0.8, 2.6, 'olive', { tone: 0.6 }));
+  P.push(poly([u + 5.0, v - 1.9, u + 5.9, v - 1.5, u + 5.9, v + 1.5, u + 5.0, v + 1.9], 2.4, 0.9, 'glass', { tone: 0.3 }));
+  P.push(bx(u + 5.2, v - 2.6, u + 5.8, v - 2.2, 2.6, 0.8, 'gun'), bx(u + 5.2, v + 2.2, u + 5.8, v + 2.6, 2.6, 0.8, 'gun'), bx(u + 3.9, v - 1.3, u + 4.5, v + 1.3, 3.4, 0.3, 'black', { tone: 0.5 }));
+  // the shelter: a corrugated roof with its fittings, a door and steps on the side
+  P.push(bx(u - 5.0, v - 2.1, u + 3.2, v + 2.1, 2.1, 3.2, 'cargo', { tone: 0.1, pat: 'grille' }));
+  P.push(bx(u - 5.0, v + 1.5, u + 3.2, v + 2.1, 5.3, 0, 'own'));
+  P.push(...acUnit(u - 4.4, v - 1.6, 5.3));
+  P.push(bx(u - 1.8, v + 0.2, u - 0.4, v + 1.3, 5.3, 0.4, 'sup', { tone: 0.2 }), el(u + 1.0, v - 0.5, 1.5, 1.4, 5.3, 1.1, 'alu', { sh: 'dome' }), el(u - 2.4, v - 1.0, 1.15, 0.9, 5.3, 0.7, 'alu', { sh: 'dome', tone: -0.2 }));
+  P.push(el(u - 4.4, v + 1.0, 0.22, 0.22, 5.3, 4.8, 'gun', { sh: 'cyl' }), el(u + 2.5, v + 1.0, 0.22, 0.22, 5.3, 4.2, 'gun', { sh: 'cyl' }));
+  P.push(bx(u - 2.6, v + 2.1, u - 0.8, v + 2.24, 2.1, 2.5, 'black', { tone: 0.5 }), bx(u - 2.8, v + 2.1, u - 0.6, v + 2.9, 0.8, 0.5, 'sup', { tone: 0.2, pat: 'grille' }));
+  P.push(el(u - 5.6, v, 0.9, 1.5, 0.8, 1.3, 'gun', { sh: 'cyl', tone: 0.3 }));
   return P;
 }
-/** A sandbag and earth bank round three sides of a bay (open to the east): a wide earth foot and a narrower sandbag top. */
+/** A sandbag and earth bank round three sides of a bay (open to the east): a wide earth foot topped by a staggered course of sandbags. */
 function revetment(u0: number, v0: number, u1: number, v1: number): Part[] {
   const P: Part[] = [];
   const t = 1.5;
   const sides: [number, number, number, number][] = [[u0, v0, u1, v0 + t], [u0, v1 - t, u1, v1], [u0, v0, u0 + t, v1]];
-  for (const [a, b, c, d] of sides) P.push(bx(a, b, c, d, 0, 1.0, 'tan', { tone: -0.9 }), bx(a + 0.25, b + 0.25, c - 0.25, d - 0.25, 1.0, 0.8, 'canvas', { tone: -0.1, pat: 'ribs' }));
+  for (const [a, b, c, d] of sides) P.push(bx(a, b, c, d, 0, 1.0, 'tan', { tone: -0.9 }));
+  let i = 0;
+  for (let u = u0 + 0.9; u < u1 - 0.4; u += 1.55, i++) {
+    P.push(el(u, v0 + t / 2 + (i % 2 ? 0.22 : -0.22), 0.85, 0.62, 1.0, 0.8, 'canvas', { sh: 'dome', tone: i % 3 === 0 ? 0.3 : -0.1 }));
+    P.push(el(u, v1 - t / 2 + (i % 2 ? -0.22 : 0.22), 0.85, 0.62, 1.0, 0.8, 'canvas', { sh: 'dome', tone: i % 3 === 1 ? 0.3 : -0.1 }));
+  }
+  for (let v = v0 + 2.0; v < v1 - 2.0; v += 1.5, i++) P.push(el(u0 + t / 2 + (i % 2 ? 0.22 : -0.22), v, 0.62, 0.85, 1.0, 0.8, 'canvas', { sh: 'dome', tone: i % 3 === 2 ? 0.3 : -0.1 }));
   return P;
 }
 /** The parts moved by (du, dv). */
@@ -446,36 +661,161 @@ function samModel(lv: number, addon: Addon, simple: boolean): Part[] {
 // ---- port: the coast is at u = COAST, land to the west, the sea and the piers to the east
 
 const COAST = 1.5;
-function pier(u0: number, v0: number, u1: number, v1: number): Part[] {
-  const P: Part[] = [bx(u0, v0, u1, v1, 0, 0.7, 'teak', { pat: 'planks' })];
-  for (let u = u0 + 2; u < u1 - 1; u += 4.6) P.push(el(u, v1 - 0.3, 0.45, 0.4, 0.7, 0.5, 'gun', { tone: 0.6 }));
+/** wharf decks stand on pilings: the deck's underside and its top, in model height */
+const PIER_Z = 2.0;
+const DECK = PIER_Z + 0.8;
+
+interface Pier {
+  u0: number;
+  v0: number;
+  u1: number;
+  v1: number;
+  wood: boolean;
+}
+interface Hull {
+  u: number;
+  v: number;
+  len: number;
+  wid: number;
+  kind: 'tug' | 'cargo' | 'coaster';
+}
+/** The piers of a port level: one long wooden pier at level 1, two concrete ones from level 3. */
+function pierList(lv: number): Pier[] {
+  return lv >= 3
+    ? [
+        { u0: -1, v0: -9, u1: 22, v1: -6.2, wood: false },
+        { u0: -1, v0: 3.8, u1: 20, v1: 6.6, wood: false },
+      ]
+    : [{ u0: -1, v0: -1.2, u1: 22, v1: 1.6, wood: true }];
+}
+/** The ships moored at them. */
+function hullList(lv: number): Hull[] {
+  return lv >= 3
+    ? [
+        { u: 3.4, v: -2.1, len: 16.6, wid: 4.8, kind: 'cargo' },
+        { u: 9, v: 9.4, len: 8, wid: 3.2, kind: 'tug' },
+        { u: 7, v: -13, len: 12.4, wid: 3.8, kind: 'coaster' },
+      ]
+    : [
+        { u: 5, v: 4.3, len: 12.6, wid: 4.2, kind: 'coaster' },
+        { u: 9, v: -4.3, len: 7, wid: 3, kind: 'tug' },
+      ];
+}
+const MOLE: [number, number][] = [[-1, -20.2], [8, -19.8], [15.5, -19], [21.5, -17.6]];
+
+/** A pier on pilings: planks (wood) or concrete slabs, a kerb, pile caps along both edges, bollards, a lamp, dark piles standing under its south edge and head. */
+function pier(p: Pier, simple: boolean): Part[] {
+  const { u0, v0, u1, v1, wood } = p;
+  const m: Mat = wood ? 'teak' : 'sup';
+  const P: Part[] = [];
+  for (let u = u0 + 1.5; u <= u1; u += 2.4) P.push(el(u, v1 + 0.4, 0.5, 0.42, 0, PIER_Z + 0.6, 'teak', { sh: 'cyl', tone: -0.7 }));
+  for (let v = v0 + 0.6; v <= v1; v += 1.4) P.push(el(u1 + 0.4, v, 0.46, 0.4, 0, PIER_Z + 0.6, 'teak', { sh: 'cyl', tone: -0.7 }));
+  P.push(bx(u0, v0, u1, v1, PIER_Z, 0.8, m, wood ? { pat: 'planks' } : { pat: 'hatches', tone: -0.1 }));
+  P.push(bx(u0, v1 - 0.4, u1, v1, DECK, 0.3, m, { tone: 0.7 }), bx(u1 - 0.4, v0, u1, v1, DECK, 0.3, m, { tone: 0.7 }));
+  if (!simple) for (let u = u0 + 1.5; u <= u1 - 0.8; u += 2.4) P.push(el(u, v1 - 0.2, 0.34, 0.3, DECK + 0.3, 0.3, 'gun', { sh: 'cyl', tone: 0.6 }));
+  for (let u = u0 + 3.5; u < u1 - 1; u += 5.5) P.push(el(u, v1 - 1.0, 0.45, 0.42, DECK, 0.8, 'gun', { sh: 'cyl', tone: 0.9 }));
+  P.push(el(u1 - 1.0, v0 + 0.8, 0.2, 0.2, DECK, 3.4, 'gun', { sh: 'cyl' }), el(u1 - 1.0, v0 + 0.8, 0.55, 0.5, DECK + 3.4, 0.4, 'brass', { glow: true }));
   return P;
 }
-function crane(u: number, v: number, len: number): Part[] {
+/** A mooring line from a ship's rail to a bollard on the pier. */
+const rope = (u: number, vShip: number, vPier: number): Part => seg(u, vShip, u + 0.9, vPier, 0.22, 2.7, 0.15, 'canvas', { tone: 0.2 });
+
+/** A quay gantry crane: four tall legs, girders, a long boom reaching out over the water (toward `dir` along v), a cab and a machinery house at the back. */
+function gantry(u: number, v: number, dir: 1 | -1, len: number, z0: number): Part[] {
+  const H = 8;
+  const P: Part[] = [];
+  const tip = v + dir * (1.3 + len);
+  const tail = v - dir * 4.4;
+  for (const su of [-1.8, 1.8]) {
+    for (const sv of [-1.3, 1.3]) P.push(bx(u + su - 0.35, v + sv - 0.35, u + su + 0.35, v + sv + 0.35, z0, H, 'ochre', { tone: -0.2 }));
+    P.push(bx(u + su - 0.3, v - 1.4, u + su + 0.3, v + 1.4, z0 + 4.2, 0.4, 'ochre', { tone: -0.1 }), bx(u + su - 0.35, v - 1.5, u + su + 0.35, v + 1.5, z0 + H, 0.8, 'ochre', { tone: 0.3 }));
+  }
+  P.push(bx(u - 2.2, v - 0.55, u + 2.2, v + 0.55, z0 + H + 0.8, 0.7, 'ochre', { tone: 0.5 }));
+  // the boom and its rungs, a tall apex, the cab on its trolley, the machinery house at the tail
+  P.push(bx(u - 0.8, Math.min(tip, tail), u + 0.8, Math.max(tip, tail), z0 + H + 1.5, 0.6, 'ochre', { tone: 0.4 }));
+  for (let k = 0; k < len + 4; k += 1.7) {
+    const vk = tail + (tip - tail) * (k / (len + 4.4));
+    P.push(bx(u - 0.95, vk - 0.12, u + 0.95, vk + 0.12, z0 + H + 1.2, 0.4, 'gun', { tone: 0.3 }));
+  }
+  P.push(bx(u - 0.5, v - 0.5, u + 0.5, v + 0.5, z0 + H + 2.1, 2.6, 'ochre', { tone: 0.2 }));
+  const tc = v + dir * (len * 0.55);
+  P.push(bx(u - 1.0, tc - 0.9, u + 1.0, tc + 0.9, z0 + H - 0.4, 1.0, 'white'), bx(u - 0.8, tc + dir * 0.9, u + 0.8, tc + dir * 1.05, z0 + H - 0.2, 0.6, 'glass', { tone: 0.3 }), band(u - 0.9, tc - 0.5, u + 0.9, tc + 0.5, z0 + H + 0.65));
+  P.push(bx(u - 1.5, tail - dir * 0.2 - 1.1, u + 1.5, tail - dir * 0.2 + 1.1, z0 + H + 1.2, 1.6, 'gun', { tone: 0.2 }));
+  P.push(bx(u - 1.9, tip - dir * 0.4 - 0.4, u + 1.9, tip - dir * 0.4 + 0.4, z0 + H + 1.2, 0.5, 'hazard'));
+  return P;
+}
+/** A slewing jib crane on a tower: a cab, a long lattice jib toward (tipU, tipV), a short counter-jib with ballast, a hook. */
+function jibCrane(u: number, v: number, z0: number, tipU: number, tipV: number): Part[] {
+  const du = tipU - u;
+  const dv = tipV - v;
+  const L = Math.hypot(du, dv) || 1;
+  const cu = -du / L;
+  const cvv = -dv / L;
   return [
-    bx(u - 1.6, v - 1.6, u + 1.6, v + 1.6, 0, 7, 'ochre', { tone: -0.4 }),
-    bx(u - 3.6, v - 1.0, u + len, v + 0.2, 7, 0.9, 'ochre', { tone: 0.4, pat: 'grille' }),
-    bx(u - 3.6, v - 1.4, u - 1.4, v + 0.6, 7.2, 1.0, 'gun', { tone: 0.6 }),
-    bx(u + len - 1.2, v - 1.1, u + len, v + 0.3, 6.6, 0.8, 'gun', { tone: 0.6 }),
-    bx(u - 1.0, v + 1.6, u + 1.0, v + 2.4, 0, 0, 'own'),
-    bx(u - 1.2, v + 0.2, u + 1.2, v + 1.4, 7.9, 0, 'own'),
+    el(u, v, 1.9, 1.7, z0, 0.9, 'gun', { sh: 'cyl', tone: 0.2 }),
+    bx(u - 1.0, v - 1.0, u + 1.0, v + 1.0, z0 + 0.9, 6.6, 'ochre', { tone: -0.3, pat: 'grille' }),
+    bx(u - 1.6, v - 1.8, u + 1.2, v - 0.1, z0 + 6.5, 2.0, 'white'),
+    bx(u - 1.5, v - 0.12, u + 1.1, v + 0.02, z0 + 6.7, 1.0, 'glass', { tone: 0.3 }),
+    seg(u + cu * 0.3, v + cvv * 0.3, u + cu * 4.2, v + cvv * 4.2, 1.9, z0 + 7.2, 1.0, 'gun', { tone: 0.2 }),
+    seg(u, v, tipU, tipV, 1.0, z0 + 8.3, 0.7, 'ochre', { tone: 0.5 }),
+    seg(u + du * 0.1, v + dv * 0.1, tipU - du * 0.1, tipV - dv * 0.1, 0.35, z0 + 9.0, 0.3, 'gun', { tone: 0.6 }),
+    band(u - 1.2, v - 1.5, u + 0.9, v - 0.8, z0 + 8.5),
+    el(tipU, tipV, 0.16, 0.16, z0 + 3.5, 4.8, 'black', { sh: 'cyl' }),
+    bx(tipU - 0.4, tipV - 0.3, tipU + 0.4, tipV + 0.3, z0 + 3.0, 0.7, 'hazard'),
   ];
 }
-const BOX_COLS: Mat[] = ['rust', 'fadedBlue', 'ochre', 'olive', 'brick', 'fieldgrey'];
-function containers(u: number, v: number, nu: number, nv: number, seed: number, ownerFirst: boolean): Part[] {
-  const P: Part[] = [];
-  for (let j = 0; j < nv; j++) {
-    for (let i = 0; i < nu; i++) {
-      const m = BOX_COLS[Math.floor(hash(i + seed, j * 5 + seed) * BOX_COLS.length)];
-      const tall = hash(i, j + seed) > 0.62;
-      const u0 = u + i * 4.4;
-      const v0 = v + j * 2.7;
-      P.push(bx(u0, v0, u0 + 4.1, v0 + 2.4, 0, tall ? 4.6 : 2.3, m, { pat: 'ribs', tone: hash(i + 3, j + seed) * 0.8 - 0.4 }));
-    }
+/** A long warehouse: a ridged metal roof with a ridge vent, skylights, bay doors on the south wall, pilasters. */
+function warehouse(u0: number, v0: number, u1: number, v1: number, wall: Mat, roofM: Mat, seed: number, simple: boolean, wz = 3.8): Part[] {
+  const P: Part[] = [bx(u0, v0, u1, v1, 0, wz, wall, { tone: -0.3 })];
+  const rh = Math.min(2.2, Math.max(1.3, (v1 - v0) * 0.3));
+  P.push(...gable(u0, v0, u1, v1, wz, roofM, { rh, over: 0.6, metal: true }));
+  const vm = (v0 + v1) / 2;
+  if (u1 - u0 > 8) {
+    for (let u = u0 + 2; u < u1 - 4.6; u += 6.2) P.push(bx(u, vm - 0.7, u + 3.2, vm + 0.7, wz + rh + 0.25, 0.8, 'alu', { pat: 'grille', tone: 0.3 }));
+    if (!simple) for (let u = u0 + 3; u < u1 - 3; u += 4.8) P.push(bx(u, v0 - 0.1, u + 2.2, v0 + 0.9, wz + rh, 0.2, 'glass', { tone: 0.4, pat: 'frames' }));
+  } else P.push(...ventPipe((u0 + u1) / 2, vm, wz + rh), ...skylight(u0 + 1.2, v0 + 0.4, wz + rh, 2, 1.1));
+  const nd = Math.max(1, Math.floor((u1 - u0) / 6.5));
+  for (let i = 0; i < nd; i++) {
+    const du = u0 + ((i + 0.5) / nd) * (u1 - u0) - 1.4;
+    P.push(bx(du, v1, du + 2.8, v1 + 0.6, 0, 2.7, 'black', { tone: 0.5 }), bx(du - 0.2, v1, du + 3.0, v1 + 0.2, 2.7, 0.35, 'sup', { tone: 0.5 }));
   }
-  if (ownerFirst) P.push(bx(u, v + nv * 2.7 - 0.9, u + 4.1, v + nv * 2.7 - 0.2, 2.5, 0, 'own'));
+  if (!simple) for (let u = u0 + 4; u < u1 - 1; u += 6.5) P.push(bx(u, v1, u + 0.5, v1 + 0.28, 0, wz, wall, { tone: 0.2 }));
+  P.push(band(u0 + 0.3, v1 - 0.7, u0 + 3.6, v1 - 0.2, wz + 0.3));
   return P;
 }
+const BOX_COLS: Mat[] = ['rust', 'fadedBlue', 'ochre', 'olive', 'brick', 'fieldgrey', 'cargo', 'canvas'];
+/** Neat rows of shipping containers on a 4 unit grid (the ribs line up with their ends), some stacked two high, in muted colours. */
+function containers(u: number, v: number, nu: number, nv: number, seed: number, ownerFirst: boolean, z0 = 0): Part[] {
+  const P: Part[] = [];
+  const U0 = Math.round(u / 4) * 4;
+  for (let j = 0; j < nv; j++) {
+    for (let i = 0; i < nu; i++) {
+      const pick = (k: number): Mat => BOX_COLS[Math.floor(hash(i + seed + k, j * 5 + seed, k) * BOX_COLS.length)];
+      const u0 = U0 + i * 4;
+      const v0 = v + j * 2.7;
+      const two = hash(i, j + seed, 8) > 0.5;
+      P.push(bx(u0, v0, u0 + 4, v0 + 2.4, z0, 2.3, pick(0), { pat: 'ribs', tone: hash(i + 3, j + seed, 1) * 0.7 - 0.35 }));
+      if (two) P.push(bx(u0, v0, u0 + 4, v0 + 2.4, z0 + 2.3, 2.3, pick(5), { pat: 'ribs', tone: hash(i + 9, j + seed, 2) * 0.7 - 0.35 }));
+    }
+  }
+  if (ownerFirst) P.push(bx(U0 + 0.4, v + 0.4, U0 + 3.6, v + 0.9, 2.3 + z0, 0, 'own'));
+  return P;
+}
+/** A tug: a rounded dark hull with a red stripe, a white wheelhouse, a red funnel, tyre fenders, bow fender. Bow to the east. */
+function tug(u: number, v: number, len: number, wid: number): Part[] {
+  const hw = wid / 2;
+  const hull = [u, v - hw * 0.8, u + len - 2.4, v - hw, u + len - 0.6, v - hw * 0.55, u + len, v, u + len - 0.6, v + hw * 0.55, u + len - 2.4, v + hw, u, v + hw * 0.8];
+  const deckPts = [u + 0.4, v - hw * 0.8 + 0.4, u + len - 2.4, v - hw + 0.4, u + len - 1.0, v - hw * 0.5, u + len - 0.5, v, u + len - 1.0, v + hw * 0.5, u + len - 2.4, v + hw - 0.4, u + 0.4, v + hw * 0.8 - 0.4];
+  const P: Part[] = [poly(hull, 0, 1.7, 'merchant', { tone: 0.5 }), poly(deckPts, 1.7, 0, 'deck', { tone: 0.5 })];
+  P.push(bx(u + 0.3, v + hw * 0.8 - 0.55, u + len - 3, v + hw * 0.8, 0.2, 1.3, 'redlead', { tone: 0.2 }));
+  P.push(bx(u + 1.8, v - hw + 0.8, u + 5.4, v + hw - 0.8, 1.7, 1.8, 'white'), bx(u + 1.6, v - hw + 0.6, u + 5.6, v + hw - 0.6, 3.5, 0.3, 'sup', { tone: 0.5 }), bx(u + 5.2, v - hw + 1.1, u + 5.34, v + hw - 1.1, 2.1, 0.9, 'glass', { tone: 0.3 }));
+  P.push(bx(u + 2.6, v - hw + 1.2, u + 4.6, v + hw - 1.2, 3.8, 1.3, 'white', { tone: 0.3 }), bx(u + 4.5, v - hw + 1.5, u + 4.64, v + hw - 1.5, 4.1, 0.7, 'glass', { tone: 0.3 }), band(u + 2.8, v + hw - 1.6, u + 4.4, v + hw - 1.2, 5.1));
+  P.push(el(u + 1.0, v, 0.9, 0.8, 3.5, 2.0, 'redlead', { sh: 'cyl' }), el(u + 1.0, v, 0.92, 0.82, 5.5, 0.3, 'black'));
+  for (let i = 0; i < 4; i++) P.push(el(u + 1.4 + i * 1.4, v + hw * 0.95, 0.5, 0.28, 0.6, 0.9, 'black', { sh: 'cyl' }));
+  P.push(el(u + len - 0.4, v, 0.5, 0.5, 0.7, 0.9, 'black', { sh: 'cyl' }), el(u + len - 2.9, v, 0.55, 0.55, 1.7, 0.7, 'gun', { sh: 'cyl', tone: 0.6 }));
+  return P;
+}
+/** A small cargo ship (hull, hatches, a stern house, a funnel) of any length; bow to the east. */
 function ship(u: number, v: number, len: number, wid: number): Part[] {
   const hw = wid / 2;
   const P: Part[] = [];
@@ -483,27 +823,96 @@ function ship(u: number, v: number, len: number, wid: number): Part[] {
   P.push(poly([u + 0.4, v - hw + 0.5, u + len - 4.4, v - hw + 0.5, u + len - 1.2, v, u + len - 4.4, v + hw - 0.5, u + 0.4, v + hw - 0.5], 2.2, 0, 'deck'));
   P.push(bx(u, v + hw - 0.7, u + len - 4, v + hw, 0.2, 1.4, 'redlead', { tone: 0.2 }));
   const cols: Mat[] = ['rust', 'fadedBlue', 'ochre', 'olive'];
-  for (let i = 0; i < 3; i++) P.push(bx(u + 7.4 + i * 2.9, v - hw + 0.7, u + 10 + i * 2.9, v + hw - 0.7, 2.2, 1.8, cols[i % 4], { pat: 'ribs', tone: i * 0.3 - 0.4 }));
+  const nh = Math.max(1, Math.floor((len - 7.4) / 2.9));
+  for (let i = 0; i < nh; i++) P.push(bx(u + 7.4 + i * 2.9, v - hw + 0.7, u + 10 + i * 2.9, v + hw - 0.7, 2.2, 1.8, cols[i % 4], { pat: 'ribs', tone: i * 0.3 - 0.4 }));
   P.push(bx(u + 1.2, v - hw + 0.7, u + 5.4, v + hw - 0.7, 2.2, 3.6, 'white'), bx(u + 1.0, v - hw + 0.5, u + 5.6, v + hw - 0.5, 5.8, 0.5, 'sup', { tone: 0.6 }), band(u + 1.6, v + hw - 1.5, u + 5.0, v + hw - 0.9, 6.3));
   P.push(el(u + 6.4, v, 1.0, 1.0, 2.2, 3.2, 'redlead', { sh: 'cyl' }));
   return P;
 }
+/** A lighthouse: a rock plinth, a white tower with a red band, a gallery, a glowing lantern under a red cap. */
+function lighthouse(u: number, v: number, h = 11): Part[] {
+  const z1 = 1.2 + h * 0.84;
+  return [
+    el(u, v, 2.8, 2.5, 0, 1.2, 'sup', { sh: 'cyl', tone: -0.2 }),
+    el(u, v, 1.9, 1.7, 1.2, h * 0.34, 'white', { sh: 'cyl' }),
+    el(u, v, 1.65, 1.5, 1.2 + h * 0.34, h * 0.22, 'redlead', { sh: 'cyl' }),
+    el(u, v, 1.45, 1.3, 1.2 + h * 0.56, h * 0.28, 'white', { sh: 'cyl' }),
+    el(u, v, 2.3, 2.1, z1, 0.5, 'sup', { sh: 'cyl', tone: 0.4 }),
+    el(u, v, 1.0, 0.95, z1 + 0.5, 1.5, 'brass', { sh: 'cyl', glow: true }),
+    el(u, v, 1.4, 1.3, z1 + 2.0, 1.1, 'redlead', { sh: 'dome', tone: 0.2 }),
+    el(u, v, 0.25, 0.25, z1 + 3.1, 1.0, 'gun', { sh: 'cyl' }),
+  ];
+}
+/** The harbour office: a white house with a tiled hip roof, a chimney, windows, a flag. */
+function harbourOffice(u0: number, v0: number, u1: number, v1: number): Part[] {
+  return [...house(u0, v0, u1, v1, 3.6, 'brick', 'white', { hip: true, chim: 0.7 }), ...windows(u0, u1, v1, 1.0, 3.2, false, 91), band(u0, v1 - 0.8, u1, v1 - 0.2, 3.9), bx(u0 + 1.6, v1, u0 + 2.8, v1 + 0.6, 0, 2.0, 'black', { tone: 0.5 }), ...flag(u1 + 0.6, v0 + 0.8, 0, 8, 4)];
+}
+/** A concrete breakwater (a mole) along a path: a wide low wall with a cap, rubble boulders on both flanks, a lighthouse at the tip. */
+function breakwater(pts: [number, number][], simple: boolean): Part[] {
+  const P: Part[] = [];
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const [a, b] = pts[i];
+    const [c, d] = pts[i + 1];
+    P.push(seg(a, b, c, d, 2.8, 0.4, 2.0, 'sup', { tone: -0.2 }), seg(a, b, c, d, 1.5, 2.4, 0.5, 'sup', { tone: 0.5 }));
+    const n = Math.max(2, Math.round(Math.hypot(c - a, d - b) / 1.7));
+    for (let k = 0; k < n; k++) {
+      const t = (k + 0.5) / n;
+      const pu = a + (c - a) * t;
+      const pv = b + (d - b) * t;
+      if (simple && k % 2) continue;
+      P.push(el(pu, pv + 1.8 + (hash(i, k, 3) - 0.5) * 0.5, 0.95, 0.75, 0, 1.4, 'fieldgrey', { sh: 'dome', tone: hash(i, k, 4) * 0.8 - 0.2 }), el(pu + 0.6, pv - 1.8 + (hash(i, k, 5) - 0.5) * 0.5, 0.9, 0.7, 0, 1.3, 'fieldgrey', { sh: 'dome', tone: hash(i, k, 6) * 0.8 - 0.3 }));
+    }
+  }
+  const [tu, tv] = pts[pts.length - 1];
+  P.push(...lighthouse(tu - 0.3, tv, 9));
+  return P;
+}
+/** A dry dock cut into the shore: concrete walls on three sides, a caisson gate, a freighter in it on its keel blocks, a jib crane on the wall. */
+function dryDock(u0: number, v0: number, u1: number, v1: number, simple: boolean): Part[] {
+  const w = 1.5;
+  const P: Part[] = [bx(u0, v0, u1, v0 + w, 0, 2.0, 'sup', { tone: -0.1, pat: 'hatches' }), bx(u0, v1 - w, u1, v1, 0, 2.0, 'sup', { tone: -0.1, pat: 'hatches' }), bx(u0, v0, u0 + w, v1, 0, 2.0, 'sup', { tone: -0.1, pat: 'hatches' })];
+  P.push(bx(u1 - 1.0, v0 + w, u1, v1 - w, 0, 1.5, 'redlead', { tone: 0.2 }));
+  P.push(...ship(u0 + 3.4, (v0 + v1) / 2, 11.4, 4.2));
+  for (let u = u0 + 3; u < u1 - 2; u += 5) P.push(el(u, v1 - 0.7, 0.4, 0.4, 2.0, 0.7, 'gun', { sh: 'cyl', tone: 0.9 }), el(u, v0 + 0.7, 0.4, 0.4, 2.0, 0.7, 'gun', { sh: 'cyl', tone: 0.9 }));
+  if (!simple) P.push(...jibCrane(u0 + 4, v1 - 0.8, 2.0, u0 + 7, v0 + 4));
+  return P;
+}
+/**
+ * A coastal gun emplacement: a concrete casemate with chamfered seaward corners, banked with earth on its landward
+ * side, a gun in a round pit on its roof and a long barrel pointing east over the water, a door on its south side.
+ */
+function casemate(u: number, v: number, simple = false): Part[] {
+  const P: Part[] = [];
+  P.push(el(u - 3.6, v, 3.0, 4.6, 0, 2.4, 'camo', { sh: 'dome', tone: -0.3 }), el(u - 1.0, v - 3.9, 3.8, 1.5, 0, 1.6, 'camo', { sh: 'dome', tone: -0.2 }), el(u - 1.0, v + 3.9, 3.8, 1.5, 0, 1.6, 'camo', { sh: 'dome', tone: -0.2 }));
+  const shell = [u - 4, v - 3, u + 2.6, v - 3, u + 4.2, v - 1.4, u + 4.2, v + 1.4, u + 2.6, v + 3, u - 4, v + 3];
+  const lid = [u - 3.4, v - 2.4, u + 2.4, v - 2.4, u + 3.6, v - 1.2, u + 3.6, v + 1.2, u + 2.4, v + 2.4, u - 3.4, v + 2.4];
+  P.push(poly(shell, 0, 3.0, 'sup', { tone: -0.2 }), poly(shell, 3.0, 0.5, 'sup', { tone: 0.5, edge: true }), poly(lid, 3.0, 0, 'sup', { inset: true, tone: -0.1 }));
+  P.push(el(u + 0.2, v, 2.5, 2.2, 3.0, 0, 'gun', { tone: -1 }), el(u + 0.2, v, 1.6, 1.4, 3.0, 1.0, 'gun', { sh: 'dome', tone: 0.2 }));
+  P.push(seg(u + 0.4, v, u + 8.6, v, 0.9, 3.5, 0.9, 'gun', { sh: 'cyl', tone: 1 }), el(u + 8.7, v, 0.8, 0.8, 3.4, 1.1, 'gun', { sh: 'cyl', tone: 1.2 }));
+  P.push(bx(u + 3.2, v - 1.0, u + 4.2, v + 1.0, 3.0, 0, 'black'));
+  P.push(bx(u - 2.6, v + 3.0, u - 1.0, v + 3.14, 0, 2.0, 'black', { tone: 0.5 }), band(u - 3.0, v + 1.4, u - 1.0, v + 2.0, 3.0));
+  if (!simple) P.push(el(u - 0.8, v - 0.8, 0.5, 0.5, 3.0, 0.6, 'brass', { sh: 'dome' }), bx(u + 1.6, v - 2.2, u + 2.6, v - 1.5, 3.0, 0.6, 'brass'));
+  return P;
+}
 function portModel(lv: number, addon: Addon, simple = false): Part[] {
   const P: Part[] = [];
+  for (const p of pierList(lv)) P.push(...pier(p, simple));
+  for (const h of hullList(lv)) P.push(...(h.kind === 'tug' ? tug(h.u, h.v, h.len, h.wid) : ship(h.u, h.v, h.len, h.wid)));
   if (lv >= 3) {
-    P.push(...pier(COAST, -13, 20, -8.6), ...pier(COAST, 8.6, 20, 13));
-    P.push(...ship(3.4, 0, 16.6, 7.4));
-    P.push(...house(-19, -9, -8, -2, 6, 'fieldgrey'), band(-19.4, -2.2, -7.6, -1.4, 6), ...flag(-8.4, -9.4, 6, 6.5, 4));
-    P.push(...house(-6, -9, 3, -2, 5.4, 'brick'));
-    P.push(...containers(-18, 6, 3, 2, 2, true), ...containers(-4.5, 8, 2, 2, 7, false));
-    P.push(...crane(-0.4, -10.8, 15), ...crane(-0.4, 10.8, 15));
-    if (addon === 'guns') P.push(...coastalGun(-5, -17, simple), ...coastalGun(-5, 18, simple));
+    P.push(...gantry(6, -7.6, 1, 7, DECK), ...gantry(13, -7.6, 1, 7, DECK));
+    P.push(rope(8, -2.1 - 2.4, -6.2 + 0.4), rope(15, -2.1 - 2.4, -6.2 + 0.4), rope(9, -2.1 + 2.4, 4.2), rope(15, -2.1 + 2.4, 4.2));
+    P.push(rope(12, 9.4 - 1.6, 6.4), rope(16, 9.4 - 1.6, 6.4));
+    P.push(...warehouse(-25, -20, -9.5, -13.4, 'tan', 'cargo', 1, simple, 3.8), ...warehouse(-25, -11.4, -12, -6, 'cream', 'cargo', 2, simple, 3.4));
+    P.push(...harbourOffice(-8.4, -10.4, -3.6, -6.2));
+    P.push(...containers(-24, -2.5, 3, 3, 2, true), ...containers(-24, 9.8, 2, 2, 7, false));
+    P.push(...dryDock(-13, 9.6, 2.4, 17.6, simple), ...breakwater(MOLE, simple));
+    if (addon === 'guns') P.push(...casemate(-4.5, -15.6, simple), ...casemate(-5.5, -1.8, simple));
   } else {
-    P.push(...pier(COAST, -2, 18, 2.8));
-    P.push(...house(-18, -2.4, -7, 4.6, 5, 'fieldgrey'), band(-18.4, 4.4, -6.6, 5.2, 5), ...flag(-7.6, -2.8, 5, 6, 4));
-    P.push(...containers(-17, 8, 2, 2, 4, true), ...containers(-7, 8.4, 1, 2, 9, false));
-    P.push(...crane(-0.4, -4.6, 14));
-    if (addon === 'guns') P.push(...coastalGun(-6, -10, simple), ...coastalGun(-6, 15, simple));
+    P.push(...jibCrane(3.5, -0.2, DECK, 9.5, 6.5));
+    P.push(rope(8, 4.3 - 2.1, 1.2), rope(14, 4.3 - 2.1, 1.2), rope(10, -4.3 + 1.5, -0.8), rope(14, -4.3 + 1.5, -0.8));
+    P.push(...warehouse(-24, -11, -8, -4.6, 'tan', 'fieldgrey', 3, simple, 3.8), ...harbourOffice(-6.5, -9.6, -2, -5.6));
+    P.push(...containers(-24, 3, 4, 2, 4, true), ...containers(-24, 10, 3, 1, 9, false), ...lighthouse(-3.2, 10.4, 10));
+    if (addon === 'guns') P.push(...casemate(-4.5, -14.2, simple), ...casemate(-4.5, 15, simple));
   }
   return P;
 }
@@ -538,7 +947,7 @@ const KIND: Record<Kind, (c: C) => RGB> = {
   road: (c) => dark(mix(c, [96, 92, 82], 0.5), 0.72),
   water: (c) => mix(c, [56, 92, 108], 0.8),
   sand: (c) => mix(c, [196, 176, 132], 0.55),
-  foam: (c) => mix(c, [226, 234, 236], 0.5),
+  foam: (c) => mix(c, [232, 238, 238], 0.66),
   shadow: (c) => [cl(c[0] * 0.44), cl(c[1] * 0.46), cl(c[2] * 0.54)],
 };
 
@@ -737,7 +1146,12 @@ class Ground {
           }
         }
         if (best === 99) continue;
-        if (sea) this.put(ax, ay, 'foam', best <= 1 ? 1 : best <= 2 ? 0.55 : 0, 0.5);
+        if (sea) {
+          // a broken band of foam along the water's edge, wider where the noise is high
+          const n = 0.55 + vnoise(this.u(ax) * 0.8, this.v(ay) * 0.8, 77) * 0.9;
+          const reach = this.res * 1.6 * n;
+          this.put(ax, ay, 'foam', best <= 1 ? 1 : Math.max(0, 1 - (best - 1) / reach), 0.62);
+        }
         else this.put(ax, ay, 'sand', 1 - (best - 1) / R, 0.6);
       }
     }
@@ -787,13 +1201,40 @@ function groundOf(g: Ground, spec: BuildingSpec): void {
       break;
     }
     case 'port': {
-      const L = lv >= 3 ? 23 : 21;
-      const top = lv >= 3 ? -20 : -13;
-      const bot = lv >= 3 ? 21 : 17;
-      g.slab('dark', -L - 5, top - 3, COAST + 2, bot + 3, 6, 0.4, 5, 25);
+      const L = 26;
+      const top = lv >= 3 ? -22 : -15;
+      const bot = lv >= 3 ? 18 : 17;
+      g.slab('dark', -L - 4, top - 3, COAST + 2, bot + 3, 6, 0.4, 5, 25);
       g.slab('dirt', -L, top, COAST + 1, bot, 4, 0.78, 3, 26);
-      g.slab('dirtL', -L + 2, lv >= 3 ? 3 : 0.5, COAST + 1.5, lv >= 3 ? 8.6 : 6.6, 2, 0.5, 2.4, 27);
-      g.blob('dark', -23, bot - 2, 4, 3, 0.5, 0.4, 28);
+      // the concrete quay along the water, yards and a lane in light concrete
+      g.slab('road', -7.5, top + 2, COAST + 2, bot - 1, 2.4, 0.5, 1.8, 27);
+      if (lv >= 3) {
+        g.slab('dirtL', -26, -3.2, -6, 6, 2, 0.5, 2.4, 28);
+        g.slab('dirtL', -25, 9.2, -14, 15.8, 2, 0.45, 2.4, 29);
+        g.strip('road', -26, -5.2, -3, -5.2, 2.4, 0.45, 30);
+      } else {
+        g.slab('dirtL', -26, 2, -6, 12.6, 2, 0.5, 2.4, 28);
+        g.strip('road', -26, -2.4, -3, -2.4, 2.4, 0.45, 30);
+      }
+      g.blob('dark', -23, bot - 2, 4, 3, 0.5, 0.4, 31);
+      // foam round every pile and the pier heads, white wash round the ships
+      for (const p of pierList(lv)) {
+        for (let u = p.u0 + 1.5; u <= p.u1; u += 2.4) g.blob('foam', u, p.v1 + 0.4, 1.0, 0.8, 0.55, 0.5, 40 + Math.round(u));
+        for (let v = p.v0 + 0.6; v <= p.v1; v += 1.4) g.blob('foam', p.u1 + 0.4, v, 0.9, 0.8, 0.55, 0.5, 60 + Math.round(v));
+        g.strip('foam', p.u0 + 1, p.v1 + 1.2, p.u1 + 0.5, p.v1 + 1.2, 1.6, 0.4, 70);
+      }
+      for (const h of hullList(lv)) {
+        const cu = h.u + h.len / 2;
+        g.paint('foam', cu - h.len / 2 - 2, h.v - h.wid / 2 - 2, cu + h.len / 2 + 2, h.v + h.wid / 2 + 2, 0.5, (u, v) => {
+          const r = Math.hypot((u - cu) / (h.len / 2 + 0.7), (v - h.v) / (h.wid / 2 + 0.7));
+          return Math.max(0, 1 - Math.abs(r - 1) / 0.22) * (0.45 + vnoise(u * 0.9, v * 0.9, 5) * 0.9);
+        });
+      }
+      if (lv >= 3) {
+        // the breakwater's wash, and the dry dock's water
+        for (let i = 0; i + 1 < MOLE.length; i++) g.strip('foam', MOLE[i][0], MOLE[i][1], MOLE[i + 1][0], MOLE[i + 1][1], 6, 0.55, 80 + i);
+        g.slab('water', -11.5, 11.1, 3, 16.1, 0.6, 0.95, 0.8, 90);
+      }
       break;
     }
   }
@@ -871,11 +1312,10 @@ export function bakeBuilding(spec: BuildingSpec, owner: RGB, scale: number, dpr:
   if (spec.type === 'city') {
     // one outline round the whole town (and its add-ons), none round each block: the ring is cut from the silhouette of the
     // town's outer shape, then the blocks are drawn over it on their own with their dark edges, so the streets stay open
-    const [u0, v0, u1, v1] = cityBounds(spec.level);
-    const c = 3.2;
-    const shape: Part = { k: 'poly', p: [u0 + c, v0, u1 - c, v0, u1, v0 + c, u1, v1 - c, u1 - c, v1, u0 + c, v1, u0, v1 - c, u0, v0 + c], z: 0, h: 0.3, m: 'tan' };
+    // the shape is every lot grown by 3.6 units, so the streets close up and the ring hugs the town's real outline
+    const shape: Part[] = cityLots(spec.level).map((l) => ({ k: 'box' as const, p: [l.u - l.w / 2 - 3.6, l.v - l.d / 2 - 3.6, l.u + l.w / 2 + 3.6, l.v + l.d / 2 + 3.6], z: 0, h: 0.3, m: 'tan' as const }));
     const flak = cityAddon(spec.level, spec.addon, simple).map((p) => ({ ...p, m: 'tan' as const, pat: undefined, tone: 0 }));
-    const raw = rasterize({ parts: [shape, ...flak], ground: 0 }, res, 0, { facings: 32, owner });
+    const raw = rasterize({ parts: [...shape, ...flak], ground: 0 }, res, 0, { facings: 32, owner });
     const ring = outlineOf(raw, owner, ringWidth(g.k));
     const G = ring.ox - raw.ox;
     lay(ring, (x, y) => {
@@ -1031,18 +1471,35 @@ function todayIcon(ctx: CanvasRenderingContext2D, type: BuildingSpec['type'], le
   }
 }
 
-/** The sheet's terrain under a cell: plains, and for a port the sea east of a slightly wavy coast (the game's shelf and shore colours). */
+/** The shore line of the sheet's port: a wavy coast about u = COAST. */
+const coastU = (v: number): number => COAST + 2.2 * Math.sin(v * 0.19 + 0.7) + 1.1 * Math.sin(v * 0.47) + (vnoise(v * 0.3, 3, 31) - 0.5) * 1.6;
+/**
+ * The sheet's terrain under a cell: plains, and for a port a bay of sea inside the cell (a curved, irregular shore on the
+ * west, rounded far shores on the other sides, so no hard square of water), in the game's shelf and shore colours.
+ */
 function sheetUnder(spec: BuildingSpec, res: number, scale: number): Under {
   const plains = TERRAIN_RGB[2];
+  if (spec.type !== 'port') return { water: () => false, rgb: () => plains };
   const ox = OU * res;
-  const coastAt = (ay: number): number => ox + (COAST + Math.sin((ay * 0.21) / (res / 2)) * 0.7) * res;
-  const isSea = (ax: number, ay: number): boolean => spec.type === 'port' && ax > coastAt(ay);
+  const oy = OV * res;
+  const U = (ax: number): number => (ax + 0.5 - ox) / res;
+  const V = (ay: number): number => (ay + 0.5 - oy) / (res * FORE);
+  /** 1 at the middle of the bay, 0 on its far shore */
+  const bay = (u: number, v: number): number => {
+    const du = (u - 14.5) / 12.2;
+    const dv = (v + 6) / 23;
+    return 1 - (Math.pow(Math.abs(du), 2.6) + Math.pow(Math.abs(dv), 2.6)) ** (1 / 2.6) + (vnoise(u * 0.22, v * 0.22, 41) - 0.5) * 0.3;
+  };
+  const inSea = (u: number, v: number): boolean => u > coastU(v) && bay(u, v) > 0;
   const tilePx = (4 / scale) * res;
   return {
-    water: isSea,
+    water: (ax, ay) => inSea(U(ax), V(ay)),
     rgb: (ax, ay) => {
-      if (!isSea(ax, ay)) return plains;
-      return waterRGB(1 + ((ax - coastAt(ay)) / tilePx) * 1.5);
+      const u = U(ax);
+      const v = V(ay);
+      if (!inSea(u, v)) return plains;
+      const dist = Math.min(u - coastU(v), bay(u, v) * 13);
+      return waterRGB(1 + ((dist * res) / tilePx) * 1.5);
     },
   };
 }
