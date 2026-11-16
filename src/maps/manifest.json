@@ -2805,9 +2805,9 @@
   "id": "fourseas",
   "name": "The Sundering Wall",
   "description": "A fictional world: one towering continent wall with sprawling lobes runs the whole height of the map, and a belt of islands crosses it at a pass of channels, cutting four seas, each with its own coasts and islands.",
-  "width": 1926,
-  "height": 1219,
-  "landTiles": 800052,
+  "width": 1923,
+  "height": 1217,
+  "landTiles": 799989,
   "recommendedNations": 5,
   "recommendedTribes": 200,
   "presets": {
@@ -2823,49 +2823,50 @@
   "spawns": [
    {
     "name": "Aldmere",
-    "tile": 585981
-   },
-   {
-    "name": "Garrowe",
-    "tile": 1925200
+    "tile": 585068
    },
    {
     "name": "Caldrin",
-    "tile": 130413
+    "tile": 128287
+   },
+   {
+    "name": "Garrowe",
+    "tile": 1918355
    },
    {
     "name": "Eskeld",
-    "tile": 1724370
+    "tile": 1719761
    },
    {
     "name": "Dunmark",
-    "tile": 985145
+    "tile": 983610
    },
    {
     "name": "Fenhollow",
-    "tile": 1617926
+    "tile": 1613483
    },
    {
     "name": "Harrowick",
-    "tile": 1831577
+    "tile": 1826801
    },
    {
     "name": "Brisk",
-    "tile": 872801
+    "tile": 869519
    },
    {
     "name": "Isenvar",
-    "tile": 1317811
+    "tile": 1329242
    },
    {
     "name": "Jorlund",
-    "tile": 1328300
+    "tile": 1333937
    },
    {
     "name": "Kelmarsh",
-    "tile": 377048
+    "tile": 374538
    }
-  ]
+  ],
+  "theme": "brightseas"
  },
  {
   "id": "driftisles",

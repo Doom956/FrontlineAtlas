@@ -45,6 +45,12 @@ describe('map themes', () => {
     expect(themeForMap(MAP)).toBe(DEFAULT_THEME);
   });
 
+  it('the Sundering Wall uses its bright theme', () => {
+    expect(getWorldMap('fourseas')?.theme).toBe('brightseas');
+    expect(themeForMap({ kind: 'world', id: 'fourseas' }).id).toBe('brightseas');
+    expect(themeForMap('fourseas').flat[5]).not.toEqual(themeForMap('world').flat[5]);
+  });
+
   it('the walled country maps use their theme', () => {
     for (const id of ['ringlands', 'sundered']) {
       expect(getWorldMap(id)?.theme).toBe('stonewall');

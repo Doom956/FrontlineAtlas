@@ -746,6 +746,7 @@ export const MAP_DEFS: MapDef[] = [
     name: 'The Sundering Wall',
     description: 'A fictional world: one towering continent wall with sprawling lobes runs the whole height of the map, and a belt of islands crosses it at a pass of channels, cutting four seas, each with its own coasts and islands.',
     ...FOURSEAS_PLANE.def,
+    theme: 'brightseas',
     targetLand: 800_000,
     drawn: FOURSEAS,
     spawns: FOURSEAS_SPAWNS,
