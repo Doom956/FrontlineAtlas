@@ -104,6 +104,43 @@ export const THEME_DEFS: Record<string, MapThemeDef> = {
     ],
     waterMid: [51, 75, 75],
   },
+  /**
+   * The Sundering Wall: a bright cartoon look. Red-brown and rust-red rock for the wall and every peak, bright
+   * saturated greens, warm sandy beaches and deserts, ochre hills, and a vivid sea from turquoise shallows out to deep
+   * blue.
+   */
+  brightseas: {
+    ground: {
+      grass: ramp('#3f8f2a', '#55aa37', '#6fc246', '#8fd85e'),
+      grassDry: ramp('#6f9a32', '#88b443', '#a2c957', '#bbdb70'),
+      grassLush: ramp('#2f8030', '#3f9a3e', '#55b44f', '#71ca64'),
+      forest: ramp('#1c5a22', '#267030', '#348a3e', '#45a24d'),
+      hills: ramp('#7a5a2c', '#977238', '#b38c4a', '#cba664'),
+      rock: ramp('#6e2a1c', '#8f3a25', '#b24e30', '#cf6d48'),
+      snow: ramp('#c9b9b4', '#ddd0cb', '#eee6e2', '#fbf7f4'),
+      sand: ramp('#c99a55', '#dcb46c', '#ebca86', '#f6dea2'),
+      swamp: ramp('#355a2c', '#47703a', '#5c874a', '#73a05e'),
+      tundra: ramp('#9aa58e', '#b2bca5', '#c8d0bb', '#dce3d0'),
+      wheat: ramp('#b59a3e', '#cdb24f', '#dfc662', '#ecd87a'),
+      crop: ramp('#4f8f2f', '#62a83b', '#79bf4b', '#93d35f'),
+      soil: ramp('#8a5f33', '#a47440', '#bb8a52', '#cfa067'),
+      pool: ramp('#1d7fa0', '#2a95b6', '#3dabc8', '#5cc2d8'),
+      sea: [hx('#3fc4d6'), hx('#22a6c8'), hx('#1585b8'), hx('#106aa3'), hx('#0d5690')],
+      foam: ramp('#5fd0e0', '#8fe0ea', '#bdeef3', '#e6fafb'),
+    },
+    flat: [
+      [13, 86, 144], // open sea: deep blue
+      [34, 166, 200], // shelf: turquoise
+      [96, 186, 70], // plains: bright green
+      [45, 132, 58], // forest
+      [179, 140, 74], // hills: ochre
+      [178, 78, 48], // mountains and the wall: rust-red rock
+      [235, 202, 134], // desert: warm sand
+      [80, 130, 70], // swamp
+      [200, 208, 187], // tundra
+    ],
+    waterMid: [20, 120, 175],
+  },
 };
 
 const made = new Map<string, MapTheme>();
