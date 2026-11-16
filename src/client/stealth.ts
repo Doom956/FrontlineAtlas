@@ -141,6 +141,7 @@ export function stealthTarget(state: GameState, me: Player, airfield: number, ti
       return { ...out, ok: why === '', reason: why };
     }
   }
+  out.airfield = pv.airfield >= 0 ? pv.airfield : airfield;
   out.enemyBuildings = pv.enemyBuildings;
   out.buildingsHit = pv.buildingsHit;
   out.victim = pv.victim;

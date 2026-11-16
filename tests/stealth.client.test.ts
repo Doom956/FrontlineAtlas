@@ -48,7 +48,7 @@ describe('the Stealth strike button', () => {
     me.techs.push('jetEngines');
     expect(stealthButton(s, me, af.tile)).toMatchObject({ show: true, ok: false, why: 'Needs Air Mastery' });
     expect(stealthButton(s, me, af.tile).line).toContain(stealthPriceText(s, 1));
-    expect(stealthPriceText(s, 1)).toMatch(/ gold, 150 oil$/);
+    expect(stealthPriceText(s, 1)).toMatch(/ gold, 100 oil$/);
     me.techs.push('airMastery');
     expect(stealthButton(s, me, af.tile).ok).toBe(true);
     me.stealthReady = s.tick + 45 * TICKS_PER_SECOND;

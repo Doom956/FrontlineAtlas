@@ -175,6 +175,9 @@ describe('aims in reach', () => {
     const dx = (launched % 400) - 20;
     const dy = ((launched / 400) | 0) - 30;
     expect(dx * dx + dy * dy).toBeLessThanOrEqual(150 * 150);
+    expect(af.bombers).toBe(0); // the sortie sends every stored bomber
+    expect(airAutoLine(s, af)).toBe('Auto: no bombers here');
+    expect(buildAircraft(s, 1, af.tile, 'bomber').ok).toBe(true);
     expect(airAutoLine(s, af)).toMatch(/^Auto: bombing the front with /);
   });
 

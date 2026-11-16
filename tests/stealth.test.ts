@@ -148,6 +148,33 @@ describe('stealth strike: the flight and the bombs', () => {
     expect(stealthRadius(s, 1)).toBeCloseTo(5 * STEALTH.radiusMul, 5);
   });
 
+  it('the SAM hunter: every SAM site in the blast is destroyed, others within the silence radius go quiet for a while', () => {
+    const s = game();
+    addBuilding(s, 'airfield', 1, at(s, 100, 20));
+    const target = at(s, 250, 20);
+    addBuilding(s, 'factory', 2, target);
+    const inBlast = addBuilding(s, 'sam', 2, at(s, 254, 20), 3);
+    const near = addBuilding(s, 'sam', 2, at(s, 250, 32), 3); // outside the blast, inside the silence radius
+    const far = addBuilding(s, 'sam', 2, at(s, 278, 20), 3); // past the silence radius
+    const mine = addBuilding(s, 'sam', 1, at(s, 140, 20), 3);
+    expect(Math.hypot(0, 32 - 20)).toBeLessThan(STEALTH.silenceRadius);
+    expect(stealthRadius(s, 1)).toBeLessThan(12);
+    const h0 = hashState(s);
+    expect(strike(s, 1, -1, target).ok).toBe(true);
+    fly(s, () => (bomber(s)?.state ?? 1) === 1);
+    expect(s.buildings.has(inBlast.id)).toBe(false);
+    expect(s.buildings.has(near.id)).toBe(true);
+    expect(near.disabledUntil).toBeGreaterThan(s.tick);
+    expect(near.disabledUntil - s.tick).toBeLessThanOrEqual(STEALTH.silenceSeconds * TICKS_PER_SECOND);
+    expect(far.disabledUntil).toBe(0);
+    expect(mine.disabledUntil).toBe(0);
+    expect(s.events.some((e) => e.message.includes('opened the sky: 1 SAM site destroyed, 1 silenced'))).toBe(true);
+    expect(hashState(s)).not.toBe(h0);
+    // the silenced SAM site is back after the silence
+    s.tick = near.disabledUntil;
+    expect(near.disabledUntil > s.tick).toBe(false);
+  });
+
   it('fighters leave it alone unless something reveals it (the radar hook); then they shoot it down', () => {
     const run = (reveal: boolean): GameState => {
       flags.reveal = reveal;
@@ -226,7 +253,9 @@ describe('stealth strike: the AI', () => {
   it('sends it at a high-value target under strong SAM cover, keeping its reserve', () => {
     const { s, silo } = aiGame(2);
     const pick = aiStealthPick(s, 2);
-    expect(pick?.tile).toBe(silo.tile);
+    // the SAM hunter: a SAM site of the wall outranks even a silo
+    expect(s.buildings.get(s.map.building[pick!.tile] - 1)?.type).toBe('sam');
+    expect(pick?.tile).not.toBe(silo.tile);
     s.players[2].gold = UNITS.stealthBomber.gold * (1 + STEALTH.aiReserve) - 1;
     expect(aiStealth(s, 2)).toBe(false);
     s.players[2].gold = 1e6;

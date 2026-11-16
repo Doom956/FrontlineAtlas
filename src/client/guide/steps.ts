@@ -533,18 +533,18 @@ export function guideTips(): GuideTip[] {
       done: (c) => autoFireCount(c.s, c.me.id).on > 0 || c.ui.openPanel === 'forces',
     },
     {
-      // Air Mastery: the stealth strike from an airfield's card (client/stealth.ts)
+      // Air Mastery: the Stealth button of the bottom bar (client/masteryStrikes.ts)
       id: 'stealth',
-      text: 'Air Mastery: you have a stealth bomber SAM sites cannot see. Click an airfield, then Stealth strike, then a target behind their SAM sites.',
-      target: 'order-stealth',
+      text: 'Air Mastery: you have a stealth bomber SAM sites cannot see. Click Stealth in the bottom bar, then a target behind their SAM sites: it also wrecks the SAM sites it bombs.',
+      target: 'strike-stealth',
       when: (c) => playing(c) && hasTech(c.me, 'airMastery') && countBuildings(c.s, c.me.id, 'airfield', true) >= 1 && (ownAttack(c.s, c.me) || attackOnMe(c.s, c.me) !== null),
       done: (c) => c.me.stealthReady !== undefined,
     },
     {
-      // Naval Mastery: warships, destroyers and battleships carry cruise missiles (fired from the ship's card)
+      // Naval Mastery: warships, destroyers and battleships carry cruise missiles (the Cruise button of the bottom bar)
       id: 'cruise',
-      text: `Naval Mastery: your warships carry cruise missiles. Click a warship, then Cruise missile on its card, then enemy land up to ${CRUISE.reach} tiles from it.`,
-      target: 'cruise-btn',
+      text: `Naval Mastery: your warships carry cruise missiles. Click Cruise in the bottom bar, then enemy land up to ${CRUISE.reach} tiles from a ship.`,
+      target: 'strike-cruise',
       when: (c) => playing(c) && hasTech(c.me, 'navalMastery') && c.s.units.some((u) => u.owner === c.me.id && u.hp > 0 && cruiseHull(u)) && (ownAttack(c.s, c.me) || attackOnMe(c.s, c.me) !== null),
       done: (c) => c.s.units.some((u) => u.owner === c.me.id && u.cruiseReady !== undefined),
     },
@@ -605,11 +605,8 @@ export function guideTips(): GuideTip[] {
     },
     {
       id: 'blitz',
-      text: `${BLITZ_NAME}: select a tank division and click ${BLITZ_NAME} on its orders bar, then click enemy land: smoke, a fast deep push, and the land it takes holds ${BLITZ.holdSeconds} s.`,
-      tile: (c) => {
-        const u = c.s.units.find((q) => q.owner === c.me.id && q.type === 'tankDivision' && q.hp > 0);
-        return u ? Math.round(u.y) * c.s.map.width + Math.round(u.x) : -1;
-      },
+      text: `${BLITZ_NAME}: click ${BLITZ_NAME} in the bottom bar, then click enemy land near your border: smoke, a fast deep push, and the land it takes holds ${BLITZ.holdSeconds} s.`,
+      target: 'strike-blitz',
       when: (c) => playing(c) && hasTech(c.me, 'armorMastery') && c.s.units.some((u) => u.owner === c.me.id && u.type === 'tankDivision' && u.hp > 0),
       done: (c) => c.s.units.some((u) => u.owner === c.me.id && u.type === 'tankDivision' && u.blitzReady !== undefined),
     },

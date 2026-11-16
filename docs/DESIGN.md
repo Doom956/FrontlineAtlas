@@ -842,15 +842,16 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   instead of deeper, else it waits: "Auto recon: waiting, enemy fighters guard X"), strategic wings weigh guarded
   targets less.
 - **Rocket** (Silo, Rocketry): fast missile, radius 7: destroys buildings, kills troops. A level-L silo has L launch
-  slots (one reload `SILO_COOLDOWN` each, reloading L times as fast). Can fire by itself (auto-fire, below).
+  slots (one reload `SILO_COOLDOWN` = 30 s each, reloading L times as fast; an atom bomb uses `ATOM_SILO_SLOTS` = 2 slots, so a silo
+  cannot spam nukes). Can fire by itself (auto-fire, below).
 - **Cruise missile** (Naval Mastery; units.ts `launchCruise`, cruise.ts, config `CRUISE` and `UNITS.cruiseMissile`;
   Action `cruiseMissile {ship, tile}`, protocol 21): a small rocket fired from a warship, destroyer or battleship
-  (not submarines or carriers) of a nation with Naval Mastery, at land within `CRUISE.reach` (35 = `WARSHIP_RANGE`,
-  the range a warship already fights ships at: a coastal strip, twice its shelling reach) of the ship. Radius
-  `CRUISE.radius` 4 (a rocket's is 7): hostile buildings in it destroyed, troops killed by the rocket rule
-  (`ROCKET_TROOP_KILL` x the army share living there, at least `CRUISE.killMin` 5000). 700 gold + 60 oil per
-  missile; each ship reloads its cell for `CRUISE.reloadSeconds` (30 s, `Unit.cruiseReady`, hashed). It flies straight
-  from the ship at 10 tiles/s (slower than a rocket) and SAMs shoot it down like a rocket: 1 hp, the rockets' place in
+  (not submarines or carriers) of a nation with Naval Mastery, at land within `CRUISE.reach` (50 tiles, a deep coastal
+  belt, beyond a warship's own `WARSHIP_RANGE` 35) of the ship. Radius
+  `CRUISE.radius` 6 (a rocket's is 7): hostile buildings in it destroyed, troops killed by the rocket rule
+  (`ROCKET_TROOP_KILL` x the army share living there, at least `CRUISE.killMin` 12000). 700 gold + 60 oil per
+  missile; each ship reloads its cell for `CRUISE.reloadSeconds` (20 s, `Unit.cruiseReady`, hashed). It flies straight
+  from the ship at 35 tiles/s (a rocket flies 55) and SAMs shoot it down like a rocket: 1 hp, the rockets' place in
   the interception order. Validated like a rocket: not own land, not an ally, no peace time; noNukes does not touch it;
   under fog of war a player may fire at land out of sight (the sim judges by the real owner), the AI only at buildings
   it knows. The target nation gets a 'missile' event ("X launched a cruise missile at Y", alert "Cruise missile
@@ -859,24 +860,28 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   of its own on the way; then factories, forts, ports, arsenals, cities and the rest), fires a salvo one larger than
   the ready SAM shots covering the route and target, never into more than `aiMaxCover` (2) of them, and keeps
   `aiReserve` (2) missile prices in gold; Easy AIs fire one at a time, only with no SAM cover, and never at a human.
-  A human's ships never fire by themselves: the ship card's Cruise missile button (orders bar for a group of ships,
-  and on phones) enters a target mode; the click fires from the nearest loaded selected ship in reach.
+  A human's ships never fire by themselves: the Cruise button of the bottom bar (next to Rocket and Atom bomb; the ship
+  card and the orders bar have it too) enters a target mode; the click fires from the nearest loaded ship in reach.
 - **Stealth strike** (Air Mastery; units.ts `launchStealth`, stealth.ts, stealthSight.ts, config `STEALTH` and
   `UNITS.stealthBomber`; Action `stealthStrike {airfield | -1, tile}`, protocol 21): the counter to a SAM wall. A
   nation with Air Mastery sends its one stealth bomber (a flying wing) from an own finished airfield (-1 = the nearest
   with the target in reach) at a target up to `airWingRange` x `STEALTH.reachMul` (1.25: 188 tiles from a level-1
-  airfield) away, at bomber speed (`UNITS.stealthBomber.speed` 30, x Jet Engines). 2,000 gold + 150 oil per strike,
+  airfield) away, at bomber speed (`UNITS.stealthBomber.speed` 30, x Jet Engines). 1,200 gold + 100 oil per strike,
   nothing stored at the airfield. One at a time: while it is out or on its way home the button says "Stealth bomber
-  in the air"; it recharges `STEALTH.cooldownSeconds` (90 s) from launch (`Player.stealthReady`, hashed: "Recharging
+  in the air"; it recharges `STEALTH.cooldownSeconds` (45 s) from launch (`Player.stealthReady`, hashed: "Recharging
   45 s"). Validated like a bomb: land, not own land, not an ally, no peace time; neutral land is allowed (nothing is
   hit there). SAM sites never see it: they never fire at it, whatever their shots (units.interceptThreats). Fighters
   (airfield cover, carriers, superiority patrols) engage it only where it is revealed to their side
   (`stealthSight.stealthRevealedTo`, the one hook a future Defense radar fills; it returns false now), then by the
   bomber rule. On arrival it drops a heavy raid, not a support strike, because its job is the high-value buildings
   behind a SAM wall (a front strike is what ordinary bombers already do well): the income raid of
-  `STEALTH.raidBombers` (2) bombers on the nation hit, then `dropBombs` with radius x `STEALTH.radiusMul` (1.15, a
-  heavy bomber raid's: 5.75 tiles, wider with Strategic Bombing) and `STEALTH.payload` (2) x the building hit chance
-  and the troop kills (0.6 x 2: every hostile building in the blast). No re-aim and no Night Bombing scatter. Air
+  `STEALTH.raidBombers` (2) bombers on the nation hit, then `dropBombs` with radius x `STEALTH.radiusMul` (1.8: 9 tiles,
+  wider with Strategic Bombing) and `STEALTH.payload` (2) x the building hit chance
+  and the troop kills (0.6 x 2: every hostile building in the blast). It is also a SAM hunter (`stealthHuntSams`): first,
+  every hostile SAM site in the blast is destroyed whatever the dice and the fighters say, and every other hostile SAM
+  site within `STEALTH.silenceRadius` (20) tiles of the impact is knocked out for `STEALTH.silenceSeconds` (20 s,
+  `Building.disabledUntil` as a barrage does), which opens the sky for bombers and rockets that follow ('bombing'
+  event "The stealth bomber of X opened the sky: 1 SAM site destroyed, 2 silenced for 20 s"). No re-aim and no Night Bombing scatter. Air
   superiority cuts it like any bombing (enemy fighters guarding the target: 40% less, so a 60% chance per building):
   fighters cannot catch what they cannot see, but they make any bomber over a guarded sky drop worse, and it keeps
   one rule for every bomb; it also leaves the defender a real answer (fighters) while SAMs are blind. Flak does not
@@ -894,8 +899,8 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   SAMs, arsenals, ports, cities first, +6 for each other building in the blast, +3 per covering shot (up to 8), +30
   for SAMs, silos and airfields within `aiLandingNear` (30) of a landing of its own on the way (+10 for others), x 0.6
   where the target's fighters hold the sky. Easy AIs never send it at a human. A human's bomber flies only when
-  ordered: the airfield card's Stealth strike button (icon, the word, the price, the reason when off) enters a target
-  mode that shows the reach ring, the route, the blast disc, the SAM rings in grey and the preview ("Wrecks about 3 of
+  ordered: the Stealth button of the bottom bar (any airfield in reach flies; the airfield card has the same button; icon, the
+  word, the price, the reason when off) enters a target mode that shows the reach ring, the route, the blast disc, the SAM rings in grey and the preview ("Wrecks about 3 of
   3 buildings of Azuria within 5.8 tiles", "3 SAM sites on the way: they cannot see the stealth bomber").
   Result (AI only, seeds 7001+, 48 medium / 24 World games per difficulty, before -> after): win times unchanged on
   medium (Easy 46.2, Normal 32.9, Hard 29.3, Brutal 26.7 min) and within half a minute on World (Hard 35.5 -> 36.0,
@@ -1064,7 +1069,7 @@ refit at a Factory. From Normal up (`AI_ATTACK_LEVEL`; Easy keeps the old habits
   the nearest border tile are Easy only) and use the smarter armour of section 7 (cuts, strikes together, off thin
   tips, refit nearby, deeper holds under a push, routes by flood);
 - air wings keep their support and strategic missions while the war is live (`aiKeepsFlying`), so a support zone
-  is laid between waves for the next one; manual strikes go out as one salvo of the wing size, skip targets under
+  is laid between waves for the next one; manual strikes go out as one salvo of every bomber stored at the airfield, skip targets under
   working SAM cover and prefer targets within 30 tiles of the border with their owner;
 - each warship type does its job (section 7, "Each warship type's job"): submarines raid trade and landings from
   hiding and dive away from destroyers, destroyers escort landings and sweep for submarines, the nearest free ship
@@ -1079,7 +1084,8 @@ targets in the airfield's reach; with no raid target in reach, an AI airfield bo
 fights instead (a front strike, led ahead of its push). An AI keeps at most
 `AI_MAX_AIRFIELDS` (3) airfields: a nation with more than `AIR.massFree` (2) airfields on support / strategic missions
 flies each of them `AIR.massCooldown` (+50%) slower per extra one (`massCooldownMul`), so mass airfields no longer
-multiply sorties. A support mission's strikes leave a support zone of radius `AIR.supportRadius` (11, +2 per airfield
+multiply sorties. A sortie sends every bomber stored at the airfield (`airwings.airSortieSize`; the wing size `airWingSize`
+(3 + 2 per level above 1, +1 Jet Engines, +1 Air doctrine) is only the stock a refill wing re-buys up to), so a reserve never sits idle. A support mission's strikes leave a support zone of radius `AIR.supportRadius` (11, +2 per airfield
 level above 1) for `AIR.supportSeconds` (24) s. Atom bombs: an AI in the
 coalition against a runaway leader researches its way to Nuclear Fission first (`NUKE_PATH`) and nukes the leader
 it borders or fights; any AI nukes a bordering / attacking nation above max(`NUKE_LEADER_FLOOR`, win share -

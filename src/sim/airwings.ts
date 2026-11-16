@@ -103,7 +103,15 @@ export function airWingBusy(state: GameState, b: Building): boolean {
   return m === 'support' || m === 'strategic';
 }
 
-/** Bombers per sortie: base + per level, + Jet Engines, + Air doctrine held. */
+/**
+ * Bombers one sortie sends: every bomber stored at the airfield (a held-back reserve never flew). The wing size below
+ * is what a refill wing keeps in stock, not a cap on a sortie.
+ */
+export function airSortieSize(b: Building): number {
+  return Math.max(0, b.bombers);
+}
+
+/** Bombers a wing keeps in stock (refill wings): base + per level, + Jet Engines, + Air doctrine held. */
 export function airWingSize(state: GameState, b: Building): number {
   let n = AIR.wingBase + AIR.wingPerLevel * (Math.max(1, b.level) - 1);
   if (techOf(state, b.owner, 'jetEngines')) n += AIR.wingJets;
@@ -646,9 +654,9 @@ export function launchFrom(state: GameState, owner: number, b: Building, aim: nu
   return u;
 }
 
-/** Launches up to the wing size of stored bombers at the aims (round robin), with escorts while fighters last. */
+/** Launches every stored bomber at the aims (round robin), with escorts while fighters last. */
 function launchWing(state: GameState, wing: AirWing, b: Building, aims: number[], mission: number): number {
-  const size = Math.min(b.bombers, airWingSize(state, b));
+  const size = airSortieSize(b);
   let escorts = escortHitsFor(state, b) > 0 ? b.fighters : 0;
   const hits = escortHitsFor(state, b);
   let sent = 0;
@@ -764,7 +772,7 @@ function sortie(state: GameState, wing: AirWing, b: Building): void {
   } else {
     mission = MISSION_STRATEGIC;
     const foe = wing.targetOwner;
-    const n = Math.max(1, Math.min(b.bombers, airWingSize(state, b)));
+    const n = Math.max(1, airSortieSize(b));
     if (foe > 0 && hostile(state, wing.owner, foe) && (wing.follow || atWar(state, wing.owner, foe) || aiKeepsFlying(state, wing.owner, foe))) aims = strategicAims(state, wing, b, n);
     // Following with nothing of the war target in reach: raid another nation we fight (nations first, lower id).
     if (!aims.length && wing.follow && foe > 0) {

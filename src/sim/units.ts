@@ -42,6 +42,7 @@ import {
   ATOM_CORE_RADIUS,
   ATOM_KILL_SHARE,
   ATOM_RADIUS,
+  ATOM_SILO_SLOTS,
   BOMBER_BUILDING_HIT,
   BOMBER_MIN_KILL,
   BOMBER_RADIUS,
@@ -1041,7 +1042,7 @@ export function launchMissile(state: GameState, playerId: number, siloTile: numb
   const bad = canPay(state, playerId, kind);
   if (bad) return FAIL(bad);
   pay(state, playerId, kind);
-  useCharge(silo);
+  useCharge(silo, kind === 'atomBomb' ? ATOM_SILO_SLOTS : 1);
   const u = makeUnit(state, kind, playerId, siloTile, tile);
   u.targetOwner = target;
   state.units.push(u);
@@ -1291,7 +1292,40 @@ function stealthArrived(state: GameState, u: Unit): void {
   const o = state.map.owner[u.target];
   const victim = hostile(state, u.owner, o) && state.players[o]?.alive ? o : u.targetOwner;
   for (let k = 0; k < STEALTH.raidBombers; k++) raid(state, u, victim);
+  stealthHuntSams(state, u); // first: the SAM sites go before the bombs fall on the rest
   dropBombs(state, u, STEALTH.radiusMul, STEALTH.payload, true);
+}
+
+/**
+ * The SAM hunter (config STEALTH): before the bombs, every hostile SAM site in the blast is destroyed (whatever the
+ * dice and the victim's fighters would say) and every other hostile SAM site within STEALTH.silenceRadius tiles of the
+ * impact is knocked out for STEALTH.silenceSeconds (Building.disabledUntil, as a barrage does), which opens the sky for
+ * bombers and rockets that follow.
+ */
+function stealthHuntSams(state: GameState, u: Unit): void {
+  const w = state.map.width;
+  const cx = u.target % w;
+  const cy = (u.target / w) | 0;
+  const blast = stealthRadius(state, u.owner);
+  const until = state.tick + Math.round(STEALTH.silenceSeconds * TICKS_PER_SECOND);
+  let wrecked = 0;
+  let silenced = 0;
+  for (const b of [...state.buildings.values()]) {
+    if (b.type !== 'sam' || b.buildLeft > 0 || !hostile(state, u.owner, b.owner)) continue;
+    const d2 = ((b.tile % w) - cx) * ((b.tile % w) - cx) + (((b.tile / w) | 0) - cy) * (((b.tile / w) | 0) - cy);
+    if (d2 <= blast * blast) {
+      destroyBuilding(state, b);
+      wrecked++;
+    } else if (d2 <= STEALTH.silenceRadius * STEALTH.silenceRadius && b.disabledUntil < until) {
+      b.disabledUntil = until;
+      silenced++;
+    }
+  }
+  if (wrecked + silenced > 0) {
+    const victim = state.map.owner[u.target];
+    const involved = victim > 0 && victim !== u.owner ? [u.owner, victim] : [u.owner];
+    addEvent(state, 'bombing', `The stealth bomber of ${state.players[u.owner].name} opened the sky: ${wrecked} SAM site${wrecked === 1 ? '' : 's'} destroyed, ${silenced} silenced for ${STEALTH.silenceSeconds} s`, involved, u.target);
+  }
 }
 
 /** Owned tiles per player inside the radius. */

@@ -87,7 +87,7 @@ import { mainFront } from './warTarget';
 import { fogOn, knownTile } from './fog';
 import { borderTiles, coastCount, depositCount, landComponents, sampleOwnedTiles } from './territory';
 import { canParadrop, paradropMaxTroops, paradropRange, unitCost } from './units';
-import { aiAirDoctrineTaste, aiAirTechs, aiAirWings, aiExtraAirfields, aiFighterWant, aiUnguardedBombing, airWingBusy, airWingRange, airWingSize } from './airwings';
+import { aiAirDoctrineTaste, aiAirTechs, aiAirWings, aiExtraAirfields, aiFighterWant, aiUnguardedBombing, airSortieSize, airWingBusy, airWingRange } from './airwings';
 import { inOvertime, victoryShareNow } from './victory';
 import { hasTech } from './tech';
 import { isArsenalTech, pillarOf } from './arsenal';
@@ -2447,9 +2447,9 @@ export function aiManualStrike(state: GameState, id: number, airfield: number): 
   return { tile: strikeTarget(ctx, MANUAL_STRIKE_KINDS, af.tile, airWingRange(af, state)), count: manualSalvo(state, af) };
 }
 const MANUAL_STRIKE_KINDS: BuildingType[] = ['fort', 'factory', 'arsenal', 'airfield', 'city', 'barracks'];
-/** From Normal up a manual strike is one salvo of the wing's size, not a bomber at a time into the enemy's fighters. */
+/** From Normal up a manual strike is one salvo of every stored bomber, not a bomber at a time into the enemy's fighters. */
 function manualSalvo(state: GameState, af: Building): number | undefined {
-  return aiAttackLevel(state) >= 1 ? Math.max(1, Math.min(af.bombers, airWingSize(state, af))) : undefined;
+  return aiAttackLevel(state) >= 1 ? Math.max(1, airSortieSize(af)) : undefined;
 }
 
 function airAndMissiles(ctx: Ctx): void {

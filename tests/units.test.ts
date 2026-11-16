@@ -1,6 +1,6 @@
 // Mobile units (WP-D): transports, warships, trade ships, bombers, fighters, missiles.
 import { describe, expect, it } from 'vitest';
-import { markBuildingsChanged } from '../src/sim/buildings';
+import { chargesReady, markBuildingsChanged } from '../src/sim/buildings';
 import {
   AIRCRAFT_MAX_PER_AIRFIELD,
   BOMBER_MIN_KILL,
@@ -11,6 +11,7 @@ import {
   START_TROOPS,
   ROCKET_KILL_MIN,
   SAM_COOLDOWN,
+  ATOM_SILO_SLOTS,
   SILO_COOLDOWN,
   TRADE_GOLD_PER_TILE,
   TRANSPORT_MAX_AT_SEA,
@@ -433,6 +434,19 @@ describe('missiles', () => {
 
     runUntil(s, () => silo.cooldown <= 0, SILO_COOLDOWN * 10 + 5);
     expect(launchMissile(s, 1, silo.tile, 'rocket', at(s, 55, 15)).ok).toBe(true);
+  });
+
+  it('an atom bomb uses ATOM_SILO_SLOTS launch slots of a silo, a rocket one: a silo cannot spam nukes', () => {
+    const { s, silo } = siloGame();
+    giveTech(s, 1, 'rocketry', 'nuclearFission');
+    silo.level = 3;
+    expect(chargesReady(silo)).toBe(3);
+    expect(launchMissile(s, 1, silo.tile, 'rocket', at(s, 55, 15)).ok).toBe(true);
+    expect(chargesReady(silo)).toBe(2);
+    expect(launchMissile(s, 1, silo.tile, 'atomBomb', at(s, 55, 15)).ok).toBe(true);
+    expect(chargesReady(silo)).toBe(0); // 2 slots gone with the nuke, 1 with the rocket
+    expect(silo.cooldown).toBe(SILO_COOLDOWN * (1 + ATOM_SILO_SLOTS));
+    expect(launchMissile(s, 1, silo.tile, 'rocket', at(s, 55, 15)).ok).toBe(false);
   });
 
   it('a SAM always intercepts a rocket', () => {

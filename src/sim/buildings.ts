@@ -287,9 +287,9 @@ export function nextChargeIn(b: Building): number {
   const excess = b.cooldown - (l - 1) * t;
   return excess > 1e-9 ? excess / l : 0;
 }
-/** Spends one shot / launch (call only when chargesReady(b) > 0). */
-export function useCharge(b: Building): void {
-  b.cooldown += reloadSeconds(b);
+/** Spends `slots` shots / launches (call only when chargesReady(b) > 0; an atom bomb uses ATOM_SILO_SLOTS). */
+export function useCharge(b: Building, slots = 1): void {
+  b.cooldown += reloadSeconds(b) * slots;
 }
 /** One tick of reloading (units.ts). */
 export function reloadTick(b: Building): void {

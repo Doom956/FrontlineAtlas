@@ -94,7 +94,7 @@ export function stealthPreview(state: GameState, pid: number, airfield: number, 
 // ---------------------------------------------------------------------------------------------------------------
 
 /** How much an AI wants a building gone by its stealth bomber (0 = not a target). */
-const VALUE: Partial<Record<BuildingType, number>> = { silo: 50, airfield: 46, factory: 40, sam: 34, arsenal: 28, port: 22, city: 18, lab: 14, barracks: 10, fort: 10, market: 8, oilWell: 8, mine: 6 };
+const VALUE: Partial<Record<BuildingType, number>> = { sam: 60, silo: 50, airfield: 46, factory: 40, arsenal: 28, port: 22, city: 18, lab: 14, barracks: 10, fort: 10, market: 8, oilWell: 8, mine: 6 };
 /** SAMs, silos and airfields: what would shoot down or bomb a landing's cover. */
 const LANDING_KINDS: ReadonlySet<BuildingType> = new Set<BuildingType>(['sam', 'silo', 'airfield']);
 
