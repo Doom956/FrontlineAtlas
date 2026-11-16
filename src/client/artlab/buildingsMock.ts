@@ -1,995 +1,76 @@
-// The art lab's "Buildings mockup" (art lab builds only): map buildings as small painted tabletop miniatures seen from
-// a high camera (about 60 degrees down, like the units): mostly roofs, a fort's courtyard and wall tops, launcher racks,
-// dock and crane tops, a city's roofs and streets, with only a thin strip of the front wall. Light comes from the top
-// left and a long shadow falls toward the bottom right onto the ground. A muted, earthy palette; the owner's colour
-// sits only on flags, bands and small trim. The level is a number on a small dark plate in the corner.
-// It is a MOCKUP: the game's map still draws buildings with render/buildings.ts. Flak, tank traps, the radar dish and
-// coastal guns are not game features yet; they are visual add-ons here. Everything is drawn in code (no image files)
-// into a small buffer (3 sub-pixels per sprite pixel) and shown at two zooms, next to today's marker icon, and then
-// over a crop of a real game map (the game's own map loader and terrain colours). No module-level side effects.
+// The art lab's "Buildings mockup" (art lab builds only): map buildings in the troops' own shaded pixel style, seen from
+// above. Each building is a model of parts (the game's detailed-style part format, art/detailed/bake.ts) rasterized by
+// the game's own unit rasterizer, so it has the units' pixel density, 4 tone material ramps, top-left light, ordered
+// dither on the tone borders, rim shading and the owner-coloured outline ring with a dark outer edge (outline.ts).
+// Nothing grey sits under a building. The ground round it is painted from the terrain colour under it (a contact
+// shadow cast by the real parts, dirt yards, paths, a moat, a shore) as soft, dithered shades of that colour.
+// The level is a small dark pill like the army count pill. It is a MOCKUP: the game's map still draws buildings with
+// render/buildings.ts. Flak, tank traps, the radar dish and coastal guns are not game features yet; they are visual
+// add-ons here. Everything is drawn in code (no image files). No module-level side effects.
 import { drawMarker, ICON_INFO, type BuildingIconId } from '../icons';
-import { CATEGORY_PLATES, markerSize } from '../render/buildings';
-import { buildTerrain, waterRGB } from '../render/terrain';
+import { CATEGORY_PLATES } from '../render/buildings';
+import { buildTerrain, TERRAIN_RGB, waterRGB } from '../render/terrain';
 import { themeForMap } from '../render/mapThemes';
-import { makeCanvas } from '../render/common';
+import { makeCanvas, MAP_NUM_FAMILY } from '../render/common';
+import { troopPill, type TroopIconKind } from '../render/troopIcons';
 import { isWater, type MapData } from '../../sim/types';
 import { decodeWorldMapBlob } from '../../sim/worldmaps';
 import balticBlob from '../../maps/data/baltic';
 import type { RGB } from '../art/shared/colour';
+import { motionParams } from '../art/motion';
+import { FORE, rasterize, type Part } from '../art/detailed/bake';
+import { gridOf } from '../art/detailed/grid';
+import { outlineOf, ringWidth } from '../art/detailed/outline';
+import { box, ell, poly, seg } from '../art/detailed/shapes';
+import { detailedUnits } from '../art/detailed/units';
+import type { SpriteKey } from '../art/shared/keys';
+import type { UnitDraw } from '../art/types';
 import { backdrop } from './backdrop';
 import { label } from './scenes';
 
-const W = 56;
-const H = 54;
-/** sub-pixels per sprite pixel (the finer grid the detail is drawn on) */
-const K = 3;
-const SW = W * K;
-const SH = H * K;
-const BADGE_X = W - 10;
+/** The cell a building is baked into, in model units (1 unit = 1 map screen px at mid zoom, like the units). */
+const CU = 46;
+const CV = 50;
+/** where the model origin (u 0, v 0, on the ground) sits in the cell, in model units */
+const OU = 23;
+const OV = 32;
 const SCALE_CLOSE = 3;
-const SCALE_NORMAL = 2;
+const SCALE_NORMAL = 1.5;
 
 type C = readonly number[];
+type Mat = Part['m'];
 
-// ------------------------------------------------------------------------------------------------- colour
+// ------------------------------------------------------------------------------------------------- small helpers
 
 const cl = (v: number): number => (v < 0 ? 0 : v > 255 ? 255 : Math.round(v));
-/** a colour scaled in brightness (f < 1 darker, f > 1 lighter) */
-const sh = (c: C, f: number): RGB => [cl(c[0] * f), cl(c[1] * f), cl(c[2] * f)];
+const dark = (c: C, f: number): RGB => [cl(c[0] * f), cl(c[1] * f), cl(c[2] * f)];
 const mix = (a: C, b: C, t: number): RGB => [cl(a[0] + (b[0] - a[0]) * t), cl(a[1] + (b[1] - a[1]) * t), cl(a[2] + (b[2] - a[2]) * t)];
-/** deterministic 0..1 noise from two integers (surface grain, no Math.random) */
-function hash(x: number, y: number): number {
-  let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0;
+/** deterministic 0..1 noise from two integers (no Math.random) */
+function hash(x: number, y: number, s = 0): number {
+  let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 144665)) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
 }
-
-/** The muted material palette: weathered concrete, steel, earth and clay. Nothing here is a bright fill. */
-const M = {
-  conc: [152, 150, 140],
-  stone: [138, 132, 118],
-  steel: [100, 108, 112],
-  dkSteel: [60, 66, 70],
-  earth: [112, 98, 74],
-  clay: [138, 98, 78],
-  slate: [92, 98, 104],
-  cream: [176, 166, 146],
-  brick: [130, 96, 80],
-  olive: [84, 92, 66],
-  white: [202, 202, 194],
-  teak: [124, 98, 70],
-  sea: [70, 96, 106],
-  rust: [136, 84, 64],
-  fadedBlue: [86, 106, 122],
-  ochre: [146, 124, 76],
-  moss: [88, 104, 84],
-  sand: [166, 148, 110],
-  glass: [40, 50, 58],
-  lamp: [196, 174, 118],
-  asphalt: [74, 76, 76],
-} as const satisfies Record<string, C>;
-
-/** The owner's colour, a touch toned down so it sits with the muted palette (flags, bands and trim only). */
-const ownTone = (o: C): RGB => mix(o, [128, 128, 122], 0.16);
-
-// ------------------------------------------------------------------------------------------------- sub-pixel buffer
-
-class Pix {
-  readonly d = new Uint8ClampedArray(SW * SH * 4);
-  /** 'shadow': only cast() records into the shadow mask and nothing is painted; 'draw': everything paints */
-  mode: 'draw' | 'shadow' = 'draw';
-  readonly sm = new Float32Array(SW * SH);
-  /** one sub-pixel, blended over what is there */
-  sp(x: number, y: number, c: C, a = 255): void {
-    if (this.mode === 'shadow' || x < 0 || y < 0 || x >= SW || y >= SH || a <= 0) return;
-    const o = (y * SW + x) * 4;
-    if (a >= 255) {
-      this.d[o] = c[0];
-      this.d[o + 1] = c[1];
-      this.d[o + 2] = c[2];
-      this.d[o + 3] = 255;
-      return;
-    }
-    const sa = a / 255;
-    const da = this.d[o + 3] / 255;
-    const oa = sa + da * (1 - sa);
-    const w = da * (1 - sa);
-    this.d[o] = (c[0] * sa + this.d[o] * w) / oa;
-    this.d[o + 1] = (c[1] * sa + this.d[o + 1] * w) / oa;
-    this.d[o + 2] = (c[2] * sa + this.d[o + 2] * w) / oa;
-    this.d[o + 3] = oa * 255;
-  }
-  /** a rectangle in sprite pixels (fractions allowed) */
-  rect(x: number, y: number, w: number, h: number, c: C, a = 255): void {
-    const x0 = Math.round(x * K);
-    const x1 = Math.round((x + w) * K);
-    const y0 = Math.round(y * K);
-    const y1 = Math.round((y + h) * K);
-    for (let j = y0; j < y1; j++) for (let i = x0; i < x1; i++) this.sp(i, j, c, a);
-  }
-  /** a rectangle filled per sub-pixel by fn(u, v, sx, sy), u and v running 0..1 across it */
-  fill(x: number, y: number, w: number, h: number, fn: (u: number, v: number, sx: number, sy: number) => C | null, a = 255): void {
-    const x0 = Math.round(x * K);
-    const x1 = Math.round((x + w) * K);
-    const y0 = Math.round(y * K);
-    const y1 = Math.round((y + h) * K);
-    for (let j = y0; j < y1; j++) {
-      for (let i = x0; i < x1; i++) {
-        const c = fn((i - x0 + 0.5) / (x1 - x0), (j - y0 + 0.5) / (y1 - y0), i, j);
-        if (c) this.sp(i, j, c, a);
-      }
-    }
-  }
-  /** a line in sprite pixels, t sub-pixels thick */
-  line(x0: number, y0: number, x1: number, y1: number, c: C, t = 1, a = 255): void {
-    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 0.01) * K;
-    const half = Math.floor((t - 1) / 2);
-    for (let i = 0; i <= n; i++) {
-      const sx = Math.round((x0 + ((x1 - x0) * i) / n) * K - 0.5);
-      const sy = Math.round((y0 + ((y1 - y0) * i) / n) * K - 0.5);
-      for (let j = 0; j < t; j++) for (let k = 0; k < t; k++) this.sp(sx - half + k, sy - half + j, c, a);
-    }
-  }
-  /** a shaded ball or dome: an ellipse lit from the top left, soft at the rim */
-  blob(cx: number, cy: number, rx: number, ry: number, c: C, a = 255, lift = 0.55): void {
-    const x0 = Math.floor((cx - rx) * K);
-    const x1 = Math.ceil((cx + rx) * K);
-    const y0 = Math.floor((cy - ry) * K);
-    const y1 = Math.ceil((cy + ry) * K);
-    for (let j = y0; j <= y1; j++) {
-      for (let i = x0; i <= x1; i++) {
-        const nx = ((i + 0.5) / K - cx) / rx;
-        const ny = ((j + 0.5) / K - cy) / ry;
-        const q = nx * nx + ny * ny;
-        if (q > 1) continue;
-        const z = Math.sqrt(1 - q);
-        const lam = -0.5 * nx - 0.6 * ny + 0.62 * z;
-        const f = 0.6 + lift * Math.max(0, Math.min(1, lam + 0.25));
-        this.sp(i, j, sh(c, f), q > 0.86 ? a * Math.min(1, (1 - q) / 0.14 + 0.35) : a);
-      }
-    }
-  }
-  /** casts the shadow of a footprint (ground rect) z tall: swept toward the bottom right into the shadow mask */
-  cast(x: number, y: number, w: number, d: number, z: number): void {
-    if (this.mode !== 'shadow') return;
-    const lx = z * 0.8;
-    const ly = z * 0.46;
-    const x0 = x * K;
-    const x1 = (x + w) * K;
-    const y0 = y * K;
-    const y1 = (y + d) * K;
-    const jy0 = Math.max(0, Math.floor(y0));
-    const jy1 = Math.min(SH - 1, Math.ceil(y1 + ly * K));
-    for (let j = jy0; j <= jy1; j++) {
-      const py = j + 0.5;
-      // the swept offset t (0..1) for which this row is inside the footprint
-      const ta = ly > 0 ? Math.max(0, (py - y1) / (ly * K)) : 0;
-      const tb = ly > 0 ? Math.min(1, (py - y0) / (ly * K)) : 1;
-      if (tb < ta) continue;
-      const xa = Math.max(0, Math.floor(x0 + lx * K * ta));
-      const xb = Math.min(SW - 1, Math.ceil(x1 + lx * K * tb));
-      for (let i = xa; i <= xb; i++) this.sm[j * SW + i] = 1;
-    }
-  }
-  /** the same for a round footprint */
-  castEllipse(cx: number, cy: number, rx: number, ry: number, z: number): void {
-    if (this.mode !== 'shadow') return;
-    const lx = z * 0.8;
-    const ly = z * 0.46;
-    const steps = Math.max(2, Math.ceil(Math.max(lx, ly) * K));
-    for (let s = 0; s <= steps; s++) {
-      const ox = (lx * s) / steps;
-      const oy = (ly * s) / steps;
-      const j0 = Math.floor((cy + oy - ry) * K);
-      const j1 = Math.ceil((cy + oy + ry) * K);
-      for (let j = Math.max(0, j0); j <= Math.min(SH - 1, j1); j++) {
-        const ny = ((j + 0.5) / K - cy - oy) / ry;
-        if (Math.abs(ny) > 1) continue;
-        const hw = rx * Math.sqrt(1 - ny * ny);
-        const i0 = Math.max(0, Math.floor((cx + ox - hw) * K));
-        const i1 = Math.min(SW - 1, Math.ceil((cx + ox + hw) * K));
-        for (let i = i0; i <= i1; i++) this.sm[j * SW + i] = 1;
-      }
-    }
-  }
-  /** softens the shadow mask's edge a little (one box blur) */
-  blurShadow(): void {
-    const src = this.sm.slice();
-    for (let j = 1; j < SH - 1; j++) {
-      for (let i = 1; i < SW - 1; i++) {
-        let t = 0;
-        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) t += src[(j + dj) * SW + i + di];
-        this.sm[j * SW + i] = t / 9;
-      }
-    }
-  }
-  /** paints the collected shadow over a region (default: everything): dark, soft, on whatever is there */
-  flush(x = 0, y = 0, w = W, h = H): void {
-    const x0 = Math.max(0, Math.floor(x * K));
-    const x1 = Math.min(SW, Math.ceil((x + w) * K));
-    const y0 = Math.max(0, Math.floor(y * K));
-    const y1 = Math.min(SH, Math.ceil((y + h) * K));
-    for (let j = y0; j < y1; j++) {
-      for (let i = x0; i < x1; i++) {
-        const m = this.sm[j * SW + i];
-        if (m > 0.03) this.sp(i, j, [14, 18, 16], 128 * m);
-      }
-    }
-  }
+/** smooth value noise 0..1 */
+function vnoise(x: number, y: number, s: number): number {
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const fx = x - x0;
+  const fy = y - y0;
+  const sx = fx * fx * (3 - 2 * fx);
+  const sy = fy * fy * (3 - 2 * fy);
+  const a = hash(x0, y0, s);
+  const b = hash(x0 + 1, y0, s);
+  const c = hash(x0, y0 + 1, s);
+  const d = hash(x0 + 1, y0 + 1, s);
+  return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
 }
+const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+const bayer = (x: number, y: number): number => (BAYER4[(y & 3) * 4 + (x & 3)] + 0.5) / 16;
 
-// ------------------------------------------------------------------------------------------------- high-camera forms
-// The camera is high (about 60 degrees down). A footprint keeps its width and is only slightly squashed; a height z
-// (sprite px) lifts a roof by z / 2 on screen, so a wall is a thin strip under its roof. Light comes from the top
-// left: roofs are bright at the top left, the visible (south) wall strips are mid dark, and a long cast shadow falls
-// toward the bottom right onto the ground. Shadows are collected in a mask first (mode 'shadow'), then painted once
-// on the ground under the buildings, and again on ground-level floors (courtyard, streets).
-
-const gr = (sx: number, sy: number, t = 0.05): number => 1 + (hash(sx, sy) - 0.5) * 2 * t;
-
-interface SlabO {
-  top?: C;
-  wall?: C;
-  /** a pitched roof: 'v' ridge runs up and down, 'h' runs left to right */
-  ridge?: 'v' | 'h';
-  courses?: boolean;
-  tex?: number;
-  windows?: boolean;
-  seam?: number;
-}
-
-/** A block seen from above: (x, yb) is the ground bottom left of its footprint, w by d, z tall. */
-function slab(p: Pix, x: number, yb: number, w: number, d: number, z: number, m: C, o: SlabO = {}): void {
-  const zh = Math.max(0.8, z * 0.5);
-  const y0 = yb - d - zh;
-  if (p.mode === 'shadow') {
-    p.cast(x, yb - d, w, d, z);
-    return;
-  }
-  const top = o.top ?? m;
-  const wall = o.wall ?? sh(m, 0.92);
-  const tex = o.tex ?? 0.05;
-  // the south wall strip
-  p.fill(x, yb - zh, w, zh, (u, v, sx, sy) => {
-    let f = 0.64 * (1.08 - 0.22 * v) * (1.04 - 0.1 * u);
-    if (o.courses) {
-      const ry = sy - Math.round((yb - zh) * K);
-      const rx = sx - Math.round(x * K);
-      const bh = 3;
-      if (ry % bh === 0) f *= 0.82;
-      else if ((rx + Math.floor(ry / bh) * 4) % 8 === 0) f *= 0.88;
-    }
-    return sh(wall, f * gr(sx, sy, tex));
-  });
-  if (o.windows && zh >= 2.2) {
-    for (let r = 0; r + 1.4 <= zh - 0.8; r += 2.2) {
-      for (let c = 1; c + 1 < w; c += 2) {
-        const lit = hash(Math.round(x + c) * 7, Math.round(r) * 13 + 3) > 0.75;
-        p.rect(x + c, yb - zh + 0.8 + r, 1, 1.1, lit ? sh(M.lamp, 0.95) : M.glass, 235);
-      }
-    }
-  }
-  // the roof
-  p.fill(x, y0, w, d, (u, v, sx, sy) => {
-    let f = 1.14 - 0.2 * u - 0.14 * v;
-    if (o.ridge === 'v') f *= u < 0.5 ? 1.1 : 0.8;
-    else if (o.ridge === 'h') f *= v < 0.5 ? 1.08 : 0.82;
-    if (o.seam) {
-      const rx = sx - Math.round(x * K);
-      if (rx % Math.round(o.seam * K) === 0 && rx > 0) f *= 0.86;
-    }
-    return sh(top, f * gr(sx, sy, tex));
-  });
-  if (o.ridge === 'v') p.rect(x + w / 2 - 0.2, y0, 0.4, d, sh(top, 1.3));
-  if (o.ridge === 'h') p.rect(x, y0 + d / 2 - 0.2, w, 0.4, sh(top, 1.3));
-  p.rect(x, y0, w, 1 / K, sh(top, 1.34));
-  p.rect(x, y0, 1 / K, d, sh(top, 1.24));
-  p.rect(x + w - 1 / K, y0, 1 / K, d + zh, sh(wall, 0.5));
-  p.rect(x, y0 + d - 1 / K, w, 1 / K, sh(top, 0.7));
-  p.rect(x, yb - 1 / K, w, 1 / K, sh(wall, 0.4));
-}
-
-interface CylO {
-  hollow?: boolean;
-  dome?: boolean;
-  top?: C;
-}
-
-/** A round tower, drum or pit seen from above. (cx, yb) is the bottom of its ground ellipse. */
-function cyl(p: Pix, cx: number, yb: number, r: number, z: number, m: C, o: CylO = {}): void {
-  const ry = r * 0.87;
-  const gy = yb - ry;
-  const zh = Math.max(0.7, z * 0.5);
-  const ty = gy - zh;
-  if (p.mode === 'shadow') {
-    p.castEllipse(cx, gy, r, ry, z);
-    return;
-  }
-  const top = o.top ?? m;
-  const x0 = Math.floor((cx - r) * K);
-  const x1 = Math.ceil((cx + r) * K);
-  const y0 = Math.floor((ty - ry) * K);
-  const y1 = Math.ceil((gy + ry) * K);
-  for (let j = y0; j <= y1; j++) {
-    for (let i = x0; i <= x1; i++) {
-      const dx = (i + 0.5) / K - cx;
-      const py = (j + 0.5) / K;
-      const nx = dx / r;
-      const qt = nx * nx + ((py - ty) / ry) ** 2;
-      const qg = nx * nx + ((py - gy) / ry) ** 2;
-      if (qt <= 1) {
-        const ny = (py - ty) / ry;
-        if (o.dome) {
-          const z2 = Math.sqrt(Math.max(0, 1 - qt));
-          const lam = -0.5 * nx - 0.6 * ny + 0.62 * z2;
-          p.sp(i, j, sh(top, (0.62 + 0.62 * Math.max(0, Math.min(1, lam + 0.25))) * gr(i, j, 0.03)));
-        } else if (o.hollow && qt < 0.5) {
-          p.sp(i, j, sh(M.earth, (0.62 + 0.14 * (nx - ny)) * gr(i, j, 0.07)));
-        } else {
-          let f = 1.16 - 0.1 * (nx + ny) - 0.1 * qt;
-          if (qt > 0.9) f *= 0.8;
-          if (o.hollow && qt > 0.5 && qt < 0.56) f *= 0.72;
-          p.sp(i, j, sh(top, f * gr(i, j, 0.05)));
-        }
-      } else if (Math.abs(nx) <= 1 && py > ty && (qg <= 1 || py <= gy)) {
-        const f = 0.8 - 0.36 * ((nx + 1) / 2) - (qg > 0.86 ? 0.1 : 0);
-        p.sp(i, j, sh(m, f * gr(i, j, 0.05)));
-      }
-    }
-  }
-}
-
-/** A ground patch with a soft, slightly ragged edge: packed earth, paving or a concrete apron. */
-function pad(p: Pix, x: number, y: number, w: number, h: number, c: C, a = 235, rr = 3.5, tex = 0.06): void {
-  if (p.mode === 'shadow') return;
-  const x0 = Math.floor(x * K);
-  const x1 = Math.ceil((x + w) * K);
-  const y0 = Math.floor(y * K);
-  const y1 = Math.ceil((y + h) * K);
-  const cx = x + w / 2;
-  const cy = y + h / 2;
-  for (let j = y0; j < y1; j++) {
-    for (let i = x0; i < x1; i++) {
-      const px = (i + 0.5) / K;
-      const py = (j + 0.5) / K;
-      const qx = Math.abs(px - cx) - (w / 2 - rr);
-      const qy = Math.abs(py - cy) - (h / 2 - rr);
-      const e = rr - (Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0));
-      const al = Math.max(0, Math.min(1, e / 1.5 + (hash(i, j) - 0.5) * 0.5));
-      if (al <= 0) continue;
-      let f = 1.04 - 0.1 * ((px - x) / w) - 0.06 * ((py - y) / h);
-      if (e < 0.8) f *= 0.84;
-      p.sp(i, j, sh(c, f * gr(i, j, tex)), a * al);
-    }
-  }
-}
-
-/** Crenellations along a roof edge: small lit blocks with a gap between. */
-function merlonsH(p: Pix, x: number, y: number, w: number, m: C, step = 2.2): void {
-  if (p.mode === 'shadow') return;
-  for (let s = 0; s + 1.2 <= w; s += step) {
-    p.rect(x + s, y, 1.2, 0.9, sh(m, 1.18));
-    p.rect(x + s, y + 0.9, 1.2, 0.34, sh(m, 0.6));
-    p.rect(x + s + 1.2, y, step - 1.2, 0.6, sh(m, 0.62), 160);
-  }
-}
-function merlonsV(p: Pix, x: number, y: number, h: number, m: C, step = 2.2): void {
-  if (p.mode === 'shadow') return;
-  for (let s = 0; s + 1.2 <= h; s += step) {
-    p.rect(x, y + s, 0.9, 1.2, sh(m, 1.18));
-    p.rect(x + 0.9, y + s, 0.34, 1.2, sh(m, 0.6));
-  }
-}
-
-/** A tiny flag-pole pennant in the owner's colour, waving. */
-function flag(p: Pix, x: number, yTop: number, h: number, own: C, wide = 6): void {
-  if (p.mode === 'shadow') return;
-  p.rect(x, yTop, 0.45, h, M.dkSteel);
-  p.rect(x, yTop, 0.45, h, [255, 255, 255], 30);
-  p.blob(x + 0.2, yTop - 0.3, 0.55, 0.55, [200, 190, 150]);
-  const fh = Math.max(3.2, wide * 0.55);
-  const cols = Math.round(wide * K);
-  for (let i = 0; i < cols; i++) {
-    const t = i / cols;
-    const wave = Math.sin(i * 0.5) * 0.45 * t;
-    const hh = fh * (1 - t * 0.35);
-    p.fill(x + 0.45 + i / K, yTop + wave, 1 / K, hh, (_u, v) => sh(own, (1.12 - 0.34 * v) * (0.9 + 0.1 * Math.cos(i * 0.5))));
-  }
-  p.rect(x + 0.45, yTop, wide, 1 / K, sh(own, 1.3));
-}
-
-/** A band in the owner's colour: a stripe along a roof edge or wall. */
-function band(p: Pix, x: number, y: number, w: number, own: C, hgt = 1.1): void {
-  if (p.mode === 'shadow') return;
-  p.fill(x, y, w, hgt, (_u, v) => sh(own, 1.2 - 0.4 * v));
-}
-
-/** A ring of sandbags (top view), a lit top and a dark underside. */
-function sandRing(p: Pix, cx: number, cy: number, rx: number, ry: number): void {
-  if (p.mode === 'shadow') {
-    p.castEllipse(cx, cy, rx, ry, 1.6);
-    return;
-  }
-  p.blob(cx, cy, rx - 0.6, ry - 0.5, [58, 52, 40], 255, 0.2);
-  const n = 14;
-  for (let i = 0; i < n; i++) {
-    const a = (Math.PI * 2 * (i + 0.3)) / n;
-    const bx = cx + Math.cos(a) * rx;
-    const by = cy + Math.sin(a) * ry;
-    const t = hash(i, 9);
-    p.blob(bx, by + 0.25, 1.35, 0.95, sh(M.sand, 0.5), 255, 0.1);
-    p.blob(bx, by, 1.3, 0.9, sh(M.sand, 0.9 + t * 0.2), 255, 0.5);
-  }
-}
-
-/** A twin flak gun in a sandbag ring, barrels up and to the right. */
-function flakGun(p: Pix, cx: number, cy: number): void {
-  sandRing(p, cx, cy, 4.4, 3.7);
-  if (p.mode === 'shadow') return;
-  p.blob(cx + 0.7, cy + 0.9, 2.1, 1.5, [10, 12, 10], 120, 0.2);
-  p.line(cx + 0.5, cy + 0.9, cx + 5.2, cy - 2.2, [16, 18, 18], 3, 110);
-  p.blob(cx, cy, 1.9, 1.6, M.steel, 255, 0.6);
-  p.line(cx - 0.4, cy - 0.4, cx + 4.6, cy - 3.2, M.dkSteel, 3);
-  p.line(cx + 0.5, cy + 0.3, cx + 5.2, cy - 2.4, M.dkSteel, 3);
-  p.line(cx - 0.4, cy - 0.7, cx + 4.4, cy - 3.5, sh(M.steel, 1.4), 1);
-  p.rect(cx - 1.2, cy - 0.8, 2.3, 1.8, M.slate);
-}
-
-/** A czech hedgehog tank trap: three crossed steel bars, seen from above. */
-function hedgehog(p: Pix, cx: number, cy: number): void {
-  if (p.mode === 'shadow') {
-    p.castEllipse(cx, cy, 1.9, 1.5, 2.6);
-    return;
-  }
-  const bars: [number, number][] = [
-    [2.5, 0.2],
-    [1.3, -2.1],
-    [-1.4, -2.0],
-  ];
-  for (const [dx, dy] of bars) p.line(cx - dx + 0.8, cy - dy + 0.9, cx + dx + 0.8, cy + dy + 0.9, [14, 16, 16], 3, 100);
-  for (const [dx, dy] of bars) {
-    p.line(cx - dx, cy - dy, cx + dx, cy + dy, M.dkSteel, 4);
-    p.line(cx - dx - 0.1, cy - dy - 0.1, cx + dx - 0.1, cy + dy - 0.1, sh(M.steel, 1.25), 2);
-  }
-  p.blob(cx, cy, 0.7, 0.6, sh(M.steel, 1.2));
-}
-
-/** A radar dish on a low mast: a tilted dish, and a pale sweep wedge toward the upper right (kept inside the sprite). */
-function radar(p: Pix, cx: number, cy: number, own: C): void {
-  if (p.mode === 'shadow') {
-    p.castEllipse(cx, cy + 1.5, 2.6, 2.2, 7);
-    return;
-  }
-  const R = 10.5;
-  const a0 = (-85 * Math.PI) / 180;
-  const a1 = (-15 * Math.PI) / 180;
-  const x0 = Math.floor((cx - 1) * K);
-  const x1 = Math.ceil((cx + R) * K);
-  const y0 = Math.floor((cy - R - 1) * K);
-  const y1 = Math.ceil((cy + 2) * K);
-  for (let j = y0; j <= y1; j++) {
-    for (let i = x0; i <= x1; i++) {
-      const dx = (i + 0.5) / K - cx;
-      const dy = (j + 0.5) / K - cy;
-      const rr = Math.hypot(dx, dy);
-      if (rr > R || rr < 1.5) continue;
-      const a = Math.atan2(dy, dx);
-      if (a < a0 || a > a1) continue;
-      const k = 1 - rr / R;
-      const edge = Math.min(1, (a - a0) / 0.12, (a1 - a) / 0.12);
-      p.sp(i, j, [90, 235, 140], 120 * k * Math.max(0.3, edge) + 22);
-    }
-  }
-  cyl(p, cx, cy + 3.2, 2.5, 3.5, M.conc);
-  // the dish: a bright rim, a hollow inside, a feed arm
-  p.blob(cx + 0.3, cy - 1.8, 4.9, 3.9, sh(M.white, 0.95), 255, 0.5);
-  p.blob(cx + 0.9, cy - 1.5, 3.7, 2.9, M.slate, 255, 0.3);
-  p.line(cx + 0.9, cy - 1.5, cx + 4.6, cy - 5.2, M.dkSteel, 2);
-  p.blob(cx + 4.6, cy - 5.2, 0.8, 0.8, M.dkSteel);
-  band(p, cx - 2.2, cy + 1.4, 4.4, own, 0.9);
-}
-
-/** A coastal gun in a round concrete pit, the barrel out toward the sea (right and down). */
-function coastalGun(p: Pix, cx: number, cy: number, own: C): void {
-  cyl(p, cx, cy + 4.3, 4.9, 2.4, M.conc, { hollow: true });
-  if (p.mode === 'shadow') return;
-  p.line(cx + 1, cy + 1.6, cx + 9.2, cy + 5.6, [12, 14, 12], 4, 100);
-  p.blob(cx, cy, 3.1, 2.7, sh(M.steel, 1.0), 255, 0.6);
-  p.line(cx + 0.5, cy + 0.2, cx + 8.2, cy + 3.8, M.dkSteel, 4);
-  p.line(cx + 0.5, cy - 0.2, cx + 8.0, cy + 3.4, sh(M.steel, 1.4), 1);
-  p.blob(cx + 8.2, cy + 3.8, 0.9, 0.8, [24, 26, 26]);
-  band(p, cx - 1.6, cy - 0.4, 3.2, own, 0.9);
-}
-
-/** The small level number plate in the corner (the digit is drawn on the canvas afterwards). */
-function levelBadge(p: Pix, x: number, y: number): void {
-  const bw = 9;
-  const bh = 10;
-  p.rect(x + 0.4, y + 0.6, bw, bh, [8, 10, 12], 90);
-  p.fill(x, y, bw, bh, (u, v) => {
-    const cx = Math.abs(u - 0.5) * 2;
-    const cy = Math.abs(v - 0.5) * 2;
-    if (cx > 0.82 && cy > 0.82) return null;
-    if (cx > 0.9 || cy > 0.9) return [166, 168, 160];
-    return sh([30, 34, 38], 1.08 - 0.25 * v);
-  });
-}
+// ------------------------------------------------------------------------------------------------- the part models
 
 type Addon = 'flak' | 'traps' | 'radar' | 'guns' | null;
-
-interface Builder {
-  /** flat ground work under the shadows: pads, moats, paths */
-  ground: (p: Pix, own: C, lv: number, addon: Addon) => void;
-  /** everything standing up, drawn twice: once to collect shadows, once for real */
-  body: (p: Pix, own: C, lv: number, addon: Addon) => void;
-}
-
-// ------------------------------------------------------------------------------------------------- fort
-
-interface FortCfg {
-  x: number;
-  yb: number;
-  w: number;
-  d: number;
-  t: number;
-  wz: number;
-  tz: number;
-  r: number;
-}
-function fortCfg(lv: number): FortCfg {
-  if (lv >= 5) return { x: 6, yb: 42, w: 38, d: 26, t: 4.2, wz: 11, tz: 15, r: 4.8 };
-  if (lv >= 3) return { x: 8, yb: 38, w: 29, d: 21, t: 3.4, wz: 8, tz: 12, r: 4.1 };
-  return { x: 10, yb: 35, w: 25, d: 17, t: 2.8, wz: 6, tz: 8, r: 3.1 };
-}
-
-function fortGround(p: Pix, _own: C, lv: number, _addon: Addon): void {
-  const c = fortCfg(lv);
-  const mo = lv >= 5 ? 3.4 : 0;
-  pad(p, c.x - 3 - mo, c.yb - c.d - 4 - mo, c.w + 6 + mo * 2, c.d + 9 + mo * 2, M.earth, 205, 4.5);
-  if (lv >= 5) {
-    // a moat ring around the wall, a plank bridge in front of the gate
-    const mx = c.x - mo;
-    const my = c.yb - c.d - mo;
-    pad(p, mx, my, c.w + mo * 2, c.d + mo * 2, [52, 86, 100], 250, 3.2, 0.04);
-    pad(p, c.x - 0.8, c.yb - c.d - 0.8, c.w + 1.6, c.d + 1.6, M.earth, 255, 2, 0.05);
-    p.rect(c.x + c.w / 2 - 2.2, c.yb, 4.4, mo + 0.6, M.teak);
-    for (let s = 0.4; s < mo + 0.6; s += 1) p.rect(c.x + c.w / 2 - 2.2, c.yb + s, 4.4, 0.25, sh(M.teak, 0.7));
-  } else {
-    p.rect(c.x + c.w / 2 - 2, c.yb, 4, 5, sh(M.sand, 0.92), 220);
-  }
-}
-
-function fortBody(p: Pix, o: C, lv: number, addon: Addon): void {
-  const own = ownTone(o);
-  const c = fortCfg(lv);
-  const { x, yb, w, d, t, wz, tz, r } = c;
-  const zh = Math.max(0.8, wz * 0.5);
-  const y0 = yb - d - zh;
-  const cxm = x + w / 2;
-  const shadow = p.mode === 'shadow';
-  const corners: [number, number][] = [
-    [x, yb - d],
-    [x + w, yb - d],
-    [x, yb],
-    [x + w, yb],
-  ];
-
-  // the wall ring
-  if (shadow) {
-    p.cast(x, yb - d, w, t, wz);
-    p.cast(x, yb - t, w, t, wz);
-    p.cast(x, yb - d, t, d, wz);
-    p.cast(x + w - t, yb - d, t, d, wz);
-  } else {
-    slab(p, x, yb, w, d, wz, M.stone, { courses: true, top: M.conc, tex: 0.05 });
-    // inside: the far wall's inner face, then the courtyard floor
-    const fy = y0 + t;
-    p.fill(x + t, fy, w - 2 * t, zh, (u, v, sx, sy) => sh(M.stone, (0.98 - 0.24 * v) * (1.04 - 0.1 * u) * gr(sx, sy, 0.06)));
-    for (let s = x + t + 2; s < x + w - t - 1; s += 3.4) p.rect(s, fy + zh * 0.35, 0.7, Math.min(1.6, zh * 0.5), [26, 28, 28]);
-    const fh = y0 + d - t - fy - zh;
-    p.fill(x + t, fy + zh, w - 2 * t, fh, (u, v, sx, sy) => sh(M.earth, (1.0 - 0.14 * u) * (0.98 + 0.06 * v) * gr(sx, sy, 0.08)));
-    p.flush(x + t, fy + zh, w - 2 * t, fh);
-    // crenellations on the outer edges of the wall top
-    merlonsH(p, x + 0.4, y0, w - 0.8, M.conc);
-    merlonsH(p, x + 0.4, y0 + d - 1.3, w - 0.8, M.conc);
-    merlonsV(p, x, y0 + 1, d - 2, M.conc);
-    merlonsV(p, x + w - 1.3, y0 + 1, d - 2, M.conc);
-  }
-
-  // inside the walls: huts (level 1), a keep (level 3), a keep and barracks inside an inner wall (level 5)
-  const ky = y0 + d - t - 1.2;
-  if (lv <= 1) {
-    slab(p, cxm - 3.5, ky, 7, 4.2, 4, M.clay, { ridge: 'h', top: M.clay });
-    slab(p, x + t + 1.6, ky - 0.6, 4, 3, 3, M.brick, { ridge: 'v', top: M.brick });
-  } else if (lv <= 3) {
-    slab(p, cxm - 5.2, ky, 10.4, 6.4, 10, M.cream, { top: M.slate, ridge: 'h', courses: true });
-    band(p, cxm - 5.2, ky - 6.4 - 5 + 0.2, 10.4, own, 1.2);
-    slab(p, x + t + 1.4, ky + 0.2, 5, 3.6, 4, M.brick, { ridge: 'v', top: M.clay });
-    slab(p, x + w - t - 6.4, ky + 0.2, 5, 3.6, 4, M.brick, { ridge: 'v', top: M.clay });
-  } else {
-    // the inner wall and a tall keep with a dome and a coloured banner band
-    slab(p, cxm - 11, ky + 0.6, 22, 12.4, 5, M.stone, { courses: true, top: M.conc });
-    if (!shadow) {
-      const iy = ky + 0.6 - 12.4 - 2.5 + 1.4;
-      p.fill(cxm - 9.6, iy, 19.2, 9.4, (u, v, sx, sy) => sh(M.earth, (1.0 - 0.14 * u) * gr(sx, sy, 0.08)));
-      p.flush(cxm - 9.6, iy, 19.2, 9.4);
-    }
-    slab(p, cxm - 6.5, ky - 1.4, 13, 8.2, 14, M.cream, { top: M.slate, ridge: 'h', courses: true, windows: true });
-    cyl(p, cxm, ky - 8.6, 3.3, 5, M.cream, { dome: true, top: sh(M.moss, 1.05) });
-    band(p, cxm - 6.5, ky - 1.4 - 8.2 - 7 + 0.2, 13, own, 1.4);
-    flag(p, cxm + 0.2, ky - 21, 8, own, 5.6);
-    slab(p, x + t + 1.4, ky - 4.4, 6, 4.2, 6, M.brick, { ridge: 'v', top: M.clay });
-    slab(p, x + w - t - 7.4, ky - 4.4, 6, 4.2, 6, M.brick, { ridge: 'v', top: M.clay });
-  }
-
-  // the towers: back ones first, front ones after the gate house (they stand in front)
-  const towerAt = (cx: number, cyG: number): void => {
-    cyl(p, cx, cyG + r * 0.87, r, tz, M.stone, { hollow: true, top: M.conc });
-  };
-  if (lv >= 5) towerAt(cxm, yb - d + 0.4);
-  towerAt(corners[0][0], corners[0][1]);
-  towerAt(corners[1][0], corners[1][1]);
-
-  // the gate house in the middle of the south wall (a dark arch in the wall strip, a coloured band on its roof)
-  const gw = lv >= 5 ? 9 : lv >= 3 ? 7.4 : 6.2;
-  const gd = t + 1.6;
-  slab(p, cxm - gw / 2, yb + 0.4, gw, gd, wz + 2, M.stone, { top: M.conc, courses: true });
-  if (!shadow) {
-    const gzh = Math.max(0.8, (wz + 2) * 0.5);
-    const aw = gw * 0.5;
-    p.fill(cxm - aw / 2, yb + 0.4 - gzh + 0.6, aw, gzh - 0.6, (_u, v) => sh([22, 22, 24], 1.1 - 0.5 * v));
-    p.rect(cxm - aw / 2 - 0.4, yb + 0.4 - gzh + 0.2, aw + 0.8, 0.6, sh(M.conc, 1.2));
-    band(p, cxm - gw / 2, yb + 0.4 - gd - gzh + 0.2, gw, own, 1.2);
-    merlonsH(p, cxm - gw / 2 + 0.3, yb + 0.4 - gd - gzh + 1.5, gw - 0.6, M.conc);
-  }
-  towerAt(corners[2][0], corners[2][1]);
-  towerAt(corners[3][0], corners[3][1]);
-  if (!shadow) {
-    const fl = lv >= 5 ? 7 : lv >= 3 ? 7 : 5.5;
-    const tcy = corners[1][1] - tz * 0.5;
-    if (lv < 5) flag(p, corners[1][0] - 0.2, tcy - fl - 0.8, fl, own, 5);
-    if (lv >= 5) flag(p, corners[0][0] - 0.2, tcy - fl - 0.8, fl, own, 6.4);
-    // trim: a coloured stripe on the front pair of tower drums
-    for (const [cx, cy] of [corners[2], corners[3]]) band(p, cx - r * 0.55, cy - tz * 0.5 + r * 0.87 + 0.1, r * 1.1, own, 0.8);
-  }
-
-  // add-ons
-  if (addon === 'flak') {
-    flakGun(p, x - 1.5, yb + 8.5);
-    flakGun(p, x + w + 1.5, yb + 8.5);
-  }
-  if (addon === 'traps') {
-    const ty = yb + 8;
-    for (let hx = x - 4; hx <= x + w + 4; hx += 5.6) if (Math.abs(hx - cxm) > 4) hedgehog(p, hx, ty + (hash(Math.round(hx), 4) - 0.5) * 1.4);
-    for (let hy = yb - d + 8; hy < yb; hy += 7) {
-      hedgehog(p, x - 4.2, hy);
-      hedgehog(p, x + w + 4.2, hy);
-    }
-  }
-}
-
-// ------------------------------------------------------------------------------------------------- city
-
-interface Lot {
-  x: number;
-  yb: number;
-  w: number;
-  d: number;
-  z: number;
-  roof: C;
-  kind: 'house' | 'tower' | 'hall';
-}
-
-function cityLots(lv: number): Lot[] {
-  const R = [M.clay, M.slate, M.brick, M.cream, M.ochre, M.rust, M.fadedBlue];
-  const k = (i: number): C => R[i % R.length];
-  if (lv >= 5) {
-    return [
-      { x: 6, yb: 24, w: 9, d: 7, z: 20, roof: M.slate, kind: 'tower' },
-      { x: 17.5, yb: 23, w: 8, d: 6, z: 7, roof: k(0), kind: 'house' },
-      { x: 28, yb: 24, w: 9, d: 7, z: 8, roof: k(3), kind: 'house' },
-      { x: 39.5, yb: 23, w: 8, d: 6, z: 6, roof: k(2), kind: 'house' },
-      { x: 5, yb: 35, w: 8, d: 7, z: 9, roof: k(4), kind: 'house' },
-      { x: 15.5, yb: 36, w: 10, d: 8, z: 16, roof: M.cream, kind: 'tower' },
-      { x: 28, yb: 35, w: 8, d: 7, z: 6, roof: k(6), kind: 'house' },
-      { x: 38.5, yb: 36, w: 9, d: 8, z: 11, roof: k(1), kind: 'house' },
-      { x: 5.5, yb: 46, w: 9, d: 7, z: 6, roof: k(5), kind: 'house' },
-      { x: 17, yb: 46, w: 7, d: 6, z: 5, roof: k(0), kind: 'house' },
-      { x: 26.5, yb: 47, w: 11, d: 8, z: 13, roof: M.slate, kind: 'tower' },
-      { x: 39.5, yb: 46, w: 8, d: 7, z: 6, roof: k(3), kind: 'house' },
-    ];
-  }
-  if (lv >= 3) {
-    return [
-      { x: 6, yb: 25, w: 8, d: 7, z: 12, roof: M.slate, kind: 'tower' },
-      { x: 16.5, yb: 24, w: 8, d: 6, z: 6, roof: k(0), kind: 'house' },
-      { x: 27, yb: 25, w: 8, d: 7, z: 6, roof: k(2), kind: 'house' },
-      { x: 37.5, yb: 24, w: 7, d: 6, z: 5, roof: k(4), kind: 'house' },
-      { x: 6, yb: 36, w: 8, d: 7, z: 5, roof: k(5), kind: 'house' },
-      { x: 16.5, yb: 37, w: 10, d: 8, z: 7, roof: M.cream, kind: 'hall' },
-      { x: 29, yb: 36, w: 8, d: 7, z: 9, roof: k(6), kind: 'house' },
-      { x: 39.5, yb: 36, w: 6, d: 6, z: 5, roof: k(3), kind: 'house' },
-    ];
-  }
-  return [
-    { x: 9, yb: 30, w: 8, d: 6, z: 3.4, roof: M.clay, kind: 'house' },
-    { x: 21, yb: 29, w: 8, d: 6, z: 3.4, roof: M.slate, kind: 'house' },
-    { x: 32, yb: 30, w: 7, d: 6, z: 3.4, roof: M.brick, kind: 'house' },
-    { x: 8, yb: 41, w: 7, d: 6, z: 3, roof: M.ochre, kind: 'house' },
-    { x: 18.5, yb: 42, w: 11, d: 8, z: 5.5, roof: M.cream, kind: 'hall' },
-    { x: 32.5, yb: 41, w: 7, d: 6, z: 3.4, roof: M.rust, kind: 'house' },
-  ];
-}
-
-function cityPadRect(lv: number): [number, number, number, number] {
-  if (lv >= 5) return [2, 9, 50, 45];
-  if (lv >= 3) return [3, 13, 46, 35];
-  return [5, 18, 38, 31];
-}
-
-function cityGround(p: Pix, _own: C, lv: number, _addon: Addon): void {
-  const [x, y, w, h] = cityPadRect(lv);
-  pad(p, x, y, w, h, M.asphalt, 235, 4);
-  if (lv >= 3) for (let s = x + 3; s < x + w - 3; s += 4) p.rect(s, y + h * 0.5 - 0.1, 1.8, 0.4, [190, 186, 160], 150);
-  if (lv >= 5) pad(p, 23.5, 25, 6, 5, M.moss, 245, 1.6, 0.1);
-  else if (lv >= 3) pad(p, 33, 27.2, 5.4, 4.4, M.moss, 245, 1.6, 0.1);
-  else pad(p, 33.5, 35.2, 6, 5, M.moss, 245, 1.6, 0.1);
-}
-
-function cityBody(p: Pix, o: C, lv: number, addon: Addon): void {
-  const own = ownTone(o);
-  const shadow = p.mode === 'shadow';
-  const lots = cityLots(lv).slice().sort((a, b) => a.yb - b.yb || a.x - b.x);
-  if (!shadow && lv >= 3) {
-    const tr: [number, number][] = lv >= 5 ? [[25.5, 28], [28, 29]] : [[35.4, 30.6]];
-    for (const [tx, ty] of tr) {
-      p.blob(tx + 0.8, ty + 0.9, 2.0, 1.6, [20, 28, 20], 120, 0.2);
-      p.blob(tx, ty, 1.9, 1.7, sh(M.olive, 0.95), 255, 0.6);
-    }
-  }
-  for (const l of lots) {
-    const tall = l.kind === 'tower';
-    slab(p, l.x, l.yb, l.w, l.d, l.z, tall ? M.conc : sh(M.cream, 0.92), {
-      top: l.roof,
-      ridge: !tall && l.kind !== undefined ? (l.w >= l.d ? 'h' : 'v') : undefined,
-      windows: l.z >= 8,
-      courses: !tall && l.z < 8,
-      seam: tall ? 3 : undefined,
-    });
-    if (shadow) continue;
-    const zh = Math.max(0.8, l.z * 0.5);
-    const y0 = l.yb - l.d - zh;
-    if (tall) {
-      p.rect(l.x + 1.2, y0 + 1.2, 2.6, 1.8, sh(l.roof, 0.7));
-      p.rect(l.x + l.w - 3.8, y0 + l.d - 3, 2.4, 1.6, sh(l.roof, 0.78));
-      if (l.z >= 15) {
-        band(p, l.x, y0 + l.d - 1.5, l.w, own, 1.3);
-        p.line(l.x + l.w - 2, y0 + 2, l.x + l.w - 2, y0 - 3, M.dkSteel, 1);
-        p.blob(l.x + l.w - 2, y0 - 3, 0.5, 0.5, [210, 80, 70]);
-      }
-    }
-    if (l.kind === 'hall') {
-      band(p, l.x, y0 + l.d - 1.5, l.w, own, 1.0);
-      flag(p, l.x + l.w - 2.4, y0 - 5, 6.8, own, 5);
-    }
-    if (l.kind === 'house' && l.z >= 9) band(p, l.x, y0 + l.d - 1.3, l.w, own, 0.9);
-  }
-  if (addon === 'flak') {
-    const [x, y, w, h] = cityPadRect(lv);
-    flakGun(p, x + w - 4, y + h - 5);
-    flakGun(p, x + 5, y + h - 4);
-  }
-}
-
-// ------------------------------------------------------------------------------------------------- SAM site
-
-/** A truck launcher seen from above: chassis, cab, wheels and a rack of missiles leaning to the upper right. */
-function launcher(p: Pix, x: number, yb: number, own: C): void {
-  const cw = 12;
-  const cd = 5.2;
-  if (p.mode === 'shadow') {
-    p.cast(x, yb - cd, cw, cd, 4);
-    p.cast(x + 3, yb - cd - 3, 8, 3, 7);
-    return;
-  }
-  for (const wx of [x + 1.2, x + 5, x + 8.6]) p.rect(wx, yb - 0.4, 2, 1.2, [24, 26, 26]);
-  slab(p, x, yb, cw, cd, 2.6, M.olive, { top: sh(M.olive, 1.05), tex: 0.07 });
-  const zh = 1.3;
-  const y0 = yb - cd - zh;
-  p.fill(x, y0, 3.4, cd, (u, v, sx, sy) => sh(M.olive, (1.2 - 0.2 * u - 0.1 * v) * gr(sx, sy)));
-  p.rect(x + 0.4, y0 + 0.6, 0.9, cd - 1.2, M.glass);
-  p.rect(x, y0, 3.4, 1 / K, sh(M.olive, 1.5));
-  band(p, x + 3.8, y0 + cd - 1.2, 7.6, own, 0.9);
-  for (let m = 0; m < 4; m++) {
-    const mx = x + 4.2 + m * 1.55;
-    const my = y0 + cd * 0.62;
-    p.line(mx + 0.7, my + 1.0, mx + 7.2, my - 3.0, [12, 14, 12], 3, 90);
-  }
-  for (let m = 0; m < 4; m++) {
-    const mx = x + 4.2 + m * 1.55;
-    const my = y0 + cd * 0.62;
-    p.line(mx, my, mx + 6.6, my - 4.0, sh(M.white, 0.82), 4);
-    p.line(mx - 0.2, my - 0.2, mx + 6.4, my - 4.2, sh(M.white, 1.1), 2);
-    p.blob(mx + 6.9, my - 4.2, 0.65, 0.65, own);
-  }
-}
-
-function samPad(lv: number): [number, number, number, number] {
-  return lv >= 3 ? [3, 12, 46, 36] : [6, 20, 38, 27];
-}
-
-function samGround(p: Pix, _own: C, lv: number, _addon: Addon): void {
-  const [x, y, w, h] = samPad(lv);
-  pad(p, x - 1.2, y - 1.2, w + 2.4, h + 2.4, M.earth, 190, 4.5);
-  pad(p, x, y, w, h, sh(M.conc, 0.98), 245, 3.5, 0.05);
-}
-
-function samBody(p: Pix, o: C, lv: number, addon: Addon): void {
-  const own = ownTone(o);
-  const shadow = p.mode === 'shadow';
-  const [x, y, w, h] = samPad(lv);
-  if (!shadow) {
-    for (let s = x + 1; s < x + w - 1; s += 3) {
-      p.rect(s, y + 0.7, 0.5, 0.9, M.dkSteel);
-      p.rect(s, y + h - 1.6, 0.5, 0.9, M.dkSteel);
-    }
-    for (let s = y + 2; s < y + h - 1; s += 3) {
-      p.rect(x + 0.7, s, 0.9, 0.5, M.dkSteel);
-      p.rect(x + w - 1.6, s, 0.9, 0.5, M.dkSteel);
-    }
-    p.rect(x + 0.9, y + 0.9, w - 1.8, 0.25, [150, 154, 150], 110);
-    p.rect(x + 0.9, y + h - 1.4, w - 1.8, 0.25, [150, 154, 150], 110);
-  }
-  if (lv >= 3) {
-    // a control hut and a mast at the back, three launchers (two in front, one behind between them)
-    slab(p, x + 4, y + 13, 8, 5, 4.5, M.cream, { top: M.slate, ridge: 'h' });
-    band(p, x + 4, y + 13 - 5 - 2.25 + 0.2, 8, own, 0.9);
-    slab(p, x + 36, y + 11, 5, 3.6, 3.6, M.dkSteel, { top: M.steel });
-    launcher(p, 17, 28, own);
-    launcher(p, 7, 42, own);
-    launcher(p, 27, 42, own);
-    if (!shadow) {
-      p.line(x + 40, y + 6, x + 40, y + 11, M.dkSteel, 1);
-      p.blob(x + 40, y + 5.6, 0.6, 0.6, [210, 80, 70]);
-    }
-  } else {
-    slab(p, x + 27, y + 12, 8, 5, 4.2, M.cream, { top: M.slate, ridge: 'h' });
-    band(p, x + 27, y + 12 - 5 - 2.1 + 0.2, 8, own, 0.9);
-    launcher(p, x + 4, y + 24, own);
-  }
-  if (addon === 'radar') radar(p, lv >= 3 ? 15 : x + 8, lv >= 3 ? 24 : y + 8, own);
-}
-
-// ------------------------------------------------------------------------------------------------- port
-
-function portGround(p: Pix, _own: C, lv: number, _addon: Addon): void {
-  if (lv >= 3) pad(p, 2, 9, 33, 41, sh(M.conc, 0.92), 245, 3.5);
-  else pad(p, 2, 14, 32, 32, sh(M.conc, 0.92), 245, 3.5);
-}
-
-function pier(p: Pix, x: number, y: number, w: number, d: number): void {
-  if (p.mode === 'shadow') {
-    p.cast(x, y, w, d, 1.2);
-    return;
-  }
-  p.fill(x, y, w, d, (u, v, sx, sy) => {
-    const rx = sx - Math.round(x * K);
-    let f = (Math.floor(rx / 6) % 2 === 0 ? 1.04 : 0.94) * (1.08 - 0.14 * v - 0.06 * u);
-    if (rx % 6 === 0) f *= 0.8;
-    return sh(M.teak, f * gr(sx, sy, 0.06));
-  });
-  p.rect(x, y, w, 1 / K, sh(M.teak, 1.3));
-  p.rect(x, y + d - 1 / K, w, 1 / K, sh(M.teak, 0.55));
-  for (let s = x + 3; s < x + w - 1; s += 6) p.blob(s, y + d - 0.2, 0.55, 0.45, M.dkSteel);
-}
-
-/** A gantry crane from above: a base block on the quay, a long boom out over the water, a counterweight. */
-function crane(p: Pix, x: number, yb: number, len: number, own: C): void {
-  slab(p, x, yb, 5, 4.4, 9, M.ochre, { top: sh(M.ochre, 1.05) });
-  if (p.mode === 'shadow') {
-    p.cast(x + 3, yb - 4.4 - 2, len, 1.3, 11);
-    return;
-  }
-  const by = yb - 4.4 - 4.5 + 2.2;
-  p.line(x + 3, by + 0.2, x + 3 + len, by - 0.9, [12, 14, 12], 4, 90);
-  p.line(x + 3, by, x + 3 + len, by - 1.1, M.ochre, 4);
-  p.line(x + 3, by - 0.3, x + 3 + len, by - 1.4, sh(M.ochre, 1.3), 1);
-  for (let s = 2; s < len; s += 2.6) p.rect(x + 3 + s, by - 1.4, 0.4, 1.5, sh(M.ochre, 0.7));
-  p.rect(x - 2.6, by - 1.4, 3.2, 2.6, M.dkSteel);
-  p.rect(x + 3 + len - 1.4, by - 1.6, 1.4, 1.6, M.dkSteel);
-  band(p, x + 0.4, by + 1.6, 4.2, own, 0.9);
-}
-
-function containers(p: Pix, x: number, yb: number, nx: number, ny: number, seed: number, own: C | null): void {
-  const cols: C[] = [M.rust, M.fadedBlue, M.ochre, M.moss, M.brick, M.slate];
-  for (let j = 0; j < ny; j++) {
-    for (let i = 0; i < nx; i++) {
-      const c = cols[Math.floor(hash(i + seed, j * 5 + seed) * cols.length)];
-      slab(p, x + i * 5.4, yb + j * 3.5 - (ny - 1) * 3.5, 5, 3, 2.6 + (hash(i, j + seed) > 0.6 ? 2.6 : 0), c, { seam: 1.25, tex: 0.07 });
-    }
-  }
-  if (own) band(p, x, yb - (ny - 1) * 3.5 - 3 - 1.3 + 0.3, 5, own, 0.8);
-}
-
-function ship(p: Pix, x: number, y: number, w: number, d: number, own: C): void {
-  if (p.mode === 'shadow') {
-    p.cast(x, y, w, d, 3);
-    return;
-  }
-  const n = Math.round(w * K);
-  for (let i = 0; i < n; i++) {
-    const u = i / n;
-    const taper = u > 0.8 ? 1 - ((u - 0.8) / 0.2) ** 1.6 : 1;
-    const hh = d * taper;
-    const yy = y + (d - hh) / 2;
-    p.fill(x + i / K, yy, 1 / K, hh, (_u, v, sx, sy) => sh(M.slate, (1.02 - 0.3 * Math.abs(v - 0.3)) * gr(sx, sy, 0.05)));
-  }
-  p.rect(x + w * 0.04, y, w * 0.76, 0.5, sh(M.slate, 1.3));
-  band(p, x + w * 0.04, y + d - 1.1, w * 0.78, own, 0.7);
-  for (let i = 0; i < 4; i++) {
-    const c: C = [M.rust, M.fadedBlue, M.ochre, M.moss][i % 4];
-    slab(p, x + w * 0.28 + i * 3.4, y + d - 1.2, 3, 3.2, 2, c, { seam: 1, tex: 0.07 });
-  }
-  slab(p, x + 1.2, y + d - 0.8, 3.6, d - 1.6, 5, M.white, { top: sh(M.white, 1.05) });
-}
-
-function portBody(p: Pix, o: C, lv: number, addon: Addon): void {
-  const own = ownTone(o);
-  const shadow = p.mode === 'shadow';
-  if (lv >= 3) {
-    pier(p, 31, 17, 22, 6.4);
-    pier(p, 31, 36, 22, 6.4);
-    ship(p, 33, 25, 19, 8.6, own);
-    slab(p, 5, 24, 13, 8, 6, M.cream, { top: M.slate, ridge: 'h', courses: true });
-    slab(p, 20, 24, 10, 8, 6, M.cream, { top: sh(M.brick, 1.0), ridge: 'h', courses: true });
-    band(p, 5, 24 - 8 - 3 + 0.2, 13, own, 1.0);
-    if (!shadow) flag(p, 28.2, 24 - 8 - 3 - 4.6, 7, own, 5);
-    containers(p, 5, 41, 3, 2, 2, own);
-    containers(p, 22, 46, 2, 2, 7, null);
-    crane(p, 27, 20, 20, own);
-    crane(p, 27, 40, 20, own);
-    if (addon === 'guns') {
-      coastalGun(p, 9, 14, own);
-      coastalGun(p, 8, 48, own);
-    }
-  } else {
-    pier(p, 29, 25, 21, 6.4);
-    slab(p, 5, 31, 12, 8, 5, M.cream, { top: M.slate, ridge: 'h', courses: true });
-    band(p, 5, 31 - 8 - 2.5 + 0.2, 12, own, 1.0);
-    if (!shadow) flag(p, 14.6, 31 - 8 - 2.5 - 4.6, 7, own, 5);
-    containers(p, 6, 44, 2, 2, 4, own);
-    containers(p, 19, 43, 1, 2, 9, null);
-    crane(p, 25, 28, 18, own);
-    if (addon === 'guns') {
-      coastalGun(p, 8, 20, own);
-      coastalGun(p, 22, 46, own);
-    }
-  }
-}
-
-const BUILDERS: Record<string, Builder> = {
-  fort: { ground: fortGround, body: fortBody },
-  city: { ground: cityGround, body: cityBody },
-  sam: { ground: samGround, body: samBody },
-  port: { ground: portGround, body: portBody },
-};
-
-/** A tiny anchor mark for the port, where the shape alone might not say "port". */
-function anchorBadge(p: Pix, x: number, y: number): void {
-  const wh = [226, 228, 220];
-  p.fill(x, y, 8, 8, (u, v) => {
-    const dx = (u - 0.5) * 2;
-    const dy = (v - 0.5) * 2;
-    if (dx * dx + dy * dy > 1) return null;
-    return sh([34, 40, 44], 1.1 - 0.3 * v);
-  });
-  p.rect(x + 3.7, y + 1.6, 0.7, 4.8, wh);
-  p.rect(x + 2.5, y + 2.4, 3, 0.6, wh);
-  p.line(x + 1.9, y + 4.4, x + 3.9, y + 6.4, wh, 2);
-  p.line(x + 6.1, y + 4.4, x + 4.1, y + 6.4, wh, 2);
-}
-
-// ------------------------------------------------------------------------------------------------- bake
 
 export interface BuildingSpec {
   type: 'fort' | 'city' | 'sam' | 'port';
@@ -997,41 +78,725 @@ export interface BuildingSpec {
   addon: Addon;
 }
 
-const cache = new Map<string, HTMLCanvasElement>();
+const bx = box;
+const el = ell;
 
-/** The sprite of a building for an owner colour: a soft shadow, the shaded building, the level number plate. */
-export function bakeBuilding(spec: BuildingSpec, owner: RGB): HTMLCanvasElement {
-  const key = `${spec.type}|${spec.level}|${spec.addon}|${owner.join(',')}`;
-  const hit = cache.get(key);
-  if (hit) return hit;
-  const p = new Pix();
-  const b = BUILDERS[spec.type];
-  b.ground(p, owner, spec.level, spec.addon);
-  // pass 1: collect the cast shadows, paint them on the ground; pass 2: the buildings (floors take the shadow again)
-  p.mode = 'shadow';
-  b.body(p, owner, spec.level, spec.addon);
-  p.blurShadow();
-  p.mode = 'draw';
-  p.flush();
-  b.body(p, owner, spec.level, spec.addon);
-  if (spec.type === 'port') anchorBadge(p, 0.5, 1);
-  levelBadge(p, BADGE_X, 0.6);
-  const c = document.createElement('canvas');
-  c.width = SW;
-  c.height = SH;
-  const cx = c.getContext('2d');
-  if (cx) {
-    const img = cx.createImageData(SW, SH);
-    img.data.set(p.d);
-    cx.putImageData(img, 0, 0);
-    cx.font = '800 27px "DM Sans", system-ui, sans-serif';
-    cx.textAlign = 'center';
-    cx.textBaseline = 'middle';
-    cx.fillStyle = '#f4f2e8';
-    cx.fillText(String(spec.level), (BADGE_X + 4.5) * K, (0.6 + 5) * K + 1.5);
+/** A pitched roof over a footprint: a lit slope, a darker slope, a bright ridge cap. */
+function roof(u0: number, v0: number, u1: number, v1: number, z: number, m: Mat, rh = 1.3, over = 0.5): Part[] {
+  const a = u0 - over;
+  const b = v0 - over;
+  const c = u1 + over;
+  const d = v1 + over;
+  if (c - a >= d - b) {
+    const vm = (b + d) / 2;
+    return [bx(a, b, c, vm, z, rh, m, { tone: 0.8 }), bx(a, vm, c, d, z, rh * 0.55, m, { tone: -0.9 }), bx(a, vm - 0.25, c, vm + 0.25, z + rh, 0.2, m, { tone: 1.7 })];
   }
-  cache.set(key, c);
-  return c;
+  const um = (a + c) / 2;
+  return [bx(a, b, um, d, z, rh, m, { tone: 0.8 }), bx(um, b, c, d, z, rh * 0.55, m, { tone: -0.9 }), bx(um - 0.25, b, um + 0.25, d, z + rh, 0.2, m, { tone: 1.7 })];
+}
+/** A house: walls and a pitched roof. */
+function house(u0: number, v0: number, u1: number, v1: number, z: number, roofM: Mat, wall: Mat = 'cream'): Part[] {
+  return [bx(u0, v0, u1, v1, 0, z, wall, { tone: -0.4 }), ...roof(u0, v0, u1, v1, z, roofM)];
+}
+/** A flag: a pole standing up and a small flag in the owner's colour. */
+function flag(u: number, v: number, z: number, h: number, w = 3.2): Part[] {
+  return [el(u, v, 0.3, 0.3, z, h, 'gun', { sh: 'cyl', tone: 1 }), bx(u + 0.3, v - 0.5, u + 0.3 + w, v + 1.0, z + h - 1.5, 1.4, 'own')];
+}
+/** A thin band of the owner's colour lying on a roof or wall top. */
+const band = (u0: number, v0: number, u1: number, v1: number, z: number): Part => bx(u0, v0, u1, v1, z, 0.35, 'own');
+/** A round tower with a conical cap. */
+function tower(u: number, v: number, r: number, z: number): Part[] {
+  return [el(u, v, r, r * 0.9, 0, z, 'sup', { sh: 'cyl', tone: -0.2 }), el(u, v, r * 0.78, r * 0.7, z, 1.4, 'fieldgrey', { sh: 'dome', tone: 0.4 })];
+}
+function merlonsH(u0: number, u1: number, v: number, z: number, step = 2.4): Part[] {
+  const out: Part[] = [];
+  for (let u = u0; u < u1 - 0.9; u += step) out.push(bx(u, v, u + 1.2, v + 0.9, z, 1.1, 'sup', { tone: 0.5 }));
+  return out;
+}
+function merlonsV(v0: number, v1: number, u: number, z: number, step = 2.4): Part[] {
+  const out: Part[] = [];
+  for (let v = v0; v < v1 - 0.9; v += step) out.push(bx(u, v, u + 0.9, v + 1.2, z, 1.1, 'sup', { tone: 0.5 }));
+  return out;
+}
+function hedgehog(u: number, v: number): Part[] {
+  const o = { sh: 'cyl' as const, tone: 0.5 };
+  return [seg(u - 1.2, v - 1.0, u + 1.2, v + 1.0, 0.8, 0.5, 0.8, 'gun', o), seg(u - 1.2, v + 1.0, u + 1.2, v - 1.0, 0.8, 0.5, 0.8, 'gun', o), seg(u, v - 1.4, u, v + 1.4, 0.8, 0.5, 0.8, 'gun', o)];
+}
+function flakGun(u: number, v: number): Part[] {
+  return [
+    el(u, v, 2.6, 2.2, 0, 1.0, 'canvas', { edge: true, tone: 0.2 }),
+    el(u, v, 1.6, 1.4, 0, 1.0, 'gun', { sh: 'dome' }),
+    seg(u, v - 0.5, u + 3.8, v - 2.6, 0.8, 1.6, 0.8, 'gun', { sh: 'cyl', tone: 1 }),
+    seg(u, v + 0.5, u + 3.8, v - 1.5, 0.8, 1.6, 0.8, 'gun', { sh: 'cyl', tone: 1 }),
+    bx(u - 0.9, v + 0.3, u + 0.9, v + 1.3, 1.0, 1.0, 'gun', { tone: 1 }),
+  ];
+}
+function coastalGun(u: number, v: number): Part[] {
+  return [
+    el(u, v, 3.0, 2.6, 0, 2.2, 'fieldgrey', { sh: 'dome', tone: 0.3 }),
+    seg(u, v, u + 7, v - 1.6, 1.4, 1.6, 0.9, 'gun', { sh: 'cyl', tone: 1 }),
+    el(u + 7.2, v - 1.6, 0.8, 0.8, 1.5, 1.0, 'gun', { tone: 1.2 }),
+    el(u - 0.4, v + 0.2, 1.0, 1.0, 2.2, 0.35, 'own'),
+  ];
+}
+function radarDish(u: number, v: number): Part[] {
+  return [
+    bx(u - 2.4, v + 0.4, u + 2.4, v + 3.2, 0, 1.4, 'canvas', { tone: -0.2 }),
+    el(u, v, 1.0, 1.0, 1.4, 4.0, 'gun', { sh: 'cyl', tone: 0.8 }),
+    el(u, v - 1.0, 4.4, 3.4, 5.4, 0.8, 'alu', { sh: 'dome' }),
+    seg(u, v - 1.0, u + 2.8, v - 3.4, 0.6, 6.3, 0.8, 'gun'),
+    el(u + 3.0, v - 3.6, 0.6, 0.6, 6.3, 0.9, 'own'),
+  ];
+}
+
+// ---- fort
+
+function fortModel(lv: number, addon: Addon): Part[] {
+  const cfg = lv >= 5 ? { w: 36, d: 24, t: 3.2, wz: 8, tz: 12, r: 4.0 } : lv >= 3 ? { w: 30, d: 20, t: 2.8, wz: 6, tz: 9, r: 3.3 } : { w: 24, d: 15, t: 2.2, wz: 4.2, tz: 6.5, r: 2.6 };
+  const { w, d, t, wz, tz, r } = cfg;
+  const x0 = -w / 2;
+  const x1 = w / 2;
+  const y0 = -d / 2;
+  const y1 = d / 2;
+  const gate = lv >= 5 ? 4.6 : 3.6;
+  const P: Part[] = [];
+  // the courtyard floor: trampled earth
+  P.push(bx(x0 + t, y0 + t, x1 - t, y1 - t, 0, 0, 'tan', { inset: true, tone: -1.2 }));
+  // the wall ring (the south wall has the gate gap)
+  P.push(bx(x0, y0, x1, y0 + t, 0, wz, 'sup', { tone: -0.3 }));
+  P.push(bx(x0, y0, x0 + t, y1, 0, wz, 'sup', { tone: -0.3 }));
+  P.push(bx(x1 - t, y0, x1, y1, 0, wz, 'sup', { tone: -0.3 }));
+  P.push(bx(x0, y1 - t, -gate, y1, 0, wz, 'sup', { tone: -0.3 }));
+  P.push(bx(gate, y1 - t, x1, y1, 0, wz, 'sup', { tone: -0.3 }));
+  P.push(...merlonsH(x0 + 1, x1 - 1, y0 + 0.2, wz), ...merlonsH(x0 + 1, -gate - 0.5, y1 - 1.1, wz), ...merlonsH(gate + 0.5, x1 - 1, y1 - 1.1, wz));
+  P.push(...merlonsV(y0 + 2, y1 - 2, x0 + 0.2, wz), ...merlonsV(y0 + 2, y1 - 2, x1 - 1.1, wz));
+  // the gate house: a lintel over a dark arch, a band of the owner's colour on its roof
+  P.push(bx(-gate - 0.6, y1 - t - 0.6, gate + 0.6, y1 + 0.4, 0, wz + 1.6, 'sup', { tone: 0.1 }));
+  P.push(bx(-gate * 0.6, y1 + 0.4, gate * 0.6, y1 + 0.7, 0, (wz + 1.6) * 0.62, 'black', { tone: 0.5 }));
+  P.push(band(-gate - 0.2, y1 - 1.4, gate + 0.2, y1 - 0.4, wz + 1.6));
+  // what stands inside
+  if (lv <= 1) {
+    P.push(...house(-4, -1, 3, 3.4, 3.2, 'rust'), ...house(-9, -2.6, -5.4, 0.6, 2.6, 'brick'));
+  } else if (lv <= 3) {
+    P.push(bx(-5, -3, 5, 3.6, 0, 8, 'cream', { tone: -0.3 }), ...roof(-5, -3, 5, 3.6, 8, 'fieldgrey', 1.6, 0.6), band(-5.4, 3.6, 5.4, 4.2, 8));
+    P.push(...house(-12, -1, -7, 3, 3.6, 'brick'), ...house(7.4, -1, 12, 3, 3.6, 'brick'));
+    P.push(...flag(0, -1.6, 9.6, 8, 4));
+  } else {
+    // an inner wall, a tall keep with a dome and a banner band, barracks
+    P.push(bx(-12, -6, 12, 7, 0, 3.4, 'sup', { tone: -0.5 }), bx(-10.8, -4.8, 10.8, 5.8, 0, 0, 'tan', { inset: true, tone: -1.4 }));
+    P.push(bx(-6.5, -4.6, 6.5, 3.4, 0, 12, 'cream', { tone: -0.3 }), ...roof(-6.5, -4.6, 6.5, 3.4, 12, 'fieldgrey', 1.8, 0.6));
+    P.push(el(0, -0.6, 3.0, 2.6, 13.4, 2.6, 'brass', { sh: 'dome' }), band(-6.9, 3.4, 6.9, 4.2, 12));
+    P.push(...flag(0.4, -0.6, 16, 9, 5));
+    P.push(...house(-16, -2, -12.6, 2, 4.2, 'brick'), ...house(12.6, -2, 16, 2, 4.2, 'brick'));
+  }
+  // the corner towers and (level 5) the back one
+  P.push(...tower(x0, y0, r, tz), ...tower(x1, y0, r, tz));
+  if (lv >= 5) P.push(...tower(0, y0 + 0.2, r * 0.9, tz - 1));
+  P.push(...tower(x0, y1, r, tz), ...tower(x1, y1, r, tz));
+  P.push(...flag(x1 - 0.2, y0 - 0.4, tz + 1.4, lv >= 3 ? 7 : 5.5, 4.4));
+  for (const cx of [x0, x1]) P.push(band(cx - r * 0.6, y1 + r * 0.55, cx + r * 0.6, y1 + r * 0.55 + 0.9, 0.5));
+  if (lv >= 5) P.push(bx(-2.3, y1, 2.3, y1 + 4.4, 0, 0.6, 'teak', { pat: 'planks' }));
+  if (addon === 'flak') P.push(...flakGun(x0 - 5, y1 + 5), ...flakGun(x1 + 5, y1 + 5));
+  if (addon === 'traps') {
+    for (let h = x0 - 5; h <= x1 + 5; h += 6) if (Math.abs(h) > 5) P.push(...hedgehog(h, y1 + 8 + (hash(Math.round(h), 4) - 0.5) * 1.6));
+    for (let h = y0 + 3; h < y1 + 5; h += 7) P.push(...hedgehog(x0 - 6, h), ...hedgehog(x1 + 6, h));
+  }
+  return P;
+}
+
+// ---- city
+
+interface Lot {
+  u: number;
+  v: number;
+  w: number;
+  d: number;
+  z: number;
+  k: 'house' | 'tower' | 'hall';
+  roof: Mat;
+}
+function cityLots(lv: number): Lot[] {
+  return plots(lv).map((l) => ({ ...l, w: l.w - 1.8, d: l.d - 1.4 }));
+}
+function plots(lv: number): Lot[] {
+  if (lv >= 5) {
+    return [
+      { u: -17, v: -9, w: 8, d: 7, z: 20, k: 'tower', roof: 'fieldgrey' },
+      { u: -6, v: -10, w: 8, d: 6, z: 7, k: 'house', roof: 'brick' },
+      { u: 5, v: -9, w: 8, d: 7, z: 8, k: 'house', roof: 'fieldgrey' },
+      { u: 16, v: -10, w: 8, d: 6, z: 6, k: 'house', roof: 'rust' },
+      { u: -17, v: 2, w: 8, d: 7, z: 9, k: 'house', roof: 'ochre' },
+      { u: -6, v: 2.4, w: 9, d: 8, z: 15, k: 'tower', roof: 'cream' },
+      { u: 6, v: 2, w: 8, d: 7, z: 6, k: 'house', roof: 'fadedBlue' },
+      { u: 17, v: 2.4, w: 8, d: 8, z: 11, k: 'house', roof: 'brick' },
+      { u: -16.5, v: 13, w: 8, d: 7, z: 6, k: 'house', roof: 'rust' },
+      { u: -6, v: 13, w: 7, d: 6, z: 5, k: 'house', roof: 'brick' },
+      { u: 5, v: 13.4, w: 10, d: 8, z: 13, k: 'tower', roof: 'fieldgrey' },
+      { u: 17, v: 13, w: 8, d: 7, z: 6, k: 'house', roof: 'ochre' },
+    ];
+  }
+  if (lv >= 3) {
+    return [
+      { u: -14, v: -7, w: 8, d: 7, z: 12, k: 'tower', roof: 'fieldgrey' },
+      { u: -3.4, v: -8, w: 8, d: 6, z: 6, k: 'house', roof: 'brick' },
+      { u: 7, v: -7, w: 8, d: 7, z: 6, k: 'house', roof: 'rust' },
+      { u: 17, v: -8, w: 6, d: 6, z: 5, k: 'house', roof: 'ochre' },
+      { u: -15, v: 5, w: 8, d: 7, z: 5, k: 'house', roof: 'fadedBlue' },
+      { u: -3, v: 5.4, w: 11, d: 8, z: 7, k: 'hall', roof: 'tan' },
+      { u: 10, v: 5, w: 8, d: 7, z: 9, k: 'house', roof: 'brick' },
+      { u: 19, v: 5, w: 5, d: 6, z: 5, k: 'house', roof: 'rust' },
+    ];
+  }
+  return [
+    { u: -11, v: -5, w: 8, d: 6, z: 3.4, k: 'house', roof: 'brick' },
+    { u: 0, v: -6, w: 8, d: 6, z: 3.4, k: 'house', roof: 'fieldgrey' },
+    { u: 11, v: -5, w: 7, d: 6, z: 3.4, k: 'house', roof: 'rust' },
+    { u: -11.5, v: 6, w: 7, d: 6, z: 3, k: 'house', roof: 'ochre' },
+    { u: -1, v: 6.6, w: 11, d: 8, z: 5.5, k: 'hall', roof: 'tan' },
+    { u: 12, v: 6, w: 7, d: 6, z: 3.4, k: 'house', roof: 'fadedBlue' },
+  ];
+}
+function cityModel(lv: number, addon: Addon): Part[] {
+  const P: Part[] = [];
+  const lots = cityLots(lv).sort((a, b) => a.v - b.v || a.u - b.u);
+  for (const l of lots) {
+    const u0 = l.u - l.w / 2;
+    const u1 = l.u + l.w / 2;
+    const v0 = l.v - l.d / 2;
+    const v1 = l.v + l.d / 2;
+    if (l.k === 'tower') {
+      P.push(bx(u0, v0, u1, v1, 0, l.z, 'sup', { tone: -0.2 }), bx(u0 + 0.5, v0 + 0.5, u1 - 0.5, v1 - 0.5, l.z, 0, l.roof, { inset: true, tone: -0.6 }));
+      P.push(bx(u0 + 1.2, v0 + 1.2, u0 + 3.8, v0 + 3, l.z, 1.2, 'gun', { tone: 0.6 }), bx(u1 - 3.6, v1 - 3.4, u1 - 1.4, v1 - 1.6, l.z, 1.0, 'gun', { tone: 0.2 }));
+      if (l.z >= 12) {
+        P.push(band(u0, v1 - 1.5, u1, v1 - 0.3, l.z));
+        P.push(el(u1 - 2, v0 + 2, 0.3, 0.3, l.z, 5, 'gun', { sh: 'cyl' }), el(u1 - 2, v0 + 2, 0.45, 0.45, l.z + 5, 0.4, 'brass'));
+      }
+    } else if (l.k === 'hall') {
+      P.push(bx(u0, v0, u1, v1, 0, l.z, 'cream', { tone: 0.1 }), ...roof(u0, v0, u1, v1, l.z, l.roof, 1.8, 0.6), band(u0 - 0.2, v1 + 0.2, u1 + 0.2, v1 + 1.0, l.z), ...flag(u1 - 1, v0 + 0.4, l.z + 1.8, 6, 4));
+    } else {
+      P.push(...house(u0, v0, u1, v1, l.z, l.roof));
+      if (l.z >= 9) P.push(band(u0, v1 - 0.2, u1, v1 + 0.6, l.z));
+    }
+  }
+  // a few trees in the gaps
+  const trees: [number, number][] = lv >= 5 ? [[-0.4, -1.6], [0.8, -2.2]] : lv >= 3 ? [[7.5, -0.4], [12.5, -0.4]] : [[8.2, 1.6]];
+  for (const [u, v] of trees) P.push(el(u, v, 1.9, 1.7, 0.6, 2.4, 'olive', { sh: 'dome', tone: 0.3 }));
+  if (addon === 'flak') {
+    const ext = lv >= 5 ? 24 : lv >= 3 ? 22 : 16;
+    P.push(...flakGun(ext, 12), ...flakGun(-ext, 12));
+  }
+  return P;
+}
+
+// ---- SAM site
+
+/** A truck launcher: chassis, cab, wheels, a cradle and three missiles with the owner's colour on the nose. */
+function launcher(u: number, v: number): Part[] {
+  const P: Part[] = [];
+  for (const wu of [-4.2, -1.2, 2.2]) P.push(el(u + wu, v + 2.7, 1.1, 0.6, 0, 1.5, 'track', { sh: 'cyl' }), el(u + wu, v - 2.7, 1.1, 0.6, 0, 1.2, 'track', { sh: 'cyl' }));
+  P.push(bx(u - 6, v - 2.5, u + 3.2, v + 2.5, 0.8, 1.8, 'olive'));
+  P.push(bx(u + 3.4, v - 2.3, u + 6.4, v + 2.3, 0.8, 2.6, 'olive', { tone: 0.4 }), bx(u + 5.8, v - 1.8, u + 6.4, v + 1.8, 2.9, 0, 'glass'));
+  P.push(bx(u - 5.6, v + 1.7, u + 2.8, v + 2.3, 2.6, 0, 'own'));
+  P.push(bx(u - 5.4, v - 1.6, u + 2.6, v + 1.6, 2.6, 0.7, 'gun', { tone: 0.4 }));
+  for (let i = -1; i <= 1; i++) {
+    const vv = v + i * 1.15;
+    P.push(seg(u - 5, vv + 0.5, u + 4.6, vv - 0.9, 1.0, 3.2, 0.9, 'white', { sh: 'cyl' }), el(u + 4.9, vv - 0.95, 0.75, 0.6, 3.2, 0.9, 'own', { sh: 'dome' }));
+  }
+  return P;
+}
+/** A low sandbag wall round three sides of a bay (open to the east). */
+function revetment(u0: number, v0: number, u1: number, v1: number): Part[] {
+  const o = { tone: -0.2 };
+  return [bx(u0, v0, u1, v0 + 1.2, 0, 1.3, 'canvas', o), bx(u0, v1 - 1.2, u1, v1, 0, 1.3, 'canvas', o), bx(u0, v0, u0 + 1.2, v1, 0, 1.3, 'canvas', o)];
+}
+function samModel(lv: number, addon: Addon): Part[] {
+  const P: Part[] = [];
+  if (lv >= 3) {
+    P.push(...revetment(-18, -2, -4, 7), ...revetment(-4, 6, 10, 15));
+    P.push(...launcher(-9, 2.4), ...launcher(2, 11), ...launcher(14, 2.4));
+    P.push(...revetment(8, -2, 22, 7));
+    P.push(...house(-17, -11, -9, -6, 4, 'fieldgrey'), band(-17.4, -6.2, -8.6, -5.5, 4));
+    P.push(bx(15, -11, 20, -7.4, 0, 3.6, 'gun', { tone: 0.4 }), el(17.5, -9.2, 1.4, 1.2, 3.6, 0.8, 'alu', { sh: 'dome' }));
+    P.push(el(21, -9, 0.3, 0.3, 0, 9, 'gun', { sh: 'cyl' }), el(21, -9, 0.5, 0.5, 9, 0.4, 'brass'));
+  } else {
+    P.push(...revetment(-12, 0, 4, 9));
+    P.push(...launcher(-3.4, 4.6));
+    P.push(...house(5, -6, 13, -1, 3.6, 'fieldgrey'), band(4.6, -1.2, 13.4, -0.5, 3.6));
+    P.push(el(14, -3, 0.3, 0.3, 0, 7, 'gun', { sh: 'cyl' }), el(14, -3, 0.5, 0.5, 7, 0.4, 'brass'));
+  }
+  if (addon === 'radar') P.push(...radarDish(lv >= 3 ? -2 : -3, lv >= 3 ? -7 : -4));
+  return P;
+}
+
+// ---- port: the coast is at u = COAST, land to the west, the sea and the piers to the east
+
+const COAST = 1.5;
+function pier(u0: number, v0: number, u1: number, v1: number): Part[] {
+  const P: Part[] = [bx(u0, v0, u1, v1, 0, 0.7, 'teak', { pat: 'planks' })];
+  for (let u = u0 + 2; u < u1 - 1; u += 4.6) P.push(el(u, v1 - 0.3, 0.45, 0.4, 0.7, 0.5, 'gun', { tone: 0.6 }));
+  return P;
+}
+function crane(u: number, v: number, len: number): Part[] {
+  return [
+    bx(u - 1.6, v - 1.6, u + 1.6, v + 1.6, 0, 7, 'ochre', { tone: -0.4 }),
+    bx(u - 3.6, v - 1.0, u + len, v + 0.2, 7, 0.9, 'ochre', { tone: 0.4, pat: 'grille' }),
+    bx(u - 3.6, v - 1.4, u - 1.4, v + 0.6, 7.2, 1.0, 'gun', { tone: 0.6 }),
+    bx(u + len - 1.2, v - 1.1, u + len, v + 0.3, 6.6, 0.8, 'gun', { tone: 0.6 }),
+    bx(u - 1.0, v + 1.6, u + 1.0, v + 2.4, 0, 0, 'own'),
+    bx(u - 1.2, v + 0.2, u + 1.2, v + 1.4, 7.9, 0, 'own'),
+  ];
+}
+const BOX_COLS: Mat[] = ['rust', 'fadedBlue', 'ochre', 'olive', 'brick', 'fieldgrey'];
+function containers(u: number, v: number, nu: number, nv: number, seed: number, ownerFirst: boolean): Part[] {
+  const P: Part[] = [];
+  for (let j = 0; j < nv; j++) {
+    for (let i = 0; i < nu; i++) {
+      const m = BOX_COLS[Math.floor(hash(i + seed, j * 5 + seed) * BOX_COLS.length)];
+      const tall = hash(i, j + seed) > 0.62;
+      const u0 = u + i * 4.4;
+      const v0 = v + j * 2.7;
+      P.push(bx(u0, v0, u0 + 4.1, v0 + 2.4, 0, tall ? 4.6 : 2.3, m, { pat: 'ribs', tone: hash(i + 3, j + seed) * 0.8 - 0.4 }));
+    }
+  }
+  if (ownerFirst) P.push(bx(u, v + nv * 2.7 - 0.9, u + 4.1, v + nv * 2.7 - 0.2, 2.5, 0, 'own'));
+  return P;
+}
+function ship(u: number, v: number, len: number, wid: number): Part[] {
+  const hw = wid / 2;
+  const P: Part[] = [];
+  P.push(poly([u, v - hw, u + len - 4, v - hw, u + len, v, u + len - 4, v + hw, u, v + hw], 0, 2.2, 'merchant', { tone: 0.6 }));
+  P.push(poly([u + 0.4, v - hw + 0.5, u + len - 4.4, v - hw + 0.5, u + len - 1.2, v, u + len - 4.4, v + hw - 0.5, u + 0.4, v + hw - 0.5], 2.2, 0, 'deck'));
+  P.push(bx(u, v + hw - 0.7, u + len - 4, v + hw, 0.2, 1.4, 'redlead', { tone: 0.2 }));
+  const cols: Mat[] = ['rust', 'fadedBlue', 'ochre', 'olive'];
+  for (let i = 0; i < 3; i++) P.push(bx(u + 7.4 + i * 2.9, v - hw + 0.7, u + 10 + i * 2.9, v + hw - 0.7, 2.2, 1.8, cols[i % 4], { pat: 'ribs', tone: i * 0.3 - 0.4 }));
+  P.push(bx(u + 1.2, v - hw + 0.7, u + 5.4, v + hw - 0.7, 2.2, 3.6, 'white'), bx(u + 1.0, v - hw + 0.5, u + 5.6, v + hw - 0.5, 5.8, 0.5, 'sup', { tone: 0.6 }), band(u + 1.6, v + hw - 1.5, u + 5.0, v + hw - 0.9, 6.3));
+  P.push(el(u + 6.4, v, 1.0, 1.0, 2.2, 3.2, 'redlead', { sh: 'cyl' }));
+  return P;
+}
+function portModel(lv: number, addon: Addon): Part[] {
+  const P: Part[] = [];
+  if (lv >= 3) {
+    P.push(...pier(COAST, -13, 20, -8.6), ...pier(COAST, 8.6, 20, 13));
+    P.push(...ship(3.4, 0, 16.6, 7.4));
+    P.push(...house(-19, -9, -8, -2, 6, 'fieldgrey'), band(-19.4, -2.2, -7.6, -1.4, 6), ...flag(-8.4, -9.4, 6, 6.5, 4));
+    P.push(...house(-6, -9, 3, -2, 5.4, 'brick'));
+    P.push(...containers(-18, 6, 3, 2, 2, true), ...containers(-4.5, 8, 2, 2, 7, false));
+    P.push(...crane(-0.4, -10.8, 15), ...crane(-0.4, 10.8, 15));
+    if (addon === 'guns') P.push(...coastalGun(-5, -17), ...coastalGun(-5, 18));
+  } else {
+    P.push(...pier(COAST, -2, 18, 2.8));
+    P.push(...house(-18, -2.4, -7, 4.6, 5, 'fieldgrey'), band(-18.4, 4.4, -6.6, 5.2, 5), ...flag(-7.6, -2.8, 5, 6, 4));
+    P.push(...containers(-17, 8, 2, 2, 4, true), ...containers(-7, 8.4, 1, 2, 9, false));
+    P.push(...crane(-0.4, -4.6, 14));
+    if (addon === 'guns') P.push(...coastalGun(-6, -10), ...coastalGun(-6, 15));
+  }
+  return P;
+}
+
+function modelOf(spec: BuildingSpec): Part[] {
+  switch (spec.type) {
+    case 'fort':
+      return fortModel(spec.level, spec.addon);
+    case 'city':
+      return cityModel(spec.level, spec.addon);
+    case 'sam':
+      return samModel(spec.level, spec.addon);
+    case 'port':
+      return portModel(spec.level, spec.addon);
+  }
+}
+
+// ------------------------------------------------------------------------------------------------- the ground
+
+/** The terrain under a building: its colour at a cell pixel, and whether that pixel is water. */
+export interface Under {
+  rgb: (ax: number, ay: number) => RGB;
+  water: (ax: number, ay: number) => boolean;
+}
+
+type Kind = 'dirt' | 'dirtL' | 'dark' | 'road' | 'water' | 'sand' | 'foam' | 'shadow';
+/** What each kind does to the colour of the land under it (so it is always a shade of that land). */
+const KIND: Record<Kind, (c: C) => RGB> = {
+  dirt: (c) => dark(mix(c, [118, 94, 62], 0.55), 0.94),
+  dirtL: (c) => mix(c, [184, 164, 122], 0.42),
+  dark: (c) => dark(mix(c, [60, 78, 52], 0.25), 0.78),
+  road: (c) => dark(mix(c, [96, 92, 82], 0.5), 0.72),
+  water: (c) => mix(c, [56, 92, 108], 0.8),
+  sand: (c) => mix(c, [196, 176, 132], 0.55),
+  foam: (c) => mix(c, [226, 234, 236], 0.5),
+  shadow: (c) => [cl(c[0] * 0.44), cl(c[1] * 0.46), cl(c[2] * 0.54)],
+};
+
+function inFoot(p: Part, u: number, v: number): boolean {
+  const q = p.p;
+  switch (p.k) {
+    case 'box':
+      return u >= q[0] && u < q[2] && v >= q[1] && v < q[3];
+    case 'ell': {
+      const a = (u - q[0]) / q[2];
+      const b = (v - q[1]) / q[3];
+      return a * a + b * b <= 1;
+    }
+    case 'poly': {
+      let inside = false;
+      for (let i = 0, j = q.length - 2; i < q.length; j = i, i += 2) {
+        if (q[i + 1] > v !== q[j + 1] > v && u < ((q[j] - q[i]) * (v - q[i + 1])) / (q[j + 1] - q[i + 1]) + q[i]) inside = !inside;
+      }
+      return inside;
+    }
+    case 'seg': {
+      const du = q[2] - q[0];
+      const dv = q[3] - q[1];
+      const L2 = du * du + dv * dv || 1e-9;
+      const t = Math.max(0, Math.min(1, ((u - q[0]) * du + (v - q[1]) * dv) / L2));
+      return Math.hypot(u - q[0] - du * t, v - q[1] - dv * t) <= q[4] / 2;
+    }
+  }
+}
+function footBox(p: Part): [number, number, number, number] {
+  const q = p.p;
+  switch (p.k) {
+    case 'box':
+      return [q[0], q[1], q[2], q[3]];
+    case 'ell':
+      return [q[0] - q[2], q[1] - q[3], q[0] + q[2], q[1] + q[3]];
+    case 'seg': {
+      const r = q[4] / 2;
+      return [Math.min(q[0], q[2]) - r, Math.min(q[1], q[3]) - r, Math.max(q[0], q[2]) + r, Math.max(q[1], q[3]) + r];
+    }
+    case 'poly': {
+      let a = Infinity;
+      let b = Infinity;
+      let c = -Infinity;
+      let d = -Infinity;
+      for (let i = 0; i < q.length; i += 2) {
+        a = Math.min(a, q[i]);
+        b = Math.min(b, q[i + 1]);
+        c = Math.max(c, q[i]);
+        d = Math.max(d, q[i + 1]);
+      }
+      return [a, b, c, d];
+    }
+  }
+}
+
+/** The painted ground of a cell: soft dithered overlays whose colours are derived from the terrain colour under them. */
+class Ground {
+  readonly d: Uint8ClampedArray;
+  constructor(
+    readonly W: number,
+    readonly H: number,
+    readonly res: number,
+    readonly ox: number,
+    readonly oy: number,
+    readonly under: Under,
+  ) {
+    this.d = new Uint8ClampedArray(W * H * 4);
+  }
+  /** model coordinates of a cell pixel's centre (on the ground) */
+  private u(ax: number): number {
+    return (ax + 0.5 - this.ox) / this.res;
+  }
+  private v(ay: number): number {
+    return (ay + 0.5 - this.oy) / (this.res * FORE);
+  }
+  /** a pixel of a kind with coverage m (0..1, the strongest alpha amax), quantised to 4 dithered steps */
+  put(ax: number, ay: number, kind: Kind, m: number, amax: number): void {
+    if (m <= 0 || ax < 0 || ay < 0 || ax >= this.W || ay >= this.H) return;
+    const lvl = Math.floor(m * 3 + bayer(ax, ay));
+    if (lvl <= 0) return;
+    const a = (amax * Math.min(3, lvl)) / 3;
+    const sea = this.under.water(ax, ay);
+    if (sea && kind !== 'shadow' && kind !== 'foam') return;
+    if (!sea && kind === 'foam') return;
+    const base = this.under.rgb(ax, ay);
+    const col = KIND[kind](base);
+    const o = (ay * this.W + ax) * 4;
+    const da = this.d[o + 3] / 255;
+    const oa = a + da * (1 - a);
+    const w = da * (1 - a);
+    this.d[o] = (col[0] * a + this.d[o] * w) / oa;
+    this.d[o + 1] = (col[1] * a + this.d[o + 1] * w) / oa;
+    this.d[o + 2] = (col[2] * a + this.d[o + 2] * w) / oa;
+    this.d[o + 3] = oa * 255;
+  }
+  /** paints coverage fn(u, v) (0..1) over a model box */
+  paint(kind: Kind, u0: number, v0: number, u1: number, v1: number, amax: number, fn: (u: number, v: number) => number): void {
+    const ax0 = Math.floor(this.ox + u0 * this.res);
+    const ax1 = Math.ceil(this.ox + u1 * this.res);
+    const ay0 = Math.floor(this.oy + v0 * this.res * FORE);
+    const ay1 = Math.ceil(this.oy + v1 * this.res * FORE);
+    for (let ay = ay0; ay <= ay1; ay++) for (let ax = ax0; ax <= ax1; ax++) this.put(ax, ay, kind, fn(this.u(ax), this.v(ay)), amax);
+  }
+  /** a ragged-edged ellipse */
+  blob(kind: Kind, cu: number, cv: number, ru: number, rv: number, amax: number, soft = 0.35, seed = 1): void {
+    this.paint(kind, cu - ru * 1.3, cv - rv * 1.3, cu + ru * 1.3, cv + rv * 1.3, amax, (u, v) => {
+      const r = Math.hypot((u - cu) / ru, (v - cv) / rv) + (vnoise(u * 0.45, v * 0.45, seed) - 0.5) * 0.42;
+      return Math.max(0, Math.min(1, (1 - r) / soft));
+    });
+  }
+  /** a ragged-edged rounded rectangle; `inner` > 0 makes it a ring that wide */
+  slab(kind: Kind, u0: number, v0: number, u1: number, v1: number, rad: number, amax: number, soft = 2.2, seed = 2, inner = 0): void {
+    const cu = (u0 + u1) / 2;
+    const cv = (v0 + v1) / 2;
+    const hw = (u1 - u0) / 2;
+    const hh = (v1 - v0) / 2;
+    this.paint(kind, u0 - 3, v0 - 3, u1 + 3, v1 + 3, amax, (u, v) => {
+      const dx = Math.max(Math.abs(u - cu) - (hw - rad), 0);
+      const dy = Math.max(Math.abs(v - cv) - (hh - rad), 0);
+      const dist = Math.hypot(dx, dy) - rad + (vnoise(u * 0.4, v * 0.4, seed) - 0.5) * 1.6;
+      let m = Math.max(0, Math.min(1, -dist / soft));
+      if (inner > 0) m = Math.min(m, Math.max(0, Math.min(1, (dist + inner) / soft)));
+      return m;
+    });
+  }
+  /** a worn strip along a line */
+  strip(kind: Kind, u0: number, v0: number, u1: number, v1: number, w: number, amax: number, seed = 3): void {
+    const du = u1 - u0;
+    const dv = v1 - v0;
+    const L2 = du * du + dv * dv || 1e-9;
+    this.paint(kind, Math.min(u0, u1) - w, Math.min(v0, v1) - w, Math.max(u0, u1) + w, Math.max(v0, v1) + w, amax, (u, v) => {
+      const t = Math.max(0, Math.min(1, ((u - u0) * du + (v - v0) * dv) / L2));
+      const d = Math.hypot(u - u0 - du * t, v - v0 - dv * t) + (vnoise(u * 0.7, v * 0.7, seed) - 0.5) * 0.7;
+      return Math.max(0, Math.min(1, (w / 2 - d) / (w * 0.3)));
+    });
+  }
+  /** the shadow cast by the parts: each part's footprint swept toward the lower right by its height (light from the upper left) */
+  shadows(parts: readonly Part[], amax: number): void {
+    const m = new Float32Array(this.W * this.H);
+    const dirU = 0.62;
+    const dirV = 0.5;
+    for (const p of parts) {
+      const top = p.z + p.h;
+      if (top < 0.7 || p.glow || (p.a ?? 1) < 1 || p.edge) continue;
+      const reach = top * 0.55;
+      const n = Math.max(1, Math.ceil(reach * this.res * 0.8));
+      const [a, b, c, e] = footBox(p);
+      const ax0 = Math.max(0, Math.floor(this.ox + a * this.res) - 1);
+      const ax1 = Math.min(this.W - 1, Math.ceil(this.ox + (c + reach * dirU) * this.res) + 1);
+      const ay0 = Math.max(0, Math.floor(this.oy + b * this.res * FORE) - 1);
+      const ay1 = Math.min(this.H - 1, Math.ceil(this.oy + (e + reach * dirV) * this.res * FORE) + 1);
+      for (let ay = ay0; ay <= ay1; ay++) {
+        const v = this.v(ay);
+        for (let ax = ax0; ax <= ax1; ax++) {
+          const u = this.u(ax);
+          for (let s = 0; s <= n; s++) {
+            const f = (s / n) * reach;
+            if (inFoot(p, u - f * dirU, v - f * dirV)) {
+              m[ay * this.W + ax] = 1;
+              break;
+            }
+          }
+        }
+      }
+    }
+    // soften by one pixel so the penumbra dithers
+    for (let ay = 0; ay < this.H; ay++) {
+      for (let ax = 0; ax < this.W; ax++) {
+        let s = 0;
+        for (let j = -1; j <= 1; j++) {
+          for (let i = -1; i <= 1; i++) {
+            const x = ax + i;
+            const y = ay + j;
+            if (x >= 0 && y >= 0 && x < this.W && y < this.H) s += m[y * this.W + x];
+          }
+        }
+        const cov = s / 9;
+        if (cov > 0.05) this.put(ax, ay, 'shadow', Math.min(1, cov * 1.25), amax);
+      }
+    }
+  }
+  /** the coast: wet sand on the land within a few units of the water, foam on the water next to it */
+  shore(): void {
+    const R = Math.max(2, Math.round(this.res * 3));
+    for (let ay = 0; ay < this.H; ay++) {
+      for (let ax = 0; ax < this.W; ax++) {
+        const sea = this.under.water(ax, ay);
+        let best = 99;
+        for (let r = 1; r <= R && best === 99; r++) {
+          for (const [i, j] of [[r, 0], [-r, 0], [0, r], [0, -r], [r, r], [-r, -r], [r, -r], [-r, r]]) {
+            if (this.under.water(ax + i, ay + j) !== sea) {
+              best = r;
+              break;
+            }
+          }
+        }
+        if (best === 99) continue;
+        if (sea) this.put(ax, ay, 'foam', best <= 1 ? 1 : best <= 2 ? 0.55 : 0, 0.5);
+        else this.put(ax, ay, 'sand', 1 - (best - 1) / R, 0.6);
+      }
+    }
+  }
+}
+
+function groundOf(g: Ground, spec: BuildingSpec): void {
+  const lv = spec.level;
+  switch (spec.type) {
+    case 'fort': {
+      const w = lv >= 5 ? 36 : lv >= 3 ? 30 : 24;
+      const d = lv >= 5 ? 24 : lv >= 3 ? 20 : 15;
+      g.slab('dark', -w / 2 - 8, -d / 2 - 7, w / 2 + 8, d / 2 + 12, 7, 0.4, 5, 5);
+      g.slab('dirt', -w / 2 - 4.5, -d / 2 - 4, w / 2 + 4.5, d / 2 + 5, 5, 0.8, 3, 6);
+      if (lv >= 5) {
+        g.slab('water', -w / 2 - 3.6, -d / 2 - 3.6, w / 2 + 3.6, d / 2 + 3.6, 3, 0.8, 1.2, 7, 3.4);
+        g.slab('dark', -w / 2 - 5.4, -d / 2 - 5.4, w / 2 + 5.4, d / 2 + 5.4, 4, 0.5, 1.4, 8, 1.7);
+      }
+      g.strip('dirtL', 0, d / 2, 2.4, d / 2 + 13, 3.6, 0.6);
+      g.blob('dark', -w / 2 - 6, d / 2 + 6, 4, 2.6, 0.5, 0.4, 9);
+      g.blob('dark', w / 2 + 7, -d / 2 - 3, 4.5, 3, 0.45, 0.4, 10);
+      g.blob('dirtL', w / 2 + 3, d / 2 + 4, 3, 1.8, 0.4, 0.4, 11);
+      break;
+    }
+    case 'city': {
+      const lots = cityLots(lv);
+      let u0 = 99;
+      let u1 = -99;
+      let v0 = 99;
+      let v1 = -99;
+      for (const l of lots) {
+        u0 = Math.min(u0, l.u - l.w / 2);
+        u1 = Math.max(u1, l.u + l.w / 2);
+        v0 = Math.min(v0, l.v - l.d / 2);
+        v1 = Math.max(v1, l.v + l.d / 2);
+      }
+      g.slab('dark', u0 - 5, v0 - 4, u1 + 5, v1 + 5, 7, 0.4, 5, 12);
+      g.slab('dirt', u0 - 2.4, v0 - 2, u1 + 2.4, v1 + 2.6, 5, 0.7, 3, 13);
+      // streets: a lane between the rows, lanes between the columns
+      const mid = (v0 + v1) / 2 + (lv >= 5 ? -2.6 : lv >= 3 ? -1.6 : 0.2);
+      g.strip('road', u0 - 3, mid, u1 + 3, mid + (lv >= 5 ? 0.6 : 0.2), 3.2, 0.62, 14);
+      if (lv >= 3) {
+        const row = [...new Set(lots.filter((l) => l.v < mid).map((l) => l.u))].sort((a, b) => a - b);
+        for (let i = 0; i + 1 < row.length; i++) g.strip('road', (row[i] + row[i + 1]) / 2, v0 - 3, (row[i] + row[i + 1]) / 2, v1 + 3, 2.4, 0.5, 15 + i);
+      }
+      if (lv >= 5) g.strip('road', u0 - 3, v1 + 2.5, u1 + 3, v1 + 2.8, 2.4, 0.5, 30);
+      g.strip('dirtL', u1 + 2, mid, u1 + 14, mid + 3, 2.6, 0.5, 16);
+      g.blob('dark', u0 - 5, v1 + 2, 4, 2.4, 0.5, 0.4, 17);
+      break;
+    }
+    case 'sam': {
+      const rx = lv >= 3 ? 25 : 18;
+      const ry = lv >= 3 ? 17 : 12;
+      const cv = lv >= 3 ? 2 : 1.5;
+      g.blob('dark', 1, cv, rx + 5, ry + 4, 0.45, 0.4, 18);
+      g.blob('dirt', 1, cv, rx, ry, 0.78, 0.28, 19);
+      g.blob('dirtL', 1, cv + 1, rx * 0.66, ry * 0.62, 0.42, 0.4, 20);
+      // the earth bank round the yard, and tyre tracks running out of it
+      g.slab('dark', 1 - rx, cv - ry, 1 + rx, cv + ry, ry * 0.9, 0.5, 1.6, 21, 1.8);
+      g.strip('dark', -2, cv + 4, -rx - 7, cv + 17, 1.1, 0.5, 22);
+      g.strip('dark', -0.6, cv + 4.4, -rx - 5.6, cv + 17.4, 1.1, 0.5, 23);
+      g.strip('dirtL', rx - 3, cv, rx + 9, cv - 6, 2.8, 0.5, 24);
+      break;
+    }
+    case 'port': {
+      const L = lv >= 3 ? 23 : 21;
+      const top = lv >= 3 ? -20 : -13;
+      const bot = lv >= 3 ? 21 : 17;
+      g.slab('dark', -L - 5, top - 3, COAST + 2, bot + 3, 6, 0.4, 5, 25);
+      g.slab('dirt', -L, top, COAST + 1, bot, 4, 0.78, 3, 26);
+      g.slab('dirtL', -L + 2, lv >= 3 ? 3 : 0.5, COAST + 1.5, lv >= 3 ? 8.6 : 6.6, 2, 0.5, 2.4, 27);
+      g.blob('dark', -23, bot - 2, 4, 3, 0.5, 0.4, 28);
+      break;
+    }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------- bake
+
+export interface BakedBuilding {
+  canvas: HTMLCanvasElement;
+  /** the cell's size on screen (CSS px) */
+  w: number;
+  h: number;
+  /** the highest solid row of the building and the model origin's column (CSS px in the cell), for the level pill */
+  top: number;
+  cx: number;
+}
+
+/**
+ * The picture of a building: the ground painted from the terrain colour under it, then the part model rasterized by the
+ * game's unit rasterizer (res and pixel size from the units' own grid at map scale `scale`) with the owner outline.
+ * `fillWater` paints the sea under a port first (the lab sheet; on the map the sea is already there).
+ */
+export function bakeBuilding(spec: BuildingSpec, owner: RGB, scale: number, dpr: number, under: Under, fillWater = false): BakedBuilding {
+  const g = gridOf(scale, dpr);
+  const res = g.res;
+  const CW = Math.round(CU * res);
+  const CH = Math.round(CV * res);
+  const ox = Math.round(OU * res);
+  const oy = Math.round(OV * res);
+  const parts = modelOf(spec);
+  const gr = new Ground(CW, CH, res, ox, oy, under);
+  if (fillWater) {
+    for (let y = 0; y < CH; y++) {
+      for (let x = 0; x < CW; x++) {
+        if (!under.water(x, y)) continue;
+        const c = under.rgb(x, y);
+        const o = (y * CW + x) * 4;
+        gr.d[o] = c[0];
+        gr.d[o + 1] = c[1];
+        gr.d[o + 2] = c[2];
+        gr.d[o + 3] = 255;
+      }
+    }
+  }
+  groundOf(gr, spec);
+  if (spec.type === 'port') gr.shore();
+  gr.shadows(parts, 0.62);
+  const b = outlineOf(rasterize({ parts, ground: 0.3 }, res, 0, { facings: 32, owner }), owner, ringWidth(g.k));
+  const d = gr.d;
+  let topRow = CH;
+  const bx0 = ox - b.ox;
+  const by0 = oy - b.oy;
+  for (let y = 0; y < b.h; y++) {
+    for (let x = 0; x < b.w; x++) {
+      const s = (y * b.w + x) * 4;
+      const sa = b.data[s + 3] / 255;
+      if (sa <= 0) continue;
+      if (sa >= 0.78) topRow = Math.min(topRow, y + by0);
+      const X = x + bx0;
+      const Y = y + by0;
+      if (X < 0 || Y < 0 || X >= CW || Y >= CH) continue;
+      const o = (Y * CW + X) * 4;
+      const da = d[o + 3] / 255;
+      const oa = sa + da * (1 - sa);
+      const w = da * (1 - sa);
+      d[o] = (b.data[s] * sa + d[o] * w) / oa;
+      d[o + 1] = (b.data[s + 1] * sa + d[o + 1] * w) / oa;
+      d[o + 2] = (b.data[s + 2] * sa + d[o + 2] * w) / oa;
+      d[o + 3] = oa * 255;
+    }
+  }
+  const cv = makeCanvas(CW, CH);
+  const cx = cv.getContext('2d');
+  if (cx) {
+    const img = cx.createImageData(CW, CH);
+    img.data.set(d);
+    cx.putImageData(img, 0, 0);
+  }
+  return { canvas: cv, w: CW * g.k, h: CH * g.k, top: topRow * g.k, cx: ox * g.k };
+}
+
+/** The level pill: the army count pill's look (a near-black outline, a dark plate, a faint light top row), the owner's colour on its left edge. */
+function levelPill(ctx: CanvasRenderingContext2D, x: number, y: number, level: number, owner: RGB): void {
+  const text = `Level ${level}`;
+  ctx.font = `600 11px ${MAP_NUM_FAMILY}`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  const tw = Math.ceil(ctx.measureText(text).width);
+  const w = tw + 14;
+  const h = 15;
+  const x0 = Math.round(x);
+  const y0 = Math.round(y);
+  ctx.fillStyle = 'rgb(8,10,13)';
+  ctx.fillRect(x0, y0, w, h);
+  ctx.fillStyle = 'rgba(20,23,29,0.96)';
+  ctx.fillRect(x0 + 1, y0 + 1, w - 2, h - 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.fillRect(x0 + 1, y0 + 1, w - 2, 1);
+  ctx.fillStyle = `rgb(${owner[0]},${owner[1]},${owner[2]})`;
+  ctx.fillRect(x0 + 1, y0 + 1, 4, h - 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(text, x0 + 9, y0 + h / 2 + 0.5);
 }
 
 // ------------------------------------------------------------------------------------------------- the sheet
@@ -1084,14 +849,14 @@ const GROUPS: { name: string; rows: Row[] }[] = [
 const LABEL_W = 232;
 const PAD = 8;
 const COLS = [
-  { head: 'Close zoom', sub: 'Blue nation', w: W * SCALE_CLOSE + PAD * 2 },
-  { head: 'Close zoom', sub: 'Red nation', w: W * SCALE_CLOSE + PAD * 2 },
-  { head: 'Normal zoom', sub: 'Blue nation', w: W * SCALE_NORMAL + PAD * 2 },
-  { head: 'Normal zoom', sub: 'Red nation', w: W * SCALE_NORMAL + PAD * 2 },
+  { head: 'Close zoom', sub: 'Blue nation', w: CU * SCALE_CLOSE + PAD * 2 },
+  { head: 'Close zoom', sub: 'Red nation', w: CU * SCALE_CLOSE + PAD * 2 },
+  { head: 'Normal zoom', sub: 'Blue nation', w: CU * SCALE_NORMAL + PAD * 2 },
+  { head: 'Normal zoom', sub: 'Red nation', w: CU * SCALE_NORMAL + PAD * 2 },
   { head: "Today's icon", sub: 'Blue nation', w: 84 },
   { head: "Today's icon", sub: 'Red nation', w: 84 },
 ];
-const ROW_H = H * SCALE_CLOSE + 10;
+export const ROW_H = CV * SCALE_CLOSE + 10;
 const GROUP_H = 26;
 const HEAD_H = 46;
 const FLAT_H = 120;
@@ -1128,10 +893,10 @@ function todayIcon(ctx: CanvasRenderingContext2D, type: BuildingSpec['type'], le
   drawMarker(ctx, type as BuildingIconId, x, y, size, { plate: cat ? CATEGORY_PLATES[cat] : owner, dpr });
   if (level > 1) {
     const br = 8;
-    const bx = x + r * 0.78;
+    const bx2 = x + r * 0.78;
     const by = y - r * 0.78;
     ctx.beginPath();
-    ctx.arc(bx, by, br, 0, Math.PI * 2);
+    ctx.arc(bx2, by, br, 0, Math.PI * 2);
     ctx.fillStyle = '#f4f5f1';
     ctx.fill();
     ctx.lineWidth = 1.2;
@@ -1141,23 +906,24 @@ function todayIcon(ctx: CanvasRenderingContext2D, type: BuildingSpec['type'], le
     ctx.font = '600 10px "DM Sans", system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(String(level), bx, by + 0.5);
+    ctx.fillText(String(level), bx2, by + 0.5);
   }
 }
 
-/** The sea beside a port in the sheet: the game's shelf and shore colours, to the right of the quay. */
-function seaPatch(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, cellW: number): void {
-  const sx = x + 31 * s;
-  const sw = x + cellW - sx;
-  const rgb = (c: readonly number[]): string => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
-  ctx.fillStyle = rgb(waterRGB(1));
-  ctx.beginPath();
-  ctx.roundRect(sx, y + 8 * s, sw, (H - 10) * s, [s * 6, 0, 0, s * 6]);
-  ctx.fill();
-  ctx.fillStyle = rgb(waterRGB(5));
-  ctx.beginPath();
-  ctx.roundRect(sx + 3.5 * s, y + 11 * s, sw - 3.5 * s, (H - 16) * s, [s * 4, 0, 0, s * 4]);
-  ctx.fill();
+/** The sheet's terrain under a cell: plains, and for a port the sea east of a slightly wavy coast (the game's shelf and shore colours). */
+function sheetUnder(spec: BuildingSpec, res: number, scale: number): Under {
+  const plains = TERRAIN_RGB[2];
+  const ox = OU * res;
+  const coastAt = (ay: number): number => ox + (COAST + Math.sin((ay * 0.21) / (res / 2)) * 0.7) * res;
+  const isSea = (ax: number, ay: number): boolean => spec.type === 'port' && ax > coastAt(ay);
+  const tilePx = (4 / scale) * res;
+  return {
+    water: isSea,
+    rgb: (ax, ay) => {
+      if (!isSea(ax, ay)) return plains;
+      return waterRGB(1 + ((ax - coastAt(ay)) / tilePx) * 1.5);
+    },
+  };
 }
 
 function drawSheet(ctx: CanvasRenderingContext2D, dpr: number): void {
@@ -1170,7 +936,6 @@ function drawSheet(ctx: CanvasRenderingContext2D, dpr: number): void {
     xs.push(x);
     x += c.w;
   }
-  // column heads
   ctx.fillStyle = 'rgba(10,14,20,0.82)';
   ctx.fillRect(0, 0, SHEET_W, HEAD_H);
   COLS.forEach((c, i) => {
@@ -1194,13 +959,14 @@ function drawSheet(ctx: CanvasRenderingContext2D, dpr: number): void {
       const owners = [BLUE, RED, BLUE, RED];
       const scales = [SCALE_CLOSE, SCALE_CLOSE, SCALE_NORMAL, SCALE_NORMAL];
       for (let i = 0; i < 4; i++) {
-        const spr = bakeBuilding(row.spec, owners[i]);
         const s = scales[i];
-        if (row.spec.type === 'port') seaPatch(ctx, xs[i] + (COLS[i].w - W * s) / 2, cy - (H * s) / 2, s, COLS[i].w);
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(spr, Math.round(xs[i] + (COLS[i].w - W * s) / 2), Math.round(cy - (H * s) / 2), W * s, H * s);
+        const grid = gridOf(s, dpr);
+        const spr = bakeBuilding(row.spec, owners[i], s, dpr, sheetUnder(row.spec, grid.res, s), true);
+        const px = xs[i] + (COLS[i].w - spr.w) / 2;
+        const py = cy - spr.h / 2;
         ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(spr.canvas, Math.round(px * dpr) / dpr, Math.round(py * dpr) / dpr, spr.w, spr.h);
+        levelPill(ctx, px + spr.cx - 28, py + spr.top - 18, row.spec.level, owners[i]);
       }
       todayIcon(ctx, row.spec.type, row.spec.level, xs[4] + COLS[4].w / 2, cy - 4, BLUE, dpr);
       todayIcon(ctx, row.spec.type, row.spec.level, xs[5] + COLS[5].w / 2, cy - 4, RED, dpr);
@@ -1244,12 +1010,12 @@ function drawSheet(ctx: CanvasRenderingContext2D, dpr: number): void {
 // ------------------------------------------------------------------------------------------------- on the real map
 
 const MAP_ID = 'baltic';
-/** map zoom (CSS px per tile) the two previews stand for; the game's marker size at that zoom is render/buildings.ts markerSize */
+/** map zoom (CSS px per tile) the two previews stand for */
 const ZOOM_NORMAL = 4;
-const ZOOM_CLOSE = 10;
-/** a sprite's width in markers: the new building art is drawn this many times wider than today's marker at the same zoom */
-const SPRITE_PER_MARKER = 1.9;
+const ZOOM_CLOSE = 11;
 const MAP_W = 880;
+/** screen px per model unit at a zoom: the units' own scale (render/units.ts spriteScale) */
+const unitScale = (z: number): number => (z < 11 ? 1.5 : z < 22 ? 2 : z < 32 ? 3 : 4);
 
 interface Site {
   type: BuildingSpec['type'];
@@ -1261,18 +1027,40 @@ interface Site {
   blue: boolean;
 }
 
+/** A real unit drawn next to a building (a tank or a ship), placed in model units from the building's origin. */
+interface Troop {
+  key: SpriteKey;
+  site: number;
+  u: number;
+  v: number;
+  angle: number;
+  blue: boolean;
+}
+
+interface Pill {
+  site: number;
+  u: number;
+  v: number;
+  troops: number;
+  kinds: TroopIconKind[];
+  blue: boolean;
+}
+
 interface Crop {
   /** the tile window the preview shows (the normal zoom window; the close one is its middle) */
   cx: number;
   cy: number;
   /** tile colours for the whole map window, nations tinted in */
   tiles: HTMLCanvasElement;
+  rgb: Uint8ClampedArray;
   x0: number;
   y0: number;
   w: number;
   h: number;
   borderX: (y: number) => number;
   sites: Site[];
+  troops: Troop[];
+  pills: Pill[];
   water: (x: number, y: number) => boolean;
   /** which nation owns a land tile: 1 blue, 2 red, 0 none */
   owner: (x: number, y: number) => number;
@@ -1318,7 +1106,7 @@ async function buildCrop(): Promise<Crop> {
       if (f < 0.4 || f > 0.62) continue;
       const cx = x + (WN >> 1);
       const cy = y + (HN >> 1);
-      // an east-facing coast near the middle: land, then 4 sea tiles to its right, deep enough for a pier
+      // an east-facing coast near the middle: land, then 7 sea tiles to its right, deep enough for a pier
       let found = -1;
       for (let dy = -10; dy <= 10 && found < 0; dy += 2) {
         for (let dx = -14; dx <= 14; dx++) {
@@ -1348,6 +1136,7 @@ async function buildCrop(): Promise<Crop> {
   const owner = (x: number, y: number): number => (landAt(x, y) ? (x < borderX(y) ? 1 : 2) : 0);
   // tile colours: the game's terrain colours (render/terrain.ts buildTerrain, theme applied), nations tinted over land
   const tiles = makeCanvas(WN, HN);
+  const rgb = new Uint8ClampedArray(WN * HN * 4);
   const tc = tiles.getContext('2d');
   if (tc) {
     const img = tc.createImageData(WN, HN);
@@ -1369,6 +1158,10 @@ async function buildCrop(): Promise<Crop> {
         img.data[o + 1] = g;
         img.data[o + 2] = b;
         img.data[o + 3] = 255;
+        rgb[o] = r;
+        rgb[o + 1] = g;
+        rgb[o + 2] = b;
+        rgb[o + 3] = 255;
       }
     }
     tc.putImageData(img, 0, 0);
@@ -1398,37 +1191,59 @@ async function buildCrop(): Promise<Crop> {
   const sites: Site[] = [
     // the port sits on the coast itself (the pier reaches into the sea), on the red side
     { type: 'port', level: 3, addon: null, x: px, y: py, blue: false },
-    mk('fort', 3, null, px - 14, py - 14, false),
-    mk('city', 3, null, px - 17, py + 13, false),
-    mk('sam', 1, null, px - 8, py + 2, false),
-    mk('fort', 5, null, px - 50, py - 9, true),
-    mk('city', 1, null, px - 49, py + 12, true),
-    mk('sam', 3, null, px - 40, py + 2, true),
+    mk('fort', 3, null, px - 12, py - 22, false),
+    mk('city', 3, null, px - 20, py + 24, false),
+    mk('sam', 1, null, px - 22, py + 8, false),
+    mk('fort', 5, null, px - 54, py - 22, true),
+    mk('city', 1, null, px - 52, py + 24, true),
+    mk('sam', 3, null, px - 46, py + 1, true),
   ];
+  const troops: Troop[] = [];
+  const pills: Pill[] = [];
+  const addTank = (site: number, key: SpriteKey, u: number, v: number, angle: number): void => {
+    troops.push({ key, site, u, v, angle, blue: sites[site].blue });
+  };
+  // beside the red level 3 fort and the blue level 5 fort: columns of tanks and an army count pill; a tank by each
+  // other building; a destroyer and a trade ship at sea off the port
+  addTank(1, 'tankDivision', -14, 20, 0);
+  addTank(1, 'tankDivision', 1, 20, 0);
+  addTank(1, 'heavyTank', 17, 20, 0);
+  pills.push({ site: 1, u: 2, v: 29, troops: 12400, kinds: ['armor', 'artillery'], blue: false });
+  addTank(4, 'tankDivision', -8, 23, 0.3);
+  addTank(4, 'lightTank', 9, 24, 0.3);
+  pills.push({ site: 4, u: 0, v: 32, troops: 50000, kinds: [], blue: true });
+  addTank(2, 'lightTank', 30, 6, 0.4);
+  addTank(3, 'heavyTank', 22, 12, 0);
+  addTank(5, 'tankDivision', 27, 6, 0.2);
+  addTank(6, 'lightTank', 32, 10, 0.1);
+  troops.push({ key: 'destroyer', site: 0, u: 15, v: -36, angle: 0.05, blue: false }, { key: 'tradeShip', site: 0, u: 17, v: 28, angle: -0.1, blue: false });
   return {
     cx: px - 8,
     cy: py,
     tiles,
+    rgb,
     x0,
     y0,
     w: WN,
     h: HN,
     borderX,
     sites,
+    troops,
+    pills,
     water: (x, y) => !landAt(x, y),
     owner,
   };
 }
 
-/** Draws a preview of the crop at a zoom (CSS px per tile) with the buildings at the game's marker size for that zoom. */
-function drawMapPreview(cv: HTMLCanvasElement, crop: Crop, zoom: number, dpr: number): void {
+/** Draws a preview of the crop at a zoom (CSS px per tile) with buildings and units at the units' own scale for that zoom. */
+function drawMapPreview(cv: HTMLCanvasElement, crop: Crop, zoom: number, dpr: number, shiftX: number): void {
   const cw = MAP_W;
   const ch = cv.height / dpr;
   const ctx = cv.getContext('2d');
   if (!ctx) return;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  // the view is centred on (cx, cy) in map tiles
-  const vx0 = crop.cx - cw / 2 / zoom;
+  // the view is centred on (cx + shiftX, cy) in map tiles
+  const vx0 = crop.cx + shiftX - cw / 2 / zoom;
   const vy0 = crop.cy - ch / 2 / zoom;
   const toX = (tx: number): number => (tx - vx0) * zoom;
   const toY = (ty: number): number => (ty - vy0) * zoom;
@@ -1439,8 +1254,8 @@ function drawMapPreview(cv: HTMLCanvasElement, crop: Crop, zoom: number, dpr: nu
   ctx.lineCap = 'round';
   const pts: [number, number][] = [];
   for (let ty = Math.floor(vy0); ty <= Math.ceil(vy0 + ch / zoom); ty++) {
-    const bx = crop.borderX(ty);
-    if (crop.owner(Math.floor(bx) - 1, ty) && crop.owner(Math.floor(bx) + 2, ty)) pts.push([toX(bx), toY(ty + 0.5)]);
+    const bx2 = crop.borderX(ty);
+    if (crop.owner(Math.floor(bx2) - 1, ty) && crop.owner(Math.floor(bx2) + 2, ty)) pts.push([toX(bx2), toY(ty + 0.5)]);
     else if (pts.length) pts.push([-9999, -9999]);
   }
   for (const [lw, col] of [[Math.max(2, zoom * 0.32), 'rgba(12,16,22,0.65)'], [Math.max(1, zoom * 0.14), 'rgba(236,238,232,0.85)']] as [number, string][]) {
@@ -1459,19 +1274,63 @@ function drawMapPreview(cv: HTMLCanvasElement, crop: Crop, zoom: number, dpr: nu
     }
     ctx.stroke();
   }
-  const sizePx = markerSize(zoom) * SPRITE_PER_MARKER;
-  const sprH = (sizePx * H) / W;
+  const scale = unitScale(zoom);
+  const grid = gridOf(scale, dpr);
+  const tileAt = (tx: number, ty: number): number => {
+    const ix = Math.max(0, Math.min(crop.w - 1, Math.floor(tx - crop.x0)));
+    const iy = Math.max(0, Math.min(crop.h - 1, Math.floor(ty - crop.y0)));
+    return (iy * crop.w + ix) * 4;
+  };
   const sorted = crop.sites.slice().sort((a, b) => a.y - b.y);
-  ctx.imageSmoothingEnabled = true;
+  const levels: [number, number, number, RGB][] = [];
+  const anchors = new Map<Site, [number, number]>();
   for (const s of sorted) {
-    const spr = bakeBuilding({ type: s.type, level: s.level, addon: s.addon }, s.blue ? BLUE : RED);
-    const ax = s.type === 'port' ? 30 / W : 0.46;
-    const ay = s.type === 'port' ? 0.5 : 0.56;
-    const dx = toX(s.x + 0.5) - sizePx * ax;
-    const dy = toY(s.y + 0.5) - sprH * ay;
-    if (dx < -sizePx || dy < -sprH || dx > cw || dy > ch) continue;
-    ctx.drawImage(spr, Math.round(dx), Math.round(dy), Math.round(sizePx), Math.round(sprH));
+    const owner = s.blue ? BLUE : RED;
+    // the model origin stands on the site's tile centre (a port's coast line on the coast between its two tiles)
+    const ax = s.type === 'port' ? toX(s.x + 1) - COAST * scale : toX(s.x + 0.5);
+    const ay = toY(s.y + 0.5);
+    anchors.set(s, [ax, ay]);
+    const cellX = ax - OU * scale;
+    const cellY = ay - OV * scale;
+    if (cellX < -CU * scale || cellY < -CV * scale || cellX > cw || cellY > ch) continue;
+    // a cell pixel's tile: the cell pixel's distance from the model origin, in screen px, over the zoom
+    const tileOf = (px: number, py: number): [number, number] => [
+      (s.type === 'port' ? s.x + 1 : s.x + 0.5) + ((px - OU * grid.res) / grid.res - (s.type === 'port' ? COAST : 0)) * (scale / zoom),
+      s.y + 0.5 + ((py - OV * grid.res) / grid.res) * (scale / zoom),
+    ];
+    const under: Under = {
+      rgb: (px, py): RGB => {
+        const [tx, ty] = tileOf(px, py);
+        const o = tileAt(tx, ty);
+        return [crop.rgb[o], crop.rgb[o + 1], crop.rgb[o + 2]];
+      },
+      water: (px, py): boolean => {
+        const [tx, ty] = tileOf(px, py);
+        return crop.water(Math.floor(tx), Math.floor(ty));
+      },
+    };
+    const spr = bakeBuilding({ type: s.type, level: s.level, addon: s.addon }, owner, scale, dpr, under);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(spr.canvas, Math.round(cellX * dpr) / dpr, Math.round(cellY * dpr) / dpr, spr.w, spr.h);
+    levels.push([cellX + spr.cx - 28, cellY + spr.top - 18, s.level, owner]);
   }
+  // the game's own unit art beside the buildings, at the same zoom, with the map outline the units wear
+  const motion = motionParams('subtle', true);
+  const at = (site: number, u: number, v: number): [number, number] => {
+    const a = anchors.get(crop.sites[site]) ?? [toX(crop.sites[site].x + 0.5), toY(crop.sites[site].y + 0.5)];
+    return [a[0] + u * scale, a[1] + v * scale * FORE];
+  };
+  const placed = crop.troops.map((t) => ({ t, p: at(t.site, t.u, t.v) })).sort((a, b) => a.p[1] - b.p[1]);
+  for (const { t, p } of placed) {
+    const u: UnitDraw = { key: t.key, mods: 0, owner: t.blue ? BLUE : RED, x: p[0], y: p[1], angle: t.angle, zoom, scale, lod: 'near', dpr, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 1, alpha: 1, shadow: false, outline: true, damage: 0 };
+    detailedUnits.drawUnit(ctx, u, motion);
+  }
+  ctx.imageSmoothingEnabled = false;
+  for (const q of crop.pills) {
+    const p = at(q.site, q.u, q.v);
+    troopPill(ctx, p[0], p[1], q.troops, q.kinds, q.blue ? BLUE : RED, { edge: '#ffe98a', arrow: 'up', small: true });
+  }
+  for (const [x, y, lv, o] of levels) levelPill(ctx, x, y, lv, o);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
@@ -1488,7 +1347,7 @@ export function mountBuildingsMock(root: HTMLElement): HTMLElement {
   t.id = 'al-row-buildings';
   t.textContent = 'Buildings mockup';
   const note = document.createElement('p');
-  note.textContent = 'Map buildings in the troops\' shaded pixel style: slightly 3D, lit from the top left, with a drop shadow, the nation\'s colour on roofs, flags and bands, and one gold pip per level. Each building is shown for a blue and a red nation, at close and normal zoom, next to today\'s icon.';
+  note.textContent = 'Map buildings drawn like the troops: the same shaded pixels, four tones per material, lit from the top left, a dark edge and an outline in the nation\'s colour. They stand on the land with a shadow, dirt and paths made from the land\'s own colour, and the level is on a small dark pill like the army count. Each building is shown for a blue and a red nation, at close and normal zoom, next to today\'s icon.';
   const note2 = document.createElement('p');
   note2.textContent = 'Flak, tank traps, the radar dish and coastal guns are not in the game yet: they are drawn as add-ons only. The build menu, the pin menu and the tabs keep today\'s icons, and far zoom keeps the flat icons. This is a mockup: the real map still draws today\'s icons.';
   head.append(t, note, note2);
@@ -1505,15 +1364,15 @@ export function mountBuildingsMock(root: HTMLElement): HTMLElement {
   const mt = document.createElement('h3');
   mt.textContent = 'On the real map';
   const mn = document.createElement('p');
-  mn.textContent = `The same buildings over a crop of the game's ${MAP_ID} map (its own loader and terrain colours), with the border of two nations. They are drawn at the game's marker size for each zoom (zoom ${ZOOM_NORMAL}: ${Math.round(markerSize(ZOOM_NORMAL))} px marker, zoom ${ZOOM_CLOSE}: ${Math.round(markerSize(ZOOM_CLOSE))} px marker), made ${SPRITE_PER_MARKER} times wider than the marker so the roofs read.`;
+  mn.textContent = `The same buildings over a crop of the game's ${MAP_ID} map (its own loader and terrain colours), with the border of two nations, at the same size as the game's units for each zoom (zoom ${ZOOM_NORMAL} and zoom ${ZOOM_CLOSE}). Next to them are the game's real tanks, ships and army count pills, so the two can be compared side by side.`;
   mh.append(mt, mn);
   sec.append(mh);
-  const previews: [string, number, number][] = [
-    [`Normal zoom (zoom ${ZOOM_NORMAL})`, ZOOM_NORMAL, 300],
-    [`Close zoom (zoom ${ZOOM_CLOSE})`, ZOOM_CLOSE, 400],
+  const previews: [string, number, number, number][] = [
+    [`Normal zoom (zoom ${ZOOM_NORMAL})`, ZOOM_NORMAL, 300, 0],
+    [`Close zoom (zoom ${ZOOM_CLOSE})`, ZOOM_CLOSE, 680, -10],
   ];
-  const mcs: { cv: HTMLCanvasElement; zoom: number }[] = [];
-  for (const [name, zoom, hh] of previews) {
+  const mcs: { cv: HTMLCanvasElement; zoom: number; shift: number }[] = [];
+  for (const [name, zoom, hh, shift] of previews) {
     const sub = document.createElement('p');
     sub.textContent = name;
     sub.style.cssText = 'margin:12px 0 4px;font-weight:600';
@@ -1525,12 +1384,16 @@ export function mountBuildingsMock(root: HTMLElement): HTMLElement {
     mc.height = hh * dpr;
     mc.getContext('2d')?.fillRect(0, 0, 1, 1);
     sec.append(sub, mc);
-    mcs.push({ cv: mc, zoom });
+    mcs.push({ cv: mc, zoom, shift });
   }
   root.append(sec);
   void buildCrop().then(
     (crop) => {
-      for (const m of mcs) drawMapPreview(m.cv, crop, m.zoom, dpr);
+      const go = (): void => {
+        for (const m of mcs) drawMapPreview(m.cv, crop, m.zoom, dpr, m.shift);
+      };
+      go();
+      void document.fonts?.ready.then(go);
     },
     (e: unknown) => {
       for (const m of mcs) {
