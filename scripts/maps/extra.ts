@@ -47,6 +47,8 @@ export const EXTRA_REGIONS: ExtraRegion[] = [
   { name: 'Everglades', kind: 'swamp', poly: [[-81.4, 26.0], [-80.5, 26.2], [-80.3, 25.5], [-80.7, 25.1], [-81.2, 25.3]] },
   { name: 'Sierra Maestra', kind: 'mountains', strength: 0.8, poly: [[-77.6, 20.1], [-76.2, 20.2], [-75.4, 19.95], [-76.4, 19.9], [-77.2, 19.8]] },
   { name: 'Escambray', kind: 'mountains', strength: 0.65, poly: [[-80.2, 21.9], [-79.8, 21.95], [-79.7, 21.7], [-80.1, 21.7]] },
+  { name: 'Escambray foothills', kind: 'hills', poly: [[-80.6, 22.15], [-79.6, 22.25], [-79.2, 21.9], [-79.6, 21.65], [-80.4, 21.75]] },
+  { name: 'Sierra de los Organos', kind: 'hills', poly: [[-84.2, 22.55], [-83.0, 22.95], [-82.7, 22.8], [-83.6, 22.45]] },
   { name: 'Lesser Antilles volcanic hills', kind: 'hills', poly: [[-61.3, 16.3], [-61.0, 16.3], [-61.0, 14.4], [-60.8, 14.0], [-61.1, 14.0], [-61.3, 14.8]] },
   { name: 'Trinidad Northern Range', kind: 'hills', poly: [[-61.6, 10.8], [-60.9, 10.8], [-61.0, 10.6], [-61.6, 10.6]] },
   // --- British Isles ---
