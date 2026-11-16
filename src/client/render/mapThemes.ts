@@ -167,7 +167,7 @@ export const THEME_DEFS: Record<string, MapThemeDef> = {
     flat: [
       [158, 176, 212], // open sea
       [185, 200, 228], // shelf
-      [169, 207, 126], // plains: flat anime green
+      [169, 207, 126], // plains: flat painted green
       [141, 185, 106], // forest
       [201, 179, 138], // hills: tan
       [169, 156, 184], // mountains: grey-violet rock
