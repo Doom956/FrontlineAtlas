@@ -110,35 +110,35 @@ export const THEME_DEFS: Record<string, MapThemeDef> = {
    */
   warmscroll: {
     ground: {
-      grass: ramp('#71894a', '#8aa25d', '#a3b973', '#bccd8b'),
-      grassDry: ramp('#8b874c', '#a6a05f', '#bfb875', '#d3cb8d'),
-      grassLush: ramp('#5b7f41', '#719651', '#89ad64', '#a1c27a'),
-      forest: ramp('#2d5a2e', '#3c6f3a', '#52864a', '#6a9c5d'),
-      hills: ramp('#7f6240', '#9c7c52', '#b79766', '#cdb07f'),
-      rock: ramp('#5d566b', '#776f86', '#948ca2', '#b3acbf'),
-      snow: ramp('#a9adc2', '#c6c9da', '#dfe1ed', '#f4f4f9'),
-      sand: ramp('#b5793f', '#cc9357', '#deab6e', '#ecc58c'),
-      swamp: ramp('#3f5c47', '#52725a', '#6a896c', '#83a083'),
-      tundra: ramp('#8d8b97', '#a5a3ad', '#bcbac2', '#d1cfd5'),
-      wheat: ramp('#a08a4b', '#bba45f', '#d0b975', '#e1cd8e'),
-      crop: ramp('#66823f', '#7c984f', '#93ad63', '#a9c179'),
-      soil: ramp('#7d5c3a', '#98734c', '#b08b61', '#c6a277'),
-      pool: ramp('#2f73a0', '#3e88b6', '#529ec9', '#70b4d9'),
-      sea: [hx('#73b7dc'), hx('#5ea8d4'), hx('#4d97c8'), hx('#4389bd'), hx('#3c7cb1')],
-      foam: ramp('#80c0e2', '#9dcfe8', '#c1e0f1', '#e4f2f9'),
+      grass: ramp('#a2c776', '#a9cf7e', '#afd484', '#b4d889'),
+      grassDry: ramp('#b3c97c', '#bbd083', '#c2d58a', '#c8d990'),
+      grassLush: ramp('#a2c776', '#a9cf7e', '#afd484', '#b4d889'),
+      forest: ramp('#84b062', '#8db96a', '#94bf71', '#9ac476'),
+      hills: ramp('#bda878', '#c9b38a', '#d1bc94', '#d8c49c'),
+      rock: ramp('#9a8eaa', '#a99cb8', '#b4a8c2', '#bdb2ca'),
+      snow: ramp('#c9c9d6', '#d6d6e0', '#e2e2ea', '#ececf2'),
+      sand: ramp('#e1b070', '#e8b97a', '#edc088', '#f0c692'),
+      swamp: ramp('#98bb78', '#a0c080', '#a8c688', '#aecb8e'),
+      tundra: ramp('#b8b8c0', '#c0c0c8', '#c8c8d0', '#d0d0d6'),
+      wheat: ramp('#b9c97c', '#c1d083', '#c8d68a', '#ced98f'),
+      crop: ramp('#a2c776', '#a9cf7e', '#afd484', '#b4d889'),
+      soil: ramp('#c2ab82', '#c9b38a', '#d0ba92', '#d6c09a'),
+      pool: ramp('#93a9d0', '#9eb0d4', '#a9b9da', '#b4c2e0'),
+      sea: [hx('#b9c8e4'), hx('#b0c0e0'), hx('#a6b8da'), hx('#9eb0d4'), hx('#98aad0')],
+      foam: ramp('#c9d5ea', '#d6dfef', '#e3e9f4', '#f0f3f9'),
     },
     flat: [
-      [60, 124, 177], // open sea
-      [94, 168, 212], // shelf
-      [163, 185, 115], // plains: warm parchment green
-      [80, 132, 72], // forest
-      [183, 151, 102], // hills: ochre
-      [148, 140, 162], // mountains: grey-violet rock
-      [222, 171, 110], // desert: orange-tan
-      [106, 137, 108], // swamp
-      [188, 186, 194], // tundra
+      [158, 176, 212], // open sea
+      [185, 200, 228], // shelf
+      [169, 207, 126], // plains: flat anime green
+      [141, 185, 106], // forest
+      [201, 179, 138], // hills: tan
+      [169, 156, 184], // mountains: grey-violet rock
+      [232, 185, 122], // desert: orange-tan
+      [160, 192, 128], // swamp
+      [192, 192, 200], // tundra
     ],
-    waterMid: [74, 146, 196],
+    waterMid: [158, 176, 212],
   },
 };
 
