@@ -29,15 +29,15 @@ import { flakBus } from './tankShotBus';
 /** Puff life (ms), cap, and new puffs a frame at most. */
 export const PUFF_MS = 800;
 export const PUFF_CAP = 90;
-const PUFFS_PER_FRAME = 8;
+const PUFFS_PER_FRAME = 10;
 /** Puffs a second around one plane per flak zone holding it. */
-const PUFF_RATE = 7;
+const PUFF_RATE = 18;
 /** Below this zoom no puffs or bursts; hedgehogs from TRAP_ZOOM. */
 export const FAR_FX_ZOOM = 2;
 export const TRAP_ZOOM = 4;
 /** Dirt bursts at once, and how long one lasts (ms). */
 const DIRT_CAP = 16;
-const DIRT_MS = 550;
+const DIRT_MS = 700;
 /** The trap tile list is recomputed at most this often (ms). */
 const TRAP_REFRESH_MS = 700;
 
@@ -73,6 +73,7 @@ export class DefenseFx {
   /** puffs drawn last frame, hedgehogs drawn (tests, stats) */
   drawnPuffs = 0;
   drawnTraps = 0;
+  drawnDirt = 0;
 
   constructor(private rand: () => number = Math.random) {
     for (let i = 0; i < PUFF_CAP; i++) this.puffs.push({ live: false, x: 0, y: 0, vx: 0, vy: 0, t0: 0 });
@@ -130,17 +131,17 @@ export class DefenseFx {
         if (n < 1 && this.rand() > n) break;
         n -= 1;
         made++;
-        this.spawn(u.x + 0.5, u.y + 0.5, nowMs);
+        this.spawn(u.x + 0.5, u.y + 0.5, nowMs, cam.zoom);
         if (made === 1) flakBus.push({ state, x: u.x + 0.5, y: u.y + 0.5, volume: 0.22 }); // the soft anti-air shot (sound/battle.ts)
       }
     }
   }
 
-  private spawn(x: number, y: number, nowMs: number): void {
+  private spawn(x: number, y: number, nowMs: number, zoom: number): void {
     let p = this.puffs.find((q) => !q.live);
     if (!p) p = this.puffs.reduce((a, b) => (a.t0 < b.t0 ? a : b));
     const a = this.rand() * Math.PI * 2;
-    const r = 0.6 + this.rand() * 2.2; // tiles from the plane
+    const r = (12 + this.rand() * 26) / Math.max(1, zoom); // 12 to 38 px from the plane: around its sprite, not under it
     p.live = true;
     p.x = x + Math.cos(a) * r;
     p.y = y + Math.sin(a) * r;
@@ -153,6 +154,7 @@ export class DefenseFx {
   /** Smoke trails of worn planes (under the puffs), the puffs and the dirt bursts. After the units are drawn. */
   drawAir(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, nowMs: number, units: UnitPoses, dpr: number): void {
     this.drawnPuffs = 0;
+    this.drawnDirt = 0;
     if (!fxEnabled() || cam.zoom < FAR_FX_ZOOM) {
       for (const p of this.puffs) p.live = false;
       return;
@@ -186,7 +188,7 @@ export class DefenseFx {
     }
     ctx.restore();
     // puffs
-    const k = cam.zoom >= 6 ? 1.5 : 1;
+    const k = cam.zoom >= 4 ? 1.5 : 1;
     for (const p of this.puffs) {
       if (!p.live) continue;
       const age = nowMs - p.t0;
@@ -196,8 +198,9 @@ export class DefenseFx {
       }
       const s = cam.tileToScreen(p.x + (p.vx * age) / 1000, p.y + (p.vy * age) / 1000);
       if (s.x < -8 || s.y < -8 || s.x > cam.viewW + 8 || s.y > cam.viewH + 8) continue;
-      const f = 1 - age / PUFF_MS;
-      drawFlakPuff(ctx, s.x, s.y, k, f * f, age < 60, dpr);
+      const t = age / PUFF_MS;
+      const f = t < 0.35 ? 1 : 1 - (t - 0.35) / 0.65; // dense at first, then it thins out
+      drawFlakPuff(ctx, s.x, s.y, k, f, age < 60, dpr);
       this.drawnPuffs++;
     }
     // dirt bursts
@@ -210,20 +213,28 @@ export class DefenseFx {
       }
       const s = cam.tileToScreen(d.x, d.y);
       const t = age / DIRT_MS;
+      this.drawnDirt++;
       const fly = this.reduced ? 0.3 : 1;
       let seed = d.seed;
       const rnd = (): number => {
         seed = (seed * 1103515245 + 12345) & 0x7fffffff;
         return seed / 0x7fffffff;
       };
-      ctx.globalAlpha = 1 - t;
-      for (let i = 0; i < 9; i++) {
-        const a = -Math.PI * (0.15 + rnd() * 0.7);
-        const v = (4 + rnd() * 8) * fly * Math.max(1, cam.zoom / 4);
+      // a dust cloud spreading low over the spot, then clods of earth flung up and falling back
+      const zk = Math.max(1, cam.zoom / 4);
+      ctx.globalAlpha = 0.7 * (1 - t);
+      ctx.fillStyle = DIRT[3];
+      ctx.beginPath();
+      ctx.ellipse(s.x, s.y + 2, (4 + 12 * t) * zk, (2.5 + 6 * t) * zk, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1 - t * t;
+      for (let i = 0; i < 14; i++) {
+        const a = -Math.PI * (0.1 + rnd() * 0.8);
+        const v = (6 + rnd() * 12) * fly * zk;
         const px = s.x + Math.cos(a) * v * t * 2;
-        const py = s.y + Math.sin(a) * v * t * 2 + 10 * t * t * fly;
+        const py = s.y + Math.sin(a) * v * t * 2 + 16 * t * t * fly * zk;
         ctx.fillStyle = DIRT[i % DIRT.length];
-        const sz = i % 3 === 0 ? 2 : 1;
+        const sz = i % 3 === 0 ? 3 : 2;
         ctx.fillRect(Math.round(px * dpr) / dpr, Math.round(py * dpr) / dpr, sz, sz);
       }
       ctx.globalAlpha = 1;

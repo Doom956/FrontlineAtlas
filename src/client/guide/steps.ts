@@ -614,6 +614,16 @@ export function guideTips(): GuideTip[] {
       done: (c) => c.s.units.some((u) => u.owner === c.me.id && u.type === 'tankDivision' && u.blitzReady !== undefined),
     },
     {
+      // Defense row (sim/defense.ts): what the root just bought does, and where Forts help it
+      id: 'defense',
+      text: (c) =>
+        hasTech(c.me, 'flakGuns')
+          ? 'Flak Guns: every finished Fort and City of yours fires flak at enemy bombers flying through. A Fort next to a city they bomb makes their bombs do much less.'
+          : 'Tank Traps: dug-in land (the dark trench line) near your Forts slows enemy tank spearheads and costs them troops. Forts a few tiles behind the border tanks come over cover it best.',
+      tile: (c) => buildingTile(c.s, c.me, 'fort'),
+      when: (c) => playing(c) && (hasTech(c.me, 'flakGuns') || hasTech(c.me, 'tankTraps')),
+    },
+    {
       id: 'airTech',
       text: (c) => getUnlock(c, 'flight', 'for Airfields, bombers and fighters').text,
       target: (c) => getUnlock(c, 'flight', 'for Airfields, bombers and fighters').target,

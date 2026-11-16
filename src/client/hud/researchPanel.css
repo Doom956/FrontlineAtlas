@@ -1170,3 +1170,7 @@ aside.drawer[data-page='research'] .dr-body {
 .hud.rp-open > .hud-left {
   visibility: hidden;
 }
+/* the Defense row's Unlock column: Fortification, researched in the Research tab (a note, not a card to click) */
+.rp-ext {
+  cursor: default;
+}

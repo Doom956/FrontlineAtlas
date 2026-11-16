@@ -174,9 +174,26 @@ export class TechRowsView {
       row.append(el('div', `rp-tier${choose ? ' choose' : ''}`, choose ? `${base}: choose one` : base));
       for (const c of list) row.append(this.card(c, row, ri));
     }
+    // Defense has no unlock of its own: the Unlock column names the Research-tab tech that opens it (sim/defense.ts)
+    if (r.id === 'defense') {
+      const ext = el('div', 'rp-card k-unlock rp-ext locked');
+      ext.dataset.test = 'defense-needs-fortification';
+      ext.style.gridColumn = '2';
+      ext.style.gridRow = `1 / span ${r.lanes}`;
+      const txt = el('span', 'rp-txt');
+      const meta = el('span', 'rp-meta', 'Research it in the Research tab');
+      txt.append(el('span', 'rp-n', 'Fortification'), meta);
+      const mark = el('span', 'rp-mark');
+      mark.setAttribute('aria-hidden', 'true');
+      ext.append(iconSpan(this.hooks.icon('fortification'), 'rp-ic'), txt, mark);
+      row.append(ext);
+      this.ext = { el: ext, meta, mark };
+    }
     this.rows.push(rowEl);
     this.root.append(row);
   }
+  /** the Defense row's "Fortification" box in the Unlock column (not a card: it is researched in the other tab) */
+  private ext: { el: HTMLElement; meta: HTMLElement; mark: HTMLElement } | null = null;
 
   private card(c: RowCard, rowEl: HTMLElement, rowIdx: number): HTMLButtonElement {
     const info = TECHS[c.tech];
@@ -225,6 +242,14 @@ export class TechRowsView {
   update(s: GameState, me: Player, next: TechId | null): void {
     this.last = { s, me };
     for (const n of this.cards.values()) this.updateCard(s, me, n, next);
+    if (this.ext) {
+      const has = hasTech(me, 'fortification');
+      setClass(this.ext.el, 'done', has);
+      setClass(this.ext.el, 'locked', !has);
+      setText(this.ext.meta, has ? 'Researched' : 'Research it in the Research tab');
+      if (this.ext.mark.innerHTML !== (has ? MARK.done : '')) this.ext.mark.innerHTML = has ? MARK.done : '';
+      this.ext.el.setAttribute('aria-label', has ? 'Fortification: researched, the Defense row is open' : 'Fortification: research it in the Research tab to open the Defense row');
+    }
     for (const r of this.rows) {
       const done = r.r.cards.filter((c) => hasTech(me, c.tech)).length;
       setText(r.count, `${done}/${r.r.cards.length}`);
@@ -317,7 +342,10 @@ export class TechRowsView {
     let full: string | null = null;
     if (st === 'done') text = 'In service';
     else if (st === 'ordered') text = `Arrives in ${formatEta(a.order!.left)}`;
-    else if (st === 'chose-other') text = arsenalItem(t)?.pillar === 'defense' ? a.reason : 'Not chosen'; // "You chose Flak Guns; Tank Traps is locked"
+    else if (st === 'chose-other') {
+      text = arsenalItem(t)?.pillar === 'defense' && a.chose ? `You chose ${TECHS[a.chose].name}` : 'Not chosen';
+      full = a.reason; // "You chose Flak Guns; Tank Traps is locked" (the detail pane says it too)
+    }
     else if (st === 'building') text = a.reason;
     else if (st === 'prereq') {
       const miss = missingPrereqs(me, t);

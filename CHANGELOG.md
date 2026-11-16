@@ -2,6 +2,22 @@
 
 The big rounds of work, newest first. Each one was merged to `main` and deployed to the live game.
 
+## 2026-11-16 · Defense (part 1)
+
+A fourth Arsenal row, Defense, for the nation that holds and hits back. It needs Fortification, and every item needs a
+finished Fort of yours. Pick one of two paths:
+- Flak Guns: your finished Forts (14 tiles) and Cities (10 tiles) fire flak at enemy bombers, ground-attack planes,
+  cargo planes and the stealth bomber flying through. Their bombs do up to 65% less, and badly hit planes turn home
+  with their bombs. Rockets, missiles and recon planes are too fast or too high. Fort and City markers get small AA
+  guns, the planes fly through black flak puffs and trail smoke, and when you aim a bomb you see the enemy's flak
+  rings ("Enemy flak: bombs -35%"). A Fort or City card says what its flak does.
+- Tank Traps: your dug-in land (trench level 1 or more) near a Fort is laid with mines and steel hedgehogs. Enemy tank
+  spearheads there slow to 40% and lose troops (at most a quarter of a division). Siege Tanks drive through, artillery
+  halves it, barrages flatten them with the trench. The spearhead preview warns "Tank traps ahead".
+- Picking one locks the other. Mastery is still 2 per game, now of 4 pillars (Defense's mastery comes later).
+- AI nations from Normal up take Defense when they are cautious, face a much stronger neighbour or get bombed a lot.
+- Online games need the new version (protocol 22).
+
 ## 2026-11-15 · Settings
 
 - One Settings screen, on the title screen (Settings, with a gear) and in the game's Menu, in four tabs:

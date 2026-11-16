@@ -145,6 +145,9 @@ without the rule would desync in a fog game, so the protocol version went up. Ev
 draws only its own seat's view (spectators see everything), so online fog is honour based: a modified client could
 read the hidden state.
 
+**Defense row (protocol 22).** The Arsenal's Defense items (`procure` with `flakGuns` / `tankTraps`) and their state
+(Unit.flakWear, Unit.trapLoss, the 'trapHit' effect) changed the simulation, so the protocol version went up.
+
 **Owner console (protocol 7).** `adminAuth {code}` -> `adminAuth {ok}` to the sender only (see section 5). Console
 intents have `type: 'admin'` with an `op` (src/sim/admin.ts ADMIN_OPS) and are relayed only from authenticated
 sessions.

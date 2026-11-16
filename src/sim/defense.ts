@@ -86,7 +86,7 @@ export function flakSiteCut(b: Building, factor = 1): number {
   return Math.min(1 - DEFENSE.flakEffectFloor, flakRadius(b) * flakRate(b) * factor);
 }
 
-interface FlakGrid {
+export interface FlakGrid {
   key: string;
   sites: FlakSite[];
   cols: number;
@@ -101,7 +101,10 @@ function holders(state: GameState): number[] {
   return out;
 }
 
-/** The cached flak site grid (rebuilt when buildings or the holders change); null when nobody holds Flak Guns. */
+/**
+ * The cached flak site grid (rebuilt when buildings or the holders change); null when nobody holds Flak Guns. The key
+ * is checked on every call, so the cache never depends on who asked when (the client reads it too).
+ */
 function gridOf(state: GameState): FlakGrid | null {
   const hs = holders(state);
   if (!hs.length) return null;
@@ -144,9 +147,9 @@ const topScratch: FlakSite[] = [];
  * The strongest (at most flakMaxZones) working flak sites hostile to `planeOwner` holding the point (x, y), strongest
  * first (ties by building id). Shared scratch array: copy it to keep it.
  */
-export function flakZonesAt(state: GameState, planeOwner: number, x: number, y: number): readonly FlakSite[] {
+export function flakZonesAt(state: GameState, planeOwner: number, x: number, y: number, grid?: FlakGrid | null): readonly FlakSite[] {
   topScratch.length = 0;
-  const g = gridOf(state);
+  const g = grid === undefined ? gridOf(state) : grid;
   if (!g) return topScratch;
   const cell = DEFENSE.flakGridCell;
   const cx = Math.floor(x / cell);
@@ -165,9 +168,9 @@ export function flakZonesAt(state: GameState, planeOwner: number, x: number, y: 
 }
 
 /** Wear per tile at (x, y) for a plane of `planeOwner` (factor 1): the sum of the strongest zones' rates. */
-export function flakRateAt(state: GameState, planeOwner: number, x: number, y: number): number {
+export function flakRateAt(state: GameState, planeOwner: number, x: number, y: number, grid?: FlakGrid | null): number {
   let r = 0;
-  for (const s of flakZonesAt(state, planeOwner, x, y)) r += s.rate;
+  for (const s of flakZonesAt(state, planeOwner, x, y, grid)) r += s.rate;
   return r;
 }
 
@@ -184,7 +187,8 @@ export function flakFactor(u: Unit): number {
  * strike preview's estimate; sampled every tile), capped at 1.
  */
 export function flakPathWear(state: GameState, owner: number, from: number, to: number, factor = 1): number {
-  if (!gridOf(state) || factor <= 0) return 0;
+  const g = gridOf(state);
+  if (!g || factor <= 0) return 0;
   const w = state.map.width;
   const x0 = from % w;
   const y0 = (from / w) | 0;
@@ -195,7 +199,7 @@ export function flakPathWear(state: GameState, owner: number, from: number, to: 
   let wear = 0;
   for (let k = 0; k < n; k++) {
     const f = (k + 0.5) / n;
-    wear += (len / n) * flakRateAt(state, owner, x0 + dx * f, y0 + dy * f);
+    wear += (len / n) * flakRateAt(state, owner, x0 + dx * f, y0 + dy * f, g);
   }
   return Math.min(1, wear * factor);
 }
@@ -210,7 +214,8 @@ export function updateFlak(state: GameState, planes: readonly Unit[], arrived: S
   const check = since === 0;
   // between checks only planes over their aim this tick: the stretch since the last check still counts (no abort)
   if (!check && !arrived.size) return;
-  if (!gridOf(state)) return;
+  const g = gridOf(state);
+  if (!g) return;
   const w = state.map.width;
   for (const u of planes) {
     if (u.hp <= 0 || u.state !== 0) continue;
@@ -231,7 +236,7 @@ export function updateFlak(state: GameState, planes: readonly Unit[], arrived: S
     let by = 0;
     for (let k = 0; k < n; k++) {
       const f = ((k + 0.5) / n) * (len / Math.max(dh, 1e-9));
-      const zones = flakZonesAt(state, u.owner, u.x + hx * f, u.y + hy * f);
+      const zones = flakZonesAt(state, u.owner, u.x + hx * f, u.y + hy * f, g);
       let r = 0;
       for (const s of zones) r += s.rate;
       if (r > 0 && !by) by = zones[0].owner;

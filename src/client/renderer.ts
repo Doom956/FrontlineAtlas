@@ -89,6 +89,10 @@ export interface RenderStats {
   msFx: number;
   /** tank gun shots drawn this frame (fx/tankFire.ts) */
   tankShots?: number;
+  /** flak puffs and tank trap hedgehogs drawn this frame (fx/defenseFx.ts) */
+  flakPuffs?: number;
+  trapMarks?: number;
+  trapDirt?: number;
 }
 
 export class Renderer {
@@ -425,6 +429,9 @@ export class Renderer {
     this.stats.msMinimap = performance.now() - tMini;
     this.stats.msFx = this.fx.ms + this.pfx.ms + this.tanks.ms;
     this.stats.tankShots = this.tanks.drawnShots;
+    this.stats.flakPuffs = this.defense.drawnPuffs;
+    this.stats.trapMarks = this.defense.drawnTraps;
+    this.stats.trapDirt = this.defense.drawnDirt;
     this.stats.gl = !!this.gl;
     this.stats.glLite = this.gl?.lite ?? false;
     this.stats.glSkipped = this.gl?.skipped ?? 0;

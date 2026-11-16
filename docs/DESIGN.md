@@ -551,8 +551,35 @@ other root and everything after it lock together ("You chose Destroyers; Carrier
   shoot it down by the bomber rule (protocol 21); one shot down reveals nothing (all or nothing reads clearer than a
   half circle where it fell, and the alert says so: "...shot down your recon plane before it got there: nothing
   revealed"). SAMs let it pass (fighters are the answer to recon); on its way home it is let go.
-- Mastery (tier 4) in at most `MASTERY_CAP` = 2 pillars per game (`masteryLocked`: 'locked-choice', "Mastery 2 of 2
-  used (Navy, Air)"): Naval (veterancy xp x2, bombardment / support reach x1.3, +2 warships, cruise missiles from warships, destroyers and battleships: section 7), Armor (pockets up to x3
+- Defense (src/sim/defense.ts, config `DEFENSE`; protocol 22): no unlock of its own, the row opens with Fortification
+  (Research tab), and every item needs a finished own Fort ("Needs a finished Fort"). Fork `defenseDoctrine`
+  ("Defense lane"): Flak Guns (anti-air lane; Tracking Radar after it in part 2) | Tank Traps (barriers lane; Coastal
+  Batteries after it in part 2); the Counteroffensive mastery comes in part 3. Roots cost 3600 gold + 1200 iron (iron
+  only, `ironOnlyRoots`); later items 80% iron, 20% oil.
+  - Flak Guns: every finished, working own Fort (radius 14, +2 per level) and City (10, +1) is a flak site. Every
+    `flakCheckTicks` (5) a hostile bomber, ground-attack plane, cargo plane or stealth bomber flying OUT gains wear
+    (Unit.flakWear, hashed) = tiles flown x the sum of the strongest `flakMaxZones` (2) zones holding it (0.025 per
+    tile, +0.004 per site level above 1), x1.3 ground-attack, x0.7 heavy, x1 stealth (not radar aimed). The stretch
+    flown is sampled every tile from a cached site grid (rebuilt on buildingsVersion). At wear 0.8 before release it
+    turns home with its bombs (cargo planes bring the troops back). On arrival kills, zone strength, raid cut,
+    buildings hit and gold burn are x (1 - wear), then x the air superiority cut, never below 35% (`flakCut`);
+    paratroopers landing x (1 - wear). Rockets, cruise missiles, atom bombs and recon are ignored. Flak runs after
+    the planes move and before SAMs, fighters, carriers and patrols, which are unchanged. A level-1 fort's centre
+    costs a bomber about 35% of its effect, two overlapping level-1 forts about 70%.
+  - Tank Traps: a trap tile is an own tile with trench level 1+ inside the radius of a finished, working own Fort
+    (derived, not stored; barrages and atom bombs flatten the trench and the traps with it). A hostile spearhead head
+    entering a trap tile moves at 40% speed, and its division loses 2% of its start strength per trap tile taken, at
+    most 25% per spearhead (Unit.trapLoss, hashed, reset per spearhead). Light tanks x1.3, heavy x0.7, Siege Tanks
+    x0; artillery support halves it; a Breakthrough's surge (BLITZ.speedMul - 1) is halved there. A fort still stops
+    a division without artillery or heavy tanks, so traps bite on the ones that get through. The preview warns
+    "Tank traps ahead: tanks slow to 40% here".
+  - AI: Defense is a second interest next to the committed pillar (aiDefenseCommitted, never at Easy): turtles,
+    nations facing a hostile neighbour with 1.5x their army, or foes with 6+ bombers. Fork lean: enemy tank divisions
+    toward Tank Traps, enemy bombers toward Flak Guns, plus the per-game hash. Flak holders put forts next to cities
+    enemy bombs hit in the last 60 s; trap holders face the neighbour with the most tank divisions (forts ~8 tiles
+    behind that border).
+- Mastery (tier 4) in at most `MASTERY_CAP` = 2 of the 4 mastery pillars per game (`masteryLocked`: 'locked-choice',
+  "Mastery 2 of 2 used (Navy, Air)"): Naval (veterancy xp x2, bombardment / support reach x1.3, +2 warships, cruise missiles from warships, destroyers and battleships: section 7), Armor (pockets up to x3
   bigger collapse, x1.5 troops lost in them), Air (every wing x1.5 bombers, and the stealth strike: section 7).
 AIs (variantsAI.ts): a fork by the map and personality (enemy trade and ports -> silent service; forts and mountains
 -> heavy tanks; enemy cities and factories -> heavy bombers; plus a per-game hash), the committed pillar's path right

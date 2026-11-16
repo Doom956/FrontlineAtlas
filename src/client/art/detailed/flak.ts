@@ -10,15 +10,16 @@ const GUN = MATERIALS.gun;
 /** pattern letters -> colour */
 const INK: Record<string, string> = {
   o: '#07090c', // outline
-  b: GUN[1], // mount, dark steel
-  g: GUN[2], // barrel
-  l: '#c9ced3', // lit top pixel
+  b: '#2c3137', // gun pit base
+  m: '#5d646b', // mount
+  g: '#8a9198', // barrels, light steel (they read on the dark plate and the ground)
+  l: '#dde2e7', // lit muzzles and top pixels
   d: GUN[1],
   s: GUN[3],
 };
 
-/** A twin-barrel AA gun on its mount, barrels up and to the right (6 x 5). */
-const AA_GUN = ['....ll', '...gg.', '..gg..', '.bbbb.', 'bbbbbb'];
+/** A twin-barrel AA gun on its mount, barrels up and to the right (8 x 7). */
+const AA_GUN = ['......ll', '.....gg.', '....gg..', '...gg...', '..mmmm..', '.mmmmmm.', 'bbbbbbbb'];
 /** A Czech hedgehog: two crossed beams and a cross bar, a light pixel on top (5 x 5). */
 const HEDGEHOG = ['l...l', '.d.d.', 'dslsd', '.d.d.', 'd...d'];
 
@@ -51,17 +52,17 @@ function snap(v: number, dpr: number): number {
 }
 
 /**
- * Two small AA guns on a building marker of `size` CSS px centred at (x, y): one at each lower corner, barrels out,
- * sitting on the plate's edge (Fort and City markers of a Flak Guns holder, render/buildings.ts).
+ * Two small AA guns flanking a building marker of `size` CSS px centred at (x, y), one on each side, barrels up and out
+ * (Fort and City markers of a Flak Guns holder, render/buildings.ts).
  */
 export function drawFlakGuns(ctx: Ctx, x: number, y: number, size: number, dpr: number, alpha = 1): void {
-  const k = size >= 30 ? 2 : size >= 18 ? 1.5 : 1;
+  const k = size >= 30 ? 2 : size >= 20 ? 1.5 : 1;
   const r = size / 2;
   const prev = ctx.globalAlpha;
   ctx.globalAlpha = prev * alpha;
-  const gy = snap(y + r - 5 * k + k, dpr);
-  pattern(ctx, AA_GUN, snap(x - r - 2 * k, dpr), gy, k, true, true);
-  pattern(ctx, AA_GUN, snap(x + r - 4 * k, dpr), gy, k, false, true);
+  const gy = snap(y + r - 7 * k, dpr);
+  pattern(ctx, AA_GUN, snap(x - r - 6 * k, dpr), gy, k, true, true);
+  pattern(ctx, AA_GUN, snap(x + r - 2 * k, dpr), gy, k, false, true);
   ctx.globalAlpha = prev;
 }
 

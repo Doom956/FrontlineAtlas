@@ -48,9 +48,9 @@ describe('tech tree data', () => {
       expect(info.tier).toBeLessThanOrEqual(5);
     }
   });
-  it('has branch techs in 7 exclusive groups of 2 (3 of them Arsenal paths)', () => {
+  it('has branch techs in 8 exclusive groups of 2 (4 of them Arsenal paths, Defense included)', () => {
     const groups = exclusiveGroups();
-    expect(groups.length).toBe(7);
+    expect(groups.length).toBe(8);
     for (const g of groups) expect(groupMembers(g).length).toBe(2);
     // Research tab (arsenal.ts isArsenalTech = false): 12 base techs + the stat / effect branches
     const research = TECH_ORDER.filter((t) => !isArsenalTech(t));

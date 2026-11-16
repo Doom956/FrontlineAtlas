@@ -1156,11 +1156,11 @@ export function spearheadPreview(state: GameState, playerId: number, unitId: num
     if (ter === Terrain.Mountains) warn(breaks ? 'Mountains ahead: slow and costly even with artillery' : 'Mountains ahead: spearhead will stall');
     if (ter === Terrain.Forest || ter === Terrain.Hills) warn('Forests or hills ahead: the spearhead slows down');
     if (ter === Terrain.Swamp) warn('Swamp ahead: the spearhead bogs down');
-    if (o > 0 && fortMultiplierAt(state, t, o) > 1.01) warn(breaks ? 'Fort ahead: it will be breached at a high cost' : 'Fort ahead: spearhead will stop (bring artillery)');
     // Tank Traps (defense.ts): dug-in land near the defender's forts
     const tf = o > 0 && isTrapTile(state, t, o) ? trapFactor(state, sim, artillerySupport(sim)) : -1;
     if (tf > 0) warn(`Tank traps ahead: tanks slow to ${Math.round(trapSpeedMul(tf) * 100)}% here`);
     else if (tf === 0) warn('Tank traps ahead: your Siege Tanks drive through');
+    if (o > 0 && fortMultiplierAt(state, t, o) > 1.01) warn(breaks ? 'Fort ahead: it will be breached at a high cost' : 'Fort ahead: spearhead will stop (bring artillery)');
     const c = bandCost(state, sim, t, o);
     if (typeof c === 'string') {
       if (c === 'reached the coast') warn('Water ahead: the spearhead ends at the coast');
