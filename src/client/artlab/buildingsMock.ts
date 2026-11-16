@@ -994,16 +994,6 @@ function breakwater(pts: [number, number][], simple: boolean): Part[] {
   P.push(...lighthouse(tu - 0.3, tv, 9));
   return P;
 }
-/** A dry dock cut into the shore: concrete walls on three sides, a caisson gate, a freighter in it on its keel blocks, a jib crane on the wall. */
-function dryDock(u0: number, v0: number, u1: number, v1: number, simple: boolean): Part[] {
-  const w = 1.5;
-  const P: Part[] = [bx(u0, v0, u1, v0 + w, 0, 2.0, 'sup', { tone: -0.1, pat: 'hatches' }), bx(u0, v1 - w, u1, v1, 0, 2.0, 'sup', { tone: -0.1, pat: 'hatches' }), bx(u0, v0, u0 + w, v1, 0, 2.0, 'sup', { tone: -0.1, pat: 'hatches' })];
-  P.push(bx(u1 - 1.0, v0 + w, u1, v1 - w, 0, 1.5, 'redlead', { tone: 0.2 }));
-  P.push(...ship(u0 + 3.4, (v0 + v1) / 2, 11.4, 4.2));
-  for (let u = u0 + 3; u < u1 - 2; u += 5) P.push(el(u, v1 - 0.7, 0.4, 0.4, 2.0, 0.7, 'gun', { sh: 'cyl', tone: 0.9 }), el(u, v0 + 0.7, 0.4, 0.4, 2.0, 0.7, 'gun', { sh: 'cyl', tone: 0.9 }));
-  if (!simple) P.push(...jibCrane(u0 + 4, v1 - 0.8, 2.0, u0 + 7, v0 + 4));
-  return P;
-}
 /**
  * A coastal gun emplacement: a concrete casemate with chamfered seaward corners, banked with earth on its landward
  * side, a gun in a round pit on its roof and a long barrel pointing east over the water, a door on its south side.
@@ -1028,11 +1018,9 @@ function portModel(lv: number, addon: Addon, simple = false): Part[] {
   if (lv >= 3) {
     // fewer, bigger pieces with open water between them: one gantry over the cargo ship, one tug, one big warehouse
     P.push(...gantry(11, -10.6, 1, 6.2, DECK));
-    P.push(rope(8, -5.2 - 2.6, -8.8 + 0.4), rope(16, -5.2 - 2.6, -8.8 + 0.4), rope(12, 4.9 + 1.7, 7.8), rope(16, 4.9 + 1.7, 7.8));
     P.push(...warehouse(-26, -19.5, -10.5, -12.8, 'tan', 'cargo', 1, simple, 4.0));
-    P.push(...harbourOffice(-8.4, -11.4, -3.6, -7.2));
-    P.push(...containers(-24, -4, 3, 3, 2, true));
-    P.push(...dryDock(-15, 13, 1.6, 21, simple), ...breakwater(MOLE, simple));
+    P.push(...containers(-24, -4, 3, 2, 2, true));
+    P.push(...breakwater(MOLE, simple));
   } else {
     P.push(...jibCrane(3.5, -0.2, DECK, 9.5, 6.5));
     P.push(rope(8, 4.3 - 2.1, 1.2), rope(14, 4.3 - 2.1, 1.2), rope(10, -4.3 + 1.5, -0.8), rope(14, -4.3 + 1.5, -0.8));
@@ -1369,14 +1357,13 @@ function groundOf(g: Ground, spec: BuildingSpec): void {
     case 'port': {
       const L = 26;
       const top = lv >= 3 ? -24 : -15;
-      const bot = lv >= 3 ? 23 : 17;
+      const bot = lv >= 3 ? 14 : 17;
       g.slab('dark', -L - 4, top - 3, COAST + 2, bot + 3, 6, 0.4, 5, 25);
       g.slab('dirt', -L, top, COAST + 1, bot, 4, 0.78, 3, 26);
       // the concrete quay along the water, yards and a lane in light concrete
       g.slab('road', -7.5, top + 2, COAST + 2, bot - 1, 2.4, 0.5, 1.8, 27);
       if (lv >= 3) {
         g.slab('dirtL', -26, -5.4, -6, 5.6, 2, 0.5, 2.4, 28);
-        g.slab('dirtL', -26, 9.5, -16, 15, 2, 0.4, 2.4, 29);
         g.strip('road', -26, -9.5, -3, -9.5, 2.4, 0.45, 30);
       } else {
         g.slab('dirtL', -26, 2, -6, 12.6, 2, 0.5, 2.4, 28);
@@ -1397,9 +1384,8 @@ function groundOf(g: Ground, spec: BuildingSpec): void {
         });
       }
       if (lv >= 3) {
-        // the breakwater's wash, and the dry dock's water
+        // the breakwater's wash
         for (let i = 0; i + 1 < MOLE.length; i++) g.strip('foam', MOLE[i][0], MOLE[i][1], MOLE[i + 1][0], MOLE[i + 1][1], 6, 0.55, 80 + i);
-        g.slab('water', -13.5, 14.5, 3, 19.5, 0.6, 0.95, 0.8, 90);
       }
       break;
     }
@@ -1528,28 +1514,12 @@ function levelPill(ctx: CanvasRenderingContext2D, cx: number, y: number, level: 
 
 // ------------------------------------------------------------------------------------------------- far look (normal zoom)
 
-export type FarId = 'A' | 'B' | 'C';
-/** One far-zoom look: how strongly colours are pulled to the land, and how the owner outline and shadow are drawn. */
-export interface FarLook {
-  id: FarId;
-  name: string;
-  /** 1 keeps the colours, 0 is the land colour (the building's own contrast is scaled by this) */
-  gain: number;
-  /** the same for add-ons (guns), kept stronger so they still read */
-  addGain: number;
-  ringA: number;
-  /** how far the outline colour is mixed toward the land */
-  ringLand: number;
-  edgeA: number;
-  /** flat silhouette: four land-tinted tones only */
-  flat: boolean;
-  shadowA: number;
-}
-export const FAR_LOOKS: FarLook[] = [
-  { id: 'A', name: 'Far look A: soft outline', gain: 0.72, addGain: 0.95, ringA: 0.5, ringLand: 0, edgeA: 0, flat: false, shadowA: 0.36 },
-  { id: 'B', name: 'Far look B: tinted to land', gain: 0.6, addGain: 0.85, ringA: 0.9, ringLand: 0.55, edgeA: 0.28, flat: false, shadowA: 0.3 },
-  { id: 'C', name: 'Far look C: simple silhouette', gain: 1, addGain: 1, ringA: 0.55, ringLand: 0.1, edgeA: 0, flat: true, shadowA: 0.34 },
-];
+/** The far look (normal zoom): colours pulled toward the land, a thin soft owner outline, a wide soft shadow. */
+const FAR_GAIN = 0.72;
+/** the same for add-ons (guns), kept stronger so they still read */
+const FAR_ADD_GAIN = 0.95;
+const FAR_RING_A = 0.5;
+const FAR_SHADOW_A = 0.36;
 
 /** Simplified shapes for far zoom: big masses, no windows, merlons, gear, piles or trees. */
 function farModel(spec: BuildingSpec): Part[] {
@@ -1592,8 +1562,7 @@ function farModel(spec: BuildingSpec): Part[] {
       if (lv >= 3) {
         P.push(bx(9.5, -11.6, 12.5, -9.6, DECK, 8, 'ochre', { tone: -0.2 }), seg(11, -10.6, 11, -2, 1.2, DECK + 8, 0.6, 'ochre', { tone: 0.3 }));
         P.push(bx(-26, -19.5, -10.5, -12.8, 0, 4.0, 'tan', { tone: -0.3 }), ...gable(-26, -19.5, -10.5, -12.8, 4.0, 'cargo', { rh: 1.8, over: 0.4, metal: true }));
-        P.push(...house(-8.4, -11.4, -3.6, -7.2, 3.6, 'brick', 'white', { hip: true }), bx(-24, -4, -12, 4.1, 0, 2.3, 'rust', { tone: -0.2 }), bx(-24, -4, -18, 4.1, 2.3, 2.3, 'fadedBlue'));
-        P.push(bx(-15, 13, 1.6, 14.5, 0, 2, 'sup', { tone: -0.1 }), bx(-15, 19.5, 1.6, 21, 0, 2, 'sup', { tone: -0.1 }), bx(-15, 13, -13.5, 21, 0, 2, 'sup', { tone: -0.1 }));
+        P.push(bx(-24, -4, -12, 1.4, 0, 2.3, 'rust', { tone: -0.2 }), bx(-24, -4, -18, 1.4, 2.3, 2.3, 'fadedBlue'));
         for (let i = 0; i + 1 < MOLE.length; i++) P.push(seg(MOLE[i][0], MOLE[i][1], MOLE[i + 1][0], MOLE[i + 1][1], 3.4, 0, 2.2, 'sup', { tone: 0.1 }));
         const [tu, tv] = MOLE[MOLE.length - 1];
         P.push(el(tu - 0.3, tv, 2.0, 1.8, 2.2, 7, 'white', { sh: 'cyl' }), el(tu - 0.3, tv, 1.6, 1.4, 9.2, 1.4, 'redlead', { sh: 'dome' }));
@@ -1680,7 +1649,7 @@ function groundFar(g: Ground, spec: BuildingSpec): void {
     }
     case 'port': {
       const top = lv >= 3 ? -24 : -15;
-      const bot = lv >= 3 ? 23 : 17;
+      const bot = lv >= 3 ? 14 : 17;
       g.slab('dark', -34, top - 5, COAST + 1, bot + 5, 8, 0.36, 9, 25);
       g.slab('dirt', -27, top, COAST, bot, 6, 0.5, 6, 26);
       break;
@@ -1689,7 +1658,7 @@ function groundFar(g: Ground, spec: BuildingSpec): void {
 }
 
 /** The far-zoom picture of a building: the ground fades into the terrain, shapes are simplified, colours are pulled toward the land under them, the owner outline is thin and soft. */
-export function bakeBuildingFar(spec: BuildingSpec, owner: RGB, scale: number, dpr: number, under: Under, look: FarLook): BakedBuilding {
+export function bakeBuildingFar(spec: BuildingSpec, owner: RGB, scale: number, dpr: number, under: Under, fillWater = false): BakedBuilding {
   const g = gridOf(scale, dpr);
   const res = g.res;
   const CW = Math.round(CU * res);
@@ -1700,8 +1669,21 @@ export function bakeBuildingFar(spec: BuildingSpec, owner: RGB, scale: number, d
   const add = addonParts(spec, true);
   const gr = new Ground(CW, CH, res, ox, oy, under);
   gr.smooth = true;
+  if (fillWater) {
+    for (let y = 0; y < CH; y++) {
+      for (let x = 0; x < CW; x++) {
+        if (!under.water(x, y)) continue;
+        const c = under.rgb(x, y);
+        const o = (y * CW + x) * 4;
+        gr.d[o] = c[0];
+        gr.d[o + 1] = c[1];
+        gr.d[o + 2] = c[2];
+        gr.d[o + 3] = 255;
+      }
+    }
+  }
   groundFar(gr, spec);
-  gr.shadows([...body, ...add], look.shadowA, 3, 1.25);
+  gr.shadows([...body, ...add], FAR_SHADOW_A, 3, 1.25);
   const d = gr.d;
   const blend = (X: number, Y: number, c: C, a: number): void => {
     const o = (Y * CW + X) * 4;
@@ -1753,8 +1735,7 @@ export function bakeBuildingFar(spec: BuildingSpec, owner: RGB, scale: number, d
           const X = j % CW;
           const Y = (j / CW) | 0;
           const land = under.rgb(X, Y);
-          if (k <= ringPx) blend(X, Y, mix(owner, land, look.ringLand), look.ringA);
-          else if (look.edgeA > 0) blend(X, Y, dark(land, 0.5), look.edgeA);
+          if (k <= ringPx) blend(X, Y, owner, FAR_RING_A);
         }
       }
       front = next;
@@ -1768,12 +1749,7 @@ export function bakeBuildingFar(spec: BuildingSpec, owner: RGB, scale: number, d
         if (X < 0 || Y < 0 || X >= CW || Y >= CH) continue;
         const land = under.rgb(X, Y);
         const c: C = [b.data[s], b.data[s + 1], b.data[s + 2]];
-        let out: RGB;
-        if (look.flat) {
-          const l = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
-          const f = l < 70 ? 0.64 : l < 120 ? 0.76 : l < 175 ? 0.88 : 1.0;
-          out = mix([land[0] * f, land[1] * f, land[2] * f], [92, 98, 100], 0.2);
-        } else out = [cl(land[0] + (c[0] - land[0]) * gain), cl(land[1] + (c[1] - land[1]) * gain), cl(land[2] + (c[2] - land[2]) * gain)];
+        const out: RGB = [cl(land[0] + (c[0] - land[0]) * gain), cl(land[1] + (c[1] - land[1]) * gain), cl(land[2] + (c[2] - land[2]) * gain)];
         blend(X, Y, out, 1);
       }
     }
@@ -1783,9 +1759,9 @@ export function bakeBuildingFar(spec: BuildingSpec, owner: RGB, scale: number, d
     const shape: Part[] = cityLots(spec.level).map((l) => ({ k: 'box' as const, p: [l.u - l.w / 2 - 3.6, l.v - l.d / 2 - 3.6, l.u + l.w / 2 + 3.6, l.v + l.d / 2 + 3.6], z: 0, h: 0.3, m: 'tan' as const }));
     const flak = add.map((p) => ({ ...p, m: 'tan' as const, pat: undefined, tone: 0 }));
     const m = maskOf(rasterize({ parts: [...shape, ...flak], ground: 0 }, res, 0, { facings: 32, owner }));
-    layer(body, look.gain, m);
-  } else layer(body, look.gain);
-  layer(add, look.addGain);
+    layer(body, FAR_GAIN, m);
+  } else layer(body, FAR_GAIN);
+  layer(add, FAR_ADD_GAIN);
   const cv = makeCanvas(CW, CH);
   const cx = cv.getContext('2d');
   if (cx) {
@@ -1975,7 +1951,7 @@ function drawSheet(ctx: CanvasRenderingContext2D, dpr: number): void {
       for (let i = 0; i < 4; i++) {
         const s = scales[i];
         const grid = gridOf(s, dpr);
-        const spr = bakeBuilding(row.spec, owners[i], s, dpr, sheetUnder(row.spec, grid.res, s), true);
+        const spr = i < 2 ? bakeBuilding(row.spec, owners[i], s, dpr, sheetUnder(row.spec, grid.res, s), true) : bakeBuildingFar(row.spec, owners[i], s, dpr, sheetUnder(row.spec, grid.res, s), true);
         const px = xs[i] + (COLS[i].w - spr.w) / 2;
         const py = cy - spr.h / 2;
         ctx.imageSmoothingEnabled = false;
@@ -2251,7 +2227,7 @@ async function buildCrop(): Promise<Crop> {
 }
 
 /** Draws a preview of the crop at a zoom (CSS px per tile) with buildings and units at the units' own scale for that zoom. */
-function drawMapPreview(cv: HTMLCanvasElement, crop: Crop, zoom: number, dpr: number, shiftX: number, far?: FarLook): void {
+function drawMapPreview(cv: HTMLCanvasElement, crop: Crop, zoom: number, dpr: number, shiftX: number, far = false): void {
   const cw = MAP_W;
   const ch = cv.height / dpr;
   const ctx = cv.getContext('2d');
@@ -2325,7 +2301,7 @@ function drawMapPreview(cv: HTMLCanvasElement, crop: Crop, zoom: number, dpr: nu
       },
     };
     const bs: BuildingSpec = { type: s.type, level: s.level, addon: s.addon };
-    const spr = far ? bakeBuildingFar(bs, owner, scale, dpr, under, far) : bakeBuilding(bs, owner, scale, dpr, under);
+    const spr = far ? bakeBuildingFar(bs, owner, scale, dpr, under) : bakeBuilding(bs, owner, scale, dpr, under);
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(spr.canvas, Math.round(cellX * dpr) / dpr, Math.round(cellY * dpr) / dpr, spr.w, spr.h);
     if (scale >= 2) levels.push([cellX + spr.cx, cellY + spr.top - 15, s.level, owner]);
@@ -2347,17 +2323,6 @@ function drawMapPreview(cv: HTMLCanvasElement, crop: Crop, zoom: number, dpr: nu
     troopPill(ctx, p[0], p[1], q.troops, q.kinds, q.blue ? BLUE : RED, { edge: '#ffe98a', arrow: 'up', small: true });
   }
   for (const [x, y, lv, o] of levels) levelPill(ctx, x, y, lv, o);
-  if (far) {
-    // the variant's name on the picture itself
-    ctx.font = '700 14px "DM Sans", system-ui, sans-serif';
-    const tw = Math.ceil(ctx.measureText(far.name).width);
-    ctx.fillStyle = 'rgba(10,14,20,0.85)';
-    ctx.fillRect(8, 8, tw + 20, 26);
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(far.name, 18, 21.5);
-  }
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
@@ -2391,14 +2356,14 @@ export function mountBuildingsMock(root: HTMLElement): HTMLElement {
   const mt = document.createElement('h3');
   mt.textContent = 'On the real map';
   const mn = document.createElement('p');
-  mn.textContent = `Normal zoom shows three far looks to pick from (A, B, C): simplified shapes with no inner clutter, a thinner softer owner outline, colours pulled toward the land, a wide soft shadow and a ground patch that fades into the terrain. Close zoom keeps the full detail. The same buildings over a crop of the game's ${MAP_ID} map (its own loader and terrain colours), with the border of two nations, at the same size as the game's units for each zoom (zoom ${ZOOM_NORMAL} and zoom ${ZOOM_CLOSE}). Next to them are the game's real tanks, ships and army count pills, so the two can be compared side by side.`;
+  mn.textContent = `Normal zoom shows the far look: simplified shapes with no inner clutter, a thinner softer owner outline, colours pulled toward the land, a wide soft shadow and a ground patch that fades into the terrain. Close zoom keeps the full detail. The same buildings over a crop of the game's ${MAP_ID} map (its own loader and terrain colours), with the border of two nations, at the same size as the game's units for each zoom (zoom ${ZOOM_NORMAL} and zoom ${ZOOM_CLOSE}). Next to them are the game's real tanks, ships and army count pills, so the two can be compared side by side.`;
   mh.append(mt, mn);
   sec.append(mh);
-  const previews: [string, number, number, number, FarLook | undefined][] = [
-    ...FAR_LOOKS.map((f): [string, number, number, number, FarLook | undefined] => [`Normal zoom (zoom ${ZOOM_NORMAL}), ${f.name}`, ZOOM_NORMAL, 300, 0, f]),
-    [`Close zoom (zoom ${ZOOM_CLOSE})`, ZOOM_CLOSE, 720, -16, undefined],
+  const previews: [string, number, number, number, boolean][] = [
+    [`Normal zoom (zoom ${ZOOM_NORMAL})`, ZOOM_NORMAL, 300, 0, true],
+    [`Close zoom (zoom ${ZOOM_CLOSE})`, ZOOM_CLOSE, 720, -16, false],
   ];
-  const mcs: { cv: HTMLCanvasElement; zoom: number; shift: number; far?: FarLook }[] = [];
+  const mcs: { cv: HTMLCanvasElement; zoom: number; shift: number; far: boolean }[] = [];
   for (const [name, zoom, hh, shift, far] of previews) {
     const sub = document.createElement('p');
     sub.textContent = name;
