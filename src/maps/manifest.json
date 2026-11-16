@@ -1586,5 +1586,409 @@
     "tile": 1303994
    }
   ]
+ },
+ {
+  "id": "india",
+  "name": "India",
+  "description": "The subcontinent from the Himalaya to Sri Lanka, with Pakistan and Bangladesh, Lambert conformal conic.",
+  "width": 1505,
+  "height": 1278,
+  "landTiles": 1101053,
+  "recommendedNations": 6,
+  "recommendedTribes": 275,
+  "presets": {
+   "singlePlayer": {
+    "nations": 6,
+    "tribes": 275
+   },
+   "multiplayer": {
+    "nations": 10,
+    "tribes": 120
+   }
+  },
+  "spawns": [
+   {
+    "name": "Maharashtra",
+    "tile": 1108200
+   },
+   {
+    "name": "Bengal",
+    "tile": 901072
+   },
+   {
+    "name": "Pakistan",
+    "tile": 250384
+   },
+   {
+    "name": "Tamil Nadu",
+    "tile": 1468168
+   },
+   {
+    "name": "Delhi",
+    "tile": 559041
+   },
+   {
+    "name": "Sindh",
+    "tile": 748309
+   },
+   {
+    "name": "Deccan",
+    "tile": 1215260
+   },
+   {
+    "name": "Gujarat",
+    "tile": 876427
+   },
+   {
+    "name": "Central Provinces",
+    "tile": 994049
+   },
+   {
+    "name": "Bihar",
+    "tile": 729382
+   },
+   {
+    "name": "Assam",
+    "tile": 679947
+   },
+   {
+    "name": "Kerala",
+    "tile": 1738936
+   },
+   {
+    "name": "Karnataka",
+    "tile": 1474083
+   },
+   {
+    "name": "Uttar Pradesh",
+    "tile": 663014
+   },
+   {
+    "name": "Bangladesh",
+    "tile": 827396
+   },
+   {
+    "name": "Rajasthan",
+    "tile": 655311
+   },
+   {
+    "name": "Punjab",
+    "tile": 432608
+   },
+   {
+    "name": "Nepal",
+    "tile": 607480
+   },
+   {
+    "name": "Odisha",
+    "tile": 1040949
+   },
+   {
+    "name": "Sri Lanka",
+    "tile": 1836876
+   },
+   {
+    "name": "Kashmir",
+    "tile": 232382
+   }
+  ]
+ },
+ {
+  "id": "balkans",
+  "name": "Balkans",
+  "description": "The Adriatic to the Black Sea, northern Italy to Istanbul, Greece and the Aegean, Lambert conformal conic.",
+  "width": 1351,
+  "height": 1125,
+  "landTiles": 800092,
+  "recommendedNations": 5,
+  "recommendedTribes": 200,
+  "presets": {
+   "singlePlayer": {
+    "nations": 5,
+    "tribes": 200
+   },
+   "multiplayer": {
+    "nations": 10,
+    "tribes": 90
+   }
+  },
+  "spawns": [
+   {
+    "name": "Turkey",
+    "tile": 757726
+   },
+   {
+    "name": "Hungary",
+    "tile": 45144
+   },
+   {
+    "name": "Greece",
+    "tile": 1123522
+   },
+   {
+    "name": "Romania",
+    "tile": 388708
+   },
+   {
+    "name": "Albania",
+    "tile": 744991
+   },
+   {
+    "name": "Bulgaria",
+    "tile": 592546
+   },
+   {
+    "name": "Serbia",
+    "tile": 351896
+   },
+   {
+    "name": "Croatia",
+    "tile": 224643
+   },
+   {
+    "name": "Macedonia",
+    "tile": 818138
+   },
+   {
+    "name": "Bosnia",
+    "tile": 458491
+   },
+   {
+    "name": "Apulia",
+    "tile": 758315
+   },
+   {
+    "name": "Transylvania",
+    "tile": 129164
+   },
+   {
+    "name": "Dobruja",
+    "tile": 402370
+   },
+   {
+    "name": "Crete",
+    "tile": 1420843
+   },
+   {
+    "name": "Kosovo",
+    "tile": 595116
+   },
+   {
+    "name": "Thrace",
+    "tile": 650728
+   },
+   {
+    "name": "Slovenia",
+    "tile": 186730
+   },
+   {
+    "name": "Anatolia",
+    "tile": 849606
+   },
+   {
+    "name": "Dalmatia",
+    "tile": 484050
+   },
+   {
+    "name": "Montenegro",
+    "tile": 615249
+   },
+   {
+    "name": "Trieste",
+    "tile": 227216
+   }
+  ]
+ },
+ {
+  "id": "central-america",
+  "name": "Central America",
+  "description": "Southern Mexico to Panama and the Colombian coast, both seas, Lambert conformal conic.",
+  "width": 1609,
+  "height": 1040,
+  "landTiles": 449637,
+  "recommendedNations": 5,
+  "recommendedTribes": 110,
+  "presets": {
+   "singlePlayer": {
+    "nations": 5,
+    "tribes": 110
+   },
+   "multiplayer": {
+    "nations": 10,
+    "tribes": 50
+   }
+  },
+  "spawns": [
+   {
+    "name": "El Salvador",
+    "tile": 853322
+   },
+   {
+    "name": "Panama",
+    "tile": 1322127
+   },
+   {
+    "name": "Mexico",
+    "tile": 289772
+   },
+   {
+    "name": "Jamaica",
+    "tile": 421237
+   },
+   {
+    "name": "Colombia",
+    "tile": 1167904
+   },
+   {
+    "name": "Costa Rica",
+    "tile": 1231745
+   },
+   {
+    "name": "Yucatan",
+    "tile": 130865
+   },
+   {
+    "name": "Chiapas",
+    "tile": 532899
+   },
+   {
+    "name": "Belize",
+    "tile": 502590
+   },
+   {
+    "name": "Mosquitia",
+    "tile": 702401
+   },
+   {
+    "name": "Honduras",
+    "tile": 816434
+   },
+   {
+    "name": "Guatemala",
+    "tile": 769564
+   },
+   {
+    "name": "Nicaragua",
+    "tile": 1011180
+   },
+   {
+    "name": "Cuba",
+    "tile": 213727
+   },
+   {
+    "name": "Tabasco",
+    "tile": 409026
+   },
+   {
+    "name": "Darien",
+    "tile": 1281880
+   }
+  ]
+ },
+ {
+  "id": "baltic",
+  "name": "Baltic",
+  "description": "The Baltic Sea and its coasts: Sweden, Finland, the Baltic states, Poland, north Germany and Denmark.",
+  "width": 1088,
+  "height": 1041,
+  "landTiles": 801550,
+  "recommendedNations": 5,
+  "recommendedTribes": 200,
+  "presets": {
+   "singlePlayer": {
+    "nations": 5,
+    "tribes": 200
+   },
+   "multiplayer": {
+    "nations": 10,
+    "tribes": 90
+   }
+  },
+  "spawns": [
+   {
+    "name": "Germany",
+    "tile": 1094791
+   },
+   {
+    "name": "Finland",
+    "tile": 492501
+   },
+   {
+    "name": "Poland",
+    "tile": 1127768
+   },
+   {
+    "name": "Sweden",
+    "tile": 569500
+   },
+   {
+    "name": "Denmark",
+    "tile": 842360
+   },
+   {
+    "name": "Latvia",
+    "tile": 748168
+   },
+   {
+    "name": "Ostrobothnia",
+    "tile": 109510
+   },
+   {
+    "name": "Prussia",
+    "tile": 932990
+   },
+   {
+    "name": "Ingria",
+    "tile": 483992
+   },
+   {
+    "name": "Hanseatic",
+    "tile": 996731
+   },
+   {
+    "name": "Greater Poland",
+    "tile": 1114529
+   },
+   {
+    "name": "Lithuania",
+    "tile": 922312
+   },
+   {
+    "name": "Gothia",
+    "tile": 681327
+   },
+   {
+    "name": "Norrland",
+    "tile": 212711
+   },
+   {
+    "name": "Pomerania",
+    "tile": 961199
+   },
+   {
+    "name": "Tavastia",
+    "tile": 391267
+   },
+   {
+    "name": "Jutland",
+    "tile": 793309
+   },
+   {
+    "name": "Mecklenburg",
+    "tile": 967451
+   },
+   {
+    "name": "Estonia",
+    "tile": 551250
+   },
+   {
+    "name": "Samogitia",
+    "tile": 852501
+   },
+   {
+    "name": "Smaland",
+    "tile": 684676
+   }
+  ]
  }
 ]
