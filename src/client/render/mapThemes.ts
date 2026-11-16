@@ -104,6 +104,43 @@ export const THEME_DEFS: Record<string, MapThemeDef> = {
     ],
     waterMid: [51, 75, 75],
   },
+  /**
+   * The Dark Beyond: a painted storybook map. Fresh earthy greens and warm tans for the known world, a deep blue lake,
+   * and an eerie dark continent: dark olive heath (tundra), sickly yellow-green fens (swamp) and deep purple-grey rock
+   * (mountains, with pale lilac tops instead of white snow).
+   */
+  darkbeyond: {
+    ground: {
+      grass: ramp('#4f6e2f', '#678a3b', '#82a64c', '#9fc062'),
+      grassDry: ramp('#6c7236', '#878c45', '#a3a658', '#bdbd70'),
+      grassLush: ramp('#3d5f2a', '#527a36', '#6b9545', '#86ad58'),
+      forest: ramp('#203a1c', '#2e5126', '#406a32', '#57833f'),
+      hills: ramp('#6d5534', '#8b6e45', '#a98a5a', '#c4a673'),
+      rock: ramp('#2e2636', '#43394c', '#5c5065', '#776b80'),
+      snow: ramp('#6f6680', '#8a8199', '#a59db2', '#c0b9cb'),
+      sand: ramp('#a3854f', '#bea066', '#d4b77d', '#e6cd98'),
+      swamp: ramp('#3c4220', '#55602a', '#6f7d33', '#8b9a40'),
+      tundra: ramp('#2a2d1f', '#393d29', '#4a4f34', '#5d6241'),
+      wheat: ramp('#8a7a42', '#a69454', '#bfac68', '#d3c27e'),
+      crop: ramp('#4e6a2e', '#64843a', '#7c9d4a', '#95b45d'),
+      soil: ramp('#6b5232', '#856842', '#9e7f55', '#b6966a'),
+      pool: ramp('#1c2d3c', '#26394b', '#32485c', '#435a70'),
+      sea: [hx('#2f6aa8'), hx('#255c98'), hx('#1d4e86'), hx('#164176'), hx('#113666')],
+      foam: ramp('#3a77b4', '#5a92c8', '#8db4dc', '#c3d8ee'),
+    },
+    flat: [
+      [17, 54, 102], // open lake: deep blue
+      [37, 92, 152], // shelf
+      [118, 156, 70], // plains: fresh green
+      [56, 96, 46], // forest
+      [164, 134, 88], // hills: warm tan
+      [86, 74, 98], // mountains: purple-grey rock
+      [212, 183, 125], // desert: sand
+      [104, 120, 50], // swamp: sickly green
+      [70, 75, 51], // tundra: dark olive heath
+    ],
+    waterMid: [27, 72, 128],
+  },
 };
 
 const made = new Map<string, MapTheme>();

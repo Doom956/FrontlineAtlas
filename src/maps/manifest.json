@@ -2538,6 +2538,73 @@
   ]
  },
  {
+  "id": "ringsea",
+  "name": "The Dark Beyond",
+  "description": "A fictional world: six known continents and their isles sit in the middle of an enormous lake, and all round it, out to every edge, lies a vast unsettled dark continent of bleak heath, fens and dark ranges, rich in iron and oil.",
+  "width": 1684,
+  "height": 1168,
+  "landTiles": 1301822,
+  "recommendedNations": 7,
+  "recommendedTribes": 325,
+  "presets": {
+   "singlePlayer": {
+    "nations": 7,
+    "tribes": 325
+   },
+   "multiplayer": {
+    "nations": 10,
+    "tribes": 145
+   }
+  },
+  "spawns": [
+   {
+    "name": "Ardmoor",
+    "tile": 603351
+   },
+   {
+    "name": "Ironhal",
+    "tile": 846428
+   },
+   {
+    "name": "Galdren",
+    "tile": 1098369
+   },
+   {
+    "name": "Tessaly",
+    "tile": 1110424
+   },
+   {
+    "name": "Ravelle",
+    "tile": 1429242
+   },
+   {
+    "name": "Cindral",
+    "tile": 648989
+   },
+   {
+    "name": "Morrowick",
+    "tile": 1329175
+   },
+   {
+    "name": "Quorra",
+    "tile": 747255
+   },
+   {
+    "name": "Bellhaven",
+    "tile": 1363299
+   },
+   {
+    "name": "Ostheim",
+    "tile": 1176584
+   },
+   {
+    "name": "Verrin",
+    "tile": 867667
+   }
+  ],
+  "theme": "darkbeyond"
+ },
+ {
   "id": "japan",
   "name": "Japan",
   "description": "The Japanese home islands from Hokkaido to Kyushu, with the south coast of Korea and Sakhalin, Lambert conformal conic.",
