@@ -104,6 +104,43 @@ export const THEME_DEFS: Record<string, MapThemeDef> = {
     ],
     waterMid: [51, 75, 75],
   },
+  /**
+   * Islands adrift in the sky (the Drifting Isles): a soft, dreamy, saturated pastel look. A sea like an open sky, bright
+   * cerulean far out and pale sky blue at the shores, with white cloud-like foam; lush bright greens, pale sand,
+   * lavender-grey rock and white snow on the high peaks.
+   */
+  skyisles: {
+    ground: {
+      grass: ramp('#4aa54c', '#62bb5c', '#7fd06f', '#a2e28b'),
+      grassDry: ramp('#86b452', '#9fc866', '#b9da7f', '#d1e99c'),
+      grassLush: ramp('#389a48', '#4fb357', '#6bc968', '#8cdc80'),
+      forest: ramp('#1c7448', '#288b55', '#3aa365', '#58bb7b'),
+      hills: ramp('#7f9d5e', '#99b574', '#b3cb8e', '#cbdeaa'),
+      rock: ramp('#77739a', '#928eb3', '#aeaacb', '#c9c6df'),
+      snow: ramp('#cdd6ee', '#e1e8f8', '#f1f5fd', '#ffffff'),
+      sand: ramp('#dcca97', '#e8d8aa', '#f1e5c1', '#f9f1d9'),
+      swamp: ramp('#468a6d', '#5a9e7f', '#71b293', '#8bc6a8'),
+      tundra: ramp('#b4bed6', '#c7d0e3', '#d9e0ee', '#eaeff8'),
+      wheat: ramp('#bcc464', '#cdd47a', '#dce290', '#e8eda8'),
+      crop: ramp('#62b052', '#79c265', '#91d27b', '#abe194'),
+      soil: ramp('#a68f74', '#baa488', '#ccb99e', '#ddcdb3'),
+      pool: ramp('#62bfe9', '#7bcdf0', '#95d9f4', '#b1e5f8'),
+      sea: [hx('#a6e0f7'), hx('#86d0f2'), hx('#68bdec'), hx('#50abe5'), hx('#409ddf')],
+      foam: ramp('#c6ebfa', '#ddf4fc', '#eefaff', '#ffffff'),
+    },
+    flat: [
+      [64, 157, 223], // open sea: bright cerulean
+      [134, 208, 242], // shelf: pale sky blue
+      [118, 202, 104], // plains: lush bright green
+      [50, 152, 92], // forest
+      [176, 202, 138], // hills: light sage
+      [178, 174, 206], // mountains: lavender-grey rock
+      [241, 229, 193], // desert: pale sand
+      [108, 172, 140], // swamp
+      [222, 229, 242], // tundra: snow white
+    ],
+    waterMid: [98, 184, 234],
+  },
 };
 
 const made = new Map<string, MapTheme>();

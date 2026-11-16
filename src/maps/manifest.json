@@ -2478,10 +2478,10 @@
  {
   "id": "driftisles",
   "name": "The Drifting Isles",
-  "description": "A fictional sea of islands: one great central island, a ring of medium islands and chains of islets split by narrow straits. Fleets and aircraft rule.",
-  "width": 1677,
-  "height": 1073,
-  "landTiles": 450497,
+  "description": "A fictional sea of floating isles: one great horseshoe island round an inner bay, with crescents, long ridges, terraced plateaus and curving chains of islets split by narrow straits. Fleets and aircraft rule.",
+  "width": 1477,
+  "height": 945,
+  "landTiles": 450160,
   "recommendedNations": 5,
   "recommendedTribes": 115,
   "presets": {
@@ -2497,45 +2497,46 @@
   "spawns": [
    {
     "name": "Veyra",
-    "tile": 844285
-   },
-   {
-    "name": "Kelmar",
-    "tile": 871570
+    "tile": 632768
    },
    {
     "name": "Thessaly",
-    "tile": 927850
-   },
-   {
-    "name": "Orsund",
-    "tile": 983661
-   },
-   {
-    "name": "Ravenne",
-    "tile": 406705
+    "tile": 248233
    },
    {
     "name": "Pellor",
-    "tile": 1394391
-   },
-   {
-    "name": "Dravik",
-    "tile": 422184
-   },
-   {
-    "name": "Sunnach",
-    "tile": 431412
+    "tile": 650952
    },
    {
     "name": "Imbria",
-    "tile": 1364658
+    "tile": 1165057
    },
    {
     "name": "Norwick",
-    "tile": 1360451
+    "tile": 1146299
+   },
+   {
+    "name": "Orsund",
+    "tile": 689153
+   },
+   {
+    "name": "Kelmar",
+    "tile": 304978
+   },
+   {
+    "name": "Ravenne",
+    "tile": 762462
+   },
+   {
+    "name": "Dravik",
+    "tile": 267135
+   },
+   {
+    "name": "Sunnach",
+    "tile": 1055248
    }
-  ]
+  ],
+  "theme": "skyisles"
  },
  {
   "id": "japan",

@@ -736,11 +736,12 @@ export const MAP_DEFS: MapDef[] = [
   {
     id: 'driftisles',
     name: 'The Drifting Isles',
-    description: 'A fictional sea of islands: one great central island, a ring of medium islands and chains of islets split by narrow straits. Fleets and aircraft rule.',
+    description: 'A fictional sea of floating isles: one great horseshoe island round an inner bay, with crescents, long ridges, terraced plateaus and curving chains of islets split by narrow straits. Fleets and aircraft rule.',
     ...DRIFTISLES_PLANE.def,
     targetLand: 450_000,
     drawn: DRIFTISLES,
     spawns: DRIFTISLES_SPAWNS,
+    theme: 'skyisles',
   },
   {
     id: 'japan',
