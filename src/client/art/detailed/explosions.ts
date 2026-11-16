@@ -49,7 +49,7 @@ const SPEC: Record<BlastKind, Spec> = {
   missile: { r: 9, fire: 520, smoke: 1100, puffs: 8, debris: 10, dirt: 10, skirt: true, burn: 4 },
   atom: { r: 26, fire: 2400, smoke: 5200, puffs: 0, debris: 12, dirt: 0, skirt: true, burn: 0 },
   splash: { r: 3.8, fire: 700, smoke: 1100, puffs: 0, debris: 0, dirt: 0, skirt: false, burn: 0 },
-  flak: { r: 4.2, fire: 160, smoke: 700, puffs: 3, debris: 5, dirt: 0, skirt: false, burn: 0 },
+  flak: { r: 7.6, fire: 300, smoke: 800, puffs: 4, debris: 7, dirt: 0, skirt: false, burn: 0 },
 };
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -101,7 +101,7 @@ const FLASH: Record<BlastKind, FlashSpec> = {
   missile: { glow: 3, a: 0.8, core: 0.85, rays: 6, ms: 300 },
   atom: { glow: 4.5, a: 0.85, core: 1.2, rays: 0, ms: 900 },
   splash: { glow: 2, a: 0.32, core: 0.6, rays: 0, ms: 150 },
-  flak: { glow: 2.3, a: 0.58, core: 0.9, rays: 3, ms: 170 },
+  flak: { glow: 3.6, a: 0.9, core: 0.95, rays: 6, ms: 280 },
 };
 /** How long the white-hot core shows (ms, times flashTime): two to three frames at 60 frames a second. */
 const CORE_MS = 48;
@@ -274,7 +274,7 @@ function drawBlast(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams)
   }
   // the fireball: several puffs swelling, rising and cooling; hot ones drawn last
   if (age < fT) {
-    const n = b.kind === 'flak' ? 2 : b.kind === 'missile' ? 7 : 5;
+    const n = b.kind === 'flak' ? 3 : b.kind === 'missile' ? 7 : 5;
     for (let i = n - 1; i >= 0; i--) {
       const ang = rnd(sd, i + 20) * Math.PI * 2;
       const d = i === 0 ? 0 : R * 0.45 * rnd(sd, i + 30);
@@ -283,13 +283,13 @@ function drawBlast(ctx: CanvasRenderingContext2D, b: BlastDraw, m: MotionParams)
       const r = Rc * (i === 0 ? 0.75 : 0.5 + 0.25 * rnd(sd, i + 35)) * grow * shrink;
       const px = x + Math.cos(ang) * d * u;
       const py = y + Math.sin(ang) * d * u * 0.7 - R * 0.8 * fq * u;
-      const heat = Math.min(4, fq * 5 + (i === 0 ? 0 : 0.6));
+      const heat = b.kind === 'flak' ? Math.min(1.8, 0.6 + fq * 1.6 + (i === 0 ? 0 : 0.25)) : Math.min(4, fq * 5 + (i === 0 ? 0 : 0.6));
       drawBlob(ctx, 'fire', Math.max(1, r), i + 3, px, py, g, 1, heat);
     }
     if (b.kind === 'flak') {
       // flak bursts black almost at once: a lumpy black puff round the flash
-      drawBlob(ctx, 'soot', Rc * (0.75 + 0.45 * fq), 1, x, y, g, Math.min(1, 0.4 + fq * 1.4));
-      drawBlob(ctx, 'soot', Rc * (0.45 + 0.3 * fq), 2, x + Rc * 0.45 * g.k, y - Rc * 0.25 * g.k, g, Math.min(1, fq * 2));
+      drawBlob(ctx, 'soot', Rc * (0.75 + 0.45 * fq), 1, x, y, g, clamp01((fq - 0.3) * 1.7));
+      drawBlob(ctx, 'soot', Rc * (0.45 + 0.3 * fq), 2, x + Rc * 0.45 * g.k, y - Rc * 0.25 * g.k, g, clamp01((fq - 0.4) * 2.2));
     }
   }
   // debris on ballistic arcs: hot at first, then dark pieces falling back

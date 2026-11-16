@@ -557,12 +557,12 @@ export const UNITS: Record<UnitType, UnitInfo> = {
   fighter: { name: 'Fighter', speed: 40, gold: 400, iron: 20, oil: 20, hp: 1, tech: 'flight' },
   rocket: { name: 'Rocket', speed: 55, gold: 900, iron: 60, oil: 30, hp: 1, tech: 'rocketry' },
   atomBomb: { name: 'Atom bomb', speed: 35, gold: 6000, iron: 300, oil: 150, hp: 2, tech: 'nuclearFission' },
-  /** fired from a warship, destroyer or battleship (CRUISE below): slower than a rocket, paid per missile */
-  cruiseMissile: { name: 'Cruise missile', speed: 10, gold: 700, iron: 0, oil: 60, hp: 1, tech: 'navalMastery' },
+  /** fired from a warship, destroyer or battleship (CRUISE below): a little slower than a rocket, paid per missile */
+  cruiseMissile: { name: 'Cruise missile', speed: 35, gold: 700, iron: 0, oil: 60, hp: 1, tech: 'navalMastery' },
   /** paratrooper drop: the price is paid per drop */
   transportPlane: { name: 'Cargo plane', speed: 30, gold: 400, iron: 0, oil: 30, hp: 1, tech: 'flight' },
   /** the stealth strike (Air Mastery, STEALTH below): one flying wing at bomber speed, paid per strike */
-  stealthBomber: { name: 'Stealth bomber', speed: 30, gold: 2000, iron: 0, oil: 150, hp: 1, tech: 'airMastery' },
+  stealthBomber: { name: 'Stealth bomber', speed: 30, gold: 1200, iron: 0, oil: 100, hp: 1, tech: 'airMastery' },
   /** tank division (tanks.ts): speed = tiles/s moving over own land (a rail move; TANK_MOBILITY); the troops it carries are its strength */
   tankDivision: { name: 'Tank division', speed: 20, gold: 1200, iron: 100, oil: 50, hp: 1, tech: 'mechanization' },
   /** recon flight (variants.ts): the price is paid per flight */
@@ -685,12 +685,14 @@ export const ATOM_RADIUS = 35;
 export const ATOM_CORE_RADIUS = 14; // tiles turned neutral
 export const ATOM_KILL_SHARE: [number, number] = [0.6, 0.9]; // of the army share in the area
 export const FALLOUT_SECONDS = 120;
-export const SILO_COOLDOWN = 20; // seconds to reload one launch slot (a level-L silo has L slots)
+export const SILO_COOLDOWN = 30; // seconds to reload one launch slot (a level-L silo has L slots)
+/** launch slots an atom bomb uses up (a rocket uses one): a silo cannot spam nukes */
+export const ATOM_SILO_SLOTS = 2;
 /**
  * Cruise missiles from sea (units.ts launchCruise, cruise.ts; DESIGN section 7): a warship, destroyer or battleship
- * of a nation with Naval Mastery fires one at land within `reach` tiles of the ship (WARSHIP_RANGE, the range a
- * warship already fights ships at: a coastal strip, twice its shelling reach; deeper land stays the silos' job). A
- * small rocket: hostile buildings within `radius` destroyed, troops killed by the rocket rule (ROCKET_TROOP_KILL x
+ * of a nation with Naval Mastery fires one at land within `reach` tiles of the ship (50: a deep coastal belt, well
+ * beyond a warship's own WARSHIP_RANGE; the far interior stays the silos' job). A
+ * mastery rocket, a little smaller than the silo rocket (ROCKET_RADIUS) but faster to reload and with no silo: hostile buildings within `radius` destroyed, troops killed by the rocket rule (ROCKET_TROOP_KILL x
  * the army share living in the blast, at least `killMin`). Each ship reloads its cell for `reloadSeconds`; the
  * price per missile is UNITS.cruiseMissile. SAMs shoot it down like a rocket (1 hp, the rockets' place in the
  * interception order). AIs keep `aiReserve` missile prices in gold (like STRIKE.fireReserve for rockets), fire only
@@ -698,10 +700,10 @@ export const SILO_COOLDOWN = 20; // seconds to reload one launch slot (a level-L
  * `aiMaxCover` of them.
  */
 export const CRUISE = {
-  reach: WARSHIP_RANGE,
-  radius: 4,
-  killMin: 5000,
-  reloadSeconds: 30,
+  reach: 50,
+  radius: 6,
+  killMin: 12000,
+  reloadSeconds: 20,
   aiReserve: 2,
   aiMaxCover: 2,
   /** AI: targets within this many tiles of a landing of its own on the way score as the landing's cover */
@@ -1240,7 +1242,7 @@ export const UPGRADE_SELECTION_MAX = 200;
  * bombers (and cargo planes): an escort fights off one fighter interception.
  */
 export const AIR = {
-  /** bombers per sortie: base + perLevel x (airfield level - 1), + jets (Jet Engines), + doctrine (Air doctrine held) */
+  /** bombers a refill wing keeps in stock (a sortie sends every stored bomber, airwings.airSortieSize): base + perLevel x (airfield level - 1), + jets (Jet Engines), + doctrine (Air doctrine held) */
   wingBase: 3,
   wingPerLevel: 2,
   wingJets: 1,
@@ -1325,10 +1327,13 @@ export const AIR = {
  */
 export const STEALTH = {
   reachMul: 1.25,
-  radiusMul: 1.15,
+  radiusMul: 1.8,
   payload: 2,
   raidBombers: 2,
-  cooldownSeconds: 90,
+  cooldownSeconds: 45,
+  /** SAM hunter: every hostile SAM site in the blast is destroyed, the rest within silenceRadius tiles of the impact are knocked out for silenceSeconds */
+  silenceRadius: 20,
+  silenceSeconds: 20,
   revealSeconds: 2,
   aiReserve: 2,
   aiMinCover: 2,

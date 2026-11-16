@@ -1,5 +1,5 @@
 // An airfield's standing mission (airwings.ts) as a compact selector: Support front · Strategic · Superiority · Idle,
-// the wing (bombers per sortie, aircraft stored / room), what it is doing now and a "re-buy losses" toggle.
+// the wing (every stored bomber flies, stock kept, aircraft stored / room), what it is doing now and a "re-buy losses" toggle.
 // Used by the selected-building drawer (drawers.ts) and the Forces drawer's Air group (one per airfield).
 // Support / Strategic ask for a map click (an attack or front / the nation to raid); Superiority patrols over the
 // airfield at once and a click can move the patrol. Missions follow your war by default (client/follow.ts): the
@@ -121,7 +121,7 @@ export class AirPanel {
     const fw = followsWar('air', st.mission);
     const ft = fw ? followOf(s, 'air', b.tile) : null;
     this.follow.set(ft !== null, !ft?.fixed, ft ? followText(s, b.owner, 'air', st.mission, ft) : '');
-    setText(this.wing, `Wing ${st.size} bombers per sortie · ${st.bombers + st.fighters}/${st.cap} aircraft · reach ${st.range}`);
+    setText(this.wing, `Every stored bomber flies each sortie (${st.bombers} now) · ${st.bombers + st.fighters}/${st.cap} aircraft · keeps ${st.size} in stock · reach ${st.range}`);
     const c = airSortieCost(s, me.id);
     if (this.refillOn !== st.refill) {
       this.refillOn = st.refill;

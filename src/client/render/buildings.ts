@@ -5,12 +5,19 @@
 //   from FAR_ZOOM on        every building as a marker (at least 14 px, so it reads at normal play zoom)
 // The hovered or selected building is drawn as a bigger marker. Unfinished buildings are faded with a progress
 // ring; levels above 1 get a badge; damaged ones a health bar.
-// Forts and Cities of a Flak Guns holder (sim/defense.ts) carry two small AA guns on their marker (art/detailed/flak.ts).
+// From ART_ZOOM (buildingArt.ts) fort, city, SAM site and port are drawn as detailed art instead (art/detailed/buildings.ts:
+// far look A at normal zoom, the close look with a "Lv N" chip from CLOSE_ZOOM); the other types keep their markers.
+// Forts and Cities of a Flak Guns holder (sim/defense.ts) carry AA gun pits on the art, and two small AA guns on their
+// marker below ART_ZOOM (art/detailed/flak.ts).
 // Culling: a spatial grid (CELL tiles) rebuilt when the buildings change (GameState.buildingsVersion).
 // Fog of war (fog/fogView.ts): buildings in view are drawn live; in explored blocks out of view the ones last seen
 // there are drawn greyed, without level badge or progress; nothing in blocks never seen.
 import { BUILDINGS } from '../../sim/config';
-import type { Building, GameState } from '../../sim/types';
+import { buildingSpacing } from '../../sim/buildings';
+import { isWater, type Building, type GameState } from '../../sim/types';
+import { COAST, CU, levelPill, OU, OV } from '../art/detailed/buildings';
+import type { TerrainData } from './terrain';
+import { artScale, bakeArt, BuildingSprites, fitScale, hasArt, lookFor, quantTint, seaFacing, specOf, spriteKey, type AddonState, type ArtLook, type Facing } from './buildingArt';
 import type { Camera } from '../camera';
 import { CATEGORY_COLORS, drawMarker, ICON_INFO, markerReady, type BuildingIconId } from '../icons';
 import type { FogView } from '../fog/fogView';
@@ -54,6 +61,11 @@ export class BuildingLayer {
   private cities: Building[] = [];
   private forts: Building[] = [];
   private budget = 0;
+  /** the map's terrain colours (set by the renderer; null = flat grey ground under the art) */
+  terr: TerrainData | null = null;
+  private readonly sprites = new BuildingSprites();
+  private tints = new Map<number, RGB>();
+  private facings = new Map<number, Facing>();
   /** buildings drawn last frame (stats) */
   drawn = 0;
   /** owners holding Flak Guns (their Forts and Cities get AA guns on the marker); set each frame */
@@ -72,6 +84,8 @@ export class BuildingLayer {
     for (let k = 0; k < cells.length; k++) cells[k] = [];
     this.cities = [];
     this.forts = [];
+    this.tints.clear();
+    this.facings.clear();
     const fog = this.fog?.active ? this.fog : null;
     const shown: Building[] = [];
     if (!fog) for (const b of state.buildings.values()) shown.push(b);
@@ -114,9 +128,11 @@ export class BuildingLayer {
     }
     this.drawn = 0;
     this.budget = SPRITE_BUDGET;
+    this.sprites.newFrame();
     this.flak.clear();
     for (const p of state.players) if (p.id > 0 && p.alive && hasTech(p, 'flakGuns')) this.flak.add(p.id);
     const z = cam.zoom;
+    const look = lookFor(z);
     if (z < FAR_ZOOM) {
       this.drawFar(ctx, state, cam, v, z);
       return;
@@ -124,7 +140,7 @@ export class BuildingLayer {
     const size = markerSize(z);
     const ox = cam.viewW / 2 - cam.x * z;
     const oy = cam.viewH / 2 - cam.y * z;
-    const pad = Math.ceil(size / z) + 1;
+    const pad = Math.ceil(Math.max(size, look ? CU * artScale(z) : 0) / z) + 1;
     const cx0 = Math.max(0, Math.floor((v.x0 - pad) / CELL));
     const cy0 = Math.max(0, Math.floor((v.y0 - pad) / CELL));
     const cx1 = Math.min(this.gw - 1, Math.floor((v.x1 + pad) / CELL));
@@ -146,6 +162,7 @@ export class BuildingLayer {
           const sx = ox + (tx + 0.5) * z;
           const sy = oy + (ty + 0.5) * z;
           const s = b.type === 'city' ? size * 1.18 : size;
+          if (look && hasArt(b.type) && this.drawArt(ctx, state, b, sx, sy, look, z, colors, dpr, false)) continue;
           this.drawOne(ctx, b, sx, sy, s, colors, dpr);
         }
       }
@@ -153,7 +170,10 @@ export class BuildingLayer {
     for (const b of focus) {
       const tx = b.tile % w;
       const ty = (b.tile / w) | 0;
-      this.drawOne(ctx, b, ox + (tx + 0.5) * z, oy + (ty + 0.5) * z, Math.max(30, size * 1.35), colors, dpr);
+      const fx = ox + (tx + 0.5) * z;
+      const fy = oy + (ty + 0.5) * z;
+      if (look && hasArt(b.type) && this.drawArt(ctx, state, b, fx, fy, look, z, colors, dpr, true)) continue;
+      this.drawOne(ctx, b, fx, fy, Math.max(30, size * 1.35), colors, dpr);
     }
   }
 
@@ -191,6 +211,154 @@ export class BuildingLayer {
     ctx.stroke();
     ctx.fillStyle = '#2a2e36';
     ctx.fill();
+  }
+
+  /** The ground colour under a building: the real terrain colour of its tile and the land round it, snapped for sharing. */
+  private tintOf(b: Building, w: number, h: number): RGB {
+    const hit = this.tints.get(b.tile);
+    if (hit) return hit;
+    let out: RGB = [128, 128, 128];
+    const terr = this.terr;
+    if (terr && terr.rgba.length >= w * h * 4) {
+      const x = b.tile % w;
+      const y = (b.tile / w) | 0;
+      let r = 0;
+      let g = 0;
+      let bl = 0;
+      let n = 0;
+      for (let j = -1; j <= 1; j++) {
+        for (let i = -1; i <= 1; i++) {
+          const tx = x + i;
+          const ty = y + j;
+          if (tx < 0 || ty < 0 || tx >= w || ty >= h) continue;
+          const o = (ty * w + tx) * 4;
+          // a coastal port's own neighbours may be sea: those do not tint the land
+          if (b.type === 'port' && terr.depth[ty * w + tx] > 0) continue;
+          r += terr.rgba[o];
+          g += terr.rgba[o + 1];
+          bl += terr.rgba[o + 2];
+          n++;
+        }
+      }
+      if (n > 0) out = quantTint([r / n, g / n, bl / n]);
+    }
+    this.tints.set(b.tile, out);
+    return out;
+  }
+
+  /** Which way a port faces the sea (the map's real coast), cached per tile. */
+  private facingOf(state: GameState, b: Building): Facing {
+    const hit = this.facings.get(b.tile);
+    if (hit !== undefined) return hit;
+    const w = state.map.width;
+    const h = state.map.height;
+    const x = b.tile % w;
+    const y = (b.tile / w) | 0;
+    const f = seaFacing((dx, dy) => {
+      const tx = x + dx;
+      const ty = y + dy;
+      return tx >= 0 && ty >= 0 && tx < w && ty < h && isWater(state.map.terrain[ty * w + tx]);
+    });
+    this.facings.set(b.tile, f);
+    return f;
+  }
+
+  /**
+   * One building as detailed art, centred on its tile at (x, y) (CSS px). False = no sprite yet (the frame's bake budget is
+   * spent): the caller draws the flat marker for now.
+   */
+  private drawArt(ctx: CanvasRenderingContext2D, state: GameState, b: Building, x: number, y: number, look: ArtLook, zoom: number, colors: readonly RGB[], dpr: number, focus: boolean): boolean {
+    const ghost = ghosts.has(b);
+    const p = state.players[b.owner];
+    const st: AddonState = {
+      flak: !ghost && this.flak.has(b.owner),
+      radar: !!p && p.techs.includes('radar'),
+      guns: !!p && p.techs.includes('navalMastery'),
+    };
+    const spec = specOf(b.type, b.level, st);
+    if (!spec) return false;
+    const owner: RGB = ghost ? [110, 114, 122] : (colors[b.owner] ?? [128, 128, 128]);
+    const land = this.tintOf(b, state.map.width, state.map.height);
+    const facing = b.type === 'port' ? this.facingOf(state, b) : 0;
+    const fit = fitScale(spec, look, facing, zoom, buildingSpacing(state));
+    if (!fit) return false;
+    const scale = fit.scale;
+    const key = spriteKey(spec, owner, look, scale, dpr, land, facing);
+    const sp = this.sprites.get(key, () => bakeArt(spec, owner, look, scale, dpr, land, this.terr?.theme));
+    if (!sp) return false;
+    const bk = sp.baked;
+    const unfinished = b.buildLeft > 0;
+    ctx.save();
+    ctx.globalAlpha = ghost ? 0.5 : unfinished ? 0.55 : 1;
+    ctx.imageSmoothingEnabled = false;
+    let top = y - OV * scale + bk.top - 15;
+    let cx = x;
+    if (facing === 0 && b.type !== 'port') {
+      ctx.drawImage(bk.canvas, Math.round((x - OU * scale) * dpr) / dpr, Math.round((y - OV * scale) * dpr) / dpr, bk.w, bk.h);
+      cx = x - OU * scale + bk.cx;
+    } else {
+      // a port: the model's coast line (u = COAST) lies on the tile's edge toward the sea, the pier reaches out to sea
+      const dx = [1, 0, -1, 0][facing];
+      const dy = [0, 1, 0, -1][facing];
+      const ax = x + dx * zoom * 0.5 - dx * COAST * scale;
+      const ay = y + dy * zoom * 0.5 - dy * COAST * scale;
+      ctx.translate(ax, ay);
+      ctx.rotate((facing * Math.PI) / 2);
+      ctx.drawImage(bk.canvas, -OU * scale, -OV * scale, bk.w, bk.h);
+      top = y - 16 * scale;
+      cx = x;
+    }
+    ctx.restore();
+    this.drawn++;
+    const bottom = y + 13 * scale;
+    if (focus) {
+      ctx.beginPath();
+      ctx.ellipse(x, y + 2 * scale, 17 * scale, 12 * scale, 0, 0, Math.PI * 2);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.stroke();
+    }
+    if (look === 'close' && fit.chip && !ghost) levelPill(ctx, cx, top, b.level, owner);
+    // construction progress: a small bar under the building (the flat marker shows a ring)
+    if (unfinished) {
+      const progress = clamp(1 - b.buildLeft / Math.max(0.01, BUILDINGS[b.type].buildTime), 0, 1);
+      const bw = 34;
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(x - bw / 2, bottom, bw, 4);
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.fillRect(x - bw / 2, bottom, bw * progress, 4);
+    }
+    // levels queued by Build x3 / x5 or Upgrade area: small pips under the building
+    const queued = Math.min(5, b.queuedLevels || 0);
+    if (queued > 0 && !ghost) {
+      for (let k = 0; k < queued; k++) {
+        const px = x + (k - (queued - 1) / 2) * 7;
+        ctx.beginPath();
+        ctx.arc(px, bottom + 11, 2.6, 0, Math.PI * 2);
+        ctx.fillStyle = ACCENT;
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(10,18,44,0.9)';
+        ctx.stroke();
+      }
+    }
+    if (b.hp > 0 && b.hp < 1) {
+      const bw = 34;
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(x - bw / 2, bottom + 6 + (unfinished ? 3 : 0) + (queued > 0 ? 10 : 0), bw, 3);
+      ctx.fillStyle = b.hp > 0.5 ? '#e8c84a' : '#e0503c';
+      ctx.fillRect(x - bw / 2, bottom + 6 + (unfinished ? 3 : 0) + (queued > 0 ? 10 : 0), bw * b.hp, 3);
+    }
+    if (look === 'close' && fit.name) {
+      // close up: the building's name under it
+      ctx.font = `500 11px ${MAP_LABEL_FAMILY}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      setTracking(ctx, 0);
+      haloText(ctx, BUILDINGS[b.type].name, x, bottom + (b.hp > 0 && b.hp < 1 ? 14 : 8) + (queued > 0 ? 10 : 0) + (unfinished ? 4 : 0), 'rgba(244,245,247,0.95)', 11, 0.9);
+      setTracking(ctx, 0);
+    }
+    return true;
   }
 
   private drawOne(ctx: CanvasRenderingContext2D, b: Building, x: number, y: number, size: number, colors: readonly RGB[], dpr: number): void {

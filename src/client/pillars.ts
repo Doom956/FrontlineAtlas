@@ -187,7 +187,7 @@ export interface WingStatus {
   last: string;
   /** Re-buy losses applies to this mission (Support, Strategic, and Air cover on an Air doctrine's idle airfield) */
   refillShown: boolean;
-  /** bombers per sortie */
+  /** bombers a refill wing keeps in stock (a sortie sends every stored bomber) */
   size: number;
   bombers: number;
   fighters: number;

@@ -168,6 +168,17 @@ describe('support missions', () => {
     expect(wingOf(s, af)!.sorties).toBe(1);
   });
 
+  it('a sortie sends every stored bomber, not just the wing size', () => {
+    const s = frontGame();
+    const af = airfieldWith(s, 1, at(s, 30, 15), 6);
+    expect(af.bombers).toBeGreaterThan(airWingSize(s, af));
+    expect(applyAction(s, 1, { type: 'setAirMission', airfield: af.tile, mission: 'support', target: at(s, 51, 15) }).ok).toBe(true);
+    expect(launchAttack(s, 1, at(s, 50, 15), inf(5000)).ok).toBe(true);
+    run(s, () => s.units.some((u) => u.type === 'bomber'), 5 * TICKS_PER_SECOND);
+    expect(s.units.filter((u) => u.type === 'bomber' && u.mission === 1).length).toBe(6);
+    expect(af.bombers).toBe(0);
+  });
+
   it('the zone expires once the wing stops', () => {
     const s = frontGame();
     const af = airfieldWith(s, 1, at(s, 30, 15), 2);

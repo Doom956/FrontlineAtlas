@@ -5,7 +5,7 @@ import { applyAction } from '../src/sim/actions';
 import { markBuildingsChanged } from '../src/sim/buildings';
 import { aiAttackLevel } from '../src/sim/aiattack';
 import { aiManualStrike, seaContested } from '../src/sim/ai';
-import { aiAirWings, aiKeepsFlying, airMissionOf, airWingSize, wingOf } from '../src/sim/airwings';
+import { aiAirWings, aiKeepsFlying, airMissionOf, wingOf } from '../src/sim/airwings';
 import { updateWarMemory } from '../src/sim/naval2';
 import { TICKS_PER_SECOND } from '../src/sim/config';
 import { computeCoastAndLand } from '../src/sim/mapgen';
@@ -339,7 +339,7 @@ describe('AI bombers', () => {
     expect(aiKeepsFlying(s, 1, 2)).toBe(false);
   });
 
-  it('manual AI strikes: one salvo of the wing size, nothing under SAM cover, targets near the fighting border first', () => {
+  it('manual AI strikes: one salvo of every stored bomber, nothing under SAM cover, targets near the fighting border first', () => {
     const { s, af } = airGame();
     const deep = addBuilding(s, 'fort', 2, at(s, 190, 15));
     const front = addBuilding(s, 'fort', 2, at(s, 110, 15));
@@ -347,7 +347,7 @@ describe('AI bombers', () => {
     expect(s.attacks.filter((a) => a.attacker === 1).length).toBe(1);
     let r = aiManualStrike(s, 1, af.tile);
     expect(r.tile).toBe(front.tile);
-    expect(r.count).toBe(Math.min(af.bombers, airWingSize(s, af)));
+    expect(r.count).toBe(af.bombers);
     // A working SAM over the front fort: the bombers go for the uncovered one instead.
     addBuilding(s, 'sam', 2, at(s, 112, 15)); // radius 60: covers the front fort only
     r = aiManualStrike(s, 1, af.tile);

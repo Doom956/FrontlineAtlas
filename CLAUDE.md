@@ -11,7 +11,7 @@ doom956.github.io/FrontlineAtlas (Pages); both deploy from `main`.
 - No em dashes anywhere (code, docs, UI text, commits).
 - Other games are fine as references for looks and effects (match a style closely if the owner asks). Only a 1:1
   copy of the competitor game is off limits. Art is drawn in code; never paste asset files taken from other games.
-- No new hotkeys, and no hotkey chips in the visible UI.
+- No new hotkeys. Existing hotkeys show as small key labels in the corner of their buttons (build bar, top bar, strikes); every button keeps its icon and plain word, and touch screens hide the labels.
 - Everything must be obvious to a first-time player without hovering: icon plus a plain word on main controls,
   numbers carry units, disabled things say why, nothing reachable only by hover, hotkey, right-click or long-press.
 - The owner console ("|" key) is the owner's. Keep it working. Never write the admin code anywhere.

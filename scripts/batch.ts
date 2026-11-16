@@ -50,7 +50,7 @@
 // With --specialist: per pillar and map type, the slot's win rate (Wilson 95%), land share at 10/20/30 min and at the
 // end, survival at 20/30 min, the game's median finish minute and the pillar's units, for the specialist and the
 // baseline, with the specialist/baseline ratio of wins and of land at the end (paired bootstrap 95% over seeds).
-import { BUILDING_ORDER, DEFAULT_AI_COUNT, TECHS, TICKS_PER_SECOND, VICTORY_LAND_SHARE, WARSHIP_RANGE, WATCHTOWER_DEF_RADIUS } from '../src/sim/config';
+import { BUILDING_ORDER, DEFAULT_AI_COUNT, TECHS, TICKS_PER_SECOND, UNITS, VICTORY_LAND_SHARE, WARSHIP_RANGE, WATCHTOWER_DEF_RADIUS } from '../src/sim/config';
 import { armyTotal, population } from '../src/sim/economy';
 import { fortMultiplierAt, fortRadius } from '../src/sim/buildings';
 import { forEachInRadius } from '../src/sim/grid';
@@ -250,6 +250,27 @@ interface MixSample {
   artillery: number;
 }
 
+/** Late strikes (see GameResult.late). */
+interface LateStrike {
+  n: number;
+  shot: number;
+  wrecks: number;
+  kills: number;
+  gold: number;
+}
+const LATE_MINUTE = 20;
+const LATE_KINDS = ['bomber', 'support', 'rocket', 'atomBomb', 'cruiseMissile', 'stealthBomber'] as const;
+function lateOf(r: { late?: Record<string, LateStrike> }, k: string): LateStrike {
+  r.late ??= {};
+  return (r.late[k] ??= { n: 0, shot: 0, wrecks: 0, kills: 0, gold: 0 });
+}
+/** "...: 3 buildings destroyed, 12000 troops killed" -> [3, 12000] */
+function strikeNumbers(msg: string): [number, number] {
+  const b = /(\d+) buildings? destroyed/.exec(msg);
+  const k = /(\d+) troops killed/.exec(msg);
+  return [b ? Number(b[1]) : 0, k ? Number(k[1]) : 0];
+}
+
 interface GameResult {
   job: Job;
   winner: number;
@@ -277,6 +298,9 @@ interface GameResult {
   /** trenches.ts: mean trench level of nations' border tiles facing another nation at 15 min (-1 if over), auto-cover sorties (Air doctrine) */
   trench15?: number;
   coverSorties?: number;
+  /** strikes from minute LATE_MINUTE on, per weapon (bomber sorties, front support, rocket, atom, cruise, stealth):
+   * launched, shot down, buildings destroyed, troops killed, gold paid (bombers: the price of the ones shot down) */
+  late?: Record<string, LateStrike>;
   atomBombs: number;
   firstAtomMinute: number; // -1 none
   /** nation that dropped the first atom bomb (0 none) */
@@ -727,6 +751,32 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     if (o.doctrines === 'off') for (const p of state.players) if (p.doctrine?.id) p.doctrine.adaptUntilTick = 0x7fffffff;
     // --doctrines random: the switch cooldown never ends, so each nation keeps its random doctrine (levels still grow).
     if (o.doctrines === 'random') for (const p of state.players) if (p.doctrine?.id) p.doctrine.lastSwitchTick = state.tick;
+    const lateNow = gameSeconds(state) / 60 >= LATE_MINUTE;
+    if (lateNow) {
+      for (const e of state.events) {
+        let kind = '';
+        if (e.kind === 'missile' && /^Rocket strike by /.test(e.message)) kind = 'rocket';
+        else if (e.kind === 'missile' && /^Cruise missile strike by /.test(e.message)) kind = 'cruiseMissile';
+        else if (e.kind === 'bombing' && /^Stealth strike by /.test(e.message)) kind = 'stealthBomber';
+        else if (e.kind === 'bombing' && / bombers are supporting the attack /.test(e.message)) kind = 'support';
+        else if (e.kind === 'bombing' && / bombed /.test(e.message)) kind = 'bomber';
+        else if (e.kind === 'nuke') kind = 'atomBomb';
+        if (kind) {
+          const [b, k] = strikeNumbers(e.message);
+          const L = lateOf(r, kind);
+          L.wrecks += b;
+          L.kills += k;
+          if (kind === 'support') L.n++;
+          continue;
+        }
+        if (e.kind !== 'unitLost') continue;
+        const m = /shot down a (bomber|rocket|atom bomb|cruise missile|stealth bomber)/.exec(e.message);
+        if (!m) continue;
+        const t = m[1] === 'bomber' ? 'bomber' : m[1] === 'rocket' ? 'rocket' : m[1] === 'atom bomb' ? 'atomBomb' : m[1] === 'cruise missile' ? 'cruiseMissile' : 'stealthBomber';
+        lateOf(r, t).shot++;
+        if (t === 'bomber') lateOf(r, t).gold += UNITS.bomber.gold;
+      }
+    }
     for (const e of state.events) {
       if (e.kind === 'victory') r.winReason = e.message.replace(/^.* wins: /, '');
       else if (e.kind === 'allyJoined') r.allyJoins++;
@@ -797,6 +847,11 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
           if (u.targetOwner > 0) slot.invasions++;
           else slot.landings++;
         }
+      }
+      if (minute >= LATE_MINUTE && (u.type === 'bomber' || u.type === 'rocket' || u.type === 'atomBomb' || u.type === 'cruiseMissile' || u.type === 'stealthBomber')) {
+        const L = lateOf(r, u.type);
+        L.n++;
+        if (u.type !== 'bomber') L.gold += UNITS[u.type].gold;
       }
       if (u.type === 'atomBomb') {
         r.atomBombs++;
@@ -1331,7 +1386,25 @@ function report(all: GameResult[], o: Options): void {
     const h = tot((r) => r.bombsHome ?? 0);
     const off = tot((r) => r.bombsOff ?? 0);
     console.log(`Bomber payloads: ${a} arrivals (${f1(a / Math.max(1, rs.length))} per game), wasted ${pct(h + off, a)} (home with bombs ${pct(h, a)}, dropped off hostile land ${pct(off, a)}); rockets ${f1(tot((r) => r.rockets) / Math.max(1, rs.length))} per game.`);
+  }  {
+    // Late strikes (minute LATE_MINUTE on): which weapons nations still use, and what each one does per gold.
+    const n = Math.max(1, rs.length);
+    const names: Record<string, string> = { bomber: 'Bomber raids (sorties)', support: 'Bomber front support', rocket: 'Rockets', atomBomb: 'Atom bombs', cruiseMissile: 'Cruise missiles', stealthBomber: 'Stealth strikes' };
+    console.log(`Late strikes (minute ${LATE_MINUTE} on), totals over ${rs.length} games; gold = price paid (bombers: the ones shot down):`);
+    for (const k of LATE_KINDS) {
+      const s = (f: (L: LateStrike) => number): number => rs.reduce((a, r) => a + (r.late?.[k] ? f(r.late[k]) : 0), 0);
+      const cnt = s((L) => L.n);
+      const gold = s((L) => L.gold);
+      const wr = s((L) => L.wrecks);
+      const kl = s((L) => L.kills);
+      const per = (x: number): string => (gold > 0 ? f1((x * 1000) / gold) : '-');
+      console.log(
+        `  ${names[k]}: ${cnt} (${f1(cnt / n)} per game, in ${rs.filter((r) => (r.late?.[k]?.n ?? 0) > 0).length} games), shot down ${s((L) => L.shot)} (${pct(s((L) => L.shot), cnt)}), ` +
+          `${wr} buildings, ${Math.round(kl)} troops (${f1(wr / Math.max(1, cnt))} buildings, ${Math.round(kl / Math.max(1, cnt))} troops each); gold ${Math.round(gold)}, per 1000 gold ${per(wr)} buildings, ${per(kl)} troops.`,
+      );
+    }
   }
+
   const wonGames = rs.filter((r) => r.winner > 0);
   if (wonGames.length) {
     const wd = wonGames.reduce((s, r) => s + r.winnerParadrops, 0) / wonGames.length;

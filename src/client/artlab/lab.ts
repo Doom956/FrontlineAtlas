@@ -15,6 +15,7 @@ import { refined } from '../art/refined';
 import type { TrailLayer } from '../art/types';
 import { spriteScale } from '../render/units';
 import { LAB_CSS } from './labCss';
+import { mountBuildingsMock } from './buildingsMock';
 import { CLOSE_ZOOM, MID_ZOOM, NEAR_ZOOM, rowSpecs, type RowId, type RowSpec, type SceneEnv } from './scenes';
 
 const PICKS_KEY = 'frontline.artLab.picks.v1';
@@ -250,6 +251,7 @@ export function startArtLab(): void {
   picks.append(out);
   head.append(picks);
   root.append(head);
+  mountBuildingsMock(root);
 
   // ---------------------------------------------------------------------------------------------- columns
   const colHead = h('div', 'al-cols');

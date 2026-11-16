@@ -802,15 +802,17 @@ export class Overlays {
       case 'stealth': {
         // the stealth bomber's reach from its airfield, the route and the blast
         const t = this.stealthCheck(state, mode.airfield, hover);
-        const b = buildingAt(state, mode.airfield);
-        if (b && b.owner === state.humanId) {
+        // airfield -1 (the bottom bar's button): every finished airfield of yours shows its reach, the nearest in reach flies
+        for (const b of state.buildings.values()) {
+          if (b.owner !== state.humanId || b.type !== 'airfield' || b.buildLeft > 0) continue;
+          if (mode.airfield >= 0 && b.tile !== mode.airfield) continue;
           const c = cam.tileToScreen((b.tile % this.w) + 0.5, ((b.tile / this.w) | 0) + 0.5);
           ctx.beginPath();
           ctx.arc(c.x, c.y, stealthReach(state, b) * z, 0, Math.PI * 2);
           ctx.setLineDash([6, 5]);
           accentStroke(ctx, 1.5, 0.85);
           ctx.setLineDash([]);
-          dashedLine(ctx, c.x, c.y, hs.x, hs.y, t?.ok ? 'rgba(255,255,255,0.7)' : 'rgba(230,110,90,0.7)');
+          if (t && t.airfield === b.tile) dashedLine(ctx, c.x, c.y, hs.x, hs.y, t.ok ? 'rgba(255,255,255,0.7)' : 'rgba(230,110,90,0.7)');
         }
         const r = t?.radius ?? 6;
         this.aimDisc(ctx, cam, hs.x, hs.y, !!t?.ok, [{ radius: r }], `Stealth strike · radius ${fmtR(r)} tiles`);

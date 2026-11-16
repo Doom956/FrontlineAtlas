@@ -76,7 +76,7 @@ describe('cruise missile: validation', () => {
     // reach: CRUISE.reach tiles from the ship
     expect(fire(s, mine, at(s, 70, 0)).ok).toBe(true);
     const far = at(s, 115, 2);
-    expect(fire(s, ship(s, 1, 50, 58), far).reason).toMatch(/^Too far: cruise missiles reach 35 tiles/);
+    expect(fire(s, ship(s, 1, 50, 58), far).reason).toMatch(new RegExp(`^Too far: cruise missiles reach ${CRUISE.reach} tiles`));
     // water, own land, allies
     const s2 = game();
     const a = ship(s2, 1, 70, 32);
