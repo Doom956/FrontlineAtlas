@@ -421,7 +421,7 @@ export class DefenseFx {
       const c = units.screenOf(u.id) ?? cam.tileToScreen(u.x + 0.5, u.y + 0.5);
       if (c.x < -30 || c.y < -30 || c.x > cam.viewW + 30 || c.y > cam.viewH + 30) continue;
       this.drawnLocks++;
-      const h = Math.max(9, Math.min(22, 6 + cam.zoom * 1.4));
+      const h = Math.max(9, Math.min(46, 6 + cam.zoom * 1.9));
       const l = h * 0.45;
       const pulse = this.reduced ? 1 : 0.75 + 0.25 * Math.sin(nowMs / 140);
       ctx.globalAlpha = pulse;
