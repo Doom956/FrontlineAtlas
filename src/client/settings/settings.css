@@ -1,0 +1,153 @@
+/* The Settings panel (settings/panel.ts): the title screen's Settings page and the in-game Menu drawer. Cool steel,
+   the amber accent only on the open tab and the picked choices, the HUD's segmented controls and sliders. */
+
+.set-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+/* the four tabs: icon plus word, the open one underlined in amber */
+.set-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 4px;
+}
+.set-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 4px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: transparent;
+  color: var(--dim);
+  font: 600 13px/1 var(--f-label);
+  cursor: pointer;
+  transition: color var(--fast), background var(--fast), border-color var(--fast);
+}
+.set-tab:hover {
+  color: var(--text);
+  background: var(--metal-3);
+}
+.set-tab.on {
+  color: var(--brass-hi);
+  border-bottom-color: var(--brass);
+}
+.set-tab:focus-visible {
+  outline-offset: -2px;
+}
+.set-tab .ico {
+  display: inline-flex;
+}
+.set-tab-l {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.set-sec {
+  padding-top: 6px;
+}
+.set-sec[hidden] {
+  display: none;
+}
+.set-field {
+  margin: 14px 0 0;
+}
+.set-label {
+  margin: 14px 0 2px;
+  font: 600 13px/1.2 var(--f-label);
+  color: var(--text);
+}
+.set-field > .set-label {
+  margin-top: 0;
+}
+.set-sec > .set-label:first-child {
+  margin-top: 8px;
+}
+.set-sec .segc-b {
+  padding: 0 6px;
+}
+.set-sec .segc-b:focus-visible {
+  outline-offset: -3px;
+}
+.set-sec .wr-btn.wide {
+  margin-top: 8px;
+}
+.set-sec .wr-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.set-why:empty,
+.set-said:empty {
+  display: none;
+}
+.set-why {
+  color: var(--caution, #c9a227);
+}
+.set-reset {
+  margin-top: 20px !important;
+}
+
+/* About: the version facts */
+.set-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+.set-facts dt {
+  color: var(--dim);
+}
+.set-facts dd {
+  margin: 0;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.set-sec .credits {
+  margin-top: 4px;
+}
+
+/* the title screen's Settings page */
+.menu-scroll > .set-panel {
+  padding-bottom: 12px;
+}
+
+/* the leading icon of a start-page row (Settings): it stays put on hover, unlike the chevron */
+.btn.menu-row .ico.menu-row-lead,
+.btn.menu-row:hover .ico.menu-row-lead,
+.btn.menu-row:focus-visible .ico.menu-row-lead {
+  color: var(--dim);
+  transform: none;
+}
+
+/* the Menu drawer and phones: the tab's icon above its word, so four whole words fit */
+.drawer .set-tab {
+  flex-direction: column;
+  gap: 3px;
+  min-height: 48px;
+}
+@media (max-width: 420px) {
+  .set-tab {
+    flex-direction: column;
+    gap: 3px;
+    min-height: 48px;
+    font-size: 12px;
+  }
+}
+
+/* reduce motion picked in Settings: the page's animations stop too (the device's setting has its own rule) */
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 1ms !important;
+}

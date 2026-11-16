@@ -13,6 +13,8 @@
 //
 // The DOM is built once. update() runs every frame but only does cheap work there; texts and lists refresh at
 // ~5 Hz through each part's update().
+import { blitzHint } from './blitzUi';
+import { getSettings, setSetting } from './settings/store';
 import { activeFog, fogEvent, UNMET_TOAST } from './fog/fogView';
 import { reconHint } from './hud/variantOrders';
 import { VARIANT_NAMES } from '../sim/variants';
@@ -69,6 +71,8 @@ import { addFloater } from './uiState';
 import { allyEventKind, coalitionLeader } from './allies';
 import { swatchCss } from './hud/swatch';
 import { instruction, strikeToastText, type StrikeId } from './strikes';
+import { cruiseInstruction } from './cruise';
+import { stealthInstruction } from './stealth';
 import { SalvoPicker } from './hud/salvoPicker';
 import type { Dispatch, UiState } from './uiState';
 import { GameHistory } from './summary/history';
@@ -274,8 +278,8 @@ export class Hud {
 
     this.cluster = new Cluster(this.ctx, {
       isOpen: (id) => this.drawer?.open === id,
-      muted: () => this.audio?.getSettings().muted ?? false,
-      toggleMute: () => this.audio?.setMuted(!this.audio.getSettings().muted),
+      muted: () => getSettings().muted,
+      toggleMute: () => setSetting('muted', !getSettings().muted),
       toggleHelp: () => this.toggleHelp(),
       hasAudio: () => !!this.audio,
       pauseMode: () => (hudOpts.online ? hudOpts.pause?.().mode ?? 'none' : 'local'),
@@ -311,9 +315,6 @@ export class Hud {
     }
     this.drawer.add(
       new SettingsPage(this.ctx, {
-        audio: () => this.audio?.getSettings() ?? null,
-        setVolume: (m, s, mu) => this.audio?.setVolume(m, s, mu),
-        setMuted: (m) => this.audio?.setMuted(m),
         advisorOn: () => this.advisor.advisorOn,
         setAdvisor: (on) => this.advisor.setAdvisor(on),
         guideOn: () => this.guide?.on ?? false,
@@ -860,7 +861,10 @@ export class Hud {
       else if (m.kind === 'moveWarship') chip = 'Warship selected: click water to move it.';
       else if (m.kind === 'spawnWarship') chip = `${m.variant ? VARIANT_NAMES[m.variant] : 'Warship'}: click any water your ports reach (shaded) where it should appear.`;
       else if (m.kind === 'recon') chip = reconHint();
+      else if (m.kind === 'cruise') chip = cruiseInstruction(state, m.ships);
+      else if (m.kind === 'stealth') chip = stealthInstruction(state);
       else if (m.kind === 'buildTankDivision') chip = 'Tank division: click one of your factories.';
+      else if (m.kind === 'blitz') chip = blitzHint();
       else if (m.kind === 'boxSelect') chip = 'Upgrade many: drag a box over your buildings on the map.';
       else if (m.kind === 'adminTile') chip = m.label;
       else if (m.kind === 'pillarPick') chip = m.label;

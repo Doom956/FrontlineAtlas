@@ -31,6 +31,7 @@ import { troopKinds, troopPill, troopPillSize } from './troopIcons';
 import { hasIntel } from '../../sim/buildings';
 import { OWNER_MASK, type TileFeed } from './tiles';
 import { coveringAirfields, dugInPct } from '../trench';
+import { prefersReducedMotion } from '../fx/settings';
 
 /** An anchor older than this is replaced by any newer capture. */
 const STALE_MS = 1500;
@@ -391,13 +392,7 @@ export function measuredSpeed(samples: readonly number[]): number {
   return dt > 0 ? Math.max(0, (samples[m - 1] - samples[1]) / dt) : 0;
 }
 
-function prefersReducedMotion(): boolean {
-  try {
-    return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  } catch {
-    return false;
-  }
-}
+
 
 // ------------------------------------------------------------------------------------------------ layer
 
@@ -418,7 +413,9 @@ export class FrontLayer {
   /** per attack id: [tick, tilesTaken, tick, tilesTaken, ...] over the last SPEED_WINDOW_TICKS */
   private speedLog = new Map<number, number[]>();
   private memo = new Map<number, ArrowMemo>();
-  private reduced = prefersReducedMotion();
+  private get reduced(): boolean {
+    return prefersReducedMotion();
+  }
   private hoverKey = -1;
   private spotBudget = 0;
   /** front segments drawn last frame (stats / tests) */

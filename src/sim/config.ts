@@ -455,10 +455,10 @@ export const TECHS: Record<TechId, TechInfo> = {
   groundAttack: { name: 'Ground-attack Planes', tier: 3, science: 2200, gold: 1000, requires: ['flight'], exclusiveGroup: 'airDoctrine', description: 'Your bombers become ground-attack planes: front support strikes hit 60% harder; strategic raids are weaker.' },
   heavyBombers: { name: 'Heavy Bombers', tier: 3, science: 2200, gold: 1000, requires: ['flight'], exclusiveGroup: 'airDoctrine', description: 'Your bombers become heavy bombers: strategic raids hit 70% harder, 50% longer range, one more hit; front support is weaker.' },
   mechInfantry: { name: 'Mechanized Infantry', tier: 3, science: 2200, gold: 1000, requires: ['mechanization'], description: 'Infantry rides with your tanks: spearheads lose 15% less, and the land they take holds (attacks on it cost 40% more for a minute).' },
-  reconPlanes: { name: 'Recon Planes', tier: 3, science: 1500, gold: 800, requires: ['flight'], description: 'Airfields fly recon: reveal enemy armies, doctrines, buildings and submarines in a wide circle for 40 seconds.' },
-  navalMastery: { name: 'Naval Mastery', tier: 5, science: 8000, gold: 3000, requires: ['navigation'], requiresAny: ['battleships', 'carriers'], description: 'Mastery: warships earn veterancy twice as fast; bombardment and naval support reach 30% further; +2 warships.' },
+  reconPlanes: { name: 'Recon Planes', tier: 3, science: 1500, gold: 800, requires: ['flight'], description: 'Airfields fly recon: reveal enemy armies, doctrines, buildings and submarines in a wide circle for 40 seconds. Enemy fighters shoot recon planes down on the way.' },
+  navalMastery: { name: 'Naval Mastery', tier: 5, science: 8000, gold: 3000, requires: ['navigation'], requiresAny: ['battleships', 'carriers'], description: 'Mastery: warships earn veterancy twice as fast; bombardment and naval support reach 30% further; +2 warships; warships, destroyers and battleships fire cruise missiles at the coast.' },
   armorMastery: { name: 'Armor Mastery', tier: 5, science: 8000, gold: 3000, requires: ['mechanization'], requiresAny: ['deepRaids', 'siegeTanks'], description: 'Mastery: encirclements collapse pockets three times as big and destroy more of the troops caught in them.' },
-  airMastery: { name: 'Air Mastery', tier: 5, science: 8000, gold: 3000, requires: ['flight'], requiresAny: ['jetEngines', 'strategicBombing'], description: 'Mastery: every air wing flies 50% more bombers.' },
+  airMastery: { name: 'Air Mastery', tier: 5, science: 8000, gold: 3000, requires: ['flight'], requiresAny: ['jetEngines', 'strategicBombing'], description: 'Mastery: every air wing flies 50% more bombers; a stealth bomber SAM sites cannot see strikes one target behind their walls.' },
 };
 export const TECH_ORDER: TechId[] = [
   'agriculture', 'metallurgy', 'logistics', 'fortification', 'navigation',
@@ -553,8 +553,12 @@ export const UNITS: Record<UnitType, UnitInfo> = {
   fighter: { name: 'Fighter', speed: 40, gold: 400, iron: 20, oil: 20, hp: 1, tech: 'flight' },
   rocket: { name: 'Rocket', speed: 55, gold: 900, iron: 60, oil: 30, hp: 1, tech: 'rocketry' },
   atomBomb: { name: 'Atom bomb', speed: 35, gold: 6000, iron: 300, oil: 150, hp: 2, tech: 'nuclearFission' },
+  /** fired from a warship, destroyer or battleship (CRUISE below): slower than a rocket, paid per missile */
+  cruiseMissile: { name: 'Cruise missile', speed: 10, gold: 700, iron: 0, oil: 60, hp: 1, tech: 'navalMastery' },
   /** paratrooper drop: the price is paid per drop */
   transportPlane: { name: 'Cargo plane', speed: 30, gold: 400, iron: 0, oil: 30, hp: 1, tech: 'flight' },
+  /** the stealth strike (Air Mastery, STEALTH below): one flying wing at bomber speed, paid per strike */
+  stealthBomber: { name: 'Stealth bomber', speed: 30, gold: 2000, iron: 0, oil: 150, hp: 1, tech: 'airMastery' },
   /** tank division (tanks.ts): speed = tiles/s moving over own land (a rail move; TANK_MOBILITY); the troops it carries are its strength */
   tankDivision: { name: 'Tank division', speed: 20, gold: 1200, iron: 100, oil: 50, hp: 1, tech: 'mechanization' },
   /** recon flight (variants.ts): the price is paid per flight */
@@ -593,6 +597,26 @@ export const TANK_DIVISION_TROOPS = { armor: 6000, infantry: 2000, artillery: 10
 export const TANK_MIN_ARMOR = 3000;
 /** divisions (alive + being built) per Factory level of a player */
 export const TANK_PER_FACTORY_LEVEL = 1;
+/**
+ * The tank division's special order with Armor Mastery (blitz.ts, Action 'blitz'). BLITZ_NAME is what the player
+ * reads everywhere (cards, buttons, events, help): a rename is this one line.
+ */
+export const BLITZ_NAME = 'Breakthrough';
+/**
+ * A smoke screen, then a surge: a spearhead at speedMul x the head speed, depthMul x the depth, a band `width` tiles
+ * wide, losses x lossMul; the land it takes holds for holdSeconds (no attack, landing or spearhead takes it back).
+ * Needs minShare of a full division and `oil`; the division may not do it again for cooldownSeconds.
+ */
+export const BLITZ = {
+  speedMul: 2,
+  depthMul: 1.5,
+  width: 5,
+  lossMul: 0.6,
+  holdSeconds: 20,
+  cooldownSeconds: 120,
+  minShare: 0.5,
+  oil: 100,
+} as const;
 /** spearhead: head speed in tiles/s on plains (x TANK_TERRAIN_SPEED) */
 export const TANK_SPEARHEAD_SPEED = 8;
 /** spearhead width in tiles (odd; the head tile and (width-1)/2 on each side) */
@@ -658,6 +682,27 @@ export const ATOM_CORE_RADIUS = 14; // tiles turned neutral
 export const ATOM_KILL_SHARE: [number, number] = [0.6, 0.9]; // of the army share in the area
 export const FALLOUT_SECONDS = 120;
 export const SILO_COOLDOWN = 20; // seconds to reload one launch slot (a level-L silo has L slots)
+/**
+ * Cruise missiles from sea (units.ts launchCruise, cruise.ts; DESIGN section 7): a warship, destroyer or battleship
+ * of a nation with Naval Mastery fires one at land within `reach` tiles of the ship (WARSHIP_RANGE, the range a
+ * warship already fights ships at: a coastal strip, twice its shelling reach; deeper land stays the silos' job). A
+ * small rocket: hostile buildings within `radius` destroyed, troops killed by the rocket rule (ROCKET_TROOP_KILL x
+ * the army share living in the blast, at least `killMin`). Each ship reloads its cell for `reloadSeconds`; the
+ * price per missile is UNITS.cruiseMissile. SAMs shoot it down like a rocket (1 hp, the rockets' place in the
+ * interception order). AIs keep `aiReserve` missile prices in gold (like STRIKE.fireReserve for rockets), fire only
+ * when their salvo outnumbers the ready SAM shots covering the target by at least one, and never into more than
+ * `aiMaxCover` of them.
+ */
+export const CRUISE = {
+  reach: WARSHIP_RANGE,
+  radius: 4,
+  killMin: 5000,
+  reloadSeconds: 30,
+  aiReserve: 2,
+  aiMaxCover: 2,
+  /** AI: targets within this many tiles of a landing of its own on the way score as the landing's cover */
+  aiLandingNear: 30,
+} as const;
 export const SAM_COOLDOWN = 4; // seconds to reload one shot (each shot is a sure hit; a level-L SAM holds L shots)
 /** Seconds an airfield's fighters need between interceptions, divided by the fighters stationed there. */
 export const FIGHTER_COOLDOWN = 12;
@@ -1076,11 +1121,12 @@ export const DEFAULT_TECH_ORDER: TechId[] = [
 export const RULES_TEXT = {
   interception:
     `SAM sites never miss: a loaded SAM shoots down the first hostile plane or missile inside its ${BUILDINGS.sam.radius}-tile ` +
-    `radius (+${SAM_LEVEL_RADIUS} per level; atom bombs first, then rockets, bombers, cargo planes). A level-L SAM holds ` +
-    `L shots and reloads one every ${SAM_COOLDOWN} s divided by L. Planes and rockets fall to one hit; an atom bomb needs ` +
+    `radius (+${SAM_LEVEL_RADIUS} per level; atom bombs first, then rockets and cruise missiles, bombers, cargo planes). A ` +
+    `level-L SAM holds L shots and reloads one every ${SAM_COOLDOWN} s divided by L. Planes, rockets and cruise missiles fall to one hit; an atom bomb needs ` +
     `${UNITS.atomBomb.hp}. Send more threats than the SAMs can load to get through, or knock SAMs out with an artillery ` +
-    `barrage first. Fighters on an airfield shoot down one bomber or cargo plane within ${BUILDINGS.airfield.radius} tiles, ` +
-    `then need ${FIGHTER_COOLDOWN} s divided by the number of fighters stationed there to be ready again.`,
+    `barrage first. Fighters on an airfield shoot down one bomber, cargo plane or recon plane within ${BUILDINGS.airfield.radius} tiles, ` +
+    `then need ${FIGHTER_COOLDOWN} s divided by the number of fighters stationed there to be ready again. SAMs leave recon ` +
+    `planes alone; a recon plane shot down on its way reveals nothing. SAMs cannot see a stealth bomber (Air Mastery) at all.`,
   barrage:
     `Artillery barrage: with at least ${BARRAGE_MIN_ARTILLERY} artillery, shell enemy land up to ${BARRAGE_RANGE} tiles from ` +
     `your border (Ballistics x${BARRAGE_BALLISTICS_RANGE}). The shells land ${BARRAGE_DELAY} s later on a ${BARRAGE_RADIUS}-tile ` +
@@ -1230,6 +1276,24 @@ export const AIR = {
   /** superiority: seconds between interceptions / fighters stationed (x jetsCooldown with Jet Engines) */
   superiorityCooldown: 8,
   jetsCooldown: 0.5,
+  /**
+   * Air superiority (airwings.airSuperiorityAt): a nation's fighters guard a tile when the fighter cover of its (or an
+   * ally's) airfields, their superiority patrols and their carriers (carrierFighters each, within TECH_EFFECTS
+   * carrierRadius) there add up to at least minFighters and to more than the bombing side's own there. Enemy bombs
+   * that land on a guarded tile do bombCut less: support strike kills and zone strength, raid income cut, buildings
+   * hit and troops killed.
+   */
+  superiorityMinFighters: 2,
+  superiorityBombCut: 0.4,
+  carrierFighters: 2,
+  /**
+   * AI fighters per airfield (airwings.aiFighterWant): base while enemy air is a threat; from Normal up + 1 per
+   * aiFightersPerBombers hostile bombers stored at airfields of nations it fights that reach this one, + 1 while enemy
+   * bombers or recon planes fly at its land; at most aiFightersMax (and half the airfield's room)
+   */
+  aiFightersBase: 2,
+  aiFightersPerBombers: 4,
+  aiFightersMax: 5,
   /** escort: hits each escorted plane can fight off (Jet Engines: + escortJets); duel chances (see airwings.escortAbsorbs) */
   escortHits: 1,
   escortJets: 1,
@@ -1240,6 +1304,31 @@ export const AIR = {
   /** a nation flying more than massFree airfields on support / strategic missions: every wing's sortie cooldown x (1 + massCooldown x the extra ones) */
   massFree: 2,
   massCooldown: 0.5,
+} as const;
+
+/**
+ * Stealth strike (Air Mastery; units.ts launchStealth, stealth.ts, stealthSight.ts; DESIGN section 7): Action
+ * stealthStrike {airfield | -1, tile}. One stealth bomber per nation at a time flies from an own finished airfield at
+ * bomber speed (UNITS.stealthBomber, x Jet Engines) to a target up to airWingRange x `reachMul` away. SAM sites never
+ * see it; fighters only where something reveals it (stealthSight.stealthRevealedTo: nothing yet, a future Defense
+ * radar). Over the target it drops a heavy raid: the bomb drop of a heavy bomber's raid (radius x `radiusMul`) with
+ * `payload` x the hit chance and kills (0.6 x 2: every building in the blast, unless the victim's fighters hold the
+ * sky there: air superiority cuts it like any bombing), plus the income raid of `raidBombers` bombers. The nation it
+ * flies at sees it, and is warned, `revealSeconds` before the bombs fall. It recharges `cooldownSeconds` from launch
+ * (Player.stealthReady, hashed). AIs send it only at targets under at least `aiMinCover` ready SAM shots they know of
+ * (elsewhere bombers and rockets do it), keep `aiReserve` strike prices in gold, and weigh SAMs, silos and airfields
+ * near a landing of theirs (within `aiLandingNear` tiles) much higher.
+ */
+export const STEALTH = {
+  reachMul: 1.25,
+  radiusMul: 1.15,
+  payload: 2,
+  raidBombers: 2,
+  cooldownSeconds: 90,
+  revealSeconds: 2,
+  aiReserve: 2,
+  aiMinCover: 2,
+  aiLandingNear: 30,
 } as const;
 
 // ---------- navy, part three: stances, shore bombardment, blockades, veterancy (naval2.ts) ----------
@@ -1407,7 +1496,7 @@ export const FOG = {
   /** AI nations refresh every this many ticks (1 s), staggered the same way; tribes have no vision */
   aiTicks: 10,
   /** vision of one unit by type (0 = none); the submarine variant uses `submarine` */
-  unit: { warship: 30, submarine: 18, transport: 12, tradeShip: 10, tankDivision: 20, bomber: 14, fighter: 18, transportPlane: 12, reconPlane: 20, rocket: 0, atomBomb: 0 } as Record<string, number>,
+  unit: { warship: 30, submarine: 18, transport: 12, tradeShip: 10, tankDivision: 20, bomber: 14, fighter: 18, transportPlane: 12, reconPlane: 20, stealthBomber: 14, rocket: 0, atomBomb: 0 } as Record<string, number>,
   /** ground vision of a finished watchtower = buildings.watchtowerRadiusOf x this */
   watchtowerMul: 0.5,
   /** a finished Port sees this far (mostly sea: spots landings) */

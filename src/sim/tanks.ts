@@ -26,6 +26,7 @@
 import { buildingAt, buildingsOf, fortMultiplierAt } from './buildings';
 import { frontTiles, tileFightCost } from './combat';
 import {
+  BLITZ,
   BOMBER_RADIUS,
   TANK_ARMOR_DEFENSE,
   TANK_ARTILLERY_SUPPORT,
@@ -68,6 +69,8 @@ import { tankDivisionMods } from './techtree';
 import { armorBandWidth, armorBreaksThrough, armorCostMul, armorDefenseMul, armorDepthMul, armorLossMul, armorSpeedMul, holdDefenseAt, onFortBreached, onSpearheadDone } from './variants';
 import { aiAmphibTarget } from './arsenalAI';
 import { landComponents } from './territory';
+import { aiAttackLevel } from './aiattack';
+import { heldBy, holdTile, onBlitzStarted } from './blitz';
 import { aiDivisionModes, collapsePockets, divisionLimitFor, divisionStep, onSpearheadEnded, vetLossMul, vetSpeedMul } from './armor2';
 import { ARMOR_POCKET_EVERY, ARMOR_SUPPORT_READY } from './config';
 import { Terrain, TROOP_TYPES, isTribe, isWater } from './types';
@@ -553,6 +556,8 @@ export function moveTankDivisions(state: GameState, playerId: number, unitIds: u
       u.pathPos = 0;
       u.target = dest;
       u.state = path.length ? 1 : 0;
+      delete u.ended; // the owner moved it: its automatic modes leave it where it was sent (armor2.ts)
+      delete u.blitz; // a new order calls a coming blitz off (blitz.ts)
       moved++;
     }
     return moved ? { ok: true } : FAIL(reason);
@@ -593,6 +598,7 @@ export function moveTankDivisions(state: GameState, playerId: number, unitIds: u
     u.target = aim;
     u.targetOwner = owner;
     u.state = 2;
+    delete u.blitz; // a plain spearhead order (Action blitz sets it again after this)
     moved++;
   }
   return moved ? { ok: true } : FAIL(reason);
@@ -620,11 +626,12 @@ function headSpeed(state: GameState, u: Unit, ter: number, defender: number): nu
   s *= tankDivisionMods(state, u.owner).speedMul * vetSpeedMul(u); // Blitz Tactics (techtree.ts), veterancy (armor2.ts)
   s *= armorSpeedMul(state, u.owner); // light / heavy tanks (variants.ts)
   if (ter === Terrain.Plains || ter === Terrain.Desert) s *= doctrineMore(state, u.owner, 'openGroundSpeed');
+  if (u.blitz) s *= BLITZ.speedMul; // a blitz's surge (blitz.ts)
   if (defender > 0 && hasTech(state.players[defender], 'trenchWarfare')) s *= 0.7;
   return s * frontRate(state);
 }
 function maxDepth(state: GameState, u: Unit): number {
-  return TANK_SPEARHEAD_MAX_DEPTH * tankDivisionMods(state, u.owner).depthMul * vetSpeedMul(u) * armorDepthMul(state, u.owner); // Blitz Tactics, veterancy, light / heavy (variants.ts)
+  return TANK_SPEARHEAD_MAX_DEPTH * tankDivisionMods(state, u.owner).depthMul * vetSpeedMul(u) * armorDepthMul(state, u.owner) * (u.blitz ? BLITZ.depthMul : 1); // Blitz Tactics, veterancy, light / heavy (variants.ts), a blitz (blitz.ts)
 }
 
 /** Loss for taking tile t (owner o) with the division, or a reason it can't be taken. */
@@ -636,6 +643,7 @@ function bandCost(state: GameState, u: Unit, t: number, o: number): { loss: numb
   if (o !== 0) {
     const why = spearheadBlock(state, u.owner, o);
     if (why) return 'the way is barred';
+    if (heldBy(state, t) === o) return 'ran into land a blitz holds'; // blitz.ts
   }
   const arty = artillerySupport(u) || armorBreaksThrough(state, u.owner); // heavy tanks break through (variants.ts)
   const fort = o > 0 && fortMultiplierAt(state, t, o) > 1.01;
@@ -643,7 +651,7 @@ function bandCost(state: GameState, u: Unit, t: number, o: number): { loss: numb
   if (fort && !arty) return 'stopped by a fort';
   const c = tileFightCost(state, u.owner, u.troops, o, t);
   if (!Number.isFinite(c.loss)) return 'cannot fight there';
-  let loss = c.loss * TANK_SPEARHEAD_LOSS * (TANK_TERRAIN_LOSS[ter] ?? 1) * vetLossMul(u); // veterancy (armor2.ts)
+  let loss = c.loss * TANK_SPEARHEAD_LOSS * (TANK_TERRAIN_LOSS[ter] ?? 1) * vetLossMul(u) * (u.blitz ? BLITZ.lossMul : 1); // veterancy (armor2.ts), a blitz's smoke (blitz.ts)
   loss *= armorLossMul(state, u.owner, ter, fort); // light / heavy tanks, Siege Tanks, Mechanized infantry (variants.ts)
   if (o > 0) {
     // the defender's Trench Warfare already raises c.loss (tileFightCost -> techLossMul): not counted twice
@@ -750,6 +758,7 @@ function startSpearhead(state: GameState, u: Unit): void {
   u.cargo = 0;
   u.path = [];
   u.pathPos = 0;
+  delete u.ended;
   const p = state.players[u.owner];
   const o = u.targetOwner;
   const block = spearheadBlock(state, u.owner, o);
@@ -760,6 +769,10 @@ function startSpearhead(state: GameState, u: Unit): void {
   if (o > 0) {
     onAttackStarted(state, u.owner, o);
     changeOpinion(state, o, u.owner, -10);
+  }
+  if (u.blitz) {
+    onBlitzStarted(state, u, here); // smoke screen and news (blitz.ts)
+    return;
   }
   const vs = o > 0 ? ` against ${state.players[o].name}` : '';
   addEvent(state, 'spearheadStarted', `${p.name}'s tank division broke out${vs}`, o > 0 && !isTribe(state.players[o]) ? [u.owner, o] : [u.owner], here);
@@ -792,6 +805,7 @@ function endSpearhead(state: GameState, u: Unit, why: string): void {
   u.target = here;
   u.launch = undefined;
   u.strength0 = undefined;
+  delete u.blitz;
   const taken = u.cargo;
   u.cargo = 0;
   onSpearheadEnded(state, u, taken); // veterancy (armor2.ts)
@@ -801,6 +815,7 @@ function endSpearhead(state: GameState, u: Unit, why: string): void {
   const who = o > 0 && !isTribe(state.players[o]) ? [u.owner, o] : [u.owner];
   addEvent(state, 'spearheadEnded', `${p.name}'s spearhead ${why}: ${taken} tiles taken, ${fmt(lost)} troops lost${tail}`, who, here);
   if (disband) disbandDivision(state, u);
+  else u.ended = state.tick; // it stands on the spearhead's ground for now (armor2.ts pulls it off a thin tip)
 }
 
 /** Nearest own land tile within TANK_FALLBACK_RADIUS of `from` (Chebyshev rings, lowest index on ties); -1 = none. */
@@ -871,7 +886,7 @@ function stepSpearhead(state: GameState, u: Unit): void {
   }
   if (next !== cur) {
     // Entering a new tile: take the band across the line (the centre must fall, the sides if affordable).
-    const n = band(state, next, ux, uy, bandScratch, armorBandWidth(state, u.owner, TANK_SPEARHEAD_WIDTH)); // light tanks: thin (variants.ts)
+    const n = band(state, next, ux, uy, bandScratch, armorBandWidth(state, u.owner, u.blitz ? BLITZ.width : TANK_SPEARHEAD_WIDTH)); // light tanks: thin (variants.ts); a blitz: wide (blitz.ts)
     const floor = (u.strength0 ?? total(u.troops)) * TANK_SPEARHEAD_MIN_SHARE;
     const takenBefore = u.cargo;
     for (let k = 0; k < n; k++) {
@@ -897,6 +912,7 @@ function stepSpearhead(state: GameState, u: Unit): void {
       killDefenders(state, o, c.killed, u.owner);
       if (c.fort) onFortBreached(state, u, t, o); // Siege Tanks knock the fort out (variants.ts)
       setOwner(state, t, u.owner);
+      if (u.blitz) holdTile(state, u.owner, t); // the wedge holds for a while (blitz.ts)
       u.cargo++;
       if (!u.hp) return;
     }
@@ -957,6 +973,7 @@ export function updateTanks(state: GameState): void {
         u.path = [];
         u.pathPos = 0;
         if (u.state === 1 || u.state === 2) u.state = 0;
+        delete u.blitz; // a blitz on its way to the launch tile is called off (the cooldown stays)
         u.retryTick = state.tick + TANK_FALLBACK_PAUSE * TICKS_PER_SECOND; // 'support' mode: no drive back to the front for a while (armor2.ts)
         addEvent(state, 'info', `${p.name}'s tank division fell back under attack`, [u.owner], back);
         continue;
@@ -1061,14 +1078,16 @@ export interface SpearheadPreview {
   launch: number;
   /** why the order would be refused (empty when it would go) */
   reason: string;
+  /** share of the division's troops expected to be left when the spearhead ends (1 = no losses) */
+  endShare?: number;
 }
 
 /**
  * What a spearhead of division unitId toward `tile` would do (no state change): the line, the expected depth from
  * its current strength, and warnings. For the client's arrow before confirming.
  */
-export function spearheadPreview(state: GameState, playerId: number, unitId: number, tile: number): SpearheadPreview {
-  const out: SpearheadPreview = { path: [], expectedDepth: 0, warnings: [], launch: -1, reason: '' };
+export function spearheadPreview(state: GameState, playerId: number, unitId: number, tile: number, blitz = false): SpearheadPreview {
+  const out: SpearheadPreview = { path: [], expectedDepth: 0, warnings: [], launch: -1, reason: '', endShare: 1 };
   const u = state.units.find((q) => q.id === unitId);
   if (!u || u.type !== 'tankDivision' || u.owner !== playerId || u.hp <= 0) return { ...out, reason: 'No such division' };
   if (!isTileIn(state, tile) || !isLand(state, tile)) return { ...out, reason: 'Tank divisions move on land' };
@@ -1082,7 +1101,7 @@ export function spearheadPreview(state: GameState, playerId: number, unitId: num
   out.launch = launch;
   // Simulate on a copy of the division (no state change).
   const [from, aim] = frontOfLine(state, playerId, launch, aimPoint(state, playerId, launch, tile));
-  const sim: Unit = { ...u, troops: { ...u.troops }, path: [], launch: from, target: aim, targetOwner: target };
+  const sim: Unit = { ...u, troops: { ...u.troops }, path: [], launch: from, target: aim, targetOwner: target, blitz: blitz ? 1 : undefined }; // blitz: a blitz's speed, depth and losses (blitz.ts)
   const w = map.width;
   const { lx, ly, ux, uy } = lineOf(state, sim);
   const start = total(sim.troops);
@@ -1128,6 +1147,7 @@ export function spearheadPreview(state: GameState, playerId: number, unitId: num
     for (const k of TROOP_TYPES) sim.troops[k] = Math.max(0, sim.troops[k] - (c.loss * sim.troops[k]) / Math.max(1e-9, total(sim.troops)));
     out.expectedDepth++;
   }
+  out.endShare = start > 0 ? total(sim.troops) / start : 0;
   if (target > 0 && armorShare(state.players[target]) > 0.3) warn('Armor-heavy defence: expect heavy losses');
   if (out.expectedDepth < 3) warn('Too weak to get far here');
   return out;
@@ -1197,6 +1217,9 @@ export function aiTankDivisions(state: GameState, id: number, act: (a: Action) =
       tile = t;
     }
   }
+  // From Normal up the divisions on 'support' strike by themselves, together and where it pays (armor2.ts): no lone
+  // straight launches into the nearest border tile any more.
+  if (tile >= 0 && aiAttackLevel(state) >= 1) return;
   // No land front: with Amphibious Tanks, their land across narrow water (arsenalAI.ts).
   if (tile < 0 && hasAmphibious(state, id)) {
     tile = aiAmphibTarget(state, id, best.target, lead.x, lead.y);

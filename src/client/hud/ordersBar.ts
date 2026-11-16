@@ -12,8 +12,10 @@ import type { GameState, Player, Unit } from '../../sim/types';
 import { followsWar, followText, groupFollow } from '../follow';
 import { followUnitsAgain, MODE_INFO, MODE_ORDER, pocketLine, pocketPreview, setMode, setStance, sharedMode, sharedStance, STANCE_INFO, STANCE_ORDER, vetOf, VET_MAX, type ChoiceInfo } from '../pillars';
 import { FollowRow } from './followRow';
+import { blitzButton, enterBlitz } from '../blitzUi';
 import { previewFor, SPEARHEAD_CONFIRM_MS, splitSelection } from '../selection';
 import { el, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
+import { aimCruise, cruiseButton, cruisePriceText } from '../cruise';
 import { iconSpan, lineIcon } from './glyph';
 import './pillars.css';
 
@@ -109,8 +111,17 @@ export class OrdersBar {
   readonly el: HTMLElement;
   private ships: ChoiceRow<keyof typeof STANCE_INFO>;
   private tanks: ChoiceRow<keyof typeof MODE_INFO>;
+  /** the selected division's blitz (blitzUi.ts): icon and name, or the name and why it can't go now */
+  private blitzBtn = el('button', 'wr-btn mini ob-b ob-blitz') as HTMLButtonElement;
+  private blitzLabel = el('span', 'wr-btn-l');
+  private blitzAim = -1;
   private last = 0;
   private dirty = true;
+  /** Naval Mastery: Cruise missile for the selected ships (a group, or one ship on a phone where the unit card waits) */
+  private cm = el('div', 'ob-cm hidden');
+  private cmBtn = el('button', 'wr-btn mini ob-cm-b');
+  private cmSub = el('span', 'uc-cm-s');
+  private cmLine = el('div', 'ob-line');
 
   constructor(private ctx: HudCtx) {
     this.el = el('div', 'orders-bar hidden');
@@ -149,6 +160,34 @@ export class OrdersBar {
       say(followUnitsAgain(s, ctx.dispatch, 'division', splitSelection(s, s.humanId, ctx.ui.selection).tanks));
       poke();
     });
+    this.cmBtn.type = 'button';
+    this.cmBtn.dataset.test = 'orders-cruise';
+    this.cmBtn.append(iconSpan(lineIcon('rocket', 14, 2)), el('span', 'wr-btn-l', 'Cruise missile'), this.cmSub);
+    this.cmBtn.addEventListener('click', () => {
+      const s = ctx.state();
+      const me = ctx.me();
+      if (!s || !me) return;
+      const why = aimCruise(s, me, ctx.ui, splitSelection(s, me.id, ctx.ui.selection).warships);
+      ctx.sound(why ? 'uiError' : 'uiClick');
+      say(why);
+      poke();
+    });
+    this.cm.append(this.cmBtn, this.cmLine);
+    this.ships.el.append(this.cm);
+    this.blitzBtn.type = 'button';
+    this.blitzBtn.dataset.test = 'blitz';
+    this.blitzBtn.append(iconSpan(lineIcon('blitz', 14, 2)), this.blitzLabel);
+    this.blitzBtn.addEventListener('click', () => {
+      const s = ctx.state();
+      if (!s || this.blitzAim < 0) return;
+      const why = enterBlitz(s, ctx.ui, s.humanId, this.blitzAim);
+      if (why) say(why);
+      else ctx.sound('uiClick');
+      poke();
+    });
+    const act = el('div', 'ob-btns ob-act');
+    act.append(this.blitzBtn);
+    this.tanks.el.insertBefore(act, this.tanks.line);
     this.el.append(this.ships.el, this.tanks.el);
   }
 
@@ -196,6 +235,17 @@ export class OrdersBar {
         `Hull ${Math.round(hull * 100)}%${ships.length > 1 ? ' on average' : ''}. Ships mend near your ports.`,
         '',
       );
+      const cb = cruiseButton(state, me, c.warships);
+      setVisible(this.cm, cb.show);
+      setClass(this.cm, 'single', c.warships.length === 1);
+      if (cb.show) {
+        this.cmBtn.disabled = !cb.ok;
+        const price = cruisePriceText(state, me.id).replace(', ', ' · ');
+        setText(this.cmSub, cb.ok ? price : cb.why);
+        this.cmBtn.setAttribute('aria-label', cb.ok ? `Cruise missile, ${price}` : `Cruise missile: ${cb.why}`);
+        setTip(this.cmBtn, cb.line);
+        setText(this.cmLine, cb.line);
+      }
     }
 
     setVisible(this.tanks.el, c.tanks.length > 0);
@@ -222,6 +272,12 @@ export class OrdersBar {
         status,
       );
       setClass(this.tanks.line, 'pocket', status.startsWith('Encircles'));
+      const bz = blitzButton(state, me.id, c.tanks);
+      this.blitzAim = bz.unitId;
+      setText(this.blitzLabel, bz.label);
+      this.blitzBtn.disabled = bz.off !== '';
+      setClass(this.blitzBtn, 'off', bz.off !== '');
+      setTip(this.blitzBtn, bz.off ? `${bz.off}. ${bz.tip}` : bz.tip);
     }
   }
 }

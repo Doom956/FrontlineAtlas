@@ -173,6 +173,8 @@ const LINE: Record<string, string> = {
   build: '<path d="M14 6l4 4M5 19l8.5-8.5M12 4.5l2-1.5 6.5 6.5-1.5 2z"/>',
   upgrade: '<path d="M12 20V5M6 11l6-6 6 6M6 20h12"/>',
   transport: '<path d="M3 15h18l-2.5 4h-13zM6 15V9h9l3 6M10 9V5"/>',
+  // a flying wing seen from above: the sharp nose up, the sawtooth trailing edge below (the stealth strike)
+  stealth: '<path d="M12 5l10 10-3 2-2.5-2-2.5 2-2-1.5-2 1.5-2.5-2-2.5 2-3-2z"/><path d="M12 9v4"/>',
   bomb: '<circle cx="11" cy="14" r="6"/><path d="M15 9.5l2.5-2.5M17 5l1-1M19.5 7l1-.5"/>',
   rocket: '<path d="M12 3c3 2 4 6 4 10l-2 3h-4l-2-3c0-4 1-8 4-10zM8 15l-3 3v2l3-1M16 15l3 3v2l-3-1M11 20h2"/>',
   atom: '<circle cx="12" cy="12" r="2"/><path d="M12 10l-3-6a8 8 0 0 1 6 0zM13.7 13l6.3 1.5a8 8 0 0 1-3 5.2zM10.3 13L4 14.5a8 8 0 0 0 3 5.2z"/>',
@@ -192,6 +194,7 @@ const LINE: Record<string, string> = {
   paradrop: '<path d="M3 11a9 7 0 0 1 18 0c-1.5-1-3-1-4.5 0-1.5-1-3-1-4.5 0-1.5-1-3-1-4.5 0C6 10 4.5 10 3 11zM3.5 11l7 7M20.5 11l-7 7M12 11v7"/><rect x="10.5" y="18" width="3" height="3.5"/>',
   barrage: '<path d="M3 20c2-9 7-13 13-11M6 21c2-7 6-10 11-9"/><path d="M18 6l1.5 2.5L22 8l-1.5 2.5L22 13l-2.5-.5L18 15l-1-2.5-2.5.5 1-2.5L14 8l2.5.5z"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>',
+  reset: '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4v4.5H9"/>',
   shuffle: '<path d="M3 7h4l10 10h4M3 17h4L17 7h4M18 4l3 3-3 3M18 14l3 3-3 3"/>',
   dot: '<circle cx="12" cy="12" r="3" fill="currentColor"/>',
   copy: '<path d="M9 9h11v11H9z"/><path d="M15 9V4H4v11h5"/>',
@@ -220,6 +223,8 @@ const LINE: Record<string, string> = {
   chat: '<path d="M4 5h16v11H11l-4.5 3.5V16H4z"/><path d="M8 9.5h8M8 12.5h5"/>',
   send: '<path d="M4 12l16-7-5 15-3-6.5zM12 13.5l8-8.5"/>',
   credits: '<path d="M9 17.5V5.5l10-2v12"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/><path d="M9 9.5l10-2"/>',
+  // a lightning wedge: the tank division's blitz (blitzUi.ts)
+  blitz: '<path d="M13.5 2.5 5.5 13h5.5l-1.5 8.5 8.5-11.5h-5.5z"/>',
   tank: '<path d="M3.5 14h17l-2 5h-13z"/><path d="M6.5 14v-3.5h8l1.5 3.5M10.5 10.5V8.5h9"/><circle cx="7.5" cy="16.5" r=".6"/><circle cx="16.5" cy="16.5" r=".6"/>',
 };
 export type LineIconId = keyof typeof LINE;

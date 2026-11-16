@@ -49,6 +49,8 @@ export const MATERIALS = {
   prublue: ['#334551', '#4b6475', '#678598', '#8ba6b8'],
   /** night paint (Night Bombing): an anthracite dark sea grey, light enough to keep its shape over the dark sea */
   night: ['#20282c', '#394146', '#545c62', '#737c82'],
+  /** the stealth bomber's dark grey (a touch bluer and lighter than black, so its flying wing reads over dark sea) */
+  stealth: ['#22272c', '#373e45', '#525a62', '#7a848e'],
   /** the cargo plane's two-tone grey (with invasion stripes) */
   cargo: ['#3b4445', '#596363', '#788283', '#99a4a4'],
   cargoDark: ['#263031', '#3a4545', '#525d5e', '#6b7778'],

@@ -88,11 +88,20 @@ export function alertFromEvent(state: GameState, me: Player, e: GameEvent): Aler
     }
     case 'missile': {
       // "<X> launched an atom bomb at <me>" (the impact report stays a toast)
-      const l = / launched (an atom bomb|a rocket) at /.exec(m);
+      const l = / launched (an atom bomb|a rocket|a cruise missile) at /.exec(m);
       if (!l || m.startsWith(`${n} launched`) || !m.endsWith(` at ${n}`)) return null;
       const by = m.slice(0, l.index);
       const atom = l[1] === 'an atom bomb';
+      if (l[1] === 'a cruise missile') return { kind: 'incoming', key: `incoming:cruise:${by}`, text: `Cruise missile incoming from ${by}'s warship`, tile: e.tile, icon: 'rocket' };
       return { kind: 'incoming', key: `incoming:${atom ? 'atom' : 'rocket'}:${by}`, text: `${atom ? 'Atom bomb' : 'Rocket'} incoming from ${by}`, tile: e.tile, icon: atom ? 'atom' : 'rocket' };
+    }
+    case 'bombing': {
+      // "A stealth bomber of <X> is over <me>: its bombs fall in 2 s" (sim units.ts stealthWarn): the target only learns
+      // of it then, so it is an alert; the strike's result stays a toast
+      const st = / is over (.+): its bombs fall in (\d+) s$/.exec(m);
+      if (!st || st[1] !== n || !m.startsWith('A stealth bomber of ')) return null;
+      const by = m.slice('A stealth bomber of '.length, st.index);
+      return { kind: 'incoming', key: `incoming:stealth:${by}`, text: `Stealth bomber of ${by} over your land: bombs in ${st[2]} s`, tile: e.tile, icon: 'bomb' };
     }
     case 'capitalLost': {
       if (!ownFirst || (r = after(`${n} lost their capital`)) === null) return null;

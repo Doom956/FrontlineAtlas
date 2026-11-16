@@ -23,7 +23,7 @@ import { buildingsKey, clamp, ctx2d, shade, type RGB } from './render/common';
 import { DepositLayer } from './render/deposits';
 import { FrontLayer } from './render/fronts';
 import { HeartlandLayer } from './render/heartland';
-import { MapGL } from './render/glmap';
+import { liteWanted, MapGL } from './render/glmap';
 import { mapStyle } from './render/mapStyle';
 import { Map2D } from './render/map2d';
 import { TrenchFeed } from './render/trenchFeed';
@@ -36,10 +36,12 @@ import { decorForMap } from './render/decor';
 import { TileFeed } from './render/tiles';
 import { UnitLayer } from './render/units';
 import { SelectionOverlay } from './render/selectionOverlay';
+import { BlitzOverlay } from './render/blitzOverlay';
 import { PillarOverlay } from './render/pillarOverlay';
 import { BattleFx } from './fx/battleFx';
 import { PixelFx } from './fx/pixelFx';
 import { FighterFx } from './fx/fighters';
+import { gameClockMs, TankFire } from './fx/tankFire';
 import { setSpriteState } from './render/pixelSprites';
 import { hueShift, prankView } from './fx/prankView';
 import { fogFor, type FogView } from './fog/fogView';
@@ -84,6 +86,8 @@ export interface RenderStats {
   frontSegments: number;
   /** ms this frame in the battle effects (fx/battleFx.ts: reading new events + drawing; part of msPrep + msOverlay) */
   msFx: number;
+  /** tank gun shots drawn this frame (fx/tankFire.ts) */
+  tankShots?: number;
 }
 
 export class Renderer {
@@ -113,6 +117,8 @@ export class Renderer {
   private units = new UnitLayer();
   /** selection box, warship placement area, spearhead preview (render/selectionOverlay.ts) */
   private selectionOverlay = new SelectionOverlay();
+  /** blitz pushes, held land and the blitz wedge preview (render/blitzOverlay.ts) */
+  private blitzOverlay = new BlitzOverlay();
   /** stance ranges, blockades, escorts, supported fronts, air zones (render/pillarOverlay.ts) */
   private pillarOverlay = new PillarOverlay();
   private selectedSet = new Set<number>();
@@ -125,6 +131,8 @@ export class Renderer {
   private fx = new BattleFx();
   /** pixel explosions, ship cannon fire, shells, flak and scorch craters (fx/pixelFx.ts) */
   private pfx = new PixelFx();
+  /** tank divisions in a fight: turrets on the enemy, gun fire, shells and bursts (fx/tankFire.ts) */
+  private tanks = new TankFire();
   /** fighters circling their airfields and carriers, flying patrols and interceptions (fx/fighters.ts) */
   private fighters = new FighterFx();
   private shookBy = { x: 0, y: 0 };
@@ -168,6 +176,11 @@ export class Renderer {
   /** Software rendering (no GPU): the light map is on (render/glmap.ts) and main.ts draws fewer frames. */
   get lite(): boolean {
     return this.gl?.lite ?? false;
+  }
+
+  /** Graphics quality now (Settings): software = no graphics card in use; lite = the light map is on. */
+  quality(): { software: boolean; lite: boolean } | null {
+    return this.gl ? { software: this.gl.liteAuto, lite: this.gl.lite } : null;
   }
 
   /** Call once per new game (builds the terrain and uploads the map textures). */
@@ -237,6 +250,7 @@ export class Renderer {
     this.deposits.fog = fog;
     this.fx.fog = fog;
     this.pfx.fog = fog;
+    this.tanks.fog = fog;
     this.fighters.fog = fog;
     // battle effects: read what is new, then shake the view a few px after a nearby nuke (undone after drawing)
     if (this.shookBy.x !== 0 || this.shookBy.y !== 0) this.unshake(camera);
@@ -286,6 +300,14 @@ export class Renderer {
       if (fogOn && fog) (this.map2d as Map2D | null)?.setFog(fog.tex, fog.bw, fog.bh);
     }
     if (gl) {
+      const lite = liteWanted(gl.liteAuto);
+      if (gl.lite !== lite) {
+        // graphics quality changed in Settings: the light map on or off, the canvas sized again, the palette again
+        gl.setLite(lite);
+        this.cssW = 0;
+        this.palSig = '';
+        this.updatePalette(state, ui);
+      }
       if (gl.style !== mapStyle()) {
         // the map style changed (render/mapStyle.ts): a new shader, and the palette again (fills depend on the style)
         gl.setStyle(mapStyle());
@@ -342,6 +364,9 @@ export class Renderer {
       this.units.selected = this.selectedSet;
     }
     const frac = this.units.subTick(nowMs, ui.paused, ui.speed);
+    // tanks in a fight train their turrets and fire (the unit layer draws the turrets where they point)
+    this.tanks.update(state, camera, nowMs, gameClockMs(state.tick, frac), this.units);
+    this.units.gunnery = this.tanks;
     // scorch craters and what of a death lies on the ground or the sea (an oil slick, a burnt hull), under the units
     this.pfx.drawGround(ctx, camera, state.tick + frac, d, nowMs, this.colors);
     const b = ui.mode.kind === 'build' ? ui.mode.building : null;
@@ -366,6 +391,7 @@ export class Renderer {
     this.overlays.effects(ctx, state, camera, frac);
     // shells, turret flashes and explosions over the units
     this.pfx.drawAir(ctx, camera, nowMs, this.units, d, this.colors);
+    this.tanks.draw(ctx, camera, nowMs, this.units, d);
     const hs = ui.hoverTile >= 0 ? camera.tileToScreen((ui.hoverTile % this.w) + 0.5, ((ui.hoverTile / this.w) | 0) + 0.5) : null;
     const hoverOwner = ui.hoverTile >= 0 && ui.hoverTile < state.map.owner.length ? this.knownOwner(state, ui.hoverTile) : 0;
     this.names.draw(ctx, state, camera, me, { hoverOwner, targeting: ui.mode.kind !== 'none', hover: hs }, nowMs, d);
@@ -383,13 +409,15 @@ export class Renderer {
     this.overlays.hoverAndPreview(ctx, state, camera, ui, snap, this.units, frac, d);
     this.pillarOverlay.draw(ctx, state, camera, ui, this.units, frac, nowMs);
     this.selectionOverlay.draw(ctx, state, camera, ui, nowMs);
+    this.blitzOverlay.draw(ctx, state, camera, ui, nowMs);
 
     const tMini = performance.now();
     this.stats.msOverlay = tMini - tOver;
     if (this.shookBy.x !== 0 || this.shookBy.y !== 0) this.unshake(camera);
     this.mini.draw(state, camera, this.feed, me, nowMs, fog);
     this.stats.msMinimap = performance.now() - tMini;
-    this.stats.msFx = this.fx.ms + this.pfx.ms;
+    this.stats.msFx = this.fx.ms + this.pfx.ms + this.tanks.ms;
+    this.stats.tankShots = this.tanks.drawnShots;
     this.stats.gl = !!this.gl;
     this.stats.glLite = this.gl?.lite ?? false;
     this.stats.glSkipped = this.gl?.skipped ?? 0;

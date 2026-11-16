@@ -12,12 +12,13 @@ import { buyWarBonds, fundAlly, hireMercenaries } from './spending';
 import { buildMany, cancelQueuedLevels, upgradeArea, upgradeBuildings } from './bulkbuild';
 import { launchBarrage } from './barrage';
 import { chooseDoctrine } from './doctrines';
-import { buildAircraft, launchParadrop, launchTransport, moveWarship } from './units';
+import { buildAircraft, launchCruise, launchParadrop, launchStealth, launchTransport, moveWarship } from './units';
 import { bombSalvo, missileSalvo, setAutoFire } from './airstrike';
 import { moveWarships, orderWarship } from './navy';
 import { buildTankDivision, clearDefenseCache, moveTankDivisions } from './tanks';
 import { clearNavyCache, setUnitStance } from './naval2';
 import { setDivisionMode } from './armor2';
+import { launchBlitz } from './blitz';
 import { setAirMission } from './airwings';
 import { clearIntelCache, reconFlight } from './variants';
 import { setAutoRecon } from './warTarget';
@@ -171,6 +172,12 @@ export function applyAction(state: GameState, playerId: number, action: Action):
       if ((action.silo !== -1 && !isTile(state, action.silo)) || !isTile(state, action.tile)) return FAIL('Invalid tile');
       if (action.kind !== 'rocket' && action.kind !== 'atomBomb') return FAIL('Invalid missile');
       return missileSalvo(state, playerId, action.silo, action.kind, action.tile, action.count);
+    case 'cruiseMissile':
+      if (!isTile(state, action.tile)) return FAIL('Invalid tile');
+      return launchCruise(state, playerId, action.ship, action.tile);
+    case 'stealthStrike':
+      if ((action.airfield !== -1 && !isTile(state, action.airfield)) || !isTile(state, action.tile)) return FAIL('Invalid tile');
+      return launchStealth(state, playerId, action.airfield, action.tile);
     case 'setAutoFire':
       if (action.silo !== -1 && !isTile(state, action.silo)) return FAIL('Invalid tile');
       return setAutoFire(state, playerId, action.silo, action.on);
@@ -242,6 +249,9 @@ export function applyAction(state: GameState, playerId: number, action: Action):
     case 'buildTankDivision':
       if (!isTile(state, action.tile)) return FAIL('Invalid tile');
       return buildTankDivision(state, playerId, action.tile);
+    case 'blitz':
+      if (!isTile(state, action.tile)) return FAIL('Invalid tile');
+      return launchBlitz(state, playerId, action.unitId, action.tile);
     case 'moveTankDivision':
       if (!isTile(state, action.tile)) return FAIL('Invalid tile');
       return moveTankDivisions(state, playerId, action.unitIds, action.tile);

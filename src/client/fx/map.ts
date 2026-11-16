@@ -22,7 +22,13 @@ export type FxKind =
   /** rocket / bomb impact: one shockwave ring */
   | 'shockwave'
   /** atom bomb: two wide rings (and the screen shake near the camera) */
-  | 'nukeWave';
+  | 'nukeWave'
+  /** a blitz launching (sim/blitz.ts): a smoke screen round the launch tile */
+  | 'smokeScreen'
+  /** a blitz under way: dust thrown up behind the head */
+  | 'trail'
+  /** a blitz under way: smoke drifting along the sides of its wedge */
+  | 'flankSmoke';
 
 export interface FxSpawn {
   kind: FxKind;
@@ -56,6 +62,9 @@ export const FX_INFO: Readonly<Record<FxKind, FxInfo>> = {
   fortDust: { dur: 1800, gapMs: 300, maxLive: 3, priority: 1 },
   shockwave: { dur: 900, gapMs: 120, maxLive: 4, priority: 1 },
   nukeWave: { dur: 2200, gapMs: 300, maxLive: 2, priority: 2 },
+  smokeScreen: { dur: 6000, gapMs: 100, maxLive: 4, priority: 1 },
+  trail: { dur: 1100, gapMs: 60, maxLive: 10, priority: 0 },
+  flankSmoke: { dur: 3000, gapMs: 110, maxLive: 18, priority: 0 },
 };
 
 export const FX_KINDS = Object.keys(FX_INFO) as FxKind[];
@@ -64,7 +73,7 @@ export const FX_KINDS = Object.keys(FX_INFO) as FxKind[];
 export const SHOCKWAVE_MIN_RADIUS = 4;
 
 const SHIPS: ReadonlySet<UnitType> = new Set<UnitType>(['transport', 'warship', 'tradeShip']);
-const PLANES: ReadonlySet<UnitType> = new Set<UnitType>(['bomber', 'fighter', 'transportPlane', 'reconPlane']);
+const PLANES: ReadonlySet<UnitType> = new Set<UnitType>(['bomber', 'fighter', 'transportPlane', 'reconPlane', 'stealthBomber']);
 
 export const isShip = (t: UnitType): boolean => SHIPS.has(t);
 export const isPlane = (t: UnitType): boolean => PLANES.has(t);
@@ -82,6 +91,8 @@ export function fxForEffect(e: Effect, mineCapture = false, lost: UnitType | nul
       return { kind: 'nukeWave', x: e.x, y: e.y, r: e.radius };
     case 'barrage':
       return { kind: 'dust', x: e.x, y: e.y, r: e.radius };
+    case 'smokeScreen':
+      return { kind: 'smokeScreen', x: e.x, y: e.y, r: e.radius };
     case 'explosion':
       if (e.radius >= SHOCKWAVE_MIN_RADIUS) return { kind: 'shockwave', x: e.x, y: e.y, r: e.radius };
       if (lost && isShip(lost)) return { kind: 'splash', x: e.x, y: e.y, r: 0 };

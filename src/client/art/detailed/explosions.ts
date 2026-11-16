@@ -1103,7 +1103,86 @@ export function blastAt(ctx: CanvasRenderingContext2D, kind: BlastKind, x: numbe
 /** How long a blast of `kind` lasts (ms) under motion `m`. */
 export const blastMs = (kind: BlastKind, m: MotionParams): number => durationOf(kind, m);
 
+/** Breakthrough's smoke (fx/map.ts FX_INFO smokeScreen and flankSmoke): clouds of the launch screen and of a flank puff. */
+export const SMOKE_SCREEN_CLOUDS = 24;
+export const FLANK_SMOKE_CLOUDS = 5;
+
+/**
+ * A blitz's smoke screen: a thick low wall of white-grey smoke bursting out round the launch tile in two rings,
+ * billowing, then thinning as it drifts downwind over a few seconds (pixel blobs on the map's grid, like the rest of
+ * the aftermath). Reduced motion: the clouds still swell and fade, but do not drift or rise.
+ */
+function drawSmokeScreen(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionParams): void {
+  const z = f.zoom;
+  const sc = scaleAt(z);
+  const g = gridOf(sc, f.dpr);
+  const k = Math.min(1.6, Math.max(0.7, z / 8));
+  const t = f.t;
+  const sd = f.seed * 53.1 + 2;
+  const linger = Math.max(0.5, Math.min(1.6, m.smokeLinger));
+  const drift = m.reduced ? 0 : 1;
+  const spread = Math.max(20, f.rt * z * 1.2);
+  const n = SMOKE_SCREEN_CLOUDS;
+  for (let j = 0; j < n; j++) {
+    // the canisters pop in quick order round the launch tile (an outer ring, then an inner one), each cloud swelling
+    // and fading on its own clock
+    const inner = j % 2 === 1;
+    const tj = clamp01((t - j * 0.015) / (0.75 / linger + 0.25));
+    if (tj <= 0 || tj >= 1) continue;
+    const ang = sd + (j * Math.PI * 2) / n + (rnd(sd, j) - 0.5) * 0.6;
+    const d = spread * (inner ? 0.45 : 1) * (0.25 + 0.75 * easeOut(Math.min(1, tj * 1.6))) * (0.6 + 0.4 * rnd(sd, j + 10));
+    const r = (3.2 + 6.5 * easeOut(tj)) * k * g.res;
+    const px = f.x + Math.cos(ang) * d + drift * tj * 8 * k * sc * WIND_X;
+    const py = f.y + Math.sin(ang) * d * 0.6 - drift * tj * 4 * k * sc;
+    drawBlob(ctx, tj < 0.12 ? 'dust' : 'smoke', r, j, px, py, g, 0.95 * (1 - tj * tj * tj) * (tj < 0.06 ? tj / 0.06 : 1));
+  }
+  // the pop of the canisters: a few bright specks at the start
+  if (t < 0.12) {
+    for (let j = 0; j < 5; j++) {
+      const ang = sd * 2 + j * 1.3;
+      ctx.globalAlpha = 1 - t / 0.12;
+      speck(ctx, f.x + Math.cos(ang) * spread * 0.3, f.y + Math.sin(ang) * spread * 0.2, g, 2, TRACER[0]);
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+/**
+ * Smoke along a Breakthrough's wedge as it surges: a small cluster of smoke clouds left beside its band, swelling and
+ * drifting off downwind (f.rt = its spread in tiles). Reduced motion: no drift or rise.
+ */
+function drawFlankSmoke(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionParams): void {
+  const z = f.zoom;
+  const sc = scaleAt(z);
+  const g = gridOf(sc, f.dpr);
+  const k = Math.min(1.6, Math.max(0.7, z / 8));
+  const t = f.t;
+  const sd = f.seed * 71.7 + 5;
+  const drift = m.reduced ? 0 : 1;
+  const spread = Math.max(6, f.rt * z * 0.5);
+  for (let j = 0; j < FLANK_SMOKE_CLOUDS; j++) {
+    const tj = clamp01((t - j * 0.06) / 0.76);
+    if (tj <= 0 || tj >= 1) continue;
+    const ang = sd + j * 2.4;
+    const d = spread * (0.3 + 0.7 * rnd(sd, j)) * (0.5 + 0.5 * easeOut(tj));
+    const r = (2.4 + 4.5 * easeOut(tj)) * k * g.res;
+    const px = f.x + Math.cos(ang) * d + drift * tj * 6 * k * sc * WIND_X;
+    const py = f.y + Math.sin(ang) * d * 0.6 - drift * tj * 3 * k * sc;
+    drawBlob(ctx, 'smoke', r, j + 40, px, py, g, 0.8 * (1 - tj * tj) * (tj < 0.1 ? tj / 0.1 : 1));
+  }
+}
+
 export const detailedExplosions: ExplosionArt = {
+  drawSmokeScreen(ctx, f, m) {
+    const prev = ctx.globalAlpha;
+    drawSmokeScreen(ctx, f, m);
+    ctx.globalAlpha = prev;
+  },
+  drawFlankSmoke(ctx, f, m) {
+    const prev = ctx.globalAlpha;
+    drawFlankSmoke(ctx, f, m);
+    ctx.globalAlpha = prev;
+  },
   durationMs: (kind, m) => durationOf(kind, m),
   draw(ctx, b, m) {
     drawBlast(ctx, b, m);

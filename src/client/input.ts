@@ -1,4 +1,5 @@
 // Mouse and keyboard handling on the map canvas.
+import { blitzClick } from './blitzUi';
 import { knownOwnerOf } from './fog/fogView';
 import { mapInputPaused, mapPointer, mapSide, prankView } from './fx/prankView';
 import { buildingsOf } from '../sim/buildings';
@@ -11,6 +12,8 @@ import type { Camera } from './camera';
 import { resolveBuild } from './simx';
 import { buildClickAction, effectiveCount } from './hud/buildMenu';
 import { strikeAction, strikeForKey, strikeTarget, type StrikeId } from './strikes';
+import { cruiseClick } from './cruise';
+import { stealthClick } from './stealth';
 import type { Renderer } from './renderer';
 import type { Dispatch, GetState, UiState } from './uiState';
 import { pillarPickClick } from './pillars';
@@ -412,6 +415,31 @@ export function setupInput(deps: InputDeps): () => void {
       case 'moveWarship':
         ok = dispatch({ type: 'moveWarship', unitId: mode.unitId, tile }).ok;
         break;
+      case 'cruise': {
+        // a cruise missile from the nearest loaded ship of the selection in reach (cruise.ts)
+        const a = cruiseClick(s, me, mode.ships, tile);
+        if (typeof a === 'string') {
+          ui.toast = { text: a, until: performance.now() + TOAST_MS };
+          ok = false;
+        } else ok = dispatch(a).ok;
+        break;
+      }
+      case 'stealth': {
+        // the stealth strike from the chosen airfield (stealth.ts)
+        const a = stealthClick(s, me, mode.airfield, tile);
+        if (typeof a === 'string') {
+          ui.toast = { text: a, until: performance.now() + TOAST_MS };
+          ok = false;
+        } else ok = dispatch(a).ok;
+        break;
+      }
+      case 'blitz': {
+        // a tank division's blitz (blitzUi.ts): the click is where it surges
+        const r = blitzClick(s, ui, dispatch, tile);
+        if (!r.ok && r.reason) ui.toast = { text: r.reason, until: performance.now() + TOAST_MS };
+        ok = r.ok;
+        break;
+      }
       case 'recon': {
         // a recon plane from the chosen airfield (hud/variantOrders.ts)
         const a = reconClickAction(s, h, mode.airfield, tile);

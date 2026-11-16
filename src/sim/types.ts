@@ -34,6 +34,14 @@ export function isTribe(p: { personality: Personality | null } | null | undefine
   return !!p && p.personality === 'tribe';
 }
 
+/**
+ * Planes enemy fighters shoot at (airfield cover, carriers, superiority patrols): bombers and cargo planes, and recon
+ * planes on their way out (one shot down before it gets there reveals nothing; on the way home it has done its job).
+ */
+export function isFighterTarget(u: { type: string; state: number }): boolean {
+  return u.type === 'bomber' || u.type === 'transportPlane' || (u.type === 'reconPlane' && u.state === 0);
+}
+
 export type BuildingType =
   | 'city'
   | 'farm'
@@ -113,8 +121,12 @@ export type UnitType =
   | 'fighter'
   | 'rocket'
   | 'atomBomb'
+  /** cruise missile (units.ts launchCruise): fired from a warship, destroyer or battleship of a nation with Naval Mastery */
+  | 'cruiseMissile'
   /** cargo plane carrying paratroopers from an airfield to a drop tile (Action 'paradrop') */
   | 'transportPlane'
+  /** stealth bomber (units.ts launchStealth): Air Mastery's stealth strike; SAMs never see it (stealthSight.ts) */
+  | 'stealthBomber'
   /** commandable armored division (tanks.ts): built at a Factory, moves over own land, launches spearheads */
   | 'tankDivision'
   /** recon plane (variants.ts, Action reconFlight): flies from an airfield, reveals a circle for a while, flies home */
@@ -420,6 +432,21 @@ export interface Unit {
    * this tick (the main front could not be reached); absent = none
    */
   detour?: number;
+  /**
+   * warship with Naval Mastery (units.ts launchCruise): tick from which its cruise missile cell is loaded again;
+   * absent = loaded (never fired)
+   */
+  cruiseReady?: number;
+  /**
+   * tank division (tanks.ts, armor2.ts): the tick its last spearhead ended, while it may still stand on that
+   * spearhead's ground (an automatic mode then pulls it off a thin tip or strikes on from there); cleared by a drive
+   * the player orders and by the next spearhead; absent = none
+   */
+  ended?: number;
+  /** tank division (blitz.ts): 1 while its running (or coming) spearhead is a blitz; absent = 0 */
+  blitz?: number;
+  /** tank division (blitz.ts): the tick from which it may blitz again; absent = ready */
+  blitzReady?: number;
 }
 
 /** A unit being built (navy.ts warships, tanks.ts divisions): it appears at `tile` at readyTick. */
@@ -492,6 +519,8 @@ export interface Player {
   traitorUntil: number;
   /** tick from which the next artillery barrage may be fired (Action 'barrage'; global per player) */
   barrageReadyTick: number;
+  /** Air Mastery (units.ts launchStealth): tick from which the stealth bomber may fly again; absent = never flown */
+  stealthReady?: number;
   embargoes: number[]; // player ids this player refuses to trade with
   /** mid-game doctrine (doctrines.ts); tribes never get one */
   doctrine: PlayerDoctrine;
@@ -697,6 +726,8 @@ export interface GameState {
    * them and NAVY_WAR_MEMORY seconds after (warships and divisions keep working between attacks). Absent = none.
    */
   warMemory?: number[];
+  /** land held by a blitz (blitz.ts): triples tile, owner, until tick; no attack, landing or spearhead takes it back */
+  blitzHolds?: number[];
   /** air wings, air-support zones and strategic raid damage (airwings.ts); absent = none yet */
   air?: AirState;
   /** dug-in borders (trenches.ts); created by createGame (absent only in hand-built test states = no trenches) */
@@ -872,6 +903,8 @@ export interface AirResult {
   buildings: number;
   kills: number;
   gold: number;
+  /** bombers of this result that struck where the victim's fighters guard the sky (air superiority); absent = 0 */
+  guarded?: number;
 }
 
 /** One airfield's Air cover record (airwings.ts). */
@@ -903,7 +936,8 @@ export interface TrenchState {
 
 export interface Effect {
   /** 'barrage': artillery shells landing on a disc (radius = BARRAGE_RADIUS) */
-  kind: 'explosion' | 'nuke' | 'shot' | 'capture' | 'barrage';
+  /** 'smokeScreen': a blitz's smoke at its launch tile (blitz.ts; radius = BLITZ.width) */
+  kind: 'explosion' | 'nuke' | 'shot' | 'capture' | 'barrage' | 'smokeScreen';
   x: number;
   y: number;
   radius: number;
@@ -939,6 +973,10 @@ export type Action =
   | { type: 'bomb'; airfield: number; tile: number; count?: number }
   /** missiles at tile: silo = an own silo tile, or -1 = every own silo (nearest first); count as for 'bomb' */
   | { type: 'launchMissile'; silo: number; kind: 'rocket' | 'atomBomb'; tile: number; count?: number }
+  /** a cruise missile from an own warship, destroyer or battleship (Naval Mastery) at a land tile within its reach (units.ts) */
+  | { type: 'cruiseMissile'; ship: number; tile: number }
+  /** the stealth strike (Air Mastery): the stealth bomber flies from an own airfield (-1 = the nearest in reach) to tile (units.ts) */
+  | { type: 'stealthStrike'; airfield: number; tile: number }
   /** paratroopers: `troops` infantry fly from an own airfield (tile) to an enemy / neutral land tile (units.ts) */
   | { type: 'paradrop'; airfield: number; tile: number; troops: number }
   /** artillery barrage on an enemy tile near your border (barrage.ts) */
@@ -979,6 +1017,8 @@ export type Action =
   | { type: 'buildTankDivision'; tile: number }
   /** move divisions over own land; a tile of enemy / neutral land at the border launches a spearhead (tanks.ts) */
   | { type: 'moveTankDivision'; unitIds: number[]; tile: number }
+  /** a tank division's blitz (blitz.ts, protocol 21): Armor Mastery, ready, a spearhead target */
+  | { type: 'blitz'; unitId: number; tile: number }
   /** owner console (admin.ts): online the server relays it only from an authenticated admin session */
   /** set the stance of own warships (naval2.ts) */
   /**

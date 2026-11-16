@@ -10,14 +10,18 @@
 //   ground  (C, "Real ground", the default) the pixel ground everywhere, nations shown by thick coloured border bands
 //           and a light tint in their own hue (palette.ts groundTint), stronger far out, so a blast lands on real ground
 //
-// Picked at startup: ?map=a|b|c|today in the page address (also remembered in this browser), else the remembered
-// pick (localStorage 'fa.mapStyle'), else the build's VITE_MAP_STYLE, else real ground. setMapStyle switches at run time.
+// Picked at startup: ?map=a|b|c|today in the page address (for this page only), else the build's VITE_MAP_STYLE,
+// else real ground. Settings has no map look: every player gets the default, and no pick is saved or read back
+// (settings/store.ts LOOK_KEYS). setMapStyle switches at run time, for this page (the test hooks).
+
+import { getSettings, setSetting } from '../settings/store';
 
 export type MapStyle = 'today' | 'pixel' | 'muted' | 'ground';
 export const MAP_STYLES: readonly MapStyle[] = ['today', 'pixel', 'muted', 'ground'];
 export const DEFAULT_MAP_STYLE: MapStyle = 'ground';
 /** The order of the Menu's Map look buttons: the default first, then the classic look, then the other two. */
 export const MAP_STYLE_MENU: readonly MapStyle[] = ['ground', 'today', 'pixel', 'muted'];
+/** Where the pick was kept before settings/store.ts (no longer read). */
 export const MAP_STYLE_KEY = 'fa.mapStyle';
 /** Button words for each style (the Menu's Map look switch). */
 export const MAP_STYLE_SHORT: Record<MapStyle, string> = {
@@ -40,23 +44,23 @@ export function parseMapStyle(text: string | null | undefined): MapStyle | null 
   return null;
 }
 
-function startStyle(): MapStyle {
+/** The style a page address asks for (?map=a|b|c|today), once per page. */
+let urlChecked = false;
+function urlStyle(): void {
+  if (urlChecked) return;
+  urlChecked = true;
   let fromUrl: MapStyle | null = null;
   try {
     if (typeof location !== 'undefined') fromUrl = parseMapStyle(new URLSearchParams(location.search).get('map'));
   } catch {
     fromUrl = null;
   }
-  if (fromUrl) {
-    remember(fromUrl);
-    return fromUrl;
-  }
-  try {
-    const kept = parseMapStyle(typeof localStorage !== 'undefined' ? localStorage.getItem(MAP_STYLE_KEY) : null);
-    if (kept) return kept;
-  } catch {
-    // storage blocked: fall through
-  }
+  // for this page only (settings/store.ts never saves the map look)
+  if (fromUrl) setSetting('mapStyle', fromUrl);
+}
+
+/** The build's style (VITE_MAP_STYLE), else real ground: what every player gets. */
+export function buildMapStyle(): MapStyle {
   try {
     const env = (import.meta as ImportMeta).env;
     const built = parseMapStyle(env?.VITE_MAP_STYLE);
@@ -67,32 +71,28 @@ function startStyle(): MapStyle {
   return DEFAULT_MAP_STYLE;
 }
 
-function remember(s: MapStyle): void {
-  try {
-    if (typeof localStorage === 'undefined') return;
-    if (s === DEFAULT_MAP_STYLE) localStorage.removeItem(MAP_STYLE_KEY);
-    else localStorage.setItem(MAP_STYLE_KEY, s);
-  } catch {
-    // storage blocked: the pick lasts for this page only
-  }
-}
-
 let current: MapStyle | null = null;
 let version = 0;
 
-/** The map style now. */
+/** The map style now: the page address or a switch on this page (settings/store.ts), else the build's. */
 export function mapStyle(): MapStyle {
-  if (current === null) current = startStyle();
+  urlStyle();
+  const s = getSettings().mapStyle ?? buildMapStyle();
+  if (s !== current) {
+    if (current !== null) version++;
+    current = s;
+  }
   return current;
 }
-/** Switches the map style (the map layer rebuilds its shader on the next frame) and remembers it in this browser. */
+/** Switches the map style (the map layer rebuilds its shader on the next frame), for this page only. */
 export function setMapStyle(s: MapStyle): void {
   if (!MAP_STYLES.includes(s)) return;
-  current = s;
-  version++;
-  remember(s);
+  urlStyle();
+  setSetting('mapStyle', s);
+  mapStyle();
 }
 /** Changes whenever the style changes. */
 export function mapStyleVersion(): number {
+  mapStyle();
   return version;
 }

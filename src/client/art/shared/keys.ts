@@ -29,14 +29,15 @@ export type SpriteKey =
   | 'fighter'
   | 'transportPlane'
   | 'reconPlane'
+  | 'stealthBomber'
   | 'rocket'
   | 'atomBomb';
 
-export const SPRITE_KEYS: readonly SpriteKey[] = ['warship', 'destroyer', 'battleship', 'submarine', 'carrier', 'transport', 'tradeShip', 'tankDivision', 'lightTank', 'heavyTank', 'bomber', 'groundAttack', 'heavyBomber', 'fighter', 'transportPlane', 'reconPlane', 'rocket', 'atomBomb'];
+export const SPRITE_KEYS: readonly SpriteKey[] = ['warship', 'destroyer', 'battleship', 'submarine', 'carrier', 'transport', 'tradeShip', 'tankDivision', 'lightTank', 'heavyTank', 'bomber', 'groundAttack', 'heavyBomber', 'fighter', 'transportPlane', 'reconPlane', 'stealthBomber', 'rocket', 'atomBomb'];
 
 export const SHIP_KEYS: readonly SpriteKey[] = ['warship', 'destroyer', 'battleship', 'submarine', 'carrier', 'transport', 'tradeShip'];
 export const LAND_KEYS: readonly SpriteKey[] = ['tankDivision', 'lightTank', 'heavyTank'];
-export const PLANE_KEYS: readonly SpriteKey[] = ['bomber', 'groundAttack', 'heavyBomber', 'fighter', 'transportPlane', 'reconPlane'];
+export const PLANE_KEYS: readonly SpriteKey[] = ['bomber', 'groundAttack', 'heavyBomber', 'fighter', 'transportPlane', 'reconPlane', 'stealthBomber'];
 export const MISSILE_KEYS: readonly SpriteKey[] = ['rocket', 'atomBomb'];
 
 /** The art categories that draw units. */
@@ -47,6 +48,8 @@ export function spriteKey(type: UnitType, variant: UnitVariant | undefined): Spr
   if (type === 'warship') return variant === 'destroyer' || variant === 'battleship' || variant === 'submarine' || variant === 'carrier' ? variant : 'warship';
   if (type === 'tankDivision') return variant === 'lightTank' || variant === 'heavyTank' ? variant : 'tankDivision';
   if (type === 'bomber') return variant === 'groundAttack' || variant === 'heavyBomber' ? variant : 'bomber';
+  // the cruise missile draws as the rocket, smaller (render/units.ts); the detailed style animates its own (art/detailed/cruise.ts)
+  if (type === 'cruiseMissile') return 'rocket';
   return type;
 }
 

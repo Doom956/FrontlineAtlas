@@ -6,16 +6,17 @@
 // tile of a nation we attack that touches our land is where that attack is fought. A warship within
 // NAVY_SUPPORT_RANGE of such a tile supports it (naval2.navalSupportAt), a support strike centred within
 // AIR.supportRadius of one bombs it.
-import { AIR, ARSENAL, NAVY_BLOCKADE_RANGE, NAVY_REACH, NAVY_SUPPORT_RANGE, NAVY_XP_SINK, TANK_DIVISION_TROOPS, WARSHIP_RANGE } from '../src/sim/config';
+import { AIR, ARMOR_SUPPORT_READY, ARSENAL, TANK_FALLBACK_PAUSE, TICKS_PER_SECOND, NAVY_BLOCKADE_RANGE, NAVY_REACH, NAVY_SUPPORT_RANGE, NAVY_XP_SINK, TANK_DIVISION_TROOPS, WARSHIP_RANGE } from '../src/sim/config';
 import { buildingAt, buildingsOf, isDisabled, samRadius } from '../src/sim/buildings';
 import { areAllied } from '../src/sim/diplomacy';
 import { atPeace } from '../src/sim/rules';
 import { atWar, supportingShips, warshipMaxHp } from '../src/sim/naval2';
-import { airPatrolRadius, airState } from '../src/sim/airwings';
+import { airPatrolRadius, airState, airSuperiorityAt, fightersOver } from '../src/sim/airwings';
 import { unitVisibleTo } from '../src/sim/techtree';
 import { minefieldAt, minefields } from '../src/sim/specials';
 import { navalBlockadeMul, navalCanTarget, navalSupportMul } from '../src/sim/variants';
 import { coastCount } from '../src/sim/territory';
+import { frontTiles } from '../src/sim/combat';
 import { isTribe } from '../src/sim/types';
 import type { GameEvent, GameState, Unit } from '../src/sim/types';
 
@@ -153,6 +154,47 @@ export interface AttackStats {
     /** divisions overrun while their owner's land around them was under an enemy attack */
     overrunDefending: number;
   };
+  /** Tank divisions, second cut (at war = naval2.atWar with a nation: an attack either way now or in the last 30 s). */
+  armor: {
+    /** 10 s samples of divisions at war: spearheading, driving to a launch tile, driving (not to refit), driving to
+     *  refit, holding within FRONT_TILES of a foe's land touching ours, holding elsewhere worn (< ready) / ready */
+    war: number;
+    attack: number;
+    launch: number;
+    toFront: number;
+    retreat: number;
+    holdFront: number;
+    holdRefit: number;
+    holdAway: number;
+    /** spearheads started; with another own division spearheading, launching or started in the last 20 s within
+     *  COMPANY_TILES of it */
+    spearheads: number;
+    withCompany: number;
+    /** spearheads ended: tiles taken by them; ended with fewer than 5 tiles */
+    ended: number;
+    spearTiles: number;
+    shallow: number;
+    /** encirclements (events) by the counted owners: events, pockets, tiles */
+    pocketEvents: number;
+    pockets: number;
+    pocketTiles: number;
+    /** fell back under attack (events) */
+    fellBack: number;
+    /** spearheads by anyone into a counted owner's land: ended, tiles taken */
+    enemySpears: number;
+    enemySpearTiles: number;
+    /** why own spearheads ended */
+    ends: Record<string, number>;
+    /** holding away samples by why: hold mode, refit mode, support waiting on a failed route, no land border with a
+     *  nation at war, support with its front tile over 36 tiles away, support near its front tile (that tile is
+     *  no longer at a live front) */
+    away: Record<string, number>;
+    /** overrun divisions by where they were the tick before */
+    overrunWhere: Record<string, number>;
+    /** blitzes started (blitz.ts); tiles their spearheads took (seen at the last tick of the spearhead) */
+    blitzes?: number;
+    blitzTiles?: number;
+  };
   bombers: Record<MissionKey, BomberStats>;
   /** strategic / manual strike aims by building type at the aim tile */
   strikeTypes: Record<string, number>;
@@ -160,6 +202,47 @@ export interface AttackStats {
    *  where the nation had bombers at an airfield */
   mainAirOwn: number;
   mainAirZone: number;
+  /** fighters and air superiority (counted owners) */
+  air?: AirFightStats;
+}
+
+/** Fighters, recon and bombing under air superiority (airwings.airSuperiorityAt). */
+export interface AirFightStats {
+  /** fighters bought (an airfield's stored fighters going up) */
+  fightersBought: number;
+  /** recon flights flown, reached their target, shot down */
+  reconFlights: number;
+  reconArrived: number;
+  reconLost: number;
+  /** planes of any owner shot down by counted owners: by airfield / patrol fighters, carrier fighters, SAM sites;
+   *  of the fighter and carrier kills, recon planes */
+  fighterKills: number;
+  carrierKills: number;
+  samKills: number;
+  reconKills: number;
+  /** bomber arrivals of counted owners, of them over a tile the victim's fighters guard; troops killed and buildings
+   *  hit by those arrivals (airfield strike results), split the same way */
+  arrivals: number;
+  guardedArrivals: number;
+  kills: number;
+  guardedKills: number;
+  buildings: number;
+  guardedBuildings: number;
+  /** arrivals by the victim's fighters over the aim: none, fewer than the minimum, enough but matched by ours */
+  arrNoFighters?: number;
+  arrFewFighters?: number;
+  arrContested?: number;
+  /** of arrNoFighters: the victim had no finished airfield at all / airfields but no fighter stored anywhere */
+  arrNoAirfield?: number;
+  arrNoneStored?: number;
+  /** 10 s samples of finished airfields of counted owners: count, fighters stored, with the minimum or more */
+  afSamples?: number;
+  afFighters?: number;
+  afEnough?: number;
+}
+
+function newAirFight(): AirFightStats {
+  return { fightersBought: 0, reconFlights: 0, reconArrived: 0, reconLost: 0, fighterKills: 0, carrierKills: 0, samKills: 0, reconKills: 0, arrivals: 0, guardedArrivals: 0, kills: 0, guardedKills: 0, buildings: 0, guardedBuildings: 0, arrNoFighters: 0, arrFewFighters: 0, arrContested: 0, afSamples: 0, afFighters: 0, afEnough: 0 };
 }
 
 function newShipKind(): ShipKindStats {
@@ -184,10 +267,12 @@ export function newAttackStats(): AttackStats {
     ships: { built: 0, sunk: 0, ownerGone: 0, sunkByShip: 0, sunkByMine: 0, sunkNoXp: 0, sunkCrippled: 0, alive: 0, atWar: 0, onFront: 0, attacking: 0, attackingOnFront: 0, attackingStation: 0, station: 0, stationOnFront: 0, outnumbered: 0, escorting: 0, mainCoastal: 0, mainSupported: 0 },
     transports: { invasions: 0, sunk: 0, troopsSunk: 0, repelled: 0, atSea: 0, escorted: 0 },
     tanks: { formed: 0, overrun: [0, 0, 0], spent: 0, ownerGone: 0, overrunAfterSpearhead: 0, holdSupport: 0, holdAtStation: 0, atWar: 0, spearhead: 0, holdFront: 0, holdFar: 0, driving: 0, worn: 0, overrunDefending: 0 },
+    armor: { war: 0, attack: 0, launch: 0, toFront: 0, retreat: 0, holdFront: 0, holdRefit: 0, holdAway: 0, spearheads: 0, withCompany: 0, ended: 0, spearTiles: 0, shallow: 0, pocketEvents: 0, pockets: 0, pocketTiles: 0, fellBack: 0, enemySpears: 0, enemySpearTiles: 0, ends: {}, away: {}, overrunWhere: {} },
     bombers: { manual: b(), support: b(), strategic: b(), cover: b() },
     strikeTypes: {},
     mainAirOwn: 0,
     mainAirZone: 0,
+    air: newAirFight(),
   };
 }
 
@@ -220,7 +305,22 @@ interface DivSeen {
   share: number;
   /** last tick seen spearheading */
   spear: number;
+  /** state at the last tick */
+  st: number;
+  /** own land under 3 tiles deep in one of the 4 directions at the last tick */
+  thin: boolean;
+  /** last tick it fell back under attack (its retry pause set to TANK_FALLBACK_PAUSE) */
+  fell: number;
+  /** on thin ground and its own land around it is a piece of under 60 tiles (cut off) */
+  cut: boolean;
+  /** its running spearhead is a blitz; tiles it has taken so far */
+  blitz: boolean;
+  cargo: number;
 }
+/** Division samples: "at the front" = within this many tiles of a foe's land touching ours. */
+const FRONT_TILES = 12;
+/** A spearhead has company when another own division is spearheading / launching / started within this many tiles. */
+const COMPANY_TILES = 30;
 interface ShipSeen {
   owner: number;
   xp: number;
@@ -254,6 +354,8 @@ export class AttackProbe {
   readonly stats = newAttackStats();
   private readonly ships = new Map<number, ShipSeen>();
   private readonly divs = new Map<number, DivSeen>();
+  /** spearhead starts of the last 20 s: owner, tick, x, y */
+  private starts: { owner: number; tick: number; x: number; y: number }[] = [];
   private readonly bombers = new Map<number, BomberSeen>();
   /** attack targets per attacker (nations only), rebuilt per use */
   private targets = new Map<number, Set<number>>();
@@ -335,8 +437,18 @@ export class AttackProbe {
     return false;
   }
 
-  /** Before tick(): nothing to record (the unit maps hold the last state). */
-  beforeTick(): void {}
+  /** airfield building id -> fighters stored at the last tick (counted owners) */
+  private afFighters = new Map<number, number>();
+  /** recon planes of counted owners seen: id -> reached its target */
+  private recon = new Map<number, boolean>();
+  /** airfield strike results before the tick: airfield id -> first tick, kills, buildings */
+  private resultSnap = new Map<number, { start: number; kills: number; buildings: number }>();
+
+  /** Before tick(): the airfield strike results as they were (afterTick adds what this tick's arrivals did). */
+  beforeTick(): void {
+    this.resultSnap.clear();
+    for (const r of this.state.air?.results ?? []) this.resultSnap.set(r.airfield, { start: r.start, kills: r.kills, buildings: r.buildings });
+  }
 
   /** After tick(): new units, units gone (sunk, overrun), arrivals, events. Call before the caller clears events. */
   afterTick(events: readonly GameEvent[]): void {
@@ -344,9 +456,22 @@ export class AttackProbe {
     const s = this.stats;
     this.noteAttacks();
     const alive = new Set<number>();
+    /** airfield building id -> a bomber of it arrived this tick (true: one over a guarded tile) */
+    const arrivedFrom = new Map<number, boolean>();
     for (const u of state.units) {
       if (u.hp <= 0 || !this.counted(u.owner)) continue;
       alive.add(u.id);
+      if (u.type === 'reconPlane') {
+        const air = (s.air ??= newAirFight());
+        if (!this.recon.has(u.id)) {
+          this.recon.set(u.id, false);
+          air.reconFlights++;
+        }
+        if (u.state === 1 && !this.recon.get(u.id)) {
+          this.recon.set(u.id, true);
+          air.reconArrived++;
+        }
+      }
       if (u.type === 'warship') {
         let seen = this.ships.get(u.id);
         if (!seen) {
@@ -358,11 +483,25 @@ export class AttackProbe {
       } else if (u.type === 'tankDivision') {
         let seen = this.divs.get(u.id);
         if (!seen) {
-          this.divs.set(u.id, (seen = { owner: u.owner, share: 1, spear: -1e9 }));
+          this.divs.set(u.id, (seen = { owner: u.owner, share: 1, spear: -1e9, st: u.state, thin: false, fell: -1e9, cut: false, blitz: false, cargo: 0 }));
           s.tanks.formed++;
         }
         seen.share = (u.troops.infantry + u.troops.armor + u.troops.artillery) / FULL_DIVISION;
         if (u.state === 3) seen.spear = state.tick;
+        if (u.state === 3 && seen.st !== 3) {
+          this.spearStart(u);
+          seen.blitz = !!u.blitz;
+          if (seen.blitz) s.armor.blitzes = (s.armor.blitzes ?? 0) + 1;
+        }
+        if (u.state === 3) seen.cargo = u.cargo;
+        else if (seen.st === 3 && seen.blitz) {
+          s.armor.blitzTiles = (s.armor.blitzTiles ?? 0) + seen.cargo;
+          seen.blitz = false;
+        }
+        seen.st = u.state;
+        seen.thin = this.thinAt(u);
+        seen.cut = seen.thin && this.cutOff(u);
+        if (u.retryTick === state.tick + TANK_FALLBACK_PAUSE * TICKS_PER_SECOND) seen.fell = state.tick;
       } else if (u.type === 'bomber') {
         let seen = this.bombers.get(u.id);
         if (!seen) {
@@ -386,6 +525,25 @@ export class AttackProbe {
           seen.arrived = true;
           const bs = s.bombers[seen.mission];
           bs.arrivals++;
+          // Over a tile the victim's fighters guard (air superiority)?
+          const af = buildingAt(state, u.home);
+          const victim = state.map.owner[seen.aim];
+          const guarded = victim > 0 && hostile(state, u.owner, victim) && airSuperiorityAt(state, victim, u.owner, seen.aim);
+          const air = (s.air ??= newAirFight());
+          air.arrivals++;
+          if (guarded) air.guardedArrivals++;
+          else if (victim > 0 && hostile(state, u.owner, victim)) {
+            const def = fightersOver(state, victim, seen.aim);
+            if (def <= 0) {
+              air.arrNoFighters = (air.arrNoFighters ?? 0) + 1;
+              const afs = buildingsOf(state, victim, 'airfield').filter((b) => b.buildLeft <= 0);
+              if (!afs.length) air.arrNoAirfield = (air.arrNoAirfield ?? 0) + 1;
+              else if (!afs.some((b) => b.fighters > 0)) air.arrNoneStored = (air.arrNoneStored ?? 0) + 1;
+            }
+            else if (def < AIR.superiorityMinFighters) air.arrFewFighters = (air.arrFewFighters ?? 0) + 1;
+            else air.arrContested = (air.arrContested ?? 0) + 1;
+          }
+          if (af) arrivedFrom.set(af.id, (arrivedFrom.get(af.id) ?? false) || guarded);
           if (seen.intoSam) bs.intoSamArrived++;
           if (seen.mission !== 'strategic') {
             const w = state.map.width;
@@ -412,6 +570,7 @@ export class AttackProbe {
       else if (e.kind === 'unitLost' && /warship hit a mine/.test(e.message)) s.ships.sunkByMine++;
       else if ((e.kind as string) === 'spearheadEnded' && /the division is spent/.test(e.message)) s.tanks.spent++;
     }
+    this.armorEvents(events);
     for (const [id, seen] of this.ships) {
       if (id < 0 || alive.has(id)) continue;
       this.ships.delete(id);
@@ -435,12 +594,112 @@ export class AttackProbe {
       if (n <= 0) continue;
       overrun.set(seen.owner, n - 1);
       s.tanks.overrun[seen.share < 0.1 ? 0 : seen.share < 0.4 ? 1 : 2]++;
+      const where = `${state.tick - seen.spear <= 600 ? 'after a spearhead, ' : ''}${seen.st === 1 || seen.st === 2 ? 'driving' : seen.cut ? 'cut off' : seen.thin ? 'on thin ground' : 'on solid ground'}${state.tick - seen.fell <= 300 ? ', fell back lately' : ''}`;
+      s.armor.overrunWhere[where] = (s.armor.overrunWhere[where] ?? 0) + 1;
       if (state.tick - seen.spear <= 600) s.tanks.overrunAfterSpearhead++;
       if (state.attacks.some((a) => a.target === seen.owner && a.attacker > 0 && !isTribe(state.players[a.attacker]))) s.tanks.overrunDefending++;
     }
     for (const id of this.bombers.keys()) if (!alive.has(id)) this.bombers.delete(id);
+    this.airFight(events, arrivedFrom, alive);
     this.naval();
     this.incoming();
+  }
+
+  /** Fighters bought, planes shot down, recon lost, what this tick's bomber arrivals did (guarded or not). */
+  private airFight(events: readonly GameEvent[], arrivedFrom: Map<number, boolean>, alive: Set<number>): void {
+    const state = this.state;
+    const air = (this.stats.air ??= newAirFight());
+    for (const p of state.players) {
+      if (!p.alive || !this.counted(p.id)) continue;
+      for (const b of buildingsOf(state, p.id, 'airfield')) {
+        const was = this.afFighters.get(b.id) ?? 0;
+        if (b.fighters > was) air.fightersBought += b.fighters - was;
+        this.afFighters.set(b.id, b.fighters);
+      }
+    }
+    for (const e of events) {
+      if (e.kind !== 'unitLost') continue;
+      const m = /^(.*)'s (SAM site|fighters|carrier fighters) shot down an? (.+?) of (.+)$/.exec(e.message);
+      if (!m) continue;
+      const [owner, by] = e.players;
+      if (m[3].startsWith('recon plane') && this.counted(owner)) air.reconLost++;
+      if (!this.counted(by)) continue;
+      if (m[2] === 'SAM site') air.samKills++;
+      else {
+        if (m[2] === 'fighters') air.fighterKills++;
+        else air.carrierKills++;
+        if (m[3].startsWith('recon plane')) air.reconKills++;
+      }
+    }
+    for (const id of [...this.recon.keys()]) if (!alive.has(id)) this.recon.delete(id);
+    if (!arrivedFrom.size) return;
+    for (const r of state.air?.results ?? []) {
+      if (r.tick !== state.tick - 1 || !arrivedFrom.has(r.airfield) || !this.counted(r.owner)) continue;
+      const prev = this.resultSnap.get(r.airfield);
+      const same = !!prev && prev.start === r.start;
+      const dk = r.kills - (same ? prev!.kills : 0);
+      const db = r.buildings - (same ? prev!.buildings : 0);
+      air.kills += dk;
+      air.buildings += db;
+      if (arrivedFrom.get(r.airfield)) {
+        air.guardedKills += dk;
+        air.guardedBuildings += db;
+      }
+    }
+  }
+
+  /** A counted division started a spearhead this tick: company within COMPANY_TILES (spearheading, launching, or
+   *  started in the last 20 s). */
+  private spearStart(u: Unit): void {
+    const state = this.state;
+    const a = this.stats.armor;
+    a.spearheads++;
+    const r2 = COMPANY_TILES * COMPANY_TILES;
+    this.starts = this.starts.filter((q) => state.tick - q.tick <= 200);
+    let company = this.starts.some((q) => q.owner === u.owner && (q.x - u.x) ** 2 + (q.y - u.y) ** 2 <= r2);
+    if (!company) {
+      for (const o of state.units) {
+        if (o === u || o.hp <= 0 || o.type !== 'tankDivision' || o.owner !== u.owner || (o.state !== 3 && o.state !== 2)) continue;
+        if ((o.x - u.x) ** 2 + (o.y - u.y) ** 2 <= r2) {
+          company = true;
+          break;
+        }
+      }
+    }
+    if (company) a.withCompany++;
+    this.starts.push({ owner: u.owner, tick: state.tick, x: u.x, y: u.y });
+  }
+
+  /** Spearhead ends (tiles, why), encirclements and fall-backs from this tick's events. */
+  private armorEvents(events: readonly GameEvent[]): void {
+    const a = this.stats.armor;
+    for (const e of events) {
+      const o = e.players[0];
+      if ((e.kind as string) === 'spearheadEnded') {
+        const m = /'s spearhead (.*?): (\d+) tiles taken/.exec(e.message);
+        if (!m) continue;
+        const tiles = Number(m[2]);
+        if (this.counted(o)) {
+          a.ended++;
+          a.spearTiles += tiles;
+          if (tiles < 5) a.shallow++;
+          const why = m[1].replace(/^stalled in .*/, 'stalled').replace(/^stopped by .*/, 'stopped by a fort');
+          a.ends[why] = (a.ends[why] ?? 0) + 1;
+        }
+        const v = e.players[1];
+        if (v !== undefined && v !== o && this.counted(v)) {
+          a.enemySpears++;
+          a.enemySpearTiles += tiles;
+        }
+      } else if (e.kind === 'info' && this.counted(o)) {
+        const m = /tanks encircled (a pocket|(\d+) pockets) of .*: (\d+) tiles collapse/.exec(e.message);
+        if (m) {
+          a.pocketEvents++;
+          a.pockets += m[2] ? Number(m[2]) : 1;
+          a.pocketTiles += Number(m[3]);
+        } else if (/tank division fell back under attack/.test(e.message)) a.fellBack++;
+      }
+    }
   }
 
   /** Kills by ship type (xp jumps matched to ships gone this tick), landings with naval support. */
@@ -606,8 +865,105 @@ export class AttackProbe {
     }
   }
 
+  private foesTick = -1;
+  private foes = new Map<number, Set<number>>();
+  /** Nations `me` is at war with (naval2.atWar: an attack either way now or lately), cached per tick. */
+  private foesOf(me: number): Set<number> {
+    const state = this.state;
+    if (this.foesTick !== state.tick) {
+      this.foesTick = state.tick;
+      this.foes = new Map();
+    }
+    let f = this.foes.get(me);
+    if (f) return f;
+    f = new Set();
+    for (const p of state.players) if (p.id > 0 && p.id !== me && p.alive && !isTribe(p) && atWar(state, me, p.id)) f.add(p.id);
+    this.foes.set(me, f);
+    return f;
+  }
+  /** One 10 s sample of a counted division (second cut). */
+  private sampleArmor(u: Unit): void {
+    const foes = this.foesOf(u.owner);
+    if (!foes.size) return;
+    const a = this.stats.armor;
+    a.war++;
+    if (u.state === 3) a.attack++;
+    else if (u.state === 2) a.launch++;
+    else if (u.state === 1) {
+      if (u.mode === 'refit') a.retreat++;
+      else a.toFront++;
+    } else if (this.frontNear(u.owner, foes, u.x, u.y, FRONT_TILES)) a.holdFront++;
+    else if ((u.troops.infantry + u.troops.armor + u.troops.artillery) / FULL_DIVISION < ARMOR_SUPPORT_READY) a.holdRefit++;
+    else {
+      a.holdAway++;
+      const why = this.awayWhy(u, foes);
+      a.away[why] = (a.away[why] ?? 0) + 1;
+    }
+  }
+  /** Own land under 3 tiles deep from u in one of the 4 directions (armor2's interior test). */
+  private thinAt(u: Unit): boolean {
+    const map = this.state.map;
+    const { width: w, height: h, owner } = map;
+    const x = Math.round(u.x);
+    const y = Math.round(u.y);
+    const own = (xx: number, yy: number): boolean => xx >= 0 && yy >= 0 && xx < w && yy < h && owner[yy * w + xx] === u.owner;
+    return !(own(x + 3, y) && own(x - 3, y) && own(x, y + 3) && own(x, y - 3));
+  }
+  /** Own land 4-connected to u's tile is a piece of under 60 tiles. */
+  private cutOff(u: Unit): boolean {
+    const map = this.state.map;
+    const { width: w, height: h, owner } = map;
+    const t0 = Math.round(u.y) * w + Math.round(u.x);
+    if (owner[t0] !== u.owner) return false;
+    const seen = new Set<number>([t0]);
+    const q = [t0];
+    for (let i = 0; i < q.length; i++) {
+      if (q.length >= 60) return false;
+      const t = q[i];
+      const x = t % w;
+      const y = (t / w) | 0;
+      for (const n of [x > 0 ? t - 1 : -1, x < w - 1 ? t + 1 : -1, y > 0 ? t - w : -1, y < h - 1 ? t + w : -1]) {
+        if (n < 0 || seen.has(n) || owner[n] !== u.owner) continue;
+        seen.add(n);
+        q.push(n);
+      }
+    }
+    return true;
+  }
+  private awayWhy(u: Unit, foes: Set<number>): string {
+    const state = this.state;
+    const mode = u.mode ?? 'hold';
+    if (mode === 'hold') return 'hold mode';
+    if (mode === 'refit') return 'refit mode';
+    const w0 = state.map.width;
+    const share = (u.troops.infantry + u.troops.armor + u.troops.artillery) / FULL_DIVISION;
+    if (share < 0.85 && buildingsOf(state, u.owner, 'factory').some((b) => b.owner === u.owner && (b.tile % w0 - u.x) ** 2 + (((b.tile / w0) | 0) - u.y) ** 2 <= 36)) return 'refitting at a Factory';
+    if ((u.retryTick ?? 0) > state.tick) return state.tick - (this.divs.get(u.id)?.fell ?? -1e9) <= TANK_FALLBACK_PAUSE * TICKS_PER_SECOND ? 'paused after falling back' : 'waiting on a route';
+    let border = false;
+    for (const f of foes) if (frontTiles(state, u.owner, f, 1).length) border = true;
+    if (!border) return 'no land front';
+    const st = u.station;
+    if (st === undefined) return 'no front tile';
+    const w = state.map.width;
+    const dx = (st % w) - u.x;
+    const dy = ((st / w) | 0) - u.y;
+    return dx * dx + dy * dy > 36 * 36 ? 'front tile far' : 'front tile near, quiet';
+  }
+
   /** Every 10 s of game time. */
   sample(): void {
+    {
+      const air = (this.stats.air ??= newAirFight());
+      for (const p of this.state.players) {
+        if (!p.alive || !this.counted(p.id)) continue;
+        for (const b of buildingsOf(this.state, p.id, 'airfield')) {
+          if (b.buildLeft > 0) continue;
+          air.afSamples = (air.afSamples ?? 0) + 1;
+          air.afFighters = (air.afFighters ?? 0) + b.fighters;
+          if (b.fighters >= AIR.superiorityMinFighters) air.afEnough = (air.afEnough ?? 0) + 1;
+        }
+      }
+    }
     const state = this.state;
     const s = this.stats;
     const w = state.map.width;
@@ -661,7 +1017,9 @@ export class AttackProbe {
       if (u.type === 'transport' && u.targetOwner > 0) {
         s.transports.atSea++;
         if (warships.some((e) => e.owner === u.owner && e.state === 4 && e.station === u.id)) s.transports.escorted++;
-      } else if (u.type === 'tankDivision' && atWar.has(u.owner)) {
+      } else if (u.type === 'tankDivision') {
+        this.sampleArmor(u);
+        if (!atWar.has(u.owner)) continue;
         s.tanks.atWar++;
         const share = (u.troops.infantry + u.troops.armor + u.troops.artillery) / FULL_DIVISION;
         if (share < 0.4) s.tanks.worn++;
@@ -708,6 +1066,8 @@ export class AttackProbe {
 
 const pc = (a: number, b: number): string => (b > 0 ? `${Math.round((100 * a) / b)}%` : '-');
 const f1 = (v: number): string => (Number.isFinite(v) ? v.toFixed(1) : '-');
+const f2 = (a: number, b: number): string => (b > 0 ? (a / b).toFixed(2) : '-');
+const shortK = (v: number): string => (v >= 1e4 ? `${Math.round(v / 1e3)}k` : v >= 1e3 ? `${(v / 1e3).toFixed(1)}k` : `${Math.round(v)}`);
 
 /** Report lines for the summed stats of `games` games. */
 export function attackReport(a: AttackStats, games: number): string[] {
@@ -725,6 +1085,19 @@ export function attackReport(a: AttackStats, games: number): string[] {
   const ov = tk.overrun[0] + tk.overrun[1] + tk.overrun[2];
   out.push(`  Tank divisions: ${f1(tk.formed / g)} formed per game; overrun ${pc(ov, tk.formed)} (at <10% / 10-40% / >=40% strength: ${tk.overrun.join(' / ')}; while defending ${pc(tk.overrunDefending, ov)}), spent ${pc(tk.spent, tk.formed)}; within 60 s after a spearhead ${pc(tk.overrunAfterSpearhead, ov)}; ${f1(tk.ownerGone / g)} gone with their owner.`);
   out.push(`    division time at war: spearheading ${pc(tk.spearhead, tk.atWar)}, holding at an own attack front ${pc(tk.holdFront, tk.atWar)}, holding elsewhere ${pc(tk.holdFar, tk.atWar)}, driving ${pc(tk.driving, tk.atWar)}; worn (<40%) ${pc(tk.worn, tk.atWar)}; holding time on support ${pc(tk.holdSupport, tk.holdFront + tk.holdFar)} (near its front tile ${pc(tk.holdAtStation, tk.holdSupport)}).`);
+  const ar = a.armor;
+  if (ar && ar.war) {
+    const ends = Object.entries(ar.ends).sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k} ${pc(v, ar.ended)}`).join(', ');
+    const land = ar.spearTiles + ar.pocketTiles;
+    out.push(`    at war (an attack either way in the last 30 s): attacking ${pc(ar.attack, ar.war)}, to a launch tile ${pc(ar.launch, ar.war)}, driving ${pc(ar.toFront, ar.war)}, retreating to refit ${pc(ar.retreat, ar.war)}, holding at the front ${pc(ar.holdFront, ar.war)}, holding away worn ${pc(ar.holdRefit, ar.war)}, holding away ready ${pc(ar.holdAway, ar.war)}; at the front in all ${pc(ar.attack + ar.launch + ar.holdFront, ar.war)}.`);
+    out.push(`    spearheads ${f1(ar.spearheads / g)} per game (${f1(ar.spearheads / Math.max(1, tk.formed))} per division), with company ${pc(ar.withCompany, ar.spearheads)}; ${f1(ar.spearTiles / Math.max(1, ar.ended))} tiles each, under 5 tiles ${pc(ar.shallow, ar.ended)}; land taken per division ${f1(land / Math.max(1, tk.formed))} tiles (pockets ${f1(ar.pocketTiles / Math.max(1, tk.formed))}); encirclements ${f1(ar.pocketEvents / g)} per game (${f1(ar.pockets / g)} pockets, ${f1(ar.pocketTiles / g)} tiles); fell back ${f1(ar.fellBack / g)} per game.`);
+    const away = Object.entries(ar.away ?? {}).sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k} ${pc(v, ar.holdAway)}`).join(', ');
+    out.push(`    holding away ready, why: ${away || '-'}.`);
+    const ov = Object.entries(ar.overrunWhere ?? {}).sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k} ${v}`).join('; ');
+    if (ov) out.push(`    overrun where (the tick before): ${ov}.`);
+    if (ar.blitzes) out.push(`    blitzes ${f1(ar.blitzes / g)} per game, ${f1((ar.blitzTiles ?? 0) / ar.blitzes)} tiles each.`);
+    out.push(`    ended: ${ends || '-'}; enemy spearheads into their land ${f1(ar.enemySpears / g)} per game, ${f1(ar.enemySpearTiles / Math.max(1, ar.enemySpears))} tiles each.`);
+  }
   out.push('  ("front" = the border with a nation the unit\'s owner attacked within the last 30 s; AI attacks come in waves of about a second)');
   out.push('  Bombers by mission: sorties per game / arrived / on an own attack front (support, cover, manual) / into SAM cover (arrived)');
   for (const m of MISSIONS) {
@@ -750,6 +1123,14 @@ export function attackReport(a: AttackStats, games: number): string[] {
       out.push(`      time at war ${pc(v.war, v.alive)}; of it: on an own attack front ${pc(v.onFront, v.war)}, station ${pc(v.station, v.war)}, chasing ${pc(v.chasing, v.war)}, escorting ${pc(v.escorting, v.war)}, mending ${pc(v.mending, v.war)}, enemy can fire at it ${pc(v.targetable, v.war)}, enemy destroyer in sonar ${pc(v.nearDestroyer, v.war)}, in a minefield ${pc(v.inMinefield, v.war)}, blockading ${pc(v.blockading, v.war)}${extra.length ? ', ' + extra.join(', ') : ''}`);
     }
     out.push(`  Landings with naval support ${pc(a.landingsSupported, a.landings)} of ${f1(a.landings / g)} per game; bomber sorties from carriers ${f1(a.carrierSorties / g)} per game.`);
+    const af = a.air;
+    if (af) {
+      const per = (k: number, n: number): string => (n > 0 ? shortK(k / n) : '-');
+      out.push(`  Fighters: ${f1(af.fightersBought / g)} bought per game; planes shot down per game by airfield and patrol fighters ${f1(af.fighterKills / g)}, carriers ${f1(af.carrierKills / g)}, SAM sites ${f1(af.samKills / g)}; recon planes among the fighter kills ${f1(af.reconKills / g)}.`);
+      out.push(`  Recon: ${f1(af.reconFlights / g)} flights per game, reached the target ${pc(af.reconArrived, af.reconFlights)}, shot down ${pc(af.reconLost, af.reconFlights)}.`);
+      if (af.afSamples) out.push(`  Airfields (10 s samples): ${f2(af.afFighters ?? 0, af.afSamples)} fighters each, ${pc(af.afEnough ?? 0, af.afSamples)} with ${AIR.superiorityMinFighters}+; arrivals not guarded: victim had no fighters there ${pc(af.arrNoFighters ?? 0, af.arrivals)} (no airfield at all ${pc(af.arrNoAirfield ?? 0, af.arrivals)}, airfields with no fighter ${pc(af.arrNoneStored ?? 0, af.arrivals)}), too few ${pc(af.arrFewFighters ?? 0, af.arrivals)}, matched by the bomber's side ${pc(af.arrContested ?? 0, af.arrivals)}.`);
+      out.push(`  Bomber arrivals ${f1(af.arrivals / g)} per game, over a tile the victim's fighters guard ${pc(af.guardedArrivals, af.arrivals)}; per arrival: troops killed ${per(af.kills - af.guardedKills, af.arrivals - af.guardedArrivals)} unguarded / ${per(af.guardedKills, af.guardedArrivals)} guarded, buildings hit ${f2(af.buildings - af.guardedBuildings, af.arrivals - af.guardedArrivals)} / ${f2(af.guardedBuildings, af.guardedArrivals)}.`);
+    }
     out.push(`  Enemy bombers at our land: ${f1(a.incomingBombers / g)} per game; while we had a superiority patrol ${pc(a.incomingWithPatrol, a.incomingBombers)}, aimed inside a patrol circle ${pc(a.incomingCovered, a.incomingBombers)} (${pc(a.incomingCovered, a.incomingWithPatrol)} of those with a patrol); patrol engagements ${f1(a.patrolEngagements / g)} per game.`);
   }
   return out;

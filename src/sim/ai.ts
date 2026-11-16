@@ -87,7 +87,7 @@ import { mainFront } from './warTarget';
 import { fogOn, knownTile } from './fog';
 import { borderTiles, coastCount, depositCount, landComponents, sampleOwnedTiles } from './territory';
 import { canParadrop, paradropMaxTroops, paradropRange, unitCost } from './units';
-import { aiAirDoctrineTaste, aiAirTechs, aiAirWings, aiExtraAirfields, airWingBusy, airWingRange, airWingSize } from './airwings';
+import { aiAirDoctrineTaste, aiAirTechs, aiAirWings, aiExtraAirfields, aiFighterWant, aiUnguardedBombing, airWingBusy, airWingRange, airWingSize } from './airwings';
 import { inOvertime, victoryShareNow } from './victory';
 import { hasTech } from './tech';
 import { isArsenalTech, pillarOf } from './arsenal';
@@ -102,6 +102,8 @@ import { allyTrustDiscount } from './spending';
 import { techStatus } from './techtree';
 import { aiTankDivisions } from './tanks';
 import { aiNavy, atWar as navalAtWar, supportingShips } from './naval2';
+import { aiCruise } from './cruise';
+import { aiStealth } from './stealth';
 import { aiAttackLevel } from './aiattack';
 import { DOCTRINE_IDS, TROOP_TYPES, Resource, isTribe, isWater } from './types';
 import type { Attack, Building, BuildingType, Difficulty, DoctrineId, GameState, Personality, Player, TechId, TerrainId, TroopType, Troops } from './types';
@@ -124,6 +126,10 @@ const TILE_UNIT = 8;
 const CITY_TILES = 2400;
 /** Most airfields an AI keeps (more than AIR.massFree on missions only slow each other's sorties, airwings.ts). */
 const AI_MAX_AIRFIELDS = 3;
+/** Normal up: enemy bombers (in flight or stored at wings aimed at us) hitting our land where no fighters of ours guard
+ *  it, from which an airfield facing that nation is wanted, at this build priority (an ordinary airfield: 3.5). */
+const AI_UNGUARDED_BOMBERS = 4;
+const AI_UNGUARDED_AIRFIELD_PRIO = 5;
 /** At most one atom bomb per AI per this many seconds. */
 const NUKE_PAUSE_SECONDS = 300;
 /** An AI with atom bombs nukes a bordering / attacking nation whose land share is above max(floor, win share - margin). */
@@ -805,6 +811,8 @@ interface Ctx {
   threat: number;
   /** most threatening neighbour (0 = none) */
   threatId: number;
+  /** the nation bombing our land where no fighters of ours guard it (economy, Normal up; 0 = none): a new airfield faces it */
+  airFoe?: number;
   /** some of our tiles bordering other nations */
   foreignEdges: number[];
   /** the runaway leader (allies.runawayLeader), 0 = none */
@@ -1872,6 +1880,15 @@ function economy(ctx: Ctx): void {
   }
   if (hasTech(p, 'medicine')) add('hospital', count('hospital') < 2 ? 2.5 : 0);
   if (hasTech(p, 'flight')) add('airfield', count('airfield') < Math.min(AI_MAX_AIRFIELDS, (prof.aggression > 0.5 ? 2 : 1) + (held === 'air' ? 1 : 0) + aiExtraAirfields(state, id) + focusExtra(state, id, 'airfields')) ? 3.5 : 0);
+  // Bombed where no fighters of ours guard the sky (Normal up): an airfield facing the bomber, for its fighters
+  // (air superiority, airwings.ts). Placed toward that nation (candidateTiles).
+  if (hasTech(p, 'flight') && aiAttackLevel(state) >= 1 && count('airfield') < AI_MAX_AIRFIELDS) {
+    const ub = aiUnguardedBombing(state, id);
+    if (ub.weight >= AI_UNGUARDED_BOMBERS) {
+      ctx.airFoe = ub.nation;
+      add('airfield', AI_UNGUARDED_AIRFIELD_PRIO);
+    }
+  }
   if (hasTech(p, 'radar') && enemyAirThreat(ctx)) add('sam', count('sam') < 3 ? 4.5 : 0);
   if (hasTech(p, 'rocketry')) add('silo', count('silo') < 1 ? 3 : 0);
 
@@ -2041,7 +2058,7 @@ function candidateTiles(ctx: Ctx, type: BuildingType, supply = false): number[] 
     case 'sam': {
       if (type === 'sam' && !SAM_NEAR_FRONT) return ownedSample(ctx, 20);
       // SAM sites face the nation most likely to bomb us (bombers strike ahead of its attacks on our land).
-      const foe = type === 'sam' ? ctx.threatId || mainWarTarget(ctx) : supply || type === 'airfield' ? mainWarTarget(ctx) || ctx.threatId : ctx.threatId;
+      const foe = type === 'sam' ? ctx.threatId || mainWarTarget(ctx) : type === 'airfield' && ctx.airFoe ? ctx.airFoe : supply || type === 'airfield' ? mainWarTarget(ctx) || ctx.threatId : ctx.threatId;
       const edges = foe > 0 ? (ctx.hood.edge.get(foe) ?? EMPTY) : ctx.foreignEdges;
       // Forts a few tiles behind the border (not lost at the first push), airfields within reach of the front
       // (fighter cover, paratroopers) but out of the first push.
@@ -2443,11 +2460,12 @@ function airAndMissiles(ctx: Ctx): void {
   // Standing air-wing missions first: support over our main attack, strategic raids, fighter patrols (airwings.ts).
   aiAirWings(state, id, fighting, airThreat);
   aiRecon(state, id, fighting); // recon flights over the enemy (variantsAI.ts)
+  aiStealth(state, id); // the stealth strike behind SAM walls (Air Mastery; stealth.ts)
 
   for (const af of buildingsOf(state, id, 'airfield')) {
     if (af.buildLeft > 0) continue;
-    // Fighters if the enemy has bombers, else bombers.
-    const kind = airThreat && af.fighters < 2 ? 'fighter' : 'bomber';
+    // Fighters if the enemy has bombers (more where they lean on bombers and recon: airwings.aiFighterWant), else bombers.
+    const kind = af.fighters < aiFighterWant(state, id, af, fighting, airThreat) ? 'fighter' : 'bomber';
     const c = unitCost(state, id, kind);
     if (af.bombers + af.fighters < aircraftCap(af) - 1 && p.gold > c.gold + 1000 && p.oil >= c.oil && p.iron >= c.iron) {
       applyAction(state, id, { type: 'buildAircraft', airfield: af.tile, kind });
@@ -2468,6 +2486,7 @@ function airAndMissiles(ctx: Ctx): void {
     if (fighting.length) paradrop(ctx, af.tile, fighting);
   }
 
+  aiCruise(state, id); // cruise missiles from warships (Naval Mastery; cruise.ts)
   if (!hasTech(p, 'rocketry')) return;
   // Rockets: every ready silo that doesn't nuke fires at the best target, as one salvo (airstrike.ts).
   let ready = 0;

@@ -295,6 +295,8 @@ export function soundForEvent(e: GameEvent, humanId: number, near?: boolean): So
       if (/launched/.test(e.message)) return pick('missileLaunch', first ? 1 : 0.8);
       return pick('explosion', first ? 0.8 : 1);
     case 'bombing':
+      // a stealth bomber's warning (the target first, sim units.ts stealthWarn): the air-raid siren for the target only
+      if (e.message.startsWith('A stealth bomber of ')) return first ? pick('underAttack') : null;
       return mine ? pick('explosion', first ? 0.8 : 1) : null;
     case 'unitLost':
       if (!mine) return null;

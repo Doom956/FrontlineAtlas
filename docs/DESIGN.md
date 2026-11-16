@@ -546,10 +546,14 @@ other root and everything after it lock together ("You chose Destroyers; Carrier
 - Shared: Mechanized Infantry (spearheads lose 15% less; the land a spearhead took holds: attacks on it cost
   `mechHoldDefense` x for `mechHoldSeconds`), Recon Planes (Action `reconFlight {airfield | -1, tile}`: a plane flies
   out, reveals a `reconRadius` circle for `reconSeconds`: intel on every nation with land or a capital in it
-  (buildings.hasIntel) and its submarines there; `reconCooldown` per airfield; gold + oil per flight).
+  (buildings.hasIntel) and its submarines there; `reconCooldown` per airfield; gold + oil per flight). On its way out
+  a recon plane is a fighter target (types.isFighterTarget): airfield fighter cover, carriers and superiority patrols
+  shoot it down by the bomber rule (protocol 21); one shot down reveals nothing (all or nothing reads clearer than a
+  half circle where it fell, and the alert says so: "...shot down your recon plane before it got there: nothing
+  revealed"). SAMs let it pass (fighters are the answer to recon); on its way home it is let go.
 - Mastery (tier 4) in at most `MASTERY_CAP` = 2 pillars per game (`masteryLocked`: 'locked-choice', "Mastery 2 of 2
-  used (Navy, Air)"): Naval (veterancy xp x2, bombardment / support reach x1.3, +2 warships), Armor (pockets up to x3
-  bigger collapse, x1.5 troops lost in them), Air (every wing x1.5 bombers).
+  used (Navy, Air)"): Naval (veterancy xp x2, bombardment / support reach x1.3, +2 warships, cruise missiles from warships, destroyers and battleships: section 7), Armor (pockets up to x3
+  bigger collapse, x1.5 troops lost in them), Air (every wing x1.5 bombers, and the stealth strike: section 7).
 AIs (variantsAI.ts): a fork by the map and personality (enemy trade and ports -> silent service; forts and mountains
 -> heavy tanks; enemy cities and factories -> heavy bombers; plus a per-game hash), the committed pillar's path right
 after its prerequisites and its mastery only there; one battleship in three, one carrier in four; recon over the
@@ -724,6 +728,59 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   `ARMOR_SUPPORT_RADIUS` + 12 tiles away jumps there by rail (route search `TANK_MOBILITY.jumpBudget`). AIs put their
   divisions on `support` at the main war's front: the foe's border tile nearest the focus of the biggest attack between
   them (`aiDivisionModes`); warlords field up to 6.
+- **Breakthrough** (code name blitz) (src/sim/blitz.ts, config `BLITZ`; the name the player reads is `BLITZ_NAME`, one constant, so a rename is
+  one line; Action `blitz {unitId, tile}`, protocol 21): with Armor Mastery (which keeps its bigger encirclements) a
+  tank division can blitz: it pops a smoke screen at its launch tile (Effect `smokeScreen`) and surges into a spearhead
+  at `BLITZ.speedMul` (2) x the head speed and `BLITZ.depthMul` (1.5) x the depth, a band `BLITZ.width` (5) tiles wide,
+  losses x `BLITZ.lossMul` (0.6); every tile it takes holds for `BLITZ.holdSeconds` (20) (`state.blitzHolds`, triples
+  tile, owner, until tick, hashed; `heldBy`): attacks don't take it (it is no front tile), landings can't land on it,
+  other spearheads stop at it and encirclements leave it. Checks (`blitzBlock`, plain reasons for the button): own
+  division not in a spearhead, Armor Mastery, recharged (`Unit.blitzReady`, `BLITZ.cooldownSeconds` 120, hashed),
+  `BLITZ.minShare` (50%) strength, `BLITZ.oil` (100) oil; the target as for a spearhead (`blitzPreview`). `Unit.blitz`
+  (hashed) marks the spearhead; a fall-back on the way, or a new order, calls it off (the cooldown stays). AI from
+  Normal up (armor2.ts `aiMayBlitz`, keeping 2x the oil): a ready division blitzes a strike that cuts the enemy's
+  land, and breaks a stalemate (no strike worth it near its front) when a blitz would get 12+ tiles deep; never into a
+  player's land at Easy or Normal; Easy AIs never blitz. A player's divisions never blitz by themselves. Client
+  (client/blitzUi.ts, render/blitzOverlay.ts): a Breakthrough button on the division's orders bar (icon and name, or the name
+  and why it can't go: "Recharging 40 s", "Needs Armor Mastery"), a target mode (ui.mode `blitz`) with the wedge
+  preview, the push arrow and the held land (hatched, "Holds N s") on the map, the smoke screen and dust trails (fx),
+  a card line, sounds from the existing ids, How to play and a guide tip. Its spearhead fires visibly like any other
+  (client/fx/tankFire.ts), `BLITZ_FIRE_MUL` (0.7) x the time between shots, so a little more often.
+- **Smarter armour** (armor2.ts, `armorLevel`: a player's divisions on their automatic modes count as Normal at every
+  difficulty; AI divisions follow `AI_ATTACK_LEVEL`, Easy keeps the old habits). A player's own move orders and
+  modes are never overridden (a drive the player orders clears `Unit.ended`, so the division stays where it was sent).
+  - Strikes (`bestStrike`, a division that finds none looks again after 4 s): besides 6 border tiles (Easy 8, as before), the best 3 (Hard up 4) lines that **cut** (`cutClicks`): from our land
+    across 3 to 24 tiles of a nation at war with us and out onto our or allied land or water (a thin strip, a bulge,
+    an enemy spearhead's band, the way back from a tip, the way to their coast), each scored by the piece it should
+    close off (`pocketBeside`: a flood of their land beside the line of at most 400 tiles that runs out without the
+    capital; a tenth of its tiles, at most 30, on top of `ARMOR_CUT_BONUS`); the base of an enemy spearhead running
+    into our land scores `ARMOR_CUT_BONUS` more. A straight line expected to bleed the division under 30% (it would end worn on a
+    thin tip, where most overrun divisions were caught) scores x0.6 - 4; from Hard up the strength left counts (x6).
+  - A straight strike (no cut) needs 70% of a full division (a cut: `ARMOR_SUPPORT_READY`); a division under 70%
+    drives to a Factory within 48 tiles and refits there to 85%.
+  - **Together**: the ready divisions on support within `ARMOR_SUPPORT_RADIUS` + 12 tiles of the strike go in with it,
+    side by side (at most 3, one order); from Hard up an AI division alone waits while another on support drives up
+    (not for a cut).
+  - **Off a thin tip**: a division standing where own land runs under 3 tiles deep (an AI one on support or hold any
+    time, a player's on support for 60 s after its spearhead ended, `Unit.ended`, hashed) acts at once (every tick for
+    1 s after the spearhead, then every second while `ended` lasts, else every 3 s): ready and just after a spearhead,
+    it strikes on along a cut from there; else it drives back to solid ground behind its front (looked for up to 40
+    tiles out), over a flood of our land when the quick search fails. Drives away from the fighting (off a tip, to
+    refit) don't wait out the pause after falling back.
+  - **Cut off** (its own land around it a piece of under 60 tiles; a player's support division too): it breaks out
+    along the shortest line across the enemy's land back onto ours it has the strength for, at any strength (a spent
+    division's troops go home; overrun, a quarter would be lost).
+  - **Near the enemy** (land of a nation at war with us within `TANK_FALLBACK_RADIUS`; a player's division only while
+    `ended` lasts) it holds where own land runs 6 tiles out all round (3 when there is none such near the front), even
+    during the pause after falling back.
+  - **Fair to a new player**: a Normal AI looks for no cut lines into a player's land (straight strikes only, as
+    before), needs 80% for one and sends its divisions one at a time (`softOn`; wars between AIs and Hard up keep the
+    full habits).
+  - Work budgets for all divisions together (`spend`; over budget waits for a later think): 1 strike scan a tick, 1
+    land flood of an AI drive every 5 ticks; cut lines are looked for within 16 tiles of the front at Normal, 20 from
+    Hard up.
+  - Routes: a drive the quick search gives up on floods our land (as for a player's following divisions); an AI
+    division whose front can't be reached over our land supports one it can reach for `DETOUR_SECONDS`.
 - **Auto for every vehicle** (protocol 16; src/sim/warTarget.ts and the vehicle files): what a new player's vehicles do
   with no clicks. A player's **war target** (`updateFollow`): the nation it attacks with the most troops; with no
   attack on a nation of its own, the last target while that war is live (an attack either way within
@@ -758,19 +815,105 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   range can shoot it down.
 - **Cargo plane** (`transportPlane`, Airfield, Flight): carries paratroopers straight to their drop tile (section
   4, Special land abilities); intercepted like a bomber.
-- **Fighter** (Airfield): stationed; intercepts enemy bombers and cargo planes within its airfield's radius (80, +15
-  per level).
+- **Fighter** (Airfield): stationed; intercepts enemy bombers, cargo planes and outbound recon planes within its
+  airfield's radius (80, +15 per level).
+- **Air superiority** (protocol 21; airwings.ts `airSuperiorityAt`, config AIR `superiority*`): a nation's side
+  (itself and its allies) guards a tile with the fighters of every finished, working airfield whose cover circle
+  (`airfieldRadius` x Early Warning) or superiority patrol circle holds it, plus `carrierFighters` (2) per carrier
+  within `carrierRadius`. It holds the sky there when that count is at least `superiorityMinFighters` (2) and more than
+  the bombing side's own count at the same tile. Enemy bombs landing on a guarded tile do `superiorityBombCut` (40%)
+  less: support strike kills and the zone strength they add (so the defence cut and bleed), the raid income cut,
+  buildings hit, troops killed and Strategic Bombing burn. No dice and no state of its own: it is read at arrival from
+  the airfields, wings and carriers. Bombers still fly and still face interception; the attacker takes the sky back by
+  matching the fighters there (a patrol over its own side of the front). Shown on the airfield card ("Air
+  superiority: enemy bombing within 80 tiles does 40% less, while their fighters there are fewer"), as the selected
+  airfield's fighter cover ring and its patrol ring on the map (labelled "enemy bombs -40%"), in the strike preview,
+  in the bombing alerts ("(air superiority: 40% less)") and in the airfield's last result (`AirResult.guarded`,
+  hashed).
+  AIs: from Normal up an airfield keeps `aiFightersBase` (2) fighters plus one per `aiFightersPerBombers` (4) bombers of
+  the nations it fights in reach of it, plus one while enemy bombers or recon planes fly at its land (at most
+  `aiFightersMax` 5, half the room); bombed by 4+ bombers where no fighters of its own guard the aim
+  (`aiUnguardedBombing`), it wants an airfield facing that nation (priority 5, within its 3 airfields); the airfield
+  nearest its main attack (or its only one) patrols instead when 4+ enemy bombers aim inside its patrol and no other
+  patrol reaches them (its bombers still fly manual strikes); a second patrol (3+ airfields) where 6+ enemy bombers
+  aim; when the foe holds the sky over the AI's main front, its patrol flies over its own side of that front; recon never flies through known
+  enemy fighter cover (`fighterCoverOnRoute`), it tries other aims and airfields; strategic raids weigh guarded targets
+  40% less. A player's Auto does the same without overriding orders: auto recon flies around fighter cover (the front
+  instead of deeper, else it waits: "Auto recon: waiting, enemy fighters guard X"), strategic wings weigh guarded
+  targets less.
 - **Rocket** (Silo, Rocketry): fast missile, radius 7: destroys buildings, kills troops. A level-L silo has L launch
   slots (one reload `SILO_COOLDOWN` each, reloading L times as fast). Can fire by itself (auto-fire, below).
+- **Cruise missile** (Naval Mastery; units.ts `launchCruise`, cruise.ts, config `CRUISE` and `UNITS.cruiseMissile`;
+  Action `cruiseMissile {ship, tile}`, protocol 21): a small rocket fired from a warship, destroyer or battleship
+  (not submarines or carriers) of a nation with Naval Mastery, at land within `CRUISE.reach` (35 = `WARSHIP_RANGE`,
+  the range a warship already fights ships at: a coastal strip, twice its shelling reach) of the ship. Radius
+  `CRUISE.radius` 4 (a rocket's is 7): hostile buildings in it destroyed, troops killed by the rocket rule
+  (`ROCKET_TROOP_KILL` x the army share living there, at least `CRUISE.killMin` 5000). 700 gold + 60 oil per
+  missile; each ship reloads its cell for `CRUISE.reloadSeconds` (30 s, `Unit.cruiseReady`, hashed). It flies straight
+  from the ship at 10 tiles/s (slower than a rocket) and SAMs shoot it down like a rocket: 1 hp, the rockets' place in
+  the interception order. Validated like a rocket: not own land, not an ally, no peace time; noNukes does not touch it;
+  under fog of war a player may fire at land out of sight (the sim judges by the real owner), the AI only at buildings
+  it knows. The target nation gets a 'missile' event ("X launched a cruise missile at Y", alert "Cruise missile
+  incoming"). AI (`aiCruise`, every air turn): a nation with the mastery at war picks the best known building of a foe
+  in reach of its loaded ships (SAMs, silos and airfields first, more so within `aiLandingNear` 30 tiles of a landing
+  of its own on the way; then factories, forts, ports, arsenals, cities and the rest), fires a salvo one larger than
+  the ready SAM shots covering the route and target, never into more than `aiMaxCover` (2) of them, and keeps
+  `aiReserve` (2) missile prices in gold; Easy AIs fire one at a time, only with no SAM cover, and never at a human.
+  A human's ships never fire by themselves: the ship card's Cruise missile button (orders bar for a group of ships,
+  and on phones) enters a target mode; the click fires from the nearest loaded selected ship in reach.
+- **Stealth strike** (Air Mastery; units.ts `launchStealth`, stealth.ts, stealthSight.ts, config `STEALTH` and
+  `UNITS.stealthBomber`; Action `stealthStrike {airfield | -1, tile}`, protocol 21): the counter to a SAM wall. A
+  nation with Air Mastery sends its one stealth bomber (a flying wing) from an own finished airfield (-1 = the nearest
+  with the target in reach) at a target up to `airWingRange` x `STEALTH.reachMul` (1.25: 188 tiles from a level-1
+  airfield) away, at bomber speed (`UNITS.stealthBomber.speed` 30, x Jet Engines). 2,000 gold + 150 oil per strike,
+  nothing stored at the airfield. One at a time: while it is out or on its way home the button says "Stealth bomber
+  in the air"; it recharges `STEALTH.cooldownSeconds` (90 s) from launch (`Player.stealthReady`, hashed: "Recharging
+  45 s"). Validated like a bomb: land, not own land, not an ally, no peace time; neutral land is allowed (nothing is
+  hit there). SAM sites never see it: they never fire at it, whatever their shots (units.interceptThreats). Fighters
+  (airfield cover, carriers, superiority patrols) engage it only where it is revealed to their side
+  (`stealthSight.stealthRevealedTo`, the one hook a future Defense radar fills; it returns false now), then by the
+  bomber rule. On arrival it drops a heavy raid, not a support strike, because its job is the high-value buildings
+  behind a SAM wall (a front strike is what ordinary bombers already do well): the income raid of
+  `STEALTH.raidBombers` (2) bombers on the nation hit, then `dropBombs` with radius x `STEALTH.radiusMul` (1.15, a
+  heavy bomber raid's: 5.75 tiles, wider with Strategic Bombing) and `STEALTH.payload` (2) x the building hit chance
+  and the troop kills (0.6 x 2: every hostile building in the blast). No re-aim and no Night Bombing scatter. Air
+  superiority cuts it like any bombing (enemy fighters guarding the target: 40% less, so a 60% chance per building):
+  fighters cannot catch what they cannot see, but they make any bomber over a guarded sky drop worse, and it keeps
+  one rule for every bomb; it also leaves the defender a real answer (fighters) while SAMs are blind. Flak does not
+  exist. Sight (techtree.unitVisibleTo -> stealthSight.stealthShownTo, so the fog of war, the renderer, the incoming
+  list and the AI all follow it): its owner and allies always, spectators always; the nation it flies at only from
+  `STEALTH.revealSeconds` (2 s) of flight before the bombs fall, when that nation gets the warning (a 'bombing' event
+  "A stealth bomber of X is over Y: its bombs fall in 2 s", the alert "Stealth bomber of X over your land: bombs in
+  2 s" and the air-raid siren; `Unit.cargo` = 1 from then); hidden again on its way home. Telling the target a few
+  seconds early is the fair middle: no warning at all makes a blast from nowhere that a new player cannot read, and
+  a long warning would let it react to a strike nothing can stop. The result is a 'bombing' event "Stealth strike by X
+  on Y: 3 buildings destroyed, 16000 troops killed". AI (`aiStealth`, every air turn after its recon): a nation with
+  Air Mastery at war, its bomber home and recharged and `aiReserve` (2) strike prices in gold to spare, picks the best
+  known building of a nation it fights within reach of one of its airfields that at least `aiMinCover` (2) ready SAM
+  shots it knows of cover (route or target; elsewhere bombers and rockets do the job): silos, airfields, factories,
+  SAMs, arsenals, ports, cities first, +6 for each other building in the blast, +3 per covering shot (up to 8), +30
+  for SAMs, silos and airfields within `aiLandingNear` (30) of a landing of its own on the way (+10 for others), x 0.6
+  where the target's fighters hold the sky. Easy AIs never send it at a human. A human's bomber flies only when
+  ordered: the airfield card's Stealth strike button (icon, the word, the price, the reason when off) enters a target
+  mode that shows the reach ring, the route, the blast disc, the SAM rings in grey and the preview ("Wrecks about 3 of
+  3 buildings of Azuria within 5.8 tiles", "3 SAM sites on the way: they cannot see the stealth bomber").
+  Result (AI only, seeds 7001+, 48 medium / 24 World games per difficulty, before -> after): win times unchanged on
+  medium (Easy 46.2, Normal 32.9, Hard 29.3, Brutal 26.7 min) and within half a minute on World (Hard 35.5 -> 36.0,
+  Brutal 34.8 -> 35.5); Air Mastery owned by 1% (Easy) to 6% (Brutal) of medium nations, the same before and after;
+  stealth strikes per game 0 (Easy), 0.2 (Normal), 0.2 (Hard), 0.4 (Brutal) on medium, up to 1.3 on World Brutal,
+  about 0.9 buildings destroyed each, none shot down. The human bench (Easy, Normal) is unchanged: the mastery comes
+  late (median minute 33) and Easy AIs never aim it at a human.
 - **Atom bomb** (Silo, Nuclear Fission): radius 35: destroys buildings, kills 60-90% of the army share in the area,
   turns tiles neutral with fallout within 14. Every AI that sees a nuke drops opinion of the launcher sharply.
 - **Interception is deterministic** (`RULES_TEXT.interception` in config is the help text): threats are handled atom
-  bombs first, then rockets, bombers, cargo planes (then by id). Every hostile SAM with a shot loaded
+  bombs first, then rockets and cruise missiles, bombers, cargo planes (then by id). Every hostile SAM with a shot loaded
   (`chargesReady`), not knocked out by a barrage and with the threat inside its `samRadius` (60, +10 per level)
   fires once: a sure hit for 1 hp. A level-L SAM holds L shots and reloads one every `SAM_COOLDOWN` (4 s) / L.
-  Planes and rockets have 1 hp, atom bombs 2, so an atom bomb needs two shots. A bomber or cargo plane still flying
+  Planes, rockets and cruise missiles have 1 hp, atom bombs 2, so an atom bomb needs two shots. A bomber or cargo plane still flying
   then meets the first ready hostile airfield with fighters in range: shot down, and that airfield needs
-  `FIGHTER_COOLDOWN / fighters` seconds to be ready again. No dice anywhere, so players can plan their cover, and
+  `FIGHTER_COOLDOWN / fighters` seconds to be ready again. Recon planes on their way out come last in the threat order
+  and meet only fighters (airfields, carriers, patrols), never SAMs. A stealth bomber (with the bombers in the order)
+  meets no SAM ever, and fighters only where it is revealed (stealthSight.ts). No dice anywhere, so players can plan their cover, and
   attackers can plan saturation (more threats than shots) or silence SAMs with a barrage first.
 
 ### Strikes: one rule, smart aim, salvos, auto-fire (src/sim/airstrike.ts, config STRIKE)
@@ -909,9 +1052,17 @@ refit at a Factory. From Normal up (`AI_ATTACK_LEVEL`; Easy keeps the old habits
   one; the enemy must be a quarter stronger to count); no landing while enemy warships near its start or landing
   tile outnumber ours (`seaContested`);
 - a holding division with land of a nation attacking it within 8 tiles strikes back into it when at half strength or
-  more and the line looks worth it; the support front counts our own attacks double a defence, and a division more
-  than 60 tiles from the main front supports the foe's border tile nearest it (often the only stretch it can reach
-  over its own land); a division on a spearhead's thin tip pulls back to a hold tile at once (any difficulty);
+  more: the best line near it first (a cut through the push's flank or across an enemy spearhead's base), else
+  straight into the attacker's land when that looks worth it, with the ready divisions near it; turtles only cut.
+  The support front counts our own attacks double a defence, and a division more than 60 tiles from the main front
+  supports the foe's border tile nearest it (often the only stretch it can reach over its own land); a division on a
+  spearhead's thin tip pulls back to a hold tile at once (any difficulty);
+- tank divisions keep their front between attack waves: with no attack running the war is still on (`atWar`), so
+  they stay on support at the front of the war their fronts are on (`liveFoe`) instead of standing down to hold
+  wherever they are (holding away from the front was 69% of their war time); when the war fought hardest has no land front (landings
+  only) they support a war fought over land; they strike only through the support mode (the old lone launches into
+  the nearest border tile are Easy only) and use the smarter armour of section 7 (cuts, strikes together, off thin
+  tips, refit nearby, deeper holds under a push, routes by flood);
 - air wings keep their support and strategic missions while the war is live (`aiKeepsFlying`), so a support zone
   is laid between waves for the next one; manual strikes go out as one salvo of the wing size, skip targets under
   working SAM cover and prefer targets within 30 tiles of the border with their owner;

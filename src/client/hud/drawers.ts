@@ -62,12 +62,11 @@ import { autoFireOn } from '../../sim/airstrike';
 import { autoReconText, siloAutoLine } from '../follow';
 import { autoReconOn } from '../../sim/warTarget';
 import { airfieldVariantLine, factoryVariantLine, reconBlock, reconLabel, reconOffered, warshipOptions } from './variantOrders';
+import { aimStealth, STEALTH_LABEL, stealthBlock, stealthButton, stealthPriceText } from '../stealth';
 import { warshipOrderCost } from '../../sim/navy';
 import { VARIANT_NAMES } from '../../sim/variants';
 import { canBuildTankDivision, tankDivisionCost, tankDivisionCount, tankDivisionLimit } from '../../sim/tanks';
-import { fxEnabled, setFxEnabled } from '../fx/settings';
-import { creditsContent } from '../sound/creditsView';
-import { MAP_STYLE_MENU, MAP_STYLE_SHORT, mapStyle, setMapStyle, type MapStyle } from '../render/mapStyle';
+import { SettingsPanel } from '../settings/panel';
 
 export const TROOP_COLORS = { infantry: '#9aa86a', armor: '#c9a227', artillery: '#c0564a' } as const;
 
@@ -849,6 +848,26 @@ export class BuildingPage implements DrawerPage {
       add('Paratroopers', 'danger', 'paradrop', () => (ctx.ui.mode = { kind: 'paradrop', airfield: tile }), (_ss, m, bb) =>
         !hasTech(m, 'flight') ? techFirst('flight') : bb.buildLeft > 0 ? 'Still being built' : bb.dropCooldown > 0 ? `Next drop ready in ${Math.ceil(bb.dropCooldown)} s` : '',
       ).dataset.test = 'order-paradrop';
+      // Air Mastery: the stealth strike (client/stealth.ts): one stealth bomber SAM sites cannot see, on a recharge
+      const g1 = ctx.state();
+      if (g1 && stealthButton(g1, me, tile).show) {
+        const sb = add(`${STEALTH_LABEL} (${stealthPriceText(g1, me.id)})`, 'danger', 'stealth', () => {
+          const ss = ctx.state();
+          const m = ctx.me();
+          if (!ss || !m) return;
+          const why = aimStealth(ss, m, ctx.ui, tile);
+          if (why) ctx.toast(why, 'info');
+        }, (ss, m) => stealthBlock(ss, m, tile));
+        sb.dataset.test = 'order-stealth';
+        const sl = el('p', 'note');
+        sl.dataset.test = 'stealth-line';
+        actions.append(sl);
+        this.upd.push((ss, m) => {
+          const st = stealthButton(ss, m, tile);
+          setText(sl, st.ok ? st.line : '');
+          setVisible(sl, st.ok);
+        });
+      }
       // Arsenal (hud/variantOrders.ts): the bomber type of the Air path, and recon flights
       const airNote = el('p', 'note');
       actions.before(airNote);
@@ -868,7 +887,7 @@ export class BuildingPage implements DrawerPage {
         actions.append(ar);
         this.upd.push((ss, m, bb) => {
           const on = autoReconOn(ss, bb);
-          const t = autoReconText(ss, m.id, on);
+          const t = autoReconText(ss, m.id, on, bb);
           const lab = ar.querySelector('.wr-btn-l');
           if (lab && lab.textContent !== t.label) lab.textContent = t.label;
           setClass(ar, 'on', on);
@@ -977,9 +996,6 @@ export class BuildingPage implements DrawerPage {
 // ================================================================================================ settings
 
 export interface SettingsHooks {
-  audio(): { master: number; sfx: number; music: number; muted: boolean } | null;
-  setVolume(master?: number, sfx?: number, music?: number): void;
-  setMuted(m: boolean): void;
   advisorOn(): boolean;
   setAdvisor(on: boolean): void;
   /** the in-game guide (guide/guide.ts): on/off and restart from its first step */
@@ -993,113 +1009,43 @@ export interface SettingsHooks {
   chat?: { on(): boolean; set(on: boolean): void };
 }
 
+/**
+ * The Menu drawer: the Settings tabs (settings/panel.ts, the same as the title screen's Settings page) with this
+ * game's map overlays added to Display, then Leave to the main menu.
+ */
 export class SettingsPage implements DrawerPage {
   id: DrawerId = 'settings';
   title = 'Menu';
   root = el('div', 'page');
-  private sync: (() => void)[] = [];
+  readonly panel: SettingsPanel;
 
   constructor(ctx: HudCtx, hooks: SettingsHooks) {
     const r = this.root;
-    const a = hooks.audio();
-    if (a) {
-      r.append(sectionTitle('Sound'));
-      const vol = (label: string, get: () => number, set: (v: number) => void) => {
-        const row = el('div', 'slider-row');
-        const s = slider(0, 100, 5);
-        const v = el('span', 'sv');
-        s.addEventListener('input', () => {
-          set(Number(s.value) / 100);
-          setText(v, `${s.value}%`);
-        });
-        row.append(el('span', 'sl', label), s, v);
-        r.append(row);
-        this.sync.push(() => {
-          syncSlider(s, Math.round(get() * 100));
-          setText(v, `${Math.round(get() * 100)}%`);
-        });
-      };
-      vol('Master', () => hooks.audio()?.master ?? 0, (v) => hooks.setVolume(v));
-      vol('Effects', () => hooks.audio()?.sfx ?? 0, (v) => hooks.setVolume(undefined, v));
-      vol('Music', () => hooks.audio()?.music ?? 0, (v) => hooks.setVolume(undefined, undefined, v));
-      const mute = seg2('Sound on', 'Muted', () => hooks.setMuted(false), () => hooks.setMuted(true));
-      r.append(mute.el);
-      this.sync.push(() => mute.set(!(hooks.audio()?.muted ?? false)));
-      r.append(el('p', 'note', 'Fighting is heard where you look: zoom in close to hear the guns, zoom out for quiet. News about your nation always sounds.'));
-    }
-    // who made the sounds and music: opens and closes in place
-    let credits: HTMLElement | null = null;
-    const creditsBtn = btn('Credits', 'wide', () => {
-      if (credits) {
-        credits.remove();
-        credits = null;
-        setText(creditsBtn.querySelector('.wr-btn-l') as HTMLElement, 'Credits');
-        return;
-      }
-      credits = creditsContent();
-      creditsBtn.after(credits);
-      setText(creditsBtn.querySelector('.wr-btn-l') as HTMLElement, 'Hide credits');
-    }, 'credits');
-    creditsBtn.dataset.test = 'credits-toggle';
-    r.append(creditsBtn);
-    r.append(sectionTitle('Help'));
-    const adv = seg2('Advisor on', 'Advisor off', () => hooks.setAdvisor(true), () => hooks.setAdvisor(false));
-    adv.el.dataset.test = 'advisor-toggle';
-    r.append(adv.el, el('p', 'note', 'The advisor line above the command bar suggests a useful next step.'));
-    this.sync.push(() => adv.set(hooks.advisorOn()));
-    const guide = seg2('Guide on', 'Guide off', () => hooks.setGuide(true), () => hooks.setGuide(false));
-    guide.el.dataset.test = 'guide-toggle';
-    r.append(guide.el, el('p', 'note', 'The guide bar walks you through your first game and explains new things once.'));
-    this.sync.push(() => guide.set(hooks.guideOn()));
-    const restart = btn('Restart guide', 'wide', () => hooks.restartGuide(), 'help');
-    restart.dataset.test = 'guide-restart';
-    r.append(restart);
-    r.append(sectionTitle('Map'));
-    const mm = seg2('Minimap shown', 'Minimap hidden', () => (ctx.ui.showMinimap = true), () => (ctx.ui.showMinimap = false));
-    r.append(mm.el);
-    this.sync.push(() => mm.set(ctx.ui.showMinimap));
-    const sup = seg2('Supply shown', 'Supply hidden', () => (ctx.ui.showSupply = true), () => (ctx.ui.showSupply = false));
-    sup.el.dataset.test = 'supply-toggle';
-    const res = seg2('Resources shown', 'Resources hidden', () => (ctx.ui.showResources = true), () => (ctx.ui.showResources = false));
-    res.el.dataset.test = 'resources-toggle';
-    r.append(sup.el, res.el, el('p', 'note', 'Supply shades how well your fronts are supplied; Resources marks iron, oil and fertile land. Both are in the Map key too.'));
-    this.sync.push(() => sup.set(ctx.ui.showSupply));
-    this.sync.push(() => res.set(ctx.ui.showResources));
-    const fx = seg2('Map effects on', 'Map effects off', () => setFxEnabled(true), () => setFxEnabled(false));
-    fx.el.dataset.test = 'fx-toggle';
-    r.append(fx.el, el('p', 'note', 'Short flashes when land or a city changes hands, a ship sinks or a bomb lands. A nearby nuke shakes the view.'));
-    this.sync.push(() => fx.set(fxEnabled()));
-    // the map's look (render/mapStyle.ts): real ground (the default), the classic look, or one of the other two, two a row
-    const looks = el('div', 'map-looks');
-    looks.dataset.test = 'map-style';
-    const lookBtns: [MapStyle, HTMLButtonElement][] = [];
-    for (const pair of [MAP_STYLE_MENU.slice(0, 2), MAP_STYLE_MENU.slice(2, 4)]) {
-      const g = el('div', 'segc');
-      for (const st of pair) {
-        const b = el('button', 'segc-b', MAP_STYLE_SHORT[st]);
-        b.type = 'button';
-        b.addEventListener('click', () => {
-          setMapStyle(st);
-          for (const [k, x] of lookBtns) setClass(x, 'on', k === st);
-        });
-        lookBtns.push([st, b]);
-        g.append(b);
-      }
-      looks.append(g);
-    }
-    r.append(looks, el('p', 'note', 'Map look: Real ground shows the land as it is, each nation in its colour with a thick band inside its border. Classic is the earlier flat map. Pixel terrain and Muted war map are other looks.'));
-    this.sync.push(() => {
-      const now = mapStyle();
-      for (const [k, x] of lookBtns) setClass(x, 'on', k === now);
+    this.panel = new SettingsPanel({
+      gameplay: {
+        advisorOn: () => hooks.advisorOn(),
+        setAdvisor: (on) => hooks.setAdvisor(on),
+        guideOn: () => hooks.guideOn(),
+        setGuide: (on) => hooks.setGuide(on),
+        restartGuide: () => hooks.restartGuide(),
+        restartNote: 'The guide starts again from its first step.',
+        chat: hooks.chat,
+      },
+      displayExtra: (sec, sync) => {
+        sec.append(sectionTitle('On the map in this game'));
+        const mm = seg2('Minimap shown', 'Minimap hidden', () => (ctx.ui.showMinimap = true), () => (ctx.ui.showMinimap = false));
+        sec.append(mm.el);
+        sync(() => mm.set(ctx.ui.showMinimap));
+        const sup = seg2('Supply shown', 'Supply hidden', () => (ctx.ui.showSupply = true), () => (ctx.ui.showSupply = false));
+        sup.el.dataset.test = 'supply-toggle';
+        const res = seg2('Resources shown', 'Resources hidden', () => (ctx.ui.showResources = true), () => (ctx.ui.showResources = false));
+        res.el.dataset.test = 'resources-toggle';
+        sec.append(sup.el, res.el, el('p', 'note', 'Supply shades how well your fronts are supplied; Resources marks iron, oil and fertile land. Both are in the Map key too.'));
+        sync(() => sup.set(ctx.ui.showSupply));
+        sync(() => res.set(ctx.ui.showResources));
+      },
     });
-    if (hooks.chat) {
-      const chat = hooks.chat;
-      r.append(sectionTitle('Chat'));
-      const sw = seg2('Chat on', 'Chat off', () => chat.set(true), () => chat.set(false));
-      sw.el.dataset.test = 'chat-toggle';
-      r.append(sw.el, el('p', 'note', 'Chat off hides messages and the Chat button. Turn it back on here.'));
-      this.sync.push(() => sw.set(chat.on()));
-    }
+    r.append(this.panel.el);
     r.append(sectionTitle('Game'));
     let confirmUntil = 0;
     const leave = btn('Leave to the main menu', 'danger wide', () => {
@@ -1117,7 +1063,7 @@ export class SettingsPage implements DrawerPage {
   }
 
   update(): void {
-    for (const f of this.sync) f();
+    this.panel.sync();
   }
   onOpen(): void {
     this.update();

@@ -23,7 +23,7 @@ export function paintPortrait(c: HTMLCanvasElement, type: UnitType, variant: Uni
   ctx.clearRect(0, 0, c.width, c.height);
   // device pixels, so the sprite's cells land on whole pixels; planes cast their shadow down and right, so they sit a
   // little up and left of centre
-  const air = type === 'bomber' || type === 'fighter' || type === 'transportPlane' || type === 'reconPlane' || type === 'rocket' || type === 'atomBomb';
+  const air = type === 'bomber' || type === 'fighter' || type === 'transportPlane' || type === 'reconPlane' || type === 'stealthBomber' || type === 'rocket' || type === 'atomBomb' || type === 'cruiseMissile';
   // ships and tanks are long and low: fit the width; planes are about as tall as long: fit the height
   const len = (air ? h - 6 : w - 4) * dpr;
   drawUnitSprite(ctx, type, variant, (w / 2 - (air ? 2 : 0)) * dpr, (h / 2 - (air ? 2 : 0)) * dpr, len, 0, [owner[0], owner[1], owner[2]] as RGB);

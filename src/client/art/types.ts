@@ -80,6 +80,13 @@ export interface UnitDraw {
    * changes the unit's size, heading or turret points.
    */
   damage: number;
+  /**
+   * Tanks in a fight (fx/tankFire.ts): the heading the turret is trained on (radians, like `angle`), toward the enemy it
+   * fights. Absent: the turret looks along the hull. A style without a turret of its own may ignore it.
+   */
+  aim?: number;
+  /** Tanks: how hard the gun just recoiled, 1 the moment it fires down to 0 (a jolt back along `aim`). */
+  recoil?: number;
 }
 
 /** A unit's picture for the HUD (the unit card, the Forces list): the same art as the map, fitted to a box. */
@@ -94,6 +101,35 @@ export interface PortraitDraw {
   boxPx: number;
   /** heading (radians; portraits face right, 0) */
   angle: number;
+  alpha: number;
+}
+
+/**
+ * A cruise missile in flight (fired from a warship with Naval Mastery). The sim flies it straight from the ship to its
+ * target at one speed; a style may show its launch over the first part of the flight as a visual offset (it pops up
+ * out of the ship's deck cell, pitches over, unfolds its wings and drops its booster, cruises low, dives on the
+ * target), timed from `elapsedMs` and `leftMs` so it lands exactly when the sim's missile does.
+ */
+export interface CruiseDraw {
+  /** where the sim's missile is over the ground now, the ship it was fired from and its target (CSS px) */
+  x: number;
+  y: number;
+  sx: number;
+  sy: number;
+  tx: number;
+  ty: number;
+  /** heading over the ground, ship to target (radians, 0 = east, clockwise on screen) */
+  angle: number;
+  /** time since launch and until impact at game speed (ms; game time, so it follows the sim's speed) */
+  elapsedMs: number;
+  leftMs: number;
+  owner: RGB;
+  zoom: number;
+  /** the map's px per art pixel (UnitDraw.scale: spriteScale, 1.5 at mid zoom) */
+  scale: number;
+  dpr: number;
+  timeMs: number;
+  seed: number;
   alpha: number;
 }
 
@@ -118,6 +154,17 @@ export interface UnitArt {
    * SALVO: a plain warship 2, a destroyer 2 from its one turret, a battleship 3). Other units: their centre.
    */
   turretPoint(key: SpriteKey, mods: number, index: number, x: number, y: number, angle: number, scale: number): { x: number; y: number };
+  /**
+   * Missiles: a cruise missile with its own launch animation (CruiseDraw). Optional: a style without it shows the
+   * rocket sprite, smaller (render/units.ts). False when nothing could be drawn this frame.
+   */
+  drawCruise?(ctx: CanvasRenderingContext2D, c: CruiseDraw, m: MotionParams): boolean;
+  /**
+   * Tanks: where the gun's muzzle is on screen for a tank drawn at (x, y) with hull heading `angle` and its turret
+   * trained on `aim` (UnitDraw.aim) at map scale `scale` on a `dpr` screen (fx/tankFire.ts puts the flash there).
+   * Optional: without it the flash comes from the tank's front.
+   */
+  muzzlePoint?(key: SpriteKey, mods: number, x: number, y: number, angle: number, aim: number, scale: number, dpr: number): { x: number; y: number };
 }
 
 // ================================================================================================ troop icons
@@ -332,6 +379,16 @@ export interface ExplosionArt {
   /** One frame of a sinking ship, a falling plane's smoke or dust. */
   drawMapFx(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionParams): void;
   /**
+   * One frame of a blitz's smoke screen (sim/blitz.ts) at (f.x, f.y), f.rt = its spread in tiles; f.kind is 'smoke'.
+   * A style without one gets dust puffs (fx/layer.ts).
+   */
+  drawSmokeScreen?(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionParams): void;
+  /**
+   * One frame of the smoke a blitz leaves along the sides of its wedge as it surges (fx/battleFx.ts blitzTrails), at
+   * (f.x, f.y), f.rt = its spread in tiles. A style without one gets a plain smoke puff (fx/layer.ts).
+   */
+  drawFlankSmoke?(ctx: CanvasRenderingContext2D, f: MapFxDraw, m: MotionParams): void;
+  /**
    * Optional: a style that animates deaths gives their times (the returned object may be reused) and draws them,
    * from zoom 2 in (farther out the map shows the far blink). A style without them shows its small blasts instead:
    * a plane's burst in the air and its smoke, a ship's hit and its sinking splash, a hit on a tank or a missile.
@@ -414,6 +471,47 @@ export interface CannonArt {
   drawMuzzle(ctx: CanvasRenderingContext2D, f: MuzzleDraw, m: MotionParams): void;
   /** A shell, tracer burst or torpedo wake in flight (its landing is a blast: shell, splash or flak). */
   drawShell(ctx: CanvasRenderingContext2D, s: ShellDraw, m: MotionParams): void;
+  /** Tank gun fire (fx/tankFire.ts); a style without it borrows the detailed style's. */
+  tank?: TankGunArt;
+}
+
+/** What kind of gun a tank fires (fx/tankFire.ts gunOf): it sets the flash, the shell and the burst. */
+export type TankGunClass = 'light' | 'medium' | 'heavy' | 'siege';
+
+/** One tank gun shot as drawn: the flash at the muzzle, the shell in flight, the burst where it lands. */
+export interface TankShotDraw {
+  gun: TankGunClass;
+  /** Armor Mastery's long gun: a sharp, narrow, bright flash */
+  sharp: boolean;
+  /** how big (1 = a medium tank's gun) */
+  size: number;
+  /** the muzzle and where the shell lands (screen CSS px), and the direction of fire (radians) */
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  aim: number;
+  /** ms since the gun fired, and how long the shell flies (it lands at ageMs = flightMs) */
+  ageMs: number;
+  flightMs: number;
+  /** the shell lands on water (a splash), or hits steel (a spark) instead of the ground (a dirt burst) */
+  water: boolean;
+  spark: boolean;
+  zoom: number;
+  scale: number;
+  seed: number;
+  dpr: number;
+}
+
+export interface TankGunArt {
+  /** How long a whole shot lasts after the gun fires, flash, smoke and burst included (ms), for a shell of `flightMs`. */
+  shotMs(d: Pick<TankShotDraw, 'gun' | 'flightMs'>, m: MotionParams): number;
+  /** The muzzle flash and gun smoke (over the units). */
+  drawFlash(ctx: CanvasRenderingContext2D, d: TankShotDraw, m: MotionParams): void;
+  /** The shell in flight and the burst where it lands. */
+  drawShell(ctx: CanvasRenderingContext2D, d: TankShotDraw, m: MotionParams): void;
+  /** Far out: a faint blink at the muzzle for a moment, nothing else (`t` 0..1 of it). */
+  drawFar(ctx: CanvasRenderingContext2D, x: number, y: number, t: number, size: number): void;
 }
 
 // ================================================================================================ paratroopers

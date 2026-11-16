@@ -17,7 +17,7 @@ import type { RGB } from './common';
 
 export { facingOf, M_JET, M_MASTERY, M_NIGHT, M_PATH3, M_SPECIAL, spriteKey, SPRITE_KEYS, type SpriteKey };
 
-const AIR_TYPES: ReadonlySet<UnitType> = new Set<UnitType>(['bomber', 'fighter', 'transportPlane', 'reconPlane', 'rocket', 'atomBomb']);
+const AIR_TYPES: ReadonlySet<UnitType> = new Set<UnitType>(['bomber', 'fighter', 'transportPlane', 'reconPlane', 'stealthBomber', 'rocket', 'atomBomb', 'cruiseMissile']);
 
 /** True when the unit has a sprite (every unit type and variant does). */
 export function hasSprite(type: UnitType, variant?: UnitVariant): boolean {
@@ -57,6 +57,9 @@ export interface MapSpriteState {
   damage: number;
   /** opacity 0..1 (the crossfade from the far icons to the sprites, render/units.ts); 1 when left out */
   alpha?: number;
+  /** tanks in a fight: the turret's heading and the gun's recoil (UnitDraw.aim, recoil; fx/tankFire.ts) */
+  aim?: number;
+  recoil?: number;
 }
 
 /**
@@ -102,6 +105,8 @@ export function drawMapSprite(ctx: CanvasRenderingContext2D, type: UnitType, var
   d.shadow = true;
   d.outline = true;
   d.damage = s.damage;
+  d.aim = s.aim;
+  d.recoil = s.recoil;
   return artFor(cat).drawUnit(ctx, d, motionFor(cat));
 }
 

@@ -1283,6 +1283,8 @@ export const detailedExplosionArt: ExplosionArt = {
   durationMs: (kind, m) => detailedExplosions.durationMs(kind, m),
   draw: (ctx, b, m) => detailedExplosions.draw(ctx, b, m),
   drawMapFx: (ctx, f, m) => detailedExplosions.drawMapFx(ctx, f, m),
+  drawSmokeScreen: (ctx, f, m) => detailedExplosions.drawSmokeScreen?.(ctx, f, m),
+  drawFlankSmoke: (ctx, f, m) => detailedExplosions.drawFlankSmoke?.(ctx, f, m),
   deathTimes: (kind, m) => deathTimesOf(kind, m),
   drawDeath: (ctx, d, m) => drawDeathFrame(ctx, d, m),
 };

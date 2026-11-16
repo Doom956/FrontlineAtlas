@@ -8,7 +8,7 @@ import { fogOn } from '../sim/fog';
 import { buildingAt, buildingsOf } from '../sim/buildings';
 import type { Building, GameState, Unit } from '../sim/types';
 import { ARMOR_SUPPORT_READY, NAVY_REACH, UNITS } from '../sim/config';
-import { followedNation, followTargetOf, liveFoes, warTargetOf } from '../sim/warTarget';
+import { autoReconAim, followedNation, followTargetOf, liveFoes, warTargetOf } from '../sim/warTarget';
 import { blockadedPorts, mendingInPort, warshipMaxHp, warshipStance } from '../sim/naval2';
 import { divisionStrength } from '../sim/armor2';
 import { airCoverActive, airMissionOf, followRaidOf, wingOf } from '../sim/airwings';
@@ -90,12 +90,16 @@ export function followText(state: GameState, owner: number, kind: FollowKind, ch
 }
 
 /** The airfield's auto-recon toggle: label and tooltip (off by default: every flight costs gold and oil). */
-export function autoReconText(state: GameState, owner: number, on: boolean): { label: string; tip: string } {
+export function autoReconText(state: GameState, owner: number, on: boolean, airfield?: Building): { label: string; tip: string } {
   const c = UNITS.reconPlane;
   const cost = `${c.gold} gold${c.oil ? ` and ${c.oil} oil` : ''}`;
-  if (!on) return { label: 'Auto recon: off', tip: `Off: recon flies only when you order it. On: scouts the nation you attack whenever the plane is ready (${cost} a flight).` };
+  const avoid = 'It flies around enemy fighters, which shoot recon planes down.';
+  if (!on) return { label: 'Auto recon: off', tip: `Off: recon flies only when you order it. On: scouts the nation you attack whenever the plane is ready (${cost} a flight). ${avoid}` };
   const n = warTargetOf(state, owner).nation;
-  return { label: n > 0 ? `Auto recon: scouts ${nameOf(state, n)}` : 'Auto recon: on (no war yet)', tip: `On: scouts the nation you attack whenever the plane is ready (${cost} a flight). Click to turn off.` };
+  const tip = `On: scouts the nation you attack whenever the plane is ready (${cost} a flight). ${avoid} Click to turn off.`;
+  // every route to the target crosses enemy fighter cover: the plane waits (sim warTarget.autoReconAim)
+  if (n > 0 && airfield && autoReconAim(state, airfield, n).guarded) return { label: `Auto recon: waiting, enemy fighters guard ${nameOf(state, n)}`, tip };
+  return { label: n > 0 ? `Auto recon: scouts ${nameOf(state, n)}` : 'Auto recon: on (no war yet)', tip };
 }
 
 // ---------------------------------------------------------------------------------------------------------------

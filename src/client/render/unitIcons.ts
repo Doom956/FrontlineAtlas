@@ -105,6 +105,8 @@ export const ICON_SHAPES: Record<SpriteKey, IconShape> = {
   transportPlane: shape([sym([6, 0, 5.2, 1.5, 2.2, 1.6, 2.2, 6.5, 0.2, 6.5, 0.2, 1.6, -3.8, 1.3, -4.6, 0.7, -4.8, 3.2, -6, 3.2, -6, 0])], [light('poly', ...box(-3, -0.55, 4.4, 0.55))]),
   // recon plane: a slim body, a long thin wing, a small tail and a lens at the nose
   reconPlane: shape([sym([5.5, 0, 4.6, 0.7, 1.6, 0.7, 1.5, 6, 0.4, 6, 0.3, 0.7, -4, 0.5, -4.2, 2.2, -5.3, 2.2, -5.3, 0])], [light('dot', 3.9, 0, 0.7)]),
+  // stealth bomber: a flying wing, its sawtooth trailing edge, a light hump in the middle
+  stealthBomber: shape([sym([5.6, 0, -2, 7.4, -2.8, 7.2, -1.2, 4.8, -3.2, 3, -1.6, 1.4, -3.4, 0])], [light('poly', 3.6, -0.5, 3.6, 0.5, -0.8, 0.9, -0.8, -0.9)]),
   // rocket: a dart with swept fins
   rocket: shape([sym([5, 0, 3.2, 1.05, -2.8, 1.05, -4.8, 2.4, -5.4, 2.4, -4.6, 0.7, -5, 0])], [light('poly', 3.2, -1, 5, 0, 3.2, 1)]),
   // atom bomb: fatter, with fins and a light ring (the atom mark)

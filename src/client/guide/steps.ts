@@ -6,7 +6,8 @@ import { fogOn } from '../../sim/fog';
 import { buildingCost, chargesReady, countBuildings } from '../../sim/buildings';
 import { autoFireCount } from '../airSim';
 import { borders } from '../../sim/combat';
-import { BUILDINGS, DOCTRINE_UNLOCK_SECONDS, TECHS } from '../../sim/config';
+import { BLITZ, BLITZ_NAME, BUILDINGS, CRUISE, DOCTRINE_UNLOCK_SECONDS, TECHS } from '../../sim/config';
+import { cruiseHull } from '../../sim/units';
 import { areAllied } from '../../sim/diplomacy';
 import { neighbors4, nearestTile, tileDist } from '../../sim/grid';
 import { buildingAllowed, mods, researchRule, unitAllowed } from '../../sim/rules';
@@ -531,6 +532,22 @@ export function guideTips(): GuideTip[] {
       when: (c) => playing(c) && hasTech(c.me, 'rocketry') && countBuildings(c.s, c.me.id, 'silo', true) >= 2 && !autoFireCount(c.s, c.me.id).on && ownAttack(c.s, c.me),
       done: (c) => autoFireCount(c.s, c.me.id).on > 0 || c.ui.openPanel === 'forces',
     },
+    {
+      // Air Mastery: the stealth strike from an airfield's card (client/stealth.ts)
+      id: 'stealth',
+      text: 'Air Mastery: you have a stealth bomber SAM sites cannot see. Click an airfield, then Stealth strike, then a target behind their SAM sites.',
+      target: 'order-stealth',
+      when: (c) => playing(c) && hasTech(c.me, 'airMastery') && countBuildings(c.s, c.me.id, 'airfield', true) >= 1 && (ownAttack(c.s, c.me) || attackOnMe(c.s, c.me) !== null),
+      done: (c) => c.me.stealthReady !== undefined,
+    },
+    {
+      // Naval Mastery: warships, destroyers and battleships carry cruise missiles (fired from the ship's card)
+      id: 'cruise',
+      text: `Naval Mastery: your warships carry cruise missiles. Click a warship, then Cruise missile on its card, then enemy land up to ${CRUISE.reach} tiles from it.`,
+      target: 'cruise-btn',
+      when: (c) => playing(c) && hasTech(c.me, 'navalMastery') && c.s.units.some((u) => u.owner === c.me.id && u.hp > 0 && cruiseHull(u)) && (ownAttack(c.s, c.me) || attackOnMe(c.s, c.me) !== null),
+      done: (c) => c.s.units.some((u) => u.owner === c.me.id && u.cruiseReady !== undefined),
+    },
     // Ships, tanks and planes: how to get them (the tech, then the building), then how to use them. Each step only
     // once it is the next one for the player.
     {
@@ -585,6 +602,16 @@ export function guideTips(): GuideTip[] {
       tile: (c) => buildingTile(c.s, c.me, 'factory'),
       when: (c) => playing(c) && owns(c.s, c.me, 'factory') && hasTech(c.me, 'mechanization'),
       done: (c) => c.s.units.some((u) => u.owner === c.me.id && u.type === 'tankDivision'),
+    },
+    {
+      id: 'blitz',
+      text: `${BLITZ_NAME}: select a tank division and click ${BLITZ_NAME} on its orders bar, then click enemy land: smoke, a fast deep push, and the land it takes holds ${BLITZ.holdSeconds} s.`,
+      tile: (c) => {
+        const u = c.s.units.find((q) => q.owner === c.me.id && q.type === 'tankDivision' && q.hp > 0);
+        return u ? Math.round(u.y) * c.s.map.width + Math.round(u.x) : -1;
+      },
+      when: (c) => playing(c) && hasTech(c.me, 'armorMastery') && c.s.units.some((u) => u.owner === c.me.id && u.type === 'tankDivision' && u.hp > 0),
+      done: (c) => c.s.units.some((u) => u.owner === c.me.id && u.type === 'tankDivision' && u.blitzReady !== undefined),
     },
     {
       id: 'airTech',

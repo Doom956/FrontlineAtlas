@@ -11,6 +11,8 @@
 //                   high wing set well forward (it passes over the fuselage), twin engines, one tall fin over a broad
 //                   tailplane, cabin windows, the open jump door, recognition stripes: it carries the paratroopers
 //   reconPlane      twin booms with an engine each, a central pod with a long glazed nose, photo recon blue
+//   stealthBomber   a dark grey flying wing: a sharp nose, straight swept leading edges, a sawtooth trailing edge, a
+//                   low hump with the cockpit (Air Mastery's stealth strike)
 //   rocket          a slender finned rocket; atomBomb a fat white one with black and yellow hazard bands
 // Upgrades: Jet Engines swap the propellers for jet pods (or a nose intake), Night Bombing is matte black paint with
 // flame dampers, Drop Tanks hang silver tanks under the wings, Air Mastery a checkered cowl or a yellow tail band,
@@ -32,6 +34,7 @@ const GLASS = hexCol('#2a3a46');
 const COWL = hexCol('#2b2e30');
 const ROCKET_BODY = hexCol('#7e8673');
 const ATOM_BODY = hexCol('#d9dbd4');
+const STEALTH_GREY = hexCol('#30353a');
 
 // ------------------------------------------------------------------------------------------------- shapes
 
@@ -575,7 +578,37 @@ const reconPlane: PlanePlan = {
   ],
 };
 
-const PLANES: Partial<Record<SpriteKey, PlanePlan>> = { bomber, groundAttack, heavyBomber, fighter, transportPlane, reconPlane };
+// ---- stealth bomber: a flying wing with a sawtooth trailing edge, a low hump, no fins
+const SW = [10, 0, -3, -17, -4.4, -16.6, -1.4, -11.2, -5.2, -7, -2.2, -3.4, -5.6, 0];
+const stWing: Shape = (c) => {
+  c.moveTo(SW[0], SW[1]);
+  for (let i = 2; i < SW.length; i += 2) c.lineTo(SW[i], SW[i + 1]);
+  for (let i = SW.length - 4; i >= 2; i -= 2) c.lineTo(SW[i], -SW[i + 1]);
+  c.closePath();
+};
+const stHump = bodyShape(-3.8, 8.4, 2.1, 2.2, 0.55, 0.5);
+
+const stealthBomber: PlanePlan = {
+  len: 16,
+  span: 34,
+  alt: 12,
+  paint(p) {
+    const col = STEALTH_GREY;
+    wingPaint(p, stWing, col, 10, -5.6, 17, 571);
+    fuselagePaint(p, stHump, lighten(col, 0.12), 2.2, 2.1, 0.8);
+    canopy(p, 5.6, 7.8, 0.65);
+    // the engine intakes: dark slits beside the hump
+    for (const y of [-2.9, 2.9]) fillShape(p.ctx, oval(3, y, 1, 0.3), css(hexCol('#0d1013')));
+  },
+  silhouette: () => merge(stWing, stHump),
+  roundels: () => [
+    [-3, 11, 0.8],
+    [-3, -11, 0.8],
+  ],
+  props: () => [],
+};
+
+const PLANES: Partial<Record<SpriteKey, PlanePlan>> = { bomber, groundAttack, heavyBomber, fighter, transportPlane, reconPlane, stealthBomber };
 
 /**
  * The ground shadow far below: soft, and softer and fainter the higher the plane flies (`alt` art units), as a real

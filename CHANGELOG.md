@@ -2,6 +2,114 @@
 
 The big rounds of work, newest first. Each one was merged to `main` and deployed to the live game.
 
+## 2026-11-15 · Settings
+
+- One Settings screen, on the title screen (Settings, with a gear) and in the game's Menu, in four tabs:
+  - Sound: Master, Effects and Music in %, Sound on or Muted, a Test sound button that says why it is off when it is.
+  - Display: Reduce motion (Auto follows your device, On or Off) and graphics quality (Auto, High, Low; Low is the
+    light map for slow computers). In a game, the minimap, supply and resource overlays are here too. Everyone plays
+    on the standard look: Real ground, detailed pixel units, lively motion and map effects on.
+  - Gameplay: the advisor and the guide on or off, and Restart guide. Chat on or off in online games.
+  - About: the version and build, and the credits (they moved here from the title screen's own Credits row).
+- Every setting is kept in this browser and works at once, no reload. Each tab has its own Reset to defaults.
+- Your sound volumes from before are kept.
+
+## 2026-11-15 · Breakthrough
+
+With Armor Mastery your tank divisions get a new order, Breakthrough:
+- Select a division and click Breakthrough on its orders bar, then click enemy land near your border. The map shows the
+  wedge it will drive before you click.
+- The division pops a smoke screen and surges at twice the speed, five tiles wide and half again as deep, with
+  fewer losses. The land it takes holds for 20 seconds: the enemy can't take it back meanwhile, so the wedge is hard
+  to cut off. Its tanks fire faster than a plain spearhead's as they surge.
+- It costs 100 oil and needs half strength; then the division recharges for 2 minutes. The button says when it is
+  ready and why it can't go ("Recharging 40 s", "Needs Armor Mastery").
+- Armor Mastery still makes encirclements collapse bigger pockets.
+- AI nations from Normal up use it to close encirclements and break stalemates, never into your land at Easy or
+  Normal. Your own divisions never use it by themselves.
+- Online games need the new version (protocol 21).
+
+## 2026-11-15 · Tank divisions that fight like an army
+
+For your tank divisions on Support, and for AI nations from Normal up (Easy plays as before):
+- Divisions stay at the front for the whole war instead of standing down between two attack waves.
+- They look for the line that cuts the enemy off: across a thin strip of their land, the base of an enemy tank push
+  into yours, or a bulge they can pinch off. More enemy land now falls in pockets.
+- Ready divisions near the same strike go in together, side by side, instead of one at a time. On Hard and Brutal a
+  lone division waits for one driving up.
+- A straight push needs a strong division, and lines that would leave it worn out deep in enemy land are avoided.
+- After a push, a division leaves the thin tip at once and drives back to solid ground. When the way back is cut, it
+  breaks out to your line. Near the enemy it holds a little deeper, so it is not pushed back by every attack.
+- A worn division goes back to a Factory nearby and refits until nearly full.
+- A division whose front cannot be reached over your land supports a front it can reach.
+- Your own orders come first: divisions you set to Hold or Refit do just that, as before, and only divisions on
+  Support use the new habits. A division you drive to the tip of a push by hand stays there.
+
+## 2026-11-15 · Tanks shoot
+
+- Tank divisions in a fight now visibly fight: the turret turns toward the enemy, then the gun fires with a muzzle
+  flash, a jolt of recoil and a puff of gun smoke, and a tracer shell flies to the enemy side of the front and lands
+  in a small burst of dirt, a spark of steel struck, or a splash on water.
+- Attacking divisions (spearheads) fire often; divisions holding a front next to a nation at war fire less often.
+- Light tanks fire small and quick, heavy tanks big and slow, the siege tank's howitzer lobs its shell in a high
+  arc, and Armor Mastery's modern long gun gives a sharp, bright flash.
+- You hear each shot with its flash. You never see or hear enemy fire you cannot see under fog of war.
+- Far out the shots are a faint blink or nothing. Reduced motion fires fewer flashes with no recoil. Big battles stay
+  smooth: only a few new shots start each frame.
+- The art lab shows the tank fire next to the ship cannon fire.
+
+## 2026-11-15 · Stealth strike
+
+- Air Mastery keeps its bigger air wings and adds a stealth bomber: a dark grey flying wing that SAM sites cannot see.
+  It is the answer to a wall of SAM sites. Click an airfield, then Stealth strike, then an enemy target up to 188
+  tiles away (more from a bigger airfield).
+- It drops a heavy raid where you send it: every enemy building within about 6 tiles is wrecked, troops there are
+  killed and the nation's income is cut for a while. Enemy fighters guarding that sky still cut its bombs by 40%.
+- One stealth bomber at a time: 2,000 gold and 150 oil a strike, then it recharges for 90 s. The button says plainly
+  why it is off: "Recharging 45 s", "Stealth bomber in the air", "Needs Air Mastery", not enough gold.
+- While aiming you see its reach, the route, the blast, the SAM sites in grey (they cannot see it) and what it should
+  wreck.
+- The nation it flies at sees it only 2 s before the bombs fall: "Stealth bomber of Azuria over your land: bombs in
+  2 s", with the air-raid siren.
+- AI nations with Air Mastery send it at silos, airfields, factories and SAM sites behind strong SAM cover, first of
+  all near their own landings, and keep a gold reserve. Easy AIs never send it at you.
+- Online games need the new version (protocol 21).
+
+## 2026-11-15 · Fighters that matter
+
+- Fighters shoot down enemy recon planes. A recon plane that flies into enemy fighter cover on its way out (an
+  airfield's fighters, a carrier, a Superiority patrol) is shot down by the same rule as bombers, and reveals
+  nothing. The alert says so: "Azuria's fighters shot down your recon plane before it got there: nothing revealed".
+  SAM sites let recon planes pass: fighters are the answer to recon.
+- Air superiority: where you have at least 2 fighters guarding the sky, and more than the enemy has there, enemy
+  bombs do 40% less. Fewer troops killed, fewer buildings hit, a smaller cut to your defence and your income.
+  Bombers still fly and still hit; send fighters of your own over your front to take the sky back.
+- You can see it: the airfield card says "Air superiority: enemy bombing within 80 tiles does 40% less, while their
+  fighters there are fewer", a selected airfield shows its fighter cover ring, and the strike preview, the bombing
+  alerts and the airfield's last result say when enemy fighters cut your bombs.
+- AI nations from Normal up buy more fighters against nations that lean on bombers and recon, patrol where enemy
+  bombers aim, build an airfield where they are bombed with no fighters near, contest the sky over their own attacks,
+  and never send recon through fighter cover they know of. Your Auto recon flies around enemy fighters too ("Auto
+  recon: waiting, enemy fighters guard Azuria"); orders you give are never changed.
+- Online games need the new version (protocol 21).
+
+## 2026-11-15 · Cruise missiles from sea
+
+- Naval Mastery now arms your warships, destroyers and battleships with cruise missiles. Click a ship, then Cruise
+  missile on its card, then enemy land up to 35 tiles from the ship. With several ships selected the button sits in
+  the orders bar and the nearest loaded ship fires.
+- A cruise missile is a small rocket: it wrecks enemy buildings within 4 tiles (a rocket hits 7) and kills troops.
+  700 gold and 60 oil each, and each ship needs 30 s to reload. The button says plainly why it is off: reloading,
+  needs Naval Mastery, not enough gold.
+- While aiming you see each ship's reach, the blast and the SAM sites in the way. SAM sites shoot cruise missiles down
+  like rockets, so send more than they can load or silence them first.
+- You see it launch: it rises out of the ship's deck on a booster with a flash and a puff of smoke, pitches over,
+  unfolds its wings, drops the booster and skims low to the target before it dives.
+- The nation it flies at is warned: "Cruise missile incoming".
+- AI nations with Naval Mastery use them at war: on SAM sites, airfields and silos near the coast before they land,
+  and on buildings in reach. They keep a gold reserve and never fire into heavy SAM cover. Your own ships fire only
+  when you tell them to.
+
 ## 2026-11-15 · Real sound and music
 
 - Real recordings in place of the made-up sounds: artillery, explosions, the atom bomb, missile launches, tank

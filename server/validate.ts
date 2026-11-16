@@ -104,6 +104,8 @@ const ACTION_SPECS: ActionSpecs = {
   // Salvos (protocol 14): a site of -1 = every own site; count = how many fly (absent 1, 0 = every ready one).
   bomb: { airfield: { k: 'siteOrAuto' }, tile: TILE, count: { k: 'count', optional: true } },
   launchMissile: { silo: { k: 'siteOrAuto' }, kind: { k: 'enum', values: ['rocket', 'atomBomb'] }, tile: TILE, count: { k: 'count', optional: true } },
+  cruiseMissile: { ship: ID, tile: TILE },
+  stealthStrike: { airfield: { k: 'siteOrAuto' }, tile: TILE },
   paradrop: { airfield: TILE, tile: TILE, troops: { k: 'amount' } },
   barrage: { tile: TILE },
   requestAlliance: { to: PLAYER },
@@ -122,6 +124,8 @@ const ACTION_SPECS: ActionSpecs = {
   moveWarships: { unitIds: { k: 'ids' }, tile: TILE },
   buildTankDivision: { tile: TILE },
   moveTankDivision: { unitIds: { k: 'ids' }, tile: TILE },
+  // protocol 21: a tank division's blitz, Breakthrough (blitz.ts)
+  blitz: { unitId: ID, tile: TILE },
   admin: {
     op: { k: 'enum', values: ADMIN_OP_LIST },
     player: { k: 'player', optional: true },

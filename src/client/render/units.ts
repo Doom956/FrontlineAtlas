@@ -15,7 +15,7 @@
 // Zoomed out (FLEET_ZOOM), warships of one owner within FLEET_RADIUS tiles (or 16 px on screen) draw as one fleet
 // marker (the lead ship's icon with a second hull behind it) with a count badge (render/fleets.ts); a click on your
 // own marker selects that fleet (ownFleetAt).
-import { TICKS_PER_SECOND } from '../../sim/config';
+import { TICKS_PER_SECOND, UNITS } from '../../sim/config';
 import { armyTotal } from '../../sim/economy';
 import type { GameState, Unit, UnitVariant } from '../../sim/types';
 import type { Camera } from '../camera';
@@ -26,7 +26,7 @@ import { drawFleetCount, drawUnitIcon, iconHalf, iconScale, iconShapeOf } from '
 import { artStyleOf, type ArtStyle } from '../art/artStyle';
 import { artFor, motionFor, styleModule } from '../art/registry';
 import { spriteKey } from '../art/shared/keys';
-import type { MotionParams, ParachuteMarkDraw, ParadropDraw, TrailLayer, TrailUnit, TrailView } from '../art/types';
+import type { CruiseDraw, MotionParams, ParachuteMarkDraw, ParadropDraw, TrailLayer, TrailUnit, TrailView } from '../art/types';
 import { prankView } from '../fx/prankView';
 import { isKillBlast, KILL_EXACT } from '../fx/deaths';
 import { isIncoming } from '../forces';
@@ -152,6 +152,8 @@ export class UnitLayer {
   private contrailList: TrailUnit[] = [];
   /** more contrails to lay with the planes' (fx/fighters.ts: the fighters over airfields and carriers) */
   extraContrails: ((into: TrailUnit[], motion: MotionParams) => void) | null = null;
+  /** tank divisions in a fight: where their turrets point and their guns' recoil (fx/tankFire.ts) */
+  gunnery: { aimOf(id: number): number | null; recoilOf(id: number, nowMs: number): number } | null = null;
 
   reset(w: number): void {
     this.tracks.clear();
@@ -359,7 +361,7 @@ export class UnitLayer {
       const m = Math.max(40, S + 8);
       if (x < -m || y < -m || x > cam.viewW + m || y > cam.viewH + m) continue;
       // enemy submarines stay hidden until close, sonar, recon or Early Warning shows them (techtree.unitVisibleTo)
-      if (u.variant === 'submarine' && me > 0 && !unitVisibleTo(state, me, u)) continue;
+      if ((u.variant === 'submarine' || u.type === 'stealthBomber') && me > 0 && !unitVisibleTo(state, me, u)) continue;
       // fog of war: other nations' units only where you see them (fog/fogView.ts); hit tests follow
       if (fog && !fog.unitShown(state, u)) continue;
       const own = me > 0 && u.owner === me;
@@ -463,16 +465,26 @@ export class UnitLayer {
       for (const pass of [0, 1, 2]) {
         for (const e of drawList) {
           const air = isAirType(e.type);
-          const missile = e.type === 'rocket' || e.type === 'atomBomb';
+          const missile = e.type === 'rocket' || e.type === 'atomBomb' || e.type === 'cruiseMissile';
           if ((pass === 0 && air) || (pass === 1 && (!air || missile)) || (pass === 2 && !missile)) continue;
           const c = colors[e.u.owner] ?? [200, 200, 200];
           let iconA = e.fleet ? 1 : band.icon;
-          if (band.sprite > 0 && !e.fleet) {
+          if (band.sprite > 0 && e.type === 'cruiseMissile') {
+            // its own launch animation where the style has one, else the rocket, smaller (drawCruiseUnit)
+            ss.seed = e.u.id;
+            ss.alpha = band.sprite;
+            ss.scale = k;
+            if (!this.drawCruiseUnit(ctx, state, e, c as RGB, ss, ox, oy, z)) iconA = Math.max(iconA, band.sprite);
+          } else if (band.sprite > 0 && !e.fleet) {
             ss.turnRate = e.turn;
             ss.speed = e.speed;
             ss.moving = !!e.moving;
             ss.seed = e.u.id;
             ss.damage = unitDamage(e.u);
+            const gun = e.type === 'tankDivision' ? this.gunnery : null;
+            const aim = gun ? gun.aimOf(e.u.id) : null;
+            ss.aim = aim ?? undefined;
+            ss.recoil = gun && aim !== null ? gun.recoilOf(e.u.id, nowMs) : 0;
             const mods = unitSpriteMods(state, e.u);
             if (fadeFrom) {
               // the pixel size just stepped: the old size fades out under the new one
@@ -502,7 +514,7 @@ export class UnitLayer {
       for (const e of visible) {
         if (e.u.owner !== me) continue;
         if (e.type !== 'warship' && e.type !== 'tankDivision') {
-          if (isAirType(e.type) && e.type !== 'rocket' && e.type !== 'atomBomb') {
+          if (isAirType(e.type) && e.type !== 'rocket' && e.type !== 'atomBomb' && e.type !== 'cruiseMissile') {
             ctx.moveTo(e.x - 2, e.y + e.R + 3);
             ctx.lineTo(e.x + 2, e.y + e.R + 3);
           }
@@ -581,6 +593,51 @@ export class UnitLayer {
         }
       }
     }
+  }
+
+  private cruiseArgs: CruiseDraw = { x: 0, y: 0, sx: 0, sy: 0, tx: 0, ty: 0, angle: 0, elapsedMs: 0, leftMs: 0, owner: [200, 200, 200], zoom: 1, scale: 1, dpr: 1, timeMs: 0, seed: 0, alpha: 1 };
+
+  /**
+   * A cruise missile: the style's own launch animation (UnitArt.drawCruise: it climbs off the ship it was fired from,
+   * unfolds, cruises and dives, timed from the sim's flight so it lands with it), else the rocket sprite at two thirds
+   * of its size. False when nothing could be drawn this frame.
+   */
+  private drawCruiseUnit(ctx: CanvasRenderingContext2D, state: GameState, e: Vis, owner: RGB, ss: MapSpriteState, ox: number, oy: number, z: number): boolean {
+    const u = e.u;
+    const w = state.map.width;
+    const hx = (u.home % w) + 0.5;
+    const hy = ((u.home / w) | 0) + 0.5;
+    const tx = (u.target % w) + 0.5;
+    const ty = ((u.target / w) | 0) + 0.5;
+    const art = artFor('missiles');
+    if (art.drawCruise) {
+      const total = Math.hypot(tx - hx, ty - hy);
+      const flown = Math.min(total, Math.hypot((e.tx ?? hx) - hx, (e.ty ?? hy) - hy));
+      const sp = UNITS.cruiseMissile.speed;
+      const a = this.cruiseArgs;
+      a.x = e.x;
+      a.y = e.y;
+      a.sx = ox + hx * z;
+      a.sy = oy + hy * z;
+      a.tx = ox + tx * z;
+      a.ty = oy + ty * z;
+      a.angle = Math.atan2(ty - hy, tx - hx);
+      a.elapsedMs = (flown / sp) * 1000;
+      a.leftMs = ((total - flown) / sp) * 1000;
+      a.owner = owner;
+      a.zoom = z;
+      a.scale = ss.scale;
+      a.dpr = ss.dpr;
+      a.timeMs = ss.timeMs;
+      a.seed = u.id;
+      a.alpha = ss.alpha ?? 1;
+      return art.drawCruise(ctx, a, motionFor('missiles'));
+    }
+    const k = ss.scale;
+    ss.scale = k * (2 / 3);
+    const ok = drawMapSprite(ctx, 'cruiseMissile', undefined, e.x, e.y, e.angle, owner, 0, ss);
+    ss.scale = k;
+    return ok;
   }
 
   private markArgs: ParachuteMarkDraw = { x: 0, y: 0, half: 0, owner: [200, 200, 200], zoom: 1, dpr: 1 };

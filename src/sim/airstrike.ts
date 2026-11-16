@@ -32,6 +32,7 @@ import {
   raidCutPer,
   raidMaxCutOf,
   raidSecondsOf,
+  superiorityBombMul,
   supportStrike,
   supportStrikeRadius,
 } from './airwings';
@@ -138,7 +139,7 @@ export function bomberArrived(state: GameState, u: Unit): void {
   nightScatter(state, u); // Night Bombing (specials.ts): the bombs land off the aim
   if (support) {
     const r = supportStrike(state, u);
-    addResult(state, u, 1, r?.victim ?? 0, 1, 0, 0, r?.kills ?? 0, 0);
+    addResult(state, u, 1, r?.victim ?? 0, 1, 0, 0, r?.kills ?? 0, 0, r?.guarded ? 1 : 0);
     return;
   }
   const o = state.map.owner[u.target];
@@ -146,7 +147,7 @@ export function bomberArrived(state: GameState, u: Unit): void {
   raid(state, u, victim);
   const h = heavyDrop(state, u.owner);
   const d = dropBombs(state, u, h.radius, h.payload);
-  addResult(state, u, 2, victim, 1, 0, d.buildings, d.kills, d.gold);
+  addResult(state, u, 2, victim, 1, 0, d.buildings, d.kills, d.gold, d.guarded ? 1 : 0);
 }
 
 /**
@@ -450,10 +451,12 @@ export interface StrikePreview {
   raidCut: number;
   raidSeconds: number;
   goldBurn: number;
+  /** bombs: the victim's fighters guard the aim (air superiority): every number above is already cut */
+  guarded: boolean;
 }
 
 function emptyPreview(role: StrikePreview['role'], tile: number, reason: string): StrikePreview {
-  return { ok: false, reason, role, aim: tile, radius: 0, launchers: 0, sites: [], victim: 0, enemyTiles: 0, enemyBuildings: 0, ownTiles: 0, ownBuildings: 0, kills: 0, buildingsHit: 0, zoneCut: 0, zoneSeconds: 0, raidCut: 0, raidSeconds: 0, goldBurn: 0 };
+  return { ok: false, reason, role, aim: tile, radius: 0, launchers: 0, sites: [], victim: 0, enemyTiles: 0, enemyBuildings: 0, ownTiles: 0, ownBuildings: 0, kills: 0, buildingsHit: 0, zoneCut: 0, zoneSeconds: 0, raidCut: 0, raidSeconds: 0, goldBurn: 0, guarded: false };
 }
 
 function armyOf(state: GameState, pid: number): number {
@@ -584,25 +587,29 @@ export function strikePreview(state: GameState, pid: number, kind: StrikeKind, t
     if (victim) {
       const vp = state.players[victim];
       const tiles = tilesBy.get(victim) ?? 0;
-      const per = Math.max((AIR.supportMinKill * tiles) / Math.max(1, hostileTiles), AIR.supportKillShare * armyOf(state, victim) * (tiles / Math.max(1, vp.tiles))) * nightEffectMul(state, pid) * airSupportMul(state, pid);
+      const guard = superiorityBombMul(state, pid, victim, aim); // air superiority (airwings.ts)
+      out.guarded = guard < 1;
+      const per = Math.max((AIR.supportMinKill * tiles) / Math.max(1, hostileTiles), AIR.supportKillShare * armyOf(state, victim) * (tiles / Math.max(1, vp.tiles))) * nightEffectMul(state, pid) * airSupportMul(state, pid) * guard;
       out.kills = Math.min(armyOf(state, victim), per * n);
-      out.zoneCut = airSupportCutAfter(state, pid, aim, n);
+      out.zoneCut = airSupportCutAfter(state, pid, aim, n * guard);
       out.zoneSeconds = AIR.supportSeconds;
     }
   } else {
     const h = heavyDrop(state, pid);
     const night = nightEffectMul(state, pid) * h.payload;
-    const hit = Math.min(1, techBombBuildingHit(state, pid, BOMBER_BUILDING_HIT) * night);
+    const guardOf = (q: number): number => superiorityBombMul(state, pid, q, aim); // air superiority (airwings.ts)
+    const gv = victim ? guardOf(victim) : 1;
+    out.guarded = gv < 1;
+    const hit = Math.min(1, techBombBuildingHit(state, pid, BOMBER_BUILDING_HIT) * night) * gv;
     out.buildingsHit = hostileBuildings * (1 - powInt(1 - hit, n));
-    for (const [q, k] of tilesBy) out.kills += Math.min(armyOf(state, q), n * Math.max((BOMBER_MIN_KILL * k) / hostileTiles, BOMBER_TROOP_KILL * armyOf(state, q) * (k / Math.max(1, state.players[q].tiles))) * night);
+    for (const [q, k] of tilesBy) out.kills += Math.min(armyOf(state, q), n * Math.max((BOMBER_MIN_KILL * k) / hostileTiles, BOMBER_TROOP_KILL * armyOf(state, q) * (k / Math.max(1, state.players[q].tiles))) * night * guardOf(q));
     if (victim) {
       const live = state.air?.raids.find((r) => r.victim === victim && r.untilTick > state.tick);
-      out.raidCut = Math.min(raidMaxCutOf(state, pid), (live?.cut ?? 0) + n * raidCutPer(state, pid));
+      out.raidCut = Math.min(raidMaxCutOf(state, pid), (live?.cut ?? 0) + n * raidCutPer(state, pid) * gv);
       out.raidSeconds = raidSecondsOf(state, pid);
     }
     if (techOf(state, pid, 'strategicBombing')) {
-      const keep = powInt(1 - TECH_EFFECTS.strategicResourceBurn, n);
-      for (const q of tilesBy.keys()) out.goldBurn += state.players[q].gold * (1 - keep);
+      for (const q of tilesBy.keys()) out.goldBurn += state.players[q].gold * (1 - powInt(1 - TECH_EFFECTS.strategicResourceBurn * guardOf(q), n));
     }
   }
   out.ok = out.reason === '';
@@ -614,7 +621,7 @@ export function strikePreview(state: GameState, pid: number, kind: StrikeKind, t
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Adds one bomber's arrival to its airfield's latest result (a new result after STRIKE.resultMergeSeconds). */
-function addResult(state: GameState, u: Unit, mission: number, victim: number, hit: number, saved: number, buildings: number, kills: number, gold: number): void {
+function addResult(state: GameState, u: Unit, mission: number, victim: number, hit: number, saved: number, buildings: number, kills: number, gold: number, guarded = 0): void {
   const b = buildingAt(state, u.home);
   if (!b || b.type !== 'airfield' || b.owner !== u.owner) return;
   const air = airState(state);
@@ -629,6 +636,7 @@ function addResult(state: GameState, u: Unit, mission: number, victim: number, h
     list.push(r);
   } else if (r.owner !== u.owner || state.tick - r.tick > STRIKE.resultMergeSeconds * TICKS_PER_SECOND) {
     Object.assign(r, fresh());
+    delete r.guarded;
   }
   r.tick = state.tick;
   if (hit) r.mission = mission;
@@ -638,6 +646,7 @@ function addResult(state: GameState, u: Unit, mission: number, victim: number, h
   r.buildings += buildings;
   r.kills += kills;
   r.gold += gold;
+  if (guarded > 0) r.guarded = (r.guarded ?? 0) + guarded;
 }
 
 function shortCount(v: number): string {
@@ -664,6 +673,10 @@ export function wingLastResult(state: GameState, airfieldTile: number): { text: 
     text = `Last raid: ${parts.join(', ')}`;
   }
   if (r.bombers > 0 && back) text += `; ${back}`;
+  // Air superiority: the victim's fighters guarded the aim, the bombs did less.
+  const g = r.guarded ?? 0;
+  const cut = Math.round(AIR.superiorityBombCut * 100);
+  if (g > 0) text += g >= r.bombers ? `; enemy fighters guarded the target: ${cut}% less` : `; enemy fighters guarded ${g} of ${r.bombers} bombers' targets: ${cut}% less there`;
   return { text, secondsAgo: Math.max(0, (state.tick - r.tick) / TICKS_PER_SECOND), result: r };
 }
 
@@ -684,6 +697,7 @@ export function hashResults(air: AirState, h: number, mixInt: (h: number, v: num
     h = mixInt(h, r.buildings);
     h = mixFloat(h, r.kills);
     h = mixFloat(h, r.gold);
+    h = mixInt(h, r.guarded ?? 0);
   }
   return h;
 }

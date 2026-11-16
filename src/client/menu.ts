@@ -24,7 +24,9 @@ export { PLAYER_PALETTE, settingsFromPrefs } from './setupScreen';
 // The page itself lives in howto.ts (kept here as an export for older imports).
 export { howToPlayContent } from './howto';
 import { howToPlayContent } from './howto';
-import { creditsContent } from './sound/creditsView';
+import { SettingsPanel } from './settings/panel';
+import { advisorSaved, saveAdvisor } from './hud/advisor';
+import { loadGuidePrefs, saveGuidePrefs } from './guide/engine';
 
 // ------------------------------------------------------------------------------------------------ menu
 
@@ -192,9 +194,9 @@ export class Menu {
     rows.append(online);
     if (this.cb.onTutorial) rows.append(tutorialButton(() => this.cb.onTutorial?.()));
     rows.append(menuRow('How to play', 'The rules and controls on one page', () => this.showHelp()));
-    const credits = menuRow('Credits', 'Who made the sounds and music', () => this.showCredits());
-    credits.dataset.test = 'menu-credits';
-    rows.append(credits);
+    const settings = menuRow('Settings', 'Sound, display, gameplay, and the credits', () => this.showSettings(), 'settings');
+    settings.dataset.test = 'menu-settings';
+    rows.append(settings);
     this.card.append(rows);
     // Enter starts: the main action holds the focus (Rejoin while in a lobby).
     requestAnimationFrame(() => {
@@ -213,13 +215,25 @@ export class Menu {
     this.card.append(top, body);
   }
 
-  private showCredits(): void {
+  /** Settings (settings/panel.ts, the same tabs as the in-game Menu); the credits are under About. */
+  private showSettings(): void {
     this.reset('wide');
     const top = el('div', 'menu-head');
-    top.append(backButton(() => this.showTitle()), el('h2', '', 'Credits'));
+    top.append(backButton(() => this.showTitle()), el('h2', '', 'Settings'));
     const body = el('div', 'menu-scroll');
-    body.append(creditsContent());
+    const panel = new SettingsPanel({
+      gameplay: {
+        advisorOn: () => advisorSaved(),
+        setAdvisor: (on) => saveAdvisor(on),
+        guideOn: () => loadGuidePrefs().on,
+        setGuide: (on) => saveGuidePrefs({ ...loadGuidePrefs(), on }),
+        restartGuide: () => saveGuidePrefs({ on: true, openingDone: false, tips: [] }),
+        restartNote: 'The guide starts again from its first step in your next game.',
+      },
+    });
+    body.append(panel.el);
     this.card.append(top, body);
+    requestAnimationFrame(() => panel.el.querySelector<HTMLButtonElement>('.set-tab.on')?.focus({ preventScroll: true }));
   }
 
   private showMultiplayer(): void {
@@ -262,10 +276,11 @@ export function confirmReplaceSave(root: HTMLElement, start: () => void): void {
   );
 }
 
-/** A quiet row on the start page: a label, a chevron on the trailing side. */
-function menuRow(label: string, title: string, onClick: () => void): HTMLButtonElement {
+/** A quiet row on the start page: a label (after an icon when one is given), a chevron on the trailing side. */
+function menuRow(label: string, title: string, onClick: () => void, icon?: string): HTMLButtonElement {
   const b = button('', 'menu-row', onClick);
   b.title = title;
+  if (icon) b.append(iconSpan(lineIcon(icon, 18), 'ico menu-row-lead'));
   b.append(el('span', 'menu-row-label', label), iconSpan(lineIcon('chevronRight', 16, 2)));
   return b;
 }
