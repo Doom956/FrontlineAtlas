@@ -23,9 +23,9 @@ describe('world maps', () => {
     for (const m of maps) {
       expect(m.width).toBeLessThanOrEqual(2600);
       expect(m.height).toBeLessThanOrEqual(1600);
-      expect(m.landTiles).toBeGreaterThanOrEqual(500_000);
+      expect(m.landTiles).toBeGreaterThanOrEqual(400_000);
       expect(m.landTiles).toBeLessThanOrEqual(2_000_000);
-      expect(m.spawns.length).toBeGreaterThanOrEqual(18);
+      expect(m.spawns.length).toBeGreaterThanOrEqual(10); // small drawn maps have 10 to 12 nations
       expect(m.spawns.length).toBeLessThanOrEqual(40);
       expect(m.recommendedNations).toBeGreaterThan(0);
       expect(m.recommendedNations).toBeLessThanOrEqual(m.spawns.length);
@@ -105,8 +105,10 @@ describe('world maps', () => {
           for (let b = a + 1; b < pts.length; b++) d = Math.min(d, Math.hypot(pts[a][0] - pts[b][0], pts[a][1] - pts[b][1]));
         return d;
       };
-      expect(closest(xy.slice(0, 10))).toBeGreaterThan(closest(xy.slice(-10)));
-      expect(closest(xy.slice(0, 10))).toBeGreaterThan(Math.sqrt(W * map.height) / 10);
+      // (compared only when the two sets do not overlap)
+      if (xy.length >= 20) expect(closest(xy.slice(0, 10))).toBeGreaterThan(closest(xy.slice(-10)));
+      // spread over the land, not the whole frame: thin island chains fill little of their rectangle
+      expect(closest(xy.slice(0, 10))).toBeGreaterThan(Math.sqrt(info.landTiles) / 10);
     });
   }
 

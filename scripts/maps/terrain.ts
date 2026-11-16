@@ -2,7 +2,7 @@
 // physical regions (mountain ranges, plateaus, deserts, wetlands, glaciers, tundra), peaks and climate belts, then
 // cleanup (no speckle) and resources. Everything is deterministic for a given map id.
 import { EXTRA_REGIONS, OIL_REGIONS } from './extra';
-import type { ExtraKind } from './extra';
+import type { ExtraKind, ExtraRegion } from './extra';
 import { chamfer, components, drawLine, fbm, fillFeature, fillRings, hashString, makeNoise, makeRng, projectPolygon } from './lib';
 import type { Feature, Frame } from './lib';
 
@@ -50,9 +50,23 @@ const CHANGTANG = [[79.6, 34.6], [80.6, 35.6], [82.4, 35.7], [84.6, 35.9], [86.8
 /** Deltas that are real wetlands stay swamp; the other deltas are farmland (fertile plains). */
 const WET_DELTAS = /Danube|Niger/;
 
+/** Terrain painted straight onto the finished tiles (drawn maps: continuous walls, gates, roads). */
+export interface PaintDef {
+  terrain: 'plains' | 'forest' | 'hills' | 'mountains' | 'desert' | 'swamp';
+  /** closed ring, [lon, lat] */
+  poly: number[][];
+}
+const PAINT_TERRAIN = { plains: T_PLAINS, forest: T_FOREST, hills: T_HILLS, mountains: T_MOUNTAINS, desert: T_DESERT, swamp: T_SWAMP };
+
 export interface TerrainOptions {
   /** cap on the forest share of plains + forest land (default FOREST_MAX) */
   forestMax?: number;
+  /** drawn maps: these regions replace the real-world EXTRA_REGIONS */
+  regions?: ExtraRegion[];
+  /** drawn maps: these oil provinces replace OIL_REGIONS */
+  oilRegions?: number[][][];
+  /** drawn maps: painted over the terrain, in order, after the cleanup (only on land) */
+  paint?: PaintDef[];
 }
 
 export interface BuiltTerrain {
@@ -156,6 +170,7 @@ export function buildTerrain(fr: Frame, L: Layers, id: string, opts: TerrainOpti
   const S = Math.min(W, H);
   const km = fr.kmPerTile;
   const seed = hashString(id);
+  const EX = opts.regions ?? EXTRA_REGIONS;
 
   // ---------- land / water ----------
   const land = new Uint8Array(n);
@@ -303,7 +318,7 @@ export function buildTerrain(fr: Frame, L: Layers, id: string, opts: TerrainOpti
     // foothill band in tiles: a share of the range's own size, at least ~25 km
     stamp(tmp, top, base, Math.max(25 / km, Math.sqrt(bcount) * 0.08) * (foot / 0.6));
   }
-  for (const ex of EXTRA_REGIONS) {
+  for (const ex of EX) {
     if (ex.kind !== 'mountains' && ex.kind !== 'hills' && ex.kind !== 'highland') continue;
     fillTmp((span) => {
       const rings = projectPolygon(fr, [ex.poly]);
@@ -429,7 +444,7 @@ export function buildTerrain(fr: Frame, L: Layers, id: string, opts: TerrainOpti
     tundra: tundraM,
     cold: coldM,
   };
-  for (const ex of EXTRA_REGIONS) {
+  for (const ex of EX) {
     const m = kindMask[ex.kind];
     if (m) fillLonLatPoly(fr, ex.poly, m, 1);
   }
@@ -535,6 +550,11 @@ export function buildTerrain(fr: Frame, L: Layers, id: string, opts: TerrainOpti
   majorityFilter(terrain, land, W, H, 1);
   mergeSmallRegions(terrain, land, W, H, Math.max(12, Math.round((S * S) / 16000)));
   fixSpeckle(terrain, land, W, H, 2);
+  for (const pd of opts.paint ?? []) {
+    const m = new Uint8Array(n);
+    fillLonLatPoly(fr, pd.poly, m, 1);
+    for (let i = 0; i < n; i++) if (m[i] && land[i]) terrain[i] = PAINT_TERRAIN[pd.terrain];
+  }
 
   // ---------- water: continental shelf as shallow water (and always a thin coastal band) ----------
   const deepM = new Uint8Array(n);
@@ -561,7 +581,7 @@ export function buildTerrain(fr: Frame, L: Layers, id: string, opts: TerrainOpti
   // ---------- resources ----------
 
   const oilZone = new Uint8Array(n);
-  for (const poly of OIL_REGIONS) fillLonLatPoly(fr, poly, oilZone, 1);
+  for (const poly of opts.oilRegions ?? OIL_REGIONS) fillLonLatPoly(fr, poly, oilZone, 1);
   const kindA = new Uint8Array(n);
   const kindB = new Uint8Array(n);
   const kindC = new Uint8Array(n); // plains: oil that does not fit on desert / swamp / tundra (placed last, on free tiles)

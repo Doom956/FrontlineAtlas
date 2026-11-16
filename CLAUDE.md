@@ -26,7 +26,8 @@ doom956.github.io/FrontlineAtlas (Pages); both deploy from `main`.
 - Checks: `npx tsc -p .`, `npx tsc -p server`, `npx vitest run --testTimeout 60000`, `npx vite build`, then the
   multiplayer e2e on GitHub: `scripts/remote-e2e.sh <label>` and read the "E2E RESULT" lines of the run.
 - Heavy work (balance batches, e2e) runs on GitHub runners (`scripts/remote-batch.sh`, `scripts/remote-e2e.sh`).
-  Screenshots (`scripts/ui/shots.mjs`) and vitest run locally, one at a time (shared 4-core machine).
+  Screenshots (`scripts/ui/shots.mjs`) and vitest run locally. On the owner's PC (8 cores, 32 GB) 3 or 4 heavy jobs at once
+  are fine; on the cloud machine (4 cores, shared) run heavy jobs one at a time.
 - After shipping to `main`, republish the playable artifact: https://claude.ai/artifact/ED4sTmj3ppaPWa3wU2qNB7
 
 ## Docs
