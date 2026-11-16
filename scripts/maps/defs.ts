@@ -7,7 +7,7 @@ import { SUNDERED, SUNDERED_PLANE, SUNDERED_SPAWNS } from './drawn/sundered';
 import { FOURSEAS, FOURSEAS_PLANE, FOURSEAS_SPAWNS } from './drawn/fourseas';
 import { DRIFTISLES, DRIFTISLES_PLANE, DRIFTISLES_SPAWNS } from './drawn/driftisles';
 import { RINGLANDS, RINGLANDS_DECOR, RINGLANDS_PLANE, RINGLANDS_SPAWNS } from './drawn/ringlands';
-import type { DecorKind } from '../../src/sim/worldmaps';
+import type { DecorKind, MapCategory } from '../../src/sim/worldmaps';
 import { FIVEFOLD, FIVEFOLD_PLANE, FIVEFOLD_SPAWNS } from './drawn/fivefold';
 import { RINGSEA, RINGSEA_PLANE, RINGSEA_SPAWNS } from './drawn/ringsea';
 
@@ -43,6 +43,8 @@ export interface MapDef {
   spawns: SpawnDef[];
   /** hand-drawn map: these shapes replace the Natural Earth layers (see drawn/kit.ts) */
   drawn?: DrawnMap;
+  /** menu section (default: 'fantasy' for a drawn map, else 'real'); copied to the manifest */
+  category?: MapCategory;
   /** colour theme the client draws the map in (src/client/render/mapThemes.ts THEME_DEFS); copied to the manifest */
   theme?: string;
   /** towns, farms and roads the client paints on the map (looks only; src/client/render/decor.ts) */
@@ -431,6 +433,7 @@ export const MAP_DEFS: MapDef[] = [
   },
   {
     id: 'europe-1939',
+    category: 'history',
     name: 'Europe 1939',
     description: 'Europe on the eve of the war. Nations start from their 1939 capitals: Berlin, Paris, London, Rome, Moscow and more.',
     proj: { type: 'lcc', lon0: 15, lat0: 52, lat1: 43, lat2: 62 },
@@ -469,6 +472,7 @@ export const MAP_DEFS: MapDef[] = [
   },
   {
     id: 'roman-empire',
+    category: 'history',
     name: 'Roman Empire',
     description: 'The ancient Mediterranean, from Britannia to Syria and the Black Sea. Rome and the peoples around it.',
     proj: { type: 'eqc', lon0: 17, latTs: 42 },
