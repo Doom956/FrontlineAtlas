@@ -768,8 +768,8 @@ export class BuildingPage implements DrawerPage {
     ht.append(el('span', 'big-v', info.name), el('span', 'big-l', lv > 1 ? `Level ${b.level} of ${lv}` : tx.short));
     head.append(ic, ht);
     r.append(head, el('p', 'desc', tx.description));
-    // Defense row (sim/defense.ts): what this Fort or City adds, "Flak: 14 tiles, enemy bombs here -35%"
-    if (b.type === 'fort' || b.type === 'city') {
+    // Defense row (sim/defense.ts): what this Fort, City, SAM site or Port adds, "Flak: 14 tiles, enemy bombs here -35%"
+    if (b.type === 'fort' || b.type === 'city' || b.type === 'sam' || b.type === 'port') {
       const dl = el('p', 'note def-line');
       dl.dataset.test = 'defense-line';
       r.append(dl);

@@ -26,6 +26,7 @@ describe('building art mapping', () => {
   it('shows an add-on only where the game has that state', () => {
     expect(addonOf('fort', NONE)).toBeNull();
     expect(addonOf('fort', { ...NONE, flak: true })).toBe('flak');
+    expect(addonOf('fort', { ...NONE, guns: true })).toBe('guns');
     expect(addonOf('city', { ...NONE, flak: true })).toBe('flak');
     expect(addonOf('city', { ...NONE, radar: true, guns: true })).toBeNull();
     expect(addonOf('sam', { ...NONE, radar: true })).toBe('radar');
@@ -95,7 +96,7 @@ describe('port facing', () => {
 });
 
 describe('building art never overlaps at minimum spacing', () => {
-  const kinds: [BuildingSpec['type'], number, ('flak' | 'traps' | 'radar' | 'guns' | null)[]][] = [['fort', 5, [null, 'flak', 'traps']], ['city', 5, [null, 'flak']], ['sam', 3, [null, 'radar']], ['port', 5, [null, 'guns']]];
+  const kinds: [BuildingSpec['type'], number, ('flak' | 'traps' | 'radar' | 'guns' | null)[]][] = [['fort', 5, [null, 'flak', 'traps', 'guns']], ['city', 5, [null, 'flak']], ['sam', 3, [null, 'radar']], ['port', 5, [null, 'guns']]];
   const specs: BuildingSpec[] = [];
   for (const [type, top, addons] of kinds) for (let level = 1; level <= top; level++) for (const addon of addons) specs.push({ type, level, addon });
   const boxOf = (s: BuildingSpec, look: 'close' | 'far', facing: number, zoom: number, spacing: number) => {

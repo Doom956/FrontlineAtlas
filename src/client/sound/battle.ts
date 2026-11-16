@@ -37,6 +37,8 @@ export interface BattleCue {
 /** Flak bursts are heard at most once per this many ticks; a trap hit plays the tank shot at this rate. */
 const FLAK_GAP_TICKS = 4;
 const TRAP_RATE = 0.72;
+/** A radar lock plays the sonar ping at this rate (low). */
+const RADAR_RATE = 0.6;
 
 /** A division counts as in a fight (the gunfire bed under the front) when land of a nation it fights lies within this many tiles. */
 const TANK_REACH = 3;
@@ -102,6 +104,15 @@ export class BattleEars {
       case 'trapHit':
         // a spearhead runs into tank traps (sim/defense.ts): a dull, low tank shot
         out.push({ id: 'tankShot', x: e.x, y: e.y, volume: 0.7, rate: TRAP_RATE });
+        return;
+      case 'battery':
+        // a coastal battery's big gun (sim/defense.ts) and the shell landing on the ship
+        out.push({ id: 'bombard', x: e.x, y: e.y, volume: 0.75 });
+        out.push({ id: 'explosion', x: e.x2 ?? e.x, y: e.y2 ?? e.y, volume: e.radius >= 1 ? 0.7 : 0.45 });
+        return;
+      case 'radarLock':
+        // a tracking radar locks onto a stealth bomber (sim/defense.ts): the sonar ping, pitched low
+        out.push({ id: 'sonarPing', x: e.x, y: e.y, volume: 0.9, rate: RADAR_RATE });
         return;
       case 'smokeScreen':
         // a blitz launching (sim/blitz.ts): the smoke canisters pop and the tanks open fire as they surge

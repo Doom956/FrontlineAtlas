@@ -19,7 +19,9 @@ import { bombReach, bomberRadiusOf } from '../airSim';
 import { cruiseTarget, type CruiseTarget } from '../cruise';
 import { stealthTarget, type StealthTarget } from '../stealth';
 import { enemyFlakLabel, knownEnemyFlak, myFlakFactor } from '../defenseView';
-import { flakRadius, flakSiteCut, isFlakSite } from '../../sim/defense';
+import { batteryRange, batterySites, flakRadius, flakSiteCut, hasTrackingRadar, isBatterySite, isFlakSite, radarRadius } from '../../sim/defense';
+import { DEFENSE } from '../../sim/config';
+import { isWater } from '../../sim/types';
 import { stealthRadius, stealthReach } from '../../sim/units';
 import { unitVisibleTo } from '../../sim/techtree';
 import { cruiseReloadLeft } from '../../sim/units';
@@ -115,6 +117,111 @@ export class Overlays {
     }
   }
 
+  /**
+   * A coastal battery's reach (sim/defense.ts): a steel-blue dashed arc drawn only where it lies over water, with its
+   * label at the arc's top ("Coastal battery: 30 tiles") when big enough on screen.
+   */
+  batteryArc(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, tile: number, radius: number, label: string, showLabel: boolean): void {
+    const w = this.w;
+    const cx = (tile % w) + 0.5;
+    const cy = ((tile / w) | 0) + 0.5;
+    const s = cam.tileToScreen(cx, cy);
+    const R = radius * cam.zoom;
+    if (s.x < -R || s.y < -R || s.x > cam.viewW + R || s.y > cam.viewH + R) return;
+    const map = state.map;
+    const n = Math.max(48, Math.min(256, Math.round(R / 3)));
+    const wet = (a: number): boolean => {
+      const x = Math.floor(cx + Math.cos(a) * radius);
+      const y = Math.floor(cy + Math.sin(a) * radius);
+      return x >= 0 && y >= 0 && x < map.width && y < map.height && isWater(map.terrain[y * w + x]);
+    };
+    ctx.beginPath();
+    let open = false;
+    let top: { x: number; y: number } | null = null;
+    for (let k = 0; k <= n; k++) {
+      const a = (k / n) * Math.PI * 2;
+      if (!wet(a)) {
+        open = false;
+        continue;
+      }
+      const x = s.x + Math.cos(a) * R;
+      const y = s.y + Math.sin(a) * R;
+      if (!top || y < top.y) top = { x, y };
+      if (open) ctx.lineTo(x, y);
+      else ctx.moveTo(x, y);
+      open = true;
+    }
+    ctx.setLineDash([7, 4]);
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(10,18,44,0.45)';
+    ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(120,160,205,0.95)';
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (showLabel && top && R >= 40) {
+      ctx.font = `600 11px ${MAP_LABEL_FAMILY}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      haloText(ctx, label, top.x, top.y - 3, 'rgba(214,228,244,0.98)', 11, 1);
+    }
+  }
+
+  /** A known enemy tracking radar circle (aiming a stealth strike): a green dashed ring with its label. */
+  private radarRing(ctx: CanvasRenderingContext2D, cam: Camera, tile: number, radius: number, showLabel: boolean): void {
+    const s = cam.tileToScreen((tile % this.w) + 0.5, ((tile / this.w) | 0) + 0.5);
+    const R = radius * cam.zoom;
+    if (s.x < -R || s.y < -R || s.x > cam.viewW + R || s.y > cam.viewH + R) return;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, R, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(93,255,138,0.06)';
+    ctx.fill();
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = 'rgba(6,24,12,0.45)';
+    ctx.stroke();
+    ctx.lineWidth = 1.75;
+    ctx.strokeStyle = 'rgba(93,255,138,0.9)';
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (showLabel && R >= 34) {
+      ctx.font = `600 11px ${MAP_LABEL_FAMILY}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      haloText(ctx, `Enemy radar: spots you after ${DEFENSE.radarLockSeconds} s inside`, s.x, s.y + R + 3, 'rgba(200,255,214,0.98)', 11, 1);
+    }
+  }
+
+  /**
+   * Coastal battery arcs: the selected own battery's, and the hostile ones you see or remember within 15 tiles of
+   * their reach from one of your warships.
+   */
+  private batteryArcs(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, ui: UiState, me: number): void {
+    const sel = ui.selectedTile;
+    const w = this.w;
+    if (sel >= 0 && sel < state.map.owner.length && ui.mode.kind === 'none') {
+      const b = buildingAt(state, sel);
+      if (b && b.owner === me && b.buildLeft <= 0 && isBatterySite(state, b)) this.batteryArc(ctx, state, cam, b.tile, batteryRange(b), `Your coastal battery: ${batteryRange(b)} tiles`, true);
+    }
+    if (me <= 0) return;
+    const sites = batterySites(state);
+    if (!sites.length) return;
+    const ships = state.units.filter((u) => u.owner === me && u.type === 'warship' && u.hp > 0);
+    if (!ships.length) return;
+    const fog = this.fv;
+    let labels = 0;
+    for (const b of sites) {
+      if (b.owner === me || areAllied(state, me, b.owner)) continue;
+      if (fog && fog.buildingAt(state, b.tile)?.type !== b.type) continue; // fog of war: seen or remembered there
+      const r = batteryRange(b);
+      const bx = b.tile % w;
+      const by = (b.tile / w) | 0;
+      const near = r + 15;
+      if (!ships.some((u) => (u.x - bx) ** 2 + (u.y - by) ** 2 <= near * near)) continue;
+      this.batteryArc(ctx, state, cam, b.tile, r, `Enemy coastal battery: ${r} tiles`, labels++ < 4);
+    }
+  }
+
   /** Effect radius of the hovered building, or of the building being placed (plus your others of that type). */
   rings(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, ui: UiState, snap: Snap | null, me: number): void {
     const hover = ui.hoverTile;
@@ -132,6 +239,7 @@ export class Overlays {
       const b = buildingAt(state, sel);
       if (b && b.owner === me && isFlakSite(state, b)) this.flakRing(ctx, cam, b.tile, flakRadius(b), `Your flak: enemy bombs -${Math.round(flakSiteCut(b) * 100)}%`, true);
     }
+    this.batteryArcs(ctx, state, cam, ui, me); // Coastal Batteries (sim/defense.ts)
     if (hover >= 0 && ui.mode.kind !== 'build') {
       // fog of war: the building you see or remember there (none where you never looked)
       const fog = this.fv;
@@ -584,6 +692,16 @@ export class Overlays {
       const d2 = (t: number): number => (hv < 0 ? t : ((t % w) - (hv % w)) ** 2 + (((t / w) | 0) - ((hv / w) | 0)) ** 2);
       zones.sort((a, b) => d2(a.tile) - d2(b.tile) || a.tile - b.tile);
       zones.forEach((z, k) => this.flakRing(ctx, cam, z.tile, z.r, enemyFlakLabel(z, f).replace('bombs', kind === 'paradrop' ? 'drop' : 'bombs'), k < 8));
+    }
+    // the stealth strike: enemy tracking radar circles you have seen (sim/defense.ts), where a 3 s stay gets it spotted
+    if (stealth) {
+      let n = 0;
+      for (const b of state.buildings.values()) {
+        if (b.type !== 'sam' || b.buildLeft > 0 || b.owner <= 0 || b.owner === me.id || areAllied(state, me.id, b.owner) || isDisabled(state, b)) continue;
+        if (!hasTrackingRadar(state, b.owner)) continue;
+        if (fog && fog.buildingAt(state, b.tile)?.type !== 'sam') continue; // seen or remembered there
+        this.radarRing(ctx, cam, b.tile, radarRadius(state, b), n++ < 6);
+      }
     }
     if (!fog) return;
     // remembered hostile SAM sites and airfields (last seen; their fighters are unknown)

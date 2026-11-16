@@ -8,6 +8,10 @@
 //                 turned home flies home by itself (the sim turns it).
 //   tank traps    small steel hedgehogs on every third trap tile (sim/defense.isTrapTile) in view from TRAP_ZOOM, and a
 //                 dirt burst where a spearhead hits them (the sim's 'trapHit' effect).
+//   batteries     a coastal battery shot (the sim's 'battery' effect): a muzzle flash at the gun, a shell on a high arc,
+//                 then a white splash with an orange hit spark on the ship.
+//   radar         a green ring opening where a tracking radar locks onto a stealth bomber ('radarLock'), and green
+//                 lock brackets on every spotted stealth bomber this client sees (Unit.radarSeen).
 //
 // Zoom gating: nothing below FAR_FX_ZOOM; hedgehogs from TRAP_ZOOM. Reduced motion: a third of the puffs, no drift,
 // no dirt fling. Effects off (Settings): nothing. Fog of war: only planes this client sees, trap tiles it sees (and
@@ -17,6 +21,7 @@ import { TICKS_PER_SECOND } from '../../sim/config';
 import { flakZonesAt, isTrapTile } from '../../sim/defense';
 import { fortRadius } from '../../sim/buildings';
 import { hasTech } from '../../sim/tech';
+import { unitVisibleTo } from '../../sim/techtree';
 import { trenchLevel } from '../../sim/trenches';
 import type { Effect, GameState, Unit } from '../../sim/types';
 import { DIRT, drawFlakPuff, drawHedgehog } from '../art/detailed/flak';
@@ -38,6 +43,15 @@ export const TRAP_ZOOM = 4;
 /** Dirt bursts at once, and how long one lasts (ms). */
 const DIRT_CAP = 16;
 const DIRT_MS = 700;
+/** Battery shells at once; flight and splash time (ms). */
+const SHELL_CAP = 24;
+export const SHELL_FLIGHT_MS = 520;
+const SHELL_SPLASH_MS = 420;
+/** Radar lock rings at once, and their life (ms). */
+const RING_CAP = 8;
+const RING_MS = 900;
+/** The green of Tracking Radar (sweep, rings, lock brackets). */
+export const RADAR_GREEN = '#5dff8a';
 /** The trap tile list is recomputed at most this often (ms). */
 const TRAP_REFRESH_MS = 700;
 
@@ -58,12 +72,31 @@ interface Dirt {
   seed: number;
 }
 
+interface Shell {
+  live: boolean;
+  x: number;
+  y: number;
+  x2: number;
+  y2: number;
+  t0: number;
+  /** a warship hit (else a transport: a smaller spark) */
+  big: boolean;
+}
+interface Ring {
+  live: boolean;
+  x: number;
+  y: number;
+  t0: number;
+}
+
 const PLANE_TYPES = new Set(['bomber', 'transportPlane', 'stealthBomber']);
 
 export class DefenseFx {
   fog: FogView | null = null;
   private puffs: Puff[] = [];
   private dirt: Dirt[] = [];
+  private shells: Shell[] = [];
+  private rings: Ring[] = [];
   private seen = new WeakSet<Effect>();
   private lastMs = 0;
   private reducedPick: boolean | null = null;
@@ -74,10 +107,14 @@ export class DefenseFx {
   drawnPuffs = 0;
   drawnTraps = 0;
   drawnDirt = 0;
+  drawnShells = 0;
+  drawnLocks = 0;
 
   constructor(private rand: () => number = Math.random) {
     for (let i = 0; i < PUFF_CAP; i++) this.puffs.push({ live: false, x: 0, y: 0, vx: 0, vy: 0, t0: 0 });
     for (let i = 0; i < DIRT_CAP; i++) this.dirt.push({ live: false, x: 0, y: 0, t0: 0, seed: 0 });
+    for (let i = 0; i < SHELL_CAP; i++) this.shells.push({ live: false, x: 0, y: 0, x2: 0, y2: 0, t0: 0, big: false });
+    for (let i = 0; i < RING_CAP; i++) this.rings.push({ live: false, x: 0, y: 0, t0: 0 });
   }
 
   /** Reduced motion on or off (tests; the page follows the Settings pick live). */
@@ -103,12 +140,33 @@ export class DefenseFx {
     if (!fxEnabled()) return;
     const w = state.map.width;
     for (const e of state.effects) {
-      if (e.kind !== 'trapHit' || this.seen.has(e)) continue;
+      if ((e.kind !== 'trapHit' && e.kind !== 'battery' && e.kind !== 'radarLock') || this.seen.has(e)) continue;
       this.seen.add(e);
       if ((state.tick - e.tick) / TICKS_PER_SECOND > 1) continue;
       const f = this.active;
-      if (f && !f.visible(Math.floor(e.y) * w + Math.floor(e.x))) continue;
       if (cam.zoom < FAR_FX_ZOOM) continue;
+      if (e.kind === 'battery') {
+        // seen when the gun or the ship is in view
+        if (f && !f.visible(Math.floor(e.y) * w + Math.floor(e.x)) && !f.visible(Math.floor(e.y2 ?? e.y) * w + Math.floor(e.x2 ?? e.x))) continue;
+        const sh = this.shells.find((q) => !q.live) ?? this.shells.reduce((a, b) => (a.t0 < b.t0 ? a : b));
+        sh.live = true;
+        sh.x = e.x;
+        sh.y = e.y;
+        sh.x2 = e.x2 ?? e.x;
+        sh.y2 = e.y2 ?? e.y;
+        sh.t0 = nowMs;
+        sh.big = e.radius >= 1;
+        continue;
+      }
+      if (f && !f.visible(Math.floor(e.y) * w + Math.floor(e.x))) continue;
+      if (e.kind === 'radarLock') {
+        const r = this.rings.find((q) => !q.live) ?? this.rings.reduce((a, b) => (a.t0 < b.t0 ? a : b));
+        r.live = true;
+        r.x = e.x;
+        r.y = e.y;
+        r.t0 = nowMs;
+        continue;
+      }
       const d = this.dirt.find((q) => !q.live) ?? this.dirt.reduce((a, b) => (a.t0 < b.t0 ? a : b));
       d.live = true;
       d.x = e.x;
@@ -239,6 +297,139 @@ export class DefenseFx {
       }
       ctx.globalAlpha = 1;
     }
+    this.drawDefense2(ctx, state, cam, nowMs, units, dpr);
+  }
+
+  /**
+   * Coastal battery shells (muzzle flash, a high arc, splash and hit spark), radar lock rings and the green lock
+   * brackets on spotted stealth bombers. After the units (drawAir calls it).
+   */
+  private drawDefense2(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, nowMs: number, units: UnitPoses, dpr: number): void {
+    this.drawnShells = 0;
+    this.drawnLocks = 0;
+    const px = (v: number): number => Math.round(v * dpr) / dpr;
+    const zk = Math.max(1, Math.min(3, cam.zoom / 4));
+    for (const sh of this.shells) {
+      if (!sh.live) continue;
+      const age = nowMs - sh.t0;
+      if (age < 0 || age >= SHELL_FLIGHT_MS + SHELL_SPLASH_MS) {
+        sh.live = false;
+        continue;
+      }
+      const a = cam.tileToScreen(sh.x, sh.y);
+      const b = cam.tileToScreen(sh.x2, sh.y2);
+      const dist = Math.hypot(b.x - a.x, b.y - a.y);
+      if (Math.max(a.x, b.x) < -40 || Math.min(a.x, b.x) > cam.viewW + 40 || Math.max(a.y, b.y) < -80 || Math.min(a.y, b.y) > cam.viewH + 40) continue;
+      this.drawnShells++;
+      const lift = Math.min(160, 12 + dist * 0.3); // the arc's height (px)
+      const at = (t: number): { x: number; y: number } => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t - lift * 4 * t * (1 - t) });
+      // muzzle flash: a bright core and a short orange burst toward the ship
+      if (age < 110) {
+        const f = 1 - age / 110;
+        ctx.globalAlpha = f;
+        ctx.fillStyle = '#ffe9a6';
+        ctx.beginPath();
+        ctx.arc(a.x, a.y - 1, (2 + 2.5 * f) * zk, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ff9a3c';
+        const ux = dist > 0 ? (b.x - a.x) / dist : 1;
+        const uy = dist > 0 ? (b.y - a.y) / dist : 0;
+        ctx.beginPath();
+        ctx.arc(a.x + ux * 4 * zk, a.y - 1 + uy * 4 * zk - 2 * zk, 2 * f * zk, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(90,90,90,0.6)';
+        ctx.fillRect(px(a.x - 3 * zk), px(a.y - 6 * zk - age * 0.03), 3 * zk, 2 * zk);
+        ctx.globalAlpha = 1;
+      }
+      if (age < SHELL_FLIGHT_MS) {
+        const t = age / SHELL_FLIGHT_MS;
+        // a fading trail along the arc, then the shell
+        for (let k = 1; k <= 5; k++) {
+          const q = at(Math.max(0, t - k * 0.035));
+          ctx.globalAlpha = 0.5 * (1 - k / 6);
+          ctx.fillStyle = '#d8d2c4';
+          ctx.fillRect(px(q.x - 0.75), px(q.y - 0.75), 1.5, 1.5);
+        }
+        ctx.globalAlpha = 1;
+        const p = at(t);
+        ctx.fillStyle = '#2a2a2e';
+        ctx.fillRect(px(p.x - 1.5), px(p.y - 1.5), 3, 3);
+        ctx.fillStyle = '#ffd27a';
+        ctx.fillRect(px(p.x - 0.5), px(p.y - 0.5), 1, 1);
+        continue;
+      }
+      // splash: a white column and a ring on the water, the orange hit spark on the ship
+      const t = (age - SHELL_FLIGHT_MS) / SHELL_SPLASH_MS;
+      const s = (sh.big ? 1 : 0.7) * zk;
+      ctx.globalAlpha = 1 - t;
+      ctx.strokeStyle = 'rgba(235,245,255,0.95)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(b.x, b.y + 1, (3 + 9 * t) * s, (1.5 + 4 * t) * s, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#f2f8ff';
+      const col = (10 * (1 - t) + 2) * s;
+      ctx.fillRect(px(b.x - 1.5 * s), px(b.y - col), 3 * s, col);
+      if (t < 0.45) {
+        const g = 1 - t / 0.45;
+        ctx.globalAlpha = g;
+        ctx.fillStyle = '#ffb347';
+        for (let k = 0; k < 6; k++) {
+          const an = (k / 6) * Math.PI * 2 + 0.4;
+          const r = (2 + 6 * (1 - g)) * s;
+          ctx.fillRect(px(b.x + Math.cos(an) * r - 1), px(b.y - 2 * s + Math.sin(an) * r - 1), 2, 2);
+        }
+        ctx.fillStyle = '#fff3c2';
+        ctx.fillRect(px(b.x - 1.5), px(b.y - 2 * s - 1.5), 3, 3);
+      }
+      ctx.globalAlpha = 1;
+    }
+    for (const r of this.rings) {
+      if (!r.live) continue;
+      const age = nowMs - r.t0;
+      if (age < 0 || age >= RING_MS) {
+        r.live = false;
+        continue;
+      }
+      const t = age / RING_MS;
+      const c = cam.tileToScreen(r.x, r.y);
+      ctx.globalAlpha = 1 - t;
+      ctx.strokeStyle = RADAR_GREEN;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 8 + 40 * t, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    // spotted stealth bombers: green lock brackets round the plane
+    const me = state.humanId;
+    for (const u of state.units) {
+      if (u.type !== 'stealthBomber' || u.hp <= 0 || !u.radarSeen?.length || !this.shown(state, u)) continue;
+      if (me > 0 && u.owner !== me && !unitVisibleTo(state, me, u)) continue;
+      const c = units.screenOf(u.id) ?? cam.tileToScreen(u.x + 0.5, u.y + 0.5);
+      if (c.x < -30 || c.y < -30 || c.x > cam.viewW + 30 || c.y > cam.viewH + 30) continue;
+      this.drawnLocks++;
+      const h = Math.max(9, Math.min(22, 6 + cam.zoom * 1.4));
+      const l = h * 0.45;
+      const pulse = this.reduced ? 1 : 0.75 + 0.25 * Math.sin(nowMs / 140);
+      ctx.globalAlpha = pulse;
+      ctx.strokeStyle = 'rgba(6,24,12,0.8)';
+      ctx.lineWidth = 3.5;
+      this.brackets(ctx, c.x, c.y, h, l);
+      ctx.strokeStyle = RADAR_GREEN;
+      ctx.lineWidth = 1.5;
+      this.brackets(ctx, c.x, c.y, h, l);
+      ctx.globalAlpha = 1;
+    }
+  }
+  private brackets(ctx: CanvasRenderingContext2D, x: number, y: number, h: number, l: number): void {
+    ctx.beginPath();
+    for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const) {
+      ctx.moveTo(x + sx * h, y + sy * (h - l));
+      ctx.lineTo(x + sx * h, y + sy * h);
+      ctx.lineTo(x + sx * (h - l), y + sy * h);
+    }
+    ctx.stroke();
   }
 
   /** The trap tiles of the nations in view (every third one gets a hedgehog), recomputed now and then. */

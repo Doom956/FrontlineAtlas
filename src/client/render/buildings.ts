@@ -22,6 +22,9 @@ import type { Camera } from '../camera';
 import { CATEGORY_COLORS, drawMarker, ICON_INFO, markerReady, type BuildingIconId } from '../icons';
 import type { FogView } from '../fog/fogView';
 import { drawFlakGuns } from '../art/detailed/flak';
+import { isBatterySite } from '../../sim/defense';
+import { RADAR_GREEN } from '../fx/defenseFx';
+import { prefersReducedMotion } from '../fx/settings';
 import { hasTech } from '../../sim/tech';
 import { ACCENT, buildingsKey, clamp, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, setTracking, type RGB, type View } from './common';
 
@@ -44,6 +47,42 @@ export const CATEGORY_PLATES: Record<keyof typeof CATEGORY_COLORS, string> = {
 /** Marker size (CSS px) for a zoom level. */
 export function markerSize(zoom: number): number {
   return clamp(6 + zoom * 2.3, 16, 40);
+}
+
+/** One turn of the radar sweep (ms). */
+export const SWEEP_MS = 4200;
+/**
+ * The radar sweep: a faint green ring on the ground ellipse (rx x ry px round (x, y)) and a beam turning once every
+ * SWEEP_MS with a fading wedge behind it (a still beam with reduced motion).
+ */
+export function radarSweep(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number, nowMs: number): void {
+  const a0 = prefersReducedMotion() ? -Math.PI / 4 : ((nowMs % SWEEP_MS) / SWEEP_MS) * Math.PI * 2;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(1, ry / rx);
+  ctx.strokeStyle = 'rgba(93,255,138,0.35)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(0, 0, rx, 0, Math.PI * 2);
+  ctx.stroke();
+  const steps = 8;
+  for (let k = 0; k < steps; k++) {
+    ctx.globalAlpha = 0.22 * (1 - k / steps);
+    ctx.fillStyle = RADAR_GREEN;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, rx, a0 - (k + 1) * 0.12, a0 - k * 0.12);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.globalAlpha = 0.9;
+  ctx.strokeStyle = RADAR_GREEN;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(Math.cos(a0) * rx, Math.sin(a0) * rx);
+  ctx.stroke();
+  ctx.restore();
 }
 
 /** Remembered (last seen, out of view) markers: drawn greyed. */
@@ -272,8 +311,8 @@ export class BuildingLayer {
     const p = state.players[b.owner];
     const st: AddonState = {
       flak: !ghost && this.flak.has(b.owner),
-      radar: !!p && p.techs.includes('radar'),
-      guns: !!p && p.techs.includes('navalMastery'),
+      radar: !ghost && !!p && hasTech(p, 'trackingRadar'),
+      guns: !ghost && isBatterySite(state, b),
     };
     const spec = specOf(b.type, b.level, st);
     if (!spec) return false;
@@ -311,6 +350,8 @@ export class BuildingLayer {
     ctx.restore();
     this.drawn++;
     const bottom = y + 13 * scale;
+    // Tracking Radar (sim/defense.ts): a slow green sweep over a working SAM site's ground
+    if (spec.addon === 'radar' && !ghost && !unfinished && b.disabledUntil <= state.tick) radarSweep(ctx, x, y + 2 * scale, 19 * scale, 13 * scale, performance.now());
     if (focus) {
       ctx.beginPath();
       ctx.ellipse(x, y + 2 * scale, 17 * scale, 12 * scale, 0, 0, Math.PI * 2);

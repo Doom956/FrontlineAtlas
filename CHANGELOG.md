@@ -2,20 +2,33 @@
 
 The big rounds of work, newest first. Each one was merged to `main` and deployed to the live game.
 
-## 2026-11-16 · Defense (part 1)
+## 2026-11-16 · Defense
 
 A fourth Arsenal row, Defense, for the nation that holds and hits back. It needs Fortification, and every item needs a
-finished Fort of yours. Pick one of two paths:
+finished Fort of yours. Pick one of two lanes, each with an upgrade after it:
 - Flak Guns: your finished Forts (14 tiles) and Cities (10 tiles) fire flak at enemy bombers, ground-attack planes,
   cargo planes and the stealth bomber flying through. Their bombs do up to 65% less, and badly hit planes turn home
-  with their bombs. Rockets, missiles and recon planes are too fast or too high. Fort and City markers get small AA
-  guns, the planes fly through black flak puffs and trail smoke, and when you aim a bomb you see the enemy's flak
-  rings ("Enemy flak: bombs -35%"). A Fort or City card says what its flak does.
+  with their bombs. Rockets, missiles and recon planes are too fast or too high. Forts and Cities get AA gun pits
+  (small AA guns on the far-zoom markers), the planes fly through black flak puffs and trail smoke, and when you aim a
+  bomb you see the enemy's flak rings ("Enemy flak: bombs -35%"). A Fort or City card says what its flak does.
+  - Tracking Radar (after Flak Guns, needs Radar): every SAM site of yours gets a radar dish with a slow green sweep.
+    An enemy stealth bomber that spends 3 s inside half a SAM site's reach (30 tiles at level 1; the time adds up over
+    the flight, out and back) is spotted: a green lock box marks it and your SAMs and fighters can shoot at it. A
+    stealth bomber now takes 2 hits, and one shot down takes 3 minutes to replace (instead of the 45 s recharge).
+    Strikes still land most of the time: the radar mostly catches the bomber on its way home. When you aim a stealth
+    strike you see the enemy radar circles you know of, and the card says how long the trip spends inside them.
 - Tank Traps: your dug-in land (trench level 1 or more) near a Fort is laid with mines and steel hedgehogs. Enemy tank
   spearheads there slow to 40% and lose troops (at most a quarter of a division). Siege Tanks drive through, artillery
   halves it, barrages flatten them with the trench. The spearhead preview warns "Tank traps ahead".
-- Picking one locks the other. Mastery is still 2 per game, now of 4 pillars (Defense's mastery comes later).
-- AI nations from Normal up take Defense when they are cautious, face a much stronger neighbour or get bombed a lot.
+  - Coastal Batteries (after Tank Traps): your finished Ports, and Forts within 4 tiles of the coast, get big guns and
+    fire every 2 s at one ship of a nation at war with you, up to 30 tiles out (33 from level 2): ships that fired a
+    cruise missile first, then ships shelling your coast, then transports, then other warships. A warship loses 0.4 of
+    its 3 hp per hit, a transport 6% of its troops (it is never sunk). Battleships shell from 35 tiles, out of reach,
+    and warships shell batteries first (AI fleets, and your own on Auto or Bombard), knocking them silent until they
+    mend. A steel-blue arc over the water shows a battery's reach when you select it or your warships are near one.
+- Picking one lane locks the other. Mastery is still 2 per game, now of 4 pillars (Defense's mastery comes later).
+- AI nations from Normal up take Defense when they are cautious, face a much stronger neighbour or get bombed a lot,
+  and buy their lane's upgrade. AI landings steer clear of coasts covered by batteries unless their fleet is there.
 - Online games need the new version (protocol 22).
 
 ## 2026-11-15 · Settings

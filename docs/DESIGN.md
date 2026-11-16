@@ -553,9 +553,9 @@ other root and everything after it lock together ("You chose Destroyers; Carrier
   revealed"). SAMs let it pass (fighters are the answer to recon); on its way home it is let go.
 - Defense (src/sim/defense.ts, config `DEFENSE`; protocol 22): no unlock of its own, the row opens with Fortification
   (Research tab), and every item needs a finished own Fort ("Needs a finished Fort"). Fork `defenseDoctrine`
-  ("Defense lane"): Flak Guns (anti-air lane; Tracking Radar after it in part 2) | Tank Traps (barriers lane; Coastal
-  Batteries after it in part 2); the Counteroffensive mastery comes in part 3. Roots cost 3600 gold + 1200 iron (iron
-  only, `ironOnlyRoots`); later items 80% iron, 20% oil.
+  ("Defense lane"): Flak Guns -> Tracking Radar (anti-air lane) | Tank Traps -> Coastal Batteries (barriers lane);
+  the Counteroffensive mastery comes in part 3. Roots cost 3600 gold + 1200 iron (iron only, `ironOnlyRoots`); the
+  upgrades (tier 3) 9000 gold + 2800 iron + 700 oil, 35 s delivery.
   - Flak Guns: every finished, working own Fort (radius 14, +2 per level) and City (10, +1) is a flak site. Every
     `flakCheckTicks` (5) a hostile bomber, ground-attack plane, cargo plane or stealth bomber flying OUT gains wear
     (Unit.flakWear, hashed) = tiles flown x the sum of the strongest `flakMaxZones` (2) zones holding it (0.025 per
@@ -573,11 +573,34 @@ other root and everything after it lock together ("You chose Destroyers; Carrier
     x0; artillery support halves it; a Breakthrough's surge (BLITZ.speedMul - 1) is halved there. A fort still stops
     a division without artillery or heavy tanks, so traps bite on the ones that get through. The preview warns
     "Tank traps ahead: tanks slow to 40% here".
+  - Tracking Radar (after Flak Guns; needs Radar): every finished, working own SAM site tracks a hostile stealth
+    bomber inside `radarReach` (0.5) x its SAM reach (x Early Warning; 30 tiles at level 1). The ticks inside add up
+    per SAM site and bomber over the whole flight (`Unit.radarLock`, hashed; not reset on leaving); from
+    `radarLockSeconds` (3) on, the bomber is revealed to that side (and its allies) while it is inside a locked circle
+    (`Unit.radarSeen`, hashed), and both sides are told once ("...'s Tracking Radar spotted a stealth bomber"). A
+    knocked-out SAM site tracks nothing. At speed 30 a level-1 circle takes 2 s to cross, so one pass is not enough:
+    the lock mostly completes on the way home past the same radars, while the SAM hunter has silenced the ones near the
+    target. Shown: a radar dish and a slow green sweep on SAM art, green lock brackets on a spotted bomber, the SAM
+    card line "Tracking Radar: spots stealth bombers within 30 tiles after 3 s", and, aiming a stealth strike, the
+    enemy radar circles you have seen (green) with the seconds the round trip spends inside them.
+  - Coastal Batteries (after Tank Traps): finished own Ports, and finished Forts within `batteryCoast` (4) tiles of
+    water, fire every `batteryFireSeconds` (2 s, staggered by building id) while working (not knocked out, hp at least
+    `batteryFireHp` 0.5) at one hostile ship of a nation at war with them (naval2.atWar; never in peace) within
+    `batteryRange` 30 (+3 per level, at most `batteryRangeMax` 33: battleship shelling reaches 35). Target order: a
+    warship that fired a cruise missile in the last 30 s, then warships whose shelling reaches the battery, then
+    transports, then other warships (nearest, then id); hidden submarines are not seen. A warship loses
+    `batteryDamage` 0.4 hp (of 3), a transport `batteryTransportLoss` 6% of its troops (never sunk), so invasions are
+    worn down, never stopped. Silencing: AI warships, and a player's on Auto or Bombard, shell the nearest working
+    hostile battery in their reach before the coast (`shellBatteryTarget`): `batteryShellDamage` 0.05 x their
+    shelling x s off its hp, never below 0.1; under 0.5 it is silent until it mends (0.01 hp/s). AI landings: score x
+    0.6 per working battery covering the landing tile (x 0.85 with an own warship there). Shown: big gun casemates on
+    Port and coastal Fort art, a muzzle flash, shell arc and splash with a hit spark, a steel-blue arc over the water
+    (selected own battery, or enemy ones near your warships), and the card line.
   - AI: Defense is a second interest next to the committed pillar (aiDefenseCommitted, never at Easy): turtles,
     nations facing a hostile neighbour with 1.5x their army, or foes with 6+ bombers. Fork lean: enemy tank divisions
     toward Tank Traps, enemy bombers toward Flak Guns, plus the per-game hash. Flak holders put forts next to cities
     enemy bombs hit in the last 60 s; trap holders face the neighbour with the most tank divisions (forts ~8 tiles
-    behind that border).
+    behind that border). A Defense AI buys its lane's upgrade when it can (Tracking Radar needs Radar).
 - Mastery (tier 4) in at most `MASTERY_CAP` = 2 of the 4 mastery pillars per game (`masteryLocked`: 'locked-choice',
   "Mastery 2 of 2 used (Navy, Air)"): Naval (veterancy xp x2, bombardment / support reach x1.3, +2 warships, cruise missiles from warships, destroyers and battleships: section 7), Armor (pockets up to x3
   bigger collapse, x1.5 troops lost in them), Air (every wing x1.5 bombers, and the stealth strike: section 7).
@@ -897,10 +920,10 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   nothing stored at the airfield. One at a time: while it is out or on its way home the button says "Stealth bomber
   in the air"; it recharges `STEALTH.cooldownSeconds` (45 s) from launch (`Player.stealthReady`, hashed: "Recharging
   45 s"). Validated like a bomb: land, not own land, not an ally, no peace time; neutral land is allowed (nothing is
-  hit there). SAM sites never see it: they never fire at it, whatever their shots (units.interceptThreats). Fighters
-  (airfield cover, carriers, superiority patrols) engage it only where it is revealed to their side
-  (`stealthSight.stealthRevealedTo`, the one hook a future Defense radar fills; it returns false now), then by the
-  bomber rule. On arrival it drops a heavy raid, not a support strike, because its job is the high-value buildings
+  hit there). SAM sites and fighters (airfield cover, carriers, superiority patrols) engage it only while it is
+  revealed to their side (`stealthSight.stealthRevealedTo`: a Defense Tracking Radar lock, `Unit.radarSeen`), then by
+  the bomber rule; it has 2 hp, and one shot down means its owner's next one waits `STEALTH.lostCooldownSeconds`
+  (180 s) from the loss. On arrival it drops a heavy raid, not a support strike, because its job is the high-value buildings
   behind a SAM wall (a front strike is what ordinary bombers already do well): the income raid of
   `STEALTH.raidBombers` (2) bombers on the nation hit, then `dropBombs` with radius x `STEALTH.radiusMul` (1.8: 9 tiles,
   wider with Strategic Bombing) and `STEALTH.payload` (2) x the building hit chance

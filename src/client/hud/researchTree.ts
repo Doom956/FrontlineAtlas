@@ -54,6 +54,8 @@ export const ARSENAL_TECH_LINE: Partial<Record<TechId, string>> = {
   nightBombing: 'Bombers dodge SAMs but hit less',
   flakGuns: 'Forts, cities fire flak: bombs up to 65% less',
   tankTraps: 'Dug-in land near forts: enemy tanks to 40%',
+  trackingRadar: 'SAMs spot stealth bombers after 3 s',
+  coastalBatteries: 'Ports, coastal forts fire at enemy ships',
 };
 
 /** One line per tech on what it gives (the config description has the numbers; it shows in the footer). */
@@ -101,6 +103,8 @@ const ARSENAL_ICON: Partial<Record<TechId, (px: number) => string>> = {
   nightBombing: (px) => pixelIcon('eye', px),
   flakGuns: (px) => pixelGlyph('sam', px),
   tankTraps: (px) => pixelGlyph('fort', px),
+  trackingRadar: (px) => pixelIcon('signal', px),
+  coastalBatteries: (px) => pixelGlyph('port', px),
 };
 
 const TECH_ICON: Partial<Record<TechId, (px: number) => string>> = {

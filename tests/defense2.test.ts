@@ -48,7 +48,7 @@ function unit(s: GameState, type: Unit['type'], owner: number, x: number, y: num
 /** 160x40: player 1 x 0..69, sea x 70..89, player 2 x 90..159; AIs frozen, rich. */
 function game(seed = 7): GameState {
   const s = makeFlatGame(160, 40, 2, { human: true, seed });
-  for (let y = 0; y < 40; y++) for (let x = 70; x < 90; x++) s.map.terrain[at(s, x, y)] = Terrain.Ocean;
+  for (let y = 0; y < 40; y++) for (let x = 70; x < 90; x++) s.map.terrain[at(s, x, y)] = Terrain.DeepWater;
   computeCoastAndLand(s.map);
   claimRect(s, 1, 0, 0, 69, 39);
   claimRect(s, 2, 90, 0, 159, 39);

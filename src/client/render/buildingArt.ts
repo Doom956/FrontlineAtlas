@@ -41,9 +41,9 @@ export type Facing = 0 | 1 | 2 | 3;
 export interface AddonState {
   /** the owner holds Flak Guns (Defense row): AA gun pits on its Forts and Cities */
   flak: boolean;
-  /** the owner has the radar add-on for its SAM sites */
+  /** the owner holds Tracking Radar (Defense row): a radar dish on its SAM sites */
   radar: boolean;
-  /** the owner has coastal guns on its Ports */
+  /** this building is a coastal battery (Coastal Batteries: a Port, or a Fort near the coast): big guns on it */
   guns: boolean;
 }
 
@@ -60,12 +60,14 @@ function modelLevel(type: BuildingSpec['type'], level: number): number {
 
 /**
  * Add-ons exist only where the game has the state: flak gun pits on a fort or city of a Flak Guns holder, the radar dish
- * on a SAM site, coastal guns on a port. (Tank traps are drawn on the trap tiles themselves, render/overlays.)
+ * on a SAM site of a Tracking Radar holder, big coastal guns on a battery Port or coastal Fort of a Coastal Batteries
+ * holder. (Tank traps are drawn on the trap tiles themselves, fx/defenseFx.) The two lanes exclude each other, so a
+ * fort has one add-on at most.
  */
 export function addonOf(type: BuildingType, s: AddonState): Addon {
   switch (type) {
     case 'fort':
-      return s.flak ? 'flak' : null;
+      return s.flak ? 'flak' : s.guns ? 'guns' : null;
     case 'city':
       return s.flak ? 'flak' : null;
     case 'sam':
@@ -88,7 +90,7 @@ export function specOf(type: BuildingType, level: number, s: AddonState): Buildi
 /** Every spec that has art, for the size budget. */
 function allSpecs(): BuildingSpec[] {
   const out: BuildingSpec[] = [];
-  const kinds: [BuildingSpec['type'], number, Addon[]][] = [['fort', 5, [null, 'flak', 'traps']], ['city', 5, [null, 'flak']], ['sam', 3, [null, 'radar']], ['port', 5, [null, 'guns']]];
+  const kinds: [BuildingSpec['type'], number, Addon[]][] = [['fort', 5, [null, 'flak', 'traps', 'guns']], ['city', 5, [null, 'flak']], ['sam', 3, [null, 'radar']], ['port', 5, [null, 'guns']]];
   for (const [type, top, addons] of kinds) for (let level = 1; level <= top; level++) for (const addon of addons) out.push({ type, level, addon });
   return out;
 }

@@ -346,7 +346,7 @@ function fortModel(lv: number, addon: Addon, simple = false): Part[] {
   P.push(...fortAddon(lv, addon, simple));
   return P;
 }
-/** The fort's add-ons: flak guns in front of the corner towers, or a belt of tank traps. */
+/** The fort's add-ons: flak guns or coastal gun casemates in front of the corner towers, or a belt of tank traps. */
 function fortAddon(lv: number, addon: Addon, simple: boolean): Part[] {
   const P: Part[] = [];
   const w = lv >= 5 ? 36 : lv >= 3 ? 30 : 24;
@@ -356,6 +356,8 @@ function fortAddon(lv: number, addon: Addon, simple: boolean): Part[] {
   const y0 = -d / 2;
   const y1 = d / 2;
   if (addon === 'flak') P.push(...flakGun(x0 - 5, y1 + 6, simple), ...flakGun(x1 + 5, y1 + 6, simple));
+  // Coastal Batteries: two big gun casemates in front of the corner towers
+  if (addon === 'guns') P.push(...casemate(x0 + 1, y1 + 5, simple), ...casemate(x1 - 1, y1 + 5, simple));
   if (addon === 'traps') {
     for (let h = x0 - 5; h <= x1 + 5; h += simple ? 9 : 6) if (Math.abs(h) > 5) P.push(...hedgehog(h, y1 + 8 + (hash(Math.round(h), 4) - 0.5) * 1.6));
     for (let h = y0 + 3; h < y1 + 5; h += simple ? 11 : 7) P.push(...hedgehog(x0 - 6, h), ...hedgehog(x1 + 6, h));

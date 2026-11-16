@@ -2,7 +2,7 @@
 // hostile Forts and Cities it sees or remembers), the flak on a strike's route, and the one line a Fort or City card
 // gains. Client only, read-only.
 import { DEFENSE, TICKS_PER_SECOND } from '../sim/config';
-import { flakRadius, flakRate, flakSiteCut, flakWorking } from '../sim/defense';
+import { batteryRange, flakRadius, flakRate, flakSiteCut, flakWorking, isBatterySite, radarRadius } from '../sim/defense';
 import { fortRadius } from '../sim/buildings';
 import { areAllied } from '../sim/diplomacy';
 import { hasTech } from '../sim/tech';
@@ -89,8 +89,9 @@ export function enemyFlakLabel(z: KnownFlak, factor: number): string {
 }
 
 /**
- * The Defense lines of an own Fort or City card ('' entries left out): "Flak: 14 tiles, enemy bombs here -35%",
- * "Tank traps: dug-in land within 28 tiles slows enemy tanks to 40%".
+ * The Defense lines of an own Fort, City, SAM site or Port card: "Flak: 14 tiles, enemy bombs here -35%", "Tank traps:
+ * dug-in land within 28 tiles slows enemy tanks to 40%", "Tracking Radar: spots stealth bombers within 30 tiles after
+ * 3 s", "Coastal Battery: fires at enemy ships within 30 tiles every 2 s".
  */
 export function defenseLines(state: GameState, b: Building): string[] {
   const p = state.players[b.owner];
@@ -101,6 +102,17 @@ export function defenseLines(state: GameState, b: Building): string[] {
     if (b.buildLeft > 0) out.push('Flak: fires once it is built');
     else if (off > 0) out.push(`Flak: knocked out for ${off} s`);
     else out.push(`Flak: ${flakRadius(b)} tiles, enemy bombs here -${pct(flakSiteCut(b))}%`);
+  }
+  if (b.type === 'sam' && hasTech(p, 'trackingRadar')) {
+    if (b.buildLeft > 0) out.push('Tracking Radar: works once it is built');
+    else if (off > 0) out.push(`Tracking Radar: knocked out for ${off} s`);
+    else out.push(`Tracking Radar: spots stealth bombers within ${Math.round(radarRadius(state, b))} tiles after ${DEFENSE.radarLockSeconds} s`);
+  }
+  if ((b.type === 'port' || b.type === 'fort') && isBatterySite(state, b)) {
+    if (b.buildLeft > 0) out.push('Coastal Battery: fires once it is built');
+    else if (off > 0) out.push(`Coastal Battery: knocked out for ${off} s`);
+    else if (b.hp < DEFENSE.batteryFireHp) out.push(`Coastal Battery: shelled silent, fires again at ${pct(DEFENSE.batteryFireHp)}% health (now ${pct(b.hp)}%)`);
+    else out.push(`Coastal Battery: fires at enemy ships within ${batteryRange(b)} tiles every ${DEFENSE.batteryFireSeconds} s`);
   }
   if (b.type === 'fort' && hasTech(p, 'tankTraps')) {
     if (b.buildLeft > 0) out.push('Tank traps: laid once it is built');
