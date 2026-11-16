@@ -1274,6 +1274,286 @@
   ]
  },
  {
+  "id": "europe-1939",
+  "name": "Europe 1939",
+  "description": "Europe on the eve of the war. Nations start from their 1939 capitals: Berlin, Paris, London, Rome, Moscow and more.",
+  "width": 1975,
+  "height": 1337,
+  "landTiles": 1301181,
+  "recommendedNations": 7,
+  "recommendedTribes": 325,
+  "presets": {
+   "singlePlayer": {
+    "nations": 7,
+    "tribes": 325
+   },
+   "multiplayer": {
+    "nations": 10,
+    "tribes": 145
+   }
+  },
+  "spawns": [
+   {
+    "name": "Soviet Union",
+    "tile": 1117312
+   },
+   {
+    "name": "France",
+    "tile": 1634094
+   },
+   {
+    "name": "Turkey",
+    "tile": 2142380
+   },
+   {
+    "name": "Portugal",
+    "tile": 2125526
+   },
+   {
+    "name": "Norway",
+    "tile": 974642
+   },
+   {
+    "name": "Italy",
+    "tile": 2122124
+   },
+   {
+    "name": "Poland",
+    "tile": 1456728
+   },
+   {
+    "name": "Iceland",
+    "tile": 444913
+   },
+   {
+    "name": "Greece",
+    "tile": 2351512
+   },
+   {
+    "name": "Germany",
+    "tile": 1446704
+   },
+   {
+    "name": "Spain",
+    "tile": 2101974
+   },
+   {
+    "name": "Romania",
+    "tile": 1922966
+   },
+   {
+    "name": "Hungary",
+    "tile": 1760849
+   },
+   {
+    "name": "Finland",
+    "tile": 941295
+   },
+   {
+    "name": "Ireland",
+    "tile": 1278459
+   },
+   {
+    "name": "United Kingdom",
+    "tile": 1450386
+   },
+   {
+    "name": "Sweden",
+    "tile": 1014261
+   },
+   {
+    "name": "Yugoslavia",
+    "tile": 1928761
+   },
+   {
+    "name": "Bulgaria",
+    "tile": 2051284
+   },
+   {
+    "name": "Czechoslovakia",
+    "tile": 1602749
+   },
+   {
+    "name": "Denmark",
+    "tile": 1247216
+   },
+   {
+    "name": "Netherlands",
+    "tile": 1430739
+   },
+   {
+    "name": "Albania",
+    "tile": 2153904
+   },
+   {
+    "name": "Latvia",
+    "tile": 1148670
+   },
+   {
+    "name": "Switzerland",
+    "tile": 1786270
+   },
+   {
+    "name": "Belgium",
+    "tile": 1523545
+   },
+   {
+    "name": "Lithuania",
+    "tile": 1284976
+   },
+   {
+    "name": "Estonia",
+    "tile": 1044032
+   }
+  ]
+ },
+ {
+  "id": "roman-empire",
+  "name": "Roman Empire",
+  "description": "The ancient Mediterranean, from Britannia to Syria and the Black Sea. Rome and the peoples around it.",
+  "width": 1755,
+  "height": 1181,
+  "landTiles": 1397681,
+  "recommendedNations": 8,
+  "recommendedTribes": 350,
+  "presets": {
+   "singlePlayer": {
+    "nations": 8,
+    "tribes": 350
+   },
+   "multiplayer": {
+    "nations": 10,
+    "tribes": 155
+   }
+  },
+  "spawns": [
+   {
+    "name": "Egypt",
+    "tile": 1910723
+   },
+   {
+    "name": "Germanic Tribes",
+    "tile": 330704
+   },
+   {
+    "name": "Carthage",
+    "tile": 1494168
+   },
+   {
+    "name": "Gauls",
+    "tile": 830611
+   },
+   {
+    "name": "Asia Minor",
+    "tile": 1263219
+   },
+   {
+    "name": "Hispania",
+    "tile": 1228729
+   },
+   {
+    "name": "Sarmatians",
+    "tile": 485681
+   },
+   {
+    "name": "Thrace",
+    "tile": 1059340
+   },
+   {
+    "name": "Cyrenaica",
+    "tile": 1841968
+   },
+   {
+    "name": "Armenia",
+    "tile": 1246034
+   },
+   {
+    "name": "Hibernians",
+    "tile": 270418
+   },
+   {
+    "name": "Rome",
+    "tile": 1116915
+   },
+   {
+    "name": "Greece",
+    "tile": 1406843
+   },
+   {
+    "name": "Britons",
+    "tile": 405746
+   },
+   {
+    "name": "Numidia",
+    "tile": 1497455
+   },
+   {
+    "name": "Lusitania",
+    "tile": 1351408
+   },
+   {
+    "name": "Cisalpine Gaul",
+    "tile": 853563
+   },
+   {
+    "name": "Syria",
+    "tile": 1740687
+   },
+   {
+    "name": "Belgae",
+    "tile": 455025
+   },
+   {
+    "name": "Mauretania",
+    "tile": 1700725
+   },
+   {
+    "name": "Dacia",
+    "tile": 929557
+   },
+   {
+    "name": "Marcomanni",
+    "tile": 511501
+   },
+   {
+    "name": "Sicily",
+    "tile": 1395988
+   },
+   {
+    "name": "Pontus",
+    "tile": 1186214
+   },
+   {
+    "name": "Illyria",
+    "tile": 973192
+   },
+   {
+    "name": "Etruria",
+    "tile": 978232
+   },
+   {
+    "name": "Celtiberians",
+    "tile": 1135801
+   },
+   {
+    "name": "Caledonians",
+    "tile": 77463
+   },
+   {
+    "name": "Judaea",
+    "tile": 1867013
+   },
+   {
+    "name": "Macedonia",
+    "tile": 1206746
+   },
+   {
+    "name": "Cyprus",
+    "tile": 1615990
+   }
+  ]
+ },
+ {
   "id": "british-isles",
   "name": "British Isles",
   "description": "Great Britain, Ireland and the islands around them, equirectangular.",
