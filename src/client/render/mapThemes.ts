@@ -111,35 +111,35 @@ export const THEME_DEFS: Record<string, MapThemeDef> = {
    */
   skyisles: {
     ground: {
-      grass: ramp('#4aa54c', '#62bb5c', '#7fd06f', '#a2e28b'),
+      grass: ramp('#6fc95a', '#8fdc6a', '#a6e57f', '#bdee98'),
       grassDry: ramp('#86b452', '#9fc866', '#b9da7f', '#d1e99c'),
-      grassLush: ramp('#389a48', '#4fb357', '#6bc968', '#8cdc80'),
-      forest: ramp('#1c7448', '#288b55', '#3aa365', '#58bb7b'),
-      hills: ramp('#7f9d5e', '#99b574', '#b3cb8e', '#cbdeaa'),
-      rock: ramp('#77739a', '#928eb3', '#aeaacb', '#c9c6df'),
-      snow: ramp('#cdd6ee', '#e1e8f8', '#f1f5fd', '#ffffff'),
-      sand: ramp('#dcca97', '#e8d8aa', '#f1e5c1', '#f9f1d9'),
+      grassLush: ramp('#4fb04a', '#5fc055', '#6cc95a', '#86d673'),
+      forest: ramp('#2f9a54', '#3aab5c', '#45b864', '#62c97c'),
+      hills: ramp('#9db86c', '#aec47a', '#b8cf86', '#cfe2a4'),
+      rock: ramp('#8f86a8', '#a399bd', '#b4a9cc', '#cdc5df'),
+      snow: ramp('#e8e6f2', '#f2f1f8', '#fafaff', '#ffffff'),
+      sand: ramp('#e6d29a', '#eedcaa', '#f5e6b8', '#fbf2d6'),
       swamp: ramp('#468a6d', '#5a9e7f', '#71b293', '#8bc6a8'),
       tundra: ramp('#b4bed6', '#c7d0e3', '#d9e0ee', '#eaeff8'),
       wheat: ramp('#bcc464', '#cdd47a', '#dce290', '#e8eda8'),
       crop: ramp('#62b052', '#79c265', '#91d27b', '#abe194'),
       soil: ramp('#a68f74', '#baa488', '#ccb99e', '#ddcdb3'),
       pool: ramp('#62bfe9', '#7bcdf0', '#95d9f4', '#b1e5f8'),
-      sea: [hx('#c4ecfb'), hx('#9cdaf5'), hx('#7cc8f0'), hx('#5fb6ea'), hx('#4aa7e4')],
-      foam: ramp('#c6ebfa', '#ddf4fc', '#eefaff', '#ffffff'),
+      sea: [hx('#e2f4ff'), hx('#bfe6fc'), hx('#92d4f9'), hx('#62bff7'), hx('#3fa9f5')],
+      foam: ramp('#e4f4ff', '#f0f9ff', '#f6fbff', '#ffffff'),
     },
     flat: [
-      [74, 167, 228], // open sea: bright cerulean
-      [134, 208, 242], // shelf: pale sky blue
-      [118, 202, 104], // plains: lush bright green
-      [50, 152, 92], // forest
-      [176, 202, 138], // hills: light sage
-      [178, 174, 206], // mountains: lavender-grey rock
-      [241, 229, 193], // desert: pale sand
+      [63, 169, 245], // open sea: bright cerulean
+      [207, 238, 255], // shelf: pale sky blue
+      [143, 220, 106], // plains: lush bright green
+      [69, 184, 100], // forest
+      [184, 207, 134], // hills: light sage
+      [180, 169, 204], // mountains: lavender-grey rock
+      [245, 230, 184], // desert: pale sand
       [108, 172, 140], // swamp
       [222, 229, 242], // tundra: snow white
     ],
-    waterMid: [98, 184, 234],
+    waterMid: [90, 190, 246],
   },
 };
 

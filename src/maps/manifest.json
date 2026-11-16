@@ -2479,9 +2479,9 @@
   "id": "driftisles",
   "name": "The Drifting Isles",
   "description": "A fictional sea of floating isles: one great horseshoe island round an inner bay, with crescents, long ridges, terraced plateaus and curving chains of islets split by narrow straits. Fleets and aircraft rule.",
-  "width": 1496,
-  "height": 957,
-  "landTiles": 450311,
+  "width": 1449,
+  "height": 927,
+  "landTiles": 450011,
   "recommendedNations": 5,
   "recommendedTribes": 115,
   "presets": {
@@ -2497,43 +2497,43 @@
   "spawns": [
    {
     "name": "Veyra",
-    "tile": 648388
-   },
-   {
-    "name": "Thessaly",
-    "tile": 309770
-   },
-   {
-    "name": "Pellor",
-    "tile": 666806
-   },
-   {
-    "name": "Imbria",
-    "tile": 1195004
-   },
-   {
-    "name": "Norwick",
-    "tile": 1198466
+    "tile": 609181
    },
    {
     "name": "Orsund",
-    "tile": 706994
+    "tile": 251943
    },
    {
-    "name": "Kelmar",
-    "tile": 313389
+    "name": "Thessaly",
+    "tile": 305823
+   },
+   {
+    "name": "Imbria",
+    "tile": 1121235
    },
    {
     "name": "Ravenne",
-    "tile": 782743
+    "tile": 734909
+   },
+   {
+    "name": "Kelmar",
+    "tile": 293400
+   },
+   {
+    "name": "Pellor",
+    "tile": 579214
    },
    {
     "name": "Dravik",
-    "tile": 273564
+    "tile": 663047
    },
    {
     "name": "Sunnach",
-    "tile": 1052471
+    "tile": 1036730
+   },
+   {
+    "name": "Norwick",
+    "tile": 1082611
    }
   ],
   "theme": "skyisles"
