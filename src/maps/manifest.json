@@ -2541,9 +2541,9 @@
   "id": "ringsea",
   "name": "The Dark Beyond",
   "description": "A fictional world: six known continents and their isles sit in the middle of an enormous lake, and all round it, out to every edge, lies a vast unsettled dark continent of bleak heath, fens and dark ranges, rich in iron and oil.",
-  "width": 1684,
-  "height": 1168,
-  "landTiles": 1301822,
+  "width": 1600,
+  "height": 1110,
+  "landTiles": 1300788,
   "recommendedNations": 7,
   "recommendedTribes": 325,
   "presets": {
@@ -2559,47 +2559,47 @@
   "spawns": [
    {
     "name": "Ardmoor",
-    "tile": 603351
+    "tile": 485207
    },
    {
     "name": "Ironhal",
-    "tile": 846428
+    "tile": 745003
    },
    {
     "name": "Galdren",
-    "tile": 1098369
+    "tile": 961929
    },
    {
     "name": "Tessaly",
-    "tile": 1110424
+    "tile": 997463
    },
    {
     "name": "Ravelle",
-    "tile": 1429242
-   },
-   {
-    "name": "Cindral",
-    "tile": 648989
-   },
-   {
-    "name": "Morrowick",
-    "tile": 1329175
-   },
-   {
-    "name": "Quorra",
-    "tile": 747255
-   },
-   {
-    "name": "Bellhaven",
-    "tile": 1363299
+    "tile": 1388364
    },
    {
     "name": "Ostheim",
-    "tile": 1176584
+    "tile": 1009104
+   },
+   {
+    "name": "Cindral",
+    "tile": 538237
+   },
+   {
+    "name": "Morrowick",
+    "tile": 1238869
+   },
+   {
+    "name": "Quorra",
+    "tile": 630031
+   },
+   {
+    "name": "Bellhaven",
+    "tile": 1296910
    },
    {
     "name": "Verrin",
-    "tile": 867667
+    "tile": 697942
    }
   ],
   "theme": "darkbeyond"

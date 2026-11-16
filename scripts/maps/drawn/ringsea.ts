@@ -16,37 +16,47 @@ const deg = (d: number): number => (d * Math.PI) / 180;
 //
 // The continents are drawn on a sketch grid 1900 wide and 1080 tall (x east, y SOUTH), then scaled into the plane:
 // S units per grid step, the grid point (KX, KY) at the plane's centre.
-const S = 0.038;
+const S = 0.044;
 const KX = 995;
 const KY = 545;
 /** sketch grid point -> plane point */
-const K = (x: number, y: number): Pt => [(x - KX) * S, (KY - y) * S];
+const K = (x: number, y: number): Pt => [(x - KX) * S * 0.93, (KY - y) * S];
 /** a coast through sketch grid control points: a few small kinks, smoothed, then light fractal detail */
 const shape = (pts: number[][], seed: number, rough = 0.24, per = 5): Pt[] => {
   const rng = rngFor(seed);
   return fractal(smoothClosed(fractal(pts.map(([x, y]) => K(x, y)), rng, 0.1, 2, 0.4), Math.max(2, per - 2)), rng, rough, 4, 0.04);
 };
 
+/** stretch a coast's points: x about an anchor, y about a centre */
+const stretch = (pts: number[][], ax: number, fx: number, cy: number, fy: number): number[][] => pts.map(([x, y]) => [ax + (x - ax) * fx, cy + (y - cy) * fy]);
+/** a small island on the sketch grid: a rough round of radius r (grid steps) */
+const isl = (x: number, y: number, r: number, seed: number): Pt[] =>
+  shape([0, 1, 2, 3, 4, 5, 6].map((i) => [x + Math.cos(i * 0.9) * r * (i % 2 ? 0.8 : 1.1), y + Math.sin(i * 0.9) * r * 0.85]), seed, 0.25, 4);
+const nx = (x: number): number => 353 + (x - 353) * 1.15;
+
 /** The hooked northern land: a round west end, a high north coast, a long hook bending south to the east. */
 const NORTH = shape(
-  [
+  stretch([
     [353, 168], [358, 135], [372, 104], [396, 76], [422, 58], [452, 52], [480, 46], [505, 31], [530, 28], [550, 42], [576, 52],
     [606, 56], [640, 50], [660, 30], [682, 28], [692, 56], [692, 96], [700, 134], [716, 160], [738, 184], [751, 220],
     [757, 262], [754, 300], [746, 328], [722, 327], [690, 313], [656, 300], [628, 283], [598, 262], [568, 242], [540, 246],
     [508, 263], [476, 281], [440, 283], [404, 271], [378, 251], [362, 222],
-  ],
+  ], 353, 1.15, 190, 1.1),
   11,
 );
 /** the small isle east of the hook */
-const NORTH_ISLE = shape([[762, 138], [784, 128], [802, 148], [808, 182], [792, 196], [772, 186], [764, 162]], 12, 0.25, 4);
+const NORTH_ISLE = shape([[842, 138], [868, 126], [890, 148], [896, 186], [876, 200], [850, 190], [844, 162]], 12, 0.25, 4);
+
+/** pull the south base of a coast down so it joins the land below */
+const lowerBase = (pts: number[][]): number[][] => pts.map(([x, y]) => (y > 470 ? [x, y + 70] : y > 400 ? [x, y + 25] : [x, y]));
 
 /** The tall western land: a long thin spine running north, widening to a broad south with a smooth south coast. */
 const WEST = shape(
-  [
+  lowerBase([
     [258, 138], [270, 148], [281, 178], [291, 222], [308, 272], [333, 309], [365, 344], [404, 378], [428, 410], [446, 444],
     [446, 478], [418, 502], [380, 512], [340, 518], [298, 521], [258, 516], [232, 506], [212, 488], [203, 446], [206, 386],
     [220, 316], [238, 256], [246, 200], [249, 164],
-  ],
+  ]),
   13,
 );
 
@@ -69,20 +79,11 @@ const SOUTHWEST = shape(
   ],
   17,
 );
-/** its long southern arm, trailing southeast */
-const SOUTH_ARM = shape(
-  [
-    [372, 918], [398, 948], [432, 972], [470, 992], [510, 1006], [545, 1022], [576, 1036], [606, 1032], [630, 1012], [642, 986],
-    [626, 978], [598, 990], [566, 994], [530, 984], [496, 966], [462, 948], [430, 930], [400, 918],
-  ],
-  18,
-);
 /** islands off its south and east */
 const SW_ISLES: Pt[][] = [
   shape([[654, 880], [680, 870], [706, 888], [702, 924], [676, 936], [658, 912]], 19, 0.25, 4),
-  shape([[700, 958], [722, 948], [738, 968], [716, 986]], 20, 0.25, 4),
   shape([[948, 778], [964, 790], [952, 822], [936, 852], [922, 878], [908, 868], [918, 838], [934, 806]], 21, 0.25, 4),
-  shape([[312, 940], [334, 934], [342, 952], [320, 960]], 22, 0.25, 4),
+  isl(430, 985, 30, 60), isl(500, 1010, 28, 61), isl(575, 1030, 26, 62), isl(650, 1020, 24, 63), isl(730, 990, 24, 64), isl(790, 955, 22, 65),
 ];
 /** the lake in the southwestern land */
 const SW_LAKE = shape([[318, 758], [340, 744], [366, 752], [373, 776], [356, 796], [330, 792]], 23, 0.15, 4);
@@ -108,35 +109,34 @@ const EAST_NORTH = shape(
 /** the isle off its north */
 const EAST_ISLE = shape([[1572, 52], [1592, 46], [1612, 58], [1640, 66], [1650, 82], [1630, 94], [1600, 90], [1578, 76]], 27, 0.25, 4);
 
+/** lift the north shore of the southern half so the channel between the halves is thin */
+const raiseNorth = (pts: number[][]): number[][] => pts.map(([x, y]) => (x > 1330 && y < 700 ? [x, y - 62] : [x, y]));
+
 /** The southern half: a long channel along its north shore, a bulging east, a long cape to the south. */
 const EAST_SOUTH = shape(
-  [
+  raiseNorth([
     [1160, 560], [1200, 550], [1252, 553], [1292, 566], [1332, 590], [1366, 614], [1402, 632], [1442, 642], [1482, 641],
     [1520, 626], [1560, 618], [1600, 625], [1640, 628], [1680, 646], [1720, 636], [1756, 631], [1786, 646], [1780, 668],
     [1752, 664], [1726, 688], [1708, 724], [1702, 760], [1692, 788], [1652, 808], [1650, 854], [1642, 896], [1624, 928],
     [1592, 974], [1568, 1012], [1536, 1050], [1504, 1040], [1476, 1002], [1466, 956], [1486, 938], [1460, 912], [1428, 892],
     [1404, 872], [1432, 878], [1470, 864], [1466, 834], [1446, 808], [1418, 816], [1390, 806], [1360, 778], [1345, 742],
     [1336, 718], [1303, 704], [1288, 686], [1256, 672], [1234, 644], [1220, 604], [1196, 598], [1169, 585], [1158, 571],
-  ],
+  ]),
   28,
 );
+const squash = (pts: number[][]): number[][] => pts.map(([x, y]) => [x, 780 + (y - 780) * 0.8]);
 /** The square southern isle, and its islet. */
 const SQUARE_ISLE = shape(
-  [
-    [1031, 848], [1062, 826], [1100, 832], [1139, 834], [1186, 818], [1240, 832], [1256, 868], [1270, 908], [1232, 926],
-    [1194, 956], [1140, 964], [1094, 950], [1070, 926], [1046, 896], [1032, 872],
-  ],
+  squash([
+    [1000, 800], [1060, 780], [1130, 786], [1200, 778], [1270, 790], [1310, 830], [1320, 890], [1316, 950], [1290, 1000],
+    [1250, 1030], [1210, 1010], [1180, 960], [1150, 950], [1120, 972], [1090, 1030], [1050, 1034], [1012, 1000], [992, 940],
+    [986, 870], [990, 830],
+  ]),
   29,
 );
-const SQUARE_ISLET = shape([[1062, 998], [1100, 992], [1130, 1004], [1110, 1024], [1072, 1020]], 30, 0.25, 4);
+
 /** islets strewn between the southwestern land and the eastern land */
-const MID_ISLES: Pt[][] = [
-  shape([[1094, 560], [1122, 548], [1152, 545], [1162, 556], [1132, 563], [1102, 572]], 31, 0.25, 4),
-  shape([[1094, 590], [1114, 584], [1126, 610], [1110, 632], [1098, 614]], 32, 0.25, 4),
-  shape([[1046, 634], [1070, 627], [1080, 646], [1060, 656]], 33, 0.25, 4),
-  shape([[1130, 660], [1150, 654], [1160, 672], [1140, 680]], 34, 0.25, 4),
-  shape([[1040, 700], [1058, 694], [1064, 712], [1046, 716]], 35, 0.25, 4),
-];
+const MID_ISLES: Pt[][] = [isl(1085, 585, 48, 66), isl(1100, 680, 30, 67)];
 
 // ---------- the lake and the dark continent ----------
 //
@@ -146,8 +146,8 @@ const W = 98;
 const H = 68;
 export const RINGSEA_PLANE = makePlane(W, H, 38);
 const pl = RINGSEA_PLANE;
-const LRX = 39;
-const LRY = 27.5;
+const LRX = 40;
+const LRY = 26;
 /** the base ellipse's radius at angle a (degrees, 0 = east, counter-clockwise) */
 const ell = (a: number): number => {
   const t = deg(a);
@@ -166,10 +166,10 @@ const out = (a: number, d: number): Pt => {
  */
 const SHORE: [number, number][] = [
   [0, -3.5], [6, -2], [9, -4.2], [14, -0.6], [22, 1.6], [26, 0.4], [29, 2.6], [38, 3], [43, 1.8], [47, 3], [52, 0.6],
-  [56, -2.4], [60, -7.6], [63, -6.6], [66, -2.4], [74, -1.8], [80, -3.4], [85, -2.4], [90, -3.2], [95, -5], [99, -6.6],
+  [56, -2.4], [60, -5], [63, -6.6], [66, -2.4], [74, -1.8], [80, -3.4], [85, -2.4], [90, -3.2], [95, -5], [99, -6.6],
   [103, -3.4], [110, 0], [116, -0.6], [122, 1.4], [133, 2.4], [137, 1], [141, 2.4], [150, 1.6], [156, 0], [161, -2.4],
   [167, -1.6], [173, -4.6], [181, -3.8], [188, -2.6], [192, -3.8], [197, -0.4], [204, 1.4], [212, 1.2], [216, 2.6],
-  [224, 2.4], [231, 1], [236, -1], [241, -4.4], [245, -7.2], [249, -4], [254, -3], [260, -5], [266, -8], [271, -7],
+  [224, 2.4], [231, 1], [236, -1], [241, -4.4], [245, -5], [249, -4], [254, -3], [260, -5], [266, -5.5], [271, -7],
   [276, -3.6], [282, -3.8], [288, -1], [294, -3], [299, -6.4], [303, -3.6], [308, 0.6], [316, 1.4], [322, 2.6],
   [328, 2.2], [334, 0.4], [340, -0.8], [345, -2.6], [351, -1.8], [356, -3.8],
 ];
@@ -319,6 +319,7 @@ const regions: ExtraRegion[] = [
   R('Square downs', 'hills', kb(1200, 878, 42, 34)),
   R('Square wood', 'woods', kb(1080, 900, 38, 34)),
   R('Square steppe', 'steppe', kb(1150, 920, 50, 30)),
+  R('Horn dunes', 'desert', kb(770, 640, 26, 20, 0.3)),
   R('Mid isles woods', 'woods', kb(1110, 600, 60, 50)),
 
   // the dark continent: a bleak heath everywhere beyond the shore, sickly fens on the shore between, crags on the
@@ -358,7 +359,7 @@ const regions: ExtraRegion[] = [
 
 const oil: Pt[][] = [
   // the known world: by the deserts, the wetland and a few plains fields
-  kb(610, 250, 30, 14), kb(684, 276, 18, 12), kb(400, 240, 26, 16), kb(376, 478, 32, 16), kb(320, 400, 24, 20), kb(272, 722, 40, 44), kb(700, 780, 26, 20),
+  kb(610, 250, 30, 14), kb(684, 276, 18, 12), kb(400, 240, 26, 16), kb(376, 478, 32, 16), kb(320, 400, 24, 20), kb(272, 722, 40, 44), kb(700, 780, 26, 20), kb(770, 640, 28, 22),
   kb(560, 1006, 30, 10), kb(480, 860, 22, 18), kb(1460, 410, 60, 34), kb(1640, 300, 26, 22), kb(1418, 760, 32, 24),
   kb(1560, 940, 22, 30), kb(1150, 930, 40, 20),
   // the dark continent: every fen and broad fields under the heath
@@ -395,8 +396,8 @@ const tarns: Pt[][] = [
 
 export const RINGSEA: DrawnMap = {
   land: [
-    NORTH, NORTH_ISLE, WEST, ...ARC, SOUTHWEST, SOUTH_ARM, ...SW_ISLES, RING_ISLE, EAST_NORTH, EAST_ISLE, EAST_SOUTH, SQUARE_ISLE,
-    SQUARE_ISLET, ...MID_ISLES, ...darkPieces, ...skerries,
+    NORTH, NORTH_ISLE, WEST, ...ARC, SOUTHWEST, ...SW_ISLES, RING_ISLE, EAST_NORTH, EAST_ISLE, EAST_SOUTH, SQUARE_ISLE,
+    ...MID_ISLES, ...darkPieces, ...skerries,
   ].map((p) => pl.ring(p)),
   lakes: [SW_LAKE, RING_LAKE, ...tarns].map((p) => pl.ring(p)),
   rivers: rivers.map((p) => pl.ring(p)),
@@ -411,15 +412,15 @@ const sp = (name: string, x: number, y: number, major = false): SpawnDef => {
 
 /** Eleven nations, all in the known world; the dark continent is left empty. */
 export const RINGSEA_SPAWNS: SpawnDef[] = [
-  sp('Ardmoor', 440, 200, true),
-  sp('Cindral', 700, 240),
-  sp('Verrin', 330, 440),
-  sp('Galdren', 320, 650, true),
-  sp('Morrowick', 470, 860),
-  sp('Tessaly', 730, 660),
-  sp('Ironhal', 1330, 420, true),
-  sp('Quorra', 1610, 330),
-  sp('Ostheim', 1470, 720, true),
-  sp('Ravelle', 1560, 950),
-  sp('Bellhaven', 1150, 890),
+  sp('Ardmoor', nx(400), 195, true),
+  sp('Cindral', nx(700), 240),
+  sp('Verrin', 310, 380),
+  sp('Galdren', 290, 610, true),
+  sp('Morrowick', 500, 850),
+  sp('Tessaly', 790, 640),
+  sp('Ironhal', 1300, 420, true),
+  sp('Quorra', 1640, 320),
+  sp('Ostheim', 1450, 650, true),
+  sp('Ravelle', 1540, 980),
+  sp('Bellhaven', 1160, 900),
 ];
