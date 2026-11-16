@@ -66,7 +66,45 @@ export const hx = (h: string): RGB => [parseInt(h.slice(1, 3), 16), parseInt(h.s
 export const ramp = (a: string, b: string, c: string, d: string): GroundRamp => [hx(a), hx(b), hx(c), hx(d)];
 
 /** The named themes (ids are what a map's `theme` says). */
-export const THEME_DEFS: Record<string, MapThemeDef> = {};
+export const THEME_DEFS: Record<string, MapThemeDef> = {
+  /**
+   * The walled country (the Ringlands and its island in the Sundered Sea): a soft painted look instead of a realistic
+   * one. Muted greens and olive fields, warm sandy farmland, grey-beige stone for the walls and mountains, dusty sepia
+   * hills, and a dull teal-grey sea.
+   */
+  stonewall: {
+    ground: {
+      grass: ramp('#5a6a45', '#71825a', '#8c9c70', '#a5b386'),
+      grassDry: ramp('#6b6a45', '#86845a', '#a19e70', '#b8b487'),
+      grassLush: ramp('#4c5f40', '#617752', '#7a9166', '#93a97b'),
+      forest: ramp('#29361f', '#3b4d2e', '#53673f', '#6d8253'),
+      hills: ramp('#5f4c37', '#7d6549', '#9a7f5f', '#b59b79'),
+      rock: ramp('#5b564c', '#7a7467', '#9c9585', '#bfb8a6'),
+      snow: ramp('#9da3a1', '#bfc4bf', '#dcdfd8', '#f1f2ea'),
+      sand: ramp('#9a8159', '#b79b6e', '#cfb486', '#e3cc9f'),
+      swamp: ramp('#323a2c', '#4a5339', '#626b49', '#7a825c'),
+      tundra: ramp('#76796a', '#919382', '#aaab98', '#c0c0ad'),
+      wheat: ramp('#86764f', '#a38f63', '#bba676', '#cfbb8a'),
+      crop: ramp('#5b663d', '#727d4c', '#8a945e', '#a0a971'),
+      soil: ramp('#6a5539', '#846b4b', '#9c835f', '#b39a74'),
+      pool: ramp('#2b4140', '#385251', '#486563', '#647f7b'),
+      sea: [hx('#4a6764'), hx('#3f5b59'), hx('#35504f'), hx('#2d4646'), hx('#273c3d')],
+      foam: ramp('#4f6d69', '#6f8a85', '#9fb3ab', '#cad6cd'),
+    },
+    flat: [
+      [39, 60, 61], // open sea
+      [63, 91, 89], // shelf
+      [140, 156, 112], // plains: soft green
+      [84, 104, 68], // forest
+      [156, 128, 96], // hills: dusty sepia
+      [184, 174, 154], // mountains and walls: grey-beige stone
+      [207, 180, 134], // desert: warm sand
+      [100, 110, 80], // swamp
+      [192, 193, 178], // tundra
+    ],
+    waterMid: [51, 75, 75],
+  },
+};
 
 const made = new Map<string, MapTheme>();
 

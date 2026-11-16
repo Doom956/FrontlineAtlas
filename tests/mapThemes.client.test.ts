@@ -45,6 +45,14 @@ describe('map themes', () => {
     expect(themeForMap(MAP)).toBe(DEFAULT_THEME);
   });
 
+  it('the walled country maps use their theme', () => {
+    for (const id of ['ringlands', 'sundered']) {
+      expect(getWorldMap(id)?.theme).toBe('stonewall');
+      expect(themeForMap({ kind: 'world', id }).id).toBe('stonewall');
+    }
+    expect(themeForMap('ringlands').ground.rock).not.toBe(GROUND.rock);
+  });
+
   it('a map that names a theme is drawn in it; what the theme leaves out keeps the default', () => {
     withTestTheme();
     const t = themeForMap({ kind: 'world', id: MAP });
