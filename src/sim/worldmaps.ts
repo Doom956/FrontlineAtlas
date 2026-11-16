@@ -33,10 +33,15 @@ export interface WorldMapPresets {
   multiplayer: WorldMapPreset;
 }
 
+/** The menu section a map is listed in. */
+export type MapCategory = 'real' | 'history' | 'fantasy';
+
 export interface WorldMapInfo {
   id: string;
   name: string;
   description: string;
+  /** menu section: real-world places, history, or hand-drawn fantasy worlds */
+  category: MapCategory;
   width: number;
   height: number;
   landTiles: number;

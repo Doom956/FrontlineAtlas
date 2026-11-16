@@ -32,7 +32,14 @@ import {
   VICTORY_SHARES,
 } from '../sim/setup';
 import type { BuildSpeed, Difficulty, GameMode, GameSettings, GameSetup, MapSize, MapType, Modifiers, PresetId, ResearchRule, StartingGold } from '../sim/types';
-import { getWorldMap, listWorldMaps } from '../sim/worldmaps';
+import { getWorldMap, listWorldMaps, type MapCategory } from '../sim/worldmaps';
+
+/** Sections of the premade map list, in menu order. */
+const MAP_CATEGORIES: { id: MapCategory; title: string }[] = [
+  { id: 'real', title: 'Real world' },
+  { id: 'history', title: 'History' },
+  { id: 'fantasy', title: 'Fantasy worlds' },
+];
 import { backButton, button, el, rgbCss, setText } from './dom';
 import { lineIcon } from './hud/glyph';
 import { requestThumb, type ThumbKey } from './mapThumbs';
@@ -599,7 +606,7 @@ export class SetupScreen {
       'Map kind',
       [
         { id: 'generated', label: 'Generated' },
-        { id: 'world', label: 'Real world' },
+        { id: 'world', label: 'Premade' },
       ],
       () => this.mapTab,
       (v) => {
@@ -645,17 +652,30 @@ export class SetupScreen {
         this.lastGenerated = { type: t, size };
       }),
     );
-    const worldItems = listWorldMaps().map((m) =>
+    const worldMaps = listWorldMaps();
+    const worldItems = worldMaps.map((m) =>
       thumb(`world:${m.id}`, m.name, `${fmtK(m.landTiles)} land tiles`, `${m.name}: ${m.spawns.length} countries. ${m.description}`, () => this.s.map.kind === 'world' && this.s.map.id === m.id, () => {
         this.s.map = { kind: 'world', id: m.id };
         this.lastWorld = m.id;
       }),
     );
-    grid.append(...genItems, ...worldItems);
+    // Premade maps sit in sections (Real world, History, Fantasy worlds), each under a plain heading. The
+    // section comes from the map's `category` in the manifest; the headings only show with the Premade tab.
+    const heads: HTMLElement[] = [];
+    const worldNodes: HTMLElement[] = [];
+    for (const cat of MAP_CATEGORIES) {
+      const idx = worldMaps.map((m, i) => (m.category === cat.id ? i : -1)).filter((i) => i >= 0);
+      if (idx.length === 0) continue;
+      const h = el('h3', 'map-group-h', cat.title);
+      h.id = `map-group-${cat.id}`;
+      heads.push(h);
+      worldNodes.push(h, ...idx.map((i) => worldItems[i]));
+    }
+    grid.append(...genItems, ...worldNodes);
     this.fadeEdge(grid);
     this.syncs.push(() => {
       for (const b of genItems) b.classList.toggle('hidden', this.mapTab !== 'generated');
-      for (const b of worldItems) b.classList.toggle('hidden', this.mapTab !== 'world');
+      for (const b of [...worldItems, ...heads]) b.classList.toggle('hidden', this.mapTab !== 'world');
       grid.classList.toggle('world', this.mapTab === 'world');
     });
 

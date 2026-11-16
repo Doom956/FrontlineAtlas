@@ -411,6 +411,7 @@ function main(): void {
       id: def.id,
       name: def.name,
       description: def.description,
+      category: def.category ?? (def.drawn ? 'fantasy' : 'real'),
       width: W,
       height: H,
       landTiles,

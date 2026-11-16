@@ -179,9 +179,18 @@
   padding: 1px;
 }
 .map-grid.world {
-  max-height: 236px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  /* sections under headings: the settings column scrolls, so no map is hidden in a small inner box */
+  max-height: none;
+  overflow: visible;
+}
+.map-group-h {
+  grid-column: 1 / -1;
+  margin: 6px 0 0;
+  font: 600 15px/1.2 var(--f-label);
+  color: var(--text);
+}
+.map-group-h:first-child {
+  margin-top: 0;
 }
 .map-thumb {
   display: flex;
@@ -564,9 +573,6 @@
   .menu-card.setup {
     width: min(1480px, calc(100vw - 32px));
   }
-  .map-grid.world {
-    max-height: 330px;
-  }
 }
 @media (max-height: 800px) {
   .menu-card.setup {
@@ -587,9 +593,6 @@
   }
   .mod-row {
     padding: 3px 0;
-  }
-  .map-grid.world {
-    max-height: 300px;
   }
   .setup-foot {
     padding: 10px 0 12px;
@@ -729,20 +732,7 @@
   .map-grid.world {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  /* twelve real-world maps: one row that scrolls sideways, the next map peeking */
-  .map-grid.world {
-    grid-template-columns: none;
-    grid-auto-flow: column;
-    grid-auto-columns: 42%;
-    overflow-x: auto;
-    scroll-snap-type: x proximity;
-    scrollbar-width: none;
-    margin-inline-end: -16px;
-    padding-inline-end: 16px;
-  }
-  .map-grid.world .map-thumb {
-    scroll-snap-align: start;
-  }
+  /* premade maps: sections under headings, two to a row, the page scrolls */
   .setup-sec-head {
     flex-wrap: wrap;
   }
