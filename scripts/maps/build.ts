@@ -8,6 +8,7 @@
 //   /tmp/borderfall-shots/worldmap-<id>.png   preview (terrain, resources, spawns)
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { RESOURCE_COLORS, TERRAIN } from '../../src/sim/config';
 import type { WorldMapInfo, WorldMapPresets } from '../../src/sim/worldmaps';
@@ -22,7 +23,8 @@ declare const process: { argv: string[]; exit(code: number): never };
 
 const CACHE = '/tmp/borderfall-mapdata';
 const SHOTS = '/tmp/borderfall-shots';
-const OUT_DIR = new URL('../../src/maps/', import.meta.url).pathname;
+// fileURLToPath, not .pathname: on Windows .pathname is "/D:/...", which the fs calls cannot open
+const OUT_DIR = fileURLToPath(new URL('../../src/maps/', import.meta.url));
 const NE = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/';
 const MAX_W = 2600;
 const MAX_H = 1600;
