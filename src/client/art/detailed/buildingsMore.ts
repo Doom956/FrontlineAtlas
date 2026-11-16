@@ -4,7 +4,7 @@
 // building into the terrain. farm, market, mine, oil well, barracks, factory, arsenal, watchtower, lab, hospital,
 // airfield and missile silo. Every type has one clear shape of its own so it reads at normal zoom. Art in code only.
 import type { Part } from './bake';
-import { acUnit, barrel, band, chimney, flag, footBox, gable, hip, house, hash, moved, skylight, tree, type Ground, type Mat } from './buildings';
+import { barrel, band, chimney, flag, footBox, gable, hip, house, hash, moved, sandRing, tree, ventPipe, type Ground, type Mat } from './buildings';
 import { box as bx, ell as el, poly, seg } from './shapes';
 
 export type MoreType = 'farm' | 'market' | 'mine' | 'oilWell' | 'barracks' | 'factory' | 'arsenal' | 'watchtower' | 'lab' | 'hospital' | 'airfield' | 'silo';
@@ -179,123 +179,201 @@ function marketModel(lv: number): Part[] {
 
 // ------------------------------------------------------------------------------------------------- mine
 
+/** An open steel A-frame headframe: four leaning legs with rungs, two big pale wheels on top, a cable down to the hoist house. */
 function headframe(u: number, v: number, s: number): Part[] {
   const P: Part[] = [];
-  P.push(bx(u - 3.4 * s, v - 3 * s, u + 3.4 * s, v + 3 * s, 0, 5 * s, 'gun', { tone: 0.4, pat: 'grille' }));
-  P.push(bx(u - 2.6 * s, v - 2.2 * s, u + 2.6 * s, v + 2.2 * s, 5 * s, 5 * s, 'gun', { tone: 0.5, pat: 'grille' }));
-  P.push(bx(u - 1.8 * s, v - 1.5 * s, u + 1.8 * s, v + 1.5 * s, 10 * s, 5 * s, 'gun', { tone: 0.6, pat: 'grille' }));
-  // posts at the corners of the lowest tier so it reads as a lattice
-  for (const [a, b] of [[-3.4, -3], [3.4, -3], [-3.4, 3], [3.4, 3]]) P.push(el(u + a * s, v + b * s, 0.5 * s, 0.5 * s, 0, 5 * s, 'rust', { sh: 'cyl', tone: 0.3 }));
-  // the winding wheel: a big dark sheave in the owner's colour rim over the top
-  P.push(seg(u - 3 * s, v, u + 3 * s, v, 1.2 * s, 15 * s, 0.6 * s, 'gun'), el(u - 1.5 * s, v, 2.5 * s, 2.5 * s, 15.6 * s, 0.9 * s, 'own', { sh: 'cyl', tone: 0.2 }), el(u - 1.5 * s, v, 1.3 * s, 1.3 * s, 16.5 * s, 0.4, 'gun', { tone: 0.2 }), el(u + 1.6 * s, v, 1.6 * s, 1.6 * s, 15.6 * s, 0.9 * s, 'gun', { sh: 'cyl', tone: 0.4 }));
+  const n = 4;
+  const H = 20 * s;
+  const wb = 5.6 * s;
+  const wt = 2.4 * s;
+  const db = 3 * s;
+  const dt = 1.4 * s;
+  for (let k = 0; k < n; k++) {
+    const t0 = k / n;
+    const t1 = (k + 1) / n;
+    const w0 = wb + (wt - wb) * t0;
+    const w1 = wb + (wt - wb) * t1;
+    const d0 = db + (dt - db) * t0;
+    const z0 = H * t0;
+    const dz = H / n;
+    for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const wm = (w0 + w1) / 2;
+      const dm = (d0 + (db + (dt - db) * t1)) / 2;
+      P.push(el(u + a * wm, v + b * dm, 0.6 * s + 0.2, 0.6 * s + 0.2, z0, dz, 'sup', { sh: 'cyl', tone: a < 0 ? 0.3 : -0.2 }));
+    }
+    const wr = w1;
+    const dr = db + (dt - db) * t1;
+    P.push(seg(u - wr, v + dr, u + wr, v + dr, 0.7, z0 + dz - 0.4, 0.5, 'sup', { tone: 0.4 }), seg(u - wr, v - dr, u + wr, v - dr, 0.7, z0 + dz - 0.4, 0.5, 'sup', { tone: 0.1 }), seg(u - wr, v - dr, u - wr, v + dr, 0.7, z0 + dz - 0.4, 0.5, 'sup', { tone: 0.2 }), seg(u + wr, v - dr, u + wr, v + dr, 0.7, z0 + dz - 0.4, 0.5, 'sup', { tone: -0.2 }));
+    // a cross brace on the south face
+    P.push(seg(u - w0, v + d0, u + w1, v + db + (dt - db) * t1, 0.45, z0 + dz * 0.5, 0.4, 'sup', { tone: 0.5 }));
+  }
+  // two big wheels on the top, pale steel with an owner-coloured hub and spokes
+  for (const a of [-1, 1]) {
+    const wu = u + a * 3.0 * s;
+    P.push(el(wu, v, 3.0 * s, 3.0 * s, H, 0.8, 'alu', { sh: 'cyl', tone: 0.4 }), el(wu, v, 2.2 * s, 2.2 * s, H + 0.8, 0.3, 'gun', { tone: 0.3 }), seg(wu - 2.4 * s, v, wu + 2.4 * s, v, 0.5, H + 1.1, 0.3, 'alu', { tone: 0.6 }), seg(wu, v - 2.4 * s, wu, v + 2.4 * s, 0.5, H + 1.1, 0.3, 'alu', { tone: 0.6 }), el(wu, v, 0.9 * s, 0.9 * s, H + 0.8, 0.9, 'own', { sh: 'dome' }));
+  }
   return P;
 }
-function heap(u: number, v: number, ru: number, rv: number, h: number, mat: Mat = 'tan', lift = 0): Part[] {
-  return [el(u, v, ru, rv, 0, h, mat, { sh: 'dome', tone: -0.4 + lift }), el(u - ru * 0.2, v - rv * 0.18, ru * 0.62, rv * 0.6, h * 0.55, h * 0.45, mat, { sh: 'dome', tone: 0.3 + lift }), el(u - ru * 0.35, v - rv * 0.3, ru * 0.25, rv * 0.25, h * 0.9, h * 0.2, 'fieldgrey', { sh: 'dome', tone: 0.9 })];
+/** A cable from the top of a headframe down to a hoist house, as a few stepped segments. */
+function cable(u0: number, v0: number, z0: number, u1: number, v1: number, z1: number): Part[] {
+  const P: Part[] = [];
+  const n = 4;
+  for (let i = 0; i < n; i++) {
+    const a = i / n;
+    const b = (i + 1) / n;
+    P.push(seg(u0 + (u1 - u0) * a, v0 + (v1 - v0) * a, u0 + (u1 - u0) * b, v0 + (v1 - v0) * b, 0.45, z0 + (z1 - z0) * a, 0.3, 'black', { tone: 0.5 }));
+  }
+  return P;
 }
-function cart(u: number, v: number, own = false): Part[] {
-  return [bx(u, v, u + 3.6, v + 2.6, 0.5, 1.5, own ? 'rust' : 'rust', { tone: -0.2 }), el(u + 1.8, v + 1.3, 1.4, 1.0, 1.9, 0.9, 'black', { sh: 'dome', tone: 0.4 }), bx(u + 0.2, v + 0.1, u + 3.4, v + 0.5, 1.9, 0, 'own')];
+/** A spoil heap in lit terraces: three stacked cones, lighter toward the top left, flecked with ore. */
+function heap(u: number, v: number, ru: number, rv: number, h: number, mat: Mat = 'ochre', lift = 0): Part[] {
+  return [
+    el(u, v, ru, rv, 0, h * 0.4, mat, { sh: 'dome', tone: -0.6 + lift }),
+    el(u - ru * 0.08, v - rv * 0.08, ru * 0.76, rv * 0.74, h * 0.38, h * 0.32, mat, { sh: 'dome', tone: 0.1 + lift }),
+    el(u - ru * 0.17, v - rv * 0.16, ru * 0.5, rv * 0.48, h * 0.68, h * 0.32, mat, { sh: 'dome', tone: 0.7 + lift }),
+    el(u - ru * 0.5, v + rv * 0.3, 0.7, 0.55, h * 0.3, 0.6, 'rust', { sh: 'dome', tone: 0.3 }),
+    el(u + ru * 0.4, v - rv * 0.2, 0.6, 0.5, h * 0.3, 0.5, 'black', { sh: 'dome', tone: 0.8 }),
+  ];
+}
+function cart(u: number, v: number, alongV = false): Part[] {
+  const w = alongV ? 2.6 : 3.6;
+  const d = alongV ? 3.6 : 2.6;
+  return [bx(u, v, u + w, v + d, 0.5, 1.5, 'rust', { tone: -0.2 }), el(u + w / 2, v + d / 2, w * 0.38, d * 0.38, 1.9, 0.9, 'black', { sh: 'dome', tone: 0.5 }), bx(u + 0.2, v + 0.1, u + w - 0.2, v + 0.5, 1.9, 0, 'own')];
 }
 function rails(u0: number, v0: number, u1: number, v1: number): Part[] {
   const P: Part[] = [];
   const L = Math.hypot(u1 - u0, v1 - v0);
   const nu = -(v1 - v0) / L;
   const nv = (u1 - u0) / L;
-  for (const o of [-1, 1]) P.push(seg(u0 + nu * o, v0 + nv * o, u1 + nu * o, v1 + nv * o, 0.5, 0, 0.45, 'gun', { tone: 0.5 }));
-  for (let t = 0.5; t < L; t += 2) P.push(seg(u0 + ((u1 - u0) * t) / L + nu * 1.5, v0 + ((v1 - v0) * t) / L + nv * 1.5, u0 + ((u1 - u0) * t) / L - nu * 1.5, v0 + ((v1 - v0) * t) / L - nv * 1.5, 0.5, 0, 0.2, 'teak'));
+  for (const o of [-1, 1]) P.push(seg(u0 + nu * o, v0 + nv * o, u1 + nu * o, v1 + nv * o, 0.55, 0, 0.5, 'gun', { tone: 0.6 }));
+  for (let t = 0.5; t < L; t += 2) P.push(seg(u0 + ((u1 - u0) * t) / L + nu * 1.6, v0 + ((v1 - v0) * t) / L + nv * 1.6, u0 + ((u1 - u0) * t) / L - nu * 1.6, v0 + ((v1 - v0) * t) / L - nv * 1.6, 0.5, 0, 0.2, 'teak'));
   return P;
+}
+/** A small hill with a timbered tunnel mouth cut into its south face. */
+function adit(u: number, v: number, r: number): Part[] {
+  return [
+    el(u, v, r, r * 0.72, 0, r * 0.5, 'olive', { sh: 'dome', tone: -0.2 }),
+    el(u - r * 0.15, v - r * 0.12, r * 0.62, r * 0.45, r * 0.4, r * 0.3, 'camo', { sh: 'dome', tone: 0.7 }),
+    bx(u - 2.9, v + r * 0.5, u + 2.9, v + r * 0.5 + 1.2, 0, 3.0, 'teak', { tone: -0.1, pat: 'planks' }),
+    bx(u - 1.9, v + r * 0.5 + 0.6, u + 1.9, v + r * 0.5 + 1.4, 0, 2.3, 'black', { tone: 0.2 }),
+    bx(u - 2.9, v + r * 0.5 - 0.1, u + 2.9, v + r * 0.5 + 0.7, 3.0, 0.5, 'teak', { tone: 0.5 }),
+  ];
+}
+function hoist(u0: number, v0: number, u1: number, v1: number): Part[] {
+  return [bx(u0, v0, u1, v1, 0, 3.2, 'cream', { tone: -0.2 }), ...gable(u0, v0, u1, v1, 3.2, 'rust', { rh: 1.8, over: 0.5, metal: true }), band(u0 + 0.6, (v0 + v1) / 2 - 0.4, u1 - 0.6, (v0 + v1) / 2 + 0.4, 5.2)];
 }
 function mineModel(lv: number): Part[] {
   const P: Part[] = [];
   if (lv >= 5) {
-    P.push(...heap(-17, -9, 9, 6.4, 7.6), ...heap(-8, 9.6, 8, 5.6, 6, 'fieldgrey', 0.5), ...heap(22, 8, 6.4, 5, 5));
-    P.push(...rails(-14, 1.4, 17, 1.4), ...cart(-6, -0.6), ...cart(-1.6, -0.6), ...cart(2.8, -0.6, true));
-    P.push(...headframe(8, -9, 1.35), ...headframe(19, -9, 1.0));
-    P.push(bx(2, -2.6, 11, 4, 0, 3.4, 'cream', { tone: -0.3 }), ...gable(2, -2.6, 11, 4, 3.4, 'rust', { rh: 1.8, over: 0.5, metal: true }), ...chimney(9, -1.8, 3.4, 4));
-    P.push(bx(13, -2, 25, 7, 0, 3, 'fieldgrey', { tone: 0.2, pat: 'grille' }), ...gable(13, -2, 25, 7, 3, 'cargo', { rh: 1.5, over: 0.4, metal: true }), seg(-6, -4, 12, -4, 1.2, 4.6, 0.5, 'gun'));
-    P.push(...tree(-26, 3, 2.2, 3), ...tree(30, -5, 2.2, 4));
+    P.push(...adit(-18, -9, 8), ...rails(-18, -2, -18, 9), ...rails(-18, 9, 2, 9), ...cart(-20, 1, true), ...cart(-9, 7.7), ...cart(-3.4, 7.7));
+    P.push(...heap(8, 14, 8, 5.4, 8, 'ochre'), ...heap(-8, 17, 6, 4.4, 6, 'fieldgrey', 0.6), ...heap(22, 10, 6, 4.5, 6, 'ochre', 0.2));
+    P.push(...headframe(6, -10, 1.35), ...headframe(21, -10, 1.0));
+    P.push(...hoist(0, -2, 9, 5), ...cable(6, -10, 27, 4.5, 1, 6), ...hoist(15, -3, 26, 4), ...cable(21, -10, 20, 20, 0, 5));
+    P.push(...tree(-26, 4, 2.2, 3), ...tree(30, -6, 2.2, 4));
   } else if (lv >= 3) {
-    P.push(...heap(-15, -8, 8, 5.8, 6.4), ...heap(-6, 9, 7, 5, 5, 'fieldgrey', 0.5));
-    P.push(...rails(-13, 1.4, 14, 1.4), ...cart(-5, -0.6), ...cart(-0.6, -0.6, true));
-    P.push(...headframe(8, -10, 1.15));
-    P.push(bx(15, -4, 24, 3.6, 0, 3.2, 'cream', { tone: -0.3 }), ...gable(15, -4, 24, 3.6, 3.2, 'rust', { rh: 1.8, over: 0.5, metal: true }), ...chimney(22, -3.2, 3.2, 3.6));
+    P.push(...adit(-16, -8, 7), ...rails(-16, -2, -16, 9), ...rails(-16, 9, -2, 9), ...cart(-17.3, 1, true), ...cart(-8, 7.7), ...cart(-3.4, 7.7));
+    P.push(...heap(8, 12, 7.4, 5, 7, 'ochre'), ...heap(-10, 16, 5.4, 4, 5, 'fieldgrey', 0.6));
+    P.push(...headframe(8, -9, 1.2), ...hoist(14, -4, 23, 3), ...cable(8, -9, 24, 14, -0.5, 5));
     P.push(...tree(-24, 4, 2.2, 3));
   } else {
-    P.push(...heap(-13, -6, 7, 5, 5.2));
-    P.push(...rails(-11, 3, 9, 3), ...cart(-4, 1));
-    P.push(...headframe(6, -8, 0.95));
-    P.push(bx(12, -6, 19, 0, 0, 3, 'cream', { tone: -0.3 }), ...gable(12, -6, 19, 0, 3, 'rust', { rh: 1.6, over: 0.5, metal: true }));
+    P.push(...adit(-13, -6, 6), ...rails(-13, -1, -13, 8), ...rails(-13, 8, -2, 8), ...cart(-14.3, 2, true));
+    P.push(...heap(6, 11, 6, 4.2, 5.6, 'ochre'));
+    P.push(...headframe(7, -8, 1.0), ...hoist(12, -3, 19, 2), ...cable(7, -8, 20, 12, -1, 5));
   }
-  // the adit: a timbered black mouth at the foot of the track
-  P.push(bx(-16, lv >= 5 ? -0.2 : lv >= 3 ? 0.2 : 1.8, -12, lv >= 5 ? 3 : lv >= 3 ? 3.4 : 4.6, 0, 2.4, 'teak', { tone: -0.2, pat: 'planks' }), bx(-15.4, lv >= 5 ? 0.4 : lv >= 3 ? 0.8 : 2.4, -12.6, lv >= 5 ? 2.4 : lv >= 3 ? 2.8 : 4, 0, 2.0, 'black', { tone: 0.3 }));
   return P;
 }
 
 // ------------------------------------------------------------------------------------------------- oil well
 
+/** A pumpjack: a black frame, a yellow walking beam with a black horsehead, a dark red counterweight, a motor. */
 function pumpjack(u: number, v: number, s: number, ph = 0): Part[] {
   const P: Part[] = [];
-  P.push(bx(u - 5.2 * s, v - 2.6 * s, u + 5.6 * s, v + 2.6 * s, 0, 0.9, 'sup', { tone: -0.3 }));
-  // the samson post, the walking beam in the owner's colour, horse head, counterweight, motor
-  P.push(bx(u - 0.9 * s, v - 0.9 * s, u + 0.9 * s, v + 0.9 * s, 0.9, 5.4 * s, 'gun', { tone: 0.5, pat: 'grille' }), seg(u - 4.8 * s, v + ph, u + 4.6 * s, v - ph, 1.3 * s, 6.3 * s, 1.0 * s, 'own', { tone: 0.2 }));
-  P.push(el(u - 5.0 * s, v + ph, 1.7 * s, 1.5 * s, 5.8 * s, 1.8 * s, 'gun', { sh: 'dome', tone: 0.5 }), el(u + 4.2 * s, v - ph, 1.9 * s, 1.5 * s, 3.6 * s, 3.4 * s, 'gun', { sh: 'cyl', tone: 0.4 }), seg(u + 3.4 * s, v - ph, u + 3.4 * s, v - ph, 0.7, 0.9, 2.8 * s, 'gun'));
-  P.push(bx(u + 0.8 * s, v + 1.2 * s, u + 4 * s, v + 2.4 * s, 0.9, 1.6, 'olive', { tone: 0.3 }), el(u - 4.6 * s, v + 1.6 * s, 0.6, 0.6, 0.9, 0.7, 'rust', { sh: 'cyl' }));
+  P.push(el(u, v, 8 * s, 5.4 * s, 0, 0, 'black', { a: 0.5 }), bx(u - 5.2 * s, v - 2.8 * s, u + 5.6 * s, v + 2.8 * s, 0, 1.0, 'gun', { tone: -0.3 }));
+  P.push(bx(u - 1.1 * s, v - 1.1 * s, u + 1.1 * s, v + 1.1 * s, 1.0, 6.0 * s, 'black', { tone: 0.5, pat: 'grille' }));
+  P.push(seg(u - 5.2 * s, v + ph, u + 4.8 * s, v - ph, 1.5 * s, 7.0 * s, 1.1 * s, 'hazard', { tone: 0.3 }));
+  P.push(el(u - 5.4 * s, v + ph, 2.0 * s, 1.8 * s, 6.4 * s, 2.2 * s, 'black', { sh: 'dome', tone: 0.6 }), el(u - 5.4 * s, v + ph, 1.0 * s, 0.9 * s, 8.6 * s, 0.3, 'hazard', { tone: 0.4 }));
+  P.push(el(u + 4.4 * s, v - ph, 2.2 * s, 1.7 * s, 3.4 * s, 3.6 * s, 'brick', { sh: 'cyl', tone: 0.2 }), el(u + 4.4 * s, v - ph, 1.2 * s, 1.0 * s, 7.0 * s, 0.4, 'own', { sh: 'dome' }));
+  P.push(bx(u + 0.4 * s, v + 1.4 * s, u + 4 * s, v + 2.6 * s, 1.0, 1.6, 'black', { tone: 0.5 }), seg(u - 0.2, v + 0.3, u - 0.2, v + 0.3, 0.7, 1.0, 4.4 * s, 'black'));
   return P;
 }
 function pipe(u0: number, v0: number, u1: number, v1: number): Part[] {
-  return [seg(u0, v0, u1, v1, 0.9, 0.5, 0.9, 'rust', { sh: 'cyl', tone: 0.2 }), el(u1, v1, 0.9, 0.9, 0.4, 1.3, 'rust', { sh: 'cyl', tone: 0.5 })];
+  return [seg(u0, v0, u1, v1, 1.1, 0.6, 1.0, 'redlead', { sh: 'cyl', tone: 0.6 }), el(u1, v1, 1.0, 1.0, 0.5, 1.4, 'redlead', { sh: 'cyl', tone: 0.8 })];
+}
+/** A storage tank: dark steel with a coloured band and a flat dark roof with a hatch. */
+function oilTank(u: number, v: number, r: number, h: number): Part[] {
+  return [el(u, v, r, r * 0.92, 0, h, 'gun', { sh: 'cyl', tone: 0.6 }), el(u, v, r * 1.03, r * 0.95, h * 0.5, 1.2, 'own', { sh: 'cyl', tone: 0.1 }), el(u, v, r * 0.92, r * 0.84, h, 0.8, 'black', { sh: 'dome', tone: 0.9 }), el(u - r * 0.3, v - r * 0.25, r * 0.28, r * 0.25, h + 0.8, 0.4, 'hazard', { sh: 'dome', tone: 0.2 })];
+}
+function flareStack(u: number, v: number, h: number): Part[] {
+  return [el(u, v, 0.7, 0.7, 0, h, 'black', { sh: 'cyl', tone: 0.8 }), el(u, v, 1.3, 1.3, h, 0.6, 'hazard', { sh: 'cyl' }), el(u + 0.2, v - 0.8, 1.9, 2.1, h + 0.6, 4.4, 'flame', { sh: 'dome', glow: true }), el(u + 0.2, v - 1.0, 0.9, 1.1, h + 3.4, 2.4, 'flame', { sh: 'dome', glow: true, tone: 1.2 })];
 }
 function oilModel(lv: number): Part[] {
   const P: Part[] = [];
+  const stain = (u: number, v: number, ru: number, rv: number): Part => el(u, v, ru, rv, 0, 0, 'black', { a: 0.55 });
   if (lv >= 5) {
-    P.push(...pumpjack(-15, -10, 1.1, 0.5), ...pumpjack(-15, 4, 1.1, -0.4), ...pumpjack(-4, 14, 1.1, 0.3));
-    P.push(...tank(10, -9, 5, 6), ...tank(22, -9, 5, 6), ...tank(10, 3, 5, 6), ...tank(22, 3, 5, 6), ...tank(32, -3, 3.6, 4.6));
-    P.push(...pipe(-9, -10, 5, -9), ...pipe(-9, 4, 5, 3), ...pipe(5, -9, 5, 3), ...pipe(15, -9, 17, -9), ...pipe(15, 3, 17, 3), ...pipe(27, -4, 28, -4));
-    // the flare stack with a burning tip
-    P.push(el(-25, 12, 0.6, 0.6, 0, 18, 'gun', { sh: 'cyl', tone: 0.6 }), el(-25, 12, 1.1, 1.1, 18, 0.6, 'own', { sh: 'cyl' }), el(-25, 11, 1.3, 1.5, 18.6, 3.4, 'flame', { sh: 'dome', glow: true }));
-    P.push(bx(12, 12, 24, 19, 0, 2.8, 'cream', { tone: -0.3 }), ...gable(12, 12, 24, 19, 2.8, 'fieldgrey', { rh: 1.4, over: 0.4, metal: true }), ...truck(-2, 15, 'cargo', 11));
+    P.push(stain(-8, -10, 12, 6), stain(-6, 6, 12, 6), stain(4, 18, 9, 4.4));
+    P.push(...pumpjack(-14, -11, 1.3, 0.5), ...pumpjack(-14, 4, 1.3, -0.4), ...pumpjack(-3, 17, 1.3, 0.3));
+    P.push(...oilTank(12, -10, 5.6, 6), ...oilTank(25, -10, 5.6, 6), ...oilTank(12, 3, 5.6, 6), ...oilTank(25, 3, 5.6, 6), ...oilTank(34, -3, 4, 4.6));
+    P.push(...pipe(-7, -11, 6, -10), ...pipe(-7, 4, 6, 3), ...pipe(6, -10, 6, 3), ...pipe(18, -10, 19, -10), ...pipe(18, 3, 19, 3), ...pipe(6, 3, 6, 16), ...pipe(6, 16, -1, 17), ...pipe(30, -3, 31, -3));
+    P.push(...flareStack(-24, 14, 20), bx(11, 12, 24, 20, 0, 3, 'cream', { tone: -0.3 }), ...gable(11, 12, 24, 20, 3, 'brick', { rh: 1.6, over: 0.4, metal: true }), ...truck(26, 15, 'cargo', 11));
   } else if (lv >= 3) {
-    P.push(...pumpjack(-14, -8, 1.0, 0.45), ...pumpjack(-14, 6, 1.0, -0.35));
-    P.push(...tank(9, -8, 4.6, 5.4), ...tank(20, -8, 4.6, 5.4), ...tank(15, 4, 4.6, 5.4));
-    P.push(...pipe(-9, -8, 4, -8), ...pipe(-9, 6, 10, 5), ...pipe(4, -8, 4, 5), ...pipe(14, -8, 15.4, -8));
-    P.push(bx(-4, 12, 8, 17, 0, 2.6, 'cream', { tone: -0.3 }), ...gable(-4, 12, 8, 17, 2.6, 'fieldgrey', { rh: 1.3, over: 0.4, metal: true }), ...truck(14, 12, 'cargo', 10));
+    P.push(stain(-8, -9, 11, 5.4), stain(-8, 6, 11, 5.4));
+    P.push(...pumpjack(-14, -9, 1.2, 0.45), ...pumpjack(-14, 6, 1.2, -0.35));
+    P.push(...oilTank(10, -9, 5.2, 5.6), ...oilTank(22, -9, 5.2, 5.6), ...oilTank(16, 4, 5.2, 5.6));
+    P.push(...pipe(-7, -9, 5, -9), ...pipe(-7, 6, 11, 5), ...pipe(5, -9, 5, 5), ...pipe(15, -9, 16, -9));
+    P.push(...flareStack(-22, 15, 15), bx(-4, 12, 9, 18, 0, 2.8, 'cream', { tone: -0.3 }), ...gable(-4, 12, 9, 18, 2.8, 'brick', { rh: 1.4, over: 0.4, metal: true }), ...truck(15, 13, 'cargo', 10));
   } else {
-    P.push(...pumpjack(-10, -2, 1.0, 0.45));
-    P.push(...tank(12, -4, 4.8, 5.6), ...tank(12, 8, 3.6, 4.2));
-    P.push(...pipe(-4, -2, 8, -4), ...pipe(8, -4, 8, 7), ...pipe(8, 7, 9.4, 8));
-    P.push(bx(-4, 8, 4, 13, 0, 2.4, 'cream', { tone: -0.3 }), ...gable(-4, 8, 4, 13, 2.4, 'fieldgrey', { rh: 1.2, over: 0.4, metal: true }));
+    P.push(stain(-8, -2, 11, 5.4));
+    P.push(...pumpjack(-11, -2, 1.2, 0.45));
+    P.push(...oilTank(12, -4, 5.4, 5.6), ...oilTank(12, 9, 4, 4.2));
+    P.push(...pipe(-4, -2, 8, -4), ...pipe(8, -4, 8, 8), ...pipe(8, 8, 10, 9));
+    P.push(...flareStack(-18, 8, 12), bx(-4, 8, 4, 14, 0, 2.6, 'cream', { tone: -0.3 }), ...gable(-4, 8, 4, 14, 2.6, 'brick', { rh: 1.2, over: 0.4, metal: true }));
   }
   return P;
 }
 
 // ------------------------------------------------------------------------------------------------- barracks
 
+/** A long hut with a pitched green roof, a stripe of the owner's colour along the ridge, windows on the south wall. */
 function hut(u: number, v: number, w: number, d: number): Part[] {
-  const P: Part[] = [bx(u, v, u + w, v + d, 0, 2.4, 'canvas', { tone: -0.3 }), ...gable(u, v, u + w, v + d, 2.4, 'olive', { rh: d * 0.34, over: 0.5, metal: true, alongU: true })];
-  P.push(band(u + 0.6, v + d * 0.5 - 0.4, u + w - 0.6, v + d * 0.5 + 0.4, 2.4 + d * 0.34 + 0.3));
-  for (let x = u + 2; x < u + w - 2.4; x += 3.2) P.push(bx(x, v + d, x + 1.4, v + d + 0.2, 0.4, 1.4, 'glass', { tone: 0.3 }));
+  const P: Part[] = [bx(u, v, u + w, v + d, 0, 2.4, 'canvas', { tone: -0.2 }), ...gable(u, v, u + w, v + d, 2.4, 'camo', { rh: d * 0.38, over: 0.6, metal: true, alongU: true, })];
+  P.push(band(u + 0.6, v + d * 0.5 - 0.35, u + w - 0.6, v + d * 0.5 + 0.35, 2.4 + d * 0.38 + 0.3));
+  for (let x = u + 2; x < u + w - 2.4; x += 3.2) P.push(bx(x, v + d + 0.1, x + 1.4, v + d + 0.3, 0.4, 1.4, 'glass', { tone: 0.3 }));
   return P;
 }
-function tent(u: number, v: number): Part[] {
-  return [bx(u, v, u + 5, v + 3.4, 0, 0.8, 'canvas', { tone: -0.5 }), ...gable(u, v, u + 5, v + 3.4, 0.8, 'canvas', { rh: 1.8, over: 0.3, alongU: true })];
+function guardPost(u: number, v: number): Part[] {
+  return [bx(u, v, u + 4, v + 4, 0, 2.6, 'sup', { tone: -0.1 }), ...hip(u, v, u + 4, v + 4, 2.6, 'camo', { rh: 1.6, over: 0.5 }), bx(u + 0.4, v + 4, u + 3.6, v + 4.2, 0.8, 1.2, 'glass', { tone: 0.3 })];
+}
+/** A gate: two posts, an owner-coloured beam across, a striped barrier pole. */
+function gate(u: number, v: number, w: number): Part[] {
+  return [el(u, v, 0.7, 0.7, 0, 4.2, 'gun', { sh: 'cyl', tone: 0.6 }), el(u + w, v, 0.7, 0.7, 0, 4.2, 'gun', { sh: 'cyl', tone: 0.6 }), seg(u, v, u + w, v, 1.0, 4.2, 0.9, 'own'), seg(u + 0.8, v + 1.4, u + w * 0.62, v + 1.4, 0.55, 1.3, 0.5, 'hazard', { tone: 0.6 })];
+}
+function assaultCourse(u: number, v: number): Part[] {
+  const P: Part[] = [];
+  P.push(bx(u, v, u + 1.1, v + 8, 0, 2.2, 'teak', { pat: 'planks' }), seg(u + 3.4, v + 0.4, u + 3.4, v + 7.6, 1.0, 0.4, 0.9, 'teak', { sh: 'cyl' }), bx(u + 6, v, u + 7.2, v + 1.2, 0, 2.6, 'teak'), bx(u + 6, v + 6.8, u + 7.2, v + 8, 0, 2.6, 'teak'), bx(u + 6, v, u + 7.2, v + 8, 2.6, 0.4, 'canvas', { pat: 'grille' }));
+  for (let i = 0; i < 4; i++) P.push(el(u + 9.8, v + 0.9 + i * 2.1, 0.95, 0.95, 0, 0.7, 'black', { sh: 'cyl', tone: 0.3 }));
+  return P;
 }
 function barracksModel(lv: number): Part[] {
   const P: Part[] = [];
   if (lv >= 3) {
-    // a U of long huts round a parade ground, a headquarters with a porch, tents, a truck, a fence with a gate
-    P.push(bx(-8, -6, 14, 9, 0, 0, 'tan', { tone: 0.4, pat: 'hatches' }));
-    P.push(...hut(-27, -16, 20, 6), ...hut(-27, 11, 20, 6), ...hut(-4, -16, 20, 6), ...hut(-4, 11, 20, 6));
-    P.push(bx(20, -8, 31, 4, 0, 4, 'cream', { tone: -0.3 }), ...hip(20, -8, 31, 4, 4, 'brick', { rh: 2.6, over: 0.6 }), band(19.6, 4, 31.4, 4.7, 4), bx(23, 4, 28, 6.4, 0, 1.6, 'sup', { tone: 0.1 }));
-    P.push(...flag(3, 1, 0, 15, 6.4), el(3, 1, 1.5, 1.2, 0, 0.6, 'sup', { sh: 'cyl', tone: 0.3 }));
-    for (let i = 0; i < 3; i++) P.push(...tent(-26 + i * 6.4, -8));
-    P.push(...truck(-24, 4, 'olive', 9), ...fence(-29, -19, 34, 20, [-4, 4]));
+    P.push(bx(-23, -7, 20, 10, 0, 0, 'ochre', { tone: 0.8, pat: 'hatches' }));
+    P.push(...hut(-26, -19, 17, 6), ...hut(-7, -19, 17, 6), ...hut(12, -19, 17, 6));
+    P.push(...hut(-26, 12, 17, 6), ...hut(-7, 12, 17, 6));
+    P.push(...flag(-1, 1, 0, 18, 7.4), el(-1, 1, 1.7, 1.4, 0, 0.7, 'sup', { sh: 'cyl', tone: 0.3 }));
+    P.push(bx(23, -17, 35, -8, 0, 4.2, 'cream', { tone: -0.3 }), ...hip(23, -17, 35, -8, 4.2, 'camo', { rh: 2.6, over: 0.6 }), band(22.6, -8, 35.4, -7.2, 4.2));
+    P.push(...gate(13, 15, 8), ...guardPost(23, 13), ...assaultCourse(24, -3));
+    P.push(...truck(-22, 6, 'olive', 9), ...truck(-11, 6, 'olive', 9), bx(0, 5.6, 8, 9, 0.5, 2.0, 'olive', { tone: 0.2 }), el(4, 7.3, 2.1, 1.5, 2.5, 0.9, 'olive', { sh: 'dome', tone: 0.5 }), seg(4, 7.3, 9.6, 7.3, 0.9, 2.7, 0.7, 'black'));
+    P.push(...tent(26, 11), ...tent(26, 17));
   } else {
-    P.push(bx(-10, -5, 10, 8, 0, 0, 'tan', { tone: 0.4, pat: 'hatches' }));
-    P.push(...hut(-22, -14, 22, 6), ...hut(-22, 11, 22, 6), ...hut(4, -14, 16, 6));
-    P.push(...flag(0, 2, 0, 12, 5.4), el(0, 2, 1.4, 1.1, 0, 0.6, 'sup', { sh: 'cyl', tone: 0.3 }));
-    P.push(...tent(14, 8), ...tent(20, 6), ...truck(-18, 3.4, 'olive', 9));
+    P.push(bx(-10, -6, 12, 8, 0, 0, 'ochre', { tone: 0.8, pat: 'hatches' }));
+    P.push(...hut(-22, -16, 20, 6), ...hut(2, -16, 18, 6), ...hut(-22, 11, 20, 6));
+    P.push(...flag(0, 1, 0, 14, 6), el(0, 1, 1.5, 1.2, 0, 0.6, 'sup', { sh: 'cyl', tone: 0.3 }));
+    P.push(...gate(6, 12, 7), ...guardPost(15, 10), ...truck(-18, 3.4, 'olive', 9));
   }
   return P;
+}
+function tent(u: number, v: number): Part[] {
+  return [bx(u, v, u + 5, v + 3.4, 0, 0.8, 'canvas', { tone: -0.5 }), ...gable(u, v, u + 5, v + 3.4, 0.8, 'canvas', { rh: 1.8, over: 0.3, alongU: true })];
 }
 
 // ------------------------------------------------------------------------------------------------- factory
@@ -399,43 +477,49 @@ function arsenalModel(lv: number): Part[] {
 
 // ------------------------------------------------------------------------------------------------- watchtower
 
+/** A lookout tower: a tapering open lattice shaft, a lit top platform with a rail, a roofed cabin, a searchlight. */
 function lookoutTower(u: number, v: number, lv: number): Part[] {
   const P: Part[] = [];
-  const concrete = lv >= 3;
-  const legMat: Mat = concrete ? 'sup' : 'teak';
-  const H = concrete ? 38 : 24;
-  const w = concrete ? 3.4 : 3.8;
-  if (concrete) {
-    P.push(bx(u - w - 1.4, v - w - 1.4, u + w + 1.4, v + w + 1.4, 0, 2, 'sup', { tone: -0.3 }), bx(u - w, v - w, u + w, v + w, 2, H - 2, 'sup', { tone: -0.1, pat: 'panels' }), bx(u - w * 0.68, v - w * 0.68, u + w * 0.68, v + w * 0.68, 0, 0, 'black', { inset: true }));
-    P.push(bx(u - w - 0.2, v + w, u + w + 0.2, v + w + 0.3, 3, H - 6, 'sup', { tone: 0.3, pat: 'grille' }));
-  } else {
-    for (const [a, b] of [[-w, -w], [w, -w], [-w, w], [w, w]]) P.push(el(u + a, v + b, 0.7, 0.7, 0, H - 2, legMat, { sh: 'cyl', tone: 0.2 }));
-    for (const z of [3, 9, 15]) P.push(bx(u - w, v - w, u + w, v - w + 0.4, z, 0.5, legMat, { tone: 0.3 }), bx(u - w, v + w - 0.4, u + w, v + w, z, 0.5, legMat, { tone: 0.3 }), bx(u - w, v - w, u - w + 0.4, v + w, z, 0.5, legMat, { tone: 0.3 }), bx(u + w - 0.4, v - w, u + w, v + w, z, 0.5, legMat, { tone: 0.3 }));
-    P.push(seg(u - w, v + w, u + w, v + w, 0.5, 3.4, 0.4, legMat, { tone: 0.6 }), seg(u + w, v + w, u - w, v + w, 0.5, 8, 0.4, legMat, { tone: 0.6 }));
+  const tall = lv >= 3;
+  const H = tall ? 40 : 27;
+  const n = tall ? 8 : 6;
+  const wb = tall ? 5 : 4.4;
+  const wt = tall ? 2.7 : 2.4;
+  const mat: Mat = tall ? 'sup' : 'teak';
+  for (let k = 0; k < n; k++) {
+    const t0 = k / n;
+    const t1 = (k + 1) / n;
+    const w0 = wb + (wt - wb) * t0;
+    const w1 = wb + (wt - wb) * t1;
+    const wm = (w0 + w1) / 2;
+    const z0 = H * t0;
+    const dz = H / n;
+    for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) P.push(el(u + a * wm, v + b * wm, 0.65, 0.65, z0, dz, mat, { sh: 'cyl', tone: a < 0 ? 0.4 : -0.1 }));
+    const zr = z0 + dz - 0.4;
+    P.push(seg(u - w1, v + w1, u + w1, v + w1, 0.6, zr, 0.5, mat, { tone: 0.5 }), seg(u - w1, v - w1, u + w1, v - w1, 0.6, zr, 0.5, mat, { tone: 0.2 }), seg(u - w1, v - w1, u - w1, v + w1, 0.6, zr, 0.5, mat, { tone: 0.3 }), seg(u + w1, v - w1, u + w1, v + w1, 0.6, zr, 0.5, mat, { tone: -0.2 }));
+    P.push(seg(u - w0, v + w0, u + w1, v + w1, 0.45, z0 + dz * 0.5, 0.4, mat, { tone: 0.6 }));
   }
-  // the lookout platform, wider than the shaft, with a rail round it, a glazed cabin and a roof, the owner's flag on top
-  const pw = w + (concrete ? 2.2 : 1.6);
-  P.push(bx(u - pw, v - pw, u + pw, v + pw, H - 2, 1.0, concrete ? 'sup' : 'teak', { tone: 0.3, pat: 'planks' }), bx(u - pw, v - pw, u + pw, v + pw, H - 1, 1.3, 'gun', { edge: true, tone: 0.6 }));
-  const cw = w + (concrete ? 0.4 : 0.1);
-  P.push(bx(u - cw, v - cw, u + cw, v + cw, H - 1, 3.0, concrete ? 'cream' : 'canvas', { tone: -0.2 }), bx(u - cw + 0.4, v + cw, u + cw - 0.4, v + cw + 0.2, H, 1.4, 'glass', { tone: 0.4, pat: 'frames' }), bx(u - cw - 0.1, v - cw + 0.4, u - cw, v + cw - 0.4, H, 1.4, 'glass', { tone: 0.2, pat: 'frames' }));
-  P.push(...hip(u - cw, v - cw, u + cw, v + cw, H + 2, concrete ? 'fieldgrey' : 'rust', { rh: 2.4, over: 0.9 }), band(u - cw - 0.8, v + cw + 0.9, u + cw + 0.8, v + cw + 1.6, H + 2.2));
-  P.push(...flag(u + cw * 0.3, v - cw * 0.3, H + 4.4, concrete ? 8 : 6, 4));
-  if (concrete) {
-    P.push(el(u + pw - 0.6, v - pw + 0.6, 0.55, 0.55, H - 1, 4, 'gun', { sh: 'cyl', tone: 0.6 }), el(u - pw + 0.6, v - pw + 0.6, 0.5, 0.5, H - 1, 6.4, 'gun', { sh: 'cyl', tone: 0.6 }), el(u - pw + 0.6, v - pw + 0.6, 1.0, 0.9, H + 5.4, 0.9, 'own', { sh: 'dome' }));
-    P.push(el(u + pw - 0.2, v + pw - 0.2, 1.3, 1.0, H - 1, 1.0, 'alu', { sh: 'dome', tone: 0.4 }));
-  }
+  // the lit platform: pale, wide, with a dark rail round it, then the roofed cabin and the searchlight
+  const pw = wt + 2.8;
+  P.push(bx(u - pw, v - pw, u + pw, v + pw, H, 1.0, 'sup', { tone: 1.1 }), bx(u - pw, v - pw, u + pw, v + pw, H + 1.0, 1.6, 'black', { edge: true, tone: 0.6 }));
+  const cw = wt + 0.9;
+  P.push(bx(u - cw, v - cw, u + cw, v + cw, H + 1.0, 3.2, tall ? 'cream' : 'canvas', { tone: -0.1 }), bx(u - cw + 0.4, v + cw, u + cw - 0.4, v + cw + 0.2, H + 1.6, 1.4, 'glass', { tone: 0.6, pat: 'frames' }), bx(u - cw - 0.1, v - cw + 0.4, u - cw, v + cw - 0.4, H + 1.6, 1.4, 'glass', { tone: 0.4, pat: 'frames' }));
+  P.push(...hip(u - cw, v - cw, u + cw, v + cw, H + 4.2, tall ? 'fieldgrey' : 'rust', { rh: 2.6, over: 1.0 }), band(u - cw - 0.8, v + cw + 1.0, u + cw + 0.8, v + cw + 1.7, H + 4.4));
+  // the searchlight on the platform's south east corner, its beam pale
+  P.push(el(u + pw - 0.9, v + pw - 0.9, 1.3, 1.1, H + 1.0, 1.4, 'gun', { sh: 'cyl', tone: 0.4 }), el(u + pw - 0.5, v + pw - 0.5, 0.9, 0.8, H + 2.4, 0.5, 'hazard', { glow: true, tone: 1 }), poly([u + pw, v + pw, u + pw + 7, v + pw + 2.2, u + pw + 2.2, v + pw + 7], H + 1.2, 0, 'hazard', { glow: true, a: 0.35 }));
+  P.push(...flag(u - cw + 0.5, v - cw + 0.5, H + 6.4, tall ? 8 : 6, 4.2));
+  if (tall) P.push(el(u + pw - 0.7, v - pw + 0.7, 0.45, 0.45, H + 1.0, 14, 'gun', { sh: 'cyl', tone: 0.7 }), el(u + pw - 0.7, v - pw + 0.7, 0.9, 0.9, H + 15, 0.6, 'own', { sh: 'dome' }), seg(u + pw - 3.4, v - pw + 0.7, u + pw + 2, v - pw + 0.7, 0.4, H + 11, 0.3, 'gun', { tone: 0.7 }));
   return P;
 }
 function watchtowerModel(lv: number): Part[] {
   const P: Part[] = [];
+  const bag = (r1: number, r2: number): Part[] => sandRing(0, -4, r1, r2, 0, false);
   if (lv >= 3) {
-    P.push(...lookoutTower(0, -3, 3));
-    P.push(bx(-22, 6, -10, 14, 0, 3, 'cream', { tone: -0.3 }), ...gable(-22, 6, -10, 14, 3, 'fieldgrey', { rh: 1.6, over: 0.5, metal: true }), bx(10, 4, 18, 11, 0, 2.6, 'sup', { tone: -0.2 }), ...gable(10, 4, 18, 11, 2.6, 'fieldgrey', { rh: 1.4, over: 0.4, metal: true }));
-    P.push(el(-14, -6, 4.4, 3.6, 0, 4, 'sup', { sh: 'cyl', tone: 0.2 }), el(-14, -6, 4.6, 3.8, 4, 0.9, 'own', { sh: 'cyl', tone: 0.2 }), ...fence(-26, -14, 24, 18, [-3, 5]));
+    P.push(...bag(9.4, 8), ...lookoutTower(0, -4, 3));
+    P.push(bx(-17, 5, -9, 11, 0, 2.6, 'cream', { tone: -0.3 }), ...gable(-17, 5, -9, 11, 2.6, 'camo', { rh: 1.4, over: 0.4, metal: true }), ...truck(8, 9, 'olive', 8));
   } else {
-    P.push(...lookoutTower(0, -2, 1));
-    P.push(bx(-14, 6, -6, 12, 0, 2.2, 'canvas', { tone: -0.3 }), ...gable(-14, 6, -6, 12, 2.2, 'olive', { rh: 1.4, over: 0.4, metal: true }), ...tree(12, 4, 2.4, 3), ...tree(-15, -8, 2.2, 5));
-    P.push(el(8, 8, 3.2, 2.6, 0, 1.2, 'canvas', { sh: 'dome', tone: 0.2 }));
+    P.push(...bag(8, 7), ...lookoutTower(0, -4, 1));
+    P.push(bx(-15, 5, -8, 10, 0, 2.2, 'canvas', { tone: -0.3 }), ...gable(-15, 5, -8, 10, 2.2, 'camo', { rh: 1.3, over: 0.4, metal: true }), ...tree(11, 6, 2.4, 3));
   }
   return P;
 }
@@ -443,44 +527,53 @@ function watchtowerModel(lv: number): Part[] {
 // ------------------------------------------------------------------------------------------------- lab
 
 function dish(u: number, v: number, r: number, z: number): Part[] {
-  return [el(u, v, 0.9, 0.9, z, 1.4, 'gun', { sh: 'cyl', tone: 0.6 }), el(u, v - 0.8, r, r * 0.8, z + 1.4, 0.9, 'alu', { sh: 'dome', tone: 0.2 }), seg(u, v - 0.8, u + r * 0.5, v - r * 0.9, 0.5, z + 2.4, 0.5, 'gun'), el(u + r * 0.52, v - r * 0.95, 0.5, 0.5, z + 2.4, 0.5, 'own')];
+  return [el(u, v, 1.0, 1.0, z, 1.4, 'gun', { sh: 'cyl', tone: 0.6 }), el(u, v - 0.8, r, r * 0.8, z + 1.4, 0.9, 'white', { sh: 'dome', tone: 0.3 }), el(u, v - 0.8, r * 0.5, r * 0.4, z + 2.1, 0.3, 'prublue', { sh: 'dome', tone: 0.3 }), seg(u, v - 0.8, u + r * 0.5, v - r * 0.9, 0.5, z + 2.5, 0.5, 'gun'), el(u + r * 0.52, v - r * 0.95, 0.55, 0.55, z + 2.5, 0.6, 'own')];
 }
 function solar(u: number, v: number, w: number, d: number): Part[] {
   const P: Part[] = [];
-  for (let i = 0; i < w / 2.6; i++) P.push(bx(u + i * 2.6, v, u + i * 2.6 + 2.2, v + d, 0.4, 0.7, 'fadedBlue', { tone: 0.5, pat: 'panels' }));
+  for (let i = 0; i < w / 2.6; i++) P.push(bx(u + i * 2.6, v, u + i * 2.6 + 2.2, v + d, 0.5, 0.7, 'prublue', { tone: 0.3, pat: 'panels' }));
   return P;
+}
+/** A big white observatory dome with a dark slit and an owner-coloured collar. */
+function observatory(u: number, v: number, r: number, z: number): Part[] {
+  return [
+    el(u, v, r * 1.14, r * 1.07, z, 1.0, 'sup', { sh: 'cyl', tone: 0.3 }),
+    el(u, v, r * 1.14, r * 1.07, z + 0.9, 0.5, 'own', { sh: 'cyl', tone: 0.1 }),
+    el(u, v, r, r * 0.94, z + 1.2, r * 1.15, 'white', { sh: 'dome', tone: 0.4 }),
+    bx(u - 0.55, v - r * 0.95, u + 0.55, v + r * 0.1, z + 1.2 + r * 0.98, 0, 'black'),
+    el(u - r * 0.3, v - r * 0.35, r * 0.22, r * 0.2, z + 1.2 + r * 1.1, 0.2, 'white', { sh: 'dome', tone: 1.2 }),
+  ];
 }
 function labModel(lv: number): Part[] {
   const P: Part[] = [];
-  const wing = (u0: number, v0: number, u1: number, v1: number, h: number): void => {
-    P.push(bx(u0, v0, u1, v1, 0, h, 'white', { tone: -0.3 }), bx(u0 + 0.6, v1 - 0.1, u1 - 0.6, v1 + 0.3, 0.6, h * 0.4, 'glass', { tone: 0.4, pat: 'frames' }), bx(u0 - 0.3, v0 - 0.3, u1 + 0.3, v1 + 0.3, h, 0.5, 'sup', { tone: 0.5 }), bx(u0 + 0.6, v0 + 0.6, u1 - 0.6, v1 - 0.6, h + 0.5, 0, 'sup', { inset: true, tone: -0.3 }), band(u0 - 0.3, v1 - 0.3, u1 + 0.3, v1 + 0.6, h + 0.6));
-    if (u1 - u0 > 8) P.push(...skylight(u0 + 2, v0 + 1.6, h + 0.5, 3.4, 1.8), ...skylight(u1 - 5.6, v0 + 1.6, h + 0.5, 3.4, 1.8), ...acUnit(u0 + (u1 - u0) / 2 - 1, v1 - 3.6, h + 0.5));
-  };
-  const dome = (u: number, v: number, r: number, z: number): void => {
-    P.push(el(u, v, r * 1.12, r * 1.05, z, 0.8, 'sup', { sh: 'cyl', tone: 0.2 }), el(u, v, r, r * 0.94, z + 0.8, r * 0.95, 'white', { sh: 'dome', tone: 0.1 }), el(u - r * 0.3, v - r * 0.3, r * 0.2, r * 0.2, z + r * 0.9, 0.2, 'white', { sh: 'dome', tone: 1.0 }));
+  const wing = (u0: number, v0: number, u1: number, v1: number, h: number, glass = true): void => {
+    P.push(bx(u0, v0, u1, v1, 0, h, 'white', { tone: -0.2 }), bx(u0 + 0.6, v1 - 0.1, u1 - 0.6, v1 + 0.3, 0.6, h * 0.5, 'glass', { tone: 0.5, pat: 'frames' }));
+    P.push(bx(u0 - 0.3, v0 - 0.3, u1 + 0.3, v1 + 0.3, h, 0.5, 'white', { tone: 0.9 }), bx(u0 - 0.3, v1 - 0.2, u1 + 0.3, v1 + 0.5, h, 0.8, 'prublue', { tone: 0.5 }), band(u0 - 0.3, v0 - 0.3, u0 + 0.5, v1 + 0.3, h + 0.5));
+    P.push(bx(u0 + 0.6, v0 + 0.6, u1 - 0.6, v1 - 0.6, h + 0.5, 0, 'white', { inset: true, tone: 0.7 }));
+    if (glass && u1 - u0 > 8) {
+      P.push(bx(u0 + 2, v0 + 1.4, u1 - 2, v0 + 4.6, h + 0.5, 0.6, 'glass', { tone: 0.9, pat: 'frames' }), bx(u0 + 2, v0 + 1.4, u1 - 2, v0 + 1.8, h + 0.5, 0.9, 'prublue', { tone: 0.6 }));
+      P.push(...ventPipe(u1 - 3, v1 - 3, h + 0.5), ...ventPipe(u1 - 5, v1 - 3, h + 0.5));
+    }
   };
   if (lv >= 5) {
     wing(-24, -15, -2, 0, 6);
     wing(2, -15, 24, 0, 6);
     wing(-24, 4, -6, 18, 5);
-    wing(-2, -2, 2, 10, 4.5);
+    wing(-2, -2, 2, 10, 4.5, false);
     wing(6, 4, 24, 18, 6.8);
-    dome(-13, -8, 5.2, 6);
-    dome(13, -8, 4.2, 6);
-    P.push(...dish(15, 11, 4.6, 6.8), ...dish(-15, 11, 3.6, 5), ...solar(-3, 14, 5, 3));
-    P.push(el(0, 4, 0.5, 0.5, 4.5, 18, 'gun', { sh: 'cyl', tone: 0.7 }), el(0, 4, 0.9, 0.9, 22.5, 0.8, 'own', { sh: 'cyl' }), bx(-1.6, 4, 1.6, 5.6, 0, 3, 'cream', { tone: 0.2 }));
+    P.push(...observatory(-13, -8, 5.6, 6), ...observatory(14, -8, 3.6, 6));
+    P.push(...dish(15, 12, 4.8, 6.8), ...dish(-15, 12, 3.6, 5), ...solar(-3, 14, 5, 3));
+    P.push(el(0, 4, 0.5, 0.5, 4.5, 18, 'gun', { sh: 'cyl', tone: 0.7 }), el(0, 4, 0.9, 0.9, 22.5, 0.8, 'own', { sh: 'cyl' }));
     P.push(...tree(-27, 8, 2.2, 1), ...tree(29, 12, 2.2, 3));
   } else if (lv >= 3) {
     wing(-20, -12, 4, 2, 5.6);
     wing(-20, 6, -6, 15, 4.6);
     wing(8, -12, 22, 8, 4.6);
-    dome(-8, -5, 4.6, 5.6);
-    P.push(...dish(15, 10, 3.8, 4.6), el(-1, 11, 0.5, 0.5, 0, 12, 'gun', { sh: 'cyl', tone: 0.7 }), ...solar(-3, 8, 8, 3));
+    P.push(...observatory(-8, -5, 4.8, 5.6), ...dish(15, 12, 3.8, 0), ...solar(-3, 8, 8, 3));
     P.push(...tree(-24, 12, 2.2, 3));
   } else {
     wing(-14, -9, 10, 3, 4.4);
-    dome(-3, -3, 3.6, 4.4);
-    P.push(...dish(15, 6, 3, 0), ...tree(-19, 6, 2.2, 3), bx(-12, 8, -3, 11, 0, 0, 'flightdeck', { tone: 0.6 }));
+    P.push(...observatory(-4, -3, 4.0, 4.4), ...dish(15, 6, 3, 0), ...solar(-12, 7, 8, 3), ...tree(-19, 6, 2.2, 3));
   }
   return P;
 }
@@ -557,46 +650,67 @@ function airfieldModel(lv: number): Part[] {
 
 // ------------------------------------------------------------------------------------------------- missile silo
 
-function hatch(u: number, v: number, r: number): Part[] {
+/** A round silo lid: a hazard-striped ring, two door leaves; open slides one back to show the shaft and the missile nose. */
+function hatch(u: number, v: number, r: number, open: boolean): Part[] {
   const P: Part[] = [];
   P.push(el(u, v, r * 1.22, r * 1.12, 0, 0.8, 'hazard', { sh: 'cyl', tone: -0.2 }), el(u, v, r * 1.04, r * 0.96, 0.8, 0.5, 'gun', { sh: 'cyl', tone: 0.4 }));
-  // two door leaves meeting in a dark slit, an owner bar on each, a hazard edge
-  P.push(bx(u - r * 0.96, v - r * 0.84, u - 0.35, v + r * 0.84, 1.2, 0.7, 'fieldgrey', { tone: 0.3, pat: 'panels', clip: [u, v, r * 0.98, r * 0.9] }), bx(u + 0.35, v - r * 0.84, u + r * 0.96, v + r * 0.84, 1.2, 0.7, 'fieldgrey', { tone: -0.1, pat: 'panels', clip: [u, v, r * 0.98, r * 0.9] }));
-  P.push(bx(u - 0.35, v - r * 0.84, u + 0.35, v + r * 0.84, 1.2, 0.2, 'black'));
-  P.push(bx(u - r * 0.66, v - 0.5, u - r * 0.14, v + 0.5, 1.9, 0, 'own'), bx(u + r * 0.14, v - 0.5, u + r * 0.66, v + 0.5, 1.9, 0, 'own'));
+  if (open) {
+    P.push(el(u, v, r * 0.9, r * 0.82, 1.3, 0, 'black'));
+    P.push(bx(u - r * 0.96, v - r * 0.84, u - r * 0.1, v - r * 0.05, 1.3, 0.8, 'fieldgrey', { tone: 0.4, pat: 'panels', clip: [u, v, r * 0.98, r * 0.9] }));
+    P.push(el(u, v - r * 0.2, r * 0.42, r * 0.36, 1.3, 7.4, 'white', { sh: 'cyl', tone: 0.5 }), el(u, v - r * 0.2, r * 0.42, r * 0.36, 8.7, 2.4, 'own', { sh: 'dome', tone: 0.2 }), el(u, v - r * 0.2, r * 0.46, r * 0.4, 4.2, 0.5, 'black', { sh: 'cyl' }));
+  } else {
+    P.push(bx(u - r * 0.96, v - r * 0.84, u - 0.35, v + r * 0.84, 1.3, 0.7, 'fieldgrey', { tone: 0.3, pat: 'panels', clip: [u, v, r * 0.98, r * 0.9] }), bx(u + 0.35, v - r * 0.84, u + r * 0.96, v + r * 0.84, 1.3, 0.7, 'fieldgrey', { tone: -0.1, pat: 'panels', clip: [u, v, r * 0.98, r * 0.9] }));
+    P.push(bx(u - 0.35, v - r * 0.84, u + 0.35, v + r * 0.84, 1.3, 0.2, 'black'), bx(u - r * 0.66, v - 0.5, u - r * 0.14, v + 0.5, 2.0, 0, 'own'), bx(u + r * 0.14, v - 0.5, u + r * 0.66, v + 0.5, 2.0, 0, 'own'));
+  }
+  return P;
+}
+/** Thick sloped concrete blast walls curving round the back of a silo (open to the south). */
+function blastWall(u: number, v: number, r: number): Part[] {
+  const P: Part[] = [];
+  const n = 7;
+  for (let i = 0; i < n; i++) {
+    const a = Math.PI * (1.12 + (i / (n - 1)) * 0.76);
+    const cu = u + Math.cos(a) * (r + 2.6);
+    const cv = v + Math.sin(a) * (r + 2.2);
+    P.push(el(cu, cv, 2.1, 1.8, 0, 3.6, 'sup', { sh: 'dome', tone: Math.cos(a) < 0 ? 0.3 : -0.3 }));
+  }
+  return P;
+}
+/** A bunker entrance: an earth mound with a stepped ramp down to a dark blast door under a hazard lintel. */
+function bunkerRamp(u: number, v: number): Part[] {
+  const P: Part[] = [el(u, v - 1, 7.6, 5.2, 0, 3.4, 'olive', { sh: 'dome', tone: -0.3 }), el(u - 1.2, v - 2, 4.6, 3.2, 2.6, 2, 'camo', { sh: 'dome', tone: 0.7 })];
+  for (let i = 0; i < 4; i++) P.push(bx(u - 3.4 + i * 0.3, v + 2.6 + i * 1.4, u + 3.4 - i * 0.3, v + 3.9 + i * 1.4, 0, 0.6 + (3 - i) * 0.0, 'sup', { tone: 0.8 - i * 0.35 }));
+  P.push(bx(u - 2.2, v + 2.4, u + 2.2, v + 3.2, 0, 2.6, 'black', { tone: 0.4 }), bx(u - 3, v + 2.1, u + 3, v + 2.6, 2.6, 0.7, 'hazard'), bx(u - 3, v + 2.1, u - 2.2, v + 2.6, 0, 2.6, 'sup', { tone: 0.2 }), bx(u + 2.2, v + 2.1, u + 3, v + 2.6, 0, 2.6, 'sup', { tone: -0.2 }));
+  return P;
+}
+function radarMast(u: number, v: number, h: number): Part[] {
+  return [bx(u - 1.4, v - 1.4, u + 1.4, v + 1.4, 0, 1.2, 'sup', { tone: -0.2 }), el(u, v, 0.45, 0.45, 1.2, h, 'gun', { sh: 'cyl', tone: 0.8 }), seg(u - 3.2, v, u + 3.2, v, 1.0, h, 0.9, 'alu', { tone: 0.5 }), el(u + 3.2, v, 0.8, 0.8, h, 1.0, 'own', { sh: 'dome' }), el(u, v, 1.0, 1.0, h + 0.9, 1.0, 'gun', { sh: 'dome', tone: 0.6 })];
+}
+/** A dotted perimeter: a thin ring of posts far out. */
+function postRing(rx: number, ry: number, cv: number, n: number): Part[] {
+  const P: Part[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    if (Math.sin(a) > 0.9 && Math.abs(Math.cos(a)) < 0.3) continue;
+    P.push(el(Math.cos(a) * rx, cv + Math.sin(a) * ry, 0.4, 0.4, 0, 1.5, 'gun', { sh: 'cyl', tone: 0.7 }));
+  }
   return P;
 }
 function siloModel(lv: number): Part[] {
   const P: Part[] = [];
-  const pad = (u0: number, v0: number, u1: number, v1: number): void => {
-    P.push(bx(u0, v0, u1, v1, 0, 0.6, 'sup', { tone: -0.5 }), bx(u0 + 0.8, v0 + 0.8, u1 - 0.8, v1 - 0.8, 0.6, 0, 'sup', { tone: -0.1, pat: 'panels', inset: true }));
-  };
-  const blast = (u: number, v: number): void => {
-    // the blast door: a steel slab in a concrete frame, hazard stripes across it
-    P.push(bx(u - 3.4, v - 0.2, u + 3.4, v + 2.6, 0, 2.6, 'sup', { tone: -0.2 }), bx(u - 2.6, v + 2.6, u + 2.6, v + 3, 0, 2.0, 'fieldgrey', { tone: 0.3, pat: 'grille' }), bx(u - 2.6, v + 2.6, u + 2.6, v + 3.0, 2.0, 0.4, 'hazard', { pat: 'hatches' }), bx(u - 3.4, v - 0.2, u + 3.4, v + 0.6, 2.6, 0.5, 'own'));
-  };
-  const service = (u0: number, v0: number, u1: number, v1: number, h: number): void => {
-    P.push(bx(u0, v0, u1, v1, 0, h, 'cream', { tone: -0.3 }), bx(u0 - 0.4, v0 - 0.4, u1 + 0.4, v1 + 0.4, h, 0.6, 'sup', { tone: 0.4 }), bx(u0 + 0.8, v0 + 0.8, u1 - 0.8, v1 - 0.8, h + 0.6, 0, 'sup', { inset: true, tone: -0.3 }), band(u0 - 0.4, v1 - 0.3, u1 + 0.4, v1 + 0.5, h + 0.7), ...acUnitSimple(u0 + 1.2, v0 + 1.2, h + 0.6));
-    P.push(el((u0 + u1) / 2, v0 + 1.4, 0.3, 0.3, h + 0.6, 6, 'gun', { sh: 'cyl', tone: 0.7 }), el((u0 + u1) / 2, v0 + 1.4, 0.7, 0.7, h + 6.6, 0.5, 'own', { sh: 'dome' }));
-  };
   if (lv >= 3) {
-    pad(-24, -15, 27, 19);
-    P.push(...hatch(-12, -3, 5.2), ...hatch(3, -3, 5.2), ...hatch(18, -3, 5.2));
-    blast(-4, 12);
-    service(8, 9, 23, 17, 3.4);
-    P.push(...dish(-18, 11, 3.2, 0), ...fence(-28, -19, 31, 24, [-9, 1]));
-    for (const [u, v] of [[-28, -19], [31, -19], [31, 24]]) P.push(el(u, v, 1.4, 1.4, 0, 6, 'sup', { sh: 'cyl', tone: 0.2 }), el(u, v, 1.9, 1.9, 6, 1.4, 'own', { sh: 'dome' }));
+    // a wide round pad with a ring of inset panels, three lids (the middle one open, its missile nose showing)
+    P.push(el(0, 0, 27, 19, 0, 0.7, 'sup', { tone: -0.5 }), el(0, 0, 25.6, 17.8, 0.7, 0, 'sup', { tone: -0.1, pat: 'panels', inset: true }));
+    P.push(...hatch(-15, -3, 5.4, false), ...hatch(0, -3, 5.4, true), ...hatch(15, -3, 5.4, false));
+    P.push(...blastWall(-15, -3, 5.4), ...blastWall(0, -3, 5.4), ...blastWall(15, -3, 5.4));
+    P.push(...bunkerRamp(-4, 11), ...radarMast(19, 10, 16), ...radarMast(-21, 10, 11), ...postRing(30, 21, 0, 26));
   } else {
-    pad(-17, -13, 20, 16);
-    P.push(...hatch(-3, -3, 6));
-    blast(-3, 9);
-    service(8, 5, 18, 14, 3.2);
-    P.push(...fence(-21, -17, 24, 20, [-9, 3]));
-    for (const [u, v] of [[-21, -17], [24, -17], [24, 20]]) P.push(el(u, v, 1.1, 1.1, 0, 4.6, 'sup', { sh: 'cyl', tone: 0.2 }), el(u, v, 1.5, 1.5, 4.6, 1.0, 'own', { sh: 'dome' }));
+    P.push(el(0, 0, 16, 13, 0, 0.7, 'sup', { tone: -0.5 }), el(0, 0, 14.8, 11.8, 0.7, 0, 'sup', { tone: -0.1, pat: 'panels', inset: true }));
+    P.push(...hatch(0, -2, 6, false), ...blastWall(0, -2, 6));
+    P.push(...bunkerRamp(9, 7), ...radarMast(-11, 6, 12), ...postRing(21, 17, 0, 20));
   }
   return P;
 }
-const acUnitSimple = (u: number, v: number, z: number): Part[] => [bx(u, v, u + 2.4, v + 1.7, z, 1.1, 'alu', { tone: -0.2, pat: 'grille' })];
 
 // ------------------------------------------------------------------------------------------------- entry points
 
@@ -643,7 +757,7 @@ function footprint(parts: readonly Part[]): [number, number, number, number] {
   let c = -Infinity;
   let d = -Infinity;
   for (const p of parts) {
-    if (p.m === 'foam' || p.glow) continue;
+    if (p.m === 'foam' || p.glow || (p.a ?? 1) < 1) continue;
     const [x0, y0, x1, y1] = footBox(p);
     a = Math.min(a, x0);
     b = Math.min(b, y0);
@@ -657,6 +771,30 @@ function footprint(parts: readonly Part[]): [number, number, number, number] {
 export function moreGround(g: Ground, type: MoreType, lv: number, far: boolean): void {
   const [u0, v0, u1, v1] = footprint(moreModel(type, lv, true));
   const wide = far ? 3 : 0;
+  if (type === 'watchtower') {
+    // the long sharp cast shadow of a tall tower: a tapering band to the lower right ending in the platform's shadow
+    const H = lv >= 3 ? 40 : 27;
+    const du = H * 0.62 * 0.8;
+    const dv = H * 0.5 * 0.8;
+    const a = far ? 0.8 : 0.9;
+    g.strip('shadow', 0, -4, du * 0.5, -4 + dv * 0.5, 5.4, a, 41);
+    g.strip('shadow', du * 0.3, -4 + dv * 0.3, du * 0.78, -4 + dv * 0.78, 4.2, a, 42);
+    g.strip('shadow', du * 0.6, -4 + dv * 0.6, du, -4 + dv, 3.2, a, 43);
+    g.blob('shadow', du + 1, -4 + dv + 1, 5.6, 4.2, a, 0.3, 44);
+  }
+  if (type === 'silo') {
+    const rx = lv >= 3 ? 29 : 18;
+    const ry = lv >= 3 ? 21 : 15;
+    g.blob('dark', 0, 1, rx + 6 + wide, ry + 6 + wide, far ? 0.38 : 0.45, 0.4, 31);
+    g.blob('dirt', 0, 1, rx, ry, far ? 0.5 : 0.7, 0.3, 32);
+    if (!far) g.strip('dark', -3, ry - 2, -3, ry + 12, 3, 0.5, 34);
+    return;
+  }
+  if (type === 'oilWell') {
+    g.slab('dark', u0 - 4 - wide, v0 - 3 - wide, u1 + 4 + wide, v1 + 6 + wide, 7, far ? 0.4 : 0.45, far ? 9 : 5, 31);
+    g.slab('dirt', u0 - 2, v0 - 1.4, u1 + 2, v1 + 3, 5, far ? 0.55 : 0.8, far ? 6 : 3, 32);
+    return;
+  }
   g.slab('dark', u0 - 5 - wide, v0 - 4 - wide, u1 + 5 + wide, v1 + 7 + wide, 7, far ? 0.38 : 0.4, far ? 9 : 5, 31);
   g.slab('dirt', u0 - 2.4, v0 - 2, u1 + 2.4, v1 + 3.6, 5, far ? 0.5 : 0.7, far ? 6 : 3, 32);
   if (far) return;
@@ -673,10 +811,6 @@ export function moreGround(g: Ground, type: MoreType, lv: number, far: boolean):
       g.blob('dark', -12, -4, 11, 8, 0.5, 0.4, 33);
       g.strip('dark', -3, 3, -3, v1 + 9, 2.4, 0.4, 36);
       break;
-    case 'oilWell':
-      g.blob('dark', -10, 0, 9, 6.5, 0.6, 0.4, 33);
-      g.blob('dark', 14, 4, 11, 8, 0.4, 0.4, 34);
-      break;
     case 'barracks':
       g.strip('dirtL', 0, v1, 4, v1 + 10, 3.4, 0.5, 33);
       break;
@@ -688,10 +822,6 @@ export function moreGround(g: Ground, type: MoreType, lv: number, far: boolean):
       g.strip('dark', -3, v1 - 1, 1, v1 + 8, 3, 0.5, 33);
       g.slab('dirtL', u0 + 2, v0 + 2, u1 - 2, v1 - 2, 3, 0.35, 3, 34);
       break;
-    case 'watchtower':
-      g.blob('dark', 0, -3, 8, 6, 0.5, 0.4, 33);
-      g.strip('dirtL', 4, 8, 8, v1 + 8, 2.8, 0.5, 34);
-      break;
     case 'lab':
       g.slab('road', u0 - 2, v1 - 8, u1, v1 + 1, 2, 0.35, 1.6, 33);
       break;
@@ -700,10 +830,6 @@ export function moreGround(g: Ground, type: MoreType, lv: number, far: boolean):
       break;
     case 'airfield':
       g.slab('road', u0 - 1, 5, u1 + 1, 19, 2, 0.35, 1.6, 33);
-      break;
-    case 'silo':
-      g.slab('dirtL', u0 - 1, v0 - 1, u1 + 1, v1 + 1, 3, 0.4, 2, 33);
-      g.strip('dark', -3, v1 - 2, -2, v1 + 8, 3, 0.45, 34);
       break;
   }
 }
