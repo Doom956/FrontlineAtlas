@@ -1878,20 +1878,40 @@
     "tile": 3156296
    },
    {
+    "name": "New Caledonia",
+    "tile": 3873096
+   },
+   {
+    "name": "Solomon Islands",
+    "tile": 1641863
+   },
+   {
     "name": "Vanuatu",
     "tile": 2697944
+   },
+   {
+    "name": "Bougainville",
+    "tile": 1082570
    },
    {
     "name": "Sepik",
     "tile": 618975
    },
    {
-    "name": "Highlands",
-    "tile": 1024605
-   },
-   {
     "name": "Morobe",
     "tile": 1170399
+   },
+   {
+    "name": "Vanimo",
+    "tile": 468020
+   },
+   {
+    "name": "New Britain",
+    "tile": 731342
+   },
+   {
+    "name": "Highlands",
+    "tile": 1024605
    },
    {
     "name": "Madang",
@@ -1900,10 +1920,6 @@
    {
     "name": "Vanua Levu",
     "tile": 2857358
-   },
-   {
-    "name": "Vanimo",
-    "tile": 468020
    },
    {
     "name": "Gulf",
