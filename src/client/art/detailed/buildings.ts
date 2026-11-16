@@ -274,7 +274,7 @@ function radarDish(u: number, v: number, simple = false): Part[] {
     el(u, v, 1.0, 1.0, 1.4, 4.0, 'gun', { sh: 'cyl', tone: 0.8 }),
     el(u, v - 1.0, 4.4, 3.4, 5.4, 0.8, 'alu', { sh: 'dome' }),
     seg(u, v - 1.0, u + 2.8, v - 3.4, 0.6, 6.3, 0.8, 'gun'),
-    el(u + 3.0, v - 3.6, 0.6, 0.6, 6.3, 0.9, 'own'),
+    el(u + 3.0, v - 1.8, 0.6, 0.6, 6.3, 0.9, 'own'),
   ];
 }
 
@@ -677,7 +677,7 @@ function launcher(u: number, v: number): Part[] {
   const P: Part[] = [];
   const o = (a: number): number => u + a;
   // tracks and wheels
-  P.push(bx(o(-6.4), v - 3.6, o(5.6), v - 2.2, 0, 1.7, 'track', { pat: 'tread' }), bx(o(-6.4), v + 2.2, o(5.6), v + 3.6, 0, 1.7, 'track', { pat: 'tread' }));
+  P.push(bx(o(-6.4), v - 1.8, o(5.6), v - 2.2, 0, 1.7, 'track', { pat: 'tread' }), bx(o(-6.4), v + 2.2, o(5.6), v + 1.8, 0, 1.7, 'track', { pat: 'tread' }));
   for (let i = 0; i < 5; i++) {
     const wu = o(-5 + i * 2.5);
     P.push(el(wu, v - 3.7, 0.8, 0.28, 0.2, 1.2, 'gun', { tone: 1, sh: 'cyl', minRes: 1.5 }), el(wu, v + 3.7, 0.8, 0.28, 0.2, 1.2, 'gun', { tone: 1, sh: 'cyl', minRes: 1.5 }));
@@ -714,10 +714,10 @@ function commandTruck(u: number, v: number): Part[] {
     P.push(el(u + wu, v + 2.7, 1.1, 0.5, 0, 1.5, 'track', { sh: 'cyl' }), el(u + wu, v - 2.7, 1.1, 0.5, 0, 1.3, 'track', { sh: 'cyl' }));
     P.push(bx(u + wu - 1.4, v + 2.2, u + wu + 1.4, v + 3.3, 1.5, 0.4, 'olive', { tone: -0.3 }), bx(u + wu - 1.4, v - 3.3, u + wu + 1.4, v - 2.2, 1.5, 0.4, 'olive', { tone: -0.3 }));
   }
-  P.push(bx(u - 5.2, v - 2.3, u + 3.6, v + 2.3, 0.8, 1.3, 'olive', { tone: -0.2 }));
+  P.push(bx(u - 5.2, v - 2.3, u + 1.8, v + 2.3, 0.8, 1.3, 'olive', { tone: -0.2 }));
   // the cab and bonnet
-  P.push(poly([u + 3.6, v - 2.2, u + 5.8, v - 2.2, u + 6.8, v - 1.2, u + 6.8, v + 1.2, u + 5.8, v + 2.2, u + 3.6, v + 2.2], 0.8, 1.6, 'olive', { tone: 0.1 }));
-  P.push(poly([u + 3.6, v - 2.1, u + 5.0, v - 2.1, u + 5.0, v + 2.1, u + 3.6, v + 2.1], 0.8, 2.6, 'olive', { tone: 0.6 }));
+  P.push(poly([u + 1.8, v - 2.2, u + 5.8, v - 2.2, u + 6.8, v - 1.2, u + 6.8, v + 1.2, u + 5.8, v + 2.2, u + 1.8, v + 2.2], 0.8, 1.6, 'olive', { tone: 0.1 }));
+  P.push(poly([u + 1.8, v - 2.1, u + 5.0, v - 2.1, u + 5.0, v + 2.1, u + 1.8, v + 2.1], 0.8, 2.6, 'olive', { tone: 0.6 }));
   P.push(poly([u + 5.0, v - 1.9, u + 5.9, v - 1.5, u + 5.9, v + 1.5, u + 5.0, v + 1.9], 2.4, 0.9, 'glass', { tone: 0.3 }));
   P.push(bx(u + 5.2, v - 2.6, u + 5.8, v - 2.2, 2.6, 0.8, 'gun'), bx(u + 5.2, v + 2.2, u + 5.8, v + 2.6, 2.6, 0.8, 'gun'), bx(u + 3.9, v - 1.3, u + 4.5, v + 1.3, 3.4, 0.3, 'black', { tone: 0.5 }));
   // the shelter: a corrugated roof with its fittings, a door and steps on the side
@@ -892,7 +892,7 @@ function warehouse(u0: number, v0: number, u1: number, v1: number, wall: Mat, ro
     P.push(bx(du, v1, du + 2.8, v1 + 0.6, 0, 2.7, 'black', { tone: 0.5 }), bx(du - 0.2, v1, du + 3.0, v1 + 0.2, 2.7, 0.35, 'sup', { tone: 0.5 }));
   }
   if (!simple) for (let u = u0 + 4; u < u1 - 1; u += 6.5) P.push(bx(u, v1, u + 0.5, v1 + 0.28, 0, wz, wall, { tone: 0.2 }));
-  P.push(band(u0 + 0.3, v1 - 0.7, u0 + 3.6, v1 - 0.2, wz + 0.3));
+  P.push(band(u0 + 0.3, v1 - 0.7, u0 + 1.8, v1 - 0.2, wz + 0.3));
   return P;
 }
 const BOX_COLS: Mat[] = ['rust', 'fadedBlue', 'ochre', 'olive', 'brick', 'fieldgrey', 'cargo', 'canvas'];
@@ -910,7 +910,7 @@ function containers(u: number, v: number, nu: number, nv: number, seed: number, 
       if (two) P.push(bx(u0, v0, u0 + 4, v0 + 2.4, z0 + 2.3, 2.3, pick(5), { pat: 'ribs', tone: hash(i + 9, j + seed, 2) * 0.7 - 0.35 }));
     }
   }
-  if (ownerFirst) P.push(bx(U0 + 0.4, v + 0.4, U0 + 3.6, v + 0.9, 2.3 + z0, 0, 'own'));
+  if (ownerFirst) P.push(bx(U0 + 0.4, v + 0.4, U0 + 1.8, v + 0.9, 2.3 + z0, 0, 'own'));
   return P;
 }
 /** A tug: a rounded dark hull with a red stripe, a white wheelhouse, a red funnel, tyre fenders, bow fender. Bow to the east. */
@@ -985,9 +985,9 @@ function breakwater(pts: [number, number][], simple: boolean): Part[] {
  */
 function casemate(u: number, v: number, simple = false): Part[] {
   const P: Part[] = [];
-  P.push(el(u - 3.6, v, 3.0, 4.6, 0, 2.4, 'camo', { sh: 'dome', tone: -0.3 }), el(u - 1.0, v - 3.9, 3.8, 1.5, 0, 1.6, 'camo', { sh: 'dome', tone: -0.2 }), el(u - 1.0, v + 3.9, 3.8, 1.5, 0, 1.6, 'camo', { sh: 'dome', tone: -0.2 }));
+  P.push(el(u - 1.8, v, 3.0, 4.6, 0, 2.4, 'camo', { sh: 'dome', tone: -0.3 }), el(u - 1.0, v - 3.9, 3.8, 1.5, 0, 1.6, 'camo', { sh: 'dome', tone: -0.2 }), el(u - 1.0, v + 3.9, 3.8, 1.5, 0, 1.6, 'camo', { sh: 'dome', tone: -0.2 }));
   const shell = [u - 4, v - 3, u + 2.6, v - 3, u + 4.2, v - 1.4, u + 4.2, v + 1.4, u + 2.6, v + 3, u - 4, v + 3];
-  const lid = [u - 3.4, v - 2.4, u + 2.4, v - 2.4, u + 3.6, v - 1.2, u + 3.6, v + 1.2, u + 2.4, v + 2.4, u - 3.4, v + 2.4];
+  const lid = [u - 3.4, v - 2.4, u + 2.4, v - 2.4, u + 1.8, v - 1.2, u + 1.8, v + 1.2, u + 2.4, v + 2.4, u - 3.4, v + 2.4];
   P.push(poly(shell, 0, 3.0, 'sup', { tone: -0.2 }), poly(shell, 3.0, 0.5, 'sup', { tone: 0.5, edge: true }), poly(lid, 3.0, 0, 'sup', { inset: true, tone: -0.1 }));
   // the gun on the roof: a round sandbag ring round its pit, a mount in the owner's colour, a dark turret and a long barrel out to sea
   P.push(...sandRing(u + 0.2, v, 3.1, 2.5, 3.0, simple));
@@ -1113,6 +1113,8 @@ class Ground {
   readonly d: Uint8ClampedArray;
   /** far look: coverage becomes a smooth alpha (no dither steps) so the patch fades into the terrain */
   smooth = false;
+  /** how strongly dirt and darkening show over the real terrain (they fade out at their edges, so the land's own texture shows round and under them) */
+  gain = 0.55;
   constructor(
     readonly W: number,
     readonly H: number,
@@ -1145,6 +1147,7 @@ class Ground {
     const sea = this.under.water(ax, ay);
     if (sea && kind !== 'shadow' && kind !== 'foam') return;
     if (!sea && kind === 'foam') return;
+    if (kind === 'dirt' || kind === 'dark' || kind === 'dirtL') a *= this.gain;
     const base = this.under.rgb(ax, ay);
     const col = KIND[kind](base);
     const o = (ay * this.W + ax) * 4;
@@ -1166,6 +1169,7 @@ class Ground {
   }
   /** a ragged-edged ellipse */
   blob(kind: Kind, cu: number, cv: number, ru: number, rv: number, amax: number, soft = 0.35, seed = 1): void {
+    if (kind === 'dirt' || kind === 'dark' || kind === 'dirtL') soft *= 1.7;
     this.paint(kind, cu - ru * 1.3, cv - rv * 1.3, cu + ru * 1.3, cv + rv * 1.3, amax, (u, v) => {
       const r = Math.hypot((u - cu) / ru, (v - cv) / rv) + (vnoise(u * 0.45, v * 0.45, seed) - 0.5) * 0.42;
       return Math.max(0, Math.min(1, (1 - r) / soft));
@@ -1173,6 +1177,7 @@ class Ground {
   }
   /** a ragged-edged rounded rectangle; `inner` > 0 makes it a ring that wide */
   slab(kind: Kind, u0: number, v0: number, u1: number, v1: number, rad: number, amax: number, soft = 2.2, seed = 2, inner = 0): void {
+    if (kind === 'dirt' || kind === 'dark' || kind === 'dirtL') soft *= 1.7;
     const cu = (u0 + u1) / 2;
     const cv = (v0 + v1) / 2;
     const hw = (u1 - u0) / 2;
@@ -1197,9 +1202,9 @@ class Ground {
       return Math.max(0, Math.min(1, (w / 2 - d) / (w * 0.3)));
     });
   }
-  /** the shadow cast by the parts: each part's footprint swept toward the lower right by its height (light from the upper left) */
-  shadows(parts: readonly Part[], amax: number, soft = 0, wide = 1): void {
-    let m = new Float32Array(this.W * this.H);
+  /** the swept footprint of the parts as a 0/1 mask: each footprint moved toward the lower right by up to reach(part) */
+  private sweep(parts: readonly Part[], reachOf: (top: number) => number): Float32Array {
+    const m = new Float32Array(this.W * this.H);
     const dirU = 0.62;
     const dirV = 0.5;
     for (const p of parts) {
@@ -1207,7 +1212,7 @@ class Ground {
       if (top < 0.7 || p.glow || (p.a ?? 1) < 1 || p.edge) continue;
       // thin things hung on a wall (window panes, doors) cast no shadow of their own
       if (p.k === 'box' && p.p[3] - p.p[1] <= 0.7) continue;
-      const reach = top * 0.55 * wide;
+      const reach = reachOf(top);
       const n = Math.max(1, Math.ceil(reach * this.res * 0.8));
       const [a, b, c, e] = footBox(p);
       const ax0 = Math.max(0, Math.floor(this.ox + a * this.res) - 1);
@@ -1228,27 +1233,41 @@ class Ground {
         }
       }
     }
-    // far look: blur the mask several times so the shadow is wide and soft
-    for (let pass = 0; pass < soft; pass++) {
-      const o = new Float32Array(m.length);
-      const r = 2;
-      for (let ay = 0; ay < this.H; ay++) {
-        for (let ax = 0; ax < this.W; ax++) {
-          let t = 0;
-          let n = 0;
-          for (let j = -r; j <= r; j++) {
-            for (let i = -r; i <= r; i++) {
-              const x = ax + i;
-              const y = ay + j;
-              if (x >= 0 && y >= 0 && x < this.W && y < this.H) t += m[y * this.W + x];
-              n++;
-            }
+    return m;
+  }
+
+  private blur(m: Float32Array, r: number): Float32Array {
+    const o = new Float32Array(m.length);
+    for (let ay = 0; ay < this.H; ay++) {
+      for (let ax = 0; ax < this.W; ax++) {
+        let t = 0;
+        let n = 0;
+        for (let j = -r; j <= r; j++) {
+          for (let i = -r; i <= r; i++) {
+            const x = ax + i;
+            const y = ay + j;
+            if (x >= 0 && y >= 0 && x < this.W && y < this.H) t += m[y * this.W + x];
+            n++;
           }
-          o[ay * this.W + ax] = t / n;
         }
+        o[ay * this.W + ax] = t / n;
       }
-      m = o;
     }
+    return o;
+  }
+
+  /**
+   * The shadow of the parts, always joined to the building: a tight dark contact shadow right at the base (a few pixels,
+   * a little to the lower right, light from the upper left) plus a short, soft cast shadow that grows out of it with the
+   * height. Nothing of it lies apart from the building.
+   */
+  shadows(parts: readonly Part[], amax: number, soft = 0, wide = 1): void {
+    const contact = this.sweep(parts, () => 3.4);
+    let cast = this.sweep(parts, (top) => Math.min(9, top * 0.3) * wide);
+    for (let pass = 0; pass < Math.max(1, soft); pass++) cast = this.blur(cast, 2);
+    const c1 = this.blur(contact, 1);
+    const m = new Float32Array(cast.length);
+    for (let i = 0; i < m.length; i++) m[i] = Math.max(Math.min(1, c1[i] * 1.5), cast[i] * 0.5);
     // soften by one pixel so the penumbra dithers
     for (let ay = 0; ay < this.H; ay++) {
       for (let ax = 0; ax < this.W; ax++) {
@@ -1261,7 +1280,7 @@ class Ground {
           }
         }
         const cov = s / 9;
-        if (cov > 0.04) this.put(ax, ay, 'shadow', Math.min(1, cov * (soft ? 1.6 : 1.25)), amax);
+        if (cov > 0.04) this.put(ax, ay, 'shadow', Math.min(1, cov * 1.5), amax);
       }
     }
   }
@@ -1302,7 +1321,7 @@ function groundOf(g: Ground, spec: BuildingSpec): void {
       g.slab('dark', -w / 2 - 8, -d / 2 - 7, w / 2 + 8, d / 2 + 12, 7, 0.4, 5, 5);
       g.slab('dirt', -w / 2 - 4.5, -d / 2 - 4, w / 2 + 4.5, d / 2 + 5, 5, 0.8, 3, 6);
       if (lv >= 5) {
-        g.slab('water', -w / 2 - 3.6, -d / 2 - 3.6, w / 2 + 3.6, d / 2 + 3.6, 3, 0.8, 1.2, 7, 3.4);
+        g.slab('water', -w / 2 - 1.8, -d / 2 - 1.8, w / 2 + 1.8, d / 2 + 1.8, 3, 0.8, 1.2, 7, 3.4);
         g.slab('dark', -w / 2 - 5.4, -d / 2 - 5.4, w / 2 + 5.4, d / 2 + 5.4, 4, 0.5, 1.4, 8, 1.7);
       }
       g.strip('dirtL', 0, d / 2, 2.4, d / 2 + 13, 3.6, 0.6);
@@ -1419,7 +1438,7 @@ export function bakeBuilding(spec: BuildingSpec, owner: RGB, scale: number, dpr:
   }
   groundOf(gr, spec);
   if (spec.type === 'port') gr.shore();
-  gr.shadows(parts, 0.62);
+  gr.shadows(parts, 0.82);
   const d = gr.d;
   const bx0 = (b: Baked): number => ox - b.ox;
   const by0 = (b: Baked): number => oy - b.oy;
@@ -1450,7 +1469,7 @@ export function bakeBuilding(spec: BuildingSpec, owner: RGB, scale: number, dpr:
     // one outline round the whole town (and its add-ons), none round each block: the ring is cut from the silhouette of the
     // town's outer shape, then the blocks are drawn over it on their own with their dark edges, so the streets stay open
     // the shape is every lot grown by 3.6 units, so the streets close up and the ring hugs the town's real outline
-    const shape: Part[] = cityLots(spec.level).map((l) => ({ k: 'box' as const, p: [l.u - l.w / 2 - 3.6, l.v - l.d / 2 - 3.6, l.u + l.w / 2 + 3.6, l.v + l.d / 2 + 3.6], z: 0, h: 0.3, m: 'tan' as const }));
+    const shape: Part[] = cityLots(spec.level).map((l) => ({ k: 'box' as const, p: [l.u - l.w / 2 - 1.8, l.v - l.d / 2 - 1.8, l.u + l.w / 2 + 1.8, l.v + l.d / 2 + 1.8], z: 0, h: 0.3, m: 'tan' as const }));
     const flak = cityAddon(spec.level, spec.addon, simple).map((p) => ({ ...p, m: 'tan' as const, pat: undefined, tone: 0 }));
     const raw = rasterize({ parts: [...shape, ...flak], ground: 0 }, res, 0, { facings: 32, owner });
     const ring = outlineOf(raw, owner, ringWidth(g.k));
@@ -1504,7 +1523,7 @@ const FAR_GAIN = 0.72;
 /** the same for add-ons (guns), kept stronger so they still read */
 const FAR_ADD_GAIN = 0.95;
 const FAR_RING_A = 0.5;
-const FAR_SHADOW_A = 0.36;
+const FAR_SHADOW_A = 0.6;
 
 /** Simplified shapes for far zoom: big masses, no windows, merlons, gear, piles or trees. */
 function farModel(spec: BuildingSpec): Part[] {
@@ -1694,7 +1713,7 @@ export function bakeBuildingFar(spec: BuildingSpec, owner: RGB, scale: number, d
   };
   const ringPx = Math.max(1, ringWidth(g.k) - 1);
   /** draws a layer of parts: its outline (grown from `mask`, outside it) first, then the pulled colours */
-  const layer = (parts: Part[], gain: number, mask?: Uint8Array): void => {
+  const layer = (parts: Part[], gain: number, mask?: Uint8Array, ringOn = true): void => {
     if (!parts.length) return;
     const b = rasterize({ parts, ground: 0 }, res, 0, { facings: 32, owner });
     const own = maskOf(b);
@@ -1708,7 +1727,7 @@ export function bakeBuildingFar(spec: BuildingSpec, owner: RGB, scale: number, d
         front.push(i);
       }
     }
-    for (let k = 1; k <= ringPx + 1; k++) {
+    for (let k = 1; k <= (ringOn ? ringPx + 1 : 0); k++) {
       const next: number[] = [];
       for (const idx of front) {
         const x = idx % CW;
@@ -1739,14 +1758,8 @@ export function bakeBuildingFar(spec: BuildingSpec, owner: RGB, scale: number, d
       }
     }
   };
-  if (spec.type === 'city') {
-    // one soft outline round the whole town, drawn outside the blocks
-    const shape: Part[] = cityLots(spec.level).map((l) => ({ k: 'box' as const, p: [l.u - l.w / 2 - 3.6, l.v - l.d / 2 - 3.6, l.u + l.w / 2 + 3.6, l.v + l.d / 2 + 3.6], z: 0, h: 0.3, m: 'tan' as const }));
-    const flak = add.map((p) => ({ ...p, m: 'tan' as const, pat: undefined, tone: 0 }));
-    const m = maskOf(rasterize({ parts: [...shape, ...flak], ground: 0 }, res, 0, { facings: 32, owner }));
-    layer(body, FAR_GAIN, m);
-  } else layer(body, FAR_GAIN);
-  layer(add, FAR_ADD_GAIN);
+  layer(body, FAR_GAIN);
+  layer(add, FAR_ADD_GAIN, undefined, false);
   const cv = makeCanvas(CW, CH);
   const cx = cv.getContext('2d');
   if (cx) {
