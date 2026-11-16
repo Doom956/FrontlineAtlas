@@ -1771,3 +1771,41 @@ export function bakeBuildingFar(spec: BuildingSpec, owner: RGB, scale: number, d
 }
 
 // ------------------------------------------------------------------------------------------------- the sheet
+
+// ------------------------------------------------------------------------------------------------- size on the map
+
+/** How far a building's solid pixels reach from its origin (model units = screen px at scale 1), with its outline ring. */
+export interface Extent {
+  l: number;
+  r: number;
+  u: number;
+  d: number;
+}
+
+const extents = new Map<string, Extent>();
+
+/** The reach of a spec's picture in each direction from the model origin (the short shadow and the ground patch not counted). Cached. */
+export function modelExtent(spec: BuildingSpec, look: 'close' | 'far'): Extent {
+  const key = `${spec.type}|${spec.level}|${spec.addon ?? '-'}|${look}`;
+  const hit = extents.get(key);
+  if (hit) return hit;
+  const parts = look === 'close' ? modelOf(spec, false) : [...farModel(spec), ...addonParts(spec, true)];
+  const b = rasterize({ parts, ground: 0 }, 1, 0, { facings: 32, owner: [128, 128, 128] });
+  let x0 = b.w;
+  let x1 = 0;
+  let y0 = b.h;
+  let y1 = 0;
+  for (let y = 0; y < b.h; y++) {
+    for (let x = 0; x < b.w; x++) {
+      if (b.data[(y * b.w + x) * 4 + 3] < 200) continue;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+  }
+  const ring = 2;
+  const e: Extent = { l: Math.max(1, b.ox - x0 + ring), r: Math.max(1, x1 + 1 - b.ox + ring), u: Math.max(1, b.oy - y0 + ring), d: Math.max(1, y1 + 1 - b.oy + ring) };
+  extents.set(key, e);
+  return e;
+}

@@ -11,11 +11,11 @@
 // Fog of war (fog/fogView.ts): buildings in view are drawn live; in explored blocks out of view the ones last seen
 // there are drawn greyed, without level badge or progress; nothing in blocks never seen.
 import { BUILDINGS } from '../../sim/config';
-import { samRadius } from '../../sim/buildings';
+import { buildingSpacing, samRadius } from '../../sim/buildings';
 import { isWater, type Building, type GameState } from '../../sim/types';
 import { COAST, CU, levelPill, OU, OV } from '../art/detailed/buildings';
 import type { TerrainData } from './terrain';
-import { artScale, bakeArt, BuildingSprites, hasArt, lookFor, quantTint, seaFacing, specOf, spriteKey, type AddonState, type ArtLook, type Facing } from './buildingArt';
+import { artScale, bakeArt, BuildingSprites, fitScale, hasArt, lookFor, quantTint, seaFacing, specOf, spriteKey, type AddonState, type ArtLook, type Facing } from './buildingArt';
 import type { Camera } from '../camera';
 import { CATEGORY_COLORS, drawMarker, ICON_INFO, markerReady, type BuildingIconId } from '../icons';
 import type { FogView } from '../fog/fogView';
@@ -147,7 +147,6 @@ export class BuildingLayer {
     this.sprites.newFrame();
     const z = cam.zoom;
     const look = lookFor(z);
-    const scale = artScale(z);
     if (z < FAR_ZOOM) {
       this.drawFar(ctx, state, cam, v, z);
       return;
@@ -155,7 +154,7 @@ export class BuildingLayer {
     const size = markerSize(z);
     const ox = cam.viewW / 2 - cam.x * z;
     const oy = cam.viewH / 2 - cam.y * z;
-    const pad = Math.ceil(Math.max(size, look ? CU * scale : 0) / z) + 1;
+    const pad = Math.ceil(Math.max(size, look ? CU * artScale(z) : 0) / z) + 1;
     const cx0 = Math.max(0, Math.floor((v.x0 - pad) / CELL));
     const cy0 = Math.max(0, Math.floor((v.y0 - pad) / CELL));
     const cx1 = Math.min(this.gw - 1, Math.floor((v.x1 + pad) / CELL));
@@ -177,7 +176,7 @@ export class BuildingLayer {
           const sx = ox + (tx + 0.5) * z;
           const sy = oy + (ty + 0.5) * z;
           const s = b.type === 'city' ? size * 1.18 : size;
-          if (look && hasArt(b.type) && this.drawArt(ctx, state, b, sx, sy, look, scale, z, colors, dpr, false)) continue;
+          if (look && hasArt(b.type) && this.drawArt(ctx, state, b, sx, sy, look, z, colors, dpr, false)) continue;
           this.drawOne(ctx, b, sx, sy, s, colors, dpr);
         }
       }
@@ -187,7 +186,7 @@ export class BuildingLayer {
       const ty = (b.tile / w) | 0;
       const fx = ox + (tx + 0.5) * z;
       const fy = oy + (ty + 0.5) * z;
-      if (look && hasArt(b.type) && this.drawArt(ctx, state, b, fx, fy, look, scale, z, colors, dpr, true)) continue;
+      if (look && hasArt(b.type) && this.drawArt(ctx, state, b, fx, fy, look, z, colors, dpr, true)) continue;
       this.drawOne(ctx, b, fx, fy, Math.max(30, size * 1.35), colors, dpr);
     }
   }
@@ -282,7 +281,7 @@ export class BuildingLayer {
    * One building as detailed art, centred on its tile at (x, y) (CSS px). False = no sprite yet (the frame's bake budget is
    * spent): the caller draws the flat marker for now.
    */
-  private drawArt(ctx: CanvasRenderingContext2D, state: GameState, b: Building, x: number, y: number, look: ArtLook, scale: number, zoom: number, colors: readonly RGB[], dpr: number, focus: boolean): boolean {
+  private drawArt(ctx: CanvasRenderingContext2D, state: GameState, b: Building, x: number, y: number, look: ArtLook, zoom: number, colors: readonly RGB[], dpr: number, focus: boolean): boolean {
     const ghost = ghosts.has(b);
     const p = state.players[b.owner];
     const st: AddonState = {
@@ -296,6 +295,9 @@ export class BuildingLayer {
     const owner: RGB = ghost ? [110, 114, 122] : (colors[b.owner] ?? [128, 128, 128]);
     const land = this.tintOf(b, state.map.width, state.map.height);
     const facing = b.type === 'port' ? this.facingOf(state, b) : 0;
+    const fit = fitScale(spec, look, facing, zoom, buildingSpacing(state));
+    if (!fit) return false;
+    const scale = fit.scale;
     const key = spriteKey(spec, owner, look, scale, dpr, land, facing);
     const sp = this.sprites.get(key, () => bakeArt(spec, owner, look, scale, dpr, land, this.terr?.theme));
     if (!sp) return false;
@@ -331,7 +333,7 @@ export class BuildingLayer {
       ctx.strokeStyle = 'rgba(255,255,255,0.9)';
       ctx.stroke();
     }
-    if (look === 'close' && !ghost) levelPill(ctx, cx, top, b.level, owner);
+    if (look === 'close' && fit.chip && !ghost) levelPill(ctx, cx, top, b.level, owner);
     // construction progress: a small bar under the building (the flat marker shows a ring)
     if (unfinished) {
       const progress = clamp(1 - b.buildLeft / Math.max(0.01, BUILDINGS[b.type].buildTime), 0, 1);
@@ -362,7 +364,7 @@ export class BuildingLayer {
       ctx.fillStyle = b.hp > 0.5 ? '#e8c84a' : '#e0503c';
       ctx.fillRect(x - bw / 2, bottom + 6 + (unfinished ? 3 : 0) + (queued > 0 ? 10 : 0), bw * b.hp, 3);
     }
-    if (look === 'close') {
+    if (look === 'close' && fit.name) {
       // close up: the building's name under it
       ctx.font = `500 11px ${MAP_LABEL_FAMILY}`;
       ctx.textAlign = 'center';
