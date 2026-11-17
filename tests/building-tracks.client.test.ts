@@ -6,6 +6,9 @@ import { CLOSE_ZOOM } from '../src/client/render/buildingArt';
 import { LinkSet, linkInput, linkKey, trackAlpha, tracksShown, type LinkEnd } from '../src/client/render/linkLayer';
 import { LINK_MAX_DIST, pairLinks, pairTracks, trackPath, type LinkBuilding, type LinkTerrain, type LinkType } from '../src/client/art/detailed/buildingLinks';
 import type { Building, GameState } from '../src/sim/types';
+import { swampPool, trackArt, underCrown, underPeak, type TrackGround, type TrackRamps } from '../src/client/art/detailed/buildingLinkArt';
+import { GROUND } from '../src/client/render/ground';
+import type { RGB } from '../src/client/render/common';
 
 const land = (over: Partial<LinkTerrain> = {}): LinkTerrain => ({ water: () => false, owner: () => 1, ...over });
 let n = 100;
@@ -161,5 +164,79 @@ describe('dirt tracks', () => {
     buildings.get(4)!.buildLeft = 0;
     expect(frame(2)).toBe(true);
     expect(set.links.filter((l) => l.link.kind === 'track')).toHaveLength(3);
+  });
+});
+
+describe('dirt track pixels (the terrain\'s own grid and colours)', () => {
+  const ramps = GROUND as unknown as TrackRamps;
+  const same = (c: readonly number[]): RGB => [c[0], c[1], c[2]];
+  const ground = (terrainAt: (x: number, y: number) => number, P = 8): TrackGround => ({ P, terrainAt, ramps, tint: same });
+  const path = trackPath(b('farm', 2, 2), b('city', 14, 6), land())!;
+  const pixels = (t: ReturnType<typeof trackArt>): { i: number; j: number; c: string }[] => {
+    const out: { i: number; j: number; c: string }[] = [];
+    for (let j = 0; j < t.h; j++) for (let i = 0; i < t.w; i++) {
+      const o = (j * t.w + i) * 4;
+      if (t.rgba[o + 3]) out.push({ i: t.x0 + i, j: t.y0 + j, c: `${t.rgba[o]},${t.rgba[o + 1]},${t.rgba[o + 2]}` });
+    }
+    return out;
+  };
+
+  it('is hard pixels on the ground grid: alpha all or nothing, the same every time', () => {
+    const t = trackArt(path, ground(() => 2), 5);
+    expect([...t.rgba].filter((_, k) => k % 4 === 3).every((a) => a === 0 || a === 255)).toBe(true);
+    expect(pixels(t).length).toBeGreaterThan(80);
+    expect(trackArt(path, ground(() => 2), 5)).toEqual(t);
+    // thin: at 8 art pixels per tile, about one pixel either side of the line at most
+    const across = new Map<number, number>();
+    for (const p of pixels(t)) across.set(p.i, (across.get(p.i) ?? 0) + 1);
+    expect(Math.max(...across.values())).toBeLessThanOrEqual(4);
+  });
+
+  it('takes every colour from the ramps of the terrain under it, never a fixed tan', () => {
+    const allowed = (ter: number): Set<string> => {
+      const r = ramps;
+      const sets: Record<number, readonly (readonly number[])[]> = {
+        2: r.soil, 3: [...r.soil, ...r.forest], 4: [...r.soil, ...r.hills], 5: r.rock, 6: r.sand, 7: [...r.soil, ...r.swamp], 8: [...r.snow, ...r.tundra],
+      };
+      return new Set(sets[ter].map((c) => c.join(',')));
+    };
+    for (const ter of [2, 3, 4, 5, 6, 7, 8]) {
+      const px = pixels(trackArt(path, ground(() => ter), 3));
+      const ok = allowed(ter);
+      expect(px.every((p) => ok.has(p.c))).toBe(true);
+    }
+    // snow is never earth: no soil colour on tundra
+    const soil = new Set(ramps.soil.map((c) => c.join(',')));
+    expect(pixels(trackArt(path, ground(() => 8), 3)).some((p) => soil.has(p.c))).toBe(false);
+  });
+
+  it('never paints water, and slips under tree crowns, peaks and swamp pools', () => {
+    const half = trackArt(path, ground((x) => (x >= 8 ? 1 : 2)), 1);
+    expect(pixels(half).every((p) => Math.floor((p.i + 0.5) / 8) < 8)).toBe(true);
+    const open = pixels(trackArt(path, ground(() => 2), 1)).length;
+    for (const ter of [3, 5, 7]) {
+      const px = pixels(trackArt(path, ground(() => ter), 1));
+      expect(px.length).toBeGreaterThan(0);
+      expect(px.length).toBeLessThan(open);
+    }
+    // no pixel inside a crown, a peak or a pool where those cover it
+    expect(pixels(trackArt(path, ground(() => 5), 1)).every((p) => !underPeak((p.i + 0.5) / 8, (p.j + 0.5) / 8, 8, 0.7))).toBe(true);
+    expect(pixels(trackArt(path, ground(() => 7), 1)).every((p) => !swampPool((p.i + 0.5) / 8, (p.j + 0.5) / 8))).toBe(true);
+    // in a forest some of its pixels would sit under a crown on open ground: those are the ones the trees cover
+    const forest = new Set(pixels(trackArt(path, ground(() => 3), 1)).map((p) => `${p.i},${p.j}`));
+    const covered = pixels(trackArt(path, ground(() => 2), 1)).filter((p) => !forest.has(`${p.i},${p.j}`));
+    expect(covered.length).toBeGreaterThan(0);
+    expect(covered.every((p) => underCrown((p.i + 0.5) / 8, (p.j + 0.5) / 8, 8))).toBe(true);
+  });
+
+  it('carries the owner\'s tint like the ground beside it', () => {
+    const tinted = trackArt(path, { ...ground(() => 2), tint: (c) => [c[0], c[1], 255] }, 3);
+    expect(pixels(tinted).every((p) => p.c.endsWith(',255'))).toBe(true);
+  });
+
+  it('draws in a finer grid with a finer zoom', () => {
+    const coarse = trackArt(path, ground(() => 2, 8), 3);
+    const fine = trackArt(path, ground(() => 2, 16), 3);
+    expect(fine.w).toBeGreaterThan(coarse.w * 1.8);
   });
 });

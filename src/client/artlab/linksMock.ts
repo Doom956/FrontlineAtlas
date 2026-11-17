@@ -15,6 +15,8 @@ import { pairLinks, pairTracks, trackPath, type BuildingLink, type LinkBuilding,
 import { paintLinks, type LinkSite } from '../art/detailed/buildingLinkArt';
 import { loadBalticTerrain } from './buildingsMock';
 import { trackAlpha } from '../render/linkLayer';
+import { artPixelsPerTile } from '../render/glmap';
+import type { TrackRamps } from '../art/detailed/buildingLinkArt';
 
 const BLUE: RGB = [64, 160, 255];
 const RED: RGB = [226, 74, 60];
@@ -46,6 +48,9 @@ interface Scene {
   rgb: Uint8ClampedArray;
   land: (x: number, y: number) => boolean;
   owner: (x: number, y: number) => number;
+  /** terrain id of a tile and the map theme's ground ramps (the tracks' colours) */
+  ter: (x: number, y: number) => number;
+  ramps: TrackRamps;
   borderX?: (y: number) => number;
   /** canvas size (CSS px), tile window size and the zooms shown; `before` adds the loose-buildings pictures */
   cw: number;
@@ -61,6 +66,8 @@ interface World {
   h: number;
   land: (x: number, y: number) => boolean;
   rgba: Uint8ClampedArray;
+  ter: (x: number, y: number) => number;
+  ramps: TrackRamps;
 }
 
 type Layout = { type: Site['type']; level: number; dx: number; dy: number; owner: number }[];
@@ -145,7 +152,7 @@ function scenes(world: World): Scene[] {
   const make = (id: string, title: string, note: string, ax: number, ay: number, layout: Layout, owner: (x: number, y: number) => number, cx: number, cy: number, borderX?: (y: number) => number): void => {
     const sites: Site[] = layout.map((b, i) => ({ id: i + 1, type: b.type, level: b.level, owner: b.owner, x: ax + b.dx, y: ay + b.dy, addon: null }));
     const links = pairLinks(sites, { water: (x, y) => !world.land(x, y), owner });
-    out.push({ id, title, note, sites, links, cx, cy, ...cut(world, cx, cy, owner, WT, HT), land: world.land, owner, borderX, cw: CW, ch: CH, wt: WT, ht: HT, zooms: [8, 11], before: true });
+    out.push({ id, title, note, sites, links, cx, cy, ...cut(world, cx, cy, owner, WT, HT), land: world.land, owner, ter: world.ter, ramps: world.ramps, borderX, cw: CW, ch: CH, wt: WT, ht: HT, zooms: [8, 11], before: true });
   };
   const ports = findPorts(world);
   if (ports) {
@@ -179,6 +186,8 @@ function scenes(world: World): Scene[] {
       ...cut(world, t.ax + 1, t.ay, owner, tw, th),
       land: world.land,
       owner,
+      ter: world.ter,
+      ramps: world.ramps,
       borderX: trackBorder(t.ax, t.ay),
       cw: 960,
       ch: 560,
@@ -302,6 +311,13 @@ function render(cv: HTMLCanvasElement, sc: Scene, zoom: number, connected: boole
         return [sc.rgb[o], sc.rgb[o + 1], sc.rgb[o + 2]];
       },
       waterAt: (tx, ty) => !sc.land(tx, ty),
+      ground: {
+        P: artPixelsPerTile(zoom),
+        terrainAt: sc.ter,
+        ramps: sc.ramps,
+        // the mockup's ground is the flat map tinted 15 % toward the owner: the tracks take the same tint
+        tint: (c) => [c[0] + (BLUE[0] - c[0]) * 0.15, c[1] + (BLUE[1] - c[1]) * 0.15, c[2] + (BLUE[2] - c[2]) * 0.15].map(Math.round) as RGB,
+      },
     });
     // tracks at the close look only, fading in (as the game draws them)
     const tracks = sc.links.filter((l) => l.kind === 'track');
@@ -366,7 +382,14 @@ export function mountLinksMock(root: HTMLElement): HTMLElement {
     (map) => {
       const theme = themeForMap(MAP_ID);
       const terr = buildTerrain(map, theme);
-      const world: World = { w: map.width, h: map.height, rgba: terr.rgba, land: (x, y) => x >= 0 && y >= 0 && x < map.width && y < map.height && !isWater(map.terrain[y * map.width + x]) };
+      const world: World = {
+        w: map.width,
+        h: map.height,
+        rgba: terr.rgba,
+        land: (x, y) => x >= 0 && y >= 0 && x < map.width && y < map.height && !isWater(map.terrain[y * map.width + x]),
+        ter: (x, y) => (x >= 0 && y >= 0 && x < map.width && y < map.height ? map.terrain[y * map.width + x] : 0),
+        ramps: theme.ground,
+      };
       for (const sc of scenes(world)) {
         const blk = document.createElement('div');
         blk.dataset.links = sc.id;

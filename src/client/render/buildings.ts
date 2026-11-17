@@ -230,7 +230,7 @@ export class BuildingLayer {
     const cy0 = Math.max(0, Math.floor((v.y0 - pad) / CELL));
     const cx1 = Math.min(this.gw - 1, Math.floor((v.x1 + pad) / CELL));
     const cy1 = Math.min(this.gh - 1, Math.floor((v.y1 + pad) / CELL));
-    if (look) this.drawLinks(ctx, state, ox, oy, cam, z, look, dpr);
+    if (look) this.drawLinks(ctx, state, ox, oy, cam, z, look, dpr, colors);
     const w = this.w;
     const focus: Building[] = [];
     for (let cy = cy0; cy <= cy1; cy++) {
@@ -358,7 +358,7 @@ export class BuildingLayer {
   }
 
   /** The connected buildings under the art (quay, trench, road; art zoom) and the dirt tracks to each city (close look only). */
-  private drawLinks(ctx: CanvasRenderingContext2D, state: GameState, ox: number, oy: number, cam: Camera, z: number, look: ArtLook, dpr: number): void {
+  private drawLinks(ctx: CanvasRenderingContext2D, state: GameState, ox: number, oy: number, cam: Camera, z: number, look: ArtLook, dpr: number, colors: readonly RGB[]): void {
     if (!linksShown(z)) return;
     const endOf = (b: Building): LinkEnd => {
       const spec = specOf(b.type, b.level, this.addonState(state, b, ghosts.has(b)));
@@ -377,6 +377,7 @@ export class BuildingLayer {
       dpr,
       viewW: cam.viewW,
       viewH: cam.viewH,
+      colors,
       specOf: (e) => {
         const b = this.shownByTile.get(e.tile);
         return b ? specOf(b.type, b.level, this.addonState(state, b, ghosts.has(b))) : null;

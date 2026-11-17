@@ -221,6 +221,11 @@ export function groundFor(map: MapData, depth: Uint8Array, theme?: MapTheme): Gr
   return g;
 }
 
+/** A map's ground if it is already built in a theme's palette, else null (never starts a build). */
+export function groundBuilt(map: MapData, theme?: MapTheme): GroundData | null {
+  return builtIn(map, paletteOf(theme)) ?? null;
+}
+
 /**
  * The ground textures of a map if they are built; if not, null, and they are built in short slices between frames
  * (a big map takes most of a second on a fast machine and several on a slow one, which would freeze the page at game

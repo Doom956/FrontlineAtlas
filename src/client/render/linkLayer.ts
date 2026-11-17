@@ -11,10 +11,14 @@
 import { buildingSpacing } from '../../sim/buildings';
 import { isWater, type Building, type GameState } from '../../sim/types';
 import { CU } from '../art/detailed/buildings';
-import { paintLinks, type LinkSite } from '../art/detailed/buildingLinkArt';
+import { paintLinks, type LinkSite, type TrackGround } from '../art/detailed/buildingLinkArt';
 import { pairLinks, pairTracks, type BuildingLink, type LinkBuilding, type LinkTerrain, type LinkType } from '../art/detailed/buildingLinks';
 import { ART_ZOOM, CLOSE_ZOOM, artScale, balanceShift, drawnExtent, fitScale, hasArt, specOf, type ArtLook } from './buildingArt';
 import { makeCanvas } from './common';
+import { artPixelsPerTile } from './glmap';
+import { GROUND, groundBuilt } from './ground';
+import { mapStyle, type MapStyle } from './mapStyle';
+import { displayColor, fillAlpha, groundTint, GROUND_TINT } from './palette';
 import type { RGB } from './common';
 import type { TerrainData } from './terrain';
 
@@ -205,6 +209,27 @@ export function linkInput(state: GameState, shown: readonly Building[], end: (b:
   return { buildings, terrain, end: (tile) => end(byTile.get(tile) as Building) };
 }
 
+/**
+ * Owned ground as the map paints it (shaders.ts, the nation fill of each map style, close in): the colour a track pixel
+ * `c` takes under a nation of colour `oc`, so it carries the same tint as the ground beside it. `avgY` is the ground's
+ * broad brightness (0..255).
+ */
+export function ownedGround(style: MapStyle, oc: readonly number[] | null | undefined): (c: RGB, avgY: number) => RGB {
+  if (!oc) return (c) => c;
+  const d = displayColor(oc, { style });
+  if (style === 'ground') return (c, avgY) => groundTint(c, d, GROUND_TINT.near, avgY);
+  const fa = fillAlpha(style, false);
+  if (style === 'today') return (c) => [Math.round(c[0] + (d[0] - c[0]) * fa), Math.round(c[1] + (d[1] - c[1]) * fa), Math.round(c[2] + (d[2] - c[2]) * fa)];
+  const [kx, ky] = style === 'pixel' ? [0.95, 0.3] : [0.45, 0.2];
+  return (c, avgY) => {
+    const gy = (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) / 255;
+    const a = avgY / 255;
+    const add = fa * ((gy - a) * kx + (a - 0.45) * ky) * 255;
+    const ch = (i: number): number => Math.max(0, Math.min(255, Math.round(c[i] + (d[i] - c[i]) * fa + add)));
+    return [ch(0), ch(1), ch(2)];
+  };
+}
+
 /** What a frame hands the layer to draw. */
 export interface LinkFrame {
   state: GameState;
@@ -218,6 +243,8 @@ export interface LinkFrame {
   viewH: number;
   /** the picture spec of an end (add-on and all), for its reach */
   specOf: (e: LinkEnd) => ReturnType<typeof specOf>;
+  /** nation colours by owner id (the tracks take their owner's tint like the ground) */
+  colors?: readonly RGB[];
 }
 
 export class LinkLayer {
@@ -270,7 +297,13 @@ export class LinkLayer {
       const sb = fitScale(f.specOf(sl.b) ?? { type: sl.b.type as never, level: 1, addon: null }, look, sl.b.facing, zoom, spacing);
       if (!sa || !sb) continue;
       const scale = Math.min(sa.scale, sb.scale);
-      const key = `${sl.sig}|${look}|${scale}|${zq}|${dpr}`;
+      // a track also depends on the ground grid, the map style and theme and its owner's colour
+      let ground = '';
+      if (link.kind === 'track') {
+        const oc = f.colors?.[state.map.owner[link.a]];
+        ground = `|${artPixelsPerTile(zoom)}|${mapStyle()}|${f.terr?.theme?.id ?? ''}|${oc ? oc.join(',') : ''}|${groundBuilt(state.map, f.terr?.theme) ? 1 : 0}`;
+      }
+      const key = `${sl.sig}|${look}|${scale}|${zq}|${dpr}${ground}`;
       const sp = this.sprites.get(`${link.a}:${link.b}:${link.kind}`, key, () => this.bake(f, sl, look, scale, zq, margin, [x0, y0, x1, y1]));
       if (!sp) continue;
       const rr = zoom / sp.zq;
@@ -312,7 +345,32 @@ export class LinkLayer {
       sites.set(e.tile, { type: e.type, sx, sy, ext: drawnExtent(spec, look, e.facing) });
     }
     const rgba = f.terr?.rgba;
+    let ground: TrackGround | undefined;
+    if (sl.link.kind === 'track') {
+      const terrain = state.map.terrain;
+      const gd = groundBuilt(state.map, f.terr?.theme);
+      ground = {
+        // the ground's height as the shader samples it (linear between tile centres)
+        heightAt: gd
+          ? (qx, qy) => {
+              const fx = Math.max(0, Math.min(w - 1.001, qx - 0.5));
+              const fy = Math.max(0, Math.min(h - 1.001, qy - 0.5));
+              const ix = Math.floor(fx);
+              const iy = Math.floor(fy);
+              const ux = fx - ix;
+              const uy = fy - iy;
+              const at = (x: number, y: number): number => gd.data[(y * w + x) * 4 + 1] / 255;
+              return (at(ix, iy) * (1 - ux) + at(ix + 1, iy) * ux) * (1 - uy) + (at(ix, iy + 1) * (1 - ux) + at(ix + 1, iy + 1) * ux) * uy;
+            }
+          : undefined,
+        P: artPixelsPerTile(f.zoom),
+        terrainAt: (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : terrain[y * w + x]),
+        ramps: f.terr?.theme?.ground ?? GROUND,
+        tint: ownedGround(mapStyle(), f.colors?.[state.map.owner[sl.link.a]]),
+      };
+    }
     paintLinks(cx, {
+      ground,
       links: [sl.link],
       sites,
       scale,

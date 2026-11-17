@@ -39,6 +39,8 @@ export interface LinkPaint {
   toScreen: (tx: number, ty: number) => P;
   rgbAt: (tx: number, ty: number) => RGB;
   waterAt: (tx: number, ty: number) => boolean;
+  /** the map's pixel ground under the links, for the dirt tracks (no ground: no tracks drawn) */
+  ground?: TrackGround;
 }
 
 interface Q {
@@ -368,50 +370,314 @@ function road(c: Cells, pts: P[], seed: number): void {
   }
 }
 
-const DIRT: C = [158, 124, 82];
-const RUT: C = [86, 66, 46];
-/** A track's half width in tiles: the worn dirt, then the soft edge where grass grows back over it. */
+// ------------------------------------------------------------------------------------------------- dirt tracks
+// A track is drawn by the terrain's own hand, not the building art's: on the map's pixel ground grid (P art pixels per
+// tile, the same grid the map shader snaps to, render/glmap.ts artPixelsPerTile), every pixel a hard colour from the
+// map theme's ground ramps for the terrain under it (render/ground.ts), worn and edged with the shader's own 4 x 4
+// ordered dither, then tinted by the owner the way the map tints owned ground. In forest the tree crowns (the shader's
+// own crown grid) stay on top along part of its way, so the track slips under the trees; mountain peaks always stand in
+// front of it and swamp pools swallow it.
+
+/** A track's half width in tiles: the trodden path, then the dithered verge. */
 export const TRACK_CORE = 0.07;
-export const TRACK_EDGE = 0.115;
+export const TRACK_EDGE = 0.13;
+
+/** The ground ramps a track takes its colours from (the shape of render/ground.ts GROUND, any map theme's palette). */
+export interface TrackRamps {
+  grass: readonly C[];
+  forest: readonly C[];
+  hills: readonly C[];
+  rock: readonly C[];
+  snow: readonly C[];
+  sand: readonly C[];
+  swamp: readonly C[];
+  tundra: readonly C[];
+  soil: readonly C[];
+  pool: readonly C[];
+}
+
+/** What a track needs to know of the map under it. */
+export interface TrackGround {
+  /** art pixels per tile of the map's pixel ground at this zoom */
+  P: number;
+  /** the terrain id of a tile (sim/types.ts Terrain; 0 and 1 are water) */
+  terrainAt: (tx: number, ty: number) => number;
+  ramps: TrackRamps;
+  /** the ground's height 0..1 at a tile point (render/ground.ts, as the shader samples it); it sets where peaks stand */
+  heightAt?: (qx: number, qy: number) => number;
+  /** the owner's tint over a ground colour, as the map paints owned ground (`avgY` the ground's broad brightness, 0..255) */
+  tint: (c: RGB, avgY: number) => RGB;
+}
+
+/** The map shader's 4 x 4 ordered dither threshold of an art pixel, 0..1 (shaders.ts bayer4). */
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+export const bayer4 = (i: number, j: number): number => (BAYER[(j & 3) * 4 + (i & 3)] + 0.5) / 16;
+
+/** The map shader's hash of a cell (shaders.ts hash), 0..1. */
+export function shaderHash(cx: number, cy: number, salt: number): number {
+  let x = (Math.imul(cx, 1664525) ^ Math.imul(cy, 1013904223) ^ Math.imul(salt, 2654435761 | 0)) >>> 0;
+  x = (x ^ (x >>> 16)) >>> 0;
+  x = Math.imul(x, 0x7feb352d) >>> 0;
+  x = (x ^ (x >>> 15)) >>> 0;
+  x = Math.imul(x, 0x846ca68b | 0) >>> 0;
+  x = (x ^ (x >>> 16)) >>> 0;
+  return x / 4294967296;
+}
+function shaderNoise(px: number, py: number, salt: number): number {
+  const ix = Math.floor(px);
+  const iy = Math.floor(py);
+  let fx = px - ix;
+  let fy = py - iy;
+  fx = fx * fx * (3 - 2 * fx);
+  fy = fy * fy * (3 - 2 * fy);
+  const a = shaderHash(ix, iy, salt);
+  const b = shaderHash(ix + 1, iy, salt);
+  const c = shaderHash(ix, iy + 1, salt);
+  const d = shaderHash(ix + 1, iy + 1, salt);
+  return (a + (b - a) * fx) * (1 - fy) + (c + (d - c) * fx) * fy;
+}
+
+/** Whether tile point (qx, qy) lies under one of the forest's tree crowns (shaders.ts treeAt, its grid and sizes). */
+export function underCrown(qx: number, qy: number, P: number): boolean {
+  const tc = P >= 8 ? 2 : 1;
+  const c2x = qx * tc;
+  const c2y = qy * tc;
+  const c0x = Math.floor(c2x - 0.5);
+  const c0y = Math.floor(c2y - 0.5);
+  // glades: the shader leaves out some crowns where its clearing noise is high
+  const dens = 1 - 0.5 * Math.min(1, Math.max(0, (shaderNoise(qx / 2.2, qy / 2.2, 411) - 0.74) / 0.06));
+  for (let j = 0; j < 2; j++) {
+    for (let i = 0; i < 2; i++) {
+      const cx = c0x + i;
+      const cy = c0y + j;
+      if (dens < 1 && shaderHash(cx, cy, 109) >= dens) continue;
+      const ox = cx + 0.5 + (shaderHash(cx, cy, 101) - 0.5) * 0.5;
+      const oy = cy + 0.5 + (shaderHash(cx, cy, 103) - 0.5) * 0.5;
+      const r = 0.66 + 0.2 * shaderHash(cx, cy, 107);
+      if (Math.hypot(c2x - ox, c2y - oy) <= r * 0.92) return true;
+    }
+  }
+  return false;
+}
+
+const smooth = (a: number, b: number, x: number): number => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
+/** Whether tile point (qx, qy) lies inside a mountain peak (shaders.ts landAt, mountains: its grid, sizes and shoulders). */
+export function underPeak(qx: number, qy: number, P: number, hgt: number): boolean {
+  const csx = P >= 8 ? 1.9 : 2.8;
+  const csy = P >= 8 ? 1.15 : 1.7;
+  const row = Math.floor(qy / csy);
+  const keep = 0.15 + 0.55 * smooth(0.45, 0.85, hgt);
+  const hk = 0.25 * smooth(0.5, 0.9, hgt);
+  for (let j = 2; j >= 0; j--) {
+    const r = row + j;
+    const ox = shaderHash(r, 17, 315);
+    for (let i = -1; i <= 1; i++) {
+      const cxi = Math.floor(qx / csx - ox) + i;
+      if (shaderHash(cxi, r, 301) > keep) continue;
+      const k = 0.55 + 0.85 * shaderHash(cxi, r, 303) * shaderHash(cxi, r, 309) + hk;
+      const ax = (cxi + ox + 0.5 + (shaderHash(cxi, r, 305) - 0.5) * 0.6) * csx;
+      const by = (r + 0.7 + 0.3 * shaderHash(cxi, r, 313)) * csy;
+      const ht = csy * Math.min(2.6, 1.45 * k * (0.75 + 0.5 * shaderHash(cxi, r, 317)));
+      const ay = by - ht;
+      if (qy < ay || qy > by) continue;
+      const fy = (qy - ay) / ht;
+      const wl = csx * Math.min(1, k * (0.44 + 0.22 * shaderHash(cxi, r, 319))) * fy;
+      const wr = csx * Math.min(1, k * (0.44 + 0.22 * shaderHash(cxi, r, 321))) * fy;
+      const dx = qx - ax;
+      if (dx < 0 ? -dx <= wl : dx <= wr) return true;
+      const sh2 = shaderHash(cxi, r, 323);
+      if (sh2 < 0.4) {
+        const sx = ax + (sh2 < 0.2 ? -1 : 1) * csx * Math.min(0.55, k * 0.35);
+        const sy = ay + ht * 0.38;
+        const sfy = (qy - sy) / (by - sy);
+        const sw = csx * Math.min(0.48, k * 0.3) * sfy;
+        if (sfy >= 0 && Math.abs(qx - sx) <= sw) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** Whether tundra at tile point (qx, qy) lies under a snow drift (shaders.ts landAt, tundra). */
+export function snowDrift(qx: number, qy: number): boolean {
+  const rx = 0.8 * qx + 0.6 * qy;
+  const ry = -0.6 * qx + 0.8 * qy;
+  return shaderNoise(rx / 1.6, ry / 1.6, 95) * 0.7 + shaderNoise(rx / 3.5, ry / 3.5, 97) * 0.3 > 0.69;
+}
+
+/** Whether swamp at tile point (qx, qy) is a standing pool (shaders.ts landAt, swamp). */
+export function swampPool(qx: number, qy: number): boolean {
+  return shaderNoise((0.8 * qx + 0.6 * qy) / 0.8, (-0.6 * qx + 0.8 * qy) / 0.8, 91) > 0.62;
+}
+
+const lumaC = (c: C): number => 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
+
+/** The track's tones on a terrain: the trodden path, its worn pixels and the verge; null = no track there (water). */
+export function trackTones(ter: number, r: TrackRamps): { path: C; wear: C; verge: C; ground: C } | null {
+  switch (ter) {
+    case 2: return { path: r.soil[3], wear: r.soil[2], verge: r.soil[2], ground: r.grass[2] };
+    case 3: return { path: r.soil[0], wear: r.forest[1], verge: r.forest[0], ground: r.forest[1] };
+    case 4: return { path: r.soil[2], wear: r.soil[1], verge: r.hills[1], ground: r.hills[2] };
+    case 5: return { path: r.rock[2], wear: r.rock[1], verge: r.rock[1], ground: r.rock[1] };
+    case 6: return { path: r.sand[1], wear: r.sand[0], verge: r.sand[1], ground: r.sand[2] };
+    case 7: return { path: r.soil[0], wear: r.swamp[0], verge: r.swamp[0], ground: r.swamp[2] };
+    // tundra: a bluish trodden line on the bare ground (packed snow on a drift: see trackArt)
+    case 8: return { path: r.snow[0], wear: r.tundra[1], verge: r.tundra[1], ground: r.tundra[2] };
+    default: return null;
+  }
+}
+
+/** A track as art pixels of the map's ground grid: origin (art pixel coords), size and RGBA (alpha 0 or 255 only). */
+export interface TrackPixels {
+  x0: number;
+  y0: number;
+  w: number;
+  h: number;
+  rgba: Uint8ClampedArray;
+}
 
 /**
- * A thin dirt cart track: worn earth tinted by the land under it, a soft broken edge, two faint wheel ruts once it is
- * wide enough on screen to show them, and a patchy wear along its length, so it lies in the ground and never reads as a
- * paved strip. Its width follows the tile, not the art scale.
+ * The pixels of a track along `path` (tile coordinates) on the ground grid of `g`: the trodden path TRACK_CORE tiles
+ * either side of the line (at least the one pixel the line runs through), worn in places with the ordered dither, a
+ * dithered verge out to TRACK_EDGE, every colour from the ramps of the terrain under that pixel. Pure.
  */
-function track(c: Cells, pts: P[], seed: number): void {
-  const sc = c.p.scale;
-  const o = c.p.toScreen(0, 0);
-  const e = c.p.toScreen(1, 0);
-  const tile = Math.hypot(e[0] - o[0], e[1] - o[1]);
-  const corePx = Math.max(0.9, TRACK_CORE * tile);
-  const edgePx = Math.max(corePx + 0.6, TRACK_EDGE * tile);
-  const ruts = corePx / c.k >= 1.9;
-  const L = lengthOf(pts);
-  stroke(c, pts, edgePx / sc, false, (q) => {
-    if (q.water) return null;
-    const a = Math.abs(q.d) * sc;
-    const s = q.s * sc;
-    // worn patches along the track and a little grain per cell
-    const wear = 0.82 + 0.18 * Math.sin(s / (tile * 1.7) + seed) * Math.sin(s / (tile * 0.63) + seed * 0.37);
-    const grain = (hash(q.i, q.j, seed & 1023) - 0.5) * 0.12;
-    const endFade = Math.min(1, s / (tile * 0.35), (L - s) / (tile * 0.35));
-    const lum = (q.base[0] * 3 + q.base[1] * 6 + q.base[2]) / 10;
-    const dirt = lum > 150 ? mix(DIRT, RUT, 0.35) : DIRT;
-    if (a <= corePx) {
-      const u = a / corePx;
-      let col: RGB = mix(q.base, dirt, (0.58 + grain) * wear);
-      if (ruts && Math.abs(u - 0.55) < 0.2) col = mix(col, RUT, 0.28 * wear);
-      else if (ruts && u < 0.25) col = mix(col, q.base, 0.3);
-      const alpha = 235 * (u > 0.75 ? 1 - (u - 0.75) * 1.2 : 1) * endFade;
-      return [col[0], col[1], col[2], cl(alpha)];
+export function trackArt(path: readonly P[], g: TrackGround, seed: number): TrackPixels {
+  const P = g.P;
+  const r0 = Math.max(0.5, TRACK_CORE * P);
+  const r1 = Math.max(r0 + 0.75, TRACK_EDGE * P);
+  let mx0 = Infinity;
+  let my0 = Infinity;
+  let mx1 = -Infinity;
+  let my1 = -Infinity;
+  for (const [x, y] of path) {
+    mx0 = Math.min(mx0, x);
+    my0 = Math.min(my0, y);
+    mx1 = Math.max(mx1, x);
+    my1 = Math.max(my1, y);
+  }
+  const x0 = Math.floor(mx0 * P - r1) - 1;
+  const y0 = Math.floor(my0 * P - r1) - 1;
+  const w = Math.max(1, Math.ceil(mx1 * P + r1) + 2 - x0);
+  const h = Math.max(1, Math.ceil(my1 * P + r1) + 2 - y0);
+  const best = new Float32Array(w * h).fill(1e9);
+  const along = new Float32Array(w * h);
+  // nearest distance (art px) and arc length (tiles) of every pixel near the line
+  let cum = 0;
+  for (let e = 0; e + 1 < path.length; e++) {
+    const ax = path[e][0] * P;
+    const ay = path[e][1] * P;
+    const bx = path[e + 1][0] * P;
+    const by = path[e + 1][1] * P;
+    const len = Math.hypot(bx - ax, by - ay);
+    if (len < 1e-9) continue;
+    const tx = (bx - ax) / len;
+    const ty = (by - ay) / len;
+    const i0 = Math.max(0, Math.floor(Math.min(ax, bx) - r1) - x0);
+    const i1 = Math.min(w - 1, Math.ceil(Math.max(ax, bx) + r1) - x0);
+    const j0 = Math.max(0, Math.floor(Math.min(ay, by) - r1) - y0);
+    const j1 = Math.min(h - 1, Math.ceil(Math.max(ay, by) + r1) - y0);
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        const px = x0 + i + 0.5 - ax;
+        const py = y0 + j + 0.5 - ay;
+        const t = Math.max(0, Math.min(len, px * tx + py * ty));
+        const d = Math.hypot(px - t * tx, py - t * ty);
+        const k = j * w + i;
+        if (d < best[k]) {
+          best[k] = d;
+          along[k] = (cum + t) / P;
+        }
+      }
     }
-    // the soft edge: fewer, fainter cells further out
-    const u = (a - corePx) / (edgePx - corePx);
-    if (hash(q.i, q.j, 61 + (seed & 255)) < u * 0.85) return null;
-    const col = mix(q.base, dirt, 0.36 * wear);
-    return [col[0], col[1], col[2], cl(120 * (1 - u * 0.7) * endFade)];
-  });
+    cum += len;
+  }
+  const rgba = new Uint8ClampedArray(w * h * 4);
+  const ws = 1.3 + 0.6 * ((seed & 7) / 7);
+  const fine = P >= 16;
+  for (let j = 0; j < h; j++) {
+    for (let i = 0; i < w; i++) {
+      const k = j * w + i;
+      const d = best[k];
+      if (d > r1) continue;
+      const ai = x0 + i;
+      const aj = y0 + j;
+      const qx = (ai + 0.5) / P;
+      const qy = (aj + 0.5) / P;
+      const ter = g.terrainAt(Math.floor(qx), Math.floor(qy));
+      const tones = trackTones(ter, g.ramps);
+      if (!tones) continue;
+      const s = along[k];
+      // the trees and peaks stand in front: crowns cover the track along part of its way through a forest (elsewhere
+      // it is a cut through the trees), every peak covers it, so it winds between them
+      if (ter === 3 && Math.sin(s * 0.9 + seed * 1.3) + 0.6 * Math.sin(s * 2.3 + seed) > 0.2 && underCrown(qx, qy, P)) continue;
+      if (ter === 7 && swampPool(qx, qy)) continue;
+      if (ter === 5 && underPeak(qx, qy, P, g.heightAt ? g.heightAt(qx, qy) : 0.7)) continue;
+      const drift = ter === 8 && snowDrift(qx, qy);
+      const dth = bayer4(ai, aj);
+      // how worn the path is here: a slow wave along it, stepped by the dither (never an alpha fade)
+      const wear = Math.max(0, 0.45 * Math.sin(s / ws + seed) * Math.sin(s / (ws * 0.37) + seed * 0.7) - 0.05);
+      let col: C;
+      // a fine grid (P 16 and up) gets a half-dithered fringe on the path; a coarse one keeps a clean one-pixel line
+      if (d <= r0 || (fine && d <= r0 + 0.45 && dth < 0.5)) col = drift ? (dth < wear ? g.ramps.snow[0] : g.ramps.snow[1]) : dth < wear ? tones.wear : tones.path;
+      else if (dth < (fine ? 0.45 : 0.22) * (1 - (d - r0) / (r1 - r0))) col = drift ? g.ramps.snow[1] : tones.verge;
+      else continue;
+      const out = g.tint([col[0], col[1], col[2]], lumaC(tones.ground));
+      const o = k * 4;
+      rgba[o] = out[0];
+      rgba[o + 1] = out[1];
+      rgba[o + 2] = out[2];
+      rgba[o + 3] = 255;
+    }
+  }
+  return { x0, y0, w, h, rgba };
+}
+
+/**
+ * Draws track pixels on `ctx` (CSS px, scaled by `dpr`) the way the map shader draws its ground: every device pixel
+ * takes the art pixel its centre falls in, so the track's pixels line up with the terrain's own.
+ */
+function blitTrack(ctx: CanvasRenderingContext2D, t: TrackPixels, p: LinkPaint, P: number): void {
+  const dpr = p.dpr;
+  const W = Math.ceil(p.w * dpr);
+  const H = Math.ceil(p.h * dpr);
+  const [sx0, sy0] = p.toScreen(t.x0 / P, t.y0 / P);
+  const [sx1, sy1] = p.toScreen((t.x0 + t.w) / P, (t.y0 + t.h) / P);
+  const X0 = Math.max(0, Math.floor(sx0 * dpr));
+  const Y0 = Math.max(0, Math.floor(sy0 * dpr));
+  const X1 = Math.min(W, Math.ceil(sx1 * dpr));
+  const Y1 = Math.min(H, Math.ceil(sy1 * dpr));
+  if (X1 <= X0 || Y1 <= Y0) return;
+  const cv = document.createElement('canvas');
+  cv.width = X1 - X0;
+  cv.height = Y1 - Y0;
+  const cc = cv.getContext('2d');
+  if (!cc) return;
+  const img = cc.createImageData(cv.width, cv.height);
+  const out = img.data;
+  for (let y = Y0; y < Y1; y++) {
+    for (let x = X0; x < X1; x++) {
+      const [tx, ty] = p.tileOf((x + 0.5) / dpr, (y + 0.5) / dpr);
+      const i = Math.floor(tx * P) - t.x0;
+      const j = Math.floor(ty * P) - t.y0;
+      if (i < 0 || j < 0 || i >= t.w || j >= t.h) continue;
+      const s = (j * t.w + i) * 4;
+      if (!t.rgba[s + 3]) continue;
+      const o = ((y - Y0) * cv.width + (x - X0)) * 4;
+      out[o] = t.rgba[s];
+      out[o + 1] = t.rgba[s + 1];
+      out[o + 2] = t.rgba[s + 2];
+      out[o + 3] = 255;
+    }
+  }
+  cc.putImageData(img, 0, 0);
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(cv, X0 / dpr, Y0 / dpr, cv.width / dpr, cv.height / dpr);
+  ctx.restore();
 }
 
 /**
@@ -427,8 +693,8 @@ export function paintLinks(ctx: CanvasRenderingContext2D, p: LinkPaint): void {
     const b = p.sites.get(l.b);
     return a && b ? [[a.sx, a.sy], [b.sx, b.sy]] : [];
   };
-  // tracks first: every other connector lies over them
-  for (const l of p.links) if (l.kind === 'track') track(c, line(l), (l.a * 7 + l.b) | 0);
+  // tracks first: every other connector lies over them (they need the ground under them; without it, none)
+  if (p.ground) for (const l of p.links) if (l.kind === 'track' && l.path) blitTrack(ctx, trackArt(l.path, p.ground, (l.a * 7 + l.b) | 0), p, p.ground.P);
   for (const l of p.links) {
     if (l.kind !== 'quay') continue;
     const pts = line(l);
