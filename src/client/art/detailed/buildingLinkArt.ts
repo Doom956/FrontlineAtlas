@@ -10,6 +10,7 @@
 import { FORE } from './bake';
 import { gridOf } from './grid';
 import { cl, dark, hash, mix, type C } from './buildings';
+import { rampOf } from './palette';
 import type { Extent } from './buildings';
 import type { BuildingLink, LinkType } from './buildingLinks';
 import type { RGB } from '../shared/colour';
@@ -182,23 +183,97 @@ const EARTH: C = [134, 108, 72];
 const ASPHALT: C = [98, 94, 88];
 const ROOFS: C[] = [[156, 124, 104], [132, 132, 128], [160, 150, 128], [122, 104, 96], [138, 118, 88]];
 
-/** A continuous harbour wall along the shore: slab top, dark kerb on the sea side, paved apron behind, bollards. */
-function quay(c: Cells, pts: P[], seaSign: number): void {
-  stroke(c, pts, 7, false, (q) => {
-    if (q.water) return null;
-    const d = q.d * seaSign;
-    if (d > 3.4 || d < -7) return null;
-    if (d > 2.4) return mix(q.base, KERB, 0.72);
-    if (d >= -2.6) {
-      if (q.s % 10 < 1.1 && d > 0.9 && d < 1.9) return dark(KERB, 0.7);
-      let col: RGB = mix(q.base, CONCRETE, 0.8);
-      if (q.s % 8 < 0.6) col = shade(col, 0.84);
-      else if (d < -1.9) col = shade(col, 1.07);
+/** A pitched roof seen from above on cells: lit slope and dark slope split by a bright ridge, dark gable ends, a strip of wall below. */
+function roofBox(c: Cells, i0: number, j0: number, wc: number, hc: number, ramp: readonly C[], base: C, horizontal: boolean, wall?: readonly C[]): void {
+  const tone = (k: number): RGB => mix(ramp[k], base, 0.1);
+  const sh = mix(base, [10, 12, 14], 0.42);
+  for (let j = 0; j <= hc; j++) for (let i = 0; i <= wc; i++) if (i === wc || j === hc) c.put(i0 + i + 1, j0 + j + 1, sh);
+  for (let j = 0; j < hc; j++) {
+    for (let i = 0; i < wc; i++) {
+      const along = horizontal ? i : j;
+      const across = horizontal ? j : i;
+      const lenA = horizontal ? wc : hc;
+      const lenB = horizontal ? hc : wc;
+      const mid = (lenB - 1) / 2;
+      let col: RGB;
+      if (Math.abs(across - mid) < 0.5 || (lenB % 2 === 0 && Math.abs(across - mid) <= 0.5)) col = tone(3);
+      else if (across < mid) col = tone(2);
+      else col = tone(1);
+      if (along === 0 && lenA > 3) col = shade(col, 1.12);
+      else if (along === lenA - 1 && lenA > 3) col = shade(col, 0.72);
+      c.put(i0 + i, j0 + j, col);
+    }
+  }
+  if (wall && horizontal) for (let i = 1; i < wc; i++) c.put(i0 + i, j0 + hc, mix(wall[1], base, 0.12));
+}
+
+const ROOF_SETS: readonly (readonly C[])[] = [rampOf('rust'), rampOf('brick'), rampOf('ochre'), rampOf('fadedBlue')];
+const BOX_SETS: readonly C[] = [[168, 66, 52], [60, 98, 150], [196, 160, 70], [74, 120, 82], [150, 150, 146]];
+
+/** A stack of shipping containers (two rows of coloured boxes with a lit top edge), on cells. */
+function containers(c: Cells, cx: number, cy: number, seed: number): void {
+  const wc = Math.max(3, Math.round(4 * c.res));
+  const hc = Math.max(2, Math.round(2.2 * c.res));
+  for (let r = 0; r < 2; r++) {
+    for (let q = 0; q < 2; q++) {
+      const i0 = Math.round(cx) + q * (wc + 1) - wc;
+      const j0 = Math.round(cy) + r * (hc + 1) - hc;
+      const { base, water } = c.under(i0, j0);
+      if (water) continue;
+      const col = BOX_SETS[Math.floor(hash(seed, r * 2 + q, 7) * BOX_SETS.length)];
+      for (let j = 0; j < hc; j++) for (let i = 0; i < wc; i++) c.put(i0 + i, j0 + j, mix(base, j === 0 ? shade(col, 1.2) : j === hc - 1 || i === wc - 1 ? shade(col, 0.68) : col, 0.88));
+      for (let j = 0; j <= hc; j++) c.put(i0 + wc, j0 + j + 1, mix(base, [10, 12, 14], 0.4));
+    }
+  }
+}
+
+/**
+ * A harbour wall along the shore, running on past each port's own frontage: a stone slab with seams, a dark kerb on the sea
+ * side, bollards, a paved apron behind it, and between the ports a few sheds and container stacks on the apron.
+ * `gap` is the arc length (screen px) of the stretch between the two ports.
+ */
+function quay(c: Cells, pts: P[], seaSign: number, gap: [number, number], seed: number): void {
+  stroke(c, pts, 12, false, (q) => {
+    // the wall stands out over the shallows: the slab and kerb may cover water, the apron only land
+    const d = q.d * seaSign - 3;
+    if (q.water && d < -3.6) return null;
+    if (d > 3.9 || d < -9.4) return null;
+    if (d > 2.8) return mix(q.base, KERB, 0.78);
+    if (d >= -3.6) {
+      if (q.s % 10 < 1.2 && d > 1.1 && d < 2.2) return dark(KERB, 0.7);
+      let col: RGB = mix(q.base, CONCRETE, 0.82);
+      if (q.s % 8 < 0.6) col = shade(col, 0.82);
+      else if (d < -3.0) col = shade(col, 1.12);
+      else if (d > 2.0) col = shade(col, 0.9);
       return col;
     }
-    if (d >= -4.6) return (q.i + q.j) & 1 ? mix(q.base, [132, 128, 116], 0.55) : mix(q.base, [122, 118, 106], 0.42);
-    return hash(q.i, q.j, 17) < 0.5 ? mix(q.base, [124, 118, 104], 0.26) : null;
+    if (d >= -7.4) return (q.i + q.j) & 1 ? mix(q.base, [140, 136, 124], 0.7) : mix(q.base, [124, 120, 108], 0.55);
+    return hash(q.i, q.j, 17) < 0.55 ? mix(q.base, [124, 118, 104], 0.3) : null;
   });
+  const sc = c.p.scale;
+  const L = lengthOf(pts) / sc;
+  const s0 = gap[0] / sc + 8;
+  const s1 = gap[1] / sc - 8;
+  let n = 0;
+  for (let s = s0; s <= s1; s += 15) {
+    const p = at(pts, s * sc);
+    let nx = -p.ty;
+    let ny = p.tx;
+    if (seaSign > 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    const off = 7.5 * sc;
+    const cx = (p.x + nx * off) / c.k;
+    const cy = (p.y + ny * off) / c.k;
+    const u = c.under(Math.round(cx), Math.round(cy));
+    if (u.water || s > L) continue;
+    if (n++ % 2 === 0) {
+      const wc = Math.round(11 * c.res);
+      const hc = Math.round(6.4 * c.res);
+      roofBox(c, Math.round(cx - wc / 2), Math.round(cy - hc / 2), wc, hc, rampOf('sup'), u.base, true, rampOf('cream'));
+    } else containers(c, cx, cy, seed + n);
+  }
 }
 
 /** A trench with a berm either side (the berm lit on its upper left face) and a small concrete bunker now and then. */
@@ -223,7 +298,23 @@ function trench(c: Cells, pts: P[], seed: number): void {
   });
 }
 
-/** A two lane road with a dashed centre line, and a scatter of small houses either side that thins toward the middle. */
+/** A little tree seen from above: a dark round crown with a lit top left. */
+function tree(c: Cells, cx: number, cy: number): void {
+  const r = Math.max(1.5, 1.2 * c.res);
+  for (let j = -Math.ceil(r); j <= Math.ceil(r); j++) {
+    for (let i = -Math.ceil(r); i <= Math.ceil(r); i++) {
+      if (Math.hypot(i, j) > r) continue;
+      const x = Math.round(cx) + i;
+      const y = Math.round(cy) + j;
+      const { base, water } = c.under(x, y);
+      if (water) continue;
+      const lit = i + j < -r * 0.6 ? 1.25 : i + j > r * 0.7 ? 0.7 : 1;
+      c.put(x, y, shade(mix(base, [58, 92, 56], 0.85), lit));
+    }
+  }
+}
+
+/** A two lane road with a dashed centre line, with houses (pitched roofs, little gardens, trees) in a row either side. */
 function road(c: Cells, pts: P[], seed: number): void {
   const k = c.k;
   const sc = c.p.scale;
@@ -239,29 +330,39 @@ function road(c: Cells, pts: P[], seed: number): void {
     }
     return hash(q.i, q.j, 41) < 0.5 ? mix(q.base, [140, 120, 92], 0.34) : null;
   });
-  // houses: 3 by 2.4 model units, a roof with a lit edge top left, a dark one bottom right and a short shadow
-  const wc = Math.max(2, Math.round(4.2 * c.res));
-  const hc = Math.max(2, Math.round(3.4 * c.res));
-  for (let s = core + 3; s < L - core; s += 5.2) {
+  const wc = Math.max(4, Math.round(5 * c.res));
+  const hc = Math.max(3, Math.round(3.6 * c.res));
+  const step = 6.6;
+  for (let s = core + 4; s < L - core - 2; s += step) {
     const e = Math.min(s, L - s);
-    const dens = e < 24 ? 0.95 : e < 40 ? 0.6 : 0.25;
-    for (const row of e < 26 ? [0, 1] : [0]) for (const side of [-1, 1]) {
-      if (hash(Math.round(s * 3) + row * 7, side, seed) > dens * (row ? 0.7 : 1)) continue;
+    const dens = e < 24 ? 0.97 : e < 40 ? 0.6 : 0.22;
+    for (const side of [-1, 1]) {
       const p = at(pts, s * sc);
-      const off = (5.4 + row * 5.6 + hash(Math.round(s), side, seed + 5) * 1.2) * sc * side;
-      const cx = (p.x - p.ty * off) / k;
-      const cy = (p.y + p.tx * off) / k;
-      const i0 = Math.round(cx - wc / 2);
-      const j0 = Math.round(cy - hc / 2);
-      const { base, water } = c.under(Math.round(cx), Math.round(cy));
-      if (water) continue;
-      const roof = mix(base, ROOFS[Math.floor(hash(Math.round(s), side, seed + 9) * ROOFS.length)], 0.78);
-      for (let j = 0; j <= hc; j++) for (let i = 0; i <= wc; i++) if (i === wc || j === hc) c.put(i0 + i + 1, j0 + j + 1, mix(base, [10, 12, 14], 0.4));
-      for (let j = 0; j < hc; j++) {
-        for (let i = 0; i < wc; i++) {
-          const col = j === 0 || i === 0 ? shade(roof, 1.2) : j === hc - 1 || i === wc - 1 ? shade(roof, 0.7) : roof;
-          c.put(i0 + i, j0 + j, col);
+      const horizontal = Math.abs(p.tx) >= Math.abs(p.ty);
+      const put = (along: number, off: number): { cx: number; cy: number } => {
+        const q = at(pts, (s + along) * sc);
+        return { cx: (q.x - q.ty * off * sc * side) / k, cy: (q.y + q.tx * off * sc * side) / k };
+      };
+      const r = hash(Math.round(s * 3), side, seed);
+      if (r > dens) {
+        if (r < dens + 0.25) {
+          const t = put(0, 5.4);
+          tree(c, t.cx, t.cy);
         }
+        continue;
+      }
+      const h = put(0, 5.8 + hash(Math.round(s), side, seed + 5) * 0.8);
+      const i0 = Math.round(h.cx - wc / 2);
+      const j0 = Math.round(h.cy - hc / 2);
+      const u = c.under(Math.round(h.cx), Math.round(h.cy));
+      if (u.water) continue;
+      // garden: a green lot round the house
+      for (let j = -2; j <= hc + 2; j++) for (let i = -2; i <= wc + 2; i++) if (hash(i0 + i, j0 + j, 71) < 0.7) c.put(i0 + i, j0 + j, mix(c.under(i0 + i, j0 + j).base, [92, 120, 70], 0.34));
+      const ramp = ROOF_SETS[Math.floor(hash(Math.round(s), side, seed + 9) * ROOF_SETS.length)];
+      roofBox(c, i0, j0, wc, hc, ramp, u.base, horizontal, rampOf('cream'));
+      if (hash(Math.round(s), side, seed + 13) < 0.5) {
+        const t = put(step / 2, 5.4);
+        tree(c, t.cx, t.cy);
       }
     }
   }
@@ -298,9 +399,7 @@ function perimeter(c: Cells, box: ReturnType<typeof perimeterBox>): void {
       if (cx + cy < ch) continue;
       const u = c.under(i, j);
       if (u.water) continue;
-      const r = hash(i, j, 53);
-      if (r < 0.3) c.put(i, j, mix(u.base, [116, 92, 62], 0.42));
-      else if (r < 0.36) c.put(i, j, mix(u.base, [60, 52, 40], 0.18));
+      c.put(i, j, hash(i, j, 53) < 0.1 ? mix(u.base, [96, 80, 56], 0.3) : mix(u.base, [116, 96, 66], 0.24));
     }
   }
   stroke(c, [...box.poly, box.poly[0]], 2.2, true, (q) => {
@@ -335,7 +434,7 @@ export function paintLinks(ctx: CanvasRenderingContext2D, p: LinkPaint): void {
     if (l.kind === 'perimeter') boxes.push(perimeterBox(a, b, p.scale));
   }
   const line = (l: BuildingLink): P[] => {
-    if (l.path) return l.path.map((q) => p.toScreen(q[0], q[1]));
+    if (l.full ?? l.path) return (l.full ?? l.path ?? []).map((q) => p.toScreen(q[0], q[1]));
     const a = p.sites.get(l.a);
     const b = p.sites.get(l.b);
     return a && b ? [[a.sx, a.sy], [b.sx, b.sy]] : [];
@@ -352,7 +451,12 @@ export function paintLinks(ctx: CanvasRenderingContext2D, p: LinkPaint): void {
       const [tx, ty] = p.tileOf(mid[0] + (sg * nx * 28) / len, mid[1] + (sg * ny * 28) / len);
       return p.waterAt(Math.floor(tx), Math.floor(ty));
     };
-    quay(c, pts, probe(1) || !probe(-1) ? 1 : -1);
+    let gap: [number, number] = [0, lengthOf(pts)];
+    if (l.core && l.full) {
+      const sl = (i: number): number => lengthOf(pts.slice(0, i + 1));
+      gap = [sl(l.core[0]), sl(l.core[1])];
+    }
+    quay(c, pts, probe(1) || !probe(-1) ? 1 : -1, gap, l.a);
   }
   for (const l of p.links) if (l.kind === 'trench') trench(c, line(l), l.a);
   for (const l of p.links) if (l.kind === 'road') road(c, line(l), l.a);

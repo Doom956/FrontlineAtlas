@@ -66,6 +66,11 @@ describe('building links', () => {
     const path = l[0].path ?? [];
     expect(path[0]).toEqual([20.5, 10.5]);
     expect(path[path.length - 1]).toEqual([20.5, 20.5]);
+    const full = l[0].full ?? [];
+    const core = l[0].core ?? [0, 0];
+    expect(full.length).toBeGreaterThan(path.length);
+    expect(full[core[0]]).toEqual(path[0]);
+    expect(full[core[1]]).toEqual(path[path.length - 1]);
     expect(quayPath(p1, p2, coast).shore).toBeGreaterThan(0.9);
     // inland ports (no shore between) do not form a quay
     expect(pairLinks([b('port', 2, 10), b('port', 2, 20)], coast)).toEqual([]);

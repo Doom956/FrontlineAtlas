@@ -31,6 +31,9 @@ export interface BuildingLink {
   b: number;
   /** quay only: the polyline along the shore, in tile centres, from a to b */
   path?: [number, number][];
+  /** quay only: the path continued along the shore past each port (its own frontage), and the indices of the two ports in it */
+  full?: [number, number][];
+  core?: [number, number];
 }
 
 /** Longest connector, in tiles between the two anchors. */
@@ -39,6 +42,8 @@ export const LINK_MAX_DIST: Record<LinkKind, number> = { quay: 16, trench: 18, r
 export const LINK_MAX_DEGREE = 2;
 /** A quay needs this share of its path on the shore (land touching water). */
 export const QUAY_MIN_SHORE = 0.6;
+/** How far a quay runs on along the shore past each port, in tiles. */
+export const QUAY_FRONTAGE = 7;
 
 const dist = (a: LinkBuilding, b: LinkBuilding): number => Math.hypot(a.x - b.x, a.y - b.y);
 
@@ -66,27 +71,44 @@ const shoreTile = (x: number, y: number, t: LinkTerrain): boolean => !t.water(x,
  * The quay line between two ports: from each point of the straight line the nearest shore tile within 3 tiles, then
  * smoothed, ends pinned on the ports. `shore` is the share of points that found a shore tile.
  */
-export function quayPath(a: LinkBuilding, b: LinkBuilding, t: LinkTerrain): { path: [number, number][]; shore: number } {
+function snapShore(px: number, py: number, t: LinkTerrain, r: number): [number, number] | null {
+  let best: [number, number] | null = null;
+  let bd = 1e9;
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      const tx = Math.floor(px) + dx;
+      const ty = Math.floor(py) + dy;
+      if (!shoreTile(tx, ty, t)) continue;
+      const d = Math.hypot(tx + 0.5 - px, ty + 0.5 - py);
+      if (d < bd) {
+        bd = d;
+        best = [tx + 0.5, ty + 0.5];
+      }
+    }
+  }
+  return best;
+}
+
+/** The shore continued QUAY_FRONTAGE tiles from `end` in direction (dx, dy), stopping where there is no shore. */
+function frontage(end: [number, number], dx: number, dy: number, t: LinkTerrain): [number, number][] {
+  const out: [number, number][] = [];
+  const len = Math.hypot(dx, dy) || 1;
+  for (let i = 1; i <= QUAY_FRONTAGE; i++) {
+    const q = snapShore(end[0] + (dx / len) * i, end[1] + (dy / len) * i, t, 2);
+    if (!q) break;
+    out.push(q);
+  }
+  return out;
+}
+
+export function quayPath(a: LinkBuilding, b: LinkBuilding, t: LinkTerrain): { path: [number, number][]; shore: number; full: [number, number][]; core: [number, number] } {
   const n = Math.max(2, Math.ceil(dist(a, b)));
   const raw: [number, number][] = [];
   let hits = 0;
   for (let i = 0; i <= n; i++) {
     const px = a.x + 0.5 + ((b.x - a.x) * i) / n;
     const py = a.y + 0.5 + ((b.y - a.y) * i) / n;
-    let best: [number, number] | null = null;
-    let bd = 1e9;
-    for (let dy = -3; dy <= 3; dy++) {
-      for (let dx = -3; dx <= 3; dx++) {
-        const tx = Math.floor(px) + dx;
-        const ty = Math.floor(py) + dy;
-        if (!shoreTile(tx, ty, t)) continue;
-        const d = Math.hypot(tx + 0.5 - px, ty + 0.5 - py);
-        if (d < bd) {
-          bd = d;
-          best = [tx + 0.5, ty + 0.5];
-        }
-      }
-    }
+    const best = snapShore(px, py, t, 3);
     if (best) hits++;
     raw.push(best ?? [px, py]);
   }
@@ -104,7 +126,9 @@ export function quayPath(a: LinkBuilding, b: LinkBuilding, t: LinkTerrain): { pa
     }
     return [sx / c, sy / c];
   });
-  return { path, shore: hits / (n + 1) };
+  const ea = frontage(path[0], a.x - b.x, a.y - b.y, t).reverse();
+  const eb = frontage(path[path.length - 1], b.x - a.x, b.y - a.y, t);
+  return { path, shore: hits / (n + 1), full: [...ea, ...path, ...eb], core: [ea.length, ea.length + path.length - 1] };
 }
 
 /**
@@ -135,7 +159,7 @@ export function pairLinks(buildings: readonly LinkBuilding[], t: LinkTerrain): B
       if (kind === 'quay') {
         const q = quayPath(a, b, t);
         if (q.shore < QUAY_MIN_SHORE || !clear(q.path, a.owner, t)) continue;
-        out.push({ kind, a: a.id, b: b.id, path: q.path });
+        out.push({ kind, a: a.id, b: b.id, path: q.path, full: q.full, core: q.core });
       } else {
         if (!clear(samples(a, b), a.owner, t)) continue;
         out.push({ kind, a: a.id, b: b.id });
