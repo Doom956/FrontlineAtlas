@@ -124,7 +124,7 @@ function drawArrow(ctx: CanvasRenderingContext2D, cam: Camera, p: Push, ease: nu
   const nx = -dy;
   const ny = dx;
   const L = len * ease;
-  const half = Math.max(8, p.w * cam.zoom * 0.5);
+  const half = Math.max(14, p.w * cam.zoom * 0.5);
   const head = Math.min(L * 0.45, half * 2.2);
   const tipX = a.x + dx * L;
   const tipY = a.y + dy * L;

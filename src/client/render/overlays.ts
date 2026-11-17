@@ -942,13 +942,13 @@ export class Overlays {
           const sh = this.shelterCheck(state, hover);
           if (sh.mask.length) {
             ctx.save();
-            ctx.fillStyle = 'rgba(120,190,255,0.32)';
+            ctx.fillStyle = 'rgba(80,165,255,0.5)';
             for (const t of sh.mask) {
               const rr = this.tileRect(cam, t, 1);
               ctx.fillRect(rr.x, rr.y, rr.s, rr.s);
             }
             ctx.restore();
-            this.noteBelow(ctx, cam, hs.x, hs.y + ATOM_RADIUS * z + 14, sh.line, '#bfe0ff');
+            this.noteBelow(ctx, cam, hs.x, hs.y - ATOM_RADIUS * z - 30, `Hardened shelters: ${sh.mask.length} tiles (blue) take half damage`, '#bfe0ff');
           }
         } else {
           this.aimDisc(ctx, cam, hs.x, hs.y, ok, [{ radius: ROCKET_RADIUS }], `Rocket${many} · radius ${ROCKET_RADIUS} tiles`);
@@ -1058,7 +1058,7 @@ export class Overlays {
           ctx.lineWidth = pick?.b === x.b ? 3 : 2;
           ctx.strokeStyle = on ? RADAR_ON : 'rgba(170,176,186,0.85)';
           ctx.stroke();
-          haloText(ctx, on ? `Radar on ${Math.ceil(x.on)} s` : 'Radar off', c.x, c.y - Math.max(12, z * 1.8), on ? RADAR_ON : '#c8ccd4', 11, 1);
+          haloText(ctx, on ? `Radar on ${Math.ceil(x.on)} s` : 'Radar off', c.x, c.y + Math.max(22, z * 1.6 + 16), on ? RADAR_ON : '#c8ccd4', 11, 1);
         }
         if (pick) {
           const c = cam.tileToScreen((pick.b.tile % this.w) + 0.5, ((pick.b.tile / this.w) | 0) + 0.5);

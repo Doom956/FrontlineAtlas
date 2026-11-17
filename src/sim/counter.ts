@@ -192,7 +192,7 @@ export function launchCounteroffensive(state: GameState, pid: number): ActionRes
     }
   }
   if (ids.length) moveTankDivisions(state, pid, ids, focus.tile);
-  // the arrow: from the Fort through the border tile, a dozen tiles deep
+  // the arrow: from the Fort through the border tile, 36 tiles deep (seen from afar)
   const fx = (focus.fort % w) + 0.5;
   const fy = ((focus.fort / w) | 0) + 0.5;
   let dx = (focus.tile % w) + 0.5 - fx;
@@ -202,7 +202,7 @@ export function launchCounteroffensive(state: GameState, pid: number): ActionRes
     dx /= len;
     dy /= len;
   } else dx = 1;
-  state.effects.push({ kind: 'counterPush', x: fx, y: fy, x2: (focus.tile % w) + 0.5 + dx * 12, y2: ((focus.tile / w) | 0) + 0.5 + dy * 12, radius: 6, tick: state.tick });
+  state.effects.push({ kind: 'counterPush', x: fx, y: fy, x2: (focus.tile % w) + 0.5 + dx * 36, y2: ((focus.tile / w) | 0) + 0.5 + dy * 36, radius: 10, tick: state.tick });
   const q = state.players[foe];
   addEvent(state, 'attackStarted', `${p.name} launched a Counteroffensive from its forts against ${q.name}`, isTribe(q) ? [pid] : [pid, foe], focus.tile);
   return { ok: true };

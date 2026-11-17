@@ -182,7 +182,7 @@ export function cruiseBody(state: GameState, t: CruiseTarget): string {
     const who = nationName(state, s.owner);
     if (s.type === 'transport') return `Anti-ship: sinks the transport of ${who} with ${formatCount(s.troops.infantry + s.troops.armor + s.troops.artillery)} troops aboard. ${cruisePriceText(state, state.humanId)}.`;
     const hp = Math.max(0, s.hp - CRUISE.shipDamage);
-    return `Anti-ship: the missile homes on the warship of ${who}: -${CRUISE.shipDamage} hp (${fmtHp(s.hp)} left now, ${hp > 0 ? `${fmtHp(hp)} after` : 'sunk'}). ${cruisePriceText(state, state.humanId)}.`;
+    return `Anti-ship: the missile homes on the ${s.variant ?? "warship"} of ${who}: -${CRUISE.shipDamage} hp (${fmtHp(s.hp)} left now, ${hp > 0 ? `${fmtHp(hp)} after` : 'sunk'}). ${cruisePriceText(state, state.humanId)}.`;
   }
   if (t.blind) return `Radius ${t.radius} tiles. Out of sight: you will see what it hit when it lands`;
   const who = t.victim > 0 ? ` of ${nationName(state, t.victim)}` : '';

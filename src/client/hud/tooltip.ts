@@ -1,11 +1,13 @@
 // Map hover: a compact card next to the cursor (terrain and what it does, the resource and what to build on it,
 // owner and army, the building and what it does) and, in attack mode, an odds badge. In build mode the card is
 // replaced by the build preview: "Build here" (green), "Upgrade to level N" (blue) or the reason (red), with costs.
+import { shelterLine } from '../counterUi';
+import { stealthRadius } from '../../sim/units';
 import { buildSeconds, peaceReason, unitAllowed } from '../../sim/rules';
 import { buildingAt, fortMultiplierAt } from '../../sim/buildings';
 import { borders, estimateAttack, supplyEfficiency } from '../../sim/combat';
 import type { AttackEstimate } from '../../sim/combat';
-import { BUILDINGS, CRUISE, DEFENSE, TERRAIN, UNITS } from '../../sim/config';
+import { ATOM_RADIUS, BUILDINGS, CRUISE, DEFENSE, TERRAIN, UNITS } from '../../sim/config';
 import { armyTotal } from '../../sim/economy';
 import { isWater } from '../../sim/types';
 import type { GameState, Player, TerrainId, Unit } from '../../sim/types';
@@ -71,7 +73,7 @@ export class MapTooltip {
       else if (ui.mode.kind === 'build' && state.phase === 'playing') this.buildPreview(state, me, ui.mode.building, tile);
       else if (strikeOfMode(ui.mode) && state.phase === 'playing') this.strikePreview(state, me, tile);
       else if (ui.mode.kind === 'cruise' && state.phase === 'playing') this.cruisePreview(state, me, ui.mode.ships, tile);
-      else if (ui.mode.kind === 'stealth' && state.phase === 'playing') this.stealthPreview(state, me, ui.mode.airfield, tile);
+      else if (ui.mode.kind === 'stealth' && state.phase === 'playing') this.stealthPreview(state, me, ui.mode.airfield, tile, ui.mode.aims);
       else this.tileCard(state, me, tile);
     }
     if (!this.card.classList.contains('hidden')) this.place(this.card, this.mouse.x + 18, this.mouse.y + 20);
@@ -347,7 +349,7 @@ export class MapTooltip {
       if (t.covered && !t.blind) rows.push(el('div', 'mt-warn', t.covered));
       rows.push(el('div', 'mt-hint', 'Click to fire. Cancel at the top stops.'));
     } else {
-      rows.push(this.line(pic, t.reason || 'Not possible here', `Pick enemy land inside a blue ring (${CRUISE.reach} tiles from the ship)`, 'head'));
+      rows.push(this.line(pic, t.reason || 'Not possible here', `Pick enemy land or an enemy ship you can see inside a blue ring (${CRUISE.reach} tiles from the ship)`, 'head'));
       rows.push(el('div', 'mt-hint', 'Cancel at the top stops.'));
     }
     this.card.className = `mtip build ${t.ok ? 'ok' : 'no'}`;
@@ -356,19 +358,20 @@ export class MapTooltip {
   }
 
   /** Stealth strike mode: what a click bombs, or why not (stealth.ts). */
-  private stealthPreview(state: GameState, me: Player, airfield: number, tile: number): void {
+  private stealthPreview(state: GameState, me: Player, airfield: number, tile: number, aims?: number[]): void {
     const t = stealthTarget(state, me, airfield, tile);
+    if (aims) t.radius = stealthRadius(state, me.id, true); // multi-target: smaller blasts
     const pic = `<img src="${iconDataUrl('bomber', 22)}" width="22" height="22" alt="">`;
     const rows: HTMLElement[] = [];
     if (t.ok) {
-      rows.push(this.line(pic, 'Stealth strike here', stealthBody(state, t), 'head'));
+      rows.push(this.line(pic, aims ? `Target ${aims.length + 1} here` : 'Stealth strike here', stealthBody(state, t), 'head'));
       const sam = stealthSamLine(t);
       if (sam) rows.push(el('div', 'mt-hint', sam));
       const radar = stealthRadarLine(t);
       if (radar) rows.push(el('div', t.radarSeconds >= DEFENSE.radarLockSeconds ? 'mt-warn' : 'mt-hint', radar));
       const guard = stealthGuardLine(t);
       if (guard) rows.push(el('div', 'mt-warn', guard));
-      rows.push(el('div', 'mt-hint', 'Click to send it. Cancel at the top stops.'));
+      rows.push(el('div', 'mt-hint', aims ? 'Click to add it, then Launch at the top. A click on a picked target removes it.' : 'Click to send it, or Add target at the top for up to 3. Cancel stops.'));
     } else {
       rows.push(this.line(pic, t.reason || 'Not possible here', 'Pick an enemy target inside the blue ring around your airfield', 'head'));
       rows.push(el('div', 'mt-hint', 'Cancel at the top stops.'));
@@ -406,6 +409,11 @@ export class MapTooltip {
       const own = ownHitWarning(m, t);
       if (own) rows.push(el('div', 'mt-warn', own));
       if (t.covered && !hidden) rows.push(el('div', 'mt-warn', t.covered));
+      if (id === 'atomBomb' && !hidden) {
+        // Hardened shelters (Defense Mastery, sim/counter.ts): the blue land takes half damage
+        const sh = shelterLine(state, tile, ATOM_RADIUS).line;
+        if (sh) rows.push(el('div', 'mt-warn', `${sh} (shaded blue)`));
+      }
       const salvo = id === 'bomb' || id === 'rocket' || id === 'atomBomb' ? ' Salvo size: top bar.' : '';
       rows.push(el('div', 'mt-hint', `Click to fire.${salvo} Cancel at the top stops.`));
     } else {
