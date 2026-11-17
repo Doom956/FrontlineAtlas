@@ -1,18 +1,40 @@
 // The detailed building art on the map: game state to art (level look, add-ons), the zoom looks, the sprite cache key and
 // the cache itself (one bake per key, never per frame).
 import { describe, expect, it } from 'vitest';
-import { addonOf, ART_BAKES_PER_FRAME, ART_ZOOM, artScale, BuildingSprites, CLOSE_ZOOM, fitScale, hasArt, lookFor, quantTint, rotated, seaFacing, specOf, spriteKey, type AddonState } from '../src/client/render/buildingArt';
-import { modelExtent, type BuildingSpec } from '../src/client/art/detailed/buildings';
-import { BUILDING_MIN_SPACING_BY_SIZE } from '../src/sim/config';
+import { addonOf, allSpecs, ART_BAKES_PER_FRAME, ART_TYPES, ART_ZOOM, artScale, BuildingSprites, CLOSE_ZOOM, fitScale, hasArt, lookFor, quantTint, drawnExtent, seaFacing, specOf, spriteKey, type AddonState } from '../src/client/render/buildingArt';
+import { type BuildingSpec } from '../src/client/art/detailed/buildings';
+import { BUILDING_MIN_SPACING_BY_SIZE, BUILDINGS } from '../src/sim/config';
+import type { BuildingType } from '../src/sim/types';
 import { spriteScale } from '../src/client/render/units';
 
 const NONE: AddonState = { flak: false, radar: false, guns: false };
 
 describe('building art mapping', () => {
-  it('has art for fort, city, SAM site and port only', () => {
-    for (const t of ['fort', 'city', 'sam', 'port'] as const) expect(hasArt(t)).toBe(true);
-    for (const t of ['farm', 'mine', 'market', 'barracks', 'factory', 'arsenal', 'watchtower', 'airfield', 'silo', 'lab', 'hospital', 'oilWell'] as const) expect(hasArt(t)).toBe(false);
-    expect(specOf('farm', 1, NONE)).toBeNull();
+  it('has art for every building type in the game', () => {
+    for (const t of Object.keys(BUILDINGS) as BuildingType[]) {
+      expect(hasArt(t), t).toBe(true);
+      expect(specOf(t, 1, NONE), t).not.toBeNull();
+    }
+    expect(ART_TYPES.length).toBe(Object.keys(BUILDINGS).length);
+    expect(ART_TYPES.length).toBe(16);
+  });
+
+  it('maps every type and level to its own spec, capped at the building max level (and at 5)', () => {
+    for (const t of ART_TYPES) {
+      const max = BUILDINGS[t].maxLevel;
+      const top = Math.min(max, 5);
+      for (let lv = 1; lv <= max; lv++) expect(specOf(t, lv, NONE), `${t} ${lv}`).toEqual({ type: t, level: Math.min(lv, top), addon: null });
+      expect(specOf(t, max + 3, NONE)?.level, t).toBe(top);
+      expect(specOf(t, 0, NONE)?.level, t).toBe(1);
+    }
+    expect(specOf('farm', 5, NONE)?.level).toBe(5);
+    expect(specOf('hospital', 2, NONE)?.level).toBe(2);
+    expect(specOf('silo', 3, NONE)?.level).toBe(3);
+  });
+
+  it('gives the new types no add-on whatever the owner has', () => {
+    const ALL: AddonState = { flak: true, radar: true, guns: true };
+    for (const t of ART_TYPES) if (!['fort', 'city', 'sam', 'port'].includes(t)) expect(addonOf(t, ALL), t).toBeNull();
   });
 
   it('maps the building level to the level look, capped at what the models tell apart', () => {
@@ -63,6 +85,13 @@ describe('building art sprite cache', () => {
     expect(spriteKey({ ...fort, type: 'city' }, [1, 2, 3], 'far', 1.5, 1, [0, 0, 0])).not.toBe(spriteKey(fort, [1, 2, 3], 'far', 1.5, 1, [0, 0, 0]));
   });
 
+  it('keys differ per type and level for the new types too', () => {
+    const keys = new Set<string>();
+    for (const sp of allSpecs()) keys.add(spriteKey(sp, [1, 2, 3], 'far', 1.5, 1, [0, 0, 0]));
+    expect(keys.size).toBe(allSpecs().length);
+    expect(spriteKey(specOf('farm', 1, NONE)!, [1, 2, 3], 'close', 2, 2, [8, 16, 24])).not.toBe(spriteKey(specOf('mine', 1, NONE)!, [1, 2, 3], 'close', 2, 2, [8, 16, 24]));
+  });
+
   it('snaps near ground colours to one key', () => {
     expect(quantTint([97, 121, 73])).toEqual(quantTint([95, 119, 71]));
   });
@@ -96,13 +125,12 @@ describe('port facing', () => {
 });
 
 describe('building art never overlaps at minimum spacing', () => {
-  const kinds: [BuildingSpec['type'], number, ('flak' | 'traps' | 'radar' | 'guns' | null)[]][] = [['fort', 5, [null, 'flak', 'traps', 'guns']], ['city', 5, [null, 'flak']], ['sam', 3, [null, 'radar']], ['port', 5, [null, 'guns']]];
-  const specs: BuildingSpec[] = [];
-  for (const [type, top, addons] of kinds) for (let level = 1; level <= top; level++) for (const addon of addons) specs.push({ type, level, addon });
+  // all 16 types, every level and add-on
+  const specs: BuildingSpec[] = allSpecs();
   const boxOf = (s: BuildingSpec, look: 'close' | 'far', facing: number, zoom: number, spacing: number) => {
     const fit = fitScale(s, look, facing, zoom, spacing);
     if (!fit) return null;
-    const e = rotated(modelExtent(s, look), facing);
+    const e = drawnExtent(s, look, facing);
     return { l: e.l * fit.scale, r: e.r * fit.scale, u: e.u * fit.scale, d: e.d * fit.scale, fit };
   };
 
