@@ -63,6 +63,10 @@ export const MATERIALS = {
   brass: ['#544627', '#7a663c', '#a0895a', '#c3af86'],
   white: ['#878682', '#b0aea8', '#d3d1cb', '#edebe7'],
   black: ['#050608', '#0b0e11', '#16191c', '#24272a'],
+  /** matte black paint (a cruise missile): lifted a little so it still shows over dark sea */
+  matte: ['#101216', '#1f2227', '#32363c', '#4b5058'],
+  /** missile red paint (a ballistic missile's nose and fins) */
+  redpaint: ['#4a1210', '#7a1f1a', '#a8302a', '#cf4d42'],
   lifeboat: ['#66442c', '#905f3d', '#b37a53', '#cc9874'],
   hazard: ['#645323', '#8f7835', '#b79c51', '#d4bc79'],
   skin: ['#584332', '#7f624c', '#a0826b', '#bea28c'],

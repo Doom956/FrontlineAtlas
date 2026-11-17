@@ -12,7 +12,7 @@
 //   shell         a bright tracer dot (a white-hot head with a faint glow) and a short trail cooling to orange and red,
 //                 lobbed in an arc (shellArc) with its shadow running straight along the ground below it, so the height
 //                 reads; it shows once it has cleared the firing ship's hull (its flight starts at the ship's middle)
-//   tracer        anti-air fire: bright streaks racing up to the plane, each with a fading tail
+//   tracer        anti-air missiles: thin white darts with small fins racing to the plane, a faint smoke line behind
 //   torpedo       a dark torpedo running just under the surface, its thin bubbly wake drawn out behind it
 import type { MotionParams } from '../motion';
 import { rnd } from '../shared/noise';
@@ -21,6 +21,9 @@ import { drawBlob, type BlobKind } from './blobs';
 import { WIND_X, WIND_Y } from './burning';
 import { gridOf, type Grid } from './grid';
 import { DEBRIS, FIRE, SPRAY, TRACER } from './palette';
+
+/** An anti-air missile's dart: dark under-edge, nose tip, fins and the white body. */
+const DART: readonly string[] = ['#1b2024', '#9aa1a6', '#c9cdd0', '#f4f3ee'];
 
 /** The fire of the flash (ms at flashTime 1); the gun smoke takes the rest of flashMs. */
 export const FLASH_FIRE_MS = 150;
@@ -214,21 +217,54 @@ function drawShell(ctx: CanvasRenderingContext2D, sh: ShellDraw, m: MotionParams
     return;
   }
   if (sh.kind === 'tracer') {
-    // bright streaks racing to the plane, each with a fading tail
+    // an anti-air missile: a thin white dart with small fins racing to the plane, a faint smoke line behind it and a
+    // spark of motor at its tail (the head is 1 cell wide, 7 long; fins 3 wide)
     const cell = g.k;
+    // thin at close zoom, two art px wide further out so it still reads
+    const T = sh.scale >= 2.5 ? 1 : 2;
     const ux = dx / dist;
     const uy = dy / dist;
-    for (let i = 0; i < 4; i++) {
-      const q = t - i * 0.1;
-      if (q < 0 || q > 1) continue;
-      const hx = x0 + dx * q;
-      const hy = y0 + dy * q;
-      for (let j = 0; j < 4; j++) {
-        ctx.globalAlpha = prev * (1 - j * 0.24);
-        ctx.fillStyle = TRACER[Math.min(2, j)];
-        speck(ctx, hx - ux * j * cell, hy - uy * j * cell, g);
-      }
+    const hx = x0 + dx * t;
+    const hy = y0 + dy * t;
+    // the smoke line: a few faint grey cells back along the path
+    const n = Math.max(7, Math.round((8.5 * sh.scale) / cell));
+    const back = Math.min(t * dist, 14 * sh.scale);
+    const nSm = Math.floor(back / (cell * 2));
+    for (let i = nSm; i > n / 2; i--) {
+      ctx.globalAlpha = prev * 0.32 * (1 - i / (nSm + 1));
+      ctx.fillStyle = SPRAY[2];
+      speck(ctx, hx - ux * i * cell * 2, hy - uy * i * cell * 2, g);
     }
+    const at = (j: number, side: number): [number, number] => [hx - ux * j * cell - uy * side * cell * T, hy - uy * j * cell + ux * side * cell * T];
+    // a dark under-edge so the white dart reads on pale ground too
+    ctx.globalAlpha = prev * 0.55;
+    ctx.fillStyle = DART[0];
+    for (let j = 0; j < n; j++) {
+      const [px, py] = at(j, 0);
+      speck(ctx, px + cell, py + cell, g, T);
+    }
+    ctx.globalAlpha = prev;
+    for (let j = 0; j < n; j++) {
+      ctx.fillStyle = j < 2 ? DART[1] : DART[3];
+      const [px, py] = at(j, 0);
+      speck(ctx, px, py, g, T);
+    }
+    // the small fins at the tail (two cells long, one out to each side, a second pair further out when big), the spark
+    ctx.fillStyle = DART[2];
+    const fins = sh.scale >= 2.5 ? 2 : 1;
+    for (const side of [-1, 1])
+      for (let f = 1; f <= fins; f++)
+        for (let j = n - 3; j < n; j++) {
+          if (f === 2 && j < n - 2) continue;
+          const [px, py] = at(j, side * f);
+          speck(ctx, px, py, g, T);
+        }
+    ctx.fillStyle = TRACER[1];
+    const [sx, sy] = at(n + 1, 0);
+    speck(ctx, sx, sy, g, T);
+    ctx.fillStyle = TRACER[2];
+    const [ex, ey] = at(n + 2, 0);
+    speck(ctx, ex, ey, g, T);
     ctx.globalAlpha = prev;
     return;
   }

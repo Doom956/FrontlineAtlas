@@ -14,7 +14,9 @@ import { css, type RGB } from '../render/common';
 import { troopKinds, troopPill } from '../render/troopIcons';
 import { spriteScale } from '../render/units';
 import { backdrop, type Ground } from './backdrop';
-import { cruisePhase } from '../art/detailed/cruise';
+import { cruiseModel, cruisePhase } from '../art/detailed/cruise';
+import { antiRadarModel, drawLabModel, legacyAtomBombModel, legacyCruiseModel, legacyRocketModel } from '../art/detailed/missiles';
+import { unitModel } from '../art/detailed/models';
 
 export type RowId = 'ships' | 'land' | 'air' | 'missiles' | 'troopIcons' | 'explosions' | 'deaths' | 'craters' | 'cannonFire' | 'tankFire' | 'paradrop';
 
@@ -323,6 +325,9 @@ function airScene(env: SceneEnv): void {
 const rocketBand = (z: number): number => 100 + 60 * px(z);
 const cruiseLane = (z: number): number => 56 + 30 * px(z);
 const cruiseFrames = (z: number): number => 44 + 26 * px(z);
+/** The old and new looks comparison (two rows of four cells) under the rest of the missiles row. */
+const compareCell = (z: number): number => 40 + 22 * px(z);
+const compareBand = (z: number): number => 2 * compareCell(z);
 /** The launch frames the strip freezes: ms after launch of a 2.5 s flight (art/detailed/cruise.ts cruisePhase). */
 const CRUISE_FRAMES: readonly { name: string; e: number }[] = [
   { name: 'Pop-up', e: 220 },
@@ -431,6 +436,40 @@ function missilesScene(env: SceneEnv): void {
   trailLayer(env, 'contrails').frame(ctx, units, trailView(env));
   for (const p of poses) drawUnit(env, p.key, 0, p.x, p.y, p.angle, 0, p.speed, p.seed);
   cruiseScene(env, rocketBand(env.zoom));
+  compareScene(env, rocketBand(env.zoom) + cruiseLane(env.zoom) + cruiseFrames(env.zoom));
+}
+
+/** Old and new missile looks side by side (stills at the row's zoom), plus the anti-radar missile and the anti-air dart. */
+function compareScene(env: SceneEnv, y0: number): void {
+  const { ctx } = env;
+  const H = compareCell(env.zoom);
+  const cw = env.w / 4;
+  const S = spriteScale(env.zoom);
+  const cells: { name: string; draw: (cx: number, cy: number) => void }[] = [
+    { name: 'Cruise missile, old', draw: (cx, cy) => drawLabModel(ctx, legacyCruiseModel(), 'oc', cx, cy, 0, S, env.dpr, OWNER) },
+    { name: 'Cruise missile, new', draw: (cx, cy) => drawLabModel(ctx, cruiseModel(0, 1, false), 'nc', cx, cy, 0, S, env.dpr, OWNER) },
+    { name: 'Rocket, old', draw: (cx, cy) => drawLabModel(ctx, legacyRocketModel(), 'or', cx, cy, 0, S, env.dpr, OWNER) },
+    { name: 'Rocket, new', draw: (cx, cy) => drawLabModel(ctx, unitModel('rocket', 0).model, 'nr', cx, cy, 0, S, env.dpr, OWNER) },
+    { name: 'Atom bomb, old', draw: (cx, cy) => drawLabModel(ctx, legacyAtomBombModel(), 'oa', cx, cy, 0, S, env.dpr, OWNER) },
+    { name: 'Atom bomb, new', draw: (cx, cy) => drawLabModel(ctx, unitModel('atomBomb', 0).model, 'na', cx, cy, 0, S, env.dpr, OWNER) },
+    { name: 'Anti-radar missile (new)', draw: (cx, cy) => drawLabModel(ctx, antiRadarModel(), 'ar', cx, cy, 0, S, env.dpr, OWNER) },
+    {
+      name: 'Anti-air missile (new)',
+      draw: (cx, cy) => {
+        const L = Math.min(cw * 0.7, 120);
+        const t = (env.time % 1400) / 1400;
+        const sh = { kind: 'tracer' as const, x0: cx - L / 2, y0: cy, x1: cx + L / 2, y1: cy, t: 0.25 + 0.7 * t, zoom: env.zoom, scale: S, seed: 5, dpr: env.dpr };
+        env.style.cannonFire.drawShell(ctx, sh, env.motion);
+      },
+    },
+  ];
+  cells.forEach((cell, i) => {
+    const x = Math.round(cw * (i % 4));
+    const y = y0 + H * Math.floor(i / 4);
+    ground(env, Math.floor(i / 2) % 2 === 0 ? 'land' : 'sea', x, y, Math.round(cw) + 1, H);
+    cell.draw(x + cw / 2, y + H * 0.58);
+    label(ctx, cell.name, x + 4, y + 10, 'left', true);
+  });
 }
 
 // ------------------------------------------------------------------------------------------------- troop icons
@@ -1222,7 +1261,7 @@ export function rowSpecs(): RowSpec[] {
       pick: 'missiles',
       also: ['contrails'],
       motion: 'missiles',
-      height: (z) => rocketBand(z) + cruiseLane(z) + cruiseFrames(z),
+      height: (z) => rocketBand(z) + cruiseLane(z) + cruiseFrames(z) + compareBand(z),
       draw: missilesScene,
     },
     {

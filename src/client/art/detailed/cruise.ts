@@ -94,9 +94,9 @@ export function cruisePhase(e: number, left: number): CruisePhase {
 // ------------------------------------------------------------------------------------------------- models
 
 /** Body length (nose to the tail, without the booster), the booster's length and the body radius (model units). */
-const BODY = 7.6;
-const BOOST = 2.6;
-const RAD = 0.62;
+const BODY = 14;
+const BOOST = 3.2;
+const RAD = 0.7;
 
 /**
  * The missile at a pitch (degrees) with its wings `w` out (0 folded .. 1 out) and the booster on or off. Level, it is
@@ -113,23 +113,23 @@ export function cruiseModel(pitch: number, w: number, booster: boolean): Model {
     const sc = [0, 0, BODY / 2 + 0.5, RAD] as const;
     if (w > 0) {
       // the wings swing out from under the body, swept back while unfolding
-      const span = 0.8 + 1.7 * w;
-      const sweep = 1.6 * (1 - w) + 0.35;
-      parts.push(poly(sym([0.8, -RAD, 0.8 - sweep, -span, -0.2 - sweep, -span, -0.6, -RAD]), z + 0.2, 0.25, 'sup', { tone: -1 }));
+      const span = 0.9 + 2.1 * w;
+      const sweep = 0.9 * (1 - w) + 0.15;
+      parts.push(poly(sym([1.3, -RAD, 1.3 - sweep, -span, -0.2 - sweep, -span, -0.9, -RAD]), z + 0.2, 0.25, 'matte', { tone: 0 }));
       // tail fins (a cross: the side pair flat, the top one standing)
-      const fs = 0.4 + 0.9 * w;
-      parts.push(poly(sym([tail + 1.3, -RAD, tail + 0.2, -RAD - fs, tail - 0.1, -RAD - fs, tail + 0.1, -RAD]), z + 0.1, 0.2, 'sup', { tone: -1 }));
-      parts.push(box(tail - 0.1, -0.18, tail + 1.2, 0.18, z + h, 0.6 + 0.9 * w, 'sup', { tone: -1 }));
+      const fs = 0.5 + 1.1 * w;
+      parts.push(poly(sym([tail + 1.3, -RAD, tail + 0.2, -RAD - fs, tail - 0.1, -RAD - fs, tail + 0.1, -RAD]), z + 0.1, 0.2, 'matte', { tone: 0 }));
+      parts.push(box(tail - 0.1, -0.18, tail + 1.2, 0.18, z + h, 0.6 + 0.9 * w, 'matte', { tone: 0 }));
     }
     if (booster) {
-      parts.push(box(tail - BOOST, -RAD - 0.08, tail, RAD + 0.08, z - 0.05, h + 0.1, 'fieldgrey', { sh: 'cyl', sc: [tail - BOOST / 2, 0, BOOST / 2, RAD + 0.08] }));
+      parts.push(box(tail - BOOST, -RAD - 0.08, tail, RAD + 0.08, z - 0.05, h + 0.1, 'gun', { sh: 'cyl', sc: [tail - BOOST / 2, 0, BOOST / 2, RAD + 0.08] }));
       parts.push(box(tail - BOOST - 0.4, -0.5, tail - BOOST, 0.5, z, h * 0.8, 'gun'));
     } else {
       parts.push(box(tail - 0.45, -0.42, tail, 0.42, z + 0.15, h * 0.7, 'gun'));
     }
-    parts.push(box(tail, -RAD, nose - 1.6, RAD, z, h, 'sup', { sh: 'cyl', sc }));
+    parts.push(box(tail, -RAD, nose - 1.6, RAD, z, h, 'matte', { sh: 'cyl', sc }));
     parts.push(box(-0.9, -RAD - 0.02, -0.3, RAD + 0.02, z, h + 0.02, 'own', { sh: 'cyl', sc }));
-    parts.push(poly([nose + 0.3, 0, nose - 0.6, -RAD * 0.75, nose - 1.6, -RAD, nose - 1.6, RAD, nose - 0.6, RAD * 0.75], z, h, 'sup', { sh: 'cyl', sc: [nose - 0.8, 0, 1.1, RAD] }));
+    parts.push(poly([nose + 0.3, 0, nose - 0.6, -RAD * 0.75, nose - 1.6, -RAD, nose - 1.6, RAD, nose - 0.6, RAD * 0.75], z, h, 'matte', { sh: 'cyl', sc: [nose - 0.8, 0, 1.1, RAD] }));
     parts.push(ell(nose - 0.2, 0, 0.4, 0.3, z + 0.1, h * 0.8, 'gun'));
     return { parts, ground: 0 };
   }
@@ -145,14 +145,14 @@ export function cruiseModel(pitch: number, w: number, booster: boolean): Model {
     const z = s * sn + lift;
     parts.push(ell(u, 0, Math.max(0.35, r * Math.max(0.55, Math.abs(sn))), r, z - r * c * 0.5, Math.max(0.5, r * 2 * c + step * Math.abs(sn)), m, { sh: 'cyl', tone }));
   };
-  if (booster) for (let s = s0; s < tail; s += step) slice(s, RAD + 0.08, 'fieldgrey');
-  for (let s = tail; s < nose - 1.4; s += step) slice(s, RAD, s > -0.9 && s < -0.3 ? 'own' : 'sup');
-  for (let s = nose - 1.4; s <= nose + 0.01; s += step) slice(s, RAD * (1 - ((s - (nose - 1.4)) / 1.6) * 0.75), s > nose - 0.4 ? 'gun' : 'sup');
+  if (booster) for (let s = s0; s < tail; s += step) slice(s, RAD + 0.08, 'gun');
+  for (let s = tail; s < nose - 1.4; s += step) slice(s, RAD, s > -0.9 && s < -0.3 ? 'own' : 'matte');
+  for (let s = nose - 1.4; s <= nose + 0.01; s += step) slice(s, RAD * (1 - ((s - (nose - 1.4)) / 1.6) * 0.75), s > nose - 0.4 ? 'gun' : 'matte');
   if (w > 0) {
     // a diving missile keeps its wings out: flat at mid body, shortened along the pitch
     const z = lift + 0.3;
-    const span = 0.8 + 1.7 * w;
-    parts.push(poly(sym([0.8 * c, -RAD, 0.45 * c, -span, -0.25 * c, -span, -0.6 * c, -RAD]), z, 0.25, 'sup', { tone: -1 }));
+    const span = 0.9 + 2.1 * w;
+    parts.push(poly(sym([0.8 * c, -RAD, 0.8 * c, -span, -0.2 * c, -span, -0.5 * c, -RAD]), z, 0.25, 'matte', { tone: 0 }));
   }
   return { parts, ground: 0 };
 }
@@ -168,7 +168,7 @@ function stageModel(i: number): Model {
 }
 
 /** The spent booster tumbling down: a short dark can. */
-const BOOSTER_MODEL: Model = { parts: [box(-BOOST / 2, -RAD - 0.08, BOOST / 2, RAD + 0.08, 0.3, RAD * 2, 'fieldgrey', { sh: 'cyl', sc: [0, 0, BOOST / 2, RAD + 0.08] })], ground: 0 };
+const BOOSTER_MODEL: Model = { parts: [box(-BOOST / 2, -RAD - 0.08, BOOST / 2, RAD + 0.08, 0.3, RAD * 2, 'gun', { sh: 'cyl', sc: [0, 0, BOOST / 2, RAD + 0.08] })], ground: 0 };
 
 // ------------------------------------------------------------------------------------------------- baking
 
@@ -263,7 +263,7 @@ export function drawCruise(ctx: CanvasRenderingContext2D, c: CruiseDraw, m: Moti
     for (let i = 3; i >= 1; i--) {
       const d = tail + i * 1.6 * S;
       const age = ((c.timeMs / 120 + i + c.seed) % 3) / 3;
-      drawBlob(ctx, 'vapour', (0.5 + i * 0.28) * g.res * S * 0.45, i & 3, bx - cos * d, by - sin * d + i * 0.15 * S, g, 0.5 - i * 0.12 - age * 0.08);
+      drawBlob(ctx, 'vapour', (0.32 + i * 0.16) * g.res * S * 0.45, i & 3, bx - cos * d, by - sin * d + i * 0.15 * S, g, 0.36 - i * 0.09 - age * 0.06);
     }
   }
   blit(ctx, body, bx, by, g.k, g.dpr);
