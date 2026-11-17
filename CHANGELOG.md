@@ -2,6 +2,20 @@
 
 The big rounds of work, newest first. Each one was merged to `main` and deployed to the live game.
 
+## 2026-11-17 · Diplomacy: peace deals and pacts (simulation and AI)
+
+- Peace deals: two nations that fought in the last minute can make peace. Each side can pay something at signing:
+  10% or 30% of its gold, or a strip of border land (up to 5% or 15% of its land, never the capital; buildings on it
+  change hands). Attacks between them end at once and nothing hostile passes between them for 3 minutes. A peace
+  deal can't be broken.
+- Non-aggression pacts: nations that are not fighting can sign a 3 or 6 minute pact, renewable in its last minute.
+  Breaking one gives the other side 15 s of warning, costs a lot of goodwill with every nation and marks you a pact
+  breaker for 2 minutes.
+- An offer waits 30 s for an answer; after a refusal you wait a minute before asking that nation again. No treaties
+  in team games, in games without diplomacy, with only 2 nations left or with the overtime leader.
+- AI nations offer peace when they are losing (paying gold first, then land), take peace when it pays them, and
+  offer pacts to strong neighbours. The panel to use all this in game comes next.
+
 ## 2026-11-16 · Defense
 
 A fourth Arsenal row, Defense, for the nation that holds and hits back. It needs Fortification, and every item needs a

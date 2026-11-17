@@ -1119,6 +1119,33 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   - Events `allyJoined` ("Valoria joins your war against Tarsis"), `allyAid` ("Valoria sent you 120k troops"),
     `allyRefused` ("Valoria refused: <reason>"). `allyStatus(state, pid, ally)` = {opinion, atWarWith, willHelp,
     reason, askReadyIn} for the UI. Trade between allies pays x(1 + `ALLY_TRADE_BONUS`) (0.25) to both.
+- **Peace deals and non-aggression pacts** (treaty.ts, AI side in ai.ts; numbers `TREATY_*`, `PEACE_*`, `PACT_*`,
+  `AI_PEACE_*` / `AI_PACT_*` in config.ts). Not with tribes, allies or teammates, not in team games (the teams are
+  fixed sides) or games without diplomacy, not when only 2 nations are left, and nobody makes one with the overtime
+  leader. An offer waits `TREATY_OFFER_TIMEOUT` (30) s; a refusal stops the offerer offering that nation again for
+  `TREATY_REFUSAL_COOLDOWN` (60) s.
+  - Peace deal (`offerPeace {to, theyGive, youGive}`): only between nations with a land attack either way in the
+    last `TREATY_FIGHT_WINDOW` (60) s (`state.fights`). Each side pays one term at signing, worked out then: none,
+    10% or 30% of its gold, or land: its tiles within 2 (5) tiles of the shared border, nearest first, at most 5%
+    (15%) of its land, never its capital; buildings there change hands as in a capture. On signing every attack
+    between them ends (troops home), landings on the way turn back on arrival, missiles already flying still fall.
+    Then `PEACE_DURATION` (180) s with nothing hostile either way; it can't be broken.
+  - Pact (`offerPact {to, seconds}`, 180 or 360 s): only between nations not fighting; renewable in its last 60 s
+    (a peace deal may be followed by one the same way). Nothing hostile either way while it runs; trade, gifts and
+    embargoes are untouched. `breakPact {with}`: the pact still holds `PACT_BREAK_DELAY` (15) s (the victim is
+    warned), then ends; the victim's opinion of the breaker drops 30, everyone else's 15, and the breaker is marked
+    a pact breaker for 120 s (AIs refuse it every treaty and alliance). No defence penalty.
+  - One choke point: `rules.atPeace` / `peaceReason` also cover treaties ("Peace with Valoria: 1 min 40 s left",
+    "Pact with Valoria: 3 min 12 s left"), and every attack, strike, shelling, landing and weapon asks them.
+  - UI reads: `canOfferPeace` / `canOfferPact` ({ok} or a plain reason), `previewTerms` (gold, tiles, buildings),
+    `activeTreaties`, `treatyOffersOf`. Events `treatyOffer`, `treatyAccepted`, `treatyRefused`,
+    `treatyOfferExpired`, `treatyEnded`, `pactBreakWarning`, `pactBroken`.
+  - AI: losing a fight (army below 0.7x the foe's, or 10% of its land lost in the last minute) it offers peace,
+    paying 10% gold first and border land on a later try; fighting on two or more fronts it offers plain peace to
+    the weaker one. Winning, it accepts peace only when paid (or plain peace on two or more fronts). It offers a
+    360 s pact to a stronger neighbour it is not targeting, renews pacts it still likes, and refuses a pact from its
+    next target. At most one offer per nation every 180 s, and no new peace offer for 10 minutes after a peace
+    deal with that nation. Warlords may break a pact with a much weaker next target (the same 25% roll as betrayal).
 - **Coalitions against a runaway leader**: `runawayLeader(state)` = the nation with the most land once it holds
   `COALITION_LAND_SHARE` (20%) and `COALITION_LEAD` (1.4) x the next nation's land (a human too). Nations that border
   it (everyone once it holds `COALITION_ALL_SHARE` 30%) are in the coalition (`inCoalition`): AIs refuse the
