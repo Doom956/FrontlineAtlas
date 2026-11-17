@@ -15,7 +15,7 @@ import { buildingSpacing, samRadius } from '../../sim/buildings';
 import { isWater, type Building, type GameState } from '../../sim/types';
 import { COAST, CU, levelPill, OU, OV } from '../art/detailed/buildings';
 import type { TerrainData } from './terrain';
-import { artScale, bakeArt, balanceShift, BuildingSprites, fitScale, hasArt, lookFor, quantTint, seaFacing, specOf, spriteKey, type AddonState, type ArtLook, type Facing } from './buildingArt';
+import { ART_ZOOM, artScale, bakeArt, balanceShift, BuildingSprites, fitScale, hasArt, lookFor, quantTint, seaFacing, specOf, spriteKey, type AddonState, type ArtLook, type Facing } from './buildingArt';
 import type { Camera } from '../camera';
 import { CATEGORY_COLORS, drawMarker, ICON_INFO, markerReady, type BuildingIconId } from '../icons';
 import type { FogView } from '../fog/fogView';
@@ -52,6 +52,23 @@ export function landPlate(hex: string, land: readonly number[]): string {
 /** Marker size (CSS px) for a zoom level. */
 export function markerSize(zoom: number): number {
   return clamp(6 + zoom * 2.3, 16, 40);
+}
+
+/** Milliseconds the flat icon over a hovered or selected building takes to fade in. */
+export const POP_FADE_MS = 140;
+
+/**
+ * Which of the focused buildings (hovered, selected or tapped tiles) show their flat icon floating above the art: none below
+ * ART_ZOOM (there every building is already a flat marker), all of them from ART_ZOOM on.
+ */
+export function popIconTiles(focus: readonly number[], zoom: number): number[] {
+  return zoom >= ART_ZOOM ? focus.filter((t, i) => focus.indexOf(t) === i) : [];
+}
+
+/** Fade-in progress (0..1) of a popped icon that started at `since` (ms), eased. */
+export function popFade(since: number, now: number): number {
+  const t = clamp((now - since) / POP_FADE_MS, 0, 1);
+  return t * (2 - t);
 }
 
 /** Remembered (last seen, out of view) markers: drawn greyed. */
@@ -156,6 +173,7 @@ export class BuildingLayer {
     }
     this.drawn = 0;
     this.budget = SPRITE_BUDGET;
+    this.popSeen.clear();
     this.sprites.newFrame();
     const z = cam.zoom;
     const look = lookFor(z);
@@ -193,14 +211,16 @@ export class BuildingLayer {
         }
       }
     }
+    const pops = popIconTiles(focusTiles, z);
     for (const b of focus) {
       const tx = b.tile % w;
       const ty = (b.tile / w) | 0;
       const fx = ox + (tx + 0.5) * z;
       const fy = oy + (ty + 0.5) * z;
-      if (look && hasArt(b.type) && this.drawArt(ctx, state, b, fx, fy, look, z, colors, dpr, true)) continue;
+      if (look && hasArt(b.type) && this.drawArt(ctx, state, b, fx, fy, look, z, colors, dpr, true, pops.includes(b.tile))) continue;
       this.drawOne(ctx, b, fx, fy, Math.max(30, size * 1.35), colors, dpr, this.tintOf(b, w, state.map.height));
     }
+    for (const t of this.popSince.keys()) if (!this.popSeen.has(t)) this.popSince.delete(t);
   }
 
   /** Far zoom: cities as light squares (bigger per level), forts as dark squares; two fills for all of them. */
@@ -293,7 +313,7 @@ export class BuildingLayer {
    * One building as detailed art, centred on its tile at (x, y) (CSS px). False = no sprite yet (the frame's bake budget is
    * spent): the caller draws the flat marker for now.
    */
-  private drawArt(ctx: CanvasRenderingContext2D, state: GameState, b: Building, x: number, y: number, look: ArtLook, zoom: number, colors: readonly RGB[], dpr: number, focus: boolean): boolean {
+  private drawArt(ctx: CanvasRenderingContext2D, state: GameState, b: Building, x: number, y: number, look: ArtLook, zoom: number, colors: readonly RGB[], dpr: number, focus: boolean, pop = false): boolean {
     const ghost = ghosts.has(b);
     const p = state.players[b.owner];
     const st: AddonState = {
@@ -347,6 +367,7 @@ export class BuildingLayer {
       ctx.stroke();
     }
     if (look === 'close' && fit.chip && !ghost) levelPill(ctx, cx, top, b.level, owner);
+    if (pop && !ghost) this.drawPop(ctx, b, cx, top, zoom, colors, dpr, state);
     // construction progress: a small bar under the building (the flat marker shows a ring)
     if (unfinished) {
       const progress = clamp(1 - b.buildLeft / Math.max(0.01, BUILDINGS[b.type].buildTime), 0, 1);
@@ -389,7 +410,24 @@ export class BuildingLayer {
     return true;
   }
 
-  private drawOne(ctx: CanvasRenderingContext2D, b: Building, x: number, y: number, size: number, colors: readonly RGB[], dpr: number, land: RGB | null = null): void {
+  /** Pop-up icons: when each focused tile started showing its icon (ms), for the fade. */
+  private popSince = new Map<number, number>();
+  private popSeen = new Set<number>();
+
+  /** The flat icon (same look and size as below ART_ZOOM, with its level badge) floating above a focused building's art, clear of the "Lv N" chip that hangs under the art's top edge. */
+  private drawPop(ctx: CanvasRenderingContext2D, b: Building, x: number, top: number, zoom: number, colors: readonly RGB[], dpr: number, state: GameState): void {
+    const now = performance.now();
+    let since = this.popSince.get(b.tile);
+    if (since === undefined) {
+      since = now;
+      this.popSince.set(b.tile, since);
+    }
+    this.popSeen.add(b.tile);
+    const size = markerSize(zoom);
+    this.drawOne(ctx, b, x, top - 9 - size / 2, size, colors, dpr, this.tintOf(b, this.w, state.map.height), popFade(since, now), true);
+  }
+
+  private drawOne(ctx: CanvasRenderingContext2D, b: Building, x: number, y: number, size: number, colors: readonly RGB[], dpr: number, land: RGB | null = null, fade = 1, bare = false): void {
     const ghost = ghosts.has(b);
     const oc = colors[b.owner] ?? [128, 128, 128];
     // last seen (fog of war): a grey frame, faded, no level badge
@@ -397,7 +435,7 @@ export class BuildingLayer {
     const progress = b.buildLeft > 0 ? clamp(1 - b.buildLeft / Math.max(0.01, BUILDINGS[b.type].buildTime), 0, 1) : 1;
     const unfinished = progress < 1;
     const id = b.type as BuildingIconId;
-    const alpha = ghost ? 0.5 : unfinished ? 0.55 : 1;
+    const alpha = (ghost ? 0.5 : unfinished ? 0.55 : 1) * fade;
     // The plate shows what the building does (category colour: economy gold, production orange, defence blue ...);
     // a frame in the owner's colour shows whose it is.
     const r = size * 0.5;
@@ -412,7 +450,7 @@ export class BuildingLayer {
     ctx.beginPath();
     ctx.roundRect(x - r + size * 0.12, y + r - 1, size * 0.76, fw + 1, Math.min(2, fw / 2));
     ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = fade;
     const cat = ICON_INFO[id].category;
     const opts = { plate: land && cat ? landPlate(CATEGORY_PLATES[cat], land) : cat ? CATEGORY_PLATES[cat] : c, dpr };
     if (markerReady(id, size, opts) || this.budget-- > 0) drawMarker(ctx, id, x, y, size, { ...opts, alpha });
@@ -443,7 +481,7 @@ export class BuildingLayer {
       ctx.fillText(String(b.level), bx, by + 0.5);
     }
     // levels queued by Build x3 / x5 or Upgrade area (Action buildMany / upgradeArea): small pips down the right edge
-    const queued = Math.min(5, b.queuedLevels || 0);
+    const queued = bare ? 0 : Math.min(5, b.queuedLevels || 0);
     if (queued > 0 && size >= 12) {
       const pr = clamp(size * 0.075, 1.6, 2.6);
       const px = x + r + fw + pr + 1.5;
@@ -458,14 +496,14 @@ export class BuildingLayer {
         ctx.stroke();
       }
     }
-    if (b.hp > 0 && b.hp < 1) {
+    if (!bare && b.hp > 0 && b.hp < 1) {
       const bw = size;
       ctx.fillStyle = 'rgba(0,0,0,0.65)';
       ctx.fillRect(x - r, y + r + fw + 2, bw, 3);
       ctx.fillStyle = b.hp > 0.5 ? '#e8c84a' : '#e0503c';
       ctx.fillRect(x - r, y + r + fw + 2, bw * b.hp, 3);
     }
-    if (size >= NAME_MARKER_PX) {
+    if (!bare && size >= NAME_MARKER_PX) {
       // close up (zoom 8+): the building's name under its marker
       ctx.font = `500 11px ${MAP_LABEL_FAMILY}`;
       ctx.textAlign = 'center';
@@ -475,5 +513,6 @@ export class BuildingLayer {
       haloText(ctx, BUILDINGS[b.type].name, x, ny, 'rgba(244,245,247,0.95)', 11, 0.9);
       setTracking(ctx, 0);
     }
+    ctx.globalAlpha = 1;
   }
 }
