@@ -6,7 +6,7 @@
 //   ships   the warship, destroyer, battleship, submarine, carrier, transport and trade ship: ships.ts
 //   tanks   the tank division, light tank and heavy tank: tanks.ts
 //   planes  the bomber, ground attack plane, heavy bomber, fighter, cargo plane, recon plane and stealth bomber: planes.ts
-//   missiles  the rocket and the atom bomb: here
+//   missiles  the rocket, the atom bomb and the anti-radar missile: missiles.ts; the cruise missile: cruise.ts
 // The owner's colour is only ever a small plate, band or roundel: a turret roof or deck band on ships, a funnel band,
 // a recognition panel on a tank's engine deck, roundels and a fuselage band on planes.
 // Upgrades change the unit you see, each file says how: the modern refit and mine rails on ships; the modern main
@@ -16,6 +16,7 @@ import { M_JET, M_MASTERY, M_NIGHT, M_PATH3, M_SPECIAL, SPRITE_KEYS, type Sprite
 import type { Model, Part } from './bake';
 import { box, ell, poly, seg, sym } from './shapes';
 import { bomber, fighter, groundAttack, heavyBomber, reconPlane, stealthBomber, transportPlane } from './planes';
+import { atomBombModel, rocketModel } from './missiles';
 import { battleship, carrier, destroyer, submarine, tradeShip, transport, warship } from './ships';
 import { heavyTank, lightTank, mediumTank } from './tanks';
 
@@ -78,38 +79,6 @@ export interface UnitModel {
 const over = (u: number, v: number, ru: number, rv: number): readonly [number, number, number, number] => [u, v, ru, rv];
 
 // ------------------------------------------------------------------------------------------------- missiles
-
-function rocket(): UnitModel {
-  // a slender rocket seen from above: a pale grey body with a dark band, an ogive nose, four swept fins and the motor
-  const body = over(-1.4, 0, 6.4, 1.2);
-  const parts: Part[] = [
-    poly(sym([-3.8, -1, -6.6, -2.8, -7.8, -2.8, -7.4, -1]), 0.6, 0.4, 'hull'),
-    box(-7.6, -0.7, -6.6, 0.7, 0.7, 0.8, 'gun'),
-    box(-6.8, -1.2, 3.4, 1.2, 0.6, 1.3, 'sup', { sh: 'cyl', sc: body }),
-    box(-2.6, -1.22, -1.4, 1.22, 0.6, 1.32, 'gun', { sh: 'cyl', sc: body }),
-    poly([9, 0, 6.6, -0.8, 3.4, -1.2, 3.4, 1.2, 6.6, 0.8], 0.6, 1.3, 'sup', { sh: 'cyl', sc: over(5.4, 0, 3.4, 1.2) }),
-    ell(8.2, 0, 0.9, 0.45, 0.8, 0.9, 'hazard'),
-    seg(-6.6, 0, -2.8, 0, 0.4, 1.95, 0.1, 'gun'),
-  ];
-  return { model: { parts, flat: true }, guns: [], props: [], nozzles: [{ u: -7.8, v: 0, z: 1, r: 0.7 }], alt: 4, dust: [] };
-}
-
-function atomBomb(): UnitModel {
-  // larger and fatter: a dark olive body with a yellow and black hazard band, big box fins, a blunt nose
-  const body = over(-1.8, 0, 7.4, 1.9);
-  const parts: Part[] = [
-    poly(sym([-4.4, -1.8, -8, -3.9, -9.8, -3.9, -9.4, -1.8]), 0.6, 0.5, 'fieldgrey'),
-    box(-9.8, -3.9, -8.8, 3.9, 0.7, 0.6, 'fieldgrey', { tone: -1 }),
-    box(-9.4, -1, -8.4, 1, 0.8, 1.2, 'gun'),
-    box(-8.6, -1.9, 4, 1.9, 0.6, 2, 'olive', { sh: 'cyl', sc: body }),
-    box(-3.6, -1.93, -2.6, 1.93, 0.6, 2.03, 'hazard', { sh: 'cyl', sc: body }),
-    box(-2.6, -1.93, -1.6, 1.93, 0.6, 2.03, 'black', { sh: 'cyl', sc: body }),
-    box(-1.6, -1.93, -0.6, 1.93, 0.6, 2.03, 'hazard', { sh: 'cyl', sc: body }),
-    poly([10.4, 0, 9, -1.1, 4, -1.9, 4, 1.9, 9, 1.1], 0.6, 2, 'olive', { sh: 'cyl', sc: over(7, 0, 4, 1.9) }),
-    ell(9.8, 0, 0.7, 0.6, 1, 1.2, 'tan'),
-  ];
-  return { model: { parts, flat: true }, guns: [], props: [], nozzles: [{ u: -9.6, v: 0, z: 1, r: 1 }], alt: 5, dust: [] };
-}
 
 // ------------------------------------------------------------------------------------------------- lookup
 
@@ -177,10 +146,10 @@ export function unitModel(key: SpriteKey, mods: number): UnitModel {
       um = stealthBomber(m);
       break;
     case 'rocket':
-      um = rocket();
+      um = rocketModel();
       break;
     case 'atomBomb':
-      um = atomBomb();
+      um = atomBombModel();
       break;
   }
   cache[k] = um;
