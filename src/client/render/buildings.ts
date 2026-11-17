@@ -27,6 +27,7 @@ import { RADAR_GREEN } from '../fx/defenseFx';
 import { prefersReducedMotion } from '../fx/settings';
 import type { GunAim } from '../fx/gunAim';
 import { GunLayer } from './gunLayer';
+import { LinkLayer, linkInput, linkKey, linksShown, type LinkEnd } from './linkLayer';
 import { gridOf } from '../art/detailed/grid';
 import { hasTech } from '../../sim/tech';
 import { ACCENT, buildingsKey, clamp, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, setTracking, type RGB, type View } from './common';
@@ -144,9 +145,14 @@ export class BuildingLayer {
   /** where the turning guns point and fire (fx/gunAim.ts); set by the renderer, null = guns stay idle */
   guns: GunAim | null = null;
   private readonly gunLayer = new GunLayer();
+  /** the connected buildings (quay, trench, road, fence) drawn under the art at art zoom */
+  readonly links = new LinkLayer();
+  private shown: Building[] = [];
+  private shownByTile = new Map<number, Building>();
 
   reset(): void {
     this.key = -1;
+    this.links.reset();
   }
 
   private rebuild(state: GameState): void {
@@ -182,6 +188,8 @@ export class BuildingLayer {
     // Inside a cell: top to bottom (lower markers overlap upper ones), cities last (on top).
     for (const c of cells) c.sort((a, b) => (a.type === 'city' ? 1 : 0) - (b.type === 'city' ? 1 : 0) || a.tile - b.tile);
     this.cells = cells;
+    this.shown = shown;
+    this.shownByTile = new Map(shown.map((b) => [b.tile, b]));
   }
 
   draw(
@@ -205,6 +213,7 @@ export class BuildingLayer {
     this.popSeen.clear();
     this.sprites.newFrame();
     this.gunLayer.newFrame();
+    this.links.newFrame();
     this.flak.clear();
     for (const p of state.players) if (p.id > 0 && p.alive && hasTech(p, 'flakGuns')) this.flak.add(p.id);
     const z = cam.zoom;
@@ -221,6 +230,7 @@ export class BuildingLayer {
     const cy0 = Math.max(0, Math.floor((v.y0 - pad) / CELL));
     const cx1 = Math.min(this.gw - 1, Math.floor((v.x1 + pad) / CELL));
     const cy1 = Math.min(this.gh - 1, Math.floor((v.y1 + pad) / CELL));
+    if (look) this.drawLinks(ctx, state, ox, oy, cam, z, look, dpr);
     const w = this.w;
     const focus: Building[] = [];
     for (let cy = cy0; cy <= cy1; cy++) {
@@ -341,19 +351,46 @@ export class BuildingLayer {
     return f;
   }
 
+  /** The add-ons a building shows (flak pits, radar dish, coastal guns); none on a remembered ghost. */
+  private addonState(state: GameState, b: Building, ghost: boolean): AddonState {
+    const p = state.players[b.owner];
+    return { flak: !ghost && this.flak.has(b.owner), radar: !ghost && !!p && hasTech(p, 'trackingRadar'), guns: !ghost && isBatterySite(state, b) };
+  }
+
+  /** The connected buildings under the art (quay, trench, road, fence); art zoom only. */
+  private drawLinks(ctx: CanvasRenderingContext2D, state: GameState, ox: number, oy: number, cam: Camera, z: number, look: ArtLook, dpr: number): void {
+    if (!linksShown(z)) return;
+    const endOf = (b: Building): LinkEnd => {
+      const spec = specOf(b.type, b.level, this.addonState(state, b, ghosts.has(b)));
+      return { tile: b.tile, type: b.type as LinkEnd['type'], level: b.level, facing: b.type === 'port' ? this.facingOf(state, b) : 0, sig: spec ? `${spec.type}${spec.level}${spec.addon ?? ''}` : b.type };
+    };
+    this.links.set.update(linkKey(this.key, this.fogGen, state.tick, state.map.width), () => {
+      return linkInput(state, this.shown, endOf);
+    });
+    this.links.draw(ctx, {
+      state,
+      terr: this.terr,
+      ox,
+      oy,
+      zoom: z,
+      look,
+      dpr,
+      viewW: cam.viewW,
+      viewH: cam.viewH,
+      specOf: (e) => {
+        const b = this.shownByTile.get(e.tile);
+        return b ? specOf(b.type, b.level, this.addonState(state, b, ghosts.has(b))) : null;
+      },
+    });
+  }
+
   /**
    * One building as detailed art, centred on its tile at (x, y) (CSS px). False = no sprite yet (the frame's bake budget is
    * spent): the caller draws the flat marker for now.
    */
   private drawArt(ctx: CanvasRenderingContext2D, state: GameState, b: Building, x: number, y: number, look: ArtLook, zoom: number, colors: readonly RGB[], dpr: number, focus: boolean, pop = false): boolean {
     const ghost = ghosts.has(b);
-    const p = state.players[b.owner];
-    const st: AddonState = {
-      flak: !ghost && this.flak.has(b.owner),
-      radar: !ghost && !!p && hasTech(p, 'trackingRadar'),
-      guns: !ghost && isBatterySite(state, b),
-    };
-    const spec = specOf(b.type, b.level, st);
+    const spec = specOf(b.type, b.level, this.addonState(state, b, ghost));
     if (!spec) return false;
     const owner: RGB = ghost ? [110, 114, 122] : (colors[b.owner] ?? [128, 128, 128]);
     const land = this.tintOf(b, state.map.width, state.map.height);

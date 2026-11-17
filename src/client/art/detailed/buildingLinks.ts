@@ -37,7 +37,7 @@ export interface BuildingLink {
 }
 
 /** Longest connector, in tiles between the two anchors. */
-export const LINK_MAX_DIST: Record<LinkKind, number> = { quay: 16, trench: 18, road: 20, perimeter: 9 };
+export const LINK_MAX_DIST: Record<LinkKind, number> = { quay: 16, trench: 18, road: 20, perimeter: 12 };
 /** How many same-kind links one building takes (a chain, never a mesh). A SAM site joins one fort. */
 export const LINK_MAX_DEGREE = 2;
 /** A quay needs this share of its path on the shore (land touching water). */
