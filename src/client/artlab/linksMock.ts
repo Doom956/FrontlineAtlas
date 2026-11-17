@@ -2,7 +2,8 @@
 // drawn as one place. Ports share a harbour wall along the coast, forts a trench line, cities a road with suburbs.
 // Which pairs join is art/detailed/buildingLinks.ts (pure, tested);
 // the pixels are art/detailed/buildingLinkArt.ts. Every pair is shown BEFORE (loose stamps) and AFTER (connected) at zoom
-// 8 (far look) and zoom 11 (close look) over the game's own Baltic terrain. The game itself is unchanged.
+// 8 (far look) and zoom 11 (close look) over the game's own Baltic terrain. The last scene is a nation's cluster with dirt
+// tracks from each building to its city, at zoom 10 (no tracks yet), 11, 14 and 20.
 import { buildTerrain } from '../render/terrain';
 import { themeForMap } from '../render/mapThemes';
 import { makeCanvas } from '../render/common';
@@ -10,9 +11,10 @@ import { isWater } from '../../sim/types';
 import type { RGB } from '../art/shared/colour';
 import { gridOf } from '../art/detailed/grid';
 import { bakeBuilding, bakeBuildingFar, COAST, levelPill, modelExtent, OU, OV, type Addon, type BuildingSpec, type Under } from '../art/detailed/buildings';
-import { pairLinks, type BuildingLink, type LinkBuilding, type LinkTerrain } from '../art/detailed/buildingLinks';
+import { pairLinks, pairTracks, trackPath, type BuildingLink, type LinkBuilding, type LinkTerrain } from '../art/detailed/buildingLinks';
 import { paintLinks, type LinkSite } from '../art/detailed/buildingLinkArt';
 import { loadBalticTerrain } from './buildingsMock';
+import { trackAlpha } from '../render/linkLayer';
 
 const BLUE: RGB = [64, 160, 255];
 const RED: RGB = [226, 74, 60];
@@ -45,6 +47,13 @@ interface Scene {
   land: (x: number, y: number) => boolean;
   owner: (x: number, y: number) => number;
   borderX?: (y: number) => number;
+  /** canvas size (CSS px), tile window size and the zooms shown; `before` adds the loose-buildings pictures */
+  cw: number;
+  ch: number;
+  wt: number;
+  ht: number;
+  zooms: number[];
+  before: boolean;
 }
 
 interface World {
@@ -95,7 +104,7 @@ function findPorts(world: World): { ax: number; ay: number; dx: number; dy: numb
   return null;
 }
 
-function cut(world: World, ax: number, ay: number, cx: number, cy: number, owner: (x: number, y: number) => number): { x0: number; y0: number; tiles: HTMLCanvasElement; rgb: Uint8ClampedArray } {
+function cut(world: World, cx: number, cy: number, owner: (x: number, y: number) => number, WT: number, HT: number): { x0: number; y0: number; tiles: HTMLCanvasElement; rgb: Uint8ClampedArray } {
   const x0 = Math.max(0, Math.min(world.w - WT, Math.round(cx - WT / 2)));
   const y0 = Math.max(0, Math.min(world.h - HT, Math.round(cy - HT / 2)));
   const tiles = makeCanvas(WT, HT);
@@ -136,7 +145,7 @@ function scenes(world: World): Scene[] {
   const make = (id: string, title: string, note: string, ax: number, ay: number, layout: Layout, owner: (x: number, y: number) => number, cx: number, cy: number, borderX?: (y: number) => number): void => {
     const sites: Site[] = layout.map((b, i) => ({ id: i + 1, type: b.type, level: b.level, owner: b.owner, x: ax + b.dx, y: ay + b.dy, addon: null }));
     const links = pairLinks(sites, { water: (x, y) => !world.land(x, y), owner });
-    out.push({ id, title, note, sites, links, cx, cy, ...cut(world, ax, ay, cx, cy, owner), land: world.land, owner, borderX });
+    out.push({ id, title, note, sites, links, cx, cy, ...cut(world, cx, cy, owner, WT, HT), land: world.land, owner, borderX, cw: CW, ch: CH, wt: WT, ht: HT, zooms: [8, 11], before: true });
   };
   const ports = findPorts(world);
   if (ports) {
@@ -151,13 +160,92 @@ function scenes(world: World): Scene[] {
   const ownerAt = (ax: number) => (x: number, y: number): number => (world.land(x, y) ? (x < bf(ax)(y) ? 1 : 2) : 0);
   const c = search(world, cl, ownerAt, (l) => l.length === 1 && l[0].kind === 'road', 1);
   if (c) make('cities', 'Cities growing together', 'Cities of the same nation grow a road with houses along it toward each other: dense next to each city, thinning out in the middle. The red city across the border is not joined to the blue ones, and nothing crosses the border.', c.ax, c.ay, cl, ownerAt(c.ax), c.ax - 3, c.ay, bf(c.ax));
+  const t = findTracks(world);
+  if (t) {
+    const sites: Site[] = TRACK_LAYOUT.map((b, i) => ({ id: i + 1, type: b.type, level: b.level, owner: b.owner, x: t.ax + b.dx, y: t.ay + b.dy, addon: null }));
+    const owner = trackOwner(world, t.ax, t.ay);
+    const terrain: LinkTerrain = { water: (x, y) => !world.land(x, y), owner };
+    const links = [...pairTracks(sites, terrain), ...pairLinks(sites, terrain)];
+    const tw = 100;
+    const th = 60;
+    out.push({
+      id: 'tracks',
+      title: 'Dirt tracks to the city',
+      note: 'Every building that is not a city has a thin dirt cart track to the nearest city of its nation (within 20 tiles). The track winds gently, the same for every player, and stays on the nation\'s own dry land: it bends away from the coast and the border, runs straighter where it must, and is left out when no route stays on own land. The red buildings across the border have no city, so no track. Tracks show from the close look (zoom 11) only, fading in, so zoom 10 has none.',
+      sites,
+      links,
+      cx: t.ax + 1,
+      cy: t.ay,
+      ...cut(world, t.ax + 1, t.ay, owner, tw, th),
+      land: world.land,
+      owner,
+      borderX: trackBorder(t.ax, t.ay),
+      cw: 960,
+      ch: 560,
+      wt: tw,
+      ht: th,
+      zooms: [10, 11, 14, 20],
+      before: false,
+    });
+  }
   return out;
+}
+
+/** The tracks scene: a blue city and the buildings round it, and across a winding border two red buildings without a city. */
+const TRACK_LAYOUT: Layout = [
+  { type: 'city', level: 3, dx: 0, dy: 0, owner: 1 },
+  { type: 'farm', level: 2, dx: -9, dy: 5, owner: 1 },
+  { type: 'mine', level: 2, dx: 7, dy: -8, owner: 1 },
+  { type: 'factory', level: 2, dx: 9, dy: 4, owner: 1 },
+  { type: 'lab', level: 1, dx: -5, dy: -9, owner: 1 },
+  { type: 'airfield', level: 1, dx: -14, dy: -3, owner: 1 },
+  { type: 'barracks', level: 2, dx: 1, dy: 10, owner: 1 },
+  { type: 'barracks', level: 1, dx: 19, dy: -3, owner: 2 },
+  { type: 'farm', level: 1, dx: 18, dy: 7, owner: 2 },
+];
+const trackBorder = (ax: number, ay: number) => (y: number): number => ax + 14 + 2.2 * Math.sin((y - ay) * 0.3) - 2.5 * Math.exp(-((y - ay - 1) ** 2) / 10);
+const trackOwner = (world: World, ax: number, ay: number) => (x: number, y: number): number => (world.land(x, y) ? (x < trackBorder(ax, ay)(y) ? 1 : 2) : 0);
+
+/** An anchor where the cluster stands on dry land, every blue building reaches the city, and one track runs near the coast. */
+function findTracks(world: World): { ax: number; ay: number } | null {
+  const { land } = world;
+  const dry = (x: number, y: number): boolean => {
+    for (let j = -2; j <= 2; j++) for (let i = -2; i <= 2; i++) if (!land(x + i, y + j)) return false;
+    return true;
+  };
+  for (let ay = 30; ay < world.h - 30; ay += 2) {
+    for (let ax = 30; ax < world.w - 30; ax += 2) {
+      if (!TRACK_LAYOUT.every((b) => dry(ax + b.dx, ay + b.dy))) continue;
+      const owner = trackOwner(world, ax, ay);
+      const terrain: LinkTerrain = { water: (x, y) => !land(x, y), owner };
+      const sites = TRACK_LAYOUT.map((b, i) => ({ id: i + 1, type: b.type, x: ax + b.dx, y: ay + b.dy, owner: b.owner, level: b.level }));
+      const tracks = pairTracks(sites, terrain);
+      if (tracks.length !== 6) continue;
+      // the coast close to a track: water within two tiles of some point of a route
+      const nearSea = tracks.some((l) => (l.path ?? []).some(([x, y]) => !land(Math.floor(x) + 2, Math.floor(y)) || !land(Math.floor(x) - 2, Math.floor(y)) || !land(Math.floor(x), Math.floor(y) + 2) || !land(Math.floor(x), Math.floor(y) - 2)));
+      if (!nearSea) continue;
+      // and the land rule at work: one route had to leave its first bend (it differs from the free route on open land)
+      const free = sites[0];
+      const bent = tracks.some((l) => {
+        const a = sites.find((q) => q.id === l.a);
+        const open = a ? trackPath(a, free, { water: () => false, owner: () => 1 }) : null;
+        return open !== null && JSON.stringify(open) !== JSON.stringify(l.path);
+      });
+      if (!bent) continue;
+      return { ax, ay };
+    }
+  }
+  return null;
 }
 
 function render(cv: HTMLCanvasElement, sc: Scene, zoom: number, connected: boolean, dpr: number): void {
   const ctx = cv.getContext('2d');
   if (!ctx) return;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const CW = sc.cw;
+  const CH = sc.ch;
+  const WT = sc.wt;
+  const HT = sc.ht;
   const vx0 = sc.cx - CW / 2 / zoom;
   const vy0 = sc.cy - CH / 2 / zoom;
   const toX = (tx: number): number => (tx - vx0) * zoom;
@@ -200,8 +288,8 @@ function render(cv: HTMLCanvasElement, sc: Scene, zoom: number, connected: boole
       const [ax, ay] = anchorOf(s);
       sites.set(s.id, { type: s.type, sx: ax + (s.type === 'port' ? COAST * scale : 0), sy: ay, ext: modelExtent({ type: s.type, level: s.level, addon: null }, far ? 'far' : 'close') });
     }
-    paintLinks(ctx, {
-      links: sc.links,
+    const paint = (links: BuildingLink[]): void => paintLinks(ctx, {
+      links,
       sites,
       scale,
       dpr,
@@ -215,6 +303,15 @@ function render(cv: HTMLCanvasElement, sc: Scene, zoom: number, connected: boole
       },
       waterAt: (tx, ty) => !sc.land(tx, ty),
     });
+    // tracks at the close look only, fading in (as the game draws them)
+    const tracks = sc.links.filter((l) => l.kind === 'track');
+    const ta = trackAlpha(zoom);
+    if (tracks.length && ta > 0) {
+      ctx.globalAlpha = ta;
+      paint(tracks);
+      ctx.globalAlpha = 1;
+    }
+    paint(sc.links.filter((l) => l.kind !== 'track'));
   }
   const levels: [number, number, number, RGB][] = [];
   for (const s of sc.sites.slice().sort((a, b) => a.y - b.y)) {
@@ -260,7 +357,7 @@ export function mountLinksMock(root: HTMLElement): HTMLElement {
   t.id = 'al-row-links';
   t.textContent = 'Connected buildings';
   const note = document.createElement('p');
-  note.textContent = 'Same-nation buildings that stand near each other are drawn as one place: ports share a harbour wall, forts a trench line, cities a road with suburbs, and a SAM site next to a fort sits inside the fort\'s fence. The connectors are only decoration under the buildings, in the same pixel style and tinted by the land they cross; every building keeps its own core and level chip. Nothing is joined across water or across a border. Each scene is shown before and after, at zoom 8 (simplified far look) and zoom 11 (full detail). This is a mockup: the game does not draw these yet.';
+  note.textContent = 'Same-nation buildings that stand near each other are drawn as one place: ports share a harbour wall, forts a trench line, cities a road with suburbs, and a SAM site next to a fort sits inside the fort\'s fence. The connectors are only decoration under the buildings, in the same pixel style and tinted by the land they cross; every building keeps its own core and level chip. Nothing is joined across water or across a border. Each scene is shown before and after, at zoom 8 (simplified far look) and zoom 11 (full detail). The last scene adds the thin dirt tracks from every other building to its city, which show at the close look only.';
   head.append(t, note);
   sec.append(head);
   root.append(sec);
@@ -279,9 +376,9 @@ export function mountLinksMock(root: HTMLElement): HTMLElement {
         const p = document.createElement('p');
         p.textContent = sc.note;
         const grid = document.createElement('div');
-        grid.style.cssText = `display:grid;grid-template-columns:repeat(2,${CW}px);gap:8px 12px;margin-top:8px`;
-        for (const zoom of [8, 11]) {
-          for (const connected of [false, true]) {
+        grid.style.cssText = `display:grid;grid-template-columns:repeat(${sc.before ? 2 : 1},${sc.cw}px);gap:8px 12px;margin-top:8px`;
+        for (const zoom of sc.zooms) {
+          for (const connected of sc.before ? [false, true] : [true]) {
             const fig = document.createElement('div');
             const cap = document.createElement('p');
             cap.textContent = `${connected ? 'AFTER: connected' : 'BEFORE: loose buildings'}, zoom ${zoom}`;
@@ -291,9 +388,9 @@ export function mountLinksMock(root: HTMLElement): HTMLElement {
             cv.dataset.zoom = String(zoom);
             cv.setAttribute('role', 'img');
             cv.setAttribute('aria-label', `${sc.title}, ${connected ? 'after' : 'before'}, zoom ${zoom}`);
-            cv.style.cssText = `display:block;border-radius:8px;max-width:100%;width:${CW}px`;
-            cv.width = CW * dpr;
-            cv.height = CH * dpr;
+            cv.style.cssText = `display:block;border-radius:8px;max-width:100%;width:${sc.cw}px`;
+            cv.width = sc.cw * dpr;
+            cv.height = sc.ch * dpr;
             fig.append(cap, cv);
             grid.append(fig);
             const go = (): void => render(cv, sc, zoom, connected, dpr);

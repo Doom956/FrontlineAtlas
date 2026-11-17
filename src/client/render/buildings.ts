@@ -357,7 +357,7 @@ export class BuildingLayer {
     return { flak: !ghost && this.flak.has(b.owner), radar: !ghost && !!p && hasTech(p, 'trackingRadar'), guns: !ghost && isBatterySite(state, b) };
   }
 
-  /** The connected buildings under the art (quay, trench, road, fence); art zoom only. */
+  /** The connected buildings under the art (quay, trench, road; art zoom) and the dirt tracks to each city (close look only). */
   private drawLinks(ctx: CanvasRenderingContext2D, state: GameState, ox: number, oy: number, cam: Camera, z: number, look: ArtLook, dpr: number): void {
     if (!linksShown(z)) return;
     const endOf = (b: Building): LinkEnd => {

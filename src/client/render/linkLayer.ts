@@ -1,6 +1,7 @@
 // The connected buildings in the real game (client only): the quay between same-coast ports, the trench between forts, the
 // road with houses between cities and the fence round a SAM site and its fort, drawn UNDER every building's art, at art
-// zoom (ART_ZOOM and up) only. Which pairs join is art/detailed/buildingLinks.ts (pure), the pixels are
+// zoom (ART_ZOOM and up) only; and the thin dirt track from every other building to its nearest city, at the close look
+// only (TRACK_ZOOM and up, fading in). Which pairs join is art/detailed/buildingLinks.ts (pure), the pixels are
 // art/detailed/buildingLinkArt.ts. Nothing here changes a rule, a hit area, the pop icon or a level chip.
 //
 // Cost: LinkSet holds the links of the shown buildings and recomputes them only when its key changes (the building set
@@ -11,8 +12,8 @@ import { buildingSpacing } from '../../sim/buildings';
 import { isWater, type Building, type GameState } from '../../sim/types';
 import { CU } from '../art/detailed/buildings';
 import { paintLinks, type LinkSite } from '../art/detailed/buildingLinkArt';
-import { pairLinks, type BuildingLink, type LinkBuilding, type LinkTerrain, type LinkType } from '../art/detailed/buildingLinks';
-import { ART_ZOOM, artScale, balanceShift, drawnExtent, fitScale, specOf, type ArtLook } from './buildingArt';
+import { pairLinks, pairTracks, type BuildingLink, type LinkBuilding, type LinkTerrain, type LinkType } from '../art/detailed/buildingLinks';
+import { ART_ZOOM, CLOSE_ZOOM, artScale, balanceShift, drawnExtent, fitScale, hasArt, specOf, type ArtLook } from './buildingArt';
 import { makeCanvas } from './common';
 import type { RGB } from './common';
 import type { TerrainData } from './terrain';
@@ -23,16 +24,28 @@ export const LINK_ZOOM = ART_ZOOM;
 export const LINK_TERRITORY_TICKS = 20;
 /** New link sprites baked per frame at most. */
 export const LINK_BAKES_PER_FRAME = 2;
-const CACHE_MAX = 96;
+const CACHE_MAX = 128;
 /** Zoom steps links are baked at (a sprite is drawn scaled by zoom / its step, at most a few percent). */
 const ZOOM_STEP = 0.25;
 /** Biggest sprite edge (CSS px) a link is baked at. */
 const MAX_EDGE = 2600;
 
-const LINK_TYPES: ReadonlySet<string> = new Set(['port', 'fort', 'city', 'sam']);
+/** Dirt tracks are drawn from this zoom on (the close look), fading in over TRACK_FADE zoom steps. */
+export const TRACK_ZOOM = CLOSE_ZOOM;
+export const TRACK_FADE = 0.8;
 
 export function linksShown(zoom: number): boolean {
   return zoom >= LINK_ZOOM;
+}
+
+export function tracksShown(zoom: number): boolean {
+  return zoom >= TRACK_ZOOM;
+}
+
+/** How opaque the tracks are at a zoom: 0 below TRACK_ZOOM, a faint start there, full TRACK_FADE later. */
+export function trackAlpha(zoom: number): number {
+  if (zoom < TRACK_ZOOM) return 0;
+  return Math.min(1, 0.6 + ((zoom - TRACK_ZOOM) / TRACK_FADE) * 0.4);
 }
 
 export interface LinkEnd {
@@ -90,7 +103,8 @@ export class LinkSet {
       }
       return e;
     };
-    const next: SetLink[] = pairLinks(inp.buildings, inp.terrain).map((link) => {
+    // tracks first, so the other connectors are drawn over them
+    const next: SetLink[] = [...pairTracks(inp.buildings, inp.terrain), ...pairLinks(inp.buildings, inp.terrain)].map((link) => {
       const a = endOf(link.a);
       const b = endOf(link.b);
       const path = link.full ?? link.path;
@@ -172,7 +186,7 @@ export class LinkSprites {
   }
 }
 
-/** The link input of the buildings a frame shows: finished ones of a nation, of the four linked types. */
+/** The link input of the buildings a frame shows: finished ones of a nation that have art (any of them may take a track). */
 export function linkInput(state: GameState, shown: readonly Building[], end: (b: Building) => LinkEnd): LinkInput {
   const m = state.map;
   const w = m.width;
@@ -180,9 +194,9 @@ export function linkInput(state: GameState, shown: readonly Building[], end: (b:
   const byTile = new Map<number, Building>();
   const buildings: LinkBuilding[] = [];
   for (const b of shown) {
-    if (!LINK_TYPES.has(b.type) || b.owner === 0 || b.buildLeft > 0) continue;
+    if (!hasArt(b.type) || b.owner === 0 || b.buildLeft > 0) continue;
     byTile.set(b.tile, b);
-    buildings.push({ id: b.tile, type: b.type as LinkType, x: b.tile % w, y: (b.tile / w) | 0, owner: b.owner, level: b.level });
+    buildings.push({ id: b.tile, type: b.type, x: b.tile % w, y: (b.tile / w) | 0, owner: b.owner, level: b.level });
   }
   const terrain: LinkTerrain = {
     water: (x, y) => x < 0 || y < 0 || x >= w || y >= h || isWater(m.terrain[y * w + x]),
@@ -230,8 +244,10 @@ export class LinkLayer {
     const spacing = buildingSpacing(state);
     ctx.save();
     ctx.imageSmoothingEnabled = false;
+    const tracks = trackAlpha(zoom);
     for (const sl of this.set.links) {
       const link = sl.link;
+      if (link.kind === 'track' && tracks <= 0) continue;
       const path = link.full ?? link.path;
       // the link's tile box
       let x0 = Math.min(link.a % w, link.b % w);
@@ -260,6 +276,7 @@ export class LinkLayer {
       const rr = zoom / sp.zq;
       const dx = Math.round((f.ox + sp.tx * zoom) * dpr) / dpr;
       const dy = Math.round((f.oy + sp.ty * zoom) * dpr) / dpr;
+      ctx.globalAlpha = link.kind === 'track' ? tracks : 1;
       ctx.drawImage(sp.canvas, dx, dy, sp.w * rr, sp.h * rr);
       this.drawn++;
     }

@@ -81,7 +81,7 @@ class Cells {
 const face = (nx: number, ny: number): number => -(nx + ny) * 0.7071;
 const shade = (c: C, f: number): RGB => [cl(c[0] * f), cl(c[1] * f), cl(c[2] * f)];
 
-/** Strokes a polyline (screen px) with half width `hw` model units; the style paints (or skips) each cell it reaches. */
+/** Strokes a polyline (screen px) with half width `hw` model units; the style paints (or skips) each cell it reaches (a fourth channel, when given, is the cell's alpha). */
 function stroke(c: Cells, pts: P[], hw: number, closed: boolean, style: (q: Q) => C | null): void {
   const k = c.k;
   const hc = hw * c.res;
@@ -129,7 +129,7 @@ function stroke(c: Cells, pts: P[], hw: number, closed: boolean, style: (q: Q) =
       if (best[idx] >= 1e8) continue;
       const u = c.under(i, j);
       const col = style({ i, j, s: sA[idx], d: dA[idx], nx: nxA[idx], ny: nyA[idx], base: u.base, water: u.water });
-      if (col) c.put(i, j, col);
+      if (col) c.put(i, j, col, col.length > 3 ? col[3] : 255);
     }
   }
 }
@@ -175,7 +175,7 @@ function at(pts: P[], s: number): { x: number; y: number; tx: number; ty: number
   return { x: pts[0][0], y: pts[0][1], tx: 1, ty: 0 };
 }
 
-// ------------------------------------------------------------------------------------------------- the four connectors
+// ------------------------------------------------------------------------------------------------- the connectors
 
 const CONCRETE: C = [176, 174, 164];
 const KERB: C = [66, 68, 72];
@@ -368,6 +368,52 @@ function road(c: Cells, pts: P[], seed: number): void {
   }
 }
 
+const DIRT: C = [158, 124, 82];
+const RUT: C = [86, 66, 46];
+/** A track's half width in tiles: the worn dirt, then the soft edge where grass grows back over it. */
+export const TRACK_CORE = 0.07;
+export const TRACK_EDGE = 0.115;
+
+/**
+ * A thin dirt cart track: worn earth tinted by the land under it, a soft broken edge, two faint wheel ruts once it is
+ * wide enough on screen to show them, and a patchy wear along its length, so it lies in the ground and never reads as a
+ * paved strip. Its width follows the tile, not the art scale.
+ */
+function track(c: Cells, pts: P[], seed: number): void {
+  const sc = c.p.scale;
+  const o = c.p.toScreen(0, 0);
+  const e = c.p.toScreen(1, 0);
+  const tile = Math.hypot(e[0] - o[0], e[1] - o[1]);
+  const corePx = Math.max(0.9, TRACK_CORE * tile);
+  const edgePx = Math.max(corePx + 0.6, TRACK_EDGE * tile);
+  const ruts = corePx / c.k >= 1.9;
+  const L = lengthOf(pts);
+  stroke(c, pts, edgePx / sc, false, (q) => {
+    if (q.water) return null;
+    const a = Math.abs(q.d) * sc;
+    const s = q.s * sc;
+    // worn patches along the track and a little grain per cell
+    const wear = 0.82 + 0.18 * Math.sin(s / (tile * 1.7) + seed) * Math.sin(s / (tile * 0.63) + seed * 0.37);
+    const grain = (hash(q.i, q.j, seed & 1023) - 0.5) * 0.12;
+    const endFade = Math.min(1, s / (tile * 0.35), (L - s) / (tile * 0.35));
+    const lum = (q.base[0] * 3 + q.base[1] * 6 + q.base[2]) / 10;
+    const dirt = lum > 150 ? mix(DIRT, RUT, 0.35) : DIRT;
+    if (a <= corePx) {
+      const u = a / corePx;
+      let col: RGB = mix(q.base, dirt, (0.58 + grain) * wear);
+      if (ruts && Math.abs(u - 0.55) < 0.2) col = mix(col, RUT, 0.28 * wear);
+      else if (ruts && u < 0.25) col = mix(col, q.base, 0.3);
+      const alpha = 235 * (u > 0.75 ? 1 - (u - 0.75) * 1.2 : 1) * endFade;
+      return [col[0], col[1], col[2], cl(alpha)];
+    }
+    // the soft edge: fewer, fainter cells further out
+    const u = (a - corePx) / (edgePx - corePx);
+    if (hash(q.i, q.j, 61 + (seed & 255)) < u * 0.85) return null;
+    const col = mix(q.base, dirt, 0.36 * wear);
+    return [col[0], col[1], col[2], cl(120 * (1 - u * 0.7) * endFade)];
+  });
+}
+
 /**
  * Paints the connectors of `p.links` into one transparent layer on `ctx` (CSS px, the rectangle p.w by p.h). Draw it
  * before the buildings. Pairs whose sites are missing are skipped.
@@ -381,6 +427,8 @@ export function paintLinks(ctx: CanvasRenderingContext2D, p: LinkPaint): void {
     const b = p.sites.get(l.b);
     return a && b ? [[a.sx, a.sy], [b.sx, b.sy]] : [];
   };
+  // tracks first: every other connector lies over them
+  for (const l of p.links) if (l.kind === 'track') track(c, line(l), (l.a * 7 + l.b) | 0);
   for (const l of p.links) {
     if (l.kind !== 'quay') continue;
     const pts = line(l);

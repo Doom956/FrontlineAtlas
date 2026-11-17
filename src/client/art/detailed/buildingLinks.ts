@@ -1,11 +1,15 @@
 // Which same-owner buildings are drawn as one place (client only, pure: no DOM, no random). Given the buildings and a
 // terrain query it returns the connectors to draw UNDER the buildings: a quay between ports on the same coast, a trench
-// between forts, a road with suburbs between cities.
+// between forts, a road with suburbs between cities, and (pairTracks) a thin dirt track from every other building to the
+// owner's nearest city.
 // It changes no game rule and no hit area. The result depends only on the buildings and the terrain, so the game can
 // compute it per owner, bake it into tiles or per-pair sprites and rebuild only the pairs whose buildings changed.
 
-export type LinkType = 'fort' | 'city' | 'sam' | 'port';
-export type LinkKind = 'quay' | 'trench' | 'road';
+import type { BuildingType } from '../../../sim/types';
+
+/** The building types a link can start or end at (pairLinks joins ports, forts and cities; tracks start at any type). */
+export type LinkType = BuildingType;
+export type LinkKind = 'quay' | 'trench' | 'road' | 'track';
 
 export interface LinkBuilding {
   id: number;
@@ -26,10 +30,10 @@ export interface LinkTerrain {
 
 export interface BuildingLink {
   kind: LinkKind;
-  /** ids of the two buildings, a < b for a chain link */
+  /** ids of the two buildings: a < b for a chain link; for a track a is the building and b its city */
   a: number;
   b: number;
-  /** quay only: the polyline along the shore, in tile centres, from a to b */
+  /** quay: the polyline along the shore, in tile centres, from a to b; track: the winding route from a to b */
   path?: [number, number][];
   /** quay only: the path continued along the shore past each port (its own frontage), and the indices of the two ports in it */
   full?: [number, number][];
@@ -37,7 +41,7 @@ export interface BuildingLink {
 }
 
 /** Longest connector, in tiles between the two anchors. */
-export const LINK_MAX_DIST: Record<LinkKind, number> = { quay: 16, trench: 18, road: 20 };
+export const LINK_MAX_DIST: Record<LinkKind, number> = { quay: 16, trench: 18, road: 20, track: 20 };
 /** How many same-kind links one building takes (a chain, never a mesh). */
 export const LINK_MAX_DEGREE = 2;
 /** A quay needs this share of its path on the shore (land touching water). */
@@ -166,6 +170,100 @@ export function pairLinks(buildings: readonly LinkBuilding[], t: LinkTerrain): B
       }
       degree.set(a.id, take(a.id) + 1);
       degree.set(b.id, take(b.id) + 1);
+    }
+  }
+  return out;
+}
+
+// ------------------------------------------------------------------------------------------------- dirt tracks
+
+/** Path points per tile along a track (a smooth curve at any zoom the tracks show at). */
+export const TRACK_STEPS_PER_TILE = 4;
+/** Cities tried per building, nearest first, before it is left without a track. */
+export const TRACK_CITY_TRIES = 3;
+/** How far a track may swing off the straight line, in tiles: this share of its length plus a quarter, at most TRACK_MAX_SWING. */
+export const TRACK_SWING = 0.085;
+export const TRACK_MAX_SWING = 1.7;
+/** The swings tried in turn when a route leaves the owner's dry land: full, mirrored, gentler, then straight. */
+const TRACK_TRIES = [1, -1, 0.6, -0.6, 0.3, -0.3, 0];
+
+/** Deterministic 0..1 from two ids and a salt (no Math.random): the same track for every player and every frame. */
+function mix01(a: number, b: number, s: number): number {
+  let h = (Math.imul(a | 0, 0x27d4eb2d) ^ Math.imul(b | 0, 0x165667b1) ^ Math.imul(s, 0x9e3779b1)) | 0;
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/**
+ * The winding route of a dirt track from building `a` to building `b` (tile centres, a smooth meander pinned at both
+ * ends), or null when no route of any swing stays on `a`'s owner's dry land. The bends come from the two ids and the
+ * positions only, so the route is the same each time.
+ */
+export function trackPath(a: LinkBuilding, b: LinkBuilding, t: LinkTerrain): [number, number][] | null {
+  const ax = a.x + 0.5;
+  const ay = a.y + 0.5;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-6) return null;
+  const nx = -dy / len;
+  const ny = dx / len;
+  const lo = Math.min(a.id, b.id);
+  const hi = Math.max(a.id, b.id);
+  const h = (s: number): number => mix01(lo * 31 + a.x * 7 + a.y, hi * 17 + b.x * 5 + b.y, s);
+  // a slow bend (a wave every 8 to 14 tiles, never steeper than about 30 degrees), a small ripple on it and a slight bow
+  // to one side, all fading to nothing at the two ends
+  const l1 = 8 + 6 * h(1);
+  const l2 = 2.6 + 1.6 * h(2);
+  const p1 = h(3) * Math.PI * 2;
+  const p2 = h(4) * Math.PI * 2;
+  const a1 = Math.min(TRACK_MAX_SWING, TRACK_SWING * len + 0.25, (0.55 * l1) / (Math.PI * 2));
+  const a2 = 0.05 + 0.06 * h(6);
+  const bow = (h(5) - 0.5) * 0.6 * a1;
+  const n = Math.max(4, Math.ceil(len * TRACK_STEPS_PER_TILE));
+  const wave: number[] = [];
+  for (let i = 0; i <= n; i++) {
+    const u = i / n;
+    const s = u * len;
+    wave.push(Math.sin(Math.PI * u) * (a1 * Math.sin((Math.PI * 2 * s) / l1 + p1) + a2 * Math.sin((Math.PI * 2 * s) / l2 + p2) + bow));
+  }
+  for (const k of TRACK_TRIES) {
+    const pts: [number, number][] = [];
+    for (let i = 0; i <= n; i++) {
+      const u = i / n;
+      const off = wave[i] * k;
+      pts.push([ax + dx * u + nx * off, ay + dy * u + ny * off]);
+    }
+    if (clear(pts, a.owner, t)) return pts;
+  }
+  return null;
+}
+
+/**
+ * The dirt tracks of a set of buildings: every building that is not a city runs one track to the nearest city of its
+ * owner within LINK_MAX_DIST.track tiles whose route stays on that owner's dry land (the next nearest, up to
+ * TRACK_CITY_TRIES, when it cannot). No city in reach: no track. The result is the same for any input order.
+ */
+export function pairTracks(buildings: readonly LinkBuilding[], t: LinkTerrain): BuildingLink[] {
+  const bs = buildings.slice().sort((p, q) => p.id - q.id);
+  const cities = bs.filter((b) => b.type === 'city' && b.owner !== 0);
+  const out: BuildingLink[] = [];
+  if (!cities.length) return out;
+  const max = LINK_MAX_DIST.track;
+  for (const b of bs) {
+    if (b.type === 'city' || b.owner === 0) continue;
+    const near = cities
+      .filter((c) => c.owner === b.owner && Math.abs(c.x - b.x) <= max && Math.abs(c.y - b.y) <= max)
+      .map((c) => ({ c, d: dist(b, c) }))
+      .filter((e) => e.d <= max && e.d > 0)
+      .sort((p, q) => p.d - q.d || p.c.id - q.c.id)
+      .slice(0, TRACK_CITY_TRIES);
+    for (const { c } of near) {
+      const path = trackPath(b, c, t);
+      if (!path) continue;
+      out.push({ kind: 'track', a: b.id, b: c.id, path });
+      break;
     }
   }
   return out;
