@@ -26,7 +26,8 @@ import { drawFleetCount, drawUnitIcon, iconHalf, iconScale, iconShapeOf } from '
 import { artStyleOf, type ArtStyle } from '../art/artStyle';
 import { artFor, motionFor, styleModule } from '../art/registry';
 import { spriteKey } from '../art/shared/keys';
-import type { CruiseDraw, MotionParams, ParachuteMarkDraw, ParadropDraw, TrailLayer, TrailUnit, TrailView } from '../art/types';
+import type { BallisticDraw, BallisticExhaust, CruiseDraw, MotionParams, ParachuteMarkDraw, ParadropDraw, TrailLayer, TrailUnit, TrailView } from '../art/types';
+import { ARC, arcPeak, arcPose, ballisticBoard, type ArcPose } from '../art/shared/ballistic';
 import { prankView } from '../fx/prankView';
 import { isKillBlast, KILL_EXACT } from '../fx/deaths';
 import { isIncoming } from '../forces';
@@ -40,6 +41,7 @@ const HIST = 3;
 /** Paratroopers drifting down where a cargo plane arrived (client-only effect, drawn by the 'paradrop' art style). */
 const CHUTES = 6;
 const UNDER = 'rgba(6,9,15,0.6)';
+const NO_OWNER: RGB = [0, 0, 0];
 
 /** Levels of detail: below NEAR_ZOOM every unit is a small silhouette icon of its kind (unitIcons.ts; warships merge
  * into fleet markers with a count below FLEET_ZOOM, fleets.ts); from NEAR_ZOOM to SPRITE_ZOOM the icons fade out as
@@ -359,7 +361,9 @@ export class UnitLayer {
       const S = ic ? ic.half * isz : Math.max(6, spriteLength(u.type, u.variant, 0, k) / 2);
       const R = ic ? Math.max(ic.half, ic.beam) * isz + 1 : S * 0.5;
       const m = Math.max(40, S + 8);
-      if (x < -m || y < -m || x > cam.viewW + m || y > cam.viewH + m) continue;
+      // a silo rocket or an atom bomb drawn on its arc can be high over a ground point below the screen's edge
+      const up = near && (u.type === 'rocket' || u.type === 'atomBomb') ? this.arcReach(state, u, z) : 0;
+      if (x < -m - up * 0.4 || y < -m || x > cam.viewW + m + up * 0.4 || y > cam.viewH + m + up) continue;
       // enemy submarines stay hidden until close, sonar, recon or Early Warning shows them (techtree.unitVisibleTo)
       if ((u.variant === 'submarine' || u.type === 'stealthBomber') && me > 0 && !unitVisibleTo(state, me, u)) continue;
       // fog of war: other nations' units only where you see them (fog/fogView.ts); hit tests follow
@@ -444,8 +448,9 @@ export class UnitLayer {
       if (e.fleet) for (const id of e.fleet) this.allHits.push(id, e.x, e.y, r);
       else this.allHits.push(e.u.id, e.x, e.y, r);
     }
+    ballisticBoard.frame(nowMs);
     // contrails and wakes, left where the unit went (missiles at every zoom, planes and ships from the middle zooms on)
-    this.drawTrailLayers(ctx, visible, { ox, oy, zoom: z, scale: k, now: nowMs, viewW: cam.viewW, viewH: cam.viewH, dpr, full: z >= 2 });
+    this.drawTrailLayers(ctx, visible, { ox, oy, zoom: z, scale: k, now: nowMs, viewW: cam.viewW, viewH: cam.viewH, dpr, full: z >= 2 }, state);
     // far: one small silhouette icon per unit; mid and near: the unit's shaded pixel sprite with its outline (16 or
     // more baked headings, whole pixel scale); between NEAR_ZOOM and SPRITE_ZOOM both, crossfading. Ships and tanks
     // first, then planes, then missiles on top.
@@ -475,6 +480,10 @@ export class UnitLayer {
             ss.alpha = band.sprite;
             ss.scale = k;
             if (!this.drawCruiseUnit(ctx, state, e, c as RGB, ss, ox, oy, z)) iconA = Math.max(iconA, band.sprite);
+          } else if (band.sprite > 0 && (e.type === 'rocket' || e.type === 'atomBomb') && artFor('missiles').drawBallistic) {
+            // the style's arc: lifted off the ground point, stages dropping away (drawBallisticUnit)
+            const b = this.ballisticArgs(state, e, c as RGB, k, dpr, nowMs, ox, oy, z, band.sprite);
+            if (!artFor('missiles').drawBallistic!(ctx, b, motionFor('missiles'))) iconA = Math.max(iconA, band.sprite);
           } else if (band.sprite > 0 && !e.fleet) {
             ss.turnRate = e.turn;
             ss.speed = e.speed;
@@ -640,6 +649,71 @@ export class UnitLayer {
     return ok;
   }
 
+  private ballArgs: BallisticDraw = { kind: 'rocket', sx: 0, sy: 0, tx: 0, ty: 0, dist: 0, elapsedMs: 0, leftMs: 0, owner: [200, 200, 200], zoom: 1, scale: 1, dpr: 1, timeMs: 0, seed: 0, alpha: 1 };
+  private ballPose: ArcPose = { x: 0, y: 0, gx: 0, gy: 0, lift: 0, angle: 0, fore: 1, pitch: 0, high: 0 };
+  private ballExhaust: BallisticExhaust = { x: 0, y: 0, angle: 0, smoke: 0 };
+  /** for the fog question of BallisticDraw.seen: the map's origin on screen, the zoom and the map's size */
+  private seenAt = { ox: 0, oy: 0, z: 1, w: 1, h: 1 };
+  private seenFn = (x: number, y: number): boolean => {
+    const f = this.fog;
+    if (!f?.active) return true;
+    const a = this.seenAt;
+    const tx = Math.max(0, Math.min(a.w - 1, Math.floor((x - a.ox) / a.z)));
+    const ty = Math.max(0, Math.min(a.h - 1, Math.floor((y - a.oy) / a.z)));
+    return f.visible(ty * a.w + tx);
+  };
+
+  /** How high a silo rocket or atom bomb can be drawn over its ground point (screen px; its arc's apex). */
+  private arcReach(state: GameState, u: Unit, z: number): number {
+    const w = state.map.width;
+    const dist = Math.hypot((u.target % w) - (u.home % w), ((u.target / w) | 0) - ((u.home / w) | 0));
+    return arcPeak(dist) * ARC.lift * z + 30;
+  }
+
+  /**
+   * A silo rocket's or atom bomb's flight for the style's arc (UnitArt.drawBallistic): the silo and target on screen,
+   * the time since launch and until impact from how far the sim's missile has flown (it flies at one speed). Also notes
+   * where it is drawn (ballisticBoard), so the darts aimed at it and its burst when shot down show there.
+   */
+  private ballisticArgs(state: GameState, e: Vis, owner: RGB, scale: number, dpr: number, nowMs: number, ox: number, oy: number, z: number, alpha: number): BallisticDraw {
+    const u = e.u;
+    const w = state.map.width;
+    const hx = (u.home % w) + 0.5;
+    const hy = ((u.home / w) | 0) + 0.5;
+    const tx = (u.target % w) + 0.5;
+    const ty = ((u.target / w) | 0) + 0.5;
+    const total = Math.hypot(tx - hx, ty - hy);
+    const flown = Math.min(total, Math.hypot((e.tx ?? hx) - hx, (e.ty ?? hy) - hy));
+    const sp = UNITS[u.type === 'atomBomb' ? 'atomBomb' : 'rocket'].speed;
+    const b = this.ballArgs;
+    b.kind = u.type === 'atomBomb' ? 'atomBomb' : 'rocket';
+    b.sx = ox + hx * z;
+    b.sy = oy + hy * z;
+    b.tx = ox + tx * z;
+    b.ty = oy + ty * z;
+    b.dist = total;
+    b.elapsedMs = (flown / sp) * 1000;
+    b.leftMs = ((total - flown) / sp) * 1000;
+    b.owner = owner;
+    b.zoom = z;
+    b.scale = scale;
+    b.dpr = dpr;
+    b.timeMs = nowMs;
+    b.seed = u.id;
+    b.alpha = alpha;
+    const a = this.seenAt;
+    a.ox = ox;
+    a.oy = oy;
+    a.z = z;
+    a.w = w;
+    a.h = state.map.height;
+    b.seen = this.seenFn;
+    const f = total > 0 ? flown / total : 1;
+    const p = arcPose(b.sx, b.sy, b.tx, b.ty, total, z, f, this.ballPose);
+    ballisticBoard.put(u.id, e.tx ?? hx, e.ty ?? hy, (p.x - e.x) / z, (p.y - e.y) / z);
+    return b;
+  }
+
   private markArgs: ParachuteMarkDraw = { x: 0, y: 0, half: 0, owner: [200, 200, 200], zoom: 1, dpr: 1 };
   private dropArgs: ParadropDraw = { x: 0, y: 0, owner: [220, 220, 220], ageMs: 0, durMs: 1, t: 0, count: CHUTES, zoom: 1, scale: 1, seed: 0, dpr: 1 };
   private spriteState: MapSpriteState = { zoom: 1, scale: 1, dpr: 1, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 0, damage: 0, alpha: 1 };
@@ -674,7 +748,7 @@ export class UnitLayer {
     return n;
   }
 
-  private drawTrailLayers(ctx: CanvasRenderingContext2D, visible: readonly Vis[], view: TrailView): void {
+  private drawTrailLayers(ctx: CanvasRenderingContext2D, visible: readonly Vis[], view: TrailView, state: GameState): void {
     const wakes = this.wakeList;
     const trails = this.contrailList;
     wakes.length = 0;
@@ -686,11 +760,25 @@ export class UnitLayer {
     // drawn: a wake or contrail starts from the blend of the two sterns, so it never trails off behind a small icon
     const band = unitBands(view.zoom);
     const blend = view.zoom >= NEAR_ZOOM && band.icon > 0;
+    const ballArt = artFor('missiles');
     for (const e of visible) {
       const tr = GLYPHS[e.type].trail;
       if (tr === 'none' || e.fleet || e.id === undefined || e.tx === undefined || e.ty === undefined) continue;
       const half = blend ? iconHalf(e.u.type, e.u.variant, view.zoom) * band.icon + e.S * band.sprite : e.S;
       const tu: TrailUnit = { id: e.id, key: spriteKey(e.u.type, e.u.variant), x: e.x, y: e.y, tx: e.tx, ty: e.ty, angle: e.angle, half, moving: !!e.moving, speed: e.speed, turnRate: e.turn, motion: tr === 'wake' ? ships : tr === 'missile' ? missiles : air };
+      if (band.sprite > 0 && (e.type === 'rocket' || e.type === 'atomBomb') && ballArt.ballisticExhaust && ballArt.drawBallistic) {
+        // drawn on its arc: the smoke leaves the motor up there, and only while it burns (thin on the coast)
+        const b = this.ballisticArgs(state, e, NO_OWNER, view.scale, view.dpr, view.now, view.ox, view.oy, view.zoom, 1);
+        const x = ballArt.ballisticExhaust(b, missiles, this.ballExhaust);
+        if (x.smoke <= 0) continue;
+        tu.x = x.x;
+        tu.y = x.y;
+        tu.tx = (x.x - view.ox) / view.zoom;
+        tu.ty = (x.y - view.oy) / view.zoom;
+        tu.angle = x.angle;
+        tu.half = 0;
+        tu.smoke = x.smoke;
+      }
       (tr === 'wake' ? wakes : trails).push(tu);
     }
     this.extraContrails?.(trails, air);
