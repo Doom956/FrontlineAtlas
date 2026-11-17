@@ -49,7 +49,7 @@ export function spriteKey(type: UnitType, variant: UnitVariant | undefined): Spr
   if (type === 'tankDivision') return variant === 'lightTank' || variant === 'heavyTank' ? variant : 'tankDivision';
   if (type === 'bomber') return variant === 'groundAttack' || variant === 'heavyBomber' ? variant : 'bomber';
   // the cruise missile draws as the rocket, smaller (render/units.ts); the detailed style animates its own (art/detailed/cruise.ts)
-  if (type === 'cruiseMissile' || type === 'antiRadarMissile') return 'rocket'; // anti-radar: placeholder (render/units.ts missileArtType)
+  if (type === 'cruiseMissile' || type === 'antiRadarMissile') return 'rocket'; // anti-radar: the fallback sprite (its own look: render/units.ts drawAntiRadarUnit)
   return type;
 }
 

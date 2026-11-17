@@ -25,6 +25,7 @@ import { drawMapSprite, isAirType, setSpriteBakeBudget, spriteLength, unitDamage
 import { drawFleetCount, drawUnitIcon, iconHalf, iconScale, iconShapeOf } from './unitIcons';
 import { artStyleOf, type ArtStyle } from '../art/artStyle';
 import { artFor, motionFor, styleModule } from '../art/registry';
+import { drawAntiRadar, type AntiRadarDraw } from '../art/detailed/missiles';
 import { spriteKey } from '../art/shared/keys';
 import type { CruiseDraw, MotionParams, ParachuteMarkDraw, ParadropDraw, TrailLayer, TrailUnit, TrailView } from '../art/types';
 import { prankView } from '../fx/prankView';
@@ -391,7 +392,7 @@ export class UnitLayer {
         moving = t.hn >= 2 && Math.abs(t.hx[0] - t.hx[1]) + Math.abs(t.hy[0] - t.hy[1]) > 1e-4;
         if (t.hn >= 2) speed = Math.hypot(t.hx[0] - t.hx[1], t.hy[0] - t.hy[1]) * TICKS_PER_SECOND;
       }
-      visible.push({ u, type: missileArtType(u.type), x, y, S, R, angle, moving, id: u.id, tx: ux + 0.5, ty: uy + 0.5, turn, speed });
+      visible.push({ u, type: u.type, x, y, S, R, angle, moving, id: u.id, tx: ux + 0.5, ty: uy + 0.5, turn, speed });
     }
     // zoomed out: close warships of one owner become one marker (screen px, so the radius scales with the zoom)
     if (grouping) {
@@ -465,11 +466,16 @@ export class UnitLayer {
       for (const pass of [0, 1, 2]) {
         for (const e of drawList) {
           const air = isAirType(e.type);
-          const missile = e.type === 'rocket' || e.type === 'atomBomb' || e.type === 'cruiseMissile';
+          const missile = e.type === 'rocket' || e.type === 'atomBomb' || e.type === 'cruiseMissile' || e.type === 'antiRadarMissile';
           if ((pass === 0 && air) || (pass === 1 && (!air || missile)) || (pass === 2 && !missile)) continue;
           const c = colors[e.u.owner] ?? [200, 200, 200];
           let iconA = e.fleet ? 1 : band.icon;
-          if (band.sprite > 0 && e.type === 'cruiseMissile') {
+          if (band.sprite > 0 && e.type === 'antiRadarMissile') {
+            // the anti-radar missile: its own faceted look (art/detailed/missiles.ts drawAntiRadar), else the rocket, smaller
+            ss.alpha = band.sprite;
+            ss.scale = k;
+            if (!this.drawAntiRadarUnit(ctx, e, c as RGB, ss)) iconA = Math.max(iconA, band.sprite);
+          } else if (band.sprite > 0 && e.type === 'cruiseMissile') {
             // its own launch animation where the style has one, else the rocket, smaller (drawCruiseUnit)
             ss.seed = e.u.id;
             ss.alpha = band.sprite;
@@ -514,7 +520,7 @@ export class UnitLayer {
       for (const e of visible) {
         if (e.u.owner !== me) continue;
         if (e.type !== 'warship' && e.type !== 'tankDivision') {
-          if (isAirType(e.type) && e.type !== 'rocket' && e.type !== 'atomBomb' && e.type !== 'cruiseMissile') {
+          if (isAirType(e.type) && e.type !== 'rocket' && e.type !== 'atomBomb' && e.type !== 'cruiseMissile' && e.type !== 'antiRadarMissile') {
             ctx.moveTo(e.x - 2, e.y + e.R + 3);
             ctx.lineTo(e.x + 2, e.y + e.R + 3);
           }
@@ -640,6 +646,30 @@ export class UnitLayer {
     return ok;
   }
 
+  private arArgs: AntiRadarDraw = { x: 0, y: 0, angle: 0, owner: [200, 200, 200], scale: 1, dpr: 1, timeMs: 0, seed: 0, alpha: 1 };
+  /**
+   * An anti-radar missile (the one place it is drawn): the missile looks' faceted body (art/detailed/missiles.ts
+   * drawAntiRadar), else the rocket sprite at two thirds of its size. False when nothing could be drawn this frame.
+   */
+  private drawAntiRadarUnit(ctx: CanvasRenderingContext2D, e: Vis, owner: RGB, ss: MapSpriteState): boolean {
+    const a = this.arArgs;
+    a.x = e.x;
+    a.y = e.y;
+    a.angle = e.angle;
+    a.owner = owner;
+    a.scale = ss.scale;
+    a.dpr = ss.dpr;
+    a.timeMs = ss.timeMs;
+    a.seed = e.u.id;
+    a.alpha = ss.alpha ?? 1;
+    if (drawAntiRadar(ctx, a, motionFor('missiles'))) return true;
+    const k = ss.scale;
+    ss.scale = k * (2 / 3);
+    const ok = drawMapSprite(ctx, 'antiRadarMissile', undefined, e.x, e.y, e.angle, owner, 0, ss);
+    ss.scale = k;
+    return ok;
+  }
+
   private markArgs: ParachuteMarkDraw = { x: 0, y: 0, half: 0, owner: [200, 200, 200], zoom: 1, dpr: 1 };
   private dropArgs: ParadropDraw = { x: 0, y: 0, owner: [220, 220, 220], ageMs: 0, durMs: 1, t: 0, count: CHUTES, zoom: 1, scale: 1, seed: 0, dpr: 1 };
   private spriteState: MapSpriteState = { zoom: 1, scale: 1, dpr: 1, timeMs: 0, turnRate: 0, speed: 0, moving: false, seed: 0, damage: 0, alpha: 1 };
@@ -761,10 +791,3 @@ export class UnitLayer {
   }
 }
 
-/**
- * MISSILE ART PLACEHOLDER (the one place): the anti-radar missile draws as the cruise missile until its own art (a
- * faceted dark grey body) is drawn; swap this line for its own sprite then. Every other unit draws as itself.
- */
-export function missileArtType(t: UnitType): UnitType {
-  return t === 'antiRadarMissile' ? 'cruiseMissile' : t;
-}
