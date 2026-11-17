@@ -471,6 +471,8 @@ export interface Unit {
   flakWear?: number;
   /** tank division (defense.ts Tank Traps): troops its running spearhead lost to tank traps; absent = 0 */
   trapLoss?: number;
+  /** transport (defense.ts Coastal Batteries): share of its troops lost to shore guns on this voyage (0..batteryTransportMaxLoss); absent = 0 */
+  shoreLoss?: number;
   /**
    * stealth bomber (defense.ts Tracking Radar): ticks spent inside each hostile tracking radar circle this flight, as
    * flat pairs [SAM building id, ticks, ...] by id; absent = none

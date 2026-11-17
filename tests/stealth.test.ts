@@ -268,9 +268,12 @@ describe('stealth strike: the AI', () => {
     expect(aiStealth(s, 2)).toBe(false); // one at a time
   });
 
-  it('skips targets without strong SAM cover (bombers and rockets do that job)', () => {
+  it('skips targets without SAM cover (bombers and rockets do that job); one SAM site is enough over a silo', () => {
+    expect(aiStealthPick(aiGame(0).s, 2)).toBeNull();
     const { s } = aiGame(1);
-    expect(aiStealthPick(s, 2)).toBeNull();
+    const pick = aiStealthPick(s, 2);
+    expect(pick).not.toBeNull();
+    expect(['sam', 'silo']).toContain(s.buildings.get(s.map.building[pick!.tile] - 1)?.type);
   });
 
   it('Easy AIs never send it at a human', () => {

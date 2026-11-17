@@ -620,7 +620,7 @@ export function guideTips(): GuideTip[] {
             ? 'Coastal Batteries: your Ports and coastal Forts fire at enemy ships of nations at war with you. Select one to see its reach over the water; battleships can outrange it.'
             : hasTech(c.me, 'flakGuns')
               ? 'Flak Guns: every finished Fort and City of yours fires flak at enemy bombers flying through. A Fort next to a city they bomb makes their bombs do much less.'
-              : 'Tank Traps: dug-in land (the dark trench line) near your Forts slows enemy tank spearheads and costs them troops. Forts a few tiles behind the border tanks come over cover it best.',
+              : 'Tank Traps: your land around your Forts slows enemy tank spearheads and costs them troops, dug-in land (the dark trench line) the most. Forts a few tiles behind the border tanks come over cover it best.',
       tile: (c) => buildingTile(c.s, c.me, 'fort'),
       when: (c) => playing(c) && (hasTech(c.me, 'flakGuns') || hasTech(c.me, 'tankTraps')),
     },

@@ -209,7 +209,7 @@ describe('Coastal Batteries', () => {
     expect(far.hp).toBe(3);
   });
 
-  it('target order: cruise missile ship, then ships shelling the coast, then transports; transports lose troops, never sink', () => {
+  it('target order: cruise missile ship, then ships shelling the coast; the guns never shoot a transport one by one', () => {
     const { s } = batteryGame();
     war(s, 1, 2);
     const transport = unit(s, 'transport', 1, 85, 20, { hp: 1, troops: { infantry: 1000, armor: 0, artillery: 0 } });
@@ -223,11 +223,62 @@ describe('Coastal Batteries', () => {
     cruiser.x = 60; // out of range
     fire(s, 20);
     expect(sheller.hp).toBeLessThan(3);
-    expect(transport.troops.infantry).toBe(1000);
     sheller.hp = 0;
     fire(s, 20);
     expect(transport.hp).toBe(1);
-    expect(transport.troops.infantry).toBeCloseTo(1000 * (1 - DEFENSE.batteryTransportLoss), 6);
+    expect(transport.troops.infantry).toBe(1000); // not sailing (no path): shore fire hits transports on the move
+  });
+
+  /** A transport of player 1 sailing west to east across the strait at y = 20 toward player 2's coast. */
+  function voyage(s: GameState, targetOwner: number): { u: Unit; lowest: () => number } {
+    const path: number[] = [];
+    for (let x = 71; x <= 89; x++) path.push(at(s, x, 20));
+    const u = unit(s, 'transport', 1, 70, 20, { hp: 1, targetOwner, path, pathPos: 0, cargo: 2, troops: { infantry: 10000, armor: 0, artillery: 0 } });
+    let lowest = 10000;
+    const ships = [u];
+    for (let k = 0; k < 200 && u.pathPos < u.path.length; k++) {
+      // sail 0.2 tiles per tick (cargo 2 tiles/s) along the path, then the guns
+      const t = u.path[u.pathPos];
+      u.x = Math.min(t % s.map.width, u.x + 0.2);
+      if (u.x >= t % s.map.width) u.pathPos++;
+      updateBatteries(s, ships);
+      lowest = Math.min(lowest, u.troops.infantry);
+      s.tick++;
+    }
+    return { u, lowest: () => lowest };
+  }
+
+  it('a transport sailing through battery range loses troops: invading the battery nation needs no war yet; capped; never sunk', () => {
+    const { s, port } = batteryGame();
+    const { u } = voyage(s, 2); // invading player 2, no war running
+    const lost = 1 - u.troops.infantry / 10000;
+    // 19 tiles inside one battery's reach at batteryTransportPerTile each
+    expect(lost).toBeGreaterThan(0.15);
+    expect(lost).toBeLessThanOrEqual(DEFENSE.batteryTransportMaxLoss + 1e-9);
+    expect(u.hp).toBe(1);
+    expect(u.shoreLoss).toBeCloseTo(lost, 1);
+    expect(s.effects.some((e) => e.kind === 'battery')).toBe(true);
+    // a passer-by bound elsewhere, not at war: untouched
+    const by = voyage(s, 0).u;
+    expect(by.troops.infantry).toBe(10000);
+    // three batteries stack, the cap holds
+    addBuilding(s, 'port', 2, at(s, 90, 18));
+    addBuilding(s, 'port', 2, at(s, 90, 22));
+    const three = voyage(s, 2).u;
+    expect(1 - three.troops.infantry / 10000).toBeGreaterThan(lost);
+    expect(1 - three.troops.infantry / 10000).toBeLessThanOrEqual(DEFENSE.batteryTransportMaxLoss + 1e-9);
+    // shelled silent: no shore fire
+    for (const b of batterySites(s)) b.hp = DEFENSE.batteryHpFloor;
+    expect(voyage(s, 2).u.troops.infantry).toBe(10000);
+    void port;
+  });
+
+  it('shoreLoss is hashed', () => {
+    const { s } = batteryGame();
+    const u = unit(s, 'transport', 1, 80, 20, { hp: 1 });
+    const h0 = hashState(s);
+    u.shoreLoss = 0.1;
+    expect(hashState(s)).not.toBe(h0);
   });
 
   it('warships shell a battery silent; the AI counts working batteries over a landing', () => {

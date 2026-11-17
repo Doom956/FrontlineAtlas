@@ -4,7 +4,7 @@
 import { radarOnLeft } from '../sim/antiRadar';
 import { COUNTER } from '../sim/config';
 import { DEFENSE, TICKS_PER_SECOND } from '../sim/config';
-import { batteryRange, flakRadius, flakRate, flakSiteCut, flakWorking, isBatterySite, radarRadius } from '../sim/defense';
+import { batteryRange, flakRadius, flakRate, flakSiteCut, flakWorking, isBatterySite, radarRadius, trapReach, trapSpeedMul } from '../sim/defense';
 import { fortRadius } from '../sim/buildings';
 import { areAllied } from '../sim/diplomacy';
 import { hasTech } from '../sim/tech';
@@ -92,7 +92,7 @@ export function enemyFlakLabel(z: KnownFlak, factor: number): string {
 
 /**
  * The Defense lines of an own Fort, City, SAM site or Port card: "Flak: 14 tiles, enemy bombs here -35%", "Tank traps:
- * dug-in land within 28 tiles slows enemy tanks to 40%", "Tracking Radar: spots stealth bombers within 30 tiles after
+ * land within 48 tiles slows enemy tanks to 58%, dug-in land to 40%", "Tracking Radar: spots stealth bombers within 30 tiles after
  * 3 s", "Coastal Battery: fires at enemy ships within 30 tiles every 2 s".
  */
 export function defenseLines(state: GameState, b: Building): string[] {
@@ -127,7 +127,7 @@ export function defenseLines(state: GameState, b: Building): string[] {
   if (b.type === 'fort' && hasTech(p, 'tankTraps')) {
     if (b.buildLeft > 0) out.push('Tank traps: laid once it is built');
     else if (off > 0) out.push(`Tank traps: knocked out for ${off} s`);
-    else out.push(`Tank traps: dug-in land within ${fortRadius(state, b)} tiles slows enemy tanks to ${pct(DEFENSE.trapHeadSpeed)}%`);
+    else out.push(`Tank traps: land within ${trapReach(state, b)} tiles slows enemy tanks to ${pct(trapSpeedMul(DEFENSE.trapPlain))}%, dug-in land to ${pct(DEFENSE.trapHeadSpeed)}%`);
   }
   return out;
 }

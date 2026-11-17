@@ -7,6 +7,8 @@ import { arsenalItem } from '../src/sim/arsenal';
 import { buildingsOf } from '../src/sim/buildings';
 import { isTribe } from '../src/sim/types';
 import { aiDefenseCommitted } from '../src/sim/variantsAI';
+import { aiStealthPick } from '../src/sim/stealth';
+import { stealthPlayerReason } from '../src/sim/units';
 import type { GameState } from '../src/sim/types';
 
 export type DefStats = Record<string, number>;
@@ -24,6 +26,8 @@ export class DefenseProbe {
   private forts = new Map<number, number>();
   private pending: { owner: number; tiles: number; at: number }[] = [];
   private transTroops = new Map<number, number>();
+  private transHit = new Set<number>();
+  private spearFoe = new Map<number, number>();
   private seen = new Set<number>();
   private add(k: string, v = 1): void {
     this.stats[k] = (this.stats[k] ?? 0) + v;
@@ -73,6 +77,13 @@ export class DefenseProbe {
         if (pt !== undefined && tt < pt - 1e-6) this.add('transTroopsLost', pt - tt);
         if (pt === undefined) this.add('transTroopsLaunched', tt);
         this.transTroops.set(u.id, tt);
+        // a landing that sailed into shore fire: its troops at launch, counted once
+        if ((u.shoreLoss ?? 0) > 0 && !this.transHit.has(u.id)) {
+          this.transHit.add(u.id);
+          this.add('transHit');
+          this.add('transHitLaunched', tt / Math.max(1e-9, 1 - (u.shoreLoss ?? 0)));
+        }
+        if (this.transHit.has(u.id) && pt !== undefined && tt < pt - 1e-6) this.add('transHitLost', pt - tt);
       }
       if (this.seen.has(u.id)) {
         if (u.type === 'tankDivision') this.divisions(state, u);
@@ -87,6 +98,7 @@ export class DefenseProbe {
     }
     // spearheads ended: slowed by traps or not
     if (state.tick % 5 === 0) this.fortWatch(state);
+    if (state.tick % (60 * TICKS_PER_SECOND) === 0) this.minuteWatch(state);
     for (let i = this.pending.length - 1; i >= 0; i--) {
       const q = this.pending[i];
       if (state.tick - q.at < AFTER) continue;
@@ -95,8 +107,31 @@ export class DefenseProbe {
     }
   }
 
-  private divisions(state: GameState, u: { id: number; state: number; trapLoss?: number }): void {
+  /** once a game minute: Air Mastery and Anti-radar holders at war, and what keeps the stealth bomber home */
+  private minuteWatch(state: GameState): void {
+    const fighting = new Set<number>();
+    for (const a of state.attacks) {
+      if (a.target <= 0) continue;
+      fighting.add(a.attacker);
+      fighting.add(a.target);
+    }
+    for (const p of state.players) {
+      if (p.id === 0 || !p.alive || p.isHuman || isTribe(p) || !fighting.has(p.id)) continue;
+      if (p.techs.includes('antiRadar')) this.add('arWarMin');
+      if (!p.techs.includes('airMastery')) continue;
+      this.add('stWarMin');
+      const why = stealthPlayerReason(state, p.id);
+      if (why) this.add(/in the air/.test(why) ? 'stGateAir' : /Recharging/.test(why) ? 'stGateRecharge' : 'stGateCost');
+      else if (!aiStealthPick(state, p.id)) this.add('stGateTarget');
+    }
+  }
+
+  private divisions(state: GameState, u: { id: number; state: number; trapLoss?: number; targetOwner: number; owner: number }): void {
     const prev = this.lastState.get(u.id);
+    if (u.state === 3 && prev !== 3) {
+      const q = state.players[u.targetOwner];
+      this.spearFoe.set(u.id, q && q.techs.includes('tankTraps') ? 1 + (state.players[u.owner]?.techs.includes('siegeTanks') ? 1 : 0) : 0);
+    }
     if (u.state === 3 && (u.trapLoss ?? 0) > 0) {
       this.sawTrap.add(u.id);
       this.trapLossSeen.set(u.id, Math.max(this.trapLossSeen.get(u.id) ?? 0, u.trapLoss ?? 0));
@@ -107,6 +142,12 @@ export class DefenseProbe {
         this.add('spearTrapped');
         this.add('trapTroopsLost', this.trapLossSeen.get(u.id) ?? 0);
       }
+      const into = this.spearFoe.get(u.id) ?? 0;
+      if (into === 1) {
+        this.add('spearIntoTraps');
+        if (this.sawTrap.has(u.id)) this.add('spearIntoTrapsSlowed');
+      } else if (into === 2) this.add('spearSiegeIntoTraps');
+      this.spearFoe.delete(u.id);
       this.sawTrap.delete(u.id);
       this.trapLossSeen.delete(u.id);
     }
@@ -169,7 +210,11 @@ export function defReport(s: DefStats, games: number): string[] {
   L.push(`defense techs held (share of nations): flak ${pct(g('has_flakGuns'), n)}, traps ${pct(g('has_tankTraps'), n)}, batteries ${pct(g('has_coastalBatteries'), n)}, radar ${pct(g('has_trackingRadar'), n)}, antiRadar ${pct(g('has_antiRadar'), n)}, siege ${pct(g('has_siegeTanks'), n)}, mastery ${pct(g('has_defenseMastery'), n)}`);
   L.push(`flak: bomber sorties ${per('bomberSorties')}, strikes ${per('strikesBomb')}, worn by flak ${pct(g('flakStrikesBomb'), g('strikesBomb'))}, mean bomb effect lost ${(g('flakLostPctBomb') / Math.max(1, g('strikesBomb'))).toFixed(1)}% (of all strikes), turned back ${per('flakBackBomber')} (${pct(g('flakBackBomber'), g('bomberSorties'))} of sorties), stealth turned back ${per('flakBackStealth')}`);
   L.push(`traps: spearheads ${per('spearheads')}, slowed by traps ${per('spearTrapped')} (${pct(g('spearTrapped'), g('spearheads'))}), trap hits ${per('trapHits')}, troops lost to traps ${per('trapTroopsLost')}`);
+  L.push(`traps: spearheads into a Traps holder ${per('spearIntoTraps')}, slowed there ${per('spearIntoTrapsSlowed')} (${pct(g('spearIntoTrapsSlowed'), g('spearIntoTraps'))}); Siege Tanks spearheads into a Traps holder ${per('spearSiegeIntoTraps')}`);
   L.push(`batteries: shots ${per('battShots')}, ships sunk ${per('battSunkShip')}, transports sunk ${per('battSunkTransport')} of ${per('seaInvasions')} sea invasions (${pct(g('battSunkTransport'), g('seaInvasions'))}), batteries shelled silent ${per('battShelled')}, troops lost on invading transports ${pct(g('transTroopsLost'), g('transTroopsLaunched'))} of those launched`);
+  L.push(`batteries: landings that sailed into shore fire ${per('transHit')} (${pct(g('transHit'), g('seaInvasions'))} of sea invasions), troops they lost ${pct(g('transHitLost'), g('transHitLaunched'))} of theirs`);
+  L.push(`stealth: Air Mastery holder minutes at war ${per('stWarMin')}, sorties per 2 such minutes ${((2 * g('stealthSorties')) / Math.max(1, g('stWarMin'))).toFixed(2)}; kept home by: in the air ${pct(g('stGateAir'), g('stWarMin'))}, recharging ${pct(g('stGateRecharge'), g('stWarMin'))}, cost ${pct(g('stGateCost'), g('stWarMin'))}, pacing or no target ${pct(g('stGateTarget'), g('stWarMin'))}`);
+  L.push(`anti-radar: holder minutes at war ${per('arWarMin')}, missiles per 2 such minutes ${((2 * g('arFired')) / Math.max(1, g('arWarMin'))).toFixed(2)}`);
   L.push(`stealth: sorties ${per('stealthSorties')}, strikes landed ${per('strikesStealth')}, radar spots ${per('radarSpots')}, shot down ${per('stealthShot')} (${per('stealthShotSam')} by SAM/radar); lost per sortie ${pct(g('stealthShot'), g('stealthSorties'))}, strikes per sortie ${pct(g('strikesStealth'), g('stealthSorties'))}`);
   L.push(`anti-radar: fired ${per('arFired')} (missiles built ${per('arMissiles')}), shot down ${per('arShot')} (${pct(g('arShot'), g('arFired'))}), SAMs knocked out ${per('arKnocked')}, destroyed ${per('arDestroyed')}`);
   L.push(`counteroffensive: ready ${per('counterReady')}, launches ${per('counterLaunch')}, tiles captured in the next 90 s ${(g('counterLand') / Math.max(1, g('counterLaunch'))).toFixed(0)} per launch (a nation's average 90 s: ${(g('capturedTotal') / Math.max(1, g('nations')) / Math.max(1, (g('gameSeconds') / Math.max(1, games)) / 90)).toFixed(0)})`);

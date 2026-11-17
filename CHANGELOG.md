@@ -17,13 +17,16 @@ finished Fort of yours. Pick one of two lanes, each with an upgrade after it:
     stealth bomber now takes 2 hits, and one shot down takes 3 minutes to replace (instead of the 45 s recharge).
     Strikes still land most of the time: the radar mostly catches the bomber on its way home. When you aim a stealth
     strike you see the enemy radar circles you know of, and the card says how long the trip spends inside them.
-- Tank Traps: your dug-in land (trench level 1 or more) near a Fort is laid with mines and steel hedgehogs. Enemy tank
-  spearheads there slow to 40% and lose troops (at most a quarter of a division). Siege Tanks drive through, artillery
-  halves it, barrages flatten them with the trench. The spearhead preview warns "Tank traps ahead".
+- Tank Traps: your land around your Forts, out to 20 tiles past their reach (48 tiles from a level-1 Fort), is laid
+  with mines and steel hedgehogs. Enemy tank spearheads there slow to 58% (40% on dug-in land, trench level 1 or more)
+  and lose troops (at most a quarter of a division). Siege Tanks drive through, artillery halves it, barrages flatten
+  the dug-in part. A knocked-out Fort lays none. The spearhead preview warns "Tank traps ahead".
   - Coastal Batteries (after Tank Traps): your finished Ports, and Forts within 4 tiles of the coast, get big guns and
-    fire every 2 s at one ship of a nation at war with you, up to 30 tiles out (33 from level 2): ships that fired a
-    cruise missile first, then ships shelling your coast, then transports, then other warships. A warship loses 0.4 of
-    its 3 hp per hit, a transport 6% of its troops (it is never sunk). Battleships shell from 35 tiles, out of reach,
+    fire every 2 s at one warship of a nation at war with you, up to 30 tiles out (33 from level 2): ships that fired a
+    cruise missile first, then ships shelling your coast, then other warships. A warship loses 0.4 of its 3 hp per
+    hit. Enemy transports sailing through that range, at war with you or coming to land on you, lose about 1% of
+    their troops per tile (more under 2 or 3 batteries), at most 40% per landing (it is never sunk): crossing one
+    battery's full reach costs about 30%. Battleships shell from 35 tiles, out of reach,
     and warships shell batteries first (AI fleets, and your own on Auto or Bombard), knocking them silent until they
     mend. A steel-blue arc over the water shows a battery's reach when you select it or your warships are near one.
 - Defense Mastery (after either upgrade; 25,000 gold, 8,000 iron, 2,000 oil; one of your 2 masteries):
@@ -39,18 +42,26 @@ finished Fort of yours. Pick one of two lanes, each with an upgrade after it:
 - Anti-radar missiles (new Air special in the Arsenal): Anti-radar strike on an airfield card, then click an enemy SAM
   site whose radar is on (it fired in the last 10 s: green ring; otherwise "SAM radar is off: wait until it fires"). A
   hit knocks it out for 30 s; other SAM sites can shoot the missile down, the one it aims at cannot. Escort mode (off by default) answers every SAM that
-  shoots at your planes. 500 gold and 50 oil each. AI nations use them to open SAM walls before their raids.
+  shoots at your planes. 500 gold and 50 oil each. AI nations (from Normal up) use them to open SAM walls before
+  their raids and answer the SAMs that shoot at their planes.
 - Stealth bomber, a new job: the atom bomb counter. Missile Silos in its blast are destroyed with any atom bombs
   loaded in them, and other silos within 25 tiles cannot launch for 30 s. Its strikes are clean (no fallout, no
   neutral land), so you can take the land right after. Multi-target: Add target while aiming, click up to 3 targets
   within 25 tiles of each other (6-tile blasts each), then Launch; one click is still one big strike. AI nations split
-  it over clusters of SAM sites and silos.
+  it over clusters of SAM sites and silos, and fly it about every 2 minutes at war at SAM sites, silos and airfields
+  under SAM cover (Easy ones never at you).
 - Cruise missiles: anti-ship (click near an enemy warship or transport you can see: it homes on it, a warship loses
   1.5 hp, a transport sinks) and sea-skimming (on the way only SAM sites within 15 tiles of the target can shoot it).
   AI fleets fire them at enemy fleets and carriers.
 - Fixes in the last balance round: Siege Tanks now really knock out the forts they pass (the rule never ran before); a
   knocked-out fort is switched off for 30 s, with its Flak Guns, Tank Traps and Coastal Batteries. AI nations choose
   Defense a little less often (a neighbour 1.8x stronger or foes with 10+ bombers).
+- Fixes in the second balance round: Coastal Batteries now really wear down landings (before, transports lost 0%:
+  they sailed past in one shot and a first landing was not yet a war). Tank Traps cover the land around your Forts,
+  not only dug-in land inside them (before, 1% of enemy spearheads met them; now about 1 in 6 of those driving into a
+  Traps nation). Only neighbours that really threaten (fighting you, or sharing a long border) make an AI choose
+  Defense, and on the World map the bar is higher (before, 60% of World nations took it). AI nations with Air Mastery
+  fly the stealth bomber more often, and AI nations with Anti-radar missiles really fire them.
 - AI nations from Normal up take Defense when they are cautious, face a much stronger neighbour or get bombed a lot,
   and buy their lane's upgrade. AI landings steer clear of coasts covered by batteries unless their fleet is there.
 - Online games need the new version (protocol 22).

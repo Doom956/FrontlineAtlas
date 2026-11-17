@@ -460,9 +460,9 @@ export const TECHS: Record<TechId, TechInfo> = {
   armorMastery: { name: 'Armor Mastery', tier: 5, science: 8000, gold: 3000, requires: ['mechanization'], requiresAny: ['deepRaids', 'siegeTanks'], description: 'Mastery: encirclements collapse pockets three times as big and destroy more of the troops caught in them.' },
   // ---- Arsenal Defense row (defense.ts; numbers in the DEFENSE block): no buildings of its own, it arms Forts and Cities ----
   flakGuns: { name: 'Flak Guns', tier: 3, science: 2200, gold: 1000, requires: ['fortification'], exclusiveGroup: 'defenseDoctrine', description: 'Your finished Forts and Cities fire flak: enemy bombers, ground-attack planes and cargo planes flying through lose up to 65% of their effect, and badly hit ones turn home. Rockets, missiles and recon planes fly too fast or too high.' },
-  tankTraps: { name: 'Tank Traps', tier: 3, science: 2200, gold: 1000, requires: ['fortification'], exclusiveGroup: 'defenseDoctrine', description: 'Dug-in land (trench level 1 or more) near your finished Forts is laid with mines and steel hedgehogs: enemy tank spearheads there slow to 40% and lose troops. Siege Tanks drive through; barrages flatten them with the trench.' },
+  tankTraps: { name: 'Tank Traps', tier: 3, science: 2200, gold: 1000, requires: ['fortification'], exclusiveGroup: 'defenseDoctrine', description: 'Your land within 20 tiles beyond the reach of your finished Forts is laid with mines and steel hedgehogs: enemy tank spearheads there slow to 58% and lose troops, on dug-in land (trench level 1 or more) to 40%. Siege Tanks drive through; barrages flatten the dug-in part.' },
   trackingRadar: { name: 'Tracking Radar', tier: 4, science: 3500, gold: 1500, requires: ['flakGuns', 'radar'], description: 'Every SAM site of yours gets a tracking radar: an enemy stealth bomber that stays within half its reach for 3 s is spotted, and your SAMs and fighters can shoot at it then. Stealth bombers take 2 hits; one shot down takes 3 minutes to replace.' },
-  coastalBatteries: { name: 'Coastal Batteries', tier: 4, science: 3500, gold: 1500, requires: ['tankTraps'], description: 'Your finished Ports, and Forts within 4 tiles of the coast, fire big guns every 2 s at one enemy ship of a nation at war with you, up to 30 tiles out: cruise missile ships first, then ships shelling your coast, then transports. Battleships outrange them and can shell them silent.' },
+  coastalBatteries: { name: 'Coastal Batteries', tier: 4, science: 3500, gold: 1500, requires: ['tankTraps'], description: 'Your finished Ports, and Forts within 4 tiles of the coast, fire big guns every 2 s at one enemy warship of a nation at war with you, up to 30 tiles out: cruise missile ships first, then ships shelling your coast. Enemy transports sailing through that range lose about 1% of their troops per tile, up to 40% per landing. Battleships outrange them and can shell them silent.' },
   antiRadar: { name: 'Anti-radar Missiles', tier: 3, science: 2200, gold: 1000, requires: ['flight'], description: 'Airfields fire anti-radar missiles at enemy SAM sites whose radar is on (they fired in the last 10 s): a hit knocks the SAM out for 30 s. Other SAM sites can shoot the missile down, the one it aims at cannot. Optional escort mode answers SAMs that shoot at your planes.' },
   defenseMastery: { name: 'Defense Mastery', tier: 5, science: 8000, gold: 3000, requires: ['fortification'], requiresAny: ['trackingRadar', 'coastalBatteries'], description: 'Mastery: enemy attacks that bleed on your fortified land fill a meter; when full, launch a Counteroffensive: a fast, cheap push from your forts at the attacker. Hardened shelters: atom bombs do half damage to troops and buildings your forts cover.' },
   airMastery: { name: 'Air Mastery', tier: 5, science: 8000, gold: 3000, requires: ['flight'], requiresAny: ['jetEngines', 'strategicBombing'], description: 'Mastery: every air wing flies 50% more bombers; a stealth bomber SAM sites cannot see strikes one target behind their walls.' },
@@ -1335,8 +1335,8 @@ export const AIR = {
  * `payload` x the hit chance and kills (0.6 x 2: every building in the blast, unless the victim's fighters hold the
  * sky there: air superiority cuts it like any bombing), plus the income raid of `raidBombers` bombers. The nation it
  * flies at sees it, and is warned, `revealSeconds` before the bombs fall. It recharges `cooldownSeconds` from launch
- * (Player.stealthReady, hashed). AIs send it only at targets under at least `aiMinCover` ready SAM shots they know of
- * (elsewhere bombers and rockets do it), keep `aiReserve` strike prices in gold, and weigh SAMs, silos and airfields
+ * (Player.stealthReady, hashed). AIs send it only at targets under at least `aiMinCover` SAM sites they know of
+ * (`aiMinCoverKey` for SAM sites, silos and airfields; elsewhere bombers and rockets do it), keep `aiReserve` strike prices in gold, and weigh SAMs, silos and airfields
  * near a landing of theirs (within `aiLandingNear` tiles) much higher.
  */
 export const STEALTH = {
@@ -1358,8 +1358,12 @@ export const STEALTH = {
   multiSpread: 25,
   multiRadius: 6,
   revealSeconds: 2,
-  aiReserve: 2,
+  aiReserve: 1,
   aiMinCover: 2,
+  /** ...SAM sites, silos and airfields: one covering SAM site is enough (balance round: ready shots >= 2 kept it home) */
+  aiMinCoverKey: 1,
+  /** AI: waits this many seconds after the recharge before its next strike (about one every 105 s at war) */
+  aiGapSeconds: 60,
   aiLandingNear: 30,
 } as const;
 
@@ -1695,8 +1699,8 @@ export const ARSENAL = {
 /**
  * Arsenal Defense row (defense.ts). Flak Guns: every finished, working own Fort and City is a flak site; hostile
  * bombers, ground-attack planes, cargo planes and the stealth bomber flying out through it gain wear per tile, at most
- * flakMaxZones zones counted at once. Tank Traps: own trench tiles (level >= trapMinTrench) inside a finished, working
- * own Fort's radius slow and bleed hostile spearheads. First guesses for the balance round.
+ * flakMaxZones zones counted at once. Tank Traps: own land within a finished, working own Fort's radius + trapBelt
+ * slows and bleeds hostile spearheads (dug land at full strength, undug at trapPlain). First guesses for the balance round.
  */
 export const DEFENSE = {
   /** flak site radius (tiles): Fort, + per level above 1; City, + per level above 1 */
@@ -1722,8 +1726,11 @@ export const DEFENSE = {
   flakCheckTicks: 5,
   /** site grid cell size (tiles) */
   flakGridCell: 16,
-  /** Tank Traps: trench level a tile needs to hold traps */
+  /** Tank Traps: own land within a working Fort's radius + trapBelt tiles holds traps (defense.ts trapStrength) */
+  trapBelt: 20,
+  /** ...at full strength on dug land (trench level trapMinTrench or more), at trapPlain strength elsewhere */
   trapMinTrench: 1,
+  trapPlain: 0.7,
   /** a hostile spearhead head on a trap tile moves at this share of its speed */
   trapHeadSpeed: 0.4,
   /** ...and its division loses this share of its troops per trap tile, at most trapMaxLoss of its start strength */
@@ -1750,7 +1757,10 @@ export const DEFENSE = {
    * Coastal Batteries (barriers lane, after Tank Traps): finished own Ports, and finished Forts within batteryCoast tiles
    * of water, fire every batteryFireSeconds at one hostile ship of a nation at war within batteryRange (+ per level,
    * at most batteryRangeMax: below battleship shelling, WARSHIP_SHELL_RANGE x 2 = 35). Warships lose batteryDamage hp
-   * per hit (a warship has 3), transports batteryTransportLoss of the troops aboard (never sunk). Hostile warships
+   * per hit (a warship has 3). Transports are not shot at one by one: a transport sailing inside the range of a working
+   * battery of a nation at war with it, or of the nation it sails to invade, loses batteryTransportPerTile of its troops
+   * per tile sailed there (x (1 + batteryTransportExtra) per further battery covering it, at most batteryTransportStack
+   * of them), at most batteryTransportMaxLoss per voyage (Unit.shoreLoss); never sunk. Hostile warships
    * shelling a battery take batteryShellDamage x their shelling x s of its hp (never below batteryHpFloor); under
    * batteryFireHp it is silent until it mends (BUILDING_REPAIR_PER_S).
    */
@@ -1760,7 +1770,10 @@ export const DEFENSE = {
   batteryRangeMax: 33,
   batteryFireSeconds: 2,
   batteryDamage: 0.4,
-  batteryTransportLoss: 0.06,
+  batteryTransportPerTile: 0.012,
+  batteryTransportExtra: 0.5,
+  batteryTransportStack: 3,
+  batteryTransportMaxLoss: 0.4,
   /** a warship that fired a cruise missile within this many seconds is shot at first */
   batteryCruiseMemory: 30,
   batteryShellDamage: 0.05,
@@ -1771,8 +1784,14 @@ export const DEFENSE = {
   batteryAiEscorted: 0.85,
   /** AI: a nation commits to Defense when its strongest hostile neighbour has this many times its army */
   aiStrongerNeighbour: 1.8,
-  /** AI: ...or its hostile rivals hold this many bombers */
+  /** AI: ...or its threatening neighbours hold this many bombers */
   aiEnemyBombers: 10,
+  /** AI: a neighbour threatens when it fights us, or holds this share of our land border (defense wanted, variantsAI) */
+  aiThreatBorder: 0.25,
+  /** AI on the World map (many neighbours, long wars): a 2.4x neighbour or 16 bombers, and then only a share of nations (per-game hash above this, -0.5..0.5) */
+  aiStrongerNeighbourWorld: 2.4,
+  aiEnemyBombersWorld: 16,
+  aiWorldPass: 0.15,
 } as const;
 
 /**

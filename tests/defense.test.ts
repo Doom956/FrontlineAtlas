@@ -3,15 +3,16 @@
 import { describe, expect, it } from 'vitest';
 import { applyAction } from '../src/sim/actions';
 import { ARSENAL_ROWS, MASTERY_CAP, MASTERY_PILLARS, pathOf } from '../src/sim/arsenal';
-import { markBuildingsChanged } from '../src/sim/buildings';
+import { fortRadius, isFortified, markBuildingsChanged } from '../src/sim/buildings';
 import { ARSENAL_PRICES, DEFENSE, TRENCH } from '../src/sim/config';
-import { flakCut, flakFactor, flakPathWear, isTrapTile, trapFactor, trapSpeedMul, trapTileLoss } from '../src/sim/defense';
+import { flakCut, flakFactor, flakPathWear, isTrapTile, trapFactor, trapReach, trapSpeedMul, trapStrength, trapTileLoss } from '../src/sim/defense';
 import { hashState } from '../src/sim/hash';
 import { arsenalPrice, canProcure } from '../src/sim/procurement';
 import { tick } from '../src/sim/sim';
 import { newId } from '../src/sim/state';
 import { spawnTankDivision, spearheadPreview } from '../src/sim/tanks';
 import { techStatus, techStatusReason } from '../src/sim/techtree';
+import { aiDefenseCommitted } from '../src/sim/variantsAI';
 import { buildAircraft, launchBomber, updateUnits } from '../src/sim/units';
 import type { Building, BuildingType, GameState, TechId, Unit } from '../src/sim/types';
 import { claimRect, makeFlatGame } from './helpers';
@@ -154,6 +155,36 @@ describe('Flak Guns', () => {
   });
 });
 
+describe('AI Defense pick: only threatening neighbours count', () => {
+  /** AI 1 x 0..39, AI 2 x 40..79 (its neighbour), AI 3 x 120..159 (far away); all at Normal. */
+  function pickGame(world = false): GameState {
+    const s = makeFlatGame(160, 30, 3, { seed: 5 });
+    claimRect(s, 1, 0, 0, 39, 29);
+    claimRect(s, 2, 40, 0, 79, 29);
+    claimRect(s, 3, 120, 0, 159, 29);
+    s.settings.difficulty = 'normal';
+    if (world) s.settings.map = { kind: 'world', id: 'world' };
+    for (const p of s.players) if (p.id > 0) p.personality = 'balanced';
+    return s;
+  }
+  it('a far rival bombers do not count; a neighbour holding the border does', () => {
+    const s = pickGame();
+    const af = addBuilding(s, 'airfield', 3, at(s, 140, 15));
+    af.bombers = DEFENSE.aiEnemyBombers + 5;
+    expect(aiDefenseCommitted(s, 1)).toBe(false);
+    const s2 = pickGame();
+    addBuilding(s2, 'airfield', 2, at(s2, 60, 15)).bombers = DEFENSE.aiEnemyBombers;
+    expect(aiDefenseCommitted(s2, 1)).toBe(true);
+  });
+  it('on the World map the bar is higher', () => {
+    const s = pickGame(true);
+    addBuilding(s, 'airfield', 2, at(s, 60, 15)).bombers = DEFENSE.aiEnemyBombers;
+    expect(aiDefenseCommitted(s, 1)).toBe(false); // under aiEnemyBombersWorld
+    expect(DEFENSE.aiEnemyBombersWorld).toBeGreaterThan(DEFENSE.aiEnemyBombers);
+    expect(DEFENSE.aiStrongerNeighbourWorld).toBeGreaterThan(DEFENSE.aiStrongerNeighbour);
+  });
+});
+
 describe('Tank Traps', () => {
   /** 60x30 plains: player 1 x 0..29, player 2 x 30..59 with a fort at (42, 15) and dug land x 30..37. */
   function trapGame(traps: boolean, variant?: 'heavyTanks' | 'siegeTanks'): { s: GameState; d: Unit } {
@@ -176,11 +207,29 @@ describe('Tank Traps', () => {
     return { s, d };
   }
 
-  it('a trap tile is own dug land inside a working own fort', () => {
+  it('trap land: own land within a working fort radius + the belt; dug land full strength, undug trapPlain', () => {
     const { s } = trapGame(true);
-    expect(isTrapTile(s, at(s, 32, 15), 2)).toBe(true);
-    expect(isTrapTile(s, at(s, 40, 15), 2)).toBe(false); // not dug
+    expect(trapStrength(s, at(s, 32, 15), 2)).toBe(1); // dug
+    expect(trapStrength(s, at(s, 40, 15), 2)).toBe(DEFENSE.trapPlain); // not dug: still trap land
+    expect(isTrapTile(s, at(s, 40, 15), 2)).toBe(true);
+    expect(isTrapTile(s, at(s, 20, 15), 2)).toBe(false); // not its land
     expect(isTrapTile(trapGame(false).s, at(s, 32, 15), 2)).toBe(false); // no tech
+    // the belt reaches past the fort's own radius (where a fort no longer stops a spearhead without artillery)
+    const big = makeFlatGame(130, 30, 2, { human: true, seed: 3 });
+    claimRect(big, 1, 0, 0, 29, 29);
+    claimRect(big, 2, 30, 0, 129, 29);
+    give(big, 2, 'fortification', 'tankTraps');
+    const f = addBuilding(big, 'fort', 2, at(big, 110, 15));
+    const r = fortRadius(big, f);
+    expect(trapReach(big, f)).toBe(r + DEFENSE.trapBelt);
+    const belt = at(big, 110 - r - 4, 15);
+    expect(isFortified(big, belt, 2)).toBe(false);
+    expect(trapStrength(big, belt, 2)).toBe(DEFENSE.trapPlain);
+    expect(trapStrength(big, at(big, 110 - r - DEFENSE.trapBelt - 2, 15), 2)).toBe(0); // beyond the belt
+    f.disabledUntil = big.tick + 100; // knocked out: no traps
+    expect(trapStrength(big, belt, 2)).toBe(0);
+    expect(trapSpeedMul(DEFENSE.trapPlain)).toBeGreaterThan(DEFENSE.trapHeadSpeed);
+    expect(trapSpeedMul(DEFENSE.trapPlain)).toBeLessThan(0.7);
   });
 
   it('slows the head, costs troops (capped per spearhead), warns in the preview', () => {

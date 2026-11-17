@@ -19,11 +19,14 @@
 //   - Rockets, cruise missiles, atom bombs and recon planes are ignored. Interception (SAMs, fighters, carriers, patrols)
 //     runs after the flak check and is unchanged.
 // Tank Traps (fork root of the barriers lane):
-//   - A trap tile is an own tile with trench level >= trapMinTrench inside the radius of a finished, working own Fort
-//     of a Tank Traps holder. Derived, never stored (trenches and forts are hashed already); barrages and atom bombs
-//     flatten the trench and the traps with it, a captured tile starts undug.
-//   - A hostile spearhead head on a trap tile moves at trapHeadSpeed of its speed, and the division loses
-//     trapLossPerTile of its start strength per trap tile taken, at most trapMaxLoss per spearhead (Unit.trapLoss,
+//   - A trap tile is own land of a Tank Traps holder within trapReach (the fort's radius + trapBelt) of a finished,
+//     working own Fort. Strength 1 on dug land (trench level >= trapMinTrench), trapPlain on undug land (trapStrength).
+//     Derived, never stored (trenches and forts are hashed already); barrages and atom bombs flatten the trench (the
+//     traps there drop to trapPlain), a knocked-out fort lays none. Why the belt: a fort's own radius already stops a
+//     spearhead without artillery, so the AI never drove into it and traps that needed it plus a trench slowed 1% of
+//     spearheads; the belt meets spearheads on the open land around the forts.
+//   - A hostile spearhead head on a trap tile moves at trapHeadSpeed of its speed (x strength), and the division loses
+//     trapLossPerTile (x strength) of its start strength per trap tile taken, at most trapMaxLoss per spearhead (Unit.trapLoss,
 //     hashed). Light tanks x1.3, heavy x0.7, Siege Tanks x0; artillery support halves it; a Breakthrough's surge is
 //     x trapBlitzSurge there (tanks.ts).
 // Tracking Radar (anti-air lane, after Flak Guns; needs Radar):
@@ -39,14 +42,21 @@
 //     (staggered by building id) a working site (not knocked out, hp >= batteryFireHp) fires at one hostile ship of a
 //     nation at war with it (naval2.atWar) within batteryRange (+ per level, at most batteryRangeMax < battleship
 //     shelling 35): a warship that fired a cruise missile in the last batteryCruiseMemory s, then warships whose
-//     shelling reaches the site, then transports, then other warships (nearest, then id). Hidden submarines are not
-//     seen. Warships lose batteryDamage hp, transports batteryTransportLoss of the troops aboard (never sunk).
+//     shelling reaches the site, then other warships (nearest, then id). Hidden submarines are not seen. Warships
+//     lose batteryDamage hp.
+//   - Transports (shore fire, every tick): a transport sailing inside the range of a working battery of a nation at war
+//     with it, OR of the nation it sails to invade (an invasion needs no war yet: the landing starts it), loses
+//     batteryTransportPerTile of its troops per tile sailed there (x (1 + batteryTransportExtra) per further covering
+//     battery, at most batteryTransportStack counted), at most batteryTransportMaxLoss per voyage (Unit.shoreLoss,
+//     hashed); never sunk. A transport crossing one battery's full reach (~30 tiles) loses about 30%. Why per tile and
+//     not per shot: transports sail 10 to 20 tiles/s, so a 2 s gun got one shot (6%) at most, and the war rule let
+//     every first landing on a nation through untouched.
 //   - Silencing: hostile warships shell batteries first (units.ts updateWarship, shellBatteryTarget: AI ships and a
 //     player's auto / bombard ships), taking hp off them (never below batteryHpFloor; no fire under batteryFireHp).
 // Part 3 (Counteroffensive) hooks in here.
 // Deterministic: state only, no RNG; caches are WeakMaps keyed by the GameState and rebuilt from it.
 import { BLITZ, CRUISE, DEFENSE, STEALTH, TICK_SECONDS, TICKS_PER_SECOND, UNITS, WARSHIP_SHELL_RANGE } from './config';
-import { buildingsOf, isFortified, samRadius } from './buildings';
+import { buildingsOf, fortRadius, samRadius } from './buildings';
 import { areAllied } from './diplomacy';
 import { atWar } from './naval2';
 import { atPeace } from './rules';
@@ -303,11 +313,36 @@ export function flakNote(u: Unit): string {
 
 /** True if `tile` of `owner` holds tank traps: own trench level >= trapMinTrench inside a working own Fort's radius. */
 export function isTrapTile(state: GameState, tile: number, owner: number): boolean {
-  if (owner <= 0 || state.map.owner[tile] !== owner) return false;
+  return trapStrength(state, tile, owner) > 0;
+}
+/** How far (tiles) Fort b of a Tank Traps holder lays traps: its radius + DEFENSE.trapBelt. */
+export function trapReach(state: GameState, b: Building): number {
+  return fortRadius(state, b) + DEFENSE.trapBelt;
+}
+/**
+ * Trap strength of `tile` for its owner `owner` (0 = no traps): own land of a Tank Traps holder within trapReach of a
+ * finished, working own Fort; 1 on dug land (trench level >= trapMinTrench), trapPlain elsewhere. Pure read.
+ */
+export function trapStrength(state: GameState, tile: number, owner: number): number {
+  if (owner <= 0 || state.map.owner[tile] !== owner) return 0;
   const p = state.players[owner];
-  if (!p || !hasTech(p, 'tankTraps')) return false;
-  if (trenchLevel(state, tile) < DEFENSE.trapMinTrench) return false;
-  return isFortified(state, tile, owner);
+  if (!p || !hasTech(p, 'tankTraps')) return 0;
+  const w = state.map.width;
+  const x = tile % w;
+  const y = (tile / w) | 0;
+  let inside = false;
+  for (const b of buildingsOf(state, owner, 'fort')) {
+    if (b.buildLeft > 0 || b.disabledUntil > state.tick || state.buildings.get(b.id) !== b) continue;
+    const r = trapReach(state, b);
+    const dx = (b.tile % w) - x;
+    const dy = ((b.tile / w) | 0) - y;
+    if (dx * dx + dy * dy <= r * r) {
+      inside = true;
+      break;
+    }
+  }
+  if (!inside) return 0;
+  return trenchLevel(state, tile) >= DEFENSE.trapMinTrench ? 1 : DEFENSE.trapPlain;
 }
 /**
  * Trap penalty factor for division u (1 = full): light tanks x1.3, heavy x0.7, Siege Tanks x0; x trapArtillery with
@@ -510,8 +545,7 @@ export function batteriesCovering(state: GameState, owner: number, t: number, q 
 
 /** Target rank of ship s for battery b (lower first; 99 = not a target). */
 function batteryRank(state: GameState, s: Unit, d2: number): number {
-  if (s.type === 'transport') return 2;
-  if (s.type !== 'warship') return 99;
+  if (s.type !== 'warship') return 99; // transports: shore fire (updateShoreFire)
   const reload = Math.round(CRUISE.reloadSeconds * TICKS_PER_SECOND);
   if (s.cruiseReady !== undefined && state.tick < s.cruiseReady - reload + DEFENSE.batteryCruiseMemory * TICKS_PER_SECOND) return 0;
   const reach = WARSHIP_SHELL_RANGE * navalShellRangeMul(state, s);
@@ -537,7 +571,7 @@ export function updateBatteries(state: GameState, ships: readonly Unit[]): void 
     let bestRank = 99;
     let bestD = Infinity;
     for (const s of ships) {
-      if (s.hp <= 0 || (s.type !== 'warship' && s.type !== 'transport') || s.owner === b.owner) continue;
+      if (s.hp <= 0 || s.type !== 'warship' || s.owner === b.owner) continue;
       const dx = s.x - bx;
       const dy = s.y - by;
       const d2 = dx * dx + dy * dy;
@@ -552,25 +586,71 @@ export function updateBatteries(state: GameState, ships: readonly Unit[]): void 
     }
     if (best) batteryHit(state, b, best);
   }
+  updateShoreFire(state, sites, ships);
+}
+
+/** True if battery b fires at transport s: hostile, and at war with it or the nation it sails to invade. */
+function shoreFoe(state: GameState, b: Building, s: Unit): boolean {
+  if (s.owner === b.owner || !hostile(state, s.owner, b.owner)) return false;
+  return s.targetOwner === b.owner || atWar(state, b.owner, s.owner);
+}
+
+/**
+ * Shore fire on transports, every tick: a sailing transport inside the range of working hostile batteries loses
+ * batteryTransportPerTile x tiles sailed this tick x (1 + batteryTransportExtra x (covering - 1), at most
+ * batteryTransportStack counted) of its troops, within batteryTransportMaxLoss per voyage (Unit.shoreLoss).
+ */
+function updateShoreFire(state: GameState, sites: readonly Building[], ships: readonly Unit[]): void {
+  const w = state.map.width;
+  const every = TICKS_PER_SECOND;
+  for (const s of ships) {
+    if (s.type !== 'transport' || s.hp <= 0 || s.pathPos >= s.path.length) continue;
+    const used = s.shoreLoss ?? 0;
+    if (used >= DEFENSE.batteryTransportMaxLoss) continue;
+    const aboard = s.troops.infantry + s.troops.armor + s.troops.artillery;
+    if (aboard <= 0) continue;
+    let n = 0;
+    let near: Building | null = null;
+    let nearD = Infinity;
+    for (const b of sites) {
+      if (!shoreFoe(state, b, s) || !batteryWorking(state, b) || !state.buildings.has(b.id)) continue;
+      const dx = s.x - (b.tile % w);
+      const dy = s.y - ((b.tile / w) | 0);
+      const d2 = dx * dx + dy * dy;
+      const r = batteryRange(b);
+      if (d2 > r * r) continue;
+      n++;
+      if (d2 < nearD) {
+        near = b;
+        nearD = d2;
+      }
+    }
+    if (!near) continue;
+    const tiles = (s.cargo > 0 ? s.cargo : UNITS.transport.speed) * TICK_SECONDS;
+    const stack = 1 + DEFENSE.batteryTransportExtra * (Math.min(n, DEFENSE.batteryTransportStack) - 1);
+    const f = Math.min(DEFENSE.batteryTransportMaxLoss - used, DEFENSE.batteryTransportPerTile * tiles * stack);
+    if (f <= 0) continue;
+    let lost = 0;
+    for (const t of TROOP_TYPES) {
+      const k = s.troops[t] * f;
+      s.troops[t] -= k;
+      lost += k;
+    }
+    s.shoreLoss = used + f;
+    state.players[s.owner].stats.troopsLost += lost;
+    state.players[near.owner].stats.troopsKilled += lost;
+    // a shell on the way about once a second per transport (the client's muzzle flash, arc and splash)
+    if ((state.tick + s.id) % every === 0) {
+      state.effects.push({ kind: 'battery', x: (near.tile % w) + 0.5, y: ((near.tile / w) | 0) + 0.5, x2: s.x + 0.5, y2: s.y + 0.5, radius: 0.5, tick: state.tick });
+    }
+  }
 }
 
 function batteryHit(state: GameState, b: Building, s: Unit): void {
   const w = state.map.width;
-  const transport = s.type === 'transport';
-  state.effects.push({ kind: 'battery', x: (b.tile % w) + 0.5, y: ((b.tile / w) | 0) + 0.5, x2: s.x + 0.5, y2: s.y + 0.5, radius: transport ? 0.5 : 1, tick: state.tick });
+  state.effects.push({ kind: 'battery', x: (b.tile % w) + 0.5, y: ((b.tile / w) | 0) + 0.5, x2: s.x + 0.5, y2: s.y + 0.5, radius: 1, tick: state.tick });
   const by = state.players[b.owner];
   const victim = state.players[s.owner];
-  if (transport) {
-    let lost = 0;
-    for (const t of TROOP_TYPES) {
-      const k = s.troops[t] * DEFENSE.batteryTransportLoss;
-      s.troops[t] -= k;
-      lost += k;
-    }
-    victim.stats.troopsLost += lost;
-    by.stats.troopsKilled += lost;
-    return;
-  }
   s.hp -= DEFENSE.batteryDamage;
   if (s.hp > 1e-9) return;
   s.hp = 0;

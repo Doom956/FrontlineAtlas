@@ -10,8 +10,9 @@
 //            for nations that mostly fight at their borders (warlords).
 //     Defense Tank Traps when hostile rivals field many tank divisions, Flak Guns when they fly many bombers.
 // - Defense is a second interest next to the committed pillar (aiDefenseCommitted): turtles, nations facing a hostile
-//   neighbour with DEFENSE.aiStrongerNeighbour x their army, and nations whose foes hold DEFENSE.aiEnemyBombers
-//   bombers buy a Defense root as soon as they can; others leave the row alone. Never at Easy (it stays simple).
+//   threatening neighbour (fighting it, or DEFENSE.aiThreatBorder of its land border) with DEFENSE.aiStrongerNeighbour
+//   x their army, and nations whose threatening neighbours hold DEFENSE.aiEnemyBombers bombers buy a Defense root as
+//   soon as they can; others leave the row alone. Never at Easy (it stays simple).
 // - Mastery only in the committed pillar (aiCommittedPillar: doctrine, then personality and map).
 // - Warships: a battleship every third ship once it has Battleships, a carrier every fourth once it has Carriers.
 // - Recon: every ARSENAL.reconCooldown + a bit, over the capital of the nation it fights hardest, when in reach.
@@ -148,29 +149,39 @@ function foeForces(state: GameState, id: number): { tanks: number; bombers: numb
   return { tanks, bombers };
 }
 
-/** Hostile land neighbours of id (a stride over its border tiles). */
-function landNeighbours(state: GameState, id: number): number[] {
+/**
+ * Land neighbours of id with their share (0..1) of its sampled land-border tiles that touch another nation (a stride
+ * over its border tiles), by id.
+ */
+function landNeighbourShares(state: GameState, id: number): [number, number][] {
   const { list, len } = borderTiles(state, id);
   const map = state.map;
   const w = map.width;
-  const seen = new Set<number>();
+  const hits = new Map<number, number>();
+  let total = 0;
   const step = Math.max(1, Math.floor(len / 200));
+  const seen = new Set<number>();
   for (let k = 0; k < len; k += step) {
     const t = list[k];
+    seen.clear();
     for (const n of [t - 1, t + 1, t - w, t + w]) {
       if (n < 0 || n >= map.owner.length) continue;
       const o = map.owner[n];
       if (o > 0 && o !== id) seen.add(o);
     }
+    if (!seen.size) continue;
+    total++;
+    for (const o of seen) hits.set(o, (hits.get(o) ?? 0) + 1);
   }
-  return [...seen].sort((a, b) => a - b);
+  return [...hits].sort((a, b) => a[0] - b[0]).map(([o, n]) => [o, n / Math.max(1, total)]);
 }
 
 const defenseCache = new WeakMap<GameState, Map<number, { win: number; v: boolean }>>();
 /**
  * True if AI id wants the Defense row (a Flak Guns or Tank Traps root; part 3 adds the mastery): it already chose one,
- * or (from Normal up, not a benchmark specialist) it is a turtle, faces a hostile neighbour with
- * DEFENSE.aiStrongerNeighbour x its army, or its foes hold DEFENSE.aiEnemyBombers bombers. Re-judged every 30 s.
+ * or (from Normal up, not a benchmark specialist) it is a turtle, faces a threatening neighbour (defenseWanted) with
+ * DEFENSE.aiStrongerNeighbour x its army, or its threatening neighbours hold DEFENSE.aiEnemyBombers bombers. Re-judged
+ * every 30 s.
  */
 export function aiDefenseCommitted(state: GameState, id: number): boolean {
   const p = state.players[id];
@@ -186,17 +197,39 @@ export function aiDefenseCommitted(state: GameState, id: number): boolean {
   m.set(id, { win, v });
   return v;
 }
+/**
+ * Only neighbours that actually threaten count: a nation fighting us now (an attack either way), or a land neighbour
+ * holding at least DEFENSE.aiThreatBorder of our land border. (On the World map a nation touches many nations along
+ * short stretches of border, and every far rival's bombers counted: 60% of the AIs took Defense there.)
+ */
 function defenseWanted(state: GameState, id: number): boolean {
   const p = state.players[id];
   if (p.personality === 'turtle') return true;
   const army = p.troops.infantry + p.troops.armor + p.troops.artillery;
-  for (const o of landNeighbours(state, id)) {
+  const fighting = new Set<number>();
+  for (const a of state.attacks) {
+    if (a.attacker === id && a.target > 0) fighting.add(a.target);
+    else if (a.target === id && a.attacker > 0) fighting.add(a.attacker);
+  }
+  // The World map: many neighbours and long wars, so a stronger one or a bomber fleet is nearly always about; there
+  // the bar is higher and fewer of the nations that meet it take Defense (medium stays as it is).
+  const m = state.settings.map;
+  const world = m.kind === 'world' && m.id === 'world';
+  const ratio = world ? DEFENSE.aiStrongerNeighbourWorld : DEFENSE.aiStrongerNeighbour;
+  const bomberBar = world ? DEFENSE.aiEnemyBombersWorld : DEFENSE.aiEnemyBombers;
+  const pass = world ? DEFENSE.aiWorldPass : -0.2;
+  const threats = new Set<number>(fighting);
+  for (const [o, share] of landNeighbourShares(state, id)) if (share >= DEFENSE.aiThreatBorder) threats.add(o);
+  let bombers = 0;
+  for (const o of [...threats].sort((a, b) => a - b)) {
     const q = state.players[o];
     if (!q?.alive || isTribe(q) || areAllied(state, id, o)) continue;
     const theirs = q.troops.infantry + q.troops.armor + q.troops.artillery;
-    if (theirs >= DEFENSE.aiStrongerNeighbour * Math.max(1, army)) return noise(state, id, 991) > -0.2;
+    if (theirs >= ratio * Math.max(1, army)) return noise(state, id, 991) > pass;
+    for (const b of buildingsOf(state, o, 'airfield')) bombers += b.bombers;
   }
-  return foeForces(state, id).bombers >= DEFENSE.aiEnemyBombers;
+  for (const u of state.units) if ((u.type === 'bomber' || u.type === 'stealthBomber') && u.hp > 0 && threats.has(u.owner)) bombers++;
+  return bombers >= bomberBar && (!world || noise(state, id, 993) > pass);
 }
 
 /**

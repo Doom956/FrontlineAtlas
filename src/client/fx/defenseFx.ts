@@ -18,8 +18,7 @@
 // its own). Caps: PUFF_CAP puffs and DIRT_CAP dirt bursts at once, PUFFS_PER_FRAME new puffs a frame.
 // Client randomness only (Math.random): every client sees its own puffs.
 import { TICKS_PER_SECOND } from '../../sim/config';
-import { flakZonesAt, isTrapTile } from '../../sim/defense';
-import { fortRadius } from '../../sim/buildings';
+import { flakZonesAt, isTrapTile, trapReach } from '../../sim/defense';
 import { hasTech } from '../../sim/tech';
 import { unitVisibleTo } from '../../sim/techtree';
 import { trenchLevel } from '../../sim/trenches';
@@ -478,7 +477,7 @@ export class DefenseFx {
       if (b.type !== 'fort' || b.buildLeft > 0 || b.disabledUntil > state.tick) continue;
       const p = state.players[b.owner];
       if (!p || !hasTech(p, 'tankTraps')) continue;
-      const r = fortRadius(state, b);
+      const r = trapReach(state, b);
       const bx = b.tile % w;
       const by = (b.tile / w) | 0;
       const x0 = Math.max(v.x0, Math.floor(bx - r));
@@ -489,7 +488,10 @@ export class DefenseFx {
         for (let x = x0; x <= x1; x++) {
           if ((x + 2 * y) % 3 !== 0) continue;
           const t = y * w + x;
-          if (seen.has(t) || state.map.owner[t] !== b.owner || trenchLevel(state, t) < 1) continue;
+          if (seen.has(t) || state.map.owner[t] !== b.owner) continue;
+          // dug-in land (full strength): every third tile; undug trap land: every sixth (sparser hedgehogs)
+          const dug = trenchLevel(state, t) >= 1;
+          if (!dug && (x + 2 * y) % 6 !== 0) continue;
           if ((x - bx) * (x - bx) + (y - by) * (y - by) > r * r) continue;
           seen.add(t);
           if (isTrapTile(state, t, b.owner)) out.push(t);

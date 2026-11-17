@@ -23,7 +23,7 @@
 //   targetOwner = owner of the clicked tile at the order; launch = spearhead start tile; strength0 = troops at start
 //   cargo = tiles taken by the current spearhead
 // Deterministic: no RNG; searches have fixed tie-breaks.
-import { isTrapTile, trapBlitzSpeedMul, trapFactor, trapSpeedMul, trapTileLoss } from './defense';
+import { trapBlitzSpeedMul, trapFactor, trapSpeedMul, trapStrength, trapTileLoss } from './defense';
 import { buildingAt, buildingsOf, fortMultiplierAt } from './buildings';
 import { frontTiles, tileFightCost } from './combat';
 import {
@@ -640,8 +640,9 @@ function headSpeed(state: GameState, u: Unit, ter: number, defender: number, tra
 /** Tank trap penalty factor for division u entering `tile` (0 = no traps there; defense.ts). */
 function trapAt(state: GameState, u: Unit, tile: number): number {
   const o = state.map.owner[tile];
-  if (o <= 0 || o === u.owner || !isTrapTile(state, tile, o)) return 0;
-  return trapFactor(state, u, artillerySupport(u));
+  if (o <= 0 || o === u.owner) return 0;
+  const k = trapStrength(state, tile, o);
+  return k > 0 ? trapFactor(state, u, artillerySupport(u)) * k : 0;
 }
 function maxDepth(state: GameState, u: Unit): number {
   return TANK_SPEARHEAD_MAX_DEPTH * tankDivisionMods(state, u.owner).depthMul * vetSpeedMul(u) * armorDepthMul(state, u.owner) * (u.blitz ? BLITZ.depthMul : 1) * counterDepthMul(state, u.owner, u.targetOwner); // Blitz Tactics, veterancy, light / heavy (variants.ts), a blitz (blitz.ts), a Counteroffensive (counter.ts)
@@ -1160,8 +1161,9 @@ export function spearheadPreview(state: GameState, playerId: number, unitId: num
     if (ter === Terrain.Mountains) warn(breaks ? 'Mountains ahead: slow and costly even with artillery' : 'Mountains ahead: spearhead will stall');
     if (ter === Terrain.Forest || ter === Terrain.Hills) warn('Forests or hills ahead: the spearhead slows down');
     if (ter === Terrain.Swamp) warn('Swamp ahead: the spearhead bogs down');
-    // Tank Traps (defense.ts): dug-in land near the defender's forts
-    const tf = o > 0 && isTrapTile(state, t, o) ? trapFactor(state, sim, artillerySupport(sim)) : -1;
+    // Tank Traps (defense.ts): the defender's land around its forts (dug-in land the most)
+    const tk = o > 0 ? trapStrength(state, t, o) : 0;
+    const tf = tk > 0 ? trapFactor(state, sim, artillerySupport(sim)) * tk : -1;
     if (tf > 0) warn(`Tank traps ahead: tanks slow to ${Math.round(trapSpeedMul(tf) * 100)}% here`);
     else if (tf === 0) warn('Tank traps ahead: your Siege Tanks drive through');
     if (o > 0 && fortMultiplierAt(state, t, o) > 1.01) warn(breaks ? 'Fort ahead: it will be breached at a high cost' : 'Fort ahead: spearhead will stop (bring artillery)');

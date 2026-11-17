@@ -200,6 +200,7 @@ export function hashState(state: GameState): number {
     if (u.blitzReady !== undefined) h = mixInt(mixInt(h, 0x424c52), u.blitzReady);
     if (u.flakWear) h = mixFloat(mixInt(h, 0x464c4b), u.flakWear); // flak wear (defense.ts)
     if (u.trapLoss) h = mixFloat(mixInt(h, 0x545250), u.trapLoss); // tank trap losses (defense.ts)
+    if (u.shoreLoss) h = mixFloat(mixInt(h, 0x53484c), u.shoreLoss); // shore gun losses on a transport (defense.ts)
     if (u.radarLock) { // Tracking Radar locks and who sees it now (defense.ts)
       h = mixInt(h, 0x52444c);
       for (const v of u.radarLock) h = mixInt(h, v);

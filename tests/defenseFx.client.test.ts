@@ -104,7 +104,7 @@ describe('tank trap marks and texts', () => {
     expect(fx.drawnDirt).toBe(0);
     const fort1 = add(s, 'fort', 1, at(s, 20, 20));
     expect(defenseLines(s, fort1)).toEqual(['Flak: 14 tiles, enemy bombs here -35%']);
-    expect(defenseLines(s, f2)[0]).toMatch(/^Tank traps: dug-in land within \d+ tiles slows enemy tanks to 40%$/);
+    expect(defenseLines(s, f2)[0]).toMatch(/^Tank traps: land within \d+ tiles slows enemy tanks to 58%, dug-in land to 40%$/);
     expect(routeFlakText(routeFlak(s, 2, at(s, 70, 20), fort1.tile, 1))).toBe('Enemy flak on the way: bombs about -35%');
     expect(routeFlakText(0.9)).toMatch(/turn back/);
   });

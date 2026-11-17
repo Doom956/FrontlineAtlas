@@ -4,8 +4,9 @@
 //
 // The AI (aiStealth, from ai.ts airAndMissiles every air turn): an AI nation with Air Mastery at war, whose stealth
 // bomber is home and recharged, picks the most valuable building of a nation it fights that it knows of (fog of war)
-// within reach of one of its airfields and under strong SAM cover (at least STEALTH.aiMinCover ready SAM shots it knows
-// of over the route and the target: where its bombers and rockets would be shot down; elsewhere those do the job):
+// within reach of one of its airfields and under SAM cover (SAM sites it knows of over the route and the target: at
+// least STEALTH.aiMinCoverKey for SAM sites, silos and airfields, STEALTH.aiMinCover for the rest: where its bombers
+// and rockets would be shot down; elsewhere those do the job):
 // silos, airfields, factories, SAM sites (a SAM cluster), arsenals, ports, cities. Each other building in the blast
 // adds to the score, more SAM shots add a little (the deeper the wall, the more the stealth bomber is worth), and SAMs,
 // silos and airfields near a landing of its own on the way score much higher (they would shoot the landing's cover
@@ -16,7 +17,7 @@
 // multi-target (up to STEALTH.multiMax aim points within STEALTH.multiSpread tiles of each other, smaller blasts): the AI
 // splits a strike on a SAM site or silo over the SAM sites and silos clustered around it (aiStealthCluster).
 import { buildingAt, buildingsOf } from './buildings';
-import { BOMBER_BUILDING_HIT, STEALTH } from './config';
+import { BOMBER_BUILDING_HIT, STEALTH, TICKS_PER_SECOND } from './config';
 import { aiAttackLevel } from './aiattack';
 import { applyAction } from './actions';
 import { superiorityBombMul } from './airwings';
@@ -117,6 +118,8 @@ export function aiStealthPick(state: GameState, pid: number): { airfield: number
   const p = state.players[pid];
   if (!p || pid === 0 || !p.alive || p.isHuman || !hasTech(p, 'airMastery')) return null;
   if (stealthPlayerReason(state, pid)) return null; // in the air, recharging, too poor, no air force
+  // AI pace: about one strike every cooldownSeconds + aiGapSeconds at war (not every recharge)
+  if (p.stealthReady !== undefined && state.tick < p.stealthReady + Math.round(STEALTH.aiGapSeconds * TICKS_PER_SECOND)) return null;
   const c = unitCost(state, pid, 'stealthBomber');
   if (p.gold < c.gold * (1 + STEALTH.aiReserve) || p.oil < c.oil * 2) return null; // the reserve stays
   const foes = foesOf(state, pid);
@@ -152,8 +155,12 @@ export function aiStealthPick(state: GameState, pid: number): { airfield: number
           }
         }
         if (!af) continue;
-        const cover = samCoverOnRoute(state, pid, af.tile % w, (af.tile / w) | 0, b.tile, true).shots;
-        if (cover < STEALTH.aiMinCover) continue; // weak cover: bombers and rockets do this job
+        const route = samCoverOnRoute(state, pid, af.tile % w, (af.tile / w) | 0, b.tile, true);
+        // SAM sites it knows of over the route and the target (reloading ones count: they are the wall all the same);
+        // SAMs, silos and airfields are worth it under one, the rest under aiMinCover
+        const sites = route.sams.length;
+        if (sites < (LANDING_KINDS.has(type) ? STEALTH.aiMinCoverKey : STEALTH.aiMinCover)) continue; // weak cover: bombers and rockets do this job
+        const cover = Math.max(route.shots, sites);
         let others = 0;
         forEachInRadius(state.map, b.tile, R, (i) => {
           const o = buildingAt(state, i);

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { applyAction } from '../src/sim/actions';
 import { ARSENAL_ROWS, MASTERY_TECHS } from '../src/sim/arsenal';
 import { markBuildingsChanged } from '../src/sim/buildings';
-import { ANTI_RADAR, ATOM_SILO_SLOTS, COUNTER, CRUISE, STEALTH, TICKS_PER_SECOND } from '../src/sim/config';
+import { ANTI_RADAR, ATOM_SILO_SLOTS, COUNTER, CRUISE, STEALTH, TICKS_PER_SECOND, UNITS } from '../src/sim/config';
 import { tileFightCost, updateAttacks } from '../src/sim/combat';
 import { counterBlock, counterMeter, shelterPreview } from '../src/sim/counter';
 import { antiRadarReason, updateAntiRadar } from '../src/sim/antiRadar';
@@ -247,6 +247,22 @@ describe('Anti-radar missiles', () => {
     sam.firedOn = 1;
     updateAntiRadar(s);
     expect(s.units.filter((u) => u.type === 'antiRadarMissile').length).toBe(1);
+  });
+  it('an AI holder answers SAMs that shot at its planes from Normal up (keeping its reserve); never at Easy', () => {
+    const run = (difficulty: 'easy' | 'normal', gold: number): number => {
+      const { s, sam } = seadGame();
+      s.players[1].isHuman = false;
+      s.players[1].gold = gold;
+      s.settings.difficulty = difficulty;
+      s.tick = 10 * TICKS_PER_SECOND;
+      sam.firedAt = s.tick - 2;
+      sam.firedOn = 1;
+      updateAntiRadar(s);
+      return s.units.filter((u) => u.type === 'antiRadarMissile').length;
+    };
+    expect(run('normal', 1e6)).toBe(1);
+    expect(run('easy', 1e6)).toBe(0);
+    expect(run('normal', UNITS.antiRadarMissile.gold * ANTI_RADAR.aiReserve)).toBe(0); // the reserve stays
   });
   it('SAM fire, airfield reloads and escort are hashed', () => {
     const { s, sam, af } = seadGame();

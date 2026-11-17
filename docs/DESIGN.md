@@ -567,13 +567,19 @@ other root and everything after it lock together ("You chose Destroyers; Carrier
     paratroopers landing x (1 - wear). Rockets, cruise missiles, atom bombs and recon are ignored. Flak runs after
     the planes move and before SAMs, fighters, carriers and patrols, which are unchanged. A level-1 fort's centre
     costs a bomber about 35% of its effect, two overlapping level-1 forts about 70%.
-  - Tank Traps: a trap tile is an own tile with trench level 1+ inside the radius of a finished, working own Fort
-    (derived, not stored; barrages and atom bombs flatten the trench and the traps with it). A hostile spearhead head
-    entering a trap tile moves at 40% speed, and its division loses 2% of its start strength per trap tile taken, at
-    most 25% per spearhead (Unit.trapLoss, hashed, reset per spearhead). Light tanks x1.3, heavy x0.7, Siege Tanks
-    x0; artillery support halves it; a Breakthrough's surge (BLITZ.speedMul - 1) is halved there. A fort still stops
-    a division without artillery or heavy tanks, so traps bite on the ones that get through. The preview warns
-    "Tank traps ahead: tanks slow to 40% here".
+  - Tank Traps: trap land is own land within `trapReach` (the fort's radius + `trapBelt` 20 tiles: 48 at level 1
+    with Fortification) of a finished, working own Fort (defense.trapStrength; derived, not stored). Strength 1 on
+    dug land (trench level 1+), `trapPlain` 0.7 on undug land; barrages and atom bombs flatten the trench (the land
+    drops to 0.7), a knocked-out fort lays none. A hostile spearhead head entering trap land moves at 1 - 0.6 x
+    strength x factor of its speed (40% on dug land, 58% undug), and its division loses 2% x strength x factor of its
+    start strength per trap tile taken, at most 25% per spearhead (Unit.trapLoss, hashed, reset per spearhead).
+    Factor: light tanks x1.3, heavy x0.7, Siege Tanks x0; artillery support halves it; a Breakthrough's surge
+    (BLITZ.speedMul - 1) is halved there. A fort's own radius still stops a division without artillery or heavy
+    tanks, so the belt is where most spearheads meet the traps (balance round: traps that needed a trench inside the
+    radius slowed 1% of spearheads, the AI never drives into fort land). Trap holders facing a neighbour with tank
+    divisions want one fort more than their cap (placed ~8 tiles behind that border). The preview warns "Tank traps
+    ahead: tanks slow to 40% here"; the fort card says "Tank traps: land within 48 tiles slows enemy tanks to 58%,
+    dug-in land to 40%"; hedgehogs stand on every third dug tile and every sixth undug one.
   - Tracking Radar (after Flak Guns; needs Radar): every finished, working own SAM site tracks a hostile stealth
     bomber inside `radarReach` (0.5) x its SAM reach (x Early Warning; 30 tiles at level 1). The ticks inside add up
     per SAM site and bomber over the whole flight (`Unit.radarLock`, hashed; not reset on leaving); from
@@ -589,16 +595,21 @@ other root and everything after it lock together ("You chose Destroyers; Carrier
     `batteryFireHp` 0.5) at one hostile ship of a nation at war with them (naval2.atWar; never in peace) within
     `batteryRange` 30 (+3 per level, at most `batteryRangeMax` 33: battleship shelling reaches 35). Target order: a
     warship that fired a cruise missile in the last 30 s, then warships whose shelling reaches the battery, then
-    transports, then other warships (nearest, then id); hidden submarines are not seen. A warship loses
-    `batteryDamage` 0.4 hp (of 3), a transport `batteryTransportLoss` 6% of its troops (never sunk), so invasions are
-    worn down, never stopped. Silencing: AI warships, and a player's on Auto or Bombard, shell the nearest working
+    other warships (nearest, then id); hidden submarines are not seen. A warship loses `batteryDamage` 0.4 hp (of 3).
+    Shore fire on transports (every tick, defense.updateShoreFire): a sailing transport inside the range of a working
+    battery of a nation at war with it, or of the nation it sails to invade (the landing starts the war, so the old
+    war rule let every first landing through), loses `batteryTransportPerTile` 1.2% of its troops per tile sailed
+    there, x (1 + `batteryTransportExtra` 0.5) per further covering battery (at most `batteryTransportStack` 3
+    counted), at most `batteryTransportMaxLoss` 40% per voyage (`Unit.shoreLoss`, hashed); never sunk. Crossing one
+    battery's full reach costs about 30%. (Before, a transport got one 6% shot at most: they sail 10 to 20 tiles/s
+    and came third in the 2 s target order, and the batch showed 0% lost.) Invasions are worn down, never stopped. Silencing: AI warships, and a player's on Auto or Bombard, shell the nearest working
     hostile battery in their reach before the coast (`shellBatteryTarget`): `batteryShellDamage` 0.05 x their
     shelling x s off its hp, never below 0.1; under 0.5 it is silent until it mends (0.01 hp/s). AI landings: score x
     0.6 per working battery covering the landing tile (x 0.85 with an own warship there). Shown: big gun casemates on
     Port and coastal Fort art, a muzzle flash, shell arc and splash with a hit spark, a steel-blue arc over the water
     (selected own battery, or enemy ones near your warships), and the card line.
   - AI: Defense is a second interest next to the committed pillar (aiDefenseCommitted, never at Easy): turtles,
-    nations facing a hostile neighbour with 1.8x their army, or foes with 10+ bombers (balance round: the old 1.5x and 6 put Defense in 40 to 60% of nations). Fork lean: enemy tank divisions
+    nations facing a threatening neighbour with 1.8x their army, or threatening neighbours with 10+ bombers (balance round: the old 1.5x and 6 put Defense in 40 to 60% of nations). A neighbour threatens when it fights the nation now (an attack either way) or holds `aiThreatBorder` (25%) of its land border; far rivals and short borders no longer count (on the World map every rival's bombers and every short border did, and 60% of nations took Defense). On the World map (many neighbours, long wars) the bar is higher: `aiStrongerNeighbourWorld` 2.4x or `aiEnemyBombersWorld` 16 bombers, and each trigger takes only the nations whose per-game hash is above `aiWorldPass` (about 35%). Fork lean: enemy tank divisions
     toward Tank Traps, enemy bombers toward Flak Guns, plus the per-game hash. Flak holders put forts next to cities
     enemy bombs hit in the last 60 s; trap holders face the neighbour with the most tank divisions (forts ~8 tiles
     behind that border). A Defense AI buys its lane's upgrade when it can (Tracking Radar needs Radar).
@@ -975,9 +986,11 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   seconds early is the fair middle: no warning at all makes a blast from nowhere that a new player cannot read, and
   a long warning would let it react to a strike nothing can stop. The result is a 'bombing' event "Stealth strike by X
   on Y: 3 buildings destroyed, 16000 troops killed". AI (`aiStealth`, every air turn after its recon): a nation with
-  Air Mastery at war, its bomber home and recharged and `aiReserve` (2) strike prices in gold to spare, picks the best
-  known building of a nation it fights within reach of one of its airfields that at least `aiMinCover` (2) ready SAM
-  shots it knows of cover (route or target; elsewhere bombers and rockets do the job): silos, airfields, factories,
+  Air Mastery at war, its bomber home and recharged `aiGapSeconds` (60 s) ago (about one strike every 105 s at war)
+  and `aiReserve` (1) strike price in gold to spare, picks the best known building of a nation it fights within reach
+  of one of its airfields that SAM sites it knows of cover (route or target; reloading ones count): one
+  (`aiMinCoverKey`) for SAM sites, silos and airfields, `aiMinCover` (2) for the rest (elsewhere bombers and rockets do
+  the job; balance round: the old 2 ready shots kept the bomber home, about one strike per holder every 9 minutes): silos, airfields, factories,
   SAMs, arsenals, ports, cities first, +6 for each other building in the blast, +3 per covering shot (up to 8), +30
   for SAMs, silos and airfields within `aiLandingNear` (30) of a landing of its own on the way (+10 for others), x 0.6
   where the target's fighters hold the sky. Easy AIs never send it at a human. A human's bomber flies only when
@@ -1019,7 +1032,11 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   missile from the nearest ready airfield in reach (paid). Aiming shows the reach ring and every seen enemy SAM in it:
   a green ring with "Radar on 7 s" or grey "Radar off". AI (`aiAntiRadar`, from Normal up, before each manual raid):
   with 2+ stored bombers it fires at the radar-on SAM sites it knows that cover the raid target, strongest first,
-  keeping 3 missile prices; it buys the special when it is air-minded with 2+ bombers facing 4+ enemy SAM sites.
+  keeping 3 missile prices; it buys the special when it is air-minded with 2+ bombers facing 4+ enemy SAM sites. And,
+  from Normal up, an AI holder answers like escort mode (updateAntiRadar): each SAM site that just shot at its planes
+  or missiles draws one missile while it keeps 3 missile prices, so the next wave meets an open wall (balance round:
+  the raid-time check alone fired 0.02 missiles per game, a SAM's radar is on only 10 s after it fires; now about 1 to
+  3 per two minutes a holder is at war). Easy AIs never fire them.
   Art: the anti-radar missile is drawn by the missile looks (art/detailed/missiles.ts `drawAntiRadar`).
 - **Atom bomb** (Silo, Nuclear Fission): radius 35: destroys buildings, kills 60-90% of the army share in the area,
   turns tiles neutral with fallout within 14. Every AI that sees a nuke drops opinion of the launcher sharply.

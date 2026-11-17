@@ -53,7 +53,7 @@ export const ARSENAL_TECH_LINE: Partial<Record<TechId, string>> = {
   dropTanks: 'Air wings reach 60% farther',
   nightBombing: 'Bombers dodge SAMs but hit less',
   flakGuns: 'Forts, cities fire flak: bombs up to 65% less',
-  tankTraps: 'Dug-in land near forts: enemy tanks to 40%',
+  tankTraps: 'Land around forts: enemy tanks to 58%',
   trackingRadar: 'SAMs spot stealth bombers after 3 s',
   coastalBatteries: 'Ports, coastal forts fire at enemy ships',
   antiRadar: 'Missiles knock out SAMs whose radar is on',

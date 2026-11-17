@@ -13,7 +13,9 @@
 // Escort mode (Action setAntiRadarEscort; Player.antiRadarEscort, off by default): once a second, each hostile SAM site
 // that fired at this player's planes or missiles in the last second draws one missile from its nearest ready airfield
 // in reach, if the player can pay. AI (aiAntiRadar, from ai.ts airAndMissiles): before its raids, from Normal up, an AI
-// with stored bombers fires at the radar-on SAM sites that cover its raid targets (never at a human at Easy).
+// with stored bombers fires at the radar-on SAM sites that cover its raid targets (never at a human at Easy); and,
+// from Normal up, an AI holder answers like escort mode (updateAntiRadar): a SAM site that just shot at its planes or
+// missiles draws one missile while it keeps ANTI_RADAR.aiReserve missile prices (the SAM wall opens for the next wave).
 // Deterministic: fixed id orders, no randomness.
 import { airWingRange } from './airwings';
 import { buildingAt, buildingsOf, destroyBuilding, isDisabled, samRadius } from './buildings';
@@ -194,16 +196,21 @@ function inFlight(state: GameState, pid: number, samId: number): boolean {
 /** Once a second (sim.ts, after the units): escort mode answers the SAM sites that just shot at the player's planes. */
 export function updateAntiRadar(state: GameState): void {
   if (state.tick % TICKS_PER_SECOND !== 0) return;
+  const aiOn = aiAttackLevel(state) >= 1; // AI answer from Normal up (Easy stays gentle)
+  const escorts = (p: GameState['players'][number]): boolean => p.alive && (p.antiRadarEscort === true || (aiOn && !p.isHuman && p.id > 0 && hasTech(p, 'antiRadar')));
   let any = false;
-  for (const p of state.players) if (p.antiRadarEscort && p.alive) any = true;
+  for (const p of state.players) if (escorts(p)) any = true;
   if (!any) return;
   const since = state.tick - TICKS_PER_SECOND;
   const sams = [...state.buildings.values()].filter((b) => b.type === 'sam' && b.firedAt !== undefined && b.firedAt > since).sort((a, b) => a.id - b.id);
   if (!sams.length) return;
   for (const p of state.players) {
-    if (!p.antiRadarEscort || !p.alive || antiRadarPlayerReason(state, p.id)) continue;
+    if (!escorts(p) || antiRadarPlayerReason(state, p.id)) continue;
+    // an AI keeps ANTI_RADAR.aiReserve missile prices in gold (a player's escort mode spends what it has)
+    const reserve = p.antiRadarEscort ? 0 : unitCost(state, p.id, 'antiRadarMissile').gold * ANTI_RADAR.aiReserve;
     for (const s of sams) {
       if (s.firedOn !== p.id || inFlight(state, p.id, s.id) || isDisabled(state, s)) continue;
+      if (p.gold < reserve + unitCost(state, p.id, 'antiRadarMissile').gold) break;
       if (antiRadarReason(state, p.id, -1, s.tile)) continue;
       launchAntiRadar(state, p.id, -1, s.tile);
     }

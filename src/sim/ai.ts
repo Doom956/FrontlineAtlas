@@ -1877,6 +1877,8 @@ function economy(ctx: Ctx): void {
     add('fort', count('fort') < fortCap ? 2 + clamp(ctx.threat, 0, 2) * 1.8 : 0);
     add('watchtower', count('watchtower') < Math.min(3, ctx.enemies.length) ? 2 : 0);
   }
+  // Tank Traps (defense.ts): a neighbour fields tank divisions: forts facing it lay the trap belt (placed by trapFoe).
+  if (trapFoe(ctx) > 0) add('fort', count('fort') < Math.max(2, fortCap) + 1 ? 4.5 : 0);
   // Flak Guns (defense.ts): enemy bombers hit our cities lately: a fort beside them adds flak.
   if (bombedCities(ctx).length) add('fort', count('fort') < fortCap + 2 + T / 3000 ? 4 : 0);
   // Forts are supply sources: one near a main front that is mostly beyond supply (placed for supply, tryBuild).
