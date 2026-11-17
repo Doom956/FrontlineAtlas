@@ -228,12 +228,16 @@ class DetailedTrails implements TrailLayer {
         if (cat === 'missiles') {
           // a billowing column of puffs: laid a few cells apart, each swelling fast and drifting off to its own side
           const big = u.key === 'atomBomb';
+          // a missile's upper stages and its coast smoke less (TrailUnit.smoke): smaller, fainter, sparser puffs
+          const str = Math.max(0, Math.min(1, u.smoke ?? 1));
+          if (str <= 0) continue;
           const back = halfT * 1.05;
-          const life = (view.zoom < 3 ? 1700 : 1200) * m.missileTrailLife;
+          const life = (view.zoom < 3 ? 1700 : 1200) * m.missileTrailLife * (0.6 + 0.4 * str);
           const drift = (cellT * (big ? 5 : 3.5)) / (life / 1000);
-          this.emit(u.id * 4, u.tx - c * back, u.ty - s * back, Math.max(cellT * (big ? 3.2 : 2.6), (fine ? 0 : 3) / z), now, (px, py, born) => {
+          const swell = 0.35 + 0.65 * str;
+          this.emit(u.id * 4, u.tx - c * back, u.ty - s * back, Math.max(cellT * (big ? 3.2 : 2.6) * (0.7 + 0.3 * str), (fine ? 0 : 3) / z), now, (px, py, born) => {
             const k = r01(P.made, 11) - 0.5;
-            P.put(px, py, -s * k * drift * 2, c * k * drift * 2 - 0.06 / Math.max(0.3, z * 0.05), born, life * (0.85 + 0.3 * r01(P.made, 12)), big ? 2.2 : 1.5, big ? 11 : 7, 0.85, SMOKE, r01(P.made, 13));
+            P.put(px, py, -s * k * drift * 2, c * k * drift * 2 - 0.06 / Math.max(0.3, z * 0.05), born, life * (0.85 + 0.3 * r01(P.made, 12)), (big ? 2.2 : 1.5) * (0.6 + 0.4 * str), (big ? 11 : 7) * swell, 0.85 * (0.45 + 0.55 * str), SMOKE, r01(P.made, 13));
           });
           continue;
         }

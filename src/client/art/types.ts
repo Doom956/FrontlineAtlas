@@ -133,6 +133,43 @@ export interface CruiseDraw {
   alpha: number;
 }
 
+/**
+ * A silo rocket or an atom bomb in flight. The sim flies it straight from the silo to its target at one speed; a style
+ * may draw it climbing in an arc (art/shared/ballistic.ts), timed from `elapsedMs` and `leftMs` so it lands exactly
+ * when the sim's missile does: lifted off its ground point, its shadow on the ground path, stages dropping away.
+ */
+export interface BallisticDraw {
+  kind: 'rocket' | 'atomBomb';
+  /** the silo and the target (CSS px), and the flight's length (tiles) */
+  sx: number;
+  sy: number;
+  tx: number;
+  ty: number;
+  dist: number;
+  /** time since launch and until impact at game speed (ms) */
+  elapsedMs: number;
+  leftMs: number;
+  owner: RGB;
+  /** screen px per tile */
+  zoom: number;
+  /** the map's px per art pixel (UnitDraw.scale) */
+  scale: number;
+  dpr: number;
+  timeMs: number;
+  seed: number;
+  alpha: number;
+  /** may this client see the map at a screen point (fog of war)? The launch cloud and falling stages ask; absent: yes */
+  seen?: (x: number, y: number) => boolean;
+}
+
+/** Where a ballistic missile's smoke leaves it now (CSS px), the way it points, and how strong the smoke is (0 none). */
+export interface BallisticExhaust {
+  x: number;
+  y: number;
+  angle: number;
+  smoke: number;
+}
+
 /** Draws one category of units: ships, land units, planes or missiles (the same object may serve all four). */
 export interface UnitArt {
   /**
@@ -159,6 +196,13 @@ export interface UnitArt {
    * rocket sprite, smaller (render/units.ts). False when nothing could be drawn this frame.
    */
   drawCruise?(ctx: CanvasRenderingContext2D, c: CruiseDraw, m: MotionParams): boolean;
+  /**
+   * Missiles: a silo rocket or an atom bomb flying its arc (BallisticDraw). Optional: a style without it draws the
+   * missile on its ground path as before. False when nothing could be drawn this frame.
+   */
+  drawBallistic?(ctx: CanvasRenderingContext2D, b: BallisticDraw, m: MotionParams): boolean;
+  /** With drawBallistic: where the drawn missile's smoke trail leaves it now (into `out`), for the trail layer. */
+  ballisticExhaust?(b: BallisticDraw, m: MotionParams, out: BallisticExhaust): BallisticExhaust;
   /**
    * Tanks: where the gun's muzzle is on screen for a tank drawn at (x, y) with hull heading `angle` and its turret
    * trained on `aim` (UnitDraw.aim) at map scale `scale` on a `dpr` screen (fx/tankFire.ts puts the flash there).
@@ -217,6 +261,8 @@ export interface TrailUnit {
   turnRate: number;
   /** the motion of the unit the trail follows (ships for wakes, planes or missiles for contrails) */
   motion: MotionParams;
+  /** missiles: how strong the smoke is now (0 none .. 1 full; absent: full), for a missile's stages and its coast */
+  smoke?: number;
 }
 
 /** Where the camera is, for trails anchored to the map (they stay where they were laid while the unit moves on). */
