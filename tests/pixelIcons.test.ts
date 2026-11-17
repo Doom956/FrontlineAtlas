@@ -1,7 +1,9 @@
 // Pixel HUD icons (src/client/hud/pixelIcons.ts) on the research and arsenal cards: the 12 px price and state marks
 // are hand-made pixel art (no canvas needed), and the prices are built from them, never from the old line icons.
 import { describe, expect, it } from 'vitest';
-import { pixelIcon } from '../src/client/hud/pixelIcons';
+import { pixelIcon, strikeLayers } from '../src/client/hud/pixelIcons';
+import { hasLineIcon } from '../src/client/hud/glyph';
+import { MASTERY, MASTERY_ORDER } from '../src/client/masteryStrikes';
 import { priceHtml } from '../src/client/hud/arsenalPage';
 import type { ArsenalCard } from '../src/client/hud/procure';
 
@@ -52,5 +54,12 @@ describe('pixel icons: research and arsenal card marks', () => {
     expect(html).not.toContain('class="li"');
     expect(html).toContain('rp-p p-iron short');
     expect(html).toContain('30 s');
+  });
+
+  it('the strike, weapon and Defense icons exist: line icons for cards and alerts, pictures for every strike button', () => {
+    for (const name of ['stealth', 'cruise', 'antiradar', 'rocket', 'icbm', 'counter', 'breakthrough', 'flak', 'hedgehog', 'tracking', 'coastal', 'mastery-defense'])
+      expect(hasLineIcon(name), name).toBe(true);
+    for (const id of MASTERY_ORDER) expect(strikeLayers(MASTERY[id].art).length, id).toBeGreaterThan(0);
+    for (const icon of ['rocket', 'atomBomb', 'stealth', 'cruise', 'breakthrough', 'counter']) expect(strikeLayers(icon).length, icon).toBeGreaterThan(0);
   });
 });

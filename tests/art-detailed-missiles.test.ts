@@ -34,6 +34,20 @@ describe('detailed missile models', () => {
     expect(modelLength(unitModel('rocket', 0))).toBeGreaterThan(14);
   });
 
+  it('the anti-radar missile is sleek: about nine times as long as its body is wide, its wings folded close', () => {
+    const parts = antiRadarModel().parts;
+    const us = parts.flatMap((q) => q.p.filter((_, i) => i % 2 === 0));
+    const length = Math.max(...us) - Math.min(...us);
+    // the body: the two chine facets (the widest parts that run the whole length)
+    const body = parts.filter((q) => q.m === 'stealth' && q.p.length === 8 && q.p[0] > 8);
+    const width = Math.max(...body.flatMap((q) => q.p.filter((_, i) => i % 2 === 1).map(Math.abs))) * 2;
+    const span = Math.max(...parts.flatMap((q) => q.p.filter((_, i) => i % 2 === 1).map(Math.abs))) * 2;
+    expect(body.length).toBe(2);
+    expect(length / width).toBeGreaterThanOrEqual(8);
+    expect(length / width).toBeLessThanOrEqual(10);
+    expect(span).toBeLessThan(length * 0.3);
+  });
+
   it('the anti-radar missile has an exported draw entry (nothing calls it yet)', () => {
     expect(typeof drawAntiRadar).toBe('function');
     expect(drawAntiRadar.length).toBe(3);

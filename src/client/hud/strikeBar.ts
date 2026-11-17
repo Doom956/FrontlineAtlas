@@ -69,7 +69,7 @@ export class StrikeBar {
     // the mastery strikes (Air, Naval, Armor Mastery): buttons too, never only a card
     for (const id of MASTERY_ORDER) {
       const info = MASTERY[id];
-      const btn = makeBtn(`strike-${id}`, info.name, info.label, info.icon);
+      const btn = makeBtn(`strike-${id}`, info.name, info.label, info.icon, '', info.art);
       btn.root.addEventListener('click', () => {
         btn.root.blur();
         this.aimMastery(id);
@@ -191,14 +191,14 @@ export class StrikeBar {
 }
 
 /** One bottom-bar strike button: ring, picture, plain word, cooldown seconds, stored count and salvo size. */
-function makeBtn(test: string, name: string, word: string, icon: IconId, key = ''): Btn {
+function makeBtn(test: string, name: string, word: string, icon: IconId, key = '', pic: string = icon): Btn {
   const root = el('button', 'sk locked');
   root.type = 'button';
   root.dataset.test = test;
   root.setAttribute('aria-label', name);
   const ring = el('span', 'sk-ring');
   // a pixel picture in the strikes colour; the painted icon only where there is no canvas to trace it
-  const art = pixelStrike(icon, 26);
+  const art = pixelStrike(pic, 26);
   let img: HTMLElement;
   if (art) img = catSpan(art, 'strike', 'sk-ic');
   else {

@@ -3,8 +3,8 @@
 //   rocket      a short-range ballistic missile: slim olive drab cylinder, darker cone, clipped-delta fins, fiery exhaust
 //   atom bomb   a long staged intercontinental missile: dark olive stages with a yellow band, rings between the
 //               stages, fins at the base and a tapering reentry cone, heavy smoke behind it (trails.ts)
-//   anti-radar  a stealth stand-off missile: an angular faceted body in dark grey, small swept wings and a V tail,
-//               a faint exhaust. Not used by the game yet: see drawAntiRadar.
+//   anti-radar  a stealth stand-off missile: a slim angular faceted body in dark grey, a wedge nose, small swept wings
+//               folded close, canted tail fins, a faint exhaust (drawn by render/units.ts through drawAntiRadar)
 //   cruise      the slim matte black cruise missile is in cruise.ts; its old model is kept here for the art lab
 // The "legacy" models below are the looks these replaced, kept only so the art lab can show old next to new.
 import type { MotionParams } from '../motion';
@@ -12,7 +12,7 @@ import { canBake, SpriteAtlas, type AtlasEntry } from '../shared/atlas';
 import { rasterize, shadowOf, type Model, type Part } from './bake';
 import { facingIndex, facingsFor, gridOf, type Grid } from './grid';
 import { FIRE } from './palette';
-import { box, ell, grown, poly, sym } from './shapes';
+import { box, ell, poly, sym } from './shapes';
 import type { UnitModel } from './models';
 
 /** Shading frame for a band laid over an ellipse or cylinder. */
@@ -73,32 +73,36 @@ export function atomBombModel(): UnitModel {
 
 // ------------------------------------------------------------------------------------------------- anti-radar missile
 
-/** The facet sketch below is drawn at this size (the missile is about 14 units long: a little bigger than the cruise missile). */
-const AR_SCALE = 1.3;
+/** Where the anti-radar missile's nozzle ends behind its centre (model units): the faint exhaust starts here. */
+const AR_TAIL = 7.8;
 
 /**
- * The anti-radar missile at level flight: an angular, faceted body (a raised ridge between two lower chine facets of
- * different tones, so the planes catch the light apart), a sharp nose, small swept wings, a V tail and a dark nozzle.
- * Dark stealth grey with a small owner ring.
+ * The anti-radar missile at level flight, sleek and slim (about 16 units long and 1.7 wide, a little longer than the
+ * cruise missile): a long sharp wedge nose with a dark seeker chip, an angular body whose two chine facets take
+ * different tones (lit and shaded) under a narrow flat top deck, small swept wings folded close to the body, two small
+ * canted tail fins (one lit, one shaded) and a dark nozzle. Dark stealth grey with a thin owner band; no curve anywhere,
+ * unlike the matte black, round-bodied cruise missile with its straight wings.
  */
 export function antiRadarModel(): Model {
   const z = 0.6;
+  const W = 0.85; // half the body width
   const parts: Part[] = [
-    // small canted V tail
-    poly(sym([-3.8, -0.6, -5.2, -1.9, -6, -1.9, -5.7, -0.6]), z + 0.2, 0.2, 'stealth', { tone: -1 }),
-    box(-6.4, -0.45, -5.4, 0.45, z + 0.1, 0.6, 'gun'),
-    // the flat faceted body: side facets (left lit, right in shade), a wedge nose
-    poly([5.6, 0, 3, -1.15, -4.6, -1.35, -4.6, 0, 3, 0], z, 0.8, 'stealth', { tone: 1 }),
-    poly([5.6, 0, 3, 1.15, -4.6, 1.35, -4.6, 0, 3, 0], z, 0.8, 'stealth', { tone: -1 }),
-    // the flat top deck
-    poly([4.6, 0, 3, -0.7, -4.6, -0.8, -4.6, 0.8, 3, 0.7], z + 0.7, 0.5, 'stealth', { tone: 0 }),
-    // swept wings folded out on top of the body, long and narrow
-    poly(sym([0.2, -0.8, -2.2, -3.1, -3.2, -3.1, -3, -0.8]), z + 1.2, 0.2, 'stealth', { tone: 1 }),
-    box(-2.1, -0.82, -1.4, 0.82, z + 0.7, 0.52, 'own'),
-    // the seeker window, a dark chip at the nose
-    poly([5.6, 0, 4.6, -0.3, 4.6, 0.3], z + 0.7, 0.55, 'gun'),
+    // two small canted tail fins, set high: one catches the light, the other is in shade
+    poly([-5.3, -W, -6.9, -1.8, -7.5, -1.8, -7.2, -W], z + 0.5, 0.15, 'stealth', { tone: 1 }),
+    poly([-5.3, W, -6.9, 1.8, -7.5, 1.8, -7.2, W], z + 0.5, 0.15, 'stealth', { tone: -1 }),
+    box(-AR_TAIL, -0.42, -7, 0.42, z + 0.1, 0.5, 'gun'),
+    // the slim faceted body: a long wedge nose, the chine facets (left lit, right in shade)
+    poly([8.2, 0, 4.4, -W, -7, -W, -7, 0], z, 0.6, 'stealth', { tone: 1 }),
+    poly([8.2, 0, 4.4, W, -7, W, -7, 0], z, 0.6, 'stealth', { tone: -1 }),
+    // the narrow flat top deck
+    poly([7, 0, 4.4, -0.42, -7, -0.45, -7, 0.45, 4.4, 0.42], z + 0.6, 0.2, 'stealth', { tone: 0 }),
+    // small swept wings folded close to the body
+    poly(sym([0.6, -W, -1.9, -2.1, -2.7, -2.1, -2.4, -W]), z + 0.3, 0.12, 'stealth', { tone: 1 }),
+    // a thin owner band, and the seeker chip at the nose
+    box(-3.7, -W - 0.02, -3.1, W + 0.02, z, 0.82, 'own'),
+    poly([8.2, 0, 7.1, -0.25, 7.1, 0.25], z + 0.3, 0.3, 'gun'),
   ];
-  return { parts: grown(parts, AR_SCALE), ground: 0 };
+  return { parts, ground: 0 };
 }
 
 /** Everything drawAntiRadar needs: where the missile is over the ground now (CSS px), its heading and the view. */
@@ -142,7 +146,7 @@ function blit(ctx: CanvasRenderingContext2D, e: AtlasEntry, x: number, y: number
 }
 
 /**
- * ENTRY FOR THE ANTI-RADAR MISSILE (nothing in the game calls it yet):
+ * ENTRY FOR THE ANTI-RADAR MISSILE (render/units.ts drawAntiRadarUnit):
  *   drawAntiRadar(ctx, a: AntiRadarDraw, m: MotionParams): boolean
  * Draws one anti-radar missile in flight at `a.x, a.y` (the ground point; the body is lifted by `a.alt`) heading
  * `a.angle`: its ground shadow, the faceted body baked per heading in the owner's colour, and a faint exhaust (still
@@ -174,7 +178,7 @@ export function drawAntiRadar(ctx: CanvasRenderingContext2D, a: AntiRadarDraw, m
   const p = g.p / g.dpr;
   for (let i = 0; i <= len; i++) {
     const q = i / len;
-    const d = 6.4 * AR_SCALE * S + (i / g.res) * S;
+    const d = AR_TAIL * S + (i / g.res) * S;
     const fx = bx - cos * d;
     const fy = by - sin * d * 0.84;
     ctx.globalAlpha = prevA * a.alpha * (0.55 - q * 0.4);

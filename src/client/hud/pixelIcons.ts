@@ -480,16 +480,7 @@ function tracedLine(name: string, px: number): string {
   if (hit) return hit;
   const ctx = body ? scratch(n) : null;
   if (!ctx || !body || typeof Path2D === 'undefined') return lineIcon(name, px);
-  ctx.scale(n / 24, n / 24);
-  ctx.lineWidth = (1.15 * 24) / n;
-  ctx.lineCap = 'square';
-  ctx.lineJoin = 'miter';
-  for (const sh of lineShapes(body)) {
-    const p = new Path2D(sh.d);
-    if (sh.fill) ctx.fill(p);
-    else ctx.stroke(p);
-  }
-  const s = toSvg(threshold(ctx, n), 1);
+  const s = toSvg(threshold(strokeBody(ctx, body, n), n), 1);
   cache.set(key, s);
   return s;
 }
@@ -523,17 +514,37 @@ const STRIKE_ART: Record<string, { d: string; mode?: string; width?: number }[]>
     { d: 'M2 36L28.5 18H35.5L62 36V42L35.5 31H28.5L2 42Z' },
     { d: 'M19 58L28.5 50H35.5L45 58V63H19Z' },
   ],
-  // missile, nose up, with fins and a flame
+  // the silo rocket: a slim body, a cone nose, clipped-delta fins at the base and a short flame
   rocket: [
-    { d: 'M25 16Q32 -2 39 16V47H25Z' },
-    { d: 'M25 30L13 46V54L25 47ZM39 30L51 46V54L39 47Z' },
-    { d: 'M27 50H37L32 63Z' },
+    { d: 'M27 19L32 2L37 19V52H27Z' },
+    { d: 'M27 35L16 50V57H27ZM37 35L48 50V57H37Z' },
+    { d: 'M28.5 55H35.5L32 63Z' },
   ],
-  // fat bomb with a boxed tail
+  // the atom bomb: a staged missile (two rings cut between the stages), a blunt reentry cone, small base fins
   atomBomb: [
-    { d: 'M14 32Q14 13 36 13Q61 13 61 32Q61 51 36 51Q14 51 14 32Z' },
-    { d: 'M2 18H12V46H2ZM10 28H17V36H10Z' },
-    { d: 'M43 13H47V51H43Z', mode: 'cut' },
+    { d: 'M25 19Q25 5 32 2Q39 5 39 19V59H25Z' },
+    { d: 'M25 49L17 58V63H25ZM39 49L47 58V63H39Z' },
+    { d: 'M23 28H41V31H23ZM23 42H41V45H23Z', mode: 'cut' },
+  ],
+  // the stealth strike: a flying wing, its sawtooth trailing edge
+  stealth: [{ d: 'M32 6L63 40L57 48L50 42L43 49L37.5 44L32 51L26.5 44L21 49L14 42L7 48L1 40Z' }],
+  // the cruise missile, nose up right: a slim tube, a round nose, straight pop-out wings, small tail fins
+  cruise: [
+    { d: 'M11.49 46.85L38.36 19.98Q46.85 11.49 51.8 12.2Q52.51 17.15 44.02 25.64L17.15 52.51Z' },
+    { d: 'M32.35 27.4L22.81 19.27L19.63 22.45L27.76 32L32 36.24L41.55 44.37L44.73 41.19L36.6 31.65Z' },
+    { d: 'M17.86 41.9L6.54 41.9L4.42 44.02L10.79 48.97L15.03 53.21L19.98 59.58L22.1 57.46L22.1 46.14Z' },
+  ],
+  // the Breakthrough: a tank side on, driving into a wedge of two chevrons
+  breakthrough: [
+    { d: 'M2 46H41L36 58H7Z' },
+    { d: 'M9 46V36H27L32 46ZM24 37H45V42H24Z' },
+    { d: 'M33 5L46 18L33 31M47 5L60 18L47 31', mode: 'stroke', width: 6 },
+  ],
+  // the Counteroffensive: an arrow striking out of a fort wall
+  counter: [
+    { d: 'M2 62V40H9V46H16V40H23V46H30V40H37V62Z' },
+    { d: 'M24 38L48 15', mode: 'stroke', width: 7 },
+    { d: 'M62 2L55 28L36 9Z' },
   ],
 };
 
@@ -562,6 +573,40 @@ function trace(layers: { d: string; mode?: string; width?: number; detail?: bool
     }
   }
   return threshold(ctx, n);
+}
+
+/** Any 64 x 64 layers as a pixel picture of `px` cells (the art lab's icon sheet: old pictures next to new). */
+export function pixelLayers(layers: { d: string; mode?: string; width?: number }[], px: number): string {
+  const g = trace(layers, px);
+  return g ? toSvg(g, 1) : '';
+}
+
+/** Any 24 x 24 line icon body traced like a line icon without pixel art (the art lab's icon sheet). */
+export function pixelLineBody(body: string, px: number): string {
+  const n = Math.max(12, Math.round(px));
+  const ctx = scratch(n);
+  if (!ctx || typeof Path2D === 'undefined') return '';
+  return toSvg(threshold(strokeBody(ctx, body, n), n), 1);
+}
+
+/** Strokes (and fills) a line icon body onto an n x n canvas with one-pixel lines. */
+function strokeBody(ctx: CanvasRenderingContext2D, body: string, n: number): CanvasRenderingContext2D {
+  ctx.scale(n / 24, n / 24);
+  ctx.lineWidth = (1.15 * 24) / n;
+  ctx.lineCap = 'square';
+  ctx.lineJoin = 'miter';
+  for (const sh of lineShapes(body)) {
+    const p = new Path2D(sh.d);
+    if (sh.fill) ctx.fill(p);
+    else ctx.stroke(p);
+  }
+  return ctx;
+}
+
+/** A strike button's 64 x 64 layers (the art lab's icon sheet). */
+export function strikeLayers(icon: string): { d: string; mode?: string; width?: number }[] {
+  const src = STRIKE_SRC[icon];
+  return src ? glyphLayers(src as WorldGlyphId) : STRIKE_ART[icon] ?? [];
 }
 
 /** A building's map silhouette (or another glyph.ts pictogram) as a pixel picture, one cell per CSS pixel. */

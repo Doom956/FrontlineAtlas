@@ -174,9 +174,10 @@ const LINE: Record<string, string> = {
   upgrade: '<path d="M12 20V5M6 11l6-6 6 6M6 20h12"/>',
   transport: '<path d="M3 15h18l-2.5 4h-13zM6 15V9h9l3 6M10 9V5"/>',
   // a flying wing seen from above: the sharp nose up, the sawtooth trailing edge below (the stealth strike)
-  stealth: '<path d="M12 5l10 10-3 2-2.5-2-2.5 2-2-1.5-2 1.5-2.5-2-2.5 2-3-2z"/><path d="M12 9v4"/>',
+  stealth: '<path d="M12 3.5L23 15l-2.5 2.5-2.75-2.25L15 18l-3-2.5L9 18l-2.75-2.75L3.5 17.5 1 15z"/>',
   bomb: '<circle cx="11" cy="14" r="6"/><path d="M15 9.5l2.5-2.5M17 5l1-1M19.5 7l1-.5"/>',
-  rocket: '<path d="M12 3c3 2 4 6 4 10l-2 3h-4l-2-3c0-4 1-8 4-10zM8 15l-3 3v2l3-1M16 15l3 3v2l-3-1M11 20h2"/>',
+  // the silo rocket, nose up: a slim body, a cone nose with a band under it, clipped-delta fins at the base
+  rocket: '<path d="M12 2l1.75 5.5V20h-3.5V7.5z"/><path d="M10.25 7.5h3.5M10.25 14.5L7 19v1.5h3.25M13.75 14.5L17 19v1.5h-3.25"/>',
   atom: '<circle cx="12" cy="12" r="2"/><path d="M12 10l-3-6a8 8 0 0 1 6 0zM13.7 13l6.3 1.5a8 8 0 0 1-3 5.2zM10.3 13L4 14.5a8 8 0 0 0 3 5.2z"/>',
   accept: '<path d="M5 12.5l4.5 4.5L19 7"/>',
   decline: '<path d="M6 6l12 12M18 6L6 18"/>',
@@ -202,7 +203,7 @@ const LINE: Record<string, string> = {
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   lock: '<path d="M5 11h14v10H5z"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   // Defense part 3: the Counteroffensive (a fort wall with an arrow out of it) and anti-radar (a dish with a strike line)
-  counter: '<path d="M3 20h8v-6H3zM3 14v-2h2v2M7 14v-2h2v2"/><path d="M11 13l9-6M20 7h-5M20 7v5"/>',
+  counter: '<path d="M2 21v-7h2.5v2H7v-2h2.5v2H12v-2h2.5v7z"/><path d="M9.5 12.5L18 5"/><path d="M21.5 2.5l-2 7.5-5.5-5.5z" fill="currentColor"/>',
   radar: '<path d="M5 19l4-4"/><path d="M4 11a8 8 0 0 0 9 9z"/><path d="M14 4a6 6 0 0 1 6 6M14 8a2 2 0 0 1 2 2"/>',
   shield: '<path d="M12 3l7.5 3v5.5c0 4.5-3.2 8-7.5 9.5-4.3-1.5-7.5-5-7.5-9.5V6z"/>',
   shovel: '<path d="M14 10l5-5M16.5 2.5l5 5"/><path d="M11.5 8.5l4 4-4.5 4.5c-2 2-4.5 3-7 3 0-2.5 1-5 3-7z"/>',
@@ -229,6 +230,26 @@ const LINE: Record<string, string> = {
   // a lightning wedge: the tank division's blitz (blitzUi.ts)
   blitz: '<path d="M13.5 2.5 5.5 13h5.5l-1.5 8.5 8.5-11.5h-5.5z"/>',
   tank: '<path d="M3.5 14h17l-2 5h-13z"/><path d="M6.5 14v-3.5h8l1.5 3.5M10.5 10.5V8.5h9"/><circle cx="7.5" cy="16.5" r=".6"/><circle cx="16.5" cy="16.5" r=".6"/>',
+  // strikes and their weapons (the art lab's icon sheet, artlab/iconSheet.ts, shows each next to the icon it replaced)
+  // the cruise missile, nose up right: a slim tube, a round nose, straight pop-out wings at the middle, small tail fins
+  cruise: '<path d="M4.29 17.73L14.9 7.12Q17.73 4.29 19.42 4.58Q19.71 6.27 16.88 9.1L6.27 19.71Z"/><path d="M11.58 10.44L7.76 7.33M13.56 12.42L16.67 16.24"/><path d="M6.06 15.96L2.31 15.75L4.29 17.73M8.04 17.94L8.25 21.69L6.27 19.71"/>',
+  // the anti-radar missile, nose up right: a long sharp wedge nose, an angular body with its ridge, small swept wings
+  // folded close and a canted tail (no curves anywhere, unlike the cruise missile)
+  antiradar: '<path d="M19.78 4.22L13.06 8.11L4.58 16.6L4.22 18.36L5.64 19.78L7.4 19.42L15.89 10.94Z"/><path d="M17.66 6.34L5.99 18.01"/><path d="M9.53 11.65L4.86 12.64L7.05 14.12M12.35 14.47L11.36 19.14L9.88 16.95"/>',
+  // the atom bomb, nose up: a staged missile (two rings between the stages), a blunt reentry cone, small base fins
+  icbm: '<path d="M12 2c1.6 1 2.5 3.2 2.5 6.5V21h-5V8.5C9.5 5.2 10.4 3 12 2z"/><path d="M9.5 11.5h5M9.5 16h5M9.5 18l-2.5 3M14.5 18l2.5 3"/>',
+  // the Breakthrough: a tank driving into a wedge (two chevrons ahead of it)
+  breakthrough: '<path d="M3.5 17.5h9a2 2 0 0 1 0 4h-9a2 2 0 0 1 0-4z"/><path d="M5 17.5v-3h5l1.5 3M10.5 15.5H16"/><path d="M12 3.5l4.5 4.5-4.5 4.5M17 3.5l4.5 4.5-4.5 4.5"/>',
+  // Arsenal, Defense path: twin anti-air barrels angled up from their mount
+  flak: '<path d="M4 20.5l2.5-4h10l2.5 4z"/><path d="M8.5 16.5V14h6v2.5"/><path d="M10 14l5.5-10M13 14l5.5-10"/>',
+  // a steel hedgehog: three crossed beams with flanged ends
+  hedgehog: '<path d="M5 20L16 4M19 20L8 4M3 12.5h18"/><path d="M3 20h4M17 20h4M6 4h4M14 4h4"/>',
+  // a tracking radar: the dish and its feed, a sweep fanning out from it with a contact in it
+  tracking: '<path d="M3 10a9.5 9.5 0 0 0 11 11z"/><path d="M8.5 15.5L12 12M6 19.5L4 22h6"/><path d="M10.6 4.1A8 8 0 0 1 19.9 13.4M12 12l5-5"/><circle cx="15.5" cy="11" r="1" fill="currentColor"/>',
+  // a coastal battery: a casemate with its gun over a wave line
+  coastal: '<path d="M2.5 17l2-6.5h9l2 6.5z"/><path d="M14.5 13H22"/><path d="M2 20.5c1.7-1.5 3.3-1.5 5 0s3.3 1.5 5 0 3.3-1.5 5 0 3.3 1.5 5 0"/>',
+  // Defense Mastery: the mastery star (the other Mastery cards) on a shield
+  'mastery-defense': '<path d="M12 2.5l8 3v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10v-6z"/><path d="M12 6.3L13.66 9.76L17.44 10.27L14.69 12.9L15.33 16.61L12 14.82L8.67 16.61L9.31 12.9L6.56 10.27L10.34 9.76Z" fill="currentColor"/>',
 };
 export type LineIconId = keyof typeof LINE;
 

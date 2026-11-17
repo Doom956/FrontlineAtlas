@@ -16,6 +16,7 @@ import type { TrailLayer } from '../art/types';
 import { spriteScale } from '../render/units';
 import { LAB_CSS } from './labCss';
 import { mountBuildingsMock } from './buildingsMock';
+import { mountIconSheet } from './iconSheet';
 import { mountLinksMock } from './linksMock';
 import { CLOSE_ZOOM, MID_ZOOM, NEAR_ZOOM, rowSpecs, type RowId, type RowSpec, type SceneEnv } from './scenes';
 
@@ -254,6 +255,7 @@ export function startArtLab(): void {
   root.append(head);
   mountBuildingsMock(root);
   mountLinksMock(root);
+  mountIconSheet(root);
 
   // ---------------------------------------------------------------------------------------------- columns
   const colHead = h('div', 'al-cols');

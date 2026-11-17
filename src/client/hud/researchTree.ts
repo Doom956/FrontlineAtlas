@@ -103,12 +103,12 @@ const ARSENAL_ICON: Partial<Record<TechId, (px: number) => string>> = {
   navalMines: (px) => pixelIcon('target', px),
   dropTanks: (px) => pixelIcon('expand', px),
   nightBombing: (px) => pixelIcon('eye', px),
-  flakGuns: (px) => pixelGlyph('sam', px),
-  tankTraps: (px) => pixelGlyph('fort', px),
-  trackingRadar: (px) => pixelIcon('signal', px),
-  coastalBatteries: (px) => pixelGlyph('port', px),
-  antiRadar: (px) => pixelIcon('target', px),
-  defenseMastery: (px) => pixelIcon('star', px),
+  flakGuns: (px) => pixelIcon('flak', px),
+  tankTraps: (px) => pixelIcon('hedgehog', px),
+  trackingRadar: (px) => pixelIcon('tracking', px),
+  coastalBatteries: (px) => pixelIcon('coastal', px),
+  antiRadar: (px) => pixelIcon('antiradar', px),
+  defenseMastery: (px) => pixelIcon('mastery-defense', px),
 };
 
 const TECH_ICON: Partial<Record<TechId, (px: number) => string>> = {

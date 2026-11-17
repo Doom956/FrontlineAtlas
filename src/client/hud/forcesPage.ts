@@ -487,7 +487,7 @@ export class ForcesPage implements DrawerPage {
             if (kind === 'atomBomb' && !unitAllowed(s, 'atomBomb')) continue;
             const u = UNITS[kind];
             const off = u.tech && !hasTech(me, u.tech) ? techFirst(u.tech) : ready <= 0 ? 'Reloading' : me.gold < u.gold ? `Needs ${formatCount(u.gold)} gold` : me.iron < u.iron ? `Needs ${u.iron} iron` : me.oil < u.oil ? `Needs ${u.oil} oil` : '';
-            acts.push({ label: kind === 'rocket' ? 'Rocket' : 'Atom', icon: kind === 'rocket' ? 'rocket' : 'atom', cls: 'danger', off, tip: `${STRIKES[kind].what} ${priceText(kind)}.`, run: () => this.aim(kind, () => (ctx.ui.mode = { kind: 'missile', silo: b.tile, missile: kind })) });
+            acts.push({ label: kind === 'rocket' ? 'Rocket' : 'Atom', icon: kind === 'rocket' ? 'rocket' : 'icbm', cls: 'danger', off, tip: `${STRIKES[kind].what} ${priceText(kind)}.`, run: () => this.aim(kind, () => (ctx.ui.mode = { kind: 'missile', silo: b.tile, missile: kind })) });
           }
           if (hasTech(me, 'rocketry')) {
             const on = siloAutoFire(s, b);

@@ -64,7 +64,7 @@ describe('alerts from sim events', () => {
   it('bombs, rockets and watchtower sightings on their way to you', () => {
     const s = threeNations();
     const me = s.players[1];
-    expect(alertFromEvent(s, me, ev(s, 'missile', 'AI 2 launched an atom bomb at Tester', [2, 1]))).toMatchObject({ kind: 'incoming', text: 'Atom bomb incoming from AI 2', icon: 'atom' });
+    expect(alertFromEvent(s, me, ev(s, 'missile', 'AI 2 launched an atom bomb at Tester', [2, 1]))).toMatchObject({ kind: 'incoming', text: 'Atom bomb incoming from AI 2', icon: 'icbm' });
     expect(alertFromEvent(s, me, ev(s, 'missile', 'AI 3 launched a rocket at Tester', [3, 1]))).toMatchObject({ text: 'Rocket incoming from AI 3', icon: 'rocket' });
     // ours, and the impact report, stay toasts
     expect(alertFromEvent(s, me, ev(s, 'missile', 'Tester launched a rocket at AI 2', [1, 2]))).toBeNull();

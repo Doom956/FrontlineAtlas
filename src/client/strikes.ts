@@ -104,7 +104,7 @@ export const STRIKES: Record<StrikeId, StrikeInfo> = {
     label: 'Atom',
     key: 'O',
     icon: 'atomBomb',
-    line: 'atom',
+    line: 'icbm',
     what: `Wipes out everything within ${ATOM_RADIUS} tiles, your own land too, and leaves fallout. Every nation will hate you.`,
     counter: 'SAM sites need two hits to stop it.',
   },
@@ -777,25 +777,25 @@ export function strikeToastText(e: GameEvent, me: Player): { text: string; kind:
     case 'bombing':
       if ((r = after(`${n} bombed `)) !== null) return { text: `Bombing run on ${r}`, kind: 'good', icon: 'bomb' };
       // the stealth strike (Air Mastery, sim units.ts): the warning a few seconds before, then what it hit
-      if ((r = after(`Stealth strike by ${n} on `)) !== null) return { text: `Stealth strike on ${r}`, kind: 'good', icon: 'bomb' };
-      if ((r = after(`A stealth bomber of ${n} is over `)) !== null) return { text: `Your stealth bomber is over ${r.replace(/: its bombs fall in (\d+) s$/, ': bombs in $1 s')}`, kind: 'info', icon: 'bomb' };
+      if ((r = after(`Stealth strike by ${n} on `)) !== null) return { text: `Stealth strike on ${r}`, kind: 'good', icon: 'stealth' };
+      if ((r = after(`A stealth bomber of ${n} is over `)) !== null) return { text: `Your stealth bomber is over ${r.replace(/: its bombs fall in (\d+) s$/, ': bombs in $1 s')}`, kind: 'info', icon: 'stealth' };
       {
         const mid = ` is over ${n}: its bombs fall in `;
         const at = m.indexOf(mid);
-        if (m.startsWith('A stealth bomber of ') && at > 0) return { text: `A stealth bomber of ${m.slice(20, at)} is over your land: its bombs fall in ${m.slice(at + mid.length)}`, kind: 'bad', icon: 'bomb' };
+        if (m.startsWith('A stealth bomber of ') && at > 0) return { text: `A stealth bomber of ${m.slice(20, at)} is over your land: its bombs fall in ${m.slice(at + mid.length)}`, kind: 'bad', icon: 'stealth' };
         const hit = /^Stealth strike by (.+?) on (.+?): (.+)$/.exec(m);
-        if (hit && hit[2] === n) return { text: `Stealth strike by ${hit[1]}: ${hit[3]}`, kind: 'bad', icon: 'bomb' };
+        if (hit && hit[2] === n) return { text: `Stealth strike by ${hit[1]}: ${hit[3]}`, kind: 'bad', icon: 'stealth' };
       }
       return { text: m, kind: 'bad', icon: 'bomb' };
     case 'missile': {
       const atom = / an atom bomb /.test(m);
-      if ((r = after(`${n} launched `)) !== null) return { text: `${atom ? 'Atom bomb' : 'Rocket'} on its way to ${r.replace(/^(a rocket|an atom bomb) at /, '')}`, kind: 'info', icon: atom ? 'atom' : 'rocket' };
+      if ((r = after(`${n} launched `)) !== null) return { text: `${atom ? 'Atom bomb' : 'Rocket'} on its way to ${r.replace(/^(a rocket|an atom bomb) at /, '')}`, kind: 'info', icon: atom ? 'icbm' : 'rocket' };
       if ((r = after(`Rocket strike by ${n}: `)) !== null) return { text: `Rocket hit: ${r}`, kind: 'good', icon: 'rocket' };
-      return { text: m, kind: 'bad', icon: atom ? 'atom' : 'rocket' };
+      return { text: m, kind: 'bad', icon: atom ? 'icbm' : 'rocket' };
     }
     case 'nuke':
-      if ((r = after(`${n} dropped an atom bomb`)) !== null) return { text: `Atom bomb${r}`, kind: 'good', icon: 'atom' };
-      return { text: m, kind: 'bad', icon: 'atom' };
+      if ((r = after(`${n} dropped an atom bomb`)) !== null) return { text: `Atom bomb${r}`, kind: 'good', icon: 'icbm' };
+      return { text: m, kind: 'bad', icon: 'icbm' };
     case 'paradrop':
       if ((r = after(`${n} is dropping `)) !== null) return { text: `Dropping ${r}`, kind: 'info', icon: 'paradrop' };
       if ((r = after(`${n}'s paratroopers landed in `)) !== null) return { text: `Your paratroopers landed in ${r}`, kind: 'good', icon: 'paradrop' };
@@ -805,7 +805,7 @@ export function strikeToastText(e: GameEvent, me: Player): { text: string; kind:
       if (shot) {
         const [, by, what, unit, owner] = shot;
         const recon = unit === 'recon plane';
-        const icon = /bomber/.test(unit) ? 'bomb' : /rocket/.test(unit) ? 'rocket' : /atom/.test(unit) ? 'atom' : recon ? 'eye' : 'paradrop';
+        const icon = /bomber/.test(unit) ? 'bomb' : /rocket/.test(unit) ? 'rocket' : /atom/.test(unit) ? 'icbm' : recon ? 'eye' : 'paradrop';
         // A recon plane shot down on its way out reveals nothing (sim units.ts interceptThreats).
         if (owner === n) return { text: `${by}'s ${what} shot down your ${unit}${recon ? ' before it got there: nothing revealed' : ''}`, kind: 'bad', icon };
         if (by === n) return { text: `Your ${what} shot down ${owner}'s ${unit}${recon ? ': they saw nothing' : ''}`, kind: 'good', icon };

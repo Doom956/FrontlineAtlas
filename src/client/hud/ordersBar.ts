@@ -162,7 +162,7 @@ export class OrdersBar {
     });
     this.cmBtn.type = 'button';
     this.cmBtn.dataset.test = 'orders-cruise';
-    this.cmBtn.append(iconSpan(lineIcon('rocket', 14, 2)), el('span', 'wr-btn-l', 'Cruise missile'), this.cmSub);
+    this.cmBtn.append(iconSpan(lineIcon('cruise', 14, 2)), el('span', 'wr-btn-l', 'Cruise missile'), this.cmSub);
     this.cmBtn.addEventListener('click', () => {
       const s = ctx.state();
       const me = ctx.me();
@@ -176,7 +176,7 @@ export class OrdersBar {
     this.ships.el.append(this.cm);
     this.blitzBtn.type = 'button';
     this.blitzBtn.dataset.test = 'blitz';
-    this.blitzBtn.append(iconSpan(lineIcon('blitz', 14, 2)), this.blitzLabel);
+    this.blitzBtn.append(iconSpan(lineIcon('breakthrough', 14, 2)), this.blitzLabel);
     this.blitzBtn.addEventListener('click', () => {
       const s = ctx.state();
       if (!s || this.blitzAim < 0) return;

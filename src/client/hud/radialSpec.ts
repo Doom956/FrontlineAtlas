@@ -134,7 +134,7 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
           if (kind === 'atomBomb' && !unitAllowed(state, 'atomBomb')) continue;
           slices.push({
             label: kind === 'rocket' ? 'Rocket' : 'Atom bomb',
-            icon: kind === 'rocket' ? 'rocket' : 'atom',
+            icon: kind === 'rocket' ? 'rocket' : 'icbm',
             danger: true,
             hint: costText(u.gold, u.iron),
             disabled: chargesReady(b) <= 0 ? 'Reloading' : me.gold < u.gold ? 'Not enough gold' : undefined,

@@ -923,7 +923,7 @@ export class BuildingPage implements DrawerPage {
       // Anti-radar Missiles (client/antiRadarUi.ts): pick a seen enemy SAM whose radar is on; escort mode
       const al = el('p', 'note');
       al.dataset.test = 'antiradar-line';
-      const ab = add(ANTI_RADAR_LABEL, 'danger', 'radar', () => {
+      const ab = add(ANTI_RADAR_LABEL, 'danger', 'antiradar', () => {
         const ss = ctx.state();
         const m = ctx.me();
         if (!ss || !m) return;
@@ -980,7 +980,7 @@ export class BuildingPage implements DrawerPage {
       for (const kind of ['rocket', 'atomBomb'] as const) {
         if (kind === 'atomBomb' && !allowedNow('atomBomb')) continue;
         const u = UNITS[kind];
-        add(`${u.name} (${formatCount(u.gold)} gold)`, 'danger', kind === 'rocket' ? 'rocket' : 'atom', () => (ctx.ui.mode = { kind: 'missile', silo: tile, missile: kind }), (_ss, m, bb) =>
+        add(`${u.name} (${formatCount(u.gold)} gold)`, 'danger', kind === 'rocket' ? 'rocket' : 'icbm', () => (ctx.ui.mode = { kind: 'missile', silo: tile, missile: kind }), (_ss, m, bb) =>
           u.tech && !hasTech(m, u.tech) ? techFirst(u.tech) : bb.buildLeft > 0 ? 'Still being built' : chargesReady(bb) <= 0 ? 'Reloading' : m.gold < u.gold ? 'Not enough gold' : m.iron < u.iron ? 'Not enough iron' : m.oil < u.oil ? 'Not enough oil' : '',
         ).dataset.test = `order-${kind}`;
       }

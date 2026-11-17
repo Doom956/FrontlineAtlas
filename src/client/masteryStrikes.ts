@@ -26,6 +26,8 @@ export interface MasteryInfo {
   /** the plain word under the button */
   label: string;
   icon: IconId;
+  /** the strike button's picture (hud/pixelIcons.ts STRIKE_ART); `icon` is the painted fallback without a canvas */
+  art: string;
   what: string;
   counter: string;
 }
@@ -36,6 +38,7 @@ export const MASTERY: Record<MasteryId, MasteryInfo> = {
     name: 'Stealth strike',
     label: 'Stealth',
     icon: 'bomber',
+    art: 'stealth',
     what: `A stealth bomber SAM sites cannot see flies from the nearest airfield in reach and bombs one target: it wrecks every building within ${fmtR(BOMBER_RADIUS * STEALTH.radiusMul)} tiles, destroys every SAM site in the blast and silences SAM sites within ${STEALTH.silenceRadius} tiles for ${STEALTH.silenceSeconds} s.`,
     counter: 'Only enemy fighters that can see it, and air superiority over the target.',
   },
@@ -44,6 +47,7 @@ export const MASTERY: Record<MasteryId, MasteryInfo> = {
     name: 'Cruise missile',
     label: 'Cruise',
     icon: 'rocket',
+    art: 'cruise',
     what: `Every loaded warship, destroyer and battleship can fire one at enemy land within ${CRUISE.reach} tiles of the ship: wrecks buildings within ${CRUISE.radius} tiles and kills troops.`,
     counter: 'SAM sites shoot cruise missiles down like rockets.',
   },
@@ -52,6 +56,7 @@ export const MASTERY: Record<MasteryId, MasteryInfo> = {
     name: BLITZ_NAME,
     label: BLITZ_NAME,
     icon: 'armor',
+    art: 'breakthrough',
     what: `A tank division pops smoke and surges into enemy land near your border: fast, deep and wide, and the land it takes holds for ${BLITZ.holdSeconds} s.`,
     counter: 'Cut the wedge off before it holds, or keep reserves behind the border.',
   },
@@ -60,6 +65,7 @@ export const MASTERY: Record<MasteryId, MasteryInfo> = {
     name: COUNTER_NAME,
     label: 'Counter',
     icon: 'fort',
+    art: 'counter',
     what: `Defense Mastery: enemy attacks that lose troops on land your Forts cover fill a meter. Full, one click sends ${Math.round(COUNTER.troopShare * 100)}% of your troops at home and your idle tank divisions near a Fort at the attacker: faster and cheaper for ${COUNTER.seconds} s. No aiming: it pushes from the Fort nearest to them.`,
     counter: 'Hold reserves behind the front that bled, or make peace before the meter fills.',
   },
