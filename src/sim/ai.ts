@@ -79,13 +79,16 @@ import {
 } from './config';
 import {
   AI_PACT_BREAK_RATIO,
+  AI_PACT_LEADER_SHARE,
+  AI_PACT_MAX_ACTIVE,
+  AI_PACT_REPEAT_GAP,
+  AI_PEACE_WINNER_SHARE,
   AI_PACT_STRONG_RATIO,
   AI_PEACE_ARMY_RATIO,
   AI_PEACE_LAND_LOSS,
   AI_PEACE_REPEAT_GAP,
   AI_TREATY_OFFER_COOLDOWN,
   PACT_LENGTHS,
-  PACT_RENEW_WINDOW,
   PEACE_DURATION,
   TREATY_FIGHT_WINDOW,
 } from './config';
@@ -95,7 +98,7 @@ import { areAllied, changeOpinion, isTraitor } from './diplomacy';
 import { doctrineActive, doctrineAdvice, doctrineCooldownLeft, doctrineSwitchCost, doctrineTicks, doctrineUnlocked, doctrineUnlockTick } from './doctrines';
 import { troopCap } from './economy';
 import { forEachInRadius } from './grid';
-import { alliancesAllowed as rulesAllowAlliances, atPeace, buildingAllowed, researchRule, treatyBetween, treatySecondsLeft, unitAllowed } from './rules';
+import { alliancesAllowed as rulesAllowAlliances, atPeace, buildingAllowed, researchRule, treatyBetween, unitAllowed } from './rules';
 import { canSpawnAt, gameSeconds, ownerBox, spawnAtFixedPoint } from './state';
 import { mainFront } from './warTarget';
 import { fogOn, knownTile } from './fog';
@@ -595,6 +598,8 @@ interface AIState {
   peaceTries?: Map<number, number>;
   /** player id -> tick our last peace deal with them was signed (AI_PEACE_REPEAT_GAP) */
   peaceSigned?: Map<number, number>;
+  /** player id -> tick we last saw a pact with them (AI_PACT_REPEAT_GAP) */
+  pactSeen?: Map<number, number>;
   /** our land over the last TREATY_FIGHT_WINDOW seconds: [tick, tiles, ...] from each decision */
   landLog?: number[];
 }
@@ -3048,12 +3053,20 @@ export function aiWantsTreaty(state: GameState, ai: number, o: TreatyOffer): boo
   const gives = o.theyGive !== 'none';
   if (o.kind === 'peace') {
     if (losingTo(state, ai, from)) return !BIG_TERMS.includes(o.theyGive) || armyOf(state, ai) < armyOf(state, from) * AI_PACT_BREAK_RATIO;
-    if (gets && !gives) return true;
-    if (!gets && !gives) return frontsOf(state, ai).length >= 2;
-    return false;
+    // Not losing: only while stretched over two or more fronts, and never as a land winner (it keeps going).
+    if (landShare(state, ai) >= AI_PEACE_WINNER_SHARE || frontsOf(state, ai).length < 2) return false;
+    return !(gets && gives);
   }
   if (nextTarget(state, ai) === from || runawayLeader(state) === from) return false;
+  if (pactsHeld(state, ai) >= AI_PACT_MAX_ACTIVE || landShare(state, ai) >= AI_PACT_LEADER_SHARE || landShare(state, from) >= AI_PACT_LEADER_SHARE) return false;
   return (state.opinion[ai]?.[from] ?? 0) >= -30;
+}
+
+/** Active (unbroken) pacts of a nation. */
+function pactsHeld(state: GameState, id: number): number {
+  let n = 0;
+  for (const t of state.treaties ?? []) if (t.kind === 'pact' && t.breakTick === 0 && (t.a === id || t.b === id)) n++;
+  return n;
 }
 
 function treatyDiplomacy(ctx: Ctx, drop: number): void {
@@ -3070,6 +3083,13 @@ function treatyDiplomacy(ctx: Ctx, drop: number): void {
     signed.set(other, t.endTick - PEACE_DURATION * T);
     tries.delete(other);
   }
+  // Pact partners: remember when each pact was last seen so a new one waits AI_PACT_REPEAT_GAP after it ended.
+  const pactSeen = (ai.pactSeen ??= new Map<number, number>());
+  for (const t of state.treaties ?? []) if (t.kind === 'pact' && (t.a === id || t.b === id)) pactSeen.set(t.a === id ? t.b : t.a, state.tick);
+  const pactRest = (q: number): boolean => {
+    const at = pactSeen.get(q);
+    return at !== undefined && state.tick - at < AI_PACT_REPEAT_GAP * T;
+  };
   const cooling = (q: number): boolean => {
     const at = offered.get(q);
     return at !== undefined && state.tick - at < AI_TREATY_OFFER_COOLDOWN * T;
@@ -3109,21 +3129,14 @@ function treatyDiplomacy(ctx: Ctx, drop: number): void {
     if (weak && offerPeace(weak, 'none')) return;
   }
 
-  // Pacts: renew in the last minute while we still like them; offer one to a strong neighbour we are not targeting.
-  for (const t of state.treaties ?? []) {
-    if (t.kind !== 'pact' || t.breakTick > 0 || (t.a !== id && t.b !== id)) continue;
-    const other = t.a === id ? t.b : t.a;
-    if (other === drop || other === ctx.leader || state.opinion[id][other] < -20 || treatySecondsLeft(state, t) > PACT_RENEW_WINDOW) continue;
-    if (cooling(other) || !canOfferPact(state, id, other).ok) continue;
-    offered.set(other, state.tick);
-    applyAction(state, id, { type: 'offerPact', to: other, seconds: PACT_LENGTHS[PACT_LENGTHS.length - 1] });
-  }
+  // Pacts: offer one to a strong neighbour we are not targeting (no renewals: a pact ends, then a rest).
+  if (pactsHeld(state, id) >= AI_PACT_MAX_ACTIVE || landShare(state, id) >= AI_PACT_LEADER_SHARE) return;
   let cand = 0;
   let best = 0;
   for (const q of ctx.neighbours) {
     const qp = state.players[q];
     if (!qp?.alive || isTribe(qp) || ctx.allies.includes(q) || q === drop || q === ctx.leader) continue;
-    if (isTraitor(state, q) || isPactBreaker(state, q) || treatyBetween(state, id, q) || cooling(q)) continue;
+    if (isTraitor(state, q) || isPactBreaker(state, q) || treatyBetween(state, id, q) || cooling(q) || pactRest(q) || landShare(state, q) >= AI_PACT_LEADER_SHARE) continue;
     const ratio = ctx.m.army[q] / ctx.army;
     if (ratio < AI_PACT_STRONG_RATIO || state.opinion[id][q] < -20 || ratio <= best) continue;
     if (!canOfferPact(state, id, q).ok) continue;
