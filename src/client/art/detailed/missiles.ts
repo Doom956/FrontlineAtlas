@@ -45,11 +45,46 @@ export function rocketModel(): UnitModel {
 
 // ------------------------------------------------------------------------------------------------- atom bomb
 
+/** The atom bomb's drawn length and width against the sketch below: 1.5 times as long, a touch wider (slimmer in proportion). */
+export const ICBM_LEN = 1.5;
+export const ICBM_WIDTH = 1.08;
+
+/** Parts stretched along their length (u) and across (v), with the shading frames and heights following. */
+function stretched(parts: readonly Part[], lu: number, lv: number): Part[] {
+  return parts.map((p) => {
+    const q = p.p.slice();
+    if (p.k === 'poly') {
+      for (let i = 0; i < q.length; i += 2) {
+        q[i] *= lu;
+        q[i + 1] *= lv;
+      }
+    } else if (p.k === 'ell') {
+      q[0] *= lu;
+      q[1] *= lv;
+      q[2] *= lu;
+      q[3] *= lv;
+    } else {
+      q[0] *= lu;
+      q[1] *= lv;
+      q[2] *= lu;
+      q[3] *= lv;
+    }
+    const sc = p.sc && ([p.sc[0] * lu, p.sc[1] * lv, p.sc[2] * lu, p.sc[3] * lv] as const);
+    return { ...p, p: q, sc, h: p.h * lv };
+  });
+}
+
 /**
  * The atom bomb after a three-stage ICBM: a long first stage (about half the length), a ring, a second stage, a ring, a
  * short slimmer third stage and a blunt reentry cone; dark olive with a yellow band, base fins and the owner's ring.
+ * Drawn ICBM_LEN times as long and ICBM_WIDTH as wide as the sketch (a long, slim missile).
  */
 export function atomBombModel(): UnitModel {
+  const m = atomBombSketch();
+  return { ...m, model: { parts: stretched(m.model.parts, ICBM_LEN, ICBM_WIDTH), flat: true }, nozzles: [{ u: -11.4 * ICBM_LEN, v: 0, z: 1, r: 1.7 * ICBM_WIDTH }] };
+}
+
+function atomBombSketch(): UnitModel {
   const s1 = over(-4.4, 0, 5.8, 2.2);
   const s2 = over(4.4, 0, 3, 1.8);
   const parts: Part[] = [

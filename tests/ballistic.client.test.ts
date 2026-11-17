@@ -1,7 +1,7 @@
 // The silo rocket's and the atom bomb's drawn arc (client only, art/shared/ballistic.ts) and the detailed style's
 // staging (art/detailed/ballistic.ts): the arc's maths, the staging timeline, Reduce motion, and the stage models.
 import { describe, expect, it } from 'vitest';
-import { arcAt, arcGround, arcPeak, arcPose, arcShape, ballisticPhase, BallisticBoard, flashAlpha, ICBM, ROCKET, separations, stageFall } from '../src/client/art/shared/ballistic';
+import { ARC, arcAt, arcGround, arcPeak, arcPose, arcShape, ballisticPhase, BallisticBoard, flashAlpha, ICBM, ROCKET, separations, STAGE_GAP_MS, stagePlan, stageFall } from '../src/client/art/shared/ballistic';
 import { bodyParts, bodyShift, CUT, FORE_STEPS, foreStep, stageParts } from '../src/client/art/detailed/ballistic';
 import { partBox } from '../src/client/art/detailed/bake';
 import { rasterize, solidCount } from '../src/client/art/detailed/bake';
@@ -32,6 +32,28 @@ describe('the ballistic arc', () => {
     }
     expect(arcPeak(100000)).toBe(arcPeak(200000));
     expect(arcPeak(0)).toBe(0);
+  });
+
+  it('the atom bomb flies a higher arc than the silo rocket, both within bounds', () => {
+    expect(arcPeak(100, 'atomBomb')).toBeCloseTo(45, 9);
+    expect(arcPeak(100, 'rocket')).toBeCloseTo(28, 9);
+    for (const d of [20, 60, 200]) expect(arcPeak(d, 'atomBomb')).toBeGreaterThan(arcPeak(d, 'rocket'));
+    expect(arcPeak(100000, 'atomBomb')).toBe(ARC.peakMax);
+    expect(arcAt(0.5, 100, undefined, 'rocket').h).toBeCloseTo(28, 9);
+  });
+
+  it('caps the drawn lift so a long flight seen up close stays on screen', () => {
+    // normal zoom: not cut
+    expect(arcPeak(120, 'atomBomb', 8)).toBeCloseTo(54, 9);
+    expect(arcPose(0, 0, 960, 0, 120, 8, 0.5, undefined, 'atomBomb').lift).toBeCloseTo(54 * ARC.lift * 8, 6);
+    // close zoom: the lift stops at the cap, and the arc is the same shape, only lower
+    for (const z of [16, 24, 32]) {
+      const mid = arcPose(0, 0, 120 * z, 0, 120, z, 0.5, undefined, 'atomBomb');
+      expect(mid.lift).toBeLessThanOrEqual(ARC.liftCapPx + 1e-6);
+      expect(mid.lift).toBeCloseTo(ARC.liftCapPx, 6);
+      expect(mid.high).toBeCloseTo(1, 9);
+      expect(arcPose(0, 0, 120 * z, 0, 120, z, 0.25, undefined, 'atomBomb').lift).toBeLessThan(mid.lift);
+    }
   });
 
   it('keeps the drawn ground point on the path: from the silo to the target, never back, never far from the sim', () => {
@@ -70,7 +92,7 @@ describe('the ballistic arc', () => {
     // the same flight twice is the same picture (nothing random, nothing stored)
     expect(arcPose(100, 300, 900, 300, 110, 8, 0.37)).toEqual(arcPose(100, 300, 900, 300, 110, 8, 0.37));
     // the lift scales with the zoom like the map, so a trail laid in tiles stays on the arc
-    expect(arcPose(0, 0, 800, 0, 110, 16, 0.5).lift).toBeCloseTo(mid.lift * 2, 6);
+    expect(arcPose(0, 0, 800, 0, 20, 16, 0.5).lift).toBeCloseTo(arcPose(0, 0, 400, 0, 20, 8, 0.5).lift * 2, 6);
   });
 });
 
@@ -85,6 +107,31 @@ describe('the staging timeline', () => {
     expect(ICBM.rv).toBeGreaterThan(0.5);
     expect(ICBM.rv).toBeLessThan(1);
     expect(separations('rocket')).toEqual([]);
+  });
+
+  it('holds a minimum real time between staging events, on a long flight and a short one', () => {
+    for (const total of [5000, 6000, 9000, 14000, 30000, 90000]) {
+      const p = stagePlan(total, { stage1: 0, stage2: 0, burnout: 0, rv: 0 });
+      const t = [p.stage1, p.stage2, p.burnout, p.rv].map((f) => f * total);
+      expect(t[0]).toBeGreaterThanOrEqual(STAGE_GAP_MS - 1e-6);
+      for (let i = 1; i < 4; i++) expect(t[i] - t[i - 1]).toBeGreaterThanOrEqual(STAGE_GAP_MS - 1e-6);
+      expect(p.rv).toBeLessThanOrEqual(0.9 + 1e-9);
+      expect(separations('atomBomb', total)).toEqual([p.stage1, p.stage2, p.rv]);
+      // the order never changes: the body and the burning stage follow the plan
+      const burns: number[] = [];
+      for (let f = 0; f <= 1.0001; f += 0.002) {
+        const q = ballisticPhase('atomBomb', f, undefined, total);
+        if (burns[burns.length - 1] !== q.burn) burns.push(q.burn);
+      }
+      expect(burns).toEqual([1, 2, 3, 0]);
+    }
+    // a flight too short for the gaps still keeps the order (spread over the first 0.9)
+    const s = stagePlan(3000, { stage1: 0, stage2: 0, burnout: 0, rv: 0 });
+    expect(s.stage1).toBeLessThan(s.stage2);
+    expect(s.stage2).toBeLessThan(s.burnout);
+    expect(s.burnout).toBeLessThan(s.rv);
+    // a long flight keeps the nominal timeline
+    expect(stagePlan(90000, { stage1: 0, stage2: 0, burnout: 0, rv: 0 })).toEqual({ ...ICBM });
   });
 
   it('the body only ever loses stages, the motors burn one after another, the heat comes on the way down', () => {

@@ -18,10 +18,15 @@
 export type BallisticKind = 'rocket' | 'atomBomb';
 
 export const ARC = {
-  /** the apex height per tile of flight (tiles), and its bounds */
-  peak: 0.3,
+  /** the apex height per tile of flight (tiles) for each kind, and its bounds (tiles): the atom bomb flies a high
+   * arc, the silo rocket a lower one, so the two read apart */
+  peak: { atomBomb: 0.45, rocket: 0.28 },
   peakMin: 1.5,
-  peakMax: 120,
+  peakMax: 160,
+  /** the most a missile is ever drawn lifted off its ground point (screen px): the apex is cut back so that a long
+   * flight seen up close does not climb off the screen (the arc keeps its shape, it is only lower). A flight at normal
+   * zoom stays under it, so only a close view is ever cut. */
+  liftCapPx: 540,
   /** when the apex comes (flight fraction) and how hard the way down bends (exponent: steeper with more) */
   apex: 0.5,
   fall: 2.4,
@@ -34,10 +39,14 @@ export const ARC = {
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
-/** The apex height (tiles) of a flight `dist` tiles long. */
-export function arcPeak(dist: number): number {
+/**
+ * The apex height (tiles) of a flight `dist` tiles long. With `zoom` (screen px per tile) it is also cut back so the
+ * drawn lift stays within ARC.liftCapPx.
+ */
+export function arcPeak(dist: number, kind: BallisticKind = 'atomBomb', zoom = 0): number {
   const d = Math.max(0, dist);
-  return Math.min(ARC.peakMax, Math.max(Math.min(ARC.peakMin, d), d * ARC.peak));
+  const h = Math.min(ARC.peakMax, Math.max(Math.min(ARC.peakMin, d), d * ARC.peak[kind]));
+  return zoom > 0 ? Math.min(h, ARC.liftCapPx / (ARC.lift * zoom)) : h;
 }
 
 /** The drawn ground point's share of the way (0..1) at flight fraction f: slow off the pad, a little ahead at the end. */
@@ -88,8 +97,8 @@ export interface ArcPoint {
 }
 
 /** The arc of a flight `dist` tiles long at flight fraction f (into `out`, reused). */
-export function arcAt(f: number, dist: number, out: ArcPoint = { s: 0, h: 0, vs: 0, vh: 0, pitch: 0 }): ArcPoint {
-  const H = arcPeak(dist);
+export function arcAt(f: number, dist: number, out: ArcPoint = { s: 0, h: 0, vs: 0, vh: 0, pitch: 0 }, kind: BallisticKind = 'atomBomb', zoom = 0): ArcPoint {
+  const H = arcPeak(dist, kind, zoom);
   out.s = arcGround(f);
   out.h = H * arcShape(f);
   out.vs = dist * arcGroundRate(f);
@@ -122,8 +131,8 @@ const scratch: ArcPoint = { s: 0, h: 0, vs: 0, vh: 0, pitch: 0 };
  * The drawn missile on screen at flight fraction f, for a flight from the silo (sx, sy) to the target (tx, ty) in CSS
  * px, `dist` tiles long, at `zoom` screen px per tile.
  */
-export function arcPose(sx: number, sy: number, tx: number, ty: number, dist: number, zoom: number, f: number, out: ArcPose = { x: 0, y: 0, gx: 0, gy: 0, lift: 0, angle: 0, fore: 1, pitch: 0, high: 0 }): ArcPose {
-  const a = arcAt(f, dist, scratch);
+export function arcPose(sx: number, sy: number, tx: number, ty: number, dist: number, zoom: number, f: number, out: ArcPose = { x: 0, y: 0, gx: 0, gy: 0, lift: 0, angle: 0, fore: 1, pitch: 0, high: 0 }, kind: BallisticKind = 'atomBomb'): ArcPose {
+  const a = arcAt(f, dist, scratch, kind, zoom);
   const dx = tx - sx;
   const dy = ty - sy;
   out.gx = sx + dx * a.s;
@@ -141,7 +150,7 @@ export function arcPose(sx: number, sy: number, tx: number, ty: number, dist: nu
   const v3 = Math.hypot(a.vs, a.vh);
   out.fore = v3 > 1e-9 ? Math.max(0.4, Math.min(1, Math.hypot(vx, vy) / v3)) : 1;
   out.pitch = a.pitch;
-  const H = arcPeak(dist);
+  const H = arcPeak(dist, kind, zoom);
   out.high = H > 0 ? a.h / H : 0;
   return out;
 }
@@ -156,9 +165,50 @@ export const ICBM = { stage1: 0.13, stage2: 0.27, burnout: 0.43, rv: 0.66 } as c
 /** The rocket: one stage that burns out near the apex; its nose heats up on the way down from `heat`. */
 export const ROCKET = { burnout: 0.4, heat: 0.72 } as const;
 
+/** The least real time (ms) between two staging events, and after launch before the first: on a short flight the
+ * events are pushed apart to this (the whole plan is squeezed only when even that does not fit). */
+export const STAGE_GAP_MS = 1100;
+
+export interface StagePlan {
+  stage1: number;
+  stage2: number;
+  burnout: number;
+  rv: number;
+}
+
+const planCache: StagePlan = { stage1: 0, stage2: 0, burnout: 0, rv: 0 };
+
+/**
+ * The atom bomb's staging fractions for a flight of `totalMs`: ICBM's, with each event held at least STAGE_GAP_MS
+ * after the one before (and the first after launch), the reentry vehicle never later than 0.9. When the flight is so
+ * short that this cannot fit, the events are spread evenly over the first 0.9 of it instead (still in order).
+ */
+export function stagePlan(totalMs: number, out: StagePlan = planCache): StagePlan {
+  out.stage1 = ICBM.stage1;
+  out.stage2 = ICBM.stage2;
+  out.burnout = ICBM.burnout;
+  out.rv = ICBM.rv;
+  if (!(totalMs > 0) || !Number.isFinite(totalMs)) return out;
+  const gap = STAGE_GAP_MS / totalMs;
+  if (gap * 4 > 0.9) {
+    out.stage1 = 0.225;
+    out.stage2 = 0.45;
+    out.burnout = 0.675;
+    out.rv = 0.9;
+    return out;
+  }
+  out.stage1 = Math.max(out.stage1, gap);
+  out.stage2 = Math.max(out.stage2, out.stage1 + gap);
+  out.burnout = Math.max(out.burnout, out.stage2 + gap);
+  out.rv = Math.min(0.9, Math.max(out.rv, out.burnout + gap));
+  return out;
+}
+
 /** The flight fractions at which something parts from the missile, in order (separations; the rocket has none). */
-export function separations(kind: BallisticKind): readonly number[] {
-  return kind === 'atomBomb' ? [ICBM.stage1, ICBM.stage2, ICBM.rv] : [];
+export function separations(kind: BallisticKind, totalMs = Infinity): readonly number[] {
+  if (kind !== 'atomBomb') return [];
+  const p = stagePlan(totalMs, { stage1: 0, stage2: 0, burnout: 0, rv: 0 });
+  return [p.stage1, p.stage2, p.rv];
 }
 
 export interface BallisticPhase {
@@ -175,7 +225,7 @@ export interface BallisticPhase {
 }
 
 /** Where a flight of `kind` stands at flight fraction f. */
-export function ballisticPhase(kind: BallisticKind, f: number, out: BallisticPhase = { body: 0, burn: 0, smoke: 0, heat: 0, name: 'boost' }): BallisticPhase {
+export function ballisticPhase(kind: BallisticKind, f: number, out: BallisticPhase = { body: 0, burn: 0, smoke: 0, heat: 0, name: 'boost' }, totalMs = Infinity): BallisticPhase {
   const t = clamp01(f);
   if (kind === 'rocket') {
     const burning = t < ROCKET.burnout;
@@ -187,22 +237,23 @@ export function ballisticPhase(kind: BallisticKind, f: number, out: BallisticPha
     return out;
   }
   out.heat = 0;
-  if (t < ICBM.stage1) {
+  const P = stagePlan(totalMs);
+  if (t < P.stage1) {
     out.body = 0;
     out.burn = 1;
     out.smoke = 1;
     out.name = 'stage 1';
-  } else if (t < ICBM.stage2) {
+  } else if (t < P.stage2) {
     out.body = 1;
     out.burn = 2;
     out.smoke = 0.7;
     out.name = 'stage 2';
-  } else if (t < ICBM.burnout) {
+  } else if (t < P.burnout) {
     out.body = 2;
     out.burn = 3;
     out.smoke = 0.45;
     out.name = 'stage 3';
-  } else if (t < ICBM.rv) {
+  } else if (t < P.rv) {
     out.body = 2;
     out.burn = 0;
     out.smoke = 0;
@@ -211,7 +262,7 @@ export function ballisticPhase(kind: BallisticKind, f: number, out: BallisticPha
     out.body = 3;
     out.burn = 0;
     out.smoke = 0;
-    out.heat = clamp01((t - ICBM.rv - 0.03) / (1 - ICBM.rv - 0.03)) ** 0.7;
+    out.heat = clamp01((t - P.rv - 0.03) / (1 - P.rv - 0.03)) ** 0.7;
     out.name = 'reentry';
   }
   return out;

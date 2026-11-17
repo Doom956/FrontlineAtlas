@@ -697,7 +697,7 @@ export class UnitLayer {
   private arcReach(state: GameState, u: Unit, z: number): number {
     const w = state.map.width;
     const dist = Math.hypot((u.target % w) - (u.home % w), ((u.target / w) | 0) - ((u.home / w) | 0));
-    return arcPeak(dist) * ARC.lift * z + 30;
+    return arcPeak(dist, u.type === 'atomBomb' ? 'atomBomb' : 'rocket', z) * ARC.lift * z + 30;
   }
 
   /**
@@ -739,7 +739,7 @@ export class UnitLayer {
     a.h = state.map.height;
     b.seen = this.seenFn;
     const f = total > 0 ? flown / total : 1;
-    const p = arcPose(b.sx, b.sy, b.tx, b.ty, total, z, f, this.ballPose);
+    const p = arcPose(b.sx, b.sy, b.tx, b.ty, total, z, f, this.ballPose, b.kind);
     ballisticBoard.put(u.id, e.tx ?? hx, e.ty ?? hy, (p.x - e.x) / z, (p.y - e.y) / z);
     return b;
   }
