@@ -64,9 +64,8 @@ let rocketParts: readonly Part[] | null = null;
 const atom = (): readonly Part[] => (atomParts ??= atomBombModel().model.parts);
 const rocket = (): readonly Part[] => (rocketParts ??= rocketModel().model.parts);
 
-/** The atom bomb's third stage and reentry vehicle are drawn this much bigger once alone (round UPPER_MID), so the
- * small upper stack still reads high on its arc. */
-export const UPPER_GROW = 1.3;
+/** The atom bomb's third stage and reentry vehicle keep their size once alone (1: nothing grows when a stage drops). */
+export const UPPER_GROW = 1;
 const UPPER_MID = 10.8 * ICBM_LEN;
 const upper = (parts: readonly Part[]): Part[] => alongU(grown(alongU(parts, 1, -UPPER_MID), UPPER_GROW), 1, UPPER_MID);
 /** Model u of a point of the upper stack as drawn (UPPER_GROW). */
@@ -457,8 +456,8 @@ function streak(ctx: CanvasRenderingContext2D, b: BallisticDraw, F: Frame, A: nu
   ctx.globalAlpha = A;
 }
 
-/** A spent stage is drawn this much finer (bigger) than the missile's own bake, so it reads at normal zoom. */
-const STAGE_BIG = 1.4;
+/** A spent stage is drawn at the missile's own size (1: it keeps the size it had on the missile). */
+const STAGE_BIG = 1;
 /** How far the spent stage is thrown back along the arc as the stages part (art px, times DRAMA), and how fast. */
 const GAP = 17;
 const GAP_MS = 420;
