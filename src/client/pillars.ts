@@ -27,7 +27,7 @@ import { followOf, followsWar } from './follow';
 import { autoCoverHolder, coverFlying } from './trench';
 import { wingResult } from './airSim';
 import { activeFog, knownOwnerOf, nationName as fogName } from './fog/fogView';
-import { atPeace } from '../sim/rules';
+import { atPeace, peaceReason } from '../sim/rules';
 
 export type PillarPick = 'bombard' | 'blockade' | 'front' | 'airSupport' | 'airStrategic' | 'airSuperiority';
 
@@ -467,7 +467,7 @@ function fogAirPick(state: GameState, me: number, mission: AirMission, known: nu
   if (mission === 'superiority') return 'Fighters patrol over your own or allied land (or right at the front)';
   const foe = known > 0 && known !== me && !areAllied(state, me, known) && state.players[known]?.alive;
   if (!foe) return mission === 'support' ? 'Pick enemy land you have seen, at your front' : 'Pick land of a nation you have seen (dark land is unexplored)';
-  if (atPeace(state, me, known)) return 'Peace time: nations can\'t attack each other yet';
+  if (atPeace(state, me, known)) return peaceReason(state, me, known) ?? 'Peace time: nations can\'t attack each other yet';
   return '';
 }
 

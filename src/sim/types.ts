@@ -552,6 +552,8 @@ export interface Player {
   procuring?: { tech: TechId; readyTick: number }[];
   /** tick until which this player is a traitor (0 = not) */
   traitorUntil: number;
+  /** tick until which this player is marked as a pact breaker (treaty.ts breakPact); absent = never */
+  pactBreakerUntil?: number;
   /** tick from which the next artillery barrage may be fired (Action 'barrage'; global per player) */
   barrageReadyTick: number;
   /** Air Mastery (units.ts launchStealth): tick from which the stealth bomber may fly again; absent = never flown */
@@ -615,6 +617,38 @@ export interface AllianceRequest {
   expiresTick: number;
 }
 
+/** A peace deal (signed while fighting, can't be broken) or a non-aggression pact (treaty.ts). */
+export type TreatyKind = 'peace' | 'pact';
+/** What one side of a peace deal pays at signing (config TREATY_TERMS). */
+export type TreatyTerm = 'none' | 'goldSmall' | 'goldLarge' | 'landSmall' | 'landLarge';
+export const TREATY_TERMS: readonly TreatyTerm[] = ['none', 'goldSmall', 'goldLarge', 'landSmall', 'landLarge'];
+
+/** An active treaty: nothing hostile between a and b until endTick (treaty.ts; rules.atPeace). */
+export interface Treaty {
+  a: number; // smaller id
+  b: number;
+  kind: TreatyKind;
+  endTick: number;
+  /** pacts only: tick the pact was broken (it ends at endTick, PACT_BREAK_DELAY later); 0 = not broken */
+  breakTick: number;
+  /** who broke it (0 = nobody) */
+  breaker: number;
+}
+
+/**
+ * A treaty offer waiting for an answer. Terms are seen from the offerer: theyGive = what `to` pays, youGive = what
+ * `from` pays (peace only; 'none' for pacts). seconds = pact length (0 for peace).
+ */
+export interface TreatyOffer {
+  from: number;
+  to: number;
+  kind: TreatyKind;
+  theyGive: TreatyTerm;
+  youGive: TreatyTerm;
+  seconds: number;
+  expiresTick: number;
+}
+
 /** A request to an AI ally (Action requestAllyAttack / requestAllyAid), answered on the ally's next decision. */
 export interface AllyRequest {
   from: number;
@@ -650,6 +684,20 @@ export type GameEventKind =
   | 'allianceFormed'
   | 'allianceBroken'
   | 'allianceExpired'
+  /** a peace deal or pact offer arrived (to the nation asked) */
+  | 'treatyOffer'
+  /** a peace deal or pact was signed (to both) */
+  | 'treatyAccepted'
+  /** a treaty offer was refused (to both) */
+  | 'treatyRefused'
+  /** a treaty offer ran out unanswered (to both) */
+  | 'treatyOfferExpired'
+  /** a peace deal or pact ran its full length (to both) */
+  | 'treatyEnded'
+  /** a pact was broken: it ends in PACT_BREAK_DELAY seconds (to both) */
+  | 'pactBreakWarning'
+  /** a broken pact is over: attacks are possible again (to both) */
+  | 'pactBroken'
   /** an ally joins a war on your side ("Valoria joins your war against Tarsis") */
   | 'allyJoined'
   /** an ally sent troops or gold */
@@ -718,6 +766,14 @@ export interface GameState {
   allianceRequests: AllianceRequest[];
   /** requests to AI allies waiting for their answer (allies.ts) */
   allyRequests: AllyRequest[];
+  /** active peace deals and non-aggression pacts (treaty.ts); absent = none yet */
+  treaties?: Treaty[];
+  /** treaty offers waiting for an answer (treaty.ts); absent = none yet */
+  treatyOffers?: TreatyOffer[];
+  /** refused treaty offers: [from, to, untilTick, ...]; `from` may not offer `to` again before untilTick */
+  treatyCooldowns?: number[];
+  /** last fight per pair: [a, b, tick, ...] with a < b, the last tick a land attack ran between them (treaty.ts) */
+  fights?: number[];
   /** allies committed to a war for a friend (allies.ts) */
   allyPledges: AllyPledge[];
   /** opinion[a][b] = how AI a feels about b, -100..100 */
@@ -1038,6 +1094,14 @@ export type Action =
   | { type: 'requestAlliance'; to: number }
   | { type: 'answerAlliance'; from: number; accept: boolean }
   | { type: 'breakAlliance'; with: number }
+  /** offer a peace deal to a nation you fought in the last TREATY_FIGHT_WINDOW s (treaty.ts); terms seen from you */
+  | { type: 'offerPeace'; to: number; theyGive: TreatyTerm; youGive: TreatyTerm }
+  /** offer a non-aggression pact of `seconds` (PACT_LENGTHS) to a nation you are not fighting */
+  | { type: 'offerPact'; to: number; seconds: number }
+  /** accept or refuse the treaty offer of `from` */
+  | { type: 'answerTreaty'; from: number; accept: boolean }
+  /** break a pact: it ends PACT_BREAK_DELAY s later; you are marked as a pact breaker */
+  | { type: 'breakPact'; with: number }
   | { type: 'gift'; to: number; gold: number; troops: number }
   | { type: 'toggleEmbargo'; with: number }
   /** ask an ally to attack `target` (an AI ally answers on its next decision: allyJoined or allyRefused event) */

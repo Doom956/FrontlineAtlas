@@ -145,7 +145,9 @@ export type { GameMode };
 // 22: Arsenal Defense row (techs flakGuns / tankTraps for 'procure'; Unit.flakWear, Unit.trapLoss and the 'trapHit'
 // effect in the state). Defense part 3 in the same bump: techs antiRadar / defenseMastery, Actions counteroffensive {},
 // antiRadar {airfield, sam}, setAntiRadarEscort {on}, stealthStrike's tile2 / tile3, anti-ship cruise missiles.
-export const PROTOCOL_VERSION = 22;
+// 23: treaties: Actions offerPeace {to, theyGive, youGive}, offerPact {to, seconds}, answerTreaty {from, accept},
+// breakPact {with}; GameState treaties / treatyOffers / treatyCooldowns / fights and Player.pactBreakerUntil.
+export const PROTOCOL_VERSION = 23;
 /** Longest owner-console code a client may send (adminAuth). */
 export const ADMIN_CODE_MAX_LENGTH = 128;
 /** Longest chat message (characters, after cleaning). */

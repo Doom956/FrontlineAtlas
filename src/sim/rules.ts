@@ -4,7 +4,7 @@
 import { BUILDINGS, TICKS_PER_SECOND } from './config';
 import { BUILD_TIME_FACTOR, DEFAULT_MODIFIERS, FAST_GAME_FACTOR } from './setup';
 import { isTribe } from './types';
-import type { BuildingType, GameState, Modifiers } from './types';
+import type { BuildingType, GameState, Modifiers, Treaty } from './types';
 
 /** The game's modifiers (defaults when a hand-made test state has none). */
 export function mods(state: GameState): Modifiers {
@@ -42,17 +42,80 @@ export function peaceActive(state: GameState): boolean {
   return peaceSecondsLeft(state) > 0;
 }
 /** True while peace time keeps a and b apart: two different nations or players (tribes can always be attacked). */
-export function atPeace(state: GameState, a: number, b: number): boolean {
-  if (a === b || a <= 0 || b <= 0 || !peaceActive(state)) return false;
+function peaceTimeBetween(state: GameState, a: number, b: number): boolean {
+  if (!peaceActive(state)) return false;
   const pa = state.players[a];
   const pb = state.players[b];
   return !!pa && !!pb && !isTribe(pa) && !isTribe(pb);
 }
-/** "Peace time: nations can't attack each other for 1:23 more", or null when a may attack b. */
+
+// ------------------------------------------------------------------------------------------------ treaties
+
+/** The active peace deal or pact between a and b (treaty.ts), or null. Read only. */
+export function treatyBetween(state: GameState, a: number, b: number): Treaty | null {
+  const list = state.treaties;
+  if (!list || !list.length || a === b) return null;
+  const lo = a < b ? a : b;
+  const hi = a < b ? b : a;
+  for (const t of list) if (t.a === lo && t.b === hi && t.endTick > state.tick) return t;
+  return null;
+}
+/** Whole seconds left on a treaty (rounded up). */
+export function treatySecondsLeft(state: GameState, t: Treaty): number {
+  return Math.max(0, Math.ceil((t.endTick - state.tick) / TICKS_PER_SECOND));
+}
+/** "1 min 40 s", "3 min", "42 s". */
+export function formatSeconds(seconds: number): string {
+  const s = Math.max(0, Math.ceil(seconds));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  if (m === 0) return `${r} s`;
+  return r ? `${m} min ${r} s` : `${m} min`;
+}
+/** "Peace with Valoria: 1 min 40 s left" / "Pact with Valoria: 3 min 12 s left" as seen by `me`, or null. */
+export function treatyReason(state: GameState, me: number, other: number): string | null {
+  const t = treatyBetween(state, me, other);
+  if (!t) return null;
+  const name = state.players[other]?.name ?? 'them';
+  return `${t.kind === 'peace' ? 'Peace' : 'Pact'} with ${name}: ${formatSeconds(treatySecondsLeft(state, t))} left`;
+}
+/** Remembers that a and b fought now (a land attack between them): peace deals need a fight in the last minute. */
+export function noteFight(state: GameState, a: number, b: number): void {
+  if (a <= 0 || b <= 0 || a === b) return;
+  const pa = state.players[a];
+  const pb = state.players[b];
+  if (!pa || !pb || isTribe(pa) || isTribe(pb)) return; // tribes make no treaties: no need to remember
+  const lo = a < b ? a : b;
+  const hi = a < b ? b : a;
+  const f = (state.fights ??= []);
+  for (let k = 0; k < f.length; k += 3) {
+    if (f[k] === lo && f[k + 1] === hi) {
+      f[k + 2] = state.tick;
+      return;
+    }
+  }
+  f.push(lo, hi, state.tick);
+}
+
+/**
+ * True while a and b may not harm each other: peace time (two nations; tribes can always be attacked) or an active
+ * peace deal or pact between them (treaty.ts). Every hostile check in the sim goes through here.
+ */
+export function atPeace(state: GameState, a: number, b: number): boolean {
+  if (a === b || a <= 0 || b <= 0) return false;
+  return peaceTimeBetween(state, a, b) || treatyBetween(state, a, b) !== null;
+}
+/**
+ * "Peace time: nations can't attack each other for 1:23 more", "Peace with Valoria: 1 min 40 s left" or
+ * "Pact with Valoria: 3 min 12 s left", or null when a may attack b.
+ */
 export function peaceReason(state: GameState, a: number, b: number): string | null {
-  if (!atPeace(state, a, b)) return null;
-  const s = Math.ceil(peaceSecondsLeft(state));
-  return `Peace time: nations can't attack each other for ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} more`;
+  if (a === b || a <= 0 || b <= 0) return null;
+  if (peaceTimeBetween(state, a, b)) {
+    const s = Math.ceil(peaceSecondsLeft(state));
+    return `Peace time: nations can't attack each other for ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} more`;
+  }
+  return treatyReason(state, a, b);
 }
 
 // ------------------------------------------------------------------------------------------------ what is allowed

@@ -5,6 +5,7 @@ import { clearLeaderCache, requestAllyAid, requestAllyAttack } from './allies';
 import { build, demolish } from './buildings';
 import { boatLandingTile, clearArmyCache, launchAttack, needsBoat, retreat } from './combat';
 import { answerAlliance, breakAlliance, gift, requestAlliance, toggleEmbargo } from './diplomacy';
+import { answerTreaty, breakPact, offerPact, offerPeace } from './treaty';
 import { mods } from './rules';
 import { canSpawnAt, spawnPlayer } from './state';
 import { startResearch } from './tech';
@@ -215,6 +216,19 @@ export function applyAction(state: GameState, playerId: number, action: Action):
     case 'breakAlliance':
       if (!isPlayerId(state, action.with)) return FAIL('No such nation');
       return breakAlliance(state, playerId, action.with);
+    case 'offerPeace':
+      if (!isPlayerId(state, action.to)) return FAIL('No such nation');
+      return offerPeace(state, playerId, action.to, action.theyGive, action.youGive);
+    case 'offerPact':
+      if (!isPlayerId(state, action.to)) return FAIL('No such nation');
+      if (typeof action.seconds !== 'number') return FAIL('Unknown pact length');
+      return offerPact(state, playerId, action.to, action.seconds);
+    case 'answerTreaty':
+      if (!isPlayerId(state, action.from)) return FAIL('No such nation');
+      return answerTreaty(state, playerId, action.from, !!action.accept);
+    case 'breakPact':
+      if (!isPlayerId(state, action.with)) return FAIL('No such nation');
+      return breakPact(state, playerId, action.with);
     case 'gift': {
       if (!isPlayerId(state, action.to)) return FAIL('No such nation');
       const gold = action.gold ?? 0;

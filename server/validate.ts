@@ -2,11 +2,11 @@
 // (game rules are checked by the sim on every client). Valid messages are rebuilt field by field, so unknown extra
 // fields are never relayed to other clients.
 
-import { BUILDINGS, MAX_GROUP_UNITS, STRIKE, TECHS, UPGRADE_SELECTION_MAX } from '../src/sim/config';
+import { BUILDINGS, MAX_GROUP_UNITS, PACT_LENGTHS, STRIKE, TECHS, UPGRADE_SELECTION_MAX } from '../src/sim/config';
 import { ADMIN_OP_LIST } from '../src/sim/admin';
 import { CONTROL, MARK_PILES, cleanChatText } from './chat';
 import { DEFAULT_MODIFIERS, mapError, validateSetup } from '../src/sim/setup';
-import { AIR_MISSIONS, DIVISION_MODES, DOCTRINE_IDS, NAVAL_VARIANTS, WARSHIP_STANCES } from '../src/sim/types';
+import { AIR_MISSIONS, DIVISION_MODES, DOCTRINE_IDS, NAVAL_VARIANTS, TREATY_TERMS, WARSHIP_STANCES } from '../src/sim/types';
 import type { Action, GameSettings, GameSetup, MapChoice, Modifiers } from '../src/sim/types';
 import {
   ADMIN_CODE_MAX_LENGTH,
@@ -74,7 +74,9 @@ type FieldSpec =
   /** short identifier (owner console key: resource, tech, building, doctrine ...) */
   | { k: 'word'; optional?: boolean }
   /** salvo size: an integer 0..STRIKE.maxSalvo (0 = every ready launcher) */
-  | { k: 'count'; optional?: boolean };
+  | { k: 'count'; optional?: boolean }
+  /** an integer from a fixed list (Action offerPact seconds) */
+  | { k: 'intIn'; values: readonly number[] };
 
 /** One spec per Action type, with exactly that action's fields (tsc fails when the Action union changes). */
 type ActionSpecs = {
@@ -115,6 +117,11 @@ const ACTION_SPECS: ActionSpecs = {
   requestAlliance: { to: PLAYER },
   answerAlliance: { from: PLAYER, accept: { k: 'bool' } },
   breakAlliance: { with: PLAYER },
+  // Treaties (protocol 23): peace deals and non-aggression pacts (treaty.ts)
+  offerPeace: { to: PLAYER, theyGive: { k: 'enum', values: TREATY_TERMS }, youGive: { k: 'enum', values: TREATY_TERMS } },
+  offerPact: { to: PLAYER, seconds: { k: 'intIn', values: PACT_LENGTHS } },
+  answerTreaty: { from: PLAYER, accept: { k: 'bool' } },
+  breakPact: { with: PLAYER },
   gift: { to: PLAYER, gold: { k: 'amount' }, troops: { k: 'amount' } },
   toggleEmbargo: { with: PLAYER },
   requestAllyAttack: { ally: PLAYER, target: PLAYER },
@@ -200,6 +207,8 @@ function checkField(spec: FieldSpec, v: unknown): Result<unknown> {
     case 'count':
       if (v === undefined && spec.optional) return ok(undefined);
       return isInt(v, 0, STRIKE.maxSalvo) ? ok(v) : fail(`bad count (0..${STRIKE.maxSalvo})`);
+    case 'intIn':
+      return typeof v === 'number' && Number.isInteger(v) && spec.values.includes(v) ? ok(v) : fail('bad value');
     case 'word':
       if (v === undefined && spec.optional) return ok(undefined);
       return typeof v === 'string' && /^[A-Za-z0-9_]{1,32}$/.test(v) ? ok(v) : fail('bad key');

@@ -169,7 +169,7 @@ function cache(state: GameState): NavyCache {
   const wm = state.warMemory;
   if (wm) {
     for (let k = 0; k < wm.length; k += 3) {
-      if (wm[k + 2] <= state.tick) continue;
+      if (wm[k + 2] <= state.tick || atPeace(state, wm[k], wm[k + 1])) continue; // a peace deal or pact ends the war at once
       wars.add(wm[k] * 1024 + wm[k + 1]);
       wars.add(wm[k + 1] * 1024 + wm[k]);
     }
@@ -209,7 +209,7 @@ export function updateWarMemory(state: GameState): void {
   for (let k = 0; k < wm.length; k += 3) {
     const pa = state.players[wm[k]];
     const pb = state.players[wm[k + 1]];
-    if (wm[k + 2] <= state.tick || !pa?.alive || !pb?.alive || areAllied(state, wm[k], wm[k + 1])) continue;
+    if (wm[k + 2] <= state.tick || !pa?.alive || !pb?.alive || areAllied(state, wm[k], wm[k + 1]) || atPeace(state, wm[k], wm[k + 1])) continue;
     keep.push(wm[k], wm[k + 1], wm[k + 2]);
   }
   if (keep.length) state.warMemory = keep;

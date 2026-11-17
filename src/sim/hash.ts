@@ -2,7 +2,7 @@
 // number. FNV-1a (32 bit) over the parts of the state that every system feeds into: tick, RNG state, tile owners and
 // trench dig points,
 // players' stocks and troops (exact float bits), research (current tech, progress, techs), auto flags, traitor and
-// embargoes, doctrines, phase and spawn time, alliances and alliance requests, attacks and units (positions rounded to 1/100
+// embargoes, pact breakers, doctrines, phase and spawn time, alliances and alliance requests, treaties (offers, cooldowns, fights), attacks and units (positions rounded to 1/100
 // tile), barrages and buildings (level, timers, hp).
 
 import { hashAir } from './airwings';
@@ -12,7 +12,7 @@ import { hashFog } from './fog';
 import { hashAntiRadar } from './antiRadar';
 import { hashArsenal } from './variants';
 import type { GameState, Troops } from './types';
-import { DIVISION_MODES, WARSHIP_STANCES } from './types';
+import { DIVISION_MODES, TREATY_TERMS, WARSHIP_STANCES } from './types';
 
 const FNV_OFFSET = 0x811c9dc5;
 const FNV_PRIME = 0x01000193;
@@ -99,6 +99,7 @@ export function hashState(state: GameState): number {
     for (const t of p.techs) h = mixStr(h, t);
     h = mixInt(h, (p.auto.mix ? 1 : 0) | (p.auto.research ? 2 : 0));
     h = mixInt(h, p.traitorUntil);
+    h = mixInt(h, p.pactBreakerUntil ?? 0);
     h = mixInt(h, p.embargoes.length);
     for (const e of p.embargoes) h = mixInt(h, e);
     h = mixInt(h, p.heartTile);
@@ -142,6 +143,32 @@ export function hashState(state: GameState): number {
     h = mixInt(h, r.from);
     h = mixInt(h, r.to);
     h = mixInt(h, r.expiresTick);
+  }
+  // Treaties (treaty.ts): peace deals and pacts, offers, refusal cooldowns, recent fights.
+  const treaties = state.treaties ?? [];
+  h = mixInt(h, treaties.length);
+  for (const t of treaties) {
+    h = mixInt(h, t.a);
+    h = mixInt(h, t.b);
+    h = mixInt(h, t.kind === 'peace' ? 1 : 2);
+    h = mixInt(h, t.endTick);
+    h = mixInt(h, t.breakTick);
+    h = mixInt(h, t.breaker);
+  }
+  const offers = state.treatyOffers ?? [];
+  h = mixInt(h, offers.length);
+  for (const o of offers) {
+    h = mixInt(h, o.from);
+    h = mixInt(h, o.to);
+    h = mixInt(h, o.kind === 'peace' ? 1 : 2);
+    h = mixInt(h, TREATY_TERMS.indexOf(o.theyGive));
+    h = mixInt(h, TREATY_TERMS.indexOf(o.youGive));
+    h = mixInt(h, o.seconds);
+    h = mixInt(h, o.expiresTick);
+  }
+  for (const list of [state.treatyCooldowns ?? [], state.fights ?? []]) {
+    h = mixInt(h, list.length);
+    for (const v of list) h = mixInt(h, v);
   }
   h = mixInt(h, state.allyRequests.length);
   for (const r of state.allyRequests) {

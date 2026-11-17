@@ -995,6 +995,49 @@ export const AUTO_EMBARGO_SECONDS = 300;
 export const NUKE_OPINION_PENALTY = 60;
 export const BETRAYAL_OPINION_PENALTY = 50;
 
+// ---------- treaties: peace deals and non-aggression pacts (treaty.ts, DESIGN 8) ----------
+/** A peace deal needs a land attack between the two (either way) within this many seconds; a pact needs none. */
+export const TREATY_FIGHT_WINDOW = 60;
+/** Seconds the other side has to answer a peace or pact offer. */
+export const TREATY_OFFER_TIMEOUT = 30;
+/** After a refusal the offerer may not offer the same nation a treaty again for this many seconds. */
+export const TREATY_REFUSAL_COOLDOWN = 60;
+/** A peace deal keeps the two apart this long and can't be broken early. */
+export const PEACE_DURATION = 180;
+/** Pact lengths an offer may pick (seconds). */
+export const PACT_LENGTHS: readonly number[] = [180, 360];
+/** A pact may be renewed (offered again) during its last this-many seconds; so may a peace deal be followed by one. */
+export const PACT_RENEW_WINDOW = 60;
+/** A broken pact still holds this many seconds (the victim is warned). */
+export const PACT_BREAK_DELAY = 15;
+/** Opinion drop of the pact's victim about the breaker, and of every other nation. */
+export const PACT_BREAK_OPINION_VICTIM = 30;
+export const PACT_BREAK_OPINION_OTHERS = 15;
+/** How long a pact breaker stays marked (AIs refuse it every treaty and alliance). */
+export const PACT_BREAKER_DURATION = 120;
+/**
+ * Peace terms, paid at signing (amounts worked out then): gold = share of the payer's gold; land = the payer's tiles
+ * within `depth` tiles of the shared border (nearest first, then by tile index), at most `share` of its land, never
+ * its capital.
+ */
+export const TREATY_TERMS_SPEC = {
+  goldSmall: { gold: 0.1 },
+  goldLarge: { gold: 0.3 },
+  landSmall: { depth: 2, share: 0.05 },
+  landLarge: { depth: 5, share: 0.15 },
+} as const;
+/** Seconds before an AI offers the same nation a treaty again. */
+export const AI_TREATY_OFFER_COOLDOWN = 180;
+/** After signing peace with a nation an AI offers it no new peace deal for this long (no endless peace). */
+export const AI_PEACE_REPEAT_GAP = 600;
+/** AI: losing a fight = own army below this share of the foe's, or this share of its land lost in TREATY_FIGHT_WINDOW s. */
+export const AI_PEACE_ARMY_RATIO = 0.7;
+export const AI_PEACE_LAND_LOSS = 0.1;
+/** AI: a neighbour this much stronger (army) that it is not targeting gets a pact offer. */
+export const AI_PACT_STRONG_RATIO = 1.2;
+/** Warlord AIs may break a pact with a victim weaker than this share of their army (25% seeded roll). */
+export const AI_PACT_BREAK_RATIO = 0.4;
+
 // ---------- coalitions and allies (DESIGN 9.2) ----------
 /**
  * Runaway leader: the nation with the most land once it holds at least COALITION_LAND_SHARE of the land and

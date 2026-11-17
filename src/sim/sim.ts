@@ -28,6 +28,7 @@ import { updateSpecials } from './specials';
 import { clearNavyCache, updateWarMemory } from './naval2';
 import { updateFollow } from './warTarget';
 import { updateFog } from './fog';
+import { updateTreaties } from './treaty';
 import { updateTutorial } from './tutorialScenario';
 import { updateVictory } from './victory';
 import type { GameState } from './types';
@@ -82,6 +83,7 @@ export function tick(state: GameState): void {
     updateBarrages(state);
     pruneEliminated(state);
     updateDiplomacy(state);
+    updateTreaties(state); // peace deals and pacts: offers run out, treaties end, fights remembered (treaty.ts)
     updateAllies(state);
     updateSpending(state);
     updateAI(state);

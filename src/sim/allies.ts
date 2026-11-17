@@ -28,7 +28,7 @@ import {
 } from './config';
 import { borders, wholeArmy } from './combat';
 import { areAllied, changeOpinion } from './diplomacy';
-import { atPeace, sameTeam } from './rules';
+import { atPeace, sameTeam, treatyBetween } from './rules';
 import { addEvent } from './state';
 import { isTribe } from './types';
 import { allyStrengthMul, allyTrustDiscount } from './spending';
@@ -286,7 +286,10 @@ export function allyRefusal(state: GameState, ally: number, from: number, kind: 
     const t = state.players[target];
     if (!t || !t.alive) return 'that nation is gone';
     if (areAllied(state, ally, target)) return `it is allied with ${t.name}`;
-    if (atPeace(state, ally, target)) return 'it is peace time';
+    if (atPeace(state, ally, target)) {
+      const t2 = treatyBetween(state, ally, target);
+      return t2 ? `it has a ${t2.kind === 'peace' ? 'peace deal' : 'pact'} with ${t.name}` : 'it is peace time';
+    }
     if ((state.opinion[ally]?.[target] ?? 0) > 40 && runawayLeader(state) !== target) return `it is on good terms with ${t.name}`;
     if (!borders(state, ally, target)) return `it has no border with ${t.name}`;
     const busy = atWar(state, target, from) || warsOf(state, target).length > 1;

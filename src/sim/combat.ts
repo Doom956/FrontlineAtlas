@@ -1405,7 +1405,8 @@ function stepAttack(state: GameState, a: Attack, idx: AttackIndex): boolean {
     returnTroops(state, a);
     return true;
   }
-  if (a.target !== 0 && (!players[a.target].alive || areAllied(state, a.attacker, a.target))) {
+  // An ally, or a peace deal / pact signed while the attack ran (treaty.ts ends them at signing; this is the backstop).
+  if (a.target !== 0 && (!players[a.target].alive || areAllied(state, a.attacker, a.target) || atPeace(state, a.attacker, a.target))) {
     returnTroops(state, a);
     return true;
   }

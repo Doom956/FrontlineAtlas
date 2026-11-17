@@ -675,7 +675,7 @@ function updateWarship(state: GameState, u: Unit, ships: Unit[], wars: Set<numbe
   forEachInRadius(map, unitTile(state, u), reach, (i, d) => {
     if (d >= bestDist || !map.coastal[i]) return;
     const o = map.owner[i];
-    if (o === 0 || o === u.owner || !wars.has(u.owner * 1024 + o) || areAllied(state, u.owner, o)) return;
+    if (o === 0 || o === u.owner || !wars.has(u.owner * 1024 + o) || areAllied(state, u.owner, o) || atPeace(state, u.owner, o)) return;
     bestDist = d;
     bestTile = i;
   });
@@ -1033,7 +1033,8 @@ function landParadrop(state: GameState, u: Unit): void {
   const owner = map.owner[tile];
   const troops = u.troops;
   u.troops = zeroTroops();
-  if (owner === u.owner || (owner !== 0 && areAllied(state, u.owner, owner))) {
+  // An ally's land, or a nation at peace with us (peace time, a peace deal or a pact): the paratroopers go home.
+  if (owner === u.owner || (owner !== 0 && (areAllied(state, u.owner, owner) || atPeace(state, u.owner, owner)))) {
     for (const k of TROOP_TYPES) p.troops[k] += troops[k];
     return;
   }

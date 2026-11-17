@@ -7,7 +7,7 @@ import {
   TICKS_PER_SECOND,
   TRAITOR_DURATION,
 } from './config';
-import { alliancesAllowed, sameTeam } from './rules';
+import { alliancesAllowed, noteFight, sameTeam } from './rules';
 import { addEvent } from './state';
 import { borderTiles } from './territory';
 import { isTribe } from './types';
@@ -107,22 +107,26 @@ export function formAlliance(state: GameState, a: number, b: number): void {
   if (renewed) state.alliances[idx].expiresTick = expiresTick;
   else state.alliances.push({ a: lo, b: hi, expiresTick });
   state.allianceRequests = state.allianceRequests.filter((r) => !((r.from === a && r.to === b) || (r.from === b && r.to === a)));
-  if (attacking(state, a, b)) {
-    state.attacks = state.attacks.filter((at) => {
-      const between = (at.attacker === a && at.target === b) || (at.attacker === b && at.target === a);
-      if (!between) return true;
-      const home = state.players[at.attacker];
-      home.troops.infantry += at.troops.infantry;
-      home.troops.armor += at.troops.armor;
-      home.troops.artillery += at.troops.artillery;
-      return false;
-    });
-  }
+  endAttacksBetween(state, a, b);
   changeOpinion(state, a, b, 10);
   changeOpinion(state, b, a, 10);
   const pa = state.players[a].name;
   const pb = state.players[b].name;
   addEvent(state, 'allianceFormed', renewed ? `${pa} and ${pb} renewed their alliance` : `${pa} and ${pb} are now allies`, [a, b], -1);
+}
+
+/** Ends every land attack between a and b (either way); the troops go home. Alliances and peace deals use it. */
+export function endAttacksBetween(state: GameState, a: number, b: number): void {
+  if (!attacking(state, a, b)) return;
+  state.attacks = state.attacks.filter((at) => {
+    const between = (at.attacker === a && at.target === b) || (at.attacker === b && at.target === a);
+    if (!between) return true;
+    const home = state.players[at.attacker];
+    home.troops.infantry += at.troops.infantry;
+    home.troops.armor += at.troops.armor;
+    home.troops.artillery += at.troops.artillery;
+    return false;
+  });
 }
 
 /** Ends an alliance early: breaker becomes traitor, opinions drop. */
@@ -179,6 +183,13 @@ export function onAttackStarted(state: GameState, attacker: number, victim: numb
   );
   if (state.allianceRequests.length !== before) {
     addEvent(state, 'info', `The alliance request between ${state.players[attacker].name} and ${state.players[victim].name} was cancelled by the attack`, [attacker, victim], -1);
+  }
+  // Peace deals need a fight in the last minute (treaty.ts); a pact offer between them is void.
+  noteFight(state, attacker, victim);
+  const offers = state.treatyOffers;
+  if (offers && offers.some((o) => o.kind === 'pact' && ((o.from === attacker && o.to === victim) || (o.from === victim && o.to === attacker)))) {
+    state.treatyOffers = offers.filter((o) => !(o.kind === 'pact' && ((o.from === attacker && o.to === victim) || (o.from === victim && o.to === attacker))));
+    addEvent(state, 'info', `The pact offer between ${state.players[attacker].name} and ${state.players[victim].name} was cancelled by the attack`, [attacker, victim], -1);
   }
   const vp = state.players[victim];
   let m = autoEmbargoes.get(state);
