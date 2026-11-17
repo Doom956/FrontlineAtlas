@@ -463,6 +463,8 @@ export const TECHS: Record<TechId, TechInfo> = {
   tankTraps: { name: 'Tank Traps', tier: 3, science: 2200, gold: 1000, requires: ['fortification'], exclusiveGroup: 'defenseDoctrine', description: 'Dug-in land (trench level 1 or more) near your finished Forts is laid with mines and steel hedgehogs: enemy tank spearheads there slow to 40% and lose troops. Siege Tanks drive through; barrages flatten them with the trench.' },
   trackingRadar: { name: 'Tracking Radar', tier: 4, science: 3500, gold: 1500, requires: ['flakGuns', 'radar'], description: 'Every SAM site of yours gets a tracking radar: an enemy stealth bomber that stays within half its reach for 3 s is spotted, and your SAMs and fighters can shoot at it then. Stealth bombers take 2 hits; one shot down takes 3 minutes to replace.' },
   coastalBatteries: { name: 'Coastal Batteries', tier: 4, science: 3500, gold: 1500, requires: ['tankTraps'], description: 'Your finished Ports, and Forts within 4 tiles of the coast, fire big guns every 2 s at one enemy ship of a nation at war with you, up to 30 tiles out: cruise missile ships first, then ships shelling your coast, then transports. Battleships outrange them and can shell them silent.' },
+  antiRadar: { name: 'Anti-radar Missiles', tier: 3, science: 2200, gold: 1000, requires: ['flight'], description: 'Airfields fire anti-radar missiles at enemy SAM sites whose radar is on (they fired in the last 10 s): a hit knocks the SAM out for 30 s. SAMs can shoot the missiles down. Optional escort mode answers SAMs that shoot at your planes.' },
+  defenseMastery: { name: 'Defense Mastery', tier: 5, science: 8000, gold: 3000, requires: ['fortification'], requiresAny: ['trackingRadar', 'coastalBatteries'], description: 'Mastery: enemy attacks that bleed on your fortified land fill a meter; when full, launch a Counteroffensive: a fast, cheap push from your forts at the attacker. Hardened shelters: atom bombs do half damage to troops and buildings your forts cover.' },
   airMastery: { name: 'Air Mastery', tier: 5, science: 8000, gold: 3000, requires: ['flight'], requiresAny: ['jetEngines', 'strategicBombing'], description: 'Mastery: every air wing flies 50% more bombers; a stealth bomber SAM sites cannot see strikes one target behind their walls.' },
 };
 export const TECH_ORDER: TechId[] = [
@@ -473,7 +475,7 @@ export const TECH_ORDER: TechId[] = [
   'jetEngines', 'strategicBombing', 'diplomaticCorps', 'conscription', 'industrialBoom', 'massMobilization', 'automation',  'amphibiousTanks', 'earlyWarning', 'navalMines', 'dropTanks', 'nightBombing',
   'destroyers', 'battleships', 'lightTanks', 'heavyTanks', 'deepRaids', 'siegeTanks', 'groundAttack', 'heavyBombers',
   'mechInfantry', 'reconPlanes', 'navalMastery', 'armorMastery', 'airMastery', 'flakGuns', 'tankTraps',
-  'trackingRadar', 'coastalBatteries',
+  'trackingRadar', 'coastalBatteries', 'antiRadar', 'defenseMastery',
 ];
 /** Display names of the exclusive choice groups (TechInfo.exclusiveGroup). */
 export const TECH_GROUP_NAMES: Record<string, string> = {
@@ -566,6 +568,8 @@ export const UNITS: Record<UnitType, UnitInfo> = {
   transportPlane: { name: 'Cargo plane', speed: 30, gold: 400, iron: 0, oil: 30, hp: 1, tech: 'flight' },
   /** the stealth strike (Air Mastery, STEALTH below): one flying wing at bomber speed, paid per strike */
   stealthBomber: { name: 'Stealth bomber', speed: 30, gold: 1200, iron: 0, oil: 100, hp: 2, tech: 'airMastery' },
+  /** Anti-radar Missiles (antiRadar.ts, ANTI_RADAR below): flies from an airfield at a SAM site whose radar is on; paid per missile */
+  antiRadarMissile: { name: 'Anti-radar missile', speed: 40, gold: 500, iron: 0, oil: 50, hp: 1, tech: 'antiRadar' },
   /** tank division (tanks.ts): speed = tiles/s moving over own land (a rail move; TANK_MOBILITY); the troops it carries are its strength */
   tankDivision: { name: 'Tank division', speed: 20, gold: 1200, iron: 100, oil: 50, hp: 1, tech: 'mechanization' },
   /** recon flight (variants.ts): the price is paid per flight */
@@ -711,6 +715,13 @@ export const CRUISE = {
   aiMaxCover: 2,
   /** AI: targets within this many tiles of a landing of its own on the way score as the landing's cover */
   aiLandingNear: 30,
+  /** sea-skimming: on its way only SAM sites within skimRadius tiles of the target can shoot it */
+  skimRadius: 15,
+  /** anti-ship: a click on water within shipPick tiles of a seen hostile ship aims at it; a hit takes shipDamage hp (a transport sinks) */
+  shipPick: 3,
+  shipDamage: 1.5,
+  /** the missile hits the ship if it is within shipHit tiles when the missile arrives (it homes on the ship meanwhile) */
+  shipHit: 2,
 } as const;
 export const SAM_COOLDOWN = 4; // seconds to reload one shot (each shot is a sure hit; a level-L SAM holds L shots)
 /** Seconds an airfield's fighters need between interceptions, divided by the fighters stationed there. */
@@ -1339,6 +1350,13 @@ export const STEALTH = {
   /** SAM hunter: every hostile SAM site in the blast is destroyed, the rest within silenceRadius tiles of the impact are knocked out for silenceSeconds */
   silenceRadius: 20,
   silenceSeconds: 20,
+  /** silo hunter: every hostile silo in a blast is destroyed (with the atom bombs loaded in it), the rest within siloSilenceRadius tiles of an aim point are knocked out for siloSilenceSeconds */
+  siloSilenceRadius: 25,
+  siloSilenceSeconds: 30,
+  /** multi-target: up to multiMax aim points, each within multiSpread tiles of the others; each blast multiRadius tiles (x Strategic / Night Bombing) */
+  multiMax: 3,
+  multiSpread: 25,
+  multiRadius: 6,
   revealSeconds: 2,
   aiReserve: 2,
   aiMinCover: 2,
@@ -1755,6 +1773,51 @@ export const DEFENSE = {
   aiStrongerNeighbour: 1.5,
   /** AI: ...or its hostile rivals hold this many bombers */
   aiEnemyBombers: 6,
+} as const;
+
+/**
+ * Defense Mastery (counter.ts): the Counteroffensive and Hardened shelters.
+ * Meter (Player.counterMeter 0..1): troops an enemy loses taking your fortified land (within a working Fort's reach),
+ * by attacks or spearheads, fill it by loss / max(fillMin, fillShare x your whole army); an attack or spearhead that
+ * runs dry or is stopped there adds failBonus. Full: Action counteroffensive pushes troopShare of your home troops at the
+ * nation that bled most recently (Player.counterFoe), plus idle tank divisions within divisionReach tiles of a Fort; for
+ * `seconds` your attacks and spearheads on that nation run speedMul x faster, lose lossMul x, spearheads go depthMul x
+ * deeper. Shelters: an atom bomb on land a working Fort of its owner covers does shelterMul x the troop loss there, and
+ * buildings there lose shelterMul hp (knocked out shelterKnockSeconds) instead of being destroyed.
+ */
+export const COUNTER = {
+  fillShare: 0.4,
+  fillMin: 4000,
+  failBonus: 0.2,
+  seconds: 30,
+  troopShare: 0.4,
+  speedMul: 1.6,
+  lossMul: 0.6,
+  depthMul: 1.4,
+  divisionReach: 4,
+  shelterMul: 0.5,
+  shelterKnockSeconds: 30,
+  /** AI: launches only while it keeps this share of its troop cap at home after sending */
+  aiKeepHome: 0.15,
+} as const;
+
+/**
+ * Anti-radar Missiles (antiRadar.ts; an Air special): Action antiRadar {airfield | -1, sam} fires one missile from an own
+ * finished airfield at a seen hostile SAM site within the airfield's air-wing reach x reachMul whose radar is on (it
+ * fired within radarOnSeconds). The airfield reloads for cooldownSeconds. SAMs shoot it like any missile. A hit knocks
+ * the SAM out for knockSeconds and takes `damage` hp (the barrage knock-out). Escort mode (Player.antiRadarEscort, off
+ * by default): every second, a SAM that just shot at your planes (Building.firedOn) draws one missile from your nearest
+ * ready airfield in reach (paid, if you can).
+ */
+export const ANTI_RADAR = {
+  radarOnSeconds: 10,
+  reachMul: 1,
+  cooldownSeconds: 12,
+  knockSeconds: 30,
+  damage: 0.25,
+  /** AI: fires at radar-on SAM sites covering a raid target when it has at least aiMinBombers stored bombers in reach; keeps aiReserve missile prices */
+  aiMinBombers: 2,
+  aiReserve: 3,
 } as const;
 
 export const ARSENAL_PRICES = {

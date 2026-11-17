@@ -94,7 +94,7 @@ describe('arsenal data', () => {
         expect(roots.length).toBe(2);
         expect(TECHS[roots[0].tech].exclusiveGroup).toBe(TECHS[roots[1].tech].exclusiveGroup);
         // Defense gets its mastery (Counteroffensive) in part 3
-        expect(row.items.filter((it) => it.kind === 'mastery').length).toBe(row.pillar === 'defense' ? 0 : 1);
+        expect(row.items.filter((it) => it.kind === 'mastery').length).toBe(1);
       }
     }
     for (const t of ['banking', 'radar', 'blitzTactics', 'stockExchange'] as TechId[]) expect(isArsenalTech(t)).toBe(false);

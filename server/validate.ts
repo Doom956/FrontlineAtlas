@@ -105,7 +105,11 @@ const ACTION_SPECS: ActionSpecs = {
   bomb: { airfield: { k: 'siteOrAuto' }, tile: TILE, count: { k: 'count', optional: true } },
   launchMissile: { silo: { k: 'siteOrAuto' }, kind: { k: 'enum', values: ['rocket', 'atomBomb'] }, tile: TILE, count: { k: 'count', optional: true } },
   cruiseMissile: { ship: ID, tile: TILE },
-  stealthStrike: { airfield: { k: 'siteOrAuto' }, tile: TILE },
+  // Defense part 3 (protocol 22): up to 3 stealth aim points, the Counteroffensive, anti-radar missiles
+  stealthStrike: { airfield: { k: 'siteOrAuto' }, tile: TILE, tile2: { k: 'tile', optional: true }, tile3: { k: 'tile', optional: true } },
+  counteroffensive: {},
+  antiRadar: { airfield: { k: 'siteOrAuto' }, sam: TILE },
+  setAntiRadarEscort: { on: { k: 'bool' } },
   paradrop: { airfield: TILE, tile: TILE, troops: { k: 'amount' } },
   barrage: { tile: TILE },
   requestAlliance: { to: PLAYER },

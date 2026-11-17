@@ -103,6 +103,7 @@ import { doctrineLess, doctrineLever, doctrineMore, doctrinePerk } from './doctr
 import { nearestTile } from './grid';
 import { addEvent, gameSeconds, newId, setOwner } from './state';
 import { hasTech } from './tech';
+import { bleedsOnForts, counterBleed, counterLossMul, counterSpeedMul } from './counter';
 import { techFrontSpeedMul, techLossMul, techSupplyRangeMul } from './techtree';
 import { attackBonusMul } from './spending';
 import { borderTiles, landComponents } from './territory';
@@ -551,7 +552,7 @@ function fightCtx(state: GameState, attackerId: number, troops: Troops, defender
     troops,
     odds,
     // Trench Warfare / Propaganda of the defender (techtree.ts) make taking its land cost more.
-    lossFactor: lossFactorFor(defender, odds) * techLossMul(state, attackerId, defender),
+    lossFactor: lossFactorFor(defender, odds) * techLossMul(state, attackerId, defender) * counterLossMul(state, attackerId, defender), // Counteroffensive (counter.ts)
     density: dp ? total(dp.troops) / Math.max(1, dp.tiles) : 0,
     traitor: dp ? isTraitor(state, defender) : false,
     tribeTarget: !!dp && isTribe(dp),
@@ -686,6 +687,7 @@ function frontRate(state: GameState, c: FightCtx): number {
   r *= 1 - (t.artillery / tot) * ARTILLERY_SLOW;
   if (hasTech(state.players[c.attacker], 'logistics')) r *= LOGISTICS_SPEED;
   r *= techFrontSpeedMul(state, c.attacker, c.defender, t.armor / tot); // Railways, Blitz Tactics, enemy Trench Warfare
+  r *= counterSpeedMul(state, c.attacker, c.defender); // a Counteroffensive (counter.ts)
   return r * frontRateMul(state);
 }
 /**
@@ -1430,7 +1432,14 @@ function stepAttack(state: GameState, a: Attack, idx: AttackIndex): boolean {
   let spent = 0;
   let killed = 0;
   const target = a.target;
+  // Defense Mastery (counter.ts): losses on the target's fortified land fill its Counteroffensive meter
+  const counterOn = target > 0 && hasTech(players[target], 'defenseMastery');
+  let bled = 0;
+  let failed = false;
   const flush = (): void => {
+    if (bled > 0 || failed) counterBleed(state, target, a.attacker, bled, failed);
+    bled = 0;
+    failed = false;
     if (spent > 0) applyAttackerLosses(state, a, spent, target);
     if (killed > 0) applyDefenderLosses(state, target, killed, a.attacker);
     spent = 0;
@@ -1453,12 +1462,17 @@ function stepAttack(state: GameState, a: Attack, idx: AttackIndex): boolean {
     if (pool - spent < cost.loss) {
       // Can't pay for the next tile: the force is spent, taking a proportional share of defenders with it.
       killed += (cost.defenderLoss * (pool - spent)) / cost.loss;
+      if (counterOn && cost.fort > 1.01 && bleedsOnForts(state, target, next)) {
+        bled += pool - spent;
+        failed = true;
+      }
       flush();
       applyAttackerLosses(state, a, total(a.troops), target, false);
       return true;
     }
     spent += cost.loss;
     killed += cost.defenderLoss;
+    if (counterOn && cost.fort > 1.01 && bleedsOnForts(state, target, next)) bled += cost.loss;
     // Tutorial: the taught player keeps its last tiles (tutorialScenario.ts); the attack ends, troops go home.
     if (target !== 0 && state.tutorial && tutorialShielded(state, target)) {
       flush();

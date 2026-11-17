@@ -141,7 +141,8 @@ describe('stealth strike: the flight and the bombs', () => {
     expect(troopSum(s.players[2].troops)).toBeLessThan(t0);
     expect(airState(s).raids.find((r) => r.victim === 2)?.cut ?? 0).toBeGreaterThan(0);
     const hit = s.events.find((e) => e.kind === 'bombing' && e.message.startsWith('Stealth strike by '));
-    expect(hit?.message).toMatch(/^Stealth strike by Tester on AI 2: 3 buildings destroyed, \d+ troops killed$/);
+    expect(hit?.message).toMatch(/^Stealth strike by Tester on AI 2: 2 buildings destroyed, \d+ troops killed$/); // the silo went first, to the silo hunter
+    expect(s.events.some((e) => /hunted silos: 1 destroyed/.test(e.message))).toBe(true);
     expect(s.events.some((e) => e.kind === 'unitLost')).toBe(false);
     fly(s, () => !bomber(s));
     expect(bomber(s)).toBeUndefined();

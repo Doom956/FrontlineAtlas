@@ -11,6 +11,10 @@
 // silos and airfields near a landing of its own on the way score much higher (they would shoot the landing's cover
 // down). Air superiority over the target cuts the score like it cuts the bombs. It keeps STEALTH.aiReserve strike
 // prices in gold. Easy AIs never send it at a human. A human's stealth bomber flies only when told to.
+// Defense part 3: the silo hunter (silos in a blast are destroyed with their loaded atom bombs, others within
+// STEALTH.siloSilenceRadius silenced; units.ts stealthHunt), clean strikes (no fallout, no neutral land) and
+// multi-target (up to STEALTH.multiMax aim points within STEALTH.multiSpread tiles of each other, smaller blasts): the AI
+// splits a strike on a SAM site or silo over the SAM sites and silos clustered around it (aiStealthCluster).
 import { buildingAt, buildingsOf } from './buildings';
 import { BOMBER_BUILDING_HIT, STEALTH } from './config';
 import { aiAttackLevel } from './aiattack';
@@ -156,6 +160,7 @@ export function aiStealthPick(state: GameState, pid: number): { airfield: number
           if (o && o !== b && o.buildLeft <= 0 && hostileTo(state, pid, o.owner) && knownTile(state, pid, i)) others++;
         });
         let score = value + (type === 'city' ? b.level * 2 : 0) + others * 6 + Math.min(cover, 8) * 3;
+        if (type === 'silo' && hasTech(state.players[q], 'nuclearFission')) score += 20; // the nuke counter: silos that can launch atom bombs
         if (landings.some((l) => l.owner === q && d2(l.tile, b.tile) <= STEALTH.aiLandingNear * STEALTH.aiLandingNear)) score += LANDING_KINDS.has(type) ? 30 : 10;
         score *= superiorityBombMul(state, pid, q, b.tile); // air superiority cuts its bombs too
         if (!best || score > best.score || (score === best.score && b.tile < best.tile)) best = { airfield: af.tile, tile: b.tile, score };
@@ -165,9 +170,53 @@ export function aiStealthPick(state: GameState, pid: number): { airfield: number
   return best;
 }
 
+/** Clusters: SAM sites and silos (the kinds a multi-target strike splits over). */
+const CLUSTER_KINDS: ReadonlySet<BuildingType> = new Set<BuildingType>(['sam', 'silo']);
+
+/**
+ * Multi-target for an AI pick on a SAM site or silo: up to STEALTH.multiMax - 1 more known hostile SAM sites and silos
+ * within STEALTH.multiSpread tiles of every aim point, in the airfield's reach and outside the other blasts, nearest
+ * first (then by tile). Empty = one big blast is better. Pure read.
+ */
+export function aiStealthCluster(state: GameState, pid: number, airfield: number, tile: number): number[] {
+  const b0 = buildingAt(state, tile);
+  if (!b0 || !CLUSTER_KINDS.has(b0.type)) return [];
+  const af = buildingAt(state, airfield);
+  if (!af) return [];
+  const w = state.map.width;
+  const d2 = (a: number, b: number): number => {
+    const dx = (a % w) - (b % w);
+    const dy = ((a / w) | 0) - ((b / w) | 0);
+    return dx * dx + dy * dy;
+  };
+  const reach = stealthReach(state, af);
+  const r = stealthRadius(state, pid, true);
+  const spread2 = STEALTH.multiSpread * STEALTH.multiSpread;
+  const cands: Building[] = [];
+  for (const b of state.buildings.values()) {
+    if (!CLUSTER_KINDS.has(b.type) || b === b0 || b.buildLeft > 0 || !hostileTo(state, pid, b.owner)) continue;
+    if (state.map.owner[b.tile] !== b.owner || !knownTile(state, pid, b.tile)) continue;
+    if (d2(b.tile, tile) > spread2 || d2(b.tile, af.tile) > reach * reach || d2(b.tile, tile) <= r * r) continue;
+    cands.push(b);
+  }
+  cands.sort((a, b) => d2(a.tile, tile) - d2(b.tile, tile) || a.tile - b.tile);
+  const aims = [tile];
+  for (const b of cands) {
+    if (aims.length >= STEALTH.multiMax) break;
+    if (aims.some((t) => d2(t, b.tile) > spread2 || d2(t, b.tile) <= r * r)) continue;
+    aims.push(b.tile);
+  }
+  return aims.slice(1);
+}
+
 /** AI stealth strike for nation pid (see the file comment); true when it sent one. Deterministic: no randomness. */
 export function aiStealth(state: GameState, pid: number): boolean {
   const pick = aiStealthPick(state, pid);
   if (!pick) return false;
+  const more = aiStealthCluster(state, pid, pick.airfield, pick.tile);
+  if (more.length) {
+    const a = { type: 'stealthStrike' as const, airfield: pick.airfield, tile: pick.tile, tile2: more[0], ...(more.length > 1 ? { tile3: more[1] } : {}) };
+    if (applyAction(state, pid, a).ok) return true;
+  }
   return applyAction(state, pid, { type: 'stealthStrike', airfield: pick.airfield, tile: pick.tile }).ok;
 }

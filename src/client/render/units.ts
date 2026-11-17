@@ -17,7 +17,7 @@
 // own marker selects that fleet (ownFleetAt).
 import { TICKS_PER_SECOND, UNITS } from '../../sim/config';
 import { armyTotal } from '../../sim/economy';
-import type { GameState, Unit, UnitVariant } from '../../sim/types';
+import type { GameState, Unit, UnitType, UnitVariant } from '../../sim/types';
 import type { Camera } from '../camera';
 import { ACCENT, clamp, css, MAP_NUM_FAMILY, type RGB } from './common';
 import { GLYPHS, strokeDucks, type Inst } from './unitGlyphs';
@@ -391,7 +391,7 @@ export class UnitLayer {
         moving = t.hn >= 2 && Math.abs(t.hx[0] - t.hx[1]) + Math.abs(t.hy[0] - t.hy[1]) > 1e-4;
         if (t.hn >= 2) speed = Math.hypot(t.hx[0] - t.hx[1], t.hy[0] - t.hy[1]) * TICKS_PER_SECOND;
       }
-      visible.push({ u, type: u.type, x, y, S, R, angle, moving, id: u.id, tx: ux + 0.5, ty: uy + 0.5, turn, speed });
+      visible.push({ u, type: missileArtType(u.type), x, y, S, R, angle, moving, id: u.id, tx: ux + 0.5, ty: uy + 0.5, turn, speed });
     }
     // zoomed out: close warships of one owner become one marker (screen px, so the radius scales with the zoom)
     if (grouping) {
@@ -759,4 +759,12 @@ export class UnitLayer {
     this.drops.length = keep;
     ctx.globalAlpha = 1;
   }
+}
+
+/**
+ * MISSILE ART PLACEHOLDER (the one place): the anti-radar missile draws as the cruise missile until its own art (a
+ * faceted dark grey body) is drawn; swap this line for its own sprite then. Every other unit draws as itself.
+ */
+export function missileArtType(t: UnitType): UnitType {
+  return t === 'antiRadarMissile' ? 'cruiseMissile' : t;
 }

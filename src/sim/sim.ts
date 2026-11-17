@@ -1,4 +1,5 @@
 // One simulation tick (100 ms of game time). Fixed system order for determinism.
+import { updateAntiRadar } from './antiRadar';
 import { updateBlitz } from './blitz';
 import { updateTrenches } from './trenches';
 import { updateAdvisor } from './advisor';
@@ -72,6 +73,7 @@ export function tick(state: GameState): void {
     pruneEliminated(state);
     updateSpecials(state); // mines, wading tank divisions (specials.ts); before updateUnits drops sunk ships
     updateUnits(state);
+    updateAntiRadar(state); // escort mode answers SAMs that just fired (antiRadar.ts)
     updateAir(state);
     updateArsenal(state); // recon planes, reveals, hold zones (variants.ts)
     updateFog(state); // fog of war vision (fog.ts); after reveals, before the AI decides

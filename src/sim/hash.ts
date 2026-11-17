@@ -9,6 +9,7 @@ import { hashAir } from './airwings';
 import { hashFollow } from './warTarget';
 import { hashBlitz } from './blitz';
 import { hashFog } from './fog';
+import { hashAntiRadar } from './antiRadar';
 import { hashArsenal } from './variants';
 import type { GameState, Troops } from './types';
 import { DIVISION_MODES, WARSHIP_STANCES } from './types';
@@ -81,6 +82,10 @@ export function hashState(state: GameState): number {
     h = mixFloat(h, p.armyMix.artillery);
     h = mixInt(h, p.barrageReadyTick);
     if (p.stealthReady !== undefined) h = mixInt(h, p.stealthReady ^ 0x5e17b0d1); // stealth bomber recharge (units.ts launchStealth)
+    // Defense Mastery (counter.ts): the Counteroffensive meter, its foe and window
+    if (p.counterMeter !== undefined) h = mixFloat(mixInt(h, 0x434d54), p.counterMeter);
+    if (p.counterFoe !== undefined) h = mixInt(mixInt(h, 0x434654), p.counterFoe);
+    if (p.counterUntil !== undefined) h = mixInt(mixInt(h, 0x435554), p.counterUntil);
     h = mixStr(h, p.researching);
     h = mixFloat(h, p.researchProgress);
     // Arsenal orders (procurement.ts).
@@ -203,6 +208,10 @@ export function hashState(state: GameState): number {
       h = mixInt(h, 0x524453);
       for (const v of u.radarSeen) h = mixInt(h, v);
     }
+    if (u.aims) { // stealth multi-target aim points still to bomb (units.ts)
+      h = mixInt(mixInt(h, 0x41494d), u.aims.length);
+      for (const v of u.aims) h = mixInt(h, v);
+    }
   }
   // Recent wars (naval2.ts).
   const wm = state.warMemory ?? [];
@@ -272,6 +281,7 @@ export function hashState(state: GameState): number {
   // War targets and auto recon (warTarget.ts).
   h = hashFollow(state, h, mixInt);
   h = hashBlitz(state, h, mixInt); // land held by a blitz (blitz.ts)
+  h = hashAntiRadar(state, h, mixInt); // SAM radar marks, anti-radar reloads, escort flags (antiRadar.ts)
   // Fog of war vision (fog.ts); nothing without the rule.
   h = hashFog(state, h, mixInt);
   return h >>> 0;

@@ -147,10 +147,11 @@ export function aiAmphibTarget(state: GameState, id: number, foe: number, fx: nu
  * Air strength (airfields + bombers) and SAM / fighter cover of the nations AI id faces (non-allied neighbours and
  * nations at war with it), and whether one of them has Early Warning.
  */
-function foeAir(state: GameState, id: number, enemies: readonly number[]): { air: number; cover: number; warn: boolean } {
+function foeAir(state: GameState, id: number, enemies: readonly number[]): { air: number; cover: number; warn: boolean; sams: number } {
   let air = 0;
   let cover = 0;
   let warn = false;
+  let sams = 0;
   for (const q of state.players) {
     if (q.id === 0 || q.id === id || !q.alive || isTribe(q) || !hostile(state, id, q.id)) continue;
     if (!enemies.includes(q.id) && !atWar(state, id, q.id)) continue;
@@ -159,10 +160,12 @@ function foeAir(state: GameState, id: number, enemies: readonly number[]): { air
       air += 1 + b.bombers;
       cover += b.fighters;
     }
-    cover += buildingsOf(state, q.id, 'sam').filter((b) => b.owner === q.id).length * 2;
+    const n = buildingsOf(state, q.id, 'sam').filter((b) => b.owner === q.id).length;
+    cover += n * 2;
+    sams += n;
     if (q.techs.includes('earlyWarning')) warn = true;
   }
-  return { air, cover, warn };
+  return { air, cover, warn, sams };
 }
 
 function foeShips(state: GameState, id: number): number {
@@ -194,6 +197,8 @@ export function aiSpecialPick(state: GameState, id: number, enemies: readonly nu
     // Air nations against strong air defence: Night Bombing; with room to fly: Drop Tanks.
     if (air && (bombers >= 2 || myAirfields.length >= 2) && fa.cover >= 4 && !fa.warn) want.push('nightBombing');
     if (pillar === 'air' && myAirfields.length >= 2) want.push('dropTanks');
+    // Air nations facing a deep SAM wall: Anti-radar Missiles (antiRadar.ts) open it before the raids.
+    if (air && bombers >= 2 && fa.sams >= 4) want.push('antiRadar');
     // Admirals and navies: mines around the ports when rivals sail.
     if ((pers === 'admiral' || pillar === 'navy') && buildingsOf(state, id, 'port').some((b) => b.owner === id) && foeShips(state, id) > 0)
       want.push('navalMines');

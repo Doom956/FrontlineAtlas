@@ -75,8 +75,8 @@ function straitGame(gap: number, far: 1 | 2, seed = 4): GameState {
 }
 
 describe('special upgrade techs', () => {
-  it('five behaviour techs exist, are in the research order and are accepted by the server', () => {
-    expect(SPECIAL_TECHS).toEqual(['amphibiousTanks', 'earlyWarning', 'navalMines', 'dropTanks', 'nightBombing']);
+  it('six behaviour techs exist, are in the research order and are accepted by the server', () => {
+    expect(SPECIAL_TECHS).toEqual(['amphibiousTanks', 'earlyWarning', 'navalMines', 'dropTanks', 'nightBombing', 'antiRadar']);
     for (const t of SPECIAL_TECHS) {
       expect(TECHS[t].name.length).toBeGreaterThan(3);
       expect(TECHS[t].description.length).toBeGreaterThan(10);

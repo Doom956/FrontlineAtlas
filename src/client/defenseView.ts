@@ -1,6 +1,8 @@
 // What the Defense row (sim/defense.ts) shows outside the map art: the flak zones a player knows of (fog of war: the
 // hostile Forts and Cities it sees or remembers), the flak on a strike's route, and the one line a Fort or City card
 // gains. Client only, read-only.
+import { radarOnLeft } from '../sim/antiRadar';
+import { COUNTER } from '../sim/config';
 import { DEFENSE, TICKS_PER_SECOND } from '../sim/config';
 import { batteryRange, flakRadius, flakRate, flakSiteCut, flakWorking, isBatterySite, radarRadius } from '../sim/defense';
 import { fortRadius } from '../sim/buildings';
@@ -107,6 +109,14 @@ export function defenseLines(state: GameState, b: Building): string[] {
     if (b.buildLeft > 0) out.push('Tracking Radar: works once it is built');
     else if (off > 0) out.push(`Tracking Radar: knocked out for ${off} s`);
     else out.push(`Tracking Radar: spots stealth bombers within ${Math.round(radarRadius(state, b))} tiles after ${DEFENSE.radarLockSeconds} s`);
+  }
+  if (b.type === 'sam' && b.buildLeft <= 0) {
+    // Anti-radar Missiles (sim/antiRadar.ts): a SAM that just fired can be locked onto
+    const on = radarOnLeft(state, b);
+    if (on > 0) out.push(`Radar on for ${Math.ceil(on)} s: anti-radar missiles can lock on`);
+  }
+  if (b.type === 'fort' && hasTech(p, 'defenseMastery') && b.buildLeft <= 0) {
+    out.push(off > 0 ? `Hardened shelters: off while knocked out (${off} s)` : `Hardened shelters: atom bombs do ${pct(COUNTER.shelterMul)}% damage within ${fortRadius(state, b)} tiles`);
   }
   if ((b.type === 'port' || b.type === 'fort') && isBatterySite(state, b)) {
     if (b.buildLeft > 0) out.push('Coastal Battery: fires once it is built');

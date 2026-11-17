@@ -8,6 +8,7 @@
 //           front lines, units, effects, labels, front pills and push arrows, reticles, floaters, hover and previews.
 // Tile ownership reaches the GPU through the sim's change feed (render/tiles.ts): no per-frame map scans. Labels,
 // fronts and the minimap listen to the same feed. Everything in screen space is culled through spatial grids.
+import { CounterFx } from './fx/counterFx';
 import { supplyEfficiency } from '../sim/combat';
 import { MIN_SUPPLY_EFF } from '../sim/config';
 import { areAllied, isTraitor } from '../sim/diplomacy';
@@ -143,6 +144,8 @@ export class Renderer {
   private fighters = new FighterFx();
   /** flak bursts, worn planes' smoke, tank trap hedgehogs and their dirt bursts (fx/defenseFx.ts) */
   private defense = new DefenseFx();
+  /** the Counteroffensive arrow and the Hardened shelters dome (fx/counterFx.ts) */
+  private counterFx = new CounterFx();
   /** the turning guns of flak pits and coastal batteries: where they point, when they fire (fx/gunAim.ts) */
   private gunAim = new GunAim();
   private shookBy = { x: 0, y: 0 };
@@ -265,6 +268,7 @@ export class Renderer {
     this.tanks.fog = fog;
     this.fighters.fog = fog;
     this.defense.fog = fog;
+    this.counterFx.fog = fog;
     this.gunAim.fog = fog;
     this.defense.guns = this.gunAim;
     // battle effects: read what is new, then shake the view a few px after a nearby nuke (undone after drawing)
@@ -273,6 +277,7 @@ export class Renderer {
     this.pfx.update(state, nowMs, this.units);
     this.fighters.update(state, nowMs);
     this.defense.update(state, camera, nowMs);
+    this.counterFx.update(state, nowMs);
     this.gunAim.update(state, camera, nowMs);
     const sh = this.fx.shake(nowMs);
     if (sh.x !== 0 || sh.y !== 0) {
@@ -394,6 +399,7 @@ export class Renderer {
     tf = performance.now();
     this.fronts.drawLines(ctx, state, camera, ui, d);
     msFronts += performance.now() - tf;
+    this.counterFx.draw(ctx, camera, nowMs); // the Counteroffensive arrow, under the buildings and units
     this.overlays.rings(ctx, state, camera, ui, snap, me);
     const focus: number[] = [];
     if (ui.hoverTile >= 0 && ui.hoverTile < state.map.building.length && state.map.building[ui.hoverTile] !== 0 && ui.mode.kind === 'none') focus.push(ui.hoverTile);

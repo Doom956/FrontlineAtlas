@@ -26,7 +26,28 @@ finished Fort of yours. Pick one of two lanes, each with an upgrade after it:
     its 3 hp per hit, a transport 6% of its troops (it is never sunk). Battleships shell from 35 tiles, out of reach,
     and warships shell batteries first (AI fleets, and your own on Auto or Bombard), knocking them silent until they
     mend. A steel-blue arc over the water shows a battery's reach when you select it or your warships are near one.
-- Picking one lane locks the other. Mastery is still 2 per game, now of 4 pillars (Defense's mastery comes later).
+- Defense Mastery (after either upgrade; 25,000 gold, 8,000 iron, 2,000 oil; one of your 2 masteries):
+  - Counteroffensive: every troop an enemy attack or tank spearhead loses on land your Forts cover fills a meter (the
+    Counter chip at the top, and a line on each Fort card). Full, press Counter in the bottom bar (or Counteroffensive
+    on a Fort card): 40% of your troops at home and your idle tank divisions near a Fort push at that attacker from
+    your nearest Fort, 60% faster and losing 40% fewer troops for 30 s. A wide brass arrow sweeps out with dust. The
+    button says why it is off ("Meter 60%"). AI nations strike back once their forts held (Easy ones never at you).
+  - Hardened shelters: an atom bomb does half its troop losses on land your working Forts cover, and buildings there
+    lose half their health instead of being wiped out (the land stays yours). The atom aiming preview shades sheltered
+    land blue and says how much is covered.
+- Picking one lane locks the other. Mastery is still 2 per game, now of 4 pillars.
+- Anti-radar missiles (new Air special in the Arsenal): Anti-radar strike on an airfield card, then click an enemy SAM
+  site whose radar is on (it fired in the last 10 s: green ring; otherwise "SAM radar is off: wait until it fires"). A
+  hit knocks it out for 30 s; SAMs can shoot the missile down. Escort mode (off by default) answers every SAM that
+  shoots at your planes. 500 gold and 50 oil each. AI nations use them to open SAM walls before their raids.
+- Stealth bomber, a new job: the atom bomb counter. Missile Silos in its blast are destroyed with any atom bombs
+  loaded in them, and other silos within 25 tiles cannot launch for 30 s. Its strikes are clean (no fallout, no
+  neutral land), so you can take the land right after. Multi-target: Add target while aiming, click up to 3 targets
+  within 25 tiles of each other (6-tile blasts each), then Launch; one click is still one big strike. AI nations split
+  it over clusters of SAM sites and silos.
+- Cruise missiles: anti-ship (click near an enemy warship or transport you can see: it homes on it, a warship loses
+  1.5 hp, a transport sinks) and sea-skimming (on the way only SAM sites within 15 tiles of the target can shoot it).
+  AI fleets fire them at enemy fleets and carriers.
 - AI nations from Normal up take Defense when they are cautious, face a much stronger neighbour or get bombed a lot,
   and buy their lane's upgrade. AI landings steer clear of coasts covered by batteries unless their fleet is there.
 - Online games need the new version (protocol 22).

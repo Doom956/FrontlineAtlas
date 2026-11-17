@@ -4,15 +4,21 @@ import { activeModifiers, mapLabel, PRESETS } from '../../sim/setup';
 import { peaceSecondsLeft } from '../../sim/rules';
 import type { GameSettings, GameState } from '../../sim/types';
 import { el, setClass, setText, setTip } from './dom';
+import { counterInfo } from '../counterUi';
 
 export class ModChips {
   readonly el: HTMLElement;
   private settings: GameSettings | null = null;
   private peace: HTMLElement | null = null;
 
+  /** Defense Mastery: the Counteroffensive meter (client/counterUi.ts), hidden without the mastery */
+  private counter: HTMLElement;
+
   constructor() {
     this.el = el('div', 'mod-chips');
     this.el.dataset.test = 'mod-chips';
+    this.counter = el('span', 'mod-chip live counter-chip hidden');
+    this.counter.dataset.test = 'counter-chip';
   }
 
   private build(s: GameSettings): void {
@@ -30,11 +36,22 @@ export class ModChips {
       }
       this.el.append(c);
     }
+    this.el.append(this.counter);
     this.el.setAttribute('aria-label', `Game rules on ${mapLabel(s.map)}`);
   }
 
   update(state: GameState): void {
     if (state.settings !== this.settings) this.build(state.settings);
+    const me = state.players[state.humanId];
+    const c = me && state.phase === 'playing' ? counterInfo(state, me) : null;
+    setClass(this.counter, 'hidden', !c?.show);
+    if (c?.show) {
+      setText(this.counter, c.chip);
+      setClass(this.counter, 'ready', c.full && !c.why);
+      this.counter.style.setProperty('--p', String(Math.min(100, c.pct)));
+      setTip(this.counter, `${c.line}${c.why && !c.why.startsWith('Meter') ? `\n${c.why}` : ''}\nLaunch it with Counter in the bottom bar.`);
+      this.counter.setAttribute('aria-label', c.line);
+    }
     if (this.peace) {
       const left = peaceSecondsLeft(state);
       const m = state.settings.modifiers.peaceMinutes;

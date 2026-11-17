@@ -68,7 +68,7 @@ describe('the Defense row', () => {
   it('is a fourth pillar with a fork of two roots; masteries stay 2, now of 4', () => {
     const row = ARSENAL_ROWS.find((r) => r.pillar === 'defense')!;
     expect(row.name).toBe('Defense');
-    expect(row.items.map((i) => i.tech)).toEqual(['flakGuns', 'tankTraps', 'trackingRadar', 'coastalBatteries']);
+    expect(row.items.map((i) => i.tech)).toEqual(['flakGuns', 'tankTraps', 'trackingRadar', 'coastalBatteries', 'defenseMastery']);
     expect(MASTERY_CAP).toBe(2);
     expect(MASTERY_PILLARS).toBe(4);
   });

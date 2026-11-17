@@ -17,6 +17,10 @@ import { FLOATER_MS, type UiState } from '../uiState';
 import { barrageReach, fmtR, strikeOfMode, strikeTarget, type StrikeTarget } from '../strikes';
 import { bombReach, bomberRadiusOf } from '../airSim';
 import { cruiseTarget, type CruiseTarget } from '../cruise';
+import { shelterLine } from '../counterUi';
+import { antiRadarPick, antiRadarSams } from '../antiRadarUi';
+import { antiRadarReach } from '../../sim/antiRadar';
+import { STEALTH } from '../../sim/config';
 import { stealthTarget, type StealthTarget } from '../stealth';
 import { enemyFlakLabel, knownEnemyFlak, myFlakFactor } from '../defenseView';
 import { batteryRange, batterySites, flakRadius, flakSiteCut, hasTrackingRadar, isBatterySite, isFlakSite, radarRadius } from '../../sim/defense';
@@ -32,6 +36,8 @@ import { ACCENT_FILL_RGB, ACCENT_RGB, ACCENT_TEXT, accentStroke, clamp, css, das
 /** The map overlay accent (render/common.ts) as 'r,g,b' for the strike discs: your launch sites, reach and aim. */
 const ACC = ACCENT_RGB.join(',');
 import type { UnitLayer } from './units';
+/** Anti-radar aiming: a SAM site whose radar is on (the Tracking Radar green). */
+const RADAR_ON = '#5dff8a';
 import type { FogView } from '../fog/fogView';
 import { markerSize } from './buildings';
 import { displayColor, type DisplayRole } from './palette';
@@ -785,6 +791,50 @@ export class Overlays {
     setTracking(ctx, 0);
   }
 
+  private shelterKey = '';
+  private shelterT: { line: string; mask: number[] } = { line: '', mask: [] };
+  /** The Hardened shelters under an atom bomb aimed at `tile` (cached per tile and 8 ticks). */
+  private shelterCheck(state: GameState, tile: number): { line: string; mask: number[] } {
+    const key = `${tile}|${state.tick >> 3}`;
+    if (key !== this.shelterKey) {
+      this.shelterKey = key;
+      this.shelterT = shelterLine(state, tile, ATOM_RADIUS);
+    }
+    return this.shelterT;
+  }
+
+  /** Four corner brackets round (x, y): a locked target. */
+  private brackets(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color: string): void {
+    const k = r * 0.45;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      ctx.moveTo(x + sx * r, y + sy * (r - k));
+      ctx.lineTo(x + sx * r, y + sy * r);
+      ctx.lineTo(x + sx * (r - k), y + sy * r);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** A short note on a dark pill centred at (x, y). */
+  private noteBelow(ctx: CanvasRenderingContext2D, cam: Camera, x: number, y: number, text: string, color: string): void {
+    ctx.font = `600 12px ${MAP_LABEL_FAMILY}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    const tw = ctx.measureText(text).width;
+    const half = tw / 2 + 8;
+    const lx = clamp(x, half, Math.max(half, cam.viewW - half));
+    const ly = clamp(y, 20, Math.max(20, cam.viewH - 8));
+    ctx.beginPath();
+    ctx.roundRect(lx - tw / 2 - 6, ly - 16, tw + 12, 19, 6);
+    ctx.fillStyle = 'rgba(10,13,21,0.7)';
+    ctx.fill();
+    haloText(ctx, text, lx, ly, color, 12, 1.2);
+  }
+
   /** Selection, hovered tile and the preview of the current target mode. */
   hoverAndPreview(ctx: CanvasRenderingContext2D, state: GameState, cam: Camera, ui: UiState, snap: Snap | null, units: UnitLayer, frac: number, dpr: number): void {
     const n = state.map.width * state.map.height;
@@ -888,6 +938,18 @@ export class Overlays {
         const many = ok && t && t.count > 1 ? ` x${t.count}` : '';
         if (mode.missile === 'atomBomb') {
           this.aimDisc(ctx, cam, hs.x, hs.y, ok, [{ radius: ATOM_RADIUS }, { radius: ATOM_CORE_RADIUS, core: true }], `Atom bomb${many} · core ${ATOM_CORE_RADIUS} · blast ${ATOM_RADIUS} tiles`);
+          // Hardened shelters (Defense Mastery, sim/counter.ts): land a Fort of its owner covers takes half damage
+          const sh = this.shelterCheck(state, hover);
+          if (sh.mask.length) {
+            ctx.save();
+            ctx.fillStyle = 'rgba(120,190,255,0.32)';
+            for (const t of sh.mask) {
+              const rr = this.tileRect(cam, t, 1);
+              ctx.fillRect(rr.x, rr.y, rr.s, rr.s);
+            }
+            ctx.restore();
+            this.noteBelow(ctx, cam, hs.x, hs.y + ATOM_RADIUS * z + 14, sh.line, '#bfe0ff');
+          }
         } else {
           this.aimDisc(ctx, cam, hs.x, hs.y, ok, [{ radius: ROCKET_RADIUS }], `Rocket${many} · radius ${ROCKET_RADIUS} tiles`);
         }
@@ -914,6 +976,20 @@ export class Overlays {
           if (t?.ship && t.ship.id === u.id) dashedLine(ctx, c.x, c.y, hs.x, hs.y, t.ok ? 'rgba(255,255,255,0.7)' : 'rgba(230,110,90,0.7)');
         }
         const ok = !!t?.ok;
+        if (t?.target) {
+          // anti-ship: brackets on the ship it homes on, the route to it
+          const p = units.pos(t.target, frac);
+          const c = cam.tileToScreen(p.x + 0.5, p.y + 0.5);
+          if (t.ship) {
+            const sp = units.pos(t.ship, frac);
+            const a = cam.tileToScreen(sp.x + 0.5, sp.y + 0.5);
+            dashedLine(ctx, a.x, a.y, c.x, c.y, ok ? 'rgba(255,255,255,0.75)' : 'rgba(230,110,90,0.7)');
+          }
+          this.brackets(ctx, c.x, c.y, Math.max(12, z * 2.2), ok ? '#ffd166' : '#ff8a7a');
+          const what = t.target.type === 'transport' ? 'sinks the transport' : `-${CRUISE.shipDamage} hp`;
+          this.aimDisc(ctx, cam, c.x, c.y, ok, [{ radius: 1 }], `Anti-ship cruise missile · ${what}`);
+          break;
+        }
         this.aimDisc(ctx, cam, hs.x, hs.y, ok, [{ radius: CRUISE.radius }], `Cruise missile · radius ${CRUISE.radius} tiles`);
         break;
       }
@@ -932,8 +1008,65 @@ export class Overlays {
           ctx.setLineDash([]);
           if (t && t.airfield === b.tile) dashedLine(ctx, c.x, c.y, hs.x, hs.y, t.ok ? 'rgba(255,255,255,0.7)' : 'rgba(230,110,90,0.7)');
         }
+        if (mode.aims) {
+          // multi-target: the route from the airfield through every aim point, a smaller blast at each, the next one
+          const rm = stealthRadius(state, state.humanId, true);
+          const af = mode.airfield >= 0 ? mode.airfield : t?.airfield ?? -1;
+          const pts = [...mode.aims.map((a) => cam.tileToScreen((a % this.w) + 0.5, ((a / this.w) | 0) + 0.5))];
+          if (af >= 0) {
+            const a0 = cam.tileToScreen((af % this.w) + 0.5, ((af / this.w) | 0) + 0.5);
+            let prev = a0;
+            for (const q of pts) {
+              dashedLine(ctx, prev.x, prev.y, q.x, q.y, 'rgba(255,255,255,0.8)');
+              prev = q;
+            }
+            if (pts.length) dashedLine(ctx, prev.x, prev.y, a0.x, a0.y, 'rgba(255,255,255,0.35)');
+          }
+          pts.forEach((q, k) => this.aimDisc(ctx, cam, q.x, q.y, true, [{ radius: rm }], `Target ${k + 1} · ${fmtR(rm)} tiles`));
+          if (mode.aims.length < STEALTH.multiMax) {
+            const spreadOk = mode.aims.every((a) => {
+              const dx = (a % this.w) - (hover % this.w);
+              const dy = ((a / this.w) | 0) - ((hover / this.w) | 0);
+              return dx * dx + dy * dy <= STEALTH.multiSpread * STEALTH.multiSpread;
+            });
+            const okNext = !!t?.ok && spreadOk;
+            this.aimDisc(ctx, cam, hs.x, hs.y, okNext, [{ radius: rm }], okNext ? `Add target ${mode.aims.length + 1}` : spreadOk ? t?.reason || 'Not here' : `Within ${STEALTH.multiSpread} tiles of the others`);
+          }
+          break;
+        }
         const r = t?.radius ?? 6;
         this.aimDisc(ctx, cam, hs.x, hs.y, !!t?.ok, [{ radius: r }], `Stealth strike · radius ${fmtR(r)} tiles`);
+        break;
+      }
+      case 'antiRadar': {
+        // the airfield's reach, every seen enemy SAM site in it: green ring = radar on (seconds left), grey = off
+        const me = state.players[state.humanId];
+        const af = buildingAt(state, mode.airfield);
+        if (!me || !af) break;
+        const c0 = cam.tileToScreen((af.tile % this.w) + 0.5, ((af.tile / this.w) | 0) + 0.5);
+        ctx.beginPath();
+        ctx.arc(c0.x, c0.y, antiRadarReach(state, af) * z, 0, Math.PI * 2);
+        ctx.setLineDash([6, 5]);
+        accentStroke(ctx, 1.5, 0.85);
+        ctx.setLineDash([]);
+        const pick = antiRadarPick(state, me, af.tile, hover);
+        for (const x of antiRadarSams(state, me, af.tile)) {
+          const c = cam.tileToScreen((x.b.tile % this.w) + 0.5, ((x.b.tile / this.w) | 0) + 0.5);
+          const on = x.on > 0;
+          ctx.beginPath();
+          ctx.arc(c.x, c.y, Math.max(9, z * 1.6), 0, Math.PI * 2);
+          ctx.lineWidth = pick?.b === x.b ? 3 : 2;
+          ctx.strokeStyle = on ? RADAR_ON : 'rgba(170,176,186,0.85)';
+          ctx.stroke();
+          haloText(ctx, on ? `Radar on ${Math.ceil(x.on)} s` : 'Radar off', c.x, c.y - Math.max(12, z * 1.8), on ? RADAR_ON : '#c8ccd4', 11, 1);
+        }
+        if (pick) {
+          const c = cam.tileToScreen((pick.b.tile % this.w) + 0.5, ((pick.b.tile / this.w) | 0) + 0.5);
+          const ok = pick.on > 0;
+          dashedLine(ctx, c0.x, c0.y, c.x, c.y, ok ? 'rgba(255,255,255,0.8)' : 'rgba(230,110,90,0.7)');
+          this.brackets(ctx, c.x, c.y, Math.max(12, z * 2), ok ? RADAR_ON : '#ff8a7a');
+          this.aimDisc(ctx, cam, c.x, c.y, ok, [{ radius: 1 }], ok ? 'Anti-radar strike · lock on' : 'SAM radar is off: wait until it fires');
+        }
         break;
       }
       case 'paradrop': {

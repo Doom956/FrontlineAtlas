@@ -143,7 +143,8 @@ export type { GameMode };
 // 21: Actions cruiseMissile {ship, tile}, stealthStrike {airfield, tile} and blitz {unitId, tile}, and the fighter
 // rules (one bump over 20 for cruise missiles, fighters, the stealth bomber, tank fire and Breakthrough together).
 // 22: Arsenal Defense row (techs flakGuns / tankTraps for 'procure'; Unit.flakWear, Unit.trapLoss and the 'trapHit'
-// effect in the state).
+// effect in the state). Defense part 3 in the same bump: techs antiRadar / defenseMastery, Actions counteroffensive {},
+// antiRadar {airfield, sam}, setAntiRadarEscort {on}, stealthStrike's tile2 / tile3, anti-ship cruise missiles.
 export const PROTOCOL_VERSION = 22;
 /** Longest owner-console code a client may send (adminAuth). */
 export const ADMIN_CODE_MAX_LENGTH = 128;

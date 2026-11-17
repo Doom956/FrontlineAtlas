@@ -1,4 +1,6 @@
 // Single entry point for player and AI actions.
+import { launchCounteroffensive } from './counter';
+import { launchAntiRadar, setAntiRadarEscort } from './antiRadar';
 import { clearLeaderCache, requestAllyAid, requestAllyAttack } from './allies';
 import { build, demolish } from './buildings';
 import { boatLandingTile, clearArmyCache, launchAttack, needsBoat, retreat } from './combat';
@@ -177,7 +179,23 @@ export function applyAction(state: GameState, playerId: number, action: Action):
       return launchCruise(state, playerId, action.ship, action.tile);
     case 'stealthStrike':
       if ((action.airfield !== -1 && !isTile(state, action.airfield)) || !isTile(state, action.tile)) return FAIL('Invalid tile');
-      return launchStealth(state, playerId, action.airfield, action.tile);
+      {
+        // multi-target (up to STEALTH.multiMax aim points): tile2, tile3
+        const more: number[] = [];
+        for (const t of [action.tile2, action.tile3]) {
+          if (t === undefined) continue;
+          if (!isTile(state, t)) return FAIL('Invalid tile');
+          more.push(t);
+        }
+        return launchStealth(state, playerId, action.airfield, action.tile, more);
+      }
+    case 'counteroffensive':
+      return launchCounteroffensive(state, playerId);
+    case 'antiRadar':
+      if ((action.airfield !== -1 && !isTile(state, action.airfield)) || !isTile(state, action.sam)) return FAIL('Invalid tile');
+      return launchAntiRadar(state, playerId, action.airfield, action.sam);
+    case 'setAntiRadarEscort':
+      return setAntiRadarEscort(state, playerId, action.on);
     case 'setAutoFire':
       if (action.silo !== -1 && !isTile(state, action.silo)) return FAIL('Invalid tile');
       return setAutoFire(state, playerId, action.silo, action.on);

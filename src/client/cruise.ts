@@ -86,7 +86,10 @@ export function aimCruise(state: GameState, me: Player, ui: UiState, ids: readon
 /** The line at the top of the screen while aiming. */
 export function cruiseInstruction(state: GameState, ships: readonly number[]): string {
   const n = ships.length;
-  return `Cruise missile: click enemy land inside the blue ring${n > 1 ? 's' : ''} (${CRUISE.reach} tiles from the ship). ${cruisePriceText(state, state.humanId)}.`;
+  return `Cruise missile: click enemy land or an enemy ship inside the blue ring${n > 1 ? 's' : ''} (${CRUISE.reach} tiles from the ship). ${cruisePriceText(state, state.humanId)}.`;
+}
+function fmtHp(v: number): string {
+  return `${Math.round(v * 10) / 10} hp`;
 }
 
 /** What a click with the cruise mode on `tile` would do. */
@@ -101,8 +104,10 @@ export interface CruiseTarget {
   enemyTiles: number;
   victim: number;
   blind: boolean;
-  /** a hostile SAM site covers the route or the target ('' = none known) */
+  /** a hostile SAM site near the target covers it ('' = none known; sea-skimming: the others on the way can't see it) */
   covered: string;
+  /** anti-ship: the enemy ship it would home on (null = a land strike) */
+  target: Unit | null;
 }
 
 /**
@@ -110,7 +115,7 @@ export interface CruiseTarget {
  * Fog of war: land out of view counts by its last seen owner, and the blast's contents are not shown (blind).
  */
 export function cruiseTarget(state: GameState, me: Player, ids: readonly number[], tile: number): CruiseTarget {
-  const out: CruiseTarget = { ok: false, reason: '', ship: null, radius: CRUISE.radius, enemyBuildings: 0, enemyTiles: 0, victim: 0, blind: false, covered: '' };
+  const out: CruiseTarget = { ok: false, reason: '', ship: null, radius: CRUISE.radius, enemyBuildings: 0, enemyTiles: 0, victim: 0, blind: false, covered: '', target: null };
   if (tile < 0 || tile >= state.map.owner.length) return { ...out, reason: 'Pick a tile on the map' };
   const ships = cruiseShips(state, me.id, ids);
   if (!ships.length) return { ...out, reason: 'No ship of yours carries cruise missiles' };
@@ -123,6 +128,14 @@ export function cruiseTarget(state: GameState, me: Player, ids: readonly number[
   let why = cruiseReason(state, me.id, ship, tile);
   const pv = cruisePreview(state, me.id, ship.id, tile);
   if (!why) why = pv.reason;
+  if (isWater(state.map.terrain[tile])) {
+    // anti-ship: only ships this player sees can be picked (sim cruiseShipTarget asks fog.unitSeen)
+    out.target = pv.ship ?? null;
+    out.victim = pv.ship?.owner ?? 0;
+    out.radius = 0;
+    if (pv.samShots > 0) out.covered = `A SAM site near the ship can shoot it (${pv.samShots} shot${pv.samShots === 1 ? '' : 's'} ready)`;
+    return { ...out, ok: why === '', reason: why };
+  }
   if (fog) {
     let blind = hidden;
     let known = false;
@@ -151,7 +164,7 @@ export function cruiseTarget(state: GameState, me: Player, ids: readonly number[
   out.enemyBuildings = pv.enemyBuildings;
   out.enemyTiles = pv.enemyTiles;
   out.victim = pv.victim;
-  if (pv.samShots > 0) out.covered = `A SAM site covers the route (${pv.samShots} shot${pv.samShots === 1 ? '' : 's'} ready): it may be shot down`;
+  if (pv.samShots > 0) out.covered = `A SAM site within ${CRUISE.skimRadius} tiles of the target covers it (${pv.samShots} shot${pv.samShots === 1 ? '' : 's'} ready): it may be shot down. Sea-skimming: SAMs farther from the target cannot see it`;
   return { ...out, ok: why === '', reason: why };
 }
 
@@ -164,6 +177,13 @@ export function cruiseClick(state: GameState, me: Player, ids: readonly number[]
 
 /** The cursor card's body for an ok target: what it hits ("Wrecks 2 buildings of Azuria within 4 tiles"). */
 export function cruiseBody(state: GameState, t: CruiseTarget): string {
+  if (t.target) {
+    const s = t.target;
+    const who = nationName(state, s.owner);
+    if (s.type === 'transport') return `Anti-ship: sinks the transport of ${who} with ${formatCount(s.troops.infantry + s.troops.armor + s.troops.artillery)} troops aboard. ${cruisePriceText(state, state.humanId)}.`;
+    const hp = Math.max(0, s.hp - CRUISE.shipDamage);
+    return `Anti-ship: the missile homes on the warship of ${who}: -${CRUISE.shipDamage} hp (${fmtHp(s.hp)} left now, ${hp > 0 ? `${fmtHp(hp)} after` : 'sunk'}). ${cruisePriceText(state, state.humanId)}.`;
+  }
   if (t.blind) return `Radius ${t.radius} tiles. Out of sight: you will see what it hit when it lands`;
   const who = t.victim > 0 ? ` of ${nationName(state, t.victim)}` : '';
   const b = t.enemyBuildings;

@@ -625,6 +625,24 @@ export function guideTips(): GuideTip[] {
       when: (c) => playing(c) && (hasTech(c.me, 'flakGuns') || hasTech(c.me, 'tankTraps')),
     },
     {
+      // Defense Mastery (sim/counter.ts): the meter is full
+      id: 'counter',
+      text: 'Your forts held: the Counteroffensive is ready. Click Counter in the bottom bar to push back at the attacker from your nearest Fort, fast and cheap for a short time.',
+      target: 'strike-counter',
+      tile: (c) => buildingTile(c.s, c.me, 'fort'),
+      when: (c) => playing(c) && hasTech(c.me, 'defenseMastery') && (c.me.counterMeter ?? 0) >= 1,
+      done: (c) => (c.me.counterUntil ?? 0) > 0,
+    },
+    {
+      // Anti-radar Missiles (sim/antiRadar.ts)
+      id: 'antiRadar',
+      text: 'Anti-radar missiles: on an Airfield card press Anti-radar strike, then click an enemy SAM site with a green ring (its radar is on because it just fired). A hit knocks it out for 30 s.',
+      target: 'order-antiradar',
+      tile: (c) => buildingTile(c.s, c.me, 'airfield'),
+      when: (c) => playing(c) && hasTech(c.me, 'antiRadar') && owns(c.s, c.me, 'airfield'),
+      done: (c) => c.s.units.some((u) => u.owner === c.me.id && u.type === 'antiRadarMissile'),
+    },
+    {
       id: 'airTech',
       text: (c) => getUnlock(c, 'flight', 'for Airfields, bombers and fighters').text,
       target: (c) => getUnlock(c, 'flight', 'for Airfields, bombers and fighters').target,

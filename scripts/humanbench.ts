@@ -242,6 +242,8 @@ interface Result {
   winner: number;
   winMinute: number;
   minutes: number;
+  /** atom bombs that hit in the game (any nation; 'nuke' events), the atom spam probe; absent in older JSON lines */
+  atoms?: number;
 }
 
 /** --trace: one line per game minute about the bot and the biggest AI. */
@@ -288,6 +290,7 @@ async function runGame(job: Job, minutes: number): Promise<Result> {
     winner: 0,
     winMinute: -1,
     minutes: 0,
+    atoms: 0,
   };
   const seen10 = new Set<number>();
   const land = state.map.landTileCount;
@@ -299,6 +302,7 @@ async function runGame(job: Job, minutes: number): Promise<Result> {
     bot.update(state);
     tick(state);
     if (TRACE) for (const e of state.events) if (e.players.includes(ME) && e.kind !== 'buildingDone' && e.kind !== 'researchDone') console.log(`    ${f1(gameSeconds(state) / 60)}m ${e.kind}: ${e.message}`);
+    for (const e of state.events) if (e.kind === 'nuke') r.atoms = (r.atoms ?? 0) + 1;
     state.events.length = 0;
     const s = gameSeconds(state);
     if (state.tick % 5 === 0) {
@@ -445,7 +449,7 @@ const pct = (x: number): string => `${Math.round(x * 100)}%`;
 const f1 = (x: number): string => (Number.isFinite(x) ? x.toFixed(1) : '-');
 
 function report(rs: Result[], o: Options): void {
-  const head = ['map', 'diff', 'runs', 'alive10', 'alive20', 'land10', 'land20', 'rank20', 'res20', '1st atk', 'wars10', 'atkrs10', 'died', 'death min', 'wins', 'AI won', 'AI win min'];
+  const head = ['map', 'diff', 'runs', 'alive10', 'alive20', 'land10', 'land20', 'rank20', 'res20', '1st atk', 'wars10', 'atkrs10', 'died', 'death min', 'wins', 'AI won', 'AI win min', 'atoms'];
   const rows: string[][] = [head];
   for (const map of o.maps) {
     for (const d of o.difficulties) {
@@ -473,12 +477,13 @@ function report(rs: Result[], o: Options): void {
         `${g.filter((r) => r.winner === ME).length}/${g.length}`,
         `${aiWins.length}/${g.length}`,
         f1(median(aiWins.map((r) => r.winMinute))),
+        `${g.reduce((n, r) => n + (r.atoms ?? 0), 0)}/${g.filter((r) => (r.atoms ?? 0) > 0).length}`,
       ]);
     }
   }
   const widths = head.map((_, c) => Math.max(...rows.map((r) => r[c].length)));
   for (const r of rows) console.log(r.map((v, c) => (c < 2 ? v.padEnd(widths[c]) : v.padStart(widths[c]))).join('  '));
-  console.log(`(alive = alive with no AI win yet; land = median share of all land; rank among ${SINGLE_PLAYER_NATIONS + 1} nations by land, dead = last; 1st atk = median minute of the first AI nation attack; wars10 = most AI nations attacking at once in the first 10 min (worst run); atkrs10 = median distinct AI attackers in the first 10 min; died = bot eliminated before the cap, death min = median minute; AI won = an AI reached the victory share while the bot lived; cap ${o.minutes} min)`);
+  console.log(`(alive = alive with no AI win yet; land = median share of all land; rank among ${SINGLE_PLAYER_NATIONS + 1} nations by land, dead = last; 1st atk = median minute of the first AI nation attack; wars10 = most AI nations attacking at once in the first 10 min (worst run); atkrs10 = median distinct AI attackers in the first 10 min; died = bot eliminated before the cap, death min = median minute; AI won = an AI reached the victory share while the bot lived; atoms = atom bombs that hit, total / games with one; cap ${o.minutes} min)`);
 }
 
 async function runShards(o: Options, argv: string[]): Promise<Result[]> {

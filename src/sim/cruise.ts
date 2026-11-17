@@ -9,6 +9,11 @@
 // larger than the ready SAM shots covering the route and the target (so one gets through), never into more than
 // CRUISE.aiMaxCover of them, and keeps CRUISE.aiReserve missile prices in gold. Easy AIs fire one missile at a time,
 // only where no SAM covers, and never at a human. A human's ships fire only when told to (the ship card's button).
+// Anti-ship (protocol 22): a click on water near a seen hostile warship or transport aims at it (units.ts
+// cruiseShipTarget); the missile homes on it and a hit takes CRUISE.shipDamage hp (a transport sinks). The AI scores
+// the fleets and carriers of the nations it fights next to the buildings (SHIP_VALUE; two missiles at a warship a hit
+// would not sink). Sea-skimming: on its way only SAM sites within CRUISE.skimRadius tiles of the target can shoot it
+// (units.ts interceptThreats; samCoverOnRoute with skim counts only those).
 import { buildingsOf, chargesReady, isDisabled, samRadius } from './buildings';
 import { CRUISE } from './config';
 import { aiAttackLevel } from './aiattack';
@@ -19,8 +24,14 @@ import { atPeace } from './rules';
 import { earlyWarningMul } from './specials';
 import { hasTech } from './tech';
 import { applyAction } from './actions';
-import { cruiseDistance, cruiseHull, cruiseReason, cruiseReloadLeft, cruiseShipReason, unitCost } from './units';
+import { cruiseDistance, cruiseHull, cruiseReason, cruiseReloadLeft, cruiseShipReason, cruiseShipTarget, unitCost } from './units';
+import { unitSeen } from './fog';
+import { isWater } from './types';
 import type { Building, BuildingType, GameState, Unit } from './types';
+
+function unitTileOf(state: GameState, u: Unit): number {
+  return Math.round(u.y) * state.map.width + Math.round(u.x);
+}
 
 /** What a cruise missile from one ship at a tile would do (pure read, for the client's aiming preview). */
 export interface CruisePreview {
@@ -32,8 +43,10 @@ export interface CruisePreview {
   enemyTiles: number;
   enemyBuildings: number;
   victim: number;
-  /** ready shots of hostile SAM sites that cover the route or the target (each one downs a missile) */
+  /** ready shots of hostile SAM sites near the target that cover it (sea-skimming: the others on the way can't; each one downs a missile) */
   samShots: number;
+  /** anti-ship: the ship it would home on (undefined = a land strike) */
+  ship?: Unit;
 }
 
 function hostileTo(state: GameState, a: number, b: number): boolean {
@@ -44,7 +57,7 @@ function hostileTo(state: GameState, a: number, b: number): boolean {
  * Hostile working SAM sites (of nations hostile to pid) whose cover reaches the straight route from (x, y) to `tile`,
  * sampled every few tiles, and the shots they hold now. `known`: only SAMs pid has seen (fog of war: the AI).
  */
-export function samCoverOnRoute(state: GameState, pid: number, x: number, y: number, tile: number, known: boolean): { sams: Building[]; shots: number } {
+export function samCoverOnRoute(state: GameState, pid: number, x: number, y: number, tile: number, known: boolean, skim = false): { sams: Building[]; shots: number } {
   const w = state.map.width;
   const tx = tile % w;
   const ty = (tile / w) | 0;
@@ -58,6 +71,8 @@ export function samCoverOnRoute(state: GameState, pid: number, x: number, y: num
     const r = samRadius(b) * earlyWarningMul(state, b.owner);
     const bx = b.tile % w;
     const by = (b.tile / w) | 0;
+    // sea-skimming (cruise missiles): only SAM sites within CRUISE.skimRadius of the target can see it
+    if (skim && (bx - tx) * (bx - tx) + (by - ty) * (by - ty) > CRUISE.skimRadius * CRUISE.skimRadius) continue;
     let near = false;
     for (let k = 0; k <= steps && !near; k++) {
       const px = x + ((tx - x) * k) / steps;
@@ -76,6 +91,17 @@ export function cruisePreview(state: GameState, pid: number, shipId: number, til
   const u = state.units.find((q) => q.id === shipId);
   const out: CruisePreview = { ok: false, reason: cruiseReason(state, pid, u, tile), radius: CRUISE.radius, enemyTiles: 0, enemyBuildings: 0, victim: 0, samShots: 0 };
   if (!u || !Number.isInteger(tile) || tile < 0 || tile >= state.map.owner.length) return out;
+  if (isWater(state.map.terrain[tile])) {
+    // anti-ship
+    const s = cruiseShipTarget(state, pid, tile);
+    if (s) {
+      out.ship = s;
+      out.victim = s.owner;
+      out.samShots = samCoverOnRoute(state, pid, u.x, u.y, unitTileOf(state, s), false, true).shots;
+    }
+    out.ok = out.reason === '';
+    return out;
+  }
   const per = new Map<number, number>();
   forEachInRadius(state.map, tile, CRUISE.radius, (i) => {
     const o = state.map.owner[i];
@@ -94,7 +120,7 @@ export function cruisePreview(state: GameState, pid: number, shipId: number, til
       out.victim = o;
     }
   }
-  out.samShots = samCoverOnRoute(state, pid, u.x, u.y, tile, false).shots;
+  out.samShots = samCoverOnRoute(state, pid, u.x, u.y, tile, false, true).shots;
   if (!out.reason && out.enemyTiles === 0 && out.enemyBuildings === 0) out.reason = 'Nothing of the enemy to hit there';
   out.ok = out.reason === '';
   return out;
@@ -106,6 +132,8 @@ export function cruisePreview(state: GameState, pid: number, shipId: number, til
 
 /** How much an AI wants a building gone by a cruise missile (0 = not a target). */
 const VALUE: Partial<Record<BuildingType, number>> = { sam: 50, silo: 46, airfield: 42, factory: 26, fort: 24, port: 22, arsenal: 20, city: 16, barracks: 12, lab: 10, watchtower: 8, oilWell: 8, mine: 7, market: 7, hospital: 6, farm: 4 };
+/** How much an AI wants an enemy ship hit by an anti-ship cruise missile (by variant; transports with troops 40). */
+const SHIP_VALUE: Record<string, number> = { carrier: 58, battleship: 48, warship: 34, destroyer: 30, submarine: 26 };
 /** SAMs, silos and airfields: what would shoot down or bomb a landing's cover. */
 const LANDING_KINDS: ReadonlySet<BuildingType> = new Set<BuildingType>(['sam', 'silo', 'airfield']);
 
@@ -139,7 +167,12 @@ export function aiCruise(state: GameState, pid: number): number {
   for (const u of state.units) if (u.type === 'transport' && u.owner === pid && u.hp > 0 && u.targetOwner > 0) landings.push({ tile: u.target, owner: u.targetOwner });
   // tiles already under an own cruise missile's blast (one missile salvo per target)
   const struck: number[] = [];
-  for (const u of state.units) if (u.type === 'cruiseMissile' && u.owner === pid && u.hp > 0) struck.push(u.target);
+  const chased = new Set<number>(); // ships an own anti-ship missile already homes on
+  for (const u of state.units) {
+    if (u.type !== 'cruiseMissile' || u.owner !== pid || u.hp <= 0) continue;
+    if (u.chase) chased.add(u.chase);
+    else struck.push(u.target);
+  }
   const r2 = CRUISE.radius * CRUISE.radius;
   const d2 = (a: number, b: number): number => {
     const dx = (a % w) - (b % w);
@@ -149,7 +182,7 @@ export function aiCruise(state: GameState, pid: number): number {
   let fired = 0;
   const free = new Set<Unit>(ships);
   for (let round = 0; round < 3 && free.size; round++) {
-    let best: { tile: number; score: number; shooters: Unit[]; n: number } | null = null;
+    let best: { tile: number; score: number; shooters: Unit[]; n: number; ship?: number } | null = null;
     for (const q of foes) {
       if (easy && state.players[q].isHuman) continue;
       for (const [type, value] of Object.entries(VALUE) as [BuildingType, number][]) {
@@ -161,7 +194,7 @@ export function aiCruise(state: GameState, pid: number): number {
           const inReach = [...free].filter((u) => (u.x - bx) * (u.x - bx) + (u.y - by) * (u.y - by) <= reach2);
           if (!inReach.length) continue;
           inReach.sort((a, b2) => cruiseDistance(state, a, b.tile) - cruiseDistance(state, b2, b.tile) || a.id - b2.id);
-          const cover = samCoverOnRoute(state, pid, inReach[0].x, inReach[0].y, b.tile, true).shots;
+          const cover = samCoverOnRoute(state, pid, inReach[0].x, inReach[0].y, b.tile, true, true).shots;
           if (cover > CRUISE.aiMaxCover || (easy && cover > 0)) continue; // heavy SAM cover: not worth it
           const n = easy ? 1 : cover + 1;
           if (n > inReach.length) continue;
@@ -172,6 +205,23 @@ export function aiCruise(state: GameState, pid: number): number {
           if (!best || score > best.score || (score === best.score && b.tile < best.tile)) best = { tile: b.tile, score, shooters: inReach, n };
         }
       }
+    }
+    // anti-ship: fleets and carriers of the nations it fights, seen, in reach, not under an own missile already
+    for (const s of state.units) {
+      if (s.hp <= 0 || (s.type !== 'warship' && s.type !== 'transport') || !foes.includes(s.owner)) continue;
+      if (easy && state.players[s.owner].isHuman) continue;
+      const v = s.type === 'transport' ? (s.troops.infantry + s.troops.armor + s.troops.artillery > 0 ? 40 : 0) : (SHIP_VALUE[s.variant ?? 'warship'] ?? 30);
+      if (!v || chased.has(s.id) || !unitSeen(state, pid, s)) continue;
+      const inReach = [...free].filter((u) => (u.x - s.x) * (u.x - s.x) + (u.y - s.y) * (u.y - s.y) <= reach2);
+      if (!inReach.length) continue;
+      if (p.gold < c.gold * CRUISE.aiReserve || p.oil < c.oil) continue;
+      inReach.sort((a, b2) => (a.x - s.x) * (a.x - s.x) + (a.y - s.y) * (a.y - s.y) - ((b2.x - s.x) * (b2.x - s.x) + (b2.y - s.y) * (b2.y - s.y)) || a.id - b2.id);
+      const t = unitTileOf(state, s);
+      // two missiles at a warship that a hit would not sink, one at a transport or a damaged ship
+      const n = easy ? 1 : s.type === 'transport' || s.hp <= CRUISE.shipDamage ? 1 : 2;
+      if (n > inReach.length) continue;
+      const score = v;
+      if (!best || score > best.score || (score === best.score && t < best.tile)) best = { tile: t, score, shooters: inReach, n, ship: s.id };
     }
     if (!best) break;
     let sent = 0;
@@ -186,7 +236,8 @@ export function aiCruise(state: GameState, pid: number): number {
     }
     if (!sent) break;
     fired += sent;
-    struck.push(best.tile);
+    if (best.ship !== undefined) chased.add(best.ship);
+    else struck.push(best.tile);
     if (easy) break;
   }
   return fired;

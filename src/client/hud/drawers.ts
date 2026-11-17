@@ -1,5 +1,7 @@
 // Side drawers (right edge, one at a time, closed by default): Army, Research, Diplomacy, Events, Map key,
 // the selected building and the menu (settings). Each has one big primary readout and plain-word rows.
+import { COUNTER_NAME, counterInfo } from '../counterUi';
+import { ANTI_RADAR_LABEL, aimAntiRadar, antiRadarButton, antiRadarOffered, escortTip } from '../antiRadarUi';
 import { defenseLines } from '../defenseView';
 import { activeFog } from '../fog/fogView';
 import { enterWarshipSpawnMode } from '../selection';
@@ -909,6 +911,47 @@ export class BuildingPage implements DrawerPage {
         });
       }
     }
+    if (b.type === 'fort' && hasTech(me, 'defenseMastery')) {
+      // Defense Mastery (client/counterUi.ts): the Counteroffensive meter and its button, right on the Fort
+      const ml = el('p', 'note counter-line');
+      ml.dataset.test = 'counter-line';
+      actions.before(ml);
+      this.upd.push((ss, m) => setText(ml, counterInfo(ss, m).line));
+      add(COUNTER_NAME, 'danger', 'counter', () => ctx.act({ type: 'counteroffensive' }), (ss, m) => counterInfo(ss, m).why).dataset.test = 'order-counter';
+    }
+    if (b.type === 'airfield' && antiRadarOffered(me)) {
+      // Anti-radar Missiles (client/antiRadarUi.ts): pick a seen enemy SAM whose radar is on; escort mode
+      const al = el('p', 'note');
+      al.dataset.test = 'antiradar-line';
+      const ab = add(ANTI_RADAR_LABEL, 'danger', 'radar', () => {
+        const ss = ctx.state();
+        const m = ctx.me();
+        if (!ss || !m) return;
+        const why = aimAntiRadar(ss, m, ctx.ui, tile);
+        if (why) ctx.toast(why, 'info');
+      }, (ss, m) => antiRadarButton(ss, m, tile).why);
+      ab.dataset.test = 'order-antiradar';
+      const esc = btn('Escort: off', 'ghost', () => {
+        const ss = ctx.state();
+        const m = ctx.me();
+        if (ss && m) ctx.act({ type: 'setAntiRadarEscort', on: !m.antiRadarEscort });
+      }, 'radar');
+      esc.dataset.test = 'antiradar-escort';
+      actions.append(al, esc);
+      this.upd.push((ss, m) => {
+        const st = antiRadarButton(ss, m, tile);
+        setText(al, st.line);
+        const on = !!m.antiRadarEscort;
+        const lab = esc.querySelector('.wr-btn-l');
+        const t = on ? 'Escort: on' : 'Escort: off';
+        if (lab && lab.textContent !== t) lab.textContent = t;
+        setClass(esc, 'on', on);
+        if (esc.getAttribute('aria-pressed') !== String(on)) esc.setAttribute('aria-pressed', String(on));
+        const own = hasTech(m, 'antiRadar');
+        setDisabled(esc, !own);
+        setTip(esc, own ? escortTip(on) : 'Needs Anti-radar Missiles');
+      });
+    }
     if (b.type === 'factory') {
       // the same Tank division order as the Build menu, right where a player looks for it (this Factory builds it)
       const note = el('p', 'note');
@@ -928,7 +971,7 @@ export class BuildingPage implements DrawerPage {
     if (b.type === 'silo') {
       const cd = el('p', 'note');
       actions.before(cd);
-      this.upd.push((_s, _m, bb) => setText(cd, bb.buildLeft > 0 ? '' : chargesReady(bb) > 0 ? `${chargesReady(bb)} of ${Math.max(1, bb.level)} launches ready` : `Reloading: ${Math.ceil(nextChargeIn(bb))} s`));
+      this.upd.push((ss, _m, bb) => setText(cd, bb.buildLeft > 0 ? '' : bb.disabledUntil > ss.tick ? `Knocked out: ${Math.ceil((bb.disabledUntil - ss.tick) / TICKS_PER_SECOND)} s (no launches meanwhile)` : chargesReady(bb) > 0 ? `${chargesReady(bb)} of ${Math.max(1, bb.level)} launches ready` : `Reloading: ${Math.ceil(nextChargeIn(bb))} s`));
       // what it does by itself ("Auto: fires rockets at Azuria when loaded")
       const autoLine = el('p', 'note');
       autoLine.dataset.test = 'silo-auto';

@@ -84,7 +84,7 @@ export const ROW_NAMES: Record<RowId, string> = {
   ...PILLAR_NAMES,
 };
 
-const ARSENAL_COL_LABEL: Record<string, string> = { '1': 'Unlock', '2': 'Path · choose one', '3': 'Path upgrade', '3s': 'Special', '4': 'Mastery' };
+const ARSENAL_COL_LABEL: Record<string, string> = { '1': 'Unlock', '2': 'Path · choose one', '3': 'Path upgrade', '3s': 'Special', '3t': 'Special', '4': 'Mastery' };
 
 interface Seed {
   tech: TechId;
@@ -110,7 +110,7 @@ function ancestorsOf(t: TechId, out = new Set<TechId>()): Set<TechId> {
 /** Column key sort: tier, then "choose one" before plain, then specials. */
 function colOrder(k: string): number {
   const tier = parseInt(k, 10);
-  return tier * 10 + (k.endsWith('c') ? 0 : k.endsWith('s') ? 2 : 1);
+  return tier * 10 + (k.endsWith('c') ? 0 : k.endsWith('s') ? 2 : k.endsWith('t') ? 3 : 1);
 }
 
 function researchSeeds(): { id: RowId; name: string; seeds: Seed[] }[] {
@@ -130,11 +130,18 @@ function researchSeeds(): { id: RowId; name: string; seeds: Seed[] }[] {
 }
 
 function arsenalSeeds(): { id: RowId; name: string; seeds: Seed[] }[] {
-  return ARSENAL_ROWS.map((r) => ({
-    id: r.pillar,
-    name: r.name,
-    seeds: r.items.filter((it) => TECHS[it.tech]).map((it) => ({ tech: it.tech, kind: it.kind, fork: it.fork, branch: it.branch, colKey: `${it.tier}${it.kind === 'special' ? 's' : ''}` })),
-  }));
+  // a row's third special and on go in a second Special column (Air: Drop Tanks, Night Bombing, then Anti-radar), so no
+  // row needs more than two lanes
+  return ARSENAL_ROWS.map((r) => {
+    let specials = 0;
+    return {
+      id: r.pillar,
+      name: r.name,
+      seeds: r.items
+        .filter((it) => TECHS[it.tech])
+        .map((it) => ({ tech: it.tech, kind: it.kind, fork: it.fork, branch: it.branch, colKey: `${it.tier}${it.kind === 'special' ? (specials++ < 2 ? 's' : 't') : ''}` })),
+    };
+  });
 }
 
 /** Lays out one tab: shared columns, lanes per row, in-row edges, forks and outside prerequisites. */

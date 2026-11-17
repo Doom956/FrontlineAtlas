@@ -106,6 +106,8 @@ import { aiNavy, atWar as navalAtWar, supportingShips } from './naval2';
 import { batteriesCovering } from './defense';
 import { aiCruise } from './cruise';
 import { aiStealth } from './stealth';
+import { aiCounter } from './counter';
+import { aiAntiRadar } from './antiRadar';
 import { aiAttackLevel } from './aiattack';
 import { DOCTRINE_IDS, TROOP_TYPES, Resource, isTribe, isWater } from './types';
 import type { Attack, Building, BuildingType, Difficulty, DoctrineId, GameState, Personality, Player, TechId, TerrainId, TroopType, Troops } from './types';
@@ -975,6 +977,7 @@ function decide(ctx: Ctx): void {
   answerRequests(ctx);
   manageAttacks(ctx);
   defend(ctx);
+  aiCounter(state, p.id); // Defense Mastery: strike back once the forts held (counter.ts)
   answerAllyRequests(ctx);
   allyDuties(ctx);
   expand(ctx);
@@ -2537,6 +2540,7 @@ function airAndMissiles(ctx: Ctx): void {
     if (fighting.length && af.bombers > 0 && !airWingBusy(state, af)) {
       const t = strikeTarget(ctx, MANUAL_STRIKE_KINDS, af.tile, airWingRange(af, state));
       const count = manualSalvo(state, af);
+      if (t >= 0) aiAntiRadar(state, id, [t]); // anti-radar missiles open the SAM wall over the raid first (antiRadar.ts)
       if (t >= 0) applyAction(state, id, count === undefined ? { type: 'bomb', airfield: af.tile, tile: t } : { type: 'bomb', airfield: af.tile, tile: t, count });
       else {
         // Nothing worth a raid in reach: a front strike on the main front of the nearest foe in reach instead.

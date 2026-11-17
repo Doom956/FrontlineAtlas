@@ -118,7 +118,10 @@ export type TechId =
   | 'tankTraps'
   // Defense part 2: the lane upgrades (Tracking Radar after Flak Guns, Coastal Batteries after Tank Traps)
   | 'trackingRadar'
-  | 'coastalBatteries';
+  | 'coastalBatteries'
+  // Defense part 3: Anti-radar Missiles (an Air special, antiRadar.ts) and Defense Mastery (counter.ts)
+  | 'antiRadar'
+  | 'defenseMastery';
 
 export type UnitType =
   | 'transport'
@@ -134,6 +137,8 @@ export type UnitType =
   | 'transportPlane'
   /** stealth bomber (units.ts launchStealth): Air Mastery's stealth strike; SAMs never see it (stealthSight.ts) */
   | 'stealthBomber'
+  /** anti-radar missile (antiRadar.ts): from an airfield at a hostile SAM site whose radar is on */
+  | 'antiRadarMissile'
   /** commandable armored division (tanks.ts): built at a Factory, moves over own land, launches spearheads */
   | 'tankDivision'
   /** recon plane (variants.ts, Action reconFlight): flies from an airfield, reveals a circle for a while, flies home */
@@ -331,6 +336,11 @@ export interface Building {
   queuedLevels: number;
   /** what the queued levels cost (refunded on cancel); absent = nothing queued */
   queuedPaid?: { gold: number; iron: number };
+  /** SAM site (antiRadar.ts): the tick it last fired (its radar is on for ANTI_RADAR.radarOnSeconds) and at whose plane / missile; absent = never */
+  firedAt?: number;
+  firedOn?: number;
+  /** airfield (antiRadar.ts): the tick from which it may fire its next anti-radar missile; absent = ready */
+  seadReady?: number;
 }
 
 /**
@@ -468,6 +478,8 @@ export interface Unit {
   radarLock?: number[];
   /** stealth bomber (defense.ts Tracking Radar): players whose locked radar holds it now, ascending; absent = none */
   radarSeen?: number[];
+  /** stealth bomber (units.ts, multi-target): the aim points still to bomb after `target`, in order; absent = none */
+  aims?: number[];
 }
 
 /** A unit being built (navy.ts warships, tanks.ts divisions): it appears at `tile` at readyTick. */
@@ -542,6 +554,14 @@ export interface Player {
   barrageReadyTick: number;
   /** Air Mastery (units.ts launchStealth): tick from which the stealth bomber may fly again; absent = never flown */
   stealthReady?: number;
+  /** Defense Mastery (counter.ts): the Counteroffensive meter 0..1; absent = 0 */
+  counterMeter?: number;
+  /** Defense Mastery: the nation that last bled on this player's fortified land (the push goes at it); absent = none */
+  counterFoe?: number;
+  /** Defense Mastery: tick until which the running Counteroffensive (at counterFoe) lasts; absent = none */
+  counterUntil?: number;
+  /** Anti-radar Missiles (antiRadar.ts): escort mode on (missiles answer SAMs that shoot at this player's planes); absent = off */
+  antiRadarEscort?: boolean;
   embargoes: number[]; // player ids this player refuses to trade with
   /** mid-game doctrine (doctrines.ts); tribes never get one */
   doctrine: PlayerDoctrine;
@@ -961,7 +981,9 @@ export interface Effect {
   /** 'trapHit': a spearhead head ran into tank traps (defense.ts; a dirt burst) */
   /** 'battery': a coastal battery shell from (x, y) to the ship at (x2, y2) (defense.ts; radius 1 = warship hit, 0.5 = transport) */
   /** 'radarLock': a tracking radar locked onto a stealth bomber at (x, y) (defense.ts) */
-  kind: 'explosion' | 'nuke' | 'shot' | 'capture' | 'barrage' | 'smokeScreen' | 'trapHit' | 'battery' | 'radarLock';
+  /** 'counterPush': a Counteroffensive sweeping from (x, y) (own forts) toward (x2, y2) (counter.ts; radius = arrow width) */
+  /** 'shelter': hardened shelters took an atom blast at (x, y) (counter.ts; radius = the blast) */
+  kind: 'explosion' | 'nuke' | 'shot' | 'capture' | 'barrage' | 'smokeScreen' | 'trapHit' | 'battery' | 'radarLock' | 'counterPush' | 'shelter';
   x: number;
   y: number;
   radius: number;
@@ -1000,7 +1022,13 @@ export type Action =
   /** a cruise missile from an own warship, destroyer or battleship (Naval Mastery) at a land tile within its reach (units.ts) */
   | { type: 'cruiseMissile'; ship: number; tile: number }
   /** the stealth strike (Air Mastery): the stealth bomber flies from an own airfield (-1 = the nearest in reach) to tile (units.ts) */
-  | { type: 'stealthStrike'; airfield: number; tile: number }
+  | { type: 'stealthStrike'; airfield: number; tile: number; tile2?: number; tile3?: number }
+  /** Defense Mastery (counter.ts): launch the Counteroffensive once the meter is full */
+  | { type: 'counteroffensive' }
+  /** Anti-radar Missiles (antiRadar.ts): one missile from an own airfield (-1 = the nearest ready in reach) at the hostile SAM site on `sam` */
+  | { type: 'antiRadar'; airfield: number; sam: number }
+  /** Anti-radar Missiles: escort mode on / off */
+  | { type: 'setAntiRadarEscort'; on: boolean }
   /** paratroopers: `troops` infantry fly from an own airfield (tile) to an enemy / neutral land tile (units.ts) */
   | { type: 'paradrop'; airfield: number; tile: number; troops: number }
   /** artillery barrage on an enemy tile near your border (barrage.ts) */

@@ -13,7 +13,8 @@ import { resolveBuild } from './simx';
 import { buildClickAction, effectiveCount } from './hud/buildMenu';
 import { strikeAction, strikeForKey, strikeTarget, type StrikeId } from './strikes';
 import { cruiseClick } from './cruise';
-import { stealthClick } from './stealth';
+import { stealthAimClick, stealthClick } from './stealth';
+import { antiRadarClick } from './antiRadarUi';
 import type { Renderer } from './renderer';
 import type { Dispatch, GetState, UiState } from './uiState';
 import { pillarPickClick } from './pillars';
@@ -439,8 +440,24 @@ export function setupInput(deps: InputDeps): () => void {
         break;
       }
       case 'stealth': {
+        if (mode.aims) {
+          // multi-target (mode chip "Add target"): the click adds an aim point; "Launch" sends them (hud/stealthAims.ts)
+          const next = stealthAimClick(s, me, mode.airfield, mode.aims, tile);
+          if (typeof next === 'string') ui.toast = { text: next, until: performance.now() + TOAST_MS };
+          else ui.mode = { ...mode, aims: next };
+          return;
+        }
         // the stealth strike from the chosen airfield (stealth.ts)
         const a = stealthClick(s, me, mode.airfield, tile);
+        if (typeof a === 'string') {
+          ui.toast = { text: a, until: performance.now() + TOAST_MS };
+          ok = false;
+        } else ok = dispatch(a).ok;
+        break;
+      }
+      case 'antiRadar': {
+        // an anti-radar missile at the enemy SAM site clicked (antiRadarUi.ts): only while its radar is on
+        const a = antiRadarClick(s, me, mode.airfield, tile);
         if (typeof a === 'string') {
           ui.toast = { text: a, until: performance.now() + TOAST_MS };
           ok = false;

@@ -3857,6 +3857,15 @@ mark.hw-hit {
   color: var(--brass-hi);
   border-color: var(--brass-lo);
 }
+/* Defense Mastery: the Counteroffensive meter (client/counterUi.ts); --p = percent filled */
+.mod-chip.counter-chip {
+  background: linear-gradient(90deg, rgba(196, 150, 70, 0.35) calc(var(--p, 0) * 1%), var(--metal-a) calc(var(--p, 0) * 1%));
+}
+.mod-chip.counter-chip.ready {
+  color: #1b1408;
+  background: var(--brass-hi);
+  border-color: var(--brass-hi);
+}
 
 /* ---------------------------------------------------------------- smaller screens */
 @media (max-width: 1100px) {

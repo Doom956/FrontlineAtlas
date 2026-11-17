@@ -15,7 +15,7 @@ import { forEachInRadius } from '../sim/grid';
 import { stealthPreview } from '../sim/stealth';
 import { hasTech } from '../sim/tech';
 import { buildingAt } from '../sim/buildings';
-import { stealthInAir, stealthPlayerReason, stealthRadius, stealthReach, stealthRechargeLeft, unitCost } from '../sim/units';
+import { stealthAimsReason, stealthInAir, stealthPlayerReason, stealthRadius, stealthReach, stealthRechargeLeft, unitCost } from '../sim/units';
 import type { Action, GameState, Player } from '../sim/types';
 import { isWater } from '../sim/types';
 import { activeFog, nationName } from './fog/fogView';
@@ -88,8 +88,9 @@ export function aimStealth(state: GameState, me: Player, ui: UiState, tile: numb
   return '';
 }
 
-/** The line at the top of the screen while aiming. */
-export function stealthInstruction(state: GameState): string {
+/** The line at the top of the screen while aiming (aims: multi-target picks so far). */
+export function stealthInstruction(state: GameState, aims?: number[]): string {
+  if (aims) return `Stealth strike, ${aims.length} of ${STEALTH.multiMax} targets: click up to ${STEALTH.multiMax} targets within ${STEALTH.multiSpread} tiles of each other (a click on one removes it), then Launch. Each blast is ${STEALTH.multiRadius} tiles.`;
   return `Stealth strike: click an enemy target inside the blue ring. SAM sites cannot see the bomber unless an enemy Tracking Radar (green ring) spots it. ${stealthPriceText(state, state.humanId)}.`;
 }
 
@@ -203,6 +204,21 @@ export function stealthClick(state: GameState, me: Player, airfield: number, til
   const t = stealthTarget(state, me, airfield, tile);
   if (!t.ok) return t.reason || 'Not possible here';
   return { type: 'stealthStrike', airfield, tile };
+}
+
+/**
+ * Multi-target picking (mode chip "Add target"): a click adds `tile` to `aims` (or removes an aim point within 2
+ * tiles of it); returns the new list or why not ("Targets must be within 25 tiles of each other").
+ */
+export function stealthAimClick(state: GameState, me: Player, airfield: number, aims: readonly number[], tile: number): number[] | string {
+  const w = state.map.width;
+  const near = aims.findIndex((a) => Math.abs((a % w) - (tile % w)) <= 2 && Math.abs(((a / w) | 0) - ((tile / w) | 0)) <= 2);
+  if (near >= 0) return aims.filter((_, k) => k !== near);
+  if (aims.length >= STEALTH.multiMax) return `At most ${STEALTH.multiMax} targets: press Launch`;
+  const t = stealthTarget(state, me, airfield, tile);
+  if (!t.ok) return t.reason || 'Not possible here';
+  const next = [...aims, tile];
+  return stealthAimsReason(state, me.id, airfield, next) || next;
 }
 
 /** The cursor card's body for an ok target ("Wrecks about 3 of 3 buildings of Azuria within 6 tiles"). */

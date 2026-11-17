@@ -78,7 +78,7 @@ function fire(s: GameState, n: number): void {
 describe('Defense part 2: the lane upgrades', () => {
   it('Tracking Radar follows Flak Guns (and needs Radar), Coastal Batteries follows Tank Traps; tier 3 prices', () => {
     const row = ARSENAL_ROWS.find((r) => r.pillar === 'defense')!;
-    expect(row.items.map((i) => `${i.tech}:${i.tier}:${i.branch}`)).toEqual(['flakGuns:2:flakGuns', 'tankTraps:2:tankTraps', 'trackingRadar:3:flakGuns', 'coastalBatteries:3:tankTraps']);
+    expect(row.items.map((i) => `${i.tech}:${i.tier}:${i.branch}`)).toEqual(['flakGuns:2:flakGuns', 'tankTraps:2:tankTraps', 'trackingRadar:3:flakGuns', 'coastalBatteries:3:tankTraps', 'defenseMastery:4:undefined']);
     const s = game();
     give(s, 1, 'fortification', 'flakGuns');
     addBuilding(s, 'fort', 1, at(s, 40, 20));

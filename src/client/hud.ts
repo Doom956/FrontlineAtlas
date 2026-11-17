@@ -74,6 +74,8 @@ import { instruction, strikeToastText, type StrikeId } from './strikes';
 import { cruiseInstruction } from './cruise';
 import { stealthInstruction } from './stealth';
 import { SalvoPicker } from './hud/salvoPicker';
+import { StealthAims } from './hud/stealthAims';
+import { antiRadarInstruction } from './antiRadarUi';
 import type { Dispatch, UiState } from './uiState';
 import { GameHistory } from './summary/history';
 import { summaryView } from './summary/view';
@@ -198,6 +200,7 @@ export class Hud {
   private modeChip: HTMLElement;
   /** x1 / x3 / x5 / All while a bomb or missile is aimed (hud/salvoPicker.ts) */
   private salvo!: SalvoPicker;
+  private stealthAims!: StealthAims;
   private modeText: HTMLElement;
   /** online: "Paused by <host>" in the middle of the screen (the host also gets Resume) */
   private pauseBanner: HTMLElement;
@@ -369,7 +372,8 @@ export class Hud {
       } else this.ui.paused = false;
     });
     this.salvo = new SalvoPicker(this.ctx);
-    this.modeChip.append(this.modeText, this.salvo.el, cancel);
+    this.stealthAims = new StealthAims(this.ctx);
+    this.modeChip.append(this.modeText, this.salvo.el, this.stealthAims.el, cancel);
     const top = el('div', 'hud-top');
     top.append(this.spawnBar, this.modeChip, this.toasts.el);
     // phones: the alerts stack with the top-centre messages (between the mode chip and the toasts) instead of under
@@ -862,7 +866,8 @@ export class Hud {
       else if (m.kind === 'spawnWarship') chip = `${m.variant ? VARIANT_NAMES[m.variant] : 'Warship'}: click any water your ports reach (shaded) where it should appear.`;
       else if (m.kind === 'recon') chip = reconHint();
       else if (m.kind === 'cruise') chip = cruiseInstruction(state, m.ships);
-      else if (m.kind === 'stealth') chip = stealthInstruction(state);
+      else if (m.kind === 'stealth') chip = stealthInstruction(state, m.aims);
+      else if (m.kind === 'antiRadar') chip = antiRadarInstruction(state);
       else if (m.kind === 'buildTankDivision') chip = 'Tank division: click one of your factories.';
       else if (m.kind === 'blitz') chip = blitzHint();
       else if (m.kind === 'boxSelect') chip = 'Upgrade many: drag a box over your buildings on the map.';
@@ -884,6 +889,7 @@ export class Hud {
     ui.showHeartland = !this.watching && (this.drawer.open === 'army' || this.drawer.open === 'legend');
     setText(this.modeText, chip);
     this.salvo.update(state, me);
+    this.stealthAims.update(state, me);
     // the wide research tree and doctrine picker cover the chip's spot at the top
     setVisible(this.modeChip, chip !== '' && this.drawer.open !== 'research' && this.drawer.open !== 'doctrine');
     this.modeChip.classList.toggle('paused', chip === 'Paused');

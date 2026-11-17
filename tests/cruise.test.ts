@@ -80,7 +80,7 @@ describe('cruise missile: validation', () => {
     // water, own land, allies
     const s2 = game();
     const a = ship(s2, 1, 70, 32);
-    expect(fire(s2, a, at(s2, 70, 40)).reason).toBe('Cruise missiles hit land');
+    expect(fire(s2, a, at(s2, 70, 40)).reason).toMatch(/^No enemy ship you can see there/) // water: anti-ship only;
     expect(fire(s2, a, at(s2, 55, 20)).reason).toBe('That is your own land');
     formAlliance(s2, 1, 2);
     expect(fire(s2, a, target).reason).toBe('You cannot fire at an ally');
@@ -221,7 +221,7 @@ describe('cruise missile: preview and AI', () => {
     expect(pv.radius).toBe(CRUISE.radius);
     expect(pv.enemyBuildings).toBe(1);
     expect(pv.samShots).toBe(1);
-    expect(cruisePreview(s, 1, u.id, at(s, 70, 40)).reason).toBe('Cruise missiles hit land');
+    expect(cruisePreview(s, 1, u.id, at(s, 70, 40)).reason).toMatch(/^No enemy ship you can see there/);
   });
 
   it('an AI at war fires at a SAM near the coast it can saturate, keeps its gold reserve, and skips heavy cover', () => {

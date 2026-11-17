@@ -64,6 +64,7 @@ import { formationTiles, ownGroup, unitQueue } from './navy';
 import { atPeace, buildSeconds, frontRate, peaceReason, sameTeam } from './rules';
 import { addEvent, newId, setOwner } from './state';
 import { hasTech } from './tech';
+import { bleedsOnForts, counterBleed, counterDepthMul, counterSpeedMul } from './counter';
 import { afterDivisionMove, amphibLaunchBonus, amphibWaterSpeed, canWade, hasAmphibious, isWading, narrowWater, spearheadMayWade } from './specials';
 import { isProtected, tutorialShielded } from './admin';
 import { tankDivisionMods } from './techtree';
@@ -632,6 +633,7 @@ function headSpeed(state: GameState, u: Unit, ter: number, defender: number, tra
   if (ter === Terrain.Plains || ter === Terrain.Desert) s *= doctrineMore(state, u.owner, 'openGroundSpeed');
   if (u.blitz) s *= trap > 0 ? trapBlitzSpeedMul() : BLITZ.speedMul; // a blitz's surge (blitz.ts), halved on tank traps
   if (trap > 0) s *= trapSpeedMul(trap); // Tank Traps (defense.ts)
+  s *= counterSpeedMul(state, u.owner, defender); // a Counteroffensive (counter.ts)
   if (defender > 0 && hasTech(state.players[defender], 'trenchWarfare')) s *= 0.7;
   return s * frontRate(state);
 }
@@ -642,7 +644,7 @@ function trapAt(state: GameState, u: Unit, tile: number): number {
   return trapFactor(state, u, artillerySupport(u));
 }
 function maxDepth(state: GameState, u: Unit): number {
-  return TANK_SPEARHEAD_MAX_DEPTH * tankDivisionMods(state, u.owner).depthMul * vetSpeedMul(u) * armorDepthMul(state, u.owner) * (u.blitz ? BLITZ.depthMul : 1); // Blitz Tactics, veterancy, light / heavy (variants.ts), a blitz (blitz.ts)
+  return TANK_SPEARHEAD_MAX_DEPTH * tankDivisionMods(state, u.owner).depthMul * vetSpeedMul(u) * armorDepthMul(state, u.owner) * (u.blitz ? BLITZ.depthMul : 1) * counterDepthMul(state, u.owner, u.targetOwner); // Blitz Tactics, veterancy, light / heavy (variants.ts), a blitz (blitz.ts), a Counteroffensive (counter.ts)
 }
 
 /** Loss for taking tile t (owner o) with the division, or a reason it can't be taken. */
@@ -910,6 +912,7 @@ function stepSpearhead(state: GameState, u: Unit): void {
       const c = bandCost(state, u, t, o);
       if (typeof c === 'string') {
         if (k === 0) {
+          if (c === 'stopped by a fort' && bleedsOnForts(state, o, t)) counterBleed(state, o, u.owner, 0, true); // Defense Mastery (counter.ts)
           endSpearhead(state, u, c);
           return;
         }
@@ -933,6 +936,7 @@ function stepSpearhead(state: GameState, u: Unit): void {
         }
       }
       loseTroops(state, u, c.loss, o);
+      if (o > 0 && bleedsOnForts(state, o, t)) counterBleed(state, o, u.owner, c.loss, false); // Defense Mastery (counter.ts)
       killDefenders(state, o, c.killed, u.owner);
       if (c.fort) onFortBreached(state, u, t, o); // Siege Tanks knock the fort out (variants.ts)
       setOwner(state, t, u.owner);

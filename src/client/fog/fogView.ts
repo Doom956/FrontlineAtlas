@@ -44,7 +44,7 @@ export interface KnownFeed {
   full(): void;
 }
 
-const AIR = new Set(['bomber', 'fighter', 'transportPlane', 'reconPlane', 'stealthBomber', 'rocket', 'atomBomb', 'cruiseMissile']);
+const AIR = new Set(['bomber', 'fighter', 'transportPlane', 'reconPlane', 'stealthBomber', 'rocket', 'atomBomb', 'cruiseMissile', 'antiRadarMissile']);
 
 export class FogView {
   /** fog applies to this client right now */

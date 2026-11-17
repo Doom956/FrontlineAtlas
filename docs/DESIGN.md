@@ -554,7 +554,7 @@ other root and everything after it lock together ("You chose Destroyers; Carrier
 - Defense (src/sim/defense.ts, config `DEFENSE`; protocol 22): no unlock of its own, the row opens with Fortification
   (Research tab), and every item needs a finished own Fort ("Needs a finished Fort"). Fork `defenseDoctrine`
   ("Defense lane"): Flak Guns -> Tracking Radar (anti-air lane) | Tank Traps -> Coastal Batteries (barriers lane);
-  the Counteroffensive mastery comes in part 3. Roots cost 3600 gold + 1200 iron (iron only, `ironOnlyRoots`); the
+  Defense Mastery (tier 4) after either lane's upgrade. Roots cost 3600 gold + 1200 iron (iron only, `ironOnlyRoots`); the
   upgrades (tier 3) 9000 gold + 2800 iron + 700 oil, 35 s delivery.
   - Flak Guns: every finished, working own Fort (radius 14, +2 per level) and City (10, +1) is a flak site. Every
     `flakCheckTicks` (5) a hostile bomber, ground-attack plane, cargo plane or stealth bomber flying OUT gains wear
@@ -601,6 +601,27 @@ other root and everything after it lock together ("You chose Destroyers; Carrier
     toward Tank Traps, enemy bombers toward Flak Guns, plus the per-game hash. Flak holders put forts next to cities
     enemy bombs hit in the last 60 s; trap holders face the neighbour with the most tank divisions (forts ~8 tiles
     behind that border). A Defense AI buys its lane's upgrade when it can (Tracking Radar needs Radar).
+  - Defense Mastery (part 3; src/sim/counter.ts, config `COUNTER`; tier 4, 25000 gold + 8000 iron + 2000 oil, 45 s,
+    counts toward `MASTERY_CAP`; needs Tracking Radar or Coastal Batteries) = Counteroffensive + Hardened shelters.
+    Counteroffensive: every troop an enemy attack (combat.ts stepAttack) or spearhead (tanks.ts) loses taking a tile
+    a working Fort of yours covers (`buildings.isFortified`) fills `Player.counterMeter` (hashed) by loss / max(`fillMin`
+    4000, `fillShare` 0.4 x your whole army); one that runs dry or is stopped by a fort there adds `failBonus` 0.2. The
+    nation that bled last is `Player.counterFoe` (hashed); no refill from it while a push at it runs. Full: Action
+    `counteroffensive {}` (Counter in the bottom bar, Counteroffensive on Fort cards; disabled with the reason, e.g.
+    "Meter 60%: it fills when enemy attacks bleed on your fortified land") sends `troopShare` 0.4 of every troop type
+    at home as an ordinary attack at that nation, focused on its border tile nearest to one of your working Forts, and
+    drives your idle tank divisions within fort radius + `divisionReach` 4 of a Fort into a spearhead there. For
+    `seconds` 30 (`Player.counterUntil`, hashed) your attacks and spearheads on that nation run `speedMul` 1.6 x faster
+    (front rate, spearhead head speed) and lose `lossMul` 0.6 x (fightCtx loss factor), spearheads `depthMul` 1.4 x
+    deeper. The meter empties. Shown: the meter as a top-right chip ("Counter 60%", brass fill; "Counter ready") and a
+    line on Fort cards; a wide brass arrow sweeps from the Fort with dust (`counterPush` effect, fx/counterFx.ts).
+    AI (`aiCounter`, every decision): strikes back when full, keeping `aiKeepHome` 0.15 of its cap at home; never at a
+    human at Easy. Hardened shelters: an atom bomb on land a working Fort of its owner (with the mastery) covers,
+    judged before the blast: troop loss counts those tiles x `shelterMul` 0.5, buildings there lose 0.5 hp and are
+    knocked out `shelterKnockSeconds` 30 s instead of destroyed (a second bomb finishes them), and sheltered core land
+    stays its owner's (irradiated). The atom aiming preview shades sheltered land blue with the line "Hardened
+    shelters: Azuria's forts cover 140 tiles here: 50% troop losses, 3 buildings take 50% damage"; a pale blue dome
+    ring flashes over the blast (`shelter` effect).
 - Mastery (tier 4) in at most `MASTERY_CAP` = 2 of the 4 mastery pillars per game (`masteryLocked`: 'locked-choice',
   "Mastery 2 of 2 used (Navy, Air)"): Naval (veterancy xp x2, bombardment / support reach x1.3, +2 warships, cruise missiles from warships, destroyers and battleships: section 7), Armor (pockets up to x3
   bigger collapse, x1.5 troops lost in them), Air (every wing x1.5 bombers, and the stealth strike: section 7).
@@ -895,7 +916,7 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   slots (one reload `SILO_COOLDOWN` = 30 s each, reloading L times as fast; an atom bomb uses `ATOM_SILO_SLOTS` = 2 slots, so a silo
   cannot spam nukes). Can fire by itself (auto-fire, below).
 - **Cruise missile** (Naval Mastery; units.ts `launchCruise`, cruise.ts, config `CRUISE` and `UNITS.cruiseMissile`;
-  Action `cruiseMissile {ship, tile}`, protocol 21): a small rocket fired from a warship, destroyer or battleship
+  Action `cruiseMissile {ship, tile}`, protocol 21; anti-ship and sea-skimming protocol 22): a small rocket fired from a warship, destroyer or battleship
   (not submarines or carriers) of a nation with Naval Mastery, at land within `CRUISE.reach` (50 tiles, a deep coastal
   belt, beyond a warship's own `WARSHIP_RANGE` 35) of the ship. Radius
   `CRUISE.radius` 6 (a rocket's is 7): hostile buildings in it destroyed, troops killed by the rocket rule
@@ -912,6 +933,16 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   `aiReserve` (2) missile prices in gold; Easy AIs fire one at a time, only with no SAM cover, and never at a human.
   A human's ships never fire by themselves: the Cruise button of the bottom bar (next to Rocket and Atom bomb; the ship
   card and the orders bar have it too) enters a target mode; the click fires from the nearest loaded ship in reach.
+  Sea-skimming (Defense part 3): on its way only SAM sites within `CRUISE.skimRadius` (15) tiles of the target can
+  shoot it (units.ts interceptThreats; `samCoverOnRoute(..., skim)` counts only those for the preview and the AI),
+  so a SAM wall on the route no longer stops it, only the SAMs guarding the target. Anti-ship: a click on water
+  within `CRUISE.shipPick` (3) tiles of a hostile warship or transport the player can see (fog.unitSeen; hidden
+  submarines are not seen) aims at it (units.ts `cruiseShipTarget`; `Unit.chase` = the ship, its aim follows the
+  ship). A hit within `shipHit` (2) tiles takes `shipDamage` 1.5 hp off a warship (3 hp; battleships more) or sinks a
+  transport with its troops (the ship sink effects and events; veterancy for the firing ship). The preview brackets
+  the ship ("Anti-ship cruise missile: -1.5 hp"). AI: fleets and carriers of the nations it fights score next to the
+  buildings (carrier 58, battleship 48, warship 34, destroyer 30, submarine 26, a transport with troops 40), two
+  missiles at a warship a hit would not sink, one at a transport; never at a human at Easy.
 - **Stealth strike** (Air Mastery; units.ts `launchStealth`, stealth.ts, stealthSight.ts, config `STEALTH` and
   `UNITS.stealthBomber`; Action `stealthStrike {airfield | -1, tile}`, protocol 21): the counter to a SAM wall. A
   nation with Air Mastery sends its one stealth bomber (a flying wing) from an own finished airfield (-1 = the nearest
@@ -958,6 +989,35 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   stealth strikes per game 0 (Easy), 0.2 (Normal), 0.2 (Hard), 0.4 (Brutal) on medium, up to 1.3 on World Brutal,
   about 0.9 buildings destroyed each, none shot down. The human bench (Easy, Normal) is unchanged: the mastery comes
   late (median minute 33) and Easy AIs never aim it at a human.
+  New niche (Defense part 3; stealth = the nuke counter + surgical): silo hunter (units.ts `stealthHunt`, after the SAM
+  hunter): every hostile Missile Silo in the blast is destroyed with the atom bombs loaded in it (the event counts
+  them: floor(ready slots / `ATOM_SILO_SLOTS`) with Nuclear Fission), and every other hostile silo within
+  `STEALTH.siloSilenceRadius` 25 tiles is knocked out for `siloSilenceSeconds` 30 s (a knocked-out silo cannot launch:
+  "The silo is knocked out: 30 s"). Clean: `dropBombs` makes no fallout and no neutral land, so the land can be taken
+  right after. Multi-target: Action `stealthStrike {airfield, tile, tile2?, tile3?}`: up to `multiMax` 3 aim points,
+  each within `multiSpread` 25 tiles of every other and in the airfield's reach (`stealthAimsReason`), flown in order
+  (`Unit.aims`, hashed) with a blast of `multiRadius` 6 tiles each (x Strategic / Night Bombing), the SAM and silo
+  hunt at each, the income raid once. One click is still one strike at one target; "Add target" in the aiming chip
+  switches to picking (a click adds a point, a click on one removes it), "Launch" sends; the preview draws the route
+  through every point and every blast. AI (`aiStealthCluster`): a pick on a SAM site or silo is split over the SAM
+  sites and silos within the spread (nearest first, outside the other blasts); silos of a nation with Nuclear
+  Fission score +20. Tracking Radar interplay unchanged (2 hp, 180 s rebuild after a loss).
+- **Anti-radar missile** (Defense part 3; an Air special in the Arsenal, tier 3, `antiRadar`, needs Flight;
+  src/sim/antiRadar.ts, config `ANTI_RADAR` and `UNITS.antiRadarMissile` 500 gold + 50 oil; protocol 22). A special,
+  not a ground-attack upgrade, so every air player (either path) has an answer to deep SAM walls, as the owner asked;
+  the fork's tier 3 slots already hold Jet Engines and Strategic Bombing. A SAM site's radar is on for
+  `radarOnSeconds` 10 after it fires (`Building.firedAt` / `firedOn`, hashed). Action `antiRadar {airfield | -1, sam}`
+  (the airfield card's "Anti-radar strike", then a click on an enemy SAM): a seen hostile SAM site within the
+  airfield's air-wing reach x `reachMul` 1 whose radar is on, else "SAM radar is off: wait until it fires"; the
+  airfield reloads `cooldownSeconds` 12 (`Building.seadReady`, hashed). It flies at 40 tiles/s, 1 hp, and SAMs shoot it
+  like a rocket (same interception place). A hit: the barrage knock-out, `damage` 0.25 hp and `knockSeconds` 30 off.
+  Escort mode (Action `setAntiRadarEscort {on}`, `Player.antiRadarEscort`, off by default, a toggle on airfield
+  cards): once a second each hostile SAM that fired at this player's planes or missiles in the last second draws one
+  missile from the nearest ready airfield in reach (paid). Aiming shows the reach ring and every seen enemy SAM in it:
+  a green ring with "Radar on 7 s" or grey "Radar off". AI (`aiAntiRadar`, from Normal up, before each manual raid):
+  with 2+ stored bombers it fires at the radar-on SAM sites it knows that cover the raid target, strongest first,
+  keeping 3 missile prices; it buys the special when it is air-minded with 2+ bombers facing 4+ enemy SAM sites.
+  Art: the anti-radar missile is drawn by the missile looks (art/detailed/missiles.ts `drawAntiRadar`).
 - **Atom bomb** (Silo, Nuclear Fission): radius 35: destroys buildings, kills 60-90% of the army share in the area,
   turns tiles neutral with fallout within 14. Every AI that sees a nuke drops opinion of the launcher sharply.
 - **Interception is deterministic** (`RULES_TEXT.interception` in config is the help text): threats are handled atom

@@ -4,7 +4,8 @@
 // ready tank division. The rules are the sim's (units.ts, blitz.ts); the single-launcher helpers of stealth.ts,
 // cruise.ts and blitzUi.ts do the wording, so a card and the bar always say the same. Nothing here fires by itself.
 import { buildingsOf } from '../sim/buildings';
-import { BLITZ, BLITZ_NAME, BOMBER_RADIUS, CRUISE, STEALTH } from '../sim/config';
+import { BLITZ, BLITZ_NAME, BOMBER_RADIUS, COUNTER, CRUISE, STEALTH } from '../sim/config';
+import { COUNTER_NAME, counterInfo } from './counterUi';
 import { blitzSecondsLeft } from '../sim/blitz';
 import { hasTech } from '../sim/tech';
 import { cruiseReloadLeft, stealthInAir, stealthPlayerReason, stealthRadius, stealthReach, stealthRechargeLeft } from '../sim/units';
@@ -16,8 +17,8 @@ import { fmtR } from './strikes';
 import { stealthPriceText } from './stealth';
 import type { UiState } from './uiState';
 
-export type MasteryId = 'stealth' | 'cruise' | 'blitz';
-export const MASTERY_ORDER: readonly MasteryId[] = ['stealth', 'cruise', 'blitz'];
+export type MasteryId = 'stealth' | 'cruise' | 'blitz' | 'counter';
+export const MASTERY_ORDER: readonly MasteryId[] = ['stealth', 'cruise', 'blitz', 'counter'];
 
 export interface MasteryInfo {
   id: MasteryId;
@@ -53,6 +54,14 @@ export const MASTERY: Record<MasteryId, MasteryInfo> = {
     icon: 'armor',
     what: `A tank division pops smoke and surges into enemy land near your border: fast, deep and wide, and the land it takes holds for ${BLITZ.holdSeconds} s.`,
     counter: 'Cut the wedge off before it holds, or keep reserves behind the border.',
+  },
+  counter: {
+    id: 'counter',
+    name: COUNTER_NAME,
+    label: 'Counter',
+    icon: 'fort',
+    what: `Defense Mastery: enemy attacks that lose troops on land your Forts cover fill a meter. Full, one click sends ${Math.round(COUNTER.troopShare * 100)}% of your troops at home and your idle tank divisions near a Fort at the attacker: faster and cheaper for ${COUNTER.seconds} s. No aiming: it pushes from the Fort nearest to them.`,
+    counter: 'Hold reserves behind the front that bled, or make peace before the meter fills.',
   },
 };
 
@@ -138,15 +147,26 @@ function blitzStatus(state: GameState, me: Player): MasteryStatus {
   return { ...out, line: `${b.off}. ${b.tip}` };
 }
 
+/** Where the Counteroffensive button stands now (Defense Mastery; client/counterUi.ts says it in words). */
+function counterStatus(state: GameState, me: Player): MasteryStatus {
+  const out: MasteryStatus = { ...OFF, id: 'counter' };
+  const c = counterInfo(state, me);
+  if (!c.show) return out;
+  out.show = true;
+  if (c.running > 0) return { ...out, state: 'cooldown', left: c.running, total: COUNTER.seconds, line: c.line };
+  if (!c.why) return { ...out, state: 'ready', line: `${c.line} Click to launch.` };
+  return { ...out, line: c.why.startsWith('Meter') ? c.line : `${c.why}. ${c.line}` };
+}
+
 /** The status of one mastery strike button. Pure read. */
 export function masteryStatus(state: GameState, me: Player, id: MasteryId): MasteryStatus {
   if (state.phase !== 'playing') return { ...OFF, id };
-  return id === 'stealth' ? stealthStatus(state, me) : id === 'cruise' ? cruiseStatus(state, me) : blitzStatus(state, me);
+  return id === 'stealth' ? stealthStatus(state, me) : id === 'cruise' ? cruiseStatus(state, me) : id === 'counter' ? counterStatus(state, me) : blitzStatus(state, me);
 }
 
 /** True while the mode of `ui` is this strike's aiming mode. */
 export function masteryAiming(ui: UiState, id: MasteryId): boolean {
-  return (id === 'stealth' && ui.mode.kind === 'stealth') || (id === 'cruise' && ui.mode.kind === 'cruise') || (id === 'blitz' && ui.mode.kind === 'blitz');
+  return (id === 'stealth' && ui.mode.kind === 'stealth') || (id === 'cruise' && ui.mode.kind === 'cruise') || (id === 'blitz' && ui.mode.kind === 'blitz'); // the Counteroffensive has no aiming
 }
 
 /** A click on the button: enters (or leaves) the target mode; returns why not ('' = ok). */
@@ -157,6 +177,7 @@ export function aimMastery(state: GameState, me: Player, ui: UiState, id: Master
   }
   const st = masteryStatus(state, me, id);
   if (st.state !== 'ready') return st.line || 'Not possible now';
+  if (id === 'counter') return ''; // no aiming: the bar sends the order (hud/strikeBar.ts)
   ui.contextMenu = null;
   if (id === 'stealth') {
     ui.mode = { kind: 'stealth', airfield: -1 };

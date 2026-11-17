@@ -85,6 +85,7 @@ export class StrikeBar {
     const me = this.ctx.me();
     if (!s || !me || s.phase !== 'playing') return;
     const why = aimMastery(s, me, this.ctx.ui, id);
+    if (!why && id === 'counter') this.ctx.act({ type: 'counteroffensive' }); // no aiming (sim/counter.ts)
     if (why) {
       this.ctx.toast(`${MASTERY[id].name}: ${why}`, 'info');
       this.ctx.sound('uiError');

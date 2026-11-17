@@ -201,6 +201,9 @@ const LINE: Record<string, string> = {
   signal: '<path d="M4 20v-3M9 20v-7M14 20V9M19 20V5"/>',
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   lock: '<path d="M5 11h14v10H5z"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  // Defense part 3: the Counteroffensive (a fort wall with an arrow out of it) and anti-radar (a dish with a strike line)
+  counter: '<path d="M3 20h8v-6H3zM3 14v-2h2v2M7 14v-2h2v2"/><path d="M11 13l9-6M20 7h-5M20 7v5"/>',
+  radar: '<path d="M5 19l4-4"/><path d="M4 11a8 8 0 0 0 9 9z"/><path d="M14 4a6 6 0 0 1 6 6M14 8a2 2 0 0 1 2 2"/>',
   shield: '<path d="M12 3l7.5 3v5.5c0 4.5-3.2 8-7.5 9.5-4.3-1.5-7.5-5-7.5-9.5V6z"/>',
   shovel: '<path d="M14 10l5-5M16.5 2.5l5 5"/><path d="M11.5 8.5l4 4-4.5 4.5c-2 2-4.5 3-7 3 0-2.5 1-5 3-7z"/>',
   trench: '<path d="M2 16l2.5-4 2.5 4 2.5-4 2.5 4 2.5-4 2.5 4 2.5-4 2.5 4"/><path d="M2 20h20" stroke-dasharray="2 2"/>',

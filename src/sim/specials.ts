@@ -34,7 +34,7 @@ import { isWater, TROOP_TYPES } from './types';
 import type { Building, GameState, TechId, Unit } from './types';
 
 /** The five special upgrades (Arsenal kind 'special'). */
-export const SPECIAL_TECHS: readonly TechId[] = ['amphibiousTanks', 'earlyWarning', 'navalMines', 'dropTanks', 'nightBombing'];
+export const SPECIAL_TECHS: readonly TechId[] = ['amphibiousTanks', 'earlyWarning', 'navalMines', 'dropTanks', 'nightBombing', 'antiRadar'];
 export function isSpecialTech(t: TechId): boolean {
   return SPECIAL_TECHS.includes(t);
 }
