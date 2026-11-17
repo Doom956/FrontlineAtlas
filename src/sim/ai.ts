@@ -3054,7 +3054,7 @@ export function aiWantsTreaty(state: GameState, ai: number, o: TreatyOffer): boo
   if (o.kind === 'peace') {
     if (losingTo(state, ai, from)) return !BIG_TERMS.includes(o.theyGive) || armyOf(state, ai) < armyOf(state, from) * AI_PACT_BREAK_RATIO;
     // Not losing: only while stretched over two or more fronts, and never as a land winner (it keeps going).
-    if (landShare(state, ai) >= AI_PEACE_WINNER_SHARE || frontsOf(state, ai).length < 2) return false;
+    if (landShare(state, ai) >= AI_PEACE_WINNER_SHARE || isLandLeader(state, ai) || frontsOf(state, ai).length < 2) return false;
     return !(gets && gives);
   }
   if (nextTarget(state, ai) === from || runawayLeader(state) === from) return false;
@@ -3062,6 +3062,12 @@ export function aiWantsTreaty(state: GameState, ai: number, o: TreatyOffer): boo
   return (state.opinion[ai]?.[from] ?? 0) >= -30;
 }
 
+/** The nation holding the most land (ties: the lower id). */
+function isLandLeader(state: GameState, id: number): boolean {
+  let best = 0;
+  for (const p of state.players) if (p.id !== 0 && p.alive && !isTribe(p) && (!best || p.tiles > state.players[best].tiles)) best = p.id;
+  return best === id;
+}
 /** Active (unbroken) pacts of a nation. */
 function pactsHeld(state: GameState, id: number): number {
   let n = 0;
