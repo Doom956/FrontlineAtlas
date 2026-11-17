@@ -25,6 +25,9 @@ import { drawFlakGuns } from '../art/detailed/flak';
 import { isBatterySite } from '../../sim/defense';
 import { RADAR_GREEN } from '../fx/defenseFx';
 import { prefersReducedMotion } from '../fx/settings';
+import type { GunAim } from '../fx/gunAim';
+import { GunLayer } from './gunLayer';
+import { gridOf } from '../art/detailed/grid';
 import { hasTech } from '../../sim/tech';
 import { ACCENT, buildingsKey, clamp, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, setTracking, type RGB, type View } from './common';
 
@@ -109,6 +112,9 @@ export class BuildingLayer {
   drawn = 0;
   /** owners holding Flak Guns (their Forts and Cities get AA guns on the marker); set each frame */
   private flak = new Set<number>();
+  /** where the turning guns point and fire (fx/gunAim.ts); set by the renderer, null = guns stay idle */
+  guns: GunAim | null = null;
+  private readonly gunLayer = new GunLayer();
 
   reset(): void {
     this.key = -1;
@@ -168,6 +174,7 @@ export class BuildingLayer {
     this.drawn = 0;
     this.budget = SPRITE_BUDGET;
     this.sprites.newFrame();
+    this.gunLayer.newFrame();
     this.flak.clear();
     for (const p of state.players) if (p.id > 0 && p.alive && hasTech(p, 'flakGuns')) this.flak.add(p.id);
     const z = cam.zoom;
@@ -348,6 +355,17 @@ export class BuildingLayer {
       cx = x;
     }
     ctx.restore();
+    // the turning guns (flak pits, coastal batteries) over the sprite: their heads turn toward their target and fire
+    if (this.guns && spec.addon && (spec.addon === 'flak' || spec.addon === 'guns') && !ghost && !unfinished) {
+      const g = gridOf(scale, dpr);
+      let ax = Math.round((x - OU * scale) * dpr) / dpr + Math.round(OU * g.res) * g.k;
+      let ay = Math.round((y - OV * scale) * dpr) / dpr + Math.round(OV * g.res) * g.k;
+      if (facing !== 0 || b.type === 'port') {
+        ax = x + [1, 0, -1, 0][facing] * zoom * 0.5 - [1, 0, -1, 0][facing] * COAST * scale;
+        ay = y + [0, 1, 0, -1][facing] * zoom * 0.5 - [0, 1, 0, -1][facing] * COAST * scale;
+      }
+      this.gunLayer.draw(ctx, this.guns, { tile: b.tile, spec, owner, look, scale, zoom, dpr, btx: (b.tile % state.map.width) + 0.5, bty: ((b.tile / state.map.width) | 0) + 0.5, x, y, ax, ay, turns: facing, sea: b.type === 'port' ? (facing * Math.PI) / 2 : 0, alpha: 1, nowMs: performance.now() });
+    }
     this.drawn++;
     const bottom = y + 13 * scale;
     // Tracking Radar (sim/defense.ts): a slow green sweep over a working SAM site's ground

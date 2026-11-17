@@ -42,6 +42,7 @@ import { BattleFx } from './fx/battleFx';
 import { PixelFx } from './fx/pixelFx';
 import { FighterFx } from './fx/fighters';
 import { DefenseFx } from './fx/defenseFx';
+import { GunAim } from './fx/gunAim';
 import { gameClockMs, TankFire } from './fx/tankFire';
 import { setSpriteState } from './render/pixelSprites';
 import { hueShift, prankView } from './fx/prankView';
@@ -142,6 +143,8 @@ export class Renderer {
   private fighters = new FighterFx();
   /** flak bursts, worn planes' smoke, tank trap hedgehogs and their dirt bursts (fx/defenseFx.ts) */
   private defense = new DefenseFx();
+  /** the turning guns of flak pits and coastal batteries: where they point, when they fire (fx/gunAim.ts) */
+  private gunAim = new GunAim();
   private shookBy = { x: 0, y: 0 };
   private mini: Minimap;
   private snapCache = new BuildTargetCache();
@@ -262,12 +265,15 @@ export class Renderer {
     this.tanks.fog = fog;
     this.fighters.fog = fog;
     this.defense.fog = fog;
+    this.gunAim.fog = fog;
+    this.defense.guns = this.gunAim;
     // battle effects: read what is new, then shake the view a few px after a nearby nuke (undone after drawing)
     if (this.shookBy.x !== 0 || this.shookBy.y !== 0) this.unshake(camera);
     this.fx.update(state, camera, nowMs);
     this.pfx.update(state, nowMs, this.units);
     this.fighters.update(state, nowMs);
     this.defense.update(state, camera, nowMs);
+    this.gunAim.update(state, camera, nowMs);
     const sh = this.fx.shake(nowMs);
     if (sh.x !== 0 || sh.y !== 0) {
       this.shookBy.x = sh.x / camera.zoom;
@@ -392,6 +398,7 @@ export class Renderer {
     const focus: number[] = [];
     if (ui.hoverTile >= 0 && ui.hoverTile < state.map.building.length && state.map.building[ui.hoverTile] !== 0 && ui.mode.kind === 'none') focus.push(ui.hoverTile);
     if (ui.selectedTile >= 0 && ui.selectedTile < state.map.building.length && state.map.building[ui.selectedTile] !== 0) focus.push(ui.selectedTile);
+    this.buildings.guns = this.gunAim;
     this.buildings.draw(ctx, state, camera, view, this.colors, focus, d);
     this.overlays.capitals(ctx, state, camera, this.colors, me, FAR_ZOOM, nowMs);
     this.fighters.layout(state, me, state.tick + frac, nowMs, camera, this.units);
@@ -405,6 +412,7 @@ export class Renderer {
     this.pfx.drawAir(ctx, camera, nowMs, this.units, d, this.colors);
     this.tanks.draw(ctx, camera, nowMs, this.units, d);
     this.defense.drawAir(ctx, state, camera, nowMs, this.units, d); // flak bursts, worn planes' smoke, trap dirt
+    this.gunAim.draw(ctx, camera, nowMs, d); // muzzle flash and gun smoke of the flak pits and coastal guns
     const hs = ui.hoverTile >= 0 ? camera.tileToScreen((ui.hoverTile % this.w) + 0.5, ((ui.hoverTile / this.w) | 0) + 0.5) : null;
     const hoverOwner = ui.hoverTile >= 0 && ui.hoverTile < state.map.owner.length ? this.knownOwner(state, ui.hoverTile) : 0;
     this.names.draw(ctx, state, camera, me, { hoverOwner, targeting: ui.mode.kind !== 'none', hover: hs }, nowMs, d);

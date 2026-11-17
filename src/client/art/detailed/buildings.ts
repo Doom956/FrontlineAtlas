@@ -255,18 +255,19 @@ function sandRing(u: number, v: number, ru: number, rv: number, z: number, simpl
   }
   return P;
 }
-/** An anti-aircraft gun: a round sandbag ring, a mount in the owner's colour, a dark gun house and two long barrels pointing up to the right. */
+/**
+ * An anti-aircraft gun pit (the part that stands still): a round sandbag ring round a pit of trodden earth, a concrete
+ * pad with a ring in the owner's colour, ammunition crates and shells. The gun itself (a quad mount with a shield)
+ * turns toward its target and is drawn over this by art/detailed/guns.ts at the mount (gunMounts).
+ */
 function flakGun(u: number, v: number, simple = false): Part[] {
-  return [
-    ...sandRing(u, v, 4.4, 3.7, 0, simple),
-    el(u, v, 2.3, 1.9, 0.4, 1.0, 'own', { sh: 'dome', tone: 0.2 }),
-    bx(u - 1.5, v - 0.8, u + 1.5, v + 1.5, 1.4, 1.2, 'black', { tone: 0.2 }),
-    ...barrel(u + 0.4, v - 0.7, u + 7.4, v - 4.1, 1.15, 2.0),
-    ...barrel(u + 0.4, v + 0.7, u + 7.4, v - 2.7, 1.15, 2.0),
-    el(u + 7.5, v - 4.1, 0.75, 0.75, 2.0, 1.3, 'gun', { tone: 0.2 }),
-    el(u + 7.5, v - 2.7, 0.75, 0.75, 2.0, 1.3, 'gun', { tone: 0.2 }),
-  ];
+  const P: Part[] = [...sandRing(u, v, 4.9, 4.1, 0, simple), el(u, v, 3.0, 2.5, 0.2, 0.6, 'sup', { tone: 0.2 }), el(u, v, 2.5, 2.1, 0.8, 0.3, 'own', { tone: 0.1 })];
+  P.push(bx(u + 2.0, v + 1.9, u + 3.6, v + 3.0, 0.2, 1.0, 'teak', { pat: 'planks' }), bx(u - 3.8, v + 1.6, u - 2.4, v + 2.8, 0.2, 0.9, 'teak', { pat: 'planks', tone: -0.3 }));
+  if (!simple) P.push(el(u - 2.7, v - 2.4, 0.5, 0.5, 0.2, 0.9, 'brass', { sh: 'cyl' }), el(u - 2.1, v - 2.6, 0.5, 0.5, 0.2, 0.9, 'brass', { sh: 'cyl', tone: 0.3 }));
+  return P;
 }
+/** The height of a flak pit's gun head above its ground (the top of the pad). */
+const FLAK_Z = 1.1;
 function radarDish(u: number, v: number, simple = false): Part[] {
   if (simple) return [el(u, v, 1.0, 1.0, 0, 4.0, 'gun', { sh: 'cyl', tone: 0.8 }), el(u, v - 1.0, 4.4, 3.4, 4.0, 0.9, 'alu', { sh: 'dome' })];
   return [
@@ -982,22 +983,25 @@ function breakwater(pts: [number, number][], simple: boolean): Part[] {
   return P;
 }
 /**
- * A coastal gun emplacement: a concrete casemate with chamfered seaward corners, banked with earth on its landward
- * side, a gun in a round pit on its roof and a long barrel pointing east over the water, a door on its south side.
+ * A coastal gun emplacement (the part that stands still): a big concrete casemate with chamfered seaward corners, banked
+ * with earth on its landward side, steps and a door on its south side, and a round concrete barbette on its roof for the
+ * turret. The turret and its one long barrel (a naval gun, art/detailed/guns.ts) turn on the barbette toward the ship it
+ * shells and are drawn over this at the mount (gunMounts).
  */
 function casemate(u: number, v: number, simple = false): Part[] {
   const P: Part[] = [];
-  P.push(el(u - 1.8, v, 3.0, 4.6, 0, 2.4, 'camo', { sh: 'dome', tone: -0.3 }), el(u - 1.0, v - 3.9, 3.8, 1.5, 0, 1.6, 'camo', { sh: 'dome', tone: -0.2 }), el(u - 1.0, v + 3.9, 3.8, 1.5, 0, 1.6, 'camo', { sh: 'dome', tone: -0.2 }));
-  const shell = [u - 4, v - 3, u + 2.6, v - 3, u + 4.2, v - 1.4, u + 4.2, v + 1.4, u + 2.6, v + 3, u - 4, v + 3];
-  const lid = [u - 3.4, v - 2.4, u + 2.4, v - 2.4, u + 1.8, v - 1.2, u + 1.8, v + 1.2, u + 2.4, v + 2.4, u - 3.4, v + 2.4];
-  P.push(poly(shell, 0, 3.0, 'sup', { tone: -0.2 }), poly(shell, 3.0, 0.5, 'sup', { tone: 0.5, edge: true }), poly(lid, 3.0, 0, 'sup', { inset: true, tone: -0.1 }));
-  // the gun on the roof: a round sandbag ring round its pit, a mount in the owner's colour, a dark turret and a long barrel out to sea
-  P.push(...sandRing(u + 0.2, v, 3.1, 2.5, 3.0, simple));
-  P.push(el(u + 0.2, v, 2.3, 1.9, 3.0, 1.0, 'own', { sh: 'dome', tone: 0.2 }), el(u + 0.2, v, 1.5, 1.3, 4.0, 0.9, 'gun', { sh: 'dome', tone: 0.3 }));
-  P.push(...barrel(u + 0.6, v, u + 11, v - 0.4, 1.6, 4.2), el(u + 11.2, v - 0.4, 1.1, 1.1, 4.2, 1.5, 'gun', { tone: 0.3 }));
-  P.push(bx(u - 2.6, v + 3.0, u - 1.0, v + 3.14, 0, 2.0, 'black', { tone: 0.5 }), band(u - 3.0, v + 1.4, u - 1.0, v + 2.0, 3.0));
+  P.push(el(u - 2.2, v, 3.0, 4.8, 0, 2.6, 'camo', { sh: 'dome', tone: -0.3 }), el(u - 1.0, v - 4.3, 4.2, 1.5, 0, 1.8, 'camo', { sh: 'dome', tone: -0.2 }), el(u - 1.0, v + 4.3, 4.2, 1.5, 0, 1.8, 'camo', { sh: 'dome', tone: -0.2 }));
+  const shell = [u - 5.6, v - 4.4, u + 3.6, v - 4.4, u + 5.4, v - 2.2, u + 5.4, v + 2.2, u + 3.6, v + 4.4, u - 5.6, v + 4.4];
+  const lid = [u - 5.0, v - 3.8, u + 3.2, v - 3.8, u + 4.8, v - 1.8, u + 4.8, v + 1.8, u + 3.2, v + 3.8, u - 5.0, v + 3.8];
+  P.push(poly(shell, 0, 3.0, 'sup', { tone: -0.2 }), poly(shell, 3.0, 0.5, 'sup', { tone: 0.5, edge: true }), poly(lid, 3.5, 0, 'sup', { inset: true, tone: -0.1 }));
+  // the barbette: a round concrete drum on the roof that the turret turns on, a dark gap ring round the turret
+  P.push(el(u, v, 3.6, 3.0, 3.5, 0.7, 'sup', { sh: 'cyl', tone: 0.3 }), el(u, v, 3.0, 2.5, 4.2, 0, 'black', { inset: true, tone: -0.4 }));
+  P.push(bx(u - 3.2, v + 4.4, u - 1.4, v + 4.54, 0, 2.2, 'black', { tone: 0.5 }), band(u - 3.8, v + 3.0, u - 1.0, v + 3.7, 3.0));
+  if (!simple) P.push(bx(u - 3.4, v + 4.4, u - 1.2, v + 5.4, 0, 0.5, 'sup', { tone: 0.5 }));
   return P;
 }
+/** The height of a coastal turret above its ground (the top of the barbette). */
+const COASTAL_Z = 4.2;
 function portModel(lv: number, addon: Addon, simple = false): Part[] {
   const P: Part[] = [];
   for (const p of pierList(lv)) P.push(...pier(p, simple));
@@ -1020,7 +1024,38 @@ function portModel(lv: number, addon: Addon, simple = false): Part[] {
 /** The port's add-on: two coastal gun emplacements on the shore. */
 function portAddon(lv: number, addon: Addon, simple: boolean): Part[] {
   if (addon !== 'guns') return [];
-  return lv >= 3 ? [...casemate(-4.8, -17.2, simple), ...casemate(-5.2, 3.4, simple)] : [...casemate(-4.5, -14.2, simple), ...casemate(-4.5, 15, simple)];
+  return lv >= 3 ? [...casemate(-5.4, -17.6, simple), ...casemate(-5.4, 3.6, simple)] : [...casemate(-5.4, -14.4, simple), ...casemate(-5.4, 15, simple)];
+}
+
+// ------------------------------------------------------------------------------------------------- the turning guns
+
+/** A gun that turns on a building: its kind and where its mount stands (model units, z = height of the mount's top). */
+export interface GunMount {
+  kind: 'flak' | 'coastal';
+  u: number;
+  v: number;
+  z: number;
+}
+
+/** The mounts of a spec's turning guns (none without the add-on): each is drawn over the cached sprite by render/gunLayer.ts. */
+export function gunMounts(spec: BuildingSpec): GunMount[] {
+  const lv = spec.level;
+  if (spec.type === 'fort' && (spec.addon === 'flak' || spec.addon === 'guns')) {
+    const w = lv >= 5 ? 36 : lv >= 3 ? 30 : 24;
+    const d = lv >= 5 ? 24 : lv >= 3 ? 20 : 15;
+    if (spec.addon === 'flak') return [{ kind: 'flak', u: -w / 2 - 5, v: d / 2 + 6, z: FLAK_Z }, { kind: 'flak', u: w / 2 + 5, v: d / 2 + 6, z: FLAK_Z }];
+    return [{ kind: 'coastal', u: -w / 2 + 1, v: d / 2 + 5, z: COASTAL_Z }, { kind: 'coastal', u: w / 2 - 1, v: d / 2 + 5, z: COASTAL_Z }];
+  }
+  if (spec.type === 'city' && spec.addon === 'flak') {
+    const [, , , bv1] = cityBounds(lv);
+    const ux = lv >= 5 ? 17 : lv >= 3 ? 14 : 10.5;
+    return [{ kind: 'flak', u: -ux, v: bv1 + 6, z: FLAK_Z }, { kind: 'flak', u: ux, v: bv1 + 6, z: FLAK_Z }];
+  }
+  if (spec.type === 'port' && spec.addon === 'guns') {
+    const at = lv >= 3 ? [[-5.4, -17.6], [-5.4, 3.6]] : [[-5.4, -14.4], [-5.4, 15]];
+    return at.map(([u, v]) => ({ kind: 'coastal' as const, u, v, z: COASTAL_Z }));
+  }
+  return [];
 }
 
 function modelOf(spec: BuildingSpec, simple: boolean): Part[] {

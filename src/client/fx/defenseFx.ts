@@ -30,6 +30,8 @@ import type { FogView } from '../fog/fogView';
 import type { UnitPoses } from './pixelFx';
 import { fxEnabled, prefersReducedMotion } from './settings';
 import { flakBus } from './tankShotBus';
+import type { GunAim } from './gunAim';
+import { ART_ZOOM } from '../render/buildingArt';
 
 /** Puff life (ms), cap, and new puffs a frame at most. */
 export const PUFF_MS = 800;
@@ -81,6 +83,8 @@ interface Shell {
   t0: number;
   /** a warship hit (else a transport: a smaller spark) */
   big: boolean;
+  /** the battery's tile (the turning gun's muzzle is looked up by it) */
+  tile: number;
 }
 interface Ring {
   live: boolean;
@@ -93,6 +97,8 @@ const PLANE_TYPES = new Set(['bomber', 'transportPlane', 'stealthBomber']);
 
 export class DefenseFx {
   fog: FogView | null = null;
+  /** the turning guns of flak pits and coastal batteries (fx/gunAim.ts): told of every plane under fire and every battery shot; null = none */
+  guns: GunAim | null = null;
   private puffs: Puff[] = [];
   private dirt: Dirt[] = [];
   private shells: Shell[] = [];
@@ -113,7 +119,7 @@ export class DefenseFx {
   constructor(private rand: () => number = Math.random) {
     for (let i = 0; i < PUFF_CAP; i++) this.puffs.push({ live: false, x: 0, y: 0, vx: 0, vy: 0, t0: 0 });
     for (let i = 0; i < DIRT_CAP; i++) this.dirt.push({ live: false, x: 0, y: 0, t0: 0, seed: 0 });
-    for (let i = 0; i < SHELL_CAP; i++) this.shells.push({ live: false, x: 0, y: 0, x2: 0, y2: 0, t0: 0, big: false });
+    for (let i = 0; i < SHELL_CAP; i++) this.shells.push({ live: false, x: 0, y: 0, x2: 0, y2: 0, t0: 0, big: false, tile: -1 });
     for (let i = 0; i < RING_CAP; i++) this.rings.push({ live: false, x: 0, y: 0, t0: 0 });
   }
 
@@ -156,6 +162,9 @@ export class DefenseFx {
         sh.y2 = e.y2 ?? e.y;
         sh.t0 = nowMs;
         sh.big = e.radius >= 1;
+        sh.tile = Math.floor(e.y) * w + Math.floor(e.x);
+        // from the art zoom on the gun on the building turns to the ship and fires (its flash replaces the plain one below)
+        if (this.guns && cam.zoom >= ART_ZOOM) this.guns.fireCoastal(sh.tile, sh.x2, sh.y2, nowMs);
         continue;
       }
       if (f && !f.visible(Math.floor(e.y) * w + Math.floor(e.x))) continue;
@@ -182,14 +191,23 @@ export class DefenseFx {
       if (made >= PUFFS_PER_FRAME) break;
       if (u.hp <= 0 || u.state !== 0 || !PLANE_TYPES.has(u.type)) continue;
       if (u.x < view.x0 || u.y < view.y0 || u.x > view.x1 || u.y > view.y1) continue;
-      const zones = flakZonesAt(state, u.owner, u.x, u.y).length;
+      const zs = flakZonesAt(state, u.owner, u.x, u.y);
+      const zones = zs.length;
       if (!zones || !this.shown(state, u)) continue;
+      // every pit whose zone holds the plane trains on it (the nearest plane to the pit wins)
+      const aimed = !!this.guns && cam.zoom >= ART_ZOOM;
+      if (aimed) for (const z of zs) this.guns!.aimAt(z.tile, 'flak', z.x + 0.5, z.y + 0.5, u.x + 0.5, u.y + 0.5, nowMs);
+      let fired = false;
       let n = rate * zones;
       while (n > 0 && made < PUFFS_PER_FRAME) {
         if (n < 1 && this.rand() > n) break;
         n -= 1;
         made++;
         this.spawn(u.x + 0.5, u.y + 0.5, nowMs, cam.zoom);
+        if (aimed && !fired) {
+          fired = true;
+          for (const z of zs) this.guns!.flakFire(z.tile, nowMs); // the pits flash with the bursts they throw
+        }
         if (made === 1) flakBus.push({ state, x: u.x + 0.5, y: u.y + 0.5, volume: 0.22 }); // the soft anti-air shot (sound/battle.ts)
       }
     }
@@ -316,7 +334,9 @@ export class DefenseFx {
         sh.live = false;
         continue;
       }
-      const a = cam.tileToScreen(sh.x, sh.y);
+      // a turning gun's shell leaves its muzzle (the flash is the tank gun's, fx/gunAim.ts); below the art zoom there is no gun to show
+      const gun = cam.zoom >= ART_ZOOM && this.guns ? this.guns.muzzleOf(sh.tile, nowMs) : null;
+      const a = cam.tileToScreen(gun ? gun.x : sh.x, gun ? gun.y : sh.y);
       const b = cam.tileToScreen(sh.x2, sh.y2);
       const dist = Math.hypot(b.x - a.x, b.y - a.y);
       if (Math.max(a.x, b.x) < -40 || Math.min(a.x, b.x) > cam.viewW + 40 || Math.max(a.y, b.y) < -80 || Math.min(a.y, b.y) > cam.viewH + 40) continue;
@@ -331,7 +351,7 @@ export class DefenseFx {
         return { x: a.x + (b.x - a.x) * t + nx * side * h, y: a.y + (b.y - a.y) * t - lift * h + ny * side * h };
       };
       // muzzle flash: a bright core and a short orange burst toward the ship
-      if (age < 110) {
+      if (age < 110 && !gun && cam.zoom < ART_ZOOM) {
         const f = 1 - age / 110;
         ctx.globalAlpha = f;
         ctx.fillStyle = '#ffe9a6';
