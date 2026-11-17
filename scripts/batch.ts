@@ -319,6 +319,8 @@ interface GameResult {
   allyRefusals: number;
   /** seconds with a runaway leader (allies.runawayLeader), and that leader won */
   leaderSeconds: number;
+  /** treaties (diplomacy): counts, and each signed one as [kind 0 peace / 1 pact, a, b, land leader involved, receiver of terms stronger (peace; -1 n/a)] */
+  tr?: { peace: number; pact: number; broken: number; offers: number; offersPeace: number; refused: number; log: number[][]; winnerIn: number; leaderIn: number; recvStronger: number };
   landings: number; // transports sent at neutral coast
   /** minute of each nation's / tribe's elimination */
   nationElims: number[];
@@ -698,6 +700,8 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
   const cap = Math.round(o.minutes * 60 * TICKS_PER_SECOND);
   const sampleEvery = 10 * TICKS_PER_SECOND;
   const arrived = new Set<string>();
+  let lastArmies: ArrayLike<number> = [];
+  let lastLead = 0;
   let decidedBy = 0; // --decided: the nation holding the share and for how many samples in a row
   let decidedFor = 0;
   // --doctrines random: a seeded pick per nation (script-side RNG, not the game's), applied at the unlock.
@@ -787,6 +791,21 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
       else if (e.kind === 'allyJoined') r.allyJoins++;
       else if (e.kind === 'allyAid') r.allyAids++;
       else if (e.kind === 'allyRefused') r.allyRefusals++;
+      else if (e.kind === 'treatyOffer' || e.kind === 'treatyRefused' || e.kind === 'pactBreakWarning' || e.kind === 'treatyAccepted') {
+        const tr = (r.tr ??= { peace: 0, pact: 0, broken: 0, offers: 0, offersPeace: 0, refused: 0, log: [], winnerIn: 0, leaderIn: 0, recvStronger: 0 });
+        if (e.kind === 'treatyOffer') {
+          tr.offers++;
+          if (/peace/.test(e.message)) tr.offersPeace++;
+        } else if (e.kind === 'treatyRefused') tr.refused++;
+        else if (e.kind === 'pactBreakWarning') tr.broken++;
+        else {
+          const peace = / made peace /.test(e.message);
+          const [f, t] = e.players;
+          if (peace) tr.peace++;
+          else tr.pact++;
+          tr.log.push([peace ? 0 : 1, f, t, f === lastLead || t === lastLead ? 1 : 0, peace ? ((lastArmies[t] ?? 0) > (lastArmies[f] ?? 0) ? 1 : 0) : -1]);
+        }
+      }
       else if ((e.kind as string) === 'spearheadEnded') {
         const m = /spearhead (.*): (\d+) tiles taken, ([\d.]+)(k|M)? troops lost/.exec(e.message);
         if (m) r.spearheads!.push({ why: m[1], tiles: Number(m[2]), lost: Number(m[3]) * (m[4] === 'M' ? 1e6 : m[4] === 'k' ? 1e3 : 1) });
@@ -956,7 +975,8 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
     }
     if (r.fissionMinute < 0 && state.players.some((p) => p.alive && p.techs.includes('nuclearFission'))) r.fissionMinute = minute;
     const armies = wholeArmies(state);
-    for (const p of state.players) if (p.id !== 0 && !isTribe(p) && armies[p.id] > r.maxArmy) r.maxArmy = armies[p.id];
+    lastArmies = armies;
+    lastLead = tileLeader(state);
     const perNation: Troops[] = [];
     for (const p of state.players) {
       if (p.id === 0 || isTribe(p) || !p.alive) {
@@ -1135,6 +1155,13 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
   r.meanParadrops = r.paradrops / Math.max(1, r.nations);
   r.meanBarrages = r.barrages / Math.max(1, r.nations);
   r.winMinute = r.winner ? r.minutes : -1;
+  if (r.tr) {
+    for (const [, a, b, lead, rcv] of r.tr.log) {
+      if (r.winner > 0 && (a === r.winner || b === r.winner)) r.tr.winnerIn++;
+      r.tr.leaderIn += lead;
+      if (rcv === 1) r.tr.recvStronger++;
+    }
+  }
   for (const p of state.players) {
     if (p.id === 0 || p.alive || p.eliminatedTick < 0) continue;
     const m = (p.eliminatedTick - state.playStartTick) / TICKS_PER_SECOND / 60;
@@ -1436,6 +1463,18 @@ function report(all: GameResult[], o: Options): void {
     `\nAllies: ${f1(tot((r) => r.allyJoins) / g)} joined wars, ${f1(tot((r) => r.allyAids) / g)} aid shipments, ` +
       `${f1(tot((r) => r.allyRefusals) / g)} refusals per game; a runaway leader (coalition) for ${f1(tot((r) => r.leaderSeconds) / g / 60)} min per game.`,
   );
+  {
+    const T = (f: (t: NonNullable<GameResult['tr']>) => number): number => rs.reduce((x, r) => x + (r.tr ? f(r.tr) : 0), 0);
+    const peace = T((t) => t.peace);
+    const pact = T((t) => t.pact);
+    const all = peace + pact;
+    console.log(
+      `\nTreaties: per game ${f1(peace / g)} peace deals, ${f1(pact / g)} pacts signed, ${f1(T((t) => t.broken) / g)} pacts broken; ` +
+        `${f1(T((t) => t.offers) / g)} offers (${f1(T((t) => t.offersPeace) / g)} peace), ${f1(T((t) => t.refused) / g)} refused; ` +
+        `${peace ? Math.round((100 * T((t) => t.recvStronger)) / peace) : 0}% of peace deals had the stronger side receiving the terms; ` +
+        `${all ? Math.round((100 * T((t) => t.winnerIn)) / all) : 0}% involve the eventual winner, ${all ? Math.round((100 * T((t) => t.leaderIn)) / all) : 0}% the land leader.`,
+    );
+  }
   console.log(`\nNaval: ${rs.reduce((s, r) => s + r.invasions, 0)} invasions, ${rs.reduce((s, r) => s + r.landings, 0)} landings on neutral coasts, ${rs.reduce((s, r) => s + r.warships, 0)} warships.`);
   const atomMins = rs.filter((r) => r.firstAtomMinute >= 0).map((r) => r.firstAtomMinute.toFixed(1));
   console.log(`Atom bombs: ${rs.reduce((s, r) => s + r.atomBombs, 0)} in ${atomMins.length} games, first at minute ${atomMins.join(', ') || '-'}.`);

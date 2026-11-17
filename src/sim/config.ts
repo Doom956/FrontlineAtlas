@@ -1027,14 +1027,20 @@ export const TREATY_TERMS_SPEC = {
   landLarge: { depth: 5, share: 0.15 },
 } as const;
 /** Seconds before an AI offers the same nation a treaty again. */
-export const AI_TREATY_OFFER_COOLDOWN = 180;
+export const AI_TREATY_OFFER_COOLDOWN = 300;
 /** After signing peace with a nation an AI offers it no new peace deal for this long (no endless peace). */
-export const AI_PEACE_REPEAT_GAP = 600;
+export const AI_PEACE_REPEAT_GAP = 1500;
 /** AI: losing a fight = own army below this share of the foe's, or this share of its land lost in TREATY_FIGHT_WINDOW s. */
-export const AI_PEACE_ARMY_RATIO = 0.7;
-export const AI_PEACE_LAND_LOSS = 0.1;
+export const AI_PEACE_ARMY_RATIO = 0.35;
+export const AI_PEACE_LAND_LOSS = 0.2;
 /** AI: a neighbour this much stronger (army) that it is not targeting gets a pact offer. */
-export const AI_PACT_STRONG_RATIO = 1.2;
+export const AI_PACT_STRONG_RATIO = 1.5;
+/** AI: pacts one nation may hold at a time (offering or accepting). */
+export const AI_PACT_MAX_ACTIVE = 1;
+/** AI: no pact for a nation holding this share of the land or more, nor with one (a leader that pacts its way out of fights stalls the game). */
+export const AI_PACT_LEADER_SHARE = 0.2;
+/** AI: after a pact with a nation ended, no new pact with it for this many seconds (no endless pact chains). */
+export const AI_PACT_REPEAT_GAP = 360;
 /** Warlord AIs may break a pact with a victim weaker than this share of their army (25% seeded roll). */
 export const AI_PACT_BREAK_RATIO = 0.4;
 

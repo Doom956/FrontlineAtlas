@@ -325,21 +325,22 @@ describe('AI and treaties', () => {
     from, to, kind, theyGive, youGive, seconds: kind === 'pact' ? 360 : 0, expiresTick: 0,
   });
 
-  it('a winning AI takes peace only when it is paid (or fights two fronts); a losing one takes it', () => {
+  it('a winning AI never takes peace; a losing one takes it', () => {
     const s = world();
+    s.map.landTileCount = 100000; // nobody is a land winner
     s.players[1].troops = inf(200000);
     s.players[2].troops = inf(5000);
     s.players[3].troops = inf(5000);
     expect(act(s, 1, { type: 'attack', tile: at(s, 20, 5), troops: inf(10000) }).ok).toBe(true);
     // 2 asks winning 1:
     expect(aiWantsTreaty(s, 1, offer(2, 1, 'peace'))).toBe(false);
-    expect(aiWantsTreaty(s, 1, offer(2, 1, 'peace', 'none', 'goldSmall'))).toBe(true);
+    expect(aiWantsTreaty(s, 1, offer(2, 1, 'peace', 'none', 'goldSmall'))).toBe(false); // a winner no longer sells peace for gold
     expect(aiWantsTreaty(s, 1, offer(2, 1, 'peace', 'goldSmall', 'goldSmall'))).toBe(false);
     // losing 2 asked by 1:
     expect(aiWantsTreaty(s, 2, offer(1, 2, 'peace'))).toBe(true);
-    // a second front: plain peace is fine for the winner
+    // not even on a second front: a winner keeps going
     expect(act(s, 1, { type: 'attack', tile: at(s, 20, 15), troops: inf(10000) }).ok).toBe(true);
-    expect(aiWantsTreaty(s, 1, offer(2, 1, 'peace'))).toBe(true);
+    expect(aiWantsTreaty(s, 1, offer(2, 1, 'peace'))).toBe(false);
     // a pact breaker or traitor gets nothing
     s.players[2].pactBreakerUntil = s.tick + 100;
     expect(aiWantsTreaty(s, 1, offer(2, 1, 'peace', 'none', 'goldLarge'))).toBe(false);
@@ -348,8 +349,24 @@ describe('AI and treaties', () => {
     expect(aiWantsTreaty(s, 1, offer(2, 1, 'peace', 'none', 'goldLarge'))).toBe(false);
   });
 
+  it('land winners and nations holding a pact turn down new treaties', () => {
+    const s = world();
+    s.map.landTileCount = 100000;
+    s.players[2].troops = inf(500000);
+    s.players[4].troops = inf(100);
+    s.players[1].troops = inf(400000);
+    s.players[3].troops = inf(400000);
+    expect(aiWantsTreaty(s, 4, offer(2, 4, 'pact'))).toBe(true);
+    s.players[2].tiles = 30000; // 30% of the land: a leader gets no pact
+    expect(aiWantsTreaty(s, 4, offer(2, 4, 'pact'))).toBe(false);
+    s.players[2].tiles = 10;
+    s.treaties = [{ a: 3, b: 4, kind: 'pact', endTick: s.tick + 100 * T, breakTick: 0, breaker: 0 }];
+    expect(aiWantsTreaty(s, 4, offer(2, 4, 'pact'))).toBe(false); // one pact at a time
+  });
+
   it('refuses a pact from its next target', () => {
     const s = world();
+    s.map.landTileCount = 100000;
     s.players[2].troops = inf(500000);
     s.players[4].troops = inf(100);
     s.players[1].troops = inf(400000);
@@ -368,7 +385,7 @@ describe('AI and treaties', () => {
     expect(fromTwo()).toMatchObject({ kind: 'peace', theyGive: 'none', youGive: 'goldSmall' });
     expect(act(s, 1, { type: 'answerTreaty', from: 2, accept: false }).ok).toBe(true);
     // Much later, still under attack: the next offer gives land.
-    s.tick += 200 * T;
+    s.tick += 320 * T;
     if (!s.attacks.some((a) => a.attacker === 1 && a.target === 2)) {
       s.players[1].troops = inf(400000);
       const t = s.map.owner[at(s, 20, 5)] === 2 ? at(s, 20, 5) : at(s, 25, 5);
