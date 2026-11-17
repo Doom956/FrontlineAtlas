@@ -314,7 +314,7 @@ interface Crop {
  * The Baltic map's terrain, decoded with the game's own map decoder. The lab page waits forever at the top level
  * (gate.ts), so the game's lazy map chunks never initialise in this single-file build: the data is imported directly.
  */
-async function loadBalticTerrain(): Promise<MapData> {
+export async function loadBalticTerrain(): Promise<MapData> {
   const bin = atob(balticBlob);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
