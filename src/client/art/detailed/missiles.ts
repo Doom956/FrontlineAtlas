@@ -1,6 +1,6 @@
 // The detailed style's missile looks (client only, pure data plus one draw entry), each modelled on a real world shape
 // and drawn as parts like every unit of the style (bake.ts), outlined in the owner's colour:
-//   rocket      a short-range ballistic missile: white body, red ogive nose, red fins at the base, big fiery exhaust
+//   rocket      a short-range ballistic missile: slim olive drab cylinder, darker cone, clipped-delta fins, fiery exhaust
 //   atom bomb   a long staged intercontinental missile: dark olive stages with a yellow band, rings between the
 //               stages, fins at the base and a tapering reentry cone, heavy smoke behind it (trails.ts)
 //   anti-radar  a stealth stand-off missile: an angular faceted body in dark grey, small swept wings and a V tail,
@@ -20,49 +20,53 @@ const over = (u: number, v: number, ru: number, rv: number): readonly [number, n
 
 // ------------------------------------------------------------------------------------------------- rocket
 
-/** The silo rocket: seen from above, white body, red nose cone and red swept fins, a big motor flame at the tail. */
+/**
+ * The silo rocket after a classic short-range ballistic missile: a long slim cylinder (about ten times as long as wide)
+ * in olive drab, a slightly darker conical nose with a thin band near it, four small clipped-delta fins at the base
+ * (two seen from above, the other pair edge on) and a motor skirt.
+ */
 export function rocketModel(): UnitModel {
-  const body = over(-2, 0, 5.5, 1.3);
+  const R = 1.1;
+  const body = over(-1, 0, 10.5, R);
   const parts: Part[] = [
-    // the four fins seen from above: a swept pair either side (the other pair is edge on, under the body)
-    poly(sym([-3.2, -1.2, -6.6, -3.5, -8.1, -3.5, -8, -1.2]), 0.6, 0.5, 'redpaint', { tone: -1 }),
-    // motor skirt
-    box(-8.4, -0.95, -7, 0.95, 0.6, 1.2, 'gun', { sh: 'cyl', sc: over(-7.7, 0, 0.7, 0.95) }),
-    // the white body, a dark roll band and the owner's colour on a narrow ring at the shoulder
-    box(-7.2, -1.3, 3.6, 1.3, 0.6, 1.4, 'white', { sh: 'cyl', sc: body }),
-    box(-4.6, -1.33, -3.6, 1.33, 0.6, 1.43, 'gun', { sh: 'cyl', sc: body }),
-    box(2.4, -1.33, 3.4, 1.33, 0.6, 1.43, 'own', { sh: 'cyl', sc: body }),
-    // the red ogive nose
-    poly([10.6, 0, 9.6, -0.45, 8.2, -0.85, 6.2, -1.2, 3.6, -1.3, 3.6, 1.3, 6.2, 1.2, 8.2, 0.85, 9.6, 0.45], 0.6, 1.4, 'redpaint', { sh: 'cyl', sc: over(7, 0, 3.6, 1.3) }),
+    // clipped-delta fins at the base: a long root, a short clipped tip
+    poly(sym([-3.4, -R, -7.2, -3.1, -9, -3.1, -9, -R]), 0.6, 0.4, 'olive', { tone: -1 }),
+    box(-9.8, -0.85, -8.4, 0.85, 0.6, 1.1, 'gun', { sh: 'cyl', sc: over(-9.1, 0, 0.7, 0.85) }),
+    // the olive drab body, a little weathered
+    box(-9, -R, 7, R, 0.6, 1.2, 'olive', { sh: 'cyl', sc: body, tone: 1 }),
+    box(-1.2, -R - 0.03, -0.5, R + 0.03, 0.6, 1.23, 'gun', { sh: 'cyl', sc: body }),
+    box(5.2, -R - 0.03, 5.9, R + 0.03, 0.6, 1.23, 'own', { sh: 'cyl', sc: body }),
+    // the darker conical nose with its thin band
+    poly([12.2, 0, 11.2, -0.3, 9.4, -0.7, 7, -R, 7, R, 9.4, 0.7, 11.2, 0.3], 0.6, 1.2, 'olive', { sh: 'cyl', sc: over(9.6, 0, 3, R), tone: -1 }),
+    box(7.1, -R - 0.03, 7.7, R + 0.03, 0.6, 1.23, 'tan', { sh: 'cyl', sc: body }),
   ];
-  return { model: { parts, flat: true }, guns: [], props: [], nozzles: [{ u: -8.4, v: 0, z: 1, r: 2.1 }], alt: 4, dust: [] };
+  return { model: { parts, flat: true }, guns: [], props: [], nozzles: [{ u: -9.8, v: 0, z: 1, r: 1.5 }], alt: 4, dust: [] };
 }
 
 // ------------------------------------------------------------------------------------------------- atom bomb
 
-/** The atom bomb: a long staged missile, dark olive with a yellow band, stage rings, base fins and a reentry cone. */
+/**
+ * The atom bomb after a three-stage ICBM: a long first stage (about half the length), a ring, a second stage, a ring, a
+ * short slimmer third stage and a blunt reentry cone; dark olive with a yellow band, base fins and the owner's ring.
+ */
 export function atomBombModel(): UnitModel {
-  const s1 = over(-6.4, 0, 3.8, 2.2);
-  const s2 = over(2.2, 0, 3.8, 1.75);
+  const s1 = over(-4.4, 0, 5.8, 2.2);
+  const s2 = over(4.4, 0, 3, 1.8);
   const parts: Part[] = [
-    // base fins: swept, dark
     poly(sym([-5.6, -2.1, -9.6, -4.6, -11.2, -4.6, -10.6, -2.1]), 0.6, 0.5, 'olive', { tone: -1 }),
-    // motor skirt
     box(-11.4, -1.5, -9.8, 1.5, 0.6, 1.4, 'gun', { sh: 'cyl', sc: over(-10.6, 0, 0.8, 1.5) }),
-    // first stage, wide, with the yellow band
-    box(-10, -2.2, -2.4, 2.2, 0.6, 2.2, 'olive', { sh: 'cyl', sc: s1 }),
-    box(-6.6, -2.23, -4.4, 2.23, 0.6, 2.23, 'hazard', { sh: 'cyl', sc: s1 }),
-    // the ring where the first stage lets go
-    box(-2.4, -1.95, -1.5, 1.95, 0.6, 1.8, 'gun', { sh: 'cyl', sc: over(-1.95, 0, 0.9, 1.95) }),
-    // second stage, slimmer, with the owner's colour on a narrow ring
-    box(-1.5, -1.75, 5.4, 1.75, 0.6, 1.8, 'olive', { sh: 'cyl', sc: s2 }),
-    box(2.6, -1.78, 3.4, 1.78, 0.6, 1.83, 'own', { sh: 'cyl', sc: s2 }),
-    // third stage ring and its bus
-    box(5.4, -1.5, 6.4, 1.5, 0.6, 1.5, 'gun', { sh: 'cyl', sc: over(5.9, 0, 0.5, 1.5) }),
-    box(6.4, -1.3, 7.6, 1.3, 0.6, 1.4, 'olive', { sh: 'cyl', sc: over(7, 0, 0.6, 1.3) }),
-    // the reentry cone: a long taper, a shade darker
-    poly([13.4, 0, 12.2, -0.4, 10.4, -0.85, 8.6, -1.2, 7.6, -1.35, 7.6, 1.35, 8.6, 1.2, 10.4, 0.85, 12.2, 0.4], 0.6, 1.4, 'olive', { sh: 'cyl', sc: over(10.4, 0, 3, 1.35), tone: -1 }),
-    ell(13, 0, 0.45, 0.4, 0.8, 1, 'gun'),
+    // first stage
+    box(-10, -2.2, 1.4, 2.2, 0.6, 2.2, 'olive', { sh: 'cyl', sc: s1 }),
+    box(-6.8, -2.23, -5.2, 2.23, 0.6, 2.23, 'hazard', { sh: 'cyl', sc: s1 }),
+    box(1.4, -1.95, 2.2, 1.95, 0.6, 1.8, 'gun', { sh: 'cyl', sc: over(1.8, 0, 0.8, 1.95) }),
+    // second stage
+    box(2.2, -1.8, 7.4, 1.8, 0.6, 1.85, 'olive', { sh: 'cyl', sc: s2 }),
+    box(4.2, -1.83, 5, 1.83, 0.6, 1.88, 'own', { sh: 'cyl', sc: s2 }),
+    box(7.4, -1.5, 8.2, 1.5, 0.6, 1.5, 'gun', { sh: 'cyl', sc: over(7.8, 0, 0.5, 1.5) }),
+    // short third stage, then the blunt reentry cone
+    box(8.2, -1.4, 9.8, 1.4, 0.6, 1.5, 'olive', { sh: 'cyl', sc: over(9, 0, 0.8, 1.4) }),
+    poly([13.4, 0, 13.1, -0.55, 12.2, -0.95, 10.9, -1.25, 9.8, -1.4, 9.8, 1.4, 10.9, 1.25, 12.2, 0.95, 13.1, 0.55], 0.6, 1.5, 'olive', { sh: 'cyl', sc: over(11.6, 0, 3, 1.4), tone: -1 }),
+    ell(13.1, 0, 0.45, 0.5, 0.8, 1, 'gun'),
   ];
   return { model: { parts, flat: true }, guns: [], props: [], nozzles: [{ u: -11.4, v: 0, z: 1, r: 1.7 }], alt: 5, dust: [] };
 }
@@ -80,21 +84,19 @@ const AR_SCALE = 1.3;
 export function antiRadarModel(): Model {
   const z = 0.6;
   const parts: Part[] = [
-    // small swept wings, mid-rear
-    poly(sym([-0.4, -1.1, -2.6, -2.7, -3.7, -2.7, -3.5, -1.1]), z + 0.2, 0.2, 'stealth', { tone: -1 }),
-    // V tail
-    poly(sym([-3.6, -0.5, -5.1, -1.9, -5.9, -1.9, -5.5, -0.5]), z + 0.2, 0.2, 'stealth', { tone: -1 }),
-    // nozzle
+    // small canted V tail
+    poly(sym([-3.8, -0.6, -5.2, -1.9, -6, -1.9, -5.7, -0.6]), z + 0.2, 0.2, 'stealth', { tone: -1 }),
     box(-6.4, -0.45, -5.4, 0.45, z + 0.1, 0.6, 'gun'),
-    // the chine facets either side (left lit, right in shade)
-    poly([5.4, 0, 2.8, -1, -1, -1.35, -5.4, -0.85, -5.4, 0, 2.8, 0], z, 0.8, 'stealth', { tone: 1 }),
-    poly([5.4, 0, 2.8, 1, -1, 1.35, -5.4, 0.85, -5.4, 0, 2.8, 0], z, 0.8, 'stealth', { tone: -1 }),
-    // the raised ridge: a long narrow diamond down the middle
-    poly([4.2, 0, 2.2, -0.55, -2, -0.6, -5.4, -0.4, -5.4, 0.4, -2, 0.6, 2.2, 0.55], z + 0.6, 0.5, 'stealth', { tone: 0 }),
-    // the owner's colour on a small ring
-    box(-2.1, -0.62, -1.4, 0.62, z + 0.6, 0.52, 'own'),
+    // the flat faceted body: side facets (left lit, right in shade), a wedge nose
+    poly([5.6, 0, 3, -1.15, -4.6, -1.35, -4.6, 0, 3, 0], z, 0.8, 'stealth', { tone: 1 }),
+    poly([5.6, 0, 3, 1.15, -4.6, 1.35, -4.6, 0, 3, 0], z, 0.8, 'stealth', { tone: -1 }),
+    // the flat top deck
+    poly([4.6, 0, 3, -0.7, -4.6, -0.8, -4.6, 0.8, 3, 0.7], z + 0.7, 0.5, 'stealth', { tone: 0 }),
+    // swept wings folded out on top of the body, long and narrow
+    poly(sym([0.2, -0.8, -2.2, -3.1, -3.2, -3.1, -3, -0.8]), z + 1.2, 0.2, 'stealth', { tone: 1 }),
+    box(-2.1, -0.82, -1.4, 0.82, z + 0.7, 0.52, 'own'),
     // the seeker window, a dark chip at the nose
-    poly([5.4, 0, 4.4, -0.3, 4.4, 0.3], z + 0.6, 0.55, 'gun'),
+    poly([5.6, 0, 4.6, -0.3, 4.6, 0.3], z + 0.7, 0.55, 'gun'),
   ];
   return { parts: grown(parts, AR_SCALE), ground: 0 };
 }

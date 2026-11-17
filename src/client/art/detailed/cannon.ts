@@ -254,8 +254,8 @@ function drawShell(ctx: CanvasRenderingContext2D, sh: ShellDraw, m: MotionParams
     const fins = sh.scale >= 2.5 ? 2 : 1;
     for (const side of [-1, 1])
       for (let f = 1; f <= fins; f++)
-        for (let j = n - 3; j < n; j++) {
-          if (f === 2 && j < n - 2) continue;
+        for (let j = n - 4; j < n; j++) {
+          if (f === 2 && j < n - 2) continue; // cruciform tail fins
           const [px, py] = at(j, side * f);
           speck(ctx, px, py, g, T);
         }
