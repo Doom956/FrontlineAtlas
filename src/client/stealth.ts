@@ -214,7 +214,7 @@ export function stealthAimClick(state: GameState, me: Player, airfield: number, 
   const w = state.map.width;
   const near = aims.findIndex((a) => Math.abs((a % w) - (tile % w)) <= 2 && Math.abs(((a / w) | 0) - ((tile / w) | 0)) <= 2);
   if (near >= 0) return aims.filter((_, k) => k !== near);
-  if (aims.length >= STEALTH.multiMax) return `At most ${STEALTH.multiMax} targets: press Launch`;
+  if (aims.length >= STEALTH.multiMax) return `At most ${STEALTH.multiMax} targets: click Launch`;
   const t = stealthTarget(state, me, airfield, tile);
   if (!t.ok) return t.reason || 'Not possible here';
   const next = [...aims, tile];

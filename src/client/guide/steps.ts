@@ -636,7 +636,7 @@ export function guideTips(): GuideTip[] {
     {
       // Anti-radar Missiles (sim/antiRadar.ts)
       id: 'antiRadar',
-      text: 'Anti-radar missiles: on an Airfield card press Anti-radar strike, then click an enemy SAM site with a green ring (its radar is on because it just fired). A hit knocks it out for 30 s.',
+      text: 'Anti-radar missiles: on an Airfield card click Anti-radar strike, then an enemy SAM site with a green ring (its radar is on because it just fired). A hit knocks it out for 30 s.',
       target: 'order-antiradar',
       tile: (c) => buildingTile(c.s, c.me, 'airfield'),
       when: (c) => playing(c) && hasTech(c.me, 'antiRadar') && owns(c.s, c.me, 'airfield'),
