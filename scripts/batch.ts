@@ -72,6 +72,8 @@ import { FOCUS_PILLARS, FOCUS_SPEC, setAIFocus } from '../src/sim/aifocus';
 import { applyRules } from './rules';
 import { AttackProbe, addAttackStats, attackReport, newAttackStats } from './attackprobe';
 import type { AttackStats } from './attackprobe';
+import { DefenseProbe, addDefStats, defReport, newDefStats } from './defprobe';
+import type { DefStats } from './defprobe';
 import type { FocusPillar } from '../src/sim/aifocus';
 import { aiCommittedPillar } from '../src/sim/variantsAI';
 import { borderTiles, coastCount } from '../src/sim/territory';
@@ -403,6 +405,8 @@ interface GameResult {
   econ?: EconNation[];
   /** attack probe (scripts/attackprobe.ts): AI use of warships, tank divisions and bombers */
   atk?: AttackStats;
+  /** Defense probe counts (defprobe.ts) */
+  def?: DefStats;
 }
 
 /** The --specialist slot's game, specialist or baseline. */
@@ -580,6 +584,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
   const slotId = job.focus ? (state.players.filter((p) => p.id > 0 && !p.isHuman && !isTribe(p))[o.slot - 1]?.id ?? 0) : 0;
   const econProbe = installEconProbe(state);
   const atkProbe = new AttackProbe(state);
+  const defProbe = new DefenseProbe();
   const econ: EconNation[] = [];
   for (const p of state.players) if (p.id && !isTribe(p)) econ.push({ id: p.id, personality: p.personality ?? 'human', at: [null, null, null], end: null });
   if (slotId && job.focus && job.focus !== 'none') {
@@ -829,6 +834,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
       barragesBy.set(b.owner, (barragesBy.get(b.owner) ?? 0) + 1);
     }
     atkProbe.afterTick(state.events);
+    defProbe.afterTick(state);
     state.events.length = 0;
     state.effects.length = 0;
     const minute = gameSeconds(state) / 60;
@@ -1085,6 +1091,8 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
   }
   r.spend = { ...aiSpendStats(state) };
   r.atk = atkProbe.stats;
+  defProbe.finish(state);
+  r.def = defProbe.stats;
   for (const e of econ) e.end = econSnap(state, e.id, econProbe.spent.get(e.id)!);
   r.econ = econ;
   for (const p of state.players) {
@@ -1442,6 +1450,10 @@ function report(all: GameResult[], o: Options): void {
     const sum = newAttackStats();
     for (const r of withAtk) addAttackStats(sum, r.atk!);
     if (withAtk.length) for (const line of attackReport(sum, withAtk.length)) console.log(line);
+    const withDef = rs.filter((r) => r.def);
+    const dsum = newDefStats();
+    for (const r of withDef) addDefStats(dsum, r.def!);
+    if (withDef.length) for (const line of defReport(dsum, withDef.length)) console.log(line);
   }
   if (o.specialist) specialistReport(all, o);
 }

@@ -224,6 +224,25 @@ describe('Tank Traps', () => {
     expect(trapTileLoss(u, 1, 1000)).toBeCloseTo(10, 9); // 25% budget: 250 - 240 left
     expect(trapTileLoss(u, 0, 1000)).toBe(0);
   });
+
+  it('Siege Tanks knock out the forts they pass (switching off its Defense effects); heavy tanks do not', () => {
+    const run = (variant: 'heavyTanks' | 'siegeTanks'): Building => {
+      const { s, d } = trapGame(false, variant);
+      const fort = [...s.buildings.values()].find((b) => b.type === 'fort')!;
+      expect(applyAction(s, 1, { type: 'moveTankDivision', unitIds: [d.id], tile: at(s, 31, 15) }).ok).toBe(true);
+      let started = false;
+      for (let k = 0; k < 3000; k++) {
+        tick(s);
+        if (d.state === 3) started = true;
+        if (started && d.state !== 3) break;
+      }
+      expect(started).toBe(true);
+      return fort;
+    };
+    const siege = run('siegeTanks');
+    expect(siege.disabledUntil).toBeGreaterThan(0);
+    expect(run('heavyTanks').disabledUntil).toBe(0);
+  });
 });
 
 describe('Defense state', () => {

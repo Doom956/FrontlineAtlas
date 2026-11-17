@@ -65,7 +65,7 @@ export function antiRadarButton(state: GameState, me: Player, tile: number): Ant
   const af = buildingAt(state, tile);
   if (!af || af.type !== 'airfield' || af.owner !== me.id) return { ...out, why: 'Not your airfield' };
   const price = antiRadarPriceText(state, me.id);
-  const on = `Enemy SAM sites can be locked only while their radar is on: for ${ANTI_RADAR.radarOnSeconds} s after they fire. A hit knocks one out for ${ANTI_RADAR.knockSeconds} s; SAMs can shoot the missile down. ${price} each.`;
+  const on = `Enemy SAM sites can be locked only while their radar is on: for ${ANTI_RADAR.radarOnSeconds} s after they fire. A hit knocks one out for ${ANTI_RADAR.knockSeconds} s; Other SAM sites can shoot it down, the one it aims at cannot. ${price} each.`;
   if (!hasTech(me, 'antiRadar')) return { ...out, why: 'Needs Anti-radar Missiles', line: 'Needs Anti-radar Missiles (Arsenal, Air row): it is on order' };
   if (af.buildLeft > 0) return { ...out, why: 'Still being built', line: '' };
   const pw = antiRadarPlayerReason(state, me.id);

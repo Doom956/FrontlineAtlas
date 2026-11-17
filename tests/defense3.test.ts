@@ -224,6 +224,17 @@ describe('Anti-radar missiles', () => {
     expect(sam.disabledUntil).toBe(0);
     expect(s.events.some((e) => /shot down a anti-radar missile|shot down an? anti-radar missile/.test(e.message))).toBe(true);
   });
+  it('the SAM it homes on cannot shoot it, whatever its level or load; neighbouring SAMs still do', () => {
+    for (const level of [1, 2, 3]) {
+      const { s, sam } = seadGame();
+      sam.level = level;
+      sam.firedAt = s.tick; // radar on, every shot still loaded
+      applyAction(s, 1, { type: 'antiRadar', airfield: -1, sam: sam.tile });
+      fly(s, ['antiRadarMissile']);
+      expect(sam.disabledUntil).toBeGreaterThan(s.tick);
+      expect(s.events.some((e) => /shot down an? anti-radar missile/.test(e.message))).toBe(false);
+    }
+  });
   it('escort mode (off by default) answers a SAM that just shot at your planes', () => {
     const { s, sam } = seadGame();
     expect(s.players[1].antiRadarEscort).toBeUndefined();

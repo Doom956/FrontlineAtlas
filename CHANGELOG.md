@@ -38,7 +38,7 @@ finished Fort of yours. Pick one of two lanes, each with an upgrade after it:
 - Picking one lane locks the other. Mastery is still 2 per game, now of 4 pillars.
 - Anti-radar missiles (new Air special in the Arsenal): Anti-radar strike on an airfield card, then click an enemy SAM
   site whose radar is on (it fired in the last 10 s: green ring; otherwise "SAM radar is off: wait until it fires"). A
-  hit knocks it out for 30 s; SAMs can shoot the missile down. Escort mode (off by default) answers every SAM that
+  hit knocks it out for 30 s; other SAM sites can shoot the missile down, the one it aims at cannot. Escort mode (off by default) answers every SAM that
   shoots at your planes. 500 gold and 50 oil each. AI nations use them to open SAM walls before their raids.
 - Stealth bomber, a new job: the atom bomb counter. Missile Silos in its blast are destroyed with any atom bombs
   loaded in them, and other silos within 25 tiles cannot launch for 30 s. Its strikes are clean (no fallout, no
@@ -48,6 +48,9 @@ finished Fort of yours. Pick one of two lanes, each with an upgrade after it:
 - Cruise missiles: anti-ship (click near an enemy warship or transport you can see: it homes on it, a warship loses
   1.5 hp, a transport sinks) and sea-skimming (on the way only SAM sites within 15 tiles of the target can shoot it).
   AI fleets fire them at enemy fleets and carriers.
+- Fixes in the last balance round: Siege Tanks now really knock out the forts they pass (the rule never ran before); a
+  knocked-out fort is switched off for 30 s, with its Flak Guns, Tank Traps and Coastal Batteries. AI nations choose
+  Defense a little less often (a neighbour 1.8x stronger or foes with 10+ bombers).
 - AI nations from Normal up take Defense when they are cautious, face a much stronger neighbour or get bombed a lot,
   and buy their lane's upgrade. AI landings steer clear of coasts covered by batteries unless their fleet is there.
 - Online games need the new version (protocol 22).

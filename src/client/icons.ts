@@ -940,28 +940,33 @@ export const ICON_DATA: Record<IconId, IconLayer[]> = {
     F(rect(1.5, 30.4, 2, 3.2), STEEL_DD, { noOutline: true }),
   ],
   rocket: [
-    F('M10 29.5Q3 30 0.5 32Q3 34 10 34.5Z', '#d08a3c', { noOutline: true }),
-    C(ell(8, 32, 4, 1.2), '#ecc77a'),
-    F(join(poly(11, 28.5, 20, 28.5, 13, 19, 8, 19), poly(11, 35.5, 20, 35.5, 13, 45, 8, 45)), '#9a3d33', { tint: 'dark' }),
-    F('M10 28.5L46 28.5Q58 29 63 32Q58 35 46 35.5L10 35.5Z', '#d9d6cd', { tint: 'light', edge: true }),
-    C(rect(46, 20, 20, 24), '#9a3d33', { tint: 'dark' }),
-    C(rect(22, 20, 2.4, 24), '#9a3d33', { tint: 'dark', detail: true }),
-    lightC(rect(0, 28.5, 64, 1.5), 0.3),
-    shadeC(rect(0, 32.6, 64, 4), 0.22),
+    // the silo rocket, nose right: a slim olive drab cylinder (about ten times as long as wide), a darker cone with a thin
+    // band, clipped-delta fins at the base (a long root, a short clipped tip), a motor skirt and a short flame
+    F('M7 30Q2.5 31 0.5 32Q2.5 33 7 34Z', '#d08a3c', { noOutline: true }),
+    C(ell(5, 32, 3, 1), '#ecc77a'),
+    F(join(poly(18, 29.4, 8, 29.4, 6, 21, 11, 21), poly(18, 34.6, 8, 34.6, 6, 43, 11, 43)), '#6f7646', { tint: 'dark' }),
+    F(rect(6.5, 30, 3, 4), STEEL_DD, { noOutline: true }),
+    F(rect(9, 29.2, 40, 5.6), '#7f8650', { tint: 'base', edge: true }),
+    F('M49 29.2L52 29.2Q58 29.8 63 32Q58 34.2 52 34.8L49 34.8Z', '#5f6540', { tint: 'dark', edge: true }),
+    C(rect(48.2, 29.2, 1.4, 5.6), '#c9b56a', { tint: 'light' }),
+    C(rect(22, 29.2, 1.4, 5.6), STEEL_DD, { detail: true }),
+    lightC(rect(9, 29.2, 54, 1.4), 0.3),
+    shadeC(rect(0, 32.8, 64, 2.4), 0.25),
   ],
   atomBomb: [
-    // olive-khaki egg-shaped casing with a boxed tail-fin assembly; small trefoil
-    F(poly(19, 27, 11, 29, 11, 35, 19, 37), '#5d6240', { tint: 'dark', edge: true }),
-    F(rect(2.5, 17, 10, 30), '#5d6240', { tint: 'dark', edge: true }),
-    C(join(rect(4.6, 19.2, 5.8, 11.3), rect(4.6, 33.5, 5.8, 11.3)), SHADE, { alpha: 0.6 }),
-    S(join(line(4.6, 19.2, 10.4, 30.5), line(4.6, 44.8, 10.4, 33.5)), '#5d6240', 1, { tint: 'dark', clip: true, detail: true }),
-    F('M17 32Q17 14.5 37 14.5Q61 14.5 62 32Q61 49.5 37 49.5Q17 49.5 17 32Z', '#9c9660', { tint: 'base', edge: true }),
-    lightC(ell(35, 21, 16, 4.5), 0.2),
-    shadeC(ell(40, 49, 26, 10), 0.25),
-    S(join(line(28, 14, 28, 50), line(48, 15, 48, 49)), DARK, 0.8, { clip: true, detail: true, alpha: 0.45 }),
-    F(circ(38, 32, 5.2), '#d8c672', { edge: true }),
-    C(join(sector(38, 32, 1.5, 4.6, 60, 120), sector(38, 32, 1.5, 4.6, 180, 240), sector(38, 32, 1.5, 4.6, 300, 360)), DARK),
-    C(circ(38, 32, 0.9), DARK),
+    // the long staged missile, nose right: dark olive stages with a yellow band, rings between the stages, fins at the
+    // base, a tapering reentry cone; the trefoil sits on the band
+    F('M5 28L1 31L1 33L5 36Z', '#d08a3c', { noOutline: true }),
+    F(join(poly(16, 28.4, 6, 28.4, 3, 18, 8, 18), poly(16, 35.6, 6, 35.6, 3, 46, 8, 46)), '#4f5438', { tint: 'dark', edge: true }),
+    F(rect(5, 28, 28, 8), '#5d6240', { tint: 'dark', edge: true }),
+    C(rect(10, 28, 7, 8), '#c9b04a', { tint: 'light' }),
+    C(circ(13.5, 32, 2.1), '#4a4a30'),
+    F(rect(33, 28.6, 3, 6.8), STEEL_DD, { noOutline: true }),
+    F(rect(36, 29, 12, 6), '#6a7048', { tint: 'base', edge: true }),
+    F(rect(48, 29.5, 3, 5), STEEL_DD, { noOutline: true }),
+    F('M51 29.6L54 29.6Q60 30.2 63 32Q60 33.8 54 34.4L51 34.4Z', '#575d3c', { tint: 'dark', edge: true }),
+    lightC(rect(5, 28, 58, 1.6), 0.28),
+    shadeC(rect(0, 32.6, 64, 3.6), 0.25),
   ],
   crown: [
     // three sharp points, ochre gold in three tones, small set stones

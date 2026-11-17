@@ -540,7 +540,8 @@ other root and everything after it lock together ("You chose Destroyers; Carrier
 - Armor (Mechanization; armorPath): Light Tanks (cheaper, faster, deeper, a 1-tile band, reveal ahead while
   spearheading; rough ground and forts cost more; weaker holding) -> Deep Raids | Heavy Tanks (dearer, slower;
   through forts and mountains without artillery at lower loss; stronger holding) -> Siege Tanks (forts passed are
-  knocked out). Per player: every division of the owner is its path's variant.
+  knocked out for `siegeFortSeconds` within `siegeFortReach` tiles of the breached tile; a knocked-out fort is switched
+  off for Flak Guns, Tank Traps, Coastal Batteries and the fort bonus alike). Per player: every division of the owner is its path's variant.
 - Air (Flight; airDoctrine "Air path"): Ground-attack Planes (support strikes x1.6, raids x0.6) -> Jet Engines |
   Heavy Bombers (raids x1.7, reach x1.5, +1 hp, support x0.7) -> Strategic Bombing. Per player; bombers are stamped.
 - Shared: Mechanized Infantry (spearheads lose 15% less; the land a spearhead took holds: attacks on it cost
@@ -597,7 +598,7 @@ other root and everything after it lock together ("You chose Destroyers; Carrier
     Port and coastal Fort art, a muzzle flash, shell arc and splash with a hit spark, a steel-blue arc over the water
     (selected own battery, or enemy ones near your warships), and the card line.
   - AI: Defense is a second interest next to the committed pillar (aiDefenseCommitted, never at Easy): turtles,
-    nations facing a hostile neighbour with 1.5x their army, or foes with 6+ bombers. Fork lean: enemy tank divisions
+    nations facing a hostile neighbour with 1.8x their army, or foes with 10+ bombers (balance round: the old 1.5x and 6 put Defense in 40 to 60% of nations). Fork lean: enemy tank divisions
     toward Tank Traps, enemy bombers toward Flak Guns, plus the per-game hash. Flak holders put forts next to cities
     enemy bombs hit in the last 60 s; trap holders face the neighbour with the most tank divisions (forts ~8 tiles
     behind that border). A Defense AI buys its lane's upgrade when it can (Tracking Radar needs Radar).
@@ -1010,7 +1011,9 @@ pillar sticks once a mastery or path upgrade is in; a mastery only jumps the res
   (the airfield card's "Anti-radar strike", then a click on an enemy SAM): a seen hostile SAM site within the
   airfield's air-wing reach x `reachMul` 1 whose radar is on, else "SAM radar is off: wait until it fires"; the
   airfield reloads `cooldownSeconds` 12 (`Building.seadReady`, hashed). It flies at 40 tiles/s, 1 hp, and SAMs shoot it
-  like a rocket (same interception place). A hit: the barrage knock-out, `damage` 0.25 hp and `knockSeconds` 30 off.
+  like a rocket (same interception place), except the SAM it homes on (`Unit.chase`): a measured loaded level 2 or 3
+  SAM always shot a lone missile down while a level 1 SAM never did, so the lock now blinds its own target and only
+  neighbouring SAM sites can stop it. A hit: the barrage knock-out, `damage` 0.25 hp and `knockSeconds` 30 off.
   Escort mode (Action `setAntiRadarEscort {on}`, `Player.antiRadarEscort`, off by default, a toggle on airfield
   cards): once a second each hostile SAM that fired at this player's planes or missiles in the last second draws one
   missile from the nearest ready airfield in reach (paid). Aiming shows the reach ring and every seen enemy SAM in it:

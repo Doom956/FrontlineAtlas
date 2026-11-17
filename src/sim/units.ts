@@ -1649,6 +1649,7 @@ function interceptThreats(state: GameState, threats: Unit[], sams: Building[], a
       if (u.hp <= 0 || u.type === 'reconPlane') break; // SAMs leave recon planes to fighters
       if (chargesReady(s) < 1 || isDisabled(state, s) || !hostile(state, u.owner, s.owner)) continue;
       if (u.type === 'stealthBomber' && !stealthRevealedTo(state, s.owner, u)) continue; // only once a Tracking Radar spots it (defense.ts)
+      if (u.type === 'antiRadarMissile' && u.chase === s.id) continue; // the SAM it homes on cannot shoot it (its radar is the lock); other SAM sites can
       if (u.type === 'cruiseMissile' && d2Tiles(state, s.tile, u.target) > CRUISE.skimRadius * CRUISE.skimRadius) continue; // sea-skimming: only SAMs near its target see it
       const r = samRadius(s) * earlyWarningMul(state, s.owner); // Early Warning (specials.ts)
       if (d2To(state, u, s.tile) > r * r) continue;

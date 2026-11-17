@@ -670,7 +670,7 @@ function bandCost(state: GameState, u: Unit, t: number, o: number): { loss: numb
     // the defender's Trench Warfare already raises c.loss (tileFightCost -> techLossMul): not counted twice
     loss *= 1 + TANK_ARMOR_DEFENSE * armorShare(state.players[o]);
   }
-  return { loss, killed: c.defenderLoss };
+  return { loss, killed: c.defenderLoss, fort };
 }
 
 function loseTroops(state: GameState, u: Unit, amount: number, killer: number): void {
