@@ -33,6 +33,7 @@ import { CRATER_ATOM_REACH, CRATER_REACH, DEATH_GLIDE_TILES, type BlastDraw, typ
 import { unitSpriteMods } from '../render/pixelSprites';
 import { spriteScale } from '../render/units';
 import { DeathWatch, deathKindOf, isKillBlast } from './deaths';
+import { ballisticBoard } from '../art/shared/ballistic';
 import { fxEnabled, prefersReducedMotion } from './settings';
 
 export type { BlastKind } from '../art/types';
@@ -459,9 +460,16 @@ export class PixelFx {
     }
     slot = slot ?? oldest;
     if (!slot) return;
-    const cx = u.x + 0.5;
-    const cy = u.y + 0.5;
+    let cx = u.x + 0.5;
+    let cy = u.y + 0.5;
     const angle = poses?.angleOf?.(u.id) ?? headingOf(state, u);
+    // a silo rocket or an atom bomb shot down bursts where it was drawn on its arc (ballisticBoard), not on its shadow
+    const water = this.isWater(state, cx, cy);
+    const up = u.type === 'rocket' || u.type === 'atomBomb' ? ballisticBoard.offsetOf(u.id, now - 1000) : null;
+    if (up) {
+      cx += up[0];
+      cy += up[1];
+    }
     const times = art.deathTimes(kind, m);
     slot.kind = kind;
     slot.key = spriteKey(u.type, u.variant);
@@ -481,13 +489,21 @@ export class PixelFx {
       const gy = cy + Math.sin(angle) * DEATH_GLIDE_TILES;
       slot.water = this.isWater(state, gx, gy);
       if (!slot.water) this.scar(state, gx, gy, 0.55, state.tick + times.impactMs / 100, 450);
-    } else slot.water = kind === 'ship' || this.isWater(state, cx, cy);
+    } else slot.water = kind === 'ship' || water;
     this.spawned++;
   }
 
   /** A 'shot' effect: warship cannon fire (turret flashes and shells), a torpedo, or anti-air tracers and flak. */
   private shot(state: GameState, e: Effect, now: number): void {
     if (e.x2 === undefined || e.y2 === undefined) return;
+    // at a silo rocket or an atom bomb drawn high on its arc: the dart races to the missile as drawn, not its shadow
+    const up = ballisticBoard.offsetNear(e.x2, e.y2, 1.5, now - 1000);
+    if (up) {
+      const x2 = e.x2 + up[0];
+      const y2 = e.y2 + up[1];
+      this.addShell('tracer', e.x, e.y, x2, y2, now, 180 + Math.min(220, Math.hypot(x2 - e.x, y2 - e.y) * 6), false);
+      return;
+    }
     let ship: Unit | null = null;
     let bd = 1.2;
     for (const u of state.units) {
