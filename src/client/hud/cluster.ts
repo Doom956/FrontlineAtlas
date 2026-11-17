@@ -168,7 +168,7 @@ export class Cluster {
         setTip(docB, tip);
         docB.setAttribute('aria-label', tip.split('\n')[0]);
       }
-      const req = s.allianceRequests.filter((r) => r.to === me.id).length;
+      const req = s.allianceRequests.filter((r) => r.to === me.id).length + (s.treatyOffers ?? []).filter((o) => o.to === me.id && o.expiresTick > s.tick).length;
       setText(badge, String(req));
       setClass(badge, 'hidden', req === 0);
       const unread = hooks.alertsUnread();

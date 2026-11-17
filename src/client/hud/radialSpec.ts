@@ -1,4 +1,6 @@
 // What the radial menu offers for a tile: the likely action in the centre, the rest on the ring.
+import { canOfferPact, canOfferPeace, fightingRecently } from '../../sim/treaty';
+import { treatyAvailable } from './treatyUi';
 import { activeFog } from '../fog/fogView';
 import { alliancesAllowed, buildingAllowed, sameTeam, unitAllowed } from '../../sim/rules';
 import { buildCostAt, buildingAt, canBuild, chargesReady, countBuildings } from '../../sim/buildings';
@@ -232,6 +234,19 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
       }
     } else {
       slices.push({ label: 'Ally', icon: 'ally', hint: `Ask ${op.name} for an alliance`, disabled: !alliancesAllowed(state) ? 'Alliances are off in this game' : outReq ? 'Request already sent' : undefined, run: () => ctx.act({ type: 'requestAlliance', to: o }) });
+    }
+    // peace while you fight them, a pact otherwise: opens the offer panel on their card
+    if (ctx.openTreaty && treatyAvailable(state, me, op)) {
+      const fighting = fightingRecently(state, h, o);
+      const kind = fighting ? 'peace' : 'pact';
+      const chk = fighting ? canOfferPeace(state, h, o) : canOfferPact(state, h, o);
+      slices.push({
+        label: fighting ? 'Peace' : 'Pact',
+        icon: kind,
+        hint: fighting ? `Offer ${op.name} a peace deal` : `Offer ${op.name} a non-aggression pact`,
+        disabled: chk.ok ? undefined : chk.reason,
+        run: () => ctx.openTreaty?.(o, kind),
+      });
     }
     slices.push({
       label: `Gift ${GIFT_GOLD}`,

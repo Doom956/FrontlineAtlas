@@ -58,6 +58,10 @@ import {
   TRIBE_ANNEX_TILES,
   UNITS,
   ALLIANCE_DURATION,
+  PACT_BREAK_DELAY,
+  PACT_LENGTHS,
+  PEACE_DURATION,
+  TREATY_OFFER_TIMEOUT,
   ALLY_TRADE_BONUS,
   AUTO_EMBARGO_SECONDS,
   VICTORY_LAND_SHARE,
@@ -410,6 +414,7 @@ export function howToPlayContent(): HTMLElement {
   const dipRows: Row[] = [
     { title: 'Actions', text: "Ally, Gift and Embargo are on a nation's card (click it in the standings) and in the radial menu." },
     { title: 'Alliances', text: `Last ${min(ALLIANCE_DURATION)} min; both sides can renew in the last minute. Allies cannot attack each other, and trade pays allies ${pct(ALLY_TRADE_BONUS)}% more.` },
+    { title: 'Peace and pacts', text: `While you fight a nation, its card has Peace: ${min(PEACE_DURATION)} min with no attacks either way, optionally paid in gold or border land, and it cannot be broken. When you are not fighting, Pact asks for ${PACT_LENGTHS.map((x) => min(x)).join(' or ')} min without attacks; breaking it early gives the other side ${PACT_BREAK_DELAY} s of warning and makes everyone trust you less. They have ${TREATY_OFFER_TIMEOUT} s to answer. Treaties are listed in Diplomacy, and a dashed line marks the border when you zoom in.` },
     { title: 'Traitor', text: `Breaking an alliance makes you a traitor for ${TRAITOR_DURATION} s: defence x${TRAITOR_DEFENSE} and everyone trusts you less.` },
     { title: 'Attacked', text: `The attacker loses trade with you for ${min(AUTO_EMBARGO_SECONDS)} min and pending alliance requests between you are cancelled.` },
     { title: 'Ask allies', text: 'The line under an ally\'s name says whether it will help or is busy. "Ask to attack..." names an enemy, "Ask for troops" asks for some. The answer comes as a toast; an ally asking you shows as an alert.' },

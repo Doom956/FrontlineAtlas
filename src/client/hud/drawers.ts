@@ -5,7 +5,7 @@ import { ANTI_RADAR_LABEL, aimAntiRadar, antiRadarButton, antiRadarOffered, esco
 import { defenseLines } from '../defenseView';
 import { activeFog } from '../fog/fogView';
 import { enterWarshipSpawnMode } from '../selection';
-import { buildSeconds, researchRule, unitAllowed } from '../../sim/rules';
+import { buildSeconds, researchRule, treatyBetween, unitAllowed } from '../../sim/rules';
 import { aircraftCap, buildCostAt, buildingAt, chargesReady, canBuild, countBuildings, nextChargeIn } from '../../sim/buildings';
 import { attacksOf } from '../../sim/combat';
 import {
@@ -58,6 +58,8 @@ import { iconSpan, lineIcon, worldGlyph } from './glyph';
 import { catSpan, pixelIcon } from './pixelIcons';
 import { AllyHelp } from './allyHelp';
 import { heartlandBonus, lastStandBonus } from '../allies';
+import { activeTreaties, treatyOffersOf } from '../../sim/treaty';
+import { confirmBreakPact, offerLeftText, offerSentence, sentOfferSentence, treatyIcon, treatyKindWord, treatyTimeText } from './treatyUi';
 import { ABILITY_TEXT, article, buildingTexts, RESOURCE_TEXT, TERRAIN_GLYPH, terrainEffect, terrainNote } from './text';
 import { AirPanel } from './airPanel';
 import { autoFireAction } from '../airSim';
@@ -410,8 +412,15 @@ export class DiplomacyPage implements DrawerPage {
     // "1:05 left": read again from the state on every update (the rows are only rebuilt when the lists change)
     const left = (g: GameState, t: number | undefined) => fmtTime(Math.max(0, ((t ?? g.tick) - g.tick) / TICKS_PER_SECOND));
     const reqLeft = (g: GameState, from: number, to: number) => left(g, g.allianceRequests.find((r) => r.from === from && r.to === to)?.expiresTick);
+    const tOffers = treatyOffersOf(s, me.id);
+    const tIn = tOffers.filter((o) => o.to === me.id);
+    const tOut = tOffers.filter((o) => o.from === me.id);
+    const treaties = activeTreaties(s, me.id);
     const key = [
       inReq.map((r) => r.from).join(','),
+      tIn.map((o) => `${o.from}${o.kind}`).join(','),
+      tOut.map((o) => `${o.to}${o.kind}`).join(','),
+      treaties.map((t) => `${t.other}${t.kind}${t.breaking ? 'b' : ''}`).join(','),
       outReq.map((r) => r.to).join(','),
       allies.map((a) => `${a.a}-${a.b}`).join(','),
       me.embargoes.join(','),
@@ -458,8 +467,30 @@ export class DiplomacyPage implements DrawerPage {
       }
       return r;
     };
-    if (inReq.length) {
+    if (inReq.length || tIn.length) {
       b.append(sectionTitle('Asking you'));
+      for (const o of tIn) {
+        const from = o.from;
+        const left = (g: GameState): string => {
+          const cur = treatyOffersOf(g, me.id).find((x) => x.from === from && x.to === me.id);
+          return cur ? offerLeftText(cur) : '0 s';
+        };
+        const acc = btn('Accept', 'primary mini', () => this.ctx.act({ type: 'answerTreaty', from, accept: true }), 'accept');
+        const dec = btn('Decline', 'mini', () => this.ctx.act({ type: 'answerTreaty', from, accept: false }), 'decline');
+        acc.dataset.test = 'treaty-accept';
+        dec.dataset.test = 'treaty-decline';
+        b.append(
+          row(
+            from,
+            (g) => {
+              const cur = treatyOffersOf(g, me.id).find((x) => x.from === from && x.to === me.id);
+              return `${cur ? offerSentence(g, cur).replace(`${g.players[from].name} `, '') : 'Offer gone'}. ${left(g)} left to answer`;
+            },
+            [acc, dec],
+            'offer',
+          ),
+        );
+      }
       for (const r of inReq) {
         b.append(
           row(
@@ -474,6 +505,22 @@ export class DiplomacyPage implements DrawerPage {
         );
       }
     }
+    b.append(sectionTitle('Treaties'));
+    if (!treaties.length) b.append(el('p', 'note', 'No peace deals or pacts. Open a nation\'s card: Peace while you fight, Pact when you do not. Neither side can attack the other while a treaty lasts.'));
+    for (const t of treaties) {
+      const other = t.other;
+      const find = (g: GameState) => activeTreaties(g, me.id).find((x) => x.other === other);
+      const acts: HTMLElement[] = [];
+      if (t.kind === 'pact' && !t.breaking) {
+        const brk = btn('Break', 'mini danger', () => confirmBreakPact(this.ctx, s.players[other].name, other), 'breakAlly');
+        brk.dataset.test = 'treaty-break';
+        acts.push(brk);
+      }
+      const r = row(other, (g) => { const c = find(g); return c ? `${treatyKindWord(c.kind)}, ${treatyTimeText(c)}` : 'Ended'; }, acts, `treaty${t.breaking ? ' breaking' : ''}`);
+      r.dataset.test = 'treaty-row';
+      r.prepend(iconSpan(lineIcon(treatyIcon(t.kind), 18), 'ico treaty-ic'));
+      b.append(r);
+    }
     b.append(sectionTitle('Allies'));
     if (!allies.length) b.append(el('p', 'note', 'No allies. Open a nation\'s card from the standings, then Ally. Allies cannot attack each other, share what they see, and you can ask them to attack your enemies or send troops.'));
     for (const a of allies) {
@@ -487,9 +534,13 @@ export class DiplomacyPage implements DrawerPage {
       b.append(box);
     }
     for (const id of [...this.helps.keys()]) if (!allies.some((a) => a.a === id || a.b === id)) this.helps.delete(id);
-    if (outReq.length) {
+    if (outReq.length || tOut.length) {
       b.append(sectionTitle('Waiting for an answer'));
       for (const r of outReq) b.append(row(r.to, (g) => `Request sent, ${reqLeft(g, me.id, r.to)} left`));
+      for (const o of tOut) {
+        const to = o.to;
+        b.append(row(to, (g) => { const c = treatyOffersOf(g, me.id).find((x) => x.from === me.id && x.to === to); return c ? `${sentOfferSentence(g, c)}, ${offerLeftText(c)} left` : 'Offer gone'; }));
+      }
     }
     if (me.embargoes.length) {
       b.append(sectionTitle('Embargoes'));
@@ -1204,7 +1255,10 @@ export function relationOf(s: GameState, me: Player, id: number): { text: string
   } else if (s.attacks.some((a) => (a.attacker === me.id && a.target === id) || (a.attacker === id && a.target === me.id))) {
     parts.push('At war');
     cls = 'war';
-  } else parts.push(isTribe(p) ? 'Tribe' : 'No treaty');
+  } else {
+    const tr = treatyBetween(s, me.id, id);
+    parts.push(tr ? (tr.kind === 'pact' ? 'Pact' : 'Peace deal') : isTribe(p) ? 'Tribe' : 'No treaty');
+  }
   if (isTraitor(s, id)) {
     parts.push('traitor');
     cls += ' traitor';

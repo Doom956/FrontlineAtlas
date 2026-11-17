@@ -109,6 +109,8 @@ export interface HudCtx {
   openDrawer(id: DrawerId, toggle?: boolean): void;
   closeDrawer(): void;
   openNation(id: number): void;
+  /** opens a nation's card with its peace or pact offer panel (the radial menu) */
+  openTreaty?(id: number, kind: 'peace' | 'pact'): void;
   focusTile(tile: number, zoomIn?: boolean): void;
   toast(text: string, kind?: 'info' | 'good' | 'bad'): void;
   /** a warning toast with a confirm button (destructive actions: demolish, break an alliance) */

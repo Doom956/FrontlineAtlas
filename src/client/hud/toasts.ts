@@ -6,6 +6,8 @@ import { iconSpan, lineIcon } from './glyph';
 export interface ToastAction {
   label: string;
   primary?: boolean;
+  /** data-test of the button */
+  test?: string;
   run: () => void;
 }
 export interface ToastSpec {
@@ -76,6 +78,7 @@ export class Toasts {
     for (const a of spec.actions ?? []) {
       const b = el('button', 'wr-btn mini' + (a.primary ? ' primary' : ''), a.label);
       b.type = 'button';
+      if (a.test) b.dataset.test = a.test;
       b.addEventListener('click', () => {
         a.run();
         this.drop(live);

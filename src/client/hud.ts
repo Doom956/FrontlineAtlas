@@ -19,7 +19,9 @@ import { activeFog, fogEvent, UNMET_TOAST } from './fog/fogView';
 import { reconHint } from './hud/variantOrders';
 import { VARIANT_NAMES } from '../sim/variants';
 import { buildingAt } from '../sim/buildings';
-import { BUILDINGS, DOCTRINES, TICKS_PER_SECOND } from '../sim/config';
+import { BUILDINGS, DOCTRINES, PACT_BREAK_DELAY, TICKS_PER_SECOND } from '../sim/config';
+import { treatyOffersOf } from '../sim/treaty';
+import { offerSentence, treatyIcon } from './hud/treatyUi';
 import { mods } from '../sim/rules';
 import { gameSeconds } from '../sim/state';
 import type { GameEvent, GameState, Player } from '../sim/types';
@@ -253,6 +255,10 @@ export class Hud {
           const to = self.state?.players[a.to];
           if (to) self.toasts.show({ text: `Alliance request sent to ${to.name}`, kind: 'info', icon: 'diplomacy', key: `sent${a.to}` });
         }
+        if (r.ok && (a.type === 'offerPeace' || a.type === 'offerPact')) {
+          const to = self.state?.players[a.to];
+          if (to) self.toasts.show({ text: `${a.type === 'offerPeace' ? 'Peace' : 'Pact'} offer sent to ${to.name}`, kind: 'info', icon: a.type === 'offerPeace' ? 'peace' : 'pact', key: `tsent${a.to}` });
+        }
         return r.ok;
       },
       confirm: (text, label, run) =>
@@ -261,6 +267,10 @@ export class Hud {
       openDrawer: (id, toggle) => self.openDrawer(id, toggle),
       closeDrawer: () => self.drawer.hide(),
       openNation: (id) => self.openNation(id),
+      openTreaty: (id, kind) => {
+        self.openNation(id);
+        self.card.openPanel(kind);
+      },
       focusTile: (t, z) => self.focusTile(t, z),
       toast: (text, kind) => self.toasts.show({ text, kind: kind ?? 'info' }),
       sound: (id) => {
@@ -993,6 +1003,7 @@ export class Hud {
     if (this.eventAlert(state, me, e)) return;
     const go = focus >= 0 ? () => this.focusTile(focus, true) : undefined;
     if (this.doctrineToast(me, e)) return;
+    if (this.treatyToast(state, me, e, go)) return;
     if (this.allyToast(state, me, e, go)) return;
     if (e.kind === 'info' && e.players[0] === me.id) {
       // our gift arrived / our alliance request was turned down: say so (other info events stay in the drawer)
@@ -1078,6 +1089,50 @@ export class Hud {
   /**
    * Ally news (joined your war, sent troops, said no) with the ally's colour. True when handled.
    */
+  /** Peace and pact news: an offer to you (with Accept and Decline until answered), and what became of treaties. True when handled. */
+  private treatyToast(state: GameState, me: Player, e: GameEvent, go: (() => void) | undefined): boolean {
+    const k = e.kind;
+    if (k !== 'treatyOffer' && k !== 'treatyAccepted' && k !== 'treatyRefused' && k !== 'treatyOfferExpired' && k !== 'treatyEnded' && k !== 'pactBreakWarning' && k !== 'pactBroken') return false;
+    if (!e.players.includes(me.id)) return true;
+    const other = e.players.find((id) => id > 0 && id !== me.id) ?? 0;
+    const p = other ? state.players[other] : undefined;
+    const swatch = p ? swatchCss(p, me.id) : undefined;
+    const onClick = go ?? (p ? () => this.openNation(other) : undefined);
+    const pact = /pact/.test(e.message);
+    if (k === 'treatyOffer') {
+      const o = treatyOffersOf(state, me.id).find((x) => x.to === me.id && e.message.startsWith(state.players[x.from]?.name ?? '\0'));
+      if (!o) return true;
+      const from = o.from;
+      this.toasts.show({
+        text: offerSentence(state, o),
+        kind: 'info',
+        icon: treatyIcon(o.kind),
+        swatch: swatchCss(state.players[from], me.id),
+        key: `treaty${from}`,
+        sticky: () => !!this.state && treatyOffersOf(this.state, me.id).some((x) => x.from === from && x.to === me.id),
+        actions: [
+          { label: 'Accept', primary: true, test: 'treaty-accept', run: () => this.ctx.act({ type: 'answerTreaty', from, accept: true }) },
+          { label: 'Decline', test: 'treaty-decline', run: () => this.ctx.act({ type: 'answerTreaty', from, accept: false }) },
+        ],
+        onClick: () => this.openNation(from),
+      });
+      return true;
+    }
+    let text = compactNumbers(e.message);
+    let kind: 'good' | 'warn' | 'bad' | 'info' = 'info';
+    if (k === 'treatyAccepted') kind = 'good';
+    else if (k === 'treatyRefused' || k === 'treatyEnded' || k === 'pactBroken') kind = 'warn';
+    else if (k === 'pactBreakWarning') {
+      // players = [victim, breaker]: the victim is told when attacks start, the breaker that the pact is running out
+      const victim = e.players[0] === me.id;
+      const who = state.players[e.players[1]]?.name ?? 'They';
+      text = victim ? `${who} broke your pact: they can attack in ${PACT_BREAK_DELAY} s` : `You broke the pact with ${state.players[e.players[0]]?.name ?? 'them'}: it ends in ${PACT_BREAK_DELAY} s`;
+      kind = victim ? 'bad' : 'warn';
+    }
+    this.toasts.show({ text, kind, icon: k === 'pactBreakWarning' || k === 'pactBroken' ? 'breakAlly' : pact ? 'pact' : 'peace', swatch, ms: k === 'pactBreakWarning' ? 7000 : 5000, key: `treaty:${k}:${other}`, onClick });
+    return true;
+  }
+
   private allyToast(state: GameState, me: Player, e: GameEvent, go: (() => void) | undefined): boolean {
     const ak = allyEventKind(e);
     if (ak) {

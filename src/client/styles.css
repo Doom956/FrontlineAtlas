@@ -1315,6 +1315,114 @@ canvas.minimap {
   min-width: 0;
   padding: 0 10px;
 }
+/* peace and pact: the buttons with their visible reasons, the offer panel, the treaty rows */
+.nc-acts .nc-tw {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.nc-acts .nc-tw.why {
+  grid-column: 1 / -1;
+}
+.nc-why {
+  font: 500 12px/16px var(--f-ui);
+  color: var(--dim);
+}
+.tp {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--edge);
+  border-radius: var(--r);
+  background: var(--metal-2);
+}
+.tp-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 700 13px/18px var(--f-label);
+}
+.tp-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tp-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tp-k {
+  font: 600 12px/16px var(--f-label);
+  color: var(--dim);
+}
+.tp-seg {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 4px;
+}
+.tp-seg-pact {
+  grid-template-columns: 1fr 1fr;
+}
+.tp-opt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px solid var(--edge);
+  border-radius: var(--r);
+  background: var(--ink);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tp-opt:hover:not(.on) {
+  background: var(--metal-3);
+}
+.tp-opt.on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.tp-opt.on .tp-amt {
+  color: var(--accent-ink);
+}
+.tp-name {
+  font: 600 13px/16px var(--f-ui);
+}
+.tp-amt {
+  font: 500 12px/14px var(--f-ui);
+  color: var(--dim);
+}
+.tp-note,
+.tp-why {
+  margin: 0;
+  font: 500 12px/16px var(--f-ui);
+  color: var(--dim);
+}
+.tp-why {
+  color: #f0a090;
+}
+.tp-acts {
+  display: flex;
+  gap: 6px;
+}
+.tp-acts .wr-btn {
+  flex: 1;
+  justify-content: center;
+}
+.dip .drow .treaty-ic {
+  display: inline-flex;
+  flex: none;
+}
+.dip .drow.breaking .dmeta {
+  color: #f0a090;
+}
 .mixbar {
   display: flex;
   height: 6px;

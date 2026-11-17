@@ -283,6 +283,16 @@ export function soundForEvent(e: GameEvent, humanId: number, near?: boolean): So
       return mine ? pick('allianceBroken') : null;
     case 'allianceExpired':
       return mine ? pick('allianceExpired') : null;
+    // peace deals and pacts reuse the alliance sounds
+    case 'treatyOffer':
+      return mine ? pick('allianceRequest') : null;
+    case 'treatyAccepted':
+      return mine ? pick('allianceFormed') : null;
+    case 'pactBreakWarning':
+    case 'pactBroken':
+      return mine ? pick('allianceBroken') : null;
+    case 'treatyEnded':
+      return mine ? pick('allianceExpired') : null;
     case 'eliminated':
       if (first) return pick('defeat');
       return global || mine ? pick('eliminated', mine ? 1 : 0.6) : null;

@@ -17,6 +17,9 @@ import { btn, el, setClass, setDisabled, setText, setTip, setVisible, type HudCt
 import { relationOf, TROOP_COLORS } from './drawers';
 import { iconSpan, lineIcon } from './glyph';
 import { AllyHelp } from './allyHelp';
+import { canOfferPact, canOfferPeace, fightingRecently } from '../../sim/treaty';
+import type { TreatyKind } from '../../sim/types';
+import { TreatyPanel, treatyAvailable } from './treatyUi';
 import { catSpan, pixelIcon } from './pixelIcons';
 
 export const GIFT_GOLD = 200;
@@ -43,6 +46,14 @@ export class NationCard {
   private gift: HTMLButtonElement;
   private embargo: HTMLButtonElement;
   private attack: HTMLButtonElement;
+  private peace: HTMLButtonElement;
+  private pact: HTMLButtonElement;
+  private peaceBox = el('div', 'nc-tw');
+  private pactBox = el('div', 'nc-tw');
+  private peaceWhy = el('span', 'nc-why');
+  private pactWhy = el('span', 'nc-why');
+  /** the peace / pact offer panel under the buttons */
+  private panel: TreatyPanel;
   /** allies: what they are up to, ask them to attack or for troops */
   private allyHelp: AllyHelp;
 
@@ -93,17 +104,32 @@ export class NationCard {
     this.ally.dataset.test = 'nc-ally';
     this.accept.dataset.test = 'nc-accept';
     this.gift.dataset.test = 'nc-gift';
-    acts.append(this.accept, this.decline, this.ally, this.brk, this.attack, this.gift, this.embargo);
+    this.panel = new TreatyPanel(ctx);
+    this.peace = btn('Peace', '', () => this.openPanel('peace'), 'peace');
+    this.peace.dataset.test = 'nc-peace';
+    this.pact = btn('Pact', '', () => this.openPanel('pact'), 'pact');
+    this.pact.dataset.test = 'nc-pact';
+    this.peaceWhy.dataset.test = 'nc-peace-why';
+    this.pactWhy.dataset.test = 'nc-pact-why';
+    this.peaceBox.append(this.peace, this.peaceWhy);
+    this.pactBox.append(this.pact, this.pactWhy);
+    acts.append(this.accept, this.decline, this.ally, this.brk, this.attack, this.gift, this.embargo, this.peaceBox, this.pactBox);
     this.allyHelp = new AllyHelp(ctx);
-    this.el.append(head, stats, this.mix, this.mixNote, this.allyHelp.el, acts);
+    this.el.append(head, stats, this.mix, this.mixNote, this.allyHelp.el, acts, this.panel.el);
   }
 
   open(id: number): void {
+    if (id !== this.id) this.panel.close();
     this.id = id;
     setVisible(this.el, true);
     this.ctx.refreshSoon();
   }
+  /** Opens the peace or pact offer panel for this nation (the buttons and the radial menu). */
+  openPanel(kind: TreatyKind): void {
+    if (this.id > 0) this.panel.open(kind, this.id);
+  }
   close(): void {
+    this.panel.close();
     this.id = 0;
     setVisible(this.el, false);
   }
@@ -188,6 +214,24 @@ export class NationCard {
     const lbl = this.embargo.querySelector('.wr-btn-l');
     if (lbl) setText(lbl as HTMLElement, emb ? 'Lift embargo' : 'Embargo');
     setTip(this.embargo, emb ? 'Allow trade ships with them again' : 'Stop trade ships between you');
+    // peace deals and pacts: peace while you fight them, a pact otherwise; a reason shows under a button that can't be used
+    const avail = treatyAvailable(s, me, p);
+    const fighting = avail && fightingRecently(s, me.id, p.id);
+    const peaceChk = canOfferPeace(s, me.id, p.id);
+    const pactChk = canOfferPact(s, me.id, p.id);
+    setVisible(this.peaceBox, avail && fighting);
+    setVisible(this.pactBox, avail && !fighting);
+    setDisabled(this.peace, !peaceChk.ok);
+    setDisabled(this.pact, !pactChk.ok);
+    setText(this.peaceWhy, peaceChk.ok ? '' : peaceChk.reason);
+    setText(this.pactWhy, pactChk.ok ? '' : pactChk.reason);
+    setVisible(this.peaceWhy, !peaceChk.ok);
+    setVisible(this.pactWhy, !pactChk.ok);
+    setClass(this.peaceBox, 'why', !peaceChk.ok);
+    setClass(this.pactBox, 'why', !pactChk.ok);
+    const open = this.panel.current;
+    if (open && (!avail || (open.kind === 'peace') !== fighting)) this.panel.close();
+    this.panel.update(s, me);
     setVisible(this.attack, !isMe && !allied);
     const send = troopSum(troopsToSend(me, this.ctx.ui));
     const near = borders(s, me.id, p.id);
