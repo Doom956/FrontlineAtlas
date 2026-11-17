@@ -15,7 +15,7 @@ import { buildingSpacing, samRadius } from '../../sim/buildings';
 import { isWater, type Building, type GameState } from '../../sim/types';
 import { COAST, CU, levelPill, OU, OV } from '../art/detailed/buildings';
 import type { TerrainData } from './terrain';
-import { artScale, bakeArt, BuildingSprites, fitScale, hasArt, lookFor, quantTint, seaFacing, specOf, spriteKey, type AddonState, type ArtLook, type Facing } from './buildingArt';
+import { artScale, bakeArt, balanceShift, BuildingSprites, fitScale, hasArt, lookFor, quantTint, seaFacing, specOf, spriteKey, type AddonState, type ArtLook, type Facing } from './buildingArt';
 import type { Camera } from '../camera';
 import { CATEGORY_COLORS, drawMarker, ICON_INFO, markerReady, type BuildingIconId } from '../icons';
 import type { FogView } from '../fog/fogView';
@@ -36,6 +36,18 @@ export const CATEGORY_PLATES: Record<keyof typeof CATEGORY_COLORS, string> = {
   logistics: '#2a7a4b',
   advanced: '#6e3ca3',
 };
+
+/** How far a marker plate is pulled toward the land under it (its category colour stays the main colour, the glyph stays white). */
+const PLATE_LAND_PULL = 0.34;
+/** A category plate colour (hex) pulled toward the land colour under it, snapped to steps of 12 so the marker sprites stay few. */
+export function landPlate(hex: string, land: readonly number[]): string {
+  const q = (v: number): number => Math.max(0, Math.min(255, Math.round(v / 12) * 12));
+  const ch = (k: number): number => {
+    const base = parseInt(hex.slice(1 + k * 2, 3 + k * 2), 16);
+    return q(base + (land[k] - base) * PLATE_LAND_PULL);
+  };
+  return `rgb(${ch(0)},${ch(1)},${ch(2)})`;
+}
 
 /** Marker size (CSS px) for a zoom level. */
 export function markerSize(zoom: number): number {
@@ -177,7 +189,7 @@ export class BuildingLayer {
           const sy = oy + (ty + 0.5) * z;
           const s = b.type === 'city' ? size * 1.18 : size;
           if (look && hasArt(b.type) && this.drawArt(ctx, state, b, sx, sy, look, z, colors, dpr, false)) continue;
-          this.drawOne(ctx, b, sx, sy, s, colors, dpr);
+          this.drawOne(ctx, b, sx, sy, s, colors, dpr, this.tintOf(b, w, state.map.height));
         }
       }
     }
@@ -187,7 +199,7 @@ export class BuildingLayer {
       const fx = ox + (tx + 0.5) * z;
       const fy = oy + (ty + 0.5) * z;
       if (look && hasArt(b.type) && this.drawArt(ctx, state, b, fx, fy, look, z, colors, dpr, true)) continue;
-      this.drawOne(ctx, b, fx, fy, Math.max(30, size * 1.35), colors, dpr);
+      this.drawOne(ctx, b, fx, fy, Math.max(30, size * 1.35), colors, dpr, this.tintOf(b, w, state.map.height));
     }
   }
 
@@ -309,8 +321,9 @@ export class BuildingLayer {
     let top = y - OV * scale + bk.top - 15;
     let cx = x;
     if (facing === 0 && b.type !== 'port') {
-      ctx.drawImage(bk.canvas, Math.round((x - OU * scale) * dpr) / dpr, Math.round((y - OV * scale) * dpr) / dpr, bk.w, bk.h);
-      cx = x - OU * scale + bk.cx;
+      const sx = x + balanceShift(spec, look) * scale;
+      ctx.drawImage(bk.canvas, Math.round((sx - OU * scale) * dpr) / dpr, Math.round((y - OV * scale) * dpr) / dpr, bk.w, bk.h);
+      cx = sx - OU * scale + bk.cx;
     } else {
       // a port: the model's coast line (u = COAST) lies on the tile's edge toward the sea, the pier reaches out to sea
       const dx = [1, 0, -1, 0][facing];
@@ -376,7 +389,7 @@ export class BuildingLayer {
     return true;
   }
 
-  private drawOne(ctx: CanvasRenderingContext2D, b: Building, x: number, y: number, size: number, colors: readonly RGB[], dpr: number): void {
+  private drawOne(ctx: CanvasRenderingContext2D, b: Building, x: number, y: number, size: number, colors: readonly RGB[], dpr: number, land: RGB | null = null): void {
     const ghost = ghosts.has(b);
     const oc = colors[b.owner] ?? [128, 128, 128];
     // last seen (fog of war): a grey frame, faded, no level badge
@@ -391,7 +404,7 @@ export class BuildingLayer {
     const fw = clamp(size * 0.1, 2, 4);
     ctx.globalAlpha = alpha;
     // Pixel Clean: a soft dark edge around the category plate, and the owner as a thin band under it (not a frame)
-    ctx.fillStyle = 'rgba(12,15,20,0.55)';
+    ctx.fillStyle = land ? 'rgba(12,15,20,0.38)' : 'rgba(12,15,20,0.55)';
     ctx.beginPath();
     ctx.roundRect(x - r - 1, y - r - 1, size + 2, size + fw + 3, size * 0.26);
     ctx.fill();
@@ -401,7 +414,7 @@ export class BuildingLayer {
     ctx.fill();
     ctx.globalAlpha = 1;
     const cat = ICON_INFO[id].category;
-    const opts = { plate: cat ? CATEGORY_PLATES[cat] : c, dpr };
+    const opts = { plate: land && cat ? landPlate(CATEGORY_PLATES[cat], land) : cat ? CATEGORY_PLATES[cat] : c, dpr };
     if (markerReady(id, size, opts) || this.budget-- > 0) drawMarker(ctx, id, x, y, size, { ...opts, alpha });
     else drawMarker(ctx, id, x, y, size, { plate: NEUTRAL_PLATE, dpr, alpha });
     this.drawn++;

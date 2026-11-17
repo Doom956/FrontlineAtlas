@@ -1451,7 +1451,7 @@ export function bakeBuilding(spec: BuildingSpec, owner: RGB, scale: number, dpr:
   const by0 = (b: Baked): number => oy - b.oy;
   let topRow = CH;
   /** composites a baked sprite over the cell; `skip` leaves out pixels */
-  const lay = (b: Baked, skip?: (x: number, y: number) => boolean): void => {
+  const lay = (b: Baked, skip?: (x: number, y: number) => boolean, gain = 1): void => {
     for (let y = 0; y < b.h; y++) {
       for (let x = 0; x < b.w; x++) {
         const s = (y * b.w + x) * 4;
@@ -1465,9 +1465,19 @@ export function bakeBuilding(spec: BuildingSpec, owner: RGB, scale: number, dpr:
         const da = d[o + 3] / 255;
         const oa = sa + da * (1 - sa);
         const w = da * (1 - sa);
-        d[o] = (b.data[s] * sa + d[o] * w) / oa;
-        d[o + 1] = (b.data[s + 1] * sa + d[o + 1] * w) / oa;
-        d[o + 2] = (b.data[s + 2] * sa + d[o + 2] * w) / oa;
+        // colours lightly pulled toward the real land under them (gain < 1), so nothing looks pasted on
+        let r = b.data[s];
+        let gc = b.data[s + 1];
+        let bl = b.data[s + 2];
+        if (gain < 1) {
+          const land = under.rgb(X, Y);
+          r = land[0] + (r - land[0]) * gain;
+          gc = land[1] + (gc - land[1]) * gain;
+          bl = land[2] + (bl - land[2]) * gain;
+        }
+        d[o] = (r * sa + d[o] * w) / oa;
+        d[o + 1] = (gc * sa + d[o + 1] * w) / oa;
+        d[o + 2] = (bl * sa + d[o + 2] * w) / oa;
         d[o + 3] = oa * 255;
       }
     }
@@ -1486,9 +1496,9 @@ export function bakeBuilding(spec: BuildingSpec, owner: RGB, scale: number, dpr:
       const ry = y - G;
       return rx >= 0 && ry >= 0 && rx < raw.w && ry < raw.h && raw.data[(ry * raw.w + rx) * 4 + 3] >= 200;
     });
-    lay(rasterize({ parts, ground: 0 }, res, 0, { facings: 32, owner }));
+    lay(rasterize({ parts, ground: 0 }, res, 0, { facings: 32, owner }), undefined, CLOSE_GAIN);
   } else {
-    lay(outlineOf(rasterize({ parts, ground: 0.3 }, res, 0, { facings: 32, owner }), owner, ringWidth(g.k)));
+    lay(outlineOf(rasterize({ parts, ground: 0.3 }, res, 0, { facings: 32, owner }), owner, ringWidth(g.k)), undefined, CLOSE_GAIN);
   }
   const cv = makeCanvas(CW, CH);
   const cx = cv.getContext('2d');
@@ -1524,6 +1534,9 @@ export function levelPill(ctx: CanvasRenderingContext2D, cx: number, y: number, 
 }
 
 // ------------------------------------------------------------------------------------------------- far look (normal zoom)
+
+/** The close look's colours are pulled this much toward the land under them too (1 = not at all; the far look pulls a bit more). */
+const CLOSE_GAIN = 0.94;
 
 /** The far look (normal zoom): colours pulled toward the land, a thin soft owner outline, a wide soft shadow. */
 const FAR_GAIN = 0.9;

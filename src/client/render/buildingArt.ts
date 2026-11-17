@@ -1,7 +1,7 @@
-// The detailed building art on the map (art/detailed/buildings.ts) for fort, city, SAM site and port: which game state
-// maps to which picture (level look, add-ons, owner colour, ground tint), the two looks by zoom, and a sprite cache so a
-// picture is baked once per type, level, add-on, owner colour, look, pixel scale and ground colour (never per frame).
-// Other building types have no art and keep their flat marker (render/buildings.ts). No Math.random or Date here.
+// The detailed building art on the map (art/detailed/buildings.ts, buildingsMore.ts) for all 16 building types: which game
+// state maps to which picture (level look, add-ons, owner colour, ground tint), the two looks by zoom, and a sprite cache so
+// a picture is baked once per type, level, add-on, owner colour, look, pixel scale and ground colour (never per frame).
+// Below ART_ZOOM the flat markers stay (render/buildings.ts). No Math.random or Date here.
 import { BUILDINGS } from '../../sim/config';
 import type { BuildingType } from '../../sim/types';
 import { bakeBuilding, bakeBuildingFar, COAST, modelExtent, OU, OV, vnoise, type Addon, type BakedBuilding, type BuildingSpec, type Extent, type Under } from '../art/detailed/buildings';
@@ -49,14 +49,15 @@ export interface AddonState {
   samCover: boolean;
 }
 
-/** The types that have building art. */
+/** Every building type in the game has building art. */
+export const ART_TYPES: readonly BuildingType[] = ['city', 'farm', 'market', 'mine', 'oilWell', 'barracks', 'factory', 'arsenal', 'fort', 'watchtower', 'port', 'lab', 'hospital', 'airfield', 'sam', 'silo'];
 export function hasArt(type: BuildingType): boolean {
-  return type === 'fort' || type === 'city' || type === 'sam' || type === 'port';
+  return (ART_TYPES as readonly string[]).includes(type);
 }
 
 /** The highest level the models tell apart (city level 6 uses the level 5 skyline). */
 function modelLevel(type: BuildingSpec['type'], level: number): number {
-  const top = type === 'city' ? 5 : Math.min(BUILDINGS[type].maxLevel, type === 'sam' ? 3 : 5);
+  const top = Math.min(BUILDINGS[type].maxLevel, 5);
   return Math.max(1, Math.min(top, Math.round(level)));
 }
 
@@ -87,12 +88,14 @@ export function specOf(type: BuildingType, level: number, s: AddonState): Buildi
   return { type: t, level: modelLevel(t, level), addon: addonOf(type, s) };
 }
 
-/** Close look from CLOSE_ZOOM, far look A below it; null below ART_ZOOM (the flat markers). */
 /** Every spec that has art, for the size budget. */
-function allSpecs(): BuildingSpec[] {
+export function allSpecs(): BuildingSpec[] {
   const out: BuildingSpec[] = [];
-  const kinds: [BuildingSpec['type'], number, Addon[]][] = [['fort', 5, [null, 'flak', 'traps']], ['city', 5, [null, 'flak']], ['sam', 3, [null, 'radar']], ['port', 5, [null, 'guns']]];
-  for (const [type, top, addons] of kinds) for (let level = 1; level <= top; level++) for (const addon of addons) out.push({ type, level, addon });
+  for (const type of ART_TYPES) {
+    const addons: Addon[] = type === 'fort' ? [null, 'flak', 'traps'] : type === 'city' ? [null, 'flak'] : type === 'sam' ? [null, 'radar'] : type === 'port' ? [null, 'guns'] : [null];
+    const top = Math.min(BUILDINGS[type].maxLevel, 5);
+    for (let level = 1; level <= top; level++) for (const addon of addons) out.push({ type: type as BuildingSpec['type'], level, addon });
+  }
   return out;
 }
 
@@ -122,6 +125,25 @@ export function rotated(e: Extent, facing: number): Extent {
   return o;
 }
 
+/**
+ * Sideways shift (model units, times the pixel scale on screen) that puts the middle of a picture's reach on its tile: a
+ * wide, lopsided picture (an airfield, a big oil field) then takes the same room to each side, so it fits tight spacing.
+ * Ports turn to face the sea and are not shifted.
+ */
+export function balanceShift(spec: BuildingSpec, look: ArtLook): number {
+  if (spec.type === 'port') return 0;
+  const e = modelExtent(spec, look);
+  return (e.l - e.r) / 2;
+}
+
+/** The reach of a picture as drawn: balanced left and right (see balanceShift), a port turned to its facing. */
+export function drawnExtent(spec: BuildingSpec, look: ArtLook, facing: number): Extent {
+  const e = rotated(modelExtent(spec, look), facing);
+  if (spec.type === 'port') return e;
+  const m = (e.l + e.r) / 2;
+  return { l: m, r: m, u: e.u, d: e.d };
+}
+
 /** What a picture may take: the scale it is baked at (null = too small, keep the flat marker) and the room left round it for labels. */
 export interface ArtFit {
   scale: number;
@@ -135,7 +157,7 @@ export interface ArtFit {
  * units' own scale (artScale) and in steps of SCALE_STEP; the picture is baked at that scale from the part models.
  */
 export function fitScale(spec: BuildingSpec, look: ArtLook, facing: number, zoom: number, spacing: number): ArtFit | null {
-  const e = rotated(modelExtent(spec, look), facing);
+  const e = drawnExtent(spec, look, facing);
   const total = SPACE_SHARE * spacing * zoom;
   const wb = total / 2;
   const ub = total * upShareOf();
