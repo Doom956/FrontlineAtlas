@@ -82,7 +82,6 @@ import {
   AI_PACT_LEADER_SHARE,
   AI_PACT_MAX_ACTIVE,
   AI_PACT_REPEAT_GAP,
-  AI_PEACE_WINNER_SHARE,
   AI_PACT_STRONG_RATIO,
   AI_PEACE_ARMY_RATIO,
   AI_PEACE_LAND_LOSS,
@@ -3049,25 +3048,16 @@ export function aiWantsTreaty(state: GameState, ai: number, o: TreatyOffer): boo
   if (!me || !me.alive || me.isHuman || isTribe(me)) return false;
   if (isTraitor(state, from) || isPactBreaker(state, from)) return false;
   if (treatyRule(state, from, ai)) return false;
-  const gets = o.youGive !== 'none';
-  const gives = o.theyGive !== 'none';
   if (o.kind === 'peace') {
     if (losingTo(state, ai, from)) return !BIG_TERMS.includes(o.theyGive) || armyOf(state, ai) < armyOf(state, from) * AI_PACT_BREAK_RATIO;
-    // Not losing: only while stretched over two or more fronts, and never as a land winner (it keeps going).
-    if (landShare(state, ai) >= AI_PEACE_WINNER_SHARE || isLandLeader(state, ai) || frontsOf(state, ai).length < 2) return false;
-    return !(gets && gives);
+    // Not losing: no peace (a winner keeps going; plain two-front peace made far too many deals).
+    return false;
   }
   if (nextTarget(state, ai) === from || runawayLeader(state) === from) return false;
   if (pactsHeld(state, ai) >= AI_PACT_MAX_ACTIVE || landShare(state, ai) >= AI_PACT_LEADER_SHARE || landShare(state, from) >= AI_PACT_LEADER_SHARE) return false;
   return (state.opinion[ai]?.[from] ?? 0) >= -30;
 }
 
-/** The nation holding the most land (ties: the lower id). */
-function isLandLeader(state: GameState, id: number): boolean {
-  let best = 0;
-  for (const p of state.players) if (p.id !== 0 && p.alive && !isTribe(p) && (!best || p.tiles > state.players[best].tiles)) best = p.id;
-  return best === id;
-}
 /** Active (unbroken) pacts of a nation. */
 function pactsHeld(state: GameState, id: number): number {
   let n = 0;
@@ -3129,10 +3119,6 @@ function treatyDiplomacy(ctx: Ctx, drop: number): void {
       tries.set(foe, n + 1);
       return;
     }
-  } else if (fronts.length >= 2) {
-    let weak = 0;
-    for (const q of fronts) if (!weak || ctx.m.army[q] < ctx.m.army[weak]) weak = q;
-    if (weak && offerPeace(weak, 'none')) return;
   }
 
   // Pacts: offer one to a strong neighbour we are not targeting (no renewals: a pact ends, then a rest).

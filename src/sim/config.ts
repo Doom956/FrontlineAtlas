@@ -1041,8 +1041,6 @@ export const AI_PACT_MAX_ACTIVE = 1;
 export const AI_PACT_LEADER_SHARE = 0.2;
 /** AI: after a pact with a nation ended, no new pact with it for this many seconds (no endless pact chains). */
 export const AI_PACT_REPEAT_GAP = 360;
-/** AI: a nation not losing accepts peace only while it holds less than this share of the land (a winner keeps going). */
-export const AI_PEACE_WINNER_SHARE = 0.25;
 /** Warlord AIs may break a pact with a victim weaker than this share of their army (25% seeded roll). */
 export const AI_PACT_BREAK_RATIO = 0.4;
 

@@ -325,7 +325,7 @@ describe('AI and treaties', () => {
     from, to, kind, theyGive, youGive, seconds: kind === 'pact' ? 360 : 0, expiresTick: 0,
   });
 
-  it('a winning AI takes peace only on two or more fronts; a losing one takes it', () => {
+  it('a winning AI never takes peace; a losing one takes it', () => {
     const s = world();
     s.map.landTileCount = 100000; // nobody is a land winner
     s.players[1].troops = inf(200000);
@@ -338,15 +338,9 @@ describe('AI and treaties', () => {
     expect(aiWantsTreaty(s, 1, offer(2, 1, 'peace', 'goldSmall', 'goldSmall'))).toBe(false);
     // losing 2 asked by 1:
     expect(aiWantsTreaty(s, 2, offer(1, 2, 'peace'))).toBe(true);
-    // a second front: plain peace is fine for the winner
+    // not even on a second front: a winner keeps going
     expect(act(s, 1, { type: 'attack', tile: at(s, 20, 15), troops: inf(10000) }).ok).toBe(true);
-    s.players[1].tiles = 500;
-    s.players[3].tiles = 10;
-    s.players[2].tiles = 10;
-    s.players[4].tiles = 10;
-    expect(aiWantsTreaty(s, 1, offer(2, 1, 'peace'))).toBe(false); // never as the land leader
-    s.players[3].tiles = 600;
-    expect(aiWantsTreaty(s, 1, offer(2, 1, 'peace'))).toBe(true);
+    expect(aiWantsTreaty(s, 1, offer(2, 1, 'peace'))).toBe(false);
     // a pact breaker or traitor gets nothing
     s.players[2].pactBreakerUntil = s.tick + 100;
     expect(aiWantsTreaty(s, 1, offer(2, 1, 'peace', 'none', 'goldLarge'))).toBe(false);
