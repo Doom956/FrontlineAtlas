@@ -44,15 +44,10 @@ describe('building links', () => {
     expect(links.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('puts a SAM site inside the perimeter of the nearest fort of its owner', () => {
-    const f1 = b('fort', 10, 10);
-    const f2 = b('fort', 10, 40);
+  it('never fences a SAM site: it stays unlinked next to a fort', () => {
+    const f1 = b('fort', 10, 12);
     const s = b('sam', 15, 12);
-    const far = b('sam', 10, 80);
-    const links = pairLinks([f1, f2, s, far], land());
-    expect(links.filter((l) => l.kind === 'perimeter')).toEqual([{ kind: 'perimeter', a: s.id, b: f1.id }]);
-    expect(pairLinks([s, b('fort', 15 + LINK_MAX_DIST.perimeter + 1, 12)], land())).toEqual([]);
-    expect(pairLinks([s, b('fort', 18, 12, 2)], land({ owner: () => 1 }))).toEqual([]);
+    expect(pairLinks([f1, s], land())).toEqual([]);
   });
 
   it('follows the shore for ports and refuses ports on different coasts', () => {
@@ -84,6 +79,6 @@ describe('building links', () => {
     const a = pairLinks(set, land());
     const r = pairLinks(set.slice().reverse(), land());
     expect(r).toEqual(a);
-    expect(a.length).toBeGreaterThan(3);
+    expect(a.length).toBeGreaterThanOrEqual(3);
   });
 });

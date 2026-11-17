@@ -1,11 +1,11 @@
 // Which same-owner buildings are drawn as one place (client only, pure: no DOM, no random). Given the buildings and a
 // terrain query it returns the connectors to draw UNDER the buildings: a quay between ports on the same coast, a trench
-// between forts, a road with suburbs between cities, and a perimeter fence round a SAM site and the fort it stands by.
+// between forts, a road with suburbs between cities.
 // It changes no game rule and no hit area. The result depends only on the buildings and the terrain, so the game can
 // compute it per owner, bake it into tiles or per-pair sprites and rebuild only the pairs whose buildings changed.
 
 export type LinkType = 'fort' | 'city' | 'sam' | 'port';
-export type LinkKind = 'quay' | 'trench' | 'road' | 'perimeter';
+export type LinkKind = 'quay' | 'trench' | 'road';
 
 export interface LinkBuilding {
   id: number;
@@ -26,7 +26,7 @@ export interface LinkTerrain {
 
 export interface BuildingLink {
   kind: LinkKind;
-  /** ids of the two buildings, a < b for a chain link; for a perimeter a is the SAM site and b the fort */
+  /** ids of the two buildings, a < b for a chain link */
   a: number;
   b: number;
   /** quay only: the polyline along the shore, in tile centres, from a to b */
@@ -37,8 +37,8 @@ export interface BuildingLink {
 }
 
 /** Longest connector, in tiles between the two anchors. */
-export const LINK_MAX_DIST: Record<LinkKind, number> = { quay: 16, trench: 18, road: 20, perimeter: 12 };
-/** How many same-kind links one building takes (a chain, never a mesh). A SAM site joins one fort. */
+export const LINK_MAX_DIST: Record<LinkKind, number> = { quay: 16, trench: 18, road: 20 };
+/** How many same-kind links one building takes (a chain, never a mesh). */
 export const LINK_MAX_DEGREE = 2;
 /** A quay needs this share of its path on the shore (land touching water). */
 export const QUAY_MIN_SHORE = 0.6;
@@ -133,9 +133,9 @@ export function quayPath(a: LinkBuilding, b: LinkBuilding, t: LinkTerrain): { pa
 
 /**
  * The connectors for a set of buildings. Rules: both buildings the same owner and the same kind (port-port, fort-fort,
- * city-city) or a SAM site and a fort; within LINK_MAX_DIST tiles; every point between them dry land of that owner (never
+ * city-city); within LINK_MAX_DIST tiles; every point between them dry land of that owner (never
  * across water or enemy land; ports instead follow a shore that is at least QUAY_MIN_SHORE of the way). Nearest pairs
- * first, each building takes at most LINK_MAX_DEGREE chain links and a SAM site joins only its nearest fort. The result
+ * first, each building takes at most LINK_MAX_DEGREE chain links. The result
  * is the same for any input order.
  */
 export function pairLinks(buildings: readonly LinkBuilding[], t: LinkTerrain): BuildingLink[] {
@@ -167,20 +167,6 @@ export function pairLinks(buildings: readonly LinkBuilding[], t: LinkTerrain): B
       degree.set(a.id, take(a.id) + 1);
       degree.set(b.id, take(b.id) + 1);
     }
-  }
-  // a SAM site beside a fort of its owner sits inside the fort's perimeter
-  for (const s of bs.filter((b) => b.type === 'sam' && b.owner !== 0)) {
-    let best: LinkBuilding | null = null;
-    let bd = 1e9;
-    for (const f of bs) {
-      if (f.type !== 'fort' || f.owner !== s.owner) continue;
-      const d = dist(s, f);
-      if (d <= LINK_MAX_DIST.perimeter && d < bd && clear(samples(s, f), s.owner, t)) {
-        bd = d;
-        best = f;
-      }
-    }
-    if (best) out.push({ kind: 'perimeter', a: s.id, b: best.id });
   }
   return out;
 }

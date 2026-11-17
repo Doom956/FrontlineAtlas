@@ -368,57 +368,6 @@ function road(c: Cells, pts: P[], seed: number): void {
   }
 }
 
-/** The chamfered rectangle round a fort and the SAM site beside it, in screen px, clockwise from the top left. */
-function perimeterBox(a: LinkSite, b: LinkSite, scale: number): { poly: P[]; x0: number; x1: number; y0: number; y1: number; gate: number } {
-  const pad = 3 * scale;
-  const reach = (s: LinkSite): [number, number, number, number] => [s.sx - s.ext.l * scale, s.sx + s.ext.r * scale, s.sy - Math.min(s.ext.u, 20) * scale, s.sy + s.ext.d * scale * FORE];
-  const ra = reach(a);
-  const rb = reach(b);
-  const x0 = Math.min(ra[0], rb[0]) - pad;
-  const x1 = Math.max(ra[1], rb[1]) + pad;
-  const y0 = Math.min(ra[2], rb[2]) - pad;
-  const y1 = Math.max(ra[3], rb[3]) + pad;
-  const ch = Math.min(5 * scale, (x1 - x0) / 4, (y1 - y0) / 4);
-  const poly: P[] = [[x0 + ch, y0], [x1 - ch, y0], [x1, y0 + ch], [x1, y1 - ch], [x1 - ch, y1], [x0 + ch, y1], [x0, y1 - ch], [x0, y0 + ch]];
-  return { poly, x0, x1, y0, y1, gate: (x0 + x1) / 2 };
-}
-
-/** A fence on an earth berm round the fort and the SAM site, a trampled yard inside, and a gate on the south side. */
-function perimeter(c: Cells, box: ReturnType<typeof perimeterBox>): void {
-  const sc = c.p.scale;
-  const k = c.k;
-  // yard
-  const ch = 5 * sc;
-  for (let j = Math.floor(box.y0 / k); j <= Math.ceil(box.y1 / k); j++) {
-    for (let i = Math.floor(box.x0 / k); i <= Math.ceil(box.x1 / k); i++) {
-      const x = (i + 0.5) * k;
-      const y = (j + 0.5) * k;
-      if (x < box.x0 || x > box.x1 || y < box.y0 || y > box.y1) continue;
-      const cx = Math.min(x - box.x0, box.x1 - x);
-      const cy = Math.min(y - box.y0, box.y1 - y);
-      if (cx + cy < ch) continue;
-      const u = c.under(i, j);
-      if (u.water) continue;
-      c.put(i, j, hash(i, j, 53) < 0.1 ? mix(u.base, [96, 80, 56], 0.3) : mix(u.base, [116, 96, 66], 0.24));
-    }
-  }
-  stroke(c, [...box.poly, box.poly[0]], 2.2, true, (q) => {
-    if (q.water) return null;
-    const gate = Math.abs((q.i + 0.5) * k - box.gate) < 4.2 * sc && Math.abs((q.j + 0.5) * k - box.y1) < 3 * sc;
-    if (gate) return Math.abs(Math.abs((q.i + 0.5) * k - box.gate) - 4.2 * sc) < 0.9 * sc ? [44, 46, 48] : mix(q.base, [116, 96, 68], 0.5);
-    const d = q.d;
-    if (d < -2.0 || d > 1.4) return null;
-    if (d > 0.5) return hash(q.i, q.j, 61) < 0.4 ? mix(q.base, EARTH, 0.3) : null;
-    if (d >= -0.6) {
-      if (q.s % 4 < 1.0) return [44, 46, 48];
-      return (q.i + q.j) & 1 ? mix(q.base, [206, 206, 200], 0.6) : null;
-    }
-    const f = 1 + 0.2 * face(-q.nx, -q.ny);
-    const col = mix(q.base, EARTH, 0.55);
-    return [cl(col[0] * f), cl(col[1] * f), cl(col[2] * f)];
-  });
-}
-
 /**
  * Paints the connectors of `p.links` into one transparent layer on `ctx` (CSS px, the rectangle p.w by p.h). Draw it
  * before the buildings. Pairs whose sites are missing are skipped.
@@ -426,13 +375,6 @@ function perimeter(c: Cells, box: ReturnType<typeof perimeterBox>): void {
 export function paintLinks(ctx: CanvasRenderingContext2D, p: LinkPaint): void {
   const g = gridOf(p.scale, p.dpr);
   const c = new Cells(g.k, g.res, p);
-  const boxes: ReturnType<typeof perimeterBox>[] = [];
-  for (const l of p.links) {
-    const a = p.sites.get(l.a);
-    const b = p.sites.get(l.b);
-    if (!a || !b) continue;
-    if (l.kind === 'perimeter') boxes.push(perimeterBox(a, b, p.scale));
-  }
   const line = (l: BuildingLink): P[] => {
     if (l.full ?? l.path) return (l.full ?? l.path ?? []).map((q) => p.toScreen(q[0], q[1]));
     const a = p.sites.get(l.a);
@@ -460,7 +402,6 @@ export function paintLinks(ctx: CanvasRenderingContext2D, p: LinkPaint): void {
   }
   for (const l of p.links) if (l.kind === 'trench') trench(c, line(l), l.a);
   for (const l of p.links) if (l.kind === 'road') road(c, line(l), l.a);
-  for (const bx of boxes) perimeter(c, bx);
   const cv = document.createElement('canvas');
   cv.width = c.W;
   cv.height = c.H;

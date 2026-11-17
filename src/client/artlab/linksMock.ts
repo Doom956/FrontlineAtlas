@@ -1,6 +1,6 @@
 // The art lab's "Connected buildings" mockup (art lab builds only): same-owner buildings that stand near each other are
-// drawn as one place. Ports share a harbour wall along the coast, forts a trench line, cities a road with suburbs and a
-// SAM site next to a fort sits inside a fence round both. Which pairs join is art/detailed/buildingLinks.ts (pure, tested);
+// drawn as one place. Ports share a harbour wall along the coast, forts a trench line, cities a road with suburbs.
+// Which pairs join is art/detailed/buildingLinks.ts (pure, tested);
 // the pixels are art/detailed/buildingLinkArt.ts. Every pair is shown BEFORE (loose stamps) and AFTER (connected) at zoom
 // 8 (far look) and zoom 11 (close look) over the game's own Baltic terrain. The game itself is unchanged.
 import { buildTerrain } from '../render/terrain';
@@ -151,9 +151,6 @@ function scenes(world: World): Scene[] {
   const ownerAt = (ax: number) => (x: number, y: number): number => (world.land(x, y) ? (x < bf(ax)(y) ? 1 : 2) : 0);
   const c = search(world, cl, ownerAt, (l) => l.length === 1 && l[0].kind === 'road', 1);
   if (c) make('cities', 'Cities growing together', 'Cities of the same nation grow a road with houses along it toward each other: dense next to each city, thinning out in the middle. The red city across the border is not joined to the blue ones, and nothing crosses the border.', c.ax, c.ay, cl, ownerAt(c.ax), c.ax - 3, c.ay, bf(c.ax));
-  const sl: Layout = [{ type: 'fort', level: 3, dx: 0, dy: 0, owner: 1 }, { type: 'sam', level: 1, dx: 6, dy: -2, owner: 1 }, { type: 'sam', level: 3, dx: 21, dy: 3, owner: 1 }];
-  const s = search(world, sl, allBlue, (l) => l.length === 1 && l[0].kind === 'perimeter', 3);
-  if (s) make('samfort', 'SAM site inside a fort', 'A SAM site beside a fort of the same nation sits inside the fort\'s perimeter: a fence on an earth berm round both, a trampled yard and a gate. A SAM site far from any fort (right) keeps standing alone.', s.ax, s.ay, sl, allBlue(), s.ax + 9, s.ay);
   return out;
 }
 
