@@ -7,14 +7,14 @@
 //              ground path, short when the missile stands up, fainter the higher it is, and meets it again at impact
 //   launch     smoke and dust boil out round the silo and spread low over the ground, a white flash at ignition and
 //              the motor's light on the ground while the missile is still low
-//   staging    the atom bomb: each stage burns out and parts with a small puff and a faint condensation ring, the
+//   staging    the atom bomb: each stage burns out and parts quietly (no burst), the
 //              spent stage tumbles away and falls back with a short smoke trail and its own shadow, kicking up a small
-//              dust puff where it lands (no damage: nothing here touches the game); the next motor lights with a flash.
+//              dust puff where it lands (no damage: nothing here touches the game); the next motor lights with its normal flame.
 //              The third stage burns out near the apex and coasts over it; on the way down the reentry vehicle parts
 //              from it and dives on the target with a hot glow at its nose and a thin bright streak behind it
 //   rocket     one stage: it burns out near the apex, then coasts down nose first with a faint trail (the trail layer)
 //              and a small reentry glow before impact
-// Reduce motion: the arc and the staging stay (they are the flight), with no flashes, no tumbling and no rings.
+// Reduce motion: the arc and the staging stay (they are the flight), with no flashes and no tumbling.
 // Zoom: drawn from the sprite zoom in (render/units.ts); the small extras (cloud, rings, stage smoke, the streak) for
 // the first EXTRAS_CAP missiles of a frame only.
 import type { MotionParams } from '../motion';
@@ -262,8 +262,6 @@ function frameOf(b: BallisticDraw): Frame {
   return FR;
 }
 
-/** How long the trail stays thick after a stage parts (ms). */
-const KICK_MS = 800;
 /** The staging effects are drawn this many times the art pixel, so they read at normal zoom. */
 const DRAMA = 2.1;
 
@@ -281,11 +279,6 @@ export function ballisticExhaust(b: BallisticDraw, _m: MotionParams, out: Ballis
   out.y = y;
   out.angle = F.th;
   out.smoke = F.ph.smoke;
-  // a kick in the trail right after a stage parts: the new motor lights and the column thickens for a moment
-  if (b.kind === 'atomBomb' && F.ph.burn > 1) {
-    const age = (F.f - separations('atomBomb', F.total)[F.ph.burn - 2]) * F.total;
-    if (age < KICK_MS) out.smoke = Math.max(out.smoke, 1 - (age / KICK_MS) * 0.35);
-  }
   return out;
 }
 
@@ -375,9 +368,7 @@ export function drawBallistic(ctx: CanvasRenderingContext2D, b: BallisticDraw, m
 
   // ---- the motor's flame, then the body
   const [nx, ny] = nozzleOf(b.kind, F);
-  let boost = 0;
-  if (atomic && !still && (ph.burn === 2 || ph.burn === 3)) boost = clamp01(1 - ((f - separations('atomBomb', total)[ph.burn - 2]) * total) / 1000);
-  if (ph.burn) flame(ctx, b, F, nx, ny, still, A, boost);
+  if (ph.burn) flame(ctx, b, F, nx, ny, still, A, 0);
   const step = F.step;
   const facing = facingIndex(F.th, F.n);
   const body = baked(`${b.kind}|${ph.body}|${step}`, () => bodyModel(b.kind, ph.body, step), facing, F.n, F.res, b.owner, BODY, ring) ?? lastBody.get(b.seed) ?? null;
@@ -388,19 +379,6 @@ export function drawBallistic(ctx: CanvasRenderingContext2D, b: BallisticDraw, m
   }
   lastBody.set(b.seed, body);
   blit(ctx, body, F.bx, F.by, g);
-
-  // ---- the next stage's motor lighting: a white flash and a fire bloom at its mouth
-  if (atomic && (ph.burn === 2 || ph.burn === 3) && rich) {
-    const age = (f - separations('atomBomb', total)[ph.burn - 2]) * total;
-    const D = S * DRAMA;
-    const fl = flashAlpha(age, 380, still);
-    if (fl > 0) puff(ctx, 'flash', (5 + 6 * fl) * D, 1, nx, ny, g, fl);
-    if (!still && age >= 0 && age < 1000) {
-      const t = age / 1000;
-      puff(ctx, 'halo', (7 + 7 * (1 - t)) * D, 2, nx, ny, g, (1 - t) ** 1.4 * 0.75);
-      puff(ctx, 'fire', (2.6 + 2.2 * (1 - t)) * D, 3, nx - Math.cos(F.th) * 2 * D, ny - Math.sin(F.th) * 2 * D, g, (1 - t) ** 1.2 * 0.9, 1);
-    }
-  }
 
   // ---- reentry heat: the nose glowing orange to white
   if (ph.heat > 0.02) {
@@ -487,9 +465,8 @@ const GAP_MS = 420;
 
 /**
  * The j-th thing the atom bomb dropped (0 the first stage, 1 the second, 2 the third stage as the reentry vehicle
- * parts from it), `age` ms after it parted at flight fraction fs: a white flash and a big vapour cloud that expands
- * and lingers, a shock ring, a clear gap as the stage is thrown back, the stage itself bigger, tumbling with a thick
- * corkscrew of smoke, and a dust cloud where it lands.
+ * parts from it), `age` ms after it parted at flight fraction fs: a clear gap as the stage is thrown back, the stage
+ * itself bigger and tumbling, a thin smoke trail like the missile's own, and a small dust puff where it lands.
  */
 function spentStage(ctx: CanvasRenderingContext2D, b: BallisticDraw, F: Frame, j: number, fs: number, age: number, rich: boolean, still: boolean, seen: (x: number, y: number) => boolean, A: number): void {
   const g = F.g;
@@ -526,40 +503,6 @@ function spentStage(ctx: CanvasRenderingContext2D, b: BallisticDraw, F: Frame, j
   };
   const [x, y, gx, gy] = at(fall.t, age);
   if (!seen(gx, gy)) return;
-  // the separation: a flash, a big vapour cloud that expands and lingers, billows round it and a shock ring
-  const separation = (): void => {
-    if (!rich) return;
-    const big = j === 2 ? 0.7 : 1;
-    const fl = flashAlpha(age, 360, still);
-    if (fl > 0) {
-      puff(ctx, 'flash', (6 + 8 * fl) * D * big, 0, jx, jy, g, fl);
-      puff(ctx, 'halo', (9 + 6 * fl) * D * big, 1, jx, jy, g, fl * 0.7);
-    }
-    const LIVE = 3000;
-    if (age >= LIVE) return;
-    const t = age / LIVE;
-    const e = easeOut(t);
-    const fade = (1 - t) ** 0.8;
-    // the main cloud swells where the stages parted and hangs there
-    puff(ctx, 'vapour', (5 + 14 * e) * D * big, j, jx - ux * 2 * D * e, jy - uy * 2 * D * e - 2 * D * e, g, fade * 0.95);
-    // billows pushed out round it
-    for (let i = 0; i < 5; i++) {
-      const a = b.seed * 2.3 + j * 1.7 + (i / 5) * Math.PI * 2;
-      const d = (3 + 15 * e) * D * big * (0.7 + 0.5 * rnd(b.seed + i, j));
-      puff(ctx, i & 1 ? 'smoke' : 'vapour', (3 + 7 * e) * D * big, i + j, jx + Math.cos(a) * d, jy + Math.sin(a) * d * 0.8 - 3 * D * e, g, fade * 0.8);
-    }
-    // the shock ring: a thin ring of vapour racing out round the body's axis, seen at a slant
-    if (!still && j < 2 && age < 900) {
-      const tr = age / 900;
-      const R = (7 + 34 * easeOut(tr)) * D;
-      for (let i = 0; i < 12; i++) {
-        const a = (i / 12) * Math.PI * 2 + b.seed;
-        const rx = -uy * Math.cos(a) * R + ux * Math.sin(a) * R * 0.3;
-        const ry = ux * Math.cos(a) * R * 0.85 + uy * Math.sin(a) * R * 0.3;
-        puff(ctx, 'vapour', (2.2 + 1.6 * tr) * D, i, jx + rx, jy + ry, g, (1 - tr) ** 0.7 * 0.9);
-      }
-    }
-  };
   if (fall.t >= 1) {
     // on the ground: a dust cloud where it came down (nothing is hit)
     const da = age - fall.fallMs;
@@ -571,21 +514,21 @@ function spentStage(ctx: CanvasRenderingContext2D, b: BallisticDraw, F: Frame, j
         puff(ctx, i & 1 ? 'smoke' : 'dust', (2.6 + 6 * e) * D * (0.8 + 0.12 * i), i + j, gx + sx, gy - e * 3 * D - Math.abs(i - 2) * 0.6 * D, g, (1 - t) ** 1.1 * 0.8);
       }
     }
-    separation();
     return;
   }
-  // its thick smoke corkscrew: puffs along its fall, thrown out to alternate sides as it tumbles (the stages that
-  // smoulder most, the bus less)
+  // its smoke trail, like the missile's own: a thin line of puffs along its fall that thins and fades as it drops, with
+  // a little residual smoke from the burnt-out motor near the stage itself
   if (rich) {
-    const N = still ? 4 : j < 2 ? 10 : 6;
+    const N = still ? 5 : j < 2 ? 12 : 7;
     for (let k = 1; k <= N; k++) {
-      const ag = age - k * 95;
+      const ag = age - k * 80;
       if (ag < 0) break;
       const tk = Math.min(1, ag / fall.fallMs);
       const [px, py] = at(tk, ag);
-      const sw = still ? 0 : Math.sin(fall.spin * 0.9 + k * 0.85) * (1.5 + 0.55 * k) * D;
-      puff(ctx, k % 3 === 0 ? 'soot' : 'smoke', (1.8 + 0.75 * k) * D, k + j, px - uy * sw, py + ux * sw, g, (1 - fall.t * 0.7) * Math.max(0.12, 0.85 - k * 0.065));
+      const life = clamp01(1 - (age - k * 80) / 2600);
+      puff(ctx, k % 4 === 0 ? 'vapour' : 'smoke', (0.9 + 0.22 * k) * D * (1 - 0.35 * fall.t), k + j, px, py, g, life * (1 - fall.t * 0.6) * Math.max(0.1, 0.7 - k * 0.045));
     }
+    if (age < 1400) puff(ctx, 'smoke', (1.6 + 1.4 * age / 1400) * D, j, x - ux * 3 * D, y - uy * 3 * D, g, (1 - age / 1400) * 0.5);
   }
   // its shadow on the ground, darker as it comes down; the stage itself, bigger than the missile's own bake
   const n = 16;
@@ -604,5 +547,4 @@ function spentStage(ctx: CanvasRenderingContext2D, b: BallisticDraw, F: Frame, j
     blit(ctx, body, x, y, g);
   }
   ctx.globalAlpha = A;
-  separation();
 }
