@@ -23,6 +23,7 @@ import { BuildingLayer, FAR_ZOOM } from './render/buildings';
 import { buildingsKey, clamp, ctx2d, shade, type RGB } from './render/common';
 import { DepositLayer } from './render/deposits';
 import { FrontLayer } from './render/fronts';
+import { TreatyLines } from './render/treatyLines';
 import { HeartlandLayer } from './render/heartland';
 import { liteWanted, MapGL } from './render/glmap';
 import { mapStyle } from './render/mapStyle';
@@ -131,6 +132,8 @@ export class Renderer {
   private selectedSet = new Set<number>();
   private selectedFrom: readonly number[] | null = null;
   private fronts = new FrontLayer();
+  /** dashed lines along the borders of your treaty partners (close zoom) */
+  private treatyLines = new TreatyLines();
   private heartland = new HeartlandLayer();
   private names = new NameLayer();
   private overlays = new Overlays();
@@ -183,7 +186,7 @@ export class Renderer {
     // software rendering: the overlay is drawn by the CPU straight away (cheaper than the GPU emulated on the CPU)
     this.ctx = ctx2d(canvas, this.gl?.lite ? { willReadFrequently: true } : undefined);
     this.mini = new Minimap(minimap);
-    this.feed.listeners.push(this.fronts.onChange, this.mini.onChange, this.names.onChange);
+    this.feed.listeners.push(this.fronts.onChange, this.treatyLines.onChange, this.mini.onChange, this.names.onChange);
   }
 
   /** Software rendering (no GPU): the light map is on (render/glmap.ts) and main.ts draws fewer frames. */
@@ -226,6 +229,7 @@ export class Renderer {
     this.deposits.setGame(state);
     this.units.reset(map.width);
     this.fronts.reset(map.width, this.feed);
+    this.treatyLines.reset(map.width, this.feed);
     this.names.setGame(state);
     this.overlays.reset(map.width);
     this.mini.setGame(state, this.terr);
@@ -398,6 +402,7 @@ export class Renderer {
     this.defense.drawGround(ctx, state, camera, nowMs, me, d); // tank trap hedgehogs (fx/defenseFx.ts)
     tf = performance.now();
     this.fronts.drawLines(ctx, state, camera, ui, d);
+    this.treatyLines.draw(ctx, state, camera, d);
     msFronts += performance.now() - tf;
     this.counterFx.draw(ctx, camera, nowMs); // the Counteroffensive arrow, under the buildings and units
     this.overlays.rings(ctx, state, camera, ui, snap, me);
