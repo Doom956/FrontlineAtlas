@@ -391,7 +391,7 @@ function buildScenes(w: World): Scene[] {
         const r = rails.find((q) => (q.a === t.a && q.b === t.b) || (q.a === t.b && q.b === t.a));
         if (!r) return [];
         const pts = r.a === t.from ? r.path : r.path.slice().reverse();
-        return [pointAt(pts, pathLength(pts) * t.at - 3)];
+        return [pointAt(pts, pathLength(pts) * t.at - 5.5)];
       });
       focus = ps.map((p): P => [p.x, p.y]);
       // the moving frames look a little ahead of the blue train, where its rail bends
@@ -586,7 +586,7 @@ function drawTrains(ctx: CanvasRenderingContext2D, sc: Scene, v: View, timeMs: n
 /** Wagons standing in a yard's sidings (close look), at the yard's two ends (the hub stands in its middle). */
 function drawYardWagons(ctx: CanvasRenderingContext2D, sc: Scene, v: View): void {
   if (v.zoom < SPRITE_ZOOM) return;
-  const sets: [CarKind[], number][] = [[['crates', 'drums'], 0.86], [[], 0], [['tank', 'flatTank'], 0.34], [['flatGun'], 0.84]];
+  const sets: [CarKind[], number][] = [[['crates', 'drums'], 0.86], [[], 0], [['tank', 'flatTank'], 0.34], [['flatHeavy'], 0.84]];
   sc.yards.forEach((line, i) => {
     const [cars, at] = sets[i % sets.length];
     if (!cars.length) return;

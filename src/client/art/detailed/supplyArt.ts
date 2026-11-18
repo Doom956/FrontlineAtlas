@@ -17,7 +17,7 @@
 //   cut front  the front border shimmers grey (a band of hard grey pixels whose light and dark move along it).
 import { MAP_LABEL_FAMILY } from '../../render/common';
 import { unitModel } from './models';
-import { project, rasterize, type Baked, type Model, type MatId, type Part } from './bake';
+import { project, rasterize, type Baked, type Model, partBox, type MatId, type Part } from './bake';
 import { drawBlob } from './blobs';
 import { bayer4, swampPool, trackTones, underCrown, underPeak, type TrackGround, type TrackPixels } from './buildingLinkArt';
 import { facingIndex, facingsFor, gridOf, type Grid } from './grid';
@@ -533,28 +533,26 @@ export function blitGround(ctx: CanvasRenderingContext2D, t: TrackPixels, P: num
 // ------------------------------------------------------------------------------------------------- trains
 
 /**
- * Car kinds. Military loads: 'flatTank' (a tank chained down on a flatcar), 'flatGun' (a field gun and its limber).
- * Supply loads: 'crates' (an open wagon of stacked crates and ammo boxes), 'drums' (fuel drums), 'sandbags' (sandbags and
- * a tarp), 'tarp' (cargo lashed under a tarpaulin), 'tank' (a fuel tank wagon).
+ * Car kinds. Military loads: 'flatTank' (a medium tank chained down on a flatcar), 'flatHeavy' (a heavy tank on a flatcar).
+ * Supply loads: 'crates' (an open wagon of crates), 'drums' (fuel drums), 'sandbags' (sandbags and a tarp), 'tarp'
+ * (cargo lashed under a tarpaulin), 'tank' (a silver fuel tank wagon).
  */
-export type CarKind = 'engine' | 'tender' | 'tank' | 'flatTank' | 'flatGun' | 'crates' | 'drums' | 'sandbags' | 'tarp';
+export type CarKind = 'engine' | 'tender' | 'tank' | 'flatTank' | 'flatHeavy' | 'crates' | 'drums' | 'sandbags' | 'tarp';
 
-export const MILITARY_CARS: readonly CarKind[] = ['flatTank', 'flatGun'];
+export const MILITARY_CARS: readonly CarKind[] = ['flatTank', 'flatHeavy'];
 export const SUPPLY_CARS: readonly CarKind[] = ['crates', 'drums', 'sandbags', 'tarp', 'tank'];
 
 /** Length of each car along the rail (model units) and the gap between cars (the couplings show in it). */
-const CAR_LEN: Record<CarKind, number> = { engine: 10, tender: 5.5, tank: 9, flatTank: 10, flatGun: 10, crates: 9, drums: 9, sandbags: 9, tarp: 9 };
-const CAR_GAP = 1.4;
-/** Half width of the cars (model units). */
-const HW = 1.8;
+const CAR_LEN: Record<CarKind, number> = { engine: 8, tender: 4.2, tank: 10.5, flatTank: 10.5, flatHeavy: 10.5, crates: 10.5, drums: 10.5, sandbags: 10.5, tarp: 10.5 };
+const CAR_GAP = 1.2;
+/** Half width of the wagons (model units). The engine and tender are laid out at 1.8 and stretched across to match. */
+const HW = 2.7;
 /** The train is drawn this much larger than the units' model scale, so its loads read at the close zooms. */
 const TRAIN_K = 1.6;
-/** The cars are drawn this much wider than their parts are laid out (fat cars, so the loads read from above). */
-const WIDE = 1.4;
 
-function chassis(L: number): Part[] {
+function chassis(L: number, hw: number): Part[] {
   // the dark frame and wheels under the body (they show on the side toward the viewer) and the couplers at both ends
-  return [box(-L / 2 + 0.4, -HW + 0.1, L / 2 - 0.4, HW - 0.1, 0, 0.8, 'track'), seg(-L / 2, 0, -L / 2 - 0.7, 0, 0.5, 0.4, 0.4, 'gun'), seg(L / 2, 0, L / 2 + 0.7, 0, 0.5, 0.4, 0.4, 'gun')];
+  return [box(-L / 2 + 0.4, -hw + 0.1, L / 2 - 0.4, hw - 0.1, 0, 0.8, 'track'), seg(-L / 2, 0, -L / 2 - 0.7, 0, 0.5, 0.4, 0.4, 'gun'), seg(L / 2, 0, L / 2 + 0.7, 0, 0.5, 0.4, 0.4, 'gun')];
 }
 
 /** Parts of another model scaled by `k` and moved by (du, dv, dz): the game's own tank sitting on a car. */
@@ -576,43 +574,71 @@ function placed(parts: readonly Part[], k: number, du: number, dv: number, dz: n
   });
 }
 
-/** Parts stretched across the car (v) by `f`: footprints and heights stay. */
-function stretchV(parts: readonly Part[], f: number): Part[] {
-  const sv = (q: readonly number[] | undefined, step: number, off: number, n = 99): number[] | undefined => q && q.map((x, i) => (i < n && i % step === off ? x * f : x));
-  return parts.map((p) => ({ ...p, p: sv(p.p, 2, 1, p.k === 'seg' ? 4 : 99)!, sc: p.sc && ([p.sc[0], p.sc[1] * f, p.sc[2], p.sc[3] * f] as const), clip: sv(p.clip, 2, 1, 4), clipPoly: sv(p.clipPoly, 2, 1) }));
+/** Parts stretched along (u, by `fu`) and across (v, by `fv`) the car: footprints only, heights stay. */
+function stretch(parts: readonly Part[], fu: number, fv: number): Part[] {
+  const f = (q: readonly number[] | undefined, n = 99): number[] | undefined => q && q.map((x, i) => (i < n ? x * (i % 2 === 0 ? fu : fv) : x));
+  return parts.map((p) => ({ ...p, p: f(p.p, p.k === 'seg' ? 4 : 99)!, sc: p.sc && ([p.sc[0] * fu, p.sc[1] * fv, p.sc[2] * fu, p.sc[3] * fv] as const), clip: f(p.clip, 4), clipPoly: f(p.clipPoly) }));
 }
 
-/** A medium tank (hull and turret) from the unit models, shrunk to ride a flatcar, in the owner's paint. */
-function tankLoad(du: number, dz: number): Part[] {
-  const um = unitModel('tankDivision', 0);
-  const own = (m: MatId): MatId => (m === 'olive' ? 'own' : m);
-  const k = 0.5;
-  // olive hull so the tank stands out of the deck, the owner's colour on the turret
+/**
+ * One of the game's tanks from the unit models shrunk to ride a flatcar: its hull fills about 80% of the car, the gun
+ * sticks out past the car's front end, the hull keeps its olive paint and the turret is in the owner's colour.
+ */
+function tankLoad(key: 'tankDivision' | 'heavyTank', dz: number): Part[] {
+  const um = unitModel(key, 0);
+  let u0 = Infinity;
+  let u1 = -Infinity;
+  let v1 = 0;
+  for (const p of um.model.parts) {
+    const b = partBox(p);
+    u0 = Math.min(u0, b[0]);
+    u1 = Math.max(u1, b[2]);
+    v1 = Math.max(v1, Math.abs(b[1]), Math.abs(b[3]));
+  }
+  const k = Math.min((0.8 * CAR_LEN.flatTank) / (u1 - u0), (HW - 0.2) / v1);
+  const du = -0.5 - ((u0 + u1) / 2) * k;
+  const own = (m: MatId): MatId => (m === 'olive' || m === 'fieldgrey' ? 'own' : m);
   const parts = [...placed(um.model.parts, k, du, 0, dz)];
   if (um.turret) parts.push(...placed(um.turret.model.parts, k, du + um.turret.u * k, um.turret.v * k, dz, own));
   return parts;
 }
 
-/** A crate: a plank box with a lighter lid and a dark strap, `pat` planks. */
-function crate(u: number, v: number, du: number, dv: number, z: number, h: number, m: MatId = 'ochre'): Part[] {
-  return [box(u - du, v - dv, u + du, v + dv, z, h, m, { pat: 'planks' }), box(u - du, v - 0.12, u + du, v + 0.12, z + h, 0, 'black', { tone: 1 })];
-}
-
-/** An open wagon: a floor, low side and end walls in the owner's colour (the inside shows). */
-function openWagon(L: number): Part[] {
-  const t = 0.4;
+/** A crate: a plank box, a lighter top with a dark outline and a stencilled cross, a dark strap. */
+function crate(u: number, v: number, du: number, dv: number, z: number, h: number, m: MatId): Part[] {
+  const t = z + h;
   return [
-    box(-L / 2, -HW, L / 2, HW, 0.8, 0.3, 'fieldgrey', { tone: 0.2 }),
-    box(-L / 2, -HW, L / 2, -HW + t, 0.8, 1.5, 'own', { tone: -0.2 }),
-    box(-L / 2, HW - t, L / 2, HW, 0.8, 1.5, 'own', { tone: 0.1 }),
-    box(-L / 2, -HW, -L / 2 + t, HW, 0.8, 1.5, 'own', { tone: -0.3 }),
-    box(L / 2 - t, -HW, L / 2, HW, 0.8, 1.5, 'own', { tone: -0.3 }),
+    box(u - du, v - dv, u + du, v + dv, z, h, m, { pat: 'planks', tone: -0.3 }),
+    box(u - du, v - dv, u + du, v + dv, t, 0, 'black'),
+    box(u - du + 0.2, v - dv + 0.2, u + du - 0.2, v + dv - 0.2, t, 0, m, { tone: 1 }),
+    seg(u - du * 0.5, v, u + du * 0.5, v, 0.25, t, 0, m, { tone: -0.8 }),
+    seg(u, v - dv * 0.5, u, v + dv * 0.5, 0.25, t, 0, m, { tone: -0.8 }),
   ];
 }
 
-/** A fuel drum seen from above: a rim, a lid and a bung. */
+/** An open wagon: a dark floor in the owner's colour, light wooden walls with a plank pattern all round. */
+function openWagon(L: number): Part[] {
+  const t = 0.5;
+  const w = (a: number, b: number, c: number, d: number, tone: number): Part => box(a, b, c, d, 0.8, 1.7, 'tan', { pat: 'planks', tone });
+  return [box(-L / 2, -HW, L / 2, HW, 0.8, 0.3, 'own', { tone: -0.7 }), w(-L / 2, -HW, L / 2, -HW + t, -0.2), w(-L / 2, HW - t, L / 2, HW, 0.5), w(-L / 2, -HW, -L / 2 + t, HW, 0), w(L / 2 - t, -HW, L / 2, HW, 0)];
+}
+
+/** A flatcar: a light plank deck with the owner's colour on the side beams. */
+function flatCar(L: number): Part[] {
+  return [
+    box(-L / 2, -HW, L / 2, HW, 0.8, 0.5, 'tan', { pat: 'planks', tone: 0.2 }),
+    box(-L / 2, -HW, L / 2, -HW + 0.45, 1.3, 0.3, 'own', { tone: 0.1 }),
+    box(-L / 2, HW - 0.45, L / 2, HW, 1.3, 0.3, 'own', { tone: 0.5 }),
+  ];
+}
+
+/** A fuel drum seen from above: a body, a light rim round a lid, a bung. */
 function drum(u: number, v: number, z: number, m: MatId): Part[] {
-  return [ell(u, v, 0.72, 0.72, z, 1.5, m, { sh: 'cyl' }), ell(u, v, 0.5, 0.5, z + 1.5, 0, m, { tone: 0.9 }), ell(u + 0.12, v - 0.1, 0.15, 0.15, z + 1.5, 0.1, 'black')];
+  return [
+    ell(u, v, 0.98, 0.98, z, 1.6, m, { sh: 'cyl' }),
+    ell(u, v, 0.98, 0.98, z + 1.6, 0.05, 'alu', { edge: true, tone: 0.6 }),
+    ell(u, v, 0.7, 0.7, z + 1.6, 0, m, { tone: 0.8 }),
+    ell(u + 0.2, v - 0.15, 0.2, 0.2, z + 1.6, 0.1, 'black'),
+  ];
 }
 
 const MODELS = new Map<CarKind, Model>();
@@ -621,78 +647,72 @@ export function carModel(kind: CarKind): Model {
   let m = MODELS.get(kind);
   if (m) return m;
   const L = CAR_LEN[kind];
-  const parts: Part[] = [...chassis(L)];
-  let load: Part[] = [];
+  const parts: Part[] = [];
   switch (kind) {
-    case 'engine':
+    case 'engine': {
       // a steam engine: a long black boiler with a brass dome, a tall stack in front, the cab in the owner's colour
-      // with a dark roof, a red buffer beam
-      parts.push(box(-5, -HW, 4.7, HW, 0.8, 0.5, 'gun'));
-      parts.push(box(-1.4, -1.4, 4.5, 1.4, 1.3, 2.3, 'gun', { sh: 'cyl' }));
-      parts.push(ell(3.4, 0, 0.75, 0.75, 3.4, 1.6, 'gun', { sh: 'cyl' }), ell(3.4, 0, 0.5, 0.5, 5.0, 0, 'black'));
-      parts.push(ell(1.1, 0, 0.7, 0.65, 3.4, 0.5, 'brass', { sh: 'dome' }));
-      parts.push(box(-4.9, -HW, -1.4, HW, 1.3, 2.7, 'own', { tone: -0.4 }), box(-5.2, -HW - 0.15, -1.2, HW + 0.15, 4.0, 0.35, 'own', { tone: 0.3 }));
-      parts.push(box(4.6, -HW, 5.1, HW, 0.5, 0.8, 'redpaint'));
-      break;
-    case 'tender':
-      parts.push(box(-L / 2, -HW, L / 2, HW, 0.8, 2.1, 'gun', { tone: 0.3 }), ell(0.1, 0, L / 2 - 0.8, HW - 0.4, 2.9, 0.4, 'black', { sh: 'dome' }));
-      break;
-    case 'flatTank': {
-      // a flatcar with the game's medium tank on it, in the owner's colour, held down by chains and wheel chocks
-      parts.push(box(-L / 2, -HW, L / 2, HW, 0.8, 0.5, 'fieldgrey', { tone: 0.8 }), box(-L / 2, -HW, L / 2, -HW + 0.4, 1.3, 0.4, 'own', { tone: 0.1 }), box(-L / 2, HW - 0.4, L / 2, HW, 1.3, 0.4, 'own', { tone: 0.5 }));
-      load = tankLoad(-0.1, 1.3);
-      for (const u of [-2.2, 1.6]) {
-        parts.push(seg(u, -HW + 0.1, u + 0.6, -1.0, 0.22, 2.2, 0.12, 'gun', { tone: 1 }), seg(u, HW - 0.1, u + 0.6, 1.0, 0.22, 2.2, 0.12, 'gun', { tone: 1 }));
-      }
-      parts.push(box(-4.5, -1.1, -4.0, 1.1, 1.3, 0.5, 'ochre', { pat: 'planks' }), box(3.6, -1.1, 4.1, 1.1, 1.3, 0.5, 'ochre', { pat: 'planks' }));
+      // with a dark roof, a red buffer beam (laid out for a car 10 long and 3.6 wide, then fitted to the car)
+      const e = 1.8;
+      const q: Part[] = [...chassis(10, e)];
+      q.push(box(-5, -e, 4.7, e, 0.8, 0.5, 'gun'));
+      q.push(box(-1.4, -1.4, 4.5, 1.4, 1.3, 2.3, 'gun', { sh: 'cyl' }));
+      q.push(ell(3.4, 0, 0.75, 0.75, 3.4, 1.6, 'gun', { sh: 'cyl' }), ell(3.4, 0, 0.5, 0.5, 5.0, 0, 'black'));
+      q.push(ell(1.1, 0, 0.7, 0.65, 3.4, 0.5, 'brass', { sh: 'dome' }));
+      q.push(box(-4.9, -e, -1.4, e, 1.3, 2.7, 'own', { tone: -0.4 }), box(-5.2, -e - 0.15, -1.2, e + 0.15, 4.0, 0.35, 'own', { tone: 0.3 }));
+      q.push(box(4.6, -e, 5.1, e, 0.5, 0.8, 'redpaint'));
+      parts.push(...stretch(q, L / 10, HW / e));
       break;
     }
-    case 'flatGun':
-      // a flatcar with a field gun (barrel forward, shield, spoked wheels, split trail), a limber and a stack of shells
-      parts.push(box(-L / 2, -HW, L / 2, HW, 0.8, 0.5, 'fieldgrey', { tone: 0.8 }), box(-L / 2, -HW, L / 2, -HW + 0.4, 1.3, 0.4, 'own', { tone: 0.1 }), box(-L / 2, HW - 0.4, L / 2, HW, 1.3, 0.4, 'own', { tone: 0.5 }));
-      parts.push(ell(-0.2, -1.5, 0.75, 0.38, 1.3, 1.2, 'olive', { sh: 'cyl' }), ell(-0.2, 1.5, 0.75, 0.38, 1.3, 1.2, 'olive', { sh: 'cyl' }));
-      parts.push(box(-0.7, -1.3, 0.3, 1.3, 1.3, 1.1, 'olive', { tone: 0.3 }), box(-0.3, -0.9, 0.2, 0.9, 2.4, 0.5, 'olive', { tone: 0.5, pat: 'rivets' }));
-      parts.push(seg(0.3, 0, 4.3, 0, 0.48, 2.2, 0.5, 'gun', { sh: 'cyl' }), box(4.2, -0.4, 4.7, 0.4, 2.1, 0.7, 'gun'), seg(-0.8, -0.3, -4.2, -1.2, 0.35, 1.5, 0.4, 'olive'), seg(-0.8, 0.3, -4.2, 1.2, 0.35, 1.5, 0.4, 'olive'));
-      parts.push(...crate(-3.6, 0, 0.7, 0.7, 1.3, 0.9, 'olive'), ...crate(-3.6, 0, 0.45, 0.45, 2.2, 0.7, 'olive'));
-      parts.push(seg(-4, -1.6, 4, -1.6, 0.14, 2.45, 0.1, 'gun', { tone: 1 }), seg(-4, 1.6, 4, 1.6, 0.14, 2.45, 0.1, 'gun', { tone: 1 }));
+    case 'tender':
+      parts.push(...stretch([...chassis(5.5, 1.8), box(-2.75, -1.8, 2.75, 1.8, 0.8, 2.1, 'gun', { tone: 0.3 }), ell(0.1, 0, 2.0, 1.4, 2.9, 0.4, 'black', { sh: 'dome' })], L / 5.5, HW / 1.8));
       break;
-    case 'crates':
-      // an open wagon of wooden crates, two high, with olive ammo boxes
-      parts.push(...openWagon(L));
-      parts.push(...crate(-2.6, -0.8, 1.1, 0.85, 1.1, 1.2), ...crate(-2.6, 0.9, 1.1, 0.8, 1.1, 1.2), ...crate(-2.5, 0, 0.8, 0.7, 2.3, 0.9, 'tan'));
-      parts.push(...crate(-0.3, -0.7, 0.9, 0.9, 1.1, 1.0, 'olive'), ...crate(-0.2, 0.8, 0.8, 0.8, 1.1, 1.0, 'olive'));
-      parts.push(...crate(2.0, 0.1, 1.2, 1.0, 1.1, 1.4, 'ochre'), ...crate(2.1, 0, 0.8, 0.75, 2.5, 0.8, 'olive'));
+    case 'flatTank':
+    case 'flatHeavy': {
+      // a flatcar with one of the game's tanks on it, held down by chains and wheel chocks
+      parts.push(...chassis(L, HW), ...flatCar(L), ...tankLoad(kind === 'flatTank' ? 'tankDivision' : 'heavyTank', 1.3));
+      for (const u of [-3.4, 0.2]) {
+        parts.push(seg(u, -HW + 0.1, u + 0.8, -2.1, 0.26, 2.9, 0.12, 'gun', { tone: 1 }), seg(u, HW - 0.1, u + 0.8, 2.1, 0.26, 2.9, 0.12, 'gun', { tone: 1 }));
+      }
+      parts.push(box(-5, -1.9, -4.5, 1.9, 1.3, 0.6, 'ochre', { pat: 'planks' }));
       break;
+    }
+    case 'crates': {
+      // an open wagon of six big crates in two rows of three, with olive ammo boxes among the plain wooden ones
+      parts.push(...chassis(L, HW), ...openWagon(L));
+      const mat: MatId[] = ['ochre', 'olive', 'ochre', 'olive', 'ochre', 'ochre'];
+      for (let i = 0; i < 6; i++) parts.push(...crate(-3.1 + (i % 3) * 3.1, i < 3 ? -1.25 : 1.25, 1.3, 1.0, 1.1, i === 1 || i === 3 ? 1.5 : 1.9, mat[i]));
+      break;
+    }
     case 'drums':
-      // an open wagon of fuel drums standing in rows: rusty red, blue and olive
-      parts.push(...openWagon(L));
+      // an open wagon of fuel drums standing in two rows of four: rusty red, blue and olive, each a round light-rimmed lid
+      parts.push(...chassis(L, HW), ...openWagon(L));
       for (let i = 0; i < 4; i++) {
-        const u = -3.1 + i * 2.05;
-        parts.push(...drum(u, -0.95, 1.1, i % 2 ? 'rust' : 'fadedBlue'), ...drum(u, 0.95, 1.1, i % 2 ? 'olive' : 'rust'));
+        const u = -3.4 + i * 2.27;
+        parts.push(...drum(u, -1.35, 1.1, i % 2 ? 'rust' : 'fadedBlue'), ...drum(u, 1.35, 1.1, i % 2 ? 'olive' : 'rust'));
       }
       break;
     case 'sandbags':
-      // an open wagon of sandbags in a pile, a lashed tarp half over it
-      parts.push(...openWagon(L));
-      for (let r = 0; r < 3; r++) {
-        for (let c = 0; c < 4; c++) parts.push(ell(-3.2 + c * 1.75 + (r % 2) * 0.5, -0.9 + r * 0.9, 0.8, 0.45, 1.1 + (r === 1 ? 0.5 : 0), 0.6, 'tan', { sh: 'dome' }));
+      // an open wagon of sandbags in staggered rounded rows, a lashed tarp over one end
+      parts.push(...chassis(L, HW), ...openWagon(L));
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 4; c++) parts.push(ell(-3.5 + c * 2.1 + (r % 2) * 1.0, -2.0 + r * 1.35, 1.05, 0.62, 1.1 + ((r + c) % 2) * 0.35, 0.8, 'tan', { sh: 'dome', tone: (r + c) % 2 ? 0.4 : 0 }));
       }
-      parts.push(ell(1.8, 0, 2.4, 1.3, 2.0, 0.8, 'canvas', { sh: 'dome' }), seg(0.6, -1.4, 0.6, 1.4, 0.16, 2.5, 0.1, 'brown' as MatId), seg(2.0, -1.4, 2.0, 1.4, 0.16, 2.8, 0.1, 'brown' as MatId));
       break;
     case 'tarp':
-      // an open wagon with its cargo lashed under a tarpaulin: a rounded hump with ropes across and tied-down corners
-      parts.push(...openWagon(L));
-      parts.push(box(-L / 2 + 0.7, -HW + 0.6, L / 2 - 0.7, HW - 0.6, 1.2, 1.5, 'canvas', { sh: 'cyl' }), ell(0, 0, 3.4, 1.0, 2.3, 0.6, 'canvas', { sh: 'dome', tone: 0.3 }));
-      for (const u of [-2.8, -0.9, 0.9, 2.8]) parts.push(seg(u, -HW + 0.2, u, HW - 0.2, 0.2, 2.85, 0.1, 'rust', { tone: -0.2 }));
+      // an open wagon with its cargo lashed under a tarpaulin: a rounded hump with ropes across
+      parts.push(...chassis(L, HW), ...openWagon(L));
+      parts.push(box(-L / 2 + 0.8, -HW + 0.7, L / 2 - 0.8, HW - 0.7, 1.1, 1.8, 'canvas', { sh: 'cyl' }), ell(0, 0, 4.2, 1.7, 2.6, 0.5, 'canvas', { sh: 'dome', tone: 0.4 }));
+      for (const u of [-3.2, -1.1, 1.1, 3.2]) parts.push(seg(u, -HW + 0.4, u, HW - 0.4, 0.26, 3.1, 0.1, 'rust', { tone: -0.2 }));
       break;
     case 'tank':
-      // a fuel tank wagon: an owner-coloured frame and a long dark cylinder with a filler dome
-      parts.push(box(-L / 2, -HW, L / 2, HW, 0.8, 0.6, 'own', { tone: -0.3 }));
-      parts.push(box(-L / 2 + 0.4, -1.5, L / 2 - 0.4, 1.5, 1.4, 2.4, 'gun', { sh: 'cyl', tone: 0.4 }));
-      parts.push(ell(0, 0, 0.7, 0.7, 3.8, 0.4, 'gun', { sh: 'dome' }), seg(-L / 2 + 1.5, -1.6, -L / 2 + 1.5, 1.6, 0.14, 2.5, 0.1, 'brass'), seg(L / 2 - 1.5, -1.6, L / 2 - 1.5, 1.6, 0.14, 2.5, 0.1, 'brass'));
+      // a fuel tank wagon: an owner-coloured frame and a long silver-grey cylinder with bands and a filler dome
+      parts.push(...chassis(L, HW), box(-L / 2, -HW, L / 2, HW, 0.8, 0.6, 'own', { tone: -0.3 }));
+      parts.push(box(-L / 2 + 0.5, -2.2, L / 2 - 0.5, 2.2, 1.4, 2.8, 'alu', { sh: 'cyl' }));
+      parts.push(ell(0, 0, 0.9, 0.9, 4.2, 0.4, 'alu', { sh: 'dome', tone: 0.5 }), ell(0, 0, 0.45, 0.45, 4.6, 0.1, 'black'));
+      for (const u of [-3.2, 3.2]) parts.push(seg(u, -2.35, u, 2.35, 0.3, 3.0, 0.1, 'gun'));
       break;
   }
-  m = { parts: [...stretchV(parts, WIDE), ...load], ground: 0.26 };
+  m = { parts, ground: 0.26 };
   MODELS.set(kind, m);
   return m;
 }
@@ -711,7 +731,7 @@ const mix = (a: number): number => {
 
 /**
  * The cars of a supply train carrying `load` (1 light .. 3 heavy): engine and tender, then 3 to 5 wagons. The wagons are
- * picked from `seed` (the same train every time) and always hold a tank on a flatcar (and maybe a gun) and at least one
+ * picked from `seed` (the same train every time) and always hold a tank on a flatcar (or a heavy one) and at least one
  * supply load (crates, drums, sandbags, a tarp or fuel).
  */
 export function trainCars(load: number, seed = 0): CarKind[] {
@@ -726,8 +746,8 @@ export function trainCars(load: number, seed = 0): CarKind[] {
   const wagons: CarKind[] = ['flatTank', SUPPLY_CARS[next(SUPPLY_CARS.length)]];
   while (wagons.length < n) {
     const k = all[next(all.length)];
-    // no more than two of a kind in a row of the same load, so the mix reads
-    if (wagons.filter((w) => w === k).length < 2) wagons.push(k);
+    // every wagon a different kind, so the mix reads
+    if (!wagons.includes(k)) wagons.push(k);
   }
   for (let i = n - 1; i > 0; i--) {
     const j = next(i + 1);
@@ -786,7 +806,7 @@ export function drawTrain(ctx: CanvasRenderingContext2D, t: TrainDraw): void {
     const m = pointAt(t.path, Math.max(0, Math.min(total, c)));
     const ang = Math.atan2(f.y - r.y, f.x - r.x);
     const facing = facingIndex(ang, n);
-    const b = carBake(kind, facing, n, g.res, t.owner, ringWidth(g.k));
+    const b = carBake(kind, facing, n, g.res, t.owner, kind === 'engine' || kind === 'tender' ? ringWidth(g.k) : 0);
     placed.push({ b, X: toCell(m.x) - b.ox, Y: toCell(m.y) - b.oy, cy: m.y });
     if (kind === 'engine') engine = { x: m.x, y: m.y, th: facing * ((Math.PI * 2) / n) };
     s -= L + CAR_GAP * sc;
