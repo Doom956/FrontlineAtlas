@@ -2,8 +2,8 @@
 // blockades, supply efficiency near a cut fort, strike scoring, the hash and determinism.
 import { describe, expect, it } from 'vitest';
 import { markBuildingsChanged } from '../src/sim/buildings';
-import { supplyEfficiency, supplySourceTiles } from '../src/sim/combat';
-import { SUPPLY_LINES, TICKS_PER_SECOND } from '../src/sim/config';
+import { addBeachhead, supplyEfficiency, supplySourceTiles } from '../src/sim/combat';
+import { BEACHHEAD_SUPPLY_SECONDS, SUPPLY_LINES, TICKS_PER_SECOND } from '../src/sim/config';
 import { hashState } from '../src/sim/hash';
 import { computeCoastAndLand } from '../src/sim/mapgen';
 import { PROTOCOL_VERSION } from '../src/net/protocol';
@@ -116,6 +116,13 @@ describe('the supply network', () => {
     expect(damageHub(s, 1, factory.tile, 2)).toBe(true);
   });
 
+  it('a damaged fort keeps its own supply (routes just do not pass it)', () => {
+    const { s, fort, front } = chain();
+    expect(damageHub(s, 1, fort.tile, 2)).toBe(true);
+    expect(supplyNetworkOf(s, 1).cut).toEqual([]);
+    expect(supplyEfficiency(s, 1, front)).toBe(1);
+  });
+
   it('reroutes round a damaged hub when another route exists', () => {
     const { s, factory, fort, front } = chain();
     addBuilding(s, 'factory', 1, at(s, 90, 10));
@@ -172,6 +179,25 @@ describe('the supply network', () => {
     // exactly one rail crosses the gap
     const core = new Set([s.players[1].capital, at(s, 20, 12), at(s, 20, 48), at(s, 30, 30)]);
     expect(net.links.filter((l) => core.has(l.a) !== core.has(l.b)).length).toBe(1);
+  });
+
+  it('never cuts a fort on own contiguous land for distance or the search budget', () => {
+    const s = makeFlatGame(300, 60, 2, { human: true, seed: 3 });
+    claimRect(s, 1, 0, 0, 199, 59);
+    claimRect(s, 2, 200, 0, 299, 59);
+    s.players[1].capital = at(s, 10, 30);
+    // far past railMaxDist, no hub between
+    const far = addBuilding(s, 'fort', 1, at(s, 195, 55));
+    refreshSupplyLines(s, 1);
+    expect(supplyNetworkOf(s, 1).cut).toEqual([]);
+    expect(supplyNetworkOf(s, 1).hubs.find((h) => h.tile === far.tile)!.connected).toBe(true);
+    // many hubs at once: more searches than one check allows, still nothing cut
+    for (let x = 40; x <= 190; x += 30) for (let y = 5; y <= 55; y += 12) if (!s.map.building[at(s, x, y)]) addBuilding(s, 'fort', 1, at(s, x, y));
+    refreshSupplyLines(s, 1);
+    const net = supplyNetworkOf(s, 1);
+    expect(net.hubs.length).toBeGreaterThan(SUPPLY_LINES.railSearchesPerCheck);
+    expect(net.cut).toEqual([]);
+    expect(supplySourceTiles(s, 1)).toContain(far.tile);
   });
 
   it('marks junctions where three rails meet', () => {
@@ -287,6 +313,51 @@ describe('convoys', () => {
   });
 });
 
+describe('beachheads', () => {
+  it('a landing with no convoy lane keeps its supply window, port or not', () => {
+    const { s, west, east } = seaGame();
+    for (const b of [west, east]) {
+      s.buildings.delete(b.id);
+      s.map.building[b.tile] = 0;
+    }
+    markBuildingsChanged(s);
+    const head = at(s, 145, 30);
+    addBeachhead(s, 1, head, BEACHHEAD_SUPPLY_SECONDS);
+    refreshSupplyLines(s, 1);
+    const net = supplyNetworkOf(s, 1);
+    expect(net.links.some((l) => l.kind === 'sea')).toBe(false);
+    expect(net.cut).not.toContain(head);
+    expect(supplySourceTiles(s, 1)).toContain(head);
+    expect(hubCutValue(s, 2, head)).toBe(0);
+    // the fort on that landmass has no lane home either: no network there, so it is not cut
+    expect(net.cut).toEqual([]);
+    expect(supplySourceTiles(s, 1)).toContain(at(s, 190, 30));
+  });
+
+  it('a landing with a convoy lane is cut only while that lane is cut', () => {
+    const { s, west, east } = seaGame();
+    s.buildings.delete(east.id);
+    s.map.building[east.tile] = 0;
+    markBuildingsChanged(s);
+    const head = at(s, 141, 30);
+    addBeachhead(s, 1, head, BEACHHEAD_SUPPLY_SECONDS);
+    while (convoyPhase(s.tick, west.tile, head) !== 0) s.tick++;
+    refreshSupplyLines(s, 1);
+    expect(supplyNetworkOf(s, 1).links.filter((l) => l.kind === 'sea').map((l) => [l.a, l.b])).toEqual([[west.tile, head]]);
+    expect(supplySourceTiles(s, 1)).toContain(head);
+    const ship = spawnWarshipAt(s, 2, at(s, 120, 59), at(s, 120, 33));
+    s.tick++;
+    refreshSupplyLines(s, 1);
+    expect(supplyNetworkOf(s, 1).cut).toContain(head);
+    expect(supplySourceTiles(s, 1)).not.toContain(head);
+    ship.hp = 0;
+    s.units = s.units.filter((u) => u.hp > 0);
+    runLines(s, SUPPLY_LINES.convoyEverySeconds * TICKS_PER_SECOND);
+    expect(supplyNetworkOf(s, 1).cut).not.toContain(head);
+    expect(supplySourceTiles(s, 1)).toContain(head);
+  });
+});
+
 describe('targets', () => {
   it('bestSupplyHub picks the hub that cuts the most sources near the front', () => {
     const { s, factory, fort } = chain();
@@ -296,7 +367,7 @@ describe('targets', () => {
     const best = bestSupplyHub(s, 2, 1, at(s, 200, 30));
     expect(best?.tile).toBe(factory.tile);
     expect(best!.near).toBe(2);
-    expect(hubCutValue(s, 2, fort.tile)).toBe(1); // a fort hit cuts itself
+    expect(hubCutValue(s, 2, fort.tile)).toBe(0); // a hit fort keeps its own supply: nothing behind it
     expect(bestSupplyHub(s, 1, 1, -1)).toBeNull(); // not hostile to itself
   });
 

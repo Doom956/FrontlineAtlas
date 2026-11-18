@@ -8,10 +8,17 @@
 // runs a convoy lane to its nearest own port or beachhead on another landmass of the same sea; a beachhead that no port
 // picked gets a lane from its nearest port. A hub where junctionDegree rails meet is a junction (a rail yard).
 //
+// Join: hubs the nearest-hub rails leave apart from the capital's network are joined to it: first a rail search to the
+// nearest joined hub within railMaxDist, then a flood over own dry land at any distance (landJoin). So a hub on own land
+// that touches the capital's land is always linked; only enemy land or the sea keeps a cluster apart.
+//
 // Connected: a walk from the capital (breadth first, hubs in tile order) over the rails and the lanes that are open,
-// never into a damaged hub. A fort or beachhead the walk does not reach is cut: combat.supplyCache leaves it out of the
-// supply sources until a route reaches it again. Cities stay sources (they feed themselves), the capital always is one
-// and can never be damaged. Another route round a damaged hub keeps everything behind it supplied.
+// never on past a damaged hub (the damaged hub itself is still supplied). A fort the walk does not reach is cut:
+// combat.supplyCache leaves it out of the supply sources until a route reaches it again. A beachhead is cut only when
+// it has a convoy lane and every lane to it is closed (no lane: its supply window runs as before). A cluster on a
+// landmass none of the capital's hubs is on, with no lane, has no network there and is never counted cut. Cities stay
+// sources (they feed themselves), the capital always is one and can never be damaged. Another route round a damaged
+// hub keeps everything behind it supplied.
 //
 // When: each nation's network is checked every checkTicks ticks (staggered by id). The rails are rebuilt when its hubs
 // change (buildings.buildingStamp, its capital, its beachheads), when land under a rail was lost (the stored routes are
@@ -46,6 +53,23 @@ function hostile(state: GameState, a: number, b: number): boolean {
 }
 function isSourceKind(k: SupplyHubKind): boolean {
   return k === 'fort' || k === 'beachhead';
+}
+/**
+ * True if source hub i is cut with these reach flags: a fort when not reached; a beachhead only when not reached and
+ * every convoy lane to it is closed (a landing with no lane at all keeps its supply window, as before supply lines).
+ */
+function sourceCut(net: Net, i: number, reached: Uint8Array): boolean {
+  const h = net.hubs[i];
+  if (reached[i] || !isSourceKind(h.kind) || net.exempt[i]) return false;
+  if (h.kind === 'fort') return true;
+  let lanes = 0;
+  for (const k of net.adj[i]) {
+    const l = net.links[k];
+    if (!l.sea) continue;
+    if (!l.cut) return false;
+    lanes++;
+  }
+  return lanes > 0;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -99,6 +123,10 @@ interface Net {
   memoWalks: number;
   /** sources the last walk of a check newly cut off (for the convoy event) */
   lastCut: number[];
+  /** hub clusters no flood over own land could join: their hub tiles -> tick of that flood */
+  floodFails: Map<string, number>;
+  /** hubs apart from the capital's network on a landmass none of its hubs is on (no lane): never counted cut */
+  exempt: Uint8Array;
 }
 interface Nets {
   byPlayer: Map<number, Net>;
@@ -132,6 +160,8 @@ function emptyNet(): Net {
     memo: new Map(),
     memoWalks: -1,
     lastCut: [],
+    floodFails: new Map(),
+    exempt: new Uint8Array(0),
   };
 }
 
@@ -328,6 +358,9 @@ export function railRouteTiles(state: GameState, pid: number, a: number, b: numb
       relax(loc(nx, ny), gc + lc, cur, nx, ny);
     }
   }
+  const wk = supplyLinesWork(state);
+  wk.searches++;
+  wk.searchNodes += L.railSearchNodes - budget;
   if (!found) return null;
   const tiles: number[] = [];
   for (let c = goal; c !== -1; c = from[c]) {
@@ -442,7 +475,137 @@ function headsKey(state: GameState, pid: number): string {
     .join(',');
 }
 
+const floods = new WeakMap<GameState, { par: Int32Array; queue: Int32Array }>();
+
+/** Work counters (perf probes, scripts): network rebuilds, route searches and the tiles they looked at, floods. */
+export interface SupplyLinesWork {
+  relinks: number;
+  searches: number;
+  searchNodes: number;
+  floods: number;
+  floodTiles: number;
+}
+const works = new WeakMap<GameState, SupplyLinesWork>();
+export function supplyLinesWork(state: GameState): SupplyLinesWork {
+  let w = works.get(state);
+  if (!w) works.set(state, (w = { relinks: 0, searches: 0, searchNodes: 0, floods: 0, floodTiles: 0 }));
+  return w;
+}
+
+/**
+ * Joins hubs apart from the capital's cluster (find / union over the links so far) to it over own dry land: first a
+ * stored route that still holds, then, cluster by cluster, a flood over own land (4-connected) from the cluster's hubs
+ * that lays a rail to the first joined hub it meets. A cluster no flood can join is cut off by enemy land; the same
+ * cluster is flooded again after floodRetrySeconds (or at once when it changes). Only clusters on a landmass of a
+ * joined hub are tried (other landmasses need a convoy lane).
+ */
+function landJoin(
+  state: GameState,
+  pid: number,
+  net: Net,
+  hubs: Hub[],
+  find: (i: number) => number,
+  union: (a: number, b: number) => void,
+  cap: number,
+  add: (a: number, b: number, path: Int32Array) => void,
+): void {
+  const map = state.map;
+  const land = landComponents(map);
+  const joinedIn = (i: number): boolean => find(i) === find(cap);
+  const lands = new Set<number>();
+  for (let i = 0; i < hubs.length; i++) if (joinedIn(i)) lands.add(land[hubs[i].tile]);
+  const want = (i: number): boolean => !joinedIn(i) && hubs[i].kind !== 'beachhead' && lands.has(land[hubs[i].tile]);
+  const anyWanted = (): boolean => {
+    for (let i = 0; i < hubs.length; i++) if (want(i)) return true;
+    return false;
+  };
+  if (!anyWanted()) return;
+  // stored routes first (no flood while they hold)
+  const index = new Map<number, number>();
+  hubs.forEach((h, i) => index.set(h.tile, i));
+  for (const r of [...net.routes.values()].sort((p, q) => (p.path?.[0] ?? 0) - (q.path?.[0] ?? 0) || (p.path?.length ?? 0) - (q.path?.length ?? 0))) {
+    if (!r.path || !r.path.length) continue;
+    const a = index.get(r.path[0]);
+    const b = index.get(r.path[r.path.length - 1]);
+    if (a === undefined || b === undefined || joinedIn(a) === joinedIn(b) || !routeHolds(map, pid, r.path)) continue;
+    add(a, b, r.path);
+    union(a, b);
+  }
+  if (!anyWanted()) return;
+  const n = map.terrain.length;
+  let f = floods.get(state);
+  if (!f || f.par.length !== n) floods.set(state, (f = { par: new Int32Array(n), queue: new Int32Array(1024) }));
+  const par = f.par; // parent tile + 1 (0 = not seen; a start points at itself)
+  const owner = map.owner;
+  const ter = map.terrain;
+  const w = map.width;
+  const fails = new Map<string, number>();
+  const retry = L.floodRetrySeconds * TICKS_PER_SECOND;
+  for (let i = 0; i < hubs.length; i++) {
+    if (!want(i)) continue;
+    // the cluster of hub i (lowest index first, so the order is fixed)
+    const root = find(i);
+    const members: number[] = [];
+    for (let j = 0; j < hubs.length; j++) if (find(j) === root) members.push(j);
+    if (members[0] !== i) continue;
+    const key = members.map((j) => hubs[j].tile).join(',');
+    const last = net.floodFails.get(key);
+    if (last !== undefined && state.tick - last < retry) {
+      fails.set(key, last);
+      continue;
+    }
+    let queue = f.queue;
+    let head = 0;
+    let tail = 0;
+    const push = (t: number, from: number): void => {
+      if (tail >= queue.length) {
+        const q2 = new Int32Array(queue.length * 2);
+        q2.set(queue);
+        queue = f!.queue = q2;
+      }
+      par[t] = from + 1;
+      queue[tail++] = t;
+    };
+    for (const j of members) if (!par[hubs[j].tile]) push(hubs[j].tile, hubs[j].tile);
+    let hit = -1;
+    try {
+      while (head < tail) {
+        const t = queue[head++];
+        const hj = index.get(t);
+        if (hj !== undefined && joinedIn(hj)) {
+          hit = t;
+          break;
+        }
+        const x = t % w;
+        if (x > 0 && !par[t - 1] && ter[t - 1] > 1 && owner[t - 1] === pid) push(t - 1, t);
+        if (x < w - 1 && !par[t + 1] && ter[t + 1] > 1 && owner[t + 1] === pid) push(t + 1, t);
+        if (t >= w && !par[t - w] && ter[t - w] > 1 && owner[t - w] === pid) push(t - w, t);
+        if (t + w < n && !par[t + w] && ter[t + w] > 1 && owner[t + w] === pid) push(t + w, t);
+      }
+      if (hit >= 0) {
+        const tiles: number[] = [hit];
+        let c = hit;
+        while (par[c] - 1 !== c) {
+          c = par[c] - 1;
+          tiles.push(c);
+        }
+        const from = index.get(c) as number;
+        const to = index.get(hit) as number;
+        add(from, to, Int32Array.from(tiles.reverse()));
+        union(from, to);
+      } else fails.set(key, state.tick);
+    } finally {
+      for (let k = 0; k < tail; k++) par[queue[k]] = 0;
+      const wk = supplyLinesWork(state);
+      wk.floods++;
+      wk.floodTiles += tail;
+    }
+  }
+  net.floodFails = fails;
+}
+
 function relink(state: GameState, pid: number, net: Net): void {
+  supplyLinesWork(state).relinks++;
   const map = state.map;
   const n = map.terrain.length;
   const hubs = hubsOf(state, pid);
@@ -548,6 +711,7 @@ function relink(state: GameState, pid: number, net: Net): void {
   // capital's. Such a cluster gets a rail to the nearest hub that is joined (the shortest pair first, a few tries a
   // round), until no cluster can be joined. Hubs no rail can reach stay apart (cut).
   const cap = hubs.findIndex((h) => h.kind === 'capital');
+  const exempt = new Uint8Array(hubs.length);
   if (cap >= 0 && hubs.length > 1) {
     const parent = hubs.map((_, i) => i);
     const find = (i: number): number => {
@@ -588,6 +752,24 @@ function relink(state: GameState, pid: number, net: Net): void {
       }
       if (!joined && pairs.length <= 4) break;
     }
+    // Own land guarantee: a hub still apart that own dry land joins to a joined hub gets a rail along that land, at
+    // any distance and whatever the search budget (a flood over own land from the joined hubs). Only land actually
+    // split by an enemy (or the sea) leaves a hub apart.
+    landJoin(state, pid, net, hubs, find, union, cap, (a, b, path) => {
+      const lo = Math.min(a, b);
+      const hi = Math.max(a, b);
+      const key = hubs[lo].tile * n + hubs[hi].tile;
+      if (pairs.has(key)) return;
+      const fwd = hubs[lo].tile === path[0] ? path : path.slice().reverse();
+      pairs.add(key);
+      used.set(key, { path: fwd, tried: state.tick });
+      links.push({ a: lo, b: hi, sea: false, path: fwd, cut: false });
+    });
+    // Clusters on a landmass none of the joined hubs is on, with no lane to them: no network there (not cut).
+    const land = landComponents(map);
+    const lands = new Set<number>();
+    for (let i = 0; i < hubs.length; i++) if (find(i) === find(cap)) lands.add(land[hubs[i].tile]);
+    for (let i = 0; i < hubs.length; i++) if (find(i) !== find(cap) && !lands.has(land[hubs[i].tile])) exempt[i] = 1;
   }
   links.sort((p, q) => p.a - q.a || p.b - q.b || Number(p.sea) - Number(q.sea));
   const adj: number[][] = hubs.map(() => []);
@@ -614,6 +796,8 @@ function relink(state: GameState, pid: number, net: Net): void {
   net.degree = degree;
   net.routes = used;
   net.retryAt = deferred ? state.tick + 1 : failed ? state.tick + retry : Infinity;
+  if (net.floodFails.size) net.retryAt = Math.min(net.retryAt, state.tick + L.floodRetrySeconds * TICKS_PER_SECOND);
+  net.exempt = exempt;
   net.built = true;
 }
 
@@ -784,7 +968,7 @@ function eventInfo(state: GameState, owner: number, by: number, hub: number, kin
 // The walk
 // ---------------------------------------------------------------------------------------------------------------
 
-/** BFS from the capital over open links, never into a blocked hub (extra = one more hub treated as blocked). */
+/** BFS from the capital over open links, never on past a blocked hub (extra = one more hub treated as blocked). */
 function reach(net: Net, blocked: Uint8Array, extra: number): Uint8Array {
   const h = net.hubs.length;
   const reached = new Uint8Array(h);
@@ -806,9 +990,10 @@ function reach(net: Net, blocked: Uint8Array, extra: number): Uint8Array {
       const l = net.links[k];
       if (l.cut) continue;
       const j = l.a === i ? l.b : l.a;
-      if (reached[j] || blocked[j] || j === extra) continue;
+      if (reached[j]) continue;
       reached[j] = 1;
-      queue[tail++] = j;
+      // a damaged hub still gets its own supply; routes do not pass through it
+      if (!blocked[j] && j !== extra) queue[tail++] = j;
     }
   }
   return reached;
@@ -833,7 +1018,7 @@ function walk(state: GameState, pid: number, net: Net, quiet: boolean, by = 0): 
     const hb = net.hubs[i];
     if (!isSourceKind(hb.kind)) continue;
     live.add(hb.tile);
-    if (!reached[i]) cut.push(hb.tile);
+    if (sourceCut(net, i, reached)) cut.push(hb.tile);
   }
   const sn = supplyNetOf(state);
   const old = sn.cut[pid] ?? [];
@@ -842,7 +1027,7 @@ function walk(state: GameState, pid: number, net: Net, quiet: boolean, by = 0): 
   const newly = cut.filter((t) => !oldSet.has(t) && net.known.has(t));
   const restored = old.filter((t) => !cutSet.has(t) && live.has(t));
   for (const t of [...net.known]) if (!live.has(t)) net.known.delete(t);
-  for (let i = 0; i < h; i++) if (reached[i] && isSourceKind(net.hubs[i].kind)) net.known.add(net.hubs[i].tile);
+  for (let i = 0; i < h; i++) if (isSourceKind(net.hubs[i].kind) && !sourceCut(net, i, reached)) net.known.add(net.hubs[i].tile);
   const same = old.length === cut.length && cut.every((t, k) => t === old[k]);
   if (!same) {
     while (sn.cut.length <= pid) sn.cut.push(null);
@@ -862,7 +1047,7 @@ function walk(state: GameState, pid: number, net: Net, quiet: boolean, by = 0): 
   return { cut: newly, restored };
 }
 
-/** Sources (forts, beachheads) reached now that a hit on hub i would cut off (i itself included). Memoized per walk. */
+/** Sources (forts, beachheads) supplied now that a hit on hub i would cut off (the ones behind it). Memoized per walk. */
 function cutIfBlocked(net: Net, i: number): number[] {
   if (net.memoWalks !== net.walks) {
     net.memo.clear();
@@ -873,7 +1058,7 @@ function cutIfBlocked(net: Net, i: number): number[] {
   const out: number[] = [];
   if (i >= 0 && i < net.hubs.length && net.reached[i] && !net.blocked[i] && net.hubs[i].kind !== 'capital') {
     const r = reach(net, net.blocked, i);
-    for (let j = 0; j < net.hubs.length; j++) if (net.reached[j] && !r[j] && isSourceKind(net.hubs[j].kind)) out.push(net.hubs[j].tile);
+    for (let j = 0; j < net.hubs.length; j++) if (!sourceCut(net, j, net.reached) && sourceCut(net, j, r)) out.push(net.hubs[j].tile);
   }
   net.memo.set(i, out);
   return out;

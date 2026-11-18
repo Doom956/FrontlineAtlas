@@ -299,6 +299,8 @@ export const SUPPLY_LINES = {
   seaMaxDist: 400,
   /** each nation's network is checked every this many ticks (staggered by id) */
   checkTicks: 10,
+  /** a hub cluster cut off by enemy land is flooded for a way home again after this many seconds */
+  floodRetrySeconds: 5,
   /** a rail that could not be laid is tried again after this many seconds */
   retrySeconds: 20,
   /** a damaged hub repairs itself in this many seconds (with Logistics: repairSecondsLogistics) */

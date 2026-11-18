@@ -271,6 +271,13 @@ export function supplySourceTiles(state: GameState, playerId: number): number[] 
   return out;
 }
 
+/** Makes tile a beachhead supply source of playerId for `seconds` (a landing; tests). */
+export function addBeachhead(state: GameState, playerId: number, tile: number, seconds: number): void {
+  const sd = supplyOf(state);
+  sd.beachheads.push({ player: playerId, tile, untilTick: state.tick + Math.round(seconds * TICKS_PER_SECOND) });
+  sd.headVersion++;
+}
+
 /** Live beachhead tiles of a player (not yet expired; owners are not checked). For supplylines.ts. */
 export function beachheadTiles(state: GameState, playerId: number): number[] {
   const d = supplyData.get(state);
@@ -1291,10 +1298,7 @@ export function launchAttack(state: GameState, playerId: number, tile: number, t
       return { ok: true };
     }
     // The beachhead supplies the invasion until a city or fort can take over.
-    const sd = supplyOf(state);
-    const headSeconds = BEACHHEAD_SUPPLY_SECONDS * (navalHead < 1 ? NAVY_BEACHHEAD_SUPPLY : 1);
-    sd.beachheads.push({ player: playerId, tile, untilTick: state.tick + Math.round(headSeconds * TICKS_PER_SECOND) });
-    sd.headVersion++;
+    addBeachhead(state, playerId, tile, BEACHHEAD_SUPPLY_SECONDS * (navalHead < 1 ? NAVY_BEACHHEAD_SUPPLY : 1));
     if (target !== 0) maybeCollapse(state, target, playerId);
     if (target !== 0 && !tp.alive) {
       addTroops(p.troops, force.troops);
