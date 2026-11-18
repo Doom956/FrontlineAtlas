@@ -73,6 +73,7 @@ import { addFloater } from './uiState';
 import { allyEventKind, coalitionLeader } from './allies';
 import { swatchCss } from './hud/swatch';
 import { instruction, strikeToastText, type StrikeId } from './strikes';
+import { supplyToast } from './supplyText';
 import { cruiseInstruction } from './cruise';
 import { stealthInstruction } from './stealth';
 import { SalvoPicker } from './hud/salvoPicker';
@@ -1034,6 +1035,12 @@ export class Hud {
         });
         return;
       }
+    }
+    // supply lines: our hub hit or cut, a front we cut, a convoy sunk (supplyText.ts)
+    const sup = supplyToast(state, me, e);
+    if (sup) {
+      this.toasts.show({ text: sup.text, kind: sup.kind, icon: sup.icon, onClick: go, ms: sup.kind === 'bad' ? 6000 : 5000, key: sup.key });
+      return;
     }
     // strikes: a warning when they hit us, a short report for our own (and planes shot down either way)
     const strike = strikeToastText(e, me);

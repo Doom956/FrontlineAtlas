@@ -2810,6 +2810,32 @@ button.ev:hover {
 .lg-sw.m-front {
   background: linear-gradient(90deg, #6f8f4e 0 50%, #e8cc52 50% 70%, #6f8f4e 70%);
 }
+/* supply lines (render/supplyLayer.ts): a rail with sleepers, a train dot, a dotted sea lane, a hub with a red cross, a grey shimmer */
+.lg-sw.m-rail {
+  background:
+    linear-gradient(#2e3034, #2e3034) center / 100% 2px no-repeat,
+    repeating-linear-gradient(90deg, #5a4630 0 2px, transparent 2px 6px) center / 100% 8px no-repeat,
+    #6f8f4e;
+}
+.lg-sw.m-train {
+  background:
+    radial-gradient(circle at 50% 50%, #40a0ff 0 3px, #0a0c11 3.5px 4.5px, transparent 5px),
+    linear-gradient(#2e3034, #2e3034) center / 100% 2px no-repeat,
+    #6f8f4e;
+}
+.lg-sw.m-convoy {
+  background:
+    repeating-linear-gradient(90deg, #dfeaf0 0 3px, transparent 3px 7px) center / 100% 2px no-repeat,
+    #2c6a9c;
+}
+.lg-sw.m-damaged {
+  background:
+    radial-gradient(circle at 50% 50%, #d93b2e 0 6px, #0a0c11 6.5px 7.5px, transparent 8px),
+    #6f8f4e;
+}
+.lg-sw.m-cutfront {
+  background: repeating-linear-gradient(45deg, #cfd1d4 0 3px, #5c5e62 3px 6px);
+}
 .tbl {
   border-collapse: collapse;
   margin: 6px 0;

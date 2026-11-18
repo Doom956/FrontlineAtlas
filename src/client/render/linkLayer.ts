@@ -38,6 +38,11 @@ const MAX_EDGE = 2600;
 export const TRACK_ZOOM = CLOSE_ZOOM;
 export const TRACK_FADE = 0.8;
 
+/** The key of a pair of building tiles, whichever order. */
+export function railPairKey(a: number, b: number): string {
+  return a < b ? `${a}:${b}` : `${b}:${a}`;
+}
+
 export function linksShown(zoom: number): boolean {
   return zoom >= LINK_ZOOM;
 }
@@ -230,6 +235,37 @@ export function ownedGround(style: MapStyle, oc: readonly number[] | null | unde
   };
 }
 
+/**
+ * The ground a line is drawn in (dirt tracks, supply rails): the map's own height and ramps under each art pixel, with
+ * the owner's tint over it, so the line sits in the land like the terrain beside it.
+ */
+export function groundFor(state: GameState, terr: TerrainData | null, zoom: number, colors: readonly RGB[] | undefined, owner: number): TrackGround {
+  const m = state.map;
+  const w = m.width;
+  const h = m.height;
+  const terrain = m.terrain;
+  const gd = groundBuilt(m, terr?.theme);
+  return {
+    // the ground's height as the shader samples it (linear between tile centres)
+    heightAt: gd
+      ? (qx, qy) => {
+          const fx = Math.max(0, Math.min(w - 1.001, qx - 0.5));
+          const fy = Math.max(0, Math.min(h - 1.001, qy - 0.5));
+          const ix = Math.floor(fx);
+          const iy = Math.floor(fy);
+          const ux = fx - ix;
+          const uy = fy - iy;
+          const at = (x: number, y: number): number => gd.data[(y * w + x) * 4 + 1] / 255;
+          return (at(ix, iy) * (1 - ux) + at(ix + 1, iy) * ux) * (1 - uy) + (at(ix, iy + 1) * (1 - ux) + at(ix + 1, iy + 1) * ux) * uy;
+        }
+      : undefined,
+    P: artPixelsPerTile(zoom),
+    terrainAt: (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : terrain[y * w + x]),
+    ramps: terr?.theme?.ground ?? GROUND,
+    tint: ownedGround(mapStyle(), colors?.[owner]),
+  };
+}
+
 /** What a frame hands the layer to draw. */
 export interface LinkFrame {
   state: GameState;
@@ -245,6 +281,8 @@ export interface LinkFrame {
   specOf: (e: LinkEnd) => ReturnType<typeof specOf>;
   /** nation colours by owner id (the tracks take their owner's tint like the ground) */
   colors?: readonly RGB[];
+  /** building pairs a supply rail now links ("lowTile:highTile"): the dirt track between them gives way to the rail */
+  rails?: ReadonlySet<string>;
 }
 
 export class LinkLayer {
@@ -275,6 +313,7 @@ export class LinkLayer {
     for (const sl of this.set.links) {
       const link = sl.link;
       if (link.kind === 'track' && tracks <= 0) continue;
+      if (link.kind === 'track' && f.rails?.has(railPairKey(link.a, link.b))) continue;
       const path = link.full ?? link.path;
       // the link's tile box
       let x0 = Math.min(link.a % w, link.b % w);
@@ -345,30 +384,7 @@ export class LinkLayer {
       sites.set(e.tile, { type: e.type, sx, sy, ext: drawnExtent(spec, look, e.facing) });
     }
     const rgba = f.terr?.rgba;
-    let ground: TrackGround | undefined;
-    if (sl.link.kind === 'track') {
-      const terrain = state.map.terrain;
-      const gd = groundBuilt(state.map, f.terr?.theme);
-      ground = {
-        // the ground's height as the shader samples it (linear between tile centres)
-        heightAt: gd
-          ? (qx, qy) => {
-              const fx = Math.max(0, Math.min(w - 1.001, qx - 0.5));
-              const fy = Math.max(0, Math.min(h - 1.001, qy - 0.5));
-              const ix = Math.floor(fx);
-              const iy = Math.floor(fy);
-              const ux = fx - ix;
-              const uy = fy - iy;
-              const at = (x: number, y: number): number => gd.data[(y * w + x) * 4 + 1] / 255;
-              return (at(ix, iy) * (1 - ux) + at(ix + 1, iy) * ux) * (1 - uy) + (at(ix, iy + 1) * (1 - ux) + at(ix + 1, iy + 1) * ux) * uy;
-            }
-          : undefined,
-        P: artPixelsPerTile(f.zoom),
-        terrainAt: (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : terrain[y * w + x]),
-        ramps: f.terr?.theme?.ground ?? GROUND,
-        tint: ownedGround(mapStyle(), f.colors?.[state.map.owner[sl.link.a]]),
-      };
-    }
+    const ground = sl.link.kind === 'track' ? groundFor(state, f.terr, f.zoom, f.colors, state.map.owner[sl.link.a]) : undefined;
     paintLinks(cx, {
       ground,
       links: [sl.link],

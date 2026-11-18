@@ -1,5 +1,6 @@
 // Side drawers (right edge, one at a time, closed by default): Army, Research, Diplomacy, Events, Map key,
 // the selected building and the menu (settings). Each has one big primary readout and plain-word rows.
+import { SUPPLY_KEY } from '../supplyText';
 import { COUNTER_NAME, counterInfo } from '../counterUi';
 import { ANTI_RADAR_LABEL, aimAntiRadar, antiRadarButton, antiRadarOffered, escortTip } from '../antiRadarUi';
 import { defenseLines } from '../defenseView';
@@ -689,6 +690,7 @@ export class LegendPage implements DrawerPage {
     mark('m-trench', 'Trench', 'Dark zig-zag line inside a border: quiet borders between nations dig in, and attacks there cost more. Artillery, barrages, planes and warships flatten it.', lineIcon('trench', 22));
     mark('m-capital', 'Capital', 'Star: the heart of a nation. Taking it costs them gold.', worldGlyph('capital', 16));
     mark('m-front', 'Front', 'Yellow flashes are your gains, red flashes your losses.');
+    for (const k of SUPPLY_KEY) mark(`m-${k.id}`, k.title, k.text);
     mark('m-heart', 'Heartland', 'Faint blue edge (shown while this key or Army is open): your land deep inside your borders defends harder. Hover a tile for the bonus.');
 
     r.append(sectionTitle('Buildings'));

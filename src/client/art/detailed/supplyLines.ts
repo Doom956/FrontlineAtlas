@@ -211,6 +211,65 @@ function densify(pts: P[], step: number): P[] {
 }
 
 /**
+ * One dry stretch of a rail smoothed: string-pulled over `landOk` tiles, then rounded (wide curves first, the tile route
+ * as the last resort). `ok` is where the rounded line may run (land, or water for the straight run of a bridge).
+ */
+function smoothRun(leg: P[], ends: [P | null, P | null], landOk: (x: number, y: number) => boolean, ok: (x: number, y: number) => boolean): P[] {
+  const core = pull(leg, landOk);
+  for (const [step, rounds] of [[4, 4], [3, 3], [1.5, 3]] as const) {
+    const out: P[] = [];
+    if (ends[0]) out.push(ends[0]);
+    out.push(...chaikin(densify(core, step), rounds));
+    if (ends[1]) out.push(ends[1]);
+    let good = true;
+    for (let i = 0; good && i + 1 < out.length; i++) if (!lineOk(out[i], out[i + 1], ok)) good = false;
+    if (good) return out;
+  }
+  return leg;
+}
+
+/**
+ * The sim's rail route (tile ids on a map `w` wide, from hub a to hub b) as the smooth line the art draws: the same
+ * smoothing a route of railRoute gets, over the owner's own dry land (the two end tiles always count). Water tiles on the
+ * route (a bridge) split it into dry stretches joined by a straight run. Null for fewer than two tiles. Pure.
+ */
+export function smoothRoute(tiles: ArrayLike<number>, w: number, t: SupplyTerrain, own: number): { path: P[]; bridges: [number, number][] } | null {
+  const n = tiles.length;
+  if (n < 2) return null;
+  const centre = (c: number): P => [(c % w) + 0.5, ((c / w) | 0) + 0.5];
+  const a = tiles[0];
+  const b = tiles[n - 1];
+  const isEnd = (x: number, y: number): boolean => y * w + x === a || y * w + x === b;
+  const landOk = (x: number, y: number): boolean => isEnd(x, y) || (!WATER(t.terrain(x, y)) && t.owner(x, y) === own);
+  const ok = (x: number, y: number): boolean => landOk(x, y) || WATER(t.terrain(x, y));
+  const legs: P[][] = [[centre(tiles[0])]];
+  for (let i = 1; i < n; i++) {
+    const c = tiles[i];
+    if (WATER(t.terrain(c % w, (c / w) | 0)) && !isEnd(c % w, (c / w) | 0)) continue;
+    const prev = tiles[i - 1];
+    if (WATER(t.terrain(prev % w, (prev / w) | 0)) && !isEnd(prev % w, (prev / w) | 0)) legs.push([centre(c)]);
+    else legs[legs.length - 1].push(centre(c));
+  }
+  const path: P[] = [];
+  const bridges: [number, number][] = [];
+  for (const leg of legs) {
+    const pts = leg.length < 2 ? leg : smoothRun(leg, [null, null], landOk, ok);
+    if (path.length) {
+      const s0 = pathLength(path);
+      const last = path[path.length - 1];
+      bridges.push([s0 + 0.35, s0 + Math.hypot(pts[0][0] - last[0], pts[0][1] - last[1]) - 0.35]);
+    }
+    path.push(...pts);
+  }
+  const clean: P[] = [path[0]];
+  for (const q of path) {
+    const l = clean[clean.length - 1];
+    if (Math.hypot(q[0] - l[0], q[1] - l[1]) > 1e-6) clean.push(q);
+  }
+  return clean.length < 2 ? null : { path: clean, bridges };
+}
+
+/**
  * The rail route from hub `a` to hub `b` over `a`'s owner's dry land (see the header), or null when there is none
  * (enemy or neutral land in the way, a water gap wider than a bridge, the hubs on different owners).
  */
@@ -310,22 +369,7 @@ export function railRoute(a: Hub, b: Hub, t: SupplyTerrain): { path: P[]; bridge
       legs.push([centre(tiles[i])]);
     } else legs[legs.length - 1].push(centre(tiles[i]));
   }
-  const smoothLeg = (leg: P[], ends: [P | null, P | null]): P[] => {
-    // the approach to a bridge runs straight on in the bridge's line for a little way
-    // wide curves first (a rail bends slowly), tighter ones where the land is narrow, the tile route as the last resort
-    const core = pull(leg, landOk);
-    const ok = (x: number, y: number): boolean => landOk(x, y) || WATER(ter(x, y));
-    for (const [step, rounds] of [[4, 4], [3, 3], [1.5, 3]] as const) {
-      const out: P[] = [];
-      if (ends[0]) out.push(ends[0]);
-      out.push(...chaikin(densify(core, step), rounds));
-      if (ends[1]) out.push(ends[1]);
-      let good = true;
-      for (let i = 0; good && i + 1 < out.length; i++) if (!lineOk(out[i], out[i + 1], ok)) good = false;
-      if (good) return out;
-    }
-    return leg;
-  };
+  const smoothLeg = (leg: P[], ends: [P | null, P | null]): P[] => smoothRun(leg, ends, landOk, (x, y) => landOk(x, y) || WATER(ter(x, y)));
   const path: P[] = [];
   const bridges: [number, number][] = [];
   for (let L = 0; L < legs.length; L++) {
