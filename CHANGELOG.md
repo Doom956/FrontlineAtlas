@@ -2,6 +2,21 @@
 
 The big rounds of work, newest first. Each one was merged to `main` and deployed to the live game.
 
+## 2026-11-18 · Supply lines (rules and AI)
+
+- Supply now runs over a network. Rails link your capital, cities, factories, ports and forts over your own land (each
+  to its 3 nearest within 120 tiles); ports link other landmasses by convoy. A fort or landing that no route reaches
+  from your capital stops supplying your troops. Cities still supply on their own and the capital always does.
+- Bombs, barrages and support strikes on a hub damage it: no route passes it for 45 s (30 s with Logistics, 10 s less
+  under a SAM or flak). Another route around it keeps everything supplied. A repaired hub is safe for 30 s. Rockets
+  still destroy what they hit.
+- Convoys leave every 30 s; an enemy warship or submarine near the lane sinks one and cuts the lane until the next
+  convoy. A blockade of either port closes the lane.
+- Strategic wings hit the hub that cuts the most enemy supply near a front while their side pushes there. AI nations
+  do the same with bombs and rockets, build a second route (a fort) and a SAM when one hub carries their supply, and
+  the advisor warns you when your front hangs on one hub.
+- Multiplayer version 24.
+
 ## 2026-11-17 · Diplomacy: peace deals and pacts (simulation and AI)
 
 - Peace deals: two nations that fought in the last minute can make peace. Each side can pay something at signing:

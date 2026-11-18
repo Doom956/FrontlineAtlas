@@ -378,11 +378,46 @@ only within 20-30 tiles of your border and only one spot every 14-20 s, capturin
 paratroopers can land outside SAM range (and need SAM cover gone to survive inside it). Barrages kill a few percent
 of an army at most, so defence (forts out of reach, depth, numbers) still matters.
 
-**Supply** (cheap model, no path search). Supply sources: capital, finished cities and finished forts, and for
-`BEACHHEAD_SUPPLY_SECONDS` the landing tile of an invasion. A tile's supply distance is the straight-line distance
-to the player's nearest source (sources cached per player, rebuilt when its buildings, capital or beachheads
-change). Within `SUPPLY_RANGE` (110 tiles, Logistics +50%) efficiency is 1, falling linearly to `MIN_SUPPLY_EFF` at
-3x range. It scales attack power and front speed; defenders out of supply defend at x0.85.
+**Supply.** Supply sources: capital, finished cities and finished forts, and for `BEACHHEAD_SUPPLY_SECONDS` the
+landing tile of an invasion. A tile's supply distance is the straight-line distance to the player's nearest source
+(sources cached per player, rebuilt when its buildings, capital, beachheads or cut list change). Within
+`SUPPLY_RANGE` (110 tiles, Logistics +50%) efficiency is 1, falling linearly to `MIN_SUPPLY_EFF` at 3x range. It
+scales attack power and front speed; defenders out of supply defend at x0.85.
+
+**Supply lines** (`supplylines.ts`, numbers in `SUPPLY_LINES`). Forts and beachheads only supply while the nation's
+network reaches them from the capital.
+- Hubs: the capital, finished cities, factories, ports and forts, and live beachheads. Each hub lays a rail to its 3
+  nearest own hubs within 120 tiles that a route over its own land reaches (the next nearest when one cannot, two
+  more tries). The route search is an integer A* in a box 14 tiles round the two hubs: flat land is cheap, hills cost
+  more, mountains and swamps a lot (the rail goes round them where it can), up to 3 water tiles are bridged. A hub
+  where 3 or more rails meet is a junction (a rail yard on the map).
+- Sea lanes: a port links by convoy to its nearest own port or beachhead on another landmass of the same sea (400
+  tiles at most); a beachhead no port picked gets a lane from its nearest port.
+- Connected: a walk from the capital over open links, never into a damaged hub. A fort or beachhead it does not reach
+  is cut and is no source. Cities stay sources (they feed themselves). The capital is never damaged or cut. When
+  another route goes round a damaged hub, nothing is cut.
+- When: every nation's network is checked once a second (staggered). Rails are laid again when its hubs change, when
+  land under a rail is lost (the stored route is checked tile by tile) and every 20 s while a rail could not be laid;
+  the walk runs again after that, and whenever a hub is damaged or repaired or a lane opens or closes.
+- Damage: a bomb (raid or support strike), a barrage or any other blast on a hub damages it (rockets and cruise
+  missiles destroy the building outright, which also takes it out of the network). Repair takes 45 s, 30 s with
+  Logistics, 10 s less when a working own SAM site or flak site (Flak Guns) covers the hub (once, no stacking). A hit
+  on a damaged hub does nothing; after the repair the hub is guarded for 30 s. Plain track is never a target.
+- Convoys: a convoy leaves on every lane every 30 s and sails for 10 s. An enemy warship or submarine (at war) within
+  10 tiles of the lane while it sails sinks it: the lane is cut until the next convoy leaves. A blockade of either
+  port closes the lane while it holds.
+- Events: `supplyHubDamaged`, `supplyHubRepaired`, `convoySunk`, `supplyCut`, `supplyRestored`, to both sides where
+  there is an attacker, with `GameEvent.supply` (owner, by, hub tile and kind, seconds, the sources cut or restored,
+  their compass direction from the capital) for the client's own wording.
+- Strikes: a strategic wing whose side is pushing into a nation sends its first bomber at that nation's hub whose damage
+  cuts the most sources within 160 tiles of the front (`bestSupplyHub`); otherwise the old raid targets. Support wings
+  are unchanged. `hubCutValue` tells the UI how many sources a hit would cut.
+- AI (Normal up): during a push, or against its main war target, its manual bombs and one rocket of a salvo go for that
+  hub. When one of its own hubs carries most of its supply (`supplyRiskOf`), it builds a fort that adds a second route
+  (`secondRouteSpots`) and, with Radar, a SAM by that hub. The advisor says "Your eastern front hangs on one hub: build a
+  fort to add a second route".
+- State: damage and guard timers, sunk convoys and cut lists are in `GameState.supplyNet` (hashed). Rails and lanes are
+  derived data built only inside `tick` (client reads never rebuild them); their ends are hashed too.
 
 **Elimination.** A player with no tiles is eliminated; their units and attacks vanish, and the nation that took the
 last tile gets their gold (half of a human's). A tribe's elimination is only announced to the nations involved.
