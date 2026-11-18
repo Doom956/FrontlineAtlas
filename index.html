@@ -61,9 +61,45 @@
         height: 100%;
         background: #0a111c;
       }
+      .seo-intro {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        clip-path: inset(50%);
+        white-space: nowrap;
+        border: 0;
+      }
     </style>
   </head>
   <body>
+    <main class="seo-intro">
+      <h1>Frontline Atlas: free browser strategy game</h1>
+      <p>
+        Frontline Atlas is a free strategy game that runs in your browser, with no download and no account. Start as one small
+        territory, push your borders across the map, build an economy, research navies, air power, armor and defenses, and
+        take most of the land. Play alone against AI nations or online in free for all, team and special lobbies.
+      </p>
+      <p>
+        Choose from 27 maps, from the whole world and real regions to Europe 1939, the Roman Empire and fantasy worlds. It
+        works on desktop, tablet and phone.
+      </p>
+      <nav aria-label="Guides">
+        <a href="how-to-play.html">How to play</a>
+        <a href="maps.html">Maps</a>
+        <a href="modes.html">Game modes and multiplayer</a>
+        <a href="features.html">Features</a>
+      </nav>
+    </main>
+    <noscript>
+      <p>
+        Frontline Atlas needs JavaScript to run. Turn it on in your browser to play. Read more: <a href="how-to-play.html">how to play</a>,
+        <a href="maps.html">maps</a>, <a href="modes.html">game modes</a> and <a href="features.html">features</a>.
+      </p>
+    </noscript>
     <div id="app"></div>
     <script type="module" src="/src/client/main.ts"></script>
   </body>
