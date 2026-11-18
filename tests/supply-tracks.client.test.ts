@@ -86,6 +86,9 @@ describe('the laid track network', () => {
       expect(p).not.toBeNull();
       expect(offTrack(p!, net.tracks)).toBeLessThan(0.15);
     }
+    // no stub: every track ends at a hub or on another track
+    const hubs = new Set(links.flatMap((l) => [l.a, l.b]));
+    for (const t of net.tracks) for (const e of [t.a, t.b]) expect(hubs.has(e) || net.tracks.some((o) => o !== t && o.nodes.includes(e))).toBe(true);
     expect(net.paths[1]![0]).toEqual([10.5, 40.5]);
     expect(net.paths[1]![net.paths[1]!.length - 1]).toEqual([80.5, 15.5]);
   });

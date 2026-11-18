@@ -1,7 +1,7 @@
 // A nation's rail links as one laid track network (client only, pure: no DOM, no random, no clock). The sim gives each
 // rail link its own tile route (sim/supplylines.ts supplyNetworkOf); routes to nearby hubs share corridors, so drawn one
 // by one they double up and cross each other. Here they are laid as one network the way a railway is built:
-//   1. corridor   links are laid shortest first; a route tile within two tiles of track already laid snaps onto it, so
+//   1. corridor   links are laid shortest first; a route tile within three tiles of track already laid snaps onto it, so
 //                 a later route joins the existing line (a switch) instead of running beside it. The result is a graph
 //                 of tiles; a small loop the snapping would make is closed through the track already there.
 //   2. tracks     the graph splits at hubs and at switches; at a switch the two most nearly straight pieces run on as
@@ -42,8 +42,8 @@ export interface TrackNet {
   paths: (P[] | null)[];
 }
 
-/** Snap radius (tiles) onto a track already laid. */
-const SNAP = 2;
+/** Snap radius (tiles) onto a track already laid (routes closer than this share one track). */
+const SNAP = 3;
 /** Widest curve radius (tiles). */
 const CURVE_R = 10;
 const WATER = (t: number): boolean => t <= 1;
@@ -277,6 +277,9 @@ export function layTracks(links: readonly TrackLink[], w: number, terrain: (x: n
     }
     chains[li] = erased;
   }
+  // only the edges the final chains run on stay (a loop erased above leaves no stub behind)
+  adj.clear();
+  for (const c of chains) if (c) for (let i = 0; i + 1 < c.length; i++) link(c[i], c[i + 1]);
   // 3. the graph's pieces between hubs and switches
   const isJoint = (t: number): boolean => hubs.has(t) || (adj.get(t)?.length ?? 0) !== 2;
   const used = new Set<number>();

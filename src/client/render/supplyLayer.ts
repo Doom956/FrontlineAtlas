@@ -344,8 +344,8 @@ export class SupplyLayer {
       for (const tr of laid.tracks) {
         const len = pathLength(tr.path);
         let brk: RailBreak | undefined;
-        if (tr.hubA && damagedHere.has(tr.a)) brk = { line: 0, s0: Math.min(1.2, len * 0.3), s1: Math.min(3.2, len * 0.6) };
-        else if (tr.hubB && damagedHere.has(tr.b)) brk = { line: 0, s0: Math.max(len * 0.4, len - 3.2), s1: Math.max(len * 0.7, len - 1.2) };
+        if (tr.hubA && damagedHere.has(tr.a)) brk = { line: 0, s0: Math.min(3.4, len * 0.3), s1: Math.min(5.2, len * 0.5) };
+        else if (tr.hubB && damagedHere.has(tr.b)) brk = { line: 0, s0: Math.max(len * 0.5, len - 5.2), s1: Math.max(len * 0.7, len - 3.4) };
         if (brk) key += `|x${tr.id}`;
         tracks.push({ owner: p.id, id: tr.id, path: tr.path, box: boxOf(tr.path), brk });
         if (tr.hubA || tr.hubB) own.push({ a: tr.a, b: tr.b, path: tr.path, bridges: [] });

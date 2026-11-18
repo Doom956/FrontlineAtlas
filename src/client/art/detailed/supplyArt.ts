@@ -245,7 +245,7 @@ export function railArt(lines: readonly (readonly P[])[], g: TrackGround, seed: 
       if (d > reach && !broken) continue;
       if (look === 'line') {
         // normal zoom: one thin dark line (the pixel the line runs through), broken where the line is cut
-        if (!(d < 1.25 || (d < 1.6 && side[k] > 0))) continue;
+        if (!(d < 1.0 || (d < 1.4 && side[k] > 0))) continue;
         if (broken) continue;
         if (wet) {
           put(k, STEEL_DARK);
