@@ -393,9 +393,15 @@ network reaches them from the capital.
   where 3 or more rails meet is a junction (a rail yard on the map).
 - Sea lanes: a port links by convoy to its nearest own port or beachhead on another landmass of the same sea (400
   tiles at most); a beachhead no port picked gets a lane from its nearest port.
-- Connected: a walk from the capital over open links, never into a damaged hub. A fort or beachhead it does not reach
-  is cut and is no source. Cities stay sources (they feed themselves). The capital is never damaged or cut. When
-  another route goes round a damaged hub, nothing is cut.
+- Join: a hub cluster the nearest-hub rails leave apart from the capital's network gets a rail to the nearest joined
+  hub (within 120 tiles), else a rail along own dry land at any distance (a flood over own land; a cluster no flood
+  can join is flooded again after 5 s). So a fort on own land that touches the capital's land is always linked: only
+  enemy land between, a damaged hub on the only route or a cut sea lane cuts it.
+- Connected: a walk from the capital over open links that never goes on past a damaged hub (the damaged hub itself
+  keeps its supply). A fort it does not reach is cut and is no source. A beachhead is cut only when it has a convoy
+  lane and every lane to it is closed; without a lane it supplies for its window as before. Hubs on a landmass none
+  of the capital's hubs is on, with no lane, have no network and are never cut. Cities stay sources (they feed
+  themselves). The capital is never damaged or cut. When another route goes round a damaged hub, nothing is cut.
 - When: every nation's network is checked once a second (staggered). Rails are laid again when its hubs change, when
   land under a rail is lost (the stored route is checked tile by tile) and every 20 s while a rail could not be laid;
   the walk runs again after that, and whenever a hub is damaged or repaired or a lane opens or closes.
@@ -408,7 +414,9 @@ network reaches them from the capital.
   port closes the lane while it holds.
 - Events: `supplyHubDamaged`, `supplyHubRepaired`, `convoySunk`, `supplyCut`, `supplyRestored`, to both sides where
   there is an attacker, with `GameEvent.supply` (owner, by, hub tile and kind, seconds, the sources cut or restored,
-  their compass direction from the capital) for the client's own wording.
+  their compass direction from the capital) for the client's own wording. `scripts/batch.ts` prints a "Supply:" line
+  (hubs damaged and cuts per game, the share of cuts while an attack on that nation ran, seconds with a source cut,
+  convoys sunk).
 - Strikes: a strategic wing whose side is pushing into a nation sends its first bomber at that nation's hub whose damage
   cuts the most sources within 160 tiles of the front (`bestSupplyHub`); otherwise the old raid targets. Support wings
   are unchanged. `hubCutValue` tells the UI how many sources a hit would cut.
