@@ -543,7 +543,7 @@ export const MILITARY_CARS: readonly CarKind[] = ['flatTank', 'flatHeavy'];
 export const SUPPLY_CARS: readonly CarKind[] = ['crates', 'drums', 'sandbags', 'tarp', 'tank'];
 
 /** Length of each car along the rail (model units) and the gap between cars (the couplings show in it). */
-const CAR_LEN: Record<CarKind, number> = { engine: 8, tender: 4.2, tank: 10.5, flatTank: 10.5, flatHeavy: 10.5, crates: 10.5, drums: 10.5, sandbags: 10.5, tarp: 10.5 };
+const CAR_LEN: Record<CarKind, number> = { engine: 9, tender: 4.6, tank: 10.5, flatTank: 10.5, flatHeavy: 10.5, crates: 10.5, drums: 10.5, sandbags: 10.5, tarp: 10.5 };
 const CAR_GAP = 1.2;
 /** Half width of the wagons (model units). The engine and tender are laid out at 1.8 and stretched across to match. */
 const HW = 2.7;
@@ -650,21 +650,35 @@ export function carModel(kind: CarKind): Model {
   const parts: Part[] = [];
   switch (kind) {
     case 'engine': {
-      // a steam engine: a long black boiler with a brass dome, a tall stack in front, the cab in the owner's colour
-      // with a dark roof, a red buffer beam (laid out for a car 10 long and 3.6 wide, then fitted to the car)
-      const e = 1.8;
-      const q: Part[] = [...chassis(10, e)];
-      q.push(box(-5, -e, 4.7, e, 0.8, 0.5, 'gun'));
-      q.push(box(-1.4, -1.4, 4.5, 1.4, 1.3, 2.3, 'gun', { sh: 'cyl' }));
-      q.push(ell(3.4, 0, 0.75, 0.75, 3.4, 1.6, 'gun', { sh: 'cyl' }), ell(3.4, 0, 0.5, 0.5, 5.0, 0, 'black'));
-      q.push(ell(1.1, 0, 0.7, 0.65, 3.4, 0.5, 'brass', { sh: 'dome' }));
-      q.push(box(-4.9, -e, -1.4, e, 1.3, 2.7, 'own', { tone: -0.4 }), box(-5.2, -e - 0.15, -1.2, e + 0.15, 4.0, 0.35, 'own', { tone: 0.3 }));
-      q.push(box(4.6, -e, 5.1, e, 0.5, 0.8, 'redpaint'));
-      parts.push(...stretch(q, L / 10, HW / e));
+      // a steam locomotive from above: a long narrow boiler (about 65% of the length) with thin dark bands, a darker
+      // smokebox and a small chimney at the front, a steam dome and a sand dome on top, running boards down both sides,
+      // a short cab at the back with a flat roof and a modest owner stripe, a buffer beam on the nose
+      parts.push(box(-L / 2 + 0.3, -2.0, L / 2 - 0.3, 2.0, 0, 0.8, 'track'), seg(-L / 2, 0, -L / 2 - 0.6, 0, 0.5, 0.4, 0.4, 'gun'), seg(L / 2, 0, L / 2 + 0.6, 0, 0.5, 0.4, 0.4, 'gun'));
+      parts.push(box(-L / 2 + 0.2, -2.0, L / 2 - 0.2, 2.0, 0.8, 0.4, 'gun', { tone: -0.2 }));
+      parts.push(seg(-1.8, -1.8, 4.1, -1.8, 0.22, 1.2, 0.1, 'fieldgrey', { tone: 0.4 }), seg(-1.8, 1.8, 4.1, 1.8, 0.22, 1.2, 0.1, 'fieldgrey', { tone: -0.2 }));
+      // the boiler: -2.0 .. 3.9, a lit cylinder with bands
+      parts.push(box(-2.0, -1.3, 3.9, 1.3, 1.2, 2.0, 'gun', { sh: 'cyl', tone: 1.4 }));
+      for (const u of [-0.6, 0.9, 2.3]) parts.push(seg(u, -1.3, u, 1.3, 0.2, 3.2, 0.05, 'black', { tone: 0.6 }));
+      parts.push(box(3.3, -1.35, 4.2, 1.35, 1.2, 2.1, 'gun', { sh: 'cyl', tone: 0.3 }), ell(3.75, 0, 0.35, 0.8, 3.3, 0, 'black', { tone: 0.4 }));
+      parts.push(ell(3.5, 0, 0.42, 0.42, 3.3, 1.2, 'black', { sh: 'cyl', tone: 0.6 }), ell(3.5, 0, 0.62, 0.62, 4.5, 0.25, 'gun', { sh: 'dome', tone: 0.4 }), ell(3.5, 0, 0.3, 0.3, 4.75, 0, 'black'));
+      parts.push(ell(0.5, 0, 0.7, 0.7, 3.2, 0.9, 'gun', { sh: 'dome', tone: 1.5 }), ell(0.5, 0, 0.25, 0.25, 4.1, 0.15, 'brass', { sh: 'dome' }), ell(1.9, 0, 0.5, 0.5, 3.2, 0.6, 'gun', { sh: 'dome', tone: 1.5 }));
+      // the cab: walls, a flat roof overhanging a little, an owner stripe along it
+      parts.push(box(-4.3, -1.75, -1.9, 1.75, 0.8, 2.5, 'gun', { tone: 1.0 }), box(-4.5, -1.9, -1.8, 1.9, 3.3, 0.3, 'gun', { tone: 0.6 }), box(-4.5, -0.45, -1.8, 0.45, 3.6, 0, 'own', { tone: -0.2 }));
+      parts.push(box(-3.6, -1.9, -2.6, -1.75, 1.6, 1.0, 'black'), box(-3.6, 1.75, -2.6, 1.9, 1.6, 1.0, 'black'));
+      parts.push(box(L / 2 - 0.5, -2.0, L / 2 - 0.1, 2.0, 0.5, 0.8, 'redpaint', { tone: -0.3 }));
       break;
     }
     case 'tender':
-      parts.push(...stretch([...chassis(5.5, 1.8), box(-2.75, -1.8, 2.75, 1.8, 0.8, 2.1, 'gun', { tone: 0.3 }), ell(0.1, 0, 2.0, 1.4, 2.9, 0.4, 'black', { sh: 'dome' })], L / 5.5, HW / 1.8));
+      // a low box on its frame, a textured heap of dark coal with small lit lumps
+      parts.push(box(-L / 2 + 0.3, -2.0, L / 2 - 0.3, 2.0, 0, 0.8, 'track'), seg(-L / 2, 0, -L / 2 - 0.6, 0, 0.5, 0.4, 0.4, 'gun'));
+      parts.push(box(-L / 2, -1.95, L / 2, 1.95, 0.8, 1.4, 'gun', { tone: 0.4 }), box(-L / 2 + 0.4, -1.55, L / 2 - 0.4, 1.55, 2.0, 0.2, 'black'));
+      parts.push(ell(0, 0, 1.8, 1.35, 2.1, 0.6, 'black', { sh: 'dome', tone: 0.5 }));
+      for (let i = 0; i < 11; i++) {
+        const a = i * 2.399;
+        const r = 0.25 + ((i * 37) % 10) / 12;
+        parts.push(ell(Math.cos(a) * r * 1.9, Math.sin(a) * r * 1.2, 0.34 + (i % 3) * 0.08, 0.3 + (i % 2) * 0.08, 2.5, 0.35, 'black', { sh: 'dome', tone: 1.6 + (i % 3) * 0.4 }));
+      }
+      parts.push(box(L / 2 - 0.5, -0.4, L / 2 - 0.1, 0.4, 2.0, 0, 'own', { tone: -0.2 }));
       break;
     case 'flatTank':
     case 'flatHeavy': {
@@ -806,7 +820,7 @@ export function drawTrain(ctx: CanvasRenderingContext2D, t: TrainDraw): void {
     const m = pointAt(t.path, Math.max(0, Math.min(total, c)));
     const ang = Math.atan2(f.y - r.y, f.x - r.x);
     const facing = facingIndex(ang, n);
-    const b = carBake(kind, facing, n, g.res, t.owner, kind === 'engine' || kind === 'tender' ? ringWidth(g.k) : 0);
+    const b = carBake(kind, facing, n, g.res, t.owner, 0);
     placed.push({ b, X: toCell(m.x) - b.ox, Y: toCell(m.y) - b.oy, cy: m.y });
     if (kind === 'engine') engine = { x: m.x, y: m.y, th: facing * ((Math.PI * 2) / n) };
     s -= L + CAR_GAP * sc;
@@ -866,14 +880,14 @@ export function drawTrain(ctx: CanvasRenderingContext2D, t: TrainDraw): void {
 /** The engine's smoke: puffs rising off the stack and drifting back over the train, growing and thinning. */
 function drawSmoke(ctx: CanvasRenderingContext2D, x: number, y: number, th: number, t: TrainDraw, g: Grid): void {
   const sc = t.scale * TRAIN_K;
-  const [sx, sy] = project(3.4, 0, 5.2, th, 0, sc, false);
-  const PUFFS = 5;
+  const [sx, sy] = project(3.5, 0, 5.0, th, 0, sc, false);
+  const PUFFS = 7;
   for (let i = PUFFS - 1; i >= 0; i--) {
-    const age = (t.timeMs / 900 + i / PUFFS) % 1;
-    const back = age * 15;
-    const [dx, dy] = project(-back, 0.8 * age, 2 + age * 10, th, 0, sc, false);
-    const r = (1.8 + age * 3.6) * g.res;
-    drawBlob(ctx, age < 0.18 ? 'vapour' : 'smoke', r, (i + Math.floor(t.timeMs / 900)) & 3, x + sx + dx, y + sy + dy, g, 0.95 * (1 - age) ** 1.3);
+    const age = (t.timeMs / 1400 + i / PUFFS) % 1;
+    const back = age * 16;
+    const [dx, dy] = project(-back, 0.9 * age, age * 6, th, 0, sc, false);
+    const r = (0.8 + age * 1.9) * g.res;
+    drawBlob(ctx, age < 0.12 ? 'vapour' : 'smoke', r, (i + Math.floor(t.timeMs / 1400)) & 3, x + sx + dx, y + sy + dy, g, 0.55 * (1 - age) ** 1.6);
   }
 }
 
