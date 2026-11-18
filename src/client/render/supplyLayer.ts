@@ -28,8 +28,9 @@ import { drawBlob } from '../art/detailed/blobs';
 import { detailedUnits } from '../art/detailed/units';
 import { detailedWakes } from '../art/detailed/trails';
 import { motionOf } from '../art/registry';
-import { junctions, meanderRoute, pathLength, pointAt, seaLane, smoothRoute, type Hub, type P, type Rail, type SupplyTerrain } from '../art/detailed/supplyLines';
-import { damageCross, drawTrain, drawTrainDot, frontArt, laneArt, railArt, railLook, supplyLabel, trainCars, trainLength, yardLines, type CarKind, type RailBreak } from '../art/detailed/supplyArt';
+import { junctions, pathLength, pointAt, seaLane, type Hub, type P, type Rail } from '../art/detailed/supplyLines';
+import { layTracks, type TrackLink, type TrackNet } from '../art/detailed/supplyTracks';
+import { damageCross, drawTrain, frontArt, laneArt, railArt, railLook, supplyLabel, trainCars, trainLength, yardLines, type CarKind, type RailBreak } from '../art/detailed/supplyArt';
 import type { TrailLayer, TrailUnit, UnitDraw } from '../art/types';
 import { repairLeft } from '../supplyText';
 import { ART_ZOOM } from './buildingArt';
@@ -70,7 +71,9 @@ const SHIMMER_R = 14;
 const CONVOY_SHIPS = 3;
 const CONVOY_GAP = 1.6;
 const BAKES_PER_FRAME = 2;
-const CACHE_MAX = 160;
+const CACHE_MAX = 72;
+/** Art px along a side of one baked piece of the rail network. */
+const CHUNK_PX = 512;
 
 interface RailView {
   id: string;
@@ -88,6 +91,14 @@ interface RailView {
   /** trains run on it (both ends reached, nothing damaged) */
   live: boolean;
   seed: number;
+}
+/** A laid track (one drawn line of the network; several links may run on it). */
+interface TrackView {
+  owner: number;
+  id: string;
+  path: P[];
+  box: [number, number, number, number];
+  brk?: RailBreak;
 }
 interface LaneView {
   id: string;
@@ -148,6 +159,14 @@ const hashTiles = (t: ArrayLike<number>): number => {
   for (let i = 0; i < t.length; i += 1) h = (Math.imul(h, 31) + t[i]) | 0;
   return h >>> 0;
 };
+const boxOf = (pts: readonly P[]): [number, number, number, number] => {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const q of pts) (x0 = Math.min(x0, q[0]), y0 = Math.min(y0, q[1]), x1 = Math.max(x1, q[0]), y1 = Math.max(y1, q[1]));
+  return [x0, y0, x1, y1];
+};
 const mixSeed = (a: number, b: number): number => (Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x7f4a7c15, 0xc2b2ae35)) >>> 0;
 
 interface Sprite {
@@ -172,6 +191,7 @@ function pixelsCanvas(t: TrackPixels): HTMLCanvasElement | null {
 
 export class SupplyLayer {
   rails: RailView[] = [];
+  tracks: TrackView[] = [];
   lanes: LaneView[] = [];
   yards: YardView[] = [];
   damaged: DamageView[] = [];
@@ -184,7 +204,11 @@ export class SupplyLayer {
   drawn = 0;
   trains = 0;
   private key = '';
-  private smooth = new Map<string, { path: P[] } | null>();
+  private nets = new Map<string, TrackNet>();
+  /** per owner: a hash of its tracks, yards and breaks (the baked pieces change with it) */
+  private netKey = new Map<number, string>();
+  /** per owner: the hub tiles (trains fade out over a building) */
+  private hubTiles = new Map<number, P[]>();
   private sprites = new Map<string, Sprite>();
   private latest = new Map<string, Sprite>();
   private budget = BAKES_PER_FRAME;
@@ -193,13 +217,16 @@ export class SupplyLayer {
 
   reset(): void {
     this.rails = [];
+    this.tracks = [];
+    this.netKey.clear();
+    this.hubTiles.clear();
     this.lanes = [];
     this.yards = [];
     this.damaged = [];
     this.cuts = [];
     this.pairs.clear();
     this.key = '';
-    this.smooth.clear();
+    this.nets.clear();
     this.sprites.clear();
     this.latest.clear();
     this.shimmer.clear();
@@ -221,17 +248,18 @@ export class SupplyLayer {
     this.computed++;
     const w = state.map.width;
     const h = state.map.height;
-    const terrain: SupplyTerrain = {
-      terrain: (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : state.map.terrain[y * w + x]),
-      owner: (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : state.map.owner[y * w + x]),
-    };
+    const terrainAt = (x: number, y: number): number => (x < 0 || y < 0 || x >= w || y >= h ? 0 : state.map.terrain[y * w + x]);
     const rails: RailView[] = [];
+    const tracks: TrackView[] = [];
+    const yards: YardView[] = [];
     const lanes: LaneView[] = [];
     const damaged: DamageView[] = [];
     const cuts: CutView[] = [];
     const vis = f.visible;
     const seenTile = (t: number): boolean => !vis || vis(t);
-    const hubsByOwner = new Map<number, { hubs: Hub[]; rails: Rail[] }>();
+    const nets = new Map<string, TrackNet>();
+    this.netKey.clear();
+    this.hubTiles.clear();
     for (const p of state.players) {
       if (p.id <= 0 || !p.alive) continue;
       const net = supplyNetworkOf(state, p.id);
@@ -251,86 +279,88 @@ export class SupplyLayer {
           if (other >= 0 && !dist.has(other)) (dist.set(other, (dist.get(queue[q]) as number) + 1), queue.push(other));
         }
       }
-      const own = hubsByOwner.get(p.id) ?? { hubs: [], rails: [] };
-      hubsByOwner.set(p.id, own);
+      const hubs: Hub[] = [];
+      const damagedHere = new Set<number>();
       for (const hb of net.hubs) {
+        if (hb.damagedUntil > state.tick) damagedHere.add(hb.tile);
         if (hb.damagedUntil > state.tick && open(hb.tile)) damaged.push({ owner: p.id, tile: hb.tile, until: hb.damagedUntil });
-        if (hb.kind !== 'beachhead') own.hubs.push({ id: hb.tile, type: hb.kind, x: hb.tile % w, y: (hb.tile / w) | 0, owner: p.id });
+        if (hb.kind !== 'beachhead') hubs.push({ id: hb.tile, type: hb.kind, x: hb.tile % w, y: (hb.tile / w) | 0, owner: p.id });
       }
+      this.hubTiles.set(p.id, net.hubs.map((hb) => [(hb.tile % w) + 0.5, ((hb.tile / w) | 0) + 0.5] as P));
+      // the rail links laid as one track network (cached while the routes stay)
+      const railLinks = net.links.filter((l) => l.kind === 'rail' && !!l.path && l.path.length >= 2);
+      let nk = `${p.id}|${w}`;
+      for (const l of railLinks) nk += `|${l.a}:${l.b}:${hashTiles(l.path as Int32Array)}`;
+      let laid = this.nets.get(nk);
+      if (!laid) laid = layTracks(railLinks.map((l): TrackLink => ({ a: l.a, b: l.b, tiles: l.path as Int32Array })), w, terrainAt, (x, y) => x >= 0 && y >= 0 && x < w && y < h && state.map.owner[y * w + x] === p.id);
+      nets.set(nk, laid);
+      const visibleRoute = (tiles: ArrayLike<number> | null, a: number, b: number): boolean => {
+        if (mine || f.me === 0 || !vis) return true;
+        if (vis(a) || vis(b)) return true;
+        if (tiles) for (let i = 0; i < tiles.length; i += 4) if (vis(tiles[i])) return true;
+        return false;
+      };
       for (const l of net.links) {
-        const id = `${p.id}|${l.a}|${l.b}`;
-        const visibleLink = (): boolean => {
-          if (mine || f.me === 0 || !vis) return true;
-          if (vis(l.a) || vis(l.b)) return true;
-          if (l.path) for (let i = 0; i < l.path.length; i += 4) if (vis(l.path[i])) return true;
-          return false;
-        };
-        if (!visibleLink()) continue;
-        if (l.kind === 'sea') {
-          const ax = l.a % w;
-          const ay = (l.a / w) | 0;
-          const bx = l.b % w;
-          const by = (l.b / w) | 0;
-          lanes.push({ id, owner: p.id, a: l.a, b: l.b, lane: null, tried: false, box: [Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx) + 1, Math.max(ay, by) + 1], sunk: l.cut });
-          continue;
-        }
-        if (!l.path || l.path.length < 2) continue;
-        const sk = `${id}|${hashTiles(l.path)}`;
-        let sm = this.smooth.get(sk);
-        if (sm === undefined) {
-          const r = smoothRoute(l.path, w, terrain, p.id);
-          sm = r ? { path: meanderRoute(r.path, mixSeed(l.a, l.b), terrain, p.id) } : null;
-          if (this.smooth.size > 600) this.smooth.clear();
-          this.smooth.set(sk, sm);
-        }
-        if (!sm) continue;
-        const path = sm.path;
+        if (l.kind !== 'sea' || !visibleRoute(l.path, l.a, l.b)) continue;
+        const ax = l.a % w;
+        const ay = (l.a / w) | 0;
+        const bx = l.b % w;
+        const by = (l.b / w) | 0;
+        lanes.push({ id: `${p.id}|${l.a}|${l.b}`, owner: p.id, a: l.a, b: l.b, lane: null, tried: false, box: [Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx) + 1, Math.max(ay, by) + 1], sunk: l.cut });
+      }
+      let anyRail = false;
+      railLinks.forEach((l, i) => {
+        const path = laid.paths[i];
+        if (!path || !visibleRoute(l.path, l.a, l.b)) return;
+        anyRail = true;
         const len = pathLength(path);
-        let x0 = Infinity;
-        let y0 = Infinity;
-        let x1 = -Infinity;
-        let y1 = -Infinity;
-        for (const q of path) (x0 = Math.min(x0, q[0]), y0 = Math.min(y0, q[1]), x1 = Math.max(x1, q[0]), y1 = Math.max(y1, q[1]));
         const da = dist.get(l.a);
         const db = dist.get(l.b);
         const reversed = da !== undefined && db !== undefined ? db < da : db !== undefined && da === undefined;
-        // a broken piece a little way out of the damaged end
-        let brk: RailBreak | undefined;
         const ha = kindOf.get(l.a);
         const hb2 = kindOf.get(l.b);
+        // a broken piece a little way out of the damaged end
+        let brk: RailBreak | undefined;
         if (ha && ha.damagedUntil > state.tick) brk = { line: 0, s0: Math.min(1.2, len * 0.3), s1: Math.min(3.2, len * 0.6) };
         else if (hb2 && hb2.damagedUntil > state.tick) brk = { line: 0, s0: Math.max(len * 0.4, len - 3.2), s1: Math.max(len * 0.7, len - 1.2) };
         rails.push({
-          id,
+          id: `${p.id}|${l.a}|${l.b}`,
           owner: p.id,
           a: l.a,
           b: l.b,
           path,
           flow: reversed ? path.slice().reverse() : path,
           length: len,
-          box: [x0, y0, x1, y1],
+          box: boxOf(path),
           brk,
           live: !l.cut && !!ha?.connected && !!hb2?.connected,
           seed: mixSeed(l.a, l.b),
         });
-        own.rails.push({ a: l.a, b: l.b, path, bridges: [] });
+      });
+      if (!anyRail) continue;
+      // the tracks drawn (an enemy's only where some of its network is in view: the whole laid net, it is one picture)
+      let key = nk;
+      const own: Rail[] = [];
+      for (const tr of laid.tracks) {
+        const len = pathLength(tr.path);
+        let brk: RailBreak | undefined;
+        if (tr.hubA && damagedHere.has(tr.a)) brk = { line: 0, s0: Math.min(1.2, len * 0.3), s1: Math.min(3.2, len * 0.6) };
+        else if (tr.hubB && damagedHere.has(tr.b)) brk = { line: 0, s0: Math.max(len * 0.4, len - 3.2), s1: Math.max(len * 0.7, len - 1.2) };
+        if (brk) key += `|x${tr.id}`;
+        tracks.push({ owner: p.id, id: tr.id, path: tr.path, box: boxOf(tr.path), brk });
+        if (tr.hubA || tr.hubB) own.push({ a: tr.a, b: tr.b, path: tr.path, bridges: [] });
       }
+      // rail yards where three or more tracks run into a hub
+      for (const j of junctions(hubs, own)) {
+        const lines = yardLines(j, 3, 6, 0.44, 2.4);
+        yards.push({ id: `${p.id}|yard|${j.hub}`, owner: p.id, tile: j.hub, lines, box: boxOf(lines.flat()) });
+        key += `|y${j.hub}`;
+      }
+      this.netKey.set(p.id, key);
       const sources = net.cut.filter((t) => open(t));
       if (sources.length) cuts.push({ owner: p.id, tiles: sources });
     }
-    // rail yards where three or more rails meet
-    const yards: YardView[] = [];
-    for (const [owner, own] of hubsByOwner) {
-      for (const j of junctions(own.hubs, own.rails)) {
-        const lines = yardLines(j, 4, 7, 0.44, 2.2);
-        let x0 = Infinity;
-        let y0 = Infinity;
-        let x1 = -Infinity;
-        let y1 = -Infinity;
-        for (const l of lines) for (const q of l) (x0 = Math.min(x0, q[0]), y0 = Math.min(y0, q[1]), x1 = Math.max(x1, q[0]), y1 = Math.max(y1, q[1]));
-        yards.push({ id: `${owner}|yard|${j.hub}`, owner, tile: j.hub, lines, box: [x0, y0, x1, y1] });
-      }
-    }
+    this.nets = nets;
     // keep a found lane while its two ends stay
     for (const l of lanes) {
       const c = this.laneCache.get(`${l.a}|${l.b}`);
@@ -340,6 +370,7 @@ export class SupplyLayer {
       }
     }
     this.rails = rails;
+    this.tracks = tracks;
     this.lanes = lanes;
     this.yards = yards;
     this.damaged = damaged;
@@ -451,23 +482,61 @@ export class SupplyLayer {
         this.drawn++;
       }
     }
-    for (const r of this.rails) {
-      if (!inView(r.box)) continue;
-      const sp = this.sprite(r.id, this.bakeKey(f, r.owner, P, r.brk), () => railArt([r.path], ground(r.owner), r.seed, r.brk), P);
-      if (!sp) continue;
-      this.blit(ctx, sp, f, ox, oy);
-      this.drawn++;
-      this.pairs.add(railPairKey(r.a, r.b));
+    // the rail network of each owner, baked in square pieces (every track, switch and yard in a piece at once, so
+    // tracks that meet share one gravel bed and their rails join)
+    const chunk = Math.max(8, Math.round(CHUNK_PX / P));
+    const close = look === 'close';
+    const byOwner = new Map<number, { lines: P[][]; boxes: [number, number, number, number][]; brks: (RailBreak | undefined)[] }>();
+    for (const t of this.tracks) {
+      let o = byOwner.get(t.owner);
+      if (!o) byOwner.set(t.owner, (o = { lines: [], boxes: [], brks: [] }));
+      o.lines.push(t.path);
+      o.boxes.push(t.box);
+      o.brks.push(t.brk);
     }
-    if (look === 'close') {
+    if (close) {
       for (const y of this.yards) {
-        if (!inView(y.box)) continue;
-        const sp = this.sprite(y.id, this.bakeKey(f, y.owner, P), () => railArt(y.lines, ground(y.owner), mixSeed(y.tile, 5)), P);
-        if (!sp) continue;
-        this.blit(ctx, sp, f, ox, oy);
-        this.drawn++;
+        const o = byOwner.get(y.owner);
+        if (!o) continue;
+        for (const l of y.lines) (o.lines.push(l), o.boxes.push(boxOf(l)), o.brks.push(undefined));
       }
     }
+    const drawnOwners = new Set<number>();
+    const pad = 1;
+    for (const [owner, o] of byOwner) {
+      const nk = `${this.netKey.get(owner) ?? ''}|${close ? 1 : 0}`;
+      const cx0 = Math.floor((view.x0 - 1) / chunk);
+      const cy0 = Math.floor((view.y0 - 1) / chunk);
+      const cx1 = Math.floor((view.x1 + 1) / chunk);
+      const cy1 = Math.floor((view.y1 + 1) / chunk);
+      for (let cy = cy0; cy <= cy1; cy++) {
+        for (let cx = cx0; cx <= cx1; cx++) {
+          const clip: [number, number, number, number] = [cx * chunk, cy * chunk, (cx + 1) * chunk, (cy + 1) * chunk];
+          const idx: number[] = [];
+          for (let i = 0; i < o.lines.length; i++) {
+            const bx = o.boxes[i];
+            if (bx[2] + pad < clip[0] || bx[0] - pad > clip[2] || bx[3] + pad < clip[1] || bx[1] - pad > clip[3]) continue;
+            idx.push(i);
+          }
+          if (!idx.length) continue;
+          const id = `${owner}|c${cx},${cy}`;
+          const sp = this.sprite(id, `${this.bakeKey(f, owner, P)}|${nk}`, () => {
+            const lines = idx.map((i) => o.lines[i]);
+            const brks: RailBreak[] = [];
+            idx.forEach((i, k) => {
+              const b = o.brks[i];
+              if (b) brks.push({ ...b, line: k });
+            });
+            return railArt(lines, ground(owner), mixSeed(owner, 7) % 7, brks, clip);
+          }, P);
+          if (!sp) continue;
+          this.blit(ctx, sp, f, ox, oy);
+          this.drawn++;
+          drawnOwners.add(owner);
+        }
+      }
+    }
+    for (const r of this.rails) if (drawnOwners.has(r.owner)) this.pairs.add(railPairKey(r.a, r.b));
     ctx.restore();
     this.drawShimmer(ctx, f);
     if (z >= SUPPLY_SPRITE_ZOOM) this.drawYardWagons(ctx, f, ox, oy, inView);
@@ -530,13 +599,13 @@ export class SupplyLayer {
     const sprite = z >= SUPPLY_SPRITE_ZOOM;
     let drawn = 0;
     for (const r of this.rails) {
-      if (!r.live || !inView(r.box) || drawn >= 14) continue;
+      if (!sprite || !r.live || !inView(r.box) || drawn >= 14) continue;
       const first = r.flow[0];
       const last = r.flow[r.flow.length - 1];
       if (!near(first[0], first[1]) || !near(last[0], last[1])) continue;
-      const cars = sprite ? trainCars(1 + (r.seed % 3), r.seed) : [];
+      const cars = trainCars(1 + (r.seed % 3), r.seed);
       // the train's length in tiles; it runs only between the hubs' footprints, fading in and out at their edges
-      const len = sprite ? (trainLength(cars) * spriteScale(z)) / z : 0;
+      const len = (trainLength(cars) * spriteScale(z)) / z;
       const span = r.length - 2 * HUB_CLEAR;
       if (span < len + 1) continue;
       const run = span - len;
@@ -544,17 +613,17 @@ export class SupplyLayer {
       const u = (clock + (r.seed % 97) * 0.37) % cycle;
       if (u > run) continue;
       const head = HUB_CLEAR + len + u;
-      const fade = Math.min(1, u / 1.2, (run - u) / 1.2);
+      // it fades out over any other hub's building on the way too
+      const mid = pointAt(r.flow, head - len / 2);
+      let nearHub = Infinity;
+      for (const q of this.hubTiles.get(r.owner) ?? []) nearHub = Math.min(nearHub, Math.hypot(q[0] - mid.x, q[1] - mid.y));
+      const fade = Math.min(1, u / 1.2, (run - u) / 1.2, Math.max(0, (nearHub - len / 2 - 1.4) / 1.2));
       if (fade <= 0.02) continue;
       const color = f.colors[r.owner] ?? [128, 128, 128];
       const sp = this.screenPath(r.flow, ox, oy, z);
       ctx.save();
       ctx.globalAlpha *= fade;
-      if (sprite) drawTrain(ctx, { path: sp, head: head * z, cars, owner: color, scale: spriteScale(z), dpr: f.dpr, timeMs: f.nowMs });
-      else {
-        const p = pointAt(sp, (HUB_CLEAR + u) * z);
-        drawTrainDot(ctx, p.x, p.y, color, f.dpr);
-      }
+      drawTrain(ctx, { path: sp, head: head * z, cars, owner: color, scale: spriteScale(z), dpr: f.dpr, timeMs: f.nowMs });
       ctx.restore();
       drawn++;
     }
@@ -601,11 +670,8 @@ export class SupplyLayer {
       const L = pathLength(l.lane);
       const span = L + CONVOY_GAP * CONVOY_SHIPS;
       const lead = (ph / sail) * span;
-      if (z < SUPPLY_SPRITE_ZOOM) {
-        const p = pointAt(l.lane, Math.min(L, lead));
-        drawTrainDot(ctx, ox + p.x * z, oy + p.y * z, color, f.dpr);
-        continue;
-      }
+      // no marker at normal zoom: the dotted lane says where convoys sail; the ships show close up
+      if (z < SUPPLY_SPRITE_ZOOM) continue;
       for (let i = CONVOY_SHIPS - 1; i >= 0; i--) {
         const s = lead - i * CONVOY_GAP;
         if (s < 0 || s > L) continue;

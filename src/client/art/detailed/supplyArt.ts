@@ -64,9 +64,11 @@ function railSizes(P: number): { rail: number; sleeper: number; bed: number; ver
 
 /**
  * The pixels of rails along `lines` (tile coordinates) on the ground grid of `g` (see the header for the looks). Pure.
- * Several lines (a yard's sidings) merge into one gravel apron. `brk` scorches and breaks one stretch.
+ * Several lines (a yard's sidings, a switch) merge into one gravel apron. `brk` scorches and breaks one stretch or more;
+ * `clip` (tiles) bakes only that box of the lines.
  */
-export function railArt(lines: readonly (readonly P[])[], g: TrackGround, seed: number, brk?: RailBreak): TrackPixels {
+export function railArt(lines: readonly (readonly P[])[], g: TrackGround, seed: number, brkIn?: RailBreak | readonly RailBreak[], clip?: readonly [number, number, number, number]): TrackPixels {
+  const brks: readonly RailBreak[] = brkIn === undefined ? [] : Array.isArray(brkIn) ? (brkIn as readonly RailBreak[]) : [brkIn as RailBreak];
   const P = g.P;
   const look = railLook(P);
   const sz = railSizes(P);
@@ -84,10 +86,12 @@ export function railArt(lines: readonly (readonly P[])[], g: TrackGround, seed: 
     }
   }
   if (look === 'none' || !Number.isFinite(mx0)) return { x0: 0, y0: 0, w: 1, h: 1, rgba: new Uint8ClampedArray(4) };
-  const x0 = Math.floor(mx0 * P - reach) - 2;
-  const y0 = Math.floor(my0 * P - reach) - 2;
-  const w = Math.max(1, Math.ceil(mx1 * P + reach) + 3 - x0);
-  const h = Math.max(1, Math.ceil(my1 * P + reach) + 3 - y0);
+  // a clip box (tiles) bakes one piece of a long network: every pixel is worked out from the whole lines, so the
+  // pieces meet without a seam
+  const x0 = clip ? Math.floor(clip[0] * P) : Math.floor(mx0 * P - reach) - 2;
+  const y0 = clip ? Math.floor(clip[1] * P) : Math.floor(my0 * P - reach) - 2;
+  const w = clip ? Math.max(1, Math.ceil(clip[2] * P) - x0) : Math.max(1, Math.ceil(mx1 * P + reach) + 3 - x0);
+  const h = clip ? Math.max(1, Math.ceil(clip[3] * P) - y0) : Math.max(1, Math.ceil(my1 * P + reach) + 3 - y0);
   const n = w * h;
   const best = new Float32Array(n).fill(1e9);
   const along = new Float32Array(n);
@@ -104,6 +108,10 @@ export function railArt(lines: readonly (readonly P[])[], g: TrackGround, seed: 
       const by = pts[e + 1][1] * P;
       const len = Math.hypot(bx - ax, by - ay);
       if (len < 1e-9) continue;
+      if (Math.max(ax, bx) + reach < x0 || Math.min(ax, bx) - reach > x0 + w || Math.max(ay, by) + reach < y0 || Math.min(ay, by) - reach > y0 + h) {
+        cum += len;
+        continue;
+      }
       const tx = (bx - ax) / len;
       const ty = (by - ay) / len;
       const i0 = Math.max(0, Math.floor(Math.min(ax, bx) - reach) - x0);
@@ -145,13 +153,14 @@ export function railArt(lines: readonly (readonly P[])[], g: TrackGround, seed: 
   };
   // the bent pieces thrown aside at a break (tile coordinates of their two ends)
   const pieces: [number, number, number, number][] = [];
-  /** the crater at a break: centre (tiles) and radius (tiles) */
-  let crater: [number, number, number] = [0, 0, 1];
-  if (brk && lines[brk.line]) {
+  /** the craters at the breaks: centre (tiles) and radius (tiles) */
+  const craters: [number, number, number][] = [];
+  for (const brk of brks) {
+    if (!lines[brk.line]) continue;
     const L = lines[brk.line];
     const mid = (brk.s0 + brk.s1) / 2;
     const cq = pointAt(L, mid);
-    crater = [cq.x, cq.y, Math.max(0.3, (brk.s1 - brk.s0) * 0.25)];
+    craters.push([cq.x, cq.y, Math.max(0.3, (brk.s1 - brk.s0) * 0.25)]);
     for (const [ds, off, turn] of [[-0.22, 0.42, 0.7], [0.3, -0.38, -0.55]] as const) {
       const q = pointAt(L, mid + ds);
       const a = q.angle + turn;
@@ -206,16 +215,28 @@ export function railArt(lines: readonly (readonly P[])[], g: TrackGround, seed: 
   for (let j = 0; j < h; j++) {
     for (let i = 0; i < w; i++) {
       const k = j * w + i;
+      const d = best[k];
+      if (d > reach && !brks.length) continue;
       const ai = x0 + i;
       const aj = y0 + j;
       const qx = (ai + 0.5) / P;
       const qy = (aj + 0.5) / P;
       const ter = g.terrainAt(Math.floor(qx), Math.floor(qy));
       const wet = ter <= 1;
-      const d = best[k];
       const dth = bayer4(ai, aj);
       const s = along[k];
-      const broken = brk !== undefined && ((lineOf[k] === brk.line && s >= brk.s0 && s <= brk.s1) || Math.hypot(qx - crater[0], qy - crater[1]) < crater[2] * 1.3);
+      // broken: on a break's stretch of its line, or in a crater (the nearest crater shapes the pixel)
+      let crater: [number, number, number] = [0, 0, 1];
+      let cd = Infinity;
+      for (const c of craters) {
+        const e = Math.hypot(qx - c[0], qy - c[1]) / c[2];
+        if (e < cd) (cd = e, crater = c);
+      }
+      let broken = cd < 1.3;
+      for (let bi = 0; bi < brks.length && !broken; bi++) {
+        const brk = brks[bi];
+        if (lineOf[k] === brk.line && s >= brk.s0 && s <= brk.s1) broken = true;
+      }
       if (pieces.length && !wet && nearPiece(qx, qy)) {
         put(k, g.tint([...STEEL_LIT] as RGB, 120));
         kind[k] = 3;
@@ -263,8 +284,9 @@ export function railArt(lines: readonly (readonly P[])[], g: TrackGround, seed: 
       }
       const tones = trackTones(ter, g.ramps);
       if (!tones) continue;
-      if (ter === 7 && swampPool(qx, qy)) continue;
-      if (ter === 5 && underPeak(qx, qy, P, g.heightAt ? g.heightAt(qx, qy) : 0.7)) continue;
+      // a pool or a peak hides only the outer verge: the bed, sleepers and rails run on unbroken
+      if (ter === 7 && d > sz.bed && swampPool(qx, qy)) continue;
+      if (ter === 5 && d > sz.bed && underPeak(qx, qy, P, g.heightAt ? g.heightAt(qx, qy) : 0.7)) continue;
       // a cut through the forest: the crowns overhang the outer gravel, never the sleepers and rails
       if (ter === 3 && d > sz.sleeper && underCrown(qx, qy, P)) continue;
       const avg = lumaC(tones.ground);
