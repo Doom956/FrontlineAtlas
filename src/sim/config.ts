@@ -283,6 +283,14 @@ export const DEFENDER_NO_SUPPLY = 0.85;
 export const SUPPLY_LINES = {
   /** rails a hub lays to its nearest own hubs */
   railLinks: 3,
+  /** a rail is dropped when shorter rails go round it even with any one hub out, each detour at most this many times
+   *  as long as the rail [numerator, denominator] (supplylines.pruneRails) */
+  railPruneDetour: [2, 1] as readonly [number, number],
+  /** ... or when one detour over shorter rails is at most this many times as long (a line that runs through a hub on
+   *  the way: that hub now carries it) */
+  railPruneThrough: [23, 20] as readonly [number, number],
+  /** ... through hubs within this many tiles of the straight line between its two ends */
+  railPruneLane: 12,
   /** longest rail, in tiles between the two hubs (straight line) */
   railMaxDist: 120,
   /** longest bridge, in water tiles crossed in a straight line */

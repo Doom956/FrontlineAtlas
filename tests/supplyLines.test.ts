@@ -19,6 +19,8 @@ import {
   hubCutValue,
   hubDamaged,
   hubRepairSeconds,
+  onLine,
+  pruneRails,
   refreshSupplyLines,
   supplyNetworkOf,
   supplyRiskOf,
@@ -207,6 +209,153 @@ describe('the supply network', () => {
     refreshSupplyLines(s, 1);
     const hub = supplyNetworkOf(s, 1).hubs.find((h) => h.tile === factory.tile)!;
     expect(hub.junction).toBe(true);
+  });
+});
+
+type PLink = { a: number; b: number; sea: boolean; path: Int32Array | null };
+const W = 400;
+/** A straight 8-way route from tile a to tile b on a W-wide grid. */
+function straight(a: number, b: number): Int32Array {
+  const out = [a];
+  let x = a % W;
+  let y = (a / W) | 0;
+  const bx = b % W;
+  const by = (b / W) | 0;
+  while (x !== bx || y !== by) {
+    x += Math.sign(bx - x);
+    y += Math.sign(by - y);
+    out.push(y * W + x);
+  }
+  return Int32Array.from(out);
+}
+/** Hubs at the given points (sorted by tile, like the sim) with rails to their 3 nearest within 120 tiles. */
+function mesh(pts: [number, number][]): { hubs: { tile: number; x: number; y: number }[]; links: PLink[] } {
+  const hubs = pts.map(([x, y]) => ({ tile: y * W + x, x, y })).sort((p, q) => p.tile - q.tile);
+  const links: PLink[] = [];
+  const seen = new Set<number>();
+  hubs.forEach((h, i) => {
+    const near = hubs
+      .map((o, j) => ({ j, d: (o.x - h.x) ** 2 + (o.y - h.y) ** 2 }))
+      .filter((e) => e.j !== i && e.d <= 120 * 120)
+      .sort((p, q) => p.d - q.d || p.j - q.j)
+      .slice(0, 3);
+    for (const { j } of near) {
+      const a = Math.min(i, j);
+      const b = Math.max(i, j);
+      if (seen.has(a * 1000 + b)) continue;
+      seen.add(a * 1000 + b);
+      links.push({ a, b, sea: false, path: straight(hubs[a].tile, hubs[b].tile) });
+    }
+  });
+  return { hubs, links };
+}
+/** Hubs reached from hub 0 over the links, never on past `skip`. */
+function reachFrom0(n: number, links: readonly PLink[], skip = -1): number {
+  const seen = new Uint8Array(n);
+  seen[0] = 1;
+  const q = [0];
+  let c = 1;
+  while (q.length) {
+    const u = q.pop()!;
+    if (u === skip) continue;
+    for (const l of links) {
+      const v = l.a === u ? l.b : l.b === u ? l.a : -1;
+      if (v >= 0 && !seen[v]) {
+        seen[v] = 1;
+        c++;
+        q.push(v);
+      }
+    }
+  }
+  return c;
+}
+/** A fixed scatter of hubs (an integer LCG, so the test is the same every run). */
+function scatter(seed: number, count: number): [number, number][] {
+  let r = seed;
+  const next = (m: number): number => {
+    r = (r * 1103515245 + 12345) % 2147483648;
+    return r % m;
+  };
+  const out: [number, number][] = [];
+  const used = new Set<number>();
+  while (out.length < count) {
+    const x = next(300);
+    const y = next(300);
+    if (used.has(y * W + x)) continue;
+    used.add(y * W + x);
+    out.push([x, y]);
+  }
+  return out;
+}
+
+describe('a sparse network (pruneRails)', () => {
+  it('drops the long side of a line that runs on through a hub, and keeps it when the hub is off the line', () => {
+    const line = mesh([[10, 50], [60, 52], [110, 50]]);
+    expect(pruneRails(line.hubs, line.links, W * W, W).length).toBe(1);
+    expect(line.links.map((l) => `${l.a}-${l.b}`)).toEqual(['0-2', '1-2']); // hubs by tile: 10,50 then 110,50 then 60,52
+    const bent = mesh([[10, 50], [60, 50 + SUPPLY_LINES.railPruneLane + 6], [110, 50]]);
+    expect(pruneRails(bent.hubs, bent.links, W * W, W)).toEqual([]);
+    expect(onLine({ x: 60, y: 52 }, { x: 10, y: 50 }, { x: 110, y: 50 })).toBe(true);
+    expect(onLine({ x: 120, y: 50 }, { x: 10, y: 50 }, { x: 110, y: 50 })).toBe(false);
+  });
+
+  it('keeps a loop: the diagonals of a square go, its four sides stay, and a hit on any corner cuts nothing', () => {
+    const sq = mesh([[100, 100], [160, 100], [100, 160], [160, 160]]);
+    expect(sq.links.length).toBe(6);
+    pruneRails(sq.hubs, sq.links, W * W, W);
+    expect(sq.links.length).toBe(4);
+    for (let v = 1; v < 4; v++) expect(reachFrom0(4, sq.links, v)).toBe(4);
+  });
+
+  it('stays connected, thins out, and (lines through hubs aside) never lets one hit cut off more than before', () => {
+    const through = SUPPLY_LINES.railPruneThrough;
+    let before = 0;
+    let after = 0;
+    try {
+      for (const keepThrough of [true, false]) {
+        if (!keepThrough) (SUPPLY_LINES as { railPruneThrough: readonly [number, number] }).railPruneThrough = [0, 1];
+        for (let seed = 1; seed <= 6; seed++) {
+          const m = mesh(scatter(seed, 40));
+          const orig = m.links.slice();
+          pruneRails(m.hubs, m.links, W * W, W);
+          if (keepThrough) {
+            before += orig.length;
+            after += m.links.length;
+          }
+          expect(reachFrom0(40, m.links)).toBe(reachFrom0(40, orig));
+          if (!keepThrough) for (let v = 1; v < 40; v++) expect(reachFrom0(40, m.links, v)).toBe(reachFrom0(40, orig, v));
+        }
+      }
+    } finally {
+      (SUPPLY_LINES as { railPruneThrough: readonly [number, number] }).railPruneThrough = through;
+    }
+    expect(after).toBeLessThan(before * 0.85);
+  });
+
+  it('gives the same network whatever order the rails come in (lockstep)', () => {
+    const m = mesh(scatter(9, 40));
+    const rev = { hubs: m.hubs, links: m.links.slice().reverse() };
+    const g1 = pruneRails(m.hubs, m.links, W * W, W).sort((p, q) => p - q);
+    const g2 = pruneRails(rev.hubs, rev.links, W * W, W).sort((p, q) => p - q);
+    expect(g1).toEqual(g2);
+    const key = (l: PLink): string => `${l.a}-${l.b}`;
+    expect(rev.links.map(key).sort()).toEqual(m.links.map(key).sort());
+  });
+
+  it('in a game: a line through a factory carries the far fort, so a hit on the factory cuts it', () => {
+    const s = makeFlatGame(300, 60, 2, { human: true, seed: 3 });
+    claimRect(s, 1, 0, 0, 199, 59);
+    claimRect(s, 2, 200, 0, 299, 59);
+    s.admin = { aiPassive: [], godMode: [], aiFrozen: true, revealIntel: [] };
+    s.settings.victoryLandShare = 0.99;
+    s.players[1].capital = at(s, 10, 30);
+    const factory = addBuilding(s, 'factory', 1, at(s, 60, 31));
+    const fort = addBuilding(s, 'fort', 1, at(s, 110, 30));
+    refreshSupplyLines(s, 1);
+    const links = supplyNetworkOf(s, 1).links.map((l) => [l.a, l.b].sort((p, q) => p - q).join('-'));
+    expect(links).not.toContain([s.players[1].capital, fort.tile].sort((p, q) => p - q).join('-'));
+    expect(links.length).toBe(2);
+    expect(hubCutSources(s, 2, factory.tile)).toEqual([fort.tile]);
   });
 });
 

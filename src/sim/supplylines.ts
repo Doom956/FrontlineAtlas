@@ -6,7 +6,9 @@
 // (the next nearest when one cannot, up to two more tries; a pair is laid once). The route search prefers flat land,
 // goes round mountains and swamps where it can and crosses up to bridgeMax water tiles on a straight bridge. A port
 // runs a convoy lane to its nearest own port or beachhead on another landmass of the same sea; a beachhead that no port
-// picked gets a lane from its nearest port. A hub where junctionDegree rails meet is a junction (a rail yard).
+// picked gets a lane from its nearest port. Then the rails other rails already stand in for are dropped (pruneRails:
+// a line that runs on through a hub on the way, or a rail with a short way round even with any one hub out), so the
+// network reads like a railway, not a web. A hub where junctionDegree rails meet is a junction (a rail yard).
 //
 // Join: hubs the nearest-hub rails leave apart from the capital's network are joined to it: first a rail search to the
 // nearest joined hub within railMaxDist, then a flood over own dry land at any distance (landJoin). So a hub on own land
@@ -604,6 +606,124 @@ function landJoin(
   net.floodFails = fails;
 }
 
+/** True when hub p lies on the way from a to c: between them and within railPruneLane tiles of the line (integer math). */
+export function onLine(p: { x: number; y: number }, a: { x: number; y: number }, c: { x: number; y: number }): boolean {
+  const ux = c.x - a.x;
+  const uy = c.y - a.y;
+  const vx = p.x - a.x;
+  const vy = p.y - a.y;
+  const uu = ux * ux + uy * uy;
+  const t = ux * vx + uy * vy;
+  if (t <= 0 || t >= uu) return false;
+  const cross = ux * vy - uy * vx;
+  return cross * cross <= L.railPruneLane * L.railPruneLane * uu;
+}
+
+/**
+ * Drops the rails other routes already stand in for (lockstep: integer math, the result does not depend on order).
+ * Rails are ranked by length (squared, between the two hubs), ties by their tile pair. Over the rails ranked below it
+ * alone, a rail a-c goes when a route runs on through hubs that lie on its way (onLine) and is at most railPruneThrough
+ * times as long (that line now carries it; a hit on such a hub can now cut it), or when a and c stay linked with any
+ * one other hub taken out, each time by a detour at most railPruneDetour times as long (route length, a diagonal step
+ * counted 7/5). By induction on the rank the network stays connected, and the second rule alone never lets a hit on one
+ * hub cut off more than before. Removes the dropped links from `links`; returns their pair keys.
+ */
+export function pruneRails(hubs: readonly { tile: number; x: number; y: number }[], links: { a: number; b: number; sea: boolean; path: Int32Array | null }[], n: number, width: number): number[] {
+  const m = hubs.length;
+  const d2 = (i: number, j: number): number => {
+    const dx = hubs[i].x - hubs[j].x;
+    const dy = hubs[i].y - hubs[j].y;
+    return dx * dx + dy * dy;
+  };
+  const pairKey = (i: number, j: number): number => (hubs[i].tile < hubs[j].tile ? hubs[i].tile * n + hubs[j].tile : hubs[j].tile * n + hubs[i].tile);
+  const rails: number[] = [];
+  for (let k = 0; k < links.length; k++) if (!links[k].sea && links[k].path) rails.push(k);
+  // route length, octile (5 a straight step, 7 a diagonal one): a detour by a hub off the line is longer, as it looks
+  const lens = new Int32Array(links.length);
+  for (let k = 0; k < links.length; k++) {
+    const p = links[k].path;
+    if (links[k].sea || !p) continue;
+    let sum = 0;
+    for (let i = 1; i < p.length; i++) {
+      const dx = Math.abs((p[i] % width) - (p[i - 1] % width));
+      const dy = Math.abs(((p[i] / width) | 0) - ((p[i - 1] / width) | 0));
+      sum += 5 * Math.max(dx, dy) + 2 * Math.min(dx, dy);
+    }
+    lens[k] = sum;
+  }
+  const len = (k: number): number => lens[k];
+  rails.sort((p, q) => d2(links[p].a, links[p].b) - d2(links[q].a, links[q].b) || pairKey(links[p].a, links[p].b) - pairKey(links[q].a, links[q].b));
+  const rank = new Int32Array(links.length).fill(-1);
+  rails.forEach((k, r) => (rank[k] = r));
+  const adj: number[][] = hubs.map(() => []);
+  for (const k of rails) {
+    adj[links[k].a].push(k);
+    adj[links[k].b].push(k);
+  }
+  const dist = new Float64Array(m);
+  const prev = new Int32Array(m);
+  const done = new Uint8Array(m);
+  // shortest detour a -> c over rails ranked below r, never through hub `skip`, at most `bound` route tiles long;
+  // the hubs on it (c back to a), or null
+  const detour = (a: number, c: number, r: number, bound: number, skip: number, lane = false): number[] | null => {
+    dist.fill(Infinity);
+    done.fill(0);
+    dist[a] = 0;
+    prev[a] = -1;
+    const open = [a];
+    while (open.length) {
+      let bi = 0;
+      for (let i = 1; i < open.length; i++) if (dist[open[i]] < dist[open[bi]] || (dist[open[i]] === dist[open[bi]] && open[i] < open[bi])) bi = i;
+      const u = open[bi];
+      open[bi] = open[open.length - 1];
+      open.pop();
+      if (done[u]) continue;
+      done[u] = 1;
+      if (u === c) {
+        const out: number[] = [];
+        for (let v = c; v >= 0; v = prev[v]) out.push(v);
+        return out;
+      }
+      for (const k of adj[u]) {
+        if (rank[k] >= r) continue;
+        const v = links[k].a === u ? links[k].b : links[k].a;
+        if (v === skip || done[v] || (lane && v !== c && !onLine(hubs[v], hubs[a], hubs[c]))) continue;
+        const d = dist[u] + len(k);
+        if (d <= bound && d < dist[v]) {
+          dist[v] = d;
+          prev[v] = u;
+          open.push(v);
+        }
+      }
+    }
+    return null;
+  };
+  const [num, den] = L.railPruneDetour;
+  const [tn, td] = L.railPruneThrough;
+  const drop = new Uint8Array(links.length);
+  for (const k of rails) {
+    const { a, b: c } = links[k];
+    if (detour(a, c, rank[k], Math.floor((len(k) * tn) / td), -1, true)) {
+      drop[k] = 1;
+      continue;
+    }
+    const bound = Math.floor((len(k) * num) / den);
+    const via = detour(a, c, rank[k], bound, -1);
+    if (!via) continue;
+    let ok = true;
+    for (let i = 1; i < via.length - 1 && ok; i++) if (!detour(a, c, rank[k], bound, via[i])) ok = false;
+    if (ok) drop[k] = 1;
+  }
+  const gone: number[] = [];
+  let w = 0;
+  for (let i = 0; i < links.length; i++) {
+    if (drop[i]) gone.push(pairKey(links[i].a, links[i].b));
+    else links[w++] = links[i];
+  }
+  links.length = w;
+  return gone;
+}
+
 function relink(state: GameState, pid: number, net: Net): void {
   supplyLinesWork(state).relinks++;
   const map = state.map;
@@ -659,6 +779,8 @@ function relink(state: GameState, pid: number, net: Net): void {
     let made = 0;
     for (let k = 0; k < near.length && k < L.railLinks + 2 && made < L.railLinks; k++) if (tryRail(i, near[k].j)) made++;
   }
+  // Prune: drop the long side of the triangles, so the rails read as a network rather than a web.
+  for (const k of pruneRails(hubs, links, n, map.width)) pairs.delete(k);
   // Sea lanes: ports and beachheads on different landmasses of the same sea.
   const ends: number[] = [];
   for (let i = 0; i < hubs.length; i++) if (hubs[i].kind === 'port' || hubs[i].kind === 'beachhead') ends.push(i);
@@ -1449,6 +1571,8 @@ export function secondRouteSpots(state: GameState, pid: number, risk: SupplyRisk
         const dl = d2(x, y, lh.x, lh.y);
         const dk = d2(x, y, kh.x, kh.y);
         if (dl > max2 || dk > max2) continue;
+        // a spot in line with the hub would run its rails on through the hub (pruneRails): no second route
+        if (onLine(hub, { x, y }, lh) || onLine(hub, { x, y }, kh)) continue;
         const score = Math.max(dl, dk);
         const prev = cand.get(t);
         if (prev === undefined || score < prev) cand.set(t, score);

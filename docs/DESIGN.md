@@ -391,6 +391,11 @@ network reaches them from the capital.
   more tries). The route search is an integer A* in a box 14 tiles round the two hubs: flat land is cheap, hills cost
   more, mountains and swamps a lot (the rail goes round them where it can), up to 3 water tiles are bridged. A hub
   where 3 or more rails meet is a junction (a rail yard on the map).
+- Thinning: then the rails other rails stand in for are dropped, so the map shows a railway, not a web. A rail goes
+  when a line over shorter rails runs on through hubs that lie on its way (within 12 tiles of the straight line) and
+  is at most 1.15 times as long (a hit on such a hub now cuts what lies beyond it), or when shorter rails still go
+  round it with any one other hub out, each way round at most twice as long (so a hit on one hub cuts off nothing
+  more than before). The network stays connected; join rails are never dropped.
 - Sea lanes: a port links by convoy to its nearest own port or beachhead on another landmass of the same sea (400
   tiles at most); a beachhead no port picked gets a lane from its nearest port.
 - Join: a hub cluster the nearest-hub rails leave apart from the capital's network gets a rail to the nearest joined
