@@ -24,9 +24,9 @@ describe('rail pixels', () => {
     expect(solid(railArt([line], ground(2), 1).rgba)).toBe(0);
     const thin = railArt([line], ground(4), 1);
     const full = railArt([line], ground(16), 1);
-    // the normal look is about one art pixel per pixel of length (12 tiles at 4 px a tile)
+    // the normal look is a soft dark line, about two art pixels wide (12 tiles long)
     expect(solid(thin.rgba)).toBeGreaterThan(40);
-    expect(solid(thin.rgba)).toBeLessThan(80);
+    expect(solid(thin.rgba)).toBeLessThan(190);
     expect(solid(full.rgba)).toBeGreaterThan(solid(thin.rgba) * 10);
   });
 
