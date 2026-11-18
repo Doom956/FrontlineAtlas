@@ -2,7 +2,7 @@
 // the same every time, hidden far out, one thin line at normal zoom, the full rail close up, and a train of 3 to 5
 // wagons behind its engine.
 import { describe, expect, it } from 'vitest';
-import { railArt, railLook, trainCars } from '../src/client/art/detailed/supplyArt';
+import { MILITARY_CARS, SUPPLY_CARS, railArt, railLook, trainCars } from '../src/client/art/detailed/supplyArt';
 import type { TrackGround } from '../src/client/art/detailed/buildingLinkArt';
 import { GROUND } from '../src/client/render/ground';
 import type { RGB } from '../src/client/render/common';
@@ -64,5 +64,17 @@ describe('trains', () => {
       expect(cars.length - 2).toBeGreaterThanOrEqual(3);
       expect(cars.length - 2).toBeLessThanOrEqual(5);
     }
+  });
+
+  it('always carries a military load and a supply load, the same every time', () => {
+    for (let seed = 0; seed < 40; seed++) {
+      for (const load of [0, 1, 2, 3]) {
+        const cars = trainCars(load, seed);
+        expect(cars.some((c) => MILITARY_CARS.includes(c))).toBe(true);
+        expect(cars.some((c) => SUPPLY_CARS.includes(c))).toBe(true);
+        expect(trainCars(load, seed)).toEqual(cars);
+      }
+    }
+    expect(new Set(Array.from({ length: 40 }, (_, i) => trainCars(3, i).join())).size).toBeGreaterThan(5);
   });
 });

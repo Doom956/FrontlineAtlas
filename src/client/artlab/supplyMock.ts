@@ -574,7 +574,7 @@ function drawTrains(ctx: CanvasRenderingContext2D, sc: Scene, v: View, timeMs: n
     const speed = 0.9 * v.zoom; // CSS px per second at the lab clock
     const head = Math.min(L, t.at * L + (timeMs / 1000) * speed);
     if (v.zoom >= SPRITE_ZOOM) {
-      const cars = trainCars(t.load);
+      const cars = trainCars(t.load, t.a * 7 + t.b);
       drawTrain(ctx, { path, head: Math.max(head, trainLength(cars) * unitScale(v.zoom)), cars, owner, scale: unitScale(v.zoom), dpr: v.dpr, timeMs });
     } else {
       const p = pointAt(path, head - 1.5 * v.zoom);
@@ -586,7 +586,7 @@ function drawTrains(ctx: CanvasRenderingContext2D, sc: Scene, v: View, timeMs: n
 /** Wagons standing in a yard's sidings (close look), at the yard's two ends (the hub stands in its middle). */
 function drawYardWagons(ctx: CanvasRenderingContext2D, sc: Scene, v: View): void {
   if (v.zoom < SPRITE_ZOOM) return;
-  const sets: [CarKind[], number][] = [[['box', 'box'], 0.86], [[], 0], [['tank', 'flat'], 0.34], [['box'], 0.84]];
+  const sets: [CarKind[], number][] = [[['crates', 'drums'], 0.86], [[], 0], [['tank', 'flatTank'], 0.34], [['flatGun'], 0.84]];
   sc.yards.forEach((line, i) => {
     const [cars, at] = sets[i % sets.length];
     if (!cars.length) return;
