@@ -8,7 +8,7 @@
 // Looks by zoom (P = art px per tile):
 //   rail       close (P 8 and up): a gravel bed tinted by the land, dark wooden sleepers across it, two thin steel
 //              rails, the one toward the light lit, each throwing a one-pixel shadow; a straight steel girder bridge
-//              over water. Normal (P 4): one thin dark line. Far (P 2 and less): nothing.
+//              over water. Normal (P 4): one thin line a shade darker than the land. Far (P 2 and less): nothing.
 //   yard       close only: sidings fanning out of the main line where 3 or more rails meet.
 //   train      close: an engine with its tender and 2 to 3 wagons in the owner's colour, a smoke puff trailing off the
 //              stack. Normal zoom: none (the map shows the line only).
@@ -244,8 +244,9 @@ export function railArt(lines: readonly (readonly P[])[], g: TrackGround, seed: 
       }
       if (d > reach && !broken) continue;
       if (look === 'line') {
-        // normal zoom: one thin dark line (the pixel the line runs through), broken where the line is cut
-        if (!(d < 1.0 || (d < 1.4 && side[k] > 0))) continue;
+        // normal zoom: one thin line a shade darker than the ground (it sits in the background of the map), broken
+        // where the line is cut
+        if (!(d < 0.8 || (d < 1.15 && side[k] > 0))) continue;
         if (broken) continue;
         if (wet) {
           put(k, STEEL_DARK);
@@ -253,7 +254,7 @@ export function railArt(lines: readonly (readonly P[])[], g: TrackGround, seed: 
         }
         const tones = trackTones(ter, g.ramps);
         if (!tones) continue;
-        put(k, g.tint(mixC(tones.path, [30, 30, 32], d < 0.8 ? 0.78 : 0.4), lumaC(tones.ground)));
+        put(k, g.tint(mixC(tones.path, [30, 30, 32], d < 0.6 ? 0.55 : 0.3), lumaC(tones.ground)));
         continue;
       }
       // the bridge's ends rest on the bank: its deck runs on over the shore strip (where the map draws the coast)

@@ -5,7 +5,7 @@
 // Looks by zoom (render/glmap.ts artPixelsPerTile, the same grid the ground uses):
 //   close   (zoom 10 and up)  full pixel rails with sleepers, junction yards with parked wagons, trains as sprites from
 //                             zoom 11, convoy ships with wakes on a dotted sea lane
-//   normal  (zoom 5 to 10)    one thin dark rail line and a dotted sea lane (no markers: trains and ships show close up)
+//   normal  (zoom 5 to 10)    one thin rail line and a dotted sea lane (no markers: trains and ships show close up)
 //   far     (under zoom 5)    nothing but the red cross on a damaged hub's marker
 // A damaged hub: smoke, a broken rail piece and its "Repair 45 s" timer (zoom 5 and up), a red cross on its marker
 // (under zoom 8, where buildings are flat markers). A cut front: grey shimmer along the border near the forts that no

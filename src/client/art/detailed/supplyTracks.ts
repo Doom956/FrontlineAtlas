@@ -1,8 +1,9 @@
 // A nation's rail links as one laid track network (client only, pure: no DOM, no random, no clock). The sim gives each
 // rail link its own tile route (sim/supplylines.ts supplyNetworkOf); routes to nearby hubs share corridors, so drawn one
 // by one they double up and cross each other. Here they are laid as one network the way a railway is built:
-//   1. corridor   links are laid shortest first; a route tile within three tiles of track already laid snaps onto it, so
-//                 a later route joins the existing line (a switch) instead of running beside it. The result is a graph
+//   1. corridor   links are laid shortest first; a route tile within SNAP (5) tiles of track already laid snaps onto it,
+//                 so a later route joins the existing line (a switch) instead of running beside it or crossing it at a
+//                 shallow angle (two lines that close stay one track for the stretch, then part). The result is a graph
 //                 of tiles; a small loop the snapping would make is closed through the track already there.
 //   2. tracks     the graph splits at hubs and at switches; at a switch the two most nearly straight pieces run on as
 //                 one through line and the third is a branch.
@@ -43,7 +44,7 @@ export interface TrackNet {
 }
 
 /** Snap radius (tiles) onto a track already laid (routes closer than this share one track). */
-const SNAP = 3;
+const SNAP = 5;
 /** Widest curve radius (tiles). */
 const CURVE_R = 10;
 const WATER = (t: number): boolean => t <= 1;
@@ -252,7 +253,7 @@ export function layTracks(links: readonly TrackLink[], w: number, terrain: (x: n
         chain.push(v);
         continue;
       }
-      const way = shortWay(u, v, 6);
+      const way = shortWay(u, v, 2 * SNAP);
       if (way) chain.push(...way.slice(1));
       else {
         link(u, v);
