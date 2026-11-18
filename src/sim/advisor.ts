@@ -22,6 +22,7 @@ import {
   samRadius,
 } from './buildings';
 import { artillerySiegeBonus, supplyDistance } from './combat';
+import { secondRouteSpots, supplyRiskOf } from './supplylines';
 import {
   ARMOR_OIL_UPKEEP,
   AUTO_MANAGE_SECONDS,
@@ -495,6 +496,14 @@ export function suggestions(state: GameState, playerId: number): Suggestion[] {
       const air = buildingsOf(state, foe, 'silo').some((b) => knownTile(state, playerId, b.tile)) || buildingsOf(state, foe, 'airfield').some((b) => b.bombers > 0 && knownTile(state, playerId, b.tile));
       if (air) add('build-sam', `${fp.name} has bombers or missiles: build a SAM Site`, 57, spotFor(state, playerId, 'sam', capital), 'sam');
     }
+  }
+
+  // --- supply lines (supplylines.ts): most of the front's supply runs through one hub -------------------------
+  const risk = supplyRiskOf(state, playerId);
+  if (risk && canPay('fort')) {
+    const spot = secondRouteSpots(state, playerId, risk)[0] ?? -1;
+    const front = risk.direction ? `${risk.direction} front` : 'front';
+    add('supply-second-route', `Your ${front} hangs on one hub: build a fort to add a second route`, 60, spot >= 0 ? spot : risk.hub, 'fort');
   }
 
   // --- special abilities --------------------------------------------------------------------------------------
