@@ -7,7 +7,7 @@ import { estimateAttack, supplyEfficiency, supplySourceTiles } from '../src/sim/
 import { BUILDINGS, BUILDING_ORDER, TICKS_PER_SECOND } from '../src/sim/config';
 import { hashState } from '../src/sim/hash';
 import { tick } from '../src/sim/sim';
-import { setOwner } from '../src/sim/state';
+import { newId, setOwner } from '../src/sim/state';
 import type { Action, BuildingType, GameState } from '../src/sim/types';
 import { claimRect, makeFlatGame } from './helpers';
 
@@ -27,6 +27,19 @@ function farFront(): GameState {
   return s;
 }
 
+/**
+ * Two factories at x 110 and 220 (supply hubs, no sources): the rails reach a fort near the front (supply lines,
+ * supplylines.ts: a fort the network cannot reach from the capital is cut).
+ */
+function railsHome(s: GameState): void {
+  for (const x of [110, 220]) {
+    const id = newId(s);
+    s.buildings.set(id, { id, type: 'factory', owner: 1, tile: at(x, 10), level: 1, buildLeft: 0, upgradeLeft: 0, fighters: 0, bombers: 0, cooldown: 0, dropCooldown: 0, disabledUntil: 0, hp: 1, queuedLevels: 0 });
+    s.map.building[at(x, 10)] = id + 1;
+  }
+  markBuildingsChanged(s);
+}
+
 /** Ticks until player 1's first fort is finished (fails after the build time plus a margin). */
 function finishFort(s: GameState): void {
   const limit = s.tick + BUILDINGS.fort.buildTime * TICKS_PER_SECOND * 4 + 50;
@@ -36,6 +49,7 @@ function finishFort(s: GameState): void {
 describe('forts supply far fronts', () => {
   it('a finished fort near a front makes it supplied; unfinished or lost forts do not', () => {
     const s = farFront();
+    railsHome(s);
     expect(supplyEfficiency(s, 1, FRONT)).toBeLessThan(0.6);
     expect(applyAction(s, 1, { type: 'build', building: 'fort', tile: at(288, 10) }).ok).toBe(true);
     const fort = buildingsOf(s, 1, 'fort')[0];
@@ -104,6 +118,7 @@ describe('supply forts are deterministic', () => {
   /** Same orders in both games; `reads` reads supply all along the front before every tick (like a HUD). */
   function play(reads: boolean): number[] {
     const s = farFront();
+    railsHome(s);
     const hashes: number[] = [];
     for (let n = 0; n < 260; n++) {
       if (reads) {

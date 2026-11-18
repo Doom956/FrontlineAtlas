@@ -20,7 +20,8 @@
 
 import { flakCut, flakNote } from './defense';
 import { knownTile } from './fog';
-import { AIR, AIR_COVER, TECH_EFFECTS, TICKS_PER_SECOND } from './config';
+import { AIR, AIR_COVER, BOMBER_RADIUS, SUPPLY_LINES, TECH_EFFECTS, TICKS_PER_SECOND } from './config';
+import { bestSupplyHub, damageSupplyHubs } from './supplylines';
 import { aircraftCap, airfieldRadius, buildingAt, buildingsOf, chargesReady, isDisabled, samRadius } from './buildings';
 import { applyAction } from './actions';
 import { atWar } from './allies';
@@ -566,6 +567,17 @@ function strategicAims(state: GameState, wing: AirWing, b: Building, n: number):
     if (!top.some((t) => routeNear(w, b.tile, t.tile, s.tile, r))) continue;
     scored.push({ tile: s.tile, score: RAID_SAM_WEIGHT * (1 + 0.3 * (s.level - 1)) - (wing.target >= 0 ? Math.sqrt(d2(w, wing.target, s.tile)) / range : 0) });
   }
+  // Supply lines (supplylines.ts): while our side pushes into this nation, the hub whose damage cuts the most of its
+  // supply near that front goes first; the spread below sends the other bombers at the usual targets.
+  if (sidePushes(state, wing.owner, foe)) {
+    const hub = bestSupplyHub(state, wing.owner, foe, mainFront(state, wing.owner, foe), (t) => inReach(t) && knownTile(state, wing.owner, t));
+    if (hub) {
+      let top = 0;
+      for (const c of scored) if (c.tile !== hub.tile) top = Math.max(top, c.score);
+      for (let k = scored.length - 1; k >= 0; k--) if (scored[k].tile === hub.tile) scored.splice(k, 1);
+      scored.push({ tile: hub.tile, score: top + SUPPLY_LINES.raidHubBonus + hub.near * 0.1 });
+    }
+  }
   if (!scored.length) return [];
   // Spread: each own bomber already bound for a target (and each pick here) lowers its value.
   const bound = new Map<number, number>();
@@ -588,6 +600,17 @@ function strategicAims(state: GameState, wing: AirWing, b: Building, n: number):
     bound.set(best, (bound.get(best) ?? 0) + 1);
   }
   return out;
+}
+
+/** True while `owner` or an ally runs a land attack on `foe` (a push the supply strikes help). */
+export function sidePushes(state: GameState, owner: number, foe: number): boolean {
+  for (const a of state.attacks) {
+    if (a.target !== foe || a.attacker <= 0) continue;
+    const t = a.troops;
+    if (t.infantry + t.armor + t.artillery <= 0) continue;
+    if (a.attacker === owner || areAllied(state, owner, a.attacker)) return true;
+  }
+  return false;
 }
 
 /** Re-buys aircraft for a refill wing (at most two per check; keeps twice the price in gold). */
@@ -921,6 +944,8 @@ export function supportStrike(state: GameState, u: Unit): { victim: number; kill
     const me = state.players[u.owner];
     addEvent(state, 'bombing', `${me.name}'s bombers are supporting the attack on ${vp.name}: ${Math.round(killed)} troops killed${sup < 1 ? superiorityNote() : ''}${flakNote(u)}`, [u.owner, victim], tile);
   }
+  // A supply hub right under the bombs is damaged (a bomb's blast, not the whole zone; supplylines.ts).
+  damageSupplyHubs(state, u.owner, tile, Math.min(radius, BOMBER_RADIUS));
   return { victim, kills: killed, guarded: sup < 1 };
 }
 

@@ -274,6 +274,53 @@ export const SUPPLY_RANGE = 110;
 export const MIN_SUPPLY_EFF = 0.45;
 export const DEFENDER_NO_SUPPLY = 0.85;
 
+// ---------- supply lines ----------
+// Supply runs over a network (supplylines.ts). Hubs: the capital, finished cities, factories, ports and forts (and live
+// beachheads). Each hub lays a rail to its nearest own hubs over its own land; a port runs a convoy lane to its nearest
+// own port or beachhead on another landmass. A fort or beachhead the network does not reach from the capital is cut:
+// it is no supply source until a route reaches it again. Cities stay sources (they feed themselves); the capital can
+// never be hit or cut. Bombs, missiles and shells on a hub damage it: routes do not pass it until it is repaired.
+export const SUPPLY_LINES = {
+  /** rails a hub lays to its nearest own hubs */
+  railLinks: 3,
+  /** longest rail, in tiles between the two hubs (straight line) */
+  railMaxDist: 120,
+  /** longest bridge, in water tiles crossed in a straight line */
+  bridgeMax: 3,
+  /** the route search looks this many tiles round the box of the two hubs (a detour round enemy land) */
+  railMargin: 14,
+  /** the route search gives up after this many tiles (no rail between those two hubs) */
+  railSearchNodes: 6000,
+  /** route searches per network check at most (the rest wait for the next check: no tick spikes) */
+  railSearchesPerCheck: 24,
+  /** a hub where this many rails meet is a junction (a rail yard) */
+  junctionDegree: 3,
+  /** longest convoy lane, in tiles (straight line) */
+  seaMaxDist: 400,
+  /** each nation's network is checked every this many ticks (staggered by id) */
+  checkTicks: 10,
+  /** a rail that could not be laid is tried again after this many seconds */
+  retrySeconds: 20,
+  /** a damaged hub repairs itself in this many seconds (with Logistics: repairSecondsLogistics) */
+  repairSeconds: 45,
+  repairSecondsLogistics: 30,
+  /** a working own Flak site or SAM site covering the hub cuts the repair by this many seconds (once, no stacking) */
+  repairAirDefenseCut: 10,
+  /** after a repair the hub cannot be damaged for this many seconds */
+  guardSeconds: 30,
+  /** a convoy leaves on every lane every this many seconds and sails for convoySailSeconds */
+  convoyEverySeconds: 30,
+  convoySailSeconds: 10,
+  /** an enemy warship or submarine within this many tiles of a lane while a convoy sails sinks it */
+  convoySinkRadius: 10,
+  /** strategic wings, AI strikes: enemy sources within this many tiles of the front count as that front's */
+  frontRadius: 160,
+  /** strategic sorties: the best hub scores this much over the best other raid target (one bomber goes there) */
+  raidHubBonus: 2,
+  /** AI and advisor: a hub whose damage would cut at least this many sources needs a second route */
+  riskMinSources: 2,
+} as const;
+
 // ---------- buildings ----------
 // Buildings are few and levelled (DESIGN section 5): a build order near an own building of the same type upgrades it
 // (BUILDING_UPGRADE_RADIUS), otherwise the sim snaps the order to the nearest valid own tile (BUILDING_SNAP_RADIUS)

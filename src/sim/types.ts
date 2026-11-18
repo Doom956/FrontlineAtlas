@@ -727,6 +727,12 @@ export type GameEventKind =
   | 'tankDivisionReady'
   | 'spearheadStarted'
   | 'spearheadEnded'
+  /** supply lines (supplylines.ts): a hub was damaged / repaired, a convoy sunk, supply sources cut off / reached again */
+  | 'supplyHubDamaged'
+  | 'supplyHubRepaired'
+  | 'convoySunk'
+  | 'supplyCut'
+  | 'supplyRestored'
   | 'victory'
   | 'defeat';
 
@@ -737,6 +743,42 @@ export interface GameEvent {
   /** players this event concerns (the client shows events concerning the human, plus global ones with []) */
   players: number[];
   tile: number; // -1 if none
+  /** supply line events (supplylines.ts): what was hit and what it cut, for the client's own wording */
+  supply?: SupplyEventInfo;
+}
+
+/** Supply hub kinds (supplylines.ts). */
+export type SupplyHubKind = 'capital' | 'city' | 'factory' | 'port' | 'fort' | 'beachhead';
+
+/** Data of a supply line event (GameEvent.supply). */
+export interface SupplyEventInfo {
+  /** the nation whose supply network it is */
+  owner: number;
+  /** the nation that did it (0 = nobody: land lost or won back, a repair) */
+  by: number;
+  /** the hub hit or repaired, or the port end of a sunk convoy lane (-1 = none) */
+  hub: number;
+  hubKind: SupplyHubKind | null;
+  /** seconds until the repair or the next convoy (0 = none) */
+  seconds: number;
+  /** supply sources (forts, beachheads) cut off, or reached again, by this (tiles) */
+  sources: number[];
+  /** where those sources lie seen from the owner's capital: 'northern', 'north-eastern', ... ('' = unknown) */
+  direction: string;
+}
+
+/**
+ * Supply line state (supplylines.ts), hashed. Absent = nothing hit yet and no network built.
+ */
+export interface SupplyNetState {
+  /** damaged or guarded hubs: [tile, owner, damagedUntil (tick), guardedUntil (tick), by, ...] */
+  hubs: number[];
+  /** sunk convoys: [port tile, other end tile, owner, untilTick (the next convoy leaves), by, ...] */
+  sunk: number[];
+  /** per player id: its forts and beachheads its network does not reach now (tiles ascending; absent = none) */
+  cut: (number[] | null)[];
+  /** bumped whenever a cut list changes (cache key for combat.supplyCache) */
+  version: number;
 }
 
 export type GamePhase = 'spawn' | 'playing' | 'over';
@@ -839,6 +881,8 @@ export interface GameState {
   tutorial?: TutorialState;
   /** fog of war vision per player (fog.ts); created by makeGameState only when Modifiers.fogOfWar is on, else absent */
   fog?: FogState;
+  /** supply lines: damaged hubs, sunk convoys, cut sources (supplylines.ts); absent = none yet */
+  supplyNet?: SupplyNetState;
 }
 
 /**

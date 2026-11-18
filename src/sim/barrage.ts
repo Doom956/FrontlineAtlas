@@ -40,6 +40,7 @@ import { TRENCH } from './config';
 import { addEvent, newId } from './state';
 import { hasTech } from './tech';
 import { TROOP_TYPES, isWater } from './types';
+import { damageSupplyHubs } from './supplylines';
 import type { ActionResult, Barrage, GameState, Player } from './types';
 
 const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
@@ -209,6 +210,7 @@ function impact(state: GameState, b: Barrage): void {
     }
   });
   flattenDisc(state, b.tile, radius, TRENCH.barrageFlatten, b.owner); // shells flatten trenches (trenches.ts)
+  damageSupplyHubs(state, b.owner, b.tile, radius); // supply hubs in the blast are damaged (supplylines.ts)
   const total = barrageKill(b.artillery);
   let killed = 0;
   for (const [o, n] of hit) {

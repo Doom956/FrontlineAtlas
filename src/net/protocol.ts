@@ -147,7 +147,9 @@ export type { GameMode };
 // antiRadar {airfield, sam}, setAntiRadarEscort {on}, stealthStrike's tile2 / tile3, anti-ship cruise missiles.
 // 23: treaties: Actions offerPeace {to, theyGive, youGive}, offerPact {to, seconds}, answerTreaty {from, accept},
 // breakPact {with}; GameState treaties / treatyOffers / treatyCooldowns / fights and Player.pactBreakerUntil.
-export const PROTOCOL_VERSION = 23;
+// 24: supply lines (supplylines.ts): forts and beachheads cut off from the capital stop supplying; hits damage hubs;
+// GameState supplyNet; new event kinds. No new Actions (strikes on hubs use the existing ones).
+export const PROTOCOL_VERSION = 24;
 /** Longest owner-console code a client may send (adminAuth). */
 export const ADMIN_CODE_MAX_LENGTH = 128;
 /** Longest chat message (characters, after cleaning). */

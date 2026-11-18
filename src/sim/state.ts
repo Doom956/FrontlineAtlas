@@ -32,7 +32,7 @@ import { borderTiles, initTerritory, landComponents, onOwnerChange } from './ter
 import { createTrenchState, resetTrench } from './trenches';
 import { createFog } from './fog';
 import { isTribe, isWater } from './types';
-import type { GameEventKind, GameSettings, GameState, MapData, MapSize, Personality, Player } from './types';
+import type { GameEventKind, GameSettings, GameState, SupplyEventInfo, MapData, MapSize, Personality, Player } from './types';
 import { compactWorldMap, compactWorldTile, worldMapSpawns } from './worldmaps';
 
 export { isTribe };
@@ -798,8 +798,8 @@ export function gameSecondsAt(state: GameState, tick: number): number {
   return Math.max(0, tick - state.playStartTick) / TICKS_PER_SECOND;
 }
 
-export function addEvent(state: GameState, kind: GameEventKind, message: string, players: number[], tile = -1): void {
-  state.events.push({ tick: state.tick, kind, message, players, tile });
+export function addEvent(state: GameState, kind: GameEventKind, message: string, players: number[], tile = -1, supply?: SupplyEventInfo): void {
+  state.events.push(supply ? { tick: state.tick, kind, message, players, tile, supply } : { tick: state.tick, kind, message, players, tile });
   if (state.events.length > MAX_EVENTS) state.events.splice(0, state.events.length - MAX_EVENTS);
 }
 export function newId(state: GameState): number {
