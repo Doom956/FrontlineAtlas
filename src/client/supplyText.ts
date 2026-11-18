@@ -113,7 +113,7 @@ export function cutsSupplySub(c: SupplyCutPreview): string {
 /** Map key entries of the supply art: title and plain words, in the order the key lists them. */
 export const SUPPLY_KEY: readonly { id: string; title: string; text: string }[] = [
   { id: 'rail', title: 'Rail', text: 'A rail joins your capital, cities, factories, ports and forts over your own land (zoom in for the track). Enemy rails you can see are shown too.' },
-  { id: 'train', title: 'Train', text: 'A train runs along a rail toward the front, in its owner\'s colour (a dot when zoomed out). It only shows the supply is flowing.' },
+  { id: 'train', title: 'Train', text: 'A train runs along a rail toward the front, in its owner\'s colour (zoom in to see it). It only shows the supply is flowing.' },
   { id: 'convoy', title: 'Convoy', text: `A dotted sea lane joins two ports. A convoy sails it for ${SUPPLY_LINES.convoySailSeconds} s every ${SUPPLY_LINES.convoyEverySeconds} s. A warship near the lane sinks it and cuts the lane.` },
   { id: 'damaged', title: 'Damaged hub', text: `Smoke, a broken rail and a "Repair ${SUPPLY_LINES.repairSeconds} s" timer (a red cross when zoomed out): no route passes this hub until it is repaired.` },
   { id: 'cutfront', title: 'Cut front', text: 'Grey shimmer along a border with a "Supply cut" label: the forts there have no route to their capital and fight weaker.' },

@@ -4,8 +4,8 @@
 //
 // Looks by zoom (render/glmap.ts artPixelsPerTile, the same grid the ground uses):
 //   close   (zoom 10 and up)  full pixel rails with sleepers, junction yards with parked wagons, trains as sprites from
-//                             zoom 11 (a dot between), convoy ships with wakes on a dotted sea lane
-//   normal  (zoom 5 to 10)    one thin dark rail line, a moving dot per train, a dotted sea lane with a moving dot
+//                             zoom 11, convoy ships with wakes on a dotted sea lane
+//   normal  (zoom 5 to 10)    one thin dark rail line and a dotted sea lane (no markers: trains and ships show close up)
 //   far     (under zoom 5)    nothing but the red cross on a damaged hub's marker
 // A damaged hub: smoke, a broken rail piece and its "Repair 45 s" timer (zoom 5 and up), a red cross on its marker
 // (under zoom 8, where buildings are flat markers). A cut front: grey shimmer along the border near the forts that no
@@ -15,10 +15,14 @@
 // view; with no fog every network). Trains and convoys are drawn from the game clock alone (no state is written, and
 // nothing here is read by the sim), so they pause with the game.
 //
+// The rails: each nation's rail links are laid as one track network (art/detailed/supplyTracks.ts: routes that share a
+// corridor are one track with a switch, gentle curves, every track from hub centre to hub centre under the buildings),
+// and each link's trains run on its piece of that network.
+//
 // Cost: the networks are read again only when their key changes (a coarse tick step, the buildings, the fog view, the
-// cut version and the damaged hubs and sunk convoys); each route is smoothed once and cached; every rail, yard and lane
-// is baked once per grid size into a small canvas at art resolution (a couple per frame) and drawn as one scaled image
-// when its box is in view; only trains inside the view are drawn.
+// cut version and the damaged hubs and sunk convoys); each nation's track network is laid once per set of routes and
+// cached; the rails and yards are baked per square piece of the map (CHUNK_PX art px a side, a couple per frame) and
+// the lanes per lane, each drawn as one scaled image when in view; only trains inside the view are drawn.
 import { SUPPLY_LINES, TICKS_PER_SECOND } from '../../sim/config';
 import { isWater, type GameState } from '../../sim/types';
 import { convoyPhase, cutVersion, supplyNetworkOf } from '../../sim/supplylines';

@@ -11,7 +11,7 @@
 //              over water. Normal (P 4): one thin dark line. Far (P 2 and less): nothing.
 //   yard       close only: sidings fanning out of the main line where 3 or more rails meet.
 //   train      close: an engine with its tender and 2 to 3 wagons in the owner's colour, a smoke puff trailing off the
-//              stack. Normal: a dot in the owner's colour moving along the line.
+//              stack. Normal zoom: none (the map shows the line only).
 //   sea lane   close and normal: a dotted line of pale water from the port, the dots a lighter tone of the sea.
 //   damage     a broken rail: the bed scorched black round a crater, the rails gone, two bent pieces thrown aside.
 //   cut front  the front border shimmers grey (a band of hard grey pixels whose light and dark move along it).
@@ -913,7 +913,7 @@ function drawSmoke(ctx: CanvasRenderingContext2D, x: number, y: number, th: numb
   }
 }
 
-/** A train or convoy at normal zoom: a dot in the owner's colour (5 CSS px) with a dark edge and a lit corner, on whole device px. */
+/** A train or convoy as a dot in the owner's colour (5 CSS px) with a dark edge and a lit corner, on whole device px (art lab). */
 export function drawTrainDot(ctx: CanvasRenderingContext2D, x: number, y: number, owner: RGB, dpr: number): void {
   const px = (v: number): number => Math.round(v * dpr) / dpr;
   const u = Math.max(1, Math.round(dpr)) / dpr;
