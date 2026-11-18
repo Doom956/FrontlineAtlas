@@ -21,7 +21,7 @@ import { VARIANT_NAMES } from '../sim/variants';
 import { buildingAt } from '../sim/buildings';
 import { BUILDINGS, DOCTRINES, PACT_BREAK_DELAY, TICKS_PER_SECOND } from '../sim/config';
 import { treatyOffersOf } from '../sim/treaty';
-import { offerSentence, treatyIcon } from './hud/treatyUi';
+import { offerSentence, treatyEventText, treatyIcon } from './hud/treatyUi';
 import { mods } from '../sim/rules';
 import { gameSeconds } from '../sim/state';
 import type { GameEvent, GameState, Player } from '../sim/types';
@@ -1118,7 +1118,7 @@ export class Hud {
       });
       return true;
     }
-    let text = compactNumbers(e.message);
+    let text = compactNumbers(treatyEventText(state, me.id, e));
     let kind: 'good' | 'warn' | 'bad' | 'info' = 'info';
     if (k === 'treatyAccepted') kind = 'good';
     else if (k === 'treatyRefused' || k === 'treatyEnded' || k === 'pactBroken') kind = 'warn';

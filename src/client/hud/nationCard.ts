@@ -1,7 +1,7 @@
 // Nation card (left edge under the standings): who they are, their army and land, your relation, and the
 // diplomacy buttons (Ally / Accept / Break, Gift, Embargo, Attack). Opened from the standings or the radial menu.
 import { activeFog, ARMY_HIDDEN_TIP } from '../fog/fogView';
-import { alliancesAllowed, sameTeam } from '../../sim/rules';
+import { alliancesAllowed, peaceReason, sameTeam } from '../../sim/rules';
 import { hasIntel } from '../../sim/buildings';
 import { borders } from '../../sim/combat';
 import { areAllied } from '../../sim/diplomacy';
@@ -48,6 +48,8 @@ export class NationCard {
   private attack: HTMLButtonElement;
   private peace: HTMLButtonElement;
   private pact: HTMLButtonElement;
+  private attackBox = el('div', 'nc-tw');
+  private attackWhy = el('span', 'nc-why');
   private peaceBox = el('div', 'nc-tw');
   private pactBox = el('div', 'nc-tw');
   private peaceWhy = el('span', 'nc-why');
@@ -101,6 +103,8 @@ export class NationCard {
     this.embargo = btn('Embargo', '', () => act({ type: 'toggleEmbargo', with: this.id }), 'embargo');
     this.attack = btn('Attack', 'danger', () => this.doAttack(), 'attack');
     this.attack.dataset.test = 'nc-attack';
+    this.attackWhy.dataset.test = 'nc-attack-why';
+    this.attackBox.append(this.attack, this.attackWhy);
     this.ally.dataset.test = 'nc-ally';
     this.accept.dataset.test = 'nc-accept';
     this.gift.dataset.test = 'nc-gift';
@@ -113,7 +117,7 @@ export class NationCard {
     this.pactWhy.dataset.test = 'nc-pact-why';
     this.peaceBox.append(this.peace, this.peaceWhy);
     this.pactBox.append(this.pact, this.pactWhy);
-    acts.append(this.accept, this.decline, this.ally, this.brk, this.attack, this.gift, this.embargo, this.peaceBox, this.pactBox);
+    acts.append(this.accept, this.decline, this.ally, this.brk, this.attackBox, this.gift, this.embargo, this.peaceBox, this.pactBox);
     this.allyHelp = new AllyHelp(ctx);
     this.el.append(head, stats, this.mix, this.mixNote, this.allyHelp.el, acts, this.panel.el);
   }
@@ -232,13 +236,19 @@ export class NationCard {
     const open = this.panel.current;
     if (open && (!avail || (open.kind === 'peace') !== fighting)) this.panel.close();
     this.panel.update(s, me);
-    setVisible(this.attack, !isMe && !allied);
+    setVisible(this.attackBox, !isMe && !allied);
     const send = troopSum(troopsToSend(me, this.ctx.ui));
     const near = borders(s, me.id, p.id);
     // fog of war: the card attacks their capital, so you need a shared border or a capital you have seen
     const lost = !!fog && !near && fog.knownCapital(s, p.id) < 0;
-    setDisabled(this.attack, lost);
-    if (lost) setTip(this.attack, 'You do not know where they are yet. Expand, build a Watchtower or send ships to find their capital.');
+    // a pact or peace (or peace time) rules attacks out: the reason shows under the button in plain words
+    const noWar = isMe || allied ? null : peaceReason(s, me.id, p.id);
+    setDisabled(this.attack, lost || !!noWar);
+    setText(this.attackWhy, noWar ?? '');
+    setVisible(this.attackWhy, !!noWar);
+    setClass(this.attackBox, 'why', !!noWar);
+    if (noWar) setTip(this.attack, noWar);
+    else if (lost) setTip(this.attack, 'You do not know where they are yet. Expand, build a Watchtower or send ships to find their capital.');
     else setTip(this.attack, `Send ${formatCount(send)} troops (${Math.round(this.ctx.ui.attackShare * 100)}%) ${near ? 'across your shared border' : 'by sea: you share no border'}`);
   }
 }

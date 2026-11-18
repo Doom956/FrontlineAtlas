@@ -160,7 +160,9 @@ const dispatch: Dispatch = (action: Action): ActionResult => {
     if (action.type === 'build') audio?.play('buildPlaced');
     else if (action.type === 'launchMissile') audio?.play('missileLaunch');
   } else {
-    s.ui.toast = { text: r.reason ?? 'Not possible', until: performance.now() + TOAST_MS };
+    // an answer to an offer that is already gone (expired, answered twice): plain words, not the rule's wording
+    const text = action.type === 'answerTreaty' && r.reason === 'No such offer' ? 'That offer has ended' : r.reason ?? 'Not possible';
+    s.ui.toast = { text, until: performance.now() + TOAST_MS };
     audio?.play('uiError', { volume: 0.7 });
   }
   return r;

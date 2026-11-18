@@ -2,7 +2,7 @@
 import { canOfferPact, canOfferPeace, fightingRecently } from '../../sim/treaty';
 import { treatyAvailable } from './treatyUi';
 import { activeFog } from '../fog/fogView';
-import { alliancesAllowed, buildingAllowed, sameTeam, unitAllowed } from '../../sim/rules';
+import { alliancesAllowed, buildingAllowed, peaceReason, sameTeam, unitAllowed } from '../../sim/rules';
 import { buildCostAt, buildingAt, canBuild, chargesReady, countBuildings } from '../../sim/buildings';
 import { BUILDINGS, BUILDING_ORDER, RESOURCE_NAMES, TERRAIN, UNITS } from '../../sim/config';
 import { areAllied } from '../../sim/diplomacy';
@@ -168,10 +168,12 @@ export function radialSpec(ctx: HudCtx, state: GameState, me: Player, tile: numb
       label: owner ? 'Attack' : 'Expand',
       icon: owner ? 'attack' : 'expand',
       hint: sendText,
+      // a pact or peace with the owner rules attacks out: the ring says why
+      disabled: owner ? peaceReason(state, h, owner) ?? undefined : undefined,
       run: () => ctx.act({ type: 'attack', tile, troops: troopsToSend(me, ui) }),
     };
     if (map.coastal[tile]) {
-      slices.push({ label: 'By sea', icon: 'transport', hint: `Land ${sendText} here by transport`, run: () => sendTransport(state, ui, ctx.dispatch, -1, tile) });
+      slices.push({ label: 'By sea', icon: 'transport', disabled: owner ? peaceReason(state, h, owner) ?? undefined : undefined, hint: `Land ${sendText} here by transport`, run: () => sendTransport(state, ui, ctx.dispatch, -1, tile) });
     }
     // strikes: the same five as the command bar's STRIKES group, once they are unlocked (locked ones stay off the ring)
     for (const id of STRIKE_ORDER) {

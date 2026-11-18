@@ -10,7 +10,7 @@ import type { HudCtx } from '../src/client/hud/dom';
 import { NationCard } from '../src/client/hud/nationCard';
 import { DiplomacyPage } from '../src/client/hud/drawers';
 import { radialSpec } from '../src/client/hud/radialSpec';
-import { breakPactText, offerSentence, termAmount, treatyKindWord, treatyTimeText, TreatyPanel } from '../src/client/hud/treatyUi';
+import { breakPactText, offerSentence, termAmount, treatyEventText, treatyKindWord, treatyTimeText, TreatyPanel } from '../src/client/hud/treatyUi';
 import { treatyPartners } from '../src/client/render/treatyLines';
 import { defaultUiState } from '../src/client/uiState';
 import { claimRect, makeFlatGame } from './helpers';
@@ -325,5 +325,70 @@ describe('Diplomacy drawer', () => {
     s.tick += 10 * T;
     page.update(s, s.players[1]);
     expect(root.text()).toContain('Pact, 2 min 50 s left');
+  });
+});
+
+describe('Attack during a treaty', () => {
+  it('disables Attack on the nation card with the sim reason in visible text, and re-enables it after', () => {
+    installDom();
+    const s = world();
+    const card = new NationCard(makeCtx(s));
+    card.open(2);
+    card.update(s, s.players[1]);
+    const attack = byTest(card.el, 'nc-attack')!;
+    expect(attack.disabled).toBe(false);
+    expect(visible(byTest(card.el, 'nc-attack-why'))).toBe(false);
+    expect(applyAction(s, 1, { type: 'offerPact', to: 2, seconds: 180 }).ok).toBe(true);
+    expect(applyAction(s, 2, { type: 'answerTreaty', from: 1, accept: true }).ok).toBe(true);
+    card.update(s, s.players[1]);
+    expect(attack.disabled).toBe(true);
+    const why = byTest(card.el, 'nc-attack-why')!;
+    expect(visible(why)).toBe(true);
+    expect(why.textContent).toBe('Pact with Red: 3 min left');
+    s.tick += 200 * T;
+    card.update(s, s.players[1]);
+    expect(attack.disabled).toBe(false);
+    expect(visible(byTest(card.el, 'nc-attack-why'))).toBe(false);
+  });
+
+  it('marks the radial attack entry disabled with the same reason', () => {
+    const s = world();
+    const ctx = makeCtx(s);
+    expect(applyAction(s, 1, { type: 'offerPact', to: 2, seconds: 180 }).ok).toBe(true);
+    expect(applyAction(s, 2, { type: 'answerTreaty', from: 1, accept: true }).ok).toBe(true);
+    const spec = radialSpec(ctx, s, s.players[1], 5 * 40 + 20);
+    expect(spec?.centre?.label).toBe('Attack');
+    expect(spec?.centre?.disabled).toMatch(/^Pact with Red:/);
+  });
+});
+
+describe('treaty toast wording', () => {
+  const ev = (kind: string, message: string, players: number[]) => ({ kind, message, players });
+  it('reads from the viewer point of view', () => {
+    const s = world();
+    s.players[1].name = 'Atlas';
+    expect(treatyEventText(s, 1, ev('treatyRefused', 'Red refused the peace offer of Atlas', [1, 2]))).toBe('Red refused your peace offer');
+    expect(treatyEventText(s, 1, ev('treatyRefused', 'Red refused the pact offer of Atlas', [1, 2]))).toBe('Red refused your pact offer');
+    expect(treatyEventText(s, 2, ev('treatyRefused', 'Red refused the peace offer of Atlas', [1, 2]))).toBe('You refused Atlas\'s peace offer');
+    expect(treatyEventText(s, 3, ev('treatyRefused', 'Red refused the peace offer of Atlas', [1, 2]))).toBe('Red refused Atlas\'s peace offer');
+    expect(treatyEventText(s, 1, ev('treatyOfferExpired', 'Red did not answer the pact offer of Atlas', [1, 2]))).toBe('Red did not answer your pact offer');
+    expect(treatyEventText(s, 2, ev('treatyOfferExpired', 'Red did not answer the pact offer of Atlas', [1, 2]))).toBe('You did not answer Atlas\'s pact offer');
+    expect(treatyEventText(s, 1, ev('treatyAccepted', 'Atlas and Red made peace for 5 min. Atlas gets 3 tiles', [1, 2]))).toBe('You and Red made peace for 5 min. Atlas gets 3 tiles');
+    expect(treatyEventText(s, 2, ev('treatyAccepted', 'Atlas and Red signed a 3 min non-aggression pact', [1, 2]))).toBe('You and Atlas signed a 3 min non-aggression pact');
+    expect(treatyEventText(s, 1, ev('treatyEnded', 'The pact of Atlas and Red has ended', [1, 2]))).toBe('Your pact with Red has ended');
+    expect(treatyEventText(s, 1, ev('treatyEnded', 'The peace between Atlas and Red is over', [1, 2]))).toBe('Your peace with Red is over');
+    expect(treatyEventText(s, 1, ev('pactBroken', 'The pact of Atlas and Red is over: Red broke it', [1, 2]))).toBe('Your pact with Red is over: Red broke it');
+    expect(treatyEventText(s, 1, ev('pactBroken', 'The pact of Atlas and Red is over: Atlas broke it', [1, 2]))).toBe('Your pact with Red is over: you broke it');
+  });
+});
+
+describe('answering an offer twice', () => {
+  it('the sim refuses the second answer, which the client words as "That offer has ended"', () => {
+    const s = world();
+    expect(applyAction(s, 1, { type: 'offerPact', to: 2, seconds: 180 }).ok).toBe(true);
+    expect(applyAction(s, 2, { type: 'answerTreaty', from: 1, accept: true }).ok).toBe(true);
+    const again = applyAction(s, 2, { type: 'answerTreaty', from: 1, accept: true });
+    expect(again.ok).toBe(false);
+    expect(again.reason).toBe('No such offer');
   });
 });

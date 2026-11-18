@@ -1213,6 +1213,18 @@ canvas.minimap {
   padding: 12px 12px 12px 14px;
   --tone: var(--c);
   animation: slide-l var(--fast) ease-out;
+  /* the card takes what is left of the left column above the bottom bar: a long offer panel scrolls inside it, so
+     Send offer and Cancel stay in view (see .hud-left below) */
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.hud-left > * {
+  flex-shrink: 0;
+}
+.hud-left > .ncard {
+  flex-shrink: 1;
 }
 @keyframes slide-l {
   from {
@@ -1411,6 +1423,14 @@ canvas.minimap {
 .tp-acts {
   display: flex;
   gap: 6px;
+  /* stays at the bottom edge of the scrolling card, so Send offer and Cancel never scroll out of view */
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin: 0 -10px -10px;
+  padding: 8px 10px 10px;
+  background: var(--metal-2);
+  border-radius: 0 0 var(--r) var(--r);
 }
 .tp-acts .wr-btn {
   flex: 1;
@@ -4084,6 +4104,8 @@ mark.hw-hit {
 .hud-left {
   scale: var(--ui, 1);
   transform-origin: top left;
+  /* stops above the bottom bar (its Troops box reaches into this column) */
+  max-height: calc((100dvh - 12px - 96px) / var(--ui, 1));
 }
 .hud-bottom {
   scale: var(--ui, 1);
@@ -4115,6 +4137,9 @@ mark.hw-hit {
   .hud-left {
     width: 176px;
     top: 58px;
+  }
+  .hud-left {
+    max-height: calc((100dvh - 58px - 232px) / var(--ui, 1));
   }
   /* the command bar wraps into two rows: troops / attack / gold, then the build bar */
   .cmdbar {
@@ -5901,6 +5926,7 @@ strong {
 @media (max-width: 640px) {
   .hud-left {
     top: 108px;
+    max-height: calc((100dvh - 108px - 236px) / var(--ui, 1));
   }
   /* the rule chips beside the standings (about 228 px wide), wrapping into rows above the toasts */
   .mod-chips {

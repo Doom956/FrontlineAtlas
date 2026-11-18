@@ -75,11 +75,16 @@ export class Toasts {
     }
     t.append(txt);
     const live: Live = { spec, el: t, until: now + (spec.ms ?? DEFAULT_MS) };
+    const btns: HTMLButtonElement[] = [];
     for (const a of spec.actions ?? []) {
       const b = el('button', 'wr-btn mini' + (a.primary ? ' primary' : ''), a.label);
       b.type = 'button';
       if (a.test) b.dataset.test = a.test;
+      btns.push(b);
       b.addEventListener('click', () => {
+        // one answer only: a second click on the fading toast must not send the action again
+        if (b.disabled) return;
+        for (const o of btns) o.disabled = true;
         a.run();
         this.drop(live);
       });

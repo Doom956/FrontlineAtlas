@@ -475,8 +475,15 @@ export class DiplomacyPage implements DrawerPage {
           const cur = treatyOffersOf(g, me.id).find((x) => x.from === from && x.to === me.id);
           return cur ? offerLeftText(cur) : '0 s';
         };
-        const acc = btn('Accept', 'primary mini', () => this.ctx.act({ type: 'answerTreaty', from, accept: true }), 'accept');
-        const dec = btn('Decline', 'mini', () => this.ctx.act({ type: 'answerTreaty', from, accept: false }), 'decline');
+        const acc = btn('Accept', 'primary mini', () => answer(true), 'accept');
+        const dec = btn('Decline', 'mini', () => answer(false), 'decline');
+        // one answer only: both buttons go off after the first click
+        const answer = (accept: boolean): void => {
+          if (acc.disabled || dec.disabled) return;
+          acc.disabled = true;
+          dec.disabled = true;
+          this.ctx.act({ type: 'answerTreaty', from, accept });
+        };
         acc.dataset.test = 'treaty-accept';
         dec.dataset.test = 'treaty-decline';
         b.append(

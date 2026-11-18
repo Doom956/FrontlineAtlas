@@ -57,6 +57,40 @@ export function offerSentence(s: GameState, o: OfferInfo): string {
   const terms = [gives, wants].filter(Boolean).join(' and ');
   return `${from} asks for peace for ${formatSeconds(PEACE_DURATION)}${terms ? ` and ${terms}` : ''}`;
 }
+/**
+ * A treaty event in the local player's words: "Red refused your peace offer", "You and Red made peace for 5 min",
+ * "Your pact with Red has ended". Someone else's treaty keeps third-person words ("Red refused Atlas's peace offer").
+ */
+export function treatyEventText(s: GameState, me: number, e: { kind: string; message: string; players: number[] }): string {
+  const name = (id: number): string => s.players[id]?.name ?? 'Someone';
+  const other = e.players.find((id) => id > 0 && id !== me) ?? 0;
+  const on = name(other);
+  const mine = e.players.includes(me);
+  const what = /pact/.test(e.message) ? 'pact offer' : 'peace offer';
+  const poss = (id: number): string => (id === me ? 'your' : `${name(id)}'s`);
+  const who = (id: number): string => (id === me ? 'You' : name(id));
+  if (e.kind === 'treatyRefused') {
+    const [from, by] = e.players;
+    return `${who(by)} refused ${poss(from)} ${what}`;
+  }
+  if (e.kind === 'treatyOfferExpired') {
+    const [from, to] = e.players;
+    return `${who(to)} did not answer ${poss(from)} ${what}`;
+  }
+  if (!mine) return e.message;
+  if (e.kind === 'treatyAccepted') {
+    const m = e.message;
+    const i = m.search(/ (signed|made|renewed) /);
+    return i < 0 ? m : `You and ${on}${m.slice(i).replace('renewed their pact', 'renewed your pact')}`;
+  }
+  if (e.kind === 'treatyEnded' || e.kind === 'pactBroken') {
+    const breaker = /: (.+) broke it$/.exec(e.message)?.[1];
+    if (breaker) return `Your pact with ${on} is over: ${breaker === name(me) ? 'you' : breaker} broke it`;
+    return /peace/.test(e.message) ? `Your peace with ${on} is over` : `Your pact with ${on} has ended`;
+  }
+  return e.message;
+}
+
 /** An offer you made, while it waits. */
 export function sentOfferSentence(s: GameState, o: OfferInfo): string {
   return o.kind === 'pact' ? `${formatSeconds(o.seconds)} pact offered` : `Peace offered for ${formatSeconds(PEACE_DURATION)}`;
