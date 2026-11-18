@@ -28,8 +28,8 @@ import { drawBlob } from '../art/detailed/blobs';
 import { detailedUnits } from '../art/detailed/units';
 import { detailedWakes } from '../art/detailed/trails';
 import { motionOf } from '../art/registry';
-import { junctions, pathLength, pointAt, seaLane, smoothRoute, type Hub, type P, type Rail, type SupplyTerrain } from '../art/detailed/supplyLines';
-import { damageCross, drawTrain, drawTrainDot, frontArt, laneArt, railArt, railLook, supplyLabel, trainCars, yardLines, type CarKind, type RailBreak } from '../art/detailed/supplyArt';
+import { junctions, meanderRoute, pathLength, pointAt, seaLane, smoothRoute, type Hub, type P, type Rail, type SupplyTerrain } from '../art/detailed/supplyLines';
+import { damageCross, drawTrain, drawTrainDot, frontArt, laneArt, railArt, railLook, supplyLabel, trainCars, trainLength, yardLines, type CarKind, type RailBreak } from '../art/detailed/supplyArt';
 import type { TrailLayer, TrailUnit, UnitDraw } from '../art/types';
 import { repairLeft } from '../supplyText';
 import { ART_ZOOM } from './buildingArt';
@@ -60,10 +60,10 @@ export function shimmerShown(zoom: number): boolean {
 export const SUPPLY_STEP_TICKS = 20;
 /** Tiles per second a train runs at (game time). */
 const TRAIN_SPEED = 1.1;
-/** Nominal train length in tiles (the loop's gap, whatever the zoom). */
-const TRAIN_TILES = 4;
-/** A train every this many tiles of rail, at most 3 on a rail. */
-const TRAIN_EVERY = 45;
+/** Idle tiles between one train leaving a rail and the next entering (one train per rail). */
+const TRAIN_GAP = 14;
+/** Tiles at each end of a rail where no train shows (the hub's buildings stand there). */
+const HUB_CLEAR = 2.6;
 /** Radius (tiles) round a cut fort the shimmer runs along the border. */
 const SHIMMER_R = 14;
 /** Ships in a convoy and the gap between them (tiles). */
@@ -279,7 +279,7 @@ export class SupplyLayer {
         let sm = this.smooth.get(sk);
         if (sm === undefined) {
           const r = smoothRoute(l.path, w, terrain, p.id);
-          sm = r ? { path: r.path } : null;
+          sm = r ? { path: meanderRoute(r.path, mixSeed(l.a, l.b), terrain, p.id) } : null;
           if (this.smooth.size > 600) this.smooth.clear();
           this.smooth.set(sk, sm);
         }
@@ -526,27 +526,37 @@ export class SupplyLayer {
   private drawTrains(ctx: CanvasRenderingContext2D, f: SupplyFrame, ox: number, oy: number, inView: (b: [number, number, number, number]) => boolean): void {
     const z = f.zoom;
     const clock = (f.tickF / TICKS_PER_SECOND) * TRAIN_SPEED;
+    const near = (x: number, y: number): boolean => x >= f.view.x0 - 8 && x <= f.view.x1 + 8 && y >= f.view.y0 - 8 && y <= f.view.y1 + 8;
+    const sprite = z >= SUPPLY_SPRITE_ZOOM;
     let drawn = 0;
     for (const r of this.rails) {
-      if (!r.live || !inView(r.box) || drawn >= 24) continue;
-      const n = Math.max(1, Math.min(2, Math.round(r.length / TRAIN_EVERY)));
-      const period = r.length + TRAIN_TILES;
-      let sp: P[] | null = null;
-      for (let i = 0; i < n; i++) {
-        const head = (clock + (i / n) * period + (r.seed % 97) * 0.37) % period;
-        // on the line (the ends lie under the hubs' art): the train is on screen only while its nose is
-        if (head < 0.2) continue;
-        sp ??= this.screenPath(r.flow, ox, oy, z);
-        const color = f.colors[r.owner] ?? [128, 128, 128];
-        if (z >= SUPPLY_SPRITE_ZOOM) {
-          const cars = trainCars(1 + (r.seed % 3), r.seed + i);
-          drawTrain(ctx, { path: sp, head: head * z, cars, owner: color, scale: spriteScale(z), dpr: f.dpr, timeMs: f.nowMs });
-        } else {
-          const p = pointAt(sp, Math.max(0, head * z - 1.5 * z));
-          drawTrainDot(ctx, p.x, p.y, color, f.dpr);
-        }
-        drawn++;
+      if (!r.live || !inView(r.box) || drawn >= 14) continue;
+      const first = r.flow[0];
+      const last = r.flow[r.flow.length - 1];
+      if (!near(first[0], first[1]) || !near(last[0], last[1])) continue;
+      const cars = sprite ? trainCars(1 + (r.seed % 3), r.seed) : [];
+      // the train's length in tiles; it runs only between the hubs' footprints, fading in and out at their edges
+      const len = sprite ? (trainLength(cars) * spriteScale(z)) / z : 0;
+      const span = r.length - 2 * HUB_CLEAR;
+      if (span < len + 1) continue;
+      const run = span - len;
+      const cycle = run + TRAIN_GAP;
+      const u = (clock + (r.seed % 97) * 0.37) % cycle;
+      if (u > run) continue;
+      const head = HUB_CLEAR + len + u;
+      const fade = Math.min(1, u / 1.2, (run - u) / 1.2);
+      if (fade <= 0.02) continue;
+      const color = f.colors[r.owner] ?? [128, 128, 128];
+      const sp = this.screenPath(r.flow, ox, oy, z);
+      ctx.save();
+      ctx.globalAlpha *= fade;
+      if (sprite) drawTrain(ctx, { path: sp, head: head * z, cars, owner: color, scale: spriteScale(z), dpr: f.dpr, timeMs: f.nowMs });
+      else {
+        const p = pointAt(sp, (HUB_CLEAR + u) * z);
+        drawTrainDot(ctx, p.x, p.y, color, f.dpr);
       }
+      ctx.restore();
+      drawn++;
     }
     this.trains = drawn;
   }

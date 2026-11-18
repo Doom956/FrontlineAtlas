@@ -269,6 +269,61 @@ export function smoothRoute(tiles: ArrayLike<number>, w: number, t: SupplyTerrai
   return clean.length < 2 ? null : { path: clean, bridges };
 }
 
+/** Terrain penalty of laying a rail at a point (the meander keeps off hills, steers round forest edges). */
+function laid(t: SupplyTerrain, x: number, y: number): number {
+  const tt = t.terrain(Math.floor(x), Math.floor(y));
+  return tt === 4 ? 3 : tt === 3 ? 1.1 : tt === 6 || tt === 8 ? 0.3 : 0;
+}
+
+/**
+ * A smooth route given a winding of its own: the line is resampled every ~1.6 tiles, each point is nudged sideways by a
+ * seeded slow wave (up to 1.6 tiles) toward the cheaper ground (hills and forest weigh more), kept on the owner's dry
+ * land, then rounded. Ends, bridges and the first tiles beside a hub stay put. Deterministic in `seed`; the input comes
+ * back when no valid winding is found. Pure.
+ */
+export function meanderRoute(path: readonly P[], seed: number, t: SupplyTerrain, own: number, amp = 1.6): P[] {
+  if (path.length < 2) return path.slice();
+  const a = path[0];
+  const b = path[path.length - 1];
+  const isEnd = (x: number, y: number): boolean => (x === Math.floor(a[0]) && y === Math.floor(a[1])) || (x === Math.floor(b[0]) && y === Math.floor(b[1]));
+  const landOk = (x: number, y: number): boolean => isEnd(x, y) || (!WATER(t.terrain(x, y)) && t.owner(x, y) === own);
+  const ok = (x: number, y: number): boolean => landOk(x, y) || WATER(t.terrain(x, y));
+  const total = pathLength(path);
+  if (total < 6) return path.slice();
+  const m = Math.max(2, Math.round(total / 1.6));
+  const p1 = ((seed >>> 3) % 628) / 100;
+  const p2 = ((seed >>> 13) % 628) / 100;
+  const p3 = ((seed >>> 21) % 628) / 100;
+  const out: P[] = [a];
+  for (let i = 1; i < m; i++) {
+    const s = (total * i) / m;
+    const q = pointAt(path, s);
+    const ramp = Math.min(1, Math.min(s, total - s) / 5);
+    const wave = 0.55 * Math.sin(s * 0.85 + p1) + 0.3 * Math.sin(s * 0.41 + p2) + 0.15 * Math.sin(s * 1.9 + p3);
+    const base = wave * amp * ramp;
+    const nx = -Math.sin(q.angle);
+    const ny = Math.cos(q.angle);
+    const onLand = landOk(Math.floor(q.x), Math.floor(q.y)) && landOk(Math.floor(q.x + nx * 0.5), Math.floor(q.y + ny * 0.5)) && landOk(Math.floor(q.x - nx * 0.5), Math.floor(q.y - ny * 0.5));
+    let best: P = [q.x, q.y];
+    if (onLand && ramp > 0.05) {
+      let bestCost = laid(t, q.x, q.y) + 0.45 * Math.abs(base);
+      for (const off of [base, -base * 0.6, base * 0.5, -base * 0.3]) {
+        const x = q.x + nx * off;
+        const y = q.y + ny * off;
+        const prev = out[out.length - 1];
+        if (!lineOk(prev, [x, y], landOk)) continue;
+        const c = laid(t, x, y) + 0.45 * Math.abs(off - base);
+        if (c < bestCost) (bestCost = c, best = [x, y]);
+      }
+    }
+    out.push(best);
+  }
+  out.push(b);
+  const rounded = chaikin(out, 2);
+  for (let i = 0; i + 1 < rounded.length; i++) if (!lineOk(rounded[i], rounded[i + 1], ok)) return path.slice();
+  return rounded;
+}
+
 /**
  * The rail route from hub `a` to hub `b` over `a`'s owner's dry land (see the header), or null when there is none
  * (enemy or neutral land in the way, a water gap wider than a bridge, the hubs on different owners).

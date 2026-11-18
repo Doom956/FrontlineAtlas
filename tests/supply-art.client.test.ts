@@ -57,12 +57,12 @@ describe('rail pixels', () => {
 });
 
 describe('trains', () => {
-  it('runs an engine and tender with 3 to 5 wagons', () => {
+  it('runs an engine and tender with 2 to 3 wagons', () => {
     for (const load of [0, 1, 2, 3, 9]) {
       const cars = trainCars(load);
       expect(cars.slice(0, 2)).toEqual(['engine', 'tender']);
-      expect(cars.length - 2).toBeGreaterThanOrEqual(3);
-      expect(cars.length - 2).toBeLessThanOrEqual(5);
+      expect(cars.length - 2).toBeGreaterThanOrEqual(2);
+      expect(cars.length - 2).toBeLessThanOrEqual(3);
     }
   });
 

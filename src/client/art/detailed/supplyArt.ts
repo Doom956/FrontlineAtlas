@@ -10,7 +10,7 @@
 //              rails, the one toward the light lit, each throwing a one-pixel shadow; a straight steel girder bridge
 //              over water. Normal (P 4): one thin dark line. Far (P 2 and less): nothing.
 //   yard       close only: sidings fanning out of the main line where 3 or more rails meet.
-//   train      close: an engine with its tender and 3 to 5 wagons in the owner's colour, a smoke puff trailing off the
+//   train      close: an engine with its tender and 2 to 3 wagons in the owner's colour, a smoke puff trailing off the
 //              stack. Normal: a dot in the owner's colour moving along the line.
 //   sea lane   close and normal: a dotted line of pale water from the port, the dots a lighter tone of the sea.
 //   damage     a broken rail: the bed scorched black round a crater, the rails gone, two bent pieces thrown aside.
@@ -59,7 +59,7 @@ export interface RailBreak {
 
 /** The pixel sizes of a rail at a grid (art px): rail centre offset, sleeper reach, bed and verge radius, sleeper pitch. */
 function railSizes(P: number): { rail: number; sleeper: number; bed: number; verge: number; pitch: number } {
-  return P >= 16 ? { rail: 1.5, sleeper: 2.6, bed: 3.1, verge: 4.0, pitch: 3 } : { rail: 1.5, sleeper: 2.2, bed: 2.5, verge: 3.2, pitch: 2 };
+  return P >= 16 ? { rail: 2.0, sleeper: 3.4, bed: 4.0, verge: 5.0, pitch: 3 } : { rail: 1.7, sleeper: 2.9, bed: 3.3, verge: 4.2, pitch: 2 };
 }
 
 /**
@@ -224,7 +224,7 @@ export function railArt(lines: readonly (readonly P[])[], g: TrackGround, seed: 
       if (d > reach && !broken) continue;
       if (look === 'line') {
         // normal zoom: one thin dark line (the pixel the line runs through), broken where the line is cut
-        if (!(d < 0.5 || (d < 0.75 && side[k] > 0))) continue;
+        if (!(d < 1.25 || (d < 1.6 && side[k] > 0))) continue;
         if (broken) continue;
         if (wet) {
           put(k, STEEL_DARK);
@@ -232,7 +232,7 @@ export function railArt(lines: readonly (readonly P[])[], g: TrackGround, seed: 
         }
         const tones = trackTones(ter, g.ramps);
         if (!tones) continue;
-        put(k, g.tint(mixC(tones.path, [30, 30, 32], 0.72), lumaC(tones.ground)));
+        put(k, g.tint(mixC(tones.path, [30, 30, 32], d < 0.8 ? 0.78 : 0.4), lumaC(tones.ground)));
         continue;
       }
       // the bridge's ends rest on the bank: its deck runs on over the shore strip (where the map draws the coast)
@@ -548,7 +548,7 @@ const CAR_GAP = 1.2;
 /** Half width of the wagons (model units). The engine and tender are laid out at 1.8 and stretched across to match. */
 const HW = 2.7;
 /** The train is drawn this much larger than the units' model scale, so its loads read at the close zooms. */
-const TRAIN_K = 1.6;
+const TRAIN_K = 0.8;
 
 function chassis(L: number, hw: number): Part[] {
   // the dark frame and wheels under the body (they show on the side toward the viewer) and the couplers at both ends
@@ -744,12 +744,12 @@ const mix = (a: number): number => {
 };
 
 /**
- * The cars of a supply train carrying `load` (1 light .. 3 heavy): engine and tender, then 3 to 5 wagons. The wagons are
+ * The cars of a supply train carrying `load` (1 light .. 3 heavy): engine and tender, then 2 to 3 wagons. The wagons are
  * picked from `seed` (the same train every time) and always hold a tank on a flatcar (or a heavy one) and at least one
  * supply load (crates, drums, sandbags, a tarp or fuel).
  */
 export function trainCars(load: number, seed = 0): CarKind[] {
-  const n = Math.max(3, Math.min(5, 2 + Math.round(load)));
+  const n = Math.max(2, Math.min(3, 1 + Math.round(load)));
   const all = [...MILITARY_CARS, ...SUPPLY_CARS];
   let r = mix(seed + 1);
   const next = (m: number): number => {
