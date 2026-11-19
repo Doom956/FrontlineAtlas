@@ -105,7 +105,7 @@ export interface DayLight {
   desat: number;
 }
 
-const WARM: RGB = [1.42, 0.92, 0.78];
+const WARM: RGB = [1.21, 0.96, 0.89];
 const COOL: RGB = [0.89, 0.99, 1.18];
 const normTint = (c: readonly number[]): RGB => {
   const y = luma(c);
