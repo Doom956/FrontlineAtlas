@@ -25,6 +25,7 @@ import { clearIntelCache, updateArsenal } from './variants';
 import { updateNavyQueue } from './navy';
 import { clearDefenseCache, updateTanks } from './tanks';
 import { updateSpecials } from './specials';
+import { updateSupplyLines } from './supplylines';
 import { clearNavyCache, updateWarMemory } from './naval2';
 import { updateFollow } from './warTarget';
 import { updateFog } from './fog';
@@ -64,6 +65,7 @@ export function tick(state: GameState): void {
     updateBuildings(state);
     updateBuildQueues(state);
     updateSupply(state);
+    updateSupplyLines(state); // the supply network: cut sources, repairs, convoys (supplylines.ts)
     updateHeartlands(state);
     updateAttacks(state);
     updateTrenches(state); // dug-in borders: staggered dig passes (trenches.ts)

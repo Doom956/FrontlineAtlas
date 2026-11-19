@@ -115,6 +115,7 @@ import { airSupportCut } from './airwings';
 import { AIR, TRENCH } from './config';
 import { trenchLevel } from './trenches';
 import { armorBreaksThrough } from './variants';
+import { cutSourceSet, cutVersion } from './supplylines';
 import { isProtected, tutorialKeeps, tutorialShielded } from './admin';
 import { TROOP_TYPES, Terrain, isTribe, isWater } from './types';
 import type { ActionResult, Attack, GameState, Player, TerrainId, TroopType, Troops } from './types';
@@ -235,6 +236,8 @@ interface SupplyCache {
   version: number;
   capital: number;
   heads: number;
+  /** supplylines.cutVersion when built */
+  cut: number;
   /** tick until which the cached beachhead list is valid (first expiry) */
   validUntil: number;
   tiles: Int32Array;
@@ -254,13 +257,33 @@ function supplyOf(state: GameState): SupplyData {
   return d;
 }
 
-/** Supply source tiles of a player (capital, finished cities and forts it owns, live beachheads). */
+/**
+ * Supply source tiles of a player (capital, finished cities and forts it owns, live beachheads), less the forts and
+ * beachheads its supply network cannot reach (supplylines.ts).
+ */
 export function supplySourceTiles(state: GameState, playerId: number): number[] {
   const owner = state.map.owner;
-  const out = supplySources(state, playerId).filter((t) => owner[t] === playerId);
+  const cut = cutSourceSet(state, playerId);
+  const out = supplySources(state, playerId).filter((t) => owner[t] === playerId && !cut?.has(t));
   for (const b of supplyOf(state).beachheads) {
-    if (b.player === playerId && b.untilTick > state.tick && owner[b.tile] === playerId) out.push(b.tile);
+    if (b.player === playerId && b.untilTick > state.tick && owner[b.tile] === playerId && !cut?.has(b.tile)) out.push(b.tile);
   }
+  return out;
+}
+
+/** Makes tile a beachhead supply source of playerId for `seconds` (a landing; tests). */
+export function addBeachhead(state: GameState, playerId: number, tile: number, seconds: number): void {
+  const sd = supplyOf(state);
+  sd.beachheads.push({ player: playerId, tile, untilTick: state.tick + Math.round(seconds * TICKS_PER_SECOND) });
+  sd.headVersion++;
+}
+
+/** Live beachhead tiles of a player (not yet expired; owners are not checked). For supplylines.ts. */
+export function beachheadTiles(state: GameState, playerId: number): number[] {
+  const d = supplyData.get(state);
+  if (!d) return [];
+  const out: number[] = [];
+  for (const b of d.beachheads) if (b.player === playerId && b.untilTick > state.tick) out.push(b.tile);
   return out;
 }
 
@@ -269,13 +292,16 @@ function supplyCache(state: GameState, playerId: number): SupplyCache {
   const p = state.players[playerId];
   let c = d.byPlayer.get(playerId);
   const stamp = buildingStamp(state, playerId);
-  if (c && c.version === stamp && c.capital === p.capital && c.heads === d.headVersion && state.tick < c.validUntil) return c;
-  // Unfiltered by tile owner (supplyDistance checks it): see SupplyCache.
-  const tiles = supplySources(state, playerId);
+  const cv = cutVersion(state);
+  if (c && c.version === stamp && c.capital === p.capital && c.heads === d.headVersion && c.cut === cv && state.tick < c.validUntil) return c;
+  // Unfiltered by tile owner (supplyDistance checks it): see SupplyCache. Forts and beachheads the supply network
+  // cannot reach are left out: the cut lists change only inside tick (supplylines.ts), so a client read stays safe.
+  const cut = cutSourceSet(state, playerId);
+  const tiles = cut ? supplySources(state, playerId).filter((t) => !cut.has(t)) : supplySources(state, playerId);
   const w = state.map.width;
   let validUntil = Infinity;
   for (const b of d.beachheads) {
-    if (b.player !== playerId || b.untilTick <= state.tick) continue;
+    if (b.player !== playerId || b.untilTick <= state.tick || cut?.has(b.tile)) continue;
     tiles.push(b.tile);
     validUntil = Math.min(validUntil, b.untilTick);
   }
@@ -283,6 +309,7 @@ function supplyCache(state: GameState, playerId: number): SupplyCache {
     version: stamp,
     capital: p.capital,
     heads: d.headVersion,
+    cut: cv,
     validUntil,
     tiles: Int32Array.from(tiles),
     xs: new Int32Array(tiles.map((t) => t % w)),
@@ -1271,10 +1298,7 @@ export function launchAttack(state: GameState, playerId: number, tile: number, t
       return { ok: true };
     }
     // The beachhead supplies the invasion until a city or fort can take over.
-    const sd = supplyOf(state);
-    const headSeconds = BEACHHEAD_SUPPLY_SECONDS * (navalHead < 1 ? NAVY_BEACHHEAD_SUPPLY : 1);
-    sd.beachheads.push({ player: playerId, tile, untilTick: state.tick + Math.round(headSeconds * TICKS_PER_SECOND) });
-    sd.headVersion++;
+    addBeachhead(state, playerId, tile, BEACHHEAD_SUPPLY_SECONDS * (navalHead < 1 ? NAVY_BEACHHEAD_SUPPLY : 1));
     if (target !== 0) maybeCollapse(state, target, playerId);
     if (target !== 0 && !tp.alive) {
       addTroops(p.troops, force.troops);

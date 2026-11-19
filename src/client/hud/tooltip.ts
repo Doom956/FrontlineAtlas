@@ -18,6 +18,8 @@ import { swatchCss } from './swatch';
 import { formatCount } from '../render/common';
 import { armyOf, barrageRange, BuildTargetCache, maxLevel } from '../simx';
 import { fmtR, ownHitWarning, STRIKES, strikeBody, strikeOfMode, strikeRoleLine, strikeTarget } from '../strikes';
+import { cutsSupplySub, cutsSupplyText, supplyCutAt } from '../supplyText';
+import { barrageRadius } from '../../sim/barrage';
 import { cruiseBody, cruiseTarget } from '../cruise';
 import { stealthBody, stealthGuardLine, stealthRadarLine, stealthSamLine, stealthTarget } from '../stealth';
 import { iconDataUrl } from '../icons';
@@ -365,6 +367,7 @@ export class MapTooltip {
     const rows: HTMLElement[] = [];
     if (t.ok) {
       rows.push(this.line(pic, aims ? `Target ${aims.length + 1} here` : 'Stealth strike here', stealthBody(state, t), 'head'));
+      this.supplyRow(state, me, tile, t.radius, rows);
       const sam = stealthSamLine(t);
       if (sam) rows.push(el('div', 'mt-hint', sam));
       const radar = stealthRadarLine(t);
@@ -379,6 +382,14 @@ export class MapTooltip {
     this.card.className = `mtip build ${t.ok ? 'ok' : 'no'}`;
     this.card.replaceChildren(...rows);
     setVisible(this.odds, false);
+  }
+
+  /** An enemy supply hub inside the blast that would cut supply: "Cuts supply to 2 forts" and how long the hub stays out. */
+  private supplyRow(state: GameState, me: Player, tile: number, radius: number, rows: HTMLElement[]): void {
+    const fog = activeFog(state);
+    const cut = supplyCutAt(state, me.id, tile, radius, fog ? (t) => fog.visible(t) : undefined);
+    const text = cutsSupplyText(cut);
+    if (cut && text) rows.push(this.line(lineIcon('signal', 18), text, cutsSupplySub(cut), 'sup'));
   }
 
   private strikePreview(state: GameState, me: Player, tile: number): void {
@@ -404,6 +415,7 @@ export class MapTooltip {
       // fog of war: the blast and the launch site always; what it would hit only when all of it is in view
       const hidden = t.blind;
       rows.push(this.line(pic, title, hidden ? `${t.radius > 0 ? `Radius ${fmtR(t.radius)} tiles. ` : ''}Out of sight: you will see what it hit when it lands` : strikeBody(state, m, t), 'head'));
+      if (!hidden && id !== 'paradrop') this.supplyRow(state, me, tile, id === 'barrage' ? barrageRadius(state, me.id) : t.radius, rows);
       const role = strikeRoleLine(state, t, tile);
       if (role) rows.push(el('div', 'mt-hint', role));
       const own = ownHitWarning(m, t);

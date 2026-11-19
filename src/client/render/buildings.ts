@@ -147,6 +147,8 @@ export class BuildingLayer {
   private readonly gunLayer = new GunLayer();
   /** the connected buildings (quay, trench, road, fence) drawn under the art at art zoom */
   readonly links = new LinkLayer();
+  /** building pairs a supply rail now links: no dirt track between them (set by the renderer each frame) */
+  rails: ReadonlySet<string> | null = null;
   private shown: Building[] = [];
   private shownByTile = new Map<number, Building>();
 
@@ -378,6 +380,7 @@ export class BuildingLayer {
       viewW: cam.viewW,
       viewH: cam.viewH,
       colors,
+      rails: this.rails ?? undefined,
       specOf: (e) => {
         const b = this.shownByTile.get(e.tile);
         return b ? specOf(b.type, b.level, this.addonState(state, b, ghosts.has(b))) : null;

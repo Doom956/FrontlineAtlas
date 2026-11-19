@@ -273,6 +273,9 @@ function strikeNumbers(msg: string): [number, number] {
   return [b ? Number(b[1]) : 0, k ? Number(k[1]) : 0];
 }
 
+/** Supply report: a cut counts as timed with an attack when one on that nation ran within this many seconds. */
+const SUPPLY_ATTACK_WINDOW = 15;
+
 interface GameResult {
   job: Job;
   winner: number;
@@ -300,6 +303,9 @@ interface GameResult {
   /** trenches.ts: mean trench level of nations' border tiles facing another nation at 15 min (-1 if over), auto-cover sorties (Air doctrine) */
   trench15?: number;
   coverSorties?: number;
+  /** supply lines (supplylines.ts): hubs damaged, cuts (events that cut sources off), of them within
+   * SUPPLY_ATTACK_WINDOW s of an attack on that nation, nation-ticks with any source cut, convoys sunk */
+  sup?: { dmg: number; cuts: number; cutsAtk: number; cutTicks: number; sunk: number };
   /** strikes from minute LATE_MINUTE on, per weapon (bomber sorties, front support, rocket, atom, cruise, stealth):
    * launched, shot down, buildings destroyed, troops killed, gold paid (bombers: the price of the ones shot down) */
   late?: Record<string, LateStrike>;
@@ -694,6 +700,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
   const fortOwner = new Int32Array(state.map.owner.length); // owner of a fortified tile at the last sample
   let fortTiles: number[] = [];
   const seenUnits = new Set<number>();
+  const lastAttacked = new Map<number, number>(); // supply report: nation -> last tick an attack on it ran
   const seenBuildings = new Set<number>();
   const mixSamples: { minute: number; mix: Troops[] }[] = [];
   const tickMs: number[] = [];
@@ -786,6 +793,20 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
         if (t === 'bomber') lateOf(r, t).gold += UNITS.bomber.gold;
       }
     }
+    // Supply lines: owner-side events only (each hit also tells the attacker).
+    const sup = (r.sup ??= { dmg: 0, cuts: 0, cutsAtk: 0, cutTicks: 0, sunk: 0 });
+    for (const a of state.attacks) if (a.target > 0 && a.troops.infantry + a.troops.armor + a.troops.artillery > 0) lastAttacked.set(a.target, state.tick);
+    for (const e of state.events) {
+      const si = e.supply;
+      if (!si || e.players[0] !== si.owner) continue;
+      if (e.kind === 'supplyHubDamaged') sup.dmg++;
+      if (e.kind === 'convoySunk') sup.sunk++;
+      if ((e.kind === 'supplyHubDamaged' || e.kind === 'convoySunk' || e.kind === 'supplyCut') && si.sources.length) {
+        sup.cuts++;
+        if (state.tick - (lastAttacked.get(si.owner) ?? -1e9) <= SUPPLY_ATTACK_WINDOW * TICKS_PER_SECOND) sup.cutsAtk++;
+      }
+    }
+    for (const l of state.supplyNet?.cut ?? []) if (l && l.length) sup.cutTicks++;
     for (const e of state.events) {
       if (e.kind === 'victory') r.winReason = e.message.replace(/^.* wins: /, '');
       else if (e.kind === 'allyJoined') r.allyJoins++;
@@ -1331,6 +1352,16 @@ function report(all: GameResult[], o: Options): void {
   console.log('');
   summary('all', rs);
   const t15 = rs.filter((r) => (r.trench15 ?? -1) >= 0).map((r) => r.trench15!);
+  {
+    const g = Math.max(1, rs.length);
+    const tot = (f: (x: NonNullable<GameResult['sup']>) => number): number => rs.reduce((a, r) => a + (r.sup ? f(r.sup) : 0), 0);
+    const nationGames = Math.max(1, rs.reduce((a, r) => a + r.nations, 0));
+    const cuts = tot((x) => x.cuts);
+    console.log(
+      `\nSupply: hubs damaged per game ${(tot((x) => x.dmg) / g).toFixed(1)}, cuts per game ${(cuts / g).toFixed(1)} (${cuts ? Math.round((100 * tot((x) => x.cutsAtk)) / cuts) : 0}% within ${SUPPLY_ATTACK_WINDOW} s of an attack on that nation), ` +
+        `mean seconds a nation had a source cut ${(tot((x) => x.cutTicks) / TICKS_PER_SECOND / nationGames).toFixed(0)}, convoys sunk per game ${(tot((x) => x.sunk) / g).toFixed(1)}.`,
+    );
+  }
   console.log(`\nTrenches: mean level of nation-facing border tiles at 15 min ${t15.length ? (t15.reduce((a, b) => a + b, 0) / t15.length).toFixed(2) : '-'}; Air cover sorties per game ${(rs.reduce((a, r) => a + (r.coverSorties ?? 0), 0) / Math.max(1, rs.length)).toFixed(1)}.`);
 
   // Winners' mixes.

@@ -19,6 +19,7 @@ import type { GameState } from '../sim/types';
 import type { Camera } from './camera';
 import type { Snap } from './placement';
 import { BuildTargetCache } from './simx';
+import { SupplyLayer, type SupplyFrame } from './render/supplyLayer';
 import { BuildingLayer, FAR_ZOOM } from './render/buildings';
 import { buildingsKey, clamp, ctx2d, shade, type RGB } from './render/common';
 import { DepositLayer } from './render/deposits';
@@ -121,6 +122,7 @@ export class Renderer {
   /** trench level per tile (dug-in borders), fed like the tile feed */
   private trench = new TrenchFeed();
   private buildings = new BuildingLayer();
+  private supply = new SupplyLayer();
   private deposits = new DepositLayer();
   private units = new UnitLayer();
   /** selection box, warship placement area, spearhead preview (render/selectionOverlay.ts) */
@@ -210,6 +212,7 @@ export class Renderer {
     this.terr.decor = decorForMap(state.settings.map);
     this.buildings.terr = this.terr;
     this.buildings.reset();
+    this.supply.reset();
     this.feed.vis = null; // the new game's fog view attaches below (render)
     this.fog = null;
     this.fogSent = -1;
@@ -226,6 +229,7 @@ export class Renderer {
       this.ensure2d();
     }
     this.buildings.reset();
+    this.supply.reset();
     this.deposits.setGame(state);
     this.units.reset(map.width);
     this.fronts.reset(map.width, this.feed);
@@ -410,7 +414,11 @@ export class Renderer {
     if (ui.hoverTile >= 0 && ui.hoverTile < state.map.building.length && state.map.building[ui.hoverTile] !== 0 && ui.mode.kind === 'none') focus.push(ui.hoverTile);
     if (ui.selectedTile >= 0 && ui.selectedTile < state.map.building.length && state.map.building[ui.selectedTile] !== 0) focus.push(ui.selectedTile);
     this.buildings.guns = this.gunAim;
+    // supply lines: rails, trains and convoys under the buildings, the damage marks over them (render/supplyLayer.ts)
+    const supplyFrame = this.supplyFrame(state, camera, view, d, nowMs, frac);
+    this.buildings.rails = this.supply.drawGround(ctx, supplyFrame);
     this.buildings.draw(ctx, state, camera, view, this.colors, focus, d);
+    this.supply.drawMarks(ctx, supplyFrame);
     this.overlays.capitals(ctx, state, camera, this.colors, me, FAR_ZOOM, nowMs);
     this.fighters.layout(state, me, state.tick + frac, nowMs, camera, this.units);
     this.units.extraContrails ??= (into, m) => this.fighters.trails(into, m);
@@ -462,6 +470,12 @@ export class Renderer {
     this.stats.fleets = this.units.fleets;
     this.stats.labels = this.names.drawn;
     this.stats.labelsComputed = this.names.computed;
+  }
+
+  /** What the supply layer needs of this frame. */
+  private supplyFrame(state: GameState, camera: Camera, view: { x0: number; y0: number; x1: number; y1: number }, dpr: number, nowMs: number, frac: number): SupplyFrame {
+    const fog = this.fog?.active ? this.fog : null;
+    return { state, terr: this.terr, camX: camera.x, camY: camera.y, zoom: camera.zoom, viewW: camera.viewW, viewH: camera.viewH, view, colors: this.colors, dpr, me: this.humanId, visible: fog ? (t) => fog.visible(t) : null, fogGen: fog ? fog.gen : -1, tickF: state.tick + frac, nowMs };
   }
 
   /** Owner of a tile as this client knows it (fog of war: last seen, 0 where never seen). */

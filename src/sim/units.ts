@@ -115,6 +115,7 @@ import { TROOP_TYPES, isFighterTarget, isWater } from './types';
 import { airBomberExtraHp, airVariantOf, carrierFor, navalCanTarget, navalShellMul, navalShellRangeMul } from './variants';
 import { gunRank } from './navalroles';
 import { dropTanksParadropMul, earlyWarningMul, earlyWarningWarnMul, mineLandingLoss, nightDodges, nightEffectMul, nightRadiusMul } from './specials';
+import { damageSupplyHubs } from './supplylines';
 import type { ActionResult, Building, BuildingType, GameState, Troops, Unit, UnitType } from './types';
 
 const FAIL = (reason: string): ActionResult => ({ ok: false, reason });
@@ -897,6 +898,7 @@ export function dropBombs(state: GameState, u: Unit, radiusMul = 1, payload = 1,
       destroyed++;
     }
   }
+  damageSupplyHubs(state, u.owner, tile, bombR); // supply hubs still standing in the blast are damaged (supplylines.ts)
   if (!hitTiles) return out;
   let killed = 0;
   for (const [o, n] of hit) {

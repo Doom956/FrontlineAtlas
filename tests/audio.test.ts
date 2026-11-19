@@ -58,6 +58,11 @@ const KIND_MAP: Record<GameEventKind, true> = {
   tankDivisionReady: true,
   spearheadStarted: true,
   spearheadEnded: true,
+  supplyHubDamaged: true,
+  supplyHubRepaired: true,
+  convoySunk: true,
+  supplyCut: true,
+  supplyRestored: true,
   victory: true,
   defeat: true,
 };

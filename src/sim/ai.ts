@@ -100,6 +100,7 @@ import { forEachInRadius } from './grid';
 import { alliancesAllowed as rulesAllowAlliances, atPeace, buildingAllowed, researchRule, treatyBetween, unitAllowed } from './rules';
 import { canSpawnAt, gameSeconds, ownerBox, spawnAtFixedPoint } from './state';
 import { mainFront } from './warTarget';
+import { bestSupplyHub, hubAirCover, secondRouteSpots, supplyRiskOf, withinRailReach } from './supplylines';
 import { fogOn, knownTile } from './fog';
 import { borderTiles, coastCount, depositCount, landComponents, sampleOwnedTiles } from './territory';
 import { canParadrop, paradropMaxTroops, paradropRange, unitCost } from './units';
@@ -1738,6 +1739,8 @@ interface BuildOption {
   prio: number;
   /** a fort meant as a supply source for a main front beyond supply (placed and scored for that) */
   supply?: boolean;
+  /** candidate tiles in order (the first one that works is built; supply lines, aiSupplyRoute) */
+  spots?: number[];
 }
 
 /** Random tiles of ours: sampled in our bounding box (re-checked for ownership), plus the capital. */
@@ -1867,11 +1870,11 @@ function economy(ctx: Ctx): void {
   const held = doctrineActive(state, id);
   const lean = held ? DOCTRINE_BUILD[held] : {};
   const noResearch = researchRule(state) !== null;
-  const add = (type: BuildingType | 'research' | 'procure', prio: number, supply = false): void => {
+  const add = (type: BuildingType | 'research' | 'procure', prio: number, supply = false, spots?: number[]): void => {
     if (prio <= 0) return;
     if (type === 'research' || type === 'procure' ? noResearch : !buildingAllowed(state, type)) return;
     if (type === 'research' || type === 'procure') opts.push({ type, prio });
-    else opts.push({ type, prio: prio * (prof.build[type] ?? 1) * (lean[type] ?? 1) * (MILITARY.has(type) ? militaryScale : 1), supply });
+    else opts.push({ type, prio: prio * (prof.build[type] ?? 1) * (lean[type] ?? 1) * (MILITARY.has(type) ? militaryScale : 1), supply, spots });
   };
 
   // Cities are the backbone (troop cap, gold, supply), more urgent as the troops near their cap. Their number
@@ -1912,6 +1915,13 @@ function economy(ctx: Ctx): void {
   if (bombedCities(ctx).length) add('fort', count('fort') < fortCap + 2 + T / 3000 ? 4 : 0);
   // Forts are supply sources: one near a main front that is mostly beyond supply (placed for supply, tryBuild).
   if (frontNeedsSupply(ctx)) add('fort', count('fort') < fortCap + 2 + T / 2500 ? 5 : 0, true);
+  // Supply lines (supplylines.ts), Normal up: when one hub carries most of our supply, a fort that adds a second route,
+  // and a SAM over that hub (repairs go 10 s faster under air cover and the bombers have to get through first).
+  const plan = aiSupplyRoute(state, id);
+  if (plan) {
+    if (plan.fort.length && count('fort') < fortCap + 3 + T / 2500) add('fort', AI_SECOND_ROUTE_PRIO, false, plan.fort);
+    if (plan.sam.length) add('sam', AI_HUB_SAM_PRIO, false, plan.sam);
+  }
   if (coastCount(state, id) > 0) {
     const portCap = Math.round(prof.naval * 3 + (T > 400 ? 1 : 0));
     add('port', count('port') < portCap ? 2 + prof.naval * 4 : 0);
@@ -1960,8 +1970,51 @@ function economy(ctx: Ctx): void {
       if (tech && applyAction(state, id, { type: 'research', tech }).ok) done++;
     } else if (o.type === 'procure') {
       if (armsTech && applyAction(state, id, { type: 'procure', tech: armsTech }).ok) done++;
-    } else if (tryBuild(ctx, o.type, o.supply === true)) done++;
+    } else if (o.spots ? buildAt(ctx, o.type, o.spots) : tryBuild(ctx, o.type, o.supply === true)) done++;
   }
+}
+
+/** Build priority of a fort that gives a front hanging on one hub a second route, and of a SAM over that hub. */
+const AI_SECOND_ROUTE_PRIO = 5.5;
+const AI_HUB_SAM_PRIO = 4.5;
+
+/**
+ * Supply lines (supplylines.ts): when one hub of `id` carries most of its supply (supplyRiskOf), spots for a fort that
+ * adds a second route and, with Radar and no air cover there yet, for a SAM next to that hub. Null when the network
+ * is fine, or on Easy. For the AI's economy and tests; reads only.
+ */
+export function aiSupplyRoute(state: GameState, id: number): { hub: number; fort: number[]; sam: number[] } | null {
+  if (aiAttackLevel(state) < 1) return null;
+  const risk = supplyRiskOf(state, id);
+  if (!risk) return null;
+  // One at a time: a fort or SAM already going up waits until it is finished (and the network checked again).
+  const fort = buildingsOf(state, id, 'fort').some((b) => b.buildLeft > 0) ? [] : secondRouteSpots(state, id, risk);
+  const sam: number[] = [];
+  const p = state.players[id];
+  if (p && hasTech(p, 'radar') && !hubAirCover(state, id, risk.hub) && !buildingsOf(state, id, 'sam').some((b) => b.buildLeft > 0)) {
+    const w = state.map.width;
+    const x = risk.hub % w;
+    const y = (risk.hub / w) | 0;
+    for (const [dx, dy] of [[5, 0], [-5, 0], [0, 5], [0, -5], [4, 4], [-4, -4]]) {
+      const xx = x + dx;
+      const yy = y + dy;
+      if (xx < 0 || yy < 0 || xx >= w || yy >= state.map.height) continue;
+      const t = yy * w + xx;
+      if (state.map.owner[t] === id) sam.push(t);
+    }
+  }
+  return { hub: risk.hub, fort, sam };
+}
+
+/** Builds `type` at the first of `tiles` that works (a fort order that would only upgrade a fort nearby is skipped). */
+function buildAt(ctx: Ctx, type: BuildingType, tiles: number[]): boolean {
+  const { state, id } = ctx;
+  for (const t of tiles) {
+    const r = resolveBuildTarget(state, id, type, t);
+    if ('error' in r || !r.affordable || (type === 'fort' && r.upgrade)) continue;
+    if (applyAction(state, id, { type: 'build', building: type, tile: t }).ok) return true;
+  }
+  return false;
 }
 
 /** Extra warships / airfields of a benchmark specialist (aifocus.ts; 0 for everyone else). */
@@ -2213,7 +2266,8 @@ function siteScore(ctx: Ctx, type: BuildingType, t: number, upgrade: boolean, su
         const r = fortRadius(state, b);
         if (dist2(w, t, b.tile) < r * r * 1.2) covered = 1;
       }
-      const reach = supply ? Math.min(supplyDistance(state, id, t), 300) / 50 : 0;
+      // a supply fort beyond rail reach of our network would be cut off at once (supplylines.ts)
+      const reach = supply ? (withinRailReach(state, id, t) ? Math.min(supplyDistance(state, id, t), 300) / 50 : -6) : 0;
       // Flak Guns (defense.ts): a fort next to a city enemy bombers hit is worth it even inside another fort's cover
       let flak = 0;
       if (!supply) for (const c of bombedCities(ctx)) if (dist2(w, t, c) <= 100) flak = 3.5;
@@ -2542,7 +2596,17 @@ export function aiManualStrike(state: GameState, id: number, airfield: number): 
   const ctx = makeCtx(state, m, state.players[id]);
   const af = state.buildings.get(state.map.building[airfield] - 1);
   if (!af || af.type !== 'airfield') return { tile: -1, count: undefined };
-  return { tile: strikeTarget(ctx, MANUAL_STRIKE_KINDS, af.tile, airWingRange(af, state)), count: manualSalvo(state, af) };
+  const hub = aiSupplyAim(ctx, af.tile, airWingRange(af, state));
+  return { tile: hub >= 0 ? hub : strikeTarget(ctx, MANUAL_STRIKE_KINDS, af.tile, airWingRange(af, state)), count: manualSalvo(state, af) };
+}
+
+/** Orders the fort of aiSupplyRoute now (the first spot that works), as the AI's economy does. For tests and tools. */
+export function aiBuildSecondRoute(state: GameState, id: number): boolean {
+  const plan = aiSupplyRoute(state, id);
+  if (!plan || !plan.fort.length) return false;
+  const m = memory(state);
+  refreshArmies(state, m);
+  return buildAt(makeCtx(state, m, state.players[id]), 'fort', plan.fort);
 }
 const MANUAL_STRIKE_KINDS: BuildingType[] = ['fort', 'factory', 'arsenal', 'airfield', 'city', 'barracks'];
 /** From Normal up a manual strike is one salvo of every stored bomber, not a bomber at a time into the enemy's fighters. */
@@ -2569,7 +2633,8 @@ function airAndMissiles(ctx: Ctx): void {
       applyAction(state, id, { type: 'buildAircraft', airfield: af.tile, kind });
     }
     if (fighting.length && af.bombers > 0 && !airWingBusy(state, af)) {
-      const t = strikeTarget(ctx, MANUAL_STRIKE_KINDS, af.tile, airWingRange(af, state));
+      const hub = aiSupplyAim(ctx, af.tile, airWingRange(af, state));
+      const t = hub >= 0 ? hub : strikeTarget(ctx, MANUAL_STRIKE_KINDS, af.tile, airWingRange(af, state));
       const count = manualSalvo(state, af);
       if (t >= 0) aiAntiRadar(state, id, [t]); // anti-radar missiles open the SAM wall over the raid first (antiRadar.ts)
       if (t >= 0) applyAction(state, id, count === undefined ? { type: 'bomb', airfield: af.tile, tile: t } : { type: 'bomb', airfield: af.tile, tile: t, count });
@@ -2599,8 +2664,37 @@ function airAndMissiles(ctx: Ctx): void {
   // Each launch keeps 600 gold back, as before.
   const afford = Math.min(ready, Math.floor((p.gold - 600) / c.gold), c.iron > 0 ? Math.floor(p.iron / c.iron) : ready, c.oil > 0 ? Math.floor(p.oil / c.oil) : ready);
   if (afford < 1) return;
+  // Supply lines: during a push (or just before one, against our main war target) one rocket goes at the enemy hub whose
+  // loss cuts the most of its supply near that front (supplylines.ts); the rest of the salvo at the usual target.
+  let left = Math.min(afford, STRIKE.maxSalvo);
+  const hub = aiSupplyAim(ctx, -1, Infinity);
+  if (hub >= 0 && applyAction(state, id, { type: 'launchMissile', silo: -1, kind: 'rocket', tile: hub, count: 1 }).ok) left--;
+  if (left < 1) return;
   const t = strikeTarget(ctx, ['silo', 'sam', 'fort', 'airfield', 'factory'], -1);
-  if (t >= 0) applyAction(state, id, { type: 'launchMissile', silo: -1, kind: 'rocket', tile: t, count: Math.min(afford, STRIKE.maxSalvo) });
+  if (t >= 0) applyAction(state, id, { type: 'launchMissile', silo: -1, kind: 'rocket', tile: t, count: left });
+}
+
+/**
+ * Supply lines (supplylines.ts), Normal up: the enemy hub to strike now: against each nation we attack (a push) or our
+ * main war target, the hub whose damage cuts the most of its supply sources near our front with it (bestSupplyHub),
+ * known (fog) and within `reach` of `from` (from < 0: anywhere). The most cut near a front wins; -1 = none.
+ */
+function aiSupplyAim(ctx: Ctx, from: number, reach: number): number {
+  const { state, id } = ctx;
+  if (aiAttackLevel(state) < 1) return -1;
+  const w = state.map.width;
+  const main = mainWarTarget(ctx);
+  let best = -1;
+  let bestNear = 0;
+  for (const q of foes(ctx)) {
+    if (q !== main && !ctx.myAttacks.some((a) => a.target === q)) continue;
+    const h = bestSupplyHub(state, id, q, mainFront(state, id, q), (t) => knownTile(state, id, t) && (from < 0 || dist2(w, from, t) <= reach * reach));
+    if (h && h.near > bestNear) {
+      best = h.tile;
+      bestNear = h.near;
+    }
+  }
+  return best;
 }
 
 /**

@@ -11,6 +11,7 @@ import { hashBlitz } from './blitz';
 import { hashFog } from './fog';
 import { hashAntiRadar } from './antiRadar';
 import { hashArsenal } from './variants';
+import { hashSupplyLines } from './supplylines';
 import type { GameState, Troops } from './types';
 import { DIVISION_MODES, TREATY_TERMS, WARSHIP_STANCES } from './types';
 
@@ -312,5 +313,7 @@ export function hashState(state: GameState): number {
   h = hashAntiRadar(state, h, mixInt); // SAM radar marks, anti-radar reloads, escort flags (antiRadar.ts)
   // Fog of war vision (fog.ts); nothing without the rule.
   h = hashFog(state, h, mixInt);
+  // Supply lines: damaged hubs, sunk convoys, cut sources, link ends (supplylines.ts).
+  h = hashSupplyLines(state, h, mixInt);
   return h >>> 0;
 }
