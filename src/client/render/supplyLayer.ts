@@ -293,10 +293,12 @@ export class SupplyLayer {
       this.hubTiles.set(p.id, net.hubs.map((hb) => [(hb.tile % w) + 0.5, ((hb.tile / w) | 0) + 0.5] as P));
       // the rail links laid as one track network (cached while the routes stay)
       const railLinks = net.links.filter((l) => l.kind === 'rail' && !!l.path && l.path.length >= 2);
-      let nk = `${p.id}|${w}`;
+      // every hub's building is a footprint the tracks go round (only a link's own two hubs are run into)
+      const feet = net.hubs.filter((hb) => hb.kind !== 'beachhead').map((hb) => hb.tile);
+      let nk = `${p.id}|${w}|${feet.join(',')}`;
       for (const l of railLinks) nk += `|${l.a}:${l.b}:${hashTiles(l.path as Int32Array)}`;
       let laid = this.nets.get(nk);
-      if (!laid) laid = layTracks(railLinks.map((l): TrackLink => ({ a: l.a, b: l.b, tiles: l.path as Int32Array })), w, terrainAt, (x, y) => x >= 0 && y >= 0 && x < w && y < h && state.map.owner[y * w + x] === p.id);
+      if (!laid) laid = layTracks(railLinks.map((l): TrackLink => ({ a: l.a, b: l.b, tiles: l.path as Int32Array })), w, terrainAt, (x, y) => x >= 0 && y >= 0 && x < w && y < h && state.map.owner[y * w + x] === p.id, feet);
       nets.set(nk, laid);
       const visibleRoute = (tiles: ArrayLike<number> | null, a: number, b: number): boolean => {
         if (mine || f.me === 0 || !vis) return true;

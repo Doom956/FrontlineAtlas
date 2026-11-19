@@ -14,7 +14,10 @@
 //   4. switches   a branch's last tiles bend in to leave the through line along its heading.
 // Every track runs from hub centre to hub centre (under the buildings, as a station spur) or into a switch. Each link
 // gets the path its trains run on: the pieces of the tracks along its corridor, end to end.
-import { pathLength, pointAt, type P } from './supplyLines';
+// Buildings: a route never runs through another hub's footprint (supplyLines.ts HUB_FOOT, the square its building
+// stands on). Where the sim's route crosses one, the track goes round it along the square's edge, and the alignment
+// keeps its straight runs and curves off it, so a rail (and its trains) only enters a building at its own two ends.
+import { HUB_FOOT, inFootprint, pathLength, pointAt, type P } from './supplyLines';
 
 /** One rail link of the sim: hub tiles a and b, and its route (tile ids from a to b). */
 export interface TrackLink {
@@ -177,10 +180,88 @@ export function subPath(path: readonly P[], s0: number, s1: number): P[] {
  * The rail links of one nation laid as one track network (see the header). `terrain` is the terrain id of a tile
  * (off the map: water); `own` the land a straight run may cross (the owner's). Deterministic: the same links give the same tracks. Pure.
  */
-export function layTracks(links: readonly TrackLink[], w: number, terrain: (x: number, y: number) => number, own: (x: number, y: number) => boolean = () => true): TrackNet {
+export function layTracks(links: readonly TrackLink[], w: number, terrain: (x: number, y: number) => number, own: (x: number, y: number) => boolean = () => true, feet: readonly number[] = []): TrackNet {
   const ter = (t: number): number => terrain(t % w, (t / w) | 0);
   const hubs = new Set<number>();
   for (const l of links) (hubs.add(l.a), hubs.add(l.b));
+  // building footprints: every hub of the links and every other building given
+  const footTiles = [...new Set([...hubs, ...feet])].sort((p, q) => p - q);
+  const footAt = (x: number, y: number): number => {
+    for (const f of footTiles) if (inFootprint(x, y, f % w, (f / w) | 0)) return f;
+    return -1;
+  };
+  const inOwn = (x: number, y: number, a: number, b: number): boolean => (a >= 0 && hubs.has(a) && inFootprint(x, y, a % w, (a / w) | 0)) || (b >= 0 && hubs.has(b) && inFootprint(x, y, b % w, (b / w) | 0));
+  /** a tile in a building's footprint that is not one of the two ends' own */
+  const offLimits = (x: number, y: number, a: number, b: number): boolean => footAt(x, y) >= 0 && !inOwn(x, y, a, b);
+  const passable = (x: number, y: number, a: number, b: number): boolean => !WATER(terrain(x, y)) && own(x, y) && !offLimits(x, y, a, b);
+  /** the tiles round a footprint (one tile out from its edge), in order round it */
+  const ringOf = (f: number): [number, number][] => {
+    const hx = f % w;
+    const hy = (f / w) | 0;
+    const R = HUB_FOOT + 1;
+    const out: [number, number][] = [];
+    for (let x = hx - R; x < hx + R; x++) out.push([x, hy - R]);
+    for (let y = hy - R; y < hy + R; y++) out.push([hx + R, y]);
+    for (let x = hx + R; x > hx - R; x--) out.push([x, hy + R]);
+    for (let y = hy + R; y > hy - R; y--) out.push([hx - R, y]);
+    return out;
+  };
+  /** a route with every run through another building's footprint replaced by the way round its edge */
+  const detour = (tiles: ArrayLike<number>, a: number, b: number): number[] => {
+    const n = tiles.length;
+    const out: number[] = [];
+    let i = 0;
+    while (i < n) {
+      const t = tiles[i];
+      const x = t % w;
+      const y = (t / w) | 0;
+      if (i === 0 || i === n - 1 || !offLimits(x, y, a, b) || !out.length) {
+        out.push(t);
+        i++;
+        continue;
+      }
+      const f = footAt(x, y);
+      const fx = f % w;
+      const fy = (f / w) | 0;
+      let j = i;
+      while (j < n - 1 && inFootprint(tiles[j] % w, (tiles[j] / w) | 0, fx, fy)) j++;
+      const p = out[out.length - 1];
+      const q = tiles[j];
+      const ring = ringOf(f);
+      const near = (c: number): number => {
+        let bi = 0;
+        let bd = Infinity;
+        ring.forEach(([rx, ry], k) => {
+          const d = Math.max(Math.abs(rx - (c % w)), Math.abs(ry - ((c / w) | 0)));
+          if (d < bd) (bd = d, bi = k);
+        });
+        return bi;
+      };
+      const ip = near(p);
+      const iq = near(q);
+      const L = ring.length;
+      let best: number[] | null = null;
+      for (const dir of [1, -1]) {
+        const way: number[] = [];
+        let ok = true;
+        for (let k = ip; ; k = (k + dir + L) % L) {
+          const [rx, ry] = ring[k];
+          if (!passable(rx, ry, a, b)) {
+            ok = false;
+            break;
+          }
+          way.push(ry * w + rx);
+          if (k === iq) break;
+        }
+        if (ok && (!best || way.length < best.length)) best = way;
+      }
+      if (best) {
+        for (const c of best) if (out[out.length - 1] !== c) out.push(c);
+      } else for (let k = i; k < j; k++) out.push(tiles[k]);
+      i = j;
+    }
+    return out;
+  };
   const adj = new Map<number, number[]>();
   const link = (u: number, v: number): void => {
     let x = adj.get(u);
@@ -217,7 +298,9 @@ export function layTracks(links: readonly TrackLink[], w: number, terrain: (x: n
   const order = links.map((_, i) => i).sort((i, j) => links[i].tiles.length - links[j].tiles.length || links[i].a - links[j].a || links[i].b - links[j].b);
   const chains: (number[] | null)[] = links.map(() => null);
   for (const li of order) {
-    const { tiles } = links[li];
+    const la = links[li].a;
+    const lb = links[li].b;
+    const tiles = detour(links[li].tiles, la, lb);
     const n = tiles.length;
     if (n < 2) continue;
     // 1. snap onto the track already laid
@@ -236,7 +319,7 @@ export function layTracks(links: readonly TrackLink[], w: number, terrain: (x: n
             const d = dx * dx + dy * dy;
             if (d === 0 || d > SNAP * SNAP + 1 || d > bd) continue;
             const c = (ty + dy) * w + tx + dx;
-            if (tx + dx < 0 || tx + dx >= w || !adj.has(c) || WATER(ter(c)) !== wet) continue;
+            if (tx + dx < 0 || tx + dx >= w || !adj.has(c) || WATER(ter(c)) !== wet || offLimits(tx + dx, ty + dy, la, lb)) continue;
             if (d < bd || c < s) (bd = d, s = c);
           }
         }
@@ -392,6 +475,10 @@ export function layTracks(links: readonly TrackLink[], w: number, terrain: (x: n
   // 4. the alignment of each track
   const tracks: Track[] = chainsOfTracks.map((seq) => {
     const pts = seq.map((t) => centre(t, w));
+    const ea = hubs.has(seq[0]) ? seq[0] : -1;
+    const eb = hubs.has(seq[seq.length - 1]) ? seq[seq.length - 1] : -1;
+    /** a point of the drawn line inside another building's footprint */
+    const offAt = (x: number, y: number): boolean => offLimits(Math.floor(x), Math.floor(y), ea, eb);
     // pulled a little toward easy ground, across the line only (the ends stay)
     for (let i = 1; i + 1 < pts.length; i++) {
       const t = seq[i];
@@ -412,7 +499,7 @@ export function layTracks(links: readonly TrackLink[], w: number, terrain: (x: n
       const push = Math.max(-0.45, Math.min(0.45, (gx * nx + gy * ny) * 0.08));
       const qx = pts[i][0] + nx * push;
       const qy = pts[i][1] + ny * push;
-      if (!WATER(terrain(Math.floor(qx), Math.floor(qy))) || WATER(ter(t))) pts[i] = [qx, qy];
+      if ((!WATER(terrain(Math.floor(qx), Math.floor(qy))) || WATER(ter(t))) && !offAt(qx, qy)) pts[i] = [qx, qy];
     }
     const roughAt = (x: number, y: number): number => rough(terrain(Math.floor(x), Math.floor(y)));
     /** a straight run is fine when it crosses no water the route did not, and no rougher ground than the route on average */
@@ -429,6 +516,7 @@ export function layTracks(links: readonly TrackLink[], w: number, terrain: (x: n
         const y = ay + ((by - ay) * k) / m;
         const tt = terrain(Math.floor(x), Math.floor(y));
         if (WATER(tt) ? !wetRoute.has(Math.floor(y) * w + Math.floor(x)) : !own(Math.floor(x), Math.floor(y))) return false;
+        if (offAt(x, y)) return false;
         sum += WATER(tt) ? 0 : roughAt(x, y);
       }
       return sum / (m + 1) <= along + 0.35;
@@ -439,6 +527,7 @@ export function layTracks(links: readonly TrackLink[], w: number, terrain: (x: n
         const q = pointAt(path, s);
         const tx = Math.floor(q.x);
         const ty = Math.floor(q.y);
+        if (offAt(q.x, q.y)) return false;
         if (!WATER(terrain(tx, ty))) continue;
         let near = false;
         for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1 && !near; dx++) near = wetRoute.has((ty + dy) * w + tx + dx);

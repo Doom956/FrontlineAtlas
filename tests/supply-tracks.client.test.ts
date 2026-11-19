@@ -3,7 +3,7 @@
 // curve, every link's train path runs unbroken from hub centre to hub centre, and the result is the same every time.
 import { describe, expect, it } from 'vitest';
 import { layTracks, type TrackLink } from '../src/client/art/detailed/supplyTracks';
-import { pathLength, type P } from '../src/client/art/detailed/supplyLines';
+import { HUB_FOOT, inFootprint, pathLength, pointAt, type P } from '../src/client/art/detailed/supplyLines';
 
 const W = 120;
 const H = 80;
@@ -136,4 +136,39 @@ describe('the laid track network', () => {
     expect(JSON.stringify(layTracks(links, W, flat))).toBe(JSON.stringify(layTracks(links, W, flat)));
     void H;
   });
+
+  it('goes round another building on the way: no route tile or rail point inside a footprint except the two end hubs', () => {
+    // a straight sim route from (10, 40) to (70, 40) runs right through a factory at (40, 40); a fort sits by the line
+    const a = tile(10, 40);
+    const b = tile(70, 40);
+    const factory = tile(40, 40);
+    const fort = tile(55, 42);
+    const links: TrackLink[] = [{ a, b, tiles: route([10, 40], [70, 40]) }];
+    const net = layTracks(links, W, flat, () => true, [factory, fort]);
+    const ends = [a, b];
+    const inForeign = (x: number, y: number): boolean =>
+      [factory, fort].some((f) => inFootprint(x, y, f % W, (f / W) | 0)) && !ends.some((e) => inFootprint(x, y, e % W, (e / W) | 0));
+    for (const tr of net.tracks) {
+      for (const t of tr.nodes) expect(inForeign(t % W, (t / W) | 0)).toBe(false);
+      const L = pathLength(tr.path);
+      for (let s = 0; s <= L; s += 0.1) {
+        const q = pointAt(tr.path, s);
+        expect(inForeign(Math.floor(q.x), Math.floor(q.y))).toBe(false);
+      }
+    }
+    // the train path still runs from hub centre to hub centre, close to the drawn track, and clears the factory
+    const path = net.paths[0];
+    expect(path).not.toBeNull();
+    if (!path) return;
+    expect(path[0]).toEqual([10.5, 40.5]);
+    expect(path[path.length - 1]).toEqual([70.5, 40.5]);
+    expect(offTrack(path, net.tracks)).toBeLessThan(0.6);
+    expect(Math.min(...path.map(([x, y]) => Math.max(Math.abs(x - 40.5), Math.abs(y - 40.5))))).toBeGreaterThan(HUB_FOOT + 0.5);
+  });
+
+  it('lays the same tracks as before when no building stands in the way', () => {
+    const links: TrackLink[] = [{ a: tile(10, 20), b: tile(60, 30), tiles: route([10, 20], [35, 22], [60, 30]) }];
+    expect(JSON.stringify(layTracks(links, W, flat, () => true, [tile(30, 60)]))).toBe(JSON.stringify(layTracks(links, W, flat)));
+  });
 });
+
