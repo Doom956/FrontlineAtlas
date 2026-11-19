@@ -19,6 +19,7 @@ import { mountBuildingsMock } from './buildingsMock';
 import { mountIconSheet } from './iconSheet';
 import { mountLinksMock } from './linksMock';
 import { mountSupplyMock } from './supplyMock';
+import { mountSeasonsMock } from './seasonsMock';
 import { CLOSE_ZOOM, MID_ZOOM, NEAR_ZOOM, rowSpecs, type RowId, type RowSpec, type SceneEnv } from './scenes';
 
 const PICKS_KEY = 'frontline.artLab.picks.v1';
@@ -257,6 +258,7 @@ export function startArtLab(): void {
   mountBuildingsMock(root);
   mountLinksMock(root);
   mountSupplyMock(root);
+  mountSeasonsMock(root);
   mountIconSheet(root);
 
   // ---------------------------------------------------------------------------------------------- columns
