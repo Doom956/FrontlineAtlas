@@ -96,7 +96,9 @@ float snowCov(vec2 q, int ter) {
 // how much the sea at q is frozen, 0..1 (sim/seasons.ts ice rows, a broken edge)
 float iceCov(vec2 q) {
   if (uSnow.w <= 0.0) return 0.0;
-  return smoothstep(-0.4, 0.4, uSnow.w - poleRows(q.y) + (vnoise(q / 2.5, 817u) - 0.5) * 1.1);
+  float amp = max(1.1, uSnow.y * 0.5);
+  float n = vnoise(q / max(2.5, amp * 1.5), 817u) * 0.7 + vnoise(q / 1.3, 819u) * 0.3;
+  return smoothstep(-0.4, 0.4, uSnow.w - poleRows(q.y) + (n - 0.5) * amp);
 }
 // a far (average) ground colour in the season: shifted by its terrain's change, snow and ice blended in smoothly
 vec3 seasonFar(vec3 c, int ter, vec2 q) {
@@ -1074,7 +1076,7 @@ void main() {
     bool onSnow = uSeason.w > 0.5 && snowCov(t, ter) > 0.02;
     vec3 tcol = onSnow ? tameSnow(col) : col;
     vec3 fill = tintGround(tcol, dot(tcol, vec3(0.299, 0.587, 0.114)), onSnow ? min(avgK, SNOW_Y) : avgK, oc, tk);
-    if (onSnow && snowLike(col)) fill = mix(col, fill, 0.2);
+    if (onSnow) fill = mix(col, fill, snowLike(col) ? 0.2 : 0.45);
     // the border band: a thick strip of the nation's colour just inside its border, in whole art pixels (about 10 CSS px,
     // a little less close in), the ground still showing through it; drawn here, under forts, trenches, flashes and
     // fallout, so they all still show on it. The dark border line goes on top later.

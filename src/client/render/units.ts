@@ -33,6 +33,7 @@ import { prankView } from '../fx/prankView';
 import { isKillBlast, KILL_EXACT } from '../fx/deaths';
 import { isIncoming } from '../forces';
 import { troopKinds, troopPill } from './troopIcons';
+import type { NightLights } from './nightLights';
 import { hasIntel } from '../../sim/buildings';
 import { unitVisibleTo } from '../../sim/techtree';
 import type { FogView } from '../fog/fogView';
@@ -125,6 +126,8 @@ function killBlastAt(state: GameState, x: number, y: number, fromTick: number): 
 }
 
 export class UnitLayer {
+  /** night lights: ships drawn this frame are noted there while it collects (set by the renderer) */
+  lights: NightLights | null = null;
   private tracks = new Map<number, Track>();
   private lastTick = -1;
   private lastTickMs = 0;
@@ -512,6 +515,7 @@ export class UnitLayer {
             // a sprite not baked yet shows its icon for a frame (the same kind and colour, never a block)
             if (!drawMapSprite(ctx, e.type, e.u.variant, e.x, e.y, e.angle, c, mods, ss)) iconA = Math.max(iconA, band.sprite);
           }
+          if (this.lights?.on && (e.type === 'warship' || e.type === 'transport' || e.type === 'tradeShip') && !e.fleet) this.lights.addShip({ x: e.x, y: e.y, angle: e.angle, len: Math.max(6, e.S * 2) });
           if (e.form) extra += this.drawFormation(ctx, e, c, z, dpr) - 1;
           else if (iconA > 0) drawUnitIcon(ctx, e.type, e.u.variant, e.x, e.y, e.angle, c, z, dpr, false, iconA * (e.fa ?? 1));
         }

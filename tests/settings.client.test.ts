@@ -177,7 +177,7 @@ describe('Settings panel', () => {
     expect(test.disabled).toBe(false);
   });
 
-  it('Display: only reduce motion and graphics quality, saved at once; the looks are not offered', () => {
+  it('Display: reduce motion and graphics quality saved at once; the looks are not offered', () => {
     const p = new SettingsPanel({ gameplay: hooks().gameplay });
     const sec = byTest(p.el as unknown as FakeEl, 'settings-sec-display');
     // the map look, unit art, unit motion and map effects are gone: every player gets the defaults
@@ -194,6 +194,24 @@ describe('Settings panel', () => {
     byTest(sec, 'settings-reset-display').click();
     expect(store.getSettings()).toEqual(store.DEFAULT_SETTINGS);
     expect(mapStyle()).toBe('ground');
+  });
+
+  it('Display: a Day and night switch, on by default, saved under the settings key; Always day keeps it noon', () => {
+    const mem = new MemStore();
+    store.useSettingsStorage(mem);
+    expect(store.getSettings().dayNight).toBe(true);
+    const p = new SettingsPanel({ gameplay: hooks().gameplay });
+    const sec = byTest(p.el as unknown as FakeEl, 'settings-sec-display');
+    expect(sec.textContent).toContain('Day and night');
+    const d = byTest(sec, 'settings-day-night');
+    expect(all(d, (e) => e.tag === 'button').map((b) => b.textContent)).toEqual(['Day and night', 'Always day']);
+    expect(button(d, 'Day and night').attrs['aria-pressed']).toBe('true');
+    button(d, 'Always day').click();
+    expect(store.getSettings().dayNight).toBe(false);
+    expect(button(d, 'Always day').attrs['aria-pressed']).toBe('true');
+    expect(JSON.parse(mem.getItem(store.FA_SETTINGS_KEY) ?? '{}').dayNight).toBe(false);
+    byTest(sec, 'settings-reset-display').click();
+    expect(store.getSettings().dayNight).toBe(true);
   });
 
   it('Display in a game: the extra rows come before the reset', () => {

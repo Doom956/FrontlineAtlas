@@ -14,6 +14,7 @@ import type { UnitType, UnitVariant } from '../../sim/types';
 import { SpriteAtlas, type AtlasEntry } from '../art/shared/atlas';
 import { SPRITE_KEYS, spriteKey, type SpriteKey } from '../art/shared/keys';
 import { css, type RGB } from './common';
+import { holdLabel } from './labelSink';
 
 /** A closed outline, [x0, y0, x1, y1, ...] in CSS px at size 1, nose toward +x. */
 type Poly = number[];
@@ -329,6 +330,7 @@ export function drawUnitIcon(ctx: CanvasRenderingContext2D, type: UnitType, vari
  * own), at the top right of the fleet icon.
  */
 export function drawFleetCount(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, edge: string, font: string): void {
+  if (holdLabel(ctx, (c) => drawFleetCount(c, x, y, text, edge, font))) return;
   ctx.font = `700 10px ${font}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';

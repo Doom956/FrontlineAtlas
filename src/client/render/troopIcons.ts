@@ -10,6 +10,7 @@ import type { Troops, TroopType } from '../../sim/types';
 import { artFor } from '../art/registry';
 import type { TroopIconKind } from '../art/types';
 import { formatCount, MAP_NUM_FAMILY, type RGB } from './common';
+import { holdLabel } from './labelSink';
 
 export type { TroopIconKind };
 
@@ -123,6 +124,8 @@ export function troopPillSize(ctx: CanvasRenderingContext2D, troops: number, kin
  * a 1 px dark outline, and the push arrow (yours up, an incoming attack down). Returns the pill's width.
  */
 export function troopPill(ctx: CanvasRenderingContext2D, x: number, y: number, troops: number, kinds: readonly TroopIconKind[], owner: RGB, st: TroopPillStyle): number {
+  // over the night's shade (render/labelSink.ts); a held pill's width is not known yet (no caller of the world layer needs it)
+  if (holdLabel(ctx, (c) => troopPill(c, x, y, troops, kinds, owner, st))) return 0;
   const plate = st.small ? 12 : PLATE;
   const text = `${formatCount(troops)} troops`;
   const { w, h, tw, iconsW, ax, bare, at } = pillLayout(ctx, text, kinds, st);

@@ -30,6 +30,8 @@ import { GunLayer } from './gunLayer';
 import { LinkLayer, linkInput, linkKey, linksShown, type LinkEnd } from './linkLayer';
 import { gridOf } from '../art/detailed/grid';
 import { hasTech } from '../../sim/tech';
+import { holdLabel } from './labelSink';
+import { lightKindOf, type NightLights } from './nightLights';
 import { ACCENT, buildingsKey, clamp, haloText, MAP_LABEL_FAMILY, MAP_NUM_FAMILY, setTracking, type RGB, type View } from './common';
 
 export const FAR_ZOOM = 1.7;
@@ -151,6 +153,9 @@ export class BuildingLayer {
   rails: ReadonlySet<string> | null = null;
   private shown: Building[] = [];
   private shownByTile = new Map<number, Building>();
+  /** night lights: what was drawn this frame is noted there while it collects (set by the renderer) */
+  lights: NightLights | null = null;
+  private capitals = new Set<number>();
 
   reset(): void {
     this.key = -1;
@@ -218,6 +223,10 @@ export class BuildingLayer {
     this.links.newFrame();
     this.flak.clear();
     for (const p of state.players) if (p.id > 0 && p.alive && hasTech(p, 'flakGuns')) this.flak.add(p.id);
+    if (this.lights?.on) {
+      this.capitals.clear();
+      for (const p of state.players) if (p.capital >= 0) this.capitals.add(p.capital);
+    }
     const z = cam.zoom;
     const look = lookFor(z);
     if (z < FAR_ZOOM) {
@@ -281,6 +290,7 @@ export class BuildingLayer {
       const s = base + (b.level - 1) * 0.6;
       ctx.rect(ox + (tx + 0.5) * z - s / 2, oy + (ty + 0.5) * z - s / 2, s, s);
       this.drawn++;
+      if (this.lights?.on && !ghosts.has(b)) this.lights.addMarker({ kind: this.capitals.has(b.tile) ? 'capital' : 'city', level: b.level, seed: b.tile * 17 + 5, tile: b.tile, x: ox + (tx + 0.5) * z, y: oy + (ty + 0.5) * z, size: s + 2 });
     }
     ctx.lineWidth = 1;
     ctx.strokeStyle = 'rgba(16,18,24,0.85)';
@@ -412,10 +422,15 @@ export class BuildingLayer {
     ctx.imageSmoothingEnabled = false;
     let top = y - OV * scale + bk.top - 15;
     let cx = x;
+    const lk = this.lights?.on && !ghost && !unfinished ? lightKindOf(b.type, this.capitals.has(b.tile)) : null;
+    const kpx = bk.w / Math.max(1, bk.canvas.width);
     if (facing === 0 && b.type !== 'port') {
       const sx = x + balanceShift(spec, look) * scale;
-      ctx.drawImage(bk.canvas, Math.round((sx - OU * scale) * dpr) / dpr, Math.round((y - OV * scale) * dpr) / dpr, bk.w, bk.h);
+      const lx = Math.round((sx - OU * scale) * dpr) / dpr;
+      const ly = Math.round((y - OV * scale) * dpr) / dpr;
+      ctx.drawImage(bk.canvas, lx, ly, bk.w, bk.h);
       cx = sx - OU * scale + bk.cx;
+      if (lk) this.lights!.addSprite({ kind: lk, level: b.level, seed: b.tile * 17 + 5, tile: b.tile, canvas: bk.canvas, k: kpx, x: lx, y: ly, rot: 0, ox: 0, oy: 0, top: Math.round(bk.top / kpx) });
     } else {
       // a port: the model's coast line (u = COAST) lies on the tile's edge toward the sea, the pier reaches out to sea
       const dx = [1, 0, -1, 0][facing];
@@ -425,6 +440,7 @@ export class BuildingLayer {
       ctx.translate(ax, ay);
       ctx.rotate((facing * Math.PI) / 2);
       ctx.drawImage(bk.canvas, -OU * scale, -OV * scale, bk.w, bk.h);
+      if (lk) this.lights!.addSprite({ kind: lk, level: b.level, seed: b.tile * 17 + 5, tile: b.tile, canvas: bk.canvas, k: kpx, x: -OU * scale, y: -OV * scale, rot: (facing * Math.PI) / 2, ox: ax, oy: ay, top: Math.round(bk.top / kpx) });
       top = y - 16 * scale;
       cx = x;
     }
@@ -521,6 +537,8 @@ export class BuildingLayer {
     const unfinished = progress < 1;
     const id = b.type as BuildingIconId;
     const alpha = (ghost ? 0.5 : unfinished ? 0.55 : 1) * fade;
+    const lk = this.lights?.on && !ghost && !unfinished && !bare ? lightKindOf(b.type, this.capitals.has(b.tile)) : null;
+    if (lk) this.lights!.addMarker({ kind: lk, level: b.level, seed: b.tile * 17 + 5, tile: b.tile, x, y, size });
     // The plate shows what the building does (category colour: economy gold, production orange, defence blue ...);
     // a frame in the owner's colour shows whose it is.
     const r = size * 0.5;
@@ -553,18 +571,8 @@ export class BuildingLayer {
       const br = clamp(size * 0.22, 4.5, 8);
       const bx = x + r * 0.78;
       const by = y - r * 0.78;
-      ctx.beginPath();
-      ctx.arc(bx, by, br, 0, Math.PI * 2);
-      ctx.fillStyle = '#f4f5f1';
-      ctx.fill();
-      ctx.lineWidth = 1.2;
-      ctx.strokeStyle = 'rgba(14,18,24,0.85)';
-      ctx.stroke();
-      ctx.fillStyle = '#1a1f27';
-      ctx.font = `600 ${Math.round(br * 1.3)}px ${MAP_NUM_FAMILY}`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(String(b.level), bx, by + 0.5);
+      // the level badge goes over the night's shade (render/labelSink.ts)
+      if (!holdLabel(ctx, (c) => levelBadge(c, bx, by, br, b.level))) levelBadge(ctx, bx, by, br, b.level);
     }
     // levels queued by Build x3 / x5 or Upgrade area (Action buildMany / upgradeArea): small pips down the right edge
     const queued = bare ? 0 : Math.min(5, b.queuedLevels || 0);
@@ -601,4 +609,20 @@ export class BuildingLayer {
     }
     ctx.globalAlpha = 1;
   }
+}
+
+/** A flat marker's level badge: a light disc with the level number. */
+function levelBadge(ctx: CanvasRenderingContext2D, bx: number, by: number, br: number, level: number): void {
+  ctx.beginPath();
+  ctx.arc(bx, by, br, 0, Math.PI * 2);
+  ctx.fillStyle = '#f4f5f1';
+  ctx.fill();
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = 'rgba(14,18,24,0.85)';
+  ctx.stroke();
+  ctx.fillStyle = '#1a1f27';
+  ctx.font = `600 ${Math.round(br * 1.3)}px ${MAP_NUM_FAMILY}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(level), bx, by + 0.5);
 }

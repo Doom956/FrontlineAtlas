@@ -1,6 +1,7 @@
 // Boot: main menu -> new game -> loop (fixed-step sim at 10 ticks/s x speed, render every frame). Online games run
 // the same sim in lockstep (mpgame.ts): turns from the server drive the ticks, actions go out as intents.
 // First the art lab gate: an art lab build opened at #artlab shows the lab and never starts the game (artlab/gate.ts).
+import { setLookOverride, type MapLook } from './render/seasonView';
 import { setSettingsProbes, wireSettings } from './settings/apply';
 import './artlab/gate';
 import './styles.css';
@@ -1063,6 +1064,11 @@ declare global {
       lastLoad: () => { tick: number; hash: number; checked: number; matched: boolean } | null;
       /** the map style now, or switches it (a, b, c, today; render/mapStyle.ts): the map redraws on the next frame */
       mapStyle: (style?: string) => MapStyle;
+      /**
+       * Tests and screenshots: draw the map at these play ticks (the season) and this tick (the time of day) instead of
+       * the game's (null = the game's again); returns the look drawn last frame (render/seasonView.ts). Looks only.
+       */
+      lookAt: (o?: { playTicks?: number; tick?: number } | null) => MapLook | null;
     };
   }
 }
@@ -1111,6 +1117,10 @@ window.__borderfall = {
     const s = parseMapStyle(style);
     if (s) setMapStyle(s);
     return mapStyle();
+  },
+  lookAt: (o) => {
+    if (o !== undefined) setLookOverride(o);
+    return renderer.look;
   },
 };
 

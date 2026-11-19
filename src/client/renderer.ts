@@ -50,6 +50,9 @@ import { gameClockMs, TankFire } from './fx/tankFire';
 import { setSpriteState } from './render/pixelSprites';
 import { hueShift, prankView } from './fx/prankView';
 import { fogFor, type FogView } from './fog/fogView';
+import { mapLook, overlayShade, type MapLook } from './render/seasonView';
+import { NightLights, type BlastGlow } from './render/nightLights';
+import { drawHeldLabels, holdLabels } from './render/labelSink';
 import type { UiState } from './uiState';
 
 export { formatCount } from './render/common';
@@ -93,6 +96,13 @@ export interface RenderStats {
   msFx: number;
   /** tank gun shots drawn this frame (fx/tankFire.ts) */
   tankShots?: number;
+  /** the season and the light this frame (render/seasonView.ts) and the night lamps drawn */
+  season?: number;
+  dark?: number;
+  nightShade?: boolean;
+  nightLamps?: number;
+  /** trains drawn this frame (render/supplyLayer.ts) */
+  trains?: number;
   /** flak puffs and tank trap hedgehogs drawn this frame (fx/defenseFx.ts) */
   flakPuffs?: number;
   trapMarks?: number;
@@ -143,6 +153,12 @@ export class Renderer {
   private fx = new BattleFx();
   /** pixel explosions, ship cannon fire, shells, flak and scorch craters (fx/pixelFx.ts) */
   private pfx = new PixelFx();
+  /** night lights (render/nightLights.ts) and the world layer the night shades (created on the first dusk) */
+  private lights = new NightLights();
+  private world: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null = null;
+  private glows: BlastGlow[] = [];
+  /** the map's season and light this frame */
+  look: MapLook | null = null;
   /** tank divisions in a fight: turrets on the enemy, gun fire, shells and bursts (fx/tankFire.ts) */
   private tanks = new TankFire();
   /** fighters circling their airfields and carriers, flying patrols and interceptions (fx/fighters.ts) */
@@ -297,6 +313,9 @@ export class Renderer {
     if (state.players.length > this.colors.length) this.syncColors(state);
 
     const tPrep = performance.now();
+    // the season and the time of day (looks only): the map shader shades the ground, the overlay its world art
+    const look = mapLook(state);
+    this.look = look;
     // ---- tiles: this frame's share of the changes (spread over the frames of one tick)
     let tf = performance.now();
     this.fronts.begin(state, nowMs);
@@ -347,6 +366,7 @@ export class Renderer {
       if (fogSend) gl.uploadFog(fog.tex, fog.bw, fog.bh);
       gl.uploadOwner(this.feed);
       gl.uploadTrench(this.trench);
+      gl.look = look;
       const gw = this.glCanvas?.width ?? this.canvas.width;
       const gk = gw / this.canvas.width;
       gl.draw(gw, this.glCanvas?.height ?? this.canvas.height, {
@@ -394,16 +414,32 @@ export class Renderer {
       this.units.selected = this.selectedSet;
     }
     const frac = this.units.subTick(nowMs, ui.paused, ui.speed);
+    // night: the world art (ground marks, rails, buildings, trains, units) is drawn into its own layer, shaded for the
+    // time of day, then put on the overlay; the labels it draws on the way are held and drawn after, unshaded
+    // (render/labelSink.ts), and so are the lights, the borders, fronts, rings, capitals and all text
+    const shade = overlayShade(look);
+    const wl = shade.a > 0 ? this.worldLayer() : null;
+    const wctx = wl ? wl.ctx : ctx;
+    if (wl) {
+      wctx.setTransform(1, 0, 0, 1, 0, 0);
+      wctx.clearRect(0, 0, wl.canvas.width, wl.canvas.height);
+      wctx.setTransform(d, 0, 0, d, 0, 0);
+      holdLabels(wctx);
+    }
+    this.lights.begin(look.lights > 0.01);
+    this.buildings.lights = this.lights;
+    this.supply.lights = this.lights;
+    this.units.lights = this.lights;
     // tanks in a fight train their turrets and fire (the unit layer draws the turrets where they point)
     this.tanks.update(state, camera, nowMs, gameClockMs(state.tick, frac), this.units);
     this.units.gunnery = this.tanks;
     // scorch craters and what of a death lies on the ground or the sea (an oil slick, a burnt hull), under the units
-    this.pfx.drawGround(ctx, camera, state.tick + frac, d, nowMs, this.colors);
+    this.pfx.drawGround(wctx, camera, state.tick + frac, d, nowMs, this.colors);
     const b = ui.mode.kind === 'build' ? ui.mode.building : null;
     const depFocus = b === 'mine' ? 1 : b === 'oilWell' ? 2 : b === 'farm' ? 3 : 0;
-    this.deposits.draw(ctx, state, camera, view, ui.showResources, me, depFocus, d);
+    this.deposits.draw(wctx, state, camera, view, ui.showResources, me, depFocus, d);
     this.heartland.draw(ctx, state, camera, me, ui.showHeartland && state.phase === 'playing', d);
-    this.defense.drawGround(ctx, state, camera, nowMs, me, d); // tank trap hedgehogs (fx/defenseFx.ts)
+    this.defense.drawGround(wctx, state, camera, nowMs, me, d); // tank trap hedgehogs (fx/defenseFx.ts)
     tf = performance.now();
     this.fronts.drawLines(ctx, state, camera, ui, d);
     this.treatyLines.draw(ctx, state, camera, d);
@@ -416,16 +452,43 @@ export class Renderer {
     this.buildings.guns = this.gunAim;
     // supply lines: rails, trains and convoys under the buildings, the damage marks over them (render/supplyLayer.ts)
     const supplyFrame = this.supplyFrame(state, camera, view, d, nowMs, frac);
-    this.buildings.rails = this.supply.drawGround(ctx, supplyFrame);
-    this.buildings.draw(ctx, state, camera, view, this.colors, focus, d);
-    this.supply.drawMarks(ctx, supplyFrame);
-    this.overlays.capitals(ctx, state, camera, this.colors, me, FAR_ZOOM, nowMs);
+    this.buildings.rails = this.supply.drawGround(wctx, supplyFrame);
+    this.buildings.draw(wctx, state, camera, view, this.colors, focus, d);
+    this.supply.drawMarks(wctx, supplyFrame);
+    if (!wl) this.overlays.capitals(ctx, state, camera, this.colors, me, FAR_ZOOM, nowMs);
     this.fighters.layout(state, me, state.tick + frac, nowMs, camera, this.units);
     this.units.extraContrails ??= (into, m) => this.fighters.trails(into, m);
-    this.units.draw(ctx, state, camera, frac, this.colors, me, d, nowMs);
-    this.fighters.draw(ctx, this.colors, d, nowMs);
+    this.units.draw(wctx, state, camera, frac, this.colors, me, d, nowMs);
+    this.fighters.draw(wctx, this.colors, d, nowMs);
     this.stats.fighters = this.fighters.count;
     this.stats.sorties = this.fighters.sortiesDrawn;
+    if (wl) {
+      // the night's shade over the world art only (source-atop keeps its shapes), then onto the overlay
+      wctx.save();
+      wctx.setTransform(1, 0, 0, 1, 0, 0);
+      wctx.globalCompositeOperation = 'source-atop';
+      wctx.fillStyle = `rgba(${shade.c[0]},${shade.c[1]},${shade.c[2]},${shade.a.toFixed(3)})`;
+      wctx.fillRect(0, 0, wl.canvas.width, wl.canvas.height);
+      wctx.restore();
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(wl.canvas, 0, 0);
+      ctx.restore();
+    }
+    // the lights over the shade (nothing by day), then what the world art held back: capitals, labels
+    this.lights.draw(ctx, state, camera, look, d);
+    this.lights.begin(false);
+    if (wl) {
+      this.overlays.capitals(ctx, state, camera, this.colors, me, FAR_ZOOM, nowMs);
+      drawHeldLabels(ctx);
+    }
+    this.stats.season = look.s;
+    this.stats.dark = look.dark;
+    this.stats.nightShade = !!wl;
+    this.stats.nightLamps = this.lights.drawn;
+    this.stats.trains = this.supply.trains;
+    // fire and blasts: a glow round each blast (brighter at night), then the blasts, shells and flashes, unshaded
+    this.lights.drawGlows(ctx, camera, look, this.blastGlows(nowMs), d);
     this.overlays.effects(ctx, state, camera, frac);
     // shells, turret flashes and explosions over the units
     this.pfx.drawAir(ctx, camera, nowMs, this.units, d, this.colors);
@@ -501,6 +564,37 @@ export class Renderer {
     if (ui.mode.kind === 'moveWarship') return ui.mode.unitId;
     if (ui.mode.kind === 'none' && ui.hoverPx) return this.units.ownWarshipAt(ui.hoverPx.x, ui.hoverPx.y);
     return -1;
+  }
+
+  /** The world layer for the night's shade: a canvas the size of the overlay (made on the first dusk). */
+  private worldLayer(): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null {
+    if (typeof document === 'undefined') return null;
+    if (!this.world) {
+      const canvas = document.createElement('canvas');
+      const c = canvas.getContext('2d', this.gl?.lite ? { willReadFrequently: true } : undefined);
+      if (!c) return null;
+      this.world = { canvas, ctx: c };
+    }
+    const w = this.world;
+    if (w.canvas.width !== this.canvas.width || w.canvas.height !== this.canvas.height) {
+      w.canvas.width = this.canvas.width;
+      w.canvas.height = this.canvas.height;
+    }
+    return w;
+  }
+
+  /** Blasts going off now, for their glow (tile points; radius by kind). */
+  private blastGlows(nowMs: number): BlastGlow[] {
+    const out = this.glows;
+    out.length = 0;
+    for (const b of this.pfx.blasts) {
+      if (!b.live || b.kind === 'splash' || b.kind === 'flak') continue;
+      const t = (nowMs - b.t0) / b.dur;
+      if (t < 0 || t > 1) continue;
+      const r = b.kind === 'atom' ? 6 : b.kind === 'missile' ? 2.2 : b.kind === 'bomb' ? 1.6 : b.kind === 'air' ? 1 : 1.3;
+      out.push({ x: b.x, y: b.y, r, t });
+    }
+    return out;
   }
 
   /** Id of your own warship drawn under a canvas point (CSS px), or -1. */

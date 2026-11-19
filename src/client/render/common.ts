@@ -1,6 +1,7 @@
 // Small helpers shared by the map renderer modules (client only).
 import { buildingVersion } from '../../sim/buildings';
 import type { GameState } from '../../sim/types';
+import { holdLabel } from './labelSink';
 
 export type RGB = [number, number, number];
 
@@ -166,6 +167,8 @@ export function setTracking(ctx: CanvasRenderingContext2D, px: number): void {
  * `strength` scales the halo (1 = the default over nation colours, more over pale land such as tribes).
  */
 export function haloText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, fill: string, size = 12, strength = 1): void {
+  // drawn over the night's shade, never under it (render/labelSink.ts)
+  if (holdLabel(ctx, (c) => haloText(c, text, x, y, fill, size, strength))) return;
   const m = ctx.getTransform();
   const scale = Math.hypot(m.a, m.b) || 1;
   ctx.lineJoin = 'round';

@@ -65,8 +65,8 @@ export function seasonValue(ticks: number, startIndex: number = SEASON.startInde
 export function snowRowsSmooth(ticks: number, height: number, startIndex: number = SEASON.startIndex): number {
   const s = seasonAtTick(ticks, startIndex);
   const max = snowMaxRows(height);
-  if (s.season === 'winter') return max * Math.min(1, s.ticksInto / ((SEASON_TICKS * SEASON.snowGrowPercent) / 100));
-  if (s.season === 'spring' && s.count > 0) return max * (1 - Math.min(1, s.ticksInto / ((SEASON_TICKS * SEASON.snowMeltPercent) / 100)));
+  if (s.season === 'winter') return max * Math.min(1, s.ticksInto / Math.floor((SEASON_TICKS * SEASON.snowGrowPercent) / 100));
+  if (s.season === 'spring' && s.count > 0) return max * (1 - Math.min(1, s.ticksInto / Math.floor((SEASON_TICKS * SEASON.snowMeltPercent) / 100)));
   return 0;
 }
 
@@ -97,7 +97,7 @@ export function mapLook(state: Pick<GameState, 'phase' | 'tick' | 'playStartTick
   return {
     s,
     snowRows: snowRowsSmooth(pt, h),
-    snowEdge: Math.max(1.5, Math.min(6, h * 0.012)),
+    snowEdge: Math.max(1.5, Math.min(10, h * 0.02)),
     tundra: wl,
     iceRows: iceRowsFor(h) * wl,
     spring: look.spring,

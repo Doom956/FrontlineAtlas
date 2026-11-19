@@ -46,6 +46,7 @@ import { railPairKey, groundFor } from './linkLayer';
 import { mapStyle } from './mapStyle';
 import { spriteScale } from './units';
 import type { TerrainData } from './terrain';
+import type { NightLights } from './nightLights';
 
 /** What a zoom shows of the supply lines. */
 export type SupplyLook = 'close' | 'line' | 'none';
@@ -194,6 +195,8 @@ function pixelsCanvas(t: TrackPixels): HTMLCanvasElement | null {
 }
 
 export class SupplyLayer {
+  /** night lights: trains and convoy ships drawn this frame are noted there while it collects (set by the renderer) */
+  lights: NightLights | null = null;
   rails: RailView[] = [];
   tracks: TrackView[] = [];
   lanes: LaneView[] = [];
@@ -631,6 +634,7 @@ export class SupplyLayer {
       ctx.globalAlpha *= fade;
       drawTrain(ctx, { path: sp, head: head * z, cars, owner: color, scale: spriteScale(z), dpr: f.dpr, timeMs: f.nowMs });
       ctx.restore();
+      this.lights?.addTrain({ path: sp, head: head * z, cars, scale: spriteScale(z), alpha: fade });
       drawn++;
     }
     this.trains = drawn;
@@ -685,6 +689,7 @@ export class SupplyLayer {
         const x = ox + p.x * z;
         const y = oy + p.y * z;
         const id = 900000 + (l.a % 1000) * 10 + i;
+        this.lights?.addShip({ x, y, angle: p.angle, len });
         units.push({ id, key: 'tradeShip', x, y, tx: p.x, ty: p.y, angle: p.angle, half: len / 2, moving: true, speed: span / (sail / TICKS_PER_SECOND), turnRate: 0, motion });
         draws.push({ key: 'tradeShip', mods: 0, owner: color, x, y, angle: p.angle, zoom: z, scale, lod: scale >= 2 ? 'near' : 'mid', dpr: f.dpr, timeMs: f.nowMs, turnRate: 0, speed: 2, moving: true, seed: id, alpha: 1, shadow: true, damage: 0, outline: true });
       }

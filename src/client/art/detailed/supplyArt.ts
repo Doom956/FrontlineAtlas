@@ -25,6 +25,7 @@ import { outlineOf, ringWidth } from './outline';
 import { box, ell, seg } from './shapes';
 import { pathLength, pointAt, type Junction, type P } from './supplyLines';
 import type { RGB } from '../shared/colour';
+import { holdLabel } from '../../render/labelSink';
 
 type C = readonly number[];
 
@@ -936,6 +937,7 @@ export function drawTrainDot(ctx: CanvasRenderingContext2D, x: number, y: number
  * drawn icon and a plain word with its unit. `icon` 'cut' is a broken rail, 'repair' a clock.
  */
 export function supplyLabel(ctx: CanvasRenderingContext2D, cx: number, y: number, text: string, icon: 'cut' | 'repair', progress = 0): void {
+  if (holdLabel(ctx, (c) => supplyLabel(c, cx, y, text, icon, progress))) return;
   ctx.font = `600 11px ${MAP_LABEL_FAMILY}`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';

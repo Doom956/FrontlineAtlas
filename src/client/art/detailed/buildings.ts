@@ -13,6 +13,7 @@ import { gridOf } from './grid';
 import { outlineOf, ringWidth } from './outline';
 import { box, ell, grown, poly, seg } from './shapes';
 import { isMoreType, moreGround, moreModel, type MoreType } from './buildingsMore';
+import { holdLabel } from '../../render/labelSink';
 
 /** The cell a building is baked into, in model units (1 unit = 1 map screen px at mid zoom, like the units). */
 export const CU = 68;
@@ -1549,6 +1550,7 @@ export function bakeBuilding(spec: BuildingSpec, owner: RGB, scale: number, dpr:
 
 /** The level chip (close zoom only; at normal zoom the building's size and look tell its level): the army count pill's look (a near-black outline, a dark plate, a faint light top row), the owner's colour on its left edge. */
 export function levelPill(ctx: CanvasRenderingContext2D, cx: number, y: number, level: number, owner: RGB): void {
+  if (holdLabel(ctx, (c) => levelPill(c, cx, y, level, owner))) return;
   const text = `Lv ${level}`;
   ctx.font = `600 10px ${MAP_NUM_FAMILY}`;
   ctx.textAlign = 'left';

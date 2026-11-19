@@ -33,16 +33,17 @@ export function dayPhase(tick: number): number {
 /** Seconds either side of the middle of dawn and of dusk with some warm glow (it peaks in the middle of the change). */
 export const WARM_SECONDS = 14;
 
-/** The warm dawn and dusk glow at `tick`, 0..1: highest half way through the dawn and the dusk blends. */
+/** The warm dawn and dusk glow at `tick`, 0..1: highest three quarters into the dawn, a quarter into the dusk. */
 export function dayWarmth(tick: number): number {
   const t = dayClock(tick) * DAY_SECONDS;
-  const dawn = TWILIGHT_SECONDS / 2;
-  const dusk = DAYLIGHT_SECONDS - TWILIGHT_SECONDS / 2;
+  // on the light side of each change, where the sun is low but up (as the art lab's dawn and dusk)
+  const dawn = TWILIGHT_SECONDS * 0.75;
+  const dusk = DAYLIGHT_SECONDS - TWILIGHT_SECONDS * 0.75;
   // dawn sits by the wrap: the last seconds of the night count as just before it
   const dDawn = Math.min(Math.abs(t - dawn), Math.abs(t - DAY_SECONDS - dawn));
   const d = Math.min(dDawn, Math.abs(t - dusk));
   return smooth(1 - d / WARM_SECONDS);
 }
 
-/** Named moments of the day in seconds after sunrise (tests, screenshots): mid dawn, noon, mid dusk, mid night. */
-export const DAY_TIMES = { dawn: TWILIGHT_SECONDS / 2, noon: 45, dusk: DAYLIGHT_SECONDS - TWILIGHT_SECONDS / 2, night: 105 } as const;
+/** Named moments of the day in seconds after sunrise (tests, screenshots): dawn and dusk at their warmest, noon, mid night. */
+export const DAY_TIMES = { dawn: TWILIGHT_SECONDS * 0.75, noon: 45, dusk: DAYLIGHT_SECONDS - TWILIGHT_SECONDS * 0.75, night: 105 } as const;
