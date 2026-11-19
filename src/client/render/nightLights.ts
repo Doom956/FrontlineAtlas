@@ -290,7 +290,9 @@ export class NightLights {
     for (const s of this.sprites) {
       const spots = spotsOf(s.kind, s.level, s.seed);
       if (!spots.length) continue;
-      const cells = pickCells(s.canvas, s.top, s.seed, Math.round(spots.length / 3));
+      // cities: about two thirds of the candidates lit (busy windows), the others a third
+      const share = s.kind === 'city' || s.kind === 'capital' ? 0.6 : 0.34;
+      const cells = pickCells(s.canvas, s.top, s.seed, Math.round(spots.length * share));
       const p = Math.max(1, Math.round(s.k * dpr));
       const cos = Math.cos(s.rot);
       const sin = Math.sin(s.rot);
