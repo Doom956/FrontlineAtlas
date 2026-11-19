@@ -2,7 +2,7 @@
 // mountains and swamps, over rivers on short bridges only; rail yards where 3 rails meet; sea lanes over open water.
 // The same result every time and for any input order.
 import { describe, expect, it } from 'vitest';
-import { BRIDGE_MAX, junctions, pathLength, pointAt, railNetwork, railRoute, seaLane, type Hub, type SupplyTerrain } from '../src/client/art/detailed/supplyLines';
+import { BRIDGE_MAX, inFootprint, junctions, pathLength, pointAt, railNetwork, railRoute, seaLane, type Hub, type SupplyTerrain } from '../src/client/art/detailed/supplyLines';
 
 const W = 80;
 const H = 60;
@@ -110,4 +110,24 @@ describe('sea lanes', () => {
       expect(t.terrain(Math.floor(p.x), Math.floor(p.y))).toBeLessThanOrEqual(1);
     }
   });
+
+  it('routes round other buildings: no rail point inside a footprint except its own two hubs', () => {
+    const t = world(() => 2);
+    const a = hub(10, 30);
+    const b = hub(60, 30);
+    const mid = hub(35, 30, 'factory');
+    const side = hub(48, 31, 'fort');
+    const r = railRoute(a, b, t, [a, b, mid, side]);
+    expect(r).not.toBeNull();
+    if (!r) return;
+    const L = pathLength(r.path);
+    for (let s = 0; s <= L; s += 0.1) {
+      const q = pointAt(r.path, s);
+      const x = Math.floor(q.x);
+      const y = Math.floor(q.y);
+      const own = inFootprint(x, y, a.x, a.y) || inFootprint(x, y, b.x, b.y);
+      expect(!own && (inFootprint(x, y, mid.x, mid.y) || inFootprint(x, y, side.x, side.y))).toBe(false);
+    }
+  });
 });
+

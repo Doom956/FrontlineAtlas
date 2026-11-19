@@ -29,7 +29,7 @@ import { blastAt } from '../art/detailed/explosions';
 import { detailedUnits } from '../art/detailed/units';
 import { detailedWakes } from '../art/detailed/trails';
 import { motionOf } from '../art/registry';
-import { pathLength, pointAt, railNetwork, type Hub, type P, type Rail, type SupplyTerrain } from '../art/detailed/supplyLines';
+import { HUB_FOOT, pathLength, pointAt, railNetwork, type Hub, type P, type Rail, type SupplyTerrain } from '../art/detailed/supplyLines';
 import { blitGround, drawTrain, railArt, trainCars, trainLength, type CarKind, type GroundView } from '../art/detailed/supplyArt';
 import {
   DAY_SECONDS,
@@ -221,7 +221,7 @@ interface Scene {
 }
 
 function buildScene(w: World): Scene {
-  const cap = site('city', 17, 16, 1, 4, { capital: true });
+  const cap = site('city', 17, 16, 1, 4, { capital: true, foot: 3 });
   const port = site('port', coastX(18), 18, 1, 2);
   const fac = site('factory', 27, 10, 1, 2);
   const fort = site('fort', 27, 22, 1, 2);
@@ -602,7 +602,13 @@ function drawTrains(ctx: CanvasRenderingContext2D, sc: Scene, v: View, timeMs: n
     const L = pathLength(path);
     const scale = unitScale(v.zoom);
     const cars = trainCars(t.load, t.rail.a * 7 + t.rail.b);
-    const head = Math.max(trainLength(cars) * scale, Math.min(L, t.at * L));
+    // as on the map: a train runs only between its two hubs' footprints, never over a building
+    const to = t.rail.a === t.from ? t.rail.b : t.rail.a;
+    const clearOf = (id: number): number => ((sc.sites.find((s) => s.id === id)?.foot ?? HUB_FOOT) + 0.9) * v.zoom;
+    const lo = clearOf(t.from) + trainLength(cars) * scale;
+    const hi = L - clearOf(to);
+    if (hi < lo) continue;
+    const head = lo + (hi - lo) * t.at;
     drawTrain(ctx, { path, head, cars, owner, scale, dpr: v.dpr, timeMs });
     out.push({ path, head, cars, scale });
   }
@@ -934,9 +940,9 @@ function renderPanel(cv: HTMLCanvasElement, c: Ctx, at: P, zoom: number, look: L
   if (!ax) return;
   ax.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawRails(ax, w, sc, v, today ? null : look.season);
+  const trains = drawTrains(ax, sc, v, timeMs);
   const placed = drawSites(ax, w, sc, v, today ? null : look.season);
   drawShips(ax, sc, v, timeMs);
-  const trains = drawTrains(ax, sc, v, timeMs);
   drawSmoke(ax, sc, v, timeMs);
   if (!today && (light.dark > 0 || light.warm > 0)) {
     const img = ax.getImageData(0, 0, W, H);

@@ -22,6 +22,19 @@ export interface Hub {
   x: number;
   y: number;
   owner: number;
+  /** half size of its building's footprint, tiles (Chebyshev; default HUB_FOOT) */
+  foot?: number;
+}
+
+/**
+ * A hub's building covers the tiles within this many tiles of its own (a 5 x 5 square): rails go round other hubs'
+ * footprints and only run into their own two hubs, from the footprint's edge to its centre, under the building.
+ */
+export const HUB_FOOT = 2;
+
+/** Whether tile (x, y) lies in the footprint of the building on tile (hx, hy) with half size r. */
+export function inFootprint(x: number, y: number, hx: number, hy: number, r = HUB_FOOT): boolean {
+  return Math.abs(x - hx) <= r && Math.abs(y - hy) <= r;
 }
 
 export interface SupplyTerrain {
@@ -273,9 +286,16 @@ export function smoothRoute(tiles: ArrayLike<number>, w: number, t: SupplyTerrai
  * The rail route from hub `a` to hub `b` over `a`'s owner's dry land (see the header), or null when there is none
  * (enemy or neutral land in the way, a water gap wider than a bridge, the hubs on different owners).
  */
-export function railRoute(a: Hub, b: Hub, t: SupplyTerrain): { path: P[]; bridges: [number, number][] } | null {
+export function railRoute(a: Hub, b: Hub, t: SupplyTerrain, others: readonly Hub[] = []): { path: P[]; bridges: [number, number][] } | null {
   if (a.owner === 0 || a.owner !== b.owner) return null;
   const own = a.owner;
+  // other buildings' footprints are off limits (except where they overlap the two ends' own)
+  const feet = others.filter((h) => h.id !== a.id && h.id !== b.id && !(h.x === a.x && h.y === a.y) && !(h.x === b.x && h.y === b.y));
+  const ownFoot = (x: number, y: number): boolean => inFootprint(x, y, a.x, a.y, a.foot ?? HUB_FOOT) || inFootprint(x, y, b.x, b.y, b.foot ?? HUB_FOOT);
+  const foreign = (x: number, y: number): boolean => {
+    for (const h of feet) if (inFootprint(x, y, h.x, h.y, h.foot ?? HUB_FOOT)) return !ownFoot(x, y);
+    return false;
+  };
   const x0 = Math.min(a.x, b.x) - MARGIN;
   const y0 = Math.min(a.y, b.y) - MARGIN;
   const W = Math.max(a.x, b.x) + MARGIN - x0 + 1;
@@ -283,7 +303,7 @@ export function railRoute(a: Hub, b: Hub, t: SupplyTerrain): { path: P[]; bridge
   const ter = (x: number, y: number): number => t.terrain(x, y);
   const lay = (x: number, y: number): number | null => {
     const tt = ter(x, y);
-    if (WATER(tt) || t.owner(x, y) !== own) return null;
+    if (WATER(tt) || t.owner(x, y) !== own || foreign(x, y)) return null;
     const c = landCost(tt);
     if (c === null) return null;
     // a tile next to a mountain or a swamp costs more: the rail keeps off the foot of the peaks and the reeds
@@ -406,7 +426,7 @@ export function railNetwork(hubs: readonly Hub[], t: SupplyTerrain): Rail[] {
     const [lo, hi] = p.id < q.id ? [p, q] : [q, p];
     const key = `${lo.id}:${hi.id}`;
     if (seen.has(key)) return seen.get(key) ?? null;
-    const r = railRoute(lo, hi, t);
+    const r = railRoute(lo, hi, t, hs);
     const rail = r ? { a: lo.id, b: hi.id, path: r.path, bridges: r.bridges } : null;
     seen.set(key, rail);
     if (rail) out.push(rail);
