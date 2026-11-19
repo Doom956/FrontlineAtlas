@@ -2,6 +2,18 @@
 
 The big rounds of work, newest first. Each one was merged to `main` and deployed to the live game.
 
+## 2026-11-19 · Seasons (rules, AI and the lobby switch)
+
+- Spring, Summer, Autumn and Winter, 4 minutes each, starting in spring. A chip in the top bar shows the season and
+  the time left; click it to see what the season does.
+- New game rule Season effects (on by default; in the setup Rules and the lobby). With it on: spring mud slows tanks
+  on plains and farmland by a quarter; the autumn harvest adds 2% gold per farm level, up to 10%; in winter snow
+  spreads from the poles and attacks through it are 25% slower (tanks 40%), and sea ice near the top and bottom edges
+  stops ships until spring. Summer has no effect. With it off, seasons only change the look.
+- A toast 30 s before winter. AI nations push in summer and early autumn, hold and build in winter, and keep their
+  tanks out of mud and snow. Help has a Seasons entry and the advisor mentions mud and snow.
+- Multiplayer version 25.
+
 ## 2026-11-18 · Supply lines (rules and AI)
 
 - Supply now runs over a network. Rails link your capital, cities, factories, ports and forts over your own land (each

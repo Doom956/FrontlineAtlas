@@ -1598,6 +1598,7 @@ the AI (it never tries what is off) and the advisor (never suggests it):
 | `research` | 'allUnlocked': every nation starts with every tech, research refused; 'off': research and every building that needs a tech refused. Labs (science only) are refused in both |
 | `fastGame` | gold, iron, oil, science, troop growth and front speed x2, construction in half the time |
 | `fogOfWar` | per-player vision (fog.ts, see Fog of war below); AI and auto units only aim at known tiles |
+| `seasonEffects` (default on) | spring mud, autumn harvest, winter snow and sea ice (seasons.ts, see Seasons below); off = seasons only change the look |
 
 Teams (`state.teams[playerId]`, 0 = none): from `createGame`'s `opts.teams` (the lobby), else `setup.assignTeams`:
 the seats' chosen teams, then everyone else (auto humans, AI nations) to the smallest team, which is round-robin by
@@ -1688,6 +1689,42 @@ nations cheap. Teams and alliance blocs (same map, 2 teams or two blocs of 20, 3
 0.4 ms per tick, full pass 4.5 ms (each player's own stamp is made once and OR'd into its allies' views; before that
 a bloc of k cost k x k stamps: 4.6 ms per tick, 72 ms full pass). Client: the fog texture and the minimap are rebuilt
 only when the view's bits change.
+
+### Seasons (src/sim/seasons.ts, config SEASON)
+
+Spring, Summer, Autumn and Winter, 4 minutes of game time each, on the play clock (ticks since the spawn phase ended;
+the spawn phase is the start of spring). Every game starts in spring. Seasons always run and the map shows them; the
+game rule Season effects (`Modifiers.seasonEffects`, on by default, in the setup Rules list and the lobby; off shows a
+"Seasons look only" chip) decides whether they change the game:
+
+| Season | Effect (Season effects on) |
+|---|---|
+| Spring | mud: tank divisions x0.75 speed on plains and fertile land; an attack slows by its armor share (all armor x0.75) |
+| Summer | none |
+| Autumn | harvest: gold income +2% per farm unit (a farm level, twice on Fertile), at most +10% |
+| Winter | snow: attacks through snow x0.75 speed (armor x0.6, tank divisions x0.6); sea ice stops ships |
+
+Snow covers tundra in winter and a band from each pole: it grows from 0 to 22% of the map height over the first 60%
+of winter, holds, and recedes over the first 40% of spring (melting snow still slows). Mud does not apply on snow.
+Sea ice: in winter the water rows within 5% of the map height (at least 2 rows) of the top and bottom edge freeze. A
+ship does not sail from open water onto ice: it waits at the ice edge, path kept, and sails on when the ice melts in
+spring. A ship already in the ice when it froze may sail on and out (the simplest rule that never traps a ship).
+
+Nothing is stored: the season, snow rows and ice rows are integer functions of the tick, `playStartTick` and the map
+height (`seasonAt`, `snowRowsAt`, `iceBand`). `hashState` mixes the rule and `playStartTick`.
+
+AI: the war trigger is x0.92 in summer and the first half of autumn (pushes sooner) and x1.08 in winter (holds and
+builds longer, capped below a full bar). In spring and winter, with effects on, new attacks into mud or snow weigh
+armor x0.5 in the troop mix, and AI tank divisions do not start support pushes or lone strikes into mud or snow (they
+hold and refit); strikes back at an enemy push still go. The advisor mentions mud to a tank-heavy attacker and snow
+in winter.
+
+Client: the top bar season chip (`data-test="season-chip"`) shows the season icon, the word and the time left
+("Winter: 1 min 20 s left"); a click opens one line (`season-line`) with what the season does, or "Season effects
+are off in this game". 30 s before winter (effects on) a toast says "Winter is coming: snow will slow attacks". Day
+and night are look only (`client/dayNight.ts`: `dayPhase(tick)`, a 2 minute day with 90 s of light, soft dawn and
+dusk, 30 s of night); the sim never reads them. Pure helpers for the art: `seasonAt`, `seasonAtTick`,
+`snowLineRows`, `isSnowTile`, `iceBand`, `isIcedTile`.
 
 ## 13. Doctrines
 
