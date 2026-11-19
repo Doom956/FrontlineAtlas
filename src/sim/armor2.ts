@@ -18,6 +18,7 @@
 //   (Unit.fixed = 1) until the player picks Follow again. AI divisions always get a front: the foe's border tile
 //   nearest the focus of the biggest attack between them (their main front).
 // Deterministic: no RNG; per-division work staggered by id; fixed tie-breaks.
+import { aiArmorPause, seasonTankSpeed } from './seasons';
 import { buildingsOf } from './buildings';
 import { annexTiles, frontTiles } from './combat';
 import {
@@ -1417,6 +1418,13 @@ export function aiDivisionModes(state: GameState, id: number, act: (a: Action) =
   };
   const front = nearest(ax, ay);
   if (front < 0) return;
+  // Seasons (seasons.ts): no new armor pushes into spring mud or winter snow; the divisions hold (and refit) until the
+  // ground is good again. Strikes back at a push (above) still go.
+  if (aiArmorPause(state) && seasonTankSpeed(state, front) < 1) {
+    const ids = mine.filter((u) => divisionMode(u) === 'support').map((u) => u.id);
+    if (ids.length) act({ type: 'setDivisionMode', unitIds: ids, mode: 'hold' });
+    return;
+  }
   // Which front tile each division supports: the main front; from Normal up the foe's border tile nearest the division
   // when the main front is far from it (attacks advance along the whole border, so a strike anywhere on it joins the
   // push, and the main front is often out of reach over our land: AI divisions sat idle far from it).

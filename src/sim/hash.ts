@@ -12,6 +12,7 @@ import { hashFog } from './fog';
 import { hashAntiRadar } from './antiRadar';
 import { hashArsenal } from './variants';
 import { hashSupplyLines } from './supplylines';
+import { seasonEffectsOn } from './seasons';
 import type { GameState, Troops } from './types';
 import { DIVISION_MODES, TREATY_TERMS, WARSHIP_STANCES } from './types';
 
@@ -258,6 +259,10 @@ export function hashState(state: GameState): number {
   }
   // A continued game, the owner console's switches and the settings it can change (admin.ts).
   h = mixInt(h, state.continued ? 1 : 0);
+  // Seasons (seasons.ts): the game rule. The season, snow line and sea ice are derived from the tick, playStartTick
+  // and the map height (both hashed), so nothing else is stored.
+  h = mixInt(h, seasonEffectsOn(state) ? 0x5ea1 : 0x5ea0);
+  h = mixInt(h, state.playStartTick);
   const ad = state.admin;
   if (ad) {
     h = mixInt(h, (ad.aiFrozen ? 1 : 0) | 4);

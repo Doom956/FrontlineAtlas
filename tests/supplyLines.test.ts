@@ -585,6 +585,6 @@ describe('hash and determinism', () => {
   });
 
   it('the protocol version moved on for the new rules', () => {
-    expect(PROTOCOL_VERSION).toBe(24);
+    expect(PROTOCOL_VERSION).toBe(25);
   });
 });

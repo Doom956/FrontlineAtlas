@@ -235,6 +235,11 @@ export interface Modifiers {
   fastGame: boolean;
   /** fog of war: you see only near your land, units and allies (fog.ts); AI and auto units only aim at what they know */
   fogOfWar: boolean;
+  /**
+   * season effects (seasons.ts): spring mud slows tanks, autumn harvest, winter snow and sea ice. Seasons always run
+   * and show on the map; off = they are only a look. Absent (an older save) counts as on.
+   */
+  seasonEffects: boolean;
 }
 
 /**

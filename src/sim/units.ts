@@ -21,6 +21,7 @@
 //                      targetOwner = owner of the target at launch, cargo = 1 once the target has been warned (it is
 //                      shown to the target side from then: stealthSight.ts)
 // Fighters are never units: they stay stored on their airfield (Building.fighters) and intercept from there.
+import { iceBlocks, inIce } from './seasons';
 import {
   aircraftCap,
   airfieldRadius,
@@ -260,12 +261,19 @@ function moveStraight(state: GameState, u: Unit, tile: number, speed: number): b
   u.y += (dy / d) * step;
   return false;
 }
-/** Moves along u.path; returns true when the end of the path is reached. */
+/**
+ * Moves along u.path; returns true when the end of the path is reached. Sea ice (seasons.ts, winter with Season
+ * effects on): a ship does not sail from open water onto ice; it waits at the edge until the ice melts. A ship already
+ * in the ice when it froze sails on.
+ */
 function followPath(state: GameState, u: Unit, speed: number): boolean {
   const w = state.map.width;
   let step = speed * TICK_SECONDS;
+  const ice = u.pathPos < u.path.length ? iceBlocks(state) : null;
+  const caught = ice !== null && inIce(ice, Math.round(u.y) * w + Math.round(u.x));
   while (step > 0 && u.pathPos < u.path.length) {
     const t = u.path[u.pathPos];
+    if (ice && !caught && inIce(ice, t)) break;
     const dx = (t % w) - u.x;
     const dy = ((t / w) | 0) - u.y;
     const d = Math.sqrt(dx * dx + dy * dy);

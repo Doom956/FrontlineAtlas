@@ -118,6 +118,7 @@ import { armorBreaksThrough } from './variants';
 import { cutSourceSet, cutVersion } from './supplylines';
 import { isProtected, tutorialKeeps, tutorialShielded } from './admin';
 import { TROOP_TYPES, Terrain, isTribe, isWater } from './types';
+import { groundKind, seasonAttackSpeed, seasonGround, type SeasonGround } from './seasons';
 import type { ActionResult, Attack, GameState, Player, TerrainId, TroopType, Troops } from './types';
 
 // ---------- tuning that config.ts leaves to this module ----------
@@ -565,6 +566,9 @@ interface FightCtx {
   hy: number;
   hr: number;
   w: number;
+  /** season ground this tick (seasons.ts: mud, snow; null = none) and the attack's armor share */
+  ground: SeasonGround | null;
+  armorShare: number;
 }
 function fightCtx(state: GameState, attackerId: number, troops: Troops, defender: number): FightCtx {
   const odds = attackOdds(state, attackerId, troops, defender);
@@ -597,6 +601,8 @@ function fightCtx(state: GameState, attackerId: number, troops: Troops, defender
     openBudget: 1 / doctrineMore(state, attackerId, 'openGroundSpeed'),
     wildLoss: !dp || isTribe(dp) ? doctrineLess(state, attackerId, 'expansionLoss') : 1,
     defenderLossMult: dp ? doctrineLess(state, defender, 'defenderLoss') : 1,
+    ground: seasonGround(state),
+    armorShare: tot > 0 ? troops.armor / tot : 0,
     ...defenderBonuses(state, attackerId, defender),
   };
 }
@@ -692,6 +698,11 @@ function tileCost(state: GameState, c: FightCtx, tile: number): TileCost {
   if ((tid === Terrain.Plains || tid === Terrain.Desert) && lvl === 0) out.budget *= c.openBudget; // Blitz: undug open ground
   if (nav > 0) out.budget /= 1 + NAVY_SUPPORT_SPEED * nav;
   if (airCut > 0) out.budget *= 1 - AIR.supportSpeed * airCut;
+  // Seasons (seasons.ts): spring mud slows the armor share, snow slows everyone (armor more).
+  if (c.ground) {
+    const k = groundKind(state, c.ground, tile);
+    if (k) out.budget /= seasonAttackSpeed(k, c.armorShare);
+  }
   return out;
 }
 

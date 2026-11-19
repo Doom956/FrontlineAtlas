@@ -2017,3 +2017,39 @@ export const STRIKE = {
   fireFortReach: 30,
   fireCityReach: 40,
 } as const;
+
+// ---------- seasons (seasons.ts; game rule Modifiers.seasonEffects) ----------
+/**
+ * Seasons cycle Spring, Summer, Autumn, Winter on the play clock (ticks since the spawn phase ended). They always run
+ * (the map shows them); the gameplay effects below apply only with the game rule Season effects on.
+ */
+export const SEASON = {
+  /** game seconds per season */
+  seconds: 240,
+  /** the season a game starts in (index into seasons.SEASONS: 0 spring) */
+  startIndex: 0,
+  /** Spring mud: tank speed x this on plains and fertile land (attacks: x this for the armor share) */
+  mudArmor: 0.75,
+  /** Autumn harvest: gold income + this per farm unit (a level, twice on Fertile), at most harvestMax */
+  harvestPerFarm: 0.02,
+  harvestMax: 0.1,
+  /** snow: attack speed x snowInfantry for infantry and artillery, x snowArmor for armor; tank divisions x snowArmor */
+  snowInfantry: 0.75,
+  snowArmor: 0.6,
+  /** snow line: at most this percent of the map height from each pole is snow covered */
+  snowMaxPercent: 22,
+  /** the snow line moves toward the equator over this percent of winter, then holds */
+  snowGrowPercent: 60,
+  /** in spring it recedes to the poles over this percent of the season */
+  snowMeltPercent: 40,
+  /** sea ice in winter: water tiles within this percent of the map height from the top and bottom edge (at least iceMinRows) */
+  icePercent: 5,
+  iceMinRows: 2,
+  /** the warning toast this many seconds before winter (client) */
+  winterWarnSeconds: 30,
+  /** AI: war trigger share x this in summer and early autumn (sooner), x winterTrigger in winter (later, capped below 1) */
+  aiPushTrigger: 0.92,
+  aiWinterTrigger: 1.08,
+  /** AI: armor weight in a new attack's troop mix x this in spring mud and winter snow */
+  aiArmorWeight: 0.5,
+} as const;

@@ -73,6 +73,7 @@ import { aiAmphibTarget } from './arsenalAI';
 import { landComponents } from './territory';
 import { aiAttackLevel } from './aiattack';
 import { heldBy, holdTile, onBlitzStarted } from './blitz';
+import { aiArmorPause, seasonTankSpeed } from './seasons';
 import { aiDivisionModes, collapsePockets, divisionLimitFor, divisionStep, onSpearheadEnded, vetLossMul, vetSpeedMul } from './armor2';
 import { ARMOR_POCKET_EVERY, ARMOR_SUPPORT_READY } from './config';
 import { Terrain, TROOP_TYPES, isTribe, isWater } from './types';
@@ -623,7 +624,7 @@ function armorShare(p: Player | undefined): number {
  * Head speed (tiles/s) entering a tile of terrain `ter` (0 = can't). `trap`: the tank trap penalty factor there
  * (defense.ts trapFactor; 0 = no traps).
  */
-function headSpeed(state: GameState, u: Unit, ter: number, defender: number, trap = 0): number {
+function headSpeed(state: GameState, u: Unit, ter: number, defender: number, trap = 0, tile = -1): number {
   if (isWater(ter)) return amphibWaterSpeed(state, u.owner) * frontRate(state); // Amphibious Tanks (specials.ts)
   let s = TANK_SPEARHEAD_SPEED * (TANK_TERRAIN_SPEED[ter] ?? 0.5);
   if (ter === Terrain.Mountains && !artillerySupport(u) && !armorBreaksThrough(state, u.owner)) return 0; // heavy tanks (variants.ts)
@@ -635,6 +636,7 @@ function headSpeed(state: GameState, u: Unit, ter: number, defender: number, tra
   if (trap > 0) s *= trapSpeedMul(trap); // Tank Traps (defense.ts)
   s *= counterSpeedMul(state, u.owner, defender); // a Counteroffensive (counter.ts)
   if (defender > 0 && hasTech(state.players[defender], 'trenchWarfare')) s *= 0.7;
+  if (tile >= 0) s *= seasonTankSpeed(state, tile); // spring mud, snow (seasons.ts)
   return s * frontRate(state);
 }
 /** Tank trap penalty factor for division u entering `tile` (0 = no traps there; defense.ts). */
@@ -888,7 +890,7 @@ function stepSpearhead(state: GameState, u: Unit): void {
   }
   const ahead = ay * w + ax;
   const trap = trapAt(state, u, ahead);
-  const speed = headSpeed(state, u, map.terrain[ahead], map.owner[ahead], trap);
+  const speed = headSpeed(state, u, map.terrain[ahead], map.owner[ahead], trap, ahead);
   const step = Math.min(0.9, Math.max(speed, 0.05) * TICK_SECONDS);
   const nd = Math.min(limit, depth + step);
   const nx = lx + ux * nd;
@@ -1279,5 +1281,6 @@ export function aiTankDivisions(state: GameState, id: number, act: (a: Action) =
   // Launch once the line looks worth it (the preview's 'Too weak to get far' bar): waiting longer at the front mostly
   // ends with the division overrun where it stands.
   if (spearheadPreview(state, id, lead.id, tile).expectedDepth < 3) return;
+  if (aiArmorPause(state) && seasonTankSpeed(state, tile) < 1) return; // seasons: wait out the mud or the snow
   act({ type: 'moveTankDivision', unitIds: ids, tile });
 }

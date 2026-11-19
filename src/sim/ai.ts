@@ -13,6 +13,7 @@
 //
 // The caches live in a WeakMap keyed by the GameState (not in the state): they are derived data, rebuilt on demand,
 // and sampling uses deterministic hashing or state.rng, so the simulation stays deterministic.
+import { aiArmorPause, aiSeasonTrigger, seasonTankSpeed } from './seasons';
 import { tutorialFrozen } from './admin';
 import { applyAction } from './actions';
 import {
@@ -76,6 +77,7 @@ import {
   TROOP_ATTACK,
   DEFENSE,
   UNITS,
+  SEASON,
 } from './config';
 import {
   AI_PACT_BREAK_RATIO,
@@ -1188,6 +1190,8 @@ function chooseForce(ctx: Ctx, amount: number, tile: number, target: number): Tr
       w[k] *= eff * eff;
     }
   }
+  // Seasons (seasons.ts): fewer tanks into spring mud or winter snow.
+  if (tile >= 0 && aiArmorPause(state) && seasonTankSpeed(state, tile) < 1) w.armor *= SEASON.aiArmorWeight;
   const wt = total(w);
   if (wt <= 0) return out;
   for (const k of TROOP_TYPES) out[k] = Math.min(home[k], (amount * w[k]) / wt);
@@ -1493,7 +1497,8 @@ function war(ctx: Ctx): void {
   const { state, prof, diff, id } = ctx;
   if (state.tick < ctx.ai.nextWarTick) return;
   const fill = ctx.home / ctx.cap;
-  const trigger = personal(id, 23, prof.trigger);
+  // Seasons (seasons.ts): big pushes in summer and early autumn, hold and build in winter.
+  const trigger = Math.min(0.97, personal(id, 23, prof.trigger) * aiSeasonTrigger(state));
   const reserveShare = personal(id, 37, prof.reserve) + clamp(ctx.threat - 0.6, 0, 1) * 0.15;
   const room = ctx.home - ctx.cap * reserveShare;
   const wars = warTargets(ctx);

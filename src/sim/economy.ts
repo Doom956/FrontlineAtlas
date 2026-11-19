@@ -7,6 +7,7 @@
 // arsenals convert part of the pool into armor and artillery. Land weights come from territory.ts (kept up to date
 // by setOwner), so nothing here scans the map.
 import { goldRate, growthRate, resourceRate } from './rules';
+import { activeSeason, harvestGoldMul } from './seasons';
 import { airRaidIncomeMul } from './airwings';
 import { cityLevels, countBuildings, buildingsOf, farmUnitsOf } from './buildings';
 import { stockInterest, techCapMul, techGrowthMul, techIncomeMul } from './techtree';
@@ -273,6 +274,7 @@ export function goldIncome(state: GameState, p: Player): number {
   if (isTribe(p)) gold *= TRIBE_GOLD_FACTOR;
   gold *= aiEconomy(state, p).income * techIncomeMul(p);
   gold *= airRaidIncomeMul(state, p.id); // strategic bombing (airwings.ts)
+  if (activeSeason(state) === 'autumn') gold *= harvestGoldMul(state, farmUnitsOf(state, p.id)); // the harvest (seasons.ts)
   return gold * goldRate(state);
 }
 /** Own trade ships at sea (Merchant level 3: a bonus per route), at most DOCTRINE_PERKS.merchant.maxRoutes. */
