@@ -61,6 +61,7 @@ import { runawayLeader } from '../src/sim/allies';
 import { areAllied } from '../src/sim/diplomacy';
 import { atPeace } from '../src/sim/rules';
 import { createGame, gameSeconds } from '../src/sim/state';
+import { seasonAt } from '../src/sim/seasons';
 import { DOCTRINE_IDS, isTribe } from '../src/sim/types';
 import { aiSpendStats } from '../src/sim/aispending';
 import type { AISpendStats } from '../src/sim/aispending';
@@ -306,6 +307,8 @@ interface GameResult {
   /** supply lines (supplylines.ts): hubs damaged, cuts (events that cut sources off), of them within
    * SUPPLY_ATTACK_WINDOW s of an attack on that nation, nation-ticks with any source cut, convoys sunk */
   sup?: { dmg: number; cuts: number; cutsAtk: number; cutTicks: number; sunk: number };
+  /** seasons (seasons.ts): attacks on nations started in spring, summer, autumn, winter */
+  seasonAtk?: number[];
   /** strikes from minute LATE_MINUTE on, per weapon (bomber sorties, front support, rocket, atom, cruise, stealth):
    * launched, shot down, buildings destroyed, troops killed, gold paid (bombers: the price of the ones shot down) */
   late?: Record<string, LateStrike>;
@@ -701,6 +704,7 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
   let fortTiles: number[] = [];
   const seenUnits = new Set<number>();
   const lastAttacked = new Map<number, number>(); // supply report: nation -> last tick an attack on it ran
+  const seenAttacks = new Set<number>(); // seasons report: attacks on nations already counted
   const seenBuildings = new Set<number>();
   const mixSamples: { minute: number; mix: Troops[] }[] = [];
   const tickMs: number[] = [];
@@ -807,6 +811,12 @@ async function runGame(job: Job, o: Options): Promise<GameResult> {
       }
     }
     for (const l of state.supplyNet?.cut ?? []) if (l && l.length) sup.cutTicks++;
+    // Seasons: the season each attack on a nation started in.
+    for (const a of state.attacks) {
+      if (a.target <= 0 || seenAttacks.has(a.id) || isTribe(state.players[a.target])) continue;
+      seenAttacks.add(a.id);
+      (r.seasonAtk ??= [0, 0, 0, 0])[seasonAt(state).index]++;
+    }
     for (const e of state.events) {
       if (e.kind === 'victory') r.winReason = e.message.replace(/^.* wins: /, '');
       else if (e.kind === 'allyJoined') r.allyJoins++;
@@ -1361,6 +1371,13 @@ function report(all: GameResult[], o: Options): void {
       `\nSupply: hubs damaged per game ${(tot((x) => x.dmg) / g).toFixed(1)}, cuts per game ${(cuts / g).toFixed(1)} (${cuts ? Math.round((100 * tot((x) => x.cutsAtk)) / cuts) : 0}% within ${SUPPLY_ATTACK_WINDOW} s of an attack on that nation), ` +
         `mean seconds a nation had a source cut ${(tot((x) => x.cutTicks) / TICKS_PER_SECOND / nationGames).toFixed(0)}, convoys sunk per game ${(tot((x) => x.sunk) / g).toFixed(1)}.`,
     );
+  }
+  {
+    const n = [0, 1, 2, 3].map((k) => rs.reduce((a, r) => a + (r.seasonAtk?.[k] ?? 0), 0));
+    const all = Math.max(1, n[0] + n[1] + n[2] + n[3]);
+    const pct = (k: number): number => Math.round((100 * n[k]) / all);
+    const on = o.mods.seasonEffects === false ? 'off' : 'on';
+    console.log(`\nSeasons (effects ${on}): attacks on nations started in spring ${pct(0)}%, summer ${pct(1)}%, autumn ${pct(2)}%, winter ${pct(3)}% (${all} attacks).`);
   }
   console.log(`\nTrenches: mean level of nation-facing border tiles at 15 min ${t15.length ? (t15.reduce((a, b) => a + b, 0) / t15.length).toFixed(2) : '-'}; Air cover sorties per game ${(rs.reduce((a, r) => a + (r.coverSorties ?? 0), 0) / Math.max(1, rs.length)).toFixed(1)}.`);
 
