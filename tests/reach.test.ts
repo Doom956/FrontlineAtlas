@@ -321,6 +321,7 @@ describe('support divisions jump to the main front', () => {
 
   it('an AI puts its divisions at the main front (where the fighting is), not the nearest border tile', () => {
     const s = makeFlatGame(60, 60, 2, { seed: 3 });
+    s.settings.modifiers.seasonEffects = false; // spring mud would hold the divisions (seasons.test.ts covers that)
     claimRect(s, 1, 0, 0, 29, 59);
     claimRect(s, 2, 30, 0, 59, 59);
     s.admin = { aiPassive: [], godMode: [], aiFrozen: false, revealIntel: [] };

@@ -23,6 +23,7 @@ import {
 } from './buildings';
 import { artillerySiegeBonus, supplyDistance } from './combat';
 import { secondRouteSpots, supplyRiskOf } from './supplylines';
+import { activeSeason } from './seasons';
 import {
   ARMOR_OIL_UPKEEP,
   AUTO_MANAGE_SECONDS,
@@ -504,6 +505,14 @@ export function suggestions(state: GameState, playerId: number): Suggestion[] {
     const spot = secondRouteSpots(state, playerId, risk)[0] ?? -1;
     const front = risk.direction ? `${risk.direction} front` : 'front';
     add('supply-second-route', `Your ${front} hangs on one hub: build a fort to add a second route`, 60, spot >= 0 ? spot : risk.hub, 'fort');
+  }
+
+  // --- seasons (seasons.ts): mud and snow, briefly ------------------------------------------------------------
+  const season = activeSeason(state);
+  if (season === 'spring' && p.troops.armor > home * 0.25 && state.attacks.some((a) => a.attacker === playerId)) {
+    add('season-mud', 'Spring mud slows tanks on plains: attack with infantry or wait for summer', 24);
+  } else if (season === 'winter' && state.attacks.some((a) => a.attacker === playerId)) {
+    add('season-snow', 'Snow slows attacks near the poles: hold and build until spring', 22);
   }
 
   // --- special abilities --------------------------------------------------------------------------------------

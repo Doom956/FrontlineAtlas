@@ -69,6 +69,7 @@ describe('steady fronts between attack waves', () => {
   it('from Normal up an AI keeps its divisions on support at the front between waves; Easy stands them down', () => {
     for (const d of ['normal', 'hard', 'easy'] as Difficulty[]) {
       const s = game(d);
+      s.settings.modifiers.seasonEffects = false; // spring mud would hold the divisions (seasons.test.ts covers that)
       const div = spawnTankDivision(s, 1, at(s, 20, 20));
       expect(asAI(s, () => applyAction(s, 1, { type: 'attack', tile: at(s, 30, 20), troops: { infantry: 4000, armor: 0, artillery: 0 } })).ok).toBe(true);
       asAI(s, () => aiDivisionModes(s, 1, (a) => applyAction(s, 1, a)));

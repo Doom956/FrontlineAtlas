@@ -200,6 +200,7 @@ describe('AI tank divisions', () => {
     for (const d of ['normal', 'easy'] as Difficulty[]) {
       // A long border at x = 29/30 (y 0..119); the attack is at the north end, the division at the south end.
       const s = makeFlatGame(60, 120, 2, { seed: 5 });
+      s.settings.modifiers.seasonEffects = false; // spring mud would hold the divisions (seasons.test.ts covers that)
       claimRect(s, 1, 0, 0, 29, 119);
       claimRect(s, 2, 30, 0, 59, 119);
       s.settings.difficulty = d;
@@ -268,6 +269,7 @@ describe('AI tank divisions', () => {
     for (const d of ['normal', 'easy'] as Difficulty[]) {
       // Player 1 (x 0..29, y 0..29), player 2 east of it, player 3 south of both.
       const s = makeFlatGame(60, 40, 3, { seed: 5 });
+      s.settings.modifiers.seasonEffects = false; // spring mud would hold the divisions (seasons.test.ts covers that)
       claimRect(s, 1, 0, 0, 29, 29);
       claimRect(s, 2, 30, 0, 59, 29);
       claimRect(s, 3, 0, 30, 59, 39);

@@ -230,6 +230,7 @@ describe("'support front' mode", () => {
 describe('AI armor and determinism', () => {
   it('an AI at war puts its divisions on support at that front', () => {
     const s = landGame();
+    s.settings.modifiers.seasonEffects = false; // spring mud would hold the divisions (seasons.test.ts covers that)
     const ai = s.players[1];
     ai.isHuman = false;
     ai.personality = 'warlord';

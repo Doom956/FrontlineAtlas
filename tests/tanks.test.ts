@@ -272,6 +272,7 @@ describe('AI tank divisions', () => {
   it('an idle AI division strikes back at the nation attacking it (Easy at once; from Normal up from the support mode)', () => {
     for (const diff of ['easy', 'normal'] as const) {
       const s = landGame();
+      s.settings.modifiers.seasonEffects = false; // spring mud would hold the divisions (seasons.test.ts covers that)
       s.settings.difficulty = diff;
       const ai = s.players[1];
       ai.isHuman = false;

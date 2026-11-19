@@ -843,7 +843,7 @@ export class SetupScreen {
       return g;
     };
 
-    // The five rules most players touch.
+    // The rules most players touch.
     const common = el('div', 'mod-list');
     common.append(
       this.modRow('Peace time', () => (m().peaceMinutes > 0 ? `Nations can't attack each other for ${m().peaceMinutes} minutes; tribes can be attacked` : 'Wars between nations can start at once'), this.seg<number>('Peace time', PEACE_MINUTES.map((x) => ({ id: x, label: x ? `${x} min` : 'Off' })), () => m().peaceMinutes, (v) => (m().peaceMinutes = v))),
@@ -851,6 +851,7 @@ export class SetupScreen {
       this.modRow('Time limit', () => (this.s.timeLimit > 0 ? 'When time runs out, the highest score wins' : 'Play until someone wins'), this.seg<number>('Time limit', TIME_LIMIT_MINUTES.map((x) => ({ id: x * 60, label: x ? `${x} min` : 'Off' })), () => this.s.timeLimit, (v) => (this.s.timeLimit = v))),
       this.modRow('Research', () => (m().research === 'allUnlocked' ? 'Every nation starts with every technology' : m().research === 'off' ? 'No research: what needs a technology stays locked' : 'Research techs with science and gold; buy Arsenal items'), this.seg<ResearchRule>('Research', RESEARCH_OPTS, () => m().research, (v) => (m().research = v))),
       this.modRow('Fog of war', () => (m().fogOfWar ? 'You see only near your land, units and allies. Scout to find the rest' : 'The whole map is in view'), this.seg<'off' | 'on'>('Fog of war', [{ id: 'off', label: 'Off' }, { id: 'on', label: 'On' }], () => (m().fogOfWar ? 'on' : 'off'), (v) => (m().fogOfWar = v === 'on'))),
+      this.modRow('Season effects', () => (m().seasonEffects ? 'Spring mud slows tanks, autumn harvest adds gold, winter snow slows attacks and sea ice stops ships' : 'Seasons only change the look of the map'), this.seg<'off' | 'on'>('Season effects', [{ id: 'off', label: 'Off' }, { id: 'on', label: 'On' }], () => (m().seasonEffects ? 'on' : 'off'), (v) => (m().seasonEffects = v === 'on'), 'season-seg')),
     );
 
     // The other twelve, folded, in three groups.

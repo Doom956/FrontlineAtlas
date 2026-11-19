@@ -1,8 +1,9 @@
 // Top-right cluster: drawer buttons (army, forces, research, diplomacy, events, legend), the clock, pause and one
 // speed button (click cycles x1 / x2 / x4), sound, help and the menu. One slim row of icon buttons in a single panel;
 // Pixel Clean: every button shows its icon over a plain word (Army, Forces, Research ...), so nothing needs a hover.
-import { DOCTRINES, TECHS } from '../../sim/config';
+import { DOCTRINES, SEASON, TECHS } from '../../sim/config';
 import { gameSeconds } from '../../sim/state';
+import { SEASON_NAMES, seasonAt, seasonEffectLine, seasonEffectsOn } from '../../sim/seasons';
 import type { GameState, Player } from '../../sim/types';
 import { inOvertime, victoryShareNow } from '../../sim/victory';
 import { unreadBadge } from '../alerts';
@@ -14,6 +15,15 @@ import { catSpan, pixelIcon, type IconCat } from './pixelIcons';
 /** Top bar icons that belong to a colour family (the rest stay neutral grey). */
 const ICON_CAT: Record<string, IconCat> = { army: 'armor', warship: 'navy', science: 'science' };
 const topIcon = (name: string): HTMLSpanElement => catSpan(pixelIcon(name, 16), ICON_CAT[name] ?? null);
+
+/** Time left in a season in plain words: "1 min 20 s", "2 min", "40 s". */
+export function fmtSeasonLeft(sec: number): string {
+  const t = Math.max(0, Math.ceil(sec));
+  const m = Math.floor(t / 60);
+  const r = t % 60;
+  if (m <= 0) return `${r} s`;
+  return r ? `${m} min ${r} s` : `${m} min`;
+}
 
 export interface ClusterHooks {
   isOpen(id: DrawerId): boolean;
@@ -95,6 +105,27 @@ export class Cluster {
     const ct = el('span', 'clock-t');
     clock.append(ct);
 
+    // the season chip (seasons.ts): icon, word and time left; a click shows what the season does in this game
+    const seasonBox = el('div', 'season-box');
+    const seasonBtn = el('button', 'sq lbl season-chip');
+    seasonBtn.type = 'button';
+    seasonBtn.dataset.test = 'season-chip';
+    let seasonShown = '';
+    const seasonIco = el('span', 'season-ico');
+    const seasonText = el('span', 'sq-w season-t');
+    seasonBtn.append(seasonIco, seasonText);
+    const seasonLine = el('div', 'season-line hidden');
+    seasonLine.dataset.test = 'season-line';
+    seasonLine.setAttribute('role', 'status');
+    seasonBtn.setAttribute('aria-expanded', 'false');
+    seasonBtn.addEventListener('click', () => {
+      const open = seasonLine.classList.contains('hidden');
+      setClass(seasonLine, 'hidden', !open);
+      seasonBtn.setAttribute('aria-expanded', String(open));
+    });
+    seasonBox.append(seasonBtn, seasonLine);
+    let warnedWinter = -1;
+
     const speed = el('div', 'cl-group seg cl-speed');
     this.speedGroup = speed;
     this.pauseBtn = sq('pause', 'Pause', () => {
@@ -122,7 +153,7 @@ export class Cluster {
     const menu = sq('menu', 'Menu\nSettings, sound, leave the game', () => ctx.openDrawer('settings', true), 'menu', 'Menu');
     this.drawerBtns.set('settings', menu);
     sys.append(this.soundBtn, help, menu);
-    this.el.append(drawers, speed, clock, sys);
+    this.el.append(drawers, speed, clock, seasonBox, sys);
 
     this.upd.push((s, me) => {
       // single player: real seconds played (steady at any speed); online: the server's game clock
@@ -132,6 +163,21 @@ export class Cluster {
       const need = Math.round(victoryShareNow(s) * 100);
       const ot = s.phase === 'playing' && inOvertime(s);
       setText(ct, base);
+      // season chip and the winter warning
+      const se = seasonAt(s);
+      if (se.season !== seasonShown) {
+        seasonShown = se.season;
+        seasonIco.replaceChildren(topIcon(se.season));
+        seasonBtn.dataset.season = se.season;
+      }
+      const chipText = `${SEASON_NAMES[se.season]}: ${fmtSeasonLeft(se.secondsLeft)} left`;
+      setText(seasonText, chipText);
+      seasonBtn.setAttribute('aria-label', `${chipText}. Show what the season does`);
+      setText(seasonLine, seasonEffectLine(s));
+      if (s.phase === 'playing' && se.season === 'autumn' && se.secondsLeft <= SEASON.winterWarnSeconds && warnedWinter !== se.count) {
+        warnedWinter = se.count;
+        if (seasonEffectsOn(s)) this.ctx.toast('Winter is coming: snow will slow attacks', 'info');
+      }
       setClass(clock, 'overtime', ot);
       setTip(clock, ot ? `Overtime: the land needed to win is falling, now ${need}%` : `Game time. Own ${need}% of the land to win.`);
       if (me.researching) {

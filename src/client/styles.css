@@ -6341,3 +6341,41 @@ button.adv-tag {
 .credit-line a {
   color: var(--brass-hi, inherit);
 }
+
+/* season chip in the top bar (hud/cluster.ts): icon and "Winter: 1 min 20 s left" in one row; a click shows one line
+   with what the season does in this game */
+.season-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.cluster .sq.lbl.season-chip {
+  flex-direction: row;
+  gap: 6px;
+  padding: 0 8px;
+}
+.season-chip[data-season='spring'] .season-ico { color: #8fc26a; }
+.season-chip[data-season='summer'] .season-ico { color: #e8c35a; }
+.season-chip[data-season='autumn'] .season-ico { color: #d98a45; }
+.season-chip[data-season='winter'] .season-ico { color: #b9d4ea; }
+.season-ico {
+  display: inline-flex;
+}
+.season-line {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 6px 10px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  background: var(--panel, #1c1f24);
+  color: var(--text);
+  font: 500 12px/1.35 var(--f-ui);
+  white-space: normal;
+}
+.season-line.hidden {
+  display: none;
+}
