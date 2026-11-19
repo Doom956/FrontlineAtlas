@@ -113,8 +113,11 @@ const normTint = (c: readonly number[]): RGB => {
 };
 
 export function dayLight(t: number): DayLight {
-  const dark = darkness(t);
-  const warm = twilight(t);
+  return lightOf(darkness(t), twilight(t));
+}
+
+/** The light for a darkness (0 day .. 1 night) and a dawn or dusk glow (0..1): what dayLight gives at a time of day. */
+export function lightOf(dark: number, warm: number): DayLight {
   const a = warm * (1 - dark * 0.45);
   const raw: RGB = [0, 0, 0];
   for (let i = 0; i < 3; i++) {

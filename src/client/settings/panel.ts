@@ -233,6 +233,14 @@ export class SettingsPanel {
       setText(qualityNote, `Low draws a simpler map at half the sharpness and fewer frames a second, for slow computers.${now}`);
     });
 
+    // day and night on the map (look only): off keeps it noon; the seasons always show
+    const day = choice([{ v: 'on', label: 'Day and night' }, { v: 'off', label: 'Always day' }], (v) => {
+      setSetting('dayNight', v === 'on');
+      this.sync();
+    }, 'settings-day-night');
+    sec.append(field('Day and night', day.el, 'Night falls for 30 s of every 2 minute day: the map gets darker and the city lights come on. Always day keeps it noon. The seasons always show.'));
+    this.syncs.push(() => day.set(getSettings().dayNight ? 'on' : 'off'));
+
     this.opts.displayExtra?.(sec, (fn) => this.syncs.push(fn));
     this.resetRow(sec, 'display', 'Reset display to defaults', () => resetSettings(DISPLAY_KEYS));
   }

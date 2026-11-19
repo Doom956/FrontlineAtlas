@@ -21,6 +21,7 @@ import { decorFor, withDecor, type DecorLayer } from './decor';
 import { borderColor, displayColor, fillAlpha, type DisplayRole, type Rgb } from './palette';
 import { groundFragmentShader, mapFragmentShader, MAP_VS } from './shaders';
 import { RESOURCE_RGB, type TerrainData } from './terrain';
+import { farDeltas, rampDeltas, type MapLook } from './seasonView';
 import { dirtyRects, type TileFeed } from './tiles';
 import type { TrenchFeed } from './trenchFeed';
 
@@ -47,7 +48,7 @@ export interface MapUniforms {
   dpr?: number;
 }
 
-const UNIFORMS = ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uView', 'uCenter', 'uZoom', 'uMap', 'uTime', 'uNowDs', 'uAuxMode', 'uShowRes', 'uFortOn', 'uTrenchOn', 'uTerr', 'uRes', 'uBg', 'uFog', 'uFogOn', 'uFogScale', 'uGround', 'uGroundCol', 'uGroundTex', 'uGOrigin', 'uP', 'uDpr', 'uMixA', 'uMixB', 'uMixC', 'uNearOn', 'uDecor', 'uDecorInfo'];
+const UNIFORMS = ['uOwner', 'uTerrId', 'uDepth', 'uTerrCol', 'uPal', 'uFort', 'uAux', 'uTrench', 'uView', 'uCenter', 'uZoom', 'uMap', 'uTime', 'uNowDs', 'uAuxMode', 'uShowRes', 'uFortOn', 'uTrenchOn', 'uTerr', 'uRes', 'uBg', 'uFog', 'uFogOn', 'uFogScale', 'uGround', 'uGroundCol', 'uGroundTex', 'uGOrigin', 'uP', 'uDpr', 'uMixA', 'uMixB', 'uMixC', 'uNearOn', 'uDecor', 'uDecorInfo', 'uRampD', 'uSnow', 'uSeason', 'uFarD', 'uSeaShift', 'uDay', 'uDayTint'];
 type TexName = 'owner' | 'terrId' | 'depth' | 'terrCol' | 'pal' | 'fort' | 'aux' | 'trench' | 'fog' | 'ground' | 'groundCol' | 'groundView' | 'mixA' | 'mixB' | 'mixC' | 'decor';
 /** Texture units, in order (the sampler uniform of each is set to its index). */
 const TEX_ORDER: readonly TexName[] = ['owner', 'terrId', 'depth', 'terrCol', 'pal', 'fort', 'aux', 'trench', 'fog', 'ground', 'groundCol', 'groundView', 'mixA', 'mixB', 'mixC', 'decor'];
@@ -89,6 +90,8 @@ interface Prog {
 export class MapGL {
   readonly gl: WebGL2RenderingContext;
   lost = false;
+  /** the season and the time of day to draw (render/seasonView.ts mapLook); null = today's map, no seasons, no night */
+  look: MapLook | null = null;
   private prog: WebGLProgram;
   private loc: Record<string, WebGLUniformLocation | null> = {};
   /** the pixel styles' ground pass (null for today's look): one fragment per art pixel into groundView */
@@ -503,7 +506,9 @@ export class MapGL {
     const oy = Math.floor((u.centerY - viewH / 2 / u.zoom) * P) - 2;
     const gw = Math.ceil((viewW / u.zoom) * P) + 5;
     const gh = Math.ceil((viewH / u.zoom) * P) + 5;
-    const key = `${P}:${ox}:${oy}:${gw}:${gh}:${Math.floor((u.timeS * 1000) / GROUND_FRAME_MS)}`;
+    const lk = this.look;
+    const lookKey = lk ? `${Math.round(lk.s * 100)}:${Math.round(lk.snowRows * 20)}:${Math.round(lk.iceRows * 20)}:${Math.round(lk.tundra * 20)}` : '-';
+    const key = `${P}:${ox}:${oy}:${gw}:${gh}:${Math.floor((u.timeS * 1000) / GROUND_FRAME_MS)}:${lookKey}`;
     if (key === this.gvKey) return [ox, oy];
     this.gvKey = key;
     if (!this.fbo) this.fbo = gl.createFramebuffer();
@@ -523,6 +528,7 @@ export class MapGL {
     gl.uniform1f(g.loc.uTime, u.timeS);
     gl.uniform2i(g.loc.uGOrigin, ox, oy);
     gl.uniform1f(g.loc.uP, P);
+    this.lookUniforms(g.loc, true);
     gl.bindVertexArray(this.vao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -582,9 +588,33 @@ export class MapGL {
     gl.uniform2i(L.uGOrigin, origin[0], origin[1]);
     gl.uniform1f(L.uNearOn, this.ground && this.groundBuilt ? 1 : 0);
     gl.uniform4i(L.uDecorInfo, ...this.decorInfo);
+    this.lookUniforms(L, false);
     gl.bindVertexArray(this.vao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     return true;
+  }
+
+  /** The season's and the time of day's uniforms (all zero without a look: today's map). */
+  private lookUniforms(L: Record<string, WebGLUniformLocation | null>, ground: boolean): void {
+    const gl = this.gl;
+    const k = this.look;
+    if (!k) {
+      gl.uniform4f(L.uSeason, 0, 0, 0, 0);
+      gl.uniform4f(L.uDay, 1, 0, 0, 0);
+      return;
+    }
+    gl.uniform4f(L.uSnow, k.snowRows, k.snowEdge, k.tundra, k.iceRows);
+    gl.uniform4f(L.uSeason, k.spring, k.autumn, k.s, 1);
+    const sea = farDeltas(k.s);
+    gl.uniform3f(L.uSeaShift, sea[0], sea[1], sea[2]);
+    if (ground) gl.uniform3fv(L.uRampD, rampDeltas(k.s));
+    else {
+      gl.uniform3fv(L.uFarD, sea);
+      const l = k.light;
+      const on = l.k < 1 || l.warm > 0;
+      gl.uniform4f(L.uDay, l.k, l.desat, on ? 1 : 0, 0);
+      gl.uniform3f(L.uDayTint, l.tint[0], l.tint[1], l.tint[2]);
+    }
   }
 
   /**

@@ -7,6 +7,8 @@ import { SEA_BANDS, type GroundRamp } from './ground';
 import { MAP_STYLE_ID, type MapStyle } from './mapStyle';
 import { DEFAULT_THEME, type GroundPalette, type MapTheme } from './mapThemes';
 import { DECOR_BLOCK, DECOR_SCALE } from './decor';
+import { ICE } from '../art/detailed/seasons';
+import { farSnow, RAMP_COUNT, RAMP_IDS, snowyRamps } from './seasonView';
 
 const rgb = (c: RGB): string => c.map((v) => (v / 255).toFixed(4)).join(', ');
 
@@ -41,26 +43,76 @@ void main() {
 const ramp4 = (name: string, r: GroundRamp | readonly RGB[]): string =>
   `const vec3 ${name}[${r.length}] = vec3[${r.length}](${r.map((c) => `vec3(${rgb(c)})`).join(', ')});`;
 
-/** A ground palette's ramps as GLSL constants. */
+const vec3s = (list: readonly (readonly number[])[]): string => list.map((c) => `vec3(${rgb(c as RGB)})`).join(', ');
+
+/**
+ * A ground palette's ramps as GLSL: every ramp's four tones in one array by id (render/seasonView.ts RAMP_IDS; the
+ * seasons' own variants start from the forest and the grass), read through R4, which adds the season's change (uRampD,
+ * zero by default) and notes which ramp and tone the pixel took (gRamp, gTone: snow then swaps in that ramp's snowy
+ * tone). The sea and its foam stay plain constants.
+ */
 const groundRamps = (g: GroundPalette): string =>
   [
-    ramp4('GRASS', g.grass),
-    ramp4('GRASS_DRY', g.grassDry),
-    ramp4('GRASS_LUSH', g.grassLush),
-    ramp4('FOREST', g.forest),
-    ramp4('HILLS', g.hills),
-    ramp4('ROCK', g.rock),
-    ramp4('SNOW', g.snow),
-    ramp4('SAND', g.sand),
-    ramp4('SWAMP', g.swamp),
-    ramp4('TUNDRA', g.tundra),
-    ramp4('WHEAT', g.wheat),
-    ramp4('CROP', g.crop),
-    ramp4('SOIL', g.soil),
-    ramp4('POOL', g.pool),
+    `const vec3 BASE[${RAMP_COUNT * 4}] = vec3[${RAMP_COUNT * 4}](${vec3s(RAMP_IDS.flatMap((r) => g[r.base] as readonly RGB[]))});`,
+    `const vec3 SNOWY[${RAMP_COUNT * 4}] = vec3[${RAMP_COUNT * 4}](${vec3s(snowyRamps().flat())});`,
+    ...RAMP_IDS.map((r, i) => `const int ${r.glsl} = ${i};`),
     ramp4('SEA', g.sea),
     ramp4('FOAM', g.foam),
+    `uniform vec3 uRampD[${RAMP_COUNT * 4}];`,
+    'int gRamp = -1;',
+    'int gTone = 0;',
+    'vec3 R4(int r, int t) { gRamp = r; gTone = t; return clamp(BASE[r * 4 + t] + uRampD[r * 4 + t], 0.0, 1.0); }',
   ].join('\n');
+
+/** Seasons and day and night (render/seasonView.ts, set by glmap.ts): uniforms and helpers for both passes. */
+const SEASON_GLSL = /* glsl */ `
+// ---- seasons and day and night (looks only; render/seasonView.ts). All zero by default: today's map.
+uniform vec4 uSnow;    // x: snow rows from each pole, y: the snow edge's wander (tiles), z: tundra's winter snow 0..1, w: sea ice rows
+uniform vec4 uSeason;  // x: spring (mud patches), y: autumn, z: the season value 0..4, w: 1 = seasons on
+uniform vec3 uFarD[9]; // the season's change to each terrain's far colour
+uniform vec3 uSeaShift;
+uniform vec4 uDay;     // x: brightness kept, y: colour let go, z: 1 = shade on
+uniform vec3 uDayTint;
+const vec3 FAR_SNOW[9] = vec3[9](${vec3s(farSnow())});
+const vec3 ICE[4] = vec3[4](${vec3s(ICE as readonly RGB[])});
+// rows from the nearer pole (the top or the bottom edge)
+float poleRows(float y) { return min(y, uMap.y - y); }
+// the slow noise that shapes the snow's edge: it drifts as the season turns, so the edge creeps and wanders
+float snowNoise(vec2 q) {
+  float cell = max(4.0, uSnow.y * 2.0);
+  float ph = uSeason.z;
+  return vnoise(q / cell + vec2(ph * 2.3, ph * 1.1), 811u) * 0.65 + vnoise(q * 2.3 / cell + vec2(-ph * 1.1, ph * 2.3), 813u) * 0.35;
+}
+// how much snow covers land of terrain ter at tile point q, 0..1 (sim/seasons.ts snow rows, a soft wandering edge)
+float snowCov(vec2 q, int ter) {
+  float c = 0.0;
+  if (uSnow.x > 0.0) {
+    float amp = uSnow.y * min(1.0, uSnow.x / 2.0);
+    c = smoothstep(-0.6, 0.6, uSnow.x - poleRows(q.y) + (snowNoise(q) - 0.5) * amp + (ter == 5 ? 0.8 : 0.0));
+  }
+  if (ter == 8) c = max(c, uSnow.z);
+  return c;
+}
+// how much the sea at q is frozen, 0..1 (sim/seasons.ts ice rows, a broken edge)
+float iceCov(vec2 q) {
+  if (uSnow.w <= 0.0) return 0.0;
+  return smoothstep(-0.4, 0.4, uSnow.w - poleRows(q.y) + (vnoise(q / 2.5, 817u) - 0.5) * 1.1);
+}
+// a far (average) ground colour in the season: shifted by its terrain's change, snow and ice blended in smoothly
+vec3 seasonFar(vec3 c, int ter, vec2 q) {
+  if (uSeason.w < 0.5) return c;
+  if (ter <= 1) return mix(clamp(c + uSeaShift, 0.0, 1.0), FAR_SNOW[0], iceCov(q));
+  return mix(clamp(c + uFarD[ter], 0.0, 1.0), FAR_SNOW[ter], snowCov(q, ter));
+}
+// the time of day's light on the world (art/detailed/seasons.ts shadeLight): darker and cool at night, warm at dawn and
+// dusk, the brightness kept by the tint itself
+vec3 shadeDay(vec3 c) {
+  if (uDay.z < 0.5) return c;
+  float y = dot(c, vec3(0.299, 0.587, 0.114));
+  vec3 v = c + (y - c) * uDay.y;
+  return clamp(uDay.x * (v + y * (uDayTint - 1.0)), 0.0, 1.0);
+}
+`;
 
 /** Shader sources by (style, theme, pass), built once each. */
 const sources = new Map<string, string>();
@@ -195,6 +247,7 @@ float vnoise(vec2 p, uint salt) {
   float a = hash(i, salt), b = hash(i + ivec2(1, 0), salt), c = hash(i + ivec2(0, 1), salt), d = hash(i + ivec2(1, 1), salt);
   return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
+${SEASON_GLSL}
 int trenchAt(ivec2 p) {
   p = clamp(p, ivec2(0), ivec2(uMap) - 1);
   return int(texelFetch(uTrench, p, 0).r * 255.0 + 0.5);
@@ -404,7 +457,7 @@ float bayer4(ivec2 p) {
 int toneIdx(float v, float dth, float dith) {
   return clamp(int(floor(v * 4.0 + (dth - 0.5) * dith)), 0, 3);
 }
-#define TONE(R, v) R[toneIdx(v, dth, 0.3)]
+#define TONE(R, v) R4(R, toneIdx(v, dth, 0.3))
 
 // Real ground's nation tint (palette.ts groundTint, the same maths): the ground's own colour mostly out, the nation's
 // hue in at the ground's brightness, so a red nation is red on grass, forest, sand or snow (a plain blend goes brown).
@@ -413,6 +466,16 @@ const vec4 TINT_NEAR = vec4(${GROUND_TINT.near.map((v) => v.toFixed(3)).join(', 
 const vec4 TINT_FAR = vec4(${GROUND_TINT.far.map((v) => v.toFixed(3)).join(', ')});
 const vec4 TINT_BAND = vec4(${GROUND_TINT.band.map((v) => v.toFixed(3)).join(', ')});
 const vec4 TINT_TRIBE = vec4(${GROUND_TINT.tribe.map((v) => v.toFixed(3)).join(', ')});
+// snow and ice: bright and nearly grey (by day or under the night's blue); SNOW_Y = the brightness it is squeezed above
+const float SNOW_Y = 0.627;
+bool snowLike(vec3 c) {
+  return dot(c, vec3(0.299, 0.587, 0.114)) > 0.549 && max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b)) < 0.188;
+}
+vec3 tameSnow(vec3 c) {
+  float y = dot(c, vec3(0.299, 0.587, 0.114));
+  if (y <= SNOW_Y || max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b)) > 0.157) return c;
+  return c * ((SNOW_Y + (y - SNOW_Y) * 0.35) / y);
+}
 vec3 tintGround(vec3 g, float gy, float avgY, vec3 oc, vec4 k) {
   float oy = max(0.04, dot(oc, vec3(0.299, 0.587, 0.114)));
   float y = oy + (avgY - oy) * k.z + (gy - avgY) * k.w;
@@ -459,11 +522,21 @@ uniform sampler2D uMixC;
 // blurred over about four tiles) and the moisture (0..1)
 vec4 gNear = vec4(0.0);
 float gMoist = 0.5;
+// the tile point being drawn (groundAt)
+vec2 gQ = vec2(0.0);
+// the ramp of a tree crown: in autumn each crown its own colour, red, gold or orange among evergreens (the variants
+// match the forest outside autumn, render/seasonView.ts)
+int crownRamp(ivec2 c) {
+  float h = hash(c, 831u);
+  return h < 0.28 ? FOREST_EVER : h < 0.5 ? FOREST_RED : h < 0.68 ? FOREST_GOLD : FOREST;
+}
 
 // Grass in the tone for v, dry (yellower), plain or lush (greener) by moisture m.
 vec3 grassTone(float v, float dth, float m) {
   int i = toneIdx(v, dth, 0.3);
-  return m < 0.3 ? GRASS_DRY[i] : m > 0.68 ? GRASS_LUSH[i] : GRASS[i];
+  // spring mud on the plains, in slow patches that grow toward the height of spring
+  if (uSeason.x > 0.0 && vnoise(gQ / 2.6, 841u) > 1.0 - 0.42 * uSeason.x) return R4(MUD, i);
+  return m < 0.3 ? R4(GRASS_DRY, i) : m > 0.68 ? R4(GRASS_LUSH, i) : R4(GRASS, i);
 }
 // The moisture at q: its slow field, the edges of its patches broken into wandering lines by finer noise (a hair of
 // dither only, so no checkerboard bands), drier towards a desert.
@@ -480,6 +553,7 @@ vec4 treeAt(vec2 q, float P, float density, float dth, float sh, float dark) {
   ivec2 c0 = ivec2(floor(c2 - 0.5));
   float best = 9.0;
   vec2 rel = vec2(0.0);
+  ivec2 bc = c0;
   bool shade = false;
   for (int j = 0; j < 2; j++) {
     for (int i = 0; i < 2; i++) {
@@ -489,13 +563,13 @@ vec4 treeAt(vec2 q, float P, float density, float dth, float sh, float dark) {
       float r = 0.66 + 0.2 * hash(c, 107u);
       vec2 l = (c2 - ctr) / r;
       float d = length(l);
-      if (d < best) { best = d; rel = l; }
+      if (d < best) { best = d; rel = l; bc = c; }
       if (length(l - vec2(0.35, 0.45)) < 0.95) shade = true;
     }
   }
   if (best > 1.0) return vec4(0.0, 0.0, 0.0, shade ? -1.0 : 0.0);
   float lit = dot(rel, LIGHT);
-  return vec4(TONE(FOREST, 0.6 + 0.3 * lit - 0.18 * best * best + sh * 0.6 - dark), 1.0);
+  return vec4(TONE(crownRamp(bc), 0.6 + 0.3 * lit - 0.18 * best * best + sh * 0.6 - dark), 1.0);
 }
 
 // The land at art pixel centre q (tile units): returns its colour. ter = the (edge-warped) terrain, S = hill shading
@@ -515,7 +589,7 @@ vec3 landAt(int ter, vec2 q, float S, float hgt, float vary, ivec2 ap, float P) 
     float old = gMoist > 0.58 && vnoise(q / 7.0, 413u) > 0.55 ? 0.12 : 0.0;
     vec4 tr = treeAt(q, P, dens, dth, sh, old);
     if (tr.a > 0.0) return tr.rgb;
-    if (dens > 0.9) return FOREST[0];
+    if (dens > 0.9) return R4(FOREST, 0);
     return grassTone(0.45 + sh - (tr.a < 0.0 ? 0.25 : 0.0), dth, moistAt(q, dth) + 0.15);
 #endif
     // forest: packed tree crowns lit on the upper left, dark gaps between them; a crown is about 4 art pixels across
@@ -525,6 +599,7 @@ vec3 landAt(int ter, vec2 q, float S, float hgt, float vary, ivec2 ap, float P) 
     ivec2 c0 = ivec2(floor(c2 - 0.5));
     float best = 9.0;
     vec2 rel = vec2(0.0);
+    ivec2 bc = c0;
     for (int j = 0; j < 2; j++) {
       for (int i = 0; i < 2; i++) {
         ivec2 c = c0 + ivec2(i, j);
@@ -532,12 +607,12 @@ vec3 landAt(int ter, vec2 q, float S, float hgt, float vary, ivec2 ap, float P) 
         float r = 0.66 + 0.2 * hash(c, 107u);
         vec2 l = (c2 - ctr) / r;
         float d = length(l);
-        if (d < best) { best = d; rel = l; }
+        if (d < best) { best = d; rel = l; bc = c; }
       }
     }
-    if (best > 1.0) return FOREST[0];
+    if (best > 1.0) return R4(FOREST, 0);
     float lit = dot(rel, LIGHT);
-    return TONE(FOREST, 0.6 + 0.3 * lit - 0.18 * best * best + sh * 0.6);
+    return TONE(crownRamp(bc), 0.6 + 0.3 * lit - 0.18 * best * best + sh * 0.6);
   }
   if (ter == 4) {
     // hills: round knolls on a staggered grid, lit on the upper left with a shadow on the lower right; the front ones
@@ -622,7 +697,7 @@ vec3 landAt(int ter, vec2 q, float S, float hgt, float vary, ivec2 ap, float P) 
         float side = dx < 0.0 ? dx / max(wl, 0.001) : dx / max(wr, 0.001); // -1 left edge .. 1 right edge
         // the faces: lit left, a light ridge line just left of the crest, dark right, darkest at the right foot
         float v = dx < 0.0 ? 0.78 + 0.1 * step(-0.25, side) : 0.42 - 0.14 * step(0.6, side) * step(0.5, fy);
-        if (!shoulder && fy < cap + (hash(c, 307u) - 0.5) * 0.16) return SNOW[dx < 0.0 ? 3 : 1];
+        if (!shoulder && fy < cap + (hash(c, 307u) - 0.5) * 0.16) return R4(SNOW, dx < 0.0 ? 3 : 1);
         return TONE(ROCK, v + sh * 0.3 - (shoulder ? 0.08 : 0.0));
       }
     }
@@ -658,7 +733,7 @@ vec3 landAt(int ter, vec2 q, float S, float hgt, float vary, ivec2 ap, float P) 
     float pv = vnoise(rq / 0.8, 91u);
     if (pv > 0.62) {
       float rim = vnoise((rq + vec2(0.14, 0.98) * (0.7 / P)) / 0.8, 91u);
-      return rim <= 0.62 ? POOL[3] : POOL[1];
+      return rim <= 0.62 ? R4(POOL, 3) : R4(POOL, 1);
     }
     float v = 0.625 + sh + 0.25 * speck(q, 0.6, 0.45, 231u, P);
     return TONE(SWAMP, v);
@@ -691,7 +766,7 @@ vec3 landAt(int ter, vec2 q, float S, float hgt, float vary, ivec2 ap, float P) 
       vec2 rr = vec2(0.32 + 0.18 * hash(pc, 457u), 0.2 + 0.1 * hash(pc, 459u));
       vec2 l = (q - ctr) / rr;
       float d = dot(l, l);
-      if (d < 1.0) return l.y < -0.35 ? POOL[1] : POOL[2];
+      if (d < 1.0) return l.y < -0.35 ? R4(POOL, 1) : R4(POOL, 2);
       if (d < 1.7 && l.y > 0.1) v -= 0.25; // a darker bank below it
     }
   }
@@ -738,8 +813,13 @@ vec3 landAt(int ter, vec2 q, float S, float hgt, float vary, ivec2 ap, float P) 
 vec3 seaAt(vec2 q, float d, ivec2 ap, float P) {
   float dth = bayer4(ap);
   float dj = d + (dth - 0.5) * 0.7 + (vnoise(q / 3.0, 151u) - 0.5) * 1.6;
+  // winter's sea ice (sim/seasons.ts iceBand): floes over the frozen rows, a broken dithered edge, thin dark cracks
+  if (iceCov(q) > dth) {
+    float k = vnoise(q * 1.7, 821u);
+    return ICE[k > 0.47 && k < 0.53 ? 1 : k > 0.8 ? 3 : 2];
+  }
   int band = dj < ${SEA_BANDS[0].toFixed(2)} ? 0 : dj < ${SEA_BANDS[1].toFixed(2)} ? 1 : dj < ${SEA_BANDS[2].toFixed(2)} ? 2 : dj < ${SEA_BANDS[3].toFixed(2)} ? 3 : 4;
-  vec3 c = SEA[band];
+  vec3 c = clamp(SEA[band] + uSeaShift, 0.0, 1.0);
   // shore foam: one art pixel of surf on the coast line, and a broken second line just off it that drifts
   float a1 = 0.5 + 1.0 / P;
   if (d < a1) return mix(c, FOAM[3], 0.62);
@@ -768,10 +848,25 @@ vec3 seaAt(vec2 q, float d, ivec2 ap, float P) {
 #endif
 
 #ifdef GROUND_PASS
+// Snow over a land pixel (render/seasonView.ts): where the season's snow reaches (a dithered soft edge) the pixel takes
+// the snowy tone of the ramp it was drawn from, so trees, hills and fields keep their pixels under the snow; drifts
+// one tone lighter, hollows one darker (bare rock faces keep their tone).
+vec3 snowOver(vec3 c, int ter, vec2 q, ivec2 ap) {
+  if (gRamp < 0 || uSeason.w < 0.5) return c;
+  if (snowCov(q, ter) <= bayer4(ap)) return c;
+  int tone = gTone;
+  if (gRamp != ROCK) {
+    float d = vnoise(vec2((q.x + q.y * 0.4) * 1.3, q.y * 2.2), 851u);
+    tone = clamp(tone + (d > 0.66 ? 1 : d < 0.3 ? -1 : 0), 0, 3);
+  }
+  return SNOWY[gRamp * 4 + tone];
+}
 // The ground of art pixel ap at P art pixels per tile: sea or land, the beach strip, terrain edges that wander.
 vec3 groundAt(ivec2 ap, float P) {
   vec2 tq = (vec2(ap) + 0.5) / P;
   if (tq.x < 0.0 || tq.y < 0.0 || tq.x >= uMap.x || tq.y >= uMap.y) return uBg;
+  gQ = tq;
+  gRamp = -1;
   ivec2 ti = ivec2(floor(tq));
   int ter = int(texelFetch(uTerrId, ti, 0).r * 255.0 + 0.5);
   float landDistQ = texture(uDepth, tq / uMap).r * 25.5;
@@ -807,12 +902,12 @@ vec3 groundAt(ivec2 ap, float P) {
     float edge = landDistQ + (vnoise(tq * 1.3, 461u) - 0.5) * 0.3;
     float sh = (gd.r - 0.5) * 0.52;
     if (ma.b + ma.a > 0.45) {
-      if (edge > 0.22) c = ROCK[toneIdx(0.5 + sh + 0.25 * speck(tq, 0.4, 0.5, 463u, P), dth, 0.3)];
+      if (edge > 0.22) c = R4(ROCK, toneIdx(0.5 + sh + 0.25 * speck(tq, 0.4, 0.5, 463u, P), dth, 0.3));
     } else if (gter == 3 || gter == 7) {
-      if (edge > 0.3) c = SAND[1];
-    } else if (edge > 0.18) c = SAND[toneIdx(0.625 + sh, dth, 0.3)];
+      if (edge > 0.3) c = R4(SAND, 1);
+    } else if (edge > 0.18) c = R4(SAND, toneIdx(0.625 + sh, dth, 0.3));
   }
-  return c;
+  return snowOver(c, gter, tq, ap);
 #else
   // terrain edges wander by up to half a tile (land to land only), so forests and fields do not end in staircases
   vec2 wq = tq + (vec2(vnoise(tq * 1.4, 171u), vnoise(tq * 1.4, 173u)) - 0.5) * 0.9;
@@ -821,8 +916,8 @@ vec3 groundAt(ivec2 ap, float P) {
   int gter = wter > 1 ? wter : ter;
   vec3 c = landAt(gter, tq, (gd.r - 0.5) * 2.0, gd.g, gd.b, ap, P);
   // a strip of beach on land at the coast
-  if (landDistQ > 0.2 && gter != 6 && gter != 5) c = mix(c, SAND[2], 0.8);
-  return c;
+  if (landDistQ > 0.2 && gter != 6 && gter != 5) c = mix(c, R4(SAND, 2), 0.8);
+  return snowOver(c, gter, tq, ap);
 #endif
 }
 
@@ -878,7 +973,8 @@ void main() {
   // (mipmapped: calm, no shimmer far out)
   // (uNearOn 0: no ground pass to show, the far colours at every zoom: the light map, or while the ground is built)
   float nearG = smoothstep(2.0, 3.2, zc) * uNearOn;
-  vec3 farCol = texture(uGroundCol, uv).rgb;
+  // the far colours in the season (the ground pass draws its own pixels in it)
+  vec3 farCol = seasonFar(texture(uGroundCol, uv).rgb, ter, t);
   vec3 gcol = farCol;
   if (nearG > 0.0) gcol = mix(farCol, texelFetch(uGroundTex, clamp(ap - uGOrigin, ivec2(0), textureSize(uGroundTex, 0) - 1), 0).rgb, nearG);
   col = gcol;
@@ -923,6 +1019,7 @@ void main() {
       col = col * (1.0 - dc.a * near) + dc.rgb * near;
     }
   }
+  col = seasonFar(col, ter, t);
 
 #endif
   // ---- deposits on unowned land (close zoom)
@@ -932,6 +1029,10 @@ void main() {
     vec4 dep = depositAt(res, ti, f, px);
     if (o == 0u) col = mix(col, dep.rgb, dep.a * detail);
   }
+
+  // ---- the time of day on the ground and the sea (the nations' bands, the borders and the overlays stay as by day)
+  vec3 dayCol = col;
+  col = shadeDay(col);
 
   // ---- nations: a calm, translucent colour over a quiet copy of the terrain
   vec4 flags = vec4(0.0);
@@ -966,9 +1067,14 @@ void main() {
     // real ground: the nation's hue at the ground's brightness (palette.ts groundTint), light close in where the border
     // bands carry the nation, stronger far out where the bands get too thin; tribes lighter still
     bool tribeHere = int(flags.r * 255.0 + 0.5) == 3;
-    float avgK = mix(gy, avgY, nearG);
+    float avgK = mix(gy, avgY * (uDay.z > 0.5 ? uDay.x : 1.0), nearG);
     vec4 tk = tribeHere ? TINT_TRIBE : mix(TINT_FAR, TINT_NEAR, smoothstep(${GROUND_TINT_ZOOM[0].toFixed(2)}, ${GROUND_TINT_ZOOM[1].toFixed(2)}, zc));
-    vec3 fill = tintGround(col, gy, avgK, oc, tk);
+    // snow and ice under a nation (bright and nearly grey): squeezed before the tint, so the nation keeps its hue on
+    // it, and only a light wash of the nation over it (the band carries the colour); the art lab's look
+    bool onSnow = uSeason.w > 0.5 && snowCov(t, ter) > 0.02;
+    vec3 tcol = onSnow ? tameSnow(col) : col;
+    vec3 fill = tintGround(tcol, dot(tcol, vec3(0.299, 0.587, 0.114)), onSnow ? min(avgK, SNOW_Y) : avgK, oc, tk);
+    if (onSnow && snowLike(col)) fill = mix(col, fill, 0.2);
     // the border band: a thick strip of the nation's colour just inside its border, in whole art pixels (about 10 CSS px,
     // a little less close in), the ground still showing through it; drawn here, under forts, trenches, flashes and
     // fallout, so they all still show on it. The dark border line goes on top later.
@@ -978,7 +1084,9 @@ void main() {
       float bandW = min(max(floor(bandCss / zc * P + 0.5) / P, 3.0 * a1), 1.0);
       float dB = edgeDist(ti, fq, o, fogHere, bandW);
       if (dB < bandW) {
-        vec3 band = tintGround(col, gy, avgK, oc, TINT_BAND);
+        vec3 dcol = onSnow ? tameSnow(dayCol) : dayCol;
+        float dAvg = mix(dot(dayCol, vec3(0.299, 0.587, 0.114)), avgY, nearG);
+        vec3 band = tintGround(dcol, dot(dcol, vec3(0.299, 0.587, 0.114)), onSnow ? min(dAvg, SNOW_Y) : dAvg, oc, TINT_BAND);
         // a one-pixel step between band and fill, so the band's inner edge is crisp but not a hard cut
         fill = dB >= bandW - a1 ? mix(fill, band, 0.5) : band;
       }

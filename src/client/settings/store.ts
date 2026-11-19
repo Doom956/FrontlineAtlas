@@ -43,6 +43,8 @@ export interface Settings {
   effects: boolean;
   reduceMotion: ReduceMotion;
   quality: Quality;
+  /** day and night on the map (look only, client/dayNight.ts): off keeps it noon; seasons always show */
+  dayNight: boolean;
 }
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
@@ -56,12 +58,13 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   effects: true,
   reduceMotion: 'device',
   quality: 'auto',
+  dayNight: true,
 });
 
 export type SettingKey = keyof Settings;
 /** What each section's "Reset to defaults" puts back. */
 export const SOUND_KEYS: readonly SettingKey[] = ['master', 'sfx', 'music', 'muted'];
-export const DISPLAY_KEYS: readonly SettingKey[] = ['reduceMotion', 'quality'];
+export const DISPLAY_KEYS: readonly SettingKey[] = ['reduceMotion', 'quality', 'dayNight'];
 /** The looks with no control in Settings: the defaults at every load, never saved (see the top of this file). */
 export const LOOK_KEYS: readonly SettingKey[] = ['mapStyle', 'art', 'motion', 'effects'];
 
@@ -95,6 +98,7 @@ export function parseSettings(o: unknown): Settings {
     effects: typeof r.effects === 'boolean' ? r.effects : d.effects,
     reduceMotion: oneOf(REDUCE, r.reduceMotion, d.reduceMotion),
     quality: oneOf(QUALITIES, r.quality, d.quality),
+    dayNight: typeof r.dayNight === 'boolean' ? r.dayNight : d.dayNight,
   };
 }
 
