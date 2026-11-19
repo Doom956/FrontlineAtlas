@@ -299,6 +299,11 @@ const BORDER: Record<number, RGB> = { 1: borderColor(DISPLAY[1]) as RGB, 2: bord
  * its colour instead of washing out to pink or pale blue (the snow's light and dark detail stays).
  */
 const SNOW_Y = 160;
+/** Snow or ice: bright and nearly grey (by day or under the night's blue). */
+const snowLike = (c: readonly number[]): boolean => 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] > 140 && Math.max(c[0], c[1], c[2]) - Math.min(c[0], c[1], c[2]) < 48;
+/** How much of the nation's tint goes over snow inside its border band. */
+const SNOW_WASH = 0.2;
+
 function tame(c: readonly number[]): readonly number[] {
   const y = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
   // snow and ice only: bright and nearly grey (sand and summer grass keep their light)
@@ -424,7 +429,9 @@ function gradeGround(src: Uint8ClampedArray, out: ImageData, v: View, w: World, 
         const dE = edgeDist(w, tx, ty, qx - tx, qy - ty, o, bandW);
         if (dE < a1) c = BORDER[o];
         else {
-          const fill = groundTint(tame(c), oc, GROUND_TINT.near, Math.min(SNOW_Y, avgN[ti]));
+          let fill = groundTint(tame(c), oc, GROUND_TINT.near, Math.min(SNOW_Y, avgN[ti]));
+          // on snow only a light wash of the nation: the snow stays white with its drifts, the band carries the colour
+          if (snowLike(c)) fill = [c[0] + (fill[0] - c[0]) * SNOW_WASH, c[1] + (fill[1] - c[1]) * SNOW_WASH, c[2] + (fill[2] - c[2]) * SNOW_WASH];
           if (dE < bandW) {
             const dc: readonly number[] = [day[k], day[k + 1], day[k + 2]];
             const band = groundTint(tame(dc), oc, GROUND_TINT.band, Math.min(SNOW_Y, avgD[ti]));
@@ -485,7 +492,58 @@ interface Placed {
   scale: number;
 }
 
-function drawSites(ctx: CanvasRenderingContext2D, w: World, sc: Scene, v: View): Placed[] {
+/**
+ * A building picture with snow on it (winter): the top two pixels of every roof edge (under the outline, or under a
+ * dark edge line) turn white, the second a shade greyer. One canvas pixel per art pixel, cached per picture.
+ */
+const capped = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
+function snowCap(src: HTMLCanvasElement): HTMLCanvasElement {
+  let out = capped.get(src);
+  if (out) return out;
+  out = document.createElement('canvas');
+  out.width = src.width;
+  out.height = src.height;
+  const ox = out.getContext('2d');
+  const img = spritePixels(src);
+  if (!ox || !img) return src;
+  const W = img.width;
+  const H = img.height;
+  const d = new Uint8ClampedArray(img.data);
+  const a = (X: number, Y: number): boolean => Y >= 0 && img.data[(Y * W + X) * 4 + 3] > 200;
+  const y = (X: number, Y: number): number => {
+    const o = (Y * W + X) * 4;
+    return 0.299 * img.data[o] + 0.587 * img.data[o + 1] + 0.114 * img.data[o + 2];
+  };
+  const paint = (X: number, Y: number, c: readonly number[]): void => {
+    if (Y >= H || !a(X, Y)) return;
+    const o = (Y * W + X) * 4;
+    d[o] = c[0];
+    d[o + 1] = c[1];
+    d[o + 2] = c[2];
+  };
+  for (let X = 0; X < W; X++) {
+    for (let Y = 1; Y < H; Y++) {
+      if (!a(X, Y)) continue;
+      const edgeTop = !a(X, Y - 1) && a(X, Y + 1);
+      const lineTop = a(X, Y - 1) && y(X, Y - 1) < 60 && y(X, Y) > 85 && (Y < 2 || !a(X, Y - 2) || y(X, Y - 2) > 60);
+      if (edgeTop) {
+        // the outline pixel stays, the two under it take the snow
+        paint(X, Y + 1, [236, 241, 244]);
+        paint(X, Y + 2, [206, 216, 223]);
+      } else if (lineTop) {
+        paint(X, Y, [236, 241, 244]);
+        paint(X, Y + 1, [206, 216, 223]);
+      }
+    }
+  }
+  const im = ox.createImageData(W, H);
+  im.data.set(d);
+  ox.putImageData(im, 0, 0);
+  capped.set(src, out);
+  return out;
+}
+
+function drawSites(ctx: CanvasRenderingContext2D, w: World, sc: Scene, v: View, season: number | null = null): Placed[] {
   const out: Placed[] = [];
   const scale = unitScale(v.zoom);
   for (const s of sc.sites.slice().sort((a, b) => a.y - b.y)) {
@@ -497,7 +555,8 @@ function drawSites(ctx: CanvasRenderingContext2D, w: World, sc: Scene, v: View):
     const x = Math.round((ax - OU * scale) * v.dpr) / v.dpr;
     const y = Math.round((sy - OV * scale) * v.dpr) / v.dpr;
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(spr.canvas, x, y, spr.w, spr.h);
+    const snowy = season !== null && snowCover(season, polarOf(s.y + 0.5), snowNoise(s.x + 0.5, s.y + 0.5, season), w.ter(s.x, s.y)) > 0.5;
+    ctx.drawImage(snowy ? snowCap(spr.canvas) : spr.canvas, x, y, spr.w, spr.h);
     out.push({ s, spr, x, y, scale });
   }
   return out;
@@ -706,7 +765,7 @@ function drawLights(ctx: CanvasRenderingContext2D, w: World, sc: Scene, v: View,
       const ay = Math.floor(qy * P);
       const X = Math.round((v.ox + (ax / P) * v.zoom) * dpr);
       const Y = Math.round((v.oy + (ay / P) * v.zoom) * dpr);
-      lamp(ctx, X, Y, Math.max(1, Math.round(gp)), l.tone, amt * 0.85, 1, 0.15);
+      lamp(ctx, X, Y, Math.max(3, Math.round(gp * 1.2)), l.tone, amt, 1, 0.2);
     }
   }
   // windows and yard lamps on the buildings: their own dark window pixels lit, a few at random, more on bigger cities
@@ -722,7 +781,7 @@ function drawLights(ctx: CanvasRenderingContext2D, w: World, sc: Scene, v: View,
     pickCells.forEach(([X, Y], i) => {
       const l = spots[i % spots.length];
       if (dark < l.on) return;
-      lamp(ctx, Math.round(pl.x * dpr) + X * g.p, Math.round(pl.y * dpr) + Y * g.p, g.p, l.tone, amt, 1, i < cells.win.length ? 0.16 : 0.3);
+      lamp(ctx, Math.round(pl.x * dpr) + X * g.p, Math.round(pl.y * dpr) + Y * g.p, g.p, l.tone, amt, g.k < 1.5 ? 2 : 1, i < cells.win.length ? 0.22 : 0.3);
     });
   }
   // trains: a headlamp with a short beam ahead, lit cab windows, a lamp on each wagon, a red lamp at the tail
@@ -875,7 +934,7 @@ function renderPanel(cv: HTMLCanvasElement, c: Ctx, at: P, zoom: number, look: L
   if (!ax) return;
   ax.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawRails(ax, w, sc, v, today ? null : look.season);
-  const placed = drawSites(ax, w, sc, v);
+  const placed = drawSites(ax, w, sc, v, today ? null : look.season);
   drawShips(ax, sc, v, timeMs);
   const trains = drawTrains(ax, sc, v, timeMs);
   drawSmoke(ax, sc, v, timeMs);

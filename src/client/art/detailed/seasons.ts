@@ -24,7 +24,7 @@ export const SEASON = { spring: 0, summer: 1, autumn: 2, winter: 3 } as const;
 export const DAY_SECONDS = 120;
 export const NIGHT_SHARE = 0.25;
 /** Named moments of the day (0..1): dawn and dusk in the middle of their change, noon, the middle of the night. */
-export const TIMES = { dawn: 0.012, noon: 0.375, dusk: 0.738, night: 0.875 } as const;
+export const TIMES = { dawn: 0.028, noon: 0.375, dusk: 0.722, night: 0.875 } as const;
 /** Brightness the ground and art lose at full night, and the most they ever lose. */
 export const NIGHT_DARKEN = 0.28;
 export const MAX_DARKEN = 0.3;
@@ -83,7 +83,7 @@ export function twilight(t: number): number {
   const w = wrapDay(t);
   const u = w < 0.5 ? w + 1 : w;
   const d = Math.min(Math.abs(u - DUSK), Math.abs(u - 1));
-  return smooth(1 - d / (2.2 * TWILIGHT));
+  return smooth(1 - d / (3.5 * TWILIGHT));
 }
 
 /** The words for a time of day. */
@@ -105,7 +105,7 @@ export interface DayLight {
   desat: number;
 }
 
-const WARM: RGB = [1.4, 1, 0.55];
+const WARM: RGB = [1.42, 0.92, 0.78];
 const COOL: RGB = [0.89, 0.99, 1.18];
 const normTint = (c: readonly number[]): RGB => {
   const y = luma(c);
@@ -115,7 +115,7 @@ const normTint = (c: readonly number[]): RGB => {
 export function dayLight(t: number): DayLight {
   const dark = darkness(t);
   const warm = twilight(t);
-  const a = warm * 0.9 * (1 - dark * 0.45);
+  const a = warm * (1 - dark * 0.45);
   const raw: RGB = [0, 0, 0];
   for (let i = 0; i < 3; i++) {
     const wv = 1 + (WARM[i] - 1) * a;
@@ -174,9 +174,9 @@ export function lightCount(kind: LightKind, level = 1): number {
   const L = Math.max(1, Math.min(6, Math.round(level)));
   switch (kind) {
     case 'capital':
-      return 10 + 5 * L;
+      return 14 + 8 * L;
     case 'city':
-      return 4 + 4 * L;
+      return 6 + 6 * L;
     case 'port':
       return 4;
     case 'factory':
@@ -247,15 +247,15 @@ export function glowStep(d: number, R: number): number {
 
 /** [season, how far south the snow reaches (0 pole .. 1 equator), how broken its edge is] round the year */
 const SNOW_KEYS: readonly (readonly [number, number, number])[] = [
-  [0, 0.2, 0.5],
-  [0.5, 0.12, 0.5],
+  [0, 0.07, 0.3],
+  [0.5, 0.04, 0.2],
   [1, 0.03, 0.12],
   [2, 0.05, 0.12],
   [2.4, 0.16, 0.22],
   [2.7, 0.38, 0.2],
   [3, 0.62, 0.14],
   [3.5, 0.56, 0.2],
-  [4, 0.2, 0.5],
+  [4, 0.07, 0.3],
 ];
 
 function keyed(s: number, col: 1 | 2): number {
@@ -351,49 +351,49 @@ type Variant = RampName | 'forestRed' | 'forestGold' | 'forestEver' | 'mud';
  */
 const TABLE: Record<Variant, readonly [GroundRamp, GroundRamp, GroundRamp, GroundRamp, GroundRamp]> = {
   grass: [
-    r4('#4b6a37', '#62864a', '#7da25c', '#9abc72'),
-    r4('#686b40', '#848752', '#a2a466', '#bdbd7e'),
+    r4('#335f26', '#4a8034', '#64a044', '#84bd5a'),
+    r4('#827238', '#a28e44', '#c2ac56', '#dac46c'),
     r4('#625a38', '#7e7449', '#9b8e5c', '#b4a671'),
     r4('#565850', '#6d6f63', '#86877a', '#9d9d8f'),
     r4('#97a3ad', '#bac4cc', '#d8dfe4', '#eff3f6'),
   ],
   grassDry: [
-    r4('#556337', '#6d7e49', '#88995c', '#a2b172'),
-    r4('#6f6a3e', '#8c8550', '#aba264', '#c5ba7b'),
+    r4('#4a6a2c', '#62883a', '#7ea64c', '#9cc062'),
+    r4('#8a6e36', '#aa8a44', '#c8a656', '#e0be6c'),
     r4('#6b5c37', '#887448', '#a58e5b', '#bfa670'),
     r4('#5c5a50', '#737064', '#8c897b', '#a4a091'),
     r4('#99a4ad', '#bcc5cc', '#d9e0e4', '#f0f3f5'),
   ],
   grassLush: [
-    r4('#3a6031', '#4d7c40', '#649852', '#7fb266'),
-    r4('#4e6038', '#647a46', '#7d9658', '#97ae6b'),
+    r4('#2e6226', '#418234', '#59a046', '#78bc5c'),
+    r4('#787438', '#968e46', '#b4a858', '#ccc06e'),
     r4('#585a35', '#727044', '#8d8856', '#a7a06a'),
     r4('#4e5349', '#63695c', '#7b8172', '#929788'),
     r4('#95a1ab', '#b8c2ca', '#d6dde3', '#eef2f5'),
   ],
   mud: [
-    r4('#4a3e2c', '#5f5038', '#766549', '#8b7a5c'),
-    r4('#686b40', '#848752', '#a2a466', '#bdbd7e'),
+    r4('#4e3a26', '#664c32', '#7e6040', '#957552'),
+    r4('#827238', '#a28e44', '#c2ac56', '#dac46c'),
     r4('#625a38', '#7e7449', '#9b8e5c', '#b4a671'),
     r4('#565850', '#6d6f63', '#86877a', '#9d9d8f'),
     r4('#97a3ad', '#bac4cc', '#d8dfe4', '#eff3f6'),
   ],
   forest: [
-    r4('#1a2a17', '#2b4424', '#416433', '#5e8744'),
+    r4('#1c3416', '#2f5a24', '#458034', '#64a448'),
     r4('#1a2716', '#2c3f22', '#405a31', '#5b7943'),
     r4('#3a2312', '#6e3b17', '#a3591e', '#cf8935'),
     r4('#1d211a', '#3a3a2f', '#57554a', '#757263'),
     r4('#1f2c27', '#71818a', '#c6d0d6', '#eef2f4'),
   ],
   forestRed: [
-    r4('#1a2a17', '#2b4424', '#416433', '#5e8744'),
+    r4('#1c3416', '#2f5a24', '#458034', '#64a448'),
     r4('#1a2716', '#2c3f22', '#405a31', '#5b7943'),
     r4('#33150f', '#642617', '#953a20', '#be5b31'),
     r4('#1d211a', '#3a3a2f', '#57554a', '#757263'),
     r4('#1f2c27', '#71818a', '#c6d0d6', '#eef2f4'),
   ],
   forestGold: [
-    r4('#1a2a17', '#2b4424', '#416433', '#5e8744'),
+    r4('#1c3416', '#2f5a24', '#458034', '#64a448'),
     r4('#1a2716', '#2c3f22', '#405a31', '#5b7943'),
     r4('#3b3012', '#6c5a1c', '#9c8327', '#c8ad45'),
     r4('#1d211a', '#3a3a2f', '#57554a', '#757263'),
@@ -449,22 +449,22 @@ const TABLE: Record<Variant, readonly [GroundRamp, GroundRamp, GroundRamp, Groun
     r4('#8f9aa3', '#b4bec5', '#d3dadf', '#eef2f4'),
   ],
   wheat: [
-    r4('#4f6436', '#657f45', '#7f9b57', '#98b56b'),
-    r4('#8a7a3e', '#ab9a4e', '#c8b660', '#dccb78'),
+    r4('#3f6a2a', '#558a36', '#70a848', '#8ec45e'),
+    r4('#9a7e34', '#bc9c40', '#d8b852', '#ecd06a'),
     r4('#8a6c35', '#a98945', '#c6a55a', '#dabd72'),
     r4('#5f5a4c', '#77715f', '#8e8873', '#a39d87'),
     r4('#9ca7b0', '#bec8cf', '#dbe1e6', '#f1f4f6'),
   ],
   crop: [
-    r4('#466a33', '#5b8743', '#74a355', '#8fbd69'),
-    r4('#5a6a36', '#718645', '#8ba155', '#a5b96a'),
+    r4('#36662a', '#4a8836', '#62a648', '#80c05e'),
+    r4('#8a843a', '#a8a248', '#c4bc5a', '#d8d070'),
     r4('#7f6331', '#9d7d3f', '#b99851', '#cfaf66'),
     r4('#57594b', '#6e705f', '#858673', '#9b9b87'),
     r4('#9ca7b0', '#bec8cf', '#dbe1e6', '#f1f4f6'),
   ],
   soil: [
-    r4('#4a3d2a', '#5f4f37', '#766447', '#8b7859'),
-    r4('#6b5c40', '#857352', '#9e8a66', '#b4a07b'),
+    r4('#47331f', '#5e442a', '#765838', '#8c6b4a'),
+    r4('#7a6644', '#957e56', '#ae966a', '#c4ac80'),
     r4('#54432d', '#6c573b', '#846b4c', '#9a805f'),
     r4('#554c40', '#6b6153', '#827767', '#988d7c'),
     r4('#9aa4ac', '#bcc5cc', '#d9e0e4', '#f0f3f5'),
@@ -645,11 +645,17 @@ export function seasonGround(c: readonly number[], at: GroundSpot, look: SeasonL
     v = h < 0.28 ? 'forestEver' : h < 0.5 ? 'forestRed' : h < 0.68 ? 'forestGold' : 'forest';
   } else if ((v === 'grass' || v === 'grassDry' || v === 'grassLush') && look.spring > 0) {
     // spring mud on the plains, in slow patches
-    if (vnoise(at.qx / 1.8, at.qy / 1.8, 841) > 1 - 0.3 * look.spring) v = 'mud';
+    if (vnoise(at.qx / 2.6, at.qy / 2.6, 841) > 1 - 0.42 * look.spring) v = 'mud';
   }
   const snow = snowAt(snowCover(s, at.polar, n, at.terrain), at.ax, at.ay);
   const ramp = snow ? look.snowy[v] : look.ramps[v];
-  const base = ramp[m.tone];
+  let tone = m.tone;
+  if (snow && v !== 'rock') {
+    // drifts: wind-blown ridges one tone lighter, hollows one darker, so snow keeps a pixel texture
+    const d = vnoise((at.qx + at.qy * 0.4) * 1.3, at.qy * 2.2, 851);
+    tone = Math.max(0, Math.min(3, tone + (d > 0.66 ? 1 : d < 0.3 ? -1 : 0)));
+  }
+  const base = ramp[tone];
   const k = snow ? 0.4 : 0.85;
   return [clampC(base[0] + m.rest[0] * k), clampC(base[1] + m.rest[1] * k), clampC(base[2] + m.rest[2] * k)];
 }
