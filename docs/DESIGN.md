@@ -1726,6 +1726,16 @@ and night are look only (`client/dayNight.ts`: `dayPhase(tick)`, a 2 minute day 
 dusk, 30 s of night); the sim never reads them. Pure helpers for the art: `seasonAt`, `seasonAtTick`,
 `snowLineRows`, `isSnowTile`, `iceBand`, `isIcedTile`.
 
+Map look (client only, `render/seasonView.ts`, the art lab's approved colours in `art/detailed/seasons.ts`): the map
+shader draws the ground in each season's ramps (fresh spring with mud patches, straw summer, orange, red and gold
+autumn crowns and golden fields, grey-brown winter); each season keeps its look for 60% of its time, then blends into
+the next. Snow follows the sim's snow rows behind a soft, wandering, dithered edge, the tundra whitens in winter and
+the polar sea freezes over the ice rows (both fade in and out over 5 s). Day and night: by night the ground, sea and
+the world art (buildings, rails, trains, units) are about 28% darker with a cool blue tint, warm at dawn and dusk;
+borders, nation bands, names, labels, troop pills, fronts and the HUD keep their day colours. Night lights: small
+warm pixels on cities (more for bigger ones), ports, factories, forts, trains and ships; blasts glow, brighter at
+night. Settings, Display: "Day and night" (on by default; Always day keeps it noon). Seasons always show.
+
 ## 13. Doctrines
 
 A doctrine is a mid-game specialisation (`src/sim/doctrines.ts`, numbers in config `DOCTRINE_*`). Principles agreed
