@@ -11,7 +11,7 @@ import { creditsContent } from '../sound/creditsView';
 import { clientBuildId } from '../../net/client';
 import { PROTOCOL_VERSION } from '../../net/protocol';
 import { qualityInfo, testSound } from './apply';
-import { DISPLAY_KEYS, getSettings, resetSettings, setSetting, SOUND_KEYS, type Quality, type ReduceMotion } from './store';
+import { DISPLAY_KEYS, GAMEPLAY_KEYS, getSettings, PASS_GAMES, resetSettings, setSetting, SOUND_KEYS, type Quality, type ReduceMotion } from './store';
 import './settings.css';
 
 export type SettingsTab = 'sound' | 'display' | 'gameplay' | 'about';
@@ -261,6 +261,13 @@ export class SettingsPanel {
     }, 'guide-toggle');
     sec.append(field('Guide', guide.el, 'The guide bar walks you through your first game and explains new things once.'));
     this.syncs.push(() => guide.set(g.guideOn() ? 'on' : 'off'));
+    // the new-player pass (hud/newPlayer.ts): controls appear when useful, for the first 3 finished games
+    const all = choice([{ v: 'on', label: 'Show all controls' }, { v: 'off', label: 'One by one' }], (v) => {
+      setSetting('showAllControls', v === 'on');
+      this.sync();
+    }, 'allcontrols-toggle');
+    sec.append(field('Show all controls from the start', all.el, `Off: new players meet the buttons one at a time, each with a short "New:" note. It turns on by itself after ${PASS_GAMES} finished games.`));
+    this.syncs.push(() => all.set(getSettings().showAllControls ? 'on' : 'off'));
     const said = el('p', 'note set-said');
     said.setAttribute('aria-live', 'polite');
     const restart = btn('Restart guide', 'wide', () => {
@@ -283,6 +290,7 @@ export class SettingsPanel {
       g.setAdvisor(true);
       g.setGuide(true);
       g.chat?.set(true);
+      resetSettings(GAMEPLAY_KEYS);
     });
   }
 

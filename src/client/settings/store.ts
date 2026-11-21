@@ -45,7 +45,14 @@ export interface Settings {
   quality: Quality;
   /** day and night on the map (look only, client/dayNight.ts): off keeps it noon; seasons always show */
   dayNight: boolean;
+  /** new-player pass off: every control from the first second (hud/newPlayer.ts); turns on by itself after PASS_GAMES finished games */
+  showAllControls: boolean;
+  /** games played to their end (a win, a defeat or the time limit), counted for the new-player pass */
+  gamesFinished: number;
 }
+
+/** Finished games the new-player pass lasts (hud/newPlayer.ts). */
+export const PASS_GAMES = 3;
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   master: DEFAULT_AUDIO_SETTINGS.master,
@@ -59,12 +66,16 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   reduceMotion: 'device',
   quality: 'auto',
   dayNight: true,
+  showAllControls: false,
+  gamesFinished: 0,
 });
 
 export type SettingKey = keyof Settings;
 /** What each section's "Reset to defaults" puts back. */
 export const SOUND_KEYS: readonly SettingKey[] = ['master', 'sfx', 'music', 'muted'];
 export const DISPLAY_KEYS: readonly SettingKey[] = ['reduceMotion', 'quality', 'dayNight'];
+/** Gameplay's "Reset to defaults" puts back the switch (not the games counter: that is history). */
+export const GAMEPLAY_KEYS: readonly SettingKey[] = ['showAllControls'];
 /** The looks with no control in Settings: the defaults at every load, never saved (see the top of this file). */
 export const LOOK_KEYS: readonly SettingKey[] = ['mapStyle', 'art', 'motion', 'effects'];
 
@@ -99,6 +110,8 @@ export function parseSettings(o: unknown): Settings {
     reduceMotion: oneOf(REDUCE, r.reduceMotion, d.reduceMotion),
     quality: oneOf(QUALITIES, r.quality, d.quality),
     dayNight: typeof r.dayNight === 'boolean' ? r.dayNight : d.dayNight,
+    showAllControls: typeof r.showAllControls === 'boolean' ? r.showAllControls : d.showAllControls,
+    gamesFinished: typeof r.gamesFinished === 'number' && Number.isFinite(r.gamesFinished) ? Math.max(0, Math.min(1000, Math.floor(r.gamesFinished))) : d.gamesFinished,
   };
 }
 
@@ -237,4 +250,38 @@ export function useSettingsStorage(store: KeyValueStore | null | undefined): voi
   storage = store;
   current = null;
   version++;
+}
+
+// ------------------------------------------------------------------------------------------------ new-player pass
+
+/** One more finished game; the pass ends by itself at PASS_GAMES (the switch turns on). */
+export function noteGameFinished(): void {
+  const n = live().gamesFinished + 1;
+  setSetting('gamesFinished', n);
+  if (n >= PASS_GAMES) setSetting('showAllControls', true);
+}
+
+let migratedPass = false;
+/**
+ * True while the new-player pass hides controls until they are useful: the switch is off and fewer than PASS_GAMES games
+ * are finished. A player whose settings were saved before the pass existed (no games counter) has played before: the
+ * switch turns on for them once, so nothing they know disappears.
+ */
+export function newPlayerPassOn(): boolean {
+  if (!migratedPass) {
+    migratedPass = true;
+    if (storage === undefined) storage = browserStore();
+    const raw = storage ? json(read(storage, FA_SETTINGS_KEY)) : null;
+    if (raw && typeof raw === 'object' && !('gamesFinished' in raw)) {
+      live();
+      setSetting('showAllControls', true);
+    }
+  }
+  const s = live();
+  return !s.showAllControls && s.gamesFinished < PASS_GAMES;
+}
+
+/** Tests: forget the one-time migration check. */
+export function resetPassMigration(): void {
+  migratedPass = false;
 }

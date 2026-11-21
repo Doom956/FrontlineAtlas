@@ -91,6 +91,10 @@ export class GuideController {
     );
   }
 
+  /** The data-test target of the step or tip on screen ('' = none): a control it points at must be on screen. */
+  get target(): string {
+    return this.view?.target ?? '';
+  }
   /** true while the bar shows a step or a tip (the advisor line stays hidden then) */
   get showing(): boolean {
     return this.view !== null;

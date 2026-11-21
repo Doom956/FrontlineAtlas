@@ -6379,3 +6379,27 @@ button.adv-tag {
 .season-line.hidden {
   display: none;
 }
+
+/* New-player pass (hud/newPlayer.ts): a control not shown yet, and one that just appeared */
+.np-off {
+  display: none !important;
+}
+@keyframes np-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(214, 170, 80, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(214, 170, 80, 0.55);
+  }
+}
+.np-new {
+  animation: np-glow 1.2s ease-in-out 5;
+  border-radius: 6px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .np-new {
+    animation: none;
+    box-shadow: 0 0 0 2px rgba(214, 170, 80, 0.55);
+  }
+}

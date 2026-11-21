@@ -249,6 +249,19 @@ describe('Settings panel', () => {
     expect(online.h.chatOn).toBe(false);
   });
 
+  it('Gameplay: the "Show all controls from the start" switch is off for new players, saves, and resets', () => {
+    const p = new SettingsPanel({ gameplay: hooks().gameplay });
+    const sec = byTest(p.el as unknown as FakeEl, 'settings-sec-gameplay');
+    expect(sec.textContent).toContain('Show all controls from the start');
+    expect(store.getSettings().showAllControls).toBe(false);
+    button(byTest(sec, 'allcontrols-toggle'), 'Show all controls').click();
+    expect(store.getSettings().showAllControls).toBe(true);
+    byTest(sec, 'settings-reset-gameplay').click();
+    expect(store.getSettings().showAllControls).toBe(false);
+    button(byTest(sec, 'allcontrols-toggle'), 'One by one').click();
+    expect(store.getSettings().showAllControls).toBe(false);
+  });
+
   it('About: the version and build, then the credits', () => {
     const p = new SettingsPanel({ gameplay: hooks().gameplay });
     const sec = byTest(p.el as unknown as FakeEl, 'settings-sec-about');

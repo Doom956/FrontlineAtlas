@@ -124,6 +124,7 @@ export class Cluster {
       seasonBtn.setAttribute('aria-expanded', String(open));
     });
     seasonBox.append(seasonBtn, seasonLine);
+    this.seasonBox = seasonBox;
     let warnedWinter = -1;
 
     const speed = el('div', 'cl-group seg cl-speed');
@@ -223,6 +224,25 @@ export class Cluster {
       bell.setAttribute('aria-label', unread ? `Alerts, ${unread} new` : 'Alerts');
     });
     this.eventsDot = dot;
+  }
+
+  private seasonBox: HTMLElement;
+  /** New-player pass (hud/newPlayer.ts): shows or hides a drawer button. */
+  gateDrawer(id: string, shown: boolean): void {
+    const b = this.drawerBtns.get(id as DrawerId);
+    if (b) this.gate(b, shown);
+  }
+  gateSeason(shown: boolean): void {
+    this.gate(this.seasonBox, shown);
+  }
+  private gate(b: HTMLElement, shown: boolean): void {
+    const was = b.classList.contains('np-off');
+    setClass(b, 'np-off', !shown);
+    // a control that just appeared glows for a few seconds
+    if (was && shown) {
+      b.classList.add('np-new');
+      setTimeout(() => b.classList.remove('np-new'), 7000);
+    }
   }
 
   private eventsDot: HTMLElement;

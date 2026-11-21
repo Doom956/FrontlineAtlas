@@ -14,7 +14,8 @@
 // The DOM is built once. update() runs every frame but only does cheap work there; texts and lists refresh at
 // ~5 Hz through each part's update().
 import { blitzHint } from './blitzUi';
-import { getSettings, setSetting } from './settings/store';
+import { getSettings, newPlayerPassOn, noteGameFinished, setSetting } from './settings/store';
+import { NewPlayerPass } from './hud/newPlayer';
 import { activeFog, fogEvent, UNMET_TOAST } from './fog/fogView';
 import { reconHint } from './hud/variantOrders';
 import { VARIANT_NAMES } from '../sim/variants';
@@ -178,6 +179,10 @@ export class Hud {
   private radial: RadialMenu;
   /** a tutorial game: its steps say when to pick a doctrine, so the unlock toast stays quiet */
   private tutorialGame = false;
+  /** new-player pass (hud/newPlayer.ts): controls appear when useful, for the first games */
+  private pass: NewPlayerPass;
+  /** this game's end was counted for the pass */
+  private finishCounted = false;
   private ctxOpen: UiState['contextMenu'] = null;
   private tip: HTMLElement;
   private tipTarget: HTMLElement | null = null;
@@ -315,6 +320,15 @@ export class Hud {
     this.advisor = new AdvisorStrip(this.ctx);
     if (hudOpts.tutorial) this.advisor.quiet();
     this.tutorialGame = !!hudOpts.tutorial;
+    this.pass = new NewPlayerPass(
+      {
+        setDrawer: (id, shown) => this.cluster.gateDrawer(id, shown),
+        setSeason: (shown) => this.cluster.gateSeason(shown),
+        setBuilds: (only) => this.bar.quick.setOnly(only),
+        note: (key, text) => this.toasts.show({ text, kind: 'info', icon: 'info', ms: 9000, key }),
+      },
+      () => !this.watching && !this.tutorialGame && newPlayerPassOn(),
+    );
     if (!hudOpts.tutorial) {
       this.guide = new GuideController(this.ctx, {
         ui: () => tutorialUiFacts(this.ui, this.tutorialView()),
@@ -537,6 +551,7 @@ export class Hud {
       if (!watching) this.bar.update(state, me);
       this.board.update(state, me);
       this.cluster.update(state, me);
+      this.updatePass(state, me, watching);
       if (!watching) this.card.update(state, me);
       this.drawer.update(state, me);
       this.advisor.toastUp = this.toasts.count > 0;
@@ -623,6 +638,7 @@ export class Hud {
     if (id === 'events') {
       this.cluster.setUnread(false);
     }
+    this.pass.revealDrawer(id); // a hotkey or a hint opened it: its button shows from now on
     this.setHelp(false);
     // phones: a drawer and the nation card both span the width; one at a time, so neither hides the other's name
     if (isPhone()) this.card.close();
@@ -952,6 +968,21 @@ export class Hud {
     }
   }
 
+  /** The new-player pass (hud/newPlayer.ts): controls appear when useful; a control the guide or advisor points at appears at once. */
+  private updatePass(state: GameState, me: Player, watching: boolean): void {
+    if (!watching && this.guide) {
+      for (const m of this.guide.target.matchAll(/open-(\w+)/g)) this.pass.revealDrawer(m[1]);
+      const d = this.advisor.wantsDrawer;
+      if (d) this.pass.revealDrawer(d);
+    }
+    this.pass.update(state, me);
+    // a finished game counts toward the pass (not a tutorial, not a spectator)
+    if (state.phase === 'over' && !this.finishCounted && !watching && !this.tutorialGame && !this.hudOpts.watch) {
+      this.finishCounted = true;
+      noteGameFinished();
+    }
+  }
+
   // ---- events: history drawer, toasts for what matters, floaters on the map ----
 
   private drainEvents(state: GameState, me: Player): void {
@@ -968,6 +999,7 @@ export class Hud {
       if (this.drawer.open !== 'events' && e.kind !== 'tradeDelivered' && e.kind !== 'info') {
         this.cluster.setUnread(true);
       }
+      if (e.kind !== 'tradeDelivered' && e.kind !== 'info') this.pass.noteEvent();
       this.eventToast(state, me, e, focus);
       this.eventFloater(state, e);
     }
@@ -986,6 +1018,7 @@ export class Hud {
   }
 
   private raiseAlert(a: AlertSpec, tick: number): void {
+    this.pass.noteAlert();
     const { entry } = this.alertFeed.push(a, performance.now(), tick);
     this.alertStack.show(entry);
   }

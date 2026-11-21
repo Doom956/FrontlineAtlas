@@ -204,6 +204,10 @@ export class AdvisorStrip {
     this.el.append(this.tag, this.icon, this.text, this.doBtn, this.closeBtn);
   }
 
+  /** The drawer the line on screen points at (its button must be there), else null. */
+  get wantsDrawer(): string | null {
+    return this.el.classList.contains('hidden') ? null : this.current?.drawer ?? null;
+  }
   get advisorOn(): boolean {
     return this.on;
   }

@@ -53,6 +53,8 @@ export class QuickBar {
   private buildBtn: HTMLButtonElement;
   private count: { el: HTMLElement; sync: () => void };
   private lastMode = '';
+  /** New-player pass: only these quick slots show (null = all) */
+  private only: readonly BuildingType[] | null = null;
   private ac = new AbortController();
 
   constructor(private ctx: HudCtx) {
@@ -146,6 +148,12 @@ export class QuickBar {
     );
   }
 
+  /** New-player pass (hud/newPlayer.ts): limits the quick slots to these buildings (null = all of them). */
+  setOnly(types: readonly BuildingType[] | null): void {
+    this.only = types;
+    this.refresh();
+  }
+
   /** False once the HUD is gone (the listeners then remove themselves). */
   private alive(): boolean {
     if (this.el.isConnected) return true;
@@ -162,7 +170,7 @@ export class QuickBar {
 
   /** ~5 Hz. */
   update(s: GameState, me: Player): void {
-    const want = this.picks.list(QUICK_SLOTS, (b) => buildingAllowed(s, b) && near(me, BUILDINGS[b].tech));
+    const want = this.picks.list(QUICK_SLOTS, (b) => buildingAllowed(s, b) && near(me, BUILDINGS[b].tech) && (!this.only || this.only.includes(b)));
     const list = stableSlots(
       this.slots.map((x) => x.type),
       want,
