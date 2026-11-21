@@ -80,7 +80,7 @@ export const NAVY_CHAPTER: TutorialChapter = {
       target: 'open-forces',
       onEnter: (api) => {
         api.finish(); // the Port stands at once
-        topUp(api, { gold: 900, iron: 120 });
+        topUp(api, { gold: 900, iron: 120, oil: 120 });
       },
       done: (s, me) => unitsOf(s, me, 'warship') > 0 || queued(s, me, 'warship'),
     },

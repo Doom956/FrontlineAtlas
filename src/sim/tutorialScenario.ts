@@ -116,7 +116,7 @@ const SPECS: Record<string, ChapterSpec> = {
   navy: {
     home: [126, 64],
     pre: true,
-    grant: { gold: 4000, iron: 200, troops: 15000, techs: ['navigation'] },
+    grant: { gold: 4000, iron: 200, oil: 200, troops: 15000, techs: ['navigation'] },
     nations: [],
     tribes: [],
     tiles: { coast: [131, 64], island: [144, 64] },
