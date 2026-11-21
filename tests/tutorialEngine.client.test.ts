@@ -62,6 +62,7 @@ function fakeApi(): TutorialApi & { calls: string[] } {
     accept: () => false,
     offerPeace: () => false,
     hitHub: () => false,
+    bombSalvoAtLeast: (n) => calls.push(`salvo:${n}`),
     finish: () => calls.push('finish'),
     startNow: () => false,
     openPanel: (n) => calls.push(`open:${n}`),

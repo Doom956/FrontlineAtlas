@@ -204,8 +204,9 @@ export class TutorialOverlay {
     this.dock();
     const host = this.el.getBoundingClientRect();
     const t = this.target ? findTarget(this.target) : null;
-    if (t || !this.ringAt || performance.now() > this.ringUntil || this.card.classList.contains('hidden')) {
-      if (!t && this.ringAt && performance.now() > this.ringUntil) this.ringAt = null;
+    // a ringed map point (Show me just pressed, or a step that points at the map) comes first while it lasts
+    if (this.ringAt && performance.now() > this.ringUntil) this.ringAt = null;
+    if (!this.ringAt || this.card.classList.contains('hidden')) {
       this.light.onElement(t, host);
       return;
     }

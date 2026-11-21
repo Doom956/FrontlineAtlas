@@ -65,6 +65,7 @@ function apiFor(s: GameState): TutorialApi {
     accept: (id) => tutorialAccept(s, id),
     offerPeace: (id) => tutorialOfferPeace(s, id),
     hitHub: (owner, tile) => tutorialHitHub(s, owner, tile, s.humanId),
+    bombSalvoAtLeast: () => {},
     finish: () => tutorialFinish(s, s.humanId),
     startNow: () => tutorialStart(s),
     openPanel: () => {},
@@ -158,8 +159,15 @@ const DRIVE: Record<string, Record<string, (c: Ctx) => void>> = {
     island: (c) => {
       const isl = tutorialPlayer(c.s, 'islanders');
       if (c.s.attacks.some((a) => a.attacker === c.me.id && a.target === isl) || c.s.units.some((u) => u.owner === c.me.id && u.type === 'transport')) return;
-      const r = applyAction(c.s, c.me.id, { type: 'attack', tile: T(c, 'islandCity'), troops: share(c, 3000) });
-      if (!r.ok) applyAction(c.s, c.me.id, { type: 'transport', from: firstOf(c, 'port'), to: T(c, 'island'), troops: share(c, 3000) });
+      // their land next to the beachhead (what a click on the island's land does)
+      const { owner, width: w } = c.s.map;
+      for (let i = 0; i < owner.length; i++) {
+        if (owner[i] !== isl) continue;
+        if (owner[i - 1] === c.me.id || owner[i + 1] === c.me.id || owner[i - w] === c.me.id || owner[i + w] === c.me.id) {
+          applyAction(c.s, c.me.id, { type: 'attack', tile: i, troops: share(c, 4000) });
+          return;
+        }
+      }
     },
   },
   air: {

@@ -18,7 +18,8 @@ import {
 } from '../../sim/tutorialScenario';
 import type { GameState, Player } from '../../sim/types';
 import type { Hud } from '../hud';
-import { strikeOfMode } from '../strikes';
+import { salvoOf, strikeOfMode } from '../strikes';
+import { setSalvo } from '../hud/salvoPicker';
 import type { UiState } from '../uiState';
 import { markChapterDone, stepTarget, TutorialRunner, type TutorialApi, type TutorialChapter, type TutorialUi } from './engine';
 import { TutorialOverlay } from './overlay';
@@ -85,6 +86,10 @@ export class TutorialController {
       enemyTanks: (id, tile) => tutorialEnemyTanks(self.state(), id, tile),
       accept: (id) => tutorialAccept(self.state(), id),
       offerPeace: (id) => tutorialOfferPeace(self.state(), id),
+      bombSalvoAtLeast: (n) => {
+        const cur = salvoOf(ui, 'bomb');
+        if (cur !== 0 && (n === 0 || cur < n)) setSalvo(ui, 'bomb', n);
+      },
       hitHub: (owner, tile) => tutorialHitHub(self.state(), owner, tile, self.state().humanId),
       finish: () => tutorialFinish(self.state(), self.state().humanId),
       startNow: () => tutorialStart(self.state()),
@@ -157,7 +162,8 @@ export class TutorialController {
     if (key !== this.ringedStep) {
       this.ringedStep = key;
       // a step that points at the map (a tile, no HUD element) rings its tile when it starts
-      if (rv.step && !target && this.showTile() >= 0) this.overlay.ringTile(() => hud.tilePoint(this.showTile()));
+      if (rv.step && !target && this.showTile() >= 0) this.overlay.ringTile(() => hud.tilePoint(this.showTile()), Infinity);
+      else this.overlay.ringTile(() => null, 0);
     }
     this.overlay.render(rv, { showMe: this.showTile() >= 0, target });
   }

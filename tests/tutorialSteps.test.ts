@@ -61,6 +61,7 @@ function apiFor(s: GameState): TutorialApi {
     accept: (id) => tutorialAccept(s, id),
     offerPeace: (id) => tutorialOfferPeace(s, id),
     hitHub: (owner, tile) => tutorialHitHub(s, owner, tile, s.humanId),
+    bombSalvoAtLeast: () => {},
     finish: () => tutorialFinish(s, s.humanId),
     startNow: () => tutorialStart(s),
     openPanel: () => {},

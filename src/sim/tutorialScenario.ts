@@ -74,6 +74,8 @@ interface TribeSpec {
 }
 
 const HOME: XY = [40, 64];
+/** The navy chapter's island nation: its army (kept at this while the player lands; tutorialWeaken). */
+export const ISLANDERS = 2500;
 
 /** A building the scenario places (before the first tick); `owner` is a role, 'me' = the player. */
 interface Placed {
@@ -126,10 +128,11 @@ const SPECS: Record<string, ChapterSpec> = {
     home: [126, 64],
     pre: true,
     grant: { gold: 4000, iron: 200, oil: 200, troops: 15000, techs: ['navigation'] },
-    nations: [{ role: 'islanders', cap: [170, 66], land: [148, 40, 184, 88], troops: 800 }],
+    // the City on the far shore: a landing takes a beachhead, more clicks take the rest
+    nations: [{ role: 'islanders', cap: [170, 72], land: [148, 40, 184, 88], troops: ISLANDERS }],
     tribes: [],
-    tiles: { coast: [131, 64], island: [151, 64], islandCity: [160, 60] },
-    buildings: [{ type: 'city', at: [160, 60], owner: 'islanders' }],
+    tiles: { coast: [131, 64], island: [151, 64], islandCity: [177, 62] },
+    buildings: [{ type: 'city', at: [177, 62], owner: 'islanders' }],
   },
   // a weak nation with a Fort and a SAM site 20 to 30 tiles away: Airfield, bombers, bombs
   air: {

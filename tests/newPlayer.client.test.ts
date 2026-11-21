@@ -209,6 +209,30 @@ describe('new-player pass: on a game', () => {
     expect(rec.drawers.get('diplomacy')).toBe(true);
   });
 
+  it('a control the guide or advisor points at shows with its New: note', () => {
+    const s = world();
+    const { pass, rec } = rig();
+    pass.update(s, s.players[1]);
+    run(s, 20);
+    pass.update(s, s.players[1]);
+    pass.revealDrawer('research', true);
+    expect(rec.drawers.get('research')).toBe(true);
+    expect(rec.notes).toEqual([PASS_NOTES.research]);
+  });
+
+  it('the guide asks for Research only once the pass shows it (first City or 1 min), not at 0:40', async () => {
+    const { guideTips } = await import('../src/client/guide/steps');
+    const tip = guideTips().find((t) => t.id === 'research')!;
+    const s = world();
+    const me = s.players[1];
+    me.gold = 100000;
+    me.science = 100000;
+    s.phase = 'playing';
+    const ctx = (sec: number) => ({ s, me, ui: {} as never, sec, now: 0, strike: () => null }) as never;
+    expect(tip.when(ctx(45))).toBe(false);
+    expect(tip.when(ctx(RESEARCH_SECONDS))).toBe(true);
+  });
+
   it('a saved game or late join: what is already true shows without notes', () => {
     const s = world();
     run(s, 130);

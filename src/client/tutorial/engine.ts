@@ -68,6 +68,8 @@ export interface TutorialApi {
   offerPeace(aiId: number): boolean;
   /** damages a nation's supply hub on a tile, as the player's bomb would */
   hitHub(owner: number, tile: number): boolean;
+  /** sets the Bomb salvo size (bombers per click; 0 = All) when it is smaller (a step that needs a wing to get through) */
+  bombSalvoAtLeast(n: 3 | 5 | 0): void;
   /** finishes the player's constructions, upgrades, research and queued units now */
   finish(): void;
   /** ends the spawn phase once the player has placed the start */

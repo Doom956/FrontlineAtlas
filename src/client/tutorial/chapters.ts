@@ -9,7 +9,7 @@ import { arsenalPrice } from '../../sim/procurement';
 import { seasonAt } from '../../sim/seasons';
 import { hubDamaged, supplyNetworkOf } from '../../sim/supplylines';
 import { activeTreaties } from '../../sim/treaty';
-import { tutorialPlace, tutorialPlayer, tutorialSetSeason, tutorialTile } from '../../sim/tutorialScenario';
+import { ISLANDERS, tutorialPlace, tutorialPlayer, tutorialSetSeason, tutorialTile } from '../../sim/tutorialScenario';
 import type { TechId } from '../../sim/types';
 import type { GameState, Player } from '../../sim/types';
 import type { TutorialApi, TutorialChapter } from './engine';
@@ -50,6 +50,8 @@ const onSpearhead = (s: GameState, me: Player): boolean => s.units.some((u) => u
 /** Per game: when a step's clock started, what a step saw at its start, flags a step raised. */
 const began = new WeakMap<GameState, number>();
 const seen = new WeakMap<GameState, number>();
+const lowest = new WeakMap<GameState, number>();
+const refills = new WeakMap<GameState, number>();
 const flags = new WeakMap<GameState, Set<string>>();
 const flag = (s: GameState, k: string): boolean => flags.get(s)?.has(k) ?? false;
 const raise = (s: GameState, k: string): void => {
@@ -64,11 +66,15 @@ const DEFENSE_MAX_SECONDS = 120;
 const TANK_GAP_SECONDS = 20;
 
 /** Refills an empty or spent wing to `n` bombers once every bomber is home (the lesson goes on). */
-function refillWing(api: TutorialApi, s: GameState, me: Player, n: number): void {
-  if (unitsOf(s, me, 'bomber') > 0) return;
+function refillWing(api: TutorialApi, s: GameState, me: Player, n: number): boolean {
+  if (unitsOf(s, me, 'bomber') > 0) return false;
   const af = ownBuildings(s, me, 'airfield')[0];
-  if (af && af.bombers < n) af.bombers = n;
+  if (!af || af.bombers >= n) return false;
+  af.bombers = n;
+  return true;
 }
+/** Air: how long the SAM site rests after the player lost two wings' worth of lone bombers (s). */
+const SAM_REST_SECONDS = 40;
 
 /** A frozen AI answers the player's alliance request or offer about a second after it was sent (an answer, not a reflex). */
 function answerSoon(api: TutorialApi, s: GameState, me: Player, ai: number): void {
@@ -120,7 +126,7 @@ export const NAVY_CHAPTER: TutorialChapter = {
       onEnter: (api) => {
         api.finish();
         topUp(api, { troops: 12000 });
-        api.weaken(api.player('islanders'), 600);
+        api.weaken(api.player('islanders'), ISLANDERS);
         api.centre(api.tile('island'));
       },
       done: (s, me) => unitsOf(s, me, 'transport') > 0 || islandTaken(s, me) || [...s.attacks].some((a) => a.attacker === me.id && a.target === tutorialPlayer(s, 'islanders')),
@@ -130,7 +136,9 @@ export const NAVY_CHAPTER: TutorialChapter = {
       label: "Take the island's City",
       text: "Take the island's City: keep clicking the island's land until the City is yours.",
       tile: at('islandCity'),
-      onEnter: (api) => api.weaken(api.player('islanders'), 600),
+      onEnter: (api) => api.weaken(api.player('islanders'), ISLANDERS),
+      // a frozen nation still grows troops: the island's army stays at ISLANDERS, so each landing gains ground
+      keep: (api) => api.weaken(api.player('islanders'), ISLANDERS),
       done: (s, me) => islandTaken(s, me),
     },
   ],
@@ -173,11 +181,12 @@ export const AIR_CHAPTER: TutorialChapter = {
     {
       id: 'bomb',
       label: 'Send the wing',
-      text: 'Click Bomb in the bottom bar, pick x3 or All in the bar at the top, then click the enemy Fort.',
-      target: 'salvo || strike-bomb || open-forces',
+      text: 'Click Bomb in the bottom bar (set to x3: 3 bombers per click), then click the enemy Fort.',
+      target: 'strike-bomb || open-forces',
       tile: at('fort'),
       onEnter: (api) => {
         api.centre(api.tile('fort'));
+        api.bombSalvoAtLeast(3); // a lone bomber falls to the SAM: x3 gets two through
         const s = api.state();
         refillWing(api, s, api.me(), 3);
         seen.set(s, bombers(s, api.me()));
@@ -188,12 +197,16 @@ export const AIR_CHAPTER: TutorialChapter = {
     {
       id: 'fort',
       label: 'Knock out the Fort',
-      text: 'Knock out the Fort. Send x3 or All: the SAM downs one bomber, the others get through.',
-      target: 'salvo || strike-bomb',
+      text: 'Knock out the Fort. Send x3 or All: the SAM downs one bomber, the rest get through.',
+      target: 'strike-bomb',
       tile: at('fort'),
-      // a spent wing is refilled once it is home, so the Fort always falls
+      // a spent wing is refilled once it is home; after two refills the SAM runs dry for a while, so the Fort always falls
       keep: (api, s, me) => {
-        if (!gone(s, tutorialTile(s, 'fort'))) refillWing(api, s, me, 3);
+        if (gone(s, tutorialTile(s, 'fort')) || !refillWing(api, s, me, 3)) return;
+        const n = (refills.get(s) ?? 0) + 1;
+        refills.set(s, n);
+        const sam = s.buildings.get(s.map.building[tutorialTile(s, 'sam')] - 1);
+        if (n >= 2 && sam && sam.type === 'sam') sam.disabledUntil = Math.max(sam.disabledUntil, s.tick + SAM_REST_SECONDS * 10);
       },
       done: (s) => gone(s, tutorialTile(s, 'fort')),
     },
@@ -312,7 +325,10 @@ export const DEFENSE_CHAPTER: TutorialChapter = {
         const foe = api.player('foe');
         const tanks = s.units.filter((u) => u.owner === foe && u.type === 'tankDivision' && u.hp > 0);
         if (tanks.some((u) => (u.trapLoss ?? 0) > 0)) raise(s, 'trapped');
-        if (attacking(s, me, foe)) raise(s, 'struck');
+        // struck back: an attack on the enemy, or land won back since the lowest point (a pocket falls in a moment)
+        const low = Math.min(lowest.get(s) ?? me.tiles, me.tiles);
+        lowest.set(s, low);
+        if (attacking(s, me, foe) || (flag(s, 'trapped') && me.tiles >= low + 3)) raise(s, 'struck');
         // the next tank attack once the last one has ended
         const busy = tanks.some((u) => u.state === 2 || u.state === 3);
         if (!busy && s.tick - (seen.get(s) ?? s.tick) >= TANK_GAP_SECONDS * 10) {

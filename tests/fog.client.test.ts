@@ -291,6 +291,30 @@ describe('fog view: the known map', () => {
 describe('fog: what the HUD shows', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it('standings keep their order while the mouse is over the rows, and sort again when it leaves', () => {
+    installDom();
+    const s = game();
+    const lb = new Leaderboard(hudCtx(s));
+    (lb as unknown as { all: boolean }).all = true;
+    lb.update(s, s.players[1]);
+    const list = (lb.el as unknown as FakeEl).find((e) => e.className === 'lb-list')!;
+    const order = (): string => list.children.map((c) => c.dataset.test).join(',');
+    const before = order();
+    const fire = (t: string): void => {
+      for (const h of (list as unknown as { handlers: Map<string, ((e: unknown) => void)[]> }).handlers.get(t) ?? []) h({ pointerType: 'mouse' });
+    };
+    fire('pointerenter');
+    // the last nation jumps to the top by land
+    const ids = before.split(',').map((t) => Number(t.replace('lb-row-', '')));
+    const last = ids[ids.length - 1];
+    s.players[last].tiles = 100000;
+    lb.update(s, s.players[1]);
+    expect(order()).toBe(before);
+    fire('pointerleave');
+    lb.update(s, s.players[1]);
+    expect(order().split(',')[0]).toBe(`lb-row-${last}`);
+  });
+
   it('standings rank every nation by land but name only nations you have met, with "?" for an army out of sight', () => {
     installDom();
     const s = game();
