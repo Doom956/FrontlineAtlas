@@ -2,7 +2,7 @@
 // plus an arrow pointing at it from the screen's middle side) and the closing card.
 // - Step card: step count, the instruction, Show me (centres the step's tile) or Next (read-only steps), a row of
 //   pips with a toggle for the list of steps, and Exit tutorial.
-// - Closing card: the guide takes over from here; Play now (a normal Easy game) or Main menu.
+// - Closing card: Play a game (a normal Easy game) or More tutorials (back to the list).
 // - The spotlight follows its element every frame (frame()); nothing is drawn while the element is hidden.
 // Pointer events pass through everything but the cards, so the game stays playable under the overlay.
 import { el, setText } from '../dom';
@@ -19,6 +19,8 @@ export interface OverlayHandlers {
   exit: () => void;
   /** a normal Easy game */
   playNow: () => void;
+  /** to the Tutorials list */
+  more: () => void;
 }
 
 function btn(label: string, cls: string, onClick: () => void, test: string, icon?: string): HTMLButtonElement {
@@ -62,6 +64,9 @@ export class TutorialOverlay {
   private light = new Spotlight();
   private done = el('div', 'tut-done');
   private donePlay: HTMLButtonElement;
+  private doneKicker = el('span', 'tut-kicker', 'Tutorial done');
+  private doneTitle = el('h2', 'tut-done-t', "That's the basics.");
+  private doneLine = el('p', 'tut-done-l');
   private target: string | undefined;
   private listOpen = false;
   private shownKey = '';
@@ -100,17 +105,13 @@ export class TutorialOverlay {
     this.done.setAttribute('aria-label', 'Tutorial done');
     const dc = el('div', 'tut-done-card');
     const badge = iconSpan(lineIcon('accept', 22, 2.2), 'tut-done-ic');
-    this.donePlay = btn('Play now', 'primary', () => h.playNow(), 'tut-play');
+    this.donePlay = btn('Play a game', 'primary', () => h.playNow(), 'tut-play', 'play');
     this.donePlay.title = 'A normal game against Easy AI nations';
     const dActs = el('div', 'tut-done-acts');
-    dActs.append(this.donePlay, btn('Main menu', '', () => h.exit(), 'tut-menu'));
-    dc.append(
-      badge,
-      el('span', 'tut-kicker', 'Tutorial done'),
-      el('h2', 'tut-done-t', "That's the basics."),
-      el('p', 'tut-done-l', 'The guide will show you the rest (navy, tanks, air, strikes) when you first need it.'),
-      dActs,
-    );
+    const more = btn('More tutorials', '', () => h.more(), 'tut-more', 'chevronRight');
+    more.title = 'Back to the list of tutorials';
+    dActs.append(this.donePlay, more);
+    dc.append(badge, this.doneKicker, this.doneTitle, this.doneLine, dActs);
     this.done.append(dc);
     setVisible(this.done, false);
 
@@ -125,6 +126,9 @@ export class TutorialOverlay {
       setVisible(this.card, false);
       this.target = undefined;
       this.hideSpot();
+      setText(this.doneKicker, `${v.chapter.title} done`);
+      setText(this.doneTitle, v.chapter.endTitle ?? "That's the basics.");
+      setText(this.doneLine, v.chapter.endText ?? 'Play a game now, or learn more in Tutorials.');
       const wasHidden = this.done.classList.contains('hidden');
       setVisible(this.done, true);
       if (wasHidden) this.donePlay.focus({ preventScroll: true });

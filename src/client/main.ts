@@ -42,7 +42,8 @@ import { chatFor } from './chat/store';
 import type { Dispatch, UiState } from './uiState';
 import { setupTutorial, tutorialMap, tutorialSettings } from '../sim/tutorialScenario';
 import { TutorialController } from './tutorial/controller';
-import { QUICK_TUTORIAL } from './tutorial/steps';
+import { chapterById } from './tutorial/catalog';
+import type { TutorialChapterId } from './tutorial/engine';
 import { GameRecorder } from './save/recorder';
 import { Replayer } from './save/replay';
 import { LoadPage } from './save/saveViews';
@@ -553,7 +554,7 @@ const menuConsole = new AdminConsole({
 const menu = new Menu(app, {
   onStart: (settings) => void startGame(settings),
   net: () => getNet(),
-  onTutorial: () => void startTutorial(),
+  onTutorial: (id) => void startTutorial(id),
   onContinue: () => void continueSaved(),
 });
 
@@ -575,8 +576,8 @@ function newCamera(state: GameState): Camera {
 }
 
 /** Starts the tutorial: a small single-player practice game (tutorialScenario.ts) with its steps (tutorial/steps.ts). */
-function startTutorial(): Promise<void> {
-  return startGame(tutorialSettings(identity()), true);
+function startTutorial(chapter: TutorialChapterId = 'basics'): Promise<void> {
+  return startGame(tutorialSettings(identity(), chapter), chapter);
 }
 
 /** The tutorial's Play now: a normal game on the default setup against Easy AIs (asks first if it replaces a save). */
@@ -590,7 +591,7 @@ function startEasyGame(): void {
  * Starts a game: a real-world map is loaded first (createGame is synchronous), a generated one is made from the seed.
  * tutorial: a tutorial chapter's game (setupTutorial runs after createGame; the overlay comes with the HUD).
  */
-async function startGame(settings: GameSettings, tutorial = false): Promise<void> {
+async function startGame(settings: GameSettings, tutorial: TutorialChapterId | false = false): Promise<void> {
   const world = settings.map.kind === 'world' && !tutorial ? settings.map.id : null;
   menu.setBusy(world ? 'Loading map…' : 'Generating map…');
   // the tutorial plays on its own hand-made map
@@ -611,7 +612,7 @@ async function startGame(settings: GameSettings, tutorial = false): Promise<void
     const recorder = tutorial ? undefined : new GameRecorder(settings);
     try {
       state = createGame(settings, preloaded);
-      if (tutorial) setupTutorial(state);
+      if (tutorial) setupTutorial(state, tutorial);
     } catch (err) {
       console.error(err);
       menu.setBusy('Could not create the game (see console)');
@@ -624,7 +625,7 @@ async function startGame(settings: GameSettings, tutorial = false): Promise<void
 }
 
 /** Shows a single-player game that was just made (startGame) or loaded (continueSaved): HUD, input, the loop. */
-function beginSession(state: GameState, settings: GameSettings, opts: { tutorial?: boolean; recorder?: GameRecorder; history?: GameHistory }): void {
+function beginSession(state: GameState, settings: GameSettings, opts: { tutorial?: TutorialChapterId | false; recorder?: GameRecorder; history?: GameHistory }): void {
   const tutorial = !!opts.tutorial;
   endSession();
   const camera = newCamera(state);
@@ -635,7 +636,7 @@ function beginSession(state: GameState, settings: GameSettings, opts: { tutorial
   hud.setUnitProbe(renderer);
   if (opts.history) hud.adoptHistory(opts.history);
   hud.onMenu = () => toMenu();
-  hud.onPlayAgain = () => void (tutorial ? startTutorial() : startGame({ ...settings, seed: menu.replaySettings().seed }));
+  hud.onPlayAgain = () => void (opts.tutorial ? startTutorial(opts.tutorial) : startGame({ ...settings, seed: menu.replaySettings().seed }));
   const cleanupInput = setupInput({
     canvas,
     minimap,
@@ -655,9 +656,13 @@ function beginSession(state: GameState, settings: GameSettings, opts: { tutorial
   menuConsole.hide();
   lastAutosave = performance.now();
   if (tutorial) {
-    session.tutorial = new TutorialController(QUICK_TUTORIAL, hud, ui, () => (session?.human ? session.state : null), {
+    session.tutorial = new TutorialController(chapterById(opts.tutorial || 'basics')!, hud, ui, () => (session?.human ? session.state : null), {
       exit: () => toMenu(),
       playNow: () => startEasyGame(),
+      more: () => {
+        toMenu();
+        menu.show('tutorials');
+      },
     });
   }
   if (currentMp) {
@@ -1040,7 +1045,7 @@ declare global {
       /** Starts a game from the setup screen's settings with these overrides (a new seed unless given). */
       startGame: (settings?: Partial<GameSettings>) => Promise<void>;
       /** Starts the tutorial (tests). */
-      startTutorial: () => Promise<void>;
+      startTutorial: (chapter?: string) => Promise<void>;
       /** the tutorial game's id and step, null outside the tutorial */
       tutorial: () => { chapter: string; step: number; stepId: string; finished: boolean } | null;
       /** Runs n ticks synchronously (tests). */
@@ -1079,7 +1084,7 @@ window.__borderfall = {
   ui: () => (session && session.human ? session.ui : null),
   camera: () => session?.camera ?? null,
   startGame: (partial = {}) => startGame({ ...menu.replaySettings(), ...partial, humanPlayer: true }),
-  startTutorial: () => startTutorial(),
+  startTutorial: (chapter) => startTutorial((chapterById(chapter ?? 'basics')?.id ?? 'basics') as TutorialChapterId),
   tutorial: () => {
     const t = session?.tutorial;
     if (!t) return null;

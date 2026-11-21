@@ -21,7 +21,7 @@ import {
 } from '../src/sim/tutorialScenario';
 import { buildingAt } from '../src/sim/buildings';
 import { hashState } from '../src/sim/hash';
-import type { Action, GameState, Player } from '../src/sim/types';
+import type { Action, BuildingType, GameState, Player } from '../src/sim/types';
 import { CHAPTERS } from '../src/client/tutorial/chapters';
 import { ALL_TUTORIALS, allTutorialsDone, chapterById } from '../src/client/tutorial/catalog';
 import { stepTarget, targetSelectors, TutorialRunner, type TutorialApi, type TutorialChapter, type TutorialUi } from '../src/client/tutorial/engine';
@@ -137,7 +137,7 @@ interface Ctx {
 }
 const T = (c: Ctx, key: string): number => tutorialTile(c.s, key);
 const firstOf = (c: Ctx, type: string): number => [...c.s.buildings.values()].find((b) => b.owner === c.me.id && b.type === type)!.tile;
-const build = (type: Action extends { type: 'build'; building: infer B } ? B : never, key: string) => (c: Ctx) => c.act({ type: 'build', building: type, tile: T(c, key) });
+const build = (type: BuildingType, key: string) => (c: Ctx) => c.act({ type: 'build', building: type, tile: T(c, key) });
 const share = (c: Ctx, n: number) => ({ infantry: n, armor: 0, artillery: 0 });
 
 /** What a player does for each step of each chapter (steps not listed are read-only and get Next). */

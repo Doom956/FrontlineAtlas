@@ -5,7 +5,8 @@ import { mapSizeName, mapTypeName } from '../sim/setup';
 import { loadSetupPrefs, prefetchThumbs, randomSeed, settingsFromPrefs, SetupScreen, type SetupPrefs } from './setupScreen';
 import { activeLobby, MultiplayerScreen } from './lobby';
 import type { NetClient } from '../net/client';
-import { tutorialButton } from './tutorial/menuEntry';
+import type { TutorialChapterId } from './tutorial/engine';
+import { tutorialButton, tutorialList } from './tutorial/menuEntry';
 import { iconSpan, lineIcon } from './hud/glyph';
 import { askDialog, saveCard, type LoadPage } from './save/saveViews';
 import { clearSave, readSave } from './save/store';
@@ -35,7 +36,8 @@ export interface MenuCallbacks {
   /** the multiplayer connection (created on first use) */
   net: () => NetClient;
   /** start the tutorial (a single-player practice game) */
-  onTutorial?: () => void;
+  /** starts a tutorial (the basics or a chapter) */
+  onTutorial?: (id: TutorialChapterId) => void;
   /** load the saved single-player game (save/) */
   onContinue?: () => void;
 }
@@ -65,12 +67,13 @@ export class Menu {
   get visible(): boolean {
     return !this.el.classList.contains('hidden');
   }
-  show(page: 'title' | 'play' | 'help' | 'multiplayer' = 'title'): void {
+  show(page: 'title' | 'play' | 'help' | 'multiplayer' | 'tutorials' = 'title'): void {
     this.el.classList.remove('hidden');
     this.setBusy(null);
     if (page === 'play') this.showPlay();
     else if (page === 'help') this.showHelp();
     else if (page === 'multiplayer') this.showMultiplayer();
+    else if (page === 'tutorials') this.showTutorials();
     else this.showTitle();
   }
   hide(): void {
@@ -192,7 +195,7 @@ export class Menu {
     const online = menuRow('Multiplayer', 'Public games, or a private lobby with friends', () => this.showMultiplayer());
     online.dataset.test = 'menu-mp';
     rows.append(online);
-    if (this.cb.onTutorial) rows.append(tutorialButton(() => this.cb.onTutorial?.()));
+    if (this.cb.onTutorial) rows.append(tutorialButton(() => this.showTutorials()));
     rows.append(menuRow('How to play', 'The rules and controls on one page', () => this.showHelp()));
     const settings = menuRow('Settings', 'Sound, display, gameplay, and the credits', () => this.showSettings(), 'settings');
     settings.dataset.test = 'menu-settings';
@@ -204,6 +207,17 @@ export class Menu {
       const main = this.card.querySelector<HTMLButtonElement>('.menu-save-go, .menu-rejoin .btn, .menu-play');
       main?.focus({ preventScroll: true });
     });
+  }
+
+  /** The Tutorials list: the basics first, then a card for each chapter. */
+  private showTutorials(): void {
+    this.reset('wide');
+    const top = el('div', 'menu-head');
+    top.append(backButton(() => this.showTitle()), el('h2', '', 'Tutorials'));
+    const body = el('div', 'menu-scroll');
+    body.append(tutorialList((id) => this.cb.onTutorial?.(id)));
+    this.card.append(top, body);
+    requestAnimationFrame(() => this.card.querySelector<HTMLButtonElement>('.tut-card-row')?.focus({ preventScroll: true }));
   }
 
   private showHelp(): void {

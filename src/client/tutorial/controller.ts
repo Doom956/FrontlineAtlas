@@ -17,6 +17,8 @@ export interface TutorialHooks {
   exit: () => void;
   /** leave the tutorial for a normal Easy game */
   playNow: () => void;
+  /** leave the tutorial for the Tutorials list */
+  more: () => void;
 }
 
 /** The UI facts a step can check, read from the HUD and the shared UI state. */
@@ -84,6 +86,7 @@ export class TutorialController {
       next: () => this.runner.next(),
       exit: () => hooks.exit(),
       playNow: () => hooks.playNow(),
+      more: () => hooks.more(),
     });
     hud.addOverlay(this.overlay.el);
   }
