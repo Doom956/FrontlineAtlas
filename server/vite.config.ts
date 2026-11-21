@@ -1,8 +1,9 @@
 // Builds the game server into one Node file: server-dist/index.js (npm run build:server). Only 'ws' stays external.
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  root: new URL('..', import.meta.url).pathname,
+  root: fileURLToPath(new URL('..', import.meta.url)),
   publicDir: false,
   logLevel: 'warn',
   build: {
