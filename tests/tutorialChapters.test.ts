@@ -86,7 +86,7 @@ describe('tutorial chapters: structure', () => {
         for (const st of ch.steps) {
           expect(st.text.length, `${st.id}: "${st.text}"`).toBeLessThanOrEqual(MAX_TEXT);
           expect(st.label!.length, st.id).toBeLessThanOrEqual(MAX_LABEL);
-          expect(st.text + (st.label ?? '') + (ch.blurb ?? ''), st.id).not.toMatch(/—|–|\s{2}|\n/);
+          expect(st.text + (st.label ?? '') + (ch.blurb ?? ''), st.id).not.toMatch(/\u2014|\u2013|\s{2}|\n/);
           const target = stepTarget(st, typeof st.target === 'function' ? createTutorialGame(undefined, ch.id) : null);
           for (const sel of targetSelectors(target)) expect(sel, st.id).toMatch(/^\[data-test="[\w-]+"\]$/);
         }

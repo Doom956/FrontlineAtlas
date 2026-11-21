@@ -68,7 +68,7 @@ describe('new-player pass: what each control waits for', () => {
   it('every note is one line that starts with New:, no em dash', () => {
     for (const c of PASS_CONTROLS) {
       expect(PASS_NOTES[c], c).toMatch(/^New: /);
-      expect(PASS_NOTES[c], c).not.toMatch(/[\n—]/);
+      expect(PASS_NOTES[c], c).not.toMatch(/[\n\u2014]/);
     }
   });
 });
