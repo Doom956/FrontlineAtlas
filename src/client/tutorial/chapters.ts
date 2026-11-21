@@ -331,13 +331,14 @@ export const DEFENSE_CHAPTER: TutorialChapter = {
         if (attacking(s, me, foe) || (flag(s, 'trapped') && me.tiles >= low + 3)) raise(s, 'struck');
         // the next tank attack once the last one has ended
         const busy = tanks.some((u) => u.state === 2 || u.state === 3);
+        if (flag(s, 'trapped') && !busy) raise(s, 'stalled');
         if (!busy && s.tick - (seen.get(s) ?? s.tick) >= TANK_GAP_SECONDS * 10) {
           seen.set(s, s.tick);
           api.enemyTanks(foe, api.tile('tanks'));
         }
       },
-      // the traps took their toll and the player struck back (or the time ran out: never stalls)
-      done: (s) => (flag(s, 'trapped') && flag(s, 'struck')) || s.tick - (began.get(s) ?? s.tick) >= DEFENSE_MAX_SECONDS * 10,
+      // the traps stopped a spearhead and the player struck back (or the time ran out: never stalls)
+      done: (s) => (flag(s, 'stalled') && flag(s, 'struck')) || s.tick - (began.get(s) ?? s.tick) >= DEFENSE_MAX_SECONDS * 10,
     },
   ],
 };
@@ -427,7 +428,7 @@ export const SUPPLY_CHAPTER: TutorialChapter = {
     {
       id: 'bomb',
       label: 'Bomb the City',
-      text: 'Click Bomb in the bottom bar, then the enemy City on the rail (ringed). Any salvo size works.',
+      text: 'Click Bomb in the bottom bar, then the enemy City on the rail (Show me finds it). Any salvo works.',
       target: 'strike-bomb || open-forces',
       tile: at('city'),
       onEnter: (api) => {
