@@ -1046,6 +1046,8 @@ declare global {
       startGame: (settings?: Partial<GameSettings>) => Promise<void>;
       /** Starts the tutorial (tests). */
       startTutorial: (chapter?: string) => Promise<void>;
+      /** Ends the running tutorial at once, steps left count as skipped (tests, screenshots). */
+      finishTutorial: () => void;
       /** the tutorial game's id and step, null outside the tutorial */
       tutorial: () => { chapter: string; step: number; stepId: string; finished: boolean } | null;
       /** Runs n ticks synchronously (tests). */
@@ -1085,6 +1087,7 @@ window.__borderfall = {
   camera: () => session?.camera ?? null,
   startGame: (partial = {}) => startGame({ ...menu.replaySettings(), ...partial, humanPlayer: true }),
   startTutorial: (chapter) => startTutorial((chapterById(chapter ?? 'basics')?.id ?? 'basics') as TutorialChapterId),
+  finishTutorial: () => session?.tutorial?.runner.skipAll(),
   tutorial: () => {
     const t = session?.tutorial;
     if (!t) return null;
