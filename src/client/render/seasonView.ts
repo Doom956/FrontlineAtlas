@@ -84,14 +84,15 @@ export function dayNightOn(): boolean {
 }
 
 /** The map's look for a game now (or at the test override). */
-export function mapLook(state: Pick<GameState, 'phase' | 'tick' | 'playStartTick' | 'map'>): MapLook {
+export function mapLook(state: Pick<GameState, 'phase' | 'tick' | 'playStartTick' | 'map'> & { tutorial?: unknown }): MapLook {
   const pt = override?.playTicks ?? playTicks(state);
   const tick = override?.tick ?? state.tick;
   const h = state.map.height;
   const s = seasonValue(pt);
   const look = seasonLook(s);
   const wl = winterLook(pt);
-  const on = dayNightOn();
+  // tutorials stay at noon (they start at dawn, and the dawn glow would tint the snow the Seasons chapter shows)
+  const on = dayNightOn() && !(state.tutorial && override?.tick === undefined);
   const dark = on ? 1 - dayPhase(tick) : 0;
   const warm = on ? dayWarmth(tick) : 0;
   return {

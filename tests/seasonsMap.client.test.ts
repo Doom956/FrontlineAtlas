@@ -55,6 +55,15 @@ describe('Day and night setting', () => {
     expect(overlayShade(l).a).toBe(0);
     expect(l.s).toBeCloseTo(2, 5);
   });
+  it('tutorials stay at noon: no dawn glow on the snow, no night', () => {
+    for (const sec of [DAY_TIMES.dawn, DAY_TIMES.dusk, DAY_TIMES.night]) {
+      const l = mapLook({ ...at(sec), tutorial: {} });
+      expect(l.dark).toBe(0);
+      expect(l.warm).toBe(0);
+      expect(l.lights).toBe(0);
+    }
+    expect(mapLook(at(DAY_TIMES.dawn)).warm).toBeGreaterThan(0);
+  });
 });
 
 describe('the light through the day', () => {
