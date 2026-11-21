@@ -1023,7 +1023,7 @@ export function damageHub(state: GameState, pid: number, tile: number, by: numbe
   const ownerName = state.players[pid]?.name ?? 'The enemy';
   if (cut.length) {
     addEvent(state, 'supplyHubDamaged', `Your supply is cut at your ${where}: repair in ${secs} s (${sourceCount(state, cut)} cut off)`, [pid], tile, info);
-    if (by > 0) addEvent(state, 'supplyHubDamaged', `Supply cut: ${ownerName}'s ${info.direction ? info.direction + ' ' : ''}front is slower for ${secs} s`, [by], tile, info);
+    if (by > 0) addEvent(state, 'supplyHubDamaged', `You cut ${ownerName}'s supply at their ${where}: their ${info.direction ? info.direction + ' ' : ''}front is slower for ${secs} s`, [by], tile, info);
   } else {
     addEvent(state, 'supplyHubDamaged', `Your ${where} supply hub was hit: repair in ${secs} s (supply rerouted, nothing cut)`, [pid], tile, info);
     if (by > 0) addEvent(state, 'supplyHubDamaged', `You hit ${ownerName}'s ${where} supply hub: they rerouted, nothing cut`, [by], tile, info);
@@ -1159,7 +1159,10 @@ function walk(state: GameState, pid: number, net: Net, quiet: boolean, by = 0): 
   if (!quiet) {
     if (newly.length) {
       const dir = directionOf(state, pid, newly);
-      addEvent(state, 'supplyCut', `Your ${dir ? dir + ' ' : ''}supply is cut: ${sourceCount(state, newly)} out of reach`, by > 0 ? [pid, by] : [pid], newly[0], eventInfo(state, pid, by, -1, null, 0, newly));
+      // each side reads its own words: the victim "Your supply is cut", the nation that cut it "You cut ..."
+      const info = eventInfo(state, pid, by, -1, null, 0, newly);
+      addEvent(state, 'supplyCut', `Your ${dir ? dir + ' ' : ''}supply is cut: ${sourceCount(state, newly)} out of reach`, [pid], newly[0], info);
+      if (by > 0 && by !== pid) addEvent(state, 'supplyCut', `You cut ${state.players[pid]?.name ?? 'the enemy'}'s ${dir ? dir + ' ' : ''}supply: ${sourceCount(state, newly)} out of reach`, [by], newly[0], info);
     }
     if (restored.length) {
       const dir = directionOf(state, pid, restored);

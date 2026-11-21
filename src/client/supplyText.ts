@@ -1,7 +1,7 @@
 // Supply lines, in words (client only, no DOM): the toasts for the supply events as the viewer sees them, the line a
 // strike target shows when it would cut an enemy's supply, and the map key entries for the supply art. The sim names
 // the events for the event list (supplylines.ts); here the same facts are phrased from the viewer's side: "Your ...",
-// "Supply cut: Red's eastern front is slower for 45 s". Cities and ports have no names in the game, so a hub is said
+// "You cut Red's supply at their city: their eastern front is slower for 45 s". Cities and ports have no names in the game, so a hub is said
 // by its kind and a front by the compass word the sim gives.
 import { SUPPLY_LINES, TICKS_PER_SECOND } from '../sim/config';
 import { buildingAt } from '../sim/buildings';
@@ -47,13 +47,13 @@ export function supplyToast(state: GameState, me: Player, e: GameEvent): SupplyT
       }
       if (byMe) {
         return cut
-          ? { text: `Supply cut: ${owner}'s ${front(s.direction)} is slower for ${s.seconds} s`, kind: 'good', icon: 'signal', key: `sup:cut:${s.owner}:${e.tile}` }
+          ? { text: `You cut ${owner}'s supply at their ${kind}: their ${front(s.direction)} is slower for ${s.seconds} s`, kind: 'good', icon: 'signal', key: `sup:cut:${s.owner}:${e.tile}` }
           : { text: `You hit ${owner}'s ${kind}: they rerouted, nothing cut`, kind: 'info', icon: 'signal', key: `sup:cut:${s.owner}:${e.tile}` };
       }
       return null;
     case 'supplyCut':
       if (mine) return { text: `Your ${s.direction ? `${s.direction} ` : ''}supply is cut: ${forts(cut)} out of reach`, kind: 'bad', icon: 'down', key: 'sup:cut' };
-      if (byMe) return { text: `Supply cut: ${owner}'s ${front(s.direction)} is slower`, kind: 'good', icon: 'signal', key: `sup:cut:${s.owner}` };
+      if (byMe) return { text: `You cut ${owner}'s supply: their ${front(s.direction)} is slower`, kind: 'good', icon: 'signal', key: `sup:cut:${s.owner}` };
       return null;
     case 'supplyRestored':
       return mine ? { text: 'Supply restored', kind: 'good', icon: 'accept', key: 'sup:restored' } : null;

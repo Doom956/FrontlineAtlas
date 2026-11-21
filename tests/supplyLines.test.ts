@@ -101,7 +101,7 @@ describe('the supply network', () => {
     expect(evs.map((e) => e.players[0]).sort()).toEqual([1, 2]);
     const info = evs[0].supply!;
     expect(info).toMatchObject({ owner: 1, by: 2, hub: factory.tile, hubKind: 'factory', seconds: SUPPLY_LINES.repairSeconds, sources: [fort.tile], direction: 'eastern' });
-    expect(evs.find((e) => e.players[0] === 2)!.message).toBe(`Supply cut: ${s.players[1].name}'s eastern front is slower for 45 s`);
+    expect(evs.find((e) => e.players[0] === 2)!.message).toBe(`You cut ${s.players[1].name}'s supply at their factory: their eastern front is slower for 45 s`);
     expect(evs.find((e) => e.players[0] === 1)!.message).toContain('repair in 45 s');
     // A second hit while damaged does nothing.
     expect(damageHub(s, 1, factory.tile, 2)).toBe(false);

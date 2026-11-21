@@ -3,7 +3,7 @@
 // steps and a win goal, run by the same step runner as the basics. A chapter's last step is its goal; finishing it
 // marks the chapter done. Steps grant what they cost (topUp), finish constructions at once (api.finish) and put back a
 // target the player destroyed too early (keep), so none can stall.
-import { BUILDINGS } from '../../sim/config';
+import { ALLIANCE_REQUEST_TIMEOUT, BUILDINGS, TREATY_OFFER_TIMEOUT } from '../../sim/config';
 import { areAllied } from '../../sim/diplomacy';
 import { arsenalPrice } from '../../sim/procurement';
 import { seasonAt } from '../../sim/seasons';
@@ -29,15 +29,11 @@ function topUpArsenal(api: TutorialApi, tech: TechId): void {
 }
 const ordered = (me: Player, tech: TechId): boolean => me.techs.includes(tech) || !!me.procuring?.some((x) => x.tech === tech);
 
-/** Own tiles on the island east of the strait (x >= 144). */
-const ISLAND_X = 144;
-function islandTiles(s: GameState, me: Player): number {
-  const { width: w, owner } = s.map;
-  let n = 0;
-  for (let i = 0; i < owner.length; i++) if (owner[i] === me.id && i % w >= ISLAND_X) n++;
-  return n;
+/** The island's City is the player's (or its owners are gone). */
+function islandTaken(s: GameState, me: Player): boolean {
+  const b = s.buildings.get(s.map.building[tutorialTile(s, 'islandCity')] - 1);
+  return (!!b && b.owner === me.id) || s.players[tutorialPlayer(s, 'islanders')]?.alive === false;
 }
-const ISLAND_GOAL = 250;
 
 /** Own land this many columns past the front (x of the push goal tile). */
 function reachedX(s: GameState, me: Player): number {
@@ -46,10 +42,41 @@ function reachedX(s: GameState, me: Player): number {
   for (let i = 0; i < owner.length; i++) if (owner[i] === me.id) m = Math.max(m, i % w);
   return m;
 }
+/** How far the armor goal lies past the front (tiles): one spearhead goes about 12, so one or two reach it. */
+export const PUSH_TILES = 10;
+/** An own tank division is on a spearhead (state 3) or driving to start one (2). */
+const onSpearhead = (s: GameState, me: Player): boolean => s.units.some((u) => u.owner === me.id && u.type === 'tankDivision' && u.hp > 0 && u.state === 3);
 
-/** When a timed step began (game tick), per game. */
+/** Per game: when a step's clock started, what a step saw at its start, flags a step raised. */
 const began = new WeakMap<GameState, number>();
-const HOLD_SECONDS = 90;
+const seen = new WeakMap<GameState, number>();
+const flags = new WeakMap<GameState, Set<string>>();
+const flag = (s: GameState, k: string): boolean => flags.get(s)?.has(k) ?? false;
+const raise = (s: GameState, k: string): void => {
+  let f = flags.get(s);
+  if (!f) flags.set(s, (f = new Set()));
+  f.add(k);
+};
+
+/** The defense chapter: seconds the enemy tanks keep coming before the step closes by itself (never stalls). */
+const DEFENSE_MAX_SECONDS = 120;
+/** ...and the gap between two tank attacks (s). */
+const TANK_GAP_SECONDS = 20;
+
+/** Refills an empty or spent wing to `n` bombers once every bomber is home (the lesson goes on). */
+function refillWing(api: TutorialApi, s: GameState, me: Player, n: number): void {
+  if (unitsOf(s, me, 'bomber') > 0) return;
+  const af = ownBuildings(s, me, 'airfield')[0];
+  if (af && af.bombers < n) af.bombers = n;
+}
+
+/** A frozen AI answers the player's alliance request or offer about a second after it was sent (an answer, not a reflex). */
+function answerSoon(api: TutorialApi, s: GameState, me: Player, ai: number): void {
+  const old = (expiresTick: number, timeout: number): boolean => expiresTick - s.tick <= (timeout - 1) * 10;
+  const req = s.allianceRequests.some((r) => r.from === me.id && r.to === ai && old(r.expiresTick, ALLIANCE_REQUEST_TIMEOUT));
+  const offer = (s.treatyOffers ?? []).some((o) => o.from === me.id && o.to === ai && old(o.expiresTick, TREATY_OFFER_TIMEOUT));
+  if (req || offer) api.accept(ai);
+}
 
 const PLAY = { endTitle: 'Chapter done.', endText: 'Play a game now, or pick another tutorial.' };
 
@@ -64,8 +91,8 @@ export const NAVY_CHAPTER: TutorialChapter = {
     {
       id: 'port',
       label: 'Build a Port',
-      text: 'Click Port in the bottom bar, then your coast. Ports build ships.',
-      target: 'build-port || build-menu-btn',
+      text: 'Click Port in the bottom bar (or Build, then Port), then your coast. Ports build ships.',
+      target: 'build-port || bm-port || build-menu-btn',
       tile: at('coast'),
       onEnter: (api) => {
         api.centre(api.tile('home'));
@@ -76,8 +103,9 @@ export const NAVY_CHAPTER: TutorialChapter = {
     {
       id: 'ship',
       label: 'Build a warship',
-      text: 'Click Forces, then Warship at your Port. Warships guard your coast.',
-      target: 'open-forces',
+      text: 'Click Forces, then + Warship, then the water next to your Port. Warships guard your coast.',
+      target: 'fa-warship || open-forces',
+      tile: at('coast'),
       onEnter: (api) => {
         api.finish(); // the Port stands at once
         topUp(api, { gold: 900, iron: 120, oil: 120 });
@@ -87,21 +115,23 @@ export const NAVY_CHAPTER: TutorialChapter = {
     {
       id: 'land',
       label: 'Land on the island',
-      text: 'Click the island across the water. Your troops cross in a transport boat.',
+      text: 'Click the island out in the sea. Your troops cross the water in a transport boat.',
       tile: at('island'),
       onEnter: (api) => {
         api.finish();
         topUp(api, { troops: 12000 });
+        api.weaken(api.player('islanders'), 600);
         api.centre(api.tile('island'));
       },
-      done: (s, me) => unitsOf(s, me, 'transport') > 0 || islandTiles(s, me) > 0,
+      done: (s, me) => unitsOf(s, me, 'transport') > 0 || islandTaken(s, me) || [...s.attacks].some((a) => a.attacker === me.id && a.target === tutorialPlayer(s, 'islanders')),
     },
     {
       id: 'island',
-      label: 'Take the island',
-      text: `Take the island: own ${ISLAND_GOAL} tiles of it. Keep clicking its land.`,
-      tile: at('island'),
-      done: (s, me) => islandTiles(s, me) >= ISLAND_GOAL,
+      label: "Take the island's City",
+      text: "Take the island's City: keep clicking the island's land until the City is yours.",
+      tile: at('islandCity'),
+      onEnter: (api) => api.weaken(api.player('islanders'), 600),
+      done: (s, me) => islandTaken(s, me),
     },
   ],
 };
@@ -117,8 +147,8 @@ export const AIR_CHAPTER: TutorialChapter = {
     {
       id: 'airfield',
       label: 'Build an Airfield',
-      text: 'Click Airfield in the bottom bar, then your land. Bombers fly from it.',
-      target: 'build-airfield || build-menu-btn',
+      text: 'Click Build in the bottom bar, then Airfield, then your land. Bombers fly from it.',
+      target: 'build-airfield || bm-airfield || build-menu-btn',
       tile: at('home'),
       onEnter: (api) => topUp(api, { gold: BUILDINGS.airfield.cost + 100, iron: BUILDINGS.airfield.iron + 20 }),
       done: (s, me) => owns(s, me, 'airfield'),
@@ -126,8 +156,8 @@ export const AIR_CHAPTER: TutorialChapter = {
     {
       id: 'wing',
       label: 'Buy 3 bombers',
-      text: 'Click Forces, then Bomber at your Airfield, 3 times. A wing flies together.',
-      target: 'open-forces',
+      text: 'Click Forces, then + Bomber at your Airfield, 3 times. A wing flies together.',
+      target: 'fa-bomber || open-forces',
       onEnter: (api) => {
         api.finish();
         topUp(api, { gold: 2500, oil: 300 });
@@ -137,30 +167,33 @@ export const AIR_CHAPTER: TutorialChapter = {
     {
       id: 'sam',
       label: 'The SAM site',
-      text: 'The enemy SAM site shoots bombers down. That is why you send several.',
+      text: 'The enemy SAM site shoots down one bomber every 4 s. That is why you send several at once.',
       tile: at('sam'),
     },
     {
       id: 'bomb',
       label: 'Send the wing',
-      text: 'Click Bomb in the bottom bar, then the enemy Fort.',
-      target: 'strike-bomb || open-forces',
+      text: 'Click Bomb in the bottom bar, pick x3 or All in the bar at the top, then click the enemy Fort.',
+      target: 'salvo || strike-bomb || open-forces',
       tile: at('fort'),
-      onEnter: (api) => api.centre(api.tile('fort')),
-      done: (s, me) => unitsOf(s, me, 'bomber') > 0 || gone(s, tutorialTile(s, 'fort')),
+      onEnter: (api) => {
+        api.centre(api.tile('fort'));
+        const s = api.state();
+        refillWing(api, s, api.me(), 3);
+        seen.set(s, bombers(s, api.me()));
+      },
+      // bombers in the air, fewer at home than at the start (one shot down at once), or the Fort is gone
+      done: (s, me) => unitsOf(s, me, 'bomber') > 0 || bombers(s, me) < (seen.get(s) ?? 0) || gone(s, tutorialTile(s, 'fort')),
     },
     {
       id: 'fort',
-      label: 'Knock out the fort',
-      text: 'Knock out the Fort. Bombs wreck buildings; a few bombers may fall.',
+      label: 'Knock out the Fort',
+      text: 'Knock out the Fort. Send x3 or All: the SAM downs one bomber, the others get through.',
+      target: 'salvo || strike-bomb',
       tile: at('fort'),
+      // a spent wing is refilled once it is home, so the Fort always falls
       keep: (api, s, me) => {
-        // out of bombers before the Fort fell: a fresh wing
-        if (!gone(s, tutorialTile(s, 'fort')) && bombers(s, me) === 0 && unitsOf(s, me, 'bomber') === 0) {
-          const af = ownBuildings(s, me, 'airfield')[0];
-          if (af) api.grant({ gold: 1500, oil: 200 });
-          if (af) af.bombers += 3;
-        }
+        if (!gone(s, tutorialTile(s, 'fort'))) refillWing(api, s, me, 3);
       },
       done: (s) => gone(s, tutorialTile(s, 'fort')),
     },
@@ -178,8 +211,8 @@ export const ARMOR_CHAPTER: TutorialChapter = {
     {
       id: 'factory',
       label: 'Build a Factory',
-      text: 'Click Factory in the bottom bar, then your land. Factories make tank divisions.',
-      target: 'build-factory || build-menu-btn',
+      text: 'Click Build in the bottom bar, then Factory, then your land. Factories make tank divisions.',
+      target: 'build-factory || bm-factory || build-menu-btn',
       tile: at('home'),
       onEnter: (api) => topUp(api, { gold: BUILDINGS.factory.cost + 100, iron: BUILDINGS.factory.iron + 20 }),
       done: (s, me) => owns(s, me, 'factory'),
@@ -188,7 +221,8 @@ export const ARMOR_CHAPTER: TutorialChapter = {
       id: 'mech',
       label: 'Order Mechanization',
       text: 'Click Research, open the Arsenal tab, and order Mechanization. It unlocks tanks.',
-      target: 'open-research',
+      target: 'tech-mechanization || tab-arsenal || open-research',
+      next: 'mechanization',
       onEnter: (api) => {
         api.finish();
         topUpArsenal(api, 'mechanization');
@@ -198,8 +232,8 @@ export const ARMOR_CHAPTER: TutorialChapter = {
     {
       id: 'division',
       label: 'Form a division',
-      text: 'Click Forces, then Tank division, then your Factory.',
-      target: 'open-forces',
+      text: 'Click Forces, then + Tank division, then your Factory.',
+      target: 'fa-tank-division || open-forces',
       onEnter: (api) => {
         api.finish(); // the order is delivered
         topUp(api, { gold: 1500, iron: 300, oil: 200, armor: 5000 });
@@ -207,15 +241,23 @@ export const ARMOR_CHAPTER: TutorialChapter = {
       done: (s, me) => unitsOf(s, me, 'tankDivision') > 0 || queued(s, me, 'tankDivision'),
     },
     {
-      id: 'push',
-      label: 'Break the front',
-      text: 'Click your division, then the enemy land at your border. Push 30 tiles in.',
+      id: 'spearhead',
+      label: 'Launch a spearhead',
+      text: 'Click your division, then the enemy land at your border, then click there again to launch.',
       tile: at('front'),
       onEnter: (api) => {
         api.finish();
         api.weaken(api.player('foe'), 1500); // a weak front: tanks break it
       },
-      done: (s, me) => reachedX(s, me) >= (tutorialTile(s, 'push') % s.map.width),
+      done: (s, me) => onSpearhead(s, me) || reachedX(s, me) >= tutorialTile(s, 'front') % s.map.width + 2,
+    },
+    {
+      id: 'push',
+      label: `Push ${PUSH_TILES} tiles in`,
+      text: `Push ${PUSH_TILES} tiles into their land. Spearhead stopped? Click the division and send it again.`,
+      tile: at('push'),
+      onEnter: (api) => api.weaken(api.player('foe'), 1500),
+      done: (s, me) => reachedX(s, me) >= (tutorialTile(s, 'front') % s.map.width) + PUSH_TILES,
     },
   ],
 };
@@ -231,8 +273,8 @@ export const DEFENSE_CHAPTER: TutorialChapter = {
     {
       id: 'fort',
       label: 'Build a Fort',
-      text: 'Click Fort in the bottom bar, then your border. Forts make attackers lose twice as much.',
-      target: 'build-fort || build-menu-btn',
+      text: 'Click Fort in the bottom bar (or Build, then Fort), then your border. Attackers lose twice as much.',
+      target: 'build-fort || bm-fort || build-menu-btn',
       tile: at('fort'),
       onEnter: (api) => {
         api.centre(api.tile('fort'));
@@ -243,8 +285,9 @@ export const DEFENSE_CHAPTER: TutorialChapter = {
     {
       id: 'traps',
       label: 'Order Tank Traps',
-      text: 'Click Research, Arsenal, Defense: order Tank Traps. (Flak, the other pick, shoots bombers.)',
-      target: 'open-research',
+      text: 'Click Research, then Arsenal, and order Tank Traps. They slow and bleed enemy tanks near your Forts.',
+      target: 'tech-tankTraps || tab-arsenal || open-research',
+      next: 'tankTraps',
       onEnter: (api) => {
         api.finish(); // the Fort stands at once
         topUpArsenal(api, 'tankTraps');
@@ -252,27 +295,39 @@ export const DEFENSE_CHAPTER: TutorialChapter = {
       done: (_s, me) => ordered(me, 'tankTraps'),
     },
     {
-      id: 'hold',
-      label: `Hold ${HOLD_SECONDS} seconds`,
-      text: `An attack is coming. Hold your land for ${HOLD_SECONDS} seconds.`,
-      tile: at('front'),
+      id: 'tanks',
+      label: 'Stop the tanks',
+      text: 'Enemy tanks drive into your traps and stall. Then win the lost land back: click it.',
+      tile: at('tanks'),
       onEnter: (api) => {
         api.finish(); // the traps are delivered
-        const foe = api.player('foe');
-        api.wake([foe], { hostile: true });
-        api.weaken(foe, 30000);
-        api.enemyAttack(foe);
-        began.set(api.state(), api.state().tick);
+        const s = api.state();
+        api.wake([], { hostile: true }); // the enemy may now attack the player (it stays frozen: only its tanks come)
+        api.centre(api.tile('tanks'));
+        api.enemyTanks(api.player('foe'), api.tile('tanks'));
+        began.set(s, s.tick);
+        seen.set(s, s.tick);
       },
-      keep: (api, s) => {
+      keep: (api, s, me) => {
         const foe = api.player('foe');
-        // a repelled attack is followed by another, so the line is tested for the whole time
-        if (!s.attacks.some((a) => a.attacker === foe && a.target === s.humanId)) api.enemyAttack(foe);
+        const tanks = s.units.filter((u) => u.owner === foe && u.type === 'tankDivision' && u.hp > 0);
+        if (tanks.some((u) => (u.trapLoss ?? 0) > 0)) raise(s, 'trapped');
+        if (attacking(s, me, foe)) raise(s, 'struck');
+        // the next tank attack once the last one has ended
+        const busy = tanks.some((u) => u.state === 2 || u.state === 3);
+        if (!busy && s.tick - (seen.get(s) ?? s.tick) >= TANK_GAP_SECONDS * 10) {
+          seen.set(s, s.tick);
+          api.enemyTanks(foe, api.tile('tanks'));
+        }
       },
-      done: (s) => s.tick - (began.get(s) ?? s.tick) >= HOLD_SECONDS * 10,
+      // the traps took their toll and the player struck back (or the time ran out: never stalls)
+      done: (s) => (flag(s, 'trapped') && flag(s, 'struck')) || s.tick - (began.get(s) ?? s.tick) >= DEFENSE_MAX_SECONDS * 10,
     },
   ],
 };
+
+/** A nation's row in the standings (its card opens from there; the rows keep still under the mouse). */
+const row = (role: string) => (s: GameState): string => `lb-row-${tutorialPlayer(s, role)}`;
 
 export const DIPLOMACY_CHAPTER: TutorialChapter = {
   id: 'diplomacy',
@@ -292,26 +347,44 @@ export const DIPLOMACY_CHAPTER: TutorialChapter = {
     {
       id: 'ally',
       label: 'Make an alliance',
-      text: 'The nation to the north likes you. Click it, then Ally. Allies share wars.',
+      text: 'The nation to the north likes you. Click its name in Standings (top left), then Ally.',
+      target: (s) => `nc-ally || ${row('friend')(s)}`,
       tile: at('friend'),
+      keep: (api, s, me) => answerSoon(api, s, me, api.player('friend')),
       done: (s, me) => areAllied(s, me.id, tutorialPlayer(s, 'friend')),
     },
     {
       id: 'peace',
       label: 'Make peace',
-      text: 'The nation to the east is at war with you. Answer its peace offer, or offer peace.',
+      text: 'The nation to the east is at war with you and offers peace. Click Accept in Diplomacy.',
+      target: (s) => `treaty-accept || treaty-send || nc-peace || open-diplomacy || ${row('enemy')(s)}`,
       tile: at('enemy'),
+      keep: (api, s, me) => {
+        const foe = api.player('enemy');
+        // the war goes on (so Peace stays on the table) until a peace is signed
+        if (!s.attacks.some((a) => a.attacker === foe && a.target === me.id)) api.enemyAttack(foe);
+        // the player's own peace offer is accepted
+        answerSoon(api, s, me, foe);
+        // its offer stands: a fresh one whenever none is waiting (also after a refusal or when one ran out)
+        const waiting = (s.treatyOffers ?? []).some((o) => (o.from === foe && o.to === me.id) || (o.from === me.id && o.to === foe));
+        if (!waiting && !activeTreaties(s, me.id).some((t) => t.other === foe)) api.offerPeace(foe);
+      },
       done: (s, me) => activeTreaties(s, me.id).some((t) => t.kind === 'peace' && t.other === tutorialPlayer(s, 'enemy')),
     },
     {
       id: 'pact',
       label: 'Sign a pact',
-      text: 'The quiet nation to the south: offer a Pact. Neither side attacks for 3 minutes.',
+      text: 'The quiet nation to the south: click its name in Standings, then Pact, then Send offer.',
+      target: (s) => `treaty-send || nc-pact || ${row('quiet')(s)}`,
       tile: at('quiet'),
+      keep: (api, s, me) => answerSoon(api, s, me, api.player('quiet')),
       done: (s, me) => activeTreaties(s, me.id).some((t) => t.kind === 'pact' && t.other === tutorialPlayer(s, 'quiet')),
     },
   ],
 };
+
+/** The enemy's Fort is cut off from its supply, or the City (its only link) is damaged. */
+const supplyCut = (s: GameState): boolean => (supplyNetworkOf(s, tutorialPlayer(s, 'foe')).cut?.length ?? 0) > 0 || hubDamaged(s, tutorialPlayer(s, 'foe'), tutorialTile(s, 'city'));
 
 export const SUPPLY_CHAPTER: TutorialChapter = {
   id: 'supply',
@@ -325,41 +398,49 @@ export const SUPPLY_CHAPTER: TutorialChapter = {
       id: 'layer',
       label: 'Show supply',
       text: 'Click Map key, then switch on Supply. Trains carry supplies along the rails.',
-      target: 'open-legend || overlay-supply',
+      target: 'overlay-supply || open-legend',
       onEnter: (api) => api.centre(api.tile('city')),
       done: (_s, _me, ui) => !!ui.showSupply,
     },
     {
       id: 'rails',
       label: 'The weak link',
-      text: 'The enemy Fort at its front gets supplies through one City. No detour, so a weak link.',
+      text: "The enemy Fort at its front gets supplies through one City (ringed). No detour: it's a weak link.",
       tile: at('city'),
     },
     {
       id: 'bomb',
       label: 'Bomb the City',
-      text: 'Click Bomb in the bottom bar, then the enemy City on the rail.',
+      text: 'Click Bomb in the bottom bar, then the enemy City on the rail (ringed). Any salvo size works.',
       target: 'strike-bomb || open-forces',
       tile: at('city'),
-      done: (s, me) => unitsOf(s, me, 'bomber') > 0 || gone(s, tutorialTile(s, 'city')) || hubDamaged(s, tutorialPlayer(s, 'foe'), tutorialTile(s, 'city')),
+      onEnter: (api) => {
+        const s = api.state();
+        refillWing(api, s, api.me(), 4);
+        seen.set(s, bombers(s, api.me()));
+      },
+      done: (s, me) => unitsOf(s, me, 'bomber') > 0 || bombers(s, me) < (seen.get(s) ?? 0) || gone(s, tutorialTile(s, 'city')) || supplyCut(s),
     },
     {
       id: 'cut',
       label: 'Cut the supply',
-      text: 'Cut the Fort off: the City must be hit but not razed. The enemy front then slows.',
+      text: 'Wait for the bombs. A hit City stops the trains: the Fort is cut off and the enemy front slows.',
       tile: at('city'),
       keep: (api, s, me) => {
         const foe = api.player('foe');
         const city = api.tile('city');
-        // a razed City is rebuilt by the enemy; an empty wing is refilled
-        if (gone(s, city)) tutorialPlace(s, foe, 'city', city);
-        const af = ownBuildings(s, me, 'airfield')[0];
-        if (af && af.bombers === 0 && unitsOf(s, me, 'bomber') === 0) af.bombers += 3;
+        // razed by the bombs: the enemy puts it back at once, still damaged (the cut stands); a spent wing is refilled
+        if (gone(s, city) && tutorialPlace(s, foe, 'city', city)) api.hitHub(foe, city);
+        refillWing(api, s, me, 4);
       },
-      done: (s) => (supplyNetworkOf(s, tutorialPlayer(s, 'foe')).cut?.length ?? 0) > 0,
+      done: (s) => supplyCut(s),
     },
   ],
 };
+
+/** How far into a season each jump lands: past its start, so its colours are in (winter: the snow is all down). */
+const SEASON_INTO = 0.2;
+const WINTER_INTO = 0.62;
 
 export const SEASONS_CHAPTER: TutorialChapter = {
   id: 'seasons',
@@ -374,21 +455,25 @@ export const SEASONS_CHAPTER: TutorialChapter = {
       label: 'Spring mud',
       text: 'Spring: mud makes tanks 25% slower on plains. This chip shows the season.',
       target: 'season-chip',
-      onEnter: (api) => tutorialSetSeason(api.state(), 0),
+      onEnter: (api) => tutorialSetSeason(api.state(), 0, SEASON_INTO),
     },
     {
       id: 'autumn',
       label: 'Autumn harvest',
       text: 'Skipping ahead. Autumn: farms bring in extra gold, up to 10%.',
       target: 'season-chip',
-      onEnter: (api) => tutorialSetSeason(api.state(), 2),
+      onEnter: (api) => tutorialSetSeason(api.state(), 2, SEASON_INTO),
     },
     {
       id: 'winter',
       label: 'Winter snow and ice',
-      text: 'Winter: snow slows attacks by 25% (tanks 40%). Sea ice stops ships at the map edge.',
+      text: 'Winter: snow (white, north and south) slows attacks 25%, tanks 40%. Sea ice stops ships.',
       target: 'season-chip',
-      onEnter: (api) => tutorialSetSeason(api.state(), 3),
+      onEnter: (api) => {
+        // far enough in that the snow has come down from the poles; the view shows the snow line
+        tutorialSetSeason(api.state(), 3, WINTER_INTO);
+        api.centre(api.tile('snow'));
+      },
     },
     {
       id: 'summer',
@@ -396,7 +481,8 @@ export const SEASONS_CHAPTER: TutorialChapter = {
       text: 'Summer: nothing slows you. Attack the neighbour now: click its land.',
       tile: at('front'),
       onEnter: (api) => {
-        tutorialSetSeason(api.state(), 1);
+        tutorialSetSeason(api.state(), 1, SEASON_INTO);
+        api.centre(api.tile('home'));
         topUp(api, { troops: 9000 });
         api.weaken(api.player('foe'), 1500);
       },

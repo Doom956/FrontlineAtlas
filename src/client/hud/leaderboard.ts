@@ -1,5 +1,7 @@
 // Top-left standings: the top 3 nations by land plus you, one line each (rank, colour, name, land %, army).
 // Click a row: centre on that nation and open its card. Collapses to a single line; "All" lists everyone.
+// While the mouse is over the list the rows keep their places (no re-sorting under the pointer); they sort again when
+// it leaves.
 import { isTeamGame, teamOf } from '../../sim/rules';
 import { teamName } from '../../sim/victory';
 import { areAllied, isTraitor } from '../../sim/diplomacy';
@@ -37,6 +39,8 @@ export class Leaderboard {
   private more: HTMLButtonElement;
   private summary: HTMLElement;
   private chev: HTMLElement;
+  /** the mouse is over the rows: they keep their order */
+  private held = false;
 
   constructor(private ctx: HudCtx) {
     this.el = el('section', 'lb');
@@ -55,6 +59,14 @@ export class Leaderboard {
       ctx.refreshSoon();
     });
     this.list = el('div', 'lb-list');
+    this.list.addEventListener('pointerenter', (e) => {
+      if (e.pointerType === 'mouse') this.held = true;
+    });
+    this.list.addEventListener('pointerleave', () => {
+      if (!this.held) return;
+      this.held = false;
+      ctx.refreshSoon();
+    });
     this.more = el('button', 'lb-more');
     this.more.type = 'button';
     this.more.addEventListener('click', () => {
@@ -97,6 +109,11 @@ export class Leaderboard {
       if (myRank > top) shown.push(me);
     }
     if (myRank > 0 && this.all && myRank > ALL_MAX) shown.push(me);
+    // under the mouse: the same rows in the same order while they are all still there
+    if (this.held && this.order) {
+      const kept = this.order.split(',').map((id) => s.players[Number(id)]);
+      if (kept.every((p) => p && ranked.includes(p))) shown = kept;
+    }
     // Teams: the summary shows your team's land added up (that is what wins).
     const myTeam = isTeamGame(s) ? teamOf(s, me.id) : 0;
     let teamTiles = 0;

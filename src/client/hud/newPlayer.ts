@@ -127,14 +127,17 @@ export class NewPlayerPass {
     this.alert = true;
   }
 
-  /** Something else needs this control now (the guide's or advisor's target, a drawer that was opened): it shows for good, without a note. */
-  reveal(c: PassControl): void {
+  /**
+   * Something else needs this control now: it shows for good. note: say so with its "New:" note (the guide or the
+   * advisor points at it; a drawer opened by a hotkey needs none).
+   */
+  reveal(c: PassControl, note = false): void {
     if (!this.started) return;
-    this.show(c, false);
+    this.show(c, note && !this.first);
   }
   /** A drawer id (cluster) a hotkey or a hint opens. */
-  revealDrawer(id: string): void {
-    if ((PASS_DRAWERS as readonly string[]).includes(id)) this.reveal(id as PassControl);
+  revealDrawer(id: string, note = false): void {
+    if ((PASS_DRAWERS as readonly string[]).includes(id)) this.reveal(id as PassControl, note);
   }
   isShown(c: PassControl): boolean {
     return !this.started || this.shown.has(c);

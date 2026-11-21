@@ -25,6 +25,7 @@ import { STRIKE_ORDER, STRIKES, type StrikeId } from '../strikes';
 import { airCoverSorties, deepestFrontTile, frontTrench, hasTrenches, trenchLevel } from '../trench';
 import { borderTiles } from '../../sim/territory';
 import type { GuideCtx, GuideStep, GuideTip } from './engine';
+import { RESEARCH_SECONDS } from '../hud/newPlayer';
 
 // ------------------------------------------------------------------------------------------------ helpers
 
@@ -469,7 +470,8 @@ export function guideTips(): GuideTip[] {
       id: 'research',
       text: 'Open Research in the top bar and pick a tech: new buildings, stronger troops.',
       target: 'open-research',
-      when: (c) => playing(c) && c.sec >= 40 && (c.me.researching !== null || canStartAny(c, false)),
+      // when the new-player pass shows Research (hud/newPlayer.ts): after the first City, or at 1 min
+      when: (c) => playing(c) && (c.sec >= RESEARCH_SECONDS || countBuildings(c.s, c.me.id, 'city', true) > 0) && (c.me.researching !== null || canStartAny(c, false)),
       still: (c) => !panel(c, 'research', 'arsenal'),
       done: (c) => panel(c, 'research', 'arsenal'),
     },

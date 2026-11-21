@@ -120,6 +120,8 @@ class Group {
   private button(a: Act): HTMLButtonElement {
     const b = el('button', `wr-btn mini ${a.cls ?? ''}`);
     b.type = 'button';
+    // "fa-" + the label ("fa-warship", "fa-bomber", "fa-tank-division"): the tutorial's spotlight finds it
+    b.dataset.test = `fa-${a.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
     if (a.icon) b.append(iconSpan(lineIcon(a.icon, 14, 2)));
     b.append(el('span', 'wr-btn-l', a.label));
     if (a.off) b.setAttribute('aria-disabled', 'true');

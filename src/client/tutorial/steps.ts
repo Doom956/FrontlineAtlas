@@ -51,7 +51,7 @@ export const QUICK_TUTORIAL: TutorialChapter = {
     {
       id: 'spawn',
       label: 'Place your capital',
-      text: 'Click land in the middle of the screen to place your capital.',
+      text: 'Click the ringed land in the middle of the screen to place your capital there.',
       tile: at('spawn'),
       onEnter: (api) => api.centre(api.tile('spawn')),
       done: (_s, me) => me.spawned,
@@ -87,7 +87,7 @@ export const QUICK_TUTORIAL: TutorialChapter = {
       id: 'city',
       label: 'Build a City',
       text: 'Click City in the bottom bar, then your land, to build a City: more troops and gold.',
-      target: 'build-city || build-menu-btn',
+      target: 'build-city || bm-city || build-menu-btn',
       tile: at('citySite'),
       onEnter: (api) => topUp(api, { gold: CITY.cost + 50 }),
       done: (s, me) => [...s.buildings.values()].some((b) => b.owner === me.id && b.type === 'city'),
@@ -95,7 +95,7 @@ export const QUICK_TUTORIAL: TutorialChapter = {
     {
       id: 'tribe',
       label: 'Take a tribe',
-      text: 'Click the grey tribe to the north-east. Not touching it yet? Expand first.',
+      text: 'Click the grey tribe to the north (ringed). Not touching it yet? Expand toward it first.',
       tile: at('tribe'),
       onEnter: (api) => {
         api.finish(); // the City stands at once
@@ -135,6 +135,7 @@ export const QUICK_TUTORIAL: TutorialChapter = {
       label: 'Pick a tech',
       text: `Click ${AGRI.name} (farms grow faster). Techs cost science and gold.`,
       target: 'tech-agriculture || tab-research',
+      next: 'agriculture',
       // any tech counts (an Arsenal item bought instead too)
       done: (_s, me) => me.researching !== null || me.techs.length > 0 || (me.procuring?.length ?? 0) > 0,
     },

@@ -9,7 +9,11 @@ import {
   chapterTileKeys,
   createTutorialGame,
   TUTORIAL_CHAPTER_IDS,
+  tutorialAccept,
   tutorialEnemyAttack,
+  tutorialEnemyTanks,
+  tutorialHitHub,
+  tutorialOfferPeace,
   tutorialFinish,
   tutorialFreeze,
   tutorialGrant,
@@ -57,6 +61,10 @@ function apiFor(s: GameState): TutorialApi {
     player: (r) => tutorialPlayer(s, r),
     weaken: (id, troops) => tutorialWeaken(s, id, troops),
     enemyAttack: (id) => tutorialEnemyAttack(s, id),
+    enemyTanks: (id, tile) => tutorialEnemyTanks(s, id, tile),
+    accept: (id) => tutorialAccept(s, id),
+    offerPeace: (id) => tutorialOfferPeace(s, id),
+    hitHub: (owner, tile) => tutorialHitHub(s, owner, tile, s.humanId),
     finish: () => tutorialFinish(s, s.humanId),
     startNow: () => tutorialStart(s),
     openPanel: () => {},
@@ -145,8 +153,14 @@ const DRIVE: Record<string, Record<string, (c: Ctx) => void>> = {
   navy: {
     port: (c) => c.act({ type: 'build', building: 'port', tile: T(c, 'coast') }),
     ship: (c) => c.act({ type: 'buildWarship', port: firstOf(c, 'port') }),
-    land: (c) => c.act({ type: 'transport', from: firstOf(c, 'port'), to: T(c, 'island'), troops: share(c, 12000) }),
-    island: () => {},
+    land: (c) => c.act({ type: 'transport', from: firstOf(c, 'port'), to: T(c, 'island'), troops: share(c, 4000) }),
+    // keeps clicking the island's land: an attack from the beachhead, or another landing
+    island: (c) => {
+      const isl = tutorialPlayer(c.s, 'islanders');
+      if (c.s.attacks.some((a) => a.attacker === c.me.id && a.target === isl) || c.s.units.some((u) => u.owner === c.me.id && u.type === 'transport')) return;
+      const r = applyAction(c.s, c.me.id, { type: 'attack', tile: T(c, 'islandCity'), troops: share(c, 3000) });
+      if (!r.ok) applyAction(c.s, c.me.id, { type: 'transport', from: firstOf(c, 'port'), to: T(c, 'island'), troops: share(c, 3000) });
+    },
   },
   air: {
     airfield: build('airfield', 'home'),
@@ -160,15 +174,31 @@ const DRIVE: Record<string, Record<string, (c: Ctx) => void>> = {
     factory: build('factory', 'home'),
     mech: (c) => c.act({ type: 'procure', tech: 'mechanization' }),
     division: (c) => c.act({ type: 'buildTankDivision', tile: firstOf(c, 'factory') }),
-    push: (c) => {
+    spearhead: (c) => {
       const ids = c.s.units.filter((u) => u.owner === c.me.id && u.type === 'tankDivision').map((u) => u.id);
       c.act({ type: 'moveTankDivision', unitIds: ids, tile: T(c, 'front') });
+    },
+    // sends the division on again whenever its spearhead has ended
+    push: (c) => {
+      const ids = c.s.units.filter((u) => u.owner === c.me.id && u.type === 'tankDivision' && u.state === 0).map((u) => u.id);
+      if (ids.length) applyAction(c.s, c.me.id, { type: 'moveTankDivision', unitIds: ids, tile: T(c, 'push') });
     },
   },
   defense: {
     fort: build('fort', 'fort'),
     traps: (c) => c.act({ type: 'procure', tech: 'tankTraps' }),
-    hold: () => {},
+    // wins back the land the tanks took (an attack on the enemy's tiles inside the player's old border)
+    tanks: (c) => {
+      const foe = tutorialPlayer(c.s, 'foe');
+      if (c.s.attacks.some((a) => a.attacker === c.me.id && a.target === foe)) return;
+      const w = c.s.map.width;
+      for (let i = 0; i < c.s.map.owner.length; i++) {
+        if (c.s.map.owner[i] === foe && i % w <= 60) {
+          applyAction(c.s, c.me.id, { type: 'attack', tile: i, troops: share(c, 4000) });
+          return;
+        }
+      }
+    },
   },
   diplomacy: {
     open: (c) => (c.ui.openPanel = 'diplomacy'),
@@ -193,6 +223,9 @@ const DRIVE: Record<string, Record<string, (c: Ctx) => void>> = {
     summer: (c) => c.act({ type: 'attack', tile: T(c, 'front'), troops: share(c, c.me.troops.infantry * 0.5) }),
   },
 };
+
+/** Steps whose drive is repeated (every 2 s) until the step is done: the player keeps at it. */
+const REPEAT = new Set(['supply/cut', 'navy/island', 'armor/push', 'defense/tanks']);
 
 function play(ch: TutorialChapter): { s: GameState; seconds: number; runner: TutorialRunner } {
   const s = createTutorialGame(undefined, ch.id);
@@ -228,7 +261,7 @@ function play(ch: TutorialChapter): { s: GameState; seconds: number; runner: Tut
       tick(s);
       ticks++;
       if (t % 2 === 0) runner.update(s, me(), ui);
-      if (t % 20 === 0 && ch.id === 'supply') d(ctx);
+      if (t % 20 === 0 && REPEAT.has(`${ch.id}/${st.id}`)) d(ctx);
     }
     expect(runner.index > k || runner.finished, `${ch.id}: step ${st.id} did not finish`).toBe(true);
     expect(me().alive, `alive after ${st.id}`).toBe(true);

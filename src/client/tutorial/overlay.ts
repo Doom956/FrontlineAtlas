@@ -12,6 +12,13 @@ import { targetSelectors, type RunnerView, type StepStatus } from './engine';
 import { Spotlight } from './spotlight';
 import './tutorial.css';
 
+/** How long a map point stays ringed (ms). */
+const RING_MS = 6000;
+/** Up to this width (px) the screen is narrow: the card sits at the top, under the top bar. */
+const NARROW = 720;
+/** Widest the docked bar gets (px). */
+const DOCK_MAX = 760;
+
 export interface OverlayHandlers {
   showMe: () => void;
   next: () => void;
@@ -70,6 +77,9 @@ export class TutorialOverlay {
   private target: string | undefined;
   private listOpen = false;
   private shownKey = '';
+  /** the map point ringed after Show me (or when a step that points at the map starts), until ringUntil */
+  private ringAt: (() => { x: number; y: number; zoom: number } | null) | null = null;
+  private ringUntil = 0;
 
   constructor(private h: OverlayHandlers) {
     this.el = el('div', 'tut');
@@ -183,41 +193,104 @@ export class TutorialOverlay {
     setText(this.stepsBtn, this.listOpen ? 'Hide steps' : 'All steps');
   }
 
-  /** Moves the spotlight onto the step's element and keeps the card clear of open panels (every frame; cheap). */
+  /** Rings a map point for a few seconds (Show me, or a step that points at the map). */
+  ringTile(at: () => { x: number; y: number; zoom: number } | null, ms = RING_MS): void {
+    this.ringAt = at;
+    this.ringUntil = performance.now() + ms;
+  }
+
+  /** Moves the spotlight onto the step's element (or the ringed map point) and keeps the card clear of open panels (every frame; cheap). */
   frame(): void {
     this.dock();
-    this.light.onElement(this.target ? findTarget(this.target) : null, this.el.getBoundingClientRect());
+    const host = this.el.getBoundingClientRect();
+    const t = this.target ? findTarget(this.target) : null;
+    if (t || !this.ringAt || performance.now() > this.ringUntil || this.card.classList.contains('hidden')) {
+      if (!t && this.ringAt && performance.now() > this.ringUntil) this.ringAt = null;
+      this.light.onElement(t, host);
+      return;
+    }
+    const p = this.ringAt();
+    if (!p) {
+      this.light.hide();
+      return;
+    }
+    // the ring and arrow stay off the bottom bar and the card
+    const bar = document.querySelector<HTMLElement>('.hud .cmdbar')?.getBoundingClientRect();
+    const bottom = bar && bar.height ? Math.max(0, host.bottom - bar.top) : 0;
+    const top = this.card.classList.contains('top') || host.width <= NARROW ? Math.max(0, this.card.getBoundingClientRect().bottom - host.top) : 0;
+    this.light.onPoint(p.x, p.y, Math.max(16, Math.min(40, p.zoom * 3)), host, { top, bottom });
   }
 
   /**
-   * The card sits bottom left; when a panel (build menu, Research drawer, a long nation card) covers that corner, it moves to the free
-   * strip at the top between the standings and the cluster as one compact line.
+   * The card sits bottom left (at the top on narrow screens). While a panel (build menu, a drawer, a nation card) is
+   * open over that corner (on narrow screens: any panel), it becomes one compact bar right under the top bar, as wide
+   * as the free room beside the standings and a nation card allow (up to DOCK_MAX px), and the open panels move down
+   * below it (the HUD's --tut-room), so it covers neither the top bar's buttons nor the panel.
    */
   private dock(): void {
-    if (this.card.classList.contains('hidden')) return;
+    const hud = this.el.parentElement;
+    if (this.card.classList.contains('hidden')) {
+      this.undock(hud);
+      return;
+    }
     const host = this.el.getBoundingClientRect();
+    const narrow = host.width <= NARROW;
     const zone = { l: host.left, r: host.left + 360, t: host.bottom - 340, b: host.bottom - 70 };
     let covered = false;
+    let ncard: DOMRect | null = null;
     for (const p of document.querySelectorAll<HTMLElement>('.bm, .drawer, .ncard')) {
       if (p.classList.contains('hidden')) continue;
       const r = p.getBoundingClientRect();
-      if (r.width > 0 && r.left < zone.r && r.right > zone.l && r.top < zone.b && r.bottom > zone.t) {
-        covered = true;
-        break;
-      }
+      if (!(r.width > 0 && r.height > 0)) continue;
+      if (p.classList.contains('ncard')) ncard = r;
+      if (narrow || (r.left < zone.r && r.right > zone.l && r.top < zone.b && r.bottom > zone.t)) covered = true;
     }
     setClass(this.card, 'top', covered);
     if (!covered) {
-      if (this.card.style.left) this.card.style.left = this.card.style.width = '';
+      this.undock(hud);
       return;
     }
-    const lb = document.querySelector<HTMLElement>('.hud .lb')?.getBoundingClientRect();
+    // right under the top bar (its buttons stay clear)
     const cl = document.querySelector<HTMLElement>('.hud .cluster')?.getBoundingClientRect();
-    const left = (lb && lb.width ? lb.right : host.left) + 12 - host.left;
-    const right = (cl && cl.width ? cl.left : host.right) - 12 - host.left;
-    const w = Math.max(280, Math.min(640, right - left));
-    this.card.style.left = `${Math.round(left + Math.max(0, (right - left - w) / 2))}px`;
-    this.card.style.width = `${Math.round(w)}px`;
+    const top = Math.round((cl && cl.height ? cl.bottom : host.top + 58) - host.top + 6);
+    const gap = narrow ? 8 : 12;
+    let left = gap;
+    // beside the standings when they reach down past the bar's top, and beside an open nation card
+    const lb = document.querySelector<HTMLElement>('.hud .lb')?.getBoundingClientRect();
+    if (!narrow && lb && lb.width && lb.bottom - host.top > top) left = Math.max(left, lb.right - host.left + gap);
+    if (!narrow && ncard && ncard.top - host.top < top + 120) left = Math.max(left, ncard.right - host.left + gap);
+    const room = host.width - gap - left;
+    const w = Math.round(Math.max(Math.min(room, 300), Math.min(DOCK_MAX, room)));
+    this.card.style.left = `${Math.round(left)}px`;
+    this.card.style.top = `${top}px`;
+    this.card.style.width = `${w}px`;
+    const h = this.card.offsetHeight;
+    if (hud) {
+      // the open panels start below the bar
+      hud.classList.add('tut-docked');
+      const room = Math.round(top + h + 8);
+      const v = `${room}px`;
+      if (hud.style.getPropertyValue('--tut-room') !== v) hud.style.setProperty('--tut-room', v);
+      // the build menu grows up from the bottom bar: it ends below the bar
+      const bm = hud.querySelector<HTMLElement>('.bm');
+      const base = bm?.parentElement;
+      if (bm && base && !bm.classList.contains('hidden')) {
+        const r = base.getBoundingClientRect();
+        const k = base.offsetHeight > 0 && r.height > 0 ? r.height / base.offsetHeight : 1;
+        const fit = `min(calc(100vh - 150px), var(--bm-room, 100vh), ${Math.max(160, Math.round((r.top - host.top - room) / k - 8))}px)`;
+        if (bm.style.maxHeight !== fit) bm.style.maxHeight = fit;
+      }
+    }
+  }
+
+  private undock(hud: HTMLElement | null): void {
+    if (this.card.style.left) this.card.style.left = this.card.style.width = this.card.style.top = '';
+    if (hud?.classList.contains('tut-docked')) {
+      hud.classList.remove('tut-docked');
+      hud.style.removeProperty('--tut-room');
+      const bm = hud.querySelector<HTMLElement>('.bm');
+      if (bm) bm.style.maxHeight = '';
+    }
   }
 
   private hideSpot(): void {
@@ -230,6 +303,7 @@ export class TutorialOverlay {
   }
 
   destroy(): void {
+    this.undock(this.el.parentElement);
     this.el.remove();
   }
 }

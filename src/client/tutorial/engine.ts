@@ -5,7 +5,7 @@
 //   The tutorial's id is 'basics' (the first chapter of the old chapter list), so finishing either counts.
 // The overlay (overlay.ts) draws the runner's view; the controller (controller.ts) ties both to the HUD.
 import type { TutorialChapterId, TutorialGrant } from '../../sim/tutorialScenario';
-import type { GameState, Player } from '../../sim/types';
+import type { GameState, Player, TechId } from '../../sim/types';
 
 export type { TutorialChapterId };
 
@@ -60,6 +60,14 @@ export interface TutorialApi {
   weaken(aiId: number, infantry: number): void;
   /** makes an AI attack the player now (a "defend" step); false if it can't */
   enemyAttack(aiId: number): boolean;
+  /** an AI sends a tank division at the player's tile (a "defend" step); false if it can't */
+  enemyTanks(aiId: number, tile: number): boolean;
+  /** a frozen AI accepts the player's alliance request and peace or pact offer to it; true if something was signed */
+  accept(aiId: number): boolean;
+  /** an AI offers the player plain peace now (clears a refusal wait); false if not possible */
+  offerPeace(aiId: number): boolean;
+  /** damages a nation's supply hub on a tile, as the player's bomb would */
+  hitHub(owner: number, tile: number): boolean;
   /** finishes the player's constructions, upgrades, research and queued units now */
   finish(): void;
   /** ends the spawn phase once the player has placed the start */
@@ -81,8 +89,10 @@ export interface TutorialStep {
    * A function picks it from the game (e.g. one nation's row in the standings).
    */
   target?: string | ((s: GameState) => string);
-  /** the tile "Show me" centres (-1 = no button) */
+  /** the tile "Show me" centres and rings (-1 = no button); without a target the ring also shows when the step starts */
   tile?: (s: GameState) => number;
+  /** the Research or Arsenal card that wears the Next flag during this step (the one the text asks for) */
+  next?: TechId;
   /** absent = a read-only step with a Next button */
   done?: (s: GameState, me: Player, ui: TutorialUi) => boolean;
   onEnter?: (api: TutorialApi) => void;

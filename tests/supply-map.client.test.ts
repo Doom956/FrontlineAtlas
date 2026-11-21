@@ -67,7 +67,7 @@ describe('supply toasts, as each side reads them', () => {
     const attacker = supplyToast(s, s.players[2], evs.find((e) => e.players.includes(2))!);
     expect(victim?.text).toBe(`Your supply is cut at your factory: repair in ${SUPPLY_LINES.repairSeconds} s`);
     expect(victim?.kind).toBe('bad');
-    expect(attacker?.text).toMatch(new RegExp(`^Supply cut: ${s.players[1].name}'s (\\w|-)+ front is slower for ${SUPPLY_LINES.repairSeconds} s$`));
+    expect(attacker?.text).toMatch(new RegExp(`^You cut ${s.players[1].name}'s supply at their factory: their (\\w|-)+ front is slower for ${SUPPLY_LINES.repairSeconds} s$`));
     expect(attacker?.kind).toBe('good');
     // each side only reads its own copy
     expect(supplyToast(s, s.players[2], evs.find((e) => e.players.includes(1))!)).toBeNull();
@@ -86,7 +86,7 @@ describe('supply toasts, as each side reads them', () => {
     const { s } = chain();
     const info = { owner: 1, by: 2, hub: 5, hubKind: 'fort' as const, seconds: 45, sources: [7], direction: 'eastern' };
     const e: GameEvent = { tick: 0, kind: 'supplyHubDamaged', message: '', players: [2], tile: 5, supply: info };
-    expect(supplyToast(s, s.players[2], e)?.text).toBe(`Supply cut: ${s.players[1].name}'s eastern front is slower for 45 s`);
+    expect(supplyToast(s, s.players[2], e)?.text).toBe(`You cut ${s.players[1].name}'s supply at their fort: their eastern front is slower for 45 s`);
   });
 });
 

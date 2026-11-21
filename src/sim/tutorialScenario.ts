@@ -25,20 +25,26 @@ import { createGame, setOwner, spawnPlayer } from './state';
 import { isTribe, isWater, Terrain } from './types';
 import type { BuildingType, GameSettings, GameState, MapData, TechId, TutorialChapterId, TutorialState } from './types';
 import { unitQueue } from './navy';
+import { answerAlliance } from './diplomacy';
+import { damageHub } from './supplylines';
+import { moveTankDivisions } from './tanks';
+import { answerTreaty, offerPeace } from './treaty';
 
 export type { TutorialChapterId } from './types';
 
+type XY = readonly [number, number];
+
 /** The tutorial's id (TutorialState.chapter). There is one tutorial; 'basics' also marks it done in saved progress. */
 export const TUTORIAL_ID: TutorialChapterId = 'basics';
-/** The tutorial map: mainland x 0..131, a strait x 132..143, an island x 144..199. */
+/** The tutorial map: mainland x 0..131, then sea with one island (centre ISLAND_C, radii ISLAND_R) in it. */
 export const TUTORIAL_MAP_WIDTH = 200;
+const ISLAND_C: XY = [166, 64];
+const ISLAND_R: XY = [15, 21];
 export const TUTORIAL_MAP_HEIGHT = 128;
 /** Attacks on the taught player stop when it is down to this many tiles. */
 export const TUTORIAL_MIN_TILES = 40;
 /** Spawn phase length (the player picks a start; tutorialStart or the Start button ends it). */
 export const TUTORIAL_SPAWN_SECONDS = 600;
-
-type XY = readonly [number, number];
 
 /** Resources and techs the scenario (or a step) grants. troops = infantry. */
 export interface TutorialGrant {
@@ -83,6 +89,8 @@ interface Placed {
 interface ChapterSpec {
   /** the player's start (the suggested start in the basics) */
   home: XY;
+  /** more land for the player around its start (a rectangle, inclusive) */
+  land?: readonly [number, number, number, number];
   /** the player is placed and the game starts at once (chapters); the basics let the player pick the start */
   pre: boolean;
   grant: TutorialGrant;
@@ -109,17 +117,19 @@ const SPECS: Record<string, ChapterSpec> = {
     // weak and frozen: the "attack a neighbour" step
     nations: [{ role: 'rival', cap: [76, 78], land: [56, 58, 96, 98], troops: 3000 }],
     // its capital stays well clear of the no-spawn radius around it (state.ts spawnMinDistance) at the suggested start
-    tribes: [{ role: 'tribe', cap: [52, 43], troops: 4000, r: 8 }],
-    tiles: { spawn: HOME, citySite: HOME, wild: [46, 64], tribe: [52, 43], rival: [76, 78], front: [56, 66] },
+    // straight north of the suggested start
+    tribes: [{ role: 'tribe', cap: [42, 44], troops: 4000, r: 8 }],
+    tiles: { spawn: HOME, citySite: HOME, wild: [46, 64], tribe: [42, 44], rival: [76, 78], front: [56, 66] },
   },
-  // across the strait: a Port, a warship, a transport, an empty island to land on
+  // across open water: a Port, a warship, a transport, and an island with a weak nation and its City to take
   navy: {
     home: [126, 64],
     pre: true,
     grant: { gold: 4000, iron: 200, oil: 200, troops: 15000, techs: ['navigation'] },
-    nations: [],
+    nations: [{ role: 'islanders', cap: [170, 66], land: [148, 40, 184, 88], troops: 800 }],
     tribes: [],
-    tiles: { coast: [131, 64], island: [144, 64] },
+    tiles: { coast: [131, 64], island: [151, 64], islandCity: [160, 60] },
+    buildings: [{ type: 'city', at: [160, 60], owner: 'islanders' }],
   },
   // a weak nation with a Fort and a SAM site 20 to 30 tiles away: Airfield, bombers, bombs
   air: {
@@ -141,16 +151,19 @@ const SPECS: Record<string, ChapterSpec> = {
     grant: { gold: 4000, iron: 900, oil: 300, armor: 5000, techs: ['metallurgy'] },
     nations: [{ role: 'foe', cap: [76, 64], land: [46, 50, 90, 78], troops: 1200 }],
     tribes: [],
-    tiles: { front: [46, 64], push: [76, 64] },
+    tiles: { front: [46, 64], push: [56, 64] },
   },
-  // a strong neighbour that will attack: Fortification, Tank Traps, a Fort
+  // a strong neighbour along a long border: Fortification, a Fort at the border, Tank Traps. A Fort stops a spearhead
+  // inside its own reach, the traps work in the belt beyond it, so the enemy tanks come at the border well north of
+  // the Fort ('tanks', inside the belt).
   defense: {
     home: HOME,
     pre: true,
     grant: { gold: 3000, iron: 200, science: 2500, techs: ['fortification'] },
-    nations: [{ role: 'foe', cap: [76, 64], land: [46, 50, 90, 78], troops: 30000 }],
+    land: [30, 12, 60, 116],
+    nations: [{ role: 'foe', cap: [90, 64], land: [61, 12, 110, 116], troops: 30000 }],
     tribes: [],
-    tiles: { front: [46, 64], fort: [43, 64] },
+    tiles: { front: [61, 64], fort: [58, 64], tanks: [58, 28] },
   },
   // three neighbours: one friendly, one at war with you and weak, one quiet
   diplomacy: {
@@ -164,7 +177,7 @@ const SPECS: Record<string, ChapterSpec> = {
     ],
     tribes: [],
     tiles: { friend: [40, 30], enemy: [76, 64], quiet: [40, 100] },
-    awake: ['friend', 'enemy', 'quiet'],
+    // all three stay frozen: the chapter's steps answer the player's offers (tutorialAccept) and keep the war going
     opinions: [['friend', 80]],
     attackers: ['enemy'],
   },
@@ -175,13 +188,14 @@ const SPECS: Record<string, ChapterSpec> = {
     grant: { gold: 3000, iron: 300, techs: ['flight'] },
     nations: [{ role: 'foe', cap: [100, 64], land: [49, 52, 112, 76], troops: 2000 }],
     tribes: [],
-    tiles: { airfield: [44, 64], city: [76, 64], fort: [54, 64], foe: [100, 64] },
+    // the City sits off the middle of the enemy's land, clear of its name on the map
+    tiles: { airfield: [44, 64], city: [74, 57], fort: [54, 64], foe: [100, 64] },
     // Flak on the foe's Fort and City wears the bombers, so a bomb mostly damages the hub instead of razing it
     techs: [['foe', ['flakGuns']]],
     buildings: [
       { type: 'airfield', at: [44, 64], owner: 'me', bombers: 4 },
       { type: 'fort', at: [54, 64], owner: 'foe' },
-      { type: 'city', at: [76, 64], owner: 'foe' },
+      { type: 'city', at: [74, 57], owner: 'foe' },
     ],
   },
   // a weak neighbour to attack once the seasons have been shown
@@ -191,7 +205,8 @@ const SPECS: Record<string, ChapterSpec> = {
     grant: { gold: 1000, techs: ['mechanization'] },
     nations: [{ role: 'foe', cap: [76, 64], land: [46, 52, 90, 76], troops: 1500 }],
     tribes: [],
-    tiles: { front: [46, 64] },
+    // snow: where the winter snow line shows (it comes down from the poles)
+    tiles: { front: [46, 64], snow: [40, 32] },
   },
 };
 const SEED = 7101;
@@ -248,15 +263,19 @@ export function tutorialMap(): MapData {
     for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) if ((x - cx) ** 2 + (y - cy) ** 2 <= r * r) put(x, y, t);
   };
   map.terrain.fill(Terrain.Plains);
-  // The strait: shallow edges, deep middle.
-  for (let y = 0; y < H; y++) for (let x = 132; x <= 143; x++) put(x, y, x <= 133 || x >= 142 ? Terrain.ShallowWater : Terrain.DeepWater);
+  // The sea east of the mainland (x >= 132), shallow along the coasts, with one island out in it (the navy chapter):
+  // an oval of land about 18 tiles off the coast, open water all round it.
+  for (let y = 0; y < H; y++) {
+    for (let x = 132; x < W; x++) {
+      const d = ((x - ISLAND_C[0]) / ISLAND_R[0]) ** 2 + ((y - ISLAND_C[1]) / ISLAND_R[1]) ** 2;
+      put(x, y, d <= 1 ? Terrain.Plains : d <= 1.35 || x <= 133 ? Terrain.ShallowWater : Terrain.DeepWater);
+    }
+  }
   // Scenery, away from the start, the tribe and the neighbour.
   blob(20, 40, 6, Terrain.Forest);
   blob(20, 92, 5, Terrain.Hills);
   blob(10, 64, 4, Terrain.Forest);
-  blob(176, 40, 6, Terrain.Forest);
-  blob(176, 92, 6, Terrain.Hills);
-  blob(192, 64, 4, Terrain.Desert);
+  blob(172, 54, 4, Terrain.Forest);
   blob(60, 10, 5, Terrain.Mountains);
   computeCoastAndLand(map);
   return map;
@@ -336,6 +355,10 @@ function startChapter(state: GameState, SPEC: ChapterSpec, human: number, nation
   state.spawnLeft = 0;
   state.phase = 'playing';
   state.playStartTick = state.tick;
+  if (SPEC.land) {
+    const [x0, y0, x1, y1] = SPEC.land;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (state.map.owner[at([x, y])] === 0 && !isWater(state.map.terrain[at([x, y])])) setOwner(state, at([x, y]), human);
+  }
   updateFog(state, true);
   const idOf = (role: string): number => (role === 'me' ? human : tutorialRoleId(SPEC, human, nationIds, tribeIds, role));
   for (const b of SPEC.buildings ?? []) {
@@ -447,6 +470,75 @@ export function tutorialEnemyAttack(state: GameState, aiId: number): boolean {
   return applyAdmin(state, t.human, { type: 'admin', op: 'declareWar', player: aiId, other: t.human }).ok;
 }
 
+/**
+ * A frozen AI answers the taught player now: it accepts the player's alliance request and peace or pact offer to it
+ * (the diplomacy chapter's AIs stay frozen, so this is the only way they answer). True if something was signed.
+ */
+export function tutorialAccept(state: GameState, aiId: number): boolean {
+  const t = state.tutorial;
+  if (!t || state.phase !== 'playing' || aiId === t.human || !state.players[aiId]?.alive) return false;
+  let signed = false;
+  if (state.allianceRequests.some((r) => r.from === t.human && r.to === aiId)) signed = answerAlliance(state, aiId, t.human, true).ok || signed;
+  if ((state.treatyOffers ?? []).some((o) => o.from === t.human && o.to === aiId)) signed = answerTreaty(state, aiId, t.human, true).ok || signed;
+  return signed;
+}
+
+/**
+ * An AI offers the taught player plain peace (nobody pays) now, after clearing any wait a refusal left between the two.
+ * False when an offer between them is already waiting or peace is not possible (no fighting in the last minute).
+ */
+export function tutorialOfferPeace(state: GameState, aiId: number): boolean {
+  const t = state.tutorial;
+  if (!t || state.phase !== 'playing' || aiId === t.human) return false;
+  const c = state.treatyCooldowns;
+  if (c?.length) {
+    const keep: number[] = [];
+    for (let k = 0; k < c.length; k += 3) {
+      const pair = (c[k] === aiId && c[k + 1] === t.human) || (c[k] === t.human && c[k + 1] === aiId);
+      if (!pair) keep.push(c[k], c[k + 1], c[k + 2]);
+    }
+    state.treatyCooldowns = keep;
+  }
+  return offerPeace(state, aiId, t.human, 'none', 'none').ok;
+}
+
+/**
+ * An AI sends a tank division at the taught player's tile `target` (the defense chapter: its traps get to work). The
+ * division appears on the AI's land nearest the target and drives in as a spearhead. False if it can't.
+ */
+export function tutorialEnemyTanks(state: GameState, aiId: number, target: number): boolean {
+  const t = state.tutorial;
+  if (!t || state.phase !== 'playing' || aiId === t.human || target < 0) return false;
+  const map = state.map;
+  const w = map.width;
+  const tx = target % w;
+  const ty = (target / w) | 0;
+  let best = -1;
+  let bestD = Infinity;
+  for (let i = 0; i < map.owner.length; i++) {
+    if (map.owner[i] !== aiId || isWater(map.terrain[i]) || map.building[i]) continue;
+    const d = ((i % w) - tx) ** 2 + (((i / w) | 0) - ty) ** 2;
+    // a few tiles back from the border, so the division drives up and charges
+    if (d >= 36 && d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  }
+  if (best < 0) return false;
+  if (!applyAdmin(state, t.human, { type: 'admin', op: 'spawnTankDivision', player: aiId, tile: best }).ok) return false;
+  const unit = state.units.filter((u) => u.owner === aiId && u.type === 'tankDivision' && u.hp > 0).sort((a, b) => b.id - a.id)[0];
+  return !!unit && moveTankDivisions(state, aiId, [unit.id], target).ok;
+}
+
+/**
+ * Damages a nation's supply hub on `tile` as a bomb by `by` would (the supply chapter: a City the bombs razed is put
+ * back damaged, so the cut it would have made still stands). False if it is no hub or is guarded.
+ */
+export function tutorialHitHub(state: GameState, owner: number, tile: number, by: number): boolean {
+  if (!state.tutorial || state.phase !== 'playing') return false;
+  return damageHub(state, owner, tile, by);
+}
+
 /** Finishes the player's constructions, upgrades, research, Arsenal orders and queued warships / tank divisions now. */
 export function tutorialFinish(state: GameState, pid: number): void {
   const t = state.tutorial;
@@ -469,10 +561,12 @@ export function tutorialStart(state: GameState): boolean {
  * Jumps the game clock to the start of a season (0 spring .. 3 winter), so the seasons chapter can show all four in
  * seconds. The season is a pure function of the play clock (seasons.ts), so only playStartTick moves (it is hashed).
  */
-export function tutorialSetSeason(state: GameState, index: number): void {
+export function tutorialSetSeason(state: GameState, index: number, into = 0): void {
   if (!state.tutorial || state.phase !== 'playing') return;
   const i = Math.max(0, Math.min(3, Math.round(index)));
-  state.playStartTick = state.tick - i * SEASON_TICKS - 5;
+  // `into`: how far into the season (0..0.9 of it), e.g. far enough into winter that the snow has come
+  const f = Math.max(0, Math.min(0.9, Number.isFinite(into) ? into : 0));
+  state.playStartTick = state.tick - i * SEASON_TICKS - Math.floor(f * SEASON_TICKS) - 5;
 }
 
 /**

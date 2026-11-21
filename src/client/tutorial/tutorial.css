@@ -201,6 +201,32 @@
 .tut-card.top .tut-acts {
   flex: none;
 }
+/* docked under the top bar (overlay.ts dock): the open panels start below it */
+.hud.tut-docked .drawer {
+  top: var(--tut-room);
+  max-height: calc((100% - var(--tut-room) - 100px * var(--ui, 1)) / var(--ui, 1));
+}
+.hud.tut-docked aside.drawer[data-page='research'] {
+  max-height: calc((100% - var(--tut-room) - 84px * var(--ui, 1)) / var(--ui, 1));
+}
+.tut-card.top {
+  background-color: var(--metal);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  z-index: 5;
+}
+@media (max-width: 720px) {
+  .tut-card.top {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .tut-card.top .tut-text {
+    flex: 1 1 100%;
+    order: -1;
+  }
+  .tut-card.top .tut-head {
+    flex: 1;
+  }
+}
 
 /* ---------------------------------------------------------------- spotlight */
 .tut-spot {

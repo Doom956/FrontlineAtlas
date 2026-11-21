@@ -1,7 +1,21 @@
 // Tutorial mode in a running game: ties the tutorial's step runner (engine.ts) to the HUD and the overlay (overlay.ts).
 // Single player only: the scenario helpers (src/sim/tutorialScenario.ts) are called directly between ticks; nothing
 // goes through actions or the network. main.ts makes one per tutorial game and calls update() / frame() every frame.
-import { tutorialEnemyAttack, tutorialFinish, tutorialFreeze, tutorialGrant, tutorialPlayer, tutorialStart, tutorialTile, tutorialWake, tutorialWeaken } from '../../sim/tutorialScenario';
+import {
+  tutorialAccept,
+  tutorialEnemyAttack,
+  tutorialEnemyTanks,
+  tutorialFinish,
+  tutorialFreeze,
+  tutorialGrant,
+  tutorialHitHub,
+  tutorialOfferPeace,
+  tutorialPlayer,
+  tutorialStart,
+  tutorialTile,
+  tutorialWake,
+  tutorialWeaken,
+} from '../../sim/tutorialScenario';
 import type { GameState, Player } from '../../sim/types';
 import type { Hud } from '../hud';
 import { strikeOfMode } from '../strikes';
@@ -48,6 +62,7 @@ export class TutorialController {
   private overlay: TutorialOverlay;
   private last = -Infinity;
   private recorded = false;
+  private ringedStep = '';
 
   constructor(
     readonly chapter: TutorialChapter,
@@ -67,6 +82,10 @@ export class TutorialController {
       player: (role) => tutorialPlayer(self.state(), role),
       weaken: (id, troops) => tutorialWeaken(self.state(), id, troops),
       enemyAttack: (id) => tutorialEnemyAttack(self.state(), id),
+      enemyTanks: (id, tile) => tutorialEnemyTanks(self.state(), id, tile),
+      accept: (id) => tutorialAccept(self.state(), id),
+      offerPeace: (id) => tutorialOfferPeace(self.state(), id),
+      hitHub: (owner, tile) => tutorialHitHub(self.state(), owner, tile, self.state().humanId),
       finish: () => tutorialFinish(self.state(), self.state().humanId),
       startNow: () => tutorialStart(self.state()),
       openPanel: (name) => hud.openTutorialPanel(name),
@@ -81,7 +100,10 @@ export class TutorialController {
     this.overlay = new TutorialOverlay({
       showMe: () => {
         const t = this.showTile();
-        if (t >= 0) hud.centreOn(t);
+        if (t < 0) return;
+        hud.centreOn(t);
+        // the ring on the tile: where to click
+        this.overlay.ringTile(() => hud.tilePoint(this.showTile()));
       },
       next: () => this.runner.next(),
       exit: () => hooks.exit(),
@@ -121,6 +143,7 @@ export class TutorialController {
     this.last = now;
     const me = s.players[s.humanId];
     if (me && s.phase !== 'over') this.runner.update(s, me, tutorialUiFacts(this.ui, view));
+    const hud = this.hud;
     if (this.runner.finished && !this.recorded) {
       this.recorded = true;
       markChapterDone(this.chapter.id);
@@ -128,7 +151,15 @@ export class TutorialController {
       if (view.drawer) this.hud.closeOverlay();
     }
     const rv = this.runner.view();
-    this.overlay.render(rv, { showMe: this.showTile() >= 0, target: stepTarget(rv.step, s) });
+    const target = stepTarget(rv.step, s);
+    this.hud.tutorialNext(rv.step?.next ?? null);
+    const key = rv.finished ? '' : `${rv.index}`;
+    if (key !== this.ringedStep) {
+      this.ringedStep = key;
+      // a step that points at the map (a tile, no HUD element) rings its tile when it starts
+      if (rv.step && !target && this.showTile() >= 0) this.overlay.ringTile(() => hud.tilePoint(this.showTile()));
+    }
+    this.overlay.render(rv, { showMe: this.showTile() >= 0, target });
   }
 
   /** Keeps the spotlight on its element (every frame). */

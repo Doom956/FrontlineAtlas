@@ -23,7 +23,7 @@ import { el, pct, setClass, setText, type DrawerId, type HudCtx } from './dom';
 import { seg2, type DrawerPage } from './drawers';
 import { iconSpan, lineIcon } from './glyph';
 import { pixelGlyph, pixelIcon } from './pixelIcons';
-import { arsenalCard, missingBuilding, ordersOf, priceOf, type Order } from './procure';
+import { arsenalCard, missingBuilding, onOrder, ordersOf, priceOf, type Order } from './procure';
 import { BRANCH_TECH_ICON, BRANCH_TECH_LINE } from './techFork';
 import { TechRowsView } from './arsenalPage';
 import { formatEta, masteryCapLine, masteryCounter, nextAffordable, panelLayout, researchEta, tabOf, type PanelTab, type RowId } from './techRows';
@@ -561,11 +561,17 @@ export class ResearchPage implements DrawerPage {
     else if (this.last) this.updateDetail(this.last.s, this.last.me);
   }
 
+  /** Tutorial mode: the card that wears the Next flag while a step asks for it (null = the cheapest one, as always). */
+  preferNext: TechId | null = null;
+
   private updateViews(s: GameState, me: Player): void {
     this.last = { s, me };
     for (const tab of ['research', 'arsenal'] as const) {
       const v = this.views[tab];
-      const next = nextAffordable(s, me, v.layout, tab === this.tab ? this.rowFilter() : undefined);
+      // a tutorial step may name the card that wears the Next flag (the one its text asks for)
+      const pref = this.preferNext;
+      const prefOk = !!pref && tabOf(pref) === tab && !me.techs.includes(pref) && me.researching !== pref && !onOrder(me, pref);
+      const next = prefOk ? pref : nextAffordable(s, me, v.layout, tab === this.tab ? this.rowFilter() : undefined);
       if (tab === this.tab) v.update(s, me, next);
       // a dot on the other tab when something there can be bought now
       const any = tab === this.tab ? null : nextAffordable(s, me, v.layout);

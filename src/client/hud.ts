@@ -25,7 +25,7 @@ import { treatyOffersOf } from '../sim/treaty';
 import { offerSentence, treatyEventText, treatyIcon } from './hud/treatyUi';
 import { mods } from '../sim/rules';
 import { gameSeconds } from '../sim/state';
-import type { GameEvent, GameState, Player } from '../sim/types';
+import type { GameEvent, GameState, Player, TechId } from '../sim/types';
 import type { AudioManager } from './audio';
 import type { Camera } from './camera';
 import { isTribe } from './compat';
@@ -717,6 +717,18 @@ export class Hud {
   centreOn(tile: number): void {
     this.focusTile(tile, true);
   }
+  /** Tutorial mode: the Research or Arsenal card that wears the Next flag (null = the usual pick). */
+  tutorialNext(tech: TechId | null): void {
+    this.drawer.page<ResearchPage>('research').preferNext = tech;
+  }
+  /** Screen point (px, relative to the HUD) of a tile's centre. */
+  tilePoint(tile: number): { x: number; y: number; zoom: number } | null {
+    const s = this.state;
+    if (!s || tile < 0) return null;
+    const w = s.map.width;
+    const p = this.camera.tileToScreen((tile % w) + 0.5, ((tile / w) | 0) + 0.5);
+    return { x: p.x, y: p.y, zoom: this.camera.zoom };
+  }
 
   /** What the radial menu offers for a tile (kept public for tests). */
   radialSpec(state: GameState, me: Player, tile: number): RadialSpec {
@@ -971,9 +983,10 @@ export class Hud {
   /** The new-player pass (hud/newPlayer.ts): controls appear when useful; a control the guide or advisor points at appears at once. */
   private updatePass(state: GameState, me: Player, watching: boolean): void {
     if (!watching && this.guide) {
-      for (const m of this.guide.target.matchAll(/open-(\w+)/g)) this.pass.revealDrawer(m[1]);
+      // a control the guide or the advisor points at shows now, with its "New:" note
+      for (const m of this.guide.target.matchAll(/open-(\w+)/g)) this.pass.revealDrawer(m[1], true);
       const d = this.advisor.wantsDrawer;
-      if (d) this.pass.revealDrawer(d);
+      if (d) this.pass.revealDrawer(d, true);
     }
     this.pass.update(state, me);
     // a finished game counts toward the pass (not a tutorial, not a spectator)
