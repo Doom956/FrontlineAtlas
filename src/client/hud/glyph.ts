@@ -202,6 +202,8 @@ const LINE: Record<string, string> = {
   dot: '<circle cx="12" cy="12" r="3" fill="currentColor"/>',
   copy: '<path d="M9 9h11v11H9z"/><path d="M15 9V4H4v11h5"/>',
   signal: '<path d="M4 20v-3M9 20v-7M14 20V9M19 20V5"/>',
+  train: '<path d="M6 4h12v11H6z"/><path d="M6 10h12M9 7h1M14 7h1"/><circle cx="9" cy="13" r="0.8"/><circle cx="15" cy="13" r="0.8"/><path d="M8 15l-2 4M16 15l2 4M4 19h16"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/>',
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   lock: '<path d="M5 11h14v10H5z"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   // Defense part 3: the Counteroffensive (a fort wall with an arrow out of it) and anti-radar (a dish with a strike line)

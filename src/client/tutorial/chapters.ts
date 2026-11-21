@@ -316,7 +316,7 @@ export const DIPLOMACY_CHAPTER: TutorialChapter = {
 export const SUPPLY_CHAPTER: TutorialChapter = {
   id: 'supply',
   title: 'Supply',
-  icon: 'signal',
+  icon: 'train',
   blurb: 'Trains, rails and cutting a hub',
   minutes: 3,
   ...PLAY,
@@ -364,7 +364,7 @@ export const SUPPLY_CHAPTER: TutorialChapter = {
 export const SEASONS_CHAPTER: TutorialChapter = {
   id: 'seasons',
   title: 'Seasons',
-  icon: 'clock',
+  icon: 'sun',
   blurb: 'Mud, snow, ice and the best time to attack',
   minutes: 2,
   ...PLAY,
