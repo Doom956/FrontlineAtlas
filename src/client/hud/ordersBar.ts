@@ -8,6 +8,7 @@
 // Everything is one or two clicks; the rules stay in the sim.
 import { divisionStrength } from '../../sim/armor2';
 import { warshipMaxHp } from '../../sim/naval2';
+import { unitName } from '../forces';
 import type { GameState, Player, Unit } from '../../sim/types';
 import { followsWar, followText, groupFollow } from '../follow';
 import { followUnitsAgain, MODE_INFO, MODE_ORDER, pocketLine, pocketPreview, setMode, setStance, sharedMode, sharedStance, STANCE_INFO, STANCE_ORDER, vetOf, VET_MAX, type ChoiceInfo } from '../pillars';
@@ -228,7 +229,7 @@ export class OrdersBar {
       const stance = sharedStance(state, me.id, c.warships);
       this.followLine(this.ships, state, me.id, 'warship', stance, c.warships);
       this.ships.set(
-        c.warships.length === 1 ? 'Warship' : `${c.warships.length} warships`,
+        c.warships.length === 1 ? unitName(ships[0]) : `${c.warships.length} warships`,
         stance,
         vetOf(lead),
         hull,

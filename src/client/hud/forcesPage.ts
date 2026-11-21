@@ -321,7 +321,7 @@ export class ForcesPage implements DrawerPage {
         rows.push({
           key: `w${u.id}${u.variant ?? ''}`,
           pic: { unit: 'warship', sprite: { type: u.type, variant: u.variant, owner: me.color } },
-          title: `Warship ${k + 1}`,
+          title: `${unitName(u)} ${k + 1}`,
           status: `${STANCE_INFO[warshipStance(u)].name}${(u.vet ?? 0) > 0 ? ` ${'★'.repeat(vetOf(u).level)}` : ''} · Hull ${hpText(u)} · ${warshipOrderLine(s, me.id, u) || unitDoing(s, me, u)}`,
           tile: this.tileOf(s, u),
           warn: u.hp < UNITS.warship.hp,

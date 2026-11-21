@@ -10,7 +10,7 @@ import { divisionReachLine, shipReachLine } from '../reach';
 import { warshipMaxHp, warshipStance } from '../../sim/naval2';
 import { MODE_INFO, STANCE_INFO, vetOf } from '../pillars';
 import type { GameState, Player } from '../../sim/types';
-import { hpText, unitDoing } from '../forces';
+import { hpText, unitDoing, unitName } from '../forces';
 import { unitAutoLine } from '../follow';
 import { iconDataUrl } from '../icons';
 import { el, setClass, setText, setTip, setVisible, type HudCtx } from './dom';
@@ -121,7 +121,7 @@ export class UnitCard {
       this.lastMs = now;
       const tank = u.type === 'tankDivision';
       const same = state.units.filter((q) => q.owner === me.id && q.type === u.type);
-      setText(this.title, `${tank ? 'Tank division' : 'Warship'} ${same.indexOf(u) + 1}`);
+      setText(this.title, `${tank ? 'Tank division' : unitName(u)} ${same.indexOf(u) + 1}`);
       const lvl = vetOf(u).level;
       setText(this.sub, `Yours · ${tank ? MODE_INFO[divisionMode(u)].name : STANCE_INFO[warshipStance(u)].name}${lvl ? ` · veteran ${lvl}` : ''}`);
       const owner = state.players.find((p) => p.id === u.owner)?.color ?? me.color;

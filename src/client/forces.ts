@@ -13,6 +13,7 @@ import { AIR, BOMBER_RADIUS, NAVY_SUPPORT_RANGE, TECHS, UNITS, WARSHIP_RANGE } f
 import { SHELL_RANGE_TILES } from './reach';
 import { areAllied } from '../sim/diplomacy';
 import { unitCost } from '../sim/units';
+import { NAVAL_VARIANT_TECH, VARIANT_NAMES } from '../sim/variants';
 import { warshipOrderCost } from '../sim/navy';
 import { mendingInPort, warshipMaxHp } from '../sim/naval2';
 import { armyTotal } from '../sim/economy';
@@ -385,6 +386,7 @@ export function isIncoming(state: GameState, me: number, u: Unit): boolean {
 
 /** A unit's name as the cards say it ("Warship", "Cargo plane"). */
 export function unitName(u: Unit): string {
+  if (u.type === 'warship' && u.variant && u.variant in NAVAL_VARIANT_TECH) return VARIANT_NAMES[u.variant];
   return u.type === 'transportPlane' ? 'Cargo plane' : UNITS[u.type].name;
 }
 
