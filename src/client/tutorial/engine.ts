@@ -24,6 +24,8 @@ export interface TutorialUi {
   selectedUnits: number;
   /** the building being placed (build mode), else null */
   buildMode: string | null;
+  /** the Supply layer is on (Map key) */
+  showSupply?: boolean;
   /** the click mode: 'none', 'build', 'barrage', 'bomb', 'missile', 'paradrop', 'pillarPick', 'spawnWarship', ... */
   mode: string;
   /** the strike being aimed ('barrage', 'bomb', 'paradrop', 'rocket', 'atomBomb'), else null */
@@ -84,6 +86,8 @@ export interface TutorialStep {
   /** absent = a read-only step with a Next button */
   done?: (s: GameState, me: Player, ui: TutorialUi) => boolean;
   onEnter?: (api: TutorialApi) => void;
+  /** runs on every check while this step is current: puts back what a lesson needs (a target that got destroyed, a spent wing) */
+  keep?: (api: TutorialApi, s: GameState, me: Player) => void;
 }
 
 /** The tutorial (a list of steps on one practice game). Engine tests use small ones of their own. */
@@ -93,6 +97,13 @@ export interface TutorialChapter {
   /** about how long it takes */
   minutes: number;
   steps: TutorialStep[];
+  /** icon of the chapter card (hud/glyph lineIcon name) */
+  icon?: string;
+  /** one plain line for the chapter card */
+  blurb?: string;
+  /** the closing card: its headline and line (default: the basics' words) */
+  endTitle?: string;
+  endText?: string;
 }
 
 // ------------------------------------------------------------------------------------------------ progress
@@ -144,6 +155,11 @@ export function markChapterDone(id: TutorialChapterId): void {
 
 export function isChapterDone(id: TutorialChapterId): boolean {
   return loadProgress().done.includes(id);
+}
+
+/** Chapter ids finished at least once, read once per call. */
+export function doneChapters(): TutorialChapterId[] {
+  return loadProgress().done;
 }
 
 /** True while the one-time "try the tutorial" hint is still due: never finished and never shown. */
@@ -209,6 +225,7 @@ export class TutorialRunner {
     while (!this.finished && guard-- > 0) {
       this.enter();
       const st = this.chapter.steps[this.i];
+      this.keepUp(st, s, me);
       if (!st.done || !this.check(st, s, me, ui)) return;
       this.advance('done');
     }
@@ -240,6 +257,18 @@ export class TutorialRunner {
       console.error(`Tutorial step ${st.id}: onEnter failed`, err);
     }
     this.onChange();
+  }
+
+  private keepUp(st: TutorialStep, s: GameState, me: Player): void {
+    if (!st.keep) return;
+    try {
+      st.keep(this.api, s, me);
+    } catch (err) {
+      if (!this.warned.has(`keep:${st.id}`)) {
+        this.warned.add(`keep:${st.id}`);
+        console.error(`Tutorial step ${st.id}: keep() failed`, err);
+      }
+    }
   }
 
   private check(st: TutorialStep, s: GameState, me: Player, ui: TutorialUi): boolean {

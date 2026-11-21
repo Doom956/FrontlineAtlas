@@ -25,6 +25,7 @@ export function tutorialUiFacts(ui: UiState, view: ReturnType<Hud['tutorialView'
   const openPanel = view.buildMenu ? 'build' : view.drawer === 'research' && view.researchTab === 'arsenal' ? 'arsenal' : view.drawer;
   return {
     attackShare: ui.attackShare,
+    showSupply: ui.showSupply,
     openPanel,
     researchTab: view.researchTab,
     selectedUnits: ui.selection.length,

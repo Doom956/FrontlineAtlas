@@ -10,22 +10,25 @@ import type { GameState, Player } from '../../sim/types';
 import type { TutorialApi, TutorialChapter } from './engine';
 
 /** "Show me" on a named tile. */
-const at =
+export const at =
   (key: string) =>
   (s: GameState): number =>
     tutorialTile(s, key);
 
 /** An own attack on `target` (0 = wilderness) is running. */
-const attacking = (s: GameState, me: Player, target: number): boolean => s.attacks.some((a) => a.attacker === me.id && a.target === target);
+export const attacking = (s: GameState, me: Player, target: number): boolean => s.attacks.some((a) => a.attacker === me.id && a.target === target);
 const homeTroops = (me: Player): number => me.troops.infantry + me.troops.armor + me.troops.artillery;
 
 /** Tops gold (and science) up to what the step costs, so a slow start never blocks it. */
-function topUp(api: TutorialApi, need: { gold?: number; science?: number; troops?: number }): void {
+export function topUp(api: TutorialApi, need: { gold?: number; iron?: number; oil?: number; science?: number; troops?: number; armor?: number }): void {
   const me = api.me();
   api.grant({
     gold: Math.max(0, (need.gold ?? 0) - me.gold),
+    iron: Math.max(0, (need.iron ?? 0) - me.iron),
+    oil: Math.max(0, (need.oil ?? 0) - me.oil),
     science: Math.max(0, (need.science ?? 0) - me.science),
     troops: Math.max(0, (need.troops ?? 0) - homeTroops(me)),
+    armor: Math.max(0, (need.armor ?? 0) - me.troops.armor),
   });
 }
 
@@ -38,8 +41,12 @@ const AGRI = TECHS.agriculture;
 
 export const QUICK_TUTORIAL: TutorialChapter = {
   id: TUTORIAL_ID,
-  title: 'Tutorial',
+  title: 'Basics',
   minutes: 5,
+  icon: 'play',
+  blurb: 'Your first minutes: expand, build, attack, research',
+  endTitle: 'You know the basics.',
+  endText: 'Play a game now, or learn more in Tutorials.',
   steps: [
     {
       id: 'spawn',

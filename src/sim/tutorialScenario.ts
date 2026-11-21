@@ -10,15 +10,20 @@
 //     until a woken AI is made hostile (the owner console's aiPassive list, admin.ts).
 // The map: the player picks a start in a spawn phase that waits for them; a grey tribe to the north-east and a weak,
 // frozen nation to the east are both one short expansion away.
+// Chapters (navy, air, armor, defense, diplomacy, supply, seasons) use the same map and rules with a ChapterSpec each:
+// the player is placed and the game starts at once, with the resources and techs the lesson needs, the other nations
+// and buildings it uses, and nothing else (no rule changes: only the setup hooks the owner console already has).
 // Deterministic: fixed seed, no Math.random / Date.
 import { adminState, applyAdmin } from './admin';
 import { TECHS } from './config';
 import { forEachInRadius } from './grid';
 import { computeCoastAndLand, createMapData } from './mapgen';
 import { cloneSetup, DEFAULT_MODIFIERS, DEFAULT_SETUP } from './setup';
-import { createGame, setOwner } from './state';
+import { updateFog } from './fog';
+import { SEASON_TICKS } from './seasons';
+import { createGame, setOwner, spawnPlayer } from './state';
 import { isTribe, isWater, Terrain } from './types';
-import type { GameSettings, GameState, MapData, TechId, TutorialChapterId, TutorialState } from './types';
+import type { BuildingType, GameSettings, GameState, MapData, TechId, TutorialChapterId, TutorialState } from './types';
 import { unitQueue } from './navy';
 
 export type { TutorialChapterId } from './types';
@@ -63,28 +68,155 @@ interface TribeSpec {
 }
 
 const HOME: XY = [40, 64];
-const SPEC = {
-  /** the suggested start (Show me) */
-  home: HOME,
-  grant: { gold: 1500 } as TutorialGrant,
-  /** weak and frozen: the "attack a neighbour" step */
-  nations: [{ role: 'rival', cap: [76, 78], land: [56, 58, 96, 98], troops: 3000 }] as NationSpec[],
-  // its capital stays well clear of the no-spawn radius around it (state.ts spawnMinDistance) at the suggested start
-  tribes: [{ role: 'tribe', cap: [52, 43], troops: 4000, r: 8 }] as TribeSpec[],
+
+/** A building the scenario places (before the first tick); `owner` is a role, 'me' = the player. */
+interface Placed {
+  type: BuildingType;
+  at: XY;
+  owner: string;
+  level?: number;
+  /** bombers / fighters in it (an airfield) */
+  bombers?: number;
+}
+
+/** One lesson's setup. */
+interface ChapterSpec {
+  /** the player's start (the suggested start in the basics) */
+  home: XY;
+  /** the player is placed and the game starts at once (chapters); the basics let the player pick the start */
+  pre: boolean;
+  grant: TutorialGrant;
+  nations: NationSpec[];
+  tribes: TribeSpec[];
   /** named tiles for steps and Show me ('home', 'wild' and 'front' follow the game, see tutorialTile) */
-  tiles: { spawn: HOME, citySite: HOME, wild: [46, 64], tribe: [52, 43], rival: [76, 78], front: [56, 66] } as Record<string, XY>,
+  tiles: Record<string, XY>;
+  buildings?: Placed[];
+  /** roles that decide again from the start (diplomacy: they answer offers) */
+  awake?: string[];
+  /** [role, opinion of the player -100..100] */
+  opinions?: [string, number][];
+  /** roles that attack the player at the start (a war to make peace in) */
+  attackers?: string[];
+  /** techs a nation starts with (role, techs) */
+  techs?: [string, TechId[]][];
+}
+
+const SPECS: Record<string, ChapterSpec> = {
+  basics: {
+    home: HOME,
+    pre: false,
+    grant: { gold: 1500 },
+    // weak and frozen: the "attack a neighbour" step
+    nations: [{ role: 'rival', cap: [76, 78], land: [56, 58, 96, 98], troops: 3000 }],
+    // its capital stays well clear of the no-spawn radius around it (state.ts spawnMinDistance) at the suggested start
+    tribes: [{ role: 'tribe', cap: [52, 43], troops: 4000, r: 8 }],
+    tiles: { spawn: HOME, citySite: HOME, wild: [46, 64], tribe: [52, 43], rival: [76, 78], front: [56, 66] },
+  },
+  // across the strait: a Port, a warship, a transport, an empty island to land on
+  navy: {
+    home: [126, 64],
+    pre: true,
+    grant: { gold: 4000, iron: 200, troops: 15000, techs: ['navigation'] },
+    nations: [],
+    tribes: [],
+    tiles: { coast: [131, 64], island: [144, 64] },
+  },
+  // a weak nation with a Fort and a SAM site 20 to 30 tiles away: Airfield, bombers, bombs
+  air: {
+    home: HOME,
+    pre: true,
+    grant: { gold: 5000, iron: 300, oil: 300, techs: ['flight'] },
+    nations: [{ role: 'foe', cap: [90, 64], land: [60, 52, 100, 76], troops: 2000 }],
+    tribes: [],
+    tiles: { fort: [66, 64], sam: [68, 58], foe: [90, 64] },
+    buildings: [
+      { type: 'fort', at: [66, 64], owner: 'foe' },
+      { type: 'sam', at: [68, 58], owner: 'foe' },
+    ],
+  },
+  // a weak front right next door: Mechanization, a Factory, a tank division
+  armor: {
+    home: HOME,
+    pre: true,
+    grant: { gold: 4000, iron: 900, oil: 300, armor: 5000, techs: ['metallurgy'] },
+    nations: [{ role: 'foe', cap: [76, 64], land: [46, 50, 90, 78], troops: 1200 }],
+    tribes: [],
+    tiles: { front: [46, 64], push: [76, 64] },
+  },
+  // a strong neighbour that will attack: Fortification, Tank Traps, a Fort
+  defense: {
+    home: HOME,
+    pre: true,
+    grant: { gold: 3000, iron: 200, science: 2500, techs: ['fortification'] },
+    nations: [{ role: 'foe', cap: [76, 64], land: [46, 50, 90, 78], troops: 30000 }],
+    tribes: [],
+    tiles: { front: [46, 64], fort: [43, 64] },
+  },
+  // three neighbours: one friendly, one at war with you and weak, one quiet
+  diplomacy: {
+    home: HOME,
+    pre: true,
+    grant: { gold: 1000 },
+    nations: [
+      { role: 'friend', cap: [40, 30], land: [30, 22, 52, 40], troops: 6000 },
+      { role: 'enemy', cap: [76, 64], land: [46, 52, 92, 76], troops: 3000 },
+      { role: 'quiet', cap: [40, 100], land: [30, 88, 52, 106], troops: 6000 },
+    ],
+    tribes: [],
+    tiles: { friend: [40, 30], enemy: [76, 64], quiet: [40, 100] },
+    awake: ['friend', 'enemy', 'quiet'],
+    opinions: [['friend', 80]],
+    attackers: ['enemy'],
+  },
+  // an enemy city on the only rail to its front fort: bomb it and the fort is cut off
+  supply: {
+    home: HOME,
+    pre: true,
+    grant: { gold: 3000, iron: 300, techs: ['flight'] },
+    nations: [{ role: 'foe', cap: [100, 64], land: [49, 52, 112, 76], troops: 2000 }],
+    tribes: [],
+    tiles: { airfield: [44, 64], city: [76, 64], fort: [54, 64], foe: [100, 64] },
+    // Flak on the foe's Fort and City wears the bombers, so a bomb mostly damages the hub instead of razing it
+    techs: [['foe', ['flakGuns']]],
+    buildings: [
+      { type: 'airfield', at: [44, 64], owner: 'me', bombers: 4 },
+      { type: 'fort', at: [54, 64], owner: 'foe' },
+      { type: 'city', at: [76, 64], owner: 'foe' },
+    ],
+  },
+  // a weak neighbour to attack once the seasons have been shown
+  seasons: {
+    home: HOME,
+    pre: true,
+    grant: { gold: 1000, techs: ['mechanization'] },
+    nations: [{ role: 'foe', cap: [76, 64], land: [46, 52, 90, 76], troops: 1500 }],
+    tribes: [],
+    tiles: { front: [46, 64] },
+  },
 };
 const SEED = 7101;
 
-/** Named tile keys (tutorialTile); 'home' is the player's capital. */
+/** The chapters that can be played (the basics first). */
+export const TUTORIAL_CHAPTER_IDS: TutorialChapterId[] = ['basics', 'navy', 'air', 'armor', 'defense', 'diplomacy', 'supply', 'seasons'];
+
+function specOf(chapter: string | undefined): ChapterSpec {
+  return SPECS[chapter ?? TUTORIAL_ID] ?? SPECS[TUTORIAL_ID];
+}
+const SPEC = SPECS[TUTORIAL_ID];
+
+/** Named tile keys of the basics (tutorialTile); 'home' is the player's capital. */
 export const TUTORIAL_TILE_KEYS: string[] = ['home', ...Object.keys(SPEC.tiles)];
-/** Player roles (tutorialPlayer). */
+/** Player roles of the basics (tutorialPlayer). */
 export const TUTORIAL_ROLES: string[] = [...SPEC.nations.map((n) => n.role), ...SPEC.tribes.map((t) => t.role)];
+/** Named tile keys and player roles of a chapter. */
+export const chapterTileKeys = (chapter: TutorialChapterId): string[] => ['home', ...Object.keys(specOf(chapter).tiles)];
+export const chapterRoles = (chapter: TutorialChapterId): string[] => [...specOf(chapter).nations.map((n) => n.role), ...specOf(chapter).tribes.map((t) => t.role)];
 
 // ------------------------------------------------------------------------------------------------ settings and map
 
 /** Settings of the tutorial game: the tutorial map's size class, a fixed seed, its AI and tribe, fast building. */
-export function tutorialSettings(player?: { name?: string; color?: [number, number, number] }): GameSettings {
+export function tutorialSettings(player?: { name?: string; color?: [number, number, number] }, chapter: TutorialChapterId = TUTORIAL_ID): GameSettings {
+  const SPEC = specOf(chapter);
   return {
     ...cloneSetup(DEFAULT_SETUP),
     seed: SEED,
@@ -154,7 +286,8 @@ function claim(state: GameState, pid: number, tiles: number[], capital: number, 
  * places (frozen), the start gold and the tutorial rules (state.tutorial). The player then picks a start in a long
  * spawn phase.
  */
-export function setupTutorial(state: GameState): void {
+export function setupTutorial(state: GameState, chapter: TutorialChapterId = TUTORIAL_ID): void {
+  const SPEC = specOf(chapter);
   if (state.map.width !== TUTORIAL_MAP_WIDTH || state.map.height !== TUTORIAL_MAP_HEIGHT) {
     throw new Error('setupTutorial: create the game with createGame(tutorialSettings(), tutorialMap()) (or createTutorialGame)');
   }
@@ -163,7 +296,7 @@ export function setupTutorial(state: GameState): void {
   const nationIds = SPEC.nations.map((_, k) => human + 1 + k);
   const tribeIds = SPEC.tribes.map((_, k) => human + 1 + SPEC.nations.length + k);
   const tut: TutorialState = {
-    chapter: TUTORIAL_ID,
+    chapter,
     human,
     noElimination: true,
     minTiles: TUTORIAL_MIN_TILES,
@@ -192,13 +325,58 @@ export function setupTutorial(state: GameState): void {
   // the Research panel is the player's to drive (the research step picks a tech by hand)
   state.players[human].auto.research = false;
   state.spawnLeft = TUTORIAL_SPAWN_SECONDS;
-  tutorialGrant(state, human, SPEC.grant);
+  if (SPEC.pre) startChapter(state, SPEC, human, nationIds, tribeIds);
+  tutorialGrant(state, human, SPEC.grant); // after the start: placing the player sets its army
+}
+
+/** A chapter's start: the player stands at home, the game is running, the lesson's buildings and moods are set. */
+function startChapter(state: GameState, SPEC: ChapterSpec, human: number, nationIds: number[], tribeIds: number[]): void {
+  if (!spawnPlayer(state, human, at(SPEC.home))) throw new Error('setupTutorial: the start is not valid');
+  // the spawn phase ends here, as sim.tick would end it
+  state.spawnLeft = 0;
+  state.phase = 'playing';
+  state.playStartTick = state.tick;
+  updateFog(state, true);
+  const idOf = (role: string): number => (role === 'me' ? human : tutorialRoleId(SPEC, human, nationIds, tribeIds, role));
+  for (const b of SPEC.buildings ?? []) {
+    tutorialPlace(state, idOf(b.owner), b.type, at(b.at), b.level ?? 1, b.bombers ?? 0);
+  }
+  for (const [role, o] of SPEC.opinions ?? []) {
+    const pid = idOf(role);
+    if (pid > 0) state.opinion[pid][human] = o;
+  }
+  for (const [role, techs] of SPEC.techs ?? []) {
+    const pid = idOf(role);
+    if (pid > 0) tutorialGrant(state, pid, { techs });
+  }
+  const awake = (SPEC.awake ?? []).map(idOf).filter((x) => x > 0);
+  if (awake.length) state.tutorial!.frozen = state.tutorial!.frozen.filter((id) => !awake.includes(id));
+  for (const role of SPEC.attackers ?? []) {
+    const pid = idOf(role);
+    if (pid > 0) applyAdmin(state, human, { type: 'admin', op: 'declareWar', player: pid, other: human });
+  }
+}
+
+/** Puts a finished building of `owner` on a tile (a lesson's target, or a rebuilt one); `bombers` fills an airfield. */
+export function tutorialPlace(state: GameState, owner: number, type: BuildingType, tile: number, level = 1, bombers = 0): boolean {
+  const t = state.tutorial;
+  if (!t || owner <= 0 || state.phase !== 'playing') return false;
+  const r = applyAdmin(state, t.human, { type: 'admin', op: 'placeBuilding', player: owner, tile, key: type, amount: level });
+  if (r.ok && bombers > 0) applyAdmin(state, t.human, { type: 'admin', op: 'giveAircraft', player: owner, tile, key: 'bomber', amount: bombers });
+  return r.ok;
+}
+
+function tutorialRoleId(SPEC: ChapterSpec, human: number, nationIds: number[], tribeIds: number[], role: string): number {
+  const n = SPEC.nations.findIndex((x) => x.role === role);
+  if (n >= 0) return nationIds[n];
+  const k = SPEC.tribes.findIndex((x) => x.role === role);
+  return k >= 0 ? tribeIds[k] : 0;
 }
 
 /** createGame + setupTutorial: the whole game, ready to tick. */
-export function createTutorialGame(player?: { name?: string; color?: [number, number, number] }): GameState {
-  const state = createGame(tutorialSettings(player), tutorialMap());
-  setupTutorial(state);
+export function createTutorialGame(player?: { name?: string; color?: [number, number, number] }, chapter: TutorialChapterId = TUTORIAL_ID): GameState {
+  const state = createGame(tutorialSettings(player, chapter), tutorialMap());
+  setupTutorial(state, chapter);
   return state;
 }
 
@@ -288,11 +466,22 @@ export function tutorialStart(state: GameState): boolean {
 }
 
 /**
+ * Jumps the game clock to the start of a season (0 spring .. 3 winter), so the seasons chapter can show all four in
+ * seconds. The season is a pure function of the play clock (seasons.ts), so only playStartTick moves (it is hashed).
+ */
+export function tutorialSetSeason(state: GameState, index: number): void {
+  if (!state.tutorial || state.phase !== 'playing') return;
+  const i = Math.max(0, Math.min(3, Math.round(index)));
+  state.playStartTick = state.tick - i * SEASON_TICKS - 5;
+}
+
+/**
  * A named tile (TUTORIAL_TILE_KEYS), or -1. 'home' and 'citySite' are the player's capital (or the suggested start),
  * 'wild' free land at the player's border, 'front' the neighbour's land at the player's border.
  */
 export function tutorialTile(state: GameState, key: string): number {
   if (!state.tutorial) return -1;
+  const SPEC = specOf(state.tutorial.chapter);
   if (key === 'home' || key === 'citySite') {
     const p = state.players[state.tutorial.human];
     return p && p.alive && p.capital >= 0 ? p.capital : at(SPEC.home);
@@ -360,6 +549,7 @@ function borderEnemy(state: GameState, enemy: number): number {
 /** Player id of a role (TUTORIAL_ROLES: 'rival', 'tribe'; 'me' = the player), or 0. */
 export function tutorialPlayer(state: GameState, role: string): number {
   const human = state.tutorial?.human ?? 1;
+  const SPEC = specOf(state.tutorial?.chapter);
   if (role === 'me' || role === 'human') return human;
   const n = SPEC.nations.findIndex((x) => x.role === role);
   if (n >= 0) return human + 1 + n;

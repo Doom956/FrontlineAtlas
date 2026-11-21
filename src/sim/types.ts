@@ -907,7 +907,7 @@ export interface FogState {
 }
 
 /** Tutorial chapters (src/sim/tutorialScenario.ts; the client's chapter list is src/client/tutorial/chapters.ts). */
-export type TutorialChapterId = 'basics' | 'war' | 'economy' | 'navy' | 'armor' | 'air' | 'arsenal' | 'diplomacy';
+export type TutorialChapterId = 'basics' | 'war' | 'economy' | 'navy' | 'armor' | 'air' | 'arsenal' | 'diplomacy' | 'defense' | 'supply' | 'seasons';
 /** A tutorial game's rules (tutorialScenario.ts). Part of the hash; set only by setupTutorial and its helpers. */
 export interface TutorialState {
   chapter: TutorialChapterId;
