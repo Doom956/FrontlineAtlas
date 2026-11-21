@@ -75,7 +75,7 @@ interface TribeSpec {
 
 const HOME: XY = [40, 64];
 /** The navy chapter's island nation: its army (kept at this while the player lands; tutorialWeaken). */
-export const ISLANDERS = 2500;
+export const ISLANDERS = 1500;
 
 /** A building the scenario places (before the first tick); `owner` is a role, 'me' = the player. */
 interface Placed {

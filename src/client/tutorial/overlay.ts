@@ -80,6 +80,8 @@ export class TutorialOverlay {
   /** the map point ringed after Show me (or when a step that points at the map starts), until ringUntil */
   private ringAt: (() => { x: number; y: number; zoom: number } | null) | null = null;
   private ringUntil = 0;
+  /** the last target brought into view (scrollIntoView runs once per target) */
+  private scrolledTo: HTMLElement | null = null;
 
   constructor(private h: OverlayHandlers) {
     this.el = el('div', 'tut');
@@ -207,6 +209,15 @@ export class TutorialOverlay {
     // a ringed map point (Show me just pressed, or a step that points at the map) comes first while it lasts
     if (this.ringAt && performance.now() > this.ringUntil) this.ringAt = null;
     if (!this.ringAt || this.card.classList.contains('hidden')) {
+      // a target scrolled out of its panel (a long build menu or tech tree) is brought into view once
+      if (t && t !== this.scrolledTo) {
+        this.scrolledTo = t;
+        try {
+          t.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        } catch {
+          /* old browsers: no options */
+        }
+      }
       this.light.onElement(t, host);
       return;
     }
