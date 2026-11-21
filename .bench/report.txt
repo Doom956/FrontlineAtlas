@@ -1,0 +1,182 @@
+Frontline Atlas batch report from 1 file(s): 24 of 24 games, decided at 60%.
+
+Per configuration (a/r = armor/artillery % of all armies; mixW = winners with >= 15% armor or
+artillery, # = distinct mixes; ld8W / ld15W = leader at 8 / 15 min won; atom and invade: count/games;
+t1atm = median minute of the first atom bomb; tFiss = median minute the first nation had Nuclear Fission;
+idl/hld = nation samples with troops >= 90% of the cap and no attack of their own, not attacked / attacked;
+maxArmy = median over games of the biggest nation army; p50 / p95 / p99 ms per tick)
+
+config                   n  won%  tWin 25-50 10m a/r 20m a/r 30m a/r  mixW # tch20  ld8W ld15W  atom t1atm tFiss  invade  bomber  rckt  wshp idl/hld maxArmy   p50   p95   p99
+large 8 AIs             24  100%  31.7   88%    7/18    8/20    4/16    67% 4  19.7   13%   25%  25/17  29.5  23.4 3194/24 15134/24  1362  1308    9/1%      0   3.4  18.3  66.8
+
+map continents           6  100%  30.5  100%    7/17    5/17    2/11    50% 3  20.2    0%    0%    7/5  27.8  23.4   830/6  3938/6   326   389    8/1%      0   3.7  17.8  45.2
+map archipelago          6  100%  35.7  100%    9/14   10/19    4/16    83% 4  17.8    0%   33%    7/5  33.1  24.1  1239/6  3362/6   406   378   15/1%      0   2.8  13.6  33.9
+map pangaea              6  100%  31.4   67%    7/21   10/18    6/19    50% 2  19.6   17%   50%    2/2  30.8  22.8   491/6  3312/6   300   258    6/1%      0   4.2  24.2  66.5
+map highlands            6  100%  33.7   83%    5/19    6/25    4/17    83% 3  20.2   33%   17%    9/5  26.4  23.0   634/6  4522/6   330   283    7/1%      0   3.9  22.6  66.8
+
+all                     24  100%  31.7   88%    7/18    8/20    4/16    67% 4  19.7   13%   25%  25/17  29.5  23.4 3194/24 15134/24  1362  1308    9/1%      0   3.4  18.3  66.8
+
+Supply: hubs damaged per game 219.9, cuts per game 51.7 (70% within 15 s of an attack on that nation), mean seconds a nation had a source cut 277, convoys sunk per game 11.6.
+
+Seasons (effects on): attacks on nations started in spring 19%, summer 21%, autumn 34%, winter 26% (10472 attacks).
+
+Trenches: mean level of nation-facing border tiles at 15 min 0.55; Air cover sorties per game 1.5.
+
+Winner troop mixes (types >= 15% of the army, second half of the game): inf+art 12, inf 8, inf+arm 2, inf+arm+art 2
+Win reasons: land share 5, ? 19
+
+Buildings started (total over all games / games with at least one):
+  city 3780/24, farm 2323/24, market 934/24, mine 1163/24, oilWell 1042/24, barracks 349/24, factory 856/24, arsenal 866/24, fort 2937/24, watchtower 762/24, port 591/24, lab 787/24, hospital 253/24, airfield 579/24, sam 1018/24, silo 227/24
+Standing at the end (sites / mean level / highest level), summed over games:
+  city 3053/2.7/6, farm 2295/3.8/5, market 825/3.3/5, mine 1128/1.7/5, oilWell 1019/1.5/5, barracks 324/1.9/3, factory 645/2.9/5, arsenal 762/2.4/5, fort 2262/1.1/5, watchtower 758/1.1/3, port 531/1.4/5, lab 729/2.8/5, hospital 250/1.4/2, airfield 138/1.0/2, sam 273/1.1/3, silo 48/1.0/1
+  626.7 buildings per game at the end, 78.3 per nation (incl. dead ones)
+
+Paradrops: 356 (31 shot down, 258 landed on nations) in 24 games.
+Barrages: 15831 (10973 silenced forts / SAMs) in 24 games.
+  per barrage: median 38248 killed (mean 50516), median 1.63% of the target's home army (p90 7.52%)
+Fortified tiles taken by nations: 3374289 (140595.4 per game), 34% by attacks with >= 15% artillery.
+Winners with >= 15% artillery: 14 of 24 (58%).
+Shot down: 1091 of 15134 bombers, 567 of 1387 missiles.
+Naval Mastery: in 15 of 24 games (0.8 nations per game), first at median minute 22.3. Cruise missiles: 123 fired (5.1 per game, in 11 games), 0 shot down (0%), 118 buildings destroyed (4.9 per game).
+Masteries owned: Naval 20, Armor 7, Air 16 of 192 nations; Air is 37% of masteries, 8% of nations, in 13 of 24 games, first at median minute 24.8. Stealth strikes: 26 flown (1.1 per game, in 9 games), 0 shot down, 2 buildings destroyed (0.1 per game).
+Bomber payloads: 14390 arrivals (599.6 per game), wasted 13% (home with bombs 8%, dropped off hostile land 5%); rockets 56.8 per game.
+Late strikes (minute 20 on), totals over 24 games; gold = price paid (bombers: the ones shot down):
+  Bomber raids (sorties): 7100 (295.8 per game, in 24 games), shot down 370 (5%), 772 buildings, 14828657 troops (0.1 buildings, 2089 troops each); gold 185000, per 1000 gold 4.2 buildings, 80154.9 troops.
+  Bomber front support: 1337 (55.7 per game, in 24 games), shot down 0 (0%), 0 buildings, 4598525 troops (0.0 buildings, 3439 troops each); gold 0, per 1000 gold - buildings, - troops.
+  Rockets: 830 (34.6 per game, in 24 games), shot down 415 (50%), 312 buildings, 5550000 troops (0.4 buildings, 6687 troops each); gold 747000, per 1000 gold 0.4 buildings, 7429.7 troops.
+  Atom bombs: 25 (1.0 per game, in 17 games), shot down 5 (20%), 100 buildings, 612359 troops (4.0 buildings, 24494 troops each); gold 150000, per 1000 gold 0.7 buildings, 4082.4 troops.
+  Cruise missiles: 112 (4.7 per game, in 10 games), shot down 0 (0%), 108 buildings, 1320000 troops (1.0 buildings, 11786 troops each); gold 78400, per 1000 gold 1.4 buildings, 16836.7 troops.
+  Stealth strikes: 24 (1.0 per game, in 9 games), shot down 0 (0%), 2 buildings, 258400 troops (0.1 buildings, 10767 troops each); gold 28800, per 1000 gold 0.1 buildings, 8972.2 troops.
+Winners used 4.7 paradrops (nation mean 1.9) and 122.0 barrages (nation mean 82.5) per game.
+
+Eliminations per 5-minute bin (0-5 / 5-10 / ... / 50-55 min):
+  nations (192 total): 0 / 2 / 29 / 34 / 30 / 14 / 4 / 1 / 0 / 0 / 0
+  tribes  (6600 total): 4733 / 1851 / 16 / 0 / 0 / 0 / 0 / 0 / 0 / 0 / 0
+
+Allies: 77.6 joined wars, 32.5 aid shipments, 0.0 refusals per game; a runaway leader (coalition) for 7.2 min per game.
+
+Treaties: per game 0.4 peace deals, 2.7 pacts signed, 0.0 pacts broken; 23.8 offers (17.7 peace), 20.7 refused; 100% of peace deals had the stronger side receiving the terms; 22% involve the eventual winner, 27% the land leader.
+
+Naval: 3194 invasions, 551 landings on neutral coasts, 1308 warships.
+Atom bombs: 25 in 17 games, first at minute 26.7, 34.8, 23.2, 30.2, 38.0, 26.4, 29.5, 26.2, 30.6, 26.8, 27.8, 33.1, 31.1, 25.5, 31.0, 32.0, 26.3.
+Tick time: median p50 3.4 ms, median p95 18.3 ms, median p99 36.9 ms, worst p99 66.8 ms, worst tick 354.4 ms.
+
+Doctrines (held longest; 192 nations in 24 games, 24 with a winner or land leader):
+  doctrine    picks  pick%   wins  win%   win%/pick%   land at end  alive at end
+  blitz          16     8%      2    8%     1.0          8.7%        25%
+  fortress       21    11%      1    4%     0.4          5.7%        29%
+  siege          70    36%      9   38%     1.0         12.7%        39%
+  merchant       57    30%      6   25%     0.8         13.9%        53%
+  naval           4     2%      1    4%     2.0         17.2%       100%
+  air            17     9%      4   17%     1.9         19.1%        35%  <-- high
+  expansion       7     4%      1    4%     1.1          9.8%        14%
+  31 nations switched (35 switches, 0.2 per nation)
+  turtle    won 6 of 44 nations; held: siege 23, fortress 9, air 8, merchant 3, expansion 1
+  admiral   won 1 of 36 nations; held: merchant 19, siege 11, naval 3, fortress 3
+  merchant  won 5 of 37 nations; held: merchant 29, fortress 3, siege 3, naval 1, expansion 1
+  balanced  won 8 of 40 nations; held: siege 20, air 9, fortress 4, merchant 4, blitz 2, expansion 1
+  warlord   won 4 of 35 nations; held: blitz 14, siege 13, expansion 4, merchant 2, fortress 2
+
+Tech branches (nations that chose in the group; win = winner or land leader at the cap):
+  group          member              picks  pick%   wins  win%  win%/pick%  land at end  alive
+  finance        stockExchange          53    49%     11   46%     0.9       19.6%    62%
+  finance        freeTrade              55    51%     13   54%     1.1       22.9%    64%
+  landDoctrine   blitzTactics           35    50%     10   42%     0.8       27.5%    80%
+  landDoctrine   trenchWarfare          35    50%     14   58%     1.2       34.7%    77%
+  navalDoctrine  submarines             64    67%     16   76%     1.1       21.5%    50%
+  navalDoctrine  destroyers             31    33%      5   24%     0.7       16.3%    55%
+  statecraft     diplomaticCorps        42    52%      9   38%     0.7       25.6%    71%
+  statecraft     conscription           39    48%     15   63%     1.3       30.7%    74%
+  capstone       massMobilization       18    42%     11   52%     1.3       48.0%   100%
+  capstone       automation             25    58%     10   48%     0.8       41.2%    96%
+  armorPath      lightTanks             26    38%      3   15%     0.4       12.4%    46%  <-- low
+  armorPath      heavyTanks             42    62%     17   85%     1.4       34.5%    69%
+  airDoctrine    groundAttack           28    34%      7   29%     0.9       26.8%    75%
+  airDoctrine    heavyBombers           54    66%     17   71%     1.1       27.5%    67%
+  defenseDoctrine flakGuns               41    38%     10   43%     1.1       23.1%    71%
+  defenseDoctrine tankTraps              66    62%     13   57%     0.9       19.9%    53%
+AI gold uses per game: 379.3 mercenary hires (18961.1k troops), 0.1 ally fundings (0.1k gold), 0.0 war bonds, 0.0 bulk city orders, 0.5 area upgrades; games with mercenaries 24/24, with funding 2/24.
+Spearheads: 3663 (152.6 per game), median 18 tiles taken; by ending:
+  ran out of strength                 2533  mean 39.1 tiles, 6.1k lost
+  reached the coast                    470  mean 13.4 tiles, 2.1k lost
+  reached its full depth               371  mean 37.6 tiles, 3.1k lost
+  ran                                  287  mean 9.1 tiles, 1.9k lost
+  that nation is gone                    1  mean 0.0 tiles, 0.0k lost
+  stalled in the mountains               1  mean 0.0 tiles, 0.0k lost
+
+Research tab (23 techs), mean owned per alive nation: 10 min 7.3 (32%), 20 min 12.9 (56%), 30 min 16.3 (71%); Arsenal items at 20 min 6.8.
+  first path     arrival: first in game median 3.8 min (min 2.8, in 24/24 games); per nation median 6.3 min, 180 nations of 192 (94%), 25th pct 4.3
+  first special  arrival: first in game median 11.9 min (min 9.5, in 24/24 games); per nation median 16.3 min, 87 nations of 192 (45%), 25th pct 12.7
+  first mastery  arrival: first in game median 22.8 min (min 14.2, in 24/24 games); per nation median 24.7 min, 43 nations of 192 (22%), 25th pct 20.8
+
+Bombers shot down: 1091 of 15134 sorties (7%): SAM sites 297 (2%), fighters 794 (5%), carrier fighters 0 (0%).
+  sorties by variant: heavy bombers 6805, ground-attack 2629, standard 5700.
+Warship use: 12.6 ships afloat on average, in action 2.3 (ship-minutes in action per game minute; 72.0 per game, 18% of ship time), under way 65%.
+Tank divisions: 1237 formed (51.5 per game): overrun 695 (56%), spent after a spearhead 93 (8%), alive at the end 376 (30%), lost otherwise 73 (6%).
+Units per game (appeared; bomber = sorties, transportPlane = paradrops): type  median / max (seed of the max)
+  antiRadarMissile 0.0 / 17 (large highlands 8);  atomBomb 1.0 / 4 (large highlands 8);  bomber 607.0 / 1287 (large highlands 16)
+  bomber:groundAttack 59.0 / 629 (large highlands 16);  bomber:heavyBomber 197.5 / 872 (large highlands 8);  cruiseMissile 0.0 / 41 (large archipelago 2)
+  reconPlane 8.0 / 25 (large highlands 8);  rocket 54.0 / 86 (large archipelago 18);  stealthBomber 0.0 / 8 (large continents 17)
+  tankDivision 53.0 / 74 (large continents 13);  tankDivision:heavyTank 1.0 / 18 (large highlands 8);  tankDivision:lightTank 4.5 / 29 (large archipelago 2)
+  tradeShip 160.5 / 297 (large archipelago 6);  transport 148.0 / 291 (large archipelago 6);  transportPlane 13.5 / 37 (large highlands 16)
+  warship 54.0 / 88 (large continents 13);  warship:battleship 0.0 / 6 (large continents 5);  warship:carrier 0.5 / 4 (large continents 1)
+  warship:destroyer 5.0 / 21 (large highlands 20);  warship:submarine 6.0 / 29 (large continents 5)
+  peak aircraft of one nation (stored + flying): median 18.0, max 24
+Atom bombs: first use in 17/24 games at median minute 29.5, those games ended at 33.0; median 3.4 min before the end, >= 5 min before the end in 24%; first user won 2/17.
+  per game (first use / end): 27/33, 35/37, 23/24, 30/32, 38/46, 26/39, 30/33, 26/29, 31/32, 27/34, 28/29, 33/37, 31/31, 25/29, 31/34, 32/36, 26/26
+Mercenaries: winners spent 16.9% of their gold on them (nation mean 11.6%); 24/24 winners hired; winners paid 33% of all mercenary gold (their share of nations 13%).
+
+AI attack probe (24 games; AI nations only):
+  Warships: 54.5 built, 35.6 sunk per game (65%; by warships 34.7, mines 0.9; 9.3 more gone with their owner); sunk without any effect 21%, sunk after being crippled 54%.
+    ship time: at war 45%; of that on an own attack's front 12%; on station 40% (on the front 9%); escorting 2%; locally outnumbered 0%.
+    while their nation attacks a nation (41% of ship time): on that attack's front 13%, on station 45%.
+    main attack (the nation attacked last), fleet afloat: naval support on that front 11% of 14351 samples.
+  Invasions: 133.1 per game; sunk 22% (43972.8k troops per game), repelled 0%; escorted 10% of transport time at sea.
+  Tank divisions: 51.5 formed per game; overrun 56% (at <10% / 10-40% / >=40% strength: 255 / 345 / 95; while defending 95%), spent 8%; within 60 s after a spearhead 59%; 3.0 gone with their owner.
+    division time at war: spearheading 14%, holding at an own attack front 5%, holding elsewhere 74%, driving 7%; worn (<40%) 12%; holding time on support 66% (near its front tile 7%).
+    at war (an attack either way in the last 30 s): attacking 15%, to a launch tile 1%, driving 7%, retreating to refit 1%, holding at the front 9%, holding away worn 4%, holding away ready 64%; at the front in all 25%.
+    spearheads 157.7 per game (3.1 per division), with company 60%; 33.3 tiles each, under 5 tiles 20%; land taken per division 360.5 tiles (pockets 262.0); encirclements 129.1 per game (285.7 pockets, 13502.0 tiles); fell back 592.5 per game.
+    holding away ready, why: hold mode 35%, paused after falling back 34%, waiting on a route 21%, refitting at a Factory 5%, refit mode 3%, front tile far 2%, front tile near, quiet 0%, no land front 0%.
+    overrun where (the tick before): after a spearhead, cut off 206; after a spearhead, on thin ground 143; on thin ground 112; cut off 95; on thin ground, fell back lately 38; after a spearhead, cut off, fell back lately 33; cut off, fell back lately 32; after a spearhead, on thin ground, fell back lately 12; after a spearhead, driving 11; after a spearhead, on solid ground 6; on solid ground 5; on solid ground, fell back lately 1; driving 1.
+    blitzes 1.0 per game, 38.3 tiles each.
+    ended: ran out of strength 69%, reached the coast 13%, reached its full depth 10%, ran into another nation 8%, that nation is gone 0%, stalled 0%; enemy spearheads into their land 152.4 per game, 33.3 tiles each.
+  ("front" = the border with a nation the unit's owner attacked within the last 30 s; AI attacks come in waves of about a second)
+  Bombers by mission: sorties per game / arrived / on an own attack front (support, cover, manual) / into SAM cover (arrived)
+    manual     120.3  arrived  90%  on front  18%  into SAM   1% (50% arrived)
+    support    436.0  arrived  96%  on front  78%  into SAM   2% (67% arrived)
+    strategic   67.7  arrived  95%  on front    -  into SAM   6% (75% arrived)
+    cover        6.6  arrived  99%  on front  81%  into SAM   2% (67% arrived)
+  Strategic / manual aims: city 36%, fort 35%, factory 9%, arsenal 8%, market 3%, airfield 2%, barracks 2%, lab 2%, mine 1%, port 1%, sam 1%, oilWell 1%, silo 0%, ground 0%
+  Main attack (the nation attacked last), nation with bombers: an air support zone on that front 20% of 10806 samples.
+  Warships by type, per game: built, sunk by destroyers / other ships / other; kills of trade ships, transports (landings at war), warships, soft warships (damaged or alone), submarines
+    standard   built  36.5  sunk 3.3 / 20.3 / 1.9  kills: trade 36.2, transports 20.2 (9.8), warships 0.7, soft 17.3, subs 0.5  per loss 2.9  (sunk by standard 15.1, submarine 5.1, destroyer 3.3, battleship 0.1, carrier 0.0)
+      time at war 44%; of it: on an own attack front 14%, station 50%, chasing 3%, escorting 2%, mending 2%, enemy can fire at it 2%, enemy destroyer in sonar 0%, in a minefield 0%, blockading 4%
+    destroyer  built   6.4  sunk 0.4 / 3.5 / 0.3  kills: trade 8.8, transports 2.9 (1.5), warships 0.0, soft 3.7, subs 1.8  per loss 4.1  (sunk by standard 2.5, submarine 1.0, destroyer 0.4, carrier 0.0)
+      time at war 51%; of it: on an own attack front 10%, station 44%, chasing 4%, escorting 9%, mending 4%, enemy can fire at it 2%, enemy destroyer in sonar 0%, in a minefield 1%, blockading 3%, enemy sub in sonar 0%, by own shipping 10%
+    battleship built   1.0  sunk 0.0 / 0.5 / 0.0  kills: trade 0.8, transports 0.1 (0.1), warships 0.0, soft 0.2, subs 0.0  per loss 2.1  (sunk by submarine 0.5, standard 0.1)
+      time at war 53%; of it: on an own attack front 24%, station 63%, chasing 1%, escorting 1%, mending 1%, enemy can fire at it 3%, enemy destroyer in sonar 0%, in a minefield 0%, blockading 0%
+    submarine  built   9.2  sunk 1.8 / 1.0 / 1.8  kills: trade 11.8, transports 5.9 (3.9), warships 0.6, soft 6.2, subs 0.4  per loss 5.5  (sunk by destroyer 1.8, standard 0.5, submarine 0.4)
+      time at war 47%; of it: on an own attack front 2%, station 20%, chasing 31%, escorting 1%, mending 2%, enemy can fire at it 1%, enemy destroyer in sonar 0%, in a minefield 0%, blockading 7%, seen by the enemy 29%
+    carrier    built   1.3  sunk 0.0 / 0.7 / 0.1  kills: trade 0.3, transports 0.3 (0.3), warships 0.0, soft 0.1, subs 0.0  per loss 0.8  (sunk by submarine 0.3, standard 0.3, battleship 0.1, destroyer 0.0)
+      time at war 56%; of it: on an own attack front 19%, station 77%, chasing 2%, escorting 1%, mending 1%, enemy can fire at it 1%, enemy destroyer in sonar 0%, in a minefield 0%, blockading 1%, front in air reach 24%
+  Landings with naval support 16% of 105.0 per game; bomber sorties from carriers 12.1 per game.
+  Fighters: 69.4 bought per game; planes shot down per game by airfield and patrol fighters 34.0, carriers 0.0, SAM sites 37.1; recon planes among the fighter kills 0.1.
+  Recon: 10.8 flights per game, reached the target 99%, shot down 1%.
+  Airfields (10 s samples): 2.16 fighters each, 86% with 2+; arrivals not guarded: victim had no fighters there 73% (no airfield at all 21%, airfields with no fighter 1%), too few 1%, matched by the bomber's side 1%.
+  Bomber arrivals 599.6 per game, over a tile the victim's fighters guard 6%; per arrival: troops killed 4.5k unguarded / 3.0k guarded, buildings hit 0.10 / 0.12.
+  Enemy bombers at our land: 629.3 per game; while we had a superiority patrol 44%, aimed inside a patrol circle 6% (13% of those with a patrol); patrol engagements 42.1 per game.
+DEFENSE PROBE (24 games, 192 AI nations; per game unless noted)
+pillar picks (share of AI nations holding an item of the pillar): navy 49%, armor 35%, air 42%, defense 55%
+defense committed at the end 34% of nations; turtles 23%, of the defense holders 42% are turtles
+defense techs held (share of nations): flak 21%, traps 34%, batteries 22%, radar 15%, antiRadar 10%, siege 17%, mastery 16%
+flak: bomber sorties 630.58, strikes 282.67, worn by flak 12%, mean bomb effect lost 4.6% (of all strikes), turned back 7.13 (1% of sorties), stealth turned back 0.04
+traps: spearheads 148.71, slowed by traps 4.50 (3%), trap hits 47.38, troops lost to traps 2917.13
+traps: spearheads into a Traps holder 36.13, slowed there 4.46 (12%); Siege Tanks spearheads into a Traps holder 5.88
+batteries: shots 65.83, ships sunk 3.13, transports sunk 0.00 of 133.08 sea invasions (0%), batteries shelled silent 8.21, troops lost on invading transports 1% of those launched
+batteries: landings that sailed into shore fire 4.00 (3% of sea invasions), troops they lost 30% of theirs
+stealth: Air Mastery holder minutes at war 2.96, sorties per 2 such minutes 0.73; kept home by: in the air 6%, recharging 7%, cost 0%, pacing or no target 80%
+anti-radar: holder minutes at war 3.88, missiles per 2 such minutes 1.14
+stealth: sorties 1.08, strikes landed 0.96, radar spots 0.00, shot down 0.00 (0.00 by SAM/radar); lost per sortie 0%, strikes per sortie 88%
+anti-radar: fired 2.21 (missiles built 2.21), shot down 0.58 (26%), SAMs knocked out 1.38, destroyed 0.00
+counteroffensive: ready 1.25, launches 1.21, tiles captured in the next 90 s 23745 per launch (a nation's average 90 s: 19170)
+siege tanks: forts knocked out 2.38, of them held by a Defense nation 2.33
