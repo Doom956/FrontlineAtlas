@@ -336,12 +336,12 @@ describe('single-player link: what it shows', () => {
   });
 
   it('never touches the game: the link imports only the protocol, and main.ts links only outside the tutorial', () => {
-    const src = readFileSync('src/client/spLink.ts', 'utf8');
+    const src = readFileSync('src/client/spLink.ts', 'utf8').replace(/\r\n/g, '\n');
     const imports = [...src.matchAll(/^import[^;]*from '([^']+)'/gm)].map((m) => m[1]);
     expect(new Set(imports)).toEqual(new Set(['../net/protocol']));
     const code = src.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
     expect(code).not.toMatch(/dispatch|applyAction|localStorage|clientId|document\.cookie/);
-    const main = readFileSync('src/client/main.ts', 'utf8');
+    const main = readFileSync('src/client/main.ts', 'utf8').replace(/\r\n/g, '\n');
     expect(main).toMatch(/if \(!tutorial\) spLink\.start\(\);/);
     expect(main.match(/spLink\.start\(/g)?.length).toBe(1);
     // its messages go to the broadcast layer and nowhere else
@@ -349,7 +349,7 @@ describe('single-player link: what it shows', () => {
   });
 
   it('the status reads plain fields only (no sim helpers that fill caches)', () => {
-    const main = readFileSync('src/client/main.ts', 'utf8');
+    const main = readFileSync('src/client/main.ts', 'utf8').replace(/\r\n/g, '\n');
     const body = main.slice(main.indexOf('function spStatusNow'), main.indexOf('const spLink'));
     const calls = [...body.matchAll(/\b([a-zA-Z_]\w*)\(/g)].map((m) => m[1]);
     expect(new Set(calls)).toEqual(new Set(['spStatusNow', 'slice', 'join', 'trim', 'max', 'floor', 'gameSeconds', 'min', 'round']));

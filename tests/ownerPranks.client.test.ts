@@ -451,7 +451,7 @@ describe('pranks: HUD markers over the map follow the flip', () => {
     expect(mapSide()).toBe('m');
   });
   it('the unit card, the alert ping and the guide ring are placed through the warp', () => {
-    const src = (f: string) => readFileSync(new URL(`../src/client/${f}`, import.meta.url), 'utf8');
+    const src = (f: string) => readFileSync(new URL(`../src/client/${f}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
     expect(src('hud/unitCard.ts')).toMatch(/mapShown\(at\.x, at\.y\)/);
     expect(src('hud/alerts.ts')).toMatch(/mapShown\(t\.x, t\.y\)/);
     expect(src('guide/guide.ts')).toMatch(/mapPointOnPage\(canvas, t\.x, t\.y\)/);
@@ -460,7 +460,7 @@ describe('pranks: HUD markers over the map follow the flip', () => {
 
 describe('banners on a phone held sideways', () => {
   it('the phone sizes (21 px text, 90% wide) also apply to short screens, not only narrow ones', () => {
-    const css = readFileSync(new URL('../src/client/styles.css', import.meta.url), 'utf8');
+    const css = readFileSync(new URL('../src/client/styles.css', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
     const at = css.indexOf('@media (max-width: 640px), (max-height: 500px) {\n  .bc-stack');
     expect(at).toBeGreaterThan(0);
     const block = css.slice(at, css.indexOf('\n}\n', at));
